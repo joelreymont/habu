@@ -8,11 +8,13 @@ require src/lib/source.f
 require src/lib/process-argv.f
 require src/lib/content-key.f
 require tools/build-support.f
+require tools/build-out.f
 require tools/keyed-image.f
 
 package APP-BUILD-IMAGE
 
 create KEY-HEX KEYED-IMAGE:KEY-HEX-LEN allot
+create ENGINE-KEY KEYED-IMAGE:KEY-HEX-LEN allot
 create PATH-BUF FS-PATH-CAP allot
 create ENTRY-BUF FS-PATH-CAP allot
 create ROOT-BUF FS-PATH-CAP allot
@@ -58,7 +60,8 @@ TYPED-VARIABLE BEFORE [ ptr u8 n -- ]
    fold [: FILL-KEY ;] catch {: rc:n :} drop
    rc 0<> if fold CONTENT-KEY:DISCARD rc throw then
    fold KEY-HEX CONTENT-KEY:FINAL-HEX
-   FAMILY$ PATH-BUF PATH-U KEYED-IMAGE:PATH! ;
+   BUILD-FIXPOINT:BF-ENGINE$ ENGINE-KEY BUILD-OUT:KEY-OF!
+   FAMILY$ ENGINE-KEY PATH-BUF PATH-U KEYED-IMAGE:PATH! ;
 
 \ Discover the same support file the selected engine will load, with the
 \ invocation CWD and that engine's fallback root. Restore the caller on error.
@@ -95,7 +98,7 @@ public
    ['] RESOLVE catch {: rc:n :}
    [: 2drop ;] BEFORE !
    rc 0<> if rc throw then
-   KEY-HEX FAMILY$ BUILD-FIXPOINT:BF-ENGINE$ PROGRAM$ ['] OUT-ARG timeout
+   KEY-HEX FAMILY$ ENGINE-KEY BUILD-FIXPOINT:BF-ENGINE$ PROGRAM$ ['] OUT-ARG timeout
    KEYED-IMAGE:ENSURE-WITH drop
    PATH-BYTES ;
 
@@ -111,8 +114,9 @@ public
 : CACHED-PATH$ ( ptr u8 n -- ptr u8 n bool )
    {: key:ptr keyu:n :}
    key keyu HEX? 0= if NULL-PTR 0 false exit then
-   key FAMILY$ KEYED-IMAGE:FRESH? 0= if NULL-PTR 0 false exit then
-   FAMILY$ PATH-BUF PATH-U KEYED-IMAGE:PATH!
+   BUILD-FIXPOINT:BF-ENGINE$ ENGINE-KEY BUILD-OUT:KEY-OF!
+   key FAMILY$ ENGINE-KEY KEYED-IMAGE:FRESH? 0= if NULL-PTR 0 false exit then
+   FAMILY$ ENGINE-KEY PATH-BUF PATH-U KEYED-IMAGE:PATH!
    PATH-BYTES true ;
 
 ;package

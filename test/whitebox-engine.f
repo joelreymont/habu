@@ -36,6 +36,7 @@ require test/image-grant.f
 require test/compiler-images.f
 require test/suite-budget.f              \ CHILD-MS, the build's hang guard
 require src/lib/content-key.f
+require tools/build-out.f
 require tools/keyed-image.f
 
 package WHITEBOX-ENGINE
@@ -49,6 +50,7 @@ create BUNDLE-BUF FS-PATH-CAP allot
 create OUT IO-CAP allot
 create ERR IO-CAP allot
 create KEY-HEX KEYED-IMAGE:KEY-HEX-LEN allot
+create ENGINE-KEY KEYED-IMAGE:KEY-HEX-LEN allot   \ the candidate's, naming its img/
 
 variable PATH-U
 variable WORK-U
@@ -94,7 +96,7 @@ variable READY?
 \ so a half-written image is never visible at the family's path: only
 \ KEYED-IMAGE:PUBLISH puts it there.
 : WORK-OPEN ( -- )
-   FAMILY$ KEYED-IMAGE:WORK-OPEN WORK-BUF WORK-U COPY-OUT!
+   FAMILY$ ENGINE-KEY KEYED-IMAGE:WORK-OPEN WORK-BUF WORK-U COPY-OUT!
    WORK-BYTES FAMILY$ TMP-BUF JOIN-PATH TMP-U ! ;
 
 : ARG ( ptr u8 n -- )
@@ -136,8 +138,8 @@ variable READY?
    s" whitebox-product-v1" CONTENT-KEY:TEXT+
    TMP-BYTES s" product" CONTENT-KEY:FILE-NAMED+
    KEY-HEX CONTENT-KEY:FINAL-HEX
-   KEY-HEX FAMILY$ TMP-BYTES KEYED-IMAGE:PUBLISH
-   FAMILY$ PATH-BUF PATH-U KEYED-IMAGE:PATH! ;
+   KEY-HEX FAMILY$ ENGINE-KEY TMP-BYTES KEYED-IMAGE:PUBLISH
+   FAMILY$ ENGINE-KEY PATH-BUF PATH-U KEYED-IMAGE:PATH! ;
 
 \ A second builder racing this one writes the same keyed bytes through
 \ KEYED-IMAGE:PUBLISH's atomic replaces, so the race costs one redundant build
@@ -146,6 +148,7 @@ variable READY?
 \ or PUBLISH ends the process, whose exit registry removes what
 \ KEYED-IMAGE:WORK-OPEN registered.
 : EMIT ( -- )
+   ENGINE-CANDIDATE:PATH$ ENGINE-KEY BUILD-OUT:KEY-OF!
    WORK-OPEN
    ['] BUILD-RUN catch EMIT-RC !
    EMIT-RC @ 0 = if ['] PUBLISH catch EMIT-RC ! then
@@ -165,7 +168,7 @@ public
       exit
    then
    FAMILY$ IMAGE-GRANT:CHECK
-   READY? @ if KEY-HEX FAMILY$ KEYED-IMAGE:FRESH? if exit then then
+   READY? @ if KEY-HEX FAMILY$ ENGINE-KEY KEYED-IMAGE:FRESH? if exit then then
    EMIT
    true READY? ! ;
 

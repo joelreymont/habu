@@ -87,7 +87,7 @@ variable SUPPORT-ROWS-U
    BUILD-TARGET:CURRENT RTARGET:PROFILE$ CONTENT-KEY:TEXT+
    ROW-DIGEST CONTENT-KEY:DIGEST+
    KEY-HEX CONTENT-KEY:FINAL-HEX
-   FAMILY$ PATH-BUF PATH-U KEYED-IMAGE:PATH! ;
+   FAMILY$ DONOR-BUF PATH-BUF PATH-U KEYED-IMAGE:PATH! ;
 
 \ The key the image at this path publishes under, from the result record its
 \ child wrote beside it.
@@ -137,14 +137,17 @@ public
    rows rowsu NFILE-INPUTS:FORMAT
    key KEY-HEX 64 BYTE-COPY
    rows rowsu ROWS!
-   FAMILY$ PATH-BUF PATH-U KEYED-IMAGE:PATH! ;
+   FAMILY$ DONOR-BUF PATH-BUF PATH-U KEYED-IMAGE:PATH! ;
 
 : REUSE? ( -- bool )
-   KEY-HEX FAMILY$ KEYED-IMAGE:FRESH? ;
+   KEY-HEX FAMILY$ DONOR-BUF KEYED-IMAGE:FRESH? ;
 
+\ DONOR-BUF is the engine key KEYED-IMAGE reads, and ACCEPT-RESULT replaces it
+\ with the key the child reports: the image publishes under the engine that
+\ built it, even when that file changed after CONTEXT! read it.
 : BUILD$ ( bool -- ptr u8 n )
    {: quiet:bool :}
-   FAMILY$ ENGINE-BUF ENGINE-U @ PROGRAM$ ['] OUT-ARG 180000 quiet
+   FAMILY$ DONOR-BUF ENGINE-BUF ENGINE-U @ PROGRAM$ ['] OUT-ARG 180000 quiet
       ['] ACCEPT-RESULT KEYED-IMAGE:BUILD-WITH-RESULT-QUIET ;
 
 ;package

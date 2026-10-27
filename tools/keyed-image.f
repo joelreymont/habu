@@ -1,8 +1,10 @@
 \ keyed-image.f - publish one keyed saved image under the tree's out root.
-\ A family's image is BUILD-OUT:IMG$ <family>, and <family>.key beside it holds
-\ the KEY-HEX-LEN hex digits it was built under: FRESH? is that key equal to
-\ the caller's. The caller supplies the family, key, builder engine, stdin
-\ program and child timeout. Keys include source closure paths so images remain
+\ A family's image is BUILD-OUT:IMG$ <family> in the directory of the engine
+\ that builds it, and <family>.key beside it holds the KEY-HEX-LEN hex digits it
+\ was built under: FRESH? is that key equal to the caller's. The caller supplies
+\ the family, key, builder engine path and that engine's key (BUILD-OUT:KEY-OF!,
+\ computed once by the caller; every word that names a slot takes it right after
+\ the family), stdin program and child timeout. Keys include source closure paths so images remain
 \ tied to the tree that built them. A build writes into its own work directory
 \ under img/ (WORK-OPEN), and a build killed before PUBLISH leaves only that
 \ directory. PUBLISH empties the key, renames the image into place and writes
@@ -11,11 +13,15 @@
 \ key, and publishers of one family under one key cannot fail each other. A
 \ build killed inside PUBLISH leaves the empty key, which reads as a miss, and
 \ may leave the key write's temporary file beside it.
-\ One out root serves one tree's builds of a family under one key at a time:
-\ the image and its key are two files, so publishers of one family under two
-\ keys can interleave and leave one's image under the other's key. Sharing
-\ HABU_OUT across trees is outside that contract. Test gate grants and budgets
-\ stay in test/keyed-image.f.
+\ A slot belongs to one builder engine, but the image and its key are still two
+\ files, so publishers of one family under two keys can interleave and leave
+\ one's image under the other's key. One out root therefore serves one tree's
+\ builds of a family on one builder engine under one selector key at a time.
+\ Two keys remain possible where a selector key folds an input other than the
+\ builder engine's bytes that two selections sharing the out root can vary: the
+\ working directory, the engine's path spelling, donor map, target, selected
+\ root or source closure. Sharing HABU_OUT across trees is outside that
+\ contract. Test gate grants and budgets stay in test/keyed-image.f.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -68,6 +74,7 @@ TYPED-VARIABLE RESULT-XT [ ptr u8 n -- ptr u8 ]
 TYPED-VARIABLE FAMILY-A ptr u8
 variable FAMILY-U
 TYPED-VARIABLE KEY-A ptr u8
+TYPED-VARIABLE EKEY-A ptr u8
 TYPED-VARIABLE PROGRAM-A ptr u8
 variable PROGRAM-U
 TYPED-VARIABLE ARGS-XT [ ptr u8 n -- ]
@@ -99,8 +106,9 @@ TYPED-VARIABLE ARGS-XT [ ptr u8 n -- ]
    a dst u BYTE-COPY
    u up ! ;
 
-\ The family's image path into PATH-BUF and its key path into KEY-PATH-BUF.
-: PATHS! ( ptr u8 n -- )
+\ The family's image path into PATH-BUF and its key path into KEY-PATH-BUF,
+\ under the directory of the engine whose key follows the family.
+: PATHS! ( ptr u8 n ptr u8 -- )
    BUILD-OUT:IMG$ PATH-BUF PATH-U COPY-OUT!
    PATH-U @ 4 + FS-PATH-CAP > if E-FS-CAPACITY throw then
    PATH-BUF KEY-PATH-BUF PATH-U @ BYTE-COPY
@@ -109,19 +117,20 @@ TYPED-VARIABLE ARGS-XT [ ptr u8 n -- ]
 
 public
 
-\ The path of a family's image into the caller's FS-PATH-CAP buffer and length
-\ cell.
-: PATH! ( ptr u8 n ptr u8 ptr n -- )
-   {: fam:ptr famu:n dst:ptr up:ptr :}
-   fam famu BUILD-OUT:IMG$ dst up COPY-OUT! ;
+\ The path of a family's image, built by the engine whose key follows the
+\ family, into the caller's FS-PATH-CAP buffer and length cell.
+: PATH! ( ptr u8 n ptr u8 ptr u8 ptr n -- )
+   {: fam:ptr famu:n ekey:ptr dst:ptr up:ptr :}
+   fam famu ekey BUILD-OUT:IMG$ dst up COPY-OUT! ;
 
-\ Whether the family's image is executable and was published under this key.
+\ Whether the family's image, in the directory of the engine whose key follows
+\ the family, is executable and was published under this key.
 \ A key that cannot be opened (missing) or holds any length other than
 \ KEY-HEX-LEN is a miss: the empty key of a publish in progress, and a longer
 \ file, which READ-ALL refuses with E-FS-CAPACITY. Every other error throws.
-: FRESH? ( ptr u8 ptr u8 n -- bool )
-   {: key:ptr fam:ptr famu:n :}
-   fam famu PATHS!
+: FRESH? ( ptr u8 ptr u8 n ptr u8 -- bool )
+   {: key:ptr fam:ptr famu:n ekey:ptr :}
+   fam famu ekey PATHS!
    PATH$ EXECUTABLE? 0= if false exit then
    0 [: drop KEY-PATH$ KEY-READ KEY-HEX-LEN 1 + READ-ALL ;] catch {: rc:n :}
    rc E-FS-OPEN = rc E-FS-CAPACITY = or if drop false exit then
@@ -129,22 +138,24 @@ public
    KEY-HEX-LEN <> if false exit then
    KEY-READ KEY-HEX-LEN key KEY-HEX-LEN STR= ;
 
-\ A build's own directory under img/, named <family>-<seed>-<attempt>, which
-\ the caller copies before another WORK-OPEN. It is registered for removal at
-\ exit, so a die before WORK-CLOSE still removes it.
-: WORK-OPEN ( ptr u8 n -- ptr u8 n )
-   {: fam:ptr famu:n :}
-   fam famu BUILD-OUT:IMG$ SOURCE-ROOT:DIRNAME fam famu MAKE-TEMP-DIR
+\ A build's own directory under the img/ of the engine whose key follows the
+\ family, named <family>-<seed>-<attempt>, which the caller copies before
+\ another WORK-OPEN. It is registered for removal at exit, so a die before
+\ WORK-CLOSE still removes it.
+: WORK-OPEN ( ptr u8 n ptr u8 -- ptr u8 n )
+   {: fam:ptr famu:n ekey:ptr :}
+   fam famu ekey BUILD-OUT:IMG$ SOURCE-ROOT:DIRNAME fam famu MAKE-TEMP-DIR
    2dup CLEANUP-TREE+ ;
 
 : WORK-CLOSE ( ptr u8 n -- )
    2dup REMOVE-TREE CLEANUP-FORGET ;
 
-\ Publish the image at tmp as the family's, built under the key: an empty key
-\ first, which FRESH? reads as a miss, then the image, then the key.
-: PUBLISH ( ptr u8 ptr u8 n ptr u8 n -- )
-   {: key:ptr fam:ptr famu:n tmp:ptr tmpu:n :}
-   fam famu PATHS!
+\ Publish the image at tmp as the family's, built under the key by the engine
+\ whose key follows the family: an empty key first, which FRESH? reads as a
+\ miss, then the image, then the key.
+: PUBLISH ( ptr u8 ptr u8 n ptr u8 ptr u8 n -- )
+   {: key:ptr fam:ptr famu:n ekey:ptr tmp:ptr tmpu:n :}
+   fam famu ekey PATHS!
    KEY-PATH$ key 0 ATOMIC-WRITE-FILE
    tmp tmpu PATH$ RENAME-FILE
    KEY-PATH$ key KEY-HEX-LEN ATOMIC-WRITE-FILE ;
@@ -186,13 +197,13 @@ private
       s" builder produced no executable image" FAILED$ BUILD-RC die
    then
    RESULT-KEY @ if TMP$ RESULT-XT @ execute KEY-A ! then
-   KEY-A @ FAMILY$ TMP$ PUBLISH ;
+   KEY-A @ FAMILY$ EKEY-A @ TMP$ PUBLISH ;
 
 \ The work directory goes whatever the build did, and a failure keeps its own
 \ code: a throw is caught here, and a die in BUILD-RUN or PUBLISH-BUILT ends the
 \ process, whose exit registry removes what WORK-OPEN registered.
 : EMIT ( -- )
-   FAMILY$ WORK-OPEN WORK-BUF WORK-U COPY-OUT!
+   FAMILY$ EKEY-A @ WORK-OPEN WORK-BUF WORK-U COPY-OUT!
    WORK$ FAMILY$ TMP-BUF JOIN-PATH TMP-U !
    ['] BUILD-RUN catch EMIT-RC !
    EMIT-RC @ 0 = if ['] PUBLISH-BUILT catch EMIT-RC ! then
@@ -238,15 +249,17 @@ public
 
 \ Build the family's image under the key unless it is already there. The build
 \ runs the engine with the program on stdin and `--` then what ARGS stages,
-\ given the path the builder must save to. The engine path is copied; the key,
-\ family name and program are read until ENSURE-WITH returns. TRUE means the
-\ existing image was selected; FALSE means this call built and published it.
-: ENSURE-WITH ( ptr u8 ptr u8 n ptr u8 n ptr u8 n [ ptr u8 n -- ] n -- bool )
-   {: key:ptr fam:ptr famu:n eng:ptr engu:n prog:ptr progu:n args timeout:n :}
+\ given the path the builder must save to; that engine's key follows the
+\ family. The engine path is copied; the key, engine key, family name and
+\ program are read until ENSURE-WITH returns. TRUE means the existing image was
+\ selected; FALSE means this call built and published it.
+: ENSURE-WITH ( ptr u8 ptr u8 n ptr u8 ptr u8 n ptr u8 n [ ptr u8 n -- ] n -- bool )
+   {: key:ptr fam:ptr famu:n ekey:ptr eng:ptr engu:n prog:ptr progu:n args timeout:n :}
    timeout CHILD-TIMEOUT-MS !
-   key fam famu FRESH? if true exit then
+   key fam famu ekey FRESH? if true exit then
    fam FAMILY-A ! famu FAMILY-U !
    key KEY-A !
+   ekey EKEY-A !
    prog PROGRAM-A ! progu PROGRAM-U !
    args ARGS-XT !
    eng engu ENGINE-BUF ENGINE-U COPY-OUT!
@@ -259,10 +272,12 @@ public
 
 \ A builder whose consumed inputs determine its key learns the key only after
 \ its child succeeds and the temporary image is executable: RESULT answers it
-\ from the temporary image's path. Answers the published image's path.
-: BUILD-WITH-RESULT-QUIET ( ptr u8 n ptr u8 n ptr u8 n [ ptr u8 n -- ] n bool [ ptr u8 n -- ptr u8 ] -- ptr u8 n )
-   {: fam:ptr famu:n eng:ptr engu:n prog:ptr progu:n args timeout:n quiet:bool result :}
+\ from the temporary image's path. The engine's key follows the family, as for
+\ ENSURE-WITH. Answers the published image's path.
+: BUILD-WITH-RESULT-QUIET ( ptr u8 n ptr u8 ptr u8 n ptr u8 n [ ptr u8 n -- ] n bool [ ptr u8 n -- ptr u8 ] -- ptr u8 n )
+   {: fam:ptr famu:n ekey:ptr eng:ptr engu:n prog:ptr progu:n args timeout:n quiet:bool result :}
    fam FAMILY-A ! famu FAMILY-U !
+   ekey EKEY-A !
    prog PROGRAM-A ! progu PROGRAM-U !
    args ARGS-XT !
    eng engu ENGINE-BUF ENGINE-U COPY-OUT!
@@ -274,7 +289,7 @@ public
    0 QUIET !
    0 RESULT-KEY !
    rc 0<> if rc throw then
-   FAMILY$ PATHS!
+   FAMILY$ EKEY-A @ PATHS!
    PATH$ ;
 
 ;package

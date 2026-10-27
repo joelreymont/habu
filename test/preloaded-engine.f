@@ -7,8 +7,9 @@
 \ a keyed image (test/keyed-image.f) the rows run instead of the engine:
 \ LINKER$, img/linker, the saver image test/app-image-engine.f builds with
 \ tools/aot-build.f loaded on top and saved. Its key folds the saver image's
-\ key - so it moves whenever that one does, and the host is never hashed - the
-\ program, and the ordered closure of tools/aot-build.f.
+\ key - so it moves whenever that one does - the program, and the ordered
+\ closure of tools/aot-build.f. The host is hashed once, for the directory of
+\ the engine that builds the image (BUILD-OUT:KEY-OF!).
 \
 \ Under a gate the gate's app-image and linker build rows settle both before a
 \ row that loads this module starts (test/gate-images.f), so the row only finds
@@ -57,12 +58,14 @@ require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/content-key.f
+require tools/build-out.f
 require test/keyed-image.f
 require test/app-image-engine.f
 
 package PRELOADED-ENGINE
 
 create LINKER-KEY KEYED-IMAGE:KEY-HEX-LEN allot
+create HOST-KEY KEYED-IMAGE:KEY-HEX-LEN allot   \ the saver image's, naming its img/
 create LINKER-BUF FS-PATH-CAP allot
 
 variable LINKER-U
@@ -77,8 +80,10 @@ variable LINKER-RESOLVED?
    S\" require tools/aot-build.f\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" ;
 
 \ The saver image's key is taken before this key opens: both fold through the
-\ one content-key context.
-: LINKER-RESOLVE ( -- )
+\ one content-key context. The linker's slot is under the saver image at host,
+\ which builds it.
+: LINKER-RESOLVE ( ptr u8 n -- )
+   {: host:ptr hostu:n :}
    LINKER-RESOLVED? @ 0 <> if exit then
    APP-IMAGE-ENGINE:KEY$ {: app:ptr appu:n :}
    CONTENT-KEY:OPEN
@@ -87,7 +92,8 @@ variable LINKER-RESOLVED?
    LINKER-PROGRAM$ CONTENT-KEY:TEXT+
    s" tools/aot-build.f" KEYED-IMAGE:CLOSURE+
    LINKER-KEY CONTENT-KEY:FINAL-HEX
-   s" linker" LINKER-BUF LINKER-U KEYED-IMAGE:PATH!
+   host hostu HOST-KEY BUILD-OUT:KEY-OF!
+   s" linker" HOST-KEY LINKER-BUF LINKER-U KEYED-IMAGE:PATH!
    0 0= LINKER-RESOLVED? ! ;
 
 \ The builder takes the output image as its only argument.
@@ -98,8 +104,8 @@ variable LINKER-RESOLVED?
 \ the linker's builder, and its key is folded into the linker's.
 : LINKER-ENSURE ( -- )
    APP-IMAGE-ENGINE:PATH$ {: host:ptr hostu:n :}
-   LINKER-RESOLVE
-   LINKER-KEY s" linker" host hostu LINKER-PROGRAM$ ['] OUT-ARG
+   host hostu LINKER-RESOLVE
+   LINKER-KEY s" linker" HOST-KEY host hostu LINKER-PROGRAM$ ['] OUT-ARG
    KEYED-IMAGE:ENSURE ;
 
 : NULL-IN ( -- fd )

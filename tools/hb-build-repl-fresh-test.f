@@ -8,7 +8,7 @@
 require tools/hb-build-test-lib.f
 require test/app-builder-engine.f
 require src/lib/string.f
-require src/lib/fs-list.f
+require tools/build-out.f
 require tools/keyed-image.f
 
 package HB-BUILD-CLI
@@ -18,8 +18,6 @@ variable HBT-FRESH-ASSET-U
 variable HBT-FRESH-OTHER-U
 variable HBT-FRESH-SHADOW-FILE-U
 variable HBT-FRESH-OUT-U
-variable HBT-FRESH-ENGINE-U
-variable HBT-FRESH-ENGINES
 variable HBT-FRESH-IMG-U
 variable HBT-FRESH-PATH-U
 create HBT-FRESH-DEP-BUF FS-PATH-CAP allot
@@ -27,7 +25,7 @@ create HBT-FRESH-ASSET-BUF FS-PATH-CAP allot
 create HBT-FRESH-OTHER-BUF FS-PATH-CAP allot
 create HBT-FRESH-SHADOW-FILE-BUF FS-PATH-CAP allot
 create HBT-FRESH-OUT-BUF FS-PATH-CAP allot
-create HBT-FRESH-ENGINE-BUF FS-PATH-CAP allot
+create HBT-FRESH-ENGINE-KEY KEYED-IMAGE:KEY-HEX-LEN allot
 create HBT-FRESH-IMG-BUF FS-PATH-CAP allot
 create HBT-FRESH-PATH-BUF FS-PATH-CAP allot
 create HBT-FRESH-KEY KEYED-IMAGE:KEY-HEX-LEN allot
@@ -150,32 +148,24 @@ variable HBT-FRESH-NS
    outn drop errn drop
    rc HBB-UNCAUGHT-RC T= ;
 
-\ The one engine directory under the private out root whose img/ holds the
-\ CLI's app-builder record; images the CLI runs write under their own engines.
-: HBT-FRESH-ENGINE+ ( ptr u8 n -- )
-   {: name:ptr nameu:n :}
-   HBT-FRESH-OUT-BUF HBT-FRESH-OUT-U @ name nameu
-      HBT-FRESH-PATH-BUF HBT-FRESH-PATH-U HBT-PATH!
-   HBT-FRESH-PATH-BUF HBT-FRESH-PATH-U @ s" img/app-builder.inputs"
-      HBT-FRESH-IMG-BUF HBT-FRESH-IMG-U HBT-PATH!
-   HBT-FRESH-IMG-BUF HBT-FRESH-IMG-U @ EXISTS? 0= if exit then
-   HBT-FRESH-PATH-BUF HBT-FRESH-PATH-U @
-      HBT-FRESH-ENGINE-BUF HBT-FRESH-ENGINE-U HBT-COPY!
-   1 HBT-FRESH-ENGINES +! ;
-
-: HBT-FRESH-IMG! ( -- )
-   0 HBT-FRESH-ENGINES !
-   HBT-FRESH-OUT-BUF HBT-FRESH-OUT-U @ [: HBT-FRESH-ENGINE+ ;] FS-LIST:EACH
-   HBT-FRESH-ENGINES @ 1 T=
-   HBT-FRESH-ENGINE-BUF HBT-FRESH-ENGINE-U @ s" img"
-      HBT-FRESH-IMG-BUF HBT-FRESH-IMG-U HBT-PATH! ;
-
 \ A file of the app-builder family under the private img/ directory.
 : HBT-FRESH-IMG$ ( ptr u8 n -- ptr u8 n )
    {: name:ptr nameu:n :}
    HBT-FRESH-IMG-BUF HBT-FRESH-IMG-U @ name nameu
       HBT-FRESH-PATH-BUF HBT-FRESH-PATH-U HBT-PATH!
    HBT-FRESH-PATH-BUF HBT-FRESH-PATH-U @ ;
+
+\ The img/ directory under the private out root of the engine that builds the
+\ app-builder image: the CLI's HABU_FIXPOINT_ENGINE (HBT-FRESH-CLI-SOURCE),
+\ under its content key. The CLI's record must be there.
+: HBT-FRESH-IMG! ( -- )
+   ENGINE-CANDIDATE:PATH$ HBT-FRESH-ENGINE-KEY BUILD-OUT:KEY-OF!
+   HBT-FRESH-OUT-BUF HBT-FRESH-OUT-U @
+      HBT-FRESH-ENGINE-KEY KEYED-IMAGE:KEY-HEX-LEN
+      HBT-FRESH-PATH-BUF HBT-FRESH-PATH-U HBT-PATH!
+   HBT-FRESH-PATH-BUF HBT-FRESH-PATH-U @ s" img"
+      HBT-FRESH-IMG-BUF HBT-FRESH-IMG-U HBT-PATH!
+   s" app-builder.inputs" HBT-FRESH-IMG$ FILE? TTRUE ;
 
 \ Damaged support selection and a missing selected image rebuild normally
 \ through the real CLI. The case corrupts the support record and deletes the

@@ -131,11 +131,11 @@ tail is what a finished red run leaves. To keep a run's trees, give it its own
 only the root's own room), and the deepest row path under it must still fit
 Habu's path capacity.
 
-A checkout keeps one persistent build cache for keyed images, the default
-or one fixed `HABU_BUILD_CACHE`, shared by every gate run and every engine
-built from the checkout. Native file objects live with the tree, under
-`<cwd>/.out/<engine>/obj`, or under `$HABU_OUT/<engine>/obj` when `HABU_OUT`
-is set (tools/build-out.f). A deliberate cold measurement selects a fresh
+Keyed images and native file objects live with the tree, under
+`<cwd>/.out/<engine>/`, or under `$HABU_OUT/<engine>/` when `HABU_OUT` is set
+(tools/build-out.f): `obj/` under the engine that compiled the objects, `img/`
+under the engine that builds the image. `HABU_BUILD_CACHE` holds hb-build's
+cached artifacts and objects. A deliberate cold measurement selects a fresh
 `HABU_BUILD_CACHE` and a fresh `HABU_OUT`.
 
 ### Signals and servers

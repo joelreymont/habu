@@ -24,6 +24,7 @@ require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/content-key.f
+require tools/build-out.f
 require tools/keyed-image.f
 require test/fixture-writer.f
 require test/image-grant.f
@@ -35,6 +36,7 @@ $10000 constant IO-CAP
 75 constant COLD-RC
 
 create KEY-HEX KEYED-IMAGE:KEY-HEX-LEN allot
+create ENGINE-KEY KEYED-IMAGE:KEY-HEX-LEN allot   \ the writer image's, naming its img/
 create PATH-BUF FS-PATH-CAP allot
 create WORK-BUF FS-PATH-CAP allot
 create TMP-BUF FS-PATH-CAP allot
@@ -71,7 +73,8 @@ variable RESOLVED?
 : RESOLVE ( -- )
    RESOLVED? @ 0 <> if exit then
    KEY!
-   FAMILY$ PATH-BUF PATH-U KEYED-IMAGE:PATH!
+   FIXTURE-WRITER:PATH$ ENGINE-KEY BUILD-OUT:KEY-OF!
+   FAMILY$ ENGINE-KEY PATH-BUF PATH-U KEYED-IMAGE:PATH!
    0 0= RESOLVED? ! ;
 
 : COPY-OUT! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr up:ptr :}
@@ -84,7 +87,7 @@ variable RESOLVED?
 \ so a half-written host is never visible at the family's path: only
 \ KEYED-IMAGE:PUBLISH puts it there.
 : WORK-OPEN ( -- )
-   FAMILY$ KEYED-IMAGE:WORK-OPEN WORK-BUF WORK-U COPY-OUT!
+   FAMILY$ ENGINE-KEY KEYED-IMAGE:WORK-OPEN WORK-BUF WORK-U COPY-OUT!
    WORK-BYTES FAMILY$ TMP-BUF JOIN-PATH TMP-U ! ;
 
 : ARG ( ptr u8 n -- )
@@ -117,7 +120,7 @@ variable RESOLVED?
 : PUBLISH ( -- )
    TMP-BYTES EXECUTABLE? 0= if
       s" cold-engine: writer produced no executable host" COLD-RC die then
-   KEY-HEX FAMILY$ TMP-BYTES KEYED-IMAGE:PUBLISH ;
+   KEY-HEX FAMILY$ ENGINE-KEY TMP-BYTES KEYED-IMAGE:PUBLISH ;
 
 \ A second builder racing this one writes the same keyed bytes through
 \ KEYED-IMAGE:PUBLISH's atomic replaces, so the race costs one redundant
@@ -144,7 +147,7 @@ public
    FAMILY$ IMAGE-GRANT:CHECK
    FIXTURE-WRITER:ENSURE
    RESOLVE
-   KEY-HEX FAMILY$ KEYED-IMAGE:FRESH? if exit then
+   KEY-HEX FAMILY$ ENGINE-KEY KEYED-IMAGE:FRESH? if exit then
    EMIT ;
 
 \ The family's host, for a caller that only wants to name it.

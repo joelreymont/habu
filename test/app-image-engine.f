@@ -24,11 +24,13 @@ require src/lib/fs.f
 require src/lib/process-argv.f
 require src/lib/content-key.f
 require src/lib/engine-candidate.f
+require tools/build-out.f
 require test/keyed-image.f
 
 package APP-IMAGE-ENGINE
 
 create KEY-HEX KEYED-IMAGE:KEY-HEX-LEN allot
+create ENGINE-KEY KEYED-IMAGE:KEY-HEX-LEN allot   \ the candidate's, naming its img/
 create PATH-BUF FS-PATH-CAP allot
 
 variable PATH-U
@@ -53,7 +55,8 @@ variable RESOLVED?
    PROGRAM$ CONTENT-KEY:TEXT+
    s" src/habu/app-image.f" KEYED-IMAGE:CLOSURE+
    KEY-HEX CONTENT-KEY:FINAL-HEX
-   FAMILY$ PATH-BUF PATH-U KEYED-IMAGE:PATH!
+   ENGINE-CANDIDATE:PATH$ ENGINE-KEY BUILD-OUT:KEY-OF!
+   FAMILY$ ENGINE-KEY PATH-BUF PATH-U KEYED-IMAGE:PATH!
    0 0= RESOLVED? ! ;
 
 \ The builder takes the output image as its only argument.
@@ -65,7 +68,7 @@ public
 \ Build the image unless the one on disk was built under its key.
 : ENSURE ( -- )
    RESOLVE
-   KEY-HEX FAMILY$ ENGINE-CANDIDATE:PATH$ PROGRAM$ ['] OUT-ARG
+   KEY-HEX FAMILY$ ENGINE-KEY ENGINE-CANDIDATE:PATH$ PROGRAM$ ['] OUT-ARG
    KEYED-IMAGE:ENSURE ;
 
 \ The keyed image, to run as an engine.
@@ -74,7 +77,7 @@ public
    PATH-BYTES ;
 
 \ The key as hex, for test/preloaded-engine.f: the linker is built on this
-\ image, so its key folds this one and the host is never hashed.
+\ image, so its key folds this one.
 : KEY$ ( -- ptr u8 n )
    RESOLVE
    KEY-HEX KEYED-IMAGE:KEY-HEX-LEN ;

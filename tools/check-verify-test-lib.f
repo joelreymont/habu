@@ -4775,7 +4775,7 @@ create CWD-KEY KEYED-IMAGE:KEY-HEX-LEN allot
    s\" \" [: drop ;] 60000 >MS CHECK:VERIFY-BYTES\n   s\" verdict \" type KIND$ type cr\n" GEN+
    s\"    IMAGE. CHECK:VERIFY-USES$ type ;\n;package\nCVT-CWD:MAIN\n" GEN+
    s" cwd-driver.f" AT$ 0 GEN GEN-U @ WRITE-ALL
-   s" cwd-driver.f" AT$ ROOT$ BUILD-OUT:ROOT$ SOURCE-ROOT:DIRNAME DRIVE
+   s" cwd-driver.f" AT$ ROOT$ BUILD-OUT:BASE$ DRIVE
       {: outu:n erru:n rc:n :}
    s" image-cwd: driver exit" T-LABEL rc 0 T=
    rc 0<> if 0 ERR erru type cr then
@@ -4792,7 +4792,7 @@ create CWD-KEY KEYED-IMAGE:KEY-HEX-LEN allot
    key CWD-KEY KEYED-IMAGE:KEY-HEX-LEN keyu min BYTE-COPY
    CWD-TREE!
    s" cwd-driver.f" AT$ CWD-TREE CWD-TREE-U @
-      BUILD-OUT:ROOT$ SOURCE-ROOT:DIRNAME DRIVE {: toutu:n terru:n trc:n :}
+      BUILD-OUT:BASE$ DRIVE {: toutu:n terru:n trc:n :}
    s" image-cwd: driver exit from another tree" T-LABEL trc 0 T=
    trc 0<> if 0 ERR terru type cr then
    0 OUT toutu {: tout:ptr toutn:n :}

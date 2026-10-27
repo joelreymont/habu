@@ -5,11 +5,13 @@ require src/lib/fs.f
 require src/lib/process-argv.f
 require src/lib/content-key.f
 require tools/build-support.f
+require tools/build-out.f
 require tools/keyed-image.f
 
 package AOT-BUILDER-IMAGE
 
 create KEY-HEX KEYED-IMAGE:KEY-HEX-LEN allot
+create ENGINE-KEY KEYED-IMAGE:KEY-HEX-LEN allot
 create PATH-BUF FS-PATH-CAP allot
 create SELECTED-BUF FS-PATH-CAP allot
 variable PATH-U
@@ -44,8 +46,9 @@ public
    PROGRAM$ CONTENT-KEY:TEXT+
    SELECTED-BUF SELECTED-U @ CONTENT-KEY:TEXT+
    KEY-HEX CONTENT-KEY:FINAL-HEX
-   FAMILY$ PATH-BUF PATH-U KEYED-IMAGE:PATH!
-   KEY-HEX FAMILY$ BUILD-FIXPOINT:BF-ENGINE$ PROGRAM$ ['] OUT-ARG timeout
+   BUILD-FIXPOINT:BF-ENGINE$ ENGINE-KEY BUILD-OUT:KEY-OF!
+   FAMILY$ ENGINE-KEY PATH-BUF PATH-U KEYED-IMAGE:PATH!
+   KEY-HEX FAMILY$ ENGINE-KEY BUILD-FIXPOINT:BF-ENGINE$ PROGRAM$ ['] OUT-ARG timeout
    KEYED-IMAGE:ENSURE-WITH {: hit:bool :}
    PATH-BYTES hit ;
 

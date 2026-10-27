@@ -33,6 +33,7 @@ require src/lib/process-argv.f
 require src/lib/content-key.f
 require src/lib/engine-id.f
 require src/lib/engine-candidate.f
+require tools/build-out.f
 require tools/keyed-image.f
 require tools/native-file-inputs.f
 
@@ -44,6 +45,7 @@ create ROOT FS-PATH-CAP allot          variable ROOT-U
 create ENTRY FS-PATH-CAP allot         variable ENTRY-U
 create PROGRAM PROGRAM-CAP allot       variable PROGRAM-U
 create KEY-HEX KEYED-IMAGE:KEY-HEX-LEN allot
+create ENGINE-KEY KEYED-IMAGE:KEY-HEX-LEN allot
 create PATH-BUF FS-PATH-CAP allot      variable PATH-U
 create ENGINE-BUF FS-PATH-CAP allot    variable ENGINE-U      \ the engine PATH$ is asked for
 create KEYED-ENGINE FS-PATH-CAP allot  variable KEYED-ENGINE-U \ the engine the key was made for
@@ -102,7 +104,8 @@ s\" \" required\nCHECK-VERIFY-SAVE:TICK!\n0 SCRIPT-ARGV$ CHECK-VERIFY-SAVE:SAVE\
    fold [: FILL-KEY ;] catch {: rc:n :} drop
    rc 0<> if fold CONTENT-KEY:DISCARD rc throw then
    fold KEY-HEX CONTENT-KEY:FINAL-HEX
-   FAMILY$ PATH-BUF PATH-U KEYED-IMAGE:PATH!
+   ENGINE$ ENGINE-KEY BUILD-OUT:KEY-OF!
+   FAMILY$ ENGINE-KEY PATH-BUF PATH-U KEYED-IMAGE:PATH!
    NFILE-INPUTS:BYTES$ {: rows:ptr rowsu:n :}
    rowsu 1 max STAMPS-RESERVE
    rows 0 STAMPS rowsu BYTE-COPY  rowsu STAMPS-U !
@@ -147,7 +150,7 @@ public
    {: a:ptr u:n timeout:n :}
    a u ENGINE-BUF ENGINE-U COPY!
    FRESH? 0= if RESOLVE then
-   KEY-HEX FAMILY$ ENGINE$ PROGRAM$ ['] OUT-ARG timeout
+   KEY-HEX FAMILY$ ENGINE-KEY ENGINE$ PROGRAM$ ['] OUT-ARG timeout
    KEYED-IMAGE:ENSURE-WITH drop
    PATH-BUF PATH-U @ ;
 

@@ -23,6 +23,7 @@ require src/lib/object-resolve.f
 require src/lib/build-cache.f
 require src/lib/json-write.f
 require tools/native-file-inputs.f
+require tools/build-out.f
 require tools/build-support.f
 require tools/app-build-image.f
 require tools/aot-builder-image.f
@@ -91,6 +92,7 @@ create HBB-MAKER-SELECTED-ROOT FS-PATH-CAP allot
 create HBB-MAKER-SUPPORT-PATH FS-PATH-CAP allot
 create HBB-MAKER-SUPPORT-KEY 64 allot
 create HBB-REPL-ENGINE-DIGEST 32 allot
+create HBB-BUILDER-KEY 64 allot   \ BF-ENGINE$'s engine key, naming its img/
 create HBB-REPL-ENGINE-SHA SHA256-FILE-CTX-BYTES allot
 create HBB-ENGINE-SELECT-KEY 64 allot
 create HBB-ENGINE-ROW-SHA SHA256-CTX-BYTES allot
@@ -574,16 +576,19 @@ variable HBB-APP-BUILDER-U
 
 \ The selector depends only on fixed support identity. The source and path
 \ queries are validated in the record it selects.
+\ The engine enters as its key, the directory its images live in, so the engine
+\ is hashed once.
 : HBB-MAKER-SUPPORT-SELECT ( -- )
+   BF-ENGINE$ HBB-BUILDER-KEY BUILD-OUT:KEY-OF!
    CONTENT-KEY:OPEN
    s" hb-maker-support-v1" CONTENT-KEY:TEXT+
-   BF-ENGINE$ HBB-KEY-FILE+
+   HBB-BUILDER-KEY KEYED-IMAGE:KEY-HEX-LEN CONTENT-KEY:TEXT+
    HBB-KEY-DONOR-MAP+
    HBB-KEY-TARGET+
    SOURCE-ROOT:CWD$ CONTENT-KEY:TEXT+
    HBB-MAKER-SELECTED-ROOT HBB-MAKER-SELECTED-ROOT-U @ CONTENT-KEY:TEXT+
    HBB-MAKER-SUPPORT-KEY CONTENT-KEY:FINAL-HEX
-   s" aot-builder.inputs"
+   s" aot-builder.inputs" HBB-BUILDER-KEY
       HBB-MAKER-SUPPORT-PATH HBB-MAKER-SUPPORT-U KEYED-IMAGE:PATH! ;
 
 : HBB-MAKER-SUPPORT-CHECK ( -- )
@@ -1571,7 +1576,8 @@ defer HBB-REPORT-HOOK ( -- )
    SOURCE-ROOT:CWD$ CONTENT-KEY:TEXT+
    HBB-REPL-SELECTED-ROOT HBB-REPL-SELECTED-ROOT-U @ CONTENT-KEY:TEXT+
    HBB-REPL-SUPPORT-KEY CONTENT-KEY:FINAL-HEX
-   s" app-builder.inputs"
+   HBB-REPL-ENGINE-DIGEST HBB-BUILDER-KEY SHA256>HEX
+   s" app-builder.inputs" HBB-BUILDER-KEY
       HBB-REPL-SUPPORT-PATH HBB-REPL-SUPPORT-U KEYED-IMAGE:PATH! ;
 
 : HBB-REPL-FRESH-CHECK ( -- )

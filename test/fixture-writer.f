@@ -25,11 +25,13 @@ require src/lib/fs.f
 require src/lib/process-argv.f
 require src/lib/content-key.f
 require src/lib/engine-candidate.f
+require tools/build-out.f
 require test/keyed-image.f
 
 package FIXTURE-WRITER
 
 create KEY-HEX KEYED-IMAGE:KEY-HEX-LEN allot
+create ENGINE-KEY KEYED-IMAGE:KEY-HEX-LEN allot   \ the candidate's, naming its img/
 create PATH-BUF FS-PATH-CAP allot
 
 variable PATH-U
@@ -69,7 +71,8 @@ variable RESOLVED?
 : RESOLVE ( -- )
    RESOLVED? @ 0 <> if exit then
    KEY!
-   FAMILY$ PATH-BUF PATH-U KEYED-IMAGE:PATH!
+   ENGINE-CANDIDATE:PATH$ ENGINE-KEY BUILD-OUT:KEY-OF!
+   FAMILY$ ENGINE-KEY PATH-BUF PATH-U KEYED-IMAGE:PATH!
    0 0= RESOLVED? ! ;
 
 \ tools/app-build.f takes the application source and the output image.
@@ -82,7 +85,7 @@ public
 \ Build the shared writer image unless the one on disk was built under its key.
 : ENSURE ( -- )
    RESOLVE
-   KEY-HEX FAMILY$ ENGINE-CANDIDATE:PATH$ PROGRAM$ ['] BUILD-ARGS
+   KEY-HEX FAMILY$ ENGINE-KEY ENGINE-CANDIDATE:PATH$ PROGRAM$ ['] BUILD-ARGS
    KEYED-IMAGE:ENSURE ;
 
 \ The keyed image, for a caller to run as `<image> -- output [artifact producer]`
