@@ -1462,7 +1462,7 @@ variable TEE-ERR
    NUNIT-OBJECT:ORIGIN-FORMED? 0= if BAD then
    NUNIT-OBJECT:FILE-COUNTS
       {: defs:n rows:n inputs:n recs:n data:n loads:n segs:n slots:n
-         upds:n pins:n checks:n ffi:n out:n :}
+         pins:n checks:n ffi:n out:n :}
    NUNIT-DEP:DIAG? @ 0= if exit then
    s" native-file: object path=" DIAG-W2 FRAME-PATH DIAG-W2
    s"  key=" DIAG-W2 key keyu DIAG-W2
@@ -1474,7 +1474,6 @@ variable TEE-ERR
    s"  loads=" DIAG-W2 loads DIAG-N
    s"  segments=" DIAG-W2 segs DIAG-N
    s"  slots=" DIAG-W2 slots DIAG-N
-   s"  updates=" DIAG-W2 upds DIAG-N
    s"  pins=" DIAG-W2 pins DIAG-N
    s"  ffi=" DIAG-W2 ffi DIAG-N
    s"  out=" DIAG-W2 out DIAG-N
@@ -1806,7 +1805,7 @@ variable IMPORT-AT
    NUNIT-DEP:DIAG? @ 0= if exit then
    NUNIT-OBJECT:FILE-COUNTS
       {: defs:n rows:n inputs:n recs:n data:n loads:n segs:n slots:n
-         upds:n pins:n checks:n ffi:n out:n :}
+         pins:n checks:n ffi:n out:n :}
    s" native-file: reused path=" DIAG-W2 FRAME-PATH DIAG-W2
    s"  records=" DIAG-W2 recs DIAG-N
    s"  segments=" DIAG-W2 segs DIAG-N

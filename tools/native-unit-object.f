@@ -54,8 +54,8 @@ private
 \ address cell the segments declared, in registration order, and slot 10 the literal bodies slot
 \ rows point into, in definition literal framing; a slot cell in the file's
 \ DATA is zero in slot 6. A write to an earlier file's address cell is a slot
-\ row too, and slot 7 holds one UPDATE-BYTES row per other earlier DATA byte
-\ the segments changed outside the storage owners' spans. Slot 15 holds one
+\ row too; any other earlier DATA byte the segments changed outside the
+\ storage owners' spans refuses the file, and slot 7 is empty. Slot 15 holds one
 \ PIN-BYTES row per owner of a DATA address a stored cell holds raw: the
 \ owner's reference, the closing file's segment or an earlier declaration,
 \ then its DATA base at capture. Slot 5 holds the checker state the file
@@ -137,8 +137,6 @@ private
 -1 constant NO-SEGMENT
 0 constant SLOT-XT
 1 constant SLOT-DATA
-\ An update row: the changed byte's reference and its value at the close.
-16 constant UPDATE-BYTES
 \ Record row kinds; 1 to 3 are the fixed kinds: a constant, an address, a
 \ deferred word. RK-RETIRED, RK-CODELESS and RK-CAST have no body of their
 \ own: a record retired in place, one with no code, and a cast, whose code is
@@ -349,7 +347,7 @@ KCELLS TYPED-BUFFER KCELL-WAS n
 variable KCELLS-HELD
 \ The earlier DATA bytes the open files' segments changed, each once per
 \ file and ascending within it, innermost file last. Encoding drops address
-\ cells and the storage owners' spans, and keeps the rest as updates.
+\ cells and the storage owners' spans; any other refuses the file.
 DYNAMIC-BUFFER FILE-SITES n
 variable SITES-N
 \ The address cell rows the closing file's earlier-DATA writes emitted.
@@ -362,11 +360,6 @@ variable OWNER-N
 \ unchecked body (NUNIT-DEP:FILE-UNCHECKED?): only then can its undeclared
 \ bytes hold an address no checked store made.
 variable UNCHECKED
-\ Each of the closing file's sites' owning record and that record's DATA
-\ start, two cells per site.
-DYNAMIC-BUFFER SITE-OWNS n
-variable UPDS-AT
-variable OPEN-UPDS
 16 constant PIN-BYTES
 \ Each pinned owner while the closing file encodes: its DATA base and its
 \ record, -1 for one of the file's own segments.
@@ -1290,10 +1283,10 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL DEF-DIAG-PATH
       if i base else best at then
    loop ;
 
-\ Under diagnostics, one line for each run of the parent's changed earlier
-\ DATA sites one record owns: the record and the first site's offset in it,
-\ - when no record does, and the load that refuses the parent: the source
-\ location already names the child.
+\ Under diagnostics, one line for each run of the innermost file's changed
+\ earlier DATA sites one record owns, past those EARLIER-SLOTS dropped: the
+\ record and the first site's offset in it, - when no record does, and the
+\ file the source location names (at a load action, the child).
 : EARLIER-WRITE-SITE ( n n n -- ) {: site:n ord:n base:n :}
    s" native-cache: earlier-write site=" DEF-DIAG-W2
    ord 0 < if s" -" DEF-DIAG-W2
@@ -1312,9 +1305,11 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL DEF-DIAG-PATH
    NUNIT-DEP:DIAG? @ 0= if exit then
    -2 SITES-N @ FO-SITES FO @ ?do {: last:n :}
       i FILE-SITES @ {: site:n :}
-      site OWNER-AT {: ord:n base:n :}
-      ord last <> if site ord base EARLIER-WRITE-SITE then
-      ord
+      site 0= if last else
+         site OWNER-AT {: ord:n base:n :}
+         ord last <> if site ord base EARLIER-WRITE-SITE then
+         ord
+      then
    loop drop ;
 
 public
@@ -1501,13 +1496,13 @@ public
    NULL-PTR IMPORT-SEC ! 0 IMPORT-NREFS ! 0 IMPORT-OFF !
    0 LITS-U ! 0 LITS-N ! 0 OWNER-ROW-XT ! 0 VALS-U ! 0 OPEN-VALS !
    0 IMAGE-U ! KCELLS-RELEASE 0 SITES-N ! 0 SLOTW-N ! 0 OWNER-N !
-   0 OPEN-UPDS ! 0 PINS-N ! 0 OPEN-PINS !
+   0 PINS-N ! 0 OPEN-PINS !
    0 CHECK-U ! 0 CKORD-N ! 0 CHECK-AT ! 0 OPEN-CHECKS !
    0 DATA-AT ! 0 WIDS-AT ! 0 EVS-AT ! 0 SLOTS-AT ! 0 LITS-AT !
-   0 UPDS-AT ! 0 PINS-AT ! 0 VAL-SITES !
+   0 PINS-AT ! 0 VAL-SITES !
    IMAGE-RELEASE FILE-SITES-RELEASE FILE-SLOTW-RELEASE OWNER-SPANS-RELEASE
    SEG-DATA-RELEASE
-   SITE-OWNS-RELEASE PIN-OWNS-RELEASE
+   PIN-OWNS-RELEASE
    FILE-LITS-RELEASE FILE-LIT-ADDRS-RELEASE FILE-VALS-RELEASE
    FILE-CHECK-RELEASE FILE-CKORD-RELEASE
    FILE-DEFS-RELEASE FILE-INDEX-RELEASE FILE-INPUTS-RELEASE
@@ -2564,32 +2559,6 @@ CAST: CELL-OWNERS-FN ( n -- [ [ ptr u8 n -- ] -- ] )
    ord NUNIT-DEP:DATA-ORD addend <= if 0 exit then
    ord addend 0 1 NFILE-REF:REF-DECL-DATA ;
 
-\ OWNER-AT for each of the closing file's sites, in one pass over the
-\ dictionary instead of one per site. A record is a candidate at the first
-\ site its DATA start does not exceed; a later site's candidate starts above
-\ every earlier site, so a running maximum carries each owner upward.
-: SITE-OWNERS ( -- )
-   FO-SITES FO @ {: first:n :}
-   SITES-N @ first - {: count:n :}
-   count 0= if exit then
-   count 2 * SITE-OWNS-RESERVE
-   count 0 ?do -1 i 2 * SITE-OWNS ! 0 i 2 * 1+ SITE-OWNS ! loop
-   ndict@ 0 ?do
-      i REC-DATA? if
-         {: base:n :}
-         first SITES-N @ base SITE-AT first - {: at:n :}
-         at count < if
-            at 2 * SITE-OWNS @ 0 < base at 2 * 1+ SITE-OWNS @ >= or if
-               i at 2 * SITE-OWNS ! base at 2 * 1+ SITE-OWNS !
-            then
-         then
-      else drop then
-   loop
-   -1 0 count 0 ?do
-      i 2 * SITE-OWNS @ 0 >= if 2drop i 2 * SITE-OWNS @ i 2 * 1+ SITE-OWNS @ then
-      2dup i 2 * 1+ SITE-OWNS ! i 2 * SITE-OWNS !
-   loop 2drop ;
-
 : WHY-N ( n -- )
    {: value:n :}
    value 10 >= if value 10 / recurse then
@@ -2891,28 +2860,6 @@ CAST: CELL-OWNERS-FN ( n -- [ [ ptr u8 n -- ] -- ] )
       FILE-REFUSED? if unloop exit then
    loop ;
 
-\ Every whole cell holding an earlier DATA byte the closing file updates,
-\ each once while the bytes ascend: the cell at the cell-aligned offset in
-\ the declaration that owns the byte (SITE-OWNERS), never a window across
-\ two cells.
-: ADMIT-UPDATES ( -- )
-   -1 SITES-N @ FO-SITES FO @ ?do
-      {: last:n :}
-      i FILE-SITES @ {: va:n :}
-      va 0= if last else
-         i FO-SITES FO @ - 2 * 1+ SITE-OWNS @ {: base:n :}
-         va base - CELL / CELL * base + {: at:n :}
-         at last <> if
-            \ An own site's update carries the live byte, past its segment's.
-            va 1 OWN-OFF 0 >= if at DATA-PTR LE:U64@ else at WINDOW@ then
-               {: value:n :}
-            at value ADMIT-AT
-            FILE-REFUSED? if unloop exit then
-         then
-         at
-      then
-   loop drop ;
-
 : PX ( ptr u8 n -- n ) NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT ;
 
 CAST: OWNER-PAIR-FN ( n -- [ [ ptr u8 n -- ] [ ptr u8 n -- ] -- ] )
@@ -2944,9 +2891,9 @@ CAST: OWNER-CELL-FN ( n -- [ [ ptr u8 -- ] -- ] )
    [: CELL OWNER+ ;] xt OWNER-CELL-FN execute ;
 
 \ The spans the storage owners restore themselves, each owner the session's
-\ bound producer. An absent owner excludes nothing, so a write there stays an
-\ update. The checker's storage is program state: a later file's store into
-\ it is an update or, in an address cell, a slot row (EARLIER-SLOTS).
+\ bound producer. An absent owner excludes nothing, so a write there refuses
+\ the file. The checker's storage is program state: a later file's store into
+\ it refuses the file or, in an address cell, is a slot row (EARLIER-SLOTS).
 : OWNERS-GATHER ( -- )
    0 OWNER-N !
    s" NSTR:CELL-SPANS" PX CELL-OWNER
@@ -3003,12 +2950,10 @@ CAST: OWNER-CELL-FN ( n -- [ [ ptr u8 -- ] -- ] )
 
 \ Drop each changed earlier DATA site that lies in an excluded owner's span,
 \ which holds no program state. A site in an earlier slot word's slot is a
-\ write the slot's USER row cannot carry: the file runs from source. A site
-\ in the closing file's own DATA is a
-\ later segment's write into an earlier one, whose bytes and slot cells the
-\ object carries as that segment's close left them: an update. A changed
-\ address cell another file declared is a slot row, once per cell; the
-\ remaining sites are updates.
+\ write the slot's USER row cannot carry: the file runs from source. A changed
+\ address cell another file declared is a slot row, once per cell. The
+\ remaining sites, a site in the closing file's own DATA among them, stay for
+\ EARLIER-REFUSE.
 : EARLIER-SLOTS ( -- )
    0 SLOTW-N !
    OWNERS-GATHER
@@ -3033,24 +2978,26 @@ CAST: OWNER-CELL-FN ( n -- [ [ ptr u8 -- ] -- ] )
       then then
    loop ;
 
-\ One UPDATE-BYTES row per remaining site: its reference into the file's own
-\ DATA or through the declaration that owns it, and its byte now. A site no
-\ keyed declaration owns refuses the file.
-: UPDATES-OUT ( -- )
+\ Refuse the closing file at the first site EARLIER-SLOTS kept, naming the
+\ record that owns it, - when none does. The install restores no other
+\ earlier DATA byte, so only the file's source run leaves the byte a cold
+\ build leaves. A site in the file's own DATA is a later segment's write
+\ into an earlier one, which that segment's DATA row, captured at its
+\ close, would undo.
+: EARLIER-REFUSE ( -- )
+   EARLIER-WRITE-LINE
    SITES-N @ FO-SITES FO @ ?do
-      i FILE-SITES @ {: va:n :}
-      va 0<> if
-         i FO-SITES FO @ - 2 * {: at:n :}
-         va 1 OWN-OFF 0 >= if va DATA-REF
-         else va at SITE-OWNS @ at 1+ SITE-OWNS @ REF-AT then {: ref:n :}
-         ref 0= if s" update-unowned " WHY+ va WHY-SITE unloop exit then
-         ref OUT-N va DATA-PTR c@ OUT-N
+      i FILE-SITES @ 0<> if
+         i FILE-SITES @ OWNER-AT drop {: ord:n :}
+         ord 0 < if s" earlier-write word=-" FILE-REFUSE
+         else s" earlier-write" ord XREF-REC REFUSE-WORD then
+         unloop exit
       then
    loop ;
 
-\ Refuse the closing file when its DATA, slot cells zeroed, or a cell holding
-\ a byte it updates, holds a code or mapped address no storage owner
-\ declares; pin the owner of each DATA address such a cell holds.
+\ Refuse the closing file when its DATA, slot cells zeroed, holds a code or
+\ mapped address no storage owner declares; pin the owner of each DATA
+\ address such a cell holds.
 : ADMIT-FILE ( -- )
    CHECKER-CELLS {: checker:n known:bool :}
    s" NSTR:CELL-SPANS" PX {: lit:n :}
@@ -3061,7 +3008,7 @@ CAST: OWNER-CELL-FN ( n -- [ [ ptr u8 -- ] -- ] )
    OWNER-ROW-XT @ 0= or if
       s" cell-owners-absent" FILE-REFUSE exit
    then
-   DATA-AT @ WIDS-AT @ = UPDS-AT @ PINS-AT @ = and if exit then
+   DATA-AT @ WIDS-AT @ = if exit then
    \ The map read resolves foreign symbols; clear that cache afterward so
    \ admission does not mistake its own newly owned pointer for source DATA.
    PROC-MAPS:RELOAD
@@ -3078,17 +3025,16 @@ CAST: OWNER-CELL-FN ( n -- [ [ ptr u8 -- ] -- ] )
       else base then
       FILE-REFUSED? if drop 0 leave then
    loop drop
-   FILE-REFUSED? 0= if ADMIT-UPDATES then
    AOT-CELL:RESET ;
 
 public
 
 \ Encode the innermost file's records, DATA, wordlist rows,
-\ events, slots, slot literals, checker slices, updates and pins into
-\ FILE-OUT, closing its last segment. A file that lacks a checker slice per
-\ load, whose records, slots, checker
-\ references or updates cannot all encode, or whose DATA or updated cells
-\ hold an undeclared address, refuses.
+\ events, slots, slot literals, checker slices and pins into FILE-OUT,
+\ closing its last segment. A file that lacks a checker slice per load,
+\ whose records, slots or checker references cannot all encode, that changed
+\ earlier DATA no owner restores (EARLIER-REFUSE), or whose DATA holds an
+\ undeclared address, refuses.
 : FILE-ENCODE ( -- )
    FILE-OPEN? 0= if BAD then
    SEGMENT-CLOSE
@@ -3110,14 +3056,13 @@ public
    s" NSTR:OWNER-ROW" PX OWNER-ROW-XT !
    0 LITS-U ! 0 LITS-N !
    OUT-U @ SLOTS-AT ! SLOTS-OUT
-   FILE-REFUSED? 0= if SITE-OWNERS EARLIER-SLOTS then
+   FILE-REFUSED? 0= if EARLIER-SLOTS then
+   FILE-REFUSED? 0= if EARLIER-REFUSE then
    OUT-U @ LITS-AT !
    LITS-U @ 0<> if 0 FILE-LITS LITS-U @ OUT-S then
    OUT-U @ CHECK-AT !
    FILE-REFUSED? if exit then
    CHECK-OUT
-   OUT-U @ UPDS-AT !
-   FILE-REFUSED? 0= if UPDATES-OUT then
    OUT-U @ PINS-AT ! 0 PINS-N !
    FILE-REFUSED? 0= if ADMIT-FILE then ;
 
@@ -3139,8 +3084,7 @@ public
    19 OUTPUT$ NUNIT-FILE:SECTION!
    9 SLOTS-AT @ LITS-AT @ OUT$ NUNIT-FILE:SECTION!
    10 LITS-AT @ CHECK-AT @ OUT$ NUNIT-FILE:SECTION!
-   5 CHECK-AT @ UPDS-AT @ OUT$ NUNIT-FILE:SECTION!
-   7 UPDS-AT @ PINS-AT @ OUT$ NUNIT-FILE:SECTION!
+   5 CHECK-AT @ PINS-AT @ OUT$ NUNIT-FILE:SECTION!
    15 PINS-AT @ OUT-U @ OUT$ NUNIT-FILE:SECTION!
    12 EVS-AT @ SLOTS-AT @ OUT$ NUNIT-FILE:SECTION!
    13 0 0 NFILE-REF:ENCODE NUNIT-FILE:SECTION!
@@ -3552,20 +3496,6 @@ private
    loop
    count OPEN-SLOTS ! ;
 
-\ Each update row: a byte's reference and its value, given refs reference
-\ rows.
-: UPDATES-CK ( ptr u8 n n -- )
-   {: upds:ptr updsu:n refs:n :}
-   updsu UPDATE-BYTES mod 0<> if BAD then
-   updsu UPDATE-BYTES / {: count:n :}
-   count 0 ?do
-      upds i UPDATE-BYTES * + {: row:ptr :}
-      row 0 U64-AT refs REF-CK? 0= if BAD then
-      row 1 U64-AT {: byte:n :}
-      byte 0 < byte 255 > or if BAD then
-   loop
-   count OPEN-UPDS ! ;
-
 \ Each pin row: an owner's reference, given refs reference rows, then its
 \ DATA base at capture, which only an install compares.
 : PINS-CK ( ptr u8 n n -- )
@@ -3639,12 +3569,12 @@ private
    else 0 OPEN-ORIGIN-OK !  SINK-NONE OPEN-SINK ! then ;
 
 \ The FILE object's segment framing: events, records, DATA, wordlist
-\ rows, slots, updates and pins agree with one another, given its defs
-\ index rows and its srcu source bytes.
+\ rows, slots and pins agree with one another and slot 7 is empty, given its
+\ defs index rows and its srcu source bytes.
 : SEGMENTS-CK ( n n -- )
    {: defs:n srcu:n :}
    0 OPEN-RECS ! 0 OPEN-DATA ! 0 OPEN-WIDS !
-   0 OPEN-LOADS ! 0 OPEN-SEGS ! 0 OPEN-SLOTS ! 0 OPEN-UPDS ! 0 OPEN-PINS !
+   0 OPEN-LOADS ! 0 OPEN-SEGS ! 0 OPEN-SLOTS ! 0 OPEN-PINS !
    0 OPEN-CHECKS ! 0 OPEN-KINDS ! 0 OPEN-VALS !
    0 OPEN-FFI ! 0 OPEN-REM !
    3 NUNIT-FILE:SECTION$ {: names:ptr namesu:n :}
@@ -3659,7 +3589,7 @@ private
    9 NUNIT-FILE:SECTION$ refs SLOTS-CK
    10 NUNIT-FILE:SECTION$ SLOT-LITS-CK
    5 NUNIT-FILE:SECTION$ refs CHECKS-CK
-   7 NUNIT-FILE:SECTION$ refs UPDATES-CK
+   7 NUNIT-FILE:SECTION$ nip 0<> if BAD then
    15 NUNIT-FILE:SECTION$ refs PINS-CK
    18 NUNIT-FILE:SECTION$ namesu ORIGIN-CK ;
 
@@ -4623,11 +4553,11 @@ public
    NUNIT-FILE:RESET-KEEP ;
 
 \ What OPEN-FILE found: definitions, dependency rows, input rows, records,
-\ DATA bytes, loads, segments, slots, updates, pins, checker slices, FFI
-\ rows and output bytes.
-: FILE-COUNTS ( -- n n n n n n n n n n n n n )
+\ DATA bytes, loads, segments, slots, pins, checker slices, FFI rows and
+\ output bytes.
+: FILE-COUNTS ( -- n n n n n n n n n n n n )
    OPEN-DEFS @ OPEN-ROWS @ OPEN-INPUTS @ OPEN-RECS @ OPEN-DATA @
-   OPEN-LOADS @ OPEN-SEGS @ OPEN-SLOTS @ OPEN-UPDS @
+   OPEN-LOADS @ OPEN-SEGS @ OPEN-SLOTS @
    OPEN-PINS @ OPEN-CHECKS @ OPEN-FFI @ OPEN-OUT @ ;
 
 \ Segment row seg's first record row whose name is live in the wordlist the
@@ -4834,7 +4764,6 @@ public
    loop
    5 NUNIT-FILE:SECTION$ drop LE:U64@ OPEN-CHECKS !
    9 NUNIT-FILE:SECTION$ nip SLOT-BYTES / OPEN-SLOTS !
-   7 NUNIT-FILE:SECTION$ nip UPDATE-BYTES / OPEN-UPDS !
    15 NUNIT-FILE:SECTION$ nip PIN-BYTES / OPEN-PINS !
    18 NUNIT-FILE:SECTION$ drop LE:U64@ OPEN-SINK !
    19 NUNIT-FILE:SECTION$ nip OPEN-OUT ! ;
@@ -4917,7 +4846,6 @@ public
 \ whole object.
 : UNSUPPORTED$ ( -- ptr u8 n )
    OPEN-SEGS @ 0= OPEN-LOADS @ 0= and if s" empty-file" exit then
-   OPEN-UPDS @ 0<> if s" unsupported-updates" exit then
    OPEN-PINS @ 0<> if s" unsupported-pins" exit then
    FILE-CHECK-AVAILABLE? 0= if s" checker-unavailable" exit then
    OPEN-KINDS @ 1 RK-VAL lshift and 0<>

@@ -63,7 +63,7 @@ variable FILL-POOL
 
 \ app.f's text, which its object's source spans are checked against.
 : APP$ ( -- ptr u8 n )
-   S\" require base.f\nrequire run.f\nrequire safe.f\nrequire vread.f\n: PRE ( -- n ) FRAME-BASE:ONE ;\nrequire lib.f\n: IMM-USER ( -- n ) FRAME-LIB:MARK 5 ;\n: FRAME-USE ( -- n )\n   FRAME-LIB:SEVEN FRAME-LIB:TWICE FRAME-LIB:TWICE FRAME-LIB:TWICE FRAME-BASE:ONE + FRAME-DEEP:TEN + ;\nrequire exec.f\n: TALLY ( -- ) 1 FRAME-LIB:HITS +! ;\nTALLY\n' FRAME-LIB:QUAD FRAME-LIB:HOOK xt!\n" ;
+   S\" require base.f\nrequire run.f\nrequire safe.f\nrequire vread.f\n: PRE ( -- n ) FRAME-BASE:ONE ;\nrequire lib.f\n: IMM-USER ( -- n ) FRAME-LIB:MARK 5 ;\n: FRAME-USE ( -- n )\n   FRAME-LIB:SEVEN FRAME-LIB:TWICE FRAME-LIB:TWICE FRAME-LIB:TWICE FRAME-BASE:ONE + FRAME-DEEP:TEN + ;\nrequire exec.f\n: TALLY ( -- ) 1 FRAME-LIB:HITS +! ;\n' FRAME-LIB:QUAD FRAME-LIB:HOOK xt!\n" ;
 
 \ A builder session's first lines: the tier its loads compile at and the
 \ capture's preparation. LOAD+ lines follow, then RUN-INPUT.
@@ -250,6 +250,7 @@ variable FILL-POOL
    s" evx.f" LOAD+
    s" evr.f" LOAD+
    s" ev2.f" LOAD+
+   s" ev4.f" LOAD+
    s" tierpar.f" LOAD+
    S\" 1 set-tier\n" IN+
    s" tierback.f" LOAD+
@@ -317,8 +318,8 @@ variable FILL-POOL
    S\" s\" rwp=\" type RWP-B NULL-PTR - RWP-A NULL-PTR - - . cr\n" IN+
    \ The tee in front of a non-terminal device. Each device logs every
    \ operation it is handed, its kind and length, on the terminal (an emit or
-   \ type inside an operation reaches it), and keeps no state, as a DATA
-   \ update would refuse the printing file: LDEV logs writes and emits, FDEV
+   \ type inside an operation reaches it), and keeps no state, as a write to its
+   \ DATA would refuse the printing file: LDEV logs writes and emits, FDEV
    \ logs a write and latches fault 5, XDEV's flush latches fault 5 and throws
    \ 123. The lines from <tee to tee> are the cases' whole output, the same
    \ cold and warm but for the reused counts. pout.f and say.f print through
@@ -483,11 +484,11 @@ variable FILL-POOL
    S\"  ; immediate\nvariable HITS\ncreate T 16 allot\nTYPED-VARIABLE HOOK [ n -- n ]\n: QUAD ( n -- n ) TWICE TWICE FRAME-BASE:ONE + ;\nTRUSTED: BUMP ( n -- n ) 1 + ;\n7 constant SEVEN\n' TWICE HOOK xt!\n;package\ns\" FRAME-LIB:MARK\" 0 parse-imm\n" IN+
    s" lib.f" INPUT INPUT-U @ PUT ;
 
-\ check.f, which top.f requires after app.f, checks the first build's app.f
-\ dependency rows, kept in app-cold.obj, while the session that loaded app.f
-\ is still open: the rows' record keys exist only there. It first undoes
-\ app.f's two writes to lib.f's DATA, TALLY's to HITS and the store of QUAD
-\ into HOOK, so lib.f's DATA stands as app.f found it, as it does where a
+\ check.f, which top.f requires after app.f and tally.f, checks the first
+\ build's app.f dependency rows, kept in app-cold.obj, while the session that
+\ loaded app.f is still open: the rows' record keys exist only there. It first
+\ undoes the two writes to lib.f's DATA, tally.f's run of TALLY into HITS and
+\ app.f's store of QUAD into HOOK, so lib.f's DATA stands as app.f found it, as it does where a
 \ build checks the rows, before app.f. For each split k it prints one digit,
 \ 1 when rows [0,k) still hold plus 2 when rows [k,n) do, then for each row
 \ i a 1 when row i holds, else 0.
@@ -502,12 +503,17 @@ variable FILL-POOL
    S\" \" NUNIT-FILE:READ\n14 NUNIT-FILE:SECTION$ SPLITS\n" IN+
    s" check.f" INPUT INPUT-U @ PUT ;
 
+\ The cache path of the object stored under key.
+: OBJ-PATH ( ptr u8 n -- ptr u8 n )
+   {: key:ptr keyu:n :}
+   0 INPUT-U !
+   s" cache/hb-file-" IN+ key keyu IN+ s" .hfo" IN+
+   INPUT INPUT-U @ AT ;
+
 \ Keep the object stored under key, past its cache entry head, as file name.
 : KEEP-OBJ ( ptr u8 n ptr u8 n -- )
    {: key:ptr keyu:n name:ptr nameu:n :}
-   0 INPUT-U !
-   s" cache/hb-file-" IN+ key keyu IN+ s" .hfo" IN+
-   INPUT INPUT-U @ AT {: path:ptr pathu:n :}
+   key keyu OBJ-PATH {: path:ptr pathu:n :}
    path pathu FILE-SIZE {: size:n :}
    size OBJ-HEAD > dup TTRUE 0= if exit then
    size OBJ-RESERVE
@@ -751,8 +757,8 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
 \ body. ixl.f's and
 \ ixt.f's bodies run evaluate-closed on a literal: the third build edits
 \ ixl.f's literal, and IX-TEN, which ixt.f's text calls. Each text stores
-\ into its own file's variable: a store into an earlier file's data is an
-\ update, and an object with updates is not installed. The rk-*.f runs
+\ into its own file's variable: a store into an earlier file's data
+\ refuses the file. The rk-*.f runs
 \ divide, unclassed, before or after an indirect run, and refuse alike,
 \ trusted RK-TRUST too: a contract admits an unchecked body, not a
 \ division in it, and RK-IS's division refuses after its `is`.
@@ -871,8 +877,8 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" rawt.f" S\" : RAW-TARGET ( -- ) ;\n" PUT
    s" raw.f" S\" require rawt.f\ncreate RAW-CELL 0 ,\n' RAW-TARGET RAW-CELL !\n" PUT
    \ poke.f's top level stores BOARD-GO's code address 8 bytes into board.f's
-   \ 16-byte BOARD, an earlier cell no address row declares: the update check
-   \ refuses it there. board.f loads checked in poke.f's session, before the
+   \ 16-byte BOARD, an earlier cell no address row declares, which nothing
+   \ restores: the earlier-write check refuses it. board.f loads checked in poke.f's session, before the
    \ window, above its image floor.
    s" board.f" S\" create BOARD 16 allot\n: BOARD-GO ( -- ) ;\n" PUT
    s" poke.f" S\" require board.f\n' BOARD-GO BOARD 8 + !\n" PUT
@@ -888,8 +894,8 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" later.f" S\" require earlier.f\nPERSISTED-PTR-VARIABLE LATE-P\n: T-MID ( -- ptr u8 ) FRAME-EARLY:T 8 + ;\nFRAME-EARLY:U 8 - LATE-P !\n" PUT
    \ list.f's DATA holds two addresses of its own DATA; addr.f's holds the
    \ address of hits.f's HITS; upd.f's top level stores the address of
-   \ pina.f's PIN-A into PIN-A, an update, since a load changes only the
-   \ earlier DATA of its own session. off.f stores odeep.f's TEN with xt!,
+   \ pina.f's PIN-A into PIN-A, which refuses upd.f, since a load changes only
+   \ the earlier DATA of its own session. off.f stores odeep.f's TEN with xt!,
    \ which declares the cell it writes, eight bytes into hooks.f's 16-byte
    \ PIN-HOOKS. PIN-HOOKS is a create, not a TYPED-BUFFER: that definer's
    \ accessor calls the engine's DYNAMIC-STORAGE:BOUNDS, a seed code record no
@@ -1074,13 +1080,16 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    PIN-FIXTURES
    \ ev.f's records belong to its own top-level load. evw.f's store into EV0,
    \ evx.f's code address in EV-T and evr.f's read of EV0 reach them from
-   \ later loads; ev2.f's store into its child ev3.f's EV3 is an update.
+   \ later loads; ev2.f's store into its child ev3.f's EV3 refuses it, and
+   \ ev4.f's store into its own EV4, in the segment after its require, does.
    s" ev.f" S\" variable EV0\ncreate EV-T 16 allot\n: EV-GO ( -- ) ;\n" PUT
    s" evw.f" S\" 9 EV0 !\n" PUT
    s" evx.f" S\" TRUSTED: EV-SET ( -- ) ['] EV-GO EV-T 8 + ! ;\nEV-SET\n" PUT
    s" evr.f" S\" EV0 @ constant EV-SEEN\n" PUT
    s" ev3.f" S\" variable EV3\n" PUT
    s" ev2.f" S\" require ev3.f\n9 EV3 !\n" PUT
+   s" ev5.f" S\" variable EV5\n" PUT
+   s" ev4.f" S\" variable EV4\nrequire ev5.f\n7 EV4 !\n" PUT
    \ tier.f leaves the compiler tier at 0; tierback.f restores it before
    \ its definition, since a definition the tier-0 compiler makes is a record
    \ of unknown kind.
@@ -1105,9 +1114,9 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    NEST-FIXTURES
    TEE-FIXTURES
    \ IMM-USER runs lib.f's immediate MARK while it compiles. app.f loads
-   \ exec.f between its own definitions, and its top level runs TALLY, which
-   \ adds 1 to lib.f's HITS, then stores lib.f's QUAD into lib.f's declared
-   \ xt cell HOOK.
+   \ exec.f between its own definitions, and its top level stores lib.f's QUAD
+   \ into lib.f's declared xt cell HOOK. tally.f runs app.f's TALLY, which
+   \ adds 1 to lib.f's HITS.
    \ og.f's constants and ogw.f's colon word install on a warm build.
    s" og.f" S\" package FRAME-OG\npublic\n3 constant OG-P\n;package\n5 constant OG-G\n" PUT
    s" ogw.f" S\" : OG-W ( -- n ) 7 ;\n" PUT
@@ -1119,7 +1128,8 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" pcd.f" S\" 3 constant PC-D3\n" PUT
    s" pce.f" S\" 3 constant PC-K3\npackage PCE\npublic\nexport PC-K3\n;package\n" PUT
    s" app.f" APP$ PUT
-   s" top.f" S\" require app.f\nrequire check.f\n" PUT
+   s" tally.f" S\" TALLY\n" PUT
+   s" top.f" S\" require app.f\nrequire tally.f\nrequire check.f\n" PUT
    s" check.f" S\" \\ the first build has no object to check\n" PUT ;
 
 : FRAME-CHECKS ( -- )
@@ -1179,11 +1189,11 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
       ENDS-WITH? TTRUE
    s" after.f, the first file after the run, stores its first definition" T-LABEL
    s" after.f" DEFS$ s" 1" T$=
-   s" app.f consumes ONE, TWICE, TEN, SEVEN, HITS and MARK once each, SEVEN's value, MARK's run, HITS's data through TALLY's run and HOOK's run and data" T-LABEL
+   s" app.f consumes ONE, TWICE, TEN, SEVEN, HITS and MARK once each, SEVEN's value, MARK's run and HOOK's run and data" T-LABEL
    \ The xt! line adds 5 resolution rows (FRAME-LIB:QUAD and FRAME-LIB:HOOK 2
    \ each, namespace and public, xt! 1 global), HOOK's run and its generated
    \ body's, and HOOK's data.
-   s" app.f" FRAME$ s"  ordered=0 binding=6 value=1 resolution=34 executed=3 data=2" ENDS-WITH? TTRUE
+   s" app.f" FRAME$ s"  ordered=0 binding=6 value=1 resolution=34 executed=3 data=1" ENDS-WITH? TTRUE
    s" lib.f consumes ONE only, none of its own or deep.f's records" T-LABEL
    \ A lookup in FRAME-LIB adds none: lib.f made the package and loads no child
    \ after it, so its own source decides every public and private hit or miss.
@@ -1250,16 +1260,16 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" app.f" s"  slots=" s" 1" OBJECT-HAS
    s" app.f" OBJECT$ s"  rows=" FIELD$ FIELD-N
    s" app.f" FRAME$ s"  rows=" FIELD$ FIELD-N 2 + T=
-   s" app.f's run of TALLY changes one byte of lib.f's HITS; lib.f writes no earlier DATA" T-LABEL
-   s" app.f" s"  updates=" s" 1" OBJECT-HAS
-   s" lib.f" s"  updates=" s" 0" OBJECT-HAS
+   s" tally.f's run of TALLY changes lib.f's HITS, which nothing restores, and refuses naming HITS" T-LABEL
+   s" tally.f" s"  reason=" LINE$ s" tally.f reason=earlier-write word=HITS" T$=
+   s" tally.f" NO-OBJECT
    s" raw.f's undeclared code address refuses its object, naming the cell" T-LABEL
    s" raw.f" s"  reason=" LINE$
       s" raw.f reason=raw-cell owner=RAW-CELL offset=0 value=0x" STARTS-WITH? TTRUE
    ERR$ s" raw.f key=" CONTAINS? TFALSE
    s" poke.f's code address in earlier DATA refuses its object, naming the cell" T-LABEL
    s" poke.f" s"  reason=" LINE$
-      s" poke.f reason=raw-cell owner=BOARD offset=8 value=0x" STARTS-WITH? TTRUE
+      s" poke.f reason=earlier-write word=BOARD" T$=
    ERR$ s" poke.f key=" CONTAINS? TFALSE
    s" slot.f's slot names TEN, so its object binds TEN beyond its frame's rows" T-LABEL
    s" slot.f" s"  slots=" s" 1" OBJECT-HAS
@@ -1280,9 +1290,9 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" list.f" KEY$ STORED
    s" addr.f's raw address of hits.f's HITS pins HITS" T-LABEL
    s" addr.f" s"  pins=" s" 1" OBJECT-HAS
-   s" upd.f's update holding PIN-A's address pins PIN-A" T-LABEL
-   s" upd.f" OBJECT$ s"  updates=" FIELD$ FIELD-N 0 > TTRUE
-   s" upd.f" s"  pins=" s" 1" OBJECT-HAS
+   s" upd.f's store of PIN-A's address into PIN-A refuses its object, naming PIN-A" T-LABEL
+   s" upd.f" s"  reason=" LINE$ s" upd.f reason=earlier-write word=PIN-A" T$=
+   s" upd.f" NO-OBJECT
    s" lib.f" s"  pins=" s" 0" OBJECT-HAS
    s" own.f's own address after PIN-B's pins its segment beside PIN-B" T-LABEL
    s" own.f" s"  pins=" s" 2" OBJECT-HAS
@@ -1360,8 +1370,12 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" evr.f" FRAME$ s"  reason=resolution-key-unknown word=EV0" ENDS-WITH? TTRUE
    s" evr.f" s"  reason=" LINE$ s" evr.f reason=ordered-dependency" T$=
    s" evr.f" NO-OBJECT
-   s" a store into a child's variable in the same load is an update" T-LABEL
-   s" ev2.f" s"  updates=" s" 1" OBJECT-HAS
+   s" a store into a child's variable in the same load refuses, naming it" T-LABEL
+   s" ev2.f" s"  reason=" LINE$ s" ev2.f reason=earlier-write word=EV3" T$=
+   s" ev2.f" NO-OBJECT
+   s" a later segment's store into the file's own earlier segment refuses, naming it" T-LABEL
+   s" ev4.f" s"  reason=" LINE$ s" ev4.f reason=earlier-write word=EV4" T$=
+   s" ev4.f" NO-OBJECT
    s" a file that closes its loader's package has no object" T-LABEL
    s" pkgc.f" FRAME$ s"  reason=scope-key-unknown word=FRAME-P3" ENDS-WITH? TTRUE
    s" pkgc.f" s"  reason=" LINE$ s" pkgc.f reason=ordered-dependency" T$=
@@ -2041,6 +2055,9 @@ public
    s" rp.f" KEY$ STORED s" rc.f" KEY$ STORED
    OTHER-LOADER
    s" a second build writes the same app.f and con-dep.f objects" T-LABEL
+   \ app.f's object would install; without it this process compiles app.f
+   \ again, and the line compares the two processes' exports.
+   APP-KEY KEY-LEN OBJ-PATH REMOVE-FILE
    1 FILL-POOL !
    PROBE
    0 FILL-POOL !
@@ -2087,7 +2104,12 @@ public
    s" hch.f" S\" \\ edited\nrequire hg1.f\nrequire hg2.f\n" PUT
    INDIRECT-EDITS
    EDGE-EDITS
-   s" comments in lib.f keep both keys and both files' results" REBUILT
+   s" comments in lib.f keep lib.f's key, and app.f's object installs" T-LABEL
+   PROBE SUCCESS
+   OUT$ S\" use=67\n" CONTAINS? TTRUE
+   s" lib.f" DEFS$ s" 5" T$=
+   s" lib.f" KEY$ LIB-KEY KEY-LEN T$=
+   s" app.f" REUSED
    INDIRECT-REBUILT
    EDGE-REBUILT
    s" a comment compiles hch.f between installs of hg1.f and hg2.f inside the installing hpar.f" T-LABEL
