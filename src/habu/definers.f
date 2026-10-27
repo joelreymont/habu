@@ -208,7 +208,7 @@ CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
    s" : 2constant to require include sumtype variant ;variant ;sumtype" ;
 
 : DEF-OP-KEYWORDS ( -- ptr u8 n )
-   s" + - * and or xor lshift rshift dup drop swap over nip = <> < > <= >= 1+ 1- 0= 0< negate invert f+ f- f* f/" ;
+   s" + - * / mod and or xor lshift rshift dup drop swap over nip = <> < > <= >= 1+ 1- 0= 0< negate invert f+ f- f* f/" ;
 
 : DEF-P2-KEYWORDS ( -- ptr u8 n )
    s" tuck rot -rot 2dup 2drop 2swap 2over 2>r 2r> 2r@ @ !" ;

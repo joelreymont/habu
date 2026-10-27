@@ -143,7 +143,7 @@ variable CF-DEF-HIT
    0 kwvar LABEL@ ADR,  1 kwlen MOVZ,  LKWCMP LABEL@ BL,
    0 CF-DEF-HIT @ CBNZ, ;
 
-variable LKWPLUS  variable LKWMINUS  variable LKWSTAR
+variable LKWPLUS  variable LKWMINUS  variable LKWSTAR  variable LKWDIV  variable LKWMOD
 variable LKWAND2  variable LKWOR2   variable LKWXOR2
 variable FESK
 
@@ -190,7 +190,8 @@ package ENGINE-EMIT
    LKWPLUS LABEL@ LBL,  s" +" BYTES,    LKWMINUS LABEL@ LBL,  s" -" BYTES,
    LKWSTAR LABEL@ LBL,  s" *" BYTES,    LKWAND2 LABEL@ LBL,   s" and" BYTES,
    LKWOR2 LABEL@ LBL,   s" or" BYTES,   LKWXOR2 LABEL@ LBL,   s" xor" BYTES,
-   LKWLSH LABEL@ LBL,   s" lshift" BYTES,  LKWRSH LABEL@ LBL,  s" rshift" BYTES, ;
+   LKWLSH LABEL@ LBL,   s" lshift" BYTES,  LKWRSH LABEL@ LBL,  s" rshift" BYTES,
+   LKWDIV LABEL@ LBL,   s" /" BYTES,       LKWMOD LABEL@ LBL,  s" mod" BYTES, ;
 
 ;package
 
@@ -490,6 +491,70 @@ package ENGINE-EMIT
       9 8 14 ORR,  7 14 5 LSLI,  9 9 7 ORR,  7 15 16 LSLI,  9 9 7 ORR,  LCEMIT LABEL@ BL,
       lmainlbl B,
    FESK LABEL@ LBL, ;
+
+\ vdivi-entry: `/` and `mod` by a literal divisor. The baked bodies (habu1.f
+\ BDIV, BMOD) pop twice, test the divisor and divide; a literal divisor needs
+\ neither the pops nor the test, so the row divides in place: sdiv for `/`, the
+\ truncated quotient's remainder `a - (a/b)*b` for `mod`, as BMOD computes it.
+\ The row claims the token only when the VS top is an integer constant in
+\ 1..DIV-IMM-MAX, tested before LVBINIPREP runs, so a zero literal, a negative
+\ or wider literal and a register divisor all keep the call and its
+\ ARITH-ABI:E-DIV-ZERO test. That test also keeps LVBINIPREP away from mode 2,
+\ which commits the forced registers, so the modes reached are 0 (fall
+\ through), 1 (fold) and 3 (x14 the dividend, x15 the divisor). MIN-N -1 never
+\ reaches the row: -1 is out of range.
+65535 constant DIV-IMM-MAX            \ one movz
+$D2800010 constant W-MOVZ16           \ movz x16,#imm (or with imm<<5)
+$9AD00C00 constant W-SDIV16           \ sdiv xd,xn,x16 (or with d, n<<5)
+$9B108220 constant W-MSUB1716         \ msub xd,x17,x16,xa (or with d, a<<10)
+
+\ Branch to skip unless the VS top is an integer constant in 1..DIV-IMM-MAX;
+\ leaves x10 = DIV-IMM-MAX, LVBINIPREP's immediate bound.
+: C-VDIV-TOP? ( label -- ) {: skip:label :}
+   6 DATA VSP-CELL LDR,  6 skip CBZ,
+   5 6 1 SUBI,  7 5 VTAG-OFF ADDI,  7 DATA 7 ADD,  7 7 0 LDRB,
+   7 1 CMPI,  C-NE skip BCOND,
+   8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  12 8 0 LDR,
+   12 1 CMPI,  C-LT skip BCOND,
+   10 DIV-IMM-MAX MOVZ,  12 10 CMP,  C-GT skip BCOND, ;
+
+: VDIVI-ENTRY ( label ptr n n [ -- ] [ -- ] -- ) {: lmainlbl:label kwvar:ptr kwlen:n foldxt immxt :}
+   CF-DEF-GUARD @ IF kwvar kwlen CF-DEF-GUARD-ROW exit THEN
+   LBL LBL {: skip imm :}
+   0 kwvar LABEL@ ADR,  1 kwlen MOVZ,  LKWCMP LABEL@ BL,
+   0 skip CBZ,
+   skip C-VDIV-TOP?
+   LVBINIPREP LABEL@ BL,
+   13 skip CBZ,
+   13 1 CMPI,  C-NE imm BCOND,
+      foldxt execute
+      LVFOLDPUT LABEL@ BL,
+      lmainlbl B,
+   imm LBL,
+      immxt execute
+      lmainlbl B,
+   skip LBL, ;
+
+: VF/ ( -- )
+   11 11 12 SDIV, ;
+
+: VFMOD ( -- )
+   13 11 12 SDIV,  13 13 12 MUL,  11 11 13 SUB, ;
+
+\ Emit movz x16,#imm from x15 (x16 and x17 are never pooled).
+: EDIVK ( -- )
+   8 W-MOVZ16 LIT64,  7 15 5 LSLI,  9 8 7 ORR,  LCEMIT LABEL@ BL, ;
+
+\ movz x16,#imm ; sdiv xd,xd,x16
+: EI/ ( -- )
+   EDIVK
+   8 W-SDIV16 LIT64,  9 8 14 ORR,  7 14 5 LSLI,  9 9 7 ORR,  LCEMIT LABEL@ BL, ;
+
+\ movz x16,#imm ; sdiv x17,xd,x16 ; msub xd,x17,x16,xd
+: EIMOD ( -- )
+   EDIVK
+   8 W-SDIV16 17 or LIT64,  7 14 5 LSLI,  9 8 7 ORR,  LCEMIT LABEL@ BL,
+   8 W-MSUB1716 LIT64,  9 8 14 ORR,  7 14 10 LSLI,  9 9 7 ORR,  LCEMIT LABEL@ BL, ;
 
 : FLSH ( -- )
    11 11 12 LSLV, ;

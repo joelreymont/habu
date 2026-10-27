@@ -12570,14 +12570,16 @@ public
    lcnotnum LBL, ;
 
 \ The arithmetic rows hand their fold/emit/immediate emitters to the jit.f
-\ VOPI-ENTRY/VOP-ENTRY registrars, which are private to the emitter package, so
-\ this row block is inside it.
+\ VOPI-ENTRY/VOP-ENTRY/VDIVI-ENTRY registrars, which are private to the emitter
+\ package, so this row block is inside it.
 package ENGINE-EMIT
 
 : EM-COMPILE-ARITH-OPS ( -- )
    LMAIN LABEL@ LKWPLUS  1 ['] VF+ ['] E+ ['] EI+ 4095 VOPI-ENTRY
    LMAIN LABEL@ LKWMINUS 1 ['] VF- ['] E- ['] EI- 4095 VOPI-ENTRY
    LMAIN LABEL@ LKWSTAR  1 ['] VF* ['] E* VOP-ENTRY
+   LMAIN LABEL@ LKWDIV   1 ['] VF/ ['] EI/ VDIVI-ENTRY
+   LMAIN LABEL@ LKWMOD   3 ['] VFMOD ['] EIMOD VDIVI-ENTRY
    LMAIN LABEL@ LKWAND2  3 ['] FAND ['] EAND VOP-ENTRY
    LMAIN LABEL@ LKWOR2   2 ['] FOR2 ['] EOR2 VOP-ENTRY
    LMAIN LABEL@ LKWXOR2  3 ['] FXOR2 ['] EXOR VOP-ENTRY
@@ -14305,7 +14307,7 @@ package LABELS
    LBL LVSNAP !  LBL LVRECON !  LBL LVRECONAT !  LBL LVFPOP !  LBL LVSETF !  LBL LVRESNAP !  LBL LVFUSE ! ;
 
 : OPS ( -- )
-   LBL LKWPLUS !  LBL LKWMINUS !  LBL LKWSTAR !
+   LBL LKWPLUS !  LBL LKWMINUS !  LBL LKWSTAR !  LBL LKWDIV !  LBL LKWMOD !
    LBL LKWAND2 !  LBL LKWOR2 !  LBL LKWXOR2 !  LBL LKWLSH !  LBL LKWRSH !
    LBL LKWDUP2 !  LBL LKWDROP2 !  LBL LKWSWAP2 !
    LBL LKWOVER2 !  LBL LKWNIP2 !

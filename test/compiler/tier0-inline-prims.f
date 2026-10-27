@@ -69,6 +69,8 @@ $FFFF0FE0 constant CSETM-MASK        \ keeps csetm xD's opcode, clears cond and 
 $DA9F03E0 constant CSETM-OP          \ csetm xD,cond (csinv xD,xzr,xzr,!cond)
 $FFE0FFE0 constant NEG-MASK          \ keeps neg's opcode, clears Rd and Rm
 $CB0003E0 constant NEG-OP            \ neg xD,xM (sub xD,xzr,xM)
+$FFE0FC00 constant SDIV-MASK         \ keeps sdiv's opcode, clears its registers
+$9AC00C00 constant SDIV-OP           \ sdiv xd,xn,xm
 
 \ CODE-BYTES:AT is the bounded view between an engine code address and a
 \ readable pointer; this file adds none of its own.
@@ -275,6 +277,19 @@ defer T0-DEF ( -- n )
 : T0-XTB ( -- n ) T0-FIX-OUT:PTB @ ;
 77 constant T0-NEAR
 : T0-NEARU ( -- n ) T0-NEAR 1+ ;
+
+\ Division by a literal (jit.f VDIVI-ENTRY): a divisor in 1..65535 divides in
+\ place; a zero, wider or register divisor keeps the call and its zero test;
+\ two literals fold, except over a zero divisor, which throws when it runs.
+: T0-DIV256 ( n -- n ) 256 / ;
+: T0-MOD256 ( n -- n ) 256 mod ;
+: T0-MODR ( n n -- n ) mod ;
+: T0-DIVMAX ( n -- n ) 65535 / ;
+: T0-DIVWIDE ( n -- n ) 65536 / ;
+: T0-DIV0 ( n -- n ) 0 / ;
+: T0-MOD0 ( n -- n ) 0 mod ;
+: T0-DIVK ( -- n ) 1000 256 / ;
+: T0-DIVK0 ( -- n ) 1 0 / ;
 
 private
 
@@ -522,6 +537,34 @@ private
    T0-DOONE 1 T=
    [: T0-LOOPTHROW drop ;] 77 TTHROWSQ ;
 
+\ The named word holds no call to the dividing primitive and sdivs times.
+: DIVIDES ( ptr u8 n ptr u8 n n -- ) {: na:ptr nu:n pa:ptr pu:n sdivs:n :}
+   na nu pa pu INLINED
+   na nu SDIV-MASK SDIV-OP MASKED-OPS sdivs T= ;
+
+: TEST-DIVIDE ( -- )
+   s" a literal divisor in 1..65535 divides in place, with no call" T-LABEL
+   s" TIER0-INLINE-PRIMS:T0-DIV256" s" /" 1 DIVIDES
+   s" TIER0-INLINE-PRIMS:T0-MOD256" s" mod" 1 DIVIDES
+   s" TIER0-INLINE-PRIMS:T0-DIVMAX" s" /" 1 DIVIDES
+   s" a zero, wider or register divisor keeps the call" T-LABEL
+   s" TIER0-INLINE-PRIMS:T0-DIVWIDE" s" /" CALLED
+   s" TIER0-INLINE-PRIMS:T0-DIV0" s" /" CALLED
+   s" TIER0-INLINE-PRIMS:T0-MOD0" s" mod" CALLED
+   s" TIER0-INLINE-PRIMS:T0-MODR" s" mod" CALLED
+   s" two literals fold, unless the divisor is zero" T-LABEL
+   s" TIER0-INLINE-PRIMS:T0-DIVK" s" /" 0 DIVIDES
+   s" TIER0-INLINE-PRIMS:T0-DIVK0" s" /" CALLED
+   s" the divisions truncate, as the baked words do, and refuse a zero divisor" T-LABEL
+   1000 T0-DIV256 3 T=  -1000 T0-DIV256 -3 T=  255 T0-DIV256 0 T=
+   1000 T0-MOD256 232 T=
+   -1000 T0-MOD256  -1000 256 T0-MODR T=
+   131070 T0-DIVMAX 2 T=  131072 T0-DIVWIDE 2 T=
+   T0-DIVK 3 T=
+   [: 5 T0-DIV0 drop ;] E-DIV-ZERO TTHROWSQ
+   [: 5 T0-MOD0 drop ;] E-DIV-ZERO TTHROWSQ
+   [: T0-DIVK0 drop ;] E-DIV-ZERO TTHROWSQ ;
+
 \ `?dup` is absent from checked bodies (docs/forth-card.md), so its subject is
 \ compiled last, with checking suspended for the rest of this file.
 0 set-check
@@ -556,6 +599,7 @@ public
    TEST-FLAGS
    TEST-FIXED
    TEST-LOOPS
+   TEST-DIVIDE
    TEST-QDUP
    MISSING @ 0 T=
    T-REPORT ;
