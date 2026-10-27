@@ -41,7 +41,7 @@ variable EDIT
 : BUILD ( -- n )
    NATIVE-FILE-APP:BUILDER$ {: builder:ptr builderu:n :}
    PROC-ARGV-ENV-RESET
-   s" HABU_BUILD_CACHE" >LEN s" cache" AT >LEN PROC-ENV+
+   s" HABU_OUT" >LEN s" cache" AT >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    builder builderu SOURCE$ CAPTURE ;
 

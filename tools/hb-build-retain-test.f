@@ -148,12 +148,6 @@ variable HBR-STRAY
    {: a:ptr u:n :}
    a u s" hb-maker-support-" STARTS-WITH? u 81 = and ;
 
-\ A file object, hb-file-<64 hex>.hfo, which the maker writes per compiled
-\ file; it is neither a kind the build publishes nor a stray.
-: HBR-FILE? ( ptr u8 n -- bool )
-   {: a:ptr u:n :}
-   a u s" hb-file-" STARTS-WITH? a u s" .hfo" ENDS-WITH? and u 76 = and ;
-
 : HBR-MAP-SLOT ( n -- n )
    dup HBR-NONE <> if 1+ then ;
 
@@ -167,7 +161,6 @@ variable HBR-STRAY
 : HBR-NOTE ( ptr u8 n -- ) {: a:ptr u:n :}
    a u HBR-KNOWN? if exit then
    a u s" build-cache-meta" STR= if exit then
-   a u HBR-FILE? if exit then
    a u s" .map" ENDS-WITH? if
       a u 4 - HBR-ART? if
          a u HBR-ART-SLOT @ HBR-MAP-SLOT HBR-TAKE exit

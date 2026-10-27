@@ -15,7 +15,7 @@ package NATIVE-FILE-ALIAS-TEST
 : RUN-DIRECT ( -- n )
    NATIVE-FILE-APP:BUILDER$ {: builder:ptr builderu:n :}
    PROC-ARGV-ENV-RESET
-   s" HABU_BUILD_CACHE" >LEN s" direct-cache" AT >LEN PROC-ENV+
+   s" HABU_OUT" >LEN s" direct-cache" AT >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    s" --" ARG s" app.f" AT ARG s" app-hb" AT ARG
    builder builderu

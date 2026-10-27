@@ -1,12 +1,12 @@
 \ Automatic native definition reuse. The ordinary source loader always runs;
 \ the pending native dispatch selects one definition after its source actions.
+\ Each file's object lives where tools/build-out.f puts it: BUILD-OUT:OBJ$.
 require src/lib/errors.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/genio-core.f
 require src/lib/image-lifecycle.f
 require src/lib/build-input.f
-require src/lib/build-cache.f
 require src/lib/engine-id.f
 require src/lib/le.f
 require src/lib/memory.f
@@ -23,6 +23,7 @@ require src/habu/terminal-call.f
 require src/habu/xref.f
 require src/habu/native-body-abi.f
 require src/compiler/native/compiler.f
+require tools/build-out.f
 require tools/build-target.f
 require tools/build-producer.f
 require tools/native-file-inputs.f
@@ -70,8 +71,6 @@ $4B8 constant LIVE-FIXED-OFF
 \ The source offset a stale replay's resume runs the file from.
 216 constant F-RESUME
 224 constant FRAME-BYTES
-\ A file object name: "hb-file-", 64 hex digits, ".hfo".
-76 constant OBJECT-NAME-BYTES
 
 \ An object entry: magic | checksum over the bytes after it | the HBNUNIT2
 \ file object.
@@ -159,10 +158,8 @@ create HASH-CTX SHA256-CTX-BYTES allot
 create HASH-RAW 32 allot
 create KEY-HEX 64 allot
 create HASH-CELL CELL allot
-create OBJECT-NAME OBJECT-NAME-BYTES allot
 create FILE-KEY-HEX 64 allot
 create RESULTS-HEX 64 allot
-create PATH-BUF FS-PATH-CAP allot
 
 CAST: DISPATCH-XT ( n -- [ ptr u8 n -- ] )
 CAST: DISPATCH>N ( [ ptr u8 n -- ] -- n )
@@ -404,15 +401,6 @@ variable PENDING-KEY-U
    DEPTH @ 0= if BAD then DEPTH @ 1- FRAME-BYTES * FRAMES ;
 : F@ ( n -- n ) FRAME + CELL-VIEW @ ;
 : F! ( n n -- ) FRAME + CELL-VIEW ! ;
-\ hb-build exports its resolved root as HABU_BUILD_CACHE to every child that
-\ opens the definition cache (build-support.f BF-PREPARE-ENV), so a maker
-\ whose image is saved never touches BUILD-CACHE's buffers; ENV-INPUT:CURRENT$
-\ stores nothing and is not observed. A top-level run started without the
-\ variable resolves the same tiers through BUILD-CACHE itself.
-: ROOT$ ( -- ptr u8 n )
-   s" HABU_BUILD_CACHE" ENV-INPUT:CURRENT$ dup 0 > if exit then
-   2drop BUILD-CACHE:ROOT$ ;
-
 : HASH-N ( n -- )
    HASH-CELL ! HASH-CTX HASH-CELL CELL SHA256-FEED ;
 : HASH-S ( ptr u8 n -- )
@@ -458,8 +446,8 @@ public
 private
 
 \ Read one cache file into ENTRY through one descriptor, sized by that
-\ descriptor, so a same-key writer renaming a larger entry in or a pruner
-\ removing it mid-read cannot fail the build. A missing file is a miss; a
+\ descriptor, so a same-key writer renaming a larger entry in or another
+\ build discarding it mid-read cannot fail the build. A missing file is a miss; a
 \ short, foreign or damaged one is refused on fd 2 and is a miss too, which
 \ the next store replaces.
 : CACHE-READ ( ptr u8 n ptr u8 n n -- n bool )
@@ -497,17 +485,18 @@ private
    object 0 STORE-IMAGE ENTRY-HEAD + objectu BYTE-COPY
    size ;
 
-\ The object file for a file key: hb-file-, the key, .hfo in the cache root.
+\ The object file for a file key.
 : FILE-PATH ( ptr u8 n -- ptr u8 n )
-   {: key:ptr keyu:n :}
-   keyu 64 <> if BAD then
-   s" hb-file-" {: pre:ptr preu:n :}
-   s" .hfo" {: suf:ptr sufu:n :}
-   pre OBJECT-NAME preu BYTE-COPY
-   key OBJECT-NAME preu + keyu BYTE-COPY
-   suf OBJECT-NAME preu + keyu + sufu BYTE-COPY
-   ROOT$ OBJECT-NAME OBJECT-NAME-BYTES PATH-BUF JOIN-PATH
-   PATH-BUF swap ;
+   dup 64 <> if BAD then
+   BUILD-OUT:OBJ$ ;
+
+\ Remove a stale object. Another build may already have replaced or removed
+\ it, so an absent file is not a failure; the next store writes over it.
+: DISCARD ( ptr u8 n -- )
+   [: 2dup REMOVE-FILE ;] catch {: a:ptr u:n code:n :}
+   code 0= if exit then
+   a u FS-TRY-LSTAT 0= if exit then
+   code throw ;
 
 : ZERO-SCRATCH ( ptr u8 n -- )
    {: bytes:ptr size:n :}
@@ -1862,7 +1851,6 @@ variable IMPORT-AT
    all NUNIT-OBJECT:INSTALL-CHECKS
    prev 11 NUNIT-FILE:SECTION$ nip INPUTS-APPEND
    NUNIT-OBJECT:INSTALL-END
-   KEPT-KEY FILE-PATH BUILD-CACHE:USED drop
    1 REUSED-N +!
    REUSED-LINE
    0 true ;
@@ -1878,7 +1866,7 @@ variable IMPORT-AT
    REPLAY-OBJECT if drop exit then {: off:n :}
    s" segment-stale" NUNIT-OBJECT:FILE-REFUSE
    s" segment-stale" REFUSED-LINE
-   KEPT-KEY FILE-PATH BUILD-CACHE:DISCARD
+   KEPT-KEY FILE-PATH DISCARD
    off RESUME-RUN ;
 
 : FILE-UNIT-WITH ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] [ ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- ] bool -- )
@@ -2038,12 +2026,11 @@ variable IMPORT-AT
    NULL-PTR REQUEST-MANIFEST ! 0 REQUEST-MANIFEST-U !
    NULL-PTR DISPATCH-SOURCE ! 0 DISPATCH-SOURCE-U !
    NULL-PTR STAGED-REASON ! 0 STAGED-REASON-U !
-   OBJECT-NAME OBJECT-NAME-BYTES ZERO-SCRATCH FILE-KEY-HEX 64 ZERO-SCRATCH
+   FILE-KEY-HEX 64 ZERO-SCRATCH
    RESULTS-HEX 64 ZERO-SCRATCH
    HASH-CTX SHA256-CTX-BYTES ZERO-SCRATCH
    HASH-RAW 32 ZERO-SCRATCH
-   KEY-HEX 64 ZERO-SCRATCH HASH-CELL CELL ZERO-SCRATCH
-   PATH-BUF FS-PATH-CAP ZERO-SCRATCH ;
+   KEY-HEX 64 ZERO-SCRATCH HASH-CELL CELL ZERO-SCRATCH ;
 
 \ The process's first session takes the seed's record count.
 : BOOT-TAKE ( -- )
@@ -2072,10 +2059,9 @@ variable IMPORT-AT
    0 TARGET-UNIT-USE !
    NFILE-INPUTS:RESET
    ['] FILE-INPUT BUILD-INPUT:USE
-   \ Resolved here, before RUN and APP-LOAD bind the ENV-INPUT observers, so
-   \ the cache root never becomes a build input. BUILD-CACHE:ROOT$ creates
-   \ the directory it selects; an exported root may not exist yet.
-   ROOT$ MAKE-DIRS
+   \ Made here so a tree whose output directory cannot be made fails before
+   \ the application runs.
+   BUILD-OUT:ROOT$ 2drop
    ['] XREF-REC NFILE-REF:RECORD-AT!
    NUNIT-OBJECT:BIND-LOCAL
    NUNIT-CAPTURE:BIND-PRODUCER

@@ -1,8 +1,9 @@
-\ The build cache root keeps one checksummed object per loaded file. An entry
-\ a build does not use survives it, another engine's build leaves this
-\ engine's entries, concurrent builds into one root leave entries their
-\ rebuilds reuse, a corrupt entry is refused on fd 2 and rebuilt, and hb-build
-\ prunes the entries nothing has used for a day.
+\ Each engine keeps one checksummed object per loaded file under its own
+\ directory of the out root (tools/build-out.f). An object a build does not
+\ use survives it, in the tree's .out when HABU_OUT is empty; another engine's
+\ build leaves this engine's objects; concurrent builds into one root leave
+\ objects their rebuilds reuse; and a corrupt object is refused on fd 2 and
+\ rebuilt.
 \ Run: bin/hb --load test/native-file-storage-e2e.f
 
 require src/lib/test.f
@@ -12,8 +13,8 @@ require src/lib/fs-list.f
 require src/lib/fs-mutate.f
 require src/lib/process.f
 require src/lib/process-env.f
+require src/lib/process-cwd.f
 require src/lib/engine-candidate.f
-require src/lib/time.f
 require test/whitebox-child.f
 require test/native-file-e2e.f
 require test/native-file-app-lib.f
@@ -21,19 +22,18 @@ require test/native-file-app-lib.f
 using NATIVE-FILE-E2E
 package NATIVE-FILE-STORAGE-TEST
 
+$10000 constant STREAM-CAP
 create CASE-PATH FS-PATH-CAP allot
-create CACHE-PATH FS-PATH-CAP allot  variable CACHE-U
+create OUT-PATH FS-PATH-CAP allot  variable OUT-U
+create DIR-PATH FS-PATH-CAP allot  variable DIR-U
 create ENTRY-PATH FS-PATH-CAP allot
-$1000 constant NAMES-CAP
-create COLD-NAMES NAMES-CAP allot  variable COLD-U
+create CWD-OUT STREAM-CAP allot
+create CWD-ERR STREAM-CAP allot
 DYNAMIC-BUFFER BYTES u8
 DYNAMIC-BUFFER PRODUCT-A u8  variable PRODUCT-A-U
 DYNAMIC-BUFFER PRODUCT-B u8  variable PRODUCT-B-U
 variable FLIP-N
-variable CURSOR
-variable SINCE
 variable OBJECT-N
-variable STALE-N
 
 : LIB-V1$ ( -- ptr u8 n )
    S\" package STORE-LIB\npublic\n: LIB-X ( -- n ) 1 ;\n: LIB-Y ( -- n ) 2 ;\n: LIB-Z ( -- n ) 3 ;\n;package\n" ;
@@ -61,22 +61,24 @@ variable STALE-N
    {: dir:ptr diru:n name:ptr nameu:n body:ptr bodyu:n :}
    dir diru name nameu IN body bodyu WRITE-ALL ;
 
-\ Later builds use the fresh cache root dir/name.
-: CACHE-IN ( ptr u8 n ptr u8 n -- )
+: OUT-ROOT$ ( -- ptr u8 n ) OUT-PATH OUT-U @ ;
+
+\ Later builds use the fresh out root dir/name, which the build makes.
+: OUT-IN ( ptr u8 n ptr u8 n -- )
    IN {: a:ptr u:n :}
-   a CACHE-PATH u BYTE-COPY u CACHE-U !
-   CACHE-PATH u MAKE-DIR ;
+   a OUT-PATH u BYTE-COPY u OUT-U ! ;
 
 : CASE-DIR ( ptr u8 n -- )
    {: dir:ptr diru:n :}
    dir diru AT MAKE-DIR
-   dir diru s" cache" CACHE-IN ;
+   dir diru s" out" OUT-IN ;
 
-\ A build of dir/app into dir/out by engine, diagnostics on, in the cache root.
+\ A build of dir/app into dir/out by engine, diagnostics on, in the out root;
+\ an empty out root leaves HABU_OUT empty, so the build uses its cwd's .out.
 : STAGE ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
    {: dir:ptr diru:n app:ptr appu:n out:ptr outu:n engine:ptr engineu:n :}
    PROC-ARGV-ENV-RESET
-   s" HABU_BUILD_CACHE" >LEN CACHE-PATH CACHE-U @ >LEN PROC-ENV+
+   s" HABU_OUT" >LEN OUT-ROOT$ >LEN PROC-ENV+
    s" HABU_UNDER_TEST" >LEN engine engineu >LEN PROC-ENV+
    s" HABU_FIXPOINT_ENGINE" >LEN engine engineu >LEN PROC-ENV+
    s" HABU_NATIVE_CACHE_DIAG" >LEN s" 1" >LEN PROC-ENV+
@@ -93,6 +95,19 @@ variable STALE-N
    builder builderu SAVED-SOURCE$ CAPTURE ;
 
 : SAVED-APP ( ptr u8 n -- n ) s" app.f" s" app-hb" SAVED ;
+
+\ SAVED-APP with the child's working directory at dir.
+: SAVED-APP-IN ( ptr u8 n -- n )
+   {: dir:ptr diru:n :}
+   NATIVE-FILE-APP:BUILDER$ {: builder:ptr builderu:n :}
+   dir diru s" app.f" s" app-hb" ENGINE-CANDIDATE:PATH$ STAGE
+   builder builderu >LEN dir diru AT >LEN SAVED-SOURCE$ >LEN
+      CWD-OUT STREAM-CAP >LEN CWD-ERR STREAM-CAP >LEN 600000 >MS
+      PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE-OUTCOME
+      PROC-OUTCOME>DEADLINE-RC RC>N
+   {: outu:len erru:len rc:n :}
+   CWD-OUT outu LEN>N CWD-ERR erru LEN>N STREAMS!
+   rc ;
 
 \ The engine itself loading tools/app-build.f.
 : DIRECT ( ptr u8 n ptr u8 n -- n )
@@ -152,33 +167,39 @@ variable STALE-N
    LOAD {: size:n :}
    0 BYTES size 0 PRODUCT-B PRODUCT-B-U @ STR= ;
 
-\ The cache root's entry name, in ENTRY-PATH.
+: DIR$ ( -- ptr u8 n ) DIR-PATH DIR-U @ ;
+
+: DIR! ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   a DIR-PATH u BYTE-COPY u DIR-U ! ;
+
+\ The object directory's entry name, in ENTRY-PATH.
 : ENTRY$ ( ptr u8 n -- ptr u8 n )
    {: name:ptr nameu:n :}
-   CACHE-PATH CACHE-U @ name nameu ENTRY-PATH JOIN-PATH ENTRY-PATH swap ;
+   DIR$ name nameu ENTRY-PATH JOIN-PATH ENTRY-PATH swap ;
 
-\ A file object: hb-file-, 64 hex digits, .hfo.
+\ A file object: 64 hex digits, .hfo.
 : OBJECT? ( ptr u8 n -- bool )
    {: name:ptr nameu:n :}
-   name nameu s" hb-file-" STARTS-WITH? name nameu s" .hfo" ENDS-WITH? and
-   nameu 76 = and ;
+   name nameu s" .hfo" ENDS-WITH? nameu 68 = and ;
 
-\ Count a file object still in the root, and whether it was last dated
-\ before SINCE.
 : TALLY ( ptr u8 n -- )
+   OBJECT? if 1 OBJECT-N +! then ;
+
+\ Count the file objects in one engine's directory under the out root.
+: TALLY-ENGINE ( ptr u8 n -- )
    {: name:ptr nameu:n :}
-   name nameu OBJECT? 0= if exit then
-   name nameu ENTRY$ FS-TRY-LSTAT 0= if exit then
-   1 OBJECT-N +!
-   FS-STAT-MTIME-SEC@ SINCE @ < if 1 STALE-N +! then ;
+   OUT-ROOT$ name nameu ENTRY-PATH JOIN-PATH {: u:n :}
+   ENTRY-PATH u s" obj" DIR-PATH JOIN-PATH DIR-U !
+   DIR$ [: TALLY ;] FS-LIST:EACH ;
 
-: TALLY-RESET ( -- ) 0 OBJECT-N ! 0 STALE-N ! ;
+\ The file objects every engine keeps under the out root.
+: TALLY-ROOT ( -- n )
+   0 OBJECT-N !
+   OUT-ROOT$ [: TALLY-ENGINE ;] FS-LIST:EACH
+   OBJECT-N @ ;
 
-: TALLY-ROOT ( -- )
-   TALLY-RESET
-   CACHE-PATH CACHE-U @ [: TALLY ;] FS-LIST:EACH ;
-
-\ Flip the last byte of one cache entry, which its checksum covers.
+\ Flip the last byte of one file object, which its checksum covers.
 : FLIP ( ptr u8 n -- )
    {: name:ptr nameu:n :}
    name nameu OBJECT? 0= if exit then
@@ -190,33 +211,39 @@ variable STALE-N
 
 : FLIP-ALL ( -- n )
    0 FLIP-N !
-   CACHE-PATH CACHE-U @ [: FLIP ;] FS-LIST:EACH
+   OUT-ROOT$ NATIVE-FILE-APP:OBJ-DIR$ DIR!
+   DIR$ [: FLIP ;] FS-LIST:EACH
    FLIP-N @ ;
 
 \ 1. A file a build does not load keeps its object for the next build that
 \ does: an app that drops lib.f and requires it again reuses lib.f's object.
+\ The builds run in the tree with HABU_OUT empty, so the objects live in the
+\ tree's .out, the default out root.
 : KEEP-CASE ( -- )
-   s" an entry survives a build that does not use it" T-LABEL
-   s" keep" CASE-DIR
+   s" an object survives a build that does not use it" T-LABEL
+   s" keep" AT MAKE-DIR
+   0 OUT-U !
    s" keep" s" lib.f" LIB-V1$ WRITE-IN
    s" keep" s" app.f" APP$ WRITE-IN
-   s" keep" SAVED-APP SUCCESS
+   s" keep" SAVED-APP-IN SUCCESS
    s" keep" s" app.f" APP-NO-LIB$ WRITE-IN
-   s" keep" SAVED-APP SUCCESS
+   s" keep" SAVED-APP-IN SUCCESS
    s" keep" s" app.f" APP$ WRITE-IN
-   s" keep" SAVED-APP SUCCESS
+   s" keep" SAVED-APP-IN SUCCESS
    ERR$ s" name=LIB-" CONTAINS? TFALSE
    \ A file key names the file's place in the load, not its text: the second
    \ build stored its app.f under the first's name, so only MAIN compiles.
    REUSED 1 T=
    COMPILED 1 T=
+   s" keep" s" .out" OUT-IN
+   TALLY-ROOT 2 T=
    s" keep" s" app-hb" RUN-IN SUCCESS
    OUT$ s" 4" CONTAINS? TTRUE ;
 
 \ 2. Another engine, whose checker and kernel identity differ, writes its own
-\ entries beside this engine's in the same root and leaves this engine's.
+\ objects in its own directory beside this engine's and leaves this engine's.
 : ALTERNATE-CASE ( -- )
-   s" another engine's build keeps this engine's entries" T-LABEL
+   s" another engine's build keeps this engine's objects" T-LABEL
    s" alternate" CASE-DIR
    s" alternate" s" lib.f" LIB-V1$ WRITE-IN
    s" alternate" s" app.f" APP$ WRITE-IN
@@ -225,9 +252,9 @@ variable STALE-N
    REUSED {: warm:n :}
    COMPILED {: warm-compiled:n :}
    warm 0 > TTRUE
-   TALLY-ROOT OBJECT-N @ {: first-objects:n :}
+   TALLY-ROOT {: first-objects:n :}
    s" alternate" WHITEBOX-CHILD:ENGINE$ DIRECT SUCCESS
-   TALLY-ROOT OBJECT-N @ first-objects > TTRUE
+   TALLY-ROOT first-objects > TTRUE
    s" alternate" ENGINE-CANDIDATE:PATH$ DIRECT SUCCESS
    REUSED warm T=
    COMPILED warm-compiled T=
@@ -259,8 +286,8 @@ variable STALE-N
    ;MATCH ;
 
 \ 3. Two builds racing into one root, both loading lib-a.f and lib-b.f, leave
-\ every entry each made: a key covers the requiring file, so the two keep
-\ entries for the same definitions side by side. A rebuild of each app reuses
+\ every object each made: a key covers the requiring file, so the two keep
+\ objects for the same definitions side by side. A rebuild of each app reuses
 \ all of its own, and the products are the ones a serial pair builds into a
 \ fresh root.
 : CONCURRENT-CASE ( -- )
@@ -289,15 +316,15 @@ variable STALE-N
    COMPILED 0 T=
    s" race" s" b-hb" RUN-IN SUCCESS
    OUT$ s" 25" CONTAINS? TTRUE
-   s" race" s" serial-cache" CACHE-IN
+   s" race" s" serial-out" OUT-IN
    s" race" s" app-a.f" s" a-hb" SAVED SUCCESS
    s" race" s" app-b.f" s" b-hb" SAVED SUCCESS
    s" race" s" a-hb" IN SAME-A? TTRUE
    s" race" s" b-hb" IN SAME-B? TTRUE ;
 
-\ 4. A flipped byte in every entry is refused and rebuilt.
+\ 4. A flipped byte in every object is refused and rebuilt.
 : BYTE-CASE ( -- )
-   s" a corrupt entry is refused and rebuilt" T-LABEL
+   s" a corrupt object is refused and rebuilt" T-LABEL
    s" flip" CASE-DIR
    s" flip" s" lib.f" LIB-V1$ WRITE-IN
    s" flip" s" app.f" APP$ WRITE-IN
@@ -318,76 +345,6 @@ variable STALE-N
    REUSED 2 T=
    COMPILED 0 T= ;
 
-\ tools/hb-build.f on the candidate engine, as BUILD-APP: dir/app.f into
-\ dir/app-hb as a REPL build, in the cache root. It runs at tier 1
-\ (test/compiler/aot-mode.f): hb-build builds at its caller's tier, and only a
-\ tier 1 product compiles through the file objects the prune case dates.
-\ The tool library loads first, at the default tier, so only the product
-\ compiles at tier 1.
-: HB-BUILD ( ptr u8 n -- n )
-   {: dir:ptr diru:n :}
-   NATIVE-FILE-APP:BUILDER$ 2drop
-   PROC-ARGV-ENV-RESET
-   s" HABU_BUILD_CACHE" >LEN CACHE-PATH CACHE-U @ >LEN PROC-ENV+
-   s" HABU_FIXPOINT_ENGINE" >LEN ENGINE-CANDIDATE:PATH$ >LEN PROC-ENV+
-   PROC-ENV-INHERIT-MISSING
-   s" --load" ARG s" tools/hb-build-lib.f" ARG s" test/compiler/aot-mode.f" ARG
-   s" tools/hb-build.f" ARG s" --" ARG
-   s" --repl" ARG dir diru s" app.f" IN ARG
-   s" -o" ARG dir diru s" app-hb" IN ARG
-   ENGINE-CANDIDATE:PATH$ s" " CAPTURE ;
-
-\ Of the entries in COLD-NAMES, those still in the root.
-: TALLY-COLD ( -- )
-   TALLY-RESET
-   0 CURSOR !
-   begin COLD-NAMES COLD-U @ 10 CURSOR @ SPLIT-NEXT while
-      CURSOR ! TALLY
-   repeat drop 2drop ;
-
-: BACKDATE ( ptr u8 n -- )
-   {: name:ptr nameu:n :}
-   name nameu OBJECT? 0= if exit then
-   name nameu ENTRY$ ARG ;
-
-\ Date every entry in the root to 2020, as src/lib/build-cache-retain-test.f
-\ dates its planted entries, and remove the sweep stamps: a prune runs at
-\ most once per SWEEP-SECONDS (src/lib/build-cache.f, SWEEPS ARE THROTTLED).
-: BACKDATE-ALL ( -- )
-   PROC-ARGV-ENV-RESET PROC-ENV-INHERIT-MISSING
-   s" -t" ARG s" 202001010000" ARG
-   CACHE-PATH CACHE-U @ [: BACKDATE ;] FS-LIST:EACH
-   s" /usr/bin/touch" s" " CAPTURE SUCCESS
-   s" build-cache-meta" ENTRY$ REMOVE-TREE ;
-
-\ 5. After a build, hb-build removes the entries nothing has used for a day.
-\ A cold build's entries are dated to 2020, then an edit renames LIB-Y: the
-\ rebuild compiles LIB-W, hits the other three, and the prune takes LIB-Y's
-\ entry and keeps the three hit, which their use dated, and the one stored.
-: PRUNE-CASE ( -- )
-   s" hb-build prunes the entries nothing used for a day" T-LABEL
-   s" prune" CASE-DIR
-   s" prune" s" lib.f" LIB-V1$ WRITE-IN
-   s" prune" s" app.f" APP$ WRITE-IN
-   s" prune" HB-BUILD SUCCESS
-   CACHE-PATH CACHE-U @ COLD-NAMES NAMES-CAP FS-LIST:NAMES COLD-U !
-   BACKDATE-ALL
-   TIME:EPOCH-SECONDS SINCE !
-   TALLY-COLD
-   OBJECT-N @ 2 T=
-   STALE-N @ 2 T=
-   s" prune" s" lib.f" LIB-V3$ WRITE-IN
-   s" prune" HB-BUILD SUCCESS
-   \ A file key names the file's place in the load, not its text: lib.f's
-   \ edit restores its object under the cold name, and app.f's is reused or
-   \ restored there too, so both cold names stay, newly dated.
-   TALLY-COLD
-   OBJECT-N @ 2 T=
-   STALE-N @ 0 T=
-   TALLY-ROOT
-   OBJECT-N @ 2 T=
-   STALE-N @ 0 T= ;
-
 public
 : MAIN ( -- )
    T-RESET
@@ -396,7 +353,6 @@ public
    ALTERNATE-CASES
    CONCURRENT-CASE
    BYTE-CASE
-   PRUNE-CASE
    T-REPORT
    s" native file storage artifacts: " type ROOT$ type cr ;
 ;package

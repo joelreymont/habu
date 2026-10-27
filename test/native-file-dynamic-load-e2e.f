@@ -14,7 +14,7 @@ package NATIVE-FILE-DYNAMIC-LOAD-TEST
 
 : RUN-BUILD ( ptr u8 n -- n )
    {: builder:ptr builderu:n :}
-   s" HABU_BUILD_CACHE" >LEN s" cache" AT >LEN PROC-ENV+
+   s" HABU_OUT" >LEN s" cache" AT >LEN PROC-ENV+
    s" HABU_FIXPOINT_ENGINE" >LEN ENGINE-CANDIDATE:PATH$ >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    s" --" ARG s" app.f" AT ARG s" app-hb" AT ARG

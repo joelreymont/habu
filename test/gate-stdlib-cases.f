@@ -249,10 +249,6 @@ SUITE native-file-auto
    test/native-file-admission-e2e.f
 ;SUITE
 
-SUITE native-file-root
-   test/native-file-root-e2e.f
-;SUITE
-
 SUITE native-file-tree-share
    test/native-file-tree-share-e2e.f
 ;SUITE

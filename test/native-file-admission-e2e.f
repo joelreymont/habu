@@ -15,7 +15,7 @@ package NATIVE-FILE-ADMISSION-TEST
 : BUILD ( -- n )
    AOT-BUILDER-ENGINE:PATH$ {: maker:ptr makeru:n :}
    PROC-ARGV-ENV-RESET
-   s" HABU_BUILD_CACHE" >LEN s" cache" AT >LEN PROC-ENV+
+   s" HABU_OUT" >LEN s" cache" AT >LEN PROC-ENV+
    s" HB_TMP" >LEN ROOT$ >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    s" --" ARG s" app.f" AT ARG s" 0" ARG s" 1" ARG

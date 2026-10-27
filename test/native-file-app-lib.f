@@ -2,6 +2,7 @@
 require src/lib/string.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
+require src/lib/fs-list.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/test/subject.f
@@ -17,6 +18,9 @@ create BUILDER FS-PATH-CAP allot variable BUILDER-U
 create SRC-PATH FS-PATH-CAP allot
 create PROD-PATH FS-PATH-CAP allot
 create CACHE-PATH FS-PATH-CAP allot
+create ENGINE-NAME FS-PATH-CAP allot  variable ENGINE-U  variable ENGINES
+create ENGINE-PATH FS-PATH-CAP allot
+create OBJ-PATH FS-PATH-CAP allot
 DYNAMIC-BUFFER SOURCE u8
 variable SOURCE-START
 
@@ -34,7 +38,7 @@ variable SOURCE-START
 : OUT-ROOM ( n -- ptr u8 ) OUT-RESERVE 0 OUT ;
 : ERR-ROOM ( n -- ptr u8 ) ERR-RESERVE 0 ERR ;
 public
-\ These cases keep the parent host, builder support and cache fixed; they
+\ These cases keep the parent host, builder support and out root fixed; they
 \ mutate private app inputs. Copy the builder path before another image lookup
 \ can reuse its buffer, resolving once before staging a child process.
 : BUILDER$ ( -- ptr u8 n )
@@ -62,11 +66,13 @@ public
 : ERR$ ( -- ptr u8 n ) ERR-U @ 0= if s" " exit then 0 ERR ERR-U @ ;
 \ While DIAG? holds true, BUILD turns its builder's cache diagnostics on.
 variable DIAG?
+\ The builder writes its file objects under the out root out (HABU_OUT,
+\ tools/build-out.f).
 : BUILD ( ptr u8 n ptr u8 n ptr u8 n -- n )
-   {: source:ptr sourceu:n product:ptr productu:n cache:ptr cacheu:n :}
+   {: source:ptr sourceu:n product:ptr productu:n out:ptr outu:n :}
    BUILDER$ {: builder:ptr builderu:n :}
    PROC-ARGV-ENV-RESET
-   s" HABU_BUILD_CACHE" >LEN cache cacheu >LEN PROC-ENV+
+   s" HABU_OUT" >LEN out outu >LEN PROC-ENV+
    DIAG? @ if s" HABU_NATIVE_CACHE_DIAG" >LEN s" 1" >LEN PROC-ENV+ then
    PROC-ENV-INHERIT-MISSING
    s" --" ARG source sourceu ARG product productu ARG
@@ -79,11 +85,27 @@ variable DIAG?
    outu LEN>N OUT-U ! erru LEN>N ERR-U !
    PROGRAM PROGRAM-U @ OUT$ ERR$ rc SUBJECT:RC-TIMED-OUT
    rc ;
-\ BUILD of root/source into root/product with the object cache at root/cache.
+\ BUILD of root/source into root/product with the out root root/cache.
 : BUILD-AT ( ptr u8 n ptr u8 n ptr u8 n -- n )
    {: root:ptr rootu:n source:ptr sourceu:n product:ptr productu:n :}
    root rootu source sourceu SRC-PATH JOIN-PATH SRC-PATH swap
    root rootu product productu PROD-PATH JOIN-PATH PROD-PATH swap
    root rootu s" cache" CACHE-PATH JOIN-PATH CACHE-PATH swap
    BUILD ;
+
+private
+: NOTE-ENGINE ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   a ENGINE-NAME u BYTE-COPY u ENGINE-U !
+   1 ENGINES +! ;
+public
+\ The object directory one engine made under the out root out, <out>/<key>/obj:
+\ the root holds that engine's directory alone.
+: OBJ-DIR$ ( ptr u8 n -- ptr u8 n )
+   {: out:ptr outu:n :}
+   0 ENGINES !
+   out outu [: NOTE-ENGINE ;] FS-LIST:EACH
+   ENGINES @ 1 <> if E-FS-IO throw then
+   out outu ENGINE-NAME ENGINE-U @ ENGINE-PATH JOIN-PATH {: u:n :}
+   ENGINE-PATH u s" obj" OBJ-PATH JOIN-PATH OBJ-PATH swap ;
 ;package

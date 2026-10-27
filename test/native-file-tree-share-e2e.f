@@ -1,6 +1,6 @@
 \ File objects are keyed by tree-relative file identity and check their input
 \ rows against the tree that builds them: an identical copy of an application
-\ at another path, built into the same cache, reuses every file and compiles
+\ at another path, built into the same out root, reuses every file and compiles
 \ none, and a copy whose library value changed under the same contract
 \ recompiles the library under the shared key and reuses its caller, which
 \ then calls the recompiled value.
@@ -52,7 +52,7 @@ variable OBJS-A  variable OBJS-B  variable OBJS-C
    base baseu LIB {: body:ptr bodyu:n :}
    SRC-PATH libu body bodyu WRITE-ALL ;
 
-\ dir/app.f into dir/app-hb with the definition cache every tree shares.
+\ dir/app.f into dir/app-hb with the out root every tree shares.
 : BUILD ( ptr u8 n -- n )
    {: dir:ptr diru:n :}
    ROOT$ dir diru DIR-PATH JOIN-PATH {: u:n :}
@@ -73,15 +73,15 @@ variable OBJS-A  variable OBJS-B  variable OBJS-C
 : KEEP ( ptr u8 ptr len -- ) {: dst:ptr lenp:ptr :}
    0 >LEN lenp ! OUT$ dst CAP lenp BUF-APPEND ;
 
-\ A file object, hb-file-<64 hex>.hfo, counts once.
+\ A file object, <64 hex>.hfo, counts once.
 : NOTE-OBJ ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u s" hb-file-" STARTS-WITH? a u s" .hfo" ENDS-WITH? and
+   a u s" .hfo" ENDS-WITH? u 68 = and
    if 1 OBJ-N +! then ;
 
-\ The hb-file-*.hfo objects in the shared cache.
+\ The file objects under the shared out root.
 : OBJS ( -- n )
    0 OBJ-N !
-   s" cache" AT [: NOTE-OBJ ;] FS-LIST:EACH
+   s" cache" AT NATIVE-FILE-APP:OBJ-DIR$ [: NOTE-OBJ ;] FS-LIST:EACH
    OBJ-N @ ;
 
 : LINE ( ptr u8 n ptr u8 n -- ) {: tag:ptr tagu:n a:ptr u:n :}

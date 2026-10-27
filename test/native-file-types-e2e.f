@@ -183,7 +183,7 @@ variable EXPECT-U
 : PROBE-RUN ( ptr u8 n -- )
    {: exe:ptr exeu:n :}
    PROC-ARGV-ENV-RESET
-   s" HABU_BUILD_CACHE" >LEN s" probe-cache" AT >LEN PROC-ENV+
+   s" HABU_OUT" >LEN s" probe-cache" AT >LEN PROC-ENV+
    s" HABU_NATIVE_CACHE_DIAG" >LEN s" 1" >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    exe exeu AT PROBE-IN PROBE-IN-U @ CAPTURE SUCCESS ;
@@ -491,7 +491,7 @@ DYNAMIC-BUFFER ENTRY u8
    {: product:ptr productu:n :}
    NATIVE-FILE-APP:BUILDER$ {: builder:ptr builderu:n :}
    PROC-ARGV-ENV-RESET
-   s" HABU_BUILD_CACHE" >LEN s" cache" AT >LEN PROC-ENV+
+   s" HABU_OUT" >LEN s" cache" AT >LEN PROC-ENV+
    s" HABU_NATIVE_CACHE_DIAG" >LEN s" 1" >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    s" --" ARG s" app.f" AT ARG product productu AT ARG
@@ -509,11 +509,11 @@ DYNAMIC-BUFFER ENTRY u8
    ;MATCH ;
 
 
-\ c.f's cached object path, in PROBE-IN.
+\ c.f's object path, in PROBE-IN.
 : OBJECT-PATH ( -- ptr u8 n )
    0 PROBE-IN-U !
-   s" cache/hb-file-" IN+ SLICE-KEY 64 IN+ s" .hfo" IN+
-   PROBE-IN PROBE-IN-U @ AT ;
+   s" cache" AT NATIVE-FILE-APP:OBJ-DIR$ IN+ s" /" IN+ SLICE-KEY 64 IN+ s" .hfo" IN+
+   PROBE-IN PROBE-IN-U @ ;
 
 
 \ Read c.f's cached object into ENTRY and answer its checker slice 0's unit.

@@ -17,7 +17,7 @@ package NATIVE-FILE-STRIPPED-PATH-TEST
 : MAKER ( ptr u8 n -- n ) {: cache:ptr cacheu:n :}
    AOT-BUILDER-ENGINE:PATH$ {: maker:ptr makeru:n :}
    PROC-ARGV-ENV-RESET
-   s" HABU_BUILD_CACHE" >LEN cache cacheu AT >LEN PROC-ENV+
+   s" HABU_OUT" >LEN cache cacheu AT >LEN PROC-ENV+
    s" HB_TMP" >LEN ROOT$ >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    s" --" ARG s" app.f" AT ARG s" 0" ARG s" 1" ARG
@@ -26,6 +26,7 @@ package NATIVE-FILE-STRIPPED-PATH-TEST
 : BUILD ( ptr u8 n -- n ) {: cache:ptr cacheu:n :}
    PROC-ARGV-ENV-RESET
    s" HABU_BUILD_CACHE" >LEN cache cacheu AT >LEN PROC-ENV+
+   s" HABU_OUT" >LEN cache cacheu AT >LEN PROC-ENV+
    s" HABU_FIXPOINT_ENGINE" >LEN ENGINE-CANDIDATE:PATH$ >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    s" --load" ARG s" tools/hb-build.f" ARG s" --" ARG

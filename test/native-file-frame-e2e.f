@@ -71,12 +71,12 @@ variable FILL-POOL
    0 INPUT-U !
    S\" 1 set-tier\nNATIVE-RUNTIME:CAPTURE-PREPARE\n" IN+ ;
 
-\ Run the session INPUT holds on the builder over the build cache, with the
+\ Run the session INPUT holds on the builder with the out root cache, with the
 \ cache diagnostics on; its exit code.
 : RUN-INPUT ( -- n )
    NATIVE-FILE-APP:BUILDER$ {: builder:ptr builderu:n :}
    PROC-ARGV-ENV-RESET
-   s" HABU_BUILD_CACHE" >LEN s" cache" AT >LEN PROC-ENV+
+   s" HABU_OUT" >LEN s" cache" AT >LEN PROC-ENV+
    s" HABU_FIXPOINT_ENGINE" >LEN ENGINE-CANDIDATE:PATH$ >LEN PROC-ENV+
    s" HABU_NATIVE_CACHE_DIAG" >LEN s" 1" >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
@@ -477,12 +477,15 @@ variable FILL-POOL
    {: name:ptr nameu:n count:ptr countu:n :}
    name nameu OBJECT$ s"  inputs=" FIELD$ count countu T$= ;
 
-\ The object file the key names exists in the build cache.
-: STORED ( ptr u8 n -- )
+\ The path of the object stored under key.
+: OBJ-PATH ( ptr u8 n -- ptr u8 n )
    {: key:ptr keyu:n :}
    0 INPUT-U !
-   s" cache/hb-file-" IN+ key keyu IN+ s" .hfo" IN+
-   INPUT INPUT-U @ AT EXISTS? TTRUE ;
+   s" cache" AT NATIVE-FILE-APP:OBJ-DIR$ IN+ s" /" IN+ key keyu IN+ s" .hfo" IN+
+   INPUT INPUT-U @ ;
+
+\ The object file the key names exists.
+: STORED ( ptr u8 n -- ) OBJ-PATH EXISTS? TTRUE ;
 
 : KEEP ( ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n dest:ptr destu:n :}
@@ -518,13 +521,6 @@ variable FILL-POOL
    APP-KEY KEY-LEN IN+
    S\" \" NUNIT-FILE:READ\n14 NUNIT-FILE:SECTION$ SPLITS\n" IN+
    s" check.f" INPUT INPUT-U @ PUT ;
-
-\ The cache path of the object stored under key.
-: OBJ-PATH ( ptr u8 n -- ptr u8 n )
-   {: key:ptr keyu:n :}
-   0 INPUT-U !
-   s" cache/hb-file-" IN+ key keyu IN+ s" .hfo" IN+
-   INPUT INPUT-U @ AT ;
 
 \ Keep the object stored under key, past its cache entry head, as file name.
 : KEEP-OBJ ( ptr u8 n ptr u8 n -- )

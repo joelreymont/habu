@@ -22,12 +22,12 @@ variable DIAG
 DYNAMIC-BUFFER COLD-PRODUCT u8
 DYNAMIC-BUFFER WARM-PRODUCT u8
 
-\ A saved build of root/app into root/product with root/cache as its cache.
+\ A saved build of root/app into root/product with root/cache as its out root.
 : BUILD-IN ( ptr u8 n ptr u8 n ptr u8 n -- n )
    {: app:ptr appu:n product:ptr productu:n cache:ptr cacheu:n :}
    NATIVE-FILE-APP:BUILDER$ {: builder:ptr builderu:n :}
    PROC-ARGV-ENV-RESET
-   s" HABU_BUILD_CACHE" >LEN cache cacheu AT >LEN PROC-ENV+
+   s" HABU_OUT" >LEN cache cacheu AT >LEN PROC-ENV+
    s" HABU_FIXPOINT_ENGINE" >LEN ENGINE-CANDIDATE:PATH$ >LEN PROC-ENV+
    EDIT @ if s" HABU_REVIEW_EDIT" >LEN s" 1" >LEN PROC-ENV+ then
    PROC-ENV-INHERIT-MISSING
@@ -96,7 +96,7 @@ variable REMOVED
    S\" \" s\" repl\" NDEF-CACHE:LOAD\n" INPUT CAP INPUT-U BUF-APPEND
    tail tailu INPUT CAP INPUT-U BUF-APPEND
    PROC-ARGV-ENV-RESET
-   s" HABU_BUILD_CACHE" >LEN cache cacheu AT >LEN PROC-ENV+
+   s" HABU_OUT" >LEN cache cacheu AT >LEN PROC-ENV+
    s" HABU_FIXPOINT_ENGINE" >LEN ENGINE-CANDIDATE:PATH$ >LEN PROC-ENV+
    DIAG @ if s" HABU_NATIVE_CACHE_DIAG" >LEN s" 1" >LEN PROC-ENV+ then
    PROC-ENV-INHERIT-MISSING

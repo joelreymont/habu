@@ -28,7 +28,7 @@ variable DIAG-START
 : STAGE-BUILD ( ptr u8 n ptr u8 n -- )
    {: cache:ptr cacheu:n engine:ptr engineu:n :}
    PROC-ARGV-ENV-RESET
-   s" HABU_BUILD_CACHE" >LEN cache cacheu >LEN PROC-ENV+
+   s" HABU_OUT" >LEN cache cacheu >LEN PROC-ENV+
    s" HABU_UNDER_TEST" >LEN engine engineu >LEN PROC-ENV+
    s" HABU_FIXPOINT_ENGINE" >LEN engine engineu >LEN PROC-ENV+
    s" HABU_NATIVE_CACHE_DIAG" >LEN
@@ -151,19 +151,19 @@ variable HISTORY-LIB-NEW
 : HISTORY-FILE ( ptr u8 n -- )
    {: path:ptr pathu:n :}
    path pathu BASENAME {: a:ptr u:n :}
-   a u s" hb-file-" STARTS-WITH? a u s" .hfo" ENDS-WITH? and u 76 = and if
+   a u s" .hfo" ENDS-WITH? u 68 = and if
       1 HISTORY-N +!
       path pathu FILE-SIZE {: size:n :}
       size CAP > if E-FS-IO throw then
       path pathu HISTORY-OBJ size READ-ALL size <> if E-FS-IO throw then
-      a 8 + 64 HISTORY-LIB-KEY 64 STR= if
+      a 64 HISTORY-LIB-KEY 64 STR= if
          size HISTORY-LIB HISTORY-LIB-U HISTORY-LIB-NEW HISTORY-KEEP
       else
          size HISTORY-APP HISTORY-APP-U HISTORY-APP-NEW HISTORY-KEEP
       then
    then ;
 
-\ The file objects in the history cache: one hb-file-<64 hex>.hfo each.
+\ The file objects under the history out root: one <64 hex>.hfo each.
 : HISTORY-ENTRIES ( -- n )
    0 HISTORY-N ! 0 HISTORY-APP-NEW ! 0 HISTORY-LIB-NEW !
    s" history-cache" AT ['] HISTORY-FILE WALK-FILES
