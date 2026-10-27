@@ -90,18 +90,30 @@ variable RC
    s" build.out" AT-A OUT OUT-U @ WRITE-ALL
    s" build.err" AT-A ERR ERR-U @ WRITE-ALL ;
 
+\ The last build refused at the registry gate and left no product.
+: REFUSED ( -- )
+   RC @ 76 <> if OUT OUT-U @ type ERR ERR-U @ type then
+   RC @ 76 T=
+   OUT OUT-U @ S\" captured runtime leaves the dispatch cell empty for prefix-provided primitive evaluate-range\n" CONTAINS? TTRUE
+   ERR ERR-U @ s" prims: prefix-provided row not in the captured runtime" CONTAINS? TTRUE
+   s" the refused build promotes no product" T-LABEL
+   s" hb" AT-A FILE? 0= TTRUE ;
+
 public
 
 : RUN ( -- )
    T-RESET
    SETUP BUILD
    s" a build whose runtime leaves the evaluate cell empty refuses 76" T-LABEL
-   RC @ 76 <> if OUT OUT-U @ type ERR ERR-U @ type then
-   RC @ 76 T=
-   OUT OUT-U @ S\" captured runtime leaves the dispatch cell empty for prefix-provided primitive evaluate-range\n" CONTAINS? TTRUE
-   ERR ERR-U @ s" prims: prefix-provided row not in the captured runtime" CONTAINS? TTRUE
-   s" the refused build promotes no product" T-LABEL
-   s" hb" AT-A FILE? 0= TTRUE
+   REFUSED
+   \ A second build process against the same build cache: the warm cache is
+   \ the boundary under test. A file object the first build stored and this
+   \ one reused under the x86-64 shadow would leave its records without
+   \ routines, and the link would refuse 74 short of the registry gate
+   \ (tools/native-definition-cache.f OBJECT-OPEN, shadow-open).
+   BUILD
+   s" the same build against the same build cache refuses 76" T-LABEL
+   REFUSED
    T-REPORT
    s" prefix-provided-unfilled tree: " type ROOT$ type cr ;
 

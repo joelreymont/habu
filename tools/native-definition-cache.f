@@ -1391,6 +1391,11 @@ variable TEE-ERR
    then
    \ A hit would skip what another hook refuses, so the file compiles live.
    CHECK-STATE 2 = if s" checker-hook" NUNIT-OBJECT:FILE-REFUSE then
+   \ An open shadow files a second machine's routine for each definition as
+   \ it compiles (src/compiler/native/shadow.f). A hit installs the records
+   \ without compiling them and an object carries no shadow routine, so the
+   \ link of a reused file's records would find none: the file compiles live.
+   NSHADOW:OPEN? if s" shadow-open" NUNIT-OBJECT:FILE-REFUSE then
    BIND-RETIRE ;
 
 \ The first 16 hex digits of SHA-256 over the result digests of the innermost
