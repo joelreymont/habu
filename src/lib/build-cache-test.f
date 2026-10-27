@@ -12,9 +12,6 @@ require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/build-cache.f
-require src/lib/json-write.f
-require src/lib/float.f
-require src/lib/json-read.f
 require src/lib/test/mapped.f
 require tools/hb-build-report.f
 
@@ -42,14 +39,8 @@ create OUT CAP allot
 create ERR CAP allot
 create REPORT-BYTES
    65 c, 32 c, 9 c, 34 c, 92 c, 10 c, 66 c,
-create REPORT-OUT FS-PATH-CAP allot
-TYPED-VARIABLE REPORT-JSON-STATE JR:cursor
 create MAX-ROOT MAX-ROOT-U allot
 create OVER-ROOT OVER-ROOT-U allot
-
-\ The quoted-path fixture below owns the writer's bytes; json-write holds none.
-CAP BUFFER: QUOTE-BUF
-TYPED-VARIABLE QUOTE-WRITER JSON-WRITE:writer
 
 variable ROOT-U
 variable A-U
@@ -339,37 +330,6 @@ $7E constant ROOT-C
    BUILD-CACHE:SOURCE BUILD-CACHE:SOURCE$ s" explicit" T$=
    BUILD-CACHE:ROOT$ A$ T$= ;
 
-: CHECK-REPORT ( -- )
-   BUILD-CACHE:RESET
-   F$ BUILD-CACHE:ROOT!
-   BUILD-CACHE:ROOT$ BUILD-CACHE:SOURCE
-   0 0= 0 0= 0= 0 0= 0 0= 0 0= 0= 42 HB-BUILD:CAPTURE
-   HB-BUILD:REPORT$ {: a:ptr u:n :}
-   a u s\" \qschema\q:\qhb-build-report\q" CONTAINS? TTRUE
-   a u s\" \qcache_root\q" CONTAINS? TTRUE
-   a u s\" \qcache_source\q:\qexplicit\q" CONTAINS? TTRUE
-   a u s\" \qartifact_hit\q:true" CONTAINS? TTRUE
-   a u s\" \qobject_hit\q:false" CONTAINS? TTRUE
-   a u s\" \qmaker_hit\q:true" CONTAINS? TTRUE
-   a u s\" \qmaker_built\q:true" CONTAINS? TTRUE
-   a u s\" \qmaker_ran\q:false" CONTAINS? TTRUE
-   a u s\" \qelapsed_ns\q:42" CONTAINS? TTRUE
-   HB-BUILD:CACHE-ROOT$ F$ T$=
-   HB-BUILD:CACHE-SOURCE BUILD-CACHE:SOURCE$ s" explicit" T$=
-   HB-BUILD:ARTIFACT-HIT? TTRUE
-   HB-BUILD:OBJECT-HIT? TFALSE
-   HB-BUILD:MAKER-HIT? TTRUE
-   HB-BUILD:MAKER-BUILT? TTRUE
-   HB-BUILD:MAKER-RAN? TFALSE
-   HB-BUILD:ELAPSED-NS 42 T=
-   REPORT-JSON-STATE a u JR:INIT
-   JR:NEXT JR:T-OBJ T=
-   s" cache_root" JR:FIND-KEY TTRUE
-   JR:TOKEN JR:T-STR T=
-   REPORT-OUT FS-PATH-CAP JR:STR {: rootu:n :}
-   REPORT-OUT rootu F$ T$=
-   JR:CLOSE ;
-
 \ A longer root grows the select buffer; each growth must leave exactly ONE live
 \ span, and RESET must free the span. The gate loads this file after
 \ tools/hb-build-test.f in one process, which has already selected a root longer
@@ -402,11 +362,6 @@ $7E constant ROOT-C
    BUILD-CACHE:SELECTED-ROOT$ A$ T$=
    BUILD-CACHE:SELECTED-SOURCE BUILD-CACHE:SOURCE$ s" explicit" T$=
    BUILD-CACHE:CAUSE E-FS-IO T=
-   HB-BUILD:PATH-ERROR$ {: json:ptr jsonu:n :}
-   json jsonu s\" \qcode\q:\qE-BUILD-PATH\q" CONTAINS? TTRUE
-   json jsonu s\" \qcache_source\q:\qexplicit\q" CONTAINS? TTRUE
-   json jsonu s\" \qcause\q:\qE-FS-IO\q" CONTAINS? TTRUE
-   HB-BUILD:PATH-ERROR-TEXT$ s" hb-build: schema=hb-build-error version=1 code=E-BUILD-PATH cache_selected=true" CONTAINS? TTRUE
    A$ MODE-0700 CHMOD-MODE ;
 
 : CHECK-RETRY-CLEARS-CAUSE ( -- )
@@ -422,20 +377,6 @@ $7E constant ROOT-C
    BUILD-CACHE:CAUSE 0 T=
    BUILD-CACHE:CAUSE$ s" none" T$= ;
 
-: CHECK-ADVERSARIAL-TEXT ( -- )
-   BUILD-CACHE:RESET
-   F$ BUILD-CACHE:ROOT!
-   F$ MODE-0222 CHMOD-MODE
-   [: BUILD-CACHE:RESOLVE drop 2drop ;] catch E-BUILD-PATH T=
-   HB-BUILD:PATH-ERROR-TEXT$ {: text:ptr textu:n :}
-   text textu STR-LF COUNT-CHAR 0 T=
-   text textu STR-TAB COUNT-CHAR 0 T=
-   text textu s" cache_selected=true" CONTAINS? TTRUE
-   QUOTE-WRITER QUOTE-BUF CAP JSON-WRITE:OPEN F$ JSON-WRITE:STRING
-   JSON-WRITE:$ {: qa:ptr qu:n :}
-   text textu qa qu CONTAINS? TTRUE
-   F$ MODE-0700 CHMOD-MODE ;
-
 : CHECK-OVER-ROOT-EVIDENCE ( -- )
    BUILD-CACHE:RESET
    [: OVER-ROOT OVER-ROOT-U BUILD-CACHE:ROOT! ;] catch E-BUILD-PATH T=
@@ -448,20 +389,13 @@ $7E constant ROOT-C
    BUILD-CACHE:RESET
    MAX-ROOT MAX-ROOT-U BUILD-CACHE:ROOT!
    [: BUILD-CACHE:RESOLVE drop 2drop ;] catch E-BUILD-PATH T=
-   BUILD-CACHE:SELECTED-ROOT$ MAX-ROOT MAX-ROOT-U T$=
-   HB-BUILD:PATH-ERROR-TEXT$ {: text:ptr textu:n :}
-   textu MAX-ROOT-U > TTRUE
-   text textu ROOT-C COUNT-CHAR MAX-ROOT-U T=
-   text textu s" cause=E-FS-IO" CONTAINS? TTRUE ;
+   BUILD-CACHE:SELECTED-ROOT$ MAX-ROOT MAX-ROOT-U T$= ;
 
 : CHECK-REPORT-LIFECYCLE ( -- )
    HB-BUILD:RESET
    HB-BUILD:VALID? TFALSE
-   [: HB-BUILD:CACHE-ROOT$ 2drop ;] catch E-BUILD-STATUS T=
-   BUILD-CACHE:RESET
-   F$ BUILD-CACHE:ROOT!
-   F$ BUILD-CACHE:SOURCE
-   0 0= 0 0= 0= 0 0= 0 0= 0 0= 0= 42 HB-BUILD:CAPTURE
+   [: HB-BUILD:MAKER-HIT? drop ;] catch E-BUILD-STATUS T=
+   0 0= 0 0= 0 0= 0= 42 HB-BUILD:CAPTURE
    HB-BUILD:VALID? TTRUE
    HB-BUILD:RESET
    HB-BUILD:VALID? TFALSE
@@ -484,10 +418,8 @@ $7E constant ROOT-C
    CHECK-CREATE-FAIL
    CHECK-CONCURRENT-CREATE
    CHECK-OVERRIDE
-   CHECK-REPORT
    CHECK-ERROR-REPORT
    CHECK-RETRY-CLEARS-CAUSE
-   CHECK-ADVERSARIAL-TEXT
    CHECK-OVER-ROOT-EVIDENCE
    CHECK-LONG-ERROR-TEXT
    CHECK-REPORT-LIFECYCLE

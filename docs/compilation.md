@@ -104,12 +104,10 @@ backend keeps the in-process native driver so its live definitions remain
 available.
 
 An engine build reads the selected files through the native FILE session and
-uses its existing definition cache. It records the source buffers and path
-queries consumed by that session, then the late image writer's inputs. A
-repeat invocation with matching inputs restores the complete image and `.map`
-sidecar from the build cache. An edit rebuilds the image; definitions whose
-dependencies still match may reuse their cached native emission. The ordinary
-loader still executes file-level initialization during a rebuild.
+uses its existing definition cache: every invocation writes the image and its
+`.map` sidecar, and definitions whose dependencies still match may reuse their
+cached native emission. The ordinary loader still executes file-level
+initialization during the build.
 Target compilation and capture run in the native build scope. Once the capture
 owns its bytes, the uncaptured source writer loads at the host's JIT tier on
 AArch64 (native tier on x86-64), then restores the previous tier. Its definitions

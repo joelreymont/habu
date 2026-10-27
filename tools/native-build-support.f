@@ -37,7 +37,8 @@ public
 : RUN ( -- )
    RESTORE-ROOT
    \ Target callbacks own their native scopes; the transient writer has none.
-   NATIVE-BUILD:RUN ;
+   \ hb-build drives this image and reports the installed output itself.
+   false NATIVE-BUILD:RUN ;
 
 ;package
 

@@ -20,12 +20,9 @@
 \ publish by rename.
 \
 \ EVERY ENTRY IS KEYED. A writer publishes <prefix><key><suffix>, the key 64 hex
-\ digits covering what the entry was made from: hb-build its artifacts,
-\ hb-build-out-<key> (tools/hb-build-lib.f), and its object cache, <key>.hbo and
-\ <key>.idx (src/lib/object-resolve.f); the gate its keyed images (test/keyed-image.f,
-\ test/cold-engine.f, test/whitebox-engine.f). A key moves with every edit to what it covers, so
-\ each publish lands beside the entries it replaces, and nothing but PRUNE
-\ removes one.
+\ digits covering what the entry was made from. A key moves with every edit to
+\ what it covers, so each publish lands beside the entries it replaces, and
+\ nothing but PRUNE removes one.
 \
 \ AN ENTRY GOES ONCE NOTHING HAS USED IT FOR A DAY. Builds on other trees share
 \ the cache under keys of their own, and some run an entry in place, so keeping
@@ -37,12 +34,8 @@
 \ uses it again can lose it. When a prune renames the entry away before USED
 \ dates it, USED answers FALSE and the caller builds the entry again. A prune
 \ whose STALE? read the entry before USED dated it still renames it after, so
-\ USED answers TRUE and the entry is gone when the caller uses it. The file
-\ families take a use that fails while their entry is gone as a miss: the
-\ hb-build artifact copy (tools/hb-build-lib.f), the object and its index
-\ record (src/lib/object-resolve.f, src/lib/object-index.f). A keyed image is run or
-\ copied by path, so that interleaving fails the row that uses it, and the next
-\ run builds the image again.
+\ USED answers TRUE and the entry is gone when the caller uses it, so a caller
+\ takes a use that fails while its entry is gone as a miss.
 \
 \ A FAMILY'S LEFTOVERS GO THE SAME WAY. A build killed before its own cleanup
 \ (the gate pool kills a row at its deadline) leaves what it was writing: the

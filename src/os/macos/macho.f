@@ -75,9 +75,7 @@ MPAGE DATA-CONST-SIZE + MACHO-PAGE + constant MACHO-IMAGE-MAX
 \
 \ THE FOUR FORMAT NUMBERS ARE A MIRROR OF sign2.f AND NOTHING CHECKS THE MIRROR.
 \ They cannot be read from their owner here because sign2.f loads after this file
-\ and needs MACHO-SIG-MAX at load; and a fixture that ran sign2.f's own SB-SIZE at
-\ this worst case could only be written in macOS-only names, which the shared
-\ tools/object-image-test.f also runs on Linux. So the mirror is stated, not
+\ and needs MACHO-SIG-MAX at load. So the mirror is stated, not
 \ enforced: if sign2.f's CS-PAGE, CS-HASH or CD-HDR ever moved without this line,
 \ the failure is the loud 73 die below or the 75 image-cursor bounds throw, never
 \ a bad image. A dot for the cross-check is owed.

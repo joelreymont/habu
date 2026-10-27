@@ -1,5 +1,5 @@
-\ A maker that compiled the original runtime keeps that producer key when the
-\ runtime source changes before object storage. The next build takes the edit.
+\ A maker that compiled the original runtime installs that runtime when the
+\ runtime source changes after the maker ran. The next build takes the edit.
 \ Run via hb-build-producer-cache-test.f in its private copy of the tree, after
 \ that copy's builds.
 
@@ -39,16 +39,12 @@ public
    s" app.f" s" app" HBB-PATHS!
    HBB-PREPARE-TMP
    HBB-BUILD-BEGIN
-   HBB-PREPARE-ARTIFACT-CACHE
+   HBB-PREPARE-AOT
    HBB-RUN-MAKER
    HBT-RACE-CHANGE-RT
-   HBB-STORE-OBJECT
    HBB-INSTALL-OUT
-   HBB-INSTALL-ARTIFACT
    s" hb: cannot map guarded VM stack" s" hb: REVIEW map guarded VM stack" HBT-RACE-IMAGE-HAS
    HBB-BUILD
-   HBB-ARTIFACT-HIT @ 0= TTRUE
-   HBB-OBJECT-HIT @ 0= TTRUE
    HBB-MAKER-RUN @ 0<> TTRUE
    s" hb: REVIEW map guarded VM stack" s" hb: cannot map guarded VM stack" HBT-RACE-IMAGE-HAS
    HBB-CLEANUP

@@ -1,8 +1,8 @@
 \ hb-build-stripped-cache-test.f - checked fixture for tools/hb-build-lib.f:
 \ a program that allocates at run time links and runs, two links of it are
-\ the same bytes and so is an object hit's relink of
-\ it, and a declared cell caching a baked table's address is mapped to the
-\ carried copy, or refused when no claim names the table.
+\ the same bytes, a refused publication leaves the prior map, and a declared
+\ cell caching a baked table's address is mapped to the carried copy, or
+\ refused when no claim names the table.
 \ tools/hb-build-test-lib.f lists the other hb-build rows.
 \ Run: bin/hb --load tools/hb-build-stripped-cache-test.f
 
@@ -18,9 +18,7 @@ package HB-BUILD-CLI
 
 create HBT-MAP-PATH FS-PATH-CAP allot
 create HBT-MAP-PATH2 FS-PATH-CAP allot
-create HBT-OBJ-MAP-PATH FS-PATH-CAP allot
 variable HBT-MAP-PATH-U
-variable HBT-OBJ-MAP-PATH-U
 DYNAMIC-BUFFER HBT-MAP-TEXT u8
 create HBT-DONOR-BUF FS-PATH-CAP allot
 create HBT-DONOR-OUT-BUF FS-PATH-CAP allot
@@ -43,9 +41,6 @@ variable HBT-DONOR-OUT-U
    a HBT-MAP-PATH2 u BYTE-COPY
    s" .map" drop HBT-MAP-PATH2 u + 4 BYTE-COPY
    HBT-MAP-PATH2 u 4 + ;
-
-: HBT-OBJ-MAP$ ( -- ptr u8 n )
-   HBT-OBJ-MAP-PATH HBT-OBJ-MAP-PATH-U @ ;
 
 : HBT-CODE-ATTR ( ptr u8 n -- )
    {: a:ptr u:n :}
@@ -150,21 +145,10 @@ variable HBT-DONOR-OUT-U
    HBT-MAPL-OUT2 bbuf bcap READ-ALL {: bu:n :}
    abuf au bbuf bu HBT-DIFF-AT -1 T= ;
 
-\ The last build's artifact and the object it stored or hit, removed, so the
-\ next build of the same source is a link: the resolver misses when the
-\ indexed object is gone, and the link rewrites the index and both maps.
-: HBT-FORGET-BUILD ( -- )
-   HBB-ARTIFACT$ HBT-REMOVE-FILE?
-   HBB-OBJECT-PATH$ HBT-REMOVE-FILE? ;
-
 \ ... and TWO LINKS OF IT ARE THE SAME BYTES. This is the equality the mapped
 \ cell broke: three stripped builds of Tender's server differed in the middle
-\ bytes of eight window cells and nowhere else. With the first link's artifact
-\ and object in the cache the second build is no link at all - the cache
-\ answers it with a copy of the first, and equal bytes would prove nothing
-\ about the linker - so HBT-FORGET-BUILD removes them, and the maker having
-\ run is asserted, not assumed. The second link stays for
-\ HBT-STRIPPED-OBJECT-RELINK.
+\ bytes of eight window cells and nowhere else. Every build runs its maker, and
+\ that is asserted, not assumed.
 : HBT-STRIPPED-SAME-TWICE ( -- )
    HBT-MAPL-SRC HBT-MAPL-SRC$ WRITE-ALL
    HBT-MAPL-OUT HBT-REMOVE-FILE?
@@ -173,36 +157,17 @@ variable HBT-DONOR-OUT-U
    HBT-RUN-MAPL
    HBT-MAPL-OUT HBT-CODE-MAPPED
    HBT-MAPL-ATTR
-   HBT-MAPL-SRC HBT-MAPL-OUT HBT-HBB-PREPARE-AOT HBT-HBB-BUILD-OUT
-   HBB-ARTIFACT-HIT @ 0 <> TTRUE
-   HBT-MAPL-OUT HBT-CODE-MAPPED
-   HBB-ARTIFACT$ HBT-MAP$ HBT-REMOVE-FILE?
-   HBT-MAPL-SRC HBT-MAPL-OUT HBT-HBB-PREPARE-AOT HBT-HBB-BUILD-OUT
-   HBB-ARTIFACT-HIT @ 0= TTRUE
-   HBB-OBJECT-HIT @ 0 <> TTRUE
-   HBT-MAPL-OUT HBT-CODE-MAPPED
-   HBB-ARTIFACT$ HBT-MAP$ s" stale" WRITE-ALL
-   HBT-MAPL-SRC HBT-MAPL-OUT HBT-HBB-PREPARE-AOT HBT-HBB-BUILD-OUT
-   HBB-ARTIFACT-HIT @ 0= TTRUE
-   HBB-OBJECT-HIT @ 0 <> TTRUE
-   HBT-MAPL-OUT HBT-CODE-MAPPED
-   HBT-FORGET-BUILD
    HBT-MAPL-SRC HBT-MAPL-OUT2 HBT-HBB-PREPARE-AOT HBT-HBB-BUILD-OUT
    HBB-MAKER-RUN @ 0 <> TTRUE
    HBT-MAPL-OUT2 HBT-CODE-MAPPED
    HBT-MAPL-SAME-BYTES
-   HBT-MAPL-OUT HBT-REMOVE-FILE? ;
+   HBT-MAPL-OUT HBT-REMOVE-FILE?
+   HBT-MAPL-OUT2 HBT-REMOVE-FILE? ;
 
-\ ... and AN OBJECT HIT WRITES THE BYTES THE MAKER WROTE. The second link above
-\ is a fresh build: its maker wrote HBT-MAPL-OUT2 and the build stored the
-\ object text in the cache. With its artifact entry gone, the same
-\ source misses the artifact and hits the object, and this process relinks it
-\ through tools/object-image.f OBJIMG:WRITE. One source, target and engine are
-\ one image whichever cache path writes it. A relink signed under an identifier
-\ of its own (`hb-obj`, where the maker signs `hb-prog`) was one byte shorter,
-\ differing in the code signature and the two header fields that size it.
-: HBT-STRIPPED-OBJECT-RENAME-FAILS ( -- )
-   HBT-ROOT s" object-blocked" HBT-DONOR-OUT-BUF HBT-DONOR-OUT-U HBT-PATH!
+\ A directory at -o refuses the install's rename (HBB-INSTALL-OUT): the build
+\ throws E-BUILD-INSTALL and the map beside -o keeps its prior bytes.
+: HBT-STRIPPED-RENAME-FAILS ( -- )
+   HBT-ROOT s" install-blocked" HBT-DONOR-OUT-BUF HBT-DONOR-OUT-U HBT-PATH!
    HBT-DONOR-OUT$ MAKE-DIR
    HBT-DONOR-OUT$ HBT-MAP$ s" previous map" WRITE-ALL
    HBT-MAPL-SRC HBT-DONOR-OUT$ HBT-HBB-PREPARE-AOT
@@ -215,30 +180,6 @@ variable HBT-DONOR-OUT-U
    0 HBT-MAP-TEXT BYTE-VIEW size s" previous map" T$=
    path pathu REMOVE-FILE
    HBT-DONOR-OUT$ REMOVE-DIR ;
-
-: HBT-STRIPPED-OBJECT-RELINK ( -- )
-   HBT-REMOVE-ARTIFACT
-   \ A refused object-hit publication must leave the prior map untouched.
-   HBT-STRIPPED-OBJECT-RENAME-FAILS
-   HBT-MAPL-SRC HBT-MAPL-OUT HBT-HBB-PREPARE-AOT HBT-HBB-BUILD-OUT
-   HBB-OBJECT-HIT @ 0 <> TTRUE
-   HBB-MAKER-RUN @ 0= TTRUE
-   HBT-MAPL-OUT HBT-CODE-MAPPED
-   HBB-OBJECT-PATH$ HBT-MAP2$ HBT-OBJ-MAP-PATH HBT-OBJ-MAP-PATH-U HBT-COPY!
-   HBT-REMOVE-ARTIFACT
-   HBT-MAPL-SAME-BYTES
-   HBT-MAPL-OUT HBT-REMOVE-FILE?
-   HBT-MAPL-OUT2 HBT-REMOVE-FILE? ;
-
-\ A cached object and a map from another valid image must miss the object
-\ cache. The maker then publishes a new executable and matching sidecar.
-: HBT-STRIPPED-OBJECT-MAP-CORRUPTION ( -- )
-   HBT-MAPL-SRC HBT-MAPL-OUT HBT-HBB-PREPARE-AOT
-   HBT-PTRC-OUT HBT-MAP$ HBT-OBJ-MAP$ COPY-FILE-STREAM
-   HBT-HBB-BUILD-OUT
-   HBB-OBJECT-HIT @ 0= TTRUE
-   HBB-MAKER-RUN @ 0<> TTRUE
-   HBT-MAPL-OUT HBT-CODE-MAPPED ;
 
 \ Select a symlink whose target has a map, but whose own sibling map is absent.
 \ Only the selected sibling supplies attribution: restoring it must invalidate
@@ -261,7 +202,6 @@ variable HBT-DONOR-OUT-U
    HBT-MAPL-SRC HBT-DONOR-OUT$ HBT-HBB-PREPARE-AOT
    HBT-DONOR$ HBT-ENGINE!
    HBT-HBB-BUILD-OUT
-   HBB-ARTIFACT-HIT @ 0= TTRUE
    HBB-MAKER-RUN @ 0<> TTRUE
    HBT-DONOR-OUT$ HBT-CODE-MAPPED ;
 
@@ -276,7 +216,6 @@ variable HBT-DONOR-OUT-U
    HBT-PTRC-OUT FILE? TTRUE
    \ The carried DATA table needs no baked word.
    HBT-PTRC-OUT HBT-CODE-ATTR
-   HBT-STRIPPED-OBJECT-MAP-CORRUPTION
    HBT-MAPL-OUT2 HBT-MAP$ HBT-PTRC-OUT HBT-MAP2$ COPY-FILE-STREAM
    HBT-PTRC-OUT IMAGE-SIZE:MEASURE
    IMAGE-SIZE:ATTR? TFALSE
@@ -307,7 +246,7 @@ public
    AOT-BUILDER-ENGINE:ENSURE ENGINE-CANDIDATE:PATH$ HBT-KEYED!
    HBT-PREPARE
    HBT-STRIPPED-SAME-TWICE
-   HBT-STRIPPED-OBJECT-RELINK
+   HBT-STRIPPED-RENAME-FAILS
    HBT-DONOR-MAP-KEY
    HBT-STRIPPED-CACHED-CARRIED
    HBT-STRIPPED-CACHED-UNOWNED

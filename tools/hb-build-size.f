@@ -1,6 +1,5 @@
 \ hb-build-size.f - image reports loaded only for explicit report options.
 
-require src/lib/build-cache.f
 require tools/hb-build-report.f
 require tools/hb-build-lib.f
 require tools/image-size-lib.f
@@ -21,13 +20,6 @@ package HB-BUILD-CLI
    HBB-OUT$ IMAGE-SIZE:.SUMMARY ;
 
 : HBB-CAPTURE-REPORT ( -- )
-   HBB-REPL @ if
-      NULL$ BUILD--CACHE-SOURCE:NONE
-   else
-      BUILD-CACHE:ROOT$ BUILD-CACHE:SOURCE
-   then
-   HBB-ARTIFACT-HIT @ 0 <>
-   HBB-OBJECT-HIT @ 0 <>
    HBB-MAKER-HIT @ 0 <>
    HBB-MAKER-BUILD @ 0 <>
    HBB-MAKER-RUN @ 0 <>

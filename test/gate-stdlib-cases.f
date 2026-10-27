@@ -212,8 +212,7 @@ SUITE hb-build-aot-inputs
    tools/hb-build-aot-inputs-test.f
 ;SUITE
 
-SUITE hb-build-aot-cache
-   tools/hb-build-aot-cache-test.f
+SUITE hb-build-producer-cache
    tools/hb-build-producer-cache-test.f
    src/lib/codesign-test.f
 ;SUITE
@@ -329,10 +328,6 @@ WHITEBOX-SUITE checker-scan-index
 
 WHITEBOX-SUITE checker-scan-index-rollback
    test/checker-scan-index-rollback-suite.f
-;SUITE
-
-SUITE hb-build-retain
-   tools/hb-build-retain-test.f
 ;SUITE
 
 SUITE build-fixpoint-source
@@ -1037,26 +1032,6 @@ SUITE input-underflow-refusals
 
 SUITE base-pointer-arith-refusals
    test/compiler/base-pointer-arith-refusals.f
-;SUITE
-
-SUITE object-record-codec
-   src/lib/object-test.f
-;SUITE
-
-SUITE object-cache-store
-   src/lib/object-cache-test.f
-;SUITE
-
-SUITE object-source-index
-   src/lib/object-index-test.f
-;SUITE
-
-SUITE object-source-resolver
-   src/lib/object-resolve-test.f
-;SUITE
-
-SUITE object-image-writer
-   tools/object-image-test.f
 ;SUITE
 
 SUITE proc-capture-under-signals

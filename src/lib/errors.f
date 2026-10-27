@@ -200,13 +200,6 @@
 -3613 constant E-TASK-EXIT-TABLE    \ no cleanup row left: more cleanups registered than this image holds
 -3614 constant E-TASK-SLEEP-MS      \ TASK:SLEEP duration below zero
 
-\ Object/linker records: -3700..-3799
--3700 constant E-OBJ-FIRST
--3799 constant E-OBJ-LAST
--3700 constant E-OBJ-SCHEMA
--3701 constant E-OBJ-CAPACITY
--3702 constant E-OBJ-FIELD
-
 \ Engine self-identity: -3800..-3899
 -3800 constant E-ENGINE-FIRST
 -3899 constant E-ENGINE-LAST

@@ -194,8 +194,7 @@ variable RC
    PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE CAPTURE
    RC @ 0<> if OUT CAP-OUT-U @ type ERR CAP-ERR-U @ type then
    RC @ 0 T=
-   OUT CAP-OUT-U @ S\" \"maker_ran\":true" CONTAINS? TTRUE
-   OUT CAP-OUT-U @ S\" \"artifact_hit\":false" CONTAINS? TTRUE ;
+   OUT CAP-OUT-U @ S\" \"maker_ran\":true" CONTAINS? TTRUE ;
 
 : IMAGE-HAS ( ptr u8 n ptr u8 n -- ) {: yes:ptr yesu:n no:ptr nou:n :}
    OUT$ IMAGE IMAGE-CAP READ-ALL {: u:n :}

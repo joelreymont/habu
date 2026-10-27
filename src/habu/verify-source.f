@@ -769,7 +769,7 @@ variable RETIRED
 \ such condition: the engine answers HB-TARGET-LINUX?, HB-TARGET-MACOS? and
 \ HB-TARGET-LINUX-X86-64? one way, so the arm its answer runs stays on the
 \ straight line and the other arm never runs (ARM-TOKEN?, DEAD-TOKEN).
-\ tools/object-image.f loads its target's sys.f that way, and the three
+\ tools/native-emit-arm.f LOAD-SYS loads its target's sys.f that way, and the three
 \ targets' files define the same words. A source cannot define a predicate's
 \ spelling (tools/reserved-name-lint-core.f reserves it), so the answer is the
 \ engine's. The path is the literal right before the loader word, the bytes the

@@ -19,7 +19,7 @@ require src/arch/arm64/icode.f
 require src/arch/arm64/mnem.f
 
 \ No static require can name a target's file, so the emission that needs one
-\ selects it, as src/habu/app-image-core.f and tools/object-image.f do. The
+\ selects it, as src/habu/app-image-core.f does. The
 \ system calls come first: this file's startup code, src/habu/rt.f and
 \ src/habu/crash.f emit through SYS, and the target's call numbers.
 package AOT-LINK

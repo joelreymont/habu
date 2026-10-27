@@ -2,8 +2,8 @@
 \ tree, the fixture sources, HBT-PREPARE, the helpers that run hb-build and the
 \ build report check. It defines no MAIN; each row file loads it and runs the
 \ groups it owns:
-\   tools/hb-build-test.f                     CLI REPL build and report, cache
-\                                             keys, rejected inputs, image size,
+\   tools/hb-build-test.f                     CLI REPL build and report,
+\                                             rejected inputs, image size,
 \                                             large sources, literal bodies
 \   tools/hb-build-cli-errors-test.f          cache path error, refused paths
 \                                             and entry names, MAIN effects
@@ -11,8 +11,6 @@
 \   tools/hb-build-timeout-env-test.f         deadline override validation
 \   tools/hb-build-timeout-json-test.f        empty override, JSON refusal
 \   tools/hb-build-aot-test.f                 AOT build and run, one program each
-\   tools/hb-build-aot-cache-test.f           object cache and its keys, failed
-\                                             publication
 \   tools/hb-build-aot-inputs-test.f          observed source and environment inputs
 \   tools/hb-build-stripped-test.f            library state, a fork, engine cells,
 \                                             quotation fields, ptr mark
@@ -42,12 +40,7 @@ require src/lib/build-cache.f
 require src/lib/json-write.f
 require src/lib/float.f
 require src/lib/json-read.f
-require src/lib/object.f
-require src/lib/object-cache.f
-require src/lib/object-index.f
-require src/lib/object-resolve.f
 require tools/build-fixpoint.f
-require tools/object-image.f
 require tools/hb-build-report.f
 require tools/hb-build-lib.f
 require src/lib/engine-candidate.f
@@ -65,7 +58,6 @@ package HB-BUILD-CLI
 
 65536 constant HBT-CAPTURE-CAP
 600000 constant HBT-TIMEOUT-MS
-64 constant HBT-KEY-U
 
 variable HBT-ROOT-U
 variable HBT-TMP-U
@@ -101,7 +93,6 @@ create HBT-RUN-OUT HBT-CAPTURE-CAP allot
 create HBT-RUN-ERR HBT-CAPTURE-CAP allot
 
 create HBT-REPORT-BUF FS-PATH-CAP allot
-create HBT-AOT-HEX 80 allot
 
 \ The engine a row's AOT builds run on (HBT-KEYED!); empty, the engine.
 create HBT-LINKER-BUF FS-PATH-CAP allot
@@ -510,9 +501,6 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
 : HBT-REMOVE-AOT-OUT ( -- )
    HBT-AOT-OUT HBT-REMOVE-FILE? ;
 
-: HBT-REMOVE-ARTIFACT ( -- )
-   HBB-ARTIFACT$ HBT-REMOVE-FILE? ;
-
 TYPED-VARIABLE READER-STATE JR:cursor
 
 : REPORT-STRING= ( JR:reader ptr u8 n -- JR:reader ) {: want:ptr wantu:n :}
@@ -520,8 +508,8 @@ TYPED-VARIABLE READER-STATE JR:cursor
    HBT-REPORT-BUF FS-PATH-CAP JR:STR {: gotu:n :}
    HBT-REPORT-BUF gotu want wantu T$= ;
 
-: CHECK-REPORT ( ptr u8 n n n n n n -- )
-   {: a:ptr u:n artifact:n object:n maker:n built:n ran:n :}
+: CHECK-REPORT ( ptr u8 n n n n -- )
+   {: a:ptr u:n maker:n built:n ran:n :}
    READER-STATE a u JR:INIT
    JR:NEXT JR:T-OBJ T=
    s" schema" JR:FIND-KEY TTRUE
@@ -529,15 +517,6 @@ TYPED-VARIABLE READER-STATE JR:cursor
    s" version" JR:FIND-KEY TTRUE
    JR:TOKEN JR:T-INT T=
    JR:INT 1 T=
-   s" cache_root" JR:FIND-KEY TTRUE
-   HBB-REPL @ if NULL$ else BUILD-CACHE:ROOT$ then REPORT-STRING=
-   s" cache_source" JR:FIND-KEY TTRUE
-   HBB-REPL @ if s" none" else BUILD-CACHE:SOURCE BUILD-CACHE:SOURCE$ then
-   REPORT-STRING=
-   s" artifact_hit" JR:FIND-KEY TTRUE
-   JR:TOKEN artifact T=
-   s" object_hit" JR:FIND-KEY TTRUE
-   JR:TOKEN object T=
    s" maker_hit" JR:FIND-KEY TTRUE
    JR:TOKEN maker T=
    s" maker_built" JR:FIND-KEY TTRUE
@@ -548,19 +527,6 @@ TYPED-VARIABLE READER-STATE JR:cursor
    JR:TOKEN JR:T-INT T=
    JR:INT 0 >= TTRUE
    JR:CLOSE ;
-
-\ Object lookups use the actual-input key selected by the build's manifest.
-: HBT-AOT-HEX! ( -- )
-   HBT-AOT-SRC HBB-SRC!
-   HBB-PREPARE-ARTIFACT-CACHE
-   HBB-SRC-CLOSURE-HEX HBT-AOT-HEX 64 BYTE-COPY ;
-
-: HBT-OBJ-LOAD? ( -- bool )
-   HBB-RESET-OPTIONS
-   HBB-MAKER-KEY!
-   BUILD-CACHE:ROOT$ OBJRES:ROOT!
-   HBT-AOT-HEX!
-   HBT-AOT-HEX HBT-KEY-U HBB-TARGET-ABI$ HBB-CHECKER-ABI$ HBB-COMPILER-ABI$ OBJRES:LOAD ;
 
 : HBT-RUN-AOT ( -- )
    HBT-AOT-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN

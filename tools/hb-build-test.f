@@ -1,9 +1,9 @@
 \ hb-build-test.f - checked fixture for tools/hb-build-lib.f: the REPL build
-\ and its report through the CLI, an install that fails, the report a failed
-\ build invalidates, the cache keys, the rejected inputs, sources of
-\ HBT-LARGE-INPUT-U bytes, a string literal's body declared text while the same
-\ bytes in a `create` cell are refused, a maker that prints more than the
-\ fixed capture holds, and the size of a snapshot and a stripped image.
+\ and its report through the CLI, an install that fails, a pair publication
+\ that fails, the report a failed build invalidates, the rejected inputs,
+\ sources of HBT-LARGE-INPUT-U bytes, a string literal's body declared text
+\ while the same bytes in a `create` cell are refused, a maker that prints more
+\ than the fixed capture holds, and the size of a snapshot and a stripped image.
 \ tools/hb-build-test-lib.f lists the other hb-build rows.
 \ Run: bin/hb --load tools/hb-build-test.f
 
@@ -20,9 +20,6 @@ using BUILD-FIXPOINT                     \ the build tmp root
 \ The shared fixture's words are private words of the library's package, so
 \ this row reopens it the way tools/hb-build-test-lib.f does.
 package HB-BUILD-CLI
-
-create HBT-KEY-A 64 allot
-create HBT-KEY-B 64 allot
 
 \ The two images the lost-blob case measures: a byte-for-byte copy of a built
 \ one, and the same copy with a single word of its startup rewritten.
@@ -61,19 +58,6 @@ variable HBT-INST-FILES
    spaces HBT-LARGE-CHUNK-U mod {: rem:n :}
    rem 0 > if path pathu HBT-LARGE-CHUNK rem APPEND-FILE then ;
 
-: HBT-APPEND-CACHE-MUTATION ( -- )
-   SB-RESET
-   s" \\ cache key mutation" SB-APPEND
-   HBB-LF SB-APPEND-C
-   HBT-AOT-SRC SB$ APPEND-FILE ;
-
-: HBT-HBB-KEY-AOT ( ptr u8 n ptr u8 -- )
-   {: src:ptr srcu:n dst:ptr :}
-   src srcu HBT-AOT-OUT HBT-HBB-PREPARE-AOT
-   HBB-PREPARE-ARTIFACT-CACHE
-   HBB-ARTIFACT-KEY-HEX dst 64 BYTE-COPY
-   BF-TMP-RESET ;
-
 : HBT-ADD-BAD ( -- )
    s" --json-errors"  >LEN PROC-ARGV+
    HBT-BAD-SRC  >LEN PROC-ARGV+
@@ -87,20 +71,11 @@ variable HBT-INST-FILES
    s" -o" >LEN PROC-ARGV+
    HBT-REPL-OUT >LEN PROC-ARGV+ ;
 
-: HBT-CACHE-KEY-CHANGES ( -- )
-   HBT-AOT-SRC HBT-AOT-SRC$ WRITE-ALL
-   HBT-AOT-SRC HBT-KEY-A HBT-HBB-KEY-AOT
-   HBT-APPEND-CACHE-MUTATION
-   HBT-AOT-SRC HBT-KEY-B HBT-HBB-KEY-AOT
-   HBT-KEY-A 64 HBT-KEY-B 64 STR= TFALSE
-   HBT-AOT-SRC HBT-AOT-SRC$ WRITE-ALL ;
-
 \ --report-json through the CLI: a REPL build exits 0 with nothing on stderr
-\ and the report object on stdout, the report hook writing HB-BUILD:REPORT$, its
-\ cache source none. HBB-BUILD-REPL consults no cache and sets no trace flag,
-\ so the five false fields are the reset trace as the report writes it, not a
-\ cache that was asked and missed. CHECK-REPORT takes the expected cache
-\ fields from this process's options, so they are set to the CLI's build.
+\ and the report object on stdout, the report hook writing HB-BUILD:REPORT$.
+\ HBB-BUILD-REPL runs no AOT maker and sets no trace flag, so the three false
+\ fields are the reset trace as the report writes it, not a maker that was
+\ asked and missed.
 \ The output already holds stale bytes, and no other case builds over one: the
 \ CLI renames its copy onto -o (HBB-INSTALL-OUT), and HBT-RUN-REPL's exact
 \ stdout proves the new image replaced them.
@@ -112,8 +87,7 @@ variable HBT-INST-FILES
    HBT-RUN-HB-BUILD {: outu:n erru:n rc:n :}
    rc 0 T=
    erru 0 T=
-   HBB-RESET-OPTIONS HBB-REPL-ON
-   HBT-OUT outu JR:T-FALSE JR:T-FALSE JR:T-FALSE JR:T-FALSE JR:T-FALSE CHECK-REPORT ;
+   HBT-OUT outu JR:T-FALSE JR:T-FALSE JR:T-FALSE CHECK-REPORT ;
 
 : CLI-REPORT ( -- )
    HBT-REPL-OUT s" stale" WRITE-ALL
@@ -156,6 +130,91 @@ variable HBT-INST-FILES
    HBT-INST-OUT DIR? TTRUE
    HBT-INST-FILES@ 0 T= ;
 
+\ A PAIR PUBLICATION THAT FAILS LEAVES -o AND ITS MAP AS THEY WERE. An AOT
+\ install publishes the maker's executable and map together (HBB-PAIR-RUN).
+\ The maker's output is planted under HB_TMP: without its map the install
+\ refuses before anything moves, unreadable it cannot be copied, and a
+\ directory at -o refuses the executable's rename after the new map was
+\ staged. A sibling left behind is an extra file beside -o and its map.
+73 constant HBT-EXEC-ONLY                  \ 0111: runnable, unreadable
+493 constant HBT-EXEC-READ                 \ 0755
+16 constant HBT-PUB-CAP
+create HBT-PUB-BUF HBT-PUB-CAP allot
+create HBT-PUB-DIR-BUF FS-PATH-CAP allot
+create HBT-PUB-OUT-BUF FS-PATH-CAP allot
+variable HBT-PUB-DIR-U
+variable HBT-PUB-OUT-U
+variable HBT-PUB-FILES
+
+: HBT-PUB-DIR ( -- ptr u8 n )
+   HBT-PUB-DIR-BUF HBT-PUB-DIR-U @ ;
+
+: HBT-PUB-OUT ( -- ptr u8 n )
+   HBT-PUB-OUT-BUF HBT-PUB-OUT-U @ ;
+
+: HBT-PUB-COUNT ( ptr u8 n -- )
+   2drop HBT-PUB-FILES @ 1+ HBT-PUB-FILES ! ;
+
+: HBT-PUB-ALONE ( n -- ) {: count:n :}
+   0 HBT-PUB-FILES !
+   HBT-PUB-DIR [: HBT-PUB-COUNT ;] WALK-FILES
+   HBT-PUB-FILES @ count T= ;
+
+: HBT-PUB-HOLDS ( ptr u8 n -- )
+   {: want:ptr wantu:n :}
+   HBT-PUB-OUT FILE? {: there:bool :}
+   there TTRUE
+   there 0= if exit then
+   HBT-PUB-OUT HBT-PUB-BUF HBT-PUB-CAP READ-ALL {: u:n :}
+   HBT-PUB-BUF u want wantu T$= ;
+
+: HBT-PUB-MAP-HOLDS ( ptr u8 n -- )
+   {: want:ptr wantu:n :}
+   HBT-PUB-OUT HBB-MAP-DST!
+   HBB-MAP-DST$ HBT-PUB-BUF HBT-PUB-CAP READ-ALL {: u:n :}
+   HBT-PUB-BUF u want wantu T$= ;
+
+: HBT-PUB-SET-MAKER ( -- )
+   HBT-TMP BF-TMP!
+   HBB-GOT-NAME$ BF-A$ s" source-image" WRITE-ALL
+   HBB-GOT-NAME$ BF-A$ HBB-MAP-SRC!
+   HBB-MAP-SRC$ s" source-map" WRITE-ALL ;
+
+: HBT-PUB-PAIR-FAILS ( -- )
+   HBT-ROOT s" publish" HBT-PUB-DIR-BUF HBT-PUB-DIR-U HBT-PATH!
+   HBT-PUB-DIR s" out" HBT-PUB-OUT-BUF HBT-PUB-OUT-U HBT-PATH!
+   HBT-PUB-DIR MAKE-DIR
+   HBT-PUB-OUT s" previous" WRITE-ALL
+   HBT-PUB-OUT HBB-MAP-DST!
+   HBB-MAP-DST$ s" prior-map" WRITE-ALL
+   HBB-RESET-OPTIONS
+   HBT-AOT-SRC HBT-PUB-OUT HBB-PATHS!
+   HBT-PUB-SET-MAKER
+   HBB-GOT-NAME$ BF-A$ HBB-MAP-REMOVE?
+   [: HBB-INSTALL-OUT ;] E-BUILD-PATH TTHROWSQ
+   s" previous" HBT-PUB-HOLDS
+   s" prior-map" HBT-PUB-MAP-HOLDS
+   2 HBT-PUB-ALONE
+   HBT-PUB-SET-MAKER
+   HBB-GOT-NAME$ BF-A$ HBT-EXEC-ONLY CHMOD-MODE
+   [: HBB-INSTALL-OUT ;] E-FS-OPEN TTHROWSQ
+   HBB-GOT-NAME$ BF-A$ HBT-EXEC-READ CHMOD-MODE
+   s" previous" HBT-PUB-HOLDS
+   s" prior-map" HBT-PUB-MAP-HOLDS
+   2 HBT-PUB-ALONE
+   HBT-PUB-OUT REMOVE-FILE
+   HBT-PUB-OUT MAKE-DIR
+   [: HBB-INSTALL-OUT ;] E-BUILD-INSTALL TTHROWSQ
+   HBT-PUB-OUT DIR? TTRUE
+   s" prior-map" HBT-PUB-MAP-HOLDS
+   1 HBT-PUB-ALONE
+   HBB-MAP-DST$ REMOVE-FILE
+   HBT-PUB-OUT REMOVE-DIR
+   HBB-GOT-NAME$ BF-A$ HBB-MAP-REMOVE?
+   HBB-GOT-NAME$ BF-A$ REMOVE-FILE
+   BF-TMP-RESET
+   HBT-PUB-DIR REMOVE-DIR ;
+
 \ A build that fails invalidates the report the last one left: this runs after
 \ HBT-STRIPPED-IMAGE, whose in-process build left a valid one. It is the
 \ last case, since it leaves the cache root naming a file.
@@ -167,7 +226,7 @@ variable HBT-INST-FILES
    [: HBB-BUILD ;] catch E-BUILD-PATH T=
    BF-TMP-RESET
    HB-BUILD:VALID? TFALSE
-   [: HB-BUILD:CACHE-ROOT$ 2drop ;] catch E-BUILD-STATUS T= ;
+   [: HB-BUILD:MAKER-HIT? drop ;] catch E-BUILD-STATUS T= ;
 
 : HBT-REPL-ARGS-EXPECTED$ ( -- ptr u8 n )
    SB-RESET
@@ -443,7 +502,6 @@ variable HBT-INST-FILES
    then
    HBT-LOST-CPY HBT-REMOVE-FILE?
    HBT-LOST-OUT HBT-REMOVE-FILE?
-   HBT-REMOVE-ARTIFACT
    HBT-REMOVE-AOT-OUT
    BF-TMP-RESET ;
 
@@ -597,7 +655,7 @@ public
    HBT-REPL-SRC HBT-REPL-SRC$ HBT-WRITE-LARGE
    CLI-REPORT
    HBT-INSTALL-FAIL
-   HBT-CACHE-KEY-CHANGES
+   HBT-PUB-PAIR-FAILS
    HBT-RUN-REPL
    HBT-RUN-REPL-ARGS
    HBT-IMGDUMP-REPL

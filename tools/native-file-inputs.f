@@ -250,12 +250,6 @@ public
    off 0 < off INPUT-U @ > or if BAD then
    off INPUT-FIRST ! ;
 
-: BYTES-FROM ( n -- ptr u8 n ) {: off:n :}
-   INPUT-U @ {: end:n :}
-   off 0 < off end > or if BAD then
-   off end = if NULL-PTR 0 exit then
-   off INPUT-BUF end off - ;
-
 : SPAN ( n n -- ptr u8 n ) {: first:n last:n :}
    first 0 < last first < or last INPUT-U @ > or if BAD then
    first last = if NULL-PTR 0 exit then

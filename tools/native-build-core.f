@@ -949,34 +949,9 @@ TYPED-VARIABLE HELD-WRITER [ AOT-OWNED:capture ptr n n ptr u8 n -- ]
    WRITER-MACHINE-CK
    SOURCE-WRITER execute ;
 
-DYNAMIC-BUFFER BUILD-INPUTS u8
-variable BUILD-INPUTS-U
-variable BUILD-INPUTS-MARK
-TYPED-VARIABLE BUILD-INPUTS-PATH ptr u8
-variable BUILD-INPUTS-PATH-U
-
-: BUILD-INPUTS-APPEND ( ptr u8 n -- )
-   {: rows:ptr rowsu:n :}
-   rowsu 0= if exit then
-   BUILD-INPUTS-U @ rowsu + BUILD-INPUTS-RESERVE
-   rows 0 BUILD-INPUTS BUILD-INPUTS-U @ + rowsu BYTE-COPY
-   rowsu BUILD-INPUTS-U +! ;
-
-: FILE-INPUTS-SNAPSHOT ( -- )
-   BUILD-INPUTS-PATH-U @ 0= if 0 BUILD-INPUTS-U ! exit then
-   BUILD-INPUTS-MARK @ NFILE-INPUTS:BYTES-FROM
-      {: rows:ptr rowsu:n :}
-   rowsu 0= if s" native-build: no engine source inputs" 76 die then
-   0 BUILD-INPUTS-U !
-   rows rowsu BUILD-INPUTS-APPEND ;
-
 : READ-SOURCE-WRITER ( -- )
    s" tools/native-emit.f" s" required" OPEN-TARGET-XT
       SOURCE-INCLUDED-XT execute ;
-
-: WRITER-INPUTS-RETAIN ( -- )
-   BUILD-INPUTS-U @ 0= if exit then
-   NFILE-INPUTS:BYTES$ BUILD-INPUTS-APPEND ;
 
 \ The post-capture writer loads through the fresh target's SOURCE-INPUT.
 \ Its nested file-cache session starts a new input buffer, so bind that loader
@@ -999,7 +974,7 @@ variable BUILD-INPUTS-PATH-U
    s" engine"
       [: NDEF-CACHE:REBIND
          WRITER-INPUTS
-         [: READ-SOURCE-WRITER WRITER-INPUTS-RETAIN ;]
+         ['] READ-SOURCE-WRITER
             [: WRITER-INPUTS-RESET ;] finally ;]
       NDEF-CACHE:WITH-QUIET ;
 
@@ -1380,15 +1355,11 @@ variable SEALED-NAMES-U
    RETAIN-HOST-PRODUCERS ;
 
 : FILE-LOAD ( -- )
-   \ The manifest destination is driver transport, read before source recording.
-   s" HABU_ENGINE_INPUTS" GETENV BUILD-INPUTS-PATH-U ! BUILD-INPUTS-PATH !
-   NFILE-INPUTS:MARK BUILD-INPUTS-MARK !
    ['] PREFIX-INPUT ['] PREFIX-NOOP SOURCE-INPUT:USE-OBSERVER
    CHECKER-OWNER LOGICAL-RESET
    BIND-HOST-UNIT
    PREFIX-START
-   OPEN-FILE-AND-COMPILE
-   FILE-INPUTS-SNAPSHOT ;
+   OPEN-FILE-AND-COMPILE ;
 
 : BUNDLE-CAPTURE ( -- AOT-OWNED:capture AOT-OWNED:capture ptr n n )
    SOURCE-CHECK @ execute
@@ -1500,13 +1471,6 @@ variable SEALED-NAMES-U
    else WRITER-MACHINE-CK then
    RETAIN-HOST-PRODUCERS ;
 
-: FILE-FINISH ( -- )
-   IMAGE-FINISH
-   BUILD-INPUTS-U @ 0 > if
-      BUILD-INPUTS-PATH @ BUILD-INPUTS-PATH-U @
-         0 BUILD-INPUTS BUILD-INPUTS-U @ ATOMIC-WRITE-FILE
-   then ;
-
 : RUN-FILE-INNER ( -- n )
    BUILD-TARGET:IDLE-CK
    CLEANUP-RESET
@@ -1518,12 +1482,11 @@ variable SEALED-NAMES-U
    \ reset outside it only bind loader state; finish audits and owns the window.
    s" engine" RTARGET:HOST BUILD-TARGET:CURRENT RTARGET:FOR-OUTPUT
       [: ['] FILE-PREPARE TARGET-SCOPE ;]
-      [: ['] FILE-LOAD TARGET-SCOPE ;] ['] FILE-FINISH
+      [: ['] FILE-LOAD TARGET-SCOPE ;] ['] IMAGE-FINISH
       BUILD-CORE:WITH {: rc:n :}
    RESTORE-HOST-UNIT
    CLEANUP-SOURCE
    CLEANUP-RUN
-   BUILD-INPUTS-RELEASE
    rc 0<> if s" native-build: uncaught throw code " type rc . cr then
    rc ;
 
@@ -1585,15 +1548,16 @@ public
 \ The build says which of the two images it wrote, on the way out, so a build
 \ log records the class instead of leaving it to be inferred from a size.
 : REPORT-CLASS ( -- )
-   \ hb-build reports the installed output path after the child build finishes.
-   BUILD-INPUTS-PATH-U @ 0<> if exit then
    s" native-build OK: " type OUTPUT$ type
    s"  (" type CLASS-WANTED$ type s" )" type cr ;
 
-: RUN ( -- )
+\ `report` prints the result line on success. hb-build drives the support
+\ image with false: it installs the output and reports that path itself.
+: RUN ( bool -- )
+   {: report:bool :}
    BUILD-ARGS!
    0 SCRIPT-ARGV$ RUN-PATH-RC {: rc:n :}
-   rc 0= if REPORT-CLASS then
+   rc 0= report and if REPORT-CLASS then
    s" " rc EXIT-RC die ;
 
 ;package

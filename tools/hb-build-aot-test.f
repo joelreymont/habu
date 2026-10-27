@@ -89,16 +89,24 @@ package HB-BUILD-CLI
 : HBT-AOT-DOES-PKG$ ( -- ptr u8 n )
    S\" package HBT-DOES\n: LOADING ( -- ) tier@ 1 <> if -9070 throw then ;\nLOADING\n: SLOT: ( -- ) create 0 , does> ( -- ptr n ) ;\nSLOT: S1\npublic\n: RUN ( -- ) 42 S1 ! S1 @ dup . cr 42 <> if -9071 throw then ;\n;package\n" ;
 
-\ The programs that build and run cleanly, as one stripped image: each package
-\ holds itself to tier 1 and throws its own code on a wrong answer, and MAIN
-\ runs them in turn, so the image's whole output is each one's in that order.
+\ An EXPORT alias in a stripped image (dot habu-compiler-pkg-re-688212c1): MAIN
+\ calls one word through its defining package and through a package that
+\ re-exports it, and the image prints the body's result once per name.
+: HBT-AOT-ALIAS-PKG$ ( -- ptr u8 n )
+   S\" package HBT-XA\npublic\n: W ( i64 -- i64 ) dup * ;\n;package\npackage HBT-XB\npublic\nEXPORT HBT-XA:W\n;package\n" ;
+
+\ The programs that build and run cleanly, as one stripped image: each RUN
+\ package holds itself to tier 1 and throws its own code on a wrong answer, and
+\ MAIN runs them and then the alias calls in turn, so the image's whole output
+\ is each one's in that order.
 : HBT-POSITIVES-SRC$ ( -- ptr u8 n )
    HBT-POSITIVES CODEGEN:RESET
    HBT-AOT-DIVZ-PKG$ HBT-POSITIVES CODEGEN:APPEND-STRING
    HBT-SPAN-PKG
    HBT-AOT-DOES-PKG$ HBT-POSITIVES CODEGEN:APPEND-STRING
    HBT-AOT-MULTI-PKG$ HBT-POSITIVES CODEGEN:APPEND-STRING
-   S\" : MAIN ( -- ) HBT-DIVZ:RUN HBT-SPAN:RUN HBT-DOES:RUN HBT-MULTI:RUN ;\n" HBT-POSITIVES CODEGEN:APPEND-STRING
+   HBT-AOT-ALIAS-PKG$ HBT-POSITIVES CODEGEN:APPEND-STRING
+   S\" : MAIN ( -- ) HBT-DIVZ:RUN HBT-SPAN:RUN HBT-DOES:RUN HBT-MULTI:RUN 5 HBT-XA:W . cr 5 HBT-XB:W . cr ;\n" HBT-POSITIVES CODEGEN:APPEND-STRING
    HBT-POSITIVES CODEGEN:CONTENTS ;
 
 \ Run an image and hold it to its whole output.
@@ -116,22 +124,8 @@ package HB-BUILD-CLI
    -1 HBB-REPORT-JSON !
    HBB-BUILD
    HBB-MAKER-RUN @ 0 <> TTRUE
-   HBB-OBJECT-HIT @ 0= TTRUE
-   HBB-OBJECT-STORE @ 0 <> TTRUE
-   HB-BUILD:REPORT$ JR:T-FALSE JR:T-FALSE JR:T-TRUE JR:T-FALSE JR:T-TRUE CHECK-REPORT
-   HBT-OBJ-LOAD? TTRUE
-   HBT-REMOVE-ARTIFACT
-   HBT-REMOVE-AOT-OUT
-   HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT
-   -1 HBB-REPORT-JSON !
-   HBB-BUILD
-   HBB-OBJECT-HIT @ 0 <> TTRUE
-   HBB-OBJECT-STORE @ 0= TTRUE
-   HBB-MAKER-RUN @ 0= TTRUE
-   HBB-MAKER-BUILD @ 0= TTRUE
-   HB-BUILD:REPORT$ JR:T-FALSE JR:T-TRUE JR:T-FALSE JR:T-FALSE JR:T-FALSE CHECK-REPORT
+   HB-BUILD:REPORT$ JR:T-TRUE JR:T-FALSE JR:T-TRUE CHECK-REPORT
    HBT-RUN-AOT
-   HBT-REMOVE-ARTIFACT
    HBT-REMOVE-AOT-OUT
    BF-TMP-RESET ;
 
@@ -141,13 +135,10 @@ package HB-BUILD-CLI
    HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT
    -1 HBB-REPORT-JSON !
    HBB-BUILD
-   HBB-ARTIFACT-HIT @ 0= TTRUE
-   HBB-OBJECT-HIT @ 0= TTRUE
    HBB-MAKER-HIT @ 0<> TTRUE
    HBB-MAKER-RUN @ 0 <> TTRUE
-   HB-BUILD:REPORT$ JR:T-FALSE JR:T-FALSE JR:T-TRUE JR:T-FALSE JR:T-TRUE CHECK-REPORT
+   HB-BUILD:REPORT$ JR:T-TRUE JR:T-FALSE JR:T-TRUE CHECK-REPORT
    HBT-RUN-AOT
-   HBT-REMOVE-ARTIFACT
    HBT-REMOVE-AOT-OUT
    HBT-AOT-SRC HBT-AOT-SRC$ WRITE-ALL
    BF-TMP-RESET ;
@@ -159,29 +150,24 @@ package HB-BUILD-CLI
    HBT-REMOVE-AOT-OUT
    HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT
    HBT-HBB-BUILD-OUT
-   HBT-AOT-OUT S\" -6400\n\n64\n\nspan\n16\n\n42\n\n2\n\n" HBT-RUN-IMAGE-OUT
+   HBT-AOT-OUT S\" -6400\n\n64\n\nspan\n16\n\n42\n\n2\n\n25\n\n25\n\n" HBT-RUN-IMAGE-OUT
    HB-TARGET-MACOS? if
       HBT-AOT-OUT IMAGE-SIZE:MEASURE
       IMAGE-SIZE:DATA-BLOB-RANGE drop
       MACHO-READ:DATA-OFF MACHO-READ:GOT-BYTES + T=
       MACHO-READ:DATA-BYTES $4000 > TTRUE
    then
-   HBT-REMOVE-ARTIFACT
    HBT-REMOVE-AOT-OUT
    HBT-AOT-SRC HBT-AOT-SRC$ WRITE-ALL ;
 
 \ THE PRODUCT TIER IS THE CALLER'S. hb-build hands its own `tier@` to the maker,
-\ whose application load compiles at it, and folds the tier into the artifact
-\ key and the observed-inputs index. test/tier0-product-subject.f records the
+\ whose application load compiles at it. test/tier0-product-subject.f records the
 \ tier it loaded at and prints it last, so each image names the tier that
 \ compiled it; the rest of its output - loops, branches, catch, quotations, a
 \ does> definer, a deferred word, floats and string literals - is the same at
 \ both tiers. Its literals put instruction-shaped bytes at every offset 4k+3,
 \ which the stripped link refuses when they lie in the code band; its deferred
-\ call is the tier 0 call shape the link must carry. A tier 1 build of the
-\ source a tier 0 build left in the cache is a miss whose maker runs. With that
-\ tier 1 artifact removed, a repeated tier 0 build is an artifact hit, and its
-\ image still reads tier 0. x86-64 has tier 1 only.
+\ call is the tier 0 call shape the link must carry. x86-64 has tier 1 only.
 
 \ Build HBT-AOT-SRC from a caller at TIER, then select the tier this row ran at.
 : HBT-TIER-BUILD ( n -- )
@@ -200,15 +186,8 @@ package HB-BUILD-CLI
    HBB-MAKER-RUN @ 0<> TTRUE
    0 HBT-SUBJECT-OUT HBT-AOT-OUT SB$ HBT-RUN-IMAGE-OUT
    1 HBT-TIER-BUILD
-   HBB-ARTIFACT-HIT @ 0= TTRUE
    HBB-MAKER-RUN @ 0<> TTRUE
    1 HBT-SUBJECT-OUT HBT-AOT-OUT SB$ HBT-RUN-IMAGE-OUT
-   HBT-REMOVE-ARTIFACT
-   0 HBT-TIER-BUILD
-   HBB-ARTIFACT-HIT @ 0<> TTRUE
-   HBB-MAKER-RUN @ 0= TTRUE
-   0 HBT-SUBJECT-OUT HBT-AOT-OUT SB$ HBT-RUN-IMAGE-OUT
-   HBT-REMOVE-ARTIFACT
    HBT-REMOVE-AOT-OUT
    HBT-AOT-SRC HBT-AOT-SRC$ WRITE-ALL ;
 
@@ -259,7 +238,6 @@ package HB-BUILD-CLI
    HBT-SPAN-SRC HBT-SPAN-OUT HBT-HBB-PREPARE-AOT
    HBT-HBB-BUILD-OUT
    HBT-SPAN-OUT S\" 42\n" HBT-RUN-IMAGE-OUT
-   HBT-REMOVE-ARTIFACT
    HBT-SPAN-OUT HBT-REMOVE-FILE? ;
 
 \ The same refusal through the CLI under --json-errors, which promises its

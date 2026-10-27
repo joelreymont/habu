@@ -393,9 +393,9 @@ private
       s2 OF NMX-PT:UNMAKE 7 * swap 11 * + ENDOF
    ;MATCH ;
 
-\ src/lib/object.f NEXT-LINE'S SHAPE, REDUCED TO WHAT BROKE. That word dispatches over
-\ one `option` and builds ANOTHER at a wider instantiation in both arms, and its
-\ `none` arm is the row this case exists for: it constructed `option<obj:line>`
+\ A RECORD READER'S NEXT-LINE SHAPE, REDUCED TO WHAT BROKE. That word dispatched
+\ over one `option` and built ANOTHER at a wider instantiation in both arms, and
+\ its `none` arm is the row this case exists for: it constructed `option<obj:line>`
 \ one cell short and the chain refused the join between the two arms (-8503,
 \ measured). Here the scrutinee is `option<pt>` and what both arms build is
 \ `option<pt3>`, so the constructed instantiation is wider than the one taken

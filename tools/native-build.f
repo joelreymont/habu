@@ -23,10 +23,10 @@ package NATIVE-BUILD-ENTRY
 \ The entry is named in a text because it resolves only after require returns.
 : BUILD ( -- )
    [: s" tools/native-build-core.f" required ;] EXECUTABLE-BUILD:WITH
-   s" NATIVE-BUILD:RUN" evaluate-closed ;
+   s" true NATIVE-BUILD:RUN" evaluate-closed ;
 
 \ The public command owns the ordinary saved-support selection, source-input
-\ manifest, artifact cache and output installation. Keep the legacy spelling
+\ manifest and output installation. Keep the legacy spelling
 \ and result line here while using that build session.
 : RUN-HB-BUILD ( -- )
    s" tools/hb-build-lib.f" required

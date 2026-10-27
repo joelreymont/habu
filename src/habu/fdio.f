@@ -14,8 +14,7 @@
 \
 \ WHO LOADS IT. Every builder, immediately before driver-io.f (tools/bootstrap.sh
 \ SRC_COMMON and tools/build-fixpoint.f BF-APPEND-COMMON and
-\ BF-APPEND-SNAP-BUILD), and tools/object-image.f loads it ahead of driver-io.f
-\ the same way. A booted engine requires it directly.
+\ BF-APPEND-SNAP-BUILD). A booted engine requires it directly.
 \
 \ FAIL-CLOSED. A write that returns zero or an error is not retried and not
 \ logged: the caller asked for bytes on disk and did not get them, so the process

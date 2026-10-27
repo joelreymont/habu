@@ -749,7 +749,6 @@ variable ENGINE-WHITEBOX
 
 : WARM ( -- )
    s" repeat" s" cached/hb" s" cache" BUILD SUCCESS
-   OUT$ s" hb-build: engine artifact hit" CONTAINS? TTRUE
    101 201 301 RUN-IMAGE
    WARM-ROLES SAVE-ROLES
    BASE-ROLES WARM-ROLES SAME-ROLES? TTRUE
@@ -845,7 +844,7 @@ variable ENGINE-WHITEBOX
    EDIT-SOURCE-RELEASE ;
 
 \ rt.f is loaded by the late source writer, outside the saved support image's
-\ source closure. An edit must invalidate the recorded engine artifact inputs.
+\ source closure. The next engine build must take an edit to it.
 : ENGINE-RUNTIME-EDIT ( -- )
    s" src/habu/rt.f" AT {: path:ptr pathu:n :}
    path pathu FILE-SIZE {: size:n :}
@@ -920,8 +919,6 @@ variable ENGINE-WHITEBOX
    s" schema" JR:FIND-KEY TTRUE
    JR:TOKEN JR:T-STR T=
    s" hb-build-report" JR:STR-EQ? TTRUE
-   s" artifact_hit" JR:FIND-KEY TTRUE
-   JR:TOKEN JR:T-FALSE T=
    s" maker_ran" JR:FIND-KEY TTRUE
    JR:TOKEN JR:T-TRUE T=
    begin JR:NEXT dup JR:T-END <> while drop repeat drop
@@ -937,7 +934,7 @@ variable ENGINE-WHITEBOX
 
 : ENGINE-ARTIFACT ( -- )
    T-RESET
-   s" public engine target restores and invalidates complete artifacts" T-LABEL
+   s" public engine target rebuilds the product and takes runtime edits" T-LABEL
    PREPARE
    ENGINE-SUPPORT-RACE
    s" engine-cold" s" cached/hb" s" cache" false
@@ -949,16 +946,12 @@ variable ENGINE-WHITEBOX
    s" engine-support-A" s" cached/hb" s" cache" false
       ENGINE-BUILD ENGINE-SUCCESS
    OUT$ s" support-B" CONTAINS? TFALSE
-   OUT$ s" hb-build: engine artifact hit" CONTAINS? TFALSE
    SAVE-BASE-PRODUCT
-   \ A file outside the observed source closure preserves the warm artifact.
-   s" src/core/engine-key-unloaded.f" AT s" unreachable fixture" WRITE-ALL
    \ --engine forces a product child even when its caller asks for whitebox.
    true ENGINE-WHITEBOX !
-   s" engine-hit" s" cached/hb" s" cache" false
+   s" engine-whitebox-caller" s" cached/hb" s" cache" false
       ENGINE-BUILD ENGINE-SUCCESS
    false ENGINE-WHITEBOX !
-   OUT$ s" hb-build: engine artifact hit" CONTAINS? TTRUE
    SAME-BASE-PRODUCT
    ENGINE-RUNTIME-EDIT
    s" engine-edited" s" cached/hb" s" cache" true
@@ -1167,7 +1160,6 @@ variable ENGINE-WHITEBOX
    101 201 301 RUN-IMAGE
    BASE-ROLES SAVE-ROLES
    s" repeat" s" cached/hb" s" cache" BUILD SUCCESS
-   OUT$ s" hb-build: engine artifact hit" CONTAINS? TTRUE
    101 201 301 RUN-IMAGE
    PATCH-WRITER
    s" writer" s" cached/hb" s" cache" BUILD SUCCESS
@@ -1190,8 +1182,6 @@ variable ENGINE-WHITEBOX
    false 1 COUNTS
    OUT$ s" handover step source" CONTAINS? TTRUE
    s" handover-repeat" s" cached/hb" s" cache" BUILD SUCCESS
-   OUT$ s" hb-build: engine artifact hit" CONTAINS? TTRUE
-   OUT$ s" handover step source" CONTAINS? TFALSE
    HANDOVER-TRUST
    s" handover-rejected" s" rejected/hb" s" cache" BUILD 74 T=
    OUT$ s" handover trust armed" CONTAINS? TTRUE

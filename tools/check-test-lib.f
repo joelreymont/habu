@@ -5584,11 +5584,11 @@ variable SS-NEST-U
    s" req-dup.f" ALL-PROSE-RUN EXPECT-DUP-PROSE ;
 
 \ The files of a set, one per target, define the same word, and a body loads
-\ the one its target predicate answers for, as tools/object-image.f loads
-\ sys.f. The engine answers every HB-TARGET-*? one way, so the arm it runs
+\ the one its target predicate answers for, as tools/native-emit-arm.f LOAD-SYS
+\ loads sys.f. The engine answers every HB-TARGET-*? one way, so the arm it runs
 \ loads whenever the body does and the other arm never: its file left to the
 \ run leaves the word undefined, and the other arm's file checked too reads
-\ the word as a duplicate. req-alt.f picks as tools/object-image.f does, an
+\ the word as a duplicate. req-alt.f picks as LOAD-SYS does, an
 \ arm ending in `exit`; req-alt2.f reads each target `if` to its `then`;
 \ req-alt3.f nests a target `if` in the `else` arm of another; and req-alt5.f
 \ ends every arm in `EXIT`, which the engine reads as `exit`, so the loader

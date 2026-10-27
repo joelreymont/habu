@@ -15,12 +15,6 @@ require test/app-builder-engine.f
 \ this row reopens it the way tools/hb-build-test-lib.f does.
 package HB-BUILD-CLI
 
-\ The quoted-path fixture below owns the writer's bytes; json-write holds none.
-6 constant HBT-ESCAPE-MAX
-FS-PATH-CAP HBT-ESCAPE-MAX * 2 + constant HBT-QUOTE-CAP
-HBT-QUOTE-CAP BUFFER: HBT-QUOTE-BUF
-TYPED-VARIABLE HBT-QUOTE-WRITER JSON-WRITE:writer
-
 : HBT-BAD-CACHE-ENV ( -- )
    PROC-ENV-RESET
    s" HB_TMP" >LEN HBT-TMP >LEN PROC-ENV+
@@ -33,24 +27,14 @@ TYPED-VARIABLE HBT-QUOTE-WRITER JSON-WRITE:writer
    s" -o" >LEN PROC-ARGV+
    HBT-AOT-OUT >LEN PROC-ARGV+ ;
 
-: HBT-BAD-OUT-QUOTED$ ( -- ptr u8 n )
-   HBT-QUOTE-WRITER HBT-QUOTE-BUF HBT-QUOTE-CAP JSON-WRITE:OPEN
-   HBT-BAD-OUT JSON-WRITE:STRING JSON-WRITE:$ ;
-
 : HBT-PATH-ERROR-JSON$ ( -- ptr u8 n )
    SB-RESET
-   S\" {\qschema\q:\qhb-build-error\q,\qversion\q:1,\qcode\q:\qE-BUILD-PATH\q,\qcache_selected\q:true,\qcache_root\q:" SB-APPEND
-   HBT-BAD-OUT-QUOTED$ SB-APPEND
-   S\" ,\qcache_source\q:\qexplicit\q,\qcause\q:\qE-FS-DIR\q}" SB-APPEND
+   S\" {\qschema\q:\qhb-build-error\q,\qversion\q:1,\qcode\q:\qE-BUILD-PATH\q}" SB-APPEND
    HBB-LF SB-APPEND-C
    SB$ ;
 
 : HBT-PATH-ERROR-TEXT$ ( -- ptr u8 n )
-   SB-RESET
-   s" hb-build: schema=hb-build-error version=1 code=E-BUILD-PATH cache_selected=true cache_root=" SB-APPEND
-   HBT-BAD-OUT-QUOTED$ SB-APPEND
-   s"  cache_source=explicit cause=E-FS-DIR" SB-APPEND
-   SB$ ;
+   s" hb-build: schema=hb-build-error version=1 code=E-BUILD-PATH" ;
 
 \ The CLI's cache path error: HBB-PREPARE-CACHE-CLI catches the refused root,
 \ cleans up and exits HBB-BUILD-RC with nothing on stdout and, under
@@ -71,7 +55,7 @@ TYPED-VARIABLE HBT-QUOTE-WRITER JSON-WRITE:writer
 : HBT-CHECK-PATH-TEXT ( -- )
    HBB-RESET-OPTIONS
    HBT-BAD-OUT BUILD-CACHE:ROOT!
-   [: HBB-PREPARE-ARTIFACT-CACHE ;] catch E-BUILD-PATH T=
+   [: HBB-PREPARE-AOT ;] catch E-BUILD-PATH T=
    HBB-PATH-ERROR$ HBT-PATH-ERROR-TEXT$ T$=
    BUILD-CACHE:RESET ;
 

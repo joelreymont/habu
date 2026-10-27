@@ -31,9 +31,9 @@ variable DRV-WFD
 \ The single high-level image-emission tail: assemble the current CODE into the
 \ target image, sign it with the identifier the caller names (SIGN-ID:PROG$ for
 \ a program, SIGN-ID:ENGINE$ for an engine), and write it to path. Every engine
-\ driver (stage2/build/stdin/maker/aot-lib), tools/native-emit.f and the object
-\ image writer (tools/object-image.f OBJIMG:WRITE) route through this one word,
-\ so exactly one BUILD-IMAGE+sign+write implementation exists. Loads after the
+\ driver (stage2/build/stdin/maker/aot-lib) and tools/native-emit.f route
+\ through this one word, so exactly one BUILD-IMAGE+sign+write implementation
+\ exists. Loads after the
 \ target image writer (macho/elf + sign) in every context that includes
 \ driver-io.f.
 : DRV-EMIT-IMAGE ( ptr u8 n ptr u8 n -- ) {: sig:ptr sigu:n path:ptr pathu:n :}
