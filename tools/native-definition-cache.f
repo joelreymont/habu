@@ -1179,6 +1179,7 @@ variable TEE-ERR
 \ The input rows the innermost file recorded since its mark join its object.
 : ROWS-FLUSH ( -- )
    F-MARK F@ NFILE-INPUTS:MARK NFILE-INPUTS:SPAN
+   FRAME F-ROOT + 0 ptr-field @ F-ROOT-U F@ NFILE-INPUTS:TREE-OUT
       NUNIT-OBJECT:FILE-INPUTS+
    NFILE-INPUTS:MARK F-MARK F! ;
 
@@ -1240,14 +1241,17 @@ variable TEE-ERR
 
 \ The open file's object key names its place in the load as its records'
 \ keys name it, not its text: this engine and target, the ambient compile
-\ state, and the file's instance key (NFILE-REF:PUSH-FILE): the loader chain,
-\ the kind, path and root that opened it, and its occurrence under that
-\ loader. The object's stored declaration and import keys start with the
-\ instance key, so a key that omitted the loader would find an object whose
-\ keys this load cannot reproduce.
+\ state, and the file's tree-relative instance key (NFILE-REF:PUSH-FILE): its
+\ parent, its role, its path relative to its root, its kind and its
+\ occurrence under that parent. The object's stored declaration and import
+\ keys start with the instance key, so a key that omitted the loader would
+\ find an object whose keys this load cannot reproduce. Its input rows are
+\ stored relative to the file's root and the engine's source root
+\ (NFILE-INPUTS:TREE-OUT), so an identical tree at another path shares the
+\ object and a differing one fails its rows.
 : FILE-KEY ( -- ptr u8 n )
    ENGINE-ID:KEY$ {: engine:ptr engineu:n :}
-   s" habu-native-file-v3" HASH-START
+   s" habu-native-file-v4" HASH-START
    engine engineu HASH-S
    BUILD-TARGET:CURRENT RTARGET:PROFILE$ HASH-S
    NATIVE? @ HASH-N
@@ -1510,7 +1514,10 @@ variable TEE-ERR
 
 \ The viewed object's input rows hold for this session. Its dependency rows
 \ are checked segment by segment, as SEGMENT-FRESH?.
-: OBJECT-FRESH? ( -- bool ) 11 NUNIT-FILE:SECTION$ NFILE-INPUTS:FRESH? ;
+: OBJECT-FRESH? ( -- bool )
+   11 NUNIT-FILE:SECTION$
+   FRAME F-ROOT + 0 ptr-field @ F-ROOT-U F@ NFILE-INPUTS:TREE-IN
+   NFILE-INPUTS:FRESH? ;
 
 \ The viewed object's dependency rows from the last one checked up to mark
 \ hold for this session; true makes mark the checked count.
@@ -1756,7 +1763,9 @@ variable IMPORT-AT
 \ session manifest: those the file recorded in that interval.
 : INPUTS-APPEND ( n n -- )
    {: from:n to:n :}
-   11 NUNIT-FILE:SECTION$ drop from + to from - NFILE-INPUTS:APPEND ;
+   11 NUNIT-FILE:SECTION$ drop from + to from -
+   FRAME F-ROOT + 0 ptr-field @ F-ROOT-U F@ NFILE-INPUTS:TREE-IN
+   NFILE-INPUTS:APPEND ;
 
 \ Replay LOAD row k, the file's load loads: the checker slices before it
 \ are installed, the input rows the file recorded from offset prev to the load go
