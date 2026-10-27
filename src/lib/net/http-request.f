@@ -869,11 +869,11 @@ public
    subject SLOT-OF-REQUEST name len COUNT-HEADER ;
 
 
-\ A reader over the request body, on the slot's own reader storage, so two
+\ A reader over the request body, in the slot's own reader record, so two
 \ workers reading two bodies share nothing. The caller closes it.
 : BODY-READER ( request -- JR:reader ) {: subject:request :}
    subject SLOT-OF-REQUEST {: idx:n :}
-   idx READER-CELLS idx SLOT-BODY$ JR:INIT ;
+   idx READER idx SLOT-BODY$ JR:INIT ;
 
 
 ;package

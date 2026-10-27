@@ -10,7 +10,7 @@ require src/lib/test.f
 package DECIMAL-TEST
 private
 
-create READER-SPACE JR:STORAGE-BYTES allot
+TYPED-VARIABLE READER-SPACE JR:cursor
 create DECODE-BUF 64 allot
 1048577 constant LONG-ZEROS
 create LONG-SRC 1048600 allot
@@ -51,7 +51,7 @@ create LONG-SRC 1048600 allot
 
 : STRING= ( ptr u8 n i64 -- )
    {: a:ptr u:n want:i64 :}
-   READER-SPACE JR:STORAGE-BYTES a u JR:INIT
+   READER-SPACE a u JR:INIT
    JR:NEXT JR:T-STR T=
    DECODE-BUF 64 JR:STR {: size:n :}
    DECODE-BUF size PRIORITY want SOME=

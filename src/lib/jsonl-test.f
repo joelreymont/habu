@@ -20,6 +20,8 @@ TYPED-VARIABLE B JSONL:cursor
 16399 constant LONG-N                  \ a JSON string line spanning three blocks
 LONG-N 2 + BUFFER: FIXTURE
 LONG-N 1+ BUFFER: STR-OUT
+10000 constant DEEP-N                  \ nesting far past the reader's 64 inline levels
+DEEP-N 2 * 2 + BUFFER: DEEP-FIXTURE
 
 $47 constant FATAL-RC                  \ the close-invariant exit status
 $100 constant CAP
@@ -247,6 +249,24 @@ CAP BUFFER: CAP-ERR
    A JSONL:NEXT TFALSE
    B JSONL:NEXT TFALSE ;
 
+\ A line DEEP-N arrays deep parses through the cursor's own reader record,
+\ and the line after it still frames.
+: DEEP-LINE ( -- )
+   DEEP-N 0 ?do [char] [ DEEP-FIXTURE i + c! loop
+   DEEP-N 0 ?do [char] ] DEEP-FIXTURE DEEP-N + i + c! loop
+   s\" \n7" DEEP-FIXTURE DEEP-N 2 * + swap BYTE-COPY
+   PATH$ DEEP-FIXTURE DEEP-N 2 * 2 + WRITE-ALL
+   DEEP-N 2 * OPEN-KNOWN {: fd:n :}
+   A JSONL:NEXT TTRUE
+   A JSONL:READER
+   DEEP-N 0 ?do JR:NEXT JR:T-ARR T= loop
+   DEEP-N 0 ?do JR:NEXT JR:T-ARR-END T= loop
+   JR:NEXT JR:T-END T=
+   JR:CLOSE
+   A 7 INT-LINE
+   A JSONL:NEXT TFALSE
+   FREE-FD fd T= ;
+
 public
 
 \ The child subject of CLOSE-FAULT: an external close makes the read fail
@@ -273,7 +293,7 @@ public
    FILE BLOCK-EDGE EMPTY-LINES
    CR-LIMIT LIMIT
    READ-FAULT OPEN-MISSING OPEN-TWICE READER-EARLY CLOSE-EARLY
-   INTERLEAVE
+   INTERLEAVE DEEP-LINE
    CLOSE-FAULT
    LONG-FIXTURE ;
 ;package

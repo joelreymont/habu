@@ -21,9 +21,9 @@
 \ are passed over. An invalid message carries its own id when that id is valid
 \ and the message has a method, else the null id, so a reply never answers a
 \ response.
-\ JR's syntax codes, E-JR-MALFORMED through E-JR-COMMA (nesting past its depth
-\ limit included), are PARSE-ERROR; its other codes, such as JR:E-CAPACITY, are
-\ thrown.
+\ JR's syntax codes, E-JR-MALFORMED through E-JR-COMMA, are PARSE-ERROR; any
+\ other code, such as JR:E-SOURCE or a failed growth of the reader's nesting
+\ stack, is thrown.
 \
 \ The writers build replies on a caller's JSON-WRITE writer, member by member:
 \ RESULT writes the envelope up to `"result":`, the caller writes the value and
@@ -32,9 +32,9 @@
 \ id: an empty one is E-JSON-RPC-ID before any byte is written. The error codes
 \ of the specification are constants; framing is src/lib/content-length.f's.
 \
-\ STORAGE CLASS. CALLER-OWNED. >MESSAGE parses in the caller's JR:STORAGE-BYTES
-\ of storage (a smaller one is JR:E-CAPACITY) and the message borrows the
-\ caller's body; the module keeps no state.
+\ STORAGE CLASS. CALLER-OWNED. >MESSAGE and METHOD? parse in the caller's
+\ JR:cursor record and the message borrows the caller's body; the module keeps
+\ no state.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -71,9 +71,9 @@ ENUM message
 : NULL-ID ( -- id )  s" null" JSON--RPC-ID:MAKE ;
 
 \ Whether a method's JSON text, as >MESSAGE gives it, names this method.
-: METHOD? ( ptr n n ptr u8 n ptr u8 n -- bool )
-   {: st:ptr cap:n m:ptr mu:n name:ptr nu:n :}
-   st cap m mu INIT
+: METHOD? ( ptr JR:cursor ptr u8 n ptr u8 n -- bool )
+   {: st:ptr m:ptr mu:n name:ptr nu:n :}
+   st m mu INIT
    NEXT drop
    name nu STR-EQ? {: same:bool :}
    JR:CLOSE
@@ -241,9 +241,9 @@ STRUCTURE envelope
 \ Reads the body once - its root, every member of a root object, then its end,
 \ which NEXT answers or refuses with E-JR-TRAILING - and sorts it in place of
 \ the message given. Text that is not JSON throws JR's code first.
-: READ-BODY ( message ptr n n ptr u8 n -- message ptr n n ptr u8 n )
-   {: prior st:ptr cap:n body:ptr len:n :}
-   st cap body len INIT
+: READ-BODY ( message ptr JR:cursor ptr u8 n -- message ptr JR:cursor ptr u8 n )
+   {: prior st:ptr body:ptr len:n :}
+   st body len INIT
    NEXT {: root:n :}
    root T-OBJ = if
       NO-ENVELOPE begin ROOT-MEMBER 0= until
@@ -252,15 +252,15 @@ STRUCTURE envelope
    then {: e :}
    NEXT drop
    JR:CLOSE
-   root e SORT-ROOT  st cap body len ;
+   root e SORT-ROOT  st body len ;
 
 public
 
-\ One message body, sorted. The storage is JR's, at least JR:STORAGE-BYTES.
-: >MESSAGE ( ptr n n ptr u8 n -- message )
-   {: st:ptr cap:n body:ptr len:n :}
-   NOT-JSON st cap body len [: READ-BODY ;] catch {: code:n :}
-   2drop 2drop {: m :}
+\ One message body, sorted, parsed in the caller's record.
+: >MESSAGE ( ptr JR:cursor ptr u8 n -- message )
+   {: st:ptr body:ptr len:n :}
+   NOT-JSON st body len [: READ-BODY ;] catch {: code:n :}
+   2drop drop {: m :}
    code 0= if m exit then
    code SYNTAX? 0= if code throw then
    NOT-JSON ;

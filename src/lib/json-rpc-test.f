@@ -26,7 +26,6 @@
 \   fraction or whose message is not a string: INVALID-REQUEST, id null
 \   ......................................................... TEST-RESPONSE-FAULTS
 \ - METHOD? decoded: equal, escaped, a prefix, longer, another name ... TEST-METHOD
-\ - >MESSAGE with storage under JR:STORAGE-BYTES: JR:E-CAPACITY  TEST-STORAGE
 \ - RESULT, ERROR and NOTIFY: exact bytes, a message escaped, and each read
 \   back by >MESSAGE; an empty id: E-JSON-RPC-ID with nothing written
 \   ......................................................... TEST-WRITE
@@ -44,13 +43,13 @@ using JSON-RPC
 using JSON-WRITE
 using JR
 
-create ST STORAGE-BYTES allot
+TYPED-VARIABLE ST JR:cursor
 256 BUFFER: OUT
 TYPED-VARIABLE W JSON-WRITE:writer
 
 : SORTED ( ptr u8 n -- JSON-RPC:message )
    {: a:ptr u:n :}
-   ST STORAGE-BYTES a u >MESSAGE ;
+   ST a u >MESSAGE ;
 
 : SB-SP ( -- )  s"  " SB-APPEND ;
 
@@ -186,7 +185,7 @@ create BAD-UTF8 123 c, 34 c, 109 c, 34 c, 58 c, 34 c, $FF c, 34 c, 125 c,
 
 : NAMES? ( ptr u8 n ptr u8 n -- bool )
    {: m:ptr mu:n name:ptr nu:n :}
-   ST STORAGE-BYTES m mu name nu METHOD? ;
+   ST m mu name nu METHOD? ;
 
 : TEST-METHOD ( -- )
    s\" \"initialize\"" s" initialize" NAMES? TTRUE
@@ -195,12 +194,6 @@ create BAD-UTF8 123 c, 34 c, 109 c, 34 c, 58 c, 34 c, $FF c, 34 c, 125 c,
    s\" \"init\"" s" initialize" NAMES? TFALSE
    s\" \"initialized\"" s" initialize" NAMES? TFALSE
    s\" \"\"" s" " NAMES? TTRUE ;
-
-: SHORT-READ ( -- )
-   ST STORAGE-BYTES 1- s" {}" >MESSAGE SHOW$ 2drop ;
-
-: TEST-STORAGE ( -- )
-   [: SHORT-READ ;] E-CAPACITY TTHROWSQ ;
 
 : WRITER ( -- ptr JSON-WRITE:writer )
    W OUT 256 JSON-WRITE:OPEN ;
@@ -251,7 +244,6 @@ create BAD-UTF8 123 c, 34 c, 109 c, 34 c, 58 c, 34 c, $FF c, 34 c, 125 c,
    TEST-ENVELOPE-FAULTS
    TEST-RESPONSE-FAULTS
    TEST-METHOD
-   TEST-STORAGE
    TEST-WRITE
    T-REPORT
    s" json-rpc-test: ok" type cr ;

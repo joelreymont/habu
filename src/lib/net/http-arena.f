@@ -55,7 +55,6 @@ $100000 constant DEFAULT-BODY-CAP
 $2000 constant BODY-START-CAP    \ small mapping, grown only for the current request
 $20 constant ID-CAP              \ the request id a fault is reported under
 $18 constant NUM-CAP             \ one number on its way into a buffer
-JR:STORAGE-BYTES constant READER-CAP   \ one JSON reader over one request body
 
 private
 
@@ -76,8 +75,7 @@ JSON-OFF BUF:HDR-BYTES + constant OUT-OFF
 OUT-OFF BUF:HDR-BYTES + constant SEG-OFF
 SEG-OFF SEG-CAP + constant ID-OFF
 ID-OFF ID-CAP + constant NUM-OFF
-NUM-OFF NUM-CAP + constant READER-OFF
-READER-OFF READER-CAP + constant SPAN-BYTES
+NUM-OFF NUM-CAP + constant SPAN-BYTES
 
 \ The slot is the low byte of a handle; everything above it is the generation
 \ the slot had when the handle was minted.
@@ -119,6 +117,11 @@ MAX-WORKERS TYPED-BUFFER SEG-U n          \ bytes of decoded segment text
 MAX-WORKERS TYPED-BUFFER ID-U n           \ bytes of the current request id
 MAX-WORKERS TYPED-BUFFER SEQ n            \ requests this worker has answered
 MAX-WORKERS TYPED-BUFFER LATE-LEFT n      \ bytes a request may still read past its deadline
+
+\ One JSON reader record per worker, for its request body. A handler's throw
+\ past a live reader leaves a grown nesting stack there: the worker's next
+\ reader reuses it and ARENA-CLOSE releases it.
+MAX-WORKERS TYPED-BUFFER READER JR:cursor
 
 MAX-WORKERS MAX-HEADERS * constant HEADER-ROWS
 HEADER-ROWS TYPED-BUFFER HEADER-NAME-AT n
@@ -244,6 +247,7 @@ private
          i HDR-BUF BUF:DISPOSE
          i JSON-BUF BUF:DISPOSE
          i OUT-BUF BUF:DISPOSE
+         i READER JR:DISPOSE
          i SLOT-REGION @ MEM:FREE-SPAN
          0 i SLOT-LIVE !
       then
@@ -277,19 +281,6 @@ private
 
 : NUM-BUF ( n -- SPAN:span<u8> )
    SLOT-SPAN NUM-OFF NUM-CAP SPAN:SUB ;
-
-
-\ Cell-aligned because every capacity before it is a whole number of cells and
-\ the region itself is a mapping; src/lib/json-read.f refuses anything else.
-: READER-BUF ( n -- SPAN:span<u8> )
-   SLOT-SPAN READER-OFF READER-CAP SPAN:SUB ;
-
-
-\ The reader's storage as src/lib/json-read.f takes it: a cell pointer and the
-\ reach the span carries. The reader is the only writer there and owns its own
-\ bound, so the crossing out of the span happens once, here.
-: READER-CELLS ( n -- ptr n n )
-   READER-BUF SPAN:$ swap CELL-VIEW swap ;
 
 
 \ ---- the slot's cells --------------------------------------------------------

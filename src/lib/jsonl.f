@@ -1,12 +1,13 @@
 \ jsonl.f - JSONL framing: a caller-owned file cursor and a memory splitter.
 \
 \ Between OPEN and the end of input or CLOSE, a cursor owns its descriptor, a
-\ growable BUF holding the current line, and one mapping: an 8192-byte input
-\ block followed by JR backing cells. NEXT frames each nonempty physical line
-\ into the BUF; READER lends it as a fresh linear JR reader until the next NEXT
-\ or CLOSE, and the caller closes that reader first. At the end of input and
-\ after any throw the cursor releases everything and is closed. SPLIT-LINE
-\ frames memory input statelessly and owns nothing.
+\ growable BUF holding the current line, an 8192-byte input block mapping, and
+\ the JR:cursor record its readers parse in, with any nesting stack a deep line
+\ grew there. NEXT frames each nonempty physical line into the BUF; READER
+\ lends it as a fresh linear JR reader until the next NEXT or CLOSE, and the
+\ caller closes that reader first. At the end of input and after any throw the
+\ cursor releases everything and is closed. SPLIT-LINE frames memory input
+\ statelessly and owns nothing.
 \
 \ The line limit is inclusive and counts CR but not LF. NEXT skips empty lines,
 \ keeps CR, returns a final unterminated line and invents none after a final
@@ -49,12 +50,12 @@ STRUCTURE cursor OPAQUE DERIVE addr
    FIELD fd fd
    FIELD max NUM:byte-len
    FIELD live bool
+   FIELD reader JR:cursor
 ;STRUCTURE
 
 private
 
 8192 constant BLOCK-BYTES
-BLOCK-BYTES JR:STORAGE-BYTES + constant STORAGE-BYTES
 256 constant FIRST-CAP
 10 constant LF
 $47 constant CLOSE-EXIT      \ close releases the descriptor even when it fails
@@ -77,15 +78,16 @@ public
    false cur CURSOR-LIVE !
    cur CURSOR-FD @ FD>N close-rc 0<> if s" jsonl: close failed" CLOSE-EXIT die then
    cur BUF-HDR BUF:DISPOSE
+   cur CURSOR-READER JR:DISPOSE
    cur CURSOR-STORAGE @ 0= if exit then       \ OPEN's allocation threw first
-   cur CURSOR-STORAGE @ STORAGE-BYTES SPAN:MAKE MEM:FREE-SPAN
+   cur CURSOR-STORAGE @ BLOCK-BYTES SPAN:MAKE MEM:FREE-SPAN
    NULL-PTR cur CURSOR-STORAGE ! ;
 
 private
 
 : PREPARE ( ptr cursor -- ptr cursor )
    {: cur:ptr :}
-   STORAGE-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN SPAN:$ drop cur CURSOR-STORAGE !
+   BLOCK-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN SPAN:$ drop cur CURSOR-STORAGE !
    cur BUF-HDR FIRST-CAP BUF:N>BLEN BUF:INIT
    cur ;
 
@@ -156,7 +158,7 @@ public
    {: cur:ptr :}
    cur LIVE
    cur LINE-LEN 0= if E-STATE throw then
-   cur CURSOR-STORAGE @ BLOCK-BYTES + CELL-VIEW JR:STORAGE-BYTES
+   cur CURSOR-READER
    cur BUF-HDR BUF:SPAN$ BUF:BLEN>N
    JR:INIT ;
 
