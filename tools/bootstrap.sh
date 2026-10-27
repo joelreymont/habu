@@ -96,11 +96,12 @@ fi
 # refuses one that does not start where its boot prefix's does
 # (src/core/type-family.f REG-AOT-BASE-BAD). The families therefore come in
 # the prefix's order (src/habu/habu2.f PFX-LOAD-STDLIB-FILES): span.f right
-# after errors.f, then option.f and num-types.f ahead of habu2.f, as
-# tools/build-fixpoint.f BF-APPEND-FMT places them in the native stage source.
-# habu2.f's `require src/lib/fmt.f` reaches option.f, but nothing in this text
-# requires num-types.f: without it hb-stdin died at boot, `tfam: a seeded type
-# registry does not start where its capture did`, 44 families against 55.
+# after errors.f, then option.f, num-types.f and memory.f (its WITH-BYTES
+# `frame` STRUCTURE) ahead of habu2.f. The list names each family file at its
+# prefix position instead of relying on a require to reach it: nothing else in
+# this text requires memory.f, and without it hb-stdin died at boot, `tfam: a
+# seeded type registry does not start where its capture did` (55 families
+# against 56).
 SRC_COMMON=(
   src/core/roles.f
   src/core/bytes.f
@@ -147,6 +148,7 @@ SRC_COMMON=(
   src/habu/aot-ident.f
   src/lib/adt/option.f
   src/lib/num-types.f
+  src/lib/memory.f
   src/habu/habu2.f
 )
 

@@ -749,17 +749,20 @@ package BUILD-FIXPOINT
    out outu s" src/habu/habu1.f" BF-APPEND-MODULE ;
 
 \ fmt requires float and string; float requires string and option, and string
-\ requires errors and option. Nothing here requires num-types.f or
-\ num-arithmetic.f: they come in the prefix's order (src/habu/habu2.f
-\ PFX-LOAD-STDLIB-FILES) because num-types.f declares type families, and the
-\ seed refuses a captured registry that does not start where the prefix's does
-\ (src/core/type-family.f REG-AOT-BASE-BAD). Prelude/errors are already
-\ restored here. Each provided fact makes the remaining require a no-op.
+\ requires errors and option. Nothing fmt requires reaches num-types.f,
+\ num-arithmetic.f or memory.f: they come in the prefix's order (src/habu/habu2.f
+\ PFX-LOAD-STDLIB-FILES) because num-types.f and memory.f (its WITH-BYTES `frame`
+\ STRUCTURE) declare type families, and the seed refuses a captured registry
+\ that does not start where the prefix's does (src/core/type-family.f
+\ REG-AOT-BASE-BAD): without memory.f the refreshed stdin engine died there.
+\ Prelude/errors are already restored here. Each provided fact makes the
+\ remaining require a no-op.
 : BF-APPEND-FMT ( ptr u8 n -- ) {: out:ptr outu:n :}
    out outu s" src/lib/adt/option.f" BF-APPEND-MODULE
    out outu s" src/lib/num-types.f" BF-APPEND-MODULE
    out outu s" src/lib/num-arithmetic.f" BF-APPEND-MODULE
    out outu s" src/lib/string.f" BF-APPEND-MODULE
+   out outu s" src/lib/memory.f" BF-APPEND-MODULE
    out outu s" src/lib/float.f" BF-APPEND-MODULE
    out outu s" src/lib/fmt.f" BF-APPEND-MODULE ;
 
