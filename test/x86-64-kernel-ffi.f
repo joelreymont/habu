@@ -98,11 +98,11 @@ $F constant JUNK                        \ the ABI rows' argbuf[6..9): no place
    RAX v >IMM64 ASM-SINK ENC-MOV-RI64
    RAX RCX MEM-AT ASM-SINK ENC-MOV-MR ;
 
-\ Store the address of the band cell TIER-PROV:N-CELL into the scratch cell at
+\ Store the address of the band cell UNIT-COMPILE-CELL into the scratch cell at
 \ an offset.
 : BAND!, ( n -- ) {: off:n :}
    off AT,  1 G-POP
-   RAX DATA-REG TIER-PROV:N-CELL MEM-OFF ASM-SINK ENC-LEA
+   RAX DATA-REG UNIT-COMPILE-CELL MEM-OFF ASM-SINK ENC-LEA
    RAX RCX MEM-AT ASM-SINK ENC-MOV-MR ;
 
 \ Argument cell i holds i + 1, and every extent is a cell.

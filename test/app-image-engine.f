@@ -15,11 +15,7 @@
 \ RULES FOR A ROW THAT RUNS IT.
 \ 1. Take the path before staging the child's argv or env: a build stages its
 \    own in the same process-wide tables.
-\ 2. A restored image starts at tier 0, and APP-IMAGE:SAVE refuses code
-\    compiled there (`snap: retained code lacks native provenance`, exit 100).
-\    src/habu/app-image.f sets tier 1 itself, so a program run on PATH$ starts
-\    with `1 set-tier` where it required that file.
-\ 3. A row whose children run ENGINE-CANDIDATE:PATH$ does not itself run on it:
+\ 2. A row whose children run ENGINE-CANDIDATE:PATH$ does not itself run on it:
 \    inside an image ENGINE-ID:PATH$ names the image, so outside a gate its
 \    children would run the image too.
 

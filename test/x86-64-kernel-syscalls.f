@@ -5,13 +5,13 @@
 \ The span guard. Each guard image seals the friend latch and guards a heap
 \ span with PROT-SPAN-CALL,: the span meets no band, so the guard must pass it
 \ with the latch sealed, which a guard that trapped every sealed span would
-\ not. It then guards the span of the protected cell TIER-PROV:N-CELL and
+\ not. It then guards the span of the protected cell UNIT-COMPILE-CELL and
 \ checks that the call came back balanced with the data stack empty.
 \ hb-x64-kernel-syscalls opens the latch again first, as the boot leaves it, so
 \ the guard passes and the image exits 0; hb-x64-kernel-syscalls-negative
 \ expects the wrong balance and exits 21. hb-x64-kernel-syscalls-armed keeps
 \ the latch sealed, so the guard exits 83, ENGINE-ERROR:SEAL-VIOLATION, as a
-\ raw store to that cell does on ARM64 (test/tier.f).
+\ raw store to that cell does on ARM64 (test/protection-span.f).
 \
 \ The rows. Each row image calls rows by name through CALL-ROW, and checks what
 \ they push, then the data stack's depth and the machine stack's balance; it
@@ -68,7 +68,7 @@ DATA-START $10000 + constant HEAP-OFF
    SEAL,
    HEAP-OFF GUARD-CELL,
    armed 0= if 0 FRIEND-LATCH-CELL X64HARNESS:CELL!, then
-   TIER-PROV:N-CELL GUARD-CELL,
+   UNIT-COMPILE-CELL GUARD-CELL,
    X64HARNESS:EXPECT-BALANCED,
    0 X64HARNESS:EXPECT-DEPTH,
    path pathu X64HARNESS:BOOT-CLOSE, ;
@@ -266,7 +266,7 @@ $400001 constant PID-CEIL               \ past the kernel's pid_max ceiling
    PAGE-BYTES N, s" map-anon" ROW  0 WANT  KEPT KEEP,
    KEPT RECALL, PAGE-BYTES N, s" munmap" ROW  0 WANT
    0 N, s" map-anon" ROW  -1 WANT  0 WANT
-   TIER-PROV:N-CELL DATA-AT, PAGE-BYTES N, PROT-RW N, MAP-FRESH N, -1 N, 0 N,
+   UNIT-COMPILE-CELL DATA-AT, PAGE-BYTES N, PROT-RW N, MAP-FRESH N, -1 N, 0 N,
    s" mmap" ROW  KEPT KEEP,
    KEPT RECALL, PAGE-BYTES N, s" munmap" ROW  0 WANT
    KEPT RECALL, PAGE-BYTES N, PROT-RW N, MAP-FRESH MAP-FIXED or N, -1 N, 0 N,
@@ -284,12 +284,12 @@ $400001 constant PID-CEIL               \ past the kernel's pid_max ceiling
 
 : MMAP-ARMED-CASE ( -- )
    SEAL,
-   TIER-PROV:N-CELL DATA-AT, PAGE-BYTES N, PROT-RW N, MAP-FRESH MAP-FIXED or N, -1 N,
+   UNIT-COMPILE-CELL DATA-AT, PAGE-BYTES N, PROT-RW N, MAP-FRESH MAP-FIXED or N, -1 N,
    0 N, s" mmap" ROW ;
 
 : IOCTL-ARMED-CASE ( -- )
    SEAL,
-   0 N, IOR-X1-8 N, TIER-PROV:N-CELL DATA-AT, s" ioctl" ROW ;
+   0 N, IOR-X1-8 N, UNIT-COMPILE-CELL DATA-AT, s" ioctl" ROW ;
 
 : IOCTL-CLOSED-CASE ( -- )
    0 N, FIOCLEX N, BUF AT, s" ioctl" ROW ;

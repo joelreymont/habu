@@ -900,7 +900,7 @@ $688 constant FD-CELL
 \ WHY AN ENGINE HAS TO SAY THIS. tools/native-build.f splits the host's declared
 \ address rows into the engine cells below the heap and the retired heap above it,
 \ and the host's floor is not the loaded tree's: a tree whose reserved bands grew
-\ (XTCELL-CAP here, TIER-PROV:SPANS next) moves DATA-START, while the host that
+\ (XTCELL-CAP here) moves DATA-START, while the host that
 \ builds that tree does not move with it. Classified by the source constant, the
 \ host keeps its OWN heap rows and the capture refuses them by value
 \ (aot-capture.f ACAP-TARGET-REFUSE, exit 74; dot
@@ -2445,24 +2445,10 @@ STK-OFF FRAMES FRAME-BYTES * + constant END
 \ ends at $47C0, with PROT:RHI/PROT:CF taking the two cells directly
 \ above them. The lowering state ends at $8000; the immutable lowering blob
 \ lives outside DATA. Pending-defer scratch follows the private engine bands.
-\ Sorted, disjoint code intervals. Coordinates are relative to dbase@; a row is
-\ (first, end, origin). Unknown is -1, JIT is 0, positively native is 1.
-\ Missing coverage is unknown, never evidence that older code was native.
-package TIER-PROV
-public
-8192 constant SPANS
-24 constant SPAN-BYTES
-JIT-SNAP:END constant OPEN-CELL
-OPEN-CELL 8 + constant N-CELL
-N-CELL 8 + constant TABLE-OFF
-TABLE-OFF SPANS SPAN-BYTES * + constant MAP-CELL
-MAP-CELL 8 + constant MAP-CAP-CELL
-MAP-CAP-CELL 8 + constant END
-;package
 
 \ The scoped package evaluator owns one transient dispatch xt. A source load
 \ disarms it on return or throw; snapshots are taken only with no unit active.
-TIER-PROV:END constant UNIT-COMPILE-CELL
+JIT-SNAP:END constant UNIT-COMPILE-CELL
 
 \ The active source observer is one native stack frame per owned file.
 $2CA8 constant SOURCE-EXEC-CTX-CELL
@@ -2545,7 +2531,6 @@ create TAB
    SUSP-HOOK-OFF ,                SUSP-HOOK-LEN ,
    NCOMP-DISPATCH:TIER-CELL ,     1 cells ,
    NCOMP-DISPATCH:DEF-TIER-CELL , 3 cells ,
-   TIER-PROV:OPEN-CELL ,          TIER-PROV:END TIER-PROV:OPEN-CELL - ,
    UNIT-COMPILE-CELL ,            1 cells ,
    SOURCE-EXEC-CTX-CELL ,         1 cells ,
    REPLAY-SCOPE:LATCH ,           REPLAY-SCOPE:END REPLAY-SCOPE:LATCH - ,

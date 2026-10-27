@@ -10,7 +10,7 @@
 \ is stale. With the data stack empty and the machine stack balanced after, it
 \ exits 0; hb-x64-kernel-atomics-negative expects the wrong stored value and
 \ exits 21. hb-x64-kernel-atomics-store-armed, -add-armed and -cas-armed aim
-\ atomic!, atomic-add and atomic-cas at the band cell TIER-PROV:N-CELL, so
+\ atomic!, atomic-add and atomic-cas at the band cell UNIT-COMPILE-CELL, so
 \ each row's guard exits 83, ENGINE-ERROR:SEAL-VIOLATION;
 \ hb-x64-kernel-patch32-armed aims patch32 there and exits 83 too.
 \
@@ -114,7 +114,7 @@ using X64RT
    false X64HARNESS:BOOT-OPEN,
    SEAL,
    args 0 ?do 0 X64HARNESS:PUSH, loop
-   TIER-PROV:N-CELL PUSH-CELL,
+   UNIT-COMPILE-CELL PUSH-CELL,
    row rowu X64HARNESS:CALL-ROW,
    path pathu X64HARNESS:BOOT-CLOSE, ;
 

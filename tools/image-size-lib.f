@@ -2536,11 +2536,10 @@ variable HEAD-W     variable HEAD-Z
    s"  bytes; omitted dictionary/control capacity " type
    DICT-SIZE NDICT-N @ DREC * - FMT:.U s"  bytes" type cr
    s"   exact DATA extent " type DAT-VIRT @ FMT:.U
-   s"  bytes; omitted fixed map/row/JIT/provenance capacity " type
+   s"  bytes; omitted fixed map/row/JIT capacity " type
    SNAP-RELOC:CALLMAP-BYTES MAP-LEN @ - 2 *
    SNAP-RELOC:XTCELL-END ADDRESS-CELLS:BOOT-OFF - DAT-INLINE @ - +
-   JIT-SNAP:END JIT-SNAP:STK-OFF - +
-   TIER-PROV:END TIER-PROV:OPEN-CELL - + FMT:.U s"  bytes" type cr
+   JIT-SNAP:END JIT-SNAP:STK-OFF - + FMT:.U s"  bytes" type cr
    REPORT-BAND
    REPORT-HEAP ;
 

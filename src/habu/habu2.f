@@ -281,8 +281,8 @@ variable LSNAPBAD   variable LSNAPVER   \ snapshot-loader labeled-exit messages 
 \ build's kernel emitter (tools/native-emit.f) and by the refresh's `--build`
 \ child - where no source reopens a package the engine bakes
 \ (docs/forth-card.md § 6). So the emitter's half is a package of its own,
-\ RELOC-EMIT, rather than a reopening of SNAP-RELOC. PROT-EMIT, HIDX-EMIT and
-\ CODE-ORIGIN are the same split for PROT, HIDX and TIER-PROV.
+\ RELOC-EMIT, rather than a reopening of SNAP-RELOC. PROT-EMIT and HIDX-EMIT
+\ are the same split for PROT and HIDX.
 package RELOC-EMIT
 public
 variable LCALLMSG   \ a recorded call site does not hold a call instruction (CALLMAP-RC)
@@ -3267,7 +3267,6 @@ public
    LBL LBL {: jit:label done:label :}
    9 DATA NCOMP-DISPATCH:TIER-CELL LDR,
    9 DATA NCOMP-DISPATCH:DEF-TIER-CELL STR,
-   CODE-ORIGIN:OPEN,
    9 jit CBZ,
       LOAD
       done B,
@@ -3929,8 +3928,8 @@ public
 \ `:`, `create`, `export`, `package` and a qualified definition store the token
 \ in TKA/TKL; the definition writers further down (DEFWRITE bodies) store a
 \ name a TRUSTED: caller hands them. Both go through this one emitter, so the
-\ inline and out-of-line forms, the code ceiling and the provenance of a spilled
-\ name have one owner.
+\ inline and out-of-line forms and the code ceiling of a spilled name have one
+\ owner.
 package DEFWRITE
 
 public
@@ -3953,8 +3952,7 @@ public
 
 \ Store the name in record x9, whose room NAME-ROOM has already admitted: [16]
 \ its length, with DNAME-EXT for a long one; [24] and [32] the bytes inline, or
-\ [24] the address of a copy at CP, marked native provenance, with CP moved past
-\ it. x10 = the name's address, x12 = its length, at least one byte. x9 and x12
+\ [24] the address of a copy at CP, with CP moved past it. x10 = the name's address, x12 = its length, at least one byte. x9 and x12
 \ survive; x1, x10, x11 and x13-x16 are clobbered.
 : NAME-COPY ( -- )
    LBL LBL LBL LBL LBL LBL {: short lcopy lcd scopy scd done :}
@@ -3972,7 +3970,6 @@ public
          15 10 0 LDRB,  15 11 0 STRB,
          10 10 1 ADDI,  11 11 1 ADDI,  14 14 1 SUBI,  lcopy B,
       lcd LBL,
-      CP 16 CODE-ORIGIN:NATIVE-RANGE,
       CP 16 0 ADDI,
       done B,
    short LBL,
@@ -4774,7 +4771,6 @@ variable LREPLAYTRAP
    14 DATA DOESB-CELL STR,    14 DATA TRUSTED-CELL STR,
    14 DATA CLAUSE-CELL STR,
    14 DATA NCOMP-DISPATCH:TIER-CELL LDR,  14 DATA NCOMP-DISPATCH:DEF-TIER-CELL STR,
-   CODE-ORIGIN:OPEN,
    PROT-EMIT:LCLOSE LABEL@ BL,
    done B,
    bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
@@ -4814,10 +4810,9 @@ variable LREPLAYTRAP
    TCSIG-A-CELL TCSIG-U-CELL PENDING-SPAN ;
 
 \ The end of a definition the native compiler compiled, the engine's tier-1 `;`
-\ (NCOMP-EMIT:EM-COMPILE) and the def-close row alike: the provenance window
-\ closes native and the per-definition state clears, PEND-CELL last.
+\ (NCOMP-EMIT:EM-COMPILE) and the def-close row alike: the per-definition
+\ state clears, PEND-CELL last.
 : NATIVE-CLOSE ( -- )
-   1 CODE-ORIGIN:CLOSE,
    LBL {: noaccept:label :}
    11 DATA NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:PENDING-TAKE cells + LDR,
    11 noaccept CBZ,
@@ -4866,7 +4861,6 @@ variable LREPLAYTRAP
    10 10 DNAME-ALLOC ORRI,  10 9 16 STR,  \ the DATA allocation starts at its leading carrier
    9 DATA LASTC-CELL STR,
    EM-DEF-OCC:LAPPEND LABEL@ BL,  LHIDXADD LABEL@ BL,  9 9 0 LDR,   \ publish record NDICT-1; x9 = body start for the flush
-   9 CP CODE-ORIGIN:NATIVE-RANGE,
    PROT-EMIT:LCLOSE LABEL@ BL,  LFLUSH LABEL@ BL, ;
 
 \ The native compiler's fixed shadow callback, when one is installed
@@ -4885,9 +4879,8 @@ private
 
 \ The end of a definition with no compiled body, the def-create and def-cast
 \ rows alike: the pending record must be of kind `kind`, with CP below the
-\ code ceiling. def-open's provenance window holds no code yet, so it closes
-\ empty and `tail` marks the code it writes native, as the row's keyword marks
-\ its own; then the state def-open set clears, PEND-CELL last.
+\ code ceiling. `tail` writes the row's code, then the state def-open set
+\ clears, PEND-CELL last.
 : TAIL-CLOSE ( n [ -- ] -- )
    {: kind:n tail :}
    LBL LBL {: bad done :}
@@ -4895,7 +4888,6 @@ private
    9 NDICT REC-AT,                                    \ the pending record, slot NDICT
    10 9 16 LDR,  10 10 DKIND:MASK ANDI,  11 kind LIT64,  10 11 CMP,  C-NE bad BCOND,
    10 REGION $4000 - LIT64,  10 DBASE 10 ADD,  CP 10 CMP,  C-CS bad BCOND,
-   1 CODE-ORIGIN:CLOSE,
    NAME-BANDS,
    tail execute
    C-CLEAR-TRUSTED-STATE
@@ -5295,7 +5287,6 @@ package INTERP-EMIT
    10 9 16 LDR,  10 10 DKIND:VAL ORRI,  10 9 16 STR,      \ this record's body pushes a decided number
    9 DATA LASTC-CELL STR,
    EM-DEF-OCC:LAPPEND LABEL@ BL,  LHIDXADD LABEL@ BL,  9 9 0 LDR,   \ publish record NDICT-1; x9 = body start for the flush
-   9 CP CODE-ORIGIN:NATIVE-RANGE,
    PROT-EMIT:LCLOSE LABEL@ BL,  LFLUSH LABEL@ BL,
    \ The native compiler's fixed shadow callback, when one is installed
    \ (src/compiler/native/compiler.f SHADOW-FIXED), learns the published record,
@@ -5431,7 +5422,6 @@ public
    9 W-LINKSAVE LIT64,  LCEMIT LABEL@ BL,            \ str x30,[sp,#-16]!
    EM-COMPILE-RET                                    \ empty body: the slot becomes a nop
    9 DATA PEND-CELL LDR,  9 9 0 LDR,
-   9 CP CODE-ORIGIN:NATIVE-RANGE,
    false EM-COMPILE-FLUSH-PEND ;
 
 ;package
@@ -5704,7 +5694,6 @@ public
    10 9 0 LDR,  10 CP 10 SUB,  10 10 CODE-SPAN:FULL ORRI,  10 9 8 STR,
    C-DEFER-META-WRITE
    9 DATA PEND-CELL LDR,  9 9 0 LDR,
-   9 CP CODE-ORIGIN:NATIVE-RANGE,
    PROT-EMIT:LCLOSE LABEL@ BL,  LFLUSH LABEL@ BL, ;
 
 \ The native compiler's fixed shadow callback, when one is installed
@@ -8094,10 +8083,6 @@ public
    CP CP 11 ADD,                                    \ code area top past the blob
    PROT-EMIT:LCLOSE LABEL@ BL,                      \ region -> RX
    LFLUSH LABEL@ BL,                                \ flush icache over [blob base, CP)
-   \ The flush aligns/clobbers x9. Recover the exact installed payload span;
-   \ its origin came from this emitter invocation's owned capture admission.
-   11 5 LAOTCODELEN LABEL@ TADR,  11 11 0 LDR,
-   9 CP 11 SUB,  9 CP CODE-ORIGIN:CAPTURE-RANGE,
    askip B,
    bad LBL,
       1 msg ADR,  0 2 MOVZ,  2 mu MOVZ,  NR-WRITE SYS,
@@ -9251,10 +9236,9 @@ ardone LBL,
 \ restore both regions verbatim (fixed VAs keep region addresses valid),
 \ relocate engine-text call chains (the only ASLR-movers), boot WARM. ----
 : EM-SNAPSHOT-RESTORE ( -- )
-   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
    {: snomag:label snbad:label snok:label snnew:label snhave:label
-      snbadver:label snpresent:label snpad:label snpaddone:label sninline:label
-      snorigin:label :}
+      snbadver:label snpresent:label snpad:label snpaddone:label sninline:label :}
    LBL LBL LBL LBL
    {: snform:label sngrid:label snpadcheck:label sndecoded:label :}
    LBL LBL {: polclr:label poldone:label :}
@@ -9379,7 +9363,6 @@ ardone LBL,
       1 LSNAPVER LABEL@ ADR,  0 2 MOVZ,  2 SNAPVER-MSG-LEN MOVZ,  NR-WRITE SYS,
       0 80 MOVZ,  NR-EXIT-GROUP SYS,
    snok LBL,
-   CODE-ORIGIN:RELEASE,
    RELOC-EMIT:LINDEXRELEASE LABEL@ BL,
    9 DATA ARGC-CELL LDR,  10 DATA ARGV-CELL LDR,  0 DATA ENVP-CELL LDR,
    \ The return and loop stacks are mappings this process made, so the image's
@@ -9444,14 +9427,6 @@ ardone LBL,
    5 JIT-SNAP:STK-OFF LIT64,  0 DATA 5 ADD,
    2 JIT-SNAP:END JIT-SNAP:STK-OFF - LIT64,  EM-SNAPSHOT-ZERO
    5 0 MOVZ,  5 DATA JIT-SNAP:SP-CELL STR,
-   5 TIER-PROV:OPEN-CELL LIT64,  0 DATA 5 ADD,
-   2 TIER-PROV:END TIER-PROV:OPEN-CELL - LIT64,  EM-SNAPSHOT-ZERO
-   5 DICT-SIZE LIT64,  6 5 CMP,  C-EQ snorigin BCOND,
-      5 TIER-PROV:OPEN-CELL LIT64,  5 DATA 5 ADD,
-      13 1 MOVZ,  13 5 8 STR,
-      14 DICT-SIZE LIT64,  14 5 16 STR,
-      6 5 24 STR,  13 5 32 STR,
-   snorigin LBL,
    5 0 MOVZ, 5 DATA ADDRESS-CELLS:INDEX-CELL STR,
    25 DATA RBASE-CELL STR,                          \ live values over stale copies
    XDS DATA STACK-ABI:BASE-CELL STR,
@@ -9612,10 +9587,8 @@ ardone LBL,
    ;
 
 : EM-STARTUP-RUNTIME-STATE ( -- )
-   CODE-ORIGIN:RESTORE-REGION,
-   9 LANCHOR LABEL@ ADR,  10 LSRC LABEL@ ADR,
+   10 LSRC LABEL@ ADR,
    10 DATA CODE-END-CELL STR,                     \ the crash handler's engine-code bound (crash.f C-CRASH-DATA-RECOVER)
-   9 10 CODE-ORIGIN:NATIVE-RANGE,
    EM-TEXT-SIZE
    9 0 MOVZ,
    \ This process owns no registration lock inherited from captured bytes.
@@ -9624,7 +9597,7 @@ ardone LBL,
    9 DATA NCOMP-DISPATCH:DEF-TIER-CELL STR,
    9 DATA NCOMP-DISPATCH:BUILD-DEPTH-CELL STR,
    9 DATA NCOMP-DISPATCH:BUILD-TIER-CELL STR,
-   10 TIER-PROV:OPEN-CELL LIT64,  10 DATA 10 ADD,  9 10 0 STR,  9 DATA HND-CELL STR,
+   9 DATA HND-CELL STR,
    9 DATA INP-CELL STR,  9 DATA INE-CELL STR,
    9 DATA AOT-SEED-DONE-CELL STR,
    9 DATA BOOT-SRC:USER-END STR,
@@ -12097,9 +12070,7 @@ public
    9 CP 10 SUB,                                       \ x9 = the span pass 1 emitted from it
    SNAP-RELOC:CALLMAP-OFF RELOC-EMIT:CLEAR-SPAN,      \ x9/x10 survive the clear
    SNAP-RELOC:ADDRMAP-OFF RELOC-EMIT:CLEAR-SPAN,
-   0 CODE-ORIGIN:CLOSE,
    CP 10 0 ADDI,                                      \ CP back to the colon entry: below the band
-   CODE-ORIGIN:OPEN,
    PROT-EMIT:LCF LABEL@ BL,                           \ the control-flow depth reset below
    5 CFSTK-OFF LIT64,  11 DBASE 5 ADD,  12 0 MOVZ,  12 11 0 STR,
    12 DATA LOCN-CELL STR,  12 DATA LOCF-CELL STR,
@@ -12292,7 +12263,7 @@ public
    owned LBL,
    NCOMP-DISPATCH:DECL-DECLARED-ROW-OFF TSIG-A-CELL TSIG-U-CELL DECL-OWNER:SIGNATURE
    publish B,
-   rejected LBL,  0 CODE-ORIGIN:CLOSE,
+   rejected LBL,
    11 DATA PEND-CELL LDR,  12 11 16 LDR,  12 12 DNAME-EXT ANDI,  12 inl CBZ,
       CP 11 24 LDR,  done B,                           \ ext name in code space: CP := pre-name CP
    inl LBL,  CP 11 0 LDR,                              \ inline name: CP := colon entry
@@ -12307,7 +12278,6 @@ public
    hooked LBL,
    publish finish EM-COMPILE-PUBLISH-HOOKED
    publish LBL,
-   0 CODE-ORIGIN:CLOSE,
    C-DOES-OCC-ROOM
    EM-DEF-OCC:LAPPEND LABEL@ BL,  LHIDXADD LABEL@ BL,
    EM-REC-WIDE-PUBLISH
@@ -12754,7 +12724,6 @@ public
 \ native THROW still owns its handler and return/loop stacks; clearing those
 \ here would discard the handler that is about to receive the error.
 : EM-ABORT-COMPILE-STATE ( -- )
-   CODE-ORIGIN:ABANDON,
    9 0 MOVZ,
    9 DATA NCOMP-DISPATCH:DEF-TIER-CELL STR,
    9 DATA NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:PENDING-TAKE cells + STR,
@@ -12894,7 +12863,6 @@ public
          12 0 MOVZ,  12 DATA LIDX-CELL STR,              \ the refused token's reload is gone
          scope B,
       owned LBL,
-      CODE-ORIGIN:ABANDON,
       10 13 40 LDR,  LCODEINV LABEL@ BL,
       SP SP 32 SUBI,  11 SP 0 STR,  13 SP 8 STR,  15 SP 16 STR,
       \ The checker's records go with the definitions: back to the end as the
@@ -13030,7 +12998,6 @@ public
    12 DATA STACK-ABI:REPL-CAP-CELL LDR,  12 DATA STACK-ABI:CAP-CELL STR,
    XDS 14 0 ADDI,                                  \ callback argument needs the recovered cursor
    0 2 MOVZ,  1 LQNL LABEL@ ADR,  2 QNL-LEN MOVZ,  NR-WRITE SYS,
-   CODE-ORIGIN:ABANDON,
    10 DATA RSAVCP-CELL LDR,  LCODEINV LABEL@ BL,
    9 DATA RSAVCP-CELL LDR,  EM-DEF-OCC:LRECLAIM LABEL@ BL,
    DATA RSAVROWS-CELL kept DECL-OWNER:RETRACT-TO     \ the checker's records go with the line's definitions
@@ -14048,7 +14015,7 @@ public
 
 \ A caught Habu source abandons an owned definition without disturbing the
 \ catch frame that returned its code. Close the JIT page before any Habu
-\ rollback runs, and mark the open provenance region unknown.
+\ rollback runs.
 : DEF-ABORT ( -- )
    PROT-EMIT:LCLOSE LABEL@ BL,
    EM-ABORT-COMPILE-STATE ;
@@ -14103,7 +14070,7 @@ PTR-VARIABLE SRCA
 
 : EMIT-RESET-BUILDER ( ptr u8 n -- )
    SRCN !  SRCA !
-   ASM-INIT  CODE-ORIGIN:LABELS  ENGINE-PRIMS:RESET
+   ASM-INIT  ENGINE-PRIMS:RESET
    0 DIVISION-PRIM-ROW !  0 CF-DEF-GUARD ! ;
 
 \ Label allocation for the emitter: one private allocator per engine region,
@@ -14728,7 +14695,6 @@ variable KERNEL-CODE-END
    KERNEL-CONTEXT CODE KERNEL-CODE-END @ + SHA256-END ;
 
 : EMIT-PRIMITIVE-SECTIONS ( -- )
-   CODE-ORIGIN:EMIT-HELPERS
    EMIT-PRIMS
    s" does-patch" ['] DOESPATCH:PRIM FPRIM
    s" does-record" ['] DOES-REC:NATIVE-PRIM FPRIM
@@ -14858,8 +14824,7 @@ public
 \ file refusing first, and the reason dot habu-reach-the-seed-d1326596 exists.
 \ The payload is last and is addressed only through TADR,, so its size cannot
 \ enter any reach.
-: EMIT-FORTH-ORIGIN ( ptr u8 n n -- )
-   CODE-ORIGIN:CAPTURE-ORIGIN!
+: EMIT-FORTH-IMAGE ( ptr u8 n -- )
    EMIT-RESET-BUILDER
    LABELS:INIT
    EMIT-CODE-SECTIONS
@@ -14871,7 +14836,7 @@ public
 
 \ Every ordinary invocation chooses no scoped entry. Only a complete runtime
 \ may bind entries.
-: FORTH-ORIGIN ( ptr u8 n n -- )
+: FORTH ( ptr u8 n -- )
    -1 EM-SCOPE-CHILD-OFF !
    -1 EM-C2-MUT-OFF !
    -1 EM-C2-MUT-LOAN-OFF !
@@ -14879,9 +14844,9 @@ public
    -1 EM-C2-RECORDS-OFF !
    -1 EM-C2-RECORD-OFF !
    -1 EM-C2-FIELD-OFF !
-   EMIT-FORTH-ORIGIN ;
+   EMIT-FORTH-IMAGE ;
 
-: FORTH-C2-ORIGIN ( ptr u8 n n n n n n n n n -- )
+: FORTH-C2 ( ptr u8 n n n n n n n n -- )
    {: read:n mut:n loan:n init:n records:n record:n field:n :}
    SEEDED-RUNTIME? 0= if s" habu2: C2 entries require complete runtime" 74 die then
    read 0 < read AOT-BLOB-LEN @ >= or
@@ -14910,10 +14875,7 @@ public
    records EM-C2-RECORDS-OFF !
    record EM-C2-RECORD-OFF !
    field EM-C2-FIELD-OFF !
-   EMIT-FORTH-ORIGIN ;
-
-\ Disk artifacts and ordinary source emission carry no positive capture proof.
-: FORTH ( ptr u8 n -- ) -1 FORTH-ORIGIN ;
+   EMIT-FORTH-IMAGE ;
 
 ;package
 

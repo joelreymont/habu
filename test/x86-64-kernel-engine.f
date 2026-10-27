@@ -619,13 +619,13 @@ REGION SLOT-BYTES - constant TOP-SLOT
    0 X64HARNESS:PUSH-SCRATCH, s" ptr-cell-mark" ROW
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
-\ With the latch sealed, the row aimed at the band cell TIER-PROV:N-CELL exits
+\ With the latch sealed, the row aimed at the band cell UNIT-COMPILE-CELL exits
 \ 83 before it stores: xt! when the flag is true, ptr-cell-mark otherwise.
 : BUILD-BAND-CELL ( bool ptr u8 n -- ) {: store:bool path:ptr pathu:n :}
    false X64HARNESS:BOOT-OPEN,
    SEAL,
    store if CELL-VALUE X64HARNESS:PUSH, then
-   TIER-PROV:N-CELL X64HARNESS:PUSH-DATA,
+   UNIT-COMPILE-CELL X64HARNESS:PUSH-DATA,
    store if s" xt!" ROW else s" ptr-cell-mark" ROW then
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
@@ -633,7 +633,7 @@ REGION SLOT-BYTES - constant TOP-SLOT
    false X64HARNESS:BOOT-OPEN,
    ADDRESS-CELLS:BOOT-CAP ADDRESS-HEADER,
    SEAL,
-   TIER-PROV:N-CELL X64HARNESS:PUSH-DATA,
+   UNIT-COMPILE-CELL X64HARNESS:PUSH-DATA,
    X64ASM:RBP X64CODE:ASM-SINK X64ASM:ENC-PUSH
    X64ASM:RAX X64ASM:RBP X64HARNESS:SCRATCH-OFF X64ASM:MEM-OFF
       X64CODE:ASM-SINK X64ASM:ENC-LEA

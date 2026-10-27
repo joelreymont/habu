@@ -9,8 +9,7 @@ public
 : ANCHOR ( -- ) ;
 private
 
-\ The subject reads ANCHOR's xt as raw bits; it does not load src/lib/test.f, so
-\ TEST:XT>N is not available to the maker that loads it.
+\ The subject reads ANCHOR's xt as raw bits.
 CAST: XT>N ( [ R -- S ] -- n )
 
 : TEXT+ ( ptr u8 n -- ) SOURCE CODEGEN:APPEND-STRING ;

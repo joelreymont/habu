@@ -67,8 +67,6 @@ variable AT
    RC @ 0<> if OUT OUT-U @ type ERR ERR-U @ type then
    RC @ 0 T= ERR-U @ 0 T= ;
 
-\ app-image comes first: code compiled before its tier switch lacks native
-\ provenance, and the save refuses it (exit 100).
 : SAVE-IMAGE ( ptr u8 n -- )
    {: src:ptr srcu:n :}
    PROC-ARGV-ENV-RESET PROC-ENV-INHERIT-MISSING

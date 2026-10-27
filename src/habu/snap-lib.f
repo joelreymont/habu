@@ -454,23 +454,6 @@ CAST: PROCESS-CELLS-XT ( n -- [ [ ptr n -- ] -- ] )
    xt 0= if exit then
    [: SND-ZERO-PROCESS-CELL ;] xt PROCESS-CELLS-XT execute ;
 
-\ The live table holds abandoned rows, the old engine's ASLR coordinates and
-\ the address of a mapped backing. Freeze one native row over the retained
-\ interval instead: the x86-64 boot restores this band as written, and its one
-\ tier is native. The ARM64 restore (habu2.f EM-SNAPSHOT-RESTORE) discards the
-\ band and writes the same row from the trailer's region length, so code saved
-\ at tier 0 restores as native. The restoring engine supplies its own
-\ primitive-text evidence.
-: SND-CANON-ORIGIN ( -- )
-   \ These are byte offsets into the scratch copy, not pointer values.
-   TIER-PROV:OPEN-CELL
-   begin dup TIER-PROV:END < while dup SND-ZERO-CELL CELL + repeat drop
-   SCL @ DICT-SIZE <= if exit then
-   1 TIER-PROV:N-CELL SND-XT-CELL!
-   DICT-SIZE TIER-PROV:TABLE-OFF SND-XT-CELL!
-   SCL @ TIER-PROV:TABLE-OFF CELL + SND-XT-CELL!
-   1 TIER-PROV:TABLE-OFF 2 cells + SND-XT-CELL! ;
-
 : CANON-DATA ( -- )
    SND-ALLOC
    DYNAMIC-STORAGE:RELEASE-ALL
@@ -485,7 +468,6 @@ CAST: PROCESS-CELLS-XT ( n -- [ [ ptr n -- ] -- ] )
    SND-ZERO-POLICY
    SND-ZERO-WRITER
    SND-ZERO-PROCESS
-   SND-CANON-ORIGIN
    HB-TARGET-LINUX-X86-64? 0= if SND-CANON-XT-CELLS then ;
 
 : CANON-REGION ( -- )

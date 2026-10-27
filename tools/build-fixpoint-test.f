@@ -575,25 +575,6 @@ TYPED-VARIABLE SRC-A ptr u8
    BF-PIN-OFF!
    BF-PIN-RESET ;
 
-\ Split emission pins the whole input before copying either side. Changing the
-\ file between its two halves must refuse, and stripped prefixes obey the same
-\ pin instead of opening an untracked source-read path.
-: BFT-TEST-SPLIT-PIN ( -- )
-   BFT-ROOT BF-TMP!
-   BF-PIN-RESET
-   BF-PIN-ON!
-   s" \ before marker after" BFT-CERT-WRITE
-   s" pin-split" BF-RESET-OUT
-   s" pin-split" BFT-CERT s" marker" BF-APPEND-SOURCE-BEFORE
-   BFT-CERT s" \ mid-split edit" APPEND-FILE
-   [: s" pin-split" BFT-CERT s" marker" BF-APPEND-SOURCE-FROM ;]
-      E-BUILD-BOOT-DRIFT TTHROWSQ
-   [: s" pin-split" BFT-CERT s" marker" BF-APPEND-SOURCE-BEFORE-STRIPPED ;]
-      E-BUILD-BOOT-DRIFT TTHROWSQ
-   BF-PIN-OFF!
-   BF-PIN-RESET
-   BF-TMP-RESET ;
-
 \ The native chain's contribution to the stamp key (package STAMP-KEY in
 \ tools/build-fixpoint.f). Two claims, and the second is what makes the first
 \ mean anything for the real refresh.
@@ -742,7 +723,6 @@ public
       s" stamp nested" [: BFT-TEST-STAMP-NESTED ;] BFT-STEP
    then
    s" boot pin mismatch" [: BFT-TEST-BOOT-PIN ;] BFT-STEP
-   s" split source pin mismatch" [: BFT-TEST-SPLIT-PIN ;] BFT-STEP
    HB-TARGET-LINUX-X86-64? 0= if
       s" cold source boundary" [: SOURCE-BOUNDARY ;] BFT-STEP
    then

@@ -645,10 +645,10 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
 \ hands it (NCOMP-EMIT:LOAD), checked again here since a body immediate can
 \ have cleared it. The compiler checks, compiles and publishes the record, or
 \ throws with the definition still pending, as the engine's does. On its
-\ return def-close closes the provenance window native and clears what
-\ def-open set. This `;` recovers: it declares so in RECOVER-CELL for the
-\ compile, and abandons the definition the compiler refused with
-\ E-NCOMP-RECOVERY, which only a multi-error run throws, and reads on.
+\ return def-close clears what def-open set. This `;` recovers: it declares
+\ so in RECOVER-CELL for the compile, and abandons the definition the compiler
+\ refused with E-NCOMP-RECOVERY, which only a multi-error run throws, and
+\ reads on.
 : DEF-COMPILE ( ptr u8 n -- )
    DEF-DISPATCH NCOMP-DISPATCH:XT-CELL CELL@ AS-COMPILE execute ;
 

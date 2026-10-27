@@ -104,9 +104,8 @@ create ERR CAP allot
    s" 0 data-base PD-TABLE-OFF + c!" ACCEPTS
    s" 0 data-base PD-TABLE-END 1 cells - + !" ACCEPTS
    s" 0 data-base DECLARED-LOG:OFF + c!" ACCEPTS
-   s" 0 data-base TIER-PROV:OPEN-CELL 1 cells - + !" ACCEPTS
-   s" 0 data-base TIER-PROV:OPEN-CELL 1- + !" REJECTS
-   s" 0 data-base TIER-PROV:OPEN-CELL + c!" REJECTS
+   s" 0 data-base UNIT-COMPILE-CELL 1 cells - + !" ACCEPTS
+   s" 0 data-base UNIT-COMPILE-CELL 1- + !" REJECTS
    s" 0 data-base UNIT-COMPILE-CELL + !" REJECTS
    s" 0 data-base UNIT-COMPILE-CELL 1 cells + 1- + !" REJECTS
    s" 0 data-base REPLAY-SCOPE:LATCH + c!" REJECTS

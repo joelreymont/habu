@@ -9,8 +9,6 @@
 \ and the shared closure walk, because that input is a file LIST rather than one
 \ file (see the stamp key section below).
 
-require src/lib/adt/option.f                 \ option<NUM:index> STR:FIND-SUB consumer
-require src/lib/string-roles.f               \ package STR: the typed string surface
 require src/habu/verify-source.f
 require tools/build-target.f              \ the target the emitted sources are for
 require tools/build-certify.f            \ the certify report and census lines
@@ -180,9 +178,6 @@ variable BF-APP-OFF
 variable BF-GEN
 variable BF-FOUND
 variable BF-PID
-variable BF-STRIP-R
-variable BF-STRIP-W
-variable BF-STRIP-OFF
 variable BF-STAMP-PATH-U
 variable BF-STAMP-DIR-U
 variable BF-STAMP-DEF-U
@@ -509,82 +504,8 @@ private
 
 package BUILD-FIXPOINT
 
-\ typed STR:FIND-SUB boundary: route byte-lengths through the STR: role surface,
-\ then read the found option<NUM:index> through NUM's one public
-\ projection and mint the switchover option<idx> from it.
-
-: BF-FIND ( ptr u8 n ptr u8 n -- option<idx> ) {: a:ptr u:n b:ptr v:n :}
-   a u STR:LENGTH b v STR:LENGTH STR:FIND-SUB MATCH option
-     none OF OPTION:NONE ENDOF
-     some OF NUM:ORDINAL >IDX OPTION:SOME ENDOF
-   ;MATCH ;
-
-: BF-SOURCE-FIND ( ptr u8 n -- option<idx> )
-   BF-SOURCE-BUF BF-SOURCE-LEN @ 2swap BF-FIND ;
-
-: BF-SOURCE-REQUIRE ( option<idx> -- n )
-   MATCH option
-     none OF s" build-fixpoint: source split marker missing" BF-BUILD-RC die ENDOF
-     some OF IDX>N ENDOF
-   ;MATCH ;
-
 : BF-SRC-C@ ( n -- u8 )
    BF-SOURCE-BUF + c@ ;
-
-: BF-SRC-C! ( u8 n -- )
-   BF-SOURCE-BUF + c! ;
-
-: BF-STRIP-WRITE ( u8 -- )
-   BF-STRIP-W @ BF-SRC-C!
-   BF-STRIP-W @ 1+ BF-STRIP-W ! ;
-
-: BF-STRIP-R++ ( -- )
-   BF-STRIP-R @ 1+ BF-STRIP-R ! ;
-
-: BF-STRIP-SKIP-PAREN ( -- )
-   BF-STRIP-R++
-   begin BF-STRIP-R @ BF-STRIP-OFF @ < while
-      BF-STRIP-R @ BF-SRC-C@ 41 = if BF-STRIP-R++ exit then
-      BF-STRIP-R++
-   repeat ;
-
-: BF-STRIP-KEEP ( -- )
-   BF-STRIP-R @ BF-SRC-C@ BF-STRIP-WRITE
-   BF-STRIP-R++ ;
-
-: BF-STRIP-RANGE ( n -- n )
-   BF-STRIP-OFF !
-   0 BF-STRIP-R !
-   0 BF-STRIP-W !
-   begin BF-STRIP-R @ BF-STRIP-OFF @ < while
-      BF-STRIP-R @ BF-SRC-C@ 40 = if
-         BF-STRIP-SKIP-PAREN
-      else
-         BF-STRIP-KEEP
-      then
-   repeat
-   BF-STRIP-W @ ;
-
-: BF-APPEND-SOURCE-BEFORE ( ptr u8 n ptr u8 n ptr u8 n -- ) {: out:ptr outu:n src:ptr srcu:n mark:ptr marku:n :}
-   src srcu BF-PIN-FILE
-   src srcu BF-READ-SOURCE
-   mark marku BF-SOURCE-FIND BF-SOURCE-REQUIRE {: off:n :}
-   out outu BF-SOURCE-BUF off BF-APPEND-BYTES
-   out outu BF-APPEND-LF ;
-
-: BF-APPEND-SOURCE-BEFORE-STRIPPED ( ptr u8 n ptr u8 n ptr u8 n -- ) {: out:ptr outu:n src:ptr srcu:n mark:ptr marku:n :}
-   src srcu BF-PIN-FILE
-   src srcu BF-READ-SOURCE
-   mark marku BF-SOURCE-FIND BF-SOURCE-REQUIRE BF-STRIP-RANGE {: kept:n :}
-   out outu BF-SOURCE-BUF kept BF-APPEND-BYTES
-   out outu BF-APPEND-LF ;
-
-: BF-APPEND-SOURCE-FROM ( ptr u8 n ptr u8 n ptr u8 n -- ) {: out:ptr outu:n src:ptr srcu:n mark:ptr marku:n :}
-   src srcu BF-PIN-FILE
-   src srcu BF-READ-SOURCE
-   mark marku BF-SOURCE-FIND BF-SOURCE-REQUIRE {: off:n :}
-   out outu BF-SOURCE-BUF off + BF-SOURCE-LEN @ off - BF-APPEND-BYTES
-   out outu BF-APPEND-LF ;
 
 : BF-PREFLIGHT ( -- )
    BF-REQUIRE-WATERMARK ;
@@ -815,11 +736,7 @@ package BUILD-FIXPOINT
 \ data-claims.f requires for the register allocator's, the address-cell
 \ registry's and the profiler's rows, then data-claims.f itself (a module
 \ habu1.f requires but this list omits certifies as `undefined word`, which is
-\ how the DATA-CLAIMS split first failed here);
-\ code-origin.f registers its helpers through ENGINE-PRIMS, so its source
-\ follows primitive-registry.f, at habu1.f's own require line.
-: BF-CODE-ORIGIN-REQUIRE$ ( -- ptr u8 n ) s" require src/habu/code-origin.f" ;
-
+\ how the DATA-CLAIMS split first failed here).
 : BF-APPEND-HABU1 ( ptr u8 n -- ) {: out:ptr outu:n :}
    out outu s" src/habu/primitive-registry.f" BF-APPEND-MODULE
    out outu s" src/habu/regalloc-abi.f" BF-APPEND-MODULE
@@ -829,9 +746,7 @@ package BUILD-FIXPOINT
    out outu s" src/habu/data-claims.f" BF-APPEND-MODULE
    out outu s" src/habu/arith-abi.f" BF-APPEND-MODULE
    out outu s" src/habu/task-abi.f" BF-APPEND-MODULE
-   out outu s" src/habu/habu1.f" BF-CODE-ORIGIN-REQUIRE$ BF-APPEND-SOURCE-BEFORE
-   out outu s" src/habu/code-origin.f" BF-APPEND-MODULE
-   out outu s" src/habu/habu1.f" BF-CODE-ORIGIN-REQUIRE$ BF-APPEND-SOURCE-FROM ;
+   out outu s" src/habu/habu1.f" BF-APPEND-MODULE ;
 
 \ fmt requires float and string; float requires string and option, and string
 \ requires errors and option. Nothing here requires num-types.f or
@@ -864,7 +779,7 @@ package BUILD-FIXPOINT
 : BF-APPEND-COMMON ( ptr u8 n -- ) {: out:ptr outu :}
    BF-RECOVERY-ONLY
    \ The rewind removed the prelude. Restore it before build-side dependencies
-   \ such as habu1.f's code-origin emitter use its checked flag words.
+   \ such as habu1.f use its checked flag words.
    out outu s" src/lib/prelude.f" BF-APPEND-MODULE
    out outu s" src/arch/arm64/asm.f" BF-APPEND-MODULE   \ icode.f requires it
    out outu s" src/arch/arm64/icode.f" BF-APPEND-MODULE   \ aot-decl.f requires it

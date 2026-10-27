@@ -775,7 +775,6 @@ EPRIM: tier@          PE-N PE-OUT EPRIM; REACH build
 \ The compiler's prospective trusted-tick order and the owner whose installed
 \ query established it. Order 0 is checking first; 1 is trusted gate first.
 EPRIM: tick-order@    PE-N PE-OUT PE-PTR-U8 PE-OUT EPRIM;
-EPRIM: code-origin    PE-N PE-IN PE-N PE-IN PE-N PE-OUT EPRIM;
 \ Choosing the build scope belongs to package EXECUTABLE-BUILD
 \ (src/lib/executable-build.f), and these rows are that owner's alone: its WITH is
 \ the checked caller every other scope calls, and a checked body outside
@@ -828,8 +827,8 @@ EPPRIM: DEF-OCC def-occ-resolve PE-N PE-IN PE-N PE-IN PE-PTR-N PE-OUT ECLOSE-PRI
 \ ---- the definition writers --------------------------------------------------
 \ What `package`, `export`, `:`, `create`, `does>`, `;`, `immediate`, `cast:`
 \ and `defer` change is sealed state after the seal: the friend arena (CUR, WIDN, DEF-WL,
-\ TSIG, TCSIG, PKG-*), BODYBUF, DEF-TIER-CELL, the TIER-PROV band and the
-\ records behind the PROT window.
+\ TSIG, TCSIG, PKG-*), BODYBUF, DEF-TIER-CELL and the records behind the
+\ PROT window.
 \ These fifteen rows are how an interpreter written in Habu writes it. Each is
 \ registered with ENGINE-PRIMS:GLOBAL-INT-WID on both targets, so a checked
 \ body reaches one only through an owner-private row below: package OUTER's,
@@ -849,7 +848,7 @@ EPPRIM: DEF-OCC def-occ-resolve PE-N PE-IN PE-N PE-IN PE-PTR-N PE-OUT ECLOSE-PRI
 \
 \ The three record writers store a name of at least one byte: up to DNAME-INL
 \ bytes inline, a longer one at CP rounded up to a code slot, 4 bytes on ARM64
-\ and 16 on x86-64, and marked native provenance, as `:` stores one. Each refuses an empty name, a live (folded name, wid) pair,
+\ and 16 on x86-64, as `:` stores one. Each refuses an empty name, a live (folded name, wid) pair,
 \ NDICT at DICT-CAP, a name copy that would reach the code ceiling (REGION -
 \ $4000 above DBASE, compared unsigned) and a pending definition, whose record
 \ occupies slot NDICT.
@@ -897,8 +896,7 @@ EPPRIM: OUTER package-scope! PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ [0] CP after the name, [8] 0, the kind (0, DKIND:VAL, DKIND:ADDR, DNAME-CELL
 \ beside DKIND:ADDR for a variable, or DKIND:CAST) in [16] and the wid in
 \ [40]; PEND-CELL is that record; TSIG, TCSIG, DOESB, CLAUSE and TRUSTED clear;
-\ DEF-TIER-CELL takes TIER-CELL and the TIER-PROV open cell takes CP; LASTC-CELL
-\ waits for the body (def-close, def-create). It refuses another kind, wid -1
+\ DEF-TIER-CELL takes TIER-CELL; LASTC-CELL waits for the body (def-close, def-create). It refuses another kind, wid -1
 \ or -2 and CP at or past the code ceiling. At tier 0 it opens the record only: the JIT's
 \ own head (its frame and resets) is not this row's.
 EPRIM: def-open PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN EPRIM;
@@ -921,8 +919,7 @@ EPRIM: created-sig! PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
 EPPRIM: OUTER created-sig! PE-PTR-U8 PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ def-close ( -- ): end the pending definition the native compiler compiled,
-\ as the engine's tier-1 `;` ends one: the TIER-PROV window def-open opened
-\ closes native, origin 1 over [open, CP), and the state def-open set clears:
+\ as the engine's tier-1 `;` ends one: the state def-open set clears:
 \ DEF-TIER-CELL, TSIG, TCSIG, PEND-OPAQUE, DOESB, CLAUSE, TRUSTED and PEND-CELL. Before
 \ PEND-CELL clears, LASTC-CELL takes the record for a nonzero kind other than
 \ DKIND:CAST, the record `does-patch` reads. It refuses when
@@ -931,8 +928,8 @@ EPPRIM: OUTER created-sig! PE-PTR-U8 PE-IN PE-N PE-IN ECLOSE-PRIVATE
 EPRIM: def-close EPRIM;
 ETRUSTED-ONLY!
 EPPRIM: OUTER def-close ECLOSE-PRIVATE
-\ def-abort ( -- ): close an abandoned definition's writable code region,
-\ provenance window and compile-only state after a caught source error. The
+\ def-abort ( -- ): close an abandoned definition's writable code region
+\ and compile-only state after a caught source error. The
 \ catch's handler, return and loop stacks remain live for the caller.
 EPRIM: def-abort EPRIM;
 ETRUSTED-ONLY!
@@ -946,8 +943,8 @@ EPPRIM: OUTER stack-clear ECLOSE-PRIVATE
 \ def-create ( -- ): end the pending DKIND:ADDR definition as the engine's
 \ `create` ends its record (habu2.f EMIT-CREATE): DP rounds up to a cell, the
 \ code at CP pushes that address, an address-map site, and returns, [8] takes
-\ the code's length, LASTC the record, the record is counted and indexed, its
-\ code is native provenance and the state def-open set clears, PEND-CELL with
+\ the code's length, LASTC the record, the record is counted and indexed and
+\ the state def-open set clears, PEND-CELL with
 \ it. DP past the data region refuses as `allot` does, 76 (habu1.f DP-CHECK).
 \ It refuses no pending definition, a pending one of another kind and CP at
 \ or past the code ceiling.
@@ -962,8 +959,7 @@ ETRUSTED-ONLY!
 EPPRIM: OUTER imm-mark ECLOSE-PRIVATE
 \ def-cast ( -- ): end the pending DKIND:CAST definition as the engine's
 \ `cast:` ends its record (habu2.f C-IDENTITY): the code at CP is the empty
-\ checked body, an entry slot that a leaf leaves a nop and a return, native
-\ provenance; [8] takes its length, the record is counted and indexed, and the
+\ checked body, an entry slot that a leaf leaves a nop and a return; [8] takes its length, the record is counted and indexed, and the
 \ state def-open set clears, PEND-CELL with it. Asking the checker's registrar
 \ before and draining the record facts it latched after are the caller's. It
 \ refuses no pending definition, a pending one of another kind and CP at or
@@ -975,7 +971,7 @@ EPPRIM: OUTER def-cast ECLOSE-PRIVATE
 \ ends its record (habu2.f C-DEFER), n its dispatch cell: the code at CP loads
 \ the cell and calls what it holds, an address-map site; [8] takes the code's
 \ length; the DEFER-MAGIC trailer naming the cell follows; the record is
-\ counted and indexed, its code is native provenance, the fixed shadow learns
+\ counted and indexed, the fixed shadow learns
 \ it and the state def-open set clears, PEND-CELL with it. It refuses no
 \ pending definition, a pending one of a nonzero kind and CP at or past the
 \ code ceiling.

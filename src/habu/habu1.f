@@ -75,8 +75,6 @@ PTR-VARIABLE FP-A  variable FP-U
 defer FP-EMIT ( -- )
 : FP-A@ ( -- ptr u8 ) FP-A @ ;
 
-require src/habu/code-origin.f
-
 variable FPL  variable FPE
 variable DIVISION-PRIM-ROW
 
@@ -306,24 +304,12 @@ variable BAND-IX
 
 : GUARD-SPAN ( n n -- )
    {: addr:n len:n :}
-   LBL LBL LBL {: ok:label trap:label nomap:label :}
+   LBL LBL {: ok:label trap:label :}
    DREG DATA FRIEND-LATCH-CELL LDR,
    DREG ok CBZ,
    len ok CBZ,
    EREG addr len ADD,                   \ checked end = start + length
    EREG addr CMP,  C-CC trap BCOND,     \ unsigned wrap
-   \ The process-owned provenance array is outside fixed DATA. Guard every
-   \ allocated row, including unused capacity, before the DATA hull shortcut.
-   DREG TIER-PROV:MAP-CELL LIT64,  DREG DATA DREG ADD,  DREG DREG 0 LDR,
-   DREG nomap CBZ,
-   DREG TIER-PROV:MAP-CAP-CELL LIT64,  DREG DATA DREG ADD,  DREG DREG 0 LDR,
-   EREG DREG 1 LSLI,  EREG EREG DREG ADD,  EREG EREG 3 LSLI,
-   DREG TIER-PROV:MAP-CELL LIT64,  DREG DATA DREG ADD,  DREG DREG 0 LDR,
-   EREG EREG DREG ADD,
-   addr EREG CMP,  C-CS nomap BCOND,
-   EREG addr len ADD,  EREG DREG CMP,  C-HI trap BCOND,
-   nomap LBL,
-   EREG addr len ADD,
    \ Bounding test, in the two comparison forms GUARD-BAND itself uses. Every
    \ band lies in the hull [DATA-BANDS:LO, DATA-BANDS:HI), so a span starting at
    \ or above the hull's end, or ending at or below its start, intersects none
@@ -1437,8 +1423,8 @@ variable SZA-I
 \ alias-record, namespace-private and native-unit-publish. ndict-append needs
 \ none: it publishes the pending record, which replay-open refuses and no head
 \ opens while the latch is set. The append itself (LHIDXADD) is too late: at
-\ `;` it follows the check hook, the trust registration, the code-origin row
-\ and pass 2, none of which replay-close restores. The refusal names the token
+\ `;` it follows the check hook, the trust registration and pass 2,
+\ none of which replay-close restores. The refusal names the token
 \ and throws ENGINE-ERROR:OVERLAY-OPEN (habu2.f EM-COMPILE-DIE). A live
 \ `undefine` throws the same code before it retires anything (xref.f
 \ XREF-UNDEFINE-GUARD, both loops): replay-close gives back only the
@@ -2998,7 +2984,6 @@ public
    7 4 MOVZ,  A 7 PROT-GUARD:CALL \ x9 is the target; protect its exact 4-byte write
    \ A generic instruction write carries no optimizer proof, even if its old
    \ bytes belonged to a native body. Invalidate before the write can publish.
-   9 SP 8 LDR,  10 9 4 ADDI,  9 10 CODE-ORIGIN:INVALIDATE,
    9 SP 8 LDR,  10 9 4 ADDI,  HOST-INVALIDATE,
    \ THE FLIP IS STATELESS, keyed on the target word, not on the bracket state a
    \ compile is holding. A patch names the address it rewrites outright and its
@@ -3153,7 +3138,6 @@ public
    CLEAR-CALLMAP-SPAN                            \ the span's relocation record, reset with it
    9 SP 8 LDR,  10 SP 16 LDR,
    CP 10 9 ADD,                                  \ the slot is claimed
-   10 CP CODE-ORIGIN:UNKNOWN-RANGE,                \ only the compiler return may certify this emission
    9 10 0 ADDI,  LFLUSH LABEL@ BL,              \ flush [dst, CP), once
    SP SP 48 ADDI, ;
 
@@ -3162,7 +3146,7 @@ public
 \ The code and record bands open together and close together; no dictionary
 \ name becomes live until both copies and the instruction-cache flush finish.
 \ A namespace-only unit has records but no code; it opens only the record band
-\ and leaves CP, relocation maps and code provenance unchanged.
+\ and leaves CP and relocation maps unchanged.
 : BNATIVEUNITPUBLISH ( -- ) B-TASK-LIVE-GUARD
    OVERLAY-EMIT:GUARD,
    9 G-POP  10 G-POP  11 G-POP  12 G-POP  \ records-n, records-a, code-u, code-a
@@ -3213,7 +3197,6 @@ public
    SNAP-RELOC:ADDRMAP-OFF RELOC-EMIT:CLEAR-SPAN,
    9 SP 16 LDR,  CP CP 9 ADD,
    9 SP 32 LDR,  LFLUSH LABEL@ BL,
-   9 SP 32 LDR,  10 CP 0 ADDI,  9 10 CODE-ORIGIN:NATIVE-RANGE,
    indexed LBL,
    15 SP 0 LDR,
    iloop LBL,
@@ -4151,9 +4134,6 @@ public
    9 DATA NCOMP-DISPATCH:BUILD-TIER-CELL STR,
    done LBL, ;
 
-: BCODEORIGIN ( -- )
-   10 G-POP  9 G-POP  CODE-ORIGIN:QUERY,  9 G-PUSH ;
-
 \ set-tier ( n -- ): select which compiler the `:` handlers dispatch to.
 \ 0 = tier 0, the legacy JIT; 1 = tier 1, the IR pipeline behind
 \ NCOMP-DISPATCH:XT-CELL. See layout.f NCOMP-DISPATCH:TIER-CELL for the rule.
@@ -4934,7 +4914,6 @@ package ENGINE-EMIT
    s" tick-order@" ['] BTICKORDER FPRIM-L
    s" executable-build-enter" ['] BBUILDENTER ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" executable-build-leave" ['] BBUILDLEAVE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
-   s" code-origin" ['] BCODEORIGIN FPRIM
    s" set-preflight" ['] BSETPREFLIGHT FPRIM-L
    s" set-top-check" ['] BSETTOPCHECK FPRIM-L   s" top-check@" ['] BTOPCHECKFETCH FPRIM-L ;
 

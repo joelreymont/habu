@@ -234,11 +234,11 @@ private
    X64HARNESS:EXPECT-BALANCED,
    X64HARNESS:BOOT-CLOSE, ;
 
-\ A store row whose address is the band cell TIER-PROV:N-CELL: its guard exits
+\ A store row whose address is the band cell UNIT-COMPILE-CELL: its guard exits
 \ 83 before the store.
 : ARMED ( ptr u8 n ptr u8 n -- ) {: row:ptr rowu:n path:ptr pathu:n :}
    false OPEN-IMAGE
-   7 N,  TIER-PROV:N-CELL X64HARNESS:PUSH-DATA,  row rowu CALL
+   7 N,  UNIT-COMPILE-CELL X64HARNESS:PUSH-DATA,  row rowu CALL
    path pathu CLOSE-IMAGE ;
 
 \ ---- f. ----------------------------------------------------------------------

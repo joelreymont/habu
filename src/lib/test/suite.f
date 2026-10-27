@@ -435,9 +435,6 @@ public
 EXPORT ITEM-MAX
 EXPORT ITEM-NAME$
 
-\ An xt's address as an n, for code-address probes such as code-origin.
-CAST: XT>N ( [ R -- S ] -- n )
-
 : SETUP! ( [ -- ] -- )
    is SETUP ;
 

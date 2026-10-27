@@ -11,8 +11,6 @@ s" BAD-TAG" s" -- n" TRUST
 s" CALLABLE-ABI" s" -- n" TRUST
 s" CATCH-STACK" s" -- n" TRUST
 s" CODE-CERT" s" -- n" TRUST
-s" IMAGE-CODE-ORIGIN" s" -- n" TRUST
-s" CODE-ORIGIN-FULL" s" -- n" TRUST
 \ These immutable values are part of the engine failure ABI.
 PPRIM: ENGINE-ERROR STACK-BOUNDS PE-N PE-OUT PPRIM;
 PPRIM: ENGINE-ERROR CALLBACK PE-N PE-OUT PPRIM;
