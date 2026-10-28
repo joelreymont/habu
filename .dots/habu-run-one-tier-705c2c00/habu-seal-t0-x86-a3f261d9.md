@@ -1,6 +1,6 @@
 ---
 title: Seal T0 x86-64 output into NEMIT
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-10-28T14:52:51.559078+02:00"
