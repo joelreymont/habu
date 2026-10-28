@@ -14,6 +14,8 @@
 \     scopes than the registry has slots;
 \   - a task halted inside a scope tears its target down as the halt unwinds the
 \     scope, for more halted tasks than the registry has slots;
+\   - a target whose owner dies inside the scope, before LAUNCH, exits on its
+\     own, so no gated target outlives its owner under init;
 \   - the checker rejects duplicating a handle or teardown token, so a double
 \     teardown cannot even be written.
 \
@@ -44,6 +46,8 @@ create SIGNAL-BYTES 64 allot
 variable TGT-PID
 variable ALIVE-R   variable ALIVE-W       \ alive-pipe: child holds write end, closes on exit
 variable IN-SCOPE                         \ set by the halted task's body once its target is up
+variable STRAND-R  variable STRAND-W      \ stranded-target pipe: the dying owner sends its target's pid
+create STRAND-PID 8 allot                 \ that pid, as the pipe carries it
 TASK:MIN-STACK TASK:TASK HALTEE
 
 \ A real short-lived executable available on both OSes.
@@ -166,6 +170,44 @@ TASK:MIN-STACK TASK:TASK HALTEE
    then
    cpid PROC-WAIT-STATUS drop ;                    \ reap the zombie
 
+\ ---- a target stranded before LAUNCH ----------------------------------------
+\ A forked copy of this process opens a scope and dies inside its body, so the
+\ scope's teardown never runs and its target is stranded gated. Nothing signals
+\ the target: it must read end of file on its gate, exit and be reaped by init,
+\ leaving its pid gone. An expired wait kills it, so a red row leaves no orphan.
+\ An owner that dies before it sends a pid fails the row without the wait.
+: STRAND-BODY ( process-pty-handle -- process-pty-handle )
+   PROCESS-PTY:TARGET PID>N STRAND-PID !
+   STRAND-W @ >FD FD>N STRAND-PID 8 write drop
+   s" " 0 die ;
+
+: STRAND-CHILD ( -- )
+   [: TRUE-PATH [: STRAND-BODY ;] PROCESS-PTY:WITH-TARGET ;] PROC-FORK:CHILD-MAIN ;
+
+: STRAND-GONE? ( -- bool )
+   STRAND-PID @ SIG-PROBE kill-errno ESRCH# negate = ;
+
+: STRAND-WAIT ( -- )
+   ['] STRAND-GONE? mono-ns DEADLINE-MS 1000000 * +
+   s" process-pty-io-smoke STRANDED" TEST-WAIT:POLL ;
+
+\ A pid at or below 1 names no single process: kill(0) and kill(-1) reach groups.
+: STRAND-KILL ( -- )
+   STRAND-PID @ 1 > if STRAND-PID @ SIGKILL kill-errno drop then ;
+
+: STRAND-CHECK ( -- )
+   ['] STRAND-WAIT catch dup 0<> if STRAND-KILL throw then drop ;
+
+: STRANDED ( -- )
+   PIPE-PAIR STRAND-W ! STRAND-R !
+   PROC-FORK:CHECKED dup PID>N 0= if drop STRAND-CHILD then {: cpid:pid :}
+   STRAND-W @ >FD CLOSE-OK
+   STRAND-R @ >FD FD>N STRAND-PID 8 read {: got:n :}
+   STRAND-R @ >FD CLOSE-OK
+   cpid PROC-WAIT-STATUS drop
+   got 8 T=
+   got 8 = if STRAND-CHECK then ;
+
 \ A gated target stays alive beyond the 100 ms deadline. A 1 kHz profiler storms
 \ the process while its watch wait is on the AIO loop; a signal reaches no
 \ thread parked in poll(2) any more, so it must neither throw, shorten the wait
@@ -221,6 +263,7 @@ TASK:MIN-STACK TASK:TASK HALTEE
    HALT-FREES
    STATIC
    DEAD-WATCH
+   STRANDED
    SIGNAL-WATCH
    SIGNAL-OUTPUT
    AIO:STOP

@@ -146,18 +146,20 @@ variable IO-GO-R                                 \ child-side release gate
       refused OF drop E-PROC-OUTPUT throw ENDOF
    ;MATCH ;
 
-\ ---- target child (ends in die if exec fails) --------------------------------
+\ ---- target child (ends in die unless it execs) ------------------------------
 
-: IO-CLOSE-HIGH ( -- )
+\ Close every descriptor from 3 up except the one the child still reads.
+: IO-CLOSE-HIGH ( fd -- ) {: keep:fd :}
    3 begin dup PROC-FORK:MAXFD < while
-      dup close
+      dup keep FD>N <> if dup close then
       1+
    repeat drop ;
 
-\ The target child blocks on the release gate, wires the pipe ends onto its
-\ standard descriptors, drops every other inherited descriptor, and execs. execve
-\ only returns on failure, so reaching the tail means exec failed and the child
-\ exits with IO-EXEC-FAIL; the supervisor still observes the exit through the watch.
+\ The target child wires its pipe ends onto its standard descriptors and drops
+\ every other inherited descriptor but the gate's read end, then blocks on the
+\ gate. It holds no write end of the gate, so a supervisor that closes or loses
+\ its end without LAUNCH gives it end of file and it exits without exec. That
+\ exit and a failed execve both exit with IO-EXEC-FAIL; the watch sees the exit.
 : IO-TARGET-STDIO ( -- )
    IO-SIN-R @ >FD FD>N 0 dup2 drop
    IO-SOUT-W @ >FD FD>N 1 dup2 drop
@@ -170,9 +172,11 @@ variable IO-GO-R                                 \ child-side release gate
    IO-SIN-R @ >FD FD>N 2 dup2 drop ;
 
 : IO-TARGET-CHILD ( -- )
-   IO-GO-R @ >FD FD>N IO-GOBYTE 1 read drop
+   IO-GO-R @ >FD {: go:fd :}
    IO-TTY @ if IO-TARGET-TTY else IO-TARGET-STDIO then
-   IO-CLOSE-HIGH
+   go IO-CLOSE-HIGH
+   go FD>N IO-GOBYTE 1 read 1 <> if s" " IO-EXEC-FAIL die then
+   go FD>N close
    IO-PATH-BUF IO-PATH-LEN @ >LEN PROC-ARGV-PREPARE 0 IO-ENVP execve drop
    s" " IO-EXEC-FAIL die ;
 
@@ -206,8 +210,10 @@ variable IO-GO-R                                 \ child-side release gate
    IO-PTY-NAME PTY:PTY-OPEN-FLAGS 0 open IO-OPEN-CK >FD IO-SIN-R !
    IO-MASTER @ >FD FD>N F-DUPFD 3 fcntl IO-OPEN-CK >FD IO-DONE ! ;
 
+\ Neither gate end reaches a process the owner spawns while a target is gated;
+\ the target closes its read end itself before execve.
 : IO-MK-GATE ( -- )
-   PIPE-PAIR IO-GO-W ! IO-GO-R ! ;
+   PIPE-PAIR-CLOEXEC IO-GO-W ! IO-GO-R ! ;
 
 : IO-FORK-TARGET ( -- )
    PROC-FORK:CHECKED dup PID>N 0= if drop IO-TARGET-CHILD then IO-T-PID ! ;
@@ -227,7 +233,8 @@ variable IO-GO-R                                 \ child-side release gate
    -1 IO-GO-R ! ;
 
 \ The target is forked before its watch opens, so it cannot inherit the watch.
-\ It closes 3..MAXFD before exec and never touches the parent's AIO loop.
+\ It closes 3..MAXFD but its gate before it waits, and never touches the
+\ parent's AIO loop.
 : IO-BUILD ( -- )
    IO-TTY @ if IO-MK-TTY else IO-MK-STDIO then
    IO-MK-GATE
