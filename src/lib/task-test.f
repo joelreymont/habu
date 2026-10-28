@@ -28,6 +28,16 @@ SLEEP-MS NS-PER-MS * constant SLEEP-LEAST-NS
 5000000 constant SLEEP-CPU-NS        \ a PAUSE loop over the same 50 ms costs ten times this
 20000000 constant SPIN-NS            \ the wall time the spinning case keeps its thread busy
 1000000 constant SLEEP-ZERO-NS       \ a zero sleep never enters the kernel
+$7FFFFFFFFFFFFFFF constant CELL-NS-MAX \ the latest deadline a cell holds
+\ The clock's advance between reading DEADLINE-LAST-MS and the call it bounds:
+\ the call takes its own mono-ns, so the last value it accepts is only known to
+\ within this. The refused row one past the bound needs no slack.
+1000 constant DEADLINE-SLACK-MS
+
+\ The last duration whose deadline past mono-ns fits a cell. It only falls as
+\ mono-ns grows, so one past it is refused by any later call.
+: DEADLINE-LAST-MS ( -- n )
+   CELL-NS-MAX mono-ns - NS-PER-MS / ;
 \ The concurrent case sleeps longer than the timed ones: a gate host running
 \ twenty suites at once hands a freshly started thread its first slice tens of
 \ milliseconds late, so the claim is a tick INSIDE the sleep, never a tick rate.
@@ -1251,11 +1261,13 @@ TASK:MIN-STACK TASK:TASK EXIT-HALT-TASK
    SLEEP-WORKER TASK:KILL
    SLEEP-W-NS @ SLEEP-W-CPU @ SLEEP-CHECK ;
 
-\ Zero returns without entering the kernel; a duration below zero is the named
-\ operand refusal, not a sleep of some other length.
+\ Zero returns without entering the kernel; a duration below zero, or the first
+\ whose deadline would not fit a cell, is the named operand refusal, not a sleep
+\ of some other length.
 : TASK-TEST-SLEEP-EDGES ( -- )
    mono-ns 0 >MS TASK:SLEEP mono-ns swap - SLEEP-ZERO-NS < TTRUE
-   [: -1 >MS TASK:SLEEP ;] E-TASK-SLEEP-MS TTHROWSQ ;
+   [: -1 >MS TASK:SLEEP ;] E-TASK-SLEEP-MS TTHROWSQ
+   [: DEADLINE-LAST-MS 1+ >MS TASK:SLEEP ;] E-TASK-SLEEP-MS TTHROWSQ ;
 
 : SLEEP-LONG-BODY ( -- )
    SLEEP-LONG-MS >MS TASK:SLEEP
@@ -1464,6 +1476,94 @@ PTR-VARIABLE STOP-MAIN-TCB           \ it holds a TCB address, so it is declared
       CHECK-QUIET-CANDIDATE! -1 T=
    s" TASK-WAKE-RAW ( n -- ) TASK:WAKE"
       CHECK-QUIET-CANDIDATE! 0 T= ;
+
+\ ---- STOP-FOR ------------------------------------------------------------------
+\ STOP-FOR answers which came first, the hint or the deadline. A hint that
+\ arrives must cut the wait short, no hint must hold it to the deadline, and a
+\ hint that meets the deadline must be counted exactly once: by this park or by
+\ the next.
+2000 constant STOP-FOR-LONG-MS       \ a wake must end the wait well before this
+8 constant STOP-FOR-EDGE-N           \ wakes timed to land as the deadline passes
+
+TASK:MIN-STACK TASK:TASK STOP-FOR-HALTED
+TASK:MIN-STACK TASK:TASK STOP-FOR-WAKER
+
+TASK-TEST-ALIGN8
+variable STOP-FOR-READY
+variable STOP-FOR-WOKEN
+variable STOP-FOR-SEEN
+
+\ Empties the main park, whatever earlier cases left in it.
+: STOP-FOR-DRAIN ( -- )
+   begin 0 >MS TASK:STOP-FOR 0= until ;
+
+\ With no wake the main thread's park answers false, and never before ms; a
+\ worker's wake through the null TCB ends the next wait early with true. Zero
+\ with nothing pending answers false at once; below zero is refused, and so is
+\ the first duration whose deadline would not fit a cell, while one
+\ DEADLINE-SLACK-MS below the last that fits takes a pending wake at once.
+: TASK-TEST-STOP-FOR-MAIN ( -- )
+   STOP-FOR-DRAIN
+   mono-ns {: t0:n :}
+   SLEEP-MS >MS TASK:STOP-FOR TFALSE
+   mono-ns t0 - SLEEP-LEAST-NS >= TTRUE
+   mono-ns 0 >MS TASK:STOP-FOR TFALSE mono-ns swap - SLEEP-ZERO-NS < TTRUE
+   [: -1 >MS TASK:STOP-FOR drop ;] E-TASK-SLEEP-MS TTHROWSQ
+   [: DEADLINE-LAST-MS 1+ >MS TASK:STOP-FOR drop ;] E-TASK-SLEEP-MS TTHROWSQ
+   TASK:SELF TASK:WAKE
+   DEADLINE-LAST-MS DEADLINE-SLACK-MS - >MS TASK:STOP-FOR TTRUE
+   0 STOP-WAKED !
+   TASK:SELF STOP-MAIN-TCB !
+   mono-ns {: t1:n :}
+   ['] STOP-WAKER-WORK STOP-FOR-WAKER TASK:ACTIVATE
+   STOP-FOR-LONG-MS >MS TASK:STOP-FOR TTRUE
+   mono-ns t1 - STOP-FOR-LONG-MS NS-PER-MS * < TTRUE
+   STOP-WAKED @ 1 T=
+   STOP-FOR-WAKER APP-WAIT-DONE
+   STOP-FOR-WAKER TASK:THROW@ 0 T=
+   STOP-FOR-WAKER TASK:KILL ;
+
+: STOP-FOR-LATE-WORK ( -- )
+   SLEEP-MS >MS TASK:SLEEP
+   STOP-MAIN-TCB@ TASK:WAKE ;
+
+\ The worker's wake and the main thread's deadline fall on the same instant, so
+\ some rounds take the wake and some time out with it landing just after. Once
+\ the waker has ended, exactly one hint is accounted for: a round that timed
+\ out finds it pending at once, a round that took it finds nothing.
+: TASK-TEST-STOP-FOR-EDGE ( -- )
+   TASK:SELF STOP-MAIN-TCB !
+   STOP-FOR-DRAIN
+   STOP-FOR-EDGE-N 0 ?do
+      ['] STOP-FOR-LATE-WORK STOP-FOR-WAKER TASK:ACTIVATE
+      SLEEP-MS >MS TASK:STOP-FOR {: woke:bool :}
+      STOP-FOR-WAKER APP-WAIT-DONE
+      STOP-FOR-WAKER TASK:THROW@ 0 T=
+      STOP-FOR-WAKER TASK:KILL
+      0 >MS TASK:STOP-FOR woke if TFALSE else TTRUE then
+      0 >MS TASK:STOP-FOR TFALSE
+   loop ;
+
+\ TASK:HALT wakes STOP-FOR as it wakes STOP: the wait answers true long before
+\ its deadline, the task sees its halt, and its next TASK:PAUSE ends it.
+: STOP-FOR-HALT-WORK ( -- )
+   1 STOP-FOR-READY atomic!
+   STOP-FOR-LONG-MS >MS TASK:STOP-FOR if 1 STOP-FOR-WOKEN atomic! then
+   TASK:HALTED? if 1 STOP-FOR-SEEN atomic! then
+   begin TASK:PAUSE again ;
+
+: TASK-TEST-STOP-FOR-HALT ( -- )
+   0 STOP-FOR-READY ! 0 STOP-FOR-WOKEN ! 0 STOP-FOR-SEEN !
+   mono-ns {: t0:n :}
+   ['] STOP-FOR-HALT-WORK STOP-FOR-HALTED TASK:ACTIVATE
+   STOP-FOR-READY 1 STOP-REACH
+   STOP-PARK-MS TASK:SLEEP
+   STOP-FOR-HALTED TASK:HALT
+   STOP-FOR-HALTED APP-WAIT-DONE
+   mono-ns t0 - STOP-FOR-LONG-MS NS-PER-MS * < TTRUE
+   STOP-FOR-WOKEN @ 1 T=
+   STOP-FOR-SEEN @ 1 T=
+   STOP-FOR-HALTED TASK:KILL ;
 
 \ ---- KILL and HALT at the moment the task ends -------------------------------
 \ The teardown src/lib/task.f sanctions - the owner sets a stop flag, the body
@@ -2335,6 +2435,9 @@ variable BIND-PAIR-Q-WON
    TASK-TEST-STOP-HALT
    TASK-TEST-STOP-MAIN
    TASK-TEST-STOP-REFUSED
+   TASK-TEST-STOP-FOR-MAIN
+   TASK-TEST-STOP-FOR-EDGE
+   TASK-TEST-STOP-FOR-HALT
    TASK-TEST-KILL-ENDED
    TASK-TEST-HALT-ENDED
    TASK-TEST-HALT-IDLE

@@ -53,7 +53,8 @@
 \ and USER-BAND:END TASK:#USER - is what remains. A new band reaches only an
 \ engine built after it: an older engine dies E-UNDEFINED on its constants.
 \
-\ STORAGE CLASS. TASK-LOCAL for SLEEP's two timespecs (one TASK:+USER row).
+\ STORAGE CLASS. TASK-LOCAL for SLEEP's two timespecs (one TASK:+USER row),
+\ whose request STOP-FOR's Linux deadline shares.
 \ PROCESS-WIDE for the semaphore pool, the AT-EXIT rows, the TCB chain and the
 \ callback binding rows; each row move is one compare-and-swap.
 
@@ -100,6 +101,8 @@ $20 constant TASK-SEM-BYTES              \ Linux sem_t or Darwin Mach port stora
 $7FFFFFFF constant TASK-SEM-MAX          \ SEM_VALUE_MAX
 $04 constant TASK-EINTR
 $0B constant TASK-EAGAIN
+$6E constant TASK-ETIMEDOUT              \ Linux
+1 constant TASK-CLOCK-MONOTONIC          \ Linux clockid_t
 0 constant TASK-SEM-GUARD-OFF
 $8 constant TASK-SEM-OBJ-OFF
 TASK-SEM-OBJ-OFF TASK-SEM-BYTES + constant TASK-SEMAPHORE-BYTES
@@ -109,6 +112,7 @@ $8 constant TASK-SPEC-NSEC-OFF
 TASK-TIMESPEC-BYTES 2 * constant TASK-SLEEP-BYTES  \ the request and the remainder
 1000000 constant TASK-NS-PER-MS
 1000000000 constant TASK-NS-PER-S
+$7FFFFFFFFFFFFFFF constant TASK-NS-MAX             \ the latest mono-ns deadline a cell holds
 $FFFFFFFFFFFFFFF8 constant TASK-CELL-MASK          \ with the 7 + below, rounds a row's offset up to a cell
 
 TASK-ABI:EMPTY constant TASK-EMPTY
@@ -279,12 +283,25 @@ FUNCTION: SEM-TRYWAIT-CALL sem_trywait ( ptr u8 -- i32 )
    0 TASK-SEM-BYTES WRITES-BYTES
 ;FUNCTION
 
+\ sem_clockwait (glibc 2.30) is sem_wait with an absolute deadline on the
+\ named clock; it only reads the timespec. clock_gettime writes the one it is given.
+FUNCTION: SEM-CLOCKWAIT-CALL sem_clockwait ( ptr u8 n ptr u8 -- i32 )
+   0 TASK-SEM-BYTES WRITES-BYTES
+;FUNCTION
+
+FUNCTION: CLOCK-GETTIME-CALL clock_gettime ( n ptr u8 -- i32 )
+   1 TASK-TIMESPEC-BYTES WRITES-BYTES
+;FUNCTION
+
 \ Darwin's unnamed POSIX semaphore entry points are ENOSYS stubs. A Mach
 \ semaphore is a process-owned port name stored in the same record. Its wait
-\ result is a kernel return code, never errno; a zero timespec tries once.
+\ result is a kernel return code, never errno. semaphore_timedwait takes a
+\ relative mach_timespec_t { unsigned tv_sec; int tv_nsec } by value, one
+\ register with tv_sec in the low half; a zero timespec tries once.
 14 constant MACH-ABORTED
 49 constant MACH-TIMED-OUT
 0 constant MACH-FIFO
+$FFFFFFFF constant MACH-SEC-MAX          \ the largest tv_sec
 FUNCTION: MACH-TASK task_self_trap ( -- u32 ) ;FUNCTION
 FUNCTION: MACH-SEM-CREATE semaphore_create ( n ptr u8 n n -- i32 )
    1 4 WRITES-BYTES
@@ -292,7 +309,7 @@ FUNCTION: MACH-SEM-CREATE semaphore_create ( n ptr u8 n n -- i32 )
 FUNCTION: MACH-SEM-DESTROY semaphore_destroy ( n n -- i32 ) ;FUNCTION
 FUNCTION: MACH-SEM-WAIT semaphore_wait ( n -- i32 ) ;FUNCTION
 FUNCTION: MACH-SEM-SIGNAL semaphore_signal ( n -- i32 ) ;FUNCTION
-FUNCTION: MACH-SEM-TRY semaphore_timedwait ( n n -- i32 ) ;FUNCTION
+FUNCTION: MACH-SEM-TIMEDWAIT semaphore_timedwait ( n n -- i32 ) ;FUNCTION
 
 \ nanosleep is the other call here that blocks on purpose: it parks the calling
 \ thread until a time arrives rather than until something happens. The first
@@ -454,7 +471,7 @@ FUNCTION: MUTEX-UNLOCK-CALL pthread_mutex_unlock ( ptr u8 -- i32 )
 : MACH-TRY-WAIT ( sem -- bool ) {: s:sem :}
    begin
       s SEM-CHECK
-      s SEM-OBJ LE:U32@ 0 MACH-SEM-TRY
+      s SEM-OBJ LE:U32@ 0 MACH-SEM-TIMEDWAIT
       dup 0= if drop true exit then
       dup MACH-TIMED-OUT = if drop false exit then
       MACH-ABORTED <> if E-TASK-THREAD throw then
@@ -1895,9 +1912,16 @@ private
 
 \ The deadline shape src/lib/process.f states as PROC-DEADLINE-AT and PROC-LEFT-MS,
 \ in nanoseconds because a sleep resumes on the nanosecond the kernel hands back
-\ and not on a millisecond boundary. Same arithmetic, same floor at zero.
+\ and not on a millisecond boundary. Same arithmetic, same floor at zero. A
+\ duration below zero, or one whose deadline lies past TASK-NS-MAX, is
+\ E-TASK-SLEEP-MS: the bound is tested by division before the multiply and the
+\ add, so neither can wrap.
 : SLEEP-DEADLINE-AT ( ms -- n ) {: timeout:ms :}
-   mono-ns timeout MS>N TASK-NS-PER-MS * + ;
+   timeout MS>N {: want:n :}
+   mono-ns {: now:n :}
+   want 0 <  want TASK-NS-MAX now - TASK-NS-PER-MS / > or
+   if E-TASK-SLEEP-MS throw then
+   want TASK-NS-PER-MS * now + ;
 
 : SLEEP-LEFT-NS ( n -- n ) {: deadline:n :}
    deadline mono-ns - dup 0 <= if drop 0 then ;
@@ -1913,14 +1937,12 @@ private
 \ remainder, so no signal can shorten the sleep. The remainder is capped by what
 \ is left of an absolute deadline taken before the first call, so no storm of
 \ signals can stretch the total either - the retries converge on the deadline
-\ from below. Zero returns without entering the kernel; a duration below zero is
-\ an operand nothing could serve.
+\ from below. Zero returns without entering the kernel; a duration below zero or
+\ past the last deadline a cell holds is an operand nothing could serve.
 : TASK-SLEEP ( ms -- ) {: timeout:ms :}
-   timeout MS>N {: want:n :}
-   want 0 < if E-TASK-SLEEP-MS throw then
-   want 0= if exit then
+   timeout MS>N 0= if exit then
    timeout SLEEP-DEADLINE-AT {: deadline:n :}
-   want TASK-NS-PER-MS * SLEEP-REQ SPEC!
+   timeout MS>N TASK-NS-PER-MS * SLEEP-REQ SPEC!
    begin
       SLEEP-CALL dup 0= if drop exit then
       TASK-EINTR <> if E-TASK-THREAD throw then
@@ -1928,6 +1950,56 @@ private
       next 0 <= if exit then
       next SLEEP-REQ SPEC!
    again ;
+
+\ ---- parking until woken or a deadline ---------------------------------------
+\ A wait longer than tv_sec can hold asks for the most it can and leaves the
+\ rest to the caller's next turn.
+: MACH-SPEC ( n -- n ) {: ns:n :}
+   ns TASK-NS-PER-S / MACH-SEC-MAX > if MACH-SEC-MAX exit then
+   ns TASK-NS-PER-S /   ns TASK-NS-PER-S mod 32 lshift or ;
+
+: MACH-WAIT-NS ( n sem -- bool ) {: ns:n s:sem :}
+   s SEM-CHECK
+   s SEM-OBJ LE:U32@ ns MACH-SPEC MACH-SEM-TIMEDWAIT
+   dup 0= if drop true exit then
+   dup MACH-TIMED-OUT = swap MACH-ABORTED = or if false exit then
+   E-TASK-THREAD throw ;
+
+\ The deadline is CLOCK_MONOTONIC's own now plus ns, written into SLEEP's
+\ request: a task is in SLEEP or here, never both. The caller measured ns
+\ against its own mono-ns, so now plus ns may pass TASK-NS-MAX and is clamped
+\ there; the caller judges its deadline by mono-ns and waits again if the
+\ clamped wait ends before it.
+: POSIX-WAIT-NS ( n sem -- bool ) {: ns:n s:sem :}
+   TASK-CLOCK-MONOTONIC SLEEP-REQ BYTE-VIEW CLOCK-GETTIME-CALL TASK-RC0
+   SLEEP-REQ SPEC@ {: now:n :}
+   ns TASK-NS-MAX now - min now + SLEEP-REQ SPEC!
+   s SEM-CHECK
+   s SEM-OBJ TASK-CLOCK-MONOTONIC SLEEP-REQ BYTE-VIEW SEM-CLOCKWAIT-CALL
+   0= if true exit then
+   FFI:ERRNO dup TASK-ETIMEDOUT = swap TASK-EINTR = or if false exit then
+   E-TASK-THREAD throw ;
+
+\ One bounded wait on a semaphore: true when it took a count, false when the
+\ time ran out or a signal cut the wait short. Either false sends the caller
+\ back to its own deadline, so neither needs telling apart here.
+: SEM-WAIT-NS ( n sem -- bool )
+   HB-TARGET-MACOS? if MACH-WAIT-NS exit then
+   POSIX-WAIT-NS ;
+
+\ Each wait asks for what is left of one absolute mono-ns deadline taken before
+\ the first, so a signal that cuts a wait short neither shortens nor stretches
+\ the total and a host timer that fires early waits again for the rest: false
+\ comes only once mono-ns reaches the deadline. A hint posted as the deadline
+\ passes is either taken by the last wait or stays in the count for the next
+\ STOP or STOP-FOR, as PARK-DRAIN leaves it.
+: TASK-STOP-FOR ( ms -- bool ) {: timeout:ms :}
+   timeout SLEEP-DEADLINE-AT {: deadline:n :}
+   PARK-SELF {: park:sem :}
+   begin
+      deadline SLEEP-LEFT-NS park SEM-WAIT-NS if true exit then
+      deadline SLEEP-LEFT-NS 0=
+   until false ;
 
 public
 
@@ -2032,7 +2104,8 @@ TASK-MIN-STACK constant MIN-STACK
 \ CPU: the task is in the kernel rather than in a PAUSE loop, and it holds
 \ nothing while it is there. A sleeping task observes no TASK:HALT until it
 \ wakes, so TASK:KILL on one waits out the rest of the sleep. Zero returns at
-\ once; a duration below zero is E-TASK-SLEEP-MS.
+\ once; a duration below zero, or one whose nanosecond deadline past mono-ns
+\ would not fit a cell, is E-TASK-SLEEP-MS.
 : SLEEP ( ms -- )
    TASK-SLEEP ;
 
@@ -2052,6 +2125,17 @@ TASK-MIN-STACK constant MIN-STACK
 \ A loop that must also answer TASK:HALT calls TASK:PAUSE in that loop.
 : STOP ( -- )
    TASK-STOP ;
+
+\ Parks the calling task as STOP does until somebody WAKEs it or ms
+\ milliseconds pass, whichever comes first, and answers true when a hint woke
+\ it, false at the deadline, never before it. It takes one hint as STOP does,
+\ so the caller re-checks its own state either way, and a TASK:HALT wakes it
+\ as it wakes STOP: it answers true and the halt ends the task at its next
+\ TASK:PAUSE. The main thread parks on its one record. Zero takes a pending
+\ hint without blocking; a duration below zero, or one whose nanosecond
+\ deadline past mono-ns would not fit a cell, is E-TASK-SLEEP-MS.
+: STOP-FOR ( ms -- bool )
+   TASK-STOP-FOR ;
 
 \ Posts the named task's park. The null TCB - what TASK:SELF answers on the main
 \ thread - posts the main thread's park. An exposed task's park is the one a
