@@ -1829,6 +1829,10 @@ SUITE exit-hook
    test/exit-hook-test.f
 ;SUITE
 
+SUITE fs-lock
+   src/lib/fs-lock-test.f
+;SUITE
+
 SUITE os-cpu
    src/lib/os-cpu-test.f
 ;SUITE
