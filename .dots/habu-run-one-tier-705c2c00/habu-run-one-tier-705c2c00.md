@@ -129,3 +129,5 @@ Parallel: L1 now; L2->L3; {L4, L5} after L3; L6; {L7, L9} after L6; L8 after L7;
   strings one byte past opener): L5 harness proves.
 - x86 callbacks unsupported at tier 1 today (kernel-x64.f:4686-4697): CB-ENTRY on x86 is new kernel work.
 - Not determined: record->arity reader for Wasm lanes; PUBLISHED-ROWS need for CALL-LOC after NHOST goes.
+
+Lane order, Joel 2026-10-28 (supersedes the section 6 parallel plan): shared structure first (L1, L2, L3 incl. C3, L5c label layer), then arm64 end to end: shared front end T0:COMPILE + unit step extracted from compiler.f (proved on arm64), arm64 fixed/does>/callback emitter rows, T0 installed as the arm64 runtime compiler, section 5 measurement vs the JIT (go/no-go), then L8 JIT deletion. Only then x86 (L4 C2-C4 on the peer; L4-C1 done and parked in the stack), L6 cross/dual emission, L9 Wasm, L10 tier 1.
