@@ -9,7 +9,13 @@
 \ (T0-EMIT:SEAL or SEAL-UNPLACED).
 \
 \ T0:COMPILE is the runtime compiler entry: T0:INSTALL stores it in the cell
-\ the tier 1 `:` dispatches through (T0:DISPATCH!), with no fallback to tier 1.
+\ the tier 1 `:` dispatches through (T0:DISPATCH!), with no fallback to tier 1,
+\ and stores NDEFINITION's CALLBACK-STUB! and CALLBACK-STUB@ in the cells
+\ CALLBACK: (src/lib/ffi-callback.f) arms and reads its C entry through. The
+\ definition after a CALLBACK-STUB! seals with NCBSTUB armed, so the emitter
+\ appends the stub after its last unit (src/habu/t0-emit.f THE CALLBACK STUB)
+\ and CALLBACK-STUB@ answers its placed address; that compile ends the pending
+\ stub on every exit, as tier 1's does.
 \ It compiles one pending definition through the step every native compiler
 \ shares (src/compiler/native/definition.f, NDEFINITION): stage the unit, scan
 \ and capture the body inside a recording unit whose observer keeps only the
@@ -109,6 +115,7 @@ require src/compiler/native/fetch.f
 require src/compiler/native/string.f
 require src/compiler/native/publish.f
 require src/compiler/native/definition.f
+require src/compiler/native/callback-stub.f
 require src/habu/t0-emit.f
 
 package T0
@@ -1057,13 +1064,16 @@ variable SCAN-VERDICT
    SRC$ COMPILE-TEXT
    NQ @ [: drop -1 -1 ;] HOST-ARITIES
    NHOST:SOURCE-FREEZE
+   STUB-ARM
    NPUB:NEXT-SLOT T0-EMIT:SEAL
+   STUB-TAKE
    PUBLISH-IT ;
 
-\ The compile window and the emission end on every exit.
+\ The compile window, the emission and the armed stub end on every exit.
 : SHUT ( -- )
    0 CHECKER-OWNER:WRITE-WINDOW
-   NEMIT:CLEAR ;
+   NEMIT:CLEAR
+   NCBSTUB:CLEAR ;
 
 : RUN ( -- )
    NSHADOW:OPEN? if E-T0-SHADOW throw then
@@ -1092,6 +1102,7 @@ public
    1 M-OPEN !
    [: RUN ;] catch {: rc:n :}
    0 M-OPEN !
+   STUB-END
    NFETCH:RELEASE
    NHOST:SOURCE-ABANDON
    0 rc  rc E-T0-UNSUPPORTED = MISSING @ 0<> and  rc REFUSED$ SETTLE-UNIT ;
@@ -1101,7 +1112,11 @@ public
 : DISPATCH! ( [ ptr u8 n -- ] -- )
    data-base NCOMP-DISPATCH:XT-CELL + xt! ;
 
-: INSTALL ( -- ) ['] COMPILE DISPATCH! ;
+\ Store COMPILE and NDEFINITION's callback words in the image-ABI cells.
+: INSTALL ( -- )
+   ['] CALLBACK-STUB! data-base NCOMP-DISPATCH:CALLBACK-STUB-CELL + xt!
+   ['] CALLBACK-STUB@ data-base NCOMP-DISPATCH:CALLBACK-ENTRY-CELL + xt!
+   ['] COMPILE DISPATCH! ;
 
 ;using
 ;package

@@ -358,8 +358,9 @@ variable OPEN
    k ;
 
 \ The accessor's ordinary native emission carries an anonymous C entry after
-\ its Habu return. NCOMP publishes both as one owned record; only the entry is
-\ handed to C, while the accessor can read its relocated descriptor address.
+\ its Habu return. The native compiler publishes both as one owned record; only
+\ the entry is handed to C, while the accessor can read its relocated
+\ descriptor address.
 : EMIT ( n -- ) {: k:n :}
    GEN CODEGEN:RESET
    s" TYPED-VARIABLE " GEN+ NAME$ GEN+ s" -BODY [ " GEN+

@@ -5,7 +5,9 @@
 \ checker owner, enforce the verdict, record the row a scan did not certify,
 \ check the recorded name and arity, state the root's host facts, publish the
 \ emission by kind, and on a refusal report it and retract the rows the
-\ definition recorded. This package holds that step and the state it reads.
+\ definition recorded. This package holds that step and the state it reads,
+\ including the pending callback stub: CALLBACK-STUB! makes the next
+\ definition a callback accessor, whose seal appends the stub.
 \ Tier 1 (src/compiler/native/compiler.f, NCOMP) calls it around its tape,
 \ elaborator and backend. It requires no tier-1 package (tape, feed, elaborator,
 \ HIR, backend), so tier 0 (src/habu/t0.f) can require it on every target.
@@ -21,6 +23,7 @@ require src/compiler/native/dict.f
 require src/compiler/native/fetch.f
 require src/compiler/native/emission.f
 require src/compiler/native/publish.f
+require src/compiler/native/callback-stub.f
 
 package NDEFINITION
 
@@ -69,6 +72,9 @@ private
 0 CWORK-VARIABLE M-UNJUDGED n                  \ a hook-cell-empty scan's verdict, else -1
 0 CWORK-VARIABLE M-ROWS n                      \ where the checker store ended at STAGE-UNIT
 0 CWORK-VARIABLE M-HEAD-RECOVERY bool          \ a split definition's head bound a recovery row
+-1 CWORK-VARIABLE M-CB-SLOT n                   \ -1 outside a callback accessor definition
+0 CWORK-VARIABLE M-CB-THUNK n
+0 CWORK-VARIABLE M-CB-ENTRY n
 
 public
 
@@ -85,6 +91,30 @@ public
 \ over another's state.
 : IDLE-CK ( -- )
    M-OPEN @ 0<> if E-NCOMP-STATE throw then ;
+
+: STUB-PENDING? ( -- bool )
+   M-CB-SLOT @ 0 >= ;
+
+\ The next definition is an accessor that owns one anonymous C entry after
+\ its ordinary return. The entry is published with that definition's emission.
+: CALLBACK-STUB! ( n n -- ) {: k:n thunk:n :}
+   IDLE-CK
+   STUB-PENDING? if E-NCOMP-STATE throw then
+   k M-CB-SLOT !  thunk M-CB-THUNK !  0 M-CB-ENTRY ! ;
+
+: CALLBACK-STUB@ ( -- n )
+   M-CB-ENTRY @ dup 0= if E-NCOMP-STATE throw then ;
+
+\ A compiler arms NCBSTUB before it seals the accessor's emission, takes the
+\ stub's placed entry after, and ends the pending stub when the compile ends.
+: STUB-ARM ( -- )
+   STUB-PENDING? if M-CB-SLOT @ M-CB-THUNK @ NCBSTUB:SET then ;
+
+: STUB-TAKE ( -- )
+   STUB-PENDING? if NCBSTUB:ENTRY@ M-CB-ENTRY ! then ;
+
+: STUB-END ( -- )
+   -1 M-CB-SLOT ! ;
 
 private
 

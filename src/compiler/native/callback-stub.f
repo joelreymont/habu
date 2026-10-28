@@ -1,5 +1,6 @@
 \ One callback declaration's native C entry, carried through its host emission.
-\ NCOMP arms this after shadow work and clears it when the host pass retires.
+\ A native compiler arms this before it seals the accessor's host emission
+\ (NCOMP after its shadow work, T0) and clears it when that emission retires.
 require src/lib/prelude.f
 require src/lib/errors.f
 

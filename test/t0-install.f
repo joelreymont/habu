@@ -3,7 +3,10 @@
 \ definition this file loads after `1 set-tier`, the test words included, is
 \ compiled by T0 through the normal Habu loop. The fixtures cover `:` and
 \ TRUSTED: bodies, quotations, strings, locals, loops, case and recursion, and
-\ each is run for its result. The refusal rows evaluate definitions T0 refuses
+\ each is run for its result. A CALLBACK: declaration compiled by T0 is handed
+\ to libc's qsort, which sorts a row through it, and its C entry lies between
+\ its accessor's code and the next definition's: the stub T0 appended to the
+\ accessor's emission. The refusal rows evaluate definitions T0 refuses
 \ with its own codes, which tier 1 accepts or refuses otherwise: a non-neutral
 \ immediate in a TRUSTED: body (E-T0-IMMEDIATE), a does> definer
 \ (E-T0-UNSUPPORTED) and a definition while a target shadow is open
@@ -16,6 +19,9 @@
 \ a file loaded after it would be compiled by T0.
 
 require src/lib/test.f
+require src/lib/ffi-abi.f
+require src/lib/ffi-callback.f
+require src/lib/task.f
 require src/compiler/target/model.f
 require src/compiler/target/native-binding.f
 require src/compiler/native/shadow.f
@@ -57,6 +63,34 @@ TRUSTED: TWICE ( n -- n ) 2 * ;
 
 : FACT ( n -- n ) dup 1 > if dup 1- recurse * then ;
 
+\ ---- a callback C calls ------------------------------------------------------
+3 constant ROW-N
+create ROW ROW-N cells allot
+
+PROCESS-SYMBOLS
+FUNCTION: QSORT qsort ( ptr u8 n n n -- )
+   0 24 WRITES-BYTES                 \ ROW-N cells
+;FUNCTION
+
+\ The two cells C's comparator arguments point at, small enough to subtract.
+: ROW-ORDER ( ptr u8 ptr u8 -- n )
+   {: a b :}
+   a CELL-VIEW @ b CELL-VIEW @ - ;
+
+CALLBACK: T0-CMP ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK
+\ A second declaration in a row: it arms only if T0's compile of the first
+\ ended the pending stub and cleared NCBSTUB.
+CALLBACK: T0-CMP2 ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK
+' ROW-ORDER T0-CMP-BODY !
+
+\ The accessor, which owns the stub, and the descriptor defined after it.
+CAST: XT>N ( [ -- n ] -- n )
+CAST: CB-XT>N ( [ -- FFI-CB:callback ] -- n )
+TYPED-VARIABLE ACCESSOR [ -- n ]
+TYPED-VARIABLE DESCRIPTOR [ -- FFI-CB:callback ]
+' T0-CMP-ENTRY ACCESSOR !
+' T0-CMP DESCRIPTOR !
+
 public
 
 \ An immediate that is no parse-neutral one. The checker refuses it in a
@@ -79,6 +113,16 @@ private
    s" case: an of arm" T-LABEL  2 PICK-CODE 20 T=
    s" case: the default arm" T-LABEL  9 PICK-CODE 30 T=
    s" recurse" T-LABEL  5 FACT 120 T= ;
+
+: CALLBACK-CASE ( -- )
+   T0-CMP TASK:SELF-CONTEXT FFI-CB:ENTRY {: fn:n :}
+   s" the C entry is the stub T0 appended to the accessor" T-LABEL
+   ACCESSOR @ XT>N fn <  fn DESCRIPTOR @ CB-XT>N <  and TTRUE
+   s" qsort sorts through the callback" T-LABEL
+   3 ROW !  1 ROW cell+ !  2 ROW 2 cells + !
+   ROW BYTE-VIEW ROW-N CELL fn QSORT
+   ROW @ 1 T=  ROW cell+ @ 2 T=  ROW 2 cells + @ 3 T=
+   T0-CMP FFI-CB:UNBIND ;
 
 : REFUSAL-CASE ( -- )
    s" a non-neutral immediate is refused by name" T-LABEL
@@ -105,6 +149,7 @@ public
 : RUN ( -- )
    T-RESET
    CALL-CASE
+   CALLBACK-CASE
    REFUSAL-CASE
    T-REPORT ;
 

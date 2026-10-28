@@ -128,9 +128,6 @@ align
 0 CWORK-VARIABLE PRIOR-DEAD bool
 0 CWORK-VARIABLE PRIOR-CAST bool
 0 CWORK-VARIABLE PRIOR-CALLABLE n
--1 CWORK-VARIABLE M-CB-SLOT n                   \ -1 outside a callback accessor definition
-0 CWORK-VARIABLE M-CB-THUNK n
-0 CWORK-VARIABLE M-CB-ENTRY n
 0 CWORK-VARIABLE M-RC n                        \ the code the run inside the context reached
 0 CWORK-VARIABLE M-PUBLISHED-START n           \ committed parent's index for notification
 0 CWORK-VARIABLE M-DOES-ROW n                  \ the tape row that carries `does>`
@@ -418,9 +415,9 @@ private
    s hm NBACK:SELECT {: m0:IR-BUILD:module :}
    hm IR-BUILD:RETIRE
    s m0 NBACK:FIXPOINT {: ready:IR-BUILD:module :}
-   M-CB-SLOT @ 0 >= if M-CB-SLOT @ M-CB-THUNK @ NCBSTUB:SET then
+   STUB-ARM
    s ready NPUB:NEXT-SLOT NBACK:EMIT
-   M-CB-SLOT @ 0 >= if NCBSTUB:ENTRY@ M-CB-ENTRY ! then
+   STUB-TAKE
    NSHADOW:NATIVE? if SHADOW-TAKE then
    PUBLISH-IT ;
 
@@ -728,7 +725,7 @@ INSTALL-FORGET
    0 M-RC !
    [: IN-CONTEXT ;] catch {: entry-rc:n :}
    0 M-OPEN !
-   -1 M-CB-SLOT !
+   STUB-END
    M-RC @ {: rc:n :}
    entry-rc rc  rc E-NELAB-QUOT = NELAB:SOURCE-UNDEFINED? and
    NELAB:REFUSED$ SETTLE-UNIT ;
@@ -809,16 +806,6 @@ public
    SESSION-LIVE? if exit then
    [: M-LEASE ! SESSION-READY ;] NLEASE:WITH ;
 
-\ The next definition is an accessor that owns one anonymous C entry after
-\ its ordinary return. The entry is published with that definition's emission.
-: CALLBACK-STUB! ( n n -- ) {: k:n thunk:n :}
-   IDLE-CK
-   M-CB-SLOT @ 0 >= if E-NCOMP-STATE throw then
-   k M-CB-SLOT !  thunk M-CB-THUNK !  0 M-CB-ENTRY ! ;
-
-: CALLBACK-ENTRY ( -- n )
-   M-CB-ENTRY @ dup 0= if E-NCOMP-STATE throw then ;
-
 \ The named parent's effect does not determine the publication callback's effect.
 : PUBLISHED! ( [ n IR-CTX:ctx code-entry n n -- ] -- )
    IDLE-CK
@@ -828,7 +815,7 @@ public
 : DEFINITION-CACHEABLE? ( -- bool )
    M-OPEN @ 0=
    DOES-BYTE@ 0= and
-   M-CB-SLOT @ 0< and
+   STUB-PENDING? 0= and
    NSHADOW:OPEN? 0= and
    data-base NATIVE-OBS-CELLS:PUBLISHED + @ 0= and ;
 
@@ -900,7 +887,7 @@ public
 \ its dispatch after the captured words have been relocated at fresh boot.
 : INSTALL ( -- )
    ['] CALLBACK-STUB! data-base NCOMP-DISPATCH:CALLBACK-STUB-CELL + xt!
-   ['] CALLBACK-ENTRY data-base NCOMP-DISPATCH:CALLBACK-ENTRY-CELL + xt!
+   ['] CALLBACK-STUB@ data-base NCOMP-DISPATCH:CALLBACK-ENTRY-CELL + xt!
    ['] COMPILE DISPATCH!
    ['] SHADOW-FIXED data-base NCOMP-DISPATCH:FIXED-SHADOW-CELL + xt!
    ['] SHADOW-DOES data-base NCOMP-DISPATCH:DOES-SHADOW-CELL + xt! ;
