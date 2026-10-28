@@ -34,11 +34,18 @@
 \ again until the next run or RESET. A path or deadline refused before the run
 \ starts leaves the previous outcome in place.
 \
+\ RUN is the run that must exit clean: any other completion throws the caller's
+\ nonzero code after the captured stderr is copied to this process's, and a
+\ deadline kill throws E-PROC-TIMEOUT. As in RUN-OUTCOME, a spawn failure, a
+\ refused path or deadline and cancellation throw their own codes before any run
+\ completes.
+\
 \ OUT$ and ERR$ are borrowed until the next run, RESET or the end of the scope.
 require src/lib/errors.f
 require src/lib/memory.f
 require src/lib/task.f
 require src/lib/fs.f
+require src/lib/fd-io.f
 require src/lib/byte-buffer.f
 require src/lib/vector.f
 require src/lib/process.f
@@ -387,7 +394,7 @@ private
 \ reset on, every throw reaches RUN-DONE. RUNNING names the context only while
 \ its capture runs, and is cleared on every path out, so no task row keeps a
 \ context's address past its run.
-: RUN ( ptr n ptr u8 n ms -- )
+: RUN-CAPTURE ( ptr n ptr u8 n ms -- )
    {: h:ptr path:ptr pathu:n timeout:ms :}
    h CANCEL-FD @ >FD {: cancel:fd :}
    PROC-NO-FD h CANCEL-FD !
@@ -405,6 +412,8 @@ private
 : RC>RESULT ( n -- result<n,n> ) {: rc:n :}
    rc 0 = if rc RESULT:OK else rc RESULT:ERR then ;
 
+2 constant STDERR-FD
+
 public
 
 : OUTCOME@ ( CMD:command -- CMD:command outcome )
@@ -415,7 +424,7 @@ public
 : RUN-OUTCOME ( CMD:command ptr u8 n ms -- CMD:command outcome )
    {: path:ptr pathu:n timeout:ms :}
    CTX {: h:ptr :}
-   h path pathu timeout RUN
+   h path pathu timeout RUN-CAPTURE
    h OUTCOME-OF ;
 
 \ The stored outcome's completion rc as a result<n,n>: ok = clean exit (0), err =
@@ -436,5 +445,14 @@ public
 : ERR$ ( CMD:command -- CMD:command ptr u8 n )
    CTX {: h:ptr :}
    h ERR-BASE @ h ERR-LEN @ ;
+
+\ RUN-OUTCOME, then: a clean exit returns; any other completion writes ERR$ to
+\ this process's stderr and throws code, which must be nonzero; a deadline-killed
+\ run throws E-PROC-TIMEOUT (PROC-OUTCOME>RC).
+: RUN ( CMD:command ptr u8 n ms n -- CMD:command )
+   {: path:ptr pathu:n timeout:ms code:n :}
+   path pathu timeout RUN-OUTCOME PROC-OUTCOME>RC RC>N 0= if exit then
+   ERR$ {: err:ptr erru:n :}
+   STDERR-FD >FD err erru FD-IO:WRITE-FULL code throw ;
 
 ;package

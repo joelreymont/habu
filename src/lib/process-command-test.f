@@ -114,6 +114,26 @@ create PCMDT-ENTRY-OUT 101 c, 110 c, 116 c, 114 c, 121 c, 10 c, 10 c, 10 c,
    s" 5" CMD:ARG+
    s" /bin/sleep" PCMDT-SHORT-TIMEOUT-MS PCMDT-RUN# drop ;
 
+\ CMD:RUN: a clean exit returns with the command still usable; an exit of 3
+\ throws the caller's code with the child's stderr on this process's stderr, so
+\ that row runs in a child hb (test/process-command-run-child.f); a deadline
+\ throws E-PROC-TIMEOUT.
+: PCMDT-RUN-OK ( CMD:command -- CMD:command )
+   s" run-ok" CMD:ARG+
+   s" /usr/bin/printf" PCMDT-CMD-TIMEOUT-MS >MS 7 CMD:RUN
+   CMD:OUT$ s" run-ok" T$= ;
+
+: PCMDT-RUN-FAILS ( CMD:command -- CMD:command )
+   s" test/process-command-run-child.f" CMD:ARG+
+   s" bin/hb" PCMDT-HB-TIMEOUT-MS PCMDT-RUN# {: rc:n :}
+   CMD:ERR$ s" child-err" T$=
+   CMD:OUT$ s" test: ok" PCMDT-CHECK-LINE nip 0 T=
+   rc 0 T= ;
+
+: PCMDT-RUN-TIMEOUT ( CMD:command -- CMD:command )
+   s" 5" CMD:ARG+
+   s" /bin/sleep" 1 >MS 7 CMD:RUN ;
+
 \ A run that fails leaves its code, not the clean exit of an earlier run:
 \ OUTCOME@ and RC@ throw it again. The catch sits inside the scope, the shape dot
 \ habu-settle-stale-linear-0bcc904c questions.
@@ -513,6 +533,9 @@ variable PCMDT-INNER-ADDR
    [: PCMDT-TIMEOUT ;] CMD:WITH-COMMAND
    [: [: PCMDT-TIMEOUT-RC@ ;] CMD:WITH-COMMAND ;] E-PROC-TIMEOUT TTHROWSQ
    [: [: PCMDT-TIMEOUT-RUN-RC ;] CMD:WITH-COMMAND ;] E-PROC-TIMEOUT TTHROWSQ
+   [: PCMDT-RUN-OK ;] CMD:WITH-COMMAND
+   [: PCMDT-RUN-FAILS ;] CMD:WITH-COMMAND
+   [: [: PCMDT-RUN-TIMEOUT ;] CMD:WITH-COMMAND ;] E-PROC-TIMEOUT TTHROWSQ
    [: PCMDT-SPAWN-FAILS ;] CMD:WITH-COMMAND
    [: PCMDT-REFUSED-KEEPS ;] CMD:WITH-COMMAND
    PCMDT-CWD
