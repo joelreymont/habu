@@ -14,25 +14,28 @@ package MAP
 1 constant MT-EX-FAIL
 8 constant MT-CAP
 3 constant MT-FULL-CAP
+32 constant MT-SPREAD-CAP                \ 26 letters with room to spread
 
 variable MT-CASE
 variable MT-FAIL
 variable MT-EACH-COUNT
 variable MT-EACH-SUM
 variable MT-EACH-LEN-SUM
+variable MT-EACH-LAST                   \ slot of the entry EACH visited last
+variable MT-COL-N
 
 create MT-MAP MT-CAP >COUNT CELL-COUNT COUNT>N cells allot
 create MT-FULL-MAP MT-FULL-CAP >COUNT CELL-COUNT COUNT>N cells allot
-create MT-EACH-KEYS MT-CAP cells allot
-create MT-EACH-LENS MT-CAP cells allot
-create MT-EACH-VALUES MT-CAP cells allot
+create MT-SPREAD-A MT-SPREAD-CAP >COUNT CELL-COUNT COUNT>N cells allot
+create MT-SPREAD-B MT-SPREAD-CAP >COUNT CELL-COUNT COUNT>N cells allot
+create MT-COLS 3 cells allot            \ letter indices sharing one home slot
+create MT-LETTERS 26 allot              \ the single-byte keys a..z
+create MT-ORDER 52 allot                \ the letters EACH visits: map A, then map B
 create MT-KEY 97 c, 98 c, 99 c,
 create MT-KEY-A 97 c,
 create MT-KEY-B 98 c,
 create MT-KEY-C 99 c,
 create MT-KEY-D 100 c,
-create MT-KEY-I 105 c,
-create MT-KEY-Q 113 c,
 create MT-KEY-Z 122 c,
 
 : MT-ASSERT ( bool -- )
@@ -99,8 +102,8 @@ create MT-KEY-Z 122 c,
 : MT-MAP-INIT ( ptr a n -- ) {: m:ptr cap :}
    m cap >COUNT INIT ;
 
-: MT-MAP-HASH ( ptr u8 n -- n ) {: a:ptr u :}
-   a u >LEN HASH ;
+: MT-MAP-HASH ( ptr a ptr u8 n -- n ) {: m:ptr a:ptr u :}
+   m a u >LEN HASH ;
 
 : MT-MAP-INDEX ( n n -- n ) {: hash cap :}
    hash cap >COUNT INDEX IDX>N ;
@@ -149,28 +152,22 @@ create MT-KEY-Z 122 c,
       777 MT-MAP i cells + !
    loop ;
 
-: MT-EACH-CLEAR-CELLS ( ptr n -- ) {: a:ptr :}
-   MT-CAP 0 ?do
-      0 a i cells + !
-   loop ;
-
 : MT-EACH-RESET ( -- )
    0 MT-EACH-COUNT !
    0 MT-EACH-SUM !
    0 MT-EACH-LEN-SUM !
-   MT-EACH-KEYS MT-EACH-CLEAR-CELLS
-   MT-EACH-LENS MT-EACH-CLEAR-CELLS
-   MT-EACH-VALUES MT-EACH-CLEAR-CELLS ;
+   -1 MT-EACH-LAST ! ;
 
-: MT-EACH-KEY-CODE ( ptr u8 len -- n ) {: key:ptr len :}
-   len LEN>N 0 > if key c@ else 0 then ;
-
+\ EACH runs over MT-MAP: each visit is an entry the map finds with that value,
+\ in a slot past the one visited before it.
 : MT-EACH-RECORD ( ptr u8 len n -- ) {: key:ptr len value :}
-   MT-EACH-COUNT @ {: ix :}
-   key len MT-EACH-KEY-CODE MT-EACH-KEYS ix cells + !
-   len LEN>N MT-EACH-LENS ix cells + !
-   value MT-EACH-VALUES ix cells + !
-   ix 1 + MT-EACH-COUNT !
+   MT-MAP MT-CAP key len LEN>N MT-MAP-LOCATE drop
+   dup MT-LOC-KIND 2 MT=
+   MT-LOC-IDX {: slot :}
+   slot MT-EACH-LAST @ > MT-ASSERT
+   slot MT-EACH-LAST !
+   MT-MAP slot MT-MAP-SLOT-VALUE@ value MT=
+   MT-EACH-COUNT @ 1 + MT-EACH-COUNT !
    MT-EACH-SUM @ value + MT-EACH-SUM !
    MT-EACH-LEN-SUM @ len LEN>N + MT-EACH-LEN-SUM ! ;
 
@@ -264,7 +261,36 @@ create MT-KEY-Z 122 c,
    MT-CAP 0 ?do i MT-ASSERT-CLEAR-SLOT loop ;
 
 : MT-PROBE-RANGE ( ptr u8 n n n -- ) {: a:ptr u step cap :}
-   a u MT-MAP-HASH step cap MT-MAP-PROBE cap MT-RANGE ;
+   MT-MAP a u MT-MAP-HASH step cap MT-MAP-PROBE cap MT-RANGE ;
+
+: MT-FILL-LETTERS ( -- )
+   26 0 ?do 97 i + MT-LETTERS i + c! loop ;
+
+: MT-LETTER ( n -- ptr u8 )
+   MT-LETTERS + ;
+
+: MT-HOME ( n -- n )
+   MT-MAP swap MT-LETTER 1 MT-MAP-HASH MT-CAP MT-MAP-INDEX ;
+
+\ Collision key k: one of three letters sharing a home slot under MT-MAP's key.
+: MT-COL ( n -- ptr u8 )
+   cells MT-COLS + @ MT-LETTER ;
+
+\ The key is secret, so the colliding keys are found, not chosen: 26 letters in
+\ MT-CAP slots put at least three in one slot.
+: MT-FIND-COLLISIONS ( -- )
+   MT-FILL-LETTERS
+   MT-CAP 0 ?do
+      0 MT-COL-N !
+      26 0 ?do
+         i MT-HOME j =  MT-COL-N @ 3 <  and if
+            i MT-COLS MT-COL-N @ cells + !
+            MT-COL-N @ 1 + MT-COL-N !
+         then
+      loop
+      MT-COL-N @ 3 = if unloop exit then
+   loop
+   0 0= 0= MT-ASSERT ;
 
 : MT-ASSERT-HIT ( ptr n n ptr u8 n n -- ) {: m:ptr cap:n key:ptr len:n want:n :}
    m cap key len MT-MAP-HAS? MT-ASSERT                  \ present -> HAS? true
@@ -281,21 +307,16 @@ create MT-KEY-Z 122 c,
    ;MATCH ;
 
 : MT-ASSERT-COLLISION-SLOT ( n ptr u8 -- ) {: step want:ptr :}
-   MT-MAP MT-KEY-A 1 MT-MAP-HASH step MT-CAP MT-MAP-PROBE MT-MAP-SLOT-KEY-A@
+   MT-MAP MT-MAP 0 MT-COL 1 MT-MAP-HASH step MT-CAP MT-MAP-PROBE MT-MAP-SLOT-KEY-A@
       want = MT-ASSERT ;
-
-: MT-ASSERT-EACH-ROW ( n n n n -- ) {: ix key len value :}
-   MT-EACH-KEYS ix cells + @ key MT=
-   MT-EACH-LENS ix cells + @ len MT=
-   MT-EACH-VALUES ix cells + @ value MT= ;
 
 : MT-FULL-INSERT ( -- )
    44 MT-FULL-MAP MT-FULL-CAP MT-KEY-D 1 MT-MAP-SET ;
 
 : MT-TEST-HASH-PROBE ( -- )
-   s" " MT-MAP-HASH HASH-SEED MT=
-   s" alpha" MT-MAP-HASH 0 >= MT-ASSERT
-   s" beta" MT-MAP-HASH MT-CAP MT-MAP-INDEX MT-CAP MT-RANGE
+   MT-MAP MT-CAP MT-MAP-INIT
+   MT-MAP s" alpha" MT-MAP-HASH 0 >= MT-ASSERT
+   MT-MAP s" beta" MT-MAP-HASH MT-CAP MT-MAP-INDEX MT-CAP MT-RANGE
    -1 MT-CAP MT-MAP-INDEX MT-CAP 1 - MT=
    s" alpha" 0 MT-CAP MT-PROBE-RANGE
    s" alpha" 1 MT-CAP MT-PROBE-RANGE
@@ -316,25 +337,22 @@ create MT-KEY-Z 122 c,
 
 : MT-TEST-MAP-COLLISIONS ( -- )
    MT-MAP MT-CAP MT-MAP-INIT
-   MT-KEY-A 1 MT-MAP-HASH MT-CAP MT-MAP-INDEX
-      MT-KEY-I 1 MT-MAP-HASH MT-CAP MT-MAP-INDEX MT=
-   MT-KEY-A 1 MT-MAP-HASH MT-CAP MT-MAP-INDEX
-      MT-KEY-Q 1 MT-MAP-HASH MT-CAP MT-MAP-INDEX MT=
-   11 MT-MAP MT-CAP MT-KEY-A 1 MT-MAP-SET
-   22 MT-MAP MT-CAP MT-KEY-I 1 MT-MAP-SET
-   33 MT-MAP MT-CAP MT-KEY-Q 1 MT-MAP-SET
+   MT-FIND-COLLISIONS
+   11 MT-MAP MT-CAP 0 MT-COL 1 MT-MAP-SET
+   22 MT-MAP MT-CAP 1 MT-COL 1 MT-MAP-SET
+   33 MT-MAP MT-CAP 2 MT-COL 1 MT-MAP-SET
    MT-MAP MT-MAP-COUNT@ 3 MT=
-   0 MT-KEY-A MT-ASSERT-COLLISION-SLOT
-   1 MT-KEY-I MT-ASSERT-COLLISION-SLOT
-   2 MT-KEY-Q MT-ASSERT-COLLISION-SLOT
-   MT-MAP MT-CAP MT-KEY-A 1 11 MT-ASSERT-HIT
-   MT-MAP MT-CAP MT-KEY-I 1 22 MT-ASSERT-HIT
-   MT-MAP MT-CAP MT-KEY-Q 1 33 MT-ASSERT-HIT
-   44 MT-MAP MT-CAP MT-KEY-I 1 MT-MAP-SET
+   0 0 MT-COL MT-ASSERT-COLLISION-SLOT
+   1 1 MT-COL MT-ASSERT-COLLISION-SLOT
+   2 2 MT-COL MT-ASSERT-COLLISION-SLOT
+   MT-MAP MT-CAP 0 MT-COL 1 11 MT-ASSERT-HIT
+   MT-MAP MT-CAP 1 MT-COL 1 22 MT-ASSERT-HIT
+   MT-MAP MT-CAP 2 MT-COL 1 33 MT-ASSERT-HIT
+   44 MT-MAP MT-CAP 1 MT-COL 1 MT-MAP-SET
    MT-MAP MT-MAP-COUNT@ 3 MT=
-   MT-MAP MT-CAP MT-KEY-A 1 11 MT-ASSERT-HIT
-   MT-MAP MT-CAP MT-KEY-I 1 44 MT-ASSERT-HIT
-   MT-MAP MT-CAP MT-KEY-Q 1 33 MT-ASSERT-HIT ;
+   MT-MAP MT-CAP 0 MT-COL 1 11 MT-ASSERT-HIT
+   MT-MAP MT-CAP 1 MT-COL 1 44 MT-ASSERT-HIT
+   MT-MAP MT-CAP 2 MT-COL 1 33 MT-ASSERT-HIT ;
 
 : MT-TEST-MAP-FULL ( -- )
    MT-FULL-MAP MT-FULL-CAP MT-MAP-INIT
@@ -352,27 +370,28 @@ create MT-KEY-Z 122 c,
 \ Direct LOCATE-SLOT matrix: empty, matching, and nonmatching slots.
 : MT-TEST-LOCATE-SLOT ( -- )
    MT-MAP MT-CAP MT-MAP-INIT
-   MT-KEY-A 1 MT-MAP-HASH {: ha:n :}
+   MT-MAP MT-KEY-A 1 MT-MAP-HASH {: ha:n :}
    ha 0 MT-CAP MT-MAP-PROBE {: home:n :}
    MT-MAP home MT-KEY-A 1 ha MT-MAP-LOCATE-SLOT
       1 home MT-ASSERT-LOC                              \ empty -> free home
    11 MT-MAP MT-CAP MT-KEY-A 1 MT-MAP-SET
    MT-MAP home MT-KEY-A 1 ha MT-MAP-LOCATE-SLOT
       2 home MT-ASSERT-LOC                              \ key match -> found home
-   MT-MAP home MT-KEY-I 1 MT-KEY-I 1 MT-MAP-HASH MT-MAP-LOCATE-SLOT
+   MT-MAP home MT-KEY-B 1 MT-MAP MT-KEY-B 1 MT-MAP-HASH MT-MAP-LOCATE-SLOT
       0 -1 MT-ASSERT-LOC ;                              \ occupied non-match -> full
 
 \ LOCATE end-to-end: every verdict with its carried index payload.
 : MT-TEST-LOCATE ( -- )
    MT-MAP MT-CAP MT-MAP-INIT
-   MT-KEY-A 1 MT-MAP-HASH 0 MT-CAP MT-MAP-PROBE {: home:n :}
-   MT-MAP MT-CAP MT-KEY-A 1 MT-MAP-LOCATE drop
+   MT-FIND-COLLISIONS
+   MT-MAP 0 MT-COL 1 MT-MAP-HASH 0 MT-CAP MT-MAP-PROBE {: home:n :}
+   MT-MAP MT-CAP 0 MT-COL 1 MT-MAP-LOCATE drop
       1 home MT-ASSERT-LOC                              \ empty table -> free at home
-   11 MT-MAP MT-CAP MT-KEY-A 1 MT-MAP-SET
-   MT-MAP MT-CAP MT-KEY-A 1 MT-MAP-LOCATE drop
+   11 MT-MAP MT-CAP 0 MT-COL 1 MT-MAP-SET
+   MT-MAP MT-CAP 0 MT-COL 1 MT-MAP-LOCATE drop
       2 home MT-ASSERT-LOC                              \ present -> found at home
-   MT-MAP MT-CAP MT-KEY-I 1 MT-MAP-LOCATE drop
-      1 MT-KEY-I 1 MT-MAP-HASH 1 MT-CAP MT-MAP-PROBE MT-ASSERT-LOC   \ collision -> free one past home
+   MT-MAP MT-CAP 1 MT-COL 1 MT-MAP-LOCATE drop
+      1 MT-MAP 1 MT-COL 1 MT-MAP-HASH 1 MT-CAP MT-MAP-PROBE MT-ASSERT-LOC   \ collision -> free one past home
    MT-FULL-MAP MT-FULL-CAP MT-MAP-INIT
    11 MT-FULL-MAP MT-FULL-CAP MT-KEY-A 1 MT-MAP-SET
    22 MT-FULL-MAP MT-FULL-CAP MT-KEY-B 1 MT-MAP-SET
@@ -404,9 +423,7 @@ create MT-KEY-Z 122 c,
    MT-MAP MT-CAP [: MT-EACH-RECORD ;] MT-MAP-EACH
    MT-EACH-COUNT @ 2 MT=
    MT-EACH-SUM @ 33 MT=
-   MT-EACH-LEN-SUM @ 2 MT=
-   0 [char] a 1 11 MT-ASSERT-EACH-ROW
-   1 [char] b 1 22 MT-ASSERT-EACH-ROW ;
+   MT-EACH-LEN-SUM @ 2 MT= ;
 
 : MT-TEST-MAP-EACH-UPDATES ( -- )
    MT-MAP MT-CAP MT-MAP-INIT
@@ -417,21 +434,42 @@ create MT-KEY-Z 122 c,
    MT-MAP MT-CAP [: MT-EACH-RECORD ;] MT-MAP-EACH
    MT-EACH-COUNT @ 2 MT=
    MT-EACH-SUM @ 55 MT=
-   0 [char] a 1 33 MT-ASSERT-EACH-ROW
-   1 [char] b 1 22 MT-ASSERT-EACH-ROW ;
+   MT-MAP MT-CAP MT-KEY-A 1 33 MT-ASSERT-HIT ;
 
 : MT-TEST-MAP-EACH-COLLISIONS ( -- )
    MT-MAP MT-CAP MT-MAP-INIT
-   11 MT-MAP MT-CAP MT-KEY-A 1 MT-MAP-SET
-   22 MT-MAP MT-CAP MT-KEY-I 1 MT-MAP-SET
-   33 MT-MAP MT-CAP MT-KEY-Q 1 MT-MAP-SET
+   MT-FIND-COLLISIONS
+   11 MT-MAP MT-CAP 0 MT-COL 1 MT-MAP-SET
+   22 MT-MAP MT-CAP 1 MT-COL 1 MT-MAP-SET
+   33 MT-MAP MT-CAP 2 MT-COL 1 MT-MAP-SET
    MT-EACH-RESET
    MT-MAP MT-CAP [: MT-EACH-RECORD ;] MT-MAP-EACH
    MT-EACH-COUNT @ 3 MT=
-   MT-EACH-SUM @ 66 MT=
-   0 [char] q 1 33 MT-ASSERT-EACH-ROW
-   1 [char] a 1 11 MT-ASSERT-EACH-ROW
-   2 [char] i 1 22 MT-ASSERT-EACH-ROW ;
+   MT-EACH-SUM @ 66 MT= ;
+
+: MT-ORDER-RECORD ( ptr u8 len n -- )
+   drop drop c@ MT-ORDER MT-EACH-COUNT @ + c!
+   MT-EACH-COUNT @ 1 + MT-EACH-COUNT ! ;
+
+: MT-SPREAD-FILL ( ptr n -- ) {: m:ptr :}
+   m MT-SPREAD-CAP MT-MAP-INIT
+   26 0 ?do i m MT-SPREAD-CAP i MT-LETTER 1 MT-MAP-SET loop ;
+
+\ Each map hashes under its own secret key, so two maps given the same keys in
+\ the same order place them apart; under one fixed hash, as before the key,
+\ EACH visits both in one order. With 26 keys the chance of an equal order is
+\ negligible.
+: MT-TEST-MAP-KEYED ( -- )
+   MT-FILL-LETTERS
+   MT-SPREAD-A MT-SPREAD-FILL
+   MT-SPREAD-B MT-SPREAD-FILL
+   0 MT-EACH-COUNT !
+   MT-SPREAD-A MT-SPREAD-CAP [: MT-ORDER-RECORD ;] MT-MAP-EACH
+   MT-SPREAD-B MT-SPREAD-CAP [: MT-ORDER-RECORD ;] MT-MAP-EACH
+   MT-EACH-COUNT @ 52 MT=
+   0 0= 0=
+   26 0 ?do MT-ORDER i + c@ MT-ORDER 26 + i + c@ <> or loop
+   MT-ASSERT ;
 
 : MT-REPORT ( -- )
    MT-FAIL @ 0= if s" map-test: ok" type cr exit then
@@ -453,6 +491,7 @@ create MT-KEY-Z 122 c,
    MT-TEST-MAP-EACH-INSERTS
    MT-TEST-MAP-EACH-UPDATES
    MT-TEST-MAP-EACH-COLLISIONS
+   MT-TEST-MAP-KEYED
    MT-REPORT ;
 
 MT-MAIN

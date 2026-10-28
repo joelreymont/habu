@@ -18,6 +18,16 @@
 \ the entry exists. GET answers SOME value or NONE; EACH visits occupied slots
 \ in storage order. Every call takes the capacity the storage was initialised
 \ with; a bad capacity, malformed storage and a full table throw E-MAP-* codes.
+\
+\ Keys hash with SipHash-2-4 under a secret key INIT draws into the header from
+\ the operating system's generator (src/lib/entropy.f), so crafted keys cannot
+\ aim at one probe chain: chains are expected to stay short whatever the keys,
+\ an expectation over the secret, not a worst-case guarantee. The key
+\ lives in the map's own cells: a map INITed while building an image keeps that
+\ key in the image file and in every run started from it, so a map that will
+\ hold untrusted keys is INITed at run time. Slot positions follow the key, so
+\ EACH's storage order differs between maps, and between runs for maps INITed
+\ at run time.
 \ The slot reader turns raw tags 0 and 1 into constructors and throws
 \ ENGINE-ERROR:BAD-TAG on any other.
 \
@@ -25,6 +35,8 @@
 
 require src/lib/errors.f
 require src/lib/string.f
+require src/lib/siphash.f
+require src/lib/entropy.f
 require src/lib/adt/option.f                      \ option<n> for GET (switchover wave A)
 
 package MAP
@@ -49,7 +61,9 @@ private
 
 0 constant CAP-OFF
 1 constant COUNT-OFF
-2 constant HEADER-CELLS
+2 constant HASH-K0-OFF                \ the SipHash key, k0 then k1, drawn by INIT
+3 constant HASH-K1-OFF
+4 constant HEADER-CELLS
 
 0 constant SLOT-STATE-OFF
 1 constant SLOT-HASH-OFF
@@ -58,8 +72,6 @@ private
 4 constant SLOT-VALUE-OFF
 5 constant SLOT-CELLS
 
-5381 constant HASH-SEED
-33 constant HASH-MUL
 $7FFFFFFFFFFFFFFF constant HASH-MASK
 HASH-MASK HEADER-CELLS - SLOT-CELLS / constant MAX-CAP
 
@@ -188,17 +200,16 @@ public
    loop ;
 
 : INIT ( ptr a count -- ) {: m:ptr cap :}
+   m HASH-K0-OFF cells + BYTE-VIEW 2 cells ENTROPY:FILL
    cap m CAP!
    m CLEAR ;
 
 private
 
-: HASH ( ptr u8 len -- n ) {: a:ptr u :}
+: HASH ( ptr a ptr u8 len -- n ) {: m:ptr a:ptr u :}
    u CHECK-LEN
-   HASH-SEED
-   u LEN>N 0 ?do
-      HASH-MUL * a i + c@ + HASH-MASK and
-   loop ;
+   m HASH-K0-OFF HEADER-FIELD @  m HASH-K1-OFF HEADER-FIELD @
+   a u LEN>N SIPHASH:BYTES HASH-MASK and ;
 
 : INDEX ( n count -- idx ) {: hash cap :}
    cap CHECK-CAP
@@ -233,7 +244,7 @@ private
 : LOCATE ( ptr a count ptr u8 len -- loc n ) {: m:ptr cap:count key:ptr len:len :}
    m cap CHECK-HANDLE
    len CHECK-LEN
-   key len HASH {: hash:n :}
+   m key len HASH {: hash:n :}
    cap COUNT>N 0 ?do
       m hash i >COUNT cap PROBE key len hash LOCATE-SLOT
       dup MATCH loc                            \ full = keep probing; free/found terminate
