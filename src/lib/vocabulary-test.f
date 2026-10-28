@@ -149,7 +149,7 @@ variable CODE                          \ the last child's exit code, -1 when it 
 
 \ ---- inside the vocabulary ----------------------------------------------------
 
-: OK-OUT$ ( -- ptr u8 n ) S\" 42\n5\n5\n42\n0\n" ;
+: OK-OUT$ ( -- ptr u8 n ) S\" 42\n5\n5\n42\n0\n11\n" ;
 
 \ A local shadows every word, as it does unsealed: tier 1 records the names a
 \ sealed `{:` declares, so it matches them before any lookup, as tier 0 does.
@@ -197,11 +197,14 @@ variable CODE                          \ the last child's exit code, -1 when it 
 
 \ A global a used package also exports is outside the vocabulary before it is
 \ shadowed: the seal refuses it ahead of the shadowing rule, as in a body.
+\ A package loaded before the seal, admitted or not, cannot be reopened: inside
+\ it its private words come first. ok.f reopens the design's own package.
 : SCOPES ( -- )
    s" using-ffi" s" hb: not in vocabulary: NOW at test/policy/using-ffi.f:3" BOTH-REFUSE
    s" shadow" s" hb: not in vocabulary: emit at test/policy/shadow.f:3" BOTH-REFUSE
    s" private" s" hb: not in vocabulary: PDEP:HIDDEN at test/policy/private.f:2" BOTH-REFUSE
-   s" reopen" s" hb: not in vocabulary: HIDDEN at test/policy/reopen.f:3" BOTH-REFUSE
+   s" reopen" s" hb: policy: package PDEP predates the seal at test/policy/reopen.f:2" BOTH-REFUSE
+   s" reopen-foreign" s" hb: policy: package PFOREIGN predates the seal at test/policy/reopen-foreign.f:2" BOTH-REFUSE
    s" foreign-call" s" hb: not in vocabulary: PFOREIGN:LEAK at test/policy/foreign-call.f:2" BOTH-REFUSE
    s" undefined" s" hb: not in vocabulary: NOSUCHWORD at test/policy/undefined.f:2" BOTH-REFUSE ;
 
@@ -220,7 +223,7 @@ variable CODE                          \ the last child's exit code, -1 when it 
    s" arith" s" hb: not in vocabulary: + at test/policy/arith.f:2" BOTH-REFUSE
    s" dotq" S\" hb: not in vocabulary: .\q at test/policy/dotq.f:2" BOTH-REFUSE
    s" used" s" hb: not in vocabulary: LEAK at test/policy/used.f:3" BOTH-REFUSE
-   s" internal" s" hb: not in vocabulary: STEP at test/policy/internal.f:6" BOTH-REFUSE ;
+   s" internal" s" hb: not in vocabulary: STEP at test/policy/internal.f:4" BOTH-REFUSE ;
 
 \ A keyword the native compiler models itself, a character literal, a call to
 \ the definition being compiled and a `:}` outside a `{:` group are neither

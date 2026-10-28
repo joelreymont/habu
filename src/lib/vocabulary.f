@@ -22,15 +22,18 @@
 \ call and the engine has not marked internal; or, after SOURCE-ROOT!, a
 \ top-level global `require` with a literal path. Nothing else: no arithmetic,
 \ stack word, loop, recurse, quotation or execution token, definer but `:`,
-\ store or fetch, other string form, included, evaluate or trusted:. `using`
-\ or reopening a package does not admit it. The checker still certifies every
+\ store or fetch, other string form, included, evaluate or trusted:. `using` a
+\ package does not admit it, and `package` refuses a package that existed at
+\ the seal: inside it its private words would come first. A package the sealed
+\ source made opens and reopens as usual. The checker still certifies every
 \ body, and a program inside the vocabulary runs as it does unsealed.
 \
 \ REFUSALS are one stderr line and ENGINE-ERROR:POLICY (107), a throw a
 \ harness `catch` around `included` can take: `hb: not in vocabulary: <token>
 \ at <path>:<line>`, at the same token in both tiers (tier 1 captures a body's
-\ text and admits what tier 0 admits); `hb: policy: sealed` from any of the
-\ four words once sealed (there is no unseal); `hb: policy: no package
+\ text and admits what tier 0 admits); `hb: policy: package <name> predates
+\ the seal at <path>:<line>`, at `package NAME`; `hb: policy: sealed` from any
+\ of the four words once sealed (there is no unseal); `hb: policy: no package
 \ <name>`; `hb: policy: package wid above the bound` (wid >= PROT-WID-MAX has
 \ no admission bit); `hb: policy: package <name> publishes keyword <word>` (a
 \ public word spelled like a dispatched keyword row, case folded, which tier 0

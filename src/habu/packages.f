@@ -170,6 +170,17 @@ CAST: PKG-AS-EXPORT-ACTION ( n -- [ ptr u8 n n -- ] )
    PKG-SEALED? 0= if exit then
    TOKEN$ ENGINE-ERROR:SEAL-PACKAGE FAIL-CLOSED ;
 
+\ Under the design seal a package whose row predates the seal is refused: the
+\ located line and ENGINE-ERROR:POLICY (habu2.f C-PACKAGE-POLICY-GUARD).
+: PKG-POLICY-GUARD ( -- )
+   POLICY-NDICT-CELL CELL@ {: seal:n :}
+   seal 0= if exit then
+   PKG-ROW {: row:ptr :}
+   row XREF-FOUND? 0= if exit then
+   row PKG-INDEX seal >= if exit then
+   s" hb: policy: package " SAY TOKEN$ SAY
+   s"  predates the seal" SAY ENGINE-ERROR:POLICY THROW-AT ;
+
 \ An existing row keeps its wids and gains a private one only when it has none.
 : PKG-REOPEN ( ptr n -- n ) {: row:ptr :}
    row PKG-INDEX {: ix:n :}
@@ -195,6 +206,7 @@ CAST: PKG-AS-EXPORT-ACTION ( n -- [ ptr u8 n n -- ] )
    PKG-PUB-CELL CELL@ 0<> if PKG-RC-CONTEXT PKG-FAIL then
    PKG-NAME
    0 UNIT-EV-PACKAGE UNIT-EVENT 0<> if INE-CELL CELL@ INP-CELL CELL! exit then
+   PKG-POLICY-GUARD
    NCOMP-DISPATCH:DECL-PACKAGE-OFF PKG-NOTIFY-NAME
    PKG-SEAL-GUARD
    PKG-ENSURE {: ix:n :}

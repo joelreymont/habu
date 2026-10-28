@@ -10637,6 +10637,33 @@ public
          5 5 DREC ADDI,  6 6 1 SUBI,  loop B,
    done LBL, ;
 
+\ Under the design seal (layout.f POLICY-NDICT-CELL) `package NAME` is refused
+\ when NAME's record sits below the stored NDICT: a package that existed at the
+\ seal. Inside it the package's private words would be searched before any
+\ admitted public word, so reopening one would widen the vocabulary. Only the
+\ records below the seal are scanned; a package the sealed source made itself
+\ lies above it and opens as usual. The refusal is the design seal's located
+\ line and ENGINE-ERROR:POLICY through LCOMPILEDIE.
+: C-PACKAGE-POLICY-GUARD ( -- )
+   LBL LBL LBL LBL {: loop:label miss:label hit:label done:label :}
+   LBL s" hb: policy: package " {: pre:label pa:ptr pu:n :}
+   LBL s"  predates the seal" {: post:label sa:ptr su:n :}
+   6 DATA POLICY-NDICT-CELL LDR,  6 done CBZ,           \ unsealed: nothing predates a seal
+   5 DBASE 0 ADDI,
+   loop LBL,
+      6 done CBZ,
+      hit miss C-PACKAGE-RECORD-MATCH
+      hit LBL,
+         0 2 MOVZ,  1 pre ADR,  2 pu MOVZ,  NR-WRITE SYS,
+         0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+         0 2 MOVZ,  1 post ADR,  2 su MOVZ,  NR-WRITE SYS,
+         0 ENGINE-ERROR:POLICY MOVZ,  LCOMPILEDIE LABEL@ B,
+         pre LBL,  pa pu BYTES,
+         post LBL,  sa su BYTES,
+      miss LBL,
+         5 5 DREC ADDI,  6 6 1 SUBI,  loop B,
+   done LBL, ;
+
 : C-PACKAGE-SEAL-GUARD ( -- )   \ reject `package NAME` open/reopen of a sealed system package
    LBL {: ok:label :}
    9 DATA SEAL-NDICT-CELL LDR,  9 ok CBZ,               \ namespace open -> allow
@@ -10660,6 +10687,7 @@ public
       9 DATA INE-CELL LDR,  9 DATA INP-CELL STR,
       LMAIN LABEL@ B,
    cold LBL,
+   C-PACKAGE-POLICY-GUARD                               \ before the checker hears of the package
    C-CALL-CHECKER-PACKAGE
    C-PACKAGE-SEAL-GUARD
    1 CP 4 ADDI,  PROT-EMIT:LOPEN LABEL@ BL,

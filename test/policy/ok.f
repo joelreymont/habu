@@ -1,5 +1,6 @@
 \ ok.f - a design inside its vocabulary: its own package, locals, if/else/then,
-\ s" names, integer and real literals, a using block and top-level calls.
+\ s" names, integer and real literals, a using block, top-level calls, and its
+\ package reopened, where its private word is found first.
 package PDESIGN
 private
 : PICK-BIG ( n -- n ) {: dv:n :} dv PDEP:BIG? if dv else PDEP:ZERO then ;
@@ -17,3 +18,8 @@ using PDEP
 VIA SHOW
 ;using
 PDESIGN:SMALL
+package PDESIGN
+public
+: REOPENED ( -- ) 11 PICK-BIG PDEP:SHOW ;
+;package
+PDESIGN:REOPENED
