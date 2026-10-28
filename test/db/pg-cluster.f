@@ -1,4 +1,4 @@
-\ pg-cluster.f - src/lib/pg-test.f and src/lib/db/rows-test.f against a private
+\ pg-cluster.f - src/lib/pg-test.f and src/lib/pg-rows-test.f against a private
 \ PostgreSQL cluster.
 \
 \     bin/hb --load test/db/pg-cluster.f [-- case.f ...]
@@ -7,7 +7,7 @@
 \ starts postgres on it, listening on a Unix-domain socket only
 \ (listen_addresses=''), so rows running beside each other have no TCP port to
 \ collide on. The case files - the script arguments, or else src/lib/pg-test.f and
-\ then src/lib/db/rows-test.f - each run in a child engine that takes the conninfo
+\ then src/lib/pg-rows-test.f - each run in a child engine that takes the conninfo
 \ as its one script argument and writes its report straight to this process's
 \ stdout and stderr; the first that fails ends the run, and the row's last line
 \ names it. This process stops the server however the children end - exit,
@@ -518,7 +518,7 @@ DEFAULT-CASE-MS CASE-MS !
    file fileu EXITED-0? ;
 
 \ The case files are the script arguments, or src/lib/pg-test.f and then
-\ src/lib/db/rows-test.f when there are none.
+\ src/lib/pg-rows-test.f when there are none.
 : CASE-N ( -- n )
    SCRIPT-ARGC 0= if 2 exit then
    SCRIPT-ARGC ;
@@ -526,7 +526,7 @@ DEFAULT-CASE-MS CASE-MS !
 : CASE$ ( n -- ptr u8 n ) {: i:n :}
    SCRIPT-ARGC 0 > if i SCRIPT-ARGV$ exit then
    i 0= if s" src/lib/pg-test.f" exit then
-   s" src/lib/db/rows-test.f" ;
+   s" src/lib/pg-rows-test.f" ;
 
 \ The files run against the one cluster in order, and the first that fails
 \ ends the run: the answer is the last file run and whether it passed.

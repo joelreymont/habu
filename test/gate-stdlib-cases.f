@@ -1170,9 +1170,9 @@ SUITE ffi-callback-growth
    test/ffi-callback-growth.f
 ;SUITE
 
-\ Packages PG and DB-ROWS against a private PostgreSQL cluster the harness
+\ Package PG against a private PostgreSQL cluster the harness
 \ starts on a Unix-domain socket, runs src/lib/pg-test.f and then
-\ src/lib/db/rows-test.f against, and stops however they end; then the same
+\ src/lib/pg-rows-test.f against, and stops however they end; then the same
 \ harness killed by a pool, which must leave no server process and no socket
 \ directory. initdb and postgres on PATH are a gate requirement
 \ (docs/bootstrap.md "Requirements"). The harness's step deadlines sum to 300 s,

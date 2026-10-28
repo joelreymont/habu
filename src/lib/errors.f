@@ -11,7 +11,7 @@
 \ someone else's declared range. A subsystem that outgrows one block takes a
 \ second, separately named region rather than renumbering the codes it already
 \ ships; the compiler at -6600..-6699 and -8000..-8999 is the first such case,
-\ package PG at -9250..-9259 and -9560..-9569 the second.
+\ package PG at -9250..-9259, -9320..-9329 and -9560..-9569 the second.
 \
 \ This file declares no package. A block with codes in a package (JR:E-SOURCE)
 \ is minted in the file that owns that package, bounds and all, and a comment
@@ -1344,7 +1344,8 @@
 
 \ PostgreSQL over libpq: -9250..-9259, the decade after libcurl, minted by
 \ src/lib/pg.f, which owns package PG. -9240..-9249 is tools/image-size-lib.f.
-\ The block is full; PG's second region is -9560..-9569, listed below.
+\ The block is full; PG's row readers are -9320..-9329 and its growth region
+\ -9560..-9569, both listed below.
 
 \ Process signals on a self-pipe (package SIGNAL): -9280..-9289. The decade
 \ after CRYPTO.
@@ -1377,8 +1378,8 @@
 -9319 constant E-LIFECYCLE-LAST
 -9310 constant E-LIFECYCLE-LATE   \ a persistent hook registered a one-shot hook during PREPARE, after the one-shot phase: nothing runs it before the capture
 
-\ The database layer over package PG: -9320..-9329, the decade after
-\ IMAGE-LIFECYCLE's, minted by src/lib/db/rows.f, which owns package DB-ROWS.
+\ Package PG's row readers: -9320..-9329, the decade after IMAGE-LIFECYCLE's,
+\ minted by src/lib/pg-rows.f.
 
 \ The WebSocket frame codec, RFC 6455 (package WS, src/lib/net/ws-frame.f):
 \ -9330..-9339. The codes after E-WS-MASK are its reserve.
