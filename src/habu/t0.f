@@ -8,15 +8,24 @@
 \ body in its sink.
 \
 \ A TOKEN IS, IN THIS ORDER: a local in scope; a string opener (`s" c" ." s\"
-\ c\" .\"`, the s and c in either case); a control keyword (if else then begin
-\ until while repeat again do ?do loop +loop leave unloop i j case of endof
-\ endcase exit recurse >r r> r@ ['] [char] {: [: ;]); an operation T0 inlines,
-\ when the spelling binds the engine's seeded primitive (NDICT:SPELL-PRIM?):
-\ the stack shuffles, + - * and or xor 1+ 1- negate invert lshift rshift, the
-\ comparisons, @ and c@; a word the dictionary binds (NDICT:CALL-TARGET), as a
-\ call; a number (OUTER:NUMBER), a float being one cell of a double's bits.
-\ Anything else throws E-T0-UNSUPPORTED, and UNSUPPORTED$ names the token until
-\ the next compile.
+\ c\" .\"`); a control keyword (if else then begin until while repeat again do
+\ ?do loop +loop leave unloop i j case of endof endcase exit recurse >r r> r@
+\ ['] [char] {: [: ;]); an operation T0 inlines, when the spelling binds the
+\ engine's seeded primitive (NDICT:SPELL-PRIM?): the stack shuffles, + - * and
+\ or xor 1+ 1- negate invert lshift rshift, the comparisons, @ and c@; a word
+\ the dictionary binds (NDICT:CALL-TARGET), as a call; an immediate (IMM-TOKEN
+\ says which pass); a number (OUTER:NUMBER), a float being one cell of a
+\ double's bits. Anything else throws E-T0-UNSUPPORTED, and UNSUPPORTED$ names
+\ the token until the next compile.
+\
+\ THE SPELLING. T0 compiles only bodies the checker certified, so it reads each
+\ token as the checker does (src/core/checker.f DO-TOK1). A local answers to its
+\ declared spelling byte for byte (LOC-REF?). Every other class is matched with
+\ ASCII case folded: the checker folds the token (TOKFOLD) before it compares
+\ it with a keyword, a string opener or `[char]`, and the dictionary lookups
+\ behind the inlined operations and the calls fold case themselves; T0 compares
+\ with STR=CI. So `IF`, `RECURSE`, `S"` and `DUP` are `if`, `recurse`, `s"`
+\ and the primitive `dup`.
 \
 \ A STRING's payload starts one byte past its opener, as BODYBUF keeps it
 \ (src/habu/definers.f DEF-TEXT), and src/habu/escape.f decodes an escaped
@@ -47,12 +56,15 @@
 \ SLOT-STORE, SLOT-LOAD); a read pushes every cell of the local. A local holds
 \ as many cells as the checker certified for its bind (NFETCH:BIND-WIDTH), so
 \ the caller captures the body's certificate (NFETCH:CAPTURE at base 0) before
-\ COMPILE-TEXT, and T0 never reads a type annotation. A local answers to its
-\ declared spelling byte for byte, ahead of the keywords and the dictionary,
-\ from its group to the closer of the structure it binds in (else, then,
-\ repeat, until, again, loop, +loop, endof, endcase), as the checker's
-\ CF-LOC-REST ends it; `while` keeps the loop's names, as tier 1's borrow
-\ does. A dead local's slots go to the next group.
+\ COMPILE-TEXT, and T0 never reads a type annotation. A bind past the
+\ certificate's count, and a body that binds fewer than it counts, is
+\ E-T0-BINDS: that certificate is not of this text; a body that binds nothing
+\ reads none, as tier 1's BINDS-CK. A local answers to its declared spelling
+\ byte for byte, ahead of the keywords and the dictionary, from its group to
+\ the closer of the structure it binds in (else, then, repeat, until, again,
+\ loop, +loop, endof, endcase), as the checker's CF-LOC-REST ends it; `while`
+\ keeps the loop's names, as tier 1's borrow does. A dead local's slots go to
+\ the next group.
 \
 \ THE CONTROL STACK holds the open structures: an `if` or `else` site, a
 \ `begin` mark and a `while` site, which `while` puts under its `begin` as
@@ -75,6 +87,7 @@ require src/lib/source-syntax.f
 require src/core/bytes.f
 require src/habu/outer.f
 require src/habu/escape.f
+require src/compiler/native/checker-owner.f
 require src/compiler/native/dict.f
 require src/compiler/native/fetch.f
 require src/compiler/native/string.f
@@ -88,6 +101,8 @@ public
 -9600 constant E-T0-UNSUPPORTED  \ a token T0 does not compile yet: UNSUPPORTED$
 -9601 constant E-T0-CONTROL      \ a control word without its opener, or a body ending inside one
 -9602 constant E-T0-LITERAL      \ a string with no closing quote, a bad escape, or a counted one too long
+-9603 constant E-T0-IMMEDIATE    \ an immediate other than a parse-neutral one: UNSUPPORTED$
+-9604 constant E-T0-BINDS        \ the body binds other than the certificate's count of locals
 
 private
 
@@ -127,9 +142,12 @@ variable BAD-LEN
    saved POS !
    u 0= a u QUOT-END? or ;
 
-: UNSUPPORTED ( ptr u8 n -- ) {: a:ptr u:n :}
+\ Throw code, naming the token for UNSUPPORTED$.
+: REFUSE ( ptr u8 n n -- ) {: a:ptr u:n code:n :}
    a BAD !  u BAD-LEN !
-   E-T0-UNSUPPORTED throw ;
+   code throw ;
+
+: UNSUPPORTED ( ptr u8 n -- ) E-T0-UNSUPPORTED REFUSE ;
 
 \ ---- the virtual stack -------------------------------------------------------
 0 constant K-REG
@@ -384,6 +402,7 @@ variable UNIT                        \ the unit being compiled: 0 the definition
 \ Record local k, declared by the token of length u that ends at POS, on slot.
 : DECLARE ( ptr u8 n n n -- n ) {: a:ptr u:n k:n slot:n :}
    POS @ u - {: at:n :}
+   BINDS @ at NFETCH:BINDS >= if E-T0-BINDS throw then
    at BINDS @ NFETCH:BIND-WIDTH {: w:n :}
    BINDS @ 1+ BINDS !
    a u $3A INDEX-OF MATCH option         \ the name ends at the type's `:`
@@ -810,12 +829,12 @@ DYNAMIC-BUFFER QSTART n             \ where each quotation's body text starts
 \ An operation spelling counts only when it binds the seeded primitive
 \ (NDICT:SPELL-PRIM?); a package's own word of that name is a call.
 : OP? ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u:n b:ptr v:n :}
-   a u b v STR= 0= if false exit then
+   a u b v STR=CI 0= if false exit then
    a u NDICT:SPELL-PRIM? ;
 
 : KW1 ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" i" STR= if [: T0-EMIT:LOOP-I ;] 1 DO-INDEX true exit then
-   a u s" j" STR= if [: T0-EMIT:LOOP-J ;] 2 DO-INDEX true exit then
+   a u s" i" STR=CI if [: T0-EMIT:LOOP-I ;] 1 DO-INDEX true exit then
+   a u s" j" STR=CI if [: T0-EMIT:LOOP-J ;] 2 DO-INDEX true exit then
    a u s" +" OP? if [: + ;] T0-EMIT:OP-ADD true ALU2 true exit then
    a u s" -" OP? if [: - ;] T0-EMIT:OP-SUB false ALU2 true exit then
    a u s" *" OP? if MUL2 true exit then
@@ -826,14 +845,14 @@ DYNAMIC-BUFFER QSTART n             \ where each quotation's body text starts
    false ;
 
 : KW2 ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" if" STR= if DO-IF true exit then
-   a u s" do" STR= if DO-DO true exit then
-   a u s" of" STR= if DO-OF true exit then
-   a u s" {:" STR= if a u DO-GROUP true exit then
-   a u s" [:" STR= if DO-QUOT true exit then
-   a u s" >r" STR= if DO-TOR true exit then
-   a u s" r>" STR= if DO-RFROM true exit then
-   a u s" r@" STR= if DO-RFETCH true exit then
+   a u s" if" STR=CI if DO-IF true exit then
+   a u s" do" STR=CI if DO-DO true exit then
+   a u s" of" STR=CI if DO-OF true exit then
+   a u s" {:" STR=CI if a u DO-GROUP true exit then
+   a u s" [:" STR=CI if DO-QUOT true exit then
+   a u s" >r" STR=CI if DO-TOR true exit then
+   a u s" r>" STR=CI if DO-RFROM true exit then
+   a u s" r@" STR=CI if DO-RFETCH true exit then
    a u s" or" OP? if [: or ;] T0-EMIT:OP-OR true ALU2 true exit then
    a u s" 1+" OP? if 1 PUSH-CONST [: + ;] T0-EMIT:OP-ADD true ALU2 true exit then
    a u s" 1-" OP? if 1 PUSH-CONST [: - ;] T0-EMIT:OP-SUB false ALU2 true exit then
@@ -846,8 +865,8 @@ DYNAMIC-BUFFER QSTART n             \ where each quotation's body text starts
    false ;
 
 : KW3 ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" [']" STR= if DO-TICK true exit then
-   a u s" ?do" STR= if DO-?DO true exit then
+   a u s" [']" STR=CI if DO-TICK true exit then
+   a u s" ?do" STR=CI if DO-?DO true exit then
    a u s" dup" OP? if DUP1 true exit then
    a u s" rot" OP? if ROT1 true exit then
    a u s" nip" OP? if NIP1 true exit then
@@ -856,11 +875,11 @@ DYNAMIC-BUFFER QSTART n             \ where each quotation's body text starts
    false ;
 
 : KW4 ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" then" STR= if DO-THEN true exit then
-   a u s" else" STR= if DO-ELSE true exit then
-   a u s" exit" STR= if DO-EXIT true exit then
-   a u s" loop" STR= if DO-LOOP true exit then
-   a u s" case" STR= if DO-CASE true exit then
+   a u s" then" STR=CI if DO-THEN true exit then
+   a u s" else" STR=CI if DO-ELSE true exit then
+   a u s" exit" STR=CI if DO-EXIT true exit then
+   a u s" loop" STR=CI if DO-LOOP true exit then
+   a u s" case" STR=CI if DO-CASE true exit then
    a u s" drop" OP? if DROP1 true exit then
    a u s" swap" OP? if SWAP1 true exit then
    a u s" over" OP? if OVER1 true exit then
@@ -868,19 +887,19 @@ DYNAMIC-BUFFER QSTART n             \ where each quotation's body text starts
    false ;
 
 : KW5 ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" begin" STR= if DO-BEGIN true exit then
-   a u s" while" STR= if DO-WHILE true exit then
-   a u s" until" STR= if DO-UNTIL true exit then
-   a u s" again" STR= if DO-AGAIN true exit then
-   a u s" +loop" STR= if DO-+LOOP true exit then
-   a u s" leave" STR= if DO-LEAVE true exit then
-   a u s" endof" STR= if DO-ENDOF true exit then
+   a u s" begin" STR=CI if DO-BEGIN true exit then
+   a u s" while" STR=CI if DO-WHILE true exit then
+   a u s" until" STR=CI if DO-UNTIL true exit then
+   a u s" again" STR=CI if DO-AGAIN true exit then
+   a u s" +loop" STR=CI if DO-+LOOP true exit then
+   a u s" leave" STR=CI if DO-LEAVE true exit then
+   a u s" endof" STR=CI if DO-ENDOF true exit then
    false ;
 
 : KW6 ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" repeat" STR= if DO-REPEAT true exit then
-   a u s" [char]" STR= if DO-CHAR true exit then
-   a u s" unloop" STR= if DO-UNLOOP true exit then
+   a u s" repeat" STR=CI if DO-REPEAT true exit then
+   a u s" [char]" STR=CI if DO-CHAR true exit then
+   a u s" unloop" STR=CI if DO-UNLOOP true exit then
    a u s" negate" OP? if [: negate ;] [: T0-EMIT:NEG ;] UNARY true exit then
    a u s" invert" OP? if [: invert ;] [: T0-EMIT:NOT ;] UNARY true exit then
    a u s" lshift" OP? if [: lshift ;] T0-EMIT:SH-LEFT SHIFT2 true exit then
@@ -888,8 +907,8 @@ DYNAMIC-BUFFER QSTART n             \ where each quotation's body text starts
    false ;
 
 : KW7 ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" recurse" STR= if DO-RECURSE true exit then
-   a u s" endcase" STR= if DO-ENDCASE true exit then
+   a u s" recurse" STR=CI if DO-RECURSE true exit then
+   a u s" endcase" STR=CI if DO-ENDCASE true exit then
    false ;
 
 : KEYWORD ( ptr u8 n -- bool ) {: a:ptr u:n :}
@@ -903,6 +922,15 @@ DYNAMIC-BUFFER QSTART n             \ where each quotation's body text starts
    false ;
 
 \ ---- one token ---------------------------------------------------------------
+\ An immediate the capture holds. A parse-neutral one ran as the engine read it
+\ (src/habu/definers.f DEF-IMMEDIATE) and left only its own token, its operands
+\ read from the input and text it evaluated captured after it, so T0 passes
+\ over the token as tier 1 does (src/compiler/native/elaborate.f WALK-SKIP?).
+\ Any other is refused by name.
+: IMM-TOKEN ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u CHECKER-OWNER:PARSE-IMM? if exit then
+   a u E-T0-IMMEDIATE REFUSE ;
+
 : NUMBER ( ptr u8 n -- ) {: a:ptr u:n :}
    a u OUTER:NUMBER {: v:n float:bool number:bool range:bool :}
    number 0= range or if a u UNSUPPORTED then
@@ -916,6 +944,7 @@ DYNAMIC-BUFFER QSTART n             \ where each quotation's body text starts
    a u KEYWORD if exit then
    a u NDICT:CALL-TARGET {: to:n :}
    to 0<> if to DO-CALL exit then
+   a u tok-imm? 0<> if a u IMM-TOKEN exit then
    a u NUMBER ;
 
 \ Past the name and a signature, if one follows it.
@@ -957,11 +986,12 @@ DYNAMIC-BUFFER QSTART n             \ where each quotation's body text starts
 
 public
 
-\ The token the last E-T0-UNSUPPORTED named.
+\ The token the last E-T0-UNSUPPORTED or E-T0-IMMEDIATE named.
 : UNSUPPORTED$ ( -- ptr u8 n ) BAD @ BAD-LEN @ ;
 
 \ Compile one body, and then its quotations, into the emitter's sink. The
-\ body's certificate is captured.
+\ body's certificate is captured. A body that binds must bind the certificate's
+\ count of locals, as tier 1's BINDS-CK requires (src/compiler/native/elaborate.f).
 : COMPILE-TEXT ( ptr u8 n -- ) {: a:ptr u:n :}
    a TXT !  u TXT-LEN !  0 POS !  1 NQ !  0 BINDS !
    0 RESET
@@ -969,6 +999,8 @@ public
    SKIP-HEAD
    BODY if E-T0-CONTROL throw then
    FINISH
-   1 begin dup NQ @ < while dup QUOT 1+ repeat drop ;
+   1 begin dup NQ @ < while dup QUOT 1+ repeat drop
+   BINDS @ 0= if exit then
+   BINDS @ 0 NFETCH:BINDS <> if E-T0-BINDS throw then ;
 
 ;package
