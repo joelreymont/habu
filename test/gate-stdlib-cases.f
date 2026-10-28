@@ -1910,6 +1910,11 @@ SUITE process-env
    src/lib/process-env-test.f
 ;SUITE
 
+\ A spawn request: arguments, environment, directory and descriptor map, spawned once.
+SUITE spawn
+   src/lib/spawn-test.f
+;SUITE
+
 \ A tree walk the kernel refuses throws rather than reading the refusal as
 \ nobody there, and one at a capture's early end leaves the capture its own
 \ answer and names the walk's code.

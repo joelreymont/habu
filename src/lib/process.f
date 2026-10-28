@@ -25,6 +25,7 @@ s" src/lib/memory.f" required                \ MEM-MAX-N bounds PROC-DEADLINE-AT
 s" src/lib/adt/result.f" required            \ result<n,n> for PROC-RUN-IO-RC (switchover wave B)
 s" src/lib/task.f" required                  \ TASK:+USER carries the per-call row
 s" src/lib/fd-lock.f" required               \ FD-LOCK:WITH orders descriptor creation against spawns
+s" src/lib/spawn.f" required                 \ SPAWN:request and PROCESS:SPAWN, the spawn every RAW word makes
 s" src/lib/process-tree.f" required          \ PROC-TREE:KILL-TREE ends a capture child's tree
 
 \ outcome - how a child process completed (switchover wave C): a clean exit

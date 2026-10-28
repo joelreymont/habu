@@ -14,68 +14,9 @@ s" src/lib/errors.f" required
 s" src/lib/memory.f" required
 s" src/lib/process.f" required
 require src/lib/fd-lock.f
+require src/lib/process-chunks.f
 require src/lib/string.f
 require src/lib/image-lifecycle.f
-
-\ Row bytes live in chunks that never move until they are freed, so a row's
-\ address stays valid while later rows are added. A list's control is
-\ CONTROL-CELLS cells: chunks held, the chunk being filled, and its bytes used.
-\ Chunks past the one being filled hold no live row, so a rewind reuses them.
-package PROC-CHUNKS
-private
-
-0 cells constant HELD-OFF
-1 cells constant CUR-OFF
-2 cells constant USED-OFF
-$1000 constant CHUNK-BYTES
-
-: ROOM? ( n ptr n [ n -- ptr SPAN:span<u8> ] -- bool )
-   {: need state chunks :}
-   state CUR-OFF + @ state HELD-OFF + @ >= if false exit then
-   state CUR-OFF + @ chunks execute @ SPAN:LEN state USED-OFF + @ - need >= ;
-
-
-\ A fresh chunk takes the current slot; the one it displaces, too small for
-\ this row, moves to the end.
-: GROW ( n ptr n [ n -- ptr SPAN:span<u8> ] [ n -- ] -- )
-   {: need state chunks reserve :}
-   state HELD-OFF + @ {: held:n :}
-   state CUR-OFF + @ {: cur:n :}
-   held 1+ reserve execute
-   cur chunks execute @ held chunks execute !
-   need CHUNK-BYTES max MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN cur chunks execute !
-   held 1+ state HELD-OFF + ! ;
-
-public
-
-3 constant CONTROL-CELLS
-
-\ Answers need bytes that stay put until FREE.
-: ROOM ( n ptr n [ n -- ptr SPAN:span<u8> ] [ n -- ] -- ptr u8 )
-   {: need state chunks reserve :}
-   need state chunks ROOM? 0= if
-      state CUR-OFF + @ state HELD-OFF + @ < if 1 state CUR-OFF + +! then
-      0 state USED-OFF + !
-      need state chunks ROOM? 0= if need state chunks reserve GROW then
-   then
-   state CUR-OFF + @ chunks execute @ state USED-OFF + @ SPAN:AT
-   need state USED-OFF + +! ;
-
-
-: REWIND ( ptr n -- )
-   {: state :}
-   0 state CUR-OFF + !
-   0 state USED-OFF + ! ;
-
-
-\ Unmaps every chunk; the caller then releases its chunk buffer.
-: FREE ( ptr n [ n -- ptr SPAN:span<u8> ] -- )
-   {: state chunks :}
-   state HELD-OFF + @ 0 ?do i chunks execute @ MEM:FREE-SPAN loop
-   0 state HELD-OFF + !
-   state REWIND ;
-
-;package
 
 variable PROC-ARGV-N
 
@@ -92,7 +33,7 @@ TYPED-VARIABLE REGISTERED bool
 false REGISTERED !
 
 : RELEASE ( -- )
-   0 CONTROL [: CHUNKS ;] PROC-CHUNKS:FREE
+   0 CONTROL [: drop CHUNKS ;] PROC-CHUNKS:FREE
    CHUNKS-RELEASE
    TABLE-RELEASE
    0 >COUNT PROC-ARGV-N !
@@ -118,7 +59,7 @@ public
 
 : BYTES ( n -- ptr u8 )
    REGISTER
-   0 CONTROL [: CHUNKS ;] [: CHUNKS-RESERVE ;] PROC-CHUNKS:ROOM ;
+   0 CONTROL [: drop CHUNKS ;] [: drop CHUNKS-RESERVE ;] PROC-CHUNKS:ROOM ;
 
 
 : REWIND ( -- )
