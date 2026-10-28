@@ -1,5 +1,5 @@
 \ fs-rename-noreplace-test.f - publish without replacing any destination entry.
-\ Run: ~/.local/lib/habu/current/bin/hb --load src/lib/fs-rename-noreplace-test.f
+\ Run: hb --load src/lib/fs-rename-noreplace-test.f
 
 require src/lib/test.f
 require src/lib/fs-mutate.f
