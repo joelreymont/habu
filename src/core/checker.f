@@ -1798,7 +1798,9 @@ PTX-BARRIER-DEFAULT
    0 copy P-PROOF!
    copy ;
 
+CHECKER-REG:SCRATCH{
 variable JOIN-FACTS
+CHECKER-REG:}SCRATCH
 : ROW-JOIN-PREP ( n n -- n n ) {: a:n b:n :}
    a R-RES {: an:n :}  b R-RES {: bn:n :}
    an TAG S-PUSH <> bn TAG S-PUSH <> or IF
@@ -3296,7 +3298,9 @@ variable FORALL-OPEN-ON
    actual FORALL-PREFIX-LEN required FORALL-PREFIX-LEN > ;
 
 create FORALL-OPEN-RECS MAXUWL 4 * cells allot
+CHECKER-REG:SCRATCH{
 variable FORALL-INPUT-ROOT
+CHECKER-REG:}SCRATCH
 : FORALL-OPEN-REC ( n -- ptr n ) 4 * cells FORALL-OPEN-RECS + ;
 : FORALL-OPEN-ADD ( n n n n -- ) {: var:n parent:n second:n domain:n :}
    FORALL-OPEN-N @ MAXUWL >= IF s" checker: forall input worklist full" 76 die THEN
@@ -6856,8 +6860,10 @@ ndict@ 1- constant DEFRECORD-REC-ID
 \ admits. Save the contract's type and row variables before ordinary unification,
 \ then check that fitting the implementation did not specialize, narrow, or merge
 \ them. Both `is` and a typed quotation cell use this same contract rule.
+CHECKER-REG:SCRATCH{
 variable QCON-N
 variable QCON-RN
+CHECKER-REG:}SCRATCH
 
 : QCON-ADD ( n -- ) {: id:n :}
    0 BEGIN dup QCON-N @ < WHILE
@@ -14685,7 +14691,9 @@ public
 \ The event the token now being judged publishes, latched by the step that
 \ judged it and filed by the report that follows (SCAN-REPORT), as MWIN-HIT is.
 \ The walk clears it each turn; outside a recording unit nothing is latched.
+CHECKER-REG:SCRATCH{
 variable EV-HIT   variable EV-KIND   variable EV-A0   variable EV-A1
+CHECKER-REG:}SCRATCH
 
 : EVENT! ( n n n -- )
    {: kind:n a0:n a1:n :}
@@ -15706,13 +15714,13 @@ CHECKER-REG:}SCRATCH
    need NORET-GROW ;
 
 \ Capture is quiescent. No scratch plane address enters the image; first use
-\ after capture or restore constructs every plane with its sentinel.
+\ after capture or restore constructs every plane with its sentinel. FV and the
+\ copy maps' written marks describe these planes, which outlive a file
+\ boundary, so they rest here and not in a span.
 : TV-SNAP-RESET ( -- )
    TVT-P @ TV-CAP @ TV-RELEASE
    TV-CLEAR
    0 FV !
-   0 FORALL-INPUT-ROOT !
-   0 QCON-N !  0 QCON-RN !
    0 EC-TV-HW !   0 EC-RV-HW ! ;
 
 \ ARENA-SNAP-BOOT ( pvar boot cells -- ) : restore one scratch arena to its boot
@@ -17727,6 +17735,7 @@ package CHECKER-REG
 
 \ Trial save/restore: a prim-overload trial saves the scalar cursors below and the
 \ trail height (SV-TRAIL); var bindings are undone via the unification trail (top).
+CHECKER-REG:SCRATCH{
 variable SV-FV    variable SV-SPN   variable SV-PFN   variable SV-FACTS
 variable SV-QEN   variable SV-PTRN  variable SV-STLN
 variable SV-OK    variable SV-DCUR  variable SV-RCUR  variable SV-UNCK  variable SV-UNSEEN
@@ -17739,12 +17748,13 @@ variable SV-SGSEEN  variable SV-SGHASR  variable SV-SGIN  variable SV-SGOUT
 variable SV-SGRIN   variable SV-SGROUT
 variable SV-THDMASK  variable SV-THRMASK  variable SV-THSET
 variable SV-TRAIL
+variable TSEEN  variable TSOK  variable TFA
+CHECKER-REG:}SCRATCH
 
-\ These adjacent cells are one TRY-EFF save frame. A trial restores or commits
-\ synchronously; its prior frame has no reader once TRIAL-DEPTH returns to 0.
-: TRIAL-SNAP-ZERO ( -- )
-   TRIAL-DEPTH @ 0 <> IF s" checker: active trial at capture" 76 die THEN
-   SV-FV 0 SV-TRAIL SV-FV - CELL / 1+ ARENA-CELLS-ZERO ;
+\ These cells are one TRY-EFF save frame. A trial restores or commits
+\ synchronously, so a capture inside one is a caller error.
+: TRIAL-IDLE-CK ( -- )
+   TRIAL-DEPTH @ 0 <> IF s" checker: active trial at capture" 76 die THEN ;
 
 : TRIAL-SAVE
    FV @ SV-FV !  TRAIL-N @ SV-TRAIL !     \ trail height is the per-TRY-EFF mark
@@ -17780,8 +17790,6 @@ variable SV-TRAIL
    SV-MDIAG @ MDIAG !                     \ a reason raised by an abandoned candidate is abandoned too
    SV-THDMASK @ THDMASK !  SV-THRMASK @ THRMASK !  SV-THSET @ THSET !
    TRIAL-REST-SG ;
-
-variable TSEEN  variable TSOK  variable TFA
 
 \ Is a var the trial made, from `fv0` on, still an open distance-row base operand
 \ (TVK-BASE-ONLY, unbound)? Its pointee never met a base address's, so the row
@@ -20008,10 +20016,12 @@ $A8 constant CFS-REC
 : CF.XFA ( ptr a -- ptr a ) CF.XFA-OFF + ;
 
 
+CHECKER-REG:SCRATCH{
 create CFS 32 CFS-REC * allot
 variable INDO
 \ One bit per CFS slot; all 32 slots fit a cell. A quotation owns a fresh mask.
 variable CF-LOOPS
+CHECKER-REG:}SCRATCH
 \ EXIT: an early return. XROW accumulates the data row at each exit (all returns,
 \ incl. the fall-through at ';', must unify). DEADP marks the current linear path
 \ terminated by exit, so the enclosing THEN excludes it from the branch join.
@@ -20274,7 +20284,10 @@ SCOPE-INTRO-FENCE-INSTALL
    THEN
    0 OK ! ;
 
-variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SYM
+variable RECEFF   variable RECEFF-ON
+CHECKER-REG:SCRATCH{
+variable RECEFF-UEND   variable RECEFF-SYM
+CHECKER-REG:}SCRATCH
 
 : RECEFF-ON? ( -- bool )
    RECEFF-ON @ 0 <> ;
@@ -21141,7 +21154,9 @@ variable CTLDNEW   variable CTLRNEW   \ the intact masks recorded beside them
 \ the engine folds A-Z in keyword and dict matching — fold every token the same
 \ way (into a scratch copy: the source text may live in the read-only image).
 variable TKFU
+CHECKER-REG:SCRATCH{
 variable SKI  variable SKF
+CHECKER-REG:}SCRATCH
 
 : SGBAD-IN-SOURCE? ( -- bool )
    SGBAD-U @ 0= IF RES-FALSE EXIT THEN
@@ -21299,8 +21314,10 @@ variable SKI  variable SKF
 \ and leaves SKF clear.
 variable SPAY-ON      \ did the token just judged spend a payload?
 variable SPAY-ESC     \ was it the escaped spelling?
+CHECKER-REG:SCRATCH{
 variable SPAY-B       \ raw payload start, as a byte offset into the scan text
 variable SPAY-U       \ raw payload length
+CHECKER-REG:}SCRATCH
 variable SPAY-S       \ was the token just judged an `s"` literal, plain or escaped?
 variable SPAY-ARMED   \ was the token before this one? (CHECK-SCAN-WALK hands it over)
 
@@ -22611,8 +22628,10 @@ public
 : CUR-LIVE? ( -- bool )
    CUR-OWNED @ 0 <>  CUR-DONE @ 0 = and  VIS-OPEN @ 0 = and ;
 
+CHECKER-REG:SCRATCH{
 PTR-VARIABLE IS-TA
 variable IS-TU
+CHECKER-REG:}SCRATCH
 
 \ ---- the token a keyword swallows -------------------------------------------
 \ TWO KEYWORDS READ A TOKEN OF THEIR OWN out of the middle of the judgement:
@@ -24803,7 +24822,9 @@ CK-AOT-REC-CONTROL-INSTALL
    CK-AOT-READY? 0= IF RES-FALSE EXIT THEN
    RES-TRUE CK-AOT-MISSES ;
 
+CHECKER-REG:SCRATCH{
 variable ZSHAPE   \ 0 empty, 1 core 0=, 2 literal zero, 3 zero then core <>, -1 other
+CHECKER-REG:}SCRATCH
 
 : ZSUMMARY-TOKEN ( ptr u8 n -- ) {: a:ptr u:n :}
    ZSHAPE @ 0= IF
@@ -26418,7 +26439,10 @@ TYPES-DEFAULTS
    WRAP-CLEAR          \ a candidate body armed like any other; the next real record is not its heir
    RBF-POP ;
 
-PTR-VARIABLE CAND-A   variable CAND-U   variable CAND-VERDICT
+CHECKER-REG:SCRATCH{
+PTR-VARIABLE CAND-A   variable CAND-U
+CHECKER-REG:}SCRATCH
+variable CAND-VERDICT
 
 : CHECKER-CANDIDATE-SCOPE-START ( -- )
    CHECK-CANDIDATE-START ;
@@ -26714,7 +26738,10 @@ variable DEF-STOPPED
 \ scan that throws abandons the definition at either tier and nothing after it
 \ steps the latch, so it clears the latch: a restored arm would be stepped by
 \ the next body check into the record of whatever is defined next.
-PTR-VARIABLE UNJ-A   variable UNJ-U   variable UNJ-VERDICT
+CHECKER-REG:SCRATCH{
+PTR-VARIABLE UNJ-A   variable UNJ-U
+CHECKER-REG:}SCRATCH
+variable UNJ-VERDICT
 
 : CHECK-UNJUDGED-BODY ( -- )
    UNJ-A @ UNJ-U @ CHECK! UNJ-VERDICT ! ;
@@ -29950,28 +29977,18 @@ private
 ;package
 
 
-\ The final checker declarations below the registry code also retain token
-\ spans.  They are inactive at the capture seam and must not carry the last
-\ checked source mapping into the engine.
+\ Capture's resets for checker scratch declared after
+\ CHECKER-CAPTURE-SCRATCH-PREPARE and held outside the spans: the XG and
+\ cast-path tables, the scan cells, the transfer wire and the unit plan. RECEFF
+\ stays out of the spans: a CHECK that exits before SIG-EFF-DROP leaves the
+\ recurse cache armed, and the capture mark pass keeps its record while
+\ RECEFF-ON says so.
 : CHECKER-LATE-CAPTURE-SCRATCH-PREPARE ( -- )
    XG-SNAP-RESET
    CAST-PATH-SNAP-RESET
    CHECKER-SCAN-SNAP-RESET
-   CFS 0 32 CFS-REC * CELL / ARENA-CELLS-ZERO
-   0 CATCH-PF-N !  0 CATCH-N !  0 FACTS !  0 XFACT !  0 JOIN-FACTS !
-   0 SV-PFN !  0 SV-FACTS !  0 ZSHAPE !
-   NULL-PTR SV-SGBAD-A !  0 SV-SGBAD-U !
-   NULL-PTR IS-TA !  0 IS-TU !
-   NULL-PTR CAND-A !  0 CAND-U !
-   NULL-PTR UNJ-A !  0 UNJ-U !
-   TRIAL-SNAP-ZERO
-   0 EV-HIT !  0 EV-KIND !  0 EV-A0 !  0 EV-A1 !
-   0 TSEEN !  0 TSOK !  0 TFA !
-   RECEFF-ON @ 0= IF
-      0 RECEFF !  0 RECEFF-UEND !  0 RECEFF-SYM !
-   THEN
-   0 SKI !  0 SKF !
-   0 SPAY-B !  0 SPAY-U !
+   TRIAL-IDLE-CK
+   RECEFF-ON @ 0= IF 0 RECEFF ! THEN
    EFFECT-XFER-CLEAR
    CHECKER-REG:UNIT-SCRATCH-RELEASE-CHECKER ;
 
