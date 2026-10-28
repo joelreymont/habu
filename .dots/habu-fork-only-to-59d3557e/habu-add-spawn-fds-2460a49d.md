@@ -1,6 +1,6 @@
 ---
 title: Add spawn-fds to the engine
-status: open
+status: active
 priority: 1
 issue-type: task
 created-at: "2026-10-28T20:27:02.206450+02:00"
