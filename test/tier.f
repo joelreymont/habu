@@ -927,7 +927,7 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
 
 \ ---- 7b. a refused TRUSTED: declaration that records no row ------------------
 \ Its signature does not parse, so the definition recorded no row and its
-\ retract cuts nothing (src/compiler/native/compiler.f RETRACT): the refusal's
+\ retract cuts nothing (src/compiler/native/definition.f RETRACT): the refusal's
 \ own code goes uncaught, and as the checker rendered it the engine exits as a
 \ refusal.
 : TEST-TRUSTED-NO-ROW ( -- )

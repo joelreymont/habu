@@ -114,8 +114,8 @@ $2E0 constant PKG-RESYNC-OFF
 $2E8 constant VERIFY-FILE-OFF
 $2F0 constant VERIFY-RENDERS-OFF
 \ Renders the diagnostic a quiet scan suppressed, for a caller that will not
-\ enforce the verdict but must not drop its reason (src/compiler/native/compiler.f
-\ CHECK-HOOKLESS).
+\ enforce the verdict but must not drop its reason
+\ (src/compiler/native/definition.f CHECK-HOOKLESS).
 $2F8 constant CHECK-REPORT-OFF
 \ The `linear:` declarer's registrar (src/core/checker.f CHECKER-LINEAR): the
 \ owner of a DEFLINEAR type mints and erases its token, as `cast:` reaches

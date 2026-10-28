@@ -3,7 +3,7 @@
 \
 \ A bare tail binds the open package's PRIVATE wordlist first, so such a public
 \ definition is not what its own name binds to, and the native compiler reads a
-\ definition's contract from that binding (compiler.f KEEP-ARITY asks
+\ definition's contract from that binding (definition.f KEEP-ARITY asks
 \ NDICT:SPELL-ARITY with the bare name). The pair itself is the deliberate
 \ forwarder pattern - src/lib/task.f publishes `: PREPARE ( ptr n -- ) PREPARE ;`
 \ over its private PREPARE - and stays legal; what ncomp cannot survive is the

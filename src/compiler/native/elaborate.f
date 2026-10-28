@@ -3441,7 +3441,7 @@ TRUSTED: EXECUTE-ENTRY ( -- n ) ['] execute ;
    ix 1+ QSPELL {: a:ptr u:n :}
    a u NDICT:TICK-TARGET {: entry:n :}
    \ An operand no record answers is refused at the operand, as the engine's
-   \ tick refuses it (E-UNDEFINED, compiler.f REPORT-UNDEFINED-TICK).
+   \ tick refuses it (E-UNDEFINED, definition.f REPORT-UNDEFINED-TICK).
    entry 0= if
       a u NDICT:SCOPE-REC XREF-FOUND? 0= if
          -1 RF-MISSING !

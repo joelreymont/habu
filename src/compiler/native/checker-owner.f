@@ -168,7 +168,7 @@ public
 
 \ The diagnostic that scan suppressed, rendered by the same owner while it still
 \ holds the scan's state: the reason for a verdict this compiler does not
-\ enforce but may refuse over (compiler.f CHECK-HOOKLESS).
+\ enforce but may refuse over (definition.f CHECK-HOOKLESS).
 : REPORT ( -- )
    NCOMP-DISPATCH:DECL-CHECK-REPORT-OFF s" scan report" FIELD
    dup 0= if drop SOURCE-REPORT exit then

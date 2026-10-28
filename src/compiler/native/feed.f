@@ -407,7 +407,7 @@ public
 
 \ The open unit's row 0, the definition's name, as the kept text spells it. A
 \ defining word's clause is checked before the unit seals, so this is the name
-\ a refused clause is reported under (compiler.f CLAUSE-CK).
+\ a refused clause is reported under (compiler.f CHECK-DOES-SPLIT).
 : UNIT-NAME$ ( -- ptr u8 n )
    F-STATE @ ST-IDLE = F-N @ 0= or if E-NFEED-STATE throw then
    TXT@ F-NAME-OFF @ +  F-NAME-U @ ;

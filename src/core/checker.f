@@ -13023,10 +13023,10 @@ public
 \ recorded when its check certifies it, or when TRUST-DECL registers its
 \ declared effect, and the engine publishes its record only after compiling it,
 \ so the lookup cannot see the definition in between. Both compilers ask about
-\ it by its name in that window - src/compiler/native/compiler.f KEEP-ARITY, the
-\ frame glue and NO-RETURN? - and the answer is the definition being compiled,
-\ which is what the lookup answers once the record is published. So the
-\ definition recorded last answers a token whose record path in the current
+\ it by its name in that window - src/compiler/native/definition.f KEEP-ARITY,
+\ the frame glue and NO-RETURN? - and the answer is the definition being
+\ compiled, which is what the lookup answers once the record is published. So
+\ the definition recorded last answers a token whose record path in the current
 \ scope is its symbol (CK-PENDING-SYM), ahead of the lookup, whose answer is the
 \ word it is about to shadow. The window is a fact the stores state, not a flag
 \ anyone clears: the dictionary count has not moved since the record (`ndict@`),
@@ -13352,7 +13352,7 @@ variable BIND-SEEDED
 \ withheld the definition before the window opened. The definition's own name
 \ binds its own recovery row, which opens no pending window (CK-CLOSE!): the
 \ row a hookless compile publishes a refused body under (src/compiler/native/
-\ compiler.f DECLARE-HOOKLESS, KEEP-ARITY). A top-level step runs what it
+\ definition.f DECLARE-HOOKLESS, KEEP-ARITY). A top-level step runs what it
 \ binds, and EXPORT publishes it, at once. So under MULTI-ERR? and only inside
 \ a body's walk (BODY-WALK) or the compile window, a recovery row in a scope
 \ the engine searches ahead of the record its lookup found binds instead;
@@ -13789,9 +13789,9 @@ package CHECKER-REG
    CHECKER-USIGS-TRUNCATE-FROM-RAW ;
 
 \ The native compiler's rollback of a refused definition
-\ (src/compiler/native/compiler.f RETRACT) through the owner's ROWS-END-OFF and
-\ RETRACT-ROWS-OFF fields: the compiler reads the store's end when it begins the
-\ definition and, refusing it, cuts the store back to that end. The one mark
+\ (src/compiler/native/definition.f RETRACT) through the owner's ROWS-END-OFF
+\ and RETRACT-ROWS-OFF fields: the compiler reads the store's end when it begins
+\ the definition and, refusing it, cuts the store back to that end. The one mark
 \ both says what the definition recorded and bounds the cut, and the compile
 \ window (WRITE-WINDOW) admits only the compiler's own writes above it, so the
 \ cut takes exactly the definition's rows - certified, TRUSTED:, declared or a
@@ -15006,11 +15006,11 @@ package CHECKER-REG
 \ Both the engine (habu1.f EMIT-FIND) and the checker (CHECKER-FIND-ACTIVE-SYM)
 \ resolve a bare tail private-wordlist-first while a package is open, so such a
 \ public definition is NOT what its own name binds to. The native compiler reads
-\ a definition's own contract from exactly that binding — compiler.f KEEP-ARITY
-\ asks NDICT:SPELL-ARITY with the bare name — so the public word is elaborated
-\ against the PRIVATE word's arity, minutes after a source run that certified
-\ both. That is where the Tender backend's -8303 E-NELAB-ARITY came from: a
-\ public `F ( n -- n )` beside a private `F ( n n -- n )`.
+\ a definition's own contract from exactly that binding — definition.f
+\ KEEP-ARITY asks NDICT:SPELL-ARITY with the bare name — so the public word is
+\ elaborated against the PRIVATE word's arity, minutes after a source run that
+\ certified both. That is where the Tender backend's -8303 E-NELAB-ARITY came
+\ from: a public `F ( n -- n )` beside a private `F ( n n -- n )`.
 \
 \ THE PAIR ITSELF IS DELIBERATE AND STAYS LEGAL. src/lib/task.f publishes
 \ `: PREPARE ( ptr n -- ) PREPARE ;` over its private PREPARE, and thirteen such
@@ -21747,7 +21747,7 @@ package CHECKER-REG
 \ read it. A TRUSTED: declaration is the assertion and goes through TRUST-DECL
 \ instead. The engine's empty-hook publish arm calls this at tier 0 (habu2.f
 \ EM-COMPILE-PUBLISH-HOOKED) and the native compiler after its unjudged scan at
-\ tier 1 (compiler.f DECLARE-HOOKLESS), both through the source owner's
+\ tier 1 (definition.f DECLARE-HOOKLESS), both through the source owner's
 \ DECLARED-ROW-OFF field, so a cold boot records from this file's claim on.
 \
 \ A LIVE ROW WINS. At tier 1 the scan's own row (certified, deferred, or a
@@ -26809,7 +26809,7 @@ variable UNJ-VERDICT
 \ What that scan did not print, for a caller that will not enforce the verdict
 \ but must not drop its reason: the native compiler with the check hook cell
 \ empty, which refuses a body the scan left without an effect
-\ (src/compiler/native/compiler.f CHECK-HOOKLESS). CHECK! renders a rejection
+\ (src/compiler/native/definition.f CHECK-HOOKLESS). CHECK! renders a rejection
 \ only, an uncheckable verdict only as JSON or in a multi-error load; this
 \ renders whichever verdict the scan reached. It is an owner field like the
 \ scan, so the instance that scanned is the one that renders; ask before

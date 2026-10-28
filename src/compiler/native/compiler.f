@@ -52,11 +52,11 @@ require src/compiler/native/feed.f
 require src/compiler/native/elaborate.f
 require src/compiler/native/backend.f
 require src/compiler/native/publish.f
+require src/compiler/native/definition.f
 require src/compiler/native/shadow.f
 require src/compiler/native/callback-stub.f
 require src/compiler/native/prof.f
 require src/compiler/session/lease.f
-require src/compiler/native/emission.f
 
 package NCOMP
 private
@@ -84,6 +84,7 @@ private
 execute
 
 package NCOMP
+using NDEFINITION
 
 public
 NEWTYPE code-entry
@@ -109,10 +110,6 @@ private
 BODYBUF-CAP constant TEXT-CAP
 
 TEXT-CAP CWORK-SPAN TXT u8
-\ The definition's name is its spelling in TXT, whole, which stays put until the
-\ next definition is recorded: no copy that a longer name could run past.
-0 CWORK-VARIABLE NAME-A ptr u8
-0 CWORK-VARIABLE NAME-U n
 
 align
 1 CWORK-BUFFER M-CTX IR-CTX:ctx
@@ -124,12 +121,6 @@ align
 0 CWORK-VARIABLE M-SESSION NSESSION:session
 0 CWORK-VARIABLE SH-SESSION NSESSION:session
 
-\ Everything the run needs, parked: a quotation cannot read the enclosing word's
-\ locals and the whole run is one quotation.
-0 CWORK-VARIABLE M-SRC ptr u8
-0 CWORK-VARIABLE M-SRC-U n
-0 CWORK-VARIABLE M-IN n
-0 CWORK-VARIABLE M-OUT n
 0 CWORK-VARIABLE PRIOR-ENTRY n
 0 CWORK-VARIABLE PRIOR-IN n
 0 CWORK-VARIABLE PRIOR-OUT n
@@ -143,22 +134,7 @@ align
 0 CWORK-VARIABLE M-CB-ENTRY n
 0 CWORK-VARIABLE M-RC n                        \ the code the run inside the context reached
 0 CWORK-VARIABLE M-PUBLISHED-START n           \ committed parent's index for notification
-0 CWORK-VARIABLE M-VERDICT n                   \ the verdict the recorded scan reached
-0 CWORK-VARIABLE M-UNJUDGED n                  \ a hook-cell-empty scan's verdict, else -1
-0 CWORK-VARIABLE M-REQUIRED bool                  \ this definition's build-required hookless scan
-0 CWORK-VARIABLE M-ROWS n                      \ where the checker store ended at STAGE
-0 CWORK-VARIABLE M-DOES-FRAME n                \ checker-owned transaction spans a split compilation
-0 CWORK-VARIABLE M-DOES n                      \ byte split after `does> `, or zero
 0 CWORK-VARIABLE M-DOES-ROW n                  \ the tape row that carries `does>`
-0 CWORK-VARIABLE M-DOES-SIG ptr u8
-0 CWORK-VARIABLE M-DOES-SIG-U n
-0 CWORK-VARIABLE M-DOES-IN n
-0 CWORK-VARIABLE M-DOES-OUT n
-0 CWORK-VARIABLE M-HEAD-RECOVERY bool          \ a split definition's head bound a recovery row
-0 CWORK-VARIABLE M-DOES-GIN n                  \ where the clause's argument row's values end
-0 CWORK-VARIABLE M-DOES-GOUT n                 \ where the clause's result row's values end
-0 CWORK-VARIABLE M-DOES-FUN n                  \ hidden clause function ordinal
-0 CWORK-VARIABLE M-DOES-OFF n                  \ published clause's byte offset, or zero
 0 CWORK-VARIABLE DEF-MODULE-BEFORE n
 0 CWORK-VARIABLE DEF-GEN-BEFORE n
 0 CWORK-VARIABLE DEF-EPOCH-BEFORE n
@@ -174,21 +150,8 @@ public
 private
 
 0 CWORK-VARIABLE M-FIXED n                      \ the pending definer's body kind
-0 CWORK-VARIABLE M-FIXED-VAL n                  \ its value or dispatch cell
 -1 CWORK-VARIABLE M-FIXED-REC n                 \ published record for a seeded created child, or -1
 0 CWORK-VARIABLE M-SHADOW-ONLY bool             \ the engine already published its own body
-
-\ How HOST-CHAIN publishes the emission: a pending body (its `does>` clause,
-\ when M-DOES is set), a defer body through M-FIXED-VAL's cell, or a raw body.
-0 constant PUB-PENDING
-1 constant PUB-DEFER
-2 constant PUB-RAW
-0 CWORK-VARIABLE M-PUB n
-
-\ The published emission's function offsets, which PUBLISHED-ROWS reads after
-\ the backend has cleared NEMIT.
-0 CWORK-VARIABLE PUB-FUNS n
-DYNAMIC-BUFFER PUB-OFF n
 
 : CC ( -- IR-CTX:ctx )           0 M-CTX @ ;
 : BB ( -- IR-BUILD:builder )     0 M-BLD @ ;
@@ -208,24 +171,6 @@ DYNAMIC-BUFFER PUB-OFF n
    PUB-FUNS @ 0 ?do
       idx CC parent i i PUB-OFF @ q execute
    loop ;
-
-: SRC$ ( -- ptr u8 n )
-   M-SRC @ M-SRC-U @ ;
-
-: DOES-BYTE@ ( -- n )
-   data-base DOESB-CELL + @ ;
-
-: DOES-SIG-FIELD ( -- ptr ptr u8 )
-   data-base TCSIG-A-CELL CELL / ptr-field ;
-
-: TRUSTED? ( -- bool )
-   data-base TRUSTED-CELL + @ 0<> ;
-
-: TRUST-SIG-A-FIELD ( -- ptr ptr u8 )
-   data-base TSIG-A-CELL CELL / ptr-field ;
-
-: TRUST-SIG$ ( -- ptr u8 n )
-   TRUST-SIG-A-FIELD @  data-base TSIG-U-CELL + @ ;
 
 : PENDING-NAME$ ( -- ptr u8 n )
    ndict@ XREF-REC XREF-NAME$ ;
@@ -301,118 +246,18 @@ DYNAMIC-BUFFER PUB-OFF n
    TAPE-NAME$ {: a:ptr u:n :}
    a NAME-A !  u NAME-U ! ;
 
-: NAME$ ( -- ptr u8 n )
-   NAME-A @ NAME-U @ ;
-
-\ TRUST-DECL is deliberately unavailable to checked code. Register only after
-\ the scan has recorded the exact source spelling from the tape: the pending
-\ dictionary record holds only the bare tail of a qualified definition.
-TRUSTED: REGISTER-TRUST ( ptr u8 n ptr u8 n -- )
-   CHECKER-OWNER:DECLARED-EFFECT ;
-
-\ CERTIFICATION IS THE ENGINE'S HOOK CELL, AND THE SCAN IS THE OWNER'S.
-\ Two questions were one call before this: `LOWER-CERT-HOOK:HOOK` by name both
-\ scanned the source (the tape is filled from inside a scan) and enforced a
-\ verdict, and it did so in the checker instance this file was compiled into.
-\ Tier 0 reads the hook CELL per definition, which is why `0 set-check` takes
-\ certification off it and installing another hook moves it; tier 1 could not be
-\ moved at all.
-\
-\ So: a hook in the cell owns the verdict, and it is the live checker's own hook
-\ that scans. With the cell EMPTY an ordinary definition is published
-\ uncertified, as tier 0 does under `0 set-check`. The owner's scan still fills
-\ the tape and reports its verdict. A native build requires that verdict while
-\ LOGICAL-RESET has cleared the hook and the target's check-hook.f is not loaded.
-\ The hook cell stores a raw execution token; this view states the scan's signature.
-CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
-
-\ Whether anything is certifying at all. With the hook cell empty nothing is, and
-\ ordinary compilation reports the scan's verdict without enforcing it:
-\ tier 0 publishes such a definition uncertified with its declaration as its row
-\ (habu2.f EM-COMPILE-PUBLISH-HOOKED reads HOOK-CELL), and the two tiers have to
-\ agree (DECLARE-HOOKLESS). A build requires a successful scan before recording
-\ that unjudged row; ordinary `0 set-check` sessions retain their declared row.
-: CERTIFYING? ( -- bool )
-   check@ 0 <> ;
-
-70 constant RC-REJECT                 \ the check hook's reject status (check-hook.f CHECK-RC)
-
-\ The scan with the hook cell empty. Ordinary compilation does not enforce its
-\ verdict: a body it did not certify compiles against its declaration
-\ (DECLARE-HOOKLESS). A build-required scan refuses before that declaration is
-\ recorded. KEEP-ARITY refuses over an ordinary verdict only when no
-\ declaration could be recorded.
-\ The reason is printed now, while the owner still holds the scan that found it:
-\ a does> head's scan is replaced by its clause's before KEEP-ARITY runs.
-: CHECK-HOOKLESS ( ptr u8 n -- )
-   {: a:ptr u:n :}
-   a u CHECKER-OWNER:CHECK-UNJUDGED {: v:n :}
-   v -1 <> if CHECKER-OWNER:REPORT then
-   M-REQUIRED @ v -1 <> and if RC-REJECT throw then
-   v M-UNJUDGED ! ;
-
-: CHECK-PARENT ( ptr u8 n -- n )
-   {: a:ptr u:n :}
-   CHECKER-OWNER:RESET-REPORT
-   TRUSTED? if -1 CHECKER-OWNER:BIND-REGIME!
-      a u CHECKER-OWNER:CHECK-UNJUDGED exit then
-   check@ {: hook:n :}
-   hook 0= if -1 CHECKER-OWNER:BIND-REGIME!
-      a u CHECK-HOOKLESS -1 exit then
-   0 CHECKER-OWNER:BIND-REGIME!
-   a u hook AS-HOOK execute ;
-
-: CHECK-SOURCE ( -- n )
-   SRC$ CHECK-PARENT
-   SRC$ 0 NFETCH:CAPTURE ;
-
-
-\ A refused clause is reported as the check hook reports a refused body: the
-\ checker's reason, then the hook's reject status, which RUN names the
-\ definition under. NAME$ is set only after the unit seals, so the clause is
-\ named from the open unit's first row.
-: CLAUSE-CK ( n -- )
-   NFEED:UNIT-NAME$ CHECKER-OWNER:DOES-REPORT -1 <> if RC-REJECT throw then ;
-
 \ RECORD opened this unit with NFEED:BEGIN-DOES-UNIT, which refused a cut that
-\ is not just past a `does> ` in this source (E-NFEED-CUT).
+\ is not just past a `does> ` in this source (E-NFEED-CUT). NAME$ is set only
+\ after the unit seals (KEEP-TAPE-NAME), so the clause is named from the open
+\ unit's first row (NFEED:UNIT-NAME$).
 : CHECK-DOES-SPLIT ( -- n )
-   CHECKER-OWNER:DOES-BEGIN
-   1 M-DOES-FRAME !
-   M-DOES @ {: cut:n :}
-   M-SRC @ cut 6 - CHECK-PARENT
-   TRUSTED? CERTIFYING? 0= or if drop else -1 <> if E-NCOMP-VERDICT throw then then
-   CHECKER-OWNER:RECOVERY-USED? M-HEAD-RECOVERY !   \ the clause's scan starts its own
-   M-SRC @ cut 6 - 0 NFETCH:CAPTURE
+   CHECK-DOES-HEAD
    NFEED:DOES-CLAUSE M-DOES-ROW !
-   M-SRC @ cut +  M-SRC-U @ cut -  M-DOES-SIG @ M-DOES-SIG-U @
-   CHECKER-OWNER:DOES-CHECK CLAUSE-CK
-   M-SRC @ cut + M-SRC-U @ cut - cut NFETCH:CAPTURE
-   CHECKER-OWNER:DOES-IN M-DOES-IN !
-   CHECKER-OWNER:DOES-OUT M-DOES-OUT !
-   M-DOES-IN @ 0 < M-DOES-OUT @ 0 < or if E-NCOMP-ARITY throw then
-   \ WHERE THE CLAUSE'S VALUES END, read here because the checker captured the
-   \ clause's rows for this split and the next one replaces them. A row wider
-   \ than a cell is placed from these boundaries exactly as a definition's own
-   \ row is; a row the checker could not separate into cells answers
-   \ GLUE-UNKNOWN and the elaborator refuses the definer over it.
-   NDICT:DOES-GLUE M-DOES-GOUT ! M-DOES-GIN !
-   -1 ;
+   NFEED:UNIT-NAME$ CHECK-DOES-CLAUSE ;
 
 : CHECK-RECORDED ( -- n )
    M-DOES @ 0<> if CHECK-DOES-SPLIT exit then
    CHECK-SOURCE ;
-
-\ With the hook cell empty a definition's row is its declaration, as at tier 0
-\ (checker.f CHECKER-DECLARED-ROW!): recorded after the scan, its report and the
-\ capture, whose state the recorder would clobber, and before KEEP-ARITY, which
-\ then answers from it. The scan's own row - certified, deferred or a multi-error
-\ recovery fact - wins, since the recorder skips a symbol a live row states. A
-\ definition with no signature records nothing, as at tier 0.
-: DECLARE-HOOKLESS ( -- )
-   TRUST-SIG$ {: sa:ptr su:n :}
-   su 0= if exit then
-   NAME$ sa su CHECKER-OWNER:DECLARED-ROW ;
 
 : SCAN ( -- )
    [: CHECK-RECORDED M-VERDICT ! ;] catch {: src-rc:n :}
@@ -421,8 +266,7 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
    src-rc 0<> if src-rc throw then
    end-rc 0<> if end-rc throw then
    name-rc 0<> if name-rc throw then
-   TRUSTED? if NAME$ TRUST-SIG$ REGISTER-TRUST exit then
-   CERTIFYING? 0= if DECLARE-HOOKLESS then ;
+   DECLARE-ROW ;
 
 \ Read off the SOURCE: a token costs at least two bytes of capture, so n bytes
 \ can never produce more than n/2 rows. A tape is a span of the shared mapping.
@@ -430,14 +274,7 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
 \ the unit's text ceiling too: a scan longer than that is E-NFEED-TEXT before a
 \ row of it is appended, which makes it the real bound on what one tape can hold.
 : TAPE-ROOM ( -- n )
-   M-SRC-U @ TEXT-CAP min 2 / 1 max ;
-
-\ A multi-error run whose reader recovers from E-NCOMP-RECOVERY: that reader
-\ sets RECOVER-CELL around the compile it calls (layout.f). Under any other
-\ reader a refusal is E-NCOMP-VERDICT, which RUN reports.
-: RECOVERING? ( -- bool )
-   CHECKER-OWNER:MULTI-ERROR?
-   data-base NCOMP-DISPATCH:RECOVER-CELL + @ 0<> and ;
+   SRC$ nip TEXT-CAP min 2 / 1 max ;
 
 : RECORD ( -- n )
    CC BB IR-BUILD:MODULE-KEY TAPE-ROOM NTAPE:NEW {: tp:IR-ARENA:arena :}
@@ -449,91 +286,9 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
    ndict@ {: before:n :}
    [: SCAN ;] catch {: rc:n :}
    rc 0 <> if NFEED:ABANDON-UNIT rc throw then
-   \ Under a recovering reader a definition the checker refused, or any
-   \ definition, trusted or not, whose body or does> clause bound a refused
-   \ declaration's recovery row, is counted and abandoned unpublished:
-   \ E-NCOMP-RECOVERY ends it without a second report.
-   TRUSTED? 0= CERTIFYING? and if M-VERDICT @ -1 <> if
-      M-DOES @ 0= M-VERDICT @ 0 = M-VERDICT @ 1 = or and if
-         RECOVERING? if E-NCOMP-RECOVERY throw then
-      then
-      E-NCOMP-VERDICT throw
-   then then
-   RECOVERING? if
-      CHECKER-OWNER:RECOVERY-USED? M-HEAD-RECOVERY @ or if E-NCOMP-RECOVERY throw then
-   then
+   VERDICT-CK
    TAPE NFEED:RECORD-WINDOW
    before ;
-
-\ ---- which word the source published -----------------------------------------
-\ The compiler owns one pending record, so the dictionary count must not move.
-: PUBLISHED-NONE ( n -- ) {: before:n :}
-   ndict@ before <> if E-NCOMP-NAME throw then ;
-
-: SOURCE-PUBLICATION-CK ( n -- ) {: before:n :}
-   before PUBLISHED-NONE ;
-
-\ The pending record is the unpublished slot the count still points at, which is
-\ exactly the slot publish.f will commit.
-: REC-INDEX ( -- n )
-   ndict@ ;
-
-: QUALIFIED-RECORD-NAME? ( ptr n ptr u8 n n -- bool )
-   {: rec:ptr a:ptr u:n split:n :}
-   rec  a split 1+ ZPTR+  u split - 1-  XREF-MATCH? 0= if false exit then
-   a split XREF-NAMESPACE-WL XREF-FIND-WL
-   dup XREF-FOUND? 0= if drop false exit then
-   XREF-PKG-PUBLIC  rec XREF-WORDLIST  = ;
-
-: RECORD-NAME? ( ptr n ptr u8 n -- bool )
-   {: rec:ptr a:ptr u:n :}
-   a u XREF-QUAL-INDEX {: split:n :}
-   split 0 < if rec a u XREF-MATCH? exit then
-   rec a u split QUALIFIED-RECORD-NAME? ;
-
-\ The tape chose the pending name before a later tentative record could overwrite
-\ its slot. An ordinary record stores a bare tail even when the source token was
-\ qualified, so that spelling also has to name the namespace whose public WID
-\ owns the record. Matching only the tail would let another package impersonate
-\ this definition.
-: RECORD-NAME-CK ( -- )
-   REC-INDEX XREF-REC  NAME$  RECORD-NAME? 0= if
-      E-NCOMP-NAME throw
-   then ;
-
-\ ---- what the definition takes and leaves ------------------------------------
-\ THE CHECKER'S ANSWER AND NOT THE CALLER'S. Every callee's arity already comes
-\ from src/compiler/native/dict.f at the point it is used, and this is the same
-\ reader asked about the definition being compiled - so the routine's contract
-\ and every call to it are derived from one authority instead of agreeing by
-\ luck. It asks for CELLS, which is what NELAB:COLON checks the body's value
-\ vector against; a term of a family more than one cell wide makes the two
-\ counts differ, and dict.f EFF-CELLS is where that choice is stated.
-\
-\ ASKED WITH THE SOURCE SPELLING kept by KEEP-TAPE-NAME: bare for an
-\ author's private definition, qualified when a public definition names a
-\ different wordlist. A TRUSTED: effect is registered under that same spelling
-\ after the scan, so a family-typed qualified effect has one owner here.
-\
-\ THE ABSENT ANSWER. SPELL-ARITY answers ARITY-NONE for a name the checker holds
-\ no effect for, and it is refused here rather than let through to NELAB:COLON
-\ as a -1, which would refuse it as E-NELAB-ARITY and name the wrong thing. With
-\ a check hook installed nothing reaches it: E-NCOMP-VERDICT has refused every
-\ body the check did not certify. With the cell empty nothing has
-\ (CHECK-HOOKLESS), and a body the scan rejects or cannot check compiles
-\ against its declaration, which DECLARE-HOOKLESS recorded as its row. Only a
-\ definition with no recordable declaration reaches the refusal: no signature,
-\ one the checker cannot parse, or one with a scope scheme. The scan has printed
-\ why, so the refusal takes the check hook's reject status. After a certified
-\ scan nothing reaches it either: a package opened and closed by the source is
-\ E-NCOMP-NAME and an unsigned body answers its inferred effect.
-: KEEP-ARITY ( -- )
-   NAME$ NDICT:SPELL-ARITY {: din:n dout:n :}
-   din NDICT:ARITY-NONE = if
-      M-UNJUDGED @ -1 <> if RC-REJECT throw then
-      E-NCOMP-ARITY throw
-   then
-   din M-IN !  dout M-OUT ! ;
 
 \ ---- binding an earlier definition shadowed by the pending record -------------
 \ The dictionary key a body token names.
@@ -650,23 +405,6 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
    NSHADOW:BINDING [: SHADOW-BODY ;] IR-CTX:WITH-CONTEXT ;
 
 \ ---- the one stage, or the two -----------------------------------------------
-\ Room for the offsets is made before the commit, so nothing past it throws.
-: KEEP-OFFSETS ( -- )
-   NEMIT:FUNCTIONS {: n:n :}
-   n PUB-OFF-RESERVE
-   n 0 ?do i NEMIT:FUNCTION-OFFSET@ i PUB-OFF ! loop
-   n PUB-FUNS ! ;
-
-: PUBLISH-IT ( -- )
-   KEEP-OFFSETS
-   M-PUB @ PUB-RAW = if NPUB:PUBLISH-RAW exit then
-   M-PUB @ PUB-DEFER = if M-FIXED-VAL @ NPUB:PUBLISH-PENDING-DEFER exit then
-   M-DOES @ 0<> if
-      M-DOES-FUN @ NEMIT:FUNCTION-OFFSET@ M-DOES-OFF !
-      M-DOES-FUN @ NPUB:PUBLISH-PENDING-DOES exit
-   then
-   NPUB:PUBLISH-PENDING ;
-
 \ Selection publishes the module that is emitted, and a routine whose values do
 \ not all fit its registers is lowered - once per class the allocator seals - and
 \ the last lowering publishes it instead. Every stage is the row the definition's
@@ -720,42 +458,6 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
    then
    CC BB TAPE p r M-IN @ M-OUT @ NELAB:RECORDED-COLON drop ;
 
-: HOST-DECL? ( -- bool )
-   NAME$ CHECKER-OWNER:QUERY 0= if false exit then
-   CHECKER-OWNER:STACK-STABLE? 0= if false exit then
-   CHECKER-OWNER:DIN-N M-IN @ <>
-   CHECKER-OWNER:DOUT-N M-OUT @ <> or if false exit then
-   CHECKER-OWNER:DIN-CELLS M-IN @ <>
-   CHECKER-OWNER:DOUT-CELLS M-OUT @ <> or if false exit then
-   M-IN @ 0 ?do
-      i CHECKER-OWNER:DIN-SLOT 0<>
-      i CHECKER-OWNER:DIN-CON 0 <= or if false unloop exit then
-   loop
-   M-OUT @ 0 ?do
-      i CHECKER-OWNER:DOUT-SLOT 0<>
-      i CHECKER-OWNER:DOUT-CON 0 <= or if false unloop exit then
-   loop
-   true ;
-
-: HOST-ROOT-CONTRACT ( -- )
-   HOST-DECL? 0= if exit then
-   NHOST:SOURCE-CONTRACT-START
-   M-IN @ 0 ?do i i CHECKER-OWNER:DIN-CON NHOST:SOURCE-CONTRACT-IN loop
-   M-OUT @ 0 ?do i i CHECKER-OWNER:DOUT-CON NHOST:SOURCE-CONTRACT-OUT loop
-   NHOST:SOURCE-CONTRACT-DONE ;
-
-: HOST-ARITIES ( -- )
-   M-IN @ M-OUT @ NHOST:SOURCE-ARITY+
-   HOST-ROOT-CONTRACT
-   BB IR-BUILD:FUNS 1 ?do
-      M-DOES @ 0<> i M-DOES-FUN @ = and if
-         M-DOES-IN @ M-DOES-OUT @
-      else
-         i NELAB:QUOT-ARITY
-      then
-      NHOST:SOURCE-ARITY+
-   loop ;
-
 \ The model is built AFTER the tape, because the table has to be sized from the
 \ body and the body is the tape.
 : LOWER ( n -- )
@@ -767,7 +469,7 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
    r BIND-PRIOR
    NAME$ NDICT:SPELL-GLUE NELAB:FRAME-GLUE!
    p r ELABORATE
-   HOST-ARITIES
+   BB IR-BUILD:FUNS [: NELAB:QUOT-ARITY ;] HOST-ARITIES
    NHOST:SOURCE-FREEZE
    PUB-PENDING M-PUB !
    EMITTED ;
@@ -1017,58 +719,11 @@ INSTALL-FORGET
       DEF-GEN-BEFORE @ - DEF-GEN-DELTA !
    IR-BUILD:HISTORY DEF-BUILD-BEFORE @ - DEF-BUILD-DELTA ! ;
 
-\ A refusal after the scan owns the checker row this definition recorded: a
-\ certified scan's, a TRUSTED: declaration's, and with the hook cell empty its
-\ declared row or its multi-error recovery fact. The definition is rolled back,
-\ so its row goes too, or the next definition of the name would be a duplicate.
-\ Whichever path recorded it, the refusal puts the store back as it stood at
-\ STAGE, when the body reached the compiler (M-ROWS): the owner truncates it to
-\ that end (checker.f CHECKER-RETRACT-ROWS). Until RECORD returns only the
-\ definition records rows, and from then to publication the compile window
-\ (WORK) admits only the compiler's own writes, so the cut takes exactly the
-\ definition's rows: a callback (a backend pass, an observer) that would record
-\ one while the definition compiles is refused E-NCOMP-STATE. Nothing goes when
-\ nothing was recorded, as when its declaration did not parse or had a scope
-\ scheme, and the refusal is its own for a catch to receive, TRUSTED: or not.
-\ Every row recorded before STAGE stays: a twin's in another scope, one CHECK!
-\ recorded under its own name, and one a parsing immediate recorded as the body
-\ was read. No word outlives the cut pointing at a cut row: while the
-\ definition is pending, source a callback evaluates is its body's capture
-\ (definers.f COMPILING?), where a definer defines nothing and a `;` is refused
-\ (rc 74). Under a hook a scan that did not certify was refused before this,
-\ and the checker rolled it back itself, so the cut finds nothing to take. A
-\ does> definer rolls back through its own checker frame (DOES-FINISH).
-: RETRACT ( -- )
-   M-DOES @ 0<> if
-      M-DOES-FRAME @ 0<> if
-         NULL-PTR 0 false CHECKER-OWNER:DOES-FINISH
-         0 M-DOES-FRAME !
-      then
-      exit
-   then
-   M-ROWS @ CHECKER-OWNER:RETRACT-ROWS ;
-
 : LENGTH-CK ( -- )
-   M-SRC-U @ TEXT-CAP > if E-NCOMP-TEXT throw then ;
+   SRC$ nip TEXT-CAP > if E-NCOMP-TEXT throw then ;
 
 : IDLE-CK ( -- )
    M-OPEN @ 0<> if E-NCOMP-STATE throw then ;
-
-: ERROR-TEXT ( ptr u8 n -- ) {: a:ptr u:n :}
-   2 a u write drop ;
-
-\ The elaborator's refusal names the token it stopped at.
-: REPORT-FAILURE ( -- )
-   s" ncomp: cannot compile " ERROR-TEXT
-   NAME$ ERROR-TEXT
-   NELAB:REFUSED$ {: a:ptr u:n :}
-   u 0 > if s"  at " ERROR-TEXT a u ERROR-TEXT then
-   S\" \n" ERROR-TEXT ;
-
-: REPORT-UNDEFINED-TICK ( -- )
-   s" E-UNDEFINED: " ERROR-TEXT
-   NELAB:REFUSED$ ERROR-TEXT
-   S\" \n" ERROR-TEXT ;
 
 : RUN ( -- )
    LENGTH-CK
@@ -1078,49 +733,18 @@ INSTALL-FORGET
    [: IN-CONTEXT ;] catch {: entry-rc:n :}
    0 M-OPEN !
    -1 M-CB-SLOT !
-   entry-rc 0<> if
-      M-DOES-FRAME @ 0<> if NULL-PTR 0 false CHECKER-OWNER:DOES-FINISH then
-      entry-rc throw
-   then
    M-RC @ {: rc:n :}
-   rc E-NCOMP-RECOVERY = if rc throw then
-   rc E-NELAB-QUOT = NELAB:SOURCE-UNDEFINED? and if
-      REPORT-UNDEFINED-TICK
-      RETRACT RC-REJECT throw
-   then
-   rc 0 <> if
-      rc RC-REJECT <> CHECKER-OWNER:JSON-REPORTED? 0= or
-      if REPORT-FAILURE then
-      RETRACT rc throw
-   then ;
+   entry-rc rc  rc E-NELAB-QUOT = NELAB:SOURCE-UNDEFINED? and
+   NELAB:REFUSED$ SETTLE-UNIT ;
 
 : STAGE ( ptr u8 n bool -- )
-   {: sa su:n required:bool :}
    IDLE-CK
-   required M-REQUIRED !
-   0 CHECKER-OWNER:BIND-REGIME!
-   NFETCH:RELEASE
-   sa M-SRC ! su M-SRC-U !
+   STAGE-UNIT
    KEEP-PRIOR
-   0 M-IN ! 0 M-OUT !
-   TRUSTED? CERTIFYING? 0= or NHOST:SOURCE-BEGIN
-   0 M-VERDICT !
-   -1 M-UNJUDGED !
-   CHECKER-OWNER:ROWS-END M-ROWS !
-   0 M-DOES-FRAME !
-   DOES-BYTE@ M-DOES !
-   DOES-SIG-FIELD @ M-DOES-SIG !
-   data-base TCSIG-U-CELL + @ M-DOES-SIG-U !
-   0 M-DOES-IN ! 0 M-DOES-OUT !
-   false M-HEAD-RECOVERY !
-   NDICT:GLUE-NONE M-DOES-GIN !  NDICT:GLUE-NONE M-DOES-GOUT !
-   -1 M-DOES-FUN !
-   0 M-DOES-OFF !
    -1 M-DOES-ROW !
    NDICT:FIXED-NONE M-FIXED !
    -1 M-FIXED-REC !
    false M-SHADOW-ONLY !
-   0 NAME-U !
    NELAB:REFUSED-RESET ;
 
 private
@@ -1312,4 +936,5 @@ get-current prot-wid-add
 public
 get-current prot-wid-add
 
+;using
 ;package

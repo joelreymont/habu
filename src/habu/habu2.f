@@ -3479,7 +3479,7 @@ public
 \ tier 1 reaches it (checker-owner.f DOES-CHECK), so no word the definer's
 \ package names can stand in for it; an owner with no such field exits 70.
 \ The check renders nothing, so a refused clause is reported as tier 1 reports
-\ one (compiler.f CLAUSE-CK): the owner's does> report renders the checker's
+\ one (definition.f CLAUSE-CK): the owner's does> report renders the checker's
 \ reason under the definer's clause name, then C-DIE-DOES fails the definition.
 : C-CALL-CHECK-DOES ( -- )
    LBL LBL LBL {: msg:label ready:label good:label :}
@@ -3530,7 +3530,7 @@ public
 \ A zero verdict drops the definition, so it also cuts the rows the hook
 \ recorded for it: the source owner's record end, read before the call, bounds
 \ the cut (checker.f CHECKER-RETRACT-ROWS), as tier 1's RETRACT cuts a refused
-\ definition's rows (src/compiler/native/compiler.f). Otherwise the dropped
+\ definition's rows (src/compiler/native/definition.f). Otherwise the dropped
 \ definition's record and pending window outlive it and a later word is
 \ checked against it while the engine binds another. The mark rides the
 \ machine-stack frame at [sp+8] as end+1; 0 means no owner, which records
@@ -3565,7 +3565,7 @@ public
    good LBL,
    nohook LBL, ;
 
-\ A TRUSTED: body is scanned as tier 1 scans it (compiler.f CHECK-PARENT): by
+\ A TRUSTED: body is scanned as tier 1 scans it (definition.f CHECK-PARENT): by
 \ checker.f CHECK-UNJUDGED!, whose verdict nobody enforces and whose diagnostics
 \ are suppressed. The scan exists for the lowering certificate it leaves, which
 \ states the body's wide values whatever the verdict (layout-valid.f
@@ -5621,8 +5621,8 @@ package INTERP-EMIT
 \ for a hook to judge: the registrar is its whole check, so with the hook cell
 \ empty a cast gets the row and the refusals it gets with one, as a `:` compiled
 \ then records its declaration through the same owner (EM-COMPILE-PUBLISH-HOOKED,
-\ compiler.f DECLARE-HOOKLESS). The native build's hook-less prefix scan
-\ (compiler.f CHECK-HOOKLESS) types a call only from that row: without it a
+\ definition.f DECLARE-HOOKLESS). The native build's hook-less prefix scan
+\ (definition.f CHECK-HOOKLESS) types a call only from that row: without it a
 \ prefix cast's caller is E-UNDEFINED. With no owner record, or none holding the
 \ operation, REGISTER-IDENTITY calls nothing, so an engine with no checker
 \ publishes the cast and records no row. The drain stays hook-guarded: it finds
@@ -12487,7 +12487,7 @@ public
 \ signature records nothing.
 \ Unjudged, the body still states its widths: while `0 set-check` holds a
 \ parked hook (SUSP-HOOK-CELL) with an owner, pass 1 scans it as a TRUSTED:
-\ body is scanned (C-CALL-CHECK-UNJUDGED, tier 1's compiler.f CHECK-HOOKLESS),
+\ body is scanned (C-CALL-CHECK-UNJUDGED, tier 1's definition.f CHECK-HOOKLESS),
 \ with or without a signature, and lowers from that certificate, so a wide
 \ value is not moved one cell wide. A signed does> clause is scanned first and
 \ its certificate kept, as tier 1's CHECK-DOES-SPLIT does
