@@ -3,9 +3,9 @@
 \ T0:COMPILE-TEXT walks one definition's body text as BODYBUF holds it at `;`
 \ (src/habu/definers.f DEF-COMPILE hands the same text to the compiler entry):
 \ the name, an optional `( ... )` signature it skips, then blank-separated
-\ tokens. It emits through T0-EMIT, which one emitter file defines before this
-\ file loads (src/habu/t0-x64.f for x86-64); the emitter leaves the finished
-\ body in its sink.
+\ tokens. It emits through the seam src/habu/t0-emit.f (package T0-EMIT) to the
+\ emitter selected there (src/habu/t0-x64.f for x86-64); the emitter leaves the
+\ finished body in its sink.
 \
 \ A TOKEN IS, IN THIS ORDER: a local in scope; a string opener (`s" c" ." s\"
 \ c\" .\"`); a control keyword (if else then begin until while repeat again do
@@ -35,7 +35,7 @@
 \ bad escape, and a counted one past COUNTED-MAX bytes, is E-T0-LITERAL.
 \
 \ A QUOTATION `[: ... ;]` is a unit of its own in the same emission
-\ (src/habu/t0-x64.f THE UNITS). At `[:` the body pushes the unit's address
+\ (src/habu/t0-emit.f THE UNITS). At `[:` the body pushes the unit's address
 \ and skips the text through the matching `;]`; once the definition is
 \ compiled, each quotation is compiled from its recorded start, in the order
 \ the `[:` tokens were met, nested ones after their parent. Each unit starts
@@ -72,7 +72,7 @@
 \ `begin ... while ... while ... repeat then` closes; a `do` level; a `case`,
 \ each `endof` above it and the open `of`. A structure that does not close,
 \ and a loop word outside the loops it needs, is E-T0-CONTROL, refused before
-\ the emitter is called: T0-EMIT's structured words (src/habu/t0-x64.f
+\ the emitter is called: T0-EMIT's structured words (src/habu/t0-emit.f
 \ CONTROL) keep the branches and trust this nesting.
 \
 \ LOOPS. `do` and `?do` push a runtime frame (T0-EMIT LOOP-PUSH: the index's
@@ -91,6 +91,7 @@ require src/compiler/native/checker-owner.f
 require src/compiler/native/dict.f
 require src/compiler/native/fetch.f
 require src/compiler/native/string.f
+require src/habu/t0-emit.f
 
 package T0
 public
@@ -153,8 +154,8 @@ variable BAD-LEN
 0 constant K-REG
 1 constant K-CONST
 
-8 TYPED-BUFFER VS-KIND n
-8 TYPED-BUFFER VS-VAL n
+DYNAMIC-BUFFER VS-KIND n            \ reserved to T0-EMIT:VREGS by RESET
+DYNAMIC-BUFFER VS-VAL n
 variable VS-N
 variable FREE                       \ bit k set: vreg k holds no entry
 
@@ -953,6 +954,7 @@ DYNAMIC-BUFFER QSTART n             \ where each quotation's body text starts
 \ Begin unit k with nothing open and no local in scope.
 : RESET ( n -- )
    UNIT !
+   T0-EMIT:VREGS VS-KIND-RESERVE  T0-EMIT:VREGS VS-VAL-RESERVE
    0 VS-N !  ALL-FREE FREE !  0 CS-N !  0 DO-N !  0 L-N !  0 TAILED ! ;
 
 : FINISH ( -- )

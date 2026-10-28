@@ -1,118 +1,61 @@
-\ t0-x64.f - the x86-64 emitter of the tier 0 compiler, package T0-EMIT.
+\ t0-x64.f - the x86-64 emitter of the tier 0 compiler, package T0-X64.
 \
-\ src/habu/t0.f (package T0) walks a definition's body text and drives these
-\ words; every target's emitter file defines the same T0-EMIT words and T0
-\ loads after one of them. The front end names values by virtual register
-\ (vreg 0..VREGS-1) and never by machine register, so it stays the same for
-\ every target.
+\ It implements the operations of src/habu/t0-emit.f (package T0-EMIT), which
+\ states what each operation does on every target; this file states only the
+\ x86-64 encodings and register choices. Every word here is private, and the
+\ file ends by providing INSTALL, which stores each into its T0-EMIT cell, for
+\ CTARGET-ARCH:X86-64.
 \
 \ THE CONTRACT A COMPILED BODY KEEPS (src/habu/kernel-x64.f "A BODY'S
 \ CONTRACT"). rbp is DATA, r12 the data stack pointer, rbx and r13-r15 the
 \ other engine registers; compiled code never writes them except r12 as the
-\ stack. The data stack grows up: a push stores at r12 and adds a cell, a pop
-\ subtracts a cell and loads (src/arch/x86-64/rt.f G-PUSH, G-POP). The vregs
-\ are rcx rdx rsi rdi r8-r11; rax is this file's own temporary and holds no
-\ value between two of its words. A body is entered by `call` and leaves by
-\ `ret`; nothing is saved, and its frame on the machine stack is only its own
-\ cells, rounded to 16 (src/arch/x86-64/abi.f FRAME-FOR).
+\ stack (src/arch/x86-64/rt.f G-PUSH, G-POP). The vregs are rcx rdx rsi rdi
+\ r8-r11; rax is this file's own temporary and holds no value between two of
+\ its words. A body is entered by `call` and leaves by `ret`; nothing is
+\ saved, and its frame on the machine stack is only its own cells, rounded to
+\ 16 (src/arch/x86-64/abi.f FRAME-FOR).
 \
-\ THE SINK. One src/lib/byte-buffer.f header, as src/arch/x86-64/icode.f keeps
-\ for the kernel. OPEN empties it and CLOSE leaves the finished body in it for
-\ CODE$ to read; the next OPEN begins the next body.
-\
-\ THE UNITS. A definition and its quotations are one emission: unit 0 is the
-\ definition and starts at byte 0, and each quotation is a later unit, a
-\ function of its own that QUOT-OPEN begins where the previous unit's CLOSE
-\ left off. The publisher places CODE$ whole and finds each quotation through
-\ its ADDR-QUOT-KIND row. `recurse` in any unit calls byte 0, the definition,
-\ as both tiers run it.
+\ THE SINK is one src/lib/byte-buffer.f header, as src/arch/x86-64/icode.f
+\ keeps for the kernel.
 \
 \ THE FRAME. OPEN and QUOT-OPEN emit `sub rsp, imm32` and each way out (RETURN,
 \ TAIL) emits `add rsp, imm32`, each with a zero field recorded in FRAME-AT.
-\ CLOSE emits nothing: the front end ends the unit with RETURN or TAIL, and
 \ CLOSE writes the unit's frame size, FRAME-CELLS rounded to 16 bytes, into
 \ every field the unit recorded, so rsp keeps its alignment at every call.
-\ Slot k is the cell at rsp + 8k; SLOTS raises FRAME-CELLS to cover the slots
-\ the front end uses, and each unit begins with none.
+\ Slot k is the cell at rsp + 8k.
 \
-\ THE ROWS. A call or tail site (E8 or E9 rel32, the field left zero) and a
-\ code or data address site (movabs r64, imm64) are recorded with the offset of
-\ the instruction's first byte, its kind and its target, for the publisher to
-\ place and relocate: CALL-ROWS / CALL-ROW and ADDR-ROWS / ADDR-ROW read them.
-\ Offsets are from the emission's byte 0, and each unit's rows follow the
-\ previous unit's. A quotation's address (ADDR-QUOT-KIND) is a code address
-\ inside this emission: its target and its imm64 are the quotation unit's
-\ offset, which QUOT-OPEN fills in, and the publisher adds the placement.
-\
-\ CONTROL. The front end drives the structured words of the control section
-\ and the counted-loop words in the order the source nests them; it refuses a
-\ structure out of order before calling one, so these words trust the nesting.
-\ The branches, their targets and each open loop level stay in this file and
-\ are resolved here; every branch is rel32. The words a source keyword names
-\ end in a comma, since a keyword cannot be a definition name.
-\
-\ DIVISION. `/`, `mod` and `/mod` are calls of the kernel rows, which screen a
-\ zero divisor and MIN-N -1; this file has no divide.
+\ THE ROWS. A call or tail site is E8 or E9 rel32 with the field left zero; an
+\ address site is movabs r64, imm64, whose imm64 starts two bytes past the
+\ row's offset. A quotation's imm64 holds the unit's offset until the
+\ publisher adds the placement. Every branch is rel32.
 
-require src/lib/type/deftype.f
 require src/lib/byte-buffer.f
 require src/habu/layout.f
 require src/habu/stack-abi.f
 require src/arch/x86-64/asm.f
+require src/compiler/target.f
+require src/habu/t0-emit.f
 
-package T0-EMIT
+package T0-X64
 using X64ASM
-public
 
-DEFTYPE VREG       \ a virtual register, 0 .. VREGS-1
-DEFTYPE ALU        \ a two-operand operation OP applies
-DEFTYPE SHIFTER    \ a shift SHIFT applies
-DEFTYPE CC         \ a comparison CMP-SET answers
-DEFTYPE WIDTH      \ the width LOAD and STORE move
+8 constant NVREG                      \ rcx rdx rsi rdi r8-r11
 
-8 constant VREGS
-
-: OP-ADD ( -- alu ) 0 >ALU ;
-: OP-SUB ( -- alu ) 1 >ALU ;
-: OP-AND ( -- alu ) 2 >ALU ;
-: OP-OR  ( -- alu ) 3 >ALU ;
-: OP-XOR ( -- alu ) 4 >ALU ;
-
-: SH-LEFT  ( -- shifter ) 0 >SHIFTER ;
-: SH-RIGHT ( -- shifter ) 1 >SHIFTER ;
-
-\ Each comparison is its x86 condition number.
-: CC-EQ  ( -- cc )  4 >CC ;
-: CC-NE  ( -- cc )  5 >CC ;
-: CC-LT  ( -- cc ) 12 >CC ;
-: CC-GE  ( -- cc ) 13 >CC ;
-: CC-LE  ( -- cc ) 14 >CC ;
-: CC-GT  ( -- cc ) 15 >CC ;
-
-: CELL-W ( -- width ) 8 >WIDTH ;
-: BYTE-W ( -- width ) 1 >WIDTH ;
-
-\ The comparison that answers the same with its operands exchanged.
-: CC-SWAP ( cc -- cc ) {: c:cc :}
-   c CC>N {: k:n :}
-   k 12 = if CC-GT exit then
-   k 15 = if CC-LT exit then
-   k 13 = if CC-LE exit then
-   k 14 = if CC-GE exit then
-   c ;
-
-\ Whether OP-LIT, MUL-LIT and CMP-SET-LIT take n as their immediate.
+\ An immediate is a sign-extended imm32.
 : IMM? ( n -- bool ) {: v:n :}
    v -2147483648 >= v 2147483647 <= and ;
 
-\ The kinds of a call row and of an address row.
-0 constant CALL-KIND
-1 constant TAIL-KIND
-1 constant ADDR-DATA-KIND
-2 constant ADDR-CODE-KIND
-3 constant ADDR-QUOT-KIND
-
-private
+\ The x86 condition number of each T0-EMIT comparison, CC-EQ .. CC-GT.
+: COND ( T0-EMIT:cc -- condition )
+   {: c:T0-EMIT:cc :}
+   c T0-EMIT:CC>N {: k:n :}
+   k 0 = if C-E exit then
+   k 1 = if C-NE exit then
+   k 2 = if C-L exit then
+   k 3 = if C-GE exit then
+   k 4 = if C-LE exit then
+   k 5 = if C-G exit then
+   E-OPERAND throw ;
 
 create SINK BUF:HDR-BYTES allot
 variable SINK-LIVE                    \ nonzero once SINK holds storage
@@ -147,9 +90,10 @@ variable LEAVE-N
 : DATA-REG ( -- r64 ) ENGINE-GPR:X64-RBASE >R64 ;
 
 \ vreg 0..3 are rcx rdx rsi rdi, 4..7 are r8..r11.
-: REG ( vreg -- r64 ) {: v:vreg :}
-   v VREG>N {: k:n :}
-   k 0 < k VREGS >= or if E-OPERAND throw then
+: REG ( T0-EMIT:vreg -- r64 )
+   {: v:T0-EMIT:vreg :}
+   v T0-EMIT:VREG>N {: k:n :}
+   k 0 < k NVREG >= or if E-OPERAND throw then
    k 0 = if RCX exit then
    k 1 = if RDX exit then
    k 2 = if RSI exit then
@@ -193,12 +137,12 @@ variable LEAVE-N
    at k ADDR-AT !  kind k ADDR-KIND-AT !  to k ADDR-TO !
    k 1 + NADDR ! ;
 
-: ADDR ( n vreg n -- ) {: v:n d:vreg kind:n :}
+: ADDR ( n T0-EMIT:vreg n -- )
+   {: v:n d:T0-EMIT:vreg kind:n :}
    HERE-OFF kind v ADDR-ROW+
    d REG v >IMM64 SINK ENC-MOV-RI64 ;
 
-\ The return stack is RSP-CELL cells deep from STACK-ABI:RETURN-BASE-CELL
-\ (src/habu/kernel-x64.f RSTACK,): r becomes the address one cell past its top.
+\ r, holding the return stack depth, becomes the address one cell past its top.
 : RTOP ( r64 -- ) {: r:r64 :}
    r 3 >IMM8 SINK ENC-SHL-RI8
    r DATA-REG STACK-ABI:RETURN-BASE-CELL MEM-OFF SINK ENC-ADD-RM ;
@@ -217,7 +161,6 @@ variable LEAVE-N
    0 FRAME-CELLS !  0 NFRAME !
    RSP 0 >IMM32 SINK ENC-SUB-RI32  FRAME-SITE ;
 
-public
 
 \ ---- the body ----------------------------------------------------------------
 : OPEN ( -- )
@@ -230,16 +173,13 @@ public
    0 CF-N !  0 LV-N !  0 LEAVE-N !
    UNIT-BEGIN ;
 
-\ Begin quotation unit n, which ADDR-QUOT named, and bind that address row to
-\ it. Units begin in order, so n is the count begun so far.
 : QUOT-OPEN ( n -- ) {: n:n :}
-   n NUNIT @ <> if E-OPERAND throw then
+   n NUNIT @ <> if T0-EMIT:E-T0-UNIT throw then
    n UNIT-REF @ {: row:n :}
    HERE-OFF row ADDR-TO !
    HERE-OFF row ADDR-AT @ 2 + 8 PUT
    UNIT-BEGIN ;
 
-\ Leave the word from the middle of its body.
 : RETURN ( -- )
    UNFRAME  SINK ENC-RET ;
 
@@ -255,36 +195,34 @@ public
 : ADDR-ROW ( n -- n n n ) {: k:n :}  k ADDR-AT @  k ADDR-KIND-AT @  k ADDR-TO @ ;
 
 \ ---- values ------------------------------------------------------------------
-: LIT ( n vreg -- ) {: v:n d:vreg :}  v d REG LIT-R ;
+: LIT ( n T0-EMIT:vreg -- )
+   {: v:n d:T0-EMIT:vreg :}
+   v d REG LIT-R ;
 
-: ADDR-DATA ( n vreg -- ) ADDR-DATA-KIND ADDR ;
-: ADDR-CODE ( n vreg -- ) ADDR-CODE-KIND ADDR ;
+: ADDR-DATA ( n T0-EMIT:vreg -- ) T0-EMIT:ADDR-DATA-KIND ADDR ;
+: ADDR-CODE ( n T0-EMIT:vreg -- ) T0-EMIT:ADDR-CODE-KIND ADDR ;
 
-\ The address of quotation unit n, which QUOT-OPEN begins later.
-: ADDR-QUOT ( n vreg -- ) {: n:n d:vreg :}
+: ADDR-QUOT ( n T0-EMIT:vreg -- )
+   {: n:n d:T0-EMIT:vreg :}
    n 1 + UNIT-REF-RESERVE
    NADDR @ n UNIT-REF !
-   0 d ADDR-QUOT-KIND ADDR ;
+   0 d T0-EMIT:ADDR-QUOT-KIND ADDR ;
 
-\ The data stack: PUSH and POP move one cell; SPILL, SPILL-LIT and FILL address
-\ the cell k cells above the stack pointer without moving it, and DSP+ moves
-\ it by k cells.
-: PUSH ( vreg -- ) {: s:vreg :}
+: PUSH ( T0-EMIT:vreg -- )
+   {: s:T0-EMIT:vreg :}
    s REG DSP MEM-AT SINK ENC-MOV-MR
    DSP CELL >IMM8 SINK ENC-ADD-RI8 ;
 
-: POP ( vreg -- ) {: d:vreg :}
-   DSP CELL >IMM8 SINK ENC-SUB-RI8
-   d REG DSP MEM-AT SINK ENC-MOV-RM ;
-
-: SPILL ( vreg n -- ) {: s:vreg k:n :}
+: SPILL ( T0-EMIT:vreg n -- )
+   {: s:T0-EMIT:vreg k:n :}
    s REG DSP k CELL * MEM-OFF SINK ENC-MOV-MR ;
 
 : SPILL-LIT ( n n -- ) {: v:n k:n :}
    v RAX LIT-R
    RAX DSP k CELL * MEM-OFF SINK ENC-MOV-MR ;
 
-: FILL ( vreg n -- ) {: d:vreg k:n :}
+: FILL ( T0-EMIT:vreg n -- )
+   {: d:T0-EMIT:vreg k:n :}
    d REG DSP k CELL * MEM-OFF SINK ENC-MOV-RM ;
 
 : DSP+ ( n -- ) {: k:n :}
@@ -292,23 +230,25 @@ public
    k 0 > if DSP k CELL * >IMM32 SINK ENC-ADD-RI32 exit then
    DSP k negate CELL * >IMM32 SINK ENC-SUB-RI32 ;
 
-: MOV ( vreg vreg -- ) {: d:vreg s:vreg :}
+: MOV ( T0-EMIT:vreg T0-EMIT:vreg -- )
+   {: d:T0-EMIT:vreg s:T0-EMIT:vreg :}
    d REG s REG SINK ENC-MOV-RR ;
 
-\ The frame: SLOTS makes it hold at least n cells, SLOT-STORE and SLOT-LOAD
-\ move a cell between a vreg and slot k.
 : SLOTS ( n -- ) {: k:n :}
    k FRAME-CELLS @ > if k FRAME-CELLS ! then ;
 
-: SLOT-STORE ( vreg n -- ) {: s:vreg k:n :}
+: SLOT-STORE ( T0-EMIT:vreg n -- )
+   {: s:T0-EMIT:vreg k:n :}
    s REG RSP k CELL * MEM-OFF SINK ENC-MOV-MR ;
 
-: SLOT-LOAD ( vreg n -- ) {: d:vreg k:n :}
+: SLOT-LOAD ( T0-EMIT:vreg n -- )
+   {: d:T0-EMIT:vreg k:n :}
    d REG RSP k CELL * MEM-OFF SINK ENC-MOV-RM ;
 
 \ ---- arithmetic --------------------------------------------------------------
-: OP ( vreg vreg alu -- ) {: d:vreg s:vreg o:alu :}
-   d REG {: dr:r64 :}  s REG {: sr:r64 :}  o ALU>N {: k:n :}
+: OP ( T0-EMIT:vreg T0-EMIT:vreg T0-EMIT:alu -- )
+   {: d:T0-EMIT:vreg s:T0-EMIT:vreg o:T0-EMIT:alu :}
+   d REG {: dr:r64 :}  s REG {: sr:r64 :}  o T0-EMIT:ALU>N {: k:n :}
    k 0 = if dr sr SINK ENC-ADD-RR exit then
    k 1 = if dr sr SINK ENC-SUB-RR exit then
    k 2 = if dr sr SINK ENC-AND-RR exit then
@@ -316,9 +256,9 @@ public
    k 4 = if dr sr SINK ENC-XOR-RR exit then
    E-OPERAND throw ;
 
-\ n must answer IMM? true.
-: OP-LIT ( vreg n alu -- ) {: d:vreg v:n o:alu :}
-   d REG {: dr:r64 :}  v >IMM32 {: iv:imm32 :}  o ALU>N {: k:n :}
+: OP-LIT ( T0-EMIT:vreg n T0-EMIT:alu -- )
+   {: d:T0-EMIT:vreg v:n o:T0-EMIT:alu :}
+   d REG {: dr:r64 :}  v >IMM32 {: iv:imm32 :}  o T0-EMIT:ALU>N {: k:n :}
    k 0 = if dr iv SINK ENC-ADD-RI32 exit then
    k 1 = if dr iv SINK ENC-SUB-RI32 exit then
    k 2 = if dr iv SINK ENC-AND-RI32 exit then
@@ -326,78 +266,75 @@ public
    k 4 = if dr iv SINK ENC-XOR-RI32 exit then
    E-OPERAND throw ;
 
-\ A shift by a register takes its count in cl, and cl is vreg 0's low byte.
-\ The hardware masks the count to six bits, which is Habu's `lshift` and
-\ `rshift` (a count of 64 shifts by nothing); `rshift` is logical.
-: SHIFT-CL ( r64 shifter -- ) {: r:r64 o:shifter :}
-   o SHIFTER>N 0 = if r SINK ENC-SHL-CL exit then
+\ A shift by a register takes its count in cl, and cl is vreg 0's low byte;
+\ the hardware masks the count to six bits. SHIFT-LIT masks its count here.
+: SHIFT-CL ( r64 T0-EMIT:shifter -- )
+   {: r:r64 o:T0-EMIT:shifter :}
+   o T0-EMIT:SHIFTER>N 0 = if r SINK ENC-SHL-CL exit then
    r SINK ENC-SHR-CL ;
 
-: SHIFT ( vreg vreg shifter -- ) {: d:vreg s:vreg o:shifter :}
-   s VREG>N 0 = if d REG o SHIFT-CL exit then
+: SHIFT ( T0-EMIT:vreg T0-EMIT:vreg T0-EMIT:shifter -- )
+   {: d:T0-EMIT:vreg s:T0-EMIT:vreg o:T0-EMIT:shifter :}
+   s T0-EMIT:VREG>N 0 = if d REG o SHIFT-CL exit then
    RAX RCX SINK ENC-MOV-RR
    RCX s REG SINK ENC-MOV-RR
-   d VREG>N 0 = if
+   d T0-EMIT:VREG>N 0 = if
       RAX o SHIFT-CL
       RCX RAX SINK ENC-MOV-RR exit
    then
    d REG o SHIFT-CL
    RCX RAX SINK ENC-MOV-RR ;
 
-: SHIFT-LIT ( vreg n shifter -- ) {: d:vreg v:n o:shifter :}
+: SHIFT-LIT ( T0-EMIT:vreg n T0-EMIT:shifter -- )
+   {: d:T0-EMIT:vreg v:n o:T0-EMIT:shifter :}
    v 63 and >IMM8 {: c:imm8 :}
-   o SHIFTER>N 0 = if d REG c SINK ENC-SHL-RI8 exit then
+   o T0-EMIT:SHIFTER>N 0 = if d REG c SINK ENC-SHL-RI8 exit then
    d REG c SINK ENC-SHR-RI8 ;
 
-: MULX ( vreg vreg -- ) {: d:vreg s:vreg :}
+: MULX ( T0-EMIT:vreg T0-EMIT:vreg -- )
+   {: d:T0-EMIT:vreg s:T0-EMIT:vreg :}
    d REG s REG SINK ENC-IMUL-RR ;
 
-\ n must answer IMM? true.
-: MUL-LIT ( vreg n -- ) {: d:vreg v:n :}
+: MUL-LIT ( T0-EMIT:vreg n -- )
+   {: d:T0-EMIT:vreg v:n :}
    d REG d REG v >IMM32 SINK ENC-IMUL-RRI32 ;
 
-: NEG ( vreg -- ) REG SINK ENC-NEG ;
-: NOT ( vreg -- ) REG SINK ENC-NOT ;
+: NEG ( T0-EMIT:vreg -- ) REG SINK ENC-NEG ;
+: NOT ( T0-EMIT:vreg -- ) REG SINK ENC-NOT ;
 
-\ d becomes -1 when d c s holds, else 0: a Habu flag.
-: SET-FLAG ( vreg cc -- ) {: d:vreg c:cc :}
-   c CC>N >CONDITION 0 >R8 SINK ENC-SETCC
+\ setcc, then zero-extend and negate the byte into a flag.
+: SET-FLAG ( T0-EMIT:vreg T0-EMIT:cc -- )
+   {: d:T0-EMIT:vreg c:T0-EMIT:cc :}
+   c COND 0 >R8 SINK ENC-SETCC
    d REG 0 >R8 SINK ENC-MOVZX-8-RR
    d REG SINK ENC-NEG ;
 
-: CMP-SET ( vreg vreg cc -- ) {: d:vreg s:vreg c:cc :}
+: CMP-SET ( T0-EMIT:vreg T0-EMIT:vreg T0-EMIT:cc -- )
+   {: d:T0-EMIT:vreg s:T0-EMIT:vreg c:T0-EMIT:cc :}
    d REG s REG SINK ENC-CMP-RR
    d c SET-FLAG ;
 
-\ n must answer IMM? true.
-: CMP-SET-LIT ( vreg n cc -- ) {: d:vreg v:n c:cc :}
+: CMP-SET-LIT ( T0-EMIT:vreg n T0-EMIT:cc -- )
+   {: d:T0-EMIT:vreg v:n c:T0-EMIT:cc :}
    d REG v >IMM32 SINK ENC-CMP-RI32
    d c SET-FLAG ;
 
 \ ---- memory ------------------------------------------------------------------
-\ LOAD reads the cell or the zero-extended byte at address a into d; STORE
-\ writes the cell or the low byte of s at address a. Neither screens the
-\ address, as the kernel's `@` and `c@` rows do not: `!` and `c!` screen a span
-\ and stay calls.
-: LOAD ( vreg vreg width -- ) {: d:vreg a:vreg w:width :}
-   w WIDTH>N 1 = if d REG a REG MEM-AT SINK ENC-MOVZX-8-RM exit then
+: LOAD ( T0-EMIT:vreg T0-EMIT:vreg T0-EMIT:width -- )
+   {: d:T0-EMIT:vreg a:T0-EMIT:vreg w:T0-EMIT:width :}
+   w T0-EMIT:WIDTH>N 1 = if d REG a REG MEM-AT SINK ENC-MOVZX-8-RM exit then
    d REG a REG MEM-AT SINK ENC-MOV-RM ;
-
-: STORE ( vreg vreg width -- ) {: s:vreg a:vreg w:width :}
-   w WIDTH>N 1 = if s REG R64>N >R8 a REG MEM-AT SINK ENC-MOV8-MR exit then
-   s REG a REG MEM-AT SINK ENC-MOV-MR ;
 
 \ ---- calls -------------------------------------------------------------------
 : CALL ( n -- ) {: to:n :}
-   HERE-OFF CALL-KIND to CALL-ROW+
+   HERE-OFF T0-EMIT:CALL-KIND to CALL-ROW+
    0 >REL SINK ENC-CALL-REL32 ;
 
 : TAIL ( n -- ) {: to:n :}
    UNFRAME
-   HERE-OFF TAIL-KIND to CALL-ROW+
+   HERE-OFF T0-EMIT:TAIL-KIND to CALL-ROW+
    0 >REL SINK ENC-JMP-REL32 ;
 
-\ `recurse`: a call of byte 0, the definition, from any unit.
 : CALL-SELF ( -- )
    0 HERE-OFF 5 + - >REL SINK ENC-CALL-REL32 ;
 
@@ -405,11 +342,7 @@ public
 \ An open structure is a POSITION, the offset of a forward branch's rel32 field
 \ waiting for its target or of a loop head, or the start of a case beneath its
 \ `endof` exits. Which of the two a position is follows from the word that pops
-\ it, so only the case start is marked. A `while` exit sits beneath its `begin`'s
-\ head, as Forth orders orig and dest, so `begin ... while ... while ... repeat
-\ then` resolves.
-private
-
+\ it, so only the case start is marked.
 0 constant POSITION
 1 constant CASE-START
 
@@ -438,7 +371,8 @@ private
 : FWD-JCC ( condition -- n ) {: c:condition :}
    c 0 >REL SINK ENC-JCC-REL32  FWD-SITE ;
 
-: TEST ( vreg -- ) {: c:vreg :}
+: TEST ( T0-EMIT:vreg -- )
+   {: c:T0-EMIT:vreg :}
    c REG c REG SINK ENC-TEST-RR ;
 
 \ A backward rel is measured from the end of the instruction, five bytes for
@@ -449,45 +383,36 @@ private
 : BACK-JCC ( condition n -- ) {: c:condition m:n :}
    c m 6 - REL-TO SINK ENC-JCC-REL32 ;
 
-public
 
-\ `if`: past the arm when the vreg is zero.
-: IF, ( vreg -- ) TEST C-E FWD-JCC AT+ ;
+: IF, ( T0-EMIT:vreg -- ) TEST C-E FWD-JCC AT+ ;
 
-\ `else`: past the second arm, then the open `if` lands here.
 : ELSE, ( -- ) FWD-JMP CF-POP RESOLVE AT+ ;
 
-\ `then`: the innermost open forward branch lands here.
 : THEN, ( -- ) CF-POP RESOLVE ;
 
 : BEGIN, ( -- ) HERE-OFF AT+ ;
 
-\ `while`: out of the loop when the vreg is zero; the exit stays open beneath
-\ the head.
-: WHILE, ( vreg -- )
+: WHILE, ( T0-EMIT:vreg -- )
    TEST C-E FWD-JCC {: s:n :}
    CF-POP {: m:n :}
    s AT+
    m AT+ ;
 
-\ `repeat`: back to the head, then the innermost `while` exit lands here.
 : REPEAT, ( -- ) CF-POP BACK-JMP CF-POP RESOLVE ;
 
-\ `until`: back to the head when the vreg is zero.
-: UNTIL, ( vreg -- ) TEST C-E CF-POP BACK-JCC ;
+: UNTIL, ( T0-EMIT:vreg -- ) TEST C-E CF-POP BACK-JCC ;
 
 : AGAIN, ( -- ) CF-POP BACK-JMP ;
 
-\ `case` opens; OF, and OF-LIT branch past the arm when the selector differs
-\ from the vreg or from n, which must answer IMM? true; ENDOF, branches to the
-\ end and lands the open `of` here; ENDCASE, lands every `endof` exit here.
 : CASE, ( -- ) CASE-START 0 CF-PUSH ;
 
-: OF, ( vreg vreg -- ) {: sel:vreg v:vreg :}
+: OF, ( T0-EMIT:vreg T0-EMIT:vreg -- )
+   {: sel:T0-EMIT:vreg v:T0-EMIT:vreg :}
    sel REG v REG SINK ENC-CMP-RR
    C-NE FWD-JCC AT+ ;
 
-: OF-LIT ( vreg n -- ) {: sel:vreg v:n :}
+: OF-LIT ( T0-EMIT:vreg n -- )
+   {: sel:T0-EMIT:vreg v:n :}
    sel REG v >IMM32 SINK ENC-CMP-RI32
    C-NE FWD-JCC AT+ ;
 
@@ -498,16 +423,17 @@ public
    CF-POP drop ;
 
 \ ---- the return stack --------------------------------------------------------
-\ >r, r> and r@ move a cell between a vreg and the return stack through rax or
-\ the destination alone.
-: TOR ( vreg -- ) {: s:vreg :}
+\ TOR goes through rax; RFROM and RFETCH through the destination alone.
+: TOR ( T0-EMIT:vreg -- )
+   {: s:T0-EMIT:vreg :}
    RAX RDEPTH
    RAX SINK ENC-INC
    RAX RDEPTH!
    RAX RTOP
    s REG RAX CELL negate MEM-OFF SINK ENC-MOV-MR ;
 
-: RFROM ( vreg -- ) {: d:vreg :}
+: RFROM ( T0-EMIT:vreg -- )
+   {: d:T0-EMIT:vreg :}
    d REG {: r:r64 :}
    r RDEPTH
    r SINK ENC-DEC
@@ -515,7 +441,8 @@ public
    r RTOP
    r r MEM-AT SINK ENC-MOV-RM ;
 
-: RFETCH ( vreg -- ) {: d:vreg :}
+: RFETCH ( T0-EMIT:vreg -- )
+   {: d:T0-EMIT:vreg :}
    d REG {: r:r64 :}
    r RDEPTH
    r RTOP
@@ -523,18 +450,6 @@ public
 
 
 \ ---- loops ---------------------------------------------------------------------
-\ The DO/LOOP frames live on the DATA loop stack, where `j`, catch
-\ (src/habu/kernel-x64.f CAUGHT,) and the arm64 tier 0 (src/habu/habu2.f
-\ J-FRAME) find them: LOOPSP-CELL counts the frames and frame k, 16 bytes at
-\ STACK-ABI:LOOP-BASE-CELL's base + 16k, holds the index, its home, then the
-\ limit. `loop` steps while index < limit, signed; `+loop` steps until the
-\ index crosses the boundary between limit - 1 and limit in the step's
-\ direction; `?do` enters while start < limit, and LOOP-STEP makes the entry
-\ of its level skip equal bounds only. LOOP-OPEN opens a level; LOOP-NEXT,
-\ LOOP-STEP and LEAVE, branch to the innermost level's head or past its end;
-\ LOOP-CLOSE lands its exits on the pop of its frame.
-private
-
 : LDEPTH ( r64 -- ) {: r:r64 :}
    r DATA-REG LOOPSP-CELL MEM-OFF SINK ENC-MOV-RM ;
 
@@ -555,16 +470,16 @@ private
 : HEAD ( -- n ) LV LV-HEAD @ ;
 
 \ The index of the frame k levels out of the innermost into d.
-: LINDEX ( vreg n -- ) {: d:vreg k:n :}
+: LINDEX ( T0-EMIT:vreg n -- )
+   {: d:T0-EMIT:vreg k:n :}
    d REG {: r:r64 :}
    r LDEPTH
    r LTOP
    r r LIDX-OFF k 16 * - MEM-OFF SINK ENC-MOV-RM ;
 
-public
 
-\ Push a frame of index s and limit l.
-: LOOP-PUSH ( vreg vreg -- ) {: s:vreg l:vreg :}
+: LOOP-PUSH ( T0-EMIT:vreg T0-EMIT:vreg -- )
+   {: s:T0-EMIT:vreg l:T0-EMIT:vreg :}
    RAX LDEPTH
    RAX SINK ENC-INC
    RAX LDEPTH!
@@ -577,12 +492,11 @@ public
    RAX SINK ENC-DEC
    RAX LDEPTH! ;
 
-: LOOP-I ( vreg -- ) 0 LINDEX ;
-: LOOP-J ( vreg -- ) 1 LINDEX ;
+: LOOP-I ( T0-EMIT:vreg -- ) 0 LINDEX ;
+: LOOP-J ( T0-EMIT:vreg -- ) 1 LINDEX ;
 
-\ Open a level whose head is here. With entry true it is `?do`'s: past the
-\ level unless start s < limit l.
-: LOOP-OPEN ( vreg vreg bool -- ) {: s:vreg l:vreg entry:bool :}
+: LOOP-OPEN ( T0-EMIT:vreg T0-EMIT:vreg bool -- )
+   {: s:T0-EMIT:vreg l:T0-EMIT:vreg entry:bool :}
    entry if
       s REG l REG SINK ENC-CMP-RR
       C-GE FWD-JCC
@@ -594,16 +508,14 @@ public
    LEAVE-N @ k LV-FIRST !
    k 1 + LV-N ! ;
 
-\ `leave`: past the innermost level.
 : LEAVE, ( -- )
    LEAVE-N @ {: n:n :}
    n 1 + LEAVES-RESERVE
    FWD-JMP n LEAVES !
    n 1 + LEAVE-N ! ;
 
-\ `loop`: step the index by one and branch back to the head while it is below
-\ the limit. t is a free vreg it clobbers.
-: LOOP-NEXT ( vreg -- ) {: t:vreg :}
+: LOOP-NEXT ( T0-EMIT:vreg -- )
+   {: t:T0-EMIT:vreg :}
    t REG {: r:r64 :}
    RAX LDEPTH
    RAX LTOP
@@ -613,11 +525,11 @@ public
    r RAX LLIM-OFF MEM-OFF SINK ENC-CMP-RM
    C-L HEAD BACK-JCC ;
 
-\ `+loop`: step the index by s and branch back to the head unless it crossed
-\ the boundary: with old = index - limit before the step, it crossed when
-\ (old xor old + s) and (old xor s) is negative. s and t are clobbered; t is a
-\ free vreg. A `?do` entry of the level now skips equal bounds only.
-: LOOP-STEP ( vreg vreg -- ) {: s:vreg t:vreg :}
+\ With old = index - limit before the step, the index crossed the boundary
+\ when (old xor old + s) and (old xor s) is negative. The level's `?do` entry
+\ jge becomes je.
+: LOOP-STEP ( T0-EMIT:vreg T0-EMIT:vreg -- )
+   {: s:T0-EMIT:vreg t:T0-EMIT:vreg :}
    s REG {: sr:r64 :}  t REG {: r:r64 :}
    RAX LDEPTH
    RAX LTOP
@@ -633,8 +545,6 @@ public
    LV LV-ENTRY @ {: at:n :}
    at 0 >= if C-E CONDITION>N $80 +  SINK BUF:SPAN$ drop at 1 - + c! then ;
 
-\ Land the innermost level's `leave` exits and entry here, close it and pop
-\ its frame.
 : LOOP-CLOSE ( -- )
    LV {: k:n :}
    LEAVE-N @ k LV-FIRST @ ?do i LEAVES @ RESOLVE loop
@@ -643,6 +553,76 @@ public
    k LV-FIRST @ LEAVE-N !
    k LV-N !
    LOOP-POP ;
+
+\ ---- the seam ----------------------------------------------------------------
+\ Make this file's words the ones T0-EMIT runs at slot k.
+: INSTALL ( n -- )
+   {: k:n :}
+   NVREG k T0-EMIT:VREGS-N !
+   ['] OPEN k T0-EMIT:OPEN-XT !
+   ['] QUOT-OPEN k T0-EMIT:QUOT-OPEN-XT !
+   ['] RETURN k T0-EMIT:RETURN-XT !
+   ['] CLOSE k T0-EMIT:CLOSE-XT !
+   ['] CODE$ k T0-EMIT:CODE$-XT !
+   ['] CALL-ROWS k T0-EMIT:CALL-ROWS-XT !
+   ['] CALL-ROW k T0-EMIT:CALL-ROW-XT !
+   ['] ADDR-ROWS k T0-EMIT:ADDR-ROWS-XT !
+   ['] ADDR-ROW k T0-EMIT:ADDR-ROW-XT !
+   ['] LIT k T0-EMIT:LIT-XT !
+   ['] ADDR-DATA k T0-EMIT:ADDR-DATA-XT !
+   ['] ADDR-CODE k T0-EMIT:ADDR-CODE-XT !
+   ['] ADDR-QUOT k T0-EMIT:ADDR-QUOT-XT !
+   ['] PUSH k T0-EMIT:PUSH-XT !
+   ['] SPILL k T0-EMIT:SPILL-XT !
+   ['] SPILL-LIT k T0-EMIT:SPILL-LIT-XT !
+   ['] FILL k T0-EMIT:FILL-XT !
+   ['] DSP+ k T0-EMIT:DSP+-XT !
+   ['] MOV k T0-EMIT:MOV-XT !
+   ['] SLOTS k T0-EMIT:SLOTS-XT !
+   ['] SLOT-STORE k T0-EMIT:SLOT-STORE-XT !
+   ['] SLOT-LOAD k T0-EMIT:SLOT-LOAD-XT !
+   ['] OP k T0-EMIT:OP-XT !
+   ['] OP-LIT k T0-EMIT:OP-LIT-XT !
+   ['] SHIFT k T0-EMIT:SHIFT-XT !
+   ['] SHIFT-LIT k T0-EMIT:SHIFT-LIT-XT !
+   ['] MULX k T0-EMIT:MULX-XT !
+   ['] MUL-LIT k T0-EMIT:MUL-LIT-XT !
+   ['] NEG k T0-EMIT:NEG-XT !
+   ['] NOT k T0-EMIT:NOT-XT !
+   ['] CMP-SET k T0-EMIT:CMP-SET-XT !
+   ['] CMP-SET-LIT k T0-EMIT:CMP-SET-LIT-XT !
+   ['] LOAD k T0-EMIT:LOAD-XT !
+   ['] CALL k T0-EMIT:CALL-XT !
+   ['] TAIL k T0-EMIT:TAIL-XT !
+   ['] CALL-SELF k T0-EMIT:CALL-SELF-XT !
+   ['] IF, k T0-EMIT:IF,-XT !
+   ['] ELSE, k T0-EMIT:ELSE,-XT !
+   ['] THEN, k T0-EMIT:THEN,-XT !
+   ['] BEGIN, k T0-EMIT:BEGIN,-XT !
+   ['] WHILE, k T0-EMIT:WHILE,-XT !
+   ['] REPEAT, k T0-EMIT:REPEAT,-XT !
+   ['] UNTIL, k T0-EMIT:UNTIL,-XT !
+   ['] AGAIN, k T0-EMIT:AGAIN,-XT !
+   ['] CASE, k T0-EMIT:CASE,-XT !
+   ['] OF, k T0-EMIT:OF,-XT !
+   ['] OF-LIT k T0-EMIT:OF-LIT-XT !
+   ['] ENDOF, k T0-EMIT:ENDOF,-XT !
+   ['] ENDCASE, k T0-EMIT:ENDCASE,-XT !
+   ['] TOR k T0-EMIT:TOR-XT !
+   ['] RFROM k T0-EMIT:RFROM-XT !
+   ['] RFETCH k T0-EMIT:RFETCH-XT !
+   ['] LOOP-PUSH k T0-EMIT:LOOP-PUSH-XT !
+   ['] LOOP-POP k T0-EMIT:LOOP-POP-XT !
+   ['] LOOP-I k T0-EMIT:LOOP-I-XT !
+   ['] LOOP-J k T0-EMIT:LOOP-J-XT !
+   ['] LOOP-OPEN k T0-EMIT:LOOP-OPEN-XT !
+   ['] LEAVE, k T0-EMIT:LEAVE,-XT !
+   ['] LOOP-NEXT k T0-EMIT:LOOP-NEXT-XT !
+   ['] LOOP-STEP k T0-EMIT:LOOP-STEP-XT !
+   ['] LOOP-CLOSE k T0-EMIT:LOOP-CLOSE-XT !
+   ['] IMM? k T0-EMIT:IMM?-XT ! ;
+
+CTARGET-ARCH:X86-64 ' INSTALL T0-EMIT:PROVIDE
 
 ;using
 ;package

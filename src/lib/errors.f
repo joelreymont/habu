@@ -1475,6 +1475,8 @@
 \ owns package CMD.
 \ Tier 0 compiler: -9600..-9609, minted in src/habu/t0.f, which owns package
 \ T0.
+\ Tier 0 emitter seam: -9590..-9599, minted in src/habu/t0-emit.f, which owns
+\ package T0-EMIT.
 
 \ Wasm back end: -9800..-9834, minted in src/arch/wasm/: WLEB -9800..-9804, WSTRUCT
 \ -9805..-9809, WCTL -9815..-9819, WSEL -9820..-9824, WENC -9825..-9829,
