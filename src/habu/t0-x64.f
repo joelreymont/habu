@@ -24,16 +24,20 @@
 \ every field the unit recorded, so rsp keeps its alignment at every call.
 \ Slot k is the cell at rsp + 8k.
 \
-\ THE ROWS. A call or tail site is E8 or E9 rel32 with the field left zero; an
-\ address site is movabs r64, imm64, whose imm64 starts two bytes past the
-\ row's offset. A quotation's imm64 holds the unit's offset until the
-\ publisher adds the placement. Every branch is rel32.
+\ THE ROWS are filed into the seam as each site is emitted (t0-emit.f THE
+\ ROWS). A call or tail site is E8 or E9 rel32 with the field left zero until
+\ PATCH measures it from its placed end; an address site is movabs r64, imm64,
+\ whose imm64 starts two bytes past the row's offset. A quotation's imm64
+\ holds the unit's offset, which QUOT-OPEN writes, until PATCH adds the
+\ placement. Every branch is rel32.
 
+require src/lib/errors.f
 require src/lib/byte-buffer.f
 require src/habu/layout.f
 require src/habu/stack-abi.f
 require src/arch/x86-64/asm.f
 require src/compiler/target.f
+require src/compiler/native/emission.f
 require src/habu/t0-emit.f
 
 package T0-X64
@@ -61,17 +65,9 @@ create SINK BUF:HDR-BYTES allot
 variable SINK-LIVE                    \ nonzero once SINK holds storage
 variable FRAME-CELLS                  \ machine-stack cells this body uses
 variable NFRAME
-variable NCALL
-variable NADDR
 variable NUNIT                        \ units begun in this emission
 DYNAMIC-BUFFER FRAME-AT n             \ offset of each frame imm32 field
-DYNAMIC-BUFFER CALL-AT n              \ call row: first byte, kind, target
-DYNAMIC-BUFFER CALL-KIND-AT n
-DYNAMIC-BUFFER CALL-TO n
-DYNAMIC-BUFFER ADDR-AT n              \ address row: first byte, kind, value
-DYNAMIC-BUFFER ADDR-KIND-AT n
-DYNAMIC-BUFFER ADDR-TO n
-DYNAMIC-BUFFER UNIT-REF n             \ the address row that names each unit
+DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
 DYNAMIC-BUFFER CF-KIND n              \ the open structures, innermost last,
 DYNAMIC-BUFFER CF-AT n                \ and each one's offset
 variable CF-N
@@ -125,21 +121,9 @@ variable LEAVE-N
 : UNFRAME ( -- )
    RSP 0 >IMM32 SINK ENC-ADD-RI32  FRAME-SITE ;
 
-: CALL-ROW+ ( n n n -- ) {: at:n kind:n to:n :}
-   NCALL @ {: k:n :}
-   k 1 + CALL-AT-RESERVE  k 1 + CALL-KIND-AT-RESERVE  k 1 + CALL-TO-RESERVE
-   at k CALL-AT !  kind k CALL-KIND-AT !  to k CALL-TO !
-   k 1 + NCALL ! ;
-
-: ADDR-ROW+ ( n n n -- ) {: at:n kind:n to:n :}
-   NADDR @ {: k:n :}
-   k 1 + ADDR-AT-RESERVE  k 1 + ADDR-KIND-AT-RESERVE  k 1 + ADDR-TO-RESERVE
-   at k ADDR-AT !  kind k ADDR-KIND-AT !  to k ADDR-TO !
-   k 1 + NADDR ! ;
-
 : ADDR ( n T0-EMIT:vreg n -- )
    {: v:n d:T0-EMIT:vreg kind:n :}
-   HERE-OFF kind v ADDR-ROW+
+   HERE-OFF kind v T0-EMIT:ADDR-ROW+
    d REG v >IMM64 SINK ENC-MOV-RI64 ;
 
 \ r, holding the return stack depth, becomes the address one cell past its top.
@@ -157,6 +141,7 @@ variable LEAVE-N
 
 \ Begin the next unit at the current offset, with an empty frame.
 : UNIT-BEGIN ( -- )
+   HERE-OFF T0-EMIT:UNIT+
    NUNIT @ 1 + NUNIT !
    0 FRAME-CELLS !  0 NFRAME !
    RSP 0 >IMM32 SINK ENC-SUB-RI32  FRAME-SITE ;
@@ -169,15 +154,13 @@ variable LEAVE-N
       1 SINK-LIVE !
    then
    SINK BUF:CLEAR
-   0 NCALL !  0 NADDR !  0 NUNIT !
+   0 NUNIT !
    0 CF-N !  0 LV-N !  0 LEAVE-N !
    UNIT-BEGIN ;
 
 : QUOT-OPEN ( n -- ) {: n:n :}
    n NUNIT @ <> if T0-EMIT:E-T0-UNIT throw then
-   n UNIT-REF @ {: row:n :}
-   HERE-OFF row ADDR-TO !
-   HERE-OFF row ADDR-AT @ 2 + 8 PUT
+   HERE-OFF n UNIT-REF @ 2 + 8 PUT
    UNIT-BEGIN ;
 
 : RETURN ( -- )
@@ -187,26 +170,39 @@ variable LEAVE-N
    FRAME-CELLS @ CELL * 15 + 15 invert and {: bytes:n :}
    NFRAME @ 0 ?do bytes i FRAME-AT @ 4 PUT loop ;
 
-: CODE$ ( -- ptr u8 n ) SINK BUF:SPAN$ BUF:BLEN>N ;
+: BYTES ( -- ptr u8 n ) SINK BUF:SPAN$ BUF:BLEN>N ;
 
-: CALL-ROWS ( -- n ) NCALL @ ;
-: CALL-ROW ( n -- n n n ) {: k:n :}  k CALL-AT @  k CALL-KIND-AT @  k CALL-TO @ ;
-: ADDR-ROWS ( -- n ) NADDR @ ;
-: ADDR-ROW ( n -- n n n ) {: k:n :}  k ADDR-AT @  k ADDR-KIND-AT @  k ADDR-TO @ ;
+\ A call's rel32 is measured from the end of its five bytes, placed at.
+: PATCH-CALL ( n n n -- ) {: at:n off:n to:n :}
+   to at off + 5 + - {: d:n :}
+   d -2147483648 < d 2147483647 > or if E-X64EMIT-REACH throw then
+   d off 1 + 4 PUT ;
+
+: PATCH ( n -- ) {: at:n :}
+   T0-EMIT:CALL-ROWS 0 ?do
+      i T0-EMIT:CALL-ROW {: off:n kind:n to:n :}
+      at off to PATCH-CALL
+   loop
+   T0-EMIT:ADDR-ROWS 0 ?do
+      i T0-EMIT:ADDR-ROW {: off:n kind:n to:n :}
+      kind T0-EMIT:ADDR-QUOT-KIND = if at to T0-EMIT:UNIT + off 2 + 8 PUT then
+   loop ;
 
 \ ---- values ------------------------------------------------------------------
 : LIT ( n T0-EMIT:vreg -- )
    {: v:n d:T0-EMIT:vreg :}
    v d REG LIT-R ;
 
-: ADDR-DATA ( n T0-EMIT:vreg -- ) T0-EMIT:ADDR-DATA-KIND ADDR ;
-: ADDR-CODE ( n T0-EMIT:vreg -- ) T0-EMIT:ADDR-CODE-KIND ADDR ;
+: ADDR-DATA ( n T0-EMIT:vreg -- ) NEMIT:ADDR-DATA ADDR ;
+: ADDR-CODE ( n T0-EMIT:vreg -- ) NEMIT:ADDR-CODE ADDR ;
 
+\ The site's imm64 holds 0 until QUOT-OPEN writes unit n's offset.
 : ADDR-QUOT ( n T0-EMIT:vreg -- )
    {: n:n d:T0-EMIT:vreg :}
    n 1 + UNIT-REF-RESERVE
-   NADDR @ n UNIT-REF !
-   0 d T0-EMIT:ADDR-QUOT-KIND ADDR ;
+   HERE-OFF n UNIT-REF !
+   HERE-OFF T0-EMIT:ADDR-QUOT-KIND n T0-EMIT:ADDR-ROW+
+   d REG 0 >IMM64 SINK ENC-MOV-RI64 ;
 
 : PUSH ( T0-EMIT:vreg -- )
    {: s:T0-EMIT:vreg :}
@@ -326,13 +322,13 @@ variable LEAVE-N
    d REG a REG MEM-AT SINK ENC-MOV-RM ;
 
 \ ---- calls -------------------------------------------------------------------
-: CALL ( n -- ) {: to:n :}
-   HERE-OFF T0-EMIT:CALL-KIND to CALL-ROW+
+: CALL ( n n -- ) {: to:n loc:n :}
+   HERE-OFF NEMIT:CALL to loc T0-EMIT:CALL-ROW+
    0 >REL SINK ENC-CALL-REL32 ;
 
-: TAIL ( n -- ) {: to:n :}
+: TAIL ( n n -- ) {: to:n loc:n :}
    UNFRAME
-   HERE-OFF T0-EMIT:TAIL-KIND to CALL-ROW+
+   HERE-OFF NEMIT:TAIL to loc T0-EMIT:CALL-ROW+
    0 >REL SINK ENC-JMP-REL32 ;
 
 : CALL-SELF ( -- )
@@ -563,11 +559,8 @@ variable LEAVE-N
    ['] QUOT-OPEN k T0-EMIT:QUOT-OPEN-XT !
    ['] RETURN k T0-EMIT:RETURN-XT !
    ['] CLOSE k T0-EMIT:CLOSE-XT !
-   ['] CODE$ k T0-EMIT:CODE$-XT !
-   ['] CALL-ROWS k T0-EMIT:CALL-ROWS-XT !
-   ['] CALL-ROW k T0-EMIT:CALL-ROW-XT !
-   ['] ADDR-ROWS k T0-EMIT:ADDR-ROWS-XT !
-   ['] ADDR-ROW k T0-EMIT:ADDR-ROW-XT !
+   ['] BYTES k T0-EMIT:BYTES-XT !
+   ['] PATCH k T0-EMIT:PATCH-XT !
    ['] LIT k T0-EMIT:LIT-XT !
    ['] ADDR-DATA k T0-EMIT:ADDR-DATA-XT !
    ['] ADDR-CODE k T0-EMIT:ADDR-CODE-XT !

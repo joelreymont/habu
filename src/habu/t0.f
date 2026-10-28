@@ -5,7 +5,8 @@
 \ the name, an optional `( ... )` signature it skips, then blank-separated
 \ tokens. It emits through the seam src/habu/t0-emit.f (package T0-EMIT) to the
 \ emitter selected there (src/habu/t0-x64.f for x86-64); the emitter leaves the
-\ finished body in its sink.
+\ finished body in its sink, and the caller seals it into NEMIT
+\ (T0-EMIT:SEAL or SEAL-UNPLACED).
 \
 \ A TOKEN IS, IN THIS ORDER: a local in scope; a string opener (`s" c" ." s\"
 \ c\" .\"`); a control keyword (if else then begin until while repeat again do
@@ -91,6 +92,7 @@ require src/compiler/native/checker-owner.f
 require src/compiler/native/dict.f
 require src/compiler/native/fetch.f
 require src/compiler/native/string.f
+require src/compiler/native/publish.f
 require src/habu/t0-emit.f
 
 package T0
@@ -704,14 +706,16 @@ variable TAILED
    b PUSH-CONST ;
 
 \ A call spills first; the last token of a body outside every structure leaves
-\ through the callee.
-: DO-CALL ( n -- ) {: to:n :}
+\ through the callee when the callee lies in the code region, as tier 1's
+\ (src/compiler/native/compiler.f LINKAGE): publication refuses a tail branch
+\ out of it. loc is the calling token's offset in the text.
+: DO-CALL ( n n -- ) {: to:n loc:n :}
    SPILL-ALL
-   CS-N @ 0= AT-END? and if
-      to T0-EMIT:TAIL
+   CS-N @ 0= AT-END? and to NPUB:IN-REGION? and if
+      to loc T0-EMIT:TAIL
       1 TAILED ! exit
    then
-   to T0-EMIT:CALL ;
+   to loc T0-EMIT:CALL ;
 
 \ ---- strings -------------------------------------------------------------------
 0 constant STR-NONE
@@ -773,12 +777,14 @@ DYNAMIC-BUFFER STR-BUF u8           \ a decoded or counted body before interning
 \ 1 does (src/compiler/native/elaborate.f TYPE-ENTRY).
 TRUSTED: TYPE-ENTRY ( -- n ) ['] type ;
 
-: DO-STRING ( n bool -- ) {: kind:n esc:bool :}
+\ loc is the text's offset in the body, the call's for `."`, as tier 1's
+\ (src/core/checker.f SPAY-B).
+: DO-STRING ( n bool n -- ) {: kind:n esc:bool loc:n :}
    esc kind STR-COUNTED = INTERN-BODY {: v:n u:n :}
    v PUSH-ADDR
    kind STR-COUNTED = if exit then
    u PUSH-CONST
-   kind STR-PRINT = if TYPE-ENTRY DO-CALL then ;
+   kind STR-PRINT = if TYPE-ENTRY loc DO-CALL then ;
 
 \ ---- quotations ------------------------------------------------------------------
 variable NQ                         \ units met so far, the definition's included
@@ -922,13 +928,14 @@ DYNAMIC-BUFFER QSTART n             \ where each quotation's body text starts
    v PUSH-CONST ;
 
 : COMPILE-TOKEN ( ptr u8 n -- ) {: a:ptr u:n :}
+   a TXT$ - {: loc:n :}
    a u FIND-LOCAL {: k:n :}
    k 0 >= if k DO-LOCAL exit then
    a u OPENER {: kind:n :}
-   kind STR-NONE <> if kind u 3 = DO-STRING exit then
+   kind STR-NONE <> if kind u 3 = loc u + 1+ DO-STRING exit then
    a u KEYWORD if exit then
    a u NDICT:CALL-TARGET {: to:n :}
-   to 0<> if to DO-CALL exit then
+   to 0<> if to loc DO-CALL exit then
    a u tok-imm? 0<> if a u IMM-TOKEN exit then
    a u NUMBER ;
 

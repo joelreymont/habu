@@ -27,7 +27,7 @@
 \ answer 0 instead of throwing.
 \
 \ THE SINK. A unit's body is emitted into RAW, at unit-relative offsets, and
-\ CLOSE copies it into OUT, the whole emission CODE$ reads, with the unit's
+\ CLOSE copies it into OUT, the whole emission BYTES reads, with the unit's
 \ prologue in front and its epilogue before every `ret`. Each byte-buffer is
 \ one src/lib/byte-buffer.f header; a word is appended little-endian.
 \
@@ -42,13 +42,17 @@
 \ epilogue there and moves every row of the unit by the prologue and by the
 \ epilogues inserted at or before it.
 \
-\ THE ROWS. A data address is the chain the JIT emits for one, recorded at its
-\ first word: inside the fixed DATA mapping three words, `movz lsl32`, `movk
-\ lsl16`, `movk` (habu2.f C-DATA-RAW, the shape src/habu/address-carrier.f
-\ CHAIN-SIZE reads back), and elsewhere the four-lane `movz`, `movk lsl16`,
-\ `movk lsl32`, `movk lsl48` (habu2.f C-ADDR-RAW), every lane emitted so the
-\ publisher can rewrite it in place. A quotation's address uses the four-lane
-\ form, which QUOT-OPEN rewrites with the unit's offset.
+\ THE ROWS. A unit's address sites wait in PEND at raw offsets until CLOSE has
+\ laid the unit out, and CLOSE files them into the seam (t0-emit.f THE ROWS)
+\ at their final offsets. A data address is the chain the JIT emits for one,
+\ recorded at its first word: inside the fixed DATA mapping three words,
+\ `movz lsl32`, `movk lsl16`, `movk` (habu2.f C-DATA-RAW, the shape
+\ src/habu/address-carrier.f CHAIN-SIZE reads back), and elsewhere the
+\ four-lane `movz`, `movk lsl16`, `movk lsl32`, `movk lsl48` (habu2.f
+\ C-ADDR-RAW), every lane emitted so the publisher can rewrite it in place. A
+\ quotation's address uses the four-lane form, which QUOT-OPEN rewrites with
+\ the unit's offset and PATCH with the placement added. There are no call rows
+\ yet.
 \
 \ THE RETURN STACK is RSP-CELL cells deep from the base at
 \ STACK-ABI:RETURN-BASE-CELL; slot d is base + 8d, as habu2.f J-TOR and J-RPOP
@@ -60,6 +64,7 @@ require src/habu/stack-abi.f
 require src/habu/address-carrier.f
 require src/arch/arm64/asm.f
 require src/compiler/target.f
+require src/compiler/native/emission.f
 require src/habu/t0-emit.f
 
 package T0-A64
@@ -112,25 +117,19 @@ C-GT T0-EMIT:CC-GT T0-EMIT:CC>N CONDS !
 ' ENC-LSRI T0-EMIT:SH-RIGHT T0-EMIT:SHIFTER>N SH-RI !
 
 create RAW BUF:HDR-BYTES allot        \ the open unit's body
-create OUT BUF:HDR-BYTES allot        \ the closed units, CODE$
+create OUT BUF:HDR-BYTES allot        \ the closed units, BYTES
 create EPI BUF:HDR-BYTES allot        \ the open unit's epilogue, built at CLOSE
 variable LIVE                         \ nonzero once the buffers hold storage
 variable FRAME-CELLS                  \ machine-stack cells this unit uses
 variable LINKED                       \ nonzero once this unit calls
 variable NEPI
-variable NCALL
-variable NADDR
-variable CALL0                        \ the open unit's first call row
-variable ADDR0                        \ and its first address row
+variable NPEND
 variable NUNIT                        \ units begun in this emission
 DYNAMIC-BUFFER EPI-AT n               \ the open unit's `ret` offsets, ascending
-DYNAMIC-BUFFER CALL-AT n              \ call row: first byte, kind, target
-DYNAMIC-BUFFER CALL-KIND-AT n
-DYNAMIC-BUFFER CALL-TO n
-DYNAMIC-BUFFER ADDR-AT n              \ address row: first byte, kind, value
-DYNAMIC-BUFFER ADDR-KIND-AT n
-DYNAMIC-BUFFER ADDR-TO n
-DYNAMIC-BUFFER UNIT-REF n             \ the address row that names each unit
+DYNAMIC-BUFFER PEND-AT n              \ the open unit's address rows: raw first
+DYNAMIC-BUFFER PEND-KIND n            \ word, kind, target
+DYNAMIC-BUFFER PEND-TO n
+DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
 
 4096 constant SINK-START-BYTES
 4095 constant ADJ-MAX                 \ the widest add/sub immediate
@@ -227,11 +226,11 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address row that names each unit
    add if SP SP lo ENC-ADDI buf W32+ exit then
    SP SP lo ENC-SUBI buf W32+ ;
 
-: ADDR-ROW+ ( n n n -- ) {: at:n kind:n to:n :}
-   NADDR @ {: k:n :}
-   k 1 + ADDR-AT-RESERVE  k 1 + ADDR-KIND-AT-RESERVE  k 1 + ADDR-TO-RESERVE
-   at k ADDR-AT !  kind k ADDR-KIND-AT !  to k ADDR-TO !
-   k 1 + NADDR ! ;
+: PEND+ ( n n n -- ) {: at:n kind:n to:n :}
+   NPEND @ {: k:n :}
+   k 1 + PEND-AT-RESERVE  k 1 + PEND-KIND-RESERVE  k 1 + PEND-TO-RESERVE
+   at k PEND-AT !  kind k PEND-KIND !  to k PEND-TO !
+   k 1 + NPEND ! ;
 
 \ The four-lane carrier: every half, low first.
 : CHAIN4 ( n n -- ) {: v:n r:n :}
@@ -263,9 +262,9 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address row that names each unit
 \ Begin the next unit, with an empty body and frame and no call.
 : UNIT-BEGIN ( -- )
    RAW BUF:CLEAR
+   OUT-OFF T0-EMIT:UNIT+
    NUNIT @ 1 + NUNIT !
-   0 FRAME-CELLS !  0 LINKED !  0 NEPI !
-   NCALL @ CALL0 !  NADDR @ ADDR0 ! ;
+   0 FRAME-CELLS !  0 LINKED !  0 NEPI !  0 NPEND ! ;
 
 \ How many epilogues CLOSE inserts at or before raw offset x.
 : SITES<= ( n -- n ) {: x:n :}
@@ -289,16 +288,14 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address row that names each unit
       1 LIVE !
    then
    OUT BUF:CLEAR
-   0 NCALL !  0 NADDR !  0 NUNIT !
+   0 NUNIT !
    UNIT-BEGIN ;
 
-\ Bind unit n's address row, in a closed unit of OUT, to the offset the unit
+\ Bind unit n's address site, in a closed unit of OUT, to the offset the unit
 \ begins at.
 : QUOT-OPEN ( n -- ) {: n:n :}
    n NUNIT @ <> if T0-EMIT:E-T0-UNIT throw then
-   n UNIT-REF @ {: row:n :}
-   OUT-OFF row ADDR-TO !
-   OUT BUF:SPAN$ drop row ADDR-AT @ +  OUT-OFF  ADDRESS-CARRIER:SET-CHAIN
+   OUT BUF:SPAN$ drop n UNIT-REF @ +  OUT-OFF  ADDRESS-CARRIER:SET-CHAIN
    UNIT-BEGIN ;
 
 : RETURN ( -- )
@@ -325,22 +322,31 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address row that names each unit
       i EPI-AT @
    loop
    HERE-OFF COPY
-   NCALL @ CALL0 @ ?do i CALL-AT @ base p e PLACED i CALL-AT ! loop
-   NADDR @ ADDR0 @ ?do i ADDR-AT @ base p e PLACED i ADDR-AT ! loop ;
+   NPEND @ 0 ?do
+      i PEND-AT @ base p e PLACED {: at:n :}
+      i PEND-KIND @ {: kind:n :}
+      i PEND-TO @ {: to:n :}
+      kind T0-EMIT:ADDR-QUOT-KIND = if to 1 + UNIT-REF-RESERVE  at to UNIT-REF ! then
+      at kind to T0-EMIT:ADDR-ROW+
+   loop ;
 
-: CODE$ ( -- ptr u8 n ) OUT BUF:SPAN$ BUF:BLEN>N ;
+: BYTES ( -- ptr u8 n ) OUT BUF:SPAN$ BUF:BLEN>N ;
 
-: CALL-ROWS ( -- n ) NCALL @ ;
-: CALL-ROW ( n -- n n n ) {: k:n :}  k CALL-AT @  k CALL-KIND-AT @  k CALL-TO @ ;
-: ADDR-ROWS ( -- n ) NADDR @ ;
-: ADDR-ROW ( n -- n n n ) {: k:n :}  k ADDR-AT @  k ADDR-KIND-AT @  k ADDR-TO @ ;
+\ Only quotation carriers: a call row is not emitted yet.
+: PATCH ( n -- ) {: place:n :}
+   T0-EMIT:ADDR-ROWS 0 ?do
+      i T0-EMIT:ADDR-ROW {: at:n kind:n to:n :}
+      kind T0-EMIT:ADDR-QUOT-KIND = if
+         OUT BUF:SPAN$ drop at +  place to T0-EMIT:UNIT +  ADDRESS-CARRIER:SET-CHAIN
+      then
+   loop ;
 
 \ ---- values ------------------------------------------------------------------
 : LIT ( n T0-EMIT:vreg -- ) REG LIT-R ;
 
 : ADDR-DATA ( n T0-EMIT:vreg -- )
    {: v:n d:T0-EMIT:vreg :}
-   HERE-OFF T0-EMIT:ADDR-DATA-KIND v ADDR-ROW+
+   HERE-OFF NEMIT:ADDR-DATA v PEND+
    v d REG DATA-CHAIN ;
 
 : PUSH ( T0-EMIT:vreg -- ) REG DSP CELL ENC-STRPOST W ;
@@ -475,11 +481,8 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address row that names each unit
    ['] QUOT-OPEN k T0-EMIT:QUOT-OPEN-XT !
    ['] RETURN k T0-EMIT:RETURN-XT !
    ['] CLOSE k T0-EMIT:CLOSE-XT !
-   ['] CODE$ k T0-EMIT:CODE$-XT !
-   ['] CALL-ROWS k T0-EMIT:CALL-ROWS-XT !
-   ['] CALL-ROW k T0-EMIT:CALL-ROW-XT !
-   ['] ADDR-ROWS k T0-EMIT:ADDR-ROWS-XT !
-   ['] ADDR-ROW k T0-EMIT:ADDR-ROW-XT !
+   ['] BYTES k T0-EMIT:BYTES-XT !
+   ['] PATCH k T0-EMIT:PATCH-XT !
    ['] LIT k T0-EMIT:LIT-XT !
    ['] ADDR-DATA k T0-EMIT:ADDR-DATA-XT !
    ['] PUSH k T0-EMIT:PUSH-XT !

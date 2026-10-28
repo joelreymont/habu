@@ -24,31 +24,39 @@
 \ another target's code or garbage. An operation called before any SELECT
 \ throws E-LAYOUT-BOUNDS (7122): no slot is selected.
 \
-\ THE SINK. OPEN begins an emission, emptying the emitter's sink; CLOSE ends
-\ a unit, and once the last unit is closed CODE$ reads the finished emission
-\ until the next OPEN begins the next.
+\ THE SINK. OPEN begins an emission, emptying the emitter's sink and the
+\ seam's rows; CLOSE ends a unit. Once the last unit is closed, SEAL or
+\ SEAL-UNPLACED hands the emission to NEMIT (src/compiler/native/emission.f),
+\ which then answers its bytes and rows until the caller runs NEMIT:CLEAR; the
+\ caller runs it before the next OPEN, on the accepting and the refusing path
+\ alike. NEMIT reads the bytes in place, so they stay the emitter's until the
+\ next OPEN.
 \
 \ THE UNITS. A definition and its quotations are one emission: unit 0 is the
 \ definition and starts at byte 0, and each quotation is a later unit, a
 \ function of its own that QUOT-OPEN begins where the previous unit's CLOSE
-\ left off. The publisher places CODE$ whole and finds each quotation through
-\ its ADDR-QUOT-KIND row. `recurse` in any unit calls byte 0, the definition,
-\ as both tiers run it.
+\ left off. The emitter files each unit's start with UNIT+, and sealing files
+\ one NEMIT function per unit. `recurse` in any unit calls byte 0, the
+\ definition, as both tiers run it, and files no row.
 \
-\ THE FRAME. Each unit has a frame on the machine stack that begins with no
-\ cells; SLOTS raises it to cover the slots the front end uses. The front end
-\ ends every unit with RETURN or TAIL, each of which drops the frame, and
-\ CLOSE then fixes the unit's frame size.
+\ THE ROWS are the seam's, filed by the emitter: CALL-ROW+ a call or tail site
+\ ( at kind target loc ), kind NEMIT:CALL or NEMIT:TAIL, loc the byte offset of
+\ the calling token in the body text; ADDR-ROW+ a code, data or quotation
+\ address site ( at kind target ), kind NEMIT:ADDR-DATA, NEMIT:ADDR-CODE or
+\ ADDR-QUOT-KIND. at is the instruction's first byte, from the emission's byte
+\ 0, and each unit's rows follow the previous unit's. A quotation's target is
+\ its unit number; the address its instruction holds is the unit's offset,
+\ which QUOT-OPEN writes. The emitter's PATCH reads the rows back.
 \
-\ THE ROWS. Every call or tail site and every code, data or quotation address
-\ site is recorded for the publisher to place and relocate: its offset, which
-\ is the instruction's first byte, its kind and its target. CALL-ROWS /
-\ CALL-ROW and ADDR-ROWS / ADDR-ROW read them as ( at kind target ). Offsets
-\ are from the emission's byte 0, and each unit's rows follow the previous
-\ unit's. A quotation's address (ADDR-QUOT-KIND) is a code address inside the
-\ emission: its target, and the address the instruction holds, is the
-\ quotation unit's offset, which QUOT-OPEN fills in; the publisher adds the
-\ placement.
+\ SEALING. SEAL n is the emission placed at address n: PATCH writes every call
+\ row's displacement to its target and every quotation address as n plus the
+\ unit's offset, as publication (src/compiler/native/publish.f) copies the
+\ bytes and only records relocations. SEAL-UNPLACED leaves the bytes as
+\ emitted, every call field zero and every quotation address its unit's
+\ offset, the unplaced form a shadow reads (src/arch/x86-64/passes.f
+\ SHADOW-ADDRS). Both open NEMIT for the selected architecture with no
+\ trailing return, file the units, the call rows with implementation 0 and the
+\ address rows with origin -1, a quotation's as NEMIT:ADDR-CODE, and seal it.
 \
 \ CONTROL. The front end drives the structured words and the counted-loop
 \ words in the order the source nests them; it refuses a structure out of
@@ -62,6 +70,7 @@
 
 require src/lib/type/deftype.f
 require src/compiler/target.f
+require src/compiler/native/emission.f
 
 package T0-EMIT
 public
@@ -107,12 +116,9 @@ DEFTYPE WIDTH      \ the width LOAD moves
    k 4 = if CC-GE exit then
    c ;
 
-\ The kinds of a call row and of an address row.
-0 constant CALL-KIND
-1 constant TAIL-KIND
-1 constant ADDR-DATA-KIND
-2 constant ADDR-CODE-KIND
-3 constant ADDR-QUOT-KIND
+\ The address row kind of a quotation, past every NEMIT address kind: sealing
+\ files it as NEMIT:ADDR-CODE.
+NEMIT:ADDR-KIND-MAX 1+ constant ADDR-QUOT-KIND
 
 \ ---- the architectures -------------------------------------------------------
 private
@@ -135,8 +141,52 @@ ARCHES TYPED-BUFFER INSTALLED bool
 \ The selected architecture's slot; -1, no slot, until SELECT.
 variable CUR
 -1 CUR !
+TYPED-VARIABLE CUR-ARCH CTARGET:arch  \ and the architecture itself
+
+\ ---- the rows ----------------------------------------------------------------
+variable N-UNITS
+DYNAMIC-BUFFER UNIT-AT n              \ where each unit starts
+variable N-CALLS
+DYNAMIC-BUFFER CALL-AT n              \ call row: first byte, kind, target, loc
+DYNAMIC-BUFFER CALL-KIND-AT n
+DYNAMIC-BUFFER CALL-TO n
+DYNAMIC-BUFFER CALL-LOC n
+variable N-ADDRS
+DYNAMIC-BUFFER ADDR-AT n              \ address row: first byte, kind, target
+DYNAMIC-BUFFER ADDR-KIND-AT n
+DYNAMIC-BUFFER ADDR-TO n
+
+: ROWS-CLEAR ( -- ) 0 N-UNITS !  0 N-CALLS !  0 N-ADDRS ! ;
 
 public
+
+\ File a unit's start, a call or tail site and an address site.
+: UNIT+ ( n -- ) {: at:n :}
+   N-UNITS @ {: k:n :}
+   k 1+ UNIT-AT-RESERVE
+   at k UNIT-AT !
+   k 1+ N-UNITS ! ;
+
+: CALL-ROW+ ( n n n n -- ) {: at:n kind:n to:n loc:n :}
+   N-CALLS @ {: k:n :}
+   k 1+ CALL-AT-RESERVE  k 1+ CALL-KIND-AT-RESERVE
+   k 1+ CALL-TO-RESERVE  k 1+ CALL-LOC-RESERVE
+   at k CALL-AT !  kind k CALL-KIND-AT !  to k CALL-TO !  loc k CALL-LOC !
+   k 1+ N-CALLS ! ;
+
+: ADDR-ROW+ ( n n n -- ) {: at:n kind:n to:n :}
+   N-ADDRS @ {: k:n :}
+   k 1+ ADDR-AT-RESERVE  k 1+ ADDR-KIND-AT-RESERVE  k 1+ ADDR-TO-RESERVE
+   at k ADDR-AT !  kind k ADDR-KIND-AT !  to k ADDR-TO !
+   k 1+ N-ADDRS ! ;
+
+\ The rows read back, for an emitter's PATCH: unit k's start, and call row and
+\ address row k as ( at kind target ).
+: UNIT ( n -- n ) UNIT-AT @ ;
+: CALL-ROWS ( -- n ) N-CALLS @ ;
+: CALL-ROW ( n -- n n n ) {: k:n :}  k CALL-AT @  k CALL-KIND-AT @  k CALL-TO @ ;
+: ADDR-ROWS ( -- n ) N-ADDRS @ ;
+: ADDR-ROW ( n -- n n n ) {: k:n :}  k ADDR-AT @  k ADDR-KIND-AT @  k ADDR-TO @ ;
 
 \ How many vregs the selected emitter has.
 ARCHES TYPED-BUFFER VREGS-N n
@@ -147,13 +197,21 @@ ARCHES TYPED-BUFFER OPEN-XT [ -- ]
 ARCHES TYPED-BUFFER QUOT-OPEN-XT [ n -- ]
 ARCHES TYPED-BUFFER RETURN-XT [ -- ]
 ARCHES TYPED-BUFFER CLOSE-XT [ -- ]
-ARCHES TYPED-BUFFER CODE$-XT [ -- ptr u8 n ]
-ARCHES TYPED-BUFFER CALL-ROWS-XT [ -- n ]
-ARCHES TYPED-BUFFER CALL-ROW-XT [ n -- n n n ]
-ARCHES TYPED-BUFFER ADDR-ROWS-XT [ -- n ]
-ARCHES TYPED-BUFFER ADDR-ROW-XT [ n -- n n n ]
+ARCHES TYPED-BUFFER BYTES-XT [ -- ptr u8 n ]
+ARCHES TYPED-BUFFER PATCH-XT [ n -- ]
 
-: OPEN ( -- ) CUR @ OPEN-XT @ execute ;
+private
+
+\ The finished emission, once the last unit is closed.
+: BYTES ( -- ptr u8 n ) CUR @ BYTES-XT @ execute ;
+
+\ Write every call row's displacement and every quotation address for the
+\ emission placed at address n.
+: PATCH ( n -- ) CUR @ PATCH-XT @ execute ;
+
+public
+
+: OPEN ( -- ) ROWS-CLEAR  CUR @ OPEN-XT @ execute ;
 
 \ Begin quotation unit n, which ADDR-QUOT named, and bind that address row to
 \ it. Units begin in order, so n is the count begun so far.
@@ -163,11 +221,6 @@ ARCHES TYPED-BUFFER ADDR-ROW-XT [ n -- n n n ]
 : RETURN ( -- ) CUR @ RETURN-XT @ execute ;
 
 : CLOSE ( -- ) CUR @ CLOSE-XT @ execute ;
-: CODE$ ( -- ptr u8 n ) CUR @ CODE$-XT @ execute ;
-: CALL-ROWS ( -- n ) CUR @ CALL-ROWS-XT @ execute ;
-: CALL-ROW ( n -- n n n ) CUR @ CALL-ROW-XT @ execute ;
-: ADDR-ROWS ( -- n ) CUR @ ADDR-ROWS-XT @ execute ;
-: ADDR-ROW ( n -- n n n ) CUR @ ADDR-ROW-XT @ execute ;
 
 \ ---- values ------------------------------------------------------------------
 ARCHES TYPED-BUFFER LIT-XT [ n vreg -- ]
@@ -251,12 +304,13 @@ ARCHES TYPED-BUFFER LOAD-XT [ vreg vreg width -- ]
 : LOAD ( vreg vreg width -- ) CUR @ LOAD-XT @ execute ;
 
 \ ---- calls -------------------------------------------------------------------
-ARCHES TYPED-BUFFER CALL-XT [ n -- ]
-ARCHES TYPED-BUFFER TAIL-XT [ n -- ]
+ARCHES TYPED-BUFFER CALL-XT [ n n -- ]
+ARCHES TYPED-BUFFER TAIL-XT [ n n -- ]
 ARCHES TYPED-BUFFER CALL-SELF-XT [ -- ]
 
-: CALL ( n -- ) CUR @ CALL-XT @ execute ;
-: TAIL ( n -- ) CUR @ TAIL-XT @ execute ;
+\ A call or tail branch to address to, for the token at body offset loc.
+: CALL ( n n -- ) CUR @ CALL-XT @ execute ;
+: TAIL ( n n -- ) CUR @ TAIL-XT @ execute ;
 
 \ `recurse`: a call of byte 0, the definition, from any unit.
 : CALL-SELF ( -- ) CUR @ CALL-SELF-XT @ execute ;
@@ -381,8 +435,43 @@ ARCHES TYPED-BUFFER LOOP-CLOSE-XT [ -- ]
 
 \ Make the architecture's emitter the one the operations run.
 : SELECT ( CTARGET:arch -- )
-   SLOT {: k:n :}
+   {: a:CTARGET:arch :}
+   a SLOT {: k:n :}
    k INSTALLED @ 0= if E-T0-TARGET throw then
-   k CUR ! ;
+   k CUR !
+   a CUR-ARCH ! ;
+
+\ ---- sealing -----------------------------------------------------------------
+private
+
+: NEMIT-KIND ( n -- n ) {: kind:n :}
+   kind ADDR-QUOT-KIND = if NEMIT:ADDR-CODE exit then
+   kind ;
+
+: NEMIT-OPEN ( -- ) BYTES 0 CUR-ARCH @ NEMIT:OPEN ;
+
+: NEMIT-ROWS ( -- )
+   N-UNITS @ 0 ?do i UNIT-AT @ NEMIT:FUNCTION+ loop
+   N-CALLS @ 0 ?do
+      i CALL-AT @  i CALL-KIND-AT @  i CALL-TO @  0  i CALL-LOC @  NEMIT:CALL-SITE+
+   loop
+   N-ADDRS @ 0 ?do
+      i ADDR-AT @  i ADDR-KIND-AT @ NEMIT-KIND  -1  NEMIT:ADDR-SITE+
+   loop
+   NEMIT:SEAL ;
+
+public
+
+\ Seal the closed emission into NEMIT, placed at address n.
+: SEAL ( n -- ) {: at:n :}
+   NEMIT-OPEN
+   at PATCH
+   at NEMIT:PLACE
+   NEMIT-ROWS ;
+
+\ Seal it with no placement, the bytes as emitted.
+: SEAL-UNPLACED ( -- )
+   NEMIT-OPEN
+   NEMIT-ROWS ;
 
 ;package
