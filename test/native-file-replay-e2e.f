@@ -30,11 +30,16 @@ DYNAMIC-BUFFER WARM-PRODUCT u8
    s" HABU_OUT" >LEN cache cacheu AT >LEN PROC-ENV+
    s" HABU_FIXPOINT_ENGINE" >LEN ENGINE-CANDIDATE:PATH$ >LEN PROC-ENV+
    EDIT @ if s" HABU_REVIEW_EDIT" >LEN s" 1" >LEN PROC-ENV+ then
+   DIAG @ if s" HABU_NATIVE_CACHE_DIAG" >LEN s" 1" >LEN PROC-ENV+ then
    PROC-ENV-INHERIT-MISSING
    s" --" ARG app appu AT ARG product productu AT ARG
    builder builderu S\" 1 set-tier\nAPP-BUILD:RUN-SAVED-REPORT\n" CAPTURE ;
 
 : BUILD ( -- n ) s" app.f" s" app-hb" s" cache" BUILD-IN ;
+
+: RUN-PRODUCT ( ptr u8 n -- n )
+   PROC-ARGV-ENV-RESET PROC-ENV-INHERIT-MISSING
+   AT s" " CAPTURE ;
 
 \ root/a and root/b hold the same non-empty bytes. AT shares one path buffer,
 \ so each file is read before the other is named.
@@ -597,6 +602,60 @@ variable REMOVED
    OUT$ S\" files reused 1\n" CONTAINS? TTRUE
    OUT$ s" restamp=restamp" CONTAINS? TTRUE ;
 
+\ rv-base.f's definer RV-DEF reads RV, then the file retires RV and declares a
+\ live RV of the same spelling. RD-DEF calls the defer RD, bound to impl, and
+\ the file then retires RD. rv-user.f runs RV-DEF and RD-DEF at top level, so
+\ its object depends on the retired RV's DATA and the retired RD's cell by key
+\ and occurrence. An unrelated edit to rv-base.f keeps rv-user.f reused, and
+\ the warm product is the cold one; rebinding the retired RD, or a new value
+\ stored in the retired RV, misses rv-user.f, while the live RV's value stays.
+: RV-BASE ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: value:ptr valueu:n impl:ptr implu:n tail:ptr tailu:n :}
+   0 INPUT-U !
+   S\" variable RV\n" INPUT CAP INPUT-U BUF-APPEND
+   value valueu INPUT CAP INPUT-U BUF-APPEND
+   S\"  RV !\n: RV-DEF ( -- ) create RV @ , ;\nundefine RV\nvariable RV\n5 RV !\n"
+      INPUT CAP INPUT-U BUF-APPEND
+   S\" defer RD ( -- n )\n: RD-SEVEN ( -- n ) 7 ;\n: RD-NINE ( -- n ) 9 ;\n: RD-SET ( -- ) ['] "
+      INPUT CAP INPUT-U BUF-APPEND
+   impl implu INPUT CAP INPUT-U BUF-APPEND
+   S\"  is RD ;\nRD-SET\n: RD-DEF ( -- ) create RD , ;\nundefine RD\n"
+      INPUT CAP INPUT-U BUF-APPEND
+   tail tailu INPUT CAP INPUT-U BUF-APPEND
+   s" rv-base.f" INPUT INPUT-U @ PUT ;
+
+: RV-REUSED ( -- bool )
+   0 INPUT-U !
+   s" native-file: reused path=" INPUT CAP INPUT-U BUF-APPEND
+   s" rv-user.f" AT INPUT CAP INPUT-U BUF-APPEND
+   ERR$ INPUT INPUT-U @ CONTAINS? ;
+
+: RETIRED-DATA-CASE ( -- )
+   s" a run reaching a retired variable's DATA reuses its file" T-LABEL
+   s" cache-retired-data" AT MAKE-DIR
+   s" 7" s" RD-SEVEN" s" " RV-BASE
+   s" rv-user.f" S\" RV-DEF RX\nRD-DEF RY\n" PUT
+   s" rv-app.f" S\" require rv-base.f\nrequire rv-user.f\n: MAIN ( -- ) RX @ . RY @ . RV @ . ;\n" PUT
+   -1 DIAG !
+   s" rv-app.f" s" rv-cold-hb" s" cache-retired-data" BUILD-IN SUCCESS
+   OUT$ S\" files reused 0\n" CONTAINS? TTRUE
+   s" rv-cold-hb" RUN-PRODUCT SUCCESS OUT$ S\" 7\n7\n5\n" CONTAINS? TTRUE
+   s" 7" s" RD-SEVEN" S\" \\ unrelated\n" RV-BASE
+   s" rv-app.f" s" rv-warm-hb" s" cache-retired-data" BUILD-IN SUCCESS
+   RV-REUSED TTRUE
+   s" rv-cold-hb" s" rv-warm-hb" SAME-FILE
+   s" a retired defer rebound misses the file whose run called it" T-LABEL
+   s" 7" s" RD-NINE" s" " RV-BASE
+   s" rv-app.f" s" rv-rebind-hb" s" cache-retired-data" BUILD-IN SUCCESS
+   RV-REUSED TFALSE
+   s" rv-rebind-hb" RUN-PRODUCT SUCCESS OUT$ S\" 7\n9\n5\n" CONTAINS? TTRUE
+   s" a new value in a retired variable misses the file whose run read it" T-LABEL
+   s" 9" s" RD-NINE" s" " RV-BASE
+   s" rv-app.f" s" rv-new-hb" s" cache-retired-data" BUILD-IN SUCCESS
+   ERR$ s" native-file: dependency miss: data changed" CONTAINS? TTRUE
+   s" rv-new-hb" RUN-PRODUCT SUCCESS OUT$ S\" 9\n9\n5\n" CONTAINS? TTRUE
+   0 DIAG ! ;
+
 : SESSION-CASES ( -- )
    SESSION-CLOSE-CASE FOREIGN-CASE ROOT-REGISTRY-CASE
    SYMBOL-CASE EVICTED-CHILD-CASE
@@ -604,7 +663,8 @@ variable REMOVED
    DEFER-EFFECT-CASE DEFER-RETIRED-CASE
    EMPTY-CHILD-CASE TRAILING-COLON-CASE
    QUALIFIED-GLOBAL-CASE NESTED-SCOPE-CASE
-   CHILD-CLOSES-PACKAGE-CASE CHILD-OPENS-PACKAGE-CASE PTR-RESTAMP-CASE ;
+   CHILD-CLOSES-PACKAGE-CASE CHILD-OPENS-PACKAGE-CASE PTR-RESTAMP-CASE
+   RETIRED-DATA-CASE ;
 
 public
 : MAIN ( -- )

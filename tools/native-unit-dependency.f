@@ -118,7 +118,7 @@ DYNAMIC-BUFFER RMARK n
 DYNAMIC-BUFFER RQUEUE n
 \ The DATA origins of the records below OW, two cells an entry sorted by
 \ origin then ordinal; per ordinal below OW the greatest origin indexed at or
-\ below it; and the records that had no code yet or were retired when indexed.
+\ below it; and the records that had no code yet when indexed.
 DYNAMIC-BUFFER OIDX n
 DYNAMIC-BUFFER OPMAX n
 DYNAMIC-BUFFER OPEND n
@@ -479,10 +479,10 @@ INSTALL-DEFAULT
 
 \ The origin index. A record enters it once, when a query first covers its
 \ ordinal, so a query reads only the entries next to its address. Its facts
-\ are then fixed: an origin can only vanish, by retirement, and each answer
-\ re-reads the live origin of the entries it returns. A record with no code
-\ yet or retired waits in OPEND until a query finds it settled. A dictionary
-\ cut drops what it removed (DICT-CUT).
+\ are then fixed, and retirement keeps an origin (NDICT:STAMP-ORIGIN); each
+\ answer re-reads the origin of the entries it returns. A record with no code
+\ yet waits in OPEND until a query finds it settled. A dictionary cut drops
+\ what it removed (DICT-CUT).
 $8000000000000000 constant ORIGIN-FLOOR
 
 : OI-O ( n -- n ) 2 * OIDX @ ;
@@ -516,8 +516,7 @@ $8000000000000000 constant ORIGIN-FLOOR
 : UNSETTLED? ( n -- bool )
    XREF-REC {: rec:ptr :}
    rec XREF-FOUND? 0= if true exit then
-   rec XREF-START 0= if true exit then
-   rec XREF-RETIRED? ;
+   rec XREF-START 0= ;
 
 : OI-ADD ( n -- )
    {: ord:n :}
@@ -823,7 +822,7 @@ private
    rec XREF-FLAGS {: flags:n :}
    flags DKIND:MASK and DKIND:VAL = if 2 exit then
    flags DNAME-CELL and 0<> flags DNAME-ALLOC and 0<> or
-      flags DKIND:MASK and DKIND:ADDR = or rec NDICT:REC-DEFER-CELL 0<> or if 1 exit then
+      flags DKIND:MASK and DKIND:ADDR = or rec NDICT:TRAILER-CELL 0<> or if 1 exit then
    flags DKIND:MASK and DKIND:CAST =  flags DNAME-REP and 0<>  and if 3 exit then
    ord PRIM-REACH 0<> if 3 exit then
    ord ENGINE-HELPER? if 3 exit then
@@ -1083,11 +1082,13 @@ private
    else false then
    dup 0= if s" executed closure changed" REMEMBER-MISS then ;
 
+\ A DATA row names its record by key and occurrence, so a record retired
+\ since keeps its row: retirement removes the name, not the storage.
 : CHECK-DATA ( ptr u8 n ptr u8 n -- bool )
    {: key:ptr keyu:n want:ptr wantu:n :}
-   key keyu CURRENT {: rec:ptr ord:n found:bool :}
+   key keyu NFILE-REF:KEY-RECORD {: rec:ptr ord:n :}
    rec drop
-   found if
+   ord 0 >= if
       false WALK-BEGIN
       ord DATA-HASH 0<> WOK @ and if HOUT DIGEST-BYTES want wantu STR= else false then
    else false then

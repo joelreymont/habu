@@ -1186,8 +1186,11 @@ public
 
 private
 
+\ A retired record keeps the storage its definer stamped, and code compiled
+\ before the `undefine` still reaches it; its name only is gone.
 : DATA-ORIGIN-RECORD ( ptr n n -- n bool ) {: rec:ptr ord:n :}
    ord 0 < ord ndict@ >= or if 0 false exit then
+   rec XREF-RETIRED? if rec NDICT:STAMP-ORIGIN exit then
    ord FIXED-READ {: kind:n value:n known:bool :}
    kind CHECKER-OWNER-ABI:RECORD-FIXED-ADDR = known and
       if value true exit then
