@@ -1,9 +1,11 @@
 ---
 title: Reach the DATA of retired records
-status: open
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-10-28T22:03:02.466948+02:00"
+closed-at: "2026-10-29T00:44:58.481224+02:00"
+close-reason: "Landed 3ea4c5dc 'Reach the DATA of retired records' (review ACCEPT, 5 items). Proofs at the merged tip: native-file-replay-e2e, native-file-frame-e2e, native-file-auto-e2e test: ok (user 40/99/160 s). POINTER-CELL? and REACH stay on REC-DEFER-CELL; SEED-KIND keeps TRAILER-CELL."
 ---
 
 Roots lane L7 (R4, census .jj-ws.noindex/carl-roots/.out/roots.md): 23 ordered-dependency files name a retired record as holder (FIRST-RECORD-XT 12, CHECKER-VERIFY-PKG-DEPTH 11; retired by undefine, storage kept). Origin reading by ordinal accepts a retired record; its DATA row resolves on warm install; spelling lookups keep refusing retired names. Brief .jj-ws.noindex/carl-l7/.out/brief-l7.md, workspace carl-l7; worker launches after the agent limit resets. Claim: carl.
