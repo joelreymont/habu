@@ -8,6 +8,20 @@
 \ finished body in its sink, and the caller seals it into NEMIT
 \ (T0-EMIT:SEAL or SEAL-UNPLACED).
 \
+\ T0:COMPILE is the runtime compiler entry: T0:INSTALL stores it in the cell
+\ the tier 1 `:` dispatches through (T0:DISPATCH!), with no fallback to tier 1.
+\ It compiles one pending definition through the step every native compiler
+\ shares (src/compiler/native/definition.f, NDEFINITION): stage the unit, scan
+\ and capture the body inside a recording unit whose observer keeps only the
+\ verdict, enforce the verdict, check the name and arity, walk the body, seal
+\ the emission at the next code slot and publish it; a refusal is reported and
+\ retracts the rows the definition recorded, and a tick operand no record
+\ answers is reported as the engine's tick reports it (E-UNDEFINED). The name
+\ is the body text's first token. T0 classifies no body for the host yet: each one's reason is
+\ UNKNOWN, and a quotation's arity is unknown (-1 -1), as tier 1 answers for
+\ one it has none for. A `does>` definer is E-T0-UNSUPPORTED, and a
+\ definition while a target shadow is open E-T0-SHADOW.
+\
 \ A TOKEN IS, IN THIS ORDER: a local in scope; a string opener (`s" c" ." s\"
 \ c\" .\"`); a control keyword (if else then begin until while repeat again do
 \ ?do loop +loop leave unloop i j case of endof endcase exit recurse >r r> r@
@@ -94,6 +108,7 @@ require src/compiler/native/dict.f
 require src/compiler/native/fetch.f
 require src/compiler/native/string.f
 require src/compiler/native/publish.f
+require src/compiler/native/definition.f
 require src/habu/t0-emit.f
 
 package T0
@@ -107,6 +122,7 @@ public
 -9602 constant E-T0-LITERAL      \ a string with no closing quote, a bad escape, or a counted one too long
 -9603 constant E-T0-IMMEDIATE    \ an immediate other than a parse-neutral one: UNSUPPORTED$
 -9604 constant E-T0-BINDS        \ the body binds other than the certificate's count of locals
+-9605 constant E-T0-SHADOW       \ a definition while a target shadow is open: no shadow path yet
 
 private
 
@@ -116,6 +132,7 @@ variable TXT-LEN
 variable POS
 PTR-VARIABLE BAD
 variable BAD-LEN
+variable MISSING                     \ nonzero: the refused token is a tick operand no record answers
 
 : TXT$ ( -- ptr u8 ) TXT @ ;
 
@@ -693,7 +710,10 @@ variable TAILED
 : DO-TICK ( -- )
    TOKEN {: a:ptr u:n :}
    a u NDICT:TICK-TARGET {: xt:n :}
-   xt 0= if a u UNSUPPORTED then
+   xt 0= if
+      a u NDICT:SCOPE-REC XREF-FOUND? 0= if -1 MISSING ! then
+      a u UNSUPPORTED
+   then
    ROOM ALLOC {: r:T0-EMIT:vreg :}
    xt r T0-EMIT:ADDR-CODE
    r PUSH-REG ;
@@ -999,4 +1019,89 @@ public
    BINDS @ 0= if exit then
    BINDS @ 0 NFETCH:BINDS <> if E-T0-BINDS throw then ;
 
+using NDEFINITION
+private
+
+\ ---- the runtime compiler ------------------------------------------------------
+\ The scan's recording unit latches the facts the capture and the call targets
+\ read. T0 keeps no tape: its observer drops every event and keeps only the
+\ verdict the scan reached, as tier 1's tape does (src/compiler/native/feed.f
+\ ON-DONE).
+variable OBSERVER-ID
+variable SCAN-VERDICT
+
+: OBSERVE ( -- )
+   OBSERVER-ID BYTE-VIEW NULL-PTR BYTE-VIEW -
+   [: 2drop ;] [: 2drop 2drop 2drop ;] [: SCAN-VERDICT ! 2drop ;]
+   CHECKER-OWNER:TAPE-INSTALL ;
+
+\ The definition's name, the body text's first token, read in place.
+: KEEP-NAME ( -- )
+   SRC$ TXT-LEN ! TXT !  0 POS !
+   TOKEN NAME-U ! NAME-A ! ;
+
+\ The scan's verdict stands over a hook's nonzero answer; a hook's zero answer
+\ stands over the scan's, as tier 1's END-RECORDED has it.
+: SCAN ( -- )
+   OBSERVE
+   0 SCAN-VERDICT !
+   CHECKER-OWNER:TAPE-ARM
+   [: CHECK-SOURCE M-VERDICT ! ;] [: CHECKER-OWNER:TAPE-DISARM ;] finally
+   M-VERDICT @ 0<> if SCAN-VERDICT @ M-VERDICT ! then
+   DECLARE-ROW ;
+
+: LOWER ( n -- ) {: before:n :}
+   before SOURCE-PUBLICATION-CK
+   RECORD-NAME-CK
+   KEEP-ARITY
+   SRC$ COMPILE-TEXT
+   NQ @ [: drop -1 -1 ;] HOST-ARITIES
+   NHOST:SOURCE-FREEZE
+   NPUB:NEXT-SLOT T0-EMIT:SEAL
+   PUBLISH-IT ;
+
+\ The compile window and the emission end on every exit.
+: SHUT ( -- )
+   0 CHECKER-OWNER:WRITE-WINDOW
+   NEMIT:CLEAR ;
+
+: RUN ( -- )
+   NSHADOW:OPEN? if E-T0-SHADOW throw then
+   M-DOES @ 0<> if s" does>" UNSUPPORTED then
+   ndict@ {: before:n :}
+   SCAN
+   VERDICT-CK
+   E-NCOMP-STATE CHECKER-OWNER:WRITE-WINDOW
+   before [: LOWER ;] [: SHUT ;] finally ;
+
+\ The token a refusal names: T0's own for its refusals, else none.
+: REFUSED$ ( n -- ptr u8 n ) {: rc:n :}
+   rc E-T0-UNSUPPORTED = rc E-T0-IMMEDIATE = or if UNSUPPORTED$ exit then
+   NULL-PTR 0 ;
+
+public
+
+\ Compile the pending definition whose body text the engine captured.
+: COMPILE ( ptr u8 n -- )
+   IDLE-CK
+   false STAGE-UNIT
+   KEEP-NAME
+   NHOST:UNKNOWN 0 NHOST:SOURCE-REFUSE
+   CHECKER-OWNER:RESET-REPORT
+   0 MISSING !
+   1 M-OPEN !
+   [: RUN ;] catch {: rc:n :}
+   0 M-OPEN !
+   NFETCH:RELEASE
+   NHOST:SOURCE-ABANDON
+   0 rc  rc E-T0-UNSUPPORTED = MISSING @ 0<> and  rc REFUSED$ SETTLE-UNIT ;
+
+\ Store a compile entry in NCOMP-DISPATCH:XT-CELL, the image-ABI cell the
+\ tier 1 `:` dispatches through.
+: DISPATCH! ( [ ptr u8 n -- ] -- )
+   data-base NCOMP-DISPATCH:XT-CELL + xt! ;
+
+: INSTALL ( -- ) ['] COMPILE DISPATCH! ;
+
+;using
 ;package

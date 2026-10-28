@@ -81,3 +81,10 @@ SUITE compiler-tier0-join
 SUITE compiler-tier0-string-literals
    test/compiler/tier0-string-literals.f
 ;SUITE
+
+\ T0 installed as the runtime compiler: the definitions the suite loads run as
+\ arm64 code, so the row needs an ARM host, and its own process, since the
+\ dispatch it replaces is not restored.
+SUITE t0-install
+   test/t0-install.f
+;SUITE

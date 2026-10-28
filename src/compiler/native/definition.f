@@ -43,6 +43,7 @@ public
 0 CWORK-VARIABLE M-DOES-FUN n                  \ hidden clause function ordinal
 0 CWORK-VARIABLE M-DOES-OFF n                  \ published clause's byte offset, or zero
 0 CWORK-VARIABLE M-FIXED-VAL n                  \ the pending definer's value or dispatch cell
+0 CWORK-VARIABLE M-OPEN n                      \ a compilation is running
 
 \ The definition's name is its source spelling, whole, which stays put until the
 \ next definition is recorded: no copy that a longer name could run past.
@@ -79,6 +80,11 @@ public
 
 : NAME$ ( -- ptr u8 n )
    NAME-A @ NAME-U @ ;
+
+\ A compiler entry reached while a compilation runs would stage one definition
+\ over another's state.
+: IDLE-CK ( -- )
+   M-OPEN @ 0<> if E-NCOMP-STATE throw then ;
 
 private
 

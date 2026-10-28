@@ -128,7 +128,6 @@ align
 0 CWORK-VARIABLE PRIOR-DEAD bool
 0 CWORK-VARIABLE PRIOR-CAST bool
 0 CWORK-VARIABLE PRIOR-CALLABLE n
-0 CWORK-VARIABLE M-OPEN n                      \ a compilation is running
 -1 CWORK-VARIABLE M-CB-SLOT n                   \ -1 outside a callback accessor definition
 0 CWORK-VARIABLE M-CB-THUNK n
 0 CWORK-VARIABLE M-CB-ENTRY n
@@ -721,9 +720,6 @@ INSTALL-FORGET
 
 : LENGTH-CK ( -- )
    SRC$ nip TEXT-CAP > if E-NCOMP-TEXT throw then ;
-
-: IDLE-CK ( -- )
-   M-OPEN @ 0<> if E-NCOMP-STATE throw then ;
 
 : RUN ( -- )
    LENGTH-CK
