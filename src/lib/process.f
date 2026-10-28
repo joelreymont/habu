@@ -11,14 +11,21 @@
 \ child early walks the process table through src/lib/process-tree.f, whose
 \ storage is process-wide and taken one walk at a time.
 \
-\ SPAWN. A spawned child leads a process group of its own before it execs:
-\ macOS spawns with POSIX_SPAWN_SETPGROUP, and on Linux the child calls
-\ setpgid(0,0) and the parent answers a pid only once a close-on-exec pipe
-\ reports the exec or its failure. A parent-side setpgid would race; the
-\ gate pool's reaper relies on this. A negative fd leaves that stream as it
-\ is, and a stdio fd stays on 0, 1 or 2 even when marked close-on-exec. Mark
-\ parent-only pipe and pty ends close-on-exec, or a child holds a writer and
-\ the parent never sees EOF. src/lib/fd-lock.f orders that mark against spawns.
+\ SPAWN. Every RAW spawn word here and in process-argv.f, process-env.f and
+\ process-cwd.f builds a PROCESS request (src/lib/spawn.f) in a PROC-RAW body,
+\ spawns it through PROCESS:SPAWN under catch and answers the pid, or the
+\ negated errno of a refused spawn. A spawned child leads a process group of
+\ its own before it execs: macOS spawns with POSIX_SPAWN_SETPGROUP, and on
+\ Linux the child calls setpgid(0,0) and the parent answers a pid only once a
+\ close-on-exec pipe reports the exec or its failure. A parent-side setpgid
+\ would race; the gate pool's reaper relies on this. The child's fds 0, 1 and
+\ 2 are the fds a RAW word names, a negative one inheriting the parent's fd of
+\ that number while it is open, close-on-exec or not: a spawned child gets
+\ only its map. A forked child (src/lib/process-fork.f) copies every
+\ descriptor, marked or not, and one that execs keeps those not marked
+\ close-on-exec, so mark parent-only pipe and pty ends close-on-exec, or that
+\ child holds a writer and the parent never sees EOF. src/lib/fd-lock.f orders
+\ the mark against forks.
 
 s" src/lib/errors.f" required
 s" src/lib/memory.f" required                \ MEM-MAX-N bounds PROC-DEADLINE-AT
@@ -148,7 +155,8 @@ PROC-RD-OFF      1 cells + constant PROC-STATUS-OFF
 PROC-STATUS-OFF  1 cells + constant PROC-TIMED-OUT-OFF
 PROC-TIMED-OUT-OFF 1 cells + constant PROC-REAP-PID-OFF
 PROC-REAP-PID-OFF 1 cells + constant PROC-CANCEL-FD-OFF
-PROC-CANCEL-FD-OFF 1 cells + constant PROC-STORAGE-BYTES
+PROC-CANCEL-FD-OFF 1 cells + constant PROC-RAW-PID-OFF
+PROC-RAW-PID-OFF 1 cells + constant PROC-STORAGE-BYTES
 
 TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and PROC-STORAGE-BYTES TASK:+USER PROC-STORAGE drop
 
@@ -189,11 +197,53 @@ FUNCTION: PROC-WAITPID-CALL waitpid ( n ptr u8 n -- i32 )
    1 4 WRITES-BYTES                    \ wait status is a C int, not a cell
 ;FUNCTION
 
-: PROC-SPAWN-RAW-HELD ( ptr u8 fd fd fd -- pid ) {: pathz:ptr infd outfd errfd :}
-   pathz infd FD>N outfd FD>N errfd FD>N spawn-io >PID ;
+\ The bodies the RAW spawn words run under catch. Each builds a SPAWN request
+\ from a RAW word's arguments, spawns it and leaves the pid in the PROC row; the
+\ RAW word answers it through ANSWER. A negative stdio fd leaves that slot
+\ inheriting the parent's fd. process-argv.f, process-env.f and process-cwd.f
+\ add the bodies for their shapes.
+package PROC-RAW
+private
+
+CAST: >ROWS ( n -- ptr ptr u8 )
+
+\ A RAW word's argv or envp, as the rows SPAWN copies.
+: ROWS ( ptr a -- ptr ptr u8 ) NULL-PTR - >ROWS ;
+
+: PID ( -- ptr n ) PROC-ROW PROC-RAW-PID-OFF + CELL-VIEW ;
+
+: FD ( SPAWN:request n fd -- SPAWN:request ) {: child parent :}
+   parent FD>N 0 >= if child >FD parent SPAWN:FD then ;
+
+: STDIO ( SPAWN:request fd fd fd -- SPAWN:request ) {: infd outfd errfd :}
+   0 infd FD
+   1 outfd FD
+   2 errfd FD ;
+
+: LAUNCH ( SPAWN:request fd fd fd -- )
+   STDIO PROCESS:SPAWN PID>N PID ! ;
+
+public
+
+\ The pid of a body's catch code 0, the negated errno of a refused spawn; any
+\ other code goes on.
+: ANSWER ( n -- pid ) {: rc :}
+   rc 0= if PID @ >PID exit then
+   rc E-PROC-SPAWN <> if rc throw then
+   SPAWN:ERRNO negate >PID ;
+
+: SPAWN ( ptr u8 fd fd fd -- ptr u8 fd fd fd )
+   {: pathz:ptr infd outfd errfd :}
+   pathz dup ZLEN SPAWN:NEW
+   infd outfd errfd LAUNCH
+   pathz infd outfd errfd ;
+
+;package
 
 : PROC-SPAWN-RAW ( ptr u8 fd fd fd -- pid )
-   [: PROC-SPAWN-RAW-HELD ;] FD-LOCK:WITH ;
+   [: PROC-RAW:SPAWN ;] catch {: rc :}
+   drop drop drop drop
+   rc PROC-RAW:ANSWER ;
 
 : PROC-KILL-RAW ( pid n -- rc ) {: pid sig :}
    pid PID>N sig kill >RC ;

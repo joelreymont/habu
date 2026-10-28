@@ -7,6 +7,8 @@
 \ command contexts) calls SPAWN-ARGV-ENV-CWD-STDIN-CAPTURE-CORE instead and
 \ touches nothing here.
 \
+\ SPAWN. src/lib/process.f "SPAWN" states how these words spawn.
+\
 \ The module lives in `package PROC-CWD`. External callers use the qualified public
 \ API (PROC-CWD:SPAWN-ARGV-ENV-CWD-RAW, PROC-CWD:CWDZ, PROC-CWD:ARGV-ENV-CWD-RESET,
 \ PROC-CWD:SPAWN-ARGV-ENV-CWD-IO, PROC-CWD:SPAWN-ARGV-ENV-CWD-STDIN-CAPTURE-CORE,
@@ -18,9 +20,22 @@ require src/lib/errors.f
 require src/lib/string.f
 require src/lib/fs.f
 require src/lib/process.f
-require src/lib/fd-lock.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
+
+package PROC-RAW
+public
+
+: SPAWN-ARGV-ENV-CWD ( ptr u8 ptr a ptr a ptr u8 fd fd fd -- ptr u8 ptr a ptr a ptr u8 fd fd fd )
+   {: pathz:ptr argv:ptr envp:ptr cwdz:ptr infd outfd errfd :}
+   pathz dup ZLEN SPAWN:NEW
+   argv ROWS SPAWN:ARGV
+   envp ROWS SPAWN:ENV
+   cwdz dup ZLEN SPAWN:CWD
+   infd outfd errfd LAUNCH
+   pathz argv envp cwdz infd outfd errfd ;
+
+;package
 
 package PROC-CWD
 
@@ -28,14 +43,12 @@ private
 
 create PROC-CWDZ-BUF PROC-PATHZ-CAP allot
 
-: SPAWN-ARGV-ENV-CWD-RAW-HELD ( ptr u8 ptr a ptr a ptr u8 fd fd fd -- pid )
-   {: pathz:ptr argv:ptr envp:ptr cwdz:ptr infd outfd errfd :}
-   pathz argv envp cwdz infd FD>N outfd FD>N errfd FD>N spawn-argv-env-cwd-io >PID ;
-
 public
 
 : SPAWN-ARGV-ENV-CWD-RAW ( ptr u8 ptr a ptr a ptr u8 fd fd fd -- pid )
-   [: SPAWN-ARGV-ENV-CWD-RAW-HELD ;] FD-LOCK:WITH ;
+   [: PROC-RAW:SPAWN-ARGV-ENV-CWD ;] catch {: rc :}
+   drop drop drop drop drop drop drop
+   rc PROC-RAW:ANSWER ;
 
 : CWDZ ( ptr u8 len -- ptr u8 ) {: a:ptr u:len :}
    u LEN>N 0 <= if E-PROC-OUTPUT throw then

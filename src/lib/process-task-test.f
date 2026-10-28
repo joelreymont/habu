@@ -452,12 +452,11 @@ TASK:MIN-STACK TASK:TASK PTT-GROW-TB
 
 \ ---- descriptors a concurrent spawn must not inherit ------------------------
 \ Three tasks capture /usr/bin/true beside one whose shells leave a five-second
-\ sleep behind and one that lists /dev/fd. Failure cases: a capture's pipe or
-\ /dev/null that another task's spawn inherits before it is marked
-\ close-on-exec reaches the sleep, which holds a capture's write end past its
-\ deadline (a timeout), and shows in a listing as a descriptor the quiet
-\ baseline lacks (a leak). Detection is probabilistic: without FD-LOCK:WITH
-\ (src/lib/fd-lock.f) about one capture in three hundred times out.
+\ sleep behind and one that lists /dev/fd. A spawned child gets exactly its
+\ map, fds 0, 1 and 2. Failure cases: a spawn that also passes another task's
+\ capture pipe or /dev/null reaches the sleep, which holds a capture's write
+\ end past its deadline (a timeout), and shows in a listing as a descriptor
+\ the quiet baseline lacks (a leak).
 100 constant PTT-INHERIT-CAPTURES        \ captures per capture task
 3000 constant PTT-INHERIT-MS             \ one capture's deadline, inside the sleep's 5 s
 256 constant PTT-FD-BASE-CAP

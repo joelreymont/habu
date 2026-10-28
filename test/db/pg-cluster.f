@@ -67,6 +67,11 @@
 \ makes the socket directory under its TMPDIR beside the cluster's, as
 \ src/lib/fs-mutate-test.f FMT-ROOT! does for its socket.
 \
+\ WITH PG_HOLD_FIFO SET, a test watches this row's tree (test/db/pg-kill-test.f).
+\ This process's first act opens the write end of the FIFO it names
+\ (src/lib/test/fifo.f) and maps it into initdb and the postmaster, whose
+\ forks inherit it; the case engine opens it by path itself.
+\
 \ initdb and postgres on PATH are a gate requirement on every host
 \ (docs/bootstrap.md "Requirements"). A missing one ends the row naming it,
 \ never a skip.
@@ -81,6 +86,7 @@ require src/lib/process-env.f
 require src/lib/process-tree.f
 require src/lib/signal.f
 require src/lib/engine-candidate.f
+require src/lib/test/fifo.f
 
 package PG-CLUSTER
 
@@ -125,6 +131,7 @@ variable WATCH                  \ readable once the postmaster has exited
 variable RUNNING                \ the running case engine's pid until it is reaped
 variable CASE-WATCH             \ readable once that engine has exited
 variable CASE-MS                \ one deadline for each case file
+variable HOLD                   \ PG_HOLD_FIFO's write end, NO-FD without one
 TYPED-VARIABLE UP bool          \ the server said it was ready
 TYPED-VARIABLE STOPPED bool     \ the server's stop ended it with exit 0
 TYPED-VARIABLE FAILED bool      \ a step has failed
@@ -135,6 +142,7 @@ NO-PID SERVER !
 NO-FD WATCH !
 NO-PID RUNNING !
 NO-FD CASE-WATCH !
+NO-FD HOLD !
 false UP !
 false STOPPED !
 false FAILED !
@@ -302,7 +310,7 @@ DEFAULT-CASE-MS CASE-MS !
    OPEN-NULL LOG$ OPEN-LOG {: in:n log:n :}
    in >FD FD-CLOEXEC!
    log >FD FD-CLOEXEC!
-   POSTGRES$ >LEN in >FD log >FD log >FD PROC-SPAWN-ARGV-ENV-IO PID>N SERVER !
+   POSTGRES$ >LEN in >FD log >FD log >FD HOLD @ >FD TEST-FIFO:SPAWN PID>N SERVER !
    in close
    log close
    SERVER @ proc-watch-open WATCH !
@@ -394,7 +402,7 @@ DEFAULT-CASE-MS CASE-MS !
    OPEN-NULL INITDB-LOG$ OPEN-LOG {: in:n log:n :}
    in >FD FD-CLOEXEC!
    log >FD FD-CLOEXEC!
-   INITDB$ >LEN in >FD log >FD log >FD PROC-SPAWN-ARGV-ENV-IO PID>N INITDB-PID !
+   INITDB$ >LEN in >FD log >FD log >FD HOLD @ >FD TEST-FIFO:SPAWN PID>N INITDB-PID !
    in close
    log close
    INITDB-PID @ proc-watch-open INITDB-WATCH ! ;
@@ -545,10 +553,15 @@ DEFAULT-CASE-MS CASE-MS !
    CASE-KILL
    TOOL-MS STOP ;
 
+: OPEN-HOLD ( -- )
+   s" PG_HOLD_FIFO" GETENV nip 0= if exit then
+   s" PG_HOLD_FIFO" TEST-FIFO:WRITER FD>N HOLD ! ;
+
 \ The log is shown for a server that never came up, once STOP has ended it:
 \ SHOW-LOG's READ-ALL throws E-FS-CAPACITY on a log over CAPTURE-CAP, which a
 \ server that ran the cases may write.
 : MAIN ( -- )
+   OPEN-HOLD
    READ-CASE-MS
    SIGNAL:CATCH-STOPS
    s" initdb" INITDB TOOL INITDB-U !

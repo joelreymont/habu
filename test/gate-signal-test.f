@@ -14,12 +14,16 @@
 \  1. AN ORPHANED GRANDCHILD. Every spawned child leads its own process group
 \     (src/lib/process-tree.f), so killing a row's group ends the row and
 \     nothing the row spawned: its children go on building, reparented to init.
-\     Asserted: every process under the root inherits the write end of one
-\     pipe, and the read end reports end of file only when the last is gone.
+\     Asserted: the row and its leaf open the write end of a FIFO this test
+\     makes (src/lib/test/fifo.f) by the path GATE_SIGNAL_FIFO names, the leaf
+\     maps it into each process it spawns, and the read end reports end of
+\     file only when the last holder is gone. The root itself, this test's own
+\     child, and the pool in the deadline case hold no write end: the root's
+\     wait status and the pool's red row are the evidence they ended it.
 \  2. A ROW MID-SPAWN. A child that appears after the row's descendants were
 \     listed, or after its parent was killed, is nobody's to end.
 \     Asserted: the leaf is inside its burst when the signal lands, and one
-\     writer that got away holds the pipe open.
+\     writer that got away holds the FIFO open.
 \  3. A SIGNAL DURING CLEANUP. A root that is ending its rows or removing its
 \     tree and takes the default action for the next signal dies half way.
 \     Asserted: the second-signal case below.
@@ -47,12 +51,18 @@
 \     its children the default action for all three before it starts a root.
 \
 \ THIS TEST'S OWN WAITS ARE NO ASSERTION RESULT. A wait for the reports, for
-\ the root to end, for end of file on the pipe or for the reported engines to go
+\ the root to end, for end of file on the FIFO or for the reported engines to go
 \ is named on stdout and thrown as E-PROC-TIMEOUT when its own deadline runs out
 \ (src/lib/test/wait.f), so the row ends as a timeout and not as a FAIL. End of
 \ file before both reports, a short report or a failed read of them is a failed
 \ report, and fails the case. A failed poll, a descriptor the poll reports
 \ broken, or a failed read in the wait for end of file throws E-PROC-OUTPUT.
+\ On macOS, whose poll never reports a FIFO's end of file, a reporter that dies
+\ before its report is the report wait's timeout instead.
+\
+\ THE REPORTS COME BEFORE END OF FILE MEANS ANYTHING. A FIFO no writer has
+\ opened yet reads end of file too, so a case judges end of file only after
+\ both reports have shown the row and its leaf hold the write end.
 \
 \ A FAILED CASE LEAVES NOTHING EITHER, but for one case. Each case ends through
 \ SIGNAL-END or DEADLINE-END whatever it asserted or threw: the root is killed
@@ -63,7 +73,7 @@
 \ unless the kernel resumes it (test/gate-pool.f header), and a writer it does
 \ not resume - the helper's, whose group was orphaned already - outlives the
 \ wait and is left. The scratch is under this process's runner root, which its
-\ registered cleanup removes. A passing case costs none of it: the pipe is
+\ registered cleanup removes. A passing case costs none of it: the FIFO is
 \ already at end of file. When that wait runs out, the case still closes its
 \ descriptors and SIGNAL-END still clears the scratch.
 
@@ -84,6 +94,7 @@ require src/lib/process-fork.f
 require src/lib/signal.f
 require src/lib/engine-candidate.f
 require src/lib/test/runner.f
+require src/lib/test/fifo.f
 require test/gate-pool.f
 
 package GATE-SIGNAL-TEST
@@ -98,21 +109,20 @@ package GATE-SIGNAL-TEST
 10 constant SETTLE-MS
 2 constant REPORT-N                  \ the row's pid, then its leaf's
 REPORT-N cells constant REPORT-BYTES
-64 constant SINK-CAP
 $8000 constant LOG-CAP
 
 create REPORTS REPORT-BYTES allot
 create STARTS REPORT-BYTES allot     \ the start of each reported process, 0 for none
-create SINK SINK-CAP allot
 create LOG-TEXT LOG-CAP allot
 create PAUSE-PFD 8 allot
 create TMP FS-PATH-CAP allot
 create LOG FS-PATH-CAP allot
 create NOHUP FS-PATH-CAP allot
+create FIFO FS-PATH-CAP allot
 
 variable REPORT-U                    \ bytes of REPORTS read so far
-variable PIPE-RD
-variable PIPE-WR
+variable FIFO-U
+variable FIFO-RD
 variable ROOT-PID
 variable ROOT-WATCH
 variable CASE-SIG
@@ -121,15 +131,14 @@ variable LOG-U
 variable ENTRY-N
 
 TYPED-VARIABLE ROOT-LIVE bool        \ started and not yet reaped
-TYPED-VARIABLE PIPE-DONE bool        \ the read end has reported end of file
+TYPED-VARIABLE FIFO-DONE bool        \ the read end has reported end of file
 TYPED-VARIABLE CASE-AGAIN bool       \ the case sends its signal twice
 TYPED-VARIABLE CASE-NOHUP bool       \ the root is started under nohup and sent SIGHUP first
 false ROOT-LIVE !
-true PIPE-DONE !
+true FIFO-DONE !
 false CASE-AGAIN !
 false CASE-NOHUP !
-PROC-NO-FD PIPE-RD !
-PROC-NO-FD PIPE-WR !
+PROC-NO-FD FIFO-RD !
 PROC-NO-FD ROOT-WATCH !
 
 : TMP$ ( -- ptr u8 n )    TMP TMP-U @ ;
@@ -168,18 +177,20 @@ PROC-NO-FD ROOT-WATCH !
    TMP$ REMOVE-TREE
    TMP$ MAKE-DIRS ;
 
-\ ---- the report pipe --------------------------------------------------------
+\ ---- the report FIFO --------------------------------------------------------
 
-\ The write end stays inheritable: it is what every process under the subject
-\ holds. The read end is this process's alone.
-: OPEN-PIPE ( -- )
-   PIPE-PAIR {: r:fd w:fd :}
-   r FD-CLOEXEC!
-   r FD>N PIPE-RD !
-   w FD>N PIPE-WR !
+: FIFO$ ( -- ptr u8 n )
+   FIFO FIFO-U @ ;
+
+\ A new FIFO for the case, its read end open before the row starts, so the
+\ row's open of the write end does not wait.
+: OPEN-FIFO ( -- )
+   GT-ROOT FIFO TEST-FIFO:MAKE {: u:n r:fd :}
+   u FIFO-U !
+   r FD>N FIFO-RD !
    0 REPORT-U !
    REPORT-N 0 ?do 0 i cells STARTS + ! loop
-   false PIPE-DONE ! ;
+   false FIFO-DONE ! ;
 
 : FD-TEXT$ ( n -- ptr u8 n )
    SB-RESET FMT:SB-INT SB$ ;
@@ -258,7 +269,7 @@ variable STAT-PATH-U
    STARTED-LINUX ;
 
 : REPORT-ENV ( -- )
-   s" GATE_SIGNAL_FD" >LEN PIPE-WR @ FD-TEXT$ >LEN PROC-ENV+ ;
+   s" GATE_SIGNAL_FIFO" >LEN FIFO$ >LEN PROC-ENV+ ;
 
 \ TRUE once fd has bytes to read or has reached end of file, FALSE when ms ran
 \ out first. A failed poll, or a descriptor the poll reports broken (POLLERR or
@@ -277,10 +288,10 @@ variable STAT-PATH-U
 : REPORTS-READ? ( -- bool )
    READY-MS >MS PROC-DEADLINE-AT {: deadline:n :}
    begin REPORT-U @ REPORT-BYTES < while
-      PIPE-RD @ deadline PROC-LEFT-MS MS>N READY-WITHIN? 0= if
+      FIFO-RD @ deadline PROC-LEFT-MS MS>N READY-WITHIN? 0= if
          s" gate-signal-test REPORTS-READ" TEST-WAIT:EXPIRED
       then
-      PIPE-RD @ REPORTS REPORT-U @ + REPORT-BYTES REPORT-U @ - read {: got:n :}
+      FIFO-RD @ REPORTS REPORT-U @ + REPORT-BYTES REPORT-U @ - read {: got:n :}
       got 0 <= if false exit then
       REPORT-U @ got + REPORT-U !
    repeat
@@ -288,17 +299,15 @@ variable STAT-PATH-U
 
 \ End of file within ms: nothing under the subject holds the write end. FALSE
 \ when ms ran out first, which the zero-time probe of an ignored signal
-\ expects. A failed read throws E-PROC-OUTPUT, as a failed poll does.
+\ expects. A failed read or poll throws E-PROC-OUTPUT.
 : GONE-WITHIN? ( n -- bool )
    {: ms:n :}
-   PIPE-DONE @ if true exit then
-   ms >MS PROC-DEADLINE-AT {: deadline:n :}
-   begin
-      PIPE-RD @ deadline PROC-LEFT-MS MS>N READY-WITHIN? 0= if false exit then
-      PIPE-RD @ SINK SINK-CAP read {: got:n :}
-      got 0= if true PIPE-DONE ! true exit then
-      got 0 < if E-PROC-OUTPUT throw then
-   again ;
+   FIFO-DONE @ if true exit then
+   FIFO-RD @ >FD ms TEST-FIFO:EOF-WITHIN {: eof:n :}
+   eof 0 < if E-PROC-OUTPUT throw then
+   eof 0= if false exit then
+   true FIFO-DONE !
+   true ;
 
 \ Returns at end of file within ms. ms running out first is this wait's own
 \ deadline, named and thrown as a timeout; a failed poll or read is no
@@ -352,7 +361,7 @@ variable STAT-PATH-U
    EXPIRE-MS GONE-WITHIN ;
 
 \ The two claims that outlive the subject, asked of whichever process ended the
-\ row: nothing holds the pipe, and the engines that reported are gone. Each is
+\ row: nothing holds the FIFO, and the engines that reported are gone. Each is
 \ a wait, and its deadline running out is a timeout.
 : EXPECT-GONE ( -- )
    GONE-MS GONE-WITHIN
@@ -391,7 +400,7 @@ variable STAT-PATH-U
 \ The watch is opened while the root is alive: macOS cannot register a process
 \ that has already exited.
 : ROOT-START ( -- )
-   OPEN-PIPE
+   OPEN-FIFO
    ROOT-ARGV {: exe:ptr exeu:n :}
    s" TMPDIR" >LEN TMP$ >LEN PROC-ENV+
    REPORT-ENV
@@ -402,7 +411,6 @@ variable STAT-PATH-U
    true ROOT-LIVE !
    in close
    log close
-   PIPE-WR PROC-CLOSE-CELL
    ROOT-PID @ proc-watch-open dup 0 < if drop E-PROC-OUTPUT throw then ROOT-WATCH ! ;
 
 \ A second signal may find the root already gone, so the answer is not read.
@@ -466,16 +474,13 @@ variable STAT-PATH-U
    TMP-ENTRIES 0 T= ;
 
 \ Whatever the body asserted or threw. Every step is a no-op for a case that
-\ passed. This process lets its own write end go before the sweep waits for end
-\ of file, which a spawn that threw before the root took the write end leaves
-\ open. The sweep runs even when ending the root throws, and the descriptors
+\ passed. The sweep runs even when ending the root throws, and the descriptors
 \ close and the scratch clears even when the sweep's wait throws.
 : SIGNAL-END ( -- )
    [: [: ROOT-END ;]
-      [: PIPE-WR PROC-CLOSE-CELL
-         PIPE-DONE @ 0= if SWEEP then ;] finally ;]
+      [: FIFO-DONE @ 0= if SWEEP then ;] finally ;]
    [: ROOT-WATCH PROC-CLOSE-CELL
-      PIPE-RD PROC-CLOSE-CELL
+      FIFO-RD PROC-CLOSE-CELL
       TMP-CLEAR ;] finally ;
 
 \ The signal the root is to answer, whether it is sent twice, and whether the
@@ -490,14 +495,13 @@ variable STAT-PATH-U
 \ once both engines have reported: a fixed short deadline would race the two
 \ boots on a loaded host.
 : DEADLINE-START ( -- )
-   OPEN-PIPE
+   OPEN-FIFO
    PROC-ARGV-ENV-RESET
    s" --load" >LEN PROC-ARGV+
    s" test/gate-signal-row.f" >LEN PROC-ARGV+
    REPORT-ENV
    PROC-ENV-INHERIT-MISSING
-   ENGINE-CANDIDATE:PATH$ s" deadline row" ROW-MS GT-POOL-START
-   PIPE-WR PROC-CLOSE-CELL ;
+   ENGINE-CANDIDATE:PATH$ s" deadline row" ROW-MS GT-POOL-START ;
 
 : DEADLINE-NOW ( -- )
    0 0 >IDX GT-POOL-TIMEOUT-PTR ! ;
@@ -515,15 +519,12 @@ variable STAT-PATH-U
    s" deadline: the row's scratch is gone and stays gone" T-LABEL
    0 >IDX GT-POOL-TMP$ EXISTS? TFALSE ;
 
-\ Whatever the body asserted or threw. This process lets its own write end go
-\ before the sweep waits for end of file, which a row start that threw before
-\ the row took the write end leaves open. The sweep runs even when ending the
+\ Whatever the body asserted or threw. The sweep runs even when ending the
 \ pool's rows throws, and the read end closes even when the sweep's wait throws.
 : DEADLINE-END ( -- )
    [: [: GT-POOL-KILL-ALL ;]
-      [: PIPE-WR PROC-CLOSE-CELL
-         PIPE-DONE @ 0= if SWEEP then ;] finally ;]
-   [: PIPE-RD PROC-CLOSE-CELL ;] finally ;
+      [: FIFO-DONE @ 0= if SWEEP then ;] finally ;]
+   [: FIFO-RD PROC-CLOSE-CELL ;] finally ;
 
 \ The pool is reset before the body: GT-POOL-KILL-ALL reads the slot table the
 \ reset fills in.

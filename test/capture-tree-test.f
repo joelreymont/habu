@@ -4,9 +4,14 @@
 \
 \ THE SUBJECT is test/check-signal-subject.f, run as the child of a src/lib/process.f
 \ capture. It writes a line, starts a sleeper that leads a process group of its
-\ own, as every spawn does, reports its pid and waits for the sleeper. Both
-\ hold the write end of a pipe this test leaves open across the spawn, so the
-\ read end reports end of file only when neither is left.
+\ own, as every spawn does, reports its pid and waits for the sleeper. Its
+\ first act opens the write end of a FIFO this test makes (src/lib/test/fifo.f)
+\ by the path CHECK_SIGNAL_FIFO names, and it maps that end into the sleeper,
+\ so the read end reports end of file only when neither is left.
+\
+\ THE REPORT COMES BEFORE END OF FILE MEANS ANYTHING. A FIFO no writer has
+\ opened yet reads end of file too, so a case judges end of file only after
+\ the subject's report has shown it holds the write end.
 \
 \ THE WAYS A CAPTURE ENDS ITS CHILD EARLY, each of which must end the sleeper
 \ with it; a kill of the child's pid or group reaches neither the sleeper nor
@@ -24,15 +29,17 @@
 \     src/lib/process-fork.f SPAWN-REAPER does when its fork is refused.
 \
 \ Asserted in each: the capture's own answer, the subject reaped after a
-\ SIGKILL, and end of file on the pipe within GONE-MS.
+\ SIGKILL, and end of file on the FIFO within GONE-MS.
 \
 \ THIS TEST'S OWN WAITS ARE NO ASSERTION RESULT. The capture deadlines above are
 \ the subject and are asserted. A wait this test runs around them - for the
-\ subject's report, for end of file on the pipe, for what a failed case left -
+\ subject's report, for end of file on the FIFO, for what a failed case left -
 \ is named on stdout and thrown as E-PROC-TIMEOUT when its own deadline runs
 \ out (src/lib/test/wait.f), so the row ends as a timeout and not as a FAIL. End
 \ of file before the report, a short report or a failed read is a failed
 \ report, and fails the case; the report's deadline running out is a timeout.
+\ On macOS, whose poll never reports a FIFO's end of file, a subject that dies
+\ before its report is that timeout instead.
 \
 \ THE DEADLINE RUNS OUT AFTER THE SLEEPER STARTS. A capture runs PROC-REAP-ARM
 \ between its spawn and its first poll. The vector each case installs waits
@@ -46,11 +53,12 @@
 \ 20 s bounds.
 
 require src/lib/errors.f
-require src/lib/string.f
-require src/lib/fmt.f
+require src/lib/fs.f
 require src/lib/test.f
 require src/lib/test/outcome.f
 require src/lib/test/wait.f
+require src/lib/test/runner.f
+require src/lib/test/fifo.f
 require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
@@ -65,51 +73,51 @@ package CAPTURE-TREE-TEST
 1 cells constant REPORT-BYTES        \ the subject's pid
 64 constant CAP                      \ holds the subject's line
 8 constant SHORT-CAP                 \ does not
-64 constant SINK-CAP
 
 create REPORT REPORT-BYTES allot
-create SINK SINK-CAP allot
 create OUT-BUF CAP allot
 create ERR-BUF CAP allot
+create FIFO FS-PATH-CAP allot
 
 variable REPORT-U                    \ bytes of REPORT read so far
-variable PIPE-RD
-variable PIPE-WR
+variable FIFO-U
+variable FIFO-RD
 
 TYPED-VARIABLE REPORTED bool         \ the subject's pid arrived before READY-MS ran out
 TYPED-VARIABLE REPORT-EXPIRED bool   \ READY-MS ran out before the subject's pid arrived
-TYPED-VARIABLE PIPE-DONE bool        \ the read end has reported end of file
+TYPED-VARIABLE FIFO-DONE bool        \ the read end has reported end of file
 TYPED-VARIABLE CASE-CLOSED bool      \ the subject closes its output first
 false REPORTED !
 false REPORT-EXPIRED !
-true PIPE-DONE !
+true FIFO-DONE !
 false CASE-CLOSED !
-PROC-NO-FD PIPE-RD !
-PROC-NO-FD PIPE-WR !
+PROC-NO-FD FIFO-RD !
 
 \ What test/check-signal-subject.f writes before it starts the sleeper.
 : LINE$ ( -- ptr u8 n )
    s\" check-signal-subject: up\n" ;
 
-\ ---- the report pipe --------------------------------------------------------
+\ ---- the report FIFO --------------------------------------------------------
 
-\ The write end stays inheritable: the subject and its sleeper hold it. The
-\ read end is this process's alone.
-: OPEN-PIPE ( -- )
-   PIPE-PAIR {: r:fd w:fd :}
-   r FD-CLOEXEC!
-   r FD>N PIPE-RD !
-   w FD>N PIPE-WR !
+: FIFO$ ( -- ptr u8 n )
+   FIFO FIFO-U @ ;
+
+\ A new FIFO for the case, its read end open before the capture starts, so the
+\ subject's open of the write end does not wait.
+: OPEN-FIFO ( -- )
+   GT-ROOT FIFO TEST-FIFO:MAKE {: u:n r:fd :}
+   u FIFO-U !
+   r FD>N FIFO-RD !
    0 REPORT-U !
    false REPORTED !
    false REPORT-EXPIRED !
-   false PIPE-DONE ! ;
+   false FIFO-DONE ! ;
 
 \ The read end within ms: a positive count once it has bytes or has reached end
 \ of file, 0 when ms ran out first, a negative errno when the poll failed.
 : READY-WITHIN ( n -- n )
    {: ms:n :}
-   PIPE-RD @ >FD POLLIN PROC-PFD!
+   FIFO-RD @ >FD POLLIN PROC-PFD!
    1 ms ms >MS PROC-DEADLINE-AT PROC-POLL-RESTART ;
 
 \ The subject's pid, before READY-MS runs out. End of file first means the
@@ -122,7 +130,7 @@ PROC-NO-FD PIPE-WR !
       deadline PROC-LEFT-MS MS>N READY-WITHIN {: ready:n :}
       ready 0= if true REPORT-EXPIRED ! false exit then
       ready 0 < if false exit then
-      PIPE-RD @ REPORT REPORT-U @ + REPORT-BYTES REPORT-U @ - read {: got:n :}
+      FIFO-RD @ REPORT REPORT-U @ + REPORT-BYTES REPORT-U @ - read {: got:n :}
       got 0 <= if false exit then
       REPORT-U @ got + REPORT-U !
    repeat
@@ -133,26 +141,21 @@ PROC-NO-FD PIPE-WR !
 \ deadline, named and thrown as a timeout.
 : GONE-WITHIN? ( n -- bool )
    {: ms:n :}
-   PIPE-DONE @ if true exit then
-   ms >MS PROC-DEADLINE-AT {: deadline:n :}
-   begin
-      deadline PROC-LEFT-MS MS>N READY-WITHIN {: ready:n :}
-      ready 0= if s" capture-tree-test GONE-WITHIN" TEST-WAIT:EXPIRED then
-      ready 0 < if false exit then
-      PIPE-RD @ SINK SINK-CAP read {: got:n :}
-      got 0= if true PIPE-DONE ! true exit then
-      got 0 < if false exit then
-   again ;
+   FIFO-DONE @ if true exit then
+   FIFO-RD @ >FD ms TEST-FIFO:EOF-WITHIN {: eof:n :}
+   eof 0= if s" capture-tree-test GONE-WITHIN" TEST-WAIT:EXPIRED then
+   eof 0 < if false exit then
+   true FIFO-DONE !
+   true ;
 
 \ ---- the reaper arm ---------------------------------------------------------
 
-\ The subject has its copy of the write end once the capture has spawned it,
-\ so this process lets its own go and waits for the report. The wait records
+\ The subject opens the write end once the capture has spawned it, so this
+\ process waits for the report there. The wait records
 \ its deadline in REPORT-EXPIRED rather than throwing it: whatever this vector
 \ throws comes out of the capture as the capture's own code, and E-PROC-TIMEOUT
 \ is the code two cases expect from the capture.
 : AWAIT-REPORT ( -- )
-   PIPE-WR PROC-CLOSE-CELL
    REPORT-READ? REPORTED ! ;
 
 \ Names and throws the report wait's deadline if it ran out, once the capture
@@ -170,14 +173,11 @@ PROC-NO-FD PIPE-WR !
 
 \ ---- the capture ------------------------------------------------------------
 
-: FD-TEXT$ ( n -- ptr u8 n )
-   SB-RESET FMT:SB-INT SB$ ;
-
 : SUBJECT-ARGS ( -- )
    PROC-ARGV-ENV-RESET
    s" --load" >LEN PROC-ARGV+
    s" test/check-signal-subject.f" >LEN PROC-ARGV+
-   s" CHECK_SIGNAL_FD" >LEN PIPE-WR @ FD-TEXT$ >LEN PROC-ENV+
+   s" CHECK_SIGNAL_FIFO" >LEN FIFO$ >LEN PROC-ENV+
    CASE-CLOSED @ if s" CHECK_SIGNAL_CLOSED" >LEN s" 1" >LEN PROC-ENV+ then
    PROC-ENV-INHERIT-MISSING ;
 
@@ -209,7 +209,7 @@ PROC-NO-FD PIPE-WR !
 
 : CASE-BEGIN ( bool -- ) {: closed:bool :}
    closed CASE-CLOSED !
-   OPEN-PIPE ;
+   OPEN-FIFO ;
 
 : ASSERT-ENDED ( -- )
    s" the subject started its sleeper and reported" T-LABEL
@@ -263,7 +263,7 @@ PROC-NO-FD PIPE-WR !
 
 \ What a failed case left ends on its own, before EXPIRE-MS runs out.
 : LEFT-ENDED ( -- )
-   PIPE-DONE @ 0= if
+   FIFO-DONE @ 0= if
       s" the processes the capture left ended on their own" T-LABEL
       EXPIRE-MS GONE-WITHIN? TTRUE
    then ;
@@ -273,13 +273,13 @@ PROC-NO-FD PIPE-WR !
 \ out.
 : CASE-END ( -- )
    PROC-REAP-ARM-DEFAULT
-   PIPE-WR PROC-CLOSE-CELL
-   [: LEFT-ENDED ;] [: PIPE-RD PROC-CLOSE-CELL ;] finally ;
+   [: LEFT-ENDED ;] [: FIFO-RD PROC-CLOSE-CELL ;] finally ;
 
 public
 
 : MAIN ( -- )
    T-RESET
+   s" capture-tree" GT-START
    s" capture-tree: a deadline in the poll, read as a status" type cr
    [: POLL-STATUS-BODY ;] [: CASE-END ;] finally
    s" capture-tree: a deadline in the poll, read as data" type cr
@@ -289,7 +289,8 @@ public
    s" capture-tree: an overflow" type cr
    [: OVERFLOW-BODY ;] [: CASE-END ;] finally
    s" capture-tree: a refused reaper arm" type cr
-   [: REFUSED-BODY ;] [: CASE-END ;] finally ;
+   [: REFUSED-BODY ;] [: CASE-END ;] finally
+   GT-CLEANUP ;
 
 ;package
 

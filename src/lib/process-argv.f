@@ -6,6 +6,8 @@
 \ for the next command line and an image save releases it. An owned CMD run
 \ (src/lib/process-command.f) passes its own vectors and touches none of this.
 \
+\ SPAWN. src/lib/process.f "SPAWN" states how these words spawn.
+\
 \ ENVIRONMENT. These spawns pass the child no variables. To inherit, prepare an
 \ environment (src/lib/process-env.f PROC-ARGV-ENV-RESET ...
 \ PROC-ENV-INHERIT-MISSING) and spawn through its *-ARGV-ENV-* words.
@@ -13,7 +15,6 @@
 s" src/lib/errors.f" required
 s" src/lib/memory.f" required
 s" src/lib/process.f" required
-require src/lib/fd-lock.f
 require src/lib/process-chunks.f
 require src/lib/string.f
 require src/lib/image-lifecycle.f
@@ -67,12 +68,22 @@ public
 
 ;package
 
-: PROC-SPAWN-ARGV-RAW-HELD ( ptr u8 ptr a fd fd fd -- pid )
+package PROC-RAW
+public
+
+: SPAWN-ARGV ( ptr u8 ptr a fd fd fd -- ptr u8 ptr a fd fd fd )
    {: pathz:ptr argv:ptr infd outfd errfd :}
-   pathz argv infd FD>N outfd FD>N errfd FD>N spawn-argv-io >PID ;
+   pathz dup ZLEN SPAWN:NEW
+   argv ROWS SPAWN:ARGV
+   infd outfd errfd LAUNCH
+   pathz argv infd outfd errfd ;
+
+;package
 
 : PROC-SPAWN-ARGV-RAW ( ptr u8 ptr a fd fd fd -- pid )
-   [: PROC-SPAWN-ARGV-RAW-HELD ;] FD-LOCK:WITH ;
+   [: PROC-RAW:SPAWN-ARGV ;] catch {: rc :}
+   drop drop drop drop drop
+   rc PROC-RAW:ANSWER ;
 
 : PROC-ARGV-RESET ( -- )
    0 >COUNT PROC-ARGV-N !

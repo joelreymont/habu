@@ -16,17 +16,19 @@
 \ a row whose child forked and exited while what it forked holds the row's
 \ capture pipe.
 \
-\ Both engines report on the descriptor GATE_SIGNAL_FD names: a pipe write end
-\ the test left open across every spawn. Nothing here closes it, and the test
-\ reads its end of file as "no process under the row is left".
+\ Each engine's first act opens the write end of the FIFO GATE_SIGNAL_FIFO
+\ names (src/lib/test/fifo.f), and reports its pid there. The leaf maps that
+\ end into the helper and every writer, and the helper's writer inherits it
+\ from the helper. Nothing here closes it, and the test reads its end of file
+\ as "no process under the row is left".
 
 require src/lib/errors.f
 require src/lib/string.f
-require src/lib/adt/option.f
 require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/engine-candidate.f
+require src/lib/test/fifo.f
 
 package GATE-SIGNAL-ROW
 
@@ -39,16 +41,14 @@ create REPORT 1 cells allot
 create PAUSE-PFD 8 allot
 create SINK 64 allot
 variable HELPER
+variable HOLD                        \ the FIFO's write end
 
-: REPORT-FD ( -- n )
-   s" GATE_SIGNAL_FD" GETENV STR>NUMBER? MATCH option
-      none OF s" gate-signal-row: GATE_SIGNAL_FD names no descriptor" USAGE-RC die ENDOF
-      some OF ENDOF
-   ;MATCH ;
+: OPEN-HOLD ( -- )
+   s" GATE_SIGNAL_FIFO" TEST-FIFO:WRITER FD>N HOLD ! ;
 
 : REPORT-PID ( -- )
    getpid REPORT !
-   REPORT-FD REPORT 1 cells write 1 cells <> if
+   HOLD @ REPORT 1 cells write 1 cells <> if
       s" gate-signal-row: report refused" USAGE-RC die
    then ;
 
@@ -65,7 +65,7 @@ variable HELPER
    s" -c" >LEN PROC-ARGV+
    WRITER$ >LEN PROC-ARGV+
    PROC-ENV-INHERIT-MISSING
-   s" /bin/sh" >LEN -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-ENV-IO PID>N
+   s" /bin/sh" >LEN -1 >FD -1 >FD -1 >FD HOLD @ >FD TEST-FIFO:SPAWN PID>N
    i cells WRITERS + ! ;
 
 \ The helper's writer sends its output to /dev/null, so the pipe the helper
@@ -82,7 +82,7 @@ variable HELPER
    s" -c" >LEN PROC-ARGV+
    HELPER$ >LEN PROC-ARGV+
    PROC-ENV-INHERIT-MISSING
-   s" /bin/sh" >LEN -1 >FD w -1 >FD PROC-SPAWN-ARGV-ENV-IO PID>N HELPER !
+   s" /bin/sh" >LEN -1 >FD w -1 >FD HOLD @ >FD TEST-FIFO:SPAWN PID>N HELPER !
    w FD>N close
    begin r FD>N SINK 64 read dup 0 > while drop repeat
    r FD>N close
@@ -91,6 +91,7 @@ variable HELPER
    then ;
 
 : LEAF ( -- )
+   OPEN-HOLD
    START-HELPER
    REPORT-PID
    BURST-N 0 ?do
@@ -103,6 +104,7 @@ variable HELPER
    HELPER @ >PID PROC-WAIT-STATUS drop ;
 
 : ROW ( -- )
+   OPEN-HOLD
    REPORT-PID
    PROC-ARGV-ENV-RESET
    s" --load" >LEN PROC-ARGV+

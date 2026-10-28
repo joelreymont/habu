@@ -14,12 +14,16 @@
 \
 \  1. AN ORPHANED CHILD. check.f's child leads its own process group, so a
 \     check.f that dies of the signal, or a `timeout` that kills check.f's
-\     group, leaves the child running under init. Asserted: every process under
-\     check.f inherits the write end of one pipe, and the read end reports end
-\     of file only when the last is gone.
+\     group, leaves the child running under init. Asserted: the subject opens
+\     the write end of a FIFO this test makes (src/lib/test/fifo.f) by the path
+\     CHECK_SIGNAL_FIFO names, and the read end reports end of file only when
+\     the last holder is gone. check.f itself, this test's own child, holds no
+\     write end: its wait status is the evidence it ended. The stdin case's
+\     program is refused before any run, so nothing under check.f could open
+\     a FIFO: that case makes none and asserts check.f's status only.
 \  2. AN ORPHANED GRANDCHILD. A kill of the child's group ends the child and
 \     not what it spawned: the sleeper leads a group of its own. Asserted by the
-\     same pipe, which the sleeper holds.
+\     same FIFO, which the subject maps into the sleeper.
 \  3. SCRATCH LEFT. check.f's temporary directory, holding the run stage's
 \     run.f, is made under TMPDIR. Asserted: TMPDIR is empty once check.f has
 \     ended.
@@ -50,11 +54,17 @@
 \ THIS TEST'S OWN WAITS ARE NO ASSERTION RESULT. check.f's --deadline-ms, its
 \ exit 70 and its late line are the subject and are asserted. A wait this test
 \ runs around check.f - for the subject's report, for room in check.f's stdin,
-\ for check.f to end, for end of file on the pipe - is named on stdout and
+\ for check.f to end, for end of file on the FIFO - is named on stdout and
 \ thrown as E-PROC-TIMEOUT when its own deadline runs out (src/lib/test/wait.f),
 \ so the row ends as a timeout and not as a FAIL. End of file before the
 \ report, a short report, a short write or a failed read, write or poll fails
 \ the case; a descriptor a readiness poll reports broken throws E-PROC-OUTPUT.
+\ On macOS, whose poll never reports a FIFO's end of file, a subject that dies
+\ before its report is the report wait's timeout instead.
+\
+\ THE REPORT COMES BEFORE END OF FILE MEANS ANYTHING. A FIFO no writer has
+\ opened yet reads end of file too, so a case judges end of file only after
+\ the subject's report has shown it holds the write end.
 \
 \ A FAILED CASE LEAVES NOTHING EITHER. Each case ends through CASE-END whatever
 \ it asserted or threw: a check.f still running is killed and reaped, and the
@@ -77,6 +87,7 @@ require src/lib/signal.f
 require src/lib/engine-candidate.f
 require src/lib/test/runner.f
 require src/lib/test/wait.f
+require src/lib/test/fifo.f
 require src/core/include.f               \ SOURCE-ROOT:CANON-OS, the name --json-errors gives a file
 
 package CHECK-SIGNAL-TEST
@@ -89,19 +100,18 @@ package CHECK-SIGNAL-TEST
 1 cells constant REPORT-BYTES        \ the subject's pid
 512 constant FEED-CHUNK              \ PIPE_BUF on macOS: a write poll admitted cannot block
 $20000 constant PAD-BYTES            \ twice the 64 KiB a pipe holds on either host
-64 constant SINK-CAP
 $8000 constant LOG-CAP
 
 create REPORT REPORT-BYTES allot
-create SINK SINK-CAP allot
 create LOG-TEXT LOG-CAP allot
 create TMP FS-PATH-CAP allot
 create LOG FS-PATH-CAP allot
+create FIFO FS-PATH-CAP allot
 create FEED FEED-CHUNK allot         \ newlines: blank lines to check.f
 
 variable REPORT-U                    \ bytes of REPORT read so far
-variable PIPE-RD
-variable PIPE-WR
+variable FIFO-U
+variable FIFO-RD
 variable CHECK-PID
 variable CHECK-WATCH
 variable FEED-WR                     \ the write end of check.f's stdin
@@ -110,18 +120,18 @@ variable LOG-U
 variable ENTRY-N
 
 TYPED-VARIABLE CHECK-LIVE bool       \ started and not yet reaped
-TYPED-VARIABLE PIPE-DONE bool        \ the read end has reported end of file
+TYPED-VARIABLE FIFO-DONE bool        \ the read end has reported end of file
 TYPED-VARIABLE CASE-CLOSED bool      \ the subject closes its output before it reports
 false CHECK-LIVE !
-true PIPE-DONE !
+true FIFO-DONE !
 false CASE-CLOSED !
-PROC-NO-FD PIPE-RD !
-PROC-NO-FD PIPE-WR !
+PROC-NO-FD FIFO-RD !
 PROC-NO-FD CHECK-WATCH !
 PROC-NO-FD FEED-WR !
 
 : TMP$ ( -- ptr u8 n )    TMP TMP-U @ ;
 : LOG$ ( -- ptr u8 n )    LOG LOG-U @ ;
+: FIFO$ ( -- ptr u8 n )   FIFO FIFO-U @ ;
 
 \ A process is started with its caller's ignored signals still ignored, and a
 \ check.f that inherited one would never see it. RELEASE restores the default
@@ -154,17 +164,16 @@ PROC-NO-FD FEED-WR !
    TMP$ REMOVE-TREE
    TMP$ MAKE-DIRS ;
 
-\ ---- the report pipe --------------------------------------------------------
+\ ---- the report FIFO --------------------------------------------------------
 
-\ The write end stays inheritable: it is what every process under check.f
-\ holds. The read end is this process's alone.
-: OPEN-PIPE ( -- )
-   PIPE-PAIR {: r:fd w:fd :}
-   r FD-CLOEXEC!
-   r FD>N PIPE-RD !
-   w FD>N PIPE-WR !
+\ A new FIFO for the case, its read end open before check.f starts, so the
+\ subject's open of the write end does not wait.
+: OPEN-FIFO ( -- )
+   GT-ROOT FIFO TEST-FIFO:MAKE {: u:n r:fd :}
+   u FIFO-U !
+   r FD>N FIFO-RD !
    0 REPORT-U !
-   false PIPE-DONE ! ;
+   false FIFO-DONE ! ;
 
 : FD-TEXT$ ( n -- ptr u8 n )
    SB-RESET FMT:SB-INT SB$ ;
@@ -191,10 +200,10 @@ PROC-NO-FD FEED-WR !
 : REPORT-READ? ( -- bool )
    READY-MS >MS PROC-DEADLINE-AT {: deadline:n :}
    begin REPORT-U @ REPORT-BYTES < while
-      PIPE-RD @ deadline PROC-LEFT-MS MS>N READY-WITHIN {: ready:n :}
+      FIFO-RD @ deadline PROC-LEFT-MS MS>N READY-WITHIN {: ready:n :}
       ready 0= if s" check-signal-test REPORT-READ" TEST-WAIT:EXPIRED then
       ready 0 < if false exit then
-      PIPE-RD @ REPORT REPORT-U @ + REPORT-BYTES REPORT-U @ - read {: got:n :}
+      FIFO-RD @ REPORT REPORT-U @ + REPORT-BYTES REPORT-U @ - read {: got:n :}
       got 0 <= if false exit then
       REPORT-U @ got + REPORT-U !
    repeat
@@ -205,16 +214,12 @@ PROC-NO-FD FEED-WR !
 \ deadline, named and thrown as a timeout.
 : GONE-WITHIN? ( n -- bool )
    {: ms:n :}
-   PIPE-DONE @ if true exit then
-   ms >MS PROC-DEADLINE-AT {: deadline:n :}
-   begin
-      PIPE-RD @ deadline PROC-LEFT-MS MS>N READY-WITHIN {: ready:n :}
-      ready 0= if s" check-signal-test GONE-WITHIN" TEST-WAIT:EXPIRED then
-      ready 0 < if false exit then
-      PIPE-RD @ SINK SINK-CAP read {: got:n :}
-      got 0= if true PIPE-DONE ! true exit then
-      got 0 < if false exit then
-   again ;
+   FIFO-DONE @ if true exit then
+   FIFO-RD @ >FD ms TEST-FIFO:EOF-WITHIN {: eof:n :}
+   eof 0= if s" check-signal-test GONE-WITHIN" TEST-WAIT:EXPIRED then
+   eof 0 < if false exit then
+   true FIFO-DONE !
+   true ;
 
 \ ---- check.f ----------------------------------------------------------------
 
@@ -228,9 +233,8 @@ PROC-NO-FD FEED-WR !
    fd 0 < if E-FS-OPEN throw then
    fd ;
 
-\ The report pipe, and the arguments check.f starts with in every case.
+\ The arguments check.f starts with in every case.
 : CHECK-BEGIN ( -- )
-   OPEN-PIPE
    PROC-ARGV-ENV-RESET
    s" --load" >LEN PROC-ARGV+
    s" tools/check.f" >LEN PROC-ARGV+ ;
@@ -247,16 +251,17 @@ PROC-NO-FD FEED-WR !
    true CHECK-LIVE !
    in close
    log close
-   PIPE-WR PROC-CLOSE-CELL
    CHECK-PID @ proc-watch-open dup 0 < if drop E-PROC-OUTPUT throw then CHECK-WATCH ! ;
 
 : SUBJECT$ ( -- ptr u8 n )
    s" test/check-signal-subject.f" ;
 
-\ The subject, after whatever options check.f is given ahead of it.
+\ The subject and its report FIFO, after whatever options check.f is given
+\ ahead of it.
 : SUBJECT-START ( -- )
+   OPEN-FIFO
    SUBJECT$ >LEN PROC-ARGV+
-   s" CHECK_SIGNAL_FD" >LEN PIPE-WR @ FD-TEXT$ >LEN PROC-ENV+
+   s" CHECK_SIGNAL_FIFO" >LEN FIFO$ >LEN PROC-ENV+
    CASE-CLOSED @ if s" CHECK_SIGNAL_CLOSED" >LEN s" 1" >LEN PROC-ENV+ then
    OPEN-NULL CHECK-SPAWN ;
 
@@ -392,10 +397,7 @@ PROC-NO-FD FEED-WR !
    s" stdin: no step of the answer threw" T-LABEL
    LOG-THREW? TFALSE
    s" stdin: the scratch is gone when check.f has ended" T-LABEL
-   TMP-ENTRIES 0 T=
-   CHECK-END
-   s" stdin: no process under check.f is left" T-LABEL
-   GONE-MS GONE-WITHIN? TTRUE ;
+   TMP-ENTRIES 0 T= ;
 
 \ The one line check.f ends a run past its deadline with. It names the subject
 \ as given, or canonically under --json-errors, as each of its reports does.
@@ -430,23 +432,23 @@ PROC-NO-FD FEED-WR !
 
 \ What check.f left ends on its own, before EXPIRE-MS runs out.
 : LEFT-ENDED ( -- )
-   PIPE-DONE @ 0= if
+   FIFO-DONE @ 0= if
       s" the processes check.f left ended on their own" T-LABEL
       EXPIRE-MS GONE-WITHIN? TTRUE
    then ;
 
 \ Whatever the body asserted or threw. Every step is a no-op for a case that
-\ passed. This process lets its own write end go before it waits for end of
-\ file, which a spawn that threw before check.f took the write end leaves
-\ open. The wait for what check.f left runs even when ending check.f throws,
+\ passed. The wait for what check.f left runs even when ending check.f throws,
 \ and every descriptor closes and the scratch clears even when that wait throws.
+\ With its read end closed the FIFO is done, so a case that makes none waits on
+\ no earlier case's.
 : CASE-END ( -- )
    [: [: CHECK-END ;]
-      [: PIPE-WR PROC-CLOSE-CELL
-         LEFT-ENDED ;] finally ;]
+      [: LEFT-ENDED ;] finally ;]
    [: CHECK-WATCH PROC-CLOSE-CELL
       FEED-WR PROC-CLOSE-CELL
-      PIPE-RD PROC-CLOSE-CELL
+      FIFO-RD PROC-CLOSE-CELL
+      true FIFO-DONE !
       TMP-CLEAR ;] finally ;
 
 \ The signal check.f is to answer, and whether the subject closes its output.

@@ -8,10 +8,12 @@
 \ connects, reports the directory the server made its socket in and the SysV
 \ segment the server holds, and waits in pg_sleep, so the row is killed with
 \ its cluster up and a backend busy. Every
-\ process under the row holds the write end of one pipe - the harness, initdb,
-\ the case engine, the postmaster and each process it forks (measured: postgres
-\ keeps an inherited descriptor open in every child) - and the read end reports
-\ end of file only when the last of them is gone. Two cases, one for each way
+\ process under the row holds the write end of a FIFO this test makes
+\ (src/lib/test/fifo.f) and names by PG_HOLD_FIFO: the harness and the case
+\ engine open it by path, the harness maps it into initdb and the postmaster,
+\ and each process the postmaster forks inherits it (measured: postgres keeps
+\ an inherited descriptor open in every child). The read end reports end of
+\ file only when the last of them is gone. Two cases, one for each way
 \ the pool ends a live row: at the row's deadline, and GT-POOL-KILL-ALL, which
 \ is how a signalled gate root ends its rows (test/gate-pool.f
 \ GT-POOL-SIGNAL-DIE; test/gate-signal-test.f sends the signal itself).
@@ -25,12 +27,12 @@
 \     recheck notices the removed data directory, about a minute later. Any
 \     start path with such a step - pg_ctl, a shell's `&`, a setsid - does the
 \     same.
-\     Asserted: the pipe reaches end of file within GONE-MS of the kill.
+\     Asserted: the FIFO reaches end of file within GONE-MS of the kill.
 \  2. THE SERVER'S CHILDREN OUTLIVE IT. Every process the postmaster forks
 \     calls setsid, so only its parent link ties it to the tree; one listed
 \     after the postmaster died would have init for a parent, and a postmaster
 \     left running forks more.
-\     Asserted: the same pipe, which the auxiliary processes and the case's
+\     Asserted: the same FIFO, which the auxiliary processes and the case's
 \     backend, busy in pg_sleep, hold as well.
 \  3. A KILL THAT RACES THE START. A walk that stops the harness while it is
 \     spawning the postmaster. Not asserted: the kill here lands after the
@@ -55,7 +57,7 @@
 \     mkdir, which refuses a name that exists.
 \  8. ANOTHER GATE'S SERVER. Other agents run pg rows on this host. Nothing
 \     here names a process: the walk starts at the row's child, and this test
-\     knows the row's processes only through its own pipe.
+\     knows the row's processes only through its own FIFO.
 \  9. A SEGMENT THAT OUTLIVES THE SERVER. PostgreSQL makes a SysV shared-memory
 \     segment keyed by its data directory's inode and removes it only on its
 \     own way out, which a SIGKILL never runs. Nothing else removes it - APFS
@@ -69,7 +71,7 @@
 \     once and leaves what it spawned, each leading its own group, to init
 \     before the walk can list it; a root that catches it and exits before it
 \     has ended its own tree does the same.
-\     Asserted for the harness, which catches it: the pipe check, which the
+\     Asserted for the harness, which catches it: the FIFO check, which the
 \     case engine - spawned, leading its own group - holds as well. A root
 \     that does not catch SIGTERM is not sent it (src/lib/process-tree.f
 \     CATCHES?), and test/gate-pool-test.f and test/gate-signal-test.f kill
@@ -82,6 +84,12 @@
 \     sends initdb SIGTERM, and initdb exits once its step has ended. Not
 \     asserted: initdb takes about 1.2 s here, and a case would need one
 \     slowed past the grace.
+\
+\ THE REPORT COMES BEFORE END OF FILE MEANS ANYTHING. A FIFO no writer has
+\ opened yet reads end of file too, so a case judges end of file only after
+\ the case file's report has shown the tree holds the write end. On macOS,
+\ whose poll never reports a FIFO's end of file, a case file that dies before
+\ its report is the report wait's timeout instead of a failed report.
 \
 \ A FAILED CASE CLEANS UP AFTER ITSELF. Each case ends through CASE-END
 \ whatever it asserted or threw: the row is killed, a server the kill missed is
@@ -101,6 +109,8 @@ require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/engine-candidate.f
 require src/lib/test/wait.f
+require src/lib/test/runner.f
+require src/lib/test/fifo.f
 require test/gate-pool.f
 
 package PG-KILL-TEST
@@ -109,7 +119,6 @@ package PG-KILL-TEST
 5000 constant GONE-MS                \ the killed take a moment to finish dying
 90000 constant EXPIRE-MS             \ past the server's once-a-minute lock-file recheck
 120000 constant ROW-MS               \ the row's own deadline, until a case ends it
-64 constant SINK-CAP
 10 constant NEWLINE
 
 2 constant IPC-STAT
@@ -117,8 +126,8 @@ package PG-KILL-TEST
 
 create LINE FS-PATH-CAP allot        \ the socket directory the case reported
 create SHM FS-PATH-CAP allot         \ the segment line it reported: `<key> <shmid>`
-create SINK SINK-CAP allot
 create SHMID-DS SHMID-DS-BYTES allot
+create FIFO FS-PATH-CAP allot
 
 PROCESS-SYMBOLS
 
@@ -128,32 +137,29 @@ FUNCTION: SHM-CTL shmctl ( n n ptr u8 -- i32 )
 
 variable LINE-U
 variable SHM-U
-variable PIPE-RD
-variable PIPE-WR
+variable FIFO-U
+variable FIFO-RD
 
 TYPED-VARIABLE REPORTED bool         \ the whole line is in
-TYPED-VARIABLE PIPE-DONE bool        \ the read end has reported end of file
+TYPED-VARIABLE FIFO-DONE bool        \ the read end has reported end of file
 false REPORTED !
-true PIPE-DONE !
-PROC-NO-FD PIPE-RD !
-PROC-NO-FD PIPE-WR !
+true FIFO-DONE !
+PROC-NO-FD FIFO-RD !
 
 : SOCKETS$ ( -- ptr u8 n )  LINE LINE-U @ ;
 
-: FD-TEXT$ ( n -- ptr u8 n )
-   SB-RESET FMT:SB-INT SB$ ;
+: FIFO$ ( -- ptr u8 n )    FIFO FIFO-U @ ;
 
-\ The write end stays inheritable: it is what every process under the row
-\ holds. The read end is this process's alone.
-: OPEN-PIPE ( -- )
-   PIPE-PAIR {: r:fd w:fd :}
-   r FD-CLOEXEC!
-   r FD>N PIPE-RD !
-   w FD>N PIPE-WR !
+\ A new FIFO for the case, its read end open before the row starts, so the
+\ harness's open of the write end does not wait.
+: OPEN-FIFO ( -- )
+   GT-ROOT FIFO TEST-FIFO:MAKE {: u:n r:fd :}
+   u FIFO-U !
+   r FD>N FIFO-RD !
    0 LINE-U !
    0 SHM-U !
    false REPORTED !
-   false PIPE-DONE ! ;
+   false FIFO-DONE ! ;
 
 \ fd within ms: a positive count once it has bytes to read or has reached end of
 \ file, 0 when ms ran out first, a negative errno when the poll failed.
@@ -172,10 +178,10 @@ PROC-NO-FD PIPE-WR !
    0 count !
    begin
       count @ FS-PATH-CAP >= if false exit then
-      PIPE-RD @ deadline PROC-LEFT-MS MS>N READY-WITHIN {: ready:n :}
+      FIFO-RD @ deadline PROC-LEFT-MS MS>N READY-WITHIN {: ready:n :}
       ready 0= if s" pg-kill-test REPORT-READ" TEST-WAIT:EXPIRED then
       ready 0 < if false exit then
-      PIPE-RD @ buf count @ + 1 read 1 <> if false exit then
+      FIFO-RD @ buf count @ + 1 read 1 <> if false exit then
       buf count @ + c@ NEWLINE = if true exit then
       count @ 1+ count !
    again ;
@@ -218,27 +224,23 @@ PROC-NO-FD PIPE-WR !
 \ deadline, named and thrown as a timeout.
 : GONE-WITHIN? ( n -- bool )
    {: ms:n :}
-   PIPE-DONE @ if true exit then
-   ms >MS PROC-DEADLINE-AT {: deadline:n :}
-   begin
-      PIPE-RD @ deadline PROC-LEFT-MS MS>N READY-WITHIN {: ready:n :}
-      ready 0= if s" pg-kill-test GONE-WITHIN" TEST-WAIT:EXPIRED then
-      ready 0 < if false exit then
-      PIPE-RD @ SINK SINK-CAP read {: got:n :}
-      got 0= if true PIPE-DONE ! true exit then
-      got 0 < if false exit then
-   again ;
+   FIFO-DONE @ if true exit then
+   FIFO-RD @ >FD ms TEST-FIFO:EOF-WITHIN {: eof:n :}
+   eof 0= if s" pg-kill-test GONE-WITHIN" TEST-WAIT:EXPIRED then
+   eof 0 < if false exit then
+   true FIFO-DONE !
+   true ;
 
 \ ---- the row -----------------------------------------------------------------
 
 : REPORT-ENV ( -- )
-   s" PG_HOLD_FD" >LEN PIPE-WR @ FD-TEXT$ >LEN PROC-ENV+ ;
+   s" PG_HOLD_FIFO" >LEN FIFO$ >LEN PROC-ENV+ ;
 
 \ The row's deadline is one it cannot reach: a fixed short one would race
 \ initdb and the server's start on a loaded host. Each case ends the row
 \ itself once the case file has reported.
 : ROW-START ( -- )
-   OPEN-PIPE
+   OPEN-FIFO
    PROC-ARGV-ENV-RESET
    s" --load" >LEN PROC-ARGV+
    s" test/db/pg-cluster.f" >LEN PROC-ARGV+
@@ -246,8 +248,7 @@ PROC-NO-FD PIPE-WR !
    s" test/db/pg-hold.f" >LEN PROC-ARGV+
    REPORT-ENV
    PROC-ENV-INHERIT-MISSING
-   ENGINE-CANDIDATE:PATH$ s" pg row" ROW-MS GT-POOL-START
-   PIPE-WR PROC-CLOSE-CELL ;
+   ENGINE-CANDIDATE:PATH$ s" pg row" ROW-MS GT-POOL-START ;
 
 \ Up: the case reported, and the directory and the segment it named are there.
 : EXPECT-LIVE ( -- )
@@ -289,7 +290,7 @@ PROC-NO-FD PIPE-WR !
 
 \ What a failed case owes. A server the kill missed stops itself once its
 \ lock-file recheck, which runs once a minute, finds its data directory gone,
-\ so the row's directories go first and the pipe is given that long; a writer
+\ so the row's directories go first and the FIFO is given that long; a writer
 \ still there after it is this test's own deadline, thrown as a timeout. The
 \ socket directory the case reported goes last, wherever it was, and goes even
 \ when that wait throws.
@@ -301,15 +302,12 @@ PROC-NO-FD PIPE-WR !
    finally ;
 
 \ Whatever the body asserted or threw. Every step is a no-op for a case that
-\ passed. This process lets its own write end go before the sweep waits for
-\ end of file, which a start that threw before ROW-START closed it leaves open.
-\ The sweep runs even when the kill throws, and the read end closes even when
+\ passed. The sweep runs even when the kill throws, and the read end closes even when
 \ the sweep throws.
 : CASE-END ( -- )
    [: [: GT-POOL-KILL-ALL ;]
-      [: PIPE-WR PROC-CLOSE-CELL
-         PIPE-DONE @ 0= if SWEEP then ;] finally ;]
-   [: PIPE-RD PROC-CLOSE-CELL ;] finally ;
+      [: FIFO-DONE @ 0= if SWEEP then ;] finally ;]
+   [: FIFO-RD PROC-CLOSE-CELL ;] finally ;
 
 \ The pool is reset before the body: GT-POOL-KILL-ALL reads the slot table the
 \ reset fills in.
@@ -322,13 +320,14 @@ public
 
 : MAIN ( -- )
    T-RESET
+   s" pg-kill" GT-START
    s" pg-kill: deadline" type cr
    POOL-RESET
    [: DEADLINE-BODY ;] [: CASE-END ;] finally
    s" pg-kill: kill-all" type cr
    POOL-RESET
    [: KILL-ALL-BODY ;] [: CASE-END ;] finally
-   GT-POOL-FALLBACK-REMOVE ;
+   GT-CLEANUP ;
 
 ;package
 

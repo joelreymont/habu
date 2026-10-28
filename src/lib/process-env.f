@@ -1,8 +1,5 @@
 \ process-env.f - checked argv/env process helpers and PATH lookup.
 \
-\ Kept separate from process-argv so old native seeds can still run the
-\ build-fixpoint installer before this newer primitive exists.
-\
 \ STORAGE. The prepared environment and the inherited defaults are each a
 \ table of row addresses and the row bytes. Both grow with the rows added, so
 \ neither the parent's envp nor the caller's additions have a ceiling: a row
@@ -30,7 +27,6 @@ require src/lib/string-roles.f               \ package STR: the typed string sur
 require src/lib/memory.f
 require src/lib/fs.f
 require src/lib/process.f
-require src/lib/fd-lock.f
 require src/lib/process-argv.f
 require src/lib/adt/option.f                 \ option<len> for the FIND-EXECUTABLE cluster (switchover wave A)
 
@@ -120,12 +116,23 @@ CAST: PROC-CURSOR>OFF ( NUM:byte-off -- off )
 : PROC-ENV-FALSE ( -- bool )
    0 0= 0= ;
 
-: PROC-SPAWN-ARGV-ENV-RAW-HELD ( ptr u8 ptr a ptr a fd fd fd -- pid )
+package PROC-RAW
+public
+
+: SPAWN-ARGV-ENV ( ptr u8 ptr a ptr a fd fd fd -- ptr u8 ptr a ptr a fd fd fd )
    {: pathz:ptr argv:ptr envp:ptr infd outfd errfd :}
-   pathz argv envp infd FD>N outfd FD>N errfd FD>N spawn-argv-env-io >PID ;
+   pathz dup ZLEN SPAWN:NEW
+   argv ROWS SPAWN:ARGV
+   envp ROWS SPAWN:ENV
+   infd outfd errfd LAUNCH
+   pathz argv envp infd outfd errfd ;
+
+;package
 
 : PROC-SPAWN-ARGV-ENV-RAW ( ptr u8 ptr a ptr a fd fd fd -- pid )
-   [: PROC-SPAWN-ARGV-ENV-RAW-HELD ;] FD-LOCK:WITH ;
+   [: PROC-RAW:SPAWN-ARGV-ENV ;] catch {: rc :}
+   drop drop drop drop drop drop
+   rc PROC-RAW:ANSWER ;
 
 : PROC-ENV-RESET ( -- )
    0 >COUNT PROC-ENV-N !

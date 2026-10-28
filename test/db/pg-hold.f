@@ -1,20 +1,19 @@
 \ pg-hold.f - the case file test/db/pg-kill-test.f has the pg harness run.
 \
 \ It connects with the conninfo that is its one script argument and reports two
-\ lines on the descriptor PG_HOLD_FD names: the directory the server made its
+\ lines on the FIFO PG_HOLD_FIFO names: the directory the server made its
 \ socket in, and line 7 of the server's postmaster.pid, `<key> <shmid>`, which
 \ names the SysV shared-memory segment the server holds. Then it waits in
 \ pg_sleep, with a backend busy on its behalf, until the row is killed. If
-\ nothing kills it, the harness's own deadline for a case file does. The
-\ descriptor is a pipe write end the test left open across every spawn:
-\ nothing here closes it.
+\ nothing kills it, the harness's own deadline for a case file does. Its first
+\ act opens the FIFO's write end (src/lib/test/fifo.f), and nothing here closes
+\ it.
 
 require src/lib/errors.f
-require src/lib/string.f
-require src/lib/adt/option.f
 require src/lib/fs.f
 require src/lib/aio.f
 require src/lib/pg.f
+require src/lib/test/fifo.f
 
 package PG-HOLD
 
@@ -25,15 +24,10 @@ $1000 constant PIDFILE-CAP
 
 create PIDFILE FS-PATH-CAP allot
 create TEXT PIDFILE-CAP allot
-
-: REPORT-FD ( -- n )
-   s" PG_HOLD_FD" GETENV STR>NUMBER? MATCH option
-      none OF s" pg-hold: PG_HOLD_FD names no descriptor" USAGE-RC die ENDOF
-      some OF ENDOF
-   ;MATCH ;
+variable HOLD                       \ the FIFO's write end
 
 : REPORT ( ptr u8 n -- ) {: a:ptr u:n :}
-   REPORT-FD {: fd:n :}
+   HOLD @ {: fd:n :}
    fd a u write u <> if s" pg-hold: report refused" USAGE-RC die then
    fd s\" \n" write 1 <> if s" pg-hold: report refused" USAGE-RC die then ;
 
@@ -77,6 +71,7 @@ using PG
    SHM-LINE u LINE$ REPORT ;
 
 : MAIN ( -- )
+   s" PG_HOLD_FIFO" TEST-FIFO:WRITER FD>N HOLD !
    SCRIPT-ARGC 1 <> if
       s" pg-hold: test/db/pg-cluster.f runs this with a conninfo" USAGE-RC die
    then
