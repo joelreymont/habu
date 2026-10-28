@@ -1,6 +1,6 @@
 ---
 title: Skip parse-immediate operands in T0
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-10-28T13:35:40.400550+02:00"

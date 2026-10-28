@@ -1,6 +1,6 @@
 ---
 title: Match T0 keywords as Habu resolves them
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-10-28T13:35:40.391274+02:00"
