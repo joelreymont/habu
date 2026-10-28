@@ -12,8 +12,8 @@
 \ file, and each pointer answers "x,y". One run answers the fetch with a small
 \ file. The other answers it with a file larger than the module's whole
 \ memory, which is at most its data base plus the module file's bytes rounded
-\ up to a page, so the host grows the memory past what the module had and the
-\ module reads every byte it copied there.
+\ up to a page, so the module's reserve grows its memory past what it had and
+\ the module reads every byte the host copied there.
 \
 \ Typed text posts twice, the second post waiting behind the first, and the
 \ host prints each post's path, length and body in hex as it makes it:
@@ -193,7 +193,7 @@ DYNAMIC-BUFFER PAYLOAD u8
    HOST-OPEN  200 s" large.bin" ANSWER+  s" --pointer" 0 0 1 AT+  s" --pointer" 1279 719 1 AT+
    HOST SUCCEEDED
    STARTED  0 PAYLOAD u SUM-LINE  s" 0,0" TEXT-LINE  s" 1279,719" TEXT-LINE
-   s" a file larger than the module's memory: the host grows it and the module reads the copy" T-LABEL
+   s" a file larger than the module's memory: its reserve grows it and the module reads the copy" T-LABEL
    OUT OUT-U @ SB$ T$= ;
 
 : HELD-CASE ( -- )

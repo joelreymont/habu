@@ -25,6 +25,7 @@ require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/test.f
 require test/wasm/harness.f
+require test/browser/memory.f
 
 package BROWSER-REQUEST-TEST
 private
@@ -359,6 +360,13 @@ FS-PATH-CAP BUFFER: FILE
    s" legacy: records keep their order and their replies' zero fields" T-LABEL
    OUT$ s" legacy.out" SAME ;
 
+\ Four rounds of a tagged request and its answer end with the memory one round
+\ does: each typed and each answered run frees its delivery.
+: FREED-CASE ( -- )
+   s" freed: four answered requests end with the memory one does"
+   MOD MOD-U @ [: s" x" TYPED+  ID1$ 201 s" zff.bin" ANSWER-ID+ ;]
+   BROWSER-MEMORY-TEST:FREED ;
+
 \ The label "malformed COMMAND: WHAT".
 : MALFORMED ( ptr u8 n ptr u8 n -- )
    {: cmd:ptr cu:n what:ptr wu:n :}
@@ -421,6 +429,7 @@ public
    INTERLEAVED-CASE
    MIXED-FAILURE-CASE
    LEGACY-CASE
+   FREED-CASE
    MALFORMED-CASES
    T-REPORT ;
 

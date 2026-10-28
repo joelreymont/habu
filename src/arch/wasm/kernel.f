@@ -22,8 +22,9 @@
 \   `throw` stores it, so a catch never reads a throw as success.
 \ - map-anon ( bytes -- ptr ior ) hands out, cleared, the first free run that
 \   holds the bytes' pages, leaving its tail free when it is longer; with none,
-\   memory.grow adds those pages at the memory's current end, past any pages a
-\   host added. A count outside 1..2^32 or a refused growth answers 0 -1.
+\   memory.grow adds those pages at the memory's current end. A count outside
+\   1..2^32 or a refused growth answers 0 -1. A host reserves through it too,
+\   by the module's reserve export (src/arch/wasm/link.f).
 \ - munmap ( ptr bytes -- ior ) puts the run back in ctx.free-head's
 \   address-sorted list, merged with the free runs it touches, and answers 0;
 \   a run that overlaps a free run traps. A count outside 1..2^32, or an
@@ -421,7 +422,7 @@ variable MADE                              \ blocks built, the next one's ordina
 
 \ First-fit from the address-sorted free list. A link is the address of the
 \ cell naming the current node: either ctx.free-head or the prior node's next.
-\ A miss grows the memory, whose current end lies past any pages a host added.
+\ A miss grows the memory at its current end.
 \ Blocks: 0 the entry, 1 the refusal, 2 the count's bound, 3 the list's head,
 \ 4 the loop's head on the current run and the link naming it, 5 the fit, 6 the
 \ rest, 7 the next run, 8 the whole run, 9 its head with the rest left free,

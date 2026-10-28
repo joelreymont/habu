@@ -9,16 +9,16 @@
 \ in the aligned frame (i32) -> (i32).
 \
 \ ONE ORDER NUMBERS EVERYTHING. Functions are numbered by origin, kernel, then
-\ captured, then adapter, each in the order it was added, and then come the four
-\ wrappers: run, throw-code, out-base and out-len. Types are deduplicated by
-\ their encoding, which is structural, in the order that numbering first uses
-\ them. A function keeps its own signature beside its type, so the aligned frame
-\ and a function of no lanes share a type and only the latter can be the entry.
-\ Table slots are numbered from 1 in the order TABLE+ adds them: slot 0 holds
-\ no function, a null funcref, so call_indirect of xt 0 traps as native execute
-\ of 0 fails. No global is declared: ctx lives in memory at WPROF's ctx base,
-\ so the global index space is empty. Nothing is imported and no start
-\ function runs.
+\ captured, then adapter, each in the order it was added, and then come the
+\ wrappers: run, throw-code, out-base, out-len and, once RESERVE! named its
+\ callee, reserve. Types are deduplicated by their encoding, which is
+\ structural, in the order that numbering first uses them. A function keeps its
+\ own signature beside its type, so the aligned frame and a function of no lanes
+\ share a type and only the latter can be the entry. Table slots are numbered
+\ from 1 in the order TABLE+ adds them: slot 0 holds no function, a null
+\ funcref, so call_indirect of xt 0 traps as native execute of 0 fails. No
+\ global is declared: ctx lives in memory at WPROF's ctx base, so the global
+\ index space is empty. Nothing is imported and no start function runs.
 \
 \ A SITE IS PATCHED IN PLACE. A call site is the offset of a padded five-byte
 \ field in its caller's body, and the field gets its callee's index. An address
@@ -35,23 +35,27 @@
 \ when a slot was added, memory, export, element with the table from slot 1,
 \ code, and data, one active segment at WPROF's image base. The memory's
 \ minimum is the pages holding the image's end and its maximum memory32's
-\ 65536, so a host may grow it and place bytes past the image
-\ (src/lib/browser/host.f). The exports are memory and the four wrappers, whose
-\ bodies are written here through WENC's opcode bytes because their signatures
-\ lie outside WSTRUCT's call row: run initializes the task DATA stack header,
-\ stores WPROF's stack base in ctx's stack base and top and 0 in its out-len,
-\ calls the entry with WPROF's ctx base and
-\ answers its status; throw-code answers ctx's throw code, out-base WPROF's out
-\ base, and out-len ctx's out-len.
+\ 65536, which WKERNEL's map-anon grows toward. The exports are memory and the
+\ wrappers, whose bodies are written here through WENC's opcode bytes because
+\ their signatures lie outside WSTRUCT's call row: run initializes the task
+\ DATA stack header, stores WPROF's stack base in ctx's stack base and top and
+\ 0 in its out-len, calls the entry with WPROF's ctx base and answers its
+\ status; throw-code answers ctx's throw code, out-base WPROF's out base, and
+\ out-len ctx's out-len. reserve, (i64 bytes) -> (i64 address), calls the
+\ function RESERVE! named, map-anon, with WPROF's ctx base and the count, and
+\ answers its address, 0 when it refused, dropping its status and ior: a host
+\ copies each delivery into pages the module reserved and owns
+\ (src/lib/browser/turn.js).
 \
 \ REFUSALS. LINK reads every row before it writes. An entry, site, cell or slot
-\ naming no function, image byte or slot is E-WLINK-UNRESOLVED, as is an
-\ address of kind NONE, which names nothing; a kind outside NONE, DATA and CODE
-\ is E-WSTRUCT-ADDR. A field that is not a padded LEB of its width inside its
-\ body is WLEB's refusal, and a cell outside the image E-SPAN-RANGE. An entry
-\ that takes or answers a lane is E-WENC-ARITY. DATA! refuses, before it
-\ reserves a byte, an image whose end passes memory32's 65536 pages:
-\ E-WLINK-MEMORY.
+\ naming no function, image byte or slot is E-WLINK-UNRESOLVED, as is an address
+\ of kind NONE, which names nothing; a kind outside NONE, DATA and CODE is
+\ E-WSTRUCT-ADDR. A reserve callee naming no function is E-WLINK-UNRESOLVED, and
+\ one other than map-anon's lanes, one in and two out, E-WENC-ARITY. A field
+\ that is not a padded LEB of its width inside its body is WLEB's refusal, and a
+\ cell outside the image E-SPAN-RANGE. An entry that takes or answers a lane is
+\ E-WENC-ARITY. DATA! refuses, before it reserves a byte, an image whose end
+\ passes memory32's 65536 pages: E-WLINK-MEMORY.
 \
 \ STORAGE CLASS. MODULE-OWNED: the rows, bodies and image live in this package's
 \ buffers until RESET, and the module LINK answers until the next LINK.
@@ -104,6 +108,9 @@ $70 constant FUNCREF
 0 constant ACTIVE                    \ an active segment of table or memory zero
 1 constant FIRST-SLOT                \ the first slot holding a function; 0 is null
 $0B constant OP-END
+$1A constant OP-DROP
+$20 constant OP-LOCAL-GET
+$21 constant OP-LOCAL-SET
 2 constant ALIGN-32                  \ an i32 access's natural alignment, 2^2
 3 constant ALIGN-64
 WPROF:PAGE-BYTES constant PAGE-BYTES
@@ -116,6 +123,8 @@ PAGES-MAX PAGE-BYTES * WPROF:IMAGE-BASE - constant IMAGE-MAX
 \ ---- the signatures an emission row states -------------------------------------
 1 constant FRAME-ALIGNED             \ the lanes are in the aligned frame
 4 constant WRAPPERS                  \ run, throw-code, out-base and out-len
+variable RESERVES                    \ 1 once RESERVE! named reserve's callee, else 0
+variable RES-FN                      \ that callee
 3 constant RANKS
 
 : RANK ( WLINK:origin -- n )
@@ -243,6 +252,7 @@ DYNAMIC-BUFFER TYPE-AT n
 DYNAMIC-BUFFER TYPE-LEN n
 variable WR-I32                      \ () -> (i32): run, out-base and out-len
 variable WR-I64                      \ () -> (i64): throw-code
+variable WR-RES                      \ (i64) -> (i64): reserve
 variable WR-DYN                      \ (i32) -> (i32): an indirect call's
 
 : TY-BYTE ( n -- )
@@ -299,6 +309,10 @@ variable WR-DYN                      \ (i32) -> (i32): an indirect call's
    [: TYPE-FN ;] IN-ORDER
    I32 RESULT-TYPE INTERN WR-I32 !
    I64 RESULT-TYPE INTERN WR-I64 !
+   RESERVES @ 0<> if
+      0 TY-U !  FUNC-FORM TY-BYTE  1 TY-U32  I64 TY-BYTE  1 TY-U32  I64 TY-BYTE
+      INTERN WR-RES !
+   then
    NINDS @ 0 > if  0 TY-U !  FUNC-FORM TY-BYTE  0 ROW  0 ROW  INTERN WR-DYN !  then ;
 
 \ ---- the wrappers ---------------------------------------------------------------
@@ -321,7 +335,7 @@ variable WR-DYN                      \ (i32) -> (i32): an indirect call's
    WPROF:CTX-BASE I32-CONST
    op PUT-OP  al PUT-U32  off PUT-U32 ;
 
-\ Each body declares no local.
+\ Each body but reserve's declares no local.
 : RUN-BODY ( -- )
    0 PUT-U32
    WPROF:STACK-BASE STACK-ABI:BASE-CELL DATA-CELL!
@@ -348,6 +362,19 @@ variable WR-DYN                      \ (i32) -> (i32): an indirect call's
    WSTRUCT-OPCODE:I32-LOAD ALIGN-32 WPROF:CTX-OUT-LEN CTX@
    OP-END PUT-BYTE ;
 
+\ The callee answers status, address and ior; local 1, an i64, holds the
+\ address while the status under it drops.
+: RESERVE-BODY ( -- )
+   1 PUT-U32  1 PUT-U32  I64 PUT-BYTE
+   WPROF:CTX-BASE I32-CONST
+   OP-LOCAL-GET PUT-BYTE  0 PUT-U32
+   WSTRUCT-OPCODE:CALL PUT-OP  RES-FN @ FN-IDX @ PUT-U32
+   OP-DROP PUT-BYTE
+   OP-LOCAL-SET PUT-BYTE  1 PUT-U32
+   OP-DROP PUT-BYTE
+   OP-LOCAL-GET PUT-BYTE  1 PUT-U32
+   OP-END PUT-BYTE ;
+
 \ ---- the sections -------------------------------------------------------------
 : BODY$ ( n -- ptr u8 n )
    {: k:n :}
@@ -361,11 +388,13 @@ variable WR-DYN                      \ (i32) -> (i32): an indirect call's
    NTYPES @ PUT-U32
    0 TYPES TYPES-U @ PUT-BYTES ;
 
-\ The wrappers' types follow the functions': run, throw-code, out-base, out-len.
+\ The wrappers' types follow the functions': run, throw-code, out-base, out-len
+\ and reserve.
 : FUNCTION-SEC ( -- )
-   NF @ WRAPPERS + PUT-U32
+   NF @ WRAPPERS + RESERVES @ + PUT-U32
    [: FN-TYPE @ PUT-U32 ;] IN-ORDER
-   WR-I32 @ PUT-U32  WR-I64 @ PUT-U32  WR-I32 @ PUT-U32  WR-I32 @ PUT-U32 ;
+   WR-I32 @ PUT-U32  WR-I64 @ PUT-U32  WR-I32 @ PUT-U32  WR-I32 @ PUT-U32
+   RESERVES @ 0<> if  WR-RES @ PUT-U32  then ;
 
 : TABLE-SEC ( -- )
    NSLOTS @ FIRST-SLOT + {: n:n :}
@@ -382,12 +411,13 @@ variable WR-DYN                      \ (i32) -> (i32): an indirect call's
 
 \ The wrappers follow the functions, so run's index is their count.
 : EXPORT-SEC ( -- )
-   WRAPPERS 1+ PUT-U32
+   WRAPPERS 1+ RESERVES @ + PUT-U32
    s" memory" EXPORT-MEMORY 0 PUT-EXPORT
    s" run" EXPORT-FUNC NF @ PUT-EXPORT
    s" throw-code" EXPORT-FUNC NF @ 1+ PUT-EXPORT
    s" out-base" EXPORT-FUNC NF @ 2 + PUT-EXPORT
-   s" out-len" EXPORT-FUNC NF @ 3 + PUT-EXPORT ;
+   s" out-len" EXPORT-FUNC NF @ 3 + PUT-EXPORT
+   RESERVES @ 0<> if  s" reserve" EXPORT-FUNC NF @ WRAPPERS + PUT-EXPORT  then ;
 
 : ELEMENT-SEC ( -- )
    1 PUT-U32
@@ -402,12 +432,13 @@ variable WR-DYN                      \ (i32) -> (i32): an indirect call's
    k BODY$ PUT-BYTES ;
 
 : CODE-SEC ( -- )
-   NF @ WRAPPERS + PUT-U32
+   NF @ WRAPPERS + RESERVES @ + PUT-U32
    [: CODE-ENTRY ;] IN-ORDER
    [: RUN-BODY ;] SIZED
    [: THROW-CODE-BODY ;] SIZED
    [: OUT-BASE-BODY ;] SIZED
-   [: OUT-LEN-BODY ;] SIZED ;
+   [: OUT-LEN-BODY ;] SIZED
+   RESERVES @ 0<> if  [: RESERVE-BODY ;] SIZED  then ;
 
 variable IMAGE-POS                   \ where LINK wrote the image in the module
 
@@ -478,9 +509,17 @@ variable IMAGE-POS                   \ where LINK wrote the image in the module
    at 0 <  at IMAGE-U @ CELL-BYTES - > or if E-SPAN-RANGE throw then
    k CELL-KIND @ k CELL-TGT @ FINAL drop ;
 
+\ reserve's callee takes a byte count and answers an address and an ior.
+: RESERVE-CK ( -- )
+   RESERVES @ 0= if exit then
+   RES-FN @ RESOLVED {: f:n :}
+   f FN-IN @ 1 <>  f FN-OUT @ 2 <> or  f FN-VAR @ FRAME-ALIGNED = or
+   if E-WENC-ARITY throw then ;
+
 \ Every row, before a byte is written.
 : ROWS-CK ( n -- )
    ENTRY-CK
+   RESERVE-CK
    NSLOTS @ 0 ?do  i SLOT-FN @ RESOLVED drop  loop
    NCALLS @ 0 ?do  i CALL-CK  loop
    NINDS @ 0 ?do  i IND-CK  loop
@@ -521,7 +560,7 @@ public
 
 : RESET ( -- )
    0 NF !  0 BODIES-U !  0 NCALLS !  0 NADDRS !  0 IMAGE-U !  0 NCELLS !  0 NSLOTS !
-   0 NINDS ! ;
+   0 NINDS !  0 RESERVES ! ;
 
 \ A body as WENC writes it, the lanes in and out its emission row states, the
 \ frame variant WENC picks for them and its origin; answers its handle.
@@ -589,6 +628,11 @@ public
    f k SLOT-FN !
    1 NSLOTS +!
    k FIRST-SLOT + ;
+
+\ The module exports reserve, calling function f: WKERNEL's map-anon, which
+\ takes a byte count and answers an address and an ior.
+: RESERVE! ( n -- )
+   RES-FN !  1 RESERVES ! ;
 
 \ The module, run calling the function e.
 : LINK ( n -- ptr u8 n )

@@ -3,15 +3,15 @@
 
 require src/lib/errors.f
 require src/lib/string.f
+require src/lib/browser/event.f
 
 package REQUEST-TURN
 private
+using BROWSER-EVENT
 
 CAST: >BYTES ( n -- ptr u8 )
 CAST: BYTES>N ( ptr u8 -- n )
-CAST: >CELLS ( ptr u8 -- ptr n )
 
-56 BUFFER: EVENT-BUF
 128 BUFFER: REQ
 128 BUFFER: REQ2
 variable REQ-U
@@ -24,9 +24,6 @@ variable TEXT-U
 : RECORD ( n n n n -- )
    {: kind:n a:n b:n c:n :}
    kind FIELD, a FIELD, b FIELD, c FIELD, ;
-
-: EVENT@ ( n -- n )
-   8 * EVENT-BUF + >CELLS @ ;
 
 : SAY-C ( n -- )
    TEXT TEXT-U @ + c! TEXT-U @ 1+ TEXT-U ! ;
@@ -171,13 +168,17 @@ variable TEXT-U
    5 EVENT@ DIGITS 44 SAY-C 6 EVENT@ DIGITS
    TEXT-RECORD ;
 
-public
-
-: TURN ( -- )
+: DISPATCH ( -- )
    0 EVENT@ {: kind:n :}
-   kind 0 = if 0 EVENT-BUF BYTES>N 0 0 RECORD exit then
+   kind 0 = if 0 EVENT BYTES>N 0 0 RECORD exit then
    kind 4 = if TYPED exit then
    kind 3 = if ANSWERED exit then
    kind 1 = if BYTES exit then ;
 
+public
+
+: TURN ( -- )
+   [: DISPATCH ;] HANDLE ;
+
+;using
 ;package

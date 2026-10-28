@@ -12,29 +12,29 @@
 \ decimal. Pointer answers the text "x,y", moved "moved x,y" and released
 \ "released x,y", x and y signed.
 \
-\ Typed text T posts twice and then answers the text T where the host placed
-\ it. Both posts name one span of REQ, which every typed run rewrites: the path
+\ Typed text T posts twice and then answers the text T. Both posts name one span of REQ, which every typed run rewrites: the path
 \ T, then the body T twice. The second post waits behind the first, so a host
 \ must copy it before it waits. The text "trap" traps instead, at a load from
 \ the null region, the text "long path" names a path one byte longer than the
 \ posts' span, and "neg path" a path of -1 bytes. Answered answers the text of
-\ the status and then the body where the host placed it; status 200 fetches
-\ `fixture` in the record before them, so its answer would rewrite that status
-\ text.
+\ the status and then the body; status 200 fetches `fixture` in the record
+\ before them, so its answer would rewrite that status text.
+\
+\ Every run frees the event's delivery (src/lib/browser/event.f), so the texts
+\ of typed text and an answer's body name copies: typed text's in REQ, which
+\ starts with T, and a body's in ANSWER.
 
 require src/lib/errors.f
 require src/lib/string.f
+require src/lib/browser/event.f
 
 package ECHO
 private
+using BROWSER-EVENT
 
 CAST: >BYTES ( n -- ptr u8 )
-CAST: >CELLS ( ptr u8 -- ptr n )
 CAST: BYTES>N ( ptr u8 -- n )
 
-\ The event: its kind and six fields, zero, which is start, until the host
-\ writes one.
-56 BUFFER: EVENT-BUF
 \ The text a record names: "released ", two signed cells' digits and a comma.
 64 BUFFER: TEXT
 variable TEXT-U
@@ -42,6 +42,7 @@ variable TEXT-U
 192 constant REQ-CAP
 REQ-CAP BUFFER: REQ
 variable REQ-U
+DYNAMIC-BUFFER ANSWER u8              \ the last answer's body
 
 \ A record field, eight bytes low first, appended to OUT.
 : FIELD, ( n -- )
@@ -50,10 +51,6 @@ variable REQ-U
 : RECORD ( n n n n -- )
    {: kind:n a:n b:n c:n :}
    kind FIELD,  a FIELD,  b FIELD,  c FIELD, ;
-
-\ Field i of the event.
-: EVENT@ ( n -- n )
-   8 * EVENT-BUF + >CELLS @ ;
 
 : CHAR+ ( n -- )
    TEXT TEXT-U @ + c!  TEXT-U @ 1+ TEXT-U ! ;
@@ -83,7 +80,7 @@ variable REQ-U
    1 path BYTES>N u 0 RECORD ;
 
 : START ( -- )
-   0 EVENT-BUF BYTES>N 0 0 RECORD
+   0 EVENT BYTES>N 0 0 RECORD
    FETCH-FIXTURE
    0 TEXT-U !  s" loading" SAY  TEXT-RECORD ;
 
@@ -123,16 +120,17 @@ variable REQ-U
    else  at u s" neg path" IS? if  -1  else  u  then  then {: path:n :}
    4 REQ BYTES>N REQ-U @ path RECORD
    4 REQ BYTES>N REQ-U @ path RECORD
-   3 at u 0 RECORD ;
+   3 REQ BYTES>N u 0 RECORD ;
 
 : ANSWERED ( -- )
    3 EVENT@ 200 = if FETCH-FIXTURE then
    0 TEXT-U !  3 EVENT@ DIGITS  TEXT-RECORD
-   3 1 EVENT@ 2 EVENT@ 0 RECORD ;
+   DELIVERY {: at:ptr u:n :}
+   u 1 max ANSWER-RESERVE
+   at 0 ANSWER u BYTE-COPY
+   3 0 ANSWER BYTES>N u 0 RECORD ;
 
-public
-
-: TURN ( -- )
+: DISPATCH ( -- )
    0 EVENT@ {: kind:n :}
    kind 0 = if START exit then
    kind 1 = if BYTES exit then
@@ -142,4 +140,10 @@ public
    kind 5 = if s" moved " AT exit then
    kind 6 = if s" released " AT exit then ;
 
+public
+
+: TURN ( -- )
+   [: DISPATCH ;] HANDLE ;
+
+;using
 ;package

@@ -1,15 +1,15 @@
 \ navigation.f - Wasm fixture for the browser navigation, tree and highlight
 \ protocol. Build with tools/wasm-build.f, entry NAV:TURN.
 require src/lib/string.f
+require src/lib/browser/event.f
 
 package NAV
 private
+using BROWSER-EVENT
 
 CAST: >BYTES ( n -- ptr u8 )
-CAST: >CELLS ( ptr u8 -- ptr n )
 CAST: BYTES>N ( ptr u8 -- n )
 
-56 BUFFER: EVENT-BUF
 256 BUFFER: TEXT
 variable TEXT-U
 variable PRESS-BUTTONS
@@ -24,9 +24,6 @@ variable PRESS-MODS
 : RECORD ( n n n n -- )
    {: kind:n a:n b:n c:n :}
    kind FIELD, a FIELD, b FIELD, c FIELD, ;
-
-: EVENT@ ( n -- n )
-   8 * EVENT-BUF + >CELLS @ ;
 
 : CHAR+ ( n -- )
    TEXT TEXT-U @ + c! TEXT-U @ 1+ TEXT-U ! ;
@@ -84,7 +81,7 @@ variable PRESS-MODS
 
 : START ( -- )
    INIT-GEOMETRY
-   0 EVENT-BUF BYTES>N 0 0 RECORD
+   0 EVENT BYTES>N 0 0 RECORD
    s\" [{\"key\":1,\"parent\":0,\"label\":\"Assembly\"},{\"key\":2,\"parent\":1,\"label\":\"Part\"},{\"key\":3,\"parent\":2,\"label\":\"Face\"}]" 2 TREE
    2 DRAW 2 HIGHLIGHT 2 DRAW ;
 
@@ -130,9 +127,7 @@ variable PRESS-MODS
    s" tree" IS? if
       s\" [{\"key\":1,\"parent\":0,\"label\":\"Assembly\"},{\"key\":2,\"parent\":1,\"label\":\"Part\"},{\"key\":3,\"parent\":2,\"label\":\"Face\"}]" 3 TREE exit then ;
 
-public
-
-: TURN ( -- )
+: DISPATCH ( -- )
    0 EVENT@ {: kind:n :}
    kind 0 = if START exit then
    kind 4 = if INVALID exit then
@@ -140,4 +135,10 @@ public
    kind 2 = if 5 EVENT@ PRESS-BUTTONS ! 6 EVENT@ PRESS-MODS ! then
    EVENT-TEXT ;
 
+public
+
+: TURN ( -- )
+   [: DISPATCH ;] HANDLE ;
+
+;using
 ;package

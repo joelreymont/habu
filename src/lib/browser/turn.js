@@ -3,9 +3,12 @@
 // no DOM, GPU, network or file system.
 //
 // The module (src/arch/wasm/link.f) imports nothing and exports memory, run,
-// throw-code, out-base and out-len. Its memory may grow to memory32's 65536
-// pages; the host places received bytes past the image, and neither owner
-// reuses the other's pages.
+// throw-code, out-base, out-len and reserve. The module owns every byte of its
+// memory, which may grow to memory32's 65536 pages. For each delivery the host
+// calls reserve(length), which answers the address of fresh pages, at least
+// one, or 0 when it refuses; the host copies the bytes there and runs the event
+// that names them. The module frees them (src/lib/browser/event.f) once it no
+// longer needs them. An empty delivery reserves nothing and is named 0, 0.
 //
 // An event is 56 bytes at the address hello names: kind, a, b, c, d, buttons,
 // mods. Kinds: 0 start, 1 bytes, 2 pointer, 3 answered, 4 typed, 5 moved,
@@ -22,7 +25,7 @@
 //     post's d, buttons and mods are 0
 //   wheel: a, b signed device-pixel deltas; resize: a, b are 0
 //   control: a is a transient tree row key, never a persistent identity
-//   load: a, b name the scene's bytes, placed as fetched bytes are
+//   load: a, b name the scene's bytes
 //   focus, highlight: a, b name packed 16-byte identities, b a multiple of 16;
 //     b 0 clears. What a scene or an identity means is the module's.
 // buttons is the pointer's bitset; mods are Shift 1, Control 2, Alt 4, Meta 8.
@@ -59,9 +62,10 @@
 // body copied, since later runs rewrite the storage they name and growth detaches
 // it. Once the run's other records are handled, tagged requests from that run
 // start independently; legacy fetches and posts still wait in order, including
-// the requests made by their replies. An answer is copied into host-owned
-// pages, growing memory only when it does not fit in their unused tail. The
-// module runs again with an event naming those bytes.
+// the requests made by their replies. An answer is copied into pages reserved
+// through the module, and the module runs again with an event naming them.
+// Reserve, copy and run are one synchronous stretch: the module imports nothing,
+// so no other turn runs between them, and host.size() is the only call there.
 // Runs are synchronous and never overlap, but other turns
 // run while a request waits. A run that
 // traps ends the instance, as end() does: nothing runs, and memory does not
@@ -71,7 +75,6 @@
 // old ArrayBuffer, so every view is taken from memory.buffer where it is used:
 // https://www.w3.org/TR/wasm-js-api-2/#memories
 
-const PAGE_BYTES = 65536;
 const EVENT_BYTES = 56n;
 const RECORD_BYTES = 32;
 const CORNER_BYTES = 36n; // a triangle's three corners of f32 x y z
@@ -130,8 +133,6 @@ export class Module {
     this.event = null; // the address hello named
     this.ended = null; // why the instance ended: a trap or end()
     this.mask = null; // no highlight record yet: draw with an unselected mask
-    this.inputNext = 0; // next free byte in the host's last grown chunk
-    this.inputLimit = 0;
   }
 
   // The first turn.
@@ -172,7 +173,7 @@ export class Module {
     return this.turn([CONTROL, id, 0, ...this.host.size(), 0, 0]);
   }
 
-  // A turn for a scene's bytes, placed as an answer's are.
+  // A turn for a scene's bytes.
   async load(scene) {
     await this.turn([LOAD, this.place(scene), scene.length, ...this.host.size(), 0, 0]);
   }
@@ -192,7 +193,7 @@ export class Module {
     await this.turn([kind, this.place(ids), ids.length, ...this.host.size(), 0, 0]);
   }
 
-  // A turn for typed text, its UTF-8 bytes placed as an answer's are.
+  // A turn for typed text, its UTF-8 bytes.
   async typed(text) {
     const bytes = encoder.encode(text);
     await this.turn([TYPED, this.place(bytes), bytes.length, ...this.host.size(), 0, 0]);
@@ -416,22 +417,14 @@ export class Module {
     this.host.draw(corners, count, matrix, mask);
   }
 
-  // Keep host inputs in pages grown by the host, including after the module
-  // grows memory beyond them. Every placed span remains live for the instance.
+  // Copies a delivery into pages the module reserves, which it then owns, and
+  // answers their address; refuses one the module cannot reserve.
   place(bytes) {
     this.live();
-    const m = this.x.memory;
-    if (bytes.length === 0) return BigInt(m.buffer.byteLength);
-    if (bytes.length > this.inputLimit - this.inputNext) {
-      const at = m.buffer.byteLength;
-      const pages = Math.ceil(bytes.length / PAGE_BYTES);
-      m.grow(pages);
-      this.inputNext = at;
-      this.inputLimit = at + pages * PAGE_BYTES;
-    }
-    const at = this.inputNext;
-    new Uint8Array(m.buffer, at, bytes.length).set(bytes);
-    this.inputNext += bytes.length;
-    return BigInt(at);
+    if (bytes.length === 0) return 0n;
+    const at = this.x.reserve(BigInt(bytes.length));
+    if (at === 0n) throw new RangeError(`the module cannot reserve ${bytes.length} bytes`);
+    new Uint8Array(this.x.memory.buffer, Number(at), bytes.length).set(bytes);
+    return at;
   }
 }

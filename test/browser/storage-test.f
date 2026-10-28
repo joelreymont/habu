@@ -1,17 +1,19 @@
 \ storage-test.f - test/browser/storage.f's module under bun: its dynamic buffer
-\ beside the pages src/lib/browser/host-cli.mjs adds (src/lib/browser/host.f).
-\ The module is built by tools/wasm-build.f's command line and validated by
-\ wasm-tools. bun and wasm-tools must be on PATH, so this is no row of the
-\ ordinary gate: test/wasm/device.f runs it, as does
-\ `bin/hb --load test/browser/storage-test.f` from the tree's root.
+\ and the deliveries src/lib/browser/host-cli.mjs reserves through the module
+\ share one allocator (src/lib/browser/event.f). The module is built by
+\ tools/wasm-build.f's command line and validated by wasm-tools. bun and
+\ wasm-tools must be on PATH, so this is no row of the ordinary gate:
+\ test/wasm/device.f runs it, as does `bin/hb --load test/browser/storage-test.f`
+\ from the tree's root.
 \
 \ The fetch is answered with a file larger than the module's image, so the
-\ host's bytes take several pages between the buffer's first two and the ones
+\ fetched bytes take several pages between the buffer's first two and the ones
 \ it grows into. The run answers hello, "loading", the fetch, the checksum of
-\ the host's bytes, which this test computes over the file, and "3,4" for one
-\ pointer; a check the module failed shows as its throw code instead. The
-\ module, the file, the expected and the actual output stay in the printed
-\ directory.
+\ the fetched bytes, which this test computes over the file, and "3,4" for one
+\ pointer. A second run then types 1000 keystrokes, each freed in its run, and
+\ ends with the same memory as the first run; a check the module failed shows
+\ as its throw code instead. The module, the file, the expected and the
+\ actual output stay in the printed directory.
 
 require src/lib/string.f
 require src/lib/fmt.f
@@ -23,6 +25,7 @@ require src/lib/process-env.f
 require src/lib/test.f
 require src/arch/wasm/profile.f
 require test/wasm/harness.f
+require test/browser/memory.f
 
 package BROWSER-STORAGE-TEST
 private
@@ -97,14 +100,13 @@ DYNAMIC-BUFFER PAYLOAD u8
    s" bun" >LEN EXE RESOLVE-EXECUTABLE {: u:len :}
    EXE u SPAWN ;
 
-: MEMORY-BYTES ( n -- n )
-   {: prefix:n :}
-   OUT-U @ prefix - {: u:n :}
-   OUT prefix + u s" memory " STARTS-WITH? 0= if E-PROC-OUTPUT throw then
-   OUT prefix + 7 + u 7 - TRIM STR>NUMBER? MATCH option
-      none OF E-PROC-OUTPUT throw ENDOF
-      some OF ENDOF
-   ;MATCH ;
+\ Asserts host-cli's memory line starts right after the output's first n
+\ bytes, so nothing follows the text the caller compared exactly.
+: MEMORY-NEXT ( n -- )
+   {: at:n :}
+   OUT-U @ at - 0 max {: u:n :}
+   s" the memory line follows the expected output at once" T-LABEL
+   OUT at + u s" memory " STARTS-WITH? TTRUE ;
 
 public
 
@@ -119,23 +121,26 @@ public
    MOD MOD-U @ WASM-HARNESS:VALID? TTRUE
    PAYLOAD! {: sum:n :}
    sum WANT {: want:ptr wu:n :}
-   s" the buffer grows past the host's pages, never takes them, and its freed pages return cleared" T-LABEL
+   s" the buffer grows beside the fetched bytes, keeps them, and its freed pages return cleared" T-LABEL
    false HOST {: status:n :}
    status 0 T=
    OUT wu want wu T$=
-   wu MEMORY-BYTES {: base:n :}
+   wu MEMORY-NEXT
+   OUT OUT-U @ BROWSER-MEMORY-TEST:MEMORY {: base:n :}
    DIR DIR-U @ s" payload.bin" FILE JOIN-PATH FILE-U !
-   s" fetched bytes and two typed batches survive module growth without a page each" T-LABEL
+   s" each freed keystroke's pages serve the next, and the fetched bytes keep their checksum" T-LABEL
    true HOST 0 T=
    sum WANT drop drop
-   s\" text retained 1000\n" SB-APPEND
+   s\" text typed 1000\n" SB-APPEND
    SB$ {: all:ptr allu:n :}
    DIR DIR-U @ s" actual.txt" FILE JOIN-PATH FILE-U !
    FILE FILE-U @ OUT OUT-U @ WRITE-ALL
    DIR DIR-U @ s" expected.txt" FILE JOIN-PATH FILE-U !
    FILE FILE-U @ all allu WRITE-ALL
    OUT allu all allu T$=
-   allu MEMORY-BYTES base 16 WPROF:PAGE-BYTES * + <= TTRUE
+   allu MEMORY-NEXT
+   s" 1000 keystrokes leave memory as the first run left it" T-LABEL
+   OUT OUT-U @ BROWSER-MEMORY-TEST:MEMORY base T=
    T-REPORT ;
 
 ;package

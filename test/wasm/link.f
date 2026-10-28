@@ -10,11 +10,13 @@
 \ base plus a target in the image, its length included, or a table slot; the
 \ table and its element segment list the slots' functions from slot 1, and
 \ slot 0 holds none. Memory's minimum is the pages the image ends in and its
-\ maximum memory32's 65536, so a host may grow it. W03: 140 functions and 137
-\ types, chained by calls, have sections and bodies that walk out exactly.
+\ maximum memory32's 65536, which map-anon grows toward. W03: 140 functions
+\ and 137 types, chained by calls, have sections and bodies that walk out
+\ exactly.
 \ Refused, each by its code: an entry, call, address site, table slot or cell
 \ naming nothing the link holds, an address of kind NONE or of slot 0 among
-\ them; an address kind
+\ them; a reserve callee naming no function or one without map-anon's lanes;
+\ an address kind
 \ outside NONE, DATA and CODE; a site whose field is not padded or lies past its
 \ body; a cell past the image, one whose end would wrap past MAX-N included; an
 \ entry that takes or answers a lane; and an image of a negative length or one
@@ -355,6 +357,12 @@ IMAGE-LEN BUFFER: IMAGE-BUF            \ byte i holds i
    s" an entry below zero is refused" T-LABEL
    BASE  [: -1 WLINK:LINK 2drop ;] E-WLINK-UNRESOLVED TTHROWSQ ;
 
+: RESERVE-ROWS ( -- )
+   s" a reserve callee past the functions is refused" T-LABEL
+   BASE  3 WLINK:RESERVE!  [: LINK0 ;] E-WLINK-UNRESOLVED TTHROWSQ
+   s" a reserve callee without map-anon's lanes is refused" T-LABEL
+   BASE  0 WLINK:RESERVE!  [: LINK0 ;] E-WENC-ARITY TTHROWSQ ;
+
 : CALL-ROWS ( -- )
    s" a call of no function is refused" T-LABEL
    BASE  1 4 3 WLINK:CALL+  [: LINK0 ;] E-WLINK-UNRESOLVED TTHROWSQ
@@ -424,6 +432,7 @@ public
    PAGES-ROW
    W03-ROW
    ENTRY-ROWS
+   RESERVE-ROWS
    CALL-ROWS
    ADDRESS-ROWS
    SLOT-ROWS

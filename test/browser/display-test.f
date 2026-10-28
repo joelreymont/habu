@@ -4,6 +4,10 @@
 \ installed, macOS's application or google-chrome on PATH, the peer's --chrome
 \ option also runs the real browser (src/lib/browser/host.f); the row prints
 \ which Chrome ran, or that none was found.
+\
+\ Each kind of delivery display.f receives, bytes, load, focus and highlight,
+\ runs through src/lib/browser/host-cli.mjs once and four times, and both runs
+\ end with the same memory: every run frees its delivery's page.
 require src/lib/string.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
@@ -12,6 +16,7 @@ require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/test.f
 require test/wasm/harness.f
+require test/browser/memory.f
 
 package BROWSER-DISPLAY-TEST
 private
@@ -29,6 +34,8 @@ FS-PATH-CAP BUFFER: MOD
 variable MOD-U
 FS-PATH-CAP BUFFER: CHROME
 variable CHROME-U
+FS-PATH-CAP BUFFER: FILE
+variable FILE-U
 
 : ARG+ ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
 
@@ -42,7 +49,9 @@ variable CHROME-U
    s" browser-display" FS:MKTEMP-DIR {: a:ptr u:n :}
    a DIR u BYTE-COPY u DIR-U !
    s" browser display: module and output in " type DIR u type cr
-   DIR u s" display.wasm" MOD JOIN-PATH MOD-U ! ;
+   DIR u s" display.wasm" MOD JOIN-PATH MOD-U !
+   DIR u s" scene.bin" FILE JOIN-PATH FILE-U !
+   FILE FILE-U @ s" sixteen bytes ok" WRITE-ALL ;
 
 : BUILD ( -- n )
    PROC-ARGV-RESET
@@ -88,6 +97,20 @@ public
    s" SVG/input records, scenes, identities, refusals and CLI" T-LABEL
    PEER 0 T=
    OUT OUT-U @ type ERR ERR-U @ type
+   s" four fetched answers end with the memory one does"
+      MOD MOD-U @ [: \ the answer follows the typed "fetch" that asks for it
+         s" --typed" ARG+ s" fetch" ARG+
+         s" --answer" ARG+ s" 200" ARG+ FILE FILE-U @ ARG+ ;]
+      BROWSER-MEMORY-TEST:FREED
+   s" four loads end with the memory one does"
+      MOD MOD-U @ [: s" --load" ARG+ FILE FILE-U @ ARG+ ;]
+      BROWSER-MEMORY-TEST:FREED
+   s" four focus turns end with the memory one does"
+      MOD MOD-U @ [: s" --focus" ARG+ s" 000102030405060708090a0b0c0d0e0f" ARG+ ;]
+      BROWSER-MEMORY-TEST:FREED
+   s" four highlight turns end with the memory one does"
+      MOD MOD-U @ [: s" --highlight" ARG+ s" 0f0e0d0c0b0a09080706050403020100" ARG+ ;]
+      BROWSER-MEMORY-TEST:FREED
    T-REPORT ;
 
 ;package

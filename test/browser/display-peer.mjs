@@ -17,7 +17,7 @@ const host = {
   svg: (bytes) => records.push(["svg", bytes]),
   input: (enabled) => records.push(["input", enabled]),
   draw: () => records.push(["draw"]),
-  tree() {}, text() {},
+  tree() {}, text: (text) => records.push(["text", text]),
 };
 let module = await Module.load(bytes, host);
 await module.start();
@@ -48,6 +48,25 @@ for (const [command, reason] of [
   assert.equal(records.length, count, `${command} must not reach the host`);
 }
 await assert.rejects(module.focus(new Uint8Array(17)), /whole 16-byte identities/, "a partial identity");
+// A delivery the module cannot reserve, memory32's whole 4 GiB, is refused by
+// reserve before memory grows, and the instance keeps running.
+const memory = () => module.x.memory.buffer.byteLength;
+let before = memory();
+await assert.rejects(module.load(new Uint8Array(2 ** 32)),
+  (e) => e instanceof RangeError && /cannot reserve 4294967296 bytes/.test(e.message), "an unreservable delivery");
+assert.equal(memory(), before, "a refused delivery must not grow memory");
+// reserve answers 0 for an empty, negative, past-memory32 or past-bound count
+// and leaves memory as it was.
+for (const n of [0n, -1n, 2n ** 32n, 2n ** 32n + 1n]) assert.equal(module.x.reserve(n), 0n, `reserve(${n})`);
+assert.equal(memory(), before, "a refused reserve must not grow memory");
+await module.load(Uint8Array.of(0, 255, 16));
+assert.deepEqual(records.at(-1), ["text", "load 00ff10"], "a later delivery after a refused one");
+// A run that throws still frees its delivery: echoing 32 identities passes
+// ECHO's buffer, so each of these turns throws -1.
+await module.focus(new Uint8Array(16));
+before = memory();
+for (let i = 0; i < 5; i++) await assert.rejects(module.focus(new Uint8Array(512)), /^Error: throw -1$/, "an echo past its buffer");
+assert.equal(memory(), before, "turns that throw must free their deliveries");
 const scene = join(output, "scene.bin");
 writeFileSync(scene, Uint8Array.of(0, 255, 16));
 const cli = Bun.spawn([process.execPath, "src/lib/browser/host-cli.mjs", file, "--typed", "on", "--typed", "zero",
@@ -59,7 +78,7 @@ writeFileSync(join(output, "cli.txt"), stdout);
 assert.equal(code, 0, stderr);
 assert.equal(stdout, `hello\ninput 0\nsvg ${original.length} ${Buffer.from(original).toString("hex")}\ninput 1\ndraw 0\n` +
   `text load 00ff10\ntext focus ${"00".repeat(15)}ff\ntext highlight \n`);
-console.log("SVG/input protocol, independent copy, rejected records, identities and CLI passed");
+console.log("SVG/input protocol, independent copy, rejected records, identities, refused delivery and CLI passed");
 
 if (chrome) await browser();
 

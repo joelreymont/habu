@@ -24,8 +24,8 @@
 \ own: each row's program run natively and as a module, both held to the row.
 \ test/browser/echo-test.f runs after it and reports on its own: the browser
 \ host's turns, src/lib/browser/host-cli.mjs on its echo fixture.
-\ test/browser/storage-test.f runs after it and reports on its own: a dynamic
-\ buffer beside the pages the host adds. test/browser/navigation-test.f checks
+\ test/browser/storage-test.f runs after it and reports on its own: deliveries in
+\ pages the module reserves and frees. test/browser/navigation-test.f checks
 \ input, tree and highlight records through the same host. The modules stay in
 \ the printed directories.
 

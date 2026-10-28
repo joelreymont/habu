@@ -4,15 +4,15 @@
 \ page-relative path slow.
 \ Build with tools/wasm-build.f, entry DISPLAY:TURN.
 require src/lib/string.f
+require src/lib/browser/event.f
 
 package DISPLAY
 private
+using BROWSER-EVENT
 
 CAST: >BYTES ( n -- ptr u8 )
-CAST: >CELLS ( ptr u8 -- ptr n )
 CAST: BYTES>N ( ptr u8 -- n )
 
-56 BUFFER: EVENT-BUF
 64 BUFFER: MATRIX
 36 BUFFER: CORNERS
 512 BUFFER: IMAGE
@@ -27,9 +27,6 @@ variable ECHO-U
 : RECORD ( n n n n -- )
    {: kind:n a:n b:n c:n :}
    kind FIELD, a FIELD, b FIELD, c FIELD, ;
-
-: EVENT@ ( n -- n )
-   8 * EVENT-BUF + >CELLS @ ;
 
 : SVG ( ptr u8 n -- )
    {: a:ptr u:n :}
@@ -97,11 +94,9 @@ variable ECHO-U
    loop
    3 ECHO-BUF BYTES>N ECHO-U @ 0 RECORD ;
 
-public
-
-: TURN ( -- )
+: DISPATCH ( -- )
    0 EVENT@ 0 = if
-      0 EVENT-BUF BYTES>N 0 0 RECORD
+      0 EVENT BYTES>N 0 0 RECORD
       9 0 0 0 RECORD
       RED exit
    then
@@ -110,4 +105,10 @@ public
    0 EVENT@ 12 = if s" focus " ECHO exit then
    0 EVENT@ 13 = if s" highlight " ECHO then ;
 
+public
+
+: TURN ( -- )
+   [: DISPATCH ;] HANDLE ;
+
+;using
 ;package

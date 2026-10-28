@@ -1,6 +1,9 @@
 \ navigation-test.f - Wasm end-to-end browser input, tree and highlight records.
 \ Run through the real host runner: bin/hb --load test/browser/navigation-test.f
 \ The printed directory keeps the module and expected/actual CLI output.
+\ Each kind of delivery navigation.f receives, typed and key, runs once and four
+\ times, and both runs end with the same memory: every run frees its delivery's
+\ page.
 
 require src/lib/string.f
 require src/lib/fmt.f
@@ -11,6 +14,7 @@ require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/test.f
 require test/wasm/harness.f
+require test/browser/memory.f
 
 package BROWSER-NAV-TEST
 private
@@ -145,6 +149,13 @@ FS-PATH-CAP BUFFER: FILE
    s" short" s" highlight count" REJECT
    s" long" s" highlight count" REJECT ;
 
+: FREED-CASES ( -- )
+   s" four typed turns end with the memory one does"
+      MOD MOD-U @ [: s" redraw" TYPED+ ;] BROWSER-MEMORY-TEST:FREED
+   s" four key turns end with the memory one does"
+      MOD MOD-U @ [: s" --key" ARG+ s" Escape" ARG+ 8 N-ARG+ ;]
+      BROWSER-MEMORY-TEST:FREED ;
+
 public
 
 : RUN ( -- )
@@ -155,7 +166,7 @@ public
    rc 0<> if ERR ERR-U @ type cr T-REPORT exit then
    s" browser navigation module validates" T-LABEL
    MOD MOD-U @ WASM-HARNESS:VALID? TTRUE
-   INPUT-CASE ZERO-CASE REDRAW-CASE INVALID-CASES
+   INPUT-CASE ZERO-CASE REDRAW-CASE INVALID-CASES FREED-CASES
    T-REPORT ;
 
 ;package

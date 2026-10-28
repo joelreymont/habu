@@ -16,7 +16,7 @@
 \   which becomes the name of the engine word it enters before the map is asked.
 \   A runtime function has an adapter's type and takes the stack as it stands,
 \   so it is its own table slot, the xt a code literal or cell of execute or
-\   catch holds.
+\   catch holds. map-anon's row is the callee of the module's reserve export.
 \ - THE NAMES. A call, a code literal or a code cell naming a word of the
 \   engine's own prefix reaches execute's or catch's runtime function, or what
 \   WKERNEL:PROVIDER answers: a row, or a word of src/arch/wasm/kernel-words.f,
@@ -285,7 +285,8 @@ variable VAL-AT                      \ the next cell value in the capture's valu
    WDYN:EXECUTE+ RUNTIME+ EXEC-H !
    WDYN:CATCH+ RUNTIME+ CATCH-H !
    WENC:BYTES WLINK-ORIGIN:KERNEL EMISSION+ K0 !
-   WENC:CALL-SITES 0 ?do  i KERNEL-CALL+  loop ;
+   WENC:CALL-SITES 0 ?do  i KERNEL-CALL+  loop
+   s" map-anon" NAMED WLINK:RESERVE! ;
 
 \ ---- the sites ------------------------------------------------------------------
 \ Index sites by their owning record. The worklist visits only records reached
