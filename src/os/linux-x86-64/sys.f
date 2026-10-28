@@ -58,6 +58,7 @@ $104022 constant MAP-DATA-RESERVE
 234 constant NR-TGKILL
 310 constant NR-PROCESS-VM-READV
 434 constant NR-PIDFD-OPEN
+436 constant NR-CLOSE-RANGE
 293 constant NR-PIPE              \ pipe2(fds, flags)
 13  constant NR-SIGACTION         \ rt_sigaction
 10  constant NR-MPROTECT

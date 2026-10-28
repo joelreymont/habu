@@ -53,6 +53,7 @@ $1DA constant NR-SYMLINKAT
 $7   constant NR-WAIT4     \ wait4(pid, &status, 0, 0)
 $3B  constant NR-EXECVE    \ execve(path, argv, envp) — BSD syscall 59
 0    constant NR-CHDIR
+0    constant NR-CLOSE-RANGE  \ Linux-only, as NR-CHDIR: named by habu1.f LINUX-SPAWN-FDS-CHILD
 $1   constant NR-EXIT-GROUP
 
 -2 constant AT-FDCWD

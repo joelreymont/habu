@@ -49,6 +49,7 @@ require src/habu/data-claims.f          \ each band (PROT-SPAN) tests is a claim
 require src/habu/snapshot-format.f
 require src/habu/code-span.f
 require src/habu/task-abi.f
+require src/habu/spawn-abi.f
 require src/arch/x86-64/asm.f
 require src/arch/x86-64/icode.f
 require src/arch/x86-64/rt.f
@@ -1026,8 +1027,9 @@ $687461706C616572 constant REALPATH-NAME
 
 \ ---- process rows ------------------------------------------------------------
 \ The twins of habu1.f's Linux process bodies: LINUX-SPAWN under the four spawn
-\ rows and BRUNRC, then BPIPE .. BWAITSTATUS and LIBC-OS FORK. Every failure
-\ is -1, as habu1.f's errno rule has it, except poll's -errno.
+\ rows and BRUNRC, LINUX-SPAWN-FDS, then BPIPE .. BWAITSTATUS and LIBC-OS
+\ FORK. Every failure is -1, as habu1.f's errno rule has it, except poll's and
+\ spawn-fds's -errno.
 
 17 constant CLONE-SIGCHLD           \ SIGCHLD at exit, nothing shared
 $80000 constant PIPE-CLOEXEC        \ O_CLOEXEC
@@ -1077,17 +1079,20 @@ $80000 constant PIPE-CLOEXEC        \ O_CLOEXEC
 
 : CLOSE-SLOT, ( n -- ) {: off:n :}  RDI off FRAME32@,  NR-CLOSE SYS, ;
 
-\ Move the pipe's write end to SPAWN-MIN-FD or above, as LINUX-SPAWN-PREP-W
-\ does, so the child's dup onto 0, 1 or 2 cannot replace it. syscall keeps r8.
-: SPAWN-PREP-W, ( label -- ) {: fail:label :}
+\ Move the pipe's write end to the fd in rdx or above, as LINUX-SPAWN-LIFT-W
+\ does, so no descriptor the child places can replace it. syscall keeps r8.
+: SPAWN-LIFT-W, ( label -- ) {: fail:label :}
    X64CODE:LBL {: high:label :}
    RDI SPN-PIPE-W FRAME32@,
-   RDI SPAWN-MIN-FD 1- >IMM8 ASM-SINK ENC-CMP-RI8  C-G high JCC,
-   RSI F-DUPFD-CLOEXEC IMM32,  RDX SPAWN-MIN-FD IMM32,  NR-FCNTL SYS,  C-B fail JCC,
+   RDI RDX ASM-SINK ENC-CMP-RR  C-GE high JCC,
+   RSI F-DUPFD-CLOEXEC IMM32,  NR-FCNTL SYS,  C-B fail JCC,
    R8 RAX ASM-SINK ENC-MOV-RR
    SPN-PIPE-W CLOSE-SLOT,
    R8 SPN-PIPE-W FRAME32!,
    high X64CODE:LBL, ;
+
+\ The four stdio spawns lift it above the three stdio descriptors.
+: SPAWN-PREP-W, ( label -- )  RDX SPAWN-MIN-FD IMM32,  SPAWN-LIFT-W, ;
 
 \ Put the descriptor in the frame cell on fd n, as LINUX-DUP2-FD: dup3 it
 \ there, or, when it is n itself, clear the close-on-exec flag a dup3 would
@@ -1174,6 +1179,120 @@ $80000 constant PIPE-CLOEXEC        \ O_CLOEXEC
    RAX MINUS-1,
    done X64CODE:LBL, ;
 
+\ spawn-fds over the same frame: its first six cells are the request copied to
+\ SPAWN-ABI's offsets, the cell at SPAWN-ABI:BYTES holds the lift floor,
+\ SPN-BYTE's cell holds the child's four-byte errno, and SPN-ARGV0 the address
+\ of the child's mapped array of lifted descriptors.
+4 constant CLOSE-RANGE-CLOEXEC
+4 constant SPAWN-EINTR
+22 constant SPAWN-EINVAL
+4 constant SPAWN-ERRNO-BYTES
+SPN-ARGV0 constant SPN-LIFTED
+
+: NFDS@, ( r64 -- ) SPAWN-ABI:NFDS FRAME@, ;
+
+\ The twin of habu1.f LINUX-SPAWN-FDS-CHILD: every descriptor is marked
+\ close-on-exec, each source is lifted to a fresh fd at or above the floor in
+\ the cell past the request, in a mapped scratch array, before any slot is
+\ placed, and dup3 with no flags places each one. A failing step writes its
+\ errno to the pipe and exits SPAWN-FAIL-RC.
+: SPAWN-FDS-CHILD, ( -- )
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL {: fail:label nocwd:label lift:label keep:label :}
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL {: lifted:label place:label skip:label placed:label :}
+   SPN-PIPE-R CLOSE-SLOT,
+   RDI ZERO-REG,  RSI ZERO-REG,  NR-SETPGID SYS,  C-B fail JCC,
+   RDI SPAWN-ABI:CWD FRAME@,  RDI RDI ASM-SINK ENC-TEST-RR  C-E nocwd JCC,
+   NR-CHDIR SYS,  C-B fail JCC,
+   nocwd X64CODE:LBL,
+   RDI ZERO-REG,  RSI MINUS-1,  RDX CLOSE-RANGE-CLOEXEC IMM32,
+   NR-CLOSE-RANGE SYS,  C-B fail JCC,
+   RDI ZERO-REG,  RSI NFDS@,  RSI 3 >IMM8 ASM-SINK ENC-SHL-RI8
+   RSI CELL >IMM8 ASM-SINK ENC-ADD-RI8
+   RDX PROT-RW IMM32,  R10 MAP-ANON-PRIVATE IMM32,  R8 MINUS-1,  R9 ZERO-REG,
+   NR-MMAP SYS,  C-B fail JCC,
+   RAX SPN-LIFTED FRAME!,
+   R9 RAX ASM-SINK ENC-MOV-RR  R8 SPAWN-ABI:FDS FRAME@,  R10 NFDS@,
+   lift X64CODE:LBL,
+   R10 R10 ASM-SINK ENC-TEST-RR  C-E lifted JCC,
+   RDI R8 MEM-AT ASM-SINK ENC-MOV-RM
+   RDI RDI ASM-SINK ENC-TEST-RR  C-S keep JCC,
+   RSI F-DUPFD-CLOEXEC IMM32,  RDX SPAWN-ABI:BYTES FRAME@,  NR-FCNTL SYS,  C-B fail JCC,
+   RDI RAX ASM-SINK ENC-MOV-RR
+   keep X64CODE:LBL,
+   RDI R9 MEM-AT ASM-SINK ENC-MOV-MR
+   R8 CELL >IMM8 ASM-SINK ENC-ADD-RI8  R9 CELL >IMM8 ASM-SINK ENC-ADD-RI8
+   R10 ASM-SINK ENC-DEC  lift JMP,
+   lifted X64CODE:LBL,
+   R9 SPN-LIFTED FRAME@,  R10 ZERO-REG,
+   place X64CODE:LBL,
+   R10 SPAWN-ABI:NFDS RP ASM-SINK ENC-CMP-RM  C-GE placed JCC,
+   RDI R9 MEM-AT ASM-SINK ENC-MOV-RM
+   RDI RDI ASM-SINK ENC-TEST-RR  C-S skip JCC,
+   RSI R10 ASM-SINK ENC-MOV-RR  RDX ZERO-REG,  NR-DUP2 SYS,  C-B fail JCC,
+   skip X64CODE:LBL,
+   R9 CELL >IMM8 ASM-SINK ENC-ADD-RI8  R10 ASM-SINK ENC-INC  place JMP,
+   placed X64CODE:LBL,
+   RDI SPAWN-ABI:PATH FRAME@,  RSI SPAWN-ABI:ARGV FRAME@,  RDX SPAWN-ABI:ENVP FRAME@,
+   NR-EXECVE SYS,
+   fail X64CODE:LBL,
+   RAX ASM-SINK ENC-NEG  RAX SPN-BYTE FRAME32!,
+   RDI SPN-PIPE-W FRAME32@,  RSI SPN-BYTE FRAME-AT,  RDX SPAWN-ERRNO-BYTES IMM32,
+   NR-WRITE SYS,
+   SPAWN-FAIL-RC EXIT-GROUP, ;
+
+\ The twin of habu1.f LINUX-SPAWN-FDS-PARENT, with the child's pid in rax:
+\ end of file leaves the pid in rax; the child's errno makes rax -errno and
+\ reaps it. An interrupted read is retried; any other failed read is its
+\ -errno, and the child is reaped.
+: SPAWN-FDS-PARENT, ( -- )
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL {: retry:label got:label reap:label done:label :}
+   RAX SPN-PID FRAME!,
+   SPN-PIPE-W CLOSE-SLOT,
+   RAX ZERO-REG,  RAX SPN-BYTE FRAME32!,
+   retry X64CODE:LBL,
+   RDI SPN-PIPE-R FRAME32@,  RSI SPN-BYTE FRAME-AT,  RDX SPAWN-ERRNO-BYTES IMM32,
+   NR-READ SYS,  C-AE got JCC,
+   RAX SPAWN-EINTR negate >IMM8 ASM-SINK ENC-CMP-RI8  C-E retry JCC,
+   R8 RAX ASM-SINK ENC-MOV-RR  reap JMP,
+   got X64CODE:LBL,
+   R8 SPN-PID FRAME@,  RAX RAX ASM-SINK ENC-TEST-RR  C-E done JCC,
+   R8 SPN-BYTE FRAME32@,  R8 ASM-SINK ENC-NEG
+   reap X64CODE:LBL,
+   RDI SPN-PID FRAME@,  RSI SPN-STATUS FRAME-AT,  RDX ZERO-REG,  R10 ZERO-REG,
+   NR-WAIT4 SYS,
+   done X64CODE:LBL,
+   SPN-PIPE-R CLOSE-SLOT,
+   RAX R8 ASM-SINK ENC-MOV-RR ;
+
+\ The twin of habu1.f LINUX-SPAWN-FDS over the frame at rsp: rax becomes the
+\ child's pid or -errno. The floor, max(NFDS, highest source + 1), goes in the
+\ cell past the request, and the pipe's write end is lifted to it or above, so
+\ no slot targets it and no source names it.
+: SPAWN-FDS, ( -- )
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL {: child:label closefail:label done:label :}
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL {: top:label below:label topped:label :}
+   RDI SPN-PIPE-R FRAME-AT,  RSI PIPE-CLOEXEC IMM32,  NR-PIPE SYS,  C-B done JCC,
+   RDX NFDS@,  R10 NFDS@,  R8 SPAWN-ABI:FDS FRAME@,
+   top X64CODE:LBL,
+   R10 R10 ASM-SINK ENC-TEST-RR  C-E topped JCC,
+   RCX R8 MEM-AT ASM-SINK ENC-MOV-RM
+   RCX RDX ASM-SINK ENC-CMP-RR  C-L below JCC,
+   RDX RCX ASM-SINK ENC-MOV-RR  RDX ASM-SINK ENC-INC
+   below X64CODE:LBL,
+   R8 CELL >IMM8 ASM-SINK ENC-ADD-RI8  R10 ASM-SINK ENC-DEC  top JMP,
+   topped X64CODE:LBL,
+   RDX SPAWN-ABI:BYTES FRAME!,  closefail SPAWN-LIFT-W,
+   CLONE-ARGS,  NR-SPAWN SYS,  C-B closefail JCC,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E child JCC,
+   SPAWN-FDS-PARENT,  done JMP,
+   child X64CODE:LBL,
+   SPAWN-FDS-CHILD,
+   closefail X64CODE:LBL,
+   R8 RAX ASM-SINK ENC-MOV-RR
+   SPN-PIPE-R CLOSE-SLOT,  SPN-PIPE-W CLOSE-SLOT,
+   RAX R8 ASM-SINK ENC-MOV-RR
+   done X64CODE:LBL, ;
+
 : SPAWN-OPEN, ( -- ) RSP SPN-FRAME >IMM8 ASM-SINK ENC-SUB-RI8 ;
 : SPAWN-CLOSE, ( -- ) RSP SPN-FRAME >IMM8 ASM-SINK ENC-ADD-RI8  RAX PUSH, ;
 : POP-SLOT, ( n -- ) {: off:n :}  RAX POP,  RAX off FRAME!, ;
@@ -1210,6 +1329,24 @@ $80000 constant PIPE-CLOEXEC        \ O_CLOEXEC
    SPAWN-OPEN,  STDIO-SLOTS,  SPN-CWD POP-SLOT,  SPN-ENV POP-SLOT,
    SPN-ARGV POP-SLOT,  SPN-PATH POP-SLOT,
    SPAWN,  SPAWN-CLOSE, ;
+
+\ ( request -- pid|-errno ): src/habu/spawn-abi.f lays out the request, as
+\ habu1.f BSPAWNFDS reads it. A negative NFDS is -EINVAL.
+: SPAWN-FDS-ROW ( -- )
+   X64CODE:LBL X64CODE:LBL {: valid:label done:label :}
+   RAX POP,
+   RCX RAX SPAWN-ABI:NFDS MEM-OFF ASM-SINK ENC-MOV-RM
+   RCX RCX ASM-SINK ENC-TEST-RR  C-NS valid JCC,
+   RAX SPAWN-EINVAL negate >IMM32 ASM-SINK ENC-MOV-RI32  done JMP,
+   valid X64CODE:LBL,
+   SPAWN-OPEN,
+   SPAWN-ABI:BYTES 0 ?do
+      RCX RAX i MEM-OFF ASM-SINK ENC-MOV-RM  RCX i FRAME!,
+   CELL +loop
+   SPAWN-FDS,
+   RSP SPN-FRAME >IMM8 ASM-SINK ENC-ADD-RI8
+   done X64CODE:LBL,
+   RAX PUSH, ;
 
 \ ( path -- status|-1 ): spawn with no arguments, environment or redirection,
 \ then wait4 for the exit status (WEXITSTATUS), as BRUNRC does. A spawn or a
@@ -1347,6 +1484,7 @@ public
    s" spawn-argv-io" [: SPAWN-ARGV-IO-ROW ;] PRIM
    s" spawn-argv-env-io" [: SPAWN-ENV-IO-ROW ;] PRIM
    s" spawn-argv-env-cwd-io" [: SPAWN-CWD-IO-ROW ;] PRIM
+   s" spawn-fds" [: SPAWN-FDS-ROW ;] PRIM
    s" run-rc" [: RUN-RC-ROW ;] PRIM ;
 
 \ ---- control rows ------------------------------------------------------------

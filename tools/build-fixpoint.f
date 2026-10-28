@@ -747,6 +747,7 @@ package BUILD-FIXPOINT
    out outu s" src/habu/data-claims.f" BF-APPEND-MODULE
    out outu s" src/habu/arith-abi.f" BF-APPEND-MODULE
    out outu s" src/habu/task-abi.f" BF-APPEND-MODULE
+   out outu s" src/habu/spawn-abi.f" BF-APPEND-MODULE
    out outu s" src/habu/habu1.f" BF-APPEND-MODULE ;
 
 \ fmt requires float and string; float requires string and option, and string

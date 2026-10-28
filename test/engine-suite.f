@@ -1773,6 +1773,115 @@ s" /usr/bin/true" ES-PATHZ run-rc 0 T=
 s" /usr/bin/false" ES-PATHZ run-rc 1 T=
 set-check
 
+\ spawn-fds: the child's descriptor table is exactly the request's map, through
+\ the primitive itself. Each child is /bin/sh -c with the script in ES-SFZ.
+require src/habu/spawn-abi.f
+1 constant ES-F-GETFD
+16 constant ES-SF-SCRIPT
+create ES-SFZ 64 allot
+create ES-SFARGV 4 cells allot
+create ES-SFENV 1 cells allot
+create ES-SFMAP 10 cells allot
+create ES-SFREQ SPAWN-ABI:BYTES allot
+create ES-SFBUF 16 allot
+variable ES-SFPID
+variable ES-R1  variable ES-W1  variable ES-R2  variable ES-W2
+variable ES-FA  variable ES-FB
+: ES-ADDR ( ptr a -- n ) NULL-PTR - ;
+: ES-REQ! ( n n -- ) ES-SFREQ + ! ;               \ ( value field -- )
+: ES-SFZ! ( ptr u8 n n -- ) {: a:ptr u:n off:n :}
+   0 begin dup u < while  dup a + c@  over off + ES-SFZ + c!  1 + repeat drop
+   0 ES-SFZ off u + + c! ;
+\ Put fd n's decimal digit at offset off of the script.
+: ES-SFDIGIT ( n n -- ) {: fd:n off:n :}  fd 48 +  ES-SFZ ES-SF-SCRIPT off + + c! ;
+: ES-SFSETUP ( -- )
+   s" /bin/sh" 0 ES-SFZ!  s" -c" 8 ES-SFZ!
+   ES-SFZ ES-ADDR ES-SFARGV !
+   ES-SFZ 8 + ES-ADDR ES-SFARGV cell+ !
+   ES-SFZ ES-SF-SCRIPT + ES-ADDR ES-SFARGV cell+ cell+ !
+   0 ES-SFARGV 3 cells + !
+   0 ES-SFENV !
+   ES-SFZ ES-ADDR SPAWN-ABI:PATH ES-REQ!
+   ES-SFARGV ES-ADDR SPAWN-ABI:ARGV ES-REQ!
+   ES-SFENV ES-ADDR SPAWN-ABI:ENVP ES-REQ!
+   0 SPAWN-ABI:CWD ES-REQ!
+   ES-SFMAP ES-ADDR SPAWN-ABI:FDS ES-REQ! ;
+: ES-SFMAP! ( n n -- ) cells ES-SFMAP + ! ;       \ ( parent-fd slot -- )
+: ES-SFUNMAP ( n -- ) {: n:n :}                    \ slots 0 .. n-1 closed
+   0 begin dup n < while  -1 over ES-SFMAP!  1+ repeat drop ;
+: ES-SFSCRIPT ( ptr u8 n -- ) ES-SF-SCRIPT ES-SFZ! ;
+: ES-SFSPAWN ( n -- n ) SPAWN-ABI:NFDS ES-REQ!  ES-SFREQ spawn-fds ;
+: ES-FREE-FD ( n -- n ) begin dup ES-F-GETFD 0 fcntl 0 < 0= while 1+ repeat ;
+: ES-SFREAD ( n -- n ) ES-SFBUF 16 read ;
+: ES-SFLINE? ( ptr u8 n n -- bool ) {: a:ptr u:n got:n :}
+   got u 1+ =  ES-SFBUF u a u T-STR= and  ES-SFBUF u + c@ 10 = and ;
+ES-SFSETUP
+
+s" spawn-fds-pipe-on-stdout" T-LABEL
+pipe 0 T=  ES-W1 !  ES-R1 !
+0 0 ES-SFMAP!  ES-W1 @ 1 ES-SFMAP!  2 2 ES-SFMAP!
+s" echo out" ES-SFSCRIPT  3 ES-SFSPAWN ES-SFPID !
+ES-W1 @ close
+s" out" ES-R1 @ ES-SFREAD ES-SFLINE? TTRUE
+ES-R1 @ ES-SFREAD 0 T=
+ES-R1 @ close
+ES-SFPID @ wait-status 0 T=
+
+\ Two slots below NFDS swap descriptors that sit on those same slots: placing
+\ slot a from fd b and then slot b from fd a would hand both slots one pipe.
+s" spawn-fds-crossing-map" T-LABEL
+pipe 0 T=  ES-W1 !  ES-R1 !
+pipe 0 T=  ES-W2 !  ES-R2 !
+3 ES-FREE-FD ES-FA !  ES-FA @ 1+ ES-FREE-FD ES-FB !
+ES-FB @ 10 < TTRUE
+ES-W1 @ ES-FA @ dup2 ES-FA @ T=  ES-W1 @ close
+ES-W2 @ ES-FB @ dup2 ES-FB @ T=  ES-W2 @ close
+ES-FB @ 1+ ES-SFUNMAP
+ES-FB @ ES-FA @ ES-SFMAP!  ES-FA @ ES-FB @ ES-SFMAP!
+s" echo a >&_; echo b >&_" ES-SFSCRIPT  ES-FA @ 9 ES-SFDIGIT  ES-FB @ 21 ES-SFDIGIT
+ES-FB @ 1+ ES-SFSPAWN ES-SFPID !
+ES-FA @ close  ES-FB @ close
+s" b" ES-R1 @ ES-SFREAD ES-SFLINE? TTRUE
+s" a" ES-R2 @ ES-SFREAD ES-SFLINE? TTRUE
+ES-R1 @ close  ES-R2 @ close
+ES-SFPID @ wait-status 0 T=
+
+\ A descriptor open in the parent at or above NFDS and absent from the map is
+\ closed in the child: the write fails, the shell exits 9, the pipe sees EOF.
+s" spawn-fds-closes-unmapped" T-LABEL
+pipe 0 T=  ES-W1 !  ES-R1 !
+3 ES-FREE-FD ES-FA !
+ES-FA @ 10 < TTRUE
+ES-W1 @ ES-FA @ dup2 ES-FA @ T=  ES-W1 @ close
+3 ES-SFUNMAP
+s" echo x >&_ || exit 9" ES-SFSCRIPT  ES-FA @ 9 ES-SFDIGIT
+3 ES-SFSPAWN ES-SFPID !
+ES-FA @ close
+ES-R1 @ ES-SFREAD 0 T=
+ES-R1 @ close
+ES-SFPID @ wait-status $900 T=
+
+\ A -1 slot below NFDS closes a descriptor the parent has open there.
+s" spawn-fds-closes-minus-one" T-LABEL
+pipe 0 T=  ES-W1 !  ES-R1 !
+3 ES-FREE-FD ES-FA !
+ES-FA @ 10 < TTRUE
+ES-W1 @ ES-FA @ dup2 ES-FA @ T=  ES-W1 @ close
+ES-FA @ 1+ ES-SFUNMAP
+s" echo x >&_ || exit 9" ES-SFSCRIPT  ES-FA @ 9 ES-SFDIGIT
+ES-FA @ 1+ ES-SFSPAWN ES-SFPID !
+ES-FA @ close
+ES-R1 @ ES-SFREAD 0 T=
+ES-R1 @ close
+ES-SFPID @ wait-status $900 T=
+
+s" spawn-fds-missing-path" T-LABEL
+0 0 ES-SFMAP!  1 1 ES-SFMAP!  2 2 ES-SFMAP!
+s" /nonexistent-habu-x" ES-PATHZ ES-ADDR SPAWN-ABI:PATH ES-REQ!
+3 ES-SFSPAWN -2 T=
+s" spawn-fds-negative-nfds" T-LABEL
+-1 ES-SFSPAWN -22 T=
+
 \ filesystem syscalls
 create ES-STB 256 allot
 create DBUF 4096 allot

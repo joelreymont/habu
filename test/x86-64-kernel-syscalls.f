@@ -34,6 +34,11 @@
 \    hb-x64-kernel-sys-run   spawn-argv-env-cwd-io run-rc
 \    hb-x64-kernel-sys-spawn-live  spawn-argv-io answering while its child
 \                            runs, then spawn-io with fds 1 and 2 closed
+\    hb-x64-kernel-sys-spawn-fds  spawn-fds (a crossing map, a -1 slot and
+\                            an unmapped fd closed)
+\    hb-x64-kernel-sys-spawn-fds-fail  spawn-fds (-ENOENT, -EINVAL)
+\    hb-x64-kernel-sys-spawn-fds-ebadf  spawn-fds (a closed source on the fd
+\                            pipe2 gives the error pipe's write end, -EBADF)
 \ The spawn rows run /bin/sh with one stream through a pipe. An image holds at
 \ most ten checks (FIRST-CASE up to the peer harness's own statuses).
 \ A forked child leaves through the die row with its own status before the
@@ -116,6 +121,7 @@ $400001 constant PID-CEIL               \ past the kernel's pid_max ceiling
 
 2 constant ENOENT
 3 constant ESRCH
+9 constant EBADF
 14 constant EFAULT
 9 constant SIGKILL
 1 constant F-GETFD
@@ -441,6 +447,67 @@ $400001 constant PID-CEIL               \ past the kernel's pid_max ceiling
    s" /bin/false" PATH, s" run-rc" ROW  1 WANT
    s" /nonexistent" PATH, s" run-rc" ROW  -1 WANT ;
 
+\ spawn-fds with a crossing map: the pipes' write ends sit on 7 and 8, and the
+\ child's 7 is the parent's 8 and its 8 the parent's 7, so the first pipe reads
+\ what sh wrote to 8. The second child's map of eight sets slot 7 to -1 and
+\ leaves the parent's 8 past its end, so both its writes fail and sh exits 9.
+\ The failures take their own image, since each PIPE, is a check too: a missing
+\ file answers -ENOENT and a negative map length -EINVAL.
+$380 constant REQ                       \ src/habu/spawn-abi.f's six cells
+$3C0 constant FDS                       \ nine cells
+$410 constant PID2
+22 constant EINVAL
+
+: REQ-CELL, ( n -- ) REQ + KEEP, ;
+: FD-SLOT, ( n n -- ) {: fd:n slot:n :}  fd N, FDS slot CELL * + KEEP, ;
+
+\ A request running sh with the text, over the map at FDS of n slots.
+: SH-REQ, ( ptr u8 n n -- ) {: a:ptr u:n nfds:n :}
+   a u SH-ARGV,  NO-ENV,
+   s" /bin/sh" PATH, SPAWN-ABI:PATH REQ-CELL,  ARGV AT, SPAWN-ABI:ARGV REQ-CELL,
+   ENVP AT, SPAWN-ABI:ENVP REQ-CELL,  0 N, SPAWN-ABI:CWD REQ-CELL,
+   FDS AT, SPAWN-ABI:FDS REQ-CELL,  nfds N, SPAWN-ABI:NFDS REQ-CELL, ;
+
+: SPAWN-FDS-CASE ( -- )
+   PIPE,  KEPT2 RECALL, 7 N, s" dup2" ROW  DROP,  KEPT2 RECALL, s" close" ROW
+   KEPT RECALL, KEPT3 KEEP,
+   PIPE,  KEPT2 RECALL, 8 N, s" dup2" ROW  DROP,  KEPT2 RECALL, s" close" ROW
+   7 0 do  -1 i FD-SLOT,  loop
+   2 2 FD-SLOT,  8 7 FD-SLOT,  7 8 FD-SLOT,
+   s" echo a >&7; echo b >&8" 9 SH-REQ,
+   REQ AT, s" spawn-fds" ROW  KEPT2 KEEP,
+   -1 7 FD-SLOT,
+   s" echo x >&7 && exit 7; echo x >&8 && exit 8; exit 9" 8 SH-REQ,
+   REQ AT, s" spawn-fds" ROW  PID2 KEEP,
+   7 N, s" close" ROW  8 N, s" close" ROW
+   KEPT RECALL, BUF AT, 8 N, s" read" ROW  2 WANT
+   BUF RECALL, $FFFF MASK,  $0A61 WANT
+   KEPT3 RECALL, BUF AT, 8 N, s" read" ROW  2 WANT
+   BUF RECALL, $FFFF MASK,  $0A62 WANT
+   KEPT RECALL, s" close" ROW  KEPT3 RECALL, s" close" ROW
+   KEPT2 RECALL, s" wait-status" ROW  0 WANT
+   PID2 RECALL, s" wait-status" ROW  $900 WANT ;
+
+: SPAWN-FDS-FAIL-CASE ( -- )
+   3 0 do  i i FD-SLOT,  loop
+   s" exit 0" 3 SH-REQ,
+   s" /nonexistent" PATH, SPAWN-ABI:PATH REQ-CELL,
+   REQ AT, s" spawn-fds" ROW  ENOENT negate WANT
+   -1 N, SPAWN-ABI:NFDS REQ-CELL,
+   REQ AT, s" spawn-fds" ROW  EINVAL negate WANT ;
+
+\ A pipe opened and closed leaves its two fds the lowest closed ones, so
+\ spawn-fds's own pipe2 puts the error pipe's write end on the second, which
+\ slot 2 names as its source. That write end, and the child's lifted copies of
+\ slots 0 and 1, must sit past every source: the child then finds the source
+\ closed, -EBADF, rather than placing the pipe or a copy on slot 2 and running
+\ sh.
+: SPAWN-FDS-EBADF-CASE ( -- )
+   PIPE,  KEPT RECALL, s" close" ROW  KEPT2 RECALL, s" close" ROW
+   0 0 FD-SLOT,  1 1 FD-SLOT,  KEPT2 RECALL, FDS 2 CELL * + KEEP,
+   s" exit 0" 3 SH-REQ,
+   REQ AT, s" spawn-fds" ROW  EBADF negate WANT ;
+
 : POLL-ARMED-CASE ( -- )
    SEAL,
    BUF AT, NFDS-WRAP N, 0 N, s" poll" ROW ;
@@ -478,6 +545,9 @@ public
    [: SPAWN-CASE ;] s" hb-x64-kernel-sys-spawn" TMP-PATH ROWS
    [: SPAWN-LIVE-CASE ;] s" hb-x64-kernel-sys-spawn-live" TMP-PATH ROWS
    [: RUN-CASE ;] s" hb-x64-kernel-sys-run" TMP-PATH ROWS
+   [: SPAWN-FDS-CASE ;] s" hb-x64-kernel-sys-spawn-fds" TMP-PATH ROWS
+   [: SPAWN-FDS-FAIL-CASE ;] s" hb-x64-kernel-sys-spawn-fds-fail" TMP-PATH ROWS
+   [: SPAWN-FDS-EBADF-CASE ;] s" hb-x64-kernel-sys-spawn-fds-ebadf" TMP-PATH ROWS
    [: POLL-ARMED-CASE ;] s" hb-x64-kernel-sys-poll-armed" TMP-PATH ROWS
    X64HARNESS:DISPOSE
    T-REPORT ;

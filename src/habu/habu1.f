@@ -66,6 +66,7 @@ require src/habu/native-body-abi.f
 require src/habu/data-claims.f          \ each band GUARD-SPAN tests is a claim
 require src/habu/arith-abi.f           \ E-DIV-ZERO, the dividing bodies' refusal
 require src/habu/task-abi.f
+require src/habu/spawn-abi.f
 require src/habu/code-span.f
 require src/habu/prof-abi.f
 PTR-VARIABLE FP-A  variable FP-U
@@ -669,22 +670,29 @@ variable NUM-LINT
    LINUX-SPAWN-CLOSE-R
    LINUX-SPAWN-CLOSE-W ;
 
-: LINUX-SPAWN-PREP-W ( -- )
+\ Move the pipe's write end in the frame to the fd in x12 or above, so no
+\ descriptor the child places can replace it. x9 becomes 0, or the fcntl's
+\ -errno.
+: LINUX-SPAWN-LIFT-W ( -- )
    LBL {: fail:label :}
    LBL {: done:label :}
    9 0 MOVZ,
    0 SP LINUX-SPAWN-PIPE-W-OFF LDRW,
-   0 LINUX-SPAWN-MIN-ERRFD 1- CMPI,  C-GT done BCOND,
-      1 LINUX-F-DUPFD-CLOEXEC MOVZ,  2 LINUX-SPAWN-MIN-ERRFD MOVZ,
+   0 12 CMP,  C-GE done BCOND,
+      1 LINUX-F-DUPFD-CLOEXEC MOVZ,  2 12 0 ADDI,
       NR-FCNTL SYS,
-      9 C-CS CSET,  9 fail CBNZ,
+      C-CS fail BCOND,
       14 0 0 ADDI,
       0 SP LINUX-SPAWN-PIPE-W-OFF LDRW,  NR-CLOSE SYS,
       14 SP LINUX-SPAWN-PIPE-W-OFF STRW,
-      9 0 MOVZ,  done B,
+      done B,
    fail LBL,
-      9 1 MOVZ,
+      9 0 0 ADDI,
    done LBL, ;
+
+: LINUX-SPAWN-PREP-W ( -- )
+   12 LINUX-SPAWN-MIN-ERRFD MOVZ,
+   LINUX-SPAWN-LIFT-W ;
 
 : LINUX-SPAWN-WAIT-STORED ( -- )
    0 SP LINUX-SPAWN-PID-OFF LDR,
@@ -789,6 +797,140 @@ variable NUM-LINT
    done LBL,
    SP SP LINUX-SPAWN-FRAME ADDI,
    9 G-PUSH ;
+
+\ spawn-fds on Linux. The frame is LINUX-SPAWN's: the request's cells copied
+\ to SPAWN-ABI's offsets, the lift floor in the cell at SPAWN-ABI:BYTES, then
+\ the error pipe, the child's errno (four bytes), the pid and the wait status.
+4 constant LINUX-CLOSE-RANGE-CLOEXEC
+3 constant SPAWN-PROT-RW                \ PROT_READ | PROT_WRITE
+22 constant SPAWN-EINVAL
+4 constant SPAWN-EINTR
+4 constant SPAWN-ERRNO-BYTES
+
+\ The child, frame at SP. Every descriptor is marked close-on-exec first, so a
+\ -1 slot and every fd at or above NFDS close at exec. Each source is then
+\ lifted to a fresh fd at or above the floor in the cell past the request,
+\ kept in a scratch array, before any slot is placed, so a source that is
+\ another slot's target (map [0 2 1]) survives until it is read, and no lifted
+\ copy takes the number of a later source the parent has closed; dup3 with no
+\ flags places each one and clears its mark. A failing step writes its errno to
+\ the pipe and exits 127.
+: LINUX-SPAWN-FDS-CHILD ( -- )
+   LBL {: fail:label :}
+   LBL {: nocwd:label :}
+   LBL {: lift:label :}
+   LBL {: keep:label :}
+   LBL {: lifted:label :}
+   LBL {: place:label :}
+   LBL {: skip:label :}
+   LBL {: placed:label :}
+   LINUX-SPAWN-CLOSE-R
+   0 0 MOVZ,  1 0 MOVZ,  NR-SETPGID SYS,  C-CS fail BCOND,
+   0 SP SPAWN-ABI:CWD LDR,  0 nocwd CBZ,
+      NR-CHDIR SYS,  C-CS fail BCOND,
+   nocwd LBL,
+   0 0 MOVZ,  1 0 MOVN,  2 LINUX-CLOSE-RANGE-CLOEXEC MOVZ,
+   NR-CLOSE-RANGE SYS,  C-CS fail BCOND,
+   0 0 MOVZ,  1 SP SPAWN-ABI:NFDS LDR,  1 1 3 LSLI,  1 1 8 ADDI,
+   2 SPAWN-PROT-RW MOVZ,  3 MAP-ANON-PRIVATE MOVZ,  4 0 MOVN,  5 0 MOVZ,
+   NR-MMAP SYS,  C-CS fail BCOND,
+   13 0 0 ADDI,
+   10 SP SPAWN-ABI:NFDS LDR,  11 SP SPAWN-ABI:FDS LDR,  15 13 0 ADDI,
+   lift LBL,
+      10 lifted CBZ,
+      9 11 0 LDR,  9 0 CMPI,  C-LT keep BCOND,
+      0 9 0 ADDI,  1 LINUX-F-DUPFD-CLOEXEC MOVZ,  2 SP SPAWN-ABI:BYTES LDR,
+      NR-FCNTL SYS,  C-CS fail BCOND,
+      9 0 0 ADDI,
+   keep LBL,
+      9 15 0 STR,
+      11 11 8 ADDI,  15 15 8 ADDI,  10 10 1 SUBI,
+      lift B,
+   lifted LBL,
+   10 0 MOVZ,  12 SP SPAWN-ABI:NFDS LDR,  15 13 0 ADDI,
+   place LBL,
+      10 12 CMP,  C-GE placed BCOND,
+      0 15 0 LDR,  0 0 CMPI,  C-LT skip BCOND,
+      1 10 0 ADDI,  2 0 MOVZ,  NR-DUP2 SYS,  C-CS fail BCOND,
+   skip LBL,
+      15 15 8 ADDI,  10 10 1 ADDI,
+      place B,
+   placed LBL,
+   0 SP SPAWN-ABI:PATH LDR,  1 SP SPAWN-ABI:ARGV LDR,  2 SP SPAWN-ABI:ENVP LDR,
+   NR-EXECVE SYS,
+   fail LBL,
+   9 31 0 SUB,  9 SP LINUX-SPAWN-ERR-OFF STRW,
+   0 SP LINUX-SPAWN-PIPE-W-OFF LDRW,  1 SP LINUX-SPAWN-ERR-OFF ADDI,
+   2 SPAWN-ERRNO-BYTES MOVZ,  NR-WRITE SYS,
+   0 127 MOVZ,  NR-EXIT-GROUP SYS, ;
+
+\ The parent, with the child's pid in x0: read the pipe until end of file (an
+\ execve that worked: x9 becomes the pid) or the child's errno (x9 becomes
+\ -errno and the child is reaped). An interrupted read is retried; any other
+\ failed read is its -errno, and the child is reaped.
+: LINUX-SPAWN-FDS-PARENT ( -- )
+   LBL {: retry:label :}
+   LBL {: got:label :}
+   LBL {: reap:label :}
+   LBL {: done:label :}
+   0 SP LINUX-SPAWN-PID-OFF STR,
+   LINUX-SPAWN-CLOSE-W
+   31 SP LINUX-SPAWN-ERR-OFF STRW,
+   retry LBL,
+   0 SP LINUX-SPAWN-PIPE-R-OFF LDRW,  1 SP LINUX-SPAWN-ERR-OFF ADDI,
+   2 SPAWN-ERRNO-BYTES MOVZ,  NR-READ SYS,
+   C-CC got BCOND,
+      14 0 SPAWN-EINTR ADDI,  14 retry CBZ,
+      9 0 0 ADDI,  reap B,
+   got LBL,
+   9 SP LINUX-SPAWN-PID-OFF LDR,  0 done CBZ,
+   9 SP LINUX-SPAWN-ERR-OFF LDRW,  9 31 9 SUB,
+   reap LBL,
+   LINUX-SPAWN-WAIT-STORED
+   done LBL,
+   LINUX-SPAWN-CLOSE-R ;
+
+\ The request's address is in x10. x9 becomes the child's pid or -errno. The
+\ floor, max(NFDS, highest source + 1), goes in the cell past the request, and
+\ the error pipe's write end is lifted to it or above: no slot targets it and no
+\ source names it, so a closed source fd is EBADF in the child rather than the
+\ pipe placed onto a slot.
+: LINUX-SPAWN-FDS ( -- )
+   LBL {: child:label :}
+   LBL {: closefail:label :}
+   LBL {: leave:label :}
+   LBL {: top:label :}
+   LBL {: below:label :}
+   LBL {: topped:label :}
+   SP SP LINUX-SPAWN-FRAME SUBI,
+   SPAWN-ABI:BYTES 0 ?do
+      11 10 i LDR,  11 SP i STR,
+   8 +loop
+   0 SP LINUX-SPAWN-PIPE-R-OFF ADDI,  1 LINUX-O-CLOEXEC LIT64,  NR-PIPE SYS,
+   9 0 0 ADDI,  C-CS leave BCOND,
+   12 SP SPAWN-ABI:NFDS LDR,  13 12 0 ADDI,  11 SP SPAWN-ABI:FDS LDR,
+   top LBL,
+      13 topped CBZ,
+      9 11 0 LDR,  9 12 CMP,  C-LT below BCOND,
+      12 9 1 ADDI,
+   below LBL,
+      11 11 8 ADDI,  13 13 1 SUBI,
+      top B,
+   topped LBL,
+   12 SP SPAWN-ABI:BYTES STR,  LINUX-SPAWN-LIFT-W
+   9 closefail CBNZ,
+   0 17 MOVZ,  1 0 MOVZ,  2 0 MOVZ,  3 0 MOVZ,  4 0 MOVZ,
+   NR-SPAWN SYS,
+   9 0 0 ADDI,  C-CS closefail BCOND,
+   0 child CBZ,
+      LINUX-SPAWN-FDS-PARENT
+      leave B,
+   child LBL,
+      LINUX-SPAWN-FDS-CHILD
+   closefail LBL,
+      LINUX-SPAWN-CLOSE-PIPE
+   leave LBL,
+   SP SP LINUX-SPAWN-FRAME ADDI, ;
 
 : BRUNRC ( -- )                    \ ( pathz -- rc ) spawn+wait; -1 = spawn failed
    A G-POP
@@ -1390,6 +1532,127 @@ variable SZA-I
       exit
    THEN
    ENGINE-EMIT:TARGET-UNKNOWN ;
+
+\ spawn-fds on macOS. The frame keeps SPAWN-FRAME's descriptor, attributes and
+\ pid offsets; the file-actions blob, three records per slot plus a chdir, is
+\ mapped for the call, and its address and size sit where SPAWN-FRAME's own
+\ blob starts, followed by the request, which the mmap's SYS, may clobber.
+SPAWN-ACTIONS-OFF constant SPAWN-FDS-BLOB-OFF
+SPAWN-ACTIONS-OFF 8 + constant SPAWN-FDS-BLOB-U-OFF
+SPAWN-ACTIONS-OFF 16 + constant SPAWN-FDS-REQ-OFF
+SPAWN-ACTIONS-OFF 32 + constant SPAWN-FDS-FRAME
+3 constant SPAWN-FDS-SLOT-ACTIONS       \ the lift, the place, the temporary's close
+$4000 constant POSIX-SPAWN-CLOEXEC-DEFAULT
+63 constant SPAWN-ENAMETOOLONG
+
+\ The request's address is in x8; x9 becomes the child's pid or -errno.
+\ POSIX_SPAWN_CLOEXEC_DEFAULT closes every fd no record targets: a -1 slot and
+\ every fd at or above NFDS. Each source is first duplicated to T+i, T above
+\ NFDS and every source, so a source that is another slot's target (map
+\ [0 2 1]) survives until it is read; then T+i goes to i and is closed.
+: DARWIN-SPAWN-FDS ( -- )
+   LBL {: mapped:label :}
+   LBL {: nocwd:label :}
+   LBL {: toolong:label :}
+   LBL {: top:label :}
+   LBL {: below:label :}
+   LBL {: topped:label :}
+   LBL {: lift:label :}
+   LBL {: lskip:label :}
+   LBL {: lifted:label :}
+   LBL {: place:label :}
+   LBL {: pskip:label :}
+   LBL {: placed:label :}
+   LBL {: spawned:label :}
+   LBL {: unmap:label :}
+   LBL {: leave:label :}
+   SP SP SPAWN-FDS-FRAME SUBI,
+   8 SP SPAWN-FDS-REQ-OFF STR,
+   6 8 SPAWN-ABI:NFDS LDR,
+   7 6 1 LSLI,  7 7 6 ADD,  7 7 1 ADDI,
+   1 SPAWN-ACTION-SIZE MOVZ,  1 7 1 MUL,  1 1 SPAWN-FA-ACTS-OFF ADDI,
+   1 SP SPAWN-FDS-BLOB-U-OFF STR,
+   0 0 MOVZ,  2 SPAWN-PROT-RW MOVZ,  3 MAP-ANON-PRIVATE MOVZ,  4 0 MOVN,  5 0 MOVZ,
+   NR-MMAP SYS,
+   C-CC mapped BCOND,
+      9 31 0 SUB,  leave B,
+   mapped LBL,
+   8 SP SPAWN-FDS-REQ-OFF LDR,
+   0 SP SPAWN-FDS-BLOB-OFF STR,  13 0 0 ADDI,
+   7 13 SPAWN-FA-CAP-OFF STRW,
+   5 8 SPAWN-ABI:CWD LDR,  5 nocwd CBZ,
+      5 >REG toolong SPAWN-CHDIR-ACTION
+   nocwd LBL,
+   12 6 0 ADDI,  11 8 SPAWN-ABI:FDS LDR,  10 6 0 ADDI,
+   top LBL,
+      10 topped CBZ,
+      9 11 0 LDR,  9 12 CMP,  C-LT below BCOND,
+      12 9 1 ADDI,
+   below LBL,
+      11 11 8 ADDI,  10 10 1 SUBI,
+      top B,
+   topped LBL,
+   10 0 MOVZ,  11 8 SPAWN-ABI:FDS LDR,
+   lift LBL,
+      10 6 CMP,  C-GE lifted BCOND,
+      9 11 0 LDR,  9 0 CMPI,  C-LT lskip BCOND,
+      SPAWN-NEXT-ACTION
+      15 PSFA-DUP2 MOVZ,  15 14 0 STRW,  9 14 4 STRW,
+      15 12 10 ADD,  15 14 8 STRW,
+      SPAWN-COUNT-ACTION
+   lskip LBL,
+      11 11 8 ADDI,  10 10 1 ADDI,
+      lift B,
+   lifted LBL,
+   10 0 MOVZ,  11 8 SPAWN-ABI:FDS LDR,
+   place LBL,
+      10 6 CMP,  C-GE placed BCOND,
+      9 11 0 LDR,  9 0 CMPI,  C-LT pskip BCOND,
+      SPAWN-NEXT-ACTION
+      15 PSFA-DUP2 MOVZ,  15 14 0 STRW,
+      15 12 10 ADD,  15 14 4 STRW,  10 14 8 STRW,
+      SPAWN-COUNT-ACTION
+      SPAWN-NEXT-ACTION
+      15 PSFA-CLOSE MOVZ,  15 14 0 STRW,
+      15 12 10 ADD,  15 14 4 STRW,
+      SPAWN-COUNT-ACTION
+   pskip LBL,
+      11 11 8 ADDI,  10 10 1 ADDI,
+      place B,
+   placed LBL,
+   SPAWN-DARWIN-ZERO-ADESC
+   SPAWN-DARWIN-ZERO-ATTR
+   SPAWN-DARWIN-FILL-ADESC
+   14 POSIX-SPAWN-SETPGROUP POSIX-SPAWN-CLOEXEC-DEFAULT or MOVZ,
+   14 SP SPAWN-ATTR-OFF SPAWN-ATTR-FLAGS-OFF + STRW,
+   0 SP SPAWN-PID-OFF ADDI,  1 8 SPAWN-ABI:PATH LDR,  2 SP SPAWN-ADESC-OFF ADDI,
+   3 8 SPAWN-ABI:ARGV LDR,  4 8 SPAWN-ABI:ENVP LDR,
+   NR-SPAWN SYS,
+   C-CC spawned BCOND,
+      9 31 0 SUB,  unmap B,
+   spawned LBL,
+   9 SP SPAWN-PID-OFF LDRW,  unmap B,
+   toolong LBL,
+   9 SPAWN-ENAMETOOLONG 1- MOVN,
+   unmap LBL,
+   0 SP SPAWN-FDS-BLOB-OFF LDR,  1 SP SPAWN-FDS-BLOB-U-OFF LDR,  NR-MUNMAP SYS,
+   leave LBL,
+   SP SP SPAWN-FDS-FRAME ADDI, ;
+
+\ spawn-fds ( request -- pid|-errno ): src/habu/spawn-abi.f lays out the
+\ request. A negative NFDS is -EINVAL.
+: BSPAWNFDS ( -- )
+   LBL {: valid:label :}
+   LBL {: push:label :}
+   HB-TARGET-LINUX? HB-TARGET-MACOS? or 0= IF ENGINE-EMIT:TARGET-UNKNOWN THEN
+   10 G-POP
+   11 10 SPAWN-ABI:NFDS LDR,  11 0 CMPI,  C-GE valid BCOND,
+      9 SPAWN-EINVAL 1- MOVN,  push B,
+   valid LBL,
+   HB-TARGET-LINUX? IF LINUX-SPAWN-FDS THEN
+   HB-TARGET-MACOS? IF 8 10 0 ADDI,  DARWIN-SPAWN-FDS THEN
+   push LBL,
+   9 G-PUSH ;
 
 : BCPFETCH ( -- ) 9 CP 0 ADDI,  A G-PUSH ;     \ ( -- addr ) live CP (snapshot writer)
 : BNDICTFETCH ( -- ) 9 NDICT 0 ADDI,  A G-PUSH ;  \ ( -- n ) live dict count
@@ -4907,6 +5170,7 @@ public
    s" spawn-argv-io" ['] BSPAWNARGVIO FPRIM-L
    s" spawn-argv-env-io" ['] BSPAWNARGVENVIO FPRIM-L
    s" spawn-argv-env-cwd-io" ['] BSPAWNARGVENVCWDIO FPRIM-L
+   s" spawn-fds" ['] BSPAWNFDS FPRIM-L
    s" fork" ['] LIBC-OS:FORK FPRIM
    s" wait-status" ['] BWAITSTATUS FPRIM-L ;
 

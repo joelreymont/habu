@@ -34,6 +34,7 @@ $104022 constant MAP-DATA-RESERVE
 178 constant NR-GETTID
 131 constant NR-TGKILL
 434 constant NR-PIDFD-OPEN
+436 constant NR-CLOSE-RANGE
 59  constant NR-PIPE
 134 constant NR-SIGACTION
 226 constant NR-MPROTECT

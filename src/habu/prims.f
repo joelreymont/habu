@@ -651,6 +651,7 @@ EPRIM: spawn-argv-env-io
 EPRIM: spawn-argv-env-cwd-io
    PE-PTR-U8 PE-IN PE-PTR-A PE-IN PE-PTR-A PE-IN PE-PTR-U8 PE-IN
    PE-N PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;
+EPRIM: spawn-fds  PE-PTR-A PE-IN  PE-N PE-OUT EPRIM;   \ ( request -- pid|-errno ) src/habu/spawn-abi.f
 EPRIM: fork          PE-N PE-OUT EPRIM;
 EPRIM: wait-status   PE-N PE-IN  PE-N PE-OUT EPRIM;
 EPRIM: patch32       PE-N PE-IN PE-N PE-IN EPRIM;
