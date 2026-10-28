@@ -604,8 +604,8 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
 \ ---- the shadow target's chain -----------------------------------------------
 \ A `does>` clause is the companion record's entry in the shadow's routine as it
 \ is in the engine's own, so the copy is taken the way publication will take
-\ the engine's.
-: SHADOW-TAKE ( NART:emission -- )
+\ the engine's, while the emission stands sealed in NEMIT.
+: SHADOW-TAKE ( -- )
    M-DOES @ 0<> if M-DOES-FUN @ NSHADOW:TAKE-DOES exit then
    NSHADOW:TAKE ;
 
@@ -616,7 +616,7 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
    SHS 0 M-HM @ NBACK:SELECT {: m0:IR-BUILD:module :}
    SHS m0 NBACK:FIXPOINT {: ready:IR-BUILD:module :}
    SHS ready NBACK:EMIT-UNPLACED
-   SHS NART:COPY SHADOW-TAKE ;
+   SHADOW-TAKE ;
 
 \ Each row gives back what it holds inside its own context, so the context
 \ leaves the ordinary way, takes its builders and arenas with it, and leaves
@@ -645,7 +645,8 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
 \ the last lowering publishes it instead. Every stage is the row the definition's
 \ own target contract resolves to, so this file names no backend and an
 \ architecture with no backend loaded is refused at the declaration. An open
-\ shadow's chain runs first, from the same frozen module.
+\ shadow's chain runs first, from the same frozen module; a native shadow takes
+\ the engine's own emission here instead, while NEMIT still holds it.
 : HOST-CHAIN ( IR-BUILD:module NSESSION:session -- NART:emission )
    {: hm:IR-BUILD:module s:NSESSION:session :}
    s M-IN @ M-OUT @ LINKAGE NBACK:DECLARE
@@ -655,6 +656,7 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
    M-CB-SLOT @ 0 >= if M-CB-SLOT @ M-CB-THUNK @ NCBSTUB:SET then
    s ready NPUB:NEXT-SLOT NBACK:EMIT
    M-CB-SLOT @ 0 >= if NCBSTUB:ENTRY@ M-CB-ENTRY ! then
+   NSHADOW:NATIVE? if SHADOW-TAKE then
    s NART:COPY ;
 
 : HOST-CLEAN ( -- )
@@ -677,9 +679,7 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
 : EMITTED ( -- NART:emission )
    SS [: FROZEN ;] NSESSION:WITH-WORK {: hm:IR-BUILD:module :}
    hm SHADOWED
-   hm SS [: HOST-WORK ;] NSESSION:WITH-WORK {: e:NART:emission :}
-   NSHADOW:NATIVE? if e SHADOW-TAKE then
-   e ;
+   hm SS [: HOST-WORK ;] NSESSION:WITH-WORK ;
 
 : PUBLISH-IT ( NART:emission -- )
    M-DOES @ 0<> if

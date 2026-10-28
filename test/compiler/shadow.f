@@ -205,26 +205,25 @@ SH-PB SH-PX
    ndict@ nd0 - 0 T= ;
 
 : UNCLAIMED-USE ( NART:emission -- )
-   {: e:NART:emission :}
-   e USE-ART !
+   drop
    NSHADOW:RECORDS NSHADOW:EMISSIONS {: recs:n ems:n :}
-   e NSHADOW:TAKE
+   NSHADOW:TAKE
    NSHADOW:ABANDON
    ndict@ NSHADOW:PUBLISH
-   [: USE-ART @ 0 NSHADOW:TAKE-DOES ;] E-NSHADOW-ROW TTHROWSQ
+   [: 0 NSHADOW:TAKE-DOES ;] E-NSHADOW-ROW TTHROWSQ
    ndict@ NSHADOW:PUBLISH
-   [: USE-ART @ 1 NSHADOW:TAKE-DOES ;] E-NSHADOW-ROW TTHROWSQ
+   [: 1 NSHADOW:TAKE-DOES ;] E-NSHADOW-ROW TTHROWSQ
    ndict@ NSHADOW:PUBLISH
    NSHADOW:RECORDS recs T=
    NSHADOW:EMISSIONS ems T= ;
 
 : WRONG-TARGET-USE ( NART:emission -- )
-   USE-ART !
-   [: USE-ART @ NSHADOW:TAKE ;] E-NSHADOW-TARGET TTHROWSQ ;
+   drop
+   [: NSHADOW:TAKE ;] E-NSHADOW-TARGET TTHROWSQ ;
 
 : CLOSED-USE ( NART:emission -- )
-   USE-ART !
-   [: USE-ART @ NSHADOW:TAKE ;] E-NSHADOW-STATE TTHROWSQ ;
+   drop
+   [: NSHADOW:TAKE ;] E-NSHADOW-STATE TTHROWSQ ;
 
 : FOREIGN-CASE ( -- )
    s" publication refuses an emission sealed for another machine before its window, and neither CP nor NDICT moves" T-LABEL

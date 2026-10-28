@@ -41,6 +41,8 @@ require src/lib/le.f
 require src/core/bytes.f
 require src/compiler/target.f
 require src/compiler/binding.f
+require src/compiler/target/native-binding.f
+require src/compiler/native/emission.f
 require src/compiler/session/emission.f
 require src/compiler/session/lease.f
 
@@ -52,7 +54,7 @@ TRUSTED: ENTRY-BYTES ( n -- ptr u8 ) ;
 variable OPENED                      \ a shadow is open
 variable NATIVE                      \ its source already emitted for this binding
 TYPED-VARIABLE SH-BIND CBIND:binding \ and the binding it compiles for
-TYPED-VARIABLE NATIVE-ADDRS-XT [ NART:emission ptr u8 -- ]
+TYPED-VARIABLE NATIVE-ADDRS-XT [ ptr u8 -- ]
 variable NATIVE-ADDRS-SET            \ a backend installed NATIVE-ADDRS-XT
 
 \ ---- the emissions -----------------------------------------------------------
@@ -113,23 +115,22 @@ variable PEND-ENTRY                  \ which enters at this offset in it
    OPEN-CK N-RECS @ ROW-CK ;
 
 \ ---- taking a sealed emission -------------------------------------------------
-\ Only bytes of the machine the shadow's binding names are its routines.
-: TARGET-CK ( NART:emission -- )
-   NATIVE @ 0<> if
-      dup NART:PLACED? 0= if E-NSHADOW-TARGET throw then
-      NART:BINDING SH-BIND @ CBIND:SAME?
-      0= if E-NSHADOW-TARGET throw then
-      exit
-   then
-   NART:ARCH SH-BIND @ CBIND:TARGET@ CTARGET:ARCH@ CTARGET-ARCH:EQ
+\ Only bytes of the machine the shadow's binding names are its routines. A
+\ native shadow takes the engine's own placed emission, compiled for the
+\ engine's own binding.
+: TARGET-CK ( -- )
+   NEMIT:ARCH SH-BIND @ CBIND:TARGET@ CTARGET:ARCH@ CTARGET-ARCH:EQ
+   0= if E-NSHADOW-TARGET throw then
+   NATIVE @ 0= if exit then
+   NEMIT:PLACED? 0= if E-NSHADOW-TARGET throw then
+   SH-BIND @ RTARGET:HOST-TARGET RTARGET:NATIVE-BINDING CBIND:SAME?
    0= if E-NSHADOW-TARGET throw then ;
 
-: COPY-BYTES ( NART:emission -- )
-   {: e:NART:emission :}
+: COPY-BYTES ( -- )
    CODE-N @ {: at:n :}
-   e NART:SIZE {: size:n :}
+   NEMIT:SIZE {: size:n :}
    at size + CODE-BUF-RESERVE
-   e NART:BYTES at CODE-BUF size BYTE-COPY ;
+   NEMIT:BYTES at CODE-BUF size BYTE-COPY ;
 
 \ A native emission is already placed. Keep its exact recorded rows, while
 \ returning only their carried fields to the unplaced form the shadow linker
@@ -139,11 +140,11 @@ variable PEND-ENTRY                  \ which enters at this offset in it
 $E8 constant CALL-OP
 $E9 constant TAIL-OP
 
-: NATIVE-CALLS ( NART:emission -- ) {: a:NART:emission :}
-   a NART:CALL-SITES 0 ?do
-      a i NART:CALL-SITE@ {: off:n :}
-      off 0 < off REL32-BYTES + a NART:SIZE > or if E-NSHADOW-ROW throw then
-      a i NART:CALL-KIND@ {: kind:n :}
+: NATIVE-CALLS ( -- )
+   NEMIT:CALL-SITES 0 ?do
+      i NEMIT:CALL-SITE@ {: off:n :}
+      off 0 < off REL32-BYTES + NEMIT:SIZE > or if E-NSHADOW-ROW throw then
+      i NEMIT:CALL-KIND@ {: kind:n :}
       kind NEMIT:CALL = if CALL-OP else
          kind NEMIT:TAIL = if TAIL-OP else E-NSHADOW-ROW throw then
       then {: opcode:n :}
@@ -152,39 +153,36 @@ $E9 constant TAIL-OP
       0 p REL32-FIELD + LE:U32!
    loop ;
 
-: COPY-FUNS ( NART:emission -- )
-   {: e:NART:emission :}
+: COPY-FUNS ( -- )
    N-FUNS @ {: k0:n :}
-   e NART:FUNCTIONS {: n:n :}
+   NEMIT:FUNCTIONS {: n:n :}
    k0 n + FUN-OFF-RESERVE
    k0 n + FUN-SOURCE-RESERVE
    n 0 ?do
-      e i NART:FUNCTION-OFFSET@ k0 i + FUN-OFF !
+      i NEMIT:FUNCTION-OFFSET@ k0 i + FUN-OFF !
       0 k0 i + FUN-SOURCE !
    loop ;
 
-: COPY-CALLS ( NART:emission -- )
-   {: e:NART:emission :}
+: COPY-CALLS ( -- )
    N-CALLS @ {: k0:n :}
-   e NART:CALL-SITES {: n:n :}
+   NEMIT:CALL-SITES {: n:n :}
    k0 n + CALL-OFF-RESERVE
    k0 n + CALL-KIND-RESERVE
    k0 n + CALL-TGT-RESERVE
    n 0 ?do
-      e i NART:CALL-SITE@ k0 i + CALL-OFF !
-      e i NART:CALL-KIND@ k0 i + CALL-KIND !
-      e i NART:CALL-TARGET@ k0 i + CALL-TGT !
+      i NEMIT:CALL-SITE@ k0 i + CALL-OFF !
+      i NEMIT:CALL-KIND@ k0 i + CALL-KIND !
+      i NEMIT:CALL-TARGET@ k0 i + CALL-TGT !
    loop ;
 
-: COPY-ADDRS ( NART:emission -- )
-   {: e:NART:emission :}
+: COPY-ADDRS ( -- )
    N-ADDRS @ {: k0:n :}
-   e NART:ADDR-SITES {: n:n :}
+   NEMIT:ADDR-SITES {: n:n :}
    k0 n + ADDR-OFF-RESERVE
    k0 n + ADDR-KIND-RESERVE
    n 0 ?do
-      e i NART:ADDR-SITE@ k0 i + ADDR-OFF !
-      e i NART:ADDR-SITE-KIND@ k0 i + ADDR-KIND !
+      i NEMIT:ADDR-SITE@ k0 i + ADDR-OFF !
+      i NEMIT:ADDR-SITE-KIND@ k0 i + ADDR-KIND !
    loop ;
 
 : EM-RESERVE ( n -- ) {: n:n :}
@@ -194,17 +192,16 @@ $E9 constant TAIL-OP
    n EM-ADDR0-RESERVE  n EM-ADDRS-RESERVE
    n EM-PATCH-RESERVE  n EM-PATCH-TGT-RESERVE ;
 
-: COPY-ROW ( NART:emission -- )
-   {: a:NART:emission :}
+: COPY-ROW ( -- )
    N-EMS @ {: e:n :}
    e 1+ EM-RESERVE
    CODE-N @ e EM-AT !
-   a NART:SIZE e EM-SIZE !
-   a NART:RET-BYTES e EM-RET !
-   N-FUNS @ e EM-FUN0 ! a NART:FUNCTIONS e EM-FUNS !
-   N-CALLS @ e EM-CALL0 ! a NART:CALL-SITES e EM-CALLS !
-   N-ADDRS @ e EM-ADDR0 ! a NART:ADDR-SITES e EM-ADDRS !
-   a NART:PATCH-SLOT e EM-PATCH !
+   NEMIT:SIZE e EM-SIZE !
+   NEMIT:RET-BYTES e EM-RET !
+   N-FUNS @ e EM-FUN0 ! NEMIT:FUNCTIONS e EM-FUNS !
+   N-CALLS @ e EM-CALL0 ! NEMIT:CALL-SITES e EM-CALLS !
+   N-ADDRS @ e EM-ADDR0 ! NEMIT:ADDR-SITES e EM-ADDRS !
+   NEMIT:PATCH-SLOT e EM-PATCH !
    0 e EM-PATCH-TGT ! ;
 
 \ Room for the records is made here, so PUBLISH, which runs after publication
@@ -215,20 +212,19 @@ $E9 constant TAIL-OP
 
 \ A copy taken over one no publication claimed simply replaces it: both lie
 \ past the counts.
-: COPY ( NART:emission -- )
-   {: e:NART:emission :}
+: COPY ( -- )
    OPEN-CK
-   e TARGET-CK
+   TARGET-CK
    0 PENDING !
-   e COPY-BYTES
+   COPY-BYTES
    NATIVE @ 0<> if
-      e NATIVE-CALLS
-      e CODE-N @ CODE-BUF NATIVE-ADDRS-XT @ execute
+      NATIVE-CALLS
+      CODE-N @ CODE-BUF NATIVE-ADDRS-XT @ execute
    then
-   e COPY-FUNS
-   e COPY-CALLS
-   e COPY-ADDRS
-   e COPY-ROW
+   COPY-FUNS
+   COPY-CALLS
+   COPY-ADDRS
+   COPY-ROW
    REC-RESERVE ;
 
 \ ---- the counts -------------------------------------------------------------
@@ -284,9 +280,9 @@ public
 \ A native shadow keeps the placed emission's bytes, so each address site still
 \ carries the host address it was placed with. The backend whose emissions a
 \ native shadow takes installs how its sites carry an address and return to the
-\ unplaced form (src/arch/x86-64/passes.f), given the emission and the first
-\ byte of its copy; OPEN-NATIVE refuses until one has.
-: NATIVE-ADDRS! ( [ NART:emission ptr u8 -- ] -- )
+\ unplaced form (src/arch/x86-64/passes.f), given the first byte of its copy
+\ while the emission stands sealed in NEMIT; OPEN-NATIVE refuses until one has.
+: NATIVE-ADDRS! ( [ ptr u8 -- ] -- )
    NATIVE-ADDRS-XT !
    1 NATIVE-ADDRS-SET ! ;
 
@@ -313,9 +309,9 @@ public
    OPEN-CK SH-BIND @ ;
 
 \ ---- what the driver and publication do --------------------------------------
-\ Copy the sealed emission of the definition being compiled, before the context
-\ its rows live in leaves.
-: TAKE ( NART:emission -- )
+\ Copy the emission of the definition being compiled while it stands sealed in
+\ NEMIT, before its backend's RETIRE row clears it.
+: TAKE ( -- )
    COPY
    0 PEND-DOES !
    1 PENDING ! ;
@@ -323,7 +319,7 @@ public
 \ The same for a `does>` definer, whose clause is function `fun` of the
 \ emission: the companion record enters there, so it cannot be where the
 \ definer itself enters.
-: TAKE-DOES ( NART:emission n -- )
+: TAKE-DOES ( n -- )
    {: fun:n :}
    COPY
    N-EMS @ {: e:n :}
@@ -333,9 +329,9 @@ public
    1 PEND-DOES !
    1 PENDING ! ;
 
-\ The x86 def-cast writer publishes a raw one-byte RET identity body. It has
-\ no NART because the kernel writes it directly, so that writer reports the
-\ exact published entry and span through its fixed-shadow callback.
+\ The x86 def-cast writer publishes a raw one-byte RET identity body. It seals
+\ no NEMIT emission because the kernel writes it directly, so that writer
+\ reports the exact published entry and span through its fixed-shadow callback.
 : TAKE-CAST ( n n -- ) {: at:n size:n :}
    OPEN-CK
    NATIVE @ 0= if E-NSHADOW-STATE throw then
