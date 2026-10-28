@@ -548,6 +548,67 @@ public
 SHADOW-TEST:RUN-PICK
 NSHADOW:CLOSE
 
+\ ---- a value an edge passes on keeps its slot ---------------------------------
+\ The x86-64 rows of test/compiler/native-loop.f SLOT-CASE, whose comment
+\ states the shapes; select-x64.f DSTORED holds the rule. SH-SLOT-LETTER adds a
+\ call's result held in a local across the backedge of a loop that leaves early
+\ with a value.
+package SHADOW-TEST
+private
+
+4 constant SLOT-CAP
+create SLOT-KEY SLOT-CAP cells allot
+variable SLOT-N
+variable REC-SLOT                    \ the first record compiled below
+
+OPEN-X64
+ndict@ REC-SLOT !
+1 set-tier
+: SH-SLOT-MIX ( n n -- n ) swap 10 * + ;
+: SH-SLOT-ONE ( n -- n ) 1 + ;
+: SH-SLOT-QDO ( n n -- n ) {: a:n k:n :} k 0 ?do loop a k SH-SLOT-MIX ;
+: SH-SLOT-DO ( n n -- n ) {: a:n k:n :} k 0 do loop a k SH-SLOT-MIX ;
+: SH-SLOT-JOIN ( n n bool -- n ) {: a:n k:n f:bool :}
+   f if k else 7 then drop a k SH-SLOT-MIX ;
+: SH-SLOT-BACK ( n n -- n ) {: a:n k:n :}
+   a k SH-SLOT-MIX {: m:n :} k 0 ?do loop m SH-SLOT-ONE ;
+: SH-SLOT-EXIT ( n n -- n n ) {: a:n k:n :} k 0 ?do loop a k ;
+: SH-SLOT-LETTER ( n -- n ) {: t:n :}
+   t SH-SLOT-ONE {: id:n :}
+   0 BEGIN dup SLOT-N @ < WHILE
+      dup cells SLOT-KEY + @ id = IF 65 + EXIT THEN
+      1 +
+   REPEAT drop
+   SLOT-N @ SLOT-CAP >= IF 63 EXIT THEN
+   id SLOT-N @ cells SLOT-KEY + !
+   SLOT-N @ 65 +  SLOT-N @ 1 + SLOT-N ! ;
+0 set-tier
+
+public
+
+: RUN-SLOT ( -- )
+   s" a word passing a value on across an edge to the slot it holds runs on the host as before" T-LABEL
+   3 4 SH-SLOT-QDO 34 T=
+   3 0 SH-SLOT-QDO 30 T=
+   3 4 SH-SLOT-DO 34 T=
+   3 4 true SH-SLOT-JOIN 34 T=
+   3 4 false SH-SLOT-JOIN 34 T=
+   3 4 SH-SLOT-BACK 35 T=
+   3 0 SH-SLOT-BACK 31 T=
+   3 4 SH-SLOT-EXIT 4 T= 3 T=
+   0 SLOT-N !
+   7 SH-SLOT-LETTER 65 T=
+   9 SH-SLOT-LETTER 66 T=
+   7 SH-SLOT-LETTER 65 T=
+   s" and the shadow files an x86-64 routine for each" T-LABEL
+   NSHADOW:RECORDS 8 T=
+   8 0 ?do REC-SLOT @ i + ROW-OF i T= loop ;
+
+;package
+
+SHADOW-TEST:RUN-SLOT
+NSHADOW:CLOSE
+
 \ ---- a shadow whose backend states no unplaced emission -----------------------
 \ The AArch64 row has none, so the definition is refused at that stage, after
 \ the shadow's earlier stages bound their passes in its context.
