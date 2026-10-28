@@ -4,11 +4,12 @@
 \ path FS-MUT-PATHZ2-BUF (RENAME-FILE's, MAKE-SYMLINK's and the stream copy's
 \ destination), the unique `.tmp-*` sibling ATOMIC-WRITE-FILE, RESERVE-SIBLING
 \ and REPLACE-STAGED name, FS-MUT-ATOMIC-PATH, and
-\ FS:MKTEMP-DIR-IN's FS-MUT-TMP-PATH - the one this module RETURNS a span into -
-\ are the FS-MUT-ABI band of the per-task DATA region, so two tasks renaming,
-\ symlinking, writing atomically or making a temporary directory at once share
-\ nothing and neither can replace the other's returned path. The descriptors,
-\ cursors and lengths COPY-FILE-STREAM threads are LOCALS of the call.
+\ FS:MKTEMP-DIR-IN's and FS:MKTEMP's FS-MUT-TMP-PATH - the one this module
+\ RETURNS a span into - are the FS-MUT-ABI band of the per-task DATA region, so
+\ two tasks renaming, symlinking, writing atomically or making a temp at once
+\ share nothing and neither can replace the other's returned path. The
+\ descriptors, cursors and lengths COPY-FILE-STREAM threads are LOCALS of the
+\ call.
 \ PER CALL: the tree removal. REMOVE-TREE maps a walk context of its own, as
 \ src/lib/fs.f's WALK-FILES does, holds its per-depth directory descriptors and
 \ dirent blocks there and releases it on return or throw, so two tasks remove
@@ -37,14 +38,16 @@
 \ frames grow with the depth, so neither path lengths nor depth bound the tree,
 \ only the descriptors the process may hold open. A missing root
 \ is a no-op; a root that cannot be stat'ed for any other reason is E-FS-STAT,
-\ with libc's cause in FS:ERRNO. FS:MKTEMP-DIR makes its tree under the
-\ canonical spelling of $TMPDIR, or /tmp when TMPDIR is unset or empty, and
-\ refuses by name a root that cannot hold it. CLEANUP-RUN removes registrations newest first,
-\ so a parent registered before its child goes after it, and the registry
-\ grows with what it holds: no number of registrations is refused. Each
-\ registration also arms CLEANUP-AT-EXIT in the engine's EXIT-HOOK-CELL,
-\ chaining a hook already there to run last, once; a restored or stripped
-\ image (docs/architecture.md "Images") starts with an empty table.
+\ with libc's cause in FS:ERRNO. FS:MKTEMP-DIR makes its tree and FS:MKTEMP its
+\ file under the canonical spelling of $TMPDIR, or /tmp when TMPDIR is unset or
+\ empty, and both refuse by name a root that cannot hold it. FS:MKTEMP creates
+\ the file exclusively, mode 0600, and registers no cleanup: the caller owns the
+\ descriptor, the file and its removal. CLEANUP-RUN removes registrations
+\ newest first, so a parent registered before its child goes after it, and the
+\ registry grows with what it holds: no number of registrations is refused.
+\ Each registration also arms CLEANUP-AT-EXIT in the engine's EXIT-HOOK-CELL,
+\ chaining a hook already there to run last, once; a restored or stripped image
+\ (docs/architecture.md "Images") starts with an empty table.
 \
 \ Every buffer this module owns - the second NUL-padded path, the copy buffer,
 \ the atomic and temp path builders and the cleanup path stack - is a span, so
@@ -130,14 +133,15 @@ public
 
 \ THE STAGED PATHS ARE TASK-LOCAL, in the FS-MUT-ABI band of the per-task DATA
 \ region: every accessor reads `data-base`, which is the RUNNING task's region,
-\ so the path FS:MKTEMP-DIR-IN hands back stays this task's until it calls again,
-\ and two tasks in RENAME-FILE, MAKE-SYMLINK or ATOMIC-WRITE-FILE at once share
-\ nothing. The band is declared in src/habu/layout.f below FS-ABI and asserted
-\ there against every other DATA claim. It is a declared band and not TASK:+USER
-\ rows for src/lib/fs.f's reason: tools/native-build-core.f requires this file to
-\ build the engine, so a `require src/lib/task.f` here would load the task runtime
-\ into the build tool. A region is a fresh zeroed mapping, so a new task's paths
-\ start empty exactly as the old SPAN-BUFFERs did.
+\ so the path FS:MKTEMP-DIR-IN or FS:MKTEMP hands back stays this task's until
+\ it calls either again, and two tasks in RENAME-FILE, MAKE-SYMLINK or
+\ ATOMIC-WRITE-FILE at once share nothing. The band is declared in
+\ src/habu/layout.f below FS-ABI and asserted there against every other DATA
+\ claim. It is a declared band and not TASK:+USER rows for src/lib/fs.f's
+\ reason: tools/native-build-core.f requires this file to build the engine, so
+\ a `require src/lib/task.f` here would load the task runtime into the build
+\ tool. A region is a fresh zeroed mapping, so a new task's paths start empty
+\ exactly as the old SPAN-BUFFERs did.
 \
 \ layout.f is loaded before this file and cannot see FS-PATHZ-CAP or
 \ FS-PATH-CAP, so the band states those widths and this executes the agreement
@@ -520,29 +524,38 @@ FS-MUT-NAME-MAX FS-MUT-SIBLING-SUFFIX-MAX - constant SIBLING-NAME-MAX
    attempt dst off 1+ FS-MUT-ATOMIC-U+ {: u:n :}
    dst u SPAN:TAKE SPAN:$ ;
 
-package FS-ATOMIC
+\ Habu's portable `open` flags do not include O_EXCL. This narrow libc call
+\ takes the host's exclusive-create flags, so creation stays one syscall.
 PROCESS-SYMBOLS
-FUNCTION: OPEN-CALL open ( ptr u8 n n -- i32 ) 2 VARIADIC ;FUNCTION
-FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
+FUNCTION: FS-MUT-OPEN-CALL open ( ptr u8 n n -- i32 ) 2 VARIADIC ;FUNCTION
 
-: OPEN-FLAGS ( -- n )
+\ O_WRONLY|O_CREAT|O_EXCL for the host.
+: FS-MUT-EXCL-WRITE-FLAGS ( -- n )
    HB-TARGET-LINUX-KERNEL? if $C1 exit then
    HB-TARGET-MACOS? if $A01 exit then
    E-FS-OPEN throw ;
 
-public
+\ O_RDWR|O_CREAT|O_EXCL for the host.
+: FS-MUT-EXCL-RDWR-FLAGS ( -- n )
+   HB-TARGET-LINUX-KERNEL? if $C2 exit then
+   HB-TARGET-MACOS? if $A02 exit then
+   E-FS-OPEN throw ;
 
-\ Habu's portable `open` flags do not include O_EXCL. This narrow libc call
-\ selects the host flag while keeping exclusive creation in one syscall.
-: OPEN-EXCLUSIVE ( ptr u8 n -- n )
-   OPEN-FLAGS swap OPEN-CALL ;
+package FS-ATOMIC
+PROCESS-SYMBOLS
+FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
+
+public
 
 : CLOSE-FD ( n -- n )
    CLOSE-CALL ;
 ;package
 
-: FS-MUT-ATOMIC-OPEN-CANDIDATE ( ptr u8 n n -- n ) {: path:ptr pathu mode :}
-   path pathu FS-PATHZ mode FS-ATOMIC:OPEN-EXCLUSIVE {: fd :}
+\ Create and open one candidate with the exclusive flags and mode: its
+\ descriptor, -1 when the name is taken, E-FS-OPEN for any other refusal.
+: FS-MUT-OPEN-CANDIDATE ( ptr u8 n n n -- n )
+   {: path:ptr pathu flags mode :}
+   path pathu FS-PATHZ flags mode FS-MUT-OPEN-CALL {: fd :}
    fd 0 >= if fd exit then
    path pathu FS-MUT-PATH-COLLISION? if -1 exit then
    E-FS-OPEN throw ;
@@ -551,7 +564,7 @@ public
    0 begin dup FS-MUT-ATOMIC-RETRIES < while
       dup {: attempt:n :}
       path pathu seed attempt FS-MUT-BUILD-ATOMIC-TMP
-      2dup mode FS-MUT-ATOMIC-OPEN-CANDIDATE {: fd:n :}
+      2dup FS-MUT-EXCL-WRITE-FLAGS mode FS-MUT-OPEN-CANDIDATE {: fd:n :}
       fd 0 >= if rot drop fd exit then
       2drop 1+
    repeat drop
@@ -667,7 +680,7 @@ public
 : RESERVE-SIBLING ( ptr u8 n -- ptr u8 n n )
    FS-MUT-ATOMIC-SEED FS-MODE-0644 FS-MUT-ATOMIC-RESERVE ;
 
-\ The longest base FS:MKTEMP-DIR-IN makes a directory in for a prefix of n bytes:
+\ The longest base FS:MKTEMP-DIR-IN makes its temp in for a prefix of n bytes:
 \ its `<base>/<prefix>-<seed>-<attempt>` path still fits FS-PATH-CAP with the
 \ largest seed, the largest nonnegative cell, and the last attempt, so whether
 \ a base has room for one never depends on the seed it drew.
@@ -708,6 +721,19 @@ public
    repeat drop
    E-FS-IO throw ;
 
+\ The file twin of FS-MUT-MKTEMP-DIR-SEED: each candidate is created and opened
+\ read-write, mode 0600, refused when the name exists.
+: FS-MUT-MKTEMP-SEED ( ptr u8 n ptr u8 n n -- ptr u8 n n )
+   {: base:ptr baseu prefix:ptr prefixu seed :}
+   0 begin dup FS-MUT-TMP-RETRIES < while
+      dup {: attempt:n :}
+      base baseu prefix prefixu seed attempt FS-MUT-BUILD-TEMP-TRY
+      2dup FS-MUT-EXCL-RDWR-FLAGS FS-MUT-MODE-PRIVATE-FILE FS-MUT-OPEN-CANDIDATE {: fd:n :}
+      fd 0 >= if rot drop fd exit then
+      2drop 1+
+   repeat drop
+   E-FS-IO throw ;
+
 package FS
 public
 \ FS:MKTEMP-DIR-IN makes the directory under the base as given, and the answer
@@ -718,24 +744,25 @@ public
 
 \ realpath of a temp root into this task's PATHZ2 buffer: the canonical
 \ spelling's length, below 0 when realpath refuses the root. FS:MKTEMP-DIR-IN
-\ builds and makes its candidates through SB, FS-MUT-TMP-PATH and FS-PATHZ
-\ only, so the spelling stands through every attempt.
+\ and FS:MKTEMP build and make their candidates through SB, FS-MUT-TMP-PATH and
+\ FS-PATHZ only, so the spelling stands through every attempt.
 : FS-MUT-TEMP-REAL ( ptr u8 n -- n )
    FS-PATHZ FS-MUT-PATHZ2-BUF SPAN:$ drop FS-PATHZ-CAP realpath ;
 
-\ A temp root that cannot hold the temp directory is refused before anything is
-\ made, with one line on fd 2 that names TMPDIR, why, and the root, then a
-\ throw. A root past FS-PATH-CAP, or one whose canonical spelling leaves no
-\ room for the temp name under it (TEMP-DIR-BASE-MAX), is too long:
+\ A temp root that cannot hold the temp directory or file is refused before
+\ anything is made, with one line on fd 2 that names TMPDIR, why, and the root,
+\ then a throw. A root past FS-PATH-CAP, or one whose canonical spelling leaves
+\ no room for the temp name under it (TEMP-DIR-BASE-MAX), is too long:
 \ E-SPAN-CAPACITY; without the check the first dies on FS-PATHZ's E-FS-PATH and
-\ the second on FS:MKTEMP-DIR-IN's E-SPAN-CAPACITY, neither naming TMPDIR. A root
-\ that is not a directory throws E-FS-DIR; without the check it dies on the
-\ E-FS-IO of a mkdir under a missing parent, which is no collision. A directory
+\ the second on FS-MUT-BUILD-TEMP-TRY's E-SPAN-CAPACITY, neither naming TMPDIR.
+\ A root that is not a directory throws E-FS-DIR; without the check
+\ FS:MKTEMP-DIR dies on the E-FS-IO of a mkdir under a missing parent, which is
+\ no collision, and FS:MKTEMP on the E-FS-OPEN of its open. A directory
 \ realpath refuses, as one whose canonical spelling does not fit PATH_MAX
 \ (ENAMETOOLONG on Darwin), has no canonical path: E-FS-IO. The check answers
 \ the canonical spelling, borrowed from this task's PATHZ2 buffer, which
-\ FS:MKTEMP-DIR makes the directory under. The line is three writes, as
-\ src/core/include.f names a refused source path, and not one SB$ write as
+\ FS:MKTEMP-DIR and FS:MKTEMP make their temps under. The line is three writes,
+\ as src/core/include.f names a refused source path, and not one SB$ write as
 \ FS-MUT-EXIT-REPORT below: a root of FS-PATH-CAP bytes with the reason
 \ overflows SB-CAP, and SB-APPEND would then throw E-STR-CAPACITY in place of
 \ the line and the code.
@@ -745,7 +772,7 @@ public
    2 S\" \n" write drop ;
 
 : FS-MUT-TMPDIR-LONG ( ptr u8 n -- ) {: a:ptr u :}
-   a u s" hb: TMPDIR is too long for a temp directory: " FS-MUT-TMPDIR-REFUSE
+   a u s" hb: TMPDIR is too long for a temp path: " FS-MUT-TMPDIR-REFUSE
    E-SPAN-CAPACITY throw ;
 
 : FS-MUT-TMPDIR-CHECK ( ptr u8 n n -- ptr u8 n ) {: a:ptr u prefixu :}
@@ -762,20 +789,35 @@ public
    real prefixu TEMP-DIR-BASE-MAX > if a u FS-MUT-TMPDIR-LONG then
    FS-MUT-PATHZ2-BUF SPAN:$ drop real ;
 
+\ The one temp root a process reads from its environment: TMPDIR, or /tmp when
+\ TMPDIR is unset or empty, checked for a prefix of n bytes and answered in its
+\ canonical spelling. Every temp FS:MKTEMP-DIR or FS:MKTEMP makes thus has a
+\ canonical path: a root reached through a symlink (macOS's /tmp is
+\ /private/tmp) would otherwise give paths that differ from the canonical ones
+\ the engine records for the same files. A caller that hands its child a TMPDIR
+\ of its own (test/gate-pool.f) owns and removes it, so a temp made there goes
+\ away with it even when the child is killed before its own CLEANUP-RUN;
+\ anywhere else nobody reaps the root, and a maker that leaks there leaks for
+\ good.
+: FS-MUT-TEMP-ROOT ( n -- ptr u8 n )
+   {: prefixu:n :}
+   s" TMPDIR" GETENV dup 0= if 2drop s" /tmp" then
+   prefixu FS-MUT-TMPDIR-CHECK ;
+
 package FS
 public
-\ The one temp root a process reads from its environment: TMPDIR, or /tmp when
-\ TMPDIR is unset or empty. It is resolved before FS:MKTEMP-DIR-IN gets it, so
-\ every tree FS:MKTEMP-DIR makes has a canonical path: a root reached through a
-\ symlink (macOS's /tmp is /private/tmp) would otherwise give paths that differ
-\ from the canonical ones the engine records for the same files. A caller that
-\ hands its child a TMPDIR of its own (test/gate-pool.f) owns and removes it,
-\ so a tree made there goes away with it even when the child is killed before
-\ its own CLEANUP-RUN; anywhere else nobody reaps the root, and a maker that
-\ leaks there leaks for good.
-: MKTEMP-DIR ( ptr u8 n -- ptr u8 n ) {: prefix:ptr prefixu :}
-   s" TMPDIR" GETENV dup 0= if 2drop s" /tmp" then
-   prefixu FS-MUT-TMPDIR-CHECK prefix prefixu MKTEMP-DIR-IN ;
+: MKTEMP-DIR ( ptr u8 n -- ptr u8 n )
+   {: prefix:ptr prefixu :}
+   prefixu FS-MUT-TEMP-ROOT prefix prefixu MKTEMP-DIR-IN ;
+
+\ Create and open a new file `<root>/<prefix>-<seed>-<attempt>` under the temp
+\ root, read-write and mode 0600, as mkstemp(3) does. Answers its path, which
+\ stays this task's until its next FS:MKTEMP, FS:MKTEMP-DIR or
+\ FS:MKTEMP-DIR-IN, and the descriptor. The caller owns both and the removal;
+\ nothing is registered.
+: MKTEMP ( ptr u8 n -- ptr u8 n fd )
+   {: prefix:ptr prefixu :}
+   prefixu FS-MUT-TEMP-ROOT prefix prefixu mono-ns FS-MUT-MKTEMP-SEED >FD ;
 ;package
 
 \ Its callers are a just-forked child (src/lib/process-fork.f registers it with

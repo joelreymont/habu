@@ -713,32 +713,82 @@ FS-PATH-CAP SPAN-BUFFER: FMT-LINK-READ-BUF     \ READ-LINK's destination is a sp
    s" /a/" s" slash" FMT-TMP-SEED 0 FS-MUT-BUILD-TEMP-TRY
    FMT-COLLIDE T$= ;
 
-: FMT-TEMP-EXHAUST-CANDIDATE ( n -- ptr u8 n ) {: attempt:n :}
-   FMT-TEMP-BASE s" exhaust" FMT-TMP-SEED attempt FS-MUT-BUILD-TEMP-TRY ;
-
-: FMT-TEMP-EXHAUST-PREP ( -- )
+\ Run the word on every candidate name the prefix gives under FMT-TEMP-BASE
+\ with FMT-TMP-SEED.
+: FMT-TEMP-EACH ( ptr u8 n [ ptr u8 n -- ] -- )
+   {: prefix:ptr prefixu run :}
    0 begin dup FS-MUT-TMP-RETRIES < while
-      dup FMT-TEMP-EXHAUST-CANDIDATE MAKE-DIR
-      1+
-   repeat drop ;
-
-: FMT-TEMP-EXHAUST-CLEAN ( -- )
-   0 begin dup FS-MUT-TMP-RETRIES < while
-      dup FMT-TEMP-EXHAUST-CANDIDATE REMOVE-DIR
+      dup {: attempt:n :}
+      FMT-TEMP-BASE prefix prefixu FMT-TMP-SEED attempt FS-MUT-BUILD-TEMP-TRY
+      run execute
       1+
    repeat drop ;
 
 : FMT-TEST-TEMP-EXHAUST ( -- )
-   FMT-TEMP-EXHAUST-PREP
+   s" exhaust" [: MAKE-DIR ;] FMT-TEMP-EACH
    [: FMT-TEMP-BASE s" exhaust" FMT-TMP-SEED FS-MUT-MKTEMP-DIR-SEED 2drop ;]
    E-FS-IO TTHROWSQ
-   FMT-TEMP-EXHAUST-CLEAN ;
+   s" exhaust" [: REMOVE-DIR ;] FMT-TEMP-EACH ;
+
+\ The file is new, regular, mode 0600 and named under the canonical temp root
+\ with the prefix; its descriptor reads and writes; nothing is registered for
+\ cleanup; a second call answers another file.
+: FMT-TEST-MKTEMP ( -- )
+   s" FS:MKTEMP makes a private read-write file under the temp root" T-LABEL
+   FS-MUT-CLEANUP-N @ {: before:n :}
+   s" habu-fs-mkf" FS:MKTEMP {: path:ptr pathu file:fd :}
+   path pathu FMT-COLLIDE-BUF FMT-COLLIDE-U FMT-COPY!
+   FS-MUT-CLEANUP-N @ before T=
+   FMT-COLLIDE CLEANUP+
+   s" TMPDIR" GETENV dup 0= if 2drop s" /tmp" then FMT-REAL
+   s" habu-fs-mkf-" FMT-UNIQUE-BUF JOIN-PATH {: wantu:n :}
+   FMT-COLLIDE FMT-UNIQUE-BUF wantu STARTS-WITH? TTRUE
+   FMT-COLLIDE STAT-MODE FS-MUT-MODE-PERM and FMT-MODE-0600 T=
+   file FD>N s" mkstemp" write 7 T=
+   file FD>N FMT-READ-BUF 64 read 0 T=
+   file FD>N FS-ATOMIC:CLOSE-FD 0 T=
+   FMT-COLLIDE FMT-READ-BUF 64 READ-ALL 7 T=
+   FMT-READ-BUF 7 s" mkstemp" T$=
+   s" habu-fs-mkf" FS:MKTEMP {: next:ptr nextu nextfd:fd :}
+   next nextu CLEANUP+
+   nextfd FD>N FS-ATOMIC:CLOSE-FD 0 T=
+   next nextu FMT-COLLIDE T$<> ;
+
+\ A file at attempt 0's name keeps its bytes and the answer is attempt 1's.
+: FMT-TEST-MKTEMP-COLLISION ( -- )
+   s" FS:MKTEMP passes over a taken name and leaves it" T-LABEL
+   FMT-TEMP-BASE s" fcollide" FMT-TMP-SEED 0 FS-MUT-BUILD-TEMP-TRY
+   FMT-COLLIDE-BUF FMT-COLLIDE-U FMT-COPY!
+   FMT-COLLIDE s" taken" WRITE-ALL
+   FMT-TEMP-BASE s" fcollide" FMT-TMP-SEED FS-MUT-MKTEMP-SEED {: fd:n :}
+   FMT-UNIQUE-BUF FMT-UNIQUE-U FMT-COPY!
+   fd FS-ATOMIC:CLOSE-FD 0 T=
+   FMT-COLLIDE FMT-READ-BUF 64 READ-ALL 5 T=
+   FMT-READ-BUF 5 s" taken" T$=
+   FMT-TEMP-BASE s" fcollide" FMT-TMP-SEED 1 FS-MUT-BUILD-TEMP-TRY FMT-UNIQUE T$=
+   FMT-UNIQUE FILE-SIZE 0 T=
+   FMT-UNIQUE REMOVE-FILE
+   FMT-COLLIDE REMOVE-FILE ;
+
+\ Every name taken is E-FS-IO. A base that is a file refuses the open with
+\ ENOTDIR, which is no collision: E-FS-OPEN at once, not a retry to E-FS-IO.
+: FMT-TEST-MKTEMP-EXHAUST ( -- )
+   s" FS:MKTEMP with every name taken throws E-FS-IO" T-LABEL
+   s" fexhaust" [: s" taken" WRITE-ALL ;] FMT-TEMP-EACH
+   [: FMT-TEMP-BASE s" fexhaust" FMT-TMP-SEED FS-MUT-MKTEMP-SEED drop 2drop ;]
+   E-FS-IO TTHROWSQ
+   s" FS:MKTEMP under a file throws E-FS-OPEN" T-LABEL
+   FMT-TEMP-BASE s" fexhaust" FMT-TMP-SEED 0 FS-MUT-BUILD-TEMP-TRY
+   FMT-UNIQUE-BUF FMT-UNIQUE-U FMT-COPY!
+   [: FMT-UNIQUE s" under" FMT-TMP-SEED FS-MUT-MKTEMP-SEED drop 2drop ;]
+   E-FS-OPEN TTHROWSQ
+   s" fexhaust" [: REMOVE-FILE ;] FMT-TEMP-EACH ;
 
 \ ---- the temp roots a child reads from its environment ------------------------
 \ A child bin/hb, because TMPDIR is read from the process environment, which a
 \ running process does not change for itself. A child whose TMPDIR cannot hold
-\ a temp directory exits nonzero with one stderr line that names TMPDIR and the
-\ value, and the uncaught code. A child whose TMPDIR reaches a directory
+\ a temp directory or file exits nonzero with one stderr line that names TMPDIR
+\ and the value, and the uncaught code. A child whose TMPDIR reaches a directory
 \ through a symlink, as macOS's /tmp is /private/tmp, makes its temp
 \ directory under the canonical spelling. The
 \ paths and the children's programs are under this test's root.
@@ -754,12 +804,14 @@ create OUT CAP allot
 create ERR CAP allot
 create MISSING-BUF FS-PATH-CAP allot
 create PROG-BUF FS-PATH-CAP allot
+create FILE-PROG-BUF FS-PATH-CAP allot
 create CANON-PROG-BUF FS-PATH-CAP allot
 create NOCANON-BUF FS-PATH-CAP allot
 create STEP-BUF FS-PATH-CAP allot
 create WANT-BUF FS-PATH-CAP 64 + allot   \ a reason, a value, the newline
 variable MISSING-U
 variable PROG-U
+variable FILE-PROG-U
 variable CANON-PROG-U
 variable NOCANON-U
 variable WANT-U
@@ -770,6 +822,9 @@ variable WANT-U
 : PROG$ ( -- ptr u8 n )
    PROG-BUF PROG-U @ ;
 
+: FILE-PROG$ ( -- ptr u8 n )
+   FILE-PROG-BUF FILE-PROG-U @ ;
+
 : CANON-PROG$ ( -- ptr u8 n )
    CANON-PROG-BUF CANON-PROG-U @ ;
 
@@ -779,10 +834,14 @@ variable WANT-U
 : PATHS! ( -- )
    FMT-ROOT$ s" no-such-tmpdir" MISSING-BUF JOIN-PATH MISSING-U !
    FMT-ROOT$ s" tmpdir-child.f" PROG-BUF JOIN-PATH PROG-U !
+   FMT-ROOT$ s" tmpdir-file.f" FILE-PROG-BUF JOIN-PATH FILE-PROG-U !
    FMT-ROOT$ s" tmpdir-canon.f" CANON-PROG-BUF JOIN-PATH CANON-PROG-U ! ;
 
 : PROG-SRC$ ( -- ptr u8 n )
-   S\" require src/lib/fs-mutate.f\ns\q tmpdir-child\q FS:MKTEMP-DIR 2drop\n0 0 0 die\n" ;
+   S\" require src/lib/fs-mutate.f\ns\q tmpdir-child\q FS:MKTEMP-DIR 2drop\n" ;
+
+: FILE-PROG-SRC$ ( -- ptr u8 n )
+   S\" require src/lib/fs-mutate.f\ns\q tmpdir-file\q FS:MKTEMP drop 2drop\n" ;
 
 \ Prints the directory FS:MKTEMP-DIR makes and a newline.
 : CANON-PROG-SRC$ ( -- ptr u8 n )
@@ -849,14 +908,15 @@ variable WANT-U
    FMT:SB-INT
    SB$ ;
 
-\ A child given this TMPDIR exits nonzero and prints the line for it and the
-\ code.
-: REFUSED ( ptr u8 n ptr u8 n n -- ) {: a:ptr u why:ptr whyu code:n :}
-   a u CHILD-ENV PROG$ CAPTURE {: outu:len erru:len oc :}
+\ A child running this program given this TMPDIR exits nonzero and prints the
+\ line for it and the code.
+: REFUSED ( ptr u8 n ptr u8 n ptr u8 n n -- )
+   {: prog:ptr progu a:ptr u why:ptr whyu code:n :}
+   a u CHILD-ENV prog progu CAPTURE {: outu:len erru:len oc :}
    oc MATCH outcome
      exited OF 0 T<> ENDOF
      signaled OF s" exit" s" signal" T-OUTCOME-MISS ENDOF
-     timeout OF PROG$ OUT outu LEN>N ERR erru LEN>N T-TIMED-OUT ENDOF
+     timeout OF prog progu OUT outu LEN>N ERR erru LEN>N T-TIMED-OUT ENDOF
    ;MATCH
    ERR erru LEN>N why whyu a u WANT$ CONTAINS? TTRUE
    ERR erru LEN>N code CODE$ CONTAINS? TTRUE ;
@@ -884,13 +944,18 @@ public
    PATHS!
    PROG$ PROG-SRC$ WRITE-ALL
    PROG$ CLEANUP+
+   FILE-PROG$ FILE-PROG-SRC$ WRITE-ALL
+   FILE-PROG$ CLEANUP+
    s" a missing TMPDIR is refused by name" T-LABEL
-   MISSING$ s" hb: TMPDIR is not a directory: " E-FS-DIR REFUSED
+   PROG$ MISSING$ s" hb: TMPDIR is not a directory: " E-FS-DIR REFUSED
+   s" FS:MKTEMP refuses a missing TMPDIR by name" T-LABEL
+   FILE-PROG$ MISSING$ s" hb: TMPDIR is not a directory: " E-FS-DIR REFUSED
    s" a TMPDIR with no room for the temp name is refused by name" T-LABEL
-   LONG$ s" hb: TMPDIR is too long for a temp directory: " E-SPAN-CAPACITY
-   REFUSED
+   PROG$ LONG$ s" hb: TMPDIR is too long for a temp path: "
+   E-SPAN-CAPACITY REFUSED
    s" a TMPDIR with no canonical path is refused by name" T-LABEL
-   NOCANON! NOCANON$ s" hb: TMPDIR has no canonical path: " E-FS-IO REFUSED
+   NOCANON! PROG$ NOCANON$ s" hb: TMPDIR has no canonical path: " E-FS-IO
+   REFUSED
    s" a TMPDIR through a link makes a canonical temp directory" T-LABEL
    CANONICAL ;
 
@@ -1702,6 +1767,9 @@ public
    FMT-TEST-TEMP-COLLISION
    FMT-TEST-TEMP-SLASH
    FMT-TEST-TEMP-EXHAUST
+   FMT-TEST-MKTEMP
+   FMT-TEST-MKTEMP-COLLISION
+   FMT-TEST-MKTEMP-EXHAUST
    FMT-TMPDIR:RUN
    FMT-TEST-SYMLINK
    FMT-TEST-BROKEN-SYMLINK
