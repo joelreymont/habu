@@ -17,8 +17,8 @@
 \ emit-x64.f owns its byte sink, lays every block of the accepted module out in
 \ BYTES, resolves every displacement against the slot this row is handed, and
 \ seals a byte image with the lists of its call and address sites. The row then
-\ states that emission as NEMIT's rows; the driver copies those rows into NART
-\ before src/compiler/native/publish.f reads the whole image with no trailing return,
+\ states that emission as NEMIT's rows, which src/compiler/native/publish.f
+\ reads in NEMIT before RETIRE clears them: the whole image with no trailing return,
 \ because an x86-64 span is exact, the placement, where each function starts,
 \ and each site at its instruction's first byte. RETIRE gives the image, the
 \ placement and the rows back, and is nonthrowing because the driver calls it on
@@ -57,7 +57,6 @@ require src/arch/x86-64/abi.f
 require src/arch/x86-64/machine.f
 require src/habu/address-carrier.f
 require src/compiler/native/hir.f
-require src/compiler/session/emission.f
 require src/compiler/native/shadow.f
 
 package X64PASS
@@ -268,27 +267,28 @@ variable D-SPILLS                    \ padded spill slots that define the cumula
 
 \ ---- the native shadow's address sites ---------------------------------------
 \ A native shadow (src/compiler/native/shadow.f OPEN-NATIVE) copies this row's
-\ placed emission, so every MOVABS site still carries the host address it was
-\ placed with. A code address that is one of the emission's own function starts
-\ goes back to that function's offset in the emission, the unplaced form the
-\ shadow linker reads; any other address stays as the host named it.
-: FUN-OFF ( NART:emission n -- n ) {: a:NART:emission v:n :}
-   a NART:PLACEMENT {: at:n :}
-   a NART:FUNCTIONS 0 ?do
-      a i NART:FUNCTION-OFFSET@ {: off:n :}
+\ placed emission while it stands sealed in NEMIT, so every MOVABS site still
+\ carries the host address it was placed with. A code address that is one of
+\ the emission's own function starts goes back to that function's offset in the
+\ emission, the unplaced form the shadow linker reads; any other address stays
+\ as the host named it.
+: FUN-OFF ( n -- n ) {: v:n :}
+   NEMIT:PLACEMENT {: at:n :}
+   NEMIT:FUNCTIONS 0 ?do
+      i NEMIT:FUNCTION-OFFSET@ {: off:n :}
       at off + v = if off unloop exit then
    loop
    -1 ;
 
-: SHADOW-ADDRS ( NART:emission ptr u8 -- ) {: a:NART:emission base:ptr :}
-   a NART:ADDR-SITES 0 ?do
-      a i NART:ADDR-SITE@ {: off:n :}
-      off 0 < off ADDRESS-CARRIER:MOVABS-BYTES + a NART:SIZE > or
+: SHADOW-ADDRS ( ptr u8 -- ) {: base:ptr :}
+   NEMIT:ADDR-SITES 0 ?do
+      i NEMIT:ADDR-SITE@ {: off:n :}
+      off 0 < off ADDRESS-CARRIER:MOVABS-BYTES + NEMIT:SIZE > or
          if E-NSHADOW-ROW throw then
       base off + {: p:ptr :}
       p ADDRESS-CARRIER:MOVABS-SITE? 0= if E-NSHADOW-ROW throw then
-      a i NART:ADDR-SITE-KIND@ NEMIT:ADDR-CODE = if
-         a p ADDRESS-CARRIER:MOVABSV FUN-OFF {: fun:n :}
+      i NEMIT:ADDR-SITE-KIND@ NEMIT:ADDR-CODE = if
+         p ADDRESS-CARRIER:MOVABSV FUN-OFF {: fun:n :}
          fun 0 >= if p fun ADDRESS-CARRIER:SET-MOVABS then
       then
    loop ;

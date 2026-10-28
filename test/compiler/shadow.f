@@ -20,15 +20,20 @@
 \ sealed before its window, which X64KHIR's sealed x86-64 emission shows on
 \ this host. A shadow whose backend has no unplaced emission refuses the
 \ definition, publishes nothing, and leaves the engine compiling the next one.
-\ A taken emission no publication claims files nothing, and the shadow's own
-\ refusals are each asserted by code.
+\ A native shadow refuses to open for another system's binding, and refuses an
+\ unplaced emission under the engine's own. A taken emission no publication claims files
+\ nothing, and the shadow's own refusals are each asserted by code.
 
 require src/lib/test.f
 require src/lib/errors.f
 require src/habu/xref.f
 require src/compiler/target.f
+require src/compiler/binding.f
+require src/compiler/target/model.f
+require src/compiler/target/native-binding.f
 require src/compiler/native/abi.f
 require src/compiler/native/emission.f
+require src/compiler/session/emission.f
 require src/compiler/native/publish.f
 require src/compiler/native/shadow.f
 require src/compiler/native/x64ir.f
@@ -51,7 +56,6 @@ variable BAD-NDICT                   \ the record count before it was tried
 variable BAD-MOVED                   \ and how far trying it moved the count
 variable BAD-RECS                    \ what the refusing shadow had filed
 variable BAD-EMS
-TYPED-VARIABLE USE-ART NART:emission
 
 : OPEN-X64 ( -- )
    X64ABI:BINDING NSHADOW:OPEN ;
@@ -198,33 +202,32 @@ SH-PB SH-PX
    s" shadow-add" 2 1 [: ADD-STAGE ;] use X64KHIR:COMPILE ;
 
 : FOREIGN-USE ( NART:emission -- )
-   USE-ART !
+   drop
    cp@ ndict@ {: cp0:n nd0:n :}
-   [: USE-ART @ NPUB:PUBLISH-PENDING ;] E-NPUB-TARGET TTHROWSQ
+   [: NPUB:PUBLISH-PENDING ;] E-NPUB-TARGET TTHROWSQ
    cp@ cp0 - 0 T=
    ndict@ nd0 - 0 T= ;
 
 : UNCLAIMED-USE ( NART:emission -- )
-   {: e:NART:emission :}
-   e USE-ART !
+   drop
    NSHADOW:RECORDS NSHADOW:EMISSIONS {: recs:n ems:n :}
-   e NSHADOW:TAKE
+   NSHADOW:TAKE
    NSHADOW:ABANDON
    ndict@ NSHADOW:PUBLISH
-   [: USE-ART @ 0 NSHADOW:TAKE-DOES ;] E-NSHADOW-ROW TTHROWSQ
+   [: 0 NSHADOW:TAKE-DOES ;] E-NSHADOW-ROW TTHROWSQ
    ndict@ NSHADOW:PUBLISH
-   [: USE-ART @ 1 NSHADOW:TAKE-DOES ;] E-NSHADOW-ROW TTHROWSQ
+   [: 1 NSHADOW:TAKE-DOES ;] E-NSHADOW-ROW TTHROWSQ
    ndict@ NSHADOW:PUBLISH
    NSHADOW:RECORDS recs T=
    NSHADOW:EMISSIONS ems T= ;
 
 : WRONG-TARGET-USE ( NART:emission -- )
-   USE-ART !
-   [: USE-ART @ NSHADOW:TAKE ;] E-NSHADOW-TARGET TTHROWSQ ;
+   drop
+   [: NSHADOW:TAKE ;] E-NSHADOW-TARGET TTHROWSQ ;
 
 : CLOSED-USE ( NART:emission -- )
-   USE-ART !
-   [: USE-ART @ NSHADOW:TAKE ;] E-NSHADOW-STATE TTHROWSQ ;
+   drop
+   [: NSHADOW:TAKE ;] E-NSHADOW-STATE TTHROWSQ ;
 
 : FOREIGN-CASE ( -- )
    s" publication refuses an emission sealed for another machine before its window, and neither CP nor NDICT moves" T-LABEL
@@ -639,6 +642,22 @@ NSHADOW:CLOSE
 : SH-AFTER ( n -- n ) 2 + ;
 0 set-tier
 
+\ ---- a native shadow's own refusals --------------------------------------------
+\ A native shadow opens only for the engine's own binding (src/compiler/native/
+\ shadow.f OPEN-NATIVE) and takes only a placed emission (TARGET-CK). An AArch64
+\ binding for another system than this host's names the engine's machine, so
+\ only the binding comparison refuses it. The unplaced emission is the host's
+\ own machine's, sealed with no placement, so only the placement refuses it.
+1 BUFFER: UNPLACED-CODE
+
+: HOST-BINDING ( -- CBIND:binding )
+   RTARGET:HOST-TARGET RTARGET:NATIVE-BINDING ;
+
+: SEAL-UNPLACED ( -- )
+   UNPLACED-CODE 1 1 HOST-BINDING CBIND:TARGET@ CTARGET:ARCH@ NEMIT:OPEN
+   0 NEMIT:FUNCTION+
+   NEMIT:SEAL ;
+
 : REFUSED-CASE ( -- )
    s" a shadow whose backend has no unplaced emission refuses the definition and publishes nothing, and the next definition compiles" T-LABEL
    BAD-RC @ E-CTGT-UNLOADED T=
@@ -646,6 +665,24 @@ NSHADOW:CLOSE
    BAD-RECS @ 0 T=
    BAD-EMS @ 0 T=
    40 SH-AFTER 42 T= ;
+
+\ An open that fails to refuse is closed again, so the next case starts closed.
+: BINDING-CASE ( -- )
+   s" a native shadow refuses to open for another system's binding" T-LABEL
+   [: HB-TARGET-MACOS? if
+         s" aarch64-unknown-linux-gnu"
+      else
+         s" aarch64-apple-darwin"
+      then RTARGET:RESOLVE RTARGET:NATIVE-BINDING NSHADOW:OPEN-NATIVE
+      NSHADOW:CLOSE ;] E-NSHADOW-TARGET TTHROWSQ ;
+
+: UNPLACED-CASE ( -- )
+   s" a native shadow under the engine's own binding refuses an unplaced emission" T-LABEL
+   HOST-BINDING NSHADOW:OPEN-NATIVE
+   SEAL-UNPLACED
+   [: NSHADOW:TAKE ;] E-NSHADOW-TARGET TTHROWSQ
+   NEMIT:CLEAR
+   NSHADOW:CLOSE ;
 
 : CLOSED-CASE ( -- )
    s" a closed shadow answers nothing, and opening one again starts an empty map" T-LABEL
@@ -663,6 +700,8 @@ public
 
 : RUN-CLOSED ( -- )
    REFUSED-CASE
+   BINDING-CASE
+   UNPLACED-CASE
    CLOSED-CASE
    T-REPORT ;
 

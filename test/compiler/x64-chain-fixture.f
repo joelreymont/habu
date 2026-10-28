@@ -19,9 +19,10 @@
 \ its owned artifact, which says the x86-64 chain is reachable end to end
 \ from src/compiler/native/compiler.f.
 \
-\ WHAT PUBLICATION IS HANDED. The emit row states a sealed emission that the
-\ context copies to NART before the backend retires. The row cases read the
-\ image, the function starts and both kinds of site from that copy. Nothing
+\ WHAT PUBLICATION IS HANDED. The emit row states a sealed emission, which
+\ publication reads in NEMIT before the backend retires. The row cases read the
+\ image, the function starts and both kinds of site from the copy the context
+\ makes in NART. Nothing
 \ commits here: the publisher writes through this engine's own rows, which take
 \ whole ARM64 words, so the x86-64 commit is the x86-64 engine's.
 \
@@ -92,9 +93,6 @@ TYPED-VARIABLE W-ART NART:emission
 
 : BAD-OFFSET ( -- )
    W-ART @ 2 NART:FUNCTION-OFFSET@ drop ;
-
-: PUBLISH-FOREIGN ( -- )
-   W-ART @ NPUB:PUBLISH-PENDING ;
 
 : CLEAN-WORK ( -- )
    NS NBACK:RELEASE
@@ -555,24 +553,23 @@ X64IR:SP-ALIGN 4 * constant EMIT-SLOT
 \ ---- the rows publication reads ------------------------------------------------
 \ The owned artifact states the image the emitter sealed, no
 \ trailing return because the span is exact, and the slot it was measured from.
-\ Owned rows remain readable after backend retirement. On ARM the x64 artifact
-\ is foreign; on x64 its deliberately unrelated slot is refused before moving
-\ CP or the dictionary.
+\ Owned rows remain readable after backend retirement. Publication is asked
+\ while NEMIT still holds the emission: on ARM it is foreign; on x64 its
+\ deliberately unrelated slot is refused before moving CP or the dictionary.
 : ROWS-BODY ( IR-CTX:ctx -- bool n n n n )
    HIR-MOD
    BUILD-DIFF
    2 1 CHAIN {: m:IR-BUILD:module :}
    NS m EMIT-SLOT NBACK:EMIT
+   cp@ {: cp0:n :}
+   ndict@ {: nd0:n :}
+   [: NPUB:PUBLISH-PENDING ;] catch
+   HB-TARGET-LINUX-X86-64? if E-NPUB-PLACE else E-NPUB-TARGET then T=
    NS NART:COPY {: e:NART:emission :}
    NS NBACK:RETIRE
    e NART:BYTES e NART:SIZE DIFF-IMAGE? {: same:bool :}
    e NART:RET-BYTES {: ret:n :}
    e NART:PLACEMENT {: at:n :}
-   cp@ {: cp0:n :}
-   ndict@ {: nd0:n :}
-   e W-ART !
-   [: PUBLISH-FOREIGN ;] catch
-   HB-TARGET-LINUX-X86-64? if E-NPUB-PLACE else E-NPUB-TARGET then T=
    same ret at  cp@ cp0 -  ndict@ nd0 - ;
 
 \ ---- the spilling modules through the emit row -------------------------------

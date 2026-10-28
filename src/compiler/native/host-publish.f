@@ -3,7 +3,7 @@
 
 require src/compiler/native/host.f
 require src/compiler/native/abi.f
-require src/compiler/session/emission.f
+require src/compiler/native/emission.f
 require src/compiler/binding.f
 require src/lib/le.f
 
@@ -14,44 +14,39 @@ private
 0 CWORK-VARIABLE TAKEN-EDGES n
 0 CWORK-VARIABLE TAKEN-TYPES n
 0 CWORK-VARIABLE TAKEN-FUNS n
-0 CWORK-VARIABLE TAKEN-EMISSION NART:emission
 0 CWORK-VARIABLE TAKEN-AT n
 
-: FUN-END ( NART:emission n -- n )
-   {: e:NART:emission ordinal:n :}
-   ordinal 1+ e NART:FUNCTIONS < if
-      e ordinal 1+ NART:FUNCTION-OFFSET@ exit
+: FUN-END ( n -- n ) {: ordinal:n :}
+   ordinal 1+ NEMIT:FUNCTIONS < if
+      ordinal 1+ NEMIT:FUNCTION-OFFSET@ exit
    then
-   e NART:SIZE ;
+   NEMIT:SIZE ;
 
 \ Internal function targets are resolved against the pending emission's own
 \ ordered entry offsets. External targets keep the identity filed at emission.
-: INTERNAL-ID ( NART:emission n n -- n )
-   {: e:NART:emission at:n target:n :}
-   target at < target at e NART:SIZE + >= or if 0 exit then
+: INTERNAL-ID ( n n -- n ) {: at:n target:n :}
+   target at < target at NEMIT:SIZE + >= or if 0 exit then
    target at - {: off:n :}
-   e NART:FUNCTIONS 0 ?do
-      e i NART:FUNCTION-OFFSET@ off = if
+   NEMIT:FUNCTIONS 0 ?do
+      i NEMIT:FUNCTION-OFFSET@ off = if
          TAKEN-BASE @ i + 1+ unloop exit
       then
    loop
    E-STATE throw ;
 
-: EDGE-TARGET ( NART:emission n n -- n )
-   {: e:NART:emission at:n site:n :}
-   e at e site NART:CALL-TARGET@ INTERNAL-ID {: internal:n :}
+: EDGE-TARGET ( n n -- n ) {: at:n site:n :}
+   at site NEMIT:CALL-TARGET@ INTERNAL-ID {: internal:n :}
    internal 0<> if internal exit then
-   e site NART:CALL-IMPL@ ;
+   site NEMIT:CALL-IMPL@ ;
 
-: TAKE-EDGES ( NART:emission n n n -- )
-   {: e:NART:emission at:n ordinal:n id:n :}
-   e ordinal NART:FUNCTION-OFFSET@ {: start:n :}
-   e ordinal FUN-END {: end:n :}
-   e NART:CALL-SITES 0 ?do
-      e i NART:CALL-SITE@ {: site:n :}
+: TAKE-EDGES ( n n n -- ) {: at:n ordinal:n id:n :}
+   ordinal NEMIT:FUNCTION-OFFSET@ {: start:n :}
+   ordinal FUN-END {: end:n :}
+   NEMIT:CALL-SITES 0 ?do
+      i NEMIT:CALL-SITE@ {: site:n :}
       site start >= site end < and if
-         id e at i EDGE-TARGET site start -
-         e i NART:CALL-KIND@ e i NART:CALL-LOC@ EDGE+
+         id at i EDGE-TARGET site start -
+         i NEMIT:CALL-KIND@ i NEMIT:CALL-LOC@ EDGE+
       then
    loop ;
 
@@ -68,20 +63,18 @@ private
    din 0 < dout 0 < or if din dout UNKNOWN 0 exit then
    din dout reason loc ;
 
-: TAKE-ONE ( NART:emission n n -- )
-   {: e:NART:emission at:n ordinal:n :}
-   e ordinal NART:FUNCTION-OFFSET@ {: off:n :}
-   e ordinal FUN-END off - {: len:n :}
-   at off + len e NART:BINDING CBIND:TARGET@ ordinal FACTS
+: TAKE-ONE ( n n -- ) {: at:n ordinal:n :}
+   ordinal NEMIT:FUNCTION-OFFSET@ {: off:n :}
+   ordinal FUN-END off - {: len:n :}
+   at off + len NABI:BINDING CBIND:TARGET@ ordinal FACTS
       PREPARE {: id:n :}
    ordinal id SOURCE-CONTRACT-COPY
    id TAKEN-BASE @ ordinal + 1+ <> if E-STATE throw then
-   e at ordinal id TAKE-EDGES ;
+   at ordinal id TAKE-EDGES ;
 
 : TAKE-BODY ( -- )
-   TAKEN-EMISSION @ {: e:NART:emission :}
    TAKEN-AT @ {: at:n :}
-   TAKEN-FUNS @ 0 ?do e at i TAKE-ONE loop ;
+   TAKEN-FUNS @ 0 ?do at i TAKE-ONE loop ;
 
 public
 
@@ -113,16 +106,15 @@ public
    TAKEN-TYPES @ IMPL-TYPE-N !
    0 TAKEN-FUNS ! ;
 
-\ No code window has opened. Every reserve and row copy that may throw happens
-\ before the optional observer runs. An incomplete take is abandoned on refusal.
-: TAKE ( NART:emission n -- )
-   {: e:NART:emission at:n :}
+\ The emission NEMIT holds sealed, placed at `at`. No code window has opened.
+\ Every reserve and row copy that may throw happens before the optional
+\ observer runs. An incomplete take is abandoned on refusal.
+: TAKE ( n -- ) {: at:n :}
    TAKEN-FUNS @ 0<> if E-STATE throw then
    IMPL-N @ TAKEN-BASE !
    EDGE-N @ TAKEN-EDGES !
    IMPL-TYPE-N @ TAKEN-TYPES !
-   e NART:FUNCTIONS dup 0 <= if E-STATE throw then TAKEN-FUNS !
-   e TAKEN-EMISSION !
+   NEMIT:FUNCTIONS dup 0 <= if E-STATE throw then TAKEN-FUNS !
    at TAKEN-AT !
    [: TAKE-BODY ;] catch {: rc:n :}
    0 TAKEN-AT !
