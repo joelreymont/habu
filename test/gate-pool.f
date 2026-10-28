@@ -31,6 +31,7 @@
 
 require src/lib/string.f
 require src/lib/fmt.f
+require src/lib/fs-mutate.f
 require src/lib/process-fork.f
 require src/lib/process-env.f
 require src/lib/process-tree.f               \ a slot ends with everything descended from its child
@@ -965,25 +966,15 @@ false GT-POOL-CATCHING !
    stream 0= if idx GT-POOL-OUT-PATH-U-PTR exit then
    idx GT-POOL-ERR-PATH-U-PTR ;
 
-: GT-POOL-FALLBACK-BASE$ ( -- ptr u8 n )
-   s" TMPDIR" GETENV dup 0 > if exit then
-   2drop s" /tmp" ;
-
-: GT-POOL-FALLBACK-NAME$ ( -- ptr u8 n )
-   GT-POOL-NAME-RESET
-   s" hb-pool-" GT-POOL-NAME+
-   mono-ns GT-POOL-NUM$ GT-POOL-NAME+
-   GT-POOL-NAME$ ;
-
-\ Suite-less pool users get one process-unique capture directory so parallel
-\ runs sharing TMPDIR cannot clobber each other's capture files.
+\ Suite-less pool users get one FS:MKTEMP-DIR capture directory so parallel
+\ runs sharing TMPDIR cannot clobber each other's capture files. Its path is
+\ copied out because the task's next temp reuses the span FS:MKTEMP-DIR answers.
 : GT-POOL-FALLBACK-ROOT$ ( -- ptr u8 n )
    GT-POOL-FALLBACK-U @ 0 > if
       GT-POOL-FALLBACK-BUF GT-POOL-FALLBACK-U @ exit
    then
-   GT-POOL-FALLBACK-BASE$ GT-POOL-FALLBACK-NAME$
-   GT-POOL-FALLBACK-BUF JOIN-PATH GT-POOL-FALLBACK-U !
-   GT-POOL-FALLBACK-BUF GT-POOL-FALLBACK-U @ MAKE-DIRS
+   s" hb-pool" FS:MKTEMP-DIR {: a:ptr u:n :}
+   a GT-POOL-FALLBACK-BUF u BYTE-COPY u GT-POOL-FALLBACK-U !
    GT-POOL-FALLBACK-BUF GT-POOL-FALLBACK-U @ ;
 
 : GT-POOL-CAPTURE-ROOT$ ( -- ptr u8 n )
@@ -996,8 +987,8 @@ false GT-POOL-CATCHING !
 \ A suite's root is the runner's (GT-START registers it with CLEANUP-TREE+),
 \ so this exits when there is one. Absence is tolerated the way
 \ GT-POOL-CHILD-TMP-REMOVE tolerates it. Clearing the memo is what lets a
-\ later pool in the same process capture again: it rebuilds a fresh root with
-\ MAKE-DIRS, where a stale memo would open the captures under a removed
+\ later pool in the same process capture again: it makes a fresh root with
+\ FS:MKTEMP-DIR, where a stale memo would open the captures under a removed
 \ directory (E-FS-OPEN).
 : GT-POOL-FALLBACK-REMOVE ( -- )
    GT-ROOT-U @ 0 > if exit then

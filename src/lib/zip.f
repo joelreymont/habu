@@ -37,6 +37,8 @@
 \ their handle, and each handle has one task owner: separate tasks use distinct
 \ handles concurrently and coordinate any transfer. PROCESS-WIDE: the identity
 \ registry and serial, under one atomic lock (src/lib/zip-state.f).
+require src/lib/fs.f
+require src/lib/fs-mutate.f
 require src/lib/zip-raw.f
 
 package ZIP
@@ -55,14 +57,24 @@ CAST: MAPPED>RAW ( n -- ptr u8 )
 
 $4000 constant FILE-CHUNK
 
-: SOURCE-TEMPLATE ( ptr n -- ) {: node:ptr :}
-   s" TMPDIR" GETENV dup 0= if 2drop s" /tmp" then
-   {: dir:ptr len:n :}
-   s" /habu-zip-source-XXXXXX" {: suffix:ptr size:n :}
-   node len size + 1+ BUFFER-ALLOC {: data:ptr :}
-   dir data len BYTE-COPY suffix data len + size BYTE-COPY
-   0 data len size + + c!
-   data node SOURCE-PTR ! len size + node SOURCE-LEN ! ;
+\ The source snapshot is a fresh FS:MKTEMP file: the node keeps its descriptor
+\ for the copy and the mapping, and copies its path, which the task's next temp
+\ reuses, into room allocated before the file exists, so no failure falls
+\ between making the file and the node owning it.
+: SNAPSHOT-WORK ( ptr n ptr u8 -- ptr n ptr u8 ) {: node:ptr copy:ptr :}
+   s" habu-zip-source" FS:MKTEMP FD>N node SNAP-FD ! {: path:ptr len:n :}
+   path len copy CSTR
+   copy node SOURCE-PTR ! len node SOURCE-LEN ! 1 node SOURCE-LIVE !
+   node copy ;
+
+\ An unusable TMPDIR, or any other refusal to make the snapshot, is E-OPEN. The
+\ room for its path is allocated outside the catch, so an allocation failure
+\ keeps its own code, as OPEN-WORK's other allocations do.
+: SNAPSHOT-OPEN ( ptr n -- ) {: node:ptr :}
+   node FS-PATH-CAP 1+ BUFFER-ALLOC {: copy:ptr :}
+   node copy [: SNAPSHOT-WORK ;] catch {: code:n :}
+   2drop
+   code 0<> if E-OPEN throw then ;
 
 : SOURCE-STEP ( ptr n ptr u8 n -- n ) {: node:ptr buf:ptr cap:n :}
    node SOURCE-FD @ buf cap read {: got:n :}
@@ -93,10 +105,7 @@ $4000 constant FILE-CHUNK
    flags node MODE !
    node len 1+ BUFFER-ALLOC {: cpath:ptr :}
    path len cpath CSTR cpath node PATH-PTR ! len node PATH-LEN !
-   node SOURCE-TEMPLATE
-   node SOURCE-PTR @ node SOURCE-LEN @ 1+ C-MKSTEMP {: fd:n :}
-   fd 0 < if E-OPEN throw then
-   fd node SNAP-FD ! 1 node SOURCE-LIVE !
+   node SNAPSHOT-OPEN
    node PATH-PTR @ open-rd {: src:n :}
    src 0 < if E-OPEN throw then src node SOURCE-FD !
    node COPY-SOURCE node CLOSE-SOURCE-FD

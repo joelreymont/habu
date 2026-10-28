@@ -8,7 +8,8 @@ require src/compiler/session/emission.f
 require test/compiler/native-source-fixture.f
 require test/compiler/native-chain-fixture.f
 require src/arch/x86-64/passes.f
-require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/fd-io.f
 
 : COMPILER-SESSION-EDGE ( n -- n ) abs ;
 : COMPILER-SESSION-PROOF ( n -- n [ -- n ] )
@@ -249,6 +250,15 @@ TASK:MIN-STACK TASK:TASK WORKER
    CNUM-OVERFLOW:WRAP CNUM-FLOAT--MODEL:IEEE754 CNUM-CONTRACTION:FORBIDDEN
    CNUM-FAST--MATH:BIT-EXACT CNUM-COMPARE:TOTAL-ORDER CNUM:POLICY CBIND:BIND ;
 
+\ The aarch64 artifact's bytes reach a fresh temp file whole; nothing reads the
+\ file back, so it goes once its descriptor closes.
+: SAVE-ARTIFACT ( NART:emission -- )
+   {: art:NART:emission :}
+   s" compiler-session-a64" FS:MKTEMP {: path:ptr pathu:n fd:fd :}
+   fd art NART:BYTES art NART:SIZE FD-IO:WRITE-FULL
+   fd FD>N close-rc 0 T=
+   path pathu REMOVE-FILE ;
+
 : PARENT-PROOF ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c RETAIN-HIR
@@ -267,7 +277,7 @@ TASK:MIN-STACK TASK:TASK WORKER
    [: STALE-ARTIFACT ;] E-IR-ARENA-STALE TTHROWSQ
    c COPY-RETAINED first ARTIFACT=
    c COPY-PROOF first ARTIFACT=
-   s" compiler-session-a64.bin" TMP-PATH first NART:BYTES first NART:SIZE WRITE-ALL
+   first SAVE-ARTIFACT
    first CHILD-ART !
    first NART:RELEASE
    [: STALE-ARTIFACT ;] E-IR-ARENA-STALE TTHROWSQ ;

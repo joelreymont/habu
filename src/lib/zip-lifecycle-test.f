@@ -18,6 +18,8 @@ using IMAGE-LIFECYCLE
 create BASE FS-PATH-CAP allot
 variable BASE-LEN
 create PATH-BUF FS-PATH-CAP allot
+create SNAP-PATH FS-PATH-CAP allot
+variable SNAP-PATH-U
 TYPED-VARIABLE OWNER archive
 variable OWNER-LIVE
 variable OWNER-CLOSES
@@ -156,6 +158,18 @@ TASK:SEMAPHORE LOCK-RELEASE
    LOCK-RELEASE TASK:SEMAPHORE-DESTROY ;
 
 
+\ An archive's snapshot exists while it is open and goes with CLOSE.
+: SNAPSHOT-REMOVED ( -- )
+   INPUT$ OPEN {: archive:archive :}
+   archive ARCHIVE-NODE {: node:ptr :}
+   node SOURCE-PTR @ SNAP-PATH node SOURCE-LEN @ BYTE-COPY
+   node SOURCE-LEN @ SNAP-PATH-U !
+   s" the open archive's snapshot exists" T-LABEL
+   SNAP-PATH SNAP-PATH-U @ EXISTS? TTRUE
+   archive CLOSE
+   s" CLOSE removed the archive's snapshot" T-LABEL
+   SNAP-PATH SNAP-PATH-U @ EXISTS? TFALSE ;
+
 \ Even a failed open registers the retirement; every PREPARE leaves nothing.
 : LIFECYCLE-RUN ( -- )
    T-RESET CLEANUP-RESET
@@ -165,6 +179,7 @@ TASK:SEMAPHORE LOCK-RELEASE
    PREPARE LIFECYCLE-ASSERT-CLEAR
    LIFECYCLE-ARCHIVES
    LIFECYCLE-USE PREPARE LIFECYCLE-ASSERT-CLEAR
+   SNAPSHOT-REMOVED
    FORK-UNDER-ZIP-LOCK
    HALT-DURING-CLOSE
    CLEANUP-RUN T-REPORT ;

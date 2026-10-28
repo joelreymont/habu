@@ -4,6 +4,7 @@
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs.f
+require src/lib/fs-mutate.f
 require src/lib/byte-buffer.f
 require src/lib/json-read.f
 require src/lib/jsonl.f
@@ -32,11 +33,24 @@ CAP BUFFER: CAP-ERR
 : TMP$ ( -- ptr u8 n )
    s" TMPDIR" GETENV dup 0= if 2drop s" /tmp" then ;
 
-: PATH$ ( -- ptr u8 n )
-   TMP$ SB-RESET SB-APPEND s" /habu-jsonl-e2e.jsonl" SB-APPEND SB$ ;
+FS-PATH-CAP BUFFER: PATH-A
+variable PATH-A-U
+FS-PATH-CAP BUFFER: PATH-B
+variable PATH-B-U
 
-: PATH-B$ ( -- ptr u8 n )
-   TMP$ SB-RESET SB-APPEND s" /habu-jsonl-e2e-b.jsonl" SB-APPEND SB$ ;
+: PATH$ ( -- ptr u8 n ) PATH-A PATH-A-U @ ;
+: PATH-B$ ( -- ptr u8 n ) PATH-B PATH-B-U @ ;
+
+\ A fresh FS:MKTEMP file with its descriptor closed: the cases rewrite and reopen
+\ it by path. Its path is copied out because the next FS:MKTEMP reuses the span.
+: FIXTURE-MAKE ( ptr u8 -- n ) {: buf:ptr :}
+   s" habu-jsonl-e2e" FS:MKTEMP {: path:ptr pathu:n fd:fd :}
+   fd FD>N close-rc 0 T=
+   path buf pathu BYTE-COPY pathu ;
+
+: FIXTURES-MAKE ( -- )
+   PATH-A FIXTURE-MAKE PATH-A-U !
+   PATH-B FIXTURE-MAKE PATH-B-U ! ;
 
 \ Write a JSON string line of n bytes, "a...a", followed by the tail bytes.
 : STRING-FIXTURE ( n ptr u8 n -- )
@@ -289,12 +303,14 @@ private
 public
 : ARTIFACT$ ( -- ptr u8 n ) PATH$ ;
 : RUN ( -- )
+   FIXTURES-MAKE
    SPLIT
    FILE BLOCK-EDGE EMPTY-LINES
    CR-LIMIT LIMIT
    READ-FAULT OPEN-MISSING OPEN-TWICE READER-EARLY CLOSE-EARLY
    INTERLEAVE DEEP-LINE
    CLOSE-FAULT
+   PATH-B$ REMOVE-FILE
    LONG-FIXTURE ;
 ;package
 

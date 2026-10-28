@@ -27,7 +27,8 @@ variable RC
 : BAD$ ( -- ptr u8 n ) BAD BAD-U @ ;
 : ARCHIVE$ ( -- ptr u8 n ) ARCHIVE ARCHIVE-U @ ;
 
-\ BAD is a regular file, so a TMPDIR naming it fails mkstemp with ENOTDIR.
+\ BAD is a regular file, so FS:MKTEMP refuses a TMPDIR naming it (E-FS-DIR)
+\ and OPEN answers ZIP:E-OPEN.
 : SETUP ( -- )
    s" zip-temp" FS:MKTEMP-DIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY u ROOT-U !

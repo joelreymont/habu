@@ -9,6 +9,7 @@ require src/lib/memory.f
 require src/lib/vector.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
+require src/lib/fd-io.f
 require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
@@ -47,9 +48,13 @@ variable PROV-U
 : PROV$ ( -- ptr u8 n )
    PROV-PATH PROV-U @ ;
 
+\ The provider is a fresh FS:MKTEMP file under the parent-owned TMPDIR. Its path
+\ is copied out because CHECK makes temps of its own, which reuse the span.
 : PROV-PREPARE ( -- )
-   TMP$ s" boundary.f" PROV-PATH JOIN-PATH PROV-U !
-   PROV$ s" 0 set-check" WRITE-ALL ;
+   s" boundary" FS:MKTEMP {: path:ptr pathu:n fd:fd :}
+   path PROV-PATH pathu BYTE-COPY pathu PROV-U !
+   fd s" 0 set-check" FD-IO:WRITE-FULL
+   fd FD>N close-rc 0 T= ;
 
 : PROV-CLEAN ( -- )
    [: CHECKED-BOUNDARY-LINT:FINISH ;] catch 0 T= ;

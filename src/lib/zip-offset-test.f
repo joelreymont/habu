@@ -24,10 +24,7 @@ package ZIP
 
 : OFFSET-SOURCE ( ptr n ptr u8 n -- )
    {: node:ptr data:ptr len:n :}
-   node SOURCE-TEMPLATE
-   node SOURCE-PTR @ node SOURCE-LEN @ 1+ C-MKSTEMP {: fd:n :}
-   fd 0 < if E-OPEN throw then
-   fd node SNAP-FD ! 1 node SOURCE-LIVE !
+   node SNAPSHOT-OPEN node SNAP-FD @ {: fd:n :}
    node SOURCE-PTR @ node PATH-PTR ! node SOURCE-LEN @ node PATH-LEN !
    node FILE-CHUNK BUFFER-ALLOC node COPY-BUF !
    fd >FD data len FD-IO:WRITE-FULL len node RAW-LEN !
