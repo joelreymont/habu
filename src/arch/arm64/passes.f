@@ -5,8 +5,8 @@
 \ target contract resolves to. This file is that row for ARM64. Every stage is
 \ the sequence the driver used to run by name, wrapping A64SEL, A64RA,
 \ A64RAV, A64SPILL and A64EMIT; none of their state moved here. The emission row
-\ also states the sealed emission as NEMIT's rows. The driver copies them
-\ into NART before publication, and the RETIRE row clears them.
+\ also states the sealed emission as NEMIT's rows. Publication reads them in
+\ NEMIT before the RETIRE row clears them.
 \
 \ WHAT IT OWNS. The routine contract this definition compiles to. Two of its
 \ facts are this backend's own readings - how many functions share the contract
@@ -169,11 +169,12 @@ variable D-SPILLS                    \ padded spill slots that define the cumula
    repeat ;
 
 \ ---- the sealed emission, as the rows publication reads ----------------------
-\ NART copies NEMIT for publication and never decodes an instruction, so the
-\ ARM64 shapes it relies on are proved here: a whole number of instructions, one
-\ source-map row per instruction at its own offset, every function starting at
-\ an instruction. Each `bl` and `b` is decoded here once, through NBR: a `bl` is
-\ a call, and a `b` whose target is outside the emission leaves it for good.
+\ Publication reads these rows in NEMIT before RETIRE clears them and never
+\ decodes an instruction, so the ARM64 shapes it relies on are proved here: a
+\ whole number of instructions, one source-map row per instruction at its own
+\ offset, every function starting at an instruction. Each `bl` and `b` is
+\ decoded here once, through NBR: a `bl` is a call, and a `b` whose target is
+\ outside the emission leaves it for good.
 NBR:INSN-BYTES constant INSN-BYTES
 
 : SIZE-CK ( -- n )

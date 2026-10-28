@@ -1622,7 +1622,7 @@ private
 
 CAST: DEF-ONE-XT ( n -- [ n -- n ] )
 CAST: DEF-TWO-XT ( n -- [ n n -- n ] )
-CAST: DEF-PTR-XT ( n -- [ n -- ptr u8 ] )
+CAST: DEF-PTR-XT ( n -- [ -- ptr u8 ] )
 CAST: DEF-FACTS-XT ( n -- [ n -- n n n n n n ] )
 CAST: DEF-PREP-HOST-XT ( n -- [ n n ptr u8 n ptr u8 n -- ] )
 CAST: DEF-PUBLISH-XT ( n -- [ ptr u8 n n ptr n n ptr n n bool n -- n ] )
@@ -1703,8 +1703,8 @@ CAST: DEF-REPLAY-XT ( n -- [ n n n n -- ] )
    s" NHOST:ABANDON-TAKEN"
       NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT dup 0= if drop exit then
    DEF-HOST-ABANDON-XT execute ;
-: DEF-BYTES ( n -- ptr u8 )
-   s" NART:BYTES" DEF-TARGET DEF-PTR-XT execute ;
+: DEF-BYTES ( -- ptr u8 )
+   s" NEMIT:BYTES" DEF-TARGET DEF-PTR-XT execute ;
 
 : DEF-HOST-N ( n -- )
    {: value:n :}
@@ -1761,16 +1761,16 @@ CAST: DEF-REPLAY-XT ( n -- [ n n n n -- ] )
    0 dst 32 + LE:U64!
    DEF-ADDR-BYTES DEF-ADDR-U +! ;
 
-: DEF-CAPTURE-CALLS ( n n n -- )
-   {: emission:n fn:n size:n :}
-   emission s" NART:CALL-SITES" DEF-ONE 0 ?do
-      emission i s" NART:CALL-SITE@" DEF-TWO {: site:n :}
-      emission i s" NART:CALL-KIND@" DEF-TWO {: kind:n :}
-      emission i s" NART:CALL-TARGET@" DEF-TWO {: target:n :}
+: DEF-CAPTURE-CALLS ( n n -- )
+   {: fn:n size:n :}
+   s" NEMIT:CALL-SITES" DEF-NUM 0 ?do
+      i s" NEMIT:CALL-SITE@" DEF-ONE {: site:n :}
+      i s" NEMIT:CALL-KIND@" DEF-ONE {: kind:n :}
+      i s" NEMIT:CALL-TARGET@" DEF-ONE {: target:n :}
       site 0 < site 4 + size > or if BAD then
       target NFILE-REF:REF-CODE {: ref:n :}
-      emission i s" NART:CALL-LOC@" DEF-TWO {: loc:n :}
-      emission i s" NART:CALL-IMPL@" DEF-TWO 0<> if 1 else 0 then
+      i s" NEMIT:CALL-LOC@" DEF-ONE {: loc:n :}
+      i s" NEMIT:CALL-IMPL@" DEF-ONE 0<> if 1 else 0 then
          {: known:n :}
       site kind ref loc known DEF-CALL+
       target fn < target fn size + >= or if
@@ -1800,12 +1800,12 @@ CAST: DEF-REPLAY-XT ( n -- [ n n n n -- ] )
    owner NUNIT-DEP:BIND-ORD
    owner 0 0 1 NFILE-REF:REF-DECL-DATA ;
 
-: DEF-CAPTURE-ADDRS ( n n -- )
-   {: emission:n size:n :}
-   emission s" NART:ADDR-SITES" DEF-ONE 0 ?do
-      emission i s" NART:ADDR-SITE@" DEF-TWO {: site:n :}
-      emission i s" NART:ADDR-SITE-KIND@" DEF-TWO {: kind:n :}
-      emission i s" NART:ADDR-SITE-ORIGIN@" DEF-TWO {: owner:n :}
+: DEF-CAPTURE-ADDRS ( n -- )
+   {: size:n :}
+   s" NEMIT:ADDR-SITES" DEF-NUM 0 ?do
+      i s" NEMIT:ADDR-SITE@" DEF-ONE {: site:n :}
+      i s" NEMIT:ADDR-SITE-KIND@" DEF-ONE {: kind:n :}
+      i s" NEMIT:ADDR-SITE-ORIGIN@" DEF-ONE {: owner:n :}
       kind NEMIT:ADDR-CODE = if ADDRESS-CARRIER:ADDR-CHAIN-BYTES
       else kind NEMIT:ADDR-DATA = if ADDRESS-CARRIER:DATA-CHAIN-BYTES
       else BAD then then {: width:n :}
@@ -1819,8 +1819,7 @@ CAST: DEF-REPLAY-XT ( n -- [ n n n n -- ] )
       carrier 0 width ADDRESS-CARRIER:SET-CHAIN-VALUE
    loop ;
 
-: DEF-CAPTURE-HOST ( n -- )
-   {: emission:n :}
+: DEF-CAPTURE-HOST ( -- )
    0 DEF-HOST-U !
    s" NHOST:TAKEN-FUNCTIONS" DEF-NUM {: funs:n :}
    funs 0 <= if BAD then
@@ -1828,7 +1827,7 @@ CAST: DEF-REPLAY-XT ( n -- [ n n n n -- ] )
    funs 0 ?do
       i s" NHOST:TAKEN-FACTS" DEF-TARGET DEF-FACTS-XT execute
          {: len:n din:n dout:n reason:n loc:n types:n :}
-      emission i s" NART:FUNCTION-OFFSET@" DEF-TWO DEF-HOST-N
+      i s" NEMIT:FUNCTION-OFFSET@" DEF-ONE DEF-HOST-N
       len DEF-HOST-N din DEF-HOST-N dout DEF-HOST-N
       reason DEF-HOST-N loc DEF-HOST-N types DEF-HOST-N
       types 0 > if
@@ -1860,20 +1859,20 @@ CAST: DEF-REPLAY-XT ( n -- [ n n n n -- ] )
       cursor 7 cells + row 48 + LE:U64@ 0 max cells +
    loop drop ;
 
-: DEF-CAPTURE ( n n n n -- )
-   {: emission:n idx:n fn:n size:n :}
+: DEF-CAPTURE ( n n n -- )
+   {: idx:n fn:n size:n :}
    DEF-ACTIVE @ 0= if exit then
    NUNIT-CAPTURE:PROFILE-CK
    DEF-EMITTED @ if BAD then
    idx DEF-PENDING @ <> size 0 <= or if BAD then
    fn DEF-CODE-BASE !
    size DEF-CODE-RESERVE
-   emission DEF-BYTES 0 DEF-CODE size BYTE-COPY
+   DEF-BYTES 0 DEF-CODE size BYTE-COPY
    size DEF-CODE-U !
    fn size idx NFILE-REF:BEGIN-DEFINITION-BOUNDS
-   emission fn size DEF-CAPTURE-CALLS
-   emission size DEF-CAPTURE-ADDRS
-   emission DEF-CAPTURE-HOST
+   fn size DEF-CAPTURE-CALLS
+   size DEF-CAPTURE-ADDRS
+   DEF-CAPTURE-HOST
    1 DEF-EMITTED ! ;
 
 variable DEF-REFUSED
@@ -1886,17 +1885,16 @@ variable DEF-REFUSED
    reason reasonu FILE-REFUSE
    1 DEF-REFUSED ! ;
 
-variable DEF-HELD-E
 variable DEF-HELD-IDX
 variable DEF-HELD-FN
 variable DEF-HELD-SIZE
 : DEF-CAPTURE-HELD ( -- )
-   DEF-HELD-E @ DEF-HELD-IDX @ DEF-HELD-FN @ DEF-HELD-SIZE @
+   DEF-HELD-IDX @ DEF-HELD-FN @ DEF-HELD-SIZE @
       DEF-CAPTURE ;
-: DEF-OBSERVE ( n n n n -- )
-   {: emission:n idx:n fn:n size:n :}
+: DEF-OBSERVE ( n n n -- )
+   {: idx:n fn:n size:n :}
    DEF-ACTIVE @ 0= if exit then
-   emission DEF-HELD-E ! idx DEF-HELD-IDX !
+   idx DEF-HELD-IDX !
    fn DEF-HELD-FN ! size DEF-HELD-SIZE !
    ['] DEF-CAPTURE-HELD catch {: rc:n :}
    rc 0= if exit then
@@ -1948,7 +1946,7 @@ variable DEF-HELD-SIZE
    0 DEF-PENDING ! 0 DEF-CODE-BASE ! 0 DEF-DOES-OFF !
    0 DEF-MODULE-DELTA ! 0 DEF-GEN-DELTA !
    0 DEF-EPOCH-DELTA ! 0 DEF-BUILD-DELTA !
-   0 DEF-HELD-E ! 0 DEF-HELD-IDX ! 0 DEF-HELD-FN ! 0 DEF-HELD-SIZE !
+   0 DEF-HELD-IDX ! 0 DEF-HELD-FN ! 0 DEF-HELD-SIZE !
    0 DEF-PLAN-ON ! ;
 
 : DEF-DROP-PLAN ( -- n )

@@ -43,7 +43,6 @@ require src/compiler/target.f
 require src/compiler/binding.f
 require src/compiler/target/native-binding.f
 require src/compiler/native/emission.f
-require src/compiler/session/emission.f
 require src/compiler/session/lease.f
 
 package NSHADOW
@@ -116,15 +115,13 @@ variable PEND-ENTRY                  \ which enters at this offset in it
 
 \ ---- taking a sealed emission -------------------------------------------------
 \ Only bytes of the machine the shadow's binding names are its routines. A
-\ native shadow takes the engine's own placed emission, compiled for the
-\ engine's own binding.
+\ native shadow takes the engine's own placed emission; OPEN-NATIVE admitted
+\ only the engine's own binding.
 : TARGET-CK ( -- )
    NEMIT:ARCH SH-BIND @ CBIND:TARGET@ CTARGET:ARCH@ CTARGET-ARCH:EQ
    0= if E-NSHADOW-TARGET throw then
    NATIVE @ 0= if exit then
-   NEMIT:PLACED? 0= if E-NSHADOW-TARGET throw then
-   SH-BIND @ RTARGET:HOST-TARGET RTARGET:NATIVE-BINDING CBIND:SAME?
-   0= if E-NSHADOW-TARGET throw then ;
+   NEMIT:PLACED? 0= if E-NSHADOW-TARGET throw then ;
 
 : COPY-BYTES ( -- )
    CODE-N @ {: at:n :}
@@ -286,9 +283,13 @@ public
    NATIVE-ADDRS-XT !
    1 NATIVE-ADDRS-SET ! ;
 
-: OPEN-NATIVE ( CBIND:binding -- )
+\ The engine's placed emission is compiled for the engine's own binding, so a
+\ native shadow opens for no other.
+: OPEN-NATIVE ( CBIND:binding -- ) {: b:CBIND:binding :}
    NATIVE-ADDRS-SET @ 0= if E-NSHADOW-STATE throw then
-   OPEN
+   b RTARGET:HOST-TARGET RTARGET:NATIVE-BINDING CBIND:SAME?
+   0= if E-NSHADOW-TARGET throw then
+   b OPEN
    1 NATIVE ! ;
 
 \ An idle capture can close it whether a shadow is open or not.
@@ -357,15 +358,15 @@ public
 \ Pair the host emission's function entries with the pending shadow's entries
 \ before the host publisher commits either code or dictionary record. Both
 \ selectors retain the same frozen HIR function sequence, even when their
-\ instruction and block layouts differ. TAKE reserved the rows; this grows
-\ nothing, and a failed publication discards the pending pair with ABANDON.
-: SOURCE-FUNS ( NART:emission n -- )
-   {: a:NART:emission at:n :}
+\ instruction and block layouts differ. The host emission is the one NEMIT
+\ holds sealed, placed at `at`. TAKE reserved the rows; this grows nothing, and
+\ a failed publication discards the pending pair with ABANDON.
+: SOURCE-FUNS ( n -- ) {: at:n :}
    PENDING @ 0= if exit then
    N-EMS @ {: e:n :}
-   a NART:FUNCTIONS e EM-FUNS @ <> if E-NSHADOW-ROW throw then
+   NEMIT:FUNCTIONS e EM-FUNS @ <> if E-NSHADOW-ROW throw then
    e EM-FUNS @ 0 ?do
-      at a i NART:FUNCTION-OFFSET@ +  e EM-FUN0 @ i + FUN-SOURCE !
+      at i NEMIT:FUNCTION-OFFSET@ +  e EM-FUN0 @ i + FUN-SOURCE !
    loop ;
 
 \ File the taken emission under the record publication has just committed, and

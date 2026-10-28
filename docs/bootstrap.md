@@ -162,7 +162,11 @@ A codegen change can first appear in generation two because generation one
 was compiled by the old host. Other source changes usually reach generation
 one. Compare successive products, not an arbitrary seed and product. A
 pre-window build file resolves names against its host, so a newly called
-engine primitive or fixed layout declaration may require a staged host.
+engine primitive, a fixed layout declaration, or a changed compiler contract
+that pre-window tools call (the unit observer's arguments, or the emission
+state at observation) may require a staged host: the checked prefix compiles
+with the host's compiler, and the unit tools call the host's producer until
+`src/habu/native-runtime.f` loads.
 The window's captured records and cells must not retain the host's process
 addresses or record numbers: a host whose checker differs from the tree's
 numbers its records and symbols differently, so a record number left in DATA

@@ -1,7 +1,8 @@
 \ publish.f - commit one sealed native emission to its pending dictionary record.
 \ Every refusal precedes the code window; the commit phase only copies accepted
 \ bytes, records relocation sites, and publishes the record. The emission is
-\ read through its owned artifact, in bytes; nothing here decodes instructions.
+\ read from NEMIT while the backend holds it sealed, in bytes; nothing here
+\ decodes instructions.
 \
 \ THE CODE REGION IS THE RUNNING ENGINE'S, so it takes only the instructions of
 \ the machine NABI:BINDING names: an emission any other backend sealed is
@@ -16,7 +17,7 @@ require src/compiler/target.f
 require src/compiler/binding.f
 require src/compiler/native/abi.f
 require src/compiler/native/dict.f
-require src/compiler/session/emission.f
+require src/compiler/native/emission.f
 require src/compiler/native/shadow.f
 require src/compiler/native/host-publish.f
 require src/habu/code-span.f
@@ -26,8 +27,8 @@ package NPUB
 private
 
 $4000 constant CODE-RESERVE
-TYPED-VARIABLE UNIT-OBSERVER [ NART:emission n n n -- ]
-TYPED-VARIABLE UNIT-PRIOR-OBSERVER [ NART:emission n n n -- ]
+TYPED-VARIABLE UNIT-OBSERVER [ n n n -- ]
+TYPED-VARIABLE UNIT-PRIOR-OBSERVER [ n n n -- ]
 variable UNIT-ARMED
 
 \ Inside NPUB the publication primitives bind this package's private rows
@@ -89,10 +90,9 @@ variable UNIT-ARMED
    fn size + CODE-CEILING > if E-NPUB-ROOM throw then
    fn ;
 
-: PLACE-CK ( NART:emission n -- )
-   {: e:NART:emission fn:n :}
-   e NART:PLACED? 0= if exit then
-   e NART:PLACEMENT fn <> if E-NPUB-PLACE throw then ;
+: PLACE-CK ( n -- ) {: fn:n :}
+   NEMIT:PLACED? 0= if exit then
+   NEMIT:PLACEMENT fn <> if E-NPUB-PLACE throw then ;
 
 : EXTERNAL? ( n -- bool ) {: t:n :}
    t dbase@ < if true exit then
@@ -100,66 +100,59 @@ variable UNIT-ARMED
 
 \ A tail branch out of the region cannot be relocated by the call map. The
 \ emission lies inside the region, so a branch to outside it leaves the emission.
-: TAIL-RELOC-CK ( NART:emission -- )
-   {: e:NART:emission :}
-   e NART:CALL-SITES 0 ?do
-      e i NART:CALL-KIND@ NEMIT:TAIL = if
-         e i NART:CALL-TARGET@ EXTERNAL? if E-NPUB-RELOC throw then
+: TAIL-RELOC-CK ( -- )
+   NEMIT:CALL-SITES 0 ?do
+      i NEMIT:CALL-KIND@ NEMIT:TAIL = if
+         i NEMIT:CALL-TARGET@ EXTERNAL? if E-NPUB-RELOC throw then
       then
    loop ;
 
 \ The ARM call map needs only calls out of REGION. A stripped x86 image packs
 \ reachable bodies at new addresses, so every recorded E8 call or E9 tail
 \ branch must move with it, including calls between REGION words.
-: RELOC-CALLS ( NART:emission n -- )
-   {: e:NART:emission fn:n :}
-   e NART:ARCH CTARGET-ARCH:X86-64 CTARGET-ARCH:EQ {: x64:bool :}
-   e NART:CALL-SITES 0 ?do
-      e i NART:CALL-KIND@ {: kind:n :}
+: RELOC-CALLS ( n -- ) {: fn:n :}
+   NEMIT:ARCH CTARGET-ARCH:X86-64 CTARGET-ARCH:EQ {: x64:bool :}
+   NEMIT:CALL-SITES 0 ?do
+      i NEMIT:CALL-KIND@ {: kind:n :}
       x64 if
          kind NEMIT:CALL = kind NEMIT:TAIL = or
       else
          kind NEMIT:CALL =
-         e i NART:CALL-TARGET@ EXTERNAL? and
+         i NEMIT:CALL-TARGET@ EXTERNAL? and
       then if
-         fn e i NART:CALL-SITE@ + RELOC-EXTERNAL
+         fn i NEMIT:CALL-SITE@ + RELOC-EXTERNAL
       then
    loop ;
 
-: RELOC-ADDRS ( NART:emission n -- )
-   {: e:NART:emission fn:n :}
-   e NART:ADDR-SITES 0 ?do
-      fn e i NART:ADDR-SITE@ + RELOC-ADDR
+: RELOC-ADDRS ( n -- ) {: fn:n :}
+   NEMIT:ADDR-SITES 0 ?do
+      fn i NEMIT:ADDR-SITE@ + RELOC-ADDR
    loop ;
 
 \ Legacy records omit the trailing return. An emission with none explicitly
 \ records its whole span, so a reader never borrows the next record's bytes.
-: RECORDED-LEN ( NART:emission n -- n )
-   {: e:NART:emission size:n :}
-   e NART:RET-BYTES {: ret:n :}
+: RECORDED-LEN ( n -- n ) {: size:n :}
+   NEMIT:RET-BYTES {: ret:n :}
    ret 0= if size CODE-SPAN:EXACT exit then
    size ret - ;
 
-: VALIDATE-EMISSION ( NART:emission n -- n )
-   {: e:NART:emission size:n :}
+: VALIDATE-EMISSION ( n -- n ) {: size:n :}
    size ROOM-CK {: fn:n :}
-   e fn PLACE-CK
-   e TAIL-RELOC-CK
+   fn PLACE-CK
+   TAIL-RELOC-CK
    fn ;
 
-: PLACE ( NART:emission n n -- ) {: e:NART:emission fn:n size:n :}
-   e NART:BYTES fn size CODE-WINDOW
-   e fn RELOC-CALLS
-   e fn RELOC-ADDRS ;
+: PLACE ( n n -- ) {: fn:n size:n :}
+   NEMIT:BYTES fn size CODE-WINDOW
+   fn RELOC-CALLS
+   fn RELOC-ADDRS ;
 
-: COMMIT ( NART:emission n n n -- )
-   {: e:NART:emission idx:n fn:n size:n :}
-   e fn size PLACE
-   fn e size RECORDED-LEN idx PUBLISH-REC ;
+: COMMIT ( n n n -- ) {: idx:n fn:n size:n :}
+   fn size PLACE
+   fn size RECORDED-LEN idx PUBLISH-REC ;
 
 \ One routine's commit, held where COMMIT-OWNED's quotations read it. Compiler
 \ working storage, as NHOST's TAKEN-* are: an image carries none of it.
-0 CWORK-VARIABLE HELD-E NART:emission
 0 CWORK-VARIABLE HELD-IDX n
 0 CWORK-VARIABLE HELD-FN n
 0 CWORK-VARIABLE HELD-SIZE n
@@ -177,40 +170,41 @@ create TRAILER TRAILER-BYTES allot
 \ A defer body's record ends at its trailer, which names the dispatch cell the
 \ body jumps through (layout.f DEFER-MAGIC), so the span is the slot and not the
 \ emission's return-trimmed length.
-: COMMIT-DEFER ( NART:emission n n n n -- )
-   {: e:NART:emission idx:n fn:n size:n cell:n :}
-   e fn size PLACE
+: COMMIT-DEFER ( n n n n -- ) {: idx:n fn:n size:n cell:n :}
+   fn size PLACE
    cp@ {: slot:n :}
    fn slot fn - CODE-SPAN:EXACT idx PUBLISH-REC
    cell slot TRAILER-PLACE ;
 
-: UNIT-NOTIFY ( NART:emission n n n -- )
-   {: e:NART:emission idx:n fn:n size:n :}
-   UNIT-ARMED @ if e idx fn size UNIT-OBSERVER @ execute then ;
+: UNIT-NOTIFY ( n n n -- ) {: idx:n fn:n size:n :}
+   UNIT-ARMED @ if idx fn size UNIT-OBSERVER @ execute then ;
 
 : COMMIT-HELD ( -- )
    HELD-DEFER @ 0<> if
-      HELD-E @ HELD-IDX @ HELD-FN @ HELD-SIZE @ HELD-DEFER @ COMMIT-DEFER exit
+      HELD-IDX @ HELD-FN @ HELD-SIZE @ HELD-DEFER @ COMMIT-DEFER exit
    then
-   HELD-E @ HELD-IDX @ HELD-FN @ HELD-SIZE @ COMMIT ;
+   HELD-IDX @ HELD-FN @ HELD-SIZE @ COMMIT ;
 
 \ The unit observer is the last callback; checker writes follow the commit.
 : NOTIFY-HELD ( -- )
-   HELD-E @ HELD-IDX @ HELD-FN @ HELD-SIZE @ UNIT-NOTIFY
+   HELD-IDX @ HELD-FN @ HELD-SIZE @ UNIT-NOTIFY
    0 CHECKER-OWNER:WRITE-WINDOW ;
 
+\ A take TAKE refuses is its own to abandon; one it made is abandoned here.
 : COMMIT-OWNED-BODY ( -- )
+   HELD-FN @ NHOST:TAKE
    [: NOTIFY-HELD ;] catch {: notify-rc:n :}
    notify-rc 0<> if NHOST:ABANDON-TAKEN notify-rc throw then
    [: COMMIT-HELD ;] catch {: rc:n :}
    rc 0<> if NHOST:ABANDON-TAKEN rc throw then
    NHOST:PUBLISH-TAKEN ;
 
-: COMMIT-OWNED ( NART:emission n n n -- )
-   {: e:NART:emission idx:n fn:n size:n :}
-   e fn NHOST:TAKE
-   e HELD-E !  idx HELD-IDX !  fn HELD-FN !  size HELD-SIZE !
-   [: COMMIT-OWNED-BODY ;] [: 0 HELD-FN !  0 HELD-DEFER ! ;] finally ;
+\ `cell` is a defer body's dispatch cell, or 0. The held routine is cleared on
+\ every exit, so a refused commit leaves nothing the next one could read.
+: COMMIT-OWNED ( n n n n -- ) {: idx:n fn:n size:n cell:n :}
+   idx HELD-IDX !  fn HELD-FN !  size HELD-SIZE !  cell HELD-DEFER !
+   [: COMMIT-OWNED-BODY ;]
+   [: 0 HELD-IDX !  0 HELD-FN !  0 HELD-SIZE !  0 HELD-DEFER ! ;] finally ;
 
 : PENDING-IDX ( -- n )
    ndict@ ;
@@ -224,17 +218,16 @@ create TRAILER TRAILER-BYTES allot
    f DNAME-INT and 0<> if E-NPUB-PENDING throw then
    f DNAME-IMM and 0<> if E-NPUB-PENDING throw then ;
 
-: TARGET-CK ( NART:emission -- )
-   NART:ARCH NABI:BINDING CBIND:TARGET@ CTARGET:ARCH@ CTARGET-ARCH:EQ
+: TARGET-CK ( -- )
+   NEMIT:ARCH NABI:BINDING CBIND:TARGET@ CTARGET:ARCH@ CTARGET-ARCH:EQ
    0= if E-NPUB-TARGET throw then ;
 
-: PENDING-PROVE ( NART:emission -- n n n )
-   {: e:NART:emission :}
-   e TARGET-CK
-   e NART:SIZE {: size:n :}
+: PENDING-PROVE ( -- n n n )
+   TARGET-CK
+   NEMIT:SIZE {: size:n :}
    PENDING-IDX {: idx:n :}
    idx PENDING-CK
-   e size VALIDATE-EMISSION {: fn:n :}
+   size VALIDATE-EMISSION {: fn:n :}
    idx fn size ;
 
 \ Publishing the checker's one-shot minimum-input latch is engine authority.
@@ -250,22 +243,20 @@ create TRAILER TRAILER-BYTES allot
 : DOES-NAME-PAD ( n -- n )
    XREF-REC XREF-NAME$ nip DOES-CLAUSE:SUFFIX$ nip + PAD-INSTRUCTION ;
 
-: DOES-PROVE ( NART:emission n -- n n n n )
-   {: e:NART:emission fun:n :}
-   e PENDING-PROVE {: idx:n fn:n size:n :}
+: DOES-PROVE ( n -- n n n n ) {: fun:n :}
+   PENDING-PROVE {: idx:n fn:n size:n :}
    idx 1+ DICT-CAP >= if E-NPUB-PENDING throw then
    idx DOES-NAME-PAD {: pad:n :}
    fn size + pad + CODE-CEILING > if E-NPUB-ROOM throw then
-   e fun NART:FUNCTION-OFFSET@ {: off:n :}
+   fun NEMIT:FUNCTION-OFFSET@ {: off:n :}
    off 0 <= if E-NPUB-OFFSET throw then
    idx fn size off ;
 
 \ Commit one pending body; callers decide whether to consume checker facts.
-: PUBLISH-CODE ( NART:emission -- n )
-   {: e:NART:emission :}
-   e PENDING-PROVE {: idx:n fn:n size:n :}
-   e fn NSHADOW:SOURCE-FUNS
-   e idx fn size COMMIT-OWNED
+: PUBLISH-CODE ( -- n )
+   PENDING-PROVE {: idx:n fn:n size:n :}
+   fn NSHADOW:SOURCE-FUNS
+   idx fn size 0 COMMIT-OWNED
    idx NSHADOW:PUBLISH
    idx APPEND-PENDING
    idx ;
@@ -275,30 +266,29 @@ create TRAILER TRAILER-BYTES allot
 
 public
 
-: PUBLISH-PENDING ( NART:emission -- )
+\ Each publishes the emission NEMIT holds sealed, so it runs before the
+\ backend's RETIRE clears it.
+: PUBLISH-PENDING ( -- )
    PUBLISH-CODE PENDING-FACTS ;
 
-: PUBLISH-RAW ( NART:emission -- )
+: PUBLISH-RAW ( -- )
    PUBLISH-CODE drop ;
 
-: PUBLISH-PENDING-DEFER ( NART:emission n -- )
-   {: e:NART:emission cell:n :}
-   e PENDING-PROVE {: idx:n fn:n size:n :}
+: PUBLISH-PENDING-DEFER ( n -- ) {: cell:n :}
+   PENDING-PROVE {: idx:n fn:n size:n :}
    fn size + TRAILER-BYTES + CODE-CEILING > if E-NPUB-ROOM throw then
-   e fn NSHADOW:SOURCE-FUNS
-   cell HELD-DEFER !
-   e idx fn size COMMIT-OWNED
+   fn NSHADOW:SOURCE-FUNS
+   idx fn size cell COMMIT-OWNED
    idx NSHADOW:PUBLISH
    idx APPEND-PENDING
    HOOKED? if idx PENDING-FACTS then ;
 
-: PUBLISH-PENDING-DOES ( NART:emission n -- )
-   {: e:NART:emission fun:n :}
-   e fun DOES-PROVE {: idx:n fn:n size:n off:n :}
-   e fn NSHADOW:SOURCE-FUNS
-   e idx fn size COMMIT-OWNED
+: PUBLISH-PENDING-DOES ( n -- ) {: fun:n :}
+   fun DOES-PROVE {: idx:n fn:n size:n off:n :}
+   fn NSHADOW:SOURCE-FUNS
+   idx fn size 0 COMMIT-OWNED
    idx NSHADOW:PUBLISH
-   fn off + e size off - RECORDED-LEN DOES-RECORD
+   fn off + size off - RECORDED-LEN DOES-RECORD
    idx APPEND-PENDING
    idx XREF-REC XREF-NAME$ true CHECKER-OWNER:DOES-FINISH
    idx PENDING-FACTS
@@ -390,7 +380,7 @@ public
 : IMPORT-FILE-UNIT ( ptr u8 n ptr u8 n ptr n n ptr n n -- )
    IMPORT-UNIT ;
 
-: WITH-UNIT ( [ NART:emission n n n -- ] [ -- ] -- )
+: WITH-UNIT ( [ n n n -- ] [ -- ] -- )
    {: observer q :}
    UNIT-ARMED @ if E-NPUB-PENDING throw then
    UNIT-OBSERVER @ UNIT-PRIOR-OBSERVER !

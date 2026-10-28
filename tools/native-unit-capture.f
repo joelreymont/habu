@@ -2,7 +2,6 @@
 
 require src/lib/errors.f
 require src/compiler/native/publish.f
-require src/compiler/session/emission.f
 require src/compiler/native/string.f
 require src/habu/xref.f
 require src/habu/aot-arm.f
@@ -18,7 +17,7 @@ DYNAMIC-BUFFER PRODUCER-LEN n
 DYNAMIC-BUFFER PRODUCER-XT n
 variable PRODUCER-N
 
-CAST: WITH-UNIT-XT ( n -- [ [ n n n n -- ] [ -- ] -- ] )
+CAST: WITH-UNIT-XT ( n -- [ [ n n n -- ] [ -- ] -- ] )
 
 : BIND-ONE ( ptr u8 n bool -- ) {: a:ptr u:n optional:bool :}
    a u XREF-FIND dup XREF-FOUND? if XREF-START
@@ -50,18 +49,18 @@ public
 : BIND-PRODUCER ( -- )
    0 PRODUCER-N !
    s" NPUB:WITH-UNIT" false BIND-ONE
-   s" NART:CALL-SITES" false BIND-ONE
-   s" NART:CALL-SITE@" false BIND-ONE
-   s" NART:CALL-KIND@" false BIND-ONE
-   s" NART:CALL-TARGET@" false BIND-ONE
-   s" NART:ADDR-SITES" false BIND-ONE
-   s" NART:ADDR-SITE@" false BIND-ONE
-   s" NART:ADDR-SITE-KIND@" false BIND-ONE
-   s" NART:ADDR-SITE-ORIGIN@" true BIND-ONE
-   s" NART:BYTES" false BIND-ONE
-   s" NART:FUNCTION-OFFSET@" false BIND-ONE
-   s" NART:CALL-IMPL@" false BIND-ONE
-   s" NART:CALL-LOC@" false BIND-ONE
+   s" NEMIT:CALL-SITES" false BIND-ONE
+   s" NEMIT:CALL-SITE@" false BIND-ONE
+   s" NEMIT:CALL-KIND@" false BIND-ONE
+   s" NEMIT:CALL-TARGET@" false BIND-ONE
+   s" NEMIT:ADDR-SITES" false BIND-ONE
+   s" NEMIT:ADDR-SITE@" false BIND-ONE
+   s" NEMIT:ADDR-SITE-KIND@" false BIND-ONE
+   s" NEMIT:ADDR-SITE-ORIGIN@" true BIND-ONE
+   s" NEMIT:BYTES" false BIND-ONE
+   s" NEMIT:FUNCTION-OFFSET@" false BIND-ONE
+   s" NEMIT:CALL-IMPL@" false BIND-ONE
+   s" NEMIT:CALL-LOC@" false BIND-ONE
    s" native-unit-cut-cell" true BIND-ONE
    s" NHOST:TAKEN-FUNCTIONS" true BIND-ONE
    s" NHOST:TAKEN-FACTS" true BIND-ONE
@@ -158,7 +157,7 @@ public
 : PROFILE-CK ( -- )
    AARCH64-PROFILE? 0= if E-NUNIT-PROFILE throw then ;
 
-: WITH-OBSERVER ( [ n n n n -- ] [ -- ] -- )
+: WITH-OBSERVER ( [ n n n -- ] [ -- ] -- )
    s" NPUB:WITH-UNIT" TARGET-XT WITH-UNIT-XT execute ;
 
 : CLOSE ( -- )

@@ -56,7 +56,7 @@ require src/compiler/native/shadow.f
 require src/compiler/native/callback-stub.f
 require src/compiler/native/prof.f
 require src/compiler/session/lease.f
-require src/compiler/session/emission.f
+require src/compiler/native/emission.f
 
 package NCOMP
 private
@@ -123,7 +123,6 @@ align
 0 CWORK-VARIABLE M-LEASE NLEASE:lease
 0 CWORK-VARIABLE M-SESSION NSESSION:session
 0 CWORK-VARIABLE SH-SESSION NSESSION:session
-0 CWORK-VARIABLE M-EMISSION NART:emission
 
 \ Everything the run needs, parked: a quotation cannot read the enclosing word's
 \ locals and the whole run is one quotation.
@@ -179,6 +178,18 @@ private
 -1 CWORK-VARIABLE M-FIXED-REC n                 \ published record for a seeded created child, or -1
 0 CWORK-VARIABLE M-SHADOW-ONLY bool             \ the engine already published its own body
 
+\ How HOST-CHAIN publishes the emission: a pending body (its `does>` clause,
+\ when M-DOES is set), a defer body through M-FIXED-VAL's cell, or a raw body.
+0 constant PUB-PENDING
+1 constant PUB-DEFER
+2 constant PUB-RAW
+0 CWORK-VARIABLE M-PUB n
+
+\ The published emission's function offsets, which PUBLISHED-ROWS reads after
+\ the backend has cleared NEMIT.
+0 CWORK-VARIABLE PUB-FUNS n
+DYNAMIC-BUFFER PUB-OFF n
+
 : CC ( -- IR-CTX:ctx )           0 M-CTX @ ;
 : BB ( -- IR-BUILD:builder )     0 M-BLD @ ;
 : TAPE ( -- IR-ARENA:view )      0 M-TAPE @ ;
@@ -190,13 +201,12 @@ private
 \ The callable address is the actual committed parent's entry plus this
 \ ordinal's sealed emission offset. The callback fills storage reserved while
 \ the HIR was borrowed; it must neither allocate nor throw.
-: PUBLISHED-ROWS ( n NART:emission -- )
-   {: idx:n e:NART:emission :}
+: PUBLISHED-ROWS ( n -- ) {: idx:n :}
    data-base NATIVE-OBS-CELLS:PUBLISHED + @ dup 0= if drop exit then
    PUBLISHED-XT {: q :}
    idx XREF-REC XREF-START >ENTRY {: parent:code-entry :}
-   e NART:FUNCTIONS 0 ?do
-      idx CC parent i e i NART:FUNCTION-OFFSET@ q execute
+   PUB-FUNS @ 0 ?do
+      idx CC parent i i PUB-OFF @ q execute
    loop ;
 
 : SRC$ ( -- ptr u8 n )
@@ -640,14 +650,32 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
    NSHADOW:BINDING [: SHADOW-BODY ;] IR-CTX:WITH-CONTEXT ;
 
 \ ---- the one stage, or the two -----------------------------------------------
+\ Room for the offsets is made before the commit, so nothing past it throws.
+: KEEP-OFFSETS ( -- )
+   NEMIT:FUNCTIONS {: n:n :}
+   n PUB-OFF-RESERVE
+   n 0 ?do i NEMIT:FUNCTION-OFFSET@ i PUB-OFF ! loop
+   n PUB-FUNS ! ;
+
+: PUBLISH-IT ( -- )
+   KEEP-OFFSETS
+   M-PUB @ PUB-RAW = if NPUB:PUBLISH-RAW exit then
+   M-PUB @ PUB-DEFER = if M-FIXED-VAL @ NPUB:PUBLISH-PENDING-DEFER exit then
+   M-DOES @ 0<> if
+      M-DOES-FUN @ NEMIT:FUNCTION-OFFSET@ M-DOES-OFF !
+      M-DOES-FUN @ NPUB:PUBLISH-PENDING-DOES exit
+   then
+   NPUB:PUBLISH-PENDING ;
+
 \ Selection publishes the module that is emitted, and a routine whose values do
 \ not all fit its registers is lowered - once per class the allocator seals - and
 \ the last lowering publishes it instead. Every stage is the row the definition's
 \ own target contract resolves to, so this file names no backend and an
 \ architecture with no backend loaded is refused at the declaration. An open
 \ shadow's chain runs first, from the same frozen module; a native shadow takes
-\ the engine's own emission here instead, while NEMIT still holds it.
-: HOST-CHAIN ( IR-BUILD:module NSESSION:session -- NART:emission )
+\ the engine's own emission here instead. Publication reads the emission while
+\ NEMIT still holds it, before HOST-CLEAN retires it.
+: HOST-CHAIN ( IR-BUILD:module NSESSION:session -- )
    {: hm:IR-BUILD:module s:NSESSION:session :}
    s M-IN @ M-OUT @ LINKAGE NBACK:DECLARE
    s hm NBACK:SELECT {: m0:IR-BUILD:module :}
@@ -657,14 +685,14 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
    s ready NPUB:NEXT-SLOT NBACK:EMIT
    M-CB-SLOT @ 0 >= if NCBSTUB:ENTRY@ M-CB-ENTRY ! then
    NSHADOW:NATIVE? if SHADOW-TAKE then
-   s NART:COPY ;
+   PUBLISH-IT ;
 
 : HOST-CLEAN ( -- )
    NCBSTUB:CLEAR
    SS NBACK:RELEASE
    SS NBACK:RETIRE ;
 
-: HOST-WORK ( IR-BUILD:module NSESSION:session -- NART:emission )
+: HOST-WORK ( IR-BUILD:module NSESSION:session -- )
    [: HOST-CHAIN ;] [: HOST-CLEAN ;] finally ;
 
 : FREEZE-CLEAN ( -- )
@@ -676,17 +704,10 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
 : FROZEN ( NSESSION:session -- IR-BUILD:module )
    [: FREEZE-CHAIN ;] [: FREEZE-CLEAN ;] finally ;
 
-: EMITTED ( -- NART:emission )
+: EMITTED ( -- )
    SS [: FROZEN ;] NSESSION:WITH-WORK {: hm:IR-BUILD:module :}
    hm SHADOWED
    hm SS [: HOST-WORK ;] NSESSION:WITH-WORK ;
-
-: PUBLISH-IT ( NART:emission -- )
-   M-DOES @ 0<> if
-      dup M-DOES-FUN @ NART:FUNCTION-OFFSET@ M-DOES-OFF !
-      M-DOES-FUN @ NPUB:PUBLISH-PENDING-DOES exit
-   then
-   NPUB:PUBLISH-PENDING ;
 
 : ELABORATE ( IR-ARENA:arena IR-ARENA:arena -- )
    {: p:IR-ARENA:arena r:IR-ARENA:arena :}
@@ -737,7 +758,7 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
 
 \ The model is built AFTER the tape, because the table has to be sized from the
 \ body and the body is the tape.
-: LOWER ( n -- NART:emission )
+: LOWER ( n -- )
    {: before:n :}
    MODEL {: p:IR-ARENA:arena r:IR-ARENA:arena :}
    before SOURCE-PUBLICATION-CK
@@ -748,7 +769,8 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
    p r ELABORATE
    HOST-ARITIES
    NHOST:SOURCE-FREEZE
-   EMITTED dup M-EMISSION ! ;
+   PUB-PENDING M-PUB !
+   EMITTED ;
 
 : SHUT ( -- )
    0 CHECKER-OWNER:WRITE-WINDOW ;
@@ -768,7 +790,7 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
    CC HIR-MOD 0 M-BLD !
    RECORD {: before:n :}
    E-NCOMP-STATE CHECKER-OWNER:WRITE-WINDOW
-   before [: LOWER PUBLISH-IT ;] [: SHUT ;] finally
+   before [: LOWER ;] [: SHUT ;] finally
    0 M-DOES-FRAME !
    before M-PUBLISHED-START ! ;
 
@@ -807,8 +829,8 @@ $20 constant NAME-END
    KEEP-TAPE-NAME
    0 M-IN ! 0 M-OUT !
    CC BB TAPE p r M-FIXED-VAL @ NELAB:DEFER drop
-   EMITTED dup M-EMISSION !
-   M-FIXED-VAL @ NPUB:PUBLISH-PENDING-DEFER ;
+   PUB-DEFER M-PUB !
+   EMITTED ;
 
 : FIXED-MODULE ( -- )
    CC HIR-MOD 0 M-BLD !
@@ -850,8 +872,8 @@ $20 constant NAME-END
       MODEL DEFER-WORK
    else
       FIXED-MODULE
-      EMITTED dup M-EMISSION !
-      NPUB:PUBLISH-RAW
+      PUB-RAW M-PUB !
+      EMITTED
    then
    before M-PUBLISHED-START ! ;
 
@@ -870,7 +892,7 @@ $20 constant NAME-END
    [: M-SHADOW-ONLY @ if FIXED-SHADOW-WORK exit then
       M-FIXED @ NDICT:FIXED-NONE <> if FIXED-WORK exit then WORK ;] catch M-RC !
    M-RC @ 0= M-PUBLISHED-START @ 0 >= and if
-      [: M-PUBLISHED-START @ M-EMISSION @ PUBLISHED-ROWS ;] catch 0<> if
+      [: M-PUBLISHED-START @ PUBLISHED-ROWS ;] catch 0<> if
          s" ncomp: publication callback threw" 76 die
       then
    then
