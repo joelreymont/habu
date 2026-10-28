@@ -4800,17 +4800,20 @@ $C8 constant CBT-BYTES              \ entry rsp becomes 16-byte aligned
    S\" hb: callback: slot has no dispatch\n" no-xt CB-DIE,
    S\" hb: callback: the body defined\n" defined CB-DIE, ;
 
-\ Each fixed-size stub provides its immutable slot number to the shared thunk.
-\ A pointer returned by this row is a C entry, never a checked execution token.
+\ Each fixed-size stub sets r10 to its slot and jumps to the shared thunk; -1
+\ answers the thunk, for a compiler-owned stub that sets r10 itself.
 : CALLBACK-ENTRY-BODY ( -- )
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
-   {: stubs:label thunk:label done:label bad:label :}
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
+   {: stubs:label thunk:label done:label bad:label answer:label :}
    RAX POP,
+   RDX thunk MOVABS,
+   RAX -1 >IMM8 ASM-SINK ENC-CMP-RI8  C-E answer JCC,
    RAX CB-POOL >IMM8 ASM-SINK ENC-CMP-RI8  C-AE bad JCC,
    RDX stubs MOVABS,
    RAX 4 >IMM8 ASM-SINK ENC-SHL-RI8
-   RAX RDX ASM-SINK ENC-ADD-RR
-   RAX PUSH,
+   RDX RAX ASM-SINK ENC-ADD-RR
+   answer X64CODE:LBL,
+   RDX PUSH,
    done JMP,
    S\" hb: callback: slot out of range\n" bad CB-DIE,
    stubs X64CODE:LBL,

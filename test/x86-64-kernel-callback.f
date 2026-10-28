@@ -1,7 +1,9 @@
 \ x86-64-kernel-callback.f - emitted SysV callback-entry E2E.
 \ Run the produced ELFs on x86-64: the qsort image exits 0 after libc calls a
-\ Habu comparator through ffi-call. The three refusal images exit 106 with
-\ their corresponding exact "hb: callback: ..." lines on stderr.
+\ Habu comparator through ffi-call and -1 answers the address slot 0's stub
+\ jumps to. The four refusal images exit 106 with their exact "hb: callback:
+\ ..." lines on stderr: range and below "slot out of range", unbound "slot is
+\ not bound", no-frame "context is not inside a foreign call".
 require test/x86-64-boot-harness.f
 
 package X64K-CB
@@ -90,6 +92,24 @@ NEST-DEPTH CELL + constant QSORT-FN
    ;
 
 : RANGE-CASE ( -- ) CB-POOL N, s" callback-entry" ROW ;
+: BELOW-CASE ( -- ) -2 N, s" callback-entry" ROW ;
+
+\ A stub is mov r10d, imm32 (REX.B, B8+r, imm32) and then jmp rel32.
+6 constant STUB-MOV
+STUB-MOV 1 + constant STUB-REL           \ the jmp's displacement
+STUB-MOV 5 + constant STUB-NEXT          \ where the displacement counts from
+
+\ -1 answers the shared thunk: the target of slot 0's jmp.
+: THUNK-CASE ( -- )
+   -1 N, s" callback-entry" ROW
+   0 N, s" callback-entry" ROW
+   0 G-POP
+   RCX RAX STUB-REL MEM-OFF ASM-SINK ENC-MOVSXD-RM
+   RAX RCX ASM-SINK ENC-ADD-RR
+   RAX STUB-NEXT >IMM8 ASM-SINK ENC-ADD-RI8
+   1 G-POP
+   RAX RCX ASM-SINK ENC-SUB-RR
+   0 G-PUSH  0 X64HARNESS:EXPECT-POP, ;
 
 : CALL-ENTRY, ( -- )
    0 N, s" callback-entry" ROW
@@ -115,8 +135,9 @@ public
 
 : RUN ( -- )
    T-RESET X64HARNESS:INIT
-   [: SORT-CASE ;] s" hb-x64-kernel-callback" TMP-PATH BUILD
+   [: SORT-CASE THUNK-CASE ;] s" hb-x64-kernel-callback" TMP-PATH BUILD
    [: RANGE-CASE ;] s" hb-x64-kernel-callback-range" TMP-PATH BUILD
+   [: BELOW-CASE ;] s" hb-x64-kernel-callback-below" TMP-PATH BUILD
    [: UNBOUND-CASE ;] s" hb-x64-kernel-callback-unbound" TMP-PATH BUILD
    [: NO-FRAME-CASE ;] s" hb-x64-kernel-callback-no-frame" TMP-PATH BUILD
    X64HARNESS:DISPOSE T-REPORT ;
