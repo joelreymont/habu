@@ -241,6 +241,13 @@ PTR-VARIABLE SND-A
    FS-MUT-ABI:START FS-MUT-ABI:BYTES SND-ZERO-BAND
    FS-ABI:START FS-ABI:BYTES SND-ZERO-BAND ;
 
+\ STRING-ABI and FMT-ABI hold the SB builder and the integer render buffer: the
+\ last text the build process formatted, such as a path or a cache count. A
+\ restored process starts with an empty builder, so clear both copied bands.
+: SND-ZERO-TEXT-SCRATCH ( -- )
+   STRING-ABI:START STRING-ABI:BYTES SND-ZERO-BAND
+   FMT-ABI:START FMT-ABI:BYTES SND-ZERO-BAND ;
+
 \ MEM-ABI names the build process's open WITH-BYTES scope mappings, which the
 \ saved image does not own. Clear it so the image starts with no scope open.
 : SND-ZERO-MEM-SCOPE ( -- )
@@ -476,6 +483,7 @@ CAST: PROCESS-CELLS-XT ( n -- [ [ ptr n -- ] -- ] )
    SND-PTR SDL @ CHECKER-REG:RECORD-SNAPSHOT-COPY
    SND-ZERO-LIVE
    SND-ZERO-FS-SCRATCH
+   SND-ZERO-TEXT-SCRATCH
    SND-ZERO-MEM-SCOPE
    SND-ZERO-BODY-TAIL
    SND-ZERO-LOCALS
