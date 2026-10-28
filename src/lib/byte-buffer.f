@@ -40,6 +40,12 @@
 \ operand overlapping the buffer's storage E-BUF-BOUNDS, each before a byte
 \ moves. BORROWED? answers whether a nonempty span overlaps the buffer's whole
 \ mapping, unused capacity included, for a caller that appends input piecewise.
+\ GROW extends the active length by n bytes, growing as ENSURE does, and
+\ answers a writable span over exactly those bytes for a caller that knows its
+\ width up front. Their content is unspecified until the caller writes them, and
+\ the span is valid only until the next mutation or disposal. A negative n is
+\ E-BUF-BOUNDS (N>BLEN) and a length past one cell E-BUF-CAPACITY, each before
+\ the length moves.
 \
 \ STORAGE CLASS. CALLER-OWNED: the caller embeds the header; the buffer owns
 \ its mapping.
@@ -275,6 +281,11 @@ public
    buf n BLEN>N RESERVE-RAW ;
 : ENSURE ( ptr a NUM:byte-len -- ) {: buf:ptr n:NUM:byte-len :}
    buf n BLEN>N ENSURE-RAW ;
+: GROW ( ptr a NUM:byte-len -- SPAN:span<u8> ) {: buf:ptr n:NUM:byte-len :}
+   buf LEN-RAW@ n BLEN>N {: at:n u:n :}
+   buf at u + ENSURE-RAW
+   at u + buf SET-LEN
+   buf BUF-SPAN at u SPAN:SUB ;
 
 \ ---- append / replace (growth doubles through the checked adapter) ------------
 : APPEND-BYTE ( n ptr a -- )  APPEND-BYTE-RAW ;

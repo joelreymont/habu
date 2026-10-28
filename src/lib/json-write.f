@@ -68,7 +68,6 @@ private
 10 constant JW-LF
 12 constant JW-FF
 13 constant JW-CR
-32 constant JW-SP
 34 constant JW-DQ
 44 constant JW-COMMA-C
 48 constant JW-ZERO
@@ -160,6 +159,17 @@ create JW-ESC-W
    buf used need + BUF:N>BLEN BUF:ENSURE
    w ;
 
+\ Extend the output by n bytes JW-ROOM has made room for and answer the span
+\ over them; it is valid until the next write.
+: JW-TAKE ( ptr writer n -- SPAN:span<u8> ) {: w n:n :}
+   w JW-BUF@ {: buf:ptr :}
+   buf 0= if
+      w JW-LIVE {: vp:ptr cap:n used:n :}
+      w vp cap used n + JW-USED!
+      vp used + n SPAN:MAKE exit
+   then
+   buf n BUF:N>BLEN BUF:GROW ;
+
 : JW-C ( ptr writer n -- ptr writer ) {: w c:n :}
    c 0 < c JW-BYTE-MAX > or if E-JW-BYTE throw then
    w JW-BUF@ {: buf:ptr :}
@@ -236,14 +246,6 @@ private
 : JW-HEX ( n -- n )
    dup 10 < if JW-ZERO + else 55 + then ;
 
-: JW-U00 ( ptr writer n -- ptr writer ) {: c:n :}
-   JW-BACKSLASH JW-C
-   117 JW-C
-   JW-ZERO JW-C
-   JW-ZERO JW-C
-   c 4 rshift JW-HEX JW-C
-   c $F and JW-HEX JW-C ;
-
 \ Bytes a quoted string will take: the delimiters plus each byte's width. A
 \ width is at most six, so the sum fits a cell for any span in memory; the one
 \ checked add refuses it exactly when a running checked sum would.
@@ -252,16 +254,27 @@ private
    0 u 0 ?do a i + c@ w + c@ + loop
    JW-QUOTE-N swap JW-SIZE+ ;
 
-: JW-ESC-C ( ptr writer n -- ptr writer ) {: c:n :}
-   c JW-DQ = if JW-BACKSLASH JW-C JW-DQ JW-C exit then
-   c JW-BACKSLASH = if JW-BACKSLASH JW-C JW-BACKSLASH JW-C exit then
-   c JW-BS = if JW-BACKSLASH JW-C 98 JW-C exit then
-   c JW-FF = if JW-BACKSLASH JW-C 102 JW-C exit then
-   c JW-LF = if JW-BACKSLASH JW-C 110 JW-C exit then
-   c JW-CR = if JW-BACKSLASH JW-C 114 JW-C exit then
-   c JW-TAB = if JW-BACKSLASH JW-C 116 JW-C exit then
-   c JW-SP < if c JW-U00 exit then
-   c JW-C ;
+\ The letter after the backslash in a two-byte escape of c, or 0 for \u00XX.
+: JW-ESC-LETTER ( n -- n ) {: c:n :}
+   c JW-DQ = c JW-BACKSLASH = or if c exit then
+   c JW-BS = if 98 exit then
+   c JW-FF = if 102 exit then
+   c JW-LF = if 110 exit then
+   c JW-CR = if 114 exit then
+   c JW-TAB = if 116 exit then
+   0 ;
+
+\ Write the escape of c at offset at of s; answer the offset past it.
+: JW-ESC ( SPAN:span<u8> n n -- n ) {: s at:n c:n :}
+   JW-BACKSLASH s at SPAN:U8!
+   c JW-ESC-LETTER {: l:n :}
+   l 0 > if l s at 1+ SPAN:U8! at 2 + exit then
+   117 s at 1+ SPAN:U8!
+   JW-ZERO s at 2 + SPAN:U8!
+   JW-ZERO s at 3 + SPAN:U8!
+   c 4 rshift JW-HEX s at 4 + SPAN:U8!
+   c $F and JW-HEX s at 5 + SPAN:U8!
+   at 6 + ;
 
 \ The offset of the first byte at or after start that escapes, or u.
 : JW-RUN-END ( ptr u8 n n -- n ) {: a:ptr u:n start:n :}
@@ -269,35 +282,26 @@ private
    u start ?do a i + c@ w + c@ JW-PLAIN-N <> if i unloop exit then loop
    u ;
 
-: JW-EMIT-RUN ( ptr writer ptr u8 n n -- n )
-   {: w a:ptr start:n finish:n :}
-   finish start - 1 = if
-      w a start + c@ JW-C drop
-   else
-      w a start + finish start - >LEN JW-APPEND-LEN drop
-   then
-   finish ;
+\ Copy the plain run from source offset i, then escape the byte that ends it;
+\ answer the next output and source offsets.
+: JW-ESC-STEP ( n n ptr u8 n SPAN:span<u8> -- n n )
+   {: at:n i:n a:ptr u:n s :}
+   a u i JW-RUN-END {: e:n :}
+   e i - {: run:n :}
+   run 0 > if a i + run s at SPAN:SKIP SPAN:COPY then
+   e u = if at run + e exit then
+   s at run + a e + c@ JW-ESC  e 1+ ;
 
-: JW-EMIT-STR ( ptr writer ptr u8 n bool -- ptr writer )
-   {: w a:ptr u:n plain:bool :}
-   w JW-DQ JW-C drop
-   u 1 = if
-      w a c@ JW-ESC-C drop
-      w JW-DQ JW-C exit
+\ Write the quoted, escaped source into s, which is exactly its width.
+: JW-QUOTE-INTO ( ptr u8 n SPAN:span<u8> -- )
+   {: a:ptr u:n s :}
+   JW-DQ s 0 SPAN:U8!
+   s SPAN:LEN JW-QUOTE-N - u = if
+      a u s 1 SPAN:SKIP SPAN:COPY
+   else
+      1 0 begin dup u < while a u s JW-ESC-STEP repeat 2drop
    then
-   plain if
-      u 0 > if w a u >LEN JW-APPEND-LEN drop then
-      w JW-DQ JW-C exit
-   then
-   0 begin dup u < while
-      dup a u rot JW-RUN-END
-      2dup = if nip else w a 2swap JW-EMIT-RUN then
-      dup u < if
-         dup a + c@ w swap JW-ESC-C drop
-         1+
-      then
-   repeat drop
-   w JW-DQ JW-C ;
+   JW-DQ s s SPAN:LEN 1- SPAN:U8! ;
 
 : JW-DIGIT-COUNT ( n -- n ) {: u:n :}
    u JW-RADIX < if 1 exit then
@@ -309,7 +313,8 @@ private
 
 \ Each source byte needs at least one output byte, so refuse an overlong fixed
 \ span before reading it. Both reservations may relocate caller-owned output;
-\ rebase the source after each before scanning or emitting it.
+\ rebase the source after each before scanning or emitting it. The escapes go
+\ straight into the span JW-TAKE answers over the whole quoted width.
 : JW-QUOTED ( ptr writer ptr u8 n n -- ptr writer )
    {: w a:ptr u:n suffix:n :}
    a u JW-SPAN
@@ -317,7 +322,9 @@ private
    w u JW-ROOM drop
    w a off JW-REBASE u JW-STR-N {: width:n :}
    w width suffix JW-SIZE+ JW-ROOM drop
-   w w a off JW-REBASE u width JW-QUOTE-N - u = JW-EMIT-STR
+   w width JW-TAKE {: s :}
+   w a off JW-REBASE u s JW-QUOTE-INTO
+   w
    suffix 0 > if JW-COLON-C JW-C then ;
 
 public

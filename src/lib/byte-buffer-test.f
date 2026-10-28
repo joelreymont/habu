@@ -136,6 +136,28 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
    BUFT-BUF BUFT-TLEN 3 T=
    BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" abc" T$= ;
 
+\ ---- GROW: the new bytes at the old length, across a doubling resize ---------
+: BUFT-GROW-TAIL ( -- )
+   4 BUFT-FRESH
+   BUFT-BUF 3 BUFT-N>BLEN BUF:GROW {: s :}       \ from empty: offset 0
+   s SPAN:LEN 3 T=
+   s SPAN:$ drop BUFT-BUF BUF:BUFT-DATA@ = TTRUE
+   s" abc" s SPAN:COPY
+   BUFT-BUF 2 BUFT-N>BLEN BUF:GROW {: t :}       \ 3+2 = 5 > 4: doubles to 8
+   BUFT-BUF BUFT-TCAP 8 T=
+   BUFT-BUF BUFT-TLEN 5 T=
+   t SPAN:LEN 2 T=
+   t SPAN:$ drop BUFT-BUF BUF:BUFT-DATA@ 3 + = TTRUE
+   s" de" t SPAN:COPY
+   BUFT-BUF 0 BUFT-N>BLEN BUF:GROW SPAN:LEN 0 T=  \ zero keeps the capacity
+   BUFT-BUF BUFT-TCAP 8 T=
+   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" abcde" T$= ;
+
+: BUFT-GROW-TAIL-OVERFLOW ( -- )                  \ len + n overflows one cell
+   2 BUFT-FRESH
+   65 BUFT-BUF BUF:APPEND-BYTE
+   BUFT-BUF MEM-MAX-N BUFT-N>BLEN BUF:GROW SPAN:LEN drop ;
+
 \ ---- replace swaps the contents, growing capacity if needed --------------------
 : BUFT-REPLACE ( -- )
    8 BUFT-FRESH
@@ -285,6 +307,9 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
 : BUFT-USE-ENSURE-ZERO ( -- )
    BUFT-CAP0 BUFT-REL-INIT  BUFT-REL-BUF BUF:DISPOSE
    BUFT-REL-BUF 0 BUFT-N>BLEN BUF:ENSURE ;
+: BUFT-USE-GROW ( -- )
+   BUFT-CAP0 BUFT-REL-INIT  BUFT-REL-BUF BUF:DISPOSE
+   BUFT-REL-BUF 0 BUFT-N>BLEN BUF:GROW SPAN:LEN drop ;
 : BUFT-USE-LEN ( -- )
    BUFT-CAP0 BUFT-REL-INIT  BUFT-REL-BUF BUF:DISPOSE
    BUFT-REL-BUF BUF:LEN@ drop ;
@@ -347,6 +372,7 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
    BUFT-CONTENT
    BUFT-RESERVE
    BUFT-ENSURE
+   BUFT-GROW-TAIL
    BUFT-REPLACE
    BUFT-CLEAR
    BUFT-APPEND-REPLACED
@@ -361,6 +387,7 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
    [: BUFT-USE-APPEND ;] E-BUF-STATE TTHROWSQ
    [: BUFT-USE-RESERVE ;] E-BUF-STATE TTHROWSQ
    [: BUFT-USE-ENSURE-ZERO ;] E-BUF-STATE TTHROWSQ
+   [: BUFT-USE-GROW ;] E-BUF-STATE TTHROWSQ
    [: BUFT-USE-LEN ;] E-BUF-STATE TTHROWSQ
    [: BUFT-USE-CLEAR ;] E-BUF-STATE TTHROWSQ
    [: BUFT-USE-REPLACED ;] E-BUF-STATE TTHROWSQ
@@ -368,6 +395,8 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
    \ ---- capacity / bounds refusals --------------------------------------------
    [: BUFT-CAP-ZERO ;] E-BUF-CAPACITY TTHROWSQ
    [: BUFT-APPEND-OVERFLOW ;] E-BUF-CAPACITY TTHROWSQ
+   [: BUFT-GROW-TAIL-OVERFLOW ;] E-BUF-CAPACITY TTHROWSQ
+   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" A" T$=                          \ refused before the length moved
    [: BUFT-REPLACED-SELF ;] E-BUF-BOUNDS TTHROWSQ
    BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" a-b" T$=                        \ refused before a byte moved
    [: BUFT-REPLACED-STRADDLE ;] E-BUF-BOUNDS TTHROWSQ

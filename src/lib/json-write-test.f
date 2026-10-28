@@ -257,6 +257,27 @@ create JWT-RUN-KEY-WANT
    a u 1- + c@ JW-DQ T=
    JWT-GROW-W CLOSE JWT-GROW-BUF BUF:DISPOSE ;
 
+\ Every byte value escaped into fixed output and into a BUF it outgrows, as a
+\ string and as a key: the BUF holds the fixed output after its prefix.
+1540 constant JWT-EVERY-CAP            \ 256 bytes at most six each, quotes, colon
+JWT-EVERY-CAP BUFFER: JWT-EVERY-OUT
+
+: JWT-EVERY-EMIT ( ptr writer bool -- ptr writer ) {: key:bool :}
+   JWT-LARGE-CHUNK 256 key if KEY else STRING then ;
+
+: JWT-EVERY ( bool -- ) {: key:bool :}
+   256 0 ?do i JWT-LARGE-CHUNK i + c! loop
+   JWT-A JWT-EVERY-OUT JWT-EVERY-CAP OPEN key JWT-EVERY-EMIT $ {: f:ptr fu:n :}
+   JWT-GROW-OPEN s" pre" RAW key JWT-EVERY-EMIT $ {: g:ptr gu:n :}
+   gu fu 3 + T=
+   g 3 s" pre" T$=
+   g 3 + gu 3 - f fu T$=
+   JWT-GROW-W CLOSE JWT-GROW-BUF BUF:DISPOSE ;
+
+: JWT-TEST-GROW-EVERY-BYTE ( -- )
+   JWT-FALSE JWT-EVERY
+   JWT-TRUE JWT-EVERY ;
+
 \ Repeated JSON writes use BUF's amortized growth while preserving the output.
 : JWT-TEST-GROW-ROOM ( -- )
    JWT-GROW-OPEN s" abcdefgh" RAW s" i" RAW
@@ -582,6 +603,7 @@ create JWT-RUN-KEY-WANT
    JWT-TEST-GROW-ESC-ALIAS
    JWT-TEST-GROW-FIELD-RAW-ALIAS
    JWT-TEST-GROW-LARGE
+   JWT-TEST-GROW-EVERY-BYTE
    JWT-TEST-GROW-ROOM
    JWT-TEST-GROW-STATE
    JWT-TEST-GROW-DISPOSED-CLOSE
