@@ -66,20 +66,20 @@
 \ keeps the loop's names, as tier 1's borrow does. A dead local's slots go to
 \ the next group.
 \
-\ THE CONTROL STACK holds the open structures: an `if` or `else` site, a
-\ `begin` mark and a `while` site, which `while` puts under its `begin` as
-\ Forth's orig/dest order has it, so `begin ... while ... while ... repeat then`
-\ resolves; a `do` level; a `case`, each `endof` site above it and the open
-\ `of` site; each with the locals in scope where its block opened. A structure
-\ that does not close, and a loop word outside the loops it needs, is
-\ E-T0-CONTROL.
+\ THE CONTROL STACK holds the kind of each open structure, with the locals in
+\ scope where its block opened: an `if` or `else`; a `begin` and a `while`,
+\ which `while` puts under its `begin` as Forth's orig/dest order has it, so
+\ `begin ... while ... while ... repeat then` closes; a `do` level; a `case`,
+\ each `endof` above it and the open `of`. A structure that does not close,
+\ and a loop word outside the loops it needs, is E-T0-CONTROL, refused before
+\ the emitter is called: T0-EMIT's structured words (src/habu/t0-x64.f
+\ CONTROL) keep the branches and trust this nesting.
 \
 \ LOOPS. `do` and `?do` push a runtime frame (T0-EMIT LOOP-PUSH: the index's
-\ home is memory) and open a level holding the loop's head mark, the first of
-\ its `leave` sites in LEAVES and `?do`'s entry site. `loop` and `+loop` branch
-\ back to the head, then bind the level's leaves and entry to the pop of the
-\ frame that follows, so every way out leaves through that pop with the
-\ virtual stack spilled.
+\ home is memory) and open a level (LOOP-OPEN), `?do` with its entry test.
+\ `loop` and `+loop` branch back to the level's head, then LOOP-CLOSE lands
+\ its `leave` exits and entry on the pop of the frame that follows, so every
+\ way out leaves through that pop with the virtual stack spilled.
 
 require src/lib/prelude.f
 require src/lib/string.f
@@ -462,32 +462,30 @@ variable UNIT                        \ the unit being compiled: 0 the definition
 1 constant CS-ELSE
 2 constant CS-BEGIN
 3 constant CS-WHILE
-4 constant CS-DO                    \ the value is the level
+4 constant CS-DO
 5 constant CS-CASE
 6 constant CS-OF
 7 constant CS-ENDOF
 
 DYNAMIC-BUFFER CS-KIND n
-DYNAMIC-BUFFER CS-VAL n
 DYNAMIC-BUFFER CS-LOC n              \ locals in scope where the block opened
 variable CS-N
 
-: CS-PUSH ( n n n -- ) {: kind:n val:n loc:n :}
+: CS-PUSH ( n n -- ) {: kind:n loc:n :}
    CS-N @ {: k:n :}
-   k 1+ CS-KIND-RESERVE  k 1+ CS-VAL-RESERVE  k 1+ CS-LOC-RESERVE
-   kind k CS-KIND !  val k CS-VAL !  loc k CS-LOC !
+   k 1+ CS-KIND-RESERVE  k 1+ CS-LOC-RESERVE
+   kind k CS-KIND !  loc k CS-LOC !
    k 1+ CS-N ! ;
 
-\ The value of the top structure, which must be of kind a or b.
-: CS-POP2 ( n n -- n ) {: a:n b:n :}
+\ Pop the top structure, which must be of kind a or b.
+: CS-POP2 ( n n -- ) {: a:n b:n :}
    CS-N @ 0= if E-T0-CONTROL throw then
    CS-N @ 1- {: k:n :}
    k CS-KIND @ {: kind:n :}
    kind a <> kind b <> and if E-T0-CONTROL throw then
-   k CS-N !
-   k CS-VAL @ ;
+   k CS-N ! ;
 
-: CS-POP ( n -- n ) dup CS-POP2 ;
+: CS-POP ( n -- ) dup CS-POP2 ;
 
 \ The kind of the top structure.
 : CS-TOP-KIND ( -- n )
@@ -500,67 +498,62 @@ variable CS-N
 \ The names the popped structure's block bound go out of scope.
 : SCOPE-END ( -- ) CS-LOC@ L-N ! ;
 
-: PATCH ( n -- ) T0-EMIT:>SITE T0-EMIT:PATCH ;
-
 : DO-IF ( -- )
    TAKE {: c:T0-EMIT:vreg :}
    SPILL-ALL
-   CS-IF c T0-EMIT:JZ T0-EMIT:SITE>N L-N @ CS-PUSH ;
+   c T0-EMIT:IF,
+   CS-IF L-N @ CS-PUSH ;
 
 : DO-ELSE ( -- )
-   CS-IF CS-POP {: s:n :}
+   CS-IF CS-POP
    SCOPE-END
    SPILL-ALL
-   CS-ELSE T0-EMIT:JMP T0-EMIT:SITE>N L-N @ CS-PUSH
-   s PATCH ;
+   T0-EMIT:ELSE,
+   CS-ELSE L-N @ CS-PUSH ;
 
 : DO-THEN ( -- )
    CS-TOP-KIND CS-WHILE = if CS-WHILE else CS-IF then
-   CS-ELSE CS-POP2 {: s:n :}
+   CS-ELSE CS-POP2
    SCOPE-END
    SPILL-ALL
-   s PATCH ;
+   T0-EMIT:THEN, ;
 
 : DO-BEGIN ( -- )
    SPILL-ALL
-   CS-BEGIN T0-EMIT:LABEL T0-EMIT:MARK>N L-N @ CS-PUSH ;
+   T0-EMIT:BEGIN,
+   CS-BEGIN L-N @ CS-PUSH ;
 
 : DO-WHILE ( -- )
-   CS-BEGIN CS-POP {: m:n :}
+   CS-BEGIN CS-POP
    CS-LOC@ {: loc:n :}
    TAKE {: c:T0-EMIT:vreg :}
    SPILL-ALL
-   CS-WHILE c T0-EMIT:JZ T0-EMIT:SITE>N loc CS-PUSH
-   CS-BEGIN m loc CS-PUSH ;
+   c T0-EMIT:WHILE,
+   CS-WHILE loc CS-PUSH
+   CS-BEGIN loc CS-PUSH ;
 
 : DO-REPEAT ( -- )
-   CS-BEGIN CS-POP {: m:n :}
-   CS-WHILE CS-POP {: s:n :}
+   CS-BEGIN CS-POP
+   CS-WHILE CS-POP
    SCOPE-END
    SPILL-ALL
-   m T0-EMIT:>MARK T0-EMIT:JMP-BACK
-   s PATCH ;
+   T0-EMIT:REPEAT, ;
 
 : DO-UNTIL ( -- )
-   CS-BEGIN CS-POP {: m:n :}
+   CS-BEGIN CS-POP
    SCOPE-END
    TAKE {: c:T0-EMIT:vreg :}
    SPILL-ALL
-   c m T0-EMIT:>MARK T0-EMIT:JZ-BACK ;
+   c T0-EMIT:UNTIL, ;
 
 : DO-AGAIN ( -- )
-   CS-BEGIN CS-POP {: m:n :}
+   CS-BEGIN CS-POP
    SCOPE-END
    SPILL-ALL
-   m T0-EMIT:>MARK T0-EMIT:JMP-BACK ;
+   T0-EMIT:AGAIN, ;
 
 \ ---- loops -------------------------------------------------------------------
-DYNAMIC-BUFFER DO-HEAD n            \ the level's loop head mark
-DYNAMIC-BUFFER DO-FIRST n           \ its first site in LEAVES
-DYNAMIC-BUFFER DO-ENTRY n           \ `?do`'s entry site, or -1
-variable DO-N
-DYNAMIC-BUFFER LEAVES n             \ the open levels' `leave` sites, innermost last
-variable LEAVE-N
+variable DO-N                       \ the open levels
 
 \ Refuse unless at least k levels are open.
 : LEVELS ( n -- ) DO-N @ > if E-T0-CONTROL throw then ;
@@ -576,59 +569,47 @@ variable LEAVE-N
    SPILL-ALL
    s l ;
 
-\ Open a level whose loop head is here.
-: OPEN-LEVEL ( n -- ) {: entry:n :}
-   DO-N @ {: k:n :}
-   k 1+ DO-HEAD-RESERVE  k 1+ DO-FIRST-RESERVE  k 1+ DO-ENTRY-RESERVE
-   T0-EMIT:LABEL T0-EMIT:MARK>N k DO-HEAD !
-   LEAVE-N @ k DO-FIRST !
-   entry k DO-ENTRY !
-   k 1+ DO-N !
-   CS-DO k L-N @ CS-PUSH ;
+\ Open a level whose loop head is here, with `?do`'s entry test when the flag
+\ is true.
+: OPEN-LEVEL ( T0-EMIT:vreg T0-EMIT:vreg bool -- )
+   T0-EMIT:LOOP-OPEN
+   DO-N @ 1+ DO-N !
+   CS-DO L-N @ CS-PUSH ;
 
-: DO-DO ( -- ) FRAME 2drop -1 OPEN-LEVEL ;
+: DO-DO ( -- ) FRAME false OPEN-LEVEL ;
 
-: DO-?DO ( -- ) FRAME T0-EMIT:LOOP-ENTER T0-EMIT:SITE>N OPEN-LEVEL ;
+: DO-?DO ( -- ) FRAME true OPEN-LEVEL ;
 
 \ The innermost level, which `loop` or `+loop` closes, ending its names.
-: CLOSING ( -- n ) CS-DO CS-POP SCOPE-END ;
+: CLOSING ( -- ) CS-DO CS-POP SCOPE-END ;
 
-: HEAD ( n -- T0-EMIT:mark ) DO-HEAD @ T0-EMIT:>MARK ;
-
-\ Bind level k's leaves and entry here, close it and pop its frame.
-: CLOSE-LEVEL ( n -- ) {: k:n :}
-   LEAVE-N @ k DO-FIRST @ ?do i LEAVES @ PATCH loop
-   k DO-ENTRY @ 0 >= if k DO-ENTRY @ PATCH then
-   k DO-FIRST @ LEAVE-N !
-   k DO-N !
-   T0-EMIT:LOOP-POP ;
+\ Close the innermost level and pop its frame.
+: CLOSE-LEVEL ( -- )
+   DO-N @ 1- DO-N !
+   T0-EMIT:LOOP-CLOSE ;
 
 : DO-LOOP ( -- )
-   CLOSING {: k:n :}
+   CLOSING
    SPILL-ALL
    ALLOC {: t:T0-EMIT:vreg :}
-   t k HEAD T0-EMIT:LOOP-NEXT
+   t T0-EMIT:LOOP-NEXT
    t RELEASE
-   k CLOSE-LEVEL ;
+   CLOSE-LEVEL ;
 
 : DO-+LOOP ( -- )
-   CLOSING {: k:n :}
+   CLOSING
    TAKE {: s:T0-EMIT:vreg :}
    SPILL-ALL
    s HOLD
    ALLOC {: t:T0-EMIT:vreg :}
-   s t k HEAD T0-EMIT:LOOP-STEP
+   s t T0-EMIT:LOOP-STEP
    s RELEASE  t RELEASE
-   k DO-ENTRY @ 0 >= if k DO-ENTRY @ T0-EMIT:>SITE T0-EMIT:SKIP-EQUAL then
-   k CLOSE-LEVEL ;
+   CLOSE-LEVEL ;
 
 : DO-LEAVE ( -- )
    1 LEVELS
    SPILL-ALL
-   LEAVE-N @ {: n:n :}
-   n 1+ LEAVES-RESERVE
-   T0-EMIT:JMP T0-EMIT:SITE>N n LEAVES !
-   n 1+ LEAVE-N ! ;
+   T0-EMIT:LEAVE, ;
 
 : DO-UNLOOP ( -- ) 1 LEVELS T0-EMIT:LOOP-POP ;
 
@@ -642,42 +623,45 @@ variable LEAVE-N
 \ ---- case --------------------------------------------------------------------
 \ `of` compares the selector under the top with the top, which it drops; the
 \ match drops the selector too, the mismatch branches past `endof` keeping it.
-: OF-LIT ( -- T0-EMIT:site )
+: OF-LIT ( -- )
    TOP VS-VAL @ {: v:n :}
    TOP REMOVE
    TOP MAT {: s:T0-EMIT:vreg :}
    SPILL-ALL
-   s v T0-EMIT:JNE-LIT ;
+   s v T0-EMIT:OF-LIT ;
 
-: OF-REG ( -- T0-EMIT:site )
+: OF-REG ( -- )
    TAKE {: v:T0-EMIT:vreg :}
    TOP MAT {: s:T0-EMIT:vreg :}
    SPILL-ALL
-   s v T0-EMIT:JNE ;
+   s v T0-EMIT:OF, ;
 
-: DO-CASE ( -- ) CS-CASE 0 L-N @ CS-PUSH ;
+: DO-CASE ( -- )
+   T0-EMIT:CASE,
+   CS-CASE L-N @ CS-PUSH ;
 
 : DO-OF ( -- )
    CS-TOP-KIND {: kind:n :}
    kind CS-CASE <> kind CS-ENDOF <> and if E-T0-CONTROL throw then
    2 ENSURE
-   TOP IMM? if OF-LIT else OF-REG then {: s:T0-EMIT:site :}
+   TOP IMM? if OF-LIT else OF-REG then
    DROP1
-   CS-OF s T0-EMIT:SITE>N L-N @ CS-PUSH ;
+   CS-OF L-N @ CS-PUSH ;
 
 : DO-ENDOF ( -- )
-   CS-OF CS-POP {: s:n :}
+   CS-OF CS-POP
    SCOPE-END
    SPILL-ALL
-   CS-ENDOF T0-EMIT:JMP T0-EMIT:SITE>N L-N @ CS-PUSH
-   s PATCH ;
+   T0-EMIT:ENDOF,
+   CS-ENDOF L-N @ CS-PUSH ;
 
 \ The default arm drops the selector, and every `endof` lands after the drop.
 : DO-ENDCASE ( -- )
    DROP1
    SPILL-ALL
-   begin CS-TOP-KIND CS-ENDOF = while CS-ENDOF CS-POP PATCH repeat
-   CS-CASE CS-POP drop
+   begin CS-TOP-KIND CS-ENDOF = while CS-ENDOF CS-POP repeat
+   CS-CASE CS-POP
+   T0-EMIT:ENDCASE,
    SCOPE-END ;
 
 \ ---- the rest of the keywords ------------------------------------------------
@@ -969,7 +953,7 @@ DYNAMIC-BUFFER QSTART n             \ where each quotation's body text starts
 \ Begin unit k with nothing open and no local in scope.
 : RESET ( n -- )
    UNIT !
-   0 VS-N !  ALL-FREE FREE !  0 CS-N !  0 DO-N !  0 LEAVE-N !  0 L-N !  0 TAILED ! ;
+   0 VS-N !  ALL-FREE FREE !  0 CS-N !  0 DO-N !  0 L-N !  0 TAILED ! ;
 
 : FINISH ( -- )
    CS-N @ 0<> if E-T0-CONTROL throw then

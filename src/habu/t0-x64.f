@@ -43,9 +43,13 @@
 \ previous unit's. A quotation's address (ADDR-QUOT-KIND) is a code address
 \ inside this emission: its target and its imm64 are the quotation unit's
 \ offset, which QUOT-OPEN fills in, and the publisher adds the placement.
-\ Branches inside the body are resolved here: JMP, JZ and JNZ answer a site
-\ that PATCH binds to the current offset, LABEL answers a mark that JMP-BACK
-\ and JZ-BACK branch to. Every branch is rel32.
+\
+\ CONTROL. The front end drives the structured words of the control section
+\ and the counted-loop words in the order the source nests them; it refuses a
+\ structure out of order before calling one, so these words trust the nesting.
+\ The branches, their targets and each open loop level stay in this file and
+\ are resolved here; every branch is rel32. The words a source keyword names
+\ end in a comma, since a keyword cannot be a definition name.
 \
 \ DIVISION. `/`, `mod` and `/mod` are calls of the kernel rows, which screen a
 \ zero divisor and MIN-N -1; this file has no divide.
@@ -65,8 +69,6 @@ DEFTYPE ALU        \ a two-operand operation OP applies
 DEFTYPE SHIFTER    \ a shift SHIFT applies
 DEFTYPE CC         \ a comparison CMP-SET answers
 DEFTYPE WIDTH      \ the width LOAD and STORE move
-DEFTYPE MARK       \ a backward branch target, from LABEL
-DEFTYPE SITE       \ a forward branch, from JMP, JZ or JNZ
 
 8 constant VREGS
 
@@ -127,6 +129,15 @@ DYNAMIC-BUFFER ADDR-AT n              \ address row: first byte, kind, value
 DYNAMIC-BUFFER ADDR-KIND-AT n
 DYNAMIC-BUFFER ADDR-TO n
 DYNAMIC-BUFFER UNIT-REF n             \ the address row that names each unit
+DYNAMIC-BUFFER CF-KIND n              \ the open structures, innermost last,
+DYNAMIC-BUFFER CF-AT n                \ and each one's offset
+variable CF-N
+DYNAMIC-BUFFER LV-HEAD n              \ the open loop levels: the head's offset,
+DYNAMIC-BUFFER LV-ENTRY n             \ `?do`'s entry field or -1,
+DYNAMIC-BUFFER LV-FIRST n             \ and the level's first field in LEAVES
+variable LV-N
+DYNAMIC-BUFFER LEAVES n               \ the open levels' `leave` fields, innermost last
+variable LEAVE-N
 
 4096 constant SINK-START-BYTES
 
@@ -151,7 +162,7 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address row that names each unit
    k 0 ?do v i 8 * rshift $FF and p i + c! loop ;
 
 \ A forward rel32 at the end of what was just emitted: its field's offset.
-: FWD-SITE ( -- site ) HERE-OFF 4 - >SITE ;
+: FWD-SITE ( -- n ) HERE-OFF 4 - ;
 
 \ Load the constant n into r with the shortest form that holds it.
 : LIT-R ( n r64 -- ) {: v:n r:r64 :}
@@ -216,6 +227,7 @@ public
    then
    SINK BUF:CLEAR
    0 NCALL !  0 NADDR !  0 NUNIT !
+   0 CF-N !  0 LV-N !  0 LEAVE-N !
    UNIT-BEGIN ;
 
 \ Begin quotation unit n, which ADDR-QUOT named, and bind that address row to
@@ -389,45 +401,101 @@ public
 : CALL-SELF ( -- )
    0 HERE-OFF 5 + - >REL SINK ENC-CALL-REL32 ;
 
-\ ---- branches ----------------------------------------------------------------
-: LABEL ( -- mark ) HERE-OFF >MARK ;
+\ ---- control -----------------------------------------------------------------
+\ An open structure is a POSITION, the offset of a forward branch's rel32 field
+\ waiting for its target or of a loop head, or the start of a case beneath its
+\ `endof` exits. Which of the two a position is follows from the word that pops
+\ it, so only the case start is marked. A `while` exit sits beneath its `begin`'s
+\ head, as Forth orders orig and dest, so `begin ... while ... while ... repeat
+\ then` resolves.
+private
 
-: JMP ( -- site )
+0 constant POSITION
+1 constant CASE-START
+
+: CF-PUSH ( n n -- ) {: kind:n at:n :}
+   CF-N @ {: k:n :}
+   k 1 + CF-KIND-RESERVE  k 1 + CF-AT-RESERVE
+   kind k CF-KIND !  at k CF-AT !
+   k 1 + CF-N ! ;
+
+: CF-POP ( -- n )
+   CF-N @ 1 - {: k:n :}
+   k CF-N !
+   k CF-AT @ ;
+
+: CF-TOP-KIND ( -- n ) CF-N @ 1 - CF-KIND @ ;
+
+: AT+ ( n -- ) POSITION swap CF-PUSH ;
+
+\ Bind the forward field at offset n to here.
+: RESOLVE ( n -- ) {: at:n :}
+   HERE-OFF at 4 + - at 4 PUT ;
+
+: FWD-JMP ( -- n )
    0 >REL SINK ENC-JMP-REL32  FWD-SITE ;
 
-: JZ ( vreg -- site ) {: c:vreg :}
-   c REG c REG SINK ENC-TEST-RR
-   C-E 0 >REL SINK ENC-JCC-REL32  FWD-SITE ;
+: FWD-JCC ( condition -- n ) {: c:condition :}
+   c 0 >REL SINK ENC-JCC-REL32  FWD-SITE ;
 
-: JNZ ( vreg -- site ) {: c:vreg :}
-   c REG c REG SINK ENC-TEST-RR
-   C-NE 0 >REL SINK ENC-JCC-REL32  FWD-SITE ;
+: TEST ( vreg -- ) {: c:vreg :}
+   c REG c REG SINK ENC-TEST-RR ;
 
 \ A backward rel is measured from the end of the instruction, five bytes for
 \ jmp rel32 and six for jcc rel32.
-: JMP-BACK ( mark -- ) {: m:mark :}
-   m MARK>N 5 - REL-TO SINK ENC-JMP-REL32 ;
+: BACK-JMP ( n -- ) {: m:n :}
+   m 5 - REL-TO SINK ENC-JMP-REL32 ;
 
-: JCC-BACK ( condition mark -- ) {: c:condition m:mark :}
-   c m MARK>N 6 - REL-TO SINK ENC-JCC-REL32 ;
+: BACK-JCC ( condition n -- ) {: c:condition m:n :}
+   c m 6 - REL-TO SINK ENC-JCC-REL32 ;
 
-: JZ-BACK ( vreg mark -- ) {: c:vreg m:mark :}
-   c REG c REG SINK ENC-TEST-RR
-   C-E m JCC-BACK ;
+public
 
-\ JNE and JNE-LIT branch when the vreg differs from the second operand; n must
-\ answer IMM? true.
-: JNE ( vreg vreg -- site ) {: a:vreg b:vreg :}
-   a REG b REG SINK ENC-CMP-RR
-   C-NE 0 >REL SINK ENC-JCC-REL32  FWD-SITE ;
+\ `if`: past the arm when the vreg is zero.
+: IF, ( vreg -- ) TEST C-E FWD-JCC AT+ ;
 
-: JNE-LIT ( vreg n -- site ) {: a:vreg v:n :}
-   a REG v >IMM32 SINK ENC-CMP-RI32
-   C-NE 0 >REL SINK ENC-JCC-REL32  FWD-SITE ;
+\ `else`: past the second arm, then the open `if` lands here.
+: ELSE, ( -- ) FWD-JMP CF-POP RESOLVE AT+ ;
 
-: PATCH ( site -- ) {: s:site :}
-   s SITE>N {: at:n :}
-   HERE-OFF at 4 + - at 4 PUT ;
+\ `then`: the innermost open forward branch lands here.
+: THEN, ( -- ) CF-POP RESOLVE ;
+
+: BEGIN, ( -- ) HERE-OFF AT+ ;
+
+\ `while`: out of the loop when the vreg is zero; the exit stays open beneath
+\ the head.
+: WHILE, ( vreg -- )
+   TEST C-E FWD-JCC {: s:n :}
+   CF-POP {: m:n :}
+   s AT+
+   m AT+ ;
+
+\ `repeat`: back to the head, then the innermost `while` exit lands here.
+: REPEAT, ( -- ) CF-POP BACK-JMP CF-POP RESOLVE ;
+
+\ `until`: back to the head when the vreg is zero.
+: UNTIL, ( vreg -- ) TEST C-E CF-POP BACK-JCC ;
+
+: AGAIN, ( -- ) CF-POP BACK-JMP ;
+
+\ `case` opens; OF, and OF-LIT branch past the arm when the selector differs
+\ from the vreg or from n, which must answer IMM? true; ENDOF, branches to the
+\ end and lands the open `of` here; ENDCASE, lands every `endof` exit here.
+: CASE, ( -- ) CASE-START 0 CF-PUSH ;
+
+: OF, ( vreg vreg -- ) {: sel:vreg v:vreg :}
+   sel REG v REG SINK ENC-CMP-RR
+   C-NE FWD-JCC AT+ ;
+
+: OF-LIT ( vreg n -- ) {: sel:vreg v:n :}
+   sel REG v >IMM32 SINK ENC-CMP-RI32
+   C-NE FWD-JCC AT+ ;
+
+: ENDOF, ( -- ) ELSE, ;
+
+: ENDCASE, ( -- )
+   begin CF-TOP-KIND CASE-START <> while CF-POP RESOLVE repeat
+   CF-POP drop ;
 
 \ ---- the return stack --------------------------------------------------------
 \ >r, r> and r@ move a cell between a vreg and the return stack through rax or
@@ -461,8 +529,10 @@ public
 \ STACK-ABI:LOOP-BASE-CELL's base + 16k, holds the index, its home, then the
 \ limit. `loop` steps while index < limit, signed; `+loop` steps until the
 \ index crosses the boundary between limit - 1 and limit in the step's
-\ direction; `?do` enters while start < limit, and SKIP-EQUAL makes the entry
-\ of a level `+loop` closes skip equal bounds only.
+\ direction; `?do` enters while start < limit, and LOOP-STEP makes the entry
+\ of its level skip equal bounds only. LOOP-OPEN opens a level; LOOP-NEXT,
+\ LOOP-STEP and LEAVE, branch to the innermost level's head or past its end;
+\ LOOP-CLOSE lands its exits on the pop of its frame.
 private
 
 : LDEPTH ( r64 -- ) {: r:r64 :}
@@ -479,6 +549,10 @@ private
 \ The index and limit of the innermost frame, below LTOP's address.
 -16 constant LIDX-OFF
 -8 constant LLIM-OFF
+
+\ The innermost level and its head.
+: LV ( -- n ) LV-N @ 1 - ;
+: HEAD ( -- n ) LV LV-HEAD @ ;
 
 \ The index of the frame k levels out of the innermost into d.
 : LINDEX ( vreg n -- ) {: d:vreg k:n :}
@@ -506,18 +580,30 @@ public
 : LOOP-I ( vreg -- ) 0 LINDEX ;
 : LOOP-J ( vreg -- ) 1 LINDEX ;
 
-\ `?do`'s entry: past the site unless start s < limit l.
-: LOOP-ENTER ( vreg vreg -- site ) {: s:vreg l:vreg :}
-   s REG l REG SINK ENC-CMP-RR
-   C-GE 0 >REL SINK ENC-JCC-REL32  FWD-SITE ;
+\ Open a level whose head is here. With entry true it is `?do`'s: past the
+\ level unless start s < limit l.
+: LOOP-OPEN ( vreg vreg bool -- ) {: s:vreg l:vreg entry:bool :}
+   entry if
+      s REG l REG SINK ENC-CMP-RR
+      C-GE FWD-JCC
+   else -1 then {: at:n :}
+   LV-N @ {: k:n :}
+   k 1 + LV-HEAD-RESERVE  k 1 + LV-ENTRY-RESERVE  k 1 + LV-FIRST-RESERVE
+   HERE-OFF k LV-HEAD !
+   at k LV-ENTRY !
+   LEAVE-N @ k LV-FIRST !
+   k 1 + LV-N ! ;
 
-\ Make LOOP-ENTER's site branch on equal bounds only.
-: SKIP-EQUAL ( site -- ) {: s:site :}
-   C-E CONDITION>N $80 +  SINK BUF:SPAN$ drop s SITE>N 1- + c! ;
+\ `leave`: past the innermost level.
+: LEAVE, ( -- )
+   LEAVE-N @ {: n:n :}
+   n 1 + LEAVES-RESERVE
+   FWD-JMP n LEAVES !
+   n 1 + LEAVE-N ! ;
 
-\ `loop`: step the index by one and branch back to m while it is below the
-\ limit. t is a free vreg it clobbers.
-: LOOP-NEXT ( vreg mark -- ) {: t:vreg m:mark :}
+\ `loop`: step the index by one and branch back to the head while it is below
+\ the limit. t is a free vreg it clobbers.
+: LOOP-NEXT ( vreg -- ) {: t:vreg :}
    t REG {: r:r64 :}
    RAX LDEPTH
    RAX LTOP
@@ -525,13 +611,13 @@ public
    r SINK ENC-INC
    r RAX LIDX-OFF MEM-OFF SINK ENC-MOV-MR
    r RAX LLIM-OFF MEM-OFF SINK ENC-CMP-RM
-   C-L m JCC-BACK ;
+   C-L HEAD BACK-JCC ;
 
-\ `+loop`: step the index by s and branch back to m unless it crossed the
-\ boundary: with old = index - limit before the step, it crossed when
+\ `+loop`: step the index by s and branch back to the head unless it crossed
+\ the boundary: with old = index - limit before the step, it crossed when
 \ (old xor old + s) and (old xor s) is negative. s and t are clobbered; t is a
-\ free vreg.
-: LOOP-STEP ( vreg vreg mark -- ) {: s:vreg t:vreg m:mark :}
+\ free vreg. A `?do` entry of the level now skips equal bounds only.
+: LOOP-STEP ( vreg vreg -- ) {: s:vreg t:vreg :}
    s REG {: sr:r64 :}  t REG {: r:r64 :}
    RAX LDEPTH
    RAX LTOP
@@ -543,7 +629,20 @@ public
    RAX r SINK ENC-XOR-RR
    sr r SINK ENC-XOR-RR
    RAX sr SINK ENC-AND-RR
-   C-NS m JCC-BACK ;
+   C-NS HEAD BACK-JCC
+   LV LV-ENTRY @ {: at:n :}
+   at 0 >= if C-E CONDITION>N $80 +  SINK BUF:SPAN$ drop at 1 - + c! then ;
+
+\ Land the innermost level's `leave` exits and entry here, close it and pop
+\ its frame.
+: LOOP-CLOSE ( -- )
+   LV {: k:n :}
+   LEAVE-N @ k LV-FIRST @ ?do i LEAVES @ RESOLVE loop
+   k LV-ENTRY @ {: at:n :}
+   at 0 >= if at RESOLVE then
+   k LV-FIRST @ LEAVE-N !
+   k LV-N !
+   LOOP-POP ;
 
 ;using
 ;package
