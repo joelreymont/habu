@@ -1059,7 +1059,7 @@ TR-VREC-WHITEBOX
 \ ---- SYMS registry: record array grow rehashes HIDX; string offsets survive ----
 variable TR-SC  variable TR-SSC  variable TR-SN  variable TR-SSU
 PTR-VARIABLE TR-SP  PTR-VARIABLE TR-SSP  variable TR-SID0 variable TR-SID1
-variable TR-S-LC variable TR-S-STRLC
+variable TR-S-LC variable TR-S-STRLC variable TR-S-EP
 : TR-SYMS-WHITEBOX ( -- )
    SYM-CAP-V @ TR-SC !  SYM-STR-CAP-V @ TR-SSC !  SYM-N @ TR-SN !  SYM-STR-U @ TR-SSU !
    SYMS-P @ TR-SP !  SYM-STR-P @ TR-SSP !
@@ -1089,23 +1089,27 @@ variable TR-S-LC variable TR-S-STRLC
    SYMS-P @ mark >= TTRUE
    s" syms-persist-find" T-LABEL
    s" tgpkg" SYM-GLOBAL s" SYMGROWPROBE" SYM-FIND TTRUE TR-SID0 @ T=
-   TR-SC @ SYM-CAP-V !  TR-SSC @ SYM-STR-CAP-V !  TR-SN @ SYM-N !  TR-SSU @ SYM-STR-U !
-   TR-SP @ SYMS-P !  TR-SSP @ SYM-STR-P !
-   HIDX-RESET
-   s" hidx snapshot reset clears mmap owner" T-LABEL
-   HIDX-MEM-READY? 0= TTRUE
-   s" hidx snapshot reset invalidates cache" T-LABEL
-   HIDX-VALID @ 0= TTRUE
-   \ The effect owner is a scratch slot, so the reset unbinds it: a capture bakes
-   \ no store address through it, and the next read binds the live store again.
-   s" hidx snapshot reset unbinds the effect owner" T-LABEL
-   HIDX-EFF-BASE@ 0= TTRUE
+   \ A file boundary keeps the mapping and restarts the epoch over it, so a row
+   \ the rebuild skips (a retired one) must not keep a stamp from an earlier
+   \ interval that a later epoch reaches again.
    HIDX-ENSURE
-   HIDX-EFF-SYNC
-   s" hidx snapshot reset rebuilds mmap owner" T-LABEL
+   7 TR-SID0 @ HIDX-EFF!
+   HIDX-EPOCH @ TR-S-EP !
+   CHECKER-REG:FILE-SCRATCH-RETIRE
+   s" hidx file retire keeps the mapping" T-LABEL
    HIDX-MEM-READY? TTRUE
+   TR-SID0 @ SYM-RETIRE
+   HIDX-ENSURE
+   begin HIDX-EPOCH @ TR-S-EP @ < while HIDX-EPOCH+ repeat
+   s" hidx retired row misses its earlier-interval memo" T-LABEL
+   TR-SID0 @ HIDX-EFF@ nip 0= TTRUE
+   \ The effect owner rests unbound after a file retire, and the next read binds
+   \ the live store again.
+   HIDX-EFF-SYNC
    s" hidx effect sync binds the live effect owner" T-LABEL
    HIDX-EFF-BASE@ USIGS = TTRUE
+   TR-SC @ SYM-CAP-V !  TR-SSC @ SYM-STR-CAP-V !  TR-SN @ SYM-N !  TR-SSU @ SYM-STR-U !
+   TR-SP @ SYMS-P !  TR-SSP @ SYM-STR-P !
    CHECKER-CAPTURE-PREPARE
    s" checker snapshot prepare clears mmap owner" T-LABEL
    HIDX-MEM-READY? 0= TTRUE

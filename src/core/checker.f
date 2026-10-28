@@ -6983,17 +6983,14 @@ variable CHK-CAND
 \ non-monotone growth; USX-BASE is the store the offsets were read against, so an
 \ arena swap is detected as identity change. Declared here because USIGS-CLEAR —
 \ far below the index words — has to be able to drop the index.
+\ Every index rebuilds on demand, so these rest at 0 at a file boundary: a
+\ generation of 0 is never HIDX-GEN's, and a null base is no store's.
+CHECKER-REG:SCRATCH{
 variable USX-GEN   variable USX-HI
 PTR-VARIABLE USX-BASE
-0 USX-GEN !   0 USX-HI !
-
 \ The same three for the no-return/control-flag store (NORETS, far below).
 variable NRX-GEN   variable NRX-HI
 PTR-VARIABLE NRX-BASE
-0 NRX-GEN !   0 NRX-HI !
-
-: USIGS ( -- ptr u8 ) USIGS-P @ ;
-
 \ The node-intern index's store stamp (UIX, far below). Its entries are store
 \ OFFSETS, so a relocation that copies the store verbatim leaves every one of
 \ them naming its own node and only the ADDRESS changes: USIGS-GROW carries this
@@ -7004,6 +7001,9 @@ PTR-VARIABLE NRX-BASE
 PTR-VARIABLE UIX-BASE
 PTR-VARIABLE CHX-BASE
 variable CHX-HI
+CHECKER-REG:}SCRATCH
+
+: USIGS ( -- ptr u8 ) USIGS-P @ ;
 
 : UIX-BASE-FIELD ( -- ptr ptr u8 )
    UIX-BASE 0 ptr-field ;
@@ -7016,9 +7016,6 @@ variable CHX-HI
 
 : CHX-BASE@ ( -- ptr u8 ) CHX-BASE 0 ptr-field @ ;
 : CHX-BASE! ( ptr u8 -- ) CHX-BASE 0 ptr-field ! ;
-
-: UIX-REBASE ( -- )
-   USIGS UIX-BASE! ;
 
 \ USIGS is a byte-addressed store (ptr u8), but its head cell holds a real cell
 \ value the checker metadata writes with `!`. USIGS-CELL-AT views a cell-aligned
@@ -7052,7 +7049,7 @@ variable CHX-HI
 \ bytes and the engine's own boot appends grow the pool at once (measured: a
 \ gen-1 engine at content 2,292,824 cap 2,293,760 doubled to 4,587,520 during its
 \ first load). The grow is correct from a RESTORED pool as it is from a runtime
-\ one — the copy is verbatim, UIX-REBASE carries the intern stamp, and USX-BASE /
+\ one — the copy is verbatim, USIGS-GROW carries a valid intern stamp, and USX-BASE /
 \ NRX-BASE / HIDX-EFF-BASE each read the swap as an identity change and rebuild
 \ (test/engine-suite.f "usigs restored-pool grow" certifies and compiles across
 \ one). So the cap does NOT reserve the boot appends: doing that would need this
@@ -7308,11 +7305,13 @@ USIGS-RUNTIME-INIT
    need USIGS-CAP-U @ 2 * max USIGS-ROUND-CAP USIGS-GROW-CAP !
    USIGS-GROW-CAP @ USIGS-ALLOC USIGS-GROW-NEXT !
    USIGS USIGS-GROW-NEXT @ UEND @ CELL + ARENA-COPY
-   \ Carry only a valid content stamp; CLEAR's invalidation must survive a grow.
+   \ The copy is verbatim, so every offset a valid stamp covers is still its own
+   \ node. Carry only a valid stamp: an invalidation (CLEAR, a retire's null)
+   \ must survive a grow.
    USIGS CHX-BASE@ = IF USIGS-GROW-NEXT @ CHX-BASE! THEN
+   USIGS UIX-BASE@ = IF USIGS-GROW-NEXT @ UIX-BASE! THEN
    USIGS-GROW-NEXT @ USIGS-P !
-   USIGS-GROW-CAP @ USIGS-CAP-U !
-   UIX-REBASE ;                       \ the copy was verbatim: every interned offset is still its own node
+   USIGS-GROW-CAP @ USIGS-CAP-U ! ;
 
 : USIGS-ENSURE {: need :}
    need USIGS-CAP-U @ <= IF exit THEN
@@ -7561,14 +7560,22 @@ CAST: REG-PTR-CELLS ( ptr u8 -- ptr ptr u8 )
 17 constant HIDX-TABLES
 $CBF29CE484222325 constant HIDX-FNV-BASIS
 $100000001B3 constant HIDX-FNV-PRIME
+\ The mapping survives a file boundary and HIDX-BUILD reuses it; it goes only
+\ where it is dropped (HIDX-MEM-CLEAR), so it lives outside the spans.
 PTR-VARIABLE HIDX-MEM
-variable HIDX-VALID
 \ HIDX-GEN counts the times this mapping was dropped or re-laid-out. HIDX-EPOCH
-\ above invalidates the memoized ANSWERS in it; HIDX-GEN invalidates the tables
+\ below invalidates the memoized ANSWERS in it; HIDX-GEN invalidates the tables
 \ THEMSELVES, so an index built on the mapping — including the ones
 \ src/core/type-family.f builds — rebuilds when the cells it addresses moved.
-\ Starts at 1 so a never-built index recorded as 0 can never look current.
+\ Starts at 1 so a never-built index recorded as 0 can never look current, and
+\ only grows, so it too lives outside the spans.
 variable HIDX-GEN
+\ The index rests invalid at a file boundary and in an image, and rebuilds at
+\ the next lookup; HIDX-BUILD gives the epoch its first live value. The effect
+\ owner rests unbound, so an image bakes no store address through it, and
+\ HIDX-EFF-SYNC binds the live store at the next read.
+CHECKER-REG:SCRATCH{
+variable HIDX-VALID
 variable HIDX-EPOCH
 variable HIDX-EFF-HI
 PTR-VARIABLE HIDX-EFF-BASE
@@ -7577,6 +7584,7 @@ variable HIDX-DFR-HI    \ max DFER-END a cached defer answer depends on (rollbac
 variable HIDX-H
 variable HIDX-I
 variable HIDX-CUR
+CHECKER-REG:}SCRATCH
 
 \ HIDX-MEM/HIDX-EFF-BASE hold typed pointers into the mmap cache and USIGS store.
 \ A plain variable @ yields a bare cell value, so the store base is read through a
@@ -7616,11 +7624,7 @@ variable HIDX-CUR
 : HIDX-EFF-BASE! ( ptr u8 -- )
    HIDX-EFF-BASE-FIELD ! ;
 
-: HIDX-EFF-BASE-CLEAR ( -- )
-   NULL-PTR HIDX-EFF-BASE! ;
-
-HIDX-MEM-CLEAR   0 HIDX-VALID !   1 HIDX-EPOCH !
-0 HIDX-EFF-HI !   HIDX-EFF-BASE-CLEAR   0 HIDX-CTL-HI !   0 HIDX-DFR-HI !
+HIDX-MEM-CLEAR
 
 : HIDX-CELL ( n n -- ptr n ) {: slot:n tbl:n :}
    tbl SYM-CAP * slot + cells HIDX-MEM@ + ;
@@ -7718,8 +7722,12 @@ HIDX-MEM-CLEAR   0 HIDX-VALID !   1 HIDX-EPOCH !
 : HIDX-ALLOC ( -- )
    HIDX-ALLOC-PTR HIDX-MEM! ;
 
-: HIDX-BKT-CLEAR ( -- )
+\ The epoch restarts at a file boundary while the mapping stays, so every row's
+\ stamps go with its buckets: HIDX-BUILD pushes no retired row, and a stamp left
+\ from an earlier run of epochs could equal a new one.
+: HIDX-ROWS-CLEAR ( -- )
    0 begin dup SYM-CAP < while
+      dup HIDX-EP0
       0 over HT-BKT HIDX-CELL !
       0 over HT-PKG-BKT HIDX-CELL !
       0 over HT-NAME-BKT HIDX-CELL !
@@ -7728,7 +7736,7 @@ HIDX-MEM-CLEAR   0 HIDX-VALID !   1 HIDX-EPOCH !
 
 : HIDX-BUILD ( -- )
    HIDX-MEM-READY? 0= IF HIDX-ALLOC THEN
-   HIDX-BKT-CLEAR
+   HIDX-ROWS-CLEAR
    1 HIDX-I !
    begin HIDX-I @ SYM-N @ < while
       HIDX-I @ SYM-RETIRED? 0= IF HIDX-I @ HIDX-SYM+ THEN
@@ -7739,23 +7747,6 @@ HIDX-MEM-CLEAR   0 HIDX-VALID !   1 HIDX-EPOCH !
 
 : HIDX-ENSURE ( -- )
    HIDX-VALID @ 0= IF HIDX-BUILD THEN ;
-
-\ HIDX-RESET ( -- ) : snapshot prepare — the mapping is process-local.
-\ The effect owner goes with it. HIDX-EFF-BASE is a scratch slot (PTR-VARIABLE,
-\ deliberately not in the relocation table), so a capture must bake no store
-\ address through it, and the answers it spoke for are in the mapping this word
-\ just dropped. HIDX-EFF-SYNC binds the live store again at the next read, the
-\ way USX-STAMP, NRX-STAMP and UIX-STAMP bind the other three index owners.
-\ This is the ONE place the owner is unbound, so a capture seam that calls
-\ HIDX-RESET needs no clear of its own.
-: HIDX-RESET ( -- )
-   HIDX-MEM-CLEAR
-   0 HIDX-VALID !
-   1 HIDX-EPOCH !
-   0 HIDX-EFF-HI !
-   HIDX-EFF-BASE-CLEAR
-   0 HIDX-CTL-HI !
-   0 HIDX-DFR-HI ! ;
 
 : HIDX@ ( n n n -- n bool ) {: id:n vt:n et:n :}
    id et HIDX-CELL @ HIDX-EPOCH @ = 0= IF 0 RES-FALSE EXIT THEN
@@ -8204,17 +8195,24 @@ $400 constant UIX-ENT-INIT        \ entries; grows geometrically
 0 constant UIX-E-OFF              \ the interned node's store offset
 1 constant UIX-E-BKT              \ the bucket it is chained in
 2 constant UIX-E-NEXT             \ the next entry in that bucket, +1; 0 ends it
+\ The mappings and their capacities survive a file boundary: UIX-DROP and
+\ UIX-BUILD reuse them, and only UIX-RESET gives them up, for an image.
 PTR-VARIABLE UIX-BKT-P   PTR-VARIABLE UIX-ENT-P
 variable UIX-BKT-CAP variable UIX-ENT-CAP
-variable UIX-N       variable UIX-HI
+\ At a file boundary UIX-N rests 0 and the null base mismatches USIGS, so
+\ UIX-EXACT drops the stale buckets before any chain walk.
 CHECKER-REG:SCRATCH{
+variable UIX-N       variable UIX-HI
 variable UIX-I       variable UIX-J   variable UIX-H
 variable UIX-BP      \ the rebuild's record cursor
+variable UIX-BK
+variable UIX-C
+variable UIX-SPAN-LO   variable UIX-SPAN-HI   variable UIX-BN
 CHECKER-REG:}SCRATCH
 
 \ UIX-BASE, the store the entry offsets were taken against, is declared with the
 \ store's other index stamps above USIGS-GROW: the relocation there has to carry
-\ this one with the store, and UIX-RESET below nulls it for the snapshot.
+\ this one with the store.
 : UIX-BKT ( -- ptr n ) UIX-BKT-P @ ;
 : UIX-ENT ( -- ptr n ) UIX-ENT-P @ ;
 
@@ -8247,13 +8245,10 @@ CHECKER-REG:}SCRATCH
 
 \ UIX-RESET ( -- ) : snapshot prepare. The mapping is process-local mmap memory,
 \ so a baked image must carry no address for it; the next append re-allocates.
-\ Mirrors HIDX-RESET.
 : UIX-RESET ( -- )
    NULL-PTR UIX-BKT-P !
    NULL-PTR UIX-ENT-P !
-   NULL-PTR UIX-BASE!
-   0 UIX-BKT-CAP !  0 UIX-ENT-CAP !  0 UIX-N !
-   0 UIX-HI ! ;
+   0 UIX-BKT-CAP !  0 UIX-ENT-CAP ! ;
 
 UIX-RESET
 
@@ -8350,7 +8345,6 @@ UIX-RESET
 \ UIX-REHASH ( -- ) : re-chain every live entry into the freshly sized buckets,
 \ oldest first, so each bucket keeps its newest entry at the head — the ordering
 \ UIX-POP relies on. The nodes are all below UIX-HI, so re-reading them is safe.
-variable UIX-BK
 : UIX-REHASH ( -- )
    0 UIX-I !
    BEGIN UIX-I @ UIX-N @ < WHILE
@@ -8406,8 +8400,6 @@ variable UIX-BK
 \ subterm at the top of the arena, and the rebuild below asks it of a node the
 \ store already holds. A second copy of the chain walk is the drift the key's own
 \ comment warns about, one screen up.
-variable UIX-C
-
 : UIX-BUCKET ( n -- n )
    E-NODE-HASH UIX-BKT-CAP @ 1 - and ;
 
@@ -8456,7 +8448,6 @@ variable UIX-C
 \ twice (a row that is both a data and a return row) and a subterm walked twice is
 \ work squared for nothing. Measured on this engine's own baked store: 1,688 nodes
 \ indexed over 20,567 records in 1.7 ms, once, at the first definition.
-variable UIX-SPAN-LO   variable UIX-SPAN-HI   variable UIX-BN
 
 \ UIX-OWN? ( n -- bool ) : is this offset a whole live node of the span being
 \ walked? The span is clamped to UEND below, and a node needs every one of its
@@ -8800,10 +8791,13 @@ $400 constant CHX-ENT-INIT        \ entries; grows geometrically
 0 constant CHX-E-OFF              \ the interned content's store offset
 1 constant CHX-E-BKT              \ the bucket it is chained in
 2 constant CHX-E-NEXT             \ the next entry in that bucket, +1; 0 ends it
+\ The mappings and their capacities survive a file boundary as UIX's do. CHX-N
+\ rests 0 and the null base (CHX-BASE, above USIGS-GROW) mismatches USIGS, so
+\ CHX-EXACT drops the stale buckets before any chain walk.
 PTR-VARIABLE CHX-BKT-P   PTR-VARIABLE CHX-ENT-P
 variable CHX-BKT-CAP variable CHX-ENT-CAP
-variable CHX-N
 CHECKER-REG:SCRATCH{
+variable CHX-N
 variable CHX-I       variable CHX-J
 variable CHX-BP      \ the rebuild's record cursor
 variable CHX-BK
@@ -8840,9 +8834,7 @@ CHECKER-REG:}SCRATCH
 : CHX-RESET ( -- )
    NULL-PTR CHX-BKT-P !
    NULL-PTR CHX-ENT-P !
-   NULL-PTR CHX-BASE!
-   0 CHX-BKT-CAP !  0 CHX-ENT-CAP !  0 CHX-N !
-   0 CHX-HI ! ;
+   0 CHX-BKT-CAP !  0 CHX-ENT-CAP ! ;
 
 CHX-RESET
 
@@ -9012,8 +9004,6 @@ CHX-RESET
 : USX-BASE! ( ptr u8 -- )
    USX-BASE-FIELD ! ;
 
-USIGS USX-BASE!
-
 \ --- the shared cell layer for symbol-keyed store heads. One table id per store;
 \ everything else about a store — stride, fields, base, end mark — stays concrete
 \ in that store's own words.
@@ -9048,17 +9038,14 @@ USIGS USX-BASE!
    UEND @ USX-HI !
    USIGS USX-BASE! ;
 
-: USX-RESET ( -- )
-   0 USX-GEN !
-   0 USX-HI !
-   NULL-PTR USX-BASE! ;
-
 : USX-SYNC ( -- )
    UEND @ USX-HI @ <
    USIGS USX-BASE@ <> or IF 0 USX-GEN ! THEN ;
 
+CHECKER-REG:SCRATCH{
 PTR-VARIABLE USX-P                          \ index-owned cursor
 variable USX-BP   variable USX-BN        \ the rebuild's record cursor and its next link
+CHECKER-REG:}SCRATCH
 
 : USX-LINK ( n n -- ) {: off:n sym:n :}
    sym 0= IF EXIT THEN
@@ -9117,8 +9104,7 @@ variable USX-BP   variable USX-BN        \ the rebuild's record cursor and its n
       THEN
       USX-P @ USIG-NEXT USX-P !
    repeat
-   newend USX-HI !
-   NULL-PTR USX-P ! ;
+   newend USX-HI ! ;
 
 \ A dictionary occurrence may retain an older effect or control row. The
 \ association owner below clears links before a store reuses their offsets.
@@ -9371,7 +9357,9 @@ defer CHECKER-ON-CAND ( ptr u8 n n n n -- )
 variable CUR-AT                         \ the armed offset in the checked text, -1 none
 variable CUR-OWNED                      \ a check took the arm and runs
 variable CUR-DONE                       \ this attempt reached the cursor
+CHECKER-REG:SCRATCH{
 variable CUR-GAP                        \ where the gap before the token now read starts
+CHECKER-REG:}SCRATCH
 variable VIS-OPEN                       \ an enumeration or a visitor runs
 PTR-VARIABLE CUR-RP   variable CUR-RCAP   variable CUR-RN    \ pending candidates, in rows
 PTR-VARIABLE CB-P   variable CB-CAP   variable CB-N    \ their spellings: cells, bytes
@@ -15595,8 +15583,6 @@ variable NORET-GROW-CAP   PTR-VARIABLE NORET-GROW-NEXT
 : NRX-BASE! ( ptr u8 -- )
    NRX-BASE-FIELD ! ;
 
-NULL-PTR NRX-BASE!
-
 : NRX@ ( n -- n )
    HT-NRX IDX-HEAD@ ;
 
@@ -15849,7 +15835,7 @@ CHECKER-REG:}SCRATCH
    VNARG-P VNARG-CAP-V @ cells REG-PERSIST-BUF drop
    VREC-STR-P VREC-STR-HOME VREC-STR-HOME-CAP VREC-STR-U VREC-STR-CAP-V REG-POOL-PERSIST ;
 
-: SYM-SNAPSHOT-PERSIST ( -- )      \ HIDX is dropped by HIDX-RESET; rebuilt on restore
+: SYM-SNAPSHOT-PERSIST ( -- )      \ HIDX is dropped at capture; rebuilt on restore
    SYMS drop
    SYMS-P SYM-CAP-V @ SYM-REC * REG-PERSIST-BUF drop
    SYM-STR-P SYM-STR-HOME SYM-STR-HOME-CAP SYM-STR-U SYM-STR-CAP-V REG-POOL-PERSIST ;
@@ -15993,7 +15979,6 @@ REG-EXT-AOT-DEFAULTS
    PKRESET
    SYM-XFER-CLEAR
    FIELD-PROJ-SCRATCH-RESET
-   NULL-PTR USX-P !
    ATOMA-BOOT 0 MAXATOM-INIT REG-POINTERS-CLEAR
    FAM-A 0 FAM-CAP REG-POINTERS-CLEAR ;
 
@@ -23777,10 +23762,15 @@ CK-AOT-SIG-POOL-OFF RESERVED-PTR-U8-CELL CK-AOT-SIG-POOL-FIELD
 \ setter graphs cannot safely enter the checker without rechecking their bodies.
 $4842470000000003 constant ASIG-GRAPH-MAGIC
 $10000 constant ASIG-GRAPH-DEFER
-variable ASIG-GRAPH-BASE
-variable ASIG-GRAPH-GEN
+\ The node map is owned and reused across copies and files; its slots carry
+\ generation stamps, so a generation that restarts at 0 clears them first
+\ (ASIG-GRAPH-COPY-RECORD).
 PTR-VARIABLE ASIG-GRAPH-MAP
 variable ASIG-GRAPH-MAP-CAP
+CHECKER-REG:SCRATCH{
+variable ASIG-GRAPH-BASE
+variable ASIG-GRAPH-GEN
+CHECKER-REG:}SCRATCH
 
 : ASIG-GRAPH-DIE ( -- )
    s" checker: invalid captured effect graph" 76 die ;
@@ -23841,7 +23831,7 @@ variable ASIG-GRAPH-UNIT-OFF   0 ASIG-GRAPH-UNIT-OFF !
 : ASIG-GRAPH-SCRATCH-RELEASE ( -- )
    ASIG-GRAPH-MAP @ ASIG-GRAPH-MAP-CAP @ ASIG-RELEASE
    NULL-PTR ASIG-GRAPH-MAP ! 0 ASIG-GRAPH-MAP-CAP !
-   0 ASIG-GRAPH-BASE ! 0 ASIG-GRAPH-GEN ! 0 ASIG-GRAPH-UNIT-OFF ! ;
+   0 ASIG-GRAPH-UNIT-OFF ! ;
 
 : ASIG-GRAPH-NODE ( n -- n ) {: src:n :}
    src 0= IF 0 EXIT THEN
@@ -23921,6 +23911,8 @@ variable ASIG-GRAPH-UNIT-OFF   0 ASIG-GRAPH-UNIT-OFF !
    src E-PTR ER.ACTIVE @ EFF-RECOVERY = IF
       s" checker: a failed declaration's row is not portable" 76 die
    THEN
+   \ A retire restarted the generation: the map's stamps name earlier ones.
+   ASIG-GRAPH-GEN @ 0= IF ASIG-GRAPH-MAP @ ASIG-GRAPH-MAP-CAP @ ARENA-ZERO THEN
    ASIG-GRAPH-MAP-ROOM
    ASIG-GRAPH-GEN @ 1+ dup 0 <= IF drop ASIG-GRAPH-DIE THEN
    ASIG-GRAPH-GEN !
@@ -24054,14 +24046,18 @@ variable CK-AOT-CUR variable CK-AOT-GOT variable CK-AOT-ANY
    off 2 CK-AOT-S-STR CK-AOT-LEN CK-AOT-SPAN?
    off 2 + off CK-AOT-STR-U CK-AOT-S-STR CK-AOT-LEN CK-AOT-SPAN? ;
 
-PTR-VARIABLE CK-GRAPH-BASE
-variable CK-GRAPH-LEN
+\ The map is owned: CK-GRAPH-RELEASE gives it back. The graph under check is
+\ set at each check's entry.
 PTR-VARIABLE CK-GRAPH-MAP
 variable CK-GRAPH-CAP
+CHECKER-REG:SCRATCH{
+PTR-VARIABLE CK-GRAPH-BASE
+variable CK-GRAPH-LEN
 variable CK-GRAPH-MAP-U
 PTR-VARIABLE CK-GRAPH-REG-P
 variable CK-GRAPH-REG-U
 variable CK-GRAPH-WIDTH-BAD
+CHECKER-REG:}SCRATCH
 PTR-VARIABLE CK-LEX-MEMO-P
 variable CK-LEX-MEMO-CAP
 variable CK-LEX-MEMO-U
@@ -24095,10 +24091,6 @@ CK-GRAPH-META-SPANS CK-LEX-MASK 1+ + constant CK-GRAPH-SPANS
    NULL-PTR CK-GRAPH-MAP ! 0 CK-GRAPH-CAP !
    CK-LEX-MEMO-P @ CK-LEX-MEMO-CAP @ ASIG-RELEASE
    NULL-PTR CK-LEX-MEMO-P ! 0 CK-LEX-MEMO-CAP ! 0 CK-LEX-MEMO-U ! ;
-: CK-GRAPH-SCRATCH-RELEASE ( -- )
-   CK-GRAPH-RELEASE
-   NULL-PTR CK-GRAPH-BASE ! 0 CK-GRAPH-LEN ! 0 CK-GRAPH-MAP-U !
-   NULL-PTR CK-GRAPH-REG-P ! 0 CK-GRAPH-REG-U ! 0 CK-GRAPH-WIDTH-BAD ! ;
 
 \ The first four spans track objects, variable kinds, logical widths, and
 \ outer binder references. Lexical-context spans head domain memo lists.
@@ -25218,7 +25210,7 @@ variable CUR-OPEN   variable CUR-PSIG
 
 : CHECKER-SCAN-SNAP-RESET ( -- )
    0 TOKIX !  0 FAILIX !  0 FAILB !  0 FAILE !
-   0 CUR-GAP !  0 CUR-OPEN !  0 CUR-PSIG !
+   0 CUR-OPEN !  0 CUR-PSIG !
    0 TKFU !  0 SCAN-U !  0 SCAN-TOK0 !  0 SCAN-TOKS !
    0 CPAY-B !  0 CPAY-U !  0 CPAY-ON !
    0 IS-TOFF !  0 IS-PEND !  0 IS-PEND-OFF !  0 IS-PEND-U !
@@ -26112,7 +26104,7 @@ variable RBF-DEPTH   0 RBF-DEPTH !
 
 \ RBF-SNAP-RESET ( -- ) : snapshot prepare — frames are transient (depth 0 at
 \ snapshot), so drop any grown arena buffer back to the baked boot store; the
-\ next scope re-grows lazily. Mirrors HIDX-RESET's process-local reset.
+\ next scope re-grows lazily.
 : RBF-SNAP-RESET ( -- )
    RBF-DEPTH @ IF s" checker: snapshot inside rollback scope" 76 die THEN
    RBF-A-BOOT RBF-A-P !
@@ -29924,7 +29916,7 @@ public
    RBF-SNAP-RESET
    REG-CERT-SNAP-XT
    ASIG-GRAPH-SCRATCH-RELEASE
-   CK-GRAPH-SCRATCH-RELEASE
+   CK-GRAPH-RELEASE
    UNIT-BUF-P @ NULL-PTR <> IF
       UNIT-BUF-P @ UNIT-BUF-CAP @ ASIG-RELEASE
    THEN
@@ -30130,7 +30122,7 @@ variable RECORD-CTL-MAP-N
    newend NORET-END !
    NORETS CELL-VIEW newend CELL / oldend CELL / 1 + ARENA-CELLS-ZERO
    heads BYTE-VIEW SYM-N @ cells ASIG-RELEASE
-   NRX-RESET ;                         \ HIDX-RESET ran earlier in this capture
+   NRX-RESET ;                         \ every entry moved: rebuild at the next lookup
 
 \ ---- the interpret row: saved between top-level events -----------------------
 \ A segment is a saved row and the row's two buffers, keyed by the evaluator
@@ -30969,7 +30961,7 @@ public
    NAV-RELEASE
    CHECKER-REG:RECORD-CONTRACT-RELEASE
    EFFECT-XFER-CLEAR
-   CK-GRAPH-SCRATCH-RELEASE
+   CK-GRAPH-RELEASE
    ASIG-GRAPH-SCRATCH-RELEASE
    0 CK-AOT-STATE !                  \ validation belongs to the current signature pool
    TOKBUF-RESET
@@ -30978,7 +30970,7 @@ public
    0 TORDER-UNCERTAIN !  0 TORDER-SCAN-UNKNOWN !  0 TORDER-DEPTH ! ;
 
 : CHECKER-QUIESCE-CORE ( -- )
-   HIDX-RESET
+   HIDX-MEM-CLEAR                       \ process-local mmap: never bake its address
    TV-SNAP-RESET
    DECOUPLED-ARENA-SNAP-RESET
    SR-RETIRE
@@ -30989,13 +30981,11 @@ public
    CHECKER-PERSIST-PRIMS
    PES-BOOT-RETIRE
    CHECKER-PERSIST-CORE
-   USX-RESET
    UIX-RESET                            \ process-local mmap: never bake its address
    CHX-RESET ;
 
 : CHECKER-QUIESCE-END ( -- )
    CHECKER-PERSIST-LATE
-   NRX-RESET
    NP-SNAP-RESET
    REG-EXT-PERSIST-XT
    REG-EXT-SCRATCH-XT
@@ -31026,9 +31016,9 @@ public
 
 \ A file object compares DATA between its before-images and their diffs, and
 \ runs this before each (tools/native-unit-object.f IMAGE-TAKE and IMAGE-DIFF),
-\ so the scratch a check leaves rests there as it rests in an image: the
-\ capture seam's scratch retirement, without the index resets and persistence
-\ only an image needs.
+\ so the scratch a check leaves rests there as it rests in an image. Index state
+\ rests here through the spans as at every file boundary; only dropping the
+\ mappings (HIDX-MEM-CLEAR, UIX-RESET, CHX-RESET) and persistence are image-only.
 package CHECKER-REG
 public
 : FILE-SCRATCH-RETIRE ( -- )

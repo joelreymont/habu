@@ -3675,7 +3675,7 @@ public
 \ row's TF.TAILNEXT, so each is zeroed here too. Left in place, a row's link would
 \ depend on the lookups that ran before capture (a cache hit installs the row with
 \ 0, a cold declaration pushes it), and two loads of one program would capture
-\ different bytes. Mirrors HIDX-RESET on the checker side.
+\ different bytes.
 
 private
 
