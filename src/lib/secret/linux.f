@@ -10,7 +10,6 @@ FUNCTION: HASH-NEW g_hash_table_new ( n n -- n ) ;FUNCTION
 FUNCTION: HASH-INSERT g_hash_table_insert ( n ptr u8 n -- i32 ) ;FUNCTION
 FUNCTION: HASH-FREE g_hash_table_unref ( n -- ) ;FUNCTION
 FUNCTION: STR-DUP g_strndup ( ptr u8 n -- n ) ;FUNCTION
-FUNCTION: UTF8? g_utf8_validate ( ptr u8 n n -- i32 ) ;FUNCTION
 FUNCTION: G-FREE g_free ( n -- ) ;FUNCTION
 FUNCTION: ERROR-FREE g_error_free ( n -- ) ;FUNCTION
 FUNCTION: LIST-DATA g_list_nth_data ( n n -- n ) ;FUNCTION
@@ -41,8 +40,6 @@ FUNCTION: LIB-CLOSE dlclose ( n -- i32 ) ;FUNCTION
 : LINUX-OPEN ( ptr request -- )
    {: req:ptr :}
    s\" libglib-2.0.so.0\z" drop FFI:NOW FFI:DLOPEN AVAILABLE req REQUEST-LIBRARY !
-   req REQUEST-SERVICE @ req REQUEST-SERVICE-LEN @ 0 UTF8? 0= if E-CONFIG throw then
-   req REQUEST-ACCOUNT @ req REQUEST-ACCOUNT-LEN @ 0 UTF8? 0= if E-CONFIG throw then
    req REQUEST-LIBRARY @ s\" g_str_hash\z" drop FFI:DLSYM AVAILABLE
    req REQUEST-LIBRARY @ s\" g_str_equal\z" drop FFI:DLSYM AVAILABLE
    HASH-NEW OWNED req REQUEST-QUERY !

@@ -1,7 +1,8 @@
-\ secret.f - native desktop credential storage, in `package SECRET`.
+\ secret.f - credential storage, in `package SECRET`: the native desktop store
+\ unless the host application binds its own.
 \
 \ SECRET:READ ( service$ account$ destination -- n found? ) looks up one item in
-\ the OS store: a found item writes exactly n bytes into the caller's
+\ the store: a found item writes exactly n bytes into the caller's
 \ SPAN:span<u8> and returns true (0 true for an empty value); a missing item
 \ returns 0 false. The destination is unchanged on a miss or a throw, and the
 \ caller owns the bytes and their lifetime.
@@ -11,17 +12,33 @@
 \ negative length or a null address throws E-CONFIG.
 \ SECRET:ERASE ( service$ account$ -- found? ) removes the item and returns
 \ true, or false when there is none.
-\ No key material enters diagnostics. Habu wipes the mutable copies of a value
-\ that it allocates (the backends allocate none: WRITE borrows the caller's
-\ bytes and READ copies straight into the destination); copies inside the
-\ native store and framework-internal copies, such as the CFData
-\ Security.framework returns to READ, are outside that guarantee, and the
-\ caller's borrowed buffer is never wiped.
-\ Empty or NUL-containing identifiers throw E-CONFIG on every word, and
-\ malformed UTF-8 identifiers on every word except Linux WRITE and ERASE,
-\ which throw E-UNAVAILABLE once the empty, NUL and value checks pass. A failed
-\ store access throws E-ACCESS; no native support (an absent symbol, macOS
-\ errSecNotAvailable) E-UNAVAILABLE; a value larger than READ's
+\ Empty, NUL-containing or malformed UTF-8 identifiers throw E-CONFIG on every
+\ word, before the store is called.
+\
+\ SECRET:STORE! ( read write erase -- ) binds a host store for the whole
+\ process in place of the native one, once, before any task uses SECRET: the
+\ binding is one global cell, so rebinding while tasks call SECRET races. A
+\ server keeps its keys where the OS provides no store, or a test suite in
+\ memory. Each xt has its public word's effect, and the word passes it the
+\ identifiers and value once its own checks above pass, then returns the xt's
+\ results; the host's throws pass through unchanged. The host store owes each
+\ word's contract above: READ's exact bytes, miss result and untouched
+\ destination; WRITE replacing an item's value without a duplicate, empty and
+\ NUL-containing values included; ERASE's found? result. It keeps the
+\ caller's bytes only by copying them and throws the native store's codes: an
+\ identifier it cannot hold E-CONFIG, a failed or refused access E-ACCESS, a
+\ store it cannot reach E-UNAVAILABLE, a value larger than READ's destination
+\ E-CAPACITY before any byte is copied. It may log the detail first, never key
+\ material.
+\
+\ Native store: no key material enters diagnostics. Habu wipes the mutable
+\ copies of a value that it allocates (the backends allocate none: WRITE
+\ borrows the caller's bytes and READ copies straight into the destination);
+\ copies inside the native store and framework-internal copies, such as the
+\ CFData Security.framework returns to READ, are outside that guarantee, and
+\ the caller's borrowed buffer is never wiped.
+\ A failed store access throws E-ACCESS; no native support (an absent
+\ symbol, macOS errSecNotAvailable) E-UNAVAILABLE; a value larger than READ's
 \ destination E-CAPACITY, before any byte is copied. There is no plaintext
 \ fallback. The calls are synchronous and may block while the desktop store
 \ responds.
@@ -31,14 +48,17 @@
 \ so a dismissed unlock is an access failure; the value is read by length,
 \ keeping embedded NULs). Linux supports READ only: WRITE and ERASE throw
 \ E-UNAVAILABLE there. src/lib/secret-test.f writes dummy items to the real
-\ store with these words and removes them.
+\ store with these words and removes them, then binds an in-memory host store.
 \
-\ STORAGE CLASS. CALLER-OWNED: each call allocates and frees its own request
-\ record; the backend is a set of deferred words bound once at load.
+\ STORAGE CLASS. PROCESS-WIDE: the store binding is static, written before use
+\ and only read afterwards. CALLER-OWNED: each native call allocates and frees
+\ its own request record; the native backend is a set of deferred words bound
+\ once at load.
 require src/lib/errors.f
 require src/lib/span.f
 require src/lib/memory.f
 require src/lib/ffi-abi.f
+require src/lib/utf8-scalar.f
 
 package SECRET
 public
@@ -81,7 +101,8 @@ CAST: >BYTES ( n -- ptr u8 )
 : INPUT ( ptr u8 n -- )
    {: p:ptr u:n :}
    u 0 <= p 0= or if E-CONFIG throw then
-   u 0 ?do p i + c@ 0= if E-CONFIG throw then loop ;
+   u 0 ?do p i + c@ 0= if E-CONFIG throw then loop
+   p u UTF8:VALID? 0= if E-CONFIG throw then ;
 
 : COPY-VALUE ( ptr u8 n ptr request -- )
    {: p:ptr u:n req:ptr :}
@@ -109,10 +130,9 @@ defer NATIVE-CLOSE ( ptr request -- )
 INSTALL-DEFAULT
 
 
-\ A zeroed request for valid identifiers; REQ-FREE releases it.
+\ A zeroed request for checked identifiers; REQ-FREE releases it.
 : REQ-OPEN ( ptr u8 n ptr u8 n -- ptr request )
    {: service:ptr su:n account:ptr au:n :}
-   service su INPUT account au INPUT
    REQUEST-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN SPAN:$ drop >REQUEST {: req:ptr :}
    service req REQUEST-SERVICE ! su req REQUEST-SERVICE-LEN !
    account req REQUEST-ACCOUNT ! au req REQUEST-ACCOUNT-LEN !
@@ -130,11 +150,8 @@ INSTALL-DEFAULT
 : REQ-FREE ( ptr request -- )
    REQUEST>BYTES REQUEST-BYTES SPAN:MAKE MEM:FREE-SPAN ;
 
-public
-
-\ Found empty items return 0 true. Missing items return 0 false.
-\ Errors leave the destination untouched; successful reads write exactly n bytes.
-: READ ( ptr u8 n ptr u8 n SPAN:span<u8> -- n bool )
+\ The native store's words take identifiers and values the public words checked.
+: OS-READ ( ptr u8 n ptr u8 n SPAN:span<u8> -- n bool )
    {: service:ptr su:n account:ptr au:n dest:SPAN:span<u8> :}
    service su account au REQ-OPEN {: req:ptr :}
    dest SPAN:$ req REQUEST-CAPACITY ! req REQUEST-DATA !
@@ -146,10 +163,8 @@ public
    error 0 <> if 2drop error throw then ;
 
 
-\ Creates the item or replaces an existing item's value; the caller keeps the bytes.
-: WRITE ( ptr u8 n ptr u8 n ptr u8 n -- )
+: OS-WRITE ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: service:ptr su:n account:ptr au:n value:ptr vu:n :}
-   vu 0 < value 0= or if E-CONFIG throw then
    service su account au REQ-OPEN {: req:ptr :}
    value req REQUEST-DATA ! vu req REQUEST-CAPACITY !
    req [: dup NATIVE-WRITE ;] catch {: code:n :}
@@ -159,8 +174,7 @@ public
    error 0 <> if error throw then ;
 
 
-\ Removes the item; a missing item returns false.
-: ERASE ( ptr u8 n ptr u8 n -- bool )
+: OS-ERASE ( ptr u8 n ptr u8 n -- bool )
    REQ-OPEN {: req:ptr :}
    req [: dup NATIVE-ERASE ;] catch {: code:n :}
    drop
@@ -168,6 +182,42 @@ public
    req REQUEST-FOUND @
    req REQ-FREE
    error 0 <> if drop error throw then ;
+
+TYPED-VARIABLE STORE-READ [ ptr u8 n ptr u8 n SPAN:span<u8> -- n bool ]
+TYPED-VARIABLE STORE-WRITE [ ptr u8 n ptr u8 n ptr u8 n -- ]
+TYPED-VARIABLE STORE-ERASE [ ptr u8 n ptr u8 n -- bool ]
+: INSTALL-OS ( -- )
+   ['] OS-READ STORE-READ ! ['] OS-WRITE STORE-WRITE ! ['] OS-ERASE STORE-ERASE ! ;
+INSTALL-OS
+
+public
+
+\ Binds the host store; the header states what each xt owes.
+: STORE! ( [ ptr u8 n ptr u8 n SPAN:span<u8> -- n bool ] [ ptr u8 n ptr u8 n ptr u8 n -- ] [ ptr u8 n ptr u8 n -- bool ] -- )
+   STORE-ERASE ! STORE-WRITE ! STORE-READ ! ;
+
+
+\ Found empty items return 0 true. Missing items return 0 false.
+\ Errors leave the destination untouched; successful reads write exactly n bytes.
+: READ ( ptr u8 n ptr u8 n SPAN:span<u8> -- n bool )
+   {: service:ptr su:n account:ptr au:n dest:SPAN:span<u8> :}
+   service su INPUT account au INPUT
+   service su account au dest STORE-READ @ execute ;
+
+
+\ Creates the item or replaces an existing item's value; the caller keeps the bytes.
+: WRITE ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: service:ptr su:n account:ptr au:n value:ptr vu:n :}
+   vu 0 < value 0= or if E-CONFIG throw then
+   service su INPUT account au INPUT
+   service su account au value vu STORE-WRITE @ execute ;
+
+
+\ Removes the item; a missing item returns false.
+: ERASE ( ptr u8 n ptr u8 n -- bool )
+   {: service:ptr su:n account:ptr au:n :}
+   service su INPUT account au INPUT
+   service su account au STORE-ERASE @ execute ;
 
 ;package
 

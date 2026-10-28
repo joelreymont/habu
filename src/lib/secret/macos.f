@@ -36,9 +36,6 @@ FUNCTION: LIB-CLOSE dlclose ( n -- i32 ) ;FUNCTION
 : OWNED ( n -- n )
    dup 0= if drop E-UNAVAILABLE throw then ;
 
-: STRING-OWNED ( n -- n )
-   dup 0= if drop E-CONFIG throw then ;
-
 \ Any status but success is a failure; the caller handles SEC-NOT-FOUND first.
 : SEC-STATUS ( n -- )
    dup SEC-UNAVAILABLE = if drop E-UNAVAILABLE throw then
@@ -66,9 +63,9 @@ FUNCTION: LIB-CLOSE dlclose ( n -- i32 ) ;FUNCTION
    \ NULL callbacks borrow exact exported key identities and the owned CF values below.
    0 0 0 0 CF-DICT OWNED req REQUEST-QUERY !
    0 req REQUEST-SERVICE @ req REQUEST-SERVICE-LEN @ $08000100 0 CF-STRING
-      STRING-OWNED req REQUEST-SERVICE-OBJ !
+      OWNED req REQUEST-SERVICE-OBJ !
    0 req REQUEST-ACCOUNT @ req REQUEST-ACCOUNT-LEN @ $08000100 0 CF-STRING
-      STRING-OWNED req REQUEST-ACCOUNT-OBJ !
+      OWNED req REQUEST-ACCOUNT-OBJ !
    req REQUEST-QUERY @ req s\" kSecClass\z" drop SEC-SYMBOL
       req s\" kSecClassGenericPassword\z" drop SEC-SYMBOL CF-SET
    req REQUEST-QUERY @ req s\" kSecAttrService\z" drop SEC-SYMBOL req REQUEST-SERVICE-OBJ @ CF-SET
