@@ -7,8 +7,7 @@
 \ changes out of the parent. The child runs the source under
 \ `evaluate-closed`, so a source that leaves cells fails with E-EVAL-RESIDUE.
 \ EXITED? and REFUSED? are probes over RUN; TIMED-OUT and RC-TIMED-OUT report
-\ a deadline. The child's raw stack and handler setup (STACK-ARM) is an
-\ audited boundary.
+\ a deadline. The child runs as its own process root (PROC-FORK:CHILD-MAIN).
 \
 \ STORAGE CLASS. PROCESS-WIDE: the source cells, child stack and status
 \ buffers are static; RUN is synchronous, so one task runs a subject at a time.
@@ -73,22 +72,11 @@ create STATUS-ERR STATUS-CAP allot
    SRC$ evaluate-closed ;
 
 \ `run-in-stack` owns the active allocation, including its floor and capacity.
-\ The fork child must enter evaluation with no catch or TTY recovery handler.
-: STACK-ARM ( -- )
-   0 data-base HND-CELL + !
-   0 data-base REPLH-CELL + ! ;
-
 : EVAL-STACK ( -- )
    ['] EVAL STACK run-in-stack ;
 
-: CHILD-EXIT ( n -- ) {: rc:n :}
-   s" " rc die ;
-
 : CHILD ( -- )
-   STACK-ARM
-   CHILD-FDS
-   EVAL-STACK
-   0 CHILD-EXIT ;
+   [: CHILD-FDS EVAL-STACK ;] PROC-FORK:CHILD-MAIN ;
 
 : SPAWN ( -- )
    PROC-FORK:RAW {: pid:pid :}

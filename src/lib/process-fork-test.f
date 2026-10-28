@@ -1,5 +1,5 @@
-\ process-fork-test.f - a forked child's cleanup table, and reapers whose forks
-\ fail.
+\ process-fork-test.f - a forked child's cleanup table, a child run as its own
+\ process root, and reapers whose forks fail.
 \
 \ A forked child starts with an EMPTY fs cleanup table: the entries it would
 \ otherwise inherit name paths the live parent still owns, so running them
@@ -23,6 +23,14 @@ require src/lib/fs-mutate.f
 require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-fork.f
+
+\ A global and a used public of one name: CHECK-CHILD-REFUSAL's source, which
+\ names it bare under `using`, is refused with E-USING-SHADOW-GLOBAL. Packages
+\ do not nest, so the pair is declared here, outside PROC-FORK-TEST.
+package PF-SHADOW public
+   : PF-SHADOW-W ( -- n ) 1 ;
+;package
+: PF-SHADOW-W ( -- n ) 2 ;
 
 package PROC-FORK-TEST
 
@@ -111,6 +119,114 @@ variable OWN-U
    CLEANUP-RUN
    s" the parent's own run removes what it registered" T-LABEL
    KEEP$ EXISTS? TFALSE
+   FIX-ROOT$ REMOVE-TREE ;
+
+\ ---- a child run as its own process root -----------------------------------
+\ PROC-FORK:CHILD-MAIN runs a quotation as the child's process root: it exits 0
+\ when the quotation returns, and a throw out of it ends the child as an uncaught
+\ throw ends a fresh process - the engine's line on fd 2 and UNCAUGHT-RC - with
+\ no catch frame or code of the parent's resumed in the child. Each child's fd 2
+\ is a fresh file, and ESCAPE-CHECK, the parent's code after the fork, writes
+\ ESCAPED there and exits 0 if a child ever reaches it, as a child that left
+\ CHILD-MAIN or ran a parent's handler would. CHILD-CODE lies outside 1-255,
+\ so the engine reports it rather than exiting with it. Under --load the REPL
+\ route is already empty, so the catch-frame and refusal clearing are what is
+\ observable here.
+-4242 constant CHILD-CODE
+3 constant DUP2-FAILED-RC
+create MAIN-ERR FS-PATH-CAP allot
+variable MAIN-ERR-U
+variable PARENT-PID
+variable MAIN-PID
+256 constant CHILD-ERR-CAP
+create CHILD-ERR CHILD-ERR-CAP allot
+
+: MAIN-ERR$ ( -- ptr u8 n )
+   MAIN-ERR MAIN-ERR-U @ ;
+
+: ESCAPED$ ( -- ptr u8 n )
+   s" ESCAPED" ;
+
+: UNCAUGHT-LINE$ ( -- ptr u8 n )
+   s\" hb: uncaught throw code -4242\n" ;
+
+: ERR-TO-FILE ( -- )
+   MAIN-ERR$ OPEN-APPEND-FD {: fd :}
+   fd 2 dup2 0 < if DUP2-FAILED-RC FORK-EXIT then
+   fd close ;
+
+\ Only a child that escaped CHILD-MAIN runs this with a pid not the parent's.
+: ESCAPE-CHECK ( -- )
+   getpid PARENT-PID @ = if exit then
+   2 ESCAPED$ write drop
+   0 FORK-EXIT ;
+
+: FORK-MAIN ( [ -- ] -- ) {: q :}
+   getpid PARENT-PID !
+   MAIN-ERR$ s" " WRITE-ALL
+   PROC-FORK:CHECKED PID>N {: pid:n :}
+   pid 0= if ERR-TO-FILE q PROC-FORK:CHILD-MAIN then
+   ESCAPE-CHECK
+   pid MAIN-PID ! ;
+
+\ The reaped child's exit code, and its fd 2 in CHILD-ERR.
+: MAIN-RC ( -- n n )
+   MAIN-PID @ >PID PROC-WAIT-STATUS-RAW {: status:n :}
+   status 0 < TFALSE
+   status PROC-STATUS>RC RC>N
+   MAIN-ERR$ CHILD-ERR CHILD-ERR-CAP READ-ALL ;
+
+: THROWER ( -- )
+   CHILD-CODE throw ;
+
+: CHECK-CHILD-RETURNS ( -- )
+   [: ;] FORK-MAIN
+   MAIN-RC {: rc errn :}
+   s" a child whose quotation returns exits 0" T-LABEL
+   rc 0 T=
+   s" and writes nothing to fd 2" T-LABEL
+   errn 0 T= ;
+
+\ The parent forks inside a catch: a child that resumed it would leave the
+\ catch with CHILD-CODE and reach ESCAPE-CHECK after it.
+: CHECK-CHILD-THROWS ( -- )
+   [: [: THROWER ;] FORK-MAIN ;] catch
+   ESCAPE-CHECK
+   s" the parent's own catch sees no throw" T-LABEL
+   0 T=
+   MAIN-RC {: rc errn :}
+   s" a child whose quotation throws exits UNCAUGHT-RC" T-LABEL
+   rc UNCAUGHT-RC T=
+   s" its fd 2 has the engine's report" T-LABEL
+   CHILD-ERR errn UNCAUGHT-LINE$ STR= TTRUE ;
+
+\ The parent catches a refusal the checker named, which leaves its code in
+\ REFUSAL-ABI:CODE-CELL; a child that kept the cell would exit RC-REJECT (70)
+\ for a throw of that code. The refusal's diagnostic goes to the parent's fd 2.
+variable REFUSAL-CODE
+
+: REFUSE ( -- )
+   s" using PF-SHADOW : PF-SHADOW-R ( -- n ) PF-SHADOW-W ; ;using" evaluate-closed ;
+
+: REFUSAL-THROWER ( -- )
+   REFUSAL-CODE @ throw ;
+
+: CHECK-CHILD-REFUSAL ( -- )
+   ['] REFUSE catch REFUSAL-CODE !
+   s" the parent caught a refusal the checker named" T-LABEL
+   REFUSAL-CODE @ 0<>
+   data-base REFUSAL-ABI:CODE-CELL + @ REFUSAL-CODE @ = and TTRUE
+   [: REFUSAL-THROWER ;] FORK-MAIN
+   MAIN-RC drop {: rc :}
+   s" a child throwing the parent's caught refusal exits UNCAUGHT-RC" T-LABEL
+   rc UNCAUGHT-RC T= ;
+
+: CHECK-CHILD-MAIN ( -- )
+   s" hb-fork-main" TMPDIR-MKDIR FIX-ROOT!
+   FIX-ROOT$ s" err" MAIN-ERR MAIN-ERR-U SUB!
+   CHECK-CHILD-RETURNS
+   CHECK-CHILD-THROWS
+   CHECK-CHILD-REFUSAL
    FIX-ROOT$ REMOVE-TREE ;
 
 \ ---- reapers whose forks fail -------------------------------------------------
@@ -290,6 +406,7 @@ variable SAVED-WATCH
 : RUN ( -- )
    T-RESET
    CHECK-CHILD-CLEANUP
+   CHECK-CHILD-MAIN
    CHECK-REAPER-FORK-FAILS
    CHECK-INTERMEDIATE-FORK-FAILS
    CHECK-CAPTURE-REAPER-FAILS

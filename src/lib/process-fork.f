@@ -4,6 +4,7 @@
 \ External callers use the qualified public API:
 \   PROC-FORK:RAW      raw fork wrapper (pid, negative on failure)
 \   PROC-FORK:CHECKED  fork that throws E-PROC-SPAWN on primitive failure
+\   PROC-FORK:CHILD-MAIN run a quotation as a forked child's process root
 \   PROC-FORK:FORK-CALL / FORK-CALL-DEFAULT  the fork RAW makes, for a test to refuse
 \   PROC-FORK:SET-PGID place a pid into a process group
 \   PROC-FORK:KILL-GROUP signal a whole process group
@@ -115,6 +116,23 @@ public
    RAW {: pid:pid :}
    pid PID>N 0 < if E-PROC-SPAWN throw then
    pid ;
+
+\ Runs q as the process root of a child RAW or CHECKED just forked, and never
+\ returns: the child exits 0 once q returns, and a throw out of q ends it as an
+\ uncaught throw ends a fresh process, through habu2.f LUNCAUGHT - the engine's
+\ report on fd 2 and layout.f's UNCAUGHT-RC (67), or the code itself from 1 to
+\ 255. The fork copied the parent's catch frames (HND-CELL) and its tty REPL
+\ recovery route (REPLH-CELL), so a throw would otherwise resume the parent's
+\ catch, or its prompt, in the child; both are cleared before q runs. The exit
+\ hook stays: RAW's child resets ran CLEANUP-RESET, so the inherited
+\ CLEANUP-AT-EXIT removes only what the child itself registers.
+: CHILD-MAIN ( [ -- ] -- ) {: q :}
+   0 data-base HND-CELL + !
+   0 data-base REPLH-CELL + !
+   \ A refusal the parent caught would make a throw of its code exit RC-REJECT.
+   0 data-base REFUSAL-ABI:CODE-CELL + !
+   q execute
+   s" " 0 die ;
 
 \ setpgid(pid, pgid): place pid into process group pgid. `0 0 PROC-FORK:SET-PGID`
 \ makes the caller its own group leader (pgid == pid) so a later group signal
