@@ -658,6 +658,11 @@ variable PT-HOLD-OUT                     \ the read end its stdout and stderr sh
 : TEST-WAIT-BOUNDED-EDGE ( -- )
    [: PT-NOT-A-CHILD PT-LONGEST-MS PT-WAIT-AT drop ;] E-PROC-WAIT TTHROWSQ ;
 
+\ The deadline every capture, poll and signal wait derives refuses the first
+\ window past the cell, rather than wrapping to a deadline already gone.
+: TEST-DEADLINE-PAST-CELL ( -- )
+   [: PT-PAST-CELL-MS >MS PROC-DEADLINE-AT drop ;] E-PROC-TIMEOUT TTHROWSQ ;
+
 \ ---- spawned stdio -------------------------------------------------------------
 \ A child's stdio end may be close-on-exec, and one above 2 may be unmarked: the
 \ spawn keeps each on its stdio number and closes the source in the child.
@@ -727,6 +732,7 @@ create PT-SPAWN-ERR PT-SPAWN-ERR-CAP allot
    TEST-WAIT-BOUNDED-EOF
    TEST-WAIT-BOUNDED-REFUSALS
    TEST-WAIT-BOUNDED-EDGE
+   TEST-DEADLINE-PAST-CELL
    TEST-SPAWN-SAME-NUMBER
    TEST-SPAWN-UNMARKED-SOURCE
    TEST-PIPE

@@ -21,7 +21,7 @@
 \ the parent never sees EOF. src/lib/fd-lock.f orders that mark against spawns.
 
 s" src/lib/errors.f" required
-s" src/lib/memory.f" required                \ MEM-MAX-N bounds PROC-WAIT-BOUNDED's deadline
+s" src/lib/memory.f" required                \ MEM-MAX-N bounds PROC-DEADLINE-AT
 s" src/lib/adt/result.f" required            \ result<n,n> for PROC-RUN-IO-RC (switchover wave B)
 s" src/lib/task.f" required                  \ TASK:+USER carries the per-call row
 s" src/lib/fd-lock.f" required               \ FD-LOCK:WITH orders descriptor creation against spawns
@@ -335,8 +335,17 @@ FUNCTION: PROC-WAITPID-CALL waitpid ( n ptr u8 n -- i32 )
       PROC-NS-PER-MS / >MS
    then ;
 
-: PROC-DEADLINE-AT ( ms -- n ) {: timeout :}
-   mono-ns timeout MS>N PROC-NS-PER-MS * + ;
+\ The absolute mono-ns deadline ms from one reading. A negative ms names no
+\ window: its deadline is the reading itself, already passed, and a poll caller
+\ hands the negative ms on to poll(2) for an unbounded wait (PROC-POLL-RESTART).
+\ A window whose nanoseconds would carry the reading past the largest cell is
+\ E-PROC-TIMEOUT before anything is multiplied: a deadline the cell cannot hold
+\ fails at once, never wraps into the past or saturates to forever.
+: PROC-DEADLINE-AT ( ms -- n ) {: timeout:ms :}
+   mono-ns {: now:n :}
+   timeout MS>N 0 < if now exit then
+   timeout MS>N MEM-MAX-N now - PROC-NS-PER-MS / > if E-PROC-TIMEOUT throw then
+   timeout MS>N PROC-NS-PER-MS * now + ;
 
 : PROC-POLL-ONCE ( n n -- n ) {: nfds ms :}
    PROC-PFD nfds ms poll ;
@@ -387,17 +396,6 @@ $7FFFFFFF constant PROC-PID-MAX    \ the largest signed 32-bit pid_t
 \ The bounded wait's status cell, task-local and apart from the capture row.
 TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 1 cells TASK:+USER PROC-BOUNDED-STATUS drop
 
-\ The deadline ms from one mono-ns reading. A window below zero, or one whose
-\ nanoseconds would carry that reading past the largest cell, is E-PROC-TIMEOUT
-\ before anything is multiplied. PROC-DEADLINE-AT keeps its own arithmetic: its
-\ poll callers pass a negative ms for an unbounded wait.
-: PROC-WAIT-DEADLINE ( ms -- n )
-   {: timeout:ms :}
-   timeout MS>N 0 < if E-PROC-TIMEOUT throw then
-   mono-ns {: now:n :}
-   timeout MS>N MEM-MAX-N now - PROC-NS-PER-MS / > if E-PROC-TIMEOUT throw then
-   timeout MS>N PROC-NS-PER-MS * now + ;
-
 \ One nonblocking waitpid: true once pid's terminal status is in the cell and
 \ the child is reaped. A zero return leaves the cleared cell unread, and a stop
 \ (low status bits $7F, which only a traced child reports without WUNTRACED)
@@ -425,7 +423,8 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 1 cells TASK:+USER PROC-BOUNDED-STATUS drop
    {: pid:pid timeout:ms :}
    pid PID>N 0 <= if E-PROC-WAIT throw then
    pid PID>N PROC-PID-MAX > if E-PROC-WAIT throw then
-   timeout PROC-WAIT-DEADLINE {: deadline:n :}
+   timeout MS>N 0 < if E-PROC-TIMEOUT throw then
+   timeout PROC-DEADLINE-AT {: deadline:n :}
    begin pid PROC-WAIT-PROBE 0= while
       deadline PROC-LEFT-MS MS>N 0= if OUTCOME:TIMEOUT exit then
       1 >MS TASK:SLEEP
