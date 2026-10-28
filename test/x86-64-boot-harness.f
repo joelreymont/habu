@@ -99,12 +99,13 @@ public
    RAX DATA-REG STACK-ABI:BASE-CELL MEM-OFF ASM-SINK ENC-SUB-RM
    want CELL * EXPECT, ;
 
-\ Check rsp stands where the kernel left it, at argc: one cell below the
-\ argument vector the boot published.
+\ Check rsp stands where the boot left it: below argc, one cell under the
+\ argument vector the boot published, by the signal band boot-x64.f
+\ SIGNAL-STACK, carves off the machine stack for the life of the thread.
 : EXPECT-BALANCED, ( -- )
    RAX DATA-REG ARGV-CELL MEM-OFF ASM-SINK ENC-MOV-RM
    RAX RSP ASM-SINK ENC-SUB-RR
-   CELL EXPECT, ;
+   CELL STACK-ABI:SIGNAL-BYTES + EXPECT, ;
 
 \ Check the scratch cell at an offset holds n.
 : EXPECT-SCRATCH, ( n n -- ) {: want:n off:n :}
