@@ -6,8 +6,15 @@
 \ each is run for its result. The does> definers cover a clause, an empty
 \ clause whose child keeps its address kind, quotations nested in the parent
 \ and one in the clause, clause locals and a definer chained on another, each
-\ through a child it made. A CALLBACK: declaration compiled by T0 is handed to
-\ libc's qsort, which sorts a row through it, and its C entry lies between its
+\ through a child it made. The MATCH rows dispatch over an enum and a sum type
+\ whose `construct`ed values carry pads, with a cell under each value proving
+\ its width; a MATCH nested in an arm, one in a case arm, one in a does>
+\ clause, and one over option<pt>, whose `none` comes from a call that pushes
+\ the pad the instantiation adds; a `construct` at wrap<pt> pushes that pad
+\ itself; a MATCH over a 65-cell payload; one in a quotation after character
+\ literals and a string, whose facts sit at the ordinals those tokens advance;
+\ and a hostile tag, in a child, reaches T0's trap and exits ENGINE-ERROR:BAD-TAG.
+\ A CALLBACK: declaration compiled by T0 is handed to libc's qsort, which sorts a row through it, and its C entry lies between its
 \ accessor's code and the next definition's: the stub T0 appended to the
 \ accessor's emission. The refusal rows evaluate definitions T0 refuses with
 \ its own codes, which tier 1 accepts or refuses otherwise: a non-neutral
@@ -24,10 +31,16 @@
 \ process and nothing restores it, so this file is its suite row's only file:
 \ a file loaded after it would be compiled by T0.
 
+require src/lib/errors.f
+require src/lib/string.f
 require src/lib/test.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
 require src/lib/ffi-abi.f
 require src/lib/ffi-callback.f
 require src/lib/task.f
+require src/lib/adt/option.f
 require src/compiler/target/model.f
 require src/compiler/target/native-binding.f
 require src/compiler/native/shadow.f
@@ -87,6 +100,158 @@ s" C7" XREF-FIND-CURRENT-INDEX XREF-REQUIRE-INDEX constant C7-IX
 : CHAINED ( n -- ) BASE-D does> ( -- n ) @ 1+ ;
 9 CHAINED N9
 
+\ ---- MATCH and construct --------------------------------------------------------
+public
+
+ENUM hue
+   rojo
+   verde
+   azul
+;ENUM
+
+\ The widest variant fixes the value's cells, so `uno` carries one pad and
+\ `nada` two.
+SUMTYPE box
+   VARIANT nada ;VARIANT
+   VARIANT uno n ;VARIANT
+   VARIANT duo n n ;VARIANT
+;SUMTYPE
+
+PRODUCT pt
+   FIELD x n
+   FIELD y n
+;PRODUCT
+
+\ A payload of 65 cells, one past the 64 a glue mask describes.
+SUMTYPE big
+   VARIANT small ;VARIANT
+   VARIANT huge
+      n n n n n n n n n n n n n
+      n n n n n n n n n n n n n
+      n n n n n n n n n n n n n
+      n n n n n n n n n n n n n
+      n n n n n n n n n n n n n
+   ;VARIANT
+;SUMTYPE
+
+\ At wrap<pt> `empty` carries two pads where wrap<a> declares one: construct
+\ pushes the pad the instantiation adds.
+ENUM wrap<a>
+   VARIANT empty ;VARIANT
+   VARIANT full FIELD v a ;VARIANT
+;ENUM
+
+private
+
+: ROJO ( -- hue ) construct hue rojo ;
+: VERDE ( -- hue ) construct hue verde ;
+: AZUL ( -- hue ) construct hue azul ;
+: NADA ( -- box ) construct box nada ;
+: UNO ( n -- box ) construct box uno ;
+: DUO ( n n -- box ) construct box duo ;
+
+: HUE-CODE ( hue -- n )
+   MATCH hue
+      rojo OF 10 ENDOF
+      verde OF 20 ENDOF
+      azul OF 30 ENDOF
+   ;MATCH ;
+
+: BOX-SUM ( box -- n )
+   MATCH box
+      nada OF 0 ENDOF
+      uno OF ENDOF
+      duo OF - ENDOF
+   ;MATCH ;
+
+\ A MATCH in an arm of another, over the value under the first.
+: PAIR-CODE ( box hue -- n )
+   MATCH hue
+      rojo OF BOX-SUM ENDOF
+      verde OF
+         MATCH box
+            nada OF 1 ENDOF
+            uno OF 2 * ENDOF
+            duo OF * ENDOF
+         ;MATCH
+      ENDOF
+      azul OF BOX-SUM negate ENDOF
+   ;MATCH ;
+
+\ A MATCH in a case arm, and a case default that takes the value apart.
+: CASE-BOX ( box n -- n )
+   case
+      1 of BOX-SUM endof
+      2 of
+         MATCH box
+            nada OF -1 ENDOF
+            uno OF 10 * ENDOF
+            duo OF + ENDOF
+         ;MATCH
+      endof
+      >r BOX-SUM 1000 + r>
+   endcase ;
+
+\ A MATCH in a does> clause, whose facts sit at the clause's ordinals.
+: HUE-WEIGHT ( n -- ) create , does> ( hue -- n )
+   @ swap MATCH hue
+      rojo OF ENDOF
+      verde OF 2 * ENDOF
+      azul OF negate ENDOF
+   ;MATCH ;
+5 HUE-WEIGHT W5
+
+\ At option<pt> `none` is three cells where option<n> is two: the call to
+\ OPTION:NONE carries the pad the instantiation adds.
+: SOME-PT ( n -- option<pt> )
+   dup 0 > if dup 3 * swap 5 * T0--INSTALL--TEST-PT:MAKE OPTION:SOME else drop OPTION:NONE then ;
+
+: PT-SUM ( option<pt> -- n )
+   MATCH option
+      none OF 0 ENDOF
+      some OF T0--INSTALL--TEST-PT:UNMAKE 7 * swap 11 * + ENDOF
+   ;MATCH ;
+
+: BIG-SMALL ( -- big ) construct big small ;
+: BIG-HUGE ( -- big )
+   1 2 3 4 5 6 7 8 9 10 11 12 13
+   14 15 16 17 18 19 20 21 22 23 24 25 26
+   27 28 29 30 31 32 33 34 35 36 37 38 39
+   40 41 42 43 44 45 46 47 48 49 50 51 52
+   53 54 55 56 57 58 59 60 61 62 63 64 65
+   construct big huge ;
+
+: BIG-SUM ( big -- n )
+   MATCH big
+      small OF -1 ENDOF
+      huge OF
+         + + + + + + + + + + + + + + + +
+         + + + + + + + + + + + + + + + +
+         + + + + + + + + + + + + + + + +
+         + + + + + + + + + + + + + + + +
+      ENDOF
+   ;MATCH ;
+
+: WRAP-EMPTY ( -- wrap<pt> ) construct wrap empty ;
+: WRAP-FULL ( n n -- wrap<pt> ) T0--INSTALL--TEST-PT:MAKE construct wrap full ;
+
+: WRAP-SUM ( wrap<pt> -- n )
+   MATCH wrap
+      empty OF 0 ENDOF
+      full OF T0--INSTALL--TEST-PT:UNMAKE 7 * swap 11 * + ENDOF
+   ;MATCH ;
+
+\ A character literal files its operand under its own ordinal and a quotation
+\ resumes at its first token's: a MATCH after both, in a quotation after a
+\ string and another, reads the facts at its own tokens.
+: ORD-MIX ( n -- n )
+   [char] x drop
+   [: s" ab" 2drop [char] y drop
+      SOME-PT MATCH option
+         none OF 0 ENDOF
+         some OF T0--INSTALL--TEST-PT:UNMAKE 7 * swap 11 * + ENDOF
+      ;MATCH ;] execute ;
+
 \ ---- a clause T0 refuses -----------------------------------------------------
 \ A definer whose clause holds a counted string of 256 bytes, one past what a
 \ counted length's one byte holds.
@@ -130,6 +295,46 @@ TYPED-VARIABLE ACCESSOR [ -- n ]
 TYPED-VARIABLE DESCRIPTOR [ -- FFI-CB:callback ]
 ' T0-CMP-ENTRY ACCESSOR !
 ' T0-CMP DESCRIPTOR !
+
+\ ---- a hostile tag in a child ------------------------------------------------
+\ PROCESS BOUNDARY. The bad-tag trap exits the process, so the row runs
+\ test/compiler/native-match-forge.f in a child under test/t0-child.f: T0
+\ installed there compiles the MATCH the hostile tag reaches.
+$4000 constant CAP-CAP
+30000 constant CHILD-MS
+
+create ERR-BUF CAP-CAP allot
+create OUT-BUF CAP-CAP allot
+create PRODUCT-PATH FS-PATH-CAP allot
+
+variable CHILD-ERR-N
+variable CHILD-RC
+
+: PRODUCT$ ( -- ptr u8 n )
+   SOURCE-ROOT:CWD$ s" bin/hb" PRODUCT-PATH JOIN-PATH {: u:n :}
+   PRODUCT-PATH u ;
+
+: PRODUCT-ENV! ( -- )
+   PROC-ENV-RESET
+   s" HABU_UNDER_TEST" >LEN PRODUCT$ >LEN PROC-ENV+
+   s" HABU_FIXPOINT_ENGINE" >LEN PRODUCT$ >LEN PROC-ENV+
+   PROC-ENV-INHERIT-MISSING ;
+
+\ Run bin/hb on the file named by t, compiled by T0 in the child.
+: CHILD-RUN ( ptr u8 n -- ) {: t:ptr u:n :}
+   PROC-ARGV-RESET
+   s" --load" >LEN PROC-ARGV+
+   s" test/t0-child.f" >LEN PROC-ARGV+
+   t u >LEN PROC-ARGV+
+   PRODUCT-ENV!
+   s" bin/hb" >LEN
+   OUT-BUF CAP-CAP >LEN
+   ERR-BUF CAP-CAP >LEN
+   CHILD-MS >MS
+   RUN-ARGV-ENV-CAPTURE-OUTCOME
+   PROC-OUTCOME>RC RC>N CHILD-RC !
+   LEN>N CHILD-ERR-N !
+   drop ;
 
 public
 
@@ -197,12 +402,56 @@ private
    s" a definition after the refusals compiles and runs" T-LABEL
    s" : AFTER-REFUSALS ( -- n ) 6 ; AFTER-REFUSALS" TEST-EVAL:N 6 T= ;
 
+\ Each construction's cell under it proves the pads it pushed: one too many or
+\ too few moves it.
+: MATCH-CASE ( -- )
+   s" MATCH over an enum" T-LABEL
+   ROJO HUE-CODE 10 T=  VERDE HUE-CODE 20 T=  AZUL HUE-CODE 30 T=
+   s" MATCH over a sum type with a payload, built with pads" T-LABEL
+   77 NADA BOX-SUM 0 T= 77 T=
+   77 5 UNO BOX-SUM 5 T= 77 T=
+   77 10 3 DUO BOX-SUM 7 T= 77 T=
+   s" a nested MATCH" T-LABEL
+   6 7 DUO ROJO PAIR-CODE -1 T=
+   6 7 DUO VERDE PAIR-CODE 42 T=
+   4 UNO VERDE PAIR-CODE 8 T=
+   NADA VERDE PAIR-CODE 1 T=
+   9 UNO AZUL PAIR-CODE -9 T=
+   s" a MATCH inside case" T-LABEL
+   8 2 DUO 1 CASE-BOX 6 T=
+   8 2 DUO 2 CASE-BOX 10 T=
+   3 UNO 2 CASE-BOX 30 T=
+   NADA 2 CASE-BOX -1 T=
+   5 UNO 9 CASE-BOX 1005 T=
+   s" a MATCH in a does> clause" T-LABEL
+   ROJO W5 5 T=  VERDE W5 10 T=  AZUL W5 -5 T=
+   s" a call building a wider instantiation pushes its pads" T-LABEL
+   77 0 SOME-PT PT-SUM 0 T= 77 T=
+   77 3 SOME-PT PT-SUM 204 T= 77 T=
+   s" MATCH over a payload past a glue mask's 64 cells" T-LABEL
+   77 BIG-SMALL BIG-SUM -1 T= 77 T=
+   77 BIG-HUGE BIG-SUM 2145 T= 77 T=
+   s" construct pushes the pads its instantiation adds" T-LABEL
+   77 WRAP-EMPTY WRAP-SUM 0 T= 77 T=
+   77 3 4 WRAP-FULL WRAP-SUM 61 T= 77 T=
+   s" a MATCH in a quotation after character literals and a string" T-LABEL
+   77 3 ORD-MIX 204 T= 77 T=
+   77 0 ORD-MIX 0 T= 77 T= ;
+
+: FORGE-CASE ( -- )
+   s" test/compiler/native-match-forge.f" CHILD-RUN
+   s" a hostile tag reaches T0's trap and exits" T-LABEL
+   ERR-BUF CHILD-ERR-N @ s" hb: bad hue tag" CONTAINS? TTRUE
+   CHILD-RC @ ENGINE-ERROR:BAD-TAG T= ;
+
 public
 
 : RUN ( -- )
    T-RESET
    CALL-CASE
    DOES-CASE
+   MATCH-CASE
+   FORGE-CASE
    CALLBACK-CASE
    REFUSAL-CASE
    T-REPORT ;

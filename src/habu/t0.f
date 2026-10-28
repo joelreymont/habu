@@ -39,8 +39,8 @@
 \
 \ A TOKEN IS, IN THIS ORDER: a local in scope; a string opener (`s" c" ." s\"
 \ c\" .\"`); a control keyword (if else then begin until while repeat again do
-\ ?do loop +loop leave unloop i j case of endof endcase exit recurse >r r> r@
-\ ['] [char] {: [: ;]); an operation T0 inlines, when the spelling binds the
+\ ?do loop +loop leave unloop i j case of endof endcase MATCH construct exit
+\ recurse >r r> r@ ['] [char] {: [: ;]); an operation T0 inlines, when the spelling binds the
 \ engine's seeded primitive (NDICT:SPELL-PRIM?): the stack shuffles, + - * and
 \ or xor 1+ 1- negate invert lshift rshift, the comparisons, @ and c@; a word
 \ the dictionary binds (NDICT:CALL-TARGET), as a call; an immediate (IMM-TOKEN
@@ -56,6 +56,27 @@
 \ behind the inlined operations and the calls fold case themselves; T0 compares
 \ with STR=CI. So `IF`, `RECURSE`, `S"` and `DUP` are `if`, `recurse`, `s"`
 \ and the primitive `dup`.
+\
+\ THE ORDINALS. The checker files what it proved about a token under that
+\ token's ordinal in its report (src/core/checker.f SCAN-REPORT), and TOKEN
+\ counts the same way: the name is 0, the signature reports nothing, each other
+\ token is one, a string literal with its opener is one, `[char]` with its
+\ operand is one, and a tick's or `is`'s operand is one after its keyword. A
+\ quotation's first ordinal is recorded where it is skipped, and the does>
+\ clause's follows its `does>`.
+\
+\ MATCH AND CONSTRUCT. `MATCH fam` reads its value as the cells the checker
+\ proved at the family token, the tag on top, and opens a case over the tag.
+\ Each arm, `variant of`, compares the tag with the variant's (NFAM:TAG); the
+\ match drops the tag and the pads the checker proved at the `of`, leaving the
+\ payload. `;MATCH` is the default arm: a tag no arm matched calls the trap
+\ routine with the family's bad-tag message (src/compiler/native/trap.f), as
+\ tier 1's MATCH-TRAP. The variant tokens, `of` and `;MATCH` are read in place,
+\ never as locals or words. `construct fam v` pushes the variant's pads as
+\ zeros, then its tag. A call to a word first pushes, as zeros, the pads the
+\ checker proved the call's instantiation adds (NDICT:CON-PADS): OPTION:NONE
+\ at option<pt>. A form whose facts are missing or disagree, as tier 1's
+\ MATCH-SCAN refuses them, is E-T0-MATCH.
 \
 \ A STRING's payload starts one byte past its opener, as BODYBUF keeps it
 \ (src/habu/definers.f DEF-TEXT), and src/habu/escape.f decodes an escaped
@@ -101,7 +122,9 @@
 \ scope where its block opened: an `if` or `else`; a `begin` and a `while`,
 \ which `while` puts under its `begin` as Forth's orig/dest order has it, so
 \ `begin ... while ... while ... repeat then` closes; a `do` level; a `case`,
-\ each `endof` above it and the open `of`. A structure that does not close,
+\ each `endof` above it and the open `of`; a `MATCH`, with its family and the
+\ cells the checker proved at the family token, tag on top (CS-FAM, CS-WID),
+\ each `endof` above it and the open `OF`. A structure that does not close,
 \ and a loop word outside the loops it needs, is E-T0-CONTROL, refused before
 \ the emitter is called: T0-EMIT's structured words (src/habu/t0-emit.f
 \ CONTROL) keep the branches and trust this nesting.
@@ -120,6 +143,8 @@ require src/habu/outer.f
 require src/habu/escape.f
 require src/compiler/native/checker-owner.f
 require src/compiler/native/dict.f
+require src/compiler/native/family.f
+require src/compiler/native/trap.f
 require src/compiler/native/fetch.f
 require src/compiler/native/string.f
 require src/compiler/native/publish.f
@@ -139,6 +164,7 @@ public
 -9603 constant E-T0-IMMEDIATE    \ an immediate other than a parse-neutral one: UNSUPPORTED$
 -9604 constant E-T0-BINDS        \ the body binds other than the certificate's count of locals
 -9605 constant E-T0-SHADOW       \ a definition while a target shadow is open: no shadow path yet
+-9606 constant E-T0-MATCH        \ a MATCH or construct the checker's facts do not bear out, as tier 1's E-NELAB-MATCH
 
 private
 
@@ -149,6 +175,7 @@ variable POS
 PTR-VARIABLE BAD
 variable BAD-LEN
 variable MISSING                     \ nonzero: the refused token is a tick operand no record answers
+variable ORD                         \ the checker's ordinal of the token TOKEN reads next
 
 : TXT$ ( -- ptr u8 ) TXT @ ;
 
@@ -167,16 +194,26 @@ variable MISSING                     \ nonzero: the refused token is a tick oper
    begin AT-BLANK? while POS @ 1+ POS ! repeat
    POS @ {: start:n :}
    begin IN-TOKEN? while POS @ 1+ POS ! repeat
-   TXT$ start +  POS @ start - ;
+   POS @ start - {: u:n :}
+   u 0<> if 1 ORD +! then
+   TXT$ start + u ;
+
+\ `[char]` and `char` file their operand under their own ordinal, as the
+\ checker reports a character literal (src/core/checker.f PARSE-LIT?); a tick's
+\ operand takes the next one.
+: LIT-OPERAND ( -- ptr u8 n ) TOKEN -1 ORD +! ;
+
+: LIT-KEYWORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" [char]" STR=CI a u s" char" STR=CI or ;
 
 \ Whether a token ends a quotation.
 : QUOT-END? ( ptr u8 n -- bool ) s" ;]" STR= ;
 
 \ Whether the unit ends here: no token follows, or the quotation's `;]` does.
 : AT-END? ( -- bool )
-   POS @ {: saved:n :}
+   POS @ ORD @ {: saved:n ord:n :}
    TOKEN {: a:ptr u:n :}
-   saved POS !
+   saved POS !  ord ORD !
    u 0= a u QUOT-END? or ;
 
 \ Throw code, naming the token for UNSUPPORTED$.
@@ -504,9 +541,12 @@ variable CLAUSE                      \ a does> definer's clause unit, else -1
 5 constant CS-CASE
 6 constant CS-OF
 7 constant CS-ENDOF
+8 constant CS-MATCH
 
 DYNAMIC-BUFFER CS-KIND n
 DYNAMIC-BUFFER CS-LOC n              \ locals in scope where the block opened
+DYNAMIC-BUFFER CS-FAM n              \ a MATCH's family
+DYNAMIC-BUFFER CS-WID n              \ a MATCH's cells, the tag on top
 variable CS-N
 
 : CS-PUSH ( n n -- ) {: kind:n loc:n :}
@@ -678,13 +718,22 @@ variable DO-N                       \ the open levels
    T0-EMIT:CASE,
    CS-CASE L-N @ CS-PUSH ;
 
-: DO-OF ( -- )
-   CS-TOP-KIND {: kind:n :}
-   kind CS-CASE <> kind CS-ENDOF <> and if E-T0-CONTROL throw then
+\ The open structure under the `endof`s on top: the case or MATCH whose arms
+\ they close.
+: ARMS-AT ( -- n )
+   CS-N @ 1- begin dup 0 >= if dup CS-KIND @ CS-ENDOF = else false then while 1- repeat
+   dup 0 < if E-T0-CONTROL throw then ;
+
+\ Compare the selector under the top with the top and open the arm.
+: OF-TEST ( -- )
    2 ENSURE
    TOP IMM? if OF-LIT else OF-REG then
    DROP1
    CS-OF L-N @ CS-PUSH ;
+
+: DO-OF ( -- )
+   ARMS-AT CS-KIND @ CS-CASE <> if E-T0-CONTROL throw then
+   OF-TEST ;
 
 : DO-ENDOF ( -- )
    CS-OF CS-POP
@@ -737,7 +786,7 @@ variable TAILED
 
 \ The operand's first byte; a character past ASCII is not compiled yet.
 : DO-CHAR ( -- )
-   TOKEN {: a:ptr u:n :}
+   LIT-OPERAND {: a:ptr u:n :}
    u 0= if a u UNSUPPORTED then
    a c@ {: b:n :}
    b $80 >= if a u UNSUPPORTED then
@@ -829,6 +878,7 @@ TRUSTED: TYPE-ENTRY ( -- n ) ['] type ;
 \ ---- quotations ------------------------------------------------------------------
 variable NQ                         \ units met so far, the definition's included
 DYNAMIC-BUFFER QSTART n             \ where each quotation's body text starts
+DYNAMIC-BUFFER QORD n               \ and the checker's ordinal of its first token
 variable NESTED                     \ the `[:` tokens skipped inside quotations so far
 
 \ How a token in a quotation being skipped moves the nesting depth. A string's
@@ -838,7 +888,9 @@ variable NESTED                     \ the `[:` tokens skipped inside quotations 
    a u s" [:" STR= if 1 NESTED +! 1 exit then
    a u QUOT-END? if -1 exit then
    a u OPENER STR-NONE <> if u 3 = SPAN drop 2drop 0 exit then
-   a u SOURCE-SYNTAX:PARSING-KEYWORD? if TOKEN 2drop then
+   a u SOURCE-SYNTAX:PARSING-KEYWORD? if
+      a u LIT-KEYWORD? if LIT-OPERAND else TOKEN then 2drop
+   then
    0 ;
 
 \ Past the `;]` that closes the quotation just opened.
@@ -854,8 +906,8 @@ variable NESTED                     \ the `[:` tokens skipped inside quotations 
 \ Push the next unit's address and skip its text, compiled after this unit.
 : DO-QUOT ( -- )
    NQ @ {: k:n :}
-   k 1+ QSTART-RESERVE
-   POS @ k QSTART !
+   k 1+ QSTART-RESERVE  k 1+ QORD-RESERVE
+   POS @ k QSTART !  ORD @ k QORD !
    k 1+ NQ !
    SKIP-QUOT
    k PUSH-UNIT ;
@@ -863,6 +915,7 @@ variable NESTED                     \ the `[:` tokens skipped inside quotations 
 \ ---- the does> split -----------------------------------------------------------
 variable CUT                        \ the byte just past `does> `, or 0
 variable EMPTY-CLAUSE               \ whether no token follows the cut: the clause is empty
+variable CLAUSE-ORD                 \ the checker's ordinal of the clause's first token
 
 \ The parent leaves through `does-patch` whatever the source's package scope,
 \ as tier 1 does (src/compiler/native/elaborate.f DOES-PATCH-ENTRY).
@@ -884,6 +937,76 @@ TRUSTED: DOES-PATCH-ENTRY ( -- n ) ['] does-patch ;
    NDEFINITION:M-DOES-SIG-U @ PUSH-CONST
    SPILL-ALL
    DOES-PATCH-ENTRY CUT @ NDEFINITION:DOES-SPAN - T0-EMIT:CALL ;
+
+\ ---- MATCH and construct -----------------------------------------------------
+\ The facts are the checker's, filed under the ordinal of the token that holds
+\ them, as tier 1 reads them (src/compiler/native/elaborate.f MATCH-SCAN).
+: MATCH-CK ( bool -- ) 0= if E-T0-MATCH throw then ;
+
+\ `;MATCH` closes MATCH k: a tag no arm matched runs into the trap on the last
+\ arm's mismatch edge, as tier 1's MATCH-TRAP, and every `endof` lands after
+\ it. loc is the `;MATCH` token's offset in the text.
+: CLOSE-MATCH ( n n -- ) {: loc:n k:n :}
+   CS-TOP-KIND CS-MATCH <> MATCH-CK
+   k CS-FAM @ NFAM:NAME$ NTRAP:BAD-TAG {: a:ptr u:n rc:n :}
+   a u NSTR:INTERN-SOURCE PUSH-ADDR
+   u PUSH-CONST  rc PUSH-CONST
+   NTRAP:ROUTINE loc DO-CALL
+   begin CS-TOP-KIND CS-ENDOF = while CS-ENDOF CS-POP repeat
+   CS-MATCH CS-POP
+   T0-EMIT:ENDCASE,
+   SCOPE-END ;
+
+\ The next arm's `variant of`, or the `;MATCH` that ends the arms. The arm
+\ compares the tag with the variant's; the match drops the tag and the pads
+\ the checker proved at the `of`, leaving the payload, and the mismatch keeps
+\ the value for the next arm.
+: ARM-HEAD ( -- )
+   ARMS-AT {: k:n :}
+   TOKEN {: a:ptr u:n :}
+   a u s" ;MATCH" STR=CI if a TXT$ - k CLOSE-MATCH exit then
+   a u k CS-FAM @ NFAM:VARIANT MATCH-CK {: vid:n :}
+   ORD @ {: at:n :}
+   TOKEN s" of" STR=CI MATCH-CK
+   at NDICT:MATCH-CELLS {: pads:n :}
+   pads NDICT:MATCH-NONE <> MATCH-CK
+   k CS-WID @ 1- pads - {: pay:n :}
+   pay 0 >= MATCH-CK
+   at NDICT:MATCH-PAYLOAD drop pay = MATCH-CK
+   vid NFAM:TAG PUSH-CONST
+   OF-TEST
+   pads 0 ?do DROP1 loop ;
+
+\ `MATCH fam`: the value is the cells the checker proved at the family token,
+\ at least the family's declared width.
+: DO-MATCH ( -- )
+   ORD @ {: at:n :}
+   TOKEN NFAM:MATCH-FAM MATCH-CK {: fam:n :}
+   at NDICT:MATCH-CELLS {: w:n :}
+   w NDICT:MATCH-NONE <> MATCH-CK
+   w fam NFAM:WIDTH >= MATCH-CK
+   T0-EMIT:CASE,
+   CS-N @ {: k:n :}
+   CS-MATCH L-N @ CS-PUSH
+   k 1+ CS-FAM-RESERVE  k 1+ CS-WID-RESERVE
+   fam k CS-FAM !  w k CS-WID !
+   ARM-HEAD ;
+
+\ `endof`; a MATCH's arm reads the next `variant of` or `;MATCH` after it.
+: ARM-END ( -- )
+   DO-ENDOF
+   ARMS-AT CS-KIND @ CS-MATCH = if ARM-HEAD then ;
+
+\ `construct fam v`: the variant's pads, the family's and those the checker
+\ proved the instantiation adds at the variant token, then its tag, as tier 1's
+\ DO-MAKE-BUNDLE; the payload is already on the stack.
+: DO-CONSTRUCT ( -- )
+   TOKEN NFAM:CON-FAM MATCH-CK {: fam:n :}
+   ORD @ {: at:n :}
+   TOKEN fam NFAM:VARIANT MATCH-CK {: vid:n :}
+   at NDICT:CALL-CELLS drop 0 >= MATCH-CK
+   fam vid NFAM:PADS  at NDICT:CON-PADS +  0 ?do 0 PUSH-CONST loop
+   vid NFAM:TAG PUSH-CONST ;
 
 \ ---- the keyword dispatch ----------------------------------------------------
 \ By length first, so a token compares only with the keywords of its length.
@@ -954,7 +1077,8 @@ TRUSTED: DOES-PATCH-ENTRY ( -- n ) ['] does-patch ;
    a u s" again" STR=CI if DO-AGAIN true exit then
    a u s" +loop" STR=CI if DO-+LOOP true exit then
    a u s" leave" STR=CI if DO-LEAVE true exit then
-   a u s" endof" STR=CI if DO-ENDOF true exit then
+   a u s" endof" STR=CI if ARM-END true exit then
+   a u s" MATCH" STR=CI if DO-MATCH true exit then
    false ;
 
 : KW6 ( ptr u8 n -- bool ) {: a:ptr u:n :}
@@ -972,6 +1096,10 @@ TRUSTED: DOES-PATCH-ENTRY ( -- n ) ['] does-patch ;
    a u s" endcase" STR=CI if DO-ENDCASE true exit then
    false ;
 
+: KW9 ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" construct" STR=CI if DO-CONSTRUCT true exit then
+   false ;
+
 : KEYWORD ( ptr u8 n -- bool ) {: a:ptr u:n :}
    u 1 = if a u KW1 exit then
    u 2 = if a u KW2 exit then
@@ -980,6 +1108,7 @@ TRUSTED: DOES-PATCH-ENTRY ( -- n ) ['] does-patch ;
    u 5 = if a u KW5 exit then
    u 6 = if a u KW6 exit then
    u 7 = if a u KW7 exit then
+   u 9 = if a u KW9 exit then
    false ;
 
 \ ---- one token ---------------------------------------------------------------
@@ -997,6 +1126,13 @@ TRUSTED: DOES-PATCH-ENTRY ( -- n ) ['] does-patch ;
    number 0= range or if a u UNSUPPORTED then
    v PUSH-CONST ;
 
+\ A call that builds a value of a wide instantiation first pushes the cells
+\ the checker proved the instantiation adds at the call token (NDICT:CON-PADS),
+\ as tier 1's DO-CALL; the token TOKEN just read is ordinal ORD - 1.
+: WORD-CALL ( n n -- ) {: to:n loc:n :}
+   ORD @ 1- NDICT:CON-PADS 0 ?do 0 PUSH-CONST loop
+   to loc DO-CALL ;
+
 : COMPILE-TOKEN ( ptr u8 n -- ) {: a:ptr u:n :}
    a TXT$ - {: loc:n :}
    a u FIND-LOCAL {: k:n :}
@@ -1005,18 +1141,20 @@ TRUSTED: DOES-PATCH-ENTRY ( -- n ) ['] does-patch ;
    kind STR-NONE <> if kind u 3 = loc u + 1+ DO-STRING exit then
    a u KEYWORD if exit then
    a u NDICT:CALL-TARGET {: to:n :}
-   to 0<> if to loc DO-CALL exit then
+   to 0<> if to loc WORD-CALL exit then
    a u tok-imm? 0<> if a u IMM-TOKEN exit then
    a u NUMBER ;
 
-\ Past the name and a signature, if one follows it.
+\ Past the name and a signature, if one follows it. The checker reports the
+\ name as ordinal 0 and no token of the signature.
 : SKIP-HEAD ( -- )
    TOKEN 2drop
    POS @ {: after:n :}
-   TOKEN s" (" STR= 0= if after POS ! exit then
+   TOKEN s" (" STR= 0= if after POS ! 1 ORD ! exit then
    begin
       TOKEN dup 0= if drop drop true else s" )" STR= then
-   until ;
+   until
+   1 ORD ! ;
 
 \ ---- one unit --------------------------------------------------------------------
 \ Compile tokens to the end of the unit: whether a `;]` ended it rather than
@@ -1042,7 +1180,7 @@ TRUSTED: DOES-PATCH-ENTRY ( -- n ) ['] does-patch ;
 
 \ Quotation unit k, from its recorded start through its `;]`.
 : QUOT ( n -- ) {: k:n :}
-   k QSTART @ POS !
+   k QSTART @ POS !  k QORD @ ORD !
    k RESET
    k T0-EMIT:QUOT-OPEN
    BODY 0= if E-T0-CONTROL throw then
@@ -1062,7 +1200,7 @@ TRUSTED: DOES-PATCH-ENTRY ( -- n ) ['] does-patch ;
 \ own locals and its own certificate at base CUT. An empty clause's unit is
 \ still built, with no address bound to it: the parent pushed 0.
 : DO-CLAUSE ( n -- ) {: k:n :}
-   CUT @ POS !  k 1+ NQ !  k RESET  0 BINDS !
+   CUT @ POS !  CLAUSE-ORD @ ORD !  k 1+ NQ !  k RESET  0 BINDS !
    EMPTY-CLAUSE @ if T0-EMIT:UNIT-OPEN else k T0-EMIT:QUOT-OPEN then
    BODY if E-T0-CONTROL throw then
    FINISH
@@ -1079,6 +1217,7 @@ TRUSTED: DOES-PATCH-ENTRY ( -- n ) ['] does-patch ;
    T0-EMIT:OPEN
    SKIP-HEAD
    BODY if E-T0-CONTROL throw then
+   ORD @ CLAUSE-ORD !
    cut 0<> if
       POS @ cut 1- <> if E-T0-CONTROL throw then
       DOES-TAIL
