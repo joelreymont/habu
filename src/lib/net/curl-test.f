@@ -70,6 +70,8 @@ $40 constant DRIBBLE-STEP               \ bytes per timed write
 \ whatever LOW-SPEED! set.
 DRIBBLE-GAP-MS 3 * constant CEILING-MS  \ several gaps in: a per-read limit never fires, a ceiling does
 $61 constant DRIBBLE-BYTE               \ the body's filler, never the sentinel
+8 constant TRICKLE-STEP                 \ the dribble's body in 96 short writes: the
+2 constant TRICKLE-GAP-MS               \ transfer is in flight whenever its waiter is halted
 1000000 constant NS-PER-MS
 10 constant LOW-RATE                    \ bytes a second, far under the dribble's own
 1 constant LOW-SECONDS                  \ the shortest window libcurl measures
@@ -125,6 +127,8 @@ variable RETRY-POST-HITS
 variable SILENT-LISTENER
 variable SILENT-PORT
 variable CEILING-HITS                   \ the cut dribble's request, if it got out
+variable DRIBBLE-SENT                   \ body bytes the last dribble wrote before it ended
+variable DRIBBLE-ENDS                   \ dribbles served to the end or cut by the client
 variable STREAM-ACK                     \ the peer may finish only after NEXT delivered
 variable STREAM-DONE
 variable STREAM-READ
@@ -161,6 +165,7 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
 : PATH-COOKIE$ ( -- ptr u8 n ) s" /cookie" ;
 : PATH-STALL$ ( -- ptr u8 n ) s" /stall" ;
 : PATH-DRIBBLE$ ( -- ptr u8 n ) s" /dribble" ;
+: PATH-TRICKLE$ ( -- ptr u8 n ) s" /trickle" ;
 : PATH-STREAM$ ( -- ptr u8 n ) s" /stream" ;
 : PATH-STREAM-SHORT$ ( -- ptr u8 n ) s" /stream-short" ;
 : PATH-HEADERS$ ( -- ptr u8 n ) s" /headers" ;
@@ -460,8 +465,8 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
 
 \ A client that already gave up answers this write with its own errno, which is
 \ its departure and not a fault of this server.
-: DRIBBLE-STEP! ( TCP4:connection n -- bool ) {: conn:TCP4:connection at:n :}
-   conn DRIBBLE-BUF at + DRIBBLE-STEP TCP4:TRANSFER-BYTES TCP4:WRITE
+: DRIBBLE-STEP! ( TCP4:connection n n -- bool ) {: conn:TCP4:connection at:n step:n :}
+   conn DRIBBLE-BUF at + step TCP4:TRANSFER-BYTES TCP4:WRITE
    MATCH TCP4:status
       ok OF true ENDOF
       failed OF drop false ENDOF
@@ -470,22 +475,26 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
 
 \ Steady and slow, never stalled: every gap is far shorter than a low-speed
 \ window, so no stall test under this rate ends the transfer and only a limit on
-\ the WHOLE transfer can.
-: DRIBBLE-BODY ( TCP4:connection -- ) {: conn:TCP4:connection :}
+\ the WHOLE transfer can. Answers the body bytes written before the end or the
+\ client's departure.
+: DRIBBLE-BODY ( TCP4:connection n n -- n ) {: conn:TCP4:connection step:n gap:n :}
    0 begin dup DRIBBLE-U < while
-      DRIBBLE-GAP-MS >MS TASK:SLEEP
-      dup conn swap DRIBBLE-STEP! 0= if drop exit then
-      DRIBBLE-STEP +
-   repeat drop ;
+      gap >MS TASK:SLEEP
+      dup conn swap step DRIBBLE-STEP! 0= if exit then
+      step +
+   repeat ;
 
 
-: SERVE-DRIBBLE ( TCP4:connection -- ) {: conn:TCP4:connection :}
+\ DRIBBLE-ENDS moves only after the connection is closed, so once it has, the
+\ client can receive nothing more from this dribble.
+: SERVE-DRIBBLE ( TCP4:connection n n -- ) {: conn:TCP4:connection step:n gap:n :}
    DRIBBLE-HEAD
    conn RES-BUF RES-U @ TCP4:TRANSFER-BYTES TCP4:WRITE SERVER-STATUS
-   conn DRIBBLE-BODY
+   conn step gap DRIBBLE-BODY DRIBBLE-SENT atomic!
    conn TCP4:SENDING TCP4:SHUTDOWN PEER-STATUS
    conn DRAIN
-   conn TCP4:CLOSE PEER-STATUS ;
+   conn TCP4:CLOSE PEER-STATUS
+   1 DRIBBLE-ENDS atomic-add drop ;
 
 
 : STREAM-HEAD ( -- )
@@ -777,7 +786,8 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    s" POST" METHOD-IS? if conn SERVE-UNIMPLEMENTED exit then
    s" DELETE" METHOD-IS? if conn SERVE-UNIMPLEMENTED exit then
    PATH-STALL$ PATH-IS? if conn SERVE-STALL exit then
-   PATH-DRIBBLE$ PATH-IS? if conn SERVE-DRIBBLE exit then
+   PATH-DRIBBLE$ PATH-IS? if conn DRIBBLE-STEP DRIBBLE-GAP-MS SERVE-DRIBBLE exit then
+   PATH-TRICKLE$ PATH-IS? if conn TRICKLE-STEP TRICKLE-GAP-MS SERVE-DRIBBLE exit then
    PATH-STREAM$ PATH-IS? if conn SERVE-STREAM exit then
    PATH-STREAM-SHORT$ PATH-IS? if conn SERVE-STREAM-SHORT exit then
    PATH-HEADERS$ PATH-IS? if conn SERVE-HEADERS exit then
@@ -2341,6 +2351,54 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
    HALT-HANDLE @ CURL:CLEANUP ;
 
 
+: LEAVE-WAIT ( -- )
+   HALT-HANDLE @ BODY-BUF BODY-CAP >LEN CURL:START
+   MATCH CURL:status
+      ok OF ENDOF
+      failed OF CURL:CODE>N HALT-RC ! ENDOF
+   ;MATCH
+   1 HALT-PARKED atomic!
+   HALT-HANDLE @ CURL:AWAIT DROP-FETCH ;
+
+: LEAVE-WORK ( -- )
+   [: LEAVE-WAIT ;] [: BODY-FILL ;] finally ;
+
+
+\ A halted waiter's cleanups run once AWAIT has unwound, and the span is theirs
+\ by then: the finally refills it, and nothing the loop receives afterwards may
+\ land there. The wait for the server to see the client go outlasts every read
+\ the loop could still make, and a dribble cut short says the transfer was in
+\ flight at the halt. A loop that let go late writes after the refill only when
+\ it reads before the turn that answers the wake, so a regression fails this
+\ case on some runs and not on every one.
+: CASE-HALTED-SPAN ( -- )
+   0 HALT-PARKED !
+   0 HALT-RC !
+   PATH-TRICKLE$ GET-READY HALT-HANDLE !
+   DRIBBLE-ENDS atomic@ {: ends:n :}
+   SERVER-HITS atomic@ {: before:n :}
+   ['] LEAVE-WORK HALT-TASK TASK:ACTIVATE
+   HALT-PARKED 1 REACH
+   before WAIT-HIT
+   HALT-TASK TASK:HALT
+   HALT-TASK AWAIT-END
+   HALT-TASK TASK:KILL
+   DRIBBLE-ENDS ends 1+ REACH
+   HALT-RC @ 0 T=
+   s" the trickle was still in flight when its waiter was halted" T-LABEL
+   DRIBBLE-SENT atomic@ DRIBBLE-U < TTRUE
+   s" a halted waiter's span is its own again before its cleanups run" T-LABEL
+   UNTOUCHED? TTRUE
+   HALT-HANDLE @ CURL:CLEANUP
+   PATH-HELLO$ GET-READY {: subject:CURL:handle :}
+   subject BODY-CAP >LEN MULTI-FETCH
+   subject CURL:CLEANUP
+   s" the loop carries a transfer after a halted waiter let go" T-LABEL
+   LAST-KIND @ KIND-RESPONSE T=
+   LAST-STATUS @ 200 T=
+   BODY$ HELLO$ T$= ;
+
+
 : HALT-STREAM-WORK ( -- )
    HALT-HANDLE @ CURL:STREAM-START
    MATCH CURL:status
@@ -2581,6 +2639,7 @@ variable DEFER-RETURNED
    CASE-STALLED
    CASE-CANCEL
    CASE-OWNER
+   CASE-HALTED-SPAN
    CASE-CANCEL-STREAM-OTHER-TASK
    CASE-HALTED-STREAM
    CURL:LOOP-START EXPECT-OK
@@ -2602,7 +2661,7 @@ variable DEFER-RETURNED
    s" the server task served every request and reported no fault" T-LABEL
    SERVER-BAD @ 0 T=
    SERVER-ERRNO @ 0 T=
-   SERVER-HITS atomic@ 109 DONE-ATTEMPTS @ + CEILING-HITS @ + T= ;
+   SERVER-HITS atomic@ 111 DONE-ATTEMPTS @ + CEILING-HITS @ + T= ;
 
 
 \ Opt-in: the one case that leaves the machine. It proves the system CA bundle

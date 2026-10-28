@@ -25,9 +25,12 @@
 \   LOOP-START). From START until its terminal result is collected, the handle
 \   and its span belong to the loop; the task that started a transfer collects
 \   it exactly once, and LOOP-STOP refuses while any record is held. A task
-\   halted while it waits abandons its record, which the loop frees. A span
-\   must outlive its record: a task halted in AWAIT on one record leaves its
-\   other records to OWNER-END, which runs after the task's cleanups.
+\   halted while it waits abandons its record and waits until the loop has
+\   taken the handle out of the multi handle and cleaned it up, so its span is
+\   the task's again before the halt unwinds through its cleanups. Its other
+\   records, and those of a task that ends some other way, are left to the
+\   loop through OWNER-END, which runs after the task's cleanups: a span must
+\   outlive its record.
 \
 \ Only HABU_NET_TESTS=1 runs the case that leaves the machine and exercises TLS
 \ and the CA bundle; the gate runs without it.
@@ -692,8 +695,10 @@ $18 constant MSG-BYTES
 2 constant STATE-CLAIMED                  \ filled; the loop has not added it yet
 3 constant STATE-RUNNING                  \ the loop added its handle to the multi handle
 4 constant STATE-CANCEL                   \ the owner asked for it to end early
-5 constant STATE-ABANDONED                \ the owner was halted; the loop frees it
+5 constant STATE-ABANDONED                \ the owner ended; the loop frees it
 6 constant STATE-DONE                     \ the result is stored and the owner woken
+7 constant STATE-LEAVING                  \ the halted owner waits for the loop to let go
+8 constant STATE-LEFT                     \ the loop let go; the woken owner frees it
 
 0 constant KIND-RESPONSE                  \ which fetch-result AWAIT builds
 1 constant KIND-TRUNCATED
@@ -762,7 +767,7 @@ AIO:GROUP-MAX TYPED-BUFFER FD-TICKETS AIO:ticket
 
 variable MULTI-CELL                       \ the CURLM* the loop drives
 variable LOOP-LIVE                        \ atomic: a loop is running
-variable STOP-FLAG                        \ atomic: the loop must end
+variable STOP-FLAG                        \ atomic: the loop takes no new record and ends
 variable LOCK-READY                       \ the facility has been initialized once
 variable LOOP-THROW                       \ what ended the loop, reported by LOOP-STOP
 variable LOOP-MRC                         \ the CURLMcode the loop's own body ended on
@@ -854,12 +859,25 @@ CAST: TICKET>N ( AIO:ticket -- n )
    STATE-FREE idx REC-STATE! ;
 
 
-\ An abandoned owner never collected the response, even if FINISH already
-\ closed both streams and published it before the halt reached AWAIT.
-: ABANDON-RELEASE ( n -- ) {: idx:n :}
+\ An owner that left never collects the response, even if FINISH already
+\ closed both streams and published it before the halt reached AWAIT. Runs
+\ under CURL-LOCK once the handle is out of the multi handle. A halted owner
+\ waiting in ABANDON is woken to free the record itself; the lock it takes to
+\ do so keeps it alive until this wake has landed. Any other record is free.
+: LEAVE-DONE ( n -- ) {: idx:n :}
    idx REC-EASY@ STATE-GET STATE-CLEAR-RESPONSE
    idx REC R.BODY @ idx REC R.LEN @ BYTES-RELEASE
+   0 idx REC R.BODY !
+   idx REC-STATE@ STATE-LEAVING = if
+      STATE-LEFT idx REC-STATE!
+      idx REC-OWNER@ TASK:WAKE
+      exit
+   then
    idx REC-RELEASE ;
+
+
+: LEAVING? ( n -- bool ) {: idx:n :}
+   idx REC-STATE@ dup STATE-ABANDONED = swap STATE-LEAVING = or ;
 
 
 : TABLE-CLEAR ( -- )
@@ -1025,14 +1043,14 @@ CAST: TICKET>N ( AIO:ticket -- n )
 
 
 \ A finished streamed transfer keeps its body for NEXT to deliver. An owner
-\ that was halted while it waited is woken by nobody: its record is released,
-\ which is what keeps this loop from waking a TCB the join has released.
+\ that left gets no result: LEAVE-DONE wakes only a halted owner still waiting
+\ in ABANDON, which keeps this loop from waking a TCB the join has released.
 : STREAM-FINISH ( n n -- n ) {: idx:n rc:n :}
    idx REC-STREAM-TAKE {: source:n u:n bodyrc:n :}
    idx CAPTURE-CLOSE {: headers:n headeru:n headrc:n :}
-   idx REC-STATE@ STATE-ABANDONED = if
+   idx LEAVING? if
       source u BYTES-RELEASE headers headeru BYTES-RELEASE
-      idx ABANDON-RELEASE CURLM-OK exit
+      idx LEAVE-DONE CURLM-OK exit
    then
    rc bodyrc FIRST-ERROR headrc FIRST-ERROR {: outcome:n :}
    source idx REC R.BODY !
@@ -1052,12 +1070,12 @@ CAST: TICKET>N ( AIO:ticket -- n )
 
 
 \ A finished whole transfer: libcurl already wrote the body into the owner's
-\ span, exactly as PERFORM's. An abandoned owner is woken by nobody.
+\ span, exactly as PERFORM's. An owner that left gets no result.
 : WHOLE-FINISH ( n n -- n ) {: idx:n rc:n :}
    idx REC-STREAM@ SPAN-TAKE {: u:n refused:bool bodyrc:n :}
    idx CAPTURE-CLOSE {: headers:n headeru:n headrc:n :}
-   idx REC-STATE@ STATE-ABANDONED = if
-      headers headeru BYTES-RELEASE idx ABANDON-RELEASE CURLM-OK exit
+   idx LEAVING? if
+      headers headeru BYTES-RELEASE idx LEAVE-DONE CURLM-OK exit
    then
    rc refused OVERFLOW? {: full:bool :}
    rc full BODY-RC bodyrc FIRST-ERROR headrc FIRST-ERROR {: outcome:n :}
@@ -1136,19 +1154,19 @@ CAST: TICKET>N ( AIO:ticket -- n )
    CURLM-OK ;
 
 
-: ABANDON-RUN ( n -- n ) {: idx:n :}
+: LEAVE-RUN ( n -- n ) {: idx:n :}
    idx REMOVE-ONE dup CURLM-OK <> if exit then drop
    idx STREAM-DROP drop
-   idx ABANDON-RELEASE
+   idx LEAVE-DONE
    CURLM-OK ;
 
 
 : SERVICE-ONE ( n -- n ) {: idx:n :}
    idx REC-STATE@ {: st:n :}
-   st STATE-FREE = st STATE-CLAIMING = or if CURLM-OK exit then
+   st STATE-FREE = st STATE-CLAIMING = or st STATE-LEFT = or if CURLM-OK exit then
    st STATE-CLAIMED = if idx ADD-ONE exit then
    st STATE-CANCEL = if idx CANCEL-RUN exit then
-   st STATE-ABANDONED = if idx ABANDON-RUN exit then
+   idx LEAVING? if idx LEAVE-RUN exit then
    idx STREAM-DELIVER ;
 
 
@@ -1414,7 +1432,7 @@ CAST: TICKET>N ( AIO:ticket -- n )
 \ on a loop that is gone.
 : FAIL-ONE ( n -- ) {: idx:n :}
    idx REC-STATE@ {: st:n :}
-   st STATE-FREE = st STATE-CLAIMING = or if exit then
+   st STATE-FREE = st STATE-CLAIMING = or st STATE-LEFT = or if exit then
    st STATE-DONE = if
       idx REC-MODE@ MODE-WHOLE = if exit then
       idx REC R.BODY @ idx REC R.LEN @ BYTES-RELEASE
@@ -1429,13 +1447,14 @@ CAST: TICKET>N ( AIO:ticket -- n )
    then
    idx REMOVE-ONE drop
    idx STREAM-DROP drop
-   st STATE-ABANDONED = if idx ABANDON-RELEASE exit then
+   idx LEAVING? if idx LEAVE-DONE exit then
    idx CURLE-ABORTED FAILED-STORE
    idx SETTLE-FAILED ;
 
 
 : FAIL-ALL ( -- )
    CURL-LOCK TASK:GET
+   1 STOP-FLAG atomic!
    MAX-TRANSFERS 0 ?do i FAIL-ONE loop
    CURL-LOCK TASK:RELEASE ;
 
@@ -1520,12 +1539,27 @@ CAST: TICKET>N ( AIO:ticket -- n )
    RESULT-BUILD ;
 
 
-\ The owner is gone: the record is the loop's to end and nobody is to be woken.
+\ A halted owner gives its record up and returns only once the loop holds no
+\ part of it: the loop takes the handle out of the multi handle, cleans it up
+\ and marks it LEFT before the span is the owner's to free or reuse. The wait
+\ is a TASK:STOP loop, which parks normally once the halt's hint is taken, and
+\ the owner frees the record itself. A DONE record is already out of the multi
+\ handle with nothing left to write, and is freed here without the loop, which
+\ after a FAIL-ALL is no longer there to answer.
 : ABANDON ( n -- ) {: idx:n :}
    CURL-LOCK TASK:GET
-   STATE-ABANDONED idx REC-STATE!
+   idx REC-STATE@ STATE-DONE = if
+      idx LEAVE-DONE
+      CURL-LOCK TASK:RELEASE
+      exit
+   then
+   STATE-LEAVING idx REC-STATE!
    CURL-LOCK TASK:RELEASE
-   WAKE-POKE ;
+   WAKE-POKE
+   begin idx REC-STATE@ STATE-LEFT <> while TASK:STOP repeat
+   CURL-LOCK TASK:GET
+   idx REC-RELEASE
+   CURL-LOCK TASK:RELEASE ;
 
 
 : OWNER-MARK ( ptr n n -- bool ) {: owner:ptr idx:n :}
@@ -1535,7 +1569,8 @@ CAST: TICKET>N ( AIO:ticket -- n )
    true ;
 
 \ Every task exit precedes release of its TCB. Marking its records under the
-\ loop's lock prevents a later copy or wake, including a halt at a wait's PAUSE.
+\ loop's lock stops a later copy or wake, but this runs after the task's
+\ cleanups, so it gives no span back.
 : OWNER-END ( -- )
    TASK:SELF {: owner:ptr :}
    CURL-LOCK TASK:GET
@@ -1581,9 +1616,11 @@ public
 \ rethrown here. After a stop the loop can be started again.
 : LOOP-STOP ( -- )
    LOOP-LIVE atomic@ 0= if E-STATE throw then
-   ANY-BUSY? if E-STATE throw then
+   CURL-LOCK TASK:GET
+   ANY-BUSY? dup 0= if 1 STOP-FLAG atomic! then
+   CURL-LOCK TASK:RELEASE
+   if E-STATE throw then
    0 LOOP-LIVE atomic!
-   1 STOP-FLAG atomic!
    WAKE-POKE
    LOOP-TASK TASK:JOIN MATCH result
       ok OF drop ENDOF
@@ -1644,7 +1681,11 @@ private
       idx REC-RELEASE
       CODE>STATUS exit
    then drop
-   STATE-CLAIMED idx REC-STATE!
+   CURL-LOCK TASK:GET
+   STOP-FLAG atomic@ 0= {: live:bool :}
+   live if STATE-CLAIMED idx REC-STATE! then
+   CURL-LOCK TASK:RELEASE
+   live 0= if idx STREAM-DROP drop idx REC-RELEASE E-STATE throw then
    WAKE-POKE
    CURL-STATUS:ok ;
 
@@ -1716,13 +1757,12 @@ public
          idx ABANDON
          TASK:PAUSE
          \ PAUSE returns when termination is deferred. The record is already
-         \ abandoned, so never read or park on it again.
+         \ given back, so never read or park on it again.
          CURLE-ABORTED >CODE CURL-CHUNK--RESULT:failed exit
       then
       idx REC R.REQUEST atomic@ REQUEST-WAITING <> if
          idx STREAM-RESULT-TAKE exit
       then
-      TASK:PAUSE
    again ;
 
 
@@ -1733,9 +1773,11 @@ public
 \
 \ The wait is a TASK:STOP loop, so it costs no CPU and the main thread may wait
 \ too. A TASK:HALT while it waits ends the calling task at the PAUSE below, and
-\ the record is abandoned first: the loop frees it and wakes nobody, which is
-\ what keeps the loop from waking a TCB the join has released. The owner's exit
-\ cleanup also covers a halt between this check and PAUSE, or a body throw.
+\ the record is abandoned first: ABANDON returns once the loop has let go of the
+\ handle and the span, and the loop wakes nobody after that, which is what keeps
+\ it from waking a TCB the join has released. The wait has no PAUSE of its own:
+\ HALT posts the park this STOP waits on, so every halt is read at HALTED? and
+\ ends the task only at the PAUSE after ABANDON.
 : AWAIT ( handle -- fetch-result ) {: subject:handle :}
    subject HANDLE-CELL OWNED-INDEX {: idx:n :}
    idx REC-MODE@ MODE-WHOLE <> if E-STATE throw then
@@ -1747,7 +1789,6 @@ public
          TASK:PAUSE
          CURLE-ABORTED FETCH-FAILED exit
       then
-      TASK:PAUSE
    again ;
 
 
