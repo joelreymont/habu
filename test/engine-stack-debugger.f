@@ -77,13 +77,13 @@ package STACK-LIFECYCLE-TEST
    CHILD-RC 0 T=
    OUT OUTLEN @ s" 17" CONTAINS? TTRUE
    OUT OUTLEN @ s" 25" CONTAINS? TTRUE
-   ERR ERRLEN @ s" habu-bp:" CONTAINS? TTRUE
+   DEBUGGER-HITS 2 T=
    s" persistent breakpoint on a calling word returns" T-LABEL
    s" 0 set-tier require src/habu/debug.f package PBP : TWICE ( n -- n ) dup + ; ' TWICE DEBUG:BP* : GO ( -- ) 21 TWICE . 3 TWICE . ; GO ;package"
    CHILD-RC 0 T=
    OUT OUTLEN @ s" 42" CONTAINS? TTRUE
    OUT OUTLEN @ s" 6" CONTAINS? TTRUE
-   ERR ERRLEN @ s" habu-bp:" CONTAINS? TTRUE
+   DEBUGGER-HITS 2 T=
    PERSISTENT-OUT-OF-LINE ;
 
 public
