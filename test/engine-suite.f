@@ -946,10 +946,21 @@ ATOM-CAP @ 2 > TTRUE
    DECOUPLED-ARENA-SNAP-RESET
    s" decoupled-arena-restored" T-LABEL
    SPA-P @ NULL-PTR = SPA-CAP @ 0= and SPN @ 0= and
-   PTR-CAP @ MAXPTR-INIT = and
    QE-CAP @ MAXQE-INIT =  and  ATOM-CAP @ MAXATOM-INIT =  and
    PARAM-CAP @ MAXPARAM-INIT =  and  TTRUE ;
 T-DECOUPLED-RESET
+\ T-SCRATCH-RETIRE: a file boundary gives back the scratch region and zeroes
+\ every span, so the per-definition term stores rest at none; the next check
+\ maps them afresh. The retire and the reads share one word: a top-level line
+\ between them would take ptr terms.
+: T-SCRATCH-RETIRE ( -- )
+   CHECKER-REG:FILE-SCRATCH-RETIRE
+   s" scratch-region-retired" T-LABEL
+   PTRA-P @ NULL-PTR =  STLA-P @ NULL-PTR = and
+   TRAIL-P @ NULL-PTR = and  LTNT-P @ NULL-PTR = and
+   PTR-CAP @ 0= and  STL-CAP @ 0= and  TRAIL-CAP @ 0= and  LTNT-CAP @ 0= and
+   PTRN @ 0= and  STLN @ 0= and  TRAIL-N @ 0= and  LTNT-N @ 0= and  TTRUE ;
+T-SCRATCH-RETIRE
 \ --- growable registries (CT / VREC / SYMS): crossing each init cap mid-run no
 \ longer dies, a relocating grow preserves lookups (SYMS rehashes its HIDX index),
 \ and a grown store persists into fresh image DATA with its names still resolving
@@ -1213,14 +1224,11 @@ TR-REG-ROLLBACK
 \ --- unification trail: prim-overload trials (TRY-EFF) undo speculative binds by
 \ popping the trail, not by copying the whole TVT/RVT pool. Crossing the trail
 \ init cap mid-check grows it without corrupting undo; a backtracking body still
-\ certifies. Lower TRAIL-CAP to force a grow, then repoint to the boot pool.
-variable TR-TRAIL-CAP
-TRAIL-CAP @ TR-TRAIL-CAP !
+\ certifies. Lower TRAIL-CAP to force a grow.
 2 TRAIL-CAP !                            \ shrink so a few binds force a trail grow
 s" COK-TRAIL ( n n n n -- n ) + + + " T-CHECK-PASSES
 s" trail-arena-grow" T-LABEL
 TRAIL-CAP @ 2 > TTRUE
-TR-TRAIL-CAP @ TRAIL-CAP !  TRAIL-BOOT TRAIL-P !  TRAIL-RESET
 \ --- path compression in T-RES: at trial depth 0 a resolved var chain is
 \ compressed so intermediate vars point directly at the root; inside a trial
 \ (depth>0) compression is disabled, so a rolled-back trial can never leave a

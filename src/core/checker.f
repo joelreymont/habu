@@ -204,7 +204,9 @@ DECLARATIONS data-base TARGET-CELL + 0 ptr-field !
 \ --- growable checker arenas --------------------------------------------
 \ Shared mmap primitives for growable checker stores. Their owners decide the
 \ lifetime: persistent registries copy external storage into image DATA;
-\ scratch resets to its boot buffer or releases its owned mapping at capture.
+\ scratch resets to its boot buffer, releases its owned mapping at capture, or
+\ takes from the scratch region, which SR-RETIRE gives back at each file
+\ boundary and at capture.
 \ No process-local mmap address may enter an image. Growth is geometric so
 \ regrow copies each store O(log n) times over a load, not once per grain.
 \ `map-anon` answers the mapping as a pointer whose element type the caller
@@ -246,8 +248,9 @@ DECLARATIONS data-base TARGET-CELL + 0 ptr-field !
 \ side is viewed as bytes. A caller holding a byte count passes it rounded up
 \ to cells. The rounded read stays mapped because every source is a map-anon
 \ mapping (page-granular) or lies inside the fixed DATA region; the rounded
-\ write stays inside the destination because it is a fresh ARENA-ALLOC of at
-\ least the old byte count, and map-anon maps whole pages.
+\ write stays inside the destination because it is at least the old byte
+\ count: a fresh ARENA-ALLOC, and map-anon maps whole pages, or an SR-TAKE,
+\ which starts the next take on a cell boundary past it.
 : ARENA-CELLS-COPY ( ptr a ptr a n -- ) {: src:ptr dst:ptr n:n :}
    n 0 ?do src i cells + @ dst i cells + ! loop ;
 
@@ -327,6 +330,94 @@ DECLARATIONS data-base TARGET-CELL + 0 ptr-field !
    {: pv:ptr capv:ptr row:n :}
    pv @ capv @ row * cells ARENA-UNMAP
    NULL-PTR pv !  0 capv ! ;
+
+\ --- the scratch region ------------------------------------------------------
+\ Per-definition scratch stores take their storage from one region and keep
+\ their counter, pointer and capacity cells in spans of DATA that
+\ CHECKER-REG:SCRATCH{ and CHECKER-REG:}SCRATCH bracket. SR-RETIRE gives the
+\ region back and zeroes every span, so the stores rest at none, NULL and 0,
+\ both in a captured image and at each file boundary, and the first use after
+\ a retire maps afresh.
+\ A span record is two cells at the span's start: the link to the previous
+\ record and the span's end. Both are distances from the record, as the newest
+\ record's link in SCRATCH-SPANS is from that cell, so they hold wherever the
+\ checker's DATA is loaded or relocated; 0 is none, and an end of 0 an open
+\ span.
+variable SCRATCH-SPANS
+
+\ The self-relative link a cell holds; 0 is none.
+: SR-LINK@ ( ptr n -- ptr n ) {: cell:ptr :}
+   cell @ {: d:n :}
+   d 0= IF NULL-PTR EXIT THEN
+   cell d + ;
+
+: SR-LINK! ( ptr n ptr n -- ) {: target:ptr cell:ptr :}
+   target NULL-PTR - cell NULL-PTR - - cell ! ;
+
+package CHECKER-REG
+public
+: SCRATCH{ ( -- )
+   SCRATCH-SPANS SR-LINK@ {: prev:ptr :}
+   prev NULL-PTR <> IF
+      prev CELL + @ 0= IF s" checker: SCRATCH{ inside an open span" 76 die THEN
+   THEN
+   here {: rec:ptr :}
+   0 , 0 ,
+   prev NULL-PTR <> IF prev rec SR-LINK! THEN
+   rec SCRATCH-SPANS SR-LINK! ;
+
+: }SCRATCH ( -- )
+   SCRATCH-SPANS SR-LINK@ {: rec:ptr :}
+   rec NULL-PTR = IF s" checker: }SCRATCH without SCRATCH{" 76 die THEN
+   rec CELL + @ 0 <> IF s" checker: }SCRATCH without SCRATCH{" 76 die THEN
+   here NULL-PTR - rec NULL-PTR - - rec CELL + ! ;
+;package
+
+\ The region's chunks come from ARENA-ALLOC and are never reused before
+\ SR-RETIRE unmaps them, so a take answers zero bytes as map-anon does. A chunk
+\ header is two cells: the previous chunk's self-relative link (SR-LINK@),
+\ then the chunk's bytes. SR-GRAIN is a chunk's least size, not a limit: a
+\ larger take maps a chunk of its own size.
+1024 1024 * constant SR-GRAIN
+CHECKER-REG:SCRATCH{
+PTR-VARIABLE SR-CHUNK   variable SR-USED   variable SR-SIZE
+CHECKER-REG:}SCRATCH
+
+\ SR-TAKE ( bytes -- addr ) : BYTES of the region, cell-aligned.
+: SR-TAKE ( n -- ptr n ) {: need:n :}
+   SR-USED @ 7 + -8 and {: at:n :}
+   SR-CHUNK @ NULL-PTR <>  at need + SR-SIZE @ <=  and IF
+      at need + SR-USED !
+      SR-CHUNK @ at + EXIT
+   THEN
+   need 2 cells + SR-GRAIN max {: bytes:n :}
+   bytes ARENA-ALLOC {: c:ptr :}
+   SR-CHUNK @ NULL-PTR <> IF SR-CHUNK @ c SR-LINK! THEN
+   bytes c CELL + !
+   c SR-CHUNK !  bytes SR-SIZE !  2 cells need + SR-USED !
+   c 2 cells + ;
+
+\ SR-GROW ( base oldbytes newbytes -- base' ) : take NEWBYTES and copy OLDBYTES
+\ from BASE, rounded up to whole cells. The old bytes stay until SR-RETIRE.
+: SR-GROW ( ptr n n n -- ptr n ) {: base:ptr oldbytes:n newbytes:n :}
+   newbytes SR-TAKE {: nb:ptr :}
+   base nb oldbytes CELL + 1- CELL / ARENA-CELLS-COPY
+   nb ;
+
+\ Unmap one chunk and answer the one before it.
+: SR-CHUNK-FREE ( ptr n -- ptr n ) {: c:ptr :}
+   c SR-LINK@  c c CELL + @ ARENA-UNMAP ;
+
+\ Zero one span past its record and answer the record before it.
+: SR-SPAN-ZERO ( ptr n -- ptr n ) {: rec:ptr :}
+   rec CELL + @ 0= IF s" checker: SCRATCH{ without }SCRATCH" 76 die THEN
+   rec BYTE-VIEW 2 cells +  rec CELL + @ 2 cells -  ARENA-ZERO
+   rec SR-LINK@ ;
+
+\ Unmap first: SR-CHUNK itself lives in a span.
+: SR-RETIRE ( -- )
+   SR-CHUNK @ begin dup NULL-PTR <> while SR-CHUNK-FREE repeat drop
+   SCRATCH-SPANS SR-LINK@ begin dup NULL-PTR <> while SR-SPAN-ZERO repeat drop ;
 
 \ TV arena: fifteen var-id planes share one owned mapping and one capacity.
 \ TVT, RVT, EC-TV and EC-RV store logical values plus one: zero means UNBOUND.
@@ -552,15 +643,15 @@ TV-CLEAR
 : MK-QROW ( n -- n ) dup RVK-QUOT! MK-ROW ;
 
 1024 constant MAXPTR-INIT       \ ptr terms (grows on demand)
-create PTRA-BOOT MAXPTR-INIT cells allot   variable PTRN
-PERSISTED-PTR-VARIABLE PTRA-P   variable PTR-CAP
-PTRA-BOOT PTRA-P !   MAXPTR-INIT PTR-CAP !
+CHECKER-REG:SCRATCH{
+variable PTRN   PTR-VARIABLE PTRA-P   variable PTR-CAP
+CHECKER-REG:}SCRATCH
 : PTRA ( -- ptr n ) PTRA-P @ ;
 
 : PTR-ENSURE ( n -- ) {: need:n :}
    need PTR-CAP @ <= IF exit THEN
-   need PTR-CAP @ 2 * max {: nc:n :}
-   PTRA-P @ PTR-CAP @ cells nc cells ARENA-BYTES-GROW PTRA-P !
+   need PTR-CAP @ 2 * max MAXPTR-INIT max {: nc:n :}
+   PTRA-P @ PTR-CAP @ cells nc cells SR-GROW PTRA-P !
    nc PTR-CAP ! ;
 
 : MK-PTR ( n -- n )
@@ -577,19 +668,19 @@ PTRA-BOOT PTRA-P !   MAXPTR-INIT PTR-CAP !
 \ stack DEPTH a `catch` was entered at and never the CONTENTS, so the cell is a
 \ machine word of no known type. It wraps its old type the way T-PTR wraps a
 \ pointee, so a diagnostic can still say WHICH type was lost. Its arena is a
-\ per-definition scratch store like PTRA (counter reset in NEW, buffer repointed
-\ at snapshot, height saved and restored by a prim-overload trial). The three
+\ per-definition scratch store like PTRA (counter reset in NEW, storage in the
+\ scratch region, height saved and restored by a prim-overload trial). The three
 \ words that read it need T-RES and sit just below it.
 1024 constant MAXSTALE-INIT     \ stale terms (grows on demand)
-create STLA-BOOT MAXSTALE-INIT cells allot   variable STLN
-PERSISTED-PTR-VARIABLE STLA-P   variable STL-CAP
-STLA-BOOT STLA-P !   MAXSTALE-INIT STL-CAP !
+CHECKER-REG:SCRATCH{
+variable STLN   PTR-VARIABLE STLA-P   variable STL-CAP
+CHECKER-REG:}SCRATCH
 : STLA ( -- ptr n ) STLA-P @ ;
 
 : STL-ENSURE ( n -- ) {: need:n :}
    need STL-CAP @ <= IF exit THEN
-   need STL-CAP @ 2 * max {: nc:n :}
-   STLA-P @ STL-CAP @ cells nc cells ARENA-BYTES-GROW STLA-P !
+   need STL-CAP @ 2 * max MAXSTALE-INIT max {: nc:n :}
+   STLA-P @ STL-CAP @ cells nc cells SR-GROW STLA-P !
    nc STL-CAP ! ;
 
 : STALE>INNER ( n -- n ) PAY cells STLA + @ ;
@@ -603,18 +694,18 @@ variable TOP-UNKNOWN
 \ --- unification trail: TV!/RV! record each speculative var binding here so a
 \ failed prim-overload trial undoes them by popping+unbinding (TRIAL-REST) instead
 \ of copying the whole TVT/RVT pool. Each entry packs (var-id << 4 | tag).
-\ Reset per definition in NEW; grows into anon mmap on demand; repointed to boot
-\ at snapshot (per-definition scratch, no live content across a snapshot).
+\ Reset per definition in NEW; grows in the scratch region on demand
+\ (per-definition scratch, no live content across a file boundary or snapshot).
 4096 constant TRAIL-INIT        \ trail entries (grows on demand)
-create TRAIL-BOOT TRAIL-INIT cells allot
-PERSISTED-PTR-VARIABLE TRAIL-P   variable TRAIL-CAP   variable TRAIL-N
-TRAIL-BOOT TRAIL-P !   TRAIL-INIT TRAIL-CAP !   0 TRAIL-N !
+CHECKER-REG:SCRATCH{
+PTR-VARIABLE TRAIL-P   variable TRAIL-CAP   variable TRAIL-N
+CHECKER-REG:}SCRATCH
 : TRAIL ( -- ptr n ) TRAIL-P @ ;
 : TRAIL-RESET ( -- ) 0 TRAIL-N ! ;
 : TRAIL-ENSURE ( n -- ) {: need:n :}
    need TRAIL-CAP @ <= IF exit THEN
-   need TRAIL-CAP @ 2 * max {: nc:n :}
-   TRAIL-P @ TRAIL-CAP @ cells nc cells ARENA-BYTES-GROW TRAIL-P !
+   need TRAIL-CAP @ 2 * max TRAIL-INIT max {: nc:n :}
+   TRAIL-P @ TRAIL-CAP @ cells nc cells SR-GROW TRAIL-P !
    nc TRAIL-CAP ! ;
 \ A trail entry carries the var id and a 4-BIT tag. The tag says what to put
 \ back, so a kind raise restores the kind it displaced rather than assuming
@@ -696,15 +787,15 @@ variable LIN-NDECL   0 LIN-NDECL !     \ count of declared DEFLINEAR types (in s
 \ trial ever taints a rolled-back id — trial rollback can never reuse a tainted
 \ id. Reset per definition (NEW). Scanned after each token (LIN-TAINT-SCAN).
 4096 constant LTNT-INIT
-create LTNT-BOOT LTNT-INIT cells allot
-PERSISTED-PTR-VARIABLE LTNT-P   variable LTNT-CAP   variable LTNT-N
-LTNT-BOOT LTNT-P !   LTNT-INIT LTNT-CAP !   0 LTNT-N !
+CHECKER-REG:SCRATCH{
+PTR-VARIABLE LTNT-P   variable LTNT-CAP   variable LTNT-N
+CHECKER-REG:}SCRATCH
 : LTNT ( -- ptr n ) LTNT-P @ ;
 : LIN-TAINT-RESET ( -- ) 0 LTNT-N ! ;
 : LTNT-ENSURE ( n -- ) {: need:n :}
    need LTNT-CAP @ <= IF exit THEN
-   need LTNT-CAP @ 2 * max {: nc:n :}
-   LTNT-P @ LTNT-CAP @ cells nc cells ARENA-BYTES-GROW LTNT-P !
+   need LTNT-CAP @ 2 * max LTNT-INIT max {: nc:n :}
+   LTNT-P @ LTNT-CAP @ cells nc cells SR-GROW LTNT-P !
    nc LTNT-CAP ! ;
 : LIN-TAINT ( n -- )
    LTNT-N @ 1 + LTNT-ENSURE
@@ -15605,14 +15696,11 @@ variable NRX-POS                        \ byte offset cursor over the entry arra
 \ the other per-definition scratch arenas at their boot buffers/init caps
 \ so no grown mmap address is persisted. Their counters reset in NEW, so no live
 \ content is lost — which is also why ARENA-SNAP-BOOT may empty every one of
-\ them. The two arenas with their own reset words keep them: those reset a
-\ counter, not the bytes, and they run after the buffer is already empty.
+\ them. The stores in the scratch region rest through SR-RETIRE instead.
 \ SPA and QEA are counted in records rather than cells (32 bytes each).
 : DECOUPLED-ARENA-SNAP-RESET ( -- )
    SPA-RELEASE
    CP-P CP-BOOT CP-INIT 4 * ARENA-SNAP-BOOT   CP-INIT CP-CAP !
-   PTRA-P PTRA-BOOT MAXPTR-INIT ARENA-SNAP-BOOT          MAXPTR-INIT PTR-CAP !
-   STLA-P STLA-BOOT MAXSTALE-INIT ARENA-SNAP-BOOT        MAXSTALE-INIT STL-CAP !
    QEA-P QEA-BOOT MAXQE-INIT 4 * ARENA-SNAP-BOOT
    QXDA-P QXDA-BOOT MAXQE-INIT ARENA-SNAP-BOOT           QXRA-P QXRA-BOOT MAXQE-INIT ARENA-SNAP-BOOT
    QXHA-P QXHA-BOOT MAXQE-INIT ARENA-SNAP-BOOT           QXNA-P QXNA-BOOT MAXQE-INIT ARENA-SNAP-BOOT
@@ -15629,9 +15717,7 @@ variable NRX-POS                        \ byte offset cursor over the entry arra
    MAXPARAM-INIT PARAM-CAP !
    PARGP-P PARGP-BOOT PARG-INIT ARENA-SNAP-BOOT          PARG-INIT PARG-CAP-V !   \ flat per-param arg pool (resets in NEW)
    PARAM-SCR-P PARAM-SCR-BOOT PARAM-SCR-INIT ARENA-SNAP-BOOT   PARAM-SCR-INIT PARAM-SCR-CAP-V !   \ reentrant parse scratch
-   VRI-AK-P VRI-AK-BOOT VRI-AK-INIT ARENA-SNAP-BOOT      VRI-AK-INIT VRI-AK-CAP-V !     \ transient inst scratch
-   TRAIL-P TRAIL-BOOT TRAIL-INIT ARENA-SNAP-BOOT         TRAIL-INIT TRAIL-CAP !   TRAIL-RESET
-   LTNT-P LTNT-BOOT LTNT-INIT ARENA-SNAP-BOOT            LTNT-INIT LTNT-CAP !   LIN-TAINT-RESET ;
+   VRI-AK-P VRI-AK-BOOT VRI-AK-INIT ARENA-SNAP-BOOT      VRI-AK-INIT VRI-AK-CAP-V ! ;   \ transient inst scratch
 
 \ --- registry snapshot persist. The append-only registries (CT/VREC/SYMS) must
 \ survive into a built image (later checked loads reference persisted signatures).
@@ -19445,7 +19531,7 @@ create LOC-HW-BOOT LOC-HW-INIT cells allot
 \ later handed out, so LOC-ADD and a later definition's `variable` shared a cell.
 \ Every other PTR-VARIABLE in this file is NULLed at the capture seam, which is
 \ what earns it the exemption; this one keeps a buffer, so it joins the relocated
-\ family the other per-definition arenas are in (SPA-P, PTRA-P, QEA-P, ...).
+\ family the other per-definition arenas are in (SPA-P, QEA-P, ...).
 PERSISTED-PTR-VARIABLE LOC-HW-P   LOC-HW-BOOT LOC-HW-P !
 variable LOC-HW-CAP     LOC-HW-INIT LOC-HW-CAP !
 create LOCSEQIX LOC-CAP cells allot
@@ -30890,6 +30976,7 @@ public
    TV-SNAP-RESET
    WF-SNAP-RESET
    DECOUPLED-ARENA-SNAP-RESET
+   SR-RETIRE
    LOC-SNAP-RESET                       \ the local tables and their width arena
    CHECKER-CAPTURE-SCRATCH-PREPARE
    RWIN-DEFAULT                         \ a captured image observes no file
@@ -30954,7 +31041,8 @@ public
    CHECKER-CAPTURE-SCRATCH-PREPARE
    REG-EXT-SCRATCH-XT
    REG-SCRATCH-SNAP-XT
-   REG-LATE-SCRATCH-SNAP-XT ;
+   REG-LATE-SCRATCH-SNAP-XT
+   SR-RETIRE ;
 ;package
 
 package CHECKER-REG
