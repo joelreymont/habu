@@ -1,6 +1,6 @@
 ---
 title: Declare checker scalar scratch inside spans
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-10-26T15:50:44.483527+02:00"
