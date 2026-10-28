@@ -1,19 +1,19 @@
-// host.js - the browser host: runs /module.wasm's turns through turn.js on the
-// main thread, draws its triangles with WebGPU, shows SVG images, its text and
-// tree, and sends canvas input and text from the field. A failure to start
-// WebGPU, request, grow memory or run is shown in text.
+// host.js - the browser host page: index.html's canvas runs /module.wasm
+// through viewport.js, which draws with WebGPU and sends canvas input; this
+// file shows the module's SVG images, text and tree, and sends text from the
+// field and selected tree rows. A failure to start or run is shown in text.
 //
 // SVG is shown through an img element, whose processing mode disables scripts,
 // interaction and external references; supplied markup is never inserted into
 // the document. Only a browser checks this file: host-cli.mjs runs the same
 // turns with no DOM or GPU.
-import { Module } from "./turn.js";
+import { mount } from "./viewport.js";
 
 const canvas = document.querySelector("canvas");
 const field = document.querySelector("input");
 const shown = document.querySelector("#text");
 const tree = document.querySelector("#tree");
-const viewport = document.querySelector("#viewport");
+const frame = document.querySelector("#viewport");
 
 function show(s, error) {
   shown.textContent = s;
@@ -23,125 +23,6 @@ function show(s, error) {
 function fail(e) {
   show(String(e), true);
   console.error(e);
-}
-
-// Clip space from the matrix; each fragment lit by its triangle's normal, from
-// the screen derivatives of the position, so no normals are sent.
-const SHADER = `
-@group(0) @binding(0) var<uniform> clip: mat4x4<f32>;
-
-struct Corner {
-  @builtin(position) at: vec4<f32>,
-  @location(0) p: vec3<f32>,
-  @location(1) @interpolate(flat) selected: u32,
-}
-
-@vertex fn vs(@location(0) p: vec3<f32>, @location(1) selected: u32) -> Corner {
-  return Corner(clip * vec4<f32>(p, 1.0), p, selected);
-}
-
-@fragment fn fs(c: Corner) -> @location(0) vec4<f32> {
-  let n = normalize(cross(dpdx(c.p), dpdy(c.p)));
-  let lit = 0.3 + 0.7 * abs(dot(n, normalize(vec3<f32>(0.3, 0.5, 0.8))));
-  let color = select(vec3<f32>(1.0), vec3<f32>(1.0, 0.45, 0.08), c.selected == 1u);
-  return vec4<f32>(color * lit, 1.0);
-}
-`;
-
-// WebGPU on the canvas; answers the draw a draw record calls.
-async function gpu() {
-  if (!navigator.gpu) throw new Error("this browser has no WebGPU");
-  const adapter = await navigator.gpu.requestAdapter();
-  if (!adapter) throw new Error("WebGPU found no adapter");
-  const device = await adapter.requestDevice();
-  device.lost.then((info) => fail(`WebGPU device lost: ${info.message}`));
-  device.addEventListener("uncapturederror", (e) => fail(`WebGPU: ${e.error.message}`));
-  const format = navigator.gpu.getPreferredCanvasFormat();
-  const context = canvas.getContext("webgpu");
-  context.configure({ device, format, alphaMode: "opaque" });
-  const module = device.createShaderModule({ code: SHADER });
-  const pipeline = device.createRenderPipeline({
-    layout: "auto",
-    vertex: {
-      module,
-      entryPoint: "vs",
-      buffers: [
-        { arrayStride: 12, attributes: [{ shaderLocation: 0, offset: 0, format: "float32x3" }] },
-        { arrayStride: 4, attributes: [{ shaderLocation: 1, offset: 0, format: "uint32" }] },
-      ],
-    },
-    fragment: { module, entryPoint: "fs", targets: [{ format }] },
-    primitive: { topology: "triangle-list", cullMode: "none" },
-    depthStencil: { format: "depth24plus", depthWriteEnabled: true, depthCompare: "less" },
-  });
-  const matrix = device.createBuffer({ size: 64, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-  const bind = device.createBindGroup({
-    layout: pipeline.getBindGroupLayout(0),
-    entries: [{ binding: 0, resource: { buffer: matrix } }],
-  });
-  const depthTexture = () => device.createTexture({
-    size: [canvas.width, canvas.height], format: "depth24plus",
-    usage: GPUTextureUsage.RENDER_ATTACHMENT,
-  });
-  let depth = depthTexture();
-  let corners = null;
-  let selected = null;
-
-  const resize = () => {
-    depth.destroy();
-    depth = depthTexture();
-  };
-
-  const draw = (bytes, count, clip, mask) => {
-    const cornerSize = Math.max(4, bytes.byteLength);
-    if (!corners || corners.size < cornerSize) {
-      corners?.destroy();
-      corners = device.createBuffer({ size: cornerSize, usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST });
-    }
-    const flags = new Uint32Array(count * 3);
-    for (let i = 0; i < count; i++) flags.fill(mask[i], i * 3, i * 3 + 3);
-    const selectedSize = Math.max(4, flags.byteLength);
-    if (!selected || selected.size < selectedSize) {
-      selected?.destroy();
-      selected = device.createBuffer({ size: selectedSize, usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST });
-    }
-    if (bytes.byteLength) device.queue.writeBuffer(corners, 0, bytes);
-    if (flags.byteLength) device.queue.writeBuffer(selected, 0, flags);
-    device.queue.writeBuffer(matrix, 0, clip);
-    const encoder = device.createCommandEncoder();
-    const pass = encoder.beginRenderPass({
-      colorAttachments: [{
-        view: context.getCurrentTexture().createView(),
-        clearValue: [1, 1, 1, 1],
-        loadOp: "clear",
-        storeOp: "store",
-      }],
-      depthStencilAttachment: { view: depth.createView(), depthClearValue: 1, depthLoadOp: "clear", depthStoreOp: "discard" },
-    });
-    pass.setPipeline(pipeline);
-    pass.setBindGroup(0, bind);
-    pass.setVertexBuffer(0, corners);
-    pass.setVertexBuffer(1, selected);
-    pass.draw(count * 3);
-    pass.end();
-    device.queue.submit([encoder.finish()]);
-  };
-  return { draw, resize };
-}
-
-// A pointer's position in the rectangle the canvas is displayed in, scaled to
-// its drawing buffer.
-function at(e) {
-  const r = canvas.getBoundingClientRect();
-  return [
-    Math.floor(((e.clientX - r.left) * canvas.width) / r.width),
-    Math.floor(((e.clientY - r.top) * canvas.height) / r.height),
-  ];
-}
-
-function modifiers(e) {
-  return (e.shiftKey ? 1 : 0) | (e.ctrlKey ? 2 : 0) |
-    (e.altKey ? 4 : 0) | (e.metaKey ? 8 : 0);
 }
 
 // Native buttons remain keyboard reachable. Rows retain their expansion and
@@ -213,135 +94,52 @@ function sceneTree(onSelect) {
   };
 }
 
-function drawingSize() {
-  const box = canvas.getBoundingClientRect();
-  return [
-    Math.max(1, Math.round(box.width * devicePixelRatio)),
-    Math.max(1, Math.round(box.height * devicePixelRatio)),
-  ];
+let image = null;
+
+function clearImage() {
+  if (!image) return;
+  const old = image;
+  image = null;
+  old.remove();
+  URL.revokeObjectURL(old.src);
+}
+
+function svg(bytes) {
+  clearImage();
+  if (!bytes) return;
+  const next = document.createElement("img");
+  next.alt = "SVG image";
+  next.onerror = () => {
+    if (image === next) fail(new Error("SVG image could not be decoded"));
+  };
+  image = next;
+  // An img uses SVG's secure image mode: no scripts, external resources or
+  // document interaction. Never insert the supplied markup into the DOM.
+  next.src = URL.createObjectURL(new Blob([bytes], { type: "image/svg+xml" }));
+  frame.append(next);
 }
 
 async function main() {
-  [canvas.width, canvas.height] = drawingSize();
-  const renderer = await gpu();
-  const answer = await fetch("/module.wasm");
-  if (!answer.ok) throw new Error(`/module.wasm: ${answer.status} ${answer.statusText}`);
-  let image = null;
-  const clearImage = () => {
-    if (image) {
-      const old = image;
-      image = null;
-      old.remove();
-      URL.revokeObjectURL(old.src);
-    }
-    // Visibility keeps the canvas's layout and drawing-buffer size stable.
-    canvas.style.visibility = "visible";
-  };
-  const svg = (bytes) => {
-    clearImage();
-    const next = document.createElement("img");
-    next.alt = "SVG image";
-    next.onerror = () => {
-      if (image === next) fail(new Error("SVG image could not be decoded"));
-    };
-    image = next;
-    // An img uses SVG's secure image mode: no scripts, external resources or
-    // document interaction. Never insert the supplied markup into the DOM.
-    next.src = URL.createObjectURL(new Blob([bytes], { type: "image/svg+xml" }));
-    canvas.style.visibility = "hidden";
-    viewport.append(next);
-  };
-  const updateTree = sceneTree((key) => module.control(key).catch(fail));
-  const module = await Module.load(await answer.arrayBuffer(), {
-    hello: () => {},
-    fetch: async (path) => {
-      const r = await fetch(path);
-      if (!r.ok) throw new Error(`${path}: ${r.status} ${r.statusText}`);
-      return new Uint8Array(await r.arrayBuffer());
-    },
-    // Answers every status: the module reads it.
-    post: async (path, body) => {
-      const r = await fetch(path, { method: "POST", body });
-      return { status: r.status, bytes: new Uint8Array(await r.arrayBuffer()) };
-    },
-    request: async (method, path, body) => {
-      const init = { method };
-      if (body.length) init.body = body;
-      const r = await fetch(path, init);
-      return { status: r.status, bytes: new Uint8Array(await r.arrayBuffer()) };
-    },
-    error: fail,
-    draw: (...args) => { clearImage(); renderer.draw(...args); },
-    svg,
-    input: (enabled) => { field.disabled = !enabled; },
-    text: (s) => show(s, false),
-    tree: updateTree,
-    highlight: () => {},
-    size: () => [canvas.width, canvas.height],
-  });
-  // A press captures its pointer, so the drag's moves and its release reach
-  // the canvas even outside it. pointerup's buttons is 0, so the capture, not
-  // the buttons, says the pointer is dragging.
-  const active = new Set();
-  canvas.addEventListener("pointerdown", (e) => {
-    canvas.focus({ preventScroll: true });
-    canvas.setPointerCapture(e.pointerId);
-    active.add(e.pointerId);
-    module.pointer(...at(e), e.buttons, modifiers(e)).catch(fail);
-  });
-  canvas.addEventListener("pointermove", (e) => {
-    if (active.has(e.pointerId)) module.moved(...at(e), e.buttons, modifiers(e)).catch(fail);
-  });
-  const release = (e) => {
-    if (active.delete(e.pointerId)) module.released(...at(e), 0, modifiers(e)).catch(fail);
-  };
-  canvas.addEventListener("pointerup", release);
-  canvas.addEventListener("pointercancel", release);
-  canvas.addEventListener("lostpointercapture", release);
-  canvas.addEventListener("contextmenu", (e) => e.preventDefault());
-  canvas.addEventListener("wheel", (e) => {
-    e.preventDefault();
-    const box = canvas.getBoundingClientRect();
-    const line = parseFloat(getComputedStyle(canvas).lineHeight) || 16;
-    const xUnit = e.deltaMode === 2 ? box.width : e.deltaMode === 1 ? line : 1;
-    const yUnit = e.deltaMode === 2 ? box.height : e.deltaMode === 1 ? line : 1;
-    module.wheel(
-      Math.round(e.deltaX * xUnit * canvas.width / box.width),
-      Math.round(e.deltaY * yUnit * canvas.height / box.height),
-      modifiers(e),
-    ).catch(fail);
-  }, { passive: false });
-  canvas.addEventListener("keydown", (e) => {
-    if (!e.isComposing) module.key(e.key, modifiers(e)).catch(fail);
+  const view = await mount(canvas, {
+    module: "/module.wasm",
+    fetch: (url, init) => fetch(url, init),
+    onTree: sceneTree((key) => view.post({ kind: "control", key })),
+    onText: show,
+    onSvg: svg,
+    onInput: (enabled) => { field.disabled = !enabled; },
   });
   // Enter submits the field's form: its text is sent and the field cleared at
   // once, though the turn may wait minutes for an answer. Submission, not a
   // key, sends it, since the Enter that ends an input method's composition
-  // submits nothing. The field is disabled until here, as an Enter with no
-  // listener would submit the page.
+  // submits nothing. The field stays disabled until the module starts, as an
+  // Enter with no listener would submit the page.
   field.form.addEventListener("submit", (e) => {
     e.preventDefault();
     if (field.disabled) return;
     const text = field.value;
     field.value = "";
-    module.typed(text).catch(fail);
+    view.post({ kind: "typed", text });
   });
-  // Enable only before start: its first records may immediately disable it.
-  field.disabled = false;
-  const started = module.start();
-  const resize = () => {
-    const [width, height] = drawingSize();
-    if (canvas.width === width && canvas.height === height) return false;
-    canvas.width = width;
-    canvas.height = height;
-    renderer.resize();
-    module.resize().catch(fail);
-    return true;
-  };
-  new ResizeObserver(resize).observe(canvas);
-  window.addEventListener("resize", resize);
-  if (!resize()) module.resize().catch(fail);
-  await started;
 }
 
 main().catch(fail);

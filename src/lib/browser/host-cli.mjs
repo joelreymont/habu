@@ -13,6 +13,10 @@
 //    --key TEXT MODS       KeyboardEvent.key on the focused canvas
 //    --resize W H          change the drawing buffer and send a resize event
 //    --control KEY         select a transient tree row
+//    --load FILE           FILE's bytes as a scene
+//    --focus HEX, --highlight HEX
+//                          focus or highlight HEX's packed 16-byte identities,
+//                          32 hex digits each; "" clears
 //    --typed TEXT          TEXT typed
 //    --repeat-typed TEXT N  type TEXT N times in the same module
 //    --memory              print final Wasm memory capacity in bytes
@@ -43,6 +47,7 @@ const USAGE =
   "usage: bun host-cli.mjs <module.wasm> [--size W H] " +
   "[--pointer X Y BUTTONS MODS | --move X Y BUTTONS MODS | --release X Y BUTTONS MODS | " +
   "--wheel DX DY MODS | --key TEXT MODS | --resize W H | --control KEY | " +
+  "--load FILE | --focus HEX | --highlight HEX | " +
   "--typed TEXT | --repeat-typed TEXT N | --memory | " +
   "--answer STATUS FILE | --answer-id ID STATUS FILE | --fail]...";
 
@@ -130,6 +135,19 @@ function parse(args) {
       case "--control": {
         const [key] = take(1).map(BigInt);
         steps.push((m) => m.control(key).catch(report));
+        break;
+      }
+      case "--load": {
+        const [file] = take(1);
+        steps.push((m) => m.load(readFileSync(file)).catch(report));
+        break;
+      }
+      case "--focus":
+      case "--highlight": {
+        const [hex] = take(1);
+        if (!/^(?:[0-9a-fA-F]{32})*$/.test(hex)) throw new Error(USAGE);
+        const ids = Buffer.from(hex, "hex");
+        steps.push((m) => (flag === "--focus" ? m.focus(ids) : m.highlight(ids)).catch(report));
         break;
       }
       case "--typed": {

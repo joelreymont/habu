@@ -1,4 +1,7 @@
-\ display.f - checked Wasm peer for SVG images and typed-input control.
+\ display.f - checked Wasm peer for SVG images and typed-input control. It
+\ echoes a load, focus or highlight event as a text record: the kind's name,
+\ a space and the event's bytes in lowercase hex. Typed "fetch" fetches the
+\ page-relative path slow.
 \ Build with tools/wasm-build.f, entry DISPLAY:TURN.
 require src/lib/string.f
 
@@ -14,6 +17,9 @@ CAST: BYTES>N ( ptr u8 -- n )
 36 BUFFER: CORNERS
 512 BUFFER: IMAGE
 variable IMAGE-U
+1024 constant ECHO-CAP
+ECHO-CAP BUFFER: ECHO-BUF
+variable ECHO-U
 
 : FIELD, ( n -- )
    8 0 do dup $FF and emit 8 rshift loop drop ;
@@ -64,6 +70,7 @@ variable IMAGE-U
    s" off" IS? if 9 0 0 0 RECORD exit then
    s" text" IS? if s" still here" {: a:ptr u:n :} 3 a BYTES>N u 0 RECORD exit then
    s" tree" IS? if s" []" {: a:ptr u:n :} 5 a BYTES>N u 0 RECORD exit then
+   s" fetch" IS? if s" slow" {: a:ptr u:n :} 1 a BYTES>N u 0 RECORD exit then
    s" empty" IS? if 8 0 0 0 RECORD exit then
    s" negative" IS? if 8 0 -1 0 RECORD exit then
    s" outside" IS? if 8 -1 1 0 RECORD exit then
@@ -74,6 +81,22 @@ variable IMAGE-U
    s" input-b" IS? if 9 1 1 0 RECORD exit then
    s" input-c" IS? if 9 0 0 1 RECORD exit then ;
 
+\ A digit 0-15 appended in hex.
+: HEX, ( n -- )
+   dup 10 < if [char] 0 + else 10 - [char] a + then
+   ECHO-BUF ECHO-U @ + c!  1 ECHO-U +! ;
+
+\ The event's bytes after the name, as one text record; refuses an echo past
+\ the buffer.
+: ECHO ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   u 2 EVENT@ dup + + ECHO-CAP > if -1 throw then
+   a ECHO-BUF u BYTE-COPY u ECHO-U !
+   2 EVENT@ 0 ?do
+      1 EVENT@ i + >BYTES c@ {: v:n :}  v 4 rshift HEX,  v 15 and HEX,
+   loop
+   3 ECHO-BUF BYTES>N ECHO-U @ 0 RECORD ;
+
 public
 
 : TURN ( -- )
@@ -82,6 +105,9 @@ public
       9 0 0 0 RECORD
       RED exit
    then
-   0 EVENT@ 4 = if COMMAND then ;
+   0 EVENT@ 4 = if COMMAND exit then
+   0 EVENT@ 11 = if s" load " ECHO exit then
+   0 EVENT@ 12 = if s" focus " ECHO exit then
+   0 EVENT@ 13 = if s" highlight " ECHO then ;
 
 ;package

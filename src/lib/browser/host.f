@@ -1,13 +1,14 @@
 \ host.f - BROWSER-HOST: the browser host's page served by Habu's HTTP server.
 \ The turn protocol between the page and a module is the header of turn.js.
 \
-\ The page is three files beside this one: index.html, host.js and turn.js.
-\ Each is read as this file loads, from the tree that resolved it, into a
-\ dictionary buffer of the file's size, so an application image built from a
-\ program that requires this file carries the page and serves it with no Habu
-\ tree at run time. ROUTES registers GET /, /host.js and /turn.js on HTTP's
-\ route table with their content types; the caller registers its own routes,
-\ /module.wasm and every path its module fetches, and starts the server.
+\ The page is four files beside this one: index.html, host.js, viewport.js and
+\ turn.js. Each is read as this file loads, from the tree that resolved it,
+\ into a dictionary buffer of the file's size, so an application image built
+\ from a program that requires this file carries the page and serves it with
+\ no Habu tree at run time. ROUTES registers GET /, /host.js, /viewport.js and
+\ /turn.js on HTTP's route table with their content types; the caller
+\ registers its own routes, /module.wasm and every path its module fetches,
+\ and starts the server.
 \
 \ STORAGE CLASS. PROCESS-WIDE: the page's buffers, filled as this file loads
 \ and only read after it, so every request worker serves them at once.
@@ -43,6 +44,10 @@ s" src/lib/browser/host.js" PATH FILE-SIZE constant HOST-U
 HOST-U BUFFER: HOST
 s" src/lib/browser/host.js" HOST HOST-U READ
 
+s" src/lib/browser/viewport.js" PATH FILE-SIZE constant VIEWPORT-U
+VIEWPORT-U BUFFER: VIEWPORT
+s" src/lib/browser/viewport.js" VIEWPORT VIEWPORT-U READ
+
 s" src/lib/browser/turn.js" PATH FILE-SIZE constant TURN-U
 TURN-U BUFFER: TURN
 s" src/lib/browser/turn.js" TURN TURN-U READ
@@ -58,6 +63,9 @@ s" src/lib/browser/turn.js" TURN TURN-U READ
 : HOST-SCRIPT ( HTTP:request HTTP:response -- )
    nip HOST HOST-U s" text/javascript; charset=utf-8" SEND ;
 
+: VIEWPORT-SCRIPT ( HTTP:request HTTP:response -- )
+   nip VIEWPORT VIEWPORT-U s" text/javascript; charset=utf-8" SEND ;
+
 : TURN-SCRIPT ( HTTP:request HTTP:response -- )
    nip TURN TURN-U s" text/javascript; charset=utf-8" SEND ;
 
@@ -66,6 +74,7 @@ public
 : ROUTES ( -- )
    s" GET" s" /" [: INDEX-PAGE ;] HTTP:ROUTE
    s" GET" s" /host.js" [: HOST-SCRIPT ;] HTTP:ROUTE
+   s" GET" s" /viewport.js" [: VIEWPORT-SCRIPT ;] HTTP:ROUTE
    s" GET" s" /turn.js" [: TURN-SCRIPT ;] HTTP:ROUTE ;
 
 ;package

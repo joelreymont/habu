@@ -47,25 +47,33 @@ for (const [command, reason] of [
   await assert.rejects(module.typed(command), reason, command);
   assert.equal(records.length, count, `${command} must not reach the host`);
 }
-const cli = Bun.spawn([process.execPath, "src/lib/browser/host-cli.mjs", file, "--typed", "on", "--typed", "zero"],
-  { stdout: "pipe", stderr: "pipe" });
+await assert.rejects(module.focus(new Uint8Array(17)), /whole 16-byte identities/, "a partial identity");
+const scene = join(output, "scene.bin");
+writeFileSync(scene, Uint8Array.of(0, 255, 16));
+const cli = Bun.spawn([process.execPath, "src/lib/browser/host-cli.mjs", file, "--typed", "on", "--typed", "zero",
+  "--load", scene, "--focus", "00".repeat(15) + "Ff", "--highlight", ""], { stdout: "pipe", stderr: "pipe" });
 const [stdout, stderr, code] = await Promise.all([
   new Response(cli.stdout).text(), new Response(cli.stderr).text(), cli.exited,
 ]);
 writeFileSync(join(output, "cli.txt"), stdout);
 assert.equal(code, 0, stderr);
-assert.equal(stdout, `hello\ninput 0\nsvg ${original.length} ${Buffer.from(original).toString("hex")}\ninput 1\ndraw 0\n`);
-console.log("SVG/input protocol, independent copy, rejected records and CLI passed");
+assert.equal(stdout, `hello\ninput 0\nsvg ${original.length} ${Buffer.from(original).toString("hex")}\ninput 1\ndraw 0\n` +
+  `text load 00ff10\ntext focus ${"00".repeat(15)}ff\ntext highlight \n`);
+console.log("SVG/input protocol, independent copy, rejected records, identities and CLI passed");
 
 if (chrome) await browser();
 
 async function browser() {
   const root = resolve("src/lib/browser");
   const requests = [];
+  // /slow answers only once the test releases it.
+  let releaseSlow;
+  const slow = new Promise((resolve) => { releaseSlow = resolve; });
   // One shared server for every DOM case; fixture data changes through turns.
   const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch(request) {
     const path = new URL(request.url).pathname;
     requests.push(path);
+    if (path === "/slow") return slow.then(() => new Response("late"));
     if (path === "/module.wasm") return new Response(bytes, { headers: { "Content-Type": "application/wasm" } });
     if (path === "/") {
       const page = readFileSync(join(root, "index.html"), "utf8").replace('src="host.js"', 'src="peer-boot.js"');
@@ -82,7 +90,36 @@ async function browser() {
       URL.revokeObjectURL = (url) => { revoked.push(url); revoke.call(URL, url); };
       await import('/host.js');
     `, { headers: { "Content-Type": "text/javascript" } });
-    if (path === "/host.js" || path === "/turn.js")
+    if (path === "/mount") return new Response(
+      '<!doctype html><canvas tabindex="0" style="width:320px;height:240px"></canvas><script type="module" src="/mount-boot.js"></script>',
+      { headers: { "Content-Type": "text/html" } });
+    // Counts each instance's turns and keeps each WebGPU device, so a disposed
+    // viewport's listeners and device can be checked. breakPipeline makes the
+    // next device's pipeline throw; ignoreAbort fetches without the signal.
+    if (path === "/mount-boot.js") return new Response(`
+      import { Module } from '/turn.js';
+      import { mount } from '/viewport.js';
+      window.modules = []; window.devices = []; window.records = [];
+      const load = Module.load;
+      Module.load = async (...args) => { const m = await load.call(Module, ...args); modules.push(m); m.turns = 0; return m; };
+      const turn = Module.prototype.turn;
+      Module.prototype.turn = function (event) { this.turns++; return turn.call(this, event); };
+      const request = GPUAdapter.prototype.requestDevice;
+      GPUAdapter.prototype.requestDevice = async function (...args) { const d = await request.apply(this, args);
+        devices.push(d); d.lost.then((info) => { d.reason = info.reason; });
+        if (window.breakPipeline) { breakPipeline = false; d.createRenderPipeline = () => { throw new Error('pipeline refused'); }; }
+        return d; };
+      window.canvas = document.querySelector('canvas');
+      window.mountOne = () => mountOn(canvas);
+      window.mountOn = (target) => mount(target, { module: '/module.wasm',
+        fetch: (url, init) => fetch(url, window.ignoreAbort ? { ...init, signal: undefined } : init),
+        onTree: (rows, selected) => records.push(['tree', rows, selected]),
+        onText: (text, error) => records.push(['text', text, error]),
+        onSvg: (bytes) => records.push(['svg', bytes && bytes.length]),
+        onInput: (enabled) => records.push(['input', enabled]) });
+      window.ready = true;
+    `, { headers: { "Content-Type": "text/javascript" } });
+    if (path === "/host.js" || path === "/viewport.js" || path === "/turn.js")
       return new Response(Bun.file(join(root, path.slice(1))), { headers: { "Content-Type": "text/javascript" } });
     return new Response("not found", { status: 404 });
   } });
@@ -182,8 +219,103 @@ async function browser() {
     writeFileSync(join(output, "display.png"), Buffer.from(shot.data, "base64"));
     writeFileSync(join(output, "dom.json"), JSON.stringify(await state(), null, 2));
     console.log("Headless Chrome: inert SVG rendering, replacement, draw clearing, stale callbacks, errors and input control passed");
+    await mounted();
+
+    // viewport.js alone on a page that owns only a canvas: mount, turns,
+    // dispose, and a second mount of the same canvas.
+    async function mounted() {
+      await call("Page.navigate", { url: `http://127.0.0.1:${server.port}/mount` });
+      await until(() => evaluate("window.ready === true"));
+      const svgLength = original.length;
+      await evaluate("(async () => { window.first = await mountOne(); })()");
+      assert.deepEqual(await evaluate("records"), [["input", true], ["input", false], ["svg", svgLength]],
+        "mount enables input, then the start turn's records arrive");
+      assert.equal(await evaluate("canvas.style.visibility"), "hidden");
+      await evaluate("first.post({ kind: 'typed', text: 'draw' })");
+      await evaluate("first.post({ kind: 'typed', text: 'text' })");
+      assert.deepEqual((await evaluate("records")).slice(3), [["svg", null], ["text", "still here", false]],
+        "a draw removes the shown SVG");
+      assert.equal(await evaluate("canvas.style.visibility"), "visible");
+      // Scenes and identities reach the module as load, focus and highlight
+      // events; display.f echoes each one's bytes in a text record.
+      const ids = ["0123456789abcdefFEDCBA9876543210", "00".repeat(15) + "ff"];
+      await evaluate("first.load(new TextEncoder().encode('scene'))");
+      await evaluate("first.load(Uint8Array.of(0, 255).buffer)");
+      await evaluate(`first.focus(${JSON.stringify(ids)})`);
+      await evaluate("first.highlight([])");
+      assert.deepEqual((await evaluate("records")).slice(5), [
+        ["text", "load 7363656e65", false], ["text", "load 00ff", false],
+        ["text", `focus ${ids.join("").toLowerCase()}`, false], ["text", "highlight ", false],
+      ], "load, focus and highlight carry their bytes to the module");
+      const turns = await evaluate("modules[0].turns");
+      for (const bad of ["['0123']", `['${"g".repeat(32)}']`, `['${ids[1]}', 7]`, `[, '${ids[1]}']`, "'" + ids[1] + "'"])
+        assert.match(await evaluate(`(() => { try { first.highlight(${bad}); } catch (e) { return String(e); } })()`),
+          /TypeError: identit/, bad);
+      assert.equal(await evaluate("modules[0].turns"), turns, "a malformed identity list runs no turn");
+      const key = "(canvas.dispatchEvent(new KeyboardEvent('keydown', { key: 'a' })), modules[0].turns)";
+      const before = await evaluate("modules[0].turns");
+      assert.equal(await evaluate(key), before + 1, "a key on the mounted canvas runs a turn");
+      const listeners = async (expression) => {
+        const { result } = await call("Runtime.evaluate", { expression });
+        return (await call("DOMDebugger.getEventListeners", { objectId: result.objectId })).listeners.length;
+      };
+      assert.ok(await listeners("canvas") > 0 && await listeners("window") > 0, "a mounted viewport listens");
+      await evaluate("first.dispose()");
+      await until(() => evaluate("devices[0].reason !== undefined"));
+      assert.equal(await evaluate("devices[0].reason"), "destroyed", "dispose releases the GPU device");
+      assert.deepEqual([await listeners("canvas"), await listeners("window")], [0, 0], "dispose removes every listener");
+      assert.equal(await evaluate(key), before + 1, "a key on a disposed canvas runs no turn");
+      assert.equal(await evaluate("canvas.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 1 })), modules[0].turns"),
+        before + 1, "a pointer on a disposed canvas runs no turn");
+      assert.match(await evaluate("(() => { try { first.post({ kind: 'typed', text: 'draw' }); } catch (e) { return String(e); } })()"),
+        /disposed/);
+      assert.equal((await evaluate("records")).length, 9, "no callback runs after dispose");
+      await evaluate("(async () => { window.second = await mountOne(); await second.post({ kind: 'typed', text: 'draw' }); })()");
+      assert.deepEqual((await evaluate("records")).slice(9),
+        [["input", true], ["input", false], ["svg", svgLength], ["svg", null]], "a second mount runs a fresh module");
+      assert.equal(await evaluate("modules.length === 2 && devices.length === 2 && modules[1].turns"), 3,
+        "the second mount has its own module and device, and ran start, resize and draw");
+      await evaluate("second.dispose()");
+      await until(() => evaluate("devices[1].reason === 'destroyed'"));
+
+      // A canvas holding another context is refused before any device exists;
+      // a setup step that throws once the device exists destroys it.
+      const owned = await evaluate("devices.length");
+      assert.equal(await evaluate(`(async () => { const c = document.createElement('canvas'); c.getContext('2d');
+        try { await mountOn(c); return 'mounted'; } catch (e) { return String(e); } })()`),
+        "Error: the canvas already has a context other than WebGPU");
+      assert.equal(await evaluate("devices.length"), owned, "a refused canvas requests no device");
+      assert.equal(await evaluate("(async () => { window.breakPipeline = true; try { await mountOne(); return 'mounted'; } catch (e) { return String(e); } })()"),
+        "Error: pipeline refused");
+      await until(() => evaluate(`devices[${owned}].reason === 'destroyed'`))
+        .catch(() => assert.fail("a mount that fails after requesting its device destroys it"));
+
+      // A fetch outstanding at dispose fails into no callback, and every
+      // disposed viewport's module is then collected.
+      const sent = () => requests.filter((path) => path === "/slow").length;
+      await evaluate("(async () => { window.third = await mountOne(); })()");
+      const heard = (await evaluate("records")).length;
+      await evaluate("third.post({ kind: 'typed', text: 'fetch' }), 0");
+      await until(() => sent() === 1);
+      await evaluate(`third.dispose(); delete window.first; delete window.second; delete window.third;
+        window.collected = modules.map((m) => new WeakRef(m)); modules.length = 0`);
+      await until(async () => { await call("HeapProfiler.collectGarbage"); return evaluate("collected.every((w) => !w.deref())"); })
+        .catch(async () => assert.fail(`disposed modules alive: ${await evaluate("JSON.stringify(collected.map((w) => !!w.deref()))")}`));
+      assert.equal((await evaluate("records")).length, heard, "an aborted fetch reaches no callback");
+
+      // A reply that arrives after dispose runs no turn.
+      await evaluate("(async () => { window.ignoreAbort = true; window.fourth = await mountOne(); })()");
+      await evaluate("window.late = fourth.post({ kind: 'typed', text: 'fetch' }), 0");
+      await until(() => sent() === 2);
+      const ran = await evaluate("fourth.dispose(), modules[0].turns");
+      releaseSlow();
+      await evaluate("late");
+      assert.equal(await evaluate("modules[0].turns"), ran, "a late reply runs no turn");
+      assert.equal((await evaluate("records")).length, heard + 3, "a late reply reaches no callback");
+      console.log("Headless Chrome: viewport mount, turns, load, focus, highlight, dispose, remount, refused mounts and disposed replies passed");
+    }
   } finally {
-    socket?.close(); child.kill(); await child.exited; server.stop(true);
+    releaseSlow(); socket?.close(); child.kill(); await child.exited; server.stop(true);
     const cleanup = Bun.spawn(["trash", profile], { stdout: "ignore", stderr: "inherit" });
     assert.equal(await cleanup.exited, 0, "Chrome profile cleanup");
   }

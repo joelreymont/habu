@@ -1,7 +1,7 @@
 \ host-test.f - BROWSER-HOST:ROUTES answered over a real loopback port. CURL
-\ fetches /, /host.js and /turn.js from Habu's HTTP server; each is answered
-\ 200 with its content type, and its body is the bytes of its file in
-\ src/lib/browser, read here from the tree's root.
+\ fetches /, /host.js, /viewport.js and /turn.js from Habu's HTTP server; each
+\ is answered 200 with its content type, and its body is the bytes of its file
+\ in src/lib/browser, read here from the tree's root.
 \ Run: bin/hb --load src/lib/browser/host-test.f
 
 require src/lib/test.f
@@ -107,6 +107,8 @@ variable HEAD-U
    s" /" s" src/lib/browser/index.html" s" text/html; charset=utf-8" SERVED
    s" GET /host.js answers src/lib/browser/host.js as text/javascript" T-LABEL
    s" /host.js" s" src/lib/browser/host.js" s" text/javascript; charset=utf-8" SERVED
+   s" GET /viewport.js answers src/lib/browser/viewport.js as text/javascript" T-LABEL
+   s" /viewport.js" s" src/lib/browser/viewport.js" s" text/javascript; charset=utf-8" SERVED
    s" GET /turn.js answers src/lib/browser/turn.js as text/javascript" T-LABEL
    s" /turn.js" s" src/lib/browser/turn.js" s" text/javascript; charset=utf-8" SERVED
    HTTP:STOP

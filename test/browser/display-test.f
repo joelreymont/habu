@@ -1,7 +1,9 @@
 \ display-test.f - checked Wasm fixture through the foreign display peer.
 \ bin/hb --load test/browser/display-test.f
-\ The printed directory retains the module and exact CLI output. The peer's
-\ --chrome option additionally runs the real browser (src/lib/browser/host.f).
+\ The printed directory retains the module and exact CLI output. When Chrome is
+\ installed, macOS's application or google-chrome on PATH, the peer's --chrome
+\ option also runs the real browser (src/lib/browser/host.f); the row prints
+\ which Chrome ran, or that none was found.
 require src/lib/string.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
@@ -25,6 +27,8 @@ FS-PATH-CAP BUFFER: DIR
 variable DIR-U
 FS-PATH-CAP BUFFER: MOD
 variable MOD-U
+FS-PATH-CAP BUFFER: CHROME
+variable CHROME-U
 
 : ARG+ ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
 
@@ -46,9 +50,28 @@ variable MOD-U
    s" test/browser/display.f" ARG+ s" DISPLAY:TURN" ARG+ MOD MOD-U @ ARG+
    s" bin/hb" >LEN SPAWN ;
 
+: MAC-CHROME ( -- ptr u8 n )
+   s" /Applications/Google Chrome.app/Contents/MacOS/Google Chrome" ;
+
+\ Chrome's executable in CHROME, CHROME-U 0 when it is not installed.
+: FIND-CHROME ( -- )
+   MAC-CHROME EXISTS? if
+      MAC-CHROME {: a:ptr u:n :} a CHROME u BYTE-COPY u CHROME-U ! exit
+   then
+   s" google-chrome" >LEN CHROME FIND-EXECUTABLE MATCH option
+      none OF 0 ENDOF
+      some OF LEN>N ENDOF
+   ;MATCH CHROME-U ! ;
+
 : PEER ( -- n )
    PROC-ARGV-RESET
    s" test/browser/display-peer.mjs" ARG+ MOD MOD-U @ ARG+ DIR DIR-U @ ARG+
+   FIND-CHROME CHROME-U @ 0<> if
+      s" --chrome" ARG+ CHROME CHROME-U @ ARG+
+      s" browser display: Chrome " type CHROME CHROME-U @ type cr
+   else
+      s" browser display: no Chrome installed; browser cases skipped" type cr
+   then
    s" bun" >LEN EXE RESOLVE-EXECUTABLE {: u:len :}
    EXE u SPAWN ;
 
@@ -62,7 +85,7 @@ public
    rc 0<> if ERR ERR-U @ type cr T-REPORT exit then
    s" browser display fixture validates" T-LABEL
    MOD MOD-U @ WASM-HARNESS:VALID? TTRUE
-   s" SVG/input records, independent copy, refusals and CLI" T-LABEL
+   s" SVG/input records, scenes, identities, refusals and CLI" T-LABEL
    PEER 0 T=
    OUT OUT-U @ type ERR ERR-U @ type
    T-REPORT ;

@@ -9,8 +9,9 @@
 //
 // An event is 56 bytes at the address hello names: kind, a, b, c, d, buttons,
 // mods. Kinds: 0 start, 1 bytes, 2 pointer, 3 answered, 4 typed, 5 moved,
-// 6 released, 7 wheel, 8 key, 9 resize, 10 control. c and d are the drawing
-// buffer's width and height in device pixels except for answered.
+// 6 released, 7 wheel, 8 key, 9 resize, 10 control, 11 load, 12 focus,
+// 13 highlight. c and d are the drawing buffer's width and height in device
+// pixels except for answered.
 //   bytes, typed, key: a, b name the fetched bytes, the field's text or
 //     KeyboardEvent.key (sent only while the canvas has focus)
 //   pointer, moved, released: a, b are x, y from the canvas's top-left; the
@@ -21,6 +22,9 @@
 //     post's d, buttons and mods are 0
 //   wheel: a, b signed device-pixel deltas; resize: a, b are 0
 //   control: a is a transient tree row key, never a persistent identity
+//   load: a, b name the scene's bytes, placed as fetched bytes are
+//   focus, highlight: a, b name packed 16-byte identities, b a multiple of 16;
+//     b 0 clears. What a scene or an identity means is the module's.
 // buttons is the pointer's bitset; mods are Shift 1, Control 2, Alt 4, Meta 8.
 // The host writes all 56 bytes on every event; a field that does not apply is 0.
 //
@@ -60,7 +64,8 @@
 // module runs again with an event naming those bytes.
 // Runs are synchronous and never overlap, but other turns
 // run while a request waits. A run that
-// traps ends the instance: nothing runs, and memory does not grow, after it.
+// traps ends the instance, as end() does: nothing runs, and memory does not
+// grow, after it.
 //
 // Every field is an i64, little-endian, and a BigInt here. Growth detaches the
 // old ArrayBuffer, so every view is taken from memory.buffer where it is used:
@@ -84,6 +89,10 @@ const WHEEL = 7n;
 const KEY = 8n;
 const RESIZE = 9n;
 const CONTROL = 10n;
+const LOAD = 11n;
+const FOCUS = 12n;
+const HIGHLIGHT_EVENT = 13n; // HIGHLIGHT names the record
+const ID_BYTES = 16;
 
 // Records.
 const HELLO = 0n;
@@ -119,7 +128,7 @@ export class Module {
     this.x = exports;
     this.host = host;
     this.event = null; // the address hello named
-    this.ended = null; // the trap that ended the instance
+    this.ended = null; // why the instance ended: a trap or end()
     this.mask = null; // no highlight record yet: draw with an unselected mask
     this.inputNext = 0; // next free byte in the host's last grown chunk
     this.inputLimit = 0;
@@ -161,6 +170,26 @@ export class Module {
     const id = BigInt(key);
     if (id <= 0n || id > MAX_KEY) throw new RangeError(`control key ${id} is not a positive safe integer`);
     return this.turn([CONTROL, id, 0, ...this.host.size(), 0, 0]);
+  }
+
+  // A turn for a scene's bytes, placed as an answer's are.
+  async load(scene) {
+    await this.turn([LOAD, this.place(scene), scene.length, ...this.host.size(), 0, 0]);
+  }
+
+  // Turns for packed 16-byte identities to focus or highlight; none clears.
+  focus(ids) {
+    return this.identities(FOCUS, ids);
+  }
+
+  highlight(ids) {
+    return this.identities(HIGHLIGHT_EVENT, ids);
+  }
+
+  async identities(kind, ids) {
+    if (ids.length % ID_BYTES !== 0)
+      throw new RangeError(`${ids.length} bytes are not whole ${ID_BYTES}-byte identities`);
+    await this.turn([kind, this.place(ids), ids.length, ...this.host.size(), 0, 0]);
   }
 
   // A turn for typed text, its UTF-8 bytes placed as an answer's are.
@@ -208,9 +237,14 @@ export class Module {
     }
   }
 
-  // Refuses the instance a trap ended.
+  // Ends the instance for its host: a reply that arrives later is refused.
+  end() {
+    this.ended ??= "the host ended the module";
+  }
+
+  // Refuses the instance a trap or end() ended.
   live() {
-    if (this.ended) throw new Error(`the module trapped and has ended: ${this.ended}`);
+    if (this.ended) throw new Error(this.ended);
   }
 
   // Writes the event and runs the module; handles the records but the
@@ -222,7 +256,7 @@ export class Module {
     try {
       status = this.x.run();
     } catch (e) {
-      this.ended = e;
+      this.ended = `the module trapped and has ended: ${e}`;
       throw e;
     }
     if (status !== 0) throw new Error(`throw ${this.x["throw-code"]()}`);
@@ -314,7 +348,7 @@ export class Module {
         this.tree(a, b, c);
         return;
       case HIGHLIGHT:
-        this.highlight(a, b, c);
+        this.masked(a, b, c);
         return;
       case SVG:
         if (c !== 0n) throw new Error("svg c must be zero");
@@ -364,7 +398,7 @@ export class Module {
     this.host.tree(rows, Number(c));
   }
 
-  highlight(a, b, c) {
+  masked(a, b, c) {
     if (c !== 0n) throw new Error("highlight c must be zero");
     const mask = this.span(a, b);
     if (mask.some((value) => value > 1)) throw new Error("highlight mask contains a value other than 0 or 1");
