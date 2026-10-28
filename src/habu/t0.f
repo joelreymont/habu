@@ -30,7 +30,8 @@
 \
 \ A STRING's payload starts one byte past its opener, as BODYBUF keeps it
 \ (src/habu/definers.f DEF-TEXT), and src/habu/escape.f decodes an escaped
-\ one. Its bytes are interned (NSTR:INTERN), so equal bodies share an address:
+\ one. Its bytes are interned (NSTR:INTERN-SOURCE), so equal bodies share an
+\ address, and its address row files the source origin interning answers.
 \ `s"` pushes the address and length, `c"` the address of a count byte and
 \ the bytes, `."` passes both to `type`. A payload with no closing quote or a
 \ bad escape, and a counted one past COUNTED-MAX bytes, is E-T0-LITERAL.
@@ -756,21 +757,23 @@ DYNAMIC-BUFFER STR-BUF u8           \ a decoded or counted body before interning
    q TXT$ - 1+ POS !
    s q u ;
 
-\ The payload's interned address and its length. A plain or empty body
-\ interns from the text; a decoded or counted one is built in STR-BUF first.
-: INTERN-BODY ( bool bool -- n n ) {: esc:bool counted:bool :}
+\ The payload's interned address, its source origin and its length. A plain or
+\ empty body interns from the text; a decoded or counted one is built in
+\ STR-BUF first.
+: INTERN-BODY ( bool bool -- n n n ) {: esc:bool counted:bool :}
    esc SPAN {: s:ptr q:ptr u:n :}
    counted u COUNTED-MAX > and if E-T0-LITERAL throw then
-   esc 0= u 0= or counted 0= and if s u NSTR:INTERN u exit then
+   esc 0= u 0= or counted 0= and if s u NSTR:INTERN-SOURCE u exit then
    counted if 1 else 0 then {: at:n :}
    at u + STR-BUF-RESERVE
    esc if s q at STR-BUF ESCAPE:COPY else s at STR-BUF u BYTE-COPY then
    counted if u 0 STR-BUF c! then
-   0 STR-BUF at u + NSTR:INTERN u ;
+   0 STR-BUF at u + NSTR:INTERN-SOURCE u ;
 
-: PUSH-ADDR ( n -- ) {: v:n :}
+\ Push data address v, whose row files origin o.
+: PUSH-ADDR ( n n -- ) {: v:n o:n :}
    ROOM ALLOC {: r:T0-EMIT:vreg :}
-   v r T0-EMIT:ADDR-DATA
+   v o r T0-EMIT:ADDR-DATA
    r PUSH-REG ;
 
 \ `."` calls the engine's `type` whatever the source's package scope, as tier
@@ -780,8 +783,8 @@ TRUSTED: TYPE-ENTRY ( -- n ) ['] type ;
 \ loc is the text's offset in the body, the call's for `."`, as tier 1's
 \ (src/core/checker.f SPAY-B).
 : DO-STRING ( n bool n -- ) {: kind:n esc:bool loc:n :}
-   esc kind STR-COUNTED = INTERN-BODY {: v:n u:n :}
-   v PUSH-ADDR
+   esc kind STR-COUNTED = INTERN-BODY {: v:n o:n u:n :}
+   v o PUSH-ADDR
    kind STR-COUNTED = if exit then
    u PUSH-CONST
    kind STR-PRINT = if TYPE-ENTRY loc DO-CALL then ;

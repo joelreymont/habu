@@ -60,10 +60,19 @@
 \ C-DATA-RAW, the shape src/habu/address-carrier.f CHAIN-SIZE reads back), and
 \ elsewhere the four-lane `movz`, `movk lsl16`, `movk lsl32`, `movk lsl48`
 \ (habu2.f C-ADDR-RAW), every lane emitted so the publisher can rewrite it in
-\ place; a code address always takes the four lanes. A quotation's address is
-\ an `adr` relative to its own site, which QUOT-OPEN writes once the unit
+\ place; a code address always takes the four lanes. A data address's row
+\ carries the origin ADDR-DATA takes, a code address's -1. A quotation's
+\ address is an `adr` relative to its own site, which QUOT-OPEN writes once the unit
 \ begins, so it files no row and placement leaves it alone. `recurse` is a `bl`
 \ to byte 0, which CLOSE writes, and files no row either.
+\
+\ THE PATCH SLOT. SLOT-CLOSE ends the unit with RETURN and CLOSE, which put
+\ any epilogue in front of the `ret`, so the `ret` is the unit's last word.
+\
+\ THE CALLBACK STUB is tier 1's (src/compiler/native/emit.f WRITE-STUB):
+\ x9 <- NCBSTUB's slot and x16 <- its thunk, each by the four-lane carrier,
+\ the thunk's one ADDR-CODE row, then `br x16`. CB-STUB appends it to OUT after
+\ the last unit is closed, so each unit's code is the same armed or not.
 \
 \ THE RETURN STACK is RSP-CELL cells deep from the base at
 \ STACK-ABI:RETURN-BASE-CELL; slot d is base + 8d, as habu2.f J-TOR and J-RPOP
@@ -76,6 +85,7 @@ require src/habu/stack-abi.f
 require src/arch/arm64/asm.f
 require src/compiler/target.f
 require src/compiler/native/emission.f
+require src/compiler/native/callback-stub.f
 require src/habu/t0-emit.f
 require src/habu/t0-label.f
 
@@ -86,6 +96,8 @@ using A64ASM
 16 constant TMP                       \ x16, a literal
 17 constant ADR                       \ x17, an address
 30 constant LR
+9 constant CB-ID                      \ x9, the stub's slot for its thunk
+4 constant INSN                       \ the bytes of one instruction word
 31 constant SP                        \ as a base or an add/sub operand
 
 \ The machine register of each vreg; an index past it throws E-LAYOUT-BOUNDS.
@@ -140,8 +152,9 @@ variable NUNIT                        \ units begun in this emission
 \ The open unit's `ret` and tail `b` offsets, ascending.
 DYNAMIC-BUFFER EPI-AT n
 DYNAMIC-BUFFER PEND-AT n              \ the open unit's address rows: raw first
-DYNAMIC-BUFFER PEND-KIND n            \ word, kind, target
+DYNAMIC-BUFFER PEND-KIND n            \ word, kind, target, origin
 DYNAMIC-BUFFER PEND-TO n
+DYNAMIC-BUFFER PEND-ORIGIN n
 variable NPCALL
 DYNAMIC-BUFFER PCALL-AT n             \ the open unit's call and tail rows: raw
 DYNAMIC-BUFFER PCALL-KIND n           \ first word, kind, target, loc
@@ -277,10 +290,11 @@ DYNAMIC-BUFFER BR-ARG n
    add if SP SP lo ENC-ADDI buf W32+ exit then
    SP SP lo ENC-SUBI buf W32+ ;
 
-: PEND+ ( n n n -- ) {: at:n kind:n to:n :}
+: PEND+ ( n n n n -- ) {: at:n kind:n to:n origin:n :}
    NPEND @ {: k:n :}
    k 1 + PEND-AT-RESERVE  k 1 + PEND-KIND-RESERVE  k 1 + PEND-TO-RESERVE
-   at k PEND-AT !  kind k PEND-KIND !  to k PEND-TO !
+   k 1 + PEND-ORIGIN-RESERVE
+   at k PEND-AT !  kind k PEND-KIND !  to k PEND-TO !  origin k PEND-ORIGIN !
    k 1 + NPEND ! ;
 
 : PCALL+ ( n n n n -- ) {: at:n kind:n to:n loc:n :}
@@ -303,10 +317,12 @@ DYNAMIC-BUFFER BR-ARG n
    at k EPI-AT !
    k 1 + NEPI ! ;
 
-\ The four-lane carrier: every half, low first.
-: CHAIN4 ( n n -- ) {: v:n r:n :}
-   r v 0 HALF 0 MOVZHW W
-   4 1 ?do r v i HALF i MOVKHW W loop ;
+\ The four-lane carrier into buf: every half, low first.
+: CHAIN4-IN ( n n ptr a -- ) {: v:n r:n buf:ptr :}
+   r v 0 HALF 0 MOVZHW buf W32+
+   4 1 ?do r v i HALF i MOVKHW buf W32+ loop ;
+
+: CHAIN4 ( n n -- ) RAW CHAIN4-IN ;
 
 \ Whether v is inside the fixed DATA mapping and the mapping fits 48 bits, so
 \ three halves, high first, carry it.
@@ -394,11 +410,11 @@ DYNAMIC-BUFFER BR-ARG n
 : RETURN ( -- ) HERE-OFF EPI+  ENC-RET W ;
 
 \ A quotation's site is kept for QUOT-OPEN; every other address is a row.
-: FILE-ADDR ( n n n -- ) {: at:n kind:n to:n :}
+: FILE-ADDR ( n n n n -- ) {: at:n kind:n to:n origin:n :}
    kind T0-EMIT:ADDR-QUOT-KIND = if
       to 1 + QUOT-SITE-RESERVE  at to QUOT-SITE ! exit
    then
-   at kind to T0-EMIT:ADDR-ROW+ ;
+   at kind to origin T0-EMIT:ADDR-ROW+ ;
 
 : CLOSE ( -- )
    FRAME-CELLS @ CELL * 15 + 15 invert and {: bytes:n :}
@@ -417,7 +433,8 @@ DYNAMIC-BUFFER BR-ARG n
    loop
    HERE-OFF COPY
    NPEND @ 0 ?do
-      i PEND-AT @ base p e PLACED  i PEND-KIND @  i PEND-TO @  FILE-ADDR
+      i PEND-AT @ base p e PLACED  i PEND-KIND @  i PEND-TO @  i PEND-ORIGIN @
+      FILE-ADDR
    loop
    NPCALL @ 0 ?do
       i PCALL-AT @ base p e PLACED  i PCALL-KIND @  i PCALL-TO @  i PCALL-LOC @
@@ -432,6 +449,20 @@ DYNAMIC-BUFFER BR-ARG n
       i  at  i BR-TO @ base p e LANDED  BR-WORD  at W32!
    loop ;
 
+: SLOT-CLOSE ( -- )
+   RETURN CLOSE
+   OUT-OFF INSN - T0-EMIT:PATCH-SLOT! ;
+
+\ Append the callback stub after the last unit and answer where it starts.
+: CB-STUB ( -- n )
+   OUT-OFF {: at:n :}
+   NCBSTUB:SLOT@ CB-ID OUT CHAIN4-IN
+   NCBSTUB:THUNK@ {: thunk:n :}
+   OUT-OFF NEMIT:ADDR-CODE thunk -1 T0-EMIT:ADDR-ROW+
+   thunk TMP OUT CHAIN4-IN
+   TMP ENC-BR OUT W32+
+   at ;
+
 : BYTES ( -- ptr u8 n ) OUT BUF:SPAN$ BUF:BLEN>N ;
 
 \ Every call row's `bl` or `b`, from its site placed at place to its target.
@@ -444,20 +475,20 @@ DYNAMIC-BUFFER BR-ARG n
 \ ---- values ------------------------------------------------------------------
 : LIT ( n T0-EMIT:vreg -- ) REG LIT-R ;
 
-: ADDR-DATA ( n T0-EMIT:vreg -- )
-   {: v:n d:T0-EMIT:vreg :}
-   HERE-OFF NEMIT:ADDR-DATA v PEND+
+: ADDR-DATA ( n n T0-EMIT:vreg -- )
+   {: v:n o:n d:T0-EMIT:vreg :}
+   HERE-OFF NEMIT:ADDR-DATA v o PEND+
    v d REG DATA-CHAIN ;
 
 : ADDR-CODE ( n T0-EMIT:vreg -- )
    {: v:n d:T0-EMIT:vreg :}
-   HERE-OFF NEMIT:ADDR-CODE v PEND+
+   HERE-OFF NEMIT:ADDR-CODE v -1 PEND+
    v d REG CHAIN4 ;
 
 \ `adr rd, 0` until QUOT-OPEN n writes the distance to the unit.
 : ADDR-QUOT ( n T0-EMIT:vreg -- )
    {: n:n d:T0-EMIT:vreg :}
-   HERE-OFF T0-EMIT:ADDR-QUOT-KIND n PEND+
+   HERE-OFF T0-EMIT:ADDR-QUOT-KIND n -1 PEND+
    d REG 0 ENC-ADR W ;
 
 : PUSH ( T0-EMIT:vreg -- ) REG DSP CELL ENC-STRPOST W ;
@@ -731,6 +762,8 @@ DYNAMIC-BUFFER BR-ARG n
    ['] QUOT-OPEN k T0-EMIT:QUOT-OPEN-XT !
    ['] RETURN k T0-EMIT:RETURN-XT !
    ['] CLOSE k T0-EMIT:CLOSE-XT !
+   ['] SLOT-CLOSE k T0-EMIT:SLOT-CLOSE-XT !
+   ['] CB-STUB k T0-EMIT:CB-STUB-XT !
    ['] BYTES k T0-EMIT:BYTES-XT !
    ['] PATCH k T0-EMIT:PATCH-XT !
    ['] LIT k T0-EMIT:LIT-XT !

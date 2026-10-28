@@ -114,9 +114,9 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
 : UNFRAME ( -- )
    RSP 0 >IMM32 SINK ENC-ADD-RI32  FRAME-SITE ;
 
-: ADDR ( n T0-EMIT:vreg n -- )
-   {: v:n d:T0-EMIT:vreg kind:n :}
-   HERE-OFF kind v T0-EMIT:ADDR-ROW+
+: ADDR ( n n T0-EMIT:vreg n -- )
+   {: v:n o:n d:T0-EMIT:vreg kind:n :}
+   HERE-OFF kind v o T0-EMIT:ADDR-ROW+
    d REG v >IMM64 SINK ENC-MOV-RI64 ;
 
 \ r, holding the return stack depth, becomes the address one cell past its top.
@@ -186,15 +186,18 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
    {: v:n d:T0-EMIT:vreg :}
    v d REG LIT-R ;
 
-: ADDR-DATA ( n T0-EMIT:vreg -- ) NEMIT:ADDR-DATA ADDR ;
-: ADDR-CODE ( n T0-EMIT:vreg -- ) NEMIT:ADDR-CODE ADDR ;
+: ADDR-DATA ( n n T0-EMIT:vreg -- ) NEMIT:ADDR-DATA ADDR ;
+
+: ADDR-CODE ( n T0-EMIT:vreg -- )
+   {: v:n d:T0-EMIT:vreg :}
+   v -1 d NEMIT:ADDR-CODE ADDR ;
 
 \ The site's imm64 holds 0 until QUOT-OPEN writes unit n's offset.
 : ADDR-QUOT ( n T0-EMIT:vreg -- )
    {: n:n d:T0-EMIT:vreg :}
    n 1 + UNIT-REF-RESERVE
    HERE-OFF n UNIT-REF !
-   HERE-OFF T0-EMIT:ADDR-QUOT-KIND n T0-EMIT:ADDR-ROW+
+   HERE-OFF T0-EMIT:ADDR-QUOT-KIND n -1 T0-EMIT:ADDR-ROW+
    d REG 0 >IMM64 SINK ENC-MOV-RI64 ;
 
 : PUSH ( T0-EMIT:vreg -- )
