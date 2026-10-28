@@ -41,6 +41,7 @@ require src/compiler/native/callback-stub.f
 require src/arch/arm64/asm.f
 require src/arch/arm64/backend.f
 require src/arch/arm64/machine.f
+require src/compiler/native/emission.f
 
 package A64EMIT
 using A64ASM
@@ -342,7 +343,7 @@ DYNAMIC-BUFFER PAIRS n
 
 : ADDR-OF ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
-   id SLOT-AT O-DATAADDR = if A64IR:ADDR-DATA exit then
+   id SLOT-AT O-DATAADDR = if NEMIT:ADDR-DATA exit then
    id 0 BND-ADDR @ ATTR-HAS? 0= if A64IR:ADDR-NONE exit then
    id 0 BND-ADDR @ ATTR-INT ;
 
@@ -2060,7 +2061,7 @@ public
 : STUB-ADDR-WORD ( IR-ID:ir-op-id n -- )
    N-INS @ {: at:n :}
    STUB-WORD
-   A64IR:ADDR-CODE at cells M-ADDR + !
+   NEMIT:ADDR-CODE at cells M-ADDR + !
    -1 at cells M-ORIGIN + !
    16 at cells M-ARD + ! ;
 
@@ -2093,7 +2094,7 @@ DYNAMIC-BUFFER SITES-BUF n
 
 : CHAIN-LANES ( n -- n ) {: k:n :}
    k 3 + N-INS @ <= if
-      k cells M-ADDR + @ A64IR:ADDR-DATA = if
+      k cells M-ADDR + @ NEMIT:ADDR-DATA = if
          k cells M-ARD + @ {: rd:n :}
          k INSN-BYTES * {: off:n :}
          off BYTE@ off 1+ BYTE@ 8 lshift or

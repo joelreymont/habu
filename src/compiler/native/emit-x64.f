@@ -981,7 +981,7 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
 
 : PUT-CODEADDR ( IR-ID:ir-op-id ptr a -- )
    {: id:IR-ID:ir-op-id s:ptr :}
-   MEAS @ 0= if CUR X64IR:ADDR-CODE SITE+ then
+   MEAS @ 0= if CUR NEMIT:ADDR-CODE SITE+ then
    id 0 RES-R64  id FUN-ADDR >IMM64  s ENC-MOV-RI64 ;
 
 \ A created word's one-byte ret needs space for the later does> branch.

@@ -77,6 +77,11 @@ public
 0 constant CALL
 1 constant TAIL
 
+\ The kinds ADDR-SITE-KIND@ answers: the site holds a data or a code address.
+1 constant ADDR-DATA
+2 constant ADDR-CODE
+ADDR-CODE constant ADDR-KIND-MAX
+
 : SIZE ( -- n )
    SEAL-CK CODE-N @ ;
 

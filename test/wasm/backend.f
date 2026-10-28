@@ -294,14 +294,14 @@ ndict@ REC-LAST !
    s" an address row sits on the padded field after `i64.const` and holds the host address" T-LABEL
    REC-ADDR @ EM-OF {: addr:n :}
    addr NSHADOW:ADDR-SITES 1 T=
-   addr 0 ADDR-ROW  BK-BUF >N T=  WSTRUCT:ADDR-DATA T=
+   addr 0 ADDR-ROW  BK-BUF >N T=  NEMIT:ADDR-DATA T=
    REC-BUF @ EM-OF {: buf:n :}
    buf NSHADOW:ADDR-SITES 1 T=
-   buf 0 ADDR-ROW  BK-BUF >N T=  WSTRUCT:ADDR-DATA T=
+   buf 0 ADDR-ROW  BK-BUF >N T=  NEMIT:ADDR-DATA T=
    s" a trap's message is a data address row" T-LABEL
    REC-TRAP @ EM-OF {: trap:n :}
    trap NSHADOW:ADDR-SITES 1 T=
-   trap 0 ADDR-ROW drop  WSTRUCT:ADDR-DATA T=
+   trap 0 ADDR-ROW drop  NEMIT:ADDR-DATA T=
    s" a word that names no address has no address row" T-LABEL
    REC-LEAF @ EM-OF NSHADOW:ADDR-SITES 0 T=
    REC-CALLER @ EM-OF NSHADOW:ADDR-SITES 0 T=

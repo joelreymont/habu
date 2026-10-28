@@ -26,6 +26,7 @@ require src/habu/aot-capture.f
 require src/habu/aot-shadow.f
 require src/arch/wasm/leb.f
 require src/arch/wasm/wstruct.f
+require src/compiler/native/emission.f
 
 package AOT-CAPTURE
 using NSHADOW
@@ -45,7 +46,7 @@ using WLEB
    CODE-BUF@ SH-AT @ +  SH-LEN @  SPAN:MAKE {: s :}
    s SPAN:$ off S64-PAD@ {: v:n :}
    SH-AT @ off + {: at:n :}
-   e k ADDR-SITE-KIND@ WSTRUCT:ADDR-CODE = if
+   e k ADDR-SITE-KIND@ NEMIT:ADDR-CODE = if
       e v SH-FUN? if  at AOT-SHADOW:FUN 0 SH-SITE+  exit  then
       off v SH-TARGET {: target:n :}
       0 s off S64-PATCH

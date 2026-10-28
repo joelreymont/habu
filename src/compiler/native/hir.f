@@ -38,6 +38,7 @@ require src/compiler/ir/type.f
 require src/compiler/ir/schema.f
 require src/compiler/ir/symbol.f
 require src/compiler/ir/build.f
+require src/compiler/native/emission.f
 
 package HIR
 public
@@ -564,16 +565,13 @@ public
 : KEY-ORIGIN ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
    K-ORIGIN KEY-BIND ;
 
-\ A small enumeration rather than a flag, so a CODE kind is a new member and not
-\ a second attribute.
+\ A number, or one of NEMIT's address-site kinds: an enumeration rather than a
+\ flag, so a CODE kind is a new member and not a second attribute.
 0 constant ADDR-NONE
-1 constant ADDR-DATA
-2 constant ADDR-CODE
-ADDR-CODE constant ADDR-KIND-MAX
 
 \ Refused where the attribute is BUILT rather than where it is read.
 : ADDR-ATTR ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-attr-id )
-   dup 0 < over ADDR-KIND-MAX > or if E-HIR-ADDR throw then
+   dup 0 < over NEMIT:ADDR-KIND-MAX > or if E-HIR-ADDR throw then
    IR-BUILD:INTERN-INT-ATTR ;
 
 \ Three keys and not one packed number, because a reader could get the fields of

@@ -58,6 +58,7 @@ require src/arch/x86-64/asm.f
 require src/arch/x86-64/backend.f
 require src/compiler/native/regfile.f
 require src/compiler/native/dialect.f
+require src/compiler/native/emission.f
 
 package X64IR
 public
@@ -252,13 +253,10 @@ public
 : FRAME-LIMIT ( -- n )     FRAME-LIM ;
 : SP-ALIGN ( -- n )        SP-ALIGN-N ;
 
-\ A small enumeration rather than a flag, so the CODE kind is a new member. The
-\ kinds are ARM64's, because what they classify - which relocation site a
-\ literal opens - is the relocation model's fact and not the machine's.
+\ A number, or one of NEMIT's address-site kinds, because what they classify -
+\ which relocation site a literal opens - is the relocation model's fact and
+\ not the machine's.
 0 constant ADDR-NONE
-1 constant ADDR-DATA
-2 constant ADDR-CODE
-ADDR-CODE constant ADDR-KIND-MAX
 
 private
 
@@ -274,7 +272,7 @@ private
 
 \ An unknown number would reach the emitter as a site class it has no rule for.
 : ADDR-KIND ( n -- n )
-   dup 0 < over ADDR-KIND-MAX > or if E-X64IR-IMM throw then ;
+   dup 0 < over NEMIT:ADDR-KIND-MAX > or if E-X64IR-IMM throw then ;
 
 \ ---- checked frame operands --------------------------------------------------
 \ A frame slot is addressed at a non-negative displacement from the frame

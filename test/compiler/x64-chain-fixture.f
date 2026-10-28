@@ -744,7 +744,7 @@ public
    s" a function's address as publication reads it: a row for each of the two functions and none past them, one site of the code kind at the literal that loads the second's, and no call" T-LABEL
    [: QUOTER-BODY ;] WITH-CASE
    0 T=                                  \ no call row
-   X64IR:ADDR-CODE T=                    \ the site is a code address
+   NEMIT:ADDR-CODE T=                    \ the site is a code address
    0 T=                                  \ at byte zero, the `mov r64, imm64` itself
    1 T=                                  \ one site: the literal 3000 is no address
    22 T=                                 \ the second function starts after the first's 22 bytes

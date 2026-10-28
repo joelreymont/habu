@@ -34,6 +34,7 @@ require src/compiler/native/fetch.f
 require src/compiler/native/frozen.f
 require src/compiler/native/trap.f
 require src/compiler/native/family.f
+require src/compiler/native/emission.f
 
 package NELAB
 private
@@ -981,7 +982,7 @@ DYNAMIC-BUFFER SPELL-BUF u8
 : EMIT-STRING ( n -- ) {: ix:n :}
    ix QSPELL {: a u:n :}
    a u NSTR:INTERN-SOURCE {: address:n origin:n :}
-   ix address HIR:ADDR-DATA origin EMIT-KIND-LIT-OWNED
+   ix address NEMIT:ADDR-DATA origin EMIT-KIND-LIT-OWNED
    ix  u  EMIT-LIT ;
 
 
@@ -1009,7 +1010,7 @@ using IR-BUILD
 
 : EMIT-COUNTED-STRING ( n -- ) {: ix:n :}
    ix COUNTED-BODY NSTR:INTERN-SOURCE {: address:n origin:n :}
-   ix address HIR:ADDR-DATA origin EMIT-KIND-LIT-OWNED ;
+   ix address NEMIT:ADDR-DATA origin EMIT-KIND-LIT-OWNED ;
 
 
 : EMIT-CONST-OP-SYM ( IR-ARENA:arena n IR-ID:ir-symbol-id -- )
@@ -3127,7 +3128,7 @@ align
 \ no emitted trap depends on the build host's helper code.
 : TRAP-ARGS ( n ptr u8 n n -- ) {: ix:n a:ptr u:n rc:n :}
    a u NSTR:INTERN-SOURCE {: address:n origin:n :}
-   ix address HIR:ADDR-DATA origin STAGE-OWNED-LIT
+   ix address NEMIT:ADDR-DATA origin STAGE-OWNED-LIT
    ix u HIR:ADDR-NONE STAGE-LIT
    ix rc HIR:ADDR-NONE STAGE-LIT ;
 
@@ -3448,7 +3449,7 @@ TRUSTED: EXECUTE-ENTRY ( -- n ) ['] execute ;
       then
       ix QUOT-REFUSE
    then
-   ix entry HIR:ADDR-CODE EMIT-KIND-LIT
+   ix entry NEMIT:ADDR-CODE EMIT-KIND-LIT
    a u NDICT:SPELL-ARITY {: qi:n qo:n :}
    qi NDICT:ARITY-NONE = if exit then
    qo NDICT:ARITY-NONE = if exit then
@@ -3466,7 +3467,7 @@ TRUSTED: EXECUTE-ENTRY ( -- n ) ['] execute ;
    dout NDICT:ARITY-NONE = if E-NELAB-DEFER throw then
    VN @ 1- VQ@ {: k:n :}
    k 0 >= if k din dout QFILL then
-   ix cell HIR:ADDR-DATA origin EMIT-KIND-LIT-OWNED
+   ix cell NEMIT:ADDR-DATA origin EMIT-KIND-LIT-OWNED
    ix XT-STORE-ENTRY 2 0 NDICT:GLUE-NONE STAGE-WCALL ;
 
 \ ---- entering the routine a quotation names ----------------------------------
@@ -3662,7 +3663,7 @@ TRUSTED: EXECUTE-ENTRY ( -- n ) ['] execute ;
    s" NFETCH-CHECK:TAGS" NDICT:CALL-TARGET {: entry:n :}
    entry 0= if E-HIR-UNMODELED throw then
    VN @ 1- VAT VPUSH
-   ix address HIR:ADDR-DATA origin EMIT-KIND-LIT-OWNED
+   ix address NEMIT:ADDR-DATA origin EMIT-KIND-LIT-OWNED
    ix entry 2 0 NDICT:GLUE-NONE STAGE-WCALL ;
 
 \ ---- the words that are a short sequence of operations ------------------------
@@ -4374,7 +4375,7 @@ private
    STAGE-DOES-ENTRY
    DOES-SIG @ DOES-SIG-U @ NSTR:INTERN-SOURCE
       {: address:n origin:n :}
-   DOES-AT @ address HIR:ADDR-DATA origin STAGE-OWNED-LIT
+   DOES-AT @ address NEMIT:ADDR-DATA origin STAGE-OWNED-LIT
    DOES-AT @ DOES-SIG-U @ HIR:ADDR-NONE STAGE-LIT
    1 CALL-NEED !
    DOES-AT @ DOES-PATCH-ENTRY 3 0 NDICT:GLUE-NONE STAGE-WCALL ;
@@ -4385,7 +4386,7 @@ private
 \ The defer body preserves its caller's stack while execute calls the target.
 : STAGE-DEFER ( -- )
    0 EMIT-MEM
-   0 FIXED-VAL @ HIR:ADDR-DATA STAGE-LIT
+   0 FIXED-VAL @ NEMIT:ADDR-DATA STAGE-LIT
    0 HIR-OPCODE:LOAD EMIT-OPCODE
    0 EXECUTE-ENTRY 1 0 NDICT:GLUE-NONE STAGE-WCALL ;
 

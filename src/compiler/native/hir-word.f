@@ -34,6 +34,7 @@ require src/compiler/native/dict.f
 require src/compiler/native/checker-owner.f
 require src/habu/layout.f
 require src/habu/terminal-call.f
+require src/compiler/native/emission.f
 
 package HIR-WORD
 public
@@ -581,7 +582,7 @@ public
 
 : LIT-KIND ( n -- n )
    {: k:n :}
-   k NDICT:FIXED-ADDR = if HIR:ADDR-DATA exit then
+   k NDICT:FIXED-ADDR = if NEMIT:ADDR-DATA exit then
    HIR:ADDR-NONE ;
 
 private

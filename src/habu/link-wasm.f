@@ -51,6 +51,7 @@ require src/arch/wasm/encode.f
 require src/arch/wasm/link.f
 require src/arch/wasm/dynamic.f
 require src/arch/wasm/kernel.f
+require src/compiler/native/emission.f
 
 package WASMLINK
 using AOT-BUF
@@ -357,10 +358,10 @@ variable VAL-AT                      \ the next cell value in the capture's valu
    s 4 SITE@ {: kind:n :}
    kind AOT-SHADOW:CALL = if  f at s TARGET WLINK:CALL+  exit  then
    kind AOT-SHADOW:DATA = if
-      f at WSTRUCT:ADDR-DATA  s CAPTURED AOT-DATA-D0 @ -  WLINK:ADDRESS+  exit
+      f at NEMIT:ADDR-DATA  s CAPTURED AOT-DATA-D0 @ -  WLINK:ADDRESS+  exit
    then
    kind AOT-SHADOW:FUN = if s FUN-OF else s TARGET then {: t:n :}
-   f at WSTRUCT:ADDR-CODE t SLOTS @ WLINK:ADDRESS+ ;
+   f at NEMIT:ADDR-CODE t SLOTS @ WLINK:ADDRESS+ ;
 
 : SITE-LIVE? ( n -- bool )
    0 SITE@ ROW-AT SH-REC LIVE @ 0<> ;
@@ -425,9 +426,9 @@ variable VAL-AT                      \ the next cell value in the capture's valu
    loc AOT-WINDOW:XTOFF-WINDOW-TAG and 0=  v 0= or if exit then
    loc AOT-WINDOW:XTOFF-LOC-MASK and {: at:n :}
    meta AOT-WINDOW:XTOFF-KIND-MASK and {: kind:n :}
-   kind AOT-WINDOW:XTOFF-DATA-TAG = if  at WSTRUCT:ADDR-DATA v 1- WLINK:DATA-CELL+  exit  then
+   kind AOT-WINDOW:XTOFF-DATA-TAG = if  at NEMIT:ADDR-DATA v 1- WLINK:DATA-CELL+  exit  then
    kind AOT-WINDOW:XTOFF-NAME-TAG = if v 1- POOL$ NAMED else c XT-REC ENTERS then {: f:n :}
-   at WSTRUCT:ADDR-CODE f SLOTS @ WLINK:DATA-CELL+ ;
+   at NEMIT:ADDR-CODE f SLOTS @ WLINK:DATA-CELL+ ;
 
 \ ---- the module ---------------------------------------------------------------
 : CELLS-ENTRY ( ptr u8 n -- )

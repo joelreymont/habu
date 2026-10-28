@@ -1564,7 +1564,7 @@ private
    HIR-MOD CALLEE-ENTRY BUILD-WORDCALLER CALL-ALLOCATED CALL-SLOT PLACED ;
 
 : RELOC-BYTES ( IR-CTX:ctx -- )
-   0 W-CTX ! X64IR:ADDR-DATA BUILD-RELOC M-ALLOCATED 0 PLACED ;
+   0 W-CTX ! NEMIT:ADDR-DATA BUILD-RELOC M-ALLOCATED 0 PLACED ;
 
 \ Allocated and accepted under a leaf whose frame is the one it reserves.
 : FRAMED-BYTES ( IR-CTX:ctx -- )
@@ -2201,7 +2201,7 @@ public
    \ mc: retq
    s" 48b800007ada00000000c3" XB=
    RELOC-FACTS
-   X64IR:ADDR-DATA T=                    \ the site is a data address
+   NEMIT:ADDR-DATA T=                    \ the site is a data address
    0 T=                                  \ at byte zero, the `mov r64, imm64` itself
    1 T=                                  \ one site, because ADDR-LANES is one
    0 T=                                  \ the function starts where the emission does
@@ -2253,7 +2253,7 @@ public
    QUOTER-FACTS
    11 T=                                 \ the second function starts 11 bytes in
    0 T=                                  \ and the first where the emission does
-   X64IR:ADDR-CODE T=                    \ the site is a code address
+   NEMIT:ADDR-CODE T=                    \ the site is a code address
    0 T=                                  \ at byte zero, the `mov r64, imm64` itself
    1 T=                                  \ one site: the literal 3000 is no address
    X64EMIT:RETIRE
@@ -2300,7 +2300,7 @@ public
    QUOTER-FACTS
    11 T=
    0 T=
-   X64IR:ADDR-CODE T=
+   NEMIT:ADDR-CODE T=
    0 T=
    1 T=
    X64EMIT:RETIRE

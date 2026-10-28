@@ -68,6 +68,7 @@ require src/arch/wasm/leb.f
 require src/arch/wasm/wstruct.f
 require src/arch/wasm/profile.f
 require src/arch/wasm/encode.f
+require src/compiler/native/emission.f
 
 \ WLINK's codes, -9830..-9834, in the Wasm backend's block -9800..-9834.
 -9830 constant E-WLINK-FIRST
@@ -470,11 +471,11 @@ variable IMAGE-POS                   \ where LINK wrote the image in the module
 \ The value an address of a kind and a target is written as.
 : FINAL ( n n -- n )
    {: kind:n t:n :}
-   kind WSTRUCT:ADDR-DATA = if
+   kind NEMIT:ADDR-DATA = if
       t 0 <  t IMAGE-U @ > or if E-WLINK-UNRESOLVED throw then
       WPROF:IMAGE-BASE t +  exit
    then
-   kind WSTRUCT:ADDR-CODE = if
+   kind NEMIT:ADDR-CODE = if
       t FIRST-SLOT <  t NSLOTS @ FIRST-SLOT + >= or if E-WLINK-UNRESOLVED throw then
       t exit
    then

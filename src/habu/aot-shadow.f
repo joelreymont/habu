@@ -290,7 +290,7 @@ variable SH-NATIVE-READY
       e i NSHADOW:CALL-TARGET@ SH-MARK-TARGET
    loop
    e NSHADOW:ADDR-SITES 0 ?do
-      e i NSHADOW:ADDR-SITE-KIND@ HIR:ADDR-CODE = if
+      e i NSHADOW:ADDR-SITE-KIND@ NEMIT:ADDR-CODE = if
          e i NSHADOW:ADDR-SITE@ {: off:n :}
          off 0 < off ADDRESS-CARRIER:MOVABS-BYTES + e NSHADOW:SIZE > or if
             off SH-NOT-MOVABS then
@@ -397,7 +397,7 @@ variable SH-NATIVE-READY
    loop ;
 
 \ An address literal, a MOVABS whose kind HIR's elaboration fixed and the x86-64
-\ rows carried through (x64ir.f spells HIR's kinds). A function's offset stays; a
+\ rows carried through (NEMIT's kinds, src/compiler/native/emission.f). A function's offset stays; a
 \ word's entry becomes its row's target and the field 0; a window DATA address
 \ becomes its window coordinate.
 : SH-ADDR ( n n -- ) {: e:n k:n :}
@@ -408,13 +408,13 @@ variable SH-NATIVE-READY
    p ADDRESS-CARRIER:MOVABS-SITE? 0= if off SH-NOT-MOVABS then
    p ADDRESS-CARRIER:MOVABSV {: v:n :}
    SH-AT @ off + {: at:n :}
-   ak HIR:ADDR-CODE = if
+   ak NEMIT:ADDR-CODE = if
       e v SH-FUN? if at AOT-SHADOW:FUN 0 SH-SITE+ exit then
       off v SH-TARGET {: target:n :}
       p 0 ADDRESS-CARRIER:SET-MOVABS
       at AOT-SHADOW:CODE target SH-SITE+ exit
    then
-   ak HIR:ADDR-DATA = if
+   ak NEMIT:ADDR-DATA = if
       v SH-DATA? 0= if off v SH-DATA-OUT then
       p  v ACAP-W-D0 @ - AOT-DATA-D0 @ +  ADDRESS-CARRIER:SET-MOVABS
       at AOT-SHADOW:DATA 0 SH-SITE+ exit

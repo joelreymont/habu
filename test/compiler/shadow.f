@@ -159,7 +159,7 @@ SH-PB SH-PX
    r 1+ NSHADOW:ENTRY@ clause T=
    -1
    e NSHADOW:ADDR-SITES 0 ?do
-      e i NSHADOW:ADDR-SITE-KIND@ X64IR:ADDR-CODE = if drop i leave then
+      e i NSHADOW:ADDR-SITE-KIND@ NEMIT:ADDR-CODE = if drop i leave then
    loop {: k:n :}
    k 0 >= TTRUE
    e k IMM@ clause T=
@@ -175,7 +175,7 @@ SH-PB SH-PX
    REC-QUOT @ EM-OF {: e:n :}
    e NSHADOW:FUNCTIONS 2 T=
    e NSHADOW:ADDR-SITES 1 T=
-   e 0 NSHADOW:ADDR-SITE-KIND@ X64IR:ADDR-CODE T=
+   e 0 NSHADOW:ADDR-SITE-KIND@ NEMIT:ADDR-CODE T=
    e 0 IMM@  e 1 NSHADOW:FUNCTION-OFFSET@  T= ;
 
 : ROW-CASE ( -- )

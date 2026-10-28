@@ -10,6 +10,7 @@ require test/compiler/native-chain-fixture.f
 require src/arch/x86-64/passes.f
 require src/lib/fs-mutate.f
 require src/lib/fd.f
+require src/compiler/native/emission.f
 
 : COMPILER-SESSION-EDGE ( n -- n ) abs ;
 : COMPILER-SESSION-PROOF ( n -- n [ -- n ] )
@@ -231,7 +232,7 @@ TASK:MIN-STACK TASK:TASK WORKER
    e NART:FUNCTIONS 2 T=
    e NART:CALL-SITES 0 > TTRUE
    e NART:ADDR-SITES 1 T=
-   e 0 NART:ADDR-SITE-KIND@ X64IR:ADDR-CODE T= ;
+   e 0 NART:ADDR-SITE-KIND@ NEMIT:ADDR-CODE T= ;
 
 : FAIL-X64 ( IR-CTX:ctx -- )
    dup CHILD-CTX !

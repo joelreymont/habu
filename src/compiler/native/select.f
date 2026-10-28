@@ -31,6 +31,7 @@ require src/compiler/native/frame.f
 require src/compiler/native/frozen.f
 require src/compiler/native/dict.f
 require src/compiler/native/trap.f
+require src/compiler/native/emission.f
 
 package A64SEL
 using NFROZEN
@@ -1215,7 +1216,7 @@ A64IR:IMM-LIMIT 1- constant ONES-HALF
 \ Address kind chooses a recorded carrier; scalars use an unrecorded minimal chain.
 : MATERIALISE ( IR-ID:ir-op-id n n -- )
    {: id:IR-ID:ir-op-id v:n kind:n :}
-   kind A64IR:ADDR-DATA = if
+   kind NEMIT:ADDR-DATA = if
       v DATA-VA VA>N - {: off:n :}
       off 0 >= off DATA-SIZE <= and v $FFFFFFFFFFFF <= and if
          id off MATERIALISE-DATA exit
@@ -1238,7 +1239,7 @@ A64IR:IMM-LIMIT 1- constant ONES-HALF
    {: id:IR-ID:ir-op-id :}
    id CONST-KIND-OF {: kind:n :}
    id OP-SLOT  kind  id CONST-VALUE
-   kind HIR:ADDR-DATA = if
+   kind NEMIT:ADDR-DATA = if
       id CONST-ORIGIN dup 0 < if drop -1 then
    else -1 then ;
 

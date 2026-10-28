@@ -37,8 +37,8 @@
 \ out, every lane an i64. `return` answers the same row.
 \
 \ AN ADDRESS IS A KIND OF CONSTANT. An i64.const states whether its value is a
-\ number, a data address or a code address (HIR's three kinds, src/compiler/
-\ native/hir.f ADDR-NONE..ADDR-CODE), or the address of a function of its own
+\ number, a data address or a code address (NONE, or NEMIT's DATA or CODE,
+\ src/compiler/native/emission.f), or the address of a function of its own
 \ module, its value that function's ordinal (HIR's quot, a quotation's or a
 \ does> clause's), because the encoder writes an address as a padded field the
 \ linker rewrites and a number as itself.
@@ -301,15 +301,13 @@ ENUM opcode DERIVE eq
 : KEY-CALLEE ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
    KEY-CALLEE$ IR-BUILD:INTERN-SYMBOL ;
 
-\ An i64.const's address kind, one of the four below.
+\ An i64.const's address kind: NONE or FUN below, or NEMIT's DATA or CODE.
 : KEY-ADDR$ ( -- ptr u8 n )     s" wstruct.addr" ;
 
 : KEY-ADDR ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
    KEY-ADDR$ IR-BUILD:INTERN-SYMBOL ;
 
 0 constant ADDR-NONE
-1 constant ADDR-DATA
-2 constant ADDR-CODE
 3 constant ADDR-FUN                  \ the function of the module whose ordinal is the value
 
 \ Refused where the attribute is built, as HIR refuses its own.

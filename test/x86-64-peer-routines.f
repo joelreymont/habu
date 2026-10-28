@@ -62,6 +62,7 @@ require src/habu/boot-x64.f
 require test/x86-64-peer-harness.f
 require src/habu/arith-abi.f
 require src/lib/ieee754.f
+require src/compiler/native/emission.f
 
 \ The fixtures stay in the package that stages them; this adds each one's trip
 \ through the rows to the harness's next address.
@@ -92,7 +93,7 @@ private
       at e i NART:CALL-SITE@ + e i NART:CALL-TARGET@ X64HARNESS:LINK-CALL
    loop
    e NART:ADDR-SITES 0 ?do
-      e i NART:ADDR-SITE-KIND@ X64IR:ADDR-CODE = if
+      e i NART:ADDR-SITE-KIND@ NEMIT:ADDR-CODE = if
          at e i NART:ADDR-SITE@ + MOVED @ X64HARNESS:LINK-CODE
       then
    loop ;

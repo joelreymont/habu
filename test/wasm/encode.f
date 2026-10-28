@@ -728,8 +728,8 @@ $40000000 constant CODE-LIT
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
    c b s" addr" 1 1 FN-OPEN
    c b ENTRY {: cx x k :}
-   c b DATA-LIT WSTRUCT:ADDR-DATA I64-AK {: d :}
-   c b CODE-LIT WSTRUCT:ADDR-CODE I64-AK {: p :}
+   c b DATA-LIT NEMIT:ADDR-DATA I64-AK {: d :}
+   c b CODE-LIT NEMIT:ADDR-CODE I64-AK {: p :}
    c b WSTRUCT-OPCODE:I64-ADD d p  c b I64  OP2 {: s :}
    c b s RET
    c b SHUT
@@ -759,9 +759,9 @@ $40000000 constant CODE-LIT
    ADDR-WANT 48 ONE-FN-CK
    s" the data address is a DATA site at 26" T-LABEL
    WENC:ADDR-SITES 2 T=
-   0 26 DATA-LIT WSTRUCT:ADDR-DATA ADDR-SITE-IS
+   0 26 DATA-LIT NEMIT:ADDR-DATA ADDR-SITE-IS
    s" the code address is a CODE site at 39" T-LABEL
-   1 39 CODE-LIT WSTRUCT:ADDR-CODE ADDR-SITE-IS
+   1 39 CODE-LIT NEMIT:ADDR-CODE ADDR-SITE-IS
    s" a row past the last address site is refused" T-LABEL
    [: PAST-ADDRS-RUN ;] E-WENC-STATE TTHROWSQ
    s" a kind past the last address site is refused" T-LABEL

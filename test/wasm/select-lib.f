@@ -26,6 +26,7 @@ require src/compiler/native/backend.f
 require src/arch/wasm/wstruct.f
 require src/arch/wasm/select.f
 require test/compiler/native-source-fixture.f
+require src/compiler/native/emission.f
 
 package WSEL-TEST
 private
@@ -177,8 +178,8 @@ variable FUN-B0                        \ the function's first block, module-loca
    o NFROZEN:OPCODE-AT SYM$ {: a:ptr u:n :}
    a 8 +  u 8 -  SB-APPEND
    o NUMBER? if  s" =" SB-APPEND  o VALUE FMT:SB-INT  then
-   o KIND WSTRUCT:ADDR-DATA = if s" @data" SB-APPEND then
-   o KIND WSTRUCT:ADDR-CODE = if s" @code" SB-APPEND then ;
+   o KIND NEMIT:ADDR-DATA = if s" @data" SB-APPEND then
+   o KIND NEMIT:ADDR-CODE = if s" @code" SB-APPEND then ;
 
 \ The run's operation, its destinations, and `*count` after a run longer than
 \ one.

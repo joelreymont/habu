@@ -36,6 +36,7 @@ require src/arch/arm64/backend.f
 require src/arch/arm64/machine.f
 require src/compiler/native/regfile.f
 require src/compiler/native/dialect.f
+require src/compiler/native/emission.f
 
 package A64IR
 public
@@ -257,11 +258,8 @@ $403 constant FIMM-EXP-MAX
    dup 0 < over DATA-SIZE > or
    over DATA-VA VA>N + $FFFFFFFFFFFF > or if E-A64IR-DATA throw then ;
 
-\ A small enumeration rather than a flag, so the CODE kind is a new member.
+\ A number, or one of NEMIT's address-site kinds.
 0 constant ADDR-NONE
-1 constant ADDR-DATA
-2 constant ADDR-CODE
-ADDR-CODE constant ADDR-KIND-MAX
 
 private
 
@@ -278,7 +276,7 @@ private
 
 \ An unknown number would reach the emitter as a site class it has no rule for.
 : ADDR-KIND ( n -- n )
-   dup 0 < over ADDR-KIND-MAX > or if E-A64IR-IMM throw then ;
+   dup 0 < over NEMIT:ADDR-KIND-MAX > or if E-A64IR-IMM throw then ;
 
 \ ---- checked frame operands --------------------------------------------------
 : SLOT ( n -- n )

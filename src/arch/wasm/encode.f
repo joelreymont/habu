@@ -34,7 +34,7 @@
 \ with no body, which an emission has no bytes for.
 \
 \ AN ADDRESS IS A ROW TOO. An i64.const states its address kind, one of
-\ WSTRUCT's four: HIR's three (src/compiler/native/hir.f ADDR-NONE..ADDR-CODE)
+\ WSTRUCT's four: NONE, NEMIT's DATA and CODE (src/compiler/native/emission.f)
 \ and FUN. A number, kind NONE, is its shortest SLEB. A data or code address is
 \ a padded ten-byte SLEB holding the host value, which the capture resolves
 \ and the linker rewrites in place; each is an address site: the offset of
@@ -513,8 +513,8 @@ SPELL-MAX BUFFER: SPELL
    o WSTRUCT:KEY-VALUE$ INT-ATTR {: v:n :}
    o WSTRUCT:KEY-ADDR$ INT-ATTR {: kind:n :}
    kind WSTRUCT:ADDR-NONE = if  v PUT-S64  exit  then
-   kind WSTRUCT:ADDR-FUN = if  WSTRUCT:ADDR-CODE v ADDR-SITE+  0 PUT-PAD64  exit  then
-   kind WSTRUCT:ADDR-DATA <>  kind WSTRUCT:ADDR-CODE <> and if E-WSTRUCT-ADDR throw then
+   kind WSTRUCT:ADDR-FUN = if  NEMIT:ADDR-CODE v ADDR-SITE+  0 PUT-PAD64  exit  then
+   kind NEMIT:ADDR-DATA <>  kind NEMIT:ADDR-CODE <> and if E-WSTRUCT-ADDR throw then
    kind -1 ADDR-SITE+
    v PUT-PAD64 ;
 
@@ -689,7 +689,7 @@ public
 : ADDR-SITE@ ( n -- n )
    NADDRS @ ROW-CK AS-OFF @ ;
 
-\ Its address kind, WSTRUCT's and so HIR's.
+\ Its address kind, NEMIT's DATA or CODE; a FUN is filed as CODE.
 : ADDR-SITE-KIND@ ( n -- n )
    NADDRS @ ROW-CK AS-KIND @ ;
 

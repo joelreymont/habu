@@ -287,7 +287,7 @@ variable D-SPILLS                    \ padded spill slots that define the cumula
          if E-NSHADOW-ROW throw then
       base off + {: p:ptr :}
       p ADDRESS-CARRIER:MOVABS-SITE? 0= if E-NSHADOW-ROW throw then
-      a i NART:ADDR-SITE-KIND@ HIR:ADDR-CODE = if
+      a i NART:ADDR-SITE-KIND@ NEMIT:ADDR-CODE = if
          a p ADDRESS-CARRIER:MOVABSV FUN-OFF {: fun:n :}
          fun 0 >= if p fun ADDRESS-CARRIER:SET-MOVABS then
       then

@@ -38,6 +38,7 @@ require src/arch/wasm/profile.f
 require src/arch/wasm/encode.f
 require src/arch/wasm/link.f
 require test/wasm/w03.f
+require src/compiler/native/emission.f
 
 package WASM-LINK-TEST
 private
@@ -257,10 +258,10 @@ IMAGE-LEN BUFFER: IMAGE-BUF            \ byte i holds i
    s" table slots number from 1 in the order added" T-LABEL
    3 WLINK:TABLE+ 1 T=
    2 WLINK:TABLE+ 2 T=
-   0 2 WSTRUCT:ADDR-DATA IMAGE-LEN WLINK:ADDRESS+
-   1 2 WSTRUCT:ADDR-CODE 2 WLINK:ADDRESS+
-   0 WSTRUCT:ADDR-DATA 8 WLINK:DATA-CELL+
-   IMAGE-LEN 8 - WSTRUCT:ADDR-CODE 1 WLINK:DATA-CELL+
+   0 2 NEMIT:ADDR-DATA IMAGE-LEN WLINK:ADDRESS+
+   1 2 NEMIT:ADDR-CODE 2 WLINK:ADDRESS+
+   0 NEMIT:ADDR-DATA 8 WLINK:DATA-CELL+
+   IMAGE-LEN 8 - NEMIT:ADDR-CODE 1 WLINK:DATA-CELL+
    2 LINKED
    s" type, function, table, memory, export, element, code, data, ending at the module's end" T-LABEL
    IDS @ $134579AB T=
@@ -346,9 +347,9 @@ IMAGE-LEN BUFFER: IMAGE-BUF            \ byte i holds i
    0 0 0 0 CALL-BODY  0 0 0 ADD0
    0 ADDR-BODY  0 0 0 ADD0
    1 4 0 WLINK:CALL+
-   2 2 WSTRUCT:ADDR-DATA 16 WLINK:ADDRESS+
+   2 2 NEMIT:ADDR-DATA 16 WLINK:ADDRESS+
    0 WLINK:TABLE+ drop
-   8 WSTRUCT:ADDR-CODE 1 WLINK:DATA-CELL+
+   8 NEMIT:ADDR-CODE 1 WLINK:DATA-CELL+
    0 LINKED ;
 
 : ENTRY-ROWS ( -- )
@@ -376,36 +377,36 @@ IMAGE-LEN BUFFER: IMAGE-BUF            \ byte i holds i
 
 : ADDRESS-ROWS ( -- )
    s" an address site in no function is refused" T-LABEL
-   BASE  3 2 WSTRUCT:ADDR-DATA 0 WLINK:ADDRESS+  [: LINK0 ;] E-WLINK-UNRESOLVED TTHROWSQ
+   BASE  3 2 NEMIT:ADDR-DATA 0 WLINK:ADDRESS+  [: LINK0 ;] E-WLINK-UNRESOLVED TTHROWSQ
    s" a data address past the image's end is refused" T-LABEL
-   BASE  2 2 WSTRUCT:ADDR-DATA 17 WLINK:ADDRESS+  [: LINK0 ;] E-WLINK-UNRESOLVED TTHROWSQ
+   BASE  2 2 NEMIT:ADDR-DATA 17 WLINK:ADDRESS+  [: LINK0 ;] E-WLINK-UNRESOLVED TTHROWSQ
    s" a data address below the image is refused" T-LABEL
-   BASE  2 2 WSTRUCT:ADDR-DATA -1 WLINK:ADDRESS+  [: LINK0 ;] E-WLINK-UNRESOLVED TTHROWSQ
+   BASE  2 2 NEMIT:ADDR-DATA -1 WLINK:ADDRESS+  [: LINK0 ;] E-WLINK-UNRESOLVED TTHROWSQ
    s" a code address past the table is refused" T-LABEL
-   BASE  2 2 WSTRUCT:ADDR-CODE 2 WLINK:ADDRESS+  [: LINK0 ;] E-WLINK-UNRESOLVED TTHROWSQ
+   BASE  2 2 NEMIT:ADDR-CODE 2 WLINK:ADDRESS+  [: LINK0 ;] E-WLINK-UNRESOLVED TTHROWSQ
    s" a code address of slot 0, which holds no function, is refused" T-LABEL
-   BASE  2 2 WSTRUCT:ADDR-CODE 0 WLINK:ADDRESS+  [: LINK0 ;] E-WLINK-UNRESOLVED TTHROWSQ
+   BASE  2 2 NEMIT:ADDR-CODE 0 WLINK:ADDRESS+  [: LINK0 ;] E-WLINK-UNRESOLVED TTHROWSQ
    s" an address of kind none names nothing and is refused" T-LABEL
    BASE  2 2 WSTRUCT:ADDR-NONE 0 WLINK:ADDRESS+  [: LINK0 ;] E-WLINK-UNRESOLVED TTHROWSQ
    s" an address of a kind past code is refused" T-LABEL
-   BASE  2 2 WSTRUCT:ADDR-CODE 1+ 0 WLINK:ADDRESS+  [: LINK0 ;] E-WSTRUCT-ADDR TTHROWSQ
+   BASE  2 2 NEMIT:ADDR-CODE 1+ 0 WLINK:ADDRESS+  [: LINK0 ;] E-WSTRUCT-ADDR TTHROWSQ
    s" an address of a kind below none is refused" T-LABEL
    BASE  2 2 WSTRUCT:ADDR-NONE 1- 0 WLINK:ADDRESS+  [: LINK0 ;] E-WSTRUCT-ADDR TTHROWSQ
    s" an address field that is not padded is refused" T-LABEL
    BASE  0 BODY-U !  0 B, $42 B, 0 B, $1A B, $41 B, 0 B, $0B B,  0 0 0 ADD0
-   3 2 WSTRUCT:ADDR-DATA 0 WLINK:ADDRESS+  [: LINK0 ;] WLEB:E-UNPADDED TTHROWSQ ;
+   3 2 NEMIT:ADDR-DATA 0 WLINK:ADDRESS+  [: LINK0 ;] WLEB:E-UNPADDED TTHROWSQ ;
 
 : SLOT-ROWS ( -- )
    s" a table slot of no function is refused" T-LABEL
    BASE  3 WLINK:TABLE+ drop  [: LINK0 ;] E-WLINK-UNRESOLVED TTHROWSQ
    s" a cell past the image's end is refused" T-LABEL
-   BASE  9 WSTRUCT:ADDR-DATA 0 WLINK:DATA-CELL+  [: LINK0 ;] E-SPAN-RANGE TTHROWSQ
+   BASE  9 NEMIT:ADDR-DATA 0 WLINK:DATA-CELL+  [: LINK0 ;] E-SPAN-RANGE TTHROWSQ
    s" a cell below the image is refused" T-LABEL
-   BASE  -1 WSTRUCT:ADDR-DATA 0 WLINK:DATA-CELL+  [: LINK0 ;] E-SPAN-RANGE TTHROWSQ
+   BASE  -1 NEMIT:ADDR-DATA 0 WLINK:DATA-CELL+  [: LINK0 ;] E-SPAN-RANGE TTHROWSQ
    s" a cell at MAX-N, whose end would wrap, is refused" T-LABEL
-   BASE  MAX-N WSTRUCT:ADDR-DATA 0 WLINK:DATA-CELL+  [: LINK0 ;] E-SPAN-RANGE TTHROWSQ
+   BASE  MAX-N NEMIT:ADDR-DATA 0 WLINK:DATA-CELL+  [: LINK0 ;] E-SPAN-RANGE TTHROWSQ
    s" a cell addressing past the image's end is refused" T-LABEL
-   BASE  0 WSTRUCT:ADDR-DATA 17 WLINK:DATA-CELL+  [: LINK0 ;] E-WLINK-UNRESOLVED TTHROWSQ
+   BASE  0 NEMIT:ADDR-DATA 17 WLINK:DATA-CELL+  [: LINK0 ;] E-WLINK-UNRESOLVED TTHROWSQ
    s" an image of a negative length is refused" T-LABEL
    [: IMAGE-BUF -1 WLINK:DATA! ;] E-SPAN-LENGTH TTHROWSQ ;
 

@@ -26,6 +26,7 @@ require tools/native-file-reference.f
 require tools/native-unit-dependency.f
 require tools/native-unit-file.f
 require tools/native-file-inputs.f
+require src/compiler/native/emission.f
 
 package NUNIT-OBJECT
 
@@ -1784,7 +1785,7 @@ CAST: DEF-REPLAY-XT ( n -- [ n n n n -- ] )
 
 : DEF-ADDR-REF ( n n n -- n )
    {: kind:n target:n owner:n :}
-   kind A64IR:ADDR-CODE = if target NFILE-REF:REF-CODE exit then
+   kind NEMIT:ADDR-CODE = if target NFILE-REF:REF-CODE exit then
    owner -2 <= if
       owner negate 2 - {: row:n :}
       row DEF-SOURCE-COUNT >= if BAD then
@@ -1805,8 +1806,8 @@ CAST: DEF-REPLAY-XT ( n -- [ n n n n -- ] )
       emission i s" NART:ADDR-SITE@" DEF-TWO {: site:n :}
       emission i s" NART:ADDR-SITE-KIND@" DEF-TWO {: kind:n :}
       emission i s" NART:ADDR-SITE-ORIGIN@" DEF-TWO {: owner:n :}
-      kind A64IR:ADDR-CODE = if ADDRESS-CARRIER:ADDR-CHAIN-BYTES
-      else kind A64IR:ADDR-DATA = if ADDRESS-CARRIER:DATA-CHAIN-BYTES
+      kind NEMIT:ADDR-CODE = if ADDRESS-CARRIER:ADDR-CHAIN-BYTES
+      else kind NEMIT:ADDR-DATA = if ADDRESS-CARRIER:DATA-CHAIN-BYTES
       else BAD then then {: width:n :}
       site 0 < site width + size > or if BAD then
       site DEF-CODE {: carrier:ptr :}
@@ -2103,14 +2104,14 @@ variable DEF-HELD-SIZE
    3 NUNIT-FILE:SECTION$ drop row DEF-ADDR-BYTES * + {: src:ptr :}
    src LE:U64@ {: site:n :}
    src 8 + LE:U64@ {: kind:n :}
-   kind A64IR:ADDR-CODE = if ADDRESS-CARRIER:ADDR-CHAIN-BYTES
-   else kind A64IR:ADDR-DATA = if ADDRESS-CARRIER:DATA-CHAIN-BYTES
+   kind NEMIT:ADDR-CODE = if ADDRESS-CARRIER:ADDR-CHAIN-BYTES
+   else kind NEMIT:ADDR-DATA = if ADDRESS-CARRIER:DATA-CHAIN-BYTES
    else BAD then then {: width:n :}
    site 0 < width DEF-CODE-U @ > or if BAD then
    site DEF-CODE-U @ width - > if BAD then
    src 16 + LE:U64@ 0<> src 32 + LE:U64@ 0<> or if BAD then
    src 24 + LE:U64@ {: ref:n :}
-   kind A64IR:ADDR-CODE = if ref NFILE-REF:REF>CODE else
+   kind NEMIT:ADDR-CODE = if ref NFILE-REF:REF>CODE else
       ref NFILE-REF:REF-KIND NFILE-REF:LITERAL = if
          ref DEF-LIT-REF
       else ref 0 NFILE-REF:REF>DATA NULL-PTR BYTE-VIEW - then
