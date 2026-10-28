@@ -53,6 +53,8 @@ require src/lib/net/tcp4.f
 require src/lib/span.f
 require src/lib/fd.f
 require src/lib/aio.f
+require src/lib/string.f
+require src/lib/fmt.f
 
 package HTTP
 
@@ -563,11 +565,53 @@ variable EXIT-HOOK-N
    conn TCP4:CONNECTION>N JOBS QUEUE:PUSH ;
 
 
+\ One line on stderr for a starved accept. The builder is task-local, and this
+\ is the listener's task.
+: REPORT-STARVED ( TCP4:errno -- ) {: cause:TCP4:errno :}
+   SB-RESET
+   s" http: accept failed, errno " SB-APPEND
+   cause TCP4:ERRNO>N FMT:SB-U
+   LF SB-APPEND-C
+   FD:STDERR FD>N SB$ write drop ;
+
+
+\ The record awaited and released, whatever its outcome.
+: SETTLE ( AIO:ticket -- )
+   AIO:AWAIT
+   MATCH AIO:outcome
+      ready OF drop ENDOF
+      timed-out OF ENDOF
+      cancelled OF ENDOF
+      refused OF drop ENDOF
+   ;MATCH ;
+
+
+\ Nothing cancels the park, so it ends timed out.
+: PARK ( -- )
+   ACCEPT-WAIT-MS >MS AIO:TIMEOUT SETTLE ;
+
+
+\ A failed accept stops the server only when the listener itself is broken. A
+\ pending connection that failed before accept took it (`aborted`) costs nothing:
+\ the listener polls again at once. Running out of descriptors or memory
+\ (`starved`) leaves the connection queued on Linux and resets it on macOS; the
+\ listener says so on stderr and parks ACCEPT-WAIT-MS, the same bound as its
+\ poll, so it neither spins nor delays a stop, and accepts again once something
+\ has been freed.
+: ACCEPT-FAILED ( TCP4:errno -- ) {: cause:TCP4:errno :}
+   cause TCP4:>ACCEPT-FAULT
+   MATCH TCP4:accept-fault
+      aborted OF ENDOF
+      starved OF cause REPORT-STARVED PARK ENDOF
+      broken OF 1 STOPPING atomic-add drop ENDOF
+   ;MATCH ;
+
+
 : ACCEPT-ONE ( -- )
    LISTENER@ TCP4:ACCEPT
    MATCH TCP4:accept-result
       accepted OF ACCEPTED ENDOF
-      failed OF drop 1 STOPPING atomic-add drop ENDOF
+      failed OF ACCEPT-FAILED ENDOF
    ;MATCH ;
 
 
@@ -666,13 +710,7 @@ MEM-MAX-N NS-PER-MS / constant MAX-DEADLINE-MS
 \ would refuse the LOOP-STOP that follows this server.
 : DROP-TIMER ( AIO:ticket -- ) {: timer:AIO:ticket :}
    timer AIO:CANCEL
-   timer AIO:AWAIT
-   MATCH AIO:outcome
-      ready OF drop ENDOF
-      timed-out OF ENDOF
-      cancelled OF ENDOF
-      refused OF drop ENDOF
-   ;MATCH ;
+   timer SETTLE ;
 
 
 \ Waits for the tasks to leave their own bodies, to the bound. The only wake-ups

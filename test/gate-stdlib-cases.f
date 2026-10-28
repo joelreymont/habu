@@ -1200,6 +1200,12 @@ SUITE http
    src/lib/net/http-test.f
 ;SUITE
 
+\ The HTTP listener through an accept refused for want of descriptors. Its own
+\ row: it lowers RLIMIT_NOFILE and puts a pipe in place of stderr.
+SUITE http-accept-starved
+   test/http-accept-starved.f
+;SUITE
+
 \ BROWSER-HOST:ROUTES on a loopback port: CURL fetches the browser host's page,
 \ each file's content type and bytes.
 SUITE browser-host

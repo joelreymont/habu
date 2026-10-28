@@ -83,6 +83,13 @@ SUMTYPE accept-result
    VARIANT failed errno ;VARIANT
 ;SUMTYPE
 
+\ Why an ACCEPT failed, as >ACCEPT-FAULT classifies its errno. `aborted`: the
+\ pending connection failed before accept took it, so the next one may succeed
+\ at once. `starved`: the process or the system is out of descriptors, buffers
+\ or memory, which a closed descriptor or freed memory may relieve. `broken`:
+\ anything else, such as a listener that is no longer a listening socket.
+ENUM accept-fault aborted starved broken ;ENUM
+
 SUMTYPE endpoint-result
    VARIANT endpoint address port ;VARIANT
    VARIANT failed errno ;VARIANT
@@ -177,11 +184,24 @@ $04 constant POLLOUT               \ a send will not block, on both.
 $7FFFFFFF constant MAX-TIMEOUT     \ the widest deadline this module accepts, in milliseconds.
 1000000 constant NS-PER-MS
 $7FFFFFFFFFFFFFFF constant NO-DEADLINE   \ a mono-ns deadline that never passes.
+\ Errno values from the macOS SDK's usr/include/sys/errno.h and Linux's
+\ include/uapi/asm-generic/errno-base.h and errno.h.
 4 constant EINTR
+12 constant ENOMEM
+23 constant ENFILE
+24 constant EMFILE
 : EAGAIN ( -- n )
    HB-TARGET-LINUX-KERNEL? if 11 exit then
    HB-TARGET-MACOS? if 35 exit then
    E-PLATFORM throw ;                    \ EWOULDBLOCK on both.
+: ECONNABORTED ( -- n )
+   HB-TARGET-LINUX-KERNEL? if 103 exit then
+   HB-TARGET-MACOS? if 53 exit then
+   E-PLATFORM throw ;
+: ENOBUFS ( -- n )
+   HB-TARGET-LINUX-KERNEL? if 105 exit then
+   HB-TARGET-MACOS? if 55 exit then
+   E-PLATFORM throw ;
 6 constant IPPROTO-TCP
 1 constant TCP-NODELAY
 : SOL-SOCKET ( -- n )
@@ -603,6 +623,26 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ptr u8 ptr u8 -- i32 )
    again ;
 
 
+\ An errno Linux's accept(2) passes on from the pending connection, not the
+\ listener, and says to treat like EAGAIN and retry, by its Linux number
+\ (asm-generic/errno.h), which names another errno on macOS: ENONET 64, EPROTO
+\ 71, ENOPROTOOPT 92, EOPNOTSUPP 95, ENETDOWN 100, ENETUNREACH 101, EHOSTDOWN
+\ 112, EHOSTUNREACH 113.
+: LINUX-PENDING? ( n -- bool ) {: code:n :}
+   code 64 = code 71 = or code 92 = or code 95 = or
+   code 100 = or code 101 = or code 112 = or code 113 = or ;
+
+
+: ACCEPT-ABORTED? ( n -- bool ) {: code:n :}
+   code ECONNABORTED = code EAGAIN = or if true exit then
+   HB-TARGET-LINUX-KERNEL? if code LINUX-PENDING? exit then
+   false ;
+
+
+: ACCEPT-STARVED? ( n -- bool ) {: code:n :}
+   code EMFILE = code ENFILE = or code ENOBUFS = or code ENOMEM = or ;
+
+
 public
 
 
@@ -663,6 +703,14 @@ public
 \ caller and closed separately from the listener. Use PENDING? to avoid waiting.
 : ACCEPT ( listener -- accept-result )
    LISTENER-FD ACCEPT-LOOP ;
+
+
+\ The fault a `failed` ACCEPT's errno names (accept-fault above).
+: >ACCEPT-FAULT ( errno -- accept-fault )
+   ERRNO>N {: code:n :}
+   code ACCEPT-ABORTED? if construct accept-fault aborted exit then
+   code ACCEPT-STARVED? if construct accept-fault starved exit then
+   construct accept-fault broken ;
 
 
 \ Blocks until the handshake completes or the OS refuses it. A refused peer
