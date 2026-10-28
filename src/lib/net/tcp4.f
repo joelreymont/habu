@@ -5,19 +5,21 @@
 \ STORAGE CLASS. TASK-LOCAL. The endpoint storage is one $20 TASK:+USER row, so
 \ each task holds its own sockaddr, socklen, socket option int and pollfd, and
 \ any number of tasks may bind, accept, read and write at once. The payload
-\ spans READ, READ-EXACT, SEND-SLICE and WRITE take are caller-owned.
+\ spans READ, READ-EXACT, TRY-READ, SEND-SLICE, TRY-SEND and WRITE take are
+\ caller-owned.
 \
 \ A caller relies on these:
 \ - A stream has no message boundaries: `closed` is the only way a transfer
 \   answers zero bytes, and a partial READ-EXACT's `closed` length is a
-\   readable prefix of its span.
+\   readable prefix of its span. A TRY-READ's `empty` moved nothing and says
+\   only that nothing has arrived yet.
 \ - WRITE's `ok` means the OS took every byte, not delivery. A `failed` WRITE
 \   may have sent part of the span and leaves the stream unusable. Every send
 \   carries MSG_NOSIGNAL, so a closed peer is EPIPE, never SIGPIPE.
 \ - A failed BIND or CONNECT closes its new socket and keeps the first errno.
-\ - An interrupted ACCEPT, READ, READ-EXACT or WRITE retries. An interrupted
-\   CONNECT is `failed` with EINTR and its socket closed, because Linux goes on
-\   completing that connection asynchronously.
+\ - An interrupted ACCEPT, READ, READ-EXACT, TRY-READ, TRY-SEND or WRITE
+\   retries. An interrupted CONNECT is `failed` with EINTR and its socket
+\   closed, because Linux goes on completing that connection asynchronously.
 \ - The caller closes each handle once and never reuses it, even after an
 \   interrupted close: Linux releases the descriptor before reporting the error.
 \   Handle lifetime is a caller obligation, not a linear proof. Calls must not
@@ -27,7 +29,8 @@
 \   before image capture.
 \ - A listener stays blocking.
 \
-\ Not run on Linux: the non-blocking path, UNREAD and UNSENT.
+\ Not run on Linux: the non-blocking path, TRY-READ, TRY-SEND, UNREAD and
+\ UNSENT.
 \
 \ Every readiness wait a caller asks for runs on the AIO loop (src/lib/aio.f):
 \ WAIT-READY submits one POLL and awaits it, so a waiting task costs no thread of
@@ -36,8 +39,11 @@
 \
 \ Every connection this module makes is non-blocking before the caller has it:
 \ ACCEPT's and SOCKET's from the start, CONNECT's once its blocking connect has
-\ answered. So no send or receive waits in the kernel. READ and READ-EXACT wait
-\ for data in poll(2) on the task's own thread instead, with no AIO loop and no
+\ answered. So no send or receive waits in the kernel. TRY-READ and TRY-SEND
+\ never wait at all: nothing to receive or no room to send is `empty`, so one
+\ task can serve many connections from its own readiness loop, even where the
+\ OS reports readiness spuriously, as Linux may. READ and READ-EXACT wait for
+\ data in poll(2) on the task's own thread instead, with no AIO loop and no
 \ deadline, as the blocking receive did. SEND-SLICE waits there at most
 \ SEND-SLICE-MS for room between two sends, so a slice returns within
 \ SEND-SLICE-MS and those two sends, whatever the peer does. WRITE loops over
@@ -95,6 +101,15 @@ SUMTYPE read-result
    VARIANT failed errno ;VARIANT
 ;SUMTYPE
 
+\ One receive that never waits: as read-result, and `empty` when there was
+\ nothing to receive.
+SUMTYPE try-read-result
+   VARIANT data NUM:byte-len ;VARIANT
+   VARIANT closed NUM:byte-len ;VARIANT
+   VARIANT empty ;VARIANT
+   VARIANT failed errno ;VARIANT
+;SUMTYPE
+
 SUMTYPE ready-result
    VARIANT ready ;VARIANT
    VARIANT idle ;VARIANT
@@ -102,8 +117,9 @@ SUMTYPE ready-result
 ;SUMTYPE
 
 \ One send slice's outcome. `moved` carries the bytes the OS accepted, at least
-\ one and no more than the span; `empty` says there was no room, even once a
-\ wait of SEND-SLICE-MS for some had ended; `failed` carries the errno.
+\ one and no more than the span; `empty` says there was no room, for SEND-SLICE
+\ even once a wait of SEND-SLICE-MS for some had ended; `failed` carries the
+\ errno.
 ENUM slice-result
    VARIANT moved FIELD sent NUM:byte-len ;VARIANT
    VARIANT empty ;VARIANT
@@ -160,6 +176,7 @@ $04 constant POLLOUT               \ a send will not block, on both.
 -1 constant NO-TIMEOUT             \ poll(2) waits until ready; Darwin takes no other negative one.
 $7FFFFFFF constant MAX-TIMEOUT     \ the widest deadline this module accepts, in milliseconds.
 1000000 constant NS-PER-MS
+$7FFFFFFFFFFFFFFF constant NO-DEADLINE   \ a mono-ns deadline that never passes.
 4 constant EINTR
 : EAGAIN ( -- n )
    HB-TARGET-LINUX-KERNEL? if 11 exit then
@@ -457,9 +474,9 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ptr u8 ptr u8 -- i32 )
 \ A transfer longer than the span handed to the OS is not a short answer this
 \ module can report, so it is refused as a broken foreign result rather than
 \ trusted as a length.
-: RECEIVED ( n n -- read-result ) {: actual:n size:n :}
+: RECEIVED ( n n -- NUM:byte-len ) {: actual:n size:n :}
    actual size > if E-RESULT throw then
-   actual LENGTH TCP4-READ--RESULT:data ;
+   actual LENGTH ;
 
 
 \ One poll(2) of the descriptor for the events, on this task's own thread with
@@ -482,23 +499,31 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ptr u8 ptr u8 -- i32 )
    again ;
 
 
-\ What a receive that failed with the errno leaves: `ok` to receive again,
-\ after an interrupt or once a wait finds the stream answering, or `failed`.
-: RECEIVE-AGAIN ( n errno -- status ) {: fd:n cause:errno :}
-   cause INTERRUPTED? if TCP4-STATUS:ok exit then
-   cause WOULD-BLOCK? if fd DATA-READY exit then
-   cause TCP4-STATUS:failed ;
+\ One receive that never waits, tried again after an interrupt: `empty` when
+\ there is nothing to receive yet. A stream read of zero bytes is the peer's
+\ orderly end of stream, never an empty message.
+: TRY-CHUNK ( n ptr u8 n -- try-read-result ) {: fd:n bytes size:n :}
+   begin
+      fd bytes size RECEIVE-RAW dup 0 > if size RECEIVED TCP4-TRY--READ--RESULT:data exit then
+      0= if 0 LENGTH TCP4-TRY--READ--RESULT:closed exit then
+      LAST-ERROR dup WOULD-BLOCK? if drop TCP4-TRY--READ--RESULT:empty exit then
+      dup INTERRUPTED? 0= if TCP4-TRY--READ--RESULT:failed exit then drop
+   again ;
 
 
-\ One receive, tried again after an interrupt and, while there is nothing to
-\ receive yet, after a wait for data, so a read on a non-blocking connection
-\ still blocks until the stream answers. A stream read of zero bytes is the
-\ peer's orderly end of stream, never an empty message.
+\ One receive, tried again after a wait for data while there is nothing to
+\ receive yet, so a read on a non-blocking connection still blocks until the
+\ stream answers.
 : READ-CHUNK ( n ptr u8 n -- read-result ) {: fd:n bytes size:n :}
    begin
-      fd bytes size RECEIVE-RAW dup 0 > if size RECEIVED exit then
-      0= if 0 LENGTH TCP4-READ--RESULT:closed exit then
-      fd LAST-ERROR RECEIVE-AGAIN
+      fd bytes size TRY-CHUNK
+      MATCH try-read-result
+         data OF TCP4-READ--RESULT:data exit ENDOF
+         closed OF TCP4-READ--RESULT:closed exit ENDOF
+         empty OF ENDOF
+         failed OF TCP4-READ--RESULT:failed exit ENDOF
+      ;MATCH
+      fd DATA-READY
       MATCH status
          ok OF ENDOF
          failed OF TCP4-READ--RESULT:failed exit ENDOF
@@ -519,9 +544,10 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ptr u8 ptr u8 -- i32 )
 
 
 \ One send that never waits: `moved`, `empty` when there was no room, or
-\ `failed`. An interrupt retries it until the slice's mono-ns deadline has
-\ passed and is `empty` after that, so no retry carries the slice past it.
-: TRY-SEND ( n ptr u8 n n -- slice-result ) {: fd:n bytes size:n deadline:n :}
+\ `failed`. An interrupt retries it until the mono-ns deadline has passed and
+\ is `empty` after that, so no retry carries a slice past it; NO-DEADLINE
+\ retries every interrupt.
+: SEND-BY ( n ptr u8 n n -- slice-result ) {: fd:n bytes size:n deadline:n :}
    begin
       fd bytes size SEND-STEP
       dup 0 > if LENGTH TCP4-SLICE--RESULT:moved exit then
@@ -530,6 +556,13 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ptr u8 ptr u8 -- i32 )
       dup INTERRUPTED? 0= if TCP4-SLICE--RESULT:failed exit then drop
       mono-ns deadline > if TCP4-SLICE--RESULT:empty exit then
    again ;
+
+
+\ The part of a send span one call hands the OS: at most MAX-TRANSFER bytes. An
+\ empty span is E-OPERAND.
+: SEND-SPAN ( NUM:byte-len -- n )
+   BLEN>N dup 1 < if E-OPERAND throw then
+   MAX-TRANSFER min ;
 
 
 \ Milliseconds left before a mono-ns deadline, never below zero.
@@ -555,7 +588,7 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ptr u8 ptr u8 -- i32 )
 : AFTER-ROOM ( n ptr u8 n n -- slice-result ) {: fd:n bytes size:n deadline:n :}
    fd deadline ROOM-BY
    MATCH ready-result
-      ready OF fd bytes size deadline TRY-SEND ENDOF
+      ready OF fd bytes size deadline SEND-BY ENDOF
       idle OF TCP4-SLICE--RESULT:empty ENDOF
       failed OF TCP4-SLICE--RESULT:failed ENDOF
    ;MATCH ;
@@ -584,8 +617,8 @@ public
 
 
 \ A span's length for the transfers below, each of which checks it against its
-\ own range: READ, READ-EXACT and WRITE refuse more than one call moves, and
-\ SEND-SLICE hands the OS part of a longer span.
+\ own range: READ, READ-EXACT, TRY-READ and WRITE refuse more than one call
+\ moves, and SEND-SLICE and TRY-SEND hand the OS part of a longer span.
 : TRANSFER-BYTES ( n -- NUM:byte-len )
    LENGTH ;
 
@@ -651,6 +684,16 @@ public
    conn CONNECTION-FD bytes capacity BLEN>N READ-CHUNK ;
 
 
+\ One receive of 1..capacity bytes that never waits: `empty` when the stream
+\ has nothing to answer yet. The caller owns the writable span. `closed`
+\ carries zero bytes. An interrupt retries. The connection must be
+\ non-blocking, as SEND-SLICE says.
+: TRY-READ ( connection ptr u8 NUM:byte-len -- try-read-result )
+   {: conn:connection bytes capacity:NUM:byte-len :}
+   capacity BLEN>N 1 MAX-TRANSFER WITHIN-RANGE
+   conn CONNECTION-FD bytes capacity BLEN>N TRY-CHUNK ;
+
+
 \ Blocks until the whole span is filled. An end of stream before that is
 \ `closed` carrying the bytes already written into the span.
 : READ-EXACT ( connection ptr u8 NUM:byte-len -- read-result )
@@ -682,16 +725,25 @@ public
 \ E-OPERAND.
 : SEND-SLICE ( connection ptr u8 NUM:byte-len -- slice-result )
    {: conn:connection bytes size:NUM:byte-len :}
-   size BLEN>N 1 < if E-OPERAND throw then
+   size SEND-SPAN {: span:n :}
    conn CONNECTION-FD {: fd:n :}
-   size BLEN>N MAX-TRANSFER min {: span:n :}
    mono-ns SEND-SLICE-MS NS-PER-MS * + {: deadline:n :}
-   fd bytes span deadline TRY-SEND
+   fd bytes span deadline SEND-BY
    MATCH slice-result
       moved OF TCP4-SLICE--RESULT:moved ENDOF
       empty OF fd bytes span deadline AFTER-ROOM ENDOF
       failed OF TCP4-SLICE--RESULT:failed ENDOF
    ;MATCH ;
+
+
+\ One send of the span's first MAX-TRANSFER bytes at most that never waits:
+\ `moved` carries the bytes the OS took, `empty` says there was no room, and
+\ `failed` carries the errno. An interrupt retries. The connection must be
+\ non-blocking, as SEND-SLICE says. An empty span is E-OPERAND.
+: TRY-SEND ( connection ptr u8 NUM:byte-len -- slice-result )
+   {: conn:connection bytes size:NUM:byte-len :}
+   size SEND-SPAN {: span:n :}
+   conn CONNECTION-FD bytes span NO-DEADLINE SEND-BY ;
 
 
 \ Blocks until every byte is accepted by the OS, which is not delivery. A failed

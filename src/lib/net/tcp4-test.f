@@ -87,6 +87,9 @@ variable WRITER-ARMED
 variable WRITER-ENDED
 variable SIPPED
 variable SIP-STOP
+variable TRY-DONE
+variable TRIED
+variable TRY-MS
 PTR-VARIABLE FLOOD-PTR
 
 TASK:MIN-STACK TASK:TASK ECHO-TASK
@@ -94,6 +97,7 @@ TASK:MIN-STACK TASK:TASK PEER-TASK
 TASK:MIN-STACK TASK:TASK PARK-TASK
 TASK:MIN-STACK TASK:TASK DRAIN-TASK
 TASK:MIN-STACK TASK:TASK WRITER-TASK
+TASK:MIN-STACK TASK:TASK TRY-TASK
 
 : PING$ ( -- ptr u8 n )
    s" ping" ;
@@ -164,6 +168,22 @@ TASK:MIN-STACK TASK:TASK WRITER-TASK
       data OF drop s" read: unexpected data" T-FAIL-AS ENDOF
       closed OF drop s" read: unexpected end of stream" T-FAIL-AS ENDOF
       failed OF TCP4:ERRNO>N want T= ENDOF
+   ;MATCH ;
+
+
+\ One number per TRY-READ answer, so a task can hand it to the main thread: the
+\ bytes of `data`, TRY-CLOSED for `closed` with no bytes, TRY-EMPTY for
+\ `empty`, and TRY-FAILED for a failure or a `closed` that carried bytes.
+-1 constant TRY-CLOSED
+-2 constant TRY-EMPTY
+-3 constant TRY-FAILED
+
+: TRY-ANSWER ( TCP4:try-read-result -- n )
+   MATCH TCP4:try-read-result
+      data OF BLEN>N ENDOF
+      closed OF BLEN>N 0= if TRY-CLOSED else TRY-FAILED then ENDOF
+      empty OF TRY-EMPTY ENDOF
+      failed OF TCP4:ERRNO>N drop TRY-FAILED ENDOF
    ;MATCH ;
 
 
@@ -393,6 +413,18 @@ TASK:MIN-STACK TASK:TASK WRITER-TASK
    FLOOD FLOOD-BYTES MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
 
 
+\ ---- the non-waiting reader --------------------------------------------------
+
+\ One TRY-READ of the accepted end, its answer left in TRIED and the ms it took
+\ in TRY-MS.
+: TRY-WORK ( -- )
+   mono-ns {: start:n :}
+   PROBE-CONNECTION @ TCP4:>CONNECTION SERVER-BUF BUF-CAP TCP4:TRANSFER-BYTES TCP4:TRY-READ
+   start ELAPSED-MS TRY-MS !
+   TRY-ANSWER TRIED !
+   1 TRY-DONE atomic-add drop ;
+
+
 \ ---- the blocked writer ------------------------------------------------------
 
 \ Blocks in WRITE, because the peer never reads; WRITER-ENDED says it returned.
@@ -558,6 +590,14 @@ TASK:MIN-STACK TASK:TASK WRITER-TASK
    PROBE-LISTENER @ TCP4:>LISTENER -1 >MS TCP4:PENDING-WITHIN? READY-DROP ;
 
 
+: BAD-TRY-CAPACITY ( -- )
+   CLIENT-FD @ TCP4:>CONNECTION CLIENT-BUF 0 TCP4:TRANSFER-BYTES TCP4:TRY-READ TRY-ANSWER drop ;
+
+
+: BAD-TRY-SPAN ( -- )
+   CLIENT-FD @ TCP4:>CONNECTION CLIENT-BUF 0 TCP4:TRANSFER-BYTES TCP4:TRY-SEND MOVED-BYTES drop ;
+
+
 \ A deadline wider than the range this module declares is refused, not clamped.
 : BAD-LONG-TIMEOUT ( -- )
    CLIENT-FD @ TCP4:>CONNECTION $80000000 >MS TCP4:READABLE-WITHIN? READY-DROP ;
@@ -572,6 +612,8 @@ TASK:MIN-STACK TASK:TASK WRITER-TASK
    [: BAD-TRANSFER ;] TCP4:E-OPERAND TTHROWSQ
    [: BAD-BACKLOG ;] TCP4:E-OPERAND TTHROWSQ
    [: BAD-CAPACITY ;] TCP4:E-OPERAND TTHROWSQ
+   [: BAD-TRY-CAPACITY ;] TCP4:E-OPERAND TTHROWSQ
+   [: BAD-TRY-SPAN ;] TCP4:E-OPERAND TTHROWSQ
    [: BAD-TIMEOUT ;] TCP4:E-OPERAND TTHROWSQ
    [: BAD-LISTEN-TIMEOUT ;] TCP4:E-OPERAND TTHROWSQ
    [: BAD-LONG-TIMEOUT ;] TCP4:E-OPERAND TTHROWSQ ;
@@ -820,6 +862,32 @@ TASK:MIN-STACK TASK:TASK WRITER-TASK
    CLOSE-PAIR ;
 
 
+\ The silent stream's TRY-READ answers on a task of its own, so one that waited
+\ for data would expire the wait for its answer rather than hang the suite.
+: T-TRY-READ ( -- )
+   s" a TRY-READ of a stream with nothing sent answers empty at once" T-LABEL
+   0 TRY-DONE ! 0 TRIED ! 0 TRY-MS !
+   OPEN-PAIR
+   ['] TRY-WORK TRY-TASK TASK:ACTIVATE
+   TRY-DONE 1 WAIT-MS REACH
+   TRY-TASK TASK:KILL
+   TRIED @ TRY-EMPTY T=
+   TRY-MS @ LEAST-SLICE-MS < TTRUE
+   s" and once the peer has sent, data with its bytes" T-LABEL
+   CLIENT-FD @ TCP4:>CONNECTION CHAT$ TCP4:TRANSFER-BYTES TCP4:WRITE STATUS-ERRNO 0 T=
+   PROBE-CONNECTION @ READABLE-WITHIN
+   PROBE-CONNECTION @ TCP4:>CONNECTION SERVER-BUF BUF-CAP TCP4:TRANSFER-BYTES TCP4:TRY-READ
+      TRY-ANSWER CHAT-BYTES T=
+   SERVER-BUF CHAT-BYTES CHAT$ T$=
+   s" and once the peer has closed, closed with zero bytes" T-LABEL
+   CLIENT-FD @ TCP4:>CONNECTION TCP4:CLOSE STATUS-ERRNO 0 T=
+   PROBE-CONNECTION @ READABLE-WITHIN
+   PROBE-CONNECTION @ TCP4:>CONNECTION SERVER-BUF BUF-CAP TCP4:TRANSFER-BYTES TCP4:TRY-READ
+      TRY-ANSWER TRY-CLOSED T=
+   PROBE-CONNECTION @ TCP4:>CONNECTION TCP4:CLOSE STATUS-ERRNO 0 T=
+   PROBE-LISTENER @ TCP4:>LISTENER TCP4:CLOSE-LISTENER STATUS-ERRNO 0 T= ;
+
+
 \ WRITE still blocks until every byte is accepted, but in slices of
 \ SEND-SLICE-MS with a TASK:PAUSE between them, so a halt ends a writer whose
 \ peer stopped reading. A writer still in WRITE once one slice and the slack
@@ -860,20 +928,21 @@ TASK:MIN-STACK TASK:TASK WRITER-TASK
    CLOSE-PAIR ;
 
 
-\ Slices of the flood to a peer that never reads until one answers empty: the
-\ bytes they moved, and how long that one took, in ms, or -1 when none did
-\ within POLL-TRIES slices.
-: EMPTY-SLICE-MS ( -- n n )
-   0 0                                   \ the bytes sent, and the slices tried
+\ Sends of the flood by SEND to a peer that never reads until one answers empty:
+\ the bytes they moved, and how long that one took, in ms, or -1 when none did
+\ within POLL-TRIES sends.
+: EMPTY-SEND-MS ( [ TCP4:connection ptr u8 NUM:byte-len -- TCP4:slice-result ] -- n n )
+   {: send :}
+   0 0                                   \ the bytes sent, and the sends tried
    begin {: sent:n tries:n :}
       tries POLL-TRIES >= if sent -1 exit then
       mono-ns {: start:n :}
       CLIENT-FD @ TCP4:>CONNECTION FLOOD sent + FLOOD-BYTES sent - TCP4:TRANSFER-BYTES
-         TCP4:SEND-SLICE
+         send execute
       MATCH TCP4:slice-result
          moved OF BLEN>N sent + ENDOF
          empty OF sent start ELAPSED-MS exit ENDOF
-         failed OF TCP4:ERRNO>N drop s" slice: failed" T-FAIL-AS sent -1 exit ENDOF
+         failed OF TCP4:ERRNO>N drop s" send: failed" T-FAIL-AS sent -1 exit ENDOF
       ;MATCH
       tries 1+
    again ;
@@ -886,7 +955,7 @@ TASK:MIN-STACK TASK:TASK WRITER-TASK
 : T-SLICE-EMPTY ( -- )
    s" a send slice to a full peer that never reads answers empty" T-LABEL
    OPEN-PAIR
-   EMPTY-SLICE-MS {: sent:n took:n :}
+   ['] TCP4:SEND-SLICE EMPTY-SEND-MS {: sent:n took:n :}
    took 0 >= TTRUE
    s" once it has waited out its wait for room, and within it and the slack" T-LABEL
    took LEAST-SLICE-MS >= TTRUE
@@ -936,7 +1005,7 @@ TASK:MIN-STACK TASK:TASK WRITER-TASK
    s" the pipe is full with at least 1 MiB left before the sipping reader starts" T-LABEL
    OPEN-PAIR
    PROBE-CONNECTION @ TCP4:>CONNECTION true TCP4:NODELAY! STATUS-ERRNO 0 T=
-   EMPTY-SLICE-MS {: sent:n took:n :}
+   ['] TCP4:SEND-SLICE EMPTY-SEND-MS {: sent:n took:n :}
    took 0 >= TTRUE
    FLOOD-BYTES sent - LEAST-SPAN >= TTRUE
    s" a reader taking bytes every 10 ms takes them while send slices run" T-LABEL
@@ -980,6 +1049,35 @@ TASK:MIN-STACK TASK:TASK WRITER-TASK
    DRAIN-TASK TASK:KILL
    CLOSE-PAIR
    WRITER-TASK TASK:KILL ;
+
+
+\ The peer reads DRAIN-CAP of the full pipe, then the writer TRY-SENDs the chat:
+\ true once that moves some.
+: MOVED-AFTER-READ? ( -- bool )
+   PROBE-CONNECTION @ TCP4:>CONNECTION DRAIN-BUF DRAIN-CAP TCP4:TRANSFER-BYTES TCP4:READ
+      READ-DROP
+   CLIENT-FD @ TCP4:>CONNECTION CHAT$ TCP4:TRANSFER-BYTES TCP4:TRY-SEND
+   MATCH TCP4:slice-result
+      moved OF drop true ENDOF
+      empty OF false ENDOF
+      failed OF TCP4:ERRNO>N drop s" try-send: failed" T-FAIL-AS true ENDOF
+   ;MATCH ;
+
+
+\ TRY-SEND never waits for room: once both loopback buffers are full it answers
+\ empty sooner than a send slice's wait for room would have ended. The room the
+\ peer's reads make reaches the writer once the peer acknowledges them, so the
+\ moved answer is polled for within WAIT-MS.
+: T-TRY-SEND ( -- )
+   s" a TRY-SEND to a full peer that never reads answers empty" T-LABEL
+   OPEN-PAIR
+   ['] TCP4:TRY-SEND EMPTY-SEND-MS nip {: took:n :}
+   took 0 >= TTRUE
+   s" without waiting for room" T-LABEL
+   took LEAST-SLICE-MS < TTRUE
+   s" and once the peer reads, TRY-SEND moves bytes again" T-LABEL
+   [: MOVED-AFTER-READ? ;] WAIT-MS DEADLINE s" tcp4-test MOVED-AFTER-READ?" TEST-WAIT:POLL
+   CLOSE-PAIR ;
 
 
 \ Slices of the chat until one fails: its errno. None failing within POLL-TRIES
@@ -1059,12 +1157,14 @@ TASK:MIN-STACK TASK:TASK WRITER-TASK
    T-REFUSED
    T-READ-AFTER-CLOSE
    T-READ-WAITS
+   T-TRY-READ
    FLOOD-OPEN
    T-WRITE-HALTED
    T-SLICE-MOVED
    T-SLICE-EMPTY
    T-SLICE-SIPPED
    T-WRITE-SIPPED
+   T-TRY-SEND
    FLOOD-CLOSE
    T-SLICE-FAILED
    T-QUEUES
