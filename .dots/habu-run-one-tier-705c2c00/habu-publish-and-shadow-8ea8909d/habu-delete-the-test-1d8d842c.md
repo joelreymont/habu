@@ -1,6 +1,6 @@
 ---
 title: Delete the test-only NHOST FACTS chain
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-10-28T22:36:19.984438+02:00"
