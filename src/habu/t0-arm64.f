@@ -3,8 +3,9 @@
 \ It implements the operations of src/habu/t0-emit.f (package T0-EMIT), which
 \ states what each operation does on every target; this file states only the
 \ arm64 encodings and register choices. Every word here is private, and the
-\ file ends by providing INSTALL, which stores each into its T0-EMIT cell, for
-\ CTARGET-ARCH:AARCH64.
+\ file ends by providing INSTALL, which stores each into its T0-EMIT cell, its
+\ branch primitives into their src/habu/t0-label.f (package T0-LABEL) cells and
+\ T0-LABEL's control words into T0-EMIT's, for CTARGET-ARCH:AARCH64.
 \
 \ THE CONTRACT A COMPILED BODY KEEPS. x19 is the data stack, which grows up: a
 \ push is `str xR,[x19],#8` and a pop `ldr xR,[x19,#-8]!` (src/habu/jit.f
@@ -42,7 +43,7 @@
 \ prologue and by the epilogues inserted at or before it.
 \
 \ THE BRANCHES. A control branch is a placeholder word in RAW and an entry of
-\ the open unit's branch list: its raw site, its raw target once the structure
+\ the open unit's branch list: its raw site, its raw target once T0-LABEL
 \ resolves it (a backward branch's at once), and its form, `b`, `b.cond` with
 \ its condition or `cbz` with its register. CLOSE writes each, since the
 \ epilogues it inserts move code: the site placed as a row is, and the target
@@ -76,6 +77,7 @@ require src/arch/arm64/asm.f
 require src/compiler/target.f
 require src/compiler/native/emission.f
 require src/habu/t0-emit.f
+require src/habu/t0-label.f
 
 package T0-A64
 using A64ASM
@@ -153,15 +155,6 @@ DYNAMIC-BUFFER BR-AT n                \ the open unit's branches: raw site,
 DYNAMIC-BUFFER BR-TO n                \ raw target or -1 while open, form,
 DYNAMIC-BUFFER BR-FORM n              \ and the form's condition or register
 DYNAMIC-BUFFER BR-ARG n
-DYNAMIC-BUFFER CF-KIND n              \ the open structures, innermost last,
-DYNAMIC-BUFFER CF-AT n                \ and each one's branch or head
-variable CF-N
-DYNAMIC-BUFFER LV-HEAD n              \ the open loop levels: the head's offset,
-DYNAMIC-BUFFER LV-ENTRY n             \ `?do`'s entry branch or -1,
-DYNAMIC-BUFFER LV-FIRST n             \ and the level's first branch in LEAVES
-variable LV-N
-DYNAMIC-BUFFER LEAVES n               \ the open levels' `leave` branches, innermost last
-variable LEAVE-N
 
 \ The forms of a branch.
 0 constant FORM-B
@@ -385,7 +378,7 @@ variable LEAVE-N
    then
    OUT BUF:CLEAR
    0 NUNIT !
-   0 CF-N !  0 LV-N !  0 LEAVE-N !
+   T0-LABEL:RESET
    UNIT-BEGIN ;
 
 \ Point unit n's `adr`, in a closed unit of OUT, at the offset the unit begins
@@ -610,89 +603,57 @@ variable LEAVE-N
    0 true BRANCH W ;
 
 \ ---- control -----------------------------------------------------------------
-\ An open structure is a POSITION, a forward branch waiting for its target or
-\ the raw offset of a loop head, or the start of a case beneath its `endof`
-\ exits. Which of the two a position is follows from the word that pops it, so
-\ only the case start is marked.
-0 constant POSITION
-1 constant CASE-START
-
-: CF-PUSH ( n n -- ) {: kind:n at:n :}
-   CF-N @ {: k:n :}
-   k 1 + CF-KIND-RESERVE  k 1 + CF-AT-RESERVE
-   kind k CF-KIND !  at k CF-AT !
-   k 1 + CF-N ! ;
-
-: CF-POP ( -- n )
-   CF-N @ 1 - {: k:n :}
-   k CF-N !
-   k CF-AT @ ;
-
-: CF-TOP-KIND ( -- n ) CF-N @ 1 - CF-KIND @ ;
-
-: AT+ ( n -- ) POSITION swap CF-PUSH ;
+\ The branch primitives T0-LABEL emits through. A forward branch is its number
+\ in the open unit's list, and a head a raw offset.
 
 \ A branch of the form, with its condition or register, to raw offset to (-1
 \ until RESOLVE): it emits a zero placeholder word and answers the branch's
 \ number.
-: BR+ ( n n n -- n ) {: form:n arg:n to:n :}
+: BR+ ( n n n -- T0-LABEL:branch ) {: form:n arg:n to:n :}
    NBR @ {: k:n :}
    k 1 + BR-AT-RESERVE  k 1 + BR-TO-RESERVE
    k 1 + BR-FORM-RESERVE  k 1 + BR-ARG-RESERVE
    HERE-OFF k BR-AT !  to k BR-TO !  form k BR-FORM !  arg k BR-ARG !
    k 1 + NBR !
    0 W
-   k ;
+   k T0-LABEL:>BRANCH ;
 
-\ Bind forward branch k to here.
-: RESOLVE ( n -- ) HERE-OFF swap BR-TO ! ;
+\ Bind the forward branch to here.
+: RESOLVE ( T0-LABEL:branch -- ) HERE-OFF swap T0-LABEL:BRANCH>N BR-TO ! ;
 
-: FWD-B ( -- n ) FORM-B 0 -1 BR+ ;
-: FWD-BCOND ( n -- n ) FORM-BCOND swap -1 BR+ ;
-: FWD-CBZ ( T0-EMIT:vreg -- n ) REG FORM-CBZ swap -1 BR+ ;
+: MARK ( -- T0-LABEL:head ) HERE-OFF T0-LABEL:>HEAD ;
 
-: BACK-B ( n -- ) FORM-B 0 rot BR+ drop ;
-: BACK-BCOND ( n n -- ) {: c:n m:n :}  FORM-BCOND c m BR+ drop ;
-: BACK-CBZ ( T0-EMIT:vreg n -- ) {: c:T0-EMIT:vreg m:n :}  FORM-CBZ c REG m BR+ drop ;
+: FWD-JUMP ( -- T0-LABEL:branch ) FORM-B 0 -1 BR+ ;
+: FWD-BCOND ( n -- T0-LABEL:branch ) FORM-BCOND swap -1 BR+ ;
+: FWD-ZERO ( T0-EMIT:vreg -- T0-LABEL:branch ) REG FORM-CBZ swap -1 BR+ ;
 
-
-: IF, ( T0-EMIT:vreg -- ) FWD-CBZ AT+ ;
-
-: ELSE, ( -- ) FWD-B CF-POP RESOLVE AT+ ;
-
-: THEN, ( -- ) CF-POP RESOLVE ;
-
-: BEGIN, ( -- ) HERE-OFF AT+ ;
-
-: WHILE, ( T0-EMIT:vreg -- )
-   FWD-CBZ {: s:n :}
-   CF-POP {: m:n :}
-   s AT+
-   m AT+ ;
-
-: REPEAT, ( -- ) CF-POP BACK-B CF-POP RESOLVE ;
-
-: UNTIL, ( T0-EMIT:vreg -- ) CF-POP BACK-CBZ ;
-
-: AGAIN, ( -- ) CF-POP BACK-B ;
-
-: CASE, ( -- ) CASE-START 0 CF-PUSH ;
-
-: OF, ( T0-EMIT:vreg T0-EMIT:vreg -- )
+: FWD-NE ( T0-EMIT:vreg T0-EMIT:vreg -- T0-LABEL:branch )
    {: sel:T0-EMIT:vreg v:T0-EMIT:vreg :}
    sel REG v REG ENC-CMP W
-   C-NE FWD-BCOND AT+ ;
+   C-NE FWD-BCOND ;
 
-: OF-LIT ( T0-EMIT:vreg n -- )
+: FWD-NE-LIT ( T0-EMIT:vreg n -- T0-LABEL:branch )
    {: sel:T0-EMIT:vreg v:n :}
    sel REG v CMP-LIT
-   C-NE FWD-BCOND AT+ ;
+   C-NE FWD-BCOND ;
 
-: ENDOF, ( -- ) ELSE, ;
+: FWD-GE ( T0-EMIT:vreg T0-EMIT:vreg -- T0-LABEL:branch )
+   {: s:T0-EMIT:vreg l:T0-EMIT:vreg :}
+   s REG l REG ENC-CMP W
+   C-GE FWD-BCOND ;
 
-: ENDCASE, ( -- )
-   begin CF-TOP-KIND CASE-START <> while CF-POP RESOLVE repeat
-   CF-POP drop ;
+\ The b.cond branch becomes b.eq.
+: ENTRY-EQ ( T0-LABEL:branch -- ) T0-LABEL:BRANCH>N {: k:n :}  C-EQ k BR-ARG ! ;
+
+: BACK-JUMP ( T0-LABEL:head -- ) T0-LABEL:HEAD>N FORM-B 0 rot BR+ drop ;
+
+: BACK-BCOND ( n T0-LABEL:head -- )
+   T0-LABEL:HEAD>N {: c:n m:n :}
+   FORM-BCOND c m BR+ drop ;
+
+: BACK-ZERO ( T0-EMIT:vreg T0-LABEL:head -- )
+   T0-LABEL:HEAD>N {: c:T0-EMIT:vreg m:n :}
+   FORM-CBZ c REG m BR+ drop ;
 
 \ ---- loops -------------------------------------------------------------------
 \ x16 holds the loop stack's depth and x17 the address one frame past the
@@ -707,10 +668,6 @@ variable LEAVE-N
 \ The index and limit of the innermost frame, below LTOP's address.
 -16 constant LIDX-OFF
 -8 constant LLIM-OFF
-
-\ The innermost level and its head.
-: LV ( -- n ) LV-N @ 1 - ;
-: HEAD ( -- n ) LV LV-HEAD @ ;
 
 \ The index of the frame k levels out of the innermost into d.
 : LINDEX ( T0-EMIT:vreg n -- )
@@ -735,27 +692,8 @@ variable LEAVE-N
 : LOOP-I ( T0-EMIT:vreg -- ) 0 LINDEX ;
 : LOOP-J ( T0-EMIT:vreg -- ) 1 LINDEX ;
 
-: LOOP-OPEN ( T0-EMIT:vreg T0-EMIT:vreg bool -- )
-   {: s:T0-EMIT:vreg l:T0-EMIT:vreg entry:bool :}
-   entry if
-      s REG l REG ENC-CMP W
-      C-GE FWD-BCOND
-   else -1 then {: at:n :}
-   LV-N @ {: k:n :}
-   k 1 + LV-HEAD-RESERVE  k 1 + LV-ENTRY-RESERVE  k 1 + LV-FIRST-RESERVE
-   HERE-OFF k LV-HEAD !
-   at k LV-ENTRY !
-   LEAVE-N @ k LV-FIRST !
-   k 1 + LV-N ! ;
-
-: LEAVE, ( -- )
-   LEAVE-N @ {: n:n :}
-   n 1 + LEAVES-RESERVE
-   FWD-B n LEAVES !
-   n 1 + LEAVE-N ! ;
-
-: LOOP-NEXT ( T0-EMIT:vreg -- )
-   {: t:T0-EMIT:vreg :}
+: LOOP-NEXT ( T0-EMIT:vreg T0-LABEL:head -- )
+   {: t:T0-EMIT:vreg m:T0-LABEL:head :}
    t REG {: r:n :}
    LDEPTH LTOP
    r ADR LIDX-OFF false XFER
@@ -763,13 +701,12 @@ variable LEAVE-N
    r ADR LIDX-OFF true XFER
    TMP ADR LLIM-OFF false XFER
    r TMP ENC-CMP W
-   C-LT HEAD BACK-BCOND ;
+   C-LT m BACK-BCOND ;
 
 \ With old = index - limit before the step, the index crossed the boundary
-\ when (old xor old + s) and (old xor s) is negative. The level's `?do` entry
-\ b.ge becomes b.eq.
-: LOOP-STEP ( T0-EMIT:vreg T0-EMIT:vreg -- )
-   {: s:T0-EMIT:vreg t:T0-EMIT:vreg :}
+\ when (old xor old + s) and (old xor s) is negative.
+: LOOP-STEP ( T0-EMIT:vreg T0-EMIT:vreg T0-LABEL:head -- )
+   {: s:T0-EMIT:vreg t:T0-EMIT:vreg m:T0-LABEL:head :}
    s REG {: sr:n :}  t REG {: r:n :}
    LDEPTH LTOP
    r ADR LIDX-OFF false XFER
@@ -782,21 +719,11 @@ variable LEAVE-N
    sr sr r ENC-EOR W
    TMP TMP sr ENC-AND W
    TMP 0 ENC-CMPI W
-   C-GE HEAD BACK-BCOND
-   LV LV-ENTRY @ {: at:n :}
-   at 0 >= if C-EQ at BR-ARG ! then ;
-
-: LOOP-CLOSE ( -- )
-   LV {: k:n :}
-   LEAVE-N @ k LV-FIRST @ ?do i LEAVES @ RESOLVE loop
-   k LV-ENTRY @ {: at:n :}
-   at 0 >= if at RESOLVE then
-   k LV-FIRST @ LEAVE-N !
-   k LV-N !
-   LOOP-POP ;
+   C-GE m BACK-BCOND ;
 
 \ ---- the seam ----------------------------------------------------------------
-\ Make this file's words the ones T0-EMIT runs at slot k.
+\ Make this file's words, and T0-LABEL's over its branch primitives, the ones
+\ T0-EMIT runs at slot k.
 : INSTALL ( n -- )
    {: k:n :}
    NVREG k T0-EMIT:VREGS-N !
@@ -836,29 +763,41 @@ variable LEAVE-N
    ['] CALL k T0-EMIT:CALL-XT !
    ['] TAIL k T0-EMIT:TAIL-XT !
    ['] CALL-SELF k T0-EMIT:CALL-SELF-XT !
-   ['] IF, k T0-EMIT:IF,-XT !
-   ['] ELSE, k T0-EMIT:ELSE,-XT !
-   ['] THEN, k T0-EMIT:THEN,-XT !
-   ['] BEGIN, k T0-EMIT:BEGIN,-XT !
-   ['] WHILE, k T0-EMIT:WHILE,-XT !
-   ['] REPEAT, k T0-EMIT:REPEAT,-XT !
-   ['] UNTIL, k T0-EMIT:UNTIL,-XT !
-   ['] AGAIN, k T0-EMIT:AGAIN,-XT !
-   ['] CASE, k T0-EMIT:CASE,-XT !
-   ['] OF, k T0-EMIT:OF,-XT !
-   ['] OF-LIT k T0-EMIT:OF-LIT-XT !
-   ['] ENDOF, k T0-EMIT:ENDOF,-XT !
-   ['] ENDCASE, k T0-EMIT:ENDCASE,-XT !
+   ['] T0-LABEL:IF, k T0-EMIT:IF,-XT !
+   ['] T0-LABEL:ELSE, k T0-EMIT:ELSE,-XT !
+   ['] T0-LABEL:THEN, k T0-EMIT:THEN,-XT !
+   ['] T0-LABEL:BEGIN, k T0-EMIT:BEGIN,-XT !
+   ['] T0-LABEL:WHILE, k T0-EMIT:WHILE,-XT !
+   ['] T0-LABEL:REPEAT, k T0-EMIT:REPEAT,-XT !
+   ['] T0-LABEL:UNTIL, k T0-EMIT:UNTIL,-XT !
+   ['] T0-LABEL:AGAIN, k T0-EMIT:AGAIN,-XT !
+   ['] T0-LABEL:CASE, k T0-EMIT:CASE,-XT !
+   ['] T0-LABEL:OF, k T0-EMIT:OF,-XT !
+   ['] T0-LABEL:OF-LIT k T0-EMIT:OF-LIT-XT !
+   ['] T0-LABEL:ENDOF, k T0-EMIT:ENDOF,-XT !
+   ['] T0-LABEL:ENDCASE, k T0-EMIT:ENDCASE,-XT !
    ['] LOOP-PUSH k T0-EMIT:LOOP-PUSH-XT !
    ['] LOOP-POP k T0-EMIT:LOOP-POP-XT !
    ['] LOOP-I k T0-EMIT:LOOP-I-XT !
    ['] LOOP-J k T0-EMIT:LOOP-J-XT !
-   ['] LOOP-OPEN k T0-EMIT:LOOP-OPEN-XT !
-   ['] LEAVE, k T0-EMIT:LEAVE,-XT !
-   ['] LOOP-NEXT k T0-EMIT:LOOP-NEXT-XT !
-   ['] LOOP-STEP k T0-EMIT:LOOP-STEP-XT !
-   ['] LOOP-CLOSE k T0-EMIT:LOOP-CLOSE-XT !
-   ['] IMM? k T0-EMIT:IMM?-XT ! ;
+   ['] T0-LABEL:LOOP-OPEN k T0-EMIT:LOOP-OPEN-XT !
+   ['] T0-LABEL:LEAVE, k T0-EMIT:LEAVE,-XT !
+   ['] T0-LABEL:LOOP-NEXT k T0-EMIT:LOOP-NEXT-XT !
+   ['] T0-LABEL:LOOP-STEP k T0-EMIT:LOOP-STEP-XT !
+   ['] T0-LABEL:LOOP-CLOSE k T0-EMIT:LOOP-CLOSE-XT !
+   ['] IMM? k T0-EMIT:IMM?-XT !
+   ['] MARK k T0-LABEL:MARK-XT !
+   ['] FWD-JUMP k T0-LABEL:FWD-JUMP-XT !
+   ['] FWD-ZERO k T0-LABEL:FWD-ZERO-XT !
+   ['] FWD-NE k T0-LABEL:FWD-NE-XT !
+   ['] FWD-NE-LIT k T0-LABEL:FWD-NE-LIT-XT !
+   ['] FWD-GE k T0-LABEL:FWD-GE-XT !
+   ['] BACK-JUMP k T0-LABEL:BACK-JUMP-XT !
+   ['] BACK-ZERO k T0-LABEL:BACK-ZERO-XT !
+   ['] RESOLVE k T0-LABEL:RESOLVE-XT !
+   ['] ENTRY-EQ k T0-LABEL:ENTRY-EQ-XT !
+   ['] LOOP-NEXT k T0-LABEL:LOOP-NEXT-XT !
+   ['] LOOP-STEP k T0-LABEL:LOOP-STEP-XT ! ;
 
 CTARGET-ARCH:AARCH64 ' INSTALL T0-EMIT:PROVIDE
 

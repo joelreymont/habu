@@ -64,9 +64,11 @@
 \ CONTROL. The front end drives the structured words and the counted-loop
 \ words in the order the source nests them; it refuses a structure out of
 \ order before calling one, so these words trust the nesting. The branches,
-\ their targets and each open loop level stay in the emitter and are resolved
-\ there. The words a source keyword names end in a comma, since a keyword
-\ cannot be a definition name.
+\ their targets and each open loop level stay behind the seam and are resolved
+\ there: an emitter that branches by label installs src/habu/t0-label.f's
+\ words, which keep the open structures and levels over its branch
+\ primitives. The words a source keyword names end in a comma, since a
+\ keyword cannot be a definition name.
 \
 \ DIVISION. The seam has no divide: `/`, `mod` and `/mod` are calls of the
 \ kernel rows, which screen a zero divisor and MIN-N -1.
@@ -124,9 +126,11 @@ DEFTYPE WIDTH      \ the width LOAD moves
 NEMIT:ADDR-KIND-MAX 1+ constant ADDR-QUOT-KIND
 
 \ ---- the architectures -------------------------------------------------------
+\ The slots of every cell, one per architecture.
+7 constant ARCHES
+
 private
 
-7 constant ARCHES
 ARCHES TYPED-BUFFER INSTALLED bool
 
 \ The slot an architecture's emitter fills in every cell.
@@ -145,6 +149,14 @@ ARCHES TYPED-BUFFER INSTALLED bool
 variable CUR
 -1 CUR !
 TYPED-VARIABLE CUR-ARCH CTARGET:arch  \ and the architecture itself
+
+public
+
+\ The selected slot, for a layer that keeps per-architecture cells of its own
+\ (src/habu/t0-label.f).
+: SELECTED ( -- n ) CUR @ ;
+
+private
 
 \ ---- the rows ----------------------------------------------------------------
 variable N-UNITS
