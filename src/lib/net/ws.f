@@ -970,8 +970,9 @@ ARM-LOCKS
 \ lock up as it does for the goodbye (CLAIM). A stop cuts every write on the
 \ slot, which gives up within the stop's bound (GIVE-UP?, src/lib/net/http.f
 \ STOP-BOUND-MS). A worker the stop kills inside its own write, past that
-\ bound, ends at the write's pause without unwinding its catches, its slot's
-\ lock still held; taking the lock again is nothing new for its owner.
+\ bound, ends at the write's pause, where a halt unwinds `finally` cleanups but
+\ resumes no catch, so its slot's lock is still held; taking the lock again
+\ is nothing new for its owner.
 : RELEASE-SLOT ( -- )
    HTTP:WORKER-SLOT {: idx:n :}
    idx HTTP:RELEASE-MS >MS CLAIM

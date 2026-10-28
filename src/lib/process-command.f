@@ -9,9 +9,8 @@
 \ The open contexts of a task form a chain through each context's OUTER cell,
 \ headed by the task's INNER cell; RUNNING names the context whose run is in
 \ progress, so the capture sinks (quotations, which carry no data) find it.
-\ Scopes nest, and tasks never share a context. TASK:PAUSE ends a halted task
-\ without unwinding `finally`, so a task's first scope registers one TASK:AT-EXIT
-\ drain that closes whatever the task left open; main registers none.
+\ Scopes nest, and tasks never share a context. A halted task unwinds through
+\ each scope's `finally` as a throw does, so the scope closes its context then too.
 \
 \ The body hands back the token it was given; any other, such as an outer
 \ scope's token swapped in, is refused with CMD:E-HANDLE. Either way the scope
@@ -63,11 +62,10 @@ DEFLINEAR CMD:command
 private
 
 \ ---- task-local chain ---------------------------------------------------------
-TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 3 cells TASK:+USER CMD-TASK drop
+TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 2 cells TASK:+USER CMD-TASK drop
 
 : INNER ( -- ptr ptr n ) CMD-TASK 0 ptr-field ;
 : RUNNING ( -- ptr ptr n ) CMD-TASK 1 ptr-field ;
-: HOOK ( -- ptr n ) CMD-TASK 2 cells + ;
 
 \ ---- the context record -------------------------------------------------------
 \ Header cells, then the PATHZ and CWDZ byte regions. A member that holds an
@@ -175,30 +173,8 @@ LINEAR: ERASE ( CMD:command -- ptr n )
    h ERR-BASE @ h ERR-CAP @ RELEASE-REGION
    h CTX-CELLS MEM:CELLS-ALLOC-COUNT MEM:RELEASE-CELLS ;
 
-: OPEN? ( -- bool ) INNER @ NULL-PTR <> ;
-
-: FIRST-ERROR ( n n -- n ) {: first:n rc:n :}
-   first 0<> if first else rc then ;
-
-\ A halted task ends inside its scopes; close every one it left open, keep going
-\ past a disposer's error and report the first.
-: DRAIN ( -- )
-   NULL-PTR RUNNING !
-   0
-   begin OPEN? while
-      [: CLOSE ;] catch FIRST-ERROR
-   repeat
-   dup 0<> if throw then drop ;
-
-: REGISTER-EXIT ( -- )
-   TASK:SELF-N 0= if exit then
-   HOOK @ 0<> if exit then
-   [: DRAIN ;] TASK:SELF TASK:AT-EXIT
-   1 HOOK ! ;
-
 \ Everything that can throw runs here, inside the region CLOSE protects.
 : RUN-BODY ( R [ R CMD:command -- S CMD:command ] -- S )
-   REGISTER-EXIT
    INNER @ INIT-MEMBERS
    >r INNER @ MINT r> execute ERASE INNER @ <> if E-HANDLE throw then ;
 

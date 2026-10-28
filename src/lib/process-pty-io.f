@@ -11,10 +11,9 @@
 \ PROCESS-PTY:SIGNAL, and so on.
 \
 \ Lifetime: WITH-TARGET spawns the target, hands the body its handle, and tears
-\ the target down when the body returns or throws, or at the task's exit when
-\ the task is halted inside it: the child is reaped, every descriptor closed and
-\ the slot handed back. Spawn and teardown are private,
-\ so no handle outlives its scope.
+\ the target down when the body returns, throws or unwinds under a task halt:
+\ the child is reaped, every descriptor closed and the slot handed back. Spawn
+\ and teardown are private, so no handle outlives its scope.
 \
 \ I/O model: WITH-TARGET connects the target through ordinary pipes (the
 \ `master` slot is its stdout read end and `done` its stdin write end).
@@ -47,7 +46,7 @@
 \ one set of cells, so one task spawns at a time; handles are the registry's.
 \ IO-OUTER is one cell per registry slot, read and written only by the scope
 \ that holds that slot. TASK-LOCAL: IO-SCOPE, the raw handle of the running
-\ task's innermost scope, and IO-HOOK, whether the task registered its drain.
+\ task's innermost scope.
 
 require src/lib/process-pty-handle.f
 require src/lib/process-fork.f
@@ -284,10 +283,7 @@ variable IO-GO-R                                 \ child-side release gate
 \ nested scope saves the cell in IO-OUTER under its own slot and its cleanup
 \ puts it back, so each cleanup retires its own target. Zero is no scope: every
 \ reservation advances its slot's generation past zero, so no handle is zero.
-\ TASK:PAUSE ends a halted task without unwinding `finally`, so a task's first
-\ scope registers one TASK:AT-EXIT drain that retires every scope still open,
-\ innermost first. The main thread has no task exit and registers none.
-TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 8 TASK:+USER IO-SCOPE 8 TASK:+USER IO-HOOK drop
+TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 8 TASK:+USER IO-SCOPE drop
 create IO-OUTER SLOT-CAP cells allot
 
 : IO-ENTER ( process-pty-handle -- process-pty-handle )
@@ -312,23 +308,12 @@ create IO-OUTER SLOT-CAP cells allot
    IO-OUTER raw UNPACK-IDX CELL-AT @ IO-SCOPE !
    raw TAKE-RAW IO-RETIRE ;
 
-: IO-DRAIN ( -- )
-   begin IO-SCOPE @ 0 <> while IO-LEAVE repeat ;
-
-\ Registered before the spawn, so no target exists that the drain would miss.
-: IO-REGISTER-EXIT ( -- )
-   TASK:SELF-N 0= if exit then
-   IO-HOOK @ 0 <> if exit then
-   [: IO-DRAIN ;] TASK:SELF TASK:AT-EXIT
-   1 IO-HOOK ! ;
-
 \ The body hands back the handle it was given; any other is refused.
 : IO-RUN-BODY ( R process-pty-handle [ R process-pty-handle -- S process-pty-handle ] -- S )
    execute HANDLE>N IO-SCOPE @ <> if E-PROC-PTY-HANDLE throw then ;
 
 : IO-WITH ( R ptr u8 n [ R process-pty-handle -- S process-pty-handle ] bool -- S )
    {: path:ptr pathu:n body tty:bool :}
-   IO-REGISTER-EXIT
    path pathu >LEN tty IO-SPAWN-MODE IO-ENTER
    body [: IO-RUN-BODY ;] [: IO-LEAVE ;] finally ;
 

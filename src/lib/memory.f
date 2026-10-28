@@ -5,9 +5,9 @@
 \ and the module keeps nothing about it. The one exception is WITH-BYTES: its
 \ scope chain is TASK-LOCAL, one head cell in the MEM-ABI band of the running
 \ task's DATA region (src/habu/layout.f), so each task's scopes nest and unwind
-\ on their own. Known limit: a task ended by TASK:PAUSE under HALT runs no
-\ `finally` cleanup (src/lib/task.f PAUSE), so the mappings of its open scopes
-\ stay mapped until the process exits.
+\ on their own. A halted task unwinds its open scopes' `finally` cleanups at
+\ TASK:PAUSE (src/lib/task.f PAUSE), so their mappings are released as on a
+\ throw.
 \
 \ These mappings are for runtime-sized storage (source bundles, JSONL streams,
 \ report tables, 64K scratch buffers); `create ... allot` is for

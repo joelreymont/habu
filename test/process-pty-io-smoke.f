@@ -12,9 +12,8 @@
 \   - a body that throws still tears its target down: the throw reaches the
 \     caller, the target's pid is gone and the slot is free, for more throwing
 \     scopes than the registry has slots;
-\   - a task halted inside a scope (TASK:PAUSE ends it without unwinding the
-\     scope) still tears its target down at exit, for more halted tasks than
-\     the registry has slots;
+\   - a task halted inside a scope tears its target down as the halt unwinds the
+\     scope, for more halted tasks than the registry has slots;
 \   - the checker rejects duplicating a handle or teardown token, so a double
 \     teardown cannot even be written.
 \
@@ -109,9 +108,9 @@ TASK:MIN-STACK TASK:TASK HALTEE
 
 \ ---- a task halted inside the scope ----------------------------------------
 \ The task's body parks in its scope with the target still gated and alive.
-\ TASK:KILL halts it at TASK:PAUSE, which ends the task without running the
-\ scope's cleanup; the task's exit must still reap the target and free its slot,
-\ or a later round's spawn throws E-PROC-PTY-CAPACITY.
+\ TASK:KILL halts it at TASK:PAUSE, which unwinds the task through the scope's
+\ cleanup; that must reap the target and free its slot, or a later round's spawn
+\ throws E-PROC-PTY-CAPACITY.
 : PARK-BODY ( process-pty-handle -- process-pty-handle )
    PROCESS-PTY:TARGET SAVE-TGT
    1 IN-SCOPE atomic!

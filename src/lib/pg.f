@@ -40,9 +40,8 @@
 \ result: valid until its scope ends (CLEAR for a progress token) or its
 \ connection closes, whichever comes first, so a body copies what it keeps. A
 \ close under the body leaves the token answering E-CLEARED. CONNECT's
-\ `refused` text lasts until the next CONNECT. A task ended by TASK:PAUSE under
-\ HALT runs no `finally` cleanup, so its open result scopes are reclaimed only
-\ when that ending unwinds.
+\ `refused` text lasts until the next CONNECT. A halted task unwinds its open
+\ result scopes through their `finally` at TASK:PAUSE, as a throw does.
 \
 \ WITH-DESCRIPTION prepares a text as the unnamed statement and describes it without
 \ running it: the result answers COLS, NAME$ and OID (the column's type)

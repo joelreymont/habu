@@ -902,8 +902,9 @@ $10000 constant PROC-GROW-CHUNK          \ bytes asked of one growing read
          PROC-REMAINING-MS MS>N {: left:n :}
          left 0= if PROC-REAP-CAPTURE-TIMEOUT exit then
          PROC-STOP-ASK
-         \ PAUSE can exit a halted task and abandon its child. SLEEP returns
-         \ here to reap it, and does not burn a core while the child runs.
+         \ A halt at PAUSE would unwind out of this loop and leave the child
+         \ unreaped. SLEEP returns here to reap it, and does not burn a core while
+         \ the child runs.
          left 1 min >MS TASK:SLEEP
       then
    repeat

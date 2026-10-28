@@ -358,9 +358,9 @@ TASK:MIN-STACK TASK:TASK PCMDT-TASK-B
    PCMDT-B-RC @ 0 T=   PCMDT-B-LEN @ PCMDT-TASK-BYTES T=   PCMDT-B-BAD @ 0 T= ;
 
 \ ---- a halted task's open scope is released -----------------------------------
-\ The worker parks inside its scope with 1 MiB captured. TASK:PAUSE ends a halted
-\ task without unwinding `finally`; the capture's mapping must still be gone once
-\ the task has ended, which msync reports as -1 for an unmapped address
+\ The worker parks inside its scope with 1 MiB captured. The halt unwinds the task
+\ at TASK:PAUSE through the scope's `finally`; the capture's mapping must be gone
+\ once the task has ended, which msync reports as -1 for an unmapped address
 \ (macOS mincore answers 0 there, so it cannot tell).
 1048576 constant PCMDT-PARK-BYTES
 4096 constant PCMDT-PAGE-PROBE
