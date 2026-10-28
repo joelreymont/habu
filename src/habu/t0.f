@@ -7,9 +7,9 @@
 \ file loads (src/habu/t0-x64.f for x86-64); the emitter leaves the finished
 \ body in its sink.
 \
-\ A TOKEN IS, IN THIS ORDER: a control keyword (if else then begin until while
-\ repeat again do ?do loop +loop leave unloop i j case of endof endcase exit
-\ recurse >r r> r@ ['] [char]); an operation T0 inlines,
+\ A TOKEN IS, IN THIS ORDER: a local in scope; a control keyword (if else then
+\ begin until while repeat again do ?do loop +loop leave unloop i j case of
+\ endof endcase exit recurse >r r> r@ ['] [char] {:); an operation T0 inlines,
 \ when the spelling binds the engine's seeded primitive (NDICT:SPELL-PRIM?):
 \ the stack shuffles, + - * and or xor 1+ 1- negate invert lshift rshift, the
 \ comparisons, @ and c@; a word the dictionary binds (NDICT:CALL-TARGET), as a
@@ -24,12 +24,25 @@
 \ reconciliation exists. A push onto a full virtual stack spills its bottom
 \ entry.
 \
+\ THE LOCALS. Each `{: ... :}` group binds its names once, left to right from
+\ the deepest cell, into slots of the body's machine-stack frame (T0-EMIT:SLOTS,
+\ SLOT-STORE, SLOT-LOAD); a read pushes every cell of the local. A local holds
+\ as many cells as the checker certified for its bind (NFETCH:BIND-WIDTH), so
+\ the caller captures the body's certificate (NFETCH:CAPTURE at base 0) before
+\ COMPILE-TEXT, and T0 never reads a type annotation. A local answers to its
+\ declared spelling byte for byte, ahead of the keywords and the dictionary,
+\ from its group to the closer of the structure it binds in (else, then,
+\ repeat, until, again, loop, +loop, endof, endcase), as the checker's
+\ CF-LOC-REST ends it; `while` keeps the loop's names, as tier 1's borrow
+\ does. A dead local's slots go to the next group.
+\
 \ THE CONTROL STACK holds the open structures: an `if` or `else` site, a
 \ `begin` mark and a `while` site, which `while` puts under its `begin` as
 \ Forth's orig/dest order has it, so `begin ... while ... while ... repeat then`
 \ resolves; a `do` level; a `case`, each `endof` site above it and the open
-\ `of` site. A structure that does not close, and a loop word outside the
-\ loops it needs, is E-T0-CONTROL.
+\ `of` site; each with the locals in scope where its block opened. A structure
+\ that does not close, and a loop word outside the loops it needs, is
+\ E-T0-CONTROL.
 \
 \ LOOPS. `do` and `?do` push a runtime frame (T0-EMIT LOOP-PUSH: the index's
 \ home is memory) and open a level holding the loop's head mark, the first of
@@ -42,6 +55,7 @@ require src/lib/prelude.f
 require src/lib/string.f
 require src/habu/outer.f
 require src/compiler/native/dict.f
+require src/compiler/native/fetch.f
 
 package T0
 public
@@ -317,6 +331,84 @@ variable FREE                       \ bit k set: vreg k holds no entry
    VS-N @ 0= if -1 T0-EMIT:DSP+ exit then
    TOP REMOVE ;
 
+\ ---- the locals --------------------------------------------------------------
+DYNAMIC-BUFFER L-AT n                \ the name's offset in the text
+DYNAMIC-BUFFER L-LEN n
+DYNAMIC-BUFFER L-SLOT n              \ the first of its frame slots
+DYNAMIC-BUFFER L-WIDTH n             \ its cells
+variable L-N                         \ locals in scope
+variable BINDS                       \ binds so far: the next one's certificate sequence
+
+: L-NAME$ ( n -- ptr u8 n ) {: k:n :} TXT$ k L-AT @ +  k L-LEN @ ;
+
+\ The latest local in scope spelled exactly so, or -1.
+: FIND-LOCAL ( ptr u8 n -- n ) {: a:ptr u:n :}
+   L-N @ begin dup 0 > while
+      1- dup L-NAME$ a u STR= if exit then
+   repeat
+   1- ;
+
+\ The frame slots the locals in scope hold.
+: SLOTS-LIVE ( -- n )
+   L-N @ 0= if 0 exit then
+   L-N @ 1- {: k:n :}
+   k L-SLOT @ k L-WIDTH @ + ;
+
+\ Record local k, declared by the token of length u that ends at POS, on slot.
+: DECLARE ( ptr u8 n n n -- n ) {: a:ptr u:n k:n slot:n :}
+   POS @ u - {: at:n :}
+   at BINDS @ NFETCH:BIND-WIDTH {: w:n :}
+   BINDS @ 1+ BINDS !
+   a u $3A INDEX-OF MATCH option         \ the name ends at the type's `:`
+      none OF u ENDOF
+      some OF IDX>N ENDOF
+   ;MATCH {: len:n :}
+   k 1+ L-AT-RESERVE  k 1+ L-LEN-RESERVE  k 1+ L-SLOT-RESERVE  k 1+ L-WIDTH-RESERVE
+   at k L-AT !  len k L-LEN !  slot k L-SLOT !  w k L-WIDTH !
+   w ;
+
+\ Pop c cells into slots base .. base+c-1, the top cell into the last: first
+\ the virtual stack's entries, then the cells in memory under them.
+: BIND-CELLS ( n n -- ) {: base:n c:n :}
+   VS-N @ c min {: v:n :}
+   v 0 ?do
+      TOP MAT  base c + 1- i -  T0-EMIT:SLOT-STORE
+      TOP REMOVE
+   loop
+   c v ?do
+      ALLOC {: r:T0-EMIT:vreg :}
+      r i v - 1+ negate T0-EMIT:FILL
+      r  base c + 1- i -  T0-EMIT:SLOT-STORE
+      r RELEASE
+   loop
+   v c - T0-EMIT:DSP+ ;
+
+\ Declare the next name of a group whose earlier names hold cells; false at
+\ the `:}`.
+: GROUP-NAME ( n n n n -- n n bool ) {: first:n base:n names:n cells:n :}
+   TOKEN {: a:ptr u:n :}
+   u 0= if E-T0-CONTROL throw then
+   a u s" :}" STR= if names cells false exit then
+   a u first names + base cells + DECLARE {: w:n :}
+   names 1+  cells w +  true ;
+
+\ `{:` up to `:}`: the names come into scope once their cells are bound.
+: DO-GROUP ( -- )
+   SLOTS-LIVE {: base:n :}
+   L-N @ {: first:n :}
+   0 0 begin first base 2swap GROUP-NAME 0= until {: names:n cells:n :}
+   base cells + T0-EMIT:SLOTS
+   base cells BIND-CELLS
+   first names + L-N ! ;
+
+\ Every cell of local k, pushed.
+: DO-LOCAL ( n -- ) {: k:n :}
+   k L-WIDTH @ 0 ?do
+      ROOM ALLOC {: r:T0-EMIT:vreg :}
+      r k L-SLOT @ i + T0-EMIT:SLOT-LOAD
+      r PUSH-REG
+   loop ;
+
 \ ---- the control stack -------------------------------------------------------
 0 constant CS-IF
 1 constant CS-ELSE
@@ -329,12 +421,13 @@ variable FREE                       \ bit k set: vreg k holds no entry
 
 DYNAMIC-BUFFER CS-KIND n
 DYNAMIC-BUFFER CS-VAL n
+DYNAMIC-BUFFER CS-LOC n              \ locals in scope where the block opened
 variable CS-N
 
-: CS-PUSH ( n n -- ) {: kind:n val:n :}
+: CS-PUSH ( n n n -- ) {: kind:n val:n loc:n :}
    CS-N @ {: k:n :}
-   k 1+ CS-KIND-RESERVE  k 1+ CS-VAL-RESERVE
-   kind k CS-KIND !  val k CS-VAL !
+   k 1+ CS-KIND-RESERVE  k 1+ CS-VAL-RESERVE  k 1+ CS-LOC-RESERVE
+   kind k CS-KIND !  val k CS-VAL !  loc k CS-LOC !
    k 1+ CS-N ! ;
 
 \ The value of the top structure, which must be of kind a or b.
@@ -353,51 +446,63 @@ variable CS-N
    CS-N @ 0= if E-T0-CONTROL throw then
    CS-N @ 1- CS-KIND @ ;
 
+\ The locals in scope where the structure last popped opened.
+: CS-LOC@ ( -- n ) CS-N @ CS-LOC @ ;
+
+\ The names the popped structure's block bound go out of scope.
+: SCOPE-END ( -- ) CS-LOC@ L-N ! ;
+
 : PATCH ( n -- ) T0-EMIT:>SITE T0-EMIT:PATCH ;
 
 : DO-IF ( -- )
    TAKE {: c:T0-EMIT:vreg :}
    SPILL-ALL
-   CS-IF c T0-EMIT:JZ T0-EMIT:SITE>N CS-PUSH ;
+   CS-IF c T0-EMIT:JZ T0-EMIT:SITE>N L-N @ CS-PUSH ;
 
 : DO-ELSE ( -- )
    CS-IF CS-POP {: s:n :}
+   SCOPE-END
    SPILL-ALL
-   CS-ELSE T0-EMIT:JMP T0-EMIT:SITE>N CS-PUSH
+   CS-ELSE T0-EMIT:JMP T0-EMIT:SITE>N L-N @ CS-PUSH
    s PATCH ;
 
 : DO-THEN ( -- )
    CS-TOP-KIND CS-WHILE = if CS-WHILE else CS-IF then
    CS-ELSE CS-POP2 {: s:n :}
+   SCOPE-END
    SPILL-ALL
    s PATCH ;
 
 : DO-BEGIN ( -- )
    SPILL-ALL
-   CS-BEGIN T0-EMIT:LABEL T0-EMIT:MARK>N CS-PUSH ;
+   CS-BEGIN T0-EMIT:LABEL T0-EMIT:MARK>N L-N @ CS-PUSH ;
 
 : DO-WHILE ( -- )
    CS-BEGIN CS-POP {: m:n :}
+   CS-LOC@ {: loc:n :}
    TAKE {: c:T0-EMIT:vreg :}
    SPILL-ALL
-   CS-WHILE c T0-EMIT:JZ T0-EMIT:SITE>N CS-PUSH
-   CS-BEGIN m CS-PUSH ;
+   CS-WHILE c T0-EMIT:JZ T0-EMIT:SITE>N loc CS-PUSH
+   CS-BEGIN m loc CS-PUSH ;
 
 : DO-REPEAT ( -- )
    CS-BEGIN CS-POP {: m:n :}
    CS-WHILE CS-POP {: s:n :}
+   SCOPE-END
    SPILL-ALL
    m T0-EMIT:>MARK T0-EMIT:JMP-BACK
    s PATCH ;
 
 : DO-UNTIL ( -- )
    CS-BEGIN CS-POP {: m:n :}
+   SCOPE-END
    TAKE {: c:T0-EMIT:vreg :}
    SPILL-ALL
    c m T0-EMIT:>MARK T0-EMIT:JZ-BACK ;
 
 : DO-AGAIN ( -- )
    CS-BEGIN CS-POP {: m:n :}
+   SCOPE-END
    SPILL-ALL
    m T0-EMIT:>MARK T0-EMIT:JMP-BACK ;
 
@@ -431,14 +536,14 @@ variable LEAVE-N
    LEAVE-N @ k DO-FIRST !
    entry k DO-ENTRY !
    k 1+ DO-N !
-   CS-DO k CS-PUSH ;
+   CS-DO k L-N @ CS-PUSH ;
 
 : DO-DO ( -- ) FRAME 2drop -1 OPEN-LEVEL ;
 
 : DO-?DO ( -- ) FRAME T0-EMIT:LOOP-ENTER T0-EMIT:SITE>N OPEN-LEVEL ;
 
-\ The innermost level, which `loop` or `+loop` closes.
-: CLOSING ( -- n ) CS-DO CS-POP ;
+\ The innermost level, which `loop` or `+loop` closes, ending its names.
+: CLOSING ( -- n ) CS-DO CS-POP SCOPE-END ;
 
 : HEAD ( n -- T0-EMIT:mark ) DO-HEAD @ T0-EMIT:>MARK ;
 
@@ -502,7 +607,7 @@ variable LEAVE-N
    SPILL-ALL
    s v T0-EMIT:JNE ;
 
-: DO-CASE ( -- ) CS-CASE 0 CS-PUSH ;
+: DO-CASE ( -- ) CS-CASE 0 L-N @ CS-PUSH ;
 
 : DO-OF ( -- )
    CS-TOP-KIND {: kind:n :}
@@ -510,12 +615,13 @@ variable LEAVE-N
    2 ENSURE
    TOP IMM? if OF-LIT else OF-REG then {: s:T0-EMIT:site :}
    DROP1
-   CS-OF s T0-EMIT:SITE>N CS-PUSH ;
+   CS-OF s T0-EMIT:SITE>N L-N @ CS-PUSH ;
 
 : DO-ENDOF ( -- )
    CS-OF CS-POP {: s:n :}
+   SCOPE-END
    SPILL-ALL
-   CS-ENDOF T0-EMIT:JMP T0-EMIT:SITE>N CS-PUSH
+   CS-ENDOF T0-EMIT:JMP T0-EMIT:SITE>N L-N @ CS-PUSH
    s PATCH ;
 
 \ The default arm drops the selector, and every `endof` lands after the drop.
@@ -523,7 +629,8 @@ variable LEAVE-N
    DROP1
    SPILL-ALL
    begin CS-TOP-KIND CS-ENDOF = while CS-ENDOF CS-POP PATCH repeat
-   CS-CASE CS-POP drop ;
+   CS-CASE CS-POP drop
+   SCOPE-END ;
 
 \ ---- the rest of the keywords ------------------------------------------------
 \ True once the body has left through a tail call: nothing follows it.
@@ -597,6 +704,7 @@ variable TAILED
    a u s" if" STR= if DO-IF true exit then
    a u s" do" STR= if DO-DO true exit then
    a u s" of" STR= if DO-OF true exit then
+   a u s" {:" STR= if DO-GROUP true exit then
    a u s" >r" STR= if DO-TOR true exit then
    a u s" r>" STR= if DO-RFROM true exit then
    a u s" r@" STR= if DO-RFETCH true exit then
@@ -675,6 +783,8 @@ variable TAILED
    v PUSH-CONST ;
 
 : COMPILE-TOKEN ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u FIND-LOCAL {: k:n :}
+   k 0 >= if k DO-LOCAL exit then
    a u KEYWORD if exit then
    a u NDICT:CALL-TARGET {: to:n :}
    to 0<> if to DO-CALL exit then
@@ -694,10 +804,11 @@ public
 \ The token the last E-T0-UNSUPPORTED named.
 : UNSUPPORTED$ ( -- ptr u8 n ) BAD @ BAD-LEN @ ;
 
-\ Compile one body into the emitter's sink.
+\ Compile one body into the emitter's sink. The body's certificate is captured.
 : COMPILE-TEXT ( ptr u8 n -- ) {: a:ptr u:n :}
    a TXT !  u TXT-LEN !  0 POS !
    0 VS-N !  ALL-FREE FREE !  0 CS-N !  0 DO-N !  0 LEAVE-N !  0 TAILED !
+   0 L-N !  0 BINDS !
    T0-EMIT:OPEN
    SKIP-HEAD
    begin TOKEN dup 0<> while COMPILE-TOKEN repeat

@@ -23,7 +23,9 @@
 \ THE FRAME. OPEN emits `sub rsp, imm32` and each way out (RETURN, TAIL) emits
 \ `add rsp, imm32`, each with a zero field recorded in FRAME-AT. CLOSE emits
 \ nothing: the front end ends the body with RETURN or TAIL, and CLOSE writes
-\ the frame size, FRAME-CELLS rounded to 16 bytes, into every field.
+\ the frame size, FRAME-CELLS rounded to 16 bytes, into every field, so rsp
+\ keeps its alignment at every call. Slot k is the cell at rsp + 8k; SLOTS
+\ raises FRAME-CELLS to cover the slots the front end uses.
 \
 \ THE ROWS. A call or tail site (E8 or E9 rel32, the field left zero) and a
 \ code or data address site (movabs r64, imm64) are recorded with the offset of
@@ -244,6 +246,17 @@ public
 
 : MOV ( vreg vreg -- ) {: d:vreg s:vreg :}
    d REG s REG SINK ENC-MOV-RR ;
+
+\ The frame: SLOTS makes it hold at least n cells, SLOT-STORE and SLOT-LOAD
+\ move a cell between a vreg and slot k.
+: SLOTS ( n -- ) {: k:n :}
+   k FRAME-CELLS @ > if k FRAME-CELLS ! then ;
+
+: SLOT-STORE ( vreg n -- ) {: s:vreg k:n :}
+   s REG RSP k CELL * MEM-OFF SINK ENC-MOV-MR ;
+
+: SLOT-LOAD ( vreg n -- ) {: d:vreg k:n :}
+   d REG RSP k CELL * MEM-OFF SINK ENC-MOV-RM ;
 
 \ ---- arithmetic --------------------------------------------------------------
 : OP ( vreg vreg alu -- ) {: d:vreg s:vreg o:alu :}
