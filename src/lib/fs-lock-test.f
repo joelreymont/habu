@@ -32,7 +32,7 @@ variable HELD-FD
 : ROOT$ ( -- ptr u8 n ) ROOT ROOT-U @ ;
 
 : SETUP ( -- )
-   s" hb-fs-lock" TMPDIR-MKDIR {: path:ptr u:n :}
+   s" hb-fs-lock" FS:MKTEMP-DIR {: path:ptr u:n :}
    path ROOT u BYTE-COPY
    u ROOT-U ! ;
 

@@ -44,7 +44,7 @@ DYNAMIC-BUFFER PAYLOAD u8
 : ARG+ ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
 
 : SETUP ( -- )
-   s" browser-storage" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" browser-storage" FS:MKTEMP-DIR {: a:ptr u:n :}
    a DIR u BYTE-COPY u DIR-U !
    DIR u s" storage.wasm" MOD JOIN-PATH MOD-U !
    DIR u s" payload.bin" FILE JOIN-PATH FILE-U !

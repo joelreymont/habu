@@ -144,7 +144,7 @@ public
 \ WORK-CLOSE still removes it.
 : WORK-OPEN ( ptr u8 n ptr u8 -- ptr u8 n )
    {: fam:ptr famu:n ekey:ptr :}
-   fam famu ekey BUILD-OUT:IMG$ SOURCE-ROOT:DIRNAME fam famu MAKE-TEMP-DIR
+   fam famu ekey BUILD-OUT:IMG$ SOURCE-ROOT:DIRNAME fam famu FS:MKTEMP-DIR-IN
    2dup CLEANUP-TREE+ ;
 
 : WORK-CLOSE ( ptr u8 n -- )

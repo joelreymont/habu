@@ -233,7 +233,7 @@ variable CS-CHILD-ERR-U
 : CS-IMAGE$ ( -- ptr u8 n ) CS-IMAGE-PATH-BUF CS-IMAGE-PATH-U @ ;
 
 : CS-IMAGE-PREPARE ( -- )
-   s" habu-catch-success" TMPDIR-MKDIR {: path:ptr size:n :}
+   s" habu-catch-success" FS:MKTEMP-DIR {: path:ptr size:n :}
    path CS-IMAGE-ROOT-BUF size BYTE-COPY
    size CS-IMAGE-ROOT-U !
    CS-IMAGE-ROOT$ CLEANUP-TREE+

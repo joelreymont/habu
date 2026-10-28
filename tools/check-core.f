@@ -538,7 +538,7 @@ private
 \ verifier's, the engine's - ends the process without unwinding to
 \ CHK-TEMP-CLEAN, which forgets the root once it has removed it.
 : CHK-MAKE-TEMP ( -- )
-   s" habu-check" TMPDIR-MKDIR SOURCE-ROOT:CANON-OS 0= if E-FS-IO throw then
+   s" habu-check" FS:MKTEMP-DIR SOURCE-ROOT:CANON-OS 0= if E-FS-IO throw then
    CHK-ROOT-BUF CHK-ROOT-U CHK-COPY!
    CHK-ROOT CLEANUP-TREE+
    CHK-ROOT s" source.f" CHK-SRC-PATH-BUF JOIN-PATH CHK-SRC-PATH-U !

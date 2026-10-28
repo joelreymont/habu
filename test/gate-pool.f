@@ -530,8 +530,8 @@ variable GT-POOL-SOCK-ROOT-U
 
 : GT-POOL-SOCK-ROOT-NEW ( -- ptr u8 n )
    s" HB_SOCK_TMP" GETENV {: base:ptr baseu:n :}
-   baseu 0= if s" hb-sock" TMPDIR-MKDIR exit then
-   base baseu s" hb-sock" MAKE-TEMP-DIR ;
+   baseu 0= if s" hb-sock" FS:MKTEMP-DIR exit then
+   base baseu s" hb-sock" FS:MKTEMP-DIR-IN ;
 
 : GT-POOL-SOCK-ROOT-MAKE ( -- )
    GT-POOL-SOCK-ROOT-U @ 0 > if GT-POOL-SOCK-ROOT$ EXISTS? if exit then then

@@ -186,7 +186,7 @@ create BFT-ERR BFT-CAPTURE-CAP allot
 
 : BFT-PREPARE ( -- )
    CLEANUP-RESET
-   s" habu-build-fixpoint" TMPDIR-MKDIR {: a:ptr u :}
+   s" habu-build-fixpoint" FS:MKTEMP-DIR {: a:ptr u :}
    a u BFT-ROOT-BUF BFT-ROOT-U BFT-COPY!
    BFT-ROOT CLEANUP-TREE+
    BFT-ROOT s" hb-stdin" BFT-HB-BUF BFT-HB-U BFT-PATH!
@@ -249,7 +249,7 @@ create BFT-ERR BFT-CAPTURE-CAP allot
 \ type error in its copy of src/arch/arm64/mnem.f; the watermark cases
 \ (tools/build-fixpoint-test.f) cut its copy of src/core/lower-cert-seal.f.
 : BFT-STALE-PATHS! ( -- )
-   s" habu-bft-stale" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" habu-bft-stale" FS:MKTEMP-DIR {: a:ptr u:n :}
    a u BFT-STALE-BUF BFT-STALE-U BFT-COPY!
    BFT-STALE CLEANUP-TREE+
    BFT-STALE s" bin/hb" BFT-STALE-HB-BUF BFT-STALE-HB-U BFT-PATH!

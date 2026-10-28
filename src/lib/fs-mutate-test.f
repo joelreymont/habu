@@ -238,7 +238,7 @@ create FMT-STREAM-DST-DATA FMT-STREAM-LEN allot
 : FMT-ROOT! ( -- )
    s" HB_SOCK_TMP" GETENV dup 0 > if FMT-ROOT-COPY! exit then
    2drop
-   s" habu-fs-mutate" TMPDIR-MKDIR FMT-ROOT-COPY! ;
+   s" habu-fs-mutate" FS:MKTEMP-DIR FMT-ROOT-COPY! ;
 
 : FMT-REMOVE! ( -- )
    FMT-ROOT$ s" remove.txt" FMT-REMOVE-BUF JOIN-PATH FMT-REMOVE-U ! ;
@@ -439,10 +439,10 @@ FS-PATH-CAP SPAN-BUFFER: FMT-LINK-READ-BUF     \ READ-LINK's destination is a sp
    FMT-REAL-BUF n ;
 
 
-\ A base one byte past the longest MAKE-TEMP-DIR builds in for its prefix,
+\ A base one byte past the longest FS:MKTEMP-DIR-IN builds in for its prefix,
 \ whatever seed it would draw.
 : FMT-TEMP-BASE-NO-ROOM ( -- )
-   FMT-LONG-BUF s" nr" nip TEMP-DIR-BASE-MAX 1+ s" nr" MAKE-TEMP-DIR 2drop ;
+   FMT-LONG-BUF s" nr" nip TEMP-DIR-BASE-MAX 1+ s" nr" FS:MKTEMP-DIR-IN 2drop ;
 
 : FMT-MAKE-SYMLINK-EXISTS ( -- )
    FMT-LINK-TARGET FMT-LINK MAKE-SYMLINK ;
@@ -686,16 +686,16 @@ FS-PATH-CAP SPAN-BUFFER: FMT-LINK-READ-BUF     \ READ-LINK's destination is a sp
    FMT-NEST-C DIR? TFALSE ;
 
 : FMT-TEST-TEMPS ( -- )
-   FMT-TEMP-BASE s" one" MAKE-TEMP-DIR 2dup DIR? TTRUE CLEANUP-DIR+
-   FMT-TEMP-BASE s" two" MAKE-TEMP-DIR 2dup DIR? TTRUE CLEANUP-DIR+
-   s" habu-fs-mut" TMPDIR-MKDIR 2dup DIR? TTRUE CLEANUP-DIR+ ;
+   FMT-TEMP-BASE s" one" FS:MKTEMP-DIR-IN 2dup DIR? TTRUE CLEANUP-DIR+
+   FMT-TEMP-BASE s" two" FS:MKTEMP-DIR-IN 2dup DIR? TTRUE CLEANUP-DIR+
+   s" habu-fs-mut" FS:MKTEMP-DIR 2dup DIR? TTRUE CLEANUP-DIR+ ;
 
 : FMT-TEST-TEMP-COLLISION ( -- )
    FMT-TEMP-BASE s" collide" FMT-TMP-SEED 0 FS-MUT-BUILD-TEMP-TRY
    FMT-COLLIDE-BUF FMT-COLLIDE-U FMT-COPY!
    FMT-COLLIDE MAKE-DIR
    FMT-COLLIDE CLEANUP-DIR+
-   FMT-TEMP-BASE s" collide" FMT-TMP-SEED FS-MUT-MAKE-TEMP-DIR-SEED
+   FMT-TEMP-BASE s" collide" FMT-TMP-SEED FS-MUT-MKTEMP-DIR-SEED
    FMT-UNIQUE-BUF FMT-UNIQUE-U FMT-COPY!
    FMT-UNIQUE DIR? TTRUE
    FMT-UNIQUE CLEANUP-DIR+
@@ -730,7 +730,7 @@ FS-PATH-CAP SPAN-BUFFER: FMT-LINK-READ-BUF     \ READ-LINK's destination is a sp
 
 : FMT-TEST-TEMP-EXHAUST ( -- )
    FMT-TEMP-EXHAUST-PREP
-   [: FMT-TEMP-BASE s" exhaust" FMT-TMP-SEED FS-MUT-MAKE-TEMP-DIR-SEED 2drop ;]
+   [: FMT-TEMP-BASE s" exhaust" FMT-TMP-SEED FS-MUT-MKTEMP-DIR-SEED 2drop ;]
    E-FS-IO TTHROWSQ
    FMT-TEMP-EXHAUST-CLEAN ;
 
@@ -782,11 +782,11 @@ variable WANT-U
    FMT-ROOT$ s" tmpdir-canon.f" CANON-PROG-BUF JOIN-PATH CANON-PROG-U ! ;
 
 : PROG-SRC$ ( -- ptr u8 n )
-   S\" require src/lib/fs-mutate.f\ns\q tmpdir-child\q TMPDIR-MKDIR 2drop\n0 0 0 die\n" ;
+   S\" require src/lib/fs-mutate.f\ns\q tmpdir-child\q FS:MKTEMP-DIR 2drop\n0 0 0 die\n" ;
 
-\ Prints the directory TMPDIR-MKDIR makes and a newline.
+\ Prints the directory FS:MKTEMP-DIR makes and a newline.
 : CANON-PROG-SRC$ ( -- ptr u8 n )
-   S\" require src/lib/fs-mutate.f\n: LINE ( ptr u8 n -- ) {: a:ptr u :} 1 a u write drop 1 S\\\q \\n\q write drop ;\ns\q canon\q TMPDIR-MKDIR LINE\n" ;
+   S\" require src/lib/fs-mutate.f\n: LINE ( ptr u8 n -- ) {: a:ptr u :} 1 a u write drop 1 S\\\q \\n\q write drop ;\ns\q canon\q FS:MKTEMP-DIR LINE\n" ;
 
 \ A directory one byte past the longest TMPDIR with room for the temp name
 \ PROG-SRC$ asks for, whose prefix is tmpdir-child.
@@ -1291,10 +1291,10 @@ create P-W5DF FS-PATH-CAP allot variable P-W5DF-U
 : A-TMP$ ( -- ptr u8 n ) A-TMP A-TMP-U @ SPAN:TAKE SPAN:$ ;
 : B-TMP$ ( -- ptr u8 n ) B-TMP B-TMP-U @ SPAN:TAKE SPAN:$ ;
 
-\ A keeps a copy of the path MAKE-TEMP-DIR handed it, waits until B has made one
+\ A keeps a copy of the path FS:MKTEMP-DIR-IN handed it, waits until B has made one
 \ of its own, and only then reads the span it is still holding.
 : T1-A-ROUND ( n -- ) {: round :}
-   FMT-ROOT$ s" race-a" MAKE-TEMP-DIR {: path:ptr u :}
+   FMT-ROOT$ s" race-a" FS:MKTEMP-DIR-IN {: path:ptr u :}
    path u A-TMP SPAN:COPY  u A-TMP-U !
    round A-READY atomic!
    B-DONE round WAIT-FOR
@@ -1303,7 +1303,7 @@ create P-W5DF FS-PATH-CAP allot variable P-W5DF-U
 
 : T1-B-ROUND ( n -- ) {: round :}
    A-READY round WAIT-FOR
-   FMT-ROOT$ s" race-b" MAKE-TEMP-DIR {: path:ptr u :}
+   FMT-ROOT$ s" race-b" FS:MKTEMP-DIR-IN {: path:ptr u :}
    path u B-TMP SPAN:COPY  u B-TMP-U !
    round B-DONE atomic!
    B-TMP$ REMOVE-DIR ;

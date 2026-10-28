@@ -66,14 +66,14 @@ variable RC
    ENGINE-CANDIDATE:PATH$ SOURCE-ROOT:CANONICAL TTRUE
    {: hb:ptr hbu:n :}
    hb HB hbu BYTE-COPY hbu HB-U !
-   s" habu-whitebox-copy" TMPDIR-MKDIR SOURCE-ROOT:CANONICAL TTRUE
+   s" habu-whitebox-copy" FS:MKTEMP-DIR SOURCE-ROOT:CANONICAL TTRUE
    {: tmp:ptr tmpu:n :}
    tmp TMP tmpu BYTE-COPY tmpu TMP-U !
    TMP$ s" whitebox" IMAGE JOIN-PATH IMAGE-U !
    ENG-A ENGINE-DIGEST! ;
 
 : PREPARE-FAILURES ( -- )
-   s" habu-whitebox-fresh" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" habu-whitebox-fresh" FS:MKTEMP-DIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY u ROOT-U !
    ROOT$ TREE-COPY:BUILD-SOURCES
    s" test" ROOT$ TREE-COPY:TREE

@@ -29,7 +29,7 @@ variable RC
 
 \ BAD is a regular file, so a TMPDIR naming it fails mkstemp with ENOTDIR.
 : SETUP ( -- )
-   s" zip-temp" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" zip-temp" FS:MKTEMP-DIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY u ROOT-U !
    ROOT$ s" not-a-dir" BAD JOIN-PATH BAD-U !
    ROOT$ s" temp.zip" ARCHIVE JOIN-PATH ARCHIVE-U !

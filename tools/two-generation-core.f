@@ -109,7 +109,7 @@ variable TG-COL-NAME
 : TG-PROBE$ ( -- ptr u8 n ) s" tools/two-generation-probe.f" ;
 
 : TG-MKDIRS ( -- )
-   s" hb-generations" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" hb-generations" FS:MKTEMP-DIR {: a:ptr u:n :}
    a TG-ROOT u BYTE-COPY u TG-ROOT-U !
    s" two-gen: products " type TG-DIR$ type cr ;
 

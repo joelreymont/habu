@@ -4,7 +4,7 @@
 \ path FS-MUT-PATHZ2-BUF (RENAME-FILE's, MAKE-SYMLINK's and the stream copy's
 \ destination), the unique `.tmp-*` sibling ATOMIC-WRITE-FILE, RESERVE-SIBLING
 \ and REPLACE-STAGED name, FS-MUT-ATOMIC-PATH, and
-\ MAKE-TEMP-DIR's FS-MUT-TMP-PATH - the one this module RETURNS a span into -
+\ FS:MKTEMP-DIR-IN's FS-MUT-TMP-PATH - the one this module RETURNS a span into -
 \ are the FS-MUT-ABI band of the per-task DATA region, so two tasks renaming,
 \ symlinking, writing atomically or making a temporary directory at once share
 \ nothing and neither can replace the other's returned path. The descriptors,
@@ -37,7 +37,7 @@
 \ frames grow with the depth, so neither path lengths nor depth bound the tree,
 \ only the descriptors the process may hold open. A missing root
 \ is a no-op; a root that cannot be stat'ed for any other reason is E-FS-STAT,
-\ with libc's cause in FS:ERRNO. TMPDIR-MKDIR makes its tree under the
+\ with libc's cause in FS:ERRNO. FS:MKTEMP-DIR makes its tree under the
 \ canonical spelling of $TMPDIR, or /tmp when TMPDIR is unset or empty, and
 \ refuses by name a root that cannot hold it. CLEANUP-RUN removes registrations newest first,
 \ so a parent registered before its child goes after it, and the registry
@@ -130,7 +130,7 @@ public
 
 \ THE STAGED PATHS ARE TASK-LOCAL, in the FS-MUT-ABI band of the per-task DATA
 \ region: every accessor reads `data-base`, which is the RUNNING task's region,
-\ so the path MAKE-TEMP-DIR hands back stays this task's until it calls again,
+\ so the path FS:MKTEMP-DIR-IN hands back stays this task's until it calls again,
 \ and two tasks in RENAME-FILE, MAKE-SYMLINK or ATOMIC-WRITE-FILE at once share
 \ nothing. The band is declared in src/habu/layout.f below FS-ABI and asserted
 \ there against every other DATA claim. It is a declared band and not TASK:+USER
@@ -667,7 +667,7 @@ public
 : RESERVE-SIBLING ( ptr u8 n -- ptr u8 n n )
    FS-MUT-ATOMIC-SEED FS-MODE-0644 FS-MUT-ATOMIC-RESERVE ;
 
-\ The longest base MAKE-TEMP-DIR makes a directory in for a prefix of n bytes:
+\ The longest base FS:MKTEMP-DIR-IN makes a directory in for a prefix of n bytes:
 \ its `<base>/<prefix>-<seed>-<attempt>` path still fits FS-PATH-CAP with the
 \ largest seed, the largest nonnegative cell, and the last attempt, so whether
 \ a base has room for one never depends on the seed it drew.
@@ -699,7 +699,7 @@ public
    a u FS-MUT-TMP-COLLISION? if 0 0= 0= exit then
    E-FS-IO throw ;
 
-: FS-MUT-MAKE-TEMP-DIR-SEED ( ptr u8 n ptr u8 n n -- ptr u8 n ) {: base:ptr baseu prefix:ptr prefixu seed :}
+: FS-MUT-MKTEMP-DIR-SEED ( ptr u8 n ptr u8 n n -- ptr u8 n ) {: base:ptr baseu prefix:ptr prefixu seed :}
    0 begin dup FS-MUT-TMP-RETRIES < while
       dup {: attempt:n :}
       base baseu prefix prefixu seed attempt FS-MUT-BUILD-TEMP-TRY
@@ -708,13 +708,16 @@ public
    repeat drop
    E-FS-IO throw ;
 
-\ MAKE-TEMP-DIR makes the directory under the base as given, and the answer
+package FS
+public
+\ FS:MKTEMP-DIR-IN makes the directory under the base as given, and the answer
 \ keeps the caller's spelling: a relative base gives a relative answer.
-: MAKE-TEMP-DIR ( ptr u8 n ptr u8 n -- ptr u8 n )
-   mono-ns FS-MUT-MAKE-TEMP-DIR-SEED ;
+: MKTEMP-DIR-IN ( ptr u8 n ptr u8 n -- ptr u8 n )
+   mono-ns FS-MUT-MKTEMP-DIR-SEED ;
+;package
 
 \ realpath of a temp root into this task's PATHZ2 buffer: the canonical
-\ spelling's length, below 0 when realpath refuses the root. MAKE-TEMP-DIR
+\ spelling's length, below 0 when realpath refuses the root. FS:MKTEMP-DIR-IN
 \ builds and makes its candidates through SB, FS-MUT-TMP-PATH and FS-PATHZ
 \ only, so the spelling stands through every attempt.
 : FS-MUT-TEMP-REAL ( ptr u8 n -- n )
@@ -725,13 +728,13 @@ public
 \ throw. A root past FS-PATH-CAP, or one whose canonical spelling leaves no
 \ room for the temp name under it (TEMP-DIR-BASE-MAX), is too long:
 \ E-SPAN-CAPACITY; without the check the first dies on FS-PATHZ's E-FS-PATH and
-\ the second on MAKE-TEMP-DIR's E-SPAN-CAPACITY, neither naming TMPDIR. A root
+\ the second on FS:MKTEMP-DIR-IN's E-SPAN-CAPACITY, neither naming TMPDIR. A root
 \ that is not a directory throws E-FS-DIR; without the check it dies on the
 \ E-FS-IO of a mkdir under a missing parent, which is no collision. A directory
 \ realpath refuses, as one whose canonical spelling does not fit PATH_MAX
 \ (ENAMETOOLONG on Darwin), has no canonical path: E-FS-IO. The check answers
 \ the canonical spelling, borrowed from this task's PATHZ2 buffer, which
-\ TMPDIR-MKDIR makes the directory under. The line is three writes, as
+\ FS:MKTEMP-DIR makes the directory under. The line is three writes, as
 \ src/core/include.f names a refused source path, and not one SB$ write as
 \ FS-MUT-EXIT-REPORT below: a root of FS-PATH-CAP bytes with the reason
 \ overflows SB-CAP, and SB-APPEND would then throw E-STR-CAPACITY in place of
@@ -759,18 +762,21 @@ public
    real prefixu TEMP-DIR-BASE-MAX > if a u FS-MUT-TMPDIR-LONG then
    FS-MUT-PATHZ2-BUF SPAN:$ drop real ;
 
+package FS
+public
 \ The one temp root a process reads from its environment: TMPDIR, or /tmp when
-\ TMPDIR is unset or empty. It is resolved before MAKE-TEMP-DIR gets it, so
-\ every tree TMPDIR-MKDIR makes has a canonical path: a root reached through a
+\ TMPDIR is unset or empty. It is resolved before FS:MKTEMP-DIR-IN gets it, so
+\ every tree FS:MKTEMP-DIR makes has a canonical path: a root reached through a
 \ symlink (macOS's /tmp is /private/tmp) would otherwise give paths that differ
 \ from the canonical ones the engine records for the same files. A caller that
 \ hands its child a TMPDIR of its own (test/gate-pool.f) owns and removes it,
 \ so a tree made there goes away with it even when the child is killed before
 \ its own CLEANUP-RUN; anywhere else nobody reaps the root, and a maker that
 \ leaks there leaks for good.
-: TMPDIR-MKDIR ( ptr u8 n -- ptr u8 n ) {: prefix:ptr prefixu :}
+: MKTEMP-DIR ( ptr u8 n -- ptr u8 n ) {: prefix:ptr prefixu :}
    s" TMPDIR" GETENV dup 0= if 2drop s" /tmp" then
-   prefixu FS-MUT-TMPDIR-CHECK prefix prefixu MAKE-TEMP-DIR ;
+   prefixu FS-MUT-TMPDIR-CHECK prefix prefixu MKTEMP-DIR-IN ;
+;package
 
 \ Its callers are a just-forked child (src/lib/process-fork.f registers it with
 \ FORK-CHILD) and single-task fixtures, where no other task can be inside the

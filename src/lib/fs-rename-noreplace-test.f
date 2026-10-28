@@ -209,7 +209,7 @@ TASK:MIN-STACK TASK:TASK WORKER-B
    RACE OTHER-ERRORS UNLINK-ERROR ;
 
 : SETUP ( -- )
-   s" habu-rename-noreplace" TMPDIR-MKDIR {: path:ptr bytes :}
+   s" habu-rename-noreplace" FS:MKTEMP-DIR {: path:ptr bytes :}
    path ROOT bytes BYTE-COPY bytes ROOT-U !
    false ACL-ON ! ;
 

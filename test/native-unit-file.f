@@ -34,7 +34,7 @@ create RAW ART-CAP allot variable RAW-U
 : LONG-CONTENT$ ( -- ptr u8 n ) s" : LONG-SOURCE ( -- n ) 42 ;" ;
 
 : SETUP ( -- )
-   s" native-unit-file" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" native-unit-file" FS:MKTEMP-DIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY u ROOT-U !
    ROOT ROOT-U @ s" nbr.unit" PATH JOIN-PATH PATH-U !
    ROOT ROOT-U @ s" abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnop.f"

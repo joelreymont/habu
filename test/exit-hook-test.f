@@ -49,7 +49,7 @@ variable TREE-U
 
 : PREPARE ( -- )
    CLEANUP-RESET
-   s" exit-hook" TMPDIR-MKDIR {: path:ptr pathu :}
+   s" exit-hook" FS:MKTEMP-DIR {: path:ptr pathu :}
    path ROOT-BUF pathu BYTE-COPY pathu ROOT-U !
    ROOT$ CLEANUP-TREE+ ;
 

@@ -383,7 +383,7 @@ public
 
 : UDG-PREPARE ( -- )
    CLEANUP-RESET
-   s" habu-udg" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" habu-udg" FS:MKTEMP-DIR {: a:ptr u:n :}
    a u UDG-ROOT-BUF UDG-ROOT-U UDG-COPY!
    UDG-ROOT CLEANUP-TREE+
    UDG-ROOT s" forge.f" UDG-CHILD-BUF JOIN-PATH UDG-CHILD-U ! ;

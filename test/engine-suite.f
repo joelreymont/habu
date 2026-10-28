@@ -13,7 +13,7 @@ variable ES-CERT-STALE0
 LOWER-CERT:ARENAS-STALE ES-CERT-STALE0 !
 
 require src/lib/type/deftype.f         \ DEFTYPE - the declared-nominal integer surface
-require src/lib/fs-mutate.f            \ TMPDIR-MKDIR - the filesystem block's private root
+require src/lib/fs-mutate.f            \ FS:MKTEMP-DIR - the filesystem block's private root
 require src/lib/string.f               \ CONTAINS? - substring test for diagnostic text
 require src/lib/test.f
 
@@ -1800,7 +1800,7 @@ DFD @ 0 >= TTRUE
 0 DIRBASE !
 DFD @ DBUF 4096 DIRBASE getdirentries64 0 > TTRUE
 DFD @ close
-s" engine-suite" TMPDIR-MKDIR ES-ROOT!
+s" engine-suite" FS:MKTEMP-DIR ES-ROOT!
 s" dir" ES-TMPZ 493 mkdir 0 T=
 s" dir" ES-TMPZ ES-STB stat64 0 T=
 MODE@ $F000 and $4000 = TTRUE

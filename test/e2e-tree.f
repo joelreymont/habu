@@ -50,7 +50,7 @@ public
 
 \ The tree named n under TMPDIR, with src and tools linked and test/ made.
 : TREE ( ptr u8 n -- )
-   TMPDIR-MKDIR {: a:ptr u:n :}
+   FS:MKTEMP-DIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY u ROOT-U !
    s" src" LINK s" tools" LINK
    s" test" AT-A MAKE-DIRS ;

@@ -114,7 +114,7 @@ variable ENGINE-WHITEBOX
 
 : PREPARE ( -- )
    0 OVERLAY-U !
-   s" native-build-edit-e2e" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" native-build-edit-e2e" FS:MKTEMP-DIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY u ROOT-U !
    ROOT$ TREE-COPY:BUILD-SOURCES
    s" bin" AT MAKE-DIR

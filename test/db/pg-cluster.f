@@ -182,17 +182,17 @@ DEFAULT-CASE-MS CASE-MS !
    u FS-PATH-CAP > if E-FS-PATH throw then
    a SOCKETS u BYTE-COPY  u SOCKETS-U ! ;
 
-\ A made directory's name lives in the per-task band the next MAKE-TEMP-DIR
+\ A made directory's name lives in the per-task band the next FS:MKTEMP-DIR-IN
 \ reuses, so each is copied out before the other is made. The pool's socket
 \ directory is the pool's to remove.
 : MAKE-DIRS ( -- )
-   s" habu-pg" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" habu-pg" FS:MKTEMP-DIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY  u ROOT-U !
    ROOT$ CLEANUP-TREE+
    s" HB_SOCK_TMP" GETENV dup 0 > if
       SOCKETS!
    else
-      2drop s" habu-pg" TMPDIR-MKDIR SOCKETS!
+      2drop s" habu-pg" FS:MKTEMP-DIR SOCKETS!
       SOCKETS$ CLEANUP-TREE+
    then
    ROOT$ s" data" DATA JOIN-PATH DATA-U !

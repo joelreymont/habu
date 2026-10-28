@@ -33,7 +33,7 @@ variable FILL-CALLS
    s" kept member bytes kept member bytes kept member bytes kept member bytes kept member bytes kept member bytes kept member bytes kept member bytes " ;
 
 : SETUP ( -- )
-   s" habu-zip-remove" TMPDIR-MKDIR {: dir:ptr len:n :}
+   s" habu-zip-remove" FS:MKTEMP-DIR {: dir:ptr len:n :}
    dir ROOT len BYTE-COPY len ROOT-LEN ! ROOT$ CLEANUP-TREE+ ;
 
 : POST-REMOVE-REPLACE ( ZIP:archive ZIP:entry -- ZIP:archive ZIP:entry )

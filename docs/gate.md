@@ -126,7 +126,7 @@ exact pair.
 The run removes its temporary root whether it is green or red, so the printed
 tail is what a finished red run leaves. To keep a run's trees, give it its own
 `TMPDIR`, the one scratch root: every maker goes under it, and a missing or
-non-directory `TMPDIR` is refused by name (`TMPDIR-MKDIR`, src/lib/fs-mutate.f).
+non-directory `TMPDIR` is refused by name (`FS:MKTEMP-DIR`, src/lib/fs-mutate.f).
 Every gate run gets its own `TMPDIR` root. Keep it short: nothing refuses a
 long one up front (`GT-ROOM-CHECK` checks
 only the root's own room), and the deepest row path under it must still fit

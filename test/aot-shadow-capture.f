@@ -396,7 +396,7 @@ create FIRST SHA-BYTES allot         \ the first WRITE's file digest
    DIR DIR-U @ na nu dst JOIN-PATH ;
 
 : ARTIFACT! ( -- )
-   s" habu-aot-shadow-capture" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" habu-aot-shadow-capture" FS:MKTEMP-DIR {: a:ptr u:n :}
    a u CLEANUP-TREE+
    a DIR u BYTE-COPY  u DIR-U !
    s" shadow.aot" ART IN-DIR ART-U !

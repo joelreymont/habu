@@ -258,7 +258,7 @@ FUNCTION: SIGNAL-CALL signal ( n n -- n ) ;FUNCTION
 : RUN ( -- )
    T-RESET
    s" build" MAKE-DIRS
-   s" build" s" svg-pdf-e2e" MAKE-TEMP-DIR {: root:ptr size:n :}
+   s" build" s" svg-pdf-e2e" FS:MKTEMP-DIR-IN {: root:ptr size:n :}
    root ROOT size BYTE-COPY size ROOT-U !
    3 PAGES-RESERVE
    SVG$ {: data:ptr datau:n :}

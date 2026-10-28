@@ -78,7 +78,7 @@ DYNAMIC-BUFFER PAYLOAD u8
    FILE fu a u WRITE-ALL ;
 
 : SETUP ( -- )
-   s" browser-echo" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" browser-echo" FS:MKTEMP-DIR {: a:ptr u:n :}
    a DIR u BYTE-COPY  u DIR-U !
    s" browser echo: module and files in " type  DIR u type cr
    DIR u s" echo.wasm" MOD JOIN-PATH MOD-U !

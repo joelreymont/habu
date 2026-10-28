@@ -42,7 +42,7 @@ public
 
 \ The root named n under TMPDIR.
 : TREE ( ptr u8 n -- )
-   TMPDIR-MKDIR {: a:ptr u:n :}
+   FS:MKTEMP-DIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY u ROOT-U ! ;
 
 : AT ( ptr u8 n -- ptr u8 n )

@@ -232,7 +232,7 @@ variable WALKED
 
 : PREP-OUTSIDE ( -- )
    CLEANUP-RESET
-   s" habu-boot-row" TMPDIR-MKDIR CANONICAL TTRUE {: a:ptr u:n :}
+   s" habu-boot-row" FS:MKTEMP-DIR CANONICAL TTRUE {: a:ptr u:n :}
    a OUTSIDE u BYTE-COPY u OUTSIDE-U !
    OUTSIDE$ CLEANUP-TREE+
    OUTSIDE$ s" bin" OUTSIDE-HB JOIN-PATH {: binu:n :}

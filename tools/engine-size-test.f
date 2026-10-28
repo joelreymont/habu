@@ -71,7 +71,7 @@ $800 constant EST-X64-TABLE
 : EST-X64-SEGMENTS ( -- )
    s" x86 DATA carrier PT_LOAD has its own file-backed row" T-LABEL
    CLEANUP-RESET
-   s" habu-engine-size-x64" TMPDIR-MKDIR {: root:ptr rootu:n :}
+   s" habu-engine-size-x64" FS:MKTEMP-DIR {: root:ptr rootu:n :}
    root rootu CLEANUP-TREE+
    root rootu s" stripped" EST-X64-PATH JOIN-PATH EST-X64-PATH-U !
    EST-X64-IMAGE
@@ -92,7 +92,7 @@ $800 constant EST-X64-TABLE
 : EST-X64-EMPTY ( -- )
    s" empty x86 fixed LOADs leave a page-rounded file" T-LABEL
    CLEANUP-RESET
-   s" habu-engine-size-x64-empty" TMPDIR-MKDIR {: root:ptr rootu:n :}
+   s" habu-engine-size-x64-empty" FS:MKTEMP-DIR {: root:ptr rootu:n :}
    root rootu CLEANUP-TREE+
    root rootu s" stripped" EST-X64-PATH JOIN-PATH EST-X64-PATH-U !
    EST-X64-IMAGE
@@ -291,7 +291,7 @@ variable EST-MAP-U
    X64 @ if exit then
    BUILD-CODE-INDEX
    CLEANUP-RESET
-   s" habu-image-size" TMPDIR-MKDIR {: root:ptr rootu:n :}
+   s" habu-image-size" FS:MKTEMP-DIR {: root:ptr rootu:n :}
    root rootu CLEANUP-TREE+
    root rootu s" hb" EST-IMG JOIN-PATH EST-IMG-U !
    root rootu s" hb.map" EST-MAP JOIN-PATH EST-MAP-U !

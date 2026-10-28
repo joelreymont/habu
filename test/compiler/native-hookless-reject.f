@@ -356,7 +356,7 @@ create TEXT CAP allot                  variable TEXT-U
    ROOT$ a u dst JOIN-PATH up ! ;
 
 : SETUP ( -- )
-   s" native-hookless-reject" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" native-hookless-reject" FS:MKTEMP-DIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY u ROOT-U !
    s" tree" TREE TREE-U ROOT-PATH!
    s" tmp" TMP TMP-U ROOT-PATH! TMP$ MAKE-DIRS

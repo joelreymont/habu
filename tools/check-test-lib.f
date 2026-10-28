@@ -415,7 +415,7 @@ variable START-NS
    s" --" >LEN PROC-ARGV+
    mode modeu >LEN PROC-ARGV+
    PROC-ENV-RESET
-   \ The checker's scratch resolves through TMPDIR-MKDIR, so the test-owned
+   \ The checker's scratch resolves through FS:MKTEMP-DIR, so the test-owned
    \ root must be the child's TMPDIR, or an inherited pool slot takes it.
    s" TMPDIR" >LEN CLEANUP-TMP$ >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
@@ -1088,7 +1088,7 @@ variable LONG-J
 
 : PREPARE ( -- )
    CLEANUP-RESET
-   s" habu-check-test" TMPDIR-MKDIR TMP-ROOT TMP-ROOT-U PATH-COPY!
+   s" habu-check-test" FS:MKTEMP-DIR TMP-ROOT TMP-ROOT-U PATH-COPY!
    ROOT$ CLEANUP-TREE+
    ROOT$ s" bad.f" BAD-PATH JOIN-PATH BAD-U !
    ROOT$ s" direct-source.f" DIRECT-PATH JOIN-PATH DIRECT-U !
@@ -2171,7 +2171,7 @@ variable SIZED-U
    SIZED-PATH SIZED-U @ ;
 
 : SCRATCH-MAKE ( -- )
-   ROOT$ s" scratch" MAKE-TEMP-DIR SCRATCH-PATH SCRATCH-U PATH-COPY! ;
+   ROOT$ s" scratch" FS:MKTEMP-DIR-IN SCRATCH-PATH SCRATCH-U PATH-COPY! ;
 
 \ rmdir removes only an empty directory.
 : SCRATCH-EMPTY ( -- )

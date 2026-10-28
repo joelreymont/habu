@@ -86,7 +86,7 @@ variable RC
 
 : PREPARE ( -- )
    CLEANUP-RESET
-   s" habu-producer-cache" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" habu-producer-cache" FS:MKTEMP-DIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY u ROOT-U !
    ROOT$ CLEANUP-TREE+
    ROOT$ TREE-COPY:BUILD-SOURCES

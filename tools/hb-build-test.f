@@ -636,7 +636,7 @@ create HBT-LOUD-SRC-BUF FS-PATH-CAP allot
    HBB-ERR-BUF erru s" expected: i64" CONTAINS? TTRUE
    HBB-ERR-BUF erru s" actual: bool" CONTAINS? TTRUE ;
 
-\ The line TMPDIR-MKDIR prints for a TMPDIR that is no directory.
+\ The line FS:MKTEMP-DIR prints for a TMPDIR that is no directory.
 : HBT-NOT-DIR-LINE$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    SB-RESET
    s" hb: TMPDIR is not a directory: " SB-APPEND

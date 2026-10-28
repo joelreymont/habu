@@ -135,7 +135,7 @@ public
 : START ( ptr u8 n -- )
    T-RESET
    T-LABEL
-   s" native-file-forms" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" native-file-forms" FS:MKTEMP-DIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY u ROOT-U !
    s" cache" AT MAKE-DIR
    PREFIX ;

@@ -86,7 +86,7 @@ create BT-BIG-TEXT BT-BIG-CAP allot
    BT-BIG-BAD-SRC-BUF BT-BIG-BAD-SRC-U @ ;
 
 : BT-ROOT! ( -- )
-   s" habu-build" TMPDIR-MKDIR {: a:ptr u :}
+   s" habu-build" FS:MKTEMP-DIR {: a:ptr u :}
    a u BT-ROOT-BUF BT-ROOT-U BT-COPY! ;
 
 : BT-PATHS! ( -- )

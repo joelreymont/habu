@@ -64,7 +64,7 @@ FUNCTION: CKT-SYNC-RANGE msync ( n n n -- i32 ) ;FUNCTION
 
 : CKT-SETUP ( -- )
    CLEANUP-RESET
-   s" habu-content-key" TMPDIR-MKDIR CKT-ROOT CKT-ROOT-U CKT-COPY!
+   s" habu-content-key" FS:MKTEMP-DIR CKT-ROOT CKT-ROOT-U CKT-COPY!
    CKT-ROOT$ CLEANUP-TREE+
    CKT-ROOT$ s" src.f" CKT-SRC CKT-SRC-U CKT-PATH! ;
 

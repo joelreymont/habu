@@ -161,7 +161,7 @@ private
 
 : RUN ( -- )
    T-RESET CLEANUP-RESET
-   s" habu-named-cells" TMPDIR-MKDIR {: path:ptr size:n :}
+   s" habu-named-cells" FS:MKTEMP-DIR {: path:ptr size:n :}
    path ROOT size BYTE-COPY size ROOT-U ! path size CLEANUP-TREE+
    path size s" window.aot" ART JOIN-PATH ART-U !
    path size s" malformed.aot" BAD-ART JOIN-PATH BAD-ART-U !

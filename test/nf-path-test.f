@@ -75,7 +75,7 @@ create ERR CAP allot
 \ can offer; CLEANUP-TREE+ below removes the tree.
 : SETUP ( -- )
    CLEANUP-RESET
-   s" habu-nf-path" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" habu-nf-path" FS:MKTEMP-DIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY  u ROOT-U !
    ROOT$ CLEANUP-TREE+
    LONG-ROOT!

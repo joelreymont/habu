@@ -269,7 +269,7 @@ variable PROG-U
    RC ! ERR-U ! OUT-U ! ;
 
 : ROOT ( -- )
-   s" linear-suite" TMPDIR-MKDIR {: path:ptr size:n :}
+   s" linear-suite" FS:MKTEMP-DIR {: path:ptr size:n :}
    path ROOT-BUF size BYTE-COPY size ROOT-U !
    ROOT-BUF ROOT-U @ CLEANUP-TREE+ ;
 

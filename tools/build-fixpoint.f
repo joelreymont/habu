@@ -1374,7 +1374,7 @@ create BF-BOOT-ERR BF-BOOT-ERR-CAP allot
 
 : BF-CHECK-CANDIDATE ( ptr u8 n -- )
    {: cand:ptr candu:n :}
-   BF-TMP$ s" boot-check" MAKE-TEMP-DIR SOURCE-ROOT:CANONICAL drop
+   BF-TMP$ s" boot-check" FS:MKTEMP-DIR-IN SOURCE-ROOT:CANONICAL drop
    {: root:ptr size:n :}
    root BF-BOOT-ROOT size BYTE-COPY size BF-BOOT-ROOT-U !
    cand candu [: BF-BOOT-RUN ;] [: BF-BOOT-CLEAN ;] finally ;

@@ -88,7 +88,7 @@ variable OWN-U
    base baseu name nameu dst JOIN-PATH up ! ;
 
 : PATHS! ( -- )
-   s" hb-fork-cleanup" TMPDIR-MKDIR FIX-ROOT!
+   s" hb-fork-cleanup" FS:MKTEMP-DIR FIX-ROOT!
    FIX-ROOT$ s" keep" KEEP KEEP-U SUB!
    KEEP$ s" file" KEEP-FILE KEEP-FILE-U SUB!
    FIX-ROOT$ s" own" OWN OWN-U SUB! ;
@@ -222,7 +222,7 @@ variable REFUSAL-CODE
    rc UNCAUGHT-RC T= ;
 
 : CHECK-CHILD-MAIN ( -- )
-   s" hb-fork-main" TMPDIR-MKDIR FIX-ROOT!
+   s" hb-fork-main" FS:MKTEMP-DIR FIX-ROOT!
    FIX-ROOT$ s" err" MAIN-ERR MAIN-ERR-U SUB!
    CHECK-CHILD-RETURNS
    CHECK-CHILD-THROWS

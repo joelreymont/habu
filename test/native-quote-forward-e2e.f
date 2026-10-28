@@ -52,7 +52,7 @@ EXPORT INVOKE
    s" a callback with the wrong inner effect is rejected" T-LABEL
    [: WRONG-EFFECT ;] 70 TTHROWSQ
    T-REPORT
-   s" native-quote-forward" TMPDIR-MKDIR {: dir:ptr len:n :}
+   s" native-quote-forward" FS:MKTEMP-DIR {: dir:ptr len:n :}
    dir len s" result.bin" PATH JOIN-PATH {: path-u:n :}
    HIT @ RESULT c!
    PATH path-u RESULT 1 WRITE-ALL

@@ -40,7 +40,7 @@ variable B-U
    a ROOT-BUF u BYTE-COPY  u ROOT-U ! ;
 
 : PREPARE ( -- )
-   s" habu-ddc-test" TMPDIR-MKDIR ROOT!
+   s" habu-ddc-test" FS:MKTEMP-DIR ROOT!
    s" a.bin" A-PATH A-U PATH!
    s" b.bin" B-PATH B-U PATH! ;
 

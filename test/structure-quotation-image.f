@@ -23,7 +23,7 @@ create SECOND-BUF FS-PATH-CAP allot variable SECOND-U
 : SECOND$ ( -- ptr u8 n ) SECOND-BUF SECOND-U @ ;
 
 : PREPARE ( -- )
-   s" structure-quotation-image" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" structure-quotation-image" FS:MKTEMP-DIR {: a:ptr u:n :}
    a ROOT-BUF u BYTE-COPY u ROOT-U !
    ROOT$ CLEANUP-TREE+
    ROOT$ s" route-image" IMAGE-BUF JOIN-PATH IMAGE-U !

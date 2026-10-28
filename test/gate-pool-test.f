@@ -485,7 +485,7 @@ variable GPT-FC-DONE-U
    base baseu name nameu dst JOIN-PATH up ! ;
 
 : GPT-FC-PATHS! ( -- )
-   s" hb-fork-cleanup" TMPDIR-MKDIR GPT-FC-EV!
+   s" hb-fork-cleanup" FS:MKTEMP-DIR GPT-FC-EV!
    GPT-FC-EV$ s" parent" GPT-FC-PARENT GPT-FC-PARENT-U GPT-FC-SUB!
    GPT-FC-PARENT$ s" keep" GPT-FC-PARENT-FILE GPT-FC-PARENT-FILE-U GPT-FC-SUB!
    GPT-FC-EV$ s" child" GPT-FC-CHILD GPT-FC-CHILD-U GPT-FC-SUB!
@@ -678,7 +678,7 @@ variable GPT-RF-VIC-PID
 
 \ THE POOL OWNS ITS SPAWNED CHILDREN'S SCRATCH (gate-pool.f GT-POOL-CHILD-TMP!).
 \ Each spawned child is given a directory of its own as TMPDIR, so the tree it
-\ makes the ordinary way - src/lib/fs-mutate.f TMPDIR-MKDIR - lands inside it,
+\ makes the ordinary way - src/lib/fs-mutate.f FS:MKTEMP-DIR - lands inside it,
 \ and the pool removes that directory when the slot retires. The killed child
 \ is the case nothing else covers: it never reaches a cleanup of its own, so
 \ before this the tree it made outlived every run.
@@ -690,10 +690,10 @@ variable GPT-RF-VIC-PID
 1000 constant GPT-CT-HANG-MS
 
 : GPT-CT-GREEN-SRC$ ( -- ptr u8 n )
-   S\" require src/lib/fs-mutate.f\n: W ( -- ) s\" gpt-child\" TMPDIR-MKDIR type cr ;\nW\n" ;
+   S\" require src/lib/fs-mutate.f\n: W ( -- ) s\" gpt-child\" FS:MKTEMP-DIR type cr ;\nW\n" ;
 
 : GPT-CT-HANG-SRC$ ( -- ptr u8 n )
-   S\" require src/lib/fs-mutate.f\n: W ( -- ) s\" gpt-child\" TMPDIR-MKDIR type cr begin 0 0= 0= until ;\nW\n" ;
+   S\" require src/lib/fs-mutate.f\n: W ( -- ) s\" gpt-child\" FS:MKTEMP-DIR type cr begin 0 0= 0= until ;\nW\n" ;
 
 : GPT-CT-PRINTED$ ( -- ptr u8 n )        \ slot 0's captured line, without its newline
    0 >IDX GT-POOL-OUT-BUF 0 >IDX GT-POOL-OUT-U-PTR @ {: a:ptr u:n :}

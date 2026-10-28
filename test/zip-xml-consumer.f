@@ -87,7 +87,7 @@ CAST: KIND>N ( XML:kind -- n )
    cell ZIP:ARCHIVE-SLOT @ dup ZIP:COUNT 1 T= ZIP:CLOSE ;
 
 : SETUP ( -- )
-   s" habu-zip-xml" TMPDIR-MKDIR {: root:ptr len:n :}
+   s" habu-zip-xml" FS:MKTEMP-DIR {: root:ptr len:n :}
    root ROOT len BYTE-COPY len ROOT-LEN !
    s" sample.zip" FILE$ ZIP$ WRITE-ALL
    ZIP$ IMAGE swap BYTE-COPY

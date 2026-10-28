@@ -83,7 +83,7 @@ FS-PATH-CAP BUFFER: FILE
    u ;
 
 : SETUP ( -- )
-   s" browser-request" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" browser-request" FS:MKTEMP-DIR {: a:ptr u:n :}
    a DIR u BYTE-COPY  u DIR-U !
    s" browser request: module, answers and transcripts in " type  DIR u type cr
    DIR u s" request.wasm" MOD JOIN-PATH MOD-U !

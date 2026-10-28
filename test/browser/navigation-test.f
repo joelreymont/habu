@@ -34,7 +34,7 @@ FS-PATH-CAP BUFFER: FILE
    SB-RESET FMT:SB-INT SB$ ARG+ ;
 
 : SETUP ( -- )
-   s" browser-navigation" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" browser-navigation" FS:MKTEMP-DIR {: a:ptr u:n :}
    a DIR u BYTE-COPY u DIR-U !
    s" browser navigation: module and CLI output in " type DIR u type cr
    DIR u s" navigation.wasm" MOD JOIN-PATH MOD-U ! ;

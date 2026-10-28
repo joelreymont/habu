@@ -50,7 +50,7 @@ variable MOD-U
 DYNAMIC-BUFFER MODULE u8
 
 : SETUP ( -- )
-   s" wasm-build" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" wasm-build" FS:MKTEMP-DIR {: a:ptr u:n :}
    a DIR u BYTE-COPY  u DIR-U !
    s" wasm build: sources and modules in " type  DIR u type cr ;
 

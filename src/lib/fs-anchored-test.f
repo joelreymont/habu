@@ -53,7 +53,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ptr u8 n -- i32 ) ;FUNCTION
    OUT wantu SPAN:TAKE SPAN:$ want wantu T$= ;
 
 : SETUP ( -- )
-   s" habu-anchored" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" habu-anchored" FS:MKTEMP-DIR {: a:ptr u:n :}
    a u FS-PATHZ TMP FS-PATHZ-CAP realpath {: actual:n :}
    actual 0 > TTRUE
    actual TMP-U !

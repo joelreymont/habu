@@ -93,7 +93,7 @@ create OUTPUT FS-PATH-CAP allot variable OUTPUT-U
 public
 : RUN ( -- )
    GT-RESET
-   s" native-frame-slots" TMPDIR-MKDIR GT-COPY-ROOT!
+   s" native-frame-slots" FS:MKTEMP-DIR GT-COPY-ROOT!
    PATHS BUILD RUN-IMAGE
    s" artifacts: " type GT-ROOT type cr
    s" PASS: native frame slots, stripped division, long literals" type cr ;

@@ -94,7 +94,7 @@ private
    AOT-IDENT:RESET s" test/aot-native-merge.f" AOT-IDENT:PATH+ ;
 
 : FILES! ( -- )
-   s" habu-aot-native-merge" TMPDIR-MKDIR {: p:ptr u:n :}
+   s" habu-aot-native-merge" FS:MKTEMP-DIR {: p:ptr u:n :}
    p u CLEANUP-TREE+
    p DIR u BYTE-COPY u DIR-U !
    DIR DIR-U @ s" host.aot" HOST JOIN-PATH HOST-U !

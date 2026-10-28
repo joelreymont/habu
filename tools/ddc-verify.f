@@ -230,8 +230,8 @@ variable DDC-FXP-U
 
 : DDC-VERIFY ( -- n )
    DDC-REQUIRE-BOOTSTRAP
-   s" habu-ddc-gf" TMPDIR-MKDIR DDC-GF-ROOT!
-   s" habu-ddc-rf" TMPDIR-MKDIR DDC-RF-ROOT!
+   s" habu-ddc-gf" FS:MKTEMP-DIR DDC-GF-ROOT!
+   s" habu-ddc-rf" FS:MKTEMP-DIR DDC-RF-ROOT!
    DDC-RUN-GFORTH
    DDC-RUN-REFRESH
    DDC-FXP$ s" bin/hb" DDC-LOAD

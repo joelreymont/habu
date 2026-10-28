@@ -38,7 +38,7 @@ TYPED-VARIABLE FLT-B FS-LIST:context
    FLT-ROOT-BUF FLT-ROOT-U @ ;
 
 : FLT-ROOT! ( -- )
-   s" habu-fs-list" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" habu-fs-list" FS:MKTEMP-DIR {: a:ptr u:n :}
    a FLT-ROOT-BUF u BYTE-COPY
    u FLT-ROOT-U ! ;
 

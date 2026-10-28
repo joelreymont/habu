@@ -113,7 +113,7 @@ public
 : MAIN ( -- )
    T-RESET
    s" created body grid in source, cached and stripped image" T-LABEL
-   s" cell-body-image" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" cell-body-image" FS:MKTEMP-DIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY u ROOT-U !
    PREPARE
    s" cold-hb" FULL-BUILD SUCCESS

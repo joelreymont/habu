@@ -55,7 +55,7 @@ variable PARENT-U
    src srcu dst dstu MAKE-SYMLINK ;
 
 : SETUP ( ptr u8 n -- )
-   TMPDIR-MKDIR {: a:ptr u:n :}
+   FS:MKTEMP-DIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY u ROOT-U !
    s" bin" AT MAKE-DIRS
    s" test" AT MAKE-DIRS

@@ -135,7 +135,7 @@ TYPED-VARIABLE J-W JSON-WRITE:writer
 
 : PREPARE ( -- )
    CLEANUP-RESET
-   s" habu-repair-packet" TMPDIR-MKDIR {: a:ptr u :}
+   s" habu-repair-packet" FS:MKTEMP-DIR {: a:ptr u :}
    a u ROOT-BUF ROOT-U COPY!
    ROOT CLEANUP-TREE+ ;
 

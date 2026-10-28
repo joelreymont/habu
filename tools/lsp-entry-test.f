@@ -41,7 +41,7 @@ create BODY 4096 allot
    PROJECT-PATH s\" 86 throw\n" WRITE-ALL ;
 
 : SETUP ( -- )
-   s" hb-lsp-entry" TMPDIR-MKDIR {: d:ptr du:n :}
+   s" hb-lsp-entry" FS:MKTEMP-DIR {: d:ptr du:n :}
    d PROJECT du BYTE-COPY  du PROJECT-U !
    s" tools" PROJECT-PATH MAKE-DIRS
    s" src/core" PROJECT-PATH MAKE-DIRS

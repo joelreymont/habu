@@ -107,8 +107,8 @@ variable BF-ENGINE-U
    BF-B-PATH-A BF-PATH-BUF ;
 
 \ The root is copied, as BF-ENGINE! copies the engine: every later BF-A$ joins
-\ under it, and a caller's span need not outlive the call - MAKE-TEMP-DIR's is
-\ replaced by the task's next MAKE-TEMP-DIR.
+\ under it, and a caller's span need not outlive the call - FS:MKTEMP-DIR-IN's is
+\ replaced by the task's next FS:MKTEMP-DIR-IN.
 : BF-TMP! ( ptr u8 n -- )
    {: a:ptr u:n :}
    u 0 < if E-BUILD-PATH throw then

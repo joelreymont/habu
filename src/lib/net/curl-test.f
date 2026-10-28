@@ -970,7 +970,7 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
 
 
 : MAKE-ROOT ( -- )
-   s" habu-curl" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" habu-curl" FS:MKTEMP-DIR {: a:ptr u:n :}
    a ROOT-BUF u BYTE-COPY
    u ROOT-U !
    s" hello.txt" FILE-BUF UNDER-ROOT FILE-U !

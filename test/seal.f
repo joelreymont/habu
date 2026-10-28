@@ -586,7 +586,7 @@ variable PWG-U
 
 : SLV-PREPARE ( -- )
    CLEANUP-RESET
-   s" habu-seal" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" habu-seal" FS:MKTEMP-DIR {: a:ptr u:n :}
    a u SLV-ROOT-BUF SLV-ROOT-U SLV-COPY!
    SLV-ROOT CLEANUP-TREE+
    SLV-ROOT s" forge.f" SLV-CHILD-BUF JOIN-PATH SLV-CHILD-U ! ;

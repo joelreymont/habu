@@ -257,7 +257,7 @@ create LF-BYTE 10 c,
 
 : PREPARE ( -- )
    CLEANUP-RESET
-   s" habu-checked-boundary-lint" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" habu-checked-boundary-lint" FS:MKTEMP-DIR {: a:ptr u:n :}
    a u ROOT-BUF ROOT-U COPY!
    ROOT CLEANUP-DIR+
    ROOT s" good.f" GOOD-BUF JOIN-PATH GOOD-U !
@@ -528,7 +528,7 @@ variable TP-EMPTY-U
 
 : TP-PREPARE ( -- )
    CLEANUP-RESET
-   s" habu-cbl-read" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" habu-cbl-read" FS:MKTEMP-DIR {: a:ptr u:n :}
    a u TP-ROOT-BUF TP-ROOT-U TP-COPY!
    TP-ROOT CLEANUP-TREE+
    TP-ROOT s" good.f" TP-GOOD-BUF JOIN-PATH TP-GOOD-U !

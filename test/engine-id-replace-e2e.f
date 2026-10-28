@@ -25,7 +25,7 @@ variable RC
 : OLD$ ( -- ptr u8 n ) OLD OLD-U @ ;
 
 : SETUP ( -- )
-   s" hb-engine-id-replace" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" hb-engine-id-replace" FS:MKTEMP-DIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY u ROOT-U !
    ROOT$ s" engine" IMAGE JOIN-PATH IMAGE-U !
    ROOT$ s" replacement" REPLACEMENT JOIN-PATH REPLACEMENT-U !

@@ -137,7 +137,7 @@ variable OUT-U variable ERR-U variable RC
    ENGINE-CANDIDATE:PATH$ RUN-IMAGE
    s" the unmodified candidate executes user source" T-LABEL
    RC @ 0 T= OUT OUT-U @ s" seed-metadata-user-ran" CONTAINS? TTRUE
-   s" habu-seed-metadata" TMPDIR-MKDIR {: root:ptr rootu:n :}
+   s" habu-seed-metadata" FS:MKTEMP-DIR {: root:ptr rootu:n :}
    root ROOT rootu BYTE-COPY rootu ROOT-U ! ROOT$ CLEANUP-TREE+
    ROOT$ s" hb-corrupt" IMAGE JOIN-PATH IMAGE-U !
    ENGINE-CANDIDATE:PATH$ IMAGE-SIZE:MEASURE IMAGE-SIZE:SEED-KEEP

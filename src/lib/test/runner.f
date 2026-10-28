@@ -555,7 +555,7 @@ create GT-CAP-PATH FS-PATH-CAP allot     \ a file's path while GT-CAP-FILE opens
    s" test-runner: failures" GT-EX-FAIL die ;
 
 \ The longest TMPDIR GT-START takes for a root prefix of n bytes: the root
-\ TMPDIR-MKDIR makes under it, a slash and a GT-NAME-MAX name fit FS-PATH-CAP.
+\ FS:MKTEMP-DIR makes under it, a slash and a GT-NAME-MAX name fit FS-PATH-CAP.
 : GT-TMPDIR-MAX ( n -- n )
    TEMP-DIR-BASE-MAX 1- GT-NAME-MAX - ;
 
@@ -564,7 +564,7 @@ create GT-CAP-PATH FS-PATH-CAP allot     \ a file's path while GT-CAP-FILE opens
 \ own deeper paths are not checked here: the deepest, streaming-sha256's deep
 \ file (tools/sha256-file-test.f), must still fit FS-PATH-CAP (src/lib/fs.f
 \ FS-PATHZ-INTO), so a gate TMPDIR must be short enough to leave it room. An
-\ empty TMPDIR counts as the /tmp TMPDIR-MKDIR then uses.
+\ empty TMPDIR counts as the /tmp FS:MKTEMP-DIR then uses.
 : GT-ROOM-CHECK ( n -- ) {: prefixu:n :}
    s" TMPDIR" GETENV dup 0= if 2drop s" /tmp" then nip {: tmpu:n :}
    prefixu GT-TMPDIR-MAX {: max:n :}
@@ -582,5 +582,5 @@ create GT-CAP-PATH FS-PATH-CAP allot     \ a file's path while GT-CAP-FILE opens
    CLEANUP-RESET
    0 GT-ROOT-U !
    prefixu GT-ROOM-CHECK
-   prefix prefixu TMPDIR-MKDIR GT-COPY-ROOT!
+   prefix prefixu FS:MKTEMP-DIR GT-COPY-ROOT!
    GT-ROOT CLEANUP-TREE+ ;

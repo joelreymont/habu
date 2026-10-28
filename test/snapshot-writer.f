@@ -49,7 +49,7 @@ variable ROOT-U
    u ROOT-U ! ;
 
 : SETUP-ROOT ( -- )
-   s" habu-snapshot-writer" TMPDIR-MKDIR ROOT!
+   s" habu-snapshot-writer" FS:MKTEMP-DIR ROOT!
    ROOT CLEANUP-TREE+ ;
 
 create PATH-BUF FS-PATH-CAP allot

@@ -43,7 +43,7 @@ variable AT
 : KEY-HEX$ ( -- ptr u8 n ) KEY KEY-U @ ;
 
 : SETUP ( -- )
-   s" hb-engine-id-capture" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" hb-engine-id-capture" FS:MKTEMP-DIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY u ROOT-U !
    ROOT$ s" tree" TREE JOIN-PATH TREE-U !
    TREE$ s" bin" LOG JOIN-PATH {: binu:n :}

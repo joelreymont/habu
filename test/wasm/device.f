@@ -62,7 +62,7 @@ FS-PATH-CAP BUFFER: PATH
 variable PATH-U
 
 : SETUP ( -- )
-   s" wasm-device" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" wasm-device" FS:MKTEMP-DIR {: a:ptr u:n :}
    a DIR u BYTE-COPY  u DIR-U !
    s" wasm device: modules in " type  DIR u type cr ;
 

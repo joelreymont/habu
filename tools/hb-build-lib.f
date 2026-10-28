@@ -394,12 +394,12 @@ variable HBB-APP-BUILDER-U
 \ `hb-aot-obj`), so two builds sharing one TMPDIR - every hb-build the gate
 \ pool runs at once - read each other's artifacts: one saw its image vanish
 \ (E-BUILD-PATH), another ran a stranger's application. A caller's TMPDIR is
-\ the base the private directory goes under; TMPDIR-MKDIR refuses one that is
+\ the base the private directory goes under; FS:MKTEMP-DIR refuses one that is
 \ missing or not a directory.
 : HBB-PREPARE-TMP ( -- )
    BF-TMP-RESET
    CLEANUP-RESET
-   s" hb-build-native" TMPDIR-MKDIR 2dup BF-TMP! CLEANUP-TREE+ ;
+   s" hb-build-native" FS:MKTEMP-DIR 2dup BF-TMP! CLEANUP-TREE+ ;
 
 \ The out root is made before any maker runs, so a root that cannot be made
 \ fails the build up front as a path error rather than midway as a file error.

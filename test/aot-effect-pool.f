@@ -61,7 +61,7 @@ create FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this fixture's file-digest conte
 public
 : GENERATE ( -- )
    T-RESET CLEANUP-RESET
-   s" habu-effect-pool" TMPDIR-MKDIR {: path:ptr u:n :}
+   s" habu-effect-pool" FS:MKTEMP-DIR {: path:ptr u:n :}
    path ROOT u BYTE-COPY u ROOT-U ! ROOT$ CLEANUP-TREE+
    ROOT$ s" definitions.f" SOURCE JOIN-PATH SOURCE-U !
    ROOT$ s" effects.aot" ART JOIN-PATH ART-U !

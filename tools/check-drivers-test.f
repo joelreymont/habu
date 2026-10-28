@@ -34,7 +34,7 @@ create TARGET FS-PATH-CAP allot
    src srcu SAVE
    src srcu oc want CHECK-EXIT:WANT ;
 : SETUP ( -- )
-   s" check-drivers" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" check-drivers" FS:MKTEMP-DIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY u ROOT-U !
    s" check drivers tree: " type ROOT$ type cr ;
 public

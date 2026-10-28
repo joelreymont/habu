@@ -2031,7 +2031,7 @@ PROBE-OFF PROBE-BYTES + constant PATHZ-OFF
 
 \ FS-MUT-ABI is src/lib/fs-mutate.f's per-call path scratch: the second NUL-padded
 \ path every two-path syscall stages (rename, symlink, the stream copy's
-\ destination), the temporary name MAKE-TEMP-DIR builds AND RETURNS a span into,
+\ destination), the temporary name FS:MKTEMP-DIR-IN builds AND RETURNS a span into,
 \ and ATOMIC-WRITE-FILE's `.tmp` sibling. It is here for FS-ABI's reason, one
 \ file further out: tools/native-build-core.f requires src/lib/fs-mutate.f to BUILD
 \ the engine, so `require src/lib/task.f` there would load the task runtime into the

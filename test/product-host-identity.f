@@ -50,7 +50,7 @@ variable RC
    ROOT$ a u dst JOIN-PATH up ! ;
 
 : SETUP ( -- )
-   s" product-host-identity" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" product-host-identity" FS:MKTEMP-DIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY u ROOT-U !
    s" tree" TREE TREE-U ROOT-PATH!
    s" variant" VARIANT-ROOT VARIANT-ROOT-U ROOT-PATH!

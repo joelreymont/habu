@@ -28,7 +28,7 @@ variable RC
    ROOT$ rel size PATH JOIN-PATH PATH-U ! ;
 
 : SETUP ( -- )
-   s" c2-init-accessor-e2e" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" c2-init-accessor-e2e" FS:MKTEMP-DIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY u ROOT-U !
    ROOT$ s" hb-saved" IMAGE JOIN-PATH IMAGE-U ! ;
 

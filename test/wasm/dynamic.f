@@ -146,7 +146,7 @@ variable PATH-U
 DYNAMIC-BUFFER MODULE u8
 
 : SETUP ( -- )
-   s" wasm-dynamic" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" wasm-dynamic" FS:MKTEMP-DIR {: a:ptr u:n :}
    a DIR u BYTE-COPY  u DIR-U !
    s" wasm dynamic: modules in " type  DIR u type cr ;
 

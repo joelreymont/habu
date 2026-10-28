@@ -105,7 +105,7 @@ variable EXITED
 
 \ --- the private tree --------------------------------------------------------
 : SETUP ( -- )
-   s" habu-aot-capture-bound" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" habu-aot-capture-bound" FS:MKTEMP-DIR {: a:ptr u:n :}
    a ROOT-BUF u BYTE-COPY  u ROOT-U !
    ROOT$ CLEANUP-TREE+
    ROOT$ s" src/habu" SRCDIR-BUF JOIN-PATH SRCDIR-U !

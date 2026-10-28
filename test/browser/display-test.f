@@ -39,7 +39,7 @@ variable CHROME-U
    outu LEN>N OUT-U ! erru LEN>N ERR-U ! rc ;
 
 : SETUP ( -- )
-   s" browser-display" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" browser-display" FS:MKTEMP-DIR {: a:ptr u:n :}
    a DIR u BYTE-COPY u DIR-U !
    s" browser display: module and output in " type DIR u type cr
    DIR u s" display.wasm" MOD JOIN-PATH MOD-U ! ;

@@ -95,7 +95,7 @@ variable RC
 
 : ROOT! ( -- )
    CLEANUP-RESET
-   s" habu-diag-position" TMPDIR-MKDIR SOURCE-ROOT:CANONICAL drop
+   s" habu-diag-position" FS:MKTEMP-DIR SOURCE-ROOT:CANONICAL drop
    {: a:ptr u:n :}
    a BASE u BYTE-COPY
    u BASE-U !

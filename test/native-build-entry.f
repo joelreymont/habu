@@ -41,7 +41,7 @@ create CONTENT 64 allot
       FOREIGN-OUT-U ! ;
 
 : FOREIGN-ROOT! ( -- )
-   s" native-build-foreign" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" native-build-foreign" FS:MKTEMP-DIR {: a:ptr u:n :}
    a FOREIGN-ROOT u BYTE-COPY u FOREIGN-ROOT-U !
    s" native-build foreign artifacts: " type a u type cr ;
 

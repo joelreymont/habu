@@ -62,7 +62,7 @@ private
    CURRENT$ SAVED-ROOT SAVED-ROOT-U COPY!
    INCLUDE-DEPTH @ SAVED-DEPTH !
    SCRIPT-NAMED-LOAD? if 1 else 0 then SAVED-NAMED !
-   s" habu-source-root" TMPDIR-MKDIR CANONICAL TTRUE ROOT ROOT-U COPY!
+   s" habu-source-root" FS:MKTEMP-DIR CANONICAL TTRUE ROOT ROOT-U COPY!
    ROOT$ CLEANUP-TREE+
    ROOT$ s" a" JOIN APP-A APP-A-U COPY!
    ROOT$ s" b" JOIN APP-B APP-B-U COPY!
@@ -73,7 +73,7 @@ private
    s" src/leaf.f" B-PATH s" 10 SOURCE-ROOT-TEST:BUMP" WRITE-ALL
    s" main.f" B-PATH s" require src/leaf.f" WRITE-ALL
    s" boom.f" A-PATH s" 9132 throw" WRITE-ALL
-   s" ." s" habu-root-fallback" MAKE-TEMP-DIR FALLBACK FALLBACK-U COPY!
+   s" ." s" habu-root-fallback" FS:MKTEMP-DIR-IN FALLBACK FALLBACK-U COPY!
    FALLBACK$ CLEANUP-TREE+
    s" leaf.f" FALLBACK-PATH s" 100 SOURCE-ROOT-TEST:BUMP" WRITE-ALL
    SB-RESET s" require " SB-APPEND

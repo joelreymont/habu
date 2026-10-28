@@ -100,7 +100,7 @@ create DGT-ERR DGT-BUF-CAP allot
 
 : DGT-PREPARE ( -- )
    CLEANUP-RESET
-   s" habu-diag-origin" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" habu-diag-origin" FS:MKTEMP-DIR {: a:ptr u:n :}
    a u DGT-ROOT-BUF DGT-ROOT-U DGT-COPY!
    DGT-ROOT CLEANUP-DIR+ ;
 

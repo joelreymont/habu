@@ -347,7 +347,7 @@ create CAE-LF-BYTE 10 c,
 
 : CAE-PREPARE ( -- )
    CLEANUP-RESET
-   s" habu-check-all" TMPDIR-MKDIR {: a:ptr u :}
+   s" habu-check-all" FS:MKTEMP-DIR {: a:ptr u :}
    a u CAE-ROOT-BUF CAE-ROOT-U CAE-COPY!
    CAE-ROOT CLEANUP-DIR+
    CAE-ROOT s" input.f" CAE-IN-BUF JOIN-PATH CAE-IN-U !

@@ -543,7 +543,7 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s\" \\ the same bytes at two paths\n" ;
 
 : FIXTURES ( -- )
-   s" cvt" TMPDIR-MKDIR SOURCE-ROOT:CANONICAL drop ROOT ROOT-U COPY!
+   s" cvt" FS:MKTEMP-DIR SOURCE-ROOT:CANONICAL drop ROOT ROOT-U COPY!
    s" dep.f" DEP$SRC FIXTURE
    s" bad-dep.f" BAD-DEP$SRC FIXTURE
    s" open-dep.f" OPEN-DEP$SRC FIXTURE

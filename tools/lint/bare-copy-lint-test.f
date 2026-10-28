@@ -110,7 +110,7 @@ variable BCT-WITHOUT-U
 
 : BCT-TREE! ( -- )
    CLEANUP-RESET
-   s" habu-bare-copy-lint" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" habu-bare-copy-lint" FS:MKTEMP-DIR {: a:ptr u:n :}
    a u BCT-ROOT-BUF SPAN:COPY u BCT-ROOT-U !
    BCT-ROOT$ CLEANUP-TREE+
    s" builder" BCT-DIR
