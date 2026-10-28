@@ -914,7 +914,9 @@ T-QUOT constant XMASK-MARK
 MAXATOM-INIT PTR-U8-TABLE ATOMA-BOOT
 create ATOMU-BOOT MAXATOM-INIT cells allot
 create ATOMK-BOOT MAXATOM-INIT cells allot
+CHECKER-REG:SCRATCH{
 variable ATOMN
+CHECKER-REG:}SCRATCH
 variable RIGID-N
 \ Rigid host-allocation identity domains (dot habu-define-rigid-host). A host
 \ allocation is stamped by FRESH, RIGID, monotonic-nonreuse identities that ptr T
@@ -1531,8 +1533,8 @@ CHECKER-REG:}SCRATCH
 256 constant CP-INIT
 CHECKER-REG:SCRATCH{
 PTR-VARIABLE CP-P   variable CP-CAP   variable CATCH-PF-N
-CHECKER-REG:}SCRATCH
 variable CATCH-N  variable FACTS
+CHECKER-REG:}SCRATCH
 1 constant CP-CODE
 2 constant CP-TEST
 3 constant CP-NORMAL
@@ -1848,7 +1850,11 @@ variable JOIN-FACTS
 \ margin: measured high-water of USP is 12 pairs over a whole self-build and 48
 \ over every checker suite (test/enum-decl-suite.f), and 1024 is 21x that.
 1024 constant MAXUWL           \ unify worklist cells (deep spines queue many pairs)
-create UWL MAXUWL cells allot   variable USP   variable UOK
+create UWL MAXUWL cells allot
+CHECKER-REG:SCRATCH{
+variable USP
+CHECKER-REG:}SCRATCH
+variable UOK
 variable UF-ACT   variable UF-EXP   variable UF-SET
 \ Parallel per-pair strictness flag, keyed by the pair's base worklist index.
 \ Strict pairs (pointer pointees) unify by equality/var-binding only — integer
@@ -1872,8 +1878,10 @@ variable UF-POSN
 create UWL-CALL MAXUWL cells allot   variable CUR-CALL
 create UWL-QUOT MAXUWL cells allot   variable CUR-QUOT
 create UWL-ARG MAXUWL cells allot    variable CUR-ARG
-variable CALL-ARMED
-variable CALL-DIN   variable CALL-DOUT   variable CALL-HIT
+variable CALL-DIN   variable CALL-DOUT
+CHECKER-REG:SCRATCH{
+variable CALL-ARMED   variable CALL-HIT
+CHECKER-REG:}SCRATCH
 variable REC-ON
 defer CALL-FREEZE-XT ( -- )
 defer CWIN-STATE ( -- ptr ptr n ptr n ptr n )
@@ -2121,9 +2129,11 @@ PERSISTED-PTR-VARIABLE CT-PKG-A-P    PERSISTED-PTR-VARIABLE CT-PKG-U-P
 PERSISTED-PTR-VARIABLE CT-STR-HOME   variable CT-STR-HOME-CAP
 variable CTN
 variable CT-STR-U
-variable CT-I
 variable CT-J
+CHECKER-REG:SCRATCH{
+variable CT-I
 PTR-VARIABLE CT-DST
+CHECKER-REG:}SCRATCH
 
 : CT-ARENA-BOOT ( -- )          \ point every CT store at its boot buffer
    CT-NAME-A-BOOT CT-NAME-A-P !   CT-NAME-U-BOOT CT-NAME-U-P !
@@ -2814,8 +2824,10 @@ variable SCOPE-HIT       \ 1 = scoped storage, 2 = scope used as a value type
 \ case stays fail-closed. Every OTHER touch (value-inspecting prims, ?dup,
 \ control predicates, higher-order apply, con/ptr/atom pairings) fails closed
 \ through the same guards.
+CHECKER-REG:SCRATCH{
 variable LAYOUT-XPORT
 variable LAYOUT-INTRO
+CHECKER-REG:}SCRATCH
 \ --- field-projection armed window (dot habu-checker-type-structure). A sealed,
 \ schema-aware window that lets a generated FAMILY:FIELD accessor body mint
 \ `ptr <field-type>` from a `ptr family<args>` input and a committed field id —
@@ -2845,7 +2857,9 @@ REG-PROTECT
 PTR-VARIABLE LBUF-PEND-A
 variable LBUF-PEND-U   0 LBUF-PEND-U !
 variable LBUF-EVAL-OFF  0 LBUF-EVAL-OFF !  \ accessor effect offset + 1 in this eval window
+CHECKER-REG:SCRATCH{
 PTR-VARIABLE NMA  variable NMU           \ current definition name (set by DO-TOK1)
+CHECKER-REG:}SCRATCH
 variable NMOFF                           \ its token's offset in the checked text (NAME-TOK)
 
 \ Count only owning schema positions. Scope, region, read-view element, pointer,
@@ -3546,8 +3560,6 @@ variable FV
      1 +
    REPEAT drop ;
 : TV-RESET ( -- ) 0 TV-CLEAR-FROM ;
-variable OK   variable DCUR   variable UNCK   variable BROW
-variable RCUR   variable RBROW
 \ THDMASK/THRMASK: the running AND-fold of the intact masks of every throw edge
 \ of the body being checked (THROW-EDGE). THSET says whether any edge was seen,
 \ and only then do the masks mean anything.
@@ -3556,8 +3568,15 @@ variable THDMASK  variable THRMASK  variable THSET
 \ defines words no source text spells or reads the source after it. Sticky per
 \ body like UNSAFE: a call on any path is enough for the may-claim.
 variable INHSET
-variable XROW  variable XRROW  variable XSET  variable XFACT  variable DEADP
-variable DEADERR  PTR-VARIABLE DEADTA  variable DEADTU
+variable XROW  variable XRROW  variable XSET  variable DEADP
+variable DEADERR
+CHECKER-REG:SCRATCH{
+variable OK   variable DCUR   variable UNCK   variable BROW
+variable RCUR   variable RBROW
+variable XFACT
+PTR-VARIABLE DEADTA  variable DEADTU
+variable WAS
+CHECKER-REG:}SCRATCH
 
 \ A fresh check's walk state over the term pools as they stand. NEW resets the
 \ pools and id counters first; a top step runs NEW-WALK alone (TOP-GUEST).
@@ -3574,7 +3593,7 @@ variable DEADERR  PTR-VARIABLE DEADTA  variable DEADTU
    RIGID-RESET
    0 ATOMN ! 0 PARAMN ! 0 PARAM-SCR-N ! 0 PARG-N !
    NEW-WALK ;
-variable WAS   variable DEXP   variable DACT   variable FAILSET
+variable DEXP   variable DACT   variable FAILSET
 variable DF-ACT   variable DF-EXP
 \ ADT variant capture (docs/forth.md "Structures And Enums"): the sum-variant/tag
 \ involved at a layout mismatch. CVLIVE holds the SUMV id of the variant a
@@ -3584,10 +3603,11 @@ variable DF-ACT   variable DF-EXP
 \ pure-scalar or non-construct mismatch renders no variant/tag.
 variable DVAR    -1 DVAR !
 variable CVLIVE  -1 CVLIVE !
-\ The construct form's token state (CONSTRUCT-TOK); declared here so the
-\ capture seam (CHECKER-CAPTURE-SCRATCH-PREPARE) can rest it.
+\ The construct form's token state (CONSTRUCT-TOK).
 variable CONM      \ 0 off | 1 expecting family token | 2 expecting variant token
+CHECKER-REG:SCRATCH{
 variable CONFAM    \ resolved family id while CONM = 2
+CHECKER-REG:}SCRATCH
 \ Payload slot of the captured mismatch: UF-POSN's slot-from-top of
 \ the failed expected-row element, latched beside DVAR. Render converts it to
 \ the declaration-order payload index; -1 = position unknown (row-level or
@@ -3595,7 +3615,9 @@ variable CONFAM    \ resolved family id while CONM = 2
 variable DPOS    -1 DPOS !
 variable VSIG   variable SGSEEN   variable SGDECL-BAD   variable SGIN   variable SGOUT
 variable SGRIN  variable SGROUT  variable SGDBASE  variable SGRBASE
+CHECKER-REG:SCRATCH{
 PTR-VARIABLE SGA  variable SGU
+CHECKER-REG:}SCRATCH
 $1000 constant TOKBUF-INIT-CAP
 $10000 constant TOKBUF-GRAIN
 $7FFFFFFFFFFFFFFF constant TOKBUF-MAX-CAP
@@ -3663,7 +3685,9 @@ TOKBUF-INIT-CAP TOKBUF-CAP-U !
    SDEC-BOOT 0 TOKBUF-INIT-CAP CELL / ARENA-CELLS-ZERO ;
 variable TOKIX  variable FAILIX  variable DVERD
 variable FAILB  variable FAILE
+CHECKER-REG:SCRATCH{
 PTR-VARIABLE TBASE  variable TBLEN  variable TI  variable TSTART
+CHECKER-REG:}SCRATCH
 variable JSON-DIAGS   0 JSON-DIAGS !
 
 \ TBASE holds the checked source base pointer, so its cell is declared storage
@@ -3709,7 +3733,9 @@ variable LTNT-I
 \ so the inner descent must go through `t T-RES`, matching the FIELD-PARAM?
 \ guard just before it. Descending on the raw var reads an unrelated arena slot
 \ and, under accumulated arena state, can point back at `t` (infinite recursion).
+CHECKER-REG:SCRATCH{
 variable LTC-P
+CHECKER-REG:}SCRATCH
 : LIN-TYPE-COUNT* ( n -- n ) {: t:n :}
    t T-RES TAG case
       T-CON of t LIN-CON? IF 1 ELSE 0 THEN endof
@@ -3935,7 +3961,9 @@ variable QRS-EXP   variable QRS-ACT
 \ already says `expected: n n actual: r`, which names the fix. Firing only when
 \ the row otherwise fit leaves every existing mismatch exactly where it was and
 \ takes over only the rejections that had no token and no reason.
+CHECKER-REG:SCRATCH{
 variable UF-NEED   variable UF-HAVE
+CHECKER-REG:}SCRATCH
 
 \ The live-graph twin of EFF-ROW-TAIL: what a row ends in once its fixed cells
 \ are walked off. Two rows are the same stack only if they share this tail.
@@ -4417,7 +4445,9 @@ variable UNJ-PD   variable UNJ-PR   \ the token's pre-token data and return rows
 \ (ROW-TERMS base - ROW-TERMS common) positions, which is the same set
 \ { j : 0 <= j + s < popped }, and below the popped region `pre` and `common`
 \ are the same row nodes and compare the same.
+CHECKER-REG:SCRATCH{
 variable XM-K
+CHECKER-REG:}SCRATCH
 : CALL-EDGE-MASK ( n n n n -- n ) {: pre:n post:n keep:n base:n :}
    pre base XMASK-OF XM-ACC !
    XM-ACC @ 0= IF 0 EXIT THEN                \ not comparable, or nothing intact
@@ -5340,7 +5370,9 @@ create BIND-DOMAINS 32 cells allot
 64 constant FAM-CAP
 FAM-CAP PTR-U8-TABLE FAM-A       \ name pointers: declared storage, like ATOMA-BOOT
 create FAM-U FAM-CAP cells allot
+CHECKER-REG:SCRATCH{
 variable FAM-N
+CHECKER-REG:}SCRATCH
 variable FAM-I
 variable FAM-K
 
@@ -5787,8 +5819,11 @@ CK-BODYBUF-CAP 1 - constant CK-NAME-MAX
 \ the signature type grammar rather than growing a second one (dot
 \ habu-parse-local-annotations).
 
+CHECKER-REG:SCRATCH{
 PTR-VARIABLE SB variable SL variable SI PTR-VARIABLE SS
-PTR-VARIABLE PKA  variable PKU  variable PKHAVE       \ one-token push-back
+PTR-VARIABLE PKA  variable PKU                        \ one-token push-back
+CHECKER-REG:}SCRATCH
+variable PKHAVE
 
 : SB@ ( -- ptr u8 )
    SB @ ;
@@ -6520,7 +6555,9 @@ variable PD-IN variable PR-IN variable PD-OUT variable PR-OUT variable PD-BASE
    0 SI !
    PSIG ;
 
+CHECKER-REG:SCRATCH{
 variable LBI-T
+CHECKER-REG:}SCRATCH
 variable LBI-BAD
 variable LBI-SCHEME   \ the refused stored type parsed and holds a scheme
 
@@ -6919,7 +6956,6 @@ variable QCON-RN
    t MK-PTR swap MK-PUSH
    t rest MK-PUSH RECORDED-STEP ;
 
-PTR-VARIABLE FP
 \ user sigs: certified words recorded as effect records after the structural
 \ primitive-effect prefix. The renderer appends user records so later wins.
 \ The baked checker image stores canonical typed effect graphs for certified
@@ -7964,11 +8000,12 @@ variable EI-AK-HW              \ E-I-AK-RESET clears only [0, EI-AK-HW), the spa
 create EC-AK EI-AK-CAP cells allot
 variable EC-AKN
 
+CHECKER-REG:SCRATCH{
 PTR-VARIABLE FEP
 PTR-VARIABLE TOK-EFF
 variable FEP-OFF
 variable CHECKER-REC-SYM
-0 CHECKER-REC-SYM !
+CHECKER-REG:}SCRATCH
 
 \ The written span of EC-TV / EC-RV is [LW, HW); HW 0 means none is written.
 \ The low mark matters for the interpret row: a top step mints variable ids
@@ -8164,8 +8201,10 @@ $400 constant UIX-ENT-INIT        \ entries; grows geometrically
 PTR-VARIABLE UIX-BKT-P   PTR-VARIABLE UIX-ENT-P
 variable UIX-BKT-CAP variable UIX-ENT-CAP
 variable UIX-N       variable UIX-HI
+CHECKER-REG:SCRATCH{
 variable UIX-I       variable UIX-J   variable UIX-H
 variable UIX-BP      \ the rebuild's record cursor
+CHECKER-REG:}SCRATCH
 
 \ UIX-BASE, the store the entry offsets were taken against, is declared with the
 \ store's other index stamps above USIGS-GROW: the relocation there has to carry
@@ -8758,8 +8797,12 @@ $400 constant CHX-ENT-INIT        \ entries; grows geometrically
 PTR-VARIABLE CHX-BKT-P   PTR-VARIABLE CHX-ENT-P
 variable CHX-BKT-CAP variable CHX-ENT-CAP
 variable CHX-N
+CHECKER-REG:SCRATCH{
 variable CHX-I       variable CHX-J
 variable CHX-BP      \ the rebuild's record cursor
+variable CHX-BK
+variable CHX-C
+CHECKER-REG:}SCRATCH
 
 : CHX-BKT ( -- ptr n ) CHX-BKT-P @ ;
 : CHX-ENT ( -- ptr n ) CHX-ENT-P @ ;
@@ -8816,7 +8859,6 @@ CHX-RESET
    nb CHX-ENT-P !
    nc CHX-ENT-CAP ! ;
 
-variable CHX-BK
 : CHX-REHASH ( -- )
    0 CHX-I !
    BEGIN CHX-I @ CHX-N @ < WHILE
@@ -8862,8 +8904,6 @@ variable CHX-BK
    CHX-READY? 0= IF EXIT THEN
    BEGIN newend CHX-TOP-DEAD? WHILE CHX-POP REPEAT
    newend CHX-HI @ min CHX-HI ! ;
-
-variable CHX-C
 
 : CHX-BUCKET ( n -- n )
    E-CONTENT-HASH CHX-BKT-CAP @ 1 - and ;
@@ -9011,7 +9051,7 @@ USIGS USX-BASE!
    UEND @ USX-HI @ <
    USIGS USX-BASE@ <> or IF 0 USX-GEN ! THEN ;
 
-PTR-VARIABLE USX-P                          \ index-owned cursor; FP belongs to the scans
+PTR-VARIABLE USX-P                          \ index-owned cursor
 variable USX-BP   variable USX-BN        \ the rebuild's record cursor and its next link
 
 : USX-LINK ( n n -- ) {: off:n sym:n :}
@@ -10623,10 +10663,12 @@ variable PRM-FIRST
 : PE-SYM-OF ( ptr u8 n -- n ) {: a:ptr u:n :}
    s" " SYM-GLOBAL a u SYM-INTERN ;
 
+CHECKER-REG:SCRATCH{
 PTR-VARIABLE PE-NA
 variable PE-NU
 PTR-VARIABLE PE-PKG-A
 variable PE-PKG-U
+CHECKER-REG:}SCRATCH
 variable PE-BASE
 variable PE-DIN
 variable PE-DOUT
@@ -11636,12 +11678,14 @@ PRIM: CTL-DEAD?          PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
 
 PTABLE-END
 
+CHECKER-REG:SCRATCH{
 PTR-VARIABLE CHECKER-REC-A
 variable CHECKER-REC-U
 PTR-VARIABLE CHECKER-QA
 variable CHECKER-QU
 PTR-VARIABLE CHECKER-TA
 variable CHECKER-TU
+CHECKER-REG:}SCRATCH
 
 $10000 constant DFER-CAP
 
@@ -13006,16 +13050,20 @@ public
 \ load does, and every exit of the window closes the overlay, so the engine's
 \ dictionary, scope and using band are as the window found them. A replay
 \ compiles nothing, so it opens no window (CK-CLOSE!).
-variable CK-CLOSED-SYM   0 CK-CLOSED-SYM !     \ the symbol of the definition recorded last
-variable CK-CLOSED-IX    0 CK-CLOSED-IX !      \ `ndict@` when it was recorded
-variable CK-CLOSED-OFF   0 CK-CLOSED-OFF !     \ its record, offset+1 (USIG-NEWEST)
+CHECKER-REG:SCRATCH{
+variable CK-CLOSED-SYM     \ the symbol of the definition recorded last
+variable CK-CLOSED-IX      \ `ndict@` when it was recorded
+variable CK-CLOSED-OFF     \ its record, offset+1 (USIG-NEWEST)
+CHECKER-REG:}SCRATCH
 : CK-CLOSED-OFF@ ( -- n ) CK-CLOSED-OFF @ ;
 
 \ The outermost open candidate scope's floor, set when CHK-CAND turns on
 \ (CHECK-CANDIDATE-START) and read only while it is on: the record end and
 \ `ndict@` when the scope opened.
-variable CK-PEND-FLOOR   0 CK-PEND-FLOOR !
-variable CK-PEND-IX      0 CK-PEND-IX !
+CHECKER-REG:SCRATCH{
+variable CK-PEND-FLOOR
+variable CK-PEND-IX
+CHECKER-REG:}SCRATCH
 
 \ CK-LIVE-PEND? : this check is the one the engine runs for the definition it
 \ holds open and unpublished, the record at ndict@: one is pending, and the
@@ -13251,7 +13299,9 @@ s" CHECKER-OWNER-ABI" PE-PUBLIC-CONSTS
    BIND-HORIZON @ 0= IF scope-find EXIT THEN
    [: HIDE-FIND ;] [: CHECKER-OVERLAY:UNHIDE ;] finally ;
 
+CHECKER-REG:SCRATCH{
 PTR-VARIABLE BIND-REC
+CHECKER-REG:}SCRATCH
 variable BIND-PEND-IX
 variable BIND-PEND-OFF
 variable BIND-SEEDED
@@ -14029,12 +14079,14 @@ variable TOK-SYM   variable TOK-CTL   variable TOK-DONE
 variable TOK-LIVE-REC
 variable TOK-DEAD
 PTR-VARIABLE TOK-SPELL-A   variable TOK-SPELL-U
-PTR-VARIABLE TOK-REC
 variable TOK-PEND-IX   variable TOK-PEND-OFF
 variable TOK-SEEDED
 variable BWIN-HIT
+CHECKER-REG:SCRATCH{
+PTR-VARIABLE TOK-REC
 PTR-VARIABLE TOK-ABI-EFF
 variable TOK-ABI-DONE
+CHECKER-REG:}SCRATCH
 variable BWIN-UNJUDGED
 variable PARSE-COMPLETE
 
@@ -15496,7 +15548,9 @@ $8 constant NORET-ENTRY-ALIGN
 
 PERSISTED-PTR-VARIABLE NORET-P   variable NORET-CAP-U   variable NORET-END
 NULL-PTR NORET-P !   NORET-INIT-CAP NORET-CAP-U !   0 NORET-END !
+CHECKER-REG:SCRATCH{
 variable NORET-CTL      \ the packed control word NORET-SCAN-SYM last read
+CHECKER-REG:}SCRATCH
 variable NORET-GROW-CAP   PTR-VARIABLE NORET-GROW-NEXT
 
 \ Even an empty store has a readable zero-symbol terminator. The accessor also
@@ -15554,7 +15608,9 @@ NULL-PTR NRX-BASE!
    NORET-END @ NRX-HI @ <
    NORETS NRX-BASE@ <> or IF 0 NRX-GEN ! THEN ;
 
+CHECKER-REG:SCRATCH{
 variable NRX-POS                        \ byte offset cursor over the entry array
+CHECKER-REG:}SCRATCH
 
 : NRX-ENTRY-END? ( -- bool )
    NRX-POS @ NORET-CELL NORET.SYM @ 0= ;
@@ -15920,40 +15976,18 @@ REG-EXT-AOT-DEFAULTS
    NULL-PTR ASIG-LAST-P !  0 ASIG-LAST-CAP-V ! ;
 
 : CHECKER-CAPTURE-SCRATCH-PREPARE ( -- )
-   \ Closed definitions and candidate scopes leave host dictionary record counts
-   \ in these inactive fields. A captured engine begins with neither pending.
-   0 CK-CLOSED-SYM !  0 CK-CLOSED-IX !  0 CK-CLOSED-OFF !
-   0 CK-PEND-FLOOR !  0 CK-PEND-IX !
-   0 CONFAM !                    \ the last construct's family
    SG-ROWS-RESET
    REC-RELEASE
    UWL-SNAP-RESET
    TOKBUF-SNAP-ZERO
-   NULL-PTR TOK-EFF !  NULL-PTR TOK-REC !  NULL-PTR BIND-REC !
-   NULL-PTR TOK-ABI-EFF !  0 TOK-ABI-DONE !
    NULL-PTR SIGSCOPE-P !  0 SIGSCOPE-U !  0 SIGSCOPE-ON !
-   NULL-PTR PE-NA !  0 PE-NU !  NULL-PTR PE-PKG-A !  0 PE-PKG-U !
-
-   NULL-PTR CT-DST !
-   NULL-PTR TBASE !  0 TBLEN !  0 TI !  0 TSTART !
    SGBAD-CLEAR
-   NULL-PTR SB !  0 SL !  0 SI !  NULL-PTR SS !
-   NULL-PTR PKA !  0 PKU !  PKRESET
+   PKRESET
    SYM-XFER-CLEAR
    FIELD-PROJ-SCRATCH-RESET
-   NULL-PTR DEADTA !  0 DEADTU !
-   NULL-PTR SGA !  0 SGU !
-   NULL-PTR NMA !  0 NMU !
-   NULL-PTR CHECKER-REC-A !  0 CHECKER-REC-U !
-   0 CHECKER-REC-SYM !
-   NULL-PTR CHECKER-QA !  0 CHECKER-QU !
-   NULL-PTR CHECKER-TA !  0 CHECKER-TU !
-   NULL-PTR FEP !  0 FEP-OFF !
-   NULL-PTR FP !  NULL-PTR USX-P !
-
+   NULL-PTR USX-P !
    ATOMA-BOOT 0 MAXATOM-INIT REG-POINTERS-CLEAR
-   FAM-A 0 FAM-CAP REG-POINTERS-CLEAR
-   0 ATOMN !  0 FAM-N ! ;
+   FAM-A 0 FAM-CAP REG-POINTERS-CLEAR ;
 
 : NORET-REC ( -- ptr n )
    NORET-END @ NORET-CELL ;
@@ -16864,7 +16898,9 @@ CON-DECLARED-DEFAULT
    CTN @ 1- CHECKER-REG:CON-DECLARED-XT ;
 ndict@ 1- constant DEFLINEAR-REC-ID
 
+CHECKER-REG:SCRATCH{
 variable NORET-FMEND
+CHECKER-REG:}SCRATCH
 
 \ NORET-SCAN-SYM ( n -- ) : NORET-CTL = the newest packed control word for sym
 \ (later wins, 0 when the symbol has no entry); NORET-FMEND = that entry's end
@@ -20658,7 +20694,9 @@ variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SY
    FRESH MK-ROW dup BROW ! DCUR !
    FRESH MK-ROW dup RBROW ! RCUR ! ;
 
+CHECKER-REG:SCRATCH{
 variable QTMP
+CHECKER-REG:}SCRATCH
 
 : CF-SEMIQ  \ ;] — quot<nested effect> pushed onto the restored outer row
    6 6 CF-AT? IF
@@ -23367,7 +23405,9 @@ variable NP-VARSET   \ which set NP-INVARS-WALK fills: 0 = inputs, 1 = outputs
 \ Complements NP-CHECK's specialization and alias checks on all declared types. Raw declared identity (PAY, no T-RES): the body's speculative
 \ binds (a laundering combinator that unified u:=t) do not hide a var whose
 \ declared occurrences are all outputs.
+CHECKER-REG:SCRATCH{
 variable NP-CELL-TERM   \ output cell-family term currently scanned (for the diagnostic)
+CHECKER-REG:}SCRATCH
 variable NP-OUT-I       \ output cell param arg index (NP-OUT-TERM is non-recursive)
 
 
@@ -26563,7 +26603,9 @@ public
 \ rest of the load. The count nests, so a probe inside an enclosing quiet scope
 \ leaves that scope quiet. Stash-and-body rather than a capturing quotation,
 \ which is the shape CHECK-CANDIDATE! above and CHECK-UNJUDGED! below both take.
+CHECKER-REG:SCRATCH{
 PTR-VARIABLE QCAND-A   variable QCAND-U   variable QCAND-VERDICT
+CHECKER-REG:}SCRATCH
 
 : QCAND-BODY ( -- )      \ ( -- ) closure: probe the stashed source, stash the verdict
    QCAND-A @ QCAND-U @ CHECK-CANDIDATE! QCAND-VERDICT ! ;
@@ -30944,19 +30986,8 @@ public
    REG-LATE-SCRATCH-SNAP-XT
    REG-CERT-SNAP-XT
    CHECKER-LATE-CAPTURE-SCRATCH-PREPARE
-   \ These cursors and stashed probe inputs have no backing check or index after
-   \ the capture resets above. Leave no last-query bytes in a saved image.
-   0 CT-I ! 0 NRX-POS ! 0 NORET-CTL ! 0 NORET-FMEND !
-   0 WAS !
-   0 UF-NEED ! 0 UF-HAVE ! 0 NP-CELL-TERM !
-   0 LTC-P ! 0 XM-K ! 0 LBI-T !
-   0 UIX-I ! 0 UIX-J ! 0 UIX-H ! 0 UIX-BP !
-   0 CHX-I ! 0 CHX-J ! 0 CHX-BP ! 0 CHX-BK ! 0 CHX-C !
-   0 CK-CLOSED-SYM ! 0 CK-CLOSED-IX ! 0 CK-CLOSED-OFF !
-   -1 RECORD-PEND-IX ! 0 RECORD-PEND-SYM ! 0 RECORD-PEND-EFF !
-   0 CK-PEND-FLOOR ! 0 CK-PEND-IX !
-   0 QTMP !
-   NULL-PTR QCAND-A ! 0 QCAND-U ! 0 QCAND-VERDICT ! ;
+   \ A pending record outlives a file boundary, so it lives outside the spans.
+   -1 RECORD-PEND-IX ! 0 RECORD-PEND-SYM ! 0 RECORD-PEND-EFF ! ;
 
 : CHECKER-UNIT-PERSIST-STORES ( -- )
    CHECKER-QUIESCE-BEGIN
