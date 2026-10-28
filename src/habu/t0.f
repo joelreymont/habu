@@ -8,7 +8,8 @@
 \ body in its sink.
 \
 \ A TOKEN IS, IN THIS ORDER: a control keyword (if else then begin until while
-\ repeat again exit recurse >r r> r@ ['] [char]); an operation T0 inlines,
+\ repeat again do ?do loop +loop leave unloop i j case of endof endcase exit
+\ recurse >r r> r@ ['] [char]); an operation T0 inlines,
 \ when the spelling binds the engine's seeded primitive (NDICT:SPELL-PRIM?):
 \ the stack shuffles, + - * and or xor 1+ 1- negate invert lshift rshift, the
 \ comparisons, @ and c@; a word the dictionary binds (NDICT:CALL-TARGET), as a
@@ -26,7 +27,16 @@
 \ THE CONTROL STACK holds the open structures: an `if` or `else` site, a
 \ `begin` mark and a `while` site, which `while` puts under its `begin` as
 \ Forth's orig/dest order has it, so `begin ... while ... while ... repeat then`
-\ resolves. A structure that does not close is E-T0-CONTROL.
+\ resolves; a `do` level; a `case`, each `endof` site above it and the open
+\ `of` site. A structure that does not close, and a loop word outside the
+\ loops it needs, is E-T0-CONTROL.
+\
+\ LOOPS. `do` and `?do` push a runtime frame (T0-EMIT LOOP-PUSH: the index's
+\ home is memory) and open a level holding the loop's head mark, the first of
+\ its `leave` sites in LEAVES and `?do`'s entry site. `loop` and `+loop` branch
+\ back to the head, then bind the level's leaves and entry to the pop of the
+\ frame that follows, so every way out leaves through that pop with the
+\ virtual stack spilled.
 
 require src/lib/prelude.f
 require src/lib/string.f
@@ -312,6 +322,10 @@ variable FREE                       \ bit k set: vreg k holds no entry
 1 constant CS-ELSE
 2 constant CS-BEGIN
 3 constant CS-WHILE
+4 constant CS-DO                    \ the value is the level
+5 constant CS-CASE
+6 constant CS-OF
+7 constant CS-ENDOF
 
 DYNAMIC-BUFFER CS-KIND n
 DYNAMIC-BUFFER CS-VAL n
@@ -334,6 +348,11 @@ variable CS-N
 
 : CS-POP ( n -- n ) dup CS-POP2 ;
 
+\ The kind of the top structure.
+: CS-TOP-KIND ( -- n )
+   CS-N @ 0= if E-T0-CONTROL throw then
+   CS-N @ 1- CS-KIND @ ;
+
 : PATCH ( n -- ) T0-EMIT:>SITE T0-EMIT:PATCH ;
 
 : DO-IF ( -- )
@@ -348,8 +367,7 @@ variable CS-N
    s PATCH ;
 
 : DO-THEN ( -- )
-   CS-N @ 0= if E-T0-CONTROL throw then
-   CS-N @ 1- CS-KIND @ CS-WHILE = if CS-WHILE else CS-IF then
+   CS-TOP-KIND CS-WHILE = if CS-WHILE else CS-IF then
    CS-ELSE CS-POP2 {: s:n :}
    SPILL-ALL
    s PATCH ;
@@ -382,6 +400,130 @@ variable CS-N
    CS-BEGIN CS-POP {: m:n :}
    SPILL-ALL
    m T0-EMIT:>MARK T0-EMIT:JMP-BACK ;
+
+\ ---- loops -------------------------------------------------------------------
+DYNAMIC-BUFFER DO-HEAD n            \ the level's loop head mark
+DYNAMIC-BUFFER DO-FIRST n           \ its first site in LEAVES
+DYNAMIC-BUFFER DO-ENTRY n           \ `?do`'s entry site, or -1
+variable DO-N
+DYNAMIC-BUFFER LEAVES n             \ the open levels' `leave` sites, innermost last
+variable LEAVE-N
+
+\ Refuse unless at least k levels are open.
+: LEVELS ( n -- ) DO-N @ > if E-T0-CONTROL throw then ;
+
+\ Keep vreg r allocated past a SPILL-ALL that freed every vreg.
+: HOLD ( T0-EMIT:vreg -- ) T0-EMIT:VREG>N 1 swap lshift invert FREE @ and FREE ! ;
+
+\ Push the frame of `do` or `?do` from ( limit start ) and spill the rest.
+: FRAME ( -- T0-EMIT:vreg T0-EMIT:vreg )
+   TAKE {: s:T0-EMIT:vreg :}
+   TAKE {: l:T0-EMIT:vreg :}
+   s l T0-EMIT:LOOP-PUSH
+   SPILL-ALL
+   s l ;
+
+\ Open a level whose loop head is here.
+: OPEN-LEVEL ( n -- ) {: entry:n :}
+   DO-N @ {: k:n :}
+   k 1+ DO-HEAD-RESERVE  k 1+ DO-FIRST-RESERVE  k 1+ DO-ENTRY-RESERVE
+   T0-EMIT:LABEL T0-EMIT:MARK>N k DO-HEAD !
+   LEAVE-N @ k DO-FIRST !
+   entry k DO-ENTRY !
+   k 1+ DO-N !
+   CS-DO k CS-PUSH ;
+
+: DO-DO ( -- ) FRAME 2drop -1 OPEN-LEVEL ;
+
+: DO-?DO ( -- ) FRAME T0-EMIT:LOOP-ENTER T0-EMIT:SITE>N OPEN-LEVEL ;
+
+\ The innermost level, which `loop` or `+loop` closes.
+: CLOSING ( -- n ) CS-DO CS-POP ;
+
+: HEAD ( n -- T0-EMIT:mark ) DO-HEAD @ T0-EMIT:>MARK ;
+
+\ Bind level k's leaves and entry here, close it and pop its frame.
+: CLOSE-LEVEL ( n -- ) {: k:n :}
+   LEAVE-N @ k DO-FIRST @ ?do i LEAVES @ PATCH loop
+   k DO-ENTRY @ 0 >= if k DO-ENTRY @ PATCH then
+   k DO-FIRST @ LEAVE-N !
+   k DO-N !
+   T0-EMIT:LOOP-POP ;
+
+: DO-LOOP ( -- )
+   CLOSING {: k:n :}
+   SPILL-ALL
+   ALLOC {: t:T0-EMIT:vreg :}
+   t k HEAD T0-EMIT:LOOP-NEXT
+   t RELEASE
+   k CLOSE-LEVEL ;
+
+: DO-+LOOP ( -- )
+   CLOSING {: k:n :}
+   TAKE {: s:T0-EMIT:vreg :}
+   SPILL-ALL
+   s HOLD
+   ALLOC {: t:T0-EMIT:vreg :}
+   s t k HEAD T0-EMIT:LOOP-STEP
+   s RELEASE  t RELEASE
+   k DO-ENTRY @ 0 >= if k DO-ENTRY @ T0-EMIT:>SITE T0-EMIT:SKIP-EQUAL then
+   k CLOSE-LEVEL ;
+
+: DO-LEAVE ( -- )
+   1 LEVELS
+   SPILL-ALL
+   LEAVE-N @ {: n:n :}
+   n 1+ LEAVES-RESERVE
+   T0-EMIT:JMP T0-EMIT:SITE>N n LEAVES !
+   n 1+ LEAVE-N ! ;
+
+: DO-UNLOOP ( -- ) 1 LEVELS T0-EMIT:LOOP-POP ;
+
+\ `i` and `j` push the index of the innermost or the next frame.
+: DO-INDEX ( [ T0-EMIT:vreg -- ] n -- ) {: k:n :}
+   k LEVELS
+   ROOM ALLOC {: r:T0-EMIT:vreg :}
+   r swap execute
+   r PUSH-REG ;
+
+\ ---- case --------------------------------------------------------------------
+\ `of` compares the selector under the top with the top, which it drops; the
+\ match drops the selector too, the mismatch branches past `endof` keeping it.
+: OF-LIT ( -- T0-EMIT:site )
+   TOP VS-VAL @ {: v:n :}
+   TOP REMOVE
+   TOP MAT {: s:T0-EMIT:vreg :}
+   SPILL-ALL
+   s v T0-EMIT:JNE-LIT ;
+
+: OF-REG ( -- T0-EMIT:site )
+   TAKE {: v:T0-EMIT:vreg :}
+   TOP MAT {: s:T0-EMIT:vreg :}
+   SPILL-ALL
+   s v T0-EMIT:JNE ;
+
+: DO-CASE ( -- ) CS-CASE 0 CS-PUSH ;
+
+: DO-OF ( -- )
+   CS-TOP-KIND {: kind:n :}
+   kind CS-CASE <> kind CS-ENDOF <> and if E-T0-CONTROL throw then
+   2 ENSURE
+   TOP IMM? if OF-LIT else OF-REG then {: s:T0-EMIT:site :}
+   DROP1
+   CS-OF s T0-EMIT:SITE>N CS-PUSH ;
+
+: DO-ENDOF ( -- )
+   CS-OF CS-POP {: s:n :}
+   SPILL-ALL
+   CS-ENDOF T0-EMIT:JMP T0-EMIT:SITE>N CS-PUSH
+   s PATCH ;
+
+\ The default arm drops the selector, and every `endof` lands after the drop.
+: DO-ENDCASE ( -- )
+   DROP1
+   SPILL-ALL
+   begin CS-TOP-KIND CS-ENDOF = while CS-ENDOF CS-POP PATCH repeat
+   CS-CASE CS-POP drop ;
 
 \ ---- the rest of the keywords ------------------------------------------------
 \ True once the body has left through a tail call: nothing follows it.
@@ -440,6 +582,8 @@ variable TAILED
    a u NDICT:SPELL-PRIM? ;
 
 : KW1 ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" i" STR= if [: T0-EMIT:LOOP-I ;] 1 DO-INDEX true exit then
+   a u s" j" STR= if [: T0-EMIT:LOOP-J ;] 2 DO-INDEX true exit then
    a u s" +" OP? if [: + ;] T0-EMIT:OP-ADD true ALU2 true exit then
    a u s" -" OP? if [: - ;] T0-EMIT:OP-SUB false ALU2 true exit then
    a u s" *" OP? if MUL2 true exit then
@@ -451,6 +595,8 @@ variable TAILED
 
 : KW2 ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" if" STR= if DO-IF true exit then
+   a u s" do" STR= if DO-DO true exit then
+   a u s" of" STR= if DO-OF true exit then
    a u s" >r" STR= if DO-TOR true exit then
    a u s" r>" STR= if DO-RFROM true exit then
    a u s" r@" STR= if DO-RFETCH true exit then
@@ -467,6 +613,7 @@ variable TAILED
 
 : KW3 ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" [']" STR= if DO-TICK true exit then
+   a u s" ?do" STR= if DO-?DO true exit then
    a u s" dup" OP? if DUP1 true exit then
    a u s" rot" OP? if ROT1 true exit then
    a u s" nip" OP? if NIP1 true exit then
@@ -478,6 +625,8 @@ variable TAILED
    a u s" then" STR= if DO-THEN true exit then
    a u s" else" STR= if DO-ELSE true exit then
    a u s" exit" STR= if DO-EXIT true exit then
+   a u s" loop" STR= if DO-LOOP true exit then
+   a u s" case" STR= if DO-CASE true exit then
    a u s" drop" OP? if DROP1 true exit then
    a u s" swap" OP? if SWAP1 true exit then
    a u s" over" OP? if OVER1 true exit then
@@ -489,11 +638,15 @@ variable TAILED
    a u s" while" STR= if DO-WHILE true exit then
    a u s" until" STR= if DO-UNTIL true exit then
    a u s" again" STR= if DO-AGAIN true exit then
+   a u s" +loop" STR= if DO-+LOOP true exit then
+   a u s" leave" STR= if DO-LEAVE true exit then
+   a u s" endof" STR= if DO-ENDOF true exit then
    false ;
 
 : KW6 ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" repeat" STR= if DO-REPEAT true exit then
    a u s" [char]" STR= if DO-CHAR true exit then
+   a u s" unloop" STR= if DO-UNLOOP true exit then
    a u s" negate" OP? if [: negate ;] [: T0-EMIT:NEG ;] UNARY true exit then
    a u s" invert" OP? if [: invert ;] [: T0-EMIT:NOT ;] UNARY true exit then
    a u s" lshift" OP? if [: lshift ;] T0-EMIT:SH-LEFT SHIFT2 true exit then
@@ -502,6 +655,7 @@ variable TAILED
 
 : KW7 ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" recurse" STR= if DO-RECURSE true exit then
+   a u s" endcase" STR= if DO-ENDCASE true exit then
    false ;
 
 : KEYWORD ( ptr u8 n -- bool ) {: a:ptr u:n :}
@@ -543,7 +697,7 @@ public
 \ Compile one body into the emitter's sink.
 : COMPILE-TEXT ( ptr u8 n -- ) {: a:ptr u:n :}
    a TXT !  u TXT-LEN !  0 POS !
-   0 VS-N !  ALL-FREE FREE !  0 CS-N !  0 TAILED !
+   0 VS-N !  ALL-FREE FREE !  0 CS-N !  0 DO-N !  0 LEAVE-N !  0 TAILED !
    T0-EMIT:OPEN
    SKIP-HEAD
    begin TOKEN dup 0<> while COMPILE-TOKEN repeat

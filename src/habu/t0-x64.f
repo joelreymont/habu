@@ -359,9 +359,22 @@ public
 : JMP-BACK ( mark -- ) {: m:mark :}
    m MARK>N 5 - REL-TO SINK ENC-JMP-REL32 ;
 
+: JCC-BACK ( condition mark -- ) {: c:condition m:mark :}
+   c m MARK>N 6 - REL-TO SINK ENC-JCC-REL32 ;
+
 : JZ-BACK ( vreg mark -- ) {: c:vreg m:mark :}
    c REG c REG SINK ENC-TEST-RR
-   C-E m MARK>N 6 - REL-TO SINK ENC-JCC-REL32 ;
+   C-E m JCC-BACK ;
+
+\ JNE and JNE-LIT branch when the vreg differs from the second operand; n must
+\ answer IMM? true.
+: JNE ( vreg vreg -- site ) {: a:vreg b:vreg :}
+   a REG b REG SINK ENC-CMP-RR
+   C-NE 0 >REL SINK ENC-JCC-REL32  FWD-SITE ;
+
+: JNE-LIT ( vreg n -- site ) {: a:vreg v:n :}
+   a REG v >IMM32 SINK ENC-CMP-RI32
+   C-NE 0 >REL SINK ENC-JCC-REL32  FWD-SITE ;
 
 : PATCH ( site -- ) {: s:site :}
    s SITE>N {: at:n :}
@@ -390,6 +403,98 @@ public
    r RDEPTH
    r RTOP
    r r CELL negate MEM-OFF SINK ENC-MOV-RM ;
+
+
+\ ---- loops ---------------------------------------------------------------------
+\ The DO/LOOP frames live on the DATA loop stack, where `j`, catch
+\ (src/habu/kernel-x64.f CAUGHT,) and the arm64 tier 0 (src/habu/habu2.f
+\ J-FRAME) find them: LOOPSP-CELL counts the frames and frame k, 16 bytes at
+\ STACK-ABI:LOOP-BASE-CELL's base + 16k, holds the index, its home, then the
+\ limit. `loop` steps while index < limit, signed; `+loop` steps until the
+\ index crosses the boundary between limit - 1 and limit in the step's
+\ direction; `?do` enters while start < limit, and SKIP-EQUAL makes the entry
+\ of a level `+loop` closes skip equal bounds only.
+private
+
+: LDEPTH ( r64 -- ) {: r:r64 :}
+   r DATA-REG LOOPSP-CELL MEM-OFF SINK ENC-MOV-RM ;
+
+: LDEPTH! ( r64 -- ) {: r:r64 :}
+   r DATA-REG LOOPSP-CELL MEM-OFF SINK ENC-MOV-MR ;
+
+\ r, holding the depth, becomes the address one frame past the innermost.
+: LTOP ( r64 -- ) {: r:r64 :}
+   r 4 >IMM8 SINK ENC-SHL-RI8
+   r DATA-REG STACK-ABI:LOOP-BASE-CELL MEM-OFF SINK ENC-ADD-RM ;
+
+\ The index and limit of the innermost frame, below LTOP's address.
+-16 constant LIDX-OFF
+-8 constant LLIM-OFF
+
+\ The index of the frame k levels out of the innermost into d.
+: LINDEX ( vreg n -- ) {: d:vreg k:n :}
+   d REG {: r:r64 :}
+   r LDEPTH
+   r LTOP
+   r r LIDX-OFF k 16 * - MEM-OFF SINK ENC-MOV-RM ;
+
+public
+
+\ Push a frame of index s and limit l.
+: LOOP-PUSH ( vreg vreg -- ) {: s:vreg l:vreg :}
+   RAX LDEPTH
+   RAX SINK ENC-INC
+   RAX LDEPTH!
+   RAX LTOP
+   s REG RAX LIDX-OFF MEM-OFF SINK ENC-MOV-MR
+   l REG RAX LLIM-OFF MEM-OFF SINK ENC-MOV-MR ;
+
+: LOOP-POP ( -- )
+   RAX LDEPTH
+   RAX SINK ENC-DEC
+   RAX LDEPTH! ;
+
+: LOOP-I ( vreg -- ) 0 LINDEX ;
+: LOOP-J ( vreg -- ) 1 LINDEX ;
+
+\ `?do`'s entry: past the site unless start s < limit l.
+: LOOP-ENTER ( vreg vreg -- site ) {: s:vreg l:vreg :}
+   s REG l REG SINK ENC-CMP-RR
+   C-GE 0 >REL SINK ENC-JCC-REL32  FWD-SITE ;
+
+\ Make LOOP-ENTER's site branch on equal bounds only.
+: SKIP-EQUAL ( site -- ) {: s:site :}
+   C-E CONDITION>N $80 +  SINK BUF:SPAN$ drop s SITE>N 1- + c! ;
+
+\ `loop`: step the index by one and branch back to m while it is below the
+\ limit. t is a free vreg it clobbers.
+: LOOP-NEXT ( vreg mark -- ) {: t:vreg m:mark :}
+   t REG {: r:r64 :}
+   RAX LDEPTH
+   RAX LTOP
+   r RAX LIDX-OFF MEM-OFF SINK ENC-MOV-RM
+   r SINK ENC-INC
+   r RAX LIDX-OFF MEM-OFF SINK ENC-MOV-MR
+   r RAX LLIM-OFF MEM-OFF SINK ENC-CMP-RM
+   C-L m JCC-BACK ;
+
+\ `+loop`: step the index by s and branch back to m unless it crossed the
+\ boundary: with old = index - limit before the step, it crossed when
+\ (old xor old + s) and (old xor s) is negative. s and t are clobbered; t is a
+\ free vreg.
+: LOOP-STEP ( vreg vreg mark -- ) {: s:vreg t:vreg m:mark :}
+   s REG {: sr:r64 :}  t REG {: r:r64 :}
+   RAX LDEPTH
+   RAX LTOP
+   r RAX LIDX-OFF MEM-OFF SINK ENC-MOV-RM
+   r RAX LLIM-OFF MEM-OFF SINK ENC-SUB-RM
+   sr RAX LIDX-OFF MEM-OFF SINK ENC-ADD-MR
+   RAX r SINK ENC-MOV-RR
+   RAX sr SINK ENC-ADD-RR
+   RAX r SINK ENC-XOR-RR
+   sr r SINK ENC-XOR-RR
+   RAX sr SINK ENC-AND-RR
+   C-NS m JCC-BACK ;
 
 ;using
 ;package
