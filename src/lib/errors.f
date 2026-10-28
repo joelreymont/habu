@@ -1459,8 +1459,8 @@
 \ owns package UTF16.
 \ OS random bytes: -9540..-9549, minted in src/lib/entropy.f, which owns
 \ package ENTROPY.
-\ Online processor count: -9550..-9559, minted in src/lib/os-cpu.f, which owns
-\ package OS-CPU.
+\ Online processor count and load average: -9550..-9559, minted in
+\ src/lib/os-cpu.f, which owns package OS-CPU.
 \ PostgreSQL's growth region: -9560..-9569, minted by src/lib/pg.f once
 \ -9250..-9259 filled.
 \ Word contracts read from source: -9570..-9579, minted in src/lib/word-docs.f,
