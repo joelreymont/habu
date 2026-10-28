@@ -242,10 +242,10 @@ private
    TAPE-NAME$ {: a:ptr u:n :}
    a NAME-A !  u NAME-U ! ;
 
-\ RECORD opened this unit with NFEED:BEGIN-DOES-UNIT, which refused a cut that
-\ is not just past a `does> ` in this source (E-NFEED-CUT). NAME$ is set only
-\ after the unit seals (KEEP-TAPE-NAME), so the clause is named from the open
-\ unit's first row (NFEED:UNIT-NAME$).
+\ CHECK-DOES-HEAD refuses a cut that is not just past a `does> ` in this
+\ source (E-NFEED-CUT) before NFEED:DOES-CLAUSE reads the tape at it. NAME$ is
+\ set only after the unit seals (KEEP-TAPE-NAME), so the clause is named from
+\ the open unit's first row (NFEED:UNIT-NAME$).
 : CHECK-DOES-SPLIT ( -- n )
    CHECK-DOES-HEAD
    NFEED:DOES-CLAUSE M-DOES-ROW !
@@ -489,7 +489,6 @@ private
    RECORD {: before:n :}
    E-NCOMP-STATE CHECKER-OWNER:WRITE-WINDOW
    before [: LOWER ;] [: SHUT ;] finally
-   0 M-DOES-FRAME !
    before M-PUBLISHED-START ! ;
 
 \ Fixed definers have no body text or checker scan. A one-row tape gives the

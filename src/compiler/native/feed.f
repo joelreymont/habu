@@ -374,14 +374,11 @@ public
    CHECKER-OWNER:TAPE-ARM ;
 
 \ A defining word is checked as two bodies, but remains one source and one tape.
-\ The engine supplies the exact byte split it recorded while consuming `does>`,
-\ so a cut that is not just past a `does> ` in this source means the source and
-\ the pending definition disagree.
+\ The engine supplies the exact byte split it recorded while consuming `does>`;
+\ the shared step checks that cut against the source before the split is
+\ scanned (NDEFINITION:CHECK-DOES-HEAD), and this only keeps it.
 : BEGIN-DOES-UNIT ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena ptr u8 n ptr u8 n n -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder tp:IR-ARENA:arena txt cap:n src su:n cut:n :}
-   cut 6 < cut su > or if E-NFEED-CUT throw then
-   src cut 6 - + 5 s" does>" STR=CI 0= if E-NFEED-CUT throw then
-   src cut 1- + c@ 32 <> if E-NFEED-CUT throw then
    su cap > if E-NFEED-TEXT throw then
    c b tp txt cap OPEN
    src TXT@ su BYTE-COPY
@@ -391,8 +388,9 @@ public
    OBSERVE
    CHECKER-OWNER:TAPE-ARM ;
 
-\ Insert the one verified keyword between the two checker bodies and advance the
-\ checker's matching token ordinal, then admit the clause scan.
+\ Insert the one verified keyword between the two checker bodies, then admit
+\ the clause scan. The checker's matching token ordinal is advanced by the
+\ clause's check (NDEFINITION:CHECK-DOES-CLAUSE).
 : DOES-CLAUSE ( -- n )
    ST-BETWEEN STATE-CK
    F-DOES @ 6 - {: off:n :}
@@ -400,7 +398,6 @@ public
    TXT@ off + 5 off BYTES-CK
    TXT@ off + 5 off 0 APPEND-NAME ORDER-CK
    F-N @ 1+ F-N !
-   CHECKER-OWNER:TAPE-ADVANCE
    F-DOES @ F-BASE !
    ST-ARMED F-STATE !
    row ;

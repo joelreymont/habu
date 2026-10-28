@@ -14,6 +14,7 @@
 
 require src/lib/prelude.f
 require src/lib/errors.f
+require src/lib/string.f
 require src/habu/layout.f
 require src/habu/xref.f
 require src/compiler/workspace.f
@@ -47,6 +48,10 @@ public
 0 CWORK-VARIABLE M-DOES-OFF n                  \ published clause's byte offset, or zero
 0 CWORK-VARIABLE M-FIXED-VAL n                  \ the pending definer's value or dispatch cell
 0 CWORK-VARIABLE M-OPEN n                      \ a compilation is running
+
+\ The bytes from a `does>` keyword's start to its clause: the keyword and the
+\ blank M-DOES points just past.
+6 constant DOES-SPAN
 
 \ The definition's name is its source spelling, whole, which stays put until the
 \ next definition is recorded: no copy that a longer name could run past.
@@ -202,22 +207,36 @@ private
 : CLAUSE-CK ( n ptr u8 n -- )
    CHECKER-OWNER:DOES-REPORT -1 <> if RC-REJECT throw then ;
 
+\ The engine records the split just past the `does> ` it consumed, so a cut
+\ that is not just past a `does> ` in this source means the source and the
+\ pending definition disagree.
+: DOES-CUT-CK ( -- )
+   M-SRC @ {: src:ptr :}
+   M-DOES @ {: cut:n :}
+   cut DOES-SPAN < cut M-SRC-U @ > or if E-NFEED-CUT throw then
+   src cut DOES-SPAN - + DOES-SPAN 1- s" does>" STR=CI 0= if E-NFEED-CUT throw then
+   src cut 1- + c@ 32 <> if E-NFEED-CUT throw then ;
+
 public
 
-\ The `does>` split's head: its scan and capture. The caller then advances its
-\ own record past the `does>` token and checks the clause (CHECK-DOES-CLAUSE).
+\ The `does>` split's head: its cut check, scan and capture. The caller then
+\ advances its own record past the `does>` token and checks the clause
+\ (CHECK-DOES-CLAUSE).
 : CHECK-DOES-HEAD ( -- )
+   DOES-CUT-CK
    CHECKER-OWNER:DOES-BEGIN
    1 M-DOES-FRAME !
    M-DOES @ {: cut:n :}
-   M-SRC @ cut 6 - CHECK-PARENT
+   M-SRC @ cut DOES-SPAN - CHECK-PARENT
    TRUSTED? CERTIFYING? 0= or if drop else -1 <> if E-NCOMP-VERDICT throw then then
    CHECKER-OWNER:RECOVERY-USED? M-HEAD-RECOVERY !   \ the clause's scan starts its own
-   M-SRC @ cut 6 - 0 NFETCH:CAPTURE ;
+   M-SRC @ cut DOES-SPAN - 0 NFETCH:CAPTURE ;
 
-\ The `does>` clause, named for a refusal by the unit's name.
+\ The `does>` clause, named for a refusal by the unit's name. The checker's
+\ token ordinal first steps past the `does>` keyword between the two bodies.
 : CHECK-DOES-CLAUSE ( ptr u8 n -- n )
    {: na:ptr nu:n :}
+   CHECKER-OWNER:TAPE-ADVANCE
    M-DOES @ {: cut:n :}
    M-SRC @ cut +  M-SRC-U @ cut -  M-DOES-SIG @ M-DOES-SIG-U @
    CHECKER-OWNER:DOES-CHECK na nu CLAUSE-CK
@@ -416,7 +435,8 @@ public
    M-PUB @ PUB-DEFER = if M-FIXED-VAL @ NPUB:PUBLISH-PENDING-DEFER exit then
    M-DOES @ 0<> if
       M-DOES-FUN @ NEMIT:FUNCTION-OFFSET@ M-DOES-OFF !
-      M-DOES-FUN @ NPUB:PUBLISH-PENDING-DOES exit
+      M-DOES-FUN @ NPUB:PUBLISH-PENDING-DOES
+      0 M-DOES-FRAME ! exit
    then
    NPUB:PUBLISH-PENDING ;
 

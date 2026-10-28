@@ -3,16 +3,22 @@
 \ definition this file loads after `1 set-tier`, the test words included, is
 \ compiled by T0 through the normal Habu loop. The fixtures cover `:` and
 \ TRUSTED: bodies, quotations, strings, locals, loops, case and recursion, and
-\ each is run for its result. A CALLBACK: declaration compiled by T0 is handed
-\ to libc's qsort, which sorts a row through it, and its C entry lies between
-\ its accessor's code and the next definition's: the stub T0 appended to the
-\ accessor's emission. The refusal rows evaluate definitions T0 refuses
-\ with its own codes, which tier 1 accepts or refuses otherwise: a non-neutral
-\ immediate in a TRUSTED: body (E-T0-IMMEDIATE), a does> definer
-\ (E-T0-UNSUPPORTED) and a definition while a target shadow is open
-\ (E-T0-SHADOW); a tick of an undefined word is the engine's undefined
-\ refusal, as under tier 1; a definition after them proves a refusal leaves
-\ the compiler idle.
+\ each is run for its result. The does> definers cover a clause, an empty
+\ clause whose child keeps its address kind, quotations nested in the parent
+\ and one in the clause, clause locals and a definer chained on another, each
+\ through a child it made. A CALLBACK: declaration compiled by T0 is handed to
+\ libc's qsort, which sorts a row through it, and its C entry lies between its
+\ accessor's code and the next definition's: the stub T0 appended to the
+\ accessor's emission. The refusal rows evaluate definitions T0 refuses with
+\ its own codes, which tier 1 accepts or refuses otherwise: a non-neutral
+\ immediate in a TRUSTED: body (E-T0-IMMEDIATE), a counted string past 255
+\ bytes in a does> clause (E-T0-LITERAL; the checker refuses a non-neutral
+\ immediate in a clause even under TRUSTED:), after which the checker's
+\ rollback depth is back where it was and the definer's name defined cleanly
+\ compiles and its child runs, so the refusal rolled back the checker frame,
+\ and a definition while a target shadow is open (E-T0-SHADOW); a tick of an
+\ undefined word is the engine's undefined refusal, as under tier 1; a
+\ definition after them proves a refusal leaves the compiler idle.
 \
 \ PROCESS BOUNDARY. T0:INSTALL replaces the dispatch for the rest of the
 \ process and nothing restores it, so this file is its suite row's only file:
@@ -62,6 +68,40 @@ TRUSTED: TWICE ( n -- n ) 2 * ;
    endcase ;
 
 : FACT ( n -- n ) dup 1 > if dup 1- recurse * then ;
+
+\ ---- does> definers -----------------------------------------------------------
+: KEEPER ( n -- ) create , does> ( -- n ) @ ;
+42 KEEPER K42
+
+: CELLER ( n -- ) create , does> ( -- ptr n ) ;
+7 CELLER C7
+s" C7" XREF-FIND-CURRENT-INDEX XREF-REQUIRE-INDEX constant C7-IX
+
+: TWICER ( n -- ) [: [: 2 * ;] execute ;] execute create , does> ( -- n ) @ [: 1+ ;] execute ;
+5 TWICER T10
+
+: SCALER ( n -- ) create , does> ( n -- n ) @ {: x:n k:n :} x k * ;
+6 SCALER S6
+
+: BASE-D ( n -- ) create , does> ( -- n ) @ ;
+: CHAINED ( n -- ) BASE-D does> ( -- n ) @ 1+ ;
+9 CHAINED N9
+
+\ ---- a clause T0 refuses -----------------------------------------------------
+\ A definer whose clause holds a counted string of 256 bytes, one past what a
+\ counted length's one byte holds.
+512 constant LONG-CAP
+LONG-CAP BUFFER: LONG
+TYPED-VARIABLE LONG-U len
+
+: LONG+ ( ptr u8 n -- ) LONG LONG-CAP LONG-U BUF-APPEND ;
+
+: LONG-DEFINER ( -- ptr u8 n )
+   LONG-U BUF-RESET
+   S\" : REDO-D ( n -- ) create , does> ( -- n ) drop c\" " LONG+
+   256 0 do [char] x LONG LONG-CAP LONG-U BUF-APPEND-C loop
+   S\" \" c@ ;" LONG+
+   LONG LONG-U BUF-LEN@ ;
 
 \ ---- a callback C calls ------------------------------------------------------
 3 constant ROW-N
@@ -114,6 +154,15 @@ private
    s" case: the default arm" T-LABEL  9 PICK-CODE 30 T=
    s" recurse" T-LABEL  5 FACT 120 T= ;
 
+: DOES-CASE ( -- )
+   s" a does> child runs its clause" T-LABEL  K42 42 T=
+   s" an empty clause leaves the body address" T-LABEL  C7 @ 7 T=
+   s" an empty clause's child keeps its address kind" T-LABEL
+   C7-IX XREF-REC XREF-FLAGS DKIND:ADDR and 0<> TTRUE
+   s" parent quotations, nested, and a clause quotation" T-LABEL  T10 11 T=
+   s" clause locals" T-LABEL  7 S6 42 T=
+   s" a chained definer's clause replaces the first" T-LABEL  N9 10 T= ;
+
 : CALLBACK-CASE ( -- )
    T0-CMP TASK:SELF-CONTEXT FFI-CB:ENTRY {: fn:n :}
    s" the C entry is the stub T0 appended to the accessor" T-LABEL
@@ -130,9 +179,13 @@ private
    T0:E-T0-IMMEDIATE T=
    s" the refusal names the immediate" T-LABEL
    T0:UNSUPPORTED$ s" T0-INSTALL-TEST:NOTHING" T$=
-   s" a does> definer is refused" T-LABEL
-   s" : KEEPER ( n -- ) create , does> ( -- n ) @ ;" TEST-EVAL:RC
-   T0:E-T0-UNSUPPORTED T=
+   s" a counted string past 255 bytes in a does> clause is refused" T-LABEL
+   RBF-DEPTH @ {: depth:n :}
+   LONG-DEFINER TEST-EVAL:RC T0:E-T0-LITERAL T=
+   s" the refusal rolled back the checker frame" T-LABEL
+   RBF-DEPTH @ depth T=
+   s" the refused definer's name defined cleanly compiles and its child runs" T-LABEL
+   s" : REDO-D ( n -- ) create , does> ( -- n ) @ ; 3 REDO-D REDO-3 REDO-3" TEST-EVAL:N 3 T=
    s" a definition while a target shadow is open is refused" T-LABEL
    RTARGET:HOST-TARGET RTARGET:NATIVE-BINDING NSHADOW:OPEN
    s" : IN-SHADOW ( -- n ) 1 ;" TEST-EVAL:RC
@@ -149,6 +202,7 @@ public
 : RUN ( -- )
    T-RESET
    CALL-CASE
+   DOES-CASE
    CALLBACK-CASE
    REFUSAL-CASE
    T-REPORT ;

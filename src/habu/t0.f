@@ -25,8 +25,17 @@
 \ answers is reported as the engine's tick reports it (E-UNDEFINED). The name
 \ is the body text's first token. T0 classifies no body for the host yet: each one's reason is
 \ UNKNOWN, and a quotation's arity is unknown (-1 -1), as tier 1 answers for
-\ one it has none for. A `does>` definer is E-T0-UNSUPPORTED, and a
-\ definition while a target shadow is open E-T0-SHADOW.
+\ one it has none for. A definition while a target shadow is open is
+\ E-T0-SHADOW.
+\
+\ A `does>` DEFINER is one text split at M-DOES, the byte just past its
+\ `does> `, which the shared step checks (NDEFINITION:CHECK-DOES-HEAD). The
+\ parent is unit 0 up to the `does>` token, where it calls `does-patch` with
+\ the clause's address, 0 for an empty clause, and the clause's interned
+\ signature, then returns. The clause is the unit after every quotation of
+\ the parent text, nested ones included, as tier 1 numbers it, and its own
+\ quotations follow it; an empty clause's unit is still built. The clause
+\ binds locals of its own, read from its certificate at base M-DOES.
 \
 \ A TOKEN IS, IN THIS ORDER: a local in scope; a string opener (`s" c" ." s\"
 \ c\" .\"`); a control keyword (if else then begin until while repeat again do
@@ -411,6 +420,7 @@ DYNAMIC-BUFFER L-WIDTH n             \ its cells
 variable L-N                         \ locals in scope
 variable BINDS                       \ binds so far: the next one's certificate sequence
 variable UNIT                        \ the unit being compiled: 0 the definition
+variable CLAUSE                      \ a does> definer's clause unit, else -1
 
 : L-NAME$ ( n -- ptr u8 n ) {: k:n :} TXT$ k L-AT @ +  k L-LEN @ ;
 
@@ -467,9 +477,9 @@ variable UNIT                        \ the unit being compiled: 0 the definition
    names 1+  cells w +  true ;
 
 \ `{:` up to `:}`: the names come into scope once their cells are bound. A
-\ quotation's group is not compiled yet.
+\ quotation's group is not compiled yet; a does> clause's is.
 : DO-GROUP ( ptr u8 n -- ) {: a:ptr u:n :}
-   UNIT @ 0<> if a u UNSUPPORTED then
+   UNIT @ 0<> UNIT @ CLAUSE @ <> and if a u UNSUPPORTED then
    SLOTS-LIVE {: base:n :}
    L-N @ {: first:n :}
    0 0 begin first base 2swap GROUP-NAME 0= until {: names:n cells:n :}
@@ -819,12 +829,13 @@ TRUSTED: TYPE-ENTRY ( -- n ) ['] type ;
 \ ---- quotations ------------------------------------------------------------------
 variable NQ                         \ units met so far, the definition's included
 DYNAMIC-BUFFER QSTART n             \ where each quotation's body text starts
+variable NESTED                     \ the `[:` tokens skipped inside quotations so far
 
 \ How a token in a quotation being skipped moves the nesting depth. A string's
 \ payload and a parsing word's operand are skipped with it.
 : SKIP-TOKEN ( ptr u8 n -- n ) {: a:ptr u:n :}
    u 0= if E-T0-CONTROL throw then
-   a u s" [:" STR= if 1 exit then
+   a u s" [:" STR= if 1 NESTED +! 1 exit then
    a u QUOT-END? if -1 exit then
    a u OPENER STR-NONE <> if u 3 = SPAN drop 2drop 0 exit then
    a u SOURCE-SYNTAX:PARSING-KEYWORD? if TOKEN 2drop then
@@ -834,6 +845,12 @@ DYNAMIC-BUFFER QSTART n             \ where each quotation's body text starts
 : SKIP-QUOT ( -- )
    1 begin dup 0 > while TOKEN SKIP-TOKEN + repeat drop ;
 
+\ Push unit k's address.
+: PUSH-UNIT ( n -- ) {: k:n :}
+   ROOM ALLOC {: r:T0-EMIT:vreg :}
+   k r T0-EMIT:ADDR-QUOT
+   r PUSH-REG ;
+
 \ Push the next unit's address and skip its text, compiled after this unit.
 : DO-QUOT ( -- )
    NQ @ {: k:n :}
@@ -841,9 +858,32 @@ DYNAMIC-BUFFER QSTART n             \ where each quotation's body text starts
    POS @ k QSTART !
    k 1+ NQ !
    SKIP-QUOT
-   ROOM ALLOC {: r:T0-EMIT:vreg :}
-   k r T0-EMIT:ADDR-QUOT
-   r PUSH-REG ;
+   k PUSH-UNIT ;
+
+\ ---- the does> split -----------------------------------------------------------
+variable CUT                        \ the byte just past `does> `, or 0
+variable EMPTY-CLAUSE               \ whether no token follows the cut: the clause is empty
+
+\ The parent leaves through `does-patch` whatever the source's package scope,
+\ as tier 1 does (src/compiler/native/elaborate.f DOES-PATCH-ENTRY).
+TRUSTED: DOES-PATCH-ENTRY ( -- n ) ['] does-patch ;
+
+\ Whether no token follows the cut: the clause is empty.
+: CLAUSE-EMPTY? ( -- bool )
+   CUT @ POS !
+   TOKEN nip 0= ;
+
+\ The parent's tail, at its `does>`: `does-patch` takes the clause's entry, 0
+\ for an empty clause, and the clause's interned signature, as tier 1's
+\ (src/compiler/native/elaborate.f STAGE-DOES-PATCH). The clause is the unit
+\ after every quotation of the parent text, nested ones included.
+: DOES-TAIL ( -- )
+   NQ @ NESTED @ + CLAUSE !
+   EMPTY-CLAUSE @ if 0 PUSH-CONST else CLAUSE @ PUSH-UNIT then
+   NDEFINITION:M-DOES-SIG @ NDEFINITION:M-DOES-SIG-U @ NSTR:INTERN-SOURCE PUSH-ADDR
+   NDEFINITION:M-DOES-SIG-U @ PUSH-CONST
+   SPILL-ALL
+   DOES-PATCH-ENTRY CUT @ NDEFINITION:DOES-SPAN - T0-EMIT:CALL ;
 
 \ ---- the keyword dispatch ----------------------------------------------------
 \ By length first, so a token compares only with the keywords of its length.
@@ -980,10 +1020,11 @@ DYNAMIC-BUFFER QSTART n             \ where each quotation's body text starts
 
 \ ---- one unit --------------------------------------------------------------------
 \ Compile tokens to the end of the unit: whether a `;]` ended it rather than
-\ the end of the text.
+\ the end of the text or the split's `does>`.
 : BODY ( -- bool )
    begin
       TOKEN dup 0= if 2drop false exit then
+      over TXT$ - CUT @ NDEFINITION:DOES-SPAN - = if 2drop false exit then
       2dup QUOT-END? if 2drop true exit then
       COMPILE-TOKEN
    again ;
@@ -1007,24 +1048,57 @@ DYNAMIC-BUFFER QSTART n             \ where each quotation's body text starts
    BODY 0= if E-T0-CONTROL throw then
    FINISH ;
 
+\ A unit that binds must bind the count of locals the certificate captured at
+\ base n holds, as tier 1's BINDS-CK requires (src/compiler/native/elaborate.f).
+: BINDS-CK ( n -- ) {: base:n :}
+   BINDS @ 0= if exit then
+   BINDS @ base NFETCH:BINDS <> if E-T0-BINDS throw then ;
+
+\ Quotation units from n until every unit met is compiled: the next unit.
+: UNITS ( n -- n )
+   begin dup NQ @ < while dup QUOT 1+ repeat ;
+
+\ The does> clause, unit k, from the split to the end of the text, with its
+\ own locals and its own certificate at base CUT. An empty clause's unit is
+\ still built, with no address bound to it: the parent pushed 0.
+: DO-CLAUSE ( n -- ) {: k:n :}
+   CUT @ POS !  k 1+ NQ !  k RESET  0 BINDS !
+   EMPTY-CLAUSE @ if T0-EMIT:UNIT-OPEN else k T0-EMIT:QUOT-OPEN then
+   BODY if E-T0-CONTROL throw then
+   FINISH
+   CUT @ BINDS-CK ;
+
+\ Compile one body, split at cut when it is not 0, into the emitter's sink:
+\ the definition, its quotations, then the clause and its quotations.
+: WALK ( ptr u8 n n -- ) {: a:ptr u:n cut:n :}
+   a TXT !  u TXT-LEN !  1 NQ !  0 BINDS !
+   cut CUT !  -1 CLAUSE !  0 NESTED !
+   cut 0<> if CLAUSE-EMPTY? else false then EMPTY-CLAUSE !
+   0 POS !
+   0 RESET
+   T0-EMIT:OPEN
+   SKIP-HEAD
+   BODY if E-T0-CONTROL throw then
+   cut 0<> if
+      POS @ cut 1- <> if E-T0-CONTROL throw then
+      DOES-TAIL
+   then
+   FINISH
+   0 BINDS-CK
+   1 UNITS
+   cut 0= if drop exit then
+   CLAUSE @ <> if E-T0-CONTROL throw then
+   CLAUSE @ DO-CLAUSE
+   CLAUSE @ 1+ UNITS drop ;
+
 public
 
 \ The token the last E-T0-UNSUPPORTED or E-T0-IMMEDIATE named.
 : UNSUPPORTED$ ( -- ptr u8 n ) BAD @ BAD-LEN @ ;
 
-\ Compile one body, and then its quotations, into the emitter's sink. The
-\ body's certificate is captured. A body that binds must bind the certificate's
-\ count of locals, as tier 1's BINDS-CK requires (src/compiler/native/elaborate.f).
-: COMPILE-TEXT ( ptr u8 n -- ) {: a:ptr u:n :}
-   a TXT !  u TXT-LEN !  0 POS !  1 NQ !  0 BINDS !
-   0 RESET
-   T0-EMIT:OPEN
-   SKIP-HEAD
-   BODY if E-T0-CONTROL throw then
-   FINISH
-   1 begin dup NQ @ < while dup QUOT 1+ repeat drop
-   BINDS @ 0= if exit then
-   BINDS @ 0 NFETCH:BINDS <> if E-T0-BINDS throw then ;
+\ Compile one body with no split, and then its quotations, into the emitter's
+\ sink. The body's certificate is captured.
+: COMPILE-TEXT ( ptr u8 n -- ) 0 WALK ;
 
 using NDEFINITION
 private
@@ -1047,13 +1121,19 @@ variable SCAN-VERDICT
    SRC$ TXT-LEN ! TXT !  0 POS !
    TOKEN NAME-U ! NAME-A ! ;
 
+\ The body's scan and capture, or a does> definer's head and clause, the
+\ clause named for a refusal by the definition's name.
+: CHECK-UNIT ( -- n )
+   M-DOES @ 0<> if CHECK-DOES-HEAD NAME$ CHECK-DOES-CLAUSE exit then
+   CHECK-SOURCE ;
+
 \ The scan's verdict stands over a hook's nonzero answer; a hook's zero answer
 \ stands over the scan's, as tier 1's END-RECORDED has it.
 : SCAN ( -- )
    OBSERVE
    0 SCAN-VERDICT !
    CHECKER-OWNER:TAPE-ARM
-   [: CHECK-SOURCE M-VERDICT ! ;] [: CHECKER-OWNER:TAPE-DISARM ;] finally
+   [: CHECK-UNIT M-VERDICT ! ;] [: CHECKER-OWNER:TAPE-DISARM ;] finally
    M-VERDICT @ 0<> if SCAN-VERDICT @ M-VERDICT ! then
    DECLARE-ROW ;
 
@@ -1061,7 +1141,7 @@ variable SCAN-VERDICT
    before SOURCE-PUBLICATION-CK
    RECORD-NAME-CK
    KEEP-ARITY
-   SRC$ COMPILE-TEXT
+   SRC$ M-DOES @ WALK  CLAUSE @ M-DOES-FUN !
    NQ @ [: drop -1 -1 ;] HOST-ARITIES
    NHOST:SOURCE-FREEZE
    STUB-ARM
@@ -1077,7 +1157,6 @@ variable SCAN-VERDICT
 
 : RUN ( -- )
    NSHADOW:OPEN? if E-T0-SHADOW throw then
-   M-DOES @ 0<> if s" does>" UNSUPPORTED then
    ndict@ {: before:n :}
    SCAN
    VERDICT-CK

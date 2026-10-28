@@ -407,6 +407,8 @@ DYNAMIC-BUFFER BR-ARG n
    OUT BUF:SPAN$ drop at + c@ 31 and  d ENC-ADR  at W32!
    UNIT-BEGIN ;
 
+: UNIT-OPEN ( -- ) UNIT-BEGIN ;
+
 : RETURN ( -- ) HERE-OFF EPI+  ENC-RET W ;
 
 \ A quotation's site is kept for QUOT-OPEN; every other address is a row.
@@ -760,6 +762,7 @@ DYNAMIC-BUFFER BR-ARG n
    NVREG k T0-EMIT:VREGS-N !
    ['] OPEN k T0-EMIT:OPEN-XT !
    ['] QUOT-OPEN k T0-EMIT:QUOT-OPEN-XT !
+   ['] UNIT-OPEN k T0-EMIT:UNIT-OPEN-XT !
    ['] RETURN k T0-EMIT:RETURN-XT !
    ['] CLOSE k T0-EMIT:CLOSE-XT !
    ['] SLOT-CLOSE k T0-EMIT:SLOT-CLOSE-XT !

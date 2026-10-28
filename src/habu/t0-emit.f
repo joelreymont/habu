@@ -19,12 +19,12 @@
 \ time, per definition if need be. SELECT of an architecture no emitter
 \ provided throws E-T0-TARGET. A cell an emitter leaves unset stays unset in
 \ its own slot, whatever another emitter installed, so an operation never runs
-\ another target's code or garbage: SLOT-CLOSE and the callback stub, which
-\ not every emitter provides, throw E-T0-UNFILLED for an unset cell, and
-\ executing any other unset cell ends the process with `hb: unset quotation`
-\ (exit 86, ENGINE-ERROR:CALLABLE-ABI, src/habu/kernel-x64.f and
-\ src/habu/habu1.f). An operation called before any SELECT throws
-\ E-LAYOUT-BOUNDS (7122): no slot is selected.
+\ another target's code or garbage: UNIT-OPEN, SLOT-CLOSE and the callback
+\ stub, which not every emitter provides, throw E-T0-UNFILLED for an unset
+\ cell, and executing any other unset cell ends the process with
+\ `hb: unset quotation` (exit 86, ENGINE-ERROR:CALLABLE-ABI,
+\ src/habu/kernel-x64.f and src/habu/habu1.f). An operation called before any
+\ SELECT throws E-LAYOUT-BOUNDS (7122): no slot is selected.
 \
 \ THE SINK. OPEN begins an emission, emptying the emitter's sink and the
 \ seam's rows; CLOSE ends a unit. Once the last unit is closed, SEAL or
@@ -37,9 +37,12 @@
 \ THE UNITS. A definition and its quotations are one emission: unit 0 is the
 \ definition and starts at byte 0, and each quotation is a later unit, a
 \ function of its own that QUOT-OPEN begins where the previous unit's CLOSE
-\ left off. The emitter files each unit's start with UNIT+, and sealing files
-\ one NEMIT function per unit. `recurse` in any unit calls byte 0, the
-\ definition, as both tiers run it, and files no row.
+\ left off. A `does>` definer's clause is a later unit too, begun by QUOT-OPEN
+\ when the parent pushed its address, or by UNIT-OPEN, which binds no address,
+\ when the clause is empty and the parent pushed none. The emitter files each
+\ unit's start with UNIT+, and sealing files one NEMIT function per unit.
+\ `recurse` in any unit calls byte 0, the definition, as both tiers run it,
+\ and files no row.
 \
 \ THE ROWS are the seam's, filed by the emitter: CALL-ROW+ a call or tail site
 \ ( at kind target loc ), kind NEMIT:CALL or NEMIT:TAIL, loc the byte offset of
@@ -238,6 +241,7 @@ ARCHES TYPED-BUFFER VREGS-N n
 \ ---- the body ----------------------------------------------------------------
 ARCHES TYPED-BUFFER OPEN-XT [ -- ]
 ARCHES TYPED-BUFFER QUOT-OPEN-XT [ n -- ]
+ARCHES TYPED-BUFFER UNIT-OPEN-XT [ -- ]
 ARCHES TYPED-BUFFER RETURN-XT [ -- ]
 ARCHES TYPED-BUFFER CLOSE-XT [ -- ]
 ARCHES TYPED-BUFFER BYTES-XT [ -- ptr u8 n ]
@@ -271,6 +275,12 @@ public
 : QUOT-OPEN ( n -- )
    SLOT? if E-T0-SLOT throw then
    CUR @ QUOT-OPEN-XT @ execute ;
+
+\ Begin the next unit with no address bound to it, for a does> definer's
+\ empty clause, whose parent pushes no clause address.
+: UNIT-OPEN ( -- )
+   SLOT? if E-T0-SLOT throw then
+   CUR @ UNIT-OPEN-XT @ FILLED execute ;
 
 \ Leave the word, from the middle of its body or at its end.
 : RETURN ( -- ) CUR @ RETURN-XT @ execute ;
