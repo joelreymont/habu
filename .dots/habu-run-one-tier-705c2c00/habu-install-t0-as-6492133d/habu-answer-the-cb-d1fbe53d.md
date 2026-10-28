@@ -1,6 +1,6 @@
 ---
 title: Answer the callback thunk on x86
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-10-28T20:31:52.044889+02:00"
