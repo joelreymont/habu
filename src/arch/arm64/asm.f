@@ -237,6 +237,11 @@ public
 
 : ENC-SUB ( n n n -- n ) XR3 $CB000000 RRR ;
 
+\ The same add with the second source shifted left: `add xd, xn, xm, lsl #sh`.
+\ The shift type field (bits 23:22) stays 00 = LSL; the amount sits at bit ten.
+: ENC-ADD-LSL ( n n n n -- n )
+   ?SHIFT {: sh:n :} XR3 sh 10 lshift $8B000000 or RRR ;
+
 : ENC-AND ( n n n -- n ) XR3 $8A000000 RRR ;
 
 : ENC-ORR ( n n n -- n ) XR3 $AA000000 RRR ;
@@ -296,6 +301,11 @@ public
 : ENC-CMPI ( n n -- n )
    XR2ND ?IMM12 {: rn:n imm:n :}
    $F100001F rn 5 lshift or  imm 10 lshift or MSK ;
+
+\ compare negative immediate rn imm12 -> adds xzr: the flags of rn + imm12.
+: ENC-CMNI ( n n -- n )
+   XR2ND ?IMM12 {: rn:n imm:n :}
+   $B100001F rn 5 lshift or  imm 10 lshift or MSK ;
 
 \ svc #imm  ; ret
 : ENC-SVC ( n -- n ) ?IMM16 $D4000001 swap 5 lshift or MSK ;

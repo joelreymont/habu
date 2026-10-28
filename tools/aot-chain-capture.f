@@ -28,7 +28,7 @@
 \ reasons, both measured in a booted bin/hb: layout.f is already registered
 \ there, so its `require` adds 0 records and 0 DATA bytes and is kept only as the
 \ dependency statement; aot-arm.f adds 4. asm.f, by contrast, is NOT registered —
-\ requiring it in a booted engine compiles 178 records — which is the whole reason
+\ requiring it in a booted engine compiles its records — which is the whole reason
 \ it must be the chain that brings it in. NSTR loads inside the window too: a
 \ retained native host already carries it, while a source-only host needs its
 \ code captured with the compiler. Its fresh literal pool belongs to either
@@ -44,7 +44,7 @@
 \ The band audit trusts everything BELOW the mark to be a word the target engine
 \ has, which is true of the engine's own surface and of nothing else. Run the tool
 \ behind one other file and the capture succeeds while producing an unbootable
-\ seed: `bin/hb --load ...asm.f ...aot-chain-capture.f` marks asm.f's 178 records
+\ seed: `bin/hb --load ...asm.f ...aot-chain-capture.f` marks asm.f's records
 \ as the engine's, drops them out of the window (code span 1194680 rather than
 \ 1215872) and bakes calls to names the target has not got. So the tool checks it,
 \ and checks it against the engine's own registry rather than against a
