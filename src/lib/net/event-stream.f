@@ -199,6 +199,31 @@ CAST: DECODER>STATE ( decoder -- ptr n )
    then
    state byte ctx cb BYTE ;
 
+\ The offset of the first CR or LF in the span, else its length.
+: TERM-AT ( ptr u8 n -- n )
+   {: src:ptr u:n :}
+   0 begin dup u < while
+      dup src + c@ dup LF = swap CR = or if exit then
+      1+
+   repeat ;
+
+\ Feed the bytes before the next terminator as one append, which is what BYTE
+\ does for each of them once the BOM is settled: a pending CR is answered by
+\ the first non-LF byte. Terminators and BOM bytes go through BOM-BYTE. The
+\ answer is the number of bytes consumed.
+: STEP ( ptr n ptr u8 n ptr a [ ptr a ptr u8 n ptr u8 n -- ] -- n )
+   {: state:ptr src:ptr u:n ctx:ptr cb :}
+   state BOM@ BOM-DONE = if
+      src u TERM-AT {: run:n :}
+      run 0 > if
+         0 state CR!
+         src run BUF:N>BLEN state LINE-BUF BUF:APPEND-SPAN
+         run exit
+      then
+   then
+   state src c@ ctx cb BOM-BYTE
+   1 ;
+
 public
 
 : STORAGE-BYTES ( -- n ) SIZE ;
@@ -227,7 +252,9 @@ public
    state CHECK-LIVE
    u 0 < if E-SOURCE throw then
    u 0 > src 0= and if E-SOURCE throw then
-   u 0 ?do state src i + c@ ctx cb BOM-BYTE loop ;
+   0 begin dup u < while
+      {: at:n :} state src at + u at - ctx cb STEP at +
+   repeat drop ;
 
 : FINISH ( decoder -- )
    DECODER>STATE {: state:ptr :}

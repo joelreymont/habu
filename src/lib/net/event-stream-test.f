@@ -116,6 +116,31 @@ variable CALLS
    d SSE:CLOSE
    1 CHECK ;
 
+\ Feed src in two SENDs split at cut, then finish.
+: BOM-CUT ( ptr u8 n n -- )
+   {: src:ptr u:n cut:n :}
+   A-OPEN {: d:SSE:decoder :}
+   d src cut SEND
+   d src cut + u cut - SEND
+   d SSE:FINISH d SSE:CLOSE ;
+
+\ A leading BOM split anywhere is dropped; a leading EF or EF BB that does not
+\ finish a BOM is replayed into the line, so its field name is unknown.
+: REAL-BOM ( n -- )
+   RESET s" message" s" x" EXPECT
+   s\" \xEF\xBB\xBFdata: x\n\n" rot BOM-CUT 1 CHECK ;
+
+: EF-ONLY ( n -- )
+   RESET s\" \xEFdata: x\n\n" rot BOM-CUT 0 CHECK ;
+
+: EF-BB ( n -- )
+   RESET s\" \xEF\xBBdata: x\n\n" rot BOM-CUT 0 CHECK ;
+
+: BOM-SPLITS ( -- )
+   s\" \xEF\xBB\xBFdata: x\n\n" nip 1+ 0 ?do i REAL-BOM loop
+   s\" \xEFdata: x\n\n" nip 1+ 0 ?do i EF-ONLY loop
+   s\" \xEF\xBBdata: x\n\n" nip 1+ 0 ?do i EF-BB loop ;
+
 : MIDSTREAM-BOM ( -- )
    RESET
    s" message" s\" \xEF\xBB\xBFx" EXPECT
@@ -172,13 +197,15 @@ variable CALLS
    [: DEC-A 1 SSE:OPEN drop ;] SSE:E-STORAGE TTHROWSQ ;
 
 : RUN ( -- )
+   T-RESET
    GOT 16 BUF:N>BLEN BUF:INIT
    WANT 16 BUF:N>BLEN BUF:INIT
    BIG 16 BUF:N>BLEN BUF:INIT
    BASIC EVERY-SPLIT TWO-DECODERS EOF-DISCARD FIELDS NO-COLON
-   MIDSTREAM-BOM LARGE-EVENT INVALID-UTF8 CALLBACK-FAILURE
+   BOM-SPLITS MIDSTREAM-BOM LARGE-EVENT INVALID-UTF8 CALLBACK-FAILURE
    MISUSE BAD-SOURCE
    BIG BUF:DISPOSE WANT BUF:DISPOSE GOT BUF:DISPOSE
+   T-REPORT
    s" event-stream-test: ok" type cr ;
 
 RUN
