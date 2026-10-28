@@ -6,7 +6,10 @@
 \ nonblocking status and restores it before releasing the facility.
 \ The caller keeps a pending operation's descriptor open and its flags
 \ unchanged. Regular-file transfers run on the poll thread with pread/pwrite,
-\ so slow disk I/O delays other completions. Storage is src/lib/aio.f's.
+\ so slow disk I/O delays other completions. The records are src/lib/aio.f's;
+\ this backend's fields live in each record's REC.HOST.
+\ One poll takes every active descriptor once, so the descriptors in flight
+\ at once are bounded by Darwin's per-call bound (OPEN-MAX below).
 require src/lib/string.f
 require src/lib/aio.f
 require src/lib/le.f
@@ -23,7 +26,13 @@ private
 29 constant MAC-SPIPE
 4 constant MAC-NONBLOCK
 8 constant MAC-POLL-BYTES
-OPS-MAX 1+ constant MAC-POLL-N
+
+\ Darwin's poll(2) refuses more than OPEN_MAX (sys/syslimits.h) entries in one
+\ call with EINVAL. One entry is the wake pipe's and every other a distinct
+\ descriptor in flight, so a submission that would need one more descriptor is
+\ E-AIO-POLL-BOUND. The pollfd array is that size, mapped while the loop runs
+\ and committed only as far as the entries in use.
+10240 constant OPEN-MAX
 
 BEGIN-STRUCTURE MAC-REC-BYTES
    CELL +FIELD MR.FD
@@ -35,11 +44,32 @@ BEGIN-STRUCTURE MAC-REC-BYTES
    CELL +FIELD MR.OLD-FLAGS
    CELL +FIELD MR.OLD-SIGPIPE
    CELL +FIELD MR.SEEKABLE
+   CELL +FIELD MR.GEN               \ the generation MAC-PREPARE polled it at, or -1
+   CELL +FIELD MR.SLOT              \ its descriptor's pollfd entry that turn, or -1
 END-STRUCTURE
-OPS-MAX MAC-REC-BYTES * BUFFER: MAC-RECS
-OPS-MAX TYPED-BUFFER MAC-GEN n
-OPS-MAX TYPED-BUFFER MAC-SLOT n
-MAC-POLL-N MAC-POLL-BYTES * BUFFER: MAC-POLLS
+
+\ These fields live in the record's REC.HOST; one past it is this file's defect.
+: MAC-FITS ( -- )
+   MAC-REC-BYTES HOST-BYTES > if
+      s" aio: Darwin record fields past REC.HOST" E-AIO-STATE die
+   then ;
+MAC-FITS
+
+\ Per descriptor, under AIO-LOCK: the active records on it, and its pollfd
+\ entry in the turn that wrote it. A mapping indexed by descriptor, grown to
+\ the highest one submitted and given back with the loop.
+BEGIN-STRUCTURE FD-ROW-BYTES
+   CELL +FIELD FD.REF
+   CELL +FIELD FD.SLOT
+   CELL +FIELD FD.TURN
+END-STRUCTURE
+variable FD-ROWS                    \ the mapping's address as n, 0 when none
+variable FD-CAP                     \ the descriptors it covers
+variable FD-DISTINCT                \ the descriptors with a record on them
+variable FD-WANT                    \ the descriptor FD-GROW covers
+variable MAC-TURN
+
+PTR-VARIABLE MAC-POLLS
 variable MAC-POLL-COUNT
 8 BUFFER: MAC-SOCKERR
 create MAC-BYTE 1 c,
@@ -50,7 +80,7 @@ variable MAC-WRITE-FD
 PROCESS-SYMBOLS
 FUNCTION: MAC-FCNTL-CALL fcntl ( n n n -- i32 ) 2 VARIADIC ;FUNCTION
 FUNCTION: MAC-POLL poll ( ptr u8 n n -- i32 )
-   0 MAC-POLL-N MAC-POLL-BYTES * WRITES-BYTES
+   0 OPEN-MAX MAC-POLL-BYTES * WRITES-BYTES
 ;FUNCTION
 FUNCTION: MAC-READ read ( n ptr u8 n -- n ) 1 2 WRITES-ARG ;FUNCTION
 FUNCTION: MAC-PREAD pread ( n ptr u8 n n -- n ) 1 2 WRITES-ARG ;FUNCTION
@@ -63,8 +93,70 @@ FUNCTION: MAC-SOCKET-ERROR getsockopt ( n n n ptr u8 ptr u8 -- i32 )
    3 4 WRITES-BYTES 4 4 WRITES-BYTES
 ;FUNCTION
 
-: MR ( n -- ptr n ) MAC-REC-BYTES * MAC-RECS + CELL-VIEW ;
-: MAC-PFD ( n -- ptr u8 ) MAC-POLL-BYTES * MAC-POLLS + ;
+: MR ( n -- ptr n ) REC REC.HOST ;
+
+: MAC-PFD ( n -- ptr u8 ) {: slot:n :}
+   slot 0 < slot OPEN-MAX >= or if s" aio: poll entry" E-AIO-STATE die then
+   MAC-POLLS @ slot MAC-POLL-BYTES * + ;
+
+: MAC-POLLS-LEN ( -- NUM:alloc-byte-len )
+   OPEN-MAX MAC-POLL-BYTES * MEM:BYTES-ALLOC-LEN ;
+
+: MAC-POLLS-FREE ( -- )
+   MAC-POLLS @ MAC-POLLS-LEN MEM:RELEASE-BYTES ;
+
+: FD-ROW ( n -- ptr n ) {: fd:n :}
+   fd 0 < fd FD-CAP @ >= or if s" aio: descriptor row" E-AIO-STATE die then
+   FD-ROWS @ fd FD-ROW-BYTES * + AIO-N>PTR ;
+
+: FD-REF@ ( n -- n ) {: fd:n :}
+   fd FD-CAP @ >= if 0 exit then
+   fd FD-ROW FD.REF @ ;
+
+: FD-TABLE-LEN ( n -- NUM:alloc-byte-len )
+   FD-ROW-BYTES * MEM:BYTES-ALLOC-LEN ;
+
+: FD-TABLE-FREE ( -- )
+   FD-CAP @ 0= if exit then
+   FD-ROWS @ AIO-N>PTR BYTE-VIEW FD-CAP @ FD-TABLE-LEN MEM:RELEASE-BYTES ;
+
+\ The rows move to a mapping that covers FD-WANT, and the old one goes back at
+\ once: only a holder of AIO-LOCK reads them.
+: FD-GROW ( -- )
+   FD-WANT @ 1 + FD-CAP @ 2 * max {: cap:n :}
+   cap FD-TABLE-LEN MEM:ALLOC-BYTES drop {: rows :}
+   FD-CAP @ 0 > if
+      FD-ROWS @ AIO-N>PTR BYTE-VIEW rows FD-CAP @ FD-ROW-BYTES * BYTE-COPY
+   then
+   FD-TABLE-FREE
+   rows FFI:>CELL FD-ROWS !
+   cap FD-CAP ! ;
+
+\ Room for a record on descriptor fd, before anything is claimed: a descriptor
+\ already in flight shares its pollfd entry, and a new one needs an entry
+\ beside the wake pipe's within OPEN-MAX. Answers 0 or a code.
+: MAC-FD-ROOM ( n -- n ) {: fd:n :}
+   fd 0 < if 0 exit then
+   fd FD-REF@ 0= FD-DISTINCT @ 2 + OPEN-MAX > and if E-AIO-POLL-BOUND exit then
+   fd FD-CAP @ < if 0 exit then
+   fd FD-WANT !
+   [: FD-GROW ;] catch ;
+
+\ A record's descriptor counts from the stage that sets it to MAC-FINISH,
+\ which every active record reaches exactly once.
+: MAC-FD! ( n n -- ) {: fd:n idx:n :}
+   fd idx MR MR.FD !
+   fd 0 < if exit then
+   fd FD-ROW {: row:ptr :}
+   row FD.REF @ 0= if 1 FD-DISTINCT +! then
+   1 row FD.REF +! ;
+
+: MAC-FD-DROP ( n -- ) {: idx:n :}
+   idx MR MR.FD @ {: fd:n :}
+   fd 0 < if exit then
+   fd FD-ROW {: row:ptr :}
+   -1 row FD.REF +!
+   row FD.REF @ 0= if -1 FD-DISTINCT +! then ;
 : MAC-ACTIVE? ( n -- bool )
    REC-STATE@ dup STATE-SUBMITTED = swap STATE-FORGET = or ;
 
@@ -89,13 +181,18 @@ CAST: MAC-SOCKADDR ( n -- ptr u8 )
       else drop then
    again ;
 
-: MAC-CLAIM ( n -- n ) {: kind:n :}
-   REC-CLAIM dup 0 < if exit then {: idx:n :}
+\ A record for a stage on descriptor fd, or -1 for none, its fields cleared.
+\ Answers a code and the index, as REC-CLAIM.
+: MAC-CLAIM ( n n -- n n ) {: fd:n kind:n :}
+   fd MAC-FD-ROOM dup 0<> if -1 exit then drop
+   REC-CLAIM {: rc:n idx:n :}
+   rc 0<> if rc -1 exit then
    idx kind 1 REC-ARM
    idx MR {: row:ptr :}
    MAC-REC-BYTES 0 ?do 0 row BYTE-VIEW i + c! loop
-   -1 row MR.FD ! -1 row MR.DEADLINE !
-   idx ;
+   -1 row MR.FD ! -1 row MR.DEADLINE ! -1 row MR.GEN ! -1 row MR.SLOT !
+   fd idx MAC-FD!
+   0 idx ;
 
 \ Status flags belong to the open file description, shared by dup aliases.
 \ Save and restore around each host call under AIO-LOCK, never across waits.
@@ -120,6 +217,7 @@ CAST: MAC-SOCKADDR ( n -- ptr u8 )
 
 : MAC-FINISH ( n n -- ) {: idx:n result:n :}
    idx MAC-GIVE-FLAGS
+   idx MAC-FD-DROP
    result idx REC REC.RES !
    idx SETTLE ;
 
@@ -129,23 +227,26 @@ CAST: MAC-SOCKADDR ( n -- ptr u8 )
    $7FFFFFFFFFFFFFFF now - NS-PER-MS / min NS-PER-MS * now + ;
 
 : MAC-POLL-STAGE ( n n n -- n n ) {: fd:n events:n ms:n :}
-   KIND-POLL MAC-CLAIM dup 0 < if drop E-AIO-FULL -1 exit then {: idx:n :}
-   fd idx MR MR.FD ! events idx MR MR.EVENTS !
+   fd KIND-POLL MAC-CLAIM {: rc:n idx:n :}
+   rc 0<> if rc -1 exit then
+   events idx MR MR.EVENTS !
    ms MAC-DEADLINE idx MR MR.DEADLINE !
    fd 0 < if idx MAC-BADF negate MAC-FINISH then
    MAC-NOTIFY idx ;
 
 : MAC-TIMEOUT-STAGE ( n -- n n ) {: ms:n :}
-   KIND-TIMEOUT MAC-CLAIM dup 0 < if drop E-AIO-FULL -1 exit then {: idx:n :}
+   -1 KIND-TIMEOUT MAC-CLAIM {: rc:n idx:n :}
+   rc 0<> if rc -1 exit then
    ms MAC-DEADLINE idx MR MR.DEADLINE !
    ms 0 < if idx MAC-INVAL negate MAC-FINISH then
    MAC-NOTIFY idx ;
 
 : MAC-XFER-STAGE ( n ptr u8 NUM:alloc-byte-len n n n -- n n )
    {: fd:n buf:ptr cap:NUM:alloc-byte-len count:n off:n kind:n :}
-   kind MAC-CLAIM dup 0 < if drop E-AIO-FULL -1 exit then {: idx:n :}
-   buf idx REC-BUF ! cap idx REC-BUF-LEN ! 1 idx REC REC.HOLD !
-   fd idx MR MR.FD ! count idx MR MR.COUNT ! off idx MR MR.OFFSET !
+   fd kind MAC-CLAIM {: rc:n idx:n :}
+   rc 0<> if rc -1 exit then
+   buf idx REC-BUF ! cap idx REC-BUF-LEN! 1 idx REC REC.HOLD !
+   count idx MR MR.COUNT ! off idx MR MR.OFFSET !
    kind KIND-READ = if EV-READABLE else EV-WRITABLE then idx MR MR.EVENTS !
    fd 1 0 MAC-FCNTL dup 0 < if idx swap MAC-FINISH MAC-NOTIFY idx exit then drop
    count 0= if idx 0 MAC-FINISH MAC-NOTIFY idx exit then
@@ -154,8 +255,9 @@ CAST: MAC-SOCKADDR ( n -- ptr u8 )
    MAC-NOTIFY idx ;
 
 : MAC-SOCKET-STAGE ( n n n n -- n n ) {: fd:n addr:n len:n kind:n :}
-   kind MAC-CLAIM dup 0 < if drop E-AIO-FULL -1 exit then {: idx:n :}
-   fd idx MR MR.FD ! len idx MR MR.COUNT !
+   fd kind MAC-CLAIM {: rc:n idx:n :}
+   rc 0<> if rc -1 exit then
+   len idx MR MR.COUNT !
    fd 0 < if idx MAC-BADF negate MAC-FINISH MAC-NOTIFY idx exit then
    kind KIND-ACCEPT = if EV-READABLE else EV-WRITABLE then idx MR MR.EVENTS !
    kind KIND-CONNECT = if
@@ -180,13 +282,20 @@ CAST: MAC-SOCKADDR ( n -- ptr u8 )
       rd close wr close E-AIO-SETUP throw
    then ;
 
-: MAC-SETUP ( -- )
-   [: MAC-PIPE-HELD ;] FD-LOCK:WITH
-   OPS-MAX 0 ?do 0 i MR MR.OWNS-FLAGS ! loop ;
+: MAC-PIPE ( -- )
+   [: MAC-PIPE-HELD ;] FD-LOCK:WITH ;
 
+: MAC-SETUP ( -- )
+   MAC-POLLS-LEN MEM:ALLOC-BYTES drop MAC-POLLS !
+   [: MAC-PIPE ;] catch dup 0<> if MAC-POLLS-FREE throw then drop ;
+
+\ STOP has seen every record free, so no descriptor is counted.
 : MAC-CLOSE ( -- )
    MAC-READ-FD @ close MAC-WRITE-FD @ close
-   -1 MAC-READ-FD ! -1 MAC-WRITE-FD ! ;
+   -1 MAC-READ-FD ! -1 MAC-WRITE-FD !
+   MAC-POLLS-FREE
+   FD-TABLE-FREE
+   0 FD-ROWS ! 0 FD-CAP ! 0 FD-DISTINCT ! ;
 
 : MAC-TRANSFER ( n -- n ) {: idx:n :}
    idx MR {: row:ptr :}
@@ -230,33 +339,36 @@ CAST: MAC-SOCKADDR ( n -- ptr u8 )
    slot MAC-PFD {: out:ptr :}
    fd out LE:U32! events out 4 + LE:U16! 0 out 6 + LE:U16! ;
 
-\ poll's nfds is bounded by the host descriptor limit, even for fd=-1 rows.
-\ Only distinct active descriptors occupy slots; timers occupy none.
+\ One entry per distinct descriptor, its events the union of the records on it;
+\ timers occupy none. The descriptor's row says whether this turn has written
+\ its entry yet.
 : MAC-POLL-SLOT ( n n -- n ) {: fd:n events:n :}
-   MAC-POLL-COUNT @ 0 ?do
-      i MAC-PFD LE:S32@ fd = if
-         i MAC-PFD 4 + dup LE:U16@ events or swap LE:U16!
-         i unloop exit
-      then
-   loop
+   fd FD-ROW {: row:ptr :}
+   row FD.TURN @ MAC-TURN @ = if
+      row FD.SLOT @ MAC-PFD 4 + dup LE:U16@ events or swap LE:U16!
+      row FD.SLOT @ exit
+   then
    MAC-POLL-COUNT @ {: slot:n :}
    fd events slot MAC-PFD!
+   MAC-TURN @ row FD.TURN !
+   slot row FD.SLOT !
    1 MAC-POLL-COUNT +! slot ;
 
 \ Snapshot each record's generation while holding the facility. A cancelled
 \ record may be reused while poll is asleep; only its matching generation runs.
 : MAC-PREPARE ( -- n n )
+   1 MAC-TURN +!
    MAC-READ-FD @ EV-READABLE 0 MAC-PFD!
    1 MAC-POLL-COUNT !
    -1
-   OPS-MAX 0 ?do
-      -1 i MAC-GEN !
-      -1 i MAC-SLOT !
+   REC-CAP @ 0 ?do
+      i MR {: row:ptr :}
+      -1 row MR.GEN !
+      -1 row MR.SLOT !
       i MAC-ACTIVE? if
-         i REC REC.GEN @ i MAC-GEN !
-         i MR {: row:ptr :}
+         i REC REC.GEN @ row MR.GEN !
          row MR.FD @ 0 >= if
-            row MR.FD @ row MR.EVENTS @ MAC-POLL-SLOT i MAC-SLOT !
+            row MR.FD @ row MR.EVENTS @ MAC-POLL-SLOT row MR.SLOT !
          then
          row MR.DEADLINE @ dup 0 >= if
             mono-ns - 0 max NS-PER-MS /mod swap 0<> if 1+ then
@@ -268,9 +380,9 @@ CAST: MAC-SOCKADDR ( n -- ptr u8 )
 
 : MAC-COLLECT ( -- )
    0 MAC-PFD 6 + LE:U16@ EV-READABLE and 0<> if MAC-CLEAR-WAKE then
-   OPS-MAX 0 ?do
-      i MAC-ACTIVE? i REC REC.GEN @ i MAC-GEN @ = and if
-         i MAC-SLOT @ dup 0 >= if
+   REC-CAP @ 0 ?do
+      i MAC-ACTIVE? i REC REC.GEN @ i MR MR.GEN @ = and if
+         i MR MR.SLOT @ dup 0 >= if
             MAC-PFD 6 + LE:U16@ i MR MR.EVENTS @ $38 or and
             dup 0 <> if i swap MAC-SERVICE else drop then
          else drop then
@@ -285,7 +397,7 @@ CAST: MAC-SOCKADDR ( n -- ptr u8 )
 : MAC-LOOP ( -- )
    begin
       AIO-LOCK TASK:GET MAC-PREPARE {: timeout:n slots:n :} AIO-LOCK TASK:RELEASE
-      MAC-POLLS slots timeout MAC-POLL MAC-RESULT
+      MAC-POLLS @ slots timeout MAC-POLL MAC-RESULT
       dup 0 < if ERR-INTR negate <> if E-AIO-ENTER throw then else drop then
       AIO-LOCK TASK:GET MAC-COLLECT AIO-LOCK TASK:RELEASE
       RING-STOP atomic@ 0 <> if exit then

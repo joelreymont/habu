@@ -1068,6 +1068,11 @@ SUITE aio-uring
    src/lib/aio-test.f
 ;SUITE
 
+\ The aio capture cleanup of grown records and group rows, in child processes.
+SUITE aio-capture-sweep
+   test/aio-capture-sweep.f
+;SUITE
+
 \ Process signals on the engine's baked stub and a self-pipe.
 SUITE process-signals
    src/lib/signal-test.f

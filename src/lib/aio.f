@@ -6,10 +6,11 @@
 \ each finished operation, so a thousand waiters cost one thread and no
 \ semaphore each.
 \
-\ STORAGE CLASS. PROCESS-WIDE: one ring, one fixed record table and one loop
-\ task serve the whole image, and every record access but the free claim runs
-\ under one TASK:FACILITY. The one task-local row is the flag that says this
-\ task has registered its cleanup. A ticket belongs to the task that submitted
+\ STORAGE CLASS. PROCESS-WIDE: one ring, one record table and one loop task
+\ serve the whole image, and every claim, release and growth of a record runs
+\ under one TASK:FACILITY. The table grows by chunks that never move, because
+\ the kernel holds the address of a record's timespec. The one task-local row
+\ is the flag that says this task has registered its cleanup. A ticket belongs to the task that submitted
 \ it and only that task may AWAIT it.
 \
 \ START LAST. The loop is a live task, so a program defines every word first
@@ -30,6 +31,7 @@ require src/lib/ffi-abi.f
 require src/lib/codegen.f             \ the one stderr line a refused syscall prints
 require src/lib/num-types.f           \ the ms role the timeouts carry
 require src/lib/task.f
+require src/lib/image-lifecycle.f    \ the capture sweep of grown record and group chunks
 require src/lib/adt/result.f          \ the loop task's join answers result<n,n>
 
 package AIO
@@ -42,8 +44,8 @@ public
 \ past its record's reuse names a generation no record has: E-AIO-STATE.
 NEWTYPE ticket
 
-\ A set of tickets one AWAIT-ANY waits on, as the index of a row this package
-\ allotted for a GROUP definition.
+\ A set of tickets one AWAIT-ANY waits on, as the index a GROUP definition
+\ was given.
 NEWTYPE group
 
 \ The handle a READ or a WRITE answers with. It is a second type and not a
@@ -63,20 +65,6 @@ SUMTYPE outcome
    VARIANT refused n ;VARIANT
 ;SUMTYPE
 
-\ The two capacities, public because a caller sizes its own work against them
-\ and private below because every record and group word is bounded by them.
-
-\ The records, which is the ceiling on operations in flight at once: a poll with
-\ a deadline holds two (its own and its link timeout's), every other operation
-\ one, a cancel one until its own completion. Past it a submission is
-\ E-AIO-FULL. A program that parks a known number of tasks in waits can refuse
-\ a count that cannot fit before it starts them.
-$100 constant OPS-MAX
-
-\ The tickets one group holds, so a caller that fills a group itself can stop
-\ before GROUP+ refuses.
-$40 constant GROUP-MAX
-
 private
 
 CAST: >TICKET ( n -- ticket )
@@ -86,10 +74,18 @@ CAST: GROUP>N ( group -- n )
 CAST: >XFER ( n -- xfer )
 CAST: XFER>N ( xfer -- n )
 
-\ The extent MEM:ALLOC-BYTES answered, as the number the bounds check and the
-\ SQE need. The same erasure src/lib/memory.f makes for mmap and munmap; no raw
-\ value escapes, and nothing here mints the role.
+\ The extent MEM:ALLOC-BYTES answered, as the number the bounds check, the SQE
+\ and a record need. The same erasure src/lib/memory.f makes for mmap and
+\ munmap; the record's number goes back through MEM:BYTES-ALLOC-LEN.
 CAST: ALLOC-LEN>N ( NUM:alloc-byte-len -- n )
+
+\ A record's two pointer cells, as the slots they are: the owner's TCB, as
+\ TASK:WAKE takes it, and a transfer's allocation.
+CAST: OWNER-SLOT ( ptr n -- ptr ptr n )
+CAST: BUF-SLOT ( ptr n -- ptr ptr u8 )
+
+\ A record chunk, which this module names by address as n: 0 ends the chain.
+CAST: AIO-N>PTR ( n -- ptr n )
 
 \ ---- the kernel ABI ----------------------------------------------------------
 \ Every number below is read from /usr/include/linux/io_uring.h,
@@ -98,12 +94,12 @@ CAST: ALLOC-LEN>N ( NUM:alloc-byte-len -- n )
 425 constant NR-SETUP
 426 constant NR-ENTER
 
-\ The ring is sized for the public OPS-MAX above: one submission entry per
-\ operation in flight and two completion entries per record, because a linked
-\ pair posts two.
+\ The ring's sizes. Each record in flight owes at most one completion entry of
+\ its own (a linked poll's second is its link record's), so the completion ring
+\ bounds the records in flight (URING-CLAIM below). A submission entry is
+\ held only from a stage's publish to its enter.
 $100 constant AIO-ENTRIES           \ 256 submission entries
 $200 constant AIO-CQ-ENTRIES        \ 512 completion entries
-$10 constant GROUP-DEFS             \ GROUP definitions one image holds
 
 8 constant SETUP-CQSIZE             \ IORING_SETUP_CQSIZE
 1 constant ENTER-GETEVENTS          \ IORING_ENTER_GETEVENTS
@@ -174,6 +170,10 @@ $10 constant SPEC-BYTES             \ struct __kernel_timespec: two __s64
 1000000 constant NS-PER-MS
 
 \ ---- record state and kind ---------------------------------------------------
+\ The user_data of the NOP that wakes the loop for its stop: all ones, which no
+\ record index reaches.
+-1 constant NOP-ID
+
 0 constant STATE-FREE
 1 constant STATE-SUBMITTED
 2 constant STATE-DONE
@@ -200,6 +200,8 @@ create KIND-OPS
       if s" aio: operation kind" E-AIO-STATE die then
    KIND-OPS kind cells + @ ;
 
+11 cells constant HOST-BYTES
+
 BEGIN-STRUCTURE REC-BYTES
    CELL +FIELD REC.STATE
    CELL +FIELD REC.RES
@@ -208,34 +210,66 @@ BEGIN-STRUCTURE REC-BYTES
    CELL +FIELD REC.PENDING          \ completions still owed: 2 for a linked poll
    CELL +FIELD REC.PEER             \ the link's record, or -1
    CELL +FIELD REC.TIMED-OUT        \ the link fired, so -ECANCELED means timed out
-   CELL +FIELD REC.HOLD             \ this record owns the allocation in its two rows
-   CELL +FIELD REC.GEN              \ the handle's other half, bumped by REC-FREE
+   CELL +FIELD REC.HOLD             \ REC.BUF and REC.BUF-LEN are this record's
+   CELL +FIELD REC.GEN              \ the handle's other half, bumped by REC-RESET
+   CELL +FIELD REC.OWNER            \ the submitting task, as TASK:WAKE takes it
+   \ The allocation a transfer holds: the pointer MEM:ALLOC-BYTES answered and
+   \ its extent. REC.HOLD says the pair is this record's to give back. It is
+   \ set with the pair, before the entry is published, because once an entry
+   \ is in the ring the kernel may run it whether or not the io_uring_enter
+   \ that offered it was refused; TAKE-XFER clears it when the caller gets the
+   \ pair back, and REC-DISCARD when the loop releases the pair.
+   CELL +FIELD REC.BUF
+   CELL +FIELD REC.BUF-LEN
    SPEC-BYTES +FIELD REC.SPEC       \ the timespec a TIMEOUT or a link submits
+   HOST-BYTES +FIELD REC.HOST       \ the backend's own fields (src/lib/aio-macos.f)
+END-STRUCTURE
+
+\ The records live in a chain of chunks: a link cell, then the records. The
+\ first chunk is static and each grown one holds as many records as all before
+\ it plus RECS-FIRST, so REC passes at most log2 links. A chunk never moves
+\ or goes back while the process runs, so a record's address is stable for
+\ the kernel and for the owner tasks that read a record without the facility.
+$40 constant RECS-FIRST
+CELL constant CHUNK-HEAD
+
+\ A group's entry: the tickets it holds, the row they are in and the task
+\ that holds them. The entries live in a chain of chunks of GROUPS-FIRST each,
+\ the first static; a chunk is appended when a group past the chain is first
+\ used, without the facility, so the chunks are one size and an append that
+\ loses a race is only spare room. The task whose GROUP+ finds a group empty
+\ claims G.OWNER and holds the group until its count is back to zero; until
+\ then GROUP+, GROUP- and AWAIT-ANY from any other task are E-AIO-STATE before
+\ they read the row, so only the owner reads the row or moves it when GROUP+
+\ doubles it.
+$10 constant GROUPS-FIRST
+$40 constant ROW-FIRST
+
+BEGIN-STRUCTURE G-BYTES
+   CELL +FIELD G.COUNT              \ the tickets the group holds
+   CELL +FIELD G.CAP                \ the handle cells its row holds
+   CELL +FIELD G.ROW                \ the row's address as n, or 0 for none
+   \ The holding task's region, TASK:SELF-CONTEXT, or 0 while empty. Not
+   \ TASK:SELF-N: the main thread's is 0.
+   CELL +FIELD G.OWNER
 END-STRUCTURE
 
 \ BUFFER: allots a zeroed buffer on a cell-rounded address, which is the
 \ alignment the record states need: REC.STATE is read and written with
-\ atomic@ / atomic! / atomic-cas, and those want their cell aligned.
-OPS-MAX REC-BYTES * BUFFER: AIO-RECS
-GROUP-DEFS GROUP-MAX 1 + * cells BUFFER: AIO-GROUPS
+\ atomic@ / atomic! / atomic-cas, and those want their cell aligned. A grown
+\ chunk is a mapping, page-aligned.
+CHUNK-HEAD RECS-FIRST REC-BYTES * + BUFFER: AIO-RECS
+CHUNK-HEAD GROUPS-FIRST G-BYTES * + BUFFER: AIO-GROUPS
 PARAMS-BYTES BUFFER: PARAMS
 create NL-BYTE $0A c,
 
-\ The owner of each record as the TCB pointer TASK:WAKE takes. A declared row,
-\ so an owner is stored and read as a pointer and this module needs no address
-\ cast of its own to wake one.
-OPS-MAX TYPED-BUFFER REC-OWNER ptr n
-
-\ The allocation a transfer record holds, in its own typed rows: the pointer
-\ MEM:ALLOC-BYTES answered and the extent it answered with it. Neither is a
-\ number here, so the length cannot be confused with the transfer count beside
-\ it and the pointer needs no cast. REC.HOLD says the rows are this record's to
-\ give back. It is set with the rows, before the entry is published, because
-\ once an entry is in the ring the kernel may run it whether or not the
-\ io_uring_enter that offered it was refused; TAKE-XFER clears it when the
-\ caller gets the pair back, and REC-DISCARD when the loop releases the pair.
-OPS-MAX TYPED-BUFFER REC-BUF ptr u8
-OPS-MAX TYPED-BUFFER REC-BUF-LEN NUM:alloc-byte-len
+\ The records the published chunks hold. Grown under the facility, after the
+\ chunk's link; read with atomic@ by an owner checking a handle.
+variable REC-CAP
+RECS-FIRST REC-CAP !
+variable REC-LIVE                   \ records claimed and not yet freed: URING-CLAIM's bound
+variable GEN-FLOOR                  \ the generation a grown chunk's records start at
+variable MAPS-ARMED                 \ the capture sweep below is registered
 
 variable GROUP-N
 variable RING-FD
@@ -251,6 +285,7 @@ variable SQ-TAIL-OFF
 variable SQ-HEAD-OFF
 variable SQ-ARRAY-OFF
 variable CQ-MASK
+variable CQ-ENTRIES-N
 variable CQ-HEAD-OFF
 variable CQ-TAIL-OFF
 variable CQ-CQES-OFF
@@ -362,37 +397,205 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
    CQ-CQES-OFF @ head CQ-MASK @ and CQE-BYTES * + CQE-BYTES CQ-AT ;
 
 \ ---- records -----------------------------------------------------------------
+: CHUNK-FIRST ( -- n )
+   AIO-RECS CELL-VIEW FFI:>CELL ;
+
+: CHUNK-NEXT ( n -- n )
+   AIO-N>PTR atomic@ ;
+
+: CHUNK-REC ( n n -- ptr n ) {: c:n k:n :}
+   c CHUNK-HEAD + k REC-BYTES * + AIO-N>PTR ;
+
+: CHUNK-LEN ( n -- NUM:alloc-byte-len )
+   REC-BYTES * CHUNK-HEAD + MEM:BYTES-ALLOC-LEN ;
+
+: CHUNK-LAST ( -- n )
+   CHUNK-FIRST begin dup CHUNK-NEXT dup 0<> while nip repeat drop ;
+
+\ An index past the published chunks is this module's own defect.
+: CHUNK-AFTER ( n -- n )
+   CHUNK-NEXT dup 0= if s" aio: record index" E-AIO-STATE die then ;
+
+\ The walk carries the chunk, the index left and the chunk's record count.
 : REC ( n -- ptr n ) {: idx:n :}
-   idx 0 < idx OPS-MAX >= or if s" aio: record index" E-AIO-STATE die then
-   AIO-RECS CELL-VIEW idx REC-BYTES * + ;
+   idx 0 < if s" aio: record index" E-AIO-STATE die then
+   CHUNK-FIRST idx RECS-FIRST
+   begin 2dup >= while
+      swap over - swap 2 *
+      rot CHUNK-AFTER -rot
+   repeat
+   drop CHUNK-REC ;
 
 : REC-STATE@ ( n -- n )
    REC REC.STATE atomic@ ;
 
+: REC-OWNER ( n -- ptr ptr n )
+   REC REC.OWNER OWNER-SLOT ;
+
+: REC-BUF ( n -- ptr ptr u8 )
+   REC REC.BUF BUF-SLOT ;
+
+: REC-BUF-LEN! ( NUM:alloc-byte-len n -- ) {: cap:NUM:alloc-byte-len idx:n :}
+   cap ALLOC-LEN>N idx REC REC.BUF-LEN ! ;
+
+: REC-BUF-LEN@ ( n -- NUM:alloc-byte-len )
+   REC REC.BUF-LEN @ MEM:BYTES-ALLOC-LEN ;
+
+\ A grown chunk is this process's: a capture gives it back so the image carries
+\ only the static first chunk. A record in flight in one is the program's
+\ defect, named here: await or cancel every operation before a capture.
+\ GEN-FLOOR rises past every generation the chunk carried, so the chunk that
+\ grows in its place mints none of them again and a handle kept across the
+\ capture stays stale.
+: CHUNK-RETIRE ( n n -- ) {: c:n len:n :}
+   len 0 ?do
+      c i CHUNK-REC REC.STATE atomic@ STATE-FREE <> if
+         s" aio: operation in flight at capture - await or cancel it before the build or snapshot captures"
+         E-AIO-STATE die
+      then
+      c i CHUNK-REC REC.GEN @ 1 + GEN-FLOOR @ max GEN-FLOOR !
+   loop
+   c AIO-N>PTR BYTE-VIEW len CHUNK-LEN MEM:RELEASE-BYTES ;
+
+\ The walk carries the next chunk and the record count of the one after.
+: RECS-SWEEP ( -- )
+   CHUNK-FIRST CHUNK-NEXT RECS-FIRST 2 *
+   0 CHUNK-FIRST AIO-N>PTR atomic!
+   begin over 0<> while
+      over CHUNK-NEXT -rot
+      swap over CHUNK-RETIRE 2 *
+   repeat
+   2drop
+   RECS-FIRST REC-CAP atomic! ;
+
+\ ---- group entries -----------------------------------------------------------
+: GROUPS-HEAD ( -- n )
+   AIO-GROUPS CELL-VIEW FFI:>CELL ;
+
+: G-AT ( n n -- ptr n ) {: c:n k:n :}
+   c CHUNK-HEAD + k G-BYTES * + AIO-N>PTR ;
+
+: G-CHUNK-LEN ( -- NUM:alloc-byte-len )
+   GROUPS-FIRST G-BYTES * CHUNK-HEAD + MEM:BYTES-ALLOC-LEN ;
+
+: ROW-LEN ( n -- NUM:alloc-byte-len )
+   cells MEM:BYTES-ALLOC-LEN ;
+
+: ROW-RELEASE ( ptr n -- ) {: e:ptr :}
+   e G.ROW @ 0= if exit then
+   e G.ROW @ AIO-N>PTR BYTE-VIEW e G.CAP @ ROW-LEN MEM:RELEASE-BYTES ;
+
+\ A group still holding a ticket at capture holds a handle no record will carry
+\ in the restored image: the program's defect, named as CHUNK-RETIRE names one.
+: G-RETIRE ( ptr n -- ) {: e:ptr :}
+   e G.COUNT @ 0<> if
+      s" aio: group holds a ticket at capture - await or remove it before the build or snapshot captures"
+      E-AIO-STATE die
+   then
+   e ROW-RELEASE
+   0 e G.ROW !
+   0 e G.CAP ! ;
+
+: G-CHUNK-RETIRE ( n -- ) {: c:n :}
+   GROUPS-FIRST 0 ?do c i G-AT G-RETIRE loop ;
+
+\ Every row goes back and every appended chunk with it; the definitions stay,
+\ and a group used again after the capture maps what it needs then.
+: GROUPS-SWEEP ( -- )
+   GROUPS-HEAD dup G-CHUNK-RETIRE CHUNK-NEXT
+   0 GROUPS-HEAD AIO-N>PTR atomic!
+   begin dup 0<> while
+      dup G-CHUNK-RETIRE
+      dup CHUNK-NEXT swap AIO-N>PTR BYTE-VIEW G-CHUNK-LEN MEM:RELEASE-BYTES
+   repeat
+   drop ;
+
+: MAPS-SWEEP ( -- )
+   RECS-SWEEP
+   GROUPS-SWEEP
+   0 MAPS-ARMED atomic! ;
+
+\ Armed before a chunk or row is mapped, so no mapping exists without its
+\ cleanup; the flag is set only after REGISTER completes, as src/lib/task.f's
+\ SEM-CHUNKS-ARM.
+: MAPS-ARM ( -- )
+   MAPS-ARMED atomic@ 0<> if exit then
+   [: MAPS-SWEEP ;] IMAGE-LIFECYCLE:REGISTER
+   1 MAPS-ARMED atomic! ;
+
+\ Links a chunk after the last one. Two tasks appending at the same moment each
+\ link their own; the one that loses the race walks on to the new last.
+: G-CHUNK-APPEND ( n -- ) {: c:n :}
+   GROUPS-HEAD
+   begin
+      dup 0 c rot AIO-N>PTR atomic-cas
+      dup 0<>
+   while nip repeat
+   2drop ;
+
+\ The chunk after that one, appending a fresh one when there is none: a fresh
+\ mapping is zero, every entry empty.
+: G-NEXT ( n -- n ) {: c:n :}
+   c CHUNK-NEXT dup 0<> if exit then drop
+   MAPS-ARM
+   G-CHUNK-LEN MEM:ALLOC-BYTES drop FFI:>CELL G-CHUNK-APPEND
+   c CHUNK-NEXT ;
+
+: G-ENTRY ( n -- ptr n ) {: g:n :}
+   g 0 < g GROUP-N @ >= or if E-AIO-GROUP throw then
+   GROUPS-HEAD g
+   begin dup GROUPS-FIRST >= while
+      GROUPS-FIRST - swap G-NEXT swap
+   repeat
+   G-AT ;
+
+\ A fresh mapping is zero: every record free. The chunk is linked once its
+\ records are whole, and REC-CAP grows after the link, so a reader that sees
+\ the capacity finds the chunk.
+: REC-GROW ( -- )
+   MAPS-ARM
+   REC-CAP @ RECS-FIRST + {: len:n :}
+   len CHUNK-LEN MEM:ALLOC-BYTES drop FFI:>CELL {: c:n :}
+   len 0 ?do
+      -1 c i CHUNK-REC REC.PEER !
+      GEN-FLOOR @ c i CHUNK-REC REC.GEN !
+   loop
+   c CHUNK-LAST AIO-N>PTR atomic!
+   REC-CAP @ len + REC-CAP atomic! ;
+
 \ ---- handles -----------------------------------------------------------------
-\ A ticket and an xfer are `gen OPS-MAX * idx +`: the record they name and the
-\ generation that record carried when the handle was minted. REC-FREE bumps the
-\ generation, so a handle kept past its record's reuse names a generation no
-\ record has and OWNED-CHECK refuses it - which the index and the owner alone
-\ cannot do, because a record reclaimed by the same task has both of them right.
-\ The generation is unbounded and the product wraps modularly, which is fine: a
-\ generation only has to differ from the ones live handles still carry, and one
-\ record would have to be freed 2^55 times in one run for the product to leave
-\ the cell. Division here is symmetric (-1 OPS-MAX mod is -1), so a handle that
-\ did wrap past the top decodes to a negative index, which OWNED-CHECK refuses.
+\ A ticket and an xfer name the record they were minted over and the
+\ generation that record carried then. REC-RESET bumps the generation, so a
+\ handle kept past its record's reuse names a generation no record has and
+\ OWNED-CHECK refuses it - which the index and the owner alone cannot do,
+\ because a record reclaimed by the same task has both of them right.
+\ The handle describes itself, so the table can grow without a bound: the top
+\ HANDLE-TOP..63 bits hold w, the bit width of the index; the low w bits the
+\ index; the bits between the generation modulo 2^(HANDLE-TOP-w). A record
+\ is at least 64 bytes, so no address space holds an index that leaves fewer
+\ than a few dozen generation bits, and a generation only has to differ from
+\ the ones live handles still carry.
 \ A mint reads the record's generation after the facility is released, which is
 \ safe: between the stage and the mint the record is submitted and this task's,
 \ and REC-FREE reaches a record only as its owner's TAKE, as the last completion
 \ of a forgotten one, as a link record, as a staging failure that mints nothing,
 \ or as START clearing the whole table.
+58 constant HANDLE-TOP
+
+: IDX-WIDTH ( n -- n )
+   0 swap begin dup 0<> while 1 rshift swap 1 + swap repeat drop ;
+
+: LOW-BITS ( n -- n )
+   1 swap lshift 1 - ;
+
 : IDX>HANDLE ( n -- n ) {: idx:n :}
-   idx REC REC.GEN @ OPS-MAX * idx + ;
+   idx IDX-WIDTH {: w:n :}
+   idx REC REC.GEN @ HANDLE-TOP w - LOW-BITS and w lshift
+   idx or
+   w HANDLE-TOP lshift or ;
 
-: HANDLE>IDX ( n -- n )
-   OPS-MAX mod ;
-
-: HANDLE>GEN ( n -- n )
-   OPS-MAX / ;
+: HANDLE>IDX ( n -- n ) {: h:n :}
+   h h HANDLE-TOP rshift LOW-BITS and ;
 
 : AIO-NULL ( -- ptr n )
    NULL$ drop CELL-VIEW ;
@@ -400,13 +603,11 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
 : AIO-NULL-BYTES ( -- ptr u8 )
    NULL$ drop ;
 
-\ The buffer rows: only the pointer is cleared, because REC.HOLD is what says
-\ the pair is readable and nothing in this package mints an alloc-byte-len to
-\ clear the extent row with. A record whose HOLD is zero never has its extent
-\ read.
+\ Only the buffer pointer is cleared, because REC.HOLD is what says the pair is
+\ readable. A record whose HOLD is zero never has its extent read.
 \ The generation is bumped here and nowhere else, before the state goes free, so
 \ every handle over this record is stale from the moment somebody can claim it.
-: REC-FREE ( n -- ) {: idx:n :}
+: REC-RESET ( n -- ) {: idx:n :}
    idx REC {: r:ptr :}
    0 r REC.RES ! 0 r REC.FLAGS ! 0 r REC.TIMED-OUT !
    0 r REC.PENDING ! -1 r REC.PEER ! KIND-POLL r REC.KIND !
@@ -415,6 +616,10 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
    AIO-NULL-BYTES idx REC-BUF !
    AIO-NULL idx REC-OWNER !
    STATE-FREE r REC.STATE atomic! ;
+
+: REC-FREE ( n -- )
+   REC-RESET
+   REC-LIVE @ 1 - REC-LIVE atomic! ;
 
 \ Release the allocation a record still holds, and then free the record. THE
 \ ONLY PLACE A TRANSFER'S ALLOCATION IS RELEASED BY THIS MODULE, and it runs at
@@ -426,21 +631,43 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
 \ of the owner.
 : REC-DISCARD ( n -- ) {: idx:n :}
    idx REC REC.HOLD @ 0 <> if
-      idx REC-BUF @ idx REC-BUF-LEN @ MEM:RELEASE-BYTES
+      idx REC-BUF @ idx REC-BUF-LEN@ MEM:RELEASE-BYTES
       0 idx REC REC.HOLD !
    then
    idx REC-FREE ;
 
-\ One claim wins: the state cell moves FREE -> SUBMITTED in one step, so two
-\ tasks submitting at the same moment are handed different records. -1 when the
-\ table is full.
-: REC-CLAIM ( -- n )
-   OPS-MAX 0 ?do
-      STATE-FREE STATE-SUBMITTED i REC REC.STATE atomic-cas STATE-FREE = if
-         i unloop exit
+\ The first free record of the chunk at c, whose records start at index base,
+\ claimed, or -1. One claim wins: the state cell moves FREE -> SUBMITTED in one
+\ step.
+: CHUNK-CLAIM ( n n n -- n ) {: c:n base:n len:n :}
+   len 0 ?do
+      STATE-FREE STATE-SUBMITTED c i CHUNK-REC REC.STATE atomic-cas STATE-FREE = if
+         base i + unloop exit
       then
    loop
    -1 ;
+
+\ The walk carries the chunk, its first index and its record count.
+: REC-FIND ( -- n )
+   CHUNK-FIRST 0 RECS-FIRST
+   begin
+      >r 2dup r@ CHUNK-CLAIM r> swap
+      dup 0 >= if nip nip nip exit then drop
+      >r r@ + r> 2 *
+      rot CHUNK-NEXT dup 0= if drop 2drop -1 exit then -rot
+   again ;
+
+\ A free record, grown into when every one is taken. Every claim runs under
+\ AIO-LOCK, which is what lets REC-GROW append without a race. Answers a code
+\ and the index: 0 and the record, or the code the growth threw and -1, which a
+\ stage answers because it holds the facility.
+: REC-CLAIM ( -- n n )
+   REC-FIND dup 0 < if
+      drop [: REC-GROW ;] catch dup 0<> if -1 exit then drop
+      REC-FIND
+   then
+   REC-LIVE @ 1 + REC-LIVE atomic!
+   0 swap ;
 
 : REC-ARM ( n n n -- ) {: idx:n kind:n owed:n :}
    idx REC {: r:ptr :}
@@ -450,11 +677,22 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
    0 r REC.HOLD !
    TASK:SELF idx REC-OWNER ! ;
 
-: ANY-BUSY? ( -- bool )
-   OPS-MAX 0 ?do
-      i REC-STATE@ STATE-FREE <> if 0 0= unloop exit then
+\ Read from the record states themselves, so what STOP refuses is exactly a
+\ record not yet free, whoever claimed or released it.
+: CHUNK-BUSY? ( n n -- bool ) {: c:n len:n :}
+   len 0 ?do
+      c i CHUNK-REC REC.STATE atomic@ STATE-FREE <> if true unloop exit then
    loop
-   0 0= 0= ;
+   false ;
+
+\ The walk carries the chunk and its record count.
+: ANY-BUSY? ( -- bool )
+   CHUNK-FIRST RECS-FIRST
+   begin over 0<> while
+      2dup CHUNK-BUSY? if 2drop true exit then
+      2 * swap CHUNK-NEXT swap
+   repeat
+   2drop false ;
 
 \ ---- submission --------------------------------------------------------------
 \ The entries published but not yet consumed by the kernel. The indexes are
@@ -600,8 +838,8 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
    res ERR-TIME negate = if 1 peer REC REC.TIMED-OUT ! then
    peer SETTLE ;
 
-\ A user_data this module did not mint - the NOP that wakes the loop for its
-\ stop - is nobody's record and is simply dropped. A completion for a record
+\ The NOP that wakes the loop for its stop is nobody's record and is simply
+\ dropped; any other user_data is a record's index. A completion for a record
 \ that is free is this module's own defect (every record the kernel still owns
 \ is submitted or forgotten until its last completion), so it ends the process
 \ by name like the other defects here.
@@ -609,7 +847,7 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
    cqe LE:U64@ {: id:n :}
    cqe CQE-RES + LE:S32@ {: res:n :}
    cqe CQE-FLAGS + LE:U32@ {: fl:n :}
-   id 0 < id OPS-MAX >= or if exit then
+   id NOP-ID = if exit then
    id REC-STATE@ STATE-FREE = if s" aio: completion of a free record" E-AIO-STATE die then
    id REC REC.KIND @ KIND-LINK = if id res COMPLETE-LINK exit then
    res id REC REC.RES !
@@ -670,6 +908,7 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
 \ access above.
 : RING-LENGTHS ( -- )
    P-SQ-N SQ-ENTRIES-N !
+   P-CQ-N CQ-ENTRIES-N !
    SQO-ARRAY P-SQ@ P-SQ-N 4 * + SQ-LEN !
    CQO-CQES P-CQ@ P-CQ-N CQE-BYTES * + CQ-LEN !
    P-SQ-N SQE-BYTES * SQES-LEN !
@@ -707,27 +946,35 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
    0 RING-FD ! ;
 
 : RECS-CLEAR ( -- )
-   OPS-MAX 0 ?do i REC-FREE loop ;
+   REC-CAP @ 0 ?do i REC-RESET loop
+   0 REC-LIVE atomic! ;
 
 \ ---- the public operations' locked bodies ------------------------------------
 \ Each answers a code instead of throwing, because it runs with the facility
 \ held and a throw would leave it locked. The caller releases and then throws.
 
-\ The prologue every single-SQE stage shares: room for one more entry and a free
-\ record to put it on, or -1. It gives nothing back, because a stage that cannot
-\ claim has claimed nothing, and each caller answers E-AIO-FULL in the shape its
-\ own word returns.
-: CLAIM-ONE ( -- n )
-   1 SQ-ROOM? 0= if -1 exit then
+\ A record for an io_uring operation. The records in flight stay within the
+\ completion ring the kernel sized, because each owes at most one entry of its
+\ own there; past it the kernel's ring is full and the claim is E-AIO-FULL.
+: URING-CLAIM ( -- n n )
+   REC-LIVE @ CQ-ENTRIES-N @ >= if E-AIO-FULL -1 exit then
    REC-CLAIM ;
+
+\ The prologue every single-SQE stage shares: room for one more entry and a
+\ record to put it on. Answers a code and the index, as REC-CLAIM; a stage that
+\ cannot claim has claimed nothing, and answers the code in the shape its own
+\ word returns.
+: CLAIM-ONE ( -- n n )
+   1 SQ-ROOM? 0= if E-AIO-FULL -1 exit then
+   URING-CLAIM ;
 
 \ A poll with no deadline is one SQE on one record. A poll with one carries an
 \ IORING_OP_LINK_TIMEOUT behind IOSQE_IO_LINK, on a second record whose only job
 \ is to say which of the two ended the wait: the kernel always posts both CQEs,
 \ so the poll's record owes two completions and settles on the last of them.
 : POLL-LINKED ( n n n n -- n n ) {: f:n events:n ms:n idx:n :}
-   REC-CLAIM {: link:n :}
-   link 0 < if idx REC-FREE E-AIO-FULL -1 exit then
+   URING-CLAIM {: rc:n link:n :}
+   rc 0<> if idx REC-FREE rc -1 exit then
    2 SQ-ROOM? 0= if idx REC-FREE link REC-FREE E-AIO-FULL -1 exit then
    idx KIND-POLL 2 REC-ARM
    link KIND-LINK 1 REC-ARM
@@ -738,8 +985,8 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
    idx SUBMIT-OR-FORGET idx ;
 
 : POLL-STAGE ( n n n -- n n ) {: f:n events:n ms:n :}
-   CLAIM-ONE {: idx:n :}
-   idx 0 < if E-AIO-FULL -1 exit then
+   CLAIM-ONE {: rc:n idx:n :}
+   rc 0<> if rc -1 exit then
    ms 0 < if
       idx KIND-POLL 1 REC-ARM
       SQ-SLOT dup idx f events SQE-POLL SQ-PUBLISH
@@ -748,34 +995,35 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
    f events ms idx POLL-LINKED ;
 
 : TIMEOUT-STAGE ( n -- n n ) {: ms:n :}
-   CLAIM-ONE {: idx:n :}
-   idx 0 < if E-AIO-FULL -1 exit then
+   CLAIM-ONE {: rc:n idx:n :}
+   rc 0<> if rc -1 exit then
    idx KIND-TIMEOUT 1 REC-ARM
    SQ-SLOT dup idx ms OP-TIMEOUT SQE-TIMEOUT SQ-PUBLISH
    idx SUBMIT-OR-FORGET idx ;
 
 \ A transfer is one SQE on one record, and the record takes the caller's
-\ allocation with it: the two rows and REC.HOLD are written before the entry is
-\ published. The two E-AIO-FULL exits above happen before any entry is written,
-\ so there the allocation is still the caller's. An enter that left the ring
+\ allocation with it: the pair and REC.HOLD are written before the entry is
+\ published. A refused claim happens before any entry is written, so there the
+\ allocation is still the caller's. An enter that left the ring
 \ un-drained is not that case: the entry is in the ring, the kernel may or may
 \ not have taken it, and a published entry it did not take is consumed by the
 \ next io_uring_enter from anyone. So E-AIO-ENTER keeps the allocation - the
 \ record is forgotten, and its late completion releases the bytes through
 \ REC-DISCARD, exactly the FORGET rule. No test provokes E-AIO-ENTER: without
 \ SQPOLL the kernel refuses a non-empty submission only on a completion
-\ overflow it cannot flush (-EBUSY) or on a dead ring, and this ring's CQ holds
-\ two entries per record ($200 CQEs over $100 records), so neither a refused nor
-\ a partial enter can be reached through the public surface. src/lib/aio-test.f
+\ overflow it cannot flush (-EBUSY) or on a dead ring, and URING-CLAIM keeps
+\ the records in flight within the CQ, each owing at most one entry of its own,
+\ so neither a refused nor a partial enter can be reached through the public
+\ surface. src/lib/aio-test.f
 \ plants an entry nobody entered for and pins that the next submission takes it,
 \ which is the rule's effect; this comment holds the refusal branch itself.
 : XFER-STAGE ( n ptr u8 NUM:alloc-byte-len n n n -- n n )
    {: f:n buf cap:NUM:alloc-byte-len count:n off:n kind:n :}
-   CLAIM-ONE {: idx:n :}
-   idx 0 < if E-AIO-FULL -1 exit then
+   CLAIM-ONE {: rc:n idx:n :}
+   rc 0<> if rc -1 exit then
    idx kind 1 REC-ARM
    buf idx REC-BUF !
-   cap idx REC-BUF-LEN !
+   cap idx REC-BUF-LEN!
    1 idx REC REC.HOLD !
    SQ-SLOT dup idx kind KIND>OP f count off SQE-RW
    dup buf SQE-BUF!
@@ -786,8 +1034,8 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
 \ that this module owns. The bytes a connect names stay the caller's, and the
 \ caller keeps them unchanged until the outcome is taken.
 : SOCK-STAGE ( n n n n -- n n ) {: f:n addr:n off:n kind:n :}
-   CLAIM-ONE {: idx:n :}
-   idx 0 < if E-AIO-FULL -1 exit then
+   CLAIM-ONE {: rc:n idx:n :}
+   rc 0<> if rc -1 exit then
    idx kind 1 REC-ARM
    SQ-SLOT dup idx kind KIND>OP f addr off SQE-SOCK
    kind KIND-ACCEPT = if dup ACCEPT-FLAGS SQE-OPFLAGS! then
@@ -797,8 +1045,8 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
 \ A cancel is submitted on a record nobody waits for, so its own completion
 \ frees it; the operation it names completes cancelled on its own record.
 : CANCEL-STAGE ( n -- n ) {: target:n :}
-   CLAIM-ONE {: idx:n :}
-   idx 0 < if E-AIO-FULL exit then
+   CLAIM-ONE {: rc:n idx:n :}
+   rc 0<> if rc exit then
    idx KIND-CANCEL 1 REC-ARM
    STATE-FORGET idx REC REC.STATE atomic!
    SQ-SLOT dup idx target SQE-CANCEL SQ-PUBLISH
@@ -806,7 +1054,7 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
 
 : NOP-STAGE ( -- n )
    1 SQ-ROOM? 0= if E-AIO-FULL exit then
-   SQ-SLOT dup OP-NOP OPS-MAX SQE-COMMON SQ-PUBLISH
+   SQ-SLOT dup OP-NOP NOP-ID SQE-COMMON SQ-PUBLISH
    ENTER-SUBMIT ;
 
 : INSTALL-HOST ( -- )
@@ -837,11 +1085,30 @@ INSTALL-HOST
    STATE-FORGET idx REC REC.STATE atomic!
    idx TRY-CANCEL ;
 
+: G-RELEASE-HELD ( ptr n n -- ) {: e:ptr me:n :}
+   e G.OWNER atomic@ me <> if exit then
+   0 e G.COUNT !
+   0 e G.OWNER atomic! ;
+
+\ A group the ending task holds goes back empty: its tickets are the task's,
+\ forgotten below, and its region may be the next task's, which must not
+\ inherit the hold. Only the holder writes an entry it holds, so no facility;
+\ the walk covers the linked chunks only, as G-ENTRY would append one.
+: GROUPS-RELEASE ( -- )
+   TASK:SELF-CONTEXT {: me:n :}
+   GROUPS-HEAD
+   begin dup 0<> while
+      GROUPS-FIRST 0 ?do dup i G-AT me G-RELEASE-HELD loop
+      CHUNK-NEXT
+   repeat
+   drop ;
+
 : SCRUB ( -- )
+   GROUPS-RELEASE
    RING-LIVE @ 0= if exit then
    TASK:SELF-N dup 0= if drop exit then {: me:n :}
    AIO-LOCK TASK:GET
-   OPS-MAX 0 ?do i me SCRUB-ONE loop
+   REC-CAP @ 0 ?do i me SCRUB-ONE loop
    AIO-LOCK TASK:RELEASE ;
 
 : ENSURE-SCRUB ( -- )
@@ -873,7 +1140,7 @@ INSTALL-HOST
 \ pair and the release path above can no longer reach those bytes.
 : TAKE-XFER ( n -- ptr u8 NUM:alloc-byte-len outcome ) {: idx:n :}
    AIO-LOCK TASK:GET
-   idx REC-BUF @ idx REC-BUF-LEN @
+   idx REC-BUF @ idx REC-BUF-LEN@
    0 idx REC REC.HOLD !
    idx OUTCOME-OF
    idx REC-FREE
@@ -884,10 +1151,10 @@ INSTALL-HOST
 \ record and a generation the record no longer carries are all E-AIO-STATE.
 : OWNED-CHECK ( n -- n ) {: h:n :}
    h HANDLE>IDX {: idx:n :}
-   idx 0 < idx OPS-MAX >= or if E-AIO-STATE throw then
+   idx REC-CAP atomic@ >= if E-AIO-STATE throw then
    idx REC-STATE@ STATE-FREE = if E-AIO-STATE throw then
    idx REC-OWNER @ FFI:>CELL TASK:SELF-N <> if E-AIO-STATE throw then
-   h HANDLE>GEN idx REC REC.GEN @ <> if E-AIO-STATE throw then
+   idx IDX>HANDLE h <> if E-AIO-STATE throw then
    idx ;
 
 \ The wait: a hint returns the task to its own state, which is the record's.
@@ -954,62 +1221,95 @@ INSTALL-HOST
    f addr off kind HOST-SOCKET SUBMIT-LEAVE >TICKET ;
 
 \ ---- groups ------------------------------------------------------------------
-: G-ROW ( n -- ptr n ) {: g:n :}
-   g 0 < g GROUP-N @ >= or if E-AIO-GROUP throw then
-   AIO-GROUPS CELL-VIEW g GROUP-MAX 1 + cells * + ;
+: E-SLOT ( ptr n n -- ptr n ) {: e:ptr i:n :}
+   e G.ROW @ i cells + AIO-N>PTR ;
 
 : G-COUNT@ ( n -- n )
-   G-ROW @ ;
-
-: G-COUNT! ( n n -- ) {: v:n g:n :}
-   v g G-ROW ! ;
-
-: G-SLOT ( n n -- ptr n ) {: g:n i:n :}
-   i 0 < i GROUP-MAX >= or if E-AIO-GROUP throw then
-   g G-ROW i 1 + cells + ;
+   G-ENTRY G.COUNT @ ;
 
 \ A slot holds the handle cell the caller gave GROUP+, not the record index, so
 \ a stale ticket matches nothing the group holds and GROUP- of one is
 \ E-AIO-GROUP.
 : G-FIND ( n n -- n ) {: g:n h:n :}
-   g G-COUNT@ 0 ?do
-      g i G-SLOT @ h = if i unloop exit then
+   g G-ENTRY {: e:ptr :}
+   e G.COUNT @ 0 ?do
+      e i E-SLOT @ h = if i unloop exit then
    loop
    -1 ;
 
+\ A full row doubles: the handles move to a fresh mapping and the old one goes
+\ back. Only the group's owner reaches here (G-CLAIM), so no other task reads
+\ the row while it moves and the move needs no facility.
+: ROW-GROW ( ptr n -- ) {: e:ptr :}
+   MAPS-ARM
+   e G.CAP @ 2 * ROW-FIRST max {: cap:n :}
+   cap ROW-LEN MEM:ALLOC-BYTES drop FFI:>CELL {: row:n :}
+   e G.COUNT @ 0 ?do
+      e i E-SLOT @ row i cells + AIO-N>PTR !
+   loop
+   e ROW-RELEASE
+   row e G.ROW !
+   cap e G.CAP ! ;
+
+\ The group is empty again, so it is no task's.
+: G-DISOWN-EMPTY ( ptr n -- ) {: e:ptr :}
+   e G.COUNT @ 0= if 0 e G.OWNER atomic! then ;
+
+\ True when the calling task holds the group, false when it is empty and no
+\ task's; another task's group is E-AIO-STATE.
+: G-MINE? ( ptr n -- bool ) {: e:ptr :}
+   e G.OWNER atomic@ {: holder:n :}
+   holder 0<> holder TASK:SELF-CONTEXT <> and if E-AIO-STATE throw then
+   holder 0<> ;
+
+\ Holds the group for the calling task. Two tasks adding to one empty group
+\ race on the cell; the one whose swap loses is E-AIO-STATE.
+: G-CLAIM ( ptr n -- ) {: e:ptr :}
+   e G-MINE? if exit then
+   0 TASK:SELF-CONTEXT e G.OWNER atomic-cas 0<> if E-AIO-STATE throw then ;
+
+\ A row that cannot grow leaves the group as it was, and a group this add
+\ claimed empty goes back to being no task's.
+: G-WIDEN ( ptr n -- ) {: e:ptr :}
+   e [: dup ROW-GROW ;] catch dup 0= if 2drop exit then
+   nip e G-DISOWN-EMPTY throw ;
+
 : G-ADD ( n n -- ) {: g:n h:n :}
-   g G-COUNT@ {: n:n :}
-   n GROUP-MAX >= if E-AIO-GROUP throw then
-   h g n G-SLOT !
-   n 1 + g G-COUNT! ;
+   g G-ENTRY {: e:ptr :}
+   e G-CLAIM
+   e G.COUNT @ e G.CAP @ = if e G-WIDEN then
+   h e e G.COUNT @ E-SLOT !
+   e G.COUNT @ 1 + e G.COUNT ! ;
 
 : G-REMOVE-AT ( n n -- ) {: g:n at:n :}
-   g G-COUNT@ 1 - {: last:n :}
-   g last G-SLOT @ g at G-SLOT !
-   last g G-COUNT! ;
+   g G-ENTRY {: e:ptr :}
+   e G.COUNT @ 1 - {: last:n :}
+   e last E-SLOT @ e at E-SLOT !
+   last e G.COUNT !
+   e G-DISOWN-EMPTY ;
 
 : G-REGISTER ( -- n )
-   GROUP-N @ GROUP-DEFS >= if E-AIO-GROUP throw then
    GROUP-N @ dup 1 + GROUP-N ! ;
 
 \ The first ticket of the group whose record is done, or -1. Every ticket in the
 \ group must belong to the calling task and still name the record it was minted
 \ over, which is what OWNED-CHECK answers the index for.
 : G-READY ( n -- n ) {: g:n :}
-   g G-COUNT@ 0 ?do
-      g i G-SLOT @ OWNED-CHECK REC-STATE@ STATE-DONE = if i unloop exit then
+   g G-ENTRY {: e:ptr :}
+   e G.COUNT @ 0 ?do
+      e i E-SLOT @ OWNED-CHECK REC-STATE@ STATE-DONE = if i unloop exit then
    loop
    -1 ;
 
 \ The ticket the caller gets back is the slot's own handle cell, so it is the
 \ one GROUP+ was given; the record it is taken by is the index inside it.
 : G-TAKE-AT ( n n -- ticket outcome ) {: g:n at:n :}
-   g at G-SLOT @ {: h:n :}
+   g G-ENTRY at E-SLOT @ {: h:n :}
    g at G-REMOVE-AT
    h >TICKET h HANDLE>IDX TAKE ;
 
 : AWAIT-GROUP ( n -- ticket outcome ) {: g:n :}
-   g G-COUNT@ 0= if E-AIO-GROUP throw then
+   g G-ENTRY G-MINE? 0= if E-AIO-GROUP throw then
    begin
       g G-READY dup 0 >= if g swap G-TAKE-AT exit then
       drop
@@ -1066,8 +1366,9 @@ public
 
 \ Waits for a descriptor to carry one of the events in the mask. ms is a
 \ deadline in milliseconds, linked to the poll as an IORING_OP_LINK_TIMEOUT, or
-\ -1 for no deadline. A submission with no loop running is E-AIO-STATE; no free
-\ record or no room in the submission ring is E-AIO-FULL.
+\ -1 for no deadline. A submission with no loop running is E-AIO-STATE; a full
+\ kernel ring on Linux is E-AIO-FULL, and a descriptor past Darwin's per-call
+\ poll bound is E-AIO-POLL-BOUND. Either leaves nothing submitted.
 : POLL ( fd n ms -- ticket ) {: f:fd events:n timeout:ms :}
    SUBMIT-ENTER
    f FD>N events timeout MS>N HOST-POLL SUBMIT-LEAVE >TICKET ;
@@ -1107,8 +1408,8 @@ public
 \ is a file offset, or -1 for the descriptor's own position, which the operation
 \ uses and advances the way read(2) and write(2) do. A count past the
 \ allocation, a count below zero or an offset below -1 is E-AIO-BOUNDS.
-\ E-AIO-BOUNDS, E-AIO-STATE and E-AIO-FULL happen before any entry is written
-\ and leave the allocation the caller's. E-AIO-ENTER does not: the entry is
+\ E-AIO-BOUNDS, E-AIO-STATE, E-AIO-FULL and E-AIO-POLL-BOUND happen before any
+\ entry is written and leave the allocation the caller's. E-AIO-ENTER does not: the entry is
 \ published and the kernel may yet run it, so the transfer keeps the allocation
 \ and the loop releases it at the late completion. A caller that catches
 \ E-AIO-ENTER must not touch or release those bytes.
@@ -1152,6 +1453,9 @@ public
    create G-REGISTER ,
    does> ( -- group ) @ >GROUP ;
 
+\ Adds a ticket of the calling task's. A group belongs to the task that adds to
+\ it while empty until it is empty again; any other task's GROUP+, GROUP- or
+\ AWAIT-ANY on it meanwhile is E-AIO-STATE.
 : GROUP+ ( ticket group -- ) {: t:ticket g:group :}
    t TICKET>N {: h:n :}
    h OWNED-CHECK drop
@@ -1160,8 +1464,9 @@ public
 \ The group holds the handle cell GROUP+ was given, so this matches the caller's
 \ handle exactly: a ticket the group never held is E-AIO-GROUP whether it is
 \ stale or live, and a member whose record has since been reused can still be
-\ taken out of the group.
+\ taken out of the group. A group no task holds is empty: E-AIO-GROUP.
 : GROUP- ( ticket group -- ) {: t:ticket g:group :}
+   g GROUP>N G-ENTRY G-MINE? 0= if E-AIO-GROUP throw then
    g GROUP>N t TICKET>N G-FIND {: at:n :}
    at 0 < if E-AIO-GROUP throw then
    g GROUP>N at G-REMOVE-AT ;
@@ -1171,7 +1476,8 @@ public
 
 \ The first ticket of the group whose operation has ended, with its outcome. The
 \ ticket leaves the group and its record is released, exactly as AWAIT does; the
-\ others stay. An empty group has nothing to wait for and is E-AIO-GROUP.
+\ others stay. An empty group has nothing to wait for and is E-AIO-GROUP;
+\ another task's group is E-AIO-STATE.
 : AWAIT-ANY ( group -- ticket outcome ) {: g:group :}
    RUNNING-CHECK
    g GROUP>N AWAIT-GROUP ;

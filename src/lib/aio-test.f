@@ -28,16 +28,21 @@ package AIO
 
 \ One OP-NOP published and nobody entered for: NOP-STAGE's entry without its
 \ io_uring_enter, so the ring carries an entry the kernel has not been asked to
-\ take. Its user_data is OPS-MAX, which no record answers to, so COMPLETE drops
+\ take. Its user_data is NOP-ID, which no record answers to, so COMPLETE drops
 \ the completion it gets once some submission takes it.
 : AIO-TEST:PLANT-NOP ( -- )
    AIO-LOCK TASK:GET
-   SQ-SLOT dup OP-NOP OPS-MAX SQE-COMMON SQ-PUBLISH
+   SQ-SLOT dup OP-NOP NOP-ID SQE-COMMON SQ-PUBLISH
    AIO-LOCK TASK:RELEASE ;
 
 \ The entries in the submission ring the kernel has not consumed.
 : AIO-TEST:PENDING ( -- n )
    SQ-PENDING ;
+
+\ The record a handle names, so a case can say two handles share a record
+\ without restating how a handle encodes it.
+: AIO-TEST:HANDLE-IDX ( n -- n )
+   HANDLE>IDX ;
 
 ;package
 
@@ -51,7 +56,8 @@ package AIO-TEST
 8 constant FAN-TASKS
 8 constant FAN-EACH
 FAN-TASKS FAN-EACH * constant FAN-N
-$100 constant FULL-N                 \ AIO's OPS-MAX: the record table's size
+$180 constant GROW-N                 \ into the third record chunk: chunks end at $40, $C0, $1C0
+$11 constant DEFS-N                  \ more groups than the first $10 definitions
 4 constant ANY-N
 
 -1 constant MARK-TIMED-OUT
@@ -73,6 +79,10 @@ variable BASE-THREADS
 variable C1-GOT
 variable C2-GOT
 variable OWNER-RC
+variable THIEF-ADD-RC
+variable THIEF-DROP-RC
+variable THIEF-ANY-RC
+variable TAKEOVER-GOT
 variable FAN-ARMED
 variable FAN-READY
 variable FAN-DURING
@@ -105,10 +115,13 @@ create ANY-W ANY-N cells allot
 
 FAN-N TYPED-BUFFER FAN-TICKETS AIO:ticket
 ANY-N TYPED-BUFFER ANY-TICKETS AIO:ticket
-FULL-N TYPED-BUFFER FULL-TICKETS AIO:ticket
+GROW-N TYPED-BUFFER GROW-TICKETS AIO:ticket
+AIO-TEST-ALIGN8
+create GROW-IDX GROW-N cells allot
 TYPED-VARIABLE ANY-CUR AIO:ticket
 TYPED-VARIABLE LONE-TICKET AIO:ticket
 TYPED-VARIABLE LONE-XFER AIO:xfer
+TYPED-VARIABLE THIEF-TICKET AIO:ticket
 TYPED-VARIABLE STALE-TICKET AIO:ticket  \ a handle whose record has been reused,
 TYPED-VARIABLE STALE-XFER AIO:xfer      \ and the live operation now on it
 TYPED-VARIABLE LIVE-TICKET AIO:ticket
@@ -120,9 +133,33 @@ TYPED-VARIABLE XL TCP4:listener
 TYPED-VARIABLE XC TCP4:connection
 
 AIO:GROUP ANY-GROUP
+AIO:GROUP WIDE-GROUP
+AIO:GROUP OWNED-GROUP
+
+DEFS-N TYPED-BUFFER DEF-GROUPS AIO:group
+AIO:GROUP D0  D0 0 DEF-GROUPS !
+AIO:GROUP D1  D1 1 DEF-GROUPS !
+AIO:GROUP D2  D2 2 DEF-GROUPS !
+AIO:GROUP D3  D3 3 DEF-GROUPS !
+AIO:GROUP D4  D4 4 DEF-GROUPS !
+AIO:GROUP D5  D5 5 DEF-GROUPS !
+AIO:GROUP D6  D6 6 DEF-GROUPS !
+AIO:GROUP D7  D7 7 DEF-GROUPS !
+AIO:GROUP D8  D8 8 DEF-GROUPS !
+AIO:GROUP D9  D9 9 DEF-GROUPS !
+AIO:GROUP D10  D10 10 DEF-GROUPS !
+AIO:GROUP D11  D11 11 DEF-GROUPS !
+AIO:GROUP D12  D12 12 DEF-GROUPS !
+AIO:GROUP D13  D13 13 DEF-GROUPS !
+AIO:GROUP D14  D14 14 DEF-GROUPS !
+AIO:GROUP D15  D15 15 DEF-GROUPS !
+AIO:GROUP D16  D16 16 DEF-GROUPS !
 
 TASK:MIN-STACK TASK:TASK C1-TASK
 TASK:MIN-STACK TASK:TASK OWNER-TASK
+TASK:MIN-STACK TASK:TASK THIEF-TASK
+TASK:MIN-STACK TASK:TASK TAKEOVER-TASK
+TASK:MIN-STACK TASK:TASK ABANDON-TASK
 TASK:MIN-STACK TASK:TASK HALT-TASK
 TASK:MIN-STACK TASK:TASK XFER-OWNER-TASK
 TASK:MIN-STACK TASK:TASK XFER-FORGET-TASK
@@ -406,26 +443,6 @@ TASK:MIN-STACK TASK:TASK FAN7
    LONE-TICKET @ AWAIT>N MARK-CANCELLED T=
    P-R P-W PIPE-CLOSE ;
 
-\ Every record in flight, and then one more. The pipe is what releases them:
-\ with no record left there is none for a cancel either, which is the honest
-\ shape of a full table. The exported ceiling is the table's size.
-: CASE-FULL ( -- )
-   AIO:OPS-MAX FULL-N T=
-   P-R P-W PIPE-OPEN
-   FULL-N 0 ?do
-      P-R @ >FD AIO:READABLE -1 >MS AIO:POLL i FULL-TICKETS !
-   loop
-   [: P-R @ >FD AIO:READABLE -1 >MS AIO:POLL TICKET-DROP ;] E-AIO-FULL TTHROWSQ
-   P-W @ POKE
-   0 FAN-READY !
-   FULL-N 0 ?do
-      i FULL-TICKETS @ AWAIT>N AIO:READABLE and 0 <> if
-         1 FAN-READY atomic-add drop
-      then
-   loop
-   FAN-READY @ FULL-N T=
-   P-R P-W PIPE-CLOSE ;
-
 \ ---- the completion operations ----------------------------------------------
 \ Every transfer below hands its allocation to the operation and takes it back
 \ from AWAIT-XFER, which is the only word that answers one, and releases it
@@ -673,13 +690,10 @@ TASK:MIN-STACK TASK:TASK FAN7
 CAST: TICKET>N ( AIO:ticket -- n )
 CAST: XFER>N ( AIO:xfer -- n )
 
-: HANDLE-IDX ( n -- n )
-   AIO:OPS-MAX mod ;
-
-\ Two handles over one record, one generation apart.
+\ Two handles over one record, minted over different generations of it.
 : REUSED ( n n -- ) {: live:n stale:n :}
-   live HANDLE-IDX stale HANDLE-IDX T=
-   live stale - AIO:OPS-MAX T= ;
+   live AIO-TEST:HANDLE-IDX stale AIO-TEST:HANDLE-IDX T=
+   live stale <> TTRUE ;
 
 : CASE-STALE-TICKET ( -- )
    SETTLE-MS TASK:SLEEP
@@ -730,6 +744,142 @@ CAST: XFER>N ( AIO:xfer -- n )
    LIVE-XFER @ AIO:AWAIT-XFER {: rb rcap:NUM:alloc-byte-len out:AIO:outcome :}
    out OUTCOME>N 1 T=
    rb rcap MEM:RELEASE-BYTES
+   P-R P-W PIPE-CLOSE ;
+
+\ GROW-N polls on the open pipe, every one in flight at once.
+: GROW-SUBMIT ( -- )
+   GROW-N 0 ?do
+      P-R @ >FD AIO:READABLE -1 >MS AIO:POLL i GROW-TICKETS !
+   loop ;
+
+\ One byte makes every one of them ready.
+: GROW-COMPLETE ( -- )
+   P-W @ POKE
+   0 FAN-READY !
+   GROW-N 0 ?do
+      i GROW-TICKETS @ AWAIT>N AIO:READABLE and 0 <> if
+         1 FAN-READY atomic-add drop
+      then
+   loop
+   FAN-READY @ GROW-N T= ;
+
+: GROW-IDX@ ( n -- n )
+   GROW-TICKETS @ TICKET>N AIO-TEST:HANDLE-IDX ;
+
+\ More operations in flight than the first record chunks hold: the records
+\ grow, every operation completes, and a second round lands on the same
+\ records, so the grown ones are reused and not grown again. A handle from
+\ the first round over a grown record names a generation that record no
+\ longer carries once the second round has reclaimed it.
+: CASE-GROW ( -- )
+   SETTLE-MS TASK:SLEEP
+   P-R P-W PIPE-OPEN
+   GROW-SUBMIT
+   GROW-COMPLETE
+   P-R P-W PIPE-CLOSE
+   GROW-N 0 ?do i GROW-IDX@ GROW-IDX CELL-VIEW i SLOT ! loop
+   GROW-N 1 - GROW-TICKETS @ STALE-TICKET !
+   P-R P-W PIPE-OPEN
+   GROW-SUBMIT
+   GROW-N 0 ?do i GROW-IDX@ GROW-IDX CELL-VIEW i SLOT @ T= loop
+   GROW-N 1 - GROW-TICKETS @ TICKET>N STALE-TICKET @ TICKET>N REUSED
+   [: STALE-TICKET @ AIO:AWAIT OUTCOME>N drop ;] E-AIO-STATE TTHROWSQ
+   GROW-COMPLETE
+   P-R P-W PIPE-CLOSE ;
+
+\ ---- a group wider than its first row, and more groups than $10 ------------
+: WIDE-FILL ( -- )
+   GROW-N 0 ?do
+      P-R @ >FD AIO:READABLE -1 >MS AIO:POLL WIDE-GROUP AIO:GROUP+
+   loop
+   WIDE-GROUP AIO:GROUP-COUNT GROW-N T= ;
+
+\ One byte makes every member ready, and AWAIT-ANY hands each back once.
+: WIDE-DRAIN ( -- )
+   P-W @ POKE
+   0 FAN-READY !
+   GROW-N 0 ?do
+      WIDE-GROUP AIO:AWAIT-ANY OUTCOME>N nip AIO:READABLE and 0 <> if
+         1 FAN-READY atomic-add drop
+      then
+   loop
+   FAN-READY @ GROW-N T=
+   WIDE-GROUP AIO:GROUP-COUNT 0 T= ;
+
+: CASE-GROUP-WIDE ( -- )
+   P-R P-W PIPE-OPEN
+   WIDE-FILL
+   WIDE-DRAIN
+   P-R P-W PIPE-CLOSE ;
+
+\ Each group answers the one ticket it holds and no other.
+: CASE-GROUP-DEFS ( -- )
+   P-R P-W PIPE-OPEN
+   DEFS-N 0 ?do
+      P-R @ >FD AIO:READABLE -1 >MS AIO:POLL dup i GROW-TICKETS !
+      i DEF-GROUPS @ AIO:GROUP+
+   loop
+   P-W @ POKE
+   DEFS-N 0 ?do
+      i DEF-GROUPS @ AIO:AWAIT-ANY OUTCOME>N AIO:READABLE and AIO:READABLE T=
+      TICKET>N i GROW-TICKETS @ TICKET>N T=
+      i DEF-GROUPS @ AIO:GROUP-COUNT 0 T=
+   loop
+   P-R P-W PIPE-CLOSE ;
+
+\ ---- a group another task owns ----------------------------------------------
+\ The task that adds to an empty group owns it until it is empty again, so a
+\ second task's GROUP+, GROUP- and AWAIT-ANY on it are refused before they reach
+\ its row, and the second task's own ticket stays out of it.
+: THIEF-WORK ( -- )
+   P-R @ >FD AIO:READABLE -1 >MS AIO:POLL THIEF-TICKET !
+   [: THIEF-TICKET @ OWNED-GROUP AIO:GROUP+ ;] catch THIEF-ADD-RC !
+   [: THIEF-TICKET @ OWNED-GROUP AIO:GROUP- ;] catch THIEF-DROP-RC !
+   [: OWNED-GROUP AIO:AWAIT-ANY OUTCOME>N drop drop ;] catch THIEF-ANY-RC !
+   THIEF-TICKET @ AIO:CANCEL
+   THIEF-TICKET @ AWAIT>N drop ;
+
+\ Once its owner has emptied it, the group is any task's to fill.
+: TAKEOVER-WORK ( -- )
+   P-R @ >FD AIO:READABLE -1 >MS AIO:POLL dup OWNED-GROUP AIO:GROUP+
+   AIO:CANCEL
+   OWNED-GROUP AIO:AWAIT-ANY OUTCOME>N nip TAKEOVER-GOT ! ;
+
+: CASE-GROUP-OWNER ( -- )
+   0 THIEF-ADD-RC ! 0 THIEF-DROP-RC ! 0 THIEF-ANY-RC ! 0 TAKEOVER-GOT !
+   P-R P-W PIPE-OPEN
+   P-R @ >FD AIO:READABLE -1 >MS AIO:POLL dup LONE-TICKET ! OWNED-GROUP AIO:GROUP+
+   ['] THIEF-WORK THIEF-TASK TASK:ACTIVATE
+   THIEF-TASK AWAIT-END
+   THIEF-TASK TASK:KILL
+   THIEF-ADD-RC @ E-AIO-STATE T=
+   THIEF-DROP-RC @ E-AIO-STATE T=
+   THIEF-ANY-RC @ E-AIO-STATE T=
+   OWNED-GROUP AIO:GROUP-COUNT 1 T=
+   LONE-TICKET @ AIO:CANCEL
+   OWNED-GROUP AIO:AWAIT-ANY OUTCOME>N MARK-CANCELLED T=
+   TICKET>N LONE-TICKET @ TICKET>N T=
+   ['] TAKEOVER-WORK TAKEOVER-TASK TASK:ACTIVATE
+   TAKEOVER-TASK AWAIT-END
+   TAKEOVER-TASK TASK:KILL
+   TAKEOVER-GOT @ MARK-CANCELLED T=
+   OWNED-GROUP AIO:GROUP-COUNT 0 T=
+   P-R P-W PIPE-CLOSE ;
+
+\ A task that ends holding a group gives it back with the ticket it left in
+\ flight, so the group is any task's again: main fills it and waits on it.
+: ABANDON-WORK ( -- )
+   P-R @ >FD AIO:READABLE -1 >MS AIO:POLL OWNED-GROUP AIO:GROUP+ ;
+
+: CASE-GROUP-ABANDONED ( -- )
+   P-R P-W PIPE-OPEN
+   ['] ABANDON-WORK ABANDON-TASK TASK:ACTIVATE
+   ABANDON-TASK AWAIT-END
+   ABANDON-TASK TASK:KILL
+   P-R @ >FD AIO:READABLE -1 >MS AIO:POLL dup LONE-TICKET ! OWNED-GROUP AIO:GROUP+
+   LONE-TICKET @ AIO:CANCEL
+   OWNED-GROUP AIO:AWAIT-ANY OUTCOME>N MARK-CANCELLED T=
+   TICKET>N LONE-TICKET @ TICKET>N T=
    P-R P-W PIPE-CLOSE ;
 
 \ ---- 16: a transfer its task never awaited ----------------------------------
@@ -866,7 +1016,11 @@ CAST: XFER>N ( AIO:xfer -- n )
    CASE-STALE-XFER
    CASE-STALE-OVER-XFER
    CASE-BUSY
-   CASE-FULL
+   CASE-GROW
+   CASE-GROUP-WIDE
+   CASE-GROUP-DEFS
+   CASE-GROUP-OWNER
+   CASE-GROUP-ABANDONED
    CASE-XFER-FILE
    CASE-XFER-PIPE
    CASE-XFER-EMPTY-BROKEN

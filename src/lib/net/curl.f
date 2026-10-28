@@ -761,9 +761,10 @@ create WAKE-BYTE $01 c,
 
 \ One ticket per descriptor libcurl wants, in slots a zero mask says are free.
 \ A slot holds the descriptor itself, or -1 for none, so the row is plain cells.
-AIO:GROUP-MAX TYPED-BUFFER FD-FDS n
-AIO:GROUP-MAX TYPED-BUFFER FD-MASKS n
-AIO:GROUP-MAX TYPED-BUFFER FD-TICKETS AIO:ticket
+\ Every descriptor comes from the fd_sets, so FD-SETSIZE slots hold them all.
+FD-SETSIZE TYPED-BUFFER FD-FDS n
+FD-SETSIZE TYPED-BUFFER FD-MASKS n
+FD-SETSIZE TYPED-BUFFER FD-TICKETS AIO:ticket
 
 variable MULTI-CELL                       \ the CURLM* the loop drives
 variable LOOP-LIVE                        \ atomic: a loop is running
@@ -774,7 +775,6 @@ variable LOOP-MRC                         \ the CURLMcode the loop's own body en
 variable WAKE-R
 variable WAKE-W
 variable TIMER-MS                         \ the ms the pending timer holds, -1 for none
-variable SHORT-TURN                       \ the sets wanted more tickets than there was room for
 
 TASK:FACILITY CURL-LOCK
 TASK:MIN-STACK TASK:TASK LOOP-TASK
@@ -1267,16 +1267,18 @@ CAST: TICKET>N ( AIO:ticket -- n )
 
 
 : FD-TABLE-CLEAR ( -- )
-   AIO:GROUP-MAX 0 ?do 0 i FD-MASK! -1 i FD-FD! loop ;
+   FD-SETSIZE 0 ?do 0 i FD-MASK! -1 i FD-FD! loop ;
 
 
+\ An fd FD-REVIEW arms holds no slot, and every fd that does is another one
+\ below FD-SETSIZE, so a slot is always free: none is this loop's defect.
 : FD-FREE-SLOT ( -- n )
-   AIO:GROUP-MAX 0 ?do i FD-MASK@ 0= if i unloop exit then loop
-   -1 ;
+   FD-SETSIZE 0 ?do i FD-MASK@ 0= if i unloop exit then loop
+   s" curl: no free descriptor slot" E-STATE die ;
 
 
 : FD-SLOT-OF ( AIO:ticket -- n ) {: t:AIO:ticket :}
-   AIO:GROUP-MAX 0 ?do
+   FD-SETSIZE 0 ?do
       i FD-MASK@ 0 <> if
          i FD-TICKETS @ t SAME-TICKET? if i unloop exit then
       then
@@ -1296,13 +1298,8 @@ CAST: TICKET>N ( AIO:ticket -- n )
    slot FD-RELEASE ;
 
 
-\ Two of the group's tickets are the wake pipe's and the timer's, so arming
-\ stops two short of the group's own ceiling. An fd left unarmed is not a hang:
-\ the turn below shortens the timer and the loop asks again.
 : FD-ARM ( n n -- ) {: fd:n mask:n :}
-   LOOP-GROUP AIO:GROUP-COUNT AIO:GROUP-MAX 2 - >= if 1 SHORT-TURN ! exit then
-   FD-FREE-SLOT dup 0 < if drop 1 SHORT-TURN ! exit then
-   {: slot:n :}
+   FD-FREE-SLOT {: slot:n :}
    fd >FD mask -1 >MS AIO:POLL {: t:AIO:ticket :}
    t LOOP-GROUP AIO:GROUP+
    t slot FD-TICKETS !
@@ -1341,7 +1338,7 @@ CAST: TICKET>N ( AIO:ticket -- n )
    SETS-READ {: mrc:n maxfd:n :}
    mrc CURLM-OK <> if mrc exit then
    maxfd KEPT-CLEAR
-   AIO:GROUP-MAX 0 ?do i SLOT-REVIEW loop
+   FD-SETSIZE 0 ?do i SLOT-REVIEW loop
    maxfd 1 + 0 ?do i FD-REVIEW loop
    CURLM-OK ;
 
@@ -1367,12 +1364,10 @@ CAST: TICKET>N ( AIO:ticket -- n )
 \ One timer ticket at a time. A shorter answer than the pending one replaces it;
 \ a longer one waits, because the pending timer fires first and asks again.
 : TIMER-REVIEW ( -- n )
-   WANT-MS {: mrc:n want:n :}
+   WANT-MS {: mrc:n ms:n :}
    mrc CURLM-OK <> if mrc exit then
-   SHORT-TURN @ 0 <> if want IDLE-MS min else want then {: ms:n :}
    TIMER-MS @ 0 < if ms TIMER-ARM CURLM-OK exit then
    ms TIMER-MS @ >= if CURLM-OK exit then
-   LOOP-GROUP AIO:GROUP-COUNT AIO:GROUP-MAX 1 - >= if CURLM-OK exit then
    TIMER-TICKET @ AIO:CANCEL
    -1 TIMER-MS !
    ms TIMER-ARM
@@ -1411,7 +1406,6 @@ CAST: TICKET>N ( AIO:ticket -- n )
    LOOP-GROUP AIO:AWAIT-ANY OUTCOME-DROP
    TURN-ANSWER dup CURLM-OK <> if exit then drop
    LOCKED-TRANSFERS dup CURLM-OK <> if exit then drop
-   0 SHORT-TURN !
    SETS-REBUILD dup CURLM-OK <> if exit then drop
    TIMER-REVIEW ;
 
@@ -1463,7 +1457,7 @@ CAST: TICKET>N ( AIO:ticket -- n )
 \ returns: a record still in flight is what AIO:STOP refuses, and a ticket
 \ nobody awaits is a record nobody frees.
 : GROUP-DRAIN ( -- )
-   AIO:GROUP-MAX 0 ?do i FD-MASK@ 0 <> if i FD-DROP then loop
+   FD-SETSIZE 0 ?do i FD-MASK@ 0 <> if i FD-DROP then loop
    WAKE-TICKET @ AIO:CANCEL
    TIMER-MS @ 0 >= if TIMER-TICKET @ AIO:CANCEL -1 TIMER-MS ! then
    begin
@@ -1602,7 +1596,6 @@ public
    TABLE-CLEAR
    FD-TABLE-CLEAR
    -1 TIMER-MS !
-   0 SHORT-TURN !
    0 LOOP-THROW !
    0 STOP-FLAG atomic!
    ['] LOOP-BODY LOOP-TASK TASK:ACTIVATE
