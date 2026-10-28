@@ -1293,6 +1293,11 @@ GEN-CAP CODEGEN:BUFFER GEN
 EFF-CAP CODEGEN:BUFFER EFF
 DIAG-CAP CODEGEN:BUFFER DIAG
 
+\ One declaration's working state: a declaration word writes each cell before
+\ it reads it. While no declaration is open (OPEN @ 0=) every cell rests at
+\ zero, and the token cells rest outside every declaration word. Each word that
+\ can write a cell keeps this on every exit, a throw included (KEEP-REST); a
+\ throw while a declaration stays open keeps that declaration.
 create NAME-BUF TOK-CAP allot
 create SYM-BUF TOK-CAP allot
 create TOK-BUF TOK-CAP allot
@@ -1321,6 +1326,29 @@ variable OPEN                              \ 0 closed, else 1 + the open declara
 variable SCOPE-WID                         \ the wordlist LIBRARY/PROCESS-SYMBOLS was stated in
 variable SCOPE-SET                         \ ... and whether one was stated at all
 variable SCOPE-HOOK
+
+\ The token cells a library selection shares with a declaration, at rest.
+: REST-TOKENS ( -- )
+   TOK-CAP 0 ?do 0 TOK-BUF i + c! 0 BASE-BUF i + c! loop
+   0 TOK-U ! 0 BASE-U ! ;
+
+\ The declaration's working state at rest: every cell from NAME-BUF through
+\ STACK-N at zero.
+: REST ( -- )
+   TOK-CAP 0 ?do 0 NAME-BUF i + c! 0 SYM-BUF i + c! loop
+   0 NAME-U ! 0 SYM-U !
+   REST-TOKENS
+   ARG-MAX 0 ?do
+      0 ARG-KIND i cells + ! 0 ARG-REG i cells + ! 0 ARG-EXT i cells + !
+      0 ARG-EXT-ARG i cells + ! 0 ARG-SBYTES i cells + ! 0 ARG-PAY i cells + !
+   loop
+   0 ARG-N ! 0 INT-N ! 0 FLT-N ! 0 RES-KIND ! 0 CALL-KIND !
+   0 VAR-START ! 0 STRUCT-BYTES ! 0 STACK-N ! ;
+
+\ Run a declaration word's body, then rest the cells by the rule above: all of
+\ them when no declaration is open, else the token cells.
+: KEEP-REST ( R [ R -- S ] -- S )
+   [: OPEN @ 0= if REST else REST-TOKENS then ;] finally ;
 
 \ ---- the declaration token stream -----------------------------------------
 \ parse-name's span is transient, so every token is copied before the next one
@@ -1894,25 +1922,28 @@ public
 \ evaluate. Nothing is published before the closer, and the row is registered as
 \ the text is rendered, so a refused declaration leaves no half-built word.
 : OPEN-FUNCTION ( -- )
-   CHECK-SCOPE
-   OPEN @ 0 <> if E-FFI-SYNTAX throw then
-   0 ARG-N ! 0 INT-N ! 0 FLT-N ! -1 VAR-START ! 0 STACK-N ! 0 STRUCT-BYTES !
-   R-NONE RES-KIND !
-   TOK@ NAME!
-   TOK@ SYM!
-   EFFECT
-   1 OPEN ! ;
+   [: CHECK-SCOPE
+      OPEN @ 0 <> if E-FFI-SYNTAX throw then
+      0 ARG-N ! 0 INT-N ! 0 FLT-N ! -1 VAR-START ! 0 STACK-N ! 0 STRUCT-BYTES !
+      R-NONE RES-KIND !
+      TOK@ NAME!
+      TOK@ SYM!
+      EFFECT
+      1 OPEN ! ;] KEEP-REST ;
 
+\ The rendered text calls only FFI words, which no scratch cell reaches, so
+\ the scratch rests before the text runs.
 : CLOSE-FUNCTION ( -- )
-   OPEN @ 0= if E-FFI-SYNTAX throw then
-   0 OPEN !
-   PLAN-CALL
-   EMIT
+   [: OPEN @ 0= if E-FFI-SYNTAX throw then
+      0 OPEN !
+      PLAN-CALL
+      EMIT ;] KEEP-REST
    GEN CODEGEN:CONTENTS INCLUDE-EVALUATE ;
 
 \ A refused clause ABANDONS the declaration rather than leaving it half open:
 \ the next FUNCTION: in the file would otherwise refuse too, and the first
-\ diagnostic would name the wrong declaration.
+\ diagnostic would name the wrong declaration. The clause word's KEEP-REST
+\ then rests the cells, as for any closed declaration.
 : REFUSE ( -- )
    0 OPEN !
    E-FFI-SYNTAX throw ;
@@ -1927,7 +1958,8 @@ public
    idx ARG-SBYTES@ 0 <> if REFUSE then
    STRUCT-BYTES @ 0 <> idx ARG-N @ 1- = and if REFUSE then ;
 
-: SET-VARIADIC ( n -- ) {: fixed:n :}
+private
+: VARIADIC-CLAUSE ( n -- ) {: fixed:n :}
    OPEN @ 0= if REFUSE then
    VAR-START @ -1 <> if REFUSE then
    STRUCT-BYTES @ 0 <> RECORDS? or if REFUSE then
@@ -1940,13 +1972,13 @@ public
 
 \ Argument idx is written by the callee: the bounded call guards exactly the
 \ span named here, a fixed width or the argument that carries the length.
-: WRITE-EXTENT ( n n -- ) {: idx:n len:n :}
+: EXTENT-CLAUSE ( n n -- ) {: idx:n len:n :}
    idx CLAUSE-TARGET
    len 0 <= if REFUSE then
    len idx ARG-EXT!
    1 OPEN +! ;
 
-: WRITE-LENGTH-ARG ( n n -- ) {: idx:n src:n :}
+: LENGTH-CLAUSE ( n n -- ) {: idx:n src:n :}
    idx CLAUSE-TARGET
    src 0 < if REFUSE then
    src ARG-N @ >= if REFUSE then
@@ -1956,7 +1988,7 @@ public
 
 \ The last input, a `ptr u8` no write clause names, receives a C struct of
 \ bytes returned by value; the declaration has no output. AAPCS64 only.
-: SET-STRUCT-RESULT ( n -- ) {: bytes:n :}
+: STRUCT-RESULT-CLAUSE ( n -- ) {: bytes:n :}
    OPEN @ 0= if REFUSE then
    HB-TARGET-LINUX-X86-64? if REFUSE then
    STRUCT-BYTES @ 0 <> if REFUSE then
@@ -1971,7 +2003,7 @@ public
 \ Input idx, a `ptr u8` no other clause names, is the address of a C struct of
 \ bytes passed by value. The struct call returns x0 and x1 only, so a float
 \ result has no shape here. AAPCS64 only.
-: SET-STRUCT-ARG ( n n -- ) {: idx:n bytes:n :}
+: STRUCT-ARG-CLAUSE ( n n -- ) {: idx:n bytes:n :}
    OPEN @ 0= if REFUSE then
    HB-TARGET-LINUX-X86-64? if REFUSE then
    idx CLAUSE-TARGET
@@ -1980,6 +2012,13 @@ public
    RES-KIND @ R-FLOAT = RES-KIND @ R-FLOAT32 = or if REFUSE then
    bytes idx ARG-SBYTES!
    1 OPEN +! ;
+public
+
+: SET-VARIADIC ( n -- ) [: VARIADIC-CLAUSE ;] KEEP-REST ;
+: WRITE-EXTENT ( n n -- ) [: EXTENT-CLAUSE ;] KEEP-REST ;
+: WRITE-LENGTH-ARG ( n n -- ) [: LENGTH-CLAUSE ;] KEEP-REST ;
+: SET-STRUCT-RESULT ( n -- ) [: STRUCT-RESULT-CLAUSE ;] KEEP-REST ;
+: SET-STRUCT-ARG ( n n -- ) [: STRUCT-ARG-CLAUSE ;] KEEP-REST ;
 
 : SELECT-LIBRARY ( ptr u8 n -- ) {: path:ptr u:n :}
    u 0 <= u FFI:LIBRARY-PATH-CAP >= or if E-FFI-SYNTAX throw then
@@ -1992,9 +2031,9 @@ public
 \ table guard are shared and a rendered name reaches dlopen the way a literal
 \ one does.
 : SELECT-VERSIONED-LIBRARY ( -- )
-   TOK@ BASE!
-   TOK@ TOK>VERSION {: version:n :}
-   BASE-BUF BASE-U @ version LIB-NAME FFI:LIBRARY-NAME$ SELECT-LIBRARY ;
+   [: TOK@ BASE!
+      BASE-BUF BASE-U @ TOK@ TOK>VERSION LIB-NAME FFI:LIBRARY-NAME$ SELECT-LIBRARY ;]
+   KEEP-REST ;
 
 : SELECT-PROCESS ( -- )
    FFI:PROCESS CUR-LIB !

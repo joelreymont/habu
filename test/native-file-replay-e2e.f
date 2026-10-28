@@ -656,6 +656,74 @@ variable REMOVED
    s" rv-new-hb" RUN-PRODUCT SUCCESS OUT$ S\" 9\n9\n5\n" CONTAINS? TTRUE
    0 DIAG ! ;
 
+\ A reused file's FFI declarations do not run, so the declarer's working state
+\ must rest at the file boundary: a warm build that reuses a file saves the
+\ bytes a cold build saves. The window's first declaring file grows the
+\ declaration rows and is refused ffi-grown, so zl.f grows them and the file
+\ under test is reused. Each file is the last of its product, since a later
+\ declaration word would rest what it left. zp.f declares a long symbol and
+\ then a short one and ends with a library selection; its first build follows
+\ zl.f's selection of the same token lengths and its warm one follows none, so
+\ the selection's tokens must rest too. za.f and zb.f each catch a throw from a
+\ declaration word, a selection's and a declaration's, which must rest the
+\ cells it wrote all the same.
+: FFI-ZL ( ptr u8 n -- )
+   {: tail:ptr tailu:n :}
+   0 INPUT-U !
+   S\" require src/lib/ffi-abi.f\nVERSIONED-LIBRARY m 6\nVERSIONED-LIBRARY z 1\nFUNCTION: ZL-CRC crc32 ( n ptr u8 n -- n ) ;FUNCTION\n"
+      INPUT CAP INPUT-U BUF-APPEND
+   tail tailu INPUT CAP INPUT-U BUF-APPEND
+   s" zl.f" INPUT INPUT-U @ PUT ;
+
+\ ffi-app.f loads zl.f and then file; MAIN passes seed to zl.f's function.
+: FFI-APP ( ptr u8 n ptr u8 n -- )
+   {: file:ptr fileu:n seed:ptr seedu:n :}
+   0 INPUT-U !
+   S\" require zl.f\nrequire " INPUT CAP INPUT-U BUF-APPEND
+   file fileu INPUT CAP INPUT-U BUF-APPEND
+   S\" \n: MAIN ( -- ) " INPUT CAP INPUT-U BUF-APPEND
+   seed seedu INPUT CAP INPUT-U BUF-APPEND
+   S\"  s\" abc\" ZL-CRC . cr ;\n" INPUT CAP INPUT-U BUF-APPEND
+   s" ffi-app.f" INPUT INPUT-U @ PUT ;
+
+\ Build file's product in cache, rebuild it there after zl.f changes, which
+\ reuses file, and compare it with a build in the empty cold cache.
+: FFI-REUSE ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: file:ptr fileu:n body:ptr bodyu:n cache:ptr cacheu:n cold:ptr coldu:n :}
+   cache cacheu AT MAKE-DIR
+   cold coldu AT MAKE-DIR
+   S\" VERSIONED-LIBRARY z 1\n" FFI-ZL
+   file fileu body bodyu PUT
+   file fileu s" 0" FFI-APP
+   s" ffi-app.f" s" ffi-hb" cache cacheu BUILD-IN SUCCESS
+   OUT$ S\" files reused 0\n" CONTAINS? TTRUE
+   s" " FFI-ZL
+   file fileu s" 1" FFI-APP
+   -1 DIAG !
+   s" ffi-app.f" s" ffi-warm-hb" cache cacheu BUILD-IN SUCCESS
+   0 DIAG !
+   REUSED
+   0 INPUT-U !
+   s" /" INPUT CAP INPUT-U BUF-APPEND
+   file fileu INPUT CAP INPUT-U BUF-APPEND
+   s"  records=" INPUT CAP INPUT-U BUF-APPEND
+   ERR$ INPUT INPUT-U @ CONTAINS? TTRUE
+   s" ffi-app.f" s" ffi-cold-hb" cold coldu BUILD-IN SUCCESS
+   OUT$ S\" files reused 0\n" CONTAINS? TTRUE
+   s" ffi-cold-hb" s" ffi-warm-hb" SAME-FILE ;
+
+: FFI-REUSE-CASE ( -- )
+   s" a warm build reusing a file of FFI declarations saves the cold product" T-LABEL
+   s" zp.f"
+      S\" require src/lib/ffi-abi.f\nVERSIONED-LIBRARY z 1\nFUNCTION: ZP-ADLER adler32 ( n ptr u8 n -- n ) ;FUNCTION\nFUNCTION: ZP-CRC crc32 ( n ptr u8 n -- n ) ;FUNCTION\nVERSIONED-LIBRARY m 6\n"
+      s" cache-ffp" s" cache-ffp-cold" FFI-REUSE
+   s" za.f"
+      S\" require src/lib/ffi-abi.f\nVERSIONED-LIBRARY z 1\n' VERSIONED-LIBRARY catch zz x\nconstant ZA-RC\n"
+      s" cache-ffa" s" cache-ffa-cold" FFI-REUSE
+   s" zb.f"
+      S\" require src/lib/ffi-abi.f\nVERSIONED-LIBRARY z 1\n' FUNCTION: catch constant ZB-RC 1 constant ZB-K\n"
+      s" cache-ffb" s" cache-ffb-cold" FFI-REUSE ;
+
 : SESSION-CASES ( -- )
    SESSION-CLOSE-CASE FOREIGN-CASE ROOT-REGISTRY-CASE
    SYMBOL-CASE EVICTED-CHILD-CASE
@@ -699,6 +767,7 @@ public
    SCOPE-CASES
    CANON-CASE
    SESSION-CASES
+   FFI-REUSE-CASE
    T-REPORT
    s" FILE replay artifacts: " type ROOT$ type cr ;
 
