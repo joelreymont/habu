@@ -4,9 +4,7 @@
 \ states what each operation does on every target; this file states only the
 \ arm64 encodings and register choices. Every word here is private, and the
 \ file ends by providing INSTALL, which stores each into its T0-EMIT cell, for
-\ CTARGET-ARCH:AARCH64. Control and the counted loops are not installed yet:
-\ their cells stay unset, and an operation reaching one ends the process with
-\ `hb: unset quotation`.
+\ CTARGET-ARCH:AARCH64.
 \
 \ THE CONTRACT A COMPILED BODY KEEPS. x19 is the data stack, which grows up: a
 \ push is `str xR,[x19],#8` and a pop `ldr xR,[x19,#-8]!` (src/habu/jit.f
@@ -42,6 +40,15 @@
 \ RETURN records the offset of its `ret` in EPI-AT and TAIL that of its `b`;
 \ CLOSE inserts the epilogue there and moves every row of the unit by the
 \ prologue and by the epilogues inserted at or before it.
+\
+\ THE BRANCHES. A control branch is a placeholder word in RAW and an entry of
+\ the open unit's branch list: its raw site, its raw target once the structure
+\ resolves it (a backward branch's at once), and its form, `b`, `b.cond` with
+\ its condition or `cbz` with its register. CLOSE writes each, since the
+\ epilogues it inserts move code: the site placed as a row is, and the target
+\ counting only the epilogues before it, so a branch to a `ret` or tail `b`
+\ lands on the epilogue in front of it. A branch never leaves its unit, so
+\ placement leaves it alone; one its field cannot reach throws E-A64EMIT-REACH.
 \
 \ THE ROWS. A unit's address sites wait in PEND and its call and tail sites in
 \ PCALL, at raw offsets, until CLOSE has laid the unit out, and CLOSE files them
@@ -141,10 +148,30 @@ DYNAMIC-BUFFER PCALL-LOC n
 variable NSELF
 DYNAMIC-BUFFER SELF-AT n              \ the open unit's `recurse` sites, raw
 DYNAMIC-BUFFER QUOT-SITE n            \ the `adr` in OUT that names each unit
+variable NBR
+DYNAMIC-BUFFER BR-AT n                \ the open unit's branches: raw site,
+DYNAMIC-BUFFER BR-TO n                \ raw target or -1 while open, form,
+DYNAMIC-BUFFER BR-FORM n              \ and the form's condition or register
+DYNAMIC-BUFFER BR-ARG n
+DYNAMIC-BUFFER CF-KIND n              \ the open structures, innermost last,
+DYNAMIC-BUFFER CF-AT n                \ and each one's branch or head
+variable CF-N
+DYNAMIC-BUFFER LV-HEAD n              \ the open loop levels: the head's offset,
+DYNAMIC-BUFFER LV-ENTRY n             \ `?do`'s entry branch or -1,
+DYNAMIC-BUFFER LV-FIRST n             \ and the level's first branch in LEAVES
+variable LV-N
+DYNAMIC-BUFFER LEAVES n               \ the open levels' `leave` branches, innermost last
+variable LEAVE-N
+
+\ The forms of a branch.
+0 constant FORM-B
+1 constant FORM-BCOND
+2 constant FORM-CBZ
 
 4096 constant SINK-START-BYTES
 4095 constant ADJ-MAX                 \ the widest add/sub immediate
 26 constant B-BITS                    \ a b or bl field, in instructions
+19 constant COND-BITS                 \ a b.cond or cbz field, in instructions
 21 constant ADR-BITS                  \ an adr field, in bytes
 
 : HERE-OFF ( -- n ) RAW BUF:LEN@ BUF:BLEN>N ;
@@ -315,15 +342,33 @@ DYNAMIC-BUFFER QUOT-SITE n            \ the `adr` in OUT that names each unit
    RAW BUF:CLEAR
    OUT-OFF T0-EMIT:UNIT+
    NUNIT @ 1 + NUNIT !
-   0 FRAME-CELLS !  0 LINKED !  0 NEPI !  0 NPEND !  0 NPCALL !  0 NSELF ! ;
+   0 FRAME-CELLS !  0 LINKED !  0 NEPI !  0 NPEND !  0 NPCALL !  0 NSELF !
+   0 NBR ! ;
 
 \ How many epilogues CLOSE inserts at or before raw offset x.
 : SITES<= ( n -- n ) {: x:n :}
    0 NEPI @ 0 ?do i EPI-AT @ x <= if 1 + then loop ;
 
-\ Where raw offset x of the open unit lands in OUT.
+\ How many it inserts strictly before x.
+: SITES< ( n -- n ) {: x:n :}
+   0 NEPI @ 0 ?do i EPI-AT @ x < if 1 + then loop ;
+
+\ Where raw offset x of the open unit lands in OUT, and where a branch to x
+\ lands: on the epilogue inserted at x, if any.
 : PLACED ( n n n n -- n ) {: x:n base:n p:n e:n :}
    base x + p +  x SITES<= e * + ;
+
+: LANDED ( n n n n -- n ) {: x:n base:n p:n e:n :}
+   base x + p +  x SITES< e * + ;
+
+\ Branch k's word, for its site at and target to in OUT.
+: BR-WORD ( n n n -- n ) {: k:n at:n to:n :}
+   k BR-FORM @ {: form:n :}
+   form FORM-B = if to at - false BRANCH exit then
+   to at - 4 / {: d:n :}
+   d COND-BITS SIGNED? 0= if E-A64EMIT-REACH throw then
+   form FORM-BCOND = if d k BR-ARG @ ENC-BCOND exit then
+   k BR-ARG @ d ENC-CBZ ;
 
 \ Copy RAW's bytes [from, to) to OUT.
 : COPY ( n n -- ) {: from:n to:n :}
@@ -340,6 +385,7 @@ DYNAMIC-BUFFER QUOT-SITE n            \ the `adr` in OUT that names each unit
    then
    OUT BUF:CLEAR
    0 NUNIT !
+   0 CF-N !  0 LV-N !  0 LEAVE-N !
    UNIT-BEGIN ;
 
 \ Point unit n's `adr`, in a closed unit of OUT, at the offset the unit begins
@@ -387,6 +433,10 @@ DYNAMIC-BUFFER QUOT-SITE n            \ the `adr` in OUT that names each unit
    NSELF @ 0 ?do
       i SELF-AT @ base p e PLACED {: at:n :}
       at negate true BRANCH  at W32!
+   loop
+   NBR @ 0 ?do
+      i BR-AT @ base p e PLACED {: at:n :}
+      i  at  i BR-TO @ base p e LANDED  BR-WORD  at W32!
    loop ;
 
 : BYTES ( -- ptr u8 n ) OUT BUF:SPAN$ BUF:BLEN>N ;
@@ -500,18 +550,21 @@ DYNAMIC-BUFFER QUOT-SITE n            \ the `adr` in OUT that names each unit
    d REG s REG ENC-CMP W
    d c SET-FLAG ;
 
-\ cmp for an imm12, cmn for a negated one, else against x16.
+\ Compare r with v: cmp for an imm12, cmn for a negated one, else against x16.
+: CMP-LIT ( n n -- ) {: r:n v:n :}
+   v negate {: nv:n :}
+   v 0 >= v IMM12-LIM < and if r v ENC-CMPI W exit then
+   nv 0 > nv IMM12-LIM < and if r nv ENC-CMNI W exit then
+   v TMP LIT-R
+   r TMP ENC-CMP W ;
+
 : CMP-SET-LIT ( T0-EMIT:vreg n T0-EMIT:cc -- )
    {: d:T0-EMIT:vreg v:n c:T0-EMIT:cc :}
-   d REG {: r:n :}  v negate {: nv:n :}
-   v 0 >= v IMM12-LIM < and if r v ENC-CMPI W d c SET-FLAG exit then
-   nv 0 > nv IMM12-LIM < and if r nv ENC-CMNI W d c SET-FLAG exit then
-   v TMP LIT-R
-   r TMP ENC-CMP W
+   d REG v CMP-LIT
    d c SET-FLAG ;
 
-\ Every literal is admitted: OP-LIT, MUL-LIT and CMP-SET-LIT load one no
-\ immediate field holds into x16.
+\ Every literal is admitted: OP-LIT, MUL-LIT, CMP-SET-LIT and OF-LIT load one
+\ no immediate field holds into x16.
 : IMM? ( n -- bool ) drop true ;
 
 \ ---- memory ------------------------------------------------------------------
@@ -556,6 +609,192 @@ DYNAMIC-BUFFER QUOT-SITE n            \ the `adr` in OUT that names each unit
    HERE-OFF SELF+
    0 true BRANCH W ;
 
+\ ---- control -----------------------------------------------------------------
+\ An open structure is a POSITION, a forward branch waiting for its target or
+\ the raw offset of a loop head, or the start of a case beneath its `endof`
+\ exits. Which of the two a position is follows from the word that pops it, so
+\ only the case start is marked.
+0 constant POSITION
+1 constant CASE-START
+
+: CF-PUSH ( n n -- ) {: kind:n at:n :}
+   CF-N @ {: k:n :}
+   k 1 + CF-KIND-RESERVE  k 1 + CF-AT-RESERVE
+   kind k CF-KIND !  at k CF-AT !
+   k 1 + CF-N ! ;
+
+: CF-POP ( -- n )
+   CF-N @ 1 - {: k:n :}
+   k CF-N !
+   k CF-AT @ ;
+
+: CF-TOP-KIND ( -- n ) CF-N @ 1 - CF-KIND @ ;
+
+: AT+ ( n -- ) POSITION swap CF-PUSH ;
+
+\ A branch of the form, with its condition or register, to raw offset to (-1
+\ until RESOLVE): it emits a zero placeholder word and answers the branch's
+\ number.
+: BR+ ( n n n -- n ) {: form:n arg:n to:n :}
+   NBR @ {: k:n :}
+   k 1 + BR-AT-RESERVE  k 1 + BR-TO-RESERVE
+   k 1 + BR-FORM-RESERVE  k 1 + BR-ARG-RESERVE
+   HERE-OFF k BR-AT !  to k BR-TO !  form k BR-FORM !  arg k BR-ARG !
+   k 1 + NBR !
+   0 W
+   k ;
+
+\ Bind forward branch k to here.
+: RESOLVE ( n -- ) HERE-OFF swap BR-TO ! ;
+
+: FWD-B ( -- n ) FORM-B 0 -1 BR+ ;
+: FWD-BCOND ( n -- n ) FORM-BCOND swap -1 BR+ ;
+: FWD-CBZ ( T0-EMIT:vreg -- n ) REG FORM-CBZ swap -1 BR+ ;
+
+: BACK-B ( n -- ) FORM-B 0 rot BR+ drop ;
+: BACK-BCOND ( n n -- ) {: c:n m:n :}  FORM-BCOND c m BR+ drop ;
+: BACK-CBZ ( T0-EMIT:vreg n -- ) {: c:T0-EMIT:vreg m:n :}  FORM-CBZ c REG m BR+ drop ;
+
+
+: IF, ( T0-EMIT:vreg -- ) FWD-CBZ AT+ ;
+
+: ELSE, ( -- ) FWD-B CF-POP RESOLVE AT+ ;
+
+: THEN, ( -- ) CF-POP RESOLVE ;
+
+: BEGIN, ( -- ) HERE-OFF AT+ ;
+
+: WHILE, ( T0-EMIT:vreg -- )
+   FWD-CBZ {: s:n :}
+   CF-POP {: m:n :}
+   s AT+
+   m AT+ ;
+
+: REPEAT, ( -- ) CF-POP BACK-B CF-POP RESOLVE ;
+
+: UNTIL, ( T0-EMIT:vreg -- ) CF-POP BACK-CBZ ;
+
+: AGAIN, ( -- ) CF-POP BACK-B ;
+
+: CASE, ( -- ) CASE-START 0 CF-PUSH ;
+
+: OF, ( T0-EMIT:vreg T0-EMIT:vreg -- )
+   {: sel:T0-EMIT:vreg v:T0-EMIT:vreg :}
+   sel REG v REG ENC-CMP W
+   C-NE FWD-BCOND AT+ ;
+
+: OF-LIT ( T0-EMIT:vreg n -- )
+   {: sel:T0-EMIT:vreg v:n :}
+   sel REG v CMP-LIT
+   C-NE FWD-BCOND AT+ ;
+
+: ENDOF, ( -- ) ELSE, ;
+
+: ENDCASE, ( -- )
+   begin CF-TOP-KIND CASE-START <> while CF-POP RESOLVE repeat
+   CF-POP drop ;
+
+\ ---- loops -------------------------------------------------------------------
+\ x16 holds the loop stack's depth and x17 the address one frame past the
+\ innermost, base + 16 * depth (habu2.f J-FRAME's layout).
+: LDEPTH ( -- ) TMP XREG-RBASE LOOPSP-CELL ENC-LDR W ;
+: LDEPTH! ( -- ) TMP XREG-RBASE LOOPSP-CELL ENC-STR W ;
+
+: LTOP ( -- )
+   ADR XREG-RBASE STACK-ABI:LOOP-BASE-CELL ENC-LDR W
+   ADR ADR TMP 4 ENC-ADD-LSL W ;
+
+\ The index and limit of the innermost frame, below LTOP's address.
+-16 constant LIDX-OFF
+-8 constant LLIM-OFF
+
+\ The innermost level and its head.
+: LV ( -- n ) LV-N @ 1 - ;
+: HEAD ( -- n ) LV LV-HEAD @ ;
+
+\ The index of the frame k levels out of the innermost into d.
+: LINDEX ( T0-EMIT:vreg n -- )
+   {: d:T0-EMIT:vreg k:n :}
+   LDEPTH LTOP
+   d REG ADR LIDX-OFF k 16 * - false XFER ;
+
+
+: LOOP-PUSH ( T0-EMIT:vreg T0-EMIT:vreg -- )
+   {: s:T0-EMIT:vreg l:T0-EMIT:vreg :}
+   LDEPTH
+   TMP TMP 1 ENC-ADDI W
+   LDEPTH! LTOP
+   s REG ADR LIDX-OFF true XFER
+   l REG ADR LLIM-OFF true XFER ;
+
+: LOOP-POP ( -- )
+   LDEPTH
+   TMP TMP 1 ENC-SUBI W
+   LDEPTH! ;
+
+: LOOP-I ( T0-EMIT:vreg -- ) 0 LINDEX ;
+: LOOP-J ( T0-EMIT:vreg -- ) 1 LINDEX ;
+
+: LOOP-OPEN ( T0-EMIT:vreg T0-EMIT:vreg bool -- )
+   {: s:T0-EMIT:vreg l:T0-EMIT:vreg entry:bool :}
+   entry if
+      s REG l REG ENC-CMP W
+      C-GE FWD-BCOND
+   else -1 then {: at:n :}
+   LV-N @ {: k:n :}
+   k 1 + LV-HEAD-RESERVE  k 1 + LV-ENTRY-RESERVE  k 1 + LV-FIRST-RESERVE
+   HERE-OFF k LV-HEAD !
+   at k LV-ENTRY !
+   LEAVE-N @ k LV-FIRST !
+   k 1 + LV-N ! ;
+
+: LEAVE, ( -- )
+   LEAVE-N @ {: n:n :}
+   n 1 + LEAVES-RESERVE
+   FWD-B n LEAVES !
+   n 1 + LEAVE-N ! ;
+
+: LOOP-NEXT ( T0-EMIT:vreg -- )
+   {: t:T0-EMIT:vreg :}
+   t REG {: r:n :}
+   LDEPTH LTOP
+   r ADR LIDX-OFF false XFER
+   r r 1 ENC-ADDI W
+   r ADR LIDX-OFF true XFER
+   TMP ADR LLIM-OFF false XFER
+   r TMP ENC-CMP W
+   C-LT HEAD BACK-BCOND ;
+
+\ With old = index - limit before the step, the index crossed the boundary
+\ when (old xor old + s) and (old xor s) is negative. The level's `?do` entry
+\ b.ge becomes b.eq.
+: LOOP-STEP ( T0-EMIT:vreg T0-EMIT:vreg -- )
+   {: s:T0-EMIT:vreg t:T0-EMIT:vreg :}
+   s REG {: sr:n :}  t REG {: r:n :}
+   LDEPTH LTOP
+   r ADR LIDX-OFF false XFER
+   TMP r sr ENC-ADD W
+   TMP ADR LIDX-OFF true XFER
+   TMP ADR LLIM-OFF false XFER
+   r r TMP ENC-SUB W
+   TMP r sr ENC-ADD W
+   TMP TMP r ENC-EOR W
+   sr sr r ENC-EOR W
+   TMP TMP sr ENC-AND W
+   TMP 0 ENC-CMPI W
+   C-GE HEAD BACK-BCOND
+   LV LV-ENTRY @ {: at:n :}
+   at 0 >= if C-EQ at BR-ARG ! then ;
+
+: LOOP-CLOSE ( -- )
+   LV {: k:n :}
+   LEAVE-N @ k LV-FIRST @ ?do i LEAVES @ RESOLVE loop
+   k LV-ENTRY @ {: at:n :}
+   at 0 >= if at RESOLVE then
+   k LV-FIRST @ LEAVE-N !
+   k LV-N !
+   LOOP-POP ;
+
 \ ---- the seam ----------------------------------------------------------------
 \ Make this file's words the ones T0-EMIT runs at slot k.
 : INSTALL ( n -- )
@@ -597,6 +836,28 @@ DYNAMIC-BUFFER QUOT-SITE n            \ the `adr` in OUT that names each unit
    ['] CALL k T0-EMIT:CALL-XT !
    ['] TAIL k T0-EMIT:TAIL-XT !
    ['] CALL-SELF k T0-EMIT:CALL-SELF-XT !
+   ['] IF, k T0-EMIT:IF,-XT !
+   ['] ELSE, k T0-EMIT:ELSE,-XT !
+   ['] THEN, k T0-EMIT:THEN,-XT !
+   ['] BEGIN, k T0-EMIT:BEGIN,-XT !
+   ['] WHILE, k T0-EMIT:WHILE,-XT !
+   ['] REPEAT, k T0-EMIT:REPEAT,-XT !
+   ['] UNTIL, k T0-EMIT:UNTIL,-XT !
+   ['] AGAIN, k T0-EMIT:AGAIN,-XT !
+   ['] CASE, k T0-EMIT:CASE,-XT !
+   ['] OF, k T0-EMIT:OF,-XT !
+   ['] OF-LIT k T0-EMIT:OF-LIT-XT !
+   ['] ENDOF, k T0-EMIT:ENDOF,-XT !
+   ['] ENDCASE, k T0-EMIT:ENDCASE,-XT !
+   ['] LOOP-PUSH k T0-EMIT:LOOP-PUSH-XT !
+   ['] LOOP-POP k T0-EMIT:LOOP-POP-XT !
+   ['] LOOP-I k T0-EMIT:LOOP-I-XT !
+   ['] LOOP-J k T0-EMIT:LOOP-J-XT !
+   ['] LOOP-OPEN k T0-EMIT:LOOP-OPEN-XT !
+   ['] LEAVE, k T0-EMIT:LEAVE,-XT !
+   ['] LOOP-NEXT k T0-EMIT:LOOP-NEXT-XT !
+   ['] LOOP-STEP k T0-EMIT:LOOP-STEP-XT !
+   ['] LOOP-CLOSE k T0-EMIT:LOOP-CLOSE-XT !
    ['] IMM? k T0-EMIT:IMM?-XT ! ;
 
 CTARGET-ARCH:AARCH64 ' INSTALL T0-EMIT:PROVIDE
