@@ -59,7 +59,7 @@ PUBLISH-PENDING-DEFER/DOES ( e n -- ) -> ( n -- ); WITH-UNIT observer deleted wi
 ADDR-DATA/CODE; CALL-SITE+ may lose impl/loc; NCOMP:COMPILE/COMPILE-FIXED/INSTALL/DISPATCH! -> T0:COMPILE,
 COMPILE-FIXED, INSTALL, DISPATCH! (same effects); set-tier/tier@ rows (prims.f:778, 812), TIER:SELECT,
 src/lib/tier.f deleted; WBACK:INSTALL/BINDING -> T0-EMIT:PROVIDE + WASM binding in t0-wasm.f; tools/
-native-unit-capture.f, native-unit-object.f go with the cache.
+native-unit-capture.f, native-unit-object.f STAY: they are whole-file reuse (file objects), rebound to NEMIT in L3.
 
 ## 3. arm64
 Entry: EM-COMPILE-SEMI already hands the captured body to NCOMP-DISPATCH:XT-CELL (habu2.f:12414-12454; TIER-CELL
