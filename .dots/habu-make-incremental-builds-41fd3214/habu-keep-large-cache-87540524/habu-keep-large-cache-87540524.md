@@ -1,9 +1,11 @@
 ---
 title: Keep large cache diagnostics usable
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-10-19T13:02:18.010733+03:00"
+closed-at: "2026-10-28T17:49:40.057008+02:00"
+close-reason: "fixed on master: maker runs capture through RUN-ARGV-ENV-STDIN-GROWING-BOTH-CAPTURE-OUTCOME (tools/hb-build-lib.f:753,1097,1286), so HBB-CAPTURE-CAP is only the initial reserve; the full engine warm build with HABU_NATIVE_CACHE_DIAG=1 (carl-census .out/warm.log) completes rc=0 with every per-definition diagnostic line"
 ---
 
 A real native self-build with HABU_NATIVE_CACHE_DIAG=1 reuses support but exits E-PROC-TRUNCATED before completion because per-definition stderr diagnostics overflow the outer builder capture. Without diagnostics the same command can proceed. Bound and repair diagnostic delivery at the responsible process/output boundary; do not silently drop lines or raise arbitrary fixed limits. Existing real engine replay is the acceptance path.
