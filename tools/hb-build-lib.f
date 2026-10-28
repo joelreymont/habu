@@ -61,6 +61,7 @@ create HBB-PAIR-STAGE FS-PATH-CAP allot
 create HBB-PAIR-BACKUP FS-PATH-CAP allot
 create HBB-REPL-DEPS-PATH FS-PATH-CAP allot
 create HBB-MAKER-INPUTS-PATH FS-PATH-CAP allot
+create HBB-COUNTS-PATH FS-PATH-CAP allot
 create HBB-REPL-SUPPORT-PATH FS-PATH-CAP allot
 create HBB-REPL-SUPPORT-KEY 64 allot
 create HBB-REPL-RUNNING-ROOT FS-PATH-CAP allot
@@ -92,6 +93,7 @@ variable HBB-PAIR-COMMITTED
 variable HBB-PAIR-KEEP-BACKUP
 variable HBB-REPL-DEPS-U
 variable HBB-MAKER-INPUTS-U
+variable HBB-COUNTS-U
 variable HBB-REPL-SUPPORT-U
 variable HBB-MAKER-RUNNING-ROOT-U
 variable HBB-MAKER-SELECTED-ROOT-U
@@ -429,9 +431,57 @@ variable HBB-APP-BUILDER-U
    limit 1 < limit HBB-MAKER-MAX-MS > or if HBB-BAD-MAKER-TIMEOUT then
    limit HBB-MAKER-TIMEOUT-MS ! ;
 
+\ The maker's per-file counts (tools/native-definition-cache.f COUNTS-WRITE):
+\ `<reused> <compiled>` and a newline, two nonnegative cells of at most 19
+\ decimal digits each. The file lives in the build's TMP directory for one
+\ maker run.
+40 constant HBB-COUNTS-MAX
+HBB-COUNTS-MAX BUFFER: HBB-COUNTS-BUF
+
+: HBB-COUNTS$ ( -- ptr u8 n )
+   s" hb-build-counts" BF-A$ {: a:ptr u:n :}
+   u FS-PATH-CAP > if E-BUILD-PATH throw then
+   a HBB-COUNTS-PATH u BYTE-COPY
+   u HBB-COUNTS-U !
+   HBB-COUNTS-PATH HBB-COUNTS-U @ ;
+
+\ A failing maker's counts are never read. Every launch removes the file first
+\ so that a maker that exits 0 without writing it, or an earlier in-process
+\ build sharing this TMP directory, cannot hand this build stale counts.
+: HBB-COUNTS-ARM ( -- )
+   HBB-COUNTS$ 2dup EXISTS? if REMOVE-FILE else 2drop then
+   s" HABU_BUILD_COUNTS" >LEN HBB-COUNTS$ >LEN PROC-ENV-SET ;
+
+: HBB-COUNT ( ptr u8 n -- n )
+   STR>NUMBER? MATCH option
+      none OF E-BUILD-STATUS throw ENDOF
+      some OF ENDOF
+   ;MATCH {: v:n :}
+   v 0 < if E-BUILD-STATUS throw then
+   v ;
+
+\ A successful maker finished its counted session, so a missing or malformed
+\ file is a maker that did not report: E-BUILD-STATUS.
+: HBB-COUNTS-READ ( -- )
+   HBB-COUNTS$ FILE? 0= if E-BUILD-STATUS throw then
+   HBB-COUNTS$ FILE-SIZE {: size:n :}
+   size 2 < size HBB-COUNTS-MAX > or if E-BUILD-STATUS throw then
+   HBB-COUNTS$ HBB-COUNTS-BUF size READ-ALL size <> if E-BUILD-STATUS throw then
+   HBB-COUNTS-BUF size 1- + c@ 10 <> if E-BUILD-STATUS throw then
+   HBB-COUNTS-BUF size 1- STR-SPACE INDEX-OF MATCH option
+      none OF E-BUILD-STATUS throw ENDOF
+      some OF IDX>N ENDOF
+   ;MATCH {: sp:n :}
+   HBB-COUNTS-BUF sp HBB-COUNT
+   HBB-COUNTS-BUF sp 1+ + size 2 - sp - HBB-COUNT
+   HB-BUILD:CAPTURE-FILES
+   HBB-COUNTS$ REMOVE-FILE ;
+
+\ Every maker launch stages its argv and env here.
 : HBB-CMD-RESET ( -- )
    PROC-ARGV-RESET
    BF-PREPARE-ENV
+   HBB-COUNTS-ARM
    PROC-ENV-INHERIT-MISSING ;
 
 : HBB-GOT-NAME$ ( -- ptr u8 n )
@@ -632,6 +682,7 @@ variable HBB-APP-BUILDER-U
 
 : HBB-FINISH-MAKER-RC ( n n n -- ) {: outu erru rc :}
    rc 0= if
+      HBB-COUNTS-READ
       HBB-ENGINE @ if
          HBB-REPORT-JSON @ 0= if HBB-OUT-BUF outu type then
          erru HBB-WERR-ERR

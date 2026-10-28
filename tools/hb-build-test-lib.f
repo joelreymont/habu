@@ -516,6 +516,12 @@ TYPED-VARIABLE READER-STATE JR:cursor
    JR:TOKEN built T=
    s" maker_ran" JR:FIND-KEY TTRUE
    JR:TOKEN ran T=
+   \ maker_ran is the AOT maker's trace: a REPL build reports it false and still
+   \ counts the files its own maker loaded.
+   s" files_reused" JR:FIND-KEY TTRUE
+   JR:TOKEN JR:T-INT T=
+   s" files_compiled" JR:FIND-KEY TTRUE
+   JR:TOKEN JR:T-INT T=
    s" elapsed_ns" JR:FIND-KEY TTRUE
    JR:TOKEN JR:T-INT T=
    JR:INT 0 >= TTRUE

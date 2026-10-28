@@ -2,6 +2,8 @@
 \ the pending native dispatch selects one definition after its source actions.
 \ Each file's object lives where tools/build-out.f puts it: BUILD-OUT:OBJ$.
 require src/lib/errors.f
+require src/lib/string.f
+require src/lib/fmt.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/genio-core.f
@@ -103,9 +105,22 @@ variable BOOT-N
 BOOT-N NUNIT-OBJECT:PROCESS-CELL
 variable NATIVE?
 variable REPORT?
-\ Files installed from their objects in place of being run this session.
+\ Files this session entered, each once at its frame after OBJECT-OPEN,
+\ whether it then replays or runs; the files compiled are FILES-N - REUSED-N.
+variable FILES-N
+\ Files whose replay completed, installed from their objects in place of being
+\ run. A replay that stops and resumes from source counts as compiled.
 variable REUSED-N
-variable COMPILE-N
+\ Whether this session's counts are the build's: the application or engine
+\ source load (WITH), never the link-support or writer session (WITH-QUIET).
+\ REPORT? only gates printing them.
+variable COUNTED?
+\ HABU_BUILD_COUNTS as OPEN read it, before any observer binds, so it is no
+\ build input: where a counted session whose body succeeded writes
+\ `<reused> <compiled>` and a newline before CLOSE, for hb-build's report
+\ (tools/hb-build-lib.f HBB-COUNTS-READ). Empty writes nothing.
+FS-PATH-CAP BUFFER: COUNTS-PATH
+variable COUNTS-PATH-U
 variable DISPATCH-BUSY
 variable DISPATCH-ORIGINAL
 variable BORROWED-ORIGINAL
@@ -745,8 +760,7 @@ variable TEE-ERR
 : COMPILE-ORIGINAL ( ptr u8 n ptr u8 n -- )
    {: source:ptr sourceu:n reason:ptr reasonu:n :}
    reason reasonu DIAG-FALLBACK
-   source sourceu DISPATCH-ORIGINAL @ DISPATCH-XT execute
-   1 COMPILE-N +! ;
+   source sourceu DISPATCH-ORIGINAL @ DISPATCH-XT execute ;
 
 : COMPILE-STAGED ( -- )
    DISPATCH-SOURCE @ DISPATCH-SOURCE-U @
@@ -1911,6 +1925,7 @@ variable IMPORT-AT
       FILE-CLOSE DEPTH @ 0= if TEE-CLOSE then
       NFILE-REF:POP-FILE open-rc throw
    then
+   1 FILES-N +!
    \ The before-image follows BEGIN-UNIT's observer hooks, and the parent's
    \ reopened segment's is taken when its loader action finishes
    \ (NUNIT-OBJECT:LOAD-FINISH), after CLOSE-UNIT, which may unhook them, so
@@ -2014,10 +2029,25 @@ variable IMPORT-AT
 
 : PRINT-COUNTS ( -- )
    s" files reused " type REUSED-N @ .
-   s"  compiled " type COMPILE-N @ . ;
+   s"  compiled " type FILES-N @ REUSED-N @ - . ;
+
+: COUNTS-PATH-READ ( -- )
+   s" HABU_BUILD_COUNTS" GETENV {: a:ptr u:n :}
+   0 COUNTS-PATH-U !
+   u 0= if exit then
+   u FS-PATH-CAP > if E-FS-CAPACITY throw then
+   a COUNTS-PATH u BYTE-COPY
+   u COUNTS-PATH-U ! ;
+
+: COUNTS-WRITE ( -- )
+   COUNTED? @ 0= COUNTS-PATH-U @ 0= or if exit then
+   SB-RESET
+   REUSED-N @ FMT:SB-U STR-SPACE SB-APPEND-C
+   FILES-N @ REUSED-N @ - FMT:SB-U 10 SB-APPEND-C
+   COUNTS-PATH COUNTS-PATH-U @ SB$ ATOMIC-WRITE-FILE ;
 
 : CLEAR-SCRATCH ( -- )
-   0 REUSED-N ! 0 COMPILE-N !
+   0 REUSED-N ! 0 FILES-N !
    0 NUNIT-DEP:DIAG? !
    0 HOST-INPUT-RESET ! 0 HOST-UNIT-USE ! 0 HOST-INPUT-USE !
    0 HOST-ENV-USE ! 0 HOST-ENV-RESET ! 0 TARGET-ENV-RESET !
@@ -2041,8 +2071,9 @@ variable IMPORT-AT
    1 SESSION !
    BOOT-TAKE
    s" HABU_NATIVE_CACHE_DIAG" GETENV s" 1" STR= NUNIT-DEP:DIAG? !
+   COUNTS-PATH-READ
    0 SEEDED ! 0 DEPTH !
-   0 REUSED-N ! 0 COMPILE-N ! 0 DISPATCH-BUSY !
+   0 REUSED-N ! 0 FILES-N ! 0 DISPATCH-BUSY !
    0 DISPATCH-ORIGINAL ! 0 DISPATCH-ROLE-KNOWN !
    0 BORROWED-ORIGINAL ! 0 BORROW-ACTIVE ! 0 BORROW-ACCEPT !
    0 CHECKER-ROLE-KNOWN !
@@ -2122,8 +2153,10 @@ variable IMPORT-AT
    CLEAR-SCRATCH
    tee-rc 0<> if tee-rc throw then ;
 
+\ The body returned, so every file it entered has left its frame (DEPTH 0) and
+\ FILES-N is final; a failed body writes no counts.
 : OUTER-RUN ( -- )
-   OPEN OUTER-BODY @ execute ;
+   OPEN OUTER-BODY @ execute COUNTS-WRITE ;
 
 : APP-RUN ( -- ) APP-PATH @ APP-PATH-U @ script-required ;
 
@@ -2148,6 +2181,7 @@ public
    {: mode:ptr modeu:n body :}
    mode modeu s" engine" STR= NATIVE? !
    true REPORT? !
+   true COUNTED? !
    body OUTER-BODY !
    ['] OUTER-RUN ['] CLOSE finally ;
 
@@ -2155,6 +2189,7 @@ public
    {: mode:ptr modeu:n body :}
    mode modeu s" engine" STR= NATIVE? !
    false REPORT? !
+   false COUNTED? !
    body OUTER-BODY !
    ['] OUTER-RUN ['] CLOSE finally ;
 

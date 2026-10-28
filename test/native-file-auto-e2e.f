@@ -466,8 +466,9 @@ variable HISTORY-LIB-NEW
    s" diag-on-cache" AT RUN-WATCHED-IN SUCCESS
    0 DIAG? !
    s" diag.err" AT ERR$ WRITE-ALL
-   DIAG-COMPILED 0 > TTRUE
-   DIAG-LINES DIAG-COMPILED T=
+   \ app.f compiles its two definitions, one compile-attempt line each.
+   DIAG-LINES 2 T=
+   ERR$ s" reason=eligible-cache-miss name=HELPER path=" CONTAINS? TTRUE
    ERR$ s" reason=trusted name=MAIN path=" CONTAINS? TTRUE
    ERR$ s" cache-store-refused reason=not-cacheable name=HELPER path=" CONTAINS? TTRUE
    s" a definition the compiler keeps from the cache still joins its file's object" T-LABEL

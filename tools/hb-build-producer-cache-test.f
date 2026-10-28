@@ -1,7 +1,8 @@
 \ Producer edits change the application on a warm cache: a builder edit from an
 \ external CWD, a runtime edit the link reads after the application loaded,
 \ then a runtime edit racing the maker (tools/hb-build-producer-race-test.f,
-\ run in this copy after those builds).
+\ run in this copy after those builds). Between them, the report's per-file
+\ counts across a cold build, an unchanged rebuild and a one-file edit.
 \ Run: bin/hb --load tools/hb-build-producer-cache-test.f
 
 require src/lib/test.f
@@ -12,6 +13,7 @@ require src/lib/process-cwd.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/tree-copy.f
+require src/lib/json-read.f
 require tools/build-support.f
 
 package HB-BUILD-PRODUCER-TEST
@@ -31,6 +33,7 @@ create TMP FS-PATH-CAP allot
 create CACHE FS-PATH-CAP allot
 create RT FS-PATH-CAP allot
 create RT-B FS-PATH-CAP allot
+create LIB FS-PATH-CAP allot
 create IMAGE IMAGE-CAP allot
 create RT-TEXT CAP allot
 create OUT CAP allot
@@ -47,6 +50,7 @@ variable TMP-U
 variable CACHE-U
 variable RT-U
 variable RT-B-U
+variable LIB-U
 variable RT-TEXT-U
 variable CAP-OUT-U
 variable CAP-ERR-U
@@ -64,6 +68,7 @@ variable RC
 : CACHE$ ( -- ptr u8 n ) CACHE CACHE-U @ ;
 : RT$ ( -- ptr u8 n ) RT RT-U @ ;
 : RT-B$ ( -- ptr u8 n ) RT-B RT-B-U @ ;
+: LIB$ ( -- ptr u8 n ) LIB LIB-U @ ;
 
 : PATHS ( -- )
    ROOT$ s" project" PROJECT JOIN-PATH PROJECT-U !
@@ -76,7 +81,8 @@ variable RC
    ROOT$ s" hbtmp" TMP JOIN-PATH TMP-U !
    ROOT$ s" cache" CACHE JOIN-PATH CACHE-U !
    ROOT$ s" src/habu/rt.f" RT JOIN-PATH RT-U !
-   ROOT$ s" rt-b.f" RT-B JOIN-PATH RT-B-U ! ;
+   ROOT$ s" rt-b.f" RT-B JOIN-PATH RT-B-U !
+   ROOT$ s" counts-lib.f" LIB JOIN-PATH LIB-U ! ;
 
 : PREPARE ( -- )
    CLEANUP-RESET
@@ -100,11 +106,13 @@ variable RC
          outu LEN>N CAP-OUT-U ! erru LEN>N CAP-ERR-U ! code RC>N RC ! ENDOF
    ;MATCH ;
 
-: BUILD ( -- )
+: BUILD-WITH ( bool -- )
+   {: report:bool :}
    PROC-CWD:ARGV-ENV-CWD-RESET
    s" --load" >LEN PROC-ARGV+
    TOOL$ >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+
+   report if s" --report-json" >LEN PROC-ARGV+ then
    APP$ >LEN PROC-ARGV+
    s" -o" >LEN PROC-ARGV+
    OUT$ >LEN PROC-ARGV+
@@ -118,6 +126,8 @@ variable RC
    PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE CAPTURE
    RC @ 0<> if OUT CAP-OUT-U @ type ERR CAP-ERR-U @ type then
    RC @ 0 T= ;
+
+: BUILD ( -- ) false BUILD-WITH ;
 
 : BUILD-RACE ( -- )
    PROC-CWD:ARGV-ENV-CWD-RESET
@@ -199,6 +209,40 @@ variable RC
    IMAGE u no nou CONTAINS? TFALSE ;
 
 
+TYPED-VARIABLE REPORT-STATE JR:cursor
+
+\ The report-json build's files_reused and files_compiled.
+: BUILD-FILES ( -- n n )
+   true BUILD-WITH
+   REPORT-STATE OUT CAP-OUT-U @ JR:INIT
+   JR:NEXT JR:T-OBJ T=
+   s" files_reused" JR:FIND-KEY TTRUE
+   JR:TOKEN JR:T-INT T=
+   JR:INT {: reused:n :}
+   s" files_compiled" JR:FIND-KEY TTRUE
+   JR:TOKEN JR:T-INT T=
+   JR:INT {: compiled:n :}
+   JR:CLOSE
+   reused compiled ;
+
+
+\ The application is exactly two files, so every build counts two: a session
+\ that is not the application load, overwriting the counts or adding its own,
+\ changes the sum. The cold build compiles both. Which of them the rebuild and
+\ the edit reuse is the recompile gate's to assert.
+2 constant APP-FILES
+
+: FILE-COUNTS ( -- )
+   LIB$ s" : COUNTS-ONE ( -- n ) 1 ;" WRITE-ALL
+   APP$ S\" require counts-lib.f\n: MAIN ( -- ) ;\n" WRITE-ALL
+   BUILD-FILES {: cold-reused:n cold-compiled:n :}
+   cold-reused 0 T= cold-compiled APP-FILES T=
+   BUILD-FILES + APP-FILES T=
+   APP$ S\" require counts-lib.f\n: MAIN ( -- ) COUNTS-ONE drop ;\n" WRITE-ALL
+   BUILD-FILES + APP-FILES T=
+   APP$ s" : MAIN ( -- ) ;" WRITE-ALL ;
+
+
 \ The application's load moves rt-b.f, the runtime with its guarded-stack
 \ diagnostic edited, over rt.f once, the way an edit lands after the maker
 \ loaded the application and before the link reads the runtime.
@@ -261,6 +305,7 @@ public
    BUILD-AFTER-BUILDER-EDIT
    s" hb: cannot map guarded VM stack" s" hb: REVIEW map guarded VM stack" IMAGE-HAS
    LINK-INPUT-RACE
+   FILE-COUNTS
    BUILD-RACE
    CLEANUP-RUN
    ROOT$ EXISTS? TFALSE

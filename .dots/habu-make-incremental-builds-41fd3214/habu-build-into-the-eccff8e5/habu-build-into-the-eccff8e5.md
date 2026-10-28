@@ -1,9 +1,11 @@
 ---
 title: "Build into the tree's own .out"
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-10-27T13:24:03.122005+02:00"
+closed-at: "2026-10-28T17:02:33.671769+02:00"
+close-reason: "Lanes 1-4 and the per-file counts landed (batch 2 0bb9ac36, counts lane); rg 'HABU_BUILD_CACHE|BUILD-CACHE:|FS-LOCK:' over src tools test docs is empty at master; full suite 494/494 and two-gen ok from fresh workspace carl-stage using only its own .out (master 156134db)."
 ---
 
 Problem: the shared ~/.cache/habu-build root (src/lib/build-cache.f) collects every tree's outputs in one flat directory; it reached 3,524,234 entries and froze amfid for 18 s-4 min per executable launch, and a run of the installed hb wrote 23 GB into ~/.local/lib/habu/8216dd63/.out. Ruling (Joel 2026-10-27): no shared cache; each tree builds into <cwd>/.out/<engine-key>/{obj,img}; the installed release is never written; one compiled-object kind (file objects); builder and test images are ordinary outputs; bin/hb stays; hard cutover, no versions. Design and rulings: /Users/joel/.cache/tmp/carl-file/design-build-out.md (copy into this dot's lanes as they are briefed). Acceptance: lanes 1-4 below landed; rg -n 'HABU_BUILD_CACHE|BUILD-CACHE:|FS-LOCK:' src tools test docs empty; full suite green from a fresh workspace using only its own .out. Depends: none. KEYS1 nupyzutv, KEYS2 tlzprqrx, KEYS3 xymkkqtt and KEYS lane 4b (tree-relative maker key, baked-path root cause) were dropped 2026-10-27 and abandoned: their only requirement was cross-tree cache sharing, which this ruling removes. Ownership: carl. Claim: unassigned.

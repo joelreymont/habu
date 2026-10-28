@@ -3,6 +3,14 @@
 \ The JSON writer keeps no state of its own, so this module owns the report
 \ bytes: REPORT-W writes into REPORT-BUF, and a span answered by one report word
 \ stays valid until the next one runs.
+\
+\ files_reused and files_compiled count the source files of the maker's
+\ application-load session, the engine source load for --engine, once per
+\ file load (each FILE-UNIT-WITH; require loads a file once): those installed
+\ from their file objects and those compiled from source, a replay that
+\ resumed from source among them (tools/native-definition-cache.f FILES-N,
+\ REUSED-N). The link-support and writer sessions are not counted; a build
+\ that launched no maker (an up-to-date REPL build) reports 0 and 0.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -23,6 +31,8 @@ variable MAKER-HIT-FLAG
 variable MAKER-BUILT-FLAG
 variable MAKER-RAN-FLAG
 variable ELAPSED-VALUE
+variable FILES-REUSED-N
+variable FILES-COMPILED-N
 \ Where the bytes of the image this build wrote went: the same six numbers the
 \ text summary prints, plus the file's own length. tools/image-size-lib.f
 \ measures them and refuses unless its classes sum to that length, so `other`
@@ -101,6 +111,14 @@ TYPED-VARIABLE REPORT-W JSON-WRITE:writer
 : TEXT$ ( -- ptr u8 n )
    TEXT-A@ TEXT-U @ ;
 
+: FILES-REUSED ( -- n )
+   REQUIRE-COMPLETE
+   FILES-REUSED-N @ ;
+
+: FILES-COMPILED ( -- n )
+   REQUIRE-COMPLETE
+   FILES-COMPILED-N @ ;
+
 public
 
 : RESET ( -- )
@@ -109,6 +127,8 @@ public
    0 MAKER-BUILT-FLAG !
    0 MAKER-RAN-FLAG !
    0 ELAPSED-VALUE !
+   0 FILES-REUSED-N !
+   0 FILES-COMPILED-N !
    0 SIZE-TOTAL !
    0 SIZE-CODE !
    0 SIZE-NAMES !
@@ -144,6 +164,12 @@ public
    pad SIZE-PAD !
    other SIZE-OTHER ! ;
 
+\ The maker's counts, once it succeeded; RESET leaves 0 and 0.
+: CAPTURE-FILES ( n n -- )
+   {: reused:n compiled:n :}
+   reused FILES-REUSED-N !
+   compiled FILES-COMPILED-N ! ;
+
 : MAKER-HIT? ( -- bool )
    REQUIRE-COMPLETE
    MAKER-HIT-FLAG @ 0 <> ;
@@ -168,6 +194,8 @@ public
    s" maker_hit" MAKER-HIT? JSON-WRITE:FIELD-BOOL JSON-WRITE:COMMA
    s" maker_built" MAKER-BUILT? JSON-WRITE:FIELD-BOOL JSON-WRITE:COMMA
    s" maker_ran" MAKER-RAN? JSON-WRITE:FIELD-BOOL JSON-WRITE:COMMA
+   s" files_reused" FILES-REUSED JSON-WRITE:FIELD-U JSON-WRITE:COMMA
+   s" files_compiled" FILES-COMPILED JSON-WRITE:FIELD-U JSON-WRITE:COMMA
    s" elapsed_ns" ELAPSED-NS JSON-WRITE:FIELD-U JSON-WRITE:COMMA
    s" size" JSON-WRITE:KEY
    JSON-WRITE:OBJECT-START

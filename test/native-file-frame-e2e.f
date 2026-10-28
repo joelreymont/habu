@@ -435,11 +435,11 @@ variable FILL-POOL
 \ TEE$ on the cold build: each operation as its device logs it, kind and
 \ length, with each top-level load's count report between the cases.
 : TEE-COLD ( -- ptr u8 n )
-   S\" <tee\n[W1\na][W1\n\n][W4\nsaid][W1\n\n][E66\n][W1\nc][W1\n\n][W13\nfiles reused ][W2\n0\n][W10\n compiled ][W2\n0\n][F2\n][F1\n][F13\n][F2\n][F10\n][F2\n]fault=5\nwcode=0\nfpar=5\n0\n\n[F1\n][F1\n][F1\n][F13\n][F2\n][F10\n][F2\n]fq=5\n0\n\n[W13\nfiles reused ][W2\n0\n][W10\n compiled ][W2\n2\n]fl=123\n5\n0\n\n[W13\nfiles reused ][W2\n0\n][W10\n compiled ][W2\n1\n][W1\ns][W1\n\n][W1\no][W1\n\n][W13\nfiles reused ][W2\n0\n][W10\n compiled ][W2\n0\n]cap=99\n\ntee>\n" ;
+   S\" <tee\n[W1\na][W1\n\n][W4\nsaid][W1\n\n][E66\n][W1\nc][W1\n\n][W13\nfiles reused ][W2\n0\n][W10\n compiled ][W2\n2\n][F2\n][F1\n][F13\n][F2\n][F10\n][F2\n]fault=5\nwcode=0\nfpar=5\n0\n\n[F1\n][F1\n][F1\n][F13\n][F2\n][F10\n][F2\n]fq=5\n0\n\n[W13\nfiles reused ][W2\n0\n][W10\n compiled ][W2\n1\n]fl=123\n5\n0\n\n[W13\nfiles reused ][W2\n0\n][W10\n compiled ][W2\n1\n][W1\ns][W1\n\n][W1\no][W1\n\n][W13\nfiles reused ][W2\n0\n][W10\n compiled ][W2\n1\n]cap=99\n\ntee>\n" ;
 
 \ TEE$ on the warm build: the same operations, with the warm counts.
 : TEE-WARM ( -- ptr u8 n )
-   S\" <tee\n[W1\na][W1\n\n][W4\nsaid][W1\n\n][E66\n][W1\nc][W1\n\n][W13\nfiles reused ][W2\n2\n][W10\n compiled ][W2\n0\n][F2\n][F1\n][F13\n][F2\n][F10\n][F2\n]fault=5\nwcode=0\nfpar=5\n0\n\n[F1\n][F1\n][F1\n][F13\n][F2\n][F10\n][F2\n]fq=5\n0\n\n[W13\nfiles reused ][W2\n0\n][W10\n compiled ][W2\n2\n]fl=123\n5\n0\n\n[W13\nfiles reused ][W2\n0\n][W10\n compiled ][W2\n1\n][W1\ns][W1\n\n][W1\no][W1\n\n][W13\nfiles reused ][W2\n1\n][W10\n compiled ][W2\n0\n]cap=99\n\ntee>\n" ;
+   S\" <tee\n[W1\na][W1\n\n][W4\nsaid][W1\n\n][E66\n][W1\nc][W1\n\n][W13\nfiles reused ][W2\n2\n][W10\n compiled ][W2\n0\n][F2\n][F1\n][F13\n][F2\n][F10\n][F2\n]fault=5\nwcode=0\nfpar=5\n0\n\n[F1\n][F1\n][F1\n][F13\n][F2\n][F10\n][F2\n]fq=5\n0\n\n[W13\nfiles reused ][W2\n0\n][W10\n compiled ][W2\n1\n]fl=123\n5\n0\n\n[W13\nfiles reused ][W2\n0\n][W10\n compiled ][W2\n1\n][W1\ns][W1\n\n][W1\no][W1\n\n][W13\nfiles reused ][W2\n1\n][W10\n compiled ][W2\n0\n]cap=99\n\ntee>\n" ;
 
 \ The value of field (" name=") in line, up to the next space or the end.
 : FIELD$ ( ptr u8 n ptr u8 n -- ptr u8 n )
