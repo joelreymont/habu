@@ -780,7 +780,10 @@ CHECKER-REG:}SCRATCH
 \   (a) polarity-aware multiplicity at effect application (LIN-EFF-PASS): a var
 \       in an applied effect that binds to a linear con must occur equally on the
 \       input and output sides across the whole effect INCL quotation sub-effects
-\       (KEEP: a is 1-in / 2-out -> reject; DIP/swap: 1-in / 1-out -> ok);
+\       (KEEP: a is 1-in / 2-out -> reject; DIP/swap: 1-in / 1-out -> ok).
+\       A generated constructor, MAKE or UNMAKE row moves exactly its payload,
+\       so `LQ2:ERR ( b -- lq2<a,b> )` mints an err without an `a`; an ordinary
+\       word with the same effect is still counted;
 \   (b) deferred taint (LIN-TAINT / LIN-TAINT-SCAN): a var copied/dropped while
 \       still polymorphic is tainted; if it LATER resolves to a linear con the
 \       linear was laundered -> reject (catches `[: dup FREE ;]`).
@@ -1105,6 +1108,7 @@ defer TFAM-INIT-FIELD-XT ( n ptr u8 n -- n n n bool ) \ committed field descript
 defer CONSTRUCT-FAM-XT ( ptr u8 n -- n bool )           \ construct family resolve, active package only
 defer CONSTRUCT-STEP-XT ( ptr u8 n n -- bool )          \ construct variant resolve + step effect
 defer CTOR-STEP-XT ( n -- bool )                        \ generated-constructor CALL seeded by a direct closed layout arg (declared output; a product UNMAKE's live input) takes the construct step; scalar/pointer/open/linear args fall through
+defer CTOR-ROW?-XT ( n -- bool )                       \ symbol is a generated constructor row (sum variant, product make/unmake)
 defer MATCH-FAM-XT ( ptr u8 n -- n bool )               \ MATCH family resolve, signature scope
 defer MATCH-VAR-XT ( ptr u8 n n -- n bool )             \ variant tail -> SUMV id within a family
 defer MATCH-VTAG-XT ( n -- n )                           \ SUMV id -> declaration-order tag (seen-bitset index)
@@ -1713,6 +1717,7 @@ variable EXT-FREE-N   0 EXT-FREE-N !
    [: 2drop 0 RES-FALSE ;] is CONSTRUCT-FAM-XT
    [: 2drop 0 RES-FALSE ;] is MATCH-FAM-XT
    [: drop RES-FALSE ;] is CTOR-STEP-XT
+   [: drop RES-FALSE ;] is CTOR-ROW?-XT
    [: 2drop drop 0 RES-FALSE ;] is FIELD-PROJ-XT ;   \ no registry: field projection fails closed
 TFAM-QUERY-DEFAULTS
 
@@ -10475,10 +10480,17 @@ variable LMNEG  variable LMPOS  variable LMV
 \ multiplicity, the linear was copied/dropped/laundered by this effect -> reject
 \ (a). If it is still an unbound var but this effect used it non-linearly (copy
 \ or drop), taint it for the deferred scan (b).
+\ The occurrence count is a stored effect's bound on the values it moves. A
+\ generated constructor row moves exactly its variant's payload, and a family
+\ argument its variant does not carry holds no value (`LQ2:ERR ( b --
+\ lq2<a,b> )` makes no `a`), so its call takes the inline `construct` step's
+\ accounting: CHECKER-STEP conservation alone. Any other word with that effect
+\ keeps the count, because its body may have forged the `a`.
 variable LMI
 : LIN-EFF-PASS ( ptr u8 -- ) {: h:ptr :}
    LIN-ANY? 0= IF exit THEN
    OK @ 0= IF exit THEN
+   h ER.SYM @ CTOR-ROW?-XT IF exit THEN
    0 LMI !
    BEGIN LMI @ h E-TVN@ < WHILE
       LMI @ cells EI-TV + @ {: r:n :}

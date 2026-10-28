@@ -7201,6 +7201,7 @@ UNIT-FAM-RESET-INSTALL
    [: TFAM-CONSTRUCT-FAM ;]  is CONSTRUCT-FAM-XT   \ construct family resolution (active package only)
    [: TFAM-CONSTRUCT-STEP ;] is CONSTRUCT-STEP-XT  \ construct variant resolve + inline constructor effect
    [: TFAM-CTOR-STEP? ;]     is CTOR-STEP-XT        \ layout-cap slice 3: generated-constructor CALL on a multi-cell layout arg routes through the arg-aware step
+   [: SUMV-FROM-CTOR-SYM nip ;] is CTOR-ROW?-XT   \ a generated constructor row moves exactly its payload (checker.f LIN-EFF-PASS)
    [: TFAM-MATCH-FAM ;]     is MATCH-FAM-XT     \ MATCH family resolution (signature scope)
    [: TFAM-MATCH-VARIANT ;] is MATCH-VAR-XT     \ MATCH branch variant resolve
    [: SUMV-TAG@ ;]          is MATCH-VTAG-XT    \ variant id -> declaration-order tag (bitset index)

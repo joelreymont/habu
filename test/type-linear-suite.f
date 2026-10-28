@@ -31,6 +31,13 @@ SUMTYPE lqmix<a,b>
   VARIANT small a ;VARIANT
   VARIANT big a b n ;VARIANT
 ;SUMTYPE
+: LQID ( lq2<ltok,n> -- lq2<ltok,n> ) ;
+PRODUCT lqp<a,b> FIELD w a ;PRODUCT
+: LQPID ( lqp<ltok,ltok> -- lqp<ltok,ltok> ) ;
+\ a trusted forge of any type, and a checked word whose body hides one behind
+\ LQ2:ERR's effect: R14/R15 below keep both refused.
+TRUSTED: LFORGE ( -- a ) 0 ;
+: LFORGE-OK ( n -- lq2<a,n> ) drop LFORGE LQ2:OK ;
 
 \ ---------------------------------------------------------------------------
 \ accepted: construction, minting, pass-through, deeper-row flow, wrappers.
@@ -47,6 +54,11 @@ s" A5=" type s" C5 ( ltok -- lq2<ltok,n> ) LWRAP" CHECK-QUIET-CANDIDATE! -1 T=
 s" A6=" type s" C6 ( ltok n n -- lqmix<ltok,n> ) LQMIX:BIG" CHECK-QUIET-CANDIDATE! -1 T=
 \ narrow variant with zero padding still consumes the linear payload exactly once.
 s" A7=" type s" C7 ( ltok -- lqmix<ltok,n> ) LQMIX:SMALL" CHECK-QUIET-CANDIDATE! -1 T=
+\ an err holds no `a`: the minted bundle flows on through a later linear binding.
+s" A8=" type s" C8 ( n -- lq2<ltok,n> ) LQ2:ERR LQID" CHECK-QUIET-CANDIDATE! -1 T=
+\ a product's MAKE moves only its fields: `b` names no field, so binding it to
+\ the linear mints no second unit.
+s" A9=" type s" C9 ( ltok -- lqp<ltok,ltok> ) LQP:MAKE LQPID" CHECK-QUIET-CANDIDATE! -1 T=
 cr
 
 \ ---------------------------------------------------------------------------
@@ -87,6 +99,8 @@ s" R10=" type s" B10 ( ltok n -- lq2<ltok,n> ) nip 0 0" CHECK-QUIET-CANDIDATE! 0
 s" R11=" type s" B11 ( ltok n -- lq2<ltok,n> ) nip LQ2:ERR" CHECK-QUIET-CANDIDATE! 0 T=   \ payload dropped
 s" R12=" type s" B12 ( lq2<ltok,n> n -- n ) nip" CHECK-QUIET-CANDIDATE! 0 T=              \ bundle dropped by nip
 s" R13=" type s" B13 ( lq2<ltok,n> n -- lq2<ltok,n> n lq2<ltok,n> n ) 2dup" CHECK-QUIET-CANDIDATE! 0 T=  \ 2dup copies bundle
+s" R14=" type s" B14 ( -- lq2<ltok,n> ) LFORGE LQ2:OK LQID" CHECK-QUIET-CANDIDATE! 0 T=      \ forged payload
+s" R15=" type s" B15 ( n -- lq2<ltok,n> ) LFORGE-OK LQID" CHECK-QUIET-CANDIDATE! 0 T=          \ forge behind a constructor's effect
 cr
 
 \ ---------------------------------------------------------------------------

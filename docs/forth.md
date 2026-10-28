@@ -1120,6 +1120,9 @@ equally on the input and output sides of the whole applied effect, quotation
 rows included, so `[: FREE ;] KEEP` and `BI`/`TRI` fan-outs reject; and a
 variable copied or dropped while still polymorphic is tainted, so
 `[: dup FREE FREE ;] execute` rejects once `FREE` binds it to the linear.
+A generated constructor, `MAKE` or `UNMAKE` row moves exactly its payload, so
+`LQ2:ERR ( b -- lq2<a,b> )` mints an err without an `a`; an ordinary word with
+the same effect is still counted.
 Non-linear polymorphic code is unaffected. A linear value cannot be bound to a
 local (`E-LINEAR-LOCAL`); keep it on the stack and factor the consumer.
 
