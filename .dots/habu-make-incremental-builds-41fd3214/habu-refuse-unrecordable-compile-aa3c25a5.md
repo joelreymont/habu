@@ -1,6 +1,6 @@
 ---
 title: Refuse unrecordable compile-time reads
-status: active
+status: open
 priority: 1
 issue-type: task
 created-at: "2026-10-22T17:12:02.971279+03:00"
@@ -15,3 +15,5 @@ Lanes 2026-10-27 (carl, unlanded, stack on master 2b7162ca): C1 qzpknwsl "Admit 
 Data-base holders (carl, 2026-10-27; design ~/.cache/tmp/carl-file/database-design.md, Plan fable): the 52 data-base / 15 write / 6 ndict@ ordered-run holders are the checker's reads of engine cells reached by walking into the kernel. Lane KERN (carl-kern, on C3): kernel records (ordinal below the record count when the checker hook is first seen set) are walk members, per docs/architecture.md "Kernel"; writes still refuse. Lane SEQ (carl-seq, on master): util.f CORE-STR=/CORE-STR=CI lose the SEQ scratch cell (7 earlier-write refusals). Dropped from the design: a permanent chain diagnostic (the census measures the same). Deferred until the post-KERN census: REACH classes for check@/ndict@/dbase@, xref.f, non-kernel write sites; PTRA-BOOT/TRAIL-BOOT need their own design (overturns native-unit-object.f:2893 ruling).
 
 Landed 2026-10-27 on master d81d39e9: C1 qzpknwsl (with qksorunt), C2 pylxrvun, C3 xxnqpuuw, pin wyysnrts, KERN lmsvzoqy, SEQ vvsntktq. The acceptance census is still open.
+
+Status 2026-10-28 (census at 81beab95): every lane named above landed and its workspace is gone. Remaining: the acceptance census (no engine file refused as ordered). Claim: unassigned.

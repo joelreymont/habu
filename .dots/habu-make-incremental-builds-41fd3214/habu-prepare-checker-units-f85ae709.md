@@ -1,9 +1,11 @@
 ---
 title: Prepare checker units before a hit installs
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-10-23T19:49:30.207817+03:00"
+closed-at: "2026-10-28T17:13:33.212888+02:00"
+close-reason: landed 413581b2; CHECKER-PREPARED? in OBJECT-HIT?
 ---
 
 A cache hit never throws. Today checker unit prepare (UP-READ-BLOB -> UNIT-TFAM-PREPARE, UP-CTOR-ORD) runs inside INSTALL-OBJECT after OBJECT-HIT? accepted (tools/native-definition-cache.f FILE-UNIT-WITH), so a malformed or unsupported checker slice throws mid-install. Acceptance: every checker slice is prepared before any install side effect; each refusal is a named OBJECT-MISS; a corrupted cached checker blob rebuilds from source. Base: the linearized carl stack tip. Workspace: carl-prep (not yet created).

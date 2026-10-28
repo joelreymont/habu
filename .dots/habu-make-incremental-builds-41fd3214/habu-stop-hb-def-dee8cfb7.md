@@ -1,6 +1,6 @@
 ---
 title: Stop hb-def entry churn in the shared build cache
-status: active
+status: open
 priority: 1
 issue-type: task
 created-at: "2026-10-26T23:46:11.012121+02:00"
@@ -15,3 +15,5 @@ Effect on the gate (tim, 2026-10-27): the check/file-load-context row (54 s dead
 Lanes (carl, 2026-10-27): KEYS1 nupyzutv (carl-keys1, location-free FILE-KEY, FORMAT-VERSION 27, tag v5) and KEYS2 tlzprqrx (carl-keys2, makers require `--donor`) proven at their tips; major review running. KEYS3 (carl-keys3, on their merge) adds test/native-file-engine-tree-e2e.f, red on master in carl-k3base. Installed-engine flood stops only with an install (held by phil) and a one-off clean of the hb-def family.
 
 Superseded (carl 2026-10-27): the KEYS lanes are dropped (see habu-build-into-the-eccff8e5): per-tree .out removes cross-tree sharing, so a second tree no longer adds entries to a shared directory. Master writes no hb-def entries (verified: no .hbd writer in tools/native-definition-cache.f at master); the remaining flood is the installed 8216dd63 engine, which stops with an install of master (phil holds install) and a one-off clean of ~/.cache/habu-build.
+
+Status 2026-10-28: master writes no hb-def entries. Remaining: the next install of master stops the installed engine's writes; then ~/.cache/habu-build is removed once (the auto-mode classifier refused agent-clean on it). Claim: unassigned.
