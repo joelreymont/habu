@@ -376,12 +376,24 @@ public
 \ The region's chunks come from ARENA-ALLOC and are never reused before
 \ SR-RETIRE unmaps them, so a take answers zero bytes as map-anon does. A chunk
 \ header is two cells: the previous chunk's self-relative link (SR-LINK@),
-\ then the chunk's bytes. SR-GRAIN is a chunk's least size, not a limit: a
-\ larger take maps a chunk of its own size.
+\ then the chunk's bytes. SR-GRAIN is the least size of a chunk SR-TAKE
+\ maps, not a limit: a larger take maps a chunk of its own size.
 1024 1024 * constant SR-GRAIN
 CHECKER-REG:SCRATCH{
 PTR-VARIABLE SR-CHUNK   variable SR-USED   variable SR-SIZE
 CHECKER-REG:}SCRATCH
+
+\ SR-CHUNK-NEW ( need bytes -- addr ) : map a chunk of BYTES, link it as the
+\ current one with NEED bytes used, and answer its payload. The header cells
+\ are written through a cell view, so the payload's element type stays the
+\ caller's.
+: SR-CHUNK-NEW ( n n -- ptr a ) {: need:n bytes:n :}
+   bytes ARENA-ALLOC {: c:ptr :}
+   c BYTE-VIEW CELL-VIEW {: h:ptr :}
+   SR-CHUNK @ NULL-PTR <> IF SR-CHUNK @ h SR-LINK! THEN
+   bytes h CELL + !
+   h SR-CHUNK !  bytes SR-SIZE !  2 cells need + SR-USED !
+   c 2 cells + ;
 
 \ SR-TAKE ( bytes -- addr ) : BYTES of the region, cell-aligned.
 : SR-TAKE ( n -- ptr n ) {: need:n :}
@@ -390,12 +402,7 @@ CHECKER-REG:}SCRATCH
       at need + SR-USED !
       SR-CHUNK @ at + EXIT
    THEN
-   need 2 cells + SR-GRAIN max {: bytes:n :}
-   bytes ARENA-ALLOC {: c:ptr :}
-   SR-CHUNK @ NULL-PTR <> IF SR-CHUNK @ c SR-LINK! THEN
-   bytes c CELL + !
-   c SR-CHUNK !  bytes SR-SIZE !  2 cells need + SR-USED !
-   c 2 cells + ;
+   need  need 2 cells + SR-GRAIN max  SR-CHUNK-NEW ;
 
 \ SR-GROW ( base oldbytes newbytes -- base' ) : take NEWBYTES and copy OLDBYTES
 \ from BASE, rounded up to whole cells. The old bytes stay until SR-RETIRE.
@@ -816,25 +823,23 @@ variable TCMP                            \ path-compression walk cursor
 
 : RV@ cells RVT + @ 1- ;
 256 constant MAXQE-INIT        \ quotation effects (din dout rin rout per record); grows on demand
-create QEA-BOOT MAXQE-INIT 32 * allot
-create QXDA-BOOT MAXQE-INIT cells allot   create QXRA-BOOT MAXQE-INIT cells allot
-create QXHA-BOOT MAXQE-INIT cells allot   create QXNA-BOOT MAXQE-INIT cells allot   variable QEN
-PERSISTED-PTR-VARIABLE QEA-P   PERSISTED-PTR-VARIABLE QXDA-P   PERSISTED-PTR-VARIABLE QXRA-P   PERSISTED-PTR-VARIABLE QXHA-P   PERSISTED-PTR-VARIABLE QXNA-P
+CHECKER-REG:SCRATCH{
+variable QEN
+PTR-VARIABLE QEA-P   PTR-VARIABLE QXDA-P   PTR-VARIABLE QXRA-P   PTR-VARIABLE QXHA-P   PTR-VARIABLE QXNA-P
 variable QE-CAP
-QEA-BOOT QEA-P !   QXDA-BOOT QXDA-P !   QXRA-BOOT QXRA-P !
-QXHA-BOOT QXHA-P !   QXNA-BOOT QXNA-P !   MAXQE-INIT QE-CAP !
+CHECKER-REG:}SCRATCH
 : QEA ( -- ptr n ) QEA-P @ ;
 : QXDA ( -- ptr n ) QXDA-P @ ;   : QXRA ( -- ptr n ) QXRA-P @ ;
 : QXHA ( -- ptr n ) QXHA-P @ ;   : QXNA ( -- ptr n ) QXNA-P @ ;
 
 : QE-ENSURE ( n -- ) {: need:n :}
    need QE-CAP @ <= IF exit THEN
-   need QE-CAP @ 2 * max {: nc:n :}
-   QEA-P @ QE-CAP @ 32 * nc 32 * ARENA-BYTES-GROW QEA-P !
-   QXDA-P @ QE-CAP @ cells nc cells ARENA-BYTES-GROW QXDA-P !
-   QXRA-P @ QE-CAP @ cells nc cells ARENA-BYTES-GROW QXRA-P !
-   QXHA-P @ QE-CAP @ cells nc cells ARENA-BYTES-GROW QXHA-P !
-   QXNA-P @ QE-CAP @ cells nc cells ARENA-BYTES-GROW QXNA-P !
+   need QE-CAP @ 2 * max MAXQE-INIT max {: nc:n :}
+   QEA-P @ QE-CAP @ 32 * nc 32 * SR-GROW QEA-P !
+   QXDA-P @ QE-CAP @ cells nc cells SR-GROW QXDA-P !
+   QXRA-P @ QE-CAP @ cells nc cells SR-GROW QXRA-P !
+   QXHA-P @ QE-CAP @ cells nc cells SR-GROW QXHA-P !
+   QXNA-P @ QE-CAP @ cells nc cells SR-GROW QXNA-P !
    nc QE-CAP ! ;
 
 : MK-QUOT {: din dout rin rout :}   \ ( -- t ) allocate a quot<effect> term
@@ -1009,37 +1014,29 @@ ATOMA-BOOT ATOMA-P !   ATOMU-BOOT ATOMU-P !   ATOMK-BOOT ATOMK-P !   MAXATOM-INI
 : ATOM>K ( n -- n ) PAY cells ATOMK + @ ;
 
 512 constant MAXPARAM-INIT      \ param terms (grows on demand)
-MAXPARAM-INIT PTR-U8-TABLE PARAMA-BOOT   \ name pointers: declared storage, like ATOMA-BOOT
-create PARAMU-BOOT MAXPARAM-INIT cells allot
-create PARAMC-BOOT MAXPARAM-INIT cells allot
-create PARAMFAM-BOOT MAXPARAM-INIT cells allot   \ resolved family-id per param term (identity)
-create PARAMOFF-BOOT MAXPARAM-INIT cells allot   \ arg-run start index into the flat PARGP pool
-create PARAMHID-BOOT MAXPARAM-INIT cells allot   \ hidden physical-field slot+1 per param term (0 = logical)
 \ PARGP is the flat per-param arg pool: each param term stores its arg terms as a
 \ contiguous run [PARAMOFF[p], PARAMOFF[p]+argc) here, so a family of ANY arity is
 \ stored without a fixed row cap. Cells hold term codes (pointer-free), so a grow
 \ is a plain byte copy and it resets in NEW alongside PARAMN. This replaces the old
 \ fixed PARAM-MAX-ARGS-strided PARAMARGS row.
 2048 constant PARG-INIT
-create PARGP-BOOT PARG-INIT cells allot
 \ PARAM-SCR is the reentrant parse/replay scratch: it holds the arg terms pushed
 \ across ALL currently-open nesting levels, so its depth is a nesting-peak, not a
 \ per-param arg count. It grows on demand (a nested family whose args land at a
 \ non-zero base must not overflow); per-param arity is uncapped (PARGP grows).
 32 constant PARAM-SCR-INIT
-create PARAM-SCR-BOOT PARAM-SCR-INIT cells allot
+CHECKER-REG:SCRATCH{
 variable PARAMN
 variable PARAM-SCR-N
-PERSISTED-PTR-U8-TABLE-VARIABLE PARAMA-P
-PERSISTED-PTR-VARIABLE PARAMU-P   PERSISTED-PTR-VARIABLE PARAMC-P   PERSISTED-PTR-VARIABLE PARAMFAM-P
-PERSISTED-PTR-VARIABLE PARAMOFF-P   PERSISTED-PTR-VARIABLE PARAMHID-P   PERSISTED-PTR-VARIABLE PARGP-P   variable PARG-N   variable PARG-CAP-V
-PERSISTED-PTR-VARIABLE PARAM-SCR-P
+PTR-U8-TABLE-VARIABLE PARAMA-P   \ name pointers
+PTR-VARIABLE PARAMU-P   PTR-VARIABLE PARAMC-P
+PTR-VARIABLE PARAMFAM-P   \ resolved family-id per param term (identity)
+PTR-VARIABLE PARAMOFF-P   \ arg-run start index into the flat PARGP pool
+PTR-VARIABLE PARAMHID-P   \ hidden physical-field slot+1 per param term (0 = logical)
+PTR-VARIABLE PARGP-P   variable PARG-N   variable PARG-CAP-V
+PTR-VARIABLE PARAM-SCR-P
 variable PARAM-CAP     variable PARAM-SCR-CAP-V
-PARAMA-BOOT PARAMA-P !   PARAMU-BOOT PARAMU-P !   PARAMC-BOOT PARAMC-P !
-PARAMFAM-BOOT PARAMFAM-P !   PARAMOFF-BOOT PARAMOFF-P !   PARAMHID-BOOT PARAMHID-P !
-PARGP-BOOT PARGP-P !   PARG-INIT PARG-CAP-V !   0 PARG-N !
-MAXPARAM-INIT PARAM-CAP !
-PARAM-SCR-BOOT PARAM-SCR-P !    PARAM-SCR-INIT PARAM-SCR-CAP-V !
+CHECKER-REG:}SCRATCH
 : PARAMA ( -- ptr ptr u8 ) PARAMA-P @ ;
 : PARAMU ( -- ptr n ) PARAMU-P @ ;
 : PARAMC ( -- ptr n ) PARAMC-P @ ;
@@ -1049,24 +1046,26 @@ PARAM-SCR-BOOT PARAM-SCR-P !    PARAM-SCR-INIT PARAM-SCR-CAP-V !
 : PARGP ( -- ptr n ) PARGP-P @ ;
 : PARG-ENSURE ( n -- ) {: need:n :}    \ room for `need` more arg cells past PARG-N
    PARG-N @ need + PARG-CAP-V @ <= IF exit THEN
-   PARG-N @ need + PARG-CAP-V @ 2 * max {: nc:n :}
-   PARGP-P @ PARG-CAP-V @ cells nc cells ARENA-BYTES-GROW PARGP-P !
+   PARG-N @ need + PARG-CAP-V @ 2 * max PARG-INIT max {: nc:n :}
+   PARGP-P @ PARG-CAP-V @ cells nc cells SR-GROW PARGP-P !
    nc PARG-CAP-V ! ;
 : PARAM-SCR ( -- ptr n ) PARAM-SCR-P @ ;
 : PARAM-SCR-ENSURE ( -- )         \ room for one more scratch arg (grows the nesting-peak buffer)
    PARAM-SCR-N @ PARAM-SCR-CAP-V @ < IF exit THEN
-   PARAM-SCR-N @ 1 + PARAM-SCR-CAP-V @ 2 * max {: nc:n :}
-   PARAM-SCR-P @ PARAM-SCR-CAP-V @ cells nc cells ARENA-BYTES-GROW PARAM-SCR-P !
+   PARAM-SCR-N @ 1 + PARAM-SCR-CAP-V @ 2 * max PARAM-SCR-INIT max {: nc:n :}
+   PARAM-SCR-P @ PARAM-SCR-CAP-V @ cells nc cells SR-GROW PARAM-SCR-P !
    nc PARAM-SCR-CAP-V ! ;
 : PARAM-ENSURE ( n -- ) {: need:n :}
    need PARAM-CAP @ <= IF exit THEN
-   need PARAM-CAP @ 2 * max {: nc:n :}
-   PARAMA-P @ PARAM-CAP @ cells nc cells ARENA-BYTES-GROW PARAMA-P !
-   PARAMU-P @ PARAM-CAP @ cells nc cells ARENA-BYTES-GROW PARAMU-P !
-   PARAMC-P @ PARAM-CAP @ cells nc cells ARENA-BYTES-GROW PARAMC-P !
-   PARAMFAM-P @ PARAM-CAP @ cells nc cells ARENA-BYTES-GROW PARAMFAM-P !
-   PARAMOFF-P @ PARAM-CAP @ cells nc cells ARENA-BYTES-GROW PARAMOFF-P !
-   PARAMHID-P @ PARAM-CAP @ cells nc cells ARENA-BYTES-GROW PARAMHID-P !
+   need PARAM-CAP @ 2 * max MAXPARAM-INIT max {: nc:n :}
+   nc cells dup 2 cells + SR-CHUNK-NEW {: na:ptr :}   \ a chunk of its own keeps PARAMA's names typed
+   PARAMA-P @ na PARAM-CAP @ ARENA-CELLS-COPY
+   na PARAMA-P !
+   PARAMU-P @ PARAM-CAP @ cells nc cells SR-GROW PARAMU-P !
+   PARAMC-P @ PARAM-CAP @ cells nc cells SR-GROW PARAMC-P !
+   PARAMFAM-P @ PARAM-CAP @ cells nc cells SR-GROW PARAMFAM-P !
+   PARAMOFF-P @ PARAM-CAP @ cells nc cells SR-GROW PARAMOFF-P !
+   PARAMHID-P @ PARAM-CAP @ cells nc cells SR-GROW PARAMHID-P !
    nc PARAM-CAP ! ;
 
 \ --- resolved type-family (TFAM) identity for T-PARAM terms. The TFAM registry
@@ -1486,34 +1485,19 @@ UK-EXACT UNIFY-KIND !
 
 4096 constant MAXPUSH-INIT     \ push records (engine-sized bodies need hundreds; grows on demand)
 $7FFFFFFFFFFFFFFF 32 / constant MAXPUSH
-variable SPN
-PERSISTED-PTR-VARIABLE SPA-P   variable SPA-CAP
-NULL-PTR SPA-P !   0 SPA-CAP !
+CHECKER-REG:SCRATCH{
+variable SPN   PTR-VARIABLE SPA-P   variable SPA-CAP
+CHECKER-REG:}SCRATCH
 : SPA ( -- ptr n ) SPA-P @ ;
 
-\ Every nonnull SPA base owns an mmap, never image DATA. Terms carry indices;
+\ Every nonnull SPA base lives in the scratch region. Terms carry indices;
 \ growth preserves the full capacity, including rows saved by a trial.
-: SPA-UNMAP ( ptr n n -- ) {: base:ptr cap:n :}
-   cap 0= IF EXIT THEN
-   base cap 32 * munmap 0 <> IF s" checker: push arena munmap failed" 76 die THEN ;
-
-: SPA-RELEASE ( -- )
-   SPA-P @ SPA-CAP @ SPA-UNMAP
-   NULL-PTR SPA-P !  0 SPA-CAP !  0 SPN ! ;
-
 : SPA-ENSURE ( n -- ) {: need:n :}
    need 0 <= need MAXPUSH > or IF s" checker: push arena capacity overflow" 76 die THEN
    need SPA-CAP @ <= IF exit THEN
    need MAXPUSH-INIT max
    SPA-CAP @ MAXPUSH 2 / <= IF SPA-CAP @ 2 * max THEN {: nc:n :}
-   SPA-P @ SPA-CAP @ 32 * nc 32 * ARENA-BYTES-GROW {: next:ptr :}
-   SPA-CAP @ 0 > IF
-      SPA-P @ SPA-CAP @ 32 * munmap 0 <> IF
-         next nc SPA-UNMAP
-         s" checker: push arena munmap failed" 76 die
-      THEN
-   THEN
-   next SPA-P !
+   SPA-P @ SPA-CAP @ 32 * nc 32 * SR-GROW SPA-P !
    nc SPA-CAP ! ;
 
 : MK-PUSH ( n n -- n )
@@ -1545,10 +1529,10 @@ NULL-PTR SPA-P !   0 SPA-CAP !
 \ Value facts are private to one CHECK. A push holds an immutable proof handle
 \ and independent lost lineage; neither is a type term or an effect field.
 256 constant CP-INIT
-create CP-BOOT CP-INIT 32 * allot
-PERSISTED-PTR-VARIABLE CP-P   CP-BOOT CP-P !
-variable CP-CAP   CP-INIT CP-CAP !
-variable CATCH-PF-N  variable CATCH-N  variable FACTS
+CHECKER-REG:SCRATCH{
+PTR-VARIABLE CP-P   variable CP-CAP   variable CATCH-PF-N
+CHECKER-REG:}SCRATCH
+variable CATCH-N  variable FACTS
 1 constant CP-CODE
 2 constant CP-TEST
 3 constant CP-NORMAL
@@ -1562,8 +1546,8 @@ variable CATCH-PF-N  variable CATCH-N  variable FACTS
 : CP-OTHER ( n -- n ) CP-AT 24 + @ ;
 : CP-ENSURE ( n -- ) {: need:n :}
    need CP-CAP @ <= IF EXIT THEN
-   need CP-CAP @ 2 * max {: cap:n :}
-   CP-P @ CP-CAP @ 32 * cap 32 * ARENA-BYTES-GROW CP-P !
+   need CP-CAP @ 2 * max CP-INIT max {: cap:n :}
+   CP-P @ CP-CAP @ 32 * cap 32 * SR-GROW CP-P !
    cap CP-CAP ! ;
 : CP-NEW ( n n n n -- n ) {: kind:n id:n type:n other:n :}
    CATCH-PF-N @ 1 + CP-ENSURE
@@ -4277,7 +4261,9 @@ variable QDEPTH
 \ unify never reached the row tail freezes its declared rows there, so its
 \ call record (CW-CALL-RAW) states the cells the splice popped and pushed;
 \ CHECK finalizes an unjudged scan's call records whatever its verdict.
+CHECKER-REG:SCRATCH{
 variable SCAN-INCOMPLETE   \ sticky per scan: a width fact may be missing
+CHECKER-REG:}SCRATCH
 variable UNJ-TOK           \ inside an unjudged token: the splice is armed
 variable UNJ-SPLICED       \ a committed step settled this token's rows
 variable STEP-R            \ the applying effect has a return-stack part (EFF-APPLY)
@@ -15687,36 +15673,22 @@ variable NRX-POS                        \ byte offset cursor over the entry arra
    from to >= IF EXIT THEN
    to from ?do NULL-PTR base i cells + ! loop ;
 
-\ ARENA-SNAP-BOOT for a declared PTR-U8-TABLE boot (ATOMA-BOOT, PARAMA-BOOT).
+\ ARENA-SNAP-BOOT for a declared PTR-U8-TABLE boot (ATOMA-BOOT).
 : ARENA-SNAP-BOOT-PTRS ( ptr ptr ptr u8 ptr ptr u8 n -- ) {: pv:ptr boot:ptr count:n :}
    boot 0 count REG-POINTERS-CLEAR
    boot pv ! ;
 
-\ DECOUPLED-ARENA-SNAP-RESET ( -- ) : release the owned push arena and repoint
-\ the other per-definition scratch arenas at their boot buffers/init caps
-\ so no grown mmap address is persisted. Their counters reset in NEW, so no live
-\ content is lost — which is also why ARENA-SNAP-BOOT may empty every one of
-\ them. The stores in the scratch region rest through SR-RETIRE instead.
-\ SPA and QEA are counted in records rather than cells (32 bytes each).
+\ DECOUPLED-ARENA-SNAP-RESET ( -- ) : at capture, repoint the scope, atom and
+\ inst-key arenas at their emptied boot buffers and init caps, so no grown mmap
+\ address is persisted. The scope arena cannot rest at each file boundary as
+\ the scratch region does: SCOPE-N never rewinds (SCOPE-FRESH). The stores in
+\ the scratch region rest through SR-RETIRE.
 : DECOUPLED-ARENA-SNAP-RESET ( -- )
-   SPA-RELEASE
-   CP-P CP-BOOT CP-INIT 4 * ARENA-SNAP-BOOT   CP-INIT CP-CAP !
-   QEA-P QEA-BOOT MAXQE-INIT 4 * ARENA-SNAP-BOOT
-   QXDA-P QXDA-BOOT MAXQE-INIT ARENA-SNAP-BOOT           QXRA-P QXRA-BOOT MAXQE-INIT ARENA-SNAP-BOOT
-   QXHA-P QXHA-BOOT MAXQE-INIT ARENA-SNAP-BOOT           QXNA-P QXNA-BOOT MAXQE-INIT ARENA-SNAP-BOOT
-   MAXQE-INIT QE-CAP !
    SCOPE-PARENT-P SCOPE-PARENT-BOOT SCOPE-PARENT-INIT ARENA-SNAP-BOOT
    SCOPE-SECOND-P SCOPE-SECOND-BOOT SCOPE-PARENT-INIT ARENA-SNAP-BOOT
    SCOPE-PARENT-INIT SCOPE-PARENT-CAP !
    ATOMA-P ATOMA-BOOT MAXATOM-INIT ARENA-SNAP-BOOT-PTRS  ATOMU-P ATOMU-BOOT MAXATOM-INIT ARENA-SNAP-BOOT
    ATOMK-P ATOMK-BOOT MAXATOM-INIT ARENA-SNAP-BOOT       MAXATOM-INIT ATOM-CAP !
-   PARAMA-P PARAMA-BOOT MAXPARAM-INIT ARENA-SNAP-BOOT-PTRS  PARAMU-P PARAMU-BOOT MAXPARAM-INIT ARENA-SNAP-BOOT
-   PARAMC-P PARAMC-BOOT MAXPARAM-INIT ARENA-SNAP-BOOT    PARAMFAM-P PARAMFAM-BOOT MAXPARAM-INIT ARENA-SNAP-BOOT
-   PARAMOFF-P PARAMOFF-BOOT MAXPARAM-INIT ARENA-SNAP-BOOT
-   PARAMHID-P PARAMHID-BOOT MAXPARAM-INIT ARENA-SNAP-BOOT
-   MAXPARAM-INIT PARAM-CAP !
-   PARGP-P PARGP-BOOT PARG-INIT ARENA-SNAP-BOOT          PARG-INIT PARG-CAP-V !   \ flat per-param arg pool (resets in NEW)
-   PARAM-SCR-P PARAM-SCR-BOOT PARAM-SCR-INIT ARENA-SNAP-BOOT   PARAM-SCR-INIT PARAM-SCR-CAP-V !   \ reentrant parse scratch
    VRI-AK-P VRI-AK-BOOT VRI-AK-INIT ARENA-SNAP-BOOT      VRI-AK-INIT VRI-AK-CAP-V ! ;   \ transient inst scratch
 
 \ --- registry snapshot persist. The append-only registries (CT/VREC/SYMS) must
@@ -15837,7 +15809,7 @@ defer REG-EXT-SCRATCH-XT ( -- )
 \ lowering-certificate producer (src/core/lower-cert-base.f +
 \ src/core/layout-valid.f, the last of the four to load) owns this one: thirteen
 \ per-definition arena bases that must be back on their baked boot buffers before
-\ the capture, for the reason LOC-HW-SNAP-RESET states.
+\ the capture: a grown base lives in process-local mmap, which no image may carry.
 defer REG-CERT-SNAP-XT ( -- )
 \ registry-not-loaded defaults: no extension registry to persist / no scratch to
 \ snapshot before type-schema.f / type-family.f / render.f install the real words.
@@ -15980,9 +15952,8 @@ REG-EXT-AOT-DEFAULTS
    NULL-PTR FP !  NULL-PTR USX-P !
 
    ATOMA-BOOT 0 MAXATOM-INIT REG-POINTERS-CLEAR
-   PARAMA-BOOT 0 MAXPARAM-INIT REG-POINTERS-CLEAR
    FAM-A 0 FAM-CAP REG-POINTERS-CLEAR
-   0 ATOMN !  0 PARAMN !  0 PARAM-SCR-N !  0 PARG-N !  0 FAM-N ! ;
+   0 ATOMN !  0 FAM-N ! ;
 
 : NORET-REC ( -- ptr n )
    NORET-END @ NORET-CELL ;
@@ -17913,16 +17884,10 @@ $30 constant WF-REC
 
 
 $80 constant WF-INIT
-create WFS-BOOT WF-INIT WF-REC * allot
-PERSISTED-PTR-VARIABLE WFS-P   WFS-BOOT WFS-P !
-variable WF-CAP  WF-INIT WF-CAP !
-variable WF-N
+CHECKER-REG:SCRATCH{
+PTR-VARIABLE WFS-P   variable WF-CAP   variable WF-N
 variable WF-CURROW   variable WF-POS-I
-
-: WF-SNAP-RESET ( -- )
-   WFS-P WFS-BOOT WF-INIT WF-REC * CELL / ARENA-SNAP-BOOT
-   WF-INIT WF-CAP !
-   0 WF-N !  0 WF-CURROW !  0 WF-POS-I !  0 SCAN-INCOMPLETE ! ;
+CHECKER-REG:}SCRATCH
 
 1 constant WF-FETCH-FLAG
 2 constant WF-STORE-FLAG
@@ -17935,13 +17900,13 @@ variable WF-CURROW   variable WF-POS-I
 : WF-GROW-CAP ( n -- n ) {: need:n :}
    $7FFFFFFFFFFFFFFF WF-REC / {: lim:n :}
    need 0 <= need lim > or if s" checker: width-fact capacity overflow" 76 die then
-   WF-CAP @ lim 2 / <= if WF-CAP @ 2 * need max exit then
+   WF-CAP @ lim 2 / <= if WF-CAP @ 2 * need max WF-INIT max exit then
    need ;
 
 : WF-ENSURE ( n -- ) {: need:n :}
    need WF-CAP @ <= if exit then
    need WF-GROW-CAP {: cap:n :}
-   WFS-P @ WF-CAP @ WF-REC * cap WF-REC * ARENA-BYTES-GROW WFS-P !
+   WFS-P @ WF-CAP @ WF-REC * cap WF-REC * SR-GROW WFS-P !
    cap WF-CAP ! ;
 
 : WF-ROW ( n -- ptr n ) WF-REC * WFS + ;
@@ -19522,37 +19487,20 @@ variable #LOC  variable LMODE  variable LGRP  variable LI  variable LRF
 \ (written at LOC-ADD, read at the group's :} bind).
 LOC-CAP 4 * constant LOC-HW-INIT
 $0FFFFFFFFFFFFFFF constant LOC-HW-MAX-CELLS
-create LOC-HW-BOOT LOC-HW-INIT cells allot
-\ PERSISTED, not scratch: this slot HOLDS A DATA ADDRESS across a capture. The
-\ capture relocates the window's DATA down to the image's own base, and only a
-\ marked cell (PERSISTED-PTR-VARIABLE) is rebased with it, so a PTR-VARIABLE here
-\ baked the window's address of LOC-HW-BOOT verbatim and the restored engine read
-\ and WROTE its bind widths 20 MB above its own heap top — into DATA that `allot`
-\ later handed out, so LOC-ADD and a later definition's `variable` shared a cell.
-\ Every other PTR-VARIABLE in this file is NULLed at the capture seam, which is
-\ what earns it the exemption; this one keeps a buffer, so it joins the relocated
-\ family the other per-definition arenas are in (SPA-P, QEA-P, ...).
-PERSISTED-PTR-VARIABLE LOC-HW-P   LOC-HW-BOOT LOC-HW-P !
-variable LOC-HW-CAP     LOC-HW-INIT LOC-HW-CAP !
+CHECKER-REG:SCRATCH{
+PTR-VARIABLE LOC-HW-P   variable LOC-HW-CAP   variable LOCSEQ
+CHECKER-REG:}SCRATCH
 create LOCSEQIX LOC-CAP cells allot
-variable LOCSEQ
 : LOC-HW ( -- ptr n ) LOC-HW-P @ ;
 : LOC-HW-GROW-CAP ( n -- n ) {: need:n :}
    need 0 <= need LOC-HW-MAX-CELLS > or IF s" checker: local bind capacity overflow" 76 die THEN
-   LOC-HW-CAP @ LOC-HW-MAX-CELLS 2 / <= IF LOC-HW-CAP @ 2 * need max EXIT THEN
+   LOC-HW-CAP @ LOC-HW-MAX-CELLS 2 / <= IF LOC-HW-CAP @ 2 * need max LOC-HW-INIT max EXIT THEN
    need ;
 : LOC-HW-ENSURE ( n -- ) {: need:n :}
    need LOC-HW-CAP @ <= IF EXIT THEN
    need LOC-HW-GROW-CAP {: cap:n :}
-   LOC-HW-P @ LOC-HW-CAP @ cells cap cells ARENA-BYTES-GROW LOC-HW-P !
+   LOC-HW-P @ LOC-HW-CAP @ cells cap cells SR-GROW LOC-HW-P !
    cap LOC-HW-CAP ! ;
-\ LOC-HW-SNAP-RESET ( -- ) : DECOUPLED-ARENA-SNAP-RESET's job for the one
-\ per-definition arena declared below it — a grown LOC-HW lives in process-local
-\ mmap, which no image may carry. The widths are keyed by a bind sequence LOCSEQ
-\ resets per definition, so nothing live is lost.
-: LOC-HW-SNAP-RESET ( -- )
-   LOC-HW-BOOT 0 LOC-HW-INIT ARENA-CELLS-ZERO
-   LOC-HW-BOOT LOC-HW-P !   LOC-HW-INIT LOC-HW-CAP ! ;
 : LOCW-HW@ ( n -- n ) {: s:n :}    \ final width of bind occurrence s (die 76 = pass-2 misalignment)
    s 0 <  s LOCSEQ @ >=  or IF s" checker: bad local bind sequence" 76 die THEN
    s cells LOC-HW + @ ;
@@ -19586,8 +19534,8 @@ variable P2SEQ
       1 +
    REPEAT drop ;
 \ Capture follows the caller's last pass-2 width and diagnostic read. A new
-\ check starts with #LOC/LOCSEQ at zero; no local binding survives this seam.
-\ Retire the fixed columns together with their boot-backed width arena.
+\ check starts with #LOC at zero; no local binding survives this seam.
+\ Retire the fixed columns; the width arena and LOCSEQ rest through SR-RETIRE.
 : LOC-SNAP-RESET ( -- )
    LOCNB BYTE-VIEW CELL-VIEW 0 LOC-CAP LOC-NAME-W * CELL / ARENA-CELLS-ZERO
    LOCLN 0 LOC-CAP ARENA-CELLS-ZERO
@@ -19599,8 +19547,7 @@ variable P2SEQ
    P2LW 0 LOC-CAP ARENA-CELLS-ZERO
    0 LOC-CAP-HEAD !
    0 #LOC !  0 LMODE !  0 LGRP !  0 LI !  0 LRF !
-   0 LOCSEQ !  0 P2SEQ !
-   LOC-HW-SNAP-RESET ;
+   0 P2SEQ ! ;
 \ per-local type display hook (render.f installs SHOW-LOCAL-TYPE). A `defer` with a
 \ no-op DEFAULT so the call is statically effect-known; the default drops the
 \ name span + length + type, matching the old 0-hook skip before render binds it.
@@ -30974,10 +30921,9 @@ public
 : CHECKER-QUIESCE-CORE ( -- )
    HIDX-RESET
    TV-SNAP-RESET
-   WF-SNAP-RESET
    DECOUPLED-ARENA-SNAP-RESET
    SR-RETIRE
-   LOC-SNAP-RESET                       \ the local tables and their width arena
+   LOC-SNAP-RESET                       \ the local tables
    CHECKER-CAPTURE-SCRATCH-PREPARE
    RWIN-DEFAULT                         \ a captured image observes no file
    ASIG-POOL-RELEASE

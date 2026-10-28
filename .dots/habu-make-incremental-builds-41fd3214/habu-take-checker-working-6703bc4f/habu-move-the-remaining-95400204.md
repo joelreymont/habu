@@ -1,9 +1,11 @@
 ---
 title: Move the remaining checker arenas into the region
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-10-26T15:50:44.438521+02:00"
+closed-at: "2026-10-28T19:55:32.095557+02:00"
+close-reason: The remaining checker arenas live in the region; review fold-ins in; full suite passed.
 blocks:
   - habu-hold-per-def-8d5c52f1
 ---

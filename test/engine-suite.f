@@ -781,20 +781,8 @@ s" usigs restored-pool compiles after grow" T-LABEL
 s" usigs restored-pool rejects after grow" T-LABEL
 s" CBAD-RESTORED-GROW ( n -- n ) drop" CHECK-QUIET-CANDIDATE! 0 T=
 \ --- a restored image's per-definition arenas are ITS OWN baked buffers --------
-\ LOC-HW-P holds a DATA address across a capture, so only the relocation table
-\ can keep it true; as a bare PTR-VARIABLE it kept the BUILD window's address and
-\ LOC-ADD wrote bind widths ~20 MB above this engine's heap top, into DATA that
-\ `allot` later handed to a definition's `variable` (the two-generation chain died
-\ SIGSEGV in ASIG-STR-INTERN on the cell they shared). LOCSEQ resets per
-\ definition and no definition above binds LOC-HW-INIT local groups, so these are
-\ still the boot values; a failure means either the regression is back or a
-\ definition in this file grew the arena.
-s" loc-hw restored on its boot buffer" T-LABEL
-LOC-HW-P @ LOC-HW-BOOT = TTRUE
-s" loc-hw restored at its init cap" T-LABEL
-LOC-HW-CAP @ LOC-HW-INIT T=
-\ The same claim for the lowering-certificate producer's thirteen bases and six
-\ caps (src/core/lower-cert-base.f BUF-P + src/core/layout-valid.f), counted by
+\ The lowering-certificate producer's thirteen bases and six caps
+\ (src/core/lower-cert-base.f BUF-P + src/core/layout-valid.f), counted by
 \ ARENAS-STALE and latched at the top of this file before any definition could
 \ have grown one. All thirteen were stale as bare PTR-VARIABLEs - measured 12 MB
 \ above the heap top. An engine built from this same tree with only the marks
@@ -914,17 +902,16 @@ defer T-PTX-MADD ( tile<f32,block-256,m> tile<f32,block-256,m> -- tile<f32,block
 defer T-MK-SPAN ( n -- span<space-global,f32,fresh-extent-n> )
 defer T-MK-SPAN= ( n -- span<space-global,f32,fresh-extent-n> span<space-global,f32,fresh-extent-n> )
 \ --- growable decoupled scratch arenas: crossing each init cap mid-check no
-\ longer dies and does not corrupt (each grow relocates its mmap store).
+\ longer dies and does not corrupt (each grow relocates its store).
 \ Parametric checks reuse T-MK-SPAN above.
-\ Capacity is the owned mapping extent: use a real small allocation so growth
-\ releases all of the old mapping, rather than forging its capacity.
-: TG-SPA-SMALL ( -- )
-   SPA-RELEASE
-   2 16 * ARENA-ALLOC SPA-P !  2 SPA-CAP ! ;
-TG-SPA-SMALL
-s" COK-SPAG ( -- ) 0 0 0 0 0 0 0 0 drop drop drop drop drop drop drop drop" T-CHECK-PASSES
-s" spa-arena-grow" T-LABEL
-SPA-CAP @ 2 > TTRUE
+\ Push records: one word, so no top step between the store and the check
+\ grows SPA first (a top step pushes rows above the forced cap).
+: T-SPA-GROW ( -- )
+   2 SPA-CAP !
+   s" COK-SPAG ( -- ) 0 0 0 0 0 0 0 0 drop drop drop drop drop drop drop drop" T-CHECK-PASSES
+   s" spa-arena-grow" T-LABEL
+   SPA-CAP @ 2 > TTRUE ;
+T-SPA-GROW
 2 PTR-CAP !                      \ ptr terms
 s" COK-PTRG ( ptr a ptr a ptr a ptr a -- ) drop drop drop drop" T-CHECK-PASSES
 s" ptr-arena-grow" T-LABEL
@@ -940,14 +927,12 @@ s" param-arena-grow" T-LABEL
 PARAM-CAP @ 2 > TTRUE
 s" atom-arena-grow" T-LABEL
 ATOM-CAP @ 2 > TTRUE
-\ T-DECOUPLED-RESET: release SPA, reset the other scratch stores and read them
-\ back before another token's check can use them.
+\ T-DECOUPLED-RESET: reset the decoupled scratch stores and read them back
+\ before another token's check can use them.
 : T-DECOUPLED-RESET ( -- )
    DECOUPLED-ARENA-SNAP-RESET
    s" decoupled-arena-restored" T-LABEL
-   SPA-P @ NULL-PTR = SPA-CAP @ 0= and SPN @ 0= and
-   QE-CAP @ MAXQE-INIT =  and  ATOM-CAP @ MAXATOM-INIT =  and
-   PARAM-CAP @ MAXPARAM-INIT =  and  TTRUE ;
+   ATOM-CAP @ MAXATOM-INIT =  TTRUE ;
 T-DECOUPLED-RESET
 \ T-SCRATCH-RETIRE: a file boundary gives back the scratch region and zeroes
 \ every span, so the per-definition term stores rest at none; the next check
