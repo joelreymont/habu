@@ -6,6 +6,7 @@ require src/core/bytes.f
 require src/habu/layout.f
 require src/habu/xref.f
 require src/compiler/native/dict.f
+require src/habu/escape.f
 
 \ ---- numbers ----------------------------------------------------------------
 \ NUMBER reads a token as the engine's reader does (LNUM, EMIT-NUM in
@@ -282,7 +283,6 @@ $5C constant LINE-COMMENT        \ a backslash
 $28 constant OPEN-COMMENT        \ (
 $29 constant CLOSE-COMMENT       \ )
 $22 constant QUOTE               \ a double quote closes a string literal
-$5C constant ESCAPE              \ a backslash, in an escaped literal
 $20 constant CASE-BIT            \ ORed into A-Z it gives a-z
 255 constant CSTR-MAX            \ a counted string's length is one byte
 2 constant ERR-FD
@@ -836,76 +836,20 @@ CAST: AFTER-CALL ( n -- [ n n n -- ] )
    d ;
 
 \ ---- escaped literals (habu2.f EMIT-ESC-SCAN, EMIT-ESC-COPY) ------------------------
-\ The byte an escape letter stands for (habu2.f C-ESC-DECODE-BASIC), and
-\ whether it is one. `x` and `X` are not: HEX-STEP reads their two digits.
-: ESC-BYTE ( n -- n bool )
-   case
-      QUOTE of QUOTE true endof
-      [char] q of QUOTE true endof
-      ESCAPE of ESCAPE true endof
-      [char] a of 7 true endof
-      [char] b of 8 true endof
-      [char] e of 27 true endof
-      [char] f of 12 true endof
-      [char] l of NEWLINE true endof
-      [char] n of NEWLINE true endof
-      [char] r of 13 true endof
-      [char] t of 9 true endof
-      [char] v of 11 true endof
-      [char] z of 0 true endof
-      0 false rot
-   endcase ;
-
-\ A backslash at p, `x` and two hex digits before e.
-: HEX-STEP ( ptr u8 ptr u8 -- n ptr u8 bool ) {: p:ptr e:ptr :}
-   p 4 + e > if 0 p false exit then
-   p 2 + c@ 16 DIGIT {: hi:n hi-ok:bool :}
-   p 3 + c@ 16 DIGIT {: lo:n lo-ok:bool :}
-   hi 4 lshift lo or  p 4 +  hi-ok lo-ok and ;
-
-\ The byte the text at p stands for, where its spelling ends, and whether that
-\ spelling is whole before e. A backslash makes the next byte an escape letter.
-: ESC-STEP ( ptr u8 ptr u8 -- n ptr u8 bool ) {: p:ptr e:ptr :}
-   p c@ ESCAPE <> if p c@ p 1 + true exit then
-   p 1 + e >= if 0 p false exit then
-   p 1 + c@ {: c:n :}
-   c [char] x = c [char] X = or if p e HEX-STEP exit then
-   c ESC-BYTE p 2 + swap ;
-
 \ An escaped literal's start, its closing quote and the count of bytes it
-\ decodes to. A bad escape refuses as a missing quote does, INP unmoved.
+\ decodes to (src/habu/escape.f). A bad escape refuses as a missing quote
+\ does, INP unmoved.
 : ESC-SCAN ( -- ptr u8 ptr u8 n )
-   INP-CELL ADDR@ 1 + INE-CELL ADDR@ {: s:ptr e:ptr :}
-   s 0
-   begin
-      over e >= if BAD-LITERAL then
-      over c@ QUOTE <>
-   while
-      {: p:ptr k:n :}
-      p e ESC-STEP {: nx:ptr ok:bool :} drop
-      ok 0= if BAD-LITERAL then
-      nx k 1 +
-   repeat
-   {: q:ptr u:n :}
+   INP-CELL ADDR@ 1 + {: s:ptr :}
+   s INE-CELL ADDR@ ESCAPE:SPAN {: q:ptr u:n ok:bool :}
+   ok 0= if BAD-LITERAL then
    s q u ;
-
-\ The bytes the text from s to its quote q decodes to, written from d on. The
-\ scan has proved every escape whole.
-: ESC-COPY ( ptr u8 ptr u8 ptr u8 -- ) {: s:ptr q:ptr d:ptr :}
-   s d
-   begin over q < while
-      {: p:ptr t:ptr :}
-      p q ESC-STEP drop {: b:n nx:ptr :}
-      b t c!
-      nx t 1 +
-   repeat
-   2drop ;
 
 : ESC-KEEP ( -- ptr u8 n )
    ESC-SCAN {: s:ptr q:ptr u:n :}
    q PAST
    u ROOM {: d:ptr :}
-   s q d ESC-COPY
+   s q d ESCAPE:COPY
    d u ;
 
 \ c\" checks the decoded length before INP moves (habu2.f C-EICQ), so its
@@ -916,7 +860,7 @@ CAST: AFTER-CALL ( n -- [ n n n -- ] )
    q PAST
    u 1 + ROOM {: d:ptr :}
    u d c!
-   s q d 1 + ESC-COPY
+   s q d 1 + ESCAPE:COPY
    d ;
 
 \ ---- running a literal ----------------------------------------------------------------

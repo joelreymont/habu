@@ -7,14 +7,32 @@
 \ file loads (src/habu/t0-x64.f for x86-64); the emitter leaves the finished
 \ body in its sink.
 \
-\ A TOKEN IS, IN THIS ORDER: a local in scope; a control keyword (if else then
-\ begin until while repeat again do ?do loop +loop leave unloop i j case of
-\ endof endcase exit recurse >r r> r@ ['] [char] {:); an operation T0 inlines,
+\ A TOKEN IS, IN THIS ORDER: a local in scope; a string opener (`s" c" ." s\"
+\ c\" .\"`, the s and c in either case); a control keyword (if else then begin
+\ until while repeat again do ?do loop +loop leave unloop i j case of endof
+\ endcase exit recurse >r r> r@ ['] [char] {: [: ;]); an operation T0 inlines,
 \ when the spelling binds the engine's seeded primitive (NDICT:SPELL-PRIM?):
 \ the stack shuffles, + - * and or xor 1+ 1- negate invert lshift rshift, the
 \ comparisons, @ and c@; a word the dictionary binds (NDICT:CALL-TARGET), as a
-\ call; a number (OUTER:NUMBER) other than a float. Anything else throws
-\ E-T0-UNSUPPORTED, and UNSUPPORTED$ names the token until the next compile.
+\ call; a number (OUTER:NUMBER), a float being one cell of a double's bits.
+\ Anything else throws E-T0-UNSUPPORTED, and UNSUPPORTED$ names the token until
+\ the next compile.
+\
+\ A STRING's payload starts one byte past its opener, as BODYBUF keeps it
+\ (src/habu/definers.f DEF-TEXT), and src/habu/escape.f decodes an escaped
+\ one. Its bytes are interned (NSTR:INTERN), so equal bodies share an address:
+\ `s"` pushes the address and length, `c"` the address of a count byte and
+\ the bytes, `."` passes both to `type`. A payload with no closing quote or a
+\ bad escape, and a counted one past COUNTED-MAX bytes, is E-T0-LITERAL.
+\
+\ A QUOTATION `[: ... ;]` is a unit of its own in the same emission
+\ (src/habu/t0-x64.f THE UNITS). At `[:` the body pushes the unit's address
+\ and skips the text through the matching `;]`; once the definition is
+\ compiled, each quotation is compiled from its recorded start, in the order
+\ the `[:` tokens were met, nested ones after their parent. Each unit starts
+\ with an empty virtual stack, no structure open, no loop level and no local,
+\ as the checker reads a quotation: the enclosing loop's `i` and the enclosing
+\ locals are out of its reach. A `{:` inside a quotation is E-T0-UNSUPPORTED.
 \
 \ THE VIRTUAL STACK. The top of the data stack lives in at most T0-EMIT:VREGS
 \ entries, each a vreg or a constant; below them the stack is in memory. A
@@ -53,9 +71,13 @@
 
 require src/lib/prelude.f
 require src/lib/string.f
+require src/lib/source-syntax.f
+require src/core/bytes.f
 require src/habu/outer.f
+require src/habu/escape.f
 require src/compiler/native/dict.f
 require src/compiler/native/fetch.f
+require src/compiler/native/string.f
 
 package T0
 public
@@ -65,6 +87,7 @@ public
 -9609 constant E-LAST
 -9600 constant E-T0-UNSUPPORTED  \ a token T0 does not compile yet: UNSUPPORTED$
 -9601 constant E-T0-CONTROL      \ a control word without its opener, or a body ending inside one
+-9602 constant E-T0-LITERAL      \ a string with no closing quote, a bad escape, or a counted one too long
 
 private
 
@@ -94,12 +117,15 @@ variable BAD-LEN
    begin IN-TOKEN? while POS @ 1+ POS ! repeat
    TXT$ start +  POS @ start - ;
 
-\ Whether no token follows.
+\ Whether a token ends a quotation.
+: QUOT-END? ( ptr u8 n -- bool ) s" ;]" STR= ;
+
+\ Whether the unit ends here: no token follows, or the quotation's `;]` does.
 : AT-END? ( -- bool )
    POS @ {: saved:n :}
    TOKEN {: a:ptr u:n :}
    saved POS !
-   u 0= ;
+   u 0= a u QUOT-END? or ;
 
 : UNSUPPORTED ( ptr u8 n -- ) {: a:ptr u:n :}
    a BAD !  u BAD-LEN !
@@ -338,6 +364,7 @@ DYNAMIC-BUFFER L-SLOT n              \ the first of its frame slots
 DYNAMIC-BUFFER L-WIDTH n             \ its cells
 variable L-N                         \ locals in scope
 variable BINDS                       \ binds so far: the next one's certificate sequence
+variable UNIT                        \ the unit being compiled: 0 the definition
 
 : L-NAME$ ( n -- ptr u8 n ) {: k:n :} TXT$ k L-AT @ +  k L-LEN @ ;
 
@@ -392,8 +419,10 @@ variable BINDS                       \ binds so far: the next one's certificate 
    a u first names + base cells + DECLARE {: w:n :}
    names 1+  cells w +  true ;
 
-\ `{:` up to `:}`: the names come into scope once their cells are bound.
-: DO-GROUP ( -- )
+\ `{:` up to `:}`: the names come into scope once their cells are bound. A
+\ quotation's group is not compiled yet.
+: DO-GROUP ( ptr u8 n -- ) {: a:ptr u:n :}
+   UNIT @ 0<> if a u UNSUPPORTED then
    SLOTS-LIVE {: base:n :}
    L-N @ {: first:n :}
    0 0 begin first base 2swap GROUP-NAME 0= until {: names:n cells:n :}
@@ -680,6 +709,102 @@ variable TAILED
    then
    to T0-EMIT:CALL ;
 
+\ ---- strings -------------------------------------------------------------------
+0 constant STR-NONE
+1 constant STR-PUSH                 \ s": the address and the length
+2 constant STR-COUNTED              \ c": the address of the count byte
+3 constant STR-PRINT                \ .": both, passed to `type`
+
+$22 constant QUOTE
+$5C constant BACKSLASH
+255 constant COUNTED-MAX            \ a counted string's length is one byte
+
+DYNAMIC-BUFFER STR-BUF u8           \ a decoded or counted body before interning
+
+\ The kind of string a token opens; an escaped one is three bytes long.
+: OPENER ( ptr u8 n -- n ) {: a:ptr u:n :}
+   u 2 < u 3 > or if STR-NONE exit then
+   a u + 1- c@ QUOTE <> if STR-NONE exit then
+   u 3 = if a 1+ c@ BACKSLASH <> if STR-NONE exit then then
+   a c@ {: c:n :}
+   c [char] s = c [char] S = or if STR-PUSH exit then
+   c [char] c = c [char] C = or if STR-COUNTED exit then
+   c [char] . = if STR-PRINT exit then
+   STR-NONE ;
+
+\ The first quote from s on before e, the bytes before it, and whether one is.
+: PLAIN-SPAN ( ptr u8 ptr u8 -- ptr u8 n bool ) {: s:ptr e:ptr :}
+   s begin dup e < if dup c@ QUOTE <> else false then while 1+ repeat
+   {: q:ptr :}
+   q  q s -  q e < ;
+
+\ The payload after an opener: its first byte, its closing quote and the count
+\ of bytes it stands for. POS moves past the quote.
+: SPAN ( bool -- ptr u8 ptr u8 n ) {: esc:bool :}
+   TXT$ POS @ 1+ + {: s:ptr :}
+   TXT$ TXT-LEN @ + {: e:ptr :}
+   esc if s e ESCAPE:SPAN else s e PLAIN-SPAN then {: q:ptr u:n ok:bool :}
+   ok 0= if E-T0-LITERAL throw then
+   q TXT$ - 1+ POS !
+   s q u ;
+
+\ The payload's interned address and its length. A plain or empty body
+\ interns from the text; a decoded or counted one is built in STR-BUF first.
+: INTERN-BODY ( bool bool -- n n ) {: esc:bool counted:bool :}
+   esc SPAN {: s:ptr q:ptr u:n :}
+   counted u COUNTED-MAX > and if E-T0-LITERAL throw then
+   esc 0= u 0= or counted 0= and if s u NSTR:INTERN u exit then
+   counted if 1 else 0 then {: at:n :}
+   at u + STR-BUF-RESERVE
+   esc if s q at STR-BUF ESCAPE:COPY else s at STR-BUF u BYTE-COPY then
+   counted if u 0 STR-BUF c! then
+   0 STR-BUF at u + NSTR:INTERN u ;
+
+: PUSH-ADDR ( n -- ) {: v:n :}
+   ROOM ALLOC {: r:T0-EMIT:vreg :}
+   v r T0-EMIT:ADDR-DATA
+   r PUSH-REG ;
+
+\ `."` calls the engine's `type` whatever the source's package scope, as tier
+\ 1 does (src/compiler/native/elaborate.f TYPE-ENTRY).
+TRUSTED: TYPE-ENTRY ( -- n ) ['] type ;
+
+: DO-STRING ( n bool -- ) {: kind:n esc:bool :}
+   esc kind STR-COUNTED = INTERN-BODY {: v:n u:n :}
+   v PUSH-ADDR
+   kind STR-COUNTED = if exit then
+   u PUSH-CONST
+   kind STR-PRINT = if TYPE-ENTRY DO-CALL then ;
+
+\ ---- quotations ------------------------------------------------------------------
+variable NQ                         \ units met so far, the definition's included
+DYNAMIC-BUFFER QSTART n             \ where each quotation's body text starts
+
+\ How a token in a quotation being skipped moves the nesting depth. A string's
+\ payload and a parsing word's operand are skipped with it.
+: SKIP-TOKEN ( ptr u8 n -- n ) {: a:ptr u:n :}
+   u 0= if E-T0-CONTROL throw then
+   a u s" [:" STR= if 1 exit then
+   a u QUOT-END? if -1 exit then
+   a u OPENER STR-NONE <> if u 3 = SPAN drop 2drop 0 exit then
+   a u SOURCE-SYNTAX:PARSING-KEYWORD? if TOKEN 2drop then
+   0 ;
+
+\ Past the `;]` that closes the quotation just opened.
+: SKIP-QUOT ( -- )
+   1 begin dup 0 > while TOKEN SKIP-TOKEN + repeat drop ;
+
+\ Push the next unit's address and skip its text, compiled after this unit.
+: DO-QUOT ( -- )
+   NQ @ {: k:n :}
+   k 1+ QSTART-RESERVE
+   POS @ k QSTART !
+   k 1+ NQ !
+   SKIP-QUOT
+   ROOM ALLOC {: r:T0-EMIT:vreg :}
+   k r T0-EMIT:ADDR-QUOT
+   r PUSH-REG ;
+
 \ ---- the keyword dispatch ----------------------------------------------------
 \ By length first, so a token compares only with the keywords of its length.
 \ An operation spelling counts only when it binds the seeded primitive
@@ -704,7 +829,8 @@ variable TAILED
    a u s" if" STR= if DO-IF true exit then
    a u s" do" STR= if DO-DO true exit then
    a u s" of" STR= if DO-OF true exit then
-   a u s" {:" STR= if DO-GROUP true exit then
+   a u s" {:" STR= if a u DO-GROUP true exit then
+   a u s" [:" STR= if DO-QUOT true exit then
    a u s" >r" STR= if DO-TOR true exit then
    a u s" r>" STR= if DO-RFROM true exit then
    a u s" r@" STR= if DO-RFETCH true exit then
@@ -779,12 +905,14 @@ variable TAILED
 \ ---- one token ---------------------------------------------------------------
 : NUMBER ( ptr u8 n -- ) {: a:ptr u:n :}
    a u OUTER:NUMBER {: v:n float:bool number:bool range:bool :}
-   number 0= float or range or if a u UNSUPPORTED then
+   number 0= range or if a u UNSUPPORTED then
    v PUSH-CONST ;
 
 : COMPILE-TOKEN ( ptr u8 n -- ) {: a:ptr u:n :}
    a u FIND-LOCAL {: k:n :}
    k 0 >= if k DO-LOCAL exit then
+   a u OPENER {: kind:n :}
+   kind STR-NONE <> if kind u 3 = DO-STRING exit then
    a u KEYWORD if exit then
    a u NDICT:CALL-TARGET {: to:n :}
    to 0<> if to DO-CALL exit then
@@ -799,22 +927,48 @@ variable TAILED
       TOKEN dup 0= if drop drop true else s" )" STR= then
    until ;
 
+\ ---- one unit --------------------------------------------------------------------
+\ Compile tokens to the end of the unit: whether a `;]` ended it rather than
+\ the end of the text.
+: BODY ( -- bool )
+   begin
+      TOKEN dup 0= if 2drop false exit then
+      2dup QUOT-END? if 2drop true exit then
+      COMPILE-TOKEN
+   again ;
+
+\ Begin unit k with nothing open and no local in scope.
+: RESET ( n -- )
+   UNIT !
+   0 VS-N !  ALL-FREE FREE !  0 CS-N !  0 DO-N !  0 LEAVE-N !  0 L-N !  0 TAILED ! ;
+
+: FINISH ( -- )
+   CS-N @ 0<> if E-T0-CONTROL throw then
+   TAILED @ 0= if SPILL-ALL T0-EMIT:RETURN then
+   T0-EMIT:CLOSE ;
+
+\ Quotation unit k, from its recorded start through its `;]`.
+: QUOT ( n -- ) {: k:n :}
+   k QSTART @ POS !
+   k RESET
+   k T0-EMIT:QUOT-OPEN
+   BODY 0= if E-T0-CONTROL throw then
+   FINISH ;
+
 public
 
 \ The token the last E-T0-UNSUPPORTED named.
 : UNSUPPORTED$ ( -- ptr u8 n ) BAD @ BAD-LEN @ ;
 
-\ Compile one body into the emitter's sink. The body's certificate is captured.
+\ Compile one body, and then its quotations, into the emitter's sink. The
+\ body's certificate is captured.
 : COMPILE-TEXT ( ptr u8 n -- ) {: a:ptr u:n :}
-   a TXT !  u TXT-LEN !  0 POS !
-   0 VS-N !  ALL-FREE FREE !  0 CS-N !  0 DO-N !  0 LEAVE-N !  0 TAILED !
-   0 L-N !  0 BINDS !
+   a TXT !  u TXT-LEN !  0 POS !  1 NQ !  0 BINDS !
+   0 RESET
    T0-EMIT:OPEN
    SKIP-HEAD
-   begin TOKEN dup 0<> while COMPILE-TOKEN repeat
-   drop drop
-   CS-N @ 0<> if E-T0-CONTROL throw then
-   TAILED @ 0= if SPILL-ALL T0-EMIT:RETURN then
-   T0-EMIT:CLOSE ;
+   BODY if E-T0-CONTROL throw then
+   FINISH
+   1 begin dup NQ @ < while dup QUOT 1+ repeat drop ;
 
 ;package

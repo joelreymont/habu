@@ -20,17 +20,29 @@
 \ for the kernel. OPEN empties it and CLOSE leaves the finished body in it for
 \ CODE$ to read; the next OPEN begins the next body.
 \
-\ THE FRAME. OPEN emits `sub rsp, imm32` and each way out (RETURN, TAIL) emits
-\ `add rsp, imm32`, each with a zero field recorded in FRAME-AT. CLOSE emits
-\ nothing: the front end ends the body with RETURN or TAIL, and CLOSE writes
-\ the frame size, FRAME-CELLS rounded to 16 bytes, into every field, so rsp
-\ keeps its alignment at every call. Slot k is the cell at rsp + 8k; SLOTS
-\ raises FRAME-CELLS to cover the slots the front end uses.
+\ THE UNITS. A definition and its quotations are one emission: unit 0 is the
+\ definition and starts at byte 0, and each quotation is a later unit, a
+\ function of its own that QUOT-OPEN begins where the previous unit's CLOSE
+\ left off. The publisher places CODE$ whole and finds each quotation through
+\ its ADDR-QUOT-KIND row. `recurse` in any unit calls byte 0, the definition,
+\ as both tiers run it.
+\
+\ THE FRAME. OPEN and QUOT-OPEN emit `sub rsp, imm32` and each way out (RETURN,
+\ TAIL) emits `add rsp, imm32`, each with a zero field recorded in FRAME-AT.
+\ CLOSE emits nothing: the front end ends the unit with RETURN or TAIL, and
+\ CLOSE writes the unit's frame size, FRAME-CELLS rounded to 16 bytes, into
+\ every field the unit recorded, so rsp keeps its alignment at every call.
+\ Slot k is the cell at rsp + 8k; SLOTS raises FRAME-CELLS to cover the slots
+\ the front end uses, and each unit begins with none.
 \
 \ THE ROWS. A call or tail site (E8 or E9 rel32, the field left zero) and a
 \ code or data address site (movabs r64, imm64) are recorded with the offset of
 \ the instruction's first byte, its kind and its target, for the publisher to
 \ place and relocate: CALL-ROWS / CALL-ROW and ADDR-ROWS / ADDR-ROW read them.
+\ Offsets are from the emission's byte 0, and each unit's rows follow the
+\ previous unit's. A quotation's address (ADDR-QUOT-KIND) is a code address
+\ inside this emission: its target and its imm64 are the quotation unit's
+\ offset, which QUOT-OPEN fills in, and the publisher adds the placement.
 \ Branches inside the body are resolved here: JMP, JZ and JNZ answer a site
 \ that PATCH binds to the current offset, LABEL answers a mark that JMP-BACK
 \ and JZ-BACK branch to. Every branch is rel32.
@@ -96,6 +108,7 @@ DEFTYPE SITE       \ a forward branch, from JMP, JZ or JNZ
 1 constant TAIL-KIND
 1 constant ADDR-DATA-KIND
 2 constant ADDR-CODE-KIND
+3 constant ADDR-QUOT-KIND
 
 private
 
@@ -105,6 +118,7 @@ variable FRAME-CELLS                  \ machine-stack cells this body uses
 variable NFRAME
 variable NCALL
 variable NADDR
+variable NUNIT                        \ units begun in this emission
 DYNAMIC-BUFFER FRAME-AT n             \ offset of each frame imm32 field
 DYNAMIC-BUFFER CALL-AT n              \ call row: first byte, kind, target
 DYNAMIC-BUFFER CALL-KIND-AT n
@@ -112,6 +126,7 @@ DYNAMIC-BUFFER CALL-TO n
 DYNAMIC-BUFFER ADDR-AT n              \ address row: first byte, kind, value
 DYNAMIC-BUFFER ADDR-KIND-AT n
 DYNAMIC-BUFFER ADDR-TO n
+DYNAMIC-BUFFER UNIT-REF n             \ the address row that names each unit
 
 4096 constant SINK-START-BYTES
 
@@ -130,10 +145,10 @@ DYNAMIC-BUFFER ADDR-TO n
    k 3 = if RDI exit then
    k 4 + >R64 ;
 
-\ Write the low four bytes of v at offset off of the sink, little-endian.
-: PUT32 ( n n -- ) {: v:n off:n :}
+\ Write the low k bytes of v at offset off of the sink, little-endian.
+: PUT ( n n n -- ) {: v:n off:n k:n :}
    SINK BUF:SPAN$ drop off + {: p:ptr :}
-   4 0 ?do v i 8 * rshift $FF and p i + c! loop ;
+   k 0 ?do v i 8 * rshift $FF and p i + c! loop ;
 
 \ A forward rel32 at the end of what was just emitted: its field's offset.
 : FWD-SITE ( -- site ) HERE-OFF 4 - >SITE ;
@@ -185,6 +200,12 @@ DYNAMIC-BUFFER ADDR-TO n
 
 : REL-TO ( n -- rel ) HERE-OFF - >REL ;
 
+\ Begin the next unit at the current offset, with an empty frame.
+: UNIT-BEGIN ( -- )
+   NUNIT @ 1 + NUNIT !
+   0 FRAME-CELLS !  0 NFRAME !
+   RSP 0 >IMM32 SINK ENC-SUB-RI32  FRAME-SITE ;
+
 public
 
 \ ---- the body ----------------------------------------------------------------
@@ -194,8 +215,17 @@ public
       1 SINK-LIVE !
    then
    SINK BUF:CLEAR
-   0 FRAME-CELLS !  0 NFRAME !  0 NCALL !  0 NADDR !
-   RSP 0 >IMM32 SINK ENC-SUB-RI32  FRAME-SITE ;
+   0 NCALL !  0 NADDR !  0 NUNIT !
+   UNIT-BEGIN ;
+
+\ Begin quotation unit n, which ADDR-QUOT named, and bind that address row to
+\ it. Units begin in order, so n is the count begun so far.
+: QUOT-OPEN ( n -- ) {: n:n :}
+   n NUNIT @ <> if E-OPERAND throw then
+   n UNIT-REF @ {: row:n :}
+   HERE-OFF row ADDR-TO !
+   HERE-OFF row ADDR-AT @ 2 + 8 PUT
+   UNIT-BEGIN ;
 
 \ Leave the word from the middle of its body.
 : RETURN ( -- )
@@ -203,7 +233,7 @@ public
 
 : CLOSE ( -- )
    FRAME-CELLS @ CELL * 15 + 15 invert and {: bytes:n :}
-   NFRAME @ 0 ?do bytes i FRAME-AT @ PUT32 loop ;
+   NFRAME @ 0 ?do bytes i FRAME-AT @ 4 PUT loop ;
 
 : CODE$ ( -- ptr u8 n ) SINK BUF:SPAN$ BUF:BLEN>N ;
 
@@ -217,6 +247,12 @@ public
 
 : ADDR-DATA ( n vreg -- ) ADDR-DATA-KIND ADDR ;
 : ADDR-CODE ( n vreg -- ) ADDR-CODE-KIND ADDR ;
+
+\ The address of quotation unit n, which QUOT-OPEN begins later.
+: ADDR-QUOT ( n vreg -- ) {: n:n d:vreg :}
+   n 1 + UNIT-REF-RESERVE
+   NADDR @ n UNIT-REF !
+   0 d ADDR-QUOT-KIND ADDR ;
 
 \ The data stack: PUSH and POP move one cell; SPILL, SPILL-LIT and FILL address
 \ the cell k cells above the stack pointer without moving it, and DSP+ moves
@@ -349,7 +385,7 @@ public
    HERE-OFF TAIL-KIND to CALL-ROW+
    0 >REL SINK ENC-JMP-REL32 ;
 
-\ `recurse`: a call of byte 0 of this body.
+\ `recurse`: a call of byte 0, the definition, from any unit.
 : CALL-SELF ( -- )
    0 HERE-OFF 5 + - >REL SINK ENC-CALL-REL32 ;
 
@@ -391,7 +427,7 @@ public
 
 : PATCH ( site -- ) {: s:site :}
    s SITE>N {: at:n :}
-   HERE-OFF at 4 + - at PUT32 ;
+   HERE-OFF at 4 + - at 4 PUT ;
 
 \ ---- the return stack --------------------------------------------------------
 \ >r, r> and r@ move a cell between a vreg and the return stack through rax or
