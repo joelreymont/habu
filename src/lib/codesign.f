@@ -13,49 +13,29 @@
 \ result. A missing artifact or empty path throws E-BUILD-PATH; a target that
 \ is neither Linux nor macOS E-BUILD-SOURCE.
 \
-\ STORAGE CLASS. PROCESS-WIDE: the capture buffers are allocated once and
-\ kept; one task signs at a time.
+\ STORAGE CLASS. PROCESS-WIDE: the capture buffers grow with the tool's
+\ output and are released after each run; one task signs at a time.
 require src/lib/errors.f
-require src/lib/memory.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process.f
 require src/lib/process-argv.f
+require src/lib/process-env.f
 
 package CODESIGN
 
 private
 
-4096 constant CODESIGN-OUT-CAP
-4096 constant CODESIGN-ERR-CAP
 10000 constant CODESIGN-TIMEOUT-MS
 
-variable CODESIGN-OUT-A
-variable CODESIGN-ERR-A
+DYNAMIC-BUFFER CODESIGN-OUT u8
+DYNAMIC-BUFFER CODESIGN-ERR u8
 
-: CODESIGN-PTR-U8-FIELD ( ptr a -- ptr ptr u8 )
-   0 ptr-field ;
+: CODESIGN-OUT-ROOM ( n -- ptr u8 )
+   CODESIGN-OUT-RESERVE 0 CODESIGN-OUT ;
 
-: CODESIGN-PTR-U8@ ( ptr a -- ptr u8 )
-   CODESIGN-PTR-U8-FIELD @ ;
-
-: CODESIGN-PTR-U8! ( ptr u8 ptr a -- )
-   CODESIGN-PTR-U8-FIELD ! ;
-
-\ CODESIGN-OUT-CAP / CODESIGN-ERR-CAP are positive library constants:
-\ MEM:BYTES-ALLOC-LEN narrows the raw size to the validated alloc role before
-\ MEM:ALLOC-BYTES, throwing E-MEM-SIZE on any refusal (unreachable for the constant).
-: CODESIGN-BUF ( ptr a n -- ptr u8 ) {: slot:ptr cap :}
-   slot CODESIGN-PTR-U8@ 0= if
-      cap MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop slot CODESIGN-PTR-U8!
-   then
-   slot CODESIGN-PTR-U8@ ;
-
-: CODESIGN-OUT ( -- ptr u8 )
-   CODESIGN-OUT-A CODESIGN-OUT-CAP CODESIGN-BUF ;
-
-: CODESIGN-ERR ( -- ptr u8 )
-   CODESIGN-ERR-A CODESIGN-ERR-CAP CODESIGN-BUF ;
+: CODESIGN-ERR-ROOM ( n -- ptr u8 )
+   CODESIGN-ERR-RESERVE 0 CODESIGN-ERR ;
 
 public
 
@@ -78,16 +58,21 @@ private
    a u CODESIGN-EXPECT-FILE
    a u EXECUTABLE? 0= if E-BUILD-PATH throw then ;
 
+: CODESIGN-CAPTURE ( -- n )
+   PROC-ENV-RESET
+   TOOL >LEN s" " >LEN
+   [: CODESIGN-OUT-ROOM ;] [: CODESIGN-ERR-ROOM ;]
+   CODESIGN-TIMEOUT-MS >MS RUN-ARGV-ENV-STDIN-GROWING-BOTH-CAPTURE-OUTCOME
+   {: o:len e:len oc :}
+   oc PROC-OUTCOME>RC RC>N ;
+
+: CODESIGN-RELEASE ( -- )
+   CODESIGN-OUT-RELEASE
+   CODESIGN-ERR-RELEASE ;
+
 : CODESIGN-RUN ( -- n )
    CODESIGN-EXPECT-TOOL
-   TOOL >LEN
-   CODESIGN-OUT CODESIGN-OUT-CAP >LEN
-   CODESIGN-ERR CODESIGN-ERR-CAP >LEN
-   CODESIGN-TIMEOUT-MS >MS RUN-ARGV-CAPTURE
-   MATCH result
-     ok  OF PCAP-CAPTURED:UNMAKE 2drop 0 ENDOF                        \ clean exit -> rc 0
-     err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :} c RC>N ENDOF    \ nonzero completion code
-   ;MATCH ;
+   [: CODESIGN-CAPTURE ;] [: CODESIGN-RELEASE ;] finally ;
 
 : CODESIGN-TARGET-UNKNOWN ( -- )
    E-BUILD-SOURCE throw ;

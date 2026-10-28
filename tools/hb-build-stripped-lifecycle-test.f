@@ -55,8 +55,8 @@ package HB-BUILD-CLI
 \ claimed at `aot: PC-relative target removed or outside closure site=xt!`. A
 \ stripped image has no reader for the address-cell table, so the linker drops
 \ the declaration and keeps the store (src/habu/aot-closure.f AOT-DECLARATION?).
-\ PROC-ARGV-BUF is a REAL first-use registrant - src/lib/process-argv.f registers its
-\ RELEASE hook the first time the argv buffer is taken - so the program reaches
+\ PROC-ARGV+ is a REAL first-use registrant - src/lib/process-argv.f registers its
+\ RELEASE hook the first time an argument is staged - so the program reaches
 \ the store the way Tender's server and scraper do, and not only through its own
 \ two calls.
 \ THE PINNED ORDER IS WHAT PREPARE PRODUCES: the HOOKS buffer from the last
@@ -85,7 +85,7 @@ package HB-BUILD-CLI
    S\"    [: HOOK-A ;] IMAGE-LIFECYCLE:REGISTER\n" SB-APPEND
    S\"    [: HOOK-B ;] IMAGE-LIFECYCLE:REGISTER\n" SB-APPEND
    S\"    [: HOOK-P ;] IMAGE-LIFECYCLE:REGISTER-PERSISTENT\n" SB-APPEND
-   S\"    PROC-ARGV-BUF drop\n" SB-APPEND
+   S\"    s\" x\" >LEN PROC-ARGV+\n" SB-APPEND
    S\"    s\" count=\" type IMAGE-LIFECYCLE:COUNT FMT:.INT cr\n" SB-APPEND
    S\"    s\" exit\" type cr\n   IMAGE-LIFECYCLE:PREPARE ;\n" SB-APPEND
    SB$ ;
@@ -120,7 +120,7 @@ package HB-BUILD-CLI
 \ HBT-HOOK-SRC$ above.
 \ src/lib/process-argv.f and src/lib/fmt.f are modules of the linker's lib closure the
 \ engine does not bake, and the linker image refuses this program at
-\ PROC-ARGV-BUF (E-AOT-PRE-WINDOW, test/preloaded-engine.f rule 3), so it builds
+\ PROC-ARGV+ (E-AOT-PRE-WINDOW, test/preloaded-engine.f rule 3), so it builds
 \ on the engine.
 : HBT-STRIPPED-LIFECYCLE-HOOK ( -- )
    HBT-HOOK-SRC HBT-HOOK-SRC$ WRITE-ALL

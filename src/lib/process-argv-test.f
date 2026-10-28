@@ -20,17 +20,30 @@ create PAT-CAP-OUT 64 allot
 create PAT-CAP-ERR 32 allot
 7 constant PAT-WC-COUNT-U
 create PAT-WC-COUNT 49 c, 51 c, 49 c, 48 c, 55 c, 50 c, 10 c,
-PROC-ARGV-BUF-CAP 1 + constant PAT-LONG-CAP
+\ Each long argument spans more than one 4096-byte chunk and stays under Linux's
+\ 128 KiB single-argument limit; together they outgrow $100 rows that each hold
+\ a PATH-CAP path and its NUL.
+100000 constant PAT-LONG-CAP
+3 constant PAT-LONG-N
+PAT-LONG-CAP 1 + PAT-LONG-N * 64 + constant PAT-BIG-CAP
+create PAT-BIG-OUT PAT-BIG-CAP allot
+variable PAT-AT
+\ More than $100 arguments, whose bytes together fill more than one 4096-byte page.
+300 constant PAT-MANY-N
+16 constant PAT-ARG-TAIL
+4 PAT-ARG-TAIL + constant PAT-ARG-U
+create PAT-ARG PAT-ARG-U allot
 131072 constant PAT-EARLY-IN-CAP
 create PAT-LONG PAT-LONG-CAP allot
 create PAT-EARLY-IN PAT-EARLY-IN-CAP allot
 variable PAT-I
 32 constant PAT-SPACE
 
-: PAT-LONG! ( -- )
+: PAT-LONG! ( u8 -- )
+   {: ch:u8 :}
    0 PAT-I !
    begin PAT-I @ PAT-LONG-CAP < while
-      97 PAT-LONG PAT-I @ + c!
+      ch PAT-LONG PAT-I @ + c!
       PAT-I @ 1+ PAT-I !
    repeat ;
 
@@ -107,31 +120,54 @@ variable PAT-I
    s" ignored"  >LEN PROC-ARGV+
    s" /no/such/habu-process-argv-test" >LEN -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-IO drop ;
 
-: PAT-TOO-MANY-ARGS ( -- )
-   PROC-ARGV-RESET
-   0 begin dup PROC-ARGV-MAX 1- < while
-      s" x"  >LEN PROC-ARGV+
-      1+
-   repeat drop
-   s" overflow"  >LEN PROC-ARGV+ ;
+: PAT-ARG! ( n -- )
+   {: k:n :}
+   k 1000 / 10 mod 48 + PAT-ARG c!
+   k 100 / 10 mod 48 + PAT-ARG 1 + c!
+   k 10 / 10 mod 48 + PAT-ARG 2 + c!
+   k 10 mod 48 + PAT-ARG 3 + c!
+   PAT-ARG-TAIL 0 ?do k 26 mod 97 + PAT-ARG 4 + i + c! loop ;
 
-: PAT-LONG-ARG ( -- )
-   PROC-ARGV-RESET
-   s" x"  >LEN PROC-ARGV+
-   PAT-LONG! PAT-LONG PAT-LONG-CAP  >LEN PROC-ARGV+ ;
 
-\ The fit rule can fail four ways: a negative length taken as room, a length
-\ whose NUL wraps the sum back into range, the NUL miscounted at an exact fill,
-\ and a full buffer taking an empty argument.
-: PAT-FITS-BOUNDS ( -- )
-   s" an argument fits when its bytes and NUL fit the room left" T-LABEL
+\ printf "%s," echoes each staged argument followed by a comma.
+: PAT-PRINTF-ARGS ( -- n )
+   s" /usr/bin/printf" PAT-BIG-OUT PAT-BIG-CAP PAT-CAP-ERR 32 5000 PAT-CAPTURE
+   {: outu:n erru:n rc:n :}
+   rc 0 T= erru 0 T= outu ;
+
+
+\ The output at PAT-AT is these bytes and a comma; PAT-AT moves past them.
+: PAT-NEXT ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   PAT-BIG-OUT PAT-AT @ + u a u T$=
+   PAT-BIG-OUT PAT-AT @ u + + c@ 44 T=
+   PAT-AT @ u 1+ + PAT-AT ! ;
+
+
+: PAT-MANY-ARGS ( -- )
+   s" more than $100 arguments reach the child in order" T-LABEL
    PROC-ARGV-RESET
-   PROC-ARGV-BUF-CAP 1- >LEN PROC-ARGV-FITS? TTRUE
-   PROC-ARGV-BUF-CAP >LEN PROC-ARGV-FITS? TFALSE
-   -1 >LEN PROC-ARGV-FITS? TFALSE
-   MEM-MAX-N >LEN PROC-ARGV-FITS? TFALSE
-   PAT-LONG! PAT-LONG PROC-ARGV-BUF-CAP 1- >LEN PROC-ARGV+
-   0 >LEN PROC-ARGV-FITS? TFALSE ;
+   s" %s," >LEN PROC-ARGV+
+   PAT-MANY-N 0 ?do i PAT-ARG! PAT-ARG PAT-ARG-U >LEN PROC-ARGV+ loop
+   PAT-PRINTF-ARGS {: outu:n :}
+   0 PAT-AT !
+   PAT-MANY-N 0 ?do i PAT-ARG! PAT-ARG PAT-ARG-U PAT-NEXT loop
+   PAT-AT @ outu T= ;
+
+
+: PAT-LONG-ARGS ( -- )
+   s" long arguments past $100 paths together reach the child whole" T-LABEL
+   PROC-ARGV-RESET
+   s" %s," >LEN PROC-ARGV+
+   s" x" >LEN PROC-ARGV+
+   PAT-LONG-N 0 ?do i 97 + PAT-LONG! PAT-LONG PAT-LONG-CAP >LEN PROC-ARGV+ loop
+   s" y" >LEN PROC-ARGV+
+   PAT-PRINTF-ARGS {: outu:n :}
+   0 PAT-AT !
+   s" x" PAT-NEXT
+   PAT-LONG-N 0 ?do i 97 + PAT-LONG! PAT-LONG PAT-LONG-CAP PAT-NEXT loop
+   s" y" PAT-NEXT
+   PAT-AT @ outu T= ;
 
 : PAT-NEG-ARG ( -- )
    PROC-ARGV-RESET PAT-LONG -1 >LEN PROC-ARGV+ ;
@@ -306,9 +342,10 @@ variable PAT-SAVED-STDIN
    PAT-RUN-PRINTF
    PAT-RUN-CAT
    [: PAT-SPAWN-MISSING ;] E-PROC-SPAWN TTHROWSQ
-   [: PAT-TOO-MANY-ARGS ;] E-PROC-OUTPUT TTHROWSQ
-   [: PAT-LONG-ARG ;] E-PROC-OUTPUT TTHROWSQ
-   PAT-FITS-BOUNDS
+   PAT-MANY-ARGS
+   PAT-LONG-ARGS
+   \ Again after long arguments, so later arguments land in storage a reset kept.
+   PAT-MANY-ARGS
    [: PAT-NEG-ARG ;] E-PROC-OUTPUT TTHROWSQ
    [: PAT-HUGE-ARG ;] E-PROC-OUTPUT TTHROWSQ
    PAT-PATH-BOUNDS

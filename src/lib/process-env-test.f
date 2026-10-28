@@ -22,7 +22,6 @@ $2 constant PET-ENOENT
 $258 constant PET-BIG-N                  \ variables the big-environment child must inherit
 $9 constant PET-BIG-PREFIX-U             \ "HABU_BIG_"
 $C constant PET-BIG-NAME-U               \ prefix plus three digits
-3 constant PET-MIN-ENV-N                 \ PATH, HOME, TMPDIR: the overflow child's whole envp
 
 create PET-BIG-NAME PET-BIG-NAME-U allot
 create PET-OUT PET-CAP allot
@@ -481,42 +480,6 @@ public
    code 0 T=
    PET-OUT outu PET-BIG-EXPECT$ CONTAINS? TTRUE ;
 
-\ The overflow child is given exactly PET-MIN-ENV-N entries, so its ceiling is
-\ known here and the refusal line can be compared in full: a bare E-PROC-ENV
-\ with no count and no limit is what left gates with nothing to act on.
-: PET-PASS-ENV ( ptr u8 n -- ) {: name:ptr nameu:n :}
-   name nameu GETENV {: val:ptr valu:n :}
-   name nameu val valu PET-ENV+ ;
-
-: PET-MIN-ENV ( -- )
-   PET-RESET
-   s" PATH" PET-PASS-ENV
-   s" HOME" PET-PASS-ENV
-   s" TMPDIR" PET-PASS-ENV ;
-
-: PET-CEILING-LINE$ ( -- ptr u8 n )
-   SB-RESET
-   s" process-env: child environment full at " SB-APPEND
-   PET-MIN-ENV-N PROC-ENV-EXTRA + PET-SB-N
-   s"  entries (" SB-APPEND
-   PET-MIN-ENV-N PET-SB-N
-   s"  inherited + " SB-APPEND
-   PROC-ENV-EXTRA PET-SB-N
-   s"  added): entry " SB-APPEND
-   PET-MIN-ENV-N PROC-ENV-EXTRA + 1 + PET-SB-N
-   s"  refused" SB-APPEND
-   SB$ ;
-
-: PET-ENV-CEILING-DIAGNOSTIC ( -- )
-   PET-MIN-ENV
-   s" --load" >LEN PROC-ARGV+
-   s" test/process-env-overflow-child.f" >LEN PROC-ARGV+
-   s" bin/hb" PET-OUT PET-CAP PET-ERR PET-CAP PET-HB-TIMEOUT-MS PET-CAPTURE
-   {: outu:n erru:n code:n :}
-   code 0 = TFALSE
-   PET-OUT outu s" overflow-child: no refusal" CONTAINS? TFALSE
-   PET-ERR erru PET-CEILING-LINE$ CONTAINS? TTRUE ;
-
 : PET-BAD-ENV-NAME ( -- )
    PET-RESET
    s" BAD=NAME" s" x" PET-ENV+ ;
@@ -556,98 +519,147 @@ public
 : PET-RESOLVE-MISSING-THROWS ( -- )
    [: PET-RESOLVE-MISSING ;] E-PROC-PATH TTHROWSQ ;
 
-\ A row is compared with the room left in its buffer. The ways that rule can
-\ fail: an exact fill refused, one byte past it taken, a negative length taken,
-\ and a length near the maximum cell wrapping the byte count back into range.
-8 constant PET-LEFT                      \ room the boundary rows are tried against
-3 constant PET-ROW-EXTRA                 \ a one-byte name, its `=` and the NUL
+\ A length is checked before a byte of the caller's text is read. The text holds
+\ no `=` and ends at an inaccessible page, so a scan that runs first reads past
+\ it; a negative length, or one whose row would not fit a cell, is refused unread.
+7 constant PET-READABLE                  \ bytes of `x` before the inaccessible page
 
-: PET-ENV-ROOM ( -- n )
-   PROC-ENV-BUF-CAP PROC-ENV-OFF @ OFF>N - ;
-
-: PET-FILL-ROW ( n -- ) {: take:n :}
-   s" F" >LEN PET-EARLY-IN take PET-ROW-EXTRA - >LEN PROC-ENV-SET ;
-
-\ One name is set again and again, so the buffer fills while the table holds one
-\ row. PET-LEFT bytes stay free.
-: PET-ENV-FILL ( -- )
-   PET-RESET
-   begin PET-ENV-ROOM PET-LEFT - dup PET-EARLY-IN-CAP > while
-      drop PET-EARLY-IN-CAP 2 / PET-FILL-ROW
-   repeat PET-FILL-ROW ;
-
-\ The defaults buffer is PROC-ENV-EXTRA-BYTES, which one row can fill.
-: PET-DEF-FILL ( -- )
-   PET-RESET
-   s" F" >LEN PET-EARLY-IN PROC-ENV-EXTRA-BYTES PET-LEFT - PET-ROW-EXTRA - >LEN PROC-ENV-DEFAULT+ ;
-
-: PET-ENTRY-AT ( n -- ) {: u:n :}
-   PET-ENV-FILL s" AB=cdefg" drop u >LEN PROC-ENV-ENTRY+ ;
-
-: PET-ROW-AT ( n -- ) {: valu:n :}
-   PET-ENV-FILL s" AB" >LEN s" cdefg" drop valu >LEN PROC-ENV+ ;
-
-: PET-DEF-AT ( n -- ) {: valu:n :}
-   PET-DEF-FILL s" AB" >LEN s" cdefg" drop valu >LEN PROC-ENV-DEFAULT+ ;
-
-: PET-ENV-BYTE-BOUNDS ( -- )
-   PET-EARLY-IN!
-   s" an entry fits when its bytes and NUL fit the room left" T-LABEL
-   7 PET-ENTRY-AT PET-ENV-ROOM 0 T=
-   [: 8 PET-ENTRY-AT ;] E-PROC-ENV TTHROWSQ
-   [: -1 PET-ENTRY-AT ;] E-PROC-ENV TTHROWSQ
-   [: MEM-MAX-N PET-ENTRY-AT ;] E-PROC-ENV TTHROWSQ
-   s" a row fits when its name, value and two terminators fit the room left" T-LABEL
-   4 PET-ROW-AT PET-ENV-ROOM 0 T=
-   [: 5 PET-ROW-AT ;] E-PROC-ENV TTHROWSQ
-   [: -1 PET-ROW-AT ;] E-PROC-ENV TTHROWSQ
-   [: MEM-MAX-N PET-ROW-AT ;] E-PROC-ENV TTHROWSQ
-   s" a default row fits by the same rule" T-LABEL
-   4 PET-DEF-AT PROC-ENV-DEF-OFF @ OFF>N PROC-ENV-EXTRA-BYTES T=
-   [: 5 PET-DEF-AT ;] E-PROC-ENV TTHROWSQ
-   [: -1 PET-DEF-AT ;] E-PROC-ENV TTHROWSQ
-   [: MEM-MAX-N PET-DEF-AT ;] E-PROC-ENV TTHROWSQ
-   PET-RESET ;
-
-\ The room left is checked before a byte of the caller's text is read. The text
-\ holds no `=` and ends at an inaccessible page, so a scan that runs first reads
-\ past it; a length one past the room, or the maximum cell, is refused unread.
-
-: PET-UNREAD ( n -- ptr u8 ) {: u:n :}     \ u bytes of `x`, then no readable byte
-   u [char] x GUARD-PAGE:TAIL ;
+: PET-UNREAD ( -- ptr u8 )
+   PET-READABLE [char] x GUARD-PAGE:TAIL ;
 
 : PET-ENTRY-UNREAD ( n -- ) {: u:n :}
-   PET-ENV-FILL PET-LEFT 1- PET-UNREAD u >LEN PROC-ENV-ENTRY+ ;
+   PET-RESET PET-UNREAD u >LEN PROC-ENV-ENTRY+ ;
 
 : PET-ROW-UNREAD ( n -- ) {: nameu:n :}
-   PET-ENV-FILL PET-LEFT 2 - PET-UNREAD nameu >LEN s" " >LEN PROC-ENV+ ;
+   PET-RESET PET-UNREAD nameu >LEN s" " >LEN PROC-ENV+ ;
 
 : PET-SET-UNREAD ( n -- ) {: nameu:n :}
-   PET-ENV-FILL PET-LEFT 2 - PET-UNREAD nameu >LEN s" " >LEN PROC-ENV-SET ;
+   PET-RESET PET-UNREAD nameu >LEN s" " >LEN PROC-ENV-SET ;
 
 : PET-DEF-UNREAD ( n -- ) {: nameu:n :}
-   PET-DEF-FILL PET-LEFT 2 - PET-UNREAD nameu >LEN s" " >LEN PROC-ENV-DEFAULT+ ;
+   PET-RESET PET-UNREAD nameu >LEN s" " >LEN PROC-ENV-DEFAULT+ ;
+
+\ The same refusals for a value after the readable name AB.
+: PET-VAL-ROW-UNREAD ( n -- ) {: valu:n :}
+   PET-RESET s" AB" >LEN PET-UNREAD valu >LEN PROC-ENV+ ;
+
+: PET-VAL-SET-UNREAD ( n -- ) {: valu:n :}
+   PET-RESET s" AB" >LEN PET-UNREAD valu >LEN PROC-ENV-SET ;
+
+: PET-VAL-DEF-UNREAD ( n -- ) {: valu:n :}
+   PET-RESET s" AB" >LEN PET-UNREAD valu >LEN PROC-ENV-DEFAULT+ ;
+
+\ A refused row leaves nothing staged in either table.
+: PET-NONE-STAGED ( -- )
+   PROC-ENV-N @ COUNT>N 0 T=
+   PROC-ENV-DEF-N @ COUNT>N 0 T= ;
 
 : PET-ENV-BOUND-BEFORE-SCAN ( -- )
-   PET-EARLY-IN!
-   s" an entry is measured against the room before it is read" T-LABEL
-   [: PET-LEFT PET-ENTRY-UNREAD ;] E-PROC-ENV TTHROWSQ
+   s" an entry's length is checked before it is read" T-LABEL
    [: MEM-MAX-N PET-ENTRY-UNREAD ;] E-PROC-ENV TTHROWSQ
+   [: -1 PET-ENTRY-UNREAD ;] E-PROC-ENV TTHROWSQ
    [: STR-MIN-I64 PET-ENTRY-UNREAD ;] E-PROC-ENV TTHROWSQ
    s" and so is a row's name, appended, set or defaulted" T-LABEL
-   [: PET-LEFT 1- PET-ROW-UNREAD ;] E-PROC-ENV TTHROWSQ
    [: MEM-MAX-N PET-ROW-UNREAD ;] E-PROC-ENV TTHROWSQ
    [: -1 PET-ROW-UNREAD ;] E-PROC-ENV TTHROWSQ
    [: STR-MIN-I64 PET-ROW-UNREAD ;] E-PROC-ENV TTHROWSQ
-   [: PET-LEFT 1- PET-SET-UNREAD ;] E-PROC-ENV TTHROWSQ
    [: MEM-MAX-N PET-SET-UNREAD ;] E-PROC-ENV TTHROWSQ
    [: -1 PET-SET-UNREAD ;] E-PROC-ENV TTHROWSQ
    [: STR-MIN-I64 PET-SET-UNREAD ;] E-PROC-ENV TTHROWSQ
-   [: PET-LEFT 1- PET-DEF-UNREAD ;] E-PROC-ENV TTHROWSQ
    [: MEM-MAX-N PET-DEF-UNREAD ;] E-PROC-ENV TTHROWSQ
    [: -1 PET-DEF-UNREAD ;] E-PROC-ENV TTHROWSQ
    [: STR-MIN-I64 PET-DEF-UNREAD ;] E-PROC-ENV TTHROWSQ
+   s" and so is a row's value, appended, set or defaulted" T-LABEL
+   [: -1 PET-VAL-ROW-UNREAD ;] E-PROC-ENV TTHROWSQ PET-NONE-STAGED
+   [: MEM-MAX-N PET-VAL-ROW-UNREAD ;] E-PROC-ENV TTHROWSQ PET-NONE-STAGED
+   [: STR-MIN-I64 PET-VAL-ROW-UNREAD ;] E-PROC-ENV TTHROWSQ PET-NONE-STAGED
+   [: -1 PET-VAL-SET-UNREAD ;] E-PROC-ENV TTHROWSQ PET-NONE-STAGED
+   [: MEM-MAX-N PET-VAL-SET-UNREAD ;] E-PROC-ENV TTHROWSQ PET-NONE-STAGED
+   [: STR-MIN-I64 PET-VAL-SET-UNREAD ;] E-PROC-ENV TTHROWSQ PET-NONE-STAGED
+   [: -1 PET-VAL-DEF-UNREAD ;] E-PROC-ENV TTHROWSQ PET-NONE-STAGED
+   [: MEM-MAX-N PET-VAL-DEF-UNREAD ;] E-PROC-ENV TTHROWSQ PET-NONE-STAGED
+   [: STR-MIN-I64 PET-VAL-DEF-UNREAD ;] E-PROC-ENV TTHROWSQ PET-NONE-STAGED
    PET-RESET ;
+
+\ More rows and bytes than a fixed table holds reach /usr/bin/env whole and in
+\ order: $1000 rows of 135 bytes prepared directly, far past a table of $400
+\ rows plus the parent's and still under macOS's 1 MiB spawn size, or $44C
+\ inherited as defaults.
+\ Each row's digits name it, so a lost, repeated, reordered or overwritten row
+\ is a mismatch at its own place.
+package PET-MANY
+private
+
+$1000 constant ENV-N
+$44C constant DEF-N
+4 constant DIGITS
+9 constant PREFIX-U                      \ HABU_ENV_ or HABU_DEF_
+PREFIX-U DIGITS + constant NAME-U
+DIGITS $1E * constant VAL-U              \ the row's digits, 30 times
+NAME-U 1 + VAL-U + 1 + constant LINE-U   \ name=value and the newline env prints
+create LINE LINE-U allot
+DYNAMIC-BUFFER OUT u8
+
+: DIGITS! ( n ptr u8 -- ) {: k:n dst:ptr :}
+   k 1000 / STR-ZERO + dst c!
+   k 1000 mod 100 / STR-ZERO + dst 1 + c!
+   k 100 mod 10 / STR-ZERO + dst 2 + c!
+   k 10 mod STR-ZERO + dst 3 + c! ;
+
+: LINE! ( n ptr u8 -- ) {: k:n prefix:ptr :}
+   prefix LINE PREFIX-U BYTE-COPY
+   k LINE PREFIX-U + DIGITS!
+   PROC-ENV-EQUAL LINE NAME-U + c!
+   VAL-U DIGITS / 0 ?do k LINE NAME-U 1 + + i DIGITS * + DIGITS! loop
+   $0A LINE LINE-U 1 - + c! ;
+
+: ADD ( n ptr u8 [ ptr u8 len ptr u8 len -- ] -- ) {: rows:n prefix:ptr q :}
+   rows 0 ?do
+      i prefix LINE!
+      LINE NAME-U >LEN LINE NAME-U 1 + + VAL-U >LEN q execute
+   loop ;
+
+: OUT-ROOM ( n -- ptr u8 )
+   OUT-RESERVE 0 OUT ;
+
+: RUN ( -- n )
+   PET-ENV-CMD$ >LEN s" " >LEN [: OUT-ROOM ;] PET-ERR PET-CAP >LEN
+   PET-HB-TIMEOUT-MS >MS RUN-ARGV-ENV-STDIN-GROWING-CAPTURE-OUTCOME
+   {: outu:len erru:len oc :}
+   oc PROC-OUTCOME>RC RC>N 0 T=
+   outu LEN>N ;
+
+\ The rows that differ from their expected line, the first rows lines of out.
+: MISMATCHES ( n n ptr u8 -- n ) {: rows:n outu:n prefix:ptr :}
+   0 rows 0 ?do
+      i prefix LINE!
+      i 1+ LINE-U * outu > if
+         1+
+      else
+         i LINE-U * OUT LINE-U LINE LINE-U STR= 0= if 1+ then
+      then
+   loop ;
+
+public
+
+: ENV-ROWS ( -- )
+   PET-RESET
+   ENV-N s" HABU_ENV_" drop [: PROC-ENV+ ;] ADD
+   RUN {: outu:n :}
+   outu ENV-N LINE-U * T=
+   ENV-N outu s" HABU_ENV_" drop MISMATCHES 0 T=
+   PET-RESET OUT-RELEASE ;
+
+\ Defaults come first in an inheriting child's environment, ahead of the
+\ parent's own rows.
+: DEFAULT-ROWS ( -- )
+   PET-RESET
+   DEF-N s" HABU_DEF_" drop [: PROC-ENV-DEFAULT+ ;] ADD
+   PROC-ENV-INHERIT-MISSING
+   DEF-N RUN s" HABU_DEF_" drop MISMATCHES 0 T=
+   PET-RESET OUT-RELEASE ;
+
+;package
 
 : PROCESS-ENV-TEST-MAIN ( -- )
    T-RESET
@@ -663,7 +675,8 @@ public
    s" set-appends-new" [: PET-SET-APPENDS-NEW ;] PET-CASE
    s" append-keeps-dup" [: PET-APPEND-KEEPS-DUP ;] PET-CASE
    s" big-inherit-child" [: PET-BIG-INHERIT-CHILD ;] PET-CASE
-   s" env-ceiling-diagnostic" [: PET-ENV-CEILING-DIAGNOSTIC ;] PET-CASE
+   s" env-many-rows" [: PET-MANY:ENV-ROWS ;] PET-CASE
+   s" default-many-rows" [: PET-MANY:DEFAULT-ROWS ;] PET-CASE
    s" argv-env-capture-result" [: PET-RUN-ARGV-ENV-CAPTURE-RESULT ;] PET-CASE
    s" env-outcome-false" [: PET-RUN-ENV-OUTCOME-FALSE ;] PET-CASE
    s" env-outcome-timeout" [: PET-RUN-ENV-OUTCOME-TIMEOUT ;] PET-CASE
@@ -677,7 +690,6 @@ public
    s" bad-env-name" [: PET-BAD-ENV-NAME-THROWS ;] PET-CASE
    s" bad-env-entry" [: PET-BAD-ENV-ENTRY-THROWS ;] PET-CASE
    s" bad-env-empty" [: PET-BAD-ENV-EMPTY-THROWS ;] PET-CASE
-   s" env-byte-bounds" [: PET-ENV-BYTE-BOUNDS ;] PET-CASE
    s" env-bound-before-scan" [: PET-ENV-BOUND-BEFORE-SCAN ;] PET-CASE
    s" path-find-hb" [: PET-PATH-FIND-HB ;] PET-CASE
    s" path-direct-hb" [: PET-PATH-DIRECT-HB ;] PET-CASE

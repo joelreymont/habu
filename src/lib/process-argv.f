@@ -1,9 +1,10 @@
 \ process-argv.f - checked argv process helpers.
 \
-\ STORAGE CLASS. PROCESS-WIDE: the argv table and its byte buffer are one set
+\ STORAGE CLASS. PROCESS-WIDE: the argv table and its row bytes are one set
 \ for the image, so a task preparing a spawn through them holds them until the
-\ spawn resets them. An owned CMD run (src/lib/process-command.f) passes its
-\ own vectors and touches none of this.
+\ spawn resets them. Both grow with the rows added; a reset keeps their storage
+\ for the next command line and an image save releases it. An owned CMD run
+\ (src/lib/process-command.f) passes its own vectors and touches none of this.
 \
 \ ENVIRONMENT. These spawns pass the child no variables. To inherit, prepare an
 \ environment (src/lib/process-env.f PROC-ARGV-ENV-RESET ...
@@ -16,47 +17,87 @@ require src/lib/fd-lock.f
 require src/lib/string.f
 require src/lib/image-lifecycle.f
 
-$100 constant PROC-ARGV-MAX
-\ Every row can carry a path of PATH-CAP bytes (src/core/util.f) and its NUL,
-\ so a command line this table refuses is refused for its row count alone.
-PROC-ARGV-MAX PATH-CAP 1 + * constant PROC-ARGV-BUF-CAP
-
-\ The argv table holds the address of every zero-terminated argument and
-\ PROC-ARGV-BUF-A the address of the mapping they live in, so both are declared
-\ pointer storage: a pointer stored in or fetched from an undeclared `create`d
-\ cell is refused (E-RAW-CELL-PTR).
-PROC-ARGV-MAX 1 + TYPED-BUFFER PROC-ARGV-TABLE ptr u8
-
-variable PROC-ARGV-N
-variable PROC-ARGV-OFF
-TYPED-VARIABLE PROC-ARGV-BUF-A ptr u8
-
-: PROC-ARGV-BUF@ ( -- ptr u8 )
-   PROC-ARGV-BUF-A @ ;
-
-: PROC-ARGV-BUF! ( ptr u8 -- )
-   PROC-ARGV-BUF-A ! ;
-
-package PROC-ARGV-LIFECYCLE
+\ Row bytes live in chunks that never move until they are freed, so a row's
+\ address stays valid while later rows are added. A list's control is
+\ CONTROL-CELLS cells: chunks held, the chunk being filled, and its bytes used.
+\ Chunks past the one being filled hold no live row, so a rewind reuses them.
+package PROC-CHUNKS
 private
 
+0 cells constant HELD-OFF
+1 cells constant CUR-OFF
+2 cells constant USED-OFF
+$1000 constant CHUNK-BYTES
+
+: ROOM? ( n ptr n [ n -- ptr SPAN:span<u8> ] -- bool )
+   {: need state chunks :}
+   state CUR-OFF + @ state HELD-OFF + @ >= if false exit then
+   state CUR-OFF + @ chunks execute @ SPAN:LEN state USED-OFF + @ - need >= ;
+
+
+\ A fresh chunk takes the current slot; the one it displaces, too small for
+\ this row, moves to the end.
+: GROW ( n ptr n [ n -- ptr SPAN:span<u8> ] [ n -- ] -- )
+   {: need state chunks reserve :}
+   state HELD-OFF + @ {: held:n :}
+   state CUR-OFF + @ {: cur:n :}
+   held 1+ reserve execute
+   cur chunks execute @ held chunks execute !
+   need CHUNK-BYTES max MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN cur chunks execute !
+   held 1+ state HELD-OFF + ! ;
+
+public
+
+3 constant CONTROL-CELLS
+
+\ Answers need bytes that stay put until FREE.
+: ROOM ( n ptr n [ n -- ptr SPAN:span<u8> ] [ n -- ] -- ptr u8 )
+   {: need state chunks reserve :}
+   need state chunks ROOM? 0= if
+      state CUR-OFF + @ state HELD-OFF + @ < if 1 state CUR-OFF + +! then
+      0 state USED-OFF + !
+      need state chunks ROOM? 0= if need state chunks reserve GROW then
+   then
+   state CUR-OFF + @ chunks execute @ state USED-OFF + @ SPAN:AT
+   need state USED-OFF + +! ;
+
+
+: REWIND ( ptr n -- )
+   {: state :}
+   0 state CUR-OFF + !
+   0 state USED-OFF + ! ;
+
+
+\ Unmaps every chunk; the caller then releases its chunk buffer.
+: FREE ( ptr n [ n -- ptr SPAN:span<u8> ] -- )
+   {: state chunks :}
+   state HELD-OFF + @ 0 ?do i chunks execute @ MEM:FREE-SPAN loop
+   0 state HELD-OFF + !
+   state REWIND ;
+
+;package
+
+variable PROC-ARGV-N
+
+\ The argv table holds the address of every zero-terminated argument, so it is
+\ declared pointer storage: a pointer stored in or fetched from an undeclared
+\ `create`d cell is refused (E-RAW-CELL-PTR).
+package PROC-ARGV-ROWS
+private
+
+DYNAMIC-BUFFER TABLE ptr u8
+DYNAMIC-BUFFER CHUNKS SPAN:span<u8>
+PROC-CHUNKS:CONTROL-CELLS TYPED-BUFFER CONTROL n
 TYPED-VARIABLE REGISTERED bool
 false REGISTERED !
 
 : RELEASE ( -- )
-   PROC-ARGV-BUF@ {: bytes:ptr :}
-   NULL-PTR PROC-ARGV-BUF!
+   0 CONTROL [: CHUNKS ;] PROC-CHUNKS:FREE
+   CHUNKS-RELEASE
+   TABLE-RELEASE
    0 >COUNT PROC-ARGV-N !
-   0 >OFF PROC-ARGV-OFF !
-   PROC-ARGV-MAX 1+ 0 ?do
-      NULL-PTR i PROC-ARGV-TABLE !
-   loop
-   bytes 0= 0= if
-      bytes PROC-ARGV-BUF-CAP MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES
-   then
    false REGISTERED ! ;
 
-public
 
 \ Register before allocation: refusal cannot leave an untracked mapping.
 \ A failed allocation leaves a harmless hook, cleared by the next capture.
@@ -65,17 +106,25 @@ public
    [: RELEASE ;] IMAGE-LIFECYCLE:REGISTER
    true REGISTERED ! ;
 
-;package
+public
 
-\ PROC-ARGV-BUF-CAP is a positive library constant: MEM:BYTES-ALLOC-LEN narrows the
-\ raw size to the validated alloc role before MEM:ALLOC-BYTES, throwing E-MEM-SIZE
-\ on any refusal (unreachable for the constant).
-: PROC-ARGV-BUF ( -- ptr u8 )
-   PROC-ARGV-BUF@ 0= if
-      PROC-ARGV-LIFECYCLE:REGISTER
-      PROC-ARGV-BUF-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop PROC-ARGV-BUF!
-   then
-   PROC-ARGV-BUF@ ;
+: SLOT ( idx -- ptr ptr u8 )
+   {: idx :}
+   idx IDX>N 0 < if E-PROC-OUTPUT throw then
+   REGISTER
+   idx IDX>N 1+ TABLE-RESERVE
+   idx IDX>N TABLE ;
+
+
+: BYTES ( n -- ptr u8 )
+   REGISTER
+   0 CONTROL [: CHUNKS ;] [: CHUNKS-RESERVE ;] PROC-CHUNKS:ROOM ;
+
+
+: REWIND ( -- )
+   0 CONTROL PROC-CHUNKS:REWIND ;
+
+;package
 
 : PROC-SPAWN-ARGV-RAW-HELD ( ptr u8 ptr a fd fd fd -- pid )
    {: pathz:ptr argv:ptr infd outfd errfd :}
@@ -86,31 +135,18 @@ public
 
 : PROC-ARGV-RESET ( -- )
    0 >COUNT PROC-ARGV-N !
-   0 >OFF PROC-ARGV-OFF ! ;
+   PROC-ARGV-ROWS:REWIND ;
 
-: PROC-ARGV-SLOT ( idx -- ptr ptr u8 ) {: idx :}
-   idx IDX>N 0 < if E-PROC-OUTPUT throw then
-   idx IDX>N PROC-ARGV-MAX > if E-PROC-OUTPUT throw then
-   idx IDX>N PROC-ARGV-TABLE ;
+: PROC-ARGV-SLOT ( idx -- ptr ptr u8 )
+   PROC-ARGV-ROWS:SLOT ;
 
-\ TRUE when PROC-ARGV+ has room for an argument of u bytes: a table row below
-\ the one the NULL terminator needs, and buffer room for the bytes and their NUL.
-\ A caller that batches arguments asks before each one. The length is compared
-\ with the room left, never added to, so no length wraps into range.
-: PROC-ARGV-FITS? ( len -- bool ) {: u :}
-   PROC-ARGV-N @ COUNT>N PROC-ARGV-MAX 1- <
-   u LEN>N 0 >= and
-   u LEN>N PROC-ARGV-BUF-CAP PROC-ARGV-OFF @ OFF>N - < and ;
-
-: PROC-ARGV-ZCOPY ( ptr u8 len -- ptr u8 ) {: a:ptr u :}
-   PROC-ARGV-OFF @ {: off :}
-   a u PROC-ARGV-BUF off OFF>N + PROC-ARGV-BUF-CAP off OFF>N - >LEN PROC-ZCOPY {: z:ptr :}
-   off OFF>N u LEN>N 1 + + >OFF PROC-ARGV-OFF !
-   z ;
-
-: PROC-ARGV+ ( ptr u8 len -- ) {: a:ptr u :}
-   u PROC-ARGV-FITS? 0= if E-PROC-OUTPUT throw then
-   a u PROC-ARGV-ZCOPY
+\ A length below zero or one whose NUL would not fit a cell is refused.
+: PROC-ARGV+ ( ptr u8 len -- )
+   {: a:ptr u :}
+   u LEN>N 0 < if E-PROC-OUTPUT throw then
+   u LEN>N MEM-MAX-N >= if E-PROC-OUTPUT throw then
+   u LEN>N 1+ {: need:n :}
+   a u need PROC-ARGV-ROWS:BYTES need >LEN PROC-ZCOPY
    PROC-ARGV-N @ COUNT>N 1+ >IDX PROC-ARGV-SLOT !
    PROC-ARGV-N @ COUNT>N 1+ >COUNT PROC-ARGV-N ! ;
 
@@ -131,12 +167,10 @@ public
 
 : PROC-ARGV-PREPARE ( ptr u8 len -- ptr u8 ptr ptr u8 ) {: path:ptr pathu :}
    pathu LEN>N 0 <= if E-PROC-OUTPUT throw then
-   \ Even an argument-free command stores a process address in the table.
-   PROC-ARGV-LIFECYCLE:REGISTER
    path pathu PROC-PATHZ {: pathz:ptr :}
    pathz 0 >IDX PROC-ARGV-SLOT !
    NULL$ drop PROC-ARGV-N @ COUNT>N 1+ >IDX PROC-ARGV-SLOT !
-   pathz 0 PROC-ARGV-TABLE ;
+   pathz 0 >IDX PROC-ARGV-SLOT ;
 
 : PROC-SPAWN-ARGV-IO ( ptr u8 len fd fd fd -- pid ) {: a:ptr u infd outfd errfd :}
    a u PROC-ARGV-PREPARE infd outfd errfd PROC-SPAWN-ARGV-RAW {: pid :}

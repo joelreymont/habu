@@ -1,7 +1,7 @@
 \ Capture live signals and caches, then reinitialise and recapture them twice.
 \ Every restored generation starts cold: no signal state, descriptor or
-\ environment sizing of the process that saved it (PROCESS-IMAGE-SUBJECT CLEAN,
-\ FIRST-FD, ENV-SIZE). The first generation is saved from the keyed host with
+\ argv or environment rows of the process that saved it (PROCESS-IMAGE-SUBJECT
+\ CLEAN, FIRST-FD). The first generation is saved from the keyed host with
 \ the saver already loaded (test/app-image-engine.f).
 require src/lib/string.f
 require src/lib/test.f
@@ -56,7 +56,7 @@ variable SECOND-U
    FIRST$ >LEN PROC-ARGV+
    ENVIRONMENT
    host hostu >LEN
-   S\" 1 set-tier\nrequire test/process-image-subject.f\nPROCESS-IMAGE-SUBJECT:CLEAN\nSIGNAL:INIT\nSIGNAL:SIGUSR1 SIGNAL:CATCH\nPROC-ENV-TABLE drop\n2 PROCESS-IMAGE-SUBJECT:ENV-SIZE\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" >LEN
+   S\" 1 set-tier\nrequire test/process-image-subject.f\nPROCESS-IMAGE-SUBJECT:CLEAN\nSIGNAL:INIT\nSIGNAL:SIGUSR1 SIGNAL:CATCH\ns\q HABU_SAVED\q >LEN s\q x\q >LEN PROC-ENV+\ns\q HABU_SAVED\q >LEN s\q x\q >LEN PROC-ENV-DEFAULT+\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" >LEN
    OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-ENV-STDIN-CAPTURE PCAP-RESULT:>N CLEAN
    FIRST$ EXECUTABLE? TTRUE ;
@@ -75,7 +75,7 @@ variable SECOND-U
    s" --" >LEN PROC-ARGV+
    next nextu >LEN PROC-ARGV+
    path pathu
-   S\" PROCESS-IMAGE-SUBJECT:CLEAN\nPROCESS-IMAGE-SUBJECT:FIRST-FD\nPROCESS-IMAGE-SUBJECT:EMPTY-ARGV\nPROCESS-IMAGE-SUBJECT:USE\n3 PROCESS-IMAGE-SUBJECT:ENV-SIZE\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" RESTORE
+   S\" PROCESS-IMAGE-SUBJECT:CLEAN\nPROCESS-IMAGE-SUBJECT:FIRST-FD\nPROCESS-IMAGE-SUBJECT:EMPTY-ARGV\nPROCESS-IMAGE-SUBJECT:USE\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" RESTORE
    next nextu EXECUTABLE? TTRUE ;
 
 : CHECK-IMAGES ( -- )
@@ -83,7 +83,7 @@ variable SECOND-U
    FIRST$ SECOND$ RECAPTURE
    SECOND$ FIRST$ RECAPTURE
    PROC-ARGV-ENV-RESET
-   FIRST$ S\" PROCESS-IMAGE-SUBJECT:CLEAN\nPROCESS-IMAGE-SUBJECT:FIRST-FD\nPROCESS-IMAGE-SUBJECT:USE\n3 PROCESS-IMAGE-SUBJECT:ENV-SIZE\n" RESTORE ;
+   FIRST$ S\" PROCESS-IMAGE-SUBJECT:CLEAN\nPROCESS-IMAGE-SUBJECT:FIRST-FD\nPROCESS-IMAGE-SUBJECT:USE\n" RESTORE ;
 
 : RUN ( -- )
    T-RESET PREPARE

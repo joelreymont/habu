@@ -37,10 +37,21 @@ variable CAPTURE-ROWS
 
 : COMMAND ( -- ) [: COMMAND-RUN ;] CMD:WITH-COMMAND ;
 
+\ A row staged here lands in storage this process mapped: the saved process's
+\ table and row bytes were released at capture.
 : CHECK-ROWS ( -- )
-   PROC-ARGV-MAX 1+ 0 ?do
-      i PROC-ARGV-TABLE @ 0= TTRUE
-   loop ;
+   s" restored argv storage takes a row" T-LABEL
+   PROC-ARGV-RESET
+   s" restored" >LEN PROC-ARGV+
+   1 >IDX PROC-ARGV-SLOT @ 8 s" restored" T$=
+   PROC-ARGV-RESET
+   s" restored environment storage takes a row and a default" T-LABEL
+   PROC-ENV-RESET PROC-ENV-DEFAULT-RESET
+   s" HABU_RESTORED" >LEN s" x" >LEN PROC-ENV+
+   0 >IDX PROC-ENV-SLOT @ 15 s" HABU_RESTORED=x" T$=
+   s" HABU_RESTORED" >LEN s" y" >LEN PROC-ENV-DEFAULT+
+   0 >IDX PROC-ENV-DEF-SLOT @ 15 s" HABU_RESTORED=y" T$=
+   PROC-ENV-RESET PROC-ENV-DEFAULT-RESET ;
 
 public
 
@@ -50,27 +61,12 @@ public
    [: SIGNAL:FD drop ;] E-SIGNAL-STATE TTHROWSQ
    [: 0 >MS SIGNAL:WAIT drop ;] E-SIGNAL-STATE TTHROWSQ
    [: SIGNAL:RELEASE ;] E-SIGNAL-STATE TTHROWSQ
-   s" restored environment sizing is unmeasured" T-LABEL
-   PROC-ENV-INHERITED-N @ 0 T=
-   PROC-ENV-CAP-N @ 0 T=
-   PROC-ENV-BUF-CAP-N @ 0 T=
-   PROC-ARGV-BUF@ 0= TTRUE
-   PROC-ENV-TABLE@ 0= TTRUE
-   PROC-ENV-BUF@ 0= TTRUE
-   PROC-ENV-DEF-TABLE@ 0= TTRUE
-   PROC-ENV-DEF-BUF@ 0= TTRUE
-   PROC-ARGV-N @ COUNT>N 0 T= PROC-ARGV-OFF @ OFF>N 0 T=
-   PROC-ENV-N @ COUNT>N 0 T= PROC-ENV-OFF @ OFF>N 0 T=
-   PROC-ENV-DEF-N @ COUNT>N 0 T= PROC-ENV-DEF-OFF @ OFF>N 0 T=
+   s" restored process rows are released" T-LABEL
+   PROC-ARGV-N @ COUNT>N 0 T=
+   PROC-ENV-N @ COUNT>N 0 T=
+   PROC-ENV-DEF-N @ COUNT>N 0 T=
    s" HABU_IMAGE_DEFAULT" >LEN PROC-ENV-DEFAULT$? TFALSE 2drop
    CHECK-ROWS
-   T-REPORT ;
-
-: ENV-SIZE ( n -- ) {: expected:n :}
-   s" environment ceiling comes from this child's envp" T-LABEL
-   PROC-ENV-INHERITED expected T=
-   PROC-ENV-CAP expected PROC-ENV-EXTRA + T=
-   PROC-ENV-BUF-CAP PROC-ENVP-BYTES PROC-ENV-EXTRA-BYTES + T=
    T-REPORT ;
 
 \ No descriptor comes through an image: the image was saved with the signal
@@ -85,7 +81,7 @@ public
    SIGNAL:RELEASE
    T-REPORT ;
 
-\ This path publishes a pointer row without allocating the argv byte cache.
+\ This path publishes a pointer row without allocating argv row bytes.
 \ Repeated preparation also checks that an already completed cleanup is inert.
 : EMPTY-ARGV ( -- )
    s" /bin/sh" >LEN PROC-ARGV-PREPARE 2drop
@@ -111,7 +107,7 @@ private
    CHECK-DEFAULT
    COMMAND
    CHECK-DEFAULT
-   \ Leave signals armed, active rows and all five mappings for capture to clear.
+   \ Leave signals armed, active rows and every mapping for capture to clear.
    PROC-ARGV-ENV-RESET
    s" pending-argument" >LEN PROC-ARGV+
    s" HABU_IMAGE_ENV" >LEN s" pending-value" >LEN PROC-ENV+

@@ -232,9 +232,8 @@ public
    BYTE-LEN>N RELEASE-RANGE ;
 
 \ ---- caller-facing size narrowing: raw n -> validated alloc role --------------
-\ The fixed-capacity buffer callers (source, codesign, content-key, process-argv,
-\ process-env) narrow a raw size to the positive alloc role BEFORE
-\ the allocation sink; any refusal (zero/negative/overflow) throws E-MEM-SIZE.
+\ Callers narrow a raw size to the positive alloc role before the allocation
+\ sink; a zero, negative or overflowing size throws E-MEM-SIZE.
 \ Composes the public NUM validators only, so no new unchecked boundary.
 : BYTES-ALLOC-LEN ( n -- NUM:alloc-byte-len )
    NUM:BYTE-LEN SIZE-BYTE-LEN

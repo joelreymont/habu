@@ -357,6 +357,54 @@ TASK:MIN-STACK TASK:TASK PCMDT-TASK-B
    PCMDT-A-RC @ 0 T=   PCMDT-A-LEN @ PCMDT-TASK-BYTES T=   PCMDT-A-BAD @ 0 T=
    PCMDT-B-RC @ 0 T=   PCMDT-B-LEN @ PCMDT-TASK-BYTES T=   PCMDT-B-BAD @ 0 T= ;
 
+\ ---- a default added between another task's prepare and its spawn -------------
+\ An inheriting run keeps the default rows' addresses from its prepare to its
+\ spawn. This thread holds the spawn lock, so the worker stops between the two:
+\ its capture reset, right after the prepare, sets its RC cell to -1 before the
+\ capture's descriptors wait for the lock. A default added then, larger than a
+\ row chunk, must leave the prepared rows where they were, and the child sees
+\ the environment as prepared.
+$21000 constant PCMDT-LATE-U
+create PCMDT-LATE PCMDT-LATE-U allot
+variable PCMDT-LATE-RC
+variable PCMDT-LATE-FIRST                \ 1 when the prepared default is the first line
+variable PCMDT-LATE-SEEN                 \ 1 when the late default reached the child
+TASK:MIN-STACK TASK:TASK PCMDT-LATE-TASK
+
+: PCMDT-LATE-RUN ( CMD:command -- CMD:command )
+   s" /usr/bin/env" PCMDT-CMD-TIMEOUT-MS PCMDT-RUN# PCMDT-LATE-RC !
+   CMD:OUT$ {: a:ptr u:n :}
+   S\" HABU_CMD_DEFAULT=orig\n" {: first:ptr firstu:n :}
+   0 PCMDT-LATE-FIRST !
+   u firstu >= if a firstu first firstu STR= if 1 PCMDT-LATE-FIRST ! then then
+   0 PCMDT-LATE-SEEN !
+   a u s" HABU_CMD_LATE=" CONTAINS? if 1 PCMDT-LATE-SEEN ! then ;
+
+: PCMDT-LATE-BODY ( -- ) [: PCMDT-LATE-RUN ;] CMD:WITH-COMMAND 0 TASK:RETURN ;
+
+: PCMDT-LATE-PREPARED? ( -- bool )
+   PCMDT-LATE-TASK PROC-STORAGE TASK:HIS BYTE-VIEW PROC-RC-OFF + CELL-VIEW @ -1 = ;
+
+: PCMDT-LATE-WINDOW ( -- )
+   ['] PCMDT-LATE-BODY PCMDT-LATE-TASK TASK:ACTIVATE
+   [: PCMDT-LATE-PREPARED? ;] mono-ns PCMDT-WAIT-NS + s" process-command-test prepared run"
+   TEST-WAIT:POLL
+   s" HABU_CMD_LATE" >LEN PCMDT-LATE PCMDT-LATE-U >LEN PROC-ENV-DEFAULT+ ;
+
+: PCMDT-LATE-DONE? ( -- bool ) PCMDT-LATE-TASK TASK:DONE? ;
+
+: PCMDT-LATE-DEFAULT ( -- )
+   PCMDT-LATE-U 0 ?do [char] x PCMDT-LATE i + c! loop
+   s" HABU_CMD_DEFAULT" >LEN s" orig" >LEN PROC-ENV-DEFAULT+
+   [: PCMDT-LATE-WINDOW ;] FD-LOCK:WITH
+   [: PCMDT-LATE-DONE? ;] mono-ns PCMDT-WAIT-NS + s" process-command-test late default"
+   TEST-WAIT:POLL
+   PCMDT-LATE-TASK PCMDT-JOIN-0
+   PROC-ENV-DEFAULT-RESET
+   PCMDT-LATE-RC @ 0 T=
+   PCMDT-LATE-FIRST @ 1 T=
+   PCMDT-LATE-SEEN @ 0 T= ;
+
 \ ---- a halted task's open scope is released -----------------------------------
 \ The worker parks inside its scope with 1 MiB captured. The halt unwinds the task
 \ at TASK:PAUSE through the scope's `finally`; the capture's mapping must be gone
@@ -478,6 +526,7 @@ variable PCMDT-INNER-ADDR
    [: PCMDT-MANY-ROWS ;] CMD:WITH-COMMAND
    [: PCMDT-NESTED ;] CMD:WITH-COMMAND
    PCMDT-TWO-TASKS
+   PCMDT-LATE-DEFAULT
    PCMDT-HALTED-TASK
    PCMDT-RUNAWAY-FREED
    T-REPORT

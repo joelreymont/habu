@@ -1404,8 +1404,8 @@ MARK-RENDERS FACT-NOMINAL or constant MARK-NOMINAL
 \ src/lib/span.f twice, src/lib/aio.f, src/lib/string.f, src/lib/task.f three times); adding rows
 \ for them would put library names in the engine and miss the next one. Measured
 \ before this table existed: `tools/check.f src/lib/process-env-test.f` refused with
-\ E-UNDEFINED for PROC-ENV-DIAG, created at src/lib/process-env.f:93 by
-\ `PROC-ENV-DIAG-CAP CODEGEN:BUFFER PROC-ENV-DIAG`, and `tools/check.f
+\ E-UNDEFINED for PROC-ENV-DIAG, a CODEGEN:BUFFER that src/lib/process-env.f
+\ then defined, and `tools/check.f
 \ src/lib/queue.f` refused NG-BUFFER, created at src/lib/type/deftype.f:60.
 \ A third class is a definer whose product text the scan never reads because
 \ it is rendered and evaluated at load (FUNCTION:, +USER). The checker

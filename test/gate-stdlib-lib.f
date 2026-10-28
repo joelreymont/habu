@@ -16,11 +16,9 @@ require src/lib/engine-id.f                  \ ENGINE-ID:PATH$ - this gate's own
 package STDLIB-GATE
 
 64 constant SUITE-USAGE-RC
-\ A row's argv tokens, each a length cell and its bytes: at most what the
-\ process-wide argv table takes.
-PROC-ARGV-BUF-CAP PROC-ARGV-MAX cells + constant ROW-ARGS-CAP
-
-create ROW-ARGS ROW-ARGS-CAP allot
+\ A row's argv tokens: their bytes end to end, and each one's length.
+DYNAMIC-BUFFER ROW-ARG-BYTES u8
+DYNAMIC-BUFFER ROW-ARG-LENS n
 variable ROW-ARGS-U
 variable ROW-ARG-N
 variable ROW-SCAN
@@ -97,10 +95,13 @@ variable ROW-SCRIPT?                     \ the row's `--` has passed
 \ after harness and tool requires but before its subject definitions. Every
 \ row measures what `bin/hb --load <file>` measures.
 : ROW-ARG+ ( ptr u8 n -- ) {: a:ptr u:n :}
-   ROW-ARGS-U @ u + cell + ROW-ARGS-CAP > if E-STR-CAPACITY throw then
-   u ROW-ARGS ROW-ARGS-U @ + !
-   a ROW-ARGS ROW-ARGS-U @ + cell + u BYTE-COPY
-   ROW-ARGS-U @ cell + u + ROW-ARGS-U !
+   ROW-ARG-N @ 1+ ROW-ARG-LENS-RESERVE
+   u ROW-ARG-N @ ROW-ARG-LENS !
+   u 0 > if
+      ROW-ARGS-U @ u + ROW-ARG-BYTES-RESERVE
+      a ROW-ARGS-U @ ROW-ARG-BYTES u BYTE-COPY
+   then
+   ROW-ARGS-U @ u + ROW-ARGS-U !
    ROW-ARG-N @ 1+ ROW-ARG-N !
    a u s" --" STR= if 0 0= ROW-SCRIPT? ! exit then
    ROW-SCRIPT? @ 0= if a u GATE-IMAGES:ROW-FILE then ;
@@ -110,9 +111,9 @@ variable ROW-SCRIPT?                     \ the row's `--` has passed
    s" --load" >LEN PROC-ARGV+
    0 ROW-SCAN !
    ROW-ARG-N @ 0 ?do
-      ROW-ARGS ROW-SCAN @ + @ {: u:n :}
-      ROW-ARGS ROW-SCAN @ + cell + u >LEN PROC-ARGV+
-      ROW-SCAN @ cell + u + ROW-SCAN !
+      i ROW-ARG-LENS @ {: u:n :}
+      u 0 > if ROW-SCAN @ ROW-ARG-BYTES u else s" " then >LEN PROC-ARGV+
+      ROW-SCAN @ u + ROW-SCAN !
    loop ;
 
 \ TRUE once every keyed image the row needs passed, with its argv staged;
