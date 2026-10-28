@@ -110,7 +110,7 @@ TYPED-VARIABLE SPLICE-LEN len
    path pathu CHECK:FILE ;
 
 : CHECK-RUN ( -- )
-   CHECK:RUN throw ;
+   CHECK:RUN dup 0 <> if throw then drop ;
 
 : STDIN-ACT ( -- )
    GE-SRC-BUF GE-SRC-U @ s" <stdin>" CHECK:SOURCE

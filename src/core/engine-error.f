@@ -31,6 +31,7 @@ public
 106 constant CALLBACK           \ a C callback or FFI call found its region or slot unusable
 107 constant POLICY             \ a sealed design named a word outside its admitted vocabulary (src/lib/vocabulary.f)
 108 constant OVERLAY-OPEN       \ a definition, package row, wordlist or undefine while a checker overlay is open (src/core/checker.f CHECKER-OVERLAY)
+109 constant THROW-ZERO         \ `0 throw`: a zero code would unwind its body and read as success at the catch
 ;package
 
 \ Dictionary occurrence failures belong to DEF-OCC. The checker needs the

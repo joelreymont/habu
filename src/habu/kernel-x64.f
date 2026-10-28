@@ -1538,6 +1538,16 @@ private
    corrupt X64CODE:LBL,
    CORRUPT$ ENGINE-ERROR:CATCH-STACK STDERR-EXIT, ;
 
+\ The `throw` row's code, in rax: the twin of habu1.f BTHROWPRIM. A zero code
+\ becomes ENGINE-ERROR:THROW-ZERO unless a TASK:HALT unwind carries it.
+: THROW-CODE, ( -- )
+   X64CODE:LBL {: coded:label :}
+   RAX RAX ASM-SINK ENC-TEST-RR  C-NE coded JCC,
+   RCX DATA-REG HALT-UNWIND-CELL MOV-LOAD,
+   RCX RCX ASM-SINK ENC-TEST-RR  C-NE coded JCC,
+   RAX ENGINE-ERROR:THROW-ZERO IMM32,
+   coded X64CODE:LBL, ;
+
 \ At a throw's resume, with the code in rax: the twin of habu1.f
 \ BCATCH-FORWARD. With HALT-UNWIND-CELL clear the code is delivered as always.
 \ Set, a TASK:HALT is unwinding the task: while a frame remains below this one
@@ -2494,7 +2504,7 @@ public
    s" 2r>" [: 2R>, ;] PRIM
    s" 2r@" [: 2R@, ;] PRIM
    s" catch" [: CAUGHT,  RAX PUSH, ;] PRIM
-   s" throw" [: RAX POP,  THROW, ;] PRIM
+   s" throw" [: RAX POP,  THROW-CODE,  THROW, ;] PRIM
    s" finally" [: FINALLY, ;] PRIM
    s" c2-invoke" [: C2-INVOKE, ;] PRIM
    s" c2-init-stow" [: C2-INIT-STOW, ;] PRIM

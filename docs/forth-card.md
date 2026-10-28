@@ -408,6 +408,8 @@ holds an address**.
   no-return, so nothing may follow a call to a word that ends in one. `throw`
   for recoverable and interactive paths, `die` for build makers and CLI
   boundaries.
+- `0 throw` throws `ENGINE-ERROR:THROW-ZERO` (109), never the ANS no-op:
+  `[: 0 throw ;] catch` answers 109.
 - Arithmetic is modular and never refuses, with one exception: `/`, `mod` and
   `/mod` throw catchable `E-DIV-ZERO` on a zero divisor; `MIN-N -1 /` wraps to
   `MIN-N`.

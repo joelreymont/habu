@@ -1997,6 +1997,11 @@ sections above.
   before retiring anything (`hb: undefine while a checker replay is open:
   NAME`). Reopening an existing package is allowed. The throw is catchable
   inside `evaluate`; the replay still closes.
+- **`0 throw` throws `ENGINE-ERROR:THROW-ZERO` (109), never the ANS no-op.**
+  The checker types `throw` as never returning, and a zero code would unwind
+  the body yet read as success: `[: 0 throw ;] catch` answers 109, and an
+  uncaught `0 throw` exits 109 before the next line runs. Only a `TASK:HALT`
+  unwind carries 0, to its task's root catch.
 - **A definition and a `(` comment close in the source that opened them.**
   Files, stdin and `evaluate` strings refuse an open definition at their end
   (`hb: source ended inside definition: NAME`) or an open comment (`hb: source

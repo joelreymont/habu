@@ -1547,6 +1547,16 @@ create GE-LOC-LAST-BUF 1024 allot   variable GE-LOC-LAST-U
    s" --" GE-ARG+
    GE-HB$ GE-TIMEOUT-MS GE-RUN-ENV ;
 
+\ `0 throw` unwinds as ENGINE-ERROR:THROW-ZERO, a representable status that
+\ exits silently. Through `--load`, whose loader rethrows only a nonzero code, a
+\ zero code would end the file unseen and exit 0.
+: GE-ZERO-THROW ( -- )
+   s" hb-zero-throw.f" S\" 0 throw\ns\" after\" type cr\n" GE-LOC-FIXTURE
+   GE-LOC-LOAD
+   s" uncaught 0 throw ends the load silently" GE-EXPECT-SILENT
+   ENGINE-ERROR:THROW-ZERO s" uncaught 0 throw rc" GE-EXPECT-RC
+   s" PASS: 0 throw is ENGINE-ERROR:THROW-ZERO" type cr ;
+
 : GE-LOC-BADSTR ( -- )
    \ The refusal is on line 3 of its own file; the two comment lines above it are
    \ what a line number has to count.
@@ -2743,6 +2753,7 @@ public
 
 : RUN ( -- )
    GE-UNCAUGHT-THROW
+   GE-ZERO-THROW
    GE-DIE-LINE
    GE-INTERP-LAYOUT
    WIDE-FETCH:RUN

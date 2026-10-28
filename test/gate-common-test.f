@@ -163,7 +163,7 @@ variable LATE-ODD                        \ the first code no capture may end wit
 \ The action's own code is thrown too: it is as odd as a wrong read.
 : LATE-CAPTURE ( -- )
    [: LATE-ACTION ;] GT-ROOT LATE-OUT LATE-ERR GT-CAPTURE-ACTION
-   nip nip throw ;
+   nip nip dup 0 <> if throw then drop ;
 
 : LATE-REAP ( -- )
    LATE-PID @ 0 > if LATE-PID @ >PID PROC-WAIT-OUTCOME drop then ;

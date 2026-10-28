@@ -740,7 +740,8 @@ $3C88 constant TASK-TCB-CELL
 \ task's own thread writes it: src/lib/task.f HALT-UNWIND, which PAUSE calls,
 \ sets it before it throws, and the catch family reads it on its throw-resume
 \ path (habu1.f BCATCH-FORWARD, BFINALLY, BC2-INVOKE; their kernel-x64.f
-\ twins). An inner
+\ twins), and the `throw` primitive keeps a halt's 0 instead of refusing it
+\ (habu1.f BTHROWPRIM, kernel-x64.f THROW-CODE,). An inner
 \ catch rethrows at once and never pushes; the task's root catch, whose frame's
 \ prev HND is 0, clears it and delivers the code; finally and c2-invoke clear it
 \ while their cleanup runs and set it again to continue the unwind. $3870

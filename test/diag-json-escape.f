@@ -39,7 +39,7 @@ TYPED-VARIABLE READER-STORAGE JR:cursor
 
 : CHECK-ACT ( -- )
    GE-SRC-BUF GE-SRC-U @ s" json-escape.f" CHECK:SOURCE
-   CHECK:RUN throw ;
+   CHECK:RUN dup 0 <> if throw then drop ;
 
 : CHECK-JSON ( -- )
    CHECK:RESET

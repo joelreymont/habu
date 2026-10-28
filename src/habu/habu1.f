@@ -3426,7 +3426,8 @@ public
    9 0 MOVZ,  CATCH-PUSH LABEL@ B,
    CATCH-RES LABEL@ LBL, ;
 
-\ throw ( code -- ) : unwind to the nearest catch handler (ANS semantics). When
+\ BTHROW ( code -- ): unwind to the nearest catch handler, the tail of the
+\ `throw` primitive (BTHROWPRIM below) and of the engine's own throw sites. When
 \ EVALD>0 the throw may cross one or more active `evaluate` boundaries before it
 \ reaches its handler; the loop in LEVALREC (habu2.f, reached via EVALREC-CELL since
 \ a leaf prim cannot name a habu2.f label) rolls back each escaped eval frame first
@@ -3480,6 +3481,18 @@ public
    0 2 MOVZ,  1 THROW-CORRUPT-MSG LABEL@ ADR,  2 mu MOVZ,  NR-WRITE SYS,
    0 ENGINE-ERROR:CATCH-STACK MOVZ,  NR-EXIT-GROUP SYS,
    THROW-CORRUPT-MSG LABEL@ LBL,  ma mu BYTES, ;
+
+\ The `throw` primitive. A zero code is a caller bug, success passed as a
+\ failure: it would unwind the body and let its catch read 0, so it unwinds as
+\ ENGINE-ERROR:THROW-ZERO. A TASK:HALT unwind (HALT-UNWIND-CELL set) carries 0
+\ by design and keeps it: only the task's root catch receives that code. The
+\ engine's own BTHROW sites throw named nonzero codes or rethrow a caught one.
+: BTHROWPRIM ( -- )
+   LBL {: coded:label :}
+   A G-POP  A coded CBNZ,
+   10 DATA HALT-UNWIND-CELL LDR,  10 coded CBNZ,
+   A ENGINE-ERROR:THROW-ZERO MOVZ,
+   coded LBL,  A G-PUSH  BTHROW ;
 
 \ BCATCH-FORWARD sits at CATCH-RES with the code in x9. With HALT-UNWIND-CELL
 \ clear the code is delivered as always. Set, a TASK:HALT is unwinding the task:
@@ -4966,7 +4979,7 @@ package ENGINE-EMIT
    s" rbase" ['] BRBASE FPRIM-L ;
 
 : EMIT-CHECKER-PRIMS ( -- )
-   s" catch" ['] BCATCH FPRIM   s" throw" ['] BTHROW FPRIM-L
+   s" catch" ['] BCATCH FPRIM   s" throw" ['] BTHROWPRIM FPRIM-L
    s" finally" ['] BFINALLY FPRIM
    s" c2-invoke" ['] BC2-INVOKE FPRIM
    s" c2-init-stow" ['] BC2-INIT-STOW FPRIM

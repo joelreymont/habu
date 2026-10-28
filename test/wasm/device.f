@@ -10,7 +10,8 @@
 \ and runs to status 0 with no output. WKERNEL's hand-built rows
 \ (src/arch/wasm/kernel.f) run under callers that store cells to the context
 \ stack as compiled code does: emit writes OUT and traps one byte past it,
-\ depth counts the cells, and throw takes its code, zero included.
+\ depth counts the cells, and throw takes its code, a zero one as
+\ ENGINE-ERROR:THROW-ZERO.
 \ test/wasm/dynamic.f runs first, installs the backend and reports on its own:
 \ it links a captured window with WASMLINK and runs execute and catch through
 \ table slots and .s through kernel-words.f's `.`. test/wasm/build.f runs next
@@ -279,20 +280,20 @@ variable SITES
    s" depth counts the cells the throw left" T-LABEL
    WASM-HARNESS:THROW-CODE 3 T= ;
 
-: THROWN ( n ptr u8 n -- )
-   {: c:n name:ptr nu:n :}
+: THROWN ( n n ptr u8 n -- )
+   {: c:n want:n name:ptr nu:n :}
    KERNEL+
    MAIN-OPEN
    c PUSH,  s" throw" ROW,
    name nu MAIN-SHUT {: a:ptr u:n :}
    a u WASM-HARNESS:RUN 1 T=
-   WASM-HARNESS:THROW-CODE c T= ;
+   WASM-HARNESS:THROW-CODE want T= ;
 
 : THROW-ROW ( -- )
    s" a throw's code is stored whole" T-LABEL
-   CODE s" throw.wasm" THROWN
-   s" a zero throw throws, as the engine's does" T-LABEL
-   0 s" throw0.wasm" THROWN ;
+   CODE CODE s" throw.wasm" THROWN
+   s" a zero throw throws ENGINE-ERROR:THROW-ZERO, as the engine's does" T-LABEL
+   0 ENGINE-ERROR:THROW-ZERO s" throw0.wasm" THROWN ;
 
 public
 

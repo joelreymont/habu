@@ -18,8 +18,8 @@
 \   this map; a status 1 from it propagates.
 \ - throw ( n -- ) is a terminal's callee (select.f SEL-TERMINAL): it takes its
 \   code off the context stack, stores it in ctx.throw-code and answers status
-\   1. A zero code throws too, as the engine's does: `0 throw` natively ends
-\   uncaught with code 0, and the checker reads `throw` as never returning.
+\   1. A zero code is stored as ENGINE-ERROR:THROW-ZERO, as the engine's
+\   `throw` stores it, so a catch never reads a throw as success.
 \ - map-anon ( bytes -- ptr ior ) hands out, cleared, the first free run that
 \   holds the bytes' pages, leaving its tail free when it is longer; with none,
 \   memory.grow adds those pages at the memory's current end, past any pages a
@@ -41,6 +41,7 @@
 require src/lib/prelude.f
 require src/lib/string.f
 require src/lib/fmt.f
+require src/core/engine-error.f
 require src/compiler/ir/id.f
 require src/compiler/ir/context.f
 require src/compiler/ir/type.f
@@ -371,14 +372,19 @@ variable MADE                              \ blocks built, the next one's ordina
    BLOCK  s RET
    FUN-SHUT ;
 
-\ The code off the stack into ctx.throw-code.
+\ The code off the stack into ctx.throw-code, a zero one as
+\ ENGINE-ERROR:THROW-ZERO. Blocks: 0 the test, 1 a nonzero code, 2 a zero one.
 : THROW-ROW ( -- )
    s" throw" 14 0 0 FUN-OPEN
+   MADE @ {: at:n :}
    ENTRY {: cx:IR-ID:ir-value-id :}
    cx WPROF:CTX-STACK-TOP LD32  8 K32  WSTRUCT-OPCODE:I32-SUB I32 OP2 {: t:IR-ID:ir-value-id :}
-   cx  t 0 LD64  WPROF:CTX-THROW-CODE ST64
+   t 0 LD64 {: code:IR-ID:ir-value-id :}
    cx t WPROF:CTX-STACK-TOP ST32
-   1 K32 RET
+   TOK {: popped:IR-ID:ir-value-id :}
+   code WSTRUCT-OPCODE:I64-EQZ I32 OP1  at 1+  at 2 +  BRZ
+   BLOCK  cx code WPROF:CTX-THROW-CODE ST64  1 K32 RET
+   BLOCK  popped TOK!  cx ENGINE-ERROR:THROW-ZERO K64 WPROF:CTX-THROW-CODE ST64  1 K32 RET
    FUN-SHUT ;
 
 \ die's terminal call is framed. Print its message through the shipped type

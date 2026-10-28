@@ -162,10 +162,10 @@ defer ZERO-THROW ( n -- )
 : ZERO-BODY ( -- ) 0 ZERO-THROW 1 ZERO-CONTINUED ! ;
 
 : PRIMITIVE-THROW-CASE ( -- )
-   s" even zero throw unwinds instead of continuing at its caller" T-LABEL
+   s" zero throw unwinds as THROW-ZERO instead of continuing at its caller" T-LABEL
    0 ZERO-CONTINUED !
    [: throw ;] is ZERO-THROW
-   [: ZERO-BODY ;] 0 TTHROWSQ
+   [: ZERO-BODY ;] ENGINE-ERROR:THROW-ZERO TTHROWSQ
    ZERO-CONTINUED @ 0 T=
    s" a compiled guard keeps its successful and throwing paths" T-LABEL
    s" : NT-GUARD ( n -- n ) dup 0< if E-A-EMPTY throw then 1+ ;" evaluate-closed
