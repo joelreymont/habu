@@ -125,17 +125,25 @@ NCOMP-DISPATCH:FIXED-ADDR-KIND constant FIXED-ADDR \ `create`/`variable`: the bo
 \ record only for this operation; later source may mutate its binding or slot.
 private
 
-\ Which definer stamped a record. The spelling-level SPELL-FIXED is this reader
-\ plus the walk that finds the record, so a caller already holding one asks here.
-: REC-FIXED ( ptr n -- n )
+\ Which definer stamped a record, retired or not: `undefine` removes a name,
+\ while the record's storage and the code compiled against it stay.
+: STAMP-FIXED ( ptr n -- n )
    {: rec:ptr :}
    rec XREF-FOUND? 0= if FIXED-NONE exit then
    rec XREF-START 0= if FIXED-NONE exit then
-   rec XREF-RETIRED? if FIXED-NONE exit then
    rec XREF-FLAGS DKIND:MASK and {: kind:n :}
    kind DKIND:VAL = if FIXED-VAL exit then
    kind DKIND:ADDR = if FIXED-ADDR exit then
    FIXED-NONE ;
+
+\ Which definer stamped a record a spelling can still name. The spelling-level
+\ SPELL-FIXED is this reader plus the walk that finds the record, so a caller
+\ already holding one asks here.
+: REC-FIXED ( ptr n -- n )
+   {: rec:ptr :}
+   rec XREF-FOUND? 0= if FIXED-NONE exit then
+   rec XREF-RETIRED? if FIXED-NONE exit then
+   rec STAMP-FIXED ;
 
 public
 
@@ -531,18 +539,34 @@ CAST: >TRAILER-CELL ( n -- ptr n )
 
 public
 
-\ The selected live code record carries the trailer's exact location. A data
-\ word cannot qualify by putting the magic in its body.
-: REC-DEFER-CELL ( ptr n -- n )
+\ A deferred word's code record carries the trailer's exact location, retired
+\ or not: retirement leaves the cell and the code that dispatches through it.
+\ A data word cannot qualify by putting the magic in its body.
+: TRAILER-CELL ( ptr n -- n )
    {: rec:ptr :}
    rec XREF-FOUND? 0= if 0 exit then
-   rec XREF-RETIRED? if 0 exit then
    rec XREF-START 0= if 0 exit then
    rec XREF-WORDLIST XREF-NAMESPACE-WL = if 0 exit then
    rec XREF-FLAGS DKIND:MASK and 0<> if 0 exit then
    rec XREF-START  rec XREF-LEN +  {: meta:n :}
    meta TRAILER@ DEFER-MAGIC <> if 0 exit then
    meta 8 + TRAILER@ ;
+
+\ The selected live record's dispatch cell: a retired one no spelling names.
+: REC-DEFER-CELL ( ptr n -- n )
+   {: rec:ptr :}
+   rec XREF-FOUND? 0= if 0 exit then
+   rec XREF-RETIRED? if 0 exit then
+   rec TRAILER-CELL ;
+
+\ The DATA origin a record's definer stamped, retired or not: the address a
+\ `create`d or `variable` body pushes, or a deferred word's dispatch cell.
+\ A dependency walk reads storage by ordinal, and code compiled before an
+\ `undefine` still reaches it.
+: STAMP-ORIGIN ( ptr n -- n bool )
+   {: rec:ptr :}
+   rec STAMP-FIXED FIXED-ADDR = if rec XREF-START READ-FIXED true exit then
+   rec TRAILER-CELL dup 0<> ;
 
 \ Resolve once: the address and its owner must describe the same declaration.
 : SPELL-DEFER-BINDING ( ptr u8 n -- n n )
