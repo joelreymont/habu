@@ -7,10 +7,10 @@
 \ 5 - each through the production entry point, tools/native-build.f. Copy the
 \ seed and write each generation in a fresh private temporary directory. No
 \ success, failure or interruption needs to move or restore the installed engine.
-\ Each build, the two of same-host mode included, uses its own empty cache under
-\ that directory, so cached support and FILE artifacts cannot affect the
-\ comparison. A successful run removes those caches and keeps the executables,
-\ maps and logs; a failed run keeps the caches for diagnosis.
+\ Each build, the two of same-host mode included, uses its own empty out root
+\ (HABU_OUT) under that directory, so cached support and FILE artifacts cannot
+\ affect the comparison. A successful run removes those out roots and keeps the
+\ executables, maps and logs; a failed run keeps them for diagnosis.
 \
 \ Each generation prints one line: the image size plus the shape
 \ tools/two-generation-probe.f reads out of it. The chain fails, naming the
@@ -147,7 +147,7 @@ variable TG-COL-NAME
    TG-DIR$ TG-CACHE-NAME 7 TG-CACHE-PATH JOIN-PATH {: u:n :}
    TG-CACHE-PATH u ;
 
-\ Qualified products no longer need their private build caches.
+\ Qualified products no longer need their private out roots.
 : TG-CACHE-CLEANUP ( n -- )
    0 ?do i 1+ TG-CACHE$ REMOVE-TREE loop ;
 
@@ -174,7 +174,7 @@ variable TG-COL-NAME
    TG-TOOL$ >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+
    g TG-GEN$ >LEN PROC-ARGV+
-   s" HABU_BUILD_CACHE" >LEN g TG-CACHE$ >LEN PROC-ENV+
+   s" HABU_OUT" >LEN g TG-CACHE$ >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    TG-HOST$ >LEN
    TG-OUT TG-CAP-OUT >LEN  TG-ERR TG-CAP-OUT >LEN

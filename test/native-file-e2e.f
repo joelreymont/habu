@@ -75,7 +75,7 @@ public
    s" app-hb" AT s" " CAPTURE ;
 
 \ tools/hb-build.f on the candidate engine: root/app.f into root/app-hb as a
-\ REPL build with the ambient build cache. It runs at tier 1
+\ REPL build with the ambient out root (tools/build-out.f). It runs at tier 1
 \ (test/compiler/aot-mode.f): hb-build builds at its caller's tier, and only a
 \ tier 1 product compiles through file objects. The tool library loads first,
 \ at the default tier, so only the product compiles at tier 1.

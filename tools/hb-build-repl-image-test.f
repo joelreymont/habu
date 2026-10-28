@@ -44,17 +44,14 @@ variable HBT-IMAGE-RESAVED-U
 : HBT-IMAGE-SHADOW-PATH ( -- )
    HBT-ROOT s" tools/app-build.f" HBT-IMAGE-SHADOW-BUF JOIN-PATH HBT-IMAGE-SHADOW-U ! ;
 
-\ An empty cache leaves HABU_BUILD_CACHE and HABU_OUT inherited: under the gate,
-\ the run's shared roots, whose out root holds the app-builder family image. A
-\ private cache is the out root as well, so its builder images stay private.
+\ An empty root leaves HABU_OUT inherited: under the gate, the run's shared out
+\ root, which holds the app-builder family image. A private out root keeps its
+\ builder images private.
 : HBT-IMAGE-ENV ( ptr u8 n ptr u8 n -- )
-   {: limit:ptr limitu:n cache:ptr cacheu:n :}
+   {: limit:ptr limitu:n root:ptr rootu:n :}
    PROC-ENV-RESET
    s" HB_TMP" >LEN HBT-TMP >LEN PROC-ENV+
-   cacheu 0 > if
-      s" HABU_BUILD_CACHE" >LEN cache cacheu >LEN PROC-ENV+
-      s" HABU_OUT" >LEN cache cacheu >LEN PROC-ENV+
-   then
+   rootu 0 > if s" HABU_OUT" >LEN root rootu >LEN PROC-ENV+ then
    s" HABU_FIXPOINT_ENGINE" >LEN HBT-IMAGE-HB$ >LEN PROC-ENV+
    s" HB_BUILD_TIMEOUT_MS" >LEN limit limitu >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING ;
@@ -75,7 +72,7 @@ variable HBT-IMAGE-RESAVED-U
    HBT-TIMEOUT-MS >MS PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE HBT-CAPTURE>N ;
 
 \ A cold attempt reports its deadline in text form and leaves no output image.
-\ The cold deadline needs a cache root with no builder: in a warm root the
+\ The cold deadline needs an out root with no builder: in a warm root the
 \ deadline would time out the saved builder instead of the build.
 : HBT-COLD-REPL-TIMEOUT-TEXT ( -- )
    s" 1" HBT-TMP HBT-IMAGE-ENV
@@ -94,11 +91,11 @@ variable HBT-IMAGE-RESAVED-U
 : HBT-ROOTED-APP$ ( -- ptr u8 n )
    S\" require src/lib/json-read.f\n: MAIN ( -- ) s\q from-root\q type cr ;\n" ;
 
-\ The rooted build uses the given cache; an empty one inherits the run's root
+\ The rooted build uses the given out root; an empty one inherits the run's root
 \ and its app-builder family image.
 : HBT-ROOTED-BUILD ( ptr u8 n -- )
-   {: cache:ptr cacheu:n :}
-   s" 600000" cache cacheu HBT-IMAGE-ENV
+   {: root:ptr rootu:n :}
+   s" 600000" root rootu HBT-IMAGE-ENV
    HBT-IMAGE-ARGS
    HBT-REPL-SRC >LEN PROC-ARGV+
    s" -o" >LEN PROC-ARGV+

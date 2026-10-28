@@ -216,14 +216,17 @@ variable HBT-PUB-FILES
    HBT-PUB-DIR REMOVE-DIR ;
 
 \ A build that fails invalidates the report the last one left: this runs after
-\ HBT-STRIPPED-IMAGE, whose in-process build left a valid one. It is the
-\ last case, since it leaves the cache root naming a file.
+\ HBT-STRIPPED-IMAGE, whose in-process build left a valid one, and builds the
+\ same source again onto an -o that is a directory, which the install refuses.
+\ A missing source cannot stand in: its include dies with exit 74 rather than
+\ throwing.
+FS-PATH-CAP BUFFER: HBT-DIR-OUT-BUF
 : HBT-REPORT-INVALIDATION ( -- )
    HB-BUILD:VALID? TTRUE
-   HBT-BAD-OUT s" cache path file" WRITE-ALL
-   HBT-BAD-OUT BUILD-CACHE:ROOT!
-   HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT
-   [: HBB-BUILD ;] catch E-BUILD-PATH T=
+   HBT-ROOT s" dir-out" HBT-DIR-OUT-BUF JOIN-PATH {: diru:n :}
+   HBT-DIR-OUT-BUF diru MAKE-DIR
+   HBT-AOT-SRC HBT-DIR-OUT-BUF diru HBT-HBB-PREPARE-AOT
+   [: HBB-BUILD ;] catch E-BUILD-INSTALL T=
    BF-TMP-RESET
    HB-BUILD:VALID? TFALSE
    [: HB-BUILD:MAKER-HIT? drop ;] catch E-BUILD-STATUS T= ;

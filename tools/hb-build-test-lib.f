@@ -27,7 +27,6 @@ require src/lib/string.f
 require src/lib/test.f
 require src/lib/memory.f
 require src/lib/fs.f
-require src/lib/fs-root.f
 require src/lib/fs-mutate.f
 require src/lib/process.f
 require src/lib/process-argv.f
@@ -36,7 +35,6 @@ require src/lib/source.f
 require src/lib/build.f
 require src/lib/codesign.f
 require src/lib/content-key.f
-require src/lib/build-cache.f
 require src/lib/json-write.f
 require src/lib/float.f
 require src/lib/json-read.f
@@ -312,9 +310,9 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
 \ family images the row's load closure grants (aot-builder, linker-builder,
 \ app-builder; docs/gate.md
 \ "How a suite runs, and what that demands of its files"), each built once and
-\ found in the process's cache root: under the gate the run's, standalone the
-\ user's (test/image-grant.f). No row overrides that root except where a case
-\ owns a cache miss or a damaged entry, and says so beside it.
+\ found in the process's out root (tools/build-out.f): under the gate the run's,
+\ standalone the tree's (test/image-grant.f). No row overrides that root except
+\ where a case is about that root, and says so beside it.
 \ HBT-HBB-PREPARE-AOT-SOURCE keeps one build on the engine, which compiles the
 \ linker above the application: for a subject whose closure reaches a word, or
 \ an unclaimed cell, of a module of the linker's lib closure the engine does not
@@ -334,17 +332,12 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
 
 \ The CLI as tools/hb-build.f's header documents it: tools/hb-build.f alone
 \ requires its library, so every row spawns the command a user runs. Its maker
-\ or app-build child runs the engine named second, unless that is empty. The
-\ child uses the process's cache root, made absolute because the child may run
-\ in another directory.
+\ or app-build child runs the engine named second, unless that is empty.
 : HBT-ARGV-CLI ( ptr u8 n ptr u8 n -- )
    {: tmp:ptr tmpu:n eng:ptr engu:n :}
    PROC-ARGV-RESET
    PROC-ENV-RESET
    s" HB_TMP" >LEN tmp tmpu >LEN PROC-ENV+
-   s" HABU_BUILD_CACHE" >LEN BUILD-CACHE:ROOT$
-   2dup drop c@ 47 <> if SOURCE-ROOT:CANONICAL drop then
-   >LEN PROC-ENV+
    engu 0 > if
       s" HABU_FIXPOINT_ENGINE" >LEN eng engu >LEN PROC-ENV+
    then

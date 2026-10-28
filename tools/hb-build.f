@@ -29,7 +29,6 @@ require src/lib/errors.f
 require src/lib/string.f
 require src/lib/memory.f
 require src/lib/fs.f
-require src/lib/fs-root.f
 require src/lib/fs-mutate.f
 require src/lib/process.f
 require src/lib/process-argv.f
@@ -38,7 +37,6 @@ require src/lib/source.f
 require src/lib/build.f
 require src/lib/codesign.f
 require src/lib/content-key.f
-require src/lib/build-cache.f
 require src/lib/json-write.f
 require tools/hb-build-report.f
 require tools/hb-build-lib.f

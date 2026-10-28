@@ -106,13 +106,13 @@ public
    SETUP BUILD
    s" a build whose runtime leaves the evaluate cell empty refuses 76" T-LABEL
    REFUSED
-   \ A second build process against the same build cache: the warm cache is
-   \ the boundary under test. A file object the first build stored and this
-   \ one reused under the x86-64 shadow would leave its records without
-   \ routines, and the link would refuse 74 short of the registry gate
-   \ (tools/native-definition-cache.f OBJECT-OPEN, shadow-open).
+   \ A second build process against the same out root: the file objects the
+   \ first build stored are the boundary under test. A file object the first
+   \ build stored and this one reused under the x86-64 shadow would leave its
+   \ records without routines, and the link would refuse 74 short of the
+   \ registry gate (tools/native-definition-cache.f OBJECT-OPEN, shadow-open).
    BUILD
-   s" the same build against the same build cache refuses 76" T-LABEL
+   s" the same build against the same out root refuses 76" T-LABEL
    REFUSED
    T-REPORT
    s" prefix-provided-unfilled tree: " type ROOT$ type cr ;

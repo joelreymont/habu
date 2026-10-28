@@ -9,7 +9,7 @@
 \
 \ A FILE OF ITS OWN. The clock is a foreign call whose answer lives in a task
 \ row, so it loads src/lib/ffi-abi.f and src/lib/task.f; src/lib/time.f stays free of both
-\ for the files that only want wall time, src/lib/build-cache.f among them.
+\ for the files that only want its monotonic clock.
 \
 \ STORAGE CLASS. TASK-LOCAL: clock_gettime writes its answer through a
 \ pointer, and a Habu task is an OS thread, so the timespec is a TASK:+USER

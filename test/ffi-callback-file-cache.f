@@ -21,7 +21,6 @@ variable IMAGE-U
    maker makeru GE-ARGV+
    s" --" GE-ARG+ SUBJECT$ GE-ARG+ s" 0" GE-ARG+ s" 1" GE-ARG+
    s" HB_TMP" >LEN GT-ROOT >LEN PROC-ENV+
-   s" HABU_BUILD_CACHE" >LEN GT-ROOT >LEN PROC-ENV+
    s" HABU_OUT" >LEN GT-ROOT >LEN PROC-ENV+
    maker makeru
    AOT-BUILDER-ENGINE:STDIN$

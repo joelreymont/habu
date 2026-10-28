@@ -18,7 +18,6 @@ require src/lib/content-key.f
 require src/core/sha256.f
 require src/lib/adt/option.f                 \ option<NUM:index> STR:INDEX-OF consumer
 require src/lib/string-roles.f               \ package STR: the typed string surface
-require src/lib/build-cache.f
 require tools/native-file-inputs.f
 require tools/build-out.f
 require tools/build-support.f
@@ -412,8 +411,13 @@ variable HBB-APP-BUILDER-U
    HBB-CHECK-ENV-TMP
    s" hb-build-native" HB-TMP-MKDIR 2dup BF-TMP! CLEANUP-TREE+ ;
 
-: HBB-PREPARE-CACHE ( -- )
-   BUILD-CACHE:RESOLVE drop 2drop ;
+\ The out root is made before any maker runs, so a root that cannot be made
+\ fails the build up front as a path error rather than midway as a file error.
+: HBB-PREPARE-OUT ( -- )
+   [: BUILD-OUT:ROOT$ 2drop ;] catch {: rc:n :}
+   rc 0= if exit then
+   rc E-FS-IO = rc E-FS-CAPACITY = or if E-BUILD-PATH throw then
+   rc throw ;
 
 : HBB-CLEANUP ( -- )
    CLEANUP-RUN
@@ -601,7 +605,7 @@ variable HBB-APP-BUILDER-U
 \ HBB-RUN-MAKER-CMD selects the maker through HBB-SELECT-MAKER, which reads
 \ HBB-MAKER-KEY-HEX without computing it.
 : HBB-PREPARE-AOT ( -- )
-   HBB-PREPARE-CACHE
+   HBB-PREPARE-OUT
    HBB-MAKER-KEY! ;
 
 : HBB-JSON-FLAG$ ( -- ptr u8 n )
@@ -927,12 +931,9 @@ defer HBB-REPORT-HOOK ( -- )
    HBB-REPORT-JSON @ HBB-SIZE-REPORT @ or 0<> if HBB-FINISH exit then
    s" hb-build up to date: " type HBB-OUT$ type cr ;
 
-\ The path error in the form --json-errors chooses, without its newline.
-: HBB-PATH-ERROR$ ( -- ptr u8 n )
-   HBB-JSON @ if HB-BUILD:PATH-ERROR$ else HB-BUILD:PATH-ERROR-TEXT$ then ;
-
+\ The path error in the form --json-errors chooses.
 : HBB-PATH-ERROR ( -- )
-   HBB-PATH-ERROR$ HBB-WERR
+   HBB-JSON @ if HB-BUILD:PATH-ERROR$ else HB-BUILD:PATH-ERROR-TEXT$ then HBB-WERR
    HBB-WERR-LF ;
 
 \ A build runs on the selected engine, else on the running one.
@@ -1051,7 +1052,7 @@ defer HBB-REPORT-HOOK ( -- )
    HBB-MAKER-TIMEOUT-MS @ >MS RUN-ARGV-ENV-STDIN-GROWING-BOTH-CAPTURE-OUTCOME ;
 
 : HBB-BUILD-ENGINE ( -- )
-   HBB-PREPARE-CACHE
+   HBB-PREPARE-OUT
    NATIVE-BUILD-IMAGE:CONTEXT!
    HBB-ENGINE-SELECT-KEY!
    -1 HBB-MAKER-RUN !
@@ -1303,8 +1304,8 @@ defer HBB-REPORT-HOOK ( -- )
    HBB-PREPARE-AOT
    HBB-BUILD-REST ;
 
-: HBB-PREPARE-CACHE-CLI ( -- )
-   [: HBB-REPL @ if HBB-PREPARE-CACHE else HBB-PREPARE-AOT then ;]
+: HBB-PREPARE-OUT-CLI ( -- )
+   [: HBB-REPL @ if HBB-PREPARE-OUT else HBB-PREPARE-AOT then ;]
    catch {: rc:n :}
    rc 0= if exit then
    rc E-BUILD-PATH = if
@@ -1333,7 +1334,7 @@ defer HBB-REPORT-HOOK ( -- )
 : HBB-BUILD-CLI ( -- )
    HBB-BUILD-BEGIN
    HBB-ENGINE @ if [: HBB-BUILD-ENGINE ;] catch HBB-CLI-MAKER-CODE exit then
-   HBB-PREPARE-CACHE-CLI
+   HBB-PREPARE-OUT-CLI
    HBB-REPL @ if [: HBB-BUILD-REPL ;] catch HBB-CLI-MAKER-CODE exit then
    [: HBB-BUILD-REST ;] catch HBB-CLI-MAKER-CODE ;
 

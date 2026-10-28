@@ -191,7 +191,8 @@ nor inside the product's spaces is refused, naming the cell.
 **A file is the unit of compilation.** Packages stay namespaces that any file
 can open or reopen. The loader reads source from disk in its normal order, and
 a file is compiled again when its inputs, the facts it consumed, the compiler
-or the target change.
+or the target change. Objects and images live in the tree's own out root
+(tools/build-out.f); no build cache is shared between trees.
 
 **A file's object is the result of compiling it.** It holds the file's
 definitions, code, initialized data, literals, its persistent changes to

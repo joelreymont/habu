@@ -112,8 +112,8 @@ HB_TMP="$TMP" \
 Keep `HABU_WHITEBOX_IMAGE` unset for the second command, which builds the
 ordinary sealed product and its matching `.map`.
 
-These builds, like every build and gate run from the checkout, share its one
-persistent build cache ([gate.md](gate.md#scratch-and-cache)).
+These builds, like every build and gate run from the checkout, write their
+objects under its out root ([gate.md](gate.md#scratch-and-cache)).
 
 The Gforth seed cannot emit an x86-64 engine. For Linux x86-64, use a
 working ARM64 compiler with the x86-64 backend loaded to cross-build the

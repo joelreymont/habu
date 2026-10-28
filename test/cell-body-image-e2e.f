@@ -43,7 +43,7 @@ create ERR CAP allot  variable ERR-U
    name nameu AT body bodyu WRITE-ALL ;
 : ARG ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
 
-\ The maker image resolves in the shared cache root.
+\ The maker image resolves in the shared out root.
 : MAKER ( ptr u8 n -- n ) {: source:ptr sourceu:n :}
    AOT-BUILDER-ENGINE:PATH$ {: maker:ptr makeru:n :}
    PROC-ARGV-ENV-RESET

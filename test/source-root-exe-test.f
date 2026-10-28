@@ -722,9 +722,7 @@ variable RC
    s" tools/native-build.f" >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+
    s" hb-foreign" A$ >LEN PROC-ARGV+
-   \ This case exercises source selection after the cache prerequisite.
    CHILD-ENV
-   s" HABU_BUILD_CACHE" >LEN s" build-cache" A$ >LEN PROC-ENV+
    s" tree/bin/hb" HB-AT$ >LEN s" cwd" A$ >LEN
    OUT IO-CAP >LEN ERR IO-CAP >LEN BUILD-TIMEOUT-MS >MS
    PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE RESULT!

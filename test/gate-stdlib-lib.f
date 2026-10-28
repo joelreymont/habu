@@ -6,7 +6,6 @@ require src/lib/test/runner.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/fs.f
-require src/lib/build-cache.f
 require test/gate-pool.f
 require test/gate-images.f
 require test/image-grant.f
@@ -60,15 +59,11 @@ variable ROW-SCRIPT?                     \ the row's `--` has passed
 \ The grant names the keyed images the gate settled for this row
 \ (test/image-grant.f), and goes in before the inherit for the same reason: a
 \ gate run as a row of another gate grants its own rows, never its parent's.
-\ Publish the selected, normalized build-cache root explicitly so every child,
-\ including a nested gate, reuses it even if its own default resolver differs.
-\ BUILD-CACHE owns retention; the gate root holds only run-local products.
 : SUITE-ENV ( ptr u8 n ptr u8 n -- ) {: eng:ptr engu:n grant:ptr grantu:n :}
    PROC-ENV-RESET
    eng engu SUITE-ENGINE-ENV
    IMAGE-GRANT:NAME$ >LEN grant grantu >LEN PROC-ENV+
    s" HABU_GATE_COMPILER_IMAGES" >LEN GT-ROOT >LEN PROC-ENV+
-   s" HABU_BUILD_CACHE" >LEN BUILD-CACHE:ROOT$ SOURCE-ROOT:CANONICAL drop >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING ;
 
 \ The product engine, spelled twice for two different readers. The SPAWN is

@@ -213,13 +213,12 @@ variable HBT-NESTED-OUT-U
 
 \ A fresh process by claim: the out root is resolved once per process from
 \ HABU_OUT, so only a child whose HABU_OUT is HBT-TMP/out puts the damaged
-\ record in a private out root, beside its private cache root HBT-TMP.
+\ record in a private out root.
 : HBT-MAKER-NESTED-INPUTS ( -- )
    HBT-TMP s" out" HBT-NESTED-OUT HBT-NESTED-OUT-U HBT-PATH!
    PROC-ARGV-RESET
    PROC-ENV-RESET
    s" HB_TMP" >LEN HBT-TMP >LEN PROC-ENV+
-   s" HABU_BUILD_CACHE" >LEN HBT-TMP >LEN PROC-ENV+
    s" HABU_OUT" >LEN HBT-NESTED-OUT HBT-NESTED-OUT-U @ >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    s" --load" >LEN PROC-ARGV+

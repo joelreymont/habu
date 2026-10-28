@@ -22,7 +22,8 @@
 \ tools/check-verify-child.f. ENTER finds, when the image starts, the root the
 \ source child finds: SOURCE-ROOT:ENGINE-FOR$ of the engine path baked here, the
 \ working directory when that is a tree: SOURCE-ROOT:RESET cleared it at
-\ capture, and the image's own executable lies in the build cache, under no tree.
+\ capture, and the image's own executable lies under the out root
+\ (tools/build-out.f), which need not lie in a tree.
 
 package CHECK-VERIFY-SAVE
 

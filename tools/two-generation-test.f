@@ -134,12 +134,12 @@ variable TGT-CACHE-B-U
    TG-ERR erru LEN>N TGT-FAILED$ CONTAINS? TTRUE ;
 
 \ The host launcher only invokes this Habu child. The child's file records the
-\ cache selected for an actual TG-BUILD spawn; its marker makes reuse visible.
+\ out root selected for an actual TG-BUILD spawn; its marker makes reuse visible.
 : TGT-CACHE-CHILD ( -- )
-   s" HABU_BUILD_CACHE" GETENV {: root:ptr rootu:n :}
-   rootu 0= if s" two-gen-test: no cache" 1 die then
+   s" HABU_OUT" GETENV {: root:ptr rootu:n :}
+   rootu 0= if s" two-gen-test: no out root" 1 die then
    root rootu s" seen" TG-PATH JOIN-PATH {: pathu:n :}
-   TG-PATH pathu EXISTS? if s" two-gen-test: dirty cache" 1 die then
+   TG-PATH pathu EXISTS? if s" two-gen-test: dirty out root" 1 die then
    root rootu MAKE-DIRS
    TG-PATH pathu s" seen" WRITE-ALL
    4 SCRIPT-ARGV$ root rootu WRITE-ALL ;
@@ -156,7 +156,7 @@ variable TGT-CACHE-B-U
    g TG-GEN$ buf FS-PATH-CAP READ-ALL size ! ;
 
 : TGT-CACHE ( -- )
-   s" builds use private caches and discard only those after success" T-LABEL
+   s" builds use private out roots and discard only those after success" T-LABEL
    TGT-CACHE-HOST
    TGT-ROOT$ {: root:ptr rootu:n :}
    root TG-ROOT rootu BYTE-COPY
@@ -166,7 +166,7 @@ variable TGT-CACHE-B-U
    TGT-INHERITED$ s" seen" TG-PATH JOIN-PATH {: pathu:n :}
    TG-PATH pathu s" old" WRITE-ALL
    PROC-ENV-DEFAULT-RESET
-   s" HABU_BUILD_CACHE" >LEN TGT-INHERITED$ >LEN PROC-ENV-DEFAULT+
+   s" HABU_OUT" >LEN TGT-INHERITED$ >LEN PROC-ENV-DEFAULT+
    1 TG-BUILD {: err1:len rc1:n :}
    rc1 0 T=
    rc1 0<> if PROC-ENV-DEFAULT-RESET exit then

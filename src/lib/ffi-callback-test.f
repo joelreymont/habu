@@ -464,8 +464,6 @@ CALLBACK: PAD-F ( -- ) ;CALLBACK
 : SUBJECT-SOURCE$ ( -- ptr u8 n )
    S\" require test/stripped-callback-subject.f\n: MAIN ( -- ) STRIPPED-CALLBACK-SUBJECT:RUN ;\n" ;
 
-\ The artifact key folds the subject's path, which lies under this run's fresh
-\ root, so hb-build links it on every run in the shared cache root.
 : BUILD-IMAGE ( -- len len outcome )
    AOT-BUILDER-ENGINE:ENSURE
    PROC-ARGV-ENV-RESET

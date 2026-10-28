@@ -170,10 +170,9 @@ variable HBT-FRESH-NS
 \ Damaged support selection and a missing selected image rebuild normally
 \ through the real CLI. The case corrupts the support record and deletes the
 \ selected builder image, which must never be the run's shared one, so its CLI
-\ builds own HBT-TMP as their cache root and HBT-TMP/out as their out root, and
-\ the first and last pay a cold app-builder build there by claim.
+\ builds own HBT-TMP/out as their out root, and the first and last pay a cold
+\ app-builder build there by claim.
 : HBT-FRESH-SUPPORT ( -- )
-   HBT-TMP BUILD-CACHE:ROOT!
    HBT-TMP s" out" HBT-FRESH-OUT-BUF HBT-FRESH-OUT-U HBT-PATH!
    s" malformed selection rebuilds support" T-LABEL
    HBT-FRESH-OTHER s" : MAIN ( -- ) 777 . cr ;" WRITE-ALL

@@ -119,8 +119,8 @@ create EXPECT 512 allot  variable EXPECT-U
    bpath bpathu 0 PRODUCT-B bsize READ-ALL bsize T=
    0 PRODUCT-A asize 0 PRODUCT-B bsize STR= TTRUE ;
 
-\ root/product built from app.f with the empty cache root/cache of its own: it
-\ is the product a warm build of the same sources must equal.
+\ root/product built from app.f with the empty out root root/cache of its own:
+\ it is the product a warm build of the same sources must equal.
 create COLD-CACHE FS-PATH-CAP allot  variable COLD-CACHE-U
 create COLD-SRC FS-PATH-CAP allot  variable COLD-SRC-U
 : COLD-BUILD ( ptr u8 n ptr u8 n -- n )

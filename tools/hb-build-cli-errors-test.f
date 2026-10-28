@@ -1,5 +1,5 @@
 \ hb-build-cli-errors-test.f - checked fixture for tools/hb-build-lib.f: the
-\ errors the hb-build CLI reports - a cache root that is a file, as JSON and as
+\ errors the hb-build CLI reports - an out root that is a file, as JSON and as
 \ text, a source path too long to hold, an -o too long to replace, in no
 \ directory, naming a directory or no file, with a last name too long for its
 \ sibling, or in a directory it cannot write - and a MAIN whose effect breaks
@@ -15,14 +15,13 @@ require test/app-builder-engine.f
 \ this row reopens it the way tools/hb-build-test-lib.f does.
 package HB-BUILD-CLI
 
-: HBT-BAD-CACHE-ENV ( -- )
+: HBT-BAD-OUT-ENV ( -- )
    PROC-ENV-RESET
    s" HB_TMP" >LEN HBT-TMP >LEN PROC-ENV+
-   s" HABU_BUILD_CACHE" >LEN HBT-BAD-OUT >LEN PROC-ENV+
+   s" HABU_OUT" >LEN HBT-BAD-OUT >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING ;
 
 : HBT-ADD-PATH-ERROR ( -- )
-   s" --json-errors" >LEN PROC-ARGV+
    HBT-AOT-SRC >LEN PROC-ARGV+
    s" -o" >LEN PROC-ARGV+
    HBT-AOT-OUT >LEN PROC-ARGV+ ;
@@ -34,33 +33,38 @@ package HB-BUILD-CLI
    SB$ ;
 
 : HBT-PATH-ERROR-TEXT$ ( -- ptr u8 n )
-   s" hb-build: schema=hb-build-error version=1 code=E-BUILD-PATH" ;
+   SB-RESET
+   s" hb-build: schema=hb-build-error version=1 code=E-BUILD-PATH" SB-APPEND
+   HBB-LF SB-APPEND-C
+   SB$ ;
 
-\ The CLI's cache path error: HBB-PREPARE-CACHE-CLI catches the refused root,
+\ The CLI's out root error: HBB-PREPARE-OUT-CLI catches the refused root,
 \ cleans up and exits HBB-BUILD-RC with nothing on stdout and, under
 \ --json-errors, the JSON object and one newline on stderr, byte for byte.
 : CHECK-PATH-JSON ( -- )
    HBT-ARGV-BASE
-   HBT-BAD-CACHE-ENV
+   HBT-BAD-OUT-ENV
+   s" --json-errors" >LEN PROC-ARGV+
    HBT-ADD-PATH-ERROR
    HBT-RUN-HB-BUILD {: outu:n erru:n rc:n :}
    rc HBB-BUILD-RC T=
    outu 0 T=
    HBT-ERR erru HBT-PATH-ERROR-JSON$ T$= ;
 
-\ Without --json-errors the same refusal takes the text form: HBB-PATH-ERROR$
-\ is what HBB-PATH-ERROR writes, so it is asserted in this process on the root
-\ the CLI refused above. CHECK-PATH-JSON fails if the CLI picks text under
-\ --json-errors; this fails if the text form, or the choice of it, changes.
+\ Without --json-errors the same refusal takes the text form, one line on
+\ stderr. CHECK-PATH-JSON fails if the CLI picks text under --json-errors;
+\ this fails if the text form, or the choice of it, changes.
 : HBT-CHECK-PATH-TEXT ( -- )
-   HBB-RESET-OPTIONS
-   HBT-BAD-OUT BUILD-CACHE:ROOT!
-   [: HBB-PREPARE-AOT ;] catch E-BUILD-PATH T=
-   HBB-PATH-ERROR$ HBT-PATH-ERROR-TEXT$ T$=
-   BUILD-CACHE:RESET ;
+   HBT-ARGV-BASE
+   HBT-BAD-OUT-ENV
+   HBT-ADD-PATH-ERROR
+   HBT-RUN-HB-BUILD {: outu:n erru:n rc:n :}
+   rc HBB-BUILD-RC T=
+   outu 0 T=
+   HBT-ERR erru HBT-PATH-ERROR-TEXT$ T$= ;
 
 : CLI-PATH-ERROR ( -- )
-   HBT-BAD-OUT s" cache path file" WRITE-ALL
+   HBT-BAD-OUT s" out root file" WRITE-ALL
    CHECK-PATH-JSON
    HBT-CHECK-PATH-TEXT
    HBT-BAD-OUT REMOVE-FILE ;

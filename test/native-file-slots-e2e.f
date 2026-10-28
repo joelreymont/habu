@@ -64,7 +64,7 @@ create LINE LINE-CAP allot  variable LINE-U
    S\" require dfr.f\n: HOOK-SET ( -- ) [: 8 ;] is HOOK ;\nHOOK-SET\n" ;
 : APP6$ ( -- ptr u8 n ) S\" require inst.f\n: MAIN ( -- ) HOOK . ;\n" ;
 
-\ The build of name, the root file, with its cache root under the tree.
+\ The build of name, the root file, with its out root under the tree.
 : USE ( ptr u8 n ptr u8 n -- )
    {: app:ptr appu:n cache:ptr cacheu:n :}
    app appu AT {: a:ptr u:n :}

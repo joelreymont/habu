@@ -5,7 +5,7 @@
 \
 \ Proves the ordered transitive closure list (require/included followed, provided
 \ and require-known not, canonical-path dedup, a missing file refused, transitive
-\ descent) and the property the hb-build cache key relies on: a content edit to
+\ descent) and the property a closure key relies on: a content edit to
 \ any closure file changes the closure key, while an untouched closure or an edit
 \ to a non-closure file leaves it stable.
 

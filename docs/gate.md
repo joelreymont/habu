@@ -131,11 +131,10 @@ tail is what a finished red run leaves. To keep a run's trees, give it its own
 only the root's own room), and the deepest row path under it must still fit
 Habu's path capacity.
 
-Keyed images and native file objects live with the tree, under
-`<cwd>/.out/<engine>/`, or under `$HABU_OUT/<engine>/` when `HABU_OUT` is set
-(tools/build-out.f): `obj/` under the engine that compiled the objects, `img/`
-under the engine that builds the image. A deliberate cold measurement selects a
-fresh `HABU_OUT`.
+Build outputs live with the tree, under `<cwd>/.out/<engine>/` or
+`$HABU_OUT/<engine>/` (tools/build-out.f states the layout). They are
+disposable: no other cache exists, deleting them costs only a rebuild, and a
+deliberate cold measurement selects a fresh `HABU_OUT`.
 
 ### Signals and servers
 

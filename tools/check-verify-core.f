@@ -19,7 +19,7 @@
 \   earlier check's can stand in for, or collide with, a word of the subject.
 \   On the engine src/lib/engine-candidate.f names, when it is this process's
 \   own engine and can save an image, the child is the saved verifier image
-\   tools/check-verify-image.f keys in the build cache (built once per engine
+\   tools/check-verify-image.f keys under the out root (built once per engine
 \   and closure); on any other engine, an HABU_UNDER_TEST naming another
 \   engine or one that cannot save, it is that engine running the
 \   tools/check-verify-child.f of the tree this file was loaded from, named

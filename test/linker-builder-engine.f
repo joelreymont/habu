@@ -4,7 +4,7 @@
 \ selected as the build engine only for this build, so it never stays the
 \ process default. This is the image an hb-build child on the linker selects
 \ (tools/hb-build-lib.f HBB-MAKER-IMAGE$), so one settle serves the direct
-\ maker runs and every hb-build child in the same cache root.
+\ maker runs and every hb-build child in the same out root.
 require tools/hb-build-lib.f
 require test/preloaded-engine.f
 require test/image-grant.f

@@ -2,7 +2,7 @@
 \ before staging argv or env: the image supplier uses those same tables. This
 \ is the image an hb-build child on the candidate selects (tools/hb-build-lib.f
 \ HBB-MAKER-IMAGE$), so one settle serves the direct maker runs below and every
-\ hb-build child in the same cache root.
+\ hb-build child in the same out root.
 require src/lib/engine-candidate.f
 require tools/hb-build-lib.f
 require test/image-grant.f

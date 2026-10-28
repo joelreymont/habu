@@ -111,7 +111,6 @@ variable RC
    s" HB_TMP" >LEN TMP$ >LEN PROC-ENV+
    \ Mask a parent override: the invoking absolute engine is the CLI default.
    s" HABU_FIXPOINT_ENGINE" >LEN s" " >LEN PROC-ENV+
-   s" HABU_BUILD_CACHE" >LEN CACHE$ >LEN PROC-ENV+
    s" HABU_OUT" >LEN CACHE$ >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    HB$ >LEN PROJECT$ >LEN
@@ -125,7 +124,6 @@ variable RC
    s" --load" >LEN PROC-ARGV+
    s" tools/hb-build-producer-race-test.f" >LEN PROC-ARGV+
    s" HB_TMP" >LEN TMP$ >LEN PROC-ENV+
-   s" HABU_BUILD_CACHE" >LEN CACHE$ >LEN PROC-ENV+
    s" HABU_OUT" >LEN CACHE$ >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    HB$ >LEN ROOT$ >LEN
@@ -186,7 +184,6 @@ variable RC
    OUT$ >LEN PROC-ARGV+
    s" HB_TMP" >LEN TMP$ >LEN PROC-ENV+
    s" HABU_FIXPOINT_ENGINE" >LEN HB$ >LEN PROC-ENV+
-   s" HABU_BUILD_CACHE" >LEN CACHE$ >LEN PROC-ENV+
    s" HABU_OUT" >LEN CACHE$ >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    HB$ >LEN PROJECT$ >LEN

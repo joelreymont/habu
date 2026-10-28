@@ -95,7 +95,7 @@ create HBT-TWIN-OUT-D-BUF FS-PATH-CAP allot
 : HBT-TWIN-INPUT$ ( -- ptr u8 n )
    S\" : BEHAVE ( -- ) does> ( -- n ) @ ;\nBEHAVE\nHBT-TWIN:REFUSAL\nHBT-TWIN:X NULL-PTR - . cr\n" ;
 
-\ A and D share HB_TMP and the run's cache; B gets its own HB_TMP and cache root.
+\ A and D share HB_TMP and the run's out root; B gets its own HB_TMP and out root.
 \ B's output name is longer than A's and D's. These are the tier 1 round's names;
 \ HBT-TWIN-TIER0-NAMES gives the tier 0 round its own outputs.
 : HBT-TWIN-PREPARE ( -- )
@@ -113,7 +113,7 @@ create HBT-TWIN-OUT-D-BUF FS-PATH-CAP allot
    HBT-TWIN-CTX HBT-TWIN-CTX$ WRITE-ALL
    HBT-TWIN-SRC HBT-TWIN-SRC$ WRITE-ALL ;
 
-\ The tier 0 round's three outputs. B keeps its HB_TMP and cache root: the
+\ The tier 0 round's three outputs. B keeps its HB_TMP and out root: the
 \ builder image there does not depend on the tier (the tier reaches the maker
 \ on its stdin), so the tier 1 round already built it cold.
 : HBT-TWIN-TIER0-NAMES ( -- )
@@ -121,21 +121,18 @@ create HBT-TWIN-OUT-D-BUF FS-PATH-CAP allot
    HBT-ROOT s" twin0-direct-image" HBT-TWIN-OUT-B-BUF HBT-TWIN-OUT-B-U HBT-PATH!
    HBT-ROOT s" twin0-out-d" HBT-TWIN-OUT-D-BUF HBT-TWIN-OUT-D-U HBT-PATH! ;
 
-\ An empty cache leaves HABU_BUILD_CACHE and HABU_OUT inherited: under the gate,
-\ the run's shared roots, whose out root holds the app-builder family image. A
-\ private cache is B's out root as well, so B builds that image fresh. With aot
+\ An empty root leaves HABU_OUT inherited: under the gate, the run's shared out
+\ root, which holds the app-builder family image. A private root is B's out
+\ root, so B builds that image fresh. With aot
 \ set the command runs after test/compiler/aot-mode.f selected tier 1, the tier
 \ its products are built at; without it the products are built at the default
 \ tier 0.
 : HBT-TWIN-BUILD ( bool ptr u8 n ptr u8 n ptr u8 n -- )
-   {: aot:bool tmp:ptr tmpu:n cache:ptr cacheu:n out:ptr outu:n :}
+   {: aot:bool tmp:ptr tmpu:n root:ptr rootu:n out:ptr outu:n :}
    PROC-ARGV-RESET
    PROC-ENV-RESET
    s" HB_TMP" >LEN tmp tmpu >LEN PROC-ENV+
-   cacheu 0 > if
-      s" HABU_BUILD_CACHE" >LEN cache cacheu >LEN PROC-ENV+
-      s" HABU_OUT" >LEN cache cacheu >LEN PROC-ENV+
-   then
+   rootu 0 > if s" HABU_OUT" >LEN root rootu >LEN PROC-ENV+ then
    PROC-ENV-INHERIT-MISSING
    s" --load" >LEN PROC-ARGV+
    s" tools/hb-build-lib.f" >LEN PROC-ARGV+
@@ -181,7 +178,7 @@ create HBT-TWIN-OUT-D-BUF FS-PATH-CAP allot
 : HBT-TWIN-ROUND ( bool -- )
    {: aot:bool :}
    aot HBT-TWIN-TMP-A NULL$ HBT-TWIN-OUT-A HBT-TWIN-BUILD
-   \ B's own cache root is the cold boundary: the first round builds its builder.
+   \ B's own out root is the cold boundary: the first round builds its builder.
    aot HBT-TWIN-TMP-B HBT-TWIN-TMP-B HBT-TWIN-OUT-B HBT-TWIN-BUILD
    aot HBT-TWIN-TMP-A NULL$ HBT-TWIN-OUT-D HBT-TWIN-BUILD
    HBT-TWIN-SAME ;

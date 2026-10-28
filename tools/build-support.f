@@ -10,7 +10,6 @@ require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process-env.f
 require src/lib/source.f
-require src/lib/build-cache.f
 
 package BUILD-FIXPOINT
 
@@ -109,8 +108,7 @@ variable BF-ENGINE-U
 
 \ The root is copied, as BF-ENGINE! copies the engine: every later BF-A$ joins
 \ under it, and a caller's span need not outlive the call - MAKE-TEMP-DIR's is
-\ replaced by the task's next MAKE-TEMP-DIR, such as a build cache prune's claim
-\ directory (src/lib/build-cache.f).
+\ replaced by the task's next MAKE-TEMP-DIR.
 : BF-TMP! ( ptr u8 n -- )
    {: a:ptr u:n :}
    u 0 < if E-BUILD-PATH throw then
@@ -161,12 +159,9 @@ variable BF-ENGINE-U
    {: a:ptr u :}
    a u BF-A$ 2dup EXISTS? if REMOVE-FILE else 2drop then ;
 
-\ Every child uses this process's build cache root, made absolute because a
-\ child may run in another directory.
 : BF-PREPARE-ENV ( -- )
    PROC-ENV-RESET
-   s" HB_TMP" >LEN BF-TMP$ >LEN PROC-ENV+
-   s" HABU_BUILD_CACHE" >LEN BUILD-CACHE:ROOT$ SOURCE-ROOT:CANONICAL drop >LEN PROC-ENV+ ;
+   s" HB_TMP" >LEN BF-TMP$ >LEN PROC-ENV+ ;
 
 : BF-READ-SOURCE ( ptr u8 n -- )
    {: path:ptr pathu:n :}

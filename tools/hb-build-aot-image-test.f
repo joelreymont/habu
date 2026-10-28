@@ -44,26 +44,23 @@ create HBT-MAKER-GOT-HEX 64 allot
 : HBT-MAKER-OUT$ ( -- ptr u8 n )
    HBT-MAKER-OUT HBT-MAKER-OUT-U @ ;
 
-\ A child's argv and env so far: the private temp, cache and out roots.
+\ A child's argv and env so far: the private temp and out roots.
 : HBT-MAKER-ENV ( -- )
    PROC-ARGV-RESET
    PROC-ENV-RESET
    s" HB_TMP" >LEN HBT-TMP >LEN PROC-ENV+
-   s" HABU_BUILD_CACHE" >LEN HBT-TMP >LEN PROC-ENV+
    s" HABU_OUT" >LEN HBT-MAKER-OUT$ >LEN PROC-ENV+ ;
 
 \ Prints the saved maker image the engine selects, then hit or built.
 : HBT-MAKER-PATH-CHILD ( -- )
-   SCRIPT-ARGC 3 <> if E-TBL-BOUNDS throw then
-   1 SCRIPT-ARGV$ BUILD-CACHE:ROOT!
-   2 SCRIPT-ARGV$ BUILD-FIXPOINT:BF-ENGINE!
+   SCRIPT-ARGC 2 <> if E-TBL-BOUNDS throw then
+   1 SCRIPT-ARGV$ BUILD-FIXPOINT:BF-ENGINE!
    HBB-MAKER-DEFAULT-MS HBB-MAKER-IMAGE$ type cr
    HBB-MAKER-HIT @ 0<> if s" hit" else s" built" then type cr ;
 
 : HBT-MAKER-CHILD-SETUP ( -- )
    SCRIPT-ARGC 4 <> if E-TBL-BOUNDS throw then
    HBB-RESET-OPTIONS
-   1 SCRIPT-ARGV$ BUILD-CACHE:ROOT!
    1 SCRIPT-ARGV$ BUILD-FIXPOINT:BF-TMP!
    2 SCRIPT-ARGV$ BUILD-FIXPOINT:BF-ENGINE!
    3 SCRIPT-ARGV$ HBB-SRC!
@@ -103,7 +100,6 @@ create HBT-MAKER-GOT-HEX 64 allot
    HBT-MAKER-TOOL$ >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+
    s" path" >LEN PROC-ARGV+
-   HBT-TMP >LEN PROC-ARGV+
    eng engu >LEN PROC-ARGV+
    HBT-MAKER-HB$ >LEN cwd cwdu >LEN
    HBT-OUT HBT-CAPTURE-CAP >LEN HBT-ERR HBT-CAPTURE-CAP >LEN
@@ -271,10 +267,9 @@ public
    T-RESET
    NULL$ HBT-KEYED!
    HBT-PREPARE
-   \ Private roots by claim: every child's cache root is HBT-TMP and its out
-   \ root HBT-TMP/out, so the first report build's maker is built cold
-   \ (maker_built), and HBT-MAKER-CACHE-PATH asserts the hit that child left.
-   HBT-TMP BUILD-CACHE:ROOT!
+   \ Private roots by claim: every child's out root is HBT-TMP/out, so the
+   \ first report build's maker is built cold (maker_built), and
+   \ HBT-MAKER-CACHE-PATH asserts the hit that child left.
    HBT-TMP s" out" HBT-MAKER-OUT HBT-MAKER-OUT-U HBT-PATH!
    SOURCE-ROOT:ENGINE$ s" tools/hb-build-aot-image-test.f"
       HBT-MAKER-TOOL JOIN-PATH HBT-MAKER-TOOL-U !

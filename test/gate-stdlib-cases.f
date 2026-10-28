@@ -169,7 +169,6 @@ SUITE aot-named-cells-image
 
 SUITE hb-build-fixtures
    tools/hb-build-test.f
-   src/lib/build-cache-test.f
 ;SUITE
 
 SUITE hb-build-stripped-chain
@@ -1830,10 +1829,6 @@ SUITE exit-hook
    test/exit-hook-test.f
 ;SUITE
 
-SUITE fs-lock
-   src/lib/fs-lock-test.f
-;SUITE
-
 SUITE os-cpu
    src/lib/os-cpu-test.f
 ;SUITE
@@ -1925,10 +1920,6 @@ SUITE ddc-verify
 
 SUITE event-closure
    tools/event-closure-test.f
-;SUITE
-
-SUITE build-cache-retain
-   src/lib/build-cache-retain-test.f
 ;SUITE
 
 SUITE hb-open-failure
