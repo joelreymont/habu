@@ -1,6 +1,6 @@
 ---
 title: Compile, install and dispatch through T0 on arm64
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-10-28T21:50:37.124210+02:00"
