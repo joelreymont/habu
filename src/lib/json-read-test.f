@@ -10,6 +10,7 @@ require src/lib/test.f
 require src/lib/json-read.f
 require src/lib/json-write.f
 require src/lib/test/outcome.f
+require src/lib/test/guard-page.f
 require src/lib/test/subject.f
 
 package JSON-READ-TEST
@@ -106,6 +107,12 @@ create JRT-BADPAIR-SRC
 : JRT-BADPAIR-SRC$ ( -- ptr u8 n ) JRT-BADPAIR-SRC 14 ;
 create JRT-UNTERM-SRC 34 c, 97 c, 98 c, 99 c,        \ "abc
 : JRT-UNTERM-SRC$ ( -- ptr u8 n ) JRT-UNTERM-SRC 4 ;
+\ "ab\n with a stated length of 4: the source ends at the backslash, and the
+\ n past that length must not complete the escape.
+create JRT-RUN-BS-SRC 34 c, 97 c, 98 c, 92 c, 110 c,
+: JRT-RUN-BS-SRC$ ( -- ptr u8 n ) JRT-RUN-BS-SRC 4 ;
+create JRT-RUN-CTRL-SRC 34 c, 97 c, 10 c, 34 c,      \ "a<LF>": a run, then a raw control byte
+: JRT-RUN-CTRL-SRC$ ( -- ptr u8 n ) JRT-RUN-CTRL-SRC 4 ;
 
 create JRT-UTF8-SRC
    34 c,
@@ -774,6 +781,12 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
 : JRT-BAD-ESCAPE ( -- )
    JRT-BADESC-SRC$ JRT-OPEN-A JR:NEXT drop JR:CLOSE ;
 
+: JRT-BAD-RUN-BS ( -- )
+   JRT-RUN-BS-SRC$ JRT-OPEN-A JR:NEXT drop JR:CLOSE ;
+
+: JRT-BAD-RUN-CTRL ( -- )
+   JRT-RUN-CTRL-SRC$ JRT-OPEN-A JR:NEXT drop JR:CLOSE ;
+
 : JRT-BAD-SURROGATE ( -- )
    JRT-LONE-SRC$ JRT-OPEN-A JR:NEXT drop JR:CLOSE ;
 
@@ -844,6 +857,8 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    [: JRT-BAD-TRAILING ;] E-JR-TRAILING TTHROWSQ
    [: JRT-BAD-UNTERM ;] E-JR-STRING TTHROWSQ
    [: JRT-BAD-ESCAPE ;] E-JR-ESCAPE TTHROWSQ
+   [: JRT-BAD-RUN-BS ;] E-JR-ESCAPE TTHROWSQ
+   [: JRT-BAD-RUN-CTRL ;] E-JR-STRING TTHROWSQ
    [: JRT-BAD-HEX ;] E-JR-ESCAPE TTHROWSQ
    [: JRT-BAD-SURROGATE ;] E-JR-SURROGATE TTHROWSQ
    [: JRT-BAD-LOW-SURROGATE ;] E-JR-SURROGATE TTHROWSQ
@@ -879,6 +894,32 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
 : JRT-CATCH-COLON ( JR:reader -- JR:reader )
    ['] JRT-BAD-ADVANCE catch E-JR-COLON T= ;
 
+\ A failed advance leaves the previous token whole: its string or number still
+\ reads, never the bytes the failed scan had reached.
+: JRT-CATCH-ESCAPE ( JR:reader -- JR:reader )
+   ['] JRT-BAD-ADVANCE catch E-JR-ESCAPE T= ;
+
+: JRT-CATCH-NUMBER ( JR:reader -- JR:reader )
+   ['] JRT-BAD-ADVANCE catch E-JR-NUMBER T= ;
+
+: JRT-TEST-AFTER-FAILURE ( -- )
+   s\" [\"abcdef\",\"x\\q\"]" JRT-OPEN-A
+   JR:NEXT drop JR:NEXT JR:T-STR T=
+   JRT-CATCH-ESCAPE
+   JR:TOKEN JR:T-STR T= s" abcdef" JRT-STR=
+   s" abcdef" JR:STR-EQ? TTRUE
+   JR:CLOSE
+   s\" {\"a\":\"bc\",\"d\"}" JRT-OPEN-A
+   JR:NEXT drop JR:NEXT drop JR:NEXT JR:T-STR T=
+   JRT-CATCH-COLON
+   JR:TOKEN JR:T-STR T= s" bc" JRT-STR=
+   JR:CLOSE
+   s" [12,3.]" JRT-OPEN-A
+   JR:NEXT drop JR:NEXT JR:T-INT T=
+   JRT-CATCH-NUMBER
+   JR:TOKEN JR:T-INT T= JR:INT 12 T=
+   JR:CLOSE ;
+
 \ The caught advance moved the cursor past the key that lacks its colon; the
 \ reader stays failed, so FINISH throws that code instead of closing the object.
 : JRT-FINISH-AFTER-FAILURE ( -- )
@@ -904,6 +945,55 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    [: JRT-TRAILING-TEXT$ JRT-FINISH-AFTER-OPEN ;] E-JR-TRAILING TTHROWSQ
    [: JRT-OBJ-COMMA$ JRT-FINISH-AFTER-INT ;] E-JR-MALFORMED TTHROWSQ
    [: JRT-FINISH-AFTER-FAILURE ;] E-JR-COLON TTHROWSQ ;
+
+\ ---- negative: every prefix where readable memory ends -------------------
+
+\ A prefix copied so its last byte is the last readable one, read with NEXT, and
+\ STR on each string, to T-END or a refusal: its code, 0 at T-END. A scan that
+\ reads a byte before it bounds the source faults here instead of refusing.
+: JRT-STEP-STR ( JR:reader -- JR:reader )
+   JR:NEXT {: k:n :}
+   k JR:T-STR = k JR:T-KEY = or if JRT-BUF JRT-CAP JR:STR drop then ;
+
+: JRT-GUARDED-CODE ( ptr u8 n -- n ) {: s:ptr u:n :}
+   u 0 GUARD-PAGE:TAIL {: g:ptr :}
+   u 0 ?do s i + c@ g i + c! loop
+   g u JRT-OPEN-A
+   begin
+      ['] JRT-STEP-STR catch {: code:n :}
+      code 0<> if JR:CLOSE code exit then
+      JR:TOKEN JR:T-END =
+   until
+   JR:CLOSE 0 ;
+
+\ The code a refusal letter names: E EOF, S STRING, C COLON, N NUMBER,
+\ M MALFORMED, X ESCAPE, U SURROGATE, and . for T-END.
+: JRT-REFUSAL ( n -- n ) {: c:n :}
+   c [char] . = if 0 exit then
+   c [char] E = if E-JR-EOF exit then
+   c [char] S = if E-JR-STRING exit then
+   c [char] C = if E-JR-COLON exit then
+   c [char] N = if E-JR-NUMBER exit then
+   c [char] M = if E-JR-MALFORMED exit then
+   c [char] X = if E-JR-ESCAPE exit then
+   c [char] U = if E-JR-SURROGATE exit then
+   s" json-read-test: unknown refusal letter" T-EX-FAIL die ;
+
+\ Every prefix of a document, lengths 0 through u, against one refusal letter
+\ per length.
+: JRT-PREFIXES ( ptr u8 n ptr u8 n -- ) {: s:ptr u:n c:ptr cu:n :}
+   cu u 1+ T=
+   cu u 1+ min 0 ?do s i JRT-GUARDED-CODE c i + c@ JRT-REFUSAL T= loop ;
+
+: JRT-TEST-PREFIXES ( -- )
+   s\" {\"k\":\"v\",\"n\":[1,-2.5e+3,true,false,null],\"o\":{}}"
+   s" EESSCESSEESSCEEEENENENNEEMMMEEMMMMEEMMMEEESSCEEE." JRT-PREFIXES
+   s\" [\"a\\\"b\\\\c\\/d\\be\\ff\\ng\\rh\\ti\"]"
+   s" EESSXSSXSSXSSXSSXSSXSSXSSXSSE." JRT-PREFIXES
+   s\" \"\\u0041\\u00e9\\u20AC\\uD83D\\uDE00x\""
+   s" ESXXXXXSXXXXXSXXXXXSXXXXXUUXXXXSS." JRT-PREFIXES
+   s\" [\"\xC3\xA9\xE2\x82\xAC\xF0\x9F\x98\x80z\"]"
+   s" EESSSSSSSSSSSE." JRT-PREFIXES ;
 
 : JRT-CORE ( -- )
    JRT-TEST-INTS
@@ -935,9 +1025,11 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    JRT-TEST-STR-EQ-MISUSE
    JRT-TEST-INTERLEAVE
    JRT-TEST-CATCH-ISOLATION
+   JRT-TEST-AFTER-FAILURE
    JRT-TEST-OWNERSHIP
    JRT-TEST-NEGATIVE
-   JRT-TEST-FINISH ;
+   JRT-TEST-FINISH
+   JRT-TEST-PREFIXES ;
 
 public
 

@@ -82,9 +82,27 @@ private
 
 10 constant JW-RADIX
 1 constant JW-PLAIN-N            \ escaped width of an ordinary byte
-2 constant JW-SHORT-ESC-N        \ escaped width of \" \\ \b \f \n \r \t
-6 constant JW-U00-N              \ escaped width of \u00XX
 2 constant JW-QUOTE-N            \ the two string delimiters
+
+\ The escaped width of each byte value: 1 plain, 2 for \" \\ \b \t \n \f \r,
+\ 6 for the other control bytes (\u00XX). Scans index it inline.
+create JW-ESC-W
+   6 c, 6 c, 6 c, 6 c, 6 c, 6 c, 6 c, 6 c, 2 c, 2 c, 2 c, 6 c, 2 c, 2 c, 6 c, 6 c,   \ $00
+   6 c, 6 c, 6 c, 6 c, 6 c, 6 c, 6 c, 6 c, 6 c, 6 c, 6 c, 6 c, 6 c, 6 c, 6 c, 6 c,   \ $10
+   1 c, 1 c, 2 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c,   \ $20
+   1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c,   \ $30
+   1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c,   \ $40
+   1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 2 c, 1 c, 1 c, 1 c,   \ $50
+   1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c,   \ $60
+   1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c,   \ $70
+   1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c,   \ $80
+   1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c,   \ $90
+   1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c,   \ $A0
+   1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c,   \ $B0
+   1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c,   \ $C0
+   1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c,   \ $D0
+   1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c,   \ $E0
+   1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c,   \ $F0
 
 : JW-BUF@ ( ptr writer -- ptr n )
    @ JSON--WRITE-WRITER:UNMAKE {: vp:ptr cap:n used:n buf:ptr :}
@@ -226,26 +244,13 @@ private
    c 4 rshift JW-HEX JW-C
    c $F and JW-HEX JW-C ;
 
-: JW-SHORT-ESC? ( n -- bool ) {: c:n :}
-   c JW-DQ = c JW-BACKSLASH = or c JW-BS = or c JW-FF = or
-   c JW-LF = or c JW-CR = or c JW-TAB = or ;
-
-: JW-ESC-N ( n -- n ) {: c:n :}
-   c JW-SHORT-ESC? if JW-SHORT-ESC-N exit then
-   c JW-SP < if JW-U00-N else JW-PLAIN-N then ;
-
-: JW-ESCAPE? ( n -- bool ) {: c:n :}
-   c JW-DQ = c JW-BACKSLASH = or c JW-SP < or ;
-
-: JW-STR-N ( ptr u8 n -- n ) {: a:ptr u:n :}   \ bytes a quoted string will take
-   JW-QUOTE-N u JW-SIZE+ 0 begin dup u < while   \ ( total idx )
-      dup a + c@ dup JW-ESCAPE? if
-         JW-ESC-N JW-PLAIN-N - rot swap JW-SIZE+ swap
-      else
-         drop
-      then
-      1+
-   repeat drop ;
+\ Bytes a quoted string will take: the delimiters plus each byte's width. A
+\ width is at most six, so the sum fits a cell for any span in memory; the one
+\ checked add refuses it exactly when a running checked sum would.
+: JW-STR-N ( ptr u8 n -- n ) {: a:ptr u:n :}
+   JW-ESC-W BYTE-VIEW {: w:ptr :}
+   0 u 0 ?do a i + c@ w + c@ + loop
+   JW-QUOTE-N swap JW-SIZE+ ;
 
 : JW-ESC-C ( ptr writer n -- ptr writer ) {: c:n :}
    c JW-DQ = if JW-BACKSLASH JW-C JW-DQ JW-C exit then
@@ -258,11 +263,11 @@ private
    c JW-SP < if c JW-U00 exit then
    c JW-C ;
 
+\ The offset of the first byte at or after start that escapes, or u.
 : JW-RUN-END ( ptr u8 n n -- n ) {: a:ptr u:n start:n :}
-   start begin dup u < while
-      dup a + c@ JW-ESCAPE? if exit then
-      1+
-   repeat ;
+   JW-ESC-W BYTE-VIEW {: w:ptr :}
+   u start ?do a i + c@ w + c@ JW-PLAIN-N <> if i unloop exit then loop
+   u ;
 
 : JW-EMIT-RUN ( ptr writer ptr u8 n n -- n )
    {: w a:ptr start:n finish:n :}

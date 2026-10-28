@@ -36,8 +36,8 @@
 \ (JR:T-OBJ .. JR:T-END). Callers keep both record and source live and
 \ exclusive until CLOSE or FINISH. The record's fields, the byte constants, the
 \ reader's LINEAR: mint and erase, cursor state, and scan/decode helpers -
-\ including the bounds-checked source reader AT - are package-private and sealed
-\ after the module is assembled.
+\ including AT, which reads a source byte its caller has bounds-checked - are
+\ package-private and sealed after the module is assembled.
 \
 \ INIT refuses a negative source length or a null source with bytes (E-SOURCE)
 \ before it mints the reader. The checker cannot prove the lifetime or
@@ -84,7 +84,6 @@ require src/lib/adt/option.f                 \ option<NUM:index> for STR:INDEX-O
 -3908 constant E-JR-COLON       \ missing ':' after an object key
 -3909 constant E-JR-COMMA       \ expected ',' or the matching container close
 -3910 constant E-JR-STATE       \ accessor called on the wrong token kind or dst buffer too small
--3911 constant E-JR-BOUNDS      \ source-cursor read past the input buffer (internal invariant)
 
 package JR
 
@@ -111,9 +110,6 @@ STRUCTURE cursor OPAQUE DERIVE addr
    FIELD dst-cap n
    FIELD out n
    FIELD in n
-   FIELD esc n
-   FIELD hi n
-   FIELD lo n
    FIELD num-at n
    FIELD mode n
    FIELD matched n
@@ -126,10 +122,8 @@ STRUCTURE cursor OPAQUE DERIVE addr
 private
 
 \ ---- byte constants -------------------------------------------------------
-8 constant BS
 9 constant TAB
 10 constant LF
-12 constant FF
 13 constant CR
 32 constant SP
 34 constant DQ
@@ -137,18 +131,15 @@ private
 44 constant COMMA
 45 constant MINUS
 46 constant DOT
-47 constant SLASH
 48 constant ZERO
 58 constant COLON
 69 constant EXP-UPPER
 91 constant LBRACK
 92 constant BACKSLASH
 93 constant RBRACK
-98 constant CH-B
 101 constant EXP-LOWER
 102 constant CH-F
 110 constant CH-N
-114 constant CH-R
 116 constant CH-T
 117 constant CH-U
 123 constant LBRACE
@@ -249,11 +240,7 @@ LINEAR: ERASE-READER ( JR:reader -- ptr n )
    TRUE 0= ;
 
 \ ---- source cursor --------------------------------------------------------
-: IN-BOUNDS? ( ptr cursor n -- bool ) {: state:ptr idx:n :}
-   idx 0 >= idx state CURSOR-SRC-LEN @ < and ;
-
 : AT ( ptr cursor n -- n ) {: state:ptr idx:n :}
-   state idx IN-BOUNDS? 0= if E-JR-BOUNDS throw then
    state CURSOR-SRC @ idx + c@ ;
 
 : EOF? ( ptr cursor -- bool ) {: state:ptr :}
@@ -391,9 +378,28 @@ private
    state swap SCAN-HEX
    state swap SCAN-HEX ;
 
+\ The byte each one-letter escape stands for, indexed by its letter: \" \\ \/
+\ \b \f \n \r \t. Zero marks every other byte; no escape stands for NUL.
+create UNESC-MAP
+   0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c,   \ $00
+   0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c,   \ $10
+   0 c, 0 c, 34 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 47 c,   \ $20
+   0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c,   \ $30
+   0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c,   \ $40
+   0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 92 c, 0 c, 0 c, 0 c,   \ $50
+   0 c, 0 c, 8 c, 0 c, 0 c, 0 c, 12 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 10 c, 0 c,   \ $60
+   0 c, 0 c, 13 c, 0 c, 9 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c,   \ $70
+   0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c,   \ $80
+   0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c,   \ $90
+   0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c,   \ $A0
+   0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c,   \ $B0
+   0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c,   \ $C0
+   0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c,   \ $D0
+   0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c,   \ $E0
+   0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c, 0 c,   \ $F0
+
 : SIMPLE-ESC? ( n -- bool )
-   dup DQ = over BACKSLASH = or over SLASH = or over CH-B = or
-   over CH-F = or over CH-N = or over CH-R = or swap CH-T = or ;
+   UNESC-MAP BYTE-VIEW + c@ 0 <> ;
 
 : SCAN-SURROGATE ( ptr cursor n -- ) {: state:ptr hi:n :}
    hi SUR-LO >= if E-JR-SURROGATE throw then
@@ -406,11 +412,12 @@ private
    state SCAN-HEX4 {: lo:n :}
    lo SUR-LO < lo SUR-END >= or if E-JR-SURROGATE throw then ;
 
+\ PLAIN-END admits every one-letter escape, so the backslash here starts a
+\ \u escape or an invalid or unfinished one.
 : SCAN-ESC ( ptr cursor -- ) {: state:ptr :}
    state ADVANCE
    state EOF? if E-JR-ESCAPE throw then
-   state PEEK dup SIMPLE-ESC? if drop state ADVANCE exit then
-   CH-U <> if E-JR-ESCAPE throw then
+   state PEEK CH-U <> if E-JR-ESCAPE throw then
    state ADVANCE
    state SCAN-HEX4 {: cp:n :}
    cp SUR-HI < if exit then
@@ -457,23 +464,46 @@ private
    lead UTF3-END >= lead UTF4-END < and if state lead SCAN-UTF4 exit then
    E-JR-STRING throw ;
 
-: SCAN-STRING ( ptr cursor -- ) {: state:ptr :}
+\ The offset of the first byte at or after pos that the cursor words must
+\ check - a quote, a control byte, a UTF-8 lead, or the backslash of a \u,
+\ invalid or unfinished escape - or the source length. Printable ASCII and
+\ one-letter escapes need no other check.
+: PLAIN-END ( ptr u8 n n -- n ) {: a:ptr len:n pos:n :}
+   len pos ?do
+      a i + c@ {: c:n :}
+      c BACKSLASH = if
+         i 1+ len >= if i unloop exit then
+         a i 1+ + c@ SIMPLE-ESC? 0= if i unloop exit then
+         2
+      else
+         c SP < c UTF1-MAX >= or c DQ = or if i unloop exit then
+         1
+      then
+   +loop
+   len ;
+
+\ Move past the bytes PLAIN-END admits.
+: SKIP-PLAIN ( ptr cursor -- ) {: state:ptr :}
+   state CURSOR-SRC @ state CURSOR-SRC-LEN @ state CURSOR-POS @ PLAIN-END
+   state CURSOR-POS ! ;
+
+: SCAN-STRING ( ptr cursor -- n n ) {: state:ptr :}
    state ADVANCE
-   state CURSOR-POS @ state CURSOR-TOK-AT !
+   state CURSOR-POS @ {: at:n :}
    begin
+      state SKIP-PLAIN
       state EOF? if E-JR-STRING throw then
       state PEEK
       dup DQ = if
          drop
-         state CURSOR-POS @ state CURSOR-TOK-AT @ -
-         state CURSOR-TOK-LEN !
+         at state CURSOR-POS @ at -
          state ADVANCE exit
       then
       dup BACKSLASH = if
          drop state SCAN-ESC
       else
-         dup SP < if drop E-JR-STRING throw then
-         dup UTF1-MAX < if drop state ADVANCE else state swap SCAN-UTF8 then
+         \ A control byte is no UTF-8 lead, so SCAN-UTF8 refuses it.
+         state swap SCAN-UTF8
       then
    again ;
 
@@ -486,8 +516,8 @@ private
    dup EXP-LOWER = if drop TRUE exit then
    EXP-UPPER = ;
 
-: SCAN-NUMBER ( ptr cursor -- ) {: state:ptr :}
-   state CURSOR-POS @ state CURSOR-TOK-AT !
+: SCAN-NUMBER ( ptr cursor -- n n ) {: state:ptr :}
+   state CURSOR-POS @ {: at:n :}
    begin
       state CURSOR-POS @ state CURSOR-SRC-LEN @ < if
          state CURSOR-SRC @ state CURSOR-POS @ + c@ NUM-CHAR?
@@ -497,8 +527,7 @@ private
    while
       state CURSOR-POS dup @ 1+ swap !
    repeat
-   state CURSOR-POS @ state CURSOR-TOK-AT @ -
-   state CURSOR-TOK-LEN ! ;
+   at state CURSOR-POS @ at - ;
 
 : NV-DIGIT? ( ptr cursor ptr u8 n -- bool ) {: state:ptr a:ptr u:n :}
    state CURSOR-NUM-AT @ u >= if FALSE exit then
@@ -522,7 +551,6 @@ private
 : NV-FRAC? ( ptr cursor ptr u8 n -- bool ) {: state:ptr a:ptr u:n :}
    state CURSOR-NUM-AT @ u >= if TRUE exit then
    a state CURSOR-NUM-AT @ + c@ DOT <> if TRUE exit then
-   T-FLOAT state CURSOR-KIND !
    state CURSOR-NUM-AT dup @ 1+ swap !
    state a u NV-SKIP-DIGITS 0= if FALSE exit then
    TRUE ;
@@ -530,7 +558,6 @@ private
 : NV-EXP? ( ptr cursor ptr u8 n -- bool ) {: state:ptr a:ptr u:n :}
    state CURSOR-NUM-AT @ u >= if TRUE exit then
    a state CURSOR-NUM-AT @ + c@ dup EXP-LOWER <> swap EXP-UPPER <> and if TRUE exit then
-   T-FLOAT state CURSOR-KIND !
    state CURSOR-NUM-AT dup @ 1+ swap !
    state CURSOR-NUM-AT @ u < if
       a state CURSOR-NUM-AT @ + c@ dup PLUS = swap MINUS = or if
@@ -540,16 +567,20 @@ private
    state a u NV-SKIP-DIGITS 0= if FALSE exit then
    TRUE ;
 
-: JSON-NUMBER? ( ptr cursor ptr u8 n -- bool ) {: state:ptr a:ptr u:n :}
-   u 0= if FALSE exit then
+\ The kind of this number lexeme: T-INT for an integer part alone, T-FLOAT
+\ once a fraction or exponent follows it. A malformed lexeme is E-JR-NUMBER.
+\ READ-VALUE starts a number only at a minus or a digit, so u is positive.
+: NUMBER-KIND ( ptr cursor ptr u8 n -- n ) {: state:ptr a:ptr u:n :}
    0 state CURSOR-NUM-AT !
    a state CURSOR-NUM-AT @ + c@ MINUS = if
       state CURSOR-NUM-AT dup @ 1+ swap !
    then
-   state a u NV-INT? 0= if FALSE exit then
-   state a u NV-FRAC? 0= if FALSE exit then
-   state a u NV-EXP? 0= if FALSE exit then
-   state CURSOR-NUM-AT @ u = ;
+   state a u NV-INT? 0= if E-JR-NUMBER throw then
+   state CURSOR-NUM-AT @ {: int-end:n :}
+   state a u NV-FRAC? 0= if E-JR-NUMBER throw then
+   state a u NV-EXP? 0= if E-JR-NUMBER throw then
+   state CURSOR-NUM-AT @ u <> if E-JR-NUMBER throw then
+   state CURSOR-NUM-AT @ int-end > if T-FLOAT else T-INT then ;
 
 : RAW-SPAN$ ( ptr cursor -- ptr u8 n ) {: state:ptr :}
    state CURSOR-SRC @ state CURSOR-TOK-AT @ +
@@ -566,11 +597,17 @@ private
       1+
    repeat drop TRUE ;
 
+\ PUBLISH sets the token. A string, key, number or opened container becomes the
+\ token only once its whole advance has passed, so a failed advance leaves the
+\ previous token readable.
+: PUBLISH ( ptr cursor n n n -- ) {: state:ptr at:n len:n kind:n :}
+   at state CURSOR-TOK-AT !
+   len state CURSOR-TOK-LEN !
+   kind state CURSOR-KIND ! ;
+
 : READ-LIT ( ptr cursor ptr u8 n n -- n ) {: state:ptr la:ptr lu:n kind:n :}
    state la lu MATCH-LIT? 0= if E-JR-MALFORMED throw then
-   state CURSOR-POS @ state CURSOR-TOK-AT !
-   lu state CURSOR-TOK-LEN !
-   kind state CURSOR-KIND !
+   state state CURSOR-POS @ lu kind PUBLISH
    state CURSOR-POS dup @ lu + swap !
    state AFTER-VALUE
    kind ;
@@ -586,69 +623,58 @@ private
 
 \ ---- value readers --------------------------------------------------------
 : OPEN-OBJ ( ptr cursor -- n ) {: state:ptr :}
-   state CURSOR-POS @ state CURSOR-TOK-AT !
-   1 state CURSOR-TOK-LEN !
-   T-OBJ state CURSOR-KIND !
+   state CURSOR-POS @ {: at:n :}
    state CURSOR-POS dup @ 1+ swap !
    state TRUE PUSH
+   state at 1 T-OBJ PUBLISH
    ST-KEY state CURSOR-STATE !
    T-OBJ ;
 
 : OPEN-ARR ( ptr cursor -- n ) {: state:ptr :}
-   state CURSOR-POS @ state CURSOR-TOK-AT !
-   1 state CURSOR-TOK-LEN !
-   T-ARR state CURSOR-KIND !
+   state CURSOR-POS @ {: at:n :}
    state CURSOR-POS dup @ 1+ swap !
    state FALSE PUSH
+   state at 1 T-ARR PUBLISH
    ST-ELEM state CURSOR-STATE !
    T-ARR ;
 
 : CLOSE-OBJ ( ptr cursor -- n ) {: state:ptr :}
-   state CURSOR-POS @ state CURSOR-TOK-AT !
-   1 state CURSOR-TOK-LEN !
-   T-OBJ-END state CURSOR-KIND !
+   state state CURSOR-POS @ 1 T-OBJ-END PUBLISH
    state CURSOR-POS dup @ 1+ swap !
    state POP
    state AFTER-VALUE
    T-OBJ-END ;
 
 : CLOSE-ARR ( ptr cursor -- n ) {: state:ptr :}
-   state CURSOR-POS @ state CURSOR-TOK-AT !
-   1 state CURSOR-TOK-LEN !
-   T-ARR-END state CURSOR-KIND !
+   state state CURSOR-POS @ 1 T-ARR-END PUBLISH
    state CURSOR-POS dup @ 1+ swap !
    state POP
    state AFTER-VALUE
    T-ARR-END ;
 
 : READ-STRING ( ptr cursor -- n ) {: state:ptr :}
-   state SCAN-STRING
-   T-STR state CURSOR-KIND !
+   state state SCAN-STRING T-STR PUBLISH
    state AFTER-VALUE
    T-STR ;
 
 : READ-KEY ( ptr cursor -- n ) {: state:ptr :}
-   state SCAN-STRING
-   T-KEY state CURSOR-KIND !
+   state SCAN-STRING {: at:n len:n :}
    state SKIP-WS
    state CURSOR-POS @ state CURSOR-SRC-LEN @ >= if E-JR-COLON throw then
    state CURSOR-SRC @ state CURSOR-POS @ + c@ COLON <> if
       E-JR-COLON throw
    then
    state CURSOR-POS dup @ 1+ swap !
+   state at len T-KEY PUBLISH
    ST-VALUE state CURSOR-STATE !
    T-KEY ;
 
 : READ-NUMBER ( ptr cursor -- n ) {: state:ptr :}
-   state SCAN-NUMBER
-   state CURSOR-KIND @ {: prior:n :}
-   T-INT state CURSOR-KIND !
-   state state RAW-SPAN$ JSON-NUMBER? 0= if
-      prior state CURSOR-KIND !
-      E-JR-NUMBER throw
-   then
+   state SCAN-NUMBER {: at:n len:n :}
+   state state CURSOR-SRC @ at + len NUMBER-KIND {: kind:n :}
+   state at len kind PUBLISH
    state AFTER-VALUE
-   state CURSOR-KIND @ ;
+   kind ;
 
 : READ-VALUE ( ptr cursor n -- n ) {: state:ptr c:n :}
    c LBRACE = if state OPEN-OBJ exit then
@@ -691,9 +717,7 @@ private
    E-JR-COMMA throw ;
 
 : PUBLISH-END ( ptr cursor -- n ) {: state:ptr :}
-   T-END state CURSOR-KIND !
-   state CURSOR-POS @ state CURSOR-TOK-AT !
-   0 state CURSOR-TOK-LEN !
+   state state CURSOR-POS @ 0 T-END PUBLISH
    T-END ;
 
 : STEP ( ptr cursor -- n ) {: state:ptr :}
@@ -770,12 +794,6 @@ public
 private
 
 \ ---- string value decode (unescape into caller buffer) --------------------
-: SPAN-AT ( ptr cursor n -- n ) {: state:ptr idx:n :}
-   state state CURSOR-TOK-AT @ idx + AT ;
-
-: UNESC-CHAR ( ptr cursor -- n ) {: state:ptr :}
-   state state CURSOR-IN @ SPAN-AT ;
-
 : WRITE-BYTE ( ptr cursor n -- ) {: state:ptr byte:n :}
    state CURSOR-OUT @ state CURSOR-DST-CAP @ >= if E-JR-STATE throw then
    byte state CURSOR-DST @ state CURSOR-OUT @ + c! ;
@@ -797,18 +815,17 @@ private
    then
    state CURSOR-OUT dup @ 1+ swap ! ;
 
-: HEX-NEXT ( ptr cursor n -- n ) {: state:ptr value:n :}
+: HEX-NEXT ( ptr cursor ptr u8 n -- n ) {: state:ptr a:ptr value:n :}
    value HEX-BASE *
-   state state CURSOR-IN @ SPAN-AT HEX-DIGIT
+   a state CURSOR-IN @ + c@ STR-HEX-DIGIT-VALUE
    +
    state CURSOR-IN dup @ 1+ swap ! ;
 
-: READ-HEX4 ( ptr cursor -- n ) {: state:ptr :}
-   state CURSOR-IN @ 4 + state CURSOR-TOK-LEN @ > if E-JR-ESCAPE throw then
-   state 0 HEX-NEXT
-   state swap HEX-NEXT
-   state swap HEX-NEXT
-   state swap HEX-NEXT ;
+: READ-HEX4 ( ptr cursor ptr u8 -- n ) {: state:ptr a:ptr :}
+   state a 0 HEX-NEXT
+   state a rot HEX-NEXT
+   state a rot HEX-NEXT
+   state a rot HEX-NEXT ;
 
 : EMIT-UTF8 ( ptr cursor n -- ) {: state:ptr cp:n :}
    cp UTF1-MAX < if state cp EMIT-BYTE exit then
@@ -826,48 +843,47 @@ private
    state cp 6 rshift UTF-MASK and UTF-CONT or EMIT-BYTE
    state cp UTF-MASK and UTF-CONT or EMIT-BYTE ;
 
-: UNI ( ptr cursor -- ) {: state:ptr :}
-   state READ-HEX4 state CURSOR-HI !
-   state CURSOR-HI @ SUR-HI < if
-      state state CURSOR-HI @ EMIT-UTF8 exit
-   then
-   state CURSOR-HI @ SUR-END >= if
-      state state CURSOR-HI @ EMIT-UTF8 exit
-   then
-   state CURSOR-HI @ SUR-LO >= if E-JR-SURROGATE throw then
-   state CURSOR-IN @ 2 + state CURSOR-TOK-LEN @ > if E-JR-SURROGATE throw then
-   state state CURSOR-IN @ SPAN-AT BACKSLASH <> if E-JR-SURROGATE throw then
-   state state CURSOR-IN @ 1+ SPAN-AT CH-U <> if E-JR-SURROGATE throw then
+\ SCAN-STRING passed this \u escape and any surrogate pair, so UNI only decodes.
+: UNI ( ptr cursor ptr u8 -- ) {: state:ptr a:ptr :}
+   state a READ-HEX4 {: hi:n :}
+   hi SUR-HI < hi SUR-END >= or if state hi EMIT-UTF8 exit then
    state CURSOR-IN dup @ 2 + swap !
-   state READ-HEX4 state CURSOR-LO !
-   state CURSOR-LO @ SUR-LO < if E-JR-SURROGATE throw then
-   state CURSOR-LO @ SUR-END >= if E-JR-SURROGATE throw then
-   state SUR-BASE
-   state CURSOR-HI @ SUR-HI - SUR-SHIFT lshift +
-   state CURSOR-LO @ SUR-LO - +
-   EMIT-UTF8 ;
+   state a READ-HEX4 {: lo:n :}
+   state SUR-BASE hi SUR-HI - SUR-SHIFT lshift + lo SUR-LO - + EMIT-UTF8 ;
 
-: ESC-BYTE ( ptr cursor n -- ) {: state:ptr esc:n :}
-   esc DQ = if state DQ EMIT-BYTE exit then
-   esc BACKSLASH = if state BACKSLASH EMIT-BYTE exit then
-   esc SLASH = if state SLASH EMIT-BYTE exit then
-   esc CH-B = if state BS EMIT-BYTE exit then
-   esc CH-F = if state FF EMIT-BYTE exit then
-   esc CH-N = if state LF EMIT-BYTE exit then
-   esc CH-R = if state CR EMIT-BYTE exit then
-   esc CH-T = if state TAB EMIT-BYTE exit then
-   E-JR-ESCAPE throw ;
-
-: UNESC-STEP ( ptr cursor -- ) {: state:ptr :}
-   state UNESC-CHAR BACKSLASH <> if
-      state state UNESC-CHAR EMIT-BYTE
-      state CURSOR-IN dup @ 1+ swap ! exit
-   then
-   state CURSOR-IN @ 1+ state CURSOR-TOK-LEN @ >= if E-JR-ESCAPE throw then
-   state state CURSOR-IN @ 1+ SPAN-AT state CURSOR-ESC !
-   state CURSOR-IN dup @ 2 + swap !
-   state CURSOR-ESC @ CH-U = if state UNI exit then
-   state state CURSOR-ESC @ ESC-BYTE ;
+\ Decode from in until the token ends or a \u escape starts. Each byte and
+\ one-letter escape writes or matches one byte as EMIT-BYTE would, with out on
+\ the stack. A \u escape returns with in at its backslash; the registers hold
+\ in and out on return.
+: UNESC-RUN ( ptr cursor ptr u8 n -- ) {: state:ptr a:ptr len:n :}
+   state CURSOR-DST @ {: d:ptr :}
+   state CURSOR-DST-CAP @ {: cap:n :}
+   state CURSOR-MODE @ UMODE-MATCH = {: match:bool :}
+   UNESC-MAP BYTE-VIEW {: m:ptr :}
+   state CURSOR-OUT @ len state CURSOR-IN @ ?do
+      a i + c@ {: c:n :}
+      c BACKSLASH = if
+         a i 1+ + c@ {: e:n :}
+         e CH-U = if i state CURSOR-IN ! state CURSOR-OUT ! unloop exit then
+         m e + c@
+         2
+      else
+         c 1
+      then
+      {: b:n step:n :}
+      match if
+         dup cap >= if
+            0 state CURSOR-MATCHED !
+         else
+            d over + c@ b <> if 0 state CURSOR-MATCHED ! then
+         then
+      else
+         dup cap >= if E-JR-STATE throw then
+         d over + b swap c!
+      then
+      1+ step
+   +loop
+   state CURSOR-OUT ! len state CURSOR-IN ! ;
 
 : UNESC-RESET ( ptr cursor ptr u8 n n -- ) {: state:ptr dst:ptr cap:n mode:n :}
    dst state CURSOR-DST !
@@ -877,9 +893,18 @@ private
    mode state CURSOR-MODE !
    1 state CURSOR-MATCHED ! ;
 
+\ Only a token SCAN-STRING passed is T-STR or T-KEY, so it lies inside the
+\ source and every backslash in it starts a valid escape. UNI reads a \u
+\ escape's digits from a unchecked.
 : UNESC-ALL ( ptr cursor -- ) {: state:ptr :}
-   begin state CURSOR-IN @ state CURSOR-TOK-LEN @ < while
-      state UNESC-STEP
+   state CURSOR-TOK-LEN @ {: len:n :}
+   state CURSOR-SRC @ state CURSOR-TOK-AT @ + {: a:ptr :}
+   begin state CURSOR-IN @ len < while
+      state a len UNESC-RUN
+      state CURSOR-IN @ len < if
+         state CURSOR-IN dup @ 2 + swap !
+         state a UNI
+      then
    repeat ;
 
 : STR-INNER ( ptr cursor ptr u8 n -- n ) {: state:ptr dst:ptr cap:n :}
