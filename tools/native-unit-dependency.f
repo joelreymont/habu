@@ -1965,12 +1965,11 @@ variable USER-READ
 
 : COMPILED! ( -- ) CAPTURE-COMPILER-ROLE ;
 
-\ The frame's rows, and whether the definition may be stored: an ORDERED row
-\ names a fact no later build can re-verify.
-: DEFINITION-EXPORT ( -- ptr u8 n bool )
+\ Whether the definition may be stored: an ORDERED row names a fact no later
+\ build can re-verify.
+: DEFINITION-STORABLE? ( -- bool )
    FRAME {: off:n :}
-   off BYTES USED @ off - {: deps:ptr depsu:n :}
-   deps depsu deps depsu HAS-ORDERED? 0= ;
+   off BYTES USED @ off - HAS-ORDERED? 0= ;
 
 \ The innermost file frame's rows, and whether its file may be stored: no
 \ ORDERED row and no ORDERED reason.

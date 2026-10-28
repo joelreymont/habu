@@ -72,8 +72,7 @@ private
 \ level issued, segment after segment, one record each: its kind (OUT-EMIT or
 \ OUT-WRITE) and byte length, then its bytes, an emit's character as one
 \ cell. A segment that issued one adds one OUT row after its SEGMENT and FFI
-\ rows, also when it adds no SEGMENT row. A definition's own dependency slot
-\ stays out: the file's rows cover it.
+\ rows, also when it adds no SEGMENT row.
 42031 constant DEF-SLOTS
 14 constant DEPS-SLOT
 \ An index row's name span: after the ordinal and the eight section lengths.
@@ -1553,9 +1552,9 @@ FFI-OBSERVER-CELL
 
 TASK-OBSERVER-CELL
 
-\ A definition payload uses the same outer envelope as FILE but owns no FILE
-\ rows or DATA prefix. Section 1 is one 80-byte metadata row;
-\ section 15 carries the function facts taken by the live native publisher.
+\ A definition payload is its DEF-SLOTS sections in the FILE object, framed
+\ by its index row. Section 1 is one 80-byte metadata row; section 15
+\ carries the function facts taken by the live native publisher.
 40 constant DEF-CALL-BYTES
 40 constant DEF-ADDR-BYTES
 80 constant DEF-META-BYTES
@@ -1910,25 +1909,22 @@ variable DEF-HELD-SIZE
    DEF-EPOCH-DELTA @ DEF-META 64 + LE:U64!
    DEF-BUILD-DELTA @ DEF-META 72 + LE:U64! ;
 
-: DEF-PACK-SECTIONS ( ptr u8 n -- )
-   {: deps:ptr depsu:n :}
-   NUNIT-FILE:RESET-KEEP
-   NUNIT-FILE:SECTION-COUNT 0 ?do i NULL-PTR 0 NUNIT-FILE:SECTION! loop
-   0 0 DEF-CODE DEF-CODE-U @ NUNIT-FILE:SECTION!
-   1 DEF-META DEF-META-BYTES NUNIT-FILE:SECTION!
-   DEF-CALL-U @ 0 > if
-      2 0 DEF-CALL DEF-CALL-U @ NUNIT-FILE:SECTION!
-   then
-   DEF-ADDR-U @ 0 > if
-      3 0 DEF-ADDR DEF-ADDR-U @ NUNIT-FILE:SECTION!
-   then
-   DEF-LIT-U @ 0 > if
-      10 0 DEF-LIT DEF-LIT-U @ NUNIT-FILE:SECTION!
-   then
-   13 DEF-PENDING @ DEF-PENDING @ 1+ NFILE-REF:ENCODE
-      NUNIT-FILE:SECTION!
-   14 deps depsu NUNIT-FILE:SECTION!
-   15 0 DEF-HOST DEF-HOST-U @ NUNIT-FILE:SECTION! ;
+\ The finished definition's section in DEF-SLOTS slot slot. Slot 5 is empty:
+\ the file's segment carries the checker slice.
+: DEF-SECTION ( n -- ptr u8 n )
+   {: slot:n :}
+   slot 0 = if 0 DEF-CODE DEF-CODE-U @ exit then
+   slot 1 = if DEF-META DEF-META-BYTES exit then
+   slot 2 = if DEF-CALL-U @ 0= if NULL-PTR 0 exit then
+      0 DEF-CALL DEF-CALL-U @ exit then
+   slot 3 = if DEF-ADDR-U @ 0= if NULL-PTR 0 exit then
+      0 DEF-ADDR DEF-ADDR-U @ exit then
+   slot 5 = if NULL-PTR 0 exit then
+   slot 10 = if DEF-LIT-U @ 0= if NULL-PTR 0 exit then
+      0 DEF-LIT DEF-LIT-U @ exit then
+   slot 13 = if DEF-PENDING @ dup 1+ NFILE-REF:ENCODE exit then
+   slot 15 = if 0 DEF-HOST DEF-HOST-U @ exit then
+   BAD ;
 
 : DEF-RESET ( -- )
    0 DEF-ACTIVE ! 0 DEF-EMITTED ! 0 DEF-FINISHED !
@@ -2176,13 +2172,6 @@ public
    DEF-FINISHED @ 0= if BAD then
    DEF-CACHEABLE @ 0<> ;
 
-: PACK-DEFINITION ( ptr u8 n ptr u8 n -- ptr u8 n )
-   {: key:ptr keyu:n deps:ptr depsu:n :}
-   NUNIT-CAPTURE:PROFILE-CK
-   DEF-FINISHED @ 0= if BAD then
-   deps depsu DEF-PACK-SECTIONS
-   NUNIT-FILE:ARCH-AARCH64 s" DEFINITION" key keyu NUNIT-FILE:PACK ;
-
 : DISCARD-DEFINITION ( -- )
    DEF-DROP-PLAN dup 0<> if throw then drop
    NUNIT-FILE:RESET-KEEP ;
@@ -2198,32 +2187,34 @@ public
       else drop then
    DEF-RESET ;
 
-\ Definition ord of the innermost open file joins its object: the payload's
+\ The finished definition ord joins the innermost open file's object: its
 \ sections in DEF-SLOTS order, and one index row with its name span at end.
-\ The payload's own dependency slot stays out; any other slot is a payload
-\ this format cannot hold. Its result digest is bound even when the file is
-\ refused, so the digest never depends on whether the file writes an object.
-: FILE-ADD-DEFINITION ( ptr u8 n ptr u8 n n n n -- )
-   {: bytes:ptr size:n key:ptr keyu:n ord:n at:n end:n :}
+\ Its result digest is bound from that payload viewed as a warm install views
+\ it, also when the file is refused, so the digest never depends on whether
+\ the file writes an object; a refused file then drops the payload.
+: FILE-ADD-DEFINITION ( n n n -- )
+   {: ord:n at:n end:n :}
    FILE-OPEN? 0= if exit then
-   bytes size NUNIT-FILE:ARCH-AARCH64 s" DEFINITION" key keyu
-      NUNIT-FILE:READ-VIEW
-   ord NFILE-REF:BIND-RESULT
-   FILE-REFUSED? if NUNIT-FILE:RESET-KEEP exit then
-   INDEX-U @ INDEX-BYTES / {: row:n :}
-   row 1+ FILE-ORDS-RESERVE
-   ord row FILE-ORDS !
+   NUNIT-CAPTURE:PROFILE-CK
+   DEF-FINISHED @ 0= if BAD then
+   DEFS-U @ {: defs:n :}
+   INDEX-U @ {: index:n :}
    ord FO-FIRST FO @ - dup 0 < if BAD then INDEX-N
    NUNIT-FILE:SECTION-COUNT 0 ?do
-      i NUNIT-FILE:SECTION$ {: a:ptr u:n :}
       DEF-SLOTS i rshift 1 and 0<> if
+         i DEF-SECTION {: a:ptr u:n :}
          a u DEFS+ u INDEX-N
-      else
-         i DEPS-SLOT <> u 0<> and if BAD then
       then
    loop
    at INDEX-N end INDEX-N
-   NUNIT-FILE:RESET-KEEP ;
+   DEF-SLOTS index 8 + FILE-INDEX defs FILE-DEFS DEFS-U @ defs -
+      NUNIT-FILE:SECTIONS-VIEW
+   ord NFILE-REF:BIND-RESULT
+   NUNIT-FILE:RESET-KEEP
+   FILE-REFUSED? if defs DEFS-U ! index INDEX-U ! exit then
+   index INDEX-BYTES / {: row:n :}
+   row 1+ FILE-ORDS-RESERVE
+   ord row FILE-ORDS ! ;
 
 private
 

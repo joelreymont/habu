@@ -1,8 +1,8 @@
 \ This object file owns only portable bytes: a header and twenty sections
-\ in slot order. Each caller names what its slots hold (NUNIT-OBJECT's
-\ DEFINITION and FILE objects); an unused slot is empty.
+\ in slot order. Each caller names what its slots hold: NUNIT-OBJECT's FILE
+\ object, which carries every definition; an unused slot is empty.
 \
-\ Version 16 header (all integers are little-endian u64): magic at 0, version at
+\ Header (all integers are little-endian u64): magic at 0, version at
 \ 8, architecture at 16, package-name length at 24, package name at 32 (64
 \ bytes), source key at 96 (64 bytes), and twenty section lengths at 160.
 
@@ -140,8 +140,8 @@ ARCH-ARM64 constant ARCH-AARCH64
 : RESET ( -- )
    CLOSE TABLE-OPEN ;
 
-\ Definition objects reuse the file and section arenas for a whole source
-\ load.  The ordinary FILE reset still releases them at its boundary.
+\ Views (READ-VIEW, SECTIONS-VIEW) and the FILE pack keep the file and section
+\ arenas for a whole source load; RESET releases them at the FILE boundary.
 : RESET-KEEP ( -- )
    0 READY ! 0 SECTION-MASK ! TABLE-OPEN ;
 

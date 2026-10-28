@@ -82,7 +82,6 @@ $100000001b3 constant FNV-PRIME
 
 \ One FRAME-BYTES record per open file depth.
 DYNAMIC-BUFFER FRAMES u8
-DYNAMIC-BUFFER PENDING-KEY u8
 \ One entry read and one image written at a time: DISPATCH-BUSY serialises
 \ every lookup and store.
 DYNAMIC-BUFFER ENTRY u8
@@ -171,7 +170,6 @@ variable HOST-ENV-USE
 variable HOST-ENV-RESET
 create HASH-CTX SHA256-CTX-BYTES allot
 create HASH-RAW 32 allot
-create KEY-HEX 64 allot
 create HASH-CELL CELL allot
 create FILE-KEY-HEX 64 allot
 create RESULTS-HEX 64 allot
@@ -255,7 +253,6 @@ PTR-VARIABLE DISPATCH-SOURCE
 variable DISPATCH-SOURCE-U
 PTR-VARIABLE STAGED-REASON
 variable STAGED-REASON-U
-variable PENDING-KEY-U
 
 : ORDINARY-UNIT ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
    {: path:ptr pathu:n root:ptr rootu:n source:ptr sourceu:n q :}
@@ -645,33 +642,13 @@ variable TEE-ERR
    check@ 0= if 0 exit then
    ORIGIN-HOOK-ALLOWED? if 1 else 2 then ;
 
-\ The ambient compile state both keys hash: the tier, the checker state, the
+\ The ambient compile state the file key hashes: the tier, the checker state, the
 \ open borrow and the dispatch role.
 : AMBIENT-HASH ( -- )
    data-base NCOMP-DISPATCH:TIER-CELL + @ HASH-N
    CHECK-STATE HASH-N
    BORROW-ACTIVE @ HASH-N
    DISPATCH-ROLE 32 HASH-S ;
-
-: DEFINITION-KEY ( ptr u8 n ptr u8 n -- ptr u8 n )
-   {: source:ptr sourceu:n pending:ptr pendingu:n :}
-   s" habu-native-definition-v9" HASH-START
-   BUILD-TARGET:CURRENT RTARGET:PROFILE$ HASH-S
-   s" HBNUNIT2-definition-v2" HASH-S
-   AMBIENT-HASH
-   pending pendingu HASH-S
-   source sourceu HASH-S
-   HASH-CTX HASH-RAW SHA256-END
-   HASH-RAW KEY-HEX SHA256>HEX
-   KEY-HEX 64 ;
-
-: PENDING-COPY ( -- ptr u8 n )
-   NFILE-REF:PENDING-KEY$ {: key:ptr keyu:n :}
-   keyu 0 <= if BAD then
-   keyu PENDING-KEY-RESERVE
-   key 0 PENDING-KEY keyu BYTE-COPY
-   keyu PENDING-KEY-U !
-   0 PENDING-KEY keyu ;
 
 : OPAQUE? ( -- bool )
    OPAQUE-XT @ dup 0= if drop true exit then
@@ -774,10 +751,9 @@ variable TEE-ERR
 
 \ Compile the staged definition under capture, for reason. With store it is
 \ admitted: a definition the compiler calls cacheable and free of ordered
-\ dependencies is published. It is packed into its file's object while one
-\ is open.
-: COLD-CANDIDATE ( ptr u8 n n ptr u8 n bool -- )
-   {: key:ptr keyu:n ord:n reason:ptr reasonu:n store:bool :}
+\ dependencies is published. It joins its file's object while one is open.
+: COLD-CANDIDATE ( n ptr u8 n bool -- )
+   {: ord:n reason:ptr reasonu:n store:bool :}
    reason STAGED-REASON ! reasonu STAGED-REASON-U !
    ord NUNIT-DEP:BEGIN-DEFINITION
    NUNIT-OBJECT:DEFINITION-BEGIN
@@ -796,17 +772,10 @@ variable TEE-ERR
          s" not-cacheable" ord NUNIT-OBJECT:REPORT-STORE-REFUSED
       then
       store cacheable and {: admitted:bool :}
-      admitted if NUNIT-DEP:DEFINITION-EXPORT else NULL-PTR 0 false then
-         {: deps:ptr depsu:n storable:bool :}
-      storable if
-         ord 0 PENDING-KEY PENDING-KEY-U @ NFILE-REF:PUBLISH-DEFINITION
-      then
-      NUNIT-OBJECT:FILE-OPEN? if
-         key keyu deps depsu NUNIT-OBJECT:PACK-DEFINITION
-            {: object:ptr objectu:n :}
-         object objectu key keyu ord DEF-SPAN
-            NUNIT-OBJECT:FILE-ADD-DEFINITION
-      then
+      admitted if NUNIT-DEP:DEFINITION-STORABLE? else false then
+         {: storable:bool :}
+      storable if ord NFILE-REF:PUBLISH-DEFINITION then
+      ord DEF-SPAN NUNIT-OBJECT:FILE-ADD-DEFINITION
       storable 0= if
          admitted if
             s" ordered-dependency" ord NUNIT-OBJECT:REPORT-STORE-REFUSED
@@ -828,13 +797,11 @@ variable TEE-ERR
    then
    1 DISPATCH-BUSY !
    ndict@ {: ord:n :}
-   PENDING-COPY {: pending:ptr pendingu:n :}
-   source sourceu pending pendingu DEFINITION-KEY
-      {: key:ptr keyu:n :}
+   NFILE-REF:PENDING-KEY$ 2drop
    reasonu 0 > if
-      key keyu ord reason reasonu false COLD-CANDIDATE
+      ord reason reasonu false COLD-CANDIDATE
    else
-      key keyu ord s" eligible-cache-miss" true COLD-CANDIDATE
+      ord s" eligible-cache-miss" true COLD-CANDIDATE
    then
    0 DISPATCH-BUSY ! ;
 
@@ -1254,7 +1221,7 @@ variable TEE-ERR
 \ object and a differing one fails its rows.
 : FILE-KEY ( -- ptr u8 n )
    ENGINE-ID:KEY$ {: engine:ptr engineu:n :}
-   s" habu-native-file-v4" HASH-START
+   s" habu-native-file" HASH-START
    engine engineu HASH-S
    BUILD-TARGET:CURRENT RTARGET:PROFILE$ HASH-S
    NATIVE? @ HASH-N
@@ -2060,7 +2027,7 @@ variable IMPORT-AT
    RESULTS-HEX 64 ZERO-SCRATCH
    HASH-CTX SHA256-CTX-BYTES ZERO-SCRATCH
    HASH-RAW 32 ZERO-SCRATCH
-   KEY-HEX 64 ZERO-SCRATCH HASH-CELL CELL ZERO-SCRATCH ;
+   HASH-CELL CELL ZERO-SCRATCH ;
 
 \ The process's first session takes the seed's record count.
 : BOOT-TAKE ( -- )
@@ -2140,7 +2107,7 @@ variable IMPORT-AT
    NUNIT-OBJECT:CLOSE
    CLEAR-NOMINALS
    NFILE-REF:CLOSE
-   FRAMES-RELEASE PENDING-KEY-RELEASE
+   FRAMES-RELEASE
    ENTRY-RELEASE STORE-IMAGE-RELEASE OBJECTS-RELEASE
    0 DEPTH ! 0 SESSION ! 0 SEEDED !
    0 DISPATCH-BUSY ! 0 DISPATCH-ROLE-KNOWN !
@@ -2148,7 +2115,7 @@ variable IMPORT-AT
    0 ORIGIN-GETTER !
    0 IMPORT-KIND ! 0 IMPORT-FED ! 0 IMPORT-AT !
    0 HARVEST-N ! 0 HARVEST-FED !
-   0 OPAQUE-XT ! 0 PENDING-KEY-U ! 0 OBJECTS-U !
+   0 OPAQUE-XT ! 0 OBJECTS-U !
    REPORT? @ if PRINT-COUNTS then
    CLEAR-SCRATCH
    tee-rc 0<> if tee-rc throw then ;

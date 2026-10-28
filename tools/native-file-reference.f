@@ -966,14 +966,13 @@ private
 
 public
 
-: PUBLISH-DEFINITION ( n ptr u8 n -- )
-   {: ord:n key:ptr keyu:n :}
+: PUBLISH-DEFINITION ( n -- ) {: ord:n :}
    ord PUBLISH-CHECK
-   ord key keyu BIND-DECL
+   ord PENDING-KEY-OFF @ KEY-ARENA PENDING-KEY-U @ BIND-DECL
    ord PUBLISH-LIVE ;
 
 \ Publish the pending definition ord whose declaration a file object already
-\ bound: PUBLISH-DEFINITION without its key.
+\ bound: PUBLISH-DEFINITION without binding its declaration.
 : PUBLISH-PREPARED ( n -- )
    dup PUBLISH-CHECK PUBLISH-LIVE ;
 
