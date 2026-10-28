@@ -18,11 +18,13 @@
 \ so several emitters can be loaded in one process and one is selected at a
 \ time, per definition if need be. SELECT of an architecture no emitter
 \ provided throws E-T0-TARGET. A cell an emitter leaves unset stays unset in
-\ its own slot, whatever another emitter installed, and executing it ends
-\ the process with `hb: unset quotation` (exit 86, ENGINE-ERROR:CALLABLE-ABI,
-\ src/habu/kernel-x64.f and src/habu/habu1.f), so an operation never runs
-\ another target's code or garbage. An operation called before any SELECT
-\ throws E-LAYOUT-BOUNDS (7122): no slot is selected.
+\ its own slot, whatever another emitter installed, so an operation never runs
+\ another target's code or garbage: SLOT-CLOSE and the callback stub, which
+\ not every emitter provides, throw E-T0-UNFILLED for an unset cell, and
+\ executing any other unset cell ends the process with `hb: unset quotation`
+\ (exit 86, ENGINE-ERROR:CALLABLE-ABI, src/habu/kernel-x64.f and
+\ src/habu/habu1.f). An operation called before any SELECT throws
+\ E-LAYOUT-BOUNDS (7122): no slot is selected.
 \
 \ THE SINK. OPEN begins an emission, emptying the emitter's sink and the
 \ seam's rows; CLOSE ends a unit. Once the last unit is closed, SEAL or
@@ -42,8 +44,11 @@
 \ THE ROWS are the seam's, filed by the emitter: CALL-ROW+ a call or tail site
 \ ( at kind target loc ), kind NEMIT:CALL or NEMIT:TAIL, loc the byte offset of
 \ the calling token in the body text; ADDR-ROW+ a code, data or quotation
-\ address site ( at kind target ), kind NEMIT:ADDR-DATA, NEMIT:ADDR-CODE or
-\ ADDR-QUOT-KIND. at is the instruction's first byte, from the emission's byte
+\ address site ( at kind target origin ), kind NEMIT:ADDR-DATA, NEMIT:ADDR-CODE
+\ or ADDR-QUOT-KIND, origin what NEMIT:ADDR-SITE+ files for it: a data
+\ address's comes with it through ADDR-DATA (a string literal's is the one
+\ NSTR:INTERN-SOURCE answers), and a code or quotation address has none, -1.
+\ at is the instruction's first byte, from the emission's byte
 \ 0, and each unit's rows follow the previous unit's. A quotation's target is
 \ its unit number; on x86-64 the address its instruction holds is the unit's
 \ offset, which QUOT-OPEN writes. An emitter whose quotation address is
@@ -58,8 +63,21 @@
 \ emitted, every call field zero and every quotation address row its unit's
 \ offset, the unplaced form a shadow reads (src/arch/x86-64/passes.f
 \ SHADOW-ADDRS). Both open NEMIT for the selected architecture with no
-\ trailing return, file the units, the call rows with implementation 0 and the
-\ address rows with origin -1, a quotation's as NEMIT:ADDR-CODE, and seal it.
+\ trailing return, so the record is the emission's whole span, file the
+\ units, the call rows with implementation 0 and the address rows with their
+\ origins, a quotation's as NEMIT:ADDR-CODE, and seal it.
+\
+\ THE PATCH SLOT. SLOT-CLOSE closes a unit that leaves by a return which is
+\ the does> patch slot: the emitter files that return's offset with
+\ PATCH-SLOT!, and sealing files it as NEMIT:PATCH-SLOT!. The kernel finds the
+\ slot from the record's length, so the return is the emission's last
+\ instruction: a unit begun after it, and a callback stub with it, throw
+\ E-T0-SLOT.
+\
+\ THE CALLBACK STUB. While NCBSTUB (src/compiler/native/callback-stub.f) is
+\ armed, sealing has the emitter append the stub tier 1 writes (its WRITE-STUB)
+\ after the last unit, files it as one more function, the last, and SEAL
+\ records its placed address as NCBSTUB:ENTRY!.
 \
 \ CONTROL. The front end drives the structured words and the counted-loop
 \ words in the order the source nests them; it refuses a structure out of
@@ -76,6 +94,7 @@
 require src/lib/type/deftype.f
 require src/compiler/target.f
 require src/compiler/native/emission.f
+require src/compiler/native/callback-stub.f
 
 package T0-EMIT
 public
@@ -85,6 +104,8 @@ public
 -9599 constant E-LAST
 -9590 constant E-T0-TARGET   \ SELECT of an architecture no emitter provided
 -9591 constant E-T0-UNIT     \ QUOT-OPEN of a unit other than the next one
+-9592 constant E-T0-UNFILLED \ an operation the selected emitter does not provide
+-9593 constant E-T0-SLOT     \ code after the does> patch slot
 
 DEFTYPE VREG       \ a virtual register, 0 .. VREGS-1
 DEFTYPE ALU        \ a two-operand operation OP applies
@@ -167,11 +188,14 @@ DYNAMIC-BUFFER CALL-KIND-AT n
 DYNAMIC-BUFFER CALL-TO n
 DYNAMIC-BUFFER CALL-LOC n
 variable N-ADDRS
-DYNAMIC-BUFFER ADDR-AT n              \ address row: first byte, kind, target
-DYNAMIC-BUFFER ADDR-KIND-AT n
+DYNAMIC-BUFFER ADDR-AT n              \ address row: first byte, kind, target,
+DYNAMIC-BUFFER ADDR-KIND-AT n         \ origin
 DYNAMIC-BUFFER ADDR-TO n
+DYNAMIC-BUFFER ADDR-ORIGIN n
+variable SLOT-AT                      \ the patch slot's offset, or -1
 
-: ROWS-CLEAR ( -- ) 0 N-UNITS !  0 N-CALLS !  0 N-ADDRS ! ;
+: ROWS-CLEAR ( -- ) 0 N-UNITS !  0 N-CALLS !  0 N-ADDRS !  -1 SLOT-AT ! ;
+: SLOT? ( -- bool ) SLOT-AT @ 0 >= ;
 
 public
 
@@ -189,11 +213,15 @@ public
    at k CALL-AT !  kind k CALL-KIND-AT !  to k CALL-TO !  loc k CALL-LOC !
    k 1+ N-CALLS ! ;
 
-: ADDR-ROW+ ( n n n -- ) {: at:n kind:n to:n :}
+: ADDR-ROW+ ( n n n n -- ) {: at:n kind:n to:n origin:n :}
    N-ADDRS @ {: k:n :}
    k 1+ ADDR-AT-RESERVE  k 1+ ADDR-KIND-AT-RESERVE  k 1+ ADDR-TO-RESERVE
-   at k ADDR-AT !  kind k ADDR-KIND-AT !  to k ADDR-TO !
+   k 1+ ADDR-ORIGIN-RESERVE
+   at k ADDR-AT !  kind k ADDR-KIND-AT !  to k ADDR-TO !  origin k ADDR-ORIGIN !
    k 1+ N-ADDRS ! ;
+
+\ File the offset of the return SLOT-CLOSE left by.
+: PATCH-SLOT! ( n -- ) SLOT-AT ! ;
 
 \ The rows read back, for an emitter's PATCH: unit k's start, and call row and
 \ address row k as ( at kind target ).
@@ -214,8 +242,17 @@ ARCHES TYPED-BUFFER RETURN-XT [ -- ]
 ARCHES TYPED-BUFFER CLOSE-XT [ -- ]
 ARCHES TYPED-BUFFER BYTES-XT [ -- ptr u8 n ]
 ARCHES TYPED-BUFFER PATCH-XT [ n -- ]
+ARCHES TYPED-BUFFER SLOT-CLOSE-XT [ -- ]
+ARCHES TYPED-BUFFER CB-STUB-XT [ -- n ]
 
 private
+
+\ An xt as the number its cell holds: 0 while unset.
+CAST: XT>N ( [ R -- S ] -- n )
+
+\ The xt of an operation not every emitter provides; unset, E-T0-UNFILLED.
+: FILLED ( [ R -- S ] -- [ R -- S ] )
+   dup XT>N 0= if E-T0-UNFILLED throw then ;
 
 \ The finished emission, once the last unit is closed.
 : BYTES ( -- ptr u8 n ) CUR @ BYTES-XT @ execute ;
@@ -231,16 +268,22 @@ public
 \ Begin quotation unit n, which ADDR-QUOT named, and bind the address
 \ ADDR-QUOT emitted to it. Units begin in order, so n is the count begun so
 \ far.
-: QUOT-OPEN ( n -- ) CUR @ QUOT-OPEN-XT @ execute ;
+: QUOT-OPEN ( n -- )
+   SLOT? if E-T0-SLOT throw then
+   CUR @ QUOT-OPEN-XT @ execute ;
 
 \ Leave the word, from the middle of its body or at its end.
 : RETURN ( -- ) CUR @ RETURN-XT @ execute ;
 
 : CLOSE ( -- ) CUR @ CLOSE-XT @ execute ;
 
+\ Leave the word by a return that is the does> patch slot, and close the unit
+\ (THE PATCH SLOT).
+: SLOT-CLOSE ( -- ) CUR @ SLOT-CLOSE-XT @ FILLED execute ;
+
 \ ---- values ------------------------------------------------------------------
 ARCHES TYPED-BUFFER LIT-XT [ n vreg -- ]
-ARCHES TYPED-BUFFER ADDR-DATA-XT [ n vreg -- ]
+ARCHES TYPED-BUFFER ADDR-DATA-XT [ n n vreg -- ]
 ARCHES TYPED-BUFFER ADDR-CODE-XT [ n vreg -- ]
 ARCHES TYPED-BUFFER ADDR-QUOT-XT [ n vreg -- ]
 ARCHES TYPED-BUFFER PUSH-XT [ vreg -- ]
@@ -254,7 +297,8 @@ ARCHES TYPED-BUFFER SLOT-STORE-XT [ vreg n -- ]
 ARCHES TYPED-BUFFER SLOT-LOAD-XT [ vreg n -- ]
 
 : LIT ( n vreg -- ) CUR @ LIT-XT @ execute ;
-: ADDR-DATA ( n vreg -- ) CUR @ ADDR-DATA-XT @ execute ;
+\ Data address v, whose address row files origin o (THE ROWS).
+: ADDR-DATA ( n n vreg -- ) CUR @ ADDR-DATA-XT @ execute ;
 : ADDR-CODE ( n vreg -- ) CUR @ ADDR-CODE-XT @ execute ;
 
 \ The address of quotation unit n, which QUOT-OPEN begins later.
@@ -464,15 +508,27 @@ private
    kind ADDR-QUOT-KIND = if NEMIT:ADDR-CODE exit then
    kind ;
 
-: NEMIT-OPEN ( -- ) BYTES 0 CUR-ARCH @ NEMIT:OPEN ;
+\ The callback stub's offset once the emitter appended it, or -1 while
+\ NCBSTUB is not armed (THE CALLBACK STUB).
+: CB-STUB ( -- n )
+   NCBSTUB:ARMED? 0= if -1 exit then
+   SLOT? if E-T0-SLOT throw then
+   CUR @ CB-STUB-XT @ FILLED execute ;
 
-: NEMIT-ROWS ( -- )
+\ The stub goes in before BYTES answers the emission it ends.
+: NEMIT-OPEN ( -- n )
+   CB-STUB
+   BYTES 0 CUR-ARCH @ NEMIT:OPEN ;
+
+: NEMIT-ROWS ( n -- ) {: stub:n :}
    N-UNITS @ 0 ?do i UNIT-AT @ NEMIT:FUNCTION+ loop
+   stub 0 >= if stub NEMIT:FUNCTION+ then
+   SLOT? if SLOT-AT @ NEMIT:PATCH-SLOT! then
    N-CALLS @ 0 ?do
       i CALL-AT @  i CALL-KIND-AT @  i CALL-TO @  0  i CALL-LOC @  NEMIT:CALL-SITE+
    loop
    N-ADDRS @ 0 ?do
-      i ADDR-AT @  i ADDR-KIND-AT @ NEMIT-KIND  -1  NEMIT:ADDR-SITE+
+      i ADDR-AT @  i ADDR-KIND-AT @ NEMIT-KIND  i ADDR-ORIGIN @  NEMIT:ADDR-SITE+
    loop
    NEMIT:SEAL ;
 
@@ -480,14 +536,14 @@ public
 
 \ Seal the closed emission into NEMIT, placed at address n.
 : SEAL ( n -- ) {: at:n :}
-   NEMIT-OPEN
+   NEMIT-OPEN {: stub:n :}
    at PATCH
    at NEMIT:PLACE
-   NEMIT-ROWS ;
+   stub 0 >= if at stub + NCBSTUB:ENTRY! then
+   stub NEMIT-ROWS ;
 
 \ Seal it with no placement, the bytes as emitted.
 : SEAL-UNPLACED ( -- )
-   NEMIT-OPEN
-   NEMIT-ROWS ;
+   NEMIT-OPEN NEMIT-ROWS ;
 
 ;package
