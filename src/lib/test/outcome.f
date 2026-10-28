@@ -8,9 +8,11 @@
 \ drained, and on an expired deadline prints them under the case label and
 \ throws E-PROC-TIMEOUT instead of failing, so the row reports a timeout
 \ (src/lib/process.f, the outcome sum; T-TIMED-OUT below).
-\ An exit by another code prints the same program and capture after the failed
-\ assertion.
+\ An exit by another code, a signal by another number or a completion by the
+\ other variant prints the same program and capture after the failed assertion.
 \ T-OUTCOME-TIMEOUT is the assert for a test that expects the deadline.
+\ T-RUN-EXITED= runs a prepared CMD:command and asserts its exit the same way,
+\ with the command's captured stdout and stderr.
 \
 \ STORAGE CLASS. CALLER-OWNED: assertions over the caller's outcome and
 \ capture; no module state.
@@ -19,6 +21,7 @@ require src/lib/errors.f
 require src/lib/fmt.f
 require src/lib/test/assert.f
 require src/lib/process.f
+require src/lib/process-command.f
 require src/lib/test/subject.f
 
 \ SUBJECT:TIMED-OUT with the case label first, for a caller that keeps one.
@@ -35,9 +38,10 @@ require src/lib/test/subject.f
    s"  got " type got gotu type space code FMT:.INT cr
    T-LABEL-CLEAR ;
 
-\ The failed case for a child that exited by another code than the one
-\ asserted, then the program and the capture that explain it.
-: T-EXIT-MISS ( n n ptr u8 n ptr u8 n ptr u8 n -- )
+\ The failed case for a child that exited by another code, or was killed by
+\ another signal, than the one asserted, then the program and the capture that
+\ explain it.
+: T-CODE-MISS ( n n ptr u8 n ptr u8 n ptr u8 n -- )
    {: code:n want:n src:ptr srcu:n out:ptr outu:n err:ptr erru:n :}
    code want T=
    code want <> if src srcu out outu err erru SUBJECT:SHOW then ;
@@ -47,16 +51,29 @@ require src/lib/test/subject.f
 : T-OUTCOME-EXITED= ( ptr u8 n ptr u8 n ptr u8 n outcome n -- )
    {: src:ptr srcu:n out:ptr outu:n err:ptr erru:n oc want:n :}
    oc MATCH outcome
-     exited OF want src srcu out outu err erru T-EXIT-MISS ENDOF
-     signaled OF s" exit" s" signal" T-OUTCOME-MISS ENDOF
+     exited OF want src srcu out outu err erru T-CODE-MISS ENDOF
+     signaled OF
+       s" exit" s" signal" T-OUTCOME-MISS src srcu out outu err erru SUBJECT:SHOW
+     ENDOF
      timeout OF src srcu out outu err erru T-TIMED-OUT ENDOF
    ;MATCH ;
+
+\ Runs the program at this path with the command's arguments, input and
+\ directory for at most ms (CMD:RUN-OUTCOME) and asserts it exited with this
+\ status; a miss or a timeout carries the program and what it wrote.
+: T-RUN-EXITED= ( CMD:command ptr u8 n ms n -- CMD:command )
+   {: exe:ptr xu:n deadline:ms status:n :}
+   exe xu deadline CMD:RUN-OUTCOME {: o :}
+   CMD:OUT$ {: out:ptr ou:n :}  CMD:ERR$ {: err:ptr eu:n :}
+   exe xu out ou err eu o status T-OUTCOME-EXITED= ;
 
 : T-OUTCOME-SIGNALED= ( ptr u8 n ptr u8 n ptr u8 n outcome n -- )
    {: src:ptr srcu:n out:ptr outu:n err:ptr erru:n oc want:n :}
    oc MATCH outcome
-     exited OF s" signal" s" exit" T-OUTCOME-MISS ENDOF
-     signaled OF want T= ENDOF
+     exited OF
+       s" signal" s" exit" T-OUTCOME-MISS src srcu out outu err erru SUBJECT:SHOW
+     ENDOF
+     signaled OF want src srcu out outu err erru T-CODE-MISS ENDOF
      timeout OF src srcu out outu err erru T-TIMED-OUT ENDOF
    ;MATCH ;
 
