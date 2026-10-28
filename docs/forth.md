@@ -1265,7 +1265,7 @@ only carries a code address keeps it a number.
 ### Declared polymorphic effects stay parametric
 
 A quantifier in a declared effect promises the word works for every type
-there. After the body checks, the checker rejects two
+there. After the body checks, the checker rejects three
 shapes with `E-NONPARAMETRIC-EFFECT` (`fix_parametric_effect`):
 
 1. **Specialization to a sealed family.** A body that forces a quantifier to an
@@ -1274,6 +1274,11 @@ shapes with `E-NONPARAMETRIC-EFFECT` (`fix_parametric_effect`):
    legal, so `( ptr a -- n ) @` is untouched.
 2. **Quantifier aliasing.** A body that unifies two declared quantifiers is
    refused, naming both: `: F ( a b -- a ) MERGE ;` with `MERGE ( g g -- g )`.
+3. **Row aliasing or fixing.** Every named row and the unnamed row stay
+   distinct, and a row is never bound to fixed cells: `( R [ R -- S ] -- S )
+   drop` and `( R n -- ) drop` unify two rows, and `( R -- S ) 1` fixes `S`.
+   Run the quotation that yields the output row on every path, or declare the
+   row the body leaves.
 
 The pass makes no bindings, so a rejected signature never persists.
 

@@ -1,8 +1,9 @@
 \ checker-soundness-suite.f - a certified body must not exceed its declared effect.
 \ Each case pins one way a body used to launder a value past its contract:
 \ a quotation argument consuming a narrower input than the parameter supplies,
-\ a return-row read or pop below the frame this definition may see, and a
-\ signature with tokens after its output side.
+\ a return-row read or pop below the frame this definition may see, a
+\ declared row unified with another or given fixed cells, and a signature with
+\ tokens after its output side.
 
 require src/lib/test.f
 
@@ -65,6 +66,33 @@ PRODUCT point FIELD x n FIELD y n ;PRODUCT
    s" a signature may not declare a return cell" T-LABEL
    s" CS-R13 ( R | S n -- R n | S n ) r@" CHECK-QUIET-CANDIDATE! 0 T= ;
 
+\ An R-to-S quotation is the only way to S: a body that never runs it on some
+\ path unifies the declared rows, and the caller could pick any S.
+: ROW-QUANTIFIERS ( -- )
+   s" a body that drops its R-to-S quotation is refused" T-LABEL
+   s" CS-W1 ( R [ R -- S ] -- S ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+   s" CS-W2 ( R CHECKER-SOUNDNESS:point [ R CHECKER-SOUNDNESS:point -- S CHECKER-SOUNDNESS:point ] -- S CHECKER-SOUNDNESS:point ) drop"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" CS-W3 ( R f [ R -- S ] -- S ) swap IF execute ELSE drop THEN"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" CS-W4 ( R [ R -- S ] [ S -- T ] -- T ) nip execute" CHECK-QUIET-CANDIDATE! 0 T=
+   s" a declared row stays distinct from the unnamed row" T-LABEL
+   s" CS-W5 ( R n -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+   s" a declared row is not given fixed cells" T-LABEL
+   s" CS-W6 ( R -- S ) 1" CHECK-QUIET-CANDIDATE! 0 T=
+   s" the unnamed row is not given fixed cells either" T-LABEL
+   s" CS-W10 ( R n [ R n -- ] -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+   s" CS-W11 ( R f [ R -- ] -- ) swap IF execute ELSE drop 1 THEN"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" CS-W12 ( R [ R -- ] -- ) drop 1" CHECK-QUIET-CANDIDATE! 0 T=
+   s" CS-W13 ( R -- ) 1" CHECK-QUIET-CANDIDATE! 0 T=
+   s" CS-W14 ( R n -- )" CHECK-QUIET-CANDIDATE! 0 T=
+   s" running the quotation on every path keeps the rows distinct" T-LABEL
+   s" CS-W7 ( R [ R -- S ] -- S ) execute" CHECK-QUIET-CANDIDATE! -1 T=
+   s" CS-W8 ( R f [ R -- S ] -- S ) swap IF execute ELSE execute THEN"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" CS-W9 ( R [ R -- S ] [ S -- R ] -- R ) drop drop" CHECK-QUIET-CANDIDATE! -1 T= ;
+
 : SIGNATURE-END ( -- )
    s" tokens after the output side are a syntax error" T-LABEL
    s" CS-S1 ( n -- n -- n n ) dup" CHECK-QUIET-CANDIDATE! 0 T=
@@ -76,6 +104,7 @@ PRODUCT point FIELD x n FIELD y n ;PRODUCT
    T-RESET
    QUOTATION-INPUTS
    RETURN-ROW
+   ROW-QUANTIFIERS
    SIGNATURE-END
    T-REPORT ;
 

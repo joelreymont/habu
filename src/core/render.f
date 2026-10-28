@@ -990,6 +990,12 @@ variable MDV-I   variable MDV-F
    NPBAD-KIND @ 1 = IF
       s" Keep each declared type variable distinct; do not unify two quantifiers in the body." EXIT
    THEN
+   NPBAD-KIND @ 6 = IF
+      s" Keep each declared row distinct: declare the row the body really leaves, or reach the declared output row on every path, as by running the quotation that yields it." EXIT
+   THEN
+   NPBAD-KIND @ 7 = IF
+      s" Declare the cells the body leaves on the row, or keep the body polymorphic over the row variable." EXIT
+   THEN
    s" Bind the minted phantom's type arguments to the inputs, or mint it behind an audited TRUSTED: boundary." ;
 \ Short repair hint derived from the stable class. Raw stack rows stay in their
 \ own JSON fields; this text is only for LLM action selection.
@@ -1103,6 +1109,17 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
      s" declared type variables '" DTXT  NPBAD-Q1 @ EMIT1
      s" ' and '" DTXT  NPBAD-Q2 @ EMIT1
      s" ' are unified; each declared quantifier must stay a distinct variable" DTXT EXIT
+   THEN
+   NPBAD-KIND @ 6 = IF
+     s" declared row variable '" DTXT  NPBAD-Q1 @ EMIT1
+     NPBAD-Q2 @ IF s" ' and row '" DTXT  NPBAD-Q2 @ EMIT1  s" '" DTXT
+     ELSE s" ' and the unnamed row" DTXT THEN
+     s"  are unified; each declared row must stay a distinct row variable" DTXT EXIT
+   THEN
+   NPBAD-KIND @ 7 = IF
+     NPBAD-Q1 @ IF s" declared row variable '" DTXT  NPBAD-Q1 @ EMIT1  s" '" DTXT
+     ELSE s" the unnamed row" DTXT THEN
+     s"  is bound to fixed cells; a declared effect must stay polymorphic over its row" DTXT EXIT
    THEN
    s" declared type variable '" DTXT  NPBAD-Q1 @ EMIT1
    s" ' is minted into " DTXT  NP-FAM-REND
@@ -1279,8 +1296,8 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
         44 EMIT1 s" actual_type" JKEY 34 EMIT1 DF-ACT @ REND-TYPE 34 EMIT1 THEN
    THEN
    k RF-NP = IF                                           \ non-parametric declared effect
-     44 EMIT1 s" quantifier" JKEY JOPEN NPBAD-Q1 @ EMIT1 JCLOSE
-     NPBAD-KIND @ 1 = IF
+     NPBAD-Q1 @ IF 44 EMIT1 s" quantifier" JKEY JOPEN NPBAD-Q1 @ EMIT1 JCLOSE THEN
+     NPBAD-Q2 @ IF
        44 EMIT1 s" quantifier2" JKEY JOPEN NPBAD-Q2 @ EMIT1 JCLOSE
      ELSE
        NPBAD-TERM @ NP-FAM dup 0 >= IF

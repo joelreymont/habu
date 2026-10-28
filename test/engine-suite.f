@@ -2131,6 +2131,43 @@ s" aliasing diag: names both quantifiers" T-LABEL
 DIAG-BUFFER$ s" 'a' and 'b'" CONTAINS? TTRUE
 DIAG-BUFFER-OFF
 
+\ row diagnostics: the named pair, the unnamed row and fixed cells
+LOCJ-BUF LOCJ-CAP DIAG-BUFFER!
+s" ESNP-ROW-PAIR ( R [ R -- S ] -- S ) drop" CHECK-CANDIDATE! 0 T=
+s" row alias diag: names both rows" T-LABEL
+DIAG-BUFFER$ s" 'R' and row 'S'" CONTAINS? TTRUE
+DIAG-BUFFER-OFF
+LOCJ-BUF LOCJ-CAP DIAG-BUFFER!
+s" ESNP-ROW-BASE ( R n -- ) drop" CHECK-CANDIDATE! 0 T=
+s" row alias diag: names the unnamed row" T-LABEL
+DIAG-BUFFER$ s" 'R' and the unnamed row" CONTAINS? TTRUE
+DIAG-BUFFER-OFF
+LOCJ-BUF LOCJ-CAP DIAG-BUFFER!
+s" ESNP-ROW-CELLS ( R -- S ) 1" CHECK-CANDIDATE! 0 T=
+s" row cells diag: names the row" T-LABEL
+DIAG-BUFFER$ s" 'S' is bound to fixed cells" CONTAINS? TTRUE
+DIAG-BUFFER-OFF
+LOCJ-BUF LOCJ-CAP DIAG-BUFFER!
+true DIAG-JSON!
+s" ESNP-ROW-JSON ( R [ R -- S ] -- S ) drop" CHECK-CANDIDATE! 0 T=
+false DIAG-JSON!
+s" row alias JSON: quantifier2 names the second row" T-LABEL
+DIAG-BUFFER$ s\" \"quantifier\":\"R\",\"quantifier2\":\"S\"" CONTAINS? TTRUE
+DIAG-BUFFER-OFF
+LOCJ-BUF LOCJ-CAP DIAG-BUFFER!
+s" ESNP-ROW-UNNAMED ( R -- ) 1" CHECK-CANDIDATE! 0 T=
+s" row cells diag: names the unnamed row" T-LABEL
+DIAG-BUFFER$ s" the unnamed row is bound to fixed cells" CONTAINS? TTRUE
+DIAG-BUFFER-OFF
+LOCJ-BUF LOCJ-CAP DIAG-BUFFER!
+true DIAG-JSON!
+s" ESNP-ROW-UNNAMED-JSON ( R -- ) 1" CHECK-CANDIDATE! 0 T=
+false DIAG-JSON!
+s" row cells JSON: the unnamed row has no quantifier field" T-LABEL
+DIAG-BUFFER$ s\" \"code\":\"E-NONPARAMETRIC-EFFECT\"" CONTAINS? TTRUE
+DIAG-BUFFER$ s\" \"quantifier\"" CONTAINS? TFALSE
+DIAG-BUFFER-OFF
+
 \ pointer-pointee path stays stable: the ptr instance rejects via the existing
 \ NOMPTR mismatch diagnostic, which names the family (requirement #2).
 RSD-BUF RSD-CAP DIAG-BUFFER!

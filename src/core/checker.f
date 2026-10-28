@@ -5500,7 +5500,8 @@ REG-PROTECT
 \ definition whose body specialized a declared quantifier to a sealed nominal/layout
 \ family, or unified two declared quantifiers together. Set by NP-CHECK post-body.
 variable NPBAD               \ non-parametric declared effect detected?
-variable NPBAD-KIND          \ 0 = concrete specialization; 1 = alias; 2 = phantom mint; 3 = kind refinement
+variable NPBAD-KIND          \ 0 = concrete specialization; 1 = alias; 2 = phantom mint; 3 = kind refinement;
+                             \ 4 = DATA base; 5 = null; 6 = row alias; 7 = row given fixed cells
 variable NPBAD-Q1            \ offending quantifier's source letter (char code)
 variable NPBAD-Q2            \ aliasing partner's letter (char code); 0 when kind 0
 variable NPBAD-TERM          \ resolved sealed-family term (kind 0), for family naming
@@ -6235,12 +6236,15 @@ create ROWMAP 26 cells allot
 \ Named declaration rows start unrestricted. Body inference may alias them to
 \ a quotation's fixed-window/literal tail; that temporary kind must not become
 \ the reusable provider's kind. Keep their identities across nested parsers.
+\ SG-ROWS-LET holds each row's source letter, for NP-ROWS-CHECK's diagnostic.
 create SG-ROWS 26 cells allot
+create SG-ROWS-LET 26 cells allot
 variable SG-ROWS-N
 variable SG-ROWS-PUBLISH
 
 : SG-ROWS-RESET ( -- )
    SG-ROWS 0 26 ARENA-CELLS-ZERO
+   SG-ROWS-LET 0 26 ARENA-CELLS-ZERO
    0 SG-ROWS-N !  0 SG-ROWS-PUBLISH ! ;
 
 : SG-ROWS-COLLECT ( -- )
@@ -6248,16 +6252,17 @@ variable SG-ROWS-PUBLISH
    26 0 do
       i cells ROWMAP + @ dup UNBOUND <> IF
          MK-ROW SG-ROWS-N @ cells SG-ROWS + !
+         i 65 + SG-ROWS-N @ cells SG-ROWS-LET + !
          1 SG-ROWS-N +!
       ELSE drop THEN
    loop ;
 
-\ Keep all verified fixed cells and their types. Only the terminal row's kind
-\ is restored, following the aliases the successful check actually established.
+\ Replace each declared row with its root, following the aliases the
+\ successful check established. NP-ROWS-CHECK refused a root bound to fixed
+\ cells, so each root is an unbound row, which E-ROW-KIND publishes as TVK-ANY.
 : SG-ROWS-RESOLVE ( -- )
    SG-ROWS-N @ 0 ?do
       i cells SG-ROWS + @ R-RES-WALK
-      BEGIN dup TAG S-PUSH = WHILE P>REST R-RES-WALK REPEAT
       i cells SG-ROWS + !
    loop ;
 
@@ -23519,6 +23524,40 @@ variable NP-OUT-I       \ output cell param arg index (NP-OUT-TERM is non-recurs
    SGOUT @ NP-OUT-ROW
    NPBAD @ 0=  SGHASR @  and IF SGROUT @ NP-OUT-ROW THEN ;
 
+\ The declared rows are quantifiers too: each named row and the implicit base
+\ row stays a distinct unbound row after the body. A body that leaves R where
+\ S was declared, as `( R [ R -- S ] -- S ) drop` does, unifies the two, and
+\ its callers would get any S they chose without the quotation running; one
+\ that pushes onto R where S was declared, as `( R -- S ) 1` does, binds S
+\ to fixed cells, as `( R -- ) 1` binds the implicit base row. A zero letter
+\ names that base row.
+: NP-FAIL-ROW ( n n n -- ) {: kind:n q1:n q2:n :}
+   NPBAD @ IF EXIT THEN
+   -1 NPBAD !  kind NPBAD-KIND !
+   q1 NPBAD-Q1 !  q2 NPBAD-Q2 !  0 NPBAD-TERM ! ;
+
+: NP-ROW-ROOT ( n -- n ) cells SG-ROWS + @ R-RES ;
+: NP-ROW-LET ( n -- n ) cells SG-ROWS-LET + @ ;
+
+: NP-ROW-ONE ( n -- ) {: idx:n :}
+   idx NP-ROW-ROOT {: root:n :}
+   root TAG S-PUSH = IF 7 idx NP-ROW-LET 0 NP-FAIL-ROW EXIT THEN
+   root SGDBASE @ R-RES = IF 6 idx NP-ROW-LET 0 NP-FAIL-ROW EXIT THEN
+   idx 0 ?do
+      i NP-ROW-ROOT root = IF
+         6 i NP-ROW-LET idx NP-ROW-LET NP-FAIL-ROW unloop EXIT
+      THEN
+   loop ;
+
+: NP-ROWS-CHECK ( -- )
+   SG-ROWS-N @ 0 ?do
+      i NP-ROW-ONE
+      NPBAD @ IF unloop EXIT THEN
+   loop
+   SG-ROWS-N @ IF
+      SGDBASE @ R-RES TAG S-PUSH = IF 7 0 0 NP-FAIL-ROW THEN
+   THEN ;
+
 : NP-CHECK ( -- )   \ check the quantifiers captured before the body ran
    0 NP-SEEN-N !
    0 NP-INVARS-N !  0 NP-OUTVARS-N !                \ the two declared quantifier sets, for NP-KIND-EXCUSED?
@@ -23535,6 +23574,7 @@ variable NP-OUT-I       \ output cell param arg index (NP-OUT-TERM is non-recurs
       NPBAD @ IF drop EXIT THEN
       1 +
    REPEAT drop
+   NP-ROWS-CHECK
    NP-MINT-CHECK ;
 
 \ ---- the source-tape observer (dot habu-feed-the-src-f7ed8733) ---------------

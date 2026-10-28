@@ -27,11 +27,11 @@ TRUSTED: SEED ( mut-view<p,l,a,u8> -- mut-view<p,l,a,u8> state<p> ) 0 0 ;
    C2-MEM:PUBLISH drop ;
 
 : TAKE-CHILD
-   ( R C2-MEM:owner<p,i,a> mut-view<p,p,b,u8> forall<j inside [p,state<p>], [ R control<p,i,a,j,b> -- S control<p,i,a,j,b> | U -- U ]> | U -- S C2-MEM:owner<p,i,a> mut-view<p,p,b,u8> | U )
+   ( R C2-MEM:owner<p,i,a> mut-view<p,p,b,u8> forall<j inside [p,state<p>], [ R control<p,i,a,j,b> -- S control<p,i,a,j,b> | U -- U ]> | U -- R C2-MEM:owner<p,i,a> mut-view<p,p,b,u8> | U )
    drop ;
 
 : PARTIAL
-   ( R C2-MEM:owner<p,i,a> forall-region<b,forall<j inside [p,state<p>], [ R control<p,i,a,j,b> -- S control<p,i,a,j,b> | U -- U ]>> | U -- S C2-MEM:owner<p,i,a> | U )
+   ( R C2-MEM:owner<p,i,a> forall-region<b,forall<j inside [p,state<p>], [ R control<p,i,a,j,b> -- S control<p,i,a,j,b> | U -- U ]>> | U -- R C2-MEM:owner<p,i,a> | U )
    {: cb :}
    16 MEM:BYTES-ALLOC-LEN C2-MEM:ALLOC
    cb TAKE-CHILD
