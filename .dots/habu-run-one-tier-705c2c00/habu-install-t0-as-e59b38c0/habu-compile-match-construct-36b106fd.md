@@ -1,6 +1,6 @@
 ---
 title: Compile MATCH, construct and is in T0
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-10-28T21:50:37.138119+02:00"
