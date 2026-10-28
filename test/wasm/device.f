@@ -26,8 +26,9 @@
 \ host's turns, src/lib/browser/host-cli.mjs on its echo fixture.
 \ test/browser/storage-test.f runs after it and reports on its own: deliveries in
 \ pages the module reserves and frees. test/browser/navigation-test.f checks
-\ input, tree and highlight records through the same host. The modules stay in
-\ the printed directories.
+\ input, tree and highlight records through the same host, and
+\ test/browser/take-test.f a delivery a turn takes and a later turn frees. The
+\ modules stay in the printed directories.
 
 require src/lib/string.f
 require src/lib/test.f
@@ -52,6 +53,7 @@ require test/browser/storage-test.f
 require test/browser/navigation-test.f
 require test/browser/request-test.f
 require test/browser/display-test.f
+require test/browser/take-test.f
 
 package WASM-DEVICE
 private
@@ -220,7 +222,7 @@ variable SITES
 \ A call of the row named, which passes no lane.
 : ROW, ( ptr u8 n -- )  CTX, ROW CALL, ;
 
-\ depth, its count kept in local 2 and pushed.
+\ depth, its count taken in local 2 and pushed.
 : DEPTH, ( -- )
    s" depth" ROW,  $21 B, 2 B,  $1A B,
    TOP, $20 B, 2 B, PUSHED, ;
