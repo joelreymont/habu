@@ -635,10 +635,21 @@ variable USER-PUT
    {: k:n :}
    k WHY-END k FO-WHY FRAME @ > ;
 
-\ Open file k keeps its first refusal reason; it writes no object.
+\ Whether open file k records the reason it meets: its first, or under the
+\ cache diagnostics every one, each after a newline. A true answer for a
+\ refused file has written that newline: the caller writes a reason.
+: FRAME-WHY? ( n -- bool )
+   {: k:n :}
+   k FRAME-REFUSED? 0= if true exit then
+   NUNIT-DEP:DIAG? @ 0= if false exit then
+   S\" \n" k FRAME-WHY+ true ;
+: WHY? ( -- bool ) FO-DEPTH @ 1- FRAME-WHY? ;
+
+\ Open file k keeps its first refusal reason, and under the cache
+\ diagnostics every later one; it writes no object.
 : FRAME-REFUSE ( ptr u8 n n -- )
    {: reason:ptr reasonu:n k:n :}
-   k FRAME-REFUSED? if exit then
+   k FRAME-WHY? 0= if exit then
    reason reasonu k FRAME-WHY+ ;
 
 public
@@ -646,7 +657,8 @@ public
 : FILE-OPEN? ( -- bool ) FO-DEPTH @ 0 > ;
 : FILE-REFUSED? ( -- bool ) FO-DEPTH @ 1- FRAME-REFUSED? ;
 
-\ The innermost file keeps its first refusal reason; it writes no object.
+\ The innermost file keeps its first refusal reason, and under the cache
+\ diagnostics every later one; it writes no object.
 : FILE-REFUSE ( ptr u8 n -- )
    FILE-OPEN? 0= if 2drop exit then
    FO-DEPTH @ 1- FRAME-REFUSE ;
@@ -698,7 +710,7 @@ private
 \ FRAME-REFUSE of open file k naming the record the reason is about.
 : FRAME-REFUSE-WORD ( ptr u8 n ptr n n -- )
    {: reason:ptr reasonu:n rec:ptr k:n :}
-   k FRAME-REFUSED? if exit then
+   k FRAME-WHY? 0= if exit then
    reason reasonu k FRAME-WHY+
    s"  word=" k FRAME-WHY+
    rec XREF-NAME$ k FRAME-WHY+ ;
@@ -752,7 +764,7 @@ private
    0 KCELLS-HELD !
    KCELLS 0 ?do
       i KCELL@ i KCELL-WAS @ <> if
-         FILE-REFUSED? 0= if
+         WHY? if
             s" kernel-cell-changed cell=" WHY+ i KCELL WHY+ drop
          then unloop exit
       then
@@ -1345,17 +1357,17 @@ public
    \ A kernel without the cut notice lowers the count unseen, and a row it
    \ retired would stay in the object.
    s" native-unit-cut-cell" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT 0= if
-      s" cut-notice-absent" WHY+
+      s" cut-notice-absent" FILE-REFUSE
    then
    \ A kernel without the run observer leaves the frame without the rows of
    \ the words its source runs (NDEF-CACHE OPEN).
    NUNIT-CAPTURE:RUN-OBSERVER? 0= if
-      s" run-observer-absent" WHY+
+      s" run-observer-absent" FILE-REFUSE
    then
    \ Without process cells the seed and the floor would survive into an image.
-   PROCESS-ABSENT @ if s" process-cell-absent" WHY+ then
+   PROCESS-ABSENT @ if s" process-cell-absent" FILE-REFUSE then
    \ Without the registry's observer a declaration would leave no row.
-   FFI-BOUND? 0= if s" ffi-mark-absent" WHY+ then
+   FFI-BOUND? 0= if s" ffi-mark-absent" FILE-REFUSE then
    CHECK-MARK ;
 
 \ Close the innermost frame; its parent's next segment opens when the
@@ -2939,12 +2951,19 @@ CAST: OWNER-CELL-FN ( n -- [ [ ptr u8 -- ] -- ] )
    idx SLOTW-N @ FILE-SLOTW !
    1 SLOTW-N +! ;
 
+\ The innermost file still looks for refusal reasons: it holds none, or the
+\ cache diagnostics print every one. A check run on this writes only the
+\ closing file's scratch; a step that binds, writes the object or takes an
+\ image runs only for an unrefused file.
+: REASONS? ( -- bool ) FILE-REFUSED? 0= NUNIT-DEP:DIAG? @ or ;
+
 \ Drop each changed earlier DATA site that lies in an excluded owner's span,
 \ which holds no program state. A site in an earlier slot word's slot is a
 \ write the slot's USER row cannot carry: the file runs from source. A changed
 \ address cell another file declared is a slot row, once per cell. The
 \ remaining sites, a site in the closing file's own DATA among them, stay for
-\ EARLIER-REFUSE.
+\ EARLIER-REFUSE. Under the cache diagnostics a refusal ends no walk, and a
+\ refused file adds no slot row.
 : EARLIER-SLOTS ( -- )
    0 SLOTW-N !
    OWNERS-GATHER
@@ -2952,21 +2971,22 @@ CAST: OWNER-CELL-FN ( n -- [ [ ptr u8 -- ] -- ] )
       i FILE-SITES @ {: va:n :}
       va DATA-VA VA>N - NUNIT-DEP:USER-AT {: slot:n :}
       slot 0 >= if
-         s" task-slot-updated" slot XREF-REC REFUSE-WORD unloop exit
-      then
-      va 1 OWN-OFF 0 < if va OWNED? if
+         s" task-slot-updated" slot XREF-REC REFUSE-WORD
+         REASONS? 0= if unloop exit then
+         0 i FILE-SITES !
+      else va 1 OWN-OFF 0 < if va OWNED? if
          0 i FILE-SITES !
       else
          va CELL-ROW {: row:n :}
          row 0 >= if
             0 i FILE-SITES !
-            row OWN-ROW? 0= row SLOTW? 0= and if
+            row OWN-ROW? 0= row SLOTW? 0= and FILE-REFUSED? 0= and if
                row SLOTW+
                ADDRESS-CELLS:LIVE-SPAN drop row cells + @ NO-SEGMENT SLOT-ROW
-               FILE-REFUSED? if unloop exit then
+               REASONS? 0= if unloop exit then
             then
          then
-      then then
+      then then then
    loop ;
 
 \ Refuse the closing file at the first site EARLIER-SLOTS kept, naming the
@@ -2985,6 +3005,11 @@ CAST: OWNER-CELL-FN ( n -- [ [ ptr u8 -- ] -- ] )
          unloop exit
       then
    loop ;
+
+\ The earlier DATA the closing file changed that no owner restores.
+: EARLIER-CHECK ( -- )
+   REASONS? if EARLIER-SLOTS then
+   REASONS? if EARLIER-REFUSE then ;
 
 \ Refuse the closing file when its DATA, slot cells zeroed, holds a code or
 \ mapped address no storage owner declares; pin the owner of each DATA
@@ -3025,7 +3050,10 @@ public
 \ closing its last segment. A file that lacks a checker slice per load,
 \ whose records, slots or checker references cannot all encode, that changed
 \ earlier DATA no owner restores (EARLIER-REFUSE), or whose DATA holds an
-\ undeclared address, refuses.
+\ undeclared address, refuses. A refused file encodes nothing; under the
+\ cache diagnostics it still names the earlier DATA it changed in the
+\ segments it closed before it refused, since a refused file takes no image
+\ (IMAGE-TAKE).
 : FILE-ENCODE ( -- )
    FILE-OPEN? 0= if BAD then
    SEGMENT-CLOSE
@@ -3033,8 +3061,10 @@ public
    0 EVENTS-N @ FO-EVENTS FO @ ?do
       i 0 EV @ EV-LOAD = if 1+ then
    loop {: loads:n :}
-   FILE-REFUSED? if exit then
-   FO-SLICES FO @ loads 1+ <> if s" checker-slices" FILE-REFUSE exit then
+   FILE-REFUSED? if EARLIER-CHECK exit then
+   FO-SLICES FO @ loads 1+ <> if
+      s" checker-slices" FILE-REFUSE EARLIER-CHECK exit
+   then
    NFILE-REF:BEGIN-FILE-REFS
    0 OUT-U !
    FO-INDEX FO @ INDEX-BYTES / ROW-AT !
@@ -3047,8 +3077,7 @@ public
    s" NSTR:OWNER-ROW" PX OWNER-ROW-XT !
    0 LITS-U ! 0 LITS-N !
    OUT-U @ SLOTS-AT ! SLOTS-OUT
-   FILE-REFUSED? 0= if EARLIER-SLOTS then
-   FILE-REFUSED? 0= if EARLIER-REFUSE then
+   EARLIER-CHECK
    OUT-U @ LITS-AT !
    LITS-U @ 0<> if 0 FILE-LITS LITS-U @ OUT-S then
    OUT-U @ CHECK-AT !

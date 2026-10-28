@@ -1381,14 +1381,34 @@ variable TEE-ERR
    HASH-RAW RESULTS-HEX SHA256>HEX
    RESULTS-HEX 16 ;
 
+\ The diagnostics line, labelled label, naming the innermost file and why.
+: FILE-LINE ( ptr u8 n ptr u8 n -- )
+   {: label:ptr labelu:n why:ptr whyu:n :}
+   s" native-file: " DIAG-W2 label labelu DIAG-W2
+   s"  path=" DIAG-W2 FRAME-PATH DIAG-W2
+   s"  reason=" DIAG-W2 why whyu DIAG-W2
+   S\" \n" DIAG-W2 ;
+
 \ Under diagnostics, the line naming why, the reason given, the innermost
 \ file has no object.
 : REFUSED-LINE ( ptr u8 n -- )
    {: why:ptr whyu:n :}
    NUNIT-DEP:DIAG? @ 0= if exit then
-   s" native-file: refused path=" DIAG-W2 FRAME-PATH DIAG-W2
-   s"  reason=" DIAG-W2 why whyu DIAG-W2
-   S\" \n" DIAG-W2 ;
+   s" refused" why whyu FILE-LINE ;
+
+\ Under diagnostics, the refused line naming the first of the reasons the
+\ innermost file met (NUNIT-OBJECT:REASON$, one per line), then a line for
+\ each.
+: REFUSED-LINES ( ptr u8 n -- )
+   {: why:ptr whyu:n :}
+   NUNIT-DEP:DIAG? @ 0= if exit then
+   why whyu 10 0 SPLIT-NEXT 2drop REFUSED-LINE
+   0 begin dup whyu < while
+      {: start:n :}
+      why whyu 10 start SPLIT-NEXT drop {: line:ptr lineu:n next:n :}
+      s" reason" line lineu FILE-LINE
+      next
+   repeat drop ;
 
 \ Write the innermost file's object and read it back on every build; the
 \ cache diagnostics only print what was written or why the file has none. A
@@ -1419,7 +1439,7 @@ variable TEE-ERR
    FILE-KEY KEPT-KEY STR= 0= if s" ambient-changed" NUNIT-OBJECT:FILE-REFUSE then
    NUNIT-DEP:FILE-EXPORT {: deps:ptr depsu:n storable:bool :}
    storable 0= if s" ordered-dependency" NUNIT-OBJECT:FILE-REFUSE then
-   NUNIT-OBJECT:FILE-REFUSED? if NUNIT-OBJECT:REASON$ REFUSED-LINE exit then
+   NUNIT-OBJECT:FILE-REFUSED? if NUNIT-OBJECT:REASON$ REFUSED-LINES exit then
    KEPT-KEY {: key:ptr keyu:n :}
    key keyu deps depsu NUNIT-OBJECT:PACK-FILE {: obj:ptr obju:n :}
    s" HBFOBJ01" obj obju IMAGE {: size:n :}
