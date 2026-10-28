@@ -27,7 +27,9 @@ create LONG-ROOT FS-PATH-CAP allot  variable LONG-U
 create QUOTED-ROOT FS-PATH-CAP allot variable QUOTED-U
 create OVERFLOW-ROOT FS-PATH-CAP allot variable OVERFLOW-U
 create FORGED-ROOT FS-PATH-CAP allot variable FORGED-U
-create PATH-BUF FS-PATH-CAP allot
+create BIN-SFX FS-PATH-CAP allot     variable BIN-SFX-U
+create OUT-SFX FS-PATH-CAP allot     variable OUT-SFX-U
+variable BIN#  variable OUT#  variable OUT-OK
 create OUT CAP allot
 create ERR CAP allot
 
@@ -103,17 +105,34 @@ create ERR CAP allot
    root rootu GF-ENV
    s" /usr/bin/env" label labelu BUILD-TIMEOUT-MS GT-POOL-START ;
 
-: ROOT-FILE? ( ptr u8 n ptr u8 n -- bool )
-   {: root:ptr rootu:n name:ptr nameu:n :}
-   root rootu name nameu PATH-BUF JOIN-PATH {: pathu:n :}
-   PATH-BUF pathu FILE? ;
+: SUFFIX$ ( ptr u8 n ptr u8 n -- ptr u8 n )   \ name past prefix, else empty
+   {: a:ptr u:n p:ptr pu:n :}
+   a u p pu STARTS-WITH? 0= if a 0 exit then
+   a pu +  u pu - ;
 
-: ROOT-OUT-OK? ( ptr u8 n -- bool )
-   {: root:ptr rootu:n :}
-   root rootu s" nf-out" PATH-BUF JOIN-PATH {: pathu:n :}
-   PATH-BUF pathu FILE? 0= if false exit then
-   PATH-BUF pathu OUT CAP READ-ALL {: outu:n :}
-   OUT outu S\" ok\n" STR= ;
+: SEEN-BIN ( ptr u8 n -- ) {: a:ptr u:n :}
+   a BIN-SFX u BYTE-COPY  u BIN-SFX-U !  1 BIN# +! ;
+
+: SEEN-OUT ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu:n a:ptr u:n :}
+   a OUT-SFX u BYTE-COPY  u OUT-SFX-U !  1 OUT# +!
+   path pathu OUT CAP READ-ALL {: outu:n :}
+   OUT outu S\" ok\n" STR= OUT-OK ! ;
+
+: ARTIFACT ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   path pathu BASENAME {: name:ptr nameu:n :}
+   name nameu s" nf-bin-" SUFFIX$ {: b:ptr bu:n :}
+   b bu STR-DIGITS? if b bu SEEN-BIN exit then
+   name nameu s" nf-out-" SUFFIX$ {: o:ptr ou:n :}
+   o ou STR-DIGITS? if path pathu o ou SEEN-OUT then ;
+
+\ nf.fs names its artifacts <root>/nf-bin-<pid> and <root>/nf-out-<pid> after
+\ the gforth child, whose pid the pool does not report. Each root is a fresh
+\ directory, so one bin and one out sharing a digit suffix is that exact pair.
+: ARTIFACTS-OK? ( ptr u8 n -- bool ) {: root:ptr rootu:n :}
+   0 BIN# !  0 OUT# !  false OUT-OK !
+   root rootu [: ARTIFACT ;] WALK-FILES
+   BIN# @ 1 = OUT# @ 1 = and OUT-OK @ 0<> and
+   BIN-SFX BIN-SFX-U @ OUT-SFX OUT-SFX-U @ STR= and ;
 
 : CONCURRENT-CASE ( -- )
    GT-POOL-RESET
@@ -121,17 +140,15 @@ create ERR CAP allot
    QUOTED$ s" spaces, quotes, and shell metacharacters stay one complete path" GF-START
    GT-POOL-DRAIN
    s" the long-root artifact and complete output path exist" T-LABEL
-   LONG$ s" nf-bin" ROOT-FILE? TTRUE
-   LONG$ ROOT-OUT-OK? TTRUE
+   LONG$ ARTIFACTS-OK? TTRUE
    s" the quoted-root artifact and complete output path exist" T-LABEL
-   QUOTED$ s" nf-bin" ROOT-FILE? TTRUE
-   QUOTED$ ROOT-OUT-OK? TTRUE ;
+   QUOTED$ ARTIFACTS-OK? TTRUE ;
 
 : FORGED-ARGV ( -- )
    PROC-ARGV-RESET
    s" sh" >LEN PROC-ARGV+
    s" -c" >LEN PROC-ARGV+
-   S\" printf 'fake binary\\n' > \q$1/nf-bin\q; printf 'ok\\n' > \q$1/nf-out\q; printf 'ok\\n'; exit 23" >LEN PROC-ARGV+
+   S\" printf 'fake binary\\n' > \q$1/nf-bin-4242\q; printf 'ok\\n' > \q$1/nf-out-4242\q; printf 'ok\\n'; exit 23" >LEN PROC-ARGV+
    s" nf-path-forge" >LEN PROC-ARGV+
    FORGED$ >LEN PROC-ARGV+ ;
 
@@ -149,11 +166,10 @@ create ERR CAP allot
    s" the negative control produced expected-looking output and artifacts" T-LABEL
    OUT outu S\" ok\n" T$=
    erru 0 T=
-   FORGED$ s" nf-bin" ROOT-FILE? TTRUE
-   FORGED$ ROOT-OUT-OK? TTRUE
+   FORGED$ ARTIFACTS-OK? TTRUE
    s" expected-looking artifacts do not turn a nonzero child green" T-LABEL
    rc 0= OUT outu S\" ok\n" STR= and
-   FORGED$ s" nf-bin" ROOT-FILE? and FORGED$ ROOT-OUT-OK? and TFALSE ;
+   FORGED$ ARTIFACTS-OK? and TFALSE ;
 
 : GF-EVAL ( ptr u8 n ptr u8 n -- n n n )
    {: root:ptr rootu:n src:ptr srcu:n :}
