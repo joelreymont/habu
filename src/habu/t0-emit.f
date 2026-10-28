@@ -2,11 +2,11 @@
 \
 \ src/habu/t0.f (package T0) walks a definition's body text and drives the
 \ operations below; an emitter file per target implements them
-\ (src/habu/t0-x64.f for x86-64). The front end names values by virtual
-\ register (vreg 0..VREGS-1) and never by machine register, so it stays the
-\ same for every target, and the types, constants and rules here mean the same
-\ on every target. An emitter file states only its encodings and register
-\ choices.
+\ (src/habu/t0-x64.f for x86-64, src/habu/t0-arm64.f for arm64). The front
+\ end names values by virtual register (vreg 0..VREGS-1) and never by machine
+\ register, so it stays the same for every target, and the types, constants
+\ and rules here mean the same on every target. An emitter file states only
+\ its encodings and register choices.
 \
 \ THE SEAM. Each operation is a public word that executes the xt its cell
 \ holds for the selected architecture. Every cell, VREGS-N among them, is a
@@ -45,14 +45,17 @@
 \ address site ( at kind target ), kind NEMIT:ADDR-DATA, NEMIT:ADDR-CODE or
 \ ADDR-QUOT-KIND. at is the instruction's first byte, from the emission's byte
 \ 0, and each unit's rows follow the previous unit's. A quotation's target is
-\ its unit number; the address its instruction holds is the unit's offset,
-\ which QUOT-OPEN writes. The emitter's PATCH reads the rows back.
+\ its unit number; on x86-64 the address its instruction holds is the unit's
+\ offset, which QUOT-OPEN writes. An emitter whose quotation address is
+\ relative to its own site (arm64's `adr`) files no row for it: QUOT-OPEN
+\ writes the distance and no placement changes it. The emitter's PATCH reads
+\ the rows back.
 \
 \ SEALING. SEAL n is the emission placed at address n: PATCH writes every call
-\ row's displacement to its target and every quotation address as n plus the
-\ unit's offset, as publication (src/compiler/native/publish.f) copies the
+\ row's displacement to its target and every quotation address row as n plus
+\ the unit's offset, as publication (src/compiler/native/publish.f) copies the
 \ bytes and only records relocations. SEAL-UNPLACED leaves the bytes as
-\ emitted, every call field zero and every quotation address its unit's
+\ emitted, every call field zero and every quotation address row its unit's
 \ offset, the unplaced form a shadow reads (src/arch/x86-64/passes.f
 \ SHADOW-ADDRS). Both open NEMIT for the selected architecture with no
 \ trailing return, file the units, the call rows with implementation 0 and the
@@ -205,7 +208,7 @@ private
 \ The finished emission, once the last unit is closed.
 : BYTES ( -- ptr u8 n ) CUR @ BYTES-XT @ execute ;
 
-\ Write every call row's displacement and every quotation address for the
+\ Write every call row's displacement and every quotation address row for the
 \ emission placed at address n.
 : PATCH ( n -- ) CUR @ PATCH-XT @ execute ;
 
@@ -213,8 +216,9 @@ public
 
 : OPEN ( -- ) ROWS-CLEAR  CUR @ OPEN-XT @ execute ;
 
-\ Begin quotation unit n, which ADDR-QUOT named, and bind that address row to
-\ it. Units begin in order, so n is the count begun so far.
+\ Begin quotation unit n, which ADDR-QUOT named, and bind the address
+\ ADDR-QUOT emitted to it. Units begin in order, so n is the count begun so
+\ far.
 : QUOT-OPEN ( n -- ) CUR @ QUOT-OPEN-XT @ execute ;
 
 \ Leave the word, from the middle of its body or at its end.

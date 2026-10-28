@@ -4,9 +4,9 @@
 \ states what each operation does on every target; this file states only the
 \ arm64 encodings and register choices. Every word here is private, and the
 \ file ends by providing INSTALL, which stores each into its T0-EMIT cell, for
-\ CTARGET-ARCH:AARCH64. The calls, the code and quotation addresses, control
-\ and the counted loops are not installed yet: their cells stay unset, and an
-\ operation reaching one ends the process with `hb: unset quotation`.
+\ CTARGET-ARCH:AARCH64. Control and the counted loops are not installed yet:
+\ their cells stay unset, and an operation reaching one ends the process with
+\ `hb: unset quotation`.
 \
 \ THE CONTRACT A COMPILED BODY KEEPS. x19 is the data stack, which grows up: a
 \ push is `str xR,[x19],#8` and a pop `ldr xR,[x19,#-8]!` (src/habu/jit.f
@@ -31,37 +31,40 @@
 \ prologue in front and its epilogue before every `ret`. Each byte-buffer is
 \ one src/lib/byte-buffer.f header; a word is appended little-endian.
 \
-\ THE FRAME is fixed at CLOSE, once the unit's size is known, so nothing in the
-\ body is patched. Its slots are FRAME-CELLS cells rounded to 16 bytes, slot k
-\ at sp + 8k, reserved by `sub sp,sp,#S` and given back by `add sp,sp,#S` (in
-\ 4095-page chunks, then the remainder: a frame has no cap). A unit with no
-\ slots and no call is a leaf and has neither. A unit that calls (LINKED, which
-\ the call sites set) also saves x30 above its slots: `str x30,[sp,#-16]!`
-\ first and `ldr x30,[sp],#16` last, so sp keeps its 16-byte alignment at every
-\ call. RETURN records the offset of its `ret` in EPI-AT; CLOSE inserts the
-\ epilogue there and moves every row of the unit by the prologue and by the
-\ epilogues inserted at or before it.
+\ THE FRAME is fixed at CLOSE, once the unit's size is known, so the body holds
+\ no frame size to patch. Its slots are FRAME-CELLS cells rounded to 16 bytes,
+\ slot k at sp + 8k, reserved by `sub sp,sp,#S` and given back by
+\ `add sp,sp,#S` (in 4095-page chunks, then the remainder: a frame has no cap).
+\ A unit with no slots and no call is a leaf and has neither. A unit with a
+\ CALL or CALL-SELF (LINKED) also saves x30 above its slots:
+\ `str x30,[sp,#-16]!` first and `ldr x30,[sp],#16` last, so sp keeps its
+\ 16-byte alignment at every call; a TAIL leaves with x30 as the unit found it.
+\ RETURN records the offset of its `ret` in EPI-AT and TAIL that of its `b`;
+\ CLOSE inserts the epilogue there and moves every row of the unit by the
+\ prologue and by the epilogues inserted at or before it.
 \
-\ THE ROWS. A unit's address sites wait in PEND at raw offsets until CLOSE has
-\ laid the unit out, and CLOSE files them into the seam (t0-emit.f THE ROWS)
-\ at their final offsets. A data address is the chain the JIT emits for one,
-\ recorded at its first word: inside the fixed DATA mapping three words,
-\ `movz lsl32`, `movk lsl16`, `movk` (habu2.f C-DATA-RAW, the shape
-\ src/habu/address-carrier.f CHAIN-SIZE reads back), and elsewhere the
-\ four-lane `movz`, `movk lsl16`, `movk lsl32`, `movk lsl48` (habu2.f
-\ C-ADDR-RAW), every lane emitted so the publisher can rewrite it in place. A
-\ quotation's address uses the four-lane form, which QUOT-OPEN rewrites with
-\ the unit's offset and PATCH with the placement added. There are no call rows
-\ yet.
+\ THE ROWS. A unit's address sites wait in PEND and its call and tail sites in
+\ PCALL, at raw offsets, until CLOSE has laid the unit out, and CLOSE files them
+\ into the seam (t0-emit.f THE ROWS) at their final offsets. A call is `bl 0`
+\ and a tail `b 0` until PATCH writes the displacement. A data address is the
+\ chain the JIT emits for one, recorded at its first word: inside the fixed
+\ DATA mapping three words, `movz lsl32`, `movk lsl16`, `movk` (habu2.f
+\ C-DATA-RAW, the shape src/habu/address-carrier.f CHAIN-SIZE reads back), and
+\ elsewhere the four-lane `movz`, `movk lsl16`, `movk lsl32`, `movk lsl48`
+\ (habu2.f C-ADDR-RAW), every lane emitted so the publisher can rewrite it in
+\ place; a code address always takes the four lanes. A quotation's address is
+\ an `adr` relative to its own site, which QUOT-OPEN writes once the unit
+\ begins, so it files no row and placement leaves it alone. `recurse` is a `bl`
+\ to byte 0, which CLOSE writes, and files no row either.
 \
 \ THE RETURN STACK is RSP-CELL cells deep from the base at
 \ STACK-ABI:RETURN-BASE-CELL; slot d is base + 8d, as habu2.f J-TOR and J-RPOP
 \ reach it.
 
+require src/lib/errors.f
 require src/lib/byte-buffer.f
 require src/habu/layout.f
 require src/habu/stack-abi.f
-require src/habu/address-carrier.f
 require src/arch/arm64/asm.f
 require src/compiler/target.f
 require src/compiler/native/emission.f
@@ -125,14 +128,24 @@ variable LINKED                       \ nonzero once this unit calls
 variable NEPI
 variable NPEND
 variable NUNIT                        \ units begun in this emission
-DYNAMIC-BUFFER EPI-AT n               \ the open unit's `ret` offsets, ascending
+\ The open unit's `ret` and tail `b` offsets, ascending.
+DYNAMIC-BUFFER EPI-AT n
 DYNAMIC-BUFFER PEND-AT n              \ the open unit's address rows: raw first
 DYNAMIC-BUFFER PEND-KIND n            \ word, kind, target
 DYNAMIC-BUFFER PEND-TO n
-DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
+variable NPCALL
+DYNAMIC-BUFFER PCALL-AT n             \ the open unit's call and tail rows: raw
+DYNAMIC-BUFFER PCALL-KIND n           \ first word, kind, target, loc
+DYNAMIC-BUFFER PCALL-TO n
+DYNAMIC-BUFFER PCALL-LOC n
+variable NSELF
+DYNAMIC-BUFFER SELF-AT n              \ the open unit's `recurse` sites, raw
+DYNAMIC-BUFFER QUOT-SITE n            \ the `adr` in OUT that names each unit
 
 4096 constant SINK-START-BYTES
 4095 constant ADJ-MAX                 \ the widest add/sub immediate
+26 constant B-BITS                    \ a b or bl field, in instructions
+21 constant ADR-BITS                  \ an adr field, in bytes
 
 : HERE-OFF ( -- n ) RAW BUF:LEN@ BUF:BLEN>N ;
 : OUT-OFF ( -- n ) OUT BUF:LEN@ BUF:BLEN>N ;
@@ -142,6 +155,24 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
    4 0 ?do w i 8 * rshift $FF and buf BUF:APPEND-BYTE loop ;
 
 : W ( n -- ) RAW W32+ ;
+
+\ Overwrite the instruction word at byte at of OUT.
+: W32! ( n n -- ) {: w:n at:n :}
+   4 0 ?do w i 8 * rshift $FF and  OUT BUF:SPAN$ drop at + i +  c! loop ;
+
+\ Whether d fits a signed field of bits bits.
+: SIGNED? ( n n -- bool ) {: d:n bits:n :}
+   1 bits 1 - lshift {: half:n :}
+   d half negate >= d half < and ;
+
+\ The `bl` (link) or `b` that reaches bytes away; a distance no field holds
+\ throws E-A64EMIT-REACH.
+: BRANCH ( n bool -- n ) {: bytes:n link:bool :}
+   bytes 3 and 0<> if E-A64EMIT-REACH throw then
+   bytes 4 / {: d:n :}
+   d B-BITS SIGNED? 0= if E-A64EMIT-REACH throw then
+   link if d ENC-BL exit then
+   d ENC-B ;
 
 : HALF ( n n -- n ) 16 * rshift $FFFF and ;
 
@@ -232,6 +263,26 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
    at k PEND-AT !  kind k PEND-KIND !  to k PEND-TO !
    k 1 + NPEND ! ;
 
+: PCALL+ ( n n n n -- ) {: at:n kind:n to:n loc:n :}
+   NPCALL @ {: k:n :}
+   k 1 + PCALL-AT-RESERVE  k 1 + PCALL-KIND-RESERVE
+   k 1 + PCALL-TO-RESERVE  k 1 + PCALL-LOC-RESERVE
+   at k PCALL-AT !  kind k PCALL-KIND !  to k PCALL-TO !  loc k PCALL-LOC !
+   k 1 + NPCALL ! ;
+
+: SELF+ ( n -- ) {: at:n :}
+   NSELF @ {: k:n :}
+   k 1 + SELF-AT-RESERVE
+   at k SELF-AT !
+   k 1 + NSELF ! ;
+
+\ The epilogue goes in before raw offset at.
+: EPI+ ( n -- ) {: at:n :}
+   NEPI @ {: k:n :}
+   k 1 + EPI-AT-RESERVE
+   at k EPI-AT !
+   k 1 + NEPI ! ;
+
 \ The four-lane carrier: every half, low first.
 : CHAIN4 ( n n -- ) {: v:n r:n :}
    r v 0 HALF 0 MOVZHW W
@@ -264,7 +315,7 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
    RAW BUF:CLEAR
    OUT-OFF T0-EMIT:UNIT+
    NUNIT @ 1 + NUNIT !
-   0 FRAME-CELLS !  0 LINKED !  0 NEPI !  0 NPEND ! ;
+   0 FRAME-CELLS !  0 LINKED !  0 NEPI !  0 NPEND !  0 NPCALL !  0 NSELF ! ;
 
 \ How many epilogues CLOSE inserts at or before raw offset x.
 : SITES<= ( n -- n ) {: x:n :}
@@ -291,20 +342,24 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
    0 NUNIT !
    UNIT-BEGIN ;
 
-\ Bind unit n's address site, in a closed unit of OUT, to the offset the unit
-\ begins at.
+\ Point unit n's `adr`, in a closed unit of OUT, at the offset the unit begins
+\ at; the first byte holds its register.
 : QUOT-OPEN ( n -- ) {: n:n :}
    n NUNIT @ <> if T0-EMIT:E-T0-UNIT throw then
-   OUT BUF:SPAN$ drop n UNIT-REF @ +  OUT-OFF  ADDRESS-CARRIER:SET-CHAIN
+   n QUOT-SITE @ {: at:n :}
+   OUT-OFF at - {: d:n :}
+   d ADR-BITS SIGNED? 0= if E-A64EMIT-REACH throw then
+   OUT BUF:SPAN$ drop at + c@ 31 and  d ENC-ADR  at W32!
    UNIT-BEGIN ;
 
-: RETURN ( -- )
-   HERE-OFF {: at:n :}
-   NEPI @ {: k:n :}
-   k 1 + EPI-AT-RESERVE
-   at k EPI-AT !
-   k 1 + NEPI !
-   ENC-RET W ;
+: RETURN ( -- ) HERE-OFF EPI+  ENC-RET W ;
+
+\ A quotation's site is kept for QUOT-OPEN; every other address is a row.
+: FILE-ADDR ( n n n -- ) {: at:n kind:n to:n :}
+   kind T0-EMIT:ADDR-QUOT-KIND = if
+      to 1 + QUOT-SITE-RESERVE  at to QUOT-SITE ! exit
+   then
+   at kind to T0-EMIT:ADDR-ROW+ ;
 
 : CLOSE ( -- )
    FRAME-CELLS @ CELL * 15 + 15 invert and {: bytes:n :}
@@ -323,22 +378,24 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
    loop
    HERE-OFF COPY
    NPEND @ 0 ?do
-      i PEND-AT @ base p e PLACED {: at:n :}
-      i PEND-KIND @ {: kind:n :}
-      i PEND-TO @ {: to:n :}
-      kind T0-EMIT:ADDR-QUOT-KIND = if to 1 + UNIT-REF-RESERVE  at to UNIT-REF ! then
-      at kind to T0-EMIT:ADDR-ROW+
+      i PEND-AT @ base p e PLACED  i PEND-KIND @  i PEND-TO @  FILE-ADDR
+   loop
+   NPCALL @ 0 ?do
+      i PCALL-AT @ base p e PLACED  i PCALL-KIND @  i PCALL-TO @  i PCALL-LOC @
+      T0-EMIT:CALL-ROW+
+   loop
+   NSELF @ 0 ?do
+      i SELF-AT @ base p e PLACED {: at:n :}
+      at negate true BRANCH  at W32!
    loop ;
 
 : BYTES ( -- ptr u8 n ) OUT BUF:SPAN$ BUF:BLEN>N ;
 
-\ Only quotation carriers: a call row is not emitted yet.
+\ Every call row's `bl` or `b`, from its site placed at place to its target.
 : PATCH ( n -- ) {: place:n :}
-   T0-EMIT:ADDR-ROWS 0 ?do
-      i T0-EMIT:ADDR-ROW {: at:n kind:n to:n :}
-      kind T0-EMIT:ADDR-QUOT-KIND = if
-         OUT BUF:SPAN$ drop at +  place to T0-EMIT:UNIT +  ADDRESS-CARRIER:SET-CHAIN
-      then
+   T0-EMIT:CALL-ROWS 0 ?do
+      i T0-EMIT:CALL-ROW {: at:n kind:n to:n :}
+      to place at + -  kind NEMIT:CALL =  BRANCH  at W32!
    loop ;
 
 \ ---- values ------------------------------------------------------------------
@@ -348,6 +405,17 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
    {: v:n d:T0-EMIT:vreg :}
    HERE-OFF NEMIT:ADDR-DATA v PEND+
    v d REG DATA-CHAIN ;
+
+: ADDR-CODE ( n T0-EMIT:vreg -- )
+   {: v:n d:T0-EMIT:vreg :}
+   HERE-OFF NEMIT:ADDR-CODE v PEND+
+   v d REG CHAIN4 ;
+
+\ `adr rd, 0` until QUOT-OPEN n writes the distance to the unit.
+: ADDR-QUOT ( n T0-EMIT:vreg -- )
+   {: n:n d:T0-EMIT:vreg :}
+   HERE-OFF T0-EMIT:ADDR-QUOT-KIND n PEND+
+   d REG 0 ENC-ADR W ;
 
 : PUSH ( T0-EMIT:vreg -- ) REG DSP CELL ENC-STRPOST W ;
 
@@ -472,6 +540,22 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
    RDEPTH RSLOT
    d REG ADR CELL negate ENC-LDUR W ;
 
+\ ---- calls -------------------------------------------------------------------
+: CALL ( n n -- ) {: to:n loc:n :}
+   1 LINKED !
+   HERE-OFF NEMIT:CALL to loc PCALL+
+   0 true BRANCH W ;
+
+: TAIL ( n n -- ) {: to:n loc:n :}
+   HERE-OFF EPI+
+   HERE-OFF NEMIT:TAIL to loc PCALL+
+   0 false BRANCH W ;
+
+: CALL-SELF ( -- )
+   1 LINKED !
+   HERE-OFF SELF+
+   0 true BRANCH W ;
+
 \ ---- the seam ----------------------------------------------------------------
 \ Make this file's words the ones T0-EMIT runs at slot k.
 : INSTALL ( n -- )
@@ -485,6 +569,8 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
    ['] PATCH k T0-EMIT:PATCH-XT !
    ['] LIT k T0-EMIT:LIT-XT !
    ['] ADDR-DATA k T0-EMIT:ADDR-DATA-XT !
+   ['] ADDR-CODE k T0-EMIT:ADDR-CODE-XT !
+   ['] ADDR-QUOT k T0-EMIT:ADDR-QUOT-XT !
    ['] PUSH k T0-EMIT:PUSH-XT !
    ['] SPILL k T0-EMIT:SPILL-XT !
    ['] SPILL-LIT k T0-EMIT:SPILL-LIT-XT !
@@ -508,6 +594,9 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
    ['] TOR k T0-EMIT:TOR-XT !
    ['] RFROM k T0-EMIT:RFROM-XT !
    ['] RFETCH k T0-EMIT:RFETCH-XT !
+   ['] CALL k T0-EMIT:CALL-XT !
+   ['] TAIL k T0-EMIT:TAIL-XT !
+   ['] CALL-SELF k T0-EMIT:CALL-SELF-XT !
    ['] IMM? k T0-EMIT:IMM?-XT ! ;
 
 CTARGET-ARCH:AARCH64 ' INSTALL T0-EMIT:PROVIDE
