@@ -197,7 +197,7 @@
 -3610 constant E-TASK-MAILBOX       \ message operation no mailbox can serve: no TCB, target not running, or self
 -3611 constant E-TASK-SEM-POOL      \ pooled semaphore: the handle is not a pooled record
 -3612 constant E-TASK-NO-RESULT     \ the task ended without storing a result; carried by the err arm of a join
--3613 constant E-TASK-EXIT-TABLE    \ no cleanup row left: more cleanups registered than this image holds
+-3613 constant E-TASK-EXIT-TABLE    \ more cleanup rows held at capture than the image's table carries
 -3614 constant E-TASK-SLEEP-MS      \ TASK:SLEEP or TASK:STOP-FOR duration below zero or past the last deadline a cell holds
 
 \ Engine self-identity: -3800..-3899

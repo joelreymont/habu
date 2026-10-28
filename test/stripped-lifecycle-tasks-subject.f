@@ -6,7 +6,10 @@
 \ script arguments main reads: an application's convention is process-wide.
 \ Tasks TASK:NEW made, ran and gave back at load leave a pool of records in
 \ chunks THIS process mapped; the sweep gives the chunks back and empties the
-\ pool, so the image's own TASK:NEW maps afresh.
+\ pool, so the image's own TASK:NEW maps afresh. The worker's cleanup is
+\ registered while TASK:NEW tasks hold every row of the AT-EXIT table and a row
+\ past it, so it lands in a chunk this process mapped. The capture drops the
+\ free chunk rows and moves the held one into the table the image carries.
 require src/lib/task.f
 require src/lib/adt/result.f
 
@@ -17,8 +20,10 @@ $4A constant FAILURE-RC
 $2A constant ANSWER
 
 $30 constant POOL-N
+$81 constant HOLD-N                  \ one more task than AT-EXIT table rows
 TASK:MIN-STACK TASK:TASK WORKER
 POOL-N TYPED-BUFFER POOL ptr n
+HOLD-N TYPED-BUFFER HOLD ptr n
 variable RAN
 variable EXIT-RAN
 variable POOL-EXIT-RAN
@@ -62,9 +67,24 @@ variable MAIN-ARGC
       s" stripped-lifecycle-tasks: pool exit callback lost" FAILURE-RC die
    then ;
 
+\ Tasks that never run, each holding a cleanup: with no row given back
+\ before, they fill the table and take a row past it. Freed in order, the
+\ last one leaves its chunk row at the head of the free rows the capture
+\ sweeps, and a registration made while they are held takes a row past it.
+: HOLD-ROWS ( -- )
+   HOLD-N 0 ?do
+      TASK:MIN-STACK TASK:NEW dup i HOLD !
+      ['] POOL-EXIT-STEP swap TASK:AT-EXIT
+   loop ;
+
+: HOLD-FREE ( -- )
+   HOLD-N 0 ?do i HOLD @ TASK:FREE NULL-PTR i HOLD ! loop ;
+
 : ARM ( -- )
    WORKER TASK:PREPARE
+   HOLD-ROWS
    ['] EXIT-STEP WORKER TASK:AT-EXIT
+   HOLD-FREE
    POOL-RUN ;
 
 ARM
@@ -88,6 +108,7 @@ public
    EXIT-RAN @ 1 <> if
       s" stripped-lifecycle-tasks: exit callback lost" FAILURE-RC die
    then
+   HOLD-ROWS HOLD-FREE
    POOL-RUN
    s" stripped-lifecycle-tasks: ok" type cr ;
 

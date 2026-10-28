@@ -2364,12 +2364,14 @@ variable BIND-PAIR-Q-WON
 
 \ ---- tasks made at run time -------------------------------------------------
 $30 constant NEW-N                   \ past one pool chunk of 42 records
-300 constant NEW-ROUNDS              \ past the $80 AT-EXIT rows, were freed rows lost
-$81 constant NEW-CAP                 \ one task per AT-EXIT row, and the one refused
+300 constant NEW-ROUNDS              \ records made and given back again and again
+300 constant NEW-HOLD-N              \ tasks held at once, two AT-EXIT rows each
+NEW-HOLD-N 2 * constant NEW-HELD-ROWS  \ past the $80 rows of the image's table
 10000 constant NEW-WAIT-MS           \ a gate host starts NEW-N threads late
 TASK:SEMAPHORE NEW-GATE
 TASK:MIN-STACK TASK:TASK NEW-MAKER
-NEW-CAP TYPED-BUFFER NEW-TASKS ptr n
+NEW-HOLD-N TYPED-BUFFER NEW-TASKS ptr n
+NEW-HELD-ROWS TYPED-BUFFER NEW-RAN n
 200 constant NEW-RACE-ROUNDS         \ enough for a racy TCB claim to fail nearly every run
 20 constant NEW-RACE-N               \ tasks each racer holds per round
 TASK:MIN-STACK TASK:TASK NEW-RACER-0
@@ -2382,7 +2384,7 @@ variable NEW-UP
 variable NEW-FAILED
 variable NEW-DIRTY
 variable NEW-CLEANED
-variable NEW-IDX
+variable NEW-STRAY
 
 : NEW-WAIT ( [ -- bool ] -- )
    mono-ns NEW-WAIT-MS NS-PER-MS * + s" task-test NEW-WAIT" TEST-WAIT:POLL ;
@@ -2480,8 +2482,7 @@ variable NEW-IDX
    arm 1 = code E-TASK-STATE = and if 1 NEW-FAILED +! then
    t TASK:FREE ;
 
-\ Made and freed without end: the AT-EXIT rows a freed task held go back, or
-\ the rounds would exhaust the table.
+\ Made and freed without end, each record handed out clean.
 : TASK-TEST-NEW-LOOP ( -- )
    0 NEW-FAILED !
    0 NEW-DIRTY !
@@ -2494,37 +2495,52 @@ variable NEW-IDX
    s" a cleanup runs only for the rounds that registered it" T-LABEL
    NEW-CLEANED @ NEW-ROUNDS 2 / T= ;
 
-: NEW-REGISTER ( -- )
-   ['] NEW-CLEAN NEW-IDX @ NEW-TASKS @ TASK:AT-EXIT ;
+: NEW-SLOT-RAN ( n -- ) {: k:n :}
+   TASK:SELF-N {: me:n :}
+   NEW-HOLD-N 0 ?do
+      i NEW-TASKS @ FFI:>CELL me = if 1 i 2 * k + NEW-RAN +! unloop exit then
+   loop
+   1 NEW-STRAY +! ;
 
-\ A fresh task per registration until the table refuses one; answers that code
-\ and leaves NEW-IDX at the refused task.
-: EXIT-FILL ( -- n )
-   0 NEW-IDX !
-   begin
-      TASK:MIN-STACK TASK:NEW NEW-IDX @ NEW-TASKS !
-      [: NEW-REGISTER ;] catch
-      dup 0= NEW-IDX @ 1 + NEW-CAP < and
-   while
-      drop 1 NEW-IDX +!
-   repeat ;
+\ Each marks the NEW-TASKS slot of the task it runs in.
+: NEW-EXIT-A ( -- ) 0 NEW-SLOT-RAN ;
+: NEW-EXIT-B ( -- ) 1 NEW-SLOT-RAN ;
 
-\ A refused registration takes no row, so the count the linker reads stays
-\ inside the table, and a row TASK:FREE gives back serves the next one.
-: TASK-TEST-EXIT-TABLE ( -- )
-   EXIT-FILL {: rc:n :}
-   s" an AT-EXIT registration past the table" T-LABEL
-   rc E-TASK-EXIT-TABLE T=
-   TASK:OWNED-EXIT-N {: full:n :}
-   [: NEW-REGISTER ;] E-TASK-EXIT-TABLE TTHROWSQ
-   s" a refused registration leaves the row count" T-LABEL
-   TASK:OWNED-EXIT-N full T=
-   0 NEW-TASKS @ TASK:FREE
-   s" a row TASK:FREE gave back takes the next registration" T-LABEL
-   [: NEW-REGISTER ;] catch 0 T=
-   s" a row given back and taken again leaves the row count" T-LABEL
-   TASK:OWNED-EXIT-N full T=
-   NEW-IDX @ 1 + 1 ?do i NEW-TASKS @ TASK:FREE loop ;
+\ NEW-HOLD-N tasks, each holding two cleanups, all held before any runs; then
+\ each runs and is joined, and all are given back. The first cleanup is
+\ registered again after the second, which the chain already holding it
+\ refuses, in a chunk row for most tasks. Answers the failures: a task
+\ answering another's TCB, a cleanup run other than once for its own task.
+: EXIT-HOLD-ROUND ( -- n )
+   NEW-HELD-ROWS 0 ?do 0 i NEW-RAN ! loop
+   0 NEW-STRAY !
+   NEW-HOLD-N 0 ?do
+      TASK:MIN-STACK TASK:NEW dup i NEW-TASKS !
+      ['] NEW-EXIT-A over TASK:AT-EXIT
+      ['] NEW-EXIT-B over TASK:AT-EXIT
+      ['] NEW-EXIT-A swap TASK:AT-EXIT
+   loop
+   0
+   NEW-HOLD-N 0 ?do
+      ['] NEW-SELF-BODY i NEW-TASKS @ TASK:ACTIVATE
+      i NEW-RACE-WRONG? if 1 + then
+   loop
+   NEW-HELD-ROWS 0 ?do i NEW-RAN @ 1 <> if 1 + then loop
+   NEW-STRAY @ +
+   NEW-HOLD-N 0 ?do i NEW-TASKS @ TASK:FREE loop ;
+
+\ The rows grow past the table while tasks hold them, and the rows TASK:FREE
+\ gives back serve the next tasks, so a second round uses no more rows.
+: TASK-TEST-EXIT-GROW ( -- )
+   s" tasks holding more AT-EXIT rows than the table run each cleanup once" T-LABEL
+   EXIT-HOLD-ROUND 0 T=
+   TASK:OWNED-EXIT-N {: used:n :}
+   s" the AT-EXIT rows grew to hold every task's cleanups" T-LABEL
+   used NEW-HELD-ROWS >= TTRUE
+   s" rows given back serve the next round" T-LABEL
+   EXIT-HOLD-ROUND 0 T=
+   s" the second round uses no more rows" T-LABEL
+   TASK:OWNED-EXIT-N used T= ;
 
 : NEW-HELD ( -- ptr n )
    0 NEW-TASKS @ ;
@@ -2686,7 +2702,7 @@ variable NEW-IDX
    TASK-TEST-NEW-LIVE
    TASK-TEST-NEW-RACE
    TASK-TEST-NEW-LOOP
-   TASK-TEST-EXIT-TABLE
+   TASK-TEST-EXIT-GROW
    TASK-TEST-FREE-REFUSED
    TASK-TEST-NEW-EXPOSE
    TASK-TEST-NEW-CAPTURE

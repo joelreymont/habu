@@ -46,7 +46,8 @@
 \ task and drops idle callback bindings; an activated or exposed task, or a
 \ callback slot with a thread inside, ends the capture. Kill tasks before a
 \ build captures. A TASK:NEW task not given back ends a capture too; the
-\ capture gives the pool's mappings back. Tasks do not cross a fork:
+\ capture gives the pool's mappings back, and moves the AT-EXIT rows defined
+\ tasks hold into the table it carries. Tasks do not cross a fork:
 \ CHILD-RESET is what a forked child runs (src/lib/fork-child.f says who
 \ registers it).
 \
@@ -236,7 +237,8 @@ CAST: TASK-CELL>PTR-SLOT ( ptr n -- ptr ptr n )
 
 \ These two cells are quotation slots in the fixed pthread entry ABI. The
 \ low-level structure definer describes offsets; every callback store and load
-\ below uses its declared empty stack effect.
+\ below uses its declared empty stack effect. An AT-EXIT row in a mapped chunk
+\ (EXIT-QT) holds its quotation the same way.
 CAST: TASK-CELL>XT-SLOT ( ptr n -- ptr [ -- ] )
 
 \ A watermark reader's execution token, as OWNED-USER-READERS hands it out.
@@ -816,30 +818,48 @@ variable MAIN-PARK-READY
 \ memory, so the answer survives the release the join performs - the same reason
 \ TASK:THROW@ still answers after a TASK:KILL.
 
-\ The cleanups a task has registered, as a chain of rows in this package's own
-\ storage. Each quotation is stored AS a quotation into storage declared to hold
-\ one, which is what makes the store the checker's proven-quotation store instead
-\ of a cell this module would have to cast back to code. TASK-EXIT-LINK holds,
-\ for each row, the next row of the same task's chain plus one; zero ends the
-\ chain. TCB.EXIT-SLOT holds the HEAD row plus one; zero is "this task has no
-\ cleanup". A row belongs to one (task, quotation) pair until TASK:FREE gives
-\ the task back - a registration serves the task's later activations and the
-\ same quotation is never given a second row - so a defined task's rows cannot
-\ leak. TASK:FREE moves a NEW task's rows onto TASK-EXIT-FREE, which a
-\ registration takes from first, so tasks made and freed without end never
-\ exhaust them.
-$80 constant TASK-EXIT-MAX
-TASK-EXIT-MAX TYPED-BUFFER TASK-EXIT-QT [ -- ]
+\ The cleanups a task has registered, as a chain of rows. Each quotation is
+\ stored AS a quotation into storage declared to hold one, which is what makes
+\ the store the checker's proven-quotation store instead of a cell this module
+\ would have to cast back to code. A row's link holds the next row of the same
+\ task's chain plus one; zero ends the chain. TCB.EXIT-SLOT holds the HEAD row
+\ plus one; zero is "this task has no cleanup". A row belongs to one (task,
+\ quotation) pair until TASK:FREE gives the task back - a registration serves
+\ the task's later activations and the same quotation is never given a second
+\ row - so a defined task's rows cannot leak. TASK:FREE moves a NEW task's rows
+\ onto TASK-EXIT-FREE, which a registration takes from first, so tasks made and
+\ freed without end never exhaust them.
+\ THE ROWS GROW WITH THE TASKS THAT USE THEM. The first TASK-EXIT-TABLE-N rows
+\ are this package's own storage, TASK-EXIT-QT and TASK-EXIT-LINK, which an
+\ image carries. A registration that finds no row left maps a chunk of
+\ EXIT-CHUNK-ROWS more, the unit the rows grow by and not a cap, as the TCB
+\ pool grows. A chunk is the next chunk's address, the index of its first row,
+\ then its rows, each a quotation cell and a link cell. Rows only grow while the
+\ process runs and never move, so an index a chain holds stays valid under a
+\ reader. A capture cannot carry this process's mappings: EXIT-ROWS-SWEEP moves
+\ the rows still held into the table and gives the chunks back.
+$80 constant TASK-EXIT-TABLE-N
+TASK-EXIT-TABLE-N TYPED-BUFFER TASK-EXIT-QT [ -- ]
 TASK-ALIGN8
-create TASK-EXIT-LINK TASK-EXIT-MAX TASK-ZERO-CELLS,
+create TASK-EXIT-LINK TASK-EXIT-TABLE-N TASK-ZERO-CELLS,
+\ The first row never handed out: every row below it has been used, freed
+\ rows included. A capture lowers it to the table's end as the chunks go
+\ (EXIT-FREE-TABLE).
 TASK-ALIGN8
 variable TASK-EXIT-N
-\ The first row TASK:FREE gave back, plus one; 0 is none. A free row's
-\ TASK-EXIT-LINK names the next free row the same way.
+\ The first row TASK:FREE gave back, plus one; 0 is none. A free row's link
+\ names the next free row the same way.
 TASK-ALIGN8
 variable TASK-EXIT-FREE
 TASK-ALIGN8
 variable TASK-EXIT-LOCK
+\ The newest chunk, as a number; 0 is none.
+TASK-ALIGN8
+variable EXIT-CHUNKS
+$4000 constant EXIT-CHUNK-BYTES
+2 cells constant EXIT-ROW-BYTES
+2 cells constant EXIT-CHUNK-HEAD
+EXIT-CHUNK-BYTES EXIT-CHUNK-HEAD - EXIT-ROW-BYTES / constant EXIT-CHUNK-ROWS
 
 \ The one cell a registration compares against. The checker refuses `=` on two
 \ quotations (E-MISMATCH, "expected n n actual [ -- ] [ -- ]"), while a quotation
@@ -880,40 +900,62 @@ TYPED-VARIABLE TASK-EXIT-SCRATCH [ -- ]
    0 tcb TCB.RESULT-SET atomic!
    0 tcb TCB.JOINER atomic! ;
 
+\ An acquire load: the rows the head names, and the chunks they sit in, were
+\ published before it (TASK-AT-EXIT, EXIT-GROW).
 : TASK-EXIT-SLOT@ ( ptr n -- n )
-   TCB.EXIT-SLOT @ ;
+   TCB.EXIT-SLOT atomic@ ;
+
+: EXIT-CHUNK-FIRST ( n -- n )
+   CELL + TASK-N>PTR @ ;
+
+\ One past the last row the table and the chunks hold.
+: EXIT-ROWS-END ( -- n )
+   EXIT-CHUNKS atomic@ dup 0= if drop TASK-EXIT-TABLE-N exit then
+   EXIT-CHUNK-FIRST EXIT-CHUNK-ROWS + ;
+
+\ The address of a row past the table. Chunks are newest first and each starts
+\ where the one before it ended, so the first chunk starting at or below the
+\ index holds it.
+: EXIT-ROW-AT ( n -- n ) {: idx:n :}
+   EXIT-CHUNKS atomic@
+   begin dup EXIT-CHUNK-FIRST idx > while TASK-N>PTR @ repeat
+   {: c:n :}
+   c EXIT-CHUNK-HEAD + idx c EXIT-CHUNK-FIRST - EXIT-ROW-BYTES * + ;
 
 : TASK-EXIT-LINK-AT ( n -- ptr n ) {: idx:n :}
-   TASK-EXIT-LINK CELL-VIEW idx cells + ;
+   idx TASK-EXIT-TABLE-N < if TASK-EXIT-LINK CELL-VIEW idx cells + exit then
+   idx EXIT-ROW-AT CELL + TASK-N>PTR ;
+
+: EXIT-QT ( n -- ptr [ -- ] ) {: idx:n :}
+   idx TASK-EXIT-TABLE-N < if idx TASK-EXIT-QT exit then
+   idx EXIT-ROW-AT TASK-N>PTR TASK-CELL>XT-SLOT ;
 
 : TASK-EXIT-QT-CELL ( n -- n )
-   TASK-EXIT-QT BYTE-VIEW CELL-VIEW @ ;
+   EXIT-QT BYTE-VIEW CELL-VIEW @ ;
 
-\ Registration only, and only for the scratch cell above: TASK-RUN-EXIT reads
-\ the chain without it.
+\ Registration, growth and giving rows back, and the scratch cell above:
+\ TASK-RUN-EXIT reads the chain without it.
 : TASK-EXIT-LOCK-GET ( -- )
    begin 0 1 TASK-EXIT-LOCK atomic-cas 0= until ;
 
 : TASK-EXIT-UNLOCK ( -- )
    0 TASK-EXIT-LOCK atomic! ;
 
-\ A row no chain holds: one TASK:FREE gave back, else the next one never used.
-\ The caller holds the registration lock, so the row it is handed is its own.
-\ Past the end of the storage there is no row to hand out, and the count is
-\ checked before it moves, so a refused registration leaves TASK-EXIT-N - the
-\ most rows ever used, freed rows included, which OWNED-EXIT-N hands the linker
-\ - inside the table. The lock
-\ is released before that refusal leaves, so a full table costs the
-\ registration and not every later one.
-: TASK-EXIT-NEXT ( -- n )
+\ Takes the first row TASK:FREE gave back, else the row after TASK-EXIT-N.
+\ The caller holds the lock, so the row it is handed is its own.
+: EXIT-ROW-POP ( -- n )
    TASK-EXIT-FREE @ dup 0 <> if
       1 - dup TASK-EXIT-LINK-AT @ TASK-EXIT-FREE ! exit
    then
    drop
-   TASK-EXIT-N @ {: idx:n :}
-   idx TASK-EXIT-MAX >= if TASK-EXIT-UNLOCK E-TASK-EXIT-TABLE throw then
-   idx 1 + TASK-EXIT-N atomic!
-   idx ;
+   TASK-EXIT-N @ dup 1 + TASK-EXIT-N atomic! ;
+
+\ A row no chain holds, and true; false when every row the table and the chunks
+\ hold is in a chain, the caller's cue to grow. The count is checked before it
+\ moves, so TASK-EXIT-N never names a row past the storage.
+: TASK-EXIT-NEXT ( -- n bool )
+   TASK-EXIT-FREE @ 0= TASK-EXIT-N @ EXIT-ROWS-END >= and if 0 false exit then
+   EXIT-ROW-POP true ;
 
 \ True when the task's chain already holds the quotation in the scratch cell.
 : TASK-EXIT-HELD? ( ptr n -- bool ) {: tcb:ptr :}
@@ -926,41 +968,20 @@ TYPED-VARIABLE TASK-EXIT-SCRATCH [ -- ]
    repeat
    drop false ;
 
-\ Registration is additive: the task keeps every cleanup it registers and the
-\ chain runs newest first. A quotation the task already holds is not registered
-\ twice - AIO registers its scrub at each activation's first submission, so a
-\ second row per activation would exhaust the storage. The quotation is in its
-\ row, and that row's link names the old head, before the TCB names the row, so a
-\ task ending while a thread registers on it runs the whole old chain or the
-\ whole new one, never a half-built row. The head is published with atomic! -
-\ a store-release (STLR), src/habu/habu1.f BATSTORE - which is what makes that
-\ true on a machine whose plain stores to different addresses may become visible
-\ out of order: every store of the row and its link is visible before the head
-\ that names them. TASK-RUN-EXIT needs no fence in return, because its loads of
-\ the row and the link are addressed FROM the head it read. The lock covers the
-\ scratch cell the comparison goes through, so two threads registering on one
-\ task at the same moment - AIO from the task itself, the program from the
-\ thread that started it - both land.
-: TASK-AT-EXIT ( [ -- ] ptr n -- ) {: q tcb:ptr :}
-   TASK-EXIT-LOCK-GET
-   q TASK-EXIT-SCRATCH !
-   tcb TASK-EXIT-HELD? if TASK-EXIT-UNLOCK exit then
-   TASK-EXIT-NEXT {: idx:n :}
-   q idx TASK-EXIT-QT !
-   tcb TASK-EXIT-SLOT@ idx TASK-EXIT-LINK-AT !
-   idx 1 + tcb TCB.EXIT-SLOT atomic!
-   TASK-EXIT-UNLOCK ;
-
 \ Gives every row of the task's chain back to TASK-EXIT-FREE, for TASK:FREE. The
 \ task has ended and been released, so no thread runs the chain; the lock
 \ orders this against a registration on any task. A freed row holds the empty
-\ quotation, so no row keeps a cleanup its task no longer has.
+\ quotation: a capture carries a free table row below TASK-EXIT-N, and the
+\ stripped link declares and roots every such row's quotation
+\ (src/habu/aot-common.f CARRY-TASK-EXIT, aot-closure.f XT-CELL-ROOT), so a
+\ cleanup left in it would survive the strip, and one a dictionary rollback
+\ retired would be refused (REFUSE-XT-TARGET).
 : EXIT-ROWS-FREE ( ptr n -- ) {: tcb:ptr :}
    TASK-EXIT-LOCK-GET
    tcb TASK-EXIT-SLOT@
    begin dup 0 <> while
       1 -
-      [: ;] over TASK-EXIT-QT !
+      [: ;] over EXIT-QT !
       dup TASK-EXIT-LINK-AT @ swap
       TASK-EXIT-FREE @ over TASK-EXIT-LINK-AT !
       1 + TASK-EXIT-FREE !
@@ -973,7 +994,7 @@ TYPED-VARIABLE TASK-EXIT-SCRATCH [ -- ]
 \ the body left none, and is dropped when the body already failed or an earlier
 \ cleanup already threw, so the FIRST failure is the one the join reports.
 : TASK-RUN-EXIT-ONE ( n -- )
-   TASK-EXIT-QT @ catch {: rc:n :}
+   EXIT-QT @ catch {: rc:n :}
    rc 0= if exit then
    TASK-SELF {: self:ptr :}
    self TASK-THROW@ 0 <> if exit then
@@ -1374,6 +1395,69 @@ variable SWEEP-ARMED
       0 i ROW-CLAIM !
    loop ;
 
+: EXIT-CHUNK-RELEASE ( n -- )
+   TASK-N>PTR BYTE-VIEW EXIT-CHUNK-BYTES MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
+
+\ Keeps the rows TASK:FREE gave back that lie in the table; a row in a chunk
+\ goes with its chunk.
+: EXIT-FREE-TABLE ( -- )
+   TASK-EXIT-FREE @
+   0 TASK-EXIT-FREE !
+   begin dup 0 <> while
+      1 - dup TASK-EXIT-LINK-AT @ swap
+      dup TASK-EXIT-TABLE-N < if
+         TASK-EXIT-FREE @ over TASK-EXIT-LINK-AT !
+         1 + TASK-EXIT-FREE !
+      else
+         drop
+      then
+   repeat
+   drop
+   TASK-EXIT-N @ TASK-EXIT-TABLE-N min TASK-EXIT-N ! ;
+
+\ Moves the row the cell names into the table when it lies in a chunk, and
+\ answers the cell naming the next row. Rows that do not fit the table are the
+\ program's defect, named rather than carried as an index into a mapping the
+\ image does not have; `die` and not `throw`, as TASK-SWEEP-ONE says.
+: EXIT-ROW-HOME ( ptr n -- ptr n ) {: at:ptr :}
+   at @ 1 - {: idx:n :}
+   idx TASK-EXIT-TABLE-N < if idx TASK-EXIT-LINK-AT exit then
+   TASK-EXIT-FREE @ 0= TASK-EXIT-N @ TASK-EXIT-TABLE-N >= and if
+      s" task: defined tasks hold more AT-EXIT cleanups at capture than the image's table carries (TASK-EXIT-TABLE-N rows)"
+      E-TASK-EXIT-TABLE die
+   then
+   EXIT-ROW-POP {: home:n :}
+   idx EXIT-QT @ home EXIT-QT !
+   idx TASK-EXIT-LINK-AT @ home TASK-EXIT-LINK-AT !
+   home 1 + at !
+   home TASK-EXIT-LINK-AT ;
+
+: EXIT-CHAIN-HOME ( ptr n -- )
+   TCB.EXIT-SLOT
+   begin dup @ 0 <> while EXIT-ROW-HOME repeat
+   drop ;
+
+\ A capture carries the table and not this process's chunks. TCB-POOL-SWEEP
+\ has refused a TASK:NEW task still held, so every row a pool task held is
+\ free, and the rows still held belong to defined tasks, all on TASK-CHAIN. Each
+\ such row in a chunk moves into a free row of the table, keeping its place in
+\ its chain; no thread reads a chain while the capture runs (TASK-SWEEP-ONE).
+\ The chunks are given back and the next registration maps afresh.
+: EXIT-ROWS-SWEEP ( -- )
+   EXIT-CHUNKS @ 0= if exit then
+   EXIT-FREE-TABLE
+   TASK-CHAIN@ FFI:>CELL
+   begin dup 0 <> while
+      TASK-N>PTR dup EXIT-CHAIN-HOME TASK-LINK@
+   repeat
+   drop
+   EXIT-CHUNKS @
+   begin dup 0 <> while
+      dup TASK-N>PTR @ swap EXIT-CHUNK-RELEASE
+   repeat
+   drop
+   0 EXIT-CHUNKS ! ;
+
 : TASK-CAPTURE-SWEEP ( -- )
    ROWS-SWEEP
    TASK-CHAIN@ FFI:>CELL
@@ -1382,6 +1466,7 @@ variable SWEEP-ARMED
    repeat
    drop
    TCB-POOL-SWEEP
+   EXIT-ROWS-SWEEP
    0 SWEEP-ARMED ! ;
 
 \ THE SWEEP IS A ONE-SHOT CLEANUP, ARMED BY THE WORD THAT TAKES WHAT IT GIVES
@@ -1398,6 +1483,52 @@ variable SWEEP-ARMED
       [: TASK-CAPTURE-SWEEP ;] IMAGE-LIFECYCLE:REGISTER
       1 SWEEP-ARMED !
    then ;
+
+\ Maps a chunk outside the lock, since a mapping may block or throw, and appends
+\ it under the lock: it starts where the rows end, and its header - the index
+\ of its first row and the link to the chunk before it - is stored before the
+\ release store that publishes it. Two registrations
+\ growing at once append two chunks. The sweep is armed before the mapping
+\ exists, as TCB-GROW does.
+: EXIT-GROW ( -- )
+   TASK-ARM-SWEEP
+   EXIT-CHUNK-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop FFI:>CELL {: c:n :}
+   TASK-EXIT-LOCK-GET
+   EXIT-ROWS-END c CELL + TASK-N>PTR !
+   EXIT-CHUNKS @ c TASK-N>PTR !
+   c EXIT-CHUNKS atomic!
+   TASK-EXIT-UNLOCK ;
+
+\ Registration is additive: the task keeps every cleanup it registers and the
+\ chain runs newest first. A quotation the task already holds is not registered
+\ twice - AIO registers its scrub at each activation's first submission, so a
+\ second row per activation would grow the rows without end. With no row left
+\ the registration grows them and asks again. The quotation is in its row, and
+\ that row's link names the old head, before the TCB names the row, so a task
+\ ending while a thread registers on it runs the whole old chain or the whole
+\ new one, never a half-built row. The head is published with atomic! - a
+\ store-release (STLR), src/habu/habu1.f BATSTORE - which is what makes that
+\ true on a machine whose plain stores to different addresses may become
+\ visible out of order: every store of the row and its link, and the chunk that
+\ holds them, is visible before the head that names them, and TASK-EXIT-SLOT@
+\ reads the head with the matching acquire load. The lock covers the scratch
+\ cell the comparison goes through, so two threads registering on one task at
+\ the same moment - AIO from the task itself, the program from the thread that
+\ started it - both land.
+: TASK-AT-EXIT ( [ -- ] ptr n -- ) {: q tcb:ptr :}
+   begin
+      TASK-EXIT-LOCK-GET
+      q TASK-EXIT-SCRATCH !
+      tcb TASK-EXIT-HELD? if TASK-EXIT-UNLOCK exit then
+      TASK-EXIT-NEXT 0=
+   while
+      drop TASK-EXIT-UNLOCK EXIT-GROW
+   repeat
+   {: idx:n :}
+   q idx EXIT-QT !
+   tcb TASK-EXIT-SLOT@ idx TASK-EXIT-LINK-AT !
+   idx 1 + tcb TCB.EXIT-SLOT atomic!
+   TASK-EXIT-UNLOCK ;
 
 : TASK-COPY-CELL ( ptr n ptr n n -- )
    {: src:ptr dst:ptr off:n :}
@@ -2516,11 +2647,12 @@ TASK-MIN-STACK constant MIN-STACK
    ROW-CAP @ 0 > if
       ROW-TABLE @ ROW-CAP @ ROW-BYTES * carry execute
    then
-   0 TASK-EXIT-QT BYTE-VIEW TASK-EXIT-MAX cells carry execute
-   TASK-EXIT-LINK TASK-EXIT-MAX cells carry execute
+   0 TASK-EXIT-QT BYTE-VIEW TASK-EXIT-TABLE-N cells carry execute
+   TASK-EXIT-LINK TASK-EXIT-TABLE-N cells carry execute
    TASK-EXIT-N BYTE-VIEW CELL carry execute
    TASK-EXIT-FREE BYTE-VIEW CELL carry execute
    TASK-EXIT-LOCK BYTE-VIEW CELL fresh execute
+   EXIT-CHUNKS BYTE-VIEW CELL fresh execute
    TASK-EXIT-SCRATCH BYTE-VIEW CELL fresh execute
    SLOT-OBSERVER BYTE-VIEW CELL fresh execute ;
 
@@ -2539,6 +2671,8 @@ TASK-MIN-STACK constant MIN-STACK
 
 \ The linker relocates only the active declaration rows. Each destination is
 \ inside its carried run, while the typed source keeps the quotation's proof.
+\ The linker reads it after the capture sweep, when every row in use lies in
+\ the table (EXIT-ROWS-SWEEP); before that it counts the chunks' rows too.
 : OWNED-EXIT-N ( -- n ) TASK-EXIT-N @ ;
 
 \ The linker restores the application-close user-slot watermark into the
