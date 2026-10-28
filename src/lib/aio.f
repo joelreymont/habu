@@ -1455,7 +1455,9 @@ public
 
 \ Adds a ticket of the calling task's. A group belongs to the task that adds to
 \ it while empty until it is empty again; any other task's GROUP+, GROUP- or
-\ AWAIT-ANY on it meanwhile is E-AIO-STATE.
+\ AWAIT-ANY on it meanwhile is E-AIO-STATE. When the holder ends, AIO's exit
+\ cleanup empties every group it holds, so a cleanup of the caller's that runs
+\ after AIO's finds them empty.
 : GROUP+ ( ticket group -- ) {: t:ticket g:group :}
    t TICKET>N {: h:n :}
    h OWNED-CHECK drop

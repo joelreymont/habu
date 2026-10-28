@@ -4,14 +4,14 @@
 \
 \ Every frame the client sends or reads one at a time goes into a transcript as
 \ one line - direction, opcode (`+` when more fragments follow), length, and the
-\ payload in hex or, past 24 bytes, as the sum of its bytes. The push is one line
-\ of counts, and the burst logs none. The Linux stalled-pong cases record their
-\ transport, mutex and close observations. The transcript is written to
-\ build/ws-transcript.txt, read back and compared whole with the one this file
-\ expects.
+\ payload in hex or, past 24 bytes, as the sum of its bytes. Pushes log no
+\ frame. The transcript is written to build/ws-transcript.txt, read back and
+\ compared whole with the one this file expects.
 \
-\ Every handler is defined before the server starts, because Habu forbids
-\ dictionary mutation while a task is live.
+\ Every socket is served by one handler, NOTE, on WS's task: text and binary
+\ come back as they came, the text `throw` makes it throw, and each `closed`
+\ is logged with its socket. Every handler is defined before the server
+\ starts, because Habu forbids dictionary mutation while a task is live.
 \ Run: bin/hb --load src/lib/net/ws-test.f
 
 require src/lib/test.f
@@ -24,196 +24,79 @@ require src/lib/aio.f
 require src/lib/span.f
 require src/lib/memory.f
 require src/lib/num-types.f
-require src/lib/adt/result.f
 require src/lib/net/tcp4.f
 require src/lib/net/http.f
 require src/lib/net/ws.f
 
-\ White-box readers: they reopen WS so that the state a case waits for, which
-\ no public word answers, is visible here. The definitions land in WS-TEST, so
-\ WS's public surface gains nothing for being tested.
-package WS
-\ Whether the last slice of the write in hand on the socket's slot found no
-\ room (PUT).
-: WS-TEST:STALLED? ( socket -- bool )
-   SOCKET>N >SLOT STALLED atomic@ ;
-
-\ When every write on the socket's slot gives up, while the slot's worker
-\ claims the lock; 0 otherwise (CLAIM).
-: WS-TEST:CLAIM-DUE ( socket -- n )
-   SOCKET>N >SLOT DUE atomic@ ;
-
-\ Whether bytes the peer sent wait in the socket's connection, unread.
-: WS-TEST:QUEUED? ( socket -- bool )
-   SOCKET>N >SLOT mono-ns READABLE? ;
-
-\ Whether the header of the frame in hand on the socket's slot is decoded, as
-\ it stays until the frame has been acted on and reset (FRAME-IN, TURN).
-: WS-TEST:DECODED? ( socket -- bool )
-   SOCKET>N >SLOT HEAD-DONE @ 0 <> ;
-
-\ How many of the bytes the peer sent behind its handshake the socket's slot
-\ holds, untaken by any RECEIVE (TAKE-EARLY).
-: WS-TEST:EARLY-HELD ( socket -- n )
-   SOCKET>N >SLOT EARLY-U @ ;
-
-\ The connection the socket's slot writes to.
-: WS-TEST:LINK ( socket -- TCP4:connection )
-   SOCKET>N >SLOT LINK @ ;
-
-\ Linux TASK:FACILITY stores its pthread_mutex_t after its eight-byte owner.
-\ The mutex's first int is glibc's private futex word.
-: WS-TEST:LOCK-FUTEX ( socket -- ptr u8 )
-   SOCKET>N >SLOT LOCK BYTE-VIEW 8 + ;
-
-\ Set by the write that first sees HTTP's stop flag. Read after STOP returns.
-: WS-TEST:CUT-AT ( socket -- n )
-   SOCKET>N >SLOT CUT-AT @ ;
-;package
-
-package TCP4
-: WS-TEST:FD ( connection -- n ) CONNECTION-FD ;
-;package
-
 package WS-TEST
 
 $7F000001 constant LOOPBACK
-2 constant WORKERS                \ so a socket is served in either slot
-1 constant ONE-WORKER             \ so each socket is served in the slot the one before it held
+2 constant WORKERS                \ fewer than the sockets a case holds open at once
 $1F4 constant IDLE-MS
-$32 constant RECEIVE-MS           \ short, so the timeout arm is taken while a client thinks
-10 constant POLL-MS               \ how often a quiet client looks at the handler's count
+10 constant POLL-MS               \ how often a wait looks again
 $7D0 constant ANSWER-MS           \ a loopback answer that slow is a hang
-$2710 constant PARK-MS            \ far past every stop bound
 $3E8 constant GRACE-MS            \ what a bounded wait may run past its bound on a loaded box
-\ The longest a case waits for a state that comes within a send slice or two:
-\ a push stalled in the loopback buffers it fills at once, a push under way to
-\ a client taking its bytes, the worker come for its slot's lock, bytes queued
-\ in a socket, or the next pong of a fill. Each came within 130 ms at load
-\ 57-180, the pongs within 70 ms at load 40-120.
-$2710 constant REACH-MS
-125 constant PING-LEN             \ the longest payload a control frame carries
-4000 constant BURST-PINGS         \ empty pings sent in one write, which take seconds to answer
-BURST-PINGS WS:HEADER-MAX * constant VOLLEY-CAP
-16 constant FLOOD-PINGS           \ pings of PING-LEN bytes the flooding client sends in one write
-$1000 constant BURST-CAP          \ FLOOD-PINGS pings, as the client sends them
+$190 constant STOP-BOUND-MS       \ WS's GOODBYE-MS and STOP-MARGIN-MS: how long WS:STOP may take
+$400000 constant QUEUE-MAX        \ WS's: the unwritten bytes behind which a frame loses its socket
+$10000 constant PUSH-BYTES        \ one pushed frame's payload
+$200000 constant STALL-PUSH       \ what the stalled case queues: half of QUEUE-MAX, far past its peer's buffers
+$1000 constant PEER-RCVBUF       \ the stalled peer's receive buffer, fixed before it connects; macOS lo0 rounds it up
+$10 constant SOCKADDR-N          \ sockaddr_in
+$2000000 constant FLOOD-PUSH      \ what the overflow case may push: QUEUE-MAX and every kernel buffer, many times over
+$3F constant SOCKETS             \ WS:START's limit
+$100 constant LOG-CAP             \ the sockets one run may close
 $12000 constant BUF-CAP           \ the longest frame a case sends or is sent, with its header
-$11170 constant BIG               \ 70000 bytes: past the 16-bit length form
-$100000 constant TASK-STACK
 $400 constant HEAD-CAP
 $10000 constant STREAM-CAP        \ what one read takes of the server's stream
 $3000 constant SCRIPT-CAP
 $40 constant RAW-CAP
 $18 constant HEX-MAX              \ the longest payload a transcript line spells out
-5000 constant BLAST-BYTES         \ past one write: a header, then its payload
-400 constant BLAST-N              \ frames from each of the two tasks that send at once
-$50 constant PUSH-BYTE            \ 'P', what the pushing task's frames are full of
-$48 constant HANDLER-BYTE         \ 'H', what the handler's are
-$52 constant REST-BYTE            \ 'R', what the frame whose rest waits in the socket is full of
-$40 constant LEAD-BYTES           \ of its payload, those that ride behind the handshake
-$1000 constant REST-BYTES         \ the rest, in one write far under a loopback segment
-LEAD-BYTES REST-BYTES + constant REST-FRAME-BYTES
-0 constant REST-PENDING           \ the handler has neither found the rest queued nor stopped looking
-1 constant REST-FOUND             \ it found the rest queued
-2 constant REST-EXPIRED           \ its wait for the rest ran out first
 $37FA213D constant MASK-KEY       \ the masking key of RFC 6455 section 5.7's examples
+1006 constant LOST                \ the status of a socket that ended with no close frame
 1000000 constant NS-PER-MS
-1 constant SOL-SOCKET
-7 constant SO-SNDBUF
-8 constant SO-RCVBUF
-6 constant IPPROTO-TCP
-10 constant TCP-WINDOW-CLAMP
-11 constant TCP-INFO
-25 constant TCP-NOTSENT-LOWAT
-98 constant ARM-FUTEX             \ Linux AArch64 __NR_futex
-202 constant X64-FUTEX            \ Linux x86-64 __NR_futex
-129 constant FUTEX-WAKE-PRIVATE  \ FUTEX_WAKE | FUTEX_PRIVATE_FLAG
-2048 constant PEER-RCVBUF
-2048 constant SERVER-SNDBUF
-4096 constant PEER-WINDOW
-1 constant SEND-LOWAT
-$90 constant TCPI-NOTSENT-OFF
-$E4 constant TCPI-SND-WND-OFF
-$E8 constant TCP-INFO-MIN
-$100 constant TCP-INFO-CAP
 13 constant CR
 10 constant LF
 32 constant SP
 -9980 constant E-SILENT           \ this file's own fixture refusals, outside every lib block
 -9981 constant E-HANDLER          \ the handler that is meant to throw
 -9982 constant E-DIAL
--9983 constant E-REFUSED          \ a handshake refused on a route only good ones are sent to
--9984 constant E-EXIT             \ the application exit hook that is meant to fail
-
-: LINUX? ( -- bool )
-   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or ;
+-9983 constant E-PLATFORM          \ a target this file has no socket option values for
 
 CAST: BLEN>N ( NUM:byte-len -- n )
+CAST: SOCK>N ( WS:socket -- n )
 
-\ These Linux observations and socket controls belong only to this fixture.
-\ The socket options fix the non-reading client's receive capacity and keep
-\ the sender's unsent queue above its buffer cap. FUTEX_WAKE acknowledges a
-\ real waiter on this glibc mutex; a spurious wake leaves pthread_mutex_lock
-\ waiting while the pong owns it.
+: SOL-SOCKET ( -- n )
+   HB-TARGET-LINUX-KERNEL? if 1 exit then
+   HB-TARGET-MACOS? if $FFFF exit then
+   E-PLATFORM throw ;
+: SO-RCVBUF ( -- n )
+   HB-TARGET-LINUX-KERNEL? if 8 exit then
+   HB-TARGET-MACOS? if $1002 exit then
+   E-PLATFORM throw ;
+
+\ The one socket control this fixture needs: Linux and macOS grow a loopback
+\ socket's buffers as traffic goes, and grown ones take a whole push into the
+\ kernel, where no byte waits in WS's queue.
 PROCESS-SYMBOLS
 FUNCTION: SET-OPT-CALL setsockopt ( n n n ptr u8 n -- i32 ) ;FUNCTION
-FUNCTION: GET-OPT-CALL getsockopt ( n n n ptr u8 ptr u8 -- i32 )
-   3 TCP-INFO-CAP WRITES-BYTES
-   4 4 WRITES-BYTES
-;FUNCTION
-FUNCTION: FUTEX-WAKE-CALL syscall ( n ptr u8 n n -- n )
-   1 VARIADIC
-;FUNCTION
-
-TCP-INFO-CAP BUFFER: TCP-INFO-BUF
-4 BUFFER: OPT-LEN
-4 BUFFER: OPT-VAL
-
-: OPT-U32! ( TCP4:connection n n n -- )
-   {: conn:TCP4:connection level:n opt:n val:n :}
-   val OPT-VAL LE:U32!
-   conn WS-TEST:FD level opt OPT-VAL 4 SET-OPT-CALL 0 <> if E-SILENT throw then ;
-
-: OPT-U32@ ( TCP4:connection n n -- n )
-   {: conn:TCP4:connection level:n opt:n :}
-   4 OPT-LEN LE:U32!
-   conn WS-TEST:FD level opt TCP-INFO-BUF OPT-LEN GET-OPT-CALL
-   0 <> if E-SILENT throw then
-   OPT-LEN LE:U32@ 4 <> if E-SILENT throw then
-   TCP-INFO-BUF LE:U32@ ;
-
-: TCP-STATE ( TCP4:connection -- n n )
-   {: conn:TCP4:connection :}
-   TCP-INFO-CAP OPT-LEN LE:U32!
-   conn WS-TEST:FD IPPROTO-TCP TCP-INFO TCP-INFO-BUF OPT-LEN GET-OPT-CALL
-   0 <> if E-SILENT throw then
-   OPT-LEN LE:U32@ TCP-INFO-MIN < if E-SILENT throw then
-   TCP-INFO-BUF TCPI-NOTSENT-OFF + LE:U32@
-   TCP-INFO-BUF TCPI-SND-WND-OFF + LE:U32@ ;
 
 BUF-CAP SPAN-BUFFER: PATTERN
 BUF-CAP SPAN-BUFFER: CLIENT-TX
 BUF-CAP SPAN-BUFFER: CLIENT-RX
-BLAST-BYTES SPAN-BUFFER: PUSH-BUF
-BLAST-BYTES SPAN-BUFFER: HANDLER-BUF
 WS:HEADER-MAX SPAN-BUFFER: RX-HEAD
 HEAD-CAP SPAN-BUFFER: HEAD-BUF
 STREAM-CAP SPAN-BUFFER: STREAM-BUF  \ what the client has read and not yet taken
 HEAD-CAP SPAN-BUFFER: REQ-BUF
 RAW-CAP SPAN-BUFFER: RAW-BUF
 2 SPAN-BUFFER: STATUS-BUF
-2 SPAN-BUFFER: NOT-UTF8             \ c3 28: a lead byte with no continuation behind it
 2 SPAN-BUFFER: HEX-PAIR
-REST-FRAME-BYTES SPAN-BUFFER: REST-BUF  \ that frame's payload
+4 SPAN-BUFFER: OPT-VAL
+SOCKADDR-N SPAN-BUFFER: PEER-SA  \ the server's address, for a connect the loop makes
 SCRIPT-CAP SPAN-BUFFER: SCRIPT-BUF  \ the transcript this run captured
 SCRIPT-CAP SPAN-BUFFER: WANT-BUF    \ the transcript this file expects
 SCRIPT-CAP SPAN-BUFFER: BACK-BUF    \ the transcript read back from its file
-BURST-CAP SPAN-BUFFER: BURST-BUF   \ what the flooding client sends over and over
-VOLLEY-CAP SPAN-BUFFER: VOLLEY-BUF \ the pings the client sends in one write
-
 variable SCRIPT-U
 variable WANT-U
-variable BURST-U
 variable HEAD-U
 variable STREAM-AT
 variable STREAM-U
@@ -222,389 +105,43 @@ variable RX-FIN
 variable RX-LEN
 variable RX-EOF
 TYPED-VARIABLE RX-OP WS:opcode
-
-\ What the handlers saw, read by the main thread once the server has ended the
-\ stream their case ran on.
-variable TIMEOUTS                 \ timeouts the serving handler has been answered
-variable LAST-CLOSE               \ the status the last closed arm carried
-variable BAD-CODE                 \ what closing with status 1005 threw
-variable LATE-SEND                \ what sending behind the handler's own close threw
-variable SECOND-ACCEPT            \ what accepting one request twice threw
-variable REFUSED-WITH             \ the status /echo's handler was told its handshake was refused with
-variable BAD-TEXT                 \ what sending text that is not UTF-8 threw
-variable PUSHED-N                 \ whole frames the client read from the pushing task
-variable HANDLER-N                \ and from the handler
-variable TORN                     \ frames that were neither
-variable KEPT                     \ set once the case's handler has kept its socket
-variable STALE-SEND               \ what sending through a killed worker's socket threw
-variable EXIT-FAULT               \ set while every worker's exit is to throw
-variable CLOSED-AT                \ when the stalled socket's handler heard it close
-variable GO-HOME                  \ set to make the handler that keeps its socket return
-variable FLOOD-CODE               \ what refused the push of the handler that floods its own client
-variable FLOOD-END                \ and when
-variable EARLY-SEEN               \ the bytes the handler found held behind the handshake
-variable REST-WRITTEN             \ set once the client's write of the frame's rest has returned
-variable REST-SEEN                \ the handler's handoff, read and written atomically: REST-FOUND once it found that rest queued in its socket before it received, REST-EXPIRED once its wait ran out first
-variable ZERO-TIMEOUT             \ set when its RECEIVE that waits not at all answered timeout
-variable LONGEST                  \ the longest the timed handler's RECEIVE took, in ns
-variable TOOK-U                   \ the length of the binary message the timed handler took last
-variable TOOK-BYTE                \ the one byte all of it was, or -1 when it was mixed
-variable VOLLEY-U
-variable PONGS                    \ pongs read whole of the ones the burst is owed
-variable LATE-AT                  \ pongs read when the timed handler was first seen to time out during the burst
-variable PEER-CAP                 \ Linux's actual fixed receive buffer size
-
-1 TYPED-BUFFER HELD WS:socket     \ the socket a case keeps for another task
-1 TYPED-BUFFER KEPT-REQUEST HTTP:request
-1 TYPED-BUFFER KEPT-RESPONSE HTTP:response
-1 TYPED-BUFFER PEER TCP4:connection  \ the connection a client task floods
-
-: WAKE-LOCK-WAITER ( -- n )
-   HB-TARGET-LINUX-X86-64? if X64-FUTEX else ARM-FUTEX then
-   0 HELD @ WS-TEST:LOCK-FUTEX FUTEX-WAKE-PRIVATE 1
-   FUTEX-WAKE-CALL dup 0 < if E-SILENT throw then ;
-
-TASK:SEMAPHORE PUSH-GO            \ the handler has a socket for the pushing task
-TASK:SEMAPHORE BLAST-GO           \ the client has asked both tasks to send at once
-TASK-STACK TASK:TASK PUSH-TASK
-TASK-STACK TASK:TASK PING-TASK    \ the client that pings and never reads
-TASK-STACK TASK:TASK SEND-TASK    \ another task's send through the kept socket
-TASK-STACK TASK:TASK STALE-TASK   \ another task's send through a killed worker's socket
-TASK-STACK TASK:TASK VOLLEY-TASK  \ the client that sends the burst
+variable REFUSED-WITH             \ the status the route was told its handshake was refused with
+variable LAST-CLOSE               \ the status the last `closed` carried; 0 once a case took it
+LOG-CAP TYPED-BUFFER CLOSED-SOCK WS:socket  \ each socket that closed, in order
+LOG-CAP TYPED-BUFFER CLOSED-CODE n          \ and the status it closed under
+variable CLOSED-N                 \ entries logged; written last, by WS's task alone
+1 TYPED-BUFFER HELD WS:socket     \ the socket the route accepted last
+1 TYPED-BUFFER WATCH WS:socket    \ the socket a case awaits the close of
+1 TYPED-BUFFER PUSHED-TO WS:socket  \ the socket this task pushes to
+variable PEER-HELD                \ what the stalled peer held unread when last looked at
+variable PEER-MOVED               \ when that last changed
+variable CLOSE-GOAL               \ the count of logged closes a case awaits
+SOCKETS 1+ TYPED-BUFFER CONNS TCP4:connection  \ the client connections a case holds open at once
+TASK:SEMAPHORE ACCEPTED           \ the route has kept its outcome
 
 
-\ ---- the handlers, all defined before any task is live -----------------------
+\ ---- waits -------------------------------------------------------------------
 
-\ What the probe answers once it answers other than 0, asked every POLL-MS; 0
-\ once that many ms have passed without that. That 0 is a deadline its reader
-\ reports: the handler records it for the case (ZERO-FIRST), since a task
-\ asserts nothing and HTTP keeps a handler's throws, and REST-AWAITED reports
-\ its own the same way.
-: PROBED ( [ -- n ] n -- n )
+\ Returns once the probe answers other than 0, looking every POLL-MS. A probe
+\ still 0 once that many ms have passed is a deadline: the wait names itself
+\ and throws E-PROC-TIMEOUT.
+: AWAITED ( [ -- n ] n -- n )
    {: probe limit:n :}
    mono-ns limit NS-PER-MS * + {: deadline:n :}
    begin
       probe execute {: got:n :}
       got 0 <> if got exit then
-      mono-ns deadline > if 0 exit then
+      mono-ns deadline > if s" ws-test AWAITED" TEST-WAIT:EXPIRED then
       POLL-MS >MS TASK:SLEEP
    again ;
 
-\ Returns once the probe answers other than 0, asked as PROBED asks it. A probe
-\ still 0 once that many ms have passed is a deadline, not a false answer: the
-\ wait names itself and throws E-PROC-TIMEOUT.
-: AWAITED ( [ -- n ] n -- )
-   PROBED 0= if s" ws-test AWAITED" TEST-WAIT:EXPIRED then ;
+: LAST-CLOSED ( -- n )
+   LAST-CLOSE @ ;
 
-: UNIFORM? ( ptr u8 n -- bool ) {: a u:n :}
-   u 0 ?do a i + c@ a c@ <> if false unloop exit then loop
-   true ;
-
-: TEXT-BACK ( ptr u8 n WS:socket -- ) {: a u:n sock:WS:socket :}
-   sock a u WS:SEND-TEXT ;
-
-: BINARY-BACK ( ptr u8 n WS:socket -- ) {: a u:n sock:WS:socket :}
-   sock a u WS:SEND-BINARY ;
-
-\ Every message goes back as it came, until the socket closes.
-: SERVE ( WS:socket -- ) {: sock:WS:socket :}
-   begin
-      sock RECEIVE-MS >MS WS:RECEIVE
-      MATCH WS:message
-         text OF sock TEXT-BACK ENDOF
-         binary OF sock BINARY-BACK ENDOF
-         closed OF LAST-CLOSE ! exit ENDOF
-         timeout OF 1 TIMEOUTS +! ENDOF
-      ;MATCH
-   again ;
-
-\ Messages are dropped until the socket closes, each waited for that long.
-: DROPPED ( WS:socket ms -- ) {: sock:WS:socket limit:ms :}
-   begin
-      sock limit WS:RECEIVE
-      MATCH WS:message
-         text OF 2drop ENDOF
-         binary OF 2drop ENDOF
-         closed OF LAST-CLOSE ! exit ENDOF
-         timeout OF ENDOF
-      ;MATCH
-   again ;
-
-: UNTIL-CLOSED ( WS:socket -- )
-   RECEIVE-MS >MS DROPPED ;
-
-\ One message, whatever it says; nothing is left to wait for once the socket
-\ has closed instead.
-: ONE-MESSAGE ( WS:socket -- ) {: sock:WS:socket :}
-   begin
-      sock RECEIVE-MS >MS WS:RECEIVE
-      MATCH WS:message
-         text OF 2drop exit ENDOF
-         binary OF 2drop exit ENDOF
-         closed OF LAST-CLOSE ! exit ENDOF
-         timeout OF ENDOF
-      ;MATCH
-   again ;
-
-\ The socket of a handshake that passed. Every route but /echo is sent only
-\ good handshakes, so a refusal there fails its case by name.
-: OPENED ( WS:accepted -- WS:socket )
-   MATCH WS:accepted
-      open OF ENDOF
-      refused OF drop E-REFUSED throw ENDOF
-   ;MATCH ;
-
-\ A handshake that passed is served; a refused one leaves its status.
-: ECHO ( HTTP:request HTTP:response -- )
-   WS:ACCEPT
-   MATCH WS:accepted
-      open OF SERVE ENDOF
-      refused OF REFUSED-WITH ! ENDOF
-   ;MATCH ;
-
-\ The handler returns with its socket still open.
-: LEAVER ( HTTP:request HTTP:response -- )
-   WS:ACCEPT OPENED ONE-MESSAGE ;
-
-: THROWER ( HTTP:request HTTP:response -- )
-   WS:ACCEPT OPENED ONE-MESSAGE
-   E-HANDLER throw ;
-
-: CLOSE-UNSENDABLE ( -- )
-   0 HELD @ 1005 WS:CLOSE ;
-
-: SEND-HELD ( -- )
-   0 HELD @ s" late" WS:SEND-TEXT ;
-
-\ The server closes first: a status no frame may carry is refused, the second
-\ close is nothing new, and nothing is sent behind the close.
-: CLOSER ( HTTP:request HTTP:response -- )
-   WS:ACCEPT OPENED {: sock:WS:socket :}
-   sock 0 HELD !
-   sock ONE-MESSAGE
-   [: CLOSE-UNSENDABLE ;] catch BAD-CODE !
-   sock 1000 WS:CLOSE
-   sock 1000 WS:CLOSE
-   [: SEND-HELD ;] catch LATE-SEND !
-   sock UNTIL-CLOSED ;
-
-: ACCEPT-AGAIN ( -- )
-   0 KEPT-REQUEST @ 0 KEPT-RESPONSE @ WS:ACCEPT OPENED drop ;
-
-\ One request is one socket: the second accept is refused and the first serves on.
-: TWICE ( HTTP:request HTTP:response -- ) {: asked:HTTP:request answer:HTTP:response :}
-   asked 0 KEPT-REQUEST !
-   answer 0 KEPT-RESPONSE !
-   asked answer WS:ACCEPT OPENED {: sock:WS:socket :}
-   [: ACCEPT-AGAIN ;] catch SECOND-ACCEPT !
-   sock SERVE ;
-
-\ The socket is handed to the task that pushes. Once the client asks, the
-\ handler sends its own frames while that task sends its, and then serves.
-: PUSHED ( HTTP:request HTTP:response -- )
-   WS:ACCEPT OPENED {: sock:WS:socket :}
-   sock 0 HELD !
-   PUSH-GO TASK:SIGNAL
-   sock ONE-MESSAGE
-   BLAST-GO TASK:SIGNAL
-   BLAST-N 0 ?do sock HANDLER-BUF SPAN:$ WS:SEND-BINARY loop
-   sock SERVE ;
-
-: PUSHER ( -- )
-   PUSH-GO TASK:WAIT
-   0 HELD @ s" pushed by another task" WS:SEND-TEXT
-   BLAST-GO TASK:WAIT
-   BLAST-N 0 ?do 0 HELD @ PUSH-BUF SPAN:$ WS:SEND-BINARY loop
-   BLAST-N TASK:RETURN ;
-
-: PLAIN ( HTTP:request HTTP:response -- ) {: asked:HTTP:request answer:HTTP:response :}
-   answer 200 HTTP:STATUS!
-   answer s" plain" HTTP:BODY! ;
-
-\ The handler keeps its socket for another task and returns, which closes it.
-: HOLDER ( HTTP:request HTTP:response -- )
-   WS:ACCEPT OPENED 0 HELD ! ;
-
-\ The handler keeps its socket and parks in an AIO wait past every stop bound,
-\ so the stop kills its worker there with the socket still open.
-: PARKER ( HTTP:request HTTP:response -- )
-   WS:ACCEPT OPENED 0 HELD !
-   1 KEPT !
-   PARK-MS >MS AIO:TIMEOUT AIO:AWAIT
-   MATCH AIO:outcome
-      ready OF drop ENDOF
-      timed-out OF ENDOF
-      cancelled OF ENDOF
-      refused OF drop ENDOF
-   ;MATCH ;
-
-\ The slot's next handler sends through the socket the killed worker kept,
-\ before it accepts its own: its own connection is open by then, on
-\ descriptors the kernel handed out after the kill closed the old one.
-: STALE-ECHO ( HTTP:request HTTP:response -- )
-   [: SEND-HELD ;] catch STALE-SEND !
-   WS:ACCEPT OPENED SERVE ;
-
-\ An application's exit hook, registered after WS's own and so run before it,
-\ that throws while EXIT-FAULT is set.
-: FAULTY-EXIT ( -- )
-   EXIT-FAULT @ 0 <> if E-EXIT throw then ;
-
-\ Another task's send through the kept socket answers the code it threw: 0
-\ when its frame was written.
-: HELD-SEND ( -- )
-   [: SEND-HELD ;] catch TASK:RETURN ;
-
-\ The handler keeps its socket for another task and receives until it closes,
-\ noting when the closed arm answered.
-: STALLER ( HTTP:request HTTP:response -- )
-   WS:ACCEPT OPENED {: sock:WS:socket :}
-   sock 0 HELD !
-   1 KEPT !
-   sock UNTIL-CLOSED
-   mono-ns CLOSED-AT ! ;
-
-: PUSH-PATTERN ( -- )
-   0 HELD @ PATTERN SPAN:$ WS:SEND-BINARY ;
-
-\ Frames go through the kept socket to a client that reads none until one is
-\ refused: the code that refused it.
-: REFUSED-PUSH ( -- n )
-   begin
-      [: PUSH-PATTERN ;] catch {: code:n :}
-      code 0 <> if code exit then
-   again ;
-
-\ The handler keeps its socket and pushes frames at a client that reads none
-\ until a push is refused, and keeps the code that refused it and when.
-: FLOODER ( HTTP:request HTTP:response -- )
-   WS:ACCEPT OPENED 0 HELD !
-   1 KEPT !
-   REFUSED-PUSH FLOOD-CODE !
-   mono-ns FLOOD-END ! ;
-
-\ The handler keeps its socket for another task and receives until it is told
-\ to return, which it does with the socket still open.
-: LEAVE-ON-CUE ( HTTP:request HTTP:response -- )
-   WS:ACCEPT OPENED {: sock:WS:socket :}
-   sock 0 HELD !
-   1 KEPT !
-   begin
-      GO-HOME @ 0 <> if exit then
-      sock RECEIVE-MS >MS WS:RECEIVE
-      MATCH WS:message
-         text OF 2drop ENDOF
-         binary OF 2drop ENDOF
-         closed OF LAST-CLOSE ! exit ENDOF
-         timeout OF ENDOF
-      ;MATCH
-   again ;
-
-\ The handler waits for each message far past every stop bound, until its
-\ socket closes.
-: PATIENT ( HTTP:request HTTP:response -- )
-   WS:ACCEPT OPENED
-   1 KEPT !
-   PARK-MS >MS DROPPED ;
-
-\ The handler sends once the server is stopping, which starts the stop's cut,
-\ and lets HTTP:RELEASE-MS pass before it receives until its socket closes.
-: LATE-SENDER ( HTTP:request HTTP:response -- )
-   WS:ACCEPT OPENED {: sock:WS:socket :}
-   1 KEPT !
-   begin HTTP:STOPPING? 0= while POLL-MS >MS TASK:SLEEP repeat
-   sock s" cut" WS:SEND-TEXT
-   HTTP:RELEASE-MS >MS TASK:SLEEP
-   sock UNTIL-CLOSED ;
-
-: SEND-NOT-UTF8 ( -- )
-   0 HELD @ NOT-UTF8 SPAN:$ WS:SEND-TEXT ;
-
-\ The handler's text that is not UTF-8 is refused before a byte of it is
-\ written, and then the socket is served.
-: MISSPOKEN ( HTTP:request HTTP:response -- )
-   WS:ACCEPT OPENED {: sock:WS:socket :}
-   sock 0 HELD !
-   [: SEND-NOT-UTF8 ;] catch BAD-TEXT !
-   sock SERVE ;
-
-\ What a binary message held: its length, and the byte all of it was.
-: TOOK ( ptr u8 n -- )
-   {: a u:n :}
-   a u UNIFORM? if a c@ else -1 then TOOK-BYTE !
-   u TOOK-U ! ;
-
-\ The socket is received until it closes, keeping the longest any RECEIVE took
-\ and what a binary message held.
-: TIMING ( WS:socket -- ) {: sock:WS:socket :}
-   begin
-      mono-ns {: began:n :}
-      sock RECEIVE-MS >MS WS:RECEIVE
-      mono-ns began - LONGEST @ max LONGEST !
-      MATCH WS:message
-         text OF 2drop ENDOF
-         binary OF TOOK ENDOF
-         closed OF LAST-CLOSE ! exit ENDOF
-         timeout OF 1 TIMEOUTS +! ENDOF
-      ;MATCH
-   again ;
-
-\ The handler keeps its socket for another task and receives it as TIMING does.
-: TIMED ( HTTP:request HTTP:response -- )
-   WS:ACCEPT OPENED {: sock:WS:socket :}
-   sock 0 HELD !
-   1 KEPT !
-   sock TIMING ;
-
-\ 1 once the client's write of the frame's rest has returned and then bytes
-\ wait in the kept socket, unread by any RECEIVE; 0 until then.
-: REST-QUEUED ( -- n )
-   REST-WRITTEN @ 0= if 0 exit then
-   0 HELD @ WS-TEST:QUEUED? if 1 else 0 then ;
-
-\ The handler keeps its socket and notes how many bytes it holds from behind
-\ the handshake. Once the rest of the frame is queued it publishes REST-FOUND
-\ and receives with no wait at all, noting whether that answered timeout; then
-\ it receives as TIMING does. A wait for the rest that runs out first publishes
-\ REST-EXPIRED and returns, receiving nothing.
-: ZERO-FIRST ( HTTP:request HTTP:response -- )
-   WS:ACCEPT OPENED {: sock:WS:socket :}
-   sock 0 HELD !
-   sock WS-TEST:EARLY-HELD EARLY-SEEN !
-   1 KEPT !
-   [: REST-QUEUED ;] REACH-MS PROBED 0= if REST-EXPIRED REST-SEEN atomic! exit then
-   REST-FOUND REST-SEEN atomic!
-   sock 0 >MS WS:RECEIVE
-   MATCH WS:message
-      text OF 2drop ENDOF
-      binary OF TOOK ENDOF
-      closed OF LAST-CLOSE ! exit ENDOF
-      timeout OF 1 ZERO-TIMEOUT ! ENDOF
-   ;MATCH
-   sock TIMING ;
-
-: INSTALL-ROUTES ( -- )
-   HTTP:ROUTES-RESET
-   s" GET" s" /patient" [: PATIENT ;] HTTP:ROUTE
-   s" GET" s" /timed" [: TIMED ;] HTTP:ROUTE
-   s" GET" s" /zero" [: ZERO-FIRST ;] HTTP:ROUTE
-   s" GET" s" /echo" [: ECHO ;] HTTP:ROUTE
-   s" GET" s" /badtext" [: MISSPOKEN ;] HTTP:ROUTE
-   s" POST" s" /echo" [: ECHO ;] HTTP:ROUTE
-   s" GET" s" /leave" [: LEAVER ;] HTTP:ROUTE
-   s" GET" s" /throw" [: THROWER ;] HTTP:ROUTE
-   s" GET" s" /close" [: CLOSER ;] HTTP:ROUTE
-   s" GET" s" /twice" [: TWICE ;] HTTP:ROUTE
-   s" GET" s" /push" [: PUSHED ;] HTTP:ROUTE
-   s" GET" s" /plain" [: PLAIN ;] HTTP:ROUTE
-   s" GET" s" /hold" [: HOLDER ;] HTTP:ROUTE
-   s" GET" s" /park" [: PARKER ;] HTTP:ROUTE
-   s" GET" s" /stale" [: STALE-ECHO ;] HTTP:ROUTE
-   s" GET" s" /stall" [: STALLER ;] HTTP:ROUTE
-   s" GET" s" /flood" [: FLOODER ;] HTTP:ROUTE
-   s" GET" s" /goodbye" [: LEAVE-ON-CUE ;] HTTP:ROUTE
-   s" GET" s" /late" [: LATE-SENDER ;] HTTP:ROUTE ;
-
+\ The last `closed` NOTE heard carried this status.
+: CLOSED-LAST ( n -- ) {: code:n :}
+   [: LAST-CLOSED ;] ANSWER-MS AWAITED code T=
+   0 LAST-CLOSE ! ;
 
 \ ---- the transcript ----------------------------------------------------------
 
@@ -672,6 +209,38 @@ TASK-STACK TASK:TASK VOLLEY-TASK  \ the client that sends the burst
       connected OF ENDOF
       failed OF drop E-DIAL throw ENDOF
    ;MATCH ;
+
+\ The server's address as sockaddr_in lays it out; macOS leads with its length.
+: PEER-SA! ( -- )
+   SOCKADDR-N 0 ?do 0 PEER-SA i SPAN:U8! loop
+   HB-TARGET-MACOS? if SOCKADDR-N PEER-SA 0 SPAN:U8! 2 PEER-SA 1 SPAN:U8!
+   else 2 PEER-SA 0 SPAN:U8! then
+   HTTP:PORT {: port:n :}
+   port 8 rshift $FF and PEER-SA 2 SPAN:U8!
+   port $FF and PEER-SA 3 SPAN:U8!
+   4 0 ?do LOOPBACK 3 i - 8 * rshift $FF and PEER-SA i 4 + SPAN:U8! loop ;
+
+\ A connection whose receive buffer is PEER-RCVBUF from its first byte: the
+\ option is set before the loop connects it, and holds the buffer at that size.
+: DIAL-SMALL ( -- TCP4:connection )
+   0 STREAM-AT ! 0 STREAM-U !
+   TCP4:SOCKET
+   MATCH TCP4:socket-result
+      opened OF ENDOF
+      failed OF drop E-DIAL throw ENDOF
+   ;MATCH {: conn:TCP4:connection :}
+   4 0 ?do PEER-RCVBUF i 8 * rshift $FF and OPT-VAL i SPAN:U8! loop
+   conn TCP4:CONNECTION-FD FD>N SOL-SOCKET SO-RCVBUF OPT-VAL SPAN:$ SET-OPT-CALL
+   0 <> if conn TCP4:CLOSE DROP-STATUS E-DIAL throw then
+   PEER-SA!
+   conn TCP4:CONNECTION-FD PEER-SA SPAN:$ AIO:CONNECT AIO:AWAIT
+   MATCH AIO:outcome
+      ready OF drop ENDOF
+      timed-out OF conn TCP4:CLOSE DROP-STATUS E-DIAL throw ENDOF
+      cancelled OF conn TCP4:CLOSE DROP-STATUS E-DIAL throw ENDOF
+      refused OF drop conn TCP4:CLOSE DROP-STATUS E-DIAL throw ENDOF
+   ;MATCH
+   conn ;
 
 : SEND-RAW ( TCP4:connection ptr u8 n -- ) {: conn:TCP4:connection a u:n :}
    conn a u TCP4:TRANSFER-BYTES TCP4:WRITE DROP-STATUS ;
@@ -761,16 +330,21 @@ TASK-STACK TASK:TASK VOLLEY-TASK  \ the client that sends the burst
 
 \ The request as built goes out with whatever a case put behind its head, and
 \ the answer's head is read.
-: REQ-SEND ( -- TCP4:connection )
-   DIAL {: conn:TCP4:connection :}
+: REQ-OVER ( TCP4:connection -- TCP4:connection ) {: conn:TCP4:connection :}
    conn REQ$ SEND-RAW
    conn READ-HEAD
    conn ;
 
-: UPGRADE ( ptr u8 n -- TCP4:connection ) {: path pu:n :}
+: REQ-SEND ( -- TCP4:connection )
+   DIAL REQ-OVER ;
+
+: UPGRADE-OVER ( TCP4:connection ptr u8 n -- TCP4:connection ) {: conn:TCP4:connection path pu:n :}
    s" GET" path pu REQ-START GOOD-LINES S\" \r\n" REQ+
-   REQ-SEND
+   conn REQ-OVER
    HEAD$ s" HTTP/1.1 101 " STARTS-WITH? TTRUE ;
+
+: UPGRADE ( ptr u8 n -- TCP4:connection )
+   DIAL -rot UPGRADE-OVER ;
 
 \ One masked frame as a client sends it, in the client's own buffer.
 : FRAME$ ( bool WS:opcode ptr u8 n -- ptr u8 n ) {: fin:bool op a u:n :}
@@ -874,1338 +448,240 @@ TASK-STACK TASK:TASK VOLLEY-TASK  \ the client that sends the burst
 : FAILED ( TCP4:connection n -- ) {: conn:TCP4:connection code:n :}
    conn HEAR code GOT-CLOSE
    conn ENDS
-   LAST-CLOSE @ code T= ;
+   code CLOSED-LAST ;
 
 : SECTION ( ptr u8 n -- ) {: a u:n :}
    a u T-LABEL
    s" == " LOG a u LOG-LINE ;
 
 
+
+
+\ ---- the handler, the routes, and what they kept ------------------------------
+
+\ The status the socket closed under, as NOTE logged it; 0 while it has not.
+: CLOSED-OF ( WS:socket -- n ) {: sock:WS:socket :}
+   CLOSED-N atomic@ 0 ?do
+      i CLOSED-SOCK @ SOCK>N sock SOCK>N = if i CLOSED-CODE @ unloop exit then
+   loop
+   0 ;
+
+: WATCHED ( -- n )
+   0 WATCH @ CLOSED-OF ;
+
+: CLOSED-IN ( n WS:socket -- ) {: code:n sock:WS:socket :}
+   CLOSED-N @ {: k:n :}
+   k LOG-CAP >= if E-SILENT throw then
+   sock k CLOSED-SOCK !
+   code k CLOSED-CODE !
+   k 1+ CLOSED-N atomic!
+   code LAST-CLOSE ! ;
+
+: TEXT-IN ( ptr u8 n WS:socket -- ) {: a u:n sock:WS:socket :}
+   a u s" throw" STR= if E-HANDLER throw then
+   sock a u WS:SEND-TEXT ;
+
+: BINARY-IN ( ptr u8 n WS:socket -- ) {: a u:n sock:WS:socket :}
+   sock a u WS:SEND-BINARY ;
+
+\ Every socket's handler, on WS's task.
+: NOTE ( WS:socket WS:message -- ) {: sock:WS:socket msg :}
+   msg
+   MATCH WS:message
+      text OF sock TEXT-IN ENDOF
+      binary OF sock BINARY-IN ENDOF
+      closed OF sock CLOSED-IN ENDOF
+   ;MATCH ;
+
+\ The route keeps what ACCEPT answered and says so.
+: OPEN ( HTTP:request HTTP:response -- )
+   [: NOTE ;] WS:ACCEPT
+   MATCH WS:accepted
+      open OF 0 HELD ! ENDOF
+      refused OF REFUSED-WITH ! ENDOF
+   ;MATCH
+   ACCEPTED TASK:SIGNAL ;
+
+: PLAIN ( HTTP:request HTTP:response -- ) {: asked:HTTP:request answer:HTTP:response :}
+   answer 200 HTTP:STATUS!
+   answer s" plain" HTTP:BODY! ;
+
+: INSTALL-ROUTES ( -- )
+   HTTP:ROUTES-RESET
+   s" GET" s" /ws" [: OPEN ;] HTTP:ROUTE
+   s" GET" s" /plain" [: PLAIN ;] HTTP:ROUTE ;
+
+
 \ ---- the cases ---------------------------------------------------------------
 
-\ The head as it arrived, a line to a line.
-: LOG-HEAD ( -- )
-   HEAD$ {: a u:n :}
-   u 0 ?do a i + c@ dup CR = if drop else LOG-C then loop ;
+\ The socket's handler is told `closed` with this status within that many ms.
+: CLOSES-WITHIN ( WS:socket n n -- ) {: sock:WS:socket code:n limit:n :}
+   sock 0 WATCH !
+   [: WATCHED ;] limit AWAITED code T=
+   0 LAST-CLOSE ! ;
 
-: FIRST-LINE ( ptr u8 n -- ptr u8 n ) {: a u:n :}
-   u 0 ?do a i + c@ CR = if a i unloop exit then loop
-   a u ;
+\ A handshake on /ws that passed: the client's connection and its socket.
+: OPENS-OVER ( TCP4:connection -- TCP4:connection WS:socket )
+   s" /ws" UPGRADE-OVER
+   ACCEPTED TASK:WAIT
+   0 HELD @ ;
 
-\ RFC 6455 section 1.3's key and the accept value it names. A client that ends
-\ its stream with no close frame is reported as status 1006.
-: HANDSHAKE-CASE ( -- )
-   s" handshake" SECTION
-   s" /echo" UPGRADE {: conn:TCP4:connection :}
-   HEAD$ S\" \r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n" CONTAINS? TTRUE
-   HEAD$ S\" \r\nUpgrade: websocket\r\n" CONTAINS? TTRUE
-   HEAD$ S\" \r\nConnection: Upgrade\r\n" CONTAINS? TTRUE
-   HEAD$ s" Content-Length" CONTAINS? TFALSE
-   LOG-HEAD
-   0 LAST-CLOSE !
-   conn TCP4:SENDING TCP4:SHUTDOWN DROP-STATUS
-   conn ENDS
-   LAST-CLOSE @ 1006 T= ;
+: OPENS ( -- TCP4:connection WS:socket )
+   DIAL OPENS-OVER ;
 
-\ The status line a refused handshake is answered with, and the status the
-\ handler was told it was refused with.
-: REFUSED ( ptr u8 n ptr u8 n n -- ) {: label lu:n want wu:n status:n :}
-   label lu T-LABEL
-   0 REFUSED-WITH !
-   S\" \r\n" REQ+
-   REQ-SEND {: conn:TCP4:connection :}
-   HEAD$ want wu STARTS-WITH? TTRUE
-   label lu LOG s" : " LOG HEAD$ FIRST-LINE LOG-LINE
-   conn TCP4:CLOSE DROP-STATUS
-   REFUSED-WITH @ status T= ;
-
-: BAD$ ( -- ptr u8 n )
-   s" HTTP/1.1 400 Bad Request" ;
-
-\ Section 4.2.1's first two items: the handshake is an HTTP/1.1 GET carrying
-\ one valid Host. The server refuses a request without one before any handler
-\ runs, so no handler sees that status.
-: REQUEST-REFUSALS ( -- )
-   s" POST" s" /echo" REQ-START GOOD-LINES
-   s" POST" BAD$ 400 REFUSED
-   s" GET" s" /echo" s" HTTP/1.0" REQ-BARE HOST+ GOOD-LINES
-   s" HTTP/1.0" BAD$ 400 REFUSED
-   s" GET" s" /echo" s" HTTP/1.1" REQ-BARE GOOD-LINES
-   s" no Host" BAD$ 0 REFUSED
-   s" GET" s" /echo" REQ-START HOST+ GOOD-LINES
-   s" two Hosts" BAD$ 0 REFUSED
-   s" GET" s" /echo" s" HTTP/1.1" REQ-BARE s" Host" s" " LINE+ GOOD-LINES
-   s" an empty Host" BAD$ 0 REFUSED
-   s" GET" s" /echo" s" HTTP/1.1" REQ-BARE s" Host" s" a b" LINE+ GOOD-LINES
-   s" a Host with a space" BAD$ 0 REFUSED ;
-
-: REFUSAL-CASES ( -- )
-   s" refused handshakes" SECTION
-   s" GET" s" /echo" REQ-START
-   s" Connection" s" Upgrade" LINE+
-   s" Sec-WebSocket-Key" KEY$ LINE+
-   s" Sec-WebSocket-Version" s" 13" LINE+
-   s" no Upgrade" BAD$ 400 REFUSED
-   s" GET" s" /echo" REQ-START
-   s" Upgrade" s" h2c" LINE+
-   s" Connection" s" Upgrade" LINE+
-   s" Sec-WebSocket-Key" KEY$ LINE+
-   s" Sec-WebSocket-Version" s" 13" LINE+
-   s" Upgrade to h2c" BAD$ 400 REFUSED
-   s" GET" s" /echo" REQ-START
-   s" Upgrade" s" websocket" LINE+
-   s" Connection" s" close" LINE+
-   s" Sec-WebSocket-Key" KEY$ LINE+
-   s" Sec-WebSocket-Version" s" 13" LINE+
-   s" Connection without Upgrade" BAD$ 400 REFUSED
-   s" GET" s" /echo" REQ-START
-   s" Upgrade" s" websocket" LINE+
-   s" Connection" s" Upgrade" LINE+
-   s" Sec-WebSocket-Version" s" 13" LINE+
-   s" no key" BAD$ 400 REFUSED
-   s" GET" s" /echo" REQ-START
-   s" Upgrade" s" websocket" LINE+
-   s" Connection" s" Upgrade" LINE+
-   s" Sec-WebSocket-Key" s" dGhlIHNhbXBsZSBub25jZQ=" LINE+
-   s" Sec-WebSocket-Version" s" 13" LINE+
-   s" a key of 23 characters" BAD$ 400 REFUSED
-   s" GET" s" /echo" REQ-START
-   s" Upgrade" s" websocket" LINE+
-   s" Connection" s" Upgrade" LINE+
-   s" Sec-WebSocket-Key" s" dGhlIHNhbXBsZSBub25jZQAA" LINE+
-   s" Sec-WebSocket-Version" s" 13" LINE+
-   s" a key of 18 bytes" BAD$ 400 REFUSED
-   s" GET" s" /echo" REQ-START
-   s" Upgrade" s" websocket" LINE+
-   s" Connection" s" Upgrade" LINE+
-   s" Sec-WebSocket-Key" s" dGhlIHNhbXBsZSBub25jZ!==" LINE+
-   s" Sec-WebSocket-Version" s" 13" LINE+
-   s" a key outside base64" BAD$ 400 REFUSED
-   s" GET" s" /echo" REQ-START GOOD-LINES
-   s" Sec-WebSocket-Key" KEY$ LINE+
-   s" two keys" BAD$ 400 REFUSED
-   REQUEST-REFUSALS
-   s" GET" s" /echo" REQ-START
-   s" Upgrade" s" websocket" LINE+
-   s" Connection" s" Upgrade" LINE+
-   s" Sec-WebSocket-Key" KEY$ LINE+
-   s" no version" s" HTTP/1.1 426 Upgrade Required" 426 REFUSED
-   s" GET" s" /echo" REQ-START
-   s" Upgrade" s" websocket" LINE+
-   s" Connection" s" Upgrade" LINE+
-   s" Sec-WebSocket-Key" KEY$ LINE+
-   s" Sec-WebSocket-Version" s" 12" LINE+
-   s" version 12" s" HTTP/1.1 426 Upgrade Required" 426 REFUSED
-   s" a 426 names the version and the protocol" T-LABEL
-   HEAD$ S\" \r\nSec-WebSocket-Version: 13\r\n" CONTAINS? TTRUE
-   HEAD$ S\" \r\nUpgrade: websocket\r\n" CONTAINS? TTRUE ;
-
-\ Header names and the two tokens are matched whatever their case, and the
-\ Connection header is a list.
-: TOLERANT-CASE ( -- )
-   s" a handshake in another spelling" SECTION
-   s" GET" s" /echo" REQ-START
-   s" upgrade" s" WebSocket" LINE+
-   s" connection" s" keep-alive, Upgrade" LINE+
-   s" sec-websocket-key" KEY$ LINE+
-   s" sec-websocket-version" s" 13" LINE+
-   S\" \r\n" REQ+
-   REQ-SEND {: conn:TCP4:connection :}
-   HEAD$ s" HTTP/1.1 101 " STARTS-WITH? TTRUE
-   conn WS-OPCODE:text s" ok" EXCHANGE
-   conn FAREWELL ;
-
-: ECHO-CASES ( -- )
-   s" echo text" SECTION
-   s" /echo" UPGRADE {: conn:TCP4:connection :}
-   conn WS-OPCODE:text s" Hello" EXCHANGE
-   conn WS-OPCODE:text s" Hello" drop 0 EXCHANGE
-   conn WS-OPCODE:text s" 68c3a96c6c6f20e282ac" BYTES EXCHANGE
-   0 LAST-CLOSE !
-   conn FAREWELL
-   LAST-CLOSE @ 1000 T= ;
-
-\ The handler's text that is not UTF-8 is refused before a byte of it goes
-\ out: the first frame the client hears is the echo of its own.
-: BAD-TEXT-CASE ( -- )
-   s" text the server may not send" SECTION
-   0 BAD-TEXT !
-   s" /badtext" UPGRADE {: conn:TCP4:connection :}
-   conn WS-OPCODE:text s" ok" EXCHANGE
-   conn FAREWELL
-   s" text that is not UTF-8 is refused" T-LABEL
-   BAD-TEXT @ E-WS-TEXT T= ;
-
-: PATTERN$ ( n -- ptr u8 n )
-   PATTERN swap SPAN:TAKE SPAN:$ ;
-
-\ Each length form at its edges: 7 bits to 125, 16 bits from 126 to 65535, and
-\ 64 bits past that.
-: LENGTH-CASES ( -- )
-   s" echo binary in each length form" SECTION
-   s" /echo" UPGRADE {: conn:TCP4:connection :}
-   conn WS-OPCODE:binary 125 PATTERN$ EXCHANGE
-   conn WS-OPCODE:binary 126 PATTERN$ EXCHANGE
-   conn WS-OPCODE:binary 65535 PATTERN$ EXCHANGE
-   conn WS-OPCODE:binary 65536 PATTERN$ EXCHANGE
-   conn WS-OPCODE:binary BIG PATTERN$ EXCHANGE
-   conn FAREWELL ;
-
-\ A message in fragments comes back as one frame: control frames pass between
-\ the fragments, a fragment may be empty, and a scalar may straddle two.
-: FRAGMENT-CASES ( -- )
-   s" fragments" SECTION
-   s" /echo" UPGRADE {: conn:TCP4:connection :}
-   conn false WS-OPCODE:text s" Hel" SAY
-   conn false WS-OPCODE:continuation s" lo," SAY
-   conn true WS-OPCODE:continuation s"  world" SAY
-   conn HEAR WS-OPCODE:text s" Hello, world" GOT
-   conn false WS-OPCODE:binary s" 0102" BYTES SAY
-   conn true WS-OPCODE:ping s" !" SAY
-   conn HEAR WS-OPCODE:pong s" !" GOT
-   conn true WS-OPCODE:continuation s" 0304" BYTES SAY
-   conn HEAR WS-OPCODE:binary s" 01020304" BYTES GOT
-   conn false WS-OPCODE:text s" c3" BYTES SAY
-   conn true WS-OPCODE:continuation s" a9" BYTES SAY
-   conn HEAR WS-OPCODE:text s" c3a9" BYTES GOT
-   conn false WS-OPCODE:text s" hi" SAY
-   conn true WS-OPCODE:continuation s" hi" drop 0 SAY
-   conn HEAR WS-OPCODE:text s" hi" GOT
-   conn FAREWELL ;
-
-\ A ping is answered with its own payload, to the 125 bytes a control frame may
-\ carry, and a pong nobody asked for is let pass.
-: PING-CASES ( -- )
-   s" ping and pong" SECTION
-   s" /echo" UPGRADE {: conn:TCP4:connection :}
-   conn true WS-OPCODE:ping s" hb" SAY
-   conn HEAR WS-OPCODE:pong s" hb" GOT
-   conn true WS-OPCODE:ping s" hb" drop 0 SAY
-   conn HEAR WS-OPCODE:pong s" hb" drop 0 GOT
-   conn true WS-OPCODE:ping 125 PATTERN$ SAY
-   conn HEAR WS-OPCODE:pong 125 PATTERN$ GOT
-   conn true WS-OPCODE:pong s" x" SAY
-   conn WS-OPCODE:text s" ok" EXCHANGE
-   conn FAREWELL ;
-
-\ The client says nothing until the handler's wait has run out twice more, so
-\ one whole wait began after the client's last byte. A handler not timed out
-\ twice by ANSWER-MS is a deadline: the wait names itself and throws
-\ E-PROC-TIMEOUT.
-: AWAIT-QUIET ( -- )
-   TIMEOUTS @ 2 + {: goal:n :}
-   mono-ns ANSWER-MS NS-PER-MS * + {: deadline:n :}
-   begin
-      TIMEOUTS @ goal >= if exit then
-      mono-ns deadline > if s" ws-test AWAIT-QUIET" TEST-WAIT:EXPIRED then
-      POLL-MS >MS TASK:SLEEP
-   again ;
-
-\ One frame in two writes with the handler's wait running out between them:
-\ RECEIVE answers timeout and takes the frame up where it stopped.
-: CUT ( TCP4:connection ptr u8 n n -- ) {: conn:TCP4:connection a u:n at:n :}
-   s" > text " LOG u LOG-N s"  cut after byte " LOG at LOG-N LF LOG-C
-   true WS-OPCODE:text a u FRAME$ {: f fu:n :}
-   conn f at SEND-RAW
-   AWAIT-QUIET
-   conn f at + fu at - SEND-RAW
-   conn HEAR WS-OPCODE:text a u GOT ;
-
-: TIMEOUT-CASE ( -- )
-   s" timeouts" SECTION
-   0 TIMEOUTS !
-   s" /echo" UPGRADE {: conn:TCP4:connection :}
-   AWAIT-QUIET
-   s" a header cut in two" T-LABEL
-   conn s" resumed" 1 CUT
-   conn s" resumed" 3 CUT
-   s" a payload cut in two" T-LABEL
-   conn s" resumed" 9 CUT
-   conn FAREWELL ;
-
-\ A client that does not wait for the 101: its first frame rides behind the
-\ request, where the HTTP server has already read it.
-: EARLY-CASE ( -- )
-   s" a frame behind the handshake" SECTION
-   s" GET" s" /echo" REQ-START GOOD-LINES S\" \r\n" REQ+
-   s" > " true WS-OPCODE:text s" early" LOG-FRAME
-   true WS-OPCODE:text s" early" FRAME$ REQ+
-   REQ-SEND {: conn:TCP4:connection :}
-   HEAD$ s" HTTP/1.1 101 " STARTS-WITH? TTRUE
-   conn HEAR WS-OPCODE:text s" early" GOT
-   conn FAREWELL ;
-
-\ Raw bytes on a fresh connection, and the status the server fails it with.
-: BREAKS ( ptr u8 n ptr u8 n n -- ) {: label lu:n a u:n code:n :}
-   label lu SECTION
-   s" /echo" UPGRADE {: conn:TCP4:connection :}
-   conn a u SAY-RAW
-   conn code FAILED ;
-
-\ What the codec refuses in a header, each from the fewest bytes that show it.
-: HEADER-FAULTS ( -- )
-   s" an unmasked frame" s" 810548656c6c6f" 1002 BREAKS
-   s" a control frame past 125 bytes" s" 89fe" 1002 BREAKS
-   s" a fragmented control frame" s" 0980" 1002 BREAKS
-   s" a reserved bit" s" c180" 1002 BREAKS
-   s" a reserved opcode" s" 8380" 1002 BREAKS
-   s" a length in a longer form than it needs" s" 82fe007d" 1002 BREAKS
-   s" a message one byte past the bound" s" 82ff0000000000100001" 1009 BREAKS ;
-
-\ What only the connection can see: the order of the frames and what they say.
-: MESSAGE-FAULTS ( -- )
-   s" a continuation of nothing" s" 808037fa213d" 1002 BREAKS
-   s" a new message inside another" SECTION
-   s" /echo" UPGRADE {: conn:TCP4:connection :}
-   conn false WS-OPCODE:text s" a" SAY
-   conn true WS-OPCODE:text s" b" SAY
-   conn 1002 FAILED
-   s" text that is not UTF-8" SECTION
-   s" /echo" UPGRADE {: bad:TCP4:connection :}
-   bad true WS-OPCODE:text s" c328" BYTES SAY
-   bad 1007 FAILED
-   s" fragments that are not UTF-8 together" SECTION
-   s" /echo" UPGRADE {: split:TCP4:connection :}
-   split false WS-OPCODE:text s" c3" BYTES SAY
-   split true WS-OPCODE:continuation s" 28" BYTES SAY
-   split 1007 FAILED
-   s" fragments one byte past the bound" SECTION
-   s" /echo" UPGRADE {: long:TCP4:connection :}
-   long false WS-OPCODE:binary BIG PATTERN$ SAY
-   long s" 80ff00000000000eee9137fa213d" SAY-RAW
-   long 1009 FAILED ;
-
-\ A frame whose header is accepted and whose payload never comes: the client
-\ ends its stream, so the handler sees status 1006 where a refused length would
-\ have answered 1009.
-: BOUND-CASES ( -- )
-   s" a message of exactly the bound" SECTION
-   0 LAST-CLOSE !
-   s" /echo" UPGRADE {: conn:TCP4:connection :}
-   conn s" 82ff000000000010000037fa213d" SAY-RAW
-   conn TCP4:SENDING TCP4:SHUTDOWN DROP-STATUS
-   conn ENDS
-   LAST-CLOSE @ 1006 T=
-   s" fragments of exactly the bound" SECTION
-   0 LAST-CLOSE !
-   s" /echo" UPGRADE {: long:TCP4:connection :}
-   long false WS-OPCODE:binary BIG PATTERN$ SAY
-   long s" 80ff00000000000eee9037fa213d" SAY-RAW
-   long TCP4:SENDING TCP4:SHUTDOWN DROP-STATUS
-   long ENDS
-   LAST-CLOSE @ 1006 T= ;
-
-\ A close frame's status comes back as it was sent when a frame may carry it,
-\ and is a protocol error when none may.
-: CLOSES-WITH ( n n -- ) {: code:n answer:n :}
-   0 LAST-CLOSE !
-   s" /echo" UPGRADE {: conn:TCP4:connection :}
-   conn true WS-OPCODE:close code STATUS$ SAY
-   conn answer FAILED ;
-
-: CLOSE-STATUS-CASES ( -- )
-   s" close statuses a frame may carry" SECTION
-   1000 1000 CLOSES-WITH
-   1003 1003 CLOSES-WITH
-   1007 1007 CLOSES-WITH
-   1014 1014 CLOSES-WITH
-   3000 3000 CLOSES-WITH
-   4999 4999 CLOSES-WITH
-   s" close statuses no frame may carry" SECTION
-   999 1002 CLOSES-WITH
-   1004 1002 CLOSES-WITH
-   1005 1002 CLOSES-WITH
-   1006 1002 CLOSES-WITH
-   1015 1002 CLOSES-WITH
-   2999 1002 CLOSES-WITH
-   5000 1002 CLOSES-WITH ;
-
-: CLOSE-CASES ( -- )
-   s" a close with no status" SECTION
-   0 LAST-CLOSE !
-   s" /echo" UPGRADE {: bare:TCP4:connection :}
-   bare true WS-OPCODE:close s" x" drop 0 SAY
-   bare HEAR WS-OPCODE:close s" x" drop 0 GOT
-   bare ENDS
-   LAST-CLOSE @ 1005 T=
-   s" a close with a reason" SECTION
-   0 LAST-CLOSE !
-   s" /echo" UPGRADE {: reason:TCP4:connection :}
-   reason true WS-OPCODE:close s" 03e9627965" BYTES SAY
-   reason 1001 FAILED
-   s" a close with half a status" SECTION
-   s" /echo" UPGRADE {: half:TCP4:connection :}
-   half true WS-OPCODE:close s" 03" BYTES SAY
-   half 1002 FAILED
-   s" a close whose reason is not UTF-8" SECTION
-   s" /echo" UPGRADE {: garbled:TCP4:connection :}
-   garbled true WS-OPCODE:close s" 03e8c328" BYTES SAY
-   garbled 1007 FAILED ;
-
-\ The handler closes: a ping the client sends before it answers the close is
-\ still answered (section 5.5.2), then the client answers the close and the
-\ stream ends.
-: SERVER-CLOSE-CASE ( -- )
-   s" the server closes first" SECTION
-   0 LAST-CLOSE ! 0 BAD-CODE ! 0 LATE-SEND !
-   s" /close" UPGRADE {: conn:TCP4:connection :}
-   conn true WS-OPCODE:text s" go" SAY
-   conn HEAR 1000 GOT-CLOSE
-   conn true WS-OPCODE:ping s" x" SAY
-   conn HEAR WS-OPCODE:pong s" x" GOT
-   conn true WS-OPCODE:close 1000 STATUS$ SAY
-   conn ENDS
-   s" the handler saw the client's close" T-LABEL
-   LAST-CLOSE @ 1000 T=
-   s" status 1005 is not one to send" T-LABEL
-   BAD-CODE @ E-WS-CODE T=
-   s" nothing is sent behind a close" T-LABEL
-   LATE-SEND @ E-WS-CLOSED T= ;
-
-\ A handler that returns with its socket open closes it normally; one that
-\ throws closes it as an internal error.
-: RETURN-CASES ( -- )
-   s" the handler returns" SECTION
-   s" /leave" UPGRADE {: conn:TCP4:connection :}
-   conn true WS-OPCODE:text s" go" SAY
-   conn HEAR 1000 GOT-CLOSE
-   conn ENDS
-   s" the handler throws" SECTION
-   s" /throw" UPGRADE {: thrown:TCP4:connection :}
-   thrown true WS-OPCODE:text s" go" SAY
-   thrown HEAR 1011 GOT-CLOSE
-   thrown ENDS ;
-
-: TWICE-CASE ( -- )
-   s" one request accepted twice" SECTION
-   0 SECOND-ACCEPT !
-   s" /twice" UPGRADE {: conn:TCP4:connection :}
-   conn WS-OPCODE:text s" still here" EXCHANGE
-   SECOND-ACCEPT @ HTTP:E-STATE T=
-   conn FAREWELL ;
-
-: DROP-MESSAGE ( WS:message -- )
-   MATCH WS:message
-      text OF 2drop ENDOF
-      binary OF 2drop ENDOF
-      closed OF drop ENDOF
-      timeout OF ENDOF
-   ;MATCH ;
-
-: RECEIVE-ELSEWHERE ( -- )
-   0 HELD @ 0 >MS WS:RECEIVE DROP-MESSAGE ;
-
-: RECEIVE-BACKWARDS ( -- )
-   0 HELD @ -1 >MS WS:RECEIVE DROP-MESSAGE ;
-
-\ The frame in hand is one the pushing task sent or one the handler sent, whole.
-: TALLY ( -- )
-   RX$ {: a u:n :}
-   RX-EOF @ 0 <> u BLAST-BYTES <> or if 1 TORN +! exit then
-   a u UNIFORM? 0= if 1 TORN +! exit then
-   a c@ PUSH-BYTE = if 1 PUSHED-N +! exit then
-   a c@ HANDLER-BYTE = if 1 HANDLER-N +! exit then
-   1 TORN +! ;
-
-\ The ended task's answer, or the code that ended it. A task asserts nothing:
-\ one that ended on its own deadline recorded it, and that is named and thrown
-\ here before any code reaches an assertion.
-: JOINED ( ptr n -- n )
-   TASK:JOIN
-   MATCH result
-      ok OF ENDOF
-      err OF
-         dup E-PROC-TIMEOUT = if s" ws-test task join" TEST-WAIT:EXPIRED then
-      ENDOF
-   ;MATCH ;
-
-\ The burst: BURST-PINGS empty pings, as the client sends them. Every byte of
-\ it fits the loopback buffers, so all of it is queued at the server at once.
-: VOLLEY-FILL ( -- )
-   true WS-OPCODE:ping PATTERN SPAN:$ drop 0 FRAME$ {: fa fu:n :}
-   BURST-PINGS 0 ?do fa fu VOLLEY-BUF i fu * SPAN:SKIP SPAN:COPY loop
-   BURST-PINGS fu * VOLLEY-U ! ;
-
-\ The client task writes the whole burst in one write and answers how many
-\ pings it wrote.
-: VOLLEY ( -- )
-   0 PEER @ VOLLEY-BUF VOLLEY-U @ SPAN:TAKE SPAN:$ TCP4:TRANSFER-BYTES TCP4:WRITE
-   MATCH TCP4:status
-      ok OF BURST-PINGS ENDOF
-      failed OF drop 0 ENDOF
-   ;MATCH
-   TASK:RETURN ;
-
-\ The frame in hand is a whole pong to one of the burst's pings.
-: PONG-IN ( -- )
-   RX-EOF @ 0 <> if exit then
-   RX-OP @ OP$ s" pong" STR= RX-LEN @ 0= and if 1 PONGS +! then ;
-
-\ The burst's pongs, read as they come. From the first on, the count read
-\ before the handler is first seen to have answered a timeout is kept.
-: DRAIN ( TCP4:connection -- ) {: conn:TCP4:connection :}
-   0 PONGS ! 0 LATE-AT !
-   conn NEXT-FRAME PONG-IN
-   TIMEOUTS @ {: seen:n :}
-   BURST-PINGS 1 ?do
-      LATE-AT @ 0= TIMEOUTS @ seen > and if PONGS @ LATE-AT ! then
-      conn NEXT-FRAME PONG-IN
-   loop ;
-
-\ A client task sends BURST-PINGS pings in one write, keeping bytes queued far
-\ longer than a RECEIVE waits, while the main thread reads the pongs. The wait
-\ is absolute: the handler is answered timeout while the burst is still being
-\ answered, and no RECEIVE takes half as long as the burst, as one that read on
-\ while bytes were queued would. A RECEIVE's length is kept when it returns,
-\ so the handler is let time out again before the longest is read.
-: BURST-CASE ( -- )
-   s" a burst the peer keeps queued" SECTION
-   0 TIMEOUTS ! 0 LONGEST !
-   s" /timed" UPGRADE {: conn:TCP4:connection :}
-   AWAIT-QUIET
-   conn 0 PEER !
-   VOLLEY-FILL
-   mono-ns {: began:n :}
-   [: VOLLEY ;] VOLLEY-TASK TASK:ACTIVATE
-   conn DRAIN
-   mono-ns began - {: took:n :}
-   AWAIT-QUIET
-   s" every ping of the burst was answered" T-LABEL
-   VOLLEY-TASK JOINED BURST-PINGS T=
-   PONGS @ BURST-PINGS T=
-   s" the handler timed out while the burst was answered" T-LABEL
-   LATE-AT @ 0 > TTRUE
-   s" and no wait took half as long as the burst" T-LABEL
-   LONGEST @ 2 * took < TTRUE
-   conn FAREWELL ;
-
-\ Whether the handler held the frame's header and first bytes, that many in
-\ all, behind the handshake: a case of its own.
-: LEAD-HELD? ( n -- bool )
-   {: lead:n :}
-   s" its header and first bytes were held behind the handshake" T-LABEL
-   EARLY-SEEN @ lead T=
-   EARLY-SEEN @ lead = ;
-
-\ Returns once the handler has published REST-FOUND. The handler's REST-EXPIRED
-\ and this wait's own 0 (REST-PENDING still) are one deadline, the wait for the
-\ rest, both REACH-MS from the 101: the client closes, the stop joins the
-\ handler's worker, and the deadline is named and thrown before any assertion
-\ on what the handler saw.
-: REST-AWAITED ( TCP4:connection -- )
-   {: conn:TCP4:connection :}
-   [: REST-SEEN atomic@ ;] REACH-MS PROBED REST-FOUND = if exit then
-   conn TCP4:CLOSE DROP-STATUS
-   HTTP:STOP
-   s" ws-test handler rest wait" TEST-WAIT:EXPIRED ;
-
-\ A binary frame whose header and first LEAD-BYTES ride behind the handshake,
-\ where the HTTP server has already read them, and whose other REST-BYTES the
-\ client writes once the 101 is in. The case checks that, before its RECEIVE
-\ that waits not at all, the handler held all of those first bytes in its
-\ slot, so none of the frame waited in the socket, and then found bytes queued
-\ there once the client's write of the rest had returned. On loopback that
-\ write, far under a segment, is sent as one segment, which the receiving
-\ stack queues whole, so those bytes are all of the rest. The RECEIVE then
-\ takes the bytes in hand, asks the socket nothing more and answers timeout,
-\ keeping them, though the rest of the frame is ready; the next takes the
-\ rest, and the message arrives whole. The client closes once the handler has
-\ found the rest. The handler looks from its 101 on, for REACH-MS, and records
-\ in REST-SEEN whether it found the rest or its wait ran out; the case reports
-\ a wait that ran out as the handler's deadline (REST-AWAITED).
-: REST-CASE ( -- )
-   s" a frame whose rest waits in the socket" SECTION
-   0 KEPT ! 0 TOOK-U ! 0 TOOK-BYTE ! 0 ZERO-TIMEOUT !
-   0 EARLY-SEEN ! 0 REST-WRITTEN ! REST-PENDING REST-SEEN atomic!
-   s" GET" s" /zero" REQ-START GOOD-LINES S\" \r\n" REQ+
-   s" > " true WS-OPCODE:binary REST-BUF SPAN:$ LOG-FRAME
-   true WS-OPCODE:binary REST-BUF SPAN:$ FRAME$ {: f fu:n :}
-   fu REST-BYTES - {: lead:n :}
-   f lead REQ+
-   REQ-SEND {: conn:TCP4:connection :}
-   HEAD$ s" HTTP/1.1 101 " STARTS-WITH? TTRUE
-   conn f lead + REST-BYTES SEND-RAW
-   1 REST-WRITTEN !
-   conn REST-AWAITED
-   conn FAREWELL
-   lead LEAD-HELD? if
-      s" and a RECEIVE that waits not at all answered timeout" T-LABEL
-      ZERO-TIMEOUT @ 0 <> TTRUE
-   then
-   s" the message arrived whole" T-LABEL
-   TOOK-U @ REST-FRAME-BYTES T=
-   TOOK-BYTE @ REST-BYTE T= ;
-
-\ A second task pushes through the handler's socket, and then both send at
-\ once. Each of their frames is two writes, a header and its payload, which
-\ another task's frame would land between if sends were not serialised; every
-\ frame the client reads is whole.
-: PUSH-CASE ( -- )
-   s" a push from a second task" SECTION
-   0 PUSHED-N ! 0 HANDLER-N ! 0 TORN !
-   [: PUSHER ;] PUSH-TASK TASK:ACTIVATE
-   s" /push" UPGRADE {: conn:TCP4:connection :}
-   conn HEAR WS-OPCODE:text s" pushed by another task" GOT
-   s" only its worker receives on a socket" T-LABEL
-   [: RECEIVE-ELSEWHERE ;] E-WS-SOCKET TTHROWSQ
-   s" and nobody waits less than no time" T-LABEL
-   [: RECEIVE-BACKWARDS ;] E-WS-WAIT TTHROWSQ
-   conn true WS-OPCODE:text s" go" SAY
-   BLAST-N 2 * 0 ?do conn NEXT-FRAME TALLY loop
-   s" every frame of both tasks arrived whole" T-LABEL
-   PUSHED-N @ BLAST-N T=
-   HANDLER-N @ BLAST-N T=
-   TORN @ 0 T=
-   s" < " LOG PUSHED-N @ LOG-N s"  pushed frames and " LOG HANDLER-N @ LOG-N
-   s"  of the handler's, " LOG TORN @ LOG-N s"  torn" LOG-LINE
-   s" the pushing task sent every frame" T-LABEL
-   PUSH-TASK JOINED BLAST-N T=
-   conn WS-OPCODE:text s" ok" EXCHANGE
-   conn FAREWELL
-   s" a push past the handler is refused" T-LABEL
-   [: SEND-HELD ;] E-WS-CLOSED TTHROWSQ
-   [: RECEIVE-ELSEWHERE ;] E-WS-SOCKET TTHROWSQ
-   s" and a close past it is nothing new" T-LABEL
-   0 HELD @ 1000 WS:CLOSE ;
-
+\ The body read behind the head is dropped with its connection.
 : PLAIN-ONCE ( -- )
    s" GET" s" /plain" REQ-START
    s" Connection" s" close" LINE+
    S\" \r\n" REQ+
    REQ-SEND {: conn:TCP4:connection :}
    HEAD$ s" HTTP/1.1 200 OK" STARTS-WITH? TTRUE
-   conn TCP4:CLOSE DROP-STATUS ;
+   conn TCP4:CLOSE DROP-STATUS
+   0 STREAM-AT ! 0 STREAM-U ! ;
 
-\ The worker that served a socket serves plain requests after it.
-: PLAIN-CASE ( -- )
-   s" plain HTTP after the sockets" SECTION
-   WORKERS 2 * 0 ?do PLAIN-ONCE loop ;
+\ Text and binary reach the handler as the messages they are, and its replies
+\ come back as such.
+: ECHO-CASE ( -- )
+   s" text and binary reach the handler" SECTION
+   OPENS {: conn:TCP4:connection sock:WS:socket :}
+   conn WS-OPCODE:text s" hello" EXCHANGE
+   conn WS-OPCODE:binary PATTERN 5 SPAN:TAKE SPAN:$ EXCHANGE
+   conn FAREWELL
+   sock 1000 ANSWER-MS CLOSES-WITHIN ;
 
-\ Returns once the case's handler has kept its socket. One not kept by
-\ ANSWER-MS is a deadline: the wait names itself and throws E-PROC-TIMEOUT.
-: AWAIT-KEPT ( -- )
-   mono-ns ANSWER-MS NS-PER-MS * + {: deadline:n :}
-   begin
-      KEPT @ 0 <> if exit then
-      mono-ns deadline > if s" ws-test AWAIT-KEPT" TEST-WAIT:EXPIRED then
-      POLL-MS >MS TASK:SLEEP
-   again ;
+\ The peer's close reaches the handler as `closed` with the status it carried.
+: PEER-CLOSE-CASE ( -- )
+   s" the peer's close reaches the handler" SECTION
+   OPENS {: conn:TCP4:connection sock:WS:socket :}
+   conn true WS-OPCODE:close 4001 STATUS$ SAY
+   conn HEAR 4001 GOT-CLOSE
+   conn ENDS
+   sock 4001 ANSWER-MS CLOSES-WITHIN ;
 
-\ A handle kept past its handler names nothing once the slot serves the next
-\ socket: a send through it is refused, and the socket in the slot hears only
-\ its own frames.
-: HELD-CASE ( -- )
-   s" a handle kept past its socket" SECTION
-   s" /hold" UPGRADE {: held:TCP4:connection :}
-   held HEAR 1000 GOT-CLOSE
-   held ENDS
-   s" /echo" UPGRADE {: conn:TCP4:connection :}
-   conn WS-OPCODE:text s" mine" EXCHANGE
-   s" a send through it is refused while the slot serves another" T-LABEL
-   [: SEND-HELD ;] E-WS-CLOSED TTHROWSQ
-   conn WS-OPCODE:text s" only mine" EXCHANGE
+\ A handler that throws closes its socket under 1011.
+: THROW-CASE ( -- )
+   s" a throwing handler" SECTION
+   OPENS {: conn:TCP4:connection sock:WS:socket :}
+   conn true WS-OPCODE:text s" throw" SAY
+   conn 1011 FAILED ;
+
+\ More sockets than the server has workers stay open, and plain requests are
+\ still answered: no socket holds a worker.
+: MANY-CASE ( -- )
+   s" more sockets than workers" SECTION
+   HTTP:MAX-WORKERS 1+ {: n:n :}
+   n 0 ?do OPENS drop i CONNS ! loop
+   PLAIN-ONCE PLAIN-ONCE
+   n 0 ?do i CONNS @ WS-OPCODE:text s" each" EXCHANGE loop
+   n 0 ?do i CONNS @ FAREWELL loop ;
+
+\ A task that is no HTTP worker sends through a socket it was handed.
+: PUSH-CASE ( -- )
+   s" a push from another task" SECTION
+   OPENS {: conn:TCP4:connection sock:WS:socket :}
+   sock s" pushed" WS:SEND-TEXT
+   conn HEAR WS-OPCODE:text s" pushed" GOT
    conn FAREWELL ;
 
-\ A stop kills the worker parked with its socket open, and an application's
-\ exit hook that runs before WS's own throws in that worker's exit. The peer
-\ reads the end of the stream, and on the restarted server the kept handle
-\ names nothing, not even the connection now on the killed one's descriptor:
-\ the send through it is refused and the slot's next socket hears only its own
-\ frames.
-: KILLED-CASE ( -- )
-   s" a handle kept past a killed worker" SECTION
-   0 KEPT !
-   0 STALE-SEND !
-   s" /park" UPGRADE {: parked:TCP4:connection :}
-   AWAIT-KEPT
-   1 EXIT-FAULT !
-   HTTP:STOP
-   0 EXIT-FAULT !
-   s" the stop killed the parked worker" T-LABEL
-   HTTP:KILLED-TASKS 1 T=
-   parked ENDS
-   LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START
-   s" the slot's next socket is answered its own 101 first" T-LABEL
-   s" /stale" UPGRADE {: conn:TCP4:connection :}
-   conn WS-OPCODE:text s" fresh" EXCHANGE
-   s" a send through it is refused on the restarted server" T-LABEL
-   STALE-SEND @ E-WS-CLOSED T=
-   conn FAREWELL ;
+: PUSH-ONE ( ptr u8 n -- ptr u8 n ) {: a u:n :}
+   0 PUSHED-TO @ a u WS:SEND-BINARY
+   a u ;
 
-\ Returns once the task has ended. One still running once the deadline, a
-\ mono-ns time, has passed is a deadline: the wait names itself and throws
-\ E-PROC-TIMEOUT, leaving the task where it runs.
-: AWAIT-END ( ptr n n -- )
-   {: tcb:ptr deadline:n :}
-   begin
-      tcb TASK:DONE? if exit then
-      mono-ns deadline > if s" ws-test AWAIT-END" TEST-WAIT:EXPIRED then
-      POLL-MS >MS TASK:SLEEP
-   again ;
+\ That many PUSH-BYTES frames from this task to the socket; the code the first
+\ refused push threw, or 0 when all of them were queued.
+: PUSHES ( WS:socket n -- n ) {: sock:WS:socket n:n :}
+   sock 0 PUSHED-TO !
+   n 0 ?do
+      PATTERN PUSH-BYTES SPAN:TAKE SPAN:$ [: PUSH-ONE ;] catch {: code:n :} drop drop
+      code 0 <> if code unloop exit then
+   loop
+   0 ;
 
-\ One frame as the client sends it, behind what the burst holds.
-: BURST+ ( WS:opcode ptr u8 n -- ) {: op a u:n :}
-   true op a u FRAME$ {: fa fu:n :}
-   fa fu BURST-BUF BURST-U @ SPAN:SKIP SPAN:COPY
-   fu BURST-U +! ;
-
-\ FLOOD-PINGS pings of PING-LEN bytes.
-: BURST-FILL ( -- )
-   0 BURST-U !
-   FLOOD-PINGS 0 ?do WS-OPCODE:ping PATTERN PING-LEN SPAN:TAKE SPAN:$ BURST+ loop ;
-
-\ The client task sends the burst over and over and reads nothing, until the
-\ stream fails under it: past the handler's close it still sends, which the
-\ worker's lingering close cuts at its deadline.
-: PINGER ( -- )
-   0 PEER @ {: conn:TCP4:connection :}
-   BURST-BUF BURST-U @ SPAN:TAKE SPAN:$ {: a u:n :}
-   begin
-      conn a u TCP4:TRANSFER-BYTES TCP4:WRITE
-      MATCH TCP4:status
-         ok OF ENDOF
-         failed OF drop exit ENDOF
-      ;MATCH
-   again ;
-
-\ When the last poll for the pong's claim that found the header of the frame in
-\ hand undecoded began. A ping's header is decoded before its claim samples the
-\ clock and stays so until the frame is reset, after the claim is given up
-\ (src/lib/net/ws.f FRAME-IN, TURN), so that poll, which samples the clock before it
-\ reads the header, began before the stalled pong's claim: a time measured
-\ apart from its deadline. A poll that found no claim
-\ proves less, since CLAIM samples the clock before it publishes the deadline.
-variable HEADLESS-AT
-
-\ When the worker came for the lock to write the pong it owes, once that pong
-\ has stopped moving bytes: the claim reads the same before and after the stall
-\ is seen, so the stalled write is the pong under it. 0 until then.
-: PONG-CLAIM ( -- n )
-   0 HELD @ {: sock:WS:socket :}
-   mono-ns {: began:n :}
-   sock WS-TEST:DECODED? 0= if began HEADLESS-AT ! then
-   sock WS-TEST:CLAIM-DUE {: due:n :}
-   due 0= if 0 exit then
-   sock WS-TEST:STALLED? 0= if 0 exit then
-   sock WS-TEST:CLAIM-DUE due <> if 0 exit then
-   due WS:STALL-MS NS-PER-MS * - ;
-
-\ How long after the worker's claim on the lock its socket may fail, in ns:
-\ the stall bound, the send slice in which the write notices it, and GRACE-MS.
-: STALL-BOUND ( -- n )
-   WS:STALL-MS TCP4:SEND-SLICE-MS + GRACE-MS + NS-PER-MS * ;
-
-\ Returns once the handler has heard its socket close. One not heard once the
-\ claim is STALL-BOUND behind is a deadline, no evidence the socket stayed open:
-\ the wait names itself and throws E-PROC-TIMEOUT.
-: HEARD-CLOSE ( n -- )
-   {: claim:n :}
-   begin
-      CLOSED-AT @ 0 <> if exit then
-      mono-ns claim - STALL-BOUND > if
-         s" ws-test HEARD-CLOSE" TEST-WAIT:EXPIRED
-      then
-      POLL-MS >MS TASK:SLEEP
-   again ;
-
-\ How long after the claim the handler heard its socket close.
-: CLOSE-LAG ( n -- n )
-   {: claim:n :}
-   CLOSED-AT @ claim - ;
-
-\ The bytes a queue holds, and whether the OS counted them: it does not once
-\ the connection is gone.
-: QUEUED-N ( TCP4:queue-result -- n bool )
+\ What the peer's end holds and its reader has not taken.
+: UNREAD-N ( TCP4:connection -- n )
+   TCP4:UNREAD
    MATCH TCP4:queue-result
-      queued OF BLEN>N true ENDOF
-      failed OF drop 0 false ENDOF
+      queued OF BLEN>N ENDOF
+      failed OF drop E-SILENT throw ENDOF
    ;MATCH ;
 
-\ Whether nothing of the preload is left unsent. An unsent queue the OS cannot
-\ count is a failure, not a wait: it throws E-SILENT rather than answer false
-\ until the deadline.
-: PRELOAD-ACKED? ( -- bool )
-   0 HELD @ WS-TEST:LINK TCP4:UNSENT QUEUED-N {: pending:n counted:bool :}
-   counted 0= if E-SILENT throw then
-   pending 0= ;
-
-\ Returns once the preload is acknowledged. One not acknowledged by REACH-MS is
-\ a deadline: the wait names itself and throws E-PROC-TIMEOUT.
-: PRELOAD-ACKED-BY ( -- )
-   [: PRELOAD-ACKED? ;] mono-ns REACH-MS NS-PER-MS * +
-   s" ws-test PRELOAD-ACKED-BY" TEST-WAIT:POLL ;
-
-\ Linux's fixed receive buffer is already overfull with unread bytes, and
-\ the peer advertises no room. The unsent queue exceeds a pong's payload.
-: LINUX-PONG-BACKED? ( -- bool )
-   0 HELD @ WS-TEST:LINK TCP-STATE {: unsent:n window:n :}
-   0 PEER @ TCP4:UNREAD QUEUED-N {: unread:n counted:bool :}
-   counted unread PEER-CAP @ > and
-   window 0= and unsent PING-LEN > and ;
-
-\ Lower the sender's actual buffer cap below its unsent queue, then check the
-\ same claim and empty send slice. An ACK for already transmitted data cannot
-\ reduce that unsent queue; a zero peer window and the low-water mark prevent
-\ any new send buffer until the peer reads. The reduced cap cannot make the
-\ last send buffer accept bytes that its last slice refused.
-: LINUX-PONG-CLAIM? ( n -- bool )
-   {: claim:n :}
-   LINUX-PONG-BACKED? 0= if false exit then
-   0 HELD @ WS-TEST:LINK {: link:TCP4:connection :}
-   link SOL-SOCKET SO-SNDBUF SERVER-SNDBUF OPT-U32!
-   link SOL-SOCKET SO-SNDBUF OPT-U32@ {: cap:n :}
-   link TCP-STATE {: unsent:n window:n :}
-   0 HELD @ {: sock:WS:socket :}
-   unsent cap > window 0= and
-   sock WS-TEST:STALLED? and
-   sock WS-TEST:CLAIM-DUE claim WS:STALL-MS NS-PER-MS * + = and ;
-
-\ The pong bytes between the worker and the flooding client, which reads none,
-\ and whether both queues were counted: those the server's connection holds
-\ unsent or unacknowledged, and those unread in the client's. A pong's bytes
-\ enter the first when the worker writes it and leave it only once they are in
-\ the second, so the sum grows with each pong and holds still once one finds no
-\ room.
-: PONGS-HELD ( -- n bool )
-   0 HELD @ WS-TEST:LINK TCP4:UNSENT QUEUED-N {: unsent:n sent-ok:bool :}
-   0 PEER @ TCP4:UNREAD QUEUED-N {: unread:n read-ok:bool :}
-   unsent unread + sent-ok read-ok and ;
-
-\ The worker's claim for the stalled pong (PONG-CLAIM), asked every POLL-MS;
-\ 0 once a queue cannot be counted. The clock restarts each time more pong
-\ bytes are held than before, so the wait lasts as long as load makes the fill.
-\ REACH-MS with no more held is a deadline, not evidence the fill stopped short
-\ of a stall: a client that reads its pongs and a worker that answers none look
-\ the same from here as a fill a loaded box has not run. The wait names itself
-\ and throws E-PROC-TIMEOUT.
-: PONG-FILLED ( -- n )
-   0 mono-ns                             \ the most pong bytes held yet, and when it grew
-   begin {: most:n grew:n :}
-      PONG-CLAIM {: claim:n :}
-      claim 0 <> if
-         LINUX? 0= if claim exit then
-         claim LINUX-PONG-CLAIM? if
-            s" < Linux pong: zero window, send queue over cap, unread peer" LOG-LINE
-            claim exit
-         then
-      then
-      PONGS-HELD {: held:n counted:bool :}
-      counted 0= if 0 exit then
-      held most > if
-         held mono-ns
-      else
-         mono-ns grew - REACH-MS NS-PER-MS * > if
-            s" ws-test PONG-FILLED" TEST-WAIT:EXPIRED
-         then
-         most grew
-      then
+\ The socket's handler is told `closed` 1006 within WS:STALL-MS of the last
+\ byte the peer's end took, as WS's own clock runs. That moment is the
+\ kernel's: a zero-window probe, sent first at BSD's 5 s persist minimum, can
+\ fill the part of a segment still free in the peer's buffer just as STALL-MS
+\ runs out, and WS rightly starts its clock again.
+: STALL-CLOSES ( TCP4:connection WS:socket -- ) {: peer:TCP4:connection sock:WS:socket :}
+   sock 0 WATCH !
+   peer UNREAD-N PEER-HELD !
+   mono-ns PEER-MOVED !
+   begin
+      WATCHED {: code:n :}
+      code 0 <> if code LOST T= 0 LAST-CLOSE ! exit then
+      peer UNREAD-N {: held:n :}
+      held PEER-HELD @ <> if held PEER-HELD ! mono-ns PEER-MOVED ! then
+      mono-ns PEER-MOVED @ - WS:STALL-MS GRACE-MS + NS-PER-MS * >
+      if s" ws-test STALL-CLOSES" TEST-WAIT:EXPIRED then
       POLL-MS >MS TASK:SLEEP
    again ;
 
-\ The Linux kernel returns one only after the sender was actually waiting on
-\ this pong's pthread mutex. Waking it is harmless while the pong owns the
-\ mutex: pthread_mutex_lock checks the word again and waits. False once the
-\ claim changes. WS:STALL-MS past the claim, before the wake or by the time it
-\ returns, is a deadline, not evidence the sender never waited: the wait names
-\ itself and throws E-PROC-TIMEOUT.
-: PONG-WAITER? ( n -- bool )
-   {: claim:n :}
-   begin
-      mono-ns claim - WS:STALL-MS NS-PER-MS * >= if
-         s" ws-test PONG-WAITER" TEST-WAIT:EXPIRED
-      then
-      0 HELD @ WS-TEST:CLAIM-DUE claim WS:STALL-MS NS-PER-MS * + <>
-      if false exit then
-      WAKE-LOCK-WAITER {: woken:n :}
-      woken 1 = if
-         mono-ns claim - WS:STALL-MS NS-PER-MS * >= if
-            s" ws-test PONG-WAITER" TEST-WAIT:EXPIRED
-         then
-         0 HELD @ WS-TEST:CLAIM-DUE claim WS:STALL-MS NS-PER-MS * + =
-         exit
-      then
-      woken 0 <> if E-SILENT throw then
-      TASK:PAUSE
-   again ;
-
-: LINUX-PONG-CONTROL ( TCP4:connection -- )
-   {: conn:TCP4:connection :}
-   LINUX? 0= if exit then
-   \ Complete and acknowledge an ordinary frame before shrinking the peer.
-   \ No old ACK can later free sender memory; the unread payload alone then
-   \ exceeds the fixed receive capacity until the peer reads or closes.
-   0 HELD @ PATTERN BIG SPAN:TAKE SPAN:$ WS:SEND-BINARY
-   PRELOAD-ACKED-BY
-   s" < Linux preload acknowledged before peer shrank" LOG-LINE
-   conn SOL-SOCKET SO-RCVBUF PEER-RCVBUF OPT-U32!
-   conn IPPROTO-TCP TCP-WINDOW-CLAMP PEER-WINDOW OPT-U32!
-   conn SOL-SOCKET SO-RCVBUF OPT-U32@ PEER-CAP !
-   0 HELD @ WS-TEST:LINK IPPROTO-TCP TCP-NOTSENT-LOWAT SEND-LOWAT OPT-U32! ;
-
-\ A one-worker server whose handler keeps its socket and receives, and a client
-\ task that floods it with pings and reads nothing, until the pong the worker
-\ owes stops moving bytes: the connection, and the worker's claim on the lock
-\ for that pong, 0 when a queue could not be counted.
-\ The polls count from just before the first ping, when no pong can have been
-\ claimed.
-: PONG-STALLED ( -- TCP4:connection n )
-   LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START
-   0 KEPT ! 0 CLOSED-AT ! 0 LAST-CLOSE !
-   s" /stall" UPGRADE {: conn:TCP4:connection :}
-   AWAIT-KEPT
-   conn 0 PEER !
-   conn LINUX-PONG-CONTROL
-   BURST-FILL
-   mono-ns HEADLESS-AT !
-   [: PINGER ;] PING-TASK TASK:ACTIVATE
-   s" the pong the worker owes stalls, its client reading nothing" T-LABEL
-   PONG-FILLED {: claim:n :}
-   claim 0 <> TTRUE
-   conn claim ;
-
-\ The pong stalled under the claim. The socket fails under 1006 within
-\ STALL-BOUND of the claim and no sooner than WS:STALL-MS after it, timed by
-\ the deadline the claim published and from HEADLESS-AT, which a claim
-\ published with a shorter deadline does not move. Another task's send, made
-\ while the pong is stalled, waits behind it and is refused; one still waiting
-\ GRACE-MS after the close is checked is named and thrown as a deadline, the
-\ send unjoined.
-: STALLED-PONG ( n -- )
-   {: claim:n :}
-   [: HELD-SEND ;] SEND-TASK TASK:ACTIVATE
-   LINUX? if
-      s" the sender queued on the stalled pong's mutex" T-LABEL
-      claim PONG-WAITER? dup TTRUE
-      if s" < Linux sender waited on this pong's mutex" LOG-LINE then
-   then
-   s" the socket fails under 1006 within the stall bound" T-LABEL
-   claim HEARD-CLOSE
-   LAST-CLOSE @ 1006 T=
-   CLOSED-AT @ 0 <> claim CLOSE-LAG STALL-BOUND <= and TTRUE
-   s" and no sooner than its deadline" T-LABEL
-   claim CLOSE-LAG WS:STALL-MS NS-PER-MS * >= TTRUE
-   s" nor sooner than WS:STALL-MS after a poll that began before the claim" T-LABEL
-   HEADLESS-AT @ CLOSE-LAG WS:STALL-MS NS-PER-MS * >= TTRUE
-   SEND-TASK mono-ns GRACE-MS NS-PER-MS * + AWAIT-END
-   s" the send behind the stalled pong is refused" T-LABEL
-   SEND-TASK JOINED E-WS-CLOSED T=
-   LINUX? if
-      s" < Linux pong closed 1006; sender returned E-WS-CLOSED" LOG-LINE
-   then ;
-
-\ A client task floods the socket with pings and never reads, so the pong the
-\ worker owes stalls (STALLED-PONG). The client floods on after the close, and
-\ the worker, whose lingering close ends at its deadline however long a peer
-\ sends, ends itself at the stop.
+\ A peer that reads nothing of a queue for WS:STALL-MS is closed under 1006,
+\ and another socket's messages go back and forth meanwhile.
 : STALL-CASE ( -- )
-   s" a peer that stops reading" SECTION
-   PONG-STALLED {: conn:TCP4:connection claim:n :}
-   claim 0 <> if claim STALLED-PONG then
-   HTTP:STOP
-   s" the stalled socket's worker ended itself" T-LABEL
-   HTTP:KILLED-TASKS 0 T=
-   PING-TASK TASK:KILL
-   conn TCP4:CLOSE DROP-STATUS ;
+   s" a stalled peer" SECTION
+   DIAL-SMALL OPENS-OVER {: still:TCP4:connection stuck:WS:socket :}
+   OPENS {: conn:TCP4:connection sock:WS:socket :}
+   stuck STALL-PUSH PUSH-BYTES / PUSHES 0 T=
+   conn WS-OPCODE:text s" meanwhile" EXCHANGE
+   stuck 0 WATCH !
+   WATCHED 0 T=
+   still stuck STALL-CLOSES
+   conn WS-OPCODE:text s" after" EXCHANGE
+   conn FAREWELL
+   still TCP4:CLOSE DROP-STATUS ;
 
-$BB8 constant STOP-CEILING-MS     \ over the server's own stop bound, far under a hang (src/lib/net/http-test.f)
+\ A peer that reads nothing while a task pushes past QUEUE-MAX loses its socket
+\ under 1006 at once, the push is E-WS-CLOSED, and another socket's messages
+\ are not held up.
+: OVERFLOW-CASE ( -- )
+   s" a queue past its bound" SECTION
+   OPENS {: still:TCP4:connection stuck:WS:socket :}
+   OPENS {: conn:TCP4:connection sock:WS:socket :}
+   stuck FLOOD-PUSH PUSH-BYTES / PUSHES E-WS-CLOSED T=
+   stuck LOST ANSWER-MS CLOSES-WITHIN
+   conn WS-OPCODE:text s" unhindered" EXCHANGE
+   conn FAREWELL
+   still TCP4:CLOSE DROP-STATUS ;
 
-\ 48 MiB in one frame, far more than a connection holds: the most a loopback
-\ connection on Darwin took was 6158 KiB, Darwin grows each of its buffers to
-\ 4 MiB at most, and Linux by default to 4 MiB to send and 6 MiB to receive. A
-\ push of it to a client that reads none never ends its frame, so it keeps the
-\ slot's lock from its first byte until it gives up; on a host whose connection
-\ holds the whole frame the push answers 0 and PUSH-REFUSED fails.
-$3000000 constant BIG-BYTES
-1 TYPED-BUFFER BIG-SPAN SPAN:span<u8>
+: ALL-CLOSED ( -- n )
+   CLOSED-N atomic@ CLOSE-GOAL @ >= if 1 else 0 then ;
 
-: SEND-BIG ( -- )
-   0 HELD @ 0 BIG-SPAN @ SPAN:$ WS:SEND-BINARY ;
+\ The socket past WS's table is refused 503, and no socket exists for it.
+: CAPACITY-CASE ( -- )
+   s" the socket past capacity" SECTION
+   CLOSED-N @ {: base:n :}
+   SOCKETS 0 ?do OPENS drop i CONNS ! loop
+   s" GET" s" /ws" REQ-START GOOD-LINES S\" \r\n" REQ+
+   REQ-SEND {: conn:TCP4:connection :}
+   ACCEPTED TASK:WAIT
+   HEAD$ s" HTTP/1.1 503 " STARTS-WITH? TTRUE
+   REFUSED-WITH @ 503 T=
+   conn TCP4:CLOSE DROP-STATUS
+   base SOCKETS + CLOSE-GOAL !
+   SOCKETS 0 ?do i CONNS @ TCP4:CLOSE DROP-STATUS loop
+   [: ALL-CLOSED ;] ANSWER-MS AWAITED drop
+   0 LAST-CLOSE ! ;
 
-\ Another task writes one BIG-BYTES frame through the kept socket and answers
-\ the code that refused it: 0 when the frame went out whole.
-: PUSH-BIG ( -- )
-   [: SEND-BIG ;] catch TASK:RETURN ;
-
-\ 1 once the write in hand on the kept socket has stopped moving bytes, a push
-\ held with the slot's lock, its client reading nothing; 0 while no write is
-\ stalled. The probe answers within a slice of the stall, far inside
-\ WS:STALL-MS.
-: PUSH-STALL ( -- n )
-   0 HELD @ WS-TEST:STALLED? if 1 else 0 then ;
-
-\ When the kept socket's writes give up for the worker's claim on the lock, 0
-\ while it makes none: only the worker claims, to answer, let go or retire.
-: ANSWER-CLAIM ( -- n )
-   0 HELD @ WS-TEST:CLAIM-DUE ;
-
-\ A one-worker server whose handler keeps its socket and receives, and another
-\ task's push to a client that reads none, held in its write with the slot's
-\ lock: the connection, once the push is seen held. A stall seen here may pass
-\ while the connection's buffers grow, but the push's one frame never ends, so
-\ the lock stays with the push until it gives up.
-: PUSH-STALLED ( -- TCP4:connection )
-   LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START
-   0 KEPT ! 0 GO-HOME ! 0 LAST-CLOSE !
-   s" /goodbye" UPGRADE {: conn:TCP4:connection :}
-   AWAIT-KEPT
-   [: PUSH-BIG ;] PUSH-TASK TASK:ACTIVATE
-   [: PUSH-STALL ;] REACH-MS AWAITED
-   conn ;
-
-\ The server stops and every task ends itself: none is killed, and the stop
-\ returns far inside a hang.
-: STOPS-IN-TIME ( ptr u8 n -- ) {: label lu:n :}
+\ WS:STOP sends 1001 to an open socket, tells its handler, and returns within
+\ its bound.
+: STOP-CASE ( -- )
+   s" a stop" SECTION
+   OPENS {: conn:TCP4:connection sock:WS:socket :}
    mono-ns {: began:n :}
-   HTTP:STOP
-   mono-ns began - {: took:n :}
-   label lu T-LABEL
-   HTTP:KILLED-TASKS 0 T=
-   s" and the stop returned in time" T-LABEL
-   took STOP-CEILING-MS NS-PER-MS * < TTRUE ;
-
-\ The push ends within GRACE-MS and is reaped; one still running then is named
-\ and thrown as a deadline, the push unjoined. Its code is the refusal only
-\ when the push was seen held or under way, the state the refusal depends on.
-: PUSH-REFUSED ( bool -- )
-   {: seen:bool :}
-   PUSH-TASK mono-ns GRACE-MS NS-PER-MS * + AWAIT-END
-   PUSH-TASK JOINED {: code:n :}
-   seen 0= if exit then
-   s" the push was refused" T-LABEL
-   code E-WS-CLOSED T= ;
-
-\ How long after a write is cut short it may still run, in ns: the release
-\ bound, the send slice in which the write notices it, and GRACE-MS.
-: CUT-BOUND ( -- n )
-   HTTP:RELEASE-MS TCP4:SEND-SLICE-MS + GRACE-MS + NS-PER-MS * ;
-
-\ The server stops while the handler's push is under way, and every task ends
-\ itself in time; the stop cut the push, which is E-WS-CLOSED within CUT-BOUND
-\ of the stop.
-: STOP-CUTS-FLOOD ( ptr u8 n -- ) {: label lu:n :}
-   mono-ns {: began:n :}
-   label lu STOPS-IN-TIME
-   s" the stop cut the handler's push" T-LABEL
-   FLOOD-CODE @ E-WS-CLOSED T=
-   s" which was under way when the stop began, and ended within its bound" T-LABEL
-   FLOOD-END @ began - {: took:n :}
-   took 0 > took CUT-BOUND <= and TTRUE ;
-
-\ A stop finds the handler inside its own push to a client that reads none,
-\ held there far inside WS:STALL-MS. The stop cuts the push once its client has
-\ taken no byte for HTTP:RELEASE-MS: the push is E-WS-CLOSED within CUT-BOUND
-\ of the stop, the handler returns, and the stop kills no task. On the
-\ restarted server another task's send through the handle the handler kept is
-\ refused; one still held at its deadline is named and thrown as a deadline,
-\ the send unjoined.
-: FLOODED-CASE ( -- )
-   s" a stop while the handler's own push is stalled" SECTION
-   0 KEPT ! 0 FLOOD-CODE ! 0 FLOOD-END !
-   s" /flood" UPGRADE {: flooded:TCP4:connection :}
-   AWAIT-KEPT
-   [: PUSH-STALL ;] REACH-MS AWAITED
-   s" the worker inside its push ended itself" STOP-CUTS-FLOOD
-   flooded TCP4:CLOSE DROP-STATUS
-   LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START
-   mono-ns GRACE-MS TCP4:SEND-SLICE-MS + NS-PER-MS * + {: deadline:n :}
-   [: HELD-SEND ;] STALE-TASK TASK:ACTIVATE
-   STALE-TASK deadline AWAIT-END
-   s" a send through its handle is refused on the restarted server" T-LABEL
-   STALE-TASK JOINED E-WS-CLOSED T= ;
-
-\ One worker, so each socket is served in the slot the one before it held.
-: SLOT-CASES ( -- )
-   LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START
-   HELD-CASE
-   KILLED-CASE
-   FLOODED-CASE
-   HTTP:STOP
-   s" the restarted server's tasks ended themselves" T-LABEL
-   HTTP:KILLED-TASKS 0 T= ;
-
-\ The handler returns on its cue behind another task's push, and the stop that
-\ follows kills no task. A push seen held or under way is cut by the goodbye
-\ within CUT-BOUND of the handler's turn, before any stop, and the handler
-\ returned with its socket open; whatever was seen, the push is reaped.
-: GOODBYE-CUT ( bool -- )
-   {: seen:bool :}
-   1 GO-HOME !
-   seen if
-      PUSH-TASK mono-ns RECEIVE-MS NS-PER-MS * + CUT-BOUND + AWAIT-END
-   then
-   s" the worker saying goodbye behind the push ended itself" STOPS-IN-TIME
-   seen if
-      s" the handler returned on its cue, with its socket open" T-LABEL
-      LAST-CLOSE @ 0 T=
-   then
-   seen PUSH-REFUSED ;
-
-\ The handler returns while another task's push to a client that reads none is
-\ held in its write with the slot's lock. The worker comes for the lock for its
-\ goodbye, due HTTP:RELEASE-MS later: the push gives up then and the socket is
-\ lost, within CUT-BOUND of the handler's turn and with no stop to cut it,
-\ rather than waiting out WS:STALL-MS. The goodbye writes nothing, and the stop
-\ that follows kills no task.
-: GOODBYE-CASE ( -- )
-   s" a goodbye behind a stalled push" SECTION
-   PUSH-STALLED {: conn:TCP4:connection :}
-   true GOODBYE-CUT
-   conn TCP4:CLOSE DROP-STATUS ;
-
-\ A stop finds the handler in a RECEIVE that would wait far past the stop's
-\ bound, its client saying nothing. RECEIVE reads the stop within a slice of
-\ its wait and closes the socket under 1001, going away: the client reads that
-\ close and then the end of the stream, the handler hears 1001, and the stop
-\ kills no task.
-: PATIENT-CASE ( -- )
-   s" a stop while the handler waits" SECTION
-   LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START
-   0 KEPT ! 0 LAST-CLOSE !
-   s" /patient" UPGRADE {: conn:TCP4:connection :}
-   AWAIT-KEPT
-   s" the waiting worker ended itself" STOPS-IN-TIME
-   s" the client is told the server is going away" T-LABEL
+   WS:STOP
+   mono-ns began - STOP-BOUND-MS GRACE-MS + NS-PER-MS * < TTRUE
    conn HEAR 1001 GOT-CLOSE
    conn ENDS
-   s" and so is the handler" T-LABEL
-   LAST-CLOSE @ 1001 T= ;
-
-\ A stop comes while the worker waits for its slot's lock to answer the
-\ client's frame - the pong a ping is owed, or the close that answers a close -
-\ behind another task's push that the client, reading nothing, has stalled.
-\ The stop comes once the worker's claim on the lock stands behind the push,
-\ and cuts the push once its client has taken no byte for HTTP:RELEASE-MS: the
-\ socket is lost, the answer is never written, and the worker ends itself in
-\ time.
-: BEHIND-PUSH ( ptr u8 n WS:opcode ptr u8 n -- ) {: label lu:n op a u:n :}
-   label lu SECTION
-   PUSH-STALLED {: conn:TCP4:connection :}
-   conn true op a u SAY
-   [: ANSWER-CLAIM ;] REACH-MS AWAITED
-   s" the worker answering behind the push ended itself" STOPS-IN-TIME
-   s" the socket was lost under the push" T-LABEL
-   LAST-CLOSE @ 1006 T=
-   true PUSH-REFUSED
-   conn TCP4:CLOSE DROP-STATUS ;
-
-: PING-BEHIND-CASE ( -- )
-   s" a stop while a pong waits behind a stalled push" WS-OPCODE:ping s" hb" BEHIND-PUSH ;
-
-: CLOSE-BEHIND-CASE ( -- )
-   s" a stop while a close waits behind a stalled push"
-   WS-OPCODE:close 1000 STATUS$ BEHIND-PUSH ;
-
-\ A stop comes while the worker is held in the pong it owes a client that
-\ floods it with pings and reads nothing, the client's receive buffer full.
-\ The stop cuts the pong once the client has taken no byte for
-\ HTTP:RELEASE-MS: the socket is lost, and the worker ends itself in time.
-: PONG-STOP-CASE ( -- )
-   s" a stop while a pong is stalled" SECTION
-   PONG-STALLED {: conn:TCP4:connection claim:n :}
-   s" the worker held in the pong ended itself" STOPS-IN-TIME
-   claim 0 <> if
-      LINUX? if
-         s" the pong saw stop before its own stall deadline" T-LABEL
-         0 HELD @ WS-TEST:CUT-AT {: cut:n :}
-         cut 0 > cut claim WS:STALL-MS NS-PER-MS * + < and TTRUE
-         s" < Linux pong saw STOP before its stall deadline" LOG-LINE
-         s" and closed under the stop cut, before that deadline" T-LABEL
-         CLOSED-AT @ cut - HTTP:RELEASE-MS NS-PER-MS * >=
-         CLOSED-AT @ claim WS:STALL-MS NS-PER-MS * + < and TTRUE
-         s" < Linux stop closed this pong before its stall deadline" LOG-LINE
-      then
-      s" the socket was lost under the pong" T-LABEL
-      LAST-CLOSE @ 1006 T=
-   then
-   PING-TASK TASK:KILL
-   conn TCP4:CLOSE DROP-STATUS ;
-
-\ A stop finds the handler about to send. Its send starts the stop's cut and
-\ goes out whole; the close frame going away calls for comes HTTP:RELEASE-MS
-\ into the cut, so it is refused before its first byte and the socket is
-\ lost: the client reads the text and then the end of the stream, and the
-\ handler hears 1006, a connection lost, not the 1001 that was never sent.
-: UNSENT-CLOSE-CASE ( -- )
-   s" a stop whose close cannot be sent" SECTION
-   LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START
-   0 KEPT ! 0 LAST-CLOSE !
-   s" /late" UPGRADE {: conn:TCP4:connection :}
-   AWAIT-KEPT
-   s" the worker whose close was refused ended itself" STOPS-IN-TIME
-   s" the client reads the text and then the end of the stream" T-LABEL
-   conn HEAR WS-OPCODE:text s" cut" GOT
-   conn ENDS
-   s" and the handler hears the connection lost" T-LABEL
-   LAST-CLOSE @ 1006 T= ;
-
-\ Every stop here comes while a handler is inside RECEIVE or about to be, and
-\ none kills.
-: STOP-CASES ( -- )
-   PATIENT-CASE
-   PING-BEHIND-CASE
-   CLOSE-BEHIND-CASE
-   PONG-STOP-CASE
-   UNSENT-CLOSE-CASE ;
-
-
-\ ---- a client that keeps taking bytes ----------------------------------------
-
-\ The client takes SIP-BYTES every SIP-MS, 3.2 MB/s, so no write to it ever
-\ waits out a bound on silence: only the cut of a write that keeps moving bytes
-\ ends one. A BIG-BYTES frame takes it more than 15 s: long enough to span the
-\ WS:STALL-MS claim of a pong due behind it. Each case waits for its push to be
-\ under way, its client taking bytes (PUSH-TAKEN), before relying on it.
-$10000 constant SIP-BYTES
-$14 constant SIP-MS
-$FA0 constant SIP-FOR-MS          \ how long past the wait for the handler's own pushes their client takes bytes: past the stop's ceiling
-SIP-BYTES SPAN-BUFFER: SIP-BUF
-TASK-STACK TASK:TASK SIP-TASK
-variable SIP-UNTIL                \ the mono-ns past which the client takes no more
-variable SIPPED                   \ what it has taken
-
-\ The client takes bytes until its stream ends or SIP-UNTIL passes. Each turn
-\ ends in a TASK:PAUSE, where a KILL that came during its sleep ends it.
-: SIP ( -- )
-   0 PEER @ {: conn:TCP4:connection :}
-   begin
-      mono-ns SIP-UNTIL @ > if exit then
-      conn SIP-BUF SPAN:$ TCP4:TRANSFER-BYTES TCP4:READ
-      MATCH TCP4:read-result
-         data OF BLEN>N SIPPED +! ENDOF
-         closed OF drop exit ENDOF
-         failed OF drop exit ENDOF
-      ;MATCH
-      SIP-MS >MS TASK:SLEEP
-      TASK:PAUSE
-   again ;
-
-\ The client takes bytes from the connection until the mono-ns given, or until
-\ told to stop.
-: SIP-FROM ( TCP4:connection n -- ) {: conn:TCP4:connection until:n :}
-   0 SIPPED !
-   until SIP-UNTIL !
-   conn 0 PEER !
-   [: SIP ;] SIP-TASK TASK:ACTIVATE ;
-
-\ The client stops taking bytes and its task is reaped: the server has closed
-\ the connection by now, so no read holds it.
-: SIP-OVER ( -- )
-   mono-ns SIP-UNTIL !
-   SIP-TASK mono-ns ANSWER-MS NS-PER-MS * + AWAIT-END
-   SIP-TASK TASK:KILL ;
-
-\ What the client has taken, 0 until its first byte: the push to it is the
-\ only writer on its connection, so a byte taken is one that push wrote,
-\ holding the slot's lock.
-: PUSH-TAKEN ( -- n )
-   SIPPED @ ;
-
-\ The client takes bytes from the connection, PARK-MS past the longest wait
-\ for the push, and another task writes one BIG-BYTES frame to it through the
-\ kept socket: whether that push was seen under way, its client taking bytes.
-\ No reader here shows which task holds the slot's lock, so a byte taken while
-\ the task is not done stands for it: the frame takes over 15 s at the client's
-\ pace, past REACH-MS, and until the case cues the worker nothing claims the
-\ lock or stops the server.
-: BIG-UNDER-WAY ( TCP4:connection -- bool )
-   {: conn:TCP4:connection :}
-   conn mono-ns REACH-MS PARK-MS + NS-PER-MS * + SIP-FROM
-   [: PUSH-BIG ;] PUSH-TASK TASK:ACTIVATE
-   s" the push is under way, its client taking bytes" T-LABEL
-   [: PUSH-TAKEN ;] REACH-MS AWAITED
-   PUSH-TASK TASK:DONE? 0= dup TTRUE ;
-
-\ The handler returns on its cue while another task's BIG-BYTES push is under
-\ way to a client that keeps taking bytes. The worker comes for the lock for
-\ its goodbye, due HTTP:RELEASE-MS later: the push gives up then, however many
-\ bytes its client goes on taking, and the socket is lost, within CUT-BOUND of
-\ the handler's turn and with no stop to cut it. The stop that follows kills
-\ no task.
-: TRICKLE-GOODBYE-CASE ( -- )
-   s" a goodbye behind a push its client keeps taking" SECTION
-   LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START
-   0 KEPT ! 0 GO-HOME ! 0 LAST-CLOSE !
-   s" /goodbye" UPGRADE {: conn:TCP4:connection :}
-   AWAIT-KEPT
-   conn BIG-UNDER-WAY GOODBYE-CUT
-   SIP-OVER
-   conn TCP4:CLOSE DROP-STATUS ;
-
-\ Returns once the handler has heard its socket close. A handler that has not
-\ heard it by the deadline, a mono-ns time, is a deadline: the wait names
-\ itself and throws E-PROC-TIMEOUT.
-: AWAIT-CLOSE ( n -- )
-   {: deadline:n :}
-   begin
-      LAST-CLOSE @ 0 <> if exit then
-      mono-ns deadline > if s" ws-test AWAIT-CLOSE" TEST-WAIT:EXPIRED then
-      POLL-MS >MS TASK:SLEEP
-   again ;
-
-\ The client pings while the handler receives behind another task's BIG-BYTES
-\ push to it, which it keeps taking. The pong is due WS:STALL-MS after the
-\ worker comes for the lock: the push gives up then, however many bytes its
-\ client goes on taking, and the socket is lost, so the RECEIVE that read the
-\ ping answers closed 1006 no later than its wait, WS:STALL-MS and one send
-\ slice. The stop that follows kills no task.
-: PONG-DUE-CASE ( -- )
-   s" a pong due behind a push its client keeps taking" SECTION
-   LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START
-   0 KEPT ! 0 LONGEST ! 0 LAST-CLOSE !
-   s" /timed" UPGRADE {: conn:TCP4:connection :}
-   AWAIT-KEPT
-   conn BIG-UNDER-WAY {: going:bool :}
-   conn true WS-OPCODE:ping s" hb" SAY
-   going if
-      mono-ns STALL-BOUND + AWAIT-CLOSE
-      going PUSH-REFUSED
-   then
-   s" the worker that owed the pong ended itself" STOPS-IN-TIME
-   going if
-      s" the handler heard the connection lost" T-LABEL
-      LAST-CLOSE @ 1006 T=
-      s" and no RECEIVE ran past its wait, WS:STALL-MS and one send slice" T-LABEL
-      LONGEST @ RECEIVE-MS NS-PER-MS * STALL-BOUND + <= TTRUE
-   else
-      going PUSH-REFUSED
-   then
-   SIP-OVER
-   conn TCP4:CLOSE DROP-STATUS ;
-
-\ A stop while the handler's own pushes go, frame after frame, to a client that
-\ keeps taking bytes SIP-FOR-MS past the longest wait for them, past the stop's
-\ ceiling. The stop cuts the slot, not one frame: HTTP:RELEASE-MS after the
-\ first push that finds it cut, the push in flight gives up, or the next is
-\ refused before its first byte, however many bytes the client goes on taking.
-\ The push is E-WS-CLOSED within CUT-BOUND of the stop, and the stop kills no
-\ task. The pushes count as under way once their client has taken a byte and
-\ none was refused: before the stop nothing refuses one, since only a cut ends
-\ a write that keeps moving bytes and nothing claims the lock.
-: FLOOD-SIP-CASE ( -- )
-   s" a stop while the handler pushes to a client that keeps taking bytes" SECTION
-   LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START
-   0 KEPT ! 0 FLOOD-CODE ! 0 FLOOD-END !
-   s" /flood" UPGRADE {: conn:TCP4:connection :}
-   AWAIT-KEPT
-   conn mono-ns REACH-MS SIP-FOR-MS + NS-PER-MS * + SIP-FROM
-   s" the handler's pushes are under way, their client taking bytes" T-LABEL
-   [: PUSH-TAKEN ;] REACH-MS AWAITED
-   FLOOD-CODE @ 0= {: going:bool :}
-   going TTRUE
-   going if
-      s" the worker pushing to its client ended itself" STOP-CUTS-FLOOD
-   else
-      s" the worker pushing to its client ended itself" STOPS-IN-TIME
-   then
-   SIP-OVER
-   conn TCP4:CLOSE DROP-STATUS ;
-
-\ Every write here is to a client that keeps taking bytes, so only the cut of
-\ a write that keeps moving them ends it.
-: SIP-CASES ( -- )
-   TRICKLE-GOODBYE-CASE
-   PONG-DUE-CASE
-   FLOOD-SIP-CASE ;
+   sock CLOSED-OF 1001 T= ;
 
 
 \ ---- the transcript this file expects ----------------------------------------
@@ -2229,279 +705,43 @@ variable SIPPED                   \ what it has taken
    W
    s" < end of stream" W ;
 
-: WANT-OPENING ( -- )
-   s" == handshake" W
-   s" HTTP/1.1 101 Switching Protocols" W
-   s" Upgrade: websocket" W
-   s" Connection: Upgrade" W
-   s" Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=" W
-   s" " W
-   s" < end of stream" W
-   s" == refused handshakes" W
-   s" no Upgrade: HTTP/1.1 400 Bad Request" W
-   s" Upgrade to h2c: HTTP/1.1 400 Bad Request" W
-   s" Connection without Upgrade: HTTP/1.1 400 Bad Request" W
-   s" no key: HTTP/1.1 400 Bad Request" W
-   s" a key of 23 characters: HTTP/1.1 400 Bad Request" W
-   s" a key of 18 bytes: HTTP/1.1 400 Bad Request" W
-   s" a key outside base64: HTTP/1.1 400 Bad Request" W
-   s" two keys: HTTP/1.1 400 Bad Request" W
-   s" POST: HTTP/1.1 400 Bad Request" W
-   s" HTTP/1.0: HTTP/1.1 400 Bad Request" W
-   s" no Host: HTTP/1.1 400 Bad Request" W
-   s" two Hosts: HTTP/1.1 400 Bad Request" W
-   s" an empty Host: HTTP/1.1 400 Bad Request" W
-   s" a Host with a space: HTTP/1.1 400 Bad Request" W
-   s" no version: HTTP/1.1 426 Upgrade Required" W
-   s" version 12: HTTP/1.1 426 Upgrade Required" W
-   s" == a handshake in another spelling" W
-   s" > text 2 6f6b" W
-   s" < text 2 6f6b" W
-   W-FAREWELL ;
-
-: WANT-ECHOES ( -- )
-   s" == echo text" W
-   s" > text 5 48656c6c6f" W
-   s" < text 5 48656c6c6f" W
-   s" > text 0" W
-   s" < text 0" W
-   s" > text 10 68c3a96c6c6f20e282ac" W
-   s" < text 10 68c3a96c6c6f20e282ac" W
-   W-FAREWELL
-   s" == text the server may not send" W
-   s" > text 2 6f6b" W
-   s" < text 2 6f6b" W
-   W-FAREWELL
-   s" == echo binary in each length form" W
-   s" > binary 125 sum 16101" W
-   s" < binary 125 sum 16101" W
-   s" > binary 126 sum 16143" W
-   s" < binary 126 sum 16143" W
-   s" > binary 65535 sum 8355608" W
-   s" < binary 65535 sum 8355608" W
-   s" > binary 65536 sum 8355840" W
-   s" < binary 65536 sum 8355840" W
-   s" > binary 70000 sum 8925000" W
-   s" < binary 70000 sum 8925000" W
-   W-FAREWELL
-   s" == fragments" W
-   s" > text+ 3 48656c" W
-   s" > continuation+ 3 6c6f2c" W
-   s" > continuation 6 20776f726c64" W
-   s" < text 12 48656c6c6f2c20776f726c64" W
-   s" > binary+ 2 0102" W
-   s" > ping 1 21" W
-   s" < pong 1 21" W
-   s" > continuation 2 0304" W
-   s" < binary 4 01020304" W
-   s" > text+ 1 c3" W
-   s" > continuation 1 a9" W
-   s" < text 2 c3a9" W
-   s" > text+ 2 6869" W
-   s" > continuation 0" W
-   s" < text 2 6869" W
-   W-FAREWELL
-   s" == ping and pong" W
-   s" > ping 2 6862" W
-   s" < pong 2 6862" W
-   s" > ping 0" W
-   s" < pong 0" W
-   s" > ping 125 sum 16101" W
-   s" < pong 125 sum 16101" W
-   s" > pong 1 78" W
-   s" > text 2 6f6b" W
-   s" < text 2 6f6b" W
-   W-FAREWELL ;
-
-: WANT-WAITS ( -- )
-   s" == timeouts" W
-   s" > text 7 cut after byte 1" W
-   s" < text 7 726573756d6564" W
-   s" > text 7 cut after byte 3" W
-   s" < text 7 726573756d6564" W
-   s" > text 7 cut after byte 9" W
-   s" < text 7 726573756d6564" W
-   W-FAREWELL
-   s" == a frame behind the handshake" W
-   s" > text 5 6561726c79" W
-   s" < text 5 6561726c79" W
-   W-FAREWELL ;
-
-: WANT-FAULTS ( -- )
-   s" == an unmasked frame" W
-   s" > raw 810548656c6c6f" W
-   s" < close 2 03ea" W-FAILED
-   s" == a control frame past 125 bytes" W
-   s" > raw 89fe" W
-   s" < close 2 03ea" W-FAILED
-   s" == a fragmented control frame" W
-   s" > raw 0980" W
-   s" < close 2 03ea" W-FAILED
-   s" == a reserved bit" W
-   s" > raw c180" W
-   s" < close 2 03ea" W-FAILED
-   s" == a reserved opcode" W
-   s" > raw 8380" W
-   s" < close 2 03ea" W-FAILED
-   s" == a length in a longer form than it needs" W
-   s" > raw 82fe007d" W
-   s" < close 2 03ea" W-FAILED
-   s" == a message one byte past the bound" W
-   s" > raw 82ff0000000000100001" W
-   s" < close 2 03f1" W-FAILED
-   s" == a continuation of nothing" W
-   s" > raw 808037fa213d" W
-   s" < close 2 03ea" W-FAILED
-   s" == a new message inside another" W
-   s" > text+ 1 61" W
-   s" > text 1 62" W
-   s" < close 2 03ea" W-FAILED
-   s" == text that is not UTF-8" W
-   s" > text 2 c328" W
-   s" < close 2 03ef" W-FAILED
-   s" == fragments that are not UTF-8 together" W
-   s" > text+ 1 c3" W
-   s" > continuation 1 28" W
-   s" < close 2 03ef" W-FAILED
-   s" == fragments one byte past the bound" W
-   s" > binary+ 70000 sum 8925000" W
-   s" > raw 80ff00000000000eee9137fa213d" W
-   s" < close 2 03f1" W-FAILED
-   s" == a message of exactly the bound" W
-   s" > raw 82ff000000000010000037fa213d" W
-   s" < end of stream" W
-   s" == fragments of exactly the bound" W
-   s" > binary+ 70000 sum 8925000" W
-   s" > raw 80ff00000000000eee9037fa213d" W
-   s" < end of stream" W ;
-
-: WANT-STATUSES ( -- )
-   s" == close statuses a frame may carry" W
-   s" > close 2 03e8" W
-   s" < close 2 03e8" W-FAILED
-   s" > close 2 03eb" W
-   s" < close 2 03eb" W-FAILED
-   s" > close 2 03ef" W
-   s" < close 2 03ef" W-FAILED
-   s" > close 2 03f6" W
-   s" < close 2 03f6" W-FAILED
-   s" > close 2 0bb8" W
-   s" < close 2 0bb8" W-FAILED
-   s" > close 2 1387" W
-   s" < close 2 1387" W-FAILED
-   s" == close statuses no frame may carry" W
-   s" > close 2 03e7" W
-   s" < close 2 03ea" W-FAILED
-   s" > close 2 03ec" W
-   s" < close 2 03ea" W-FAILED
-   s" > close 2 03ed" W
-   s" < close 2 03ea" W-FAILED
-   s" > close 2 03ee" W
-   s" < close 2 03ea" W-FAILED
-   s" > close 2 03f7" W
-   s" < close 2 03ea" W-FAILED
-   s" > close 2 0bb7" W
-   s" < close 2 03ea" W-FAILED
-   s" > close 2 1388" W
-   s" < close 2 03ea" W-FAILED ;
-
-: WANT-CLOSES ( -- )
-   s" == a close with no status" W
-   s" > close 0" W
-   s" < close 0" W-FAILED
-   s" == a close with a reason" W
-   s" > close 5 03e9627965" W
-   s" < close 2 03e9" W-FAILED
-   s" == a close with half a status" W
-   s" > close 1 03" W
-   s" < close 2 03ea" W-FAILED
-   s" == a close whose reason is not UTF-8" W
-   s" > close 4 03e8c328" W
-   s" < close 2 03ef" W-FAILED
-   s" == the server closes first" W
-   s" > text 2 676f" W
-   s" < close 2 03e8" W
-   s" > ping 1 78" W
-   s" < pong 1 78" W
-   s" > close 2 03e8" W
-   s" < end of stream" W
-   s" == the handler returns" W
-   s" > text 2 676f" W
-   s" < close 2 03e8" W-FAILED
-   s" == the handler throws" W
-   s" > text 2 676f" W
-   s" < close 2 03f3" W-FAILED
-   s" == one request accepted twice" W
-   s" > text 10 7374696c6c2068657265" W
-   s" < text 10 7374696c6c2068657265" W
-   W-FAREWELL
-   s" == a push from a second task" W
-   s" < text 22 70757368656420627920616e6f74686572207461736b" W
-   s" > text 2 676f" W
-   s" < 400 pushed frames and 400 of the handler's, 0 torn" W
-   s" > text 2 6f6b" W
-   s" < text 2 6f6b" W
-   W-FAREWELL
-   s" == a burst the peer keeps queued" W
-   W-FAREWELL
-   s" == a frame whose rest waits in the socket" W
-   s" > binary 4160 sum 341120" W
-   W-FAREWELL
-   s" == plain HTTP after the sockets" W ;
-
-: WANT-SLOTS ( -- )
-   s" == a handle kept past its socket" W
-   s" < close 2 03e8" W-FAILED
-   s" > text 4 6d696e65" W
-   s" < text 4 6d696e65" W
-   s" > text 9 6f6e6c79206d696e65" W
-   s" < text 9 6f6e6c79206d696e65" W
-   W-FAREWELL
-   s" == a handle kept past a killed worker" W
-   s" < end of stream" W
-   s" > text 5 6672657368" W
-   s" < text 5 6672657368" W
-   W-FAREWELL
-   s" == a stop while the handler's own push is stalled" W ;
-
-: WANT-STALL ( -- )
-   s" == a peer that stops reading" W
-   LINUX? if
-      s" < Linux preload acknowledged before peer shrank" W
-      s" < Linux pong: zero window, send queue over cap, unread peer" W
-      s" < Linux sender waited on this pong's mutex" W
-      s" < Linux pong closed 1006; sender returned E-WS-CLOSED" W
-   then
-   s" == a goodbye behind a stalled push" W ;
-
-: WANT-STOPS ( -- )
-   s" == a stop while the handler waits" W
-   s" < close 2 03e9" W-FAILED
-   s" == a stop while a pong waits behind a stalled push" W
-   s" > ping 2 6862" W
-   s" == a stop while a close waits behind a stalled push" W
-   s" > close 2 03e8" W
-   s" == a stop while a pong is stalled" W
-   LINUX? if
-      s" < Linux preload acknowledged before peer shrank" W
-      s" < Linux pong: zero window, send queue over cap, unread peer" W
-      s" < Linux pong saw STOP before its stall deadline" W
-      s" < Linux stop closed this pong before its stall deadline" W
-   then
-   s" == a stop whose close cannot be sent" W
-   s" < text 3 637574" W
-   s" < end of stream" W ;
-
-: WANT-SIPS ( -- )
-   s" == a goodbye behind a push its client keeps taking" W
-   s" == a pong due behind a push its client keeps taking" W
-   s" > ping 2 6862" W
-   s" == a stop while the handler pushes to a client that keeps taking bytes" W ;
-
 : WANT-TRANSCRIPT ( -- )
    0 WANT-U !
-   WANT-OPENING WANT-ECHOES WANT-WAITS WANT-FAULTS WANT-STATUSES WANT-CLOSES
-   WANT-SLOTS WANT-STALL WANT-STOPS WANT-SIPS ;
+   s" == the socket past capacity" W
+   s" == text and binary reach the handler" W
+   s" > text 5 68656c6c6f" W
+   s" < text 5 68656c6c6f" W
+   s" > binary 5 0726456483" W
+   s" < binary 5 0726456483" W
+   W-FAREWELL
+   s" == the peer's close reaches the handler" W
+   s" > close 2 0fa1" W
+   s" < close 2 0fa1" W
+   s" < end of stream" W
+   s" == a throwing handler" W
+   s" > text 5 7468726f77" W
+   s" < close 2 03f3" W-FAILED
+   s" == more sockets than workers" W
+   HTTP:MAX-WORKERS 1+ 0 ?do
+      s" > text 4 65616368" W
+      s" < text 4 65616368" W
+   loop
+   HTTP:MAX-WORKERS 1+ 0 ?do W-FAREWELL loop
+   s" == a push from another task" W
+   s" < text 6 707573686564" W
+   W-FAREWELL
+   s" == a queue past its bound" W
+   s" > text 10 756e68696e6465726564" W
+   s" < text 10 756e68696e6465726564" W
+   W-FAREWELL
+   s" == a stalled peer" W
+   s" > text 9 6d65616e7768696c65" W
+   s" < text 9 6d65616e7768696c65" W
+   s" > text 5 6166746572" W
+   s" < text 5 6166746572" W
+   W-FAREWELL
+   s" == a stop" W
+   s" < close 2 03e9" W-FAILED ;
 
 \ The artifact as another reader will find it: read back from its file and
 \ compared whole with the transcript this file expects.
@@ -2535,53 +775,37 @@ $3E8 constant DRAIN-MS            \ how long a stop waits for the ring to drain
    again ;
 
 : FILL-BUFFERS ( -- )
-   BUF-CAP 0 ?do i 31 * 7 + $FF and PATTERN i SPAN:U8! loop
-   PUSH-BYTE PUSH-BUF SPAN:FILL
-   HANDLER-BYTE HANDLER-BUF SPAN:FILL
-   REST-BYTE REST-BUF SPAN:FILL
-   $C3 NOT-UTF8 0 SPAN:U8!
-   $28 NOT-UTF8 1 SPAN:U8! ;
+   BUF-CAP 0 ?do i 31 * 7 + $FF and PATTERN i SPAN:U8! loop ;
 
+\ The table full first, while no other socket holds a slot.
 : CASES ( -- )
-   HANDSHAKE-CASE REFUSAL-CASES TOLERANT-CASE
-   ECHO-CASES BAD-TEXT-CASE LENGTH-CASES FRAGMENT-CASES PING-CASES
-   TIMEOUT-CASE EARLY-CASE
-   HEADER-FAULTS MESSAGE-FAULTS BOUND-CASES
-   CLOSE-STATUS-CASES CLOSE-CASES SERVER-CLOSE-CASE RETURN-CASES TWICE-CASE
-   PUSH-CASE BURST-CASE REST-CASE PLAIN-CASE ;
+   CAPACITY-CASE ECHO-CASE PEER-CLOSE-CASE THROW-CASE MANY-CASE PUSH-CASE
+   OVERFLOW-CASE STALL-CASE ;
 
 public
 
-\ The loop first: every wait the server and this client make rides it. Every
-\ handler has returned by the time the first server stops, so that stop kills
-\ no task; the one-worker server's next stop kills a parked worker on purpose
-\ (KILLED-CASE), and no later stop kills any. The big frame's bytes are held
-\ only from the first case that pushes it to the last.
+\ The loop first: every wait the server, WS's task and this client make rides
+\ it. WS stops before the server, and the server's stop kills no task: no
+\ socket holds a worker.
 : RUN ( -- )
    T-RESET
    0 SCRIPT-U !
+   0 CLOSED-N !
+   0 LAST-CLOSE !
    FILL-BUFFERS
-   0 PUSH-GO TASK:SEMAPHORE-INIT
-   0 BLAST-GO TASK:SEMAPHORE-INIT
+   0 ACCEPTED TASK:SEMAPHORE-INIT
    AIO:START
    INSTALL-ROUTES
-   [: FAULTY-EXIT ;] HTTP:ON-WORKER-EXIT
    LOOPBACK 0 WORKERS IDLE-MS HTTP:START
+   SOCKETS WS:START
    CASES
+   STOP-CASE
    HTTP:STOP
    s" every handler returned" T-LABEL
    HTTP:ENDED-TASKS HTTP:TASK-TOTAL T=
    HTTP:KILLED-TASKS 0 T=
-   SLOT-CASES
-   STALL-CASE
-   BIG-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN 0 BIG-SPAN !
-   GOODBYE-CASE
-   STOP-CASES
-   SIP-CASES
-   0 BIG-SPAN @ MEM:FREE-SPAN
    AIO-STOP
-   PUSH-GO TASK:SEMAPHORE-DESTROY
-   BLAST-GO TASK:SEMAPHORE-DESTROY
+   ACCEPTED TASK:SEMAPHORE-DESTROY
    TRANSCRIPT-CASE ;
 
 ;package

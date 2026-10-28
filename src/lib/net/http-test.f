@@ -1930,7 +1930,7 @@ $BB8 constant STOP-CEILING-MS     \ over the server's own stop bound, far under 
    HTTP:ENDED-TASKS HTTP:TASK-TOTAL T= ;
 
 
-$3E8 constant IDLE-STOP-MS        \ STOP-WAIT-MS and scheduling slack, a fifth of LARGE-IDLE-MS
+$3E8 constant IDLE-STOP-MS        \ ACCEPT-WAIT-MS and scheduling slack, a fifth of LARGE-IDLE-MS
 
 
 \ A worker waiting for the next request on a connection its peer keeps open

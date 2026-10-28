@@ -1443,11 +1443,12 @@
 \ -9410..-9419.
 -9410 constant E-WS-CONN-FIRST
 -9419 constant E-WS-CONN-LAST
--9410 constant E-WS-CLOSED        \ a send on a socket that is closing, closed or past its handler, or whose connection failed under the send
+-9410 constant E-WS-CLOSED        \ a send on a socket that is closing, closed or gone, or one whose queue overflowed and lost it
 -9411 constant E-WS-CODE          \ a close status no endpoint may send: outside 1000..4999, reserved or unassigned
--9412 constant E-WS-SOCKET        \ RECEIVE through a handle that is not the calling worker's own live socket
--9413 constant E-WS-WAIT          \ a RECEIVE wait below zero, or longer than a readiness poll takes
 -9414 constant E-WS-TEXT          \ SEND-TEXT of bytes that are not UTF-8 (RFC 6455 section 5.6)
+-9415 constant E-WS-STATE         \ ACCEPT or STOP outside a run or while START still starts it, a START while one starts or runs, a STOP while another STOP runs or on WS's own task
+-9416 constant E-WS-WAKE          \ START could not open its wake pipe
+-9417 constant E-WS-LIMIT         \ a WS:START limit below 1 or past the handle's 32-bit slot field
 
 \ Native host facts: -9440..-9449, minted by src/compiler/native/host.f,
 \ which owns package NHOST.
