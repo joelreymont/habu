@@ -174,6 +174,8 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
 : PATH-SEE-OTHER$ ( -- ptr u8 n ) s" /see-other" ;
 : PATH-TEMPORARY$ ( -- ptr u8 n ) s" /temporary" ;
 : PATH-HUGE$ ( -- ptr u8 n ) s" /huge" ;
+: PATH-CHUNKED$ ( -- ptr u8 n ) s" /chunked" ;
+: PATH-BODIED-REDIRECT$ ( -- ptr u8 n ) s" /bodied-redirect" ;
 : SENT-BYTES ( -- ptr u8 ) HUGE-SENT @ ;
 : GOT-BYTES ( -- ptr u8 ) HUGE-GOT @ ;
 : FORM$ ( -- ptr u8 n ) s" a=1" ;
@@ -539,6 +541,17 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    conn TCP4:CLOSE PEER-STATUS ;
 
 
+\ HELLO$ as one chunk, with no Content-Length.
+: SERVE-CHUNKED ( TCP4:connection -- ) {: conn:TCP4:connection :}
+   RES-RESET
+   s" HTTP/1.1 200 OK" RES+ CRLF+
+   s" Transfer-Encoding: chunked" RES+ CRLF+
+   s" Connection: close" RES+ CRLF+ CRLF+
+   s" 6" RES+ CRLF+ HELLO$ RES+ CRLF+
+   s" 0" RES+ CRLF+ CRLF+
+   conn SEND-RESPONSE ;
+
+
 : SERVE-HELLO ( TCP4:connection -- ) {: conn:TCP4:connection :}
    s" If-Modified-Since:" REQ-HAS-CI? if
       s" 304 Not Modified" RESPOND-EMPTY
@@ -599,6 +612,17 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    s" Location: " RES+ PATH-ECHO$ RES+ CRLF+
    s" Content-Length: 0" RES+ CRLF+
    s" Connection: close" RES+ CRLF+ CRLF+
+   conn SEND-RESPONSE ;
+
+
+\ A redirect whose own body is longer than the span its final answer fills.
+: SERVE-BODIED-REDIRECT ( TCP4:connection -- ) {: conn:TCP4:connection :}
+   RES-RESET
+   s" 302 Found" STATUS-LINE
+   s" Location: " RES+ PATH-HELLO$ RES+ CRLF+
+   s" Content-Length: 7" RES+ CRLF+
+   s" Connection: close" RES+ CRLF+ CRLF+
+   s" moved!!" RES+
    conn SEND-RESPONSE ;
 
 
@@ -761,6 +785,8 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    PATH-REDIRECT$ PATH-IS? if conn SERVE-REDIRECT exit then
    PATH-INTERIM$ PATH-IS? if conn SERVE-INTERIM exit then
    PATH-HUGE$ PATH-IS? if conn SERVE-HUGE exit then
+   PATH-CHUNKED$ PATH-IS? if conn SERVE-CHUNKED exit then
+   PATH-BODIED-REDIRECT$ PATH-IS? if conn SERVE-BODIED-REDIRECT exit then
    PATH-HELLO$ PATH-IS? if conn SERVE-HELLO exit then
    PATH-COOKIE$ PATH-IS? if conn SERVE-COOKIE exit then
    conn SERVE-MISSING ;
@@ -1382,17 +1408,6 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    COOKIE-SECOND ;
 
 
-: TEST-TRUNCATED ( -- )
-   PATH-HELLO$ GET-READY {: subject:CURL:handle :}
-   subject 3 >LEN FETCH
-   subject CURL:CLEANUP
-   s" a body past the caller's span is truncated, never silently short" T-LABEL
-   LAST-KIND @ KIND-TRUNCATED T=
-   LAST-STATUS @ 200 T=
-   LAST-LEN @ 6 T=
-   BODY-BUF 3 s" hel" T$= ;
-
-
 : HUGE-ALLOC ( -- ptr u8 )
    HUGE-U MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop ;
 
@@ -1465,9 +1480,11 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
 : TEST-HEADER-TRUNCATIONS ( -- )
    PATH-HEADERS$ GET-READY {: subject:CURL:handle :}
    subject 1 >LEN FETCH
-   s" body and header truncation report independent whole lengths" T-LABEL
+   s" body and header truncation report independent lengths" T-LABEL
    LAST-KIND @ KIND-TRUNCATED T=
-   LAST-LEN @ 2 T=
+   \ macOS fills the one-byte span; glibc's fmemopen refuses the whole write
+   \ that overflows once pos+1 >= size, so the span holds nothing there.
+   LAST-LEN @ HB-TARGET-MACOS? if 1 else 0 then T=
    subject 1 HEADER-COPY
    HEADER-KIND @ 1 T=
    HEADER-LEN @ HEADERS$ nip T=
@@ -1840,6 +1857,72 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
    subject CURL:AWAIT JOIN-SERVER false RECORD-RESULT ;
 
 
+: SPAN-RUN ( CURL:handle n bool -- ) {: subject:CURL:handle capacity:n multi:bool :}
+   multi if subject capacity >LEN MULTI-FETCH
+   else subject capacity >LEN FETCH then
+   subject CURL:CLEANUP ;
+
+
+: SPAN-FETCH ( ptr u8 n n bool -- ) {: path:ptr pathu:n capacity:n multi:bool :}
+   path pathu GET-READY capacity multi SPAN-RUN ;
+
+
+\ A body meets spans longer than, equal to and shorter than itself, through
+\ PERFORM or through the loop. libcurl writes into the span and never past it,
+\ so the byte after what the span holds keeps FILL-BYTE, and a truncated length
+\ is the bytes the span holds.
+: SPAN-CASES ( bool -- ) {: multi:bool :}
+   PATH-HELLO$ 7 multi SPAN-FETCH
+   s" a body shorter than its span arrives whole" T-LABEL
+   LAST-KIND @ KIND-RESPONSE T=
+   BODY$ HELLO$ T$=
+   BODY-BUF 6 + c@ FILL-BYTE T=
+   PATH-HELLO$ 6 multi SPAN-FETCH
+   s" a body that fills its span exactly arrives whole" T-LABEL
+   LAST-KIND @ KIND-RESPONSE T=
+   BODY$ HELLO$ T$=
+   BODY-BUF 6 + c@ FILL-BYTE T=
+   PATH-HELLO$ 5 multi SPAN-FETCH
+   s" a Content-Length past the span fills it and stops at its end" T-LABEL
+   LAST-KIND @ KIND-TRUNCATED T=
+   LAST-STATUS @ 200 T=
+   BODY$ s" hello" T$=
+   BODY-BUF 5 + c@ FILL-BYTE T=
+   PATH-CHUNKED$ 5 multi SPAN-FETCH
+   s" a chunked body past the span fills it and stops at its end" T-LABEL
+   LAST-KIND @ KIND-TRUNCATED T=
+   LAST-STATUS @ 200 T=
+   BODY$ s" hello" T$=
+   BODY-BUF 5 + c@ FILL-BYTE T=
+   PATH-HELLO$ 0 multi SPAN-FETCH
+   s" an empty span truncates a body and holds nothing" T-LABEL
+   LAST-KIND @ KIND-TRUNCATED T=
+   LAST-STATUS @ 200 T=
+   LAST-LEN @ 0 T=
+   UNTOUCHED? TTRUE
+   PATH-FOUND$ 0 multi SPAN-FETCH
+   s" an empty span takes an empty body as a response" T-LABEL
+   LAST-KIND @ KIND-RESPONSE T=
+   LAST-STATUS @ 302 T=
+   LAST-LEN @ 0 T=
+   PATH-BODIED-REDIRECT$ GET-READY {: moved:CURL:handle :}
+   moved true CURL:FOLLOW! EXPECT-OK
+   moved 6 multi SPAN-RUN
+   s" a followed redirect's body longer than the span does not bound the answer" T-LABEL
+   LAST-KIND @ KIND-RESPONSE T=
+   LAST-STATUS @ 200 T=
+   BODY$ HELLO$ T$=
+   s" /nothing-here.txt" 3 multi SPAN-FETCH
+   s" an HTTP error past the span is truncated with its status" T-LABEL
+   LAST-KIND @ KIND-TRUNCATED T=
+   LAST-STATUS @ 404 T=
+   BODY$ s" not" T$= ;
+
+
+: TEST-SPANS ( -- )
+   false SPAN-CASES ;
+
+
 : STREAM-APPEND ( len -- ) {: u:len :}
    u LEN>N {: count:n :}
    STREAM-READ @ count + STREAM-U <= TTRUE
@@ -2085,21 +2168,9 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
    RETRY-POST-HITS atomic@ 3 T= ;
 
 
-\ A span too short truncates on both paths, with the WHOLE body's length.
-: PARITY-TRUNCATED ( -- )
-   PATH-HELLO$ GET-READY {: one:CURL:handle :}
-   one 3 >LEN FETCH
-   one CURL:CLEANUP
-   LAST-KIND @ {: kind:n :}
-   LAST-LEN @ {: u:n :}
-   PATH-HELLO$ GET-READY {: two:CURL:handle :}
-   two 3 >LEN MULTI-FETCH
-   two CURL:CLEANUP
-   s" a short span truncates through the loop as it does through PERFORM" T-LABEL
-   kind KIND-TRUNCATED T=
-   LAST-KIND @ KIND-TRUNCATED T=
-   LAST-LEN @ u T=
-   BODY-BUF 3 s" hel" T$= ;
+\ The loop's whole receive answers every span case as PERFORM does.
+: PARITY-SPANS ( -- )
+   true SPAN-CASES ;
 
 
 : CASE-HEADER-REUSE ( -- )
@@ -2498,7 +2569,7 @@ variable DEFER-RETURNED
    PARITY-WHOLE
    CASE-RETRY-DEFAULT
    CASE-RETRY-FRESH
-   PARITY-TRUNCATED
+   PARITY-SPANS
    CASE-STREAM-HELD
    CASE-STREAM-MODES
    CASE-STREAM-HTTP-ERROR
@@ -2531,7 +2602,7 @@ variable DEFER-RETURNED
    s" the server task served every request and reported no fault" T-LABEL
    SERVER-BAD @ 0 T=
    SERVER-ERRNO @ 0 T=
-   SERVER-HITS atomic@ 94 DONE-ATTEMPTS @ + CEILING-HITS @ + T= ;
+   SERVER-HITS atomic@ 109 DONE-ATTEMPTS @ + CEILING-HITS @ + T= ;
 
 
 \ Opt-in: the one case that leaves the machine. It proves the system CA bundle
@@ -2598,7 +2669,7 @@ public
    TEST-METHOD
    TEST-REDIRECT-VERBS
    TEST-COOKIES
-   TEST-TRUNCATED
+   TEST-SPANS
    TEST-HUGE
    TEST-RESPONSE-HEADERS
    TEST-HEADER-TRUNCATIONS

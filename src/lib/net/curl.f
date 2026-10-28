@@ -1,14 +1,22 @@
 \ HTTPS client over libcurl's easy interface: one request and one response, with
 \ no retry policy, authentication, payload format or URL construction. TLS,
-\ redirects, proxies, compression and the system CA bundle are libcurl's.
+\ redirects, proxies and the system CA bundle are libcurl's.
 \
 \ A caller relies on these:
 \ - Every setter copies its span before it returns.
 \ - INIT restricts the URL and every redirect to HTTP and HTTPS, so a scraped
 \   file:// or ftp:// URL fails with CURLE_UNSUPPORTED_PROTOCOL before anything
 \   opens.
-\ - An HTTP error status is a `response`, not `failed`; `truncated` carries the
-\   whole body's length.
+\ - An HTTP error status is a `response`, not `failed`. libcurl writes a whole
+\   body straight into the destination span and never past it. A body longer
+\   than the span is `truncated`, and its length is the number of body bytes
+\   the span holds; on the write that overflows, glibc may hold fewer than the
+\   span. A followed redirect's own body never reaches the span. A `failed` or
+\   cancelled transfer may leave part of its body in the span.
+\ - Every response buffer this file frees, header capture and streamed body, is
+\   zeroed first. libcurl's own receive and TLS buffers, and the copies
+\   open_memstream leaves behind as it grows a capture, are outside that
+\   guarantee.
 \ - A string with an embedded NUL is E-OPERAND rather than cut short.
 \ - CLEANUP ends a handle. A later use is a use-after-free the nominal type
 \   does not catch.
@@ -17,7 +25,9 @@
 \   LOOP-START). From START until its terminal result is collected, the handle
 \   and its span belong to the loop; the task that started a transfer collects
 \   it exactly once, and LOOP-STOP refuses while any record is held. A task
-\   halted while it waits abandons its record, which the loop frees.
+\   halted while it waits abandons its record, which the loop frees. A span
+\   must outlive its record: a task halted in AWAIT on one record leaves its
+\   other records to OWNER-END, which runs after the task's cleanups.
 \
 \ Only HABU_NET_TESTS=1 runs the case that leaves the machine and exercises TLS
 \ and the CA bundle; the gate runs without it.
@@ -116,6 +126,7 @@ INFO-STRING 21 + constant INFO-PRIVATE    \ CURLINFO_PRIVATE
 2 constant CURLE-FAILED-INIT
 27 constant CURLE-OUT-OF-MEMORY
 23 constant CURLE-WRITE-ERROR
+2 constant UNBUFFERED                     \ _IONBF, on both libcs
 
 1 constant PROTO-HTTP                     \ CURLPROTO_HTTP
 2 constant PROTO-HTTPS                    \ CURLPROTO_HTTPS
@@ -193,14 +204,19 @@ FUNCTION: MULTI-TIMEOUT curl_multi_timeout ( n ptr u8 -- i32 )
 
 
 \ The process's own libc. Habu cannot hand libcurl a callback into checked code,
-\ and none is needed: libcurl's default write callback is fwrite, so
-\ CURLOPT_WRITEDATA and CURLOPT_HEADERDATA each take an open_memstream stream.
-\ memcpy moves finished bytes into caller spans. strndup/strlen/free build the
+\ and none is needed: libcurl's default write callback is fwrite. A whole
+\ body's CURLOPT_WRITEDATA is an fmemopen stream over the caller's span; the
+\ header capture and a streamed body are open_memstream streams, and memcpy
+\ moves their bytes into caller spans. strndup/strlen/free build the
 \ NUL-terminated copies libcurl's string options read.
 PROCESS-SYMBOLS
 
 FUNCTION: STREAM-CLOSE fclose ( n -- i32 ) ;FUNCTION
 FUNCTION: STREAM-FLUSH fflush ( n -- i32 ) ;FUNCTION
+FUNCTION: STREAM-POSITION ftell ( n -- n ) ;FUNCTION
+FUNCTION: STREAM-ERROR ferror ( n -- i32 ) ;FUNCTION
+FUNCTION: STREAM-BUFFERING setvbuf ( n n n n -- i32 ) ;FUNCTION
+FUNCTION: FILE-OPEN fopen ( ptr u8 ptr u8 -- n ) ;FUNCTION
 FUNCTION: DUP-TEXT strndup ( ptr u8 n -- n ) ;FUNCTION
 FUNCTION: TEXT-LENGTH strlen ( n -- n ) ;FUNCTION
 FUNCTION: RELEASE free ( n -- ) ;FUNCTION
@@ -209,6 +225,10 @@ FUNCTION: NEW-STATE calloc ( n n -- n ) ;FUNCTION
 FUNCTION: MEMSTREAM open_memstream ( ptr u8 ptr u8 -- n )
    0 $08 WRITES-BYTES                     \ char **bufp
    1 $08 WRITES-BYTES                     \ size_t *sizep
+;FUNCTION
+
+FUNCTION: SPAN-STREAM fmemopen ( ptr u8 n ptr u8 -- n )
+   0 1 WRITES-ARG                         \ the caller's span, length from arg 1
 ;FUNCTION
 
 FUNCTION: COPY-OUT memcpy ( ptr u8 n n -- n )
@@ -221,9 +241,10 @@ FUNCTION: COPY-OUT memcpy ( ptr u8 n n -- n )
 
 
 \ A request body, a destination span, a string option and a header line are the
-\ caller's own storage, bounded only by what the caller allocated: the response
-\ itself grows in a memstream, and libcurl refuses a string option past its own
-\ input limit with a code, which answers `failed`.
+\ caller's own storage, bounded only by what the caller allocated: a whole body
+\ past its span is `truncated`, the header capture grows in a memstream, and
+\ libcurl refuses a string option past its own input limit with a code, which
+\ answers `failed`.
 : AT-LEAST ( n n -- ) {: value:n minimum:n :}
    value minimum < if E-OPERAND throw then ;
 
@@ -251,12 +272,24 @@ FUNCTION: COPY-OUT memcpy ( ptr u8 n n -- n )
 CAST: >BYTES ( n -- ptr u8 )
 
 
-\ A URL or header line can carry a credential, so every text copy and request
-\ list this file frees is zeroed first.
+\ A URL, a header line or a response can carry a credential, so every text
+\ copy, request list and response buffer this file frees is zeroed first.
+: BYTES-WIPE ( n n -- )
+   {: source:n u:n :}
+   source >BYTES {: bytes :}
+   u 0 ?do 0 bytes i + c! loop ;
+
+
 : WIPE ( n -- )
-   {: text:n :}
-   text >BYTES {: bytes :}
-   text TEXT-LENGTH 0 ?do 0 bytes i + c! loop ;
+   dup TEXT-LENGTH BYTES-WIPE ;
+
+
+\ A capture whose stream never published a buffer is zero, which owns nothing.
+: BYTES-RELEASE ( n n -- )
+   {: source:n u:n :}
+   source 0= if exit then
+   source u BYTES-WIPE
+   source RELEASE ;
 
 
 : TEXT-RELEASE ( n -- )
@@ -326,7 +359,7 @@ CAST: >BYTES ( n -- ptr u8 )
 : STATE-VALID@ ( n -- n ) S.VALID STATE-FIELD LE:U64@ ;
 
 : STATE-CLEAR-RESPONSE ( n -- ) {: state:n :}
-   state STATE-RESP@ dup 0 <> if RELEASE else drop then
+   state STATE-RESP@ state STATE-LEN@ BYTES-RELEASE
    0 state S.RESPONSE STATE-FIELD LE:U64!
    0 state S.LENGTH STATE-FIELD LE:U64!
    0 state S.VALID STATE-FIELD LE:U64! ;
@@ -386,6 +419,44 @@ CAST: >BYTES ( n -- ptr u8 )
    buf LE:U64@ len LE:U64@ rot ;
 
 
+\ The caller's span as the stream libcurl writes a whole body into. fmemopen
+\ "r+b" writes no NUL and nothing past the span on either libc, where the "w"
+\ modes put a NUL in the span's last byte on glibc. macOS refuses a zero-byte
+\ fmemopen, so an empty span is /dev/null opened read-only, which refuses every
+\ write on both. Unbuffered, a byte libcurl hands fwrite is in the span or
+\ refused at that call. Zero answers a stream that could not be opened.
+: SPAN-OPEN ( ptr u8 n -- n ) {: target capacity:n :}
+   capacity 0= if
+      S\" /dev/null\z" drop S\" rb\z" drop FILE-OPEN
+   else
+      target capacity S\" r+b\z" drop SPAN-STREAM
+   then
+   dup 0= if exit then
+   dup 0 UNBUFFERED 0 STREAM-BUFFERING 0 <> if STREAM-CLOSE drop 0 then ;
+
+
+\ The body bytes the span holds, whether the span refused a write for want of
+\ room, and the close's code. A full span sets the stream's error flag on both
+\ libcs while fclose still answers 0.
+: SPAN-TAKE ( n -- n bool n ) {: stream:n :}
+   stream STREAM-POSITION {: u:n :}
+   stream STREAM-ERROR 0 <> {: refused:bool :}
+   stream STREAM-CLOSE 0= if CURLE-OK else CURLE-WRITE-ERROR then {: rc:n :}
+   u 0 < if E-RESULT throw then
+   u refused rc ;
+
+
+\ The body outran the span: the span stream refused a write, which is
+\ `truncated`, not a failure.
+: OVERFLOW? ( n bool -- bool ) {: rc:n refused:bool :}
+   rc CURLE-WRITE-ERROR = refused and ;
+
+
+\ A transfer's code once an overflow has been answered as `truncated`.
+: BODY-RC ( n bool -- n ) {: rc:n full:bool :}
+   full if CURLE-OK else rc then ;
+
+
 : FIRST-ERROR ( n n -- n ) {: prior:n next:n :}
    prior CURLE-OK <> if prior else next then ;
 
@@ -414,14 +485,8 @@ CAST: >BYTES ( n -- ptr u8 )
    target source u COPY-OUT drop ;
 
 
-: BODY-TAKE ( ptr u8 len n n -- ) {: target capacity:len source:n u:n :}
-   u 0 < if E-RESULT throw then
-   u capacity LEN>N > if target source capacity LEN>N BODY-COPY exit then
-   target source u BODY-COPY ;
-
-
-: FETCH-RESULT ( n len n -- fetch-result ) {: status:n capacity:len u:n :}
-   u capacity LEN>N > if
+: FETCH-RESULT ( n n bool -- fetch-result ) {: status:n u:n full:bool :}
+   full if
       status >HTTP-STATUS u >LEN CURL-FETCH--RESULT:truncated exit
    then
    status >HTTP-STATUS u >LEN CURL-FETCH--RESULT:response ;
@@ -793,7 +858,7 @@ CAST: TICKET>N ( AIO:ticket -- n )
 \ closed both streams and published it before the halt reached AWAIT.
 : ABANDON-RELEASE ( n -- ) {: idx:n :}
    idx REC-EASY@ STATE-GET STATE-CLEAR-RESPONSE
-   idx REC R.BODY @ dup 0 <> if RELEASE else drop then
+   idx REC R.BODY @ idx REC R.LEN @ BYTES-RELEASE
    idx REC-RELEASE ;
 
 
@@ -878,11 +943,9 @@ CAST: TICKET>N ( AIO:ticket -- n )
    idx REC-HSTREAM@ idx REC-HBUF-CELL idx REC-HLEN-CELL STREAM-TAKE ;
 
 
-\ The stream is closed and whatever it collected is dropped: the handle keeps no
-\ pointer to a closed stream and the buffer is nobody's after this.
-: STREAM-DROP ( n -- n ) {: idx:n :}
-   idx REC-STREAM@ 0= if CURLE-OK exit then
-   idx REC-STREAM-TAKE {: body:n bodyu:n bodyrc:n :}
+\ The header capture is closed and the handle forgets both streams, so it keeps
+\ no pointer to a closed one. The capture is the caller's to free.
+: CAPTURE-CLOSE ( n -- n n n ) {: idx:n :}  \ ( idx -- headers headeru rc )
    idx REC-HSTREAM@ 0= if
       0 0 CURLE-OK
    else idx REC-HEADER-TAKE then
@@ -890,8 +953,27 @@ CAST: TICKET>N ( AIO:ticket -- n )
    idx REC-EASY@ DATA-CLEAR {: clear-rc:n :}
    0 idx REC R.STREAM !
    0 idx REC R.HSTREAM !
-   body RELEASE headers RELEASE
-   bodyrc headrc FIRST-ERROR clear-rc FIRST-ERROR ;
+   headers headeru headrc clear-rc FIRST-ERROR ;
+
+
+\ A whole body's span keeps what it was given; a streamed body is the loop's
+\ own buffer and is freed.
+: BODY-DROP ( n -- n ) {: idx:n :}
+   idx REC-MODE@ MODE-WHOLE = if
+      idx REC-STREAM@ SPAN-TAKE nip nip exit
+   then
+   idx REC-STREAM-TAKE {: body:n bodyu:n bodyrc:n :}
+   body bodyu BYTES-RELEASE
+   bodyrc ;
+
+
+\ The streams are closed and whatever they collected is dropped.
+: STREAM-DROP ( n -- n ) {: idx:n :}
+   idx REC-STREAM@ 0= if CURLE-OK exit then
+   idx BODY-DROP {: bodyrc:n :}
+   idx CAPTURE-CLOSE {: headers:n headeru:n headrc:n :}
+   headers headeru BYTES-RELEASE
+   bodyrc headrc FIRST-ERROR ;
 
 
 : FAILED-STORE ( n n -- ) {: idx:n rc:n :}
@@ -900,13 +982,11 @@ CAST: TICKET>N ( AIO:ticket -- n )
 
 
 \ FETCH-RESULT's decision, stored as fields because the value belongs to the
-\ task that waits: the WHOLE body's length either way, and truncated when only
-\ capacity bytes of it were copied.
-: RESULT-STORE ( n n n -- ) {: idx:n status:n u:n :}
+\ task that waits.
+: RESULT-STORE ( n n n bool -- ) {: idx:n status:n u:n full:bool :}
    status idx REC R.STATUS !
    u idx REC R.LEN !
-   u idx REC-CAP@ > if KIND-TRUNCATED idx REC R.KIND ! exit then
-   KIND-RESPONSE idx REC R.KIND ! ;
+   full if KIND-TRUNCATED else KIND-RESPONSE then idx REC R.KIND ! ;
 
 
 \ The state store is the barrier: every field above is written before it, and
@@ -944,52 +1024,61 @@ CAST: TICKET>N ( AIO:ticket -- n )
    CURLM-OK ;
 
 
-\ A finished transfer, copied into the owner's span exactly as PERFORM does. An
-\ owner that was halted while it waited gets nothing written anywhere: its
-\ record is released and nobody is woken, which is what keeps this loop from
-\ waking a TCB the join has released.
-: FINISH ( n n -- n ) {: idx:n rc:n :}
-   idx REMOVE-ONE dup CURLM-OK <> if exit then drop
+\ A finished streamed transfer keeps its body for NEXT to deliver. An owner
+\ that was halted while it waited is woken by nobody: its record is released,
+\ which is what keeps this loop from waking a TCB the join has released.
+: STREAM-FINISH ( n n -- n ) {: idx:n rc:n :}
    idx REC-STREAM-TAKE {: source:n u:n bodyrc:n :}
-   idx REC-HEADER-TAKE {: headers:n headeru:n headrc:n :}
-   idx REC-EASY@ DATA-CLEAR {: clear-rc:n :}
-   0 idx REC R.STREAM !
-   0 idx REC R.HSTREAM !
+   idx CAPTURE-CLOSE {: headers:n headeru:n headrc:n :}
    idx REC-STATE@ STATE-ABANDONED = if
-      source RELEASE headers RELEASE idx ABANDON-RELEASE CURLM-OK exit
+      source u BYTES-RELEASE headers headeru BYTES-RELEASE
+      idx ABANDON-RELEASE CURLM-OK exit
    then
-   rc bodyrc FIRST-ERROR headrc FIRST-ERROR clear-rc FIRST-ERROR
-      {: outcome:n :}
-   idx REC-MODE@ MODE-STREAM = if
-      source idx REC R.BODY !
-      u idx REC R.LEN !
-      idx REC-EASY@ STATUS-TRY {: status:n valid:bool :}
-      status idx REC R.STATUS !
-      outcome CURLE-OK <> if
-         headers RELEASE
-         idx outcome FAILED-STORE
-      else
-         valid 0= if headers RELEASE E-RESULT throw then
-         KIND-RESPONSE idx REC R.KIND !
-         idx REC-EASY@ headers headeru STATE-PUBLISH
-      then
-      idx SETTLE
-      CURLM-OK exit
-   then
+   rc bodyrc FIRST-ERROR headrc FIRST-ERROR {: outcome:n :}
+   source idx REC R.BODY !
+   u idx REC R.LEN !
+   idx REC-EASY@ STATUS-TRY {: status:n valid:bool :}
+   status idx REC R.STATUS !
    outcome CURLE-OK <> if
-      source RELEASE headers RELEASE
+      headers headeru BYTES-RELEASE
+      idx outcome FAILED-STORE
+   else
+      valid 0= if headers headeru BYTES-RELEASE E-RESULT throw then
+      KIND-RESPONSE idx REC R.KIND !
+      idx REC-EASY@ headers headeru STATE-PUBLISH
+   then
+   idx SETTLE
+   CURLM-OK ;
+
+
+\ A finished whole transfer: libcurl already wrote the body into the owner's
+\ span, exactly as PERFORM's. An abandoned owner is woken by nobody.
+: WHOLE-FINISH ( n n -- n ) {: idx:n rc:n :}
+   idx REC-STREAM@ SPAN-TAKE {: u:n refused:bool bodyrc:n :}
+   idx CAPTURE-CLOSE {: headers:n headeru:n headrc:n :}
+   idx REC-STATE@ STATE-ABANDONED = if
+      headers headeru BYTES-RELEASE idx ABANDON-RELEASE CURLM-OK exit
+   then
+   rc refused OVERFLOW? {: full:bool :}
+   rc full BODY-RC bodyrc FIRST-ERROR headrc FIRST-ERROR {: outcome:n :}
+   outcome CURLE-OK <> if
+      headers headeru BYTES-RELEASE
       idx outcome FAILED-STORE
       idx SETTLE
       CURLM-OK exit
    then
    idx REC-EASY@ STATUS-TRY {: status:n valid:bool :}
-   valid 0= if source RELEASE headers RELEASE E-RESULT throw then
-   idx REC-TARGET@ idx REC-CAP@ >LEN source u BODY-TAKE
-   source RELEASE
-   idx status u RESULT-STORE
+   valid 0= if headers headeru BYTES-RELEASE E-RESULT throw then
+   idx status u full RESULT-STORE
    idx REC-EASY@ headers headeru STATE-PUBLISH
    idx SETTLE
    CURLM-OK ;
+
+
+: FINISH ( n n -- n ) {: idx:n rc:n :}
+   idx REMOVE-ONE dup CURLM-OK <> if exit then drop
+   idx REC-MODE@ MODE-STREAM = if idx rc STREAM-FINISH exit then
+   idx rc WHOLE-FINISH ;
 
 
 \ Only the loop calls fflush or reads the foreign memstream cells. Its copy
@@ -1328,7 +1417,7 @@ CAST: TICKET>N ( AIO:ticket -- n )
    st STATE-FREE = st STATE-CLAIMING = or if exit then
    st STATE-DONE = if
       idx REC-MODE@ MODE-WHOLE = if exit then
-      idx REC R.BODY @ dup 0 <> if RELEASE else drop then
+      idx REC R.BODY @ idx REC R.LEN @ BYTES-RELEASE
       0 idx REC R.BODY !
       idx REC R.OFFSET @ idx REC R.LEN !
       idx CURLE-ABORTED FAILED-STORE
@@ -1519,26 +1608,32 @@ public
 \ E-CAPACITY.
 private
 
+\ A whole body goes straight into the owner's span; a streamed one grows in the
+\ record's memstream until NEXT copies it out.
+: BODY-OPEN ( n ptr u8 n n -- n ) {: idx:n target capacity:n mode:n :}
+   mode MODE-WHOLE = if target capacity SPAN-OPEN exit then
+   idx REC-BUF-CELL idx REC-LEN-CELL STREAM-OPEN ;
+
+
 : START-WITH-BODY ( handle ptr u8 len n -- status ) {: subject:handle target capacity:len mode:n :}
    subject HANDLE-CELL {: easy:n :}
    LOOP-LIVE atomic@ 0= if E-STATE throw then
-   mode MODE-WHOLE = if capacity LEN>N 1 AT-LEAST then
+   capacity LEN>N 0 AT-LEAST
    TASK:SELF dup FFI:>CELL 0<> if ['] OWNER-END swap TASK:AT-EXIT else drop then
    easy START-CLAIM {: idx:n :}
    easy STATE-GET STATE-CLEAR-RESPONSE
-   idx REC-BUF-CELL idx REC-LEN-CELL STREAM-OPEN dup 0= if
+   idx target capacity LEN>N mode BODY-OPEN dup 0= if
       drop idx REC-RELEASE OUT-OF-MEMORY exit
    then
    {: stream:n :}
+   idx easy target capacity LEN>N stream 0 mode REC-FILL
    idx REC-HBUF-CELL idx REC-HLEN-CELL STREAM-OPEN dup 0= if
       drop
-      stream idx REC-BUF-CELL idx REC-LEN-CELL STREAM-TAKE
-         {: source:n u:n close-rc:n :}
-      source RELEASE
+      idx STREAM-DROP drop
       idx REC-RELEASE OUT-OF-MEMORY exit
    then
    {: headers:n :}
-   idx easy target capacity LEN>N stream headers mode REC-FILL
+   headers idx REC R.HSTREAM !
    easy OPT-WRITE-DATA stream SETOPT-NUM dup CURLE-OK <> if
       idx STREAM-DROP drop
       idx REC-RELEASE
@@ -1577,7 +1672,7 @@ private
    kind REQUEST-CHUNK = if
       REQUEST-NONE idx REC R.REQUEST atomic!
    else
-      idx REC R.BODY @ dup 0 <> if RELEASE else drop then
+      idx REC R.BODY @ idx REC R.LEN @ BYTES-RELEASE
       idx REC-RELEASE
    then
    CURL-LOCK TASK:RELEASE
@@ -1752,40 +1847,38 @@ public
    else CURL-HEADER--RESULT:complete then ;
 
 
-\ Both streams close before any destination write. The first libcurl error
+\ libcurl writes the body into the span as it arrives. The first libcurl error
 \ wins; only an otherwise successful transfer maps a close failure to 23.
 : PERFORM ( handle ptr u8 len -- fetch-result ) {: subject:handle target capacity:len :}
    subject HANDLE-CELL {: easy:n :}
-   capacity LEN>N 1 AT-LEAST
+   capacity LEN>N 0 AT-LEAST
    easy HANDLE-BUSY? if E-STATE throw then
    easy STATE-GET STATE-CLEAR-RESPONSE
-   BUF-CELL LEN-CELL STREAM-OPEN dup 0= if
+   target capacity LEN>N SPAN-OPEN dup 0= if
       drop CURLE-OUT-OF-MEMORY FETCH-FAILED exit
    then
    {: body:n :}
    HBUF-CELL HLEN-CELL STREAM-OPEN dup 0= if
       drop
-      body BUF-CELL LEN-CELL STREAM-TAKE {: source:n u:n close-rc:n :}
-      source RELEASE
+      body SPAN-TAKE drop drop drop
       CURLE-OUT-OF-MEMORY FETCH-FAILED exit
    then
    {: headers:n :}
    easy body headers TRANSFER {: rc:n :}
-   body BUF-CELL LEN-CELL STREAM-TAKE {: source:n u:n bodyrc:n :}
+   body SPAN-TAKE {: u:n refused:bool bodyrc:n :}
    headers HBUF-CELL HLEN-CELL STREAM-TAKE {: captured:n capturedu:n headrc:n :}
    easy DATA-CLEAR {: clear-rc:n :}
-   rc bodyrc FIRST-ERROR headrc FIRST-ERROR clear-rc FIRST-ERROR
+   rc refused OVERFLOW? {: full:bool :}
+   rc full BODY-RC bodyrc FIRST-ERROR headrc FIRST-ERROR clear-rc FIRST-ERROR
       {: outcome:n :}
    outcome CURLE-OK <> if
-      source RELEASE captured RELEASE
+      captured capturedu BYTES-RELEASE
       outcome FETCH-FAILED exit
    then
    easy STATUS-TRY {: status:n valid:bool :}
-   valid 0= if source RELEASE captured RELEASE E-RESULT throw then
-   target capacity source u BODY-TAKE
-   source RELEASE
+   valid 0= if captured capturedu BYTES-RELEASE E-RESULT throw then
    easy captured capturedu STATE-PUBLISH
-   status capacity u FETCH-RESULT ;
+   status u full FETCH-RESULT ;
 
 
 : CLEANUP ( handle -- ) {: subject:handle :}
