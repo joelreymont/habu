@@ -1,0 +1,9 @@
+---
+title: Fix nf-path-test after the TMPDIR fold
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-10-28T20:42:25.987199+02:00"
+---
+
+Problem: bin/hb --load test/nf-path-test.f fails F1-F4 on master 031363d6 (both Gforth builds PASS, then 'the long-root/quoted-root artifact and complete output path exist' assert false). Cause: affdbf58 'Fold HB_TMP into TMPDIR' made test/nf.fs NF-SUFFIX always append '-<pid>' (NF-BUILD at test/nf.fs:44-55), so the fixture writes <root>/nf-bin-<pid> and <root>/nf-out-<pid>; test/nf-path-test.f ROOT-FILE?/ROOT-OUT-OK? (lines 106-117, CONCURRENT-CASE 119-128) still look for <root>/nf-bin and <root>/nf-out. The rename worker saw it fail before 26ac40c2 too. source-unit-range-e2e is not broken: it runs on stdin through test/source-unit-range-gate.f, which passes (test: ok). Acceptance: CONCURRENT-CASE checks the exact names nf.fs writes for each build (the child's pid suffix, which /usr/bin/env keeps by exec); the forged negative control keeps proving that expected-looking artifacts do not turn a nonzero child green; no glob that a stale artifact could satisfy. Files: test/nf-path-test.f (test/nf.fs only if the suffix contract itself is wrong). Verify: bin/hb --load test/nf-path-test.f </dev/null (needs gforth; docs/gate.md:216 runs it on its own). Depends: none. Ownership: test/nf-path-test.f. Claim: unassigned.
