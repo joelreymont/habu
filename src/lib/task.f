@@ -14,6 +14,9 @@
 \ (src/habu/layout.f), so a task running any word in that 64K unit faults; a
 \ forget frees code a task may be running. Define everything, then start tasks,
 \ the AIO loop last. A remote REPL therefore cannot evaluate while a task runs.
+\ A task wanted after that comes from TASK:NEW, which defines nothing and so
+\ runs beside live tasks, from the main thread or a task; TASK:FREE gives it
+\ back once TASK:JOIN or TASK:KILL released it.
 \
 \ ENDINGS. A worker `die` ends the process (Linux uses exit_group). An uncaught
 \ worker throw ends only that task: THROW@ keeps the code and JOIN answers it.
@@ -42,8 +45,10 @@
 \ CAPTURE AND FORK. A capture (IMAGE-LIFECYCLE:PREPARE) releases every prepared
 \ task and drops idle callback bindings; an activated or exposed task, or a
 \ callback slot with a thread inside, ends the capture. Kill tasks before a
-\ build captures. Tasks do not cross a fork: CHILD-RESET is what a forked
-\ child runs (src/lib/fork-child.f says who registers it).
+\ build captures. A TASK:NEW task not given back ends a capture too; the
+\ capture gives the pool's mappings back. Tasks do not cross a fork:
+\ CHILD-RESET is what a forked child runs (src/lib/fork-child.f says who
+\ registers it).
 \
 \ TASK-LOCAL STORAGE. A module the engine bakes or the engine build loads takes
 \ a declared band of the DATA header in src/habu/layout.f (string, fmt, fs and
@@ -55,8 +60,8 @@
 \
 \ STORAGE CLASS. TASK-LOCAL for SLEEP's two timespecs (one TASK:+USER row),
 \ whose request STOP-FOR's Linux deadline shares.
-\ PROCESS-WIDE for the semaphore pool, the AT-EXIT rows, the TCB chain and the
-\ callback binding rows; each row move is one compare-and-swap.
+\ PROCESS-WIDE for the semaphore pool, the AT-EXIT rows, the TCB chain, the
+\ TCB pool and the callback binding rows; each row move is one compare-and-swap.
 
 s" src/lib/errors.f" required
 s" src/lib/memory.f" required
@@ -371,9 +376,10 @@ FUNCTION: MUTEX-UNLOCK-CALL pthread_mutex_unlock ( ptr u8 -- i32 )
    TCB.STATUS atomic@ ;
 
 \ The owner's store, and only the owner's: PREPARE and ACTIVATE write it before
-\ pthread_create, which orders it into the new thread, and TASK-JOIN-RELEASE and
-\ TASK-KILL write it after the join or on a task that has no thread at all. A
-\ worker never reaches here - it publishes its own DONE with a release store.
+\ pthread_create, which orders it into the new thread, and TASK-KILL writes it
+\ on a task that has no thread at all. A worker never reaches here - it
+\ publishes its own DONE with a release store, and TASK-JOIN-RELEASE publishes
+\ EMPTY with one.
 : TASK-STATE! ( n ptr n -- )
    TCB.STATUS ! ;
 
@@ -659,7 +665,8 @@ variable SEM-CHUNKS-ARMED
 \ ACTIVATE and EXPOSE drain it, so each run and exposure opens at zero.
 \ Only the capture sweep destroys it, where no waker can hold the TCB, as
 \ MAIN-PARK-RESET does for the main record; the next PREPARE, here or in the
-\ restored image, creates it again.
+\ restored image, creates it again. TASK:FREE keeps the park too, so a pool
+\ record carries it to the task TASK:NEW next makes of it.
 : PARK-CREATE ( ptr n -- ) {: tcb:ptr :}
    tcb TASK-PARK-SEM SEM-LIVE? if exit then
    0 tcb TASK-PARK-SEM SEM-INIT ;
@@ -815,16 +822,22 @@ variable MAIN-PARK-READY
 \ of a cell this module would have to cast back to code. TASK-EXIT-LINK holds,
 \ for each row, the next row of the same task's chain plus one; zero ends the
 \ chain. TCB.EXIT-SLOT holds the HEAD row plus one; zero is "this task has no
-\ cleanup". A row belongs to one (task, quotation) pair for the life of the
-\ image - a registration serves the task's later activations and the same
-\ quotation is never given a second row - so the rows cannot leak and need no
-\ free list.
+\ cleanup". A row belongs to one (task, quotation) pair until TASK:FREE gives
+\ the task back - a registration serves the task's later activations and the
+\ same quotation is never given a second row - so a defined task's rows cannot
+\ leak. TASK:FREE moves a NEW task's rows onto TASK-EXIT-FREE, which a
+\ registration takes from first, so tasks made and freed without end never
+\ exhaust them.
 $80 constant TASK-EXIT-MAX
 TASK-EXIT-MAX TYPED-BUFFER TASK-EXIT-QT [ -- ]
 TASK-ALIGN8
 create TASK-EXIT-LINK TASK-EXIT-MAX TASK-ZERO-CELLS,
 TASK-ALIGN8
 variable TASK-EXIT-N
+\ The first row TASK:FREE gave back, plus one; 0 is none. A free row's
+\ TASK-EXIT-LINK names the next free row the same way.
+TASK-ALIGN8
+variable TASK-EXIT-FREE
 TASK-ALIGN8
 variable TASK-EXIT-LOCK
 
@@ -884,13 +897,22 @@ TYPED-VARIABLE TASK-EXIT-SCRATCH [ -- ]
 : TASK-EXIT-UNLOCK ( -- )
    0 TASK-EXIT-LOCK atomic! ;
 
-\ A row no chain holds yet. The counter moves in one atomic step, and the caller
-\ holds the registration lock, so the row it is handed is its own; past the end
-\ of the storage there is no row to hand out. The lock is released before that
-\ refusal leaves, so a full table costs the registration and not every later one.
+\ A row no chain holds: one TASK:FREE gave back, else the next one never used.
+\ The caller holds the registration lock, so the row it is handed is its own.
+\ Past the end of the storage there is no row to hand out, and the count is
+\ checked before it moves, so a refused registration leaves TASK-EXIT-N - the
+\ most rows ever used, freed rows included, which OWNED-EXIT-N hands the linker
+\ - inside the table. The lock
+\ is released before that refusal leaves, so a full table costs the
+\ registration and not every later one.
 : TASK-EXIT-NEXT ( -- n )
-   1 TASK-EXIT-N atomic-add {: idx:n :}
+   TASK-EXIT-FREE @ dup 0 <> if
+      1 - dup TASK-EXIT-LINK-AT @ TASK-EXIT-FREE ! exit
+   then
+   drop
+   TASK-EXIT-N @ {: idx:n :}
    idx TASK-EXIT-MAX >= if TASK-EXIT-UNLOCK E-TASK-EXIT-TABLE throw then
+   idx 1 + TASK-EXIT-N atomic!
    idx ;
 
 \ True when the task's chain already holds the quotation in the scratch cell.
@@ -927,6 +949,24 @@ TYPED-VARIABLE TASK-EXIT-SCRATCH [ -- ]
    q idx TASK-EXIT-QT !
    tcb TASK-EXIT-SLOT@ idx TASK-EXIT-LINK-AT !
    idx 1 + tcb TCB.EXIT-SLOT atomic!
+   TASK-EXIT-UNLOCK ;
+
+\ Gives every row of the task's chain back to TASK-EXIT-FREE, for TASK:FREE. The
+\ task has ended and been released, so no thread runs the chain; the lock
+\ orders this against a registration on any task. A freed row holds the empty
+\ quotation, so no row keeps a cleanup its task no longer has.
+: EXIT-ROWS-FREE ( ptr n -- ) {: tcb:ptr :}
+   TASK-EXIT-LOCK-GET
+   tcb TASK-EXIT-SLOT@
+   begin dup 0 <> while
+      1 -
+      [: ;] over TASK-EXIT-QT !
+      dup TASK-EXIT-LINK-AT @ swap
+      TASK-EXIT-FREE @ over TASK-EXIT-LINK-AT !
+      1 + TASK-EXIT-FREE !
+   repeat
+   drop
+   0 tcb TCB.EXIT-SLOT atomic!
    TASK-EXIT-UNLOCK ;
 
 \ A cleanup that throws ends nothing else: its code becomes the task's error when
@@ -1201,6 +1241,10 @@ variable ROW-N
 \ memory the build mapped; a window address is neither). A TCB address is not an
 \ offset from `dbase@` either - measured on this engine, the window is at
 \ $340000000 and `dbase@` at $1410000 - so the link holds the address itself.
+\ A TASK:NEW record is on TCB-POOL below, never on this chain: the chain is
+\ fixed once a task can run, because the crash handler and every lock-free
+\ walker read it without a lock, and an image carries it, while a NEW record
+\ lives in memory this process mapped.
 PERSISTED-PTR-VARIABLE TASK-CHAIN
 
 \ The crash handler can inspect this immutable TCB chain after an instruction
@@ -1222,6 +1266,66 @@ TASK-CHAIN-PUBLISH
 \ TASK-ABI, so the layout check above answers for the structure unchanged.
 : TASK-LINK@ ( ptr n -- n )
    TASK-TCB-BYTES + @ ;
+
+\ ---- the TCB pool: the tasks TASK:NEW makes ----------------------------------
+\ A record is a TCB, its pool link in the same place as a chain link - the next
+\ record as a number, 0 ending the pool - and its claim: CLAIM-FREE, CLAIM-HELD
+\ while TASK:NEW has handed it out, CLAIM-FREEING while a TASK:FREE moves it
+\ back. A chunk is the link to the next chunk and TCB-POOL-N records; a chunk
+\ is the unit the pool grows by, not a cap. THE POOL ONLY GROWS while the
+\ process runs: TASK:FREE hands a record back by its claim and TASK:NEW takes a
+\ free record before it maps another chunk, so nothing is unlinked or unmapped
+\ under a reader. EXPOSED-TCB and TCB-POOLED? walk it with no lock from any
+\ thread, and a TASK:WAKE or TASK:HALT that read the TCB before its task was
+\ given back still posts a live park, which TASK:FREE keeps (PARK-CREATE). The
+\ capture sweep alone destroys the parks and gives the chunks back, after it
+\ has refused a record still held. The x86-64 crash handler walks TASK-CHAIN
+\ only (src/habu/boot-x64.f), so an instruction fetch in a guard page of a NEW
+\ task's stack reaches its generic dump instead of the stack-bounds report.
+TASK-ALIGN8
+variable TCB-POOL
+TASK-ALIGN8
+variable TCB-CHUNKS
+TASK-TCB-BYTES 2 cells + constant TCB-REC-BYTES
+$4000 constant TCB-CHUNK-BYTES
+TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
+0 constant CLAIM-FREE
+1 constant CLAIM-HELD
+2 constant CLAIM-FREEING
+
+: TCB-REC ( n n -- n ) {: c:n idx:n :}
+   c CELL + idx TCB-REC-BYTES * + ;
+
+: TCB-POOL-LINK ( n -- ptr n )
+   TASK-TCB-BYTES + TASK-N>PTR ;
+
+: TCB-CLAIM ( ptr n -- ptr n )
+   TASK-TCB-BYTES + CELL + ;
+
+: TCB-CHUNK-RELEASE ( n -- )
+   TASK-N>PTR BYTE-VIEW TCB-CHUNK-BYTES MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
+
+\ Every record is free here, so EMPTY with no mapping but its park. A record
+\ still held is the program's defect, named rather than left to the linker as a
+\ mapping it cannot carry; `die` and not `throw`, as TASK-SWEEP-ONE says.
+: TCB-POOL-SWEEP ( -- )
+   TCB-POOL atomic@
+   begin dup 0 <> while
+      dup TASK-N>PTR TCB-CLAIM atomic@ CLAIM-FREE <> if
+         s" task: TASK:NEW task at capture - kill and TASK:FREE it before the build or snapshot captures"
+         E-TASK-STATE die
+      then
+      dup TASK-N>PTR PARK-DESTROY
+      TASK-N>PTR TASK-LINK@
+   repeat
+   drop
+   0 TCB-POOL atomic!
+   TCB-CHUNKS atomic@
+   begin dup 0 <> while
+      dup TASK-N>PTR @ swap TCB-CHUNK-RELEASE
+   repeat
+   drop
+   0 TCB-CHUNKS atomic! ;
 
 \ A PREPARED TASK IS RELEASED AT CAPTURE, the same rule package FFI keeps for
 \ resolved symbols: process-local state is dropped here and taken afresh by the
@@ -1277,6 +1381,7 @@ variable SWEEP-ARMED
       TASK-N>PTR dup TASK-SWEEP-ONE TASK-LINK@
    repeat
    drop
+   TCB-POOL-SWEEP
    0 SWEEP-ARMED ! ;
 
 \ THE SWEEP IS A ONE-SHOT CLEANUP, ARMED BY THE WORD THAT TAKES WHAT IT GIVES
@@ -1394,11 +1499,14 @@ variable SWEEP-ARMED
 : TASK-PTHREAD-JOIN-CALL ( ptr n -- ) {: tcb:ptr :}
    tcb TCB.THREAD @ tcb TCB.RET BYTE-VIEW PTHREAD-JOIN-CALL TASK-RC0 ;
 
+\ EMPTY is a release store, as EXPOSED and DONE are: a TASK:FREE on another
+\ thread that reads it (TASK-STATE@, an acquire load) clears the record, so
+\ every store TASK-RELEASE-MEM made has to be visible before it.
 : TASK-JOIN-RELEASE ( ptr n -- ) {: tcb:ptr :}
    tcb TASK-PTHREAD-JOIN-CALL
    TASK-LIVE-
    tcb TASK-RELEASE-MEM
-   TASK-EMPTY tcb TASK-STATE! ;
+   TASK-EMPTY tcb TCB.STATUS atomic! ;
 
 : TASK-RUN-USER ( -- n )
    TASK-SELF TCB.USER-XT @ catch ;
@@ -1607,13 +1715,19 @@ variable SWEEP-ARMED
    tcb TASK-STATE@ TASK-EXPOSED =
    tcb TCB.REGION @ FFI:>CELL ctx = and ;
 
-\ The exposed task whose region is context n, as a TCB number, or 0.
-: EXPOSED-TCB ( n -- n ) {: ctx:n :}
-   TASK-CHAIN@ FFI:>CELL
+\ The exposed task whose region is context n, among the list from that head, as
+\ a TCB number, or 0. The chain and the pool keep their links in one place.
+: CHAIN-EXPOSED ( n n -- n ) {: ctx:n :}
    begin dup 0 <> while
       dup TASK-N>PTR ctx swap TCB-EXPOSES? if exit then
       TASK-N>PTR TASK-LINK@
    repeat ;
+
+\ The exposed task whose region is context n, declared or made by TASK:NEW.
+: EXPOSED-TCB ( n -- n ) {: ctx:n :}
+   TASK-CHAIN@ FFI:>CELL ctx CHAIN-EXPOSED
+   dup 0 <> if exit then
+   drop TCB-POOL atomic@ ctx CHAIN-EXPOSED ;
 
 \ A context is the main region, the caller's own, or an exposed task's. The
 \ last answers its task, the one an UNEXPOSE on another thread can end during
@@ -1690,7 +1804,7 @@ variable SWEEP-ARMED
    st TASK-EXPOSED = if tcb UNEXPOSE then
    st TASK-CONSTRUCTED = st TASK-EXPOSED = or if
       tcb TASK-RELEASE-MEM
-      TASK-EMPTY tcb TASK-STATE!
+      TASK-EMPTY tcb TCB.STATUS atomic!
       exit
    then
    st TASK-DONE <> if tcb HALT then
@@ -1722,13 +1836,90 @@ variable SWEEP-ARMED
 
 \ Blocks in the done semaphore, so a joiner is parked in the kernel rather than
 \ polling DONE?. The release is the one TASK:KILL does, which is why a joined
-\ task needs no kill; the outcome is read after it, from TCB rows it leaves
-\ alone.
+\ task needs no kill. The outcome is read before it: the release stores EMPTY,
+\ and from then a TASK:FREE on another thread may clear the record and TASK:NEW
+\ hand it to a new task.
 : TASK-JOIN ( ptr n -- result<n,n> ) {: tcb:ptr :}
    tcb TASK-JOIN-CHECK
    tcb TASK-DONE-SEM SEM-WAIT
-   tcb TASK-JOIN-RELEASE
-   tcb TASK-JOIN-ANSWER ;
+   tcb TASK-JOIN-ANSWER
+   tcb TASK-JOIN-RELEASE ;
+
+\ ---- making and giving back pool tasks ---------------------------------------
+\ Puts a run of linked entries, first to the one whose link cell is given, on a
+\ list head. The link takes the head this turn read before the head moves to the
+\ first entry, so a walker that reads the new head finds the whole run and the
+\ old list behind it; a concurrent push makes the swap fail and the turn retry.
+: LIST-PUSH ( n ptr n ptr n -- ) {: first:n link:ptr head:ptr :}
+   begin
+      head atomic@ dup link !
+      dup first head atomic-cas =
+   until ;
+
+\ A fresh mapping is zero: every record EMPTY and CLAIM-FREE. Its first record
+\ is the caller's before the chunk is published, the sweep armed before the
+\ mapping exists, as SEM-GROW does.
+: TCB-GROW ( -- n )
+   TASK-ARM-SWEEP
+   TCB-CHUNK-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop FFI:>CELL {: c:n :}
+   TCB-POOL-N 1 - 0 ?do
+      c i 1 + TCB-REC c i TCB-REC TCB-POOL-LINK !
+   loop
+   CLAIM-HELD c 0 TCB-REC TASK-N>PTR TCB-CLAIM !
+   c c TASK-N>PTR TCB-CHUNKS LIST-PUSH
+   c 0 TCB-REC c TCB-POOL-N 1 - TCB-REC TCB-POOL-LINK TCB-POOL LIST-PUSH
+   c 0 TCB-REC ;
+
+\ One claim wins: two threads asking at the same moment take different records.
+: TCB-TAKE? ( n -- bool ) {: rec:n :}
+   CLAIM-FREE CLAIM-HELD rec TASK-N>PTR TCB-CLAIM atomic-cas CLAIM-FREE = ;
+
+\ The first free record this walk claims, or 0.
+: TCB-TAKE ( -- n )
+   TCB-POOL atomic@
+   begin dup 0 <> while
+      dup TCB-TAKE? if exit then
+      TASK-N>PTR TASK-LINK@
+   repeat ;
+
+: TASK-NEW ( n -- ptr n ) {: size:n :}
+   size TASK-CHECK-SIZE
+   TCB-TAKE dup 0= if drop TCB-GROW then
+   TASK-N>PTR {: tcb:ptr :}
+   size tcb TCB.SIZE !
+   tcb ;
+
+\ Whether the TCB is a pool record: a defined task and the null TCB are not.
+: TCB-POOLED? ( ptr n -- bool ) {: tcb:ptr :}
+   tcb FFI:>CELL {: want:n :}
+   TCB-POOL atomic@
+   begin dup 0 <> while
+      dup want = if drop true exit then
+      TASK-N>PTR TASK-LINK@
+   repeat
+   drop false ;
+
+\ Zeroes the TCB but its park, which a post in flight may still meet.
+: TCB-CLEAR ( ptr n -- ) {: tcb:ptr :}
+   TASK-ABI:PARK-OFF 0 ?do 0 tcb i + ! CELL +loop
+   TASK-TCB-BYTES TASK-ABI:PARK-OFF TASK-SEMAPHORE-BYTES + ?do 0 tcb i + ! CELL +loop ;
+
+\ The claim moves HELD -> FREEING first, so of two TASK:FREEs on one task only
+\ one proceeds and the other is refused; a task in any state but EMPTY is
+\ handed back HELD and refused. The record is cleared before its claim says
+\ FREE, so TASK:NEW never takes a record holding the last task's rows.
+: TASK-FREE ( ptr n -- ) {: tcb:ptr :}
+   tcb TCB-POOLED? 0= if E-TASK-STATE throw then
+   CLAIM-HELD CLAIM-FREEING tcb TCB-CLAIM atomic-cas CLAIM-HELD <> if
+      E-TASK-STATE throw
+   then
+   tcb TASK-STATE@ TASK-EMPTY <> if
+      CLAIM-HELD tcb TCB-CLAIM atomic!
+      E-TASK-STATE throw
+   then
+   tcb EXIT-ROWS-FREE
+   tcb TCB-CLEAR
+   CLAIM-FREE tcb TCB-CLAIM atomic! ;
 
 \ ---- the three storage definers, and why only one converted -------------------
 \ TWO ADDRESS KINDS LIVE HERE, and only one of them is expressible as generated
@@ -2184,6 +2375,21 @@ TASK-MIN-STACK constant MIN-STACK
 : JOIN ( ptr n -- result<n,n> )
    TASK-JOIN ;
 
+\ A task made at run time, EMPTY as a defined one is before its first
+\ TASK:ACTIVATE, with a data stack of n bytes; it defines nothing, so any
+\ thread may call it while tasks run. n below TASK:MIN-STACK is E-TASK-SIZE.
+: NEW ( n -- ptr n )
+   TASK-NEW ;
+
+\ Gives back a TASK:NEW task that TASK:JOIN or TASK:KILL released, or that was
+\ never prepared, with every cleanup TASK:AT-EXIT registered on it. A task in
+\ any other state, a defined task, the null TCB and a task already given back
+\ are E-TASK-STATE, and the task is left as it was. The handle is dead after it:
+\ TASK:NEW may hand the record out again. The stacks went back at the join;
+\ the record and its park go back at the next capture.
+: FREE ( ptr n -- )
+   TASK-FREE ;
+
 \ Adds a cleanup quotation to that task's chain, run in the task's own thread
 \ when it ends - body returned or threw, a halt at TASK:PAUSE included - after
 \ the body has unwound through its finally cleanups and before the join is
@@ -2297,6 +2503,8 @@ TASK-MIN-STACK constant MIN-STACK
    {: carry fresh :}
    TASK-USER-NEXT BYTE-VIEW CELL carry execute
    TASK-CHAIN BYTE-VIEW CELL carry execute
+   TCB-POOL BYTE-VIEW CELL fresh execute
+   TCB-CHUNKS BYTE-VIEW CELL fresh execute
    SWEEP-ARMED BYTE-VIEW CELL fresh execute
    TASK-SEM-POOL TASK-SEM-CHUNK-BYTES fresh execute
    SEM-CHUNKS-ARMED BYTE-VIEW CELL fresh execute
@@ -2311,6 +2519,7 @@ TASK-MIN-STACK constant MIN-STACK
    0 TASK-EXIT-QT BYTE-VIEW TASK-EXIT-MAX cells carry execute
    TASK-EXIT-LINK TASK-EXIT-MAX cells carry execute
    TASK-EXIT-N BYTE-VIEW CELL carry execute
+   TASK-EXIT-FREE BYTE-VIEW CELL carry execute
    TASK-EXIT-LOCK BYTE-VIEW CELL fresh execute
    TASK-EXIT-SCRATCH BYTE-VIEW CELL fresh execute
    SLOT-OBSERVER BYTE-VIEW CELL fresh execute ;

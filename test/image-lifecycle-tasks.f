@@ -4,6 +4,7 @@
 
 require src/lib/test.f
 require src/lib/task.f
+require src/lib/adt/result.f
 require src/lib/image-lifecycle.f
 require src/lib/ffi-abi.f
 require src/habu/task-abi.f
@@ -152,6 +153,26 @@ TASK-ABI:STATUS-OFF CELL 2 * + constant RET-OFF
    WORKER-A TASK-ABI:NDICT-OFF TCB@ 0 T=
    WORKER-A TASK-ABI:CP-OFF TCB@ 0 T= ;
 
+\ A TASK:NEW AFTER A CAPTURE RUNS: the capture gave the pool's mappings back and
+\ emptied it, so the later TASK:NEW maps a chunk of its own; one left behind
+\ would hand out a record in memory the capture unmapped.
+: POOL-WORK ( -- ) LOCAL-WORK 0 TASK:RETURN ;
+
+\ Runs a TASK:NEW task to its end, waiting on TASK:JOIN, which answers 0 for
+\ the task's ok arm and the code for its err arm, and gives it back.
+: NEW-ROUND ( -- n )
+   TASK:MIN-STACK TASK:NEW {: t:ptr :}
+   ['] POOL-WORK t TASK:ACTIVATE
+   t TASK:JOIN MATCH result ok OF drop 0 ENDOF err OF ENDOF ;MATCH
+   t TASK:FREE ;
+
+: POOL-RELEASED ( -- )
+   0 CLEANED !
+   NEW-ROUND 0 T=
+   IMAGE-LIFECYCLE:PREPARE
+   NEW-ROUND 0 T=
+   CLEANED @ 2 T= ;
+
 : RUN ( -- )
    T-RESET
    s" task-local quotations stay transient; shared stores register once" T-LABEL
@@ -164,6 +185,8 @@ TASK-ABI:STATUS-OFF CELL 2 * + constant RET-OFF
    PREPARED-RELEASED
    s" a killed task's TCB keeps no address this process took" T-LABEL
    KILLED-CLEARED
+   s" a TASK:NEW after a capture runs" T-LABEL
+   POOL-RELEASED
    T-REPORT ;
 
 RUN

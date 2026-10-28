@@ -2362,6 +2362,238 @@ variable BIND-PAIR-Q-WON
    outu LEN>N 0 T=
    TASK-ERR erru LEN>N S\" variable\n" T$= ;
 
+\ ---- tasks made at run time -------------------------------------------------
+$30 constant NEW-N                   \ past one pool chunk of 42 records
+300 constant NEW-ROUNDS              \ past the $80 AT-EXIT rows, were freed rows lost
+$81 constant NEW-CAP                 \ one task per AT-EXIT row, and the one refused
+10000 constant NEW-WAIT-MS           \ a gate host starts NEW-N threads late
+TASK:SEMAPHORE NEW-GATE
+TASK:MIN-STACK TASK:TASK NEW-MAKER
+NEW-CAP TYPED-BUFFER NEW-TASKS ptr n
+200 constant NEW-RACE-ROUNDS         \ enough for a racy TCB claim to fail nearly every run
+20 constant NEW-RACE-N               \ tasks each racer holds per round
+TASK:MIN-STACK TASK:TASK NEW-RACER-0
+TASK:MIN-STACK TASK:TASK NEW-RACER-1
+TASK:MIN-STACK TASK:TASK NEW-RACER-2
+TASK:MIN-STACK TASK:TASK NEW-RACER-3
+
+TASK-TEST-ALIGN8
+variable NEW-UP
+variable NEW-FAILED
+variable NEW-DIRTY
+variable NEW-CLEANED
+variable NEW-IDX
+
+: NEW-WAIT ( [ -- bool ] -- )
+   mono-ns NEW-WAIT-MS NS-PER-MS * + s" task-test NEW-WAIT" TEST-WAIT:POLL ;
+
+: NEW-UP-BODY ( -- )
+   1 NEW-UP atomic-add drop
+   NEW-GATE TASK:WAIT
+   TASK:SELF-N TASK:RETURN ;
+
+: NEW-INNER-BODY ( -- )
+   9 TASK:RETURN ;
+
+\ A task makes, runs and gives back a task of its own and answers its value.
+: NEW-MAKER-BODY ( -- )
+   TASK:MIN-STACK TASK:NEW {: t:ptr :}
+   ['] NEW-INNER-BODY t TASK:ACTIVATE
+   t TASK:JOIN JOIN-UNWRAP drop
+   t TASK:FREE
+   TASK:RETURN ;
+
+\ More tasks than one chunk holds, made while the earlier ones run and while a
+\ task makes one of its own. Each answers its own TCB, so no two share a record,
+\ and giving them all back returns the live count.
+: TASK-TEST-NEW-LIVE ( -- )
+   TASK-LIVE-COUNT {: base:n :}
+   0 NEW-UP !
+   0 NEW-GATE TASK:SEMAPHORE-INIT
+   NEW-N 0 ?do
+      TASK:MIN-STACK TASK:NEW dup i NEW-TASKS !
+      ['] NEW-UP-BODY swap TASK:ACTIVATE
+   loop
+   [: NEW-UP atomic@ NEW-N = ;] NEW-WAIT
+   s" TASK:NEW tasks run beside each other" T-LABEL
+   TASK-LIVE-COUNT base NEW-N + T=
+   s" a task makes, joins and frees a TASK:NEW task while others run" T-LABEL
+   ['] NEW-MAKER-BODY NEW-MAKER TASK:ACTIVATE
+   NEW-MAKER TASK:JOIN 9 JOIN-OK=
+   NEW-N 0 ?do NEW-GATE TASK:SIGNAL loop
+   s" each TASK:NEW task answers its own TCB" T-LABEL
+   NEW-N 0 ?do i NEW-TASKS @ TASK:JOIN i NEW-TASKS @ FFI:>CELL JOIN-OK= loop
+   NEW-N 0 ?do i NEW-TASKS @ TASK:FREE loop
+   s" giving the tasks back returns the live count" T-LABEL
+   TASK-LIVE-COUNT base T=
+   NEW-GATE TASK:SEMAPHORE-DESTROY ;
+
+: NEW-SELF-BODY ( -- )
+   TASK:SELF-N TASK:RETURN ;
+
+\ True when the task in that NEW-TASKS slot answered anything but its own TCB.
+: NEW-RACE-WRONG? ( n -- bool ) {: idx:n :}
+   idx NEW-TASKS @ TASK:JOIN JOIN-UNWRAP {: v:n arm:n :}
+   arm 0<> v idx NEW-TASKS @ FFI:>CELL <> or ;
+
+\ One round on the slots from base: make, run, join and give back NEW-RACE-N
+\ tasks; answers how many answered wrong.
+: NEW-RACE-ROUND ( n -- n ) {: base:n :}
+   NEW-RACE-N 0 ?do TASK:MIN-STACK TASK:NEW base i + NEW-TASKS ! loop
+   NEW-RACE-N 0 ?do ['] NEW-SELF-BODY base i + NEW-TASKS @ TASK:ACTIVATE loop
+   0 NEW-RACE-N 0 ?do base i + NEW-RACE-WRONG? if 1 + then loop
+   NEW-RACE-N 0 ?do base i + NEW-TASKS @ TASK:FREE loop ;
+
+\ Racer k's rounds on its own NEW-RACE-N slots; it answers its wrong count.
+: NEW-RACE-RUN ( n -- ) {: k:n :}
+   0 NEW-RACE-ROUNDS 0 ?do k NEW-RACE-N * NEW-RACE-ROUND + loop
+   TASK:RETURN ;
+
+\ Racers take and give back records at once, so two TCB-TAKEs claiming one
+\ record, a TASK:FREE handing out a record still in use or a TCB-GROW losing a
+\ push shows as a task answering another's TCB, a refused FREE or a hang.
+: TASK-TEST-NEW-RACE ( -- )
+   TASK-LIVE-COUNT {: base:n :}
+   [: 0 NEW-RACE-RUN ;] NEW-RACER-0 TASK:ACTIVATE
+   [: 1 NEW-RACE-RUN ;] NEW-RACER-1 TASK:ACTIVATE
+   [: 2 NEW-RACE-RUN ;] NEW-RACER-2 TASK:ACTIVATE
+   [: 3 NEW-RACE-RUN ;] NEW-RACER-3 TASK:ACTIVATE
+   s" racers making and freeing tasks at once get only their own TCBs" T-LABEL
+   NEW-RACER-0 TASK:JOIN 0 JOIN-OK=
+   NEW-RACER-1 TASK:JOIN 0 JOIN-OK=
+   NEW-RACER-2 TASK:JOIN 0 JOIN-OK=
+   NEW-RACER-3 TASK:JOIN 0 JOIN-OK=
+   s" the racers give the live count back" T-LABEL
+   TASK-LIVE-COUNT base T= ;
+
+: NEW-CLEAN ( -- )
+   1 NEW-CLEANED atomic-add drop ;
+
+\ A record TASK:FREE gave back comes out of TASK:NEW holding nothing of the
+\ task before it: no throw code and no cleanup.
+: NEW-ROUND ( n -- ) {: r:n :}
+   TASK:MIN-STACK TASK:NEW {: t:ptr :}
+   t TASK:THROW@ 0 <> if 1 NEW-DIRTY +! then
+   r 1 and 0= if ['] NEW-CLEAN t TASK:AT-EXIT then
+   ['] TASK-THROW-WORK t TASK:ACTIVATE
+   t TASK:JOIN JOIN-UNWRAP {: code:n arm:n :}
+   arm 1 = code E-TASK-STATE = and if 1 NEW-FAILED +! then
+   t TASK:FREE ;
+
+\ Made and freed without end: the AT-EXIT rows a freed task held go back, or
+\ the rounds would exhaust the table.
+: TASK-TEST-NEW-LOOP ( -- )
+   0 NEW-FAILED !
+   0 NEW-DIRTY !
+   0 NEW-CLEANED !
+   NEW-ROUNDS 0 ?do i NEW-ROUND loop
+   s" every round's task ran and failed with its own code" T-LABEL
+   NEW-FAILED @ NEW-ROUNDS T=
+   s" no task TASK:NEW hands out keeps a throw code" T-LABEL
+   NEW-DIRTY @ 0 T=
+   s" a cleanup runs only for the rounds that registered it" T-LABEL
+   NEW-CLEANED @ NEW-ROUNDS 2 / T= ;
+
+: NEW-REGISTER ( -- )
+   ['] NEW-CLEAN NEW-IDX @ NEW-TASKS @ TASK:AT-EXIT ;
+
+\ A fresh task per registration until the table refuses one; answers that code
+\ and leaves NEW-IDX at the refused task.
+: EXIT-FILL ( -- n )
+   0 NEW-IDX !
+   begin
+      TASK:MIN-STACK TASK:NEW NEW-IDX @ NEW-TASKS !
+      [: NEW-REGISTER ;] catch
+      dup 0= NEW-IDX @ 1 + NEW-CAP < and
+   while
+      drop 1 NEW-IDX +!
+   repeat ;
+
+\ A refused registration takes no row, so the count the linker reads stays
+\ inside the table, and a row TASK:FREE gives back serves the next one.
+: TASK-TEST-EXIT-TABLE ( -- )
+   EXIT-FILL {: rc:n :}
+   s" an AT-EXIT registration past the table" T-LABEL
+   rc E-TASK-EXIT-TABLE T=
+   TASK:OWNED-EXIT-N {: full:n :}
+   [: NEW-REGISTER ;] E-TASK-EXIT-TABLE TTHROWSQ
+   s" a refused registration leaves the row count" T-LABEL
+   TASK:OWNED-EXIT-N full T=
+   0 NEW-TASKS @ TASK:FREE
+   s" a row TASK:FREE gave back takes the next registration" T-LABEL
+   [: NEW-REGISTER ;] catch 0 T=
+   s" a row given back and taken again leaves the row count" T-LABEL
+   TASK:OWNED-EXIT-N full T=
+   NEW-IDX @ 1 + 1 ?do i NEW-TASKS @ TASK:FREE loop ;
+
+: NEW-HELD ( -- ptr n )
+   0 NEW-TASKS @ ;
+
+: NEW-FREE-HELD ( -- )
+   NEW-HELD TASK:FREE ;
+
+\ Every refusal leaves the task as it was: the prepared one still runs, the
+\ running one still ends, and each joins and is given back.
+: TASK-TEST-FREE-REFUSED ( -- )
+   s" TASK:NEW below TASK:MIN-STACK" T-LABEL
+   [: TASK:MIN-STACK 1 - TASK:NEW drop ;] E-TASK-SIZE TTHROWSQ
+   TASK:MIN-STACK TASK:NEW 0 NEW-TASKS !
+   NEW-HELD TASK:PREPARE
+   s" TASK:FREE of a prepared task never activated" T-LABEL
+   [: NEW-FREE-HELD ;] E-TASK-STATE TTHROWSQ
+   s" a prepared task TASK:FREE refused still runs" T-LABEL
+   ['] NEW-SELF-BODY NEW-HELD TASK:ACTIVATE
+   NEW-HELD TASK:JOIN NEW-HELD FFI:>CELL JOIN-OK=
+   s" a prepared task TASK:FREE refused is given back after its run" T-LABEL
+   [: NEW-FREE-HELD ;] catch 0 T=
+   0 NEW-GATE TASK:SEMAPHORE-INIT
+   TASK:MIN-STACK TASK:NEW 0 NEW-TASKS !
+   ['] NEW-UP-BODY NEW-HELD TASK:ACTIVATE
+   s" TASK:FREE of a running task" T-LABEL
+   [: NEW-FREE-HELD ;] E-TASK-STATE TTHROWSQ
+   NEW-GATE TASK:SIGNAL
+   [: NEW-HELD TASK:DONE? ;] NEW-WAIT
+   s" TASK:FREE of a task that ended and was not joined" T-LABEL
+   [: NEW-FREE-HELD ;] E-TASK-STATE TTHROWSQ
+   NEW-HELD TASK:JOIN NEW-HELD FFI:>CELL JOIN-OK=
+   NEW-FREE-HELD
+   s" a second TASK:FREE" T-LABEL
+   [: NEW-FREE-HELD ;] E-TASK-STATE TTHROWSQ
+   s" TASK:FREE of a defined task" T-LABEL
+   [: NEW-MAKER TASK:FREE ;] E-TASK-STATE TTHROWSQ
+   s" TASK:FREE of the null TCB" T-LABEL
+   [: TASK:SELF TASK:FREE ;] E-TASK-STATE TTHROWSQ
+   NEW-GATE TASK:SEMAPHORE-DESTROY ;
+
+\ A context bind finds an exposed TASK:NEW task as it finds a defined one, and
+\ TASK:FREE refuses the task while it is exposed and takes it once killed.
+: TASK-TEST-NEW-EXPOSE ( -- )
+   TASK:MIN-STACK TASK:NEW 0 NEW-TASKS !
+   NEW-HELD TASK:EXPOSE
+   s" TASK:FREE of an exposed task" T-LABEL
+   [: NEW-FREE-HELD ;] E-TASK-STATE TTHROWSQ
+   s" CONTEXT-BIND to an exposed TASK:NEW task TASK:FREE refused" T-LABEL
+   [: NEW-HELD TASK:CONTEXT EXPOSE-SLOT TASK:CONTEXT-BIND ;] catch 0 T=
+   EXPOSE-SLOT TASK:CONTEXT-UNBIND
+   NEW-HELD TASK:KILL
+   s" an exposed task TASK:FREE refused is given back after its kill" T-LABEL
+   [: NEW-FREE-HELD ;] catch 0 T= ;
+
+\ A TASK:NEW task not given back holds a record this process mapped, which no
+\ image carries: the capture names it and ends the build. A child process,
+\ because the capture ends it.
+: TASK-NEW-CAPTURE$ ( -- ptr u8 n )
+   SB-RESET
+   s" require src/lib/task.f" SB-APPEND TASK-LF
+   s" require src/lib/image-lifecycle.f" SB-APPEND TASK-LF
+   s" : TNC-HOLD ( -- ) TASK:MIN-STACK TASK:NEW drop ;" SB-APPEND TASK-LF
+   s" TNC-HOLD" SB-APPEND TASK-LF
+   s" IMAGE-LIFECYCLE:PREPARE" SB-APPEND TASK-LF
+   SB$ ;
+
+: TASK-TEST-NEW-CAPTURE ( -- )
+   TASK-NEW-CAPTURE$ TASK-UNCAUGHT-RC s" TASK:NEW task at capture" TASK-EXPECT-FAIL ;
+
 : TASK-TEST-RUN ( -- )
    T-RESET
    TASK-TEST-CALLBACK-TYPES
@@ -2451,6 +2683,13 @@ variable BIND-PAIR-Q-WON
    TASK-TEST-HALT-RACE
    TASK-TEST-BIND-RACE
    TASK-TEST-BIND-PAIR
+   TASK-TEST-NEW-LIVE
+   TASK-TEST-NEW-RACE
+   TASK-TEST-NEW-LOOP
+   TASK-TEST-EXIT-TABLE
+   TASK-TEST-FREE-REFUSED
+   TASK-TEST-NEW-EXPOSE
+   TASK-TEST-NEW-CAPTURE
    TASK-TEST-EXPOSED-CAPTURE
    TASK-TEST-WORKER-ACTIVATES
    T-REPORT ;
