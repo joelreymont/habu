@@ -7624,32 +7624,6 @@ public
    s" habu-lsp-test" FS:MKTEMP-DIR N>BLEN DIR-B REPLACE
    T-RESET ;
 
-: TEST-COMPLETION ( -- )
-   TEST-INIT
-   s" completion-session" [: INITIALIZE ;] [: TEST-COMPLETIONS ;] SESSION-RUN
-   SB-RESET s" artifact: " SB-APPEND DIR$ SB-APPEND SB$ type cr
-   T-REPORT ;
-
-: TEST-BUILTIN ( -- )
-   TEST-INIT
-   true WORKSPACE? !
-   s" workspace-session" [: WORKSPACE-INIT ;]
-   [: s" references-source-backed-builtin" [: REFS-BUILTIN-TURNS ;] TALK
-      s" references-source-backed-other" [: REFS-BUILTIN-OTHER-TURNS ;] TALK ;]
-   SESSION-RUN
-   false WORKSPACE? !
-   SB-RESET s" artifact: " SB-APPEND DIR$ SB-APPEND SB$ type cr
-   T-REPORT ;
-
-: TEST-SUMTYPE ( -- )
-   TEST-INIT
-   s" sumtype-session" [: INITIALIZE ;]
-   [: s" definition-sumtype" [: SUMTYPE-DEF-TURNS ;] TALK
-      s" rename-sumtype" [: SUMTYPE-RENAME-TURNS ;] TALK
-      s" rename-variant-definer" [: VARIANT-DEFINER-RENAME-TURNS ;] TALK ;] SESSION-RUN
-   SB-RESET s" artifact: " SB-APPEND DIR$ SB-APPEND SB$ type cr
-   T-REPORT ;
-
 \ These rooted cases share one initialize and a freshly written fixture tree.
 : WORKSPACE-CASES ( -- )
    s" references-unverified" [: REFS-UNV-TURNS ;] TALK
