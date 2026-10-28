@@ -69,6 +69,18 @@
 \ whose ROLLBACK fails after the body threw closes the connection, whose
 \ transaction state is then unknown, and rethrows the body's code.
 \
+\ NOTIFIED? waits up to ms milliseconds for a notification on a connection
+\ that ran LISTEN and answers whether one came; 0 waits for nothing and reads
+\ only what has arrived, including what libpq queued during earlier operations.
+\ It takes every notification queued, so one answer covers several NOTIFYs, and
+\ keeps neither channel nor payload. It waits through AIO:AWAIT, so it needs
+\ AIO:START and ends at a TASK:HALT, and DEADLINE! does not bound it. A
+\ connecting or pending connection is E-STATEMENT; one inside a transaction,
+\ which holds notifications back until it ends, is E-TRANSACTION; ms outside
+\ 0..WAIT-MAX is E-BOUND. A failed read closes the connection and throws E-EXEC;
+\ a readiness wait the AIO loop refuses throws E-EXEC, or the loop's own code,
+\ and leaves it open.
+\
 \ ID answers a connection's identity as a plain cell and OF-ID the connection
 \ it names, so a cleanup that takes no arguments can keep the identity in
 \ per-task memory. Validity is checked by use: a closed connection's identity
@@ -129,13 +141,13 @@ public
 -9252 constant E-COLUMN       \ a row or column index outside the result
 -9253 constant E-TYPE         \ a column read as a type its bytes are not, including an integer read of NULL
 -9254 constant E-CLEARED      \ a result used after CLEAR or its connection's close
--9255 constant E-TRANSACTION  \ a WITH-TRANSACTION inside another one on the same connection
+-9255 constant E-TRANSACTION  \ a WITH-TRANSACTION or NOTIFIED? inside a transaction on the same connection
 -9256 constant E-HANDLE       \ a handle another task owns or an image restore invalidated, a scope's token cleared or not handed back
 -9257 constant E-CAPACITY     \ more live connections, results or parameters than this module stores
 -9258 constant E-PLATFORM     \ this module is qualified on Linux only, and refuses a foreign target before it binds
 -9259 constant E-STATEMENT    \ an empty statement/name or embedded NUL in C-string text
 -9560 constant E-DEADLINE     \ a wait past the connection's DEADLINE! bound, which closed it
--9561 constant E-BOUND        \ a DEADLINE! bound outside 0..WAIT-MAX ms
+-9561 constant E-BOUND        \ a DEADLINE! bound or NOTIFIED? wait outside 0..WAIT-MAX ms
 
 NEWTYPE connection
 DEFLINEAR PG:result
@@ -181,6 +193,8 @@ LINEAR: RESULT>N ( PG:result -- n )
 1 constant CONNECT-FIRST
 2 constant CONNECT-POLLING
 0 constant TRANS-IDLE                     \ PGTransactionStatusType
+2 constant TRANS-INTRANS
+3 constant TRANS-INERROR
 1 constant PGRES-COMMAND-OK               \ ExecStatusType
 2 constant PGRES-TUPLES-OK
 $43 constant PG-DIAG-SQLSTATE             \ 'C'
@@ -296,6 +310,8 @@ FUNCTION: LIB-GETISNULL PQgetisnull ( ptr u8 n n -- i32 ) ;FUNCTION
 FUNCTION: LIB-GETLENGTH PQgetlength ( ptr u8 n n -- i32 ) ;FUNCTION
 FUNCTION: LIB-CLEAR PQclear ( ptr u8 -- ) ;FUNCTION
 FUNCTION: LIB-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
+FUNCTION: LIB-NOTIFIES PQnotifies ( ptr u8 -- ptr u8 ) ;FUNCTION
+FUNCTION: LIB-FREEMEM PQfreemem ( ptr u8 -- ) ;FUNCTION
 
 
 \ ---- foreign addresses ----------------------------------------------------
@@ -1038,14 +1054,22 @@ REGISTER-CHILD-RESET
    mono-ns bound NS-PER-MS * + ;
 
 
-\ The poll timeout left, rounded up to a whole millisecond so the poll cannot
-\ end before the deadline. A deadline already passed is E-DEADLINE.
+\ The milliseconds left before a deadline, rounded up so a poll cannot end
+\ before it; 0 once it has passed.
+: LEFT-MS ( n -- n )
+   {: deadline:n :}
+   deadline mono-ns - {: left:n :}
+   left 0 <= if 0 exit then
+   left NS-PER-MS 1- + NS-PER-MS / ;
+
+
+\ The poll timeout left. A deadline already passed is E-DEADLINE.
 : REMAINING ( n -- ms )
    {: deadline:n :}
    deadline NO-DEADLINE = if -1 >MS exit then
-   deadline mono-ns - {: left:n :}
-   left 0 <= if E-DEADLINE throw then
-   left NS-PER-MS 1- + NS-PER-MS / >MS ;
+   deadline LEFT-MS {: left:n :}
+   left 0= if E-DEADLINE throw then
+   left >MS ;
 
 
 \ Only the convenience words wait. A dispatcher consumes progress directly.
@@ -1084,6 +1108,49 @@ REGISTER-CHILD-RESET
       refused OF 2drop E-EXEC throw ENDOF
       waiting OF 2drop E-EXEC throw ENDOF
    ;MATCH ;
+
+
+\ ---- notifications ------------------------------------------------------
+\ libpq hands each parsed notification over to its caller, who frees it. The
+\ channel and payload are not kept.
+: DRAIN-NOTIFIES ( n -- bool ) {: slot:n :}
+   false
+   begin slot CONN-PG@ LIB-NOTIFIES dup NULL-ADDR? 0= while
+      LIB-FREEMEM drop true
+   repeat
+   drop ;
+
+
+\ A failed read is a transport failure, which closes the connection.
+: TAKE-NOTIFIES ( n -- bool ) {: slot:n :}
+   slot CONN-PG@ LIB-CONSUME-INPUT 0= if slot ABANDON-SLOT E-EXEC throw then
+   slot DRAIN-NOTIFIES ;
+
+
+\ One readiness wait of at most ms, true when the socket became readable. No
+\ protocol state is in flight, so a failed wait leaves the connection open.
+: READABLE-WITHIN ( n n -- bool ) {: slot:n limit:n :}
+   slot CONN-PG@ LIB-SOCKET {: socket:n :}
+   socket 0 < if slot ABANDON-SLOT E-EXEC throw then
+   socket >FD AIO:READABLE limit >MS AIO:POLL AIO:AWAIT
+   MATCH AIO:outcome
+      ready OF drop true ENDOF
+      timed-out OF false ENDOF
+      cancelled OF E-EXEC throw ENDOF
+      refused OF drop E-EXEC throw ENDOF
+   ;MATCH ;
+
+
+\ Readable bytes need not hold a notification (a notice, a parameter status, a
+\ partial message), so the wait goes on until one arrives or the deadline. The
+\ monotonic clock, not the poll's timeout, decides that the deadline passed.
+: NOTIFY-WAIT ( n n -- bool ) {: slot:n deadline:n :}
+   begin deadline LEFT-MS dup 0 > while
+      slot swap READABLE-WITHIN if
+         slot TAKE-NOTIFIES if true exit then
+      then
+   repeat
+   drop false ;
 
 
 \ ---- statement execution --------------------------------------------------
@@ -1542,6 +1609,19 @@ public
 : DEADLINE@ ( connection -- ms )
    {: handle:connection :}
    handle CONN-SLOT BOUND@ >MS ;
+
+
+: NOTIFIED? ( connection ms -- bool )
+   {: handle:connection timeout:ms :}
+   handle CONN-SLOT {: slot:n :}
+   timeout MS>N {: limit:n :}
+   limit 0 < limit WAIT-MAX > or if E-BOUND throw then
+   slot IDLE-CHECK
+   slot CONN-PG@ LIB-TRANSACTION-STATUS {: status:n :}
+   status TRANS-INTRANS = status TRANS-INERROR = or if E-TRANSACTION throw then
+   mono-ns limit NS-PER-MS * + {: deadline:n :}
+   slot TAKE-NOTIFIES if true exit then
+   slot deadline NOTIFY-WAIT ;
 
 
 private

@@ -1500,6 +1500,122 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
    fresh PG:CLOSE ;
 
 
+\ ---- notifications ------------------------------------------------------
+\ One connection LISTENs, another NOTIFYs. NOTIFY-MS is the wait a notification
+\ must cut short; PROMPT-MS bounds how long that takes.
+10000 constant NOTIFY-MS
+
+: NOTIFY-NOW ( PG:connection -- PG:connection )
+   dup 0 >MS NOTIFIED? drop ;
+
+: NOTIFY-LONG ( PG:connection -- PG:connection )
+   dup NOTIFY-MS >MS NOTIFIED? drop ;
+
+: NOTIFY-NEGATIVE ( PG:connection -- PG:connection )
+   dup -1 >MS NOTIFIED? drop ;
+
+: NOTIFY-IN-TX ( PG:connection -- PG:connection )
+   dup [: NOTIFY-NOW ;] WITH-TRANSACTION ;
+
+: REFUSES ( PG:connection [ PG:connection -- PG:connection ] n -- )
+   {: c body want:n :}
+   c body catch {: stale code:n :}
+   code want T= ;
+
+: TERMINATE ( PG:connection n -- )
+   {: c pid:n :}
+   c PARAMS c pid INT+
+   c s" select pg_terminate_backend($1)" [: OUTCOME-TAG TAG-ROWS T= ;] WITH-RESULT ;
+
+
+\ The worker waits on its own connection, which its cleanup closes. It answers
+\ only after the wait, so a halt inside the wait leaves it no result.
+1 TYPED-BUFFER NOTE-CONN PG:connection
+variable NOTE-STARTED
+TASK:MIN-STACK TASK:TASK NOTE-WORKER
+
+: NOTE-CLEAN ( -- )
+   0 NOTE-CONN @ PG:LIVE? if 0 NOTE-CONN @ PG:CLOSE then ;
+
+: NOTE-WAIT ( -- )
+   OPEN dup 0 NOTE-CONN !
+   dup s" listen pqtnote" EXEC-OK
+   1 NOTE-STARTED atomic!
+   NOTIFY-MS >MS NOTIFIED? drop
+   0 TASK:RETURN ;
+
+
+: NOTE-HALT-CASES ( -- )
+   s" a halt ends a task waiting for a notification" T-LABEL
+   0 NOTE-STARTED !
+   ['] NOTE-CLEAN NOTE-WORKER TASK:AT-EXIT
+   ['] NOTE-WAIT NOTE-WORKER TASK:ACTIVATE
+   mono-ns PROGRESS-NS + {: deadline:n :}
+   begin
+      NOTE-STARTED atomic@ 0= NOTE-WORKER TASK:DONE? 0= and while
+      deadline CHECK-PROGRESS
+   repeat
+   mono-ns {: halted:n :}
+   NOTE-WORKER TASK:HALT
+   NOTE-WORKER TASK:JOIN MATCH result
+      ok OF drop E-EXEC throw ENDOF
+      err OF E-TASK-NO-RESULT T= ENDOF
+   ;MATCH
+   halted ELAPSED-MS PROMPT-MS < TTRUE
+   0 NOTE-CONN @ PG:LIVE? TFALSE ;
+
+
+\ A listening session receives its own NOTIFY before the statement's
+\ ReadyForQuery, so libpq holds it when the statement returns. Both of b's
+\ notifications commit in one implicit transaction, so the listener's backend
+\ sends them together and one wait sees both.
+: NOTIFY-CASES ( -- )
+   OPEN {: a :}
+   OPEN {: b :}
+   a s" listen pqtnote" EXEC-OK
+   s" a wait of 0 ms takes a notification libpq already holds" T-LABEL
+   a s" notify pqtnote, 'self'" EXEC-OK
+   a 0 >MS NOTIFIED? TTRUE
+   s" a wait of 0 ms with nothing sent answers false" T-LABEL
+   a 0 >MS NOTIFIED? TFALSE
+   s" a notification ends the wait, which takes every one queued" T-LABEL
+   b s" notify pqtnote, 'one'; notify pqtnote, 'two'"
+   [: OUTCOME-TAG TAG-OK T= ;] WITH-SCRIPT
+   mono-ns {: sent:n :}
+   a NOTIFY-MS >MS NOTIFIED? TTRUE
+   sent ELAPSED-MS PROMPT-MS < TTRUE
+   a 0 >MS NOTIFIED? TFALSE
+   s" a wait with nothing sent answers false once its time is up" T-LABEL
+   mono-ns {: idle:n :}
+   a BOUND-MS >MS NOTIFIED? TFALSE
+   idle ELAPSED-MS {: took:n :}
+   took BOUND-MS >= TTRUE
+   took BOUND-MS PROMPT-MS + < TTRUE
+   s" a wait in a transaction, failed or not, with a statement pending or out of range is refused" T-LABEL
+   a [: NOTIFY-IN-TX ;] E-TRANSACTION REFUSES
+   a IDLE? TTRUE
+   a s" begin" EXEC-OK
+   a [: NOTIFY-NOW ;] E-TRANSACTION REFUSES
+   a s" select 1/0" EXEC-TAG TAG-FAILED T=
+   a [: NOTIFY-NOW ;] E-TRANSACTION REFUSES
+   a s" rollback" EXEC-OK
+   a s" select 1" SEND
+   a [: NOTIFY-NOW ;] E-STATEMENT REFUSES
+   a RESULT-POLL CLEAR
+   a [: NOTIFY-NEGATIVE ;] E-BOUND REFUSES
+   a PG:LIVE? TTRUE
+   s" a wait on a lost connection closes it and is refused at once" T-LABEL
+   b a BACKEND TERMINATE
+   mono-ns {: cut:n :}
+   a [: NOTIFY-LONG ;] E-EXEC REFUSES
+   cut ELAPSED-MS PROMPT-MS < TTRUE
+   a PG:LIVE? TFALSE
+   s" a wait on a closed connection is refused" T-LABEL
+   b PG:CLOSE
+   b [: NOTIFY-NOW ;] E-HANDLE REFUSES
+   NOTE-HALT-CASES ;
+
+
 \ ---- abandon --------------------------------------------------------------
 : ABANDON-KEEP ( PG:connection -- PG:connection )
    dup PG:ABANDON ;
@@ -1562,6 +1678,7 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
    CANCEL-CASES
    LOST-CONNECTION-CASES
    DEADLINE-CASES
+   NOTIFY-CASES
    ABANDON-CASES
    RECYCLE-CASES
    PG:CLOSE
