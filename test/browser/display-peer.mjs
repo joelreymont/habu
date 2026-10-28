@@ -127,7 +127,7 @@ async function browser() {
   const child = Bun.spawn([chrome, "--headless=new", "--no-first-run", "--no-default-browser-check",
     "--enable-unsafe-webgpu", "--use-angle=swiftshader", "--disable-gpu-sandbox",
     "--remote-debugging-port=0", `--user-data-dir=${profile}`, "about:blank"],
-    { stdout: "ignore", stderr: Bun.file(join(output, "chrome.log")) });
+    { detached: true, stdout: "ignore", stderr: Bun.file(join(output, "chrome.log")) });
   let socket;
   try {
     const active = join(profile, "DevToolsActivePort");
@@ -315,10 +315,29 @@ async function browser() {
       console.log("Headless Chrome: viewport mount, turns, load, focus, highlight, dispose, remount, refused mounts and disposed replies passed");
     }
   } finally {
-    releaseSlow(); socket?.close(); child.kill(); await child.exited; server.stop(true);
+    releaseSlow(); socket?.close(); await stopGroup(child.pid); await child.exited; server.stop(true);
     const cleanup = Bun.spawn(["trash", profile], { stdout: "ignore", stderr: "inherit" });
     assert.equal(await cleanup.exited, 0, "Chrome profile cleanup");
   }
+}
+
+// Chrome leads its own process group: a renderer can outlive the browser
+// process, so teardown signals the group and waits until no member is left.
+async function stopGroup(group) {
+  for (const signal of ["SIGTERM", "SIGKILL"]) {
+    if (!signalGroup(group, signal)) return;
+    const limit = performance.now() + 5000;
+    while (performance.now() < limit) {
+      if (!signalGroup(group, 0)) return;
+      await Bun.sleep(25);
+    }
+  }
+  throw new Error(`Chrome process group ${group} survived SIGKILL`);
+}
+
+function signalGroup(group, signal) {
+  try { process.kill(-group, signal); return true; }
+  catch (error) { if (error.code === "ESRCH") return false; throw error; }
 }
 
 async function until(check) {
