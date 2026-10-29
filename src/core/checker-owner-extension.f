@@ -66,7 +66,10 @@ $588 constant WIDTH-ROWS-OFF
 $590 constant WIDTH-ROW-OFF
 \ ( -- n ) the binds the last scan counted (checker.f LOCW-HW-N@).
 $598 constant LOCAL-COUNT-OFF
-LOCAL-COUNT-OFF CELL + constant OWNER-BYTES
+\ ( -- ) closes the created body pending at a load boundary (checker.f
+\ CHECKER-BODY-CLOSE).
+$5A0 constant BODY-CLOSE-OFF
+BODY-CLOSE-OFF CELL + constant OWNER-BYTES
 
 $524543434F4E5431 constant CONTRACT-MAGIC
 5 cells constant FIXED-KIND-OFF

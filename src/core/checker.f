@@ -162,6 +162,7 @@ create OWNER-STORAGE
    0 ,
    0 ,
    0 , 0 , 0 ,
+   0 ,
 \ Measure before another definition can allocate or intern in DATA.
 here OWNER-STORAGE - CHECKER-OWNER-ABI:HEADER-BYTES - constant OWNER-COMMITTED
 public
@@ -179,7 +180,7 @@ OWNER-SIZE-AGREE
 \ every guard that trusts it (checker-owner-guard.f VALIDATE). Name the last
 \ offset here so that mistake is a load failure and not a bounds refusal later.
 : OWNER-LAST-FIELD-AGREE ( -- )
-   CHECKER-OWNER-EXT:LOCAL-COUNT-OFF CELL + OWNER-BYTES <> if
+   CHECKER-OWNER-EXT:BODY-CLOSE-OFF CELL + OWNER-BYTES <> if
       s" checker: declaration-owner last field and record size disagree" 76 die then ;
 OWNER-LAST-FIELD-AGREE
 data-base TARGET-CELL + ptr-cell-mark
@@ -10383,35 +10384,6 @@ CHECKER-GRID-CELLS-INSTALL
    NULL-PTR FEP ! 0 FEP-OFF !
    NULL-PTR TOK-EFF ! ;
 
-\ Each owned fixed accessor names its exact DATA cell extent, including types
-\ with no quotation fields. Deferred accessors also own their control cells.
-: CHECKER-STORAGE-CELLS ( [ ptr u8 n -- ] -- ) {: cells :}
-   0 CHECKER-STORAGE-CUR !
-   begin CHECKER-STORAGE-CUR @ EFF-REC + UEND @ <= while
-      CHECKER-STORAGE-CUR @ E-PTR {: rec:ptr :}
-      rec ER.STORAGE-N @ {: count:n :}
-      rec ER.STORAGE-KIND @ STORAGE-ACCESSOR = IF
-         rec CHECKER-STORAGE-POINTEE T-WIDTH {: width:n :}
-         data-base rec ER.STORAGE-OFF @ + BYTE-VIEW
-            count width * CELL * cells execute
-      ELSE rec ER.STORAGE-KIND @ STORAGE-DEFER = IF
-         data-base rec ER.STORAGE-OFF @ + CELL-VIEW {: cb:ptr :}
-         cb BYTE-VIEW LDEFER-CTRL-CELLS CELL * cells execute
-         cb CELL + @ {: cap:n :}
-         cap 0 > IF
-            rec CHECKER-STORAGE-POINTEE T-WIDTH {: width:n :}
-            cb cb @ + BYTE-VIEW cap width * CELL * cells execute
-         THEN
-      THEN THEN
-      rec USIG-NEXT E-OFF CHECKER-STORAGE-CUR !
-   repeat
-   cells CHECKER-GRID-CELLS-XT ;
-
-package CHECKER-REG
-' CHECKER-STORAGE-CELLS DECLARATIONS
-   CHECKER-OWNER-ABI:UNIT-STORAGE-CELLS-OFF + xt!
-;package
-
 \ A bare native engine rebuild starts with freshly loaded source. Its builder
 \ allocations do not survive into the new engine's DATA, so only that builder
 \ drops their ownership after preparing address declarations for its capture.
@@ -16414,22 +16386,6 @@ variable PENDING-MARKED      0 PENDING-MARKED !
          RECORD-LINK-CONTROL-HI @ max RECORD-LINK-CONTROL-HI !
    loop ;
 
-: RECORD-LINK-CREATED ( n n ptr n -- ) {: effect:n control:n rec:ptr :}
-   CHECKER-VERIFY-PKG-DEPTH @ 0 <> CHK-CAND @ 0 <> or IF EXIT THEN
-   rec NULL-PTR = IF EXIT THEN
-   rec CHECKER-RESOLVE:REC>INDEX {: ord:n :}
-   ord effect control RECORD-LINK-VALID? 0= IF EXIT THEN
-   ord RECORD-LINK-OCC {: slot:n occurrence:n :}
-   slot ord <> occurrence 0= or IF EXIT THEN
-   ord effect control RES-FALSE occurrence RECORD-LINK-WRITE
-   ord rec RECORD-LINK-FIXED! ;
-
-: RECORD-LINK-HOOKS ( -- )
-   [: RECORD-LINK-REWIND-EFFECT ;] is RECORD-EFFECT-REWIND-XT
-   [: RECORD-LINK-REWIND-CONTROL ;] is RECORD-CONTROL-REWIND-XT
-   [: RECORD-LINK-CREATED ;] is RECORD-CREATED-XT ;
-RECORD-LINK-HOOKS
-
 : RECORD-GRID-REC ( n -- ptr u8 ) {: grid:n :}
    grid 0 <= grid UEND @ > or IF
       s" checker: invalid grid link" 76 die THEN
@@ -16476,6 +16432,147 @@ RECORD-LINK-HOOKS
    grid RECORD-LINK-EFFECT-HI @ max RECORD-LINK-EFFECT-HI !
    ord PENDING-OWNER-RECORD
    ord PENDING-DIRTY+ ;
+
+\ CREATED-RECORD-BUILD ( sig-a sig-u -- off+1 | 0 ) : the record a created word
+\ carries, built from the effect its definer states - a certified `does>`
+\ clause's (DOES-EFF-LATCH! below) or a `generates:` row's (CHECKER-GENERATES).
+\ 0 when the effect does not parse, with SGBAD saying why.
+\
+\ IT PARSES THE SIGNATURE ITSELF, for two reasons. After a clause check the rows
+\ in SGIN/SGOUT have been unified with the body it just verified, so a clause
+\ declaring a variable would be latched at whatever the body happened to
+\ produce instead of at what it declared; and this parse runs under the
+\ raw-definer seal, which is what `trust-raw` (TRUST-RAW below) puts on every
+\ created word at run time, so the record holds the same TVK-RAW variables the
+\ engine's own registration of this definer's words would hold.
+\
+\ THE RECORD IS ANONYMOUS. It is not an effect OF the definer — the definer's
+\ own effect is recorded by its body's publication — so it is built with
+\ CHECKER-REC-SYM 0 and no cache update, the way SIG-EFF-CACHE! builds the
+\ recurse cache: sym 0 keeps it out of every per-symbol lookup.
+: CREATED-RECORD-BUILD ( ptr u8 n -- n )
+   {: sa:ptr su:n :}
+   WRITE-WINDOW-CK                       \ before the record symbol and parser move
+   CHECKER-REC-SYM @
+   {: was:n :}
+   0 CHECKER-REC-SYM !
+   NEW
+   SGBAD-CLEAR
+   RES-TRUE SIG-RAW-DEFINER!
+   sa su PARSE-SIG-RAW
+   RES-FALSE SIG-RAW-DEFINER!
+   SGBAD @ 0 <> SIG-UNRES @ 0 <> or IF
+      2drop 2drop  was CHECKER-REC-SYM !  0 EXIT     \ unresolvable family: no record
+   THEN
+   SGHASR @ E-BUILD-EFFECT
+   {: off:n :}
+   was CHECKER-REC-SYM !
+   off 1 + ;
+
+\ Binds the anonymous storage grid [base, base + count cells) to ORD's current
+\ dictionary occurrence: CELL-BODY's declaration and a closed `,` run.
+: CHECKER-GRID-ATTACH ( n ptr a n -- )
+   {: ord:n base:ptr count:n :}
+   s" -- ptr a" CREATED-RECORD-BUILD {: grid:n :}
+   grid 0= IF E-CHECKER-LAYOUT-BUFFER throw THEN
+   grid base count CHECKER-STORAGE-GRID
+   ord grid RECORD-LINK-GRID-ATTACH ;
+
+\ The latest created record whose body a `,` run may declare: its ordinal (-1
+\ for none), its RECORD-LINK occurrence and its body start as a DATA offset.
+variable BODY-PEND-ORD    -1 BODY-PEND-ORD !
+variable BODY-PEND-OCC    0 BODY-PEND-OCC !
+variable BODY-PEND-BASE   0 BODY-PEND-BASE !
+
+\ An engine `,` run cell holds an address; this is its DATA offset.
+: COMMA-CELL-OFF ( n -- n )
+   {: cell:n :}
+   data-base cell + CELL-VIEW @ data-base NULL-PTR - - ;
+
+: CHECKER-BODY-ALLOC? ( n -- bool )
+   {: ord:n :}
+   ord CHECKER-RESOLVE:REC-AT CK-REC-FLAGS-SLOT cells + @
+   CREATED-BODY-ABI:DNAME-ALLOC and 0 <> ;
+
+\ The cells `,` wrote into the pending created body, from its start up to the
+\ first other allocation, become its storage grid; then nothing is pending. A
+\ CELL-BODY grid wins, and a record that left the dictionary or a run broken
+\ by a DP lowering attaches nothing.
+: CHECKER-BODY-CLOSE ( -- )
+   CHECKER-VERIFY-PKG-DEPTH @ 0 <> CHK-CAND @ 0 <> or IF EXIT THEN
+   BODY-PEND-ORD @ BODY-PEND-OCC @ BODY-PEND-BASE @
+   {: ord:n occ:n base:n :}
+   -1 BODY-PEND-ORD !  0 BODY-PEND-OCC !  0 BODY-PEND-BASE !
+   ord 0 < ord ndict@ >= or IF EXIT THEN
+   ord occ RECORD-LINK-MATCH? 0= IF EXIT THEN
+   ord CHECKER-RESOLVE:REC-AT CK-REC-WID RECORD-RETIRED = IF EXIT THEN
+   ord CHECKER-BODY-ALLOC? 0= IF EXIT THEN
+   ord RECORD-LINK-CAP @ < IF
+      ord RECORD-LINK-CELL RLINK.GRID cells + @ 0 <> IF EXIT THEN
+   THEN
+   CREATED-BODY-ABI:COMMA-RUN-CELL COMMA-CELL-OFF base <> IF EXIT THEN
+   CREATED-BODY-ABI:COMMA-END-CELL COMMA-CELL-OFF {: end:n :}
+   end base <= IF EXIT THEN
+   end here BYTE-VIEW data-base BYTE-VIEW - > IF EXIT THEN
+   ord data-base base + CELL-VIEW end base - CELL / CHECKER-GRID-ATTACH ;
+
+\ Each created word closes the previous pending body; a DNAME-ALLOC record
+\ then pends its own, whose start habu2.f ADDR-TAIL left in COMMA-BASE-CELL.
+: RECORD-LINK-CREATED ( n n ptr n -- )
+   {: effect:n control:n rec:ptr :}
+   CHECKER-VERIFY-PKG-DEPTH @ 0 <> CHK-CAND @ 0 <> or IF EXIT THEN
+   CHECKER-BODY-CLOSE
+   rec NULL-PTR = IF EXIT THEN
+   rec CHECKER-RESOLVE:REC>INDEX {: ord:n :}
+   ord 0 < ord ndict@ >= or IF EXIT THEN
+   ord RECORD-LINK-OCC {: slot:n occurrence:n :}
+   slot ord <> occurrence 0= or IF EXIT THEN
+   ord CHECKER-BODY-ALLOC? IF
+      ord BODY-PEND-ORD !  occurrence BODY-PEND-OCC !
+      CREATED-BODY-ABI:COMMA-BASE-CELL COMMA-CELL-OFF BODY-PEND-BASE !
+   THEN
+   ord effect control RECORD-LINK-VALID? 0= IF EXIT THEN
+   ord effect control RES-FALSE occurrence RECORD-LINK-WRITE
+   ord rec RECORD-LINK-FIXED! ;
+
+: RECORD-LINK-HOOKS ( -- )
+   [: RECORD-LINK-REWIND-EFFECT ;] is RECORD-EFFECT-REWIND-XT
+   [: RECORD-LINK-REWIND-CONTROL ;] is RECORD-CONTROL-REWIND-XT
+   [: RECORD-LINK-CREATED ;] is RECORD-CREATED-XT ;
+RECORD-LINK-HOOKS
+
+\ Each owned fixed accessor names its exact DATA cell extent, including types
+\ with no quotation fields. Deferred accessors also own their control cells.
+\ The pending created body closes first, so its `,` grid is among them.
+: CHECKER-STORAGE-CELLS ( [ ptr u8 n -- ] -- )
+   {: cells :}
+   CHECKER-BODY-CLOSE
+   0 CHECKER-STORAGE-CUR !
+   begin CHECKER-STORAGE-CUR @ EFF-REC + UEND @ <= while
+      CHECKER-STORAGE-CUR @ E-PTR {: rec:ptr :}
+      rec ER.STORAGE-N @ {: count:n :}
+      rec ER.STORAGE-KIND @ STORAGE-ACCESSOR = IF
+         rec CHECKER-STORAGE-POINTEE T-WIDTH {: width:n :}
+         data-base rec ER.STORAGE-OFF @ + BYTE-VIEW
+            count width * CELL * cells execute
+      ELSE rec ER.STORAGE-KIND @ STORAGE-DEFER = IF
+         data-base rec ER.STORAGE-OFF @ + CELL-VIEW {: cb:ptr :}
+         cb BYTE-VIEW LDEFER-CTRL-CELLS CELL * cells execute
+         cb CELL + @ {: cap:n :}
+         cap 0 > IF
+            rec CHECKER-STORAGE-POINTEE T-WIDTH {: width:n :}
+            cb cb @ + BYTE-VIEW cap width * CELL * cells execute
+         THEN
+      THEN THEN
+      rec USIG-NEXT E-OFF CHECKER-STORAGE-CUR !
+   repeat
+   cells CHECKER-GRID-CELLS-XT ;
+
+package CHECKER-REG
+' CHECKER-STORAGE-CELLS DECLARATIONS
+   CHECKER-OWNER-ABI:UNIT-STORAGE-CELLS-OFF + xt!
+' CHECKER-BODY-CLOSE DECLARATIONS CHECKER-OWNER-ABI:BODY-CLOSE-OFF + xt!
+;package
 
 : RECORD-GRID-CELLS ( [ ptr u8 n -- ] -- ) {: visit :}
    RECORD-LINK-CAP @ ndict@ min 0 ?do
@@ -27064,42 +27161,6 @@ package CHECKER-REG
 ;package
 
 
-\ CREATED-RECORD-BUILD ( sig-a sig-u -- off+1 | 0 ) : the record a created word
-\ carries, built from the effect its definer states - a certified `does>`
-\ clause's (DOES-EFF-LATCH! below) or a `generates:` row's (CHECKER-GENERATES).
-\ 0 when the effect does not parse, with SGBAD saying why.
-\
-\ IT PARSES THE SIGNATURE ITSELF, for two reasons. After a clause check the rows
-\ in SGIN/SGOUT have been unified with the body it just verified, so a clause
-\ declaring a variable would be latched at whatever the body happened to
-\ produce instead of at what it declared; and this parse runs under the
-\ raw-definer seal, which is what `trust-raw` (TRUST-RAW above) puts on every
-\ created word at run time, so the record holds the same TVK-RAW variables the
-\ engine's own registration of this definer's words would hold.
-\
-\ THE RECORD IS ANONYMOUS. It is not an effect OF the definer — the definer's
-\ own effect is recorded by its body's publication — so it is built with
-\ CHECKER-REC-SYM 0 and no cache update, the way SIG-EFF-CACHE! builds the
-\ recurse cache: sym 0 keeps it out of every per-symbol lookup.
-: CREATED-RECORD-BUILD ( ptr u8 n -- n )
-   {: sa:ptr su:n :}
-   WRITE-WINDOW-CK                       \ before the record symbol and parser move
-   CHECKER-REC-SYM @
-   {: was:n :}
-   0 CHECKER-REC-SYM !
-   NEW
-   SGBAD-CLEAR
-   RES-TRUE SIG-RAW-DEFINER!
-   sa su PARSE-SIG-RAW
-   RES-FALSE SIG-RAW-DEFINER!
-   SGBAD @ 0 <> SIG-UNRES @ 0 <> or IF
-      2drop 2drop  was CHECKER-REC-SYM !  0 EXIT     \ unresolvable family: no record
-   THEN
-   SGHASR @ E-BUILD-EFFECT
-   {: off:n :}
-   was CHECKER-REC-SYM !
-   off 1 + ;
-
 \ CELL-BODY owns an anonymous storage row and binds it to the exact native
 \ dictionary occurrence. Its caller's package and any same-spelled word there
 \ have no part in the declaration.
@@ -27120,10 +27181,7 @@ package CHECKER-REG
       ord RECORD-LINK-CELL RLINK.GRID cells + @ 0 <>
          IF E-CHECKER-LAYOUT-BUFFER throw THEN
    THEN
-   s" -- ptr a" CREATED-RECORD-BUILD {: grid:n :}
-   grid 0= IF E-CHECKER-LAYOUT-BUFFER throw THEN
-   grid base count CHECKER-STORAGE-GRID
-   ord grid RECORD-LINK-GRID-ATTACH ;
+   ord base count CHECKER-GRID-ATTACH ;
 
 \ DOES-EFF-LATCH! ( sig-a sig-u -- ) : the tail of CHECK-DOES! below, and the
 \ only writer of the DOESEFF latch. The clause has been certified against the
@@ -31132,7 +31190,12 @@ public
 \ One capture seam owns the order: scrub transient stores before persistence
 \ copies any grown registry, persist the live rows (all three name stores use
 \ offsets and need no pointer marking), then clear the later checker scopes.
+\ A capture is a boundary like a file's end: the pending created body closes
+\ first, before the image zeroes the `,` run cells (snap-lib.f SND-ZERO-LIVE).
+\ Not in CHECKER-QUIESCE-END: that runs after UIX-RESET, CHX-RESET and
+\ HIDX-MEM-CLEAR, and the record the close builds would regrow those indexes.
 : CHECKER-CAPTURE-PREPARE ( -- )
+   CHECKER-BODY-CLOSE
    CHECKER-STORAGE-PREPARE
    CHECKER-TAPE:DETACH
    ON-USE-DEFAULT                         \ final image no longer observes source

@@ -8,6 +8,11 @@ package CELL-BODY-GRID
    create , 2 , 2 CELL-BODY
    does> ( -- SPAN:span<u8> ) cell+ byte-view CELL SPAN:MAKE ;
 
+\ The same body laid by `,` alone: the two cells are the created body's grid.
+: IMPLICIT-MAKE ( n -- )
+   create , 2 ,
+   does> ( -- SPAN:span<u8> ) cell+ byte-view CELL SPAN:MAKE ;
+
 public
 : OCC-GAP ( -- n ) 1 ;
 s" CELL-BODY-GRID:OCC-GAP" FORGET-DEFS-FROM
@@ -38,13 +43,20 @@ create REUSED 2 cells allot
 0 REUSED CELL + CELL-VIEW !
 
 variable GRID-HITS
+\ IMPLICIT is the file's last created word, so its body is still pending at the
+\ file's end; this cell locates it for SEE-GRID.
+variable IMPLICIT-OFF
+: IMPLICIT-BODY ( -- ptr u8 ) data-base IMPLICIT-OFF @ + BYTE-VIEW ;
 
-: SEE-GRID ( ptr u8 n -- ) {: base:ptr count:n :}
+: SEE-GRID ( ptr u8 n -- )
+   {: base:ptr count:n :}
    base REUSED BYTE-VIEW = IF
       s" retired cell grid remained in saved storage" 76 die
    THEN
    count 2 cells = IF
-      base ZERO BODY = base LARGE BODY = or IF 1 GRID-HITS +! THEN
+      base ZERO BODY = base LARGE BODY = or base IMPLICIT-BODY = or IF
+         1 GRID-HITS +!
+      THEN
    THEN ;
 
 public
@@ -68,6 +80,12 @@ private
 ARM
 
 public
+\ A fresh build-time mapping's address as an integer.
+: MAPPED ( -- n )
+   MEM-ALLOC-64K {: addr:ptr bytes:n :}
+   bytes drop
+   addr BYTE-VIEW NULL-PTR BYTE-VIEW - ;
+
 : BAD-ALIGNED ( -- )
    MEM-ALLOC-64K {: addr:ptr bytes:n :}
    bytes drop
@@ -84,4 +102,9 @@ public
    ZERO BODY CELL-VIEW @
    LARGE BODY CELL-VIEW @
    ZERO SPAN:LEN ;
+
+private
+0 IMPLICIT-MAKE IMPLICIT
+: SAVE-IMPLICIT ( -- ) IMPLICIT BODY data-base BYTE-VIEW - IMPLICIT-OFF ! ;
+SAVE-IMPLICIT
 ;package

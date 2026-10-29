@@ -295,10 +295,9 @@ $0008000000000000 constant ADDR      \ kind 2: the body pushes its DATA address
 VAL ADDR or constant CAST           \ kind 3: a declared identity retype
 VAL ADDR or constant MASK
 ;package
-\ DNAME-ALLOC names the aligned DATA allocation start of a created word. It
-\ survives does> because the allocation stays even when the word changes its
-\ behavior. A scan excludes only windows that straddle this boundary.
-$0000800000000000 constant DNAME-ALLOC
+\ DNAME-ALLOC: the aligned DATA allocation start of a created word, defined in
+\ src/habu/created-body-abi.f, which the checker reads too.
+CREATED-BODY-ABI:DNAME-ALLOC constant DNAME-ALLOC
 \ DNAME-CELL names the exact one-cell DATA extent made by variable. CREATE
 \ leaves it clear: a created body may allot bytewide storage.
 $0001000000000000 constant DNAME-CELL
@@ -1477,20 +1476,11 @@ CHECKER-OWNER-ABI:VERIFY-SOURCE-CLAUSE-OFF constant DECL-VERIFY-SOURCE-CLAUSE-OF
 \ $6A8..$6C0 is the `,` run, $6C0..$6D0 is free, $6D0..$750 is LVF-OFF, $750..$7D0
 \ is LVQ-OFF and $7D0..$7E0 is FRAME-CELL and QFRAME-CELL.
 $800 constant BODYBUF-OFF
-\ The latest run of `,` cells that starts at a created body, [COMMA-RUN,
-\ COMMA-END) as addresses. A `,` at COMMA-BASE starts a run there, one at
-\ COMMA-END extends it, any other leaves it alone (habu1.f BCOMMA).
-\ COMMA-RUN-CELL: written by habu1.f BCOMMA; zeroed by SND-ZERO-LIVE and by
-\ every path that lowers DP, beside the DPHW-CELL raise: habu1.f DP-LOWER, (and
-\ so BALLOT, habu2.f EM-EVAL-THROW-RECOVER and EM-REPL-RECOVER), interpret.f
-\ FRAME-ROLLBACK-CODE and src/core/generated-declaration-dictionary.f
-\ DICTIONARY-DP!. A zero RUN never equals a body start.
-$6A8 constant COMMA-RUN-CELL
-\ COMMA-END-CELL: written by habu1.f BCOMMA, zeroed by SND-ZERO-LIVE.
-$6B0 constant COMMA-END-CELL
-\ COMMA-BASE-CELL: the latest created body start, written by habu2.f ADDR-TAIL,
-\ zeroed by SND-ZERO-LIVE.
-$6B8 constant COMMA-BASE-CELL
+\ The latest `,` run of a created body, defined in src/habu/created-body-abi.f,
+\ which the checker reads too.
+CREATED-BODY-ABI:COMMA-RUN-CELL constant COMMA-RUN-CELL
+CREATED-BODY-ABI:COMMA-END-CELL constant COMMA-END-CELL
+CREATED-BODY-ABI:COMMA-BASE-CELL constant COMMA-BASE-CELL
 8000 constant BODYBUF-CAP
 $568 constant RSP-CELL
 $570 constant EXITH-CELL

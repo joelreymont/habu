@@ -39,6 +39,10 @@ package NDEF-CACHE
 private
 
 $4B8 constant LIVE-FIXED-OFF
+\ CHECKER-OWNER-EXT:BODY-CLOSE-OFF for a host whose baked package predates the
+\ field; the first commit built by the installed lane engine replaces this copy
+\ with the name.
+$5A0 constant BODY-CLOSE-OFF
 0 constant F-SRC
 8 constant F-SRC-U
 16 constant F-ROOT
@@ -1856,6 +1860,17 @@ variable IMPORT-AT
    REUSED-LINE
    0 true ;
 
+\ The active checker owner holds the pending created body, the prefix's before
+\ CHECKER-REG:HANDOVER and the target's after it; an owner that predates the
+\ slot has none. Once the lane engine is installed, its include.f CALL-UNIT
+\ closes every file run from source, so this close covers only replayed files.
+: BODY-CLOSE ( -- )
+   OWNER {: owner:ptr :}
+   owner NULL-PTR = if exit then
+   owner CELL - CELL-VIEW @ BODY-CLOSE-OFF CELL + < if exit then
+   owner BODY-CLOSE-OFF + CELL-VIEW @ {: close:n :}
+   close 0<> if close ACTION-XT execute then ;
+
 \ Replay the innermost file's object, or resume the file from its source
 \ where the replay went stale. A resumed file is refused capture, so its
 \ frame records nothing for the suffix, and its stale object is discarded:
@@ -1929,7 +1944,13 @@ variable IMPORT-AT
    NUNIT-OBJECT:RELEASE-CHECKER
    ['] NUNIT-OBJECT:DEFINITIONS-CLOSE catch {: plan-rc:n :}
    ['] FRAME-REPORT catch {: report-rc:n :}
-   unit-rc 0= plan-rc 0= and hit 0= and
+   \ A file's pending created body closes at its end, so its `,` grid is among
+   \ the file's rows. This tree's include.f CALL-UNIT closes a file run from
+   \ source; this close fires for a replayed file and for one an older host's
+   \ include.f runs (files between CHECKER-REG:HANDOVER and the target
+   \ loader's binding).
+   unit-rc 0= plan-rc 0= and if ['] BODY-CLOSE catch else 0 then {: close-rc:n :}
+   unit-rc 0= plan-rc 0= and close-rc 0= and hit 0= and
       if ['] OBJECT-CLOSE catch else 0 then
       {: object-rc:n :}
    NUNIT-OBJECT:FILE-END
@@ -1943,6 +1964,7 @@ variable IMPORT-AT
    DEPTH @ 0 > if NFILE-INPUTS:MARK F-MARK F! ORIGIN-MARK then
    ['] NFILE-REF:POP-FILE catch {: pop-rc:n :}
    unit-rc 0<> if unit-rc throw then
+   close-rc 0<> if close-rc throw then
    finish-rc 0<> if finish-rc throw then
    plan-rc 0<> if plan-rc throw then
    report-rc 0<> if report-rc throw then

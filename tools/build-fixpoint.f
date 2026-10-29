@@ -646,7 +646,8 @@ package BUILD-FIXPOINT
 : BF-APPEND-ROLES ( ptr u8 n -- ) {: out:ptr outu:n :}
    out outu s" src/core/roles.f" BF-APPEND-SOURCE ;
 
-: BF-APPEND-CHECKER-BOOT ( ptr u8 n -- ) {: out:ptr outu:n :}
+: BF-APPEND-CHECKER-BOOT ( ptr u8 n -- )
+   {: out:ptr outu:n :}
    out outu s" src/core/util.f" BF-APPEND-SOURCE
    out outu s" src/core/cell.f" BF-APPEND-SOURCE
    out outu s" src/core/pointer-storage.f" BF-APPEND-SOURCE
@@ -655,6 +656,7 @@ package BUILD-FIXPOINT
    out outu s" src/core/checker-fetch-abi.f" BF-APPEND-SOURCE
    out outu s" src/core/checker-owner-extension.f" BF-APPEND-SOURCE
    out outu s" src/core/checker-owner-abi.f" BF-APPEND-SOURCE
+   out outu s" src/habu/created-body-abi.f" BF-APPEND-SOURCE
    out outu s" src/habu/prims.f" BF-APPEND-SOURCE
    out outu s" src/core/does-clause.f" BF-APPEND-SOURCE
    out outu s" src/core/checker.f" BF-APPEND-SOURCE

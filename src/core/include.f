@@ -2002,13 +2002,31 @@ create RESIDUE-DIGIT 1 allot
    2 POLICY-LF 1 write drop
    STACK-ABI:E-EVAL-RESIDUE throw ;
 
+CAST: CLOSE-ACTION ( n -- [ -- ] )
+
+\ The active checker owner closes the created body pending at a load boundary,
+\ so the body's `,` grid stops there (src/core/checker.f CHECKER-BODY-CLOSE).
+\ After a native build's handover that owner is the target's checker, which
+\ holds the pending record. No owner, or one that predates the slot, has no
+\ pending body.
+: BODY-CLOSE ( -- )
+   data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ {: owner:ptr :}
+   owner NULL-PTR = if exit then
+   owner CELL - CELL-VIEW @ CHECKER-OWNER-ABI:BODY-CLOSE-OFF CELL + <
+      if exit then
+   owner CHECKER-OWNER-ABI:BODY-CLOSE-OFF + CELL-VIEW @ {: close:n :}
+   close 0= if exit then
+   close CLOSE-ACTION execute ;
+
 \ The unit runs inside LOAD-UNIT's source-unit-run, on a stack of its own:
-\ whatever depth reads after the load is what the file left.
+\ whatever depth reads after the load is what the file left. A created body
+\ the file's source left pending closes at its end, inside the file's unit, so
+\ a native build records its grid in the file's object.
 : CALL-UNIT ( -- )
    TOP@ {: frame:ptr :}
    frame FR-PATH + frame FR-PATHLEN + CELL-VIEW @
    frame FR-ROOT + frame FR-ROOTLEN + CELL-VIEW @
-   EXEC-SOURCE frame FR-SIZE + CELL-VIEW @ [: RUN-RANGE ;]
+   EXEC-SOURCE frame FR-SIZE + CELL-VIEW @ [: RUN-RANGE BODY-CLOSE ;]
       SOURCE-UNIT:LOAD
    depth {: n:n :}
    n 0 > if n RESIDUE-REFUSE then ;
@@ -2025,7 +2043,10 @@ create RESIDUE-DIGIT 1 allot
 : LOAD-ALIGN ( -- )
    data-base TASKS-LIVE-CELL + @ 0= if align then ;
 
+\ A created body the loader's file left pending closes before the loaded file
+\ runs, so its `,` grid belongs to the loader's file.
 : LOAD-UNIT ( -- )
+   BODY-CLOSE
    LOAD-BYTES
    TOP@ RANGE-OWNER !
    LOAD-ALIGN

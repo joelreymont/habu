@@ -178,6 +178,7 @@ SRC_CORE=(
   src/core/checker-fetch-abi.f
   src/core/checker-owner-extension.f
   src/core/checker-owner-abi.f
+  src/habu/created-body-abi.f
   src/habu/prims.f
   src/core/does-clause.f
   src/core/checker.f

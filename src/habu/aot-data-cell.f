@@ -35,6 +35,8 @@ s" DBASE@" s" -- ptr u8" TRUST
 \ A scan span describes the storage producer's cell grid, byte extent, or
 \ allocation start. A start is a point: only windows crossing it are excluded.
 \ Declared spans are gathered once for a FILE admission or final AOT scan.
+\ A created body's `,` cells up to its first other allocation are a declared
+\ grid (src/core/checker.f CHECKER-BODY-CLOSE), as CELL-BODY's cells are.
 \ Undeclared CREATE bytes overlap no span (FREE-WINDOW?): the final AOT scan
 \ reads them bytewide, and FILE admission reads them only for a file whose top
 \ level ran with checking off.

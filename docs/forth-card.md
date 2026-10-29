@@ -320,9 +320,14 @@ word's uses before the run; what no row states is left to the run (§ 3). `FUNCT
 from `src/lib/memory.f` (`MEM:ALLOC-BYTES`). `ptr-field` takes a **cell** index, not
 a byte offset.
 
+On ARM64, the cells `,` writes from a created body's start up to the first
+other allocation are that body's cell grid, closed at the next created word,
+the end of the file that wrote them, the start of another file's load (a
+`require` of an already loaded file loads nothing), an image capture or a
+storage cell read.
 `CELL-BODY ( n -- )` declares exactly `n` complete cells in the current live
-`create` body, after allocating them. For example, `: GRID: ( n -- ) create ,
-2 , 2 CELL-BODY does> ( -- SPAN:span<u8> ) cell+ byte-view CELL SPAN:MAKE ;`
+`create` body, after allocating them, `allot` cells included, and wins over the
+`,` run. For example, `: GRID: ( n -- ) create , 2 , 2 CELL-BODY does> ( -- SPAN:span<u8> ) cell+ byte-view CELL SPAN:MAKE ;`
 keeps the two-cell body boundary when `does>` changes the word's result to a
 span. The count must be positive and the body must end at `here`; invalid
 extents throw `E-LAYOUT-BUFFER`. The declaration supplies storage boundaries to image

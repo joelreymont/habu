@@ -545,6 +545,7 @@ variable PRE-ROWS-N
    s" src/core/checker-fetch-abi.f" included
    s" src/core/checker-owner-extension.f" included
    s" src/core/checker-owner-abi.f" included
+   s" src/habu/created-body-abi.f" included
    s" src/habu/prims.f" included
    s" src/core/does-clause.f" included
    s" src/core/checker.f" included

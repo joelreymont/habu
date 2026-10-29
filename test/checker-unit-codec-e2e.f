@@ -343,8 +343,6 @@ public
    LOAD-UNIT SHADOW
    s" retired record keeps its own effect across a redefinition" T-LABEL
    RECORD-HISTORY
-   s" a does> word binds its reissued record occurrence" T-LABEL
-   CREATED-CONTRACT
    s" a fixed value is retained by actual record" T-LABEL
    FIXED-HISTORY
    s" an inferred fresh-region producer has a record contract" T-LABEL
@@ -381,6 +379,10 @@ public
    CHECK-PREPARED
    s" prepared graph resolves every linear constructor before publication" T-LABEL
    CHECK-LINEAR-PREP
+   \ MADE's `,` cell is local DATA, which the in-process round trip above
+   \ cannot restore, so it is laid after the last export.
+   s" a does> word binds its reissued record occurrence" T-LABEL
+   CREATED-CONTRACT
    T-REPORT
    s" checker unit artifact: " type ROOT$ type
    s" /unit-nbr.checker-unit and /unknown-linear.checker-unit" type cr ;

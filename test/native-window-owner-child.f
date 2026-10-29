@@ -170,7 +170,8 @@ variable SOURCE-READY
 
 \ --- the window prefix, native-build's LOAD-TARGET through cell-effects.f ---
 
-: LOAD-WINDOW ( ptr u8 -- ) {: source:ptr :}
+: LOAD-WINDOW ( ptr u8 -- )
+   {: source:ptr :}
    s" src/core/util.f" included
    s" src/core/cell.f" included
    s" src/core/pointer-storage.f" included
@@ -179,6 +180,7 @@ variable SOURCE-READY
    s" src/core/checker-fetch-abi.f" included
    s" src/core/checker-owner-extension.f" included
    s" src/core/checker-owner-abi.f" included
+   s" src/habu/created-body-abi.f" included
    s" src/habu/prims.f" included
    s" src/core/does-clause.f" included
    s" src/core/checker.f" included

@@ -63,6 +63,7 @@ s" src/core/exec-vector.f" provided
 s" src/core/checker-fetch-abi.f" provided
 s" src/core/checker-owner-extension.f" provided
 s" src/core/checker-owner-abi.f" provided
+s" src/habu/created-body-abi.f" provided
 s" src/habu/prims.f" provided
 s" src/core/does-clause.f" provided
 s" src/core/checker.f" provided

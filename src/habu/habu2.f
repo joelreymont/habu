@@ -456,7 +456,7 @@ variable LPLINUXLAYOUT  variable LPMACOSLAYOUT  variable LPX64LAYOUT
 variable LPLINUXLAYOUTCONST  variable LPX64LAYOUTCONST
 variable LPUTIL         variable LPCELL         variable LPPTRSTORAGE  variable LPSTRUCTURES
 variable LPENGINEERROR  variable LPENGINEERROREFFECTS
-variable LPDYNAMIC      variable LPBYTES        variable LPFETCHABI     variable LPOWNEREXT     variable LPOWNERABI     variable LPCHECKER      variable LPRENDER
+variable LPDYNAMIC      variable LPBYTES        variable LPFETCHABI     variable LPOWNEREXT     variable LPOWNERABI     variable LPBODYABI      variable LPCHECKER      variable LPRENDER
 variable LPPRIMS       variable LPDOESCLAUSE
 variable LPLOWERCERTBASE
 variable LPOWNERGUARD
@@ -1255,7 +1255,8 @@ $18 constant CINL-LDRLIT-OP      \   bits 29:27 = 011 and 25:24 = 00
 512 constant PFX-BASELIB
 1024 constant PFX-RESTLIB
 
-: PFX-FILES ( n [ n ptr n ptr u8 n -- ] -- ) {: parts row :}
+: PFX-FILES ( n [ n ptr n ptr u8 n -- ] -- )
+   {: parts row :}
    parts PFX-CHECKER and 0 <> if
       PFX-COMMON LPUTIL s" src/core/util.f" row execute
       PFX-COMMON LPCELL s" src/core/cell.f" row execute
@@ -1265,6 +1266,7 @@ $18 constant CINL-LDRLIT-OP      \   bits 29:27 = 011 and 25:24 = 00
       PFX-COMMON LPFETCHABI s" src/core/checker-fetch-abi.f" row execute
       PFX-COMMON LPOWNEREXT s" src/core/checker-owner-extension.f" row execute
       PFX-COMMON LPOWNERABI s" src/core/checker-owner-abi.f" row execute
+      PFX-COMMON LPBODYABI s" src/habu/created-body-abi.f" row execute
       PFX-COMMON LPPRIMS s" src/habu/prims.f" row execute
       PFX-COMMON LPDOESCLAUSE s" src/core/does-clause.f" row execute
       PFX-COMMON LPCHECKER s" src/core/checker.f" row execute
@@ -14483,7 +14485,7 @@ package LABELS
    LBL LPLINUXLAYOUT !  LBL LPMACOSLAYOUT !  LBL LPX64LAYOUT !
    LBL LPLINUXLAYOUTCONST !  LBL LPX64LAYOUTCONST !
    LBL LPUTIL !  LBL LPCELL !  LBL LPPTRSTORAGE !
-   LBL LPSTRUCTURES !  LBL LPBYTES ! LBL LPDYNAMIC !  LBL LPENGINEERROR !  LBL LPFETCHABI !  LBL LPOWNEREXT !  LBL LPOWNERABI !  LBL LPPRIMS !  LBL LPDOESCLAUSE !  LBL LPCHECKER !  LBL LPENGINEERROREFFECTS !
+   LBL LPSTRUCTURES !  LBL LPBYTES ! LBL LPDYNAMIC !  LBL LPENGINEERROR !  LBL LPFETCHABI !  LBL LPOWNEREXT !  LBL LPOWNERABI !  LBL LPBODYABI !  LBL LPPRIMS !  LBL LPDOESCLAUSE !  LBL LPCHECKER !  LBL LPENGINEERROREFFECTS !
    LBL LPLOWERCERTBASE !  LBL LPRENDER !  LBL LPHOOK !
    LBL LPCELLEFF !  LBL LPDECLTXN !  LBL LPGENDECL !
    LBL LPTYPESCHEMA !  LBL LPTYPEFAM !  LBL LPSUMTYPE !  LBL LPLAYOUTBUF !  LBL LPLAYOUTVALID !
