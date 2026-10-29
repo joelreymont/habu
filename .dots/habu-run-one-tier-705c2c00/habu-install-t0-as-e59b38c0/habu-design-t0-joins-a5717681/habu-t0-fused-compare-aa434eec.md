@@ -1,6 +1,6 @@
 ---
 title: T0 fused compare and branch
-status: open
+status: active
 priority: 1
 issue-type: task
 created-at: "2026-10-29T05:11:01.098893+02:00"
