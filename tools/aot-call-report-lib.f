@@ -4,6 +4,7 @@
 \ caller reports; only REPORT-MAIN, the CLI boundary, ends the process.
 
 require src/lib/errors.f
+require src/lib/fs.f
 
 package AOT-CALL-REPORT
 
@@ -17,7 +18,6 @@ $94000000 constant BL-OP
 15 constant ACR-CARRY-CAP
 $4000 constant ACR-READ-CAP
 ACR-READ-CAP ACR-CARRY-CAP + constant ACR-BUF-CAP
-PATH-CAP 1 + constant REPORT-PATH-CAP
 \ A cell has at most 19 decimal digits, so JSON-NUM fills JSON-NUM-BUF unchecked.
 32 constant JSON-NUM-CAP
 
@@ -44,7 +44,7 @@ PATH-CAP 1 + constant REPORT-PATH-CAP
 1 constant ACR-MODE-DIRECT
 2 constant ACR-MODE-STENCIL
 
-create REPORT-PATH REPORT-PATH-CAP allot
+create REPORT-PATH PATH-CAP allot
 create ACR-BUF ACR-BUF-CAP allot
 create OUT-BYTE 1 allot
 create JSON-NUM-BUF JSON-NUM-CAP allot
@@ -87,21 +87,19 @@ variable JSON-NUM-N
       1+
    repeat drop ;
 
-\ A negative length, or one the path buffer cannot hold with its NUL, is a bad
-\ path, refused as src/lib/fs.f refuses one, by E-FS-PATH. The length is compared
-\ with the capacity, never added to, so no length wraps into range.
-: REPORT-FILE! ( ptr u8 n -- ) {: a:ptr u:n :}
+\ A negative length, or one longer than PATH-CAP, is a bad path, refused as
+\ FS:>PATHZ refuses one, by E-FS-PATH. The length is compared with the
+\ capacity, never added to, so no length wraps into range. The Habu path is
+\ stored as given; OPEN-INPUT hands it to FS:>PATHZ.
+: REPORT-FILE! ( ptr u8 n -- )
+   {: a:ptr u:n :}
    u 0 < if E-FS-PATH throw then
-   u REPORT-PATH-CAP >= if E-FS-PATH throw then
+   u PATH-CAP > if E-FS-PATH throw then
    a REPORT-PATH u REPORT-COPY-BYTES
-   0 REPORT-PATH u + c!
    u REPORT-PATH-U ! ;
 
 : REPORT-FILE$ ( -- ptr u8 n )
    REPORT-PATH REPORT-PATH-U @ ;
-
-: REPORT-PATH0 ( -- ptr u8 )
-   REPORT-PATH ;
 
 \ A null output buffer or a negative capacity is refused as the JSON writer
 \ refuses one, by E-JW-OUTPUT.
@@ -257,7 +255,7 @@ variable JSON-NUM-N
    then ;
 
 : OPEN-INPUT ( -- n )
-   REPORT-PATH0 0 0 open
+   REPORT-FILE$ FS:>PATHZ 0 0 open
    dup 0 < if E-FS-OPEN throw then ;
 
 : ACR-SCAN-RESET ( -- )
@@ -362,7 +360,6 @@ variable JSON-NUM-N
 
 \ What the CLI, the AOT gates and the focused test call; the rest stays private.
 public
-EXPORT REPORT-PATH-CAP
 EXPORT REPORT-BYTES
 EXPORT REPORT-STENCILS
 EXPORT REPORT-BLS

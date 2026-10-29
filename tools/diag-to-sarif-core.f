@@ -1,6 +1,7 @@
 \ diag-to-sarif-core.f - convert Habu diagnostic JSONL to SARIF 2.1.0.
 
 require src/lib/errors.f
+require src/lib/fs.f
 require src/lib/memory.f
 require src/lib/jsonl.f
 require src/lib/json-write.f
@@ -11,7 +12,6 @@ require src/lib/string.f
 74 constant SARIF-E-IO
 
 $40000 constant SARIF-IN-CAP
-PATH-CAP 1 + constant SARIF-PATH-CAP
 $100 constant SARIF-MAX-RULES
 $2000 constant SARIF-RULE-BUF-CAP
 $1000 constant SARIF-TEXT-CAP
@@ -27,7 +27,6 @@ $8000 constant SARIF-QUOTE-CAP
 125 constant SARIF-RBRACE
 
 create SARIF-IN-BUF SARIF-IN-CAP allot
-create SARIF-PATH-BUF SARIF-PATH-CAP allot
 create SARIF-RULE-BUF SARIF-RULE-BUF-CAP allot
 create SARIF-RULE-OFF SARIF-MAX-RULES cells allot
 create SARIF-RULE-LEN SARIF-MAX-RULES cells allot
@@ -379,12 +378,6 @@ variable SARIF-RESULT-N
    SARIF-IN-LEN @ 0= if SARIF-TRUE exit then
    SARIF-IN-BUF SARIF-IN-LEN @ 1- + c@ SARIF-LF = ;
 
-: SARIF-PATHZ {: a:ptr u:n :} ( ptr u8 n -- ptr u8 )
-   u 1+ SARIF-PATH-CAP > if s" diag-to-sarif: path too long" SARIF-E-IO SARIF-FAIL then
-   a SARIF-PATH-BUF u BYTE-COPY
-   0 SARIF-PATH-BUF u + c!
-   SARIF-PATH-BUF ;
-
 : SARIF-APPEND-SOURCE ( ptr u8 n -- )
    {: a:ptr u:n :}
    a u SARIF-IN+
@@ -406,13 +399,13 @@ variable SARIF-RESULT-N
    0 SARIF-READ-FD ;
 
 : SARIF-LOAD-PATH ( n -- )
-   SCRIPT-ARGV$ SARIF-PATHZ 0 0 open SARIF-FD !
+   SCRIPT-ARGV$ FS:>PATHZ 0 0 open SARIF-FD !
    SARIF-FD @ 0< if s" diag-to-sarif: cannot open input" SARIF-E-IO SARIF-FAIL then
    SARIF-FD @ SARIF-READ-FD
    SARIF-FD @ close ;
 
 : SARIF-LOAD-FILE ( ptr u8 n -- )
-   SARIF-PATHZ 0 0 open SARIF-FD !
+   FS:>PATHZ 0 0 open SARIF-FD !
    SARIF-FD @ 0< if s" diag-to-sarif: cannot open input" SARIF-E-IO SARIF-FAIL then
    SARIF-FD @ SARIF-READ-FD
    SARIF-FD @ close ;

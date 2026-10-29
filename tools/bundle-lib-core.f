@@ -1,4 +1,8 @@
 \ bundle-lib-core.f - concatenate stdlib modules and one driver source.
+\ Paths go to FS for the stat, the opens and the rename.
+
+require src/lib/fs.f
+require src/lib/fs-mutate.f
 
 64 constant BL-USAGE-RC
 66 constant BL-NOINPUT-RC
@@ -8,12 +12,6 @@
 64 constant BL-MOD-MAX
 PATH-CAP constant BL-PATH-CAP
 8192 constant BL-IO-CAP
-256 constant BL-STAT-CAP
-
-1 constant BL-O-WRONLY
-$200 constant BL-O-CREAT
-$400 constant BL-O-TRUNC
-420 constant BL-MODE-0644
 
 $0A constant BL-LF
 $2D constant BL-DASH
@@ -22,19 +20,12 @@ $39 constant BL-NINE
 $61 constant BL-A-LOW
 $7A constant BL-Z-LOW
 10 constant BL-DEC-BASE
-4 constant BL-STAT-MODE-OFF
-8 constant BL-BYTE-BITS
-$F000 constant BL-S-IFMT
-$8000 constant BL-S-IFREG
 
 BL-MOD-MAX TYPED-BUFFER BL-MOD-A-SLOT ptr u8   \ one module path start per slot
 create BL-MOD-U BL-MOD-MAX cells allot
 create BL-PATH BL-PATH-CAP allot
 create BL-TMP BL-PATH-CAP allot
-create BL-Z1 BL-PATH-CAP 1 + allot
-create BL-Z2 BL-PATH-CAP 1 + allot
 create BL-IO BL-IO-CAP allot
-create BL-STAT BL-STAT-CAP allot
 
 variable BL-NMOD
 TYPED-VARIABLE BL-OUT-A ptr u8
@@ -112,33 +103,6 @@ variable BL-RD-N
    dup 0 < if s" bundle-lib: negative number" BL-INTERNAL-RC BL-DIE then
    dup BL-DEC-BASE >= if dup BL-DEC-BASE / recurse then
    BL-DEC-BASE mod BL-ZERO + BL-TMP-C+ ;
-
-: BL-ZCOPY ( ptr u8 n ptr u8 -- ptr u8 ) {: a:ptr u:n dst:ptr :}
-   u 0 < if s" bundle-lib: path too long" BL-INTERNAL-RC BL-DIE then
-   u BL-PATH-CAP > if s" bundle-lib: path too long" BL-INTERNAL-RC BL-DIE then
-   a dst u BL-BYTE-COPY
-   0 dst u + c!
-   dst ;
-
-: BL-Z1$ ( ptr u8 n -- ptr u8 )
-   BL-Z1 BL-ZCOPY ;
-
-: BL-Z2$ ( ptr u8 n -- ptr u8 )
-   BL-Z2 BL-ZCOPY ;
-
-: BL-U16@ ( ptr u8 -- n ) {: a:ptr :}
-   a c@ a 1 + c@ BL-BYTE-BITS lshift or ;
-
-: BL-TRY-STAT-MODE ( ptr u8 n -- n ) {: a:ptr u:n :}
-   a u BL-Z1$ BL-STAT stat64 0 < if -1 exit then
-   BL-STAT BL-STAT-MODE-OFF + BL-U16@ ;
-
-: BL-FILE? ( ptr u8 n -- bool )
-   BL-TRY-STAT-MODE dup 0 < if
-      drop BL-FALSE
-   else
-      BL-S-IFMT and BL-S-IFREG =
-   then ;
 
 : BL-LOWER? ( n -- bool )
    dup BL-A-LOW 1 - > swap BL-Z-LOW 1 + < and ;
@@ -275,8 +239,9 @@ variable BL-RD-N
    BL-IO BL-LF swap c!
    BL-IO 1 BL-WRITE ;
 
-: BL-COPY-FILE ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u BL-Z1$ open-rd BL-IN-FD !
+: BL-COPY-FILE ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   a u FS:>PATHZ open-rd BL-IN-FD !
    BL-IN-FD @ 0 < if BL-FAIL-READ then
    begin
       BL-IN-FD @ BL-IO BL-IO-CAP read BL-RD-N !
@@ -312,13 +277,14 @@ variable BL-RD-N
    s\" \q provided" BL-WRITE                    \ emit: " provided
    BL-WRITE-LF ;
 
-: BL-VERIFY-MODULE ( n -- ) {: idx:n :}
-   idx BL-MOD$ BL-MODULE-PATH BL-FILE? 0= if
+: BL-VERIFY-MODULE ( n -- )
+   {: idx:n :}
+   idx BL-MOD$ BL-MODULE-PATH FS:FILE? 0= if
       s" bundle-lib: missing module" BL-NOINPUT-RC BL-DIE
    then ;
 
 : BL-VERIFY ( -- )
-   BL-SCRIPT-A @ BL-SCRIPT-U @ BL-FILE? 0= if
+   BL-SCRIPT-A @ BL-SCRIPT-U @ FS:FILE? 0= if
       s" bundle-lib: missing script" BL-NOINPUT-RC BL-DIE
    then
    0 begin dup BL-NMOD @ < while
@@ -334,15 +300,10 @@ variable BL-RD-N
    s" .tmp" BL-TMP+
    BL-TMP$ ;
 
-: BL-RENAME ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n dst:ptr dstu:n :}
-   src srcu BL-Z1$ dst dstu BL-Z2$ rename 0 < if
-      s" bundle-lib: rename failed" BL-IO-RC BL-DIE
-   then ;
-
 : BL-OPEN-OUTPUT ( -- )
    BL-OUT-SET @ if
-      BL-OUT-A @ BL-OUT-U @ BL-TEMP-PATH BL-Z1$
-      BL-O-WRONLY BL-O-CREAT or BL-O-TRUNC or BL-MODE-0644 open BL-OUT-FD !
+      BL-OUT-A @ BL-OUT-U @ BL-TEMP-PATH FS:>PATHZ
+      FS:O-WRONLY FS:O-CREAT or FS:O-TRUNC or FS:MODE-0644 open BL-OUT-FD !
       BL-OUT-FD @ 0 < if s" bundle-lib: cannot open output" BL-IO-RC BL-DIE then
       -1 BL-FILE-OUT !
    else
@@ -353,7 +314,7 @@ variable BL-RD-N
 : BL-FINISH-OUTPUT ( -- )
    BL-FILE-OUT @ if
       BL-CLOSE-OUT
-      BL-TMP BL-TMP-LEN @ BL-OUT-A @ BL-OUT-U @ BL-RENAME
+      BL-TMP BL-TMP-LEN @ BL-OUT-A @ BL-OUT-U @ FS:RENAME-FILE
    then ;
 
 \ State a module the ENGINE already carries. The bundle does not copy such a

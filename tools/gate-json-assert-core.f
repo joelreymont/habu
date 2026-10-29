@@ -1,6 +1,7 @@
 \ gate-json-assert-core.f - native JSON assertion library for gate tests.
 
 require src/lib/errors.f
+require src/lib/fs.f
 require src/lib/memory.f
 require src/lib/span.f
 require src/lib/json-read.f
@@ -8,12 +9,10 @@ require tools/diag-code.f
 
 $8000 constant GJA-IN-CAP
 $1000 constant GJA-SRC-CAP
-PATH-CAP 1 + constant GJA-PATH-CAP
 $100 constant GJA-LINE-MAX
 
 create GJA-IN GJA-IN-CAP allot
 create GJA-SRC GJA-SRC-CAP allot
-create GJA-PATH GJA-PATH-CAP allot
 TYPED-VARIABLE GJA-JR JR:cursor
 create GJA-STR-BUF GJA-IN-CAP allot
 create GJA-CLASS-BUF GJA-IN-CAP allot
@@ -62,20 +61,6 @@ variable GJA-DIRECT
 
 : GJA-ARGC= ( n -- ) {: n :}
    SCRIPT-ARGC n <> IF GJA-USAGE THEN ;
-
-: GJA-COPY ( ptr u8 ptr u8 n -- )
-   {: a:ptr dst:ptr u :}
-   0 begin dup u < while
-      dup a + c@ over dst + c!
-      1+
-   repeat drop ;
-
-: GJA-PATHZ ( ptr u8 n -- ptr u8 )
-   {: a:ptr u :}
-   u 1+ GJA-PATH-CAP > IF s" path too long" GJA-FAIL THEN
-   a GJA-PATH u GJA-COPY
-   0 GJA-PATH u + c!
-   GJA-PATH ;
 
 : GJA-BYTES= ( ptr u8 n ptr u8 n -- bool )
    {: a:ptr u b:ptr v :}
@@ -127,7 +112,7 @@ variable GJA-DIRECT
    THEN ;
 
 : GJA-READ ( ptr u8 n -- ptr u8 n )
-   GJA-PATHZ 0 0 open GJA-FD !
+   FS:>PATHZ 0 0 open GJA-FD !
    GJA-FD @ 0 < IF s" cannot open JSON fixture" GJA-FAIL THEN
    0 GJA-LEN !
    begin
@@ -148,7 +133,7 @@ variable GJA-DIRECT
    GJA-IN GJA-LEN @ ;
 
 : GJA-READ-SRC ( ptr u8 n -- )
-   GJA-PATHZ 0 0 open GJA-FD !
+   FS:>PATHZ 0 0 open GJA-FD !
    GJA-FD @ 0 < IF s" cannot open source fixture" GJA-FAIL THEN
    0 GJA-SRC-LEN !
    begin

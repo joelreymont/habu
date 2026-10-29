@@ -1,6 +1,7 @@
 \ repl-lint-core.f -- REPL-baked code must never exit the interactive session.
 
 require tools/lint/text.f
+require src/lib/fs.f
 require src/lib/source.f
 require src/lib/string.f
 require src/lib/fd.f
@@ -11,16 +12,14 @@ require tools/lint/lib.f
 using LINT-INTERN
 
 $8000 constant REPL-FILE-CAP
-PATH-CAP constant REPL-PATH-CAP
 $80 constant REPL-PATH-MAX
 
 create REPL-FB REPL-FILE-CAP allot
-create REPL-PATH-BUF REPL-PATH-CAP allot
+create REPL-PATH-BUF PATH-CAP allot
 create REPL-PATH-IDS REPL-PATH-MAX cells allot
 create REPL-ONE 1 allot
 variable REPL-PATH#
 variable REPL-BAD
-variable REPL-FD
 variable REPL-OUT-FD
 variable REPL-I
 variable REPL-J
@@ -85,12 +84,6 @@ variable REPL-ROOT-U
       REPL-NUM REPL-NUM-L @ + c@ REPL-C
    repeat ;
 
-: FILE-EXISTS?  ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u LINT-PATHZ
-   PATHBUF 0 0 open REPL-FD !
-   REPL-FD @ 0 < if LINT-FALSE exit then
-   REPL-FD @ close  LINT-TRUE ;
-
 : REPL-ROOT! ( ptr u8 n -- ) {: a:ptr u:n :}
    a REPL-ROOT-A!
    u REPL-ROOT-U ! ;
@@ -99,18 +92,10 @@ variable REPL-ROOT-U
    REPL-ROOT-U @ 0= if LINT-TRUE exit then
    REPL-ROOT-A@ REPL-ROOT-U @ s" ." LINT-STR= ;
 
-: REPL-ROOTED$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+: REPL-ROOTED$ ( ptr u8 n -- ptr u8 n )
+   {: a:ptr u:n :}
    REPL-ROOT-SELF? if a u exit then
-   REPL-ROOT-U @ u + 1 + REPL-PATH-CAP > if s" repl-lint: root path too long" 1 die then
-   REPL-ROOT-A@ REPL-PATH-BUF REPL-ROOT-U @ LINT-BMOVE
-   REPL-ROOT-A@ REPL-ROOT-U @ 1- + c@ SLASH = if
-      a REPL-PATH-BUF REPL-ROOT-U @ + u LINT-BMOVE
-      REPL-PATH-BUF REPL-ROOT-U @ u +
-      exit
-   then
-   SLASH REPL-PATH-BUF REPL-ROOT-U @ + c!
-   a REPL-PATH-BUF REPL-ROOT-U @ 1 + + u LINT-BMOVE
-   REPL-PATH-BUF REPL-ROOT-U @ 1 + u + ;
+   REPL-PATH-BUF  REPL-ROOT-A@ REPL-ROOT-U @ a u REPL-PATH-BUF FS:JOIN-PATH ;
 
 : TRIM-DQUOTE  ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    u 0 <= if a u exit then
@@ -268,8 +253,9 @@ variable REPL-ROOT-U
       then
    repeat ;
 
-: LINT-REPL-FILE  ( ptr u8 n -- ) {: pa:ptr pu:n :}
-   pa pu REPL-ROOTED$ FILE-EXISTS? 0= if exit then
+: LINT-REPL-FILE  ( ptr u8 n -- )
+   {: pa:ptr pu:n :}
+   pa pu REPL-ROOTED$ FS:EXISTS? 0= if exit then
    pa pu REPL-ROOTED$ REPL-FB REPL-FILE-CAP READ-FILE  P2U ! P2A!
    pa pu  P2A@ P2U @  LINT-REPL-SOURCE ;
 

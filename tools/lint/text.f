@@ -8,7 +8,8 @@ require src/lib/adt/option.f                      \ option<n> finders (switchove
 
 \ ---- whole-file read -------------------------------------------------------
 \ open/read/close are engine prims: open ( path flags mode -- fd ), read ( fd
-\ buf n -- n ), close ( fd -- ). O_RDONLY = 0. Path must be NUL-terminated.
+\ buf n -- n ), close ( fd -- ). O_RDONLY = 0. READ-FILE hands its Habu path
+\ to FS:>PATHZ for the NUL-terminated copy open takes.
 \ Lint tools load this first so shared helpers fail closed under
 \ LINT-CHECK-HOOK. CHECK! (engine checker entrypoint) is modeled as a
 \ primitive axiom so the hook definition itself compiles checked.
@@ -20,7 +21,6 @@ s" CHECK!" s" ptr u8 n -- n" TRUST
 LOWER-CERT-HOOK:INSTALL
 ' LINT-CHECK-HOOK set-check
 
-create PATHBUF PATH-CAP 1 + allot
 create READ-PROBE 1 allot
 variable RFD  variable RGOT  variable RLEN
 TYPED-VARIABLE LINT-OUT-A ptr u8
@@ -66,35 +66,25 @@ variable LINT-OUT-ON
    THEN
    fd a u LINT-FD-WRITE ;
 
-variable RPATH-U
-
-: LINT-PATHZ ( ptr u8 n -- ) {: a:ptr u :}
-   u PATH-CAP > IF s" lint: path too long" 1 die THEN
-   0 begin dup u < while
-      dup a + c@ over PATHBUF + c!
-      1+
-   repeat drop
-   0 u PATHBUF + c!
-   u RPATH-U ! ;
-
 \ capacity/IO exits must name the offending file — a bare "file exceeds buffer"
 \ hides which source outgrew which lint buffer.
-: LINT-READ-DIE ( ptr u8 n -- ) {: msg:ptr msgu:n :}
+: LINT-READ-DIE ( ptr u8 n ptr u8 n -- )
+   {: msg:ptr msgu:n path:ptr pathu:n :}
    2 msg msgu LINT-FD-WRITE
-   PATHBUF RPATH-U @ 1 die ;
+   path pathu 1 die ;
 
-: READ-FILE ( ptr u8 n ptr u8 n -- ptr u8 n ) {: a:ptr u buf:ptr cap :}
-   a u LINT-PATHZ
-   PATHBUF 0 0 open  RFD !
-   RFD @ 0 < IF s" lint: cannot open file: " LINT-READ-DIE THEN
+: READ-FILE ( ptr u8 n ptr u8 n -- ptr u8 n )
+   {: a:ptr u buf:ptr cap :}
+   a u FS:>PATHZ 0 0 open  RFD !
+   RFD @ 0 < IF s" lint: cannot open file: " a u LINT-READ-DIE THEN
    0 RLEN !
    begin  RFD @  buf RLEN @ +  cap RLEN @ -  read  dup RGOT !  0 >
    while  RLEN @ RGOT @ + RLEN !  repeat
-   RGOT @ 0 < IF RFD @ close s" lint: cannot read file: " LINT-READ-DIE THEN
+   RGOT @ 0 < IF RFD @ close s" lint: cannot read file: " a u LINT-READ-DIE THEN
    RLEN @ cap = IF
       RFD @ READ-PROBE 1 read RGOT !
-      RGOT @ 0 < IF RFD @ close s" lint: cannot read file: " LINT-READ-DIE THEN
-      RGOT @ 0 > IF RFD @ close s" lint: file exceeds buffer: " LINT-READ-DIE THEN
+      RGOT @ 0 < IF RFD @ close s" lint: cannot read file: " a u LINT-READ-DIE THEN
+      RGOT @ 0 > IF RFD @ close s" lint: file exceeds buffer: " a u LINT-READ-DIE THEN
    THEN
    RFD @ close
    buf RLEN @ ;

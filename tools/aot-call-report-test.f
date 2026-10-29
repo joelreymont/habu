@@ -27,11 +27,9 @@ $1000 constant ACRT-ERR-CAP
 30000 constant ACRT-TIMEOUT-MS
 
 create ACRT-BUF ACRT-BUF-CAP allot
-create ACRT-PATH PATH-CAP allot
 create ACRT-SMALL-PATH PATH-CAP allot
 create ACRT-BOUNDARY-PATH PATH-CAP allot
 create ACRT-MISSING-PATH PATH-CAP allot
-variable ACRT-FD
 variable ACRT-N
 variable ACRT-SMALL-U
 variable ACRT-BOUNDARY-U
@@ -61,12 +59,6 @@ TYPED-VARIABLE ACRT-ERR-A ptr u8
       1+
    repeat drop ;
 
-: ACRT-COPY ( ptr u8 ptr u8 n -- ) {: a:ptr dst:ptr u :}
-   0 begin dup u < while
-      dup a + c@ over dst + c!
-      1+
-   repeat drop ;
-
 : ACRT-JSON-A@ ( -- ptr u8 )
    ACRT-JSON-A @ ;
 
@@ -91,10 +83,6 @@ TYPED-VARIABLE ACRT-ERR-A ptr u8
    then
    ACRT-ERR-A@ ;
 
-: ACRT-PATH! ( ptr u8 n -- ) {: a:ptr u :}
-   a ACRT-PATH u ACRT-COPY
-   0 ACRT-PATH u + c! ;
-
 : ACRT-SMALL$ ( -- ptr u8 n )
    ACRT-SMALL-PATH ACRT-SMALL-U @ ;
 
@@ -118,12 +106,9 @@ TYPED-VARIABLE ACRT-ERR-A ptr u8
    w 16 rshift ACRT-BUF off 2 + + c!
    w 24 rshift ACRT-BUF off 3 + + c! ;
 
-: ACRT-WRITE ( ptr u8 n n -- ) {: a:ptr u n :}
-   a u ACRT-PATH!
-   ACRT-PATH 1537 493 open ACRT-FD !
-   ACRT-FD @ 0 < if s" aot-call-report-test: open failed" 1 die then
-   ACRT-FD @ ACRT-BUF n write n ACRT=
-   ACRT-FD @ close ;
+: ACRT-WRITE ( ptr u8 n n -- )
+   {: a:ptr u n :}
+   a u ACRT-BUF n FS:WRITE-ALL ;
 
 : ACRT-CLI-ARGV ( ptr u8 n -- ) {: path:ptr pathu:n :}
    PROC-ARGV-RESET
@@ -182,8 +167,7 @@ variable ACRT-SHORT-CAP
    ACRT-SMALL$ ACRT-ERR ACRT-SHORT-CAP @ REPORT-JSON-BUFFER 2drop ;
 
 : ACRT-NEXT-FD ( -- n )
-   ACRT-SMALL$ ACRT-PATH!
-   ACRT-PATH 0 0 open dup close ;
+   ACRT-SMALL$ FS:>PATHZ 0 0 open dup close ;
 
 : ACRT-TEST-FULL ( -- )
    ACRT-SMALL$ ACRT-JSON ACRT-JSON-CAP REPORT-JSON-BUFFER nip
@@ -194,13 +178,13 @@ variable ACRT-SHORT-CAP
    ACRT-NEXT-FD fd ACRT= ;
 
 \ Misuse is refused by a named throw the caller reports, never by ending the
-\ process. E-FS-PATH: the shortest length the path buffer cannot hold with its
-\ NUL, the largest cell (it wraps when one is added) and a negative length.
-\ E-JW-OUTPUT: a null output buffer or a negative capacity. E-FMT-DOMAIN: a
-\ negative number. E-FS-OPEN: an input that does not open. E-FS-IO: one that
-\ opens but does not read, a directory, its descriptor closed after.
+\ process. E-FS-PATH: the shortest length past PATH-CAP, the largest cell (it
+\ wraps when one is added) and a negative length. E-JW-OUTPUT: a null output
+\ buffer or a negative capacity. E-FMT-DOMAIN: a negative number. E-FS-OPEN: an
+\ input that does not open. E-FS-IO: one that opens but does not read, a
+\ directory, its descriptor closed after.
 : ACRT-TEST-MISUSE ( -- )
-   [: ACRT-BUF REPORT-PATH-CAP REPORT-FILE! ;] catch E-FS-PATH ACRT=
+   [: ACRT-BUF PATH-CAP 1+ REPORT-FILE! ;] catch E-FS-PATH ACRT=
    [: ACRT-BUF -1 REPORT-FILE! ;] catch E-FS-PATH ACRT=
    [: ACRT-BUF STR-MAX-I64 REPORT-FILE! ;] catch E-FS-PATH ACRT=
    [: NULL$ REPORT-BUFFER! ;] catch E-JW-OUTPUT ACRT=
