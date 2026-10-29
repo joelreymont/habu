@@ -26,14 +26,15 @@ require src/lib/process-env.f
 package PROC-RAW
 public
 
-: SPAWN-ARGV-ENV-CWD ( ptr u8 ptr a ptr a ptr u8 fd fd fd -- ptr u8 ptr a ptr a ptr u8 fd fd fd )
-   {: pathz:ptr argv:ptr envp:ptr cwdz:ptr infd outfd errfd :}
+\ fds holds n cells of child/parent placements (process.f LAUNCH-AT).
+: SPAWN-ARGV-ENV-CWD ( ptr u8 ptr a ptr a ptr u8 fd fd fd ptr n n -- ptr u8 ptr a ptr a ptr u8 fd fd fd ptr n n )
+   {: pathz:ptr argv:ptr envp:ptr cwdz:ptr infd outfd errfd fds:ptr n :}
    pathz dup ZLEN PROCESS:NEW PROCESS:HERMETIC
    argv ROWS PROCESS:ARGV-ROWS
    envp ROWS PROCESS:ENV-ROWS
    cwdz dup ZLEN PROCESS:CWD
-   infd outfd errfd LAUNCH
-   pathz argv envp cwdz infd outfd errfd ;
+   infd outfd errfd fds n LAUNCH-AT
+   pathz argv envp cwdz infd outfd errfd fds n ;
 
 ;package
 
@@ -43,12 +44,17 @@ private
 
 create PROC-CWDZ-BUF PROC-PATHZ-CAP allot
 
+\ The spawn with n cells of child/parent placements at fds, its catch code
+\ answered as a pid (PROC-RAW:ANSWER).
+: SPAWN-PLACED ( ptr u8 ptr a ptr a ptr u8 fd fd fd ptr n n -- pid )
+   [: PROC-RAW:SPAWN-ARGV-ENV-CWD ;] catch {: rc :}
+   drop drop drop drop drop drop drop drop drop
+   rc PROC-RAW:ANSWER ;
+
 public
 
 : SPAWN-ARGV-ENV-CWD-RAW ( ptr u8 ptr a ptr a ptr u8 fd fd fd -- pid )
-   [: PROC-RAW:SPAWN-ARGV-ENV-CWD ;] catch {: rc :}
-   drop drop drop drop drop drop drop
-   rc PROC-RAW:ANSWER ;
+   NULL-PTR 0 SPAWN-PLACED ;
 
 : CWDZ ( ptr u8 len -- ptr u8 ) {: a:ptr u:len :}
    u LEN>N 0 <= if E-PROC-OUTPUT throw then
@@ -84,17 +90,18 @@ private
 public
 
 \ The spawn alone, resetting no process-wide staging: a caller that owns its own
-\ argv, envp and cwd storage (src/lib/process-command.f) passes them here and adopts
-\ the child itself.
-: SPAWN-ARGV-ENV-CWD-STDIN-CAPTURE-CORE ( ptr u8 ptr a ptr a ptr u8 -- pid )
-   {: pathz:ptr argv:ptr envp:ptr cwdz:ptr :}
-   pathz argv envp cwdz PROC-IN-R @ >FD PROC-OUT-W @ >FD PROC-ERR-W @ >FD
-   SPAWN-ARGV-ENV-CWD-RAW ;
+\ argv, envp and cwd storage (src/lib/process-command.f) passes them here, with n
+\ cells of child/parent placements at fds (process.f LAUNCH-AT), and adopts the
+\ child itself.
+: SPAWN-ARGV-ENV-CWD-STDIN-CAPTURE-CORE ( ptr u8 ptr a ptr a ptr u8 ptr n n -- pid )
+   {: pathz:ptr argv:ptr envp:ptr cwdz:ptr fds:ptr n :}
+   pathz argv envp cwdz PROC-IN-R @ >FD PROC-OUT-W @ >FD PROC-ERR-W @ >FD fds n
+   SPAWN-PLACED ;
 
 private
 
 : PROC-SPAWN-ARGV-ENV-CWD-STDIN-CAPTURE ( ptr u8 ptr a ptr a ptr u8 -- )
-   SPAWN-ARGV-ENV-CWD-STDIN-CAPTURE-CORE {: pid:pid :}
+   NULL-PTR 0 SPAWN-ARGV-ENV-CWD-STDIN-CAPTURE-CORE {: pid:pid :}
    ARGV-ENV-CWD-RESET
    pid PROC-CAPTURE-ADOPT-SPAWN ;
 

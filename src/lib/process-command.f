@@ -30,15 +30,24 @@
 \ read or closed, so a byte left from one request cancels the next run: drain
 \ or replace the pipe before lending it again.
 \
+\ PLACEMENT. `child parent FD+` makes the child's fd `child` this process's fd
+\ `parent` in every run until RESET or the scope's end, applied after the stdio
+\ slots as PROCESS:FD applies it (src/lib/spawn.f). Each scope holds its own
+\ placements; an outer scope's runs never see an inner one's. The parent keeps
+\ ownership: CMD never closes a placed fd, so it must stay open through each run.
+\ A run refuses a closed one before it opens its own descriptors, which could
+\ take the closed number: PROCESS:CHECK-FD throws E-PROC-SPAWN with EBADF in
+\ PROCESS:ERRNO, and no child runs.
+\
 \ A run that throws, cancelled or not, keeps its code: OUTCOME@ and RC@ throw it
-\ again until the next run or RESET. A path or deadline refused before the run
-\ starts leaves the previous outcome in place.
+\ again until the next run or RESET. A path, deadline or closed placed fd refused
+\ before the run starts leaves the previous outcome in place.
 \
 \ RUN is the run that must exit clean: any other completion throws the caller's
 \ nonzero code after the captured stderr is copied to this process's, and a
 \ deadline kill throws E-PROC-TIMEOUT. As in RUN-OUTCOME, a spawn failure, a
-\ refused path or deadline and cancellation throw their own codes before any run
-\ completes.
+\ refused path, deadline or placed fd and cancellation throw their own codes
+\ before any run completes.
 \
 \ OUT$ and ERR$ are borrowed until the next run, RESET or the end of the scope.
 require src/lib/errors.f
@@ -52,6 +61,7 @@ require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/process-cwd.f
+require src/lib/spawn.f
 
 \ Scoped commands: -9580..-9589, minted here beside the package its codes belong
 \ to (docs/forth-card.md § 6).
@@ -98,7 +108,8 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 2 cells TASK:+USER CMD-TASK drop
 : ENVP-VEC ( ptr n -- ptr ptr u8 ) 26 ptr-field ;  \ the child's envp, built by PREPARE
 : ARG-OFF ( ptr n -- ptr n ) 29 cells + ;      \ each argument's offset in ARG-BUF
 : ENV-OFF ( ptr n -- ptr n ) 32 cells + ;      \ each caller row's offset in ENV-BUF
-35 constant HEAD-CELLS
+: PLACED ( ptr n -- ptr n ) 35 cells + ;       \ FD+'s child/parent pairs, back to back
+38 constant HEAD-CELLS
 
 PROC-PATHZ-CAP constant PATHZ-CAP
 HEAD-CELLS PATHZ-CAP 2 * 7 + 8 / + constant CTX-CELLS
@@ -138,19 +149,22 @@ LINEAR: ERASE ( CMD:command -- ptr n )
    0 h TIMED-OUT !
    0 h CODE ! ;
 
-: CLEAR-BUILD ( ptr n -- ) {: h:ptr :}
+: CLEAR-BUILD ( ptr n -- )
+   {: h:ptr :}
    h ARG-BUF BUF:CLEAR
    h ENV-BUF BUF:CLEAR
    h IN-BUF BUF:CLEAR
    h ARG-OFF VEC:CLEAR
    h ENV-OFF VEC:CLEAR
+   h PLACED VEC:CLEAR
    0 h CWD-LEN !
    1 h INHERIT !
    PROC-NO-FD h CANCEL-FD !
    h CAPTURE-RESET ;
 
 \ ---- opening and closing --------------------------------------------------------
-: INIT-MEMBERS ( ptr n -- ) {: h:ptr :}
+: INIT-MEMBERS ( ptr n -- )
+   {: h:ptr :}
    h ARG-BUF BYTES-START BUF:N>BLEN BUF:INIT
    h ENV-BUF BYTES-START BUF:N>BLEN BUF:INIT
    h IN-BUF BYTES-START BUF:N>BLEN BUF:INIT
@@ -158,6 +172,7 @@ LINEAR: ERASE ( CMD:command -- ptr n )
    h ENVP-VEC ITEMS-START N>ITEM VEC:INIT
    h ARG-OFF ITEMS-START N>ITEM VEC:INIT
    h ENV-OFF ITEMS-START N>ITEM VEC:INIT
+   h PLACED ITEMS-START N>ITEM VEC:INIT
    h CLEAR-BUILD ;
 
 : RELEASE-REGION ( ptr u8 n -- ) {: base:ptr cap:n :}
@@ -176,6 +191,7 @@ LINEAR: ERASE ( CMD:command -- ptr n )
    h ENVP-VEC VEC:DISPOSE
    h ARG-OFF VEC:DISPOSE
    h ENV-OFF VEC:DISPOSE
+   h PLACED VEC:DISPOSE
    h OUT-BASE @ h OUT-CAP @ RELEASE-REGION
    h ERR-BASE @ h ERR-CAP @ RELEASE-REGION
    h CTX-CELLS MEM:CELLS-ALLOC-COUNT MEM:RELEASE-CELLS ;
@@ -199,8 +215,8 @@ public
    OPEN
    [: RUN-BODY ;] [: CLOSE ;] finally ;
 
-\ Forget the arguments, rows, stdin, directory, lent descriptor and last outcome;
-\ the storage stays for reuse.
+\ Forget the arguments, rows, stdin, directory, placements, lent descriptor and
+\ last outcome; the storage stays for reuse.
 : RESET ( CMD:command -- CMD:command )
    CTX CLEAR-BUILD ;
 
@@ -272,6 +288,15 @@ public
    u 0 < if E-PROC-OUTPUT throw then
    a u BUF:N>BLEN h IN-BUF BUF:REPLACE ;
 
+\ The child's fd child is the parent's fd parent in the next runs (PLACEMENT
+\ above). Either negative: E-PROC-OUTPUT.
+: FD+ ( CMD:command n fd -- CMD:command )
+   {: child:n parent:fd :}
+   CTX {: h:ptr :}
+   child 0 < parent FD>N 0 < or if E-PROC-OUTPUT throw then
+   child h PLACED VEC:PUSH drop
+   parent FD>N h PLACED VEC:PUSH drop ;
+
 private
 
 \ ---- the child's vectors ----------------------------------------------------------
@@ -323,14 +348,22 @@ private
    path pathu >LEN PROC-ARGV-CHECK-PATH
    timeout MS>N 0 < if E-PROC-TIMEOUT throw then ;
 
+: CHECK-PLACED ( ptr n -- )
+   {: h:ptr :}
+   h PLACED VEC:DATA@ h PLACED VEC:LEN@ ITEM>N {: fds:ptr n :}
+   n 0 ?do fds i 1+ cells + @ >FD PROCESS:CHECK-FD 2 +loop ;
+
 \ The spawn cores take the context's own vectors and reset no process-wide
 \ staging; the capture machinery around them is src/lib/process.f's task-local row.
-: SPAWN ( ptr n -- ) {: h:ptr :}
+: SPAWN ( ptr n -- )
+   {: h:ptr :}
+   h PLACED VEC:DATA@ h PLACED VEC:LEN@ ITEM>N {: fds:ptr n :}
    h CWD-LEN @ 0 > if
-      h PATHZ h ARGV-VEC VEC:DATA@ h ENVP-VEC VEC:DATA@ h CWDZ
+      h PATHZ h ARGV-VEC VEC:DATA@ h ENVP-VEC VEC:DATA@ h CWDZ fds n
       PROC-CWD:SPAWN-ARGV-ENV-CWD-STDIN-CAPTURE-CORE
    else
-      h PATHZ h ARGV-VEC VEC:DATA@ h ENVP-VEC VEC:DATA@ PROC-SPAWN-ARGV-ENV-STDIN-CAPTURE-CORE
+      h PATHZ h ARGV-VEC VEC:DATA@ h ENVP-VEC VEC:DATA@ fds n
+      PROC-SPAWN-ARGV-ENV-STDIN-CAPTURE-CORE
    then
    PROC-CAPTURE-ADOPT-SPAWN ;
 
@@ -390,15 +423,19 @@ private
    h EXITED @ 0<> if h CODE @ OUTCOME:EXITED exit then
    h CODE @ OUTCOME:SIGNALED ;
 
-\ A refused path or deadline throws before the last run is forgotten; from the
-\ reset on, every throw reaches RUN-DONE. RUNNING names the context only while
-\ its capture runs, and is cleared on every path out, so no task row keeps a
+\ A refused path, deadline or closed placed fd throws before CAPTURE-RESET
+\ forgets the last run, so a refused run keeps the previous outcome; from the
+\ reset on, every throw reaches RUN-DONE. CHECK-PLACED also runs before CAPTURE
+\ opens the capture pipes, which could take a closed placed fd's number and hand
+\ the child a capture pipe in its place. RUNNING names the context only while its
+\ capture runs, and is cleared on every path out, so no task row keeps a
 \ context's address past its run.
 : RUN-CAPTURE ( ptr n ptr u8 n ms -- )
    {: h:ptr path:ptr pathu:n timeout:ms :}
    h CANCEL-FD @ >FD {: cancel:fd :}
    PROC-NO-FD h CANCEL-FD !
    path pathu timeout CHECK-RUN
+   h CHECK-PLACED
    h path pathu PREPARE
    h CAPTURE-RESET
    h RUNNING !

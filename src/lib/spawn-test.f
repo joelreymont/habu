@@ -10,6 +10,7 @@
 \ from /usr/bin/env and printenv); without one, each records a failure.
 
 require src/lib/errors.f
+require src/lib/fd.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/process.f
@@ -428,6 +429,16 @@ PROBES TYPED-BUFFER PROBE-AT ptr u8
    UNPROBE
    TTRUE ;
 
+
+\ 14
+: TEST-CHECK-FD ( -- )
+   s" CHECK-FD refuses a closed fd with EBADF; an open one leaves ERRNO" T-LABEL
+   3 CLOSED-FD DEAD-FD !
+   [: DEAD-FD @ >FD PROCESS:CHECK-FD ;] E-PROC-SPAWN TTHROWSQ
+   PROCESS:ERRNO EBADF T=
+   FD:STDOUT PROCESS:CHECK-FD
+   PROCESS:ERRNO EBADF T= ;
+
 public
 
 : SPAWN-TEST-MAIN ( -- )
@@ -445,6 +456,7 @@ public
    TEST-NUL
    TEST-CLOSED-STDIO
    TEST-DISCARD
+   TEST-CHECK-FD
    T-REPORT
    s" spawn-test: ok" type cr ;
 

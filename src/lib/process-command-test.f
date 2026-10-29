@@ -2,6 +2,7 @@
 \ Run: bin/hb --load src/lib/process-command-test.f
 
 require src/lib/errors.f
+require src/lib/fd.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/memory.f
@@ -11,6 +12,7 @@ require src/lib/task.f
 require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
+require src/lib/spawn.f
 require src/lib/process-command.f
 require src/lib/test/outcome.f
 require src/lib/test/wait.f
@@ -25,6 +27,7 @@ create ENTRY-OUT 101 c, 110 c, 116 c, 114 c, 121 c, 10 c, 10 c, 10 c,
 1000 constant CMD-TIMEOUT-MS
 50 constant SHORT-TIMEOUT-MS
 20000000000 constant WAIT-NS             \ a task row's whole wait: 20 s
+9 constant EBADF                         \ a closed fd's errno, Darwin and Linux alike
 
 : RESULT-CODE ( result<n,n> -- n )   \ 0 on clean exit, else the completion code
    MATCH result ok OF ENDOF err OF ENDOF ;MATCH ;
@@ -147,8 +150,8 @@ create ENTRY-OUT 101 c, 110 c, 116 c, 114 c, 121 c, 10 c, 10 c, 10 c,
    [: CMD:OUTCOME@ drop ;] catch E-PROC-SPAWN T=
    [: CMD:RC@ drop ;] catch E-PROC-SPAWN T= ;
 
-\ A deadline or path refused before the run starts throws its own code and keeps
-\ the previous run's outcome and capture.
+\ A deadline, path or closed placed fd refused before the run starts throws its
+\ own code and keeps the previous run's outcome and capture.
 : EXIT3$ ( -- ptr u8 n )  s" printf x; exit 3" ;
 
 : EXIT3-KEPT ( CMD:command -- CMD:command )
@@ -165,6 +168,11 @@ create ENTRY-OUT 101 c, 110 c, 116 c, 114 c, 121 c, 10 c, 10 c, 10 c,
    [: s" /bin/sh" -1 >MS CMD:RUN-OUTCOME drop ;] catch E-PROC-TIMEOUT T=
    EXIT3-KEPT
    [: s" " CMD-TIMEOUT-MS >MS CMD:RUN-OUTCOME drop ;] catch E-PROC-OUTPUT T=
+   EXIT3-KEPT
+   PIPE-PAIR-CLOEXEC FD>N {: w :} FD>N {: r :}
+   r close  w close
+   3 w >FD CMD:FD+
+   [: s" /bin/sh" CMD-TIMEOUT-MS >MS CMD:RUN-OUTCOME drop ;] catch E-PROC-SPAWN T=
    EXIT3-KEPT ;
 
 \ CWD!: the child runs from the given directory, proved by a relative-path
@@ -280,6 +288,120 @@ create NAME 5 allot                      \ V and four digits
    s" outer" SAY
    [: INNER ;] CMD:WITH-COMMAND
    CMD:OUT$ s" again" T$= ;
+
+\ ---- placed descriptors -------------------------------------------------------------
+\ The parent places pipes' write ends in the child and reads the pipes.
+variable PIPE-R   variable PIPE-W
+variable PIPE4-R  variable PIPE4-W
+64 constant PIPE-CAP
+create PIPE-BUF PIPE-CAP allot
+
+: W ( -- fd ) PIPE-W @ >FD ;
+: W4 ( -- fd ) PIPE4-W @ >FD ;
+
+\ The parent writes `|parent` through its own fd, which throws if a run closed it,
+\ then one read takes all the pipe holds; the pipe is never empty, so it never
+\ blocks. A refused read throws E-FS-IO, as FD's reads do.
+: DRAIN$ ( ptr n ptr n -- ptr u8 n )
+   {: r:ptr w:ptr :}
+   w @ >FD s" |parent" FD:WRITE-FULL
+   r @ PIPE-BUF PIPE-CAP read
+   dup 0 < if E-FS-IO throw then
+   PIPE-BUF swap ;
+
+: PIPE$ ( -- ptr u8 n ) PIPE-R PIPE-W DRAIN$ ;
+: PIPE4$ ( -- ptr u8 n ) PIPE4-R PIPE4-W DRAIN$ ;
+
+\ rc 0 when the child's fd 3 takes the write, 7 when fd 3 is closed.
+: FD3-RUN ( CMD:command -- CMD:command n )
+   s" -c" CMD:ARG+
+   s" printf placed 2>/dev/null >&3 || exit 7" CMD:ARG+
+   s" /bin/sh" CMD-TIMEOUT-MS RUN# ;
+
+\ The run's child wrote `three` to its fd 3 and `four` to its fd 4, and the
+\ parent's fds stay open after.
+: BOTH-PLACED ( CMD:command n -- CMD:command )
+   0 T=
+   PIPE$ s" three|parent" T$=
+   PIPE4$ s" four|parent" T$= ;
+
+\ Two placements at fds 3 and 4, past the stdio slots: one run without a
+\ directory, then a second, with no new FD+, from one, so the directory's spawn
+\ takes the placements too and they last until RESET.
+: PLACED ( CMD:command -- CMD:command )
+   3 W CMD:FD+
+   4 W4 CMD:FD+
+   s" -c" CMD:ARG+
+   s" { printf three >&3 && printf four >&4; } 2>/dev/null || exit 7" CMD:ARG+
+   s" /bin/sh" CMD-TIMEOUT-MS RUN# BOTH-PLACED
+   s" /" CMD:CWD!
+   s" /bin/sh" CMD-TIMEOUT-MS RUN# BOTH-PLACED ;
+
+: PLACED-RESET ( CMD:command -- CMD:command )
+   3 W CMD:FD+
+   CMD:RESET
+   FD3-RUN 7 T= ;
+
+\ The outer scope runs while the inner one's placement is live.
+: PLACED-INNER ( CMD:command CMD:command -- CMD:command CMD:command )
+   3 W CMD:FD+
+   FD3-RUN 0 T=
+   PIPE$ s" placed|parent" T$=
+   swap FD3-RUN 7 T= swap ;
+
+: PLACED-NESTED ( CMD:command -- CMD:command )
+   [: PLACED-INNER ;] CMD:WITH-COMMAND ;
+
+\ A placement at a stdio slot replaces the capture pipe there: the child's stdout
+\ reaches the placed pipe and the capture stays empty.
+: PLACED-STDOUT ( CMD:command -- CMD:command )
+   1 W CMD:FD+
+   s" -c" CMD:ARG+
+   s" printf slot" CMD:ARG+
+   s" /bin/sh" CMD-TIMEOUT-MS RUN# 0 T=
+   CMD:OUT$ s" " T$=
+   PIPE$ s" slot|parent" T$= ;
+
+\ Two placements at one child slot: the later FD+ wins.
+: PLACED-TWICE ( CMD:command -- CMD:command )
+   3 W4 CMD:FD+
+   3 W CMD:FD+
+   FD3-RUN 0 T=
+   PIPE$ s" placed|parent" T$=
+   PIPE4$ s" |parent" T$= ;
+
+: NEGATIVE-CHILD ( CMD:command -- CMD:command ) -1 W CMD:FD+ ;
+: NEGATIVE-PARENT ( CMD:command -- CMD:command ) 3 -1 >FD CMD:FD+ ;
+
+\ A closed parent fd at child fd 3, beside the open pipe at fd 4: the run is
+\ refused before a capture pipe can take the closed number, so the child, which
+\ would write `ran` to fd 4, never runs.
+: PLACED-CLOSED ( CMD:command -- CMD:command )
+   PIPE-PAIR-CLOEXEC FD>N {: w :} FD>N {: r :}
+   r close  w close
+   3 w >FD CMD:FD+
+   4 W4 CMD:FD+
+   s" -c" CMD:ARG+
+   s" printf ran >&4; printf placed >&3" CMD:ARG+
+   s" /bin/sh" CMD-TIMEOUT-MS >MS CMD:RUN-OUTCOME drop ;
+
+: FD-PLACEMENT ( -- )
+   PIPE-PAIR-CLOEXEC FD>N PIPE-W ! FD>N PIPE-R !
+   PIPE-PAIR-CLOEXEC FD>N PIPE4-W ! FD>N PIPE4-R !
+   [: PLACED ;] CMD:WITH-COMMAND
+   [: PLACED-RESET ;] CMD:WITH-COMMAND
+   [: PLACED-NESTED ;] CMD:WITH-COMMAND
+   [: PLACED-STDOUT ;] CMD:WITH-COMMAND
+   [: PLACED-TWICE ;] CMD:WITH-COMMAND
+   [: [: NEGATIVE-CHILD ;] CMD:WITH-COMMAND ;] E-PROC-OUTPUT TTHROWSQ
+   [: [: NEGATIVE-PARENT ;] CMD:WITH-COMMAND ;] E-PROC-OUTPUT TTHROWSQ
+   [: [: PLACED-CLOSED ;] CMD:WITH-COMMAND ;] E-PROC-SPAWN TTHROWSQ
+   PROCESS:ERRNO EBADF T=
+   PIPE4$ s" |parent" T$=
+   PIPE-W @ close
+   PIPE-R @ close
+   PIPE4-W @ close
+   PIPE4-R @ close ;
 
 \ ---- freed on throw ---------------------------------------------------------------
 \ Each cycle captures 4 MiB and throws out of the scope. Kept, 64 cycles would add
@@ -553,6 +675,7 @@ public
    [: MANY-ARGS ;] CMD:WITH-COMMAND
    [: MANY-ROWS ;] CMD:WITH-COMMAND
    [: NESTED ;] CMD:WITH-COMMAND
+   FD-PLACEMENT
    TWO-TASKS
    LATE-DEFAULT
    HALTED-TASK

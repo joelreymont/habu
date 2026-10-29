@@ -30,7 +30,9 @@
 \ - CLOSED PARENT STDIO. A slot of 0-2 that no FD set inherits the parent's fd
 \   of that number when it is open and is closed when it is not, so a parent
 \   running with a closed stdio fd still spawns. An FD naming a closed parent fd
-\   fails the spawn with EBADF.
+\   fails the spawn with EBADF. PROCESS:CHECK-FD refuses a closed fd the same way
+\   without a request, for a caller that must check before it opens descriptors
+\   that could take the closed number.
 \ - A request is used once. PROCESS:SPAWN frees it whatever the outcome, and a
 \   builder that throws frees it before the throw goes on; a caller that will
 \   not spawn a request DISCARDs it, on its throw paths too. A refused spawn
@@ -68,8 +70,9 @@ LINEAR: ERASE ( PROCESS:request -- ptr n )
 
 CAST: ITEM>N ( NUM:item-count -- n )
 
-\ fcntl's F_GETFD on Darwin and Linux alike.
+\ fcntl's F_GETFD and the errno of a closed fd, on Darwin and Linux alike.
 1 constant F-GETFD
+9 constant EBADF
 
 \ The byte that ends an environment row's name.
 $3D constant EQUAL-BYTE
@@ -359,6 +362,14 @@ public
    h rows [: ADD-ENV-ROWS ;] catch {: rc :} drop drop
    rc h SETTLE
    h MINT ;
+
+
+\ Refuses a closed parent fd as SPAWN refuses an FD naming one: E-PROC-SPAWN,
+\ EBADF in ERRNO. An open fd passes and leaves ERRNO as it was.
+: CHECK-FD ( fd -- )
+   FD>N F-GETFD 0 fcntl 0 >= if exit then
+   EBADF ERRNO-CELL !
+   E-PROC-SPAWN throw ;
 
 
 \ Spawns the request and frees it. A refusal throws E-PROC-SPAWN, its errno
