@@ -1,6 +1,6 @@
 ---
 title: "Float L1: arm64 d-register files in the T0 seam"
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "2026-10-29T11:33:45.509721+02:00"

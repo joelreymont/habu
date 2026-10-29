@@ -1,6 +1,6 @@
 ---
 title: "Float L2: front-end files and K-FCONST in T0"
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "2026-10-29T11:33:45.524960+02:00"
