@@ -39,11 +39,15 @@ variable SUPPORT-ROWS-U
    a PROGRAM-BUF PROGRAM-U @ + u BYTE-COPY
    u PROGRAM-U +! ;
 
-\ These definitions run from stdin before the first require. The first imports
-\ include the ordinary input recorder itself, so its dependency reads are
-\ staged here, then drained into the same persistent row format.
+\ The child first loads this tree's startup files (tools/cold-load.f) at the
+\ default tier, as the engine compiles them; those reads are not recorded.
+\ Tier 1 applies to the helpers after it. The definitions after it run before
+\ the next require.
+\ The first imports include the ordinary input recorder itself, so its
+\ dependency reads are staged here, then drained into the same persistent row
+\ format.
 : PROGRAM! ( -- )
-   S\" 1 set-tier\npackage NB-START private\nDYNAMIC-BUFFER EVENTS u8\nvariable USED\nvariable CURSOR\ncreate SHA SHA256-CTX-BYTES allot\n" PROGRAM+
+   S\" require tools/cold-load.f\nCOLD-LOAD:RUN\n1 set-tier\npackage NB-START private\nDYNAMIC-BUFFER EVENTS u8\nvariable USED\nvariable CURSOR\ncreate SHA SHA256-CTX-BYTES allot\n" PROGRAM+
    S\" : ROOM ( n -- n ) {: u:n :} USED @ u + 16777216 > if E-FS-CAPACITY throw then USED @ u + EVENTS-RESERVE USED @ dup u + USED ! ;\n" PROGRAM+
    S\" : ROW ( n ptr u8 n ptr u8 n bool -- ptr u8 ) {: kind:n path:ptr pu:n answer:ptr au:n exists:bool :} 64 pu + au + ROOM EVENTS {: dst:ptr :} kind dst LE:U64! pu dst 8 + LE:U64! au dst 16 + LE:U64! exists if 1 else 0 then dst 24 + LE:U64! 32 0 ?do 0 dst 32 + i + c! loop path dst 64 + pu BYTE-COPY answer dst 64 + pu + au BYTE-COPY dst ;\n" PROGRAM+
    S\" : CANON ( ptr u8 n -- ptr u8 n bool ) {: path:ptr pu:n :} path pu SOURCE-ROOT:CANON-OS {: ans:ptr au:n yes:bool :} 1 path pu ans au yes ROW drop ans au yes ;\n" PROGRAM+

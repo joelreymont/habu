@@ -532,6 +532,8 @@ variable PRE-ROWS-N
 
 \ Borrow the retained compiler only while the target has no check hook. The
 \ target's own NCOMP:INSTALL later replaces this dispatch after its source load.
+\ This word and LOAD-TARGET load the startup files in the order
+\ tools/cold-load.f STAGE does; each mirrors the other.
 : LOAD-CHECKED-PREFIX ( -- )
    0 PREFIX-TAKE !
    ['] PRE-MARK ['] PRE-EACH ['] PRE-IMPORT NDEF-CACHE:PREFIX-ORIGIN-USE
