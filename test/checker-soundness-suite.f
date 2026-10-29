@@ -23,6 +23,11 @@ PRODUCT point FIELD x n FIELD y n ;PRODUCT
 : CALL-U8 ( [ u8 -- ] -- ) MK-U8 swap execute ;
 : CALL-I64-Q ( [ [ i64 -- ] -- ] -- ) ['] TAKE-I64 swap execute ;
 : CALL-U8-Q ( [ [ u8 -- ] -- ] -- ) ['] TAKE-U8 swap execute ;
+\ Defers an install with `is` fills as a call passes its argument.
+defer SET-U8 ( u8 -- )
+defer SET-I64 ( i64 -- )
+defer GET-U8 ( -- u8 )
+defer GET-I64 ( -- i64 )
 
 \ A callable declared `[ -- S ]` runs on whatever stack the callee holds.
 : TAIL-TWICE ( R [ -- S ] -- S ) dup >r execute r> execute ;
@@ -113,9 +118,20 @@ CAST: >WIDE ( n -- wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
       CHECK-QUIET-CANDIDATE! -1 T=
    s" CS-Q7 ( -- ) [: CHECKER-SOUNDNESS:CALL-I64 ;] CHECKER-SOUNDNESS:CALL-U8-Q"
       CHECK-QUIET-CANDIDATE! 0 T=
+   s" an install with is takes a wider input and a narrower output, as a call does" T-LABEL
+   s" CS-Q8 ( -- ) ['] CHECKER-SOUNDNESS:TAKE-I64 is CHECKER-SOUNDNESS:SET-U8"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" CS-Q9 ( -- ) ['] CHECKER-SOUNDNESS:TAKE-U8 is CHECKER-SOUNDNESS:SET-I64"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" CS-Q10 ( -- ) ['] CHECKER-SOUNDNESS:MK-U8 is CHECKER-SOUNDNESS:GET-I64"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" CS-Q11 ( -- ) ['] CHECKER-SOUNDNESS:MK-I64 is CHECKER-SOUNDNESS:GET-U8"
+      CHECK-QUIET-CANDIDATE! 0 T=
    s" the accepted shapes execute" T-LABEL
    [: TAKE-I64 ;] CALL-U8
    [: CALL-U8 ;] CALL-I64-Q
+   ['] TAKE-I64 is SET-U8  MK-U8 SET-U8
+   ['] MK-U8 is GET-I64  GET-I64 3 T=
    depth 0 T= ;
 
 

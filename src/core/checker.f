@@ -23219,9 +23219,7 @@ variable IS-PEND-U                   \ and its length
    q NO-SCOPE? 0= IF MD-SCOPE-STORE MDIAG! IS-FAIL EXIT THEN
    q QCON-BEGIN
    FRESH MK-ROW {: rest :}   q rest MK-PUSH {: want:n :}
-   DCUR @ want UNIFY   \ the first failure is captured as SUNI-IN's is
-   dup 0=  FAILSET @ 0=  and  OK @ and  IF want DCUR @ UF-CAPTURE THEN
-   OK @ and OK !
+   want SUNI-IN   \ the callable meets the defer's effect as a call's argument does
    OK @ IF QCON-OK? 0= IF IS-FAIL THEN THEN
    rest DCUR ! ;
 
