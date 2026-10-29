@@ -13,3 +13,5 @@ Fork-to-exec lane 1b. Joel 2026-10-28 (interview) approved: package SPAWN with S
 Joel 2026-10-29 (interview) approved two more public words: SPAWN:SPAWN, exported under PROCESS as PROCESS:SPAWN (PROCESS cannot erase SPAWN's linear token), and SPAWN:ERRNO ( -- n ), the task-local positive errno of the last refused spawn. Design: carl-forkexec/.out/design-1b.md (Plan, Opus), with lead rulings R1 (a default 0-2 slot whose parent fd is closed becomes -1) and R2 (RAW effects unchanged). Two commits: C1 process-chunks.f, spawn.f, spawn-test.f; C2 RAW rebuild.
 
 1b C2 fold-in 2 (carl-forkexec .out/brief-1b-c2-fold2.md): capture-tree, check-signal, gate-signal and pg-kill observe tree death through a FIFO that test code opens by path and maps explicitly. Library spawn words carry no extra fds; the capture and pool words are unchanged.
+
+Joel 2026-10-29: superseded by the approved PROCESS API (parent dot): package SPAWN becomes PROCESS, request PROCESS:request, CLOSE becomes CLOSED, plus ARG/ENV/HERMETIC/STDIN/CANCEL/TICK/RUN; this lane is PROCESS lane 1.
