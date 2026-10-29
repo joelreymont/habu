@@ -22,7 +22,8 @@
 \ character literals and a string, whose facts sit at the ordinals those tokens
 \ advance; and a hostile tag, in a child, reaches T0's trap and exits
 \ ENGINE-ERROR:BAD-TAG. The wide rows run each stack word T0 compiles over a
-\ two-cell product with a cell under the result, a swap in a does> parent and
+\ two-cell product with a cell under the result, and -rot 2dup 2drop 2swap
+\ 2over 2>r 2r@ 2r> over one-cell values from memory and registers, a swap in a does> parent and
 \ in its clause, a 2swap and a 2over in a does> parent whose deepest operand is
 \ two cells, a three-cell product among one-cell values, a swap of two
 \ eight-cell values, whose copies fill the virtual stack, and a local bound
@@ -440,6 +441,16 @@ CAST: TWIN>CELLS ( ptr twin -- ptr n )
 : W-2OVER ( pt n n n -- pt n n n pt n ) 2over ;
 : W-R ( n pt -- n pt pt ) >r r@ r> ;
 : W-2R ( pt n -- pt n pt n ) 2>r 2r@ 2r> ;
+
+\ The same words over one-cell values: each body's operands start in memory,
+\ and the 1+ in N-MIX and N-2R puts one in a register first.
+: N--ROT ( n n n -- n n n ) -rot ;
+: N-2DUP ( n n -- n n n n ) 2dup ;
+: N-2DROP ( n n n -- n ) 2drop ;
+: N-2SWAP ( n n n n -- n n n n ) 2swap ;
+: N-2OVER ( n n n n -- n n n n n n ) 2over ;
+: N-MIX ( n n n -- n n n n ) 1+ -rot 1+ 2dup + ;
+: N-2R ( n n -- n n n n ) 1+ 2>r 2r@ 2r> ;
 : W-LOCAL ( pt n -- n pt ) {: v:pt k:n :} k v ;
 : W-DEF ( n -- ) create 3 4 PT swap >r PT-V r> + , does> ( pt -- n pt ) @ swap ;
 5 W-DEF W39
@@ -1006,6 +1017,14 @@ private
    77 9 3 4 PT W-R PT-V 34 T= PT-V 34 T= 9 T= 77 T=
    77 3 4 PT 9 W-2R 9 T= PT-V 34 T= 9 T= PT-V 34 T= 77 T=
    77 3 4 PT 9 W-LOCAL PT-V 34 T= 9 T= 77 T=
+   s" each moved stack word over one-cell values" T-LABEL
+   77 1 2 3 N--ROT 2 T= 1 T= 3 T= 77 T=
+   77 1 2 N-2DUP 2 T= 1 T= 2 T= 1 T= 77 T=
+   77 1 2 3 N-2DROP 1 T= 77 T=
+   77 1 2 3 4 N-2SWAP 2 T= 1 T= 4 T= 3 T= 77 T=
+   77 1 2 3 4 N-2OVER 2 T= 1 T= 4 T= 3 T= 2 T= 1 T= 77 T=
+   77 1 2 3 N-MIX 4 T= 3 T= 1 T= 4 T= 77 T=
+   77 1 2 N-2R 3 T= 1 T= 3 T= 1 T= 77 T=
    s" a two-cell value in a does> parent and clause" T-LABEL
    77 5 6 PT W39 PT-V 56 T= 39 T= 77 T=
    s" a does> parent's 2swap and 2over over a deepest two-cell value" T-LABEL

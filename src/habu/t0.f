@@ -134,11 +134,11 @@
 \ definer's parent keeps its widths past the clause's check. An unmeasured
 \ operand is one cell, as the checker files only layout values.
 \ Over one-cell operands dup drop swap over nip tuck rot keep their entry
-\ moves and -rot 2dup 2drop 2swap 2over 2>r 2r> 2r@ call the primitive; a
-\ wider operand goes through MOVE-WIDE, which copies each output cell on top
-\ from the entry or memory cell it comes from, leaving in place the bottom
-\ operands the word keeps, and then removes the cells it consumed from under
-\ the copies, and a wider 2>r 2r> 2r@ through its swap and >r composition. `>r`
+\ moves; -rot 2dup 2drop 2swap 2over, and those over a wider operand, go
+\ through MOVE-WIDE, which copies each output cell on top from the entry or
+\ memory cell it comes from, leaving in place the bottom operands the word
+\ keeps, and then removes the cells it consumed from under the copies, and
+\ 2>r 2r> 2r@ through their swap and >r composition. `>r`
 \ and `r>` move every cell of the value one at a time, so a value's cells sit
 \ on the return stack in reverse and `r>` restores their order; `r@` of a
 \ wider value is `r>` and a copy pushed back. `@` and `!` move the cells the
@@ -1307,23 +1307,12 @@ variable TAILED
    then
    to loc T0-EMIT:CALL ;
 
-\ The token at a, which binds the engine's primitive, as a call of it.
-: PRIM-CALL ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u NDICT:CALL-TARGET  a TXT$ - DO-CALL ;
+\ The stack word at token a over k operands, moved as outs, MOVE-WIDE's digits.
+: MOVE-OP ( ptr u8 n ptr u8 n -- ) {: a:ptr k:n outs:ptr u:n :}
+   a k WIDTHS  outs u MOVE-WIDE ;
 
-\ A stack word of k operands that T0 calls over one-cell operands, and moves
-\ as outs, MOVE-WIDE's digits, when one is wider.
-: CALL-SHUFFLE ( ptr u8 n n ptr u8 n -- ) {: a:ptr u:n k:n outs:ptr v:n :}
-   a k WIDTHS
-   WIDE? if outs v MOVE-WIDE exit then
-   a u PRIM-CALL ;
-
-\ A two-operand return-stack word: a call over one-cell operands, else the
-\ composition xt runs.
-: CALL-PAIR ( [ -- ] ptr u8 n -- ) {: a:ptr u:n :}
-   a 2 WIDTHS
-   WIDE? if execute exit then
-   drop a u PRIM-CALL ;
+\ The two-operand return-stack word at token a, as the composition xt.
+: PAIR-OP ( [ -- ] ptr u8 -- ) {: a:ptr :} a 2 WIDTHS execute ;
 
 : 2RFETCH ( -- ) 2RFROM s" 1010" MOVE-WIDE 2TOR ;
 
@@ -1649,9 +1638,9 @@ TRUSTED: DOES-PATCH-ENTRY ( -- n ) ['] does-patch ;
    a u s" dup" OP? if [: DUP1 ;] a 1 s" 00" SHUFFLE true exit then
    a u s" rot" OP? if [: ROT1 ;] a 3 s" 102" SHUFFLE true exit then
    a u s" nip" OP? if [: NIP1 ;] a 2 s" 0" SHUFFLE true exit then
-   a u s" 2>r" OP? if [: 2TOR ;] a u CALL-PAIR true exit then
-   a u s" 2r>" OP? if [: 2RFROM ;] a u CALL-PAIR true exit then
-   a u s" 2r@" OP? if [: 2RFETCH ;] a u CALL-PAIR true exit then
+   a u s" 2>r" OP? if [: 2TOR ;] a PAIR-OP true exit then
+   a u s" 2r>" OP? if [: 2RFROM ;] a PAIR-OP true exit then
+   a u s" 2r@" OP? if [: 2RFETCH ;] a PAIR-OP true exit then
    a u s" and" CELL-OP? if [: and ;] T0-EMIT:OP-AND true ALU2 true exit then
    a u s" xor" CELL-OP? if [: xor ;] T0-EMIT:OP-XOR true ALU2 true exit then
    false ;
@@ -1667,8 +1656,8 @@ TRUSTED: DOES-PATCH-ENTRY ( -- n ) ['] does-patch ;
    a u s" swap" OP? if [: SWAP1 ;] a 2 s" 01" SHUFFLE true exit then
    a u s" over" OP? if [: OVER1 ;] a 2 s" 101" SHUFFLE true exit then
    a u s" tuck" OP? if [: TUCK1 ;] a 2 s" 010" SHUFFLE true exit then
-   a u s" -rot" OP? if a u 3 s" 021" CALL-SHUFFLE true exit then
-   a u s" 2dup" OP? if a u 2 s" 1010" CALL-SHUFFLE true exit then
+   a u s" -rot" OP? if a 3 s" 021" MOVE-OP true exit then
+   a u s" 2dup" OP? if a 2 s" 1010" MOVE-OP true exit then
    false ;
 
 : KW5 ( ptr u8 n -- bool ) {: a:ptr u:n :}
@@ -1680,9 +1669,9 @@ TRUSTED: DOES-PATCH-ENTRY ( -- n ) ['] does-patch ;
    a u s" leave" STR=CI if DO-LEAVE true exit then
    a u s" endof" STR=CI if ARM-END true exit then
    a u s" MATCH" STR=CI if DO-MATCH true exit then
-   a u s" 2drop" OP? if a u 2 s" " CALL-SHUFFLE true exit then
-   a u s" 2swap" OP? if a u 4 s" 1032" CALL-SHUFFLE true exit then
-   a u s" 2over" OP? if a u 4 s" 321032" CALL-SHUFFLE true exit then
+   a u s" 2drop" OP? if a 2 s" " MOVE-OP true exit then
+   a u s" 2swap" OP? if a 4 s" 1032" MOVE-OP true exit then
+   a u s" 2over" OP? if a 4 s" 321032" MOVE-OP true exit then
    false ;
 
 : KW6 ( ptr u8 n -- bool ) {: a:ptr u:n :}
