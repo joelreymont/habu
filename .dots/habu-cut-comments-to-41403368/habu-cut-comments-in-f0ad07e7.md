@@ -11,3 +11,5 @@ Problem: the comments under src/habu (the files not in the T0 child) restate cod
 Batch 3 running 2026-10-29 in tvzpwmwt (on txpzkrxl); check.f proofs run with the line's g2 engine (jerry-s2b1/.out/land/g2/hb).
 
 2026-10-30: three commits on master, squashed before review: tvzpwmwt (jerry-t0-comments, the directory except three files; kernel-x64.f and verify-source.f left), unouvzrk (jerry-t0c-habu2, habu1.f done, layout.f from line 1357), xukqpust (jerry-t0c-habu3, habu2.f full-line comments done, trailing ones left). Workers relaunched 00:30.
+
+2026-10-30 01:25: the three src/habu commits squashed into tvzpwmwt (70 files); the EVAL-ENTER citations in interpret.f and definers.f now name EMIT-EVAL-BODY; rebased onto 5505243f as 0429bef7; Opus review running.
