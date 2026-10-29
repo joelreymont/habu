@@ -1,6 +1,6 @@
 ---
 title: "C-string L5 PROCESS: spawn ZCOPY and ADD-ENV through FFI:CSTR"
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-10-29T22:14:58.666458+02:00"

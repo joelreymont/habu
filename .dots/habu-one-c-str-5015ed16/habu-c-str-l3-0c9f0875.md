@@ -1,6 +1,6 @@
 ---
 title: "C-string L3 FS: PATHZ-INTO, A-SNAPSHOT, ATOMIC-WRITE-SEED through FFI:CSTR"
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-10-29T22:14:58.627502+02:00"

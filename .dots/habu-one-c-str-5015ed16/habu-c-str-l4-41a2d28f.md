@@ -1,6 +1,6 @@
 ---
 title: "C-string L4 library: curl, secret, f64-text, zip-raw, process-tree, argv, engine-id through FFI:CSTR"
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-10-29T22:14:58.644000+02:00"
