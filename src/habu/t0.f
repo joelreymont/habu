@@ -333,14 +333,16 @@ variable FREE                       \ bit k set: no entry holds vreg k
 
 : VREG@ ( n -- T0-EMIT:vreg ) VS-VAL @ T0-EMIT:>VREG ;
 
-\ Whether an entry holds vreg n.
-: HELD? ( n -- bool ) {: n:n :}
-   false VS-N @ 0 ?do i REG? i VS-VAL @ n = and or loop ;
+-1 constant NO-ENTRY                \ an entry index HOLDERS skips none for
+
+\ How many entries other than entry x hold vreg v.
+: HOLDERS ( n n -- n ) {: v:n x:n :}
+   0 VS-N @ 0 ?do i x <> i REG? and i VS-VAL @ v = and if 1+ then loop ;
 
 \ Free a vreg once no entry holds it; one an entry still holds stays allocated.
 : RELEASE ( T0-EMIT:vreg -- )
    T0-EMIT:VREG>N {: n:n :}
-   n HELD? if exit then
+   n NO-ENTRY HOLDERS 0<> if exit then
    1 n lshift FREE @ or FREE ! ;
 
 : ENTRY! ( n n n -- ) {: kind:n val:n k:n :}
@@ -381,9 +383,10 @@ variable FREE                       \ bit k set: no entry holds vreg k
    1 n lshift invert FREE @ and FREE !
    n T0-EMIT:>VREG ;
 
-\ A vreg no entry holds. Entries holding fewer than VREGS distinct vregs leave
-\ one free; entries holding all of them are VREGS entries with a vreg each, so
-\ EVICT frees the bottom one's.
+\ A vreg no entry or TAKE holds. A caller holding a taken vreg ALLOCs only for
+\ an entry with none, at most VREGS-1 entries being left, so a vreg is free;
+\ with none taken, entries holding every vreg hold one each, so EVICT frees the
+\ bottom one's.
 : ALLOC ( -- T0-EMIT:vreg )
    FREE @ 0= if EVICT then
    FREE @ {: m:n :}
@@ -469,10 +472,8 @@ variable FREE                       \ bit k set: no entry holds vreg k
    VS-N @ 1- VS-N !
    r ;
 
-\ Whether an entry other than k holds k's vreg.
-: SHARED? ( n -- bool ) {: k:n :}
-   k VS-VAL @ {: v:n :}
-   false VS-N @ 0 ?do i k <> i REG? and i VS-VAL @ v = and or loop ;
+\ Whether an entry other than k and x holds vreg entry k's vreg.
+: SHARED? ( n n -- bool ) {: k:n x:n :} k VS-VAL @ x HOLDERS 1 > ;
 
 \ Entry k relabelled to a fresh vreg, returned. A shared entry means a vreg is
 \ free, so ALLOC evicts nothing and k stays put.
@@ -481,11 +482,12 @@ variable FREE                       \ bit k set: no entry holds vreg k
    K-REG d T0-EMIT:VREG>N k ENTRY!
    d ;
 
-\ Entry k in a vreg no other entry holds, for an operation that writes it in
-\ place (d op= s): a shared vreg is copied into a fresh one first.
-: OWN ( n -- T0-EMIT:vreg ) {: k:n :}
+\ Entry k in a vreg no entry other than k and x holds, for an operation that
+\ writes it in place (d op= s) and consumes entry x, NO-ENTRY when it consumes
+\ none: a vreg shared with a third entry is copied into a fresh one first.
+: OWN ( n n -- T0-EMIT:vreg ) {: k:n x:n :}
    k MAT {: r:T0-EMIT:vreg :}
-   k SHARED? 0= if r exit then
+   k x SHARED? 0= if r exit then
    k RELABEL {: d:T0-EMIT:vreg :}
    d r T0-EMIT:MOV
    d ;
@@ -495,7 +497,7 @@ variable FREE                       \ bit k set: no entry holds vreg k
 \ nothing is copied into it.
 : WRITE-TARGET ( n -- T0-EMIT:vreg ) {: k:n :}
    k MAT {: r:T0-EMIT:vreg :}
-   k SHARED? 0= if r exit then
+   k NO-ENTRY SHARED? 0= if r exit then
    k RELABEL ;
 
 \ ---- inline operations -------------------------------------------------------
@@ -515,21 +517,21 @@ variable FREE                       \ bit k set: no entry holds vreg k
 \ Whether the two top entries are constants.
 : CONST2? ( -- bool ) TOP 1- CONST? TOP CONST? and ;
 
-\ The second entry, now in a vreg of its own, holds the result; the top entry
-\ goes.
+\ The second entry, in a vreg no entry but the top one holds, holds the result;
+\ the top entry, which may share that vreg (`dup *`), goes.
 : INTO-SECOND ( -- T0-EMIT:vreg T0-EMIT:vreg )
-   TOP 1- OWN  TOP MAT ;
+   TOP 1- TOP OWN  TOP MAT ;
 
 : ALU2 ( [ n n -- n ] T0-EMIT:alu bool -- ) {: o:T0-EMIT:alu comm:bool :}
    2 ENSURE
    CONST2? if FOLD2 exit then
    drop
    TOP IMM? if
-      TOP 1- OWN TOP VS-VAL @ o T0-EMIT:OP-LIT
+      TOP 1- NO-ENTRY OWN TOP VS-VAL @ o T0-EMIT:OP-LIT
       TOP REMOVE exit
    then
    comm TOP 1- IMM? and if
-      TOP OWN TOP 1- VS-VAL @ o T0-EMIT:OP-LIT
+      TOP NO-ENTRY OWN TOP 1- VS-VAL @ o T0-EMIT:OP-LIT
       TOP 1- REMOVE exit
    then
    INTO-SECOND {: d:T0-EMIT:vreg s:T0-EMIT:vreg :}
@@ -540,11 +542,11 @@ variable FREE                       \ bit k set: no entry holds vreg k
    2 ENSURE
    CONST2? if [: * ;] FOLD2 exit then
    TOP IMM? if
-      TOP 1- OWN TOP VS-VAL @ T0-EMIT:MUL-LIT
+      TOP 1- NO-ENTRY OWN TOP VS-VAL @ T0-EMIT:MUL-LIT
       TOP REMOVE exit
    then
    TOP 1- IMM? if
-      TOP OWN TOP 1- VS-VAL @ T0-EMIT:MUL-LIT
+      TOP NO-ENTRY OWN TOP 1- VS-VAL @ T0-EMIT:MUL-LIT
       TOP 1- REMOVE exit
    then
    INTO-SECOND {: d:T0-EMIT:vreg s:T0-EMIT:vreg :}
@@ -567,7 +569,7 @@ variable FREE                       \ bit k set: no entry holds vreg k
    DIVISOR? 0= if 2drop false exit then
    2 ENSURE
    CONST2? if drop FOLD2 true exit then
-   nip TOP 1- OWN TOP VS-VAL @ rot execute
+   nip TOP 1- NO-ENTRY OWN TOP VS-VAL @ rot execute
    TOP REMOVE true ;
 
 : SHIFT2 ( [ n n -- n ] T0-EMIT:shifter -- ) {: o:T0-EMIT:shifter :}
@@ -575,7 +577,7 @@ variable FREE                       \ bit k set: no entry holds vreg k
    CONST2? if FOLD2 exit then
    drop
    TOP CONST? if
-      TOP 1- OWN TOP VS-VAL @ o T0-EMIT:SHIFT-LIT
+      TOP 1- NO-ENTRY OWN TOP VS-VAL @ o T0-EMIT:SHIFT-LIT
       TOP REMOVE exit
    then
    INTO-SECOND {: d:T0-EMIT:vreg s:T0-EMIT:vreg :}
@@ -597,7 +599,7 @@ variable FREE                       \ bit k set: no entry holds vreg k
 : UNARY ( [ n -- n ] [ T0-EMIT:vreg -- ] -- )
    1 ENSURE
    TOP CONST? if drop FOLD1 exit then
-   nip TOP OWN swap execute ;
+   nip TOP NO-ENTRY OWN swap execute ;
 
 : FETCH ( T0-EMIT:width -- ) {: w:T0-EMIT:width :}
    1 ENSURE

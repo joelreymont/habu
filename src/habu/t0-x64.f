@@ -395,7 +395,7 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
 
 : FWD-NE-LIT ( T0-EMIT:vreg n -- T0-LABEL:branch )
    {: sel:T0-EMIT:vreg v:n :}
-   sel REG v >IMM32 SINK ENC-CMP-RI32
+   sel v CMP-LIT
    C-NE FWD-JCC ;
 
 : FWD-GE ( T0-EMIT:vreg T0-EMIT:vreg -- T0-LABEL:branch )

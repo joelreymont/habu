@@ -630,16 +630,14 @@ DYNAMIC-BUFFER BR-ARG n
    {: a:T0-EMIT:vreg b:T0-EMIT:vreg :}
    a REG b REG ENC-CMP W ;
 
-\ Compare register r with v: cmp for an imm12, cmn for a negated one, else
-\ against x16.
-: CMP-RI ( n n -- ) {: r:n v:n :}
-   v negate {: nv:n :}
+\ Compare a with v: cmp for an imm12, cmn for a negated one, else against x16.
+: CMP-LIT ( T0-EMIT:vreg n -- )
+   {: a:T0-EMIT:vreg v:n :}
+   a REG v negate {: r:n nv:n :}
    v 0 >= v IMM12-LIM < and if r v ENC-CMPI W exit then
    nv 0 > nv IMM12-LIM < and if r nv ENC-CMNI W exit then
    v TMP LIT-R
    r TMP ENC-CMP W ;
-
-: CMP-LIT ( T0-EMIT:vreg n -- ) {: a:T0-EMIT:vreg v:n :} a REG v CMP-RI ;
 
 \ Every literal is admitted: OP-LIT, MUL-LIT, CMP-LIT and OF-LIT load one
 \ no immediate field holds into x16.
@@ -720,7 +718,7 @@ DYNAMIC-BUFFER BR-ARG n
 
 : FWD-NE-LIT ( T0-EMIT:vreg n -- T0-LABEL:branch )
    {: sel:T0-EMIT:vreg v:n :}
-   sel REG v CMP-RI
+   sel v CMP-LIT
    C-NE FWD-BCOND ;
 
 : FWD-GE ( T0-EMIT:vreg T0-EMIT:vreg -- T0-LABEL:branch )

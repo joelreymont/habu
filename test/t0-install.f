@@ -37,8 +37,10 @@
 \ kept; a forged tag fetched in a child, from an enum slot and from a product's
 \ enum field, ends the process `hb: bad layout tag` with ENGINE-ERROR:BAD-TAG.
 \ The share rows run bodies whose copies share a vreg with their source, each
-\ with a cell under its result: in-place arithmetic, a negate and loads on a
-\ copy, a copy parked on the return stack, comparisons of a copy, and fifteen
+\ with a cell under its result: arithmetic on a copy with a register, a
+\ literal on either side and a shift count, a negate of a copy, a copy parked
+\ on the return stack, loads through a copied address, comparisons of a copy
+\ with zero, with a literal on either side and with a register, and fifteen
 \ copies that fill the virtual stack and evict a shared vreg. The cell rows
 \ run `cells` over a negative count, store and fetch through a pointer table
 \ by `ptr-field`, and fold `3 cells cell+`, with a cell under each result. The
@@ -485,12 +487,17 @@ W-DEF-2OVER W-PO
 \ ---- copies that share a vreg ---------------------------------------------------
 : S-INC ( n -- n ) dup 1+ + ;
 : S-TRIPLE ( n -- n ) dup dup + + ;
-: S-OVER ( n n -- n n ) over + swap ;
-: S-TUCK ( n n -- n n ) tuck - ;
+: S-ADDC ( n -- n n ) dup 5 swap + ;
+: S-MULC ( n -- n n ) dup 3 swap * ;
+: S-MULL ( n -- n n ) dup 3 * ;
+: S-SHL ( n -- n n ) dup 2 lshift ;
+: S-NEG ( n -- n n ) dup negate ;
 : S-PARK ( n -- n ) dup >r 1+ r> + ;
 : S-BYTES ( ptr u8 -- n ) dup c@ swap 1+ c@ + ;
 : S-ABS ( n -- n ) dup 0< if negate then ;
 : S-RANGE ( n -- bool ) dup 5 < swap 3 > and ;
+: S-LT5 ( n -- n bool ) dup 5 swap < ;
+: S-LESS ( n n -- n n bool ) over over < ;
 : S-FILL ( n -- n )
    dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup
    + + + + + + + + + + + + + + + ;
@@ -1120,19 +1127,27 @@ private
    s" arithmetic on a copy leaves its source" T-LABEL
    77 5 S-INC 11 T= 77 T=
    77 5 S-TRIPLE 15 T= 77 T=
-   77 3 4 S-OVER 3 T= 7 T= 77 T=
-   77 3 4 S-TUCK -1 T= 4 T= 77 T=
+   s" a literal on either side of a copy leaves its source" T-LABEL
+   77 3 S-ADDC 8 T= 3 T= 77 T=
+   77 3 S-MULC 9 T= 3 T= 77 T=
+   77 3 S-MULL 9 T= 3 T= 77 T=
+   s" a shift of a copy leaves its source" T-LABEL
+   77 3 S-SHL 12 T= 3 T= 77 T=
+   s" a negate of a copy leaves its source" T-LABEL
+   77 3 S-NEG -3 T= 3 T= 77 T=
    s" a copy parked on the return stack keeps its value" T-LABEL
    77 5 S-PARK 11 T= 77 T=
    s" loads through a copied address" T-LABEL
    77 s" AB" drop S-BYTES 131 T= 77 T=
-   s" a negate of a compared copy" T-LABEL
+   s" a compare with zero on a copy leaves its source" T-LABEL
    77 -5 S-ABS 5 T= 77 T=
    77 5 S-ABS 5 T= 77 T=
    s" two comparisons of one value" T-LABEL
    77 4 S-RANGE TTRUE 77 T=
-   77 6 S-RANGE TFALSE 77 T=
-   77 2 S-RANGE TFALSE 77 T=
+   s" a literal compared with a copy leaves its source" T-LABEL
+   77 3 S-LT5 TFALSE 3 T= 77 T=
+   s" a compare of two copies leaves both sources" T-LABEL
+   77 3 4 S-LESS TTRUE 4 T= 3 T= 77 T=
    s" fifteen copies fill the virtual stack and evict a shared vreg" T-LABEL
    77 3 S-FILL 48 T= 77 T= ;
 

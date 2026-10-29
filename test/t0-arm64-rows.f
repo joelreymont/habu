@@ -5,13 +5,14 @@
 \ `cmp #imm`, a variable into its data address row) while a does> child stays
 \ a call, the writeback transfers that move the data stack pointer with a
 \ spill's or fill's last cell, a copy that shares its vreg until a load
-\ writes a fresh one, a compare that branches on its condition codes, a value
-\ filled after a call into the register its loop's back edge expects, stack
-\ words over one-cell values, and cells, cell+ and ptr-field, that call
-\ nothing, the x86-64 stack moves that leave those codes alone, a divide by a
-\ literal (an arm64 sdiv and msub in a leap-year test, the x86-64 idiv bytes
-\ with the register it saves), and the refusals that keep the patch slot last
-\ and an operation x86-64 does not provide from running.
+\ writes a fresh one, a square that multiplies a shared vreg by itself, a
+\ compare that branches on its condition codes, a value filled after a call
+\ into the register its loop's back edge expects, stack words over one-cell
+\ values, and cells, cell+ and ptr-field, that call nothing, the x86-64 stack
+\ moves that leave those codes alone, a divide by a literal (an arm64 sdiv and
+\ msub in a leap-year test, the x86-64 idiv bytes with the register it saves),
+\ and the refusals that keep the patch slot last and an operation x86-64 does
+\ not provide from running.
 \ Bodies are compiled by T0:COMPILE-TEXT or driven through the seam, sealed
 \ into NEMIT, and checked by decoding the words NEMIT answers against the
 \ assembler's encodings.
@@ -172,6 +173,15 @@ variable CELLV
    s" and the address pushes from x9" T-LABEL
    12 WORD@ 9 DS 16 A64ASM:ENC-STRPOST T=
    4 WORDS=
+   NEMIT:CLEAR
+   s" SQ ( n -- n ) dup * " BODY
+   s" the value fills x9" T-LABEL
+   0 WORD@ 9 DS -8 A64ASM:ENC-LDRPRE T=
+   s" `*` consumes the copy, so x9 multiplies by itself with no mov" T-LABEL
+   4 WORD@ 9 9 9 A64ASM:ENC-MUL T=
+   s" the square pushes from x9" T-LABEL
+   8 WORD@ 9 DS 8 A64ASM:ENC-STRPOST T=
+   3 WORDS=
    NEMIT:CLEAR ;
 
 \ The defer an `is` body binds. Its address row names the defer's cell and files
