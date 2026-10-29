@@ -522,7 +522,7 @@ ARCHES TYPED-BUFFER LOOP-CLOSE-XT [ -- ]
 : LEAVE, ( -- ) CUR @ LEAVE,-XT @ execute ;
 
 \ `loop`: step the index by one and branch back to the head while it is below
-\ the limit. t is a free vreg it clobbers.
+\ the limit. t is a free vreg it may clobber.
 : LOOP-NEXT ( vreg -- ) CUR @ LOOP-NEXT-XT @ execute ;
 
 \ `+loop`: step the index by s and branch back to the head unless it crossed

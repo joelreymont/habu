@@ -724,6 +724,43 @@ TRUSTED: L-WAGAIN ( n n -- n n )
    8 0 do 1+ 2 +loop
    + + + + + + + + + + + + + + ;
 
+\ ---- the cached loop index ----------------------------------------------------
+\ On arm64 x29 caches the innermost index beside its frame cell. Each body
+\ reaches `i`, `loop` or `+loop` from code that ran another loop, a callee's,
+\ a nested level's or one on another path into a join, so a stale cache shows
+\ as a wrong result.
+
+\ 3 + 4 + 5 + 6, leaving its index at 7.
+: X-INNER ( -- n ) 0 7 3 do i + loop ;
+
+: X-CALL ( n -- n ) 0 swap 0 do X-INNER drop i + loop ;
+
+: X-REC ( n -- n )
+   dup 0= if exit then
+   0 over 2 + 0 do over 1- recurse drop i + loop nip ;
+
+\ The arm that runs a loop joins the one that read `i`.
+: X-JOIN ( n -- n )
+   0 swap 0 do i 1 and 0<> if X-INNER drop else i drop then i + loop ;
+
+\ The outer index after an inner level closes at its limit.
+: X-NEST ( n -- n ) 0 swap 0 do 5 0 do loop i + loop ;
+
+: X-UNLOOP ( -- n )
+   5 2 do 3 0 do i 1 = if unloop i unloop exit then loop loop 0 ;
+
+\ The begin loop's back edge arrives from a call.
+: X-BEGIN ( n -- n )
+   0 swap 0 do 3 begin i rot + swap X-INNER drop 1- dup 0= until drop loop ;
+
+: X-DOWN ( -- n ) 0 0 10 do i + X-INNER drop i + -2 +loop ;
+
+: X-J ( -- n ) 0 3 0 do 4 0 do X-INNER drop i j 10 * + + loop loop ;
+
+\ The inner level leaves after a call; the outer index follows its close.
+: X-LEAVE ( n -- n )
+   0 swap 0 do 10 0 do i 2 = if X-INNER drop leave then loop i + loop ;
+
 \ ---- is ------------------------------------------------------------------------
 defer HOOK ( n -- n )
 : INC ( n -- n ) 1+ ;
@@ -1139,6 +1176,27 @@ private
    s" a full virtual stack at do" T-LABEL
    77 1 D-FULL 124 T= 77 T=   77 1 D-FULL-STEP 124 T= 77 T= ;
 
+\ Each read of a cached index with a cell under its result.
+: IDX-CASE ( -- )
+   s" i after a call whose callee runs a loop" T-LABEL
+   77 4 X-CALL 6 T= 77 T=
+   s" i after a recursive call that runs the loop" T-LABEL
+   77 2 X-REC 6 T= 77 T=
+   s" i after a join with an arm that runs a loop" T-LABEL
+   77 4 X-JOIN 6 T= 77 T=
+   s" i after an inner level closes" T-LABEL
+   77 4 X-NEST 6 T= 77 T=
+   s" i of the outer level after unloop" T-LABEL
+   77 X-UNLOOP 2 T= 77 T=
+   s" i in a begin loop whose body runs a loop" T-LABEL
+   77 4 X-BEGIN 18 T= 77 T=
+   s" i around a call in a +loop counting down" T-LABEL
+   77 X-DOWN 60 T= 77 T=
+   s" j and i around a call with both levels live" T-LABEL
+   77 X-J 138 T= 77 T=
+   s" i after an inner level that leaves after a call" T-LABEL
+   77 4 X-LEAVE 6 T= 77 T= ;
+
 \ A forged tag in an enum slot and in a product's enum field: the fetch's tag
 \ check ends the child after the fixture armed it.
 : FETCH-FORGED ( -- )
@@ -1167,6 +1225,7 @@ public
    JOIN-CASE
    LOOP-REG-CASE
    DO-REG-CASE
+   IDX-CASE
    FETCH-FORGE-CASE
    IS-CASE
    CALLBACK-CASE

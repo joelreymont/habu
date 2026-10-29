@@ -12,9 +12,8 @@
 \ W-PUSHR, W-POPR). x20 is DATA and x19, x20, x26, x27 and x28 are the engine's
 \ (src/habu/layout.f ENGINE-GPR:A64-MASK); compiled code never writes them
 \ except x19 as the stack. x18 is Darwin's and never named (src/arch/arm64/asm.f
-\ XREG? refuses it). x29 is the JIT's loop-index cache, which every call
-\ invalidates (src/habu/regalloc.f LIDX, cleared at every call by src/habu/habu2.f
-\ LCEMITBL); this file never writes it. The vregs are
+\ XREG? refuses it). x29 caches the innermost loop's index, as it does for the
+\ JIT (src/habu/regalloc.f LIDX), and any callee may write it. The vregs are
 \ the JIT's register pool in its order, x9..x15 then x25 x23 x24 x21 x22 x6 x7
 \ x8 (src/habu/regalloc.f VRPACK, VRPACK2), the registers a body may clobber.
 \ x16 and x17 are this file's own temporaries, a literal and an address, and
@@ -77,6 +76,17 @@
 \ THE RETURN STACK is RSP-CELL cells deep from the base at
 \ STACK-ABI:RETURN-BASE-CELL; slot d is base + 8d, as habu2.f J-TOR and J-RPOP
 \ reach it.
+\
+\ THE INDEX CACHE. The frame cell stays the index's home, since `j` and the
+\ runtime read it, and x29 is a copy written beside every store of it, as
+\ habu2.f J-FRAME keeps it for the JIT. HELD says whether the code emitted
+\ next may read x29: LOOP-PUSH and a loop head set it, and so do `i` and a
+\ step once they load it. Every call clears it, since the callee may run a
+\ loop, and so does every label a branch lands on, MARK and RESOLVE, since a
+\ branch may come from code that wrote x29; LOOP-POP and the start of a unit
+\ clear it too. While it is clear, `i`, `loop` and `+loop` load x29 from the
+\ frame first. A refused token discards the whole emission, and OPEN begins
+\ the next one clear.
 
 require src/lib/errors.f
 require src/lib/byte-buffer.f
@@ -98,6 +108,7 @@ using A64ASM
 16 constant TMP                       \ x16, a literal
 17 constant ADR                       \ x17, an address
 30 constant LR
+29 constant IDX                       \ x29, the innermost index's cache
 9 constant CB-ID                      \ x9, the stub's slot for its thunk
 4 constant INSN                       \ the bytes of one instruction word
 31 constant SP                        \ as a base or an add/sub operand
@@ -148,6 +159,7 @@ create EPI BUF:HDR-BYTES allot        \ the open unit's epilogue, built at CLOSE
 variable LIVE                         \ nonzero once the buffers hold storage
 variable FRAME-CELLS                  \ machine-stack cells this unit uses
 variable LINKED                       \ nonzero once this unit calls
+variable HELD                         \ nonzero while x29 holds the index
 variable NEPI
 variable NPEND
 variable NUNIT                        \ units begun in this emission
@@ -355,8 +367,8 @@ DYNAMIC-BUFFER BR-ARG n
    RAW BUF:CLEAR
    OUT-OFF T0-EMIT:UNIT+
    NUNIT @ 1 + NUNIT !
-   0 FRAME-CELLS !  0 LINKED !  0 NEPI !  0 NPEND !  0 NPCALL !  0 NSELF !
-   0 NBR ! ;
+   0 FRAME-CELLS !  0 LINKED !  0 HELD !  0 NEPI !  0 NPEND !  0 NPCALL !
+   0 NSELF !  0 NBR ! ;
 
 \ How many epilogues CLOSE inserts at or before raw offset x.
 : SITES<= ( n -- n ) {: x:n :}
@@ -646,7 +658,7 @@ DYNAMIC-BUFFER BR-ARG n
 
 \ ---- calls -------------------------------------------------------------------
 : CALL ( n n -- ) {: to:n loc:n :}
-   1 LINKED !
+   1 LINKED !  0 HELD !
    HERE-OFF NEMIT:CALL to loc PCALL+
    0 true BRANCH W ;
 
@@ -656,7 +668,7 @@ DYNAMIC-BUFFER BR-ARG n
    0 false BRANCH W ;
 
 : CALL-SELF ( -- )
-   1 LINKED !
+   1 LINKED !  0 HELD !
    HERE-OFF SELF+
    0 true BRANCH W ;
 
@@ -677,9 +689,10 @@ DYNAMIC-BUFFER BR-ARG n
    k T0-LABEL:>BRANCH ;
 
 \ Bind the forward branch to here.
-: RESOLVE ( T0-LABEL:branch -- ) HERE-OFF swap T0-LABEL:BRANCH>N BR-TO ! ;
+: RESOLVE ( T0-LABEL:branch -- )
+   HERE-OFF swap T0-LABEL:BRANCH>N BR-TO !  0 HELD ! ;
 
-: MARK ( -- T0-LABEL:head ) HERE-OFF T0-LABEL:>HEAD ;
+: MARK ( -- T0-LABEL:head ) 0 HELD !  HERE-OFF T0-LABEL:>HEAD ;
 
 : FWD-JUMP ( -- T0-LABEL:branch ) FORM-B 0 -1 BR+ ;
 : FWD-BCOND ( n -- T0-LABEL:branch ) FORM-BCOND swap -1 BR+ ;
@@ -733,12 +746,19 @@ DYNAMIC-BUFFER BR-ARG n
 -16 constant LIDX-OFF
 -8 constant LLIM-OFF
 
-\ The index of the frame k levels out of the innermost into d.
-: LINDEX ( T0-EMIT:vreg n -- )
-   {: d:T0-EMIT:vreg k:n :}
+\ The index of the frame outside the innermost into d, from memory.
+: LOOP-J ( T0-EMIT:vreg -- )
+   {: d:T0-EMIT:vreg :}
    LDEPTH LTOP
-   d REG ADR LIDX-OFF k 16 * - false XFER ;
+   d REG ADR LIDX-OFF 16 - false XFER ;
 
+\ x17 the address past the innermost frame, and x29 its index unless HELD
+\ says it holds it already.
+: FRAME-IDX ( -- )
+   LDEPTH LTOP
+   HELD @ if exit then
+   IDX ADR LIDX-OFF false XFER
+   1 HELD ! ;
 
 : LOOP-PUSH ( T0-EMIT:vreg T0-EMIT:vreg -- )
    {: s:T0-EMIT:vreg l:T0-EMIT:vreg :}
@@ -746,25 +766,33 @@ DYNAMIC-BUFFER BR-ARG n
    TMP TMP 1 ENC-ADDI W
    LDEPTH! LTOP
    s REG ADR LIDX-OFF true XFER
-   l REG ADR LLIM-OFF true XFER ;
+   l REG ADR LLIM-OFF true XFER
+   IDX s REG ENC-MOV W
+   1 HELD ! ;
+
+\ The head binds with x29 holding the index: the entry arrives from LOOP-PUSH
+\ and every back edge from LOOP-NEXT or LOOP-STEP.
+: LOOP-OPEN ( T0-EMIT:vreg T0-EMIT:vreg bool -- )
+   T0-LABEL:LOOP-OPEN  1 HELD ! ;
 
 : LOOP-POP ( -- )
    LDEPTH
    TMP TMP 1 ENC-SUBI W
-   LDEPTH! ;
+   LDEPTH!
+   0 HELD ! ;
 
-: LOOP-I ( T0-EMIT:vreg -- ) 0 LINDEX ;
-: LOOP-J ( T0-EMIT:vreg -- ) 1 LINDEX ;
+: LOOP-I ( T0-EMIT:vreg -- )
+   HELD @ 0= if FRAME-IDX then
+   REG IDX ENC-MOV W ;
 
+\ The step is x29's, so this target leaves the free vreg alone.
 : LOOP-NEXT ( T0-EMIT:vreg T0-LABEL:head -- )
-   {: t:T0-EMIT:vreg m:T0-LABEL:head :}
-   t REG {: r:n :}
-   LDEPTH LTOP
-   r ADR LIDX-OFF false XFER
-   r r 1 ENC-ADDI W
-   r ADR LIDX-OFF true XFER
+   nip {: m:T0-LABEL:head :}
+   FRAME-IDX
+   IDX IDX 1 ENC-ADDI W
+   IDX ADR LIDX-OFF true XFER
    TMP ADR LLIM-OFF false XFER
-   r TMP ENC-CMP W
+   IDX TMP ENC-CMP W
    C-LT m BACK-BCOND ;
 
 \ With old = index - limit before the step, the index crossed the boundary
@@ -772,12 +800,11 @@ DYNAMIC-BUFFER BR-ARG n
 : LOOP-STEP ( T0-EMIT:vreg T0-EMIT:vreg T0-LABEL:head -- )
    {: s:T0-EMIT:vreg t:T0-EMIT:vreg m:T0-LABEL:head :}
    s REG {: sr:n :}  t REG {: r:n :}
-   LDEPTH LTOP
-   r ADR LIDX-OFF false XFER
-   TMP r sr ENC-ADD W
-   TMP ADR LIDX-OFF true XFER
+   FRAME-IDX
    TMP ADR LLIM-OFF false XFER
-   r r TMP ENC-SUB W
+   r IDX TMP ENC-SUB W
+   IDX IDX sr ENC-ADD W
+   IDX ADR LIDX-OFF true XFER
    TMP r sr ENC-ADD W
    TMP TMP r ENC-EOR W
    sr sr r ENC-EOR W
@@ -854,7 +881,7 @@ DYNAMIC-BUFFER BR-ARG n
    ['] LOOP-POP k T0-EMIT:LOOP-POP-XT !
    ['] LOOP-I k T0-EMIT:LOOP-I-XT !
    ['] LOOP-J k T0-EMIT:LOOP-J-XT !
-   ['] T0-LABEL:LOOP-OPEN k T0-EMIT:LOOP-OPEN-XT !
+   ['] LOOP-OPEN k T0-EMIT:LOOP-OPEN-XT !
    ['] T0-LABEL:LEAVE, k T0-EMIT:LEAVE,-XT !
    ['] T0-LABEL:LOOP-NEXT k T0-EMIT:LOOP-NEXT-XT !
    ['] T0-LABEL:LOOP-STEP k T0-EMIT:LOOP-STEP-XT !

@@ -361,6 +361,19 @@ private
    s" DL ( n n -- n n ) 1+ swap 1+ swap 10 0 do swap 1+ loop " BODY
    IN-REGS ;
 
+\ `i` in a straight loop body is one move from x29, the index's cache, and no
+\ word loads the index from its frame cell.
+: IDX-CASE ( -- )
+   ARCH-A64
+   s" IR ( n -- n ) 0 swap 0 do i + loop " BODY
+   0 29 A64ASM:ENC-MOV {: mov:n :}
+   0 17 -16 A64ASM:ENC-LDUR {: ldur:n :}
+   s" i is one mov from x29" T-LABEL
+   0 NEMIT:SIZE 0 ?do i WORD@ $FFFFFFE0 and mov = if 1+ then 4 +loop 1 T=
+   s" no word loads the index from its frame cell" T-LABEL
+   true NEMIT:SIZE 0 ?do i WORD@ $FFFFFFE0 and ldur <> and 4 +loop TTRUE
+   NEMIT:CLEAR ;
+
 \ The x86-64 stack moves leave the condition codes alone: the stack pointer
 \ moves by lea r12,[r12+8] and lea r12,[r12-8], and zero loads by mov ecx,0.
 create X86-MOVES
@@ -409,6 +422,7 @@ public
    JOIN-CASE
    LOOP-CASE
    DO-LOOP-CASE
+   IDX-CASE
    X86-FLAGS-CASE
    X86-UNFILLED-CASE
    T-REPORT ;
