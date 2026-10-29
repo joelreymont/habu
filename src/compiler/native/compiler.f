@@ -1,44 +1,9 @@
 \ compiler.f - compile one pending colon definition through the native chain.
 \
-\ The engine supplies the body captured by its one token reader. The checker's
-\ own observer fills the tape while it certifies those bytes, and the compiler
-\ commits the pending dictionary record only after native emission validates.
-\
-\ The NAME is not a parameter: it is read off the recorded tape and checked
-\ against the pending record, and a source that published none or several is
-\ refused. Neither is the ARITY -
-\ dict.f answers what the checker certified this definition takes and leaves, the
-\ same reader that answers for every callee, so the routine's contract and the
-\ calls to it come from one authority instead of agreeing by luck. Nothing about
-\ a callee is a parameter either.
-\
-\ The engine leaves the definition pending. Only a chain emission that passes
-\ every stage publishes it, so a refusal leaves no word behind.
-\
-\ THE CHAIN, IN ORDER. RECORD opens the source tape (tape.f) that the checker's
-\ reader fills (feed.f) and END-RECORDED seals it; the elaborator (elaborate.f)
-\ builds the definition's HIR functions from the sealed tape; NBACK:FREEZE folds
-\ shared HIR and freezes the module; an open shadow runs its chain from that
-\ frozen module; then NBACK:DECLARE, NBACK:SELECT into the target's machine
-\ dialect, NBACK:FIXPOINT (allocation, lowering spills until every value fits),
-\ NBACK:EMIT into the next code slot, and publication (publish.f).
-\
-\ NO BACKEND IS NAMED HERE. Every stage that turns an elaborated definition into
-\ instructions goes through src/compiler/native/backend.f, at the row the
-\ definition's own target contract resolves to, and an architecture with no
-\ backend loaded is refused at the declaration before a module is built. The
-\ rows are installed by the target's passes module, which LOAD-PASSES below
-\ requires when this file loads: src/arch/arm64/passes.f on AArch64 Linux and
-\ Darwin, src/arch/x86-64/passes.f on x86-64 Linux.
-\
-\ A SECOND TARGET RIDES ALONG WHILE A SHADOW IS OPEN (src/compiler/native/
-\ shadow.f). After the HIR module is frozen, the same stages run once more for
-\ the shadow's binding, in a context nested inside the definition's and bound to
-\ it, so every stage resolves that machine's row; its sealed emission is copied
-\ into the shadow, and its rows are retired, before that context leaves and
-\ before the engine's own selector reads the same frozen module. A refusal on
-\ the shadow's side refuses the definition: a cross-build has no use for a word
-\ the target cannot have.
+\ The engine leaves the definition pending; only an emission that passes every
+\ stage publishes it, so a refusal leaves no word behind. The name is read off
+\ the tape and checked against the pending record; the arity comes from dict.f,
+\ the same reader that answers for every callee.
 
 require src/lib/prelude.f
 require src/lib/errors.f
@@ -186,12 +151,9 @@ private
    kind DKIND:CAST = PRIOR-CAST !
    1 PRIOR-CALLABLE ! ;
 
-\ A bare name a using refuses is no prior binding: it names no word, and the
-\ definition is admitted as at tier 0 (docs/forth.md: shadowing a global from
-\ inside a package is legal; the using refusal belongs to a reference). Asked
-\ before READ-PRIOR, whose effect query would raise that refusal for the name
-\ being defined. A qualified body token remains free to resolve its own
-\ unambiguous record after the check.
+\ A bare name a using refuses is no prior binding: shadowing a global inside a
+\ package is legal (docs/forth.md). Asked before READ-PRIOR, whose effect query
+\ would raise that refusal for the name being defined.
 : KEEP-PRIOR ( -- )
    0 PRIOR-ENTRY !  0 PRIOR-CALLABLE !  false PRIOR-CAST !
    PENDING-NAME$ NDICT:USING-REFUSED? if exit then
@@ -287,7 +249,6 @@ private
    before ;
 
 \ ---- binding an earlier definition shadowed by the pending record -------------
-\ The dictionary key a body token names.
 : TOKEN-KEY ( n -- IR-ID:ir-symbol-id )
    {: ix:n :}
    CC BB  TAPE MKEY ix NTAPE:SPELL@  HIR-WORD:KEY-SYM ;
@@ -336,6 +297,10 @@ private
    loop ;
 
 \ ---- the chain ---------------------------------------------------------------
+\ tape.f (RECORD) filled by feed.f, elaborate.f builds HIR, then backend.f's
+\ FREEZE, DECLARE, SELECT, FIXPOINT and EMIT at the row the definition's target
+\ contract resolves to, then publish.f.
+\
 \ Asked of the checker by name, because every OTHER caller in the tree was
 \ compiled against that same certificate. A wrong answer cannot publish a wrong
 \ routine: either direction is refused by the validator or the memory-order rule.
@@ -349,9 +314,6 @@ private
    NBACK:L-NONE
    M-FIXED @ NDICT:FIXED-ADDR = if NBACK:L-PATCH NBACK:WITH then ;
 
-\ How control reaches and leaves this definition's routine. The backend composes
-\ its own machine contract from this and from what the definition takes and
-\ leaves; which registers or frame that means is the backend's answer.
 : LINKAGE ( -- NBACK:linkage )
    LEAF? if FIXED-LINKAGE exit then
    NBACK:L-NONE
@@ -363,6 +325,9 @@ private
    NELAB:CALLS-BACK? if NBACK:L-BACK NBACK:WITH then ;
 
 \ ---- the shadow target's chain -----------------------------------------------
+\ An open shadow (shadow.f) runs the same stages from the frozen module first,
+\ in a nested context; its refusal refuses the definition.
+\
 \ A `does>` clause is the companion record's entry in the shadow's routine as it
 \ is in the engine's own, so the copy is taken the way publication will take
 \ the engine's, while the emission stands sealed in NEMIT.
@@ -401,13 +366,9 @@ private
    NSHADOW:BINDING [: SHADOW-BODY ;] IR-CTX:WITH-CONTEXT ;
 
 \ ---- the one stage, or the two -----------------------------------------------
-\ Selection publishes the module that is emitted, and a routine whose values do
-\ not all fit its registers is lowered - once per class the allocator seals - and
-\ the last lowering publishes it instead. Every stage is the row the definition's
-\ own target contract resolves to, so this file names no backend and an
-\ architecture with no backend loaded is refused at the declaration. An open
-\ shadow's chain runs first, from the same frozen module; a native shadow takes
-\ the engine's own emission here instead. Publication reads the emission while
+\ A routine whose values do not all fit its registers is lowered once per class
+\ the allocator seals, and the last lowering publishes. An open shadow's chain
+\ runs first, from the same frozen module. Publication reads the emission while
 \ NEMIT still holds it, before HOST-CLEAN retires it.
 : HOST-CHAIN ( IR-BUILD:module NSESSION:session -- )
    {: hm:IR-BUILD:module s:NSESSION:session :}
@@ -472,17 +433,12 @@ private
 : SHUT ( -- )
    0 CHECKER-OWNER:WRITE-WINDOW ;
 
-\ THE COMPILE WINDOW opens when RECORD returns. Every row the definition records
-\ is recorded by then: the scan and the hook that drives it, a TRUSTED:
-\ declaration and a hook-less one all run inside RECORD, and no callback has run
-\ yet. What follows until publication's last callback (publish.f UNIT-NOTIFY)
-\ is the elaborator, the backend and the observers a caller installed; the
-\ compiler scans nothing there and writes nothing to the checker. So the checker
-\ refuses every scan and every store write in between with E-NCOMP-STATE
-\ (checker.f WRITE-WINDOW): a callback cannot reset the latches publication
-\ reads, or record a row the definition's refusal would cut from under a
-\ reference to it. publish.f shuts the window before the compiler's own writes
-\ begin, and the finally shuts it on every exit.
+\ The compile window opens when RECORD returns: every row the definition records
+\ is recorded by then. Until publication's last callback (publish.f UNIT-NOTIFY)
+\ the checker refuses every scan and store write with E-NCOMP-STATE (checker.f
+\ WRITE-WINDOW), so a callback cannot reset the latches publication reads or
+\ record a row the definition's refusal would cut. publish.f shuts the window
+\ before the compiler's own writes, and the finally shuts it on every exit.
 : WORK ( -- )
    CC HIR-MOD 0 M-BLD !
    RECORD {: before:n :}
@@ -595,27 +551,12 @@ $20 constant NAME-END
    RETIRE-BODY ;
 
 \ ---- the load's session ------------------------------------------------------
-\ WHAT THE SESSION IS. IR-CTX:SESSION-OPEN answers an unscoped context that
-\ outlives every definition and dies with the image; a definition is still an
-\ ordinary IR-CTX:WITH-CONTEXT, nested inside it, and still owns its own module
-\ identities, its own builders and its own arenas. The session exists to hold
-\ the things that are the same for every definition of a load.
-\
-\ WHAT IT HOLDS. One module of its own, holding nothing but an interner into
-\ which both dialects intern their whole vocabulary once. Each dialect keeps
-\ that pair and starts every module it builds as a copy of it, so a definition's
-\ modules are born already holding the dialect's spellings.
-\
-\ WHAT A DIALECT ASKS OF IT. PROTOTYPE, with the session's context, interner
-\ pair and module key, to intern its vocabulary and adopt the pair;
-\ PROTOTYPE-CLEAR to give it up. Nothing else: the session hands out no builder,
-\ mints no identity a definition uses, and is never the context a definition
-\ compiles into.
-\
-\ WHEN IT OPENS AND CLOSES. The first definition that needs one opens it and it
-\ stands until the image is captured, which is where it and everything it holds
-\ are given back. Liveness is read off the context itself, so a session that has
-\ gone answers as gone and the next definition opens a fresh one.
+\ The session is an unscoped context (IR-CTX:SESSION-OPEN) that outlives every
+\ definition; each definition is a nested IR-CTX:WITH-CONTEXT owning its own
+\ modules, builders and arenas. The session holds one module whose interner
+\ each dialect fills once (PROTOTYPE) and copies into every module it builds;
+\ it hands out no builder and is never compiled into. The first definition that
+\ needs it opens it, capture closes it, and liveness is read off the context.
 1 CWORK-BUFFER S-CTX IR-CTX:ctx
 0 CWORK-VARIABLE SESSION-OPEN-LEASE n
 0 CWORK-VARIABLE SESSION-OPEN-EPOCH n
@@ -626,16 +567,10 @@ $20 constant NAME-END
 
 : SC ( -- IR-CTX:ctx ) 0 S-CTX @ ;
 
-\ The ceilings are the ones the default plan gives any module, so a module that
-\ starts as a copy of this one can grow exactly as far as one that does not.
-\
-\ THE REGISTRATION BUILDER IS GIVEN BACK. HIR-WORD:SESSION-MODEL needs a module
-\ to key its 86 rows against and reads nothing from it afterwards - the spellings
-\ those rows are keyed by are interned into the PROTOTYPE, which is what a
-\ reader holds - so the builder is aborted as soon as registration returns. It
-\ is one builder registry slot and seventeen arena slots of the sixty-four, held
-\ for the whole load by a module nothing reads: with it standing, a live session
-\ left 43 of the 64 arena slots free, and without it 60.
+\ The ceilings are the default plan's, so a copy grows as far as any module.
+\ The registration builder is aborted once HIR-WORD:SESSION-MODEL returns: the
+\ rows are keyed by spellings in the prototype. Kept standing, it held one
+\ builder slot and seventeen of the sixty-four arena slots for the whole load.
 : SESSION-VOCABULARY ( -- )
    SC IR-CTX:NEW-MODULE drop {: k:IR-ID:ir-module-key :}
    SC k IR-SYM:CAP-MAX IR-SYM:BYTE-MAX IR-SYM:NEW
@@ -648,12 +583,9 @@ $20 constant NAME-END
    SC a r k mb HIR-WORD:SESSION-MODEL
    mb IR-BUILD:ABORT ;
 
-\ What NCOMP holds that lives in the session context and nowhere else: the HIR
-\ prototype, the registered vocabulary, and whatever each loaded backend interned
-\ beside them. Each is a flag over storage the session owns, so the flags go out
-\ when the session does - through IR-CTX:SESSION-CLOSE, which runs this before it
-\ retires the row. Nothing else clears them, so no ordering between a capture's
-\ entry points can leave a reader holding a flag over an arena that is gone.
+\ Flags over storage the session owns: the HIR prototype, the registered
+\ vocabulary and each backend's interned state. IR-CTX:SESSION-CLOSE runs this
+\ before it retires the row, and nothing else clears them.
 : FORGET-OWNED ( NLEASE:lease -- )
    {: l:NLEASE:lease :}
    l NLEASE:QUIET

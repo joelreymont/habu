@@ -1,6 +1,4 @@
-\ branch.f - the branch-with-link instruction, read and written. One concern:
-\ the one arithmetic that turns a `bl` into an address and an address back into
-\ a `bl`.
+\ branch.f - reading and writing the target of a `bl` instruction.
 \
 \ AArch64 encodes `bl` as $94000000 plus a signed 26-bit count of INSTRUCTIONS
 \ from the site, so both addresses must be aligned and the count has a limit.

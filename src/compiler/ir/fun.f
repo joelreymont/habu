@@ -1,157 +1,8 @@
 \ fun.f - the append-only function and block store: one row per function, one
-\ row per basic block, and one shared cell pool holding every function's
-\ attribute window.
-\
-\ It owns the BEGIN-FUN/END-FUN and BEGIN-BLOCK/ADD-BLOCK-ARG/END-BLOCK builder
-\ API; IR-VERIFY reads these rows at freeze, and the native elaborator builds
-\ one function per colon definition.
-\ This file stores the control structure of a module; it does not define what
-\ any dialect's operations mean, which is the schema table's to say.
-\
-\ ONE CONCERN, TWO ROW TABLES. Functions and blocks are one responsibility for
-\ the same reason IR-OP's operations and values are: they are defined by the
-\ same act. A block cannot exist without the function that is being built around
-\ it, and a function's record is not complete until the last of its blocks is
-\ in. Each table needs the other's live count - a function row's block window is
-\ read off the block table's count, and a block row's parent is read off the
-\ function table's count - so splitting them across two files would make each
-\ depend on the other and break the single all-or-nothing append each of them
-\ guarantees. They therefore share one package and one file, and the file keeps
-\ them in separate row tables.
-\
-\ IDENTITY COMES FROM IR-ID. Functions are the existing IR-ID ir-fun-id family
-\ and blocks the ir-block-id family, both packed under this module's key. This
-\ file mints no identity family of its own, no raw converter, and no parallel
-\ numbering.
-\
-\ WHAT A FUNCTION ROW RECORDS.
-\   symbol name          - the module's interned symbol, whose
-\                          existence the symbol interner confirms
-\   signature type       - a code-reference type of this
-\                          module's type table, which is the type
-\                          table's name for "a callable with this effect", and a
-\                          signature that is anything else is E-IR-FUN-SIG
-\   block window         - first-block and block-count
-\   attribute window
-\   source span          - as the (source, start, length)
-\                          triple IR-SOURCE:span already defines
-\   linkage
-\   visibility           - the second half of the linkage's link-time
-\                          question, see LINKAGE AND VISIBILITY below
-\   calling convention
-\ One field is deliberately absent: a flag word would name no
-\ member, and an empty flag word is not a capability -
-\ the stage that needs a flag adds it together with the meaning that makes it
-\ checkable. This is the same judgment IR-OP recorded for the same field.
-\
-\ WHAT A BLOCK ROW RECORDS.
-\   parent function
-\   argument window      - into the value table, see BLOCK
-\                          ARGUMENTS below
-\   operation window     - into IR-OP's operation table
-\   terminator operation
-\   source span
-\ Three fields are deliberately absent:
-\   predecessor-count and successor-count are not the
-\     builder's to maintain: the predecessor and successor tables are
-\     derived at freeze time rather than
-\     maintained through every builder mutation. Storing a count here during
-\     construction would publish a number that is wrong for as long as any
-\     branch to the block is still unwritten, so the freeze verifier
-\     derives them together with the tables they belong to;
-\   flags, for the reason given above.
-\
-\ AN OPERATION'S PARENT BLOCK LIVES HERE. IR-OP deliberately
-\ omits the parent-block field from an operation row, and this file supplies it
-\ as the block's operation window rather than as a back-reference on every
-\ operation. The window is the stronger of the two. Blocks are built in order
-\ and each block's operations are appended consecutively, so block l's window
-\ starts exactly where block l-1's ended: the windows tile IR-OP's operation
-\ table, every operation from zero to the last block's end therefore belongs to
-\ exactly one block by construction, and no scan or agreement check is needed to
-\ prove it. A stored back-reference would be a second authority that could
-\ disagree with the window, and the freeze rule "every operation belongs to
-\ exactly one block" would then be a cross-table search rather than an O(1) read
-\ of one row against the row before it. Operations appended while no block is
-\ open are the one case the tiling has to catch, and BEGIN-BLOCK is what catches
-\ it: the block captures the operation count when it opens, so an operation
-\ appended outside a block leaves a gap the tiling check rejects.
-\
-\ TERMINATOR PLACEMENT. A block's terminator is its last
-\ operation. END-BLOCK reads every operation in the window, asks the opcode's
-\ schema whether it is a terminator, and
-\ requires exactly one - at the end. A block with no operation has no terminator
-\ and is rejected too. The ordinal is then stored, so the freeze verifier and
-\ every later pass read the terminator in constant time instead of rescanning
-\ the window, and a forged row whose terminator is not its last operation is a
-\ named reject rather than a misread.
-\
-\ BLOCK ARGUMENTS ARE VALUES. A block argument is
-\ minted through IR-OP's value store, because that store owns value rows
-\ whatever defines them; this file records only the window they fill. The window
-\ is a run of value ordinals rather than a pool of copies, and it does not have
-\ to tile the value table - operation results are interleaved between one
-\ block's arguments and the next block's - because each value row itself names
-\ the block and the argument position it belongs to. END-BLOCK revalidates the
-\ whole run against those rows, and every window read revalidates one element
-\ the same way: the value must be a block argument, of this block, at this
-\ position. Two blocks therefore cannot share an argument value at all, which is
-\ a stronger fact than non-overlap, and it stays an O(1) check on the element.
-\ An argument added after the block's first operation breaks the run and is
-\ rejected by the same check, which is what makes out-of-order construction
-\ fail.
-\
-\ LINKAGE AND VISIBILITY are the two independent link-time questions an object
-\ file asks about a defined name, and a single enum cannot answer both:
-\   linkage    - where the body comes from and how duplicate definitions
-\                resolve: defined, replaceable, or imported;
-\   visibility - who outside this module may name it: hidden or exported.
-\ The combinations are not free, and the illegal ones are rejected rather than
-\ stored: an imported function has no body here, so its block window must be
-\ empty, and it must be exported, because a name nothing outside can see can
-\ never be resolved from outside; a replaceable definition must likewise be
-\ exported, because nothing hidden inside this module can be replaced from
-\ outside; and a function that supplies a body must have at least an entry
-\ block. The one hidden shape is a plain hidden definition.
-\
-\ THE CALLING CONVENTION IS CHECKED AGAINST THE BOUND TARGET. Habu and C
-\ conventions belong to the native architecture
-\ set, kernel to PTX, and Wasm to its dedicated architecture. END-FUN rejects a
-\ convention the context's bound contract cannot provide.
-\
-\ APPENDING IS ALL-OR-NOTHING. Every check - the stores' headers and module
-\ binding, the staged fields, each referenced symbol, type, attribute, value,
-\ operation and source span, the window tiling, the linkage rules, the target
-\ contract, and both committed ceilings - runs before the first IR-ARENA:PUSH.
-\ A rejected append therefore leaves the stores exactly as it found them. The
-\ one mutation this file performs outside an end is ADD-BLOCK-ARG, which mints a
-\ value row through IR-OP: an argument must exist before the operations that
-\ take it, and those operations must exist before their block's row can record
-\ its window, so the value row is necessarily first. A block whose END-BLOCK is
-\ then rejected leaves its argument values behind, and that is what the section
-\ 6.2 builder ABORT is for - a structural append that fails discards the module
-\ rather than being retried, and the freeze verifier rejects any value whose
-\ defining block does not exist.
-\
-\ STORE SHAPES. Three IR-ARENA arenas owned by the compilation context: the
-\ attribute cell pool, the function row table, and the block row table. Each
-\ carries the usual three-cell header - format tag, owning module serial,
-\ committed capacity - so presenting one store where another belongs is a
-\ format-tag reject rather than a misread, and every access rechecks shape,
-\ window, and stored ordinals fail-closed with E-IR-FUN-STATE.
-\
-\ CEILINGS AND THE CONTEXT MAPPING. Capacities are creation parameters bounded
-\ by the ordinal range a row or pool cell can address, and the practical limit
-\ belongs to the context mapping, exactly as recorded in op.f. Hitting a
-\ committed ceiling is a named error thrown before any mutation, so a full store
-\ stays readable and keeps every identity it issued.
-\
-\ NOTHING PUBLIC MUTATES A FROZEN STORE. Every word here that writes takes an
-\ IR-ARENA:arena builder handle, and the checker rejects an IR-ARENA:view in
-\ that position, so a mutation cannot even be spelled against a frozen store.
-\ Once IR-ARENA:FREEZE consumes a handle, the retired handle rejects every live
-\ word with E-IR-ARENA-FROZEN. There is no publication, retirement, or lifecycle
-\ word in this file: the module freeze belongs to the builder stage.
+\ row per basic block, and a cell pool of function attribute windows. Functions
+\ and blocks share a package because each row reads the other table's live count.
+\ Identities are IR-ID's ir-fun-id and ir-block-id; operation meaning is the
+\ schema table's.
 
 require src/lib/prelude.f
 require src/lib/errors.f
@@ -170,22 +21,18 @@ require src/compiler/ir/op.f
 package IR-FUN
 public
 
-\ Where a function's body comes from and how two definitions of
-\ one name resolve. The vocabulary is closed, so an unknown linkage is
-\ unrepresentable in checked code; the wire codes below persist it.
+\ The wire codes below persist it.
 ENUM linkage DERIVE eq
    defined
    replaceable
    imported
 ;ENUM
 
-\ Who outside this module may name the function.
 ENUM visibility DERIVE eq
    hidden
    exported
 ;ENUM
 
-\ How arguments and results cross a call boundary.
 ENUM convention DERIVE eq
    habu
    c-abi
@@ -195,9 +42,7 @@ ENUM convention DERIVE eq
 
 private
 
-\ The one raw crossing this package needs: one-way projections of the sealed
-\ IR-ID identities onto their serials, for header binding and owner comparison.
-\ Nothing in this package re-mints a raw cell into a nominal.
+\ One-way projections of IR-ID identities onto serials; nothing here re-mints.
 CAST: KEY-SERIAL ( IR-ID:ir-module-key -- n )
 CAST: MID-SERIAL ( IR-ID:ir-module-id -- n )
 
@@ -304,13 +149,9 @@ private
    endcase ;
 
 \ ---- cell access -------------------------------------------------------------
-\ Every read below goes through an IR-ARENA reader: each store is resolved ONCE,
-\ at the public word, and the helpers take the resolved readers. The live/frozen
-\ twins that used to run down this file collapse into one set, because a reader
-\ carries the state it was opened against and refuses the other with the error
-\ the handle would have given - the only thing the two entry points still differ
-\ in is OPEN-LIVE against OPEN. The three readers are named for the header tags
-\ they carry: fnp the attribute pool, fnr the function table, blr the blocks.
+\ Each store is resolved once at the public word into a reader, which refuses
+\ the wrong live/frozen state itself: fnp the attribute pool, fnr the function
+\ table, blr the blocks.
 
 \ ---- headers and shape -------------------------------------------------------
 : PSHAPE-CK ( n -- )
@@ -355,9 +196,7 @@ private
 : SERIAL-CK ( n n -- )
    <> if E-IR-FUN-OWNER throw then ;
 
-\ The three stores are one table only when all three carry the same owning
-\ module serial, so a cross-module trio rejects before a row window is trusted
-\ against the wrong pool.
+\ A cross-module trio rejects before a row window is trusted against the pool.
 : TRIO-CK ( IR-ARENA:reader IR-ARENA:reader IR-ARENA:reader -- )
    {: fnp:IR-ARENA:reader fnr:IR-ARENA:reader blr:IR-ARENA:reader :}
    fnp PHDR-CK
@@ -376,8 +215,6 @@ private
    blr BHDR-CK
    blr HC-SERIAL IR-ARENA:RD@ key KEY-SERIAL SERIAL-CK ;
 
-\ A block-table lookup that also names the function table checks the two are one
-\ module's pair, so a foreign function table can never answer a parent lookup.
 : BFN-CK ( IR-ARENA:reader IR-ARENA:reader IR-ID:ir-module-key -- )
    {: blr:IR-ARENA:reader fnr:IR-ARENA:reader key:IR-ID:ir-module-key :}
    blr key BKEY-CK
@@ -399,8 +236,7 @@ private
 : SRC-OWNER ( IR-ID:ir-source-id -- n )
    IR-ID:SOURCE-OWNER MID-SERIAL ;
 
-\ A stored ordinal only has to be non-negative here: the table that owns the
-\ reference revalidates the id it is handed.
+\ Non-negative only: the owning table revalidates the id it is handed.
 : ORD-OK ( n -- n )
    dup 0 < if E-IR-FUN-STATE throw then ;
 
@@ -444,9 +280,12 @@ private
    BROW-CELL IR-ARENA:RD@ ;
 
 \ ---- the window tilings ------------------------------------------------------
-\ A function row's block window continues exactly where the row before it ended.
-\ Its upper bound belongs to the block table, so the readers that hold one check
-\ it there.
+\ A block's operation windows tile IR-OP's operation table, so each operation has
+\ exactly one parent block with no back-reference; BEGIN-BLOCK captures the
+\ operation count, so an operation appended outside a block leaves a gap the
+\ tiling rejects. Block arguments are IR-OP values whose rows name their block
+\ and position; the argument run need not tile the value table.
+\ The upper bound belongs to the block table; readers that hold it check it.
 : FNBK-END ( IR-ARENA:reader n -- n )
    {: fnr:IR-ARENA:reader l:n :}
    fnr l OFF-BST FNC@ LEN-OK  fnr l OFF-BN FNC@ LEN-OK + ;
@@ -456,8 +295,7 @@ private
    l 0= if 0 else fnr l 1- FNBK-END then
    fnr l OFF-BST FNC@ STEP-CK ;
 
-\ A block row's operation window continues exactly where the row before it
-\ ended. Its upper bound belongs to IR-OP's operation table.
+\ The upper bound belongs to IR-OP's operation table.
 : BOP-END ( IR-ARENA:reader n -- n )
    {: blr:IR-ARENA:reader l:n :}
    blr l OFF-OPST BC@ LEN-OK  blr l OFF-OPN BC@ LEN-OK + ;
@@ -468,12 +306,8 @@ private
    blr l OFF-OPST BC@ STEP-CK ;
 
 \ ---- the staged function and block -------------------------------------------
-\ Two package-owned stages under the single-task compilation discipline, in the
-\ shape IR-TYPE, IR-ATTR, IR-SCHEMA, and IR-OP established. The block stage
-\ nests inside the function stage: a block may only be opened while a function
-\ is open, which is what makes an orphan block unrepresentable. Any end consumes
-\ its stage, so neither a rejected append nor an end without a begin can leave a
-\ half-staged record behind.
+\ The block stage nests inside the function stage, so an orphan block is
+\ unrepresentable. Any end consumes its stage.
 0 constant MODE-NONE
 1 constant MODE-OPEN
 -1 constant UNSET
@@ -555,6 +389,8 @@ ATTR-MAX CWORK-SPAN FSTG-ATO n
    n 1+ FSTG-ATN ! ;
 
 \ ---- staged validation -------------------------------------------------------
+\ Every check runs before the first IR-ARENA:PUSH; ADD-BLOCK-ARG is the one
+\ earlier mutation.
 : OWNED-CK ( n n -- )
    {: hs:n owner:n :}
    owner hs SERIAL-CK ;
@@ -569,16 +405,13 @@ ATTR-MAX CWORK-SPAN FSTG-ATO n
 : BFIELDS-CK ( -- )
    BSTG-SRC @ UNSET = if E-IR-FUN-FIELD throw then ;
 
-\ The symbol uniqueness rule at the point the name is claimed: one
-\ module's function table defines a name at most once.
+\ One module's function table defines a name at most once.
 : DUP-CK ( IR-ARENA:reader -- )
    {: fnr:IR-ARENA:reader :}
    fnr FNCNT 0 ?do
       fnr i OFF-SYM FNC@ FSTG-SYM @ = if E-IR-FUN-DUP throw then
    loop ;
 
-\ A function's signature is the type table's code reference: a callable with
-\ an effect.
 : SIG-CK ( IR-ARENA:arena IR-ID:ir-module-key -- )
    {: tr:IR-ARENA:arena key:IR-ID:ir-module-key :}
    key KEY-SERIAL FSTG-SIGO @ OWNED-CK
@@ -605,10 +438,8 @@ ATTR-MAX CWORK-SPAN FSTG-ATO n
    sa  key BSTG-SRC @ IR-ID:PACK-SOURCE BSTG-SBEG @ BSTG-SLEN @ IR--SOURCE-SPAN:MAKE
    IR-SOURCE:SPAN-CK ;
 
-\ The linkage rules of the header: an imported function declares a body it does
-\ not carry and must be nameable from outside; a replaceable definition must be
-\ nameable from outside to be replaced; a function that carries a body needs at
-\ least an entry block.
+\ An imported function has no body and must be exported; a replaceable one must
+\ be exported; a function with a body needs an entry block.
 : BODY-CK ( n -- )
    {: bn:n :}
    FSTG-LNK @ LK-IMPORTED = if
@@ -620,9 +451,7 @@ ATTR-MAX CWORK-SPAN FSTG-ATO n
    FSTG-LNK @ LK-REPLACEABLE = FSTG-VIS @ VS-EXPORTED <> and
    if E-IR-FUN-LINKAGE throw then ;
 
-\ A function's convention must be provided by the context's architecture. The
-\ Habu and C conventions are native, kernel is PTX, and Wasm has its own
-\ internal Habu-cell convention.
+\ Habu and C are native, kernel is PTX, Wasm has its own Habu-cell convention.
 : NATIVE? ( CTARGET:arch -- bool )
    {: a:CTARGET:arch :}
    a CTARGET-ARCH:AARCH64 CTARGET-ARCH:EQ
@@ -643,10 +472,7 @@ ATTR-MAX CWORK-SPAN FSTG-ATO n
    endcase
    0= if E-IR-FUN-TARGET throw then ;
 
-\ Every block this function is about to claim must already name this function as
-\ its parent. The block window and the parent field are both stored fields
-\ and this is where they are made to agree, so a later cross-function block use
-\ is a disagreement between two records rather than an unchecked assumption.
+\ Makes the stored block window and each block's parent field agree.
 : PARENTS-CK ( IR-ARENA:reader n n n -- )
    {: blr:IR-ARENA:reader l:n bst:n bn:n :}
    bn 0 ?do
@@ -654,8 +480,7 @@ ATTR-MAX CWORK-SPAN FSTG-ATO n
    loop ;
 
 \ ---- block-side staged validation --------------------------------------------
-\ Every operation the block is about to claim, asked of the opcode's schema:
-\ exactly one terminator, and it is the last.
+\ Exactly one terminator, and it is the last operation.
 : TERM-AT-CK ( IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key n n n -- )
    {: r:IR-ARENA:arena qr:IR-ARENA:arena key:IR-ID:ir-module-key opst:n i:n last:n :}
    qr  r key  key opst i + IR-ID:PACK-OP  IR-OP:OPCODE@  IR-SCHEMA:TERMINATOR?
@@ -673,10 +498,8 @@ ATTR-MAX CWORK-SPAN FSTG-ATO n
       r qr key opst i opn 1- TERM-AT-CK
    loop ;
 
-\ Every value the block is about to claim as an argument, asked of the value row
-\ itself: a block argument, of this block, at this position. Two blocks cannot
-\ share one argument, and an argument minted after the block's first operation
-\ breaks the run and lands here.
+\ Two blocks cannot share an argument; an argument minted after the block's
+\ first operation breaks the run and lands here.
 : ARGS-CK ( IR-ARENA:arena IR-ID:ir-module-key n n n -- )
    {: v:IR-ARENA:arena key:IR-ID:ir-module-key l:n agst:n agn:n :}
    agn 0 ?do
@@ -693,14 +516,9 @@ ATTR-MAX CWORK-SPAN FSTG-ATO n
    fnr FNCNT fnr HC-CAP IR-ARENA:RD@ >= if E-IR-FUN-CAP throw then
    fnp PCELLS FSTG-ATN @ + fnp HC-CAP IR-ARENA:RD@ > if E-IR-FUN-CAP throw then ;
 
-\ Ending a function writes the attribute pool and then the function row, so
-\ both are reserved here, before either is touched: an attribute window that
-\ landed without its row leaves the pool and the row table disagreeing about
-\ what the function owns. Reserving after the room check keeps this store's own
-\ named capacity error ahead of the arena's. The readers opened at the public
-\ word outlive both reservations: a RESERVE changes neither the registry
-\ generation nor the state, and a reader re-reads the row's pointer and count
-\ on every call, so it follows the reservation's new span.
+\ Both the pool and the row are reserved before either is written, after the
+\ room check so this store's capacity error comes first. Open readers survive a
+\ RESERVE: they re-read the row's pointer and count on every call.
 : FNROOM-TAKE ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena -- )
    {: c:IR-CTX:ctx p:IR-ARENA:arena f:IR-ARENA:arena :}
    c p FSTG-ATN @ IR-ARENA:RESERVE
@@ -762,11 +580,8 @@ ATTR-MAX CWORK-SPAN FSTG-ATO n
 public
 
 \ ---- creation ----------------------------------------------------------------
-\ Create one module's function and block store: an attribute pool committed to
-\ exactly pcap cells, a function table committed to exactly fcap functions, and
-\ a block table committed to exactly bcap blocks, all three headers bound to
-\ key's module serial. The three handles plus the key are the store; they stay
-\ with the module owner and die with the owning context.
+\ All three headers are bound to key's module serial; the stores die with the
+\ owning context.
 : NEW ( IR-CTX:ctx IR-ID:ir-module-key n n n -- IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena )
    {: c:IR-CTX:ctx key:IR-ID:ir-module-key fcap:n bcap:n pcap:n :}
    fcap FNROW-CAP-OK
@@ -790,10 +605,8 @@ public
    p f b ;
 
 \ ---- the function builder ----------------------------------------------------
-\ Open one function, named by the module's interned symbol. The block table's
-\ live count is captured here and revalidated at the end as the start of this
-\ function's block window, so blocks appended for a function that was then
-\ abandoned cannot be absorbed by the next one.
+\ The block count captured here is revalidated at the end as the start of the
+\ block window, so blocks of an abandoned function are not absorbed.
 : BEGIN-FUN ( IR-ARENA:arena IR-ID:ir-symbol-id -- )
    {: b:IR-ARENA:arena sym:IR-ID:ir-symbol-id :}
    FSTG-MODE @ MODE-NONE <> if E-IR-FUN-STAGE throw then
@@ -804,11 +617,9 @@ public
    sym SYM-OWNER FSTG-SYMO !
    bst FSTG-BST ! ;
 
-\ Abandon an open function without appending it.
 : ABANDON-FUN ( -- )
    FSTG-TAKE ;
 
-\ The callable type this function implements.
 : SET-SIGNATURE ( IR-ID:ir-type-id -- )
    {: t:IR-ID:ir-type-id :}
    FSTG-OPEN-CK
@@ -816,30 +627,25 @@ public
    t IR-ID:TYPE-LOCAL FSTG-SIG !
    t TYP-OWNER FSTG-SIGO ! ;
 
-\ How this function's definition binds.
 : SET-LINKAGE ( IR-FUN:linkage -- )
    FSTG-OPEN-CK
    FSTG-LNK @ ONCE-CK
    LNK-CODE FSTG-LNK ! ;
 
-\ Who outside this module may name it.
 : SET-VISIBILITY ( IR-FUN:visibility -- )
    FSTG-OPEN-CK
    FSTG-VIS @ ONCE-CK
    VIS-CODE FSTG-VIS ! ;
 
-\ How a call to this function passes its arguments.
 : SET-CONVENTION ( IR-FUN:convention -- )
    FSTG-OPEN-CK
    FSTG-CC @ ONCE-CK
    CC-CODE FSTG-CC ! ;
 
-\ One attribute this function carries.
 : ADD-FUN-ATTR ( IR-ID:ir-attr-id -- )
    FSTG-OPEN-CK
    ATTR+ ;
 
-\ Where this function came from.
 : SET-FUN-SPAN ( IR-SOURCE:span -- )
    IR--SOURCE-SPAN:UNMAKE
    {: src:IR-ID:ir-source-id st:n ln:n :}
@@ -850,12 +656,7 @@ public
    st FSTG-SBEG !
    ln FSTG-SLEN ! ;
 
-\ Close the staged function: validate it whole against these stores, the
-\ module's symbol, type, attribute, and source tables, the block table it is
-\ claiming from, the linkage rules, the bound target contract, and both
-\ committed ceilings, then append its attribute cells and its row. The stage is
-\ consumed whatever the outcome, and every check runs before the first cell is
-\ written, so an append either lands whole or changes nothing.
+\ The stage is consumed whatever the outcome; all checks precede the first write.
 : END-FUN ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena -- IR-ID:ir-fun-id )
    {: c:IR-CTX:ctx p:IR-ARENA:arena f:IR-ARENA:arena b:IR-ARENA:arena key:IR-ID:ir-module-key sr:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena :}
    FSTG-TAKE
@@ -887,10 +688,6 @@ public
    key l IR-ID:PACK-FUN ;
 
 \ ---- the block builder -------------------------------------------------------
-\ Open one block inside the open function. IR-OP's operation table is presented
-\ so the block can capture the operation count it starts at; an operation
-\ appended while no block is open therefore leaves a gap the window tiling
-\ rejects instead of being absorbed by the next block.
 : BEGIN-BLOCK ( IR-ARENA:arena -- )
    {: r:IR-ARENA:arena :}
    FSTG-OPEN-CK
@@ -900,13 +697,12 @@ public
    BSTG-RESET
    opst BSTG-OPST ! ;
 
-\ Abandon an open block without appending it.
 : ABANDON-BLOCK ( -- )
    BSTG-TAKE ;
 
-\ One argument of this block. The value is minted through
-\ IR-OP's value store, named by this block's identity and this argument's
-\ position, and returned so the block's operations can take it as an operand.
+\ The one mutation before a block's checks: a value left by a rejected END-BLOCK
+\ is discarded by the builder's ABORT, and the freeze verifier rejects a value
+\ with no block.
 : ADD-BLOCK-ARG ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key IR-ID:ir-type-id -- IR-ID:ir-value-id )
    {: c:IR-CTX:ctx v:IR-ARENA:arena tr:IR-ARENA:arena b:IR-ARENA:arena key:IR-ID:ir-module-key t:IR-ID:ir-type-id :}
    BSTG-OPEN-CK
@@ -918,7 +714,6 @@ public
    BSTG-AGN @ 1+ BSTG-AGN !
    val ;
 
-\ Where this block came from.
 : SET-BLOCK-SPAN ( IR-SOURCE:span -- )
    IR--SOURCE-SPAN:UNMAKE
    {: src:IR-ID:ir-source-id st:n ln:n :}
@@ -929,10 +724,6 @@ public
    st BSTG-SBEG !
    ln BSTG-SLEN ! ;
 
-\ Close the staged block: validate its parent, its operation window against
-\ IR-OP's operation table, its terminator against the dialect's schema table,
-\ its argument run against the value rows themselves, its source span, and the
-\ committed ceiling, then append its row.
 : END-BLOCK ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena -- IR-ID:ir-block-id )
    {: c:IR-CTX:ctx b:IR-ARENA:arena f:IR-ARENA:arena key:IR-ID:ir-module-key v:IR-ARENA:arena r:IR-ARENA:arena qr:IR-ARENA:arena sa:IR-ARENA:arena :}
    BSTG-TAKE
@@ -984,8 +775,7 @@ public
    fnr key FNKEY-CK
    key fnr id OFF-SYM FNFLD ORD-OK IR-ID:PACK-SYMBOL ;
 
-\ The span this function came from. A span is a value, so the consumer
-\ revalidates it against the registry it names with IR-SOURCE:SPAN-CK.
+\ The consumer revalidates the span with IR-SOURCE:SPAN-CK.
 : SPAN@ ( IR-ARENA:arena IR-ID:ir-module-key IR-ID:ir-fun-id -- IR-SOURCE:span )
    {: f:IR-ARENA:arena key:IR-ID:ir-module-key id:IR-ID:ir-fun-id :}
    f IR-ARENA:OPEN-LIVE {: fnr:IR-ARENA:reader :}
@@ -1001,8 +791,8 @@ public
    f IR-ARENA:OPEN-LIVE id OFF-BN FNFLD LEN-OK ;
 
 \ ---- block readers -----------------------------------------------------------
-\ The function this block belongs to, bound-checked against the function table
-\ that owns the reference.
+\ Predecessor and successor counts are not stored: IR-VERIFY derives them at
+\ freeze, since a count is wrong while any branch is unwritten.
 : PARENT@ ( IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key IR-ID:ir-block-id -- IR-ID:ir-fun-id )
    {: b:IR-ARENA:arena f:IR-ARENA:arena key:IR-ID:ir-module-key id:IR-ID:ir-block-id :}
    b IR-ARENA:OPEN-LIVE {: blr:IR-ARENA:reader :}
@@ -1016,8 +806,6 @@ public
    {: b:IR-ARENA:arena id:IR-ID:ir-block-id :}
    b IR-ARENA:OPEN-LIVE id OFF-AGN BFLD LEN-OK ;
 
-\ One argument of this block, revalidated against the value row it names: a
-\ block argument, of this block, at this position.
 : ARG@ ( IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key IR-ID:ir-block-id n -- IR-ID:ir-value-id )
    {: b:IR-ARENA:arena v:IR-ARENA:arena key:IR-ID:ir-module-key id:IR-ID:ir-block-id i:n :}
    b IR-ARENA:OPEN-LIVE {: blr:IR-ARENA:reader :}
@@ -1038,9 +826,6 @@ public
    {: b:IR-ARENA:arena id:IR-ID:ir-block-id :}
    b IR-ARENA:OPEN-LIVE id OFF-OPN BFLD LEN-OK ;
 
-\ One operation of this block's operation window. The window is revalidated as a
-\ tiling of IR-OP's operation table and the ordinal is bound-checked there, so
-\ an operation can be read through exactly one block.
 : OP@ ( IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key IR-ID:ir-block-id n -- IR-ID:ir-op-id )
    {: b:IR-ARENA:arena r:IR-ARENA:arena key:IR-ID:ir-module-key id:IR-ID:ir-block-id i:n :}
    b IR-ARENA:OPEN-LIVE {: blr:IR-ARENA:reader :}
@@ -1053,8 +838,6 @@ public
    ord r IR-OP:OPS >= if E-IR-FUN-BOUND throw then
    key ord IR-ID:PACK-OP ;
 
-\ The terminator this block ends in, read in constant time and
-\ rechecked against the window it must end.
 : TERMINATOR@ ( IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key IR-ID:ir-block-id -- IR-ID:ir-op-id )
    {: b:IR-ARENA:arena r:IR-ARENA:arena key:IR-ID:ir-module-key id:IR-ID:ir-block-id :}
    b IR-ARENA:OPEN-LIVE {: blr:IR-ARENA:reader :}
@@ -1077,8 +860,6 @@ public
    IR--SOURCE-SPAN:MAKE ;
 
 \ ---- frozen readers ----------------------------------------------------------
-\ A frozen module reads its functions and blocks through the three arena views;
-\ the retired builder handles reject every touch with E-IR-ARENA-FROZEN.
 : RFUNS ( IR-ARENA:reader -- n )
    IR-ARENA:FROZEN-READER FNCNT ;
 
@@ -1137,11 +918,8 @@ public
    {: f:IR-ARENA:view id:IR-ID:ir-fun-id :}
    f IR-ARENA:OPEN id RBLOCK-COUNT ;
 
-\ One block of this function's block window. The window is revalidated as a
-\ tiling of the block table, the ordinal is bound-checked against that table,
-\ and the block is then asked whether it agrees that this function is its
-\ parent - so a window that reaches into another function's blocks is a named
-\ reject rather than a silent cross-function read.
+\ The block is asked whether this function is its parent, so a window reaching
+\ another function's blocks is refused.
 : RBLOCK@ ( IR-ARENA:reader IR-ARENA:reader IR-ID:ir-module-key IR-ID:ir-fun-id n -- IR-ID:ir-block-id )
    {: f:IR-ARENA:reader b:IR-ARENA:reader key:IR-ID:ir-module-key id:IR-ID:ir-fun-id i:n :}
    b IR-ARENA:FROZEN-READER {: blr:IR-ARENA:reader :}
@@ -1171,8 +949,7 @@ public
 
 private
 
-\ Admit the block before opening its companion view in the public wrappers.
-\ Reader callers retain the same row and window checks.
+\ Admits the block before the public wrappers open its companion view.
 : ARG-ORD ( IR-ARENA:reader IR-ID:ir-module-key IR-ID:ir-block-id n -- n n )
    {: blr:IR-ARENA:reader key:IR-ID:ir-module-key id:IR-ID:ir-block-id i:n :}
    blr key BKEY-CK

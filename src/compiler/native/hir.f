@@ -1,31 +1,7 @@
 \ hir.f - the straight-line HIR dialect: the closed set of operations the
-\ resolved Habu IR has for a colon body that only computes with integers.
-\
-\ The subset is CLOSED: an opcode with no elaborator, no lowering and no test
-\ would be a promise rather than a schema, so none is declared here.
-\
-\ Every one of the five float comparisons answers FALSE for a NaN, both ways
-\ round, measured on this engine. That is a fact about CONTROL FLOW, and
-\ src/compiler/native/a64ir.f names the conditions that keep it.
-\
-\ A shift takes its count as an operand and lowers to the shift-BY-REGISTER
-\ form, which takes the count modulo the register width - so `1 64 lshift` is
-\ 1, exactly as the engine's own `lshift` answers.
-\
-\ hir.mem is where the memory order STARTS. It gets no instruction, because the
-\ routine's order already begins where it takes the caller's operands.
-\
-\ An access width is a FORM and never an attribute, so a width the machine
-\ cannot encode cannot be spelled. The address is an ordinary operand in the
-\ GENERIC space with unrestricted aliasing, which forbids moving a load across
-\ a store to an address nothing proved is another.
-\
-\ dup, drop, swap and over stage no operation at all: they are compile-time
-\ renames in src/compiler/native/hir-word.f.
-\
-\ Whether an arithmetic opcode may trap is the unit's numeric policy, read off
-\ the context's bound policy rather than fixed here. The target is aarch64 with
-\ the baseline features, so registering against another binding is refused.
+\ resolved Habu IR has for a colon body. An opcode with no elaborator, lowering
+\ and test is not declared. Stack renames stage no operation (hir-word.f);
+\ lowering lives in src/compiler/native/a64ir.f and x64ir.f.
 
 require src/lib/prelude.f
 require src/lib/errors.f
@@ -43,12 +19,12 @@ require src/compiler/native/emission.f
 package HIR
 public
 
-\ An ENUM, so a later stage cannot name an operation this dialect does not have
-\ and every MATCH over it has to answer for every member. The member for `=` is
-\ spelled `equal`, because a derived comparison word has already taken `eq`.
-\ Six integer comparisons and not three read backwards, because a word model
-\ binds a source word to ONE opcode; five float ones, because the engine's whole
-\ float comparison vocabulary is five words.
+\ The member for `=` is spelled `equal` because a derived comparison word has
+\ taken `eq`. Six integer comparisons, not three read backwards, because a word
+\ model binds a source word to one opcode; five float ones, the engine's whole
+\ float comparison vocabulary. A shift takes its count as an operand and lowers
+\ to the shift-by-register form, which takes the count modulo the register
+\ width: `1 64 lshift` is 1, as the engine's `lshift` answers.
 ENUM opcode DERIVE eq
    const
    add
@@ -154,15 +130,11 @@ ENUM rmove DERIVE eq
    fetch-r
 ;ENUM
 
-\ The short operation sequences one source word can mean. Each is written out of
-\ THIS dialect's own operations and nothing else, so an expansion asks nothing of
-\ the machine stage that `+` does not already ask; a member says only WHICH
-\ sequence, and src/compiler/native/elaborate.f is where each one is written.
-\ `cell-index` is `ptr-field`, the cell index scaled and added to the base;
-\ `modulo` is `mod`, the remainder the engine's own division leaves, which is why
-\ it is spelled with the division that carries the zero-divisor refusal; `maximum`
-\ is `max`, the larger of two signed cells, and `minimum` is `min`, the smaller;
-\ each selects branchlessly with the mask a comparison answers.
+\ The short operation sequences one source word can mean, each written out of
+\ this dialect's own operations, so an expansion asks nothing of the machine
+\ stage that `+` does not; src/compiler/native/elaborate.f writes each one.
+\ `modulo` is spelled with the division that carries the zero-divisor refusal;
+\ `maximum` and `minimum` select branchlessly with a comparison's mask.
 ENUM expand DERIVE eq
    cell-index
    modulo
@@ -196,7 +168,6 @@ ENUM meaning DERIVE eq
 private
 
 \ ---- the dialect's own symbols -----------------------------------------------
-\ it.
 \ Every symbol this dialect mints is spelled `hir.`-something, which is what
 \ keeps a dialect symbol and a source word from being one interned symbol.
 : TRAPS? ( IR-CTX:ctx -- bool )
@@ -215,8 +186,6 @@ private
    CTARGET:F-BASE CTARGET:F-SCALAR-FP CTARGET:WITH
    IR-SCHEMA:SET-TARGET ;
 
-\ A value-producing straight-line operation ends no block,
-\ names no successor, holds no region, and carries no effect token.
 : PURE-VALUE ( -- )
    false 0 0 IR-SCHEMA:SET-CONTROL
    IR-SCHEMA:SET-PURE ;
@@ -419,7 +388,6 @@ s" hir.real>bits" s" hir.rule.real>bits" s" hir.render.real>bits" HIR-OPCODE:REA
 
 public
 
-\ Interning deduplicates, so asking twice answers the same identity.
 : OPCODE ( IR-CTX:ctx IR-BUILD:builder HIR:opcode -- IR-ID:ir-symbol-id )
    OP-NAME IR-BUILD:INTERN-SYMBOL ;
 
@@ -452,28 +420,15 @@ private
    endcase ;
 
 \ ---- the vocabulary memo -----------------------------------------------------
-\ A symbol identity is a (module, ordinal) pair and the module half changes with
-\ every definition, so the ordinal is the only half worth remembering. The memo
-\ holds one ordinal per vocabulary entry - every opcode name and every attribute
-\ key, which is the whole of what this dialect spells - together with the module
-\ they belong to; a hit mints the identity with IR-ID:PACK-SYMBOL against that
-\ module's own key and still puts it through IR-BUILD:SYMBOL-CK, so a stale
-\ builder, a frozen one, a
-\ foreign context and a row the table does not hold are refused exactly as they
-\ were when the memo held whole identities.
-\
-\ A MODULE CLONED FROM THE SESSION PROTOTYPE ADOPTS THE WHOLE MEMO AT BIRTH,
-\ because a clone holds the prototype's spellings at the prototype's ordinals -
-\ which is what makes the second definition of a load bind without interning
-\ anything at all. A module that is not a clone starts with an empty memo and
-\ fills it one intern at a time, the way this always did within a module.
-\
-\ THE KEYS ARE IN IT FOR THE SAME REASON THE OPCODES ARE. An attribute key is
-\ interned once per attribute written, which is several times per node, and
-\ re-resolving the same six or fourteen spellings against a module's interner
-\ was the largest single cost of building one definition's IR. The entries are
-\ the opcodes first and the keys after them, so one ordinal space, one owner
-\ check and one adoption cover both.
+\ A symbol identity is a (module, ordinal) pair and the module changes with
+\ every definition, so the memo holds one ordinal per vocabulary entry (the
+\ opcodes, then the attribute keys) and the module they belong to. A hit mints
+\ the identity with IR-ID:PACK-SYMBOL and still passes IR-BUILD:SYMBOL-CK, so a
+\ stale or frozen builder, a foreign context and a row the table lacks are
+\ refused. A module cloned from the session prototype adopts the whole memo at
+\ birth; any other fills it one intern at a time. The keys are memoised because
+\ re-resolving them per node was the largest single cost of building one
+\ definition's IR.
 OPCODES KEYS + constant VOCAB        \ memo entries: the opcodes, then the keys
 VOCAB TYPED-BUFFER PROTO-ORD n       \ ordinals in the session prototype
 VOCAB TYPED-BUFFER MEMO-ORD n        \ ordinals in the module the memo names
@@ -499,7 +454,6 @@ MEMO-FORGET
    1 MEMO-OWNED !
    VOCAB 0 ?do false i MEMO-SEEN ! loop ;
 
-\ Adopt the prototype's ordinals for a module that was cloned from it.
 : MEMO-ADOPT ( IR-BUILD:builder -- )
    IR-BUILD:MODULE@ 0 MEMO-MOD !
    1 MEMO-OWNED !
@@ -514,9 +468,6 @@ MEMO-FORGET
    i OPCODES < if i NTH OP-NAME exit then
    i OPCODES - KEY-NAME ;
 
-\ One entry of the memo, read or filled. A hit mints the identity against this
-\ module's own key and still puts it through IR-BUILD:SYMBOL-CK; a miss interns
-\ the spelling exactly as the unmemoised reader did and records where it landed.
 : MEMO-BIND ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-symbol-id )
    {: c:IR-CTX:ctx b:IR-BUILD:builder idx:n :}
    b IR-BUILD:MODULE@ {: owner:IR-ID:ir-module-id :}
@@ -552,7 +503,6 @@ public
    idx NTH drop                       \ an ordinal this dialect has an opcode for
    c b idx MEMO-BIND ;
 
-\ The literal's value is the whole content of a constant.
 : KEY-VALUE ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
    K-VALUE KEY-BIND ;
 
@@ -624,14 +574,12 @@ private
 : RENDERER ( IR-CTX:ctx IR-BUILD:builder HIR:opcode -- IR-ID:ir-symbol-id )
    ORD 3 * 2 + TEXT@ IR-BUILD:INTERN-SYMBOL ;
 
-\ Name the rule and renderer, then validate and define the staged schema.
 : FINISH-OP ( IR-CTX:ctx IR-BUILD:builder HIR:opcode -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder o:HIR:opcode :}
    c b o RULE IR-SCHEMA:SET-RULE
    c b o RENDERER IR-SCHEMA:SET-RENDERER
    c b IR-BUILD:DEFINE-OP ;
 
-\ An integer literal: no operands, one cell of result, and the value it holds.
 : DEF-CONST ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
    c b HIR-OPCODE:CONST OPCODE IR-SCHEMA:BEGIN-OP
@@ -644,7 +592,7 @@ private
    c TARGET
    c b HIR-OPCODE:CONST FINISH-OP ;
 
-\ Each one's may-trap flag is the compilation unit's overflow policy.
+\ Each one's may-trap flag is the unit's overflow policy (TRAPS?).
 : DEF-BINARY ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id HIR:opcode -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id o:HIR:opcode :}
    c b o OPCODE IR-SCHEMA:BEGIN-OP
@@ -684,7 +632,6 @@ private
    c TARGET
    c b o FINISH-OP ;
 
-\ One cell in, one cell out, which is what stops a caller staging it with two.
 : DEF-UNARY ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id HIR:opcode -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id o:HIR:opcode :}
    c b o OPCODE IR-SCHEMA:BEGIN-OP
@@ -696,15 +643,18 @@ private
    c b o FINISH-OP ;
 
 \ ---- the memory forms --------------------------------------------------------
-\ The address is a value the program computed, so it may name any cell it can
-\ reach: the generic space with unrestricted aliasing.
+\ An access width is a form, never an attribute, so a width the machine cannot
+\ encode cannot be spelled. The address is a computed value in the generic space
+\ with unrestricted aliasing, so no load moves across a store to an address
+\ nothing proved is another.
 : GENERIC-MEM ( IR-SCHEMA:effect -- )
    {: e:IR-SCHEMA:effect :}
    false 0 0 IR-SCHEMA:SET-CONTROL
    IR--TYPE-SPACE:GENERIC IR--SCHEMA-ALIAS:UNRESTRICTED e IR-SCHEMA:SET-MEMORY ;
 
-\ Pure, which is what lets it carry a token result with no token operand: there
-\ is nothing before it to take one from.
+\ hir.mem is where the memory order starts and gets no instruction: the
+\ routine's order begins where it takes the caller's operands. It is pure, so it
+\ carries a token result with no token operand.
 : DEF-MEM ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder k:IR-ID:ir-type-id :}
    c b HIR-OPCODE:MEM OPCODE IR-SCHEMA:BEGIN-OP
@@ -934,8 +884,10 @@ private
    c FP-TARGET
    c b o FINISH-OP ;
 
-\ A CELL out and not a double: a flag in the floating file is one no branch of
-\ this machine can read. Total, because comparing against a NaN answers false.
+\ A cell out, not a double: no branch of this machine reads a flag in the float
+\ file. Total: every float comparison answers false for a NaN both ways round,
+\ measured on this engine; src/compiler/native/a64ir.f names the conditions
+\ that keep it.
 : DEF-FCOMPARE ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id HIR:opcode -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder f:IR-ID:ir-type-id t:IR-ID:ir-type-id
       o:HIR:opcode :}
@@ -987,39 +939,30 @@ private
 private
 
 \ ---- the session prototype ---------------------------------------------------
-\ Every module a definition builds interns this dialect's whole vocabulary
-\ again, because a module's symbols are its own ordinals. A LOAD interns it
-\ once instead, into an interner of the session's own, and every module built
-\ while that prototype stands starts as a copy of it: the spellings are already
-\ there, at the same ordinals, so the module holds them without a scan.
-\
-\ The pair is the session's and is only read here. PROTOTYPE-CLEAR gives it up
-\ when the session does, and an interner that outlives its context is stale by
-\ the arena's own seal, so a forgotten clear cannot read freed storage.
+\ A module's symbols are its own ordinals, so a load interns this vocabulary
+\ once into a session interner, and every module built while it stands starts
+\ as a copy holding the spellings at the same ordinals. PROTOTYPE-CLEAR gives
+\ the pair up with the session; an interner outliving its context is stale by
+\ the arena's seal, so a forgotten clear cannot read freed storage.
 2 CWORK-BUFFER PROTO IR-ARENA:arena
 0 CWORK-VARIABLE PROTO-ON n
 
 : PRE ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key ptr u8 n -- IR-ID:ir-symbol-id )
    IR-SYM:INTERN ;
 
-\ The ordinal an opcode landed on is the whole point of the prototype: a module
-\ cloned from it holds that spelling at that ordinal, so the ordinal is what a
-\ clone's memo adopts.
 : PRE-OP ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key n -- )
    {: c:IR-CTX:ctx a:IR-ARENA:arena r:IR-ARENA:arena k:IR-ID:ir-module-key i:n :}
    c a r k i NTH OP-NAME PRE IR-ID:SYMBOL-LOCAL i PROTO-ORD ! ;
 
-\ And where each attribute key landed, above the opcodes.
 : PRE-KEY ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key n -- )
    {: c:IR-CTX:ctx a:IR-ARENA:arena r:IR-ARENA:arena k:IR-ID:ir-module-key i:n :}
    c a r k i KEY-NAME PRE IR-ID:SYMBOL-LOCAL  OPCODES i + PROTO-ORD ! ;
 
 public
 
-\ Intern this dialect's whole vocabulary into a session-lived interner and keep
-\ it: the dialect name IR-BUILD interns for every module, every opcode name and
-\ every attribute key. Walked, not listed, so the prototype cannot fall behind
-\ the tables above.
+\ Intern the dialect name, every opcode name and every attribute key into a
+\ session-lived interner. Walked, not listed, so it cannot fall behind the
+\ tables above.
 : PROTOTYPE ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key -- )
    {: c:IR-CTX:ctx a:IR-ARENA:arena r:IR-ARENA:arena k:IR-ID:ir-module-key :}
    c a r k NAME PRE drop
@@ -1039,8 +982,6 @@ public
 
 \ ---- creation and registration -----------------------------------------------
 \ It adds the dialect's own name and schema version, which no caller spells.
-\ While a session prototype stands, the module's interner starts as a copy of
-\ it; the module identity, the plan and every check are the ordinary ones.
 : NEW-BUILDER ( IR-CTX:ctx -- IR-BUILD:builder )
    PROTO-ON @ 0= if NAME MAJOR MINOR IR-BUILD:NEW-BUILDER exit then
    NAME MAJOR MINOR 0 PROTO @ 1 PROTO @ IR-BUILD:NEW-BUILDER-FROM
@@ -1170,17 +1111,12 @@ public
    op ;
 
 \ ---- the vocabulary of a frozen module ---------------------------------------
-\ A selector binds this dialect's identities in the module it lowers, and reads
-\ that module FROZEN: it is the same module for every target a definition is
-\ compiled for, and a second target's selection runs in a context of its own,
-\ which may read a frozen module and may not write a live one. So the readers
-\ below ask the frozen module, and nothing can be interned into it by then: the
-\ whole vocabulary is made present while it is still live, by ENSURE-VOCABULARY,
-\ which NBACK:FREEZE runs on every module it hands the selectors. It interns
-\ exactly what a selector's binding interned when it bound the live builder,
-\ in the same order, so a module's tables do not depend on who reads it. An
-\ entry a frozen module lacks means it froze without that, and is refused by
-\ name rather than bound to an identity that matches nothing.
+\ A selector reads the module frozen: one module serves every target, and a
+\ second target's selection runs in its own context, which may read a frozen
+\ module and not write a live one. ENSURE-VOCABULARY, run by NBACK:FREEZE on
+\ every module it hands the selectors, interns the whole vocabulary while the
+\ module is live, in the order a selector's binding would. An entry a frozen
+\ module lacks is refused by name.
 : ENSURE-VOCABULARY ( IR-CTX:ctx IR-BUILD:builder -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
    c b DIALECT-CK

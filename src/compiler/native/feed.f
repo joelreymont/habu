@@ -1,17 +1,7 @@
 \ feed.f - the stage N0 source-tape producer: the checker's own reader fills the
-\ tape as it consumes a definition's tokens.
-\
-\ It adds no lexer: it hangs on the one reader the engine already runs over every
-\ checked definition (src/core/checker.f CHECK-SCAN) and records what it consumes.
-\
-\ The scanned text is the definition the engine reconstructed - whitespace
-\ collapsed, backslash comments and the framing `:` and `;` already gone.
-\
-\ A string literal's body is the one payload that reaches the tape; a character
-\ literal's code point does not (habu-bind-a-recorded-78d51725).
-\
-\ The unit keeps the text because the checker read it out of the engine's scratch,
-\ which the next definition refills; every later presentation is digest-checked.
+\ tape as it consumes a definition's tokens. It adds no lexer: it hangs on the
+\ one reader the engine already runs over every checked definition
+\ (src/core/checker.f CHECK-SCAN) and records what it consumes.
 
 require src/lib/prelude.f
 require src/lib/errors.f
@@ -205,6 +195,8 @@ using NTAPE
 
 ;using
 
+\ A string literal's body is the one payload that reaches the tape; a character
+\ literal's code point does not (habu-bind-a-recorded-78d51725).
 : APPEND-CHAR ( ptr u8 n n n -- n ) {: a:ptr u:n off:n ru:n :}
    u 1 < if E-NFEED-KIND throw then
    CTX BLD a u IR-BUILD:INTERN-SYMBOL {: sym:IR-ID:ir-symbol-id :}
@@ -227,8 +219,12 @@ using NTAPE
    F-N @ <> if E-NFEED-ORDER throw then ;
 
 \ ---- what the reader calls ---------------------------------------------------
-\ The text is copied into the caller's buffer before it is registered, so the
-\ registry's content digest is taken over the bytes that were kept.
+\ The scanned text is the definition the engine reconstructed - whitespace
+\ collapsed, backslash comments and the framing `:` and `;` already gone. The
+\ unit keeps it because the checker read it out of the engine's scratch, which
+\ the next definition refills; every later presentation is digest-checked. It is
+\ copied into the caller's buffer before it is registered, so the registry's
+\ content digest is taken over the bytes that were kept.
 : ON-SCAN ( ptr u8 n -- ) {: a:ptr u:n :}
    F-STATE @ ST-ARMED <> if E-NFEED-SCAN throw then
    DOES? if
@@ -288,16 +284,10 @@ using NTAPE
    0 F-N !  0 F-LEN !  0 F-VERDICT !
    0 F-DOES !  0 F-BASE !  0 F-NAME-OFF !  0 F-NAME-U ! ;
 
-\ Three events, one authority: the scan's text, each token, and the verdict.
-\
-\ INSTALLED PER UNIT, INTO WHICHEVER CHECKER OWNS THE SOURCE. The observer used
-\ to be planted once at load time, into the instance this file was compiled
-\ against, which left two holes: a run that REPLACES the checker armed a tape the
-\ new instance does not read (src/compiler/native/checker-owner.f says what that
-\ cost), and a seeded engine, whose three captured cells arrive trapped, needed a
-\ boot-run entry to refill them. Three stores per definition close both, and the
-\ install is last-writer-wins for exactly this reason (src/core/checker.f
-\ CHECKER-TAPE).
+\ Three events, one authority: the scan's text, each token and the verdict.
+\ Installed per unit into whichever checker owns the source, last writer wins
+\ (src/core/checker.f CHECKER-TAPE): a replaced checker must read this tape,
+\ and a seeded engine's three captured cells arrive trapped.
 public
 
 : USE-BINDINGS ( [ ptr u8 n -- ] -- )
@@ -359,9 +349,6 @@ private
    OBSERVER-ID BYTE-VIEW NULL-PTR BYTE-VIEW - ;
 public
 
-\ PUBLIC so the observer this compiler owns can be put back: a test that installs
-\ its own trio over it (test/compiler/native-feed.f) restores the engine's
-\ by calling this.
 : OBSERVE ( -- )
    SCAN-ID [: ON-SCAN ;] [: ON-TOKEN ;] [: ON-DONE ;] CHECKER-OWNER:TAPE-INSTALL ;
 

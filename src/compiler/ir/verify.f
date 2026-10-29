@@ -1,104 +1,9 @@
-\ verify.f - the independent structural verifier: the one authority that reads a
-\ whole module and decides whether it may be published.
-\
-\ Nothing is published until every check passes. The checks, in file order:
-\ the window tilings cover every row once; every operation's block and every
-\ block's function agree with the windows; every block ends in exactly one
-\ terminator; every value has one definition; successor arguments match the
-\ destination block's arguments in count and type; every operand is dominated
-\ by its definition; the schema's operand and result type rules hold;
-\ attribute keys are legal for the opcode; effects, source spans and target
-\ requirements are legal for the bound contract; functions obey the symbol and
-\ linkage rules.
-\ This file checks a module; it builds no record and owns no producer's table.
-\
-\ WHY A SEPARATE PACKAGE. Every producer in this substrate validates the record
-\ it is appending: IR-OP:END-OP against the opcode's schema and the pool tiling,
-\ IR-FUN:END-BLOCK against the terminator rule and the argument run,
-\ IR-FUN:END-FUN against the linkage rules and the target contract. None of them
-\ can see the whole module, and several of the freeze rules are only
-\ decidable once construction has stopped: a branch to a block that is still
-\ being built is ordinary SSA construction, so a successor's existence cannot be
-\ checked when the branch is written; a block's predecessors are unknown until
-\ the last branch to it exists; and an operation appended after the last block
-\ belongs to no block, which only a total count can catch. Those checks are this
-\ file's, and it re-derives them from the tables rather than trusting any
-\ producer's summary - which is what makes it an independent check and not a
-\ second copy of the producers' own arithmetic.
-\
-\ WHEN IT RUNS. IR-BUILD:FREEZE calls VERIFY as its last refusal arm, before the
-\ first arena is frozen. That ordering is the whole point: IR-ARENA:FREEZE
-\ cannot be undone, so a verifier that ran after it would leave a builder whose
-\ tables are frozen and whose slot is still live - unpublished but also no longer
-\ correctable. Running first keeps FREEZE's promise that a refusal changes
-\ nothing, so the caller can repair the module and freeze again. Everything here
-\ therefore reads the live builder arenas, not the frozen views.
-\
-\ WHAT IT PUBLISHES. A block record deliberately
-\ stores neither a predecessor count nor a successor count, because those
-\ tables are derived at freeze rather than maintained through
-\ every builder mutation - a stored count would be wrong for as long as any
-\ branch to the block is unwritten. This file derives them and publishes them as
-\ one more module table, in the pool-and-rows shape every other table uses: a
-\ pool of predecessor block ordinals, and one row per block holding that block's
-\ predecessor window and its successor count. The frozen module then serves them
-\ through IR-BUILD's published views, so a later pass reads predecessors the same
-\ way it reads any other table, from the module rather than from a pass-local
-\ cache that could disagree with it.
-\
-\ WHY THE SUCCESSOR LIST IS NOT COPIED. A block's successors are already stored,
-\ exactly once, in its terminator's successor window, and IR-OP is that window's
-\ single authority. Copying the list here would create a second authority for a
-\ fact the module already holds, and the substrate's rule against duplicated
-\ fields is the same rule that kept parent-block out of the operation row. What
-\ is genuinely derived is the inverse relation - which blocks branch TO a block -
-\ and the two counts the block record omits. Those are what this table holds:
-\ the successor COUNT, because the block record does not carry it, and the
-\ predecessor window, because nothing else in the module records it at all.
-\
-\ THE TABLES ARE HELD FOR THE LENGTH OF ONE CALL. A verifier helper would
-\ otherwise have to take twelve arenas to ask one question, so VERIFY records the
-\ module's tables in package-owned storage before its first check and every check
-\ below reads them by name. This is the same package-owned staging discipline
-\ IR-OP, IR-FUN and IR-SCHEMA already keep for their staged records, under the
-\ same single-task compilation rule, and it is what lets each check read as a
-\ small named word. There is no open/closed flag, because there is nothing for
-\ one to protect: VERIFY overwrites all fourteen handles and the key before it
-\ reads any of them, so a verification abandoned by a refusal leaves nothing a
-\ later one could read, and one refused freeze cannot lock out the next. The
-\ compilation context is deliberately NOT recorded: IR-CTX's rule is that no
-\ context handle outlives the call it was given to, so the words that need it -
-\ the target check and the one that appends the derived table - take it from
-\ their caller.
-\
-\ DOMINANCE. Operands cannot reach forward: IR-OP refuses an
-\ operand whose ordinal is at or past the live value count, so within one block a
-\ definition always precedes its use and no cycle can be built. What that rule
-\ cannot see is a use in a block the definition does not dominate - block two
-\ using a value block one defined, when block two is reachable without passing
-\ through block one. The dominator sets are computed here by the ordinary
-\ iterative dataflow: the entry block dominates only
-\ itself, every other block starts dominated by all of its function's blocks, and
-\ each round replaces a block's set with the intersection of its predecessors'
-\ sets plus itself until nothing changes. The sets only ever shrink, so the
-\ iteration terminates, and the result is the greatest fixpoint the definition
-\ asks for. It is stated over the predecessor table this file just derived, which
-\ is the only place that relation exists. A block with no predecessors is
-\ unreachable and keeps the full set, which is the standard initialisation: an
-\ unreachable use constrains nothing, and unreachable code is not an SSA fault.
-\
-\ THE WORKING SET. One package-owned dynamic slab holds the counts, predecessor
-\ lists and dominator sets for the current module. Its slices follow the live
-\ block and edge counts, and its capacity is retained for later verifications.
-\ Growth can move the slab, so the helpers keep offsets and fetch the current
-\ base on every access. Invocation dimensions are cleared on return or refusal;
-\ the ordinary dynamic-buffer capture path releases its mapping.
-\
-\ NAMED DIAGNOSTICS. Every arm throws its own code from the -8080..-8099 block, so
-\ a refusal says which invariant failed rather than which reader noticed. Where a
-\ producer's reader would throw its own code first, this file makes the comparison
-\ itself and throws its own: a verifier that reported E-IR-FUN-BOUND would be
-\ telling the caller about the table it consulted instead of about the module.
+\ verify.f - the independent whole-module verifier, run by IR-BUILD:FREEZE as its
+\ last refusal arm before any arena is frozen (IR-ARENA:FREEZE cannot be undone),
+\ so it reads the live builder arenas. It re-derives every rule from the tables,
+\ trusting no producer's summary, and covers what producers cannot see: a
+\ successor's existence, predecessors, operations after the last block,
+\ dominance across blocks.
 
 require src/lib/prelude.f
 require src/lib/errors.f
@@ -118,11 +23,12 @@ require src/compiler/ir/fun.f
 package IR-VERIFY
 private
 
-\ The one raw crossing this package needs: a one-way projection of the sealed
-\ module key onto its serial, for the derived table's header binding.
 CAST: KEY-SERIAL ( IR-ID:ir-module-key -- n )
 
 \ ---- the derived block-edge table --------------------------------------------
+\ The one module table this file derives and publishes: a pool of predecessor
+\ block ordinals and one row per block (predecessor window, successor count). The
+\ successor list itself stays in the terminator's window, IR-OP's.
 $45445031 constant EDP-MAGIC         \ "EDP1": the predecessor pool header tag
 $45445231 constant EDR-MAGIC         \ "EDR1": the edge row header tag
 
@@ -143,9 +49,10 @@ $FFFFFFFF HDR-CELLS - constant EPOOL-CAP-MAX
 64 constant SET-BITS                 \ dominator-set bits per cell
 
 \ ---- the module under verification -------------------------------------------
-\ One open verification per process, in the shape the producer packages already
-\ keep their staged records. VERIFY records the tables here, every check below
-\ reads them by name, and the slot is given back before VERIFY returns.
+\ One open verification per process; the slot is given back before VERIFY
+\ returns. VERIFY records the fourteen tables in package storage for one call,
+\ overwriting them all first, so no open flag is needed; the context is never
+\ stored.
 0 constant T-OPP                     \ operation cell pool
 1 constant T-VAL                     \ value rows
 2 constant T-OPR                     \ operation rows
@@ -174,11 +81,8 @@ DYNAMIC-BUFFER WORK n
 0 CWORK-VARIABLE DOM-OFF n
 0 CWORK-VARIABLE TMP-OFF n
 
-\ Locals are single-assignment, so the three walks that carry a running value -
-\ the window tilings, the dominator rounds, and the block bisection - keep it in
-\ a named cell each. Each one is written and read inside a single word, so they
-\ never overlap: the bisection does not run a tiling walk and the round does not
-\ run the bisection.
+\ Locals are single-assignment, so the three walks with a running value keep it
+\ in a cell; each is used inside one word and none overlaps another.
 0 CWORK-VARIABLE AT n                          \ running ordinal while a window tiling is walked
 0 CWORK-VARIABLE LO n                          \ block bisection, low bound
 0 CWORK-VARIABLE HI n                          \ block bisection, high bound
@@ -219,9 +123,8 @@ DYNAMIC-BUFFER WORK n
 : VAL ( n -- IR-ID:ir-value-id )
    K@ swap IR-ID:PACK-VALUE ;
 
-\ A block ordinal this module really defines. Every place that reads an ordinal
-\ out of a stored row passes through here, so a forged or dangling reference is
-\ this file's named refusal rather than another table's bound error.
+\ Every stored block ordinal passes here, so a forged reference is this file's
+\ refusal rather than another table's bound error.
 : BLK-OK ( n -- n )
    dup 0 < over BLOCKS >= or if E-IR-VERIFY-BOUND throw then ;
 
@@ -250,7 +153,7 @@ DYNAMIC-BUFFER WORK n
    T-OPP T@ T-OPR T@ K@ o i IR-OP:SUCCESSOR@ IR-ID:BLOCK-LOCAL ;
 
 \ ---- scratch sizing ----------------------------------------------------------
-\ Sizes and offsets count cells; reject an extent before cells can overflow.
+\ Sizes and offsets count cells; an extent is refused before cells overflow.
 : WORK+ ( n n -- n )
    {: a:n b:n :}
    a MEM-MAX-CELLS b - > if E-IR-VERIFY-CAP throw then
@@ -271,8 +174,8 @@ DYNAMIC-BUFFER WORK n
    BLOCK-N @ SET-BITS / BLOCK-N @ SET-BITS mod 0<> if 1+ then SET-N !
    BLOCK-N @ 4 WORK* dup PL-OFF ! WORK-RESERVE ;
 
-\ Counts are already initialized when the edge walk determines the rest of the
-\ slab. RESERVE preserves them, and no pointer is retained across its growth.
+\ RESERVE preserves the counts already initialized; no pointer is retained
+\ across growth.
 : WORK-GROW ( bool -- )
    {: dominance:bool :}
    PL-OFF @ EDGE-N @ WORK+ dup DOM-OFF !
@@ -283,11 +186,8 @@ DYNAMIC-BUFFER WORK n
    WORK-RESERVE ;
 
 \ ---- coverage (the two window tilings, totalled) -----------------------------
-\ IR-FUN's tiling proves each window continues where the one before it ended, so
-\ the windows can only fail to cover the table at the top: an operation appended
-\ after the last block belongs to no block, and a block left behind by an
-\ abandoned function belongs to no function. Comparing the total against the
-\ table's own count is what catches both, and it is the only check that can.
+\ IR-FUN's tiling leaves only the top uncovered: an operation after the last
+\ block, or a block of an abandoned function. Only the total catches both.
 : BLOCK-COVER-CK ( -- )
    0
    FUNS 0 ?do
@@ -303,9 +203,8 @@ DYNAMIC-BUFFER WORK n
    OPS <> if E-IR-VERIFY-COVER throw then ;
 
 \ ---- parents -----------------------------------------------------------------
-\ Walking the functions in order hands out the block ordinals in exactly the
-\ order the windows tile, so each block's own parent field can be compared
-\ against the function whose window is claiming it without searching.
+\ Walking functions in order hands out block ordinals in window order, so no
+\ search is needed.
 : PARENT-AT-CK ( n n -- )
    {: b:n f:n :}
    T-BLR T@ T-FNR T@ K@ b BLK IR-FUN:PARENT@ IR-ID:FUN-LOCAL
@@ -326,7 +225,6 @@ DYNAMIC-BUFFER WORK n
    OPCODE-OF {: s:IR-ID:ir-symbol-id :}
    T-SCR T@ s IR-SCHEMA:TERMINATOR? ;
 
-\ Exactly one terminator, and it is the block's last operation.
 : TERM-CK ( n -- )
    {: b:n :}
    b OP-COUNT {: n:n :}
@@ -347,10 +245,8 @@ DYNAMIC-BUFFER WORK n
    loop ;
 
 \ ---- value definitions -------------------------------------------------------
-\ Every value has exactly one definition, and the definition has to claim it
-\ back. A result value names an operation and a position, so that operation's
-\ result window must hold this very value there; a block argument names a block
-\ and a position, so that block must exist and its argument window must hold it.
+\ The definition has to claim each value back: a result's operation holds it in
+\ its result window at its position; a block argument's block holds it likewise.
 : RESULT-DEF-CK ( n -- )
    {: v:n :}
    T-VAL T@ T-OPR T@ K@ v VAL IR-OP:VALUE-OP@ {: o:IR-ID:ir-op-id :}
@@ -396,9 +292,8 @@ DYNAMIC-BUFFER WORK n
       0 i PN!  0 i SN!
    loop ;
 
-\ A successor must name a block this module defined. This is the check IR-OP
-\ deliberately left open, because when the branch was written the destination
-\ could still have been under construction.
+\ The check IR-OP left open: the destination could still have been under
+\ construction when the branch was written.
 : SUCC-EXISTS-CK ( n -- n )
    dup 0 < over BLOCKS >= or if E-IR-VERIFY-SUCC throw then ;
 
@@ -438,9 +333,7 @@ DYNAMIC-BUFFER WORK n
       loop
    loop ;
 
-\ The predecessor of a successor edge is the block whose terminator carries it,
-\ so the outer index is the predecessor and the inner one is the edge position.
-\ EDGES-FILL reads both, which is why it re-walks rather than reusing a cursor.
+\ EDGES-FILL reads both indices, so it re-walks rather than reusing a cursor.
 : EDGES-BUILD ( bool -- )
    EDGES-RESET
    EDGES-COUNT
@@ -449,10 +342,9 @@ DYNAMIC-BUFFER WORK n
    EDGES-FILL ;
 
 \ ---- successor arguments -----------------------------------------------------
-\ A terminator's operands are the arguments it hands its successor, so with one
-\ successor the count and the types must be the destination block's. With more
-\ than one successor there are no per-edge argument windows. Such destinations
-\ must have no arguments; branch operands may still carry a condition.
+\ With one successor, the terminator's operands must match the destination's
+\ arguments in count and type. With more there are no per-edge windows, so such
+\ destinations must take no arguments.
 : SUCCARG-TYPE-CK ( IR-ID:ir-op-id n n -- )
    {: o:IR-ID:ir-op-id s:n i:n :}
    T-OPP T@ T-OPR T@ K@ o i IR-OP:OPERAND@ {: v:IR-ID:ir-value-id :}
@@ -556,10 +448,10 @@ DYNAMIC-BUFFER WORK n
       i TMP@ bst i DOM!
    loop ;
 
-\ One round over one function: every block but the entry takes the intersection
-\ of its predecessors' sets plus itself. Sets only shrink, so the rounds below
-\ terminate; the bound is the block count, since each round that changes nothing
-\ is the fixpoint and each round that changes something removes at least one bit.
+\ Iterative dataflow: the entry dominates itself, other blocks start with all
+\ blocks of the function. Sets only shrink, so the rounds terminate at the
+\ greatest fixpoint; an unreachable block keeps the full set and constrains
+\ nothing.
 : DOM-ROUND ( n n -- bool )
    {: bst:n bn:n :}
    0 MOVED !
@@ -582,10 +474,8 @@ DYNAMIC-BUFFER WORK n
    loop ;
 
 \ ---- dominance of every operand ----------------------------------------------
-\ Which block defines a value: its own block for an argument, and the block whose
-\ operation window holds the defining operation for a result. The windows tile
-\ the operation table in block order, so the owning block is found by bisection
-\ rather than by a scan, and no working-set array is needed for the map.
+\ The windows tile the operation table in block order, so a result's block is
+\ found by bisection with no working-set map.
 : OP-BLOCK ( n -- n )
    {: o:n :}
    0 LO !
@@ -638,31 +528,15 @@ DYNAMIC-BUFFER WORK n
    loop ;
 
 \ ---- schema type rules -------------------------------------------------------
-\ The schema's declared list is shorter than the operation's when the last entry
-\ is a variadic tail: every further entry is described by that tail type.
 : LIST-AT ( n n bool -- n )
    {: want:n i:n tail:bool :}
    tail i want 1- >= and if want 1- exit then
    i ;
 
-\ WHERE THE SCHEMA IS NOT THE AUTHORITY ON AN OPERAND'S TYPE. The operands
-\ of a terminator with ONE successor are the arguments that
-\ successor is entered with, and the verifier matches them
-\ against that block - count and type, position by position, which SUCCARGS-CK
-\ below does. Those two lists are the same list, and the destination is the one
-\ that knows what is in it: an opcode's schema cannot say what type argument
-\ three of some block is, because a branch of one opcode reaches blocks with
-\ different arguments. So for those operands the schema's declared type is not
-\ consulted, and what makes them right is the destination.
-\
-\ NOTHING IS LOST BY THAT. SUCCARGS-CK is the stronger of the two checks - it
-\ ties an operand to the very argument it becomes rather than to a type the
-\ opcode wrote down once - and it runs over every operand of the operation. What
-\ the schema still decides for such a terminator is that the list is variadic at
-\ all, which is the arity rule, and IR-OP keeps that. Every other operation, and
-\ a terminator that names no successor or two of them - a return, a two-way
-\ branch - is checked against its schema exactly as before, because for those the
-\ schema IS the only authority.
+\ The operands of a one-successor terminator are the destination's arguments,
+\ which SUCCARGS-CK checks position by position; a schema cannot know them, so
+\ their declared schema type is not consulted. A return or a two-way branch is
+\ checked against its schema.
 : SUCCARG-OPERANDS? ( IR-ID:ir-op-id -- bool )
    SUCC-COUNT 1 = ;
 
@@ -719,8 +593,7 @@ DYNAMIC-BUFFER WORK n
       s i SCHEMA-KEY k = if drop 0 0= then
    loop ;
 
-\ Every key the opcode requires appears exactly once, and no key it does not
-\ declare appears at all unless the opcode opened its extension set.
+\ Unless the opcode opened its extension set, no undeclared key may appear.
 : REQUIRED-CK ( IR-ID:ir-symbol-id IR-ID:ir-op-id -- )
    {: s:IR-ID:ir-symbol-id o:IR-ID:ir-op-id :}
    T-SCR T@ s IR-SCHEMA:ATTRS 0 ?do
@@ -734,7 +607,7 @@ DYNAMIC-BUFFER WORK n
       s  o i OP-KEY  DECLARED? 0= if E-IR-VERIFY-ATTRKEY throw then
    loop ;
 
-\ A key names a symbol, and IR-OP has no interner to ask whether it exists.
+\ IR-OP has no interner to check a key's symbol with.
 : KEY-SYMBOL-CK ( IR-ID:ir-op-id -- )
    {: o:IR-ID:ir-op-id :}
    T-OPR T@ o IR-OP:ATTRS 0 ?do
@@ -749,10 +622,8 @@ DYNAMIC-BUFFER WORK n
    s o EXTRA-CK ;
 
 \ ---- effect, span, and target ------------------------------------------------
-\ An operation that carries an effect token has to have one.
-\ The effect class is the schema's field, and this is the cross-check IR-SCHEMA
-\ cannot make on its own: an opcode that reads or writes a memory domain must
-\ declare a memory-token operand or result to carry that domain.
+\ The cross-check IR-SCHEMA cannot make: an opcode reading or writing a memory
+\ domain must declare a memory-token operand or result for it.
 : TOKEN-TYPE? ( IR-ID:ir-type-id -- bool )
    T-TYR T@ swap IR-TYPE:KIND@
    IR--TYPE-KIND:MEMORY-TOKEN IR--TYPE-KIND:EQ ;
@@ -773,9 +644,6 @@ DYNAMIC-BUFFER WORK n
    IR--SCHEMA-EFFECT:PURE IR--SCHEMA-EFFECT:EQ if exit then
    s SCHEMA-TOKEN? 0= if E-IR-VERIFY-EFFECT throw then ;
 
-\ A span is a valid slice of a source this module registered.
-\ A span is a three-field value, so it is unmade to reach the fields the way
-\ every other holder of one does.
 : SPAN-CK ( IR-SOURCE:span -- )
    IR--SOURCE-SPAN:UNMAKE
    {: src:IR-ID:ir-source-id st:n ln:n :}
@@ -815,8 +683,7 @@ DYNAMIC-BUFFER WORK n
    loop ;
 
 \ ---- functions ---------------------------------------------------------------
-\ The freeze symbol rules, restated over the finished table: a function names
-\ a symbol this module interned, and it names it alone.
+\ A function names a symbol this module interned, and no other function names it.
 : FUN-SYMBOL-CK ( n -- n )
    {: f:n :}
    T-FNR T@ K@ f FUN IR-FUN:SYMBOL@ IR-ID:SYMBOL-LOCAL {: ord:n :}
@@ -845,25 +712,19 @@ DYNAMIC-BUFFER WORK n
 : CELL+ ( IR-CTX:ctx IR-ARENA:arena n -- )
    IR-ARENA:PUSH drop ;
 
-\ EDGES-LAYOUT totals one pool cell per predecessor edge. Both the ceiling
-\ check and the reservation use that same live total.
+\ The ceiling check and the reservation use the same live total.
 : EDGE-CELLS ( -- n )
    EDGE-N @ ;
 
-\ One ceiling each, so the caller still opens the row arena, checks it, and only
-\ then opens the pool - the order in which the two were resolved before.
 : ROW-ROOM-CK ( IR-ARENA:reader -- )
    HC-CAP IR-ARENA:RD@ BLOCKS < if E-IR-VERIFY-CAP throw then ;
 
 : POOL-ROOM-CK ( IR-ARENA:reader -- )
    HC-CAP IR-ARENA:RD@ EDGE-CELLS < if E-IR-VERIFY-CAP throw then ;
 
-\ The whole derived table is published in one run of appends - every block's
-\ predecessor window, then every block's row - so both arenas are reserved
-\ here, before the first cell of the first window. Half a derived table is
-\ worse than none: IR-BUILD publishes it with the module, and a pool or row
-\ count that no width divides makes the frozen module unreadable. Reserving
-\ after the room check keeps the verifier's own named capacity error first.
+\ Both arenas are reserved before the first append, after the room check so the
+\ verifier's capacity error comes first: a half-published table makes the
+\ frozen module unreadable.
 : ROOM-TAKE ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c T-EDP T@ EDGE-CELLS IR-ARENA:RESERVE
@@ -888,9 +749,8 @@ DYNAMIC-BUFFER WORK n
 public
 
 \ ---- creation ----------------------------------------------------------------
-\ The derived table's two arenas are created with the module's other tables,
-\ using its block ceiling and an upper bound on its control-flow edges. The
-\ private scratch slab grows independently at freeze.
+\ Sized from the module's block ceiling and an edge bound; the private scratch
+\ slab grows independently.
 : NEW ( IR-CTX:ctx IR-ID:ir-module-key n n -- IR-ARENA:arena IR-ARENA:arena )
    {: c:IR-CTX:ctx key:IR-ID:ir-module-key rcap:n pcap:n :}
    rcap 1 < rcap EROW-CAP-MAX > or if E-IR-VERIFY-CAP throw then
@@ -912,10 +772,7 @@ private
 : TABLES-TAKE ( IR-ID:ir-module-key -- )
    0 VK ! ;
 
-\ The module under one entry point's hands, recorded before anything reads it.
-\ Both entry points below take the same fourteen tables in the same order, so
-\ the recording is written once and neither can hold a different module than
-\ the other would have.
+\ Both entry points record the same fourteen tables in the same order.
 : TABLES! ( IR-ID:ir-module-key IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena -- )
    {: key:IR-ID:ir-module-key opp:IR-ARENA:arena val:IR-ARENA:arena opr:IR-ARENA:arena fnp:IR-ARENA:arena fnr:IR-ARENA:arena blr:IR-ARENA:arena scp:IR-ARENA:arena scr:IR-ARENA:arena syr:IR-ARENA:arena tyr:IR-ARENA:arena atr:IR-ARENA:arena src:IR-ARENA:arena edp:IR-ARENA:arena edr:IR-ARENA:arena :}
    key TABLES-TAKE
@@ -948,30 +805,18 @@ private
 
 public
 
-\ Verify one module whole and derive its predecessor and successor tables. Every
-\ check runs against the live builder arenas, before IR-BUILD freezes any of
-\ them, so a refusal leaves the module exactly as it was. On success the derived
-\ table holds one row per block and IR-BUILD publishes it with the rest.
+\ A refusal leaves the module exactly as it was. Every arm throws its own code
+\ from -8080..-8099, comparing itself where a producer's reader would throw that
+\ producer's code first.
 : VERIFY ( IR-CTX:ctx IR-ID:ir-module-key IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena -- )
    {: c:IR-CTX:ctx key:IR-ID:ir-module-key opp:IR-ARENA:arena val:IR-ARENA:arena opr:IR-ARENA:arena fnp:IR-ARENA:arena fnr:IR-ARENA:arena blr:IR-ARENA:arena scp:IR-ARENA:arena scr:IR-ARENA:arena syr:IR-ARENA:arena tyr:IR-ARENA:arena atr:IR-ARENA:arena src:IR-ARENA:arena edp:IR-ARENA:arena edr:IR-ARENA:arena :}
    key opp val opr fnp fnr blr scp scr syr tyr atr src edp edr TABLES!
    c [: VERIFY-MODULE ;] [: WORK-CLEAR ;] finally ;
 
-\ Derive one module's predecessor and successor tables and publish them, without
-\ the whole-module verification VERIFY performs. This is the freeze of a module
-\ that is not the one its compilation emits: IR-BUILD:FREEZE-INTERIM calls it,
-\ the module it publishes is read by one later pass, and that pass's own output
-\ is verified whole before anything is emitted. The derivation is not optional -
-\ A64SEL reads a block's predecessors off the very module it lowers - so what is
-\ dropped here is the checking, never the deriving.
-\
-\ WHAT STILL REFUSES. The derivation rejects a successor naming a block this
-\ module never defined or a block belonging to another function (EDGES-COUNT),
-\ and more edges than the published pool was sized for (EDGES-PUBLISH).
-\ IR-FUN:TERMINATOR@ refuses a block whose recorded terminator is not the last
-\ operation of its window, so a block that ends in
-\ nothing is named here as well. What is no longer checked on such a module is
-\ listed where the interim freeze is declared.
+\ For IR-BUILD:FREEZE-INTERIM. The derivation is not optional: A64SEL reads
+\ predecessors off the module it lowers. A successor naming an undefined or
+\ foreign-function block (EDGES-COUNT), pool overflow (EDGES-PUBLISH) and a
+\ misplaced terminator (IR-FUN:TERMINATOR@) still refuse.
 : DERIVE-EDGES ( IR-CTX:ctx IR-ID:ir-module-key IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena -- )
    {: c:IR-CTX:ctx key:IR-ID:ir-module-key opp:IR-ARENA:arena val:IR-ARENA:arena opr:IR-ARENA:arena fnp:IR-ARENA:arena fnr:IR-ARENA:arena blr:IR-ARENA:arena scp:IR-ARENA:arena scr:IR-ARENA:arena syr:IR-ARENA:arena tyr:IR-ARENA:arena atr:IR-ARENA:arena src:IR-ARENA:arena edp:IR-ARENA:arena edr:IR-ARENA:arena :}
    key opp val opr fnp fnr blr scp scr syr tyr atr src edp edr TABLES!
@@ -980,8 +825,6 @@ public
 private
 
 \ ---- frozen readers ----------------------------------------------------------
-\ A public reader opens the view once and every helper below takes the reader,
-\ which refuses on the generation and the state exactly where the view would.
 : FPSHAPE-CK ( n -- )
    HDR-CELLS < if E-IR-VERIFY-STATE throw then ;
 
@@ -1024,7 +867,6 @@ private
 public
 
 \ ---- the published derived table ---------------------------------------------
-\ How many blocks branch to this one.
 : RPRED-COUNT ( IR-ARENA:reader IR-ID:ir-block-id -- n )
    {: rview:IR-ARENA:reader id:IR-ID:ir-block-id :}
    rview IR-ARENA:FROZEN-READER id OFF-PN FFLD ;

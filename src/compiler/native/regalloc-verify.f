@@ -1,15 +1,9 @@
-\ regalloc-verify.f - decide whether a finished register assignment is true of the
-\ module it claims to be about.
-\
-\ It re-derives every register fact from the operand and result windows of the
-\ module it is handed and knows nothing about how the allocator reached them.
-\
-\ A register number names a register of ONE file - d0 and x0 are two registers
-\ and both are number zero - so every question about a register is asked of the
-\ FILE the value's class belongs to.
-\
-\ Value ids are the MODULE's and slots are a FUNCTION's, so the value tables are
-\ cleared once per module and the slot table once per function.
+\ regalloc-verify.f - decide whether a finished register assignment is true of
+\ the module it claims to be about, re-deriving every register fact from the
+\ module's operand and result windows. A register number names a register of
+\ one file (d0 and x0 are both zero), so every register question is asked of the
+\ file of the value's class. Value ids are the module's and slots a function's:
+\ value tables clear once per module, the slot table once per function.
 
 require src/lib/prelude.f
 require src/lib/errors.f
@@ -65,7 +59,6 @@ private
 1 constant C-TOKEN
 2 constant C-FPR
 
-\ Two files, separately numbered, so a register question is always asked of one.
 2 constant FILES-N
 0 constant F-GPR
 1 constant F-FPR
@@ -80,11 +73,9 @@ private
    E-A64RAV-CLASS throw ;
 
 \ ---- the machine the allocation under test was made for ----------------------
-\ Asked of the allocator rather than read off one architecture's constants, so
-\ the validator measures a claim against the same register file the walk placed
-\ it in. A validator with its own idea of how many registers the machine has
-\ would accept a register that does not exist on it, which is exactly the bug
-\ this pass exists to catch.
+\ Asked of the allocator rather than one architecture's constants: a validator
+\ with its own register count would accept a register the machine lacks, the
+\ bug this pass exists to catch.
 : RF-SIZE ( n -- n )
    {: fl:n :}
    fl F-GPR = if A64RA:REGFILE NREGFILE:GPR-SIZE exit then
@@ -228,7 +219,6 @@ DYNAMIC-BUFFER FPE-BUF n             \ the predecessor runs themselves
 : USES! ( n n -- )                   {: v:n k:n :} v k cells U-AT + ! ;
 
 \ ---- the tables, and which of them a FUNCTION owns ---------------------------
-\ The value tables are the MODULE's; the slot table is a FUNCTION's.
 : VALUES-CLEAR ( -- )
    VMAX 0 ?do
       0 i SEEN!
@@ -878,10 +868,9 @@ DYNAMIC-BUFFER FPE-BUF n             \ the predecessor runs themselves
    s ;
 
 \ ---- what each operation says about the frame, read once ---------------------
-\ An operation's cell is NOSLOT when it names no frame slot, and otherwise the
-\ slot doubled, with the low bit set when the operation stores to it. The
-\ per-slot passes re-read these two answers off the module once for every slot;
-\ every walk below reads this cell instead.
+\ An operation's cell is NOSLOT when it names no frame slot, else the slot
+\ doubled with the low bit set when it stores to it. Every walk below reads this
+\ cell rather than the module.
 : FOP-SLOT ( n -- n )                2 / ;
 : FOP-STORE? ( n -- bool )           1 and 0<> ;
 
@@ -896,9 +885,8 @@ DYNAMIC-BUFFER FPE-BUF n             \ the predecessor runs themselves
    then
    FLOW-AT @ 1+ FLOW-AT ! ;
 
-\ The same walk over every operation the per-slot scan opened with, made once:
-\ it asks FLOW-SLOT of the same operations in the same order, so a slot the
-\ routine cannot address is refused where it was refused before.
+\ Asks FLOW-SLOT of every operation in order, so a slot the routine cannot
+\ address is refused.
 : FOP-FILL ( IR-ID:ir-fun-id -- )
    {: f:IR-ID:ir-fun-id :}
    0 FLOW-AT !  0 FLOW-HI !
@@ -914,10 +902,9 @@ DYNAMIC-BUFFER FPE-BUF n             \ the predecessor runs themselves
    1 max FOP-BUF-RESERVE ;
 
 \ ---- which blocks reach which, read off the terminators ----------------------
-\ The predecessors are collected from the successors every terminator carries,
-\ which is what the scan this replaces read: a block's predecessor list is not
-\ consulted, so nothing new is trusted. A block reaching another twice enters
-\ its run twice, and the meet is idempotent.
+\ The predecessors are collected from every terminator's successors; a block's
+\ predecessor list is not consulted. A block reaching another twice enters its
+\ run twice, and the meet is idempotent.
 : FLOW-SUCC-ORD ( IR-ID:ir-fun-id IR-ID:ir-op-id n -- n )
    {: f:IR-ID:ir-fun-id t:IR-ID:ir-op-id i:n :}
    t i SUCC-AT IR-ID:BLOCK-LOCAL
@@ -987,9 +974,8 @@ DYNAMIC-BUFFER FPE-BUF n             \ the predecessor runs themselves
    FLOW-NB @ 0 ?do i  f i BLOCK-AT OP-COUNT  FST-BLOCK loop ;
 
 \ ---- the fixpoint, every slot at once ----------------------------------------
-\ TOP is the identity of the meet, so two TOPs meet to TOP and a TOP meets a
-\ DEF to that DEF; every other pair falls to UNDEF. Bit for bit, that is the
-\ answer FLOW-MEET gave one slot at a time.
+\ TOP is the identity of the meet: two TOPs meet to TOP and TOP meets DEF to
+\ that DEF; every other pair falls to UNDEF.
 : FMEET1 ( n n -- )
    {: p:n w:n :}
    FP-OUT-T p w FW@ {: t2:n :}
@@ -1040,9 +1026,8 @@ DYNAMIC-BUFFER FPE-BUF n             \ the predecessor runs themselves
       loop
    loop ;
 
-\ The block order is the one the per-slot fixpoint ran in, and a slot's states
-\ never depend on another slot's, so each slot's sequence of values here is the
-\ sequence it had alone. The rounds are those of the slot that settles last.
+\ No slot's state depends on another's, so the rounds are those of the slot
+\ that settles last.
 : FFIXPOINT ( -- )
    FCLEAR
    begin
@@ -1052,8 +1037,7 @@ DYNAMIC-BUFFER FPE-BUF n             \ the predecessor runs themselves
    until ;
 
 \ ---- the checked walk --------------------------------------------------------
-\ A slot the walk stands on is DEF or it is not: TOP and UNDEF are both refused,
-\ which is what the three-valued compare against FLOW-DEF refused.
+\ A slot the walk stands on must be DEF: TOP and UNDEF are both refused.
 : FCUR-DEF? ( n -- bool )
    {: s:n :}
    s FBITS / FCUR@  1 s FBITS mod lshift and 0<> ;
@@ -1085,8 +1069,7 @@ DYNAMIC-BUFFER FPE-BUF n             \ the predecessor runs themselves
    FLOW-NB @ 0 ?do i  f i BLOCK-AT OP-COUNT  FCK-BLOCK loop ;
 
 \ Every reload reads a slot a store on every path to it already wrote. A module
-\ naming no frame slot is answered by the operation walk alone, exactly as a
-\ zero slot count left the per-slot loop with no body to run.
+\ naming no frame slot is answered by the operation walk alone.
 : FLOW-CK ( IR-ID:ir-fun-id -- )
    {: f:IR-ID:ir-fun-id :}
    f BLOCK-COUNT FLOW-NB !
@@ -1728,14 +1711,11 @@ VDREQ-MAX CWORK-SPAN VD-REQ n
 
 : DKEEP-HOOK-NONE ( -- ) ;
 
-\ PUBLIC BECAUSE A CAPTURED CHAIN HAS TO RE-RUN IT. DKEEP-HOOK is the one
-\ declared address cell in the compiler chain's capture window, and a captured
-\ window's declared cells arrive trapped: what they held was a code address in
-\ the process that compiled them, so the seed re-traps each one and the boot-run
-\ list is what installs the real vector (src/habu/aot-decl.f says why). The
-\ capture tool puts this name on that list, and LFIND has to find it. There is no
-\ wrapper: a second name for a one-cell install is the forwarder that grows a
-\ second body.
+\ Public because a captured chain re-runs it: DKEEP-HOOK is the one declared
+\ address cell in the compiler chain's capture window, a captured declared cell
+\ arrives trapped, and the boot-run list installs the real vector
+\ (src/habu/aot-decl.f says why). The capture tool lists this name and LFIND
+\ must find it. No wrapper: a second name for a one-cell install grows a body.
 public
 : DKEEP-HOOK-DEFAULT ( -- )
    [: DKEEP-HOOK-NONE ;] is A64RAV:DKEEP-HOOK ;
@@ -1970,7 +1950,6 @@ DKEEP-HOOK-DEFAULT
    id DCELL? 0= if false exit then
    id STORES? ;
 
-\ A store into a frame slot: a value the allocation put away.
 : VDSPILL? ( IR-ID:ir-block-id n -- bool )
    {: bk:IR-ID:ir-block-id at:n :}
    bk at OP-AT {: id:IR-ID:ir-op-id :}
@@ -2484,14 +2463,10 @@ public
 
 \ ---- binding the dialect -----------------------------------------------------
 \ The only moment a module can be asked its opcode and key identities, because
-\ its symbols are its own ordinals. The names arrive in the vocabulary the
-\ dialect built (src/compiler/native/dialect.f) - the same value the allocator
-\ was bound with, so the two passes read one module by one set of names. What
-\ this pass never asks about is in it for the allocator: an address lane is a
-\ spill decision and this pass re-derives the ranges rather than the plan. The
-\ stand is the other way round - where the data-stack pointer stands over a body
-\ is the selector's policy, and reading it here is what lets one validator be
-\ true of two selectors instead of re-deriving one of them.
+\ its symbols are its own ordinals. The names are the vocabulary
+\ src/compiler/native/dialect.f built, the value the allocator was bound with.
+\ The stand (where the data-stack pointer stands over a body) is the selector's
+\ policy, read here so one validator is true of two selectors.
 
 : BIND-DIALECT ( IR-CTX:ctx IR-BUILD:builder NDIALECT:vocab -- )
    NDIALECT-VOCAB:UNMAKE

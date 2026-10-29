@@ -1,167 +1,9 @@
-\ schema.f - the closed-world operation schema table: one validated record per
-\ opcode, and the single authority on the shape an operation of that opcode may
-\ have.
-\
-\ A schema records an opcode's operand and result arity and type rules, its
-\ control-flow shape and terminator status, its effect class, memory space and
-\ alias behavior, whether it may trap, the target capabilities it needs, and
-\ its semantic rule and renderer identifiers. IR-OP checks each operation
-\ against its schema as it is appended, and IR-VERIFY checks the frozen module
-\ against the same rows. This file defines the schema machinery; the dialect
-\ packages that fill a table with their own opcodes stay separate, because the
-\ shared substrate does not define the meaning of dialect-specific operations.
-\
-\ ONE TABLE IS ONE DIALECT. Each dialect has an exhaustive operation family
-\ and one schema table, so the dialect is a property of the table, not of each
-\ row: the row-table header carries the dialect's interned name symbol together
-\ with the major and minor schema version. A row therefore records the opcode
-\ and inherits the dialect from the table it lives in. That is also what makes
-\ duplicate detection simple and exact: two rows may not carry the same opcode
-\ name symbol.
-\
-\ IDENTITY IS THE INTERNED OPCODE NAME. A schema is named by the module's own
-\ interned symbol for its opcode, an existing IR-ID ir-symbol-id. This file
-\ mints no identity family of its own and no raw converter, and it does not
-\ duplicate IR-ID's module-key packing. Every public reader takes that symbol,
-\ resolves it through LOOKUP against this table, and throws E-IR-SCHEMA-OPCODE
-\ when no row defines it: a name that is not an opcode of this dialect can name
-\ nothing here. Combined with the exact decoders below, that is the
-\ closed world - there is no path, forged rows included, by which a
-\ reader hands back a value for an operation the table never defined.
-\
-\ WHAT A ROW RECORDS. One fixed-shape row per opcode:
-\   opcode name symbol
-\   operand type list, length, tail flag
-\   result type list, length, tail flag
-\   successor count and region count        - the control-flow shape
-\   terminator flag
-\   effect class
-\   effect domain
-\   memory space and alias behavior
-\   may-trap flag
-\   required architecture and features
-\   required attribute key list and count
-\   extension-set flag
-\   semantic rule identifier symbol
-\   renderer identifier symbol
-\   tied operand list and count             - see the note below
-\   fixed register list and count           - see the note below
-\ Arity is a RULE rather than a bare count, so an operand
-\ or result list is a fixed sequence of types optionally ending in a variadic
-\ tail: the last listed type then describes every further operand or result.
-\ The type constraints are those listed ir-type-ids, each one
-\ validated against the module's own type table.
-\
-\ THE CLOSED VOCABULARIES. The effect class and the alias behavior are ENUM
-\ families declared here, because no other layer fixes their
-\ members. Pure arithmetic has no effect token, so an operation either has no
-\ effect token at all or reads, writes, or does both in exactly one domain. The
-\ alias behaviors name a proven alias class or an alias group. The effect
-\ domain and the memory space are NOT redeclared here: the six effect domains
-\ and the type table's address spaces already exist as IR-TYPE:domain and
-\ IR-TYPE:space, and reusing them keeps one vocabulary per concept. Rows
-\ persist all four families as stable
-\ wire codes, and every decoder is an exact case whose unmatched code throws
-\ E-IR-SCHEMA-STATE, so a bypass-forged row rejects at first touch instead of
-\ decoding as some other operation.
-\
-\ THE THREE EFFECT SHAPES. Memory space and alias behavior qualify the effect
-\ class, and only the data-memory domain has an
-\ address space and an alias class at all; the dictionary, code-publication,
-\ I/O, process, and external-call domains are ordered by their token alone.
-\ There are therefore exactly three ways to declare an effect, and any other
-\ combination throws E-IR-SCHEMA-EFFECT:
-\   SET-PURE     no token, no domain, no space, no alias
-\   SET-MEMORY   the data-memory domain, with a space and an alias behavior
-\   SET-TOKEN    one of the five non-memory domains, with neither
-\ A pure operation presented to SET-MEMORY or SET-TOKEN, a non-memory domain
-\ presented to SET-MEMORY, and the data-memory domain presented to SET-TOKEN
-\ all reject. Readers mirror the shapes: DOMAIN@ rejects on a pure schema and
-\ SPACE@/ALIAS@ reject on anything but a memory schema, with E-IR-SCHEMA-KIND.
-\
-\ THE TERMINATOR RULES. Every block ends in exactly one terminator, and a
-\ successor's argument counts and types match the destination block's
-\ arguments.
-\ Two rules follow and both reject with E-IR-SCHEMA-TERM:
-\   a non-terminator declares no successors - a block leaves only through its
-\     one terminator, so control-flow edges belong to
-\     terminator schemas alone;
-\   a terminator declares no results - HIR's block-parameter SSA passes
-\     values to a successor as its block arguments and
-\     those arguments are the matched interface, so a
-\     terminator has nowhere to put a result of its own.
-\
-\ TIED OPERANDS BELONG TO THE FORM. Some instruction forms name one register
-\ field twice: the move-wide overwrite keeps the bits of its destination it does
-\ not write, so the value it keeps and the value it produces are one register. In
-\ SSA those are two values, and a register allocator has to put them in the same
-\ physical register or the instruction means something else. That is a property
-\ of the form, exactly as its operand types are, so a schema declares it the way
-\ an instruction descriptor does: a list of ties, each naming one result ordinal
-\ and the operand ordinal it shares a register with. The default is no tie, so a
-\ form that declares none has none - by declaration, not by a reader's guess.
-\ A tie is checked whole at definition and rejects with E-IR-SCHEMA-TIE: both
-\ ordinals must name a fixed entry of their list, never a variadic tail, because
-\ a tail stands for a run of operands and "the tail" names no single register;
-\ the tied result and operand must have the same type, since one register holds
-\ one value; and no result and no operand may be tied twice, because one field
-\ cannot hold two values and two fields cannot be one. A terminator therefore
-\ cannot tie anything at all - it has no results to tie.
-\
-\ A FIXED REGISTER BELONGS TO THE FORM TOO. Some forms do not merely name one
-\ register field twice: they name a PARTICULAR register. `shl r64, cl` reads its
-\ count from rcx and nowhere else, and `idiv r64` divides rdx:rax and leaves the
-\ quotient in rax and the remainder in rdx. That is a property of the form in
-\ exactly the way a tie is, so a schema declares it the same way: a list of
-\ fixed entries, each naming a SIDE (an operand or a result), the ordinal on
-\ that side, and the register number the field is fixed to. The default is no
-\ entry, so a form that declares none has none, and every row that predates the
-\ list is unchanged in meaning. A fixed entry is checked whole at definition and
-\ rejects with E-IR-SCHEMA-FIXED: the ordinal must name a fixed entry of its own
-\ side's list and never a variadic tail, for the tie's reason - a tail stands for
-\ a run and names no single register field; no side and ordinal may be fixed
-\ twice, because one field is in one register; and the register must be a number
-\ a register file can have at all, which here means not negative. WHICH file,
-\ and which of its registers the routine being compiled may write, is a question
-\ this layer cannot answer and does not ask: the number is the form's own, and
-\ the register allocator that binds a dialect to a machine refuses a fixed
-\ register outside the routine's pool by name (src/compiler/native/regalloc.f,
-\ E-A64RA-FIXED). A schema table therefore stays free of any dependency on the
-\ native layer, which is what lets this file sit under every dialect.
-\
-\ TARGET LEGALITY COMES FROM THE BINDING. Freeze checks that target-specific
-\ operations are legal for the target contract. A schema declares the
-\ architecture and the feature set its operation needs, and definition consumes
-\ the owning context's validated binding (IR-CTX:BINDING@ -> CBIND:TARGET@) -
-\ never a rederived legality table. A required architecture other than the
-\ bound one, a required feature the bound contract does not have, and a feature
-\ the required architecture cannot have at all each reject
-\ E-IR-SCHEMA-TARGET, so a table never holds a schema its target cannot run.
-\
-\ DEFINITION IS A STAGED BUILDER. The IR's builder API is a small set of
-\ separate ADD-* words rather than one wide constructor, and Habu words
-\ cannot pass variable-length lists on the stack anyway, so a schema is built
-\ through the staged protocol IR-TYPE and IR-ATTR established: BEGIN-OP opens
-\ the stage, the ADD-* and SET-* words fill it, and DEFINE validates everything
-\ and appends. One package-owned stage under the single-task compilation
-\ discipline; a begin while one is open, a field declared twice, an end without
-\ a begin, and a list past ARITY-MAX all reject E-IR-SCHEMA-STAGE or
-\ E-IR-SCHEMA-ARITY, and any end consumes the stage, so no half-staged schema
-\ leaks into the next definition. DEFINE requires every schema field
-\ that has no meaningful default - the effect, the control-flow shape and
-\ terminator status, the trap flag, the target requirement, the semantic rule,
-\ and the renderer - and a missing one throws E-IR-SCHEMA-FIELD.
-\
-\ STORE SHAPES. Two IR-ARENA arenas owned by the compilation context: a list
-\ pool holding operand type ordinals, result type ordinals, and required
-\ attribute key ordinals, and a row table holding one fixed-shape record per
-\ opcode. The pool carries the usual three-cell header (format tag, owning
-\ module serial, committed capacity); the row table carries three more (the
-\ dialect name symbol ordinal, the major version, the minor version). Every
-\ access rechecks shape, window, and stored references fail-closed
-\ (E-IR-SCHEMA-STATE), so a holder who bypasses this package and appends raw
-\ cells cannot make a reader touch cells outside the live ranges.
-\
+\ schema.f - the closed-world operation schema table: one row per opcode, the
+\ single authority on an operation's shape (arity rules, control flow, effect,
+\ trap, target needs, ties, fixed registers). IR-OP checks each append against
+\ it and IR-VERIFY the frozen module; dialect packages fill their own tables.
+\ One table is one dialect: the row header holds the dialect symbol and schema
+\ version, and a row is named by the module's interned opcode symbol.
 
 require src/lib/prelude.f
 require src/lib/errors.f
@@ -176,9 +18,7 @@ require src/compiler/ir/type.f
 package IR-SCHEMA
 public
 
-\ The effect class an operation has. Pure arithmetic carries no effect token;
-\ everything else takes and
-\ returns one in exactly one domain, reading it, writing it, or both.
+\ Pure carries no effect token; every other class uses one in exactly one domain.
 ENUM effect DERIVE eq
    pure
    read
@@ -186,20 +26,14 @@ ENUM effect DERIVE eq
    read-write
 ;ENUM
 
-\ How an operation's memory access relates to other accesses, in the vocabulary
-\ of a proven alias class and an alias group. `unaliased` reaches only
-\ locations no other operation can reach, `grouped` only the locations of its
-\ declared alias group, and
-\ `unrestricted` any location in its memory space.
+\ `unaliased` reaches only locations no other operation can reach, `grouped`
+\ only its alias group's, `unrestricted` any location in its memory space.
 ENUM alias DERIVE eq
    unaliased
    grouped
    unrestricted
 ;ENUM
 
-\ Which of a form's two ordered lists an entry of the fixed-register list names.
-\ A register field is an operand's or a result's, and the ordinal alone cannot
-\ say which, so the side is declared with it.
 ENUM side DERIVE eq
    operand
    result
@@ -207,9 +41,7 @@ ENUM side DERIVE eq
 
 private
 
-\ The one raw crossing this package needs: one-way projections of the sealed
-\ IR-ID identities onto their serials, for header binding and owner
-\ comparison. Nothing in this package re-mints a raw cell into a nominal.
+\ One-way projections of IR-ID identities onto serials; nothing here re-mints.
 CAST: KEY-SERIAL ( IR-ID:ir-module-key -- n )
 CAST: MID-SERIAL ( IR-ID:ir-module-id -- n )
 
@@ -258,8 +90,6 @@ $53435231 constant SCR-MAGIC         \ "SCR1": the row-table header format tag
 25 constant OFF-FXN
 26 constant ROW-CELLS
 
-\ A tie is stored as a pair of cells, the result ordinal then the operand
-\ ordinal, so a stored tie list is twice as many cells as it holds ties.
 2 constant TIE-PAIR
 0 constant TIE-RS                    \ the result half of a stored pair
 1 constant TIE-OP                    \ the operand half
@@ -267,9 +97,6 @@ $53435231 constant SCR-MAGIC         \ "SCR1": the row-table header format tag
 : TIE-CELLS ( n -- n )
    TIE-PAIR * ;
 
-\ A fixed register is stored as three cells - the side code, the ordinal on that
-\ side, then the register - so a stored fixed list is three times as many cells
-\ as it holds entries.
 3 constant FIX-TRIPLE
 0 constant FIX-SIDE                  \ the side code of a stored triple
 1 constant FIX-ORD                   \ the ordinal on that side
@@ -378,9 +205,7 @@ $FFFF constant VERSION-MAX           \ committed schema major/minor ceiling
    ;MATCH ;
 
 \ ---- wire-code decoders ------------------------------------------------------
-\ A stored code outside a family's vocabulary is a corrupted or forged row;
-\ every decoder rejects it named, so a malformed record cannot read as an
-\ operation the dialect never declared.
+\ A stored code outside a family's vocabulary is a forged row and is refused.
 : N>EFF ( n -- IR-SCHEMA:effect )
    case
       EF-PURE  of IR--SCHEMA-EFFECT:PURE endof
@@ -450,13 +275,8 @@ $FFFF constant VERSION-MAX           \ committed schema major/minor ceiling
    if 1 else 0 then ;
 
 \ ---- cell access -------------------------------------------------------------
-\ Every read below goes through an IR-ARENA reader: a store is resolved ONCE, at
-\ the public word, and the helpers take the resolved readers. The live/frozen
-\ twins that used to run down this file collapse into one set, because a reader
-\ carries the state it was opened against and refuses the other with the error
-\ the handle would have given - the only thing the two entry points still differ
-\ in is OPEN-LIVE against OPEN. A record has twenty-six cells and is found by
-\ a name scan, so each public read resolves its arena once.
+\ Each store is resolved once at the public word into a reader, which refuses
+\ the wrong live/frozen state itself.
 
 \ ---- headers and shape -------------------------------------------------------
 : PSHAPE-CK ( n -- )
@@ -495,9 +315,7 @@ $FFFF constant VERSION-MAX           \ committed schema major/minor ceiling
 : SERIAL-CK ( n n -- )
    <> if E-IR-SCHEMA-OWNER throw then ;
 
-\ The pair coupling: both stores are what their tags claim and both carry the
-\ same owning module serial, so a cross-module pairing rejects before any row
-\ window is trusted against the wrong pool.
+\ A cross-module pairing rejects before a row window is trusted against the pool.
 : PAIR-CK ( IR-ARENA:reader IR-ARENA:reader -- )
    {: pr:IR-ARENA:reader rr:IR-ARENA:reader :}
    pr PHDR-CK
@@ -527,9 +345,7 @@ $FFFF constant VERSION-MAX           \ committed schema major/minor ceiling
 : TYP-OWNER ( IR-ID:ir-type-id -- n )
    IR-ID:TYPE-OWNER MID-SERIAL ;
 
-\ A stored ordinal only has to be non-negative here: the owning table
-\ revalidates the id it is handed, so a corrupted row cannot make the symbol
-\ interner or the type table read a row it never built.
+\ Non-negative only: the owning table revalidates the id it is handed.
 : ORD-OK ( n -- n )
    dup 0 < if E-IR-SCHEMA-STATE throw then ;
 
@@ -543,25 +359,17 @@ $FFFF constant VERSION-MAX           \ committed schema major/minor ceiling
 : PC@ ( IR-ARENA:reader n -- n )
    PHDR-CELLS + IR-ARENA:RD@ ;
 
-\ Every stored window revalidates against the pool's live cell range on every
-\ access, so a forged or bypass-appended row rejects fail-closed instead of
-\ reading cells the pool never stored.
+\ Revalidated on every access, so a forged row cannot read past the pool.
 : WIN-CK-N ( n n n -- )
    {: pc:n st:n ln:n :}
    st 0 < ln 0 < or if E-IR-SCHEMA-STATE throw then
    st ln + pc > if E-IR-SCHEMA-STATE throw then ;
 
 \ ---- opcode resolution -------------------------------------------------------
-\ A schema is named by its opcode name symbol. LOOKUP is the only way a
-\ reader reaches a row, so an opcode this dialect never defined names nothing.
-\
-\ THE WALK ASKS THE TOKEN ONCE. Every reader below reaches its row through this
-\ word, so a dialect emitting an operation pays one walk of the name column per
-\ schema question it asks. Asked a row at a time it was one IR-ARENA:RD@ per
-\ row - generation, state, bound, ptr-field and cell-view, per row, for one
-\ cell. IR-ARENA:RD-FIND asks those same
-\ questions once for the whole column and then loads and compares; the row it
-\ answers, and the -1 for an opcode this table never defined, are the walk's.
+\ Every reader reaches its row through this walk and every wire-code decoder is
+\ exact, so no reader answers for an opcode the table never defined, forged rows
+\ included. IR-ARENA:RD-FIND validates the reader once for the whole name column
+\ instead of once per row.
 : SCAN-NAME ( IR-ARENA:reader n -- n )
    {: rr:IR-ARENA:reader ord:n :}
    rr  RHDR-CELLS OFF-NAME +  ROW-CELLS  rr CNT  ord  IR-ARENA:RD-FIND ;
@@ -574,9 +382,6 @@ $FFFF constant VERSION-MAX           \ committed schema major/minor ceiling
    dup 0 < if E-IR-SCHEMA-OPCODE throw then ;
 
 \ ---- effect-shape projections ------------------------------------------------
-\ A row carries a domain only when it is not pure, and a space and an alias
-\ behaviour only in the data-memory domain. Asking a schema
-\ for a field its effect shape does not have is a caller error.
 : SHAPE-CK ( bool -- )
    0= if E-IR-SCHEMA-KIND throw then ;
 
@@ -588,24 +393,17 @@ $FFFF constant VERSION-MAX           \ committed schema major/minor ceiling
    eff HAS-DOM? if dom DM-DATA = else false then ;
 
 \ ---- the staged schema -------------------------------------------------------
-\ One package-owned stage under the single-task compilation discipline. Each
-\ single-valued field starts UNSET and refuses a second declaration, so a
-\ schema is described exactly once and DEFINE can tell "never declared" from
-\ "declared as zero".
+\ Each single-valued field starts UNSET and refuses a second declaration, so
+\ DEFINE can tell "never declared" from "declared as zero".
 0 constant MODE-NONE
 1 constant MODE-OPEN
 -1 constant UNSET
 
-\ The five staged lists share one set of arrays, addressed by a list index and
-\ a fixed segment base, because a Habu word cannot take a storage array as an
-\ argument: one indexed set keeps the append, validate, and copy helpers shared
-\ instead of written out five times. Each entry occupies one slot of each array:
-\ the first holds the entry's ordinal, and the second its companion cell - the
-\ owning module serial for the three identity lists, the tied operand ordinal
-\ for the tie list, whose entries are two ordinals of this schema rather than an
-\ identity of the module, and the fixed ordinal for the fixed-register list. The
-\ third array is the fixed list's alone: its entry is a triple and the other
-\ four lists never touch the cell.
+\ The five staged lists share arrays addressed by list index and segment base,
+\ because a Habu word cannot take a storage array as an argument. The second
+\ array holds the owning module serial for the three identity lists, the tied
+\ operand ordinal for ties, and the ordinal for fixed entries; the third array
+\ is the fixed list's register.
 5 constant LIST#
 0 constant L-OP
 1 constant L-RS
@@ -687,25 +485,20 @@ LIST# CWORK-SPAN STG-T n
 : STG-OPEN-CK ( -- )
    STG-MODE @ MODE-OPEN <> if E-IR-SCHEMA-STAGE throw then ;
 
-\ Any end consumes the stage, whatever its outcome, so neither an end without
-\ a begin nor a rejected end can leave a half-staged schema behind.
+\ Any end consumes the stage, whatever its outcome.
 : STG-TAKE ( -- )
    STG-MODE @ {: have:n :}
    MODE-NONE STG-MODE !
    have MODE-OPEN <> if E-IR-SCHEMA-STAGE throw then ;
 
-\ The cell is one of the stage's own sentinel cells, holding UNSET until the
-\ field is set once, so the input is a cell of numbers and not the pointer cell
-\ the effect used to claim.
 : ONCE-CK ( ptr n -- )
    @ UNSET <> if E-IR-SCHEMA-STAGE throw then ;
 
 : LIST-ROOM ( n -- )
    SN@ ARITY-MAX >= if E-IR-SCHEMA-ARITY throw then ;
 
-\ The variadic tail describes every operand or result past the
-\ fixed ones, so it is necessarily the last entry of its list: appending after
-\ a tail, or declaring a second tail, is an arity-rule violation.
+\ The tail is necessarily the last entry: appending after one, or a second
+\ one, violates the arity rule.
 : TAIL-CK ( n -- )
    ST@ 0<> if E-IR-SCHEMA-ARITY throw then ;
 
@@ -717,8 +510,6 @@ LIST# CWORK-SPAN STG-T n
    owner l SEG n + SO!
    n 1+ l SN! ;
 
-\ The fixed list's own appender: its entry is a triple, so it writes the third
-\ array the other four lists leave alone.
 : FIX+ ( n n n -- )
    {: sd:n ord:n reg:n :}
    L-FX LIST-ROOM
@@ -753,9 +544,7 @@ LIST# CWORK-SPAN STG-T n
       syr key L-AT SEG i + SV@ L-AT SEG i + SO@ STG-SYM-CK
    loop ;
 
-\ Every schema field that has no meaningful default must have
-\ been declared; a zero count means "no operands", but a missing effect class
-\ means the schema was never finished.
+\ A zero count means "no operands"; a missing effect means unfinished.
 : FIELDS-CK ( -- )
    STG-EFF @ UNSET = if E-IR-SCHEMA-FIELD throw then
    STG-CTRL @ UNSET = if E-IR-SCHEMA-FIELD throw then
@@ -764,18 +553,14 @@ LIST# CWORK-SPAN STG-T n
    STG-RULE @ UNSET = if E-IR-SCHEMA-FIELD throw then
    STG-REND @ UNSET = if E-IR-SCHEMA-FIELD throw then ;
 
-\ The control-flow shape stays inside its committed ceilings, and
-\ a variadic tail is only meaningful when its list has an entry to be.
 : ARITY-CK ( -- )
    STG-SUCC @ dup 0 < swap SUCC-MAX > or if E-IR-SCHEMA-ARITY throw then
    STG-REGN @ dup 0 < swap REGION-MAX > or if E-IR-SCHEMA-ARITY throw then
    L-OP ST@ 0<> L-OP SN@ 0= and if E-IR-SCHEMA-ARITY throw then
    L-RS ST@ 0<> L-RS SN@ 0= and if E-IR-SCHEMA-ARITY throw then ;
 
-\ A tied or fixed ordinal names one fixed entry of its list. A variadic tail
-\ stands for every further operand or result, so it names no single register
-\ field and can be neither tied nor fixed. The rule is one test and the two
-\ declarations that ask it report under their own names.
+\ A tie or fixed entry names a fixed list entry, never the variadic tail: a tail
+\ stands for many fields and names no single register.
 : ORD-FIXED? ( n n -- bool )
    {: l:n ord:n :}
    ord 0 < ord l SN@ >= or if false exit then
@@ -785,15 +570,11 @@ LIST# CWORK-SPAN STG-T n
 : FIXED-CK ( n n -- )
    ORD-FIXED? 0= if E-IR-SCHEMA-TIE throw then ;
 
-\ One register holds one value, so the tied result and the tied operand have to
-\ be the same type of the same module.
 : TIE-TYPE-CK ( n n -- )
    {: rs:n op:n :}
    L-RS SEG rs + SV@  L-OP SEG op + SV@  <> if E-IR-SCHEMA-TIE throw then
    L-RS SEG rs + SO@  L-OP SEG op + SO@  <> if E-IR-SCHEMA-TIE throw then ;
 
-\ No result and no operand may be tied twice: one register field cannot hold two
-\ values, and two register fields cannot be one.
 : TIE-ONCE-CK ( n -- )
    {: k:n :}
    k 0 ?do
@@ -811,15 +592,12 @@ LIST# CWORK-SPAN STG-T n
       i TIE-ONCE-CK
    loop ;
 
-\ Which of the two staged lists a side names.
 : FX-LIST ( n -- n )
    FX-RESULT = if L-RS else L-OP then ;
 
 : FX-ORD-CK ( n n -- )
    ORD-FIXED? 0= if E-IR-SCHEMA-FIXED throw then ;
 
-\ No side and ordinal may be fixed twice: one register field is in one register,
-\ and a form that names two for it names neither.
 : FIX-ONCE-CK ( n -- )
    {: k:n :}
    k 0 ?do
@@ -828,9 +606,9 @@ LIST# CWORK-SPAN STG-T n
       if E-IR-SCHEMA-FIXED throw then
    loop ;
 
-\ The register is the form's own number in its own file, and which file that is
-\ belongs to the layer that knows the machine: what a schema can say is that no
-\ file numbers a register below zero.
+\ A fixed register is only checked non-negative here: the register allocator
+\ refuses one outside the routine's pool (src/compiler/native/regalloc.f,
+\ E-A64RA-FIXED), so this file has no native dependency.
 : FIX-REG-CK ( n -- )
    0 < if E-IR-SCHEMA-FIXED throw then ;
 
@@ -843,15 +621,11 @@ LIST# CWORK-SPAN STG-T n
       i FIX-ONCE-CK
    loop ;
 
-\ Control-flow edges belong to the block's one
-\ terminator, and a terminator hands its values to the successor as block
-\ arguments rather than producing results of its own.
+\ A non-terminator declares no successors and a terminator no results.
 : TERM-CK ( -- )
    STG-TERM @ 0= STG-SUCC @ 0<> and if E-IR-SCHEMA-TERM throw then
    STG-TERM @ 0<> L-RS SN@ 0<> and if E-IR-SCHEMA-TERM throw then ;
 
-\ Target capabilities, enforced against the context's validated binding rather
-\ than a rederived legality table.
 : WANT-ARCH ( -- CTARGET:arch )
    STG-ARCH @ N>ARCH ;
 
@@ -861,8 +635,9 @@ LIST# CWORK-SPAN STG-T n
 : BOUND ( IR-CTX:ctx -- CTARGET:contract )
    IR-CTX:BINDING@ CBIND:TARGET@ ;
 
-\ A required feature the required architecture cannot have at all is an
-\ incoherent target requirement, whatever the bound contract says.
+\ Target needs are checked against the context's binding (IR-CTX:BINDING@),
+\ never a rederived table. A feature the required architecture cannot have is
+\ incoherent whatever the bound contract says.
 : ARCH-FEAT-CK ( -- )
    WANT-ARCH CTARGET:ARCH-MASK WANT-FEAT CTARGET:HAS?
    0= if E-IR-SCHEMA-TARGET throw then ;
@@ -893,16 +668,13 @@ LIST# CWORK-SPAN STG-T n
       L-FX SN@ FIX-CELLS +
    pr PC-CAP IR-ARENA:RD@ > if E-IR-SCHEMA-CAP throw then ;
 
-\ The pool cells one definition writes: three plain lists, the two-cell tie list
-\ and the three-cell fixed list. The room check above and the reservation below
-\ both count them, so the number the ceiling was checked against is the number
-\ that gets allocated.
+\ The room check and the reservation both count these, so the checked number is
+\ the allocated number.
 : STAGED-CELLS ( -- n )
    L-OP SN@ L-RS SN@ + L-AT SN@ + L-TI SN@ TIE-CELLS + L-FX SN@ FIX-CELLS + ;
 
-\ A definition writes five pool windows and then one row, so both arenas are
-\ reserved here, before the first of them is touched. Reserving after the room
-\ check keeps this table's own named capacity error ahead of the arena's.
+\ Both arenas are reserved before either is written, after the room check so
+\ this table's capacity error comes first.
 : ROOM-TAKE ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena -- )
    {: c:IR-CTX:ctx a:IR-ARENA:arena r:IR-ARENA:arena :}
    c a STAGED-CELLS IR-ARENA:RESERVE
@@ -911,9 +683,8 @@ LIST# CWORK-SPAN STG-T n
 : CELL+ ( IR-CTX:ctx IR-ARENA:arena n -- )
    IR-ARENA:PUSH drop ;
 
-\ The pool reader is opened before the reservation and outlives it: a RESERVE or
-\ a PUSH changes neither registry generation nor state, and a reader re-reads
-\ its row's pointer and count on every call, so it follows the new span.
+\ The reader survives RESERVE and PUSH: it re-reads its row's pointer and count
+\ on every call.
 : LIST-ADD ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:reader n -- n )
    {: c:IR-CTX:ctx a:IR-ARENA:arena pr:IR-ARENA:reader l:n :}
    pr PCELLS {: st:n :}
@@ -922,8 +693,6 @@ LIST# CWORK-SPAN STG-T n
    loop
    st ;
 
-\ The tie list is two cells per entry, so it has an appender of its own rather
-\ than the shared one.
 : TIE-LIST-ADD ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:reader -- n )
    {: c:IR-CTX:ctx a:IR-ARENA:arena pr:IR-ARENA:reader :}
    pr PCELLS {: st:n :}
@@ -933,7 +702,6 @@ LIST# CWORK-SPAN STG-T n
    loop
    st ;
 
-\ The fixed list is three cells per entry, so it has an appender of its own too.
 : FIX-LIST-ADD ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:reader -- n )
    {: c:IR-CTX:ctx a:IR-ARENA:arena pr:IR-ARENA:reader :}
    pr PCELLS {: st:n :}
@@ -976,12 +744,8 @@ LIST# CWORK-SPAN STG-T n
 public
 
 \ ---- creation ----------------------------------------------------------------
-\ Create one dialect's schema table: the list pool committed to exactly pcap
-\ cells and the row table committed to exactly rcap opcodes, both headers bound
-\ to key's module serial, and the row header carrying the dialect's interned
-\ name symbol with its major and minor schema version.
-\ The two handles plus the key are the table; all three stay with the module
-\ owner, and the table dies with the owning context.
+\ Both headers are bound to key's module serial; the table dies with the owning
+\ context.
 : NEW ( IR-CTX:ctx IR-ARENA:arena IR-ID:ir-module-key IR-ID:ir-symbol-id n n n n -- IR-ARENA:arena IR-ARENA:arena )
    {: c:IR-CTX:ctx syr:IR-ARENA:arena key:IR-ID:ir-module-key dia:IR-ID:ir-symbol-id major:n minor:n rcap:n pcap:n :}
    rcap ROW-CAP-OK
@@ -1006,7 +770,6 @@ public
    a r ;
 
 \ ---- the schema builder ------------------------------------------------------
-\ Open a schema for one opcode, named by the module's interned symbol for it.
 : BEGIN-OP ( IR-ID:ir-symbol-id -- )
    {: op:IR-ID:ir-symbol-id :}
    STG-MODE @ MODE-NONE <> if E-IR-SCHEMA-STAGE throw then
@@ -1015,14 +778,9 @@ public
    op SYM-ORD STG-NAME !
    op SYM-OWNER STG-NAMEO ! ;
 
-\ Abandon an open schema without defining it. The stage exists only between a
-\ begin and an end, so this is the explicit end for a caller that decides not
-\ to define after all.
 : ABANDON ( -- )
    STG-TAKE ;
 
-\ One fixed operand of this type, then optionally a
-\ variadic tail whose type describes every further operand.
 : ADD-OPERAND ( IR-ID:ir-type-id -- )
    L-OP swap TYPE+ ;
 
@@ -1037,41 +795,32 @@ public
    L-RS swap TYPE+
    1 L-RS ST! ;
 
-\ This result and this operand are one register field of the instruction form,
-\ named by their ordinals in the two lists above - the result's first, then the
-\ operand's, the order the pair reads in. Declaring the tie here is what
-\ lets a register allocator read the constraint instead of knowing which opcode
-\ has it; the ordinals are checked against the finished lists at DEFINE, so the
-\ two lists may be declared in any order around this.
+\ Result ordinal first, then operand. Ordinals are checked against the finished
+\ lists at DEFINE, so the lists may be declared in any order around this.
 : ADD-TIE ( n n -- )
    {: rs:n op:n :}
    STG-OPEN-CK
    L-TI rs op ORD+ ;
 
-\ This operand or result field of the instruction form is the named register and
-\ no other - the count `shl r64, cl` reads, the rdx:rax `idiv r64` divides. The
-\ side says which list the ordinal counts in and the register is the form's own
-\ number in its own file; the ordinals are checked against the finished lists at
-\ DEFINE, so the lists may be declared in any order around this.
+\ E.g. the count `shl r64, cl` reads, the rdx:rax `idiv r64` divides. Ordinals
+\ are checked against the finished lists at DEFINE.
 : ADD-FIXED ( IR-SCHEMA:side n n -- )
    {: sd:IR-SCHEMA:side ord:n reg:n :}
    STG-OPEN-CK
    sd SIDE-CODE ord reg FIX+ ;
 
-\ An attribute key this opcode requires.
 : ADD-ATTR ( IR-ID:ir-symbol-id -- )
    {: k:IR-ID:ir-symbol-id :}
    STG-OPEN-CK
    L-AT k SYM-ORD k SYM-OWNER ORD+ ;
 
-\ This opcode also admits the dialect's extension attribute
-\ set, so an attribute outside the required keys is not automatically unknown.
+\ An attribute outside the required keys may come from the dialect's extension
+\ set.
 : ADD-ATTR-EXT ( -- )
    STG-OPEN-CK
    STG-ATEXT @ 0<> if E-IR-SCHEMA-STAGE throw then
    1 STG-ATEXT ! ;
 
-\ The control-flow shape and the terminator status.
 : SET-CONTROL ( bool n n -- )
    {: term:bool succ:n regn:n :}
    STG-OPEN-CK
@@ -1081,14 +830,13 @@ public
    succ STG-SUCC !
    regn STG-REGN ! ;
 
-\ Pure: no effect token at all.
+\ Only the data-memory domain has a space and alias class, so an effect is one
+\ of SET-PURE, SET-MEMORY or SET-TOKEN (E-IR-SCHEMA-EFFECT).
 : SET-PURE ( -- )
    STG-OPEN-CK
    STG-EFF ONCE-CK
    EF-PURE STG-EFF ! ;
 
-\ An effect in the data-memory domain, which is the
-\ one domain that has an address space and an alias behaviour.
 : SET-MEMORY ( IR-TYPE:space IR-SCHEMA:alias IR-SCHEMA:effect -- )
    {: spc:IR-TYPE:space ali:IR-SCHEMA:alias eff:IR-SCHEMA:effect :}
    STG-OPEN-CK
@@ -1100,8 +848,6 @@ public
    spc SPC-CODE STG-SPC !
    ali ALI-CODE STG-ALI ! ;
 
-\ An effect in one of the five
-\ domains that are ordered by their token alone and have no address space.
 : SET-TOKEN ( IR-TYPE:domain IR-SCHEMA:effect -- )
    {: dom:IR-TYPE:domain eff:IR-SCHEMA:effect :}
    STG-OPEN-CK
@@ -1113,21 +859,18 @@ public
    e STG-EFF !
    d STG-DOM ! ;
 
-\ The may-trap flag.
 : SET-TRAP ( bool -- )
    {: t:bool :}
    STG-OPEN-CK
    STG-TRAP ONCE-CK
    t BOOL>N STG-TRAP ! ;
 
-\ The architecture and the features this operation needs.
 : SET-TARGET ( CTARGET:arch CTARGET:features -- )
    STG-OPEN-CK
    STG-ARCH ONCE-CK
    CTARGET:FEATURES-N STG-FEAT !
    ARCH-CODE STG-ARCH ! ;
 
-\ The semantic rule identifier.
 : SET-RULE ( IR-ID:ir-symbol-id -- )
    {: s:IR-ID:ir-symbol-id :}
    STG-OPEN-CK
@@ -1135,7 +878,6 @@ public
    s SYM-ORD STG-RULE !
    s SYM-OWNER STG-RULEO ! ;
 
-\ The renderer identifier.
 : SET-RENDERER ( IR-ID:ir-symbol-id -- )
    {: s:IR-ID:ir-symbol-id :}
    STG-OPEN-CK
@@ -1143,11 +885,7 @@ public
    s SYM-ORD STG-REND !
    s SYM-OWNER STG-RENDO ! ;
 
-\ Close the staged schema: validate it whole against this table, the module's
-\ symbol interner, the module's type table, and the context's bound target
-\ contract, then append its lists and its row. The stage is consumed whatever
-\ the outcome, and every check runs before the first cell is written, so a
-\ definition either lands whole or changes nothing.
+\ The stage is consumed whatever the outcome; all checks precede the first write.
 : DEFINE ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key IR-ARENA:arena IR-ARENA:arena -- )
    {: c:IR-CTX:ctx a:IR-ARENA:arena r:IR-ARENA:arena key:IR-ID:ir-module-key syr:IR-ARENA:arena tyr:IR-ARENA:arena :}
    STG-TAKE
@@ -1202,9 +940,7 @@ public
 \ ---- schema readers ----------------------------------------------------------
 private
 
-\ One field of one row off one resolution: the name scan that finds the row and
-\ the cell it answers read through the same reader. LFLD and FFLD are all the
-\ single-field readers below keep of the live/frozen split - an opener each.
+\ The name scan and the field read share one reader resolution.
 : FLD ( IR-ARENA:reader IR-ID:ir-symbol-id n -- n )
    {: rr:IR-ARENA:reader op:IR-ID:ir-symbol-id off:n :}
    rr  rr op ROW-OF  off RC@ ;
@@ -1240,13 +976,9 @@ public
 : ATTRS ( IR-ARENA:arena IR-ID:ir-symbol-id -- n )
    OFF-ATN LFLD ;
 
-\ How many ties this form declares. Zero is the default and the common answer:
-\ most forms name every register field once.
 : TIES ( IR-ARENA:arena IR-ID:ir-symbol-id -- n )
    OFF-TIN LFLD ;
 
-\ How many register fields this form fixes. Zero is the default and the common
-\ answer: most forms take whatever register the allocator gives them.
 : FIXED-COUNT@ ( IR-ARENA:arena IR-ID:ir-symbol-id -- n )
    OFF-FXN LFLD ;
 
@@ -1303,8 +1035,6 @@ public
 
 private
 
-\ One element of a stored list window, revalidated against the pool's live
-\ range before the cell is read.
 : WIN@ ( IR-ARENA:reader IR-ARENA:reader n n n n -- n )
    {: pr:IR-ARENA:reader rr:IR-ARENA:reader l:n stoff:n lenoff:n i:n :}
    rr l stoff RC@ {: st:n :}
@@ -1313,8 +1043,7 @@ private
    i 0 < i ln >= or if E-IR-SCHEMA-BOUND throw then
    pr st i + PC@ ORD-OK ;
 
-\ One half of one stored tie, revalidated the same way: the whole tie list is
-\ TIE-PAIR cells per entry, and the index counts ties rather than cells.
+\ The index counts ties, not cells.
 : TWIN@ ( IR-ARENA:reader IR-ARENA:reader n n n -- n )
    {: pr:IR-ARENA:reader rr:IR-ARENA:reader l:n i:n col:n :}
    rr l OFF-TIST RC@ {: st:n :}
@@ -1323,8 +1052,7 @@ private
    i 0 < i ln >= or if E-IR-SCHEMA-BOUND throw then
    pr st i TIE-CELLS + col + PC@ ORD-OK ;
 
-\ One cell of one stored fixed entry, revalidated the same way: the whole fixed
-\ list is FIX-TRIPLE cells per entry, and the index counts entries.
+\ The index counts entries, not cells.
 : FWIN@ ( IR-ARENA:reader IR-ARENA:reader n n n -- n )
    {: pr:IR-ARENA:reader rr:IR-ARENA:reader l:n i:n col:n :}
    rr l OFF-FXST RC@ {: st:n :}
@@ -1356,8 +1084,7 @@ public
    pr rr key KEY-CK
    key pr rr  rr op ROW-OF  OFF-ATST OFF-ATN i WIN@ IR-ID:PACK-SYMBOL ;
 
-\ The two halves of one tie. Both are ordinals into this schema's own result and
-\ operand lists rather than identities of the module, so neither takes the key.
+\ Ordinals into this schema's own lists, so neither takes the key.
 : TIE-RESULT@ ( IR-ARENA:arena IR-ARENA:arena IR-ID:ir-symbol-id n -- n )
    {: a:IR-ARENA:arena r:IR-ARENA:arena op:IR-ID:ir-symbol-id i:n :}
    a IR-ARENA:OPEN-LIVE {: pr:IR-ARENA:reader :}
@@ -1372,9 +1099,6 @@ public
    pr rr PAIR-CK
    pr rr  rr op ROW-OF  i TIE-OP TWIN@ ;
 
-\ The three cells of one fixed entry. The side and the ordinal are this schema's
-\ own lists and the register is the form's own number, so none of them takes the
-\ key either.
 : FIXED-SIDE@ ( IR-ARENA:arena IR-ARENA:arena IR-ID:ir-symbol-id n -- IR-SCHEMA:side )
    {: a:IR-ARENA:arena r:IR-ARENA:arena op:IR-ID:ir-symbol-id i:n :}
    a IR-ARENA:OPEN-LIVE {: pr:IR-ARENA:reader :}
@@ -1397,8 +1121,6 @@ public
    pr rr  rr op ROW-OF  i FIX-REG FWIN@ ;
 
 \ ---- frozen readers ----------------------------------------------------------
-\ A frozen module reads its schemas through the two arena views; the retired
-\ builder handles reject every touch with E-IR-ARENA-FROZEN.
 : FSCHEMAS ( IR-ARENA:view -- n )
    IR-ARENA:OPEN dup RHDR-CK CNT ;
 
@@ -1557,7 +1279,6 @@ public
    rv IR-ARENA:OPEN {: rr:IR-ARENA:reader :}
    pr rr PAIR-CK
    pr rr  rr op ROW-OF  i FIX-REG FWIN@ ;
-
 
 private
 get-current prot-wid-add

@@ -1,88 +1,9 @@
-\ build.f - the builder and freeze lifecycle: one uniquely owned handle for a
-\ module under construction, and the one act that publishes it.
-\
-\ A builder is uniquely owned: NEW-BUILDER makes one, FREEZE publishes it as an
-\ immutable module that later read-only passes may share, and ABORT abandons
-\ it. The small common builder API every dialect wraps lives here, and freeze
-\ is where a module is validated before anything is published. This file owns
-\ the lifecycle of that construction: who may mutate, when mutation stops, what
-\ abandoning costs, and what publication produces. It defines no table format
-\ and repeats no table logic; every append here is a delegation to the module
-\ that owns the table being appended to.
-\
-\ WHY THE BUILDER HOLDS THE TABLES. A module under construction is sixteen
-\ arenas: the symbol interner's byte pool and rows, the type table's pool and
-\ rows, the attribute table's rows, the source registry, the dialect
-\ schema table's pool and rows, the operation store's cell pool, value rows and
-\ operation rows, and the function store's attribute pool, function rows and
-\ block rows. Before this file, a caller assembled those sixteen handles itself
-\ and passed the right subset to every append; nothing stopped it from keeping
-\ one and writing through it after the module was finished. Here the sixteen
-\ handles are created by NEW-BUILDER and never leave this package while the
-\ builder is live, so the builder handle is the only way to reach them and
-\ therefore the single mutation authority. FREEZE turns each of them into an
-\ IR-ARENA read-only view and publishes the views; ABORT retires all sixteen
-\ and publishes nothing. The live readers further down ask those tables
-\ questions before a freeze - was this symbol interned, does this span lie in
-\ its source, which dialect is this schema table for - and answer with a scalar,
-\ an identity, or a refusal, so a caller that needs a fact about a module under
-\ construction never needs a handle to the table holding it.
-\
-\ HANDLES AND HOW THEY STAY HONEST. A builder handle and the frozen module
-\ handle it becomes are the same nonzero, monotonic, never-reused generation
-\ serial from this package's atomic counter, exactly like IR-CTX and IR-ARENA.
-\ A bounded registry keeps one slot per generation with the owning context's
-\ serial, the slot's state, the committed ceilings, and the sixteen handles.
-\ The handles are stored in typed storage (TYPED-BUFFER over IR-ARENA:arena,
-\ IR-ARENA:view and the IR-ID identity families), so this package never re-mints
-\ a raw cell into a sealed nominal and adds no forging power to the substrate.
-\ The context handle itself is deliberately NOT stored: IR-CTX's rule is that no
-\ context handle survives its WITH-CONTEXT body, so every mutating word here
-\ takes the context from its caller and checks it against the owner serial the
-\ slot recorded. That check is also what rejects a builder used from a foreign
-\ or later compilation.
-\
-\ THE THREE WAYS A HANDLE CAN BE WRONG, AND THEIR THREE NAMES. A slot keeps its
-\ generation after the builder stops being usable, so the registry can still say
-\ which of the three things happened: E-IR-BUILD-FROZEN for anything asked of a
-\ builder FREEZE already consumed (including a second freeze), E-IR-BUILD-ABORTED
-\ for anything asked of a builder ABORT retired, and E-IR-BUILD-STALE for a
-\ generation this registry has no slot for at all or whose owning context has
-\ since torn down. E-IR-BUILD-MODULE separates the two handle families: a frozen
-\ module presented where a live builder belongs, or the reverse.
-\
-\ STAGES ARE PROCESS-WIDE, SO THE BUILDER OWNS THEM. IR-OP and IR-FUN keep one
-\ open operation, one open block and one open function per process, not per
-\ store, so two live builders could otherwise interleave into each other's
-\ staged record. This file records which generation holds each of the three
-\ stages; a begin against a stage another builder holds, or an end without a
-\ begin, is E-IR-BUILD-STAGE. It is also what makes the freeze refusal below
-\ decidable: FREEZE knows whether this builder left a record half-declared.
-\
-\ FREEZE IS ALL OR NOTHING. Every check runs before the first arena is frozen:
-\ the builder must be live and presented with its own context, must own no open
-\ stage (a frozen module holds no builder-only placeholder), every table must
-\ hold no more records than the ceiling this builder committed to, and all
-\ sixteen
-\ arenas must still be live. Only then are the arenas frozen, the slot marked
-\ frozen and the module handle minted. A refusal therefore leaves the context,
-\ the tables and the builder exactly as they were, and the caller may fix the
-\ module and freeze again.
-\
-\ THE WHOLE-MODULE CHECKS ARE IR-VERIFY'S. The structural
-\ verification of a whole module is package IR-VERIFY (src/compiler/ir/verify.f),
-\ its own owner with its own error block (-8080..-8099). FREEZE calls it through
-\ VERIFY-CK as its last refusal arm, in front of the arena freezing, and
-\ duplicates none of its checks; FREEZE-INTERIM only derives its edge table. The
-\ per-record structural rules are enforced where the record is appended:
-\ IR-OP:END-OP, IR-FUN:END-FUN and IR-FUN:END-BLOCK each validate their record
-\ whole against the schema, the windows and the ceilings.
-\
-\ CAPACITY. An arena is a record and a span in the owning context's scratch
-\ region, so how many modules may be live together is bounded by that region and
-\ by nothing else. This file's own sixteen-slot registry bounds how many
-\ BUILDERS and frozen modules it can name at once, and a context's teardown is
-\ what reclaims those.
+\ build.f - the builder and freeze lifecycle of one IR module.
+\ A live builder is the only route to its module's sixteen table arenas: they
+\ never leave this package. FREEZE publishes them as read-only views, ABORT and
+\ RETIRE retire them. Every append delegates to the table's owner; whole-module
+\ checks are IR-VERIFY's (src/compiler/ir/verify.f), per-record checks are
+\ IR-OP:END-OP, IR-FUN:END-FUN and IR-FUN:END-BLOCK.
 
 require src/lib/prelude.f
 require src/lib/errors.f
@@ -140,9 +61,7 @@ $7FFFFFFF constant BGEN-MAX          \ builder generation ceiling
 16 constant TABLES#
 
 \ ---- the committed ceiling plan ----------------------------------------------
-\ One field per number the sixteen tables are created with. A plan is staged by
-\ name before NEW-BUILDER so no caller has to remember sixteen positional
-\ numbers, and NEW-BUILDER consumes it.
+\ Staged by name before NEW-BUILDER, which consumes it.
 0 constant P-SYMS                    \ symbol rows
 1 constant P-SBYTES                  \ symbol pool bytes
 2 constant P-TYPES
@@ -160,8 +79,8 @@ $7FFFFFFF constant BGEN-MAX          \ builder generation ceiling
 14 constant PLAN#
 -1 constant UNSET
 
-\ Default ceilings are the table formats' representable ranges. Arenas grow
-\ from small seeds; explicit plans may impose smaller limits for their callers.
+\ Defaults are the table formats' representable ranges; arenas grow from small
+\ seeds.
 IR-SYM:CAP-MAX constant D-SYMS
 IR-SYM:BYTE-MAX constant D-SBYTES
 IR-TYPE:CAP-MAX constant D-TYPES
@@ -210,7 +129,6 @@ SLOT-MAX CWORK-BUFFER BMID IR-ID:ir-module-id
 : BSTATE! ( n n -- )
    cells BSTATES + ! ;
 
-\ A projection, so the record is an identity and never a way to mint an arena.
 CAST: ARENA>N ( IR-ARENA:arena -- n )
 
 : BPROTO@ ( n -- n )
@@ -230,30 +148,11 @@ CAST: ARENA>N ( IR-ARENA:arena -- n )
    CEIL-IDX cells BCEILS + ! ;
 
 \ ---- the table transaction ---------------------------------------------------
-\ Creating a builder is sixteen arena allocations followed by one publication,
-\ and it has to be all of them or none. NOTHING GIVES THE ARENAS BACK, because
-\ there is nothing to give back: an arena is a record and a span in the owning
-\ context's region, so the sixteen a failed creation took die with that
-\ context's mark exactly as a successful one's do. What a partial creation costs
-\ is region bytes a bump cursor will not reclaim before the mark - the price
-\ growth by copy already pays - and no shared resource at all.
-\
-\ WHAT THIS RECORD IS FOR is the other half: the table array. TAB! is the only
-\ word that puts an arena into a slot's table array, so it is the only place
-\ that can know a table exists, and it now records that as it writes. Nothing
-\ here retires anything - the count decides only whether the builder may be
-\ published - so the two records can never disagree about who cleans up. That
-\ separation is the type-family lesson applied forwards: a second writer of the
-\ same state is how a rollback ends up running against state somebody else
-\ already moved (src/core/type-family.f, TFAM-REWIND).
-\
-\ THE COUNT IS ALSO THE NEXT INDEX. The sixteen tables are created in
-\ ascending index order - T-SP first, T-ER last - so a write whose index is not
-\ the current count is a caller that reordered, repeated or skipped one, and it
-\ is refused by name here rather than letting a module carry a table left over
-\ from whoever held the slot before. The build's own inputs are parked here too,
-\ because the release has to run on the throw path and a checked catch takes a
-\ stack-neutral quotation.
+\ A failed creation gives no arena back: each is a record in the context's
+\ region and dies with its mark. TAB! is the only writer of the table array and
+\ counts what it writes; tables are created in index order T-SP..T-ER, so a
+\ write whose index is not the count is refused. The inputs are parked here
+\ because a checked catch takes a stack-neutral quotation.
 -1 constant TX-NONE                  \ no builder is being built
 
 TX-NONE CWORK-VARIABLE TX-SLOT n
@@ -263,7 +162,6 @@ TX-NONE CWORK-VARIABLE TX-SLOT n
 0 CWORK-VARIABLE TX-MINOR n
 0 CWORK-VARIABLE TX-DIA ptr u8
 1 CWORK-BUFFER TX-CTX IR-CTX:ctx
-
 
 : TX-SLOT@ ( -- n )
    TX-SLOT @ dup TX-NONE = if E-IR-BUILD-STATE throw then ;
@@ -301,10 +199,7 @@ private
    {: slot:n k:n :}
    slot TABLES# * k + BTAB @ ;
 
-\ The one writer of a table entry, and therefore the one place that knows a
-\ table exists. A write outside the open transaction, or out of order, is
-\ refused: either would leave the release below with a count that does not name
-\ what was taken.
+\ Refuses a write outside the open transaction or out of index order.
 : TAB! ( IR-ARENA:arena n n -- )
    {: slot:n k:n :}
    slot TX-SLOT@ <> if E-IR-BUILD-STATE throw then
@@ -312,10 +207,8 @@ private
    slot TABLES# * k + BTAB !
    k 1+ TX-N ! ;
 
-\ Publishing is allowed only when every table exists. A count short of sixteen
-\ means a table-building word returned without writing its table down, and the
-\ module would then carry whatever arena the previous holder of this slot left
-\ in that entry.
+\ Publication needs all sixteen tables: a short count would publish the
+\ previous holder's arena in the missing entry.
 : TX-ABANDON ( -- )
    TX-CLOSE ;
 
@@ -338,6 +231,9 @@ private
    BKEY ! ;
 
 \ ---- generation serials ------------------------------------------------------
+\ Builder and module handles are never-reused generation serials, and a slot
+\ keeps its generation after use so a bad handle is named E-IR-BUILD-FROZEN,
+\ -ABORTED, -RETIRED, -STALE or -MODULE.
 : BGEN-NEXT-N ( n -- n )
    dup 0 < over BGEN-MAX >= or if E-IR-BUILD-SERIALS throw then
    1+ ;
@@ -373,6 +269,8 @@ public
 private
 
 \ ---- handle resolution -------------------------------------------------------
+\ No context handle is stored (IR-CTX forbids it outliving WITH-CONTEXT): each
+\ word takes the context and checks it against the slot's owner serial.
 : FIND-B ( n -- n )
    {: g:n :}
    -1
@@ -380,9 +278,8 @@ private
       g i BGEN@ = if drop i leave then
    loop ;
 
-\ Resolve a generation to its slot. A generation this registry never minted, and
-\ a slot whose owning context has torn down, are both stale; the dead-owner slot
-\ is retired on touch so its handles are never read afterwards.
+\ A generation never minted and a slot whose owning context has torn down are
+\ both stale; a dead-owner slot is retired on touch.
 : RESOLVE ( n -- n )
    FIND-B
    dup 0 < if E-IR-BUILD-STALE throw then
@@ -396,16 +293,13 @@ private
       E-IR-BUILD-STATE throw
    then ;
 
-\ A live builder: the state tells the caller exactly how the handle went bad.
 : LIVE-SLOT ( IR-BUILD:builder -- n )
    B>N RESOLVE STATE-OK
    dup BSTATE@ ST-ABORTED = if E-IR-BUILD-ABORTED throw then
    dup BSTATE@ ST-LIVE <> if E-IR-BUILD-FROZEN throw then ;
 
-\ A module handle is minted only by FREEZE, and a frozen slot changes state
-\ once more at most - RETIRE gives its tables back - so a retired module is
-\ named on its own terms and anything else here is corrupted registry state
-\ rather than a caller mistake.
+\ A frozen slot changes state once more at most (RETIRE), so any other state
+\ here is corrupted registry state.
 : FROZEN-SLOT ( IR-BUILD:module -- n )
    M>N RESOLVE STATE-OK
    dup BSTATE@ ST-RETIRED = if E-IR-BUILD-RETIRED throw then
@@ -415,8 +309,7 @@ private
    {: c:IR-CTX:ctx slot:n :}
    c IR-CTX:SERIAL slot BOWNER@ <> if E-IR-BUILD-OWNER throw then ;
 
-\ The mutation gate every append passes through: this builder is live and this
-\ context is the one that created it.
+\ The gate every append and reader passes: builder live, ctx its creator.
 : USE ( IR-CTX:ctx IR-BUILD:builder -- n )
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
    b LIVE-SLOT {: slot:n :}
@@ -424,17 +317,13 @@ private
    slot ;
 
 \ ---- stage ownership ---------------------------------------------------------
-\ IR-OP and IR-FUN keep one open record each per process. These three cells say
-\ which builder generation holds each of them, so two builders cannot interleave
-\ and FREEZE can see a half-declared record. A cell that names a generation is
-\ the promise that the authority behind it really has that record open: the
-\ claim is recorded only after the authority's own begin returned, and it is
-\ given back before or with the end that consumes it.
+\ IR-OP and IR-FUN keep one open record each per process; these cells name the
+\ builder generation holding each. A claim is recorded only after the owner's
+\ begin returned and given back before or with the end that consumes it.
 0 CWORK-VARIABLE FN-STG n
 0 CWORK-VARIABLE BK-STG n
 0 CWORK-VARIABLE OP-STG n
 
-\ A builder that can still finish the record it claimed.
 : HOLDER-LIVE? ( n -- bool )
    {: g:n :}
    g FIND-B {: slot:n :}
@@ -442,11 +331,9 @@ private
    slot BOWNER@ IR-CTX:SERIAL-LIVE?
    slot BSTATE@ ST-LIVE = and ;
 
-\ A claim whose holder is gone - a builder abandoned by a throw, or one whose
-\ context tore down - is reclaimed before the next builder is refused for it,
-\ and the authority's orphaned record is abandoned with it. Without this a
-\ single failed construction would keep every later builder out of that stage
-\ for the rest of the process.
+\ A claim whose holder is gone (abandoned by a throw, or its context torn down)
+\ is reclaimed with the owner's orphaned record; otherwise one failed
+\ construction would lock the stage for the rest of the process.
 : OP-REAP ( -- )
    OP-STG @ STG-FREE = if exit then
    OP-STG @ HOLDER-LIVE? if exit then
@@ -465,8 +352,6 @@ private
    IR-FUN:ABANDON-FUN
    STG-FREE FN-STG ! ;
 
-\ The three checks a claim needs: the stage is free to take, the stage is this
-\ builder's, and the claim is recorded or given back.
 : FN-FREE-CK ( -- )
    FN-REAP
    FN-STG @ STG-FREE <> if E-IR-BUILD-STAGE throw then ;
@@ -506,15 +391,13 @@ private
 : OP-DONE ( n -- )
    OP-MINE STG-FREE OP-STG ! ;
 
-\ A module that still has a record open carries a builder-only
-\ placeholder, so it cannot be published.
+\ An open record is a builder-only placeholder; it cannot be published.
 : STG-CLEAR-CK ( n -- )
    {: g:n :}
    FN-STG @ g = BK-STG @ g = or OP-STG @ g = or
    if E-IR-BUILD-OPEN throw then ;
 
-\ Abandoning gives every stage this builder holds back to the authority that
-\ owns it, innermost first, so no staged field survives into the next builder.
+\ Innermost first, so no staged field survives into the next builder.
 : STG-RELEASE ( n -- )
    {: g:n :}
    OP-STG @ g = if IR-OP:ABANDON STG-FREE OP-STG ! then
@@ -541,8 +424,7 @@ PLAN# CWORK-SPAN PSTG n
    f PSTG@ UNSET <> if E-IR-BUILD-PLAN throw then
    v f PSTG! ;
 
-\ Consume the staged plan into one slot's committed ceilings. A field nobody
-\ declared is a plan error, not a silent default.
+\ A field nobody declared is a plan error, not a silent default.
 : PLAN-TAKE ( n -- )
    {: slot:n :}
    PLAN-OPEN-CK
@@ -557,8 +439,7 @@ PLAN# CWORK-SPAN PSTG n
 public
 
 \ ---- declaring the ceilings a module commits to ------------------------------
-\ PLAN-BEGIN opens a fresh plan; each setter names the table it bounds; every
-\ field must be declared exactly once before NEW-BUILDER consumes the plan.
+\ Every field must be declared exactly once before NEW-BUILDER consumes the plan.
 : PLAN-BEGIN ( -- )
    PLAN# 0 ?do
       UNSET i PSTG!
@@ -598,8 +479,6 @@ public
    blks P-BLKS PLAN-SET
    pool P-FPOOL PLAN-SET ;
 
-\ The production plan, for callers that want the committed defaults rather than
-\ a hand-sized module.
 : PLAN-DEFAULT ( -- )
    PLAN-BEGIN
    D-SYMS D-SBYTES PLAN-SYMBOLS
@@ -613,8 +492,7 @@ public
 private
 
 \ ---- creation ----------------------------------------------------------------
-\ Retire every slot whose owning context has torn down; the arenas it named are
-\ already unmapped and its generation can never resolve again.
+\ Retire every slot whose owning context has torn down.
 : SWEEP ( -- )
    SLOT-MAX 0 ?do
       i BGEN@ 0 <> if
@@ -639,28 +517,19 @@ private
    dup 0 < if E-IR-BUILD-SLOTS throw then ;
 
 \ ---- starting a module's interner from a prototype ---------------------------
-\ Every module a definition builds interns the same dialect vocabulary again,
-\ because a module's symbols are its own ordinals. A builder created FROM a
-\ prototype starts with that vocabulary already in place at the same ordinals,
-\ so the dialect binding mints its identities instead of looking them up, and
-\ the module's identity and every owner check are exactly what they were.
-\
-\ The prototype is staged like the plan is: set for one creation and cleared
-\ when that creation is over, whether it succeeded or threw, so an ordinary
-\ NEW-BUILDER can never pick one up by accident.
+\ A builder created FROM a prototype starts with the prototype's interned
+\ dialect vocabulary at the same ordinals, so the dialect binding mints its
+\ identities instead of looking them up. The prototype is staged for one
+\ creation and cleared on success or throw.
 2 CWORK-BUFFER PROTO-SYM IR-ARENA:arena
 0 CWORK-VARIABLE PROTO-ON n
 
 : PROTO-CLEAR ( -- )
    0 PROTO-ON ! ;
 
-\ WHICH PROTOTYPE, RECORDED. A module whose interner is a copy holds the
-\ prototype's spellings at the prototype's ordinals, and that is the fact a
-\ caller needs before it may read an ordinal recorded against the prototype as
-\ naming a spelling here. It is known exactly here, so it is written down here -
-\ the slot records the prototype's row table, or zero when this module interned
-\ its own names - rather than guessed later from spellings a module happens to
-\ hold. A slot is reused, so the plain path clears it.
+\ The slot records the prototype's row table, or zero when the module interned
+\ its own names: only a copied interner lets a caller read a prototype ordinal
+\ as the same spelling here. A slot is reused, so the plain path clears it.
 : SYM-NEW ( IR-CTX:ctx n -- IR-ARENA:arena IR-ARENA:arena )
    {: c:IR-CTX:ctx slot:n :}
    PROTO-ON @ 0<> if
@@ -694,8 +563,6 @@ private
    {: c:IR-CTX:ctx slot:n :}
    c slot KEY@ slot P-SRCS BCEIL@ IR-SOURCE:NEW slot T-SA TAB! ;
 
-\ The dialect's name is interned into this module's own symbol table, so the
-\ schema table names its dialect the way every other record names a symbol.
 : SCHEMA-TABLES ( IR-CTX:ctx n IR-ID:ir-symbol-id n n -- )
    {: c:IR-CTX:ctx slot:n dia:IR-ID:ir-symbol-id major:n minor:n :}
    c  slot T-SR TAB@  slot KEY@ dia major minor
@@ -720,11 +587,8 @@ private
    f slot T-FR TAB!
    b slot T-BR TAB! ;
 
-\ The derived block-edge table the freeze verifier fills. It is created here with
-\ the module's other tables so verification allocates nothing of its own at
-\ freeze time, and its ceilings are read off the same committed plan: one row per
-\ block, and one predecessor cell per operand pool cell, which bounds the edges
-\ because every successor a terminator names occupies one of those cells.
+\ Ceilings come from the plan: one row per block, one predecessor cell per
+\ operand pool cell (every successor a terminator names occupies one).
 : EDGE-TABLES ( IR-CTX:ctx n -- )
    {: c:IR-CTX:ctx slot:n :}
    c slot KEY@ slot P-BLKS BCEIL@ slot P-OPOOL BCEIL@ IR-VERIFY:NEW
@@ -732,11 +596,8 @@ private
    p slot T-EP TAB!
    r slot T-ER TAB! ;
 
-\ Build all sixteen tables into the open transaction's slot. The symbol interner
-\ comes first because the dialect name is a symbol of this module, and the
-\ schema table cannot be created without it. It takes nothing from the stack:
-\ its inputs are the transaction's, so the caller below can run it under a
-\ checked catch, which takes a stack-neutral quotation.
+\ The symbol interner comes first: the schema table names its dialect by a
+\ symbol of this module. Stack-neutral so it can run under a checked catch.
 : TABLES-BUILD ( -- )
    TX-CTX@ {: c:IR-CTX:ctx :}
    TX-SLOT@ {: slot:n :}
@@ -751,12 +612,8 @@ private
    c slot FUN-TABLES
    c slot EDGE-TABLES ;
 
-\ Every table, or none. A component that refuses - a ceiling its own
-\ constructor will not accept, or a region with no room left - closes the
-\ transaction behind it and the ORIGINAL refusal is what the caller is told: a
-\ caller that asked for a module it cannot have needs to know why, not that the
-\ unwind worked. The tables already made need no unwinding: they are records in
-\ the owning context's region and go back with its mark.
+\ On a refusal the caller sees the original refusal; the tables already made are
+\ records in the context's region and go back with its mark.
 : TABLES-TRY ( -- )
    [: TABLES-BUILD ;] catch {: rc:n :}
    rc 0= if TX-COMMIT exit then
@@ -765,18 +622,9 @@ private
 
 public
 
-\ Create a uniquely owned builder for one new module of ctx, whose dialect is
-\ named by the presented bytes at the presented schema version. The staged plan
-\ is consumed here and becomes this module's committed ceilings. The module
-\ identity is minted from the context, so it counts against the context's own
-\ module ceiling; the generation is installed last, so a failure anywhere in
-\ table creation leaves no half-installed slot behind, and a builder nobody got
-\ costs this registry nothing.
-\
-\ WHAT A FAILED CREATION DOES CONSUME, honestly: the module serial this context
-\ minted, which is never reused by design, and the region bytes each table it
-\ did make took from a bump cursor with no free. Neither is a registry slot and
-\ neither stops the next builder.
+\ The plan becomes the module's committed ceilings. The module serial counts
+\ against the context's module ceiling and is not reused after a failed
+\ creation; the generation is installed last, so a failure leaves no slot.
 : NEW-BUILDER ( IR-CTX:ctx ptr u8 n n n -- IR-BUILD:builder )
    {: c:IR-CTX:ctx p u:n major:n minor:n :}
    PLAN-OPEN-CK
@@ -794,9 +642,6 @@ public
    g slot BGEN!
    g MINT-B ;
 
-\ The same creation, with this module's interner starting as a copy of the
-\ prototype's. The prototype stays the caller's and is not touched; the plan,
-\ the module serial and every check are the ordinary ones.
 : NEW-BUILDER-FROM ( IR-CTX:ctx ptr u8 n n n IR-ARENA:arena IR-ARENA:arena -- IR-BUILD:builder )
    {: c:IR-CTX:ctx p u:n major:n minor:n pa:IR-ARENA:arena pr:IR-ARENA:arena :}
    pa 0 PROTO-SYM !
@@ -817,17 +662,12 @@ public
 : MODULE@ ( IR-BUILD:builder -- IR-ID:ir-module-id )
    LIVE-SLOT BMID @ ;
 
-\ The module key this builder mints identities under. Dialect packages need it
-\ to name the identities they read back; it confers no mutation power on its own.
+\ Confers no mutation power.
 : MODULE-KEY ( IR-BUILD:builder -- IR-ID:ir-module-key )
    LIVE-SLOT KEY@ ;
 
-\ Whether this module's interner was started as a copy of the presented
-\ prototype's rows. That is the whole of what lets a caller read an ordinal it
-\ recorded against that prototype as naming the same spelling in this module, so
-\ the question is answered from what NEW-BUILDER-FROM recorded and never from a
-\ sample of the spellings the module holds: a module that interned the same names
-\ itself answers no, and a clone of some OTHER prototype answers no as well.
+\ Answered from what NEW-BUILDER-FROM recorded, never from the spellings held:
+\ a module that interned the same names itself answers no.
 : CLONED-FROM? ( IR-BUILD:builder IR-ARENA:arena -- bool )
    {: b:IR-BUILD:builder pr:IR-ARENA:arena :}
    b LIVE-SLOT BPROTO@ {: have:n :}
@@ -840,9 +680,7 @@ public
    c b USE {: slot:n :}
    c  slot T-SP TAB@  slot T-SR TAB@  slot KEY@  p u IR-SYM:INTERN ;
 
-\ Carry one symbol of a FROZEN module into the module being built, so a pass
-\ that rebuilds a module names what it builds by the old module's symbol, never
-\ by a copy of its bytes in a buffer of the pass's own. IR-SYM owns the crossing.
+\ Lets a rewriting pass name what it builds by the old module's symbol.
 : CARRY-SYMBOL ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ARENA:view IR-ID:ir-symbol-id -- IR-ID:ir-symbol-id )
    {: c:IR-CTX:ctx b:IR-BUILD:builder pv:IR-ARENA:view rv:IR-ARENA:view
       id:IR-ID:ir-symbol-id :}
@@ -854,9 +692,7 @@ public
    c b USE {: slot:n :}
    c slot T-SA TAB@ slot KEY@ p u IR-SOURCE:REGISTER ;
 
-\ Carry the one source a frozen module registered into the module being built,
-\ so a rewriting pass inherits the source identity it is rewriting instead of
-\ taking the text's digest again. IR-SOURCE owns what a carried row is.
+\ The rewriting pass inherits the source identity instead of re-digesting text.
 : CARRY-SOURCE ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ID:ir-source-id -- IR-ID:ir-source-id )
    {: c:IR-CTX:ctx b:IR-BUILD:builder v:IR-ARENA:view id:IR-ID:ir-source-id :}
    c b USE {: slot:n :}
@@ -929,9 +765,7 @@ public
    c  slot T-AR TAB@  slot KEY@  slot T-SR TAB@ s IR-ATTR:SYMBOL ;
 
 \ ---- the dialect schema table ------------------------------------------------
-\ The staged opcode schema is closed against this builder's own tables. The
-\ IR-SCHEMA staging words (BEGIN-OP, ADD-OPERAND, SET-PURE and the rest) take
-\ identities only and need no table, so they stay where they are defined.
+\ The IR-SCHEMA staging words take identities only and need no table.
 : SCHEMA-DEFINED? ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id -- bool )
    {: c:IR-CTX:ctx b:IR-BUILD:builder op:IR-ID:ir-symbol-id :}
    c b USE T-QR TAB@ op IR-SCHEMA:DEFINED? ;
@@ -968,8 +802,6 @@ public
    b SERIAL OP-MINE
    blk IR-OP:ADD-SUCCESSOR ;
 
-\ One attribute this operation carries, under the key it answers: the schema
-\ declares keys, so an operation has to name one.
 : ADD-ATTR ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id IR-ID:ir-attr-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder k:IR-ID:ir-symbol-id a:IR-ID:ir-attr-id :}
    c b USE drop
@@ -982,9 +814,7 @@ public
    b SERIAL OP-MINE
    span IR-OP:SET-SPAN ;
 
-\ Close the staged operation into this module's operation store. The stage is
-\ given back before IR-OP runs, so a rejected append leaves no stage behind for
-\ the next one either way.
+\ The stage is given back before IR-OP runs, so a rejected append leaves none.
 : END-OP ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-op-id )
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
    c b USE {: slot:n :}
@@ -1075,8 +905,7 @@ public
    IR-FUN:END-BLOCK ;
 
 \ ---- what the builder holds so far -------------------------------------------
-\ Live counts, so a caller can see the committed prefix without being handed a
-\ table it could write through.
+\ Live counts, without handing out a table a caller could write through.
 : SYMBOLS ( IR-BUILD:builder -- n )
    LIVE-SLOT T-SR TAB@ IR-SYM:SYMBOLS ;
 
@@ -1096,33 +925,11 @@ public
    LIVE-SLOT T-FP TAB@ IR-FUN:ATTR-CELLS ;
 
 \ ---- what the builder can be asked about the module so far -------------------
-\ Questions a caller may ask about a module that is still being built. The
-\ counts above say how much a table holds; these say what is in it. A source
-\ tape has to prove a token's span lies inside the source it names and that its
-\ spelling really was interned, and a dialect has to prove the schema table it
-\ is about to fill was created for it - and all three facts live in tables this
-\ package holds privately, so before these readers existed the only way to ask
-\ was to wait for FREEZE, which is far too late for a tape and a module that
-\ have to be built together.
-\
-\ THEY CONFER NO MUTATION POWER. Each reader passes the same USE gate every
-\ append passes, so a foreign context, a frozen builder and an aborted builder
-\ are refused by their own names here exactly as they are at a mutation. Each
-\ one then asks the table's own authority and answers with a scalar, an
-\ identity, or a refusal: no arena handle leaves this package, so the builder is
-\ still the only route to a write. A reader that answers a question the table's
-\ authority already answers repeats none of its logic; it only reaches the
-\ table.
-
-\ The module's interner has really interned this symbol. IR-SYM refuses an
-\ identity of another module and an ordinal it never minted, and the refusal
-\ that comes out is the interner's own, so this path and a caller holding the
-\ symbol rows directly reject the same identity for the same reason.
-\ How many bytes one of this module's symbols spells. A caller that is about to
-\ copy the spelling into a fixed buffer asks this first: the copy REFUSES a span
-\ smaller than the symbol, with the interner's own error, and a caller reading a
-\ name the PROGRAM chose rather than one the dialect declared needs to answer
-\ "too long to be a name I can ask about" as an ordinary no rather than a throw.
+\ Readers of a module still being built, for callers (a source tape, a dialect)
+\ that cannot wait for FREEZE. Each passes USE and answers with a scalar, an
+\ identity or the owning table's own refusal; no arena handle leaves.
+\ The copy into a fixed buffer refuses a span smaller than the symbol; a caller
+\ reading a program-chosen name asks this first to answer "too long" as a no.
 : SYMBOL-LEN ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id -- n )
    {: c:IR-CTX:ctx b:IR-BUILD:builder id:IR-ID:ir-symbol-id :}
    c b USE {: slot:n :}
@@ -1143,23 +950,12 @@ public
    slot T-SR TAB@ slot KEY@ src n dst cap IR-SYM:IDS!
    mid true ;
 
-\ Byte equality between one of this module's symbols and a presented span. This
-\ is how a caller that knows a spelling checks an identity it was handed without
-\ interning anything: asking the interner for the identity of those bytes would
-\ append a symbol when they are absent, which is a write, and a check must not
-\ change the module it is checking.
+\ Checks an identity without interning: interning absent bytes would append.
 : SYMBOL-IS? ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id ptr u8 n -- bool )
    {: c:IR-CTX:ctx b:IR-BUILD:builder id:IR-ID:ir-symbol-id p u:n :}
    c b USE {: slot:n :}
    slot T-SP TAB@  slot T-SR TAB@  id p u IR-SYM:EQ? ;
 
-\ The bytes of one of this module's symbols, copied into the caller's buffer,
-\ answering how many there are. SYMBOL-IS? serves a caller that already knows
-\ the spelling it is looking for; this serves one that does not - a stage
-\ reading a name the PROGRAM chose rather than a name the dialect declared, as
-\ the elaborator does for a `{: … :}` local. It appends nothing: the interner is
-\ read, and IR-SYM refuses an identity of another module or an ordinal it never
-\ minted, exactly as it does for SYMBOL-IS?.
 : SYMBOL-COPY ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id ptr u8 n -- n )
    {: c:IR-CTX:ctx b:IR-BUILD:builder id:IR-ID:ir-symbol-id p cap:n :}
    c b USE {: slot:n :}
@@ -1171,11 +967,8 @@ public
    c b USE {: slot:n :}
    slot T-SA TAB@ span IR-SOURCE:SPAN-CK ;
 
-\ The dialect this module's schema table was created for, and the schema version
-\ it was created at. NEW-BUILDER fixes all three and nothing
-\ can change them afterwards, so a dialect that reads them back is reading the
-\ header it would have to have written itself - which is what turns "call
-\ NEW-BUILDER through the dialect" from a usage rule into a check.
+\ NEW-BUILDER fixes dialect and version; a dialect reading them back turns
+\ "create through the dialect" into a check.
 : DIALECT@ ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
    c b USE {: slot:n :}
@@ -1187,14 +980,7 @@ public
 : SCHEMA-MINOR@ ( IR-CTX:ctx IR-BUILD:builder -- n )
    USE T-QR TAB@ IR-SCHEMA:MINOR@ ;
 
-\ How many operands and results the schema table declares for one opcode. An
-\ elaborator has to know both before it can stage the operation: how many values
-\ to take off its compile-time value vector, and how many results to declare. The
-\ schema table is the authority on an operation's shape, and
-\ these two readers are how a caller reaches that authority for a module that is
-\ still being built. Neither is a second opinion about the shape: IR-OP:END-OP
-\ validates the staged operation against the same rows, so a caller that ignored
-\ these answers would be refused there.
+\ IR-OP:END-OP validates the staged operation against the same rows.
 : SCHEMA-OPERANDS ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id -- n )
    {: c:IR-CTX:ctx b:IR-BUILD:builder op:IR-ID:ir-symbol-id :}
    c b USE {: slot:n :}
@@ -1205,14 +991,6 @@ public
    c b USE {: slot:n :}
    slot T-QR TAB@ op IR-SCHEMA:RESULTS ;
 
-\ The type the schema declares at one operand position and at one result
-\ position. How many there are is not the whole shape of an operation: an
-\ elaborator that has to hand a value over needs to know WHICH value belongs
-\ there, and the type is what says so - a general value comes off the caller's
-\ compile-time vector, and a memory token comes off the order the definition is
-\ threading. Both readings are the schema table's own, so a caller reads the
-\ shape from the authority that declared it instead of assuming a position from
-\ the opcode's name.
 : SCHEMA-OPERAND@ ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id n -- IR-ID:ir-type-id )
    {: c:IR-CTX:ctx b:IR-BUILD:builder op:IR-ID:ir-symbol-id i:n :}
    c b USE {: slot:n :}
@@ -1223,22 +1001,12 @@ public
    c b USE {: slot:n :}
    slot T-QP TAB@  slot T-QR TAB@  slot KEY@  op i IR-SCHEMA:RESULT@ ;
 
-\ The value one appended operation defines. IR-OP mints an operation's results
-\ itself, so END-OP hands back the operation and not the values it created, and
-\ before this reader the only way to name one of them was to subtract from the
-\ module's value count - arithmetic on a total that no table promises. This asks
-\ the operation's own row instead, and IR-OP bound-checks the index against the
-\ result window that row records.
+\ IR-OP mints the results; END-OP returns only the operation.
 : OP-RESULT@ ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-op-id n -- IR-ID:ir-value-id )
    {: c:IR-CTX:ctx b:IR-BUILD:builder id:IR-ID:ir-op-id i:n :}
    c b USE {: slot:n :}
    slot T-OP TAB@  slot T-OR TAB@  slot KEY@ id i IR-OP:RESULT@ ;
 
-\ The type a value already has, in a module still being built. An elaborator that
-\ holds a value and has to decide whether it may go into an operand position asks
-\ the module what the value IS, rather than keeping a second record of the types
-\ it minted - which could disagree with the module and would then be believed
-\ over it. The module is the authority; this is the door to it while it is open.
 : VALUE-TYPE@ ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-value-id -- IR-ID:ir-type-id )
    {: c:IR-CTX:ctx b:IR-BUILD:builder v:IR-ID:ir-value-id :}
    c b USE {: slot:n :}
@@ -1252,10 +1020,8 @@ private
    live 0 < if E-IR-BUILD-STATE throw then
    live slot f BCEIL@ > if E-IR-BUILD-CEILING throw then ;
 
-\ The committed ceilings, reread from the tables themselves. Each
-\ authority already refuses an append past its ceiling; reading the counts back
-\ here is the independent check that what will be published is exactly the
-\ prefix this builder committed to.
+\ Each owner refuses appends past its ceiling already; this rereads the counts
+\ as an independent check that the published prefix is the committed one.
 : CEILINGS-CK ( n -- )
    {: slot:n :}
    slot  slot T-SR TAB@ IR-SYM:SYMBOLS      P-SYMS CEIL-CK
@@ -1270,8 +1036,7 @@ private
    slot  slot T-BR TAB@ IR-FUN:BLOCKS       P-BLKS CEIL-CK
    slot  slot T-FP TAB@ IR-FUN:ATTR-CELLS   P-FPOOL CEIL-CK ;
 
-\ Every table must still be a live builder arena before the first one is frozen,
-\ so the freezing pass below cannot fail part way through.
+\ Checked first so the freezing pass cannot fail part way through.
 : TABLES-LIVE-CK ( n -- )
    {: slot:n :}
    TABLES# 0 ?do
@@ -1296,8 +1061,6 @@ private
       slot i VIEW@ IR-ARENA:RETIRE
    loop ;
 
-\ The refusal arms both freezes run, in order, before any table is frozen, and
-\ the ownership gate that proves the caller owns this compilation.
 : PUBLISH-CK ( IR-CTX:ctx IR-BUILD:builder -- n )
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
    c b USE {: slot:n :}
@@ -1306,17 +1069,13 @@ private
    slot TABLES-LIVE-CK
    slot ;
 
-\ Turn the checked builder into the published module. After this the sixteen
-\ tables are read-only views owned by the context and the slot is no longer a
-\ builder.
 : PUBLISH-M ( n -- IR-BUILD:module )
    {: slot:n :}
    slot TABLES-FREEZE
    ST-FROZEN slot BSTATE!
    slot BGEN@ MINT-M ;
 
-\ The fourteen tables the verifier reads, in its order. Both freezes hand it the
-\ same ones, so neither can present a different module than the other would.
+\ Both freezes hand the verifier the same fourteen tables.
 : VVIEW ( n -- IR-ID:ir-module-key IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena )
    {: slot:n :}
    slot KEY@
@@ -1326,16 +1085,11 @@ private
    slot T-TR TAB@  slot T-AR TAB@  slot T-SA TAB@
    slot T-EP TAB@  slot T-ER TAB@ ;
 
-\ IR-VERIFY's whole-module verification, run as the last refusal arm
-\ before any table is frozen. The verifier is its own authority: this file hands
-\ it the module's tables and its own derived table and repeats none of its logic.
 : VERIFY-CK ( IR-CTX:ctx n -- )
    {: c:IR-CTX:ctx slot:n :}
    c slot VVIEW
    IR-VERIFY:VERIFY ;
 
-\ The same hand-off for the freeze that derives the module's edge table without
-\ checking the module whole.
 : DERIVE-CK ( IR-CTX:ctx n -- )
    {: c:IR-CTX:ctx slot:n :}
    c slot VVIEW
@@ -1344,103 +1098,45 @@ private
 public
 
 \ ---- freeze and abort --------------------------------------------------------
-\ Publish the module. Every refusal arm runs before the first table is frozen,
-\ so a refused freeze changes nothing at all: the context keeps its scratch and
-\ its module count, the tables keep their contents, and the builder stays live
-\ and can be corrected and frozen again. On success the sixteen tables become
-\ read-only views owned by the context, the slot stops being a builder, and
-\ every mutation word rejects the old handle with E-IR-BUILD-FROZEN.
-\
-\ FREEZE TAKES THE CONTEXT, ABORT DOES NOT. Publication is the one state change
-\ this package makes that has to prove the caller owns the compilation, so it
-\ passes the same USE gate every append does rather than merely checking that
-\ the builder is live: a builder handle that escaped into another compilation
-\ could otherwise publish a module its context never agreed to. The context is
-\ also what freeze validation needs - the bound target contract, and an
-\ allocator for the tables that validation derives - so the argument is the
-\ interface that check requires, not a courtesy. ABORT publishes nothing and
-\ allocates nothing: retiring an arena needs no allocator, so it keeps the
-\ narrower signature.
+\ A refused freeze changes nothing; the builder stays live and can be fixed and
+\ frozen again. FREEZE takes the context to pass USE (a handle escaped into
+\ another compilation must not publish) and because validation needs the target
+\ contract and an allocator; ABORT and RETIRE allocate nothing and take none.
 : FREEZE ( IR-CTX:ctx IR-BUILD:builder -- IR-BUILD:module )
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
    c b PUBLISH-CK {: slot:n :}
    c slot VERIFY-CK
    slot PUBLISH-M ;
 
-\ Publish a module this compilation will NOT emit, deriving its edge table
-\ without verifying it whole. Everything else is FREEZE: the same ownership
-\ gate, the same refusal arms before the first table freezes, the same module
-\ identity, and the same published views afterwards.
-\
-\ WHY THERE ARE TWO. Whole-module verification is the gate on a module that
-\ becomes a routine, and it costs a full walk of every table. A chain of passes
-\ ran it once per module per word - three times for a two-operation body - and
-\ each run re-derived the same facts about the same code in a new numbering.
-\ The module a pass hands to the next pass is not a routine and is read by that
-\ one pass; the module that IS emitted is verified whole, from its own tables,
-\ trusting nothing any earlier freeze decided. So the strength stays where the
-\ published code is and the repetitions go.
-\
-\ WHAT A CALLER GIVES UP. On an interim module these are no longer checked:
-\ block and operation window coverage, a block's parent, one terminator per
-\ block, one definition per value, function linkage, block and function spans,
-\ every operation against its opcode's schema, successor argument counts and
-\ types, and dominance. A defect in any of them either reaches the emitted
-\ module, where VERIFY names it, or is erased by the pass that reads it - in
-\ which case it was never in the published routine. What is lost is the
-\ localisation, not the refusal: the verifier names the emitted module's own
-\ tables rather than the earlier module the fault came from.
+\ FREEZE without whole-module verification, for a module a later pass reads and
+\ no routine emits. Verifying every interim module re-walked each table up to
+\ three times per word. Defects are still refused when VERIFY checks the emitted
+\ module; only the localisation to the earlier module is lost.
 : FREEZE-INTERIM ( IR-CTX:ctx IR-BUILD:builder -- IR-BUILD:module )
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
    c b PUBLISH-CK {: slot:n :}
    c slot DERIVE-CK
    slot PUBLISH-M ;
 
-\ Give the module up. Every stage this builder holds goes back to its authority,
-\ all sixteen tables are retired at once - which releases their registry slots
-\ and makes every index and mark they minted stale - and the slot records that
-\ it was aborted, so a later use of the handle is named rather than merely
-\ unknown. The abandoned spans die with the owning context's mapping, which is
-\ the same discipline IR-ARENA's own ABORT records.
+\ Retiring the tables makes every index and mark they minted stale; the slot
+\ records the abort so a later use is named.
 : ABORT ( IR-BUILD:builder -- )
    LIVE-SLOT {: slot:n :}
    slot BGEN@ STG-RELEASE
    slot TABLES-ABORT
    ST-ABORTED slot BSTATE! ;
 
-\ Give a PUBLISHED module up. It is ABORT's counterpart on the other side of the
-\ freeze: all sixteen tables are retired at once, which makes every view,
-\ reader and index they minted stale, and the slot records that it was retired
-\ so a later use of the module handle is named rather than merely refused.
-\
-\ WHAT THIS IS FOR. A pass that rewrites a module reads the old one and writes a
-\ new one, and when it returns, the old module is dead: everything the new module
-\ needs has been copied into it and no reader of the old one remains. Saying so
-\ is what makes being wrong loud at the next read; it reclaims no storage,
-\ because an arena's storage is the owning context's region and comes back with
-\ that context's mark.
-\
-\ THE CALLER SAYS WHICH MODULE IS DEAD AND THE SEALS SAY WHETHER IT WAS RIGHT.
-\ This word cannot prove a module has no readers - liveness is the caller's fact,
-\ not this registry's - so it does not pretend to. What it guarantees is that
-\ being wrong is LOUD: a read through this handle afterwards is
-\ E-IR-BUILD-RETIRED, and a read through any view, reader or index the module
-\ already handed out is IR-ARENA's own E-IR-ARENA-STALE, because retiring an
-\ arena zeroes the identity cell of its descriptor and every one of those values
-\ is compared against it. Retiring the wrong module therefore fails at the next
-\ read of it rather than returning something plausible.
-\
-\ IT TAKES NO CONTEXT, for ABORT's reason: giving arenas back needs no allocator
-\ and publishes nothing, so it keeps the narrower signature.
+\ For a pass that has copied everything out of the old module. Liveness is the
+\ caller's claim; being wrong is loud: the handle gives E-IR-BUILD-RETIRED and
+\ any view, reader or index it handed out gives E-IR-ARENA-STALE. Reclaims no
+\ storage: that returns with the context's mark.
 : RETIRE ( IR-BUILD:module -- )
    FROZEN-SLOT {: slot:n :}
    slot TABLES-RETIRE
    ST-RETIRED slot BSTATE! ;
 
 \ ---- the frozen module -------------------------------------------------------
-\ The views the later read-only passes read through. Each is the table's own
-\ frozen reader surface; this package publishes the view and no reader of its
-\ own, so there is exactly one authority per table on both sides of the freeze.
+\ Each view is the table's own frozen reader surface; this package adds none.
 : FKEY ( IR-BUILD:module -- IR-ID:ir-module-key )
    FROZEN-SLOT KEY@ ;
 
@@ -1486,10 +1182,8 @@ public
 : FBLOCK-ROWS ( IR-BUILD:module -- IR-ARENA:view )
    FROZEN-SLOT T-BR VIEW@ ;
 
-\ The predecessor and successor facts the freeze verifier derived. They are
-\ published as a module table rather than returned to whoever called FREEZE,
-\ because a later pass needs them from the module it was handed and not from a
-\ cache that could disagree with it. IR-VERIFY's frozen readers serve them.
+\ Published as a module table so a later pass reads them from the module, not
+\ from a cache that could disagree. IR-VERIFY's frozen readers serve them.
 : FEDGE-POOL ( IR-BUILD:module -- IR-ARENA:view )
    FROZEN-SLOT T-EP VIEW@ ;
 

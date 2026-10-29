@@ -1,8 +1,9 @@
-\ One transient address space for fixed compiler working storage. Its dynamic
-\ control remains in DATA, so image capture releases the mapping with every
-\ other dynamic allocation. Each accessor reads its DATA descriptor, so FILE
-\ installation can place its allocation after the current owner's declarations.
-\ A restored image opens and zeroes a fresh mapping on first access.
+\ workspace.f - one transient address space for fixed compiler working
+\ storage. Its dynamic control remains in DATA, so image capture releases the
+\ mapping with every other dynamic allocation. Each accessor reads its DATA
+\ descriptor, so FILE installation can place its allocation after the current
+\ owner's declarations. A restored image opens and zeroes a fresh mapping on
+\ first access.
 require src/core/layout-buffer.f
 require src/core/dynamic-storage.f
 require src/lib/le.f

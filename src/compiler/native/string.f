@@ -1,26 +1,9 @@
-\ string.f - where a string literal's bytes live once the chain has compiled one.
-\ One concern: turning a literal's body into a permanent address, and turning
-\ equal bodies within a segment into the SAME permanent address.
-\
-\ The bytes live in DATA because a DATA address means the same thing after a
-\ snapshot restore and an mmap one does not. A pool is a chain of segments, each
-\ an owner record, its row tables and an arena. A capture or a retained compiler
-\ opens a pool, and the store opens the pool's next segment at `here` when the
-\ last one cannot take a body, so a pool holds as many bodies and bytes as DATA
-\ does; one body larger than a segment's arena is refused by name, and so is a
-\ body a closed window's pool has no room left for (WINDOW-CLOSE). Fetch
-\ descriptors (src/compiler/native/fetch.f KEEP) are bodies under the same rule.
-\ Equal bodies share an address within the segment being written: a body
-\ interned again after its segment filled is copied into the next one.
-\ Both tiers intern through this store: tier 1 from src/compiler/native/
-\ elaborate.f EMIT-STRING, tier 0 through NSTR-ABI:INTERN-CELL, which INSTALL
-\ sets when this file loads.
-\
-\ A segment can open inside work that is later undone - a failed evaluation or
-\ REPL line, a rolled-back declaration - while the addresses it answered are
-\ already compiled into published routines. So every owner the store publishes
-\ raises the engine's DATA floor (src/habu/layout.f DATA-FLOOR-CELL) past
-\ itself, and every rewind of DATA stops at the floor.
+\ string.f - the permanent address of a string literal's bytes; equal bodies
+\ within a segment share one. Bodies live in DATA, since a DATA address means the
+\ same after a snapshot restore and an mmap one does not. Tier 1 interns through
+\ src/compiler/native/elaborate.f EMIT-STRING, tier 0 through
+\ NSTR-ABI:INTERN-CELL (set when this file loads); fetch descriptors
+\ (src/compiler/native/fetch.f KEEP) are bodies under the same rule.
 
 require src/lib/prelude.f
 require src/lib/errors.f
@@ -32,6 +15,12 @@ package NSTR
 private
 
 \ ---- the store ---------------------------------------------------------------
+\ A pool is a chain of segments, each an owner record, its row tables and an
+\ arena. A capture or a retained compiler opens a pool, and the store opens the
+\ next segment at `here` when the last cannot take a body. A body larger than an
+\ arena is refused by name, and so is one a closed window's pool has no room for
+\ (WINDOW-CLOSE). A body interned again after its segment filled is copied into
+\ the next one.
 $80000 constant ARENA-CAP            \ 512 KB of bodies per segment
 8192 constant ROWS-MAX               \ distinct bodies per segment
 ROWS-MAX 2 * constant SLOTS          \ a power of two, twice ROWS-MAX
@@ -147,8 +136,11 @@ variable SOURCE-ON
    FIRST-P @
    begin dup NEXT@ 0= 0= while NEXT@ repeat ;
 
-\ `here` is past the owner just laid out, its rows and its arena, so no rewind of
-\ DATA from now on frees any of them.
+\ `here` is past the owner just laid out, its rows and its arena. A segment can
+\ open inside work later undone (a failed evaluation or REPL line, a rolled-back
+\ declaration) while its addresses are already compiled into published routines,
+\ so every published owner raises the DATA floor past itself and no rewind of
+\ DATA frees it.
 : FLOOR-RAISE ( -- )
    here PTR>N data-base PTR>N -  data-base DATA-FLOOR-CELL + ! ;
 
@@ -299,7 +291,6 @@ variable SOURCE-ON
    repeat
    drop ;
 
-\ Segment n of the active pool, counted from its first.
 : SEGMENT ( n -- ptr u8 ) {: k:n :}
    k 0 < if E-NSTR-BODY throw then
    ACTIVE-P @
@@ -385,19 +376,13 @@ public
 
 private
 
-\ Only the build driver may import the retained owner's actual row tables; it
-\ proves the byte arena belongs to the capture before invoking this private seam,
-\ and test/compiler/native-string.f pins the name as unfindable so no source can
-\ invoke literal ownership import.
-\ THE DRIVER STILL FINDS IT BY NAME, and it is the last name in the build path
-\ that reaches a private word. A native build hands the retained host's rows to
-\ the FRESHLY LOADED target's pool, which did not exist when the driver was
-\ compiled, so the routine has to be found after the load; a public wrapper
-\ would be a well-typed way for any source to invoke literal ownership import,
-\ which test/compiler/native-string.f exists to forbid, and an engine cell for
-\ the token costs a fixed slot and a layout row. So the capture ships this name
-\ on purpose: it is a keep-set entry in src/habu/aot-capture.f ACAP-KEEP?.
-\ ATTACH-SEGMENTS has the same private build-driver boundary.
+\ Only the build driver may import the retained owner's row tables; it proves
+\ the arena belongs to the capture first. The driver finds this private word by
+\ name after the target loads, since the target's pool did not exist when the
+\ driver compiled. A public wrapper would let any source import literal
+\ ownership, which test/compiler/native-string.f forbids, and an engine cell
+\ costs a fixed slot and a layout row, so the capture keeps the name on purpose
+\ (src/habu/aot-capture.f ACAP-KEEP?). ATTACH-SEGMENTS has the same boundary.
 : IMPORT-ROWS ( ptr u8 n ptr n ptr n -- )
    {: arena:ptr rows:n source-off:ptr source-len:ptr :}
    rows source-off source-len IMPORT-CHECK

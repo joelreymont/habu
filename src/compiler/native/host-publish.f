@@ -51,11 +51,10 @@ private
    loop ;
 
 \ A function row's facts: its arity, then the definition's host reason and
-\ location. The reason is the elaborator's whenever the arity is known; a
-\ contract (HOST-ROOT-CONTRACT, the exact constructors a construction call
-\ matches) is a separate fact, absent as a negative type count for a row whose
-\ declaration holds a pointer, a quotation or a variable. An unknown arity, a
-\ body whose facts were abandoned, forces UNKNOWN; else the reason stands.
+\ location. A contract (HOST-ROOT-CONTRACT, the exact constructors a construction
+\ call matches) is a separate fact, a negative type count for a row whose
+\ declaration holds a pointer, a quotation or a variable. An unknown arity or a
+\ body whose facts were abandoned forces UNKNOWN.
 : FACTS ( n -- n n n n )
    {: ordinal:n :}
    SOURCE-REASON@ {: reason:n loc:n :}
@@ -78,8 +77,8 @@ private
 
 public
 
-\ The publisher's observer reads these while TAKE owns the emission.  A
-\ A negative constructor count means unknown; zero is a known empty contract.
+\ The publisher's observer reads these while TAKE owns the emission. A negative
+\ constructor count means unknown; zero is a known empty contract.
 : TAKEN-FUNCTIONS ( -- n ) TAKEN-FUNS @ ;
 
 : TAKEN-FACTS ( n -- n n n n n n )
@@ -106,9 +105,9 @@ public
    TAKEN-TYPES @ IMPL-TYPE-N !
    0 TAKEN-FUNS ! ;
 
-\ The emission NEMIT holds sealed, placed at `at`. No code window has opened.
-\ Every reserve and row copy that may throw happens before the optional
-\ observer runs. An incomplete take is abandoned on refusal.
+\ Take the emission NEMIT holds sealed, placed at `at`, before any code window
+\ opens. Every reserve and row copy that may throw runs before the observer; a
+\ refused take is abandoned.
 : TAKE ( n -- ) {: at:n :}
    TAKEN-FUNS @ 0<> if E-STATE throw then
    IMPL-N @ TAKEN-BASE !
@@ -244,7 +243,7 @@ DYNAMIC-BUFFER IMPORT-ROWS n
    ['] IMPORT-BODY catch {: rc:n :}
    rc 0<> if ABANDON-TAKEN rc throw then ;
 
-\ PREPARE wrote all cells; the code publisher only flips liveness now.
+\ PREPARE wrote every cell; this only flips liveness.
 : PUBLISH-TAKEN ( -- )
    TAKEN-FUNS @ 0 ?do
       1 TAKEN-BASE @ i + IMPL-LIVE !

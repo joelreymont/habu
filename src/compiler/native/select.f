@@ -1,16 +1,8 @@
-\ select.f - instruction selection: read a frozen straight-line HIR module and
-\ build the frozen A64IR module its operations select to.
-\
-\ The condition table pairs a source relation with a machine condition, and for
-\ a FLOAT comparison it must be one that is false on unordered - mi, gt or
-\ equal - because an Fcmp raises unordered for a NaN and the engine's own float
-\ comparisons answer false there. src/compiler/native/a64ir.f has the bit table.
-\
-\ A fused two-way branch wires the CONDITION-TRUE arm as the FIRST successor,
-\ which is measured: the other order costs the loop rows four to six per cent.
-\
-\ The two modules number their symbols, types and blocks separately, so every
-\ identity is carried across by translation and never by ordinal.
+\ select.f - instruction selection for ARM64: a frozen HIR module in, the frozen
+\ A64IR module (src/compiler/native/a64ir.f) out, with comparisons fused into
+\ branches, producers folded into their readers and small regions converted to
+\ selects. The two modules number symbols, types and blocks separately, so every
+\ identity is carried across by translation, never by ordinal.
 
 require src/lib/prelude.f
 require src/lib/errors.f
@@ -436,7 +428,6 @@ DREQ-MAX CWORK-SPAN D-REQ n                  \ the places, with repeats
 : TOKEN? ( IR-ID:ir-value-id -- bool )
    VALUE-TYPE-AT  0 BND-MEM @  SAME-TYPE? ;
 
-\ Asked exactly as TOKEN? is, off the source module's own type.
 : REAL? ( IR-ID:ir-value-id -- bool )
    VALUE-TYPE-AT  0 BND-REAL @  SAME-TYPE? ;
 
@@ -517,11 +508,9 @@ DREQ-MAX CWORK-SPAN D-REQ n                  \ the places, with repeats
    sl s NEFF:SEQ-LEN <> if E-A64SEL-PLACE throw then
    sl ;
 
-\ THE CONTRACT SAYS SO and this pass does not work it out.
 : DSTACK? ( -- bool )
    S-DSTACK @ 0<> ;
 
-\ The declaration decides whether the frame and the link save are built.
 : CALLS? ( -- bool )
    TRAITS NEFF:T-CALL NEFF:TRAITS-HAS? ;
 
@@ -781,7 +770,6 @@ DREQ-MAX CWORK-SPAN D-REQ n                  \ the places, with repeats
    CTX BLD IR-BUILD:END-OP {: id:IR-ID:ir-op-id :}
    CTX BLD id 0 IR-BUILD:OP-RESULT@ FTOK! ;
 
-\ Built on LINK-SAVED? and not CALLS?.
 : PROLOGUE ( IR-ID:ir-op-id -- )
    {: at:IR-ID:ir-op-id :}
    LINK-SAVED? 0= if exit then
@@ -795,7 +783,6 @@ DREQ-MAX CWORK-SPAN D-REQ n                  \ the places, with repeats
    at EMIT-RELEASE ;
 
 \ ---- which operation this function leaves through ----------------------------
-\ ONE answer for the whole function, and four passes read it.
 : TAIL-OP? ( IR-ID:ir-op-id -- bool )
    {: id:IR-ID:ir-op-id :}
    TAIL-SITE @ 0 < if false exit then
@@ -945,14 +932,11 @@ DREQ-MAX CWORK-SPAN D-REQ n                  \ the places, with repeats
    N-CALLS @ 1+ N-CALLS ! ;
 
 \ A self-call is RECURSE, which names the DEFINITION and not the body the token
-\ stands in, so its shape is the CONTRACT's declaration - function zero's arity -
-\ and not the arity of the function being selected. FUN-PLACES! holds those two
-\ to the same numbers for function zero and to different ones for a quotation's
-\ function, which is where reading the wrong one showed.
-\
-\ AND IT KEEPS NOTHING ACROSS THE CALL either way, because the callee is a
-\ function of THIS emission: it destroys exactly the registers the allocator
-\ hands out here.
+\ stands in, so its shape is the CONTRACT's declaration (function zero's arity),
+\ not the arity of the function being selected; the two differ for a
+\ quotation's function (FUN-PLACES!). It keeps nothing across the call, because
+\ the callee is a function of this emission and destroys exactly the registers
+\ the allocator hands out here.
 : SELF-SHAPE ( IR-ID:ir-op-id -- n n n n )
    {: id:IR-ID:ir-op-id :}
    S-DECL-IN @ {: a:n :}
@@ -1299,9 +1283,8 @@ A64IR:IMM-LIMIT 1- constant ONES-HALF
 \ A zero divisor is a CALLER error, so the divide's cold side branches to
 \ (DIV-ZERO), the sealed engine helper the engine's own `/` branches to
 \ (src/habu/habu1.f BDIV0?). The entry is asked for here, where the dictionary
-\ is readable, and carried to the emitter as the operation's own attribute. It
-\ is refused by the name E-A64SEL-TRAP names: the routine a compiled refusal
-\ branches to is not in the engine's text.
+\ is readable, and carried to the emitter as the operation's own attribute; an
+\ engine without the helper in its text is refused (E-A64SEL-TRAP).
 : DIV-ZERO-ENTRY ( -- n )
    s" (DIV-ZERO)" NDICT:HELPER-TARGET {: e:n :}
    e 0= if E-A64SEL-TRAP throw then
@@ -1470,7 +1453,9 @@ A64IR:IMM-LIMIT 1- constant ONES-HALF
    CTX BLD IR-BUILD:END-OP drop ;
 
 \ ---- selecting a comparison --------------------------------------------------
-\ Read off the operation's own condition attribute.
+\ A FLOAT relation maps to a condition false on unordered (mi, gt or equal):
+\ fcmp reports a NaN as unordered and the engine's own float comparisons answer
+\ false there. src/compiler/native/a64ir.f gives the flags each condition reads.
 : COMPARE-COND ( IR-ID:ir-op-id -- A64IR:cond )
    OPCODE-AT OPCODE-SLOT
    case
@@ -1605,7 +1590,6 @@ A64IR:IMM-LIMIT 1- constant ONES-HALF
    {: b:n c:n :}
    b BLOCK-ORD-CK DCELLS * c + cells D-IN + ;
 
-\ The edge name of slot `s` where control enters block `b`.
 : DIN-AT ( n n -- n )
    {: b:n s:n :}
    s DIN-WINDOW? 0= if DNONE exit then
@@ -2595,7 +2579,9 @@ EDGE-MAX CWORK-BUFFER EDGE-V IR-ID:ir-value-id
    f R-NUMBER ;
 
 \ A Habu flag is all bits set when the relation HOLDS and hir.brz goes to its
-\ FIRST successor on zero, so the fused branch swaps them.
+\ FIRST successor on zero, so the fused branch swaps them: the condition-true arm
+\ is the first successor. Measured: the other order costs the loop rows four to
+\ six per cent.
 : EMIT-CMPBR ( IR-ID:ir-op-id IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id cm:IR-ID:ir-op-id :}
    cm OP-KIND {: k:A64SEL:cmpkind :}

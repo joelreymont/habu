@@ -1,27 +1,8 @@
-\ emission.f - one sealed transient emission: bytes, function starts, call
-\ and address sites, and the trailing return, in no machine's terms.
-\
-\ WHAT IT IS FOR. src/compiler/native/publish.f reads these rows while they stand
-\ sealed, before the backend's RETIRE clears them, and places the routine in the
-\ code region. It needs the same facts of every backend, and none of them is an
-\ instruction: where each function starts, which sites call out or leave
-\ through a branch and where they go, which sites carry an absolute address,
-\ and how long the trailing return is. A backend decodes its own instruction
-\ forms when sealing the row. Publication decodes nothing.
-\
-\ EVERY OFFSET IS IN BYTES from the first byte of the emission and lies inside
-\ it; every target is an absolute address, measured from the placement.
-\
-\ THE BYTES ARE ONE MACHINE'S. OPEN names the architecture the backend emitted
-\ for, so a reader that commits the bytes for a machine of its own - publication
-\ for the engine it runs in, a shadow for the target it records - can refuse an
-\ emission for any other before it copies a byte.
-\
-\ LIFETIME. A backend OPENs the rows, adds them and SEALs them. They answer from
-\ SEAL until CLEAR, which the backend's RETIRE row runs on the accepting and the
-\ refusing path alike. A refusal between OPEN and SEAL leaves rows that no reader
-\ can read, and OPEN over rows CLEAR has not retired is refused, so no row can
-\ outlive the definition it describes.
+\ emission.f - one sealed transient emission: bytes, function starts, call and
+\ address sites and the trailing return, in no machine's terms. publish.f reads
+\ the rows while they stand sealed and decodes nothing; the backend decodes its
+\ own forms when sealing. Offsets are bytes from the emission's first byte;
+\ targets are absolute addresses. Rows answer from SEAL until CLEAR.
 
 require src/lib/prelude.f
 require src/lib/errors.f
@@ -143,7 +124,8 @@ ADDR-CODE constant ADDR-KIND-MAX
    SEAL-CK N-ADDRS @ ROW-CK ADDR-ORIGIN-BUF @ ;
 
 \ ---- filling the rows, which only a backend's emission row does --------------
-\ Nonthrowing, because a RETIRE row runs it on the refusing path.
+\ Nonthrowing: the backend's RETIRE runs it on both paths, the refusing one
+\ included.
 : CLEAR ( -- )
    ST-EMPTY ST !
    NULL-PTR CODE-AT !
@@ -152,7 +134,9 @@ ADDR-CODE constant ADDR-KIND-MAX
    0 HAS-PLACE !  0 PLACE-N !
    0 N-FUNS !  0 N-CALLS !  0 N-ADDRS ! ;
 
-\ The bytes stay the backend's: they are read in place until CLEAR.
+\ The bytes stay the backend's: they are read in place until CLEAR. OPEN over
+\ uncleared rows is refused, and the architecture it names makes a reader for
+\ another machine refuse before copying a byte.
 : OPEN ( ptr u8 n n CTARGET:arch -- ) {: p:ptr size:n ret:n a:CTARGET:arch :}
    ST @ ST-EMPTY <> if E-NEMIT-STATE throw then
    size 1 < if E-NEMIT-ROW throw then

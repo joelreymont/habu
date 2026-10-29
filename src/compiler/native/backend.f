@@ -2,9 +2,6 @@
 \
 \ Each published row contains its CTARGET descriptor and complete native pass.
 \ Registration publishes the row count only after storing both together.
-\
-\ Definition stages resolve the context's binding. Lifecycle stages visit
-\ every published provider; FREEZE folds shared HIR before any selector runs.
 
 require src/lib/prelude.f
 require src/lib/errors.f
@@ -22,12 +19,9 @@ require src/compiler/session/lease.f
 package NBACK
 public
 
-\ How control reaches and leaves the routine a definition compiles to. The
-\ backend composes its own machine contract from this and from what the
-\ definition takes and leaves; which registers or frame that means is its
-\ answer, not this file's. It is a one-field nominal over a bit set, so a bare
-\ integer cannot be passed where a linkage is wanted and the value stays one
-\ cell, which keeps the dispatch linkage small.
+\ How control reaches and leaves the routine a definition compiles to; the
+\ backend derives registers and frame from it. A one-field nominal over a bit
+\ set, so a bare integer cannot pass for a linkage.
 STRUCTURE linkage
    FIELD bits n
 ;STRUCTURE
@@ -274,11 +268,11 @@ private
 public
 
 \ ---- the stages of one definition --------------------------------------------
-\ The HIR module every selector of this definition binds, frozen interim with
-\ its loops folded. IT IS FROZEN INTERIM because it is never the module a
-\ compilation emits: selection reads it and writes a machine module, and that
-\ one is verified whole, so this freeze derives the edge table selection reads
-\ and leaves the checking to the freeze of the module that becomes the routine.
+\ Definition stages resolve the context's binding; FREEZE folds shared HIR
+\ before any selector runs.
+\
+\ Frozen interim: selection reads it and writes a machine module that is
+\ verified whole, so this freeze derives only the edge table selection reads.
 : FREEZE ( NSESSION:session IR-BUILD:builder -- IR-BUILD:module )
    {: s:NSESSION:session b:IR-BUILD:builder :}
    s NSESSION:RESOLVE drop {: c:IR-CTX:ctx :}
@@ -287,8 +281,6 @@ public
    c b IR-BUILD:FREEZE-INTERIM {: m:IR-BUILD:module :}
    c m CLOSED ;
 
-\ What the definition takes and leaves, and how control reaches and leaves it.
-\ Stated once, before the stages that compile it.
 : DECLARE ( NSESSION:session n n NBACK:linkage -- )
    {: s:NSESSION:session in:n out:n l:linkage :}
    s NSESSION:RESOLVE nip {: row:n :}
@@ -325,6 +317,7 @@ public
    NSESSION:RESOLVE nip PASS-PTR NBACK-PASS:RETIRE @ execute ;
 
 \ ---- what every loaded backend holds -----------------------------------------
+\ Lifecycle stages visit every published provider.
 : PROTOTYPE ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key NLEASE:lease -- )
    {: l:NLEASE:lease :}
    l NLEASE:QUIET

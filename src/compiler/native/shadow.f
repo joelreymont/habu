@@ -1,39 +1,9 @@
 \ shadow.f - a second machine's routine for every definition the native driver
-\ publishes, and the map from each published record to it.
-\
-\ WHAT IT IS FOR. A cross-build runs the target's whole prefix on the host:
-\ every declarer and immediate executes as the source loads, so a definition
-\ has to be the host's routine, to run now, and the target's, to be written
-\ into the target's image. Lowering the target's routines later from the
-\ recorded source is not open, because a body's names are bound against the
-\ dictionary as it compiles. So while a shadow is open the native driver
-\ (src/compiler/native/compiler.f) compiles each definition for the shadow's
-\ binding too: in a context nested inside the definition's own and bound to that
-\ binding, from the very HIR module NBACK:FREEZE froze for the engine's own
-\ selector.
-\
-\ WHAT IT KEEPS. The shadow's routine is a sealed NEMIT emission like any other,
-\ stated by its backend's unplaced row (NBACK:EMIT-UNPLACED): measured from no
-\ slot, so every call, branch and address that leaves it is a row and its field
-\ is the linker's to write. NEMIT holds one emission and the engine's own
-\ emission opens it next, so TAKE copies the bytes and every row here before
-\ the nested context leaves. PUBLISH then files the copy under the dictionary
-\ record publication commits; the map is keyed by record because a record is
-\ how an image names a word. A `does>` definer is two records over one routine:
-\ the companion enters where the clause function starts, read off the copied
-\ function rows.
-\
-\ OFFSETS STAY AS NEMIT STATES THEM: a site or a function start is bytes from
-\ the first byte of its own emission, and a target is the absolute address the
-\ definition's body named on the host, which is what the linker resolves to the
-\ target's own.
-\
-\ LIFETIME. OPEN starts an empty map for one binding. CLOSE gives everything
-\ back, and an image capture closes the shadow, so no map outlives the mappings
-\ it is stored in. An emission TAKE copied and no publication claimed - the
-\ engine's own chain refused the definition after the shadow's sealed - is
-\ dropped by ABANDON, which the driver runs as every definition ends, so a copy
-\ never outlives the definition it was compiled from.
+\ publishes, mapped from its dictionary record. A cross-build runs the target's
+\ prefix on the host and a body's names bind as it compiles, so while a shadow
+\ is open src/compiler/native/compiler.f compiles each definition a second time
+\ for the shadow's binding, in a nested context, from the HIR module
+\ NBACK:FREEZE froze for the engine's own selector.
 
 require src/lib/prelude.f
 require src/lib/errors.f
@@ -58,7 +28,10 @@ variable NATIVE-ADDRS-SET            \ a backend installed NATIVE-ADDRS-XT
 
 \ ---- the emissions -----------------------------------------------------------
 \ Each column counts only the published emissions; a taken one lies just past
-\ the counts until PUBLISH claims it.
+\ the counts until PUBLISH claims it. Offsets stay as NEMIT states them: a site
+\ or function start is bytes from the first byte of its own emission, and a
+\ target is the host address the body named, which the linker resolves to the
+\ target's own.
 DYNAMIC-BUFFER CODE-BUF u8           \ every emission's bytes, one after another
 variable CODE-N
 
@@ -87,6 +60,7 @@ DYNAMIC-BUFFER ADDR-OFF n            \ where an address chain starts
 DYNAMIC-BUFFER ADDR-KIND n           \ which kind of address it carries
 
 \ ---- the map -----------------------------------------------------------------
+\ Keyed by dictionary record, the way an image names a word.
 variable N-RECS
 DYNAMIC-BUFFER REC-IDX n             \ the dictionary record
 DYNAMIC-BUFFER REC-EM n              \ the emission that is its routine
@@ -114,6 +88,12 @@ variable PEND-ENTRY                  \ which enters at this offset in it
    OPEN-CK N-RECS @ ROW-CK ;
 
 \ ---- taking a sealed emission -------------------------------------------------
+\ A shadow routine is a sealed NEMIT emission stated by its backend's unplaced
+\ row (NBACK:EMIT-UNPLACED): every call, branch and address leaving it is a row
+\ whose field the linker writes. NEMIT holds one emission and the engine's own
+\ opens it next, so TAKE copies the bytes and rows before the nested context
+\ leaves.
+\
 \ Only bytes of the machine the shadow's binding names are its routines. A
 \ native shadow takes the engine's own placed emission; OPEN-NATIVE admitted
 \ only the engine's own binding.
@@ -241,8 +221,6 @@ $E9 constant TAIL-OP
    ADDR-OFF-RELEASE  ADDR-KIND-RELEASE
    REC-IDX-RELEASE  REC-EM-RELEASE  REC-ENTRY-RELEASE ;
 
-\ Row k of emission e's rows of one kind, which start at `first` and number
-\ `count`.
 : SUB-ROW ( n n n -- n ) {: k:n first:n count:n :}
    k count ROW-CK first + ;
 
@@ -266,6 +244,10 @@ $E9 constant TAIL-OP
 public
 
 \ ---- opening and closing -----------------------------------------------------
+\ CLOSE gives everything back, and an image capture closes the shadow, so no map
+\ outlives the mappings it is stored in. ABANDON, run as every definition ends,
+\ drops a copy no publication claimed (the engine's own chain refused the
+\ definition after the shadow's sealed).
 : OPEN ( CBIND:binding -- ) {: b:CBIND:binding :}
    NLEASE:IDLE-CK
    OPENED @ 0<> if E-NSHADOW-STATE throw then
@@ -419,11 +401,9 @@ public
 : RECORDS ( -- n )
    OPEN-CK N-RECS @ ;
 
-\ The dictionary index of record row k.
 : RECORD@ ( n -- n )
    REC-CK REC-IDX @ ;
 
-\ The emission that is its routine.
 : EMISSION@ ( n -- n )
    REC-CK REC-EM @ ;
 

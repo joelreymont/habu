@@ -1,46 +1,9 @@
-\ x64ir.f - the x86-64 machine dialect: the closed set of operations that stand
-\ for real x86-64 instruction forms, with virtual registers as SSA values. It is
-\ to src/arch/x86-64/asm.f what src/compiler/native/a64ir.f is to the ARM64
-\ assembler, and the three ways it is NOT a transcription of that file are the
-\ three facts about this machine a lowering has to obey.
-\
-\ ONE. MOST FORMS ARE TWO-ADDRESS. `add rd, rs` overwrites rd; there is no
-\ three-register add. Every such operation therefore declares a TIE between its
-\ result and the operand it destroys (src/compiler/ir/schema.f ADD-TIE), which is
-\ the constraint a register allocator reads rather than a rule it must know per
-\ opcode. The allocator REFUSES a tie whose ends cannot share a register rather
-\ than repairing it, so the selector is what makes a tie satisfiable: it copies
-\ the operand a form is about to destroy whenever another use reads it
-\ (select-x64.f, "selecting the arithmetic"). Where ARM64 has `madd`, this
-\ machine has nothing: `imul rd, rs` is the tied form and an addend is a second
-\ operation.
-\
-\ TWO. THE FLAGS ARE NOT A VALUE. `cmp` writes RFLAGS and `setcc`, `cmovcc` and
-\ `jcc` read them, and no SSA value can stand for a single architectural
-\ resource the allocator would otherwise have to hand out. So every use of the
-\ flags is FUSED into one operation the way a64.cmpbr fuses compare and branch:
-\ x64.cmpset is compare-and-set-a-boolean, x64.cmpsel is compare-and-move,
-\ x64.cmpbr is compare-and-branch, x64.brz is test-and-branch. Nothing in this
-\ dialect leaves flags live across an operation boundary.
-\
-\ THREE. THE LITERAL IS ONE INSTRUCTION AND THE CALL LEAVES NO LINK REGISTER.
-\ ARM64 builds a constant from a movz/movk run and keeps its return address in
-\ x30, which is why a64ir has `movk`, `linksave` and `linkload`. Here a literal
-\ is `mov r64, imm64` - ten bytes, one relocation site, patched at offset 2, the
-\ shape src/habu/address-carrier.f calls MOVABS - and `call` pushes the return
-\ address on the machine stack, so there is no link register to spill and no
-\ opcode for spilling it. For the same reason there is no fused push or pop: x86
-\ has no write-back addressing mode, so a data-stack store and the pointer move
-\ after it are two operations and a64.dpush/a64.dpop have no counterpart here.
-\
-\ AND THE DOUBLES ARE SSE2 SCALAR FORMS IN THE XMM FILE. A double is a value of
-\ FPR-TYPE, which the sixteen XMM registers of REGFILE hold, and every form over
-\ it is the two-address shape of ONE with its own copy, `x64.movsd`. No SSE form
-\ carries an immediate, so a double literal is its bits moved from a general
-\ register with `x64.movq-xr`, and a double compare is fused with its flag the
-\ way `x64.cmpset` is (`x64.fcmpset`, TWO again). Every contract of this machine
-\ destroys the XMM file at a call, so a double live across one is put away with
-\ `x64.fstore` and brought back with `x64.fload`.
+\ x64ir.f - the x86-64 machine dialect: the closed set of operations standing
+\ for real x86-64 instruction forms, with virtual registers as SSA values. The
+\ twin of src/compiler/native/a64ir.f for src/arch/x86-64/asm.f. Most forms are
+\ two-address and tie their result to the operand they destroy; the flags are
+\ never a value, so every use of them is fused into one operation; a literal is
+\ one `mov r64, imm64`, and `call` leaves no link register.
 
 require src/lib/prelude.f
 require src/lib/errors.f
@@ -194,13 +157,10 @@ X64ASM:C-NE X64ASM:CONDITION>N constant COND-NE
 \ Six are the running engine's - rbx, rbp and r12..r15, the ones docs/xcomp.md
 \ "Machine model" fixes - and src/habu/layout.f ENGINE-GPR:X64-MASK is the one
 \ statement of them. It is read by name and not through the target-selected
-\ ENGINE-GPR:MASK,
-\ because the engine that loads this dialect to cross-build x86-64 is an ARM64
-\ one, whose MASK is ARM64's. The seventh is rsp, which the machine holds and
-\ the engine does not: `call` pushes the return address through it, so a
-\ routine that allocated it would destroy its own return. ARM64 has no
-\ equivalent slip to make: its stack pointer is not one of the thirty-one
-\ general registers an operand field can name.
+\ ENGINE-GPR:MASK, because the engine that loads this dialect to cross-build
+\ x86-64 is an ARM64 one, whose MASK is ARM64's. The seventh is rsp, which the
+\ machine holds and the engine does not: `call` pushes the return address
+\ through it, so a routine that allocated it would destroy its own return.
 4 constant R-RSP                     \ the machine stack pointer
 
 \ The three the fixed-register forms below name. Each number is TAKEN from the
@@ -239,9 +199,7 @@ public
    s" x64" ;
 
 \ Every consumer compares the version exactly, so a table with a form and one
-\ without are two different tables. MINOR 2 added the scalar double forms;
-\ MINOR 3 added the tail callee's input and result counts; MINOR 4 added the
-\ rematerialization mark on `x64.movi`.
+\ without are two different tables.
 0 constant MAJOR
 4 constant MINOR
 
@@ -362,9 +320,7 @@ public
 \ destroyed on every routine, so no value survives a call in a register and the
 \ callee-saved set this description derives is empty. Under SysV the machine's
 \ callee-saved set is rbx, rbp and r12..r15 - exactly the reserved set - so a
-\ foreign call preserves this virtual machine with no save block, and that fact
-\ costs this description nothing to state: the registers it would save are the
-\ ones it never hands out.
+\ foreign call preserves this virtual machine with no save block.
 : REGFILE ( -- NREGFILE:file )
    GPRS-N
    RESERVED-MASK NREGFILE:REGS-SET
@@ -638,7 +594,7 @@ private
 \ key - together with the module they belong to; a hit mints the identity with
 \ IR-ID:PACK-SYMBOL against that module's own key and still puts it through
 \ IR-BUILD:SYMBOL-CK, so a stale builder, a frozen one, a foreign context and a
-\ row the table does not hold are refused exactly as they were.
+\ row the table does not hold are refused.
 \
 \ A MODULE CLONED FROM THE SESSION PROTOTYPE ADOPTS THE WHOLE MEMO AT BIRTH,
 \ because a clone holds the prototype's spellings at the prototype's ordinals.
@@ -667,7 +623,6 @@ MEMO-FORGET
    1 MEMO-OWNED !
    VOCAB 0 ?do false i MEMO-SEEN ! loop ;
 
-\ Adopt the prototype's ordinals for a module that was cloned from it.
 : MEMO-ADOPT ( IR-BUILD:builder -- )
    IR-BUILD:MODULE@ 0 MEMO-MOD !
    1 MEMO-OWNED !
@@ -682,7 +637,6 @@ MEMO-FORGET
    i OPCODES < if i NTH OP-NAME exit then
    i OPCODES - KEY-NAME ;
 
-\ One entry of the memo, read or filled.
 : MEMO-BIND ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-symbol-id )
    {: c:IR-CTX:ctx b:IR-BUILD:builder idx:n :}
    b IR-BUILD:MODULE@ {: owner:IR-ID:ir-module-id :}
@@ -1096,7 +1050,9 @@ private
 \ in. cmpunordsd is the compare whose all-ones mask says the two doubles are
 \ unordered. None of them may trap: SSE exceptions are masked, so a division by
 \ zero answers an infinity and an invalid operation the default NaN, whose sign
-\ the selection clears (select-x64.f EMIT-FARITH).
+\ the selection clears (select-x64.f EMIT-FARITH). The tie is schema.f ADD-TIE,
+\ which the allocator reads instead of a per-opcode rule; select-x64.f makes it
+\ satisfiable. There is no `madd`: an addend after `imul` is a second operation.
 : DEF-BINARY ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id X64IR:opcode -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id o:X64IR:opcode :}
    c b o OPCODE IR-SCHEMA:BEGIN-OP
@@ -1186,11 +1142,6 @@ private
 \ operand types. Only the divisor is free, and neither a value live across this
 \ operation nor the divisor itself may be in rax or rdx, because `cqo` has
 \ already written rdx when the divide reads its divisor.
-\
-\ THE COLD SIDE IS THE ROUTINE THE FORM CARRIES. A zero divisor is a caller
-\ error, so the branch over the trap hands the code to the runtime's `throw`,
-\ whose entry the selector reads where the dictionary is readable and states as
-\ this operation's own attribute - the same arrangement a64.sdiv has.
 : DEF-IDIV ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
    c b X64IR-OPCODE:IDIV OPCODE IR-SCHEMA:BEGIN-OP
@@ -1234,7 +1185,8 @@ private
 \ ONE operation and four instructions - compare, set one byte on the condition,
 \ widen it, negate it to the all-ones flag - because the flags between them are a
 \ single architectural resource no value stands for and the allocator may not
-\ hand out.
+\ hand out. Nothing in this dialect leaves the flags live across an operation
+\ boundary: x64.cmpset, x64.cmpsel, x64.cmpbr and x64.brz each fuse their use.
 : DEF-CMPSET ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
    c b X64IR-OPCODE:CMPSET OPCODE IR-SCHEMA:BEGIN-OP
@@ -1455,6 +1407,8 @@ private
 \ ---- the data-stack forms ----------------------------------------------------
 \ Unrestricted aliasing is an ORDERING statement: it forbids moving one access
 \ across another it cannot prove is elsewhere, and nothing more than that.
+\ x86-64 has no write-back addressing, so a store and the pointer move after it
+\ are two operations: a64.dpush and a64.dpop have no counterpart here.
 : DSTACK-MEM ( IR-SCHEMA:effect -- )
    {: e:IR-SCHEMA:effect :}
    false 0 0 IR-SCHEMA:SET-CONTROL

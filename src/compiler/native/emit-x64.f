@@ -1,64 +1,7 @@
-\ emit-x64.f - the x86-64 bytes of one accepted routine, laid out in BYTES and
-\ placed at the slot the driver names.
-\
-\ IT IS THE TWIN OF src/compiler/native/emit.f AND NOT A PARAMETERISATION OF IT.
-\ Parameterising that file would rewrite most of it, share almost nothing and
-\ put the ARM64 product's byte identity at risk: it is a FIXED-WIDTH word sink -
-\ four bytes an instruction, a capacity counted in instructions, a source map
-\ keyed by instruction ordinal - and an x86-64 instruction is one to fifteen
-\ bytes. Everything this file reads back is
-\ therefore counted in BYTES where the ARM64 emitter counts instructions.
-\
-\ THE SINK IS THIS PASS'S OWN. Two src/lib/byte-buffer.f BUFs: the emission, which is
-\ what BYTES and SIZE answer, and a scratch one nothing outside a measurement
-\ ever sees. EVERY LENGTH HERE IS MEASURED AND NONE IS WRITTEN DOWN: an
-\ operation's size is what encoding it into the scratch sink leaves there, which
-\ is the only statement of a size that cannot drift from what src/arch/x86-64/
-\ asm.f really writes.
-\
-\ TWO PASSES, AND ONE ORDER. MEASURE walks the blocks in the chosen order and
-\ files where each one starts; WRITE-ALL walks the same order and writes, and
-\ arriving at a block anywhere but its measured start is E-X64EMIT-LAYOUT rather
-\ than a silently different routine. A branch is written in the WIDE form always
-\ (rel32), so no displacement can change a length between the two passes and no
-\ third pass is needed; shortening one that fits a byte is a relaxation this
-\ emitter deliberately has not got.
-\
-\ A DISPLACEMENT COUNTS FROM THE END OF ITS INSTRUCTION, which is the x86 rule
-\ and NOT ARM64's - emit.f DELTA counts from the instruction's own address. So
-\ every branch here asks the scratch sink how long the instruction it is about to
-\ write is, and subtracts that too.
-\
-\ REGISTERS COME THROUGH ONE DOOR. A64RAV:REG@ is the only way a register number
-\ reaches an instruction here, exactly as in emit.f, and the slot and byte
-\ offsets come off the module's own attributes. A TWO-ADDRESS FORM WRITES THE
-\ RESULT'S REGISTER: the dialect ties the result to operand zero
-\ (src/compiler/native/x64ir.f DEF-BINARY) and the allocator refuses a tie it
-\ cannot satisfy, so the tie is the accepted allocation's guarantee and not a
-\ second rule to re-derive here.
-\
-\ A COPY IS WRITTEN AS IT STANDS. `x64.mov` whose two ends the allocator
-\ coalesced onto one register is three bytes of `mov rax, rax`; eliding it is a
-\ peephole this file does not have, and what the pinned bytes in
-\ test/compiler/x64-emit.f measure is a faithful image of the module.
-\
-\ ANOTHER WORD'S ENTRY IS A ROW AND NOT ONLY A FIELD. Every call and tail branch
-\ to an absolute entry files one - where its instruction starts, NEMIT:CALL or
-\ NEMIT:TAIL, and the entry - and every relocatable literal and `codeaddr` a site
-\ of its address kind, so whoever writes the routine can write those fields
-\ again at any address (docs/xcomp.md "Live-region sites"). An EMIT with no
-\ PLACE-AT is a SHADOW emission: those rel32 fields are zero, the rows are the
-\ whole statement of where they go, and a `codeaddr` carries the function's
-\ offset in the emission alone. Nothing here trims a span: SIZE is the whole
-\ routine whatever it ends in, and a `does>` body is SIZE less its
-\ FUNCTION-OFFSET@.
-\
-\ WHAT IS STILL REFUSED BY NAME, each with E-X64EMIT-FORM: the negate, which no
-\ selection reaches, and an `x64.fcmpset` whose condition and result count are
-\ not one of the two pairs its render reads the flags for (PUT-FCMPSET).
-\ Publication into a code region is not here either: src/arch/x86-64/passes.f
-\ states the sealed emission as NEMIT's rows from the readers below, and
-\ src/compiler/native/publish.f reads nothing else.
+\ emit-x64.f - the x86-64 bytes of one accepted routine, placed at the slot the
+\ driver names. A twin of src/compiler/native/emit.f, not a parameterisation:
+\ every offset and length here is in bytes, since an instruction is one to
+\ fifteen bytes.
 
 require src/lib/prelude.f
 require src/lib/errors.f
@@ -256,6 +199,9 @@ X64IR-OPCODE:TAILCALL X64IR:ORD constant O-TAILCALL
 X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
 
 \ ---- the registers, through the one door that answers ------------------------
+\ Registers come only through A64RAV:REG@. A two-address form writes the
+\ result's register, tied to operand zero by x64ir.f DEF-BINARY; a coalesced
+\ `x64.mov` is written as it stands (test/compiler/x64-emit.f pins the bytes).
 : REG-OF ( IR-ID:ir-value-id -- n )
    IR-ID:VALUE-LOCAL A64RAV:REG@ ;
 
@@ -432,6 +378,10 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
    START-AT ;
 
 \ ---- where this emission's relocatable literals are --------------------------
+\ Every call, tail branch, relocatable literal and `codeaddr` files a site row
+\ (docs/xcomp.md "Live-region sites"); without PLACE-AT the emission is a
+\ shadow's and those fields are zero.
+\
 \ ONE SITE PER LITERAL, because x64ir.f ADDR-LANES is 1: the whole address is the
 \ imm64 of one `mov r64, imm64` and the writer patches at
 \ X64ASM:MOV-RI64-IMM-OFF from the offset filed here. ARM64's chain check has no
@@ -444,11 +394,9 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
    N-SITES @ 1+ N-SITES ! ;
 
 \ ---- where this emission leaves for another word's entry ---------------------
-\ ONE ROW PER SITE WHOSE OTHER END IS AN ABSOLUTE ADDRESS, filed by the writer:
-\ the byte offset of the `call` or `jmp` itself, whose rel32 follows its one
-\ opcode byte and counts from its end; NEMIT's kind, a call that comes back or a
-\ branch that leaves for good; and the entry. Which word owns that entry is the
-\ capture's to resolve, so no callee is named here.
+\ One row per site whose other end is an absolute address: the offset of the
+\ `call` or `jmp` (its rel32 follows one opcode byte), NEMIT's kind and the
+\ entry. The capture resolves which word owns the entry.
 : CALL-SITE+ ( n n n IR-ID:ir-op-id -- )
    {: off:n kind:n target:n id:IR-ID:ir-op-id :}
    N-CALLS @ SITE-CEIL >= if E-X64EMIT-BOUND throw then
@@ -572,22 +520,13 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
    id s PUT-SETCC ;
 
 \ ---- the selects -------------------------------------------------------------
-\ TWO INSTRUCTIONS FOR ONE OPERATION, for the reason cmpset is four: the flags
-\ the compare leaves and `cmovcc` reads are no SSA value. `cmovcc` moves its
-\ source in only when the condition holds, so the result's register must
-\ already hold the answer for when it fails; the dialect ties the result to
-\ that operand (x64ir.f DEF-CMPSEL, DEF-SELZ) and the accepted allocation put it
-\ there, the same guarantee a two-address form has. So the move is the whole
-\ write, and any aliasing the allocation can make is safe: the compare reads
-\ both its operands before the move writes, and the move reads its source
-\ before it writes. A compared operand can share the result's register only as
-\ the tied operand itself, and the moved source only as the tied value, which
-\ is `cmovcc r, r`. The REX.W form leaves all sixty-four bits when the condition
-\ fails, where the 32-bit one would clear the upper half without moving.
-\
-\ ARM64 writes the same two steps as `cmp` and `csel` (emit.f PUT-CMPSEL,
-\ PUT-SELZ). Its cmpsel names the holding answer first, and this dialect's names
-\ the failing one first, because that is the one the result is tied to.
+\ Two instructions: `cmovcc` moves its source in only when the condition holds,
+\ so the result register must already hold the failing answer; the dialect ties
+\ the result to that operand (x64ir.f DEF-CMPSEL, DEF-SELZ). Every aliasing the
+\ allocation can make is safe: the compare reads both operands before the move
+\ writes. The REX.W form keeps all sixty-four bits when the condition fails,
+\ where the 32-bit form would clear the upper half. This dialect names the
+\ failing answer first, the opposite of emit.f PUT-CMPSEL.
 : PUT-CMPSEL ( IR-ID:ir-op-id ptr a -- )
    {: id:IR-ID:ir-op-id s:ptr :}
    id 0 OPD-R64  id 1 OPD-R64  s ENC-CMP-RR
@@ -670,15 +609,11 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
    id 0 OPD-R64  DSTACK id DSLOT-OF MEM-OFF  s ENC-MOV-MR ;
 
 \ ---- the frame forms ---------------------------------------------------------
-\ The spill pass's frame: a reserve opens the entry block, a release stands in
-\ front of the return, and every slot between them is a non-negative
-\ displacement from rsp in whole cells (x64ir.f SLOT and FRAME). NOTHING ELSE
-\ MOVES rsp INSIDE THE FRAME: a call pushes its return address below it and the
-\ callee's `ret` takes that back, so a slot names the same cell on both sides of
-\ a call and a frame held across one needs no other instruction. The size is
-\ the imm32 form whatever its magnitude, which is PUT-ADDI's rule; the slot's
-\ displacement width is the encoder's, fixed by the slot, so both passes
-\ measure the same length.
+\ A reserve opens the entry block and a release stands before the return; every
+\ slot is a non-negative whole-cell displacement from rsp (x64ir.f SLOT,
+\ FRAME). Nothing else moves rsp inside the frame: a call's pushed return
+\ address sits below it, so a slot names the same cell across a call. The size
+\ is always imm32, so both passes measure the same length.
 : PUT-RESERVE ( IR-ID:ir-op-id ptr a -- )
    {: id:IR-ID:ir-op-id s:ptr :}
    MSTACK  id FRAME-OF >IMM32  s ENC-SUB-RI32 ;
@@ -761,7 +696,6 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
    id ENTRY-OF id s PUT-FAR-CALL
    id DBACK-OF negate s PUT-DMOVE ;
 
-\ Publish the callee's argument row, then branch without another call frame.
 : PUT-TAILCALL ( IR-ID:ir-op-id ptr a -- )
    {: id:IR-ID:ir-op-id s:ptr :}
    id DBYTES-OF s PUT-DMOVE
@@ -778,31 +712,18 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
    id TRAP-ENTRY-OF id s PUT-FAR-CALL ;
 
 \ ---- the divide --------------------------------------------------------------
-\ `idiv r64` divides rdx:rax and raises #DE on a zero divisor and on MIN-N -1,
-\ where Habu throws and wraps instead, so the divisor is screened first and the
-\ form is three pieces (docs/xcomp.md "Numeric admission"):
-\
-\ - ZERO is a caller error. The cold side pushes ARITH-ABI:E-DIV-ZERO the way
-\   src/arch/x86-64/rt.f G-PUSH pushes, store then advance, and calls the entry
-\   the form carries, which is `throw`: `throw` pops the code as it pops one a
-\   checked `throw` pushed. The code travels in rdx, the remainder's register,
-\   which the form writes on every path, so no value live across the form is
-\   there; control never comes back to read it. The call is written as PUT-TRAP
-\   writes its own.
-\ - MINUS ONE divides every dividend exactly, so the quotient is the dividend
-\   negated in place - the schema fixes both to rax - and the remainder zero.
-\   The negation wraps MIN-N to MIN-N, which is Habu's answer.
-\ - ANY OTHER divisor is `cqo; idiv`, truncating toward zero as Habu's `/` and
-\   `mod` do. `cqo` writes rdx before `idiv` reads its divisor, which is why the
-\   allocator keeps the divisor out of rdx (x64ir.f DEF-IDIV).
-\
-\ A JUMP INSIDE THE FORM SKIPS A PIECE, and a displacement counts from the end
-\ of its jump, so the field is the skipped piece's length: measured into the
-\ scratch sink like any length here, and zero while measuring, when that sink
-\ holds the whole operation and the field's width does not depend on its number.
-\ The piece's sink is declared `ptr n`: a `ptr a` there would be specialised by
-\ the scratch sink, which is raw storage, and the checker refuses that
-\ (E-NONPARAMETRIC-EFFECT).
+\ `idiv r64` raises #DE on a zero divisor and on MIN-N -1, where Habu throws and
+\ wraps, so the divisor is screened first (docs/xcomp.md "Numeric admission"):
+\ - zero: the cold side pushes ARITH-ABI:E-DIV-ZERO as src/arch/x86-64/rt.f
+\   G-PUSH does and calls the form's entry, `throw`. The code travels in rdx,
+\   which the form writes on every path; control never comes back.
+\ - minus one: the quotient is the dividend negated in place (both fixed to
+\   rax), wrapping MIN-N to MIN-N, and the remainder zero.
+\ - otherwise `cqo; idiv`, truncating toward zero. `cqo` writes rdx before
+\   `idiv` reads the divisor, so x64ir.f DEF-IDIV keeps the divisor out of rdx.
+\ A jump inside the form skips a piece; its field is the piece's measured
+\ length, zero while measuring. The piece's sink is `ptr n`: a `ptr a` would be
+\ specialised by raw scratch storage (E-NONPARAMETRIC-EFFECT).
 : PIECE-LEN ( IR-ID:ir-op-id [ IR-ID:ir-op-id ptr n -- ] -- n )
    MEAS @ 0<> if 2drop 0 exit then
    1 MEAS !
@@ -928,21 +849,13 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
    id 0 RES-XMM  MSTACK id SLOT-OF MEM-OFF  s ENC-MOVSD-RM ;
 
 \ ---- the double comparison ---------------------------------------------------
-\ ucomisd writes the UNSIGNED flags, and all three of ZF, PF and CF on an
-\ unordered pair, so the dialect's two conditions (x64ir.f DEF-FCMPSET) are read
-\ this way and no other. `gt` is `seta`, CF and ZF both clear, which is false on
-\ unordered; the signed `setg` reads SF and OF, which ucomisd clears, and would
-\ answer true for every pair it did not call below or equal. `equal` is ZF set
-\ AND PF clear: `sete` into the result and `setnp` into result 1, the scratch
-\ the form carries for it, joined by a cell-wide `and` whose low byte is the
-\ two bytes' and. Then WIDEN-FLAG clears what the setcc bytes left above them
-\ and makes the all-ones flag, as in PUT-SETCC.
-\
-\ THE PAIRING IS CHECKED HERE because nothing before this render can: a schema
-\ cannot tie a result count to an attribute, so result 1 is a variadic tail and a
-\ module with the wrong count freezes, allocates and is accepted. Any other
-\ condition, and a count other than one for `gt` and two for `equal`, is
-\ refused before a byte is written.
+\ ucomisd writes the unsigned flags and sets ZF, PF and CF on an unordered pair.
+\ `gt` is `seta` (CF and ZF clear), false on unordered; the signed `setg` reads
+\ SF and OF, which ucomisd clears. `equal` is ZF set and PF clear: `sete` into
+\ the result, `setnp` into result 1, joined by `and`; WIDEN-FLAG makes the
+\ all-ones flag. A schema cannot tie a result count to an attribute, so any
+\ other condition, or a count other than one for `gt` and two for `equal`, is
+\ refused here (E-X64EMIT-FORM) before a byte is written.
 : FCMP-GT ( -- n )     X64IR-COND:GT X64IR:COND-CODE ;
 : FCMP-EQUAL ( -- n )  X64IR-COND:EQUAL X64IR:COND-CODE ;
 
@@ -992,8 +905,9 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
 
 \ ---- the dispatch ------------------------------------------------------------
 \ Every opcode of the dialect is named, so a form added to the vocabulary is a
-\ decision taken HERE rather than a silent fall-through. The refusing arm is the
-\ negate, which no source form lowers to: HIR has no negate.
+\ decision taken HERE rather than a silent fall-through. The refusing arm
+\ (E-X64EMIT-FORM) is the negate, which no source form lowers to: HIR has no
+\ negate.
 : PUT-OP ( IR-ID:ir-op-id n ptr a -- )
    {: id:IR-ID:ir-op-id home:n s:ptr :}
    id SLOT-AT X64IR:NTH
@@ -1063,10 +977,8 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
    ;MATCH ;
 
 \ ---- how long one operation is -----------------------------------------------
-\ MEASURED AND NOT WRITTEN DOWN: the bytes the encoders really append are the
-\ only statement of a size that cannot drift from them. The scratch sink holds
-\ one operation and the flag keeps every displacement out of the answer, so a
-\ measurement is the same number in both passes.
+\ The scratch sink holds one operation and every displacement is zero while
+\ measuring, so both passes get the same number.
 : OP-SIZE ( IR-ID:ir-op-id n -- n )
    {: id:IR-ID:ir-op-id home:n :}
    MEAS @ {: was:n :}
@@ -1289,12 +1201,9 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
    c b IR-BUILD:SCHEMA-MAJOR@ X64IR:MAJOR <> if E-X64EMIT-MODULE throw then
    c b IR-BUILD:SCHEMA-MINOR@ X64IR:MINOR <> if E-X64EMIT-MODULE throw then ;
 
-\ THE ASSIGNMENT THIS EMISSION READS HAS TO BE THIS MODULE'S AND STILL FRESH.
-\ Whether the allocator has an assignment at all is asked BEFORE the module it is
-\ about, because a refused walk leaves the allocator with nothing to name a
-\ module - and that refusal is this pass's, not the allocator's. The last probe
-\ asks the validator whether the first value is in a register, which is the
-\ question that refuses an acceptance a later allocation replaced.
+\ Whether the allocator has an assignment is asked before the module it is
+\ about: a refused walk leaves it naming no module. The last probe refuses an
+\ acceptance a later allocation replaced.
 : ACCEPT-CK ( IR-BUILD:module -- )
    {: m:IR-BUILD:module :}
    A64RAV:ACCEPTED? 0= if E-X64EMIT-ACCEPT throw then
@@ -1303,27 +1212,22 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
    0= if E-X64EMIT-ACCEPT throw then
    A64RA:VALUES 0 > if 0 A64RAV:REGISTERED? drop then ;
 
-\ Emission asks the registry for itself: a context whose machine no loaded
-\ backend lowers for has no business producing this machine's bytes. It does NOT
-\ prove the context is about x86-64 - the registry answers for whatever machine
-\ the context names - and the module's own dialect, checked where it was bound,
-\ is what says these bytes are this dialect's.
+\ The registry check does not prove the context is x86-64; the module's
+\ dialect, checked where it was bound, does.
 : TARGET-CK ( IR-CTX:ctx -- )
    X64IR:CHECK-TARGET ;
 
 \ ---- the two passes ----------------------------------------------------------
-\ MEASURE files where every block and every function starts, walking the same
-\ order the writer will; WRITE-ALL writes and holds itself against those numbers.
+\ Every length is measured by encoding into a scratch sink, never written down.
+\ MEASURE files block starts in the chosen order; WRITE-ALL writes the same
+\ order and refuses a block off its measured start (E-X64EMIT-LAYOUT). Branches
+\ are always rel32, so no length changes between passes. A displacement counts
+\ from the end of its instruction (emit.f DELTA counts from its start).
 \
-\ EVERY FUNCTION IS LAID OUT TWICE, once in each pass, and the twin
-\ src/compiler/native/emit.f lays its own twice for the same reason: the order
-\ and the block starts are PER FUNCTION - B-ORDER, B-PLACE and B-START are all
-\ indexed by a block's ordinal in the function it belongs to - so the numbers
-\ MEASURE leaves in them are the LAST function's. The writer re-orders and
-\ re-lays each function from the F-START that pass filed for it, and B-START is
-\ about the function it is walking. A block start is still counted from the
-\ start of the EMISSION and not of the function, because a displacement
-\ subtracts two of them and both ends must share an origin.
+\ Every function is laid out in both passes, as in emit.f: B-ORDER, B-PLACE and
+\ B-START are indexed per function, so MEASURE leaves the last function's
+\ numbers and the writer re-lays each from its F-START. Block starts count from
+\ the emission's start, so both ends of a displacement share an origin.
 : LAYOUT ( IR-ID:ir-fun-id n -- )
    {: f:IR-ID:ir-fun-id base:n :}
    base MCUR !
@@ -1414,13 +1318,9 @@ public
    0 PLACE-AT-N ! ;
 
 \ ---- declaring where this routine will be written ----------------------------
-\ Optional: an EMIT without it is a shadow emission, whose calls are left to
-\ the rows (the calls above). WHAT IS CHECKED IS THAT IT COULD BE AN
-\ ENTRY OF THIS MACHINE. An x86-64 instruction needs no alignment to decode, so
-\ this is not about decoding: the only alignment this machine states is
-\ X64IR:SP-ALIGN, the sixteen bytes the SysV contract aligns to, and a code
-\ region that hands out slots in that unit is one whose arithmetic stays whole.
-\ A writer that packs routines tighter pads to it rather than placing between.
+\ Optional: an EMIT without it is a shadow emission. The slot must be aligned to
+\ X64IR:SP-ALIGN, the only alignment this machine states, so a code region's
+\ slot arithmetic stays whole; decoding needs none.
 : PLACE-AT ( n -- )
    {: at:n :}
    PLACE-MODE @ PLACE-YES = if E-X64EMIT-PLACE throw then
@@ -1457,15 +1357,9 @@ public
    WRITE-ALL
    ST-SEALED ST ! ;
 
-\ Retiring one definition is deliberately nonthrowing. The compiler calls it on
-\ both the accepting and the rejecting path, so it gives back the placement a
-\ refused run never spent as well as the bytes a sealed one holds.
-\
-\ THE MEASURING FLAG IS PART OF WHAT IS GIVEN BACK, and EMIT clears it again
-\ before it walks: a refusal like E-X64EMIT-FORM is thrown from inside OP-SIZE,
-\ which is to say from inside a measurement, and a flag left standing there
-\ would make the NEXT emission's writer take the measuring arm of every
-\ displacement and write a zero where a branch or a call belongs.
+\ Nonthrowing: the compiler calls it on both paths. It clears the measuring
+\ flag, because a refusal thrown from inside OP-SIZE would leave the next
+\ emission writing zero displacements.
 : RETIRE ( -- )
    ST-EMPTY ST !
    0 PATCH-RET !
@@ -1487,8 +1381,7 @@ public
    0 SINK-MODE ! ;
 
 \ ---- the sealed emission, all of it in BYTES ---------------------------------
-\ Every reader below answers BYTES where the ARM64 emitter answers instruction
-\ indices, because on this machine an instruction has no fixed width.
+\ src/arch/x86-64/passes.f states the sealed emission as NEMIT's rows.
 : SEALED? ( -- bool )
    ST @ ST-SEALED = ;
 

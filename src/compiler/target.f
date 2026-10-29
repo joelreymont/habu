@@ -1,34 +1,7 @@
-\ target.f - the immutable compiler target contract.
-\
-\ No compiler pass may read target facts
-\ out of scattered globals; it reads them out of one immutable value that says
-\ what machine the compilation is for. This file owns the first stage of that
-\ value: architecture, ABI, byte order, pointer width and feature set. The
-\ compilation context carries that value.
-\
-\ WHAT THE VALIDATOR OWNS. A contract is rejected when its facts cannot all be
-\ true of one machine - a PTX kernel ABI on an AArch64 core, a big-endian
-\ Darwin ABI, a matrix-multiply feature on a core that has no matrix unit. It is
-\ NOT rejected merely because this compiler cannot yet emit code for it. Those
-\ are different questions with different owners: coherence is decided here, once,
-\ at construction; backend capability is decided later by the stage that has to
-\ produce instructions, against the contract (IR-VERIFY refuses a
-\ target-specific operation the target contract cannot run). Collapsing the two
-\ would make
-\ the contract undeclarable for any machine we are about to add support for, and
-\ - worse - would prevent the context from representing that machine.
-\
-\ Every semantic field carries its own closed family, so a swapped argument at
-\ construction is a checker reject rather than a silently different target. The
-\ feature set is nominal too (a one-field structure over a bit mask), so a bare
-\ integer cannot be passed where a feature set is wanted; callers build one from
-\ the named feature words and CTARGET:WITH.
-\
-\ FORGERY. `contract` is a public family, so its generated MAKE can assemble any
-\ five field values without passing through CTARGET:CONTRACT. SAME? therefore
-\ revalidates its inputs instead of trusting that they came from the checked
-\ constructor. The plain field readers only project a value the caller already
-\ holds.
+\ target.f - the immutable compiler target contract: architecture, ABI, byte
+\ order, pointer width and feature set, carried by the compilation context. No
+\ pass reads target facts out of globals. Every field is its own closed family,
+\ so a swapped constructor argument is a checker reject.
 
 require src/lib/prelude.f
 require src/lib/errors.f
@@ -269,8 +242,12 @@ public
 : F-SCALAR-FP ( -- CTARGET:features ) BIT-SCALAR-FP MK ;
 
 \ ---- construction and validation --------------------------------------------
-\ The production entry point: an incoherent combination throws a named error and
-\ no contract value is produced.
+\ A contract is refused when its facts cannot all be true of one machine (a PTX
+\ kernel ABI on an AArch64 core, a big-endian Darwin ABI), never because no
+\ backend emits for it yet: capability is the emitting stage's question
+\ (IR-VERIFY refuses an operation the contract cannot run), and refusing here
+\ would leave a machine being added undeclarable. An incoherent combination
+\ throws a named error and no contract value is produced.
 : CONTRACT ( CTARGET:arch CTARGET:abi CTARGET:endian CTARGET:ptr-width CTARGET:features -- CTARGET:contract )
    {: a:arch b:abi e:endian p:ptr-width f:features :}
    a b e p f CK
@@ -296,7 +273,6 @@ public
 : FEATURES@ ( CTARGET:contract -- CTARGET:features )
    CTARGET-CONTRACT:UNMAKE nip nip nip nip ;
 
-\ The pointer width in bits, for consumers that need the number.
 : PTR-BITS ( CTARGET:contract -- n )
    PTR-WIDTH@
    MATCH ptr-width

@@ -1,6 +1,5 @@
-\ codewalk.f - the machine code this process is running, read as evidence. One
-\ concern: the walk over a record's instructions, and over every record that
-\ holds any.
+\ codewalk.f - walks the instructions of a record, and of every record that
+\ holds code, in the running process.
 
 require src/lib/prelude.f
 require src/lib/errors.f
@@ -16,11 +15,8 @@ private
 
 public
 
-\ The address arrives as a number - REC-START read it out of a dictionary record
-\ - and CODE-BYTES:AT is where it becomes bytes, bounded against the running
-\ image's code. Reading the four separately rather than a whole span keeps the
-\ public effect a number in and a number out, which is what the callers below ask
-\ for.
+\ CODE-BYTES:AT bounds the address against the running image's code. Four byte
+\ reads keep the effect a number in and a number out.
 : INSN@ ( n -- n ) {: a:n :}
    a NBR:INSN-BYTES CODE-BYTES:AT drop {: p:ptr :}
    p c@
@@ -28,7 +24,8 @@ public
    p 2 + c@ 16 lshift or
    p 3 + c@ 24 lshift or ;
 
-\ the instruction at it, and a local annotation cannot carry a quotation effect.
+\ The quotation takes an address and the instruction at it; a local annotation
+\ cannot carry a quotation effect.
 : SPAN-EACH ( n n [ n n -- ] -- ) {: s:n len:n q :}
    len NBR:INSN-BYTES / 0 ?do
       s i NBR:INSN-BYTES * +  dup INSN@  q execute

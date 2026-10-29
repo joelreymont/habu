@@ -1,56 +1,15 @@
-\ prof.f - the native chain's own stopwatch: how long spill lowering took,
-\ and how large the modules it was handed were.
-\
-\ THREE PHASES, AND NO MORE. tools/chain-scale.f asks whether lowering
-\ scales with the module's size, which needs elapsed time, the module's
-\ operation count and the sealed spill plan's size. A phase per stage of the
-\ chain would be a profiler, and what a caller of the compiler actually cares
-\ about is already one number: the per-definition floor tools/compile-floor.f
-\ prints.
-\
-\ A phase is opened and closed around ONE call and never inside itself, so a
-\ total is the sum of that call's own wall time and a count is how many calls
-\ there were.
-\
-\ ONLY A MEASUREMENT SESSION ACCUMULATES, AND THAT IS WHAT KEEPS A TOTAL OUT OF
-\ AN IMAGE. The compiler runs while an engine is being built, so a nanosecond
-\ total is the same build-time transient as the checker's REG-PERSIST-DELTA that
-\ a611d84d removed: the AOT capture copies the window's DATA, and a cell holding
-\ a duration reads differently in two builds by one host. With these slots as
-\ dictionary cells this lane broke that outright - two tools/native-build.f
-\ products differed in 18 bytes over a 26-byte span, three adjacent cells holding
-\ durations.
-\
-\ Putting the slots in a mapping is necessary and NOT sufficient, and the second
-\ half is the part that bites. A DYNAMIC-BUFFER keeps a control record
-\ in DATA, and the generated reader bounds-checks the index against the capacity
-\ in it: a RELEASED buffer therefore refuses, but a buffer whose capacity was
-\ baked non-zero while its mapping address belongs to a dead process passes that
-\ check and dereferences. Releasing at capture time alone does not prevent it -
-\ the engine goes on compiling after NCOMP:CAPTURE-PREPARE, so a stopwatch that
-\ armed itself on first use would re-acquire a mapping and the product would
-\ inherit a live address. That is not a theory: it SIGSEGVs the second
-\ generation of tools/two-generation-build.f, because the seed has no stopwatch
-\ and so cannot bake one, while every engine built by an engine can.
-\
-\ So the stopwatch is not always on. It accumulates only between OPEN and CLOSE,
-\ which only a measurement tool calls; every entry point below is a no-op outside
-\ a session. A build never opens one, so the mapping is never taken, the control
-\ record and SESSION are never written, and what the capture copies is the zeros
-\ they were declared with - whatever order the capture runs in, and with no reset
-\ for anyone to remember. NCOMP:CAPTURE-PREPARE still calls CLOSE, so an image
-\ saved from inside a measurement is deterministic too rather than merely
-\ unlikely.
+\ prof.f - the native chain's stopwatch for tools/chain-scale.f: spill
+\ lowering's wall time, the module's operation count and the sealed spill
+\ plan's size. A phase wraps one call and never nests, so a total is that
+\ call's own wall time summed and a count is how many calls there were.
 
 require src/lib/prelude.f
 
 package NPROF
 public
 
-\ What lowering was handed: the operations of the module it reads and the size
-\ of the sealed plan. The count beside a pass is its calls, and the count beside
-\ a total is how many modules contributed to it,
-\ so a per-module mean is a division and not an assumption.
+\ The count beside a pass is its calls and the count beside a total is how many
+\ modules contributed, so a per-module mean is a division.
 ENUM phase DERIVE eq
    spill
    spill-ops
@@ -70,8 +29,15 @@ SLOTS 3 * constant CELLS-N
 
 DYNAMIC-BUFFER ACC-BUF n
 
-\ The one cell that says a session is live. It is read before the control record
-\ is, so a mapping is never indexed outside the session that took it.
+\ Only a measurement session (OPEN to CLOSE, called only by measurement tools)
+\ takes the mapping or writes a slot; every entry point is a no-op outside one.
+\ That keeps durations out of a captured image: the capture copies DATA, and a
+\ DYNAMIC-BUFFER whose capacity was baked non-zero while its mapping belonged to
+\ a dead process passes the bounds check and dereferences (it SIGSEGVed the
+\ second generation of tools/two-generation-build.f). The engine keeps compiling
+\ after NCOMP:CAPTURE-PREPARE, so releasing at capture alone is not enough; it
+\ still calls CLOSE for an image saved mid-session. SESSION is read before the
+\ control record, so a mapping is never indexed outside the session that took it.
 variable SESSION
 
 : LIVE? ( -- bool ) SESSION @ 0<> ;

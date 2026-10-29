@@ -1,14 +1,8 @@
-\ abi.f - the convention a Habu word is entered and left through, as a routine
-\ contract the chain's stages can be told. One concern: turning the four numbers
-\ that describe a word - where its scratch registers start, how many it has, how
-\ many values it takes and how many it leaves - into the contract the selector,
-\ the allocator and the validator all answer about.
-\
-\ Design 7.6: an externally callable Habu word takes argument i out of data-stack
-\ slot i of the caller's stack and leaves result j in slot j.
-\
-\ The whole floating file is scratch: every engine float primitive moves its
-\ arguments into d0/d1 and its answer back out, so nothing lives across a call.
+\ abi.f - the convention a Habu word is entered and left through, built as a
+\ routine contract from four numbers: scratch base, scratch count, values taken
+\ and values left. An externally callable word takes argument i from data-stack
+\ slot i and leaves result j in slot j. The whole floating file is scratch:
+\ every engine float primitive moves its operands through d0/d1.
 
 require src/lib/prelude.f
 require src/compiler/target/native-binding.f
@@ -20,29 +14,19 @@ require src/compiler/native/frame.f
 package NABI
 public
 
-\ The native profile owner builds the process binding; this API keeps existing
-\ compiler callers stable while the constructors below remain AArch64-owned.
 : BINDING ( -- CBIND:binding )
    RTARGET:HOST-TARGET RTARGET:NATIVE-BINDING ;
 
-\ `n` general registers starting at `base`. A set is a machine-free value, so a
-\ run that crosses the data-stack, link, platform or zero register builds here
-\ and is refused by the contract that would hold state in it - NEFF:ROUTINE is
-\ where the machine is named. A caller states a run only to hold a routine UNDER
-\ the machine's pool - which is what a pressure fixture is for. Production asks
-\ SCRATCH.
+\ `n` general registers from `base`, machine-free: a run crossing a reserved
+\ register is refused by the contract that holds state in it (NEFF:ROUTINE).
+\ Only pressure fixtures state a run; production asks SCRATCH.
 : POOL ( n n -- NEFF:gprs )
    {: base:n n:n :}
    NEFF:GPR-NONE
    n 0 ?do base i + NEFF:GPR-REG NEFF:GPR-WITH loop ;
 
-\ Every general register a routine of this convention may hold state in, which is
-\ a fact about the machine and the engine and never a number a caller picks. The
-\ set is not a run: src/habu/layout.f claims x19, x20, x26, x27 and x28 out of
-\ the middle of it, so the largest run from x0 ends at x18 on Linux and x17 on
-\ Darwin. The complete set is twenty-five registers on Linux and twenty-four on
-\ Darwin, including x21..x25 and x29 on both. A routine that still does not fit
-\ spills, which is the spill path's job and not the caller's to pre-empt.
+\ The set is not a run: src/habu/layout.f claims x19, x20, x26, x27 and x28, so
+\ it holds twenty-five registers on Linux and twenty-four on Darwin (x18).
 : SCRATCH ( -- NEFF:gprs )
    A64IR:MACHINE NEFF:GPR-ALL ;
 
@@ -106,7 +90,6 @@ public
 : TAIL ( NEFF:gprs n n -- NEFF:routine )
    0 TAIL-FRAMED ;
 
-\ The same, for a word that also makes a call it comes back from.
 : TAIL-CALLING-FRAMED ( NEFF:gprs n n n -- NEFF:routine )
    {: pool:NEFF:gprs in:n out:n spills:n :}
    NEFF-CONV:DSTACK

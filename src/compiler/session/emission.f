@@ -1,4 +1,5 @@
-\ A context owns this copy after the backend retires its transient emission.
+\ session/emission.f - a context's own copy of a backend emission (NART): the
+\ context owns the copy once the backend retires its transient emission.
 require src/lib/prelude.f
 require src/lib/errors.f
 require src/core/bytes.f

@@ -1,99 +1,9 @@
-\ select-x64.f - instruction selection for x86-64: read a frozen HIR module and
-\ build the frozen X64IR module its operations select to. It is to
-\ src/compiler/native/x64ir.f what src/compiler/native/select.f is to a64ir.f,
-\ and it is a SEPARATE pass and not a parameterisation of that one, for the
-\ reason src/compiler/native/emit-x64.f's header gives for the emitter: what
-\ the two passes share is the walk, and what they do not share is every rule in
-\ it.
-\
-\ WHAT THIS PASS LOWERS, AND WHAT IT LEAVES TO THE NEXT SLICE. The straight-line
-\ and branching core: literals, the two-address arithmetic and its immediate
-\ forms, the shifts whose count is a literal, the addressed loads and stores,
-\ the comparisons, the two branches, the data-stack boundary of a routine, a
-\ call, a tail call, the frame and the return. It is CORRECT AND UNFUSED: a
-\ comparison that feeds a branch selects to `x64.cmpset` and then `x64.brz`,
-\ never to `x64.cmpbr`, and no selection becomes a `x64.cmpsel`. Fusing and
-\ if-conversion are a rewrite of what this pass builds and not a condition of
-\ its correctness, so they are the next slice; the ARM64 pass does them inline
-\ only because it grew that way.
-\
-\ THE THREE THINGS THIS MACHINE MAKES THE SELECTOR DO DIFFERENTLY.
-\
-\ ONE. IT INSERTS THE COPY EVERY TWO-ADDRESS FORM NEEDS. `add rd, rs` destroys
-\ rd, and the dialect says so with a schema TIE. The allocator READS that tie as
-\ a must-share constraint and REFUSES a pair whose ends cannot share a register
-\ (regalloc.f MB-TIE1 throws E-A64RA-TIE); it inserts nothing. Making every tie
-\ satisfiable is therefore this pass's work: operand 0 is copied into a fresh
-\ value with `x64.mov` first whenever it is still LIVE AFTER the operation. That
-\ is a question about the CONTROL FLOW GRAPH and not about how many operands
-\ name the value: a value defined above a loop and read ONCE inside it is read
-\ again by the next pass through the header, and no operand of the backedge
-\ names it. So this pass computes live-in and live-out over the function's
-\ blocks before it walks them ("which values are live where" below) and the tie
-\ decision reads them, together with every block laid after this one
-\ (LATER-LIVE?). The allocator coalesces the copies it can (MB-COPY?), so
-\ a copy that was not needed costs nothing after allocation.
-\
-\ TWO. A LITERAL IN THE SECOND OPERAND IS PART OF THE INSTRUCTION. x86-64 ALU
-\ and compare forms carry a signed imm32, so `8 +` is one instruction and not
-\ two. The literal's own `x64.movi` is left out only when EVERY use of it is one
-\ of these, which is counted over the whole function and not guessed at.
-\
-\ THREE. TWO FORMS NAME A REGISTER, AND THE COPY IS HOW THIS PASS ASKS FOR IT.
-\ `shl r64, cl` reads its count from rcx and `idiv r64` divides rdx:rax into rax
-\ and rdx. The schema states those obligations as the forms' own fixed operand
-\ and result registers (x64ir.f DEF-SHIFT-CL and DEF-IDIV) and the allocator
-\ places them from there, so making them SATISFIABLE is this pass's work, as it
-\ is for a tie: the count of a variable shift and the dividend of a division are
-\ copied into fresh values with `x64.mov` immediately before the operation. The
-\ allocator pins each copy to its register and forbids that register to every
-\ other value the operation reads or lives across (regalloc.f MB-FIXED-BITS), so
-\ a count or dividend the rest of the function reads - or two counts live over
-\ one interval - keeps its own value elsewhere while the copy takes the
-\ register. The pin is placed where the pinned class OPENS, and the register is
-\ forbidden as well to every value whose range spans that opening (regalloc.f
-\ MB-FORBID-PINS), so the pin holds whether the copy is a class of its own,
-\ opening immediately before the operation, or is coalesced into a source that
-\ dies at it (regalloc.f MB-COALESCE1) and opens at the source's definition:
-\ `( a b n -- x ) -rot + swap lshift` under the data-stack convention loads its
-\ count straight into rcx, and b, which holds a register at that load and dies
-\ at the add, is kept out of rcx. A shift by a
-\ literal keeps the immediate form and carries no constraint at all. A
-\ division's quotient is result 0 and the source value's; its remainder is a
-\ second result nothing reads; `cqo` and the branch over the zero-divisor refusal
-\ belong to the form's RENDER, which is why the operation carries the runtime
-\ `throw` entry as its own attribute the way a64.sdiv does, and why a target
-\ dictionary without `throw` is refused (E-X64SEL-TRAP).
-\
-\ WHAT THE EMITTER ANSWERS AND WHAT IT STILL OWES. emit-x64.f renders `x64.idiv`
-\ with the two answers this pass cannot give: the branch that hands a zero
-\ divisor to the entry above, and `MIN-N / -1`, which raises #DE on this machine
-\ where Habu's `/` wraps to MIN-N, so the render screens the divisor before it
-\ divides (docs/xcomp.md "Numeric admission"). It renders every double form
-\ this pass selects, and reads the flags of `x64.fcmpset` the one way ucomisd
-\ leaves them for each of its two conditions.
-\
-\ AND THE DOUBLES ARE SSE2 SCALAR FORMS. A source value whose TYPE is the double
-\ is a value of the XMM file (REAL?), and every floating source operation selects
-\ to the x64ir form that computes it ("selecting the doubles" below). The
-\ arithmetic takes the tie copy the general forms take, as `x64.movsd`; a double
-\ literal is its bits moved from a general register, since no SSE form carries an
-\ immediate; and a comparison is `x64.fcmpset` under the one of two conditions
-\ ucomisd answers false on unordered, so a less-than exchanges its operands.
-\
-\ WHERE THE POINTER STANDS. The data-stack pointer is a register and stands at
-\ ONE place for the whole body. This pass does not survey the body for the
-\ cheapest place the way the ARM64 one does: it stands at the routine's entry
-\ base, which costs one adjustment at each end and none in between, except in a
-\ routine that leaves through its callee, where the tail branch carries no
-\ adjustment at all and the pointer therefore has to stand where it was entered.
-\ A cell already pushed is then at a NEGATIVE displacement, which this machine
-\ addresses as readily as a positive one (x64ir.f DSLOT).
-\
-\ That policy is not this file's private habit: x64ir.f VOCABULARY states it as
-\ the dialect's `stand` field (NDIALECT:dstand `entry-base`, src/compiler/
-\ native/dialect.f), and regalloc-verify.f VDPLACE-CK checks a module against
-\ the stated policy rather than re-deriving the ARM64 survey.
+\ select-x64.f - instruction selection for x86-64: a frozen HIR module in, the
+\ frozen X64IR module (src/compiler/native/x64ir.f) out. A twin of select.f, not
+\ a parameterisation, for the reason emit-x64.f's header gives. Correct and
+\ unfused: a comparison feeding a branch selects to `x64.cmpset` then `x64.brz`,
+\ never `x64.cmpbr`, and nothing selects to `x64.cmpsel`. This pass makes ties
+\ and fixed registers satisfiable; regalloc.f places them, emit-x64.f renders.
 
 require src/lib/prelude.f
 require src/lib/errors.f
@@ -136,22 +46,18 @@ DYNAMIC-BUFFER D-ORDER-SET-BUF n
 : D-ORDER-SET ( -- ptr n ) 0 D-ORDER-SET-BUF ;
 
 \ ---- what the data-stack residency pass answers ------------------------------
-\ A slot of the caller's data stack holds a value of the source module, and this
-\ is the window that fact is tracked over: past it, never resident. The pass is
-\ A64SEL's (select.f, "which slot holds which value"), COPIED and not shared:
-\ the ARM64 chain requires select.f alone and this file is its own package with
-\ its own buffers, so moving the machinery into one place would move the ARM64
-\ selector, which nothing here is allowed to do.
+\ A copy of select.f's residency pass ("which slot holds which value"), not
+\ shared: the ARM64 chain requires select.f alone. Past DSLOT-MAX a slot is
+\ never resident.
 \
-\ Each slot is named twice. Its EDGE name follows the value into the block
+\ Each slot has two names. Its EDGE name follows the value into the block
 \ argument an edge passes it as. Its STORED name is the value the slot is known
-\ to hold: a routine input at entry, a value a save wrote, or a call's result.
-\ It crosses every edge unchanged, since no edge writes a slot, so it is the
-\ name regalloc-verify.f VDRES-FIX holds the slot to, and a store of it is the
-\ one VDSTORE-CK refuses. A stored name is a routine input or a call's result,
-\ never a block argument a later edge redefines, so keeping it across a
-\ backedge is exact. The stored names sit DSTORED cells above the edge names in
-\ every map.
+\ to hold: a routine input, a value a save wrote, or a call's result. No edge
+\ writes a slot, so the stored name crosses every edge unchanged; it is the name
+\ regalloc-verify.f VDRES-FIX holds the slot to and the store VDSTORE-CK
+\ refuses. It is never a block argument a later edge redefines, so keeping it
+\ across a backedge is exact. Stored names sit DSTORED cells above the edge
+\ names in every map.
 64 constant DSLOT-MAX                \ slots one routine's residency is tracked over
 DSLOT-MAX constant DSTORED           \ where a map's stored names start
 DSLOT-MAX 2 * constant DCELLS        \ names one map holds: an edge and a stored name per slot
@@ -170,13 +76,11 @@ create D-CUR DCELLS cells allot      \ the running answer inside one block
 create D-MEET DCELLS cells allot     \ the meet of one block's predecessors
 variable D-MOVED                     \ a fixpoint round changed something
 
-\ The liveness planes: one bit per value, per block, in each of the four sets
-\ the backward dataflow keeps, and one set of the same width for the values a
-\ block has already defined while it is being read. A block's set is only as
-\ wide as the FUNCTION's own value span (LWORDS), so what each function clears
-\ and iterates is its own size; the reservation is the module's worst case,
-\ because nothing tells the walk which function is the widest before it meets
-\ it.
+\ The liveness planes: one bit per value per block for each of the four
+\ dataflow sets, and one more for what the block being read has defined. A set
+\ is as wide as the function's value span (LWORDS); the reservation is the
+\ module's worst case, since the widest function is unknown until the walk
+\ meets it.
 64 constant SET-BITS
 0 constant P-IN
 1 constant P-OUT
@@ -382,7 +286,7 @@ variable LIVE-CHANGED                \ whether the last dataflow pass moved a se
 : TOKEN? ( IR-ID:ir-value-id -- bool )
    VALUE-TYPE-AT  0 BND-MEM @  SAME-TYPE? ;
 
-\ Asked exactly as TOKEN? is: a double, whose machine value is of the XMM file.
+\ A double: its machine value is of the XMM file.
 : REAL? ( IR-ID:ir-value-id -- bool )
    VALUE-TYPE-AT  0 BND-REAL @  SAME-TYPE? ;
 
@@ -437,13 +341,10 @@ variable LIVE-CHANGED                \ whether the last dataflow pass moved a se
 : FRESULT+ ( -- )
    CTX BLD  CTX BLD X64IR:FPR-TYPE  IR-BUILD:ADD-RESULT ;
 
-\ A machine value's register file is its TYPE in the module being built, which
-\ is the authority on it while it is open (IR-BUILD:VALUE-TYPE@).
 : FPR? ( IR-ID:ir-value-id -- bool )
    {: v:IR-ID:ir-value-id :}
    CTX BLD v IR-BUILD:VALUE-TYPE@  CTX BLD X64IR:FPR-TYPE  SAME-TYPE? ;
 
-\ A result in the file a machine value is in: a copy's, and a tied result's.
 : RESULT-LIKE+ ( IR-ID:ir-value-id -- )
    FPR? if FRESULT+ exit then
    RESULT+ ;
@@ -458,12 +359,9 @@ variable LIVE-CHANGED                \ whether the last dataflow pass moved a se
    CTX BLD IR-BUILD:END-OP {: id:IR-ID:ir-op-id :}
    CTX BLD id 0 IR-BUILD:OP-RESULT@ ACC! ;
 
-\ One value moved into a fresh one, carrying the span of the operation the move
-\ was made for. Both places that need a value somewhere else are this: the
-\ destination an edge carries its argument into, and the operand a two-address
-\ form is about to destroy. The opcode is the copy of the value's own file:
-\ `x64.mov`, which ties nothing and is what an allocator coalesces away when the
-\ two ends can share a register, or `x64.movsd` for a double.
+\ Used for an edge's destination and for the operand a two-address form
+\ destroys. `x64.mov` ties nothing and the allocator coalesces it when both ends
+\ can share a register; a double copies with `x64.movsd`.
 : EMIT-COPY ( IR-ID:ir-op-id IR-ID:ir-value-id -- IR-ID:ir-value-id )
    {: at:IR-ID:ir-op-id v:IR-ID:ir-value-id :}
    v FPR? if X64IR-OPCODE:MOVSD else X64IR-OPCODE:MOV then {: o:X64IR:opcode :}
@@ -503,7 +401,6 @@ variable LIVE-CHANGED                \ whether the last dataflow pass moved a se
    sl s NEFF:SEQ-LEN <> if E-X64SEL-PLACE throw then
    sl ;
 
-\ THE CONTRACT SAYS SO and this pass does not work it out.
 : DSTACK? ( -- bool )
    S-DSTACK @ 0<> ;
 
@@ -748,11 +645,9 @@ variable LIVE-CHANGED                \ whether the last dataflow pass moved a se
    CTX BLD IR-BUILD:END-OP {: id:IR-ID:ir-op-id :}
    CTX BLD id 0 IR-BUILD:OP-RESULT@ TOK! ;
 
-\ Every live value and every argument is written to its cell, EXCEPT the ones the
-\ cell already holds. The mask is the residency pass's answer for this site, one
-\ bit per position of the store run (DSAVE-XFER below, handed over by RULE), and
-\ a store of a value its cell still holds is not an optimisation to leave out: it
-\ is what regalloc-verify.f VDSTORE-CK refuses by name (E-A64RAV-DKEEP).
+\ A store of a value its cell still holds is refused by regalloc-verify.f
+\ VDSTORE-CK (E-A64RAV-DKEEP), so the residency mask for this site (DSAVE-XFER,
+\ handed over by RULE), one bit per position of the store run, skips it.
 : CALL-SAVE ( IR-ID:ir-op-id n n n n -- )
    {: id:IR-ID:ir-op-id kk:n m:n a:n mask:n :}
    kk a + {: n:n :}
@@ -950,10 +845,8 @@ variable LIVE-CHANGED                \ whether the last dataflow pass moved a se
 \ where defs(B) is B's block arguments together with the results of its
 \ operations, and reads(B) is the operands it reads before defining them. A
 \ terminator is an operation of its own block, so the values an edge carries are
-\ reads of the block the branch is IN and not of the block it goes to. Blocks
-\ are visited backwards because that is the direction the answers flow, and the
-\ iteration stops when no set has moved: the sets only grow and there are
-\ finitely many values and blocks, so it terminates.
+\ reads of the block the branch is IN and not of the block it goes to. The sets
+\ only grow over finitely many values and blocks, so the iteration terminates.
 \
 \ The allocator computes the same thing over the MACHINE module (regalloc.f
 \ MB-LIVENESS) and cannot be asked for it here: it runs after this pass, over
@@ -1086,18 +979,15 @@ variable LIVE-CHANGED                \ whether the last dataflow pass moved a se
       LIVE-CHANGED @ 0=
    until ;
 
-\ Whether the value leaves the block being selected alive.
 : LIVE-OUT? ( IR-ID:ir-value-id -- bool )
    {: v:IR-ID:ir-value-id :}
    P-OUT  BLK BLOCK-ORD  v VSLOT  LIVE-HAS? ;
 
 \ ---- counting what reads a value ---------------------------------------------
-\ How many operands of the whole function name a value. Two answers read this: a
-\ literal becomes no instruction of its own only when every use of it folds into
-\ one, and a tail site may carry nothing anything reads again. A use later in
-\ this block and a use in any other block are one answer here: nothing is
-\ computed about where a value dies, only whether a use exists that is not the
-\ operand being asked about.
+\ How many operands of the whole function name a value. A literal becomes no
+\ instruction of its own only when every use folds into one, and a tail site
+\ may carry nothing read again. Nothing is computed about where a value dies,
+\ only whether a use exists that is not the operand asked about.
 : OP-USES ( IR-ID:ir-value-id IR-ID:ir-op-id -- n )
    {: v:IR-ID:ir-value-id id:IR-ID:ir-op-id :}
    0
@@ -1116,17 +1006,15 @@ variable LIVE-CHANGED                \ whether the last dataflow pass moved a se
    FUN BLOCK-COUNT 0 ?do  v FUN i BLOCK-AT BLOCK-USES  +  loop ;
 
 \ ---- selecting the arithmetic ------------------------------------------------
-\ Operand 0 is the one the instruction overwrites and the schema ties the result
-\ to it. The allocator refuses a tie whose ends cannot share a register
-\ (regalloc.f MB-TIE1) instead of repairing it, so the operand a form is about
-\ to destroy is copied here whenever it is LIVE AFTER this operation, which is
-\ four questions in one: another operand of this operation names it (`dup +`),
-\ a later operation of this block reads it, it is live out of this block, or a
-\ block laid after this one reads it or has it live out (LATER-LIVE? below). The
-\ third is the one a count of uses cannot answer - a value read once
-\ inside a loop is read again when the backedge brings control round, and no
-\ operand of that branch names it. The copy is `x64.mov` into a fresh value, and
-\ the allocator coalesces the ones whose ends can share a register after all.
+\ Operand 0 is the one the instruction overwrites, and the schema ties the
+\ result to it. The allocator refuses a tie whose ends cannot share a register
+\ (regalloc.f MB-TIE1, E-A64RA-TIE) instead of repairing it, so the operand is
+\ copied here whenever it is live after this operation: another operand of this
+\ operation names it (`dup +`), a later operation of this block reads it, it is
+\ live out of this block, or a block laid after this one reads it or has it
+\ live out (LATER-LIVE? below). A count of uses cannot answer the third: a value
+\ read once inside a loop is read again when the backedge brings control round.
+\ The allocator coalesces the copies whose ends can share a register.
 
 \ From operand k on, so that the destroyed operand can ask about the others.
 : OP-READS-FROM? ( IR-ID:ir-value-id IR-ID:ir-op-id n -- bool )
@@ -1136,8 +1024,7 @@ variable LIVE-CHANGED                \ whether the last dataflow pass moved a se
       id i OPERAND-AT v SAME-VALUE? if drop true leave then
    loop ;
 
-\ Where the operation being selected stands in the block being selected. The
-\ walk is at this operation, so the block really holds it.
+\ The walk is at this operation, so the block holds it.
 : OP-POSITION ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
    -1
@@ -1261,11 +1148,13 @@ variable LIVE-CHANGED                \ whether the last dataflow pass moved a se
    then
    id o EMIT-BINARY ;
 
-\ `shl r64, cl` reads its count from rcx and the schema fixes operand 1 there, so
-\ the count is COPIED into a fresh value and the copy is the operand: a count
-\ another operation reads, and two counts live over one interval, are then two
-\ classes the allocator can place in one register one after the other. The copy
-\ that was not needed is coalesced away (regalloc.f MB-COALESCE1).
+\ `shl r64, cl` reads its count from rcx (x64ir.f DEF-SHIFT-CL), so the count is
+\ copied into a fresh value and the copy is the operand. The allocator pins the
+\ copy's class to rcx where the class opens and forbids rcx to every other value
+\ the shift reads or that spans that opening (regalloc.f MB-FIXED-BITS,
+\ MB-FORBID-PINS), so the pin holds when the copy coalesces into a source that
+\ dies at the shift (MB-COALESCE1): in `( a b n -- x ) -rot + swap lshift` the
+\ count loads straight into rcx and b, live at that load, is kept out of rcx.
 : EMIT-SHIFT-CL ( IR-ID:ir-op-id X64IR:opcode -- )
    {: id:IR-ID:ir-op-id o:X64IR:opcode :}
    id TIED-OPERAND {: dst:IR-ID:ir-value-id :}
@@ -1277,8 +1166,6 @@ variable LIVE-CHANGED                \ whether the last dataflow pass moved a se
    CLOSE-VALUE
    id 0 RESULT-AT  ACC  VBIND ;
 
-\ The register form and the immediate form are one rule, as they are for a binary
-\ operation, because which one the machine has is decided by what the count IS.
 : SHIFT-RULE ( IR-ID:ir-op-id X64IR:opcode X64IR:opcode -- )
    {: id:IR-ID:ir-op-id o:X64IR:opcode oi:X64IR:opcode :}
    id 1 OPERAND-AT SHIFT-FOLD? if
@@ -1287,18 +1174,18 @@ variable LIVE-CHANGED                \ whether the last dataflow pass moved a se
    id o EMIT-SHIFT-CL ;
 
 \ ---- selecting the division --------------------------------------------------
-\ A zero divisor is a CALLER error, so the divide's cold side hands the code to
-\ the runtime's `throw` (src/habu/habu1.f BTHROW) exactly as the engine's own `/`
-\ does. Its engine entry is ticked here regardless of source scope and carried
-\ to the emitter as the operation's attribute.
+\ A zero divisor is a caller error: the divide's cold side hands the code to the
+\ runtime's `throw` (src/habu/habu1.f BTHROW) as the engine's own `/` does. The
+\ entry is ticked regardless of source scope and carried to the emitter as the
+\ operation's attribute. emit-x64.f renders `cqo`, the zero-divisor branch and
+\ the divisor screen for `MIN-N / -1`, which raises #DE on x86-64 where Habu's
+\ `/` wraps to MIN-N (docs/xcomp.md "Numeric admission").
 TRUSTED: THROW-ENTRY ( -- n ) ['] throw ;
 
-\ `idiv r64` takes its dividend in rax and writes rax and rdx, so the dividend is
-\ COPIED into a fresh value the allocator can place in rax - the source value
-\ itself may be read after the division, and the instruction destroys what it
-\ divides. The divisor is the free operand. Two results leave the form because
-\ one instruction leaves both: the quotient is what `/` computes and the
-\ remainder is the result this lowering does not read.
+\ `idiv r64` divides rdx:rax into rax and rdx (x64ir.f DEF-IDIV), so the
+\ dividend is copied into a fresh value the allocator pins to rax: the source
+\ value may be read after the division. Result 0 is the quotient; the remainder
+\ is a second result nothing reads.
 : EMIT-DIV ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id  id 0 OPERAND  EMIT-COPY {: num:IR-ID:ir-value-id :}
@@ -1334,7 +1221,6 @@ TRUSTED: THROW-ENTRY ( -- n ) ['] throw ;
 
 \ Compare and set a 0/-1 flag: ONE operation and four instructions, because the
 \ flags between them are a single architectural resource no value may stand for.
-\ It is not fused into the branch below it in this slice.
 : EMIT-CMPSET ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id X64IR-OPCODE:CMPSET OPEN
@@ -1366,10 +1252,8 @@ TRUSTED: THROW-ENTRY ( -- n ) ['] throw ;
    id EMIT-CMPSET ;
 
 \ ---- selecting the doubles ---------------------------------------------------
-\ Every source operation over a double is the SSE2 scalar form that computes it
-\ (x64ir.f DEF-BINARY, DEF-CROSS, DEF-FCMPSET). The arithmetic is TIED-BINARY,
-\ whose tie copy is `x64.movsd` because the value is a double, and then the
-\ NaN rule (EMIT-FARITH).
+\ SSE2 scalar forms (x64ir.f DEF-BINARY, DEF-CROSS, DEF-FCMPSET). The arithmetic
+\ ties with an `x64.movsd` copy, then applies the NaN rule (EMIT-FARITH).
 63 constant F-SIGN-BIT                     \ binary64 keeps its sign in bit 63
 1 F-SIGN-BIT lshift constant F-SIGN-MASK
 F-SIGN-MASK invert constant F-MAGNITUDE-MASK
@@ -1489,8 +1373,6 @@ $43DFFFFFFFFFFFFF constant REALINT-TOP     \ every double above it is 2^63 or mo
 \ answer's sign flips only where the answer is unordered and the operands are
 \ not: the operands' unordered mask, taken before the operation, differs from
 \ the answer's in exactly that case, and the difference's sign bit is xored in.
-\ No branch: nine instructions beside the operation, two of them `movsd` copies
-\ and two the sign mask's literal.
 
 \ All ones where `l` and `r` are unordered: cmpunordsd destroys a copy of `l`.
 : UNORD ( IR-ID:ir-op-id IR-ID:ir-value-id IR-ID:ir-value-id -- IR-ID:ir-value-id )
@@ -1707,18 +1589,15 @@ $43DFFFFFFFFFFFFF constant REALINT-TOP     \ every double above it is 2^63 or mo
    CTX BLD IR-BUILD:END-OP drop ;
 
 \ ---- which slot holds which value, over the whole routine ---------------------
-\ A slot of the caller's data stack holds a value of the source module. The
-\ answer is a FIXPOINT over the control-flow graph and not a block-local memory,
-\ because that is what the validator holds the emission to: regalloc-verify.f
-\ keeps the same map over the same graph (VDRES-FIX) and refuses a store into a
-\ cell that still holds the value stored (VDSTORE-CK, DKEEP-SAME) and a load
-\ nothing reads (VDLOAD-CK, DKEEP-DEAD). A rule that elided fewer stores than
-\ the fixpoint sees as redundant would be REFUSED and not merely slower.
+\ A fixpoint over the control-flow graph, because regalloc-verify.f keeps the
+\ same map (VDRES-FIX) and refuses a store into a cell that still holds the
+\ value (VDSTORE-CK, DKEEP-SAME) and a load nothing reads (VDLOAD-CK,
+\ DKEEP-DEAD): a rule eliding fewer stores than the fixpoint is refused, not
+\ merely slower.
 : DIN-CELL ( n n -- ptr n )
    {: b:n c:n :}
    b BLOCK-ORD-CK DCELLS * c + cells D-IN + ;
 
-\ The edge name of slot `s` where control enters block `b`.
 : DIN-AT ( n n -- n )
    {: b:n s:n :}
    s DIN-WINDOW? 0= if DNONE exit then
@@ -2118,7 +1997,7 @@ $43DFFFFFFFFFFFFF constant REALINT-TOP     \ every double above it is 2^63 or mo
 \ A literal folded into every instruction that reads it needs no `x64.movi` of
 \ its own. Whether that is so is COUNTED over the whole function: one use that
 \ is not a fold - an operand the form has no immediate for, a branch argument, a
-\ second reader - and the literal is materialised exactly as it always was.
+\ second reader - and the literal is materialised.
 : FOLDS-OPERAND1? ( IR-ID:ir-op-id -- bool )
    {: id:IR-ID:ir-op-id :}
    id OPERANDS-OF 2 < if false exit then
@@ -2287,9 +2166,12 @@ $43DFFFFFFFFFFFFF constant REALINT-TOP     \ every double above it is 2^63 or mo
       if E-X64SEL-SHAPE throw then
    loop ;
 
-\ Ordinary routines stand at the entry base. A routine leaving through its
-\ callee stands at its own input top until the final branch publishes that
-\ callee's input width.
+\ The pointer stands at the entry base for the whole body: the dialect states
+\ it as its `stand` (x64ir.f VOCABULARY, NDIALECT:dstand `entry-base`) and
+\ regalloc-verify.f VDPLACE-CK checks it. A routine leaving through its callee
+\ stands at its own input top, since the tail branch carries no adjustment,
+\ until the final branch publishes the callee's input width. A pushed cell is
+\ then at a negative displacement (x64ir.f DSLOT).
 : DPLACE ( -- )
    0 D-POS !
    DSTACK? 0= if exit then

@@ -1,6 +1,5 @@
-\ family.f - what the checker's type-family registry says about a family name and
-\ a variant name. One concern: turning the two operand tokens of a tag-dispatch
-\ form into the numbers the chain has to compile with.
+\ family.f - what the checker's type-family registry says about the family and
+\ variant operands of a tag-dispatch form.
 
 require src/lib/prelude.f
 require src/lib/errors.f

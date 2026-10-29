@@ -1,14 +1,9 @@
-\ regalloc.f - give every virtual register of one machine module a real ARM64
-\ general register, by linear scan over the blocks of every function it holds.
-\
-\ A register number names a register of ONE file - d0 and x0 are two registers
-\ and both are number zero - so every register question is asked of the FILE the
-\ value's class belongs to.
-\
-\ Positions run END TO END across the module's functions on one number line, so
-\ a class belongs to the function whose window its definition falls in.
-\
-\ Functions share the frame-size contract, with a separate frame per invocation.
+\ regalloc.f - give every virtual register of one machine module a register of
+\ the backend's machine (machine.f), by linear scan over the blocks of every
+\ function it holds. Positions run end to end across the module's functions on
+\ one number line, so a class belongs to the function whose window its
+\ definition falls in. Functions share the frame-size contract, with a separate
+\ frame per invocation. regalloc-verify.f re-derives the result.
 
 require src/lib/prelude.f
 require src/lib/errors.f
@@ -61,7 +56,8 @@ private
 1 constant C-TOKEN
 2 constant C-FPR
 
-\ Two files, separately numbered, so a register question is asked of one file.
+\ Two files, separately numbered (d0 and x0 are both zero), so a register
+\ question is asked of one file.
 2 constant FILES-N
 0 constant F-GPR
 1 constant F-FPR
@@ -191,17 +187,9 @@ DYNAMIC-BUFFER TRAIL-AT-BUF n
 0 CWORK-VARIABLE TRAIL-N n
 
 \ ---- the machine, as the backend described it --------------------------------
-\ Linear scan is not an ARM64 pass. What it needs to know about the machine is
-\ how many registers each file numbers, which of them a routine may be given at
-\ all, which of those a call destroys, and how wide a spill slot is - and all
-\ four arrive as one description the backend installs with the dialect, so a
-\ second architecture supplies numbers here instead of forking the pass.
-\
-\ The description's own values are kept per file ordinal rather than as the
-\ record, because every question below is asked of ONE file and a multi-cell
-\ value cannot be bound to a local. The allocatable mask is the description's
-\ own answer read once at the install rather than a fact restated here: this
-\ pass has no opinion about which registers the virtual machine took.
+\ The description's values are kept per file ordinal, because every question
+\ below is asked of one file and a multi-cell value cannot be bound to a local.
+\ The allocatable mask is the description's own answer, read once at install.
 FILES-N CWORK-SPAN RF-SIZE-T n
 FILES-N CWORK-SPAN RF-RES-T n
 FILES-N CWORK-SPAN RF-CLB-T n
@@ -211,9 +199,6 @@ FILES-N CWORK-SPAN RF-ALC-T n
 : FL-CK ( n -- n )
    dup 0 < over FILES-N >= or if E-A64RA-CLASS throw then ;
 
-\ How many registers this file numbers. Every loop over a file's registers runs
-\ to here, so a sixteen-register machine is walked sixteen times and a register
-\ the file does not have is never offered to anything.
 : RF-SIZE ( n -- n )         FL-CK cells RF-SIZE-T + @ ;
 
 \ Every register of this file a routine may be given at all. A routine's own
@@ -224,18 +209,12 @@ FILES-N CWORK-SPAN RF-ALC-T n
 \ complement inside the pool, which is what a value live across a call may keep.
 : RF-CLOBBERED ( n -- n )    FL-CK cells RF-CLB-T + @ ;
 
-\ The virtual machine's own claim. Nothing here decides anything by it - the
-\ allocatable set above is what every question is asked of - but the description
-\ has to be handed back to the validator exactly as it arrived, and this is the
-\ field it cannot be derived from.
+\ The virtual machine's own claim: no question here reads it, but the validator
+\ must get the description back exactly and this field cannot be derived.
 : RF-RESERVED ( n -- n )     FL-CK cells RF-RES-T + @ ;
 
-\ The bytes one spilled value occupies in the frame.
 : RF-SLOT-WIDTH ( -- n )     RF-SLOT-N @ ;
 
-\ The description, put back together out of the fields it was taken apart into,
-\ so the validator downstream reads the same machine this allocation was made
-\ for rather than a second opinion about it.
 : RF-FILE ( -- NREGFILE:file )
    F-GPR RF-SIZE  F-GPR RF-RESERVED NREGFILE:REGS-SET
    F-GPR RF-CLOBBERED NREGFILE:REGS-SET
@@ -291,18 +270,10 @@ DYNAMIC-BUFFER PL-VAL-BUF n
    ;
 
 \ ---- the measurement stopwatch -----------------------------------------------
-\ Not allocation state: it answers across allocations, which is the only way to
-\ ask what a whole compile spent in this pass.
-\
-\ These are DATA cells, and a DATA cell that is not zero when a build ends is
-\ baked into the engine that build captures. This pass runs DURING a build - the
-\ optimizing tier compiles the compiler's own sources - so a stopwatch left
-\ running would make the image a function of how long the build took, and two
-\ same-host builds would differ in exactly these bytes and nowhere else. The
-\ stopwatch is therefore armed only inside a measurement session, and only
-\ tools/compile-scaling.f opens one. Outside a session ALLOCATE neither reads the
-\ clock nor writes the accumulator, every public entry is a no-op, and both cells
-\ still hold the zero they were declared with for the capture to copy.
+\ It answers across allocations. These are DATA cells and this pass runs during
+\ a build, so a running stopwatch would bake the build's duration into the
+\ captured image. It is armed only inside a session tools/compile-scaling.f
+\ opens; outside one, ALLOCATE reads no clock and every public entry is a no-op.
 0 CWORK-VARIABLE ALLOC-NS-ACC n                \ nanoseconds inside ALLOCATE this session
 0 CWORK-VARIABLE ALLOC-NS-ON n                 \ a measurement session is open
 
@@ -1460,7 +1431,6 @@ DYNAMIC-BUFFER PIN-ROOT-BUF n
    loop ;
 
 \ ---- which class may be put in the frame --------------------------------------
-\ Which class goes in the frame when the pool runs short.
 : KEEP! ( n -- )
    UF-FIND {: r:n :}
    1 r cells CL-KEEP + ! ;
@@ -1560,8 +1530,8 @@ DYNAMIC-BUFFER PIN-ROOT-BUF n
    r CLS-AT C-TOKEN = if false exit then
    f r MB-RETURNED? 0= ;
 
-\ Each class has a sorted slice of operand positions. A missing use answers
-\ this function's end, as did the forward walk through its operations.
+\ Each class has a sorted slice of operand positions; a missing use answers this
+\ function's end.
 : MB-USE-FROM ( n n -- n )
    {: r:n from:n :}
    r 1+ cells CL-USE-START + @ {: end:n :}
@@ -1756,13 +1726,9 @@ DYNAMIC-BUFFER PIN-ROOT-BUF n
       i cells CALL-POS + @ {: p:n :}
       p limit >= if unloop exit then
       r p MB-CROSSES? if
-         \ One crossing call forbids every register of the routine's pool that
-         \ the machine says a call DESTROYS. What the description declares
-         \ callee-saved survives the call, so a class that crosses one may keep
-         \ it. Under the Habu convention on ARM64 nothing is callee-saved - the
-         \ routine's whole pool is declared destroyed - so this is the whole pool
-         \ there, and a machine that saves registers says so in its description
-         \ rather than in an edit here.
+         \ One crossing call forbids every pool register the machine says a call
+         \ destroys. Under the Habu convention on ARM64 nothing is callee-saved,
+         \ so there it is the whole pool.
          fl POOL-BITS  fl RF-CLOBBERED and  or unloop exit
       then
    loop ;
@@ -1936,8 +1902,7 @@ DYNAMIC-BUFFER PIN-ROOT-BUF n
 \ Built once the classes are final and read by every turn of the fit: nothing
 \ after coalescing changes which value is a root or where its hull opens.
 \ Roots are prepended from the highest value number down, so each bucket is read
-\ in ascending value order - the order the module-wide sweep this replaces
-\ visited them in, and so the same tie-break.
+\ in ascending value order, which is the tie-break.
 : MB-DUE-INDEX ( -- )
    LINE-N 0 ?do NOBODY i cells DUE-HEAD + ! loop
    N-VALS @ 0 ?do
@@ -2457,19 +2422,14 @@ DYNAMIC-BUFFER PIN-ROOT-BUF n
       then
    loop ;
 
-\ A turn scans until a position runs short and puts one class away. A step reads
-\ the holders it is handed, the classes due at its position and the frame counts
-\ there, and an eviction changes two of those: the class it puts away is not
-\ placed where its hull opens, and its stores and reloads add to the counts at
-\ the positions MB-FRAME-COST+ walks. Every step before the first of those
+\ A turn scans until a position runs short and puts one class away. An eviction
+\ changes only where the class it puts away is placed and the frame counts at
+\ the positions MB-FRAME-COST+ walks, so every step before the first of those
 \ positions, and before the step that ran short, decides what it decided the
-\ turn before, and so what a scan from the start would. The next turn takes the
-\ steps from that position on back off the trail and scans from there: the fit
-\ makes the same evictions and ends with the same holders and registers as one
-\ that scans from the start every turn, and a turn costs the positions the
-\ eviction reached instead of the module.
-\ Putting a class away only ever frees registers, so a later turn runs with at
-\ least as many free as the one before it.
+\ turn before. The next turn takes the steps from there back off the trail and
+\ rescans: the same evictions, holders and registers as a scan from the start,
+\ at the cost of the positions the eviction reached. Putting a class away only
+\ frees registers, so a later turn runs with at least as many free.
 : MB-FIT ( -- )
    HOLDERS-CLEAR
    0 TRAIL-N !
@@ -2540,22 +2500,13 @@ public
 
 \ ---- binding the dialect and the machine -------------------------------------
 \ The only moment a module can be asked its identities, because its symbols and
-\ types are its own ordinals - and the moment the backend says which machine is
-\ being allocated for, because there is no allocation that is not for one. The
-\ two arrive together deliberately: a description installed on its own could be
-\ forgotten at one call site and the pass would then allocate the last caller's
-\ machine, while a pass that cannot be entered without one cannot get it wrong.
-\
-\ The VOCABULARY is what makes this pass one pass rather than one per machine:
-\ src/compiler/native/dialect.f says what is in it and the dialect that wrote
-\ the module builds it. It is unmade first because it is the value on top; the
-\ machine beneath it is named after. A binding refused after that point leaves
-\ the tables holding a machine no allocation can reach: the mode stays unbound
-\ and WALK refuses before it reads them.
-\
-\ STAND names the data-stack pointer checked by regalloc-verify.f; this pass
-\ makes no decision from it, and a value is unmade whole, so it is bound and
-\ left. SLOT marks a reload; REMAT-MARK marks a re-emission (MB-RETURNED?).
+\ types are its own ordinals. The machine arrives with the vocabulary, so no
+\ call site can allocate the last caller's machine. The vocabulary
+\ (src/compiler/native/dialect.f) is what makes this one pass for every machine;
+\ it is on top, so it is unmade first. A binding refused after that leaves the
+\ mode unbound and WALK refuses before reading the tables. STAND is checked by
+\ regalloc-verify.f and unused here. SLOT marks a reload; REMAT-MARK marks a
+\ re-emission (MB-RETURNED?).
 : BIND-DIALECT ( IR-CTX:ctx IR-BUILD:builder NMACH:mach NDIALECT:vocab -- )
    BND-MODE @ BOUND-YES = if E-A64RA-BIND throw then
    NDIALECT-VOCAB:UNMAKE
@@ -2714,21 +2665,15 @@ public
 : FPOOL ( -- NEFF:fprs )
    SEAL-CK 0 S-FPOOL @ ;
 
-\ The machine this allocation was made for, put back together out of the fields
-\ the install took it apart into. src/compiler/native/regalloc-verify.f re-derives
-\ every live range from the module itself and has to measure the result against
-\ the same register file the walk placed it in; a validator with its own idea of
-\ how many registers the machine has would accept a register that does not exist
-\ on it. It is sealed like the two pools above and for the same reason: it
-\ describes one finished allocation, not whatever was installed most recently.
+\ The machine this allocation was made for, rebuilt from the fields the install
+\ took apart: src/compiler/native/regalloc-verify.f measures the result against
+\ the same register file. Sealed like the two pools above: it describes one
+\ finished allocation, not the latest install.
 : REGFILE ( -- NREGFILE:file )
    SEAL-CK RF-FILE ;
 
-\ And the whole machine that file is part of, for a consumer that has to ask
-\ something the register files do not say - how deep a frame access reaches, or
-\ how far under a base one can name a byte. It is the description the install was
-\ handed, so the validator downstream reads the same machine this allocation was
-\ made for rather than naming an architecture of its own.
+\ And the whole machine, for a consumer asking what the register files do not
+\ say: how deep a frame access reaches, how far under a base a byte is named.
 : MACHINE ( -- NMACH:mach )
    SEAL-CK RF-MACH ;
 

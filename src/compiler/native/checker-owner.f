@@ -1,11 +1,9 @@
 \ checker-owner.f - the checker this compiler asks, resolved per definition.
-\
 \ A source-loaded compiler binds the checker beside it from the same tree.
 \ Capture switches it to dispatch through the live declaration-owner record,
 \ so a baked compiler follows a replacement checker instead of its old names.
 \ The scan, call facts and effect-query readers must all reach that same owner.
 \ Missing fields refuse with E-NCOMP-OWNER; they never fall back by name.
-\ CHECKER-TAPE token-kind constants remain part of the shared observer ABI.
 
 require src/lib/prelude.f
 require src/lib/errors.f
@@ -52,9 +50,8 @@ defer SOURCE-DOES-REPORT ( n ptr u8 n -- n )
    2 S\" \n" write drop
    E-NCOMP-OWNER throw ;
 
-\ The owner record stores raw execution tokens. These views state each field
-\ signature at that boundary so native execute has a callable layout. They do
-\ not decide which owner is live or bypass FIELD's missing-field refusal.
+\ The owner record stores raw execution tokens; each view states a field's
+\ signature so native execute has a callable layout.
 CAST: AS-CHECK ( n -- [ ptr u8 n -- n ] )
 CAST: AS-TAPE-INSTALL ( n -- [ n [ ptr u8 n -- ] [ ptr u8 n n n n n -- ] [ ptr u8 n n -- ] -- ] )
 CAST: AS-ACTION ( n -- [ -- ] )
@@ -87,13 +84,11 @@ CAST: AS-FAMILY-NAME ( n -- [ n -- ptr u8 n ] )
 \ hb-host refuses a checked body naming CHECKER-OWNER-ABI:CHECK-OFF with
 \ E-UNDEFINED, while NCOMP-DISPATCH:DECL-CHECK-OFF certifies there.
 
-\ These callbacks are fields of the owner record. Bind them once while this
-\ source compiler and its checker are paired. A tick of an internal pre-hook
-\ word is intentionally refused by the JIT engine, and a checked body may not
-\ call a trust-boundary one (CHECKER-CHECK-REPORT, E-CAP-TRUSTED); the owner's
-\ callable field is the authority for this private typed binding. The field is
-\ read only after the guard bounds the record and its recorded extent, which a
-\ captured compiler's FIELD reads through too.
+\ Bound once while this source compiler and its checker are paired. The engine
+\ refuses a tick of an internal pre-hook word and a checked body may not call a
+\ trust-boundary one (CHECKER-CHECK-REPORT, E-CAP-TRUSTED), so the owner's
+\ callable field is the binding. A field is read only after the guard bounds
+\ the record and its recorded extent.
 : SOURCE-FIELD ( n ptr u8 n -- n ) {: off:n a:ptr u:n :}
    RECORD off CELL + CHECKER-OWNER-GUARD:VALIDATE {: rec:ptr :}
    rec off + CELL-VIEW @ {: xt:n :}
@@ -132,20 +127,15 @@ BIND-SOURCE-CALLS
 
 public
 
-\ What the live owner answers with, for a caller that wants to name the regime in
-\ a diagnostic or a test rather than infer it.
 : RECORD? ( -- bool )
    RECORD 0= 0= ;
 
-\ Which regime this compiler is in, for the same reason: a test states it instead
-\ of deducing it from a refusal.
 : BY-NAME? ( -- bool )
    SOURCE-LOADED @ 0<> ;
 
-\ The capture seam: what is written into an image is a BAKED compiler, and a baked
-\ compiler has to be told which checker owns the source. Clearing the latch here
-\ is what makes the built engine refuse a missing field instead of reaching for a
-\ name (src/compiler/native/compiler.f CAPTURE-PREPARE calls this).
+\ A baked compiler must be told which checker owns the source: clearing the
+\ latch makes the built engine refuse a missing field instead of reaching for a
+\ name (called by src/compiler/native/compiler.f CAPTURE-PREPARE).
 : CAPTURE-PREPARE ( -- )
    0 SOURCE-LOADED ! ;
 
@@ -157,12 +147,9 @@ public
    dup 0= if drop CHECK! exit then
    AS-CHECK execute ;
 
-\ The same scan with the owner's diagnostic render suppressed, for a body whose
-\ verdict this compiler will not enforce. It is an OPERATION rather than a read of
-\ the owner's quiet counter because a baked compiler can reach a counter only by
-\ name, and by name is the retired instance: the suppression then landed on one
-\ checker and the render on the other, and a product-hosted build printed a
-\ rejection for every trusted body in the window it was rebuilding.
+\ An operation, not a read of the owner's quiet counter: a baked compiler reaches
+\ a counter only by name, which is the retired instance, so the suppression and
+\ the render would land on different checkers.
 : CHECK-UNJUDGED ( ptr u8 n -- n )
    NCOMP-DISPATCH:DECL-CHECK-UNJUDGED-OFF s" unjudged scan" FIELD
    dup 0= if drop SOURCE-UNJUDGED exit then
@@ -204,6 +191,7 @@ TRUSTED: RECOVERY-USED? ( -- bool )
    dup 0= if drop CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? exit then
    AS-BOOL execute ;
 
+\ CHECKER-TAPE token-kind constants remain part of the shared observer ABI.
 : TAPE-INSTALL ( n [ ptr u8 n -- ] [ ptr u8 n n n n n -- ] [ ptr u8 n n -- ] -- )
    NCOMP-DISPATCH:DECL-TAPE-INSTALL-OFF s" tape install" FIELD
    dup 0= if drop CHECKER-TAPE:INSTALL exit then
@@ -445,8 +433,7 @@ TRUSTED: DOES-COMMIT ( -- )
    AS-QUOT-CELLS execute ;
 
 
-\ ---- the front end the checker IS: the scan, the tape it fills, the does> split,
-\ the declared-effect row and the retract of one ----------------
+\ ---- the declared-effect rows -------------------------------------------------
 
 TRUSTED: DECLARED-EFFECT ( ptr u8 n ptr u8 n -- )
    CHECKER-OWNER-ABI:TRUST-DECL-OFF s" declared-effect row" FIELD
@@ -466,9 +453,9 @@ TRUSTED: DECLARED-EFFECT ( ptr u8 n ptr u8 n -- )
    AS-NAME-PREDICATE execute ;
 
 
-\ ---- the effect-store query group. QUERY resolves a name into the instance's
-\ query state and every reader below reads THAT state, so all of them have to
-\ reach the same owner or a reader answers about another instance's query ----------------
+\ ---- the effect-store query group ---------------------------------------------
+\ QUERY resolves a name into the instance's query state and every reader below
+\ reads that state, so all of them must reach the same owner.
 
 : QUERY ( ptr u8 n -- bool )
    NCOMP-DISPATCH:DECL-EFFECT-QUERY-OFF s" effect query" FIELD

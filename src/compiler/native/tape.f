@@ -1,22 +1,6 @@
-\ tape.f - the native stage N0 source tape: the exact token stream the
-\ compiler consumed, captured once, and sealed.
-\
-\ Build live, read frozen: NEW and the appends are the only live
-\ operations, because readers need a complete token stream.
-\
-\ A token's resolved spelling is an interned IR-SYM symbol, not a second byte
-\ slice: the span already says where it was read, and the symbol lets a reader
-\ compare names without re-lexing. A string literal's spelling is its body.
-\
-\ A token's origin is its expansion parent TOKEN, the token-level twin of
-\ IR-SOURCE's parent source, so a diagnostic walks back to the token the
-\ programmer wrote. An origin ordinal is strictly below its child's, which is
-\ what makes the expansion relation acyclic; every walk re-verifies that
-\ decrease.
-\
-\ Whether a token carries a literal is a property of its kind, with one
-\ minting word per kind and no stored flag to contradict it: LIT@ on a kind
-\ that carries none throws E-NTAPE-KIND rather than answer the stored zero.
+\ tape.f - the native stage N0 source tape: the exact token stream the compiler
+\ consumed, captured once and sealed. NEW and the appends are the only live
+\ operations; readers need the complete stream, so they read it frozen.
 
 require src/lib/prelude.f
 require src/lib/errors.f
@@ -69,6 +53,9 @@ CAST: KEY-SERIAL ( IR-ID:ir-module-key -- n )
 CAST: MID-SERIAL ( IR-ID:ir-module-id -- n )
 
 \ ---- layout ------------------------------------------------------------------
+\ A token's spelling is an interned IR-SYM symbol, not a second byte slice: the
+\ span says where it was read and the symbol compares names without re-lexing.
+\ A string literal's spelling is its body.
 $4E545031 constant MAGIC        \ "NTP1": the tape header format tag
 0 constant HC-MAGIC
 1 constant HC-SERIAL
@@ -414,6 +401,10 @@ public
    r l OFF-LIT RC@ ;
 
 \ ---- origin chains -----------------------------------------------------------
+\ A token's origin is its expansion parent, the token-level twin of IR-SOURCE's
+\ parent source, so a diagnostic walks back to the token the programmer wrote.
+\ An origin ordinal is strictly below its child's, which keeps the expansion
+\ relation acyclic.
 : EXPANDED? ( IR-ARENA:view n -- bool )
    {: v:IR-ARENA:view i:n :}
    v IR-ARENA:OPEN {: r:IR-ARENA:reader :}
@@ -439,8 +430,7 @@ public
    r i ORD-CK {: l:n :}
    l r l OFF-ORG RC@ ORG-LOCAL ;
 
-\ Each step re-verifies the strict decrease, so the walk terminates on any state;
-\ what it no longer does is resolve the view once per step.
+\ Each step re-verifies the strict decrease, so the walk terminates on any state.
 : DEPTH ( IR-ARENA:view n -- n )
    {: v:IR-ARENA:view i:n :}
    v IR-ARENA:OPEN {: r:IR-ARENA:reader :}

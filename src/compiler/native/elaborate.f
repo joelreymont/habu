@@ -1,16 +1,5 @@
 \ elaborate.f - the straight-line elaborator: it walks one sealed source tape and
 \ builds the operations of a colon definition into a module under construction.
-\
-\ The compile-time value vector holds one entry per CELL, and a glue mask says
-\ which cells are one value: bit i means cell i continues the cell below it, so
-\ bit 0 is always clear. A rename may only move whole values.
-\
-\ The return stack is modelled ENTIRELY at compile time: `>r` moves a value id
-\ between two vectors, emits no instruction and never touches the engine's
-\ return-stack region. That rests on the checker having proved the return row.
-\
-\ A quotation body is a second FUNCTION of the emission, so the tokens between
-\ `[:` and `;]` are taken out of the enclosing body's hands.
 
 require src/lib/prelude.f
 require src/lib/errors.f
@@ -135,12 +124,14 @@ RF-CAP CWORK-SPAN RF-BUF u8
    E-NELAB-QUOT throw ;
 
 \ ---- the compile-time value vector -------------------------------------------
+\ One entry per CELL.
 64 constant VMAX
 
 \ ---- which entries of the vector are cells of ONE value ----------------------
+\ A glue mask says which cells are one value: bit i means cell i continues the
+\ cell below it, so bit 0 is always clear.
 
 \ ---- and which entries name a quotation body ---------------------------------
-\ An entry names no quotation body.
 -1 constant VQ-NONE                  \ this entry names no quotation body
 
 align
@@ -152,7 +143,6 @@ VMAX CWORK-BUFFER VWIN IR-ID:ir-value-id
 VMAX CWORK-SPAN VQWIN n        \ the same for the window a rename consumed
 VMAX CWORK-SPAN VQSAV n        \ and for the entries a call hands over and takes back
 
-\ Measured: the tree's deepest return-stack nest is ten.
 16 constant RMAX                     \ measured: the tree's deepest nest is ten
 0 CWORK-VARIABLE RN n                          \ how many values the return vector holds
 0 CWORK-VARIABLE RGLUE n                       \ bit i joins return cells i and i-1
@@ -309,7 +299,7 @@ RMAX CWORK-SPAN RQ n
    k VDROP ;
 
 \ ---- compile-time stack renames ----------------------------------------------
-\ The window's own glue, its bit 0 always clear for the reason the vector's is.
+\ A rename may only move whole values.
 0 CWORK-VARIABLE WGLUE n                       \ the window's own glue, its bit 0 always clear
 0 CWORK-VARIABLE WW n                          \ how many cells the window holds
 
@@ -370,8 +360,10 @@ RMAX CWORK-SPAN RQ n
    base glue VGLUE-RUN ;
 
 \ ---- the return-stack transfers ----------------------------------------------
-\ The checker has already proved the return row at every join and loop edge, so
-\ the depth is a compile-time number.
+\ The return stack is modelled ENTIRELY at compile time: `>r` moves a value id
+\ between two vectors, emits no instruction and never touches the engine's
+\ return-stack region. The checker has already proved the return row at every
+\ join and loop edge, so the depth is a compile-time number.
 
 \ Whether this target parks a layout value whole. x86-64 moves the value's
 \ measured width and refuses only a transfer that starts inside a value. Every
@@ -562,8 +554,6 @@ DYNAMIC-BUFFER LOCAL-TABLES n
       ix i LG-A@ >=  ix i LG-B@ <  and or
    loop ;
 
-\ Local declarations and mentions meet under the DECLARED spelling, byte for
-\ byte; word lookup, which this is not, stays folded.
 : LOCAL-OF ( n -- n )
    {: ix:n :}
    VW ix NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if -1 exit then
@@ -707,7 +697,6 @@ DYNAMIC-BUFFER LOCAL-TABLES n
    {: ix:n k:n kop:HIR:opcode :}
    ix  k VAT  kop CROSS-VALUE  k VAT! ;
 
-\ The crossing a value takes on its way into a form that names cells.
 : CELL-CROSS-RUN ( n n n -- )
    {: ix:n base:n k:n :}
    k 0 ?do
@@ -718,7 +707,6 @@ DYNAMIC-BUFFER LOCAL-TABLES n
    {: ix:n n:n :}
    ix 0 n CELL-CROSS-RUN ;
 
-\ Make the value at one vector position answer to the type that position wants.
 : COERCE1 ( n n IR-ID:ir-type-id -- )
    {: ix:n k:n want:IR-ID:ir-type-id :}
    k VAT VTYPE-OF {: have:IR-ID:ir-type-id :}
@@ -816,7 +804,6 @@ LITMAX CWORK-BUFFER LIT-ID IR-ID:ir-value-id
    j 0 < if false exit then
    j LIT-ID @ IR-ID:VALUE-LOCAL  id IR-ID:VALUE-LOCAL = ;
 
-\ The memory the definition is entered with, staged at the token's span.
 : EMIT-MEM ( n -- )
    {: ix:n :}
    CTX BLD HIR-OPCODE:MEM HIR:ENSURE-OP {: op:IR-ID:ir-symbol-id :}
@@ -1042,12 +1029,9 @@ using IR-BUILD
    out VDROP
    c b IR-BUILD:END-OP drop ;
 
-\ An empty, physically arity-preserving colon body is an identity over its
-\ cells.  The checker still owns whether that identity may change their logical
-\ grouping; ordinary empty retypes are rejected before NELAB runs.  A generated
-\ product MAKE/UNMAKE is the one current certified consumer: its input and
-\ output rows describe the same cells with opposite glue.  Keep every nonempty
-\ body on the ordinary strict return check at the frame return.
+\ An empty, arity-preserving colon body is an identity over its cells; the
+\ checker decides whether it may regroup them (a generated product MAKE/UNMAKE
+\ is the one certified case). Every nonempty body keeps the strict return check.
 : EMPTY-FRAME-RESHAPE ( n n n n -- )
    {: lo:n hi:n in:n out:n :}
    lo hi <> if exit then
@@ -1055,15 +1039,10 @@ using IR-BUILD
    VGLUE @ in VGLUE-LOW IN-GLUE @ <> if E-NELAB-JOIN throw then
    OUT-GLUE @ VGLUE ! ;
 
-\ A TRUSTED: definition's declared row IS the assertion about its results: the
-\ checker records that signature without walking the body, so the result cells
-\ the body leaves take the declared grouping.  A checked body is the opposite
-\ case - the checker walked it, so the grouping the body itself built is the
-\ fact its return states - and keeps EMIT-RETURN's strict glue check.
-\ EMPTY-FRAME-RESHAPE above is the precedent: the same cells under a different
-\ logical grouping, adopted only where an authority states it.  A count that
-\ disagrees is untouched and still fails EMIT-RETURN's arity check; the caller
-\ applies this to a colon frame only.
+\ A TRUSTED: definition's declared row is the assertion about its results (the
+\ checker never walked the body), so its result cells take the declared
+\ grouping. A checked body keeps EMIT-RETURN's strict glue check; a count that
+\ disagrees still fails EMIT-RETURN's arity check. Colon frames only.
 : TRUSTED-FRAME-RESHAPE ( n -- )
    {: out:n :}
    data-base TRUSTED-CELL + @ 0= if exit then
@@ -1299,8 +1278,7 @@ CMAX CWORK-BUFFER CS-LIM IR-ID:ir-value-id
 \ ---- the blocks a definition is made of --------------------------------------
 0 CWORK-VARIABLE NB n                          \ blocks closed so far; also the open block's ordinal
 
-\ The module ordinal this function's first block takes; a successor names a
-\ block of the MODULE and this walk numbers from zero.
+\ A successor names a block of the MODULE; this walk numbers from zero.
 0 CWORK-VARIABLE BBASE n                       \ the module ordinal this function's first block takes
 
 \ ---- leaving from the middle of a definition ---------------------------------
@@ -1329,7 +1307,6 @@ CMAX CWORK-BUFFER CS-LIM IR-ID:ir-value-id
 
 0 CWORK-VARIABLE BLOCK-LIMIT n
 
-\ This walk's own ordinal, raised into the module's.
 : BLOCK-ORD ( n -- IR-ID:ir-block-id )
    {: k:n :}
    k 0 < k BLOCK-LIMIT @ >= or if E-NELAB-BLOCK throw then
@@ -1379,11 +1356,12 @@ align
 : QHI ( -- ptr n ) 0 QHI-BUF ;
 : QIN ( -- ptr n ) 0 QIN-BUF ;
 : QOUT ( -- ptr n ) 0 QOUT-BUF ;
-\ This row's quotation is no body of this emission - it is a parameter.
 -1 constant QPARAM                   \ this row's quotation is no body of this emission
 : QFUN ( -- ptr n ) 0 QFUN-BUF ;
 
 \ ---- which body each token belongs to, and which body is being walked ---------
+\ A quotation body is a second FUNCTION of the emission, so the tokens between
+\ `[:` and `;]` are taken out of the enclosing body's hands.
 -1 constant QOWNER-DEF               \ the definition's own function, which is no body
 0 CWORK-VARIABLE QCUR n                        \ the body being walked, or QOWNER-DEF
 
@@ -1583,7 +1561,6 @@ VMAX CWORK-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hand
    CTX BLD IR-BUILD:END-OP drop
    CLOSE-BLOCK ;
 
-\ A whole block that does nothing but hand the live values on.
 : STUB-H ( n n n n -- )
    {: ix:n t:n lo:n h:n :}
    LIT-MARK {: m:n :}
@@ -1665,7 +1642,6 @@ CMAX CWORK-SPAN SS-M n         \ names in scope when each of them opened
    SS-N @ 1 < if exit then
    SS-N @ 1- SS-N ! ;
 
-\ Whether this row is a mention of a name that is in scope HERE.
 : SCOPE-LOCAL? ( n -- bool )
    {: ix:n :}
    VW ix NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if false exit then
@@ -2992,18 +2968,15 @@ align
    ix  d rd +  OPEN-ARGS
    NB @ j <> if E-NELAB-CTRL throw then ;
 
-\ `+loop` closes the same frame with a step it takes from the stack. The index
-\ advances by that step in wrapping arithmetic and the loop ends only when the
-\ index crosses the boundary between limit-1 and limit IN THE STEP'S DIRECTION
-\ (Forth 2012 6.1.0140): with old = index - limit and next = index' - limit,
-\ terminate iff ((old xor next) and (old xor step)) < 0. A bare sign change of
-\ old/next is not enough: it also fires when the index wraps at the boundary
-\ opposite the limit (limit 0, index MAX, step 1), which must keep looping.
-\ So equal bounds with a negative step end after one turn and with a positive
-\ step run a whole cycle, unlike `loop`, which this patch leaves as it is. The
-\ blocks and their successor order are those of DO-CLOSE-LOOP, so every later
-\ pass sees one loop shape; only the latch arithmetic differs, and the
-\ closed-form pass declines it because the flag is not LT over ADD of one.
+\ `+loop` takes its step from the stack and ends only when the index crosses the
+\ boundary between limit-1 and limit in the step's direction (Forth 2012
+\ 6.1.0140): with old = index - limit and next = index' - limit, terminate iff
+\ ((old xor next) and (old xor step)) < 0. A bare sign change of old/next also
+\ fires when the index wraps at the opposite boundary (limit 0, index MAX, step
+\ 1), which must keep looping. Equal bounds end after one turn with a negative
+\ step and run a whole cycle with a positive one. The blocks match
+\ DO-CLOSE-LOOP; the closed-form pass declines it because the flag is not LT
+\ over ADD of one.
 : DO-CLOSE-LOOP-STEP ( n -- )
    {: ix:n :}
    HIR-CTRL:OPEN-DO CS-OPENER-CK {: t:n :}
@@ -3643,17 +3616,12 @@ TRUSTED: EXECUTE-ENTRY ( -- n ) ['] execute ;
    entry 0= if E-HIR-UNMODELED throw then
    ix entry 2 0 NDICT:GLUE-NONE STAGE-WCALL ;
 
-\ The original address remains on the vector while the validator consumes a
-\ duplicate and the immutable descriptor. Its call precedes every value load.
-\
-\ The fact exists only because NFETCH:KEEP ran NFETCH-CHECK:SHAPE over exactly
-\ these bytes before interning them, and NSTR bytes are immutable, so this call
-\ is the compiler's own trusted producer of a frozen descriptor: the staged
-\ address literal stands for the value NFETCH-CHECK:FREEZE would return. No
-\ checked source can reach TAGS with a raw address, because the casts that mint
-\ a frozen value are private to NFETCH-CHECK. The recorded byte length and width
-\ still decide whether a check is emitted at all and that the fact matches the
-\ token's width, but neither is passed any more.
+\ The original address stays on the vector while the validator consumes a
+\ duplicate and the immutable descriptor; the call precedes every value load.
+\ The staged address literal stands for NFETCH-CHECK:FREEZE's value because
+\ NFETCH:KEEP ran NFETCH-CHECK:SHAPE over exactly these immutable NSTR bytes.
+\ No checked source reaches TAGS with a raw address: the casts that mint a
+\ frozen value are private to NFETCH-CHECK.
 : VALIDATE-FETCH ( n -- ) {: ix:n :}
    EXACT-SOURCE @ 0= if exit then
    VW ix TOK-OFF NFETCH:AT {: address:n bytes:n width:n origin:n :}
@@ -3667,22 +3635,14 @@ TRUSTED: EXECUTE-ENTRY ( -- n ) ['] execute ;
    ix entry 2 0 NDICT:GLUE-NONE STAGE-WCALL ;
 
 \ ---- the words that are a short sequence of operations ------------------------
-\ Each of these was an engine primitive the elaborator CALLED, and each body is
-\ arithmetic this dialect already has, so the sequence replaces the call and the
-\ machine stage meets nothing new.
-\
-\ OPERAND ORDER IS THE VECTOR'S. An operation reads the cells it consumes bottom
-\ first, so with `a` under `b` a `sub` is a-b; the order each sequence pushes in
-\ is therefore the order its arithmetic needs, and a value pushed twice is one
-\ value id twice - the vector is compile-time and a copy costs no instruction.
-\
-\ OVERFLOW WRAPS in every unit these reach: src/compiler/native/abi.f pins the
-\ host binding to CNUM-OVERFLOW:WRAP and the selector refuses a trapping unit,
-\ which is what makes `mod` below the engine's own three instructions and not a
-\ narrower word.
+\ Each sequence is arithmetic this dialect already has, standing in for an
+\ engine primitive call. An operation reads its cells bottom first, so with `a`
+\ under `b` a `sub` is a-b; a value pushed twice is one value id twice.
+\ Overflow wraps: src/compiler/native/abi.f pins the host binding to
+\ CNUM-OVERFLOW:WRAP and the selector refuses a trapping unit.
 
 \ ptr-field ( ptr a n -- ptr ptr b ): the cell index scaled to bytes and added to
-\ the base, which is `cells +` - and src/compiler/native/combine.f fuses that
+\ the base, which is `cells +` - and src/compiler/native/select.f fuses that
 \ pair into the one `madd` the engine's own body ends in.
 : EXPAND-CELL-INDEX ( n -- )
    {: ix:n :}
@@ -3709,10 +3669,8 @@ TRUSTED: EXECUTE-ENTRY ( -- n ) ['] execute ;
    ix HIR-OPCODE:XOR EMIT-OPCODE
    sign VPUSH  ix HIR-OPCODE:SUB EMIT-OPCODE ;
 
-\ mod ( n n -- n ): the remainder the division leaves, a - a/b*b. The division is
-\ this dialect's `div`, whose schema carries the zero-divisor refusal, so the
-\ throw the engine's `mod` makes on a zero divisor is the throw this sequence
-\ makes - the same code, from the same cold side of the same guard.
+\ mod ( n n -- n ): a - a/b*b. `div`'s schema carries the zero-divisor refusal,
+\ so a zero divisor throws as the engine's `mod` does.
 : EXPAND-MODULO ( n -- )
    {: ix:n :}
    EXPAND-PAIR {: a:IR-ID:ir-value-id b:IR-ID:ir-value-id :}
@@ -3722,12 +3680,9 @@ TRUSTED: EXECUTE-ENTRY ( -- n ) ['] execute ;
    b VPUSH  ix HIR-OPCODE:MUL EMIT-OPCODE
    ix HIR-OPCODE:SUB EMIT-OPCODE ;
 
-\ max/min ( n n -- n ): select by signed comparison, branchlessly. `>` selects
-\ a when it is larger; `<` selects a when it is smaller. Either comparison
-\ answers an all-ones mask on true, so `b xor ((a xor b) and mask)` selects a
-\ in that case and b otherwise. The exchanging form is
-\ used rather than b + ((a-b) and mask) because `xor` is TOTAL: no step of it can
-\ overflow under any numeric policy, where the difference of two cells can.
+\ max/min ( n n -- n ): a branchless select, b xor ((a xor b) and mask), with the
+\ comparison's all-ones mask. `xor` cannot overflow under any numeric policy,
+\ where a-b can.
 : EXPAND-EXTREME ( n HIR:opcode -- )
    {: ix:n cmp:HIR:opcode :}
    EXPAND-PAIR {: a:IR-ID:ir-value-id b:IR-ID:ir-value-id :}
@@ -4329,12 +4284,10 @@ private
 0 CWORK-VARIABLE DOES-FUN n
 0 CWORK-VARIABLE DOES-SIG ptr u8
 0 CWORK-VARIABLE DOES-SIG-U n
-\ True when the clause between `does>` and `;` holds no token at all. Such a
-\ clause runs after the created word has pushed its data address and does
-\ nothing to it, so `does-patch` is given a zero entry and publishes the
-\ declared effect without patching the body or clearing its DKIND:ADDR stamp -
-\ the engine's own rule, src/habu/habu2.f DOES-REC:ELIDE-EMPTY, stated here on
-\ the tape because this compiler never reaches that path.
+\ True when the clause between `does>` and `;` is empty: `does-patch` gets a zero
+\ entry and publishes the declared effect without patching the body or clearing
+\ its DKIND:ADDR stamp. The engine's rule (src/habu/habu2.f
+\ DOES-REC:ELIDE-EMPTY), stated on the tape because this compiler never reaches it.
 0 CWORK-VARIABLE DOES-EMPTY n
 0 CWORK-VARIABLE FIXED-VAL n                   \ a fixed body's cell, or a defer's dispatch cell
 0 CWORK-VARIABLE FIXED-KIND n                  \ and how the fixed cell is a literal (NDICT:FIXED-*)

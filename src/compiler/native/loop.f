@@ -1,23 +1,6 @@
-\ loop.f - the module in which a counted loop that only adds is the arithmetic
-\ that loop would have computed. One concern: recognising those loops and
-\ writing the module that holds the closed form instead.
-\
-\ Trip count: the `?do` guard lets control in only while start < limit, and the
-\ loop then runs T = limit - start turns, at least one, with no index wrapping
-\ on the way. The fold takes a start only when it is a compile-time constant.
-\
-\ With T turns, entry accumulator acc0, K added every turn and the index added m
-\ times a turn, the loop leaves acc0 + K*T + m*(start*T + T*(T-1)/2), in
-\ wrapping 64-bit arithmetic, which is what the loop itself does.
-\
-\ T*(T-1) overflows long before T*(T-1)/2 does, so the halving happens BEFORE
-\ the multiply: T*(T-1)/2 = (T >> 1) * (T - 1 + (T & 1)), exact for both parities.
-\
-\ Deleting the header, the exit stub and the latch is sound only because the
-\ recogniser proves nothing else reaches them, nothing outside reads their
-\ values, and the body holds no store, no call and nothing that may trap.
-\
-\ One loop per function, and it is the first one recognised.
+\ loop.f - closed-form folding: a counted loop that only adds is replaced by
+\ the arithmetic it would have computed, written into a new HIR module that
+\ selection reads next. One loop per function, the first one recognised.
 
 require src/lib/prelude.f
 require src/lib/errors.f
@@ -76,7 +59,6 @@ HIR-OPCODE:BRZ   HIR:ORD constant O-BRZ
 \ Addends is this pass's own: how many loop-invariant values one turn may add.
 32 constant INV-MAX
 
-\ The header's own size, so it is bounded by what fits in a block.
 : COV-MAX ( -- n ) OMAX ;
 
 align
@@ -259,8 +241,6 @@ DYNAMIC-BUFFER P-THRU-BUF n
       then
    loop ;
 
-\ Every reader of a literal here goes through this, so "is this a compile-time
-\ number" is one question asked in one place.
 : CONST-VALUE ( IR-ID:ir-op-id -- n bool )
    {: id:IR-ID:ir-op-id :}
    id O-CONST OP-IS? 0= if 0 false exit then
@@ -467,7 +447,6 @@ DYNAMIC-BUFFER P-THRU-BUF n
       then
    loop ;
 
-\ It holds the value the pre-header handed over on every turn.
 : ARG-KEPT? ( IR-ID:ir-fun-id n -- bool )
    {: f:IR-ID:ir-fun-id a:n :}
    f P-LA @ BLOCK-AT TERM-AT a OPERAND-AT
@@ -533,7 +512,6 @@ DYNAMIC-BUFFER P-THRU-BUF n
    loop
    hb MEM-GROUP? 0= if hb FIX-CLEAR then ;
 
-\ Exactly one operation, its terminator, and no arguments of its own.
 : PURE-EDGE? ( IR-ID:ir-block-id -- bool )
    {: bk:IR-ID:ir-block-id :}
    bk OP-COUNT 1 <> if false exit then
@@ -616,8 +594,6 @@ DYNAMIC-BUFFER P-THRU-BUF n
    true ;
 
 \ ---- the header's own shape --------------------------------------------------
-\ Everything this writes is read by the recurrence walk, and everything it
-\ checks is a sentence the closed form depends on.
 : PLAN-SHAPE? ( IR-ID:ir-fun-id -- bool )
    {: f:IR-ID:ir-fun-id :}
    f P-H @ BLOCK-AT {: hb:IR-ID:ir-block-id :}
@@ -695,8 +671,6 @@ DYNAMIC-BUFFER P-THRU-BUF n
    d FIXED? 0= if false exit then
    hb  hb a ARG-AT  STAYING-READS? 0= ;
 
-\ The accumulator's new value where the loop accumulates, the moved answer where
-\ it hands one through, and the header's own argument everywhere else.
 : ACC-EXPECT ( IR-ID:ir-op-id IR-ID:ir-block-id n n -- IR-ID:ir-value-id )
    {: lat:IR-ID:ir-op-id hb:IR-ID:ir-block-id k:n i:n :}
    i k =  i THRU?  or if lat i CARRY-ARG OPERAND-AT exit then
@@ -737,7 +711,7 @@ DYNAMIC-BUFFER P-THRU-BUF n
 
 \ A number the block builds is FOLDED at compile time and not moved: four
 \ additions of one become one number, where moving them would leave the closed
-\ form four values to add. That is why every loop that already folded folds the same.
+\ form four values to add.
 : CHAIN-ADDEND ( IR-ID:ir-block-id IR-ID:ir-value-id -- )
    {: hb:IR-ID:ir-block-id v:IR-ID:ir-value-id :}
    v  hb P-IDX @ ARG-AT  SAME-VALUE? if P-M @ 1+ P-M ! exit then
@@ -779,9 +753,9 @@ DYNAMIC-BUFFER P-THRU-BUF n
    CH-STATE @ CH-DONE = ;
 
 \ ---- which of the unchanging operations the pre-header really takes ----------
-\ has not been asked for yet, it joins the set and the answer says the set grew.
-\ An operation nothing asks for is not moved: it would then be an operation no
-\ rule accounted for, which PLAN-COVER? declines.
+\ An operation asked for the first time joins the set, and the answer says the
+\ set grew. An operation nothing asks for is not moved: no rule would account
+\ for it, which PLAN-COVER? declines.
 : MOVE-ASK ( IR-ID:ir-block-id IR-ID:ir-value-id -- bool )
    {: hb:IR-ID:ir-block-id v:IR-ID:ir-value-id :}
    hb v DEF-INDEX {: d:n :}
@@ -847,8 +821,10 @@ DYNAMIC-BUFFER P-THRU-BUF n
       then
    loop ;
 
-\ The coverage check the soundness argument rests on: a store, a load the
-\ addressing keeps inside, a call, a trap or a second accumulator is declined.
+\ Deleting the header, the exit stub and the latch is sound only when nothing
+\ else reaches them and nothing outside reads their values; this declines a
+\ store, a load the addressing keeps inside, a call, a trap or a second
+\ accumulator.
 : PLAN-COVER? ( IR-ID:ir-fun-id -- bool )
    {: f:IR-ID:ir-fun-id :}
    f P-H @ BLOCK-AT {: hb:IR-ID:ir-block-id :}
@@ -976,7 +952,6 @@ DYNAMIC-BUFFER P-THRU-BUF n
    {: id:IR-ID:ir-op-id i:n :}
    CTX BLD id i IR-BUILD:OP-RESULT@ ;
 
-\ A successor named by an OLD ordinal, translated through the plan's table.
 : SUCC+ ( n -- )
    {: b:n :}
    CTX BLD
@@ -1159,8 +1134,8 @@ DYNAMIC-BUFFER P-THRU-BUF n
    {: sp:IR-ID:ir-op-id v:IR-ID:ir-value-id :}
    sp HIR-OPCODE:ADD  0 W-ACC @  v  MK2  0 W-ACC ! ;
 
-\ One of T and T-1 is even, so the halving happens before the multiply and the
-\ product that would have overflowed never exists.
+\ T*(T-1) overflows long before T*(T-1)/2, so the halving comes first:
+\ T*(T-1)/2 = (T >> 1) * (T - 1 + (T & 1)), exact for both parities.
 : EMIT-HALF ( IR-ID:ir-op-id IR-ID:ir-value-id IR-ID:ir-value-id -- IR-ID:ir-value-id )
    {: sp:IR-ID:ir-op-id t:IR-ID:ir-value-id one:IR-ID:ir-value-id :}
    sp HIR-OPCODE:SUB    t one MK2 {: tm1:IR-ID:ir-value-id :}
@@ -1187,8 +1162,6 @@ DYNAMIC-BUFFER P-THRU-BUF n
    0 W-IX @ ;
 
 \ ---- the branch to the join --------------------------------------------------
-\ The closed form's answer at the accumulator's position, and the value the
-\ pre-header was handing the header at every other.
 : JOIN-OPERAND ( IR-ID:ir-op-id IR-ID:ir-op-id n -- IR-ID:ir-value-id )
    {: pt:IR-ID:ir-op-id lat:IR-ID:ir-op-id i:n :}
    i P-K @ = if 0 W-ACC @ exit then
@@ -1207,8 +1180,11 @@ DYNAMIC-BUFFER P-THRU-BUF n
    CLOSE drop ;
 
 \ ---- the pre-header, which runs the closed form ------------------------------
-\ The guard let control in only while start < limit, so the trip count is the
-\ plain difference, and the answer goes straight to the join the exits met in.
+\ The guard let control in only while start < limit, so the loop runs
+\ T = limit - start turns, at least one, with no index wrap. With entry
+\ accumulator acc0, K added each turn and the index added m times a turn, the
+\ answer is acc0 + K*T + m*(start*T + T*(T-1)/2) in wrapping 64-bit arithmetic,
+\ as the loop computes; it goes straight to the join the exits met in.
 : EMIT-PRE ( IR-ID:ir-fun-id -- )
    {: f:IR-ID:ir-fun-id :}
    f P-PR @ BLOCK-AT {: pb:IR-ID:ir-block-id :}
@@ -1242,8 +1218,6 @@ DYNAMIC-BUFFER P-THRU-BUF n
    CTX BLD  V-SYMP VW V-SYMR VW  V-FUNR VW MKEY f IR-FUN:FSYMBOL@
    IR-BUILD:CARRY-SYMBOL ;
 
-\ The routine's signature, restated in the new module: one cell per input and one
-\ per output, exactly as the old module has them.
 : FUN-SIG ( IR-ID:ir-fun-id -- IR-ID:ir-type-id )
    {: f:IR-ID:ir-fun-id :}
    V-TYPR VW  V-FUNR VW MKEY f IR-FUN:FSIGNATURE@  IR-TYPE:FARITY@

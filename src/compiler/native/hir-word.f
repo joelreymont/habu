@@ -1,25 +1,9 @@
-\ hir-word.f - the straight-line HIR dialect's source-word model: what a Habu
-\ word means to the elaborator, and which words it refuses to compile at all.
-\
-\ A rename is DATA: a row records how many values the word consumes off the top
-\ and which of them it puts back. An input is named by its DEPTH in the consumed
-\ window, zero being the top, and picks are listed BOTTOM first - so `over`
-\ ( a b -- a b a ) consumes 2 and puts back 1 0 1, and `rot` ( a b c -- b c a )
-\ consumes 3 and puts back 1 0 2. It may only put back an input it consumed.
-\ A cast's row (DECLARE-BOUND-CAST) is the one row with no pick list:
-\ HOST-RENAME@ answers HOST-CAST, and the row stores the cells the cast
-\ regroups and the glue it lays over them (CAST-CELLS@, CAST-GLUE@).
-\
-\ Every row is keyed by the FOLD of its word's spelling, which is the fold the
-\ engine applies when it decides what a token of a checked body means, so `IF`,
-\ `if` and `If` reach one row. Local declarations and references use that same
-\ fold; the elaborator resolves a live local before consulting this word model.
-\
-\ `literal`, `real-literal` and `string-literal` belong to a TAPE TOKEN and
-\ never to a word, so no row ever stores one.
-\
-\ A row stores the stable code of a HIR:opcode, so binding a word to an
-\ operation this dialect does not have is unwritable rather than a check.
+\ hir-word.f - the straight-line HIR dialect's source-word model: one row per
+\ Habu word saying what it means to the elaborator (operation, rename, control,
+\ callable, fixed value, unmodeled), and which words it refuses to compile.
+\ The session registers the vocabulary once per load (SESSION-MODEL); each
+\ definition's overlay (NEW-LINKED) holds its own callable and fixed rows.
+\ Expansion rows name sequences that live in src/compiler/native/elaborate.f.
 
 require src/lib/prelude.f
 require src/lib/errors.f
@@ -39,9 +23,9 @@ require src/compiler/native/emission.f
 package HIR-WORD
 public
 
-\ Owning the right module is not the same as existing: an identity is arithmetic
-\ away from any other, so a row could name an ordinal the interner never minted.
 \ A symbol this module's interner has answered for. Owning the right module is
+\ not enough: an identity is arithmetic away from any other, so a row could
+\ name an ordinal the interner never minted.
 STRUCTURE interned
    FIELD sym IR-ID:ir-symbol-id
 ;STRUCTURE
@@ -76,15 +60,13 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
 
 \ The deepest classical rename is `2over`, four in and six back; a rename that
 \ wants more is a capability to add here, not a value to widen silently.
-\ The deepest classical Forth stack rename is `2over` ( a b c d -- a b c d a b ):
 4 constant INPUT-MAX
 8 constant PICK-MAX
 
-\ Stable stored codes with exact decoders, so a row written past this package's
-\ declarers cannot decode as some other meaning. COMES-BACK is zero so an unset
-\ payload cell reads as "control comes back", which is the safe direction.
 \ ---- stored codes ------------------------------------------------------------
-\ is a refusal where a finer answer would have compiled.
+\ Each code has an exact decoder, so a row written past this package's declarers
+\ cannot decode as another meaning. COMES-BACK is zero so an unset payload cell
+\ reads as "control comes back", the safe direction.
 0 constant COMES-BACK
 1 constant NO-RETURN
 2 constant TERMINAL
@@ -109,8 +91,8 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       expansion OF 13 ENDOF
    ;MATCH ;
 
-\ The three token meanings are deliberately absent: a row claiming one is corrupt.
-\ Codes zero, ten and eleven - `literal`, `real-literal` and `string-literal` -
+\ Codes zero, ten and eleven (`literal`, `real-literal`, `string-literal`) belong
+\ to a tape token and never to a word: a row claiming one is corrupt.
 : N>MEAN ( n -- HIR:meaning )
    case
       1 of HIR-MEANING:OP endof
@@ -127,8 +109,6 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       E-HIR-CLASS throw
    endcase ;
 
-\ A stable code per member and an exact decoder.
-\ The control actions, under the same discipline: a stable stored code per
 : CTRL-CODE ( HIR:ctrl -- n )
    MATCH ctrl
       open-if      OF 0 ENDOF
@@ -208,7 +188,6 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
 
 \ The codes start at zero because they are read out of a payload cell this
 \ meaning owns outright.
-\ The return-stack transfers, under the discipline the two above are under. The
 : RSTACK-CODE ( HIR:rmove -- n )
    MATCH rmove
       to-r    OF 0 ENDOF
@@ -224,9 +203,6 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       E-HIR-CLASS throw
    endcase ;
 
-\ The operation sequences, under the same discipline: a stable stored code per
-\ member and an exact decoder, so a row written past this package's declarers
-\ cannot decode as some other sequence.
 : EXPAND-CODE ( HIR:expand -- n )
    MATCH expand
       cell-index OF 0 ENDOF
@@ -258,7 +234,6 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
 
 \ Each arena rechecks its own header tag, so a pair swapped at a call site dies
 \ on the tag instead of reading a foreign row.
-\ The two arenas of this table and the module's other arenas all have the same
 : RHDR-CK ( IR-ARENA:arena -- )
    {: a:IR-ARENA:arena :}
    a IR-ARENA:USED RSHAPE-CK
@@ -284,8 +259,6 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
    r RHDR-CK
    r HC-SERIAL LCELL@ key KEY-SERIAL SERIAL-CK ;
 
-\ Both arenas must be halves of one table, which is one more thing a swapped
-\ pair cannot survive.
 : PAIR-CK ( IR-ARENA:arena IR-ARENA:arena -- )
    {: p:IR-ARENA:arena r:IR-ARENA:arena :}
    p PHDR-CK
@@ -299,13 +272,15 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
    r RHDR-CK
    r HC-SERIAL LCELL@ id IR-ID:SYMBOL-OWNER MID-SERIAL SERIAL-CK ;
 
-\ A Habu name is case-insensitive to the ENGINE, so both sides of the comparison
-\ use one fold: a row is written under BKEY-CK's and a token asked under KEY-SYM's.
-\ The tape's own symbol still holds the bytes the source wrote.
 \ ---- the key a spelling has in this table ------------------------------------
-$41 constant KEY-A                   \ the first byte the fold moves
-$5A constant KEY-Z                   \ and the last
-$20 constant KEY-BIT                 \ the bit it sets
+\ A row is keyed by the lowercase fold of its spelling, the fold the engine
+\ applies to a checked body's tokens, so `IF`, `if` and `If` reach one row. Rows
+\ are written under BKEY-CK's fold and asked under KEY-SYM's; the tape's symbol
+\ keeps the source bytes. A local matches its declared spelling byte for byte,
+\ not this fold (elaborate.f WRAW), and resolves before this model.
+$41 constant KEY-A
+$5A constant KEY-Z
+$20 constant KEY-BIT
 
 \ The longest spelling this table folds. A longer one is its own key, unfolded,
 \ rather than truncated into a name that denotes some other word; its row is
@@ -320,9 +295,9 @@ KEY-CAP CWORK-SPAN KEY-BUF u8
    b KEY-Z > if b exit then
    b KEY-BIT or ;
 
-\ The interner answers ONE identity per byte string, so this is a shortcut and
-\ not a second rule - and the elaborator asks it of every name token.
-\ Whether these bytes are already their own fold. The interner answers ONE
+\ The interner answers one identity per byte string, so a spelling already its
+\ own fold is its own key: a shortcut, not a second rule. The elaborator asks it
+\ of every name token.
 : FOLDED? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    true
@@ -338,9 +313,8 @@ KEY-CAP CWORK-SPAN KEY-BUF u8
 
 public
 
-\ What a caller holding a spelling rather than an identity asks, so a copied
-\ token reaches the same row the token it was copied from reached.
-\ The key these bytes have in a table of this module. It is what a caller holding
+\ The key these bytes have in a table of this module: a copied token reaches the
+\ same row as the token it was copied from.
 : KEY-SPELL ( IR-CTX:ctx IR-BUILD:builder ptr u8 n -- IR-ID:ir-symbol-id )
    {: c:IR-CTX:ctx b:IR-BUILD:builder a:ptr u:n :}
    u KEY-CAP > if c b a u IR-BUILD:INTERN-SYMBOL exit then
@@ -362,21 +336,14 @@ public
 private
 
 \ ---- the session model -------------------------------------------------------
-\ ONE table of this dialect's vocabulary per load, not one per definition. It is
-\ registered once into a session-lived module and read by every definition, and
-\ that is sound because a definition's module is CLONED from the session
-\ prototype: a spelling the prototype holds sits at the same ordinal in every
-\ clone, so a body token's own symbol indexes the vocabulary with no lookup.
-\
-\ WHY AN ORDINAL AND NOT A SPELLING. A reader holds a row arena and a symbol and
-\ no interner, so it cannot read a spelling back at all. Every spelling-shaped
-\ question is therefore answered at REGISTRATION: ORD-ROW maps a prototype
-\ ordinal to its session row, and ROW-ORD maps that row back to the ordinal its
-\ spelling has in the prototype, which is where the binding gate reads bytes.
-\ The two ceilings are named against what a load actually holds: the prototype
-\ interns about 230 symbols (two dialect names, 46 HIR and 76 A64 opcodes, their
-\ attribute keys, and the 87 vocabulary spellings this file folds into it), and
-\ this dialect's vocabulary is WORDS rows. Both refuse by name rather than grow.
+\ One vocabulary table per load, read by every definition. A definition's module
+\ is cloned from the session prototype, so a spelling the prototype holds sits
+\ at the same ordinal in every clone and a body token's symbol indexes the
+\ vocabulary with no lookup. A reader holds rows and a symbol but no interner,
+\ so spelling questions are answered at registration: ORD-ROW maps a prototype
+\ ordinal to its session row, ROW-ORD maps it back for the binding gate to read
+\ bytes. The prototype interns about 230 symbols and the vocabulary is WORDS
+\ rows; both ceilings refuse by name rather than grow.
 512 constant ORD-CAP                 \ prototype ordinals the map can cover
 128 constant SROW-CAP                \ session rows the gate can remember
 
@@ -412,30 +379,28 @@ SESS-FORGET
    ord 0 < ord ORD-N @ >= or if -1 exit then
    ord ORD-ROW@ 1- ;
 
-\ The identity a declarer's spelling has in the module being registered. The
-\ registration declares the whole vocabulary, so this is the plain intern.
+\ The registration declares the whole vocabulary, so this is the plain intern.
 : MODEL-SYM ( IR-CTX:ctx IR-BUILD:builder ptr u8 n -- IR-ID:ir-symbol-id )
    IR-BUILD:INTERN-SYMBOL ;
 
-\ This door states its key rather than computing it: reading a spelling back
-\ needs the byte pool and this is handed only the rows. A row written here under
-\ an unfolded spelling is unreachable, and fails closed as unmodeled.
 \ ---- symbols the module's interner has answered for --------------------------
+\ SYM-CK states its key rather than computing it: reading a spelling back needs
+\ the byte pool and it is handed only the rows. A row written under an unfolded
+\ spelling is unreachable and fails closed as unmodeled.
 : SYM-CK ( IR-ARENA:arena IR-ID:ir-symbol-id -- HIR-WORD:interned )
    {: sy:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
    sy id IR-SYM:LEN@ drop
    id HIR--WORD-INTERNED:MAKE ;
 
-\ It answers by asking IR-SYM, so a symbol refused here is refused by name.
-\ The same question about a module that is still being built, whose interner
+\ A module still being built: this asks IR-SYM, so a refused symbol is refused
+\ by name.
 : BSYM-CK ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id -- HIR-WORD:interned )
    {: c:IR-CTX:ctx b:IR-BUILD:builder id:IR-ID:ir-symbol-id :}
    c b id IR-BUILD:SYMBOL-CK
    id HIR--WORD-INTERNED:MAKE ;
 
-\ Every builder-side declarer goes through this, so a row under any other key
-\ cannot be written - the declarers cannot express its opposite.
-\ The symbol a declaration through that door writes its row under: the key of the
+\ The key a declaration writes its row under. Every builder-side declarer goes
+\ through this, so a row under any other key cannot be written.
 : BKEY-CK ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id -- HIR-WORD:interned )
    {: c:IR-CTX:ctx b:IR-BUILD:builder id:IR-ID:ir-symbol-id :}
    c b  c b id KEY-SYM  BSYM-CK ;
@@ -450,9 +415,6 @@ SESS-FORGET
 : PC@ ( IR-ARENA:arena n -- n )
    HDR-CELLS + LCELL@ ;
 
-\ One scan serves the lookup, the duplicate check and the inventory walk.
-\ The row that models this symbol, or a negative answer. One scan serves the
-\ lookup, the duplicate check, and the inventory walk.
 : FIND ( IR-ARENA:arena n -- n )
    {: r:IR-ARENA:arena so:n :}
    -1
@@ -478,11 +440,10 @@ SESS-FORGET
 
 public
 
-\ The two handles plus the key are the table, and it dies with its context.
 \ ---- creation ----------------------------------------------------------------
-\ `link` says the table's module is a clone of the session prototype, which is
-\ what makes a body token's ordinal name a session row. It is a header cell and
-\ not package state, so a table answers for itself and no reader is pinned.
+\ A table is its two arenas plus the key and dies with its context. `link` is a
+\ header cell, not package state: LINK-CLONE says the module is a clone of the
+\ session prototype, which lets a body token's ordinal name a session row.
 : NEW-TABLE ( IR-CTX:ctx IR-ID:ir-module-key n n n -- IR-ARENA:arena IR-ARENA:arena )
    {: c:IR-CTX:ctx key:IR-ID:ir-module-key rcap:n pcap:n link:n :}
    rcap ROW-CAP-OK
@@ -501,9 +462,8 @@ public
    c r link IR-ARENA:PUSH drop
    p r ;
 
-\ A table of its own module, which is what a caller outside a session builds and
-\ what every test builds: it holds whatever is declared into it and consults no
-\ session rows.
+\ A table of its own module, as a caller outside a session and every test
+\ builds: it consults no session rows.
 : NEW ( IR-CTX:ctx IR-ID:ir-module-key n n -- IR-ARENA:arena IR-ARENA:arena )
    LINK-NONE NEW-TABLE ;
 
@@ -511,7 +471,6 @@ private
 
 \ Every declarer ends here, so ownership, the duplicate rule and the ceiling are
 \ proved in one place.
-\ Append one validated row. Every declarer ends here, so the ownership, the
 : ROW-ADD ( IR-CTX:ctx IR-ARENA:arena HIR-WORD:interned n n n n n n -- )
    {: c:IR-CTX:ctx r:IR-ARENA:arena w:HIR-WORD:interned mean:n a:n
       in:n n:n glue:n dead:n :}
@@ -529,8 +488,6 @@ private
    c r glue IR-ARENA:PUSH drop
    c r dead IR-ARENA:PUSH drop ;
 
-\ The row an operation word writes, once its symbol has been answered for. The
-\ two declarers below differ only in which interner answered.
 : OP-ROW ( IR-CTX:ctx IR-ARENA:arena HIR-WORD:interned HIR:opcode -- )
    {: o:HIR:opcode :}
    HIR-MEANING:OP MEAN-CODE
@@ -540,7 +497,6 @@ private
 
 \ Some words are one integer literal followed by one operation - `1-` is `1`
 \ then `-` - so the row carries both rather than claiming a second opcode.
-\ The row a constant-and-operation word writes. Some Habu words are one integer
 : CONST-OP-ROW ( IR-CTX:ctx IR-ARENA:arena HIR-WORD:interned HIR:opcode n -- )
    {: o:HIR:opcode v:n :}
    HIR-MEANING:CONST-OP MEAN-CODE
@@ -551,7 +507,6 @@ private
 \ The value sits in the cell a const-op row keeps its constant in, and the kind
 \ in the cell an op row keeps its opcode in: a `constant`'s number is a number,
 \ a `create`d word's is a DATA address a snapshot moves with that region.
-\ The row a word that pushes one fixed value writes. A `create`d data word is
 : FIXED-ROW ( IR-CTX:ctx IR-ARENA:arena HIR-WORD:interned n n n -- )
    {: v:n kind:n owner:n :}
    HIR-MEANING:FIXED MEAN-CODE
@@ -575,9 +530,8 @@ public
 
 private
 
-\ The whole translation between the dictionary's vocabulary for definers and
-\ this chain's for literals; a kind neither definer stamped never reaches it.
-\ What the number a definer decided IS, as the literal staging says it: an
+\ The translation between the dictionary's kinds for definers and the literal
+\ staging's; a kind neither definer stamped never reaches it.
 public
 
 : LIT-KIND ( n -- n )
@@ -587,11 +541,9 @@ public
 
 private
 
-\ Entry and arity are the caller's statement (habu-resolve-a-callee-0340dfde).
-\ The GLUE says which result cells are one value, because the arity says only
-\ how many there are; zero means every cell is a value of its own, which is the
-\ safe reading. Deadness is zero for "control comes back", equally safe.
-\ The row a word that is CALLED writes: where the callee's code starts, and how
+\ Entry and arity are the caller's statement. The glue says which result cells
+\ are one value, since the arity says only how many; zero means every cell is
+\ its own value, the safe reading. Dead zero is "control comes back", as safe.
 : CALLABLE-ROW ( IR-CTX:ctx IR-ARENA:arena HIR-WORD:interned n n n n n -- )
    {: entry:n in:n out:n glue:n dead:n :}
    entry 0 <= if E-HIR-CALLEE throw then
@@ -601,8 +553,6 @@ private
    in out glue dead
    ROW-ADD ;
 
-\ A control word stages no operation, so the row holds only which action it is.
-\ The row a structured control word writes. It stages no operation of its own -
 : CONTROL-ROW ( IR-CTX:ctx IR-ARENA:arena HIR-WORD:interned HIR:ctrl -- )
    {: k:HIR:ctrl :}
    HIR-MEANING:CONTROL MEAN-CODE
@@ -610,9 +560,8 @@ private
    UNUSED UNUSED UNUSED UNUSED
    ROW-ADD ;
 
-\ The row a word that means a short operation sequence writes. Which sequence is
-\ the whole payload: every operation of it, and the constant any of them needs,
-\ belongs to the sequence and not to the word, so there is nothing else to hold.
+\ The sequence is the whole payload: its operations and constants belong to the
+\ sequence, not the word.
 : EXPANSION-ROW ( IR-CTX:ctx IR-ARENA:arena HIR-WORD:interned HIR:expand -- )
    {: k:HIR:expand :}
    HIR-MEANING:EXPANSION MEAN-CODE
@@ -622,7 +571,6 @@ private
 
 \ The count is held against what a row can MEAN: a transfer of no cells would
 \ elaborate to a silent no-op, and one wider than the pair forms is unsanctioned.
-\ The row a return-stack transfer writes: which way it moves cells and how many.
 2 constant RSTACK-CELLS-MAX          \ `2>r` and its two siblings are the widest forms
 
 : RSTACK-ROW ( IR-CTX:ctx IR-ARENA:arena HIR-WORD:interned HIR:rmove n -- )
@@ -636,7 +584,6 @@ private
 
 \ The meaning is held against the two that qualify, so this cannot write an `op`
 \ row with no opcode or a `rename` row with no picks.
-\ The row a word with no payload at all writes. The two halves of a typed
 : PLAIN-ROW ( IR-CTX:ctx IR-ARENA:arena HIR-WORD:interned HIR:meaning -- )
    {: m:HIR:meaning :}
    m HIR-MEANING:OPEN-LOCALS HIR-MEANING:EQ
@@ -646,45 +593,29 @@ private
    UNUSED UNUSED UNUSED UNUSED UNUSED
    ROW-ADD ;
 
-\ The same declaration for a module still being built: the builder answers for
-\ The builder answers for its own interner.
 : BDECLARE-PLAIN ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id HIR:meaning -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena
       id:IR-ID:ir-symbol-id m:HIR:meaning :}
    c r  c b id BKEY-CK  m PLAIN-ROW ;
 
-\ A row stands for the seeded primitive of its spelling, so it may claim a token
+\ A row stands for the seeded primitive of its spelling, so it claims a token
 \ only when the engine's lookup binds that primitive's own record (NDICT
-\ SPELL-PRIM?, the JIT's C-OP-ROW-GATE). A package word of that spelling, and a
-\ global one defined after `undefine`, is another record: it uses ordinary
-\ dictionary resolution and its own checked effect. Asking whether the binding
-\ was the global wordlist's answered the second case wrong: after `undefine dup
-\ : dup ( n -- n ) 100 + ;` the scope and the global wordlist agreed on the new
-\ `dup`, and the row lowered the primitive the checker had not certified.
-\
-\ It takes the BYTES and not a symbol because one of its two callers is the
-\ reader's binding gate, which holds no interner to read a spelling out of. WHERE
-\ each caller asks it, and why there are two, is the block below.
+\ SPELL-PRIM?, habu2.f C-OP-ROW-GATE). A package word of that spelling, or a
+\ global one defined after `undefine`, is another record with its own checked
+\ effect: after `undefine dup : dup ( n -- n ) 100 + ;` scope and the global
+\ wordlist agree on the new `dup`, so asking the global wordlist is wrong.
+\ It takes bytes, not a symbol: the reader's binding gate holds no interner.
 : INTRINSIC-BOUND? ( ptr u8 n -- bool )
    NDICT:SPELL-PRIM? ;
 
 \ ---- where the gate is asked -------------------------------------------------
-\ ONE RULE, ASKED WHERE ITS ANSWER IS STILL TRUE WHEN THE ROW IS READ: a
-\ spelling the engine no longer owns models nothing, so the token falls through
-\ to the callable path and reaches the word the package bound.
-\
-\ THE SESSION'S TABLE is registered once and read by every definition of the
-\ load, and the answer MOVES between them - native-word-binding.f needs `xor`
-\ present, then absent while a package owns it, then present again - so its rows
-\ are all registered and the gate is asked at the reading token, per definition
-\ (ROW-BOUND? below).
-\
-\ ANY OTHER TABLE is registered and read inside ONE definition, and its reader
-\ holds a row arena and a symbol and NO interner: it cannot read a spelling back
-\ at all, so it could not ask this question if it wanted to. The gate is asked
-\ here instead, while the builder that can read the spelling is in hand, and a
-\ refused word gets no row - which is exactly what the declarers did before the
-\ session existed.
+\ A spelling the engine no longer owns models nothing, so the token falls
+\ through to the callable path. The session's table is read by every definition
+\ and the answer moves between them (test/compiler/native-word-binding.f needs
+\ `xor` present, absent while a package owns it, present again), so it is asked
+\ at the reading token (ROW-BOUND?). Any other table is read inside one
+\ definition by a reader with no interner, so it is asked here, while the
+\ builder is in hand, and a refused word gets no row.
 : BVOCAB? ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id -- bool )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
    r HC-LINK LCELL@ LINK-SESSION = if true exit then
@@ -722,7 +653,6 @@ private
 
 public
 
-\ Declare that a source word pushes one fixed value. This is how a `create`d
 \ The value is NOT a parameter: a caller's copy goes stale the moment the word
 \ is retired, and dict.f resolves the spelling the body itself writes.
 : DECLARE-FIXED ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id -- )
@@ -747,7 +677,6 @@ public
       a u NDICT:FIXED-OWNER FIXED-ROW
    true ;
 
-\ Declare that a source word is another word this definition CALLS: where its
 \ A caller that states a callee by hand states no glue and no deadness, and gets
 \ the safe reading of both.
 : DECLARE-CALLABLE ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id n n n -- )
@@ -763,14 +692,12 @@ public
       id:IR-ID:ir-symbol-id entry:n in:n out:n glue:n dead:bool :}
    c r  c b id BKEY-CK  entry in out glue  dead NORET-CODE  CALLABLE-ROW ;
 
-\ Declare that a source word elaborates to one operation of this dialect. The
 \ The second arena is the interner that has to have minted the word's spelling.
 : DECLARE-OP ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-symbol-id HIR:opcode -- )
    {: c:IR-CTX:ctx r:IR-ARENA:arena sy:IR-ARENA:arena
       id:IR-ID:ir-symbol-id o:HIR:opcode :}
    c r  sy id SYM-CK  o OP-ROW ;
 
-\ Declare a named boundary this dialect cannot compile. The reason symbol names
 \ The reason symbol names the capability whose absence is why, so a refusal can
 \ say what has to land first.
 : DECLARE-UNMODELED ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-symbol-id IR-ID:ir-symbol-id -- )
@@ -818,7 +745,6 @@ PICK-MAX CWORK-SPAN STG-PICK n
 : SP! ( n n -- )
    cells STG-PICK + ! ;
 
-\ The row a rename writes, once its stage is closed and its symbol has been
 \ The picks land in the pool before the row that points at them, so a refusal
 \ leaves no row naming cells outside it.
 : RENAME-ROW ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena HIR-WORD:interned -- )
@@ -844,8 +770,8 @@ PICK-MAX CWORK-SPAN STG-PICK n
    st STG-IN @ STG-N @ STG-HOST @ UNUSED
    ROW-ADD ;
 
-\ The same declaration for a module still being built. The stage is consumed
-\ first either way, so a symbol the interner refuses leaves no rename open.
+\ The stage is consumed first either way, so a symbol the interner refuses
+\ leaves no rename open.
 : BDECLARE-RENAME ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena IR-ID:ir-symbol-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena
       id:IR-ID:ir-symbol-id :}
@@ -855,8 +781,10 @@ PICK-MAX CWORK-SPAN STG-PICK n
 
 public
 
-\ Open a rename that consumes `in` values off the top of the compile-time value
-\ vector.
+\ A rename is data: how many values it consumes off the top and which it puts
+\ back, each named by depth in the consumed window (zero the top), bottom first.
+\ `over` ( a b -- a b a ) consumes 2 and puts back 1 0 1; `rot` ( a b c -- b c a )
+\ consumes 3 and puts back 1 0 2. It may put back only an input it consumed.
 : BEGIN-RENAME ( n -- )
    {: in:n :}
    STG-MODE @ MODE-NONE <> if E-HIR-STAGE throw then
@@ -866,8 +794,6 @@ public
    0 STG-N !
    HOST-SCALAR STG-HOST ! ;
 
-\ Put one of the consumed values back, named by its depth in the consumed
-\ window with zero being the top. Picks are listed bottom first.
 : ADD-PICK ( n -- )
    {: d:n :}
    STG-OPEN-CK
@@ -877,11 +803,9 @@ public
    d n SP!
    n 1+ STG-N ! ;
 
-\ Abandon an open rename without declaring it.
 : ABANDON-RENAME ( -- )
    STG-TAKE ;
 
-\ Close the staged rename and bind it to a source word. The arenas are this
 \ The stage is consumed before anything else, so a refusal leaves no rename open.
 : DECLARE-RENAME ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ID:ir-symbol-id -- )
    {: c:IR-CTX:ctx p:IR-ARENA:arena r:IR-ARENA:arena sy:IR-ARENA:arena
@@ -889,14 +813,12 @@ public
    STG-TAKE
    c p r  sy id SYM-CK  RENAME-ROW ;
 
-\ A CAST: binding keeps the very cells it consumes, in place, the same SSA
-\ values, and regroups them as its output's values by the output glue: a view
-\ unpack makes one two-cell value two, a pack makes two values one, and a
-\ one-cell cast leaves its value as it was. The checker retains the nominal
-\ input/output terms and admits only casts whose sides hold the same cells; `in`
-\ and `out` are those cell counts and `glue` the output row's glue, so the row
-\ stores the cells and the glue and puts no value back by pick. Unlike
-\ vocabulary renames, its authority is the captured dictionary definer.
+\ A cast keeps the cells it consumes in place, the same SSA values, and regroups
+\ them by the output glue: a view unpack makes one two-cell value two, a pack
+\ makes two values one. The checker admits only casts whose sides hold the same
+\ cells; `in` and `out` are those counts and `glue` the output glue. The row has
+\ no pick list (HOST-RENAME@ answers HOST-CAST). Its authority is the captured
+\ dictionary definer, not the vocabulary.
 : DECLARE-BOUND-CAST ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id n n n -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena
       id:IR-ID:ir-symbol-id in:n out:n glue:n :}
@@ -1012,15 +934,11 @@ public
 private
 
 \ ---- the binding gate --------------------------------------------------------
-\ Membership of the vocabulary is a fact about the DIALECT and is registered
-\ once. Whether the engine still owns the spelling is a fact about the
-\ DICTIONARY, and a package that binds `+` or `dup` to a word of its own moves
-\ it mid-load - so it is asked per definition, at the first token that reads the
-\ row, and remembered for the rest of that definition.
-\
-\ The definition is named by the overlay's own header serial, which is its
-\ module's key serial: a new definition is a new module, so a stale answer can
-\ never be read as a current one and nothing has to be cleared between them.
+\ Vocabulary membership is a fact about the dialect, registered once; whether
+\ the engine still owns a spelling is a fact about the dictionary and moves
+\ mid-load when a package binds `+` or `dup`, so it is asked at the first token
+\ that reads the row and remembered for that definition, named by the overlay's
+\ header serial: a new definition is a new module, so nothing is cleared.
 64 constant GATE-CAP                 \ the longest vocabulary spelling the gate reads
 
 GATE-CAP CWORK-SPAN GATE-BUF u8
@@ -1030,8 +948,6 @@ GATE-CAP CWORK-SPAN GATE-BUF u8
 : CHK-BND@ ( n -- n ) cells CHK-BND + @ ;
 : CHK-BND! ( n n -- ) cells CHK-BND + ! ;
 
-\ The spelling of a session row, read out of the prototype interner the ordinal
-\ belongs to. This is the whole reason ROW-ORD exists.
 : ROW-SPELL ( n -- ptr u8 n )
    {: sl:n :}
    0 SESS-KEY @ sl ROW-ORD@ IR-ID:PACK-SYMBOL {: id:IR-ID:ir-symbol-id :}
@@ -1060,12 +976,9 @@ GATE-CAP CWORK-SPAN GATE-BUF u8
    bound ;
 
 \ ---- which table answers ------------------------------------------------------
-\ The one decision point. The overlay is asked first and by the symbol, which is
-\ the ordinary owner-checked lookup this always did; only a table whose header
-\ says its module is a session clone goes on to the vocabulary, and only by the
-\ ordinal, because a clone holds the prototype's spellings at the prototype's
-\ ordinals. A row the gate refuses answers as no row at all, which is what hands
-\ a shadowed spelling to the callable path.
+\ The overlay is asked first, by symbol; only a table whose header says
+\ LINK-CLONE goes on to the vocabulary, by ordinal. A row the gate refuses
+\ answers as no row, which hands a shadowed spelling to the callable path.
 : LOOKUP ( IR-ARENA:arena IR-ID:ir-symbol-id -- IR-ARENA:arena n )
    {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
    r id SYM-OWNER-CK
@@ -1082,7 +995,6 @@ GATE-CAP CWORK-SPAN GATE-BUF u8
    LOOKUP
    dup 0 < if E-HIR-UNMODELED throw then ;
 
-\ The row of a word this table models with the meaning the caller is about to
 \ Asking a rename for its opcode is a category error, not a missing value.
 : ROW-AS ( IR-ARENA:arena IR-ID:ir-symbol-id HIR:meaning -- IR-ARENA:arena n )
    {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id want:HIR:meaning :}
@@ -1100,14 +1012,12 @@ public
    r id ROW-OF {: ra:IR-ARENA:arena l:n :}
    ra l OFF-MEAN RC@ N>MEAN ;
 
-\ Whether this table models the word at all, asked without being refused. Every
 \ The elaborator asks whether a name the PROGRAM chose for a local collides with
 \ a word of the dialect, and "no" is the ordinary case rather than a failure.
 : MODELS? ( IR-ARENA:arena IR-ID:ir-symbol-id -- bool )
    {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
    r id LOOKUP nip 0 >= ;
 
-\ The bare name inside one typed local's declaration spelling. A declaration
 \ The tape carries `name:type` as one token while the body reads the name alone,
 \ so the annotation is cut off here. `{: a b :}` is a real unannotated shape.
 $3A constant ANN-C                   \ the `:` that separates a local from its type
@@ -1119,8 +1029,6 @@ $3A constant ANN-C                   \ the `:` that separates a local from its t
       a i + c@ ANN-C = if drop i leave then
    loop ;
 
-\ The gate. Answers what checked source may compile this word into, and refuses
-\ everything else by name.
 : ADMIT ( IR-ARENA:arena IR-ID:ir-symbol-id -- HIR:meaning )
    {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
    r id MEANING@ {: m:HIR:meaning :}
@@ -1132,8 +1040,6 @@ $3A constant ANN-C                   \ the `:` that separates a local from its t
    r id HIR-MEANING:OP ROW-AS {: ra:IR-ARENA:arena l:n :}
    ra l OFF-A RC@ HIR:NTH ;
 
-\ The operation a constant-and-operation word applies, and the constant it
-\ Through ROW-AS, so asking a word of another meaning is a category error.
 : CONST-OPCODE@ ( IR-ARENA:arena IR-ID:ir-symbol-id -- HIR:opcode )
    {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
    r id HIR-MEANING:CONST-OP ROW-AS {: ra:IR-ARENA:arena l:n :}
@@ -1144,8 +1050,6 @@ $3A constant ANN-C                   \ the `:` that separates a local from its t
    r id HIR-MEANING:CONST-OP ROW-AS {: ra:IR-ARENA:arena l:n :}
    ra l OFF-IN RC@ ;
 
-\ The value a word that pushes one fixed value pushes. Asking it about a word of
-\ Through ROW-AS, for the same reason.
 : FIXED-VALUE@ ( IR-ARENA:arena IR-ID:ir-symbol-id -- n )
    {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
    r id HIR-MEANING:FIXED ROW-AS {: ra:IR-ARENA:arena l:n :}
@@ -1163,8 +1067,6 @@ $3A constant ANN-C                   \ the `:` that separates a local from its t
    r id HIR-MEANING:FIXED ROW-AS {: ra:IR-ARENA:arena l:n :}
    ra l OFF-DEAD RC@ ;
 
-\ Where a callable word's code starts, and its declared effect. Each is asked of
-\ Through ROW-AS, for the same reason.
 : ENTRY@ ( IR-ARENA:arena IR-ID:ir-symbol-id -- n )
    {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
    r id HIR-MEANING:CALLABLE ROW-AS {: ra:IR-ARENA:arena l:n :}
@@ -1180,7 +1082,6 @@ $3A constant ANN-C                   \ the `:` that separates a local from its t
    r id HIR-MEANING:CALLABLE ROW-AS {: ra:IR-ARENA:arena l:n :}
    ra l OFF-N RC@ ;
 
-\ Whether control comes back from a call to this callee. The one reader of the
 \ The one reader of the fact RESOLVE-CALLABLE put in the row, so every pass that
 \ needs it asks one question instead of asking the engine again.
 : CALLEE-DEAD? ( IR-ARENA:arena IR-ID:ir-symbol-id -- bool )
@@ -1195,21 +1096,16 @@ $3A constant ANN-C                   \ the `:` that separates a local from its t
    r id HIR-MEANING:CALLABLE ROW-AS {: ra:IR-ARENA:arena l:n :}
    ra l OFF-DEAD RC@ TERMINAL = ;
 
-\ Which control action a structured control word is.
 : CTRL@ ( IR-ARENA:arena IR-ID:ir-symbol-id -- HIR:ctrl )
    {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
    r id HIR-MEANING:CONTROL ROW-AS {: ra:IR-ARENA:arena l:n :}
    ra l OFF-A RC@ N>CTRL ;
 
-\ Which operation sequence a word that means one is. Through ROW-AS, so asking
-\ it about a word of any other meaning is a refusal and not a wrong answer.
 : EXPAND@ ( IR-ARENA:arena IR-ID:ir-symbol-id -- HIR:expand )
    {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
    r id HIR-MEANING:EXPANSION ROW-AS {: ra:IR-ARENA:arena l:n :}
    ra l OFF-A RC@ N>EXPAND ;
 
-\ Which way a return-stack word moves cells, and how many. Both go through
-\ Both go through ROW-AS.
 : RSTACK@ ( IR-ARENA:arena IR-ID:ir-symbol-id -- HIR:rmove )
    {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
    r id HIR-MEANING:RSTACK ROW-AS {: ra:IR-ARENA:arena l:n :}
@@ -1240,14 +1136,12 @@ private
 
 public
 
-\ The cells a cast regroups and the glue it lays over them (DECLARE-BOUND-CAST).
 : CAST-CELLS@ ( IR-ARENA:arena IR-ID:ir-symbol-id -- n )
    CAST-ROW OFF-IN RC@ ;
 
 : CAST-GLUE@ ( IR-ARENA:arena IR-ID:ir-symbol-id -- n )
    CAST-ROW OFF-A RC@ ;
 
-\ How many values a pick-list rename consumes off the top of the value vector.
 \ A cast row keeps its regrouped cell count in this slot: read CAST-CELLS@.
 : INPUTS@ ( IR-ARENA:arena IR-ID:ir-symbol-id -- n )
    {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
@@ -1259,22 +1153,16 @@ public
    r id HIR-MEANING:RENAME ROW-AS {: ra:IR-ARENA:arena l:n :}
    ra l OFF-GLUE RC@ ;
 
-\ How many values a pick-list rename puts back; a cast row puts none back by
-\ pick (CAST-GLUE@ gives its output grouping).
+\ A cast row puts none back by pick (CAST-GLUE@ gives its output grouping).
 : PICKS ( IR-ARENA:arena IR-ID:ir-symbol-id -- n )
    {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
    r id HIR-MEANING:RENAME ROW-AS {: ra:IR-ARENA:arena l:n :}
    ra l OFF-N RC@ ;
 
-\ The i-th value it puts back, named by its depth in the consumed window.
-\ Both the window into the pool and the depth are rechecked, so a row written
-\ past this package's declarers cannot read outside the live pool.
-\
-\ The picks belong to the table the ROW came from, so a rename answered by the
-\ session reads the session's pool. The pair the CALLER presented is checked
-\ either way - it is the caller's own table and a mismatched pair is a mistake
-\ whichever table answered - and then the pool that goes with the answering rows
-\ is checked against them.
+\ Both the pool window and the depth are rechecked, so a row written past this
+\ package's declarers cannot read outside the live pool. The picks belong to
+\ the table the row came from; the caller's pair is checked either way, then the
+\ answering table's pool against its rows.
 : PICK@ ( IR-ARENA:arena IR-ARENA:arena IR-ID:ir-symbol-id n -- n )
    {: p:IR-ARENA:arena r:IR-ARENA:arena id:IR-ID:ir-symbol-id i:n :}
    p r PAIR-CK
@@ -1291,7 +1179,6 @@ public
    d 0 < d ra l OFF-IN RC@ >= or if E-HIR-PICK throw then
    d ;
 
-\ The capability a boundary is waiting for. Only an unmodeled entry names one.
 : REASON@ ( IR-ARENA:arena IR-ID:ir-module-key IR-ID:ir-symbol-id -- IR-ID:ir-symbol-id )
    {: r:IR-ARENA:arena key:IR-ID:ir-module-key id:IR-ID:ir-symbol-id :}
    r key KEY-CK
@@ -1300,8 +1187,6 @@ public
    dup UNUSED = if E-HIR-STATE throw then
    1- key swap IR-ID:PACK-SYMBOL ;
 
-\ The i-th declared word, in declaration order. This is what an inventory of the
-\ remaining boundaries walks.
 : AT ( IR-ARENA:arena IR-ID:ir-module-key n -- IR-ID:ir-symbol-id )
    {: r:IR-ARENA:arena key:IR-ID:ir-module-key i:n :}
    r key KEY-CK
@@ -1333,7 +1218,6 @@ public
 
 private
 
-\ The four arithmetic words this dialect has operations for.
 : DEF-ARITH ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena :}
    c b r c b s" +" MODEL-SYM HIR-OPCODE:ADD BDECLARE-OP
@@ -1341,9 +1225,6 @@ private
    c b r c b s" *" MODEL-SYM HIR-OPCODE:MUL BDECLARE-OP
    c b r c b s" /" MODEL-SYM HIR-OPCODE:DIV BDECLARE-OP ;
 
-\ The six comparisons, each bound to the opcode that names its own relation.
-\ A row says which opcode a word means and nothing else, so a relation the
-\ dialect has no opcode for could not be written down here at all.
 : DEF-COMPARE ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena :}
    c b r c b s" <" MODEL-SYM HIR-OPCODE:LT BDECLARE-OP
@@ -1355,7 +1236,6 @@ private
 
 \ `lshift` and `rshift` take a count the program computed, so they are two
 \ operand words here and not a value and a field.
-\ The bitwise words. `and`, `or` and `xor` combine two values bit for bit;
 : DEF-BITWISE ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena :}
    c b r c b s" and" MODEL-SYM HIR-OPCODE:AND BDECLARE-OP
@@ -1367,7 +1247,6 @@ private
 
 \ `0=` is `0` then `=`, which answers false for EVERY nonzero value; `cells` is
 \ the language cell byte width then `*`; pointer width is a separate target fact.
-\ `1-` ( n -- n ) and `1+` ( n -- n ): subtract or add one. Each is one token of
 : DEF-STEP ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena :}
    c b r c b s" 1-" MODEL-SYM HIR-OPCODE:SUB 1 BDECLARE-CONST-OP
@@ -1378,7 +1257,6 @@ private
 
 \ The width is not stored: it is which opcode the row names, because hir.f makes
 \ the width a form. The memory order is the dialect's own token.
-\ The four memory words, two per width. `@` ( ptr -- n ) reads the cell an
 : DEF-MEMORY ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena :}
    c b r c b s" @" MODEL-SYM HIR-OPCODE:LOAD BDECLARE-OP
@@ -1386,12 +1264,9 @@ private
    c b r c b s" c@" MODEL-SYM HIR-OPCODE:BLOAD BDECLARE-OP
    c b r c b s" c!" MODEL-SYM HIR-OPCODE:BSTORE BDECLARE-OP ;
 
-\ The four words that are a SHORT SEQUENCE of this dialect's operations rather
-\ than one of them. Each was an engine primitive the elaborator called, and each
-\ body is arithmetic the dialect already has: `ptr-field` scales a cell index
-\ and adds it to the base; `mod` computes the remainder; `max` and `min` select
-\ the larger and smaller signed cell. Their sequences live in
-\ src/compiler/native/elaborate.f; a row says only which one.
+\ Words that are a short sequence of this dialect's operations (`ptr-field`,
+\ `mod`, `max`, `min`); the sequences live in src/compiler/native/elaborate.f
+\ and a row says only which one.
 : DEF-EXPAND ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena :}
    c b r c b s" ptr-field" MODEL-SYM HIR-EXPAND:CELL-INDEX BDECLARE-EXPAND
@@ -1405,7 +1280,6 @@ private
 \ over zero, infinity over infinity, the root of a negative - is
 \ $7FF8000000000000 on every target, and a quiet NaN operand passes through
 \ unchanged, the left one of two (docs/xcomp.md "The NaN an operation makes").
-\ The nine float words of the engine's vocabulary that compute rather than
 : DEF-FLOAT ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena :}
    c b r c b s" f+" MODEL-SYM HIR-OPCODE:FADD BDECLARE-OP
@@ -1418,9 +1292,8 @@ private
    c b r c b s" s>f" MODEL-SYM HIR-OPCODE:INTREAL BDECLARE-OP
    c b r c b s" f>s" MODEL-SYM HIR-OPCODE:REALINT BDECLARE-OP ;
 
-\ Five, which is the whole of the engine's vocabulary. The two against zero are
-\ two OPERATIONS: FCMP against the immediate zero takes no second register.
-\ The five float comparisons, which are the whole of what the engine has: three
+\ The two comparisons against zero are their own operations: FCMP against the
+\ immediate zero takes no second register.
 : DEF-FCOMPARE ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena :}
    c b r c b s" f<" MODEL-SYM HIR-OPCODE:FLT BDECLARE-OP
@@ -1433,7 +1306,6 @@ private
 \ a row says which word it is and the elaborator's control stack learns the rest.
 \ `RECURSE` is interned in capitals because docs/forth.md spells it so; the row
 \ is keyed by the fold, so any case reaches it.
-\ The structured control words. Three structures, the two words that stand in
 : DEF-CONTROL ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena :}
    c b r c b s" if" MODEL-SYM HIR-CTRL:OPEN-IF BDECLARE-CONTROL
@@ -1457,7 +1329,6 @@ private
 
 \ `of` and `endof` are ONE row each and serve both `MATCH` and `case`; which
 \ form an arm belongs to is decided by the structure the elaborator has open.
-\ The three tag-dispatch forms, seven words. `of` and `endof` are ONE row each
 : DEF-ADT ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena :}
    c b r c b s" match" MODEL-SYM HIR-CTRL:OPEN-MATCH BDECLARE-CONTROL
@@ -1470,13 +1341,6 @@ private
 
 \ Control actions, because what stands between them is a second FUNCTION of the
 \ module. Neither row carries a payload.
-\ The two tokens a quotation is written with. They are control actions and not
-\ operations for the reason HIR's own ctrl family gives: what stands between them
-\ is a second FUNCTION of the module, so the opener's whole job is to stage one
-\ value and take the tokens up to its closer out of the enclosing body's hands.
-\ Neither row carries a payload - which function the body becomes is decided by
-\ the elaborator, and what the body TAKES is decided by whoever consumes the
-\ value, neither of which is a fact about the dialect.
 : DEF-QUOT ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena :}
    c b r c b s" [:" MODEL-SYM HIR-CTRL:OPEN-QUOT BDECLARE-CONTROL
@@ -1486,16 +1350,7 @@ private
 \ None carries a payload: `is` moves what the DEFERRED word declares, `execute`
 \ moves one cell more than the quotation reaching it, and `catch` moves the
 \ window the checker certified at that site - all facts about the site.
-\ The three words a program uses a quotation with. None carries a payload, and
-\ that is the whole reason they are control rows rather than callable ones: a
-\ callable row states its callee's entry AND its declared arity, and none of
-\ these has an arity to state - `is` moves what the DEFERRED WORD declares, and
-\ the token after it names which; `execute` moves one cell more than whatever
-\ quotation reaches it, which is a fact about the site; and `catch` moves the
-\ window that quotation takes, which the checker certified at the site and
-\ nowhere else. Where each branches to is a question for
-\ src/compiler/native/dict.f at the site, exactly as every other callee's entry
-\ is, so no address is recorded here either.
+\ Branch targets come from src/compiler/native/dict.f at the site.
 : DEF-QUOT-USE ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena :}
    c b r c b s" is" MODEL-SYM HIR-CTRL:BIND-DEFER BDECLARE-CONTROL
@@ -1507,17 +1362,11 @@ private
 
 \ Neither stages an operation and neither carries a payload: the work is the
 \ elaborator's over the tape rows between them.
-\ The two halves of a typed locals group. Neither stages an operation and
-\ neither carries a payload: what the opener does is start reading the names
-\ that follow it and what the closer does is bind them, and both of those are
-\ the elaborator's work over the tape rows between them. The row therefore holds
-\ the meaning and nothing else.
 : DEF-LOCALS ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena :}
    c b r c b s" {:" MODEL-SYM HIR-MEANING:OPEN-LOCALS BDECLARE-PLAIN
    c b r c b s" :}" MODEL-SYM HIR-MEANING:CLOSE-LOCALS BDECLARE-PLAIN ;
 
-\ dup ( a -- a a ): consume the top value and put it back twice.
 : DEF-DUP ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
    1 BEGIN-RENAME
@@ -1525,13 +1374,11 @@ private
    0 ADD-PICK
    c b p r c b s" dup" MODEL-SYM BDECLARE-RENAME ;
 
-\ drop ( a -- ): consume the top value and put nothing back.
 : DEF-DROP ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
    1 BEGIN-RENAME
    c b p r c b s" drop" MODEL-SYM BDECLARE-RENAME ;
 
-\ swap ( a b -- b a ): consume two and put them back the other way round.
 : DEF-SWAP ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
    2 BEGIN-RENAME
@@ -1539,7 +1386,6 @@ private
    1 ADD-PICK
    c b p r c b s" swap" MODEL-SYM BDECLARE-RENAME ;
 
-\ over ( a b -- a b a ): consume two and put back three, the lower one twice.
 : DEF-OVER ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
    2 BEGIN-RENAME
@@ -1548,15 +1394,12 @@ private
    1 ADD-PICK
    c b p r c b s" over" MODEL-SYM BDECLARE-RENAME ;
 
-\ nip ( a b -- b ): consume two and put back only the one that was on top.
 : DEF-NIP ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
    2 BEGIN-RENAME
    0 ADD-PICK
    c b p r c b s" nip" MODEL-SYM BDECLARE-RENAME ;
 
-\ `over over` written once.
-\ 2dup ( a b -- a b a b ): consume two and put both back twice, in order. It is
 : DEF-2DUP ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
    2 BEGIN-RENAME
@@ -1566,9 +1409,7 @@ private
    0 ADD-PICK
    c b p r c b s" 2dup" MODEL-SYM BDECLARE-RENAME ;
 
-\ `drop drop` written once: the two values leave the compile-time vector and no
-\ instruction is needed to make them go.
-\ 2drop ( a b -- ): consume two and put neither back. It is `drop drop` written
+\ 2drop emits no instruction: the two values leave the compile-time vector.
 : DEF-2DROP ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
    2 BEGIN-RENAME
@@ -1596,8 +1437,6 @@ private
    2 ADD-PICK
    c b p r c b s" 2over" MODEL-SYM BDECLARE-RENAME ;
 
-\ Bottom first that is b, then c, then a - depths 1, 0 and 2.
-\ rot ( a b c -- b c a ): consume three and put all three back rotated, so the
 : DEF-ROT ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
    3 BEGIN-RENAME
@@ -1615,8 +1454,6 @@ private
    1 ADD-PICK
    c b p r c b s" -rot" MODEL-SYM BDECLARE-RENAME ;
 
-\ tuck ( a b -- b a b ): consume two and put back three, the top one twice, so
-\ bottom first that is b, then a, then b - depths 0, 1 and 0.
 : DEF-TUCK ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
    2 BEGIN-RENAME
@@ -1625,11 +1462,8 @@ private
    0 ADD-PICK
    c b p r c b s" tuck" MODEL-SYM BDECLARE-RENAME ;
 
-\ The two memory views ( ptr a -- ptr b ): consume one value and put the SAME
-\ one back. A view changes which pointee the checker sees and nothing about the
-\ machine address, and the engine's own body for both is a bare `ret` - so the
-\ rename that puts its input back unchanged is the whole of what each means, and
-\ it stages no operation at all.
+\ The memory views ( ptr a -- ptr b ) put the same value back: a view changes
+\ only the pointee the checker sees, and stages no operation.
 : DEF-CELL-VIEW ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
    1 BEGIN-RENAME
@@ -1644,10 +1478,9 @@ private
    HOST-VIEW STG-HOST !
    c b p r c b s" byte-view" MODEL-SYM BDECLARE-RENAME ;
 
-\ Six rows over three actions and two widths; the widths are declared because
-\ `2>r` is its own source word. `2>r` keeps the LOWER cell lower on the return
-\ stack, and elaborate.f is where that order is kept.
 \ ---- the return-stack words --------------------------------------------------
+\ `2>r` keeps the lower cell lower on the return stack; elaborate.f keeps that
+\ order.
 : DEF-RSTACK ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena :}
    c b r c b s" >r"  MODEL-SYM HIR-RMOVE:TO-R    1 BDECLARE-RSTACK
@@ -1661,7 +1494,6 @@ private
 
 \ A `create`d data word and a called word are NOT here: which of those a program
 \ has is a fact about the program, declared by its own caller.
-\ Declare the whole straight-line source vocabulary into one word model: the
 : REGISTER-ALL ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
    c b r DEF-ARITH
@@ -1695,21 +1527,16 @@ private
 
 public
 
-\ Declare the whole vocabulary into one table. A definition no longer calls
-\ this: the session registers once per load and every definition reads it.
 : REGISTER-WORDS ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena -- )
    REGISTER-ALL ;
 
 private
 
 \ ---- the session's one table -------------------------------------------------
-\ Whether this module's ordinals ARE the prototype's, which is what makes a body
-\ token's own symbol index the session's vocabulary. It is one structural fact -
-\ IR-BUILD started this module's interner as a copy of the prototype the map
-\ below is keyed against - and IR-BUILD is where it is known, so it is asked
-\ there. Sampling spellings instead answered yes for any module that happened to
-\ hold two of them at two ordinals, and a false yes maps a definition's symbols
-\ onto session rows silently.
+\ Whether this module's ordinals are the prototype's: IR-BUILD started its
+\ interner as a copy of the prototype, so it is asked there. Sampling spellings
+\ answers yes for any module holding two of them at two ordinals and silently
+\ maps a definition's symbols onto session rows.
 : CLONE? ( IR-BUILD:builder -- bool )
    {: b:IR-BUILD:builder :}
    SESS-ON @ 0= if false exit then
@@ -1718,20 +1545,17 @@ private
 
 public
 
-\ The overlay a definition writes its own callable and fixed rows into. It is
-\ keyed by the definition's own module and owner-checked against it exactly as
-\ the one table always was; what is new is only that it may defer to the
-\ session's vocabulary for a spelling it does not hold itself.
+\ The overlay a definition writes its own callable and fixed rows into, keyed by
+\ the definition's module; it defers to the session vocabulary for a spelling it
+\ does not hold.
 : NEW-LINKED ( IR-CTX:ctx IR-BUILD:builder n n -- IR-ARENA:arena IR-ARENA:arena )
    {: c:IR-CTX:ctx b:IR-BUILD:builder rcap:n pcap:n :}
    c b IR-BUILD:MODULE-KEY rcap pcap
    b CLONE? if LINK-CLONE else LINK-NONE then NEW-TABLE ;
 
-\ Register the vocabulary once per load, then teach the PROTOTYPE the spellings
-\ those rows are keyed by, so every definition's clone holds them at the ordinals
-\ this map records. The registering module and the prototype are two modules with
-\ two sets of ordinals, which is exactly why the map is keyed by the prototype's:
-\ that is the ordinal a definition's token will present.
+\ Register the vocabulary once per load, then intern its spellings in the
+\ prototype so every clone holds them at the ordinals the map records; the map
+\ is keyed by the prototype's ordinals because that is what a token presents.
 : SESSION-MODEL ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key IR-BUILD:builder -- )
    {: c:IR-CTX:ctx a:IR-ARENA:arena sr:IR-ARENA:arena
       k:IR-ID:ir-module-key b:IR-BUILD:builder :}

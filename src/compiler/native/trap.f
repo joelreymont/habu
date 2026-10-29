@@ -1,12 +1,8 @@
 \ trap.f - the one routine a compiled trap branches to, and the message it ends
-\ the process with. One concern: turning the name a trap site is about - a
-\ family whose tag matched no arm, or a callee that came back - into that
-\ message and its exit code.
-\
-\ A trap site carries its message's address, length and exit code. While the
-\ site compiles, elaborate.f TRAP-ARGS copies the bytes into the store source
-\ strings use, so each message is built for its site and nothing here outlives
-\ it or bounds the count or length of the names a program traps on.
+\ the process with: a family whose tag matched no arm, or a callee that came
+\ back. A trap site carries its message's address, length and exit code;
+\ elaborate.f TRAP-ARGS copies the bytes into the source-string store while the
+\ site compiles, so nothing here bounds the count or length of trapped names.
 
 require src/lib/prelude.f
 require src/lib/errors.f

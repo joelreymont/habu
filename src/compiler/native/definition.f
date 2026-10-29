@@ -478,7 +478,6 @@ public
       RETRACT rc throw
    then ;
 
-\ The unit's state when its body reaches the compiler.
 : STAGE-UNIT ( ptr u8 n bool -- )
    {: sa su:n required:bool :}
    required M-REQUIRED !

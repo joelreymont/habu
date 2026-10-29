@@ -1,13 +1,8 @@
-\ dict.f - what the running engine's dictionary says a spelling denotes. One
-\ concern: turning a name a program wrote into the fact the chain needs about it.
-\
-\ Which record a spelling binds is the engine's own answer, the `scope-find`
-\ primitive (habu2.f LSCOPEREC): the JIT's lookup, asked with this tier's token.
-\ This file only decides what the chain may do with that record.
-\
-\ No record slot holds what a `create`d or `constant` word pushes and decoding
-\ its body is forbidden, so the only honest answer is to ENTER the word - and
-\ only a record whose flags still carry its definer's stamp is ever entered.
+\ dict.f - what the running engine's dictionary says a spelling denotes, and
+\ what the chain may do with that record. The binding is the engine's own
+\ `scope-find` (habu2.f LSCOPEREC). A `create`d or `constant` word's value is in
+\ no record slot and its body may not be decoded, so the word is entered, and
+\ only while its flags still carry its definer's stamp.
 
 require src/lib/prelude.f
 require src/lib/errors.f
@@ -53,9 +48,9 @@ private
 
 public
 
-\ The bound record whatever its flags, or none: what the JIT's call site binds
-\ the spelling to. Two used publics that both export the tail, with nothing
-\ earlier binding it, are the ambiguity the engine refuses.
+\ The bound record whatever its flags, or none. Two used publics that both
+\ export the tail, with nothing earlier binding it, are the ambiguity the engine
+\ refuses.
 : SCOPE-REC ( ptr u8 n -- ptr n )
    scope-find {: rec:ptr used:ptr used2:ptr flags:n :}
    rec XREF-FOUND? 0= flags SCOPE-FIND-AMBIGUOUS and 0<> and if E-USING-AMBIGUOUS throw then
@@ -136,9 +131,7 @@ private
    kind DKIND:ADDR = if FIXED-ADDR exit then
    FIXED-NONE ;
 
-\ Which definer stamped a record a spelling can still name. The spelling-level
-\ SPELL-FIXED is this reader plus the walk that finds the record, so a caller
-\ already holding one asks here.
+\ A caller already holding the record asks here instead of SPELL-FIXED.
 : REC-FIXED ( ptr n -- n )
    {: rec:ptr :}
    rec XREF-FOUND? 0= if FIXED-NONE exit then
@@ -177,10 +170,8 @@ public
    rec FIXED-ENTRY drop
    rec XREF-START READ-FIXED ;
 
-\ The checker calls this once at the completed generated-word publication.
-\ It retains the exact record's fixed result; later dependency checks only
-\ read that stored fact and never enter the word again. This publication read
-\ is bookkeeping, not another source construction call through a host body.
+\ Called once by the checker at generated-word publication; later dependency
+\ checks read the stored fact and never enter the word again.
 : RETAIN-FIXED ( ptr n -- n n bool ) {: rec:ptr :}
    rec REC-FIXED {: kind:n :}
    kind FIXED-NONE = if 0 0 true exit then
@@ -233,11 +224,8 @@ private
 : GLUE-WHOLE ( n -- n )
    GLUE-RUN-MASK  1 invert and ;
 
-\ WHICH ROW a glue question is about. Four rows carry per-cell value boundaries
-\ - a definition's two and a `does>` clause's two - and each is read by its own
-\ owner operation, so a caller names the row and this file asks the operation.
-\ A does> clause's rows are rows like any other: same terms, same cells, same
-\ slots, and therefore the same walk below rather than a second rule for them.
+\ Four rows carry per-cell value boundaries, a definition's two and a `does>`
+\ clause's two; each is read by its own owner operation and walked by one rule.
 0 constant RS-DIN
 1 constant RS-DOUT
 2 constant RS-DOES-IN
@@ -317,15 +305,11 @@ private
 
 public
 
-\ Whether a compiled call may bind an internal record (DNAME-INT) with flag
-\ cell f. An owned one (DNAME-OWNED, src/habu/layout.f) it may: whether a body
-\ may call that one is the checker's decision through its owner's rows, as tier
-\ 0's C-COMPILE-CALL-GUARD leaves it (src/habu/habu2.f). Any other only while
-\ the existing TRUSTED: compilation cell is armed: checked bodies cannot branch
-\ to other internal engine code even if a trusted-only primitive row supplies
-\ its real arity. Both tier-1 call paths ask it: CALL-BINDING of the record its
-\ lookup binds, src/compiler/native/hir-word.f RESOLVE-SITE of the record the
-\ checker's binder bound a checked site to.
+\ Whether a compiled call may bind an internal record (DNAME-INT) with flag cell
+\ f: an owned one (DNAME-OWNED) always, since the checker decides that call as
+\ tier 0's C-COMPILE-CALL-GUARD does (src/habu/habu2.f); any other only while
+\ the TRUSTED: compilation cell is armed. Asked by CALL-BINDING and by
+\ src/compiler/native/hir-word.f RESOLVE-SITE.
 : INT-CALL? ( n -- bool )
    DNAME-OWNED and 0<> if true exit then
    data-base TRUSTED-CELL + @ 0<> ;
@@ -350,13 +334,10 @@ public
 : TICK-TARGET ( ptr u8 n -- n )
    SPELL-REC false REC-CODE drop ;
 
-\ Where a compiled branch may reach a sealed engine helper, or zero. A helper
-\ (src/habu/primitive-registry.f HELPER-REGISTER) sits in OWNER-API-PRI-WID,
-\ which no spelling search above enters, so it is looked up in that wordlist
-\ alone and by its exact name. Only an entry inside the engine's text answers
-\ (TERMINAL-CALL:IN-ENGINE-TEXT?): that wordlist is the engine's registration
-\ marker, and a record there that points anywhere else is not the engine's
-\ helper.
+\ A helper (src/habu/primitive-registry.f HELPER-REGISTER) sits in
+\ OWNER-API-PRI-WID, which no spelling search enters, so it is looked up there
+\ by exact name. Only an entry inside the engine's text answers
+\ (TERMINAL-CALL:IN-ENGINE-TEXT?).
 : HELPER-TARGET ( ptr u8 n -- n )
    OWNER-API-PRI-WID WL-RECORD {: rec:ptr :}
    rec XREF-FOUND? 0= if 0 exit then
@@ -382,44 +363,20 @@ public
    dn dc RS-DIN ROW-GLUE
    on oc RS-DOUT ROW-GLUE ;
 
-\ The same two answers for the `does>` clause the compiler has just had checked.
-\ The clause is not a name the effect store can be queried for - it has no name
-\ until the created word exists - so its rows come from the owner's does> group
-\ instead, and nothing else about the question changes. GLUE-UNKNOWN is the
-\ honest answer for a row whose cells the checker could not separate, and the
-\ elaborator refuses it at the definer rather than placing a guess.
+\ The clause has no name until the created word exists, so its rows come from
+\ the owner's does> group. The elaborator refuses GLUE-UNKNOWN at the definer.
 : DOES-GLUE ( -- n n )
    CHECKER-OWNER:DOES-IN-N CHECKER-OWNER:DOES-IN RS-DOES-IN ROW-GLUE
    CHECKER-OWNER:DOES-OUT-N CHECKER-OWNER:DOES-OUT RS-DOES-OUT ROW-GLUE ;
 
 \ ---- the callable facts a call site needs, from ONE resolution ---------------
-\ EVERY READER ABOVE STARTS WITH THE SAME EFFECT-QUERY, and that query is not a
-\ field read: it resolves the spelling to a checker symbol - a hash lookup plus,
-\ inside an open package, up to two `search-wl` probes the checker's own tables
-\ missed - and latches that symbol's rows. A caller deciding whether a name is
-\ a call it can build wants the arity and the result glue together, and asking
-\ for them one at a time resolved one name twice and latched one set of rows
-\ twice.
-\
-\ So this asks once and reads the latch both ways. ARITY-NONE in the first
-\ answer is the same refusal SPELL-ARITY gives, so a caller tests that one value
-\ and the rest of the row is meaningless when it fires - which is what the
-\ separate readers already meant by answering ARITY-NONE and GLUE-NONE.
-\
-\ THERE IS NO RETURN-STACK ANSWER: no declaration may move a return-stack cell
-\ (docs/forth.md "The return-stack clause"), so every call leaves the
-\ caller's return stack as it found it.
-\
-\ IT ANSWERS THE RESULT GLUE ONLY. SPELL-GLUE's first answer is the ARGUMENT
-\ row's glue, and a call site's concern is what the callee LEAVES; the two
-\ consumers of that word that stand at a call site both drop the argument half.
-\ The one consumer that wants both (a definition's own frame) keeps SPELL-GLUE.
-\
-\ DEADNESS IS DELIBERATELY NOT HERE. CTL-DEAD? reads the control-flag table and
-\ not the effect record this latches, so it is a second query no matter where it
-\ is asked from; folding it in would hide that behind a word that looks like one
-\ lookup. What the two share is the name-to-symbol half, and sharing THAT is a
-\ checker-side question, not one this file can answer.
+\ One effect query, read both ways: the query resolves the spelling to a checker
+\ symbol and latches its rows, so separate readers would resolve one name twice.
+\ ARITY-NONE in the first answer refuses as SPELL-ARITY does and voids the rest.
+\ No return-stack answer: no declaration moves a return-stack cell
+\ (docs/forth.md "The return-stack clause"). Result glue only; a definition's
+\ own frame uses SPELL-GLUE. Deadness stays apart: CTL-DEAD? reads the
+\ control-flag table, a second query wherever it is asked.
 : SPELL-CALL ( ptr u8 n -- n n n )  \ din cells, dout cells, result glue
    CHECKER-OWNER:QUERY 0= if ARITY-NONE ARITY-NONE GLUE-NONE exit then
    CHECKER-OWNER:DIN-CELLS {: din:n :}

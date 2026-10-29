@@ -1,50 +1,9 @@
-\ regfile.f - what one machine's register files ARE, as a single checked
-\ declaration the backend supplies and the register allocator reads.
-\
-\ WHY IT EXISTS. src/compiler/native/regalloc.f used to read the ARM64 numbers
-\ directly: how many registers a file holds came from the five-bit register
-\ operand of src/compiler/native-effect.f, and a spill slot's width from the A64IR
-\ dialect. Neither is a fact about linear scan. A machine with sixteen registers
-\ could not be allocated for at all - not badly, but not at all, because the
-\ file size was a load-time constant and there was no seam to say otherwise.
-\ This file is that seam: the allocator asks a description the backend built,
-\ so a second architecture supplies numbers rather than forking the pass.
-\
-\ WHAT A DESCRIPTION SAYS, AND WHAT IT DELIBERATELY DOES NOT. It answers the
-\ questions the allocator asks OF THE MACHINE: how many registers each of the
-\ two files numbers, which of them belong to the virtual machine and can never
-\ be handed out, which of the remainder a call destroys, and how wide the frame
-\ slot a spilled value goes into is. It says nothing about which registers one
-\ ROUTINE may write - that is the routine's own contract, it differs per routine,
-\ and it arrives at the allocator as a pool alongside the module. The two meet at
-\ one rule the allocator checks: a routine's pool is a subset of what this
-\ description says is allocatable at all.
-\
-\ WHY RESERVED IS STORED AND ALLOCATABLE IS DERIVED. A description holding both
-\ could say a register is reserved and allocatable at once, and two readers of
-\ one description would then disagree about the same register. So the VM's claim
-\ is the declaration - a backend author knows which registers the engine took -
-\ and what is left over is computed. src/compiler/native-effect.f derives its
-\ GPR-MASK from its RESERVED-MASK for exactly this reason, and this file states
-\ the same rule for any machine. The caller/callee pair is split the same way:
-\ what a call DESTROYS is stored, and what therefore survives one is derived, so
-\ a register cannot be declared both saved and destroyed.
-\
-\ HOW BIG A FILE CAN BE. A register set is a bit mask in one cell - bit i names
-\ register i - and the sign bit names no register, because a set is a count of
-\ members and never a negative number. So a file holds at most one cell's bits
-\ less that one, which is what REG-MAX reports and what the constructor holds
-\ every declared size to. This is a fact about the set's representation here and
-\ not about any machine: the machines the chain targets number 16 and 32.
-\
-\ THERE IS NO SCRATCH-REGISTER FIELD, deliberately. A register allocator that
-\ reserved one would be a different allocator: this one spills through the
-\ register the value already holds, and refuses a frame it cannot address
-\ (E-A64RA-PRESSURE) rather than materialising an offset that would need a
-\ register to build. src/compiler/native/abi.f's NABI:SCRATCH is a different
-\ question with the same word in it - every register a routine of the Habu
-\ calling convention may hold state in, which is this description's ALLOCATABLE
-\ set - and it belongs to the convention, not to the machine.
+\ regfile.f - one machine's register files as the register allocator asks of
+\ them: each file's size, the registers the virtual machine reserved, those a
+\ call destroys, and the spill-slot width. Reserved and destroyed are stored;
+\ allocatable and callee-saved are derived, so no register is declared both.
+\ What one routine may write is its contract's pool, which must be a subset of
+\ the allocatable set. src/compiler/native/machine.f holds this in a machine.
 
 require src/lib/prelude.f
 require src/lib/errors.f
@@ -124,6 +83,9 @@ CELL 8 * 1- constant REG-MAX-N       \ one cell's bits, less the sign bit
 public
 
 \ ---- the bound a description is held to --------------------------------------
+\ A set is a bit mask in one cell and the sign bit names no register, so a file
+\ holds at most REG-MAX-N registers; the machines the chain targets number 16
+\ and 32.
 : REG-MAX ( -- n )                  REG-MAX-N ;
 
 \ ---- building a set ----------------------------------------------------------
@@ -140,19 +102,19 @@ public
    set R-BITS more R-BITS or MK-R ;
 
 \ ---- the derivation, for a reader holding the numbers and not the record -----
-\ A description is seven cells and a value of more than one cell cannot be bound
-\ to a local, so a consumer that wants several of its fields at once takes it
-\ apart first and then has no record left to ask. This is the same derivation
-\ GPR-ALLOCATABLE and FPR-ALLOCATABLE below are, in the form that reader can
-\ use, so there is one rule for what a file leaves over and not two.
+\ A consumer holding the fields and not the record (a seven-cell value cannot be
+\ bound to a local) derives with this; GPR-ALLOCATABLE and FPR-ALLOCATABLE apply
+\ the same rule.
 : ALLOCATABLE-MASK ( n NREGFILE:regs -- n )
    {: size:n res:NREGFILE:regs :}
    size 1 < size REG-MAX-N > or if E-NREGFILE throw then
    size FILE-MASK  res R-BITS invert and ;
 
 \ ---- the description ---------------------------------------------------------
-\ The only constructor: every reader below takes a value that passed through it,
-\ so no reader revalidates and none can be handed a description that is not one.
+\ The only constructor; every reader takes a value that passed through it. There
+\ is no scratch-register field: the allocator spills through the register the
+\ value holds and refuses a frame it cannot address (E-A64RA-PRESSURE).
+\ NABI:SCRATCH in abi.f is the convention's allocatable set, not a machine fact.
 : FILE ( n NREGFILE:regs NREGFILE:regs n NREGFILE:regs NREGFILE:regs n -- NREGFILE:file )
    {: gn:n gr:NREGFILE:regs gc:NREGFILE:regs
       fn:n fr:NREGFILE:regs fc:NREGFILE:regs w:n :}

@@ -22,20 +22,15 @@ public
 
 \ A definition's host reason names what in its body the published facts
 \ (contract, call sites, address sites) do not account for. SAFE: nothing.
-\ MEMORY: memory operations and address-forming words (operand addresses,
-\ views, string literals), admitted by provenance. FIXED: a fixed record
-\ mention: a constant value compiled as an immediate, or a data address the
-\ address sites carry. INDIRECT: a run of an xt or text operand, which a
-\ file's closure walk and source observer account for. CAST, UNCHECKED and
-\ FOREIGN: an effect the facts cannot name. UNKNOWN: an op or literal the
-\ classification does not model, or no facts at all. REBIND: a compiled `is`,
-\ which rebinds a defer rather than running a typed xt. SAFE, MEMORY, INDIRECT,
-\ FIXED and REBIND are admitted (tools/native-file-reference.f
-\ REASON-ADMITTED?), and
-\ UNCHECKED when the definition has a checker contract
-\ (tools/native-unit-dependency.f MEMBER-ADMITTED?).
-\ Objects publish these values in section 15: append, never
-\ renumber.
+\ MEMORY: memory operations and address-forming words, admitted by provenance.
+\ FIXED: a constant compiled as an immediate, or a data address the address
+\ sites carry. INDIRECT: a run of an xt or text operand, which a file's closure
+\ walk and source observer account for. CAST, UNCHECKED and FOREIGN: an effect
+\ the facts cannot name. UNKNOWN: an unmodeled op or literal, or no facts.
+\ REBIND: a compiled `is`. SAFE, MEMORY, INDIRECT, FIXED and REBIND are admitted
+\ (tools/native-file-reference.f REASON-ADMITTED?), UNCHECKED when the definition
+\ has a checker contract (tools/native-unit-dependency.f MEMBER-ADMITTED?).
+\ Objects publish these values in section 15: append, never renumber.
 0 constant SAFE
 1 constant CAST
 2 constant MEMORY
@@ -404,8 +399,7 @@ public
 : SOURCE-CONTRACT-DONE ( -- )
    1 SOURCE-FUNS @ 1- SOURCE-TYPE-READY ! ;
 
-\ The declaration's source facts are complete before emission.
-\ TAKE reads this copy after emission.
+\ The source facts are complete before emission; TAKE reads this copy after it.
 : SOURCE-FREEZE ( -- )
    SOURCE-FUNS @ {: funs:n :}
    SOURCE-TYPE-N @ {: types:n :}
@@ -566,8 +560,8 @@ public
    rec 0= if entry exit then
    rec RUN-REC ;
 
-\ observer sees every word the source runs, through the engine's selection
-\ cell, until UNOBSERVE-RUNS puts back the callback the cell held.
+\ Until UNOBSERVE-RUNS puts back the callback the engine's selection cell held,
+\ the observer sees every word the source runs.
 : OBSERVE-RUNS ( [ ptr n -- ] -- )
    is RUN-OBSERVE
    data-base NATIVE-HOST-CELLS:SELECT + @ PRIOR-SELECT !

@@ -1,76 +1,7 @@
 \ type.f - the compiler type table: canonical, structurally interned type
-\ records shared by every dialect.
-\
-\ One table serves one
-\ module as two coupled stores, both IR-ARENA arenas owned by the compilation
-\ context: a list pool holding function-type parameter/result lists and a row
-\ table holding one fixed-shape record per distinct type. Type identities are
-\ the existing IR-ID ir-type-id family packed under the module key; this file
-\ mints no parallel identity family and no raw converter.
-\
-\ CLOSED WORLD. The constructor vocabulary is exhaustive ENUM families - kind,
-\ width, sign, fmt, space, domain - so an unknown constructor tag is
-\ structurally impossible in checked code: there is no raw-integer path into a
-\ row. Rows persist the closed families as stable wire codes; every decoder is
-\ an exact case whose unmatched code throws E-IR-TYPE-STATE, so a
-\ bypass-forged row rejects at first touch instead of decoding as some other
-\ type. The kinds are:
-\ integer(width, sign), float(fmt), pointer(space, pointee),
-\ quotation(params, results), code-ref(params, results),
-\ memory-token(domain), mask, opaque.
-\
-\ STORE SHAPES. Each arena carries a three-cell header (format tag, owning
-\ module serial, committed capacity). The row table stores one four-cell row
-\ per type: kind code and three kind-specific field cells. The list pool's
-\ data cells each hold one module-local type ordinal; a function type's row
-\ points at its (params ++ results) window in that pool. Every access
-\ rechecks shape, span, and stored references fail-closed (E-IR-TYPE-STATE),
-\ so a holder who bypasses this package and appends raw cells cannot make a
-\ reader touch cells outside the live ranges or follow a reference upward.
-\
-\ INTERNING IS STRUCTURAL FIELD EQUALITY. Every constructor scans for an
-\ existing row whose complete canonical field set equals the candidate and
-\ answers that identity; only a miss appends. Pointer identity plays no part.
-\ Because references are stored as module-local ordinals and every referenced
-\ type was itself interned, id equality IS structural equality by induction
-\ over ordinals: two rows of one table are structurally equal exactly when
-\ they are the same row. That is what lets the scan compare stored ordinals
-\ cell by cell instead of re-walking the referenced structure.
-\
-\ REFERENCES ARE ACYCLIC BY CONSTRUCTION. A pointee or list element must be
-\ an already constructed type of this same table (owner check, then ordinal
-\ strictly below the live count), so a referenced ordinal is strictly below
-\ its referer's. A forward reference and any cycle would need a member at or
-\ past the count and dies with E-IR-TYPE-BOUND before anything is written.
-\ Readers and the renderer re-verify the strict decrease on every stored
-\ reference (E-IR-TYPE-STATE on a corrupted row), so recursive walks
-\ terminate on any table state.
-\
-\ TARGET LEGALITY. Construction consumes the owning context's validated
-\ binding (IR-CTX:BINDING@ -> CBIND:TARGET@) - never a rederived legality
-\ table. A float format outside the contract's feature set and an address
-\ space outside the contract's architecture reject with E-IR-TYPE-TARGET, so
-\ a table never holds a type its target cannot represent. Integer widths are
-\ target-neutral (both targets compute with 1..64-bit integers regardless of
-\ pointer width); the one structural scalar reject is a signed 1-bit integer,
-\ which no dialect defines (E-IR-TYPE-SCALAR).
-\
-\ FUNCTION-TYPE LISTS. Habu words cannot pass variable-length id lists on the
-\ stack, so function types are built through an explicit staged protocol:
-\ FN-BEGIN opens the stage, FN-PARAM/FN-RESULT append type-ids in order, and
-\ QUOT or CODE-REF validates the staged lists against the closing table and
-\ interns. The stage is one package-owned area under the single-task
-\ compilation discipline (like the IR-CTX staging window); begin-while-open
-\ and end-without-begin reject (E-IR-TYPE-STAGE), a list past ARITY-MAX
-\ rejects (E-IR-TYPE-ARITY), and a rejected end consumes the stage, so no
-\ half-staged list leaks into the next build.
-\
-\ RENDER IS DIAGNOSTIC TEXT. RENDER writes a deterministic spelling into a
-\ caller span - "i32"/"u8", "f16".."f64", "ptr<space,pointee>",
-\ "[ p... -- r... ]" for quotations, "( p... -- r... )" for code references,
-\ "token<domain>", "mask", "opaque". It depends only on the structural
-\ content, never on interning history or ordinals, and is never parsed by the
-\ compiler.
+\ records shared by every dialect. Two IR-ARENA stores per module: a list pool of
+\ function-type (params ++ results) ordinals and a row table of four-cell rows
+\ (kind code and three fields).
 
 require src/lib/prelude.f
 require src/lib/errors.f
@@ -83,8 +14,7 @@ require src/compiler/ir/arena.f
 package IR-TYPE
 public
 
-\ The exhaustive constructor vocabulary. Closed ENUM families make an unknown
-\ tag unrepresentable in checked code; the wire codes below persist them.
+\ The wire codes below persist these.
 ENUM kind DERIVE eq
    int
    float
@@ -136,9 +66,7 @@ ENUM domain DERIVE eq
 
 private
 
-\ The one raw crossing this package needs: one-way projections of the sealed
-\ IR-ID identities onto their serials, for header binding and owner
-\ comparison. Nothing in this package re-mints a raw cell into a nominal.
+\ One-way projections of IR-ID identities onto serials; nothing here re-mints.
 CAST: KEY-SERIAL ( IR-ID:ir-module-key -- n )
 CAST: MID-SERIAL ( IR-ID:ir-module-id -- n )
 
@@ -161,8 +89,8 @@ private
 64 constant ARITY-MAX                \ native signatures carry at most 64 cells
 
 \ ---- stable wire codes -------------------------------------------------------
-\ One injective code per family, mirroring CTARGET: a code may be added but
-\ never renumbered without a schema bump.
+\ One injective code per family: a code may be added but never renumbered
+\ without a schema bump.
 0 constant K-INT
 1 constant K-FLT
 2 constant K-PTR
@@ -228,8 +156,7 @@ private
    ;MATCH ;
 
 \ ---- wire-code decoders ------------------------------------------------------
-\ A stored code outside the vocabulary is a corrupted or forged row; every
-\ decoder rejects it named, so malformed records cannot read as types.
+\ A stored code outside the vocabulary is a forged row and is refused.
 : N>KIND ( n -- IR-TYPE:kind )
    case
       K-INT  of IR--TYPE-KIND:INT endof
@@ -292,12 +219,12 @@ private
    endcase ;
 
 \ ---- target legality ---------------------------------------------------------
-\ The legality authority is the context's validated binding; nothing here
-\ re-derives a target table.
+\ Legality comes from the context's binding (IR-CTX:BINDING@): a float format or
+\ address space the target lacks is E-IR-TYPE-TARGET. Integer widths are
+\ target-neutral.
 : CTX-TARGET ( IR-CTX:ctx -- CTARGET:contract )
    IR-CTX:BINDING@ CBIND:TARGET@ ;
 
-\ The feature a float format needs from the target contract.
 : FMT-FEATURE ( IR-TYPE:fmt -- CTARGET:features )
    MATCH fmt
       half   OF CTARGET:F-FP16 ENDOF
@@ -332,12 +259,8 @@ private
    then ;
 
 \ ---- cell access -------------------------------------------------------------
-\ Every read below goes through an IR-ARENA reader: the registry is resolved
-\ ONCE, at the public word, and the helpers take the resolved reader. The
-\ live/frozen twins that used to run down this file collapse into one set,
-\ because a reader carries the state it was opened against and refuses the
-\ other with the error the handle would have given - the only thing the two
-\ entry points still differ in is OPEN-LIVE against OPEN.
+\ The stores are resolved once at the public word into readers, which refuse
+\ the wrong live/frozen state themselves.
 
 \ ---- headers and shape -------------------------------------------------------
 : PSHAPE-CK ( n -- )
@@ -376,9 +299,7 @@ private
 : SERIAL-CK ( n n -- )
    <> if E-IR-TYPE-OWNER throw then ;
 
-\ The pair coupling: both stores are what their tags claim and both carry the
-\ same owning module serial, so a cross-module pairing rejects before any row
-\ window is trusted against the wrong pool.
+\ A cross-module pairing rejects before a row window is trusted against the pool.
 : PAIR-CK ( IR-ARENA:reader IR-ARENA:reader -- )
    {: pr:IR-ARENA:reader rr:IR-ARENA:reader :}
    pr PHDR-CK
@@ -398,8 +319,6 @@ private
 : ID-OWNER-SERIAL ( IR-ID:ir-type-id -- n )
    IR-ID:TYPE-OWNER MID-SERIAL ;
 
-\ Validate a presented type-id against a resolved (header serial, count):
-\ minted under this table's module, ordinal below the constructed count.
 : ID-CK-N ( n n IR-ID:ir-type-id -- n )
    {: hs:n cnt:n id:IR-ID:ir-type-id :}
    hs id ID-OWNER-SERIAL SERIAL-CK
@@ -421,15 +340,12 @@ private
 : PC@ ( IR-ARENA:reader n -- n )
    HDR-CELLS + IR-ARENA:RD@ ;
 
-\ A stored reference re-verified at the point of use: inside the table and
-\ strictly below its referer, so recursive walks terminate on any state.
 : REF-OK ( n n -- n )
    {: l:n raw:n :}
    raw 0 < raw l >= or if E-IR-TYPE-STATE throw then
    raw ;
 
-\ A function row's pool window revalidated against the pool's live cells on
-\ every access, so a forged or bypass-appended row rejects fail-closed.
+\ Revalidated on every access, so a forged row cannot read past the pool.
 : SPAN-CK-N ( n n n n -- )
    {: pc:n st:n pn:n rn:n :}
    st 0 < pn 0 < or rn 0 < or if E-IR-TYPE-STATE throw then
@@ -449,6 +365,10 @@ private
    FNKIND? 0= if E-IR-TYPE-KIND throw then ;
 
 \ ---- interning scan ----------------------------------------------------------
+\ Every constructor interns by field equality. A referenced type must already
+\ exist in this table, so references point strictly downward (E-IR-TYPE-BOUND);
+\ by induction over ordinals, id equality is structural equality, so the scan
+\ compares stored ordinals without re-walking.
 : ROW4-MATCH? ( IR-ARENA:reader n n n n n -- bool )
    {: rr:IR-ARENA:reader l:n k:n x:n y:n z:n :}
    rr l OFF-KIND RC@ k <> if false exit then
@@ -463,15 +383,9 @@ private
       rr i k x y z ROW4-MATCH? if drop i leave then
    loop ;
 
-\ The one fixed-field intern path: answer the structurally equal row's
-\ identity or append the four validated cells whole. Capacity is checked and
-\ the row's storage reserved before the first write, so a full table stays
-\ usable, duplicate construction still answers, and no allocation is left to
-\ fail between the four cells.
-\ The two readers are opened by the caller and outlive the appends: a RESERVE
-\ or a PUSH changes neither the registry generation nor the state, and a reader
-\ re-reads the row's pointer and count on every call, so it follows the
-\ reservation's new span.
+\ Capacity is checked and the row reserved before the first write, so a full
+\ table stays usable and duplicates still answer. The caller's readers survive
+\ RESERVE and PUSH: they re-read the row's pointer and count on every call.
 : INTERN4 ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:reader IR-ARENA:reader IR-ID:ir-module-key n n n n -- IR-ID:ir-type-id )
    {: c:IR-CTX:ctx r:IR-ARENA:arena pr:IR-ARENA:reader rr:IR-ARENA:reader key:IR-ID:ir-module-key k:n x:n y:n z:n :}
    pr rr key KEY-CK
@@ -522,9 +436,7 @@ ARITY-MAX CWORK-SPAN STG-RL n
 : STG-OPEN-CK ( -- )
    STG-OPEN @ 0= if E-IR-TYPE-STAGE throw then ;
 
-\ Validate one staged (owner serial, local ordinal) pair against the closing
-\ table: owned here, strictly below the live count - the same no-forward-
-\ reference rule as the pointer constructor.
+\ The same no-forward-reference rule as POINTER.
 : STG-REF-CK ( n n n n -- )
    {: hs:n cnt:n os:n loc:n :}
    os hs <> if E-IR-TYPE-OWNER throw then
@@ -539,7 +451,6 @@ ARITY-MAX CWORK-SPAN STG-RL n
       hs cnt i RO@ i RL@ STG-REF-CK
    loop ;
 
-\ The staged combined list: params first, then results.
 : STG-AT ( n -- n )
    {: i:n :}
    i STG-PN @ < if i PL@ else i STG-PN @ - RL@ then ;
@@ -562,12 +473,9 @@ ARITY-MAX CWORK-SPAN STG-RL n
       pr rr i kc ROWFN-MATCH? if drop i leave then
    loop ;
 
-\ Close the stage and intern the staged function type. The stage is consumed
-\ first, so a rejected end never leaks a half-staged list; all validation, both
-\ room checks and both arena reservations run before the first cell is written,
-\ so an intern appends its pool window and its row whole or mutates nothing.
-\ The readers open after the stage is consumed, so a dead table still leaves
-\ nothing staged for the next build to close.
+\ The stage is consumed first, before the readers open, so neither a rejected
+\ end nor a dead table leaves a half-staged list; all checks and reservations
+\ precede the first write.
 : FN-END ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key n -- IR-ID:ir-type-id )
    {: c:IR-CTX:ctx a:IR-ARENA:arena r:IR-ARENA:arena key:IR-ID:ir-module-key kc:n :}
    STG-OPEN-CK
@@ -604,10 +512,7 @@ ARITY-MAX CWORK-SPAN STG-RL n
 public
 
 \ ---- creation ----------------------------------------------------------------
-\ Create a module's type table: the list pool committed to exactly lcap
-\ list cells and the row table committed to exactly tcap types, both headers
-\ bound to key's module serial. The two handles plus the key are the table;
-\ all three stay with the module owner, and the table dies with the owning
+\ Both headers are bound to key's module serial; the table dies with the owning
 \ context.
 : NEW ( IR-CTX:ctx IR-ID:ir-module-key n n -- IR-ARENA:arena IR-ARENA:arena )
    {: c:IR-CTX:ctx key:IR-ID:ir-module-key tcap:n lcap:n :}
@@ -626,9 +531,7 @@ public
    a r ;
 
 \ ---- constructors ------------------------------------------------------------
-\ Every constructor interns: the same fields twice answer one identity. The
-\ ctx is the allocation and target-legality authority; a hit allocates
-\ nothing.
+\ A hit allocates nothing. A signed 1-bit integer is E-IR-TYPE-SCALAR.
 : INT ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key IR-TYPE:width IR-TYPE:sign -- IR-ID:ir-type-id )
    {: c:IR-CTX:ctx a:IR-ARENA:arena r:IR-ARENA:arena key:IR-ID:ir-module-key w:width s:sign :}
    w WIDTH-CODE {: wc:n :}
@@ -643,8 +546,6 @@ public
    a IR-ARENA:OPEN-LIVE r IR-ARENA:OPEN-LIVE {: pr:IR-ARENA:reader rr:IR-ARENA:reader :}
    c r pr rr key K-FLT f FMT-CODE 0 0 INTERN4 ;
 
-\ The pointee must already be a constructed type of this same table, so its
-\ ordinal is strictly below the pointer's: no forward references, no cycles.
 : POINTER ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key IR-TYPE:space IR-ID:ir-type-id -- IR-ID:ir-type-id )
    {: c:IR-CTX:ctx a:IR-ARENA:arena r:IR-ARENA:arena key:IR-ID:ir-module-key s:space ptee:IR-ID:ir-type-id :}
    c s SPACE-CK
@@ -698,6 +599,8 @@ public
    K-CREF FN-END ;
 
 \ ---- live readers ------------------------------------------------------------
+\ Readers recheck the strict decrease, so recursive walks terminate on any table
+\ state.
 : TYPES ( IR-ARENA:arena -- n )
    IR-ARENA:OPEN-LIVE dup RHDR-CK CNT ;
 
@@ -714,8 +617,6 @@ private
 
 public
 
-\ EVERY FIELD OF ONE ROW OFF ONE RESOLUTION. This is the shape the reader
-\ exists for: the row is validated once and its cells are then plain loads.
 : INT@ ( IR-ARENA:arena IR-ID:ir-type-id -- IR-TYPE:width IR-TYPE:sign )
    {: r:IR-ARENA:arena id:IR-ID:ir-type-id :}
    r IR-ARENA:OPEN-LIVE {: rr:IR-ARENA:reader :}
@@ -775,10 +676,10 @@ public
    key l pr st pn + i + PC@ REF-OK IR-ID:PACK-TYPE ;
 
 \ ---- render ------------------------------------------------------------------
+\ The spelling is diagnostic text, independent of ordinals, never parsed.
 private
 
-\ Byte emitters over the caller span: cur rides on top so emission chains
-\ read left to right without juggling.
+\ cur rides on top so emission chains read left to right.
 : EMIT-B ( n ptr u8 n n -- n )
    {: cur:n q cap:n b:n :}
    cur cap >= if E-IR-TYPE-RANGE throw then
@@ -793,8 +694,6 @@ private
    loop
    cur u + ;
 
-\ Diagnostic spellings for the closed vocabularies. A stored code outside
-\ them is a corrupted row, exactly as in the decoders.
 : SIGN-STR ( n -- ptr u8 n )
    case
       0 of s" u" endof
@@ -860,11 +759,7 @@ private
 : CLOSE-B ( n -- n )
    K-QUOT = if $5D else $29 then ;
 
-\ Render one row by local ordinal. The pointer and function arms recurse on
-\ stored references; RECURSE binds the containing word, so those arms stay
-\ inline here while every non-recursive step is a named helper. Each stored
-\ reference passes REF-OK's strict decrease, so recursion depth is bounded
-\ by the ordinal itself on any table state.
+\ RECURSE binds the containing word, so the recursive arms stay inline here.
 : R-EMIT ( IR-ARENA:reader IR-ARENA:reader ptr u8 n n n -- n )
    {: pr:IR-ARENA:reader rr:IR-ARENA:reader q cap:n cur:n l:n :}
    rr l OFF-KIND RC@ {: k:n :}
@@ -902,10 +797,7 @@ private
 
 public
 
-\ Render a type's deterministic diagnostic spelling into the caller's span
-\ and answer the byte length; a span too small rejects named before the
-\ overflowing write. The text depends only on structural content, never on
-\ interning history.
+\ A span too small rejects before the overflowing write.
 : RENDER ( IR-ARENA:arena IR-ARENA:arena IR-ID:ir-type-id ptr u8 n -- n )
    {: a:IR-ARENA:arena r:IR-ARENA:arena id:IR-ID:ir-type-id q cap:n :}
    a IR-ARENA:OPEN-LIVE r IR-ARENA:OPEN-LIVE {: pr:IR-ARENA:reader rr:IR-ARENA:reader :}
@@ -914,10 +806,6 @@ public
    pr rr q cap 0 l R-EMIT ;
 
 \ ---- frozen readers ----------------------------------------------------------
-\ A frozen module reads its types through the two arena views; the retired
-\ builder handles reject every touch with E-IR-ARENA-FROZEN. They reach the
-\ same helpers as the live readers, opening with OPEN instead of OPEN-LIVE,
-\ which is now the whole difference between the two sections.
 : FTYPES ( IR-ARENA:view -- n )
    IR-ARENA:OPEN dup RHDR-CK CNT ;
 

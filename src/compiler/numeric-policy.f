@@ -1,28 +1,7 @@
-\ numeric-policy.f - the explicit numerical policy of a compilation.
-\
-\ A floating-point or integer rewrite is
-\ never justified by "the operation is commutative" or by an ambient fast-math
-\ switch. It is justified by a policy value that the compilation carries, and
-\ every rewrite rule declares which policies admit it. This file owns that value:
-\ what happens on integer overflow, what floating-point execution model the
-\ compiler may assume, whether a multiply-add may be contracted, which class of
-\ algebraically justified rewrite is licensed, and what comparisons mean.
-\
-\ WHY FIVE SEPARATE FIELDS. They answer different questions and a compilation can
-\ need any mixture of the answers. The rewrite licence (fast-math) says how far a
-\ transformation may move the computed value. Contraction is called out on its
-\ own because fusing a multiply and an add is admitted by ordinary language
-\ standards while nothing else about the arithmetic is relaxed - but it does
-\ change the result bits, so a bit-exact licence and allowed contraction are
-\ contradictory, and that pairing is the one combination this file rejects. The
-\ floating-point model describes the machine's denormal handling, which is a
-\ property of the execution environment rather than of any rewrite. The
-\ comparison policy says what an ordered comparison means in the presence of NaN.
-\ Integer overflow is a separate axis again.
-\
-\ FORGERY. `numeric-policy` is a public family, so its generated MAKE can
-\ assemble any five field values without passing through CNUM:POLICY. SAME?
-\ revalidates its inputs rather than trusting the checked constructor was used.
+\ numeric-policy.f - the explicit numerical policy a compilation carries. No
+\ floating-point or integer rewrite is justified by commutativity or an ambient
+\ fast-math switch: each rewrite rule declares which policies admit it. The five
+\ fields are separate because a compilation can need any mixture of answers.
 
 require src/lib/prelude.f
 require src/lib/errors.f
@@ -110,7 +89,8 @@ public
    c m CONTRACT-CK
    o f c m k CNUM-NUMERIC--POLICY:MAKE ;
 
-\ Recheck a policy that may have been assembled by the generated constructor.
+\ `numeric-policy` is a public family, so its generated MAKE can assemble any
+\ five field values without POLICY; SAME? revalidates rather than trusting it.
 : VALIDATE ( CNUM:numeric-policy -- CNUM:numeric-policy )
    CNUM-NUMERIC--POLICY:UNMAKE POLICY ;
 

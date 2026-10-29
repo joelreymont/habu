@@ -1,31 +1,9 @@
-\ spill.f - build the machine module in which the register allocator's spill
-\ decisions are real store and load operations.
-\
-\ A frozen module cannot gain an operation and a builder cannot gain one in the
-\ middle, so this reads a frozen module and writes a new one. The alternative -
-\ the emitter materialising the stores out of the allocator's claims - would
-\ leave the validator checking the allocator's belief against itself.
-\
-\ ONE PASS, ANY DIALECT. Nothing here is one machine's: a frame is reserved and
-\ released, a value is put away in a slot and brought back, a copy is a copy.
-\ What WAS one machine's is the spelling, and it now arrives in the vocabulary
-\ the dialect builds (src/compiler/native/dialect.f) - the same value the
-\ register allocator is bound with - together with the one thing no value can
-\ hold: how that dialect materialises a form of its own in the module this pass
-\ is writing. So this file names no dialect package, and a second machine is
-\ lowered by binding its vocabulary rather than by a second copy of the walk.
-\
-\ Each function keeps its own invocation frame. An existing frame is resized;
-\ a frameless function gains a reserve and, when it returns, a release. The
-\ frame-size contract remains common to all functions in the module.
-\
-\ The dialect's frame forms carry a memory token, and an operation of the OLD
-\ module that reaches the frame is re-threaded onto the order as it stands here.
-\ Which operations those are is read off the attribute KEYS the dialect declares,
-\ never off an opcode name, so a data-stack access is never threaded onto it.
-\
-\ One rewrite at a time: the value map is a package-owned slot and the old module
-\ is read through the one cursor src/compiler/native/frozen.f owns.
+\ spill.f - rebuild a frozen machine module with the register allocator's spill
+\ decisions as real stores and loads. A frozen module cannot gain an operation,
+\ and stores the emitter made up would leave the validator checking the
+\ allocator against itself. No dialect is named here: its vocabulary arrives
+\ bound (src/compiler/native/dialect.f). One rewrite at a time: the value map is
+\ package-owned and the old module is read through frozen.f's one cursor.
 
 require src/lib/prelude.f
 require src/lib/errors.f
@@ -259,6 +237,10 @@ NAME-CAP CWORK-SPAN NAMEBUF u8
    sym o NDIALECT:SYM SAME-SYM? ;
 
 \ ---- which operations reach the routine's own frame --------------------------
+\ The dialect's frame forms carry a memory token, and an old operation that
+\ reaches the frame is re-threaded onto the order as it stands here. Which ones
+\ do is read off the attribute KEYS the dialect declares, never an opcode name,
+\ so a data-stack access is never threaded onto it.
 : FRAME-KEY? ( IR-ID:ir-symbol-id -- bool )
    {: k:IR-ID:ir-symbol-id :}
    k 0 BND-SLOT @ SAME-SYM? if true exit then
@@ -402,8 +384,8 @@ NAME-CAP CWORK-SPAN NAMEBUF u8
 \ others and the schema of the module being read admitted them, so a value is
 \ re-interned under the key of the SAME NAME rather than put through the
 \ dialect's constructor for that key a second time: a screened constructor would
-\ be re-measuring a number that is already in a module, and naming one key at a
-\ time is what tied this pass to one dialect's list of them.
+\ be re-measuring a number that is already in a module, and naming keys one at a
+\ time would tie this pass to one dialect's list of them.
 : INT-ATTR+ ( IR-ID:ir-symbol-id n -- )
    {: key:IR-ID:ir-symbol-id v:n :}
    key SYM-NAME {: a:ptr u:n :}
@@ -539,7 +521,7 @@ NAME-CAP CWORK-SPAN NAMEBUF u8
 
 \ Every edge of the function, read once: which blocks anything reaches, and
 \ which are reached only by terminators that leave through one edge. Asking a
-\ block instead walked every terminator of the function again.
+\ block instead would walk every terminator of the function again.
 : PREDS! ( IR-ID:ir-fun-id -- )
    {: f:IR-ID:ir-fun-id :}
    f BLOCK-COUNT {: n:n :}
@@ -581,7 +563,7 @@ NAME-CAP CWORK-SPAN NAMEBUF u8
    A64RA:PLAN-REMAT? 0= ;            \ the remaining plan kind is reload
 
 \ The whole plan, read once: which blocks it puts a store or a reload in. Asking
-\ a block instead walked the whole plan again, once per block of every function.
+\ a block instead would walk the whole plan again, once per block of every function.
 : P-FRAMES! ( -- )
    BMAX 0 ?do 0 i cells P-FRAME + ! loop
    A64RA:PLAN-N 0 ?do
@@ -637,8 +619,8 @@ NAME-CAP CWORK-SPAN NAMEBUF u8
 \ argument already found. The forwarding edge need not leave the argument's own
 \ block: a value is read in every block it dominates, so a lane can enter a
 \ block that branches two ways and be forwarded by the br of a block that block
-\ dominates. Asking a value instead walked every operation of the module again,
-\ once per block argument of every block.
+\ dominates. Asking a value instead would walk every operation of the module
+\ again, once per block argument of every block.
 : F-READS! ( -- )
    VMAX 0 ?do 0 i cells F-READ + ! loop
    TOTAL-OPS 0 ?do
@@ -846,8 +828,10 @@ NAME-CAP CWORK-SPAN NAMEBUF u8
    A64RA:SPILLS 0<> ;
 
 : WALK-BLOCK ( IR-ID:ir-fun-id n n -- )
-\ The reserve opens the ENTRY block and the release stands in front of the
-\ terminator control leaves through - the only pair passed once, in that order.
+\ Each function keeps its own frame: an existing one is resized, and a frameless
+\ function gains a reserve and, when it returns, a release. The reserve opens the
+\ ENTRY block and the release stands in front of the terminator control leaves
+\ through - the only pair passed once, in that order.
    {: f:IR-ID:ir-fun-id b:n rb:n :}
    f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
    bk OP-COUNT {: n:n :}
@@ -1122,7 +1106,6 @@ public
 : BOUND? ( -- bool )
    BND-MODE @ BOUND-YES = ;
 
-\ Give up a binding without rewriting against it.
 : RELEASE ( -- )
    BND-TAKE ;
 

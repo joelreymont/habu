@@ -1,22 +1,5 @@
-\ a64ir.f - the ARM64 machine dialect: the closed set of operations that stand
-\ for real ARM64 instruction forms, with virtual registers as SSA values.
-\
-\ A condition is four bits, and what they MEAN depends on which instruction wrote
-\ the flags. Fcmp raises the unordered condition for a NaN by setting
-\ N=0 Z=0 C=1 V=1, and against those bits the conditions read:
-\
-\   lt    11  N != V          TRUE on unordered
-\   le    13  Z=1 or N != V   TRUE
-\   ne     1  Z = 0           TRUE
-\   ge    10  N  = V          false
-\   gt    12  Z=0 and N = V   false
-\   equal  0  Z = 1           false
-\   mi     4  N = 1           false
-\
-\ So a float less-than lowers under `mi` and never under `lt`, and the three
-\ conditions the float comparisons reach - mi, gt and equal - are exactly the
-\ three that are false on unordered. That is why every float comparison this
-\ engine has answers false for a NaN.
+\ a64ir.f - the ARM64 machine dialect: operations that stand for real ARM64
+\ instruction forms, over virtual registers as SSA values.
 
 require src/lib/prelude.f
 require src/lib/errors.f
@@ -41,8 +24,6 @@ require src/compiler/native/emission.f
 package A64IR
 public
 
-\ An ENUM, so a selection rule cannot name an operation this dialect does not
-\ have and every MATCH over it has to answer for every member.
 ENUM opcode DERIVE eq
    movz
    movk
@@ -131,9 +112,7 @@ ENUM opcode DERIVE eq
    sdivnz
 ;ENUM
 
-\ One condition per SOURCE relation, so a lowering is never an operand order in
-\ one place and a condition in another. `equal` is spelled so because the ENUM's
-\ derived comparison word takes `eq`. `mi` is the seventh, for the float forms.
+\ `equal`, because DERIVE eq defines `eq`; `mi` serves only the float forms.
 ENUM cond DERIVE eq
    lt
    le
@@ -170,6 +149,10 @@ XBITS 8 / constant SLOT-BYTES        \ bytes one frame access moves
 1 WB-BITS 1- lshift 1- constant WB-MAX   \ the magnitude either sign of it holds
 
 \ ---- the condition field -----------------------------------------------------
+\ Fcmp sets N=0 Z=0 C=1 V=1 on a NaN. Against those flags lt, le and ne read
+\ true and ge, gt, equal and mi read false, so a float less-than lowers under
+\ `mi`, never `lt`: the float comparisons use only mi, gt and equal, and each
+\ answers false for a NaN.
 4 constant COND-BITS
 1 COND-BITS lshift constant COND-LIM
 11 constant COND-LT                  \ signed less than
@@ -201,8 +184,6 @@ XBITS 8 / constant SLOT-BYTES        \ bytes one frame access moves
    CTARGET-ARCH:AARCH64 CTARGET:F-BASE CTARGET:F-SCALAR-FP CTARGET:WITH
    IR-SCHEMA:SET-TARGET ;
 
-\ A value-producing machine operation ends no block, names no successor, holds
-\ no region and carries no effect token.
 : PURE-VALUE ( -- )
    false 0 0 IR-SCHEMA:SET-CONTROL
    IR-SCHEMA:SET-PURE ;
@@ -284,10 +265,9 @@ private
    dup SLOT-BYTES mod 0<> if E-A64IR-SLOT throw then
    dup SLOT-BYTES A64M:SLOT-REACH > if E-A64IR-SLOT throw then ;
 
-\ The stack pointer stays aligned and the frame stays inside the region NEFF can
-\ describe. Every such frame is reserved: past one add/sub immediate the
-\ emitter moves the pointer by whole pages and the rest (src/compiler/native/
-\ emit.f WORD-RESERVE).
+\ Keeps the stack pointer aligned and the frame inside the region NEFF can
+\ describe. Past one add/sub immediate the emitter moves the pointer by whole
+\ pages (src/compiler/native/emit.f WORD-RESERVE).
 : FRAME ( n -- n )
    dup 0 < if E-A64IR-FRAME throw then
    dup A64M:SP-ALIGN mod 0<> if E-A64IR-FRAME throw then
@@ -316,13 +296,10 @@ private
    dup SLOT-BYTES mod 0<> if E-A64IR-DBYTES throw then
    dup abs OFF-MAX > if E-A64IR-DBYTES throw then ;
 
-\ The move a TRANSFER carries. A load or a store can write its base register
-\ back, and the amount rides in nine SIGNED bits of bytes - a much narrower field
-\ than the Add and Sub immediate above, which is why it is its own operand. The
-\ post-indexed store moves by +this and the pre-indexed load by -this, so the two
-\ forms use opposite signs of one number and what is bounded is the MAGNITUDE.
-\ A move of nothing is refused rather than rounded away: an access that moves the
-\ pointer by zero IS the plain access, and the selector emits that form for it.
+\ The base-register writeback of a load or store: nine signed bits of bytes,
+\ narrower than the add/sub immediate. The post-indexed store moves by +n and
+\ the pre-indexed load by -n, so the bound is on the magnitude. Zero is refused:
+\ a zero move is the plain access, which the selector emits instead.
 : DWB ( n -- n )
    dup 0= if E-A64IR-DWB throw then
    dup SLOT-BYTES mod 0<> if E-A64IR-DWB throw then
@@ -351,8 +328,6 @@ private
 public
 
 \ ---- the machine this compilation is for --------------------------------------
-\ The contract the context is bound to, which is what both of this backend's
-\ stage gates ask the registry about.
 : CONTRACT@ ( IR-CTX:ctx -- CTARGET:contract )
    IR-CTX:BINDING@ CBIND:VALIDATE CBIND:TARGET@ ;
 
@@ -376,27 +351,16 @@ public
 \ ---- the bytes one frame access moves ----------------------------------------
 : SLOT-WIDTH ( -- n )    SLOT-BYTES ;
 
-\ The machine this dialect lowers for. Every pass downstream of the dialect - the
-\ selector, the allocator's install, the ABI's contracts - needs the description
-\ a routine contract is stated about, and asking the dialect for it is how a pass
-\ that is already about A64IR gets one without naming an architecture itself.
+\ Lets a pass about A64IR get the machine description without naming an
+\ architecture.
 : MACHINE ( -- NMACH:mach )   A64M:MACHINE ;
 
 \ ---- this machine's register files, for the passes that are not about it ------
-\ The register allocator is linear scan and not an ARM64 pass, so it reads this
-\ description instead of the numbers around it. Every field is DERIVED from the
-\ authority that already owns it rather than written again here: the file size
-\ and the reserved set from src/compiler/native-effect.f, which folds the target's
-\ platform register - x18, which Darwin reserves and Linux does not - together
-\ with everything src/habu/layout.f says the running engine occupies, and the
-\ slot width from this dialect's own frame access. A literal here would be a
-\ second authority, and the first thing it would get wrong is Darwin.
-\
-\ Every allocatable register is declared call-destroyed because that is what the
-\ Habu convention says: src/compiler/native/abi.f declares the whole pool
-\ destroyed on every routine, so no value survives a call in a register and the
-\ callee-saved set this description derives is empty. A convention that kept
-\ registers across a call would say so here and the allocator would follow.
+\ For the linear-scan allocator, which is not an ARM64 pass. Every field is
+\ derived: file size and reserved set from src/compiler/native-effect.f (which
+\ folds in x18 on Darwin and the registers src/habu/layout.f reserves), slot
+\ width from SLOT-WIDTH. Every allocatable register is call-destroyed because
+\ src/compiler/native/abi.f declares the whole pool destroyed on every routine.
 : REGFILE ( -- NREGFILE:file )
    MACHINE NMACH:REGFILE ;
 
@@ -715,8 +679,7 @@ s" a64.sdivnz" s" a64.rule.sdivnz" s" a64.render.sdivnz" A64IR-OPCODE:SDIVNZ NAM
 private
 
 \ ---- the dialect's fixed attribute keys --------------------------------------
-\ Enumerable for the same reason the opcode names are: a session prototype
-\ interns this vocabulary by walking it.
+\ Enumerable: a session prototype interns this vocabulary by walking it.
 0 constant K-IMM
 1 constant K-SHIFT
 2 constant K-ADDR
@@ -769,28 +732,13 @@ private
    endcase ;
 
 \ ---- the vocabulary memo -----------------------------------------------------
-\ A symbol identity is a (module, ordinal) pair and the module half changes with
-\ every definition, so the ordinal is the only half worth remembering. The memo
-\ holds one ordinal per vocabulary entry - every opcode name and every attribute
-\ key, which is the whole of what this dialect spells - together with the module
-\ they belong to; a hit mints the identity with IR-ID:PACK-SYMBOL against that
-\ module's own key and still puts it through IR-BUILD:SYMBOL-CK, so a stale
-\ builder, a frozen one, a
-\ foreign context and a row the table does not hold are refused exactly as they
-\ were when the memo held whole identities.
-\
-\ A MODULE CLONED FROM THE SESSION PROTOTYPE ADOPTS THE WHOLE MEMO AT BIRTH,
-\ because a clone holds the prototype's spellings at the prototype's ordinals -
-\ which is what makes the second definition of a load bind without interning
-\ anything at all. A module that is not a clone starts with an empty memo and
-\ fills it one intern at a time, the way this always did within a module.
-\
-\ THE KEYS ARE IN IT FOR THE SAME REASON THE OPCODES ARE. An attribute key is
-\ interned once per attribute written, which is several times per node, and
-\ re-resolving the same six or fourteen spellings against a module's interner
-\ was the largest single cost of building one definition's IR. The entries are
-\ the opcodes first and the keys after them, so one ordinal space, one owner
-\ check and one adoption cover both.
+\ The memo holds one ordinal per vocabulary entry (opcodes, then keys) and the
+\ module they belong to; the module half of a symbol identity changes per
+\ definition. A hit mints with IR-ID:PACK-SYMBOL and still passes
+\ IR-BUILD:SYMBOL-CK, so stale, frozen and foreign builders are refused. A
+\ module cloned from the session prototype adopts the whole memo at birth; any
+\ other starts empty. Keys are memoised because re-interning them was the
+\ largest single cost of building one definition's IR.
 OPCODES KEYS + constant VOCAB        \ memo entries: the opcodes, then the keys
 VOCAB TYPED-BUFFER PROTO-ORD n       \ ordinals in the session prototype
 VOCAB TYPED-BUFFER MEMO-ORD n        \ ordinals in the module the memo names
@@ -814,7 +762,6 @@ MEMO-FORGET
    1 MEMO-OWNED !
    VOCAB 0 ?do false i MEMO-SEEN ! loop ;
 
-\ Adopt the prototype's ordinals for a module that was cloned from it.
 : MEMO-ADOPT ( IR-BUILD:builder -- )
    IR-BUILD:MODULE@ 0 MEMO-MOD !
    1 MEMO-OWNED !
@@ -829,9 +776,6 @@ MEMO-FORGET
    i OPCODES < if i NTH OP-NAME exit then
    i OPCODES - KEY-NAME ;
 
-\ One entry of the memo, read or filled. A hit mints the identity against this
-\ module's own key and still puts it through IR-BUILD:SYMBOL-CK; a miss interns
-\ the spelling exactly as the unmemoised reader did and records where it landed.
 : MEMO-BIND ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-symbol-id )
    {: c:IR-CTX:ctx b:IR-BUILD:builder idx:n :}
    b IR-BUILD:MODULE@ {: owner:IR-ID:ir-module-id :}
@@ -847,7 +791,6 @@ MEMO-FORGET
    true idx MEMO-SEEN !
    sym ;
 
-\ The keys sit above the opcodes in the one ordinal space.
 : KEY-BIND ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-symbol-id )
    {: c:IR-CTX:ctx b:IR-BUILD:builder k:n :}
    c b OPCODES k + MEMO-BIND ;
@@ -859,9 +802,7 @@ public
    idx NTH drop                       \ an ordinal this dialect has an opcode for
    c b idx MEMO-BIND ;
 
-\ Interning deduplicates, so asking twice answers the same identity - and the
-\ memo above answers most of them without interning at all, which is why the
-\ two entry points are one word deep.
+\ Interning deduplicates: asking twice answers the same identity.
 : OPCODE ( IR-CTX:ctx IR-BUILD:builder A64IR:opcode -- IR-ID:ir-symbol-id )
    ORD BIND ;
 
@@ -878,10 +819,8 @@ private
 
 public
 
-\ The full opcode vocabulary is bound by three downstream passes. The existing
-\ memo supplies ordinals, while the builder and symbol owners validate one
-\ whole batch. Missing entries still use BIND's ordinary interning path; that
-\ may grow the symbol arena, so the final batch opens its current storage again.
+\ Missing entries take BIND's ordinary interning path, which may grow the symbol
+\ arena, so the batch reopens its storage afterwards.
 : BIND-OPCODES! ( IR-CTX:ctx IR-BUILD:builder ptr IR-ID:ir-symbol-id n -- IR-ID:ir-module-id )
    {: c:IR-CTX:ctx b:IR-BUILD:builder dst:ptr cap:n :}
    cap OPCODES < cap $7FFFFFFFFFFFFFFF 1 cells / > or
@@ -1010,11 +949,9 @@ public
 : KEY-TRAP-ENTRY ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
    K-TRAP-ENTRY KEY-BIND ;
 
-\ Its own key again, and for the third reason: this entry is the routine a
-\ REFUSAL branches to and comes back from nowhere, while the operation carrying
-\ it is an ordinary value-producing one that the guard branches OVER. A form
-\ under `a64.entry` would be a tail branch to two passes and one under
-\ `a64.trap-entry` would be a terminator to two more.
+\ Its own key: the entry a refusal branches to, carried by an ordinary
+\ value-producing operation the guard branches over. Under `a64.entry` it would
+\ read as a tail branch, under `a64.trap-entry` as a terminator.
 : KEY-COLD-ENTRY ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
    K-COLD-ENTRY KEY-BIND ;
 
@@ -1048,18 +985,13 @@ public
    ENTRY IR-BUILD:INTERN-INT-ATTR ;
 
 \ ---- what this dialect tells the register allocator about itself --------------
-\ Every name src/compiler/native/regalloc.f and regalloc-verify.f would
-\ otherwise spell as A64IR's, in the one value they take at the binding. It is
-\ built HERE because none of it is a pass's to know: that a copy is `a64.mov`,
-\ that the form worth re-emitting instead of reloading is `a64.movz`, that an
-\ address literal is four move-wides which have to stay contiguous through spill
-\ insertion, and that the transfer forms can move the data-stack pointer in the
-\ access itself. Every symbol below is this MODULE's ordinal, so the value is
-\ built per module and consumed by the binding that asked for it.
-\
-\ The stand is `survey` because that is what src/compiler/native/select.f does:
-\ it surveys the body's boundary transfers and stands the pointer where the
-\ fewest of them need an adjustment.
+\ The A64IR names regalloc.f and regalloc-verify.f need, in one value: the copy
+\ is `a64.mov`, the rematerialised form `a64.movz`, an address literal is four
+\ move-wides that stay contiguous through spill insertion, and the transfer
+\ forms move the data-stack pointer in the access. Symbols are this module's
+\ ordinals, so the value is built per module. The stand is `survey`:
+\ src/compiler/native/select.f stands the pointer where the fewest boundary
+\ transfers need an adjustment.
 
 : VOCABULARY ( IR-CTX:ctx IR-BUILD:builder -- NDIALECT:vocab )
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
@@ -1081,18 +1013,10 @@ public
    NDIALECT-VOCAB:MAKE ;
 
 \ ---- what this dialect tells the spill rewriter about itself ------------------
-\ The frame forms src/compiler/native/spill.f reads and writes, with the
-\ identity, the types and the two keys it shares with the vocabulary above. The
-\ two records are separate because one holding both lists is past the staged
-\ arity a record's MAKE admits, not because the answers come from two places:
-\ every name below is this module's, taken from the same tables.
-\
-\ THE FRAME FORMS ARE PRESENT IN FULL. This machine has a floating register
-\ file, so a value put away out of one comes back into one and `a64.fstr` /
-\ `a64.fldr` are named; it keeps the return address in a register, so the
-\ prologue that saves it and the epilogue that restores it are operations of
-\ the module and `a64.lnkstr` / `a64.lnkldr` are named too. A dialect with
-\ neither says `absent` and the rewriter counts none.
+\ The frame forms src/compiler/native/spill.f reads and writes. A record apart
+\ from VOCABULARY only because one record would pass MAKE's staged arity.
+\ Floating spills use `a64.fstr`/`a64.fldr` and the link register is saved by
+\ `a64.lnkstr`/`a64.lnkldr`; a dialect without them says `absent`.
 : LOWERING ( IR-CTX:ctx IR-BUILD:builder -- NDIALECT:lowering )
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
    c b NAME IR-BUILD:INTERN-SYMBOL
@@ -1122,7 +1046,6 @@ private
 : RENDERER ( IR-CTX:ctx IR-BUILD:builder A64IR:opcode -- IR-ID:ir-symbol-id )
    ORD 3 * 2 + TEXT@ IR-BUILD:INTERN-SYMBOL ;
 
-\ Name the rule and renderer, then validate and define the staged schema.
 : FINISH-OP ( IR-CTX:ctx IR-BUILD:builder A64IR:opcode -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder o:A64IR:opcode :}
    c b o RULE IR-SCHEMA:SET-RULE
@@ -1265,13 +1188,10 @@ private
    TARGET
    c b A64IR-OPCODE:MADD FINISH-OP ;
 
-\ The one form that may raise, and three instructions: a `cbnz` of the divisor
-\ over the refusal, the refusal - one `bl` to the engine's sealed (DIV-ZERO)
-\ helper, which pushes ARITH-ABI:E-DIV-ZERO and throws - and the `sdiv`. Which is
-\ what the engine's own `/` is: two instructions on the hot path and a cold side
-\ that hands the caller that code. The helper's entry is an attribute under the
-\ cold-entry key (KEY-COLD-ENTRY) because only the selector can ask the
-\ dictionary where the helper is (NDICT:HELPER-TARGET).
+\ Three instructions: `cbnz` of the divisor over a `bl` to the engine's sealed
+\ (DIV-ZERO) helper, which throws ARITH-ABI:E-DIV-ZERO, then `sdiv`, as the
+\ engine's `/` does. The helper entry rides under KEY-COLD-ENTRY because only
+\ the selector can ask NDICT:HELPER-TARGET where it is.
 : DEF-SDIV ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
    c b A64IR-OPCODE:SDIV OPCODE IR-SCHEMA:BEGIN-OP
@@ -1392,17 +1312,11 @@ private
    c b A64IR-OPCODE:DPUBLISH FINISH-OP ;
 
 \ ---- the fused forms ---------------------------------------------------------
-\ The machine writes the base register back as part of a load or a store, so one
-\ instruction is a store AND the publish after it, or a take AND the load after
-\ it. Each builder serves both register files, the way the plain load and store
-\ above do. THERE IS NO SLOT ATTRIBUTE ON ANY OF THEM: the form encodes the
-\ transfer at the pointer itself - the post-indexed store writes at the base and then moves it,
-\ the pre-indexed load moves the base and then reads there - so the cell is the
-\ one the pointer stands at and `a64.dwb` is the whole of what they carry.
-\
-\ A store that also publishes writes memory and moves the pointer, which is one
-\ effect; a take that also loads does both, which is why this one is READ-WRITE
-\ where a plain a64.dload is READ.
+\ The machine writes the base back as part of the access, so one instruction is
+\ a store plus its publish, or a take plus its load. No slot attribute: the
+\ post-indexed store writes at the base then moves it, the pre-indexed load
+\ moves then reads, so `a64.dwb` is all they carry. The fused load is
+\ READ-WRITE where a plain a64.dload is READ.
 : DEF-DPUSH ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id A64IR:opcode -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id k:IR-ID:ir-type-id o:A64IR:opcode :}
    c b o OPCODE IR-SCHEMA:BEGIN-OP
@@ -1897,15 +1811,10 @@ private
 private
 
 \ ---- the session prototype ---------------------------------------------------
-\ Every module a definition builds interns this dialect's whole vocabulary
-\ again, because a module's symbols are its own ordinals. A LOAD interns it
-\ once instead, into an interner of the session's own, and every module built
-\ while that prototype stands starts as a copy of it: the spellings are already
-\ there, at the same ordinals, so the module holds them without a scan.
-\
-\ The pair is the session's and is only read here. PROTOTYPE-CLEAR gives it up
-\ when the session does, and an interner that outlives its context is stale by
-\ the arena's own seal, so a forgotten clear cannot read freed storage.
+\ A load interns the vocabulary once into a session interner; every module built
+\ while it stands starts as a copy, holding the spellings at the same ordinals.
+\ PROTOTYPE-CLEAR gives it up with the session; an interner that outlives its
+\ context is refused by the arena's seal.
 2 TYPED-BUFFER PROTO IR-ARENA:arena
 variable PROTO-ON
 0 PROTO-ON !
@@ -1913,24 +1822,17 @@ variable PROTO-ON
 : PRE ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key ptr u8 n -- IR-ID:ir-symbol-id )
    IR-SYM:INTERN ;
 
-\ The ordinal an opcode landed on is the whole point of the prototype: a module
-\ cloned from it holds that spelling at that ordinal, so the ordinal is what a
-\ clone's memo adopts.
 : PRE-OP ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key n -- )
    {: c:IR-CTX:ctx a:IR-ARENA:arena r:IR-ARENA:arena k:IR-ID:ir-module-key i:n :}
    c a r k i NTH OP-NAME PRE IR-ID:SYMBOL-LOCAL i PROTO-ORD ! ;
 
-\ And where each attribute key landed, above the opcodes.
 : PRE-KEY ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key n -- )
    {: c:IR-CTX:ctx a:IR-ARENA:arena r:IR-ARENA:arena k:IR-ID:ir-module-key i:n :}
    c a r k i KEY-NAME PRE IR-ID:SYMBOL-LOCAL  OPCODES i + PROTO-ORD ! ;
 
 public
 
-\ Intern this dialect's whole vocabulary into a session-lived interner and keep
-\ it: the dialect name IR-BUILD interns for every module, every opcode name and
-\ every attribute key. Walked, not listed, so the prototype cannot fall behind
-\ the tables above.
+\ Walked, not listed, so the prototype cannot fall behind the tables above.
 : PROTOTYPE ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key -- )
    {: c:IR-CTX:ctx a:IR-ARENA:arena r:IR-ARENA:arena k:IR-ID:ir-module-key :}
    c a r k NAME PRE drop
@@ -1949,8 +1851,6 @@ public
    VOCAB 0 ?do 0 i PROTO-ORD !  0 i MEMO-ORD ! loop ;
 
 \ ---- creation and registration -----------------------------------------------
-\ While a session prototype stands, the module's interner starts as a copy of
-\ it; the module identity, the plan and every check are the ordinary ones.
 : NEW-BUILDER ( IR-CTX:ctx -- IR-BUILD:builder )
    dup CHECK-TARGET
    PROTO-ON @ 0= if NAME MAJOR MINOR IR-BUILD:NEW-BUILDER exit then
@@ -2164,12 +2064,8 @@ public
    c b op IR-BUILD:SCHEMA-DEFINED? 0= if c b o DEFINE-ONE then
    op ;
 
-\ The same materialisation, asked for by NAME. A pass that rebuilds a module
-\ reads an operation's spelling out of the module it is copying - a symbol of
-\ THAT module, which means nothing in the one being written - and has no opcode
-\ of this package to name. This is the whole of what such a pass needs from a
-\ dialect beyond the vocabulary: the vocabulary says which names matter, and
-\ this turns any of them into a form defined in the module being built.
+\ For a pass rebuilding a module: it holds only the copied module's spelling, a
+\ symbol that means nothing in the module being written.
 : ENSURE-NAMED ( IR-CTX:ctx IR-BUILD:builder ptr u8 n -- IR-ID:ir-symbol-id )
    OP-NAMED ENSURE-OP ;
 

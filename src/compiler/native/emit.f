@@ -1,28 +1,8 @@
-\ emit.f - turn one accepted straight-line A64IR module into the ARM64 bytes
-\ that are the machine's own reading of it, and a map from every emitted byte
-\ back to the source it came from.
-\
-\ It decides nothing but where each block's instructions land, which is what a
-\ branch's displacement is measured from. Registers come only through
-\ A64RAV:REG@, the one door an accepted allocation answers; encodings come only
-\ from src/arch/arm64/asm.f, which bounds every field before it packs a bit.
-\
-\ The layout and the fixups are ONE pass: the label table IS the block-start
-\ table, a block IS a label, and its ordinal is its name, so nothing is patched.
-\
-\ Instructions are elided by rules written once and asked twice -
-\ by the layout that counts and by the writer that appends, with CURSOR-CK
-\ holding the two together: a trailing branch to the block laid out next
-\ (FALL-THRU?), a copy into its own register (COPY?), and a data-stack
-\ adjustment of nothing, and a reload of the frame cell just stored from the
-\ same register, and the page half of a frame under one page (PAGES-ELIDED?).
-\ Adjacent data-stack adjustments are combined before either pass, and plain
-\ stack transfers with identical source spans are paired, without changing the
-\ accepted IR. An elided instruction gets NO source-map row, because row k
-\ describes the instruction WORD@ k answers.
-\
-\ Block zero is written first and the block control leaves through last.
-\ Publication explicitly distinguishes a trailing RET slot from a full span.
+\ emit.f - the ARM64 bytes of one accepted A64IR module, and a map from every
+\ emitted byte back to its source. It decides only where each block's
+\ instructions land. Registers come only through A64RAV:REG@; encodings only
+\ from src/arch/arm64/asm.f, which bounds every field. The label table is the
+\ block-start table, so nothing is patched.
 
 require src/lib/prelude.f
 require src/lib/errors.f
@@ -149,15 +129,9 @@ ST-EMPTY ST !
 0 CWORK-VARIABLE EM-NCALL n
 0 CWORK-VARIABLE EM-TAIL n                     \ branches out of the routine this emission wrote
 -1 CWORK-VARIABLE EM-LAST n                     \ the form of the last operation it wrote
-\ WHETHER THIS FUNCTION'S FRAME IS ONE INSTRUCTION AT EACH END, decided HERE and
-\ not in the selector. AArch64 writes the base register back as part of a load
-\ or a store, and A64FRAME puts the link at the frame's base, so a frame that
-\ keeps only the link is taken and given back by the transfer itself. The
-\ decision waits for the emitter because the frame is not final until then: the
-\ spill fixpoint raises it every time the allocator takes another slot, and a
-\ frame that outgrows the nine-bit writeback field has to go back to the pair.
-\ By this pass the module is the one being written, so the size it carries is
-\ the size the instruction will hold.
+\ Whether this function's frame rides on the link transfer's writeback
+\ (src/compiler/native/frame.f FUSED?). Asked here because the spill fixpoint
+\ grows the frame until this pass.
 0 CWORK-VARIABLE EM-FUSED n                    \ nonzero when this function's frame is fused
 0 CWORK-VARIABLE EM-FRAME n                    \ ...and the bytes both of its ends move
 0 CWORK-VARIABLE EM-OMIT n                     \ this function needs no inherited link frame
@@ -289,8 +263,6 @@ DYNAMIC-BUFFER PAIRS n
    OPCODE-AT OPCODE-SLOT ;
 
 \ ---- the registers, through the one door that answers ------------------------
-\ The one checked answer in the chain, and the only way a register reaches an
-\ instruction here.
 : REG-OF ( IR-ID:ir-value-id -- n )
    IR-ID:VALUE-LOCAL A64RAV:REG@ ;
 
@@ -779,6 +751,7 @@ INSN-PER-OP-CK
    -1 ;
 
 \ ---- the chosen block order --------------------------------------------------
+\ Block zero is written first and the returning block last.
 
 \ The order is a permutation of the block ordinals, so one bound serves both.
 : AT-POS ( n -- n )
@@ -860,6 +833,12 @@ INSN-PER-OP-CK
    id CAN-INVERT? 0= if false exit then
    id 0 SUCC-BLOCK GOTO-OF POS-OF home POS-OF 1+ = ;
 
+\ Elision rules are written once and asked by both the layout and the writer
+\ (CURSOR-CK holds them together): a branch to the next block (FALL-THRU?), a
+\ copy into its own register (COPY?), a zero data-stack move, a reload of the
+\ frame cell just stored from the same register, and the page half of a frame
+\ under one page (PAGES-ELIDED?). Adjacent data-stack moves combine and plain
+\ transfers pair, without changing the accepted IR.
 : FALL-THRU? ( IR-ID:ir-op-id n -- bool )
    {: id:IR-ID:ir-op-id home:n :}
    id home SWAP-SUCCS? if true exit then
@@ -1493,12 +1472,9 @@ INSN-PER-OP-CK
    {: id:IR-ID:ir-op-id :}
    id  id DHEAD@  PUT-DMOVE ;
 
-\ A self-call is RECURSE, which names the DEFINITION and not the body the token
-\ stands in - so it goes to function zero of this emission, which is the
-\ definition, wherever it is staged. Inside function zero that is the block the
-\ caller entered at; inside a quotation's function it is another function
-\ entirely, and a branch to this one's own block zero would be the quotation
-\ calling itself.
+\ A self-call is RECURSE, which names the definition: function zero of this
+\ emission. Inside a quotation's function, a branch to its own block zero would
+\ be the quotation calling itself.
 0 constant SELF-FUN                  \ the definition, which every self-call goes to
 
 \ ---- the address of another function of this emission ------------------------
@@ -1590,25 +1566,13 @@ INSN-PER-OP-CK
    id  id TRAP-ADDR EXT-DELTA  BL-WORD  APPEND ;
 
 \ ---- the divide, and the refusal on its cold side ----------------------------
-\ ARM64's Sdiv ANSWERS ZERO for a zero divisor, so the divisor is tested. A zero
-\ divisor is a CALLER error the program can fix and recover from - it came from
-\ the program's own arithmetic - so the cold side branches to (DIV-ZERO), the
-\ sealed engine helper the engine's own `/` branches to (src/habu/habu1.f BDIV0?
-\ and EMIT-DIV-ZERO). It pushes ARITH-ABI:E-DIV-ZERO and throws; it never
-\ returns, so no register this routine holds is read again, and the guard is
-\ `cbnz` over one `bl` and the divide. It used to be a `brk`: a word compiled at
-\ tier 1 and every AOT executable died with a register dump where the
-\ interpreted division threw a code the caller could catch.
-\
-\ THE HOT PATH IS THE TWO INSTRUCTIONS IT ALWAYS WAS - the compare-and-branch
-\ and the divide - and the branch between them is never executed by a program
-\ whose divisor is not zero. A CBZ straight to the helper would be one
-\ instruction fewer, but it reaches only a megabyte and the helper is in the
-\ engine's text, which the code region sits REGION-OFF (16 MiB) above
-\ (src/habu/layout.f).
-\
-\ MIN-N -1 / IS MIN-N, the modular answer Sdiv gives, like the wrap `+`, `-` and
-\ `*` already make (docs/forth.md). It is not a second refusal.
+\ ARM64's Sdiv answers zero for a zero divisor, so the divisor is tested and the
+\ cold side branches to (DIV-ZERO), the sealed helper the engine's own `/` uses
+\ (src/habu/habu1.f BDIV0? and EMIT-DIV-ZERO); it throws ARITH-ABI:E-DIV-ZERO
+\ and never returns. The hot path is `cbnz` and `sdiv`. A CBZ straight to the
+\ helper reaches only a megabyte, and the code region sits REGION-OFF (16 MiB)
+\ above the engine's text (src/habu/layout.f). MIN-N -1 / is MIN-N, the
+\ modular answer, as `+`, `-` and `*` wrap (docs/forth.md).
 : PUT-SDIV ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id  id 1 OPERAND-REG DIV-SKIP  ENC-CBNZ  APPEND
@@ -2271,6 +2235,8 @@ DYNAMIC-BUFFER SITES-BUF n
    off 3 + BYTE@ 24 lshift or ;
 
 \ ---- the source map ----------------------------------------------------------
+\ An elided instruction has no source-map row: row k describes the instruction
+\ WORD@ k answers.
 : MAP-OFFSET@ ( n -- n )
    SEAL-CK ORD-CK cells M-OFF + @ ;
 

@@ -1,150 +1,9 @@
 \ op.f - the append-only operation and value store: one row per operation, one
-\ row per SSA value, and one shared cell pool holding every operation's operand,
-\ result, successor, and attribute window.
-\
-\ It owns the ADD-OP/ADD-OPERAND/ADD-RESULT/ADD-SUCCESSOR/ADD-ATTR builder API;
-\ the native elaborator fills these rows and IR-VERIFY reads them at freeze.
-\ This file stores operations and values; it does not define what any
-\ dialect's operations mean, which is the dialect's schema table's to say.
-\
-\ ONE CONCERN, TWO ROW TABLES. Operations and values are one responsibility, not
-\ two, because they are defined by the same act: appending an operation is what
-\ brings its result values into existence, and a value's whole identity is the
-\ operation and result position that defined it. Splitting them across two files
-\ would make each depend on the other's live count - the value table needs the
-\ operation count to validate a defining operation, the operation table needs the
-\ value count to validate an operand - and would break the single all-or-nothing
-\ append this file guarantees. They therefore share one package and one file, and
-\ the file keeps them in separate row tables.
-\
-\ IDENTITY COMES FROM IR-ID. Operations are the existing IR-ID ir-op-id family
-\ and values the ir-value-id family, both packed under this module's key. This
-\ file mints no identity family of its own, no raw converter, and no parallel
-\ numbering. An operation names its opcode the way IR-SCHEMA names a schema: by
-\ the module's interned symbol for that opcode, resolved through the dialect's
-\ schema table. There is no second opcode numbering to keep in step.
-\
-\ WHAT AN OPERATION ROW RECORDS.
-\   opcode name symbol   - the opcode half of dialect-opcode; the dialect
-\                          half belongs to the schema table the opcode resolves
-\                          in, exactly as IR-SCHEMA decided
-\   operand window
-\   result window
-\   successor window
-\   attribute window
-\   source span          - as the (source, start, length)
-\                          triple IR-SOURCE:span already defines
-\ Three fields are deliberately absent, each because another stage
-\ owns it and duplicating it here would create a second authority:
-\   parent-block belongs to the function and block structure
-\     stage, which owns parents and their windows;
-\   effect-class is the schema's field and is
-\     read through the opcode's schema, so an operation cannot contradict the
-\     closed world its dialect declared;
-\   flags would name no member, and an empty
-\     flag word is not a capability: the stage that needs a flag adds it together
-\     with the meaning that makes it checkable.
-\
-\ WHAT A VALUE ROW RECORDS. Its type, its definition
-\ kind, the identity that defined it, and the position within that definition.
-\ The value table fixes the two definition kinds - block argument or operation
-\ result - so they are a closed ENUM here. Both kinds are minted here, because
-\ the value store owns value rows whoever defines them: an operation's results
-\ are minted by END-OP, and a block's arguments by MINT-ARG, which the block
-\ table calls while it builds a block. Each kind has its own pair of readers for
-\ the definition identity and position, and the other kind's reader rejects with
-\ E-IR-OP-KIND, in the same shape IR-SCHEMA uses for a field its effect shape
-\ does not carry.
-\
-\ A BLOCK ARGUMENT'S BLOCK IS NOT CHECKED FOR EXISTENCE HERE, for the same
-\ reason a successor's block is not, and one more: an argument value must exist
-\ before the operations that take it as an operand, and those operations must
-\ exist before their block's row can record its operation window. So the block
-\ row is always appended after its arguments. The block table validates the
-\ identity against its own count when it reads the value back, and the section
-\ 6.5 freeze verifier owns the whole-module check.
-\
-\ APPENDING IS ALL-OR-NOTHING. Every check - the stores' headers and module
-\ binding, the staged fields, the opcode's schema, the arity rules, the SSA rule,
-\ each referenced type, attribute, block, and source span, and all three
-\ committed ceilings - runs before the first IR-ARENA:PUSH. A rejected append
-\ therefore leaves the store exactly as it found it: no operation row, no value
-\ row, and no pool cell.
-\
-\ OPERANDS CANNOT REACH FORWARD. An operand must name a value that is already
-\ defined, so its ordinal is strictly below the live value count at the moment
-\ the operation is appended - the same discipline the type table uses for its
-\ references. An operation's own results are appended after its operands have
-\ been validated, so an operation cannot take its own result, and a use-before-
-\ definition cycle needs some value to name an ordinal at or past the count and
-\ dies with E-IR-OP-SSA before anything is written. Dominance is therefore a
-\ property of the construction order rather than something a later pass has to
-\ detect. Block successors are the one reference that legitimately points
-\ forward - a branch to a block that is still being built is ordinary SSA
-\ construction - so this stage validates a successor's owning module and leaves
-\ the existence check to the block table and the freeze verifier.
-\
-\ ARITY AGREES WITH THE SCHEMA. The opcode's schema declares how many operands
-\ and results the operation has and whether the last listed type is a variadic
-\ tail. Without a tail the counts must match exactly;
-\ with one, the fixed part is one shorter and there is no upper bound, because
-\ the tail type describes every further entry and may describe none. A
-\ terminator's successor count is an exact match, since the schema records it as
-\ a plain count. Attribute counts are not constrained here: the schema records
-\ which attribute keys an opcode requires and whether it admits keys outside
-\ that list, and deciding an operation's keys against that list is the section
-\ 6.5 freeze verifier's job together with the operand and result type rules.
-\
-\ AN ATTRIBUTE IS A KEY AND A VALUE. The schema
-\ declares the attribute KEYS an opcode requires, so an operation has to say
-\ which key each attribute it carries answers; an unkeyed attribute names
-\ nothing the schema can be asked about, and "attributes are canonical and legal
-\ for the opcode" would be undecidable for it. ADD-ATTR therefore takes the key
-\ symbol together with the attribute, and the attribute window stores the pair.
-\ The key is owner-checked and non-negative here and its existence is left to
-\ the freeze verifier, which holds the symbol table - the same division this
-\ file already makes for a successor's block.
-\
-\ WINDOWS TILE THE POOL EXACTLY. All four windows live in one cell pool, and an
-\ append writes them in a fixed order: operands, results, successors, then
-\ attributes. The first three store one cell per entry and the attribute window
-\ stores two - the key symbol ordinal then the attribute ordinal - and all four
-\ store their length in POOL CELLS, so the tiling below is the same arithmetic
-\ it always was and the stride shows up only where an entry is addressed. Every
-\ row's windows therefore continue exactly where the row before it
-\ ended, with no gap and no overlap. Readers validate that tiling before use
-\ (and may retain it for a frozen row): the first window must start where the previous row finished, each
-\ following window must start where the previous one finished, and the last must
-\ end inside the live pool. Non-overlap becomes a constant-cost check on the row
-\ itself instead of a search over every other row, and a row appended past this
-\ package's constructors cannot claim a window that overlaps another operation's
-\ or reaches past the cells the pool holds.
-\
-\ STORE SHAPES. Three IR-ARENA arenas owned by the compilation context: the cell
-\ pool, the value row table, and the operation row table. Each carries the usual
-\ three-cell header - format tag, owning module serial, committed capacity - so
-\ presenting one store where another belongs is a format-tag reject rather than a
-\ misread, and readers check shape, window, and stored ordinals
-\ fail-closed with E-IR-OP-STATE.
-\
-\ CEILINGS AND THE CONTEXT MAPPING. Capacities are creation parameters bounded
-\ by the ordinal range a row or pool cell can address. The practical limit today
-\ is smaller and belongs to the context: IR-CTX maps 128K per context, so all
-\ of a module's tables together have about sixteen thousand cells to share,
-\ which is a test-scale module rather than a production one. Enlarging or
-\ chunking that mapping changes the memory profile of every table that shares
-\ it, so it is its own designed capacity decision and its own dot, not a side
-\ effect of this store. Hitting a committed ceiling here is a named error
-\ thrown before any mutation, so a full store stays readable and keeps every
-\ identity it issued.
-\
-\ NOTHING PUBLIC MUTATES A FROZEN STORE. Every word here that writes takes an
-\ IR-ARENA:arena builder handle, and the checker rejects an IR-ARENA:view in that
-\ position, so a mutation cannot even be spelled against a frozen store. Once
-\ IR-ARENA:FREEZE consumes a handle, the retired handle rejects every live word
-\ with E-IR-ARENA-FROZEN. There is no publication, retirement, or lifecycle word
-\ in this file: the module freeze belongs to the builder stage, and this stage
-\ leaves it nothing to retract.
+\ row per SSA value, and a cell pool of each operation's operand, result,
+\ successor and attribute windows. Operations and values share a package because
+\ each validates against the other's live count. An operation names its opcode
+\ by the module's interned symbol, resolved in the dialect's schema table;
+\ parent block (IR-FUN) and effect class (the schema) are not stored here.
 
 require src/lib/prelude.f
 require src/lib/errors.f
@@ -159,9 +18,7 @@ require src/compiler/ir/schema.f
 package IR-OP
 public
 
-\ A value is defined either as a block argument or as an
-\ operation result. The vocabulary is closed, so an unknown definition kind is
-\ unrepresentable in checked code; the wire codes below persist it.
+\ The wire codes below persist it.
 ENUM def-kind DERIVE eq
    op-result
    blk-arg
@@ -169,9 +26,7 @@ ENUM def-kind DERIVE eq
 
 private
 
-\ The one raw crossing this package needs: one-way projections of the sealed
-\ IR-ID identities onto their serials, for header binding and owner comparison.
-\ Nothing in this package re-mints a raw cell into a nominal.
+\ One-way projections of IR-ID identities onto serials; nothing here re-mints.
 CAST: KEY-SERIAL ( IR-ID:ir-module-key -- n )
 CAST: MID-SERIAL ( IR-ID:ir-module-id -- n )
 
@@ -200,11 +55,8 @@ $4F505231 constant OPR-MAGIC         \ "OPR1": the operation-table header format
 11 constant OFF-SLEN
 12 constant ROW-CELLS
 
-\ One attribute entry is two pool cells, in this order. The window stores its
-\ length in cells, not in entries, so every window in this row means the same
-\ thing - a run of pool cells - and the tiling arithmetic is untouched by the
-\ stride. The entry count is the reader's division, and an odd stored length is
-\ a forged row rather than a half entry.
+\ The window length is in cells, not entries, so the tiling ignores the stride;
+\ an odd stored length is a forged row.
 0 constant AT-KEY                    \ the key symbol ordinal
 1 constant AT-VAL                    \ the attribute ordinal
 2 constant AT-CELLS
@@ -244,12 +96,8 @@ private
    endcase ;
 
 \ ---- cell access -------------------------------------------------------------
-\ Every read below goes through an IR-ARENA reader. The three stores are
-\ resolved ONCE, at the public word, and the whole private layer takes the
-\ resolved readers - a row of six fields used to resolve the same store
-\ eighteen times. The live and frozen twins collapse with it: a reader carries
-\ the state it was opened against and refuses the other with the error the
-\ handle gave, so the public L/F pairs differ only in OPEN-LIVE against OPEN.
+\ Each store is resolved once at the public word into a reader, which refuses
+\ the wrong live/frozen state itself.
 
 \ ---- headers and shape -------------------------------------------------------
 : PSHAPE-CK ( n -- )
@@ -294,9 +142,7 @@ private
 : SERIAL-CK ( n n -- )
    <> if E-IR-OP-OWNER throw then ;
 
-\ The three stores are one table only when all three carry the same owning
-\ module serial, so a cross-module trio rejects before a row window is trusted
-\ against the wrong pool.
+\ A cross-module trio rejects before a row window is trusted against the pool.
 : TRIO-CK ( IR-ARENA:reader IR-ARENA:reader IR-ARENA:reader -- )
    {: p:IR-ARENA:reader v:IR-ARENA:reader r:IR-ARENA:reader :}
    p PHDR-CK
@@ -315,10 +161,8 @@ private
    v VHDR-CK
    v HC-SERIAL IR-ARENA:RD@ key KEY-SERIAL SERIAL-CK ;
 
-\ A window reader holds only the pool and the row table, so it checks that
-\ pairing itself: both stores are what their tags claim, both carry the same
-\ owning module serial, and that serial is the presented key's. A pool from
-\ another module can therefore never be read through this module's windows.
+\ A window reader holds only the pool and row table, so it checks their tags,
+\ that both share an owner serial, and that it is the presented key's.
 : PR-CK ( IR-ARENA:reader IR-ARENA:reader IR-ID:ir-module-key -- )
    {: p:IR-ARENA:reader r:IR-ARENA:reader key:IR-ID:ir-module-key :}
    p PHDR-CK
@@ -347,10 +191,7 @@ private
 : SRC-OWNER ( IR-ID:ir-source-id -- n )
    IR-ID:SOURCE-OWNER MID-SERIAL ;
 
-\ A stored ordinal only has to be non-negative here: the table that owns the
-\ reference revalidates the id it is handed, so a corrupted row cannot make the
-\ symbol interner, the type table, or the attribute table read a row it never
-\ built.
+\ Non-negative only: the owning table revalidates the id it is handed.
 : ORD-OK ( n -- n )
    dup 0 < if E-IR-OP-STATE throw then ;
 
@@ -391,6 +232,9 @@ private
    HDR-CELLS + IR-ARENA:RD@ ;
 
 \ ---- the window tiling -------------------------------------------------------
+\ The four windows tile the pool in order (operands, results, successors,
+\ attributes) with lengths in pool cells, so non-overlap is a constant check on
+\ one row against the row before it (TILE-CK).
 : LEN-OK ( n -- n )
    dup 0 < if E-IR-OP-STATE throw then ;
 
@@ -401,10 +245,6 @@ private
    {: r:IR-ARENA:reader l:n :}
    r l OFF-ATST RC@ LEN-OK  r l OFF-ATN RC@ LEN-OK + ;
 
-\ Revalidate one row's four windows as an exact tiling of the pool: the operand
-\ window continues where the row before it ended, each following window
-\ continues where the previous one ended, and the last ends inside the live
-\ cells. Overlap and gaps are both impossible once this holds.
 : TILE-CK ( IR-ARENA:reader IR-ARENA:reader n -- )
    {: p:IR-ARENA:reader r:IR-ARENA:reader l:n :}
    l 0= if 0 else r l 1- ROW-END then {: at:n :}
@@ -417,11 +257,10 @@ private
    a3 r l OFF-ATST RC@ STEP-CK
    a3 r l OFF-ATN RC@ LEN-OK + p PCELLS > if E-IR-OP-STATE throw then ;
 
-\ Frozen contents cannot change through the arena API. Reuse one validated
-\ row's windows, keyed by both exact reader tokens and the operation owner.
-\ This assumes valid pointer use; it does not detect arbitrary memory corruption.
-\ No mapping pointer is retained. Every hit revalidates both readers, so
-\ retirement, context teardown and slot reuse still reject before a pool read.
+\ Frozen contents cannot change through the arena API, so one validated row's
+\ windows are reused, keyed by both reader tokens and the operation owner. No
+\ mapping pointer is retained; every hit revalidates both readers, so retirement,
+\ teardown and slot reuse still reject. Does not detect memory corruption.
 2 TYPED-BUFFER FROW-READERS IR-ARENA:reader
 8 TYPED-BUFFER FROW-FIELDS n
 1 TYPED-BUFFER FROW-READY bool
@@ -445,7 +284,6 @@ variable FROW-LOCAL
    a3 OFF-ATST FROW-FIELD STEP-CK
    a3 OFF-ATN FROW-FIELD LEN-OK + p PCELLS > if E-IR-OP-STATE throw then ;
 
-\ One element of a stored window, read only after the row's tiling holds.
 : WIN@ ( IR-ARENA:reader IR-ARENA:reader n n n n -- n )
    {: p:IR-ARENA:reader r:IR-ARENA:reader l:n stoff:n lenoff:n i:n :}
    p r l TILE-CK
@@ -462,8 +300,8 @@ variable FROW-LOCAL
    id IR-ID:OP-OWNER MID-SERIAL FROW-KEY @ <> if false exit then
    id IR-ID:OP-LOCAL FROW-LOCAL @ = ;
 
-\ Only frozen readers may use the memo: a matching token for a mutable arena
-\ would not prove that the row still has the tiling previously checked.
+\ Frozen readers only: a matching token for a mutable arena does not prove the
+\ row still tiles.
 : FROW-USE ( IR-ARENA:reader IR-ARENA:reader IR-ID:ir-module-key IR-ID:ir-op-id -- )
    {: p:IR-ARENA:reader r:IR-ARENA:reader key:IR-ID:ir-module-key id:IR-ID:ir-op-id :}
    p IR-ARENA:FROZEN-READER drop r IR-ARENA:FROZEN-READER drop
@@ -483,16 +321,13 @@ variable FROW-LOCAL
    i 0 < i ln >= or if E-IR-OP-BOUND throw then
    p stoff FROW-FIELD i + PC@ ORD-OK ;
 
-\ How many attributes a stored cell length holds. A length that is not a whole
-\ number of entries is a forged or corrupted row, so it is refused rather than
-\ rounded down to something readable.
+\ A length that is not a whole number of entries is refused, not rounded down.
 : AT-N ( n -- n )
    dup AT-CELLS mod 0 <> if E-IR-OP-STATE throw then
    AT-CELLS / ;
 
-\ One cell of the i-th attribute entry: k is AT-KEY or AT-VAL. The bound is the
-\ entry count, so a caller cannot address the far cell of an entry past the
-\ window by doubling its own index.
+\ k is AT-KEY or AT-VAL. Bounded by the entry count, so a doubled index cannot
+\ reach past the window.
 : ATWIN@ ( IR-ARENA:reader IR-ARENA:reader n n n -- n )
    {: p:IR-ARENA:reader r:IR-ARENA:reader l:n i:n k:n :}
    p r l TILE-CK
@@ -507,19 +342,13 @@ variable FROW-LOCAL
    p OFF-ATST FROW-FIELD i AT-CELLS * + k + PC@ ORD-OK ;
 
 \ ---- the staged operation ----------------------------------------------------
-\ One package-owned stage under the single-task compilation discipline, in the
-\ shape IR-TYPE, IR-ATTR, and IR-SCHEMA established: BEGIN-OP opens it, the ADD-
-\ and SET- words fill it, and END-OP validates everything and appends. Any end
-\ consumes the stage, so neither a rejected append nor an end without a begin
-\ can leave a half-staged operation behind.
+\ Any end consumes the stage, so no half-staged operation survives.
 0 constant MODE-NONE
 1 constant MODE-OPEN
 -1 constant UNSET
 
-\ The four staged lists share one pair of arrays, addressed by a list index and
-\ a fixed segment base, because a Habu word cannot take a storage array as an
-\ argument: one indexed pair keeps the append and validate helpers shared
-\ instead of written out four times.
+\ The staged lists share one pair of arrays addressed by list index and segment
+\ base, because a Habu word cannot take a storage array as an argument.
 5 constant LIST#
 0 constant L-OP                      \ operand value ordinals
 1 constant L-RS                      \ result type ordinals
@@ -586,12 +415,16 @@ LIST# CWORK-SPAN STG-N n
    n 1+ l SN! ;
 
 \ ---- staged validation -------------------------------------------------------
+\ Every check runs before the first IR-ARENA:PUSH. An operand's ordinal is below
+\ the live value count, so construction order is dominance order (E-IR-OP-SSA).
+\ Successors and block-argument blocks point forward legitimately: only their
+\ module is checked here; existence is IR-FUN's and IR-VERIFY's. So are attribute
+\ key existence and key legality: an attribute is a (key, value) pair because the
+\ schema declares required keys.
 : OWNED-CK ( n n -- )
    {: hs:n owner:n :}
    owner hs SERIAL-CK ;
 
-\ By the acyclicity rule above, an operand names a value
-\ that is already defined, so its ordinal is strictly below the live count.
 : OPERANDS-CK ( n n -- )
    {: hs:n vcnt:n :}
    L-OP SN@ 0 ?do
@@ -599,7 +432,6 @@ LIST# CWORK-SPAN STG-N n
       L-OP SEG i + SV@ dup 0 < swap vcnt >= or if E-IR-OP-SSA throw then
    loop ;
 
-\ Every staged result type is a real type of this module's type table.
 : RESULTS-CK ( IR-ARENA:arena IR-ID:ir-module-key -- )
    {: tr:IR-ARENA:arena key:IR-ID:ir-module-key :}
    L-RS SN@ 0 ?do
@@ -607,10 +439,8 @@ LIST# CWORK-SPAN STG-N n
       tr key L-RS SEG i + SV@ IR-ID:PACK-TYPE IR-TYPE:KIND@ drop
    loop ;
 
-\ Every staged attribute is a real attribute of this module's attribute table,
-\ under a key symbol of this module. Whether that key is one the opcode declares
-\ is the freeze verifier's question, and so is the key's existence: this file
-\ holds no symbol table, exactly as it holds no block table for a successor.
+\ Key declaration and key existence are the freeze verifier's: this file holds
+\ no symbol table.
 : ATTRS-CK ( IR-ARENA:arena IR-ID:ir-module-key -- )
    {: ar:IR-ARENA:arena key:IR-ID:ir-module-key :}
    L-AT SN@ 0 ?do
@@ -620,9 +450,6 @@ LIST# CWORK-SPAN STG-N n
       L-AK SEG i + SV@ 0 < if E-IR-OP-BOUND throw then
    loop ;
 
-\ A successor names a block of this module. Its existence is the block table's
-\ fact and the freeze verifier's check, because a branch to a block
-\ that is still being built is ordinary SSA construction.
 : SUCCS-CK ( n -- )
    {: hs:n :}
    L-SC SN@ 0 ?do
@@ -630,9 +457,8 @@ LIST# CWORK-SPAN STG-N n
       L-SC SEG i + SV@ 0 < if E-IR-OP-BOUND throw then
    loop ;
 
-\ The schema's arity rule: an exact count without a variadic tail; with one, the
-\ fixed part is one shorter and the tail describes every further entry, of which
-\ there may be none.
+\ Exact count without a variadic tail; with one, the fixed part is one shorter
+\ and the tail covers any number of further entries, including none.
 : LIST-ARITY-CK ( n n bool -- )
    {: want:n have:n tail:bool :}
    tail if
@@ -669,12 +495,9 @@ LIST# CWORK-SPAN STG-N n
    v VCNT L-RS SN@ + v HC-CAP IR-ARENA:RD@ > if E-IR-OP-CAP throw then
    p PCELLS STAGED-CELLS + p HC-CAP IR-ARENA:RD@ > if E-IR-OP-CAP throw then ;
 
-\ One append writes all THREE arenas: the pool windows, then the operation row,
-\ then one value row per result. All three are reserved here, before the first
-\ of them is touched, because a pool window that landed without its row - or a
-\ row without its value rows - is a store whose windows no longer tile and whose
-\ counts no row width divides. Reserving after the room check keeps this store's
-\ own named capacity error ahead of the arena's.
+\ Pool, operation row and value rows are all reserved before any is written, so
+\ the windows always tile; after the room check so this store's capacity error
+\ comes first.
 : ROOM-TAKE ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena -- )
    {: c:IR-CTX:ctx p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
    c p STAGED-CELLS IR-ARENA:RESERVE
@@ -690,16 +513,12 @@ LIST# CWORK-SPAN STG-N n
       c p l SEG i + SV@ CELL+
    loop ;
 
-\ The result window holds the value ordinals this append is about to mint, so
-\ the pool records results the same way it records operands: as value ordinals.
 : RESULTS-ADD ( IR-CTX:ctx IR-ARENA:arena n -- )
    {: c:IR-CTX:ctx p:IR-ARENA:arena base:n :}
    L-RS SN@ 0 ?do
       c p base i + CELL+
    loop ;
 
-\ The attribute window is written as key/value pairs, in the AT-KEY then AT-VAL
-\ order the readers address.
 : ATTRS-ADD ( IR-CTX:ctx IR-ARENA:arena -- )
    {: c:IR-CTX:ctx p:IR-ARENA:arena :}
    L-AT SN@ 0 ?do
@@ -707,8 +526,7 @@ LIST# CWORK-SPAN STG-N n
       c p L-AT SEG i + SV@ CELL+
    loop ;
 
-\ The four window starts of a row whose cells begin at st, in the order the
-\ append writes them. This is the tiling TILE-CK later revalidates.
+\ The tiling TILE-CK later revalidates.
 : WIN-STARTS ( n -- n n n n )
    {: st:n :}
    st
@@ -753,11 +571,8 @@ LIST# CWORK-SPAN STG-N n
 public
 
 \ ---- creation ----------------------------------------------------------------
-\ Create one module's operation store: a cell pool committed to exactly pcap
-\ cells, a value table committed to exactly vcap values, and an operation table
-\ committed to exactly ocap operations, all three headers bound to key's module
-\ serial. The three handles plus the key are the store; they stay with the
-\ module owner and die with the owning context.
+\ All three headers are bound to key's module serial; the stores die with the
+\ owning context.
 : NEW ( IR-CTX:ctx IR-ID:ir-module-key n n n -- IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena )
    {: c:IR-CTX:ctx key:IR-ID:ir-module-key ocap:n vcap:n pcap:n :}
    ocap ROW-CAP-OK
@@ -781,7 +596,6 @@ public
    p v r ;
 
 \ ---- the operation builder ---------------------------------------------------
-\ Open one operation, named by the module's interned symbol for its opcode.
 : BEGIN-OP ( IR-ID:ir-symbol-id -- )
    {: op:IR-ID:ir-symbol-id :}
    STG-MODE @ MODE-NONE <> if E-IR-OP-STAGE throw then
@@ -790,43 +604,33 @@ public
    op SYM-ORD STG-OPC !
    op SYM-OWNER STG-OPCO ! ;
 
-\ Abandon an open operation without appending it. The stage exists only between
-\ a begin and an end, so this is the explicit end for a caller that decides not
-\ to append after all.
 : ABANDON ( -- )
    STG-TAKE ;
 
-\ One operand, naming a value this module has already defined.
 : ADD-OPERAND ( IR-ID:ir-value-id -- )
    {: val:IR-ID:ir-value-id :}
    STG-OPEN-CK
    L-OP val IR-ID:VALUE-LOCAL val VAL-OWNER ORD+ ;
 
-\ One result of this type. Its value identity is minted by the
-\ append, because a result cannot name its defining operation before that
-\ operation exists.
+\ The value identity is minted by END-OP.
 : ADD-RESULT ( IR-ID:ir-type-id -- )
    {: t:IR-ID:ir-type-id :}
    STG-OPEN-CK
    L-RS t IR-ID:TYPE-LOCAL t TYP-OWNER ORD+ ;
 
-\ One control-flow successor of this terminator.
 : ADD-SUCCESSOR ( IR-ID:ir-block-id -- )
    {: b:IR-ID:ir-block-id :}
    STG-OPEN-CK
    L-SC b IR-ID:BLOCK-LOCAL b BLK-OWNER ORD+ ;
 
-\ One attribute this operation carries,
-\ under the key it answers. The two lists are pushed together and are therefore
-\ always the same length: the key push runs first, and it is refused at exactly
-\ the entry count that would refuse the value push.
+\ The key push runs first and is refused at the same count as the value push, so
+\ the two lists stay the same length.
 : ADD-ATTR ( IR-ID:ir-symbol-id IR-ID:ir-attr-id -- )
    {: k:IR-ID:ir-symbol-id a:IR-ID:ir-attr-id :}
    STG-OPEN-CK
    L-AK k SYM-ORD k SYM-OWNER ORD+
    L-AT a IR-ID:ATTR-LOCAL a ATTR-OWNER ORD+ ;
 
-\ Where this operation came from.
 : SET-SPAN ( IR-SOURCE:span -- )
    IR--SOURCE-SPAN:UNMAKE
    {: src:IR-ID:ir-source-id st:n ln:n :}
@@ -837,12 +641,7 @@ public
    st STG-SBEG !
    ln STG-SLEN ! ;
 
-\ Close the staged operation: validate it whole against these stores, the
-\ opcode's schema, the module's type, attribute, and source tables, and all
-\ three committed ceilings, then append its pool cells, its operation row, and
-\ one value row per result. The stage is consumed whatever the outcome, and
-\ every check runs before the first cell is written, so an append either lands
-\ whole or changes nothing.
+\ The stage is consumed whatever the outcome; all checks precede the first write.
 : END-OP ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena -- IR-ID:ir-op-id )
    {: c:IR-CTX:ctx pa:IR-ARENA:arena va:IR-ARENA:arena ra:IR-ARENA:arena key:IR-ID:ir-module-key sr:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena :}
    STG-TAKE
@@ -873,13 +672,8 @@ public
    key l IR-ID:PACK-OP ;
 
 \ ---- block arguments ---------------------------------------------------------
-\ The other definition kind. A block argument is a value its block
-\ defines at an argument position; it is minted whole here because the value
-\ store owns value rows, while the block table records the window those values
-\ fill. The block identity is owner-checked but not existence-checked: a block's
-\ arguments are always minted before the block's own row exists. Every check
-\ runs before the first cell is written, so this append also lands whole or
-\ changes nothing.
+\ The block is owner-checked only: arguments are minted before the block's row
+\ exists. All checks precede the first write.
 : MINT-ARG ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key IR-ID:ir-block-id IR-ID:ir-type-id n -- IR-ID:ir-value-id )
    {: c:IR-CTX:ctx va:IR-ARENA:arena tr:IR-ARENA:arena key:IR-ID:ir-module-key blk:IR-ID:ir-block-id t:IR-ID:ir-type-id pos:n :}
    va IR-ARENA:OPEN-LIVE {: v:IR-ARENA:reader :}
@@ -941,9 +735,7 @@ public
    {: ra:IR-ARENA:arena id:IR-ID:ir-op-id :}
    ra IR-ARENA:OPEN-LIVE id OFF-ATN FLD LEN-OK AT-N ;
 
-\ The span this operation came from. A span is a value, so the consumer
-\ revalidates it against the registry it names with IR-SOURCE:SPAN-CK, exactly
-\ as IR-SOURCE requires of every holder.
+\ The consumer revalidates the span with IR-SOURCE:SPAN-CK.
 : SPAN@ ( IR-ARENA:arena IR-ID:ir-module-key IR-ID:ir-op-id -- IR-SOURCE:span )
    {: ra:IR-ARENA:arena key:IR-ID:ir-module-key id:IR-ID:ir-op-id :}
    ra IR-ARENA:OPEN-LIVE {: r:IR-ARENA:reader :}
@@ -975,8 +767,7 @@ public
    p r key PR-CK
    key p r  r id ROW-AT  OFF-SCST OFF-SCN i WIN@ IR-ID:PACK-BLOCK ;
 
-\ The key this attribute answers. Whether the opcode declares it is the freeze
-\ verifier's question; this reader only says which key was recorded.
+\ Whether the opcode declares this key is the freeze verifier's question.
 : ATTR-KEY@ ( IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key IR-ID:ir-op-id n -- IR-ID:ir-symbol-id )
    {: pa:IR-ARENA:arena ra:IR-ARENA:arena key:IR-ID:ir-module-key id:IR-ID:ir-op-id i:n :}
    pa IR-ARENA:OPEN-LIVE {: p:IR-ARENA:reader :}
@@ -997,10 +788,6 @@ public
 
 private
 
-\ A value's defining identity means different things in the two definition
-\ kinds, so asking an operation-result reader about a block argument is a caller
-\ error rather than a misread. A stored code outside the vocabulary dies in the
-\ decoder first.
 : RESULT-KIND-CK ( n -- )
    N>KIND IR--OP-DEF--KIND:OP-RESULT IR--OP-DEF--KIND:EQ
    0= if E-IR-OP-KIND throw then ;
@@ -1011,8 +798,6 @@ private
 
 public
 
-\ The operation that defined this value, checked against the operation table
-\ that owns the reference.
 : VALUE-OP@ ( IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key IR-ID:ir-value-id -- IR-ID:ir-op-id )
    {: va:IR-ARENA:arena ra:IR-ARENA:arena key:IR-ID:ir-module-key id:IR-ID:ir-value-id :}
    va IR-ARENA:OPEN-LIVE {: v:IR-ARENA:reader :}
@@ -1024,15 +809,13 @@ public
    dup r CNT >= if E-IR-OP-BOUND throw then
    key swap IR-ID:PACK-OP ;
 
-\ Which result of that operation this value is.
 : VALUE-POS@ ( IR-ARENA:arena IR-ID:ir-value-id -- n )
    {: va:IR-ARENA:arena id:IR-ID:ir-value-id :}
    va IR-ARENA:OPEN-LIVE {: v:IR-ARENA:reader :}
    v id OFF-VKIND VFLD RESULT-KIND-CK
    v id OFF-VPOS VFLD LEN-OK ;
 
-\ The block that defined this value. The identity is owner-checked here and
-\ bound-checked by the block table that owns it, exactly as for a successor.
+\ Owner-checked here; the block table bound-checks it.
 : VALUE-BLOCK@ ( IR-ARENA:arena IR-ID:ir-module-key IR-ID:ir-value-id -- IR-ID:ir-block-id )
    {: va:IR-ARENA:arena key:IR-ID:ir-module-key id:IR-ID:ir-value-id :}
    va IR-ARENA:OPEN-LIVE {: v:IR-ARENA:reader :}
@@ -1040,7 +823,6 @@ public
    v id OFF-VKIND VFLD ARG-KIND-CK
    key v id OFF-VDEF VFLD ORD-OK IR-ID:PACK-BLOCK ;
 
-\ Which argument of that block this value is.
 : VALUE-ARG@ ( IR-ARENA:arena IR-ID:ir-value-id -- n )
    {: va:IR-ARENA:arena id:IR-ID:ir-value-id :}
    va IR-ARENA:OPEN-LIVE {: v:IR-ARENA:reader :}
@@ -1048,8 +830,6 @@ public
    v id OFF-VPOS VFLD LEN-OK ;
 
 \ ---- frozen readers ----------------------------------------------------------
-\ A frozen module reads its operations and values through the three arena views;
-\ the retired builder handles reject every touch with E-IR-ARENA-FROZEN.
 : ROPS ( IR-ARENA:reader -- n )
    IR-ARENA:FROZEN-READER CNT ;
 
@@ -1182,9 +962,8 @@ public
    v id OFF-VKIND VFLD ARG-KIND-CK
    v id OFF-VPOS VFLD LEN-OK ;
 
-\ The row memo is a cache FROW-USE validates before every use, so a capture
-\ rests it to its boot state: the bytes an image carries do not depend on which
-\ row the build read last.
+\ The row memo is reset at capture so an image's bytes do not depend on which row
+\ the build read last.
 : CAPTURE-PREPARE ( -- )
    false 0 FROW-READY !
    0 0 FROW-READERS BYTE-VIEW CELL-VIEW !  0 1 FROW-READERS BYTE-VIEW CELL-VIEW !

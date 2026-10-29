@@ -1,83 +1,9 @@
-\ machine.f - what one target machine IS, as far as a routine contract and the
-\ passes over it have to know, in a single checked declaration the backend
-\ supplies.
-\
-\ WHY IT EXISTS. src/compiler/native-effect.f is the typed machine-state contract
-\ every native pass reads, and its vocabulary - register sets, the ordered place
-\ list, the convention, the flags, the link field, the frame and the exits - is
-\ target-neutral. What was NOT neutral was a handful of ARM64 facts it held as
-\ load-time constants: a file of 32 registers, the link register is x30, operand
-\ 31 is the stack pointer, the stack is 16-byte aligned, a frame slot is reached
-\ by a twelve-bit offset scaled by the access width. A machine with sixteen
-\ registers, no link register and a byte displacement could not declare a
-\ contract at all - not badly, but not at all, because those facts were constants
-\ and there was no seam to say otherwise. This file is that seam. A contract
-\ names the machine it is a contract over, so a second architecture supplies
-\ numbers rather than forking 2,300 lines of register allocator.
-\
-\ WHAT IT HOLDS, AND WHY THE REGISTER FILES ARE IN IT RATHER THAN BESIDE IT.
-\ src/compiler/native/regfile.f already says what the two register files are: how
-\ many registers each numbers, which the virtual machine took, which a call
-\ destroys, how wide a spill slot is. That is exactly the part of a machine the
-\ register allocator asks about, and it is a component OF this description rather
-\ than a second declaration next to it: a backend declares its machine once, and
-\ the allocator's view of it is NMACH:REGFILE, a projection. One authority per
-\ fact, and no way for a pass allocating registers and a pass validating a
-\ contract to be answering about two different machines.
-\
-\ THE REST IS WHAT A CONTRACT NEEDS AND A REGISTER FILE DOES NOT SAY:
-\   link      - the link register AS A SET, empty on a machine that has none.
-\               One field and not a number beside a flag, because a number
-\               beside a flag is two statements that can disagree, and "which
-\               register, if any" is one question. ARM64 answers x30; x86-64
-\               answers the empty set and its routines' contracts declare the
-\               link effect `absent`.
-\   sp        - the operand number a frame access is taken from. It is a
-\               register of the file and reserved, on both machines the chain
-\               targets, but WHICH one differs: ARM64 spells the stack pointer
-\               as operand 31 of a five-bit field, x86-64 as rsp.
-\   sp-align  - the alignment the stack pointer is kept at, which is the
-\               alignment every declared frame and every stack-pointer delta is
-\               held to.
-\   frame-max - the largest frame this machine can describe, already rounded to
-\               that alignment by the backend that knows its own offset field.
-\   off-max   - the largest offset the instruction that reaches a frame slot can
-\               name, in units of the scale below.
-\   off-scale - what one unit of that field is: the width of the access (ARM64's
-\               unsigned-offset load and store, whose twelve-bit field is scaled
-\               by what the access moves) or one byte whatever the access moves
-\               (x86-64's signed byte displacement). Two machines answering
-\               "how deep can a slot sit" in the same words needs this, because
-\               scaling by the width makes the answer depend on the access and
-\               not scaling makes it the same for every access.
-\   widths    - the bytes the machine's modelled memory forms move, as a set:
-\               bit w is set when some load and store form moves w bytes. ARM64
-\               has no halfword form, so it has no halfword slot; a machine that
-\               has one says so here instead of the schema deciding for it.
-\   slot-back - the deepest byte UNDER the base that an access can name, as a
-\               positive magnitude, or zero on a machine whose frame-reaching
-\               form has no signed field at all.
-\
-\ WHY A DESCRIPTION IS ONE CELL. Every one of these facts is read by words that
-\ already bind a dozen typed locals - a routine contract's constructor binds
-\ thirteen - and a multi-cell value cannot be bound to a typed local at all. A
-\ description the passes can carry therefore has to be one cell, so the facts
-\ live in a table private to this module and the value handed around is a
-\ nominal record over the row's ORDINAL. Nothing outside can read a fact except
-\ through a reader below and the ordinal is bounds-checked at every one of them,
-\ so a forged record refuses rather than reading whatever the number points at.
-\ Two descriptions of one machine are also the same value: MACHINE returns the
-\ row a machine with these facts already has rather than a second row, so a
-\ contract's identity does not depend on how many times a backend was asked to
-\ describe itself.
-\
-\ WHAT IT DELIBERATELY DOES NOT HOLD. Which places an ABI puts arguments in:
-\ that is a convention, it is declared per routine, and src/compiler/native/abi.f
-\ owns it for the Habu convention. The instruction vocabulary: a dialect owns
-\ that. Which registers ONE routine may write: that is the routine's contract.
-\ Which register the running engine keeps its data stack in: src/habu/layout.f
-\ declares that and the backend reports it. A machine description answers
-\ questions whose answer is the same for every routine of the machine.
+\ machine.f - what one target machine is, as far as a routine contract and the
+\ passes over it need, declared once by its backend. The register files are part
+\ of it (NMACH:REGFILE is the allocator's view), so the allocator and the
+\ contract validator read one authority. Argument places belong to the
+\ convention (abi.f), writable registers to the routine's contract, and the
+\ engine's data-stack register to src/habu/layout.f.
 
 require src/lib/prelude.f
 require src/lib/errors.f
@@ -87,10 +13,8 @@ package NMACH
 public
 
 \ ---- how the frame-access offset field is counted ----------------------------
-\ Two machines, two readings of one field, and a reader that has to ask rather
-\ than assume: an offset field scaled by the access width reaches a different
-\ byte for a byte store than for an eight-byte store, and one counted in bytes
-\ reaches the same byte for both.
+\ An offset field scaled by the access width reaches a different byte for a byte
+\ store than for an eight-byte store; one counted in bytes reaches the same byte.
 
 ENUM offscale DERIVE eq
    by-width
@@ -98,9 +22,11 @@ ENUM offscale DERIVE eq
 ;ENUM
 
 \ ---- one machine -------------------------------------------------------------
-\ A nominal one-field record over the ordinal of the row holding its facts, so a
-\ description cannot be confused with a count, a register number or a bare
-\ integer, and so a pass can bind one to a typed local.
+\ A nominal record over the ordinal of the row holding its facts: the words that
+\ read a description already bind a dozen typed locals, and a multi-cell value
+\ cannot be bound to one. Every reader bounds-checks the ordinal, so a forged
+\ record refuses. MACHINE answers the existing row for facts already declared,
+\ so two descriptions of one machine are the same value.
 
 STRUCTURE mach DERIVE eq
    FIELD id n
@@ -150,9 +76,6 @@ variable MACH-N
    ;MATCH ;
 
 \ ---- reading a row -----------------------------------------------------------
-\ One cell of one row, by ordinal. Every public reader arrives here, so an
-\ ordinal no machine was declared under is refused once and in one place rather
-\ than indexing past the table.
 : ROW@ ( n n -- n )
    {: row:n fld:n :}
    row ROW-N * fld + cells MACH-T + @ ;
@@ -212,8 +135,20 @@ variable MACH-N
 public
 
 \ ---- the description ---------------------------------------------------------
-\ The only constructor: every reader below takes a value that passed through it,
-\ so no reader revalidates and none can be handed a description that is not one.
+\ The only constructor; every reader takes a value that passed through it.
+\   link       the link register as a set, empty on a machine with none (x86-64,
+\              whose contracts declare the link effect `absent`)
+\   sp         the reserved register a frame access is taken from (ARM64
+\              operand 31, x86-64 rsp)
+\   sp-align   the alignment every frame and stack-pointer delta is held to
+\   frame-max  the largest frame, already rounded to that alignment
+\   off-max    the largest frame-slot offset, in off-scale units: the access
+\              width (ARM64's twelve-bit unsigned-offset field) or one byte
+\              (x86-64's signed byte displacement)
+\   widths     bit w set when some load and store form moves w bytes; ARM64 has
+\              no halfword form, so no halfword slot
+\   slot-back  the deepest byte under the base an access can name, positive;
+\              zero when the frame-reaching form has no signed field
 : MACHINE ( NREGFILE:file NREGFILE:regs n n n n NMACH:offscale n n -- NMACH:mach )
    {: lk:NREGFILE:regs sp:n al:n fm:n om:n os:NMACH:offscale wd:n bk:n :}
    NREGFILE-FILE:UNMAKE
@@ -292,9 +227,6 @@ public
    NREGFILE:FILE ;
 
 \ ---- the register files, asked through the machine ----------------------------
-\ The questions the contract schema asks of a file. They are NREGFILE's answers,
-\ reported here so a caller holding a machine does not have to project the file
-\ first and so there is one spelling of each in the passes.
 : GPR-SIZE ( NMACH:mach -- n )        F-GPR-SIZE F@ ;
 : FPR-SIZE ( NMACH:mach -- n )        F-FPR-SIZE F@ ;
 : SLOT-WIDTH ( NMACH:mach -- n )      F-SLOT-WIDTH F@ ;
@@ -351,8 +283,6 @@ public
    SP-ALIGN mod 0= ;
 
 \ ---- reaching a frame slot ---------------------------------------------------
-\ Does a load or store of this machine move this many bytes at all? A width no
-\ form moves has no reach and no slot.
 : WIDTH-OK? ( n NMACH:mach -- bool )
    F-WIDTHS F@ {: width:n wd:n :}
    width 1 < width NREGFILE:REG-MAX > or if false exit then

@@ -30,20 +30,17 @@ public
 
 private
 
-\ AArch64 writes the base register back as part of a load or a store, and the
-\ link lives at LINK-SLOT, which is the frame's base. So a frame that keeps
-\ only the link register is taken and given back by the transfer itself: `str
-\ x30,[sp,#-frame]!` opens it and `ldr x30,[sp],#frame` closes it. The
-\ writeback offset is nine SIGNED bits of BYTES, so a wider frame still takes
-\ the reserve/release pair at each end -- measured 2026-09-16 over the engine's
-\ own image, 30 of 9,068 frames.
+\ AArch64 writes the base register back as part of a load or store, and the
+\ link lives at LINK-SLOT, the frame's base, so a link-only frame is opened by
+\ `str x30,[sp,#-frame]!` and closed by `ldr x30,[sp],#frame`. The writeback
+\ offset is nine signed bits of bytes; a wider frame takes the reserve/release
+\ pair at each end.
 $100 constant WRITEBACK-MAX          \ one past the widest offset the field holds
 
 public
 
-\ THE ONE PLACE THAT DECIDES IT. The selector emits the fused form from here and
-\ the register-allocation verifier expects it from here, so the two cannot
-\ disagree about which shape a routine's frame has.
+\ The one place this is decided: the selector and the register-allocation
+\ verifier both ask here.
 : FUSED? ( n -- bool )
    WRITEBACK-MAX < ;
 
