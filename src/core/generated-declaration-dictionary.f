@@ -32,10 +32,12 @@ PTR-VARIABLE DP-MARK
 \ A literal segment opened inside the transaction outlives its rollback: DP stops
 \ at the DATA floor (src/habu/layout.f DATA-FLOOR-CELL). The release high-water
 \ rises to the DP this lowers from, so `allot` zeroes the reused space it hands
-\ out again (src/habu/layout.f DPHW-CELL).
+\ out again (src/habu/layout.f DPHW-CELL), and the `,` run ends
+\ (src/habu/layout.f COMMA-RUN-CELL).
 : DICTIONARY-DP! ( ptr a -- )
    data-base NULL-PTR - {: base:n :}
    data-base DP-CELL + @ base -  data-base DPHW-CELL + @ max  data-base DPHW-CELL + !
+   0 data-base COMMA-RUN-CELL + !
    NULL-PTR -  data-base DATA-FLOOR-CELL + @ base + max
    data-base DP-CELL + ! ;
 

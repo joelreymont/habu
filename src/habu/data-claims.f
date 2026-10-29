@@ -140,6 +140,9 @@ create TAB
    AOT-CELLS:SPAN-TABLE-CELL          3 cells                 CLAIM AOT-SPAN
    SIGNAL-ABI:STUB-CELL               3 cells                 CLAIM SIGNAL-ABI
    LVS-OFF                            LV-LEVELS               CLAIM LVS-LEVELS
+   COMMA-RUN-CELL                     1 cells                 CLAIM COMMA-RUN-CELL
+   COMMA-END-CELL                     1 cells                 CLAIM COMMA-END-CELL
+   COMMA-BASE-CELL                    1 cells                 CLAIM COMMA-BASE-CELL
    LVF-OFF                            LV-LEVELS cells         CLAIM LVF-LEVELS
    LVQ-OFF                            LV-LEVELS cells         CLAIM LVQ-LEVELS
    FRAME-CELL                         1 cells                 CLAIM FRAME-CELL

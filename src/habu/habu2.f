@@ -4986,14 +4986,15 @@ variable LREPLAYTRAP
 
 \ The end of `create` (EMIT-CREATE) and of the def-create row alike, for record
 \ x9 in slot NDICT with the code band open at CP and the record declared: [0]
-\ is CP, DP rounds up to a cell under DP-CHECK, the code pushes that address
-\ as an address-map site and returns, [8] is its length and [16] carries
-\ DKIND:ADDR, LASTC is the record, which is counted and indexed, its code is
-\ native, the band closes and the code is flushed.
+\ is CP, DP rounds up to a cell under DP-CHECK, COMMA-BASE records that body
+\ start, the code pushes it as an address-map site and returns, [8] is its
+\ length and [16] carries DKIND:ADDR, LASTC is the record, which is counted and
+\ indexed, its code is native, the band closes and the code is flushed.
 : ADDR-TAIL, ( -- )
    CP 9 0 STR,
    11 DATA 0 LDR,  11 11 7 ADDI,  11 11 3 LSRI,  11 11 3 LSLI,   \ standard CREATE: round the data field up to a cell
    11 DP-CHECK  11 DATA 0 STR,
+   11 DATA COMMA-BASE-CELL STR,
    C-DATA-ADDR
    9 W-RET LIT64,  LCEMIT LABEL@ BL,
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,

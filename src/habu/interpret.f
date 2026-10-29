@@ -258,7 +258,8 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
 \ x86 THROW restores its catch stack but returns with the Habu evaluation
 \ frame still linked. ARM LEVALREC has already popped it before catch returns.
 \ The top link is the ownership test: exactly one path performs the rollback.
-: FRAME-ROLLBACK-CODE ( ptr u8 -- ) {: f:ptr :}
+: FRAME-ROLLBACK-CODE ( ptr u8 -- )
+   {: f:ptr :}
    DEF-ABORT
    f ROWS-CUT
    \ A buffer may start a task and throw without allocating a definition.
@@ -269,8 +270,10 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    f FR-DP FR@ base DATA-FLOOR-CELL CELL@ + max {: cut:n :}
    cut base - ADDRESS-CELLS:KEEP-BELOW
    \ Raise the release high-water to the DP this lowers from, so `allot`
-   \ zeroes the reused space it hands out again (layout.f DPHW-CELL).
+   \ zeroes the reused space it hands out again (layout.f DPHW-CELL), and end
+   \ the `,` run (layout.f COMMA-RUN-CELL).
    DP-CELL CELL@ base - DPHW-CELL CELL@ max DPHW-CELL CELL!
+   0 COMMA-RUN-CELL CELL!
    cut DP-CELL CELL! ;
 
 : FRAME-ROLLBACK-TOKEN ( -- )

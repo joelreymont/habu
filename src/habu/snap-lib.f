@@ -294,6 +294,8 @@ PTR-VARIABLE SND-A
    PKG-PUB-CELL SND-ZERO-CELL PKG-PRI-CELL SND-ZERO-CELL
    PKG-PARENT-CELL SND-ZERO-CELL PKG-REC-CELL SND-ZERO-CELL
    LOOPSP-CELL SND-ZERO-CELL  DOESP-CELL SND-ZERO-CELL
+   COMMA-RUN-CELL SND-ZERO-CELL  COMMA-END-CELL SND-ZERO-CELL
+   COMMA-BASE-CELL SND-ZERO-CELL
    \ Tier 0 leaves the last closed quotation's entry, EXIT chain and frame in
    \ the Q cells, and each quotation it parked in a JIT-QUOT frame: dead once
    \ closed, and this process's code addresses.

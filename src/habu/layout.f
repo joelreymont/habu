@@ -1474,9 +1474,23 @@ CHECKER-OWNER-ABI:VERIFY-SOURCE-CLAUSE-OFF constant DECL-VERIFY-SOURCE-CLAUSE-OF
 \ lived at $600..$800. The frames are a guarded mapping now (STACK-ABI), so this
 \ states its own offset. Below it, $600..$690 is GENIO-ABI, AOT-SPAN and
 \ SIGNAL-ABI, $690 is NCOMP-DISPATCH:RECOVER-CELL, $698..$6A8 is LVS-OFF,
-\ $6A8..$6D0 is free, $6D0..$750 is LVF-OFF, $750..$7D0 is LVQ-OFF and $7D0..$7E0 is FRAME-CELL
-\ and QFRAME-CELL.
+\ $6A8..$6C0 is the `,` run, $6C0..$6D0 is free, $6D0..$750 is LVF-OFF, $750..$7D0
+\ is LVQ-OFF and $7D0..$7E0 is FRAME-CELL and QFRAME-CELL.
 $800 constant BODYBUF-OFF
+\ The latest run of `,` cells that starts at a created body, [COMMA-RUN,
+\ COMMA-END) as addresses. A `,` at COMMA-BASE starts a run there, one at
+\ COMMA-END extends it, any other leaves it alone (habu1.f BCOMMA).
+\ COMMA-RUN-CELL: written by habu1.f BCOMMA; zeroed by SND-ZERO-LIVE and by
+\ every path that lowers DP, beside the DPHW-CELL raise: habu1.f DP-LOWER, (and
+\ so BALLOT, habu2.f EM-EVAL-THROW-RECOVER and EM-REPL-RECOVER), interpret.f
+\ FRAME-ROLLBACK-CODE and src/core/generated-declaration-dictionary.f
+\ DICTIONARY-DP!. A zero RUN never equals a body start.
+$6A8 constant COMMA-RUN-CELL
+\ COMMA-END-CELL: written by habu1.f BCOMMA, zeroed by SND-ZERO-LIVE.
+$6B0 constant COMMA-END-CELL
+\ COMMA-BASE-CELL: the latest created body start, written by habu2.f ADDR-TAIL,
+\ zeroed by SND-ZERO-LIVE.
+$6B8 constant COMMA-BASE-CELL
 8000 constant BODYBUF-CAP
 $568 constant RSP-CELL
 $570 constant EXITH-CELL

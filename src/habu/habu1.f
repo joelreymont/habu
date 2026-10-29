@@ -2277,8 +2277,10 @@ variable LSOURCEEXECFINISH
 \ to the DP it lowers from, which the DP cell still holds: O(1), so releasing a
 \ large allot costs nothing, and `allot` (BALLOT) zeroes the reused space when
 \ it hands it out again. Clobbers the two scratch registers.
-: DP-LOWER, ( n n -- ) {: t:n u:n :}
+: DP-LOWER, ( n n -- )
+   {: t:n u:n :}
    LBL {: done:label :}
+   31 DATA COMMA-RUN-CELL STR,                     \ a `,` run ends where DP lowers
    t DATA DP-CELL LDR,  t t DATA SUB,
    u DATA DPHW-CELL LDR,  t u CMP,  C-LS done BCOND,
    t DATA DPHW-CELL STR,
@@ -2290,9 +2292,18 @@ variable LSOURCEEXECFINISH
    B-TASK-LIVE-GUARD
    7 DATA 0 LDR,  7 7 7 ADDI,  7 7 3 LSRI,  7 7 3 LSLI,  7 DP-CHECK  7 DATA 0 STR, ;
 
+\ `,` keeps the latest run of its cells that starts at a created body
+\ (layout.f COMMA-RUN-CELL): a cell written at the body start starts a run,
+\ even where the last run ended; one written at the run's end extends it.
 : BCOMMA ( -- )
+   LBL LBL LBL {: more:label grow:label done:label :}
    B-TASK-LIVE-GUARD
-   A G-POP  7 DATA 0 LDR,  C 7 8 ADDI,  C DP-CHECK  A 7 0 STR,  C DATA 0 STR, ;
+   A G-POP  7 DATA 0 LDR,  C 7 8 ADDI,  C DP-CHECK  A 7 0 STR,  C DATA 0 STR,
+   A DATA COMMA-BASE-CELL LDR,  A 7 CMP,  C-NE more BCOND,
+   7 DATA COMMA-RUN-CELL STR,  grow B,
+   more LBL,  A DATA COMMA-END-CELL LDR,  A 7 CMP,  C-NE done BCOND,
+   grow LBL,  C DATA COMMA-END-CELL STR,
+   done LBL, ;
 
 : BCCOMMA ( -- )
    B-TASK-LIVE-GUARD
