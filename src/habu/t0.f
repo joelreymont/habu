@@ -111,7 +111,13 @@
 \ stack is spilled. Every call, join and loop head spills the whole virtual
 \ stack to memory, so control paths meet with it empty and no snapshot or
 \ reconciliation exists. A push onto a full virtual stack spills its bottom
-\ entry.
+\ entry. Entries may share a vreg: a copy (`dup`, `over`, a wide move's cell)
+\ is a second entry holding the same vreg, and a vreg is free only once no
+\ entry holds it (RELEASE). An operation that writes an entry's vreg in place
+\ takes it through OWN, which first copies a shared vreg into a fresh one; one
+\ that overwrites it whole, reading the old value only as an input, takes it
+\ through WRITE-TARGET, which relabels the entry to a fresh vreg with no copy.
+\ A comparison writes no operand: it pushes its flag into a fresh vreg.
 \
 \ THE WIDTHS. A stack word moves whole values: the checker measured each
 \ operand's cells at the token, and the capture of each split's certificate
@@ -273,7 +279,7 @@ variable CUT                         \ the byte just past `does> `, or 0
 DYNAMIC-BUFFER VS-KIND n            \ reserved to T0-EMIT:VREGS by RESET
 DYNAMIC-BUFFER VS-VAL n
 variable VS-N
-variable FREE                       \ bit k set: vreg k holds no entry
+variable FREE                       \ bit k set: no entry holds vreg k
 
 : ALL-FREE ( -- n ) 1 T0-EMIT:VREGS lshift 1- ;
 
@@ -283,7 +289,15 @@ variable FREE                       \ bit k set: vreg k holds no entry
 
 : VREG@ ( n -- T0-EMIT:vreg ) VS-VAL @ T0-EMIT:>VREG ;
 
-: RELEASE ( T0-EMIT:vreg -- ) T0-EMIT:VREG>N 1 swap lshift FREE @ or FREE ! ;
+\ Whether an entry holds vreg n.
+: HELD? ( n -- bool ) {: n:n :}
+   false VS-N @ 0 ?do i REG? i VS-VAL @ n = and or loop ;
+
+\ Free a vreg once no entry holds it; one an entry still holds stays allocated.
+: RELEASE ( T0-EMIT:vreg -- )
+   T0-EMIT:VREG>N {: n:n :}
+   n HELD? if exit then
+   1 n lshift FREE @ or FREE ! ;
 
 : ENTRY! ( n n n -- ) {: kind:n val:n k:n :}
    kind k VS-KIND !  val k VS-VAL ! ;
@@ -291,11 +305,13 @@ variable FREE                       \ bit k set: vreg k holds no entry
 : COPY-ENTRY ( n n -- ) {: from:n to:n :}
    from VS-KIND @ from VS-VAL @ to ENTRY! ;
 
-\ Drop entry k, releasing its vreg, and close the gap above it.
+\ Drop entry k and close the gap above it, then release its vreg, which stays
+\ allocated while another entry holds it.
 : REMOVE ( n -- ) {: k:n :}
-   k REG? if k VREG@ RELEASE then
+   k REG? k VS-VAL @ {: reg:bool v:n :}
    VS-N @ k 1+ ?do i i 1- COPY-ENTRY loop
-   VS-N @ 1- VS-N ! ;
+   VS-N @ 1- VS-N !
+   reg if v T0-EMIT:>VREG RELEASE then ;
 
 \ Entry k written to the memory cell k above the stack pointer.
 : SPILL-ENTRY ( n -- ) {: k:n :}
@@ -316,7 +332,9 @@ variable FREE                       \ bit k set: vreg k holds no entry
 : ROOM ( -- )
    VS-N @ T0-EMIT:VREGS = if EVICT then ;
 
-\ A vreg no entry holds. Fewer than VREGS register entries always leave one.
+\ A vreg no entry holds. Entries holding fewer than VREGS distinct vregs leave
+\ one free; entries holding all of them are VREGS entries with a vreg each, so
+\ EVICT frees the bottom one's.
 : ALLOC ( -- T0-EMIT:vreg )
    FREE @ 0= if EVICT then
    FREE @ {: m:n :}
@@ -366,12 +384,42 @@ variable FREE                       \ bit k set: vreg k holds no entry
    r ;
 
 \ The top entry in a vreg, taken off the virtual stack. The vreg stays allocated
-\ until the caller's next SPILL-ALL or release.
+\ until the caller's next SPILL-ALL or RELEASE, and an entry below may still
+\ hold it: the caller writes it only once the virtual stack is spilled.
 : TAKE ( -- T0-EMIT:vreg )
    1 ENSURE
    TOP MAT {: r:T0-EMIT:vreg :}
    VS-N @ 1- VS-N !
    r ;
+
+\ Whether an entry other than k holds k's vreg.
+: SHARED? ( n -- bool ) {: k:n :}
+   k VS-VAL @ {: v:n :}
+   false VS-N @ 0 ?do i k <> i REG? and i VS-VAL @ v = and or loop ;
+
+\ Entry k relabelled to a fresh vreg, returned. A shared entry means a vreg is
+\ free, so ALLOC evicts nothing and k stays put.
+: RELABEL ( n -- T0-EMIT:vreg ) {: k:n :}
+   ALLOC {: d:T0-EMIT:vreg :}
+   K-REG d T0-EMIT:VREG>N k ENTRY!
+   d ;
+
+\ Entry k in a vreg no other entry holds, for an operation that writes it in
+\ place (d op= s): a shared vreg is copied into a fresh one first.
+: OWN ( n -- T0-EMIT:vreg ) {: k:n :}
+   k MAT {: r:T0-EMIT:vreg :}
+   k SHARED? 0= if r exit then
+   k RELABEL {: d:T0-EMIT:vreg :}
+   d r T0-EMIT:MOV
+   d ;
+
+\ Entry k's vreg for an operation that overwrites it whole and reads the old
+\ value only as an input register: a shared entry gets a fresh vreg, and
+\ nothing is copied into it.
+: WRITE-TARGET ( n -- T0-EMIT:vreg ) {: k:n :}
+   k MAT {: r:T0-EMIT:vreg :}
+   k SHARED? 0= if r exit then
+   k RELABEL ;
 
 \ ---- inline operations -------------------------------------------------------
 : CONST? ( n -- bool ) VS-KIND @ K-CONST = ;
@@ -390,20 +438,21 @@ variable FREE                       \ bit k set: vreg k holds no entry
 \ Whether the two top entries are constants.
 : CONST2? ( -- bool ) TOP 1- CONST? TOP CONST? and ;
 
-\ The second entry, now in a vreg, holds the result; the top entry goes.
+\ The second entry, now in a vreg of its own, holds the result; the top entry
+\ goes.
 : INTO-SECOND ( -- T0-EMIT:vreg T0-EMIT:vreg )
-   TOP 1- MAT  TOP MAT ;
+   TOP 1- OWN  TOP MAT ;
 
 : ALU2 ( [ n n -- n ] T0-EMIT:alu bool -- ) {: o:T0-EMIT:alu comm:bool :}
    2 ENSURE
    CONST2? if FOLD2 exit then
    drop
    TOP IMM? if
-      TOP 1- MAT TOP VS-VAL @ o T0-EMIT:OP-LIT
+      TOP 1- OWN TOP VS-VAL @ o T0-EMIT:OP-LIT
       TOP REMOVE exit
    then
    comm TOP 1- IMM? and if
-      TOP VREG@ TOP 1- VS-VAL @ o T0-EMIT:OP-LIT
+      TOP OWN TOP 1- VS-VAL @ o T0-EMIT:OP-LIT
       TOP 1- REMOVE exit
    then
    INTO-SECOND {: d:T0-EMIT:vreg s:T0-EMIT:vreg :}
@@ -414,11 +463,11 @@ variable FREE                       \ bit k set: vreg k holds no entry
    2 ENSURE
    CONST2? if [: * ;] FOLD2 exit then
    TOP IMM? if
-      TOP 1- MAT TOP VS-VAL @ T0-EMIT:MUL-LIT
+      TOP 1- OWN TOP VS-VAL @ T0-EMIT:MUL-LIT
       TOP REMOVE exit
    then
    TOP 1- IMM? if
-      TOP VREG@ TOP 1- VS-VAL @ T0-EMIT:MUL-LIT
+      TOP OWN TOP 1- VS-VAL @ T0-EMIT:MUL-LIT
       TOP 1- REMOVE exit
    then
    INTO-SECOND {: d:T0-EMIT:vreg s:T0-EMIT:vreg :}
@@ -430,30 +479,38 @@ variable FREE                       \ bit k set: vreg k holds no entry
    CONST2? if FOLD2 exit then
    drop
    TOP CONST? if
-      TOP 1- MAT TOP VS-VAL @ o T0-EMIT:SHIFT-LIT
+      TOP 1- OWN TOP VS-VAL @ o T0-EMIT:SHIFT-LIT
       TOP REMOVE exit
    then
    INTO-SECOND {: d:T0-EMIT:vreg s:T0-EMIT:vreg :}
    d s o T0-EMIT:SHIFT
    TOP REMOVE ;
 
+: REMOVE2 ( -- ) TOP REMOVE TOP REMOVE ;
+
+\ The flag of condition c, from the compare just emitted, pushed in a fresh
+\ vreg. The compare's operands are removed, so a vreg is free and ALLOC emits
+\ nothing between the compare and SET-FLAG, as T0-EMIT:CMP requires.
+: PUSH-FLAG ( T0-EMIT:cc -- ) {: c:T0-EMIT:cc :}
+   ALLOC {: d:T0-EMIT:vreg :}
+   d c T0-EMIT:SET-FLAG
+   d PUSH-REG ;
+
 : CMP2 ( [ n n -- n ] T0-EMIT:cc -- ) {: c:T0-EMIT:cc :}
    2 ENSURE
    CONST2? if FOLD2 exit then
    drop
    TOP IMM? if
-      TOP 1- MAT TOP VS-VAL @ c T0-EMIT:CMP-SET-LIT
-      TOP REMOVE exit
+      TOP 1- MAT TOP VS-VAL @ T0-EMIT:CMP-LIT
+      REMOVE2 c PUSH-FLAG exit
    then
    TOP 1- IMM? if
-      TOP VREG@ TOP 1- VS-VAL @ c T0-EMIT:CC-SWAP T0-EMIT:CMP-SET-LIT
-      TOP 1- REMOVE exit
+      TOP MAT TOP 1- VS-VAL @ T0-EMIT:CMP-LIT
+      REMOVE2 c T0-EMIT:CC-SWAP PUSH-FLAG exit
    then
-   INTO-SECOND {: d:T0-EMIT:vreg s:T0-EMIT:vreg :}
-   d s c T0-EMIT:CMP-SET
-   TOP REMOVE ;
+   TOP 1- MAT TOP MAT T0-EMIT:CMP
+   REMOVE2 c PUSH-FLAG ;
 
-\ A comparison with zero.
 \ Fold the top constant entry through a quotation.
 : FOLD1 ( [ n -- n ] -- ) TOP VS-VAL @ swap execute TOP VS-VAL ! ;
 
@@ -462,27 +519,27 @@ variable FREE                       \ bit k set: vreg k holds no entry
    1 ENSURE
    TOP CONST? if FOLD1 exit then
    drop
-   TOP VREG@ 0 c T0-EMIT:CMP-SET-LIT ;
+   TOP MAT 0 T0-EMIT:CMP-LIT
+   TOP REMOVE c PUSH-FLAG ;
 
 : UNARY ( [ n -- n ] [ T0-EMIT:vreg -- ] -- )
    1 ENSURE
    TOP CONST? if drop FOLD1 exit then
-   nip TOP VREG@ swap execute ;
+   nip TOP OWN swap execute ;
 
 : FETCH ( T0-EMIT:width -- ) {: w:T0-EMIT:width :}
    1 ENSURE
-   TOP MAT {: r:T0-EMIT:vreg :}
-   r r w T0-EMIT:LOAD ;
+   TOP MAT {: a:T0-EMIT:vreg :}
+   TOP WRITE-TARGET {: d:T0-EMIT:vreg :}
+   d a w T0-EMIT:LOAD ;
 
 \ ---- the stack shuffles ------------------------------------------------------
-\ A copy of entry k on top: a constant is copied as itself, a vreg into a
-\ fresh one.
+\ A copy of entry k on top: a constant is copied as itself, a vreg by a
+\ second entry holding it.
 : COPY ( n -- ) {: k:n :}
    k CONST? if k VS-VAL @ PUSH-CONST exit then
    VS-N @ T0-EMIT:VREGS = if EVICT k 1- else k then {: j:n :}
-   ALLOC {: r:T0-EMIT:vreg :}
-   r j VREG@ T0-EMIT:MOV
-   r PUSH-REG ;
+   j VREG@ PUSH-REG ;
 
 : SWAP-AT ( n n -- ) {: a:n b:n :}
    a VS-KIND @ a VS-VAL @ {: ka:n va:n :}

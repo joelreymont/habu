@@ -4,7 +4,8 @@
 \ armed NCBSTUB appends, a fixed word folded into the body (a constant into
 \ `cmp #imm`, a variable into its data address row) while a does> child stays
 \ a call, the writeback transfers that move the data stack pointer with a
-\ spill's or fill's last cell, and the refusals that keep the patch slot last
+\ spill's or fill's last cell, a copy that shares its vreg until a load
+\ writes a fresh one, and the refusals that keep the patch slot last
 \ and an operation x86-64 does not provide from running. Bodies are compiled
 \ by T0:COMPILE-TEXT or driven through the seam, sealed into NEMIT, and
 \ checked by decoding the words NEMIT answers against the assembler's
@@ -152,6 +153,22 @@ variable CELLV
    8 WORD@ 11 DS -24 A64ASM:ENC-LDRPRE T=
    NEMIT:CLEAR ;
 
+\ `dup` pushes a second entry holding the filled vreg, and `c@` loads the byte
+\ through it into a fresh vreg: no mov copies the address.
+: SHARE-CASE ( -- )
+   ARCH-A64
+   s" DC ( ptr u8 -- ptr u8 u8 ) dup c@ " BODY
+   s" the address fills x9" T-LABEL
+   0 WORD@ 9 DS -8 A64ASM:ENC-LDRPRE T=
+   s" the byte loads through x9 into x10, no mov before it" T-LABEL
+   4 WORD@ 10 9 0 A64ASM:ENC-LDRB T=
+   s" the byte spills from x10" T-LABEL
+   8 WORD@ 10 DS 8 A64ASM:ENC-STR T=
+   s" and the address pushes from x9" T-LABEL
+   12 WORD@ 9 DS 16 A64ASM:ENC-STRPOST T=
+   4 WORDS=
+   NEMIT:CLEAR ;
+
 \ The defer an `is` body binds. Its address row names the defer's cell and files
 \ the defer's record ordinal, which the unit object resolves the cell through.
 \ Public: the body runs after the package closes and names it qualified.
@@ -290,6 +307,7 @@ public
    STUB-CASE
    FIXED-CASE
    WRITEBACK-CASE
+   SHARE-CASE
    SLOT-REFUSED-CASE
    X86-UNFILLED-CASE
    T-REPORT ;

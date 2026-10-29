@@ -318,15 +318,13 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
    d REG 0 >R8 SINK ENC-MOVZX-8-RR
    d REG SINK ENC-NEG ;
 
-: CMP-SET ( T0-EMIT:vreg T0-EMIT:vreg T0-EMIT:cc -- )
-   {: d:T0-EMIT:vreg s:T0-EMIT:vreg c:T0-EMIT:cc :}
-   d REG s REG SINK ENC-CMP-RR
-   d c SET-FLAG ;
+: CMP ( T0-EMIT:vreg T0-EMIT:vreg -- )
+   {: a:T0-EMIT:vreg b:T0-EMIT:vreg :}
+   a REG b REG SINK ENC-CMP-RR ;
 
-: CMP-SET-LIT ( T0-EMIT:vreg n T0-EMIT:cc -- )
-   {: d:T0-EMIT:vreg v:n c:T0-EMIT:cc :}
-   d REG v >IMM32 SINK ENC-CMP-RI32
-   d c SET-FLAG ;
+: CMP-LIT ( T0-EMIT:vreg n -- )
+   {: a:T0-EMIT:vreg v:n :}
+   a REG v >IMM32 SINK ENC-CMP-RI32 ;
 
 \ ---- memory ------------------------------------------------------------------
 : LOAD ( T0-EMIT:vreg T0-EMIT:vreg T0-EMIT:width -- )
@@ -533,8 +531,9 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
    ['] MUL-LIT k T0-EMIT:MUL-LIT-XT !
    ['] NEG k T0-EMIT:NEG-XT !
    ['] NOT k T0-EMIT:NOT-XT !
-   ['] CMP-SET k T0-EMIT:CMP-SET-XT !
-   ['] CMP-SET-LIT k T0-EMIT:CMP-SET-LIT-XT !
+   ['] CMP k T0-EMIT:CMP-XT !
+   ['] CMP-LIT k T0-EMIT:CMP-LIT-XT !
+   ['] SET-FLAG k T0-EMIT:SET-FLAG-XT !
    ['] LOAD k T0-EMIT:LOAD-XT !
    ['] CALL k T0-EMIT:CALL-XT !
    ['] TAIL k T0-EMIT:TAIL-XT !

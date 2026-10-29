@@ -592,25 +592,22 @@ DYNAMIC-BUFFER BR-ARG n
    {: d:T0-EMIT:vreg c:T0-EMIT:cc :}
    d REG c T0-EMIT:CC>N CONDS @ ENC-CSETM W ;
 
-: CMP-SET ( T0-EMIT:vreg T0-EMIT:vreg T0-EMIT:cc -- )
-   {: d:T0-EMIT:vreg s:T0-EMIT:vreg c:T0-EMIT:cc :}
-   d REG s REG ENC-CMP W
-   d c SET-FLAG ;
+: CMP ( T0-EMIT:vreg T0-EMIT:vreg -- )
+   {: a:T0-EMIT:vreg b:T0-EMIT:vreg :}
+   a REG b REG ENC-CMP W ;
 
-\ Compare r with v: cmp for an imm12, cmn for a negated one, else against x16.
-: CMP-LIT ( n n -- ) {: r:n v:n :}
+\ Compare register r with v: cmp for an imm12, cmn for a negated one, else
+\ against x16.
+: CMP-RI ( n n -- ) {: r:n v:n :}
    v negate {: nv:n :}
    v 0 >= v IMM12-LIM < and if r v ENC-CMPI W exit then
    nv 0 > nv IMM12-LIM < and if r nv ENC-CMNI W exit then
    v TMP LIT-R
    r TMP ENC-CMP W ;
 
-: CMP-SET-LIT ( T0-EMIT:vreg n T0-EMIT:cc -- )
-   {: d:T0-EMIT:vreg v:n c:T0-EMIT:cc :}
-   d REG v CMP-LIT
-   d c SET-FLAG ;
+: CMP-LIT ( T0-EMIT:vreg n -- ) {: a:T0-EMIT:vreg v:n :} a REG v CMP-RI ;
 
-\ Every literal is admitted: OP-LIT, MUL-LIT, CMP-SET-LIT and OF-LIT load one
+\ Every literal is admitted: OP-LIT, MUL-LIT, CMP-LIT and OF-LIT load one
 \ no immediate field holds into x16.
 : IMM? ( n -- bool ) drop true ;
 
@@ -688,7 +685,7 @@ DYNAMIC-BUFFER BR-ARG n
 
 : FWD-NE-LIT ( T0-EMIT:vreg n -- T0-LABEL:branch )
    {: sel:T0-EMIT:vreg v:n :}
-   sel REG v CMP-LIT
+   sel REG v CMP-RI
    C-NE FWD-BCOND ;
 
 : FWD-GE ( T0-EMIT:vreg T0-EMIT:vreg -- T0-LABEL:branch )
@@ -813,8 +810,9 @@ DYNAMIC-BUFFER BR-ARG n
    ['] MUL-LIT k T0-EMIT:MUL-LIT-XT !
    ['] NEG k T0-EMIT:NEG-XT !
    ['] NOT k T0-EMIT:NOT-XT !
-   ['] CMP-SET k T0-EMIT:CMP-SET-XT !
-   ['] CMP-SET-LIT k T0-EMIT:CMP-SET-LIT-XT !
+   ['] CMP k T0-EMIT:CMP-XT !
+   ['] CMP-LIT k T0-EMIT:CMP-LIT-XT !
+   ['] SET-FLAG k T0-EMIT:SET-FLAG-XT !
    ['] LOAD k T0-EMIT:LOAD-XT !
    ['] TOR k T0-EMIT:TOR-XT !
    ['] RFROM k T0-EMIT:RFROM-XT !

@@ -35,6 +35,10 @@
 \ enum slot checks the stored tag and loads the value with the cell under it
 \ kept; a forged tag fetched in a child, from an enum slot and from a product's
 \ enum field, ends the process `hb: bad layout tag` with ENGINE-ERROR:BAD-TAG.
+\ The share rows run bodies whose copies share a vreg with their source, each
+\ with a cell under its result: in-place arithmetic, a negate and loads on a
+\ copy, a copy parked on the return stack, comparisons of a copy, and fifteen
+\ copies that fill the virtual stack and evict a shared vreg.
 \ A CALLBACK: declaration compiled by T0 is handed to libc's qsort, which sorts
 \ a row through it, and its C entry lies between its accessor's code and the
 \ next definition's: the stub T0 appended to the accessor's emission. The
@@ -438,6 +442,19 @@ W-DEF-2OVER W-PO
 \ Forty cells bound from memory, the deepest past a pre-index load's reach.
 : W40-LOCAL ( pent n -- n pent ) {: v:pent k:n :} k v ;
 
+\ ---- copies that share a vreg ---------------------------------------------------
+: S-INC ( n -- n ) dup 1+ + ;
+: S-TRIPLE ( n -- n ) dup dup + + ;
+: S-OVER ( n n -- n n ) over + swap ;
+: S-TUCK ( n n -- n n ) tuck - ;
+: S-PARK ( n -- n ) dup >r 1+ r> + ;
+: S-BYTES ( ptr u8 -- n ) dup c@ swap 1+ c@ + ;
+: S-ABS ( n -- n ) dup 0< if negate then ;
+: S-RANGE ( n -- bool ) dup 5 < swap 3 > and ;
+: S-FILL ( n -- n )
+   dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup
+   + + + + + + + + + + + + + + + ;
+
 \ ---- is ------------------------------------------------------------------------
 defer HOOK ( n -- n )
 : INC ( n -- n ) 1+ ;
@@ -720,6 +737,26 @@ private
    77 1 BOX@ BOX-SUM 7 T= 77 T=
    77 2 HUE@ HUE-CODE 30 T= 77 T= ;
 
+: SHARE-CASE ( -- )
+   s" arithmetic on a copy leaves its source" T-LABEL
+   77 5 S-INC 11 T= 77 T=
+   77 5 S-TRIPLE 15 T= 77 T=
+   77 3 4 S-OVER 3 T= 7 T= 77 T=
+   77 3 4 S-TUCK -1 T= 4 T= 77 T=
+   s" a copy parked on the return stack keeps its value" T-LABEL
+   77 5 S-PARK 11 T= 77 T=
+   s" loads through a copied address" T-LABEL
+   77 s" AB" drop S-BYTES 131 T= 77 T=
+   s" a negate of a compared copy" T-LABEL
+   77 -5 S-ABS 5 T= 77 T=
+   77 5 S-ABS 5 T= 77 T=
+   s" two comparisons of one value" T-LABEL
+   77 4 S-RANGE TTRUE 77 T=
+   77 6 S-RANGE TFALSE 77 T=
+   77 2 S-RANGE TFALSE 77 T=
+   s" fifteen copies fill the virtual stack and evict a shared vreg" T-LABEL
+   77 3 S-FILL 48 T= 77 T= ;
+
 \ A forged tag in an enum slot and in a product's enum field: the fetch's tag
 \ check ends the child after the fixture armed it.
 : FETCH-FORGED ( -- )
@@ -743,6 +780,7 @@ public
    MATCH-CASE
    FORGE-CASE
    WIDE-CASE
+   SHARE-CASE
    FETCH-FORGE-CASE
    IS-CASE
    CALLBACK-CASE

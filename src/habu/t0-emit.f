@@ -113,7 +113,7 @@ public
 DEFTYPE VREG       \ a virtual register, 0 .. VREGS-1
 DEFTYPE ALU        \ a two-operand operation OP applies
 DEFTYPE SHIFTER    \ a shift SHIFT applies
-DEFTYPE CC         \ a comparison CMP-SET answers
+DEFTYPE CC         \ a condition SET-FLAG reads from the last compare
 DEFTYPE WIDTH      \ the width LOAD moves
 
 : OP-ADD ( -- alu ) 0 >ALU ;
@@ -348,11 +348,12 @@ ARCHES TYPED-BUFFER MULX-XT [ vreg vreg -- ]
 ARCHES TYPED-BUFFER MUL-LIT-XT [ vreg n -- ]
 ARCHES TYPED-BUFFER NEG-XT [ vreg -- ]
 ARCHES TYPED-BUFFER NOT-XT [ vreg -- ]
-ARCHES TYPED-BUFFER CMP-SET-XT [ vreg vreg cc -- ]
-ARCHES TYPED-BUFFER CMP-SET-LIT-XT [ vreg n cc -- ]
+ARCHES TYPED-BUFFER CMP-XT [ vreg vreg -- ]
+ARCHES TYPED-BUFFER CMP-LIT-XT [ vreg n -- ]
+ARCHES TYPED-BUFFER SET-FLAG-XT [ vreg cc -- ]
 ARCHES TYPED-BUFFER IMM?-XT [ n -- bool ]
 
-\ Whether OP-LIT, MUL-LIT, CMP-SET-LIT and OF-LIT take n as their immediate;
+\ Whether OP-LIT, MUL-LIT, CMP-LIT and OF-LIT take n as their immediate;
 \ each of them requires n to answer true.
 : IMM? ( n -- bool ) CUR @ IMM?-XT @ execute ;
 
@@ -369,9 +370,14 @@ ARCHES TYPED-BUFFER IMM?-XT [ n -- bool ]
 : NEG ( vreg -- ) CUR @ NEG-XT @ execute ;
 : NOT ( vreg -- ) CUR @ NOT-XT @ execute ;
 
-\ d becomes -1 when d c s (or d c n) holds, else 0: a Habu flag.
-: CMP-SET ( vreg vreg cc -- ) CUR @ CMP-SET-XT @ execute ;
-: CMP-SET-LIT ( vreg n cc -- ) CUR @ CMP-SET-LIT-XT @ execute ;
+\ CMP and CMP-LIT compare a with b (or with n) and set the condition codes,
+\ writing no vreg; SET-FLAG makes d -1 when condition c of the last compare
+\ holds, else 0: a Habu flag. Nothing is emitted between a compare and the
+\ SET-FLAG that reads it: a stack move may set the codes too (x86-64's DSP+
+\ adds, and its zero literal is an xor).
+: CMP ( vreg vreg -- ) CUR @ CMP-XT @ execute ;
+: CMP-LIT ( vreg n -- ) CUR @ CMP-LIT-XT @ execute ;
+: SET-FLAG ( vreg cc -- ) CUR @ SET-FLAG-XT @ execute ;
 
 \ ---- memory ------------------------------------------------------------------
 ARCHES TYPED-BUFFER LOAD-XT [ vreg vreg width -- ]
