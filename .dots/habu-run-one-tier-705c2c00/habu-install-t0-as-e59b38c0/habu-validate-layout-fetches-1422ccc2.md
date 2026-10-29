@@ -1,6 +1,6 @@
 ---
 title: Validate layout fetches in T0
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-10-29T02:45:23.247083+02:00"

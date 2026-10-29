@@ -1,6 +1,6 @@
 ---
 title: Move wide values through T0 stack words
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-10-29T02:21:18.127752+02:00"
