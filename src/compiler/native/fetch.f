@@ -49,9 +49,11 @@ variable OP-N
    start 0 < start total > or length 0 < or if BAD then
    length total start - > if BAD then ;
 
+\ The prime is read once: LOWER-CERT:FNV-PRIME is a call, not a literal.
 : HASH ( ptr u8 n -- n ) {: source:ptr size:n :}
+   LOWER-CERT:FNV-PRIME {: prime:n :}
    LOWER-CERT:FNV-OFFSET
-   size 0 ?do source i + c@ xor LOWER-CERT:FNV-PRIME * loop ;
+   size 0 ?do source i + c@ xor prime * loop ;
 
 : HEADER-CK ( ptr u8 n n -- ) {: data:ptr bytes:n source:n :}
    bytes LOWER-CERT:HEADER-CELLS cells < bytes CELL mod 0<> or if BAD then

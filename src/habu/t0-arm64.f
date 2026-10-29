@@ -80,6 +80,8 @@
 
 require src/lib/errors.f
 require src/lib/byte-buffer.f
+require src/lib/le.f
+require src/lib/span.f
 require src/habu/layout.f
 require src/habu/stack-abi.f
 require src/arch/arm64/asm.f
@@ -183,15 +185,15 @@ DYNAMIC-BUFFER BR-ARG n
 : HERE-OFF ( -- n ) RAW BUF:LEN@ BUF:BLEN>N ;
 : OUT-OFF ( -- n ) OUT BUF:LEN@ BUF:BLEN>N ;
 
-\ Append one instruction word to buf, little-endian.
+\ Append one instruction word to buf, little-endian: one growth for its bytes.
 : W32+ ( n ptr a -- ) {: w:n buf:ptr :}
-   4 0 ?do w i 8 * rshift $FF and buf BUF:APPEND-BYTE loop ;
+   w  buf INSN BUF:N>BLEN BUF:GROW SPAN:$ drop  LE:U32! ;
 
 : W ( n -- ) RAW W32+ ;
 
 \ Overwrite the instruction word at byte at of OUT.
 : W32! ( n n -- ) {: w:n at:n :}
-   4 0 ?do w i 8 * rshift $FF and  OUT BUF:SPAN$ drop at + i +  c! loop ;
+   w  OUT BUF:SPAN$ drop at +  LE:U32! ;
 
 \ Whether d fits a signed field of bits bits.
 : SIGNED? ( n n -- bool ) {: d:n bits:n :}

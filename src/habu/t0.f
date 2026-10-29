@@ -590,10 +590,11 @@ variable CLAUSE                      \ a does> definer's clause unit, else -1
 
 : L-NAME$ ( n -- ptr u8 n ) {: k:n :} TXT$ k L-AT @ +  k L-LEN @ ;
 
-\ The latest local in scope spelled exactly so, or -1.
+\ The latest local in scope spelled exactly so, or -1. A name of another
+\ length is passed on its length alone, before its bytes are addressed.
 : FIND-LOCAL ( ptr u8 n -- n ) {: a:ptr u:n :}
    L-N @ begin dup 0 > while
-      1- dup L-NAME$ a u STR= if exit then
+      1- dup L-LEN @ u = if dup L-NAME$ a u STR= if exit then then
    repeat
    1- ;
 
