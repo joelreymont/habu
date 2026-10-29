@@ -4,7 +4,6 @@
 \ none, and a copy whose library value changed under the same contract
 \ recompiles the library under the shared key and reuses its caller, which
 \ then calls the recompiled value.
-\ Run: bin/hb --load test/native-file-tree-share-e2e.f
 
 require src/lib/test.f
 require src/lib/string.f
@@ -77,7 +76,6 @@ variable OBJS-A  variable OBJS-B  variable OBJS-C
    a u s" .hfo" ENDS-WITH? u 68 = and
    if 1 OBJ-N +! then ;
 
-\ The file objects under the shared out root.
 : OBJS ( -- n )
    0 OBJ-N !
    s" cache" AT NATIVE-FILE-APP:OBJ-DIR$ [: NOTE-OBJ ;] FS-LIST:EACH

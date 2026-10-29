@@ -1,18 +1,8 @@
-\ cold-engine.f - the cold fixture engine, settled once per gate run,
-\ emitted on a key miss and shared across runs.
-\
-\ Every partial-capture fixture needs the empty cold host that
-\ test/native-fixture-write.f emits from one output argument. That emission is a
-\ run of the writer image test/fixture-writer.f builds, so the host depends on
-\ exactly one thing: that image, whose key covers the engine that builds it and
-\ the ordered require/include closures of its builder and of the writer. The
-\ host's own key is derived from that key, so the artifact is emitted once into
-\ img/cold-engine and every later caller copies it; another engine or a tree
-\ edit anywhere in those closures changes the key and no stale host is reused.
-\
-\ PROVIDE is the whole interface: it names the private path a fixture wants its
-\ own copy at. The keyed artifact itself is never handed out, so no fixture can
-\ run from - or clobber - the shared bytes.
+\ cold-engine.f - the empty cold host test/native-fixture-write.f emits, settled
+\ once per gate run, emitted on a key miss into img/cold-engine and copied by
+\ every later caller. It is a run of test/fixture-writer.f's image, so its key
+\ derives from that image's key. PROVIDE puts a private copy at the caller's
+\ path; the keyed artifact is never handed out, so no fixture can clobber it.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -148,12 +138,10 @@ public
    KEY-HEX FAMILY$ ENGINE-KEY KEYED-IMAGE:FRESH? if exit then
    EMIT ;
 
-\ The family's host, for a caller that only wants to name it.
 : PATH$ ( -- ptr u8 n )
    ENSURE
    PATH-BYTES ;
 
-\ Put a private copy of the shared cold host at the caller's own path.
 : PROVIDE ( ptr u8 n -- ) {: dst:ptr dstu:n :}
    ENSURE
    dst dstu FS:EXISTS? if dst dstu FS:REMOVE-FILE then

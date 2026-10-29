@@ -1,15 +1,13 @@
-\ bootstrap-imm-eval-src.f - an immediate word's evaluate compiles into the open
-\ definition. This is an input fixture, not a standalone test.
+\ bootstrap-imm-eval-src.f - input fixture, not a standalone test: an immediate
+\ word's evaluate compiles into the open definition.
 
-\ BIE-INC runs `1 +` through evaluate-closed while BIE-N or BIE-W is open, so
-\ the buffer compiles into that definition. The stage0 compile loop calls an
-\ immediate word with the code region read-execute (EMIT-COMPILE-CALL), and its
-\ evaluate compiled the buffer's first word into that region: SIGBUS at
-\ EMIT-CEMIT's `str w9, [x28]`, rc 134, after the armed marker; evaluate and
-\ evaluate-closed enter the buffer through the same EVAL-ENTER. BIE-W's wide
-\ local also sends its body through pass 2, which skips the immediate word and
-\ recompiles the captured body, so the evaluated `1 +` has to be in it. Both
-\ definitions then run and add the 1: 42 and 42.
+\ BIE-INC runs `1 +` through evaluate-closed while BIE-N or BIE-W is open. The
+\ stage0 compile loop calls an immediate word with the code region read-execute
+\ (EMIT-COMPILE-CALL); an evaluate that compiles there dies with SIGBUS at
+\ EMIT-CEMIT's `str w9, [x28]`, rc 134. evaluate and evaluate-closed share
+\ EVAL-ENTER. BIE-W's wide local sends its body through pass 2, which skips the
+\ immediate word and recompiles the captured body, so the evaluated `1 +` must
+\ be in it. Both definitions print 42.
 
 SUMTYPE bie<a>
   VARIANT some a ;VARIANT

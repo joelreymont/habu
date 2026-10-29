@@ -1,27 +1,9 @@
-\ seal-package.f - sealed system-package regressions.
-\
-\ Proves that once the friend latch is sealed (every user-source entry), the
-\ compiler rejects opening or reopening a reserved system package
-\ (`package TFAM`/`TYPE`/`MATCH`/`LOWER-CERT`/`ENGINE-ERROR`) and rejects a qualified definition into one
-\ (`: TFAM:tail ...`), case-insensitively, fail-closed with exit ENGINE-ERROR:SEAL-PACKAGE.
-\ Ordinary (non-reserved) packages and qualified definitions still compile, and a
-\ trailing-colon ordinary name (`PRIM:`-shaped) is never treated as qualified.
-\
-\ The same reserved-name seal (C-QUALIFY-SEAL-GUARD) extends to the token sinks
-\ that resolve a qualified name without defining it: `'` (tick) and `[']`
-\ (bracket-tick). A user `' TFAM:tail` or `['] TYPE:tail` rejects fail-closed
-\ (ENGINE-ERROR:SEAL-PACKAGE) exactly like the define path, case-insensitively,
-\ while non-reserved, non-qualified, trailing-colon, and
-\ reserved-prefix-but-longer names resolve normally. `[']` is checker-rejected
-\ in checked code independently of the seal, so its inert positive runs under
-\ `0 set-check`.
-\
-\ Semantic cases run in disposable SUBJECT forks of the sealed candidate. Exact
-\ outcome/stdout/stderr parity against direct `--load` and stdin executions is
-\ pinned below; those direct representatives retain both cold-prefix entry paths.
-\
-\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
-\   src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f test/seal-package.f
+\ seal-package.f - once the friend latch is sealed (every user-source entry),
+\ opening, reopening or defining a qualified word into a reserved system package
+\ (TFAM TYPE MATCH LOWER-CERT ENGINE-ERROR) exits ENGINE-ERROR:SEAL-PACKAGE,
+\ case-insensitively, and so do ' and ['] on a reserved qualified name
+\ (C-QUALIFY-SEAL-GUARD). ['] is refused by the checker on its own, so its inert
+\ positive runs under `0 set-check`.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -47,7 +29,7 @@ variable SPK-CHILD-U
 variable SPK-IN-U
 variable SPK-OUT-U
 variable SPK-ERR-U
-variable SPK-EXITED                 \ bool: child completed by exit
+variable SPK-EXITED
 variable SPK-RC
 
 create SPK-ROOT-BUF PATH-CAP allot
@@ -83,7 +65,7 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
    s" : " SB-APPEND SB-APPEND s" :W ( -- n ) 0 ;" SB-APPEND SPK-LF
    SB$ ;
 
-: SPK-OK-PKG-FORGE$ ( -- ptr u8 n )          \ non-reserved package with a public word
+: SPK-OK-PKG-FORGE$ ( -- ptr u8 n )
    SB-RESET
    s" package NOTSEALED" SPK-LINE
    s" public" SPK-LINE
@@ -92,7 +74,7 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
    s" NOTSEALED:W . cr" SPK-LINE
    SB$ ;
 
-: SPK-OK-QUAL-FORGE$ ( -- ptr u8 n )         \ non-reserved qualified definition
+: SPK-OK-QUAL-FORGE$ ( -- ptr u8 n )
    SB-RESET
    s" : MYPKG:W ( -- n ) 3 ;" SPK-LINE
    s" MYPKG:W . cr" SPK-LINE
@@ -147,8 +129,6 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
    s" : TASK:EVIL ( -- n ) 0 ;" SPK-LINE
    SB$ ;
 
-\ --- tick / bracket-tick reserved-name forges ---
-
 : SPK-TICK-FORGE$ ( ptr u8 n -- ptr u8 n )   \ `' <NAME>:X drop` at top level (tick is checker-legal)
    SB-RESET
    s" ' " SB-APPEND SB-APPEND s" :X drop" SB-APPEND SPK-LF
@@ -159,12 +139,12 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
    s" : F ( -- ) ['] " SB-APPEND SB-APPEND s" :X drop ;" SB-APPEND SPK-LF
    SB$ ;
 
-: SPK-OK-TICK-BARE-FORGE$ ( -- ptr u8 n )    \ non-qualified tick still works
+: SPK-OK-TICK-BARE-FORGE$ ( -- ptr u8 n )
    SB-RESET
    s" ' dup drop" SPK-LINE
    SB$ ;
 
-: SPK-OK-TICK-QUAL-FORGE$ ( -- ptr u8 n )    \ non-reserved qualified tick still works
+: SPK-OK-TICK-QUAL-FORGE$ ( -- ptr u8 n )
    SB-RESET
    s" : MYPKG:W ( -- n ) 5 ;" SPK-LINE
    s" ' MYPKG:W drop" SPK-LINE
@@ -189,8 +169,6 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
    s" G" SPK-LINE
    SB$ ;
 
-\ --- child spawn + outcome capture ---
-
 : SPK-STORE! ( len len outcome ptr u8 n -- ) {: outu:len erru:len oc src:ptr u:n :}
    erru LEN>N SPK-ERR-U !  outu LEN>N SPK-OUT-U !
    oc MATCH outcome
@@ -204,7 +182,8 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
    a SPK-IN u BYTE-COPY
    u SPK-IN-U ! ;
 
-\ Run the forge as a --load file with empty stdin.
+\ Each case runs in a SUBJECT fork and must match a direct --load and a stdin
+\ run, the two cold-prefix entry paths.
 : SPK-RUN-LOAD ( ptr u8 n -- ) {: src:ptr u:n :}
    SPK-CHILD src u FS:WRITE-ALL
    PROC-ARGV-RESET
@@ -214,7 +193,7 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
    SPK-ERR SPK-CAP >LEN  SPK-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    src u SPK-STORE! ;
 
-\ Run the forge as a piped stdin program (no --load), the other cold-prefix path.
+\ The other cold-prefix path: the forge piped to stdin, no --load.
 : SPK-RUN-STDIN ( ptr u8 n -- )
    SPK-IN!
    PROC-ARGV-RESET
@@ -226,11 +205,11 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
    src u SPK-OUT SPK-CAP >LEN SPK-ERR SPK-CAP >LEN
    SPK-TIMEOUT-MS >MS SUBJECT:RUN src u SPK-STORE! ;
 
-: SPK-ASSERT-SEAL ( -- )                     \ child died with the sealed-package exit
+: SPK-ASSERT-SEAL ( -- )
    SPK-EXITED @ TTRUE
    SPK-RC @ SPK-SEAL-RC T= ;
 
-: SPK-ASSERT-OK ( -- )                       \ child exited cleanly
+: SPK-ASSERT-OK ( -- )
    SPK-EXITED @ TTRUE
    SPK-RC @ 0 T= ;
 
@@ -309,7 +288,6 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
    T-REPORT
    s" seal-package-type-name-test: ok" type cr ;
 
-\ --- one reserved spelling: `package NAME` traps after the sealed entry. ---
 : SPK-PKG-NEG ( ptr u8 n -- ) {: a:ptr u:n :}
    a u SPK-PKG-FORGE$ SPK-SUBJECT SPK-ASSERT-SEAL ;
 
@@ -364,8 +342,6 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
    SPK-OK-EDGE-FORGE$ SPK-SUBJECT SPK-ASSERT-OK
    s" reserved-prefix-but-longer package name allowed" T-LABEL
    SPK-OK-PREFIX-FORGE$ SPK-SUBJECT SPK-ASSERT-OK ;
-
-\ --- tick / bracket-tick token sinks ---
 
 : SPK-TICK-NEG ( ptr u8 n -- ) {: a:ptr u:n :}
    a u SPK-TICK-FORGE$ SPK-SUBJECT SPK-ASSERT-SEAL ;

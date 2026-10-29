@@ -1,23 +1,9 @@
-\ checker-verify-pkg-scope.f - the checker's verifier package scope must hand
-\ the caller's package back byte for byte (dot habu-neutralize-checker-pkg-b9a250c8).
-\
-\ VERIFY:SOURCE-BUF-IN-SCOPE replays recorded source with the checker's own
-\ package mirror as the authority. Entering that window saves the caller's
-\ package name, length and mode; leaving it puts them back. Entering it again
-\ first PROVES the mirror still equals the engine's live package record - same
-\ mode, same length, same name bytes - and refuses with E-PKG-CONTEXT if it does
-\ not. So a second replay from the same open package is the exact test of the
-\ restore: it cannot pass on a scrambled name, and no substring check is
-\ involved.
-\
-\ It used to refuse. The save and restore loops kept their index on the data
-\ stack and read it back with `over` after the destination address was already
-\ pushed, so `over` reached the fetched byte instead of the index and each byte
-\ landed at an offset equal to its own character code. One round trip looked
-\ healthy because the mirror already held the right name; the second replay from
-\ an open package saw a scrambled name and threw 7136 - which is how
-\ test/xt-cell-test.f failed, on its second in-scope registration.
-\
+\ checker-verify-pkg-scope.f - the checker's verifier package scope hands the
+\ caller's package back byte for byte. VERIFY:SOURCE-BUF-IN-SCOPE saves the
+\ caller's package name, length and mode and restores them on leaving; entering
+\ again refuses with E-PKG-CONTEXT unless the mirror equals the live record, so
+\ a second replay from the same open package is the exact test of the restore.
+
 \ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f
 \   src/habu/verify-source.f test/checker-verify-pkg-scope.f
 
@@ -49,9 +35,8 @@ public
    u SRC-U !
    [: ACT ;] catch ;
 
-\ Same replay with the checker's diagnostics collected instead of printed, so
-\ the deliberately rejecting case reports its own text rather than leaving a
-\ stray rejection on the gate's stderr.
+\ Diagnostics are collected, not printed, so the rejecting case reports its own
+\ text instead of leaving a rejection on the gate's stderr.
 : REPLAY-QUIET ( ptr u8 n -- n ) {: a:ptr u:n :}
    DIAG-BUF $1000 DIAG-BUFFER!
    a u REPLAY {: rc:n :}
@@ -59,7 +44,6 @@ public
    DIAG-BUFFER-OFF
    rc ;
 
-\ The text the last quiet replay collected.
 : DIAG$ ( -- ptr u8 n )
    DIAG-BUF DIAG-U @ ;
 
@@ -88,9 +72,8 @@ s" : CVPS-F4 ( n -- n ) ;" CVPS:REPLAY 0 T=
 
 ;package
 
-\ A second package whose name is a different length: the restore has to put back
-\ the length as well as the bytes, and a stale length would leave the mirror
-\ disagreeing with the live record here even if the bytes were right.
+\ A name of a different length: a stale length leaves the mirror disagreeing
+\ with the live record even when the bytes are right.
 package CVPS-SECOND-PACKAGE-WITH-A-MUCH-LONGER-NAME
 private
 
@@ -121,25 +104,15 @@ s" top level: second replay certifies" T-LABEL
 s" : CVPS-T2 ( n -- n ) ;" CVPS:REPLAY 0 T=
 
 \ ---- the two scope questions a name query can ask --------------------------
-\ A query about a name has TWO readings, and they are not the same question:
-\   CHECKER-DEFINED-HERE?  is this name already defined in the scope a new
-\                          definition would land in?  (duplicate-definition
-\                          guards want this, and only this)
-\   CHECKER-RESOLVES?      does the checker know an effect for the word this
-\                          token would BIND to here?  (load-discipline guards,
-\                          vocabulary probes and absence assertions want this)
-\
-\ They used to share one spelling wired to the first reading, so a guard asking
-\ the second got the first's answer: a global the engine resolves and RUNS in
-\ the open package was reported absent, and the report inverted the moment its
-\ file gained a package (dot habu-checker-defined-answers-1504bbde). The pin is
-\ that the second question gives the SAME answer inside a package as outside,
-\ for a word that is global - and that the first question still gives the
-\ narrow answer, or the duplicate guards would start refusing legal shadowing.
+\ CHECKER-DEFINED-HERE? asks whether a name is defined in the scope a new
+\ definition would land in (duplicate guards); CHECKER-RESOLVES? asks whether
+\ the checker knows an effect for the word the token binds to here (load guards,
+\ probes, absence assertions). RESOLVES? answers the same inside a package as
+\ outside for a global; DEFINED-HERE? keeps the narrow answer, or the duplicate
+\ guards would refuse legal shadowing.
 
-\ The sentinel is an EXISTING global - src/lib/errors.f's error codes are the
-\ repository's documented global vocabulary - so this pins the real case
-\ without adding an unpackaged global of its own.
+\ The sentinel is an existing global (src/lib/errors.f's codes), so the test
+\ adds no unpackaged global.
 
 s" top level: RESOLVES? sees a global" T-LABEL
 s" E-STR-BOUNDS" CHECKER-RESOLVES? TTRUE

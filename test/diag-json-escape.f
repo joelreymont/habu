@@ -1,12 +1,9 @@
-\ diag-json-escape.f - a --json-errors packet escapes every control byte.
-\
-\ RFC 8259 section 7 forbids a raw byte below 0x20 inside a JSON string, and a
-\ client's parser refuses the whole packet for one. A byte below 0x20 inside a
-\ stack effect does not end its token, so `( n<c>-- n )` carries every byte c
-\ from 0x00 to 0x1F into the token of an unknown-signature-type packet.
-\
-\ Every packet stream must parse with the strict JSONL reader, and its "token"
-\ must decode to the four bytes n<c>--.
+\ diag-json-escape.f - a --json-errors packet escapes every control byte. RFC
+\ 8259 section 7 forbids a raw byte below 0x20 in a JSON string, and a client
+\ refuses the whole packet for one. Such a byte does not end a stack-effect
+\ token, so `( n<c>-- n )` carries each c from 0x00 to 0x1F into an
+\ unknown-signature-type packet. Every stream must parse with the strict JSONL
+\ reader and its "token" must decode to the four bytes n<c>--.
 
 require src/lib/string.f
 require test/gate-common.f

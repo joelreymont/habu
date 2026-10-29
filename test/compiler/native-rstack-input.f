@@ -1,37 +1,9 @@
-\ native-rstack-input.f - no signature written in source declares a
-\ return-stack cell, at either tier.
-\
-\ A definition reads only the return-stack cells it pushed with `>r`; a written
-\ `|` clause carries one row variable, the same on both sides (docs/forth.md
-\ "The return-stack clause"). The checker refuses any other clause at
-\ the declaration, so tier 0 and tier 1 refuse the same program with the same
-\ diagnostic before either runs it.
-\
-\ WAYS THE RULE CAN FAIL, and where each is held:
-\   - a cell declared on the input side, the output side or both is admitted
-\     (rs1, rs2 below);
-\   - a TRUSTED: declaration, which is stored rather than checked, escapes it
-\     (rs1's RT1 alone);
-\   - a quotation type nested in a signature moves a cell (RUNQ);
-\   - a quotation literal, which declares nothing, pushes a cell its caller
-\     pops or pops one its caller pushed (QPUSH, QPOP);
-\   - an unsigned definition, which declares nothing, reads or pops a cell its
-\     caller pushed (UREAD, UPOP);
-\   - a bar on one side only, which pairs the written row with a fresh one, is
-\     admitted, and so are its callers (ONE);
-\   - the neutral spellings src/lib/c2-memory.f uses, `| U -- S | U` and
-\     `[ R ... -- S ... | U -- U ]`, stop certifying (APPLY, and that library's
-\     own suites);
-\   - a primitive's return row (`>r`, `r>`) is refused with the signatures, so
-\     a body that parks a value stops compiling (PARK);
-\   - the tiers diverge: one admits and runs what the other refuses.
-\
-\ Every case is one program run through a real engine process, stdin-piped, at
-\ tier 0 and at tier 1. A refused program exits 70, prints nothing, and its
-\ stderr begins with the checker's diagnostic at both tiers. An admitted program
-\ exits 0 and prints exactly the case's text at both tiers. A refused
-\ `generates:` row is a throw rather than a refusal to certify: it exits 67, the
-\ uncaught-throw code, with the row's diagnostic and the throw's code.
+\ native-rstack-input.f - no signature written in source declares a return-stack
+\ cell, at either tier: a written `|` clause carries one row variable, the same
+\ on both sides (docs/forth.md "The return-stack clause"), and the checker
+\ refuses any other clause at the declaration. Each case is one stdin-piped
+\ engine run at tier 0 and tier 1; a refused `generates:` row is a throw, exit
+\ 67.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -116,11 +88,11 @@ variable ERR-U
 : THROWN-BOTH ( ptr u8 n ptr u8 n ptr u8 n -- ) UNCAUGHT-RC REFUSED-AT ;
 
 \ ---- refused at the declaration ----------------------------------------------
-\ rs1 and rs2 certified and ran at tier 0 and failed in the native compiler at
-\ tier 1 (E-NELAB-UNDER); RUNQ certified and ran at tier 0; ONE certified at
-\ both tiers; QPUSH and QPOP certified at tier 0 and failed in the native
-\ compiler at tier 1 (-8304, -8503); UREAD certified at tier 0 and failed in
-\ the native compiler at tier 1 (-8304).
+\ Held here: an input, output or both-sides cell (rs1, rs2); a TRUSTED:
+\ declaration, stored rather than checked (RT1); a nested quotation type (RUNQ);
+\ a quotation literal or unsigned definition pushing or popping a caller's cell
+\ (QPUSH, QPOP, UREAD, UPOP); a primitive's return row, so a body that parks a
+\ value stops compiling (PARK).
 : REFUSALS ( -- )
    s" rs1: a body replaces a declared return-stack cell"
    S\" : RC1 ( | n -- | n ) r> drop 0 >r ;\nTRUSTED: RT1 ( | n -- | n ) r> drop 0 >r ;\n: USE ( -- n ) 5 >r RC1 r> ;\nUSE . cr\n"
@@ -164,6 +136,9 @@ variable ERR-U
    REFUSED-BOTH ;
 
 \ ---- still admitted -----------------------------------------------------------
+\ A bar on one side only pairs the written row with a fresh one and is admitted,
+\ with its callers (ONE); so are the neutral spellings src/lib/c2-memory.f uses,
+\ `| U -- S | U` and `[ R ... -- S ... | U -- U ]` (APPLY).
 : ADMISSIONS ( -- )
    s" a neutral clause at the top and in a quotation type"
    S\" : APPLY ( R n [ R n -- S n | U -- U ] | U -- S n | U ) execute ;\n: USE ( -- n ) 3 [: 1+ ;] APPLY ;\nUSE . cr\n"

@@ -68,11 +68,11 @@ create CODE-PATH PATH-CAP allot
    off GB-U32-OFF ;
 
 
-\ THE DATA RESTORE, in the four words src/habu/aot-lib.f TEXT-ADR, emits into x9
-\ (AOT-STARTUP-SHAPE:TEXT-ADR-SEQ? names them). The four words are read before
-\ the test rather than one at a time: SCAN-STARTUP stops at the root BL, which
-\ the exit tail follows, so off+12 is inside the range INSTR@ admits at every
-\ offset this walks.
+\ The DATA restore, the four words src/habu/aot-link-arm.f TEXT-ADR, emits into
+\ x9 (AOT-STARTUP-SHAPE:TEXT-ADR-SEQ? names them). The four words are read
+\ before the test: SCAN-STARTUP stops at the root BL, which the exit tail
+\ follows, so off+12 is inside the range INSTR@ admits at every offset this
+\ walks.
 : DATA-RESTORE? ( n -- bool ) {: off:n :}
    off INSTR@  off 4 + INSTR@  off 8 + INSTR@  off 12 + INSTR@
    off CODE-OFF 9 AOT-STARTUP-SHAPE:TEXT-ADR-SEQ? ;

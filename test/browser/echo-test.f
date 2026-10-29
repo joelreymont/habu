@@ -1,41 +1,9 @@
 \ echo-test.f - the browser host's turns under bun: src/lib/browser/host-cli.mjs
 \ runs test/browser/echo.f's module through src/lib/browser/turn.js
-\ (src/lib/browser/host.f). The module is built by tools/wasm-build.f's command
-\ line and validated by wasm-tools. bun and wasm-tools must be on PATH, so this
+\ (src/lib/browser/host.f); the module and files stay in the printed directory.
+\ bun and wasm-tools must be on PATH, so this
 \ is no row of the ordinary gate: test/wasm/device.f runs it, as does
 \ `bin/hb --load test/browser/echo-test.f` from the tree's root.
-\
-\ Start answers hello, `fetch fixture` and the text "loading" in the buffer the
-\ bytes run writes its text to, and the host shows that text before it answers
-\ the fetch. The fixture's bytes answer the text of the checksum the module
-\ computes over the copy in its memory, which this test computes over the
-\ file, and each pointer answers "x,y". One run answers the fetch with a small
-\ file. The other answers it with a file larger than the module's whole
-\ memory, which is at most its data base plus the module file's bytes rounded
-\ up to a page, so the module's reserve grows its memory past what it had and
-\ the module reads every byte the host copied there.
-\
-\ Typed text posts twice, the second post waiting behind the first, and the
-\ host prints each post's path, length and body in hex as it makes it:
-\ - held: while a post waits, a pointer, a move to a negative x, a release and
-\   more typed text each answer their text, and the more typed text's post is
-\   made at once. The held post's 200 then answers its status, its whole body
-\   and the fetch that follows, and the requests still waiting are printed.
-\ - copied: the second typed text rewrites the buffer the first one's posts
-\   name and grows memory while the first post waits; the second post of the
-\   first text still reaches the server with that text's path and body.
-\ - chained: the first post's 200 shows its status and fetches; that fetch is
-\   made, and answered, before the second post, and the status is shown before
-\   the fetch is answered, whose run rewrites its buffer.
-\ - trapped: typed text that traps while start's fetch waits ends the
-\   instance: the fetch's answer, a pointer and more typed text are refused,
-\   and nothing more comes from the module.
-\ - failed: start's fetch answered 404 fails, as in the browser; a post that
-\   fails ends its turn before its second post; a post whose path is negative
-\   or longer than its span is refused with nothing of its run shown; a
-\   pointer still answers; and a failure with no request waiting is refused.
-\
-\ The module and the files stay in the printed directory.
 
 require src/lib/string.f
 require src/lib/fmt.f
@@ -71,7 +39,6 @@ DYNAMIC-BUFFER PAYLOAD u8
 : REFUSED$ ( -- ptr u8 n )  s" refused: no extrusion ends at that face" ;
 : DROPPED$ ( -- ptr u8 n )  s" dropped" ;
 
-\ The bytes written as the file name in DIR.
 : FILE! ( ptr u8 n ptr u8 n -- )
    {: a:ptr u:n name:ptr nu:n :}
    DIR DIR-U @ name nu FILE FS:JOIN-PATH {: fu:n :}
@@ -89,7 +56,6 @@ DYNAMIC-BUFFER PAYLOAD u8
 
 : ARG+ ( ptr u8 n -- )  >LEN PROC-ARGV+ ;
 
-\ A number staged as an argument.
 : N-ARG+ ( n -- )
    SB-RESET FMT:SB-INT SB$ ARG+ ;
 
@@ -102,7 +68,6 @@ DYNAMIC-BUFFER PAYLOAD u8
    outu LEN>N OUT-U !  erru LEN>N ERR-U !
    rc ;
 
-\ A run that should have exited 0, its stderr shown when it did not.
 : SUCCEEDED ( n -- )
    {: rc:n :}
    rc 0<> if  ERR ERR-U @ type cr  then
@@ -116,7 +81,6 @@ DYNAMIC-BUFFER PAYLOAD u8
    s" bin/hb" >LEN SPAWN SUCCEEDED
    MOD MOD-U @ WASM-HARNESS:VALID? TTRUE ;
 
-\ host-cli.mjs on the module, its steps staged after it.
 : HOST-OPEN ( -- )
    PROC-ARGV-RESET
    s" src/lib/browser/host-cli.mjs" ARG+  MOD MOD-U @ ARG+ ;
@@ -137,7 +101,6 @@ DYNAMIC-BUFFER PAYLOAD u8
    DIR DIR-U @ name nu FILE FS:JOIN-PATH {: fu:n :}
    FILE fu ARG+ ;
 
-\ The staged host run by bun; answers its exit status.
 : HOST ( -- n )
    s" bun" >LEN EXE RESOLVE-EXECUTABLE {: u:len :}
    EXE u SPAWN ;
@@ -157,7 +120,7 @@ DYNAMIC-BUFFER PAYLOAD u8
 : SUM-LINE ( ptr u8 n -- )
    SUM  s" text " SB-APPEND  FMT:SB-U  10 SB-APPEND-C ;
 
-\ Start's lines before its fetch is answered, SB reset first.
+\ Start's lines, printed before its fetch is answered.
 : STARTED ( -- )
    SB-RESET  S\" hello\ntext loading\nfetch fixture\n" SB-APPEND ;
 
@@ -183,8 +146,10 @@ DYNAMIC-BUFFER PAYLOAD u8
    s" a small file: hello, loading, fetch fixture, the copy's checksum, then 3,4" T-LABEL
    OUT OUT-U @ SB$ T$= ;
 
-\ Byte i is the low byte of i + i/509; 509 is prime, so the pages differ and a
-\ page copied to the wrong place changes the checksum.
+\ A module's memory is at most its data base plus its file's bytes rounded up to
+\ a page, so this file is larger than all of it. Byte i is the low byte of
+\ i + i/509; 509 is prime, so the pages differ and a page copied to the wrong
+\ place changes the checksum.
 : LARGE-CASE ( -- )
    WPROF:IMAGE-BASE  MOD MOD-U @ FS:FILE-SIZE +  PAGE-BYTES +  13 + {: u:n :}
    u PAYLOAD-RESERVE
@@ -234,14 +199,12 @@ DYNAMIC-BUFFER PAYLOAD u8
    s" chained: a post's answer fetches, and that fetch goes before the second post" T-LABEL
    OUT OUT-U @ SB$ T$= ;
 
-\ ERR's first line, the trap's message.
 : TRAP$ ( -- ptr u8 n )
    ERR ERR-U @ 10 INDEX-OF MATCH option
       none OF ERR 0 ENDOF
       some OF IDX>N ERR swap ENDOF
    ;MATCH ;
 
-\ The line refusing a turn of the module the trap with this message ended.
 : ENDED-LINE ( ptr u8 n -- )
    s" the module trapped and has ended: RuntimeError: " SB-APPEND  LINE ;
 

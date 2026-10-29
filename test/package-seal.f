@@ -1,28 +1,9 @@
 \ package-seal.f - every package a product engine bakes is sealed.
-\
-\ Run: bin/hb --load test/package-seal.f
-\
-\ The native build seals every package its capture ships before the capture's
-\ checker sweep runs (src/core/internal-mark.f SEAL-PACKAGES, called first by
-\ tools/native-build-core.f PREPARE-TARGET): both wordlists of each baked
-\ package take the protected bit, which the image restores at boot. So on the
-\ product engine:
-\   - `package NAME` on a baked package exits ENGINE-ERROR:SEAL-PACKAGE (84)
-\     with the package name on stderr. TOP-ROW and NATIVE-RUNTIME seal nothing
-\     themselves and load after the internal-word pass, so before the build
-\     sealed them both reopened;
-\   - a definition into a baked package's public wordlist by its qualified name
-\     exits 84 naming the word;
-\   - a package a program makes after boot is not sealed: it reopens, and the
-\     words of both blocks run;
-\   - a baked package's public words still resolve, qualified and through
-\     `using`;
-\   - every namespace row below the seal floor has a protected public wordlist
-\     and a private wordlist that is protected or absent (0, the global
-\     wordlist, which the capture refuses to mark).
-\ Each program runs in a disposable fork of this engine (src/lib/test/subject.f),
-\ so a refusal ends the fork and not the suite. The whitebox engine keeps every
-\ package open, so the image class is asserted first.
+\ The native build seals each shipped package before the capture's checker
+\ sweep (src/core/internal-mark.f SEAL-PACKAGES, called first by
+\ tools/native-build-core.f PREPARE-TARGET); the image restores the protected
+\ bit at boot. TOP-ROW and NATIVE-RUNTIME load after the internal-word pass and
+\ seal nothing themselves.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -46,7 +27,6 @@ variable OPEN
 : OUT$ ( -- ptr u8 n ) OUT OUT-U @ ;
 : ERR$ ( -- ptr u8 n ) ERR ERR-U @ ;
 
-\ One program, evaluated by a disposable fork of this engine.
 : LOAD ( ptr u8 n -- )
    {: a:ptr u:n :}
    a u OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN
@@ -74,6 +54,8 @@ variable OPEN
    lab labu T-LABEL RC @ 0 T=
    lab labu T-LABEL OUT$ want wantu T$= ;
 
+\ The whitebox engine keeps every package open, so the image class is asserted
+\ first; each program runs in a disposable fork.
 : SECTION-CLASS ( -- )
    s" the engine under test is the sealed product" T-LABEL
    ENGINE-INTERNAL:IMAGE-CLASS ENGINE-INTERNAL:IMAGE-SEALED T= ;
@@ -101,8 +83,8 @@ variable OPEN
    S\" using ENGINE-INTERNAL\nIMAGE-CLASS . cr\n;using\n"
    S\" 0\n\n" PRINTS ;
 
-\ Both wordlists of a namespace row are sealed; a row with no private
-\ wordlist holds 0 there.
+\ Both wordlists of a namespace row are sealed; a row with no private wordlist
+\ holds 0 there (the global wordlist, which the capture refuses to mark).
 : ROW-SEALED? ( ptr n -- bool )
    {: rec:ptr :}
    rec XREF-PKG-PRIVATE {: pri:n :}

@@ -14,10 +14,8 @@ private
 public
 
 \ ---- the families the cases move ---------------------------------------------
-\ One cell, two and three. ONE is here because it is the other half of the
-\ minimal pair the diagnosis reduced to: a one-field record's `@` compiled before
-\ this leaf and must go on compiling, and it is the row that says the width is
-\ being READ rather than a wide lowering being taken unconditionally.
+\ One cell, two and three. ONE shows the width is read rather than a wide
+\ lowering taken unconditionally: a one-field record's `@` must keep compiling.
 STRUCTURE w1
   FIELD a n
 ;STRUCTURE
@@ -42,19 +40,17 @@ STRUCTURE col
   FIELD al n
 ;STRUCTURE
 
-\ A TAGGED family, whose value carries a tag on top: reading one out of memory
-\ has to leave a bundle a dispatch will accept, which is the composition with the
-\ landed MATCH work.
+\ A TAGGED family: a value read out of memory must leave a bundle a dispatch
+\ accepts.
 SUMTYPE bx
   VARIANT b0 ;VARIANT
   VARIANT b2 n n ;VARIANT
 ;SUMTYPE
 
-\ And a PARAMETRIC family this package owns, instantiated with a two-cell
-\ argument: `opt2<pt>` occupies three cells where its declaration reserves two,
-\ so its width is one the registry cannot answer and only the checker knows. It
-\ is the composition with the landed construction work - a value built with pads
-\ added at the site, stored whole, and read back whole.
+\ A PARAMETRIC family this package owns, instantiated with a two-cell argument:
+\ `opt2<pt>` occupies three cells where its declaration reserves two, so only
+\ the checker knows its width. A value built with pads added at the site is
+\ stored whole and read back whole.
 PRODUCT pt
   FIELD x n
   FIELD y n
@@ -131,9 +127,6 @@ CAST: W2>CELLS ( ptr w2 -- ptr n )
    k E-L3 ;
 
 \ ---- a column store's three rows -------------------------------------------
-\ COL+ stores a whole record through a bounds-checked buffer; COL-HDR@ reads it
-\ back and keeps the header; COL-AL@ reads it back and keeps the alignment. All
-\ three refused before this leaf, and they are the acceptance.
 : E-COL+ ( ptr u8 n n n -- )
    {: h:ptr u:n al:n k:n :} h u al NWM-COL:MAKE k COL-AT ! ;
 

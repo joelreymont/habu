@@ -2,26 +2,15 @@ STDLIB-GATE:MAIN
 
 using TEST
 
-\ Registry order is start order among ready rows: the compiler-images build
-\ starts in the pool before these rows, and independent rows run beside it.
-\ Each row waits for a free slot. A row whose load closure needs an image not
-\ yet settled waits aside, out of the pool: the rows after it keep starting,
-\ and it starts at the first start after its images settle, ahead of every
-\ later row not yet started (src/lib/test/suite.f PENDING). Long rows lead so
-\ they do not start late and alone set the gate's tail.
+\ Registry order is start order among ready rows. A row whose load closure needs
+\ an unsettled image waits out of the pool and starts at the first start after
+\ its images settle, ahead of every later unstarted row (src/lib/test/suite.f
+\ PENDING). Long rows lead so they do not start late and set the gate's tail.
 
-\ Measure wall and user+system time with `/usr/bin/time bin/hb --load <file>`.
-\ Remove repeated work and share setup before splitting a slow row. A split
-\ must justify its isolation or reduce measured suite time, including any
-\ duplicated builds or process setup.
+\ Measure with `/usr/bin/time bin/hb --load <file>`.
 
 \ These long rows lead so they keep the pool busy while the compiler bundle
-\ builds. check-cli-boundary, lsp-boundary, hb-build-aot-image,
-\ whitebox-engine-key and check-drivers need no keyed image, including their
-\ child load paths, and start at once. check-verify waits for the cold engine;
-\ stripped-pool-reach, hb-build-repl-image, dictionary-capacity,
-\ xml-owner-consumer and engine-stack-machine wait for a builder image: each
-\ steps aside until it settles and then starts ahead of every later row.
+\ builds.
 SUITE check-cli-boundary
    tools/check-test.f
 ;SUITE
@@ -215,7 +204,7 @@ SUITE hb-build-producer-cache
    src/lib/codesign-test.f
 ;SUITE
 
-\ app-image uses the unsealed engine. whitebox-engine-build supplies its
+\ app-image uses the unsealed engine. test/whitebox-engine.f supplies its
 \ private copy from the initial compiler bundle; later consumers use that copy.
 SUITE app-image
    test/app-image.f
@@ -486,10 +475,8 @@ SUITE compiler-native-colon
 ;SUITE
 
 \ The target/policy binding: src/compiler/digest.f, target.f, numeric-policy.f
-\ and binding.f through their public words. It is the acceptance suite
-\ habu-bind-compiler-target-b3dfa307 is answered by, and a suite that answers a
-\ dot has to be reachable by name in the registry, not only inside a fork list -
-\ that missing row is what blocked the dot.
+\ and binding.f through their public words. A row of its own is reachable by
+\ name in the registry, not only inside a fork list.
 SUITE compiler-target-resolve
    test/compiler/target-resolve.f
 ;SUITE
@@ -594,8 +581,7 @@ SUITE wasm-link-capture
 ;SUITE
 
 \ The backend registry: complete rows in src/compiler/native/backend.f,
-\ registered by src/arch/arm64/passes.f, which is the acceptance suite for
-\ habu-bind-compiler-targets-ff970b99.
+\ registered by src/arch/arm64/passes.f.
 SUITE compiler-target-registry
    test/compiler/target-registry.f
 ;SUITE
@@ -645,8 +631,9 @@ SUITE compiler-x64-chain
    test/compiler/x64-chain.f
 ;SUITE
 
-\ Host rows exercise the ARM host/tier-0 JIT or native x86-64 capture. Mixed
-\ tier/compiler rows remain in the shared registry.
+\ Host rows (the ARM tier-0 JIT, native x86-64 capture) live in
+\ test/gate-arm-cases.f and test/gate-x64-cases.f; rows for both hosts stay
+\ here.
 package STDLIB-GATE
 private
 : HOST-ROWS ( -- )
@@ -736,13 +723,12 @@ SUITE genio
 
 \ WHITEBOX-SUITE runs the file on the unsealed engine test/whitebox-engine.f
 \ builds once per gate, never on bin/hb. Declare one when the suite reaches
-\ inside the engine it tests - a reopened engine package, a pre-hook global, a
-\ ticked internal word - and say here which of those it needs.
-\ test/internal-word-gate.f stays on the product engine on purpose: it pins the
-\ refusals this engine does not have.
-\ PRIM: / PPRIM: / CLOSE-PRIVATE and the owner packages the fixture opens are
-\ sealed in the product image, which is why this suite drives its fixture
-\ through a from-source child window that runs the production seal.
+\ inside the engine (a reopened engine package, a pre-hook global, a ticked
+\ internal word) and say here which. test/internal-word-gate.f stays on the
+\ product engine: it pins refusals the unsealed engine lacks. PRIM: / PPRIM: /
+\ CLOSE-PRIVATE and the fixture's owner packages are sealed in the product
+\ image, so this suite drives its fixture through a from-source child window
+\ that runs the production seal.
 SUITE prim-owner-scope
    test/prim-owner-scope.f
 ;SUITE
@@ -1169,11 +1155,9 @@ SUITE ffi-callback-growth
    test/ffi-callback-growth.f
 ;SUITE
 
-\ Package PG against a private PostgreSQL cluster the harness
-\ starts on a Unix-domain socket, runs src/lib/pg-test.f and then
-\ src/lib/pg-rows-test.f against, and stops however they end; then the same
-\ harness killed by a pool, which must leave no server process and no socket
-\ directory. initdb and postgres on PATH are a gate requirement
+\ Package PG against a private PostgreSQL cluster (test/db/pg-cluster.f), then
+\ the harness killed by a pool, which must leave no server process and no
+\ socket directory. initdb and postgres on PATH are a gate requirement
 \ (docs/bootstrap.md "Requirements").
 SUITE pg
    test/db/pg-cluster.f
@@ -1303,14 +1287,11 @@ SUITE compiler-compile-floor
    test/compiler/compile-floor.f
 ;SUITE
 
-\ The budgets are thread CPU time on each measurement's cheapest sample, over
-\ rounds that outlast a slow stretch, and the floor means meet only a loose
-\ ceiling. Measured in this pool on this 12-core machine: a scratch registry of
-\ sixteen copies of this row, eight slots, beside a native build, at load
-\ average 105-164: 400 of 400 rows green in 25 passes. The tools with one floor
-\ round and three bench rounds were red in 2 of 128 rows in the same pool at
-\ load 122-129: a whole tier-0 floor set on a slow core, and one tier-1
-\ benchmark slow in all three rounds.
+\ Budgets are thread CPU time on each measurement's cheapest sample, over rounds
+\ that outlast a slow stretch; the floor means meet only a loose ceiling.
+\ Measured on a 12-core machine, sixteen copies of this row in eight slots
+\ beside a native build at load 105-164: 400 of 400 green in 25 passes. With one
+\ floor round and three bench rounds, 2 of 128 were red at load 122-129.
 SUITE compiler-compile-floor-gate
    test/compile-floor-gate.f
 ;SUITE

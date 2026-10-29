@@ -24,7 +24,7 @@ using AOT-BUF
 using AOT-WINDOW
 private
 create KEY 32 allot
-create FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this fixture's file-digest context
+create FSHA-CTX SHA256-FILE-CTX-BYTES allot
 
 : U32@ ( ptr u8 -- n ) {: p:ptr :}
    p c@ p 1+ c@ 8 lshift or p 2 + c@ 16 lshift or p 3 + c@ 24 lshift or ;

@@ -1,38 +1,8 @@
 \ cast-negative-suite.f - reject contract for the CAST: checked retype declarer.
-\ Run BY THE ENGINE over stdin, like test/deftype-suite.f:
+\ Run by the engine over stdin, like test/deftype-suite.f:
 \     bin/hb < test/cast-negative-suite.f
-\ The native registry runs it as a positive case: it asserts every reject
-\ in-process and prints ok, so the process exits 0 with clean stderr.
-\
-\ Each illegal cast is rejected by its NAMED reject:
-\   - E-CAST-ARITY : more than one input term, or more than one output term (a
-\                    layout value wider than a cell is one term per cell)
-\   - E-CAST-CLASS : in/out is not one machine cell a cast may retype: an atom,
-\                    or a pointer to one; or the destination introduces an atom
-\   - E-CAST-FAM   : in/out names an undeclared family, or applies one to the
-\                    wrong number of arguments
-\   - CHECKER-REJECT-RC (70): any other signature fault, bad syntax or a bare
-\                    `ptr`, with the bad-signature diagnostic
-\   - E-CAST-LINEAR: a linear type or a type variable anywhere in in/out,
-\                    pointees, quotation rows and layout fields included
-\   - E-CAST-OWNER : the destination introduces a scalar-cell family outside its
-\                    declaring package
-\   - E-CAST-MINT  : the destination introduces a pointer or a quotation, a
-\                    class mint, outside a package's private section
-\   - E-CAST-SCOPE : a scoped term (a view, a scope or region variable) on
-\                    either side, asked before arity, unless the cast is a view
-\                    representation cast its section admits
-\ The destination introduces what sits in an introduction position: the term, a
-\ pointee, a layout family's arguments, its fields and its variants' payloads,
-\ and a quotation's produced rows, recursively, with a quotation's consumed
-\ rows flipping the direction.
-\   - verdict 0    : the cast: declarer used inside a checked body (unsafe token)
-\   - underdepth   : a bare call at an empty interpret stack, refused by name
-\ Every case runs the PRODUCTION declarer: the engine's own `cast:` reader
-\ keyword, evaluated as source, so what is asserted is what a file gets. A
-\ refusal throws its named code and leaves NO name behind — the record is not
-\ counted until the checker has accepted the row. A failure prints F<index>;
-\ T-REPORT exits 1 on any.
+\ The native registry runs it as a positive case: every reject is asserted
+\ in-process, so the process exits 0 with clean stderr.
 
 require src/habu/verify-source.f
 require src/lib/string.f
@@ -41,9 +11,8 @@ require src/lib/test.f
 
 T-RESET
 
-\ Silence expected rejection diagnostics (verdicts are asserted, not printed).
-\ The production declarer emits a real diagnostic per refusal where the old
-\ candidate path was quiet, so the buffer holds all of them.
+\ Silences the expected rejection diagnostics: the production declarer emits one
+\ per refusal.
 package CN-DIAG
 create BUF 65536 allot
 BUF 65536 DIAG-BUFFER!
@@ -62,13 +31,11 @@ STRUCTURE nested FIELD owner CAST-NEG:lease ;STRUCTURE
 STRUCTURE wide FIELD lo n FIELD hi n ;STRUCTURE
 ;package
 
-\ Run one declaration through the PRODUCTION path: the text is evaluated, so the
-\ engine's `cast:` keyword reads it exactly as it reads a file, and the checker
-\ it calls is the live one. Result: the E-CAST-* code a refusal threw, or 0 when
-\ the cast was accepted and published. There is no window to arm and no
-\ candidate scope in front of it — a refusal here is the refusal a file gets.
-\ Each fixture carries its whole source, keyword included, so what the case
-\ shows is exactly what a file would contain.
+\ Evaluates one declaration through the engine's `cast:` keyword and the live
+\ checker; the answer is the E-CAST-* code a refusal threw, or 0 when the cast
+\ was published.
+\ Each case evaluates the production `cast:` keyword as source; a refusal throws
+\ its named code and leaves no name behind.
 package CN-RUN
 public
 TYPED-VARIABLE SRC-A ptr u8
@@ -180,9 +147,12 @@ s" CN-PRIVATE-PROBE" 0 search-wl 0= TTRUE
 s" CN-PRIVATE-PROBE" CN-ABSENT? TFALSE
 ;package
 
-\ introduction into an arity-0 or parametric cell family belongs to its
-\ declaring package. Same-owner introduction works; another package cannot mint
-\ either shape, while projections out remain unrestricted.
+\ owner: introducing an arity-0 or parametric cell family belongs to its
+\ declaring package; another package cannot mint either shape, while projections
+\ out are unrestricted. The destination introduces what sits in an introduction
+\ position: the term, a pointee, a layout family's arguments, fields and variant
+\ payloads, and a quotation's produced rows, recursively, with its consumed rows
+\ flipping the direction.
 package CN
 s" cast: CNO0 ( n -- CN:cnfam )"                 CN-RUN:DECL 0 T=
 s" cast: CNG0 ( n -- CN:cncell<n> )"             CN-RUN:DECL 0 T=
@@ -260,14 +230,11 @@ s" cast: CNW16 ( n -- ptr CN-FQ:fqsum )" CN-RUN:DECL 0 T=
 s" cast: CNW17 ( n -- ptr CN-FQ:fqlist )" CN-RUN:DECL 0 T=
 ;package
 
-\ The families the ENGINE registers (src/core/type-family.f) are declared in the
-\ global, empty package, so the global scope is their owner and no package may
-\ mint one. This is the shape the live regression had: maki/extent.f declared
-\ `CAST: >RED ( ix<e> -- redx<e> )` inside `package MAKI`, minting the engine's
-\ `redx`, and every load of the file died with this reject. The repair moved the
-\ declaration to global scope (src/lib/type/extent-role.f) and moved `ix` into the
-\ same engine registration as its `extprod` and `redx` siblings.
-\ `redx` is a parametric engine family; `attn-stage-q` is an arity-0 one.
+\ The families the engine registers (src/core/type-family.f) are declared in the
+\ global, empty package, so the global scope owns them and no package may mint
+\ one: a package-scoped `CAST: >RED ( ix<e> -- redx<e> )` died with this reject,
+\ and the declaration lives at global scope (src/lib/type/extent-role.f). `redx`
+\ is a parametric engine family; `attn-stage-q` is an arity-0 one.
 s" cast: CNE0 ( n -- redx<n> )"                  CN-RUN:DECL 0 T=
 s" cast: CNE1 ( n -- attn-stage-q )"             CN-RUN:DECL 0 T=
 package CN-ENG
@@ -483,20 +450,17 @@ s" CN-VRF-POISON" CHECKER-PACKAGE
 s" cast: CNVR1 ( n -- CN-VRF-LIVE:live )" CN-RUN:DECL 0 T=
 CHECKER-END-PACKAGE
 ;package
-\ A cast carries no body, and this is how that is enforced rather than merely
-\ intended. The declaration ENDS at its closing paren: whatever follows is read
-\ by the interpreter as its own token, not swallowed as a body. The trailing 42
-\ runs and is left as the text's residue, which INCLUDE-EVALUATE, a closed
-\ evaluation, refuses by name.
+\ A cast carries no body: the declaration ends at its closing paren, so the
+\ trailing 42 is read as its own token and left as residue, which
+\ INCLUDE-EVALUATE, a closed evaluation, refuses by name.
 package CN
 s" cast: CNS1 ( n -- CN:cnfam ) 42"              CN-RUN:DECL E-EVAL-RESIDUE T=
 s" CNS1" get-current search-wl 0= TFALSE        \ ... and the cast published anyway
 ;package
 
-\ The last two refusals belong to the ENGINE, not the checker: it writes them to
-\ fd 2 and dies, which this suite's clean-stderr contract cannot host. A child
-\ is the better assertion anyway — it pins the exit status AND the message a
-\ user actually sees.
+\ The engine, not the checker, makes the last refusals: it writes them to fd 2
+\ and dies, which this suite's clean-stderr contract cannot host, so a child
+\ pins the exit status and the message.
 package CN-CHILD
 public
 $400 constant CAP
@@ -527,16 +491,15 @@ variable ERR-U
    then ;
 ;package
 
-\ A cast's record carries its certified minimum input arity, so a bare call at an
-\ empty interpret stack is refused BY NAME instead of reading the cell below the
-\ base. The bits are poked by the cast's own publish tail; drop that step from
-\ the engine and this case is the one that notices (measured).
+\ A cast's record carries its certified minimum input arity, so a bare call at
+\ an empty interpret stack is refused by name instead of reading the cell below
+\ the base. The cast's publish tail pokes the bits; this case is the one that
+\ notices that step missing (measured).
 s" NEWTYPE cnmrole  cast: >CNMROLE ( n -- cnmrole )  >CNMROLE" CN-CHILD:RUN CN-CHILD:UNDEF-RC T=
 CN-CHILD:ERR$ s" hb: interpret stack underdepth: >CNMROLE" CONTAINS? TTRUE
 
-\ The OLD spelling is dead, and that is a fact worth failing on: the trailing
-\ `;` every converted site used to carry is now an undefined token at interpret
-\ state — which is exactly why the conversion had to be one commit.
+\ The trailing `;` of the retired spelling is an undefined token at interpret
+\ state.
 s" cast: CNZ1 ( n -- n ) ;" CN-CHILD:RUN CN-CHILD:UNDEF-RC T=
 CN-CHILD:ERR$ s" E-UNDEFINED: ;" CONTAINS? TTRUE
 \ A reader keyword that needs a name and reaches the end of its stream fails

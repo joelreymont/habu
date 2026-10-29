@@ -56,8 +56,8 @@ using PTY-HARNESS
 
 \ Tier 1 keeps a block's local table across source lines, then releases it at
 \ `then`: the same spelling is a string opener in the last line. Only the Habu
-\ REPL, x86-64's, carries the table across lines; ARM64's kernel REPL, like
-\ master's, drops the local table at each line end.
+\ REPL, x86-64's, carries the table across lines; ARM64's kernel REPL drops the
+\ local table at each line end.
 : LEXICAL-LINES ( -- )
    s" : SPAN-LEX ( bool -- n )" STEP TTRUE
    S\" if 7 {: s\q:n :}" STEP TTRUE

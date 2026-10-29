@@ -1,5 +1,4 @@
 \ SVG bytes -> native librsvg/Cairo -> staged PDF -> independent PDF readers.
-\ Run: bin/hb --load test/svg-pdf-e2e.f
 require src/lib/svg-pdf.f
 require src/lib/test.f
 require src/lib/fs.f

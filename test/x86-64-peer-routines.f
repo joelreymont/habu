@@ -1,52 +1,9 @@
-\ x86-64-peer-routines.f - every HIR fixture of test/compiler/x64-emit.f that
-\ the x86-64 rows emit, and the pressure fixtures of test/compiler/x64-chain.f
-\ whose spills the rows lower into a frame, cross-built into an executable for an
-\ x86-64 peer. Each is driven the way src/compiler/native/compiler.f drives a
-\ definition - declare, select, fixpoint, emit at the image's own
-\ address, retire - and the routine is wrapped in test/x86-64-peer-harness.f's
-\ checking entry with the answers its definition must give. Each fixture writes
-\ one positive image into $TMPDIR/x64-routines, and each compare fixture one per
-\ relation; diff also writes a negative harness image whose first case expects
-\ a wrong answer. The manifest lists each file with its expected status;
-\ test/x86-64-peer-image-fixture.f names the peer images.
-\
-\ The same directory takes the signal image, which installs a handler through
-\ src/habu/boot-x64.f, raises a real SIGUSR1 and checks the frame the kernel
-\ hands the handler and the context the kernel resumes. boot-x64.f loads the
-\ x86-64 seam globally, so it comes before the harness, which would otherwise
-\ load the seam into its own private wordlist.
-\
-\ A routine whose bytes depend on where it is written - a call, a tail branch,
-\ a function's address - has a second image, `-moved`: the same emission,
-\ placed where the first image has it, lands MOVE-N bytes further on past a
-\ ud2 pad, and every such field is written again from the emission's rows
-\ alone (X64HARNESS:LINK-CALL, LINK-CODE). Both must run the same, which is
-\ what says the rows name every site and name it right.
-\
-\ The divide routines are the three x64-emit.f stages in the machine dialect,
-\ which have no source for the rows to select: the quotient, the remainder and
-\ a zero divisor. Each cold side calls a callee its image carries in place of
-\ `throw`: a stand-in in the zero-divisor image, a ud2 pad no case reaches in
-\ the others. Each routine is allocated, accepted and emitted at the image's own
-\ address directly (M-ROWS,). The two-counts routine is staged too, but its
-\ allocation plans something, so it is declared and goes through the driver's
-\ fixpoint and emit rows like a selected routine.
-\
-\ The select routines are staged and emitted the same way, since nothing selects
-\ `x64.cmpsel` or `x64.selz` yet: one per aliasing case, each an IR identity -
-\ the result tied to a compared operand, a compared operand moved in, both
-\ sources one value - beside a general case of each.
-\
-\ Four fixtures have no image. The rows refuse BUILD-ADDRESSED with
-\ E-IR-VERIFY-OPTYPE: it takes its memory order as an argument, which a
-\ data-stack contract has no cell for. The last check, after every image is
-\ written, asserts that refusal. BUILD-SELFCALLER is RECURSE with no base case,
-\ so it never returns. BUILD-TRAP calls `die`, and BUILD-DIV's cold side
-\ `throw`, each at its address in the host engine's dictionary (select-x64.f
-\ TRAP-ENTRY, THROW-ENTRY), which is no address of an x86 image; the terminal
-\ fixture here renders the same `x64.trap`, and the divide routines the same
-\ `x64.idiv`, to a callee the image carries. BUILD-DIV's bytes are pinned by
-\ test/compiler/x64-emit.f.
+\ x86-64-peer-routines.f - every HIR fixture of test/compiler/x64-emit.f the
+\ x86-64 rows emit, and test/compiler/x64-chain.f's pressure fixtures, built for
+\ an x86-64 peer the way src/compiler/native/compiler.f drives a definition and
+\ wrapped in test/x86-64-peer-harness.f's checking entry: one image per fixture
+\ (per relation for a compare) in $TMPDIR/x64-routines, a manifest of expected
+\ exit statuses, and a negative diff image.
 require src/lib/test.f
 require src/lib/string.f
 require src/lib/fmt.f
@@ -58,6 +15,8 @@ require src/compiler/session/emission.f
 require src/arch/x86-64/passes.f
 require test/compiler/x64-emit-fixture.f
 require test/compiler/x64-chain-fixture.f
+\ boot-x64.f, for the signal image, loads the x86-64 seam globally: it comes
+\ before the harness, which would otherwise load the seam into its own wordlist.
 require src/habu/boot-x64.f
 require test/x86-64-peer-harness.f
 require src/habu/arith-abi.f
@@ -86,8 +45,10 @@ private
    X64CHAIN-TEST:SESSION m X64HARNESS:POSITION MOVED @ - NBACK:EMIT ;
 
 \ A routine that landed where it was placed keeps the fields its emission wrote.
-\ One that landed MOVED bytes further on has each of them written again from a
-\ row: a call or tail branch at its absolute target, a CODE literal moved.
+\ One that landed MOVED bytes further on, past a ud2 pad, has each of them
+\ written again from a row: a call or tail branch at its absolute target, a CODE
+\ literal moved. Both images must run the same: that proves the rows name every
+\ position-dependent site.
 : LINK-ROWS ( NART:emission n -- ) {: e:NART:emission at:n :}
    e NART:CALL-SITES 0 ?do
       at e i NART:CALL-SITE@ + e i NART:CALL-TARGET@ X64HARNESS:LINK-CALL
@@ -126,7 +87,10 @@ private
 \ `: LEAF ( n -- ) TERMINAL-CELL CALLEE ;` where CALLEE ends the process: the
 \ terminal call hands over the cell the routine was entered with and a
 \ computed one, publishing both where the callee reads its arguments, the shape
-\ test/compiler/x64-select.f selects.
+\ test/compiler/x64-select.f selects. BUILD-TRAP and BUILD-DIV get no image:
+\ their `die` and `throw` are host-dictionary addresses (select-x64.f
+\ X64IR:KEY-TRAP-ENTRY, THROW-ENTRY). This fixture renders the same `x64.trap`,
+\ and the divide routines the same `x64.idiv`, to a callee the image carries.
 : BUILD-TERMINAL ( n -- )
    {: e:n :}
    1 0 OPEN-FUN
@@ -227,13 +191,15 @@ private
 
 \ A routine staged in the dialect has no source operation for the rows to
 \ select, so it is allocated, accepted and emitted the way the emitter's own
-\ cases are, at the image's next address.
+\ cases are, at the image's next address: the divide routines (x64-emit.f's
+\ quotient, remainder and zero-divisor stages) and the select routines.
 : M-ROWS, ( IR-BUILD:module n n -- )
    M-DALLOCATED X64HARNESS:POSITION PLACED
    X64EMIT:BYTES X64EMIT:SIZE X64HARNESS:APPEND-ROUTINE
    X64EMIT:RETIRE ;
 
-\ Each cold side calls the callee its image carries in place of `throw`.
+\ Each cold side calls the callee its image carries in place of `throw`: a
+\ stand-in in the zero-divisor image, a ud2 pad no case reaches in the others.
 : QUOTIENT-BODY ( n IR-CTX:ctx -- )
    {: callee:n c:IR-CTX:ctx :}
    callee CALLEE ! c 0 W-CTX ! CALLEE @ BUILD-QUOTIENT 2 1 M-ROWS, ;
@@ -253,13 +219,13 @@ private
    M-CLOSE-VALUE ;
 
 \ `( v a b -- n )` answering `v a lshift b rshift`, both counts loaded before
-\ either shift: test/compiler/x64-regalloc.f TWO-COUNTS behind the data-stack
-\ boundary, its second shift a right one so that counts given in the wrong order
-\ answer wrongly. Each count is fixed to rcx at its shift and b is live where
-\ the first shift reads a there, so neither keeps rcx from its load to its shift
-\ (regalloc.f MB-PIN), and the fixpoint lowers each into a count of its own in
-\ front of its shift. The spill pass is bound to the builder the routine is
-\ staged in, as selection binds it to the one it writes.
+\ either shift: test/compiler/x64-regalloc.f TWO-COUNTS-BODY behind the
+\ data-stack boundary, its second shift a right one so that counts given in the
+\ wrong order answer wrongly. Each count is fixed to rcx at its shift and b is
+\ live where the first shift reads a there, so neither keeps rcx from its load
+\ to its shift (regalloc.f MB-PIN), and the fixpoint lowers each into a count of
+\ its own in front of its shift. The spill pass is bound to the builder the
+\ routine is staged in, as selection binds it to the one it writes.
 : BUILD-TWO-COUNTS ( -- IR-BUILD:module )
    M-MOD
    M-BIND-MACHINE
@@ -289,7 +255,9 @@ private
    e NART:BYTES e NART:SIZE X64HARNESS:APPEND-ROUTINE
    ROWS-DONE ;
 
-\ A select shape of the fixture's, taking `in` cells.
+\ Nothing selects `x64.cmpsel` or `x64.selz`: one staged routine per aliasing
+\ case (result tied to a compared operand, a compared operand moved in, both
+\ sources one value) beside a general case. A shape takes `in` cells.
 TYPED-VARIABLE SEL-SHAPE [ -- IR-BUILD:module ]
 variable SEL-IN
 
@@ -301,8 +269,11 @@ variable SEL-IN
 : SEL-ROUTINE ( [ -- IR-BUILD:module ] n -- )
    [: SEL-BODY ;] X64CHAIN-TEST:WITH-CASE ;
 
-\ A refused definition ends the way src/compiler/native/compiler.f ends one:
-\ what the refusal left bound is released, then the emission retired.
+\ The rows refuse BUILD-ADDRESSED with E-IR-VERIFY-OPTYPE: its memory order is
+\ an argument a data-stack contract has no cell for, so it has no image and the
+\ last check asserts the refusal. BUILD-SELFCALLER has none either: it never
+\ returns. A refused definition ends the way src/compiler/native/compiler.f ends
+\ one: what the refusal left bound is released, then the emission retired.
 : ADDRESSED-REFUSED ( IR-CTX:ctx -- )
    HIR-MOD BUILD-ADDRESSED
    s" the rows refuse the addressed fixture: a data-stack contract has no cell for the memory order it takes as an argument" T-LABEL
@@ -530,13 +501,10 @@ $10000 constant FRAME-REACH
 
 public
 
-\ Install the handler for SIGUSR1, check the install gave rsp back and kept the
-\ harness's reserved registers, and that one for SIGKILL is refused with the
-\ carry set. Leave the mark on the machine stack, pattern every register the
-\ raise leaves free, raise the signal with kill on the image's own pid and
-\ check the resumed context. Control coming back to the
-\ instruction after the syscall fails: the handler moved the resume to
-\ `resumed`. It leaves rdi 0 for the exit.
+\ The SIGUSR1 install must give rsp back and keep the harness's reserved
+\ registers; a SIGKILL install is refused with the carry set. Control reaching
+\ the instruction after the raise's syscall fails: the handler moved the resume
+\ to `resumed`. rdi is left 0 for the exit.
 : SIGNAL-CASE, ( -- )
    LBL LBL LBL LBL LBL
    {: handler:label rest:label past:label raised:label resumed:label :}
@@ -594,6 +562,7 @@ create MANIFEST BUF:HDR-BYTES allot
 
 \ Write the staged image into the directory as `name`, or `name-negative`, and
 \ list it in the manifest with the status the peer must see it exit with.
+\ x86-64-peer-image-fixture.f names these images.
 : WRITE-IMAGE ( ptr u8 n bool -- ) {: a:ptr u:n negative:bool :}
    SB-RESET DIR$ SB-APPEND s" /" SB-APPEND a u SB-APPEND
    negative if s" -negative" SB-APPEND then
@@ -1185,7 +1154,7 @@ TYPED-VARIABLE FCMP0-KEY [ r -- bool ]
    F-NEGNAN 1 + FUN1-CASE,
    HIR-OPCODE:FABS s" fabs" FUN1-CLOSE, ;
 
-\ No negative operand: the square root of one is a NaN.
+\ No negative operand: the square root of a negative number is a NaN.
 : FSQRT-IMAGE ( -- )
    [: fsqrt ;] FUN1-KEY !
    false OPEN,

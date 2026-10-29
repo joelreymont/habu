@@ -1,6 +1,5 @@
 \ main-routing.f - exercise the emitted engine's stdin and argv routing.
-\ Run with HABU_UNDER_TEST set to the emitted candidate:
-\   bin/hb --load test/main-routing.f
+\ Needs HABU_UNDER_TEST set to the emitted candidate.
 
 require src/lib/test.f
 require src/lib/string.f

@@ -1,25 +1,15 @@
-\ type-match-suite.f — checked MATCH eliminator suite (docs/forth.md
-\ "Structures And Enums"). Run BY THE ENGINE over stdin, like
-\ the other type suites:  bin/hb < test/type-match-suite.f
-\ MATCH is a checker control form: `MATCH family  variant OF ... ENDOF ...
-\ ;MATCH` pops the scrutinee's hidden-field bundle, refines each branch with
-\ that variant's instantiated payload, joins branch outputs, and enforces
-\ exhaustiveness over the declaration-order tags (v1 has no default branch).
-\ Family/variant tokens are captured before locals/control/word lookup;
-\ OF/ENDOF are shared with CASE and dispatched by the enclosing frame kind.
-\ Family resolution is signature scope (eliminability = nameability), unlike
-\ construct's owner-only rule. test/match-factor-pin.f owns the native CLI
-\ positives, negatives, forged-tag diagnostic, and checked round-trips.
+\ type-match-suite.f — checked MATCH suite (docs/forth.md "Structures And
+\ Enums"), run by the engine over stdin like the other type suites:
+\     bin/hb < test/type-match-suite.f
+\ MATCH refines each branch with its variant's payload, joins branch outputs and
+\ enforces exhaustiveness over declaration-order tags (no default branch).
+\ test/match-factor-pin.f owns the native CLI cases.
 
 require src/lib/string.f
 require src/lib/test.f
 
 T-RESET
 
-\ ---------------------------------------------------------------------------
-\ families under test: scalar sum, multi-cell + padding, enum-shaped,
-\ ptr payloads, parametric, and linear-arg parametric.
-\ ---------------------------------------------------------------------------
 SUMTYPE mres
   VARIANT ok  n ;VARIANT
   VARIANT err n ;VARIANT
@@ -61,28 +51,25 @@ ENUM-DECL:ED-RUN mnamedlin
   VARIANT hold FIELD token TMLIN:mtok ;VARIANT
   VARIANT empty ;VARIANT
 ;ENUM
-\ variants spelled like stack words: the generated constructors MWV:DUP/MWV:SWAP
-\ are qualified defs. Declared EARLY (dot habu-qualified-defs-leak-aadeb5c9 fixed):
-\ a qualified def no longer leaks a bare-global `dup`/`swap` effect row, so the
-\ later fixtures that use bare dup/swap as prims (M9, CS1, CS2, PS*) still certify
-\ even though this family declared those variant names first.
+\ Variants spelled like stack words: the constructors MWV:DUP/MWV:SWAP are
+\ qualified defs, declared before the fixtures that use bare dup/swap as prims
+\ (M9, CS1, CS2, PS*). Those still certify: a qualified def publishes no
+\ bare-global effect row.
 SUMTYPE mwv
   VARIANT dup  n ;VARIANT
   VARIANT swap n ;VARIANT
 ;SUMTYPE
-\ a genuine ENUM-declared family (kind TK-ENUM, not a SUMTYPE 0): MATCH must
-\ eliminate it exactly like the enum-SHAPED sum `men` above, since the
-\ family-kind gate is sum OR enum (docs/forth.md "Structures And Enums"). Its
-\ generated constructors are MECOLOR:RED / MECOLOR:GREEN / MECOLOR:BLUE.
+\ A genuine ENUM-declared family (kind TK-ENUM, not a SUMTYPE 0): MATCH must
+\ eliminate it like the enum-shaped sum `men` above, since the family-kind gate
+\ is sum or enum (docs/forth.md "Structures And Enums"). Its generated
+\ constructors are MECOLOR:RED / MECOLOR:GREEN / MECOLOR:BLUE.
 ENUM mecolor
   red
   green
   blue
 ;ENUM
 
-\ ---------------------------------------------------------------------------
-\ accepted: exhaustive matches with joined rows and refined payloads.
-\ ---------------------------------------------------------------------------
+\ Accepted: exhaustive matches with joined rows and refined payloads.
 s" M1=" type s" T1 ( mres -- n ) MATCH mres ok OF ENDOF err OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
 \ payload refinement: the wide variant's ptr u8 n n row is live in its branch.
 s" M2=" type s" T2 ( mmix -- n ) MATCH mmix small OF ENDOF big OF nip nip ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
@@ -109,15 +96,10 @@ s" M14=" type s" T14 ( mres -- n ) MATCH mres ok OF exit ENDOF err OF exit ENDOF
 s" M15=" type s" T15 ( mres -- n ) MATCH mres ok OF >r 0 r> + ENDOF err OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
 s" MATCH-OK" type cr
 
-\ ---------------------------------------------------------------------------
-\ linear payloads: matching a linear sum consumes the scrutinee exactly once
-\ (popped at MATCH entry, structurally unusable after), and each arm's refined
-\ payload is a use-after-free-class resource that the arm must consume EXACTLY
-\ once — no leak, no drop, no copy, no double-consume. ML1-ML4 prove this
-\ via construct round-trips (consume = re-mint); ML5-ML12 pin the
-\ consume-to-nothing contract using TMLIN:FREE-MTOK, the abstract linear
-\ consumer, so a branch can fully discharge the payload.
-\ ---------------------------------------------------------------------------
+\ Linear payloads: matching a linear sum consumes the scrutinee once (popped at
+\ MATCH entry), and each arm must consume its refined payload exactly once: no
+\ leak, drop, copy or double consume. ML1-ML4 consume by construct round-trips
+\ (re-mint); ML5-ML12 consume to nothing through TMLIN:FREE-MTOK.
 s" MLC=" type s" KLC ( TMLIN:mtok -- TMLIN:mtok TMLIN:mtok ) dup" CHECK-QUIET-CANDIDATE! 0 T=
 s" MLN1=" type s" KNL1 ( mnamedlin -- mnamedlin mnamedlin ) dup" CHECK-QUIET-CANDIDATE! 0 T=
 s" MLN2=" type s" KNL2 ( mnamedlin -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
@@ -137,8 +119,7 @@ s" MLN3=" type s" KNL3 ( TMLIN:mtok -- mnamedlin ) construct mnamedlin hold" CHE
 s" MLN4=" type s" KNL4 ( mnamedlin -- n ) MATCH mnamedlin hold OF TMLIN:FREE-MTOK 0 ENDOF empty OF 0 ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
 s" MLN5=" type s" KNL5 ( mnamedlin -- n ) MATCH mnamedlin hold OF 0 ENDOF empty OF 0 ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
 \ full consume: the linear arm frees its refined payload to nothing, the err arm
-\ (payload n, non-linear) passes it through -> accept. The single-consumption
-\ contract: the scrutinee's linear resource is discharged exactly once.
+\ (payload n, non-linear) passes it through -> accept.
 s" ML5=" type s" K5 ( mlin<TMLIN:mtok,n> -- n ) MATCH mlin ok OF TMLIN:FREE-MTOK 0 ENDOF err OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
 \ leak: the refined linear payload is never consumed (only n produced) -> reject.
 s" ML6=" type s" K6 ( mlin<TMLIN:mtok,n> -- n ) MATCH mlin ok OF 0 ENDOF err OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
@@ -148,7 +129,7 @@ s" ML7=" type s" K7 ( mlin<TMLIN:mtok,n> -- n ) MATCH mlin ok OF TMLIN:FREE-MTOK
 s" ML8=" type s" K8 ( mlin<TMLIN:mtok,n> -- n ) MATCH mlin ok OF exit ENDOF err OF 0 ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
 \ forward the payload out through the join (both arms carry mtok) -> accept.
 s" ML9=" type s" K9 ( mlin2<TMLIN:mtok,TMLIN:mtok> -- TMLIN:mtok ) MATCH mlin2 ok OF ENDOF err OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
-\ forward AND free the same payload (copy then consume) -> reject.
+\ forward and free the same payload (copy then consume) -> reject.
 s" ML10=" type s" K10 ( mlin2<TMLIN:mtok,TMLIN:mtok> -- TMLIN:mtok ) MATCH mlin2 ok OF dup TMLIN:FREE-MTOK ENDOF err OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
 \ payload moved via balanced return-stack traffic then consumed -> accept
 \ (the move-class relaxation composes with match refinement).
@@ -157,11 +138,9 @@ s" ML11=" type s" K11 ( mlin<TMLIN:mtok,n> -- n ) MATCH mlin ok OF >r 0 r> TMLIN
 s" ML12=" type s" K12 ( mlin<TMLIN:mtok,n> -- n ) MATCH mlin ok OF >r 0 ENDOF err OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
 s" MATCH-LINEAR" type cr
 
-\ ---------------------------------------------------------------------------
-\ ENUM-declared family under MATCH: a real TK-ENUM eliminates,
-\ round-trips through its generated constructor, and enforces exhaustiveness +
-\ no-duplicate arms just like a sum.
-\ ---------------------------------------------------------------------------
+\ ENUM-declared family under MATCH: a real TK-ENUM eliminates, round-trips
+\ through its generated constructor, and enforces exhaustiveness and
+\ no-duplicate arms like a sum.
 s" ME1=" type s" TE1 ( mecolor -- n ) MATCH mecolor red OF 0 ENDOF green OF 1 ENDOF blue OF 2 ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
 \ constructor -> match round-trip: MECOLOR:GREEN yields a mecolor the match pops.
 s" ME2=" type s" TE2 ( -- n ) MECOLOR:GREEN MATCH mecolor red OF 0 ENDOF green OF 1 ENDOF blue OF 2 ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
@@ -173,10 +152,8 @@ s" MEB2=" type s" BE2 ( mecolor -- n ) MATCH mecolor red OF 0 ENDOF red OF 1 END
 s" MEB3=" type s" BE3 ( n -- n ) MATCH mecolor red OF 0 ENDOF green OF 1 ENDOF blue OF 2 ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
 s" MATCH-ENUM" type cr
 
-\ ---------------------------------------------------------------------------
-\ rejected: exhaustiveness, duplicates, resolution, scrutinee shape, joins,
-\ truncation, strays, depth overflow (hard reject 0 — never uncheckable 1).
-\ ---------------------------------------------------------------------------
+\ Rejected, a hard reject 0 and never uncheckable 1: exhaustiveness, duplicates,
+\ resolution, scrutinee shape, joins, truncation, strays, depth overflow.
 s" MB1=" type s" B1 ( mres -- n ) MATCH mres ok OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
 s" MB2=" type s" B2 ( mres -- n ) MATCH mres ok OF ENDOF ok OF ENDOF err OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
 s" MB3=" type s" B3 ( mres -- n ) MATCH mres small OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
@@ -212,34 +189,26 @@ s" MB20=" type s" B20 ( mres -- n ) [: MATCH mres ok OF ENDOF err OF ENDOF ;MATC
 s" MB21=" type s" B21 ( mres -- n ) MATCH mres ok OF exit ENDOF err OF exit ENDOF ;MATCH 0" CHECK-QUIET-CANDIDATE! 0 T=
 s" MATCH-BAD" type cr
 
-\ ---------------------------------------------------------------------------
-\ CASE regression pins beside the shared OF/ENDOF surface. These use bare `dup`
-\ as a prim AFTER `mwv` (declared at the top) published its MWV:DUP constructor,
-\ so they double as leak-fix regressions (dot habu-qualified-defs-leak-aadeb5c9):
-\ a qualified def no longer leaks a bare-global `dup` row that shadowed the prim.
-\ ---------------------------------------------------------------------------
+\ CASE pins beside the shared OF/ENDOF surface, which the enclosing frame kind
+\ dispatches. They use bare `dup` as a prim after `mwv` published its MWV:DUP
+\ constructor, so they also pin that a qualified def leaks no bare-global row.
 s" CS1=" type s" C1 ( n -- n ) case 1 of 2 endof dup endcase" CHECK-QUIET-CANDIDATE! -1 T=
 s" CS2=" type s" C2 ( n n -- n ) case 1 of 1 + endof 2 of 2 + endof drop dup endcase" CHECK-QUIET-CANDIDATE! -1 T=
 s" CS3=" type s" C3 ( n -- n ) endof" CHECK-QUIET-CANDIDATE! 0 T=
 s" CASE-GREEN" type cr
 
-\ ---------------------------------------------------------------------------
-\ variants spelled like stack words are captured operands, never word calls;
-\ `mwv` (declared with the other families above) proves ordering is free now.
-\ ---------------------------------------------------------------------------
+\ Variants spelled like stack words are captured operands, never word calls:
+\ family and variant tokens are captured before locals, control and word lookup.
 s" M12=" type s" T12 ( mwv -- n ) MATCH mwv dup OF ENDOF swap OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
-\ leak-fix regressions (dot habu-qualified-defs-leak-aadeb5c9): a public family
-\ declared prim-named variants ABOVE, yet bare dup/swap still bind the PRIMS in
-\ these later checked bodies — no leaked bare-global effect row shadows them.
+\ A public family declared prim-named variants above, and bare dup/swap still
+\ bind the prims in these later checked bodies.
 s" PS1=" type s" PS1 ( n n -- n n ) swap" CHECK-QUIET-CANDIDATE! -1 T=
 s" PS2=" type s" PS2 ( n -- n n ) dup"    CHECK-QUIET-CANDIDATE! -1 T=
 s" MATCH-WORDVAR" type cr
 
-\ ---------------------------------------------------------------------------
-\ frame headroom: a match two CFS slots from the cap HARD-rejects (verdict 0,
-\ pinned diagnostics) instead of tripping the silent-uncheckable CF overflow;
-\ the same shape with headroom certifies.
-\ ---------------------------------------------------------------------------
+\ Frame headroom: a match two CFS slots from the cap is a hard reject (verdict
+\ 0, pinned diagnostics), not the silent-uncheckable CF overflow; the same shape
+\ with headroom certifies.
 $400 constant MD-CAP
 create MD-BUF MD-CAP allot
 variable MD-U
@@ -265,10 +234,9 @@ s" MD31=" type 31 MD-BODY CHECK-QUIET-CANDIDATE! 0 T=
 s" MD29=" type 29 MD-BODY CHECK-QUIET-CANDIDATE! -1 T=
 s" MATCH-DEPTH" type cr
 
-\ ---------------------------------------------------------------------------
-\ scope: signature-scope resolution — in-package private matches; cross-package
-\ public matches bare and qualified (eliminability = nameability).
-\ ---------------------------------------------------------------------------
+\ Scope: family resolution is signature scope (eliminability = nameability),
+\ unlike construct's owner-only rule. In-package private matches; cross-package
+\ public matches bare and qualified.
 package mscp
 private
 SUMTYPE msec
@@ -286,17 +254,15 @@ s" MS2=" type s" S2 ( mpub:mpres -- n ) MATCH mpres yes OF ENDOF ;MATCH" CHECK-Q
 s" MS3=" type s" S3 ( mpub:mpres -- n ) MATCH mpub:mpres yes OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
 s" MATCH-SCOPE" type cr
 
-\ ---------------------------------------------------------------------------
-\ Diagnostics. Every match/construct reject class carries a stable code, repair
-\ class, reason, and suggestion; nonexhaustive lists the missing variant NAMES.
-\ Captured through the render diag buffer in JSON mode (the type-decl-suite
-\ pattern); one prose case pins the `bad match: missing variants` text.
-\ ---------------------------------------------------------------------------
+\ Diagnostics: every match/construct reject class carries a stable code, repair
+\ class, reason and suggestion; nonexhaustive lists the missing variant names.
+\ Captured through the render diag buffer in JSON mode; one prose case pins the
+\ `bad match: missing variants` text.
 create MDG-BUF 8192 allot
 : MDG< ( ptr u8 n -- )   \ run one candidate with JSON diags into the buffer
    MDG-BUF 8192 DIAG-BUFFER!  0 0= DIAG-JSON!
    CHECK-CANDIDATE! 0 T= ;
-: MDG? ( ptr u8 n -- )   \ assert the captured diag contains the needle
+: MDG? ( ptr u8 n -- )
    T-NEXT
    DIAG-BUFFER$ 2swap CONTAINS? 0= if
       s" diag needle missing" T-ASSERT-DETAIL
@@ -371,28 +337,20 @@ DIAG-BUFFER$ s" bad match: missing variants: aa cc" CONTAINS? TTRUE
 DIAG-BUFFER-OFF
 s" MATCH-DIAG" type cr
 
-\ ---------------------------------------------------------------------------
-\ layout-cap slice 3 (dot habu-checker-capability-layout-9b8540bd): MATCH on a
-\ NAMED multi-cell layout arg. The some-branch payload PUSH-LOGICAL-expands the
-\ product to its W hidden cells (type-family.f TFC-PAY-ROW), so UNMAKE + typed
-\ locals receive the exact fields (ML1); branch outputs still join. Over-
-\ dropping the bundle leaves a branch imbalance and stays red (ML2), so the
-\ payload really is the wide bundle, not one cell.
-\ ---------------------------------------------------------------------------
+\ MATCH on a named multi-cell layout arg: the some-branch payload expands the
+\ product to its W hidden cells (type-family.f TFC-PAY-ROW), so UNMAKE and typed
+\ locals receive the exact fields (ML1) and branch outputs join. Over-dropping
+\ the bundle leaves a branch imbalance (ML2): the payload is the wide bundle.
 PRODUCT mlw2 FIELD x n FIELD y n ;PRODUCT
 SUMTYPE mlopt<a> VARIANT none ;VARIANT VARIANT some a ;VARIANT ;SUMTYPE
 s" ML1 ( mlopt<mlw2> -- n ) MATCH mlopt none OF 0 ENDOF some OF MLW2:UNMAKE {: x:n y:n :} x y + ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
 s" ML2 ( mlopt<mlw2> -- n ) MATCH mlopt none OF 0 ENDOF some OF drop drop 1 ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
 s" MATCH-LAYOUT" type cr
 
-\ ---------------------------------------------------------------------------
-\ layout-cap slice 5 (same dot): MATCH on a NESTED named instantiation. The
-\ some-branch payload of mnopt<mnres<n,n>> is the inner mnres<n,n> bundle, so the
-\ arm receives the whole 2-cell inner value and destructures it with a SECOND
-\ MATCH (MN1). Over-dropping the nested bundle leaves a branch imbalance and stays
-\ red (MN2). The arm can also re-wrap the inner value into a fresh outer bundle
-\ (MN3), proving the payload really is the inner instantiation, not a scalar.
-\ ---------------------------------------------------------------------------
+\ MATCH on a nested named instantiation: the some-branch payload of
+\ mnopt<mnres<n,n>> is the whole 2-cell inner bundle, destructured by a second
+\ MATCH (MN1). Over-dropping it leaves a branch imbalance (MN2); the arm can
+\ re-wrap it into a fresh outer bundle (MN3), so the payload is not a scalar.
 SUMTYPE mnres<a,b> VARIANT ok a ;VARIANT VARIANT err b ;VARIANT ;SUMTYPE
 SUMTYPE mnopt<a> VARIANT none ;VARIANT VARIANT some a ;VARIANT ;SUMTYPE
 s" MN1 ( mnopt<mnres<n,n>> -- n ) MATCH mnopt none OF 999 ENDOF some OF MATCH mnres ok OF ENDOF err OF ENDOF ;MATCH ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
@@ -400,12 +358,9 @@ s" MN2 ( mnopt<mnres<n,n>> -- n ) MATCH mnopt none OF 0 ENDOF some OF drop drop 
 s" MN3 ( mnopt<mnres<n,n>> -- mnopt<mnres<n,n>> ) MATCH mnopt none OF MNOPT:NONE ENDOF some OF MNOPT:SOME ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
 s" MATCH-NESTED" type cr
 
-\ ---------------------------------------------------------------------------
-\ Unified ENUM declarations store named payload rows in TYPE-FIELD instead of
-\ the legacy positional SUMV schema. These cases prove construct, MATCH,
-\ generic substitution, nested applications, payload order, and diagnostics
-\ all consume the same declared-payload accessors as linearity.
-\ ---------------------------------------------------------------------------
+\ Unified ENUM declarations store named payload rows in TYPE-FIELD: construct,
+\ MATCH, generic substitution, nested applications, payload order and
+\ diagnostics consume the same declared-payload accessors as linearity.
 ENUM-DECL:ED-RUN nec red green blue ;ENUM
 ENUM-DECL:ED-RUN nep
   VARIANT mk FIELD x n FIELD y n ;VARIANT
@@ -441,7 +396,4 @@ s\" \"field\":\"y\"" MDG?
 MDG-END
 s" ENUM-CONSTRUCT-MATCH" type cr
 
-\ ---------------------------------------------------------------------------
-\ report: "test: ok" on success, nonzero exit on any failure.
-\ ---------------------------------------------------------------------------
 T-REPORT

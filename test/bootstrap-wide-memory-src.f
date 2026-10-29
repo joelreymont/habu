@@ -149,7 +149,6 @@ package BWM-CODE
 \ An xt is a code address integer; its instruction words need a byte view.
 CAST: >CODE ( n -- ptr u8 )
 public
-\ The little-endian instruction word at byte offset off from an xt.
 : W32 ( n n -- n )
    + >CODE {: p:ptr :}
    p c@  p 1 + c@ 8 lshift or  p 2 + c@ 16 lshift or  p 3 + c@ 24 lshift or ;
@@ -163,26 +162,15 @@ variable BWM-GXT
 : BWM-MASK-GOLD ( n n n -- ) {: idx:n mask:n want:n :}
    BWM-GXT @ idx 4 * BWM-CODE:W32 mask and want BWM= ;
 
-\ ---- what the compiled wide store and fetch must encode ----------------------
-\ The goldens below pin the invariants a reader of the code can substantiate,
-\ not the whole body: the helper each transfer reaches, the span the store
-\ proves before it mutates memory, and the tag descriptor the fetch hands its
-\ validator. Width and order are executed (BWM-TEST-RUNTIME). There is no
-\ per-transfer bounds request to pin any more -- that machinery is gone from
-\ the engine (dot habu-replace-per-transfer-8523fb98, following its earlier
-\ removal from the JIT in "Remove the per-transfer stack guards from the
-\ engine"), and every VM stack run-in-stack accepts is now a guarded mapping
-\ rounded up to a whole STACK-ABI:PAGE-BYTES, far larger than any of these
-\ transfers, so the old BWM-TEST-EXACT dynamic fit is gone too (see the note
-\ below BWM-TEST-GOLDENS); refusals are process exits and live in
-\ test/engine-stack-wide.f.
-\
-\ An engine helper call is one direct `BL imm26` when the JIT region maps within
-\ BL's +/-128 MiB of __text (native bin/hb, dot habu-map-the-code + habu-aot-repl-bl),
-\ and the absolute `movz/movk/movk x16 ; blr x16` chain when the region is far (the
-\ Gforth stage0 seed still maps at RBASE-VA). Both are the correct call for their
-\ region, so the goldens detect the form at the call site and continue at the
-\ instruction after it (index + 1 for BL, index + 4 for the chain).
+\ The goldens pin the helper each transfer reaches, the span the store proves
+\ before it mutates memory, and the tag descriptor the fetch hands its
+\ validator; width and order are executed (BWM-TEST-RUNTIME). Refusals are
+\ process exits and live in test/engine-stack-wide.f. An engine helper call is
+\ one `BL imm26` when the code region maps within BL's +/-128 MiB of __text
+\ (native bin/hb), and the absolute `movz/movk/movk x16 ; blr x16` chain when it
+\ is far (the Gforth stage0 seed maps at RBASE-VA): the goldens detect the form
+\ at the call site and continue after it (index + 1 for BL, index + 4 for the
+\ chain).
 : BWM-CALL-GOLD ( n -- n ) {: idx:n :}
    BWM-GXT @ idx 4 * BWM-CODE:W32 $FC000000 and $94000000 = if
       idx $FC000000 $94000000 BWM-MASK-GOLD  idx 1 + exit
@@ -193,28 +181,16 @@ variable BWM-GXT
    idx 3 + $FFFFFFFF $D63F0200 BWM-MASK-GOLD
    idx 4 + ;
 
-\ A wide store ( value ptr -- ): pops the address, addresses the value at its
-\ full width, and proves the whole destination span with (PROT-SPAN) - x10
-\ destination, x11 bytes, x9 cells - before the first mutating store. There is
-\ no bounds request ahead of the call any more (dot
-\ habu-replace-per-transfer-8523fb98, following the engine's own
-\ per-transfer-guard removal in "Remove the per-transfer stack guards from the
-\ engine"): the frame is just the return address, the destination comes
-\ straight off the data stack, and (PROT-SPAN) is reached directly.
-\ THE FRAME AND THE POP ARE ONE INSTRUCTION EACH. AArch64 writes the base
-\ register back as part of a load or a store, so taking the frame and saving
-\ the link register is `str x30,[sp,#-16]!` and popping the destination is
-\ `ldr x10,[x19,#-8]!` (dot habu-use-pre-and-1830972f). Both engines emit
-\ these, so these goldens are the same on each.
-\ The source offset is FOLDED into the sub's imm12 field ("Fold transfer
-\ immediates into emitted words"): both engines reach the code window through
-\ one shared add/sub-immediate emitter, which spends one word while the byte
-\ operand is below 4096 and a shifted high half plus a low half above it. Every
-\ width here is far below 4096, so index 4 is the single folded word; a
-\ register-materialized offset would cost one instruction more at every width.
-\ Measured on the stage0 seed with `HABU_TARGET=linux-aarch64 gforth
-\ test/bootstrap-wide-memory.fs`, decoding the
-\ actual compiled BWM-STORE2-G/BWM-STORE4-G bytes byte for byte.
+\ A wide store ( value ptr -- ) proves the whole destination span with
+\ (PROT-SPAN), x10 destination, x11 bytes, x9 cells, before the first mutating
+\ store. AArch64 writes the base register back in a load or store, so the frame
+\ is one `str x30,[sp,#-16]!` and the pop one `ldr x10,[x19,#-8]!`; both engines
+\ emit these, so the goldens are the same on each. Both reach the code window
+\ through one add/sub-immediate emitter, which folds the byte operand into one
+\ word below 4096; every width here is far below it, so the sub at index 2 is
+\ one word. Measured on the stage0 seed with `HABU_TARGET=linux-aarch64 gforth
+\ test/bootstrap-wide-memory.fs`, decoding the compiled
+\ BWM-STORE2-G/BWM-STORE4-G bytes.
 : BWM-STORE-GOLD ( ptr u8 n n -- ) {: name:ptr nameu:n width:n :}
    name nameu BWM-XT BWM-GXT !
    0 $F81F0FFE BWM-GOLD                           \ str x30,[sp,#-16]!
@@ -224,12 +200,10 @@ variable BWM-GXT
    4 $D280000B width 5 lshift or BWM-GOLD         \ movz x11,#width
    5 BWM-CALL-GOLD drop ;                         \ (PROT-SPAN)
 
-\ A wide fetch ( ptr -- value ): it first calls (LP2VEXEC), whose descriptor
-\ follows the return site behind a branch over it - one CHECK row naming the
-\ tag cell's offset, the exclusive tag domain and no guards - so an invalid tag
-\ is refused before the address is popped. It then pops the source address
-\ directly and sets the cell count, with no bounds request in between (same
-\ removal as the store side above). Decoded from the actual compiled
+\ A wide fetch ( ptr -- value ) first calls (LP2VEXEC), whose descriptor follows
+\ the return site behind a branch over it: one CHECK row naming the tag cell's
+\ offset, the exclusive tag domain and no guards, so an invalid tag is refused
+\ before the address is popped. Decoded from the compiled
 \ BWM-FETCH2-G/BWM-FETCH4-G bytes.
 : BWM-FETCH-GOLD ( ptr u8 n n n n -- )
    {: name:ptr nameu:n width:n tag:n lim:n :}
@@ -250,31 +224,13 @@ variable BWM-GXT
    s" BWM-STORE4-G" 32 BWM-STORE-GOLD
    s" BWM-FETCH4-G" 32 3 1 BWM-FETCH-GOLD ;
 
-\ BWM-TEST-EXACT used to run each transfer on a run-in-stack allocation of
-\ exactly the bytes its request states (24/16/40/32), so the guard admitted
-\ it at the last byte and the transfer completed there -- proving the
-\ compiled request asks for neither more nor less. That per-transfer exact
-\ fit no longer exists to prove: every VM stack run-in-stack accepts is now a
-\ guarded mapping rounded up to a whole STACK-ABI:PAGE-BYTES (dot
-\ habu-replace-per-transfer-8523fb98), so no extent this small (or this
-\ tight) can be constructed any more -- run-in-stack refuses anything that
-\ is not such a mapping (GUARDED-EXTENT?, STACK-ABI:E-STACK-UNGUARDED), and the
-\ smallest one is far larger than any of these transfers. The goldens above
-\ (BWM-TEST-GOLDENS) still pin each transfer's exact byte and cell count,
-\ by decoding the movz immediates the compiled body hands (PROT-SPAN) rather
-\ than by fitting a live allocation.
-\ What BWM-TEST-EXACT also executed, and what the goldens cannot replace, is
-\ a wide transfer RUNNING while a switched stack allocation is active. That
-\ is BWM-TEST-SWITCHED below, on the only kind of extent run-in-stack still
-\ accepts.
-
-\ The wide store runs on a guarded mapping handed to run-in-stack, and the
-\ value is read back through the plain (non-local) wide fetch once the switch
-\ has unwound -- so the transfer is proved by the values it moved rather than
-\ by an exit code, and BWM-FETCH2 is executed here the way BWM-TEST-EXACT
-\ used to execute it. Both engines reach this: the native one through
-\ src/lib/memory.f directly, the Gforth stage0 seed through the same `require`
-\ in the source it bakes.
+\ Every VM stack run-in-stack accepts is a guarded mapping rounded up to a whole
+\ STACK-ABI:PAGE-BYTES (GUARDED-EXTENT?, STACK-ABI:E-STACK-UNGUARDED), far
+\ larger than these transfers, so no extent fits one exactly: the goldens pin
+\ each transfer's byte and cell count. BWM-TEST-SWITCHED runs the wide store on
+\ such a mapping and reads the value back through the plain wide fetch once the
+\ switch has unwound, so the values moved prove it. Both engines reach
+\ src/lib/memory.f, the seed through the same `require` in the source it bakes.
 require src/lib/memory.f
 PTR-VARIABLE BWM-POOL-A
 STACK-ABI:PAGE-BYTES MEM:ALLOC-GUARDED drop BWM-POOL-A !
@@ -339,42 +295,37 @@ defer BWM-DEF ( -- n )
    s" BWM-DEF" BWM-XT {: xt:n :}
    xt BWM-DEFER-META 8 + BWM-RD64 BWM-RD64 BWM-FRESH ! \ the fresh dispatch cell's value: the unset target
    BWM-FRESH @ BWM-NONZERO                    \ fail closed before any is: never a null cell
-   BWM-DEF-A  BWM-CALL-DEF 42 BWM=            \ is installs a target -> dispatch returns 42
-   BWM-DEF-B  BWM-CALL-DEF 99 BWM= ;          \ a second is re-points -> 99
+   BWM-DEF-A  BWM-CALL-DEF 42 BWM=
+   BWM-DEF-B  BWM-CALL-DEF 99 BWM= ;
 
-\ CHECKED-path defer / is round-trip (dot habu-mirror-checker-defer-6a8a366e).
-\ The stage2 engine-hook migration puts `is` inside CHECKED (non-TRUSTED)
-\ definitions that compile after the check hook is live, so the mirror C-DEFER
-\ must register the defer's declared effect with the checker (the trust usig row
-\ plus the checker-defer row), exactly as native habu2.f C-DEFER does. Without
-\ that bridge the seed's check hook rejects the installer body with exit 70
-\ 'hook: non-certified definition: bwm-cdef! at is'. Unlike the quotation
-\ literals above, BWM-CDEF! is a `:` word carrying an xt-effect parameter (the
-\ stage2a hook shape `: FOO! ( [E] -- ) is FOO ;`): its `is BWM-CDEF` and the
-\ later checked BWM-CDEF calls certify only once the seed's checker learns the
-\ defer.
+\ A checked defer / is round-trip. `is` in a checked (non-TRUSTED) definition
+\ compiles after the check hook is live, so the seed's mirror C-DEFER registers
+\ the defer's declared effect with the checker (the trust usig row and the
+\ checker-defer row), as habu2.f C-DEFER does; without it the seed's hook
+\ rejects the installer with exit 70 'hook: non-certified definition: bwm-cdef!
+\ at is'. BWM-CDEF! is a `:` word with an xt-effect parameter, the hook shape `:
+\ FOO! ( [E] -- ) is FOO ;`.
 defer BWM-CDEF ( -- n )
 
 : BWM-CDEF! ( [ -- n ] -- )  is BWM-CDEF ;          \ checked installer (xt-effect param)
-: BWM-CDEF-A ( -- )  [: 42 ;] BWM-CDEF! ;           \ install a 42-returning target
-: BWM-CDEF-B ( -- )  [: 99 ;] BWM-CDEF! ;           \ re-install a 99-returning target
-: BWM-CALL-CDEF ( -- n )  BWM-CDEF ;                \ checked call through the defer
+: BWM-CDEF-A ( -- )  [: 42 ;] BWM-CDEF! ;
+: BWM-CDEF-B ( -- )  [: 99 ;] BWM-CDEF! ;
+: BWM-CALL-CDEF ( -- n )  BWM-CDEF ;
 
 : BWM-TEST-CDEFER ( -- )
    s" BWM-CDEF" BWM-XT {: xt:n :}
-   xt BWM-DEFER-META 8 + BWM-RD64 BWM-RD64   \ the fresh dispatch cell's value
+   xt BWM-DEFER-META 8 + BWM-RD64 BWM-RD64
    BWM-FRESH @ BWM=                           \ = the same unset target BWM-DEF held
-   BWM-CDEF-A  BWM-CALL-CDEF 42 BWM=          \ checked is installs a target -> dispatch returns 42
-   BWM-CDEF-B  BWM-CALL-CDEF 99 BWM= ;        \ a second checked is re-points -> 99
+   BWM-CDEF-A  BWM-CALL-CDEF 42 BWM=
+   BWM-CDEF-B  BWM-CALL-CDEF 99 BWM= ;
 
 variable BWM-CF-ACC
 
-\ Direct stage0 (Gforth-hosted seed) proof of the extended handler frame
-\ (dot habu-restore-complete-exec-abb8baca): a caught throw restores the caller's
-\ user return-stack depth and loop-stack depth, so this exercises the seed's
-\ bootstrap/cg/forth.fs BCATCH/BTHROW mirror at runtime, matching the native
-\ test/catch-frame.f. These are checked (the seed models catch's typed-stack
-\ restoration, so a throwing quotation's >r/?do state does not escape).
+\ The seed's extended handler frame: a caught throw restores the caller's user
+\ return-stack and loop-stack depths, through bootstrap/cg/forth.fs
+\ BCATCH/BTHROW at runtime, as native test/catch-frame.f does. These are
+\ checked: the seed models catch's typed-stack restoration, so a throwing
+\ quotation's >r/?do state does not escape.
 : BWM-CF-RSP ( -- n )    \ r> after a throwing >r quotation = caller's value
    42 >r [: 99 >r 7 throw ;] catch drop r> ;
 
@@ -388,14 +339,14 @@ variable BWM-CF-ACC
    BWM-CF-LOOP 3 BWM= ;
 
 \ Created-word effect publication. `create` and `variable` publish `-- ptr a`,
-\ `constant` publishes `-- a` and `:` publishes its declared effect, each from
-\ its own definer, and the name every row carries is the definition's QUALIFIED
-\ spelling. So a word defined as `PKG:TAIL` certifies through `PKG:TAIL`, where
-\ a row registered under the bare tail would leave the qualified call unknown.
-\ Certification is the assertion here: a missing or bare-named row stops these
-\ definitions loading at all. The negative half is test/bootstrap-created-*-src.f.
-\ The consumers below declare the concrete kinds they use (`ptr n`, `n`): the
-\ strict parametric rule keeps `ptr a` and `a` for effects that stay parametric.
+\ `constant` publishes `-- a` and `:` its declared effect, each from its own
+\ definer, and every row carries the definition's qualified spelling: a word
+\ defined as `PKG:TAIL` certifies through `PKG:TAIL`, where a row under the bare
+\ tail would leave the qualified call unknown. A missing or bare-named row stops
+\ these definitions loading. The negative half is
+\ test/bootstrap-created-*-src.f. The consumers declare the concrete kinds they
+\ use (`ptr n`, `n`): the strict parametric rule keeps `ptr a` and `a` for
+\ effects that stay parametric.
 package BWM-PUB ;package
 
 package BWM-PUBLISHED

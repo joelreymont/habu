@@ -1,5 +1,4 @@
 \ gate-dictionary.f - entry wrapper for dictionary/checker contracts.
-\
 require src/lib/vector.f
 require tools/lint/text.f
 require tools/lint/token.f

@@ -2,79 +2,6 @@
 \ PostgreSQL cluster.
 \
 \     bin/hb --load test/db/pg-cluster.f [-- case.f ...]
-\
-\ initdb makes a trust-authentication cluster under TMPDIR and this process
-\ starts postgres on it, listening on a Unix-domain socket only
-\ (listen_addresses=''), so rows running beside each other have no TCP port to
-\ collide on. The case files - the script arguments, or else src/lib/pg-test.f and
-\ then src/lib/pg-rows-test.f - each run in a child engine that takes the conninfo
-\ as its one script argument and writes its report straight to this process's
-\ stdout and stderr; the first that fails ends the run, and the row's last line
-\ names it. This process stops the server however the children end - exit,
-\ failed assertion, die, crash or a deadline - and the cleanup registry
-\ (src/lib/fs-mutate.f FS:CLEANUP-TREE+) removes the directories it made when this
-\ process exits, including by die. A run that a step's deadline ended leaves by
-\ an uncaught E-PROC-TIMEOUT (FAIL-ROW).
-\
-\ THE SERVER IS THIS PROCESS'S CHILD FOR ITS WHOLE LIFE. pg_ctl starts a
-\ postmaster that forks, calls setsid and execs a shell, and then pg_ctl exits:
-\ the postmaster is left with init for a parent, in a session of its own, where
-\ a pool's tree walk (src/lib/process-tree.f) cannot reach it, and a killed row's
-\ server ran on until its lock-file recheck noticed the removed data directory,
-\ about a minute later. Spawned here, with no shell and no setsid, the
-\ postmaster keeps this process as its parent until this process reaps it, and
-\ every process it forks keeps the postmaster as its own (measured: each calls
-\ setsid, and none leaves its parent). A pool that kills this row stops and
-\ kills them all with it. The server is ready when the status line of
-\ postmaster.pid says so - the line pg_ctl -w waits for - and it is stopped with
-\ the SIGQUIT of pg_ctl -m immediate.
-\
-\ THE SERVER ENDS THROUGH ITS OWN EXIT, NEVER BY SIGKILL ALONE. PostgreSQL makes
-\ a SysV shared-memory segment, keyed by the data directory's inode, and removes
-\ it only on its own way out. A server that is SIGKILLed leaves the segment for
-\ good - APFS hands that inode out no more, and kern.sysv.shmmni caps the
-\ segments host-wide (32 here) - so a killed pg row took one each time, and a
-\ host out of them starts no PostgreSQL at all. initdb's own backend makes the
-\ same segment for each step it runs and removes it the same way. So this
-\ process catches SIGTERM, SIGINT and SIGHUP and answers one wherever it
-\ waits: initdb is sent SIGTERM and given QUIT-MS to end the step it is in, the
-\ server is sent its SIGQUIT and given QUIT-MS, the running case engine's tree
-\ is ended, the directories go, and the process dies of the signal. An initdb
-\ step or a server that outlives QUIT-MS is killed with its tree and leaves its
-\ segment. A gate pool sends a row's root SIGTERM, when it catches it, before
-\ it kills the row's tree (test/gate-pool.f GT-POOL-ASK-END).
-\
-\ SIGKILL cannot be answered. After one the server runs on with init for a
-\ parent and both directories stay. Recover with `kill -QUIT` to the pid on the
-\ first line of <root>/data/postmaster.pid, then remove the two directories;
-\ the postmaster's command line names both (-D and -k). A server that was
-\ SIGKILLed as well has left its segment: `ipcs -m -p` lists it with NATTCH 0
-\ and a creator pid that no longer runs, line 7 of a postmaster.pid that still
-\ exists names it as `<key> <id>`, and `ipcrm -m <id>` removes it.
-\ initdb leads a process group of its own (src/lib/process.f SPAWN), so a
-\ SIGKILL to this process or its row's group while initdb runs leaves initdb
-\ running to its end with init for a parent, logging to <root>/initdb.log; its
-\ backends remove their segments and no server starts. Both directories stay:
-\ wait for initdb, or send it SIGTERM (it then ends its step and removes
-\ <root>/data), then remove them.
-\
-\ UNDER THE POOL THE SOCKET DIRECTORY IS NOT UNDER TMPDIR. sun_path holds 104
-\ bytes on macOS and 108 on Linux, and a pool slot's TMPDIR takes about 100 of
-\ them: a socket there makes postgres refuse to start with `Unix-domain socket
-\ path ... is too long (maximum 103 bytes)`. Under the gate pool the socket is
-\ in HB_SOCK_TMP, the short directory the pool made for this row and removes
-\ with it (test/gate-pool.f). Run on its own, with no HB_SOCK_TMP, this process
-\ makes the socket directory under its TMPDIR beside the cluster's, as
-\ src/lib/fs-mutate-test.f FMT-ROOT! does for its socket.
-\
-\ WITH PG_HOLD_FIFO SET, a test watches this row's tree (test/db/pg-kill-test.f).
-\ This process's first act opens the write end of the FIFO it names
-\ (src/lib/test/fifo.f) and maps it into initdb and the postmaster, whose
-\ forks inherit it; the case engine opens it by path itself.
-\
-\ initdb and postgres on PATH are a gate requirement on every host
-\ (docs/bootstrap.md "Requirements"). A missing one ends the row naming it,
-\ never a skip.
 require src/lib/errors.f
 require src/lib/string.f
 require src/lib/fmt.f
@@ -94,13 +21,11 @@ $10000 constant CAPTURE-CAP     \ initdb's chatter, or the server's log
 60000 constant TOOL-MS
 60000 constant DEFAULT-CASE-MS
 $7FFFFFFF constant CASE-MAX-MS  \ poll(2) receives a signed 32-bit millisecond count
-\ A signalled stop. An immediate shutdown SIGKILLs the children still alive
-\ 5 s into it (PostgreSQL's SIGKILL_CHILDREN_AFTER_SECS) and then exits, so
-\ 6 s is the server's whole stop. With the case engine's walk (2 s at most,
-\ src/lib/process-tree.f SETTLE-MS) it stays inside the pool's grace
-\ (test/gate-pool.f GT-POOL-GRACE-MS, 10 s). initdb, which runs alone, is
-\ given the same for its step, and with the walk of its tree that stays inside
-\ the grace too.
+\ A signalled stop: an immediate shutdown SIGKILLs the children still alive 5 s
+\ in (PostgreSQL's SIGKILL_CHILDREN_AFTER_SECS) and exits, so 6 s is the
+\ server's whole stop. With the case engine's walk (src/lib/process-tree.f
+\ SETTLE-MS, 2 s at most) it stays inside the pool's grace (test/gate-pool.f
+\ GT-POOL-GRACE-MS, 10 s). initdb gets the same.
 6000 constant QUIT-MS
 100 constant READY-POLL-MS      \ pg_ctl -w's own interval
 8 constant STATUS-LINE          \ postmaster.pid's server status (LOCK_FILE_LINE_PM_STATUS)
@@ -131,7 +56,7 @@ variable CASE-MS                \ one deadline for each case file
 variable HOLD                   \ PG_HOLD_FIFO's write end, NO-FD without one
 TYPED-VARIABLE UP bool          \ the server said it was ready
 TYPED-VARIABLE STOPPED bool     \ the server's stop ended it with exit 0
-TYPED-VARIABLE FAILED bool      \ a step has failed
+TYPED-VARIABLE FAILED bool
 TYPED-VARIABLE LATE bool        \ the first step to fail passed its deadline
 NO-PID INITDB-PID !
 NO-FD INITDB-WATCH !
@@ -172,7 +97,9 @@ DEFAULT-CASE-MS CASE-MS !
    ms CASE-MS ! ;
 
 
-\ ---- the tools and the two directories ------------------------------------
+\ initdb and postgres on PATH are a gate requirement on every host
+\ (docs/bootstrap.md "Requirements"): a missing one fails the row, never skips
+\ it.
 : TOOL ( ptr u8 n ptr u8 -- n ) {: name:ptr size:n dst:ptr :}
    name size >LEN dst FIND-EXECUTABLE MATCH option
       none OF
@@ -187,9 +114,12 @@ DEFAULT-CASE-MS CASE-MS !
    u PATH-CAP > if E-FS-PATH throw then
    a SOCKETS u BYTE-COPY  u SOCKETS-U ! ;
 
-\ A made directory's name lives in the per-task band the next FS:MKTEMP-DIR-IN
-\ reuses, so each is copied out before the other is made. The pool's socket
-\ directory is the pool's to remove.
+\ sun_path holds 104 bytes on macOS and 108 on Linux, and a pool slot's TMPDIR
+\ takes about 100 of them, so under the gate pool the socket goes in
+\ HB_SOCK_TMP, the short directory the pool makes and removes for this row
+\ (test/gate-pool.f); alone it goes under TMPDIR, as src/lib/fs-mutate-test.f
+\ FMT-ROOT! does. A made directory's name lives in the per-task band the next
+\ FS:MKTEMP-DIR-IN reuses, so each is copied out before the other is made.
 : MAKE-DIRS ( -- )
    s" habu-pg" FS:MKTEMP-DIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY  u ROOT-U !
@@ -212,28 +142,24 @@ DEFAULT-CASE-MS CASE-MS !
    s" ' dbname=postgres user=habu connect_timeout=5" CONNINFO+ ;
 
 
-\ ---- one step at a time ----------------------------------------------------
-\ Every step, and the server, inherits this process's environment with
-\ LC_ALL=C: the cluster's locale is C whatever the host's, and on macOS a
-\ postmaster started without a valid locale in its environment stops with
-\ `postmaster became multithreaded during startup` (measured with the plain
-\ RUN-ARGV-CAPTURE-OUTCOME, which passes an empty environment).
+\ Every step, and the server, gets LC_ALL=C: the cluster's locale is C whatever
+\ the host's, and on macOS a postmaster started without a valid locale stops
+\ with `postmaster became multithreaded during startup` (measured with
+\ RUN-ARGV-CAPTURE-OUTCOME's empty environment).
 : ENV! ( -- )
    PROC-ENV-INHERIT-MISSING
    s" LC_ALL" >LEN s" C" >LEN PROC-ENV-SET ;
 
-\ The first step to fail decides how the row ends (FAIL-ROW); what fails
-\ after it, as the server's stop after a case past its deadline, changes
-\ nothing.
+\ The first step to fail decides how the row ends (FAIL-ROW); later failures
+\ change nothing.
 : STEP-FAILED ( bool -- ) {: late:bool :}
    FAILED @ if exit then
    true FAILED !
    late LATE ! ;
 
-\ True for a step that exited 0; otherwise one line says how it ended. A case
-\ engine exits PROC-TIMEOUT-RC (124) when a wait of its own passed its deadline
-\ (src/lib/pg-test.f RUN), so that exit is a late step, as a case this process
-\ ended at CASE-MS is.
+\ A case engine exits PROC-TIMEOUT-RC (124) when a wait of its own passed its
+\ deadline (src/lib/pg-test.f RUN), so that exit is a late step, as is a case
+\ ended at CASE-MS.
 : EXITED-0? ( outcome ptr u8 n -- bool )
    {: what:ptr whatu:n :}
    MATCH outcome
@@ -261,10 +187,8 @@ DEFAULT-CASE-MS CASE-MS !
    OUT n type ;
 
 
-\ ---- waiting on a process -----------------------------------------------------
-\ A process's watch (proc-watch-open) is readable once it has exited. macOS
-\ cannot watch a process that has already exited and
-\ answers -1, so a process that has no watch has ended.
+\ macOS cannot watch a process that has already exited and answers -1, so a
+\ process with no watch has ended.
 : GONE-WITHIN? ( n n -- bool ) {: watch:n ms:n :}
    watch 0 < if true exit then
    watch >FD POLLIN PROC-PFD!
@@ -275,7 +199,6 @@ DEFAULT-CASE-MS CASE-MS !
    NO-FD p ! ;
 
 
-\ ---- the server -------------------------------------------------------------
 : OPEN-NULL ( -- n )
    s\" /dev/null\z" drop open-rd {: fd:n :}
    fd 0 < if E-FS-OPEN throw then
@@ -295,9 +218,12 @@ DEFAULT-CASE-MS CASE-MS !
    SERVER @ >PID PROC-WAIT-OUTCOME s" postgres" EXITED-0? drop
    NO-PID SERVER ! ;
 
-\ postgres gets /dev/null for stdin and its log for stdout and stderr, as
-\ pg_ctl -l gave it. No throw comes after the spawn: from there every way out
-\ passes STOP or ANSWER.
+\ postgres is spawned directly, not through pg_ctl, whose postmaster calls
+\ setsid and is reparented to init, beyond a pool's tree walk
+\ (src/lib/process-tree.f). Spawned here it stays this process's child and its
+\ forks stay its own (measured), so a pool that kills this row kills them all.
+\ listen_addresses is empty: rows running side by side share no TCP port. No
+\ throw comes after the spawn: from there every way out passes STOP or ANSWER.
 : START ( -- )
    PROC-ARGV-ENV-RESET
    s" -D" ARG+ DATA$ ARG+
@@ -313,8 +239,8 @@ DEFAULT-CASE-MS CASE-MS !
    SERVER @ proc-watch-open WATCH !
    WATCH @ 0 < if ENDED-EARLY then ;
 
-\ The offset of line n, counted from 1, in the first u bytes of OUT; -1 when
-\ they hold fewer lines.
+\ The offset of line n, counted from 1, in OUT's first u bytes; -1 when they
+\ hold fewer lines.
 : LINE-AT ( n n -- n ) {: line:n u:n :}
    line 1 = if 0 exit then
    1 u 0 ?do
@@ -324,8 +250,8 @@ DEFAULT-CASE-MS CASE-MS !
    loop
    drop -1 ;
 
-\ The server's status line says `ready` once it accepts connections. A file
-\ that will not open or is not yet that long is a server not that far yet.
+\ A pidfile that will not open or is not yet that long is a server not ready
+\ yet.
 : STATUS-READY? ( -- bool )
    PIDFILE$ FS:>PATHZ open-rd {: fd:n :}
    fd 0 < if false exit then
@@ -336,9 +262,8 @@ DEFAULT-CASE-MS CASE-MS !
    at 0 < if false exit then
    OUT at + got at - s" ready" STARTS-WITH? ;
 
-\ The server is sent its SIGQUIT and given ms to end. One that outlives that is
-\ killed with every process under it (src/lib/process-tree.f), so none outlives
-\ this process either way - but a server killed so leaves its segment.
+\ A server that outlives ms is killed with its tree (src/lib/process-tree.f) and
+\ leaves its shared-memory segment.
 : STOP ( n -- ) {: ms:n :}
    SERVER @ NO-PID = if exit then
    SERVER @ >PID SIGQUIT PROC-KILL-RAW drop
@@ -353,9 +278,8 @@ DEFAULT-CASE-MS CASE-MS !
    WATCH CLOSE-WATCH ;
 
 
-\ ---- the case engine --------------------------------------------------------
-\ Its stdout and stderr are this process's, so its report reaches the row's
-\ log as it runs and a red row carries it; its stdin is /dev/null.
+\ The engine's stdout and stderr are this process's, so its report reaches the
+\ row's log as it runs.
 : CASE-SPAWN ( ptr u8 n -- ) {: file:ptr fileu:n :}
    PROC-ARGV-ENV-RESET
    s" --load" ARG+ file fileu ARG+
@@ -384,10 +308,8 @@ DEFAULT-CASE-MS CASE-MS !
    CASE-WATCH CLOSE-WATCH ;
 
 
-\ ---- initdb -------------------------------------------------------------------
 \ initdb is watched beside the signal pipe, as the server and the case engine
-\ are: its backend holds the cluster's segment while a step runs. Its output
-\ goes to a log beside the server's, shown when it fails.
+\ are: its backend holds the cluster's segment while a step runs.
 : INITDB-SPAWN ( -- )
    PROC-ARGV-ENV-RESET
    s" -D" ARG+ DATA$ ARG+
@@ -409,9 +331,8 @@ DEFAULT-CASE-MS CASE-MS !
    NO-PID INITDB-PID !
    INITDB-WATCH CLOSE-WATCH ;
 
-\ initdb catches SIGTERM and exits once the step it is in has ended, its
-\ backend gone and the segment with it, so it is sent that and given QUIT-MS.
-\ One that outlives that is killed with every process under it, the backend
+\ initdb catches SIGTERM and exits once its step has ended, its backend and
+\ segment gone. One that outlives QUIT-MS is killed with its tree, the backend
 \ too, which leaves the segment.
 : INITDB-STOP ( -- )
    INITDB-PID @ NO-PID = if exit then
@@ -425,21 +346,32 @@ DEFAULT-CASE-MS CASE-MS !
    INITDB-WATCH CLOSE-WATCH ;
 
 
-\ ---- a caught signal ----------------------------------------------------------
-\ SIGTERM, SIGINT and SIGHUP, caught as the gate root catches them (src/lib/signal.f
-\ CATCH-STOPS). No Forth word runs in a handler: the signal is a number on a
-\ pipe that every wait below polls beside its process.
+\ SIGTERM, SIGINT and SIGHUP are caught as the gate root catches them
+\ (src/lib/signal.f CATCH-STOPS); a gate pool sends a row's root SIGTERM before
+\ it kills the row's tree (test/gate-pool.f GT-POOL-ASK-END). No Forth word runs
+\ in a handler: the signal is a number on a pipe that every wait polls beside
+\ its process.
+\ SIGKILL cannot be answered: the server runs on under init and both directories
+\ stay. Recover with `kill -QUIT` to the pid on line 1 of
+\ <root>/data/postmaster.pid, then remove the directories the postmaster's -D
+\ and -k name. A SIGKILLed server's segment shows in `ipcs -m -p` with NATTCH 0;
+\ line 7 of postmaster.pid names it as `<key> <id>`, and `ipcrm -m <id>` removes
+\ it. initdb leads its own process group (src/lib/process.f SPAWN), so it
+\ outlives such a SIGKILL, logging to <root>/initdb.log: wait for it or SIGTERM
+\ it (it then removes <root>/data), then remove the directories.
 
 : SAY-THROW ( ptr u8 n n -- ) {: what:ptr whatu:n code:n :}
    code 0= if exit then
    s" pg-cluster: " type what whatu type s"  threw " type code FMT:.INT cr ;
 
-\ THE ANSWER. initdb, when it is running, is stopped; nothing else has started.
-\ The server is sent its SIGQUIT first and shuts down while the case
-\ engine's tree is ended; then it is given QUIT-MS. The directories go, and
-\ the process dies of the signal (src/lib/signal.f DIE-OF). A step that throws is
-\ named and the answer goes on.
-\ It never returns: it may run from inside SERVE, and the die ends that too.
+\ The server and initdb's backend each make a SysV shared-memory segment, keyed
+\ by the data directory's inode, that only their own exit removes. A SIGKILLed
+\ one leaks it for good: APFS reuses no inode and kern.sysv.shmmni caps segments
+\ host-wide (32 here), and a host out of them starts no PostgreSQL. So a caught
+\ signal stops initdb, sends the server its SIGQUIT before the case engine's
+\ tree is ended so both shut down at once, and dies of the signal. A step that
+\ throws is named and the answer goes on. It never returns: it may run inside
+\ SERVE.
 : ANSWER ( n -- ) {: sig:n :}
    s" pg-cluster: signal " type sig FMT:.INT s" , stopping the cluster" type cr
    s" initdb stop" [: INITDB-STOP ;] catch SAY-THROW
@@ -455,18 +387,15 @@ DEFAULT-CASE-MS CASE-MS !
       timeout OF ENDOF
    ;MATCH ;
 
-\ THE ROW'S END, after the server's stop; a signal caught on the way is
-\ answered first. A run whose first failed step passed its deadline ends with
-\ an uncaught E-PROC-TIMEOUT: the engine writes its report for that code to
-\ stderr last and exits UNCAUGHT-RC. Any other failure exits 1. The exit
-\ runs the cleanup registry either way.
+\ A run whose first failed step passed its deadline ends with an uncaught
+\ E-PROC-TIMEOUT: the engine reports that code on stderr last and exits
+\ UNCAUGHT-RC. Any other failure exits 1. A caught signal is answered first.
 : FAIL-ROW ( ptr u8 n -- ) {: msg:ptr msgu:n :}
    SIGNAL-CHECK
    LATE @ if E-PROC-TIMEOUT throw then
    msg msgu 1 die ;
 
-\ TRUE once the watch reports its process has ended, FALSE when ms pass
-\ first. A caught signal is answered here.
+\ A caught signal is answered here.
 : ENDED-WITHIN? ( n n -- bool ) {: watch:n ms:n :}
    watch 0 < if true exit then
    ms >MS PROC-DEADLINE-AT {: deadline:n :}
@@ -481,8 +410,6 @@ DEFAULT-CASE-MS CASE-MS !
    again ;
 
 
-\ ---- the run ------------------------------------------------------------------
-\ initdb inside TOOL-MS; one that passes it is stopped as a signal stops it.
 : INITDB-RUN ( -- )
    INITDB-SPAWN
    INITDB-WATCH @ TOOL-MS ENDED-WITHIN? if
@@ -494,7 +421,6 @@ DEFAULT-CASE-MS CASE-MS !
    INITDB-LOG$ SHOW-LOG
    s" pg-cluster: initdb failed" FAIL-ROW ;
 
-\ Ready inside TOOL-MS; a server that ends first has failed to start.
 : READY? ( -- bool )
    SERVER @ NO-PID = if false exit then
    TOOL-MS >MS PROC-DEADLINE-AT {: deadline:n :}
@@ -511,6 +437,8 @@ DEFAULT-CASE-MS CASE-MS !
       then
    again ;
 
+\ Each case file runs in a child engine given the conninfo; the first to fail
+\ ends the run.
 : RUN-FILE ( ptr u8 n -- bool ) {: file:ptr fileu:n :}
    file fileu CASE-SPAWN
    CASE-WATCH @ CASE-MS @ ENDED-WITHIN? if
@@ -531,8 +459,8 @@ DEFAULT-CASE-MS CASE-MS !
    i 0= if s" src/lib/pg-test.f" exit then
    s" src/lib/pg-rows-test.f" ;
 
-\ The files run against the one cluster in order, and the first that fails
-\ ends the run: the answer is the last file run and whether it passed.
+\ The first file to fail ends the run; the answer is the last file run and
+\ whether it passed.
 : CASES ( -- ptr u8 n bool )
    CASE-N 1- 0 ?do
       i CASE$ 2dup RUN-FILE 0= if false unloop exit then 2drop
@@ -548,6 +476,9 @@ DEFAULT-CASE-MS CASE-MS !
    CASE-KILL
    TOOL-MS STOP ;
 
+\ With PG_HOLD_FIFO set, test/db/pg-kill-test.f watches this row's tree: the
+\ FIFO's write end (src/lib/test/fifo.f) goes into initdb and the postmaster,
+\ whose forks inherit it; the case engine opens it by path.
 : OPEN-HOLD ( -- )
    s" PG_HOLD_FIFO" GETENV nip 0= if exit then
    s" PG_HOLD_FIFO" TEST-FIFO:WRITER FD>N HOLD ! ;

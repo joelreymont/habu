@@ -13,21 +13,13 @@ package DEBUGGER-RESUME
    s" variable WV 17 WV !" GE-SRC-LINE
    s" : TARGET ( n -- n ) WV @ + ;" GE-SRC-LINE
    s" ' TARGET constant TARGET-XT" GE-SRC-LINE
-   \ Move the live compile cursor beyond a 64 KiB protection unit, independent
-   \ of the initial alignment, so the one-shot restore below has to reopen a
-   \ span the compiler is not already holding. That is the whole point of the
-   \ padding, and PAD-WORDS is a TUNING quantity rather than an assumption:
-   \ CHECK-PAGES proves the separation in the child and throws 99 when it is no
-   \ longer enough. It did exactly that when a JIT body stopped costing what it
-   \ used to -- an empty one is two instructions now (dot
-   \ habu-use-pre-and-1830972f), where it was five, so 4096 empty bodies spanned
-   \ half a unit instead of a unit and a quarter.
-   \ Each body carries calls rather than being empty: the span has to come out
-   \ of a source that fits GE-SRC-CAP, and an empty body advances the cursor by
-   \ too few bytes per byte of source to get there. They have to be CALLS --
-   \ tier 0 keeps constants on a virtual stack and materializes them only when
-   \ something forces it, so `1 drop` and `dup drop` bodies compile to the same
-   \ two instructions an empty one does (measured, not assumed).
+   \ Move the live compile cursor past a 64 KiB protection unit, whatever the
+   \ initial alignment, so the one-shot restore must reopen a span the compiler
+   \ is not holding. PAD-WORDS is tuned, not assumed: CHECK-PAGES proves the
+   \ separation in the child and throws 99 when it is too small. Each body
+   \ carries calls: the source must fit GE-SRC-CAP, and tier 0 keeps constants
+   \ on a virtual stack, so `1 drop` and `dup drop` bodies compile to the two
+   \ instructions an empty one does (measured).
    PAD-WORDS 0 ?do
       s" : PAD" GE-SRC+ i GE-SRC-U+
       s"  ( n -- n ) dup + dup + dup + dup + dup + dup + dup + dup + ;"

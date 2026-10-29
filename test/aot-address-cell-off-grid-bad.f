@@ -1,15 +1,6 @@
 \ A declared cell inside a real DATA window must lie on the window's cell grid.
-\
-\ THE FIELD IS CREATED INSIDE THE WINDOW and marked four bytes into it, with a
-\ second field behind it so the marked cell ends well below the window's upper
-\ edge: this case is about the grid and not about an edge, so the straddle
-\ refusal must not be the one that fires (src/habu/aot-capture.f classifies the
-\ edges first for exactly that reason). A capture describes its span as one
-\ presence bit and one varint per whole cell (src/habu/aot-decl.f package
-\ AOT-WINDOW), so a cell beginning part way into one has no bit that carries it.
-\
-\ THE PRELUDE MARK IS THE WINDOW'S OWN START, so the band is empty: this case is
-\ about the cell's offset and not about which process owns the address.
+
+\ The prelude mark is the window's own start, so the band is empty.
 
 require src/arch/arm64/asm.f
 require src/arch/arm64/icode.f
@@ -19,6 +10,12 @@ require src/habu/aot-arm.f
 require src/habu/aot-capture.f
 
 AOT-ARM:WINDOW-OPEN
+\ The field sits four bytes into the window, with a second field behind it so
+\ the marked cell ends well below the upper edge: the straddle refusal must not
+\ fire (src/habu/aot-capture.f classifies the edges first). A capture describes
+\ its span as one presence bit and one varint per whole cell
+\ (src/habu/aot-decl.f package AOT-WINDOW), so a cell starting part way into one
+\ has no bit.
 package AOT-XTCELL-OFF-GRID
 create SLOT 8 allot
 SLOT 4 + ptr-cell-mark

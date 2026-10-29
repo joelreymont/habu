@@ -55,7 +55,7 @@ AOT-ARM:WINDOW-CLOSE
 
 package PAYLOAD-NATIVE-PRODUCER
 create KEY 32 allot
-create FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this fixture's file-digest context
+create FSHA-CTX SHA256-FILE-CTX-BYTES allot
 
 : EQ ( n n -- ) <> if 79 throw then ;
 

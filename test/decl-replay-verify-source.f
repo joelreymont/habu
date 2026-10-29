@@ -1,40 +1,9 @@
-\ decl-replay-verify-source.f — does src/habu/verify-source.f rebuild the same
-\ registry a real declaration builds?
-\
-\ CONCERN. verify-source reads a file's declarations without executing it, so
-\ every tool built on it (the all-errors reporter, the fixpoint builder, the
-\ public-signature dumper, the AOT closure walker) sees types
-\ only through what its RECORD-* arms register. If that view drifts from what
-\ the declaration itself would have registered, those tools disagree with the
-\ engine about what a family IS, and the disagreement is silent.
-\
-\ Two arms are under test. RECORD-ENUM used to drive sumtype.f's CHECKER-DEFENUM
-\ — the legacy metadata-only entry, which the type-DSL cutover deletes and which
-\ only ever understood a compact list of bare variant names. There was no arm for
-\ the unified STRUCTURE at all, so a STRUCTURE family was simply invisible on
-\ this path. Both now drive the front ends' registration-only replay entries.
-\
-\ HOW THE COMPARISON IS MADE. The same declaration text is registered twice: once
-\ by executing it (the live front end), once by handing it to
-\ VERIFY:SOURCE-BUF-IN-SCOPE. Two different packages, so both families exist at
-\ once and can be read side by side. Then every field the registry exposes for a
-\ family is compared between the two ids:
-\   family:   kind (product/sum/enum), arity, declared width, layout policy,
-\             derive-eq, derive-hash, variant count, field count
-\   variants: name and tag of every row, in declaration order, plus the
-\             constructor package stamped on that row
-\   fields:   the TYPE-FIELD row count keyed (family, variant), and each row's
-\             name, slot, and cell width; the pair fixture checks its concrete
-\             field schemas separately because root ids are allocation indices
-\ Both paths register constructor symbols and checked effects. Replay emits no
-\ code or runtime dictionary entries; VS-LOAD and VS-DONE check that distinction
-\ directly.
-\
-\ IN-SCOPE, deliberately: VERIFY:SOURCE-BUF wraps its run in a candidate scope
-\ that rolls every registration back, which is right for validating a candidate
-\ and useless for inspecting what was registered. SOURCE-BUF-IN-SCOPE is the
-\ entry the in-process tools use when the registrations must persist, and it is
-\ the one whose result this file can actually read.
+\ decl-replay-verify-source.f - src/habu/verify-source.f's RECORD-* arms rebuild
+\ the registry a live declaration builds. Tools on verify-source (the all-errors
+\ reporter, the fixpoint builder, the signature dumper, the AOT closure walker)
+\ see types only through those arms, so a drift is silent. Each declaration is
+\ executed in one package and replayed through VERIFY:SOURCE-BUF-IN-SCOPE in
+\ another, so both families exist at once and COMPARE reads them side by side.
 
 require src/lib/errors.f
 require src/lib/test.f
@@ -48,10 +17,10 @@ package VSPARITY
 
 T-RESET
 
-\ --- the registry reflection surface. Every one is a read; none mutates.
-\ Each forwards to a sealed pre-hook registry word, the same idiom the declaration
-\ suites use for their own reflection helpers; a read with no helper here names
-\ the registry word itself, whose recorded row the unsealed engine binds.
+\ Registry reflection: every word is a read. Each forwards to a sealed pre-hook
+\ registry word, the idiom the declaration suites use for their own reflection
+\ helpers; a read with no helper here names the registry word itself, whose
+\ recorded row the unsealed engine binds.
 : FAMID ( ptr u8 n -- n ) TFAM-ACTIVE-PKG$ 2swap TFAM-SIG-RESOLVE drop ;
 : F-KIND ( n -- n ) TFAM-KIND@ ;
 : F-ARITY ( n -- n ) TFAM-ARITY@ ;
@@ -73,9 +42,9 @@ CAST: FLAG-CELL ( bool -- n )
    drop false ;
 : R-TOTAL ( -- n ) TYPE-FIELD:COUNT ;
 
-\ --- field-row walking. TYPE-FIELD rows are a flat table keyed (family,
-\ variant), so a family's rows are found by scanning for that key; the Nth match
-\ in table order is the Nth field in declaration order.
+\ TYPE-FIELD rows are a flat table keyed (family, variant), so a family's rows
+\ are found by scanning for that key; the Nth match in table order is the Nth
+\ field in declaration order.
 : ROWS ( n n -- n ) {: fam:n vid:n :}
    0
    R-TOTAL 0 ?DO
@@ -115,7 +84,7 @@ CAST: FLAG-CELL ( bool -- n )
       bstart i + {: b:n :}
       a V-NAME$ b V-NAME$ CORE-STR= TTRUE
       a V-TAG b V-TAG T=
-      \ The constructor package is DERIVED from the declaring package and the
+      \ The constructor package is derived from the declaring package and the
       \ family name, and the two copies must live in different packages to
       \ coexist, so the two stamps differ by construction. What matters is that
       \ the replayed row carries one at all: that stamp is the registration a
@@ -142,8 +111,16 @@ CAST: FLAG-CELL ( bool -- n )
 
 public
 
-\ COMPARE ( live-name replayed-name -- ) : assert two families are registered
-\ identically, field by field.
+\ Fields compared between the live and the replayed family:
+\   family:   kind (product/sum/enum), arity, declared width, layout policy,
+\             derive-eq, derive-hash, variant count, field count
+\   variants: name and tag of every row, in declaration order, plus the
+\             constructor package stamped on that row
+\   fields:   the TYPE-FIELD row count keyed (family, variant), and each row's
+\             name, slot, and cell width; the pair fixture checks its concrete
+\             field schemas separately because root ids are allocation indices
+\ Both paths register constructor symbols and checked effects; replay emits no
+\ code or runtime dictionary entries, which VS-LOAD and VS-DONE check.
 : COMPARE ( ptr u8 n ptr u8 n -- ) {: aa:ptr au:n ba:ptr bu:n :}
    aa au FAMID {: af:n :}
    ba bu FAMID {: bf:n :}
@@ -162,8 +139,10 @@ public
    fam s" lo" 0 PAIR-FIELD
    fam s" hi" 1 PAIR-FIELD ;
 
-\ VS-LOAD ( source -- ) : register a source's declarations the way the
-\ in-process tools do, without executing it.
+\ Registers a source's declarations without executing it, as the in-process
+\ tools do. VERIFY:SOURCE-BUF rolls every registration back in a candidate
+\ scope; SOURCE-BUF-IN-SCOPE keeps them, so its result is the one this file can
+\ read.
 : VS-LOAD ( ptr u8 n -- ) {: src:ptr u:n :}
    ndict@ {: before:n :}
    src u VERIFY:SOURCE-BUF-IN-SCOPE
@@ -187,7 +166,7 @@ variable PAIR-BEFORE
 : VCOUNT ( ptr u8 n -- n ) FAMID F-VCOUNT ;
 : FCOUNT ( ptr u8 n -- n ) FAMID TFAM-FLD-COUNT@ ;
 
-\ --- source builder, for the bodies that have to be too long to write out.
+\ Source builder for bodies too long to write out.
 $4000 constant SRC-CAP        \ 16384: comfortably past BODYBUF-CAP (8000)
 create SRC-BUF SRC-CAP allot
 variable SRC-U
@@ -217,8 +196,8 @@ variable SB-I   variable SB-J
    i 10 mod SRC-DIGIT
    32 SRC-C ;
 
-\ ENUM-SOURCE ( stem n -- source ) : a compact ENUM of n distinct variants,
-\ declared in its own package so successive cases cannot collide on the name.
+\ Each ENUM is declared in its own package so successive cases cannot collide on
+\ the name.
 : ENUM-SOURCE ( ptr u8 n n -- ptr u8 n ) {: sa:ptr su:n n:n :}
    SRC-RESET
    s" package " SRC-PUT  sa su SRC-PUT  s"  public ENUM big " SRC-PUT
@@ -230,11 +209,11 @@ variable SB-I   variable SB-J
    s" ;ENUM ;package" SRC-PUT
    SRC$ ;
 
-\ VSTRY ( source -- code ) : register under catch, so a refusal is a value.
+\ VSTRY registers under catch, so a refusal is a value.
 : VS-RUN ( ptr u8 n -- ) VS-LOAD ;
 : VSTRY ( ptr u8 n -- n ) [: 2dup VS-RUN ;] catch {: rc:n :} 2drop rc ;
 
-\ The over-cap declaration must leave NO family behind, not a short one.
+\ The over-cap declaration must leave no family behind, not a short one.
 : FAM-FIND ( ptr u8 n -- n bool ) TFAM-ACTIVE-PKG$ 2swap TFAM-SIG-RESOLVE ;
 : CAP-FAMILY-ABSENT ( -- )
    s" capb:big" FAM-FIND 0= TTRUE drop ;
@@ -249,11 +228,8 @@ variable SB-I   variable SB-J
 
 ;package
 
-\ ---------------------------------------------------------------------------
-\ 1. STRUCTURE. Executed live in package `sdlive`, replayed through
-\    verify-source into package `sdrep`. Before this arm existed the replayed
-\    family did not exist at all, so every assertion below is new coverage.
-\ ---------------------------------------------------------------------------
+\ 1. STRUCTURE: executed live in package `sdlive`, replayed through
+\    verify-source into package `sdrep`.
 package sdlive
 public
 STRUCTURE pair
@@ -273,11 +249,8 @@ s" sdlive:pair" s" sdrep:pair" VSPARITY:COMPARE
 s" sdlive:pair" VSPARITY:PAIR-FIELDS
 s" sdrep:pair" VSPARITY:PAIR-FIELDS
 
-\ ---------------------------------------------------------------------------
-\ 2. Compact ENUM. This is the arm that changed owner: it drove the legacy
-\    CHECKER-DEFENUM and now drives ENUM-DECL:ED-REPLAY, so the registry it
-\    produces must still match an executed declaration exactly.
-\ ---------------------------------------------------------------------------
+\ 2. Compact ENUM: the replay drives ENUM-DECL:ED-REPLAY, and the registry it
+\    produces must match an executed declaration exactly.
 package edlive
 public
 ENUM colour red green blue ;ENUM
@@ -302,42 +275,24 @@ s" edlive:colour" s" edrep:colour" VSPARITY:COMPARE
 s" package vruse public ENUM box<a> VARIANT ok FIELD value a ;VARIANT VARIANT no ;VARIANT ;ENUM : WRAP ( a -- box<a> ) VRUSE-BOX:OK ; ;package"
 VSPARITY:VS-LOAD
 
-\ ---------------------------------------------------------------------------
-\ 3. A STRUCTURE named as a later declaration's payload type. Without a
-\    STRUCTURE arm on this path the payload was unresolvable.
-\ ---------------------------------------------------------------------------
+\ 3. A STRUCTURE named as a later declaration's payload type: without the
+\    STRUCTURE arm on this path the payload does not resolve.
 s" package edpay public STRUCTURE slotrec FIELD v n ;STRUCTURE SUMTYPE box VARIANT full slotrec ;VARIANT VARIANT empty ;VARIANT ;SUMTYPE ;package"
 VSPARITY:VS-LOAD
 s" edpay:box" VSPARITY:VCOUNT 2 T=
 s" edpay:slotrec" VSPARITY:FCOUNT 1 T=
 
-\ ---------------------------------------------------------------------------
-\ 4. A body the capture buffer cannot hold RAISES; it is never truncated.
-\
-\    This is the failure the replay entries made dangerous. verify-source's
-\    BODY-APPEND used to skip the single token that would not fit and keep
-\    appending the shorter ones after it, including the terminator — safe while
-\    the only consumers were the legacy definers, which re-checked the length
-\    against the engine's own TDECL-CAP and rejected. The replay entries have no
-\    length gate: they parse whatever arrives. Measured on the previous commit, a
-\    1302-variant compact ENUM replayed with rc 0 and registered 1142 variants —
-\    160 silently gone and every later tag shifted. A well-formed, wrong family.
-\
-\    ON THE TWO DIFFERENT BOUNDS, deliberately not reconciled. The engine's
-\    legacy TDECL-CAP is $1000 (4096 bytes); this capture buffer's BODYBUF-CAP is
-\    8000. A body between them replays fine here and would have been refused by
-\    the legacy definer — and that is correct, not a gap to emulate. Before the
-\    cutover such a declaration could never have loaded at all (the engine
-\    rejects it at 4096), so no existing source reaches this window; after the
-\    cutover both the live keyword and this replay ARE the unified front end,
-\    which has no 4096-byte cap of its own. Emulating a cap that is being deleted
-\    would only pin a bound nothing will enforce. What must hold is that each
-\    path is honest about ITS OWN bound, which is what these two cases pin.
-\ ---------------------------------------------------------------------------
+\ 4. A body the capture buffer cannot hold raises; it is never truncated. The
+\    replay entries have no length gate: they parse whatever arrives. A
+\    BODY-APPEND that skips the token that does not fit and keeps appending
+\    builds a well-formed, wrong family (measured: a 1302-variant compact ENUM
+\    replayed with rc 0 and registered 1142 variants, every later tag shifted).
+\    The engine's TDECL-CAP ($1000) and this buffer's BODYBUF-CAP (8000) differ
+\    on purpose: the live keyword and this replay are the unified front end,
+\    which has no 4096-byte cap, so each path is pinned to its own bound.
 
 \ Under the buffer's bound: replays completely, every variant present. A body of
-\ 1000 variants is 6000 bytes — well past the legacy 4096 cap, and accepted,
-\ which is the "no legacy-cap emulation" ruling made executable.
+\ 1000 variants is 6000 bytes, past 4096, and accepted.
 s" capa" 1000 VSPARITY:ENUM-SOURCE VSPARITY:VS-LOAD
 s" capa:big" VSPARITY:VCOUNT 1000 T=
 
@@ -346,17 +301,13 @@ s" capa:big" VSPARITY:VCOUNT 1000 T=
 s" capb" 1400 VSPARITY:ENUM-SOURCE VSPARITY:VSTRY 7118 T=
 VSPARITY:CAP-FAMILY-ABSENT
 
-\ ---------------------------------------------------------------------------
-\ 5. Comments are NOT laundered out of a declaration body.
-\
-\    The engine reads a declaration body with `parse-name`, which has no comment
-\    rule, so `\` and `(` inside one are ordinary tokens that hit the name gate.
-\    verify-source's ordinary NEXT-SCAN does strip them, which is right between
-\    definitions and wrong inside a declaration: stripping would let the replay
-\    accept source the engine refuses and register a family that cannot exist.
-\    The two replay windows therefore read with NEXT-RAW, and these cases pin
-\    that they reject with the SAME code the live front end gives.
-\ ---------------------------------------------------------------------------
+\ 5. Comments are not laundered out of a declaration body. The engine reads a
+\    declaration body with `parse-name`, which has no comment rule, so `\` and
+\    `(` inside one are ordinary tokens that hit the name gate. verify-source's
+\    NEXT-SCAN strips them, right between definitions and wrong inside a
+\    declaration: the replay would accept source the engine refuses. The two
+\    replay windows read with NEXT-RAW, and these cases pin that they reject
+\    with the same code the live front end gives.
 DECL-DIAG:PROSE
 s" package vp public ENUM cm1 red ( note ) green ;ENUM ;package"
 VSPARITY:VSTRY 7101 T=
@@ -369,28 +320,21 @@ VSPARITY:VSTRY 7107 T=
 s" habu: bad structure declaration 'cm2': unexpected token in structure declaration at '('"
 DECL-DIAG:HAS? TTRUE
 
-\ a `\` comment runs to end of line, so this one needs a real newline in it
 DECL-DIAG:PROSE
 VSPARITY:BACKSLASH-ENUM-SOURCE VSPARITY:VSTRY 7101 T=
 s" habu: bad enum declaration 'cm3': name must be a lowercase tail at '\'"
 DECL-DIAG:HAS? TTRUE
 DECL-DIAG:OFF
 
-\ ---------------------------------------------------------------------------
-\ 6. `DERIVE addr`. The accessors are minted by the address participant
-\    (src/core/structure-make.f) in the commit step, after the body has
-\    already generated the make/unmake set, so before this arm a replayed
-\    record had constructors and no accessors — and a source that read its
-\    own fields through them failed the pre-scan at the accessor's name while
-\    loading fine on the live path.
-\
-\    The replay renders the SAME plan the live path evaluates and stops after
-\    its first reading: each row is armed and checked, so the accessor's effect
-\    is registered under its own name, and no row reaches the evaluator, so no
-\    dictionary word appears (VS-DONE's ndict@ assertion covers that here).
-\    The effects are the real ones, not placeholders: the wrong-typed uses below
-\    are refused exactly as they are after a live declaration.
-\ ---------------------------------------------------------------------------
+\ 6. `DERIVE addr`. The address participant (src/core/structure-make.f) mints
+\    the accessors in the commit step, after the body generated the make/unmake
+\    set; a replay that stopped there had constructors and no accessors, so a
+\    source reading its own fields failed the pre-scan while loading live. The
+\    replay renders the same plan the live path evaluates and stops after its
+\    first reading: each row is armed and checked, so the accessor's effect is
+\    registered under its own name, and no row reaches the evaluator, so no
+\    dictionary word appears (VS-DONE's ndict@ assertion). The effects are real:
+\    the wrong-typed uses below are refused as after a live declaration.
 s" package adrep public STRUCTURE rec DERIVE addr FIELD a n FIELD b n ;STRUCTURE : ADR-USE ( ptr rec -- ptr n ) ADREP-REC:A ; : ADR-SPAN ( -- n ) ADREP-REC:BYTES ADREP-REC:CELLS + ; ;package"
 VSPARITY:VS-OPEN
 

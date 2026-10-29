@@ -1,10 +1,5 @@
 \ Each engine keeps one checksummed object per loaded file under its own
-\ directory of the out root (tools/build-out.f). An object a build does not
-\ use survives it, in the tree's .out when HABU_OUT is empty; another engine's
-\ build leaves this engine's objects; concurrent builds into one root leave
-\ objects their rebuilds reuse; and a corrupt object is refused on fd 2 and
-\ rebuilt.
-\ Run: bin/hb --load test/native-file-storage-e2e.f
+\ directory of the out root (tools/build-out.f).
 
 require src/lib/test.f
 require src/lib/string.f
@@ -52,7 +47,6 @@ variable OBJECT-N
 : SAVED-SOURCE$ ( -- ptr u8 n )
    S\" 1 set-tier\nAPP-BUILD:RUN-SAVED-REPORT\n" ;
 
-\ dir/name under the tree, in CASE-PATH.
 : IN ( ptr u8 n ptr u8 n -- ptr u8 n )
    {: dir:ptr diru:n name:ptr nameu:n :}
    dir diru AT name nameu CASE-PATH FS:JOIN-PATH CASE-PATH swap ;
@@ -63,7 +57,6 @@ variable OBJECT-N
 
 : OUT-ROOT$ ( -- ptr u8 n ) OUT-PATH OUT-U @ ;
 
-\ Later builds use the fresh out root dir/name, which the build makes.
 : OUT-IN ( ptr u8 n ptr u8 n -- )
    IN {: a:ptr u:n :}
    a OUT-PATH u BYTE-COPY u OUT-U ! ;
@@ -73,8 +66,7 @@ variable OBJECT-N
    dir diru AT FS:MAKE-DIR
    dir diru s" out" OUT-IN ;
 
-\ A build of dir/app into dir/out by engine, diagnostics on, in the out root;
-\ an empty out root leaves HABU_OUT empty, so the build uses its cwd's .out.
+\ An empty out root leaves HABU_OUT empty: the build uses its cwd's .out.
 : STAGE ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
    {: dir:ptr diru:n app:ptr appu:n out:ptr outu:n engine:ptr engineu:n :}
    PROC-ARGV-ENV-RESET
@@ -87,7 +79,7 @@ variable OBJECT-N
    dir diru app appu IN ARG
    dir diru out outu IN ARG ;
 
-\ The saved builder image, as test/native-file-auto-e2e.f RUN-SAVED-IN.
+\ As test/native-file-auto-e2e.f RUN-SAVED-IN.
 : SAVED ( ptr u8 n ptr u8 n ptr u8 n -- n )
    {: dir:ptr diru:n app:ptr appu:n out:ptr outu:n :}
    NATIVE-FILE-APP:BUILDER$ {: builder:ptr builderu:n :}
@@ -96,7 +88,6 @@ variable OBJECT-N
 
 : SAVED-APP ( ptr u8 n -- n ) s" app.f" s" app-hb" SAVED ;
 
-\ SAVED-APP with the child's working directory at dir.
 : SAVED-APP-IN ( ptr u8 n -- n )
    {: dir:ptr diru:n :}
    NATIVE-FILE-APP:BUILDER$ {: builder:ptr builderu:n :}
@@ -109,7 +100,6 @@ variable OBJECT-N
    CWD-OUT outu LEN>N CWD-ERR erru LEN>N STREAMS!
    rc ;
 
-\ The engine itself loading tools/app-build.f.
 : DIRECT ( ptr u8 n ptr u8 n -- n )
    {: dir:ptr diru:n engine:ptr engineu:n :}
    dir diru s" app.f" s" app-hb" engine engineu STAGE
@@ -120,7 +110,7 @@ variable OBJECT-N
    PROC-ARGV-ENV-RESET PROC-ENV-INHERIT-MISSING
    a u s" " CAPTURE ;
 
-\ The number after label in the build's report, -1 when the report lacks it.
+\ -1 when the report lacks label.
 : COUNT ( ptr u8 n -- n )
    {: label:ptr labelu:n :}
    OUT$ {: out:ptr outu:n :}
@@ -141,7 +131,6 @@ variable OBJECT-N
 
 : REFUSED? ( -- bool ) ERR$ s" native-cache: entry refused " CONTAINS? ;
 
-\ The file's bytes in BYTES.
 : LOAD ( ptr u8 n -- n )
    {: path:ptr pathu:n :}
    path pathu FS:FILE-SIZE {: size:n :}
@@ -173,12 +162,11 @@ variable OBJECT-N
    {: a:ptr u:n :}
    a DIR-PATH u BYTE-COPY u DIR-U ! ;
 
-\ The object directory's entry name, in ENTRY-PATH.
 : ENTRY$ ( ptr u8 n -- ptr u8 n )
    {: name:ptr nameu:n :}
    DIR$ name nameu ENTRY-PATH FS:JOIN-PATH ENTRY-PATH swap ;
 
-\ A file object: 64 hex digits, .hfo.
+\ 64 hex digits and .hfo.
 : OBJECT? ( ptr u8 n -- bool )
    {: name:ptr nameu:n :}
    name nameu s" .hfo" ENDS-WITH? nameu 68 = and ;
@@ -186,20 +174,18 @@ variable OBJECT-N
 : TALLY ( ptr u8 n -- )
    OBJECT? if 1 OBJECT-N +! then ;
 
-\ Count the file objects in one engine's directory under the out root.
 : TALLY-ENGINE ( ptr u8 n -- )
    {: name:ptr nameu:n :}
    OUT-ROOT$ name nameu ENTRY-PATH FS:JOIN-PATH {: u:n :}
    ENTRY-PATH u s" obj" DIR-PATH FS:JOIN-PATH DIR-U !
    DIR$ [: TALLY ;] FS-LIST:EACH ;
 
-\ The file objects every engine keeps under the out root.
 : TALLY-ROOT ( -- n )
    0 OBJECT-N !
    OUT-ROOT$ [: TALLY-ENGINE ;] FS-LIST:EACH
    OBJECT-N @ ;
 
-\ Flip the last byte of one file object, which its checksum covers.
+\ The object's checksum covers its last byte.
 : FLIP ( ptr u8 n -- )
    {: name:ptr nameu:n :}
    name nameu OBJECT? 0= if exit then
@@ -216,9 +202,7 @@ variable OBJECT-N
    FLIP-N @ ;
 
 \ 1. A file a build does not load keeps its object for the next build that
-\ does: an app that drops lib.f and requires it again reuses lib.f's object.
-\ The builds run in the tree with HABU_OUT empty, so the objects live in the
-\ tree's .out, the default out root.
+\ loads it. HABU_OUT is empty, so the objects live in the tree's .out.
 : KEEP-CASE ( -- )
    s" an object survives a build that does not use it" T-LABEL
    s" keep" AT FS:MAKE-DIR
@@ -231,8 +215,8 @@ variable OBJECT-N
    s" keep" s" app.f" APP$ WRITE-IN
    s" keep" SAVED-APP-IN SUCCESS
    ERR$ s" name=LIB-" CONTAINS? TFALSE
-   \ A file key names the file's place in the load, not its text: the second
-   \ build stored its app.f under the first's name, so only MAIN compiles.
+   \ A file key names the file's place in the load, not its text, so only
+   \ MAIN compiles.
    REUSED 1 T=
    COMPILED 1 T=
    s" keep" s" .out" OUT-IN
@@ -240,8 +224,8 @@ variable OBJECT-N
    s" keep" s" app-hb" RUN-IN SUCCESS
    OUT$ s" 4" CONTAINS? TTRUE ;
 
-\ 2. Another engine, whose checker and kernel identity differ, writes its own
-\ objects in its own directory beside this engine's and leaves this engine's.
+\ 2. Another engine (different checker and kernel identity) writes its objects
+\ in its own directory and leaves this engine's.
 : ALTERNATE-CASE ( -- )
    s" another engine's build keeps this engine's objects" T-LABEL
    s" alternate" CASE-DIR
@@ -266,8 +250,6 @@ variable OBJECT-N
       ALTERNATE-CASE ;]
    [: WHITEBOX-CHILD:REMOVE ;] finally ;
 
-\ A concurrent build of race/app into race/out, streams to race/log, stdin
-\ race/drive.
 : SPAWN ( ptr u8 n ptr u8 n ptr u8 n -- pid )
    {: app:ptr appu:n out:ptr outu:n log:ptr logu:n :}
    NATIVE-FILE-APP:BUILDER$ {: builder:ptr builderu:n :}
@@ -285,11 +267,9 @@ variable OBJECT-N
       err OF ENDOF
    ;MATCH ;
 
-\ 3. Two builds racing into one root, both loading lib-a.f and lib-b.f, leave
-\ every object each made: a key covers the requiring file, so the two keep
-\ objects for the same definitions side by side. A rebuild of each app reuses
-\ all of its own, and the products are the ones a serial pair builds into a
-\ fresh root.
+\ 3. Two builds racing into one root leave every object each made: a key
+\ covers the requiring file. A rebuild of each reuses all of its own, and the
+\ products match a serial pair's in a fresh root.
 : CONCURRENT-CASE ( -- )
    s" concurrent builds share one root" T-LABEL
    s" race" CASE-DIR

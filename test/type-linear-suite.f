@@ -1,21 +1,9 @@
-\ type-linear-suite.f — whole-bundle linear accounting for layout values
-\ (docs/design.md "Families and layout policies"). Run BY THE ENGINE over stdin:
+\ type-linear-suite.f - whole-bundle linear accounting for layout values
+\ (docs/design.md "Families and layout policies"). Run by the engine over stdin:
 \     bin/hb < test/type-linear-suite.f
-\ A sum whose type args include a linear con is ONE linear unit: constructors
-\ consume linear payloads and mint the bundle (empty-payload variants mint
-\ without input, the option-NONE shape), pass-through and deeper-row flow
-\ conserve it, and every copy/drop/transport/local-capture/unconsumed path
-\ rejects. Width stays truthful: linear-arg layouts expand to hidden fields
-\ exactly like non-linear ones (LAYOUT-WIDTH-OPEN?), so checker rows and runtime
-\ cells agree.
-\
-\ The closing TC/TK/TM section (package TLIN) covers the OTHER way a bundle
-\ becomes one linear unit: not through its type arguments but through a declared
-\ field or variant payload that names a family which itself owns a linear value
-\ (dot habu-checker-enum-payload-9e1ae6cc). Inside it, TC21-TC30 pin that typed
-\ memory stays closed to a linear value carried under a generic layer, each with
-\ a width-identical non-linear control, and the TA block records that the atomic
-\ memory operations transport no layout at all.
+\ A sum whose type args include a linear con is one linear unit. Linear-arg
+\ layouts expand to hidden fields as non-linear ones do (LAYOUT-WIDTH-OPEN?), so
+\ checker rows and runtime cells agree.
 
 require src/habu/verify-source.f
 require src/lib/test.f
@@ -39,9 +27,6 @@ PRODUCT lqp<a,b> FIELD w a ;PRODUCT
 TRUSTED: LFORGE ( -- a ) 0 ;
 : LFORGE-OK ( n -- lq2<a,n> ) drop LFORGE LQ2:OK ;
 
-\ ---------------------------------------------------------------------------
-\ accepted: construction, minting, pass-through, deeper-row flow, wrappers.
-\ ---------------------------------------------------------------------------
 s" A1=" type s" C1 ( ltok -- lq2<ltok,n> ) LQ2:OK" CHECK-QUIET-CANDIDATE! -1 T=
 s" A2=" type s" C2 ( n -- lq2<ltok,n> ) LQ2:ERR" CHECK-QUIET-CANDIDATE! -1 T=
 s" A3=" type s" C3 ( lq2<ltok,n> -- lq2<ltok,n> )" CHECK-QUIET-CANDIDATE! -1 T=
@@ -61,12 +46,9 @@ s" A8=" type s" C8 ( n -- lq2<ltok,n> ) LQ2:ERR LQID" CHECK-QUIET-CANDIDATE! -1 
 s" A9=" type s" C9 ( ltok -- lqp<ltok,ltok> ) LQP:MAKE LQPID" CHECK-QUIET-CANDIDATE! -1 T=
 cr
 
-\ ---------------------------------------------------------------------------
-\ move-class transports (swap/rot/-rot/2swap and >r/2>r round trips) reorder the
-\ bundle without copy or drop, so the linear count is CONSERVED -> accept. The
-\ whole M+1-cell group moves atomically (XG-READ-HID), and LIN-CHECK conservation
-\ classifies: a permutation keeps before=after, so it certifies.
-\ ---------------------------------------------------------------------------
+\ Move-class transports (swap/rot/-rot/2swap, >r/2>r round trips) move the whole
+\ M+1-cell group (XG-READ-HID), so LIN-CHECK sees the count conserved and
+\ certifies.
 s" M1=" type s" M1 ( lq2<ltok,n> n -- n lq2<ltok,n> ) swap" CHECK-QUIET-CANDIDATE! -1 T=
 s" M2=" type s" M2 ( lq2<ltok,n> n n -- n n lq2<ltok,n> ) rot" CHECK-QUIET-CANDIDATE! -1 T=
 s" M3=" type s" M3 ( n n lq2<ltok,n> -- lq2<ltok,n> n n ) -rot" CHECK-QUIET-CANDIDATE! -1 T=
@@ -81,11 +63,8 @@ s" MR1=" type s" MR1 ( lq2<ltok,n> n -- n ) swap" CHECK-QUIET-CANDIDATE! 0 T=
 s" MR2=" type s" MR2 ( lq2<ltok,n> -- ) >r" CHECK-QUIET-CANDIDATE! 0 T=
 cr
 
-\ ---------------------------------------------------------------------------
-\ rejected: copy, drop, locals, return-stack copy, unconsumed, loss. Copy-class
-\ (dup/over/tuck/2dup) raises the count, drop-class (drop/nip/2drop) lowers it,
-\ and r@/2r@ re-push (copy) the group -> LIN-CHECK conservation fires.
-\ ---------------------------------------------------------------------------
+\ Copy-class words (dup/over/tuck/2dup, r@/2r@) raise the count and drop-class
+\ words (drop/nip/2drop) lower it, so LIN-CHECK refuses them.
 s" R1=" type s" B1 ( lq2<ltok,n> -- lq2<ltok,n> lq2<ltok,n> ) dup" CHECK-QUIET-CANDIDATE! 0 T=
 s" R2=" type s" B2 ( lq2<ltok,n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
 s" R3=" type s" B3 ( lq2<ltok,n> -- )" CHECK-QUIET-CANDIDATE! 0 T=
@@ -103,20 +82,14 @@ s" R14=" type s" B14 ( -- lq2<ltok,n> ) LFORGE LQ2:OK LQID" CHECK-QUIET-CANDIDAT
 s" R15=" type s" B15 ( n -- lq2<ltok,n> ) LFORGE-OK LQID" CHECK-QUIET-CANDIDATE! 0 T=          \ forge behind a constructor's effect
 cr
 
-\ ---------------------------------------------------------------------------
-\ scalar linear discipline unchanged next to the bundle machinery.
-\ ---------------------------------------------------------------------------
+\ scalar linear discipline beside the bundle machinery.
 s" S1=" type s" D1 ( ltok -- ltok )" CHECK-QUIET-CANDIDATE! -1 T=
 s" S2=" type s" D2 ( ltok -- ltok ltok ) dup" CHECK-QUIET-CANDIDATE! 0 T=
 s" S3=" type s" D3 ( ltok -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
 cr
 
-\ ---------------------------------------------------------------------------
-\ The `construct` form conserves exactly like the generated
-\ constructor words — same CHECKER-STEP accounting, no separate linear rules.
-\ Consume (A1 parity), mint (A2), padded/multi-cell (A6/A7), and the reuse/
-\ loss/transport rejects hold through the inline form.
-\ ---------------------------------------------------------------------------
+\ The `construct` form conserves as the generated constructors do, through the
+\ same CHECKER-STEP accounting.
 s" K1=" type s" KC1 ( ltok -- lq2<ltok,n> ) construct lq2 ok" CHECK-QUIET-CANDIDATE! -1 T=
 s" K2=" type s" KC2 ( n -- lq2<ltok,n> ) construct lq2 err" CHECK-QUIET-CANDIDATE! -1 T=
 s" K3=" type s" KC3 ( ltok n n -- lqmix<ltok,n> ) construct lqmix big" CHECK-QUIET-CANDIDATE! -1 T=
@@ -127,18 +100,13 @@ s" KR2=" type s" KB2 ( ltok -- lq2<ltok,n> lq2<ltok,n> ) construct lq2 ok dup" C
 s" KR3=" type s" KB3 ( ltok n -- lq2<ltok,n> ) nip construct lq2 err" CHECK-QUIET-CANDIDATE! 0 T=   \ payload dropped before construction
 cr
 
-\ ---------------------------------------------------------------------------
-\ layout-cap slice 5 (dot habu-checker-capability-layout-9b8540bd): linearity is
-\ TRANSITIVE through a NESTED layout arg. A linear con buried inside a nested
-\ instantiation (the ltok inside lopt<lq2<ltok,n>>) makes the OUTER bundle one
-\ linear unit — LAYOUT-ARG-LIN-N / LAYOUT-ARG-LINEARISH? recurse through the arg
-\ tree, so LIN-TYPE-COUNT samples the one unit at the outer tag. Before slice 5
-\ the outer bundle read as non-linear and could be dup/dropped, laundering the
-\ resource (a soundness hole). Sound rule: a linear moving INTO the constructed
-\ payload consumes it once (NL1), MATCH re-introduces it once and the arm must
-\ consume it — re-mint (NL6) or free — and any copy (NL2), loss (NL3/NL4), or
-\ match-then-drop (NL7) rejects. Identity/transport still flows (NL5).
-\ ---------------------------------------------------------------------------
+\ Linearity is transitive through a nested layout arg: the ltok in
+\ lopt<lq2<ltok,n>> makes the outer bundle one linear unit (LAYOUT-LINEAR-COUNT
+\ recurses through the args; LIN-TYPE-COUNT counts it at the outer tag). A
+\ linear moving into the payload is consumed once (NL1); MATCH reintroduces it
+\ once for the arm to consume, by re-mint (NL6) or free; any copy (NL2), loss
+\ (NL3/NL4) or match-then-drop (NL7) is refused; identity flows (NL5). Without
+\ the recursion the outer bundle could be copied or dropped.
 SUMTYPE lopt<a> VARIANT none ;VARIANT VARIANT some a ;VARIANT ;SUMTYPE
 s" NL1=" type s" NC1 ( lq2<ltok,n> -- lopt<lq2<ltok,n>> ) LOPT:SOME" CHECK-QUIET-CANDIDATE! -1 T=
 s" NL2=" type s" NC2 ( lq2<ltok,n> -- lopt<lq2<ltok,n>> lopt<lq2<ltok,n>> ) LOPT:SOME dup" CHECK-QUIET-CANDIDATE! 0 T=
@@ -149,37 +117,13 @@ s" NL6=" type s" NC6 ( lopt<lq2<ltok,n>> -- lopt<lq2<ltok,n>> ) MATCH lopt none 
 s" NL7=" type s" NC7 ( lopt<lq2<ltok,n>> -- n ) MATCH lopt none OF 0 ENDOF some OF drop 1 ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
 cr
 
-\ ---------------------------------------------------------------------------
-\ LINEARITY BY CONTAINMENT through a declared field or payload (dot
-\ habu-checker-enum-payload-9e1ae6cc).
-\
-\ The sections above make a bundle linear through its TYPE ARGUMENTS. This one
-\ makes it linear through its DECLARED MEMBERS: a structure field or a variant
-\ payload that names a family which itself owns a linear value. Until this dot
-\ both unified declarers rejected that spelling outright, so `FIELD res
-\ WSTORE:resident` was legal but `FIELD m gpt2-model` — the same resource one
-\ structure deeper — rejected as an "unknown" type. Refusing it never protected
-\ anything, because the obligation is carried by the value either way; it only
-\ made the resource unnameable one level out, which is what blocked the GPT-2
-\ checkpoint load from answering with a loaded model.
-\
-\ What decides linearity is TFAM-CONCRETE-LINEAR?, which walks a family's field
-\ and payload schemas and follows an application node into the family it names.
-\ It already recursed, so accepting the spelling was enough: TCn below prove the
-\ containment reaches an arbitrary depth and through a sum, TKn that the sealed
-\ MAKE/UNMAKE pair conserves the resource, and TMn that MATCH hands the payload
-\ to the arm as a linear value the arm must discharge exactly once.
-\
-\ FREE-MODEL / MINT-TOK are the abstract consumer and producer, so an arm can
-\ fully discharge or fully re-supply the resource. They are checked words over
-\ the package's own `LINEAR:` mint and erase rows.
-\
-\ The whole section lives in package TLIN, which is also how production writes
-\ these types (maki/infer/weight-store.f owns `WSTORE:resident` the same way).
-\ The candidates are checked from inside the package because `construct` resolves
-\ its family in the ACTIVE package, so a fixture that constructs has to be
-\ written where a real caller of these types would be written.
-\ ---------------------------------------------------------------------------
+\ Package TLIN: linearity by containment, through a structure field or variant
+\ payload that names a family owning a linear value (TFAM-CONCRETE-LINEAR?
+\ follows application nodes). TCn cover depth and sums, TKn the sealed
+\ MAKE/UNMAKE pair, TMn MATCH handing the payload to the arm as a linear value
+\ it must discharge once. FREE-MODEL and MINT-TOK are the abstract consumer and
+\ producer. Candidates are checked inside TLIN because `construct` resolves its
+\ family in the active package.
 package TLIN
 public
 
@@ -200,8 +144,8 @@ private
 LINEAR: N>TOK ( n -- TLIN:tok )
 LINEAR: TOK>N ( TLIN:tok -- n )
 public
-\ A model is three cells (inner's t and k, then z): taken apart down to its
-\ token, which is erased.
+\ A model is three cells (inner's t and k, then z), taken apart down to its
+\ token.
 : FREE-MODEL ( TLIN:model -- ) TLIN-MODEL:UNMAKE drop TLIN-BOX:UNMAKE drop TOK>N drop ;
 : MINT-TOK ( -- TLIN:tok ) 0 N>TOK ;
 
@@ -237,24 +181,12 @@ s" TC19=" type s" TC19 ( ptr plain -- plain ) @" CHECK-QUIET-CANDIDATE! -1 T=
 s" TC20=" type s" TC20 ( ptr lone -- ptr lone ptr lone ) dup" CHECK-QUIET-CANDIDATE! -1 T=
 cr
 
-\ ---------------------------------------------------------------------------
-\ typed memory has to stay closed to a linear value buried under a GENERIC layer
-\ as well, and that is a DIFFERENT question in the checker from the one TC18 asks.
-\ TC18 rejects `ptr lone` because the pointee family is itself linear; the checker
-\ answers that from the family. `opt<lone>` is linear for another reason — its
-\ type ARGUMENT is — and the checker answers that by walking the argument list and
-\ asking each argument whether it reaches a linear value. Nothing above exercised
-\ that walk through memory, so deleting its containment answer left every case in
-\ this file green while a whole linear bundle could cross typed memory through
-\ `( ptr opt<lone> -- opt<lone> ) @`.
-\
-\ `opt<lone>` and `opt<plain>` are the same width — one tag cell and one payload
-\ cell — and differ only in owning a linear value, so a load that rejects one
-\ and certifies for the other is answering linearity and not width. Repeating the
-\ pair at two generic layers pins the recursion instead of one fixed depth, and
-\ the store direction is pinned beside the load because `!` reaches the same guard
-\ from the other side.
-\ ---------------------------------------------------------------------------
+\ A linear value under a generic layer is a different checker question from
+\ TC18: opt<lone> is linear through its type argument, answered by walking the
+\ argument list. opt<lone> and opt<plain> share a width, so refusing one and
+\ certifying the other answers linearity. Two generic layers pin the recursion;
+\ the store rows pin that `!` reaches the guard `@` does. Without the walk, `(
+\ ptr opt<lone> -- opt<lone> ) @` certified.
 ENUM opt<a>
   VARIANT none ;VARIANT
   VARIANT some FIELD v a ;VARIANT
@@ -274,26 +206,11 @@ s" TC29=" type s" TC29 ( lone ptr lone -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
 s" TC30=" type s" TC30 ( plain ptr plain -- ) !" CHECK-QUIET-CANDIDATE! -1 T=
 cr
 
-\ ---------------------------------------------------------------------------
-\ The ATOMIC memory operations: a CLOSED-SURFACE TRIPWIRE, not a linearity proof.
-\
-\ atomic@ and atomic! carry the same polymorphic pointer effect as @ and !, and
-\ atomic-cas and atomic-add take a pointer too, so all four look like more doors a
-\ linear bundle could cross. They are not doors at all today. The layout-aware
-\ transport step is selected by TOKEN NAME and only `@` and `!` have that name, so
-\ a layout value of ANY kind cannot be captured here and every case below rejects — the
-\ linear one and its width-identical non-linear twin alike.
-\
-\ That is exactly why these are labelled a tripwire and not evidence. A negative
-\ whose control also rejects says nothing about linearity; what these cases pin is
-\ that the surface is CLOSED. The `ptr n` cases at the end certify, which is what
-\ keeps the block honest: the four words exist and work, so the rejections above
-\ are about layouts and not about an unknown word.
-\
-\ If layouts are ever opened to the atomic operations, the non-linear controls go
-\ red first, and whoever opens them has to add real linearity pins in the same
-\ change rather than inherit a silent hole.
-\ ---------------------------------------------------------------------------
+\ Atomic memory operations: a closed-surface tripwire, not a linearity proof.
+\ The layout-aware transport step is selected by token name and only `@` and `!`
+\ have it, so every layout value is refused here, the non-linear control too;
+\ the `ptr n` rows prove the four words work. Opening layouts to the atomics
+\ turns the controls red; that change must add linearity rows.
 s" TA1=" type s" TA1 ( ptr opt<lone> -- opt<lone> ) atomic@" CHECK-QUIET-CANDIDATE! 0 T=
 s" TA2=" type s" TA2 ( ptr opt<plain> -- opt<plain> ) atomic@" CHECK-QUIET-CANDIDATE! 0 T=   \ control also rejected: surface closed
 s" TA3=" type s" TA3 ( opt<lone> ptr opt<lone> -- ) atomic!" CHECK-QUIET-CANDIDATE! 0 T=
@@ -315,11 +232,9 @@ s" TA15=" type s" TA15 ( n ptr n -- n ) atomic-add" CHECK-QUIET-CANDIDATE! -1 T=
 s" TA16=" type s" TA16 ( n n ptr n -- n ) atomic-cas" CHECK-QUIET-CANDIDATE! -1 T=
 cr
 
-\ A second lock now stands in front of the shape above: a record can no longer
-\ even NAME a pointer to a linear value, because both unified declarers reject
-\ `FIELD p ptr <linear>` outright. That door is pinned where it lives, in
-\ test/structure-decl-suite.f and test/enum-decl-suite.f; this file stays about
-\ what the checker does with such a value once it is on a row.
+\ Both unified declarers also refuse `FIELD p ptr <linear>`
+\ (test/structure-decl-suite.f, test/enum-decl-suite.f); this file covers such a
+\ value once it is on a row.
 
 \ the sealed MAKE/UNMAKE pair moves the resource without copying or losing it.
 s" TK1=" type s" TK1 ( box n -- model ) TLIN-MODEL:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
@@ -357,7 +272,4 @@ cr
 
 ;package
 
-\ ---------------------------------------------------------------------------
-\ report: "test: ok" on success, nonzero exit on any failure.
-\ ---------------------------------------------------------------------------
 T-REPORT

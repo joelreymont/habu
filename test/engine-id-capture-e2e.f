@@ -1,11 +1,9 @@
-\ A copied engine's physical pathname and content key must not travel into an
-\ application image. A child loads app-image and src/lib/engine-id.f through the
-\ normal source loader, prints PATH$ and KEY$, and saves; on macOS KEY$ also
-\ leaves the pathname in the digest context's path field and in the
-\ mapped-region answer. The saved process writes its restored DATA to a file,
-\ asking nothing first. The parent counts, in the DATA file, the path and key
-\ the child printed: every count must be 0. The saved process then resolves
-\ its own pathname. Keep the saved image, DATA file and logs as evidence.
+\ A copied engine's pathname and content key must not travel into an application
+\ image. A child loads app-image and src/lib/engine-id.f through the source
+\ loader, prints PATH$ and KEY$ and saves; on macOS KEY$ also leaves the
+\ pathname in the digest context's path field and the mapped-region answer. The
+\ saved process writes its restored DATA to a file, where the parent counts the
+\ printed path and key: every count must be 0.
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs.f
@@ -137,6 +135,7 @@ variable AT
    s" dump.out" s" dump.err" LOG-RESULT
    CHECK-RESULT ;
 
+\ The saved process then resolves its path.
 : RUN-SAVED ( -- )
    PROC-ARGV-ENV-RESET PROC-ENV-INHERIT-MISSING
    SAVED$ >LEN SOURCE-ROOT:CWD$ >LEN

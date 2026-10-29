@@ -3,8 +3,7 @@
 \ beyond a conditional edge; duplicating it fails allocation with E-A64RA-EDGE.
 require src/lib/test.f
 
-\ Tier 1 below: the reused frame-order argument - duplicating it fails with
-\ E-A64RA-EDGE - is the optimizing compiler's spill rewriting.
+\ Spill rewriting belongs to tier 1.
 1 set-tier
 
 package NSP

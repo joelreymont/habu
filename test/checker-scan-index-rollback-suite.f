@@ -1,18 +1,9 @@
 \ checker-scan-index-rollback-suite.f — rollback of records a rejected frame
-\ creates, for the checker's symbol-keyed store indexes.
-\
-\ The other half of test/checker-scan-index-suite.f, whose header says what is
-\ under test and why every case is a top-level interpret line. This row holds
-\ the cases that touch no state that suite's section 1 creates, so the two run
-\ side by side in the gate pool; section numbers are that suite's, so a case
-\ keeps its name across the two rows. The shared fixture is
-\ test/checker-scan-index-lib.f. A WHITEBOX-SUITE row: standalone under bin/hb
-\ it exits 70 (docs/gate.md "How a suite runs, and what that demands of its
-\ files").
-\
-\ The guard and differential of section 2 run here first too: an index mark a
-\ rollback case reads is meaningful only once all five indexes exist, and the
-\ differential is what builds them (SCX-MARKS-EXACT).
+\ creates, for the checker's symbol-keyed store indexes. The other half of
+\ test/checker-scan-index-suite.f, whose header says what is under test: these
+\ cases touch no state its section 1 creates, so both rows run side by side, and
+\ section numbers are that suite's. A WHITEBOX-SUITE row: under bin/hb it exits
+\ 70 (docs/gate.md "How a suite runs, and what that demands of its files").
 
 require test/checker-scan-index-lib.f
 
@@ -22,20 +13,19 @@ using TFAM
 
 package SCANIDX-TEST
 
-\ ---------------------------------------------------------------------------
-\ 2. DIFFERENTIAL, run first so every index exists before a rollback case.
-\ ---------------------------------------------------------------------------
+\ 2. DIFFERENTIAL, run first: an index mark a rollback case reads means
+\    something only once all five indexes exist, and the differential builds
+\    them
+\    (SCX-MARKS-EXACT).
 SCX-TFAM-N 0 > TTRUE                           \ the family differential is not vacuous
 SCX-SYM-N 1 > TTRUE                            \ nor the symbol ones
 SCX-DIFF-ALL
 
-\ ---------------------------------------------------------------------------
 \ 3. ROLLBACK. The checker's own rollback frames retire store records; the
 \    index has to retire with them, and a name redefined AFTER a rollback must
 \    answer with its new effect and not with the rolled-back one. Here the
 \    symbol or family is new inside the frame; 3d and 3e, in the other row,
 \    roll back records of symbols that outlive it.
-\ ---------------------------------------------------------------------------
 
 \ 3a. a rejected candidate frame: a signature added inside it is visible there
 \     and gone after, and the same name then takes a DIFFERENT effect cleanly.

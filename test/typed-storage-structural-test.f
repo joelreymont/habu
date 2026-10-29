@@ -1,32 +1,9 @@
-\ typed-storage-structural-test.f - closed STRUCTURAL storage cells
-\ (dot habu-typed-storage-sweep-b2cd1a61).
+\ typed-storage-structural-test.f - closed structural storage cells.
 \ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/fs.f
 \   src/habu/verify-source.f test/typed-storage-structural-test.f
-\
-\ Pins the fourth admissible stored type of TYPED-VARIABLE / TYPED-BUFFER: a
-\ CLOSED STRUCTURAL CELL — a non-linear one-cell con (n, bool, i64, the role
-\ tokens) and a `ptr` chain bottoming at any non-linear con (`ptr u8`,
-\ `ptr ptr u8`). The nominal, layout, typed-pointer and xt<effect> cells are
-\ pinned by test/typed-storage-test.f and test/xt-cell-test.f; this file owns
-\ only the structural half and the reason its one exclusion exists.
-\
-\ THE INVARIANT: a certification must not be vacuous. A raw `variable` types its
-\ cell with an open var that every call site instantiates afresh, so one raw
-\ cell certifies contradictory scalar readings, and an accessor over a raw cell
-\ had to be spelled `TRUSTED:` to stay honest. Pinning the cell type at its
-\ declaration is what makes the same signature mean something, and section 1
-\ measures that: the wrong type is refused. A raw cell's pointer readings are
-\ refused by test/compiler/raw-cell-pointer-refusals.f and its nominal mint by
-\ test/typed-storage-test.f section 8.
-\
-\ WHY THE ORIGINAL `BAD-N n` REJECT WAS RIGHT TO FLIP. That reject was a SCOPE
-\ decision, never a soundness claim: the gate existed to mint NOMINAL cells, and
-\ a plain scalar was held to be `variable`'s job. checker.f's own RAW discipline
-\ draws the line in the same place - a raw cell "admits only a plain scalar
-\ representation and must NEVER absorb a nominal atom, arity-0 family, layout,
-\ or nominal-bearing pointer" - so admitting a CONCRETE con to the storage gate
-\ cannot weaken the nominal fence, and section 1's nominal rejects hold it from
-\ this side too.
+\ TYPED-VARIABLE / TYPED-BUFFER admit a closed structural cell: a non-linear
+\ one-cell con (n, bool, i64, the role tokens) or a `ptr` chain bottoming at
+\ one.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -42,19 +19,15 @@ NEWTYPE tssk
 \ is not storable in either position however closed it is.
 DEFLINEAR tsslin
 
-\ Open repros; assert refusal only after the checker closes these holes.
-\ variable TSS-RAWCELL
-\ V8: habu-refuse-ptr-field-331a9731
-\ : TSS-RAWFIELD ( ptr a -- ptr ptr u8 ) 0 ptr-field ;
-\ : V8 ( n -- u8 ) TSS-RAWCELL ! TSS-RAWCELL TSS-RAWFIELD @ c@ ;
-\ V9: habu-refuse-a-scalar-030be3ad
-\ PTR-VARIABLE TSS-DECLCELL
-\ : V9 ( n -- ) TSS-DECLCELL BYTE-VIEW CELL-VIEW ! ;
+\ Nominal, layout, typed-pointer and xt cells: test/typed-storage-test.f and
+\ test/xt-cell-test.f. Raw-cell pointer readings:
+\ test/compiler/raw-cell-pointer-refusals.f; the nominal mint:
+\ test/typed-storage-test.f section 8.
 
-\ =============================================================================
+\ A raw `variable` types its cell with an open var each site instantiates
+\ afresh, so one raw cell certifies contradictory readings.
 \ 1. Closed STRUCTURAL cells: three scalar shapes a raw cell would blur, each
 \    pinned at its declaration, each refusing the other two.
-\ =============================================================================
 TYPED-VARIABLE TSSN n
 TYPED-VARIABLE TSSF bool
 TYPED-VARIABLE TSSP ptr u8
@@ -97,10 +70,8 @@ TYPED-VARIABLE TSSP ptr u8
    0 TSSB-GET 5 T=
    1 TSSB-GET 6 T= ;
 
-\ =============================================================================
 \ 2. Define-time admissibility: what a structural declaration accepts, and the
 \    fail-closed edge. An open var cannot be pinned at all, so it still rejects.
-\ =============================================================================
 TYPED-VARIABLE TSS-EVAL-A ptr u8
 variable TSS-EVAL-U
 : TSS-EVAL-RUN ( -- ) TSS-EVAL-A @ TSS-EVAL-U @ INCLUDE-EVALUATE ;
@@ -121,9 +92,8 @@ variable TSS-EVAL-U
    s" TYPED-VARIABLE TSS-BAD-PA ptr a" TSS-EVAL CHECKER-REJECT-RC T=
    \ a bare atom carries no effect to pin either
    s" TYPED-VARIABLE TSS-BAD-XT xt" TSS-EVAL CHECKER-REJECT-RC T=
-   \ a LINEAR con is closed and one cell, and is still refused in BOTH positions
-   \ — noncopyable means a storage cell may not hold it, and a `ptr` to one may
-   \ not be stored either
+   \ a LINEAR con is closed and one cell, and still refused in BOTH positions:
+   \ noncopyable
    s" TYPED-VARIABLE TSS-BAD-LIN tsslin" TSS-EVAL CHECKER-REJECT-RC T=
    s" TYPED-VARIABLE TSS-BAD-PLIN ptr tsslin" TSS-EVAL CHECKER-REJECT-RC T=
    \ the refused names never reached the dictionary
@@ -133,11 +103,8 @@ variable TSS-EVAL-U
    s" TSS-BAD-LIN" 0 search-wl 0= TTRUE
    s" TSS-BAD-PLIN" 0 search-wl 0= TTRUE ;
 
-\ =============================================================================
 \ 3. Why a sub-cell integer stays out of the DIRECT stored-type position, and
-\    why it is still fine inside a pointer chain. Both halves are measured, so
-\    the exclusion rests on a fact rather than on taste.
-\ =============================================================================
+\    why it is still fine inside a pointer chain.
 PTR-VARIABLE TSS-PV
 
 : SECTION-SUBCELL-REASON ( -- )

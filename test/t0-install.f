@@ -1,114 +1,9 @@
 \ t0-install.f - T0 as the runtime compiler on arm64: T0:INSTALL stores
 \ T0:COMPILE in the cell the tier 1 `:` dispatches through, so every definition
-\ this file loads after `1 set-tier`, the test words included, is compiled by
-\ T0 through the normal Habu loop. The fixtures cover `:` and TRUSTED: bodies,
-\ a signature whose `)` touches its last type, quotations, strings, `char` and
-\ `[char]` of an ASCII and a UTF-8 character and `char` past a word of that
-\ name, locals, loops, case and recursion, a real literal, whose bits match the
-\ interpreter's, and a package's own `negate`, which is called, and each is run
-\ for its result. The does> definers cover a clause, an empty clause whose child
-\ keeps its address kind, quotations nested in the parent and one in the clause,
-\ clause locals and a definer chained on another, each through a child it made.
-\ A body names a created word, which T0 folds into the body as the address the
-\ interpreter pushes. `is` binds a defer from a body, which a caller then
-\ reaches, re-points it with the keyword in capitals, binds it from inside a
-\ quotation, and binds it before a MATCH, whose facts sit past its operand; a
-\ nested quotation that binds a defer spelled as a parsing word loads, its skip
-\ stepping over the operand. The MATCH rows dispatch over an enum and a sum
-\ type whose `construct`ed values carry pads, with a cell under each value
-\ proving its width; a MATCH nested in an arm, one in a case arm, one in a
-\ does> clause, and one over option<pt>, whose `none` comes from a call that
-\ pushes the pad the instantiation adds; a `construct` at wrap<pt> pushes that
-\ pad itself; a MATCH over a 65-cell payload; one in a quotation after
-\ character literals and a string, whose facts sit at the ordinals those tokens
-\ advance; and a hostile tag, in a child, reaches T0's trap and exits
-\ ENGINE-ERROR:BAD-TAG. The wide rows run each stack word T0 compiles over a
-\ two-cell product with a cell under the result, a one-cell pair that 2>r
-\ leaves for r@ and r> and >r leaves for 2r>, a swap in a does> parent and in
-\ its clause, a parent and a clause whose locals bind different widths, a
-\ 2swap and a 2over in a does> parent whose deepest operand is two cells, a
-\ three-cell product among one-cell values, a swap of two
-\ eight-cell values, whose copies fill the virtual stack, a local group bound
-\ past a wide local after a structure's group, and a local bound from a
-\ forty-cell value, whose deepest cell lies past a pre-index load's
-\ reach, and that value with a cell through 2>r 2r@ 2r>, a constant under
-\ the copy; `@` and `!` of a two-, a three- and a sixteen-cell value through
-\ typed slots, with the cells beside each store unchanged and the fetch reading
-\ cells written through a raw view, the sixteen cells spilling the virtual
-\ stack, and a store and fetch in one body. The checker refuses every other
-\ operation over a wide value, so no row reaches E-T0-BUNDLE. A fetch from a
-\ sum-type and an enum slot checks the stored tag and loads the value with the
-\ cell under it kept; a forged tag fetched in a child, from an enum slot and
-\ from a product's enum field, ends the process `hb: bad layout tag` with
-\ ENGINE-ERROR:BAD-TAG.
-\ The share rows run bodies whose copies share a vreg with their source, each
-\ with a cell under its result: arithmetic on a copy with a register, a
-\ literal on either side and a shift count, a negate of a copy, a copy parked
-\ on the return stack, loads through a copied address, comparisons of a copy
-\ with zero, with a literal on either side and with a register, and fifteen
-\ copies that fill the virtual stack and evict a shared vreg. The cell rows
-\ run `cells` over a negative count, store and fetch through a pointer table
-\ by `ptr-field`, and fold `3 cells cell+`, with a cell under each result. The
-\ fuse rows run compares straight into `if`, `while` and `until`, which branch
-\ on their condition codes, and one before a string spelled `if`, which stays a
-\ flag, with a cell under each result. The join rows run `if`, `else` and
-\ `then` whose arms leave the virtual stack in different
-\ layouts, each both ways with a cell under its result: a call in one arm,
-\ with and without the layout's bottom cells loaded back from memory, swapped
-\ and rotated arms, a constant against a register and one whose goal vreg
-\ another entry holds, arms that leave more or fewer registers than the
-\ layout, an `exit` in an `if`, an `else`, an `of` arm, a default arm and a
-\ loop with a join after each, an if/else nested in each arm, sixteen live
-\ values evicted in one arm, an else arm after a first arm that held every
-\ vreg, a copy live across an `if` whose arm writes one copy, and a fused
-\ compare whose copy and constant settle between the compare and its branch.
-\ The loop rows run `begin` loops whose values stay in registers around the
-\ back edge, each with a cell under its result: a byte counted in a string, a
-\ 2-cycle and a 3-cycle at the back edge, two `while` exits that leave
-\ different register counts, constants below a loop, a call in the body,
-\ sixteen live values evicted in the body, loops in each arm of an if/else,
-\ `until` on a compare of a loop value and on a flag in the head (a loop value,
-\ its top vreg, a call's in its bottom vreg), `until` on a compound flag
-\ outside the head, a loop whose inputs are in memory at `begin`, `again` left
-\ by `exit` with an exchange at the back edge and by a `while`, and a fused
-\ `while` with a constant below.
-\ The counted loop rows run `do` and `?do` loops whose values stay in
-\ registers, each with a cell under its result: `+loop` counting up by a copy
-\ of a loop value, a step and a `loop` scratch beside the vreg the layout gives
-\ a dropped value's replacement, `?do` with equal and ordered bounds under
-\ `loop` and `+loop`, `leave` from an `if` arm that swapped the values and
-\ from a back edge that swaps them, nested levels with the inner one left, a
-\ constant and a copy under the bounds, and a full virtual stack at `do`. The
-\ index rows read `i` where its register copy may be stale, each with a cell
-\ under its result: after a call whose callee runs a loop, a recursive call, a
-\ join with an arm that runs a loop, an inner level that closes, `unloop`, a
-\ begin loop whose body runs a loop, a `+loop` counting down after a call in
-\ one arm, and `j` and `i` around a call with both levels live.
-\ The division rows run `/` and `mod` from a local by the literals 1, 7, 65536,
-\ 86400, -3 and 10^10, which T0 divides in place, over dividends of both signs
-\ and MIN-N against the call's answers by a register divisor; by 7 on a
-\ dividend shared with a copy and on one in memory; with both operands in
-\ memory, which stays the call; folded by 1 and 7; and by a zero divisor,
-\ from a local and after a literal dividend, which stays the call and throws
-\ E-DIV-ZERO.
-\ A CALLBACK: declaration compiled by T0 is handed to libc's qsort, which sorts
-\ a row through it, and its C entry lies between its accessor's code and the
-\ next definition's: the stub T0 appended to the accessor's emission. The
-\ refusal rows evaluate definitions T0 refuses with its own codes, which tier 1
-\ accepts or refuses otherwise: a non-neutral immediate in a TRUSTED: body
-\ (E-T0-IMMEDIATE), `is` naming a primitive in a TRUSTED: body (E-T0-DEFER; the
-\ checker refuses it in a checked body), a counted string past 255 bytes in a
-\ does> clause (E-T0-LITERAL; the checker refuses a non-neutral immediate in a
-\ clause even under TRUSTED:), after which the checker's rollback depth is back
-\ where it was and the definer's name defined cleanly compiles and its child
-\ runs, so the refusal rolled back the checker frame, and a definition while a
-\ target shadow is open (E-T0-SHADOW); a tick of an undefined word is the
-\ engine's undefined refusal, as under tier 1; a definition after them proves a
-\ refusal leaves the compiler idle.
-\
-\ PROCESS BOUNDARY. T0:INSTALL replaces the dispatch for the rest of the
-\ process and nothing restores it, so this file is its suite row's only file:
-\ a file loaded after it would be compiled by T0.
+\ this file loads after `1 set-tier`, test words included, is compiled by T0.
+\ The checker refuses every other operation over a wide value, so no row reaches
+\ E-T0-BUNDLE. PROCESS BOUNDARY: nothing restores the dispatch, so this file is
+\ its suite row's only file.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -1024,6 +919,9 @@ private
    ROW @ 1 T=  ROW cell+ @ 2 T=  ROW 2 cells + @ 3 T=
    T0-CMP FFI-CB:UNBIND ;
 
+\ Each text is one tier 1 accepts or refuses otherwise. The checker refuses `is`
+\ naming a primitive in a checked body, and a non-neutral immediate in a does>
+\ clause even under TRUSTED:, so the rows use a TRUSTED: body and a long string.
 : REFUSAL-CASE ( -- )
    s" a non-neutral immediate is refused by name" T-LABEL
    s" TRUSTED: USES-NOTHING ( -- ) T0-INSTALL-TEST:NOTHING ;" TEST-EVAL:RC

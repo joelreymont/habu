@@ -1,14 +1,9 @@
-\ require-cap-test.f - growing require inventory regression.
-\
-\ A require inventory must grow past the former 512-entry limit. The first
-\ case crosses that boundary; the second needs another growth step.
-\
-\ Each case forks a disposable SUBJECT child that resets the require registry,
-\ flips DISCOVERY so synthetic paths never touch the filesystem (required stores
-\ then skips the load), and drives `require` to a target count. The dedup scan and
-\ storage path both run through the real loader.
-\
-\ Registered beside the sister capacity regression test/seal.f.
+\ require-cap-test.f - the require inventory grows past 512 entries (the first
+\ case) and through another growth step (the second). Each case forks a SUBJECT
+\ child that resets the require registry, flips DISCOVERY so synthetic paths
+\ never touch the filesystem (required then skips the load), and drives
+\ `require` to a target count through the real loader's dedup scan and storage
+\ path.
 
 require src/lib/test.f
 require src/lib/test/outcome.f       \ T-TIMED-OUT - the report of a child past its deadline
@@ -29,7 +24,7 @@ variable ERR-U
 variable RC-N
 variable EXITED?
 
-\ ---- forge builder: a child program that fills the require table to K entries --
+\ A child program that fills the require table to K entries.
 
 : FORGE$ ( -- ptr u8 n )  FORGE-BUF FORGE-U @ ;
 
@@ -61,8 +56,6 @@ variable EXITED?
    s" SAME-COUNT" FORGE-APPEND  10 FORGE-C
    FORGE$ ;
 
-\ ---- fork a child on the forge, capture its completion + stderr ---------------
-
 : STORE ( len len outcome ptr u8 n -- ) {: outu:len erru:len oc src:ptr u:n :}
    erru LEN>N ERR-U !
    oc MATCH outcome
@@ -83,8 +76,6 @@ variable EXITED?
 : ASSERT-LOADS ( -- )                   \ child accepted every require and exited clean
    EXITED? @ TTRUE
    RC-N @ 0 T= ;
-
-\ ---- cases -------------------------------------------------------------------
 
 : CASES ( -- )
    s" require inventory grows past 512 entries" T-LABEL

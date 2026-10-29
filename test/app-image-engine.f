@@ -1,23 +1,9 @@
-\ app-image-engine.f - the engine with the image saver loaded, built once per
-\ tree and run in place.
-\
-\ A row that saves an application image used to compile src/habu/app-image.f in
-\ its child before the subject: about 4.8 s of every such child, measured on one
-\ host. So the saver is compiled once, into a keyed image (test/keyed-image.f)
-\ the rows run instead of the engine: img/app-image, the engine with
-\ src/habu/app-image.f loaded and saved. Its key folds that engine's bytes, the
-\ program the builder is handed and the ordered closure of src/habu/app-image.f.
-\ test/preloaded-engine.f builds the linker image on top of this one.
-\
-\ Under a gate the gate's app-image build row settles it before a row that
-\ loads this module starts (test/gate-images.f), so the row only finds it.
-\
-\ RULES FOR A ROW THAT RUNS IT.
-\ 1. Take the path before staging the child's argv or env: a build stages its
-\    own in the same process-wide tables.
-\ 2. A row whose children run ENGINE-CANDIDATE:PATH$ does not itself run on it:
-\    inside an image ENGINE-ID:PATH$ names the image, so outside a gate its
-\    children would run the image too.
+\ The engine with the image saver loaded, built once per tree and run in place:
+\ a keyed image (test/keyed-image.f), img/app-image, the engine with
+\ src/habu/app-image.f loaded and saved, which saves each saving row's child
+\ about 4.8 s. Its key folds that engine's bytes, the builder's program and the
+\ ordered closure of src/habu/app-image.f. test/preloaded-engine.f builds the
+\ linker image on it; under a gate, test/gate-images.f's row builds it first.
 
 require src/lib/errors.f
 require src/lib/fs.f
@@ -61,7 +47,6 @@ variable RESOLVED?
    FAMILY$ ENGINE-KEY PATH-BUF PATH-U KEYED-IMAGE:PATH!
    0 0= RESOLVED? ! ;
 
-\ The builder takes the output image as its only argument.
 : OUT-ARG ( ptr u8 n -- )
    >LEN PROC-ARGV+ ;
 
@@ -73,7 +58,11 @@ public
    KEY-HEX FAMILY$ ENGINE-KEY ENGINE-CANDIDATE:PATH$ PROGRAM$ ['] OUT-ARG
    KEYED-IMAGE:ENSURE ;
 
-\ The keyed image, to run as an engine.
+\ The keyed image, to run as an engine. Take the path before staging the child's
+\ argv or env: a build stages its own in the same process-wide tables. A row
+\ whose children run ENGINE-CANDIDATE:PATH$ does not itself run on it: inside an
+\ image ENGINE-ID:PATH$ names the image, so outside a gate its children would
+\ run the image too.
 : PATH$ ( -- ptr u8 n )
    ENSURE
    PATH-BYTES ;

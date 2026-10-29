@@ -69,11 +69,10 @@ variable GE-SCRIPT-U
    SB$ s" caught throw control output" GE-EXPECT-OUT
    s" PASS: uncaught top-level throw exits are reported, never masked" type cr ;
 
-\ die writes its message as ONE LINE and exits: the span, then exactly one
-\ newline (src/habu/habu1.f BDIE). An EMPTY span writes NOTHING, so a site that
-\ already ended its own report with `cr` passes `s" "` and adds no blank line.
-\ The rule is what keeps a parent that reports the child's exit on the same
-\ stream from continuing the child's last line (dot habu-die-writes-its).
+\ die writes its span then exactly one newline (src/habu/habu1.f BDIE); an empty
+\ span writes nothing, so a site that already ended its report with `cr` passes
+\ `s" "`. A parent reporting the child's exit on the same stream then never
+\ continues the child's last line.
 : GE-DIE-LINE ( -- )
    S\" s\q boom\q 7 die" 7 s" die exits with its own rc" RUNTIME-RUNNER:LINE-RC
    S\" boom\n" s" die ends its message with one newline" GE-EXPECT-ERR
@@ -85,20 +84,12 @@ variable GE-SCRIPT-U
    s" " s" a reported die adds no second line" GE-EXPECT-ERR
    s" PASS: die writes one line; an empty span writes nothing" type cr ;
 
-\ Interpret-mode transports of a wide layout bundle SILENTLY CORRUPTED: the
-\ top-level stack ops move one physical cell, so a TRUSTED-seeded 2-cell
-\ bundle followed by `dup . . . .` printed the tag twice and then read below
-\ the seed (9 9 7 <garbage>, rc 0) - fail-open through any TRUSTED boundary
-\ at the unchecked REPL (dot habu-tfam-12-interpret-10b385b1). The engine
-\ fails closed: executing (or ticking) a DNAME-WIDE-flagged word at interpret
-\ level dies with a named diagnostic before the bundle can land on the
-\ untyped interpret stack. The flag is CHECKER-COMPUTED: the record choke
-\ point (E-ADD-EFFECT) scans the four effect rows with T-WIDTH (quotation
-\ sub-effects included) and the engine publish tails consume the latch
-\ (rec-wide-publish -> wide-mark) after ndict++ — no manual marking anywhere
-\ in this fixture. Checked definitions own bundle work; the guard leg proves
-\ a compiled call of the SAME marked word still compiles and runs at top
-\ level, and the scalar leg proves a one-cell TRUSTED word stays unmarked.
+\ Executing or ticking a DNAME-WIDE word at interpret level dies with a named
+\ diagnostic before a layout bundle lands on the untyped interpret stack, whose
+\ stack ops move one physical cell. The checker computes the flag: E-ADD-EFFECT
+\ scans the four effect rows with T-WIDTH (quotation sub-effects included) and
+\ rec-wide-publish -> wide-mark consumes it after ndict++; nothing here marks by
+\ hand. The guard leg: a compiled call of the same word still runs at top level.
 : GE-ILAYOUT-PRELUDE ( -- )
    s" SUMTYPE gewide<a,b>" GE-SRC-LINE
    s"   VARIANT ok a ;VARIANT" GE-SRC-LINE
@@ -127,8 +118,7 @@ variable GE-SCRIPT-U
    SB-RESET s" 9" SB-APPEND GE-SB-LF s" 7" SB-APPEND GE-SB-LF
    SB$ s" checked wide transport guard output" GE-EXPECT-OUT ;
 
-\ negative control: a one-cell TRUSTED word is NOT marked by the checker scan
-\ and still interprets at top level (rc 0, value printed).
+\ A one-cell TRUSTED word is not marked and still interprets at top level.
 : GE-ILAYOUT-SCALAR ( -- )
    GE-HB-RESET
    GE-SRC-RESET
@@ -141,8 +131,7 @@ variable GE-SCRIPT-U
    SB$ s" scalar trusted word output" GE-EXPECT-OUT ;
 
 \ A definer whose head moves a layout value lowers it at tier 0 through the
-\ pass-2 re-run, which then reaches `does>` and steps to the clause's
-\ certificate. It used to fail closed at the trigger (rc 75).
+\ pass-2 re-run, which reaches `does>` and steps to the clause's certificate.
 : GE-DOES-WIDE ( -- )
    GE-HB-RESET
    GE-SRC-RESET
@@ -155,9 +144,9 @@ variable GE-SCRIPT-U
    SB-RESET s" 5" SB-APPEND GE-SB-LF
    SB$ s" does> head wide facts output" GE-EXPECT-OUT ;
 
-\ The clause's own width facts, under a TRUSTED: head the unjudged scan
-\ certifies: the clause swaps a layout value past a cell, which tier 0 lowered
-\ cell by cell before the clause had a certificate (printed 9 5 7).
+\ Under a TRUSTED: head the unjudged scan certifies the clause's own width
+\ facts: tier 0 lowers its swap of a layout value past a cell from that
+\ certificate.
 : GE-DOES-TRUSTED-WIDE ( -- )
    GE-HB-RESET
    GE-SRC-RESET
@@ -200,20 +189,17 @@ variable GE-SCRIPT-U
    75 s" pass-2 frame past the slot reach fails closed" GE-EXPECT-RC
    S\" hb: locals frame over 4096 cells: :}\n" s" pass-2 frame past the slot reach diagnostic" GE-EXPECT-ERR ;
 
-\ A created word's clause effect is an effect like any other: `does>
-\ ( -- gewide<n,n> )` publishes a wider-than-cell layout value, so the created
-\ record must carry the same DNAME-WIDE mark a `:` word with that effect carries
-\ and a bare call must fail closed. It did not: the does> publish tail skipped
-\ the wide tail, so `64 SPAN-BUFFER: PBUF` then a bare `PBUF` landed the span's
-\ two cells on the untyped interpret stack, rc 0 (dot habu-mark-a-wide-851cab15).
-\ No library type is used here - the definer is local to the case, so the guard
-\ is pinned by the engine's own publication, not by src/lib/span.f.
+\ A created word's clause effect is an effect like any other: `does> ( --
+\ gewide<n,n> )` publishes a wider-than-cell value, so the created record
+\ carries the DNAME-WIDE mark a `:` word with that effect carries and a bare
+\ call fails closed. The definer is local, so the guard is pinned by the
+\ engine's own publication, not by src/lib/span.f.
 : GE-DOES-WIDE-BARE ( -- )
    s" : GE-WPAIR: ( -- ) create 0 , 0 , does> ( -- gewide<n,n> ) drop GE-WMK ; GE-WPAIR: GE-WP  GE-WP drop ."
       s" interp layout does> word fails closed" GE-ILAYOUT-CASE ;
 
-\ the same marked created word still compiles and runs inside a checked body,
-\ which is where bundle work belongs: two cells out, printed top first.
+\ The same marked created word still compiles and runs inside a checked body:
+\ two cells out, printed top first.
 : GE-DOES-WIDE-COMPILED ( -- )
    GE-HB-RESET
    GE-SRC-RESET
@@ -228,8 +214,8 @@ variable GE-SCRIPT-U
    SB-RESET s" 9" SB-APPEND GE-SB-LF s" 7" SB-APPEND GE-SB-LF
    SB$ s" checked does> wide transport output" GE-EXPECT-OUT ;
 
-\ negative control: a does>-created word whose clause effect is one cell wide is
-\ NOT marked and still interprets bare (rc 0, value printed).
+\ A does>-created word whose clause effect is one cell is not marked and still
+\ interprets bare.
 : GE-DOES-SCALAR ( -- )
    GE-HB-RESET
    GE-SRC-RESET
@@ -304,7 +290,7 @@ private
    s" : GWN-GET ( n -- n ) GWN-AT @ MATCH gwfn gnn OF 0 ENDOF gns OF 13 * ENDOF ;MATCH ;" GE-SRC-LINE
    s" : GWN-BAD ( n -- ) {: k:n :} GWN-FORGE k GWN-AT ! ;" GE-SRC-LINE ;
 
-: ROUND ( -- )                   \ both widths store and load their own values back
+: ROUND ( -- )
    GE-HB-RESET
    GE-SRC-RESET
    SRC
@@ -360,17 +346,13 @@ public
 package RUNTIME-REGRESSION
 
 
-\ Dictionary-capacity exit diagnostic (dot habu-gate-runner-entry-81c84af0):
-\ a tool closure needing more than DICT-CAP records died exit_group(77)
-\ writing only the CURRENT TOKEN to fd 2 - a lone ':' byte, label-free and
-\ unattributable. The definer capacity arms must emit a fixed label first:
-\ `hb: dictionary full at: <token>`; rc 77 is the deterministic contract and
-\ stays. The fixture is Habu-generated and scales with the baked DICT-CAP
-\ (src/habu/layout.f is in the runtime prefix): DICT-CAP+1 unchecked trivial
-\ definitions always overflow regardless of the boot dictionary count.
+\ Over DICT-CAP records, the definer capacity arms write the label
+\ `hb: dictionary full at: <token>` to fd 2 and exit 77, the deterministic
+\ contract. The fixture scales with the baked DICT-CAP (src/habu/layout.f is in
+\ the runtime prefix): DICT-CAP+1 unchecked trivial definitions always overflow.
 variable GE-DFULL-P                 \ generated-source cursor offset
-variable GE-DFULL-DIV               \ decimal-render divisor
-variable GE-DFULL-I                 \ copy/definition loop index
+variable GE-DFULL-DIV
+variable GE-DFULL-I
 
 : GE-DFULL-C ( ptr u8 n -- ) {: buf:ptr c:n :}
    c buf GE-DFULL-P @ + c!
@@ -395,7 +377,7 @@ variable GE-DFULL-I                 \ copy/definition loop index
    buf i GE-DFULL-DIGITS
    buf 32 GE-DFULL-C  buf 59 GE-DFULL-C  buf 10 GE-DFULL-C ;
 
-: GE-DFULL-WRITE ( ptr u8 NUM:alloc-byte-len -- ) {: buf:ptr len :}   \ generate the define-past-cap program into the scoped buffer, then persist it
+: GE-DFULL-WRITE ( ptr u8 NUM:alloc-byte-len -- ) {: buf:ptr len :}
    0 GE-DFULL-P !
    buf s" 0 set-check" GE-DFULL-S  buf 10 GE-DFULL-C
    0 GE-DFULL-I !
@@ -414,20 +396,14 @@ variable GE-DFULL-I                 \ copy/definition loop index
    s" hb: dictionary full at: " s" dict-capacity exit diagnostic" GE-EXPECT-ERR-HAS
    s" PASS: dictionary-capacity exit is labeled" type cr ;
 
-\ Per-definition body-text capacity (dot habu-name-the-per-56a594f3). One
-\ definition's captured source text lives in BODYBUF-CAP bytes of the DATA header
-\ (src/habu/layout.f), the buffer the check hook certifies from. A definition
-\ holding about 8 KiB of string literals used to refuse with the offending
-\ LITERAL echoed to fd 2 — no label, no newline, no count, no ceiling and no
-\ definition name — so a consumer had only "status 71" to act on (aspen/Tender
-\ 2026-09-17, nine 900-byte `s"` arms; eight loaded). The refusal now states the
-\ buffer, the ceiling, the definition and the bytes the capture needed, and it is
-\ a catchable rc-71 throw inside evaluate instead of a raw exit.
-\ Both fixtures scale with BODYBUF-CAP: layout.f is in the runtime prefix, so the
-\ suite reads the same constant the engine was built with.
+\ One definition's captured source text lives in BODYBUF-CAP bytes of the DATA
+\ header (src/habu/layout.f), the buffer the check hook certifies from. Past it
+\ the refusal names the buffer, the ceiling, the definition and the bytes the
+\ capture needed, as a catchable rc-71 throw inside evaluate. Both fixtures
+\ scale with BODYBUF-CAP: layout.f is in the runtime prefix.
 27 constant GE-BCAP-FIXED   \ what the fixture's own tokens cost the capture: `GEBIG ( -- ptr u8 n ) s" ` is 25 bytes of tokens-plus-separators, and the literal is captured with its closing quote and one separator
 variable GE-BCAP-P          \ generated-source cursor offset
-variable GE-BCAP-I          \ copy/fill loop index
+variable GE-BCAP-I
 variable GE-BCAP-N          \ literal payload bytes for the fixture being written
 
 : GE-BCAP-C ( ptr u8 n -- ) {: buf:ptr c:n :}
@@ -441,7 +417,7 @@ variable GE-BCAP-N          \ literal payload bytes for the fixture being writte
       GE-BCAP-I @ 1+ GE-BCAP-I !
    repeat ;
 
-: GE-BCAP-FILL ( ptr u8 n -- ) {: buf:ptr u:n :}      \ u payload bytes
+: GE-BCAP-FILL ( ptr u8 n -- ) {: buf:ptr u:n :}
    0 GE-BCAP-I !
    begin GE-BCAP-I @ u < while
       buf 97 GE-BCAP-C
@@ -483,13 +459,10 @@ variable GE-BCAP-N          \ literal payload bytes for the fixture being writte
    BODYBUF-CAP 1+ GE-BCAP-DIAG$ s" body-capacity exit diagnostic" GE-EXPECT-ERR-HAS
    s" PASS: per-definition body-text capacity is named with its count" type cr ;
 
-\ BEGIN nesting per definition. Tier 0 pushes one JIT-SNAP frame per open
-\ `if`, `begin` or `while`, so the frame area holds the control-flow cap's
-\ worth: CFSTK-DEPTH-MAX nested `begin`s fill it, and GE-CF-DEPTH-CAP holds
-\ the over-cap refusal. The checker refuses a nest this deep, so the script
-\ turns it off with `0 set-check`: the frames, not the certificate, are under
-\ test. The nest runs, so all its frames are pushed and popped without a
-\ refusal.
+\ Tier 0 pushes one JIT-SNAP frame per open `if`, `begin` or `while`; the frame
+\ area holds CFSTK-DEPTH-MAX of them, and GE-CF-DEPTH-CAP holds the over-cap
+\ refusal. The checker refuses a nest this deep, so the script runs
+\ `0 set-check`: the frames, not the certificate, are under test.
 variable GE-NEST-P
 variable GE-NEST-I
 
@@ -539,20 +512,14 @@ variable GE-NEST-J
    S\" 6\n" s" BEGIN nesting to the control-flow cap answers" GE-EXPECT-OUT-HAS
    s" PASS: BEGIN frames hold the control-flow cap's nesting" type cr ;
 
-\ DP heap (allot/,/c,/definer) must stop below the profiler counter band reserved at
-\ the top PROF-CNT-BYTES of the DATA region (layout.f). DP-CHECK (habu1.f) caps the
-\ heap at DATA-SIZE - PROF-CNT-BYTES so a large allot + prof-on can never let profiler
-\ writes corrupt user data (dot habu-bound-profiler-counter-235c5f48). Over-bound fails
-\ closed NAMED "hb: data space out of range: DP <dp> of <cap> bytes" on fd 2 (catchable
-\ rc-76 throw inside evaluate, exit 76 at top level). RED discriminator: on the unfixed
-\ base an allot one byte INTO the band SUCCEEDS silently (rc 0, no message) and clobbers
-\ a counter. `data-base`/`DATA-SIZE`/`PROF-CNT-BYTES`/`here` are runtime words, so the
-\ boundary is computed against the live band base.
-\ The two numbers are the whole point of the line (dot habu-name-the-ceiling-98ca1f47:
-\ the label alone made a consumer rebuild the engine to read its own ceiling), so both
-\ rows assert the WHOLE of stderr against the line composed from the same constants.
-\ The child reads its program from stdin, so no source file is open and the LCOMPILEDIE
-\ tail ends the line with the newline alone; a file-loaded refusal ends ` at <path>:<line>`.
+\ DP-CHECK (habu1.f) caps the DP heap (allot , c, definers) at DATA-SIZE -
+\ PROF-CNT-BYTES, below the profiler counter band at the top of DATA (layout.f).
+\ Over-bound fails closed with "hb: data space out of range: DP <dp> of <cap>
+\ bytes" on fd 2 (catchable rc-76 throw inside evaluate, exit 76 at top level).
+\ Both rows assert the whole of stderr, numbers included, against the line
+\ composed from the same runtime constants. The child reads stdin, so no source
+\ file is open and the LCOMPILEDIE tail ends the line with the newline alone; a
+\ file-loaded refusal ends ` at <path>:<line>`.
 : GE-DATA-DIAG$ ( n -- ptr u8 n ) {: dp:n :}
    SB-RESET
    s" hb: data space out of range: DP " SB-APPEND
@@ -564,20 +531,18 @@ variable GE-NEST-J
    SB$ ;
 
 : GE-DATA-FULL ( -- )
-   \ one byte past the band base rejects (base: succeeds silently — the RED discriminator).
-   \ The refused DP is the one the program asked for: `here` is the DP the allot starts
-   \ from and the count carries it to cap + 1, so the line reads DP cap+1 of cap bytes.
+   \ One byte past the band base refuses; `here` is the DP the allot starts
+   \ from, so the line reads DP cap+1 of cap bytes.
    s" data-base DATA-SIZE PROF-CNT-BYTES - + here - 1+ allot"
       76 s" data-space over-band exit rc" RUNTIME-RUNNER:LINE-RC
    DATA-SIZE PROF-CNT-BYTES - 1+ GE-DATA-DIAG$
       s" data-space over-band diagnostic" GE-EXPECT-ERR
-   \ allot ending EXACTLY at the band base (DP == DATA + DATA-SIZE - PROF-CNT-BYTES, the
-   \ max the <= bound admits) must SUCCEED and exit clean.
+   \ An allot ending exactly at the band base, the most the bound admits,
+   \ succeeds.
    s" data-base DATA-SIZE PROF-CNT-BYTES - + here - allot"
       0 s" data-space band-base allot succeeds" RUNTIME-RUNNER:LINE-RC
-   \ the definer sink states ITS candidate: from the band base a `variable` advances the
-   \ DP one cell (the create rounding is already a no-op at the cell-aligned base), so the
-   \ same line reports cap + 8. A second sink, a second register carrying the candidate.
+   \ From the band base a `variable` advances DP one cell (create rounding is a
+   \ no-op at the cell-aligned base), so the definer sink reports cap + 8.
    s" data-base DATA-SIZE PROF-CNT-BYTES - + here - allot  variable GEDVAR"
       76 s" data-space definer-sink exit rc" RUNTIME-RUNNER:LINE-RC
    DATA-SIZE PROF-CNT-BYTES - 8 + GE-DATA-DIAG$
@@ -622,10 +587,9 @@ variable GE-NEST-J
    s" PASS: process/pty primitives" type cr ;
 
 : GE-DEREF-1 ( ptr u8 n -- ) {: tok:ptr toku:n :}
-   \ Run one deref/execute primitive as the LITERAL FIRST top-level token on an
-   \ empty stack: its seed record's min-in must make the band refuse it with the
-   \ underdepth reject + exit 70 before the body runs, never a signal (death
-   \ after the crash dump). Unguarded, the body faults reading below the base.
+   \ A deref/execute primitive as the first top-level token on an empty stack:
+   \ its seed record's min-in makes the band refuse it with the underdepth
+   \ reject and exit 70 before the body runs; unguarded, the body faults.
    GE-HB-RESET
    GE-SRC-RESET
    tok toku GE-SRC-LINE
@@ -638,7 +602,7 @@ variable GE-NEST-J
    s" @" GE-DEREF-1
    s" !" GE-DEREF-1
    s" execute" GE-DEREF-1
-   \ positive control: a valid store satisfies min-in -> succeeds rc 0 (no false guard).
+   \ A valid store satisfies min-in and succeeds (no false guard).
    GE-HB-RESET
    GE-SRC-RESET
    s" variable GAV 5 GAV !" GE-SRC-LINE
@@ -676,10 +640,8 @@ variable GE-NEST-J
    s" PASS: execute-floor flags an underflowed xt and resets the stack" type cr ;
 
 : GE-NESTED-DEF-SRC ( ptr u8 n -- ) {: body:ptr bodyu:n :}
-   \ Build: : W ( -- ) s" <body>" evaluate-closed ;  then run W.
-   \ W itself certifies, since `evaluate-closed` is ( ptr u8 n -- ); the
-   \ definition compiled BY <body> is checked by the active hook, from inside
-   \ W's execution.
+   \ W certifies, since `evaluate-closed` is ( ptr u8 n -- ); the definition
+   \ compiled by <body> is checked by the active hook from inside W's execution.
    GE-SRC-RESET
    s" : W ( -- )" GE-SRC+  GE-SRC-SP
    body bodyu GE-SRC-S"
@@ -687,9 +649,8 @@ variable GE-NEST-J
    s" W" GE-SRC-LINE ;
 
 : GE-NESTED-CHECKED-DEF ( -- )
-   \ Checker reentrancy across the word-execution boundary: a checked colon
-   \ definition compiled WHILE a word executes must certify + publish correctly.
-   \ Proven: ZZ compiles under the active hook from inside W, then runs -> 5, rc 0.
+   \ Checker reentrancy: a checked colon definition compiled while a word
+   \ executes certifies and publishes.
    GE-HB-RESET
    s" : ZZ ( -- n ) 5 ;" GE-NESTED-DEF-SRC
    s" ZZ ." GE-SRC-LINE
@@ -700,9 +661,8 @@ variable GE-NEST-J
    s" PASS: nested checked def certifies + runs (reentrant hook)" type cr ;
 
 : GE-NESTED-BAD-DEF ( -- )
-   \ The nested definition is checked on its own: a bad-effect nested def
-   \ compiled from inside an executing word must still be REJECTED (rc 70).
-   \ Proven: BAD ( -- n ) drop is rejected at 'drop'.
+   \ A bad-effect definition compiled from inside an executing word is still
+   \ rejected (rc 70).
    GE-HB-RESET
    s" : BAD ( -- n ) drop ;" GE-NESTED-DEF-SRC
    RUNTIME-RUNNER:BUFFER
@@ -712,9 +672,9 @@ variable GE-NEST-J
    s" PASS: nested bad-effect def rejected from inside a word" type cr ;
 
 : GE-EVAL-UNDEF-SRC ( -- )
-   \ The dot reproducer: an undefined word aborts a nested `:`-compile INSIDE
-   \ `evaluate-closed`, called from GO. Mid-compile the JIT dict region is RW;
-   \ the aborted definition must unwind cleanly, not fault.
+   \ An undefined word aborts a nested `:`-compile inside `evaluate-closed`,
+   \ called from GO. Mid-compile the JIT dict region is RW; the aborted
+   \ definition must unwind cleanly, not fault.
    GE-SRC-RESET
    s" : GO ( -- )" GE-SRC+  GE-SRC-SP
    s" : FOO ( -- ) UNDEFINED-WORD-XYZ ;" GE-SRC-S"
@@ -722,9 +682,8 @@ variable GE-NEST-J
 
 : GE-EVAL-UNDEF-CATCHABLE ( -- )
    \ Under an enclosing quotation catch, the aborted nested :-compile unwinds the
-   \ eval frame (partial def dropped) and delivers a CATCHABLE throw (code 70) to
-   \ the catch -> `. cr` prints 70 and the process exits 0. Was: native register
-   \ dump / SIGBUS exit 134 (W^X: returned into RW dict code without restoring RX).
+   \ eval frame (partial def dropped) and delivers a catchable throw (code 70);
+   \ the unwind restores RX before returning into dict code (W^X).
    GE-HB-RESET
    GE-EVAL-UNDEF-SRC
    s" : T1 ( -- ) [: GO ;] catch . cr ;" GE-SRC-LINE
@@ -750,8 +709,8 @@ variable GE-NEST-J
    s" PASS: undefined in nested :-compile w/o catch -> fail-closed rc70" type cr ;
 
 : GE-COMPILE-UNDEF-TOPLEVEL ( -- )
-   \ The top-level undefined-in-:-compile path (EVALD==0, no eval frame) is
-   \ unchanged by the eval-frame recovery fix: E-UNDEFINED + rc 70, never a signal.
+   \ The top-level undefined-in-:-compile path (EVALD==0, no eval frame):
+   \ E-UNDEFINED + rc 70, never a signal.
    GE-HB-RESET
    GE-SRC-RESET
    s" : FOO ( -- ) UNDEFINED-WORD-XYZ ;" GE-SRC-LINE
@@ -767,9 +726,9 @@ variable GE-NEST-J
    GE-COMPILE-UNDEF-TOPLEVEL ;
 
 : GE-EVAL-CATCH-SRC ( -- )
-   \ The dot-pair reproducer wrapper (test/type-ctor-suite.f TCE-CATCH shape):
-   \ a quotation catch over the closed INCLUDE-EVALUATE boundary. The caller
-   \ appends one failing source string; the caught code prints to stdout.
+   \ A quotation catch over the closed INCLUDE-EVALUATE boundary, the shape of
+   \ test/type-ctor-suite.f TCE-CATCH. The caller appends one failing source
+   \ string; the caught code prints to stdout.
    GE-SRC-RESET
    \ GECA holds an ADDRESS, so it is a declared cell: a raw `variable` admits
    \ scalars only and `GECA @` as a `ptr u8` is E-RAW-CELL-PTR. GECU holds a
@@ -786,9 +745,8 @@ variable GE-NEST-J
    RUNTIME-RUNNER:BUFFER ;
 
 : GE-EVAL-INTERP-UNDEF-CATCH ( -- )
-   \ Dot habu-interpret-err-under-8876b500: an undefined INTERPRET-mode token
-   \ inside [: INCLUDE-EVALUATE ;] catch delivers the catchable RC-REJECT (70)
-   \ of the rc-70 load-path contract — never a swallowed 0.
+   \ An undefined interpret-mode token inside [: INCLUDE-EVALUATE ;] catch
+   \ delivers the catchable RC-REJECT (70), never a swallowed 0.
    s" qwertyuiop" GE-EVAL-CATCH-RUN
    s" hb eval interp-undef catch rc" GE-EXPECT-OK
    s" 70" s" hb eval interp-undef catch code" GE-EXPECT-OUT-HAS
@@ -797,9 +755,7 @@ variable GE-NEST-J
    s" PASS: interpret undefined under catch+evaluate -> caught 70" type cr ;
 
 : GE-EVAL-UNDERFLOW-CATCH ( -- )
-   \ Dot 8876b500 residual: interpret-level UNDERFLOW inside the same wrapper
-   \ was the one interpret failure still rolling the eval frame back with only
-   \ EVALERR set — catch read 0 (fail-open). It must be caught 70 exactly like
+   \ Interpret-level underflow inside the same wrapper is caught 70 like
    \ E-UNDEFINED, with the sentinel stack under the wrapper intact.
    GE-HB-RESET
    GE-EVAL-CATCH-SRC
@@ -815,8 +771,7 @@ variable GE-NEST-J
 
 : GE-EVAL-UNDERFLOW-FAILCLOSED ( -- )
    \ No handler: the underflow throw escapes the eval frame and fails closed rc
-   \ 70 (uncaught-throw exit), never continuing past the failed evaluate. The
-   \ rollback-and-return path printed the marker and exited 0 (fail-open).
+   \ 70 (uncaught-throw exit), never continuing past the failed evaluate.
    GE-HB-RESET
    GE-SRC-RESET
    GE-SINK-LINE
@@ -831,8 +786,8 @@ variable GE-NEST-J
    s" PASS: interpret underflow in evaluate w/o catch -> fail-closed rc70" type cr ;
 
 : GE-UNDERFLOW-TOPLEVEL-UNCHANGED ( -- )
-   \ Plain-stdin contract pin for the fix: top-level underflow (EVALD==0) keeps
-   \ the E-UNDERFLOW diagnostic + rc 70 exactly.
+   \ Plain stdin: top-level underflow (EVALD==0) keeps the E-UNDERFLOW
+   \ diagnostic and rc 70.
    GE-HB-RESET
    GE-SRC-RESET
    GE-SINK-LINE
@@ -859,11 +814,9 @@ variable GE-NEST-J
    diag diagu label labelu GE-EXPECT-ERR-HAS ;
 
 : GE-EVAL-DEF-REJECT-CATCH ( -- )
-   \ Dot habu-def-compile-failure-7182eeb2 lock-in: a definition whose engine
-   \ compile fails inside [: INCLUDE-EVALUATE ;] catch is a catchable throw
-   \ with the eval frame rolled back. Exact dot repro (undefined in a :-body,
-   \ formerly a habu-crash regs dump) plus the orderly reject battery — every
-   \ shape that fail-closes rc 70 on plain stdin must be caught 70 here.
+   \ A definition whose engine compile fails inside [: INCLUDE-EVALUATE ;] catch
+   \ is a catchable throw with the eval frame rolled back: every shape that
+   \ fails closed rc 70 on plain stdin is caught 70 here.
    s" : XG1 ( -- ) qwertyuiop ;" s" E-UNDEFINED"
       s" hb eval def-undef catch" GE-EVAL-DEF-REJECT-1
    s" : GDR1 ( -- ) drop ;" s" non-certified definition: gdr1"
@@ -877,12 +830,10 @@ variable GE-NEST-J
    s" PASS: def-compile failures under catch+evaluate -> caught 70" type cr ;
 
 : GE-ORPHAN-CLOSER-1 ( ptr u8 n ptr u8 n -- ) {: tok:ptr toku:n label:ptr labelu:n :}
-   \ Plain stdin: a definition that opens no control-flow frame but names a closer
-   \ must fail closed rc 70 with the named engine diagnostic + the offending token,
-   \ NEVER a SIGBUS register dump. Root cause (dot habu-orphan-control-
-   \ word-0370b49d): every closer's compile-time patch pops the control-flow stack
-   \ through LCFPOP; with an empty stack it underflowed to a bogus branch origin that
-   \ LPAT then dereferenced. LCFPOP now guards depth 0 and rejects like E-UNDEFINED.
+   \ Plain stdin: a closer with no open control-flow frame fails closed rc 70
+   \ with the named engine diagnostic and the token, never a register dump.
+   \ Every closer's compile-time patch pops the control-flow stack through
+   \ LCFPOP, which guards depth 0; past it LPAT dereferences a bogus origin.
    GE-HB-RESET
    GE-SRC-RESET
    s" : XI ( -- ) " GE-SRC+
@@ -896,9 +847,7 @@ variable GE-NEST-J
 
 : GE-ORPHAN-CLOSER ( -- )
    \ Every control-flow closer, orphaned at top level, and the catchable-under-eval
-   \ subset. THEN/ELSE/REPEAT/LOOP/+LOOP/ENDOF crashed rc 134 before the fix;
-   \ UNTIL/AGAIN/ENDCASE were orderly by luck (no LPAT deref / zeroed slack cell)
-   \ but now share the one guarded LCFPOP reject path.
+   \ subset; all share the one guarded LCFPOP reject path.
    s" THEN"    s" hb orphan then"    GE-ORPHAN-CLOSER-1
    s" ELSE"    s" hb orphan else"    GE-ORPHAN-CLOSER-1
    s" REPEAT"  s" hb orphan repeat"  GE-ORPHAN-CLOSER-1
@@ -908,8 +857,8 @@ variable GE-NEST-J
    s" +LOOP"   s" hb orphan +loop"   GE-ORPHAN-CLOSER-1
    s" ENDOF"   s" hb orphan endof"   GE-ORPHAN-CLOSER-1
    s" ENDCASE" s" hb orphan endcase" GE-ORPHAN-CLOSER-1
-   \ Under [: INCLUDE-EVALUATE ;] catch: the former SIGBUS closers deliver a
-   \ catchable RC-REJECT (70), the eval frame rolled back, process exits 0.
+   \ Under [: INCLUDE-EVALUATE ;] catch the closers deliver a catchable
+   \ RC-REJECT (70), the eval frame rolled back, process exits 0.
    s" : XO1 ( -- ) THEN ;" s" control-flow closer without opener"
       s" hb eval orphan-then catch" GE-EVAL-DEF-REJECT-1
    s" : XO2 ( -- ) LOOP ;" s" control-flow closer without opener"
@@ -929,17 +878,13 @@ private
 
 : REJECT ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
    {: open:ptr openu:n tok:ptr toku:n diag:ptr diagu:n label:ptr labelu:n :}
-   \ Plain stdin: a loop-family word (LOOP / +LOOP / LEAVE) whose innermost open
-   \ control-flow frame is not a `do` frame -- or which has no open frame at all --
-   \ must fail closed rc 70 with the named engine diagnostic and the offending
-   \ token, NEVER a register dump. Root cause (dot habu-fix-loop-closer-
-   \ 9e5d012e): the DO/LEAVE level stack (LVD-CELL depth + the LVH/LVF level
-   \ arrays) is the loop family's opener record and LCFPOP's orphan guard does not
-   \ cover it. With an IF or BEGIN frame open, LOOP/+LOOP still popped the CF stack
-   \ happily and then indexed level -1 of the level stack; LVH's cell -1 IS
-   \ LVD-CELL itself, so LBCHAIN was handed a junk chain head and dereferenced it.
-   \ LOOP/+LOOP now refuse an entry that is not a DO's (habu2.f C-CF-AT) and
-   \ LEAVE refuses with no open DO level (LVREQUIRE).
+   \ Plain stdin: LOOP, +LOOP or LEAVE whose innermost open control-flow frame
+   \ is not a `do` frame, or with no open frame, fails closed rc 70 with the
+   \ named engine diagnostic and the token. The DO/LEAVE level stack (LVD-CELL
+   \ depth, the LVH/LVF level arrays) is the loop family's opener record, which
+   \ LCFPOP's guard does not cover; LVH's cell -1 is LVD-CELL itself. LOOP/+LOOP
+   \ refuse an entry that is not a DO's (habu2.f C-CF-AT); LEAVE refuses with
+   \ no open DO level (LVREQUIRE).
    GE-HB-RESET
    GE-SRC-RESET
    s" : XM ( -- ) " GE-SRC+
@@ -954,12 +899,10 @@ private
    s" habu-crash" label labelu GE-EXPECT-ERR-LACKS ;
 
 : FORGE ( -- )
-   \ A stray LEAVE used to STORE a code offset into LVH level -1, which aliases
-   \ LVD-CELL: that forged a non-zero open-level count out of nothing, so a later
-   \ LOOP would sail past any count-only check and walk a bogus LEAVE chain.
-   \ Guarding LEAVE closes the forge at its source, which is what makes the
-   \ LOOP/+LOOP guard an existence check on a sole-writer count rather than a
-   \ value test. The definition is therefore rejected at LEAVE, not at LOOP.
+   \ A stray LEAVE would store a code offset into LVH level -1, which aliases
+   \ LVD-CELL and forges an open-level count. Guarding LEAVE at the source makes
+   \ the LOOP/+LOOP guard an existence check on a sole-writer count, so the
+   \ definition is rejected at LEAVE, not at LOOP.
    GE-HB-RESET
    GE-SRC-RESET
    s" : XMF ( -- ) 1 IF LEAVE drop LOOP ;" GE-SRC-LINE
@@ -985,9 +928,7 @@ private
 public
 
 : RUN ( -- )
-   \ Every loop-family word against an IF frame, a BEGIN frame, and no frame at
-   \ all. The IF and BEGIN rows were rc 134 register dumps for LOOP/+LOOP and a
-   \ silent LVD-CELL corruption for LEAVE before the guard.
+   \ Every loop-family word against an IF frame, a BEGIN frame, and no frame.
    s" 1 IF drop"    s" LOOP"   KIND$   s" hb mispair if-loop"     REJECT
    s" 1 IF drop"    s" +LOOP"  KIND$   s" hb mispair if-+loop"    REJECT
    s" 1 IF"         s" LEAVE"  ORPHAN$ s" hb mispair if-leave"    REJECT
@@ -1007,11 +948,11 @@ package RUNTIME-REGRESSION
 
 
 : GE-SET-CHECK-NEG ( -- )
-   \ set-check is fail-closed at install (dot habu-stdlib-check-hook-fd883aea): a
-   \ non-zero argument outside the live JIT code window [DBASE, CP) dies with a
-   \ NAMED rc-70 diagnostic instead of BLRing into garbage at the next publish.
-   \ 1 (below DBASE) and `dbase@ HOOK-CELL + @` (a code word mis-read from the
-   \ wrong CODE base) are the two RCA shapes; both must exit 70, never signal.
+   \ set-check fails closed at install: a non-zero argument outside the live JIT
+   \ code window [DBASE, CP) dies with a named rc-70 diagnostic instead of
+   \ branching into garbage at the next publish. 1 (below DBASE) and
+   \ `dbase@ HOOK-CELL + @` (a code word read from the wrong CODE base) both
+   \ exit 70, never a signal.
    GE-HB-RESET
    GE-SRC-RESET s" 1 set-check" GE-SRC-LINE
    RUNTIME-RUNNER:BUFFER
@@ -1039,8 +980,8 @@ variable GE-CF-BODY-U
 : GE-CF-BODY$ ( -- ptr u8 n )
    GE-CF-BODY GE-CF-BODY-U @ ;
 
-\ Build ": DEEP ( -- ) " + n * "0 0= if " + n * "then " + " ;" — n balanced,
-\ nested IF/THEN openers, each fed a real bool so a checkable depth certifies.
+\ n nested `0 0= if ... then` pairs, each fed a real bool so a checkable depth
+\ certifies.
 : GE-CF-NEST ( n -- ) {: n:n :}
    GE-CF-BODY-RESET
    s" : DEEP ( -- ) " GE-CF-BODY+
@@ -1049,13 +990,10 @@ variable GE-CF-BODY-U
    s"  ;" GE-CF-BODY+ ;
 
 : GE-CF-OVERCAP-1 ( n ptr u8 n -- ) {: n:n label:ptr labelu:n :}
-   \ Plain stdin: a definition nesting control flow past CFSTK-DEPTH-MAX must fail
-   \ closed rc 70 with the named engine diagnostic + the offending opener token,
-   \ NEVER a SIGABRT/SIGSEGV register dump. Root cause (dot habu-cap-native-
-   \ control-a5669829): LCFPUSH had no overflow cap, so the depth-(cap) record
-   \ spilled past [CFSTK-OFF, DICT-SIZE) into the JIT code area above it — the
-   \ opposite-direction sibling of the LCFPOP orphan-underflow crash. LCFPUSH now
-   \ guards depth == CFSTK-DEPTH-MAX and rejects like the orphan closer.
+   \ Plain stdin: control flow nested past CFSTK-DEPTH-MAX fails closed rc 70
+   \ with the named engine diagnostic and the opener token, never a register
+   \ dump. LCFPUSH guards depth == CFSTK-DEPTH-MAX; past it the record would
+   \ spill past [CFSTK-OFF, DICT-SIZE) into the JIT code area above.
    GE-HB-RESET
    n GE-CF-NEST
    GE-CF-BODY$ RUNTIME-RUNNER:SOURCE
@@ -1065,12 +1003,12 @@ variable GE-CF-BODY-U
    s" habu-crash" label labelu GE-EXPECT-ERR-LACKS ;
 
 : GE-CF-DEPTH-CAP ( -- )
-   \ The over-cap battery. cap+1 is the exact overflow edge; a former hard-crash
-   \ depth well past it both fail closed rc 70 with the diagnostic and no register
-   \ dump. The region-full depth (exactly CFSTK-DEPTH-MAX records fit) is the
-   \ checker's non-certified reject, NOT a cap reject — proving the native cap is
-   \ the region edge. The checker's max checkable depth still compiles rc 0. The
-   \ over-cap reject is catchable under evaluate (RC-REJECT 70 via LEVALREC).
+   \ cap+1 is the exact overflow edge; a depth well past it also fails closed rc
+   \ 70 without a register dump. The region-full depth (exactly CFSTK-DEPTH-MAX
+   \ records fit) is the checker's non-certified reject, not a cap reject, so
+   \ the native cap is the region edge. The checker's max checkable depth
+   \ compiles rc 0. The over-cap reject is catchable under evaluate (RC-REJECT
+   \ 70 via LEVALREC).
    CFSTK-DEPTH-MAX 1 +  s" hb cf-cap plus1"      GE-CF-OVERCAP-1
    CFSTK-DEPTH-MAX 50 + s" hb cf-cap was-crash"  GE-CF-OVERCAP-1
    GE-HB-RESET
@@ -1148,12 +1086,9 @@ variable GE-CF-BODY-U
 : GE-LEAVE-DEEP-VS ( -- )
    \ Tier 0 holds a body's values on the virtual stack, VVAL-OFF's VSMAX cells,
    \ and `leave` releases the locals bound since its loop was entered, counted
-   \ from the frame bytes the LVF-OFF level array kept at `do`. That array lay
-   \ inside the virtual stack ($2C0 is its slot 14), so a loop body holding 15
-   \ or more values overwrote level 0 and its `leave` released a wrong byte
-   \ count: 15 values crashed (rc 134), 16 to VSMAX stopped the compile with
-   \ "transfer immediate out of range" (rc 75), and VSMAX + 1, which write every
-   \ virtual-stack cell and then spill it, crashed.
+   \ from the frame bytes the LVF-OFF level array keeps at `do`; the array must
+   \ not overlap the virtual stack. The rows hold 15 and 16 values (slot 14 is
+   \ $2C0) and VSMAX + 1, which writes every virtual-stack cell, then spills.
    15 0 s" hb leave under 15 values tier 0" GE-LEAVE-VS-CASE
    16 0 s" hb leave under 16 values tier 0" GE-LEAVE-VS-CASE
    VSMAX 1+ 0 s" hb leave past a full virtual stack tier 0" GE-LEAVE-VS-CASE
@@ -1164,15 +1099,13 @@ variable GE-CF-BODY-U
 
 : GE-RXE-CATCH-USABLE ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n code:ptr codeu:n diag:ptr diagu:n :}
-   \ dot habu-raw-exit-compile: one recoverable compile-error misuse evaluated
-   \ under the TCE-CATCH wrapper. The die site (C-DUP-DEF-FAIL / C-PACKAGE-FAIL /
-   \ C-LBRACE-DIE / C-LOCAL-REF / C-DIE-DOES) used to NR-EXIT-GROUP; it now writes
-   \ its diagnostic to fd 2 and routes through LCOMPILEDIE, so inside evaluate the
-   \ aborted compile is a catchable throw of its sysexits code. The caught code
-   \ prints to stdout, then a FRESH definition (GEC-RXOK -> 12321) compiles and
-   \ runs, proving the eval-frame rollback (input cursor + CP/NDICT truncation,
-   \ HIDX skipping the stale rolled-back records) left a usable session. Exit 0,
-   \ never a SIGBUS/register dump.
+   \ One recoverable compile-error misuse under the TCE-CATCH wrapper. The die
+   \ site (C-DUP-DEF-FAIL / C-PACKAGE-FAIL / C-LBRACE-DIE / C-LOCAL-REF /
+   \ C-DIE-DOES) writes its diagnostic to fd 2 and routes through LCOMPILEDIE,
+   \ so inside evaluate the aborted compile is a catchable throw of its sysexits
+   \ code. A fresh definition (GEC-RXOK -> 12321) then compiles and runs: the
+   \ eval-frame rollback (input cursor, CP/NDICT truncation, HIDX skipping the
+   \ stale records) left a usable session.
    GE-HB-RESET
    GE-EVAL-CATCH-SRC
    src srcu GE-SRC-S"
@@ -1187,9 +1120,8 @@ variable GE-CF-BODY-U
 
 : GE-RXE-TOP ( ptr u8 n n ptr u8 n -- )
    {: src:ptr srcu:n rc:n diag:ptr diagu:n :}
-   \ Same misuse at top level (EVALD==0, no eval frame): the recovery route only
-   \ ADDS the inside-evaluate catch, so the fail-closed sysexits exit + diagnostic
-   \ stay byte-identical to before the conversion.
+   \ Same misuse at top level (EVALD==0, no eval frame): the fail-closed
+   \ sysexits exit and diagnostic.
    GE-HB-RESET
    GE-SRC-RESET
    src srcu GE-SRC-LINE
@@ -1199,14 +1131,13 @@ variable GE-CF-BODY-U
    s" habu-crash" s" hb rawexit top-level no-crash" GE-EXPECT-ERR-LACKS ;
 
 : GE-RAWEXIT-RECOVER ( -- )
-   \ dot habu-raw-exit-compile: runtime-compiler die sites that used to
-   \ NR-EXIT-GROUP now route through the shared LCOMPILEDIE tail — recoverable as
-   \ a catchable throw of their sysexits code inside evaluate (eval frame rolled
-   \ back, session usable), byte-identical fail-closed exit + diagnostic at top
-   \ level. One representative misuse per converted family. Dict/code overflow
-   \ (76/77) share the SAME LCOMPILEDIE tail; their top-level 77 contract is gated
-   \ by GE-DICT-FULL, and the dup-def case here exercises the identical
-   \ rollback-past-a-published-record + HIDX stale-tolerance path at unit cost.
+   \ Runtime-compiler die sites route through the shared LCOMPILEDIE tail: a
+   \ catchable throw of their sysexits code inside evaluate (eval frame rolled
+   \ back, session usable), fail-closed exit and diagnostic at top level. One
+   \ representative misuse per family. Dict/code overflow (76/77) share the
+   \ tail; GE-DICT-FULL gates their top-level 77 contract, and the dup-def case
+   \ exercises the same rollback past a published record and HIDX stale
+   \ tolerance.
    s" : RXF ( -- n ) 1 ; : RXF ( -- n ) 2 ;" s" 78" s" duplicate definition:" GE-RXE-CATCH-USABLE
    s" : RXF ( -- n ) 1 ; : RXF ( -- n ) 2 ;" 78 s" duplicate definition:" GE-RXE-TOP
    s" public" s" 75" s" public" GE-RXE-CATCH-USABLE
@@ -1222,13 +1153,12 @@ variable GE-CF-BODY-U
    s" : RXMK ( -- ) create does> ( -- n ) ;" 70 s" does>" GE-RXE-TOP
    s" PASS: recoverable compile errors catchable inside evaluate (session usable) + fail-closed at top level" type cr ;
 
-\ --- dot habu-convert-residual-compile-f460b9f2: residual compile-die conversions ---
-\ The out-of-inventory recoverable die sites (J-QUOT/J-SEMIQUOT 75,
-\ C-SIG-BAD 76, C-DEFER-DIE-TOKEN, C-QUOTE-EOF 74, counted-string 76,
-\ and export-undefined 70) now route through the same LCOMPILEDIE tail: catchable
-\ inside evaluate, byte-identical fail-closed at top level. C-LBRACE-STORE-ONE's
-\ 65th-local refusal is a rejected definition since dot
-\ habu-report-the-local-d20f243a: a named label plus the token, rc 70 on both legs.
+\ --- Residual compile-die sites ---
+\ J-QUOT/J-SEMIQUOT 75, C-SIG-BAD 76, C-DEFER-DIE-TOKEN, C-QUOTE-EOF 74,
+\ counted-string 76 and export-undefined 70 route through the same LCOMPILEDIE
+\ tail: catchable inside evaluate, fail-closed at top level.
+\ C-LBRACE-STORE-ONE's 65th-local refusal is a rejected definition: a named
+\ label plus the token, rc 70 on both legs.
 
 create GE-RXE-TML-BUF 512 allot   variable GE-RXE-TML-U
 
@@ -1260,12 +1190,10 @@ create GE-RXE-QNEST-BUF GE-RXE-QNEST-CAP allot   variable GE-RXE-QNEST-U
 : GE-RXE-ESC-OPEN ( -- )                               \ append the `s\" ` escaped-string opener + delimiter space
    [char] s GE-SRC-C  GE-RXE-BS  GE-DQ GE-SRC-C  GE-SRC-SP ;
 
-\ --- dot habu-report-the-local-d20f243a: a bare local name wider than the 16-byte
-\ name field of a LOC-REC is refused by name before it is stored. The store used
-\ to copy the whole name over the following record, so a second local overwrote
-\ byte 17 and the engine reported the FIRST local as E-UNDEFINED; a long name in
-\ the last of the 64 records wrote past LOCNAMES. The refusal is a rejected
-\ definition (rc 70, catchable inside evaluate), never a crash or an undefined word.
+\ --- A bare local name wider than the 16-byte name field of a LOC-REC is
+\ refused by name before it is stored, as a rejected definition (rc 70,
+\ catchable inside evaluate). Unrefused, the store overwrites the following
+\ record, or writes past LOCNAMES from the last of the 64 records.
 : GE-LOC-WIDE-TOP ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n label:ptr labelu:n :}
    GE-HB-RESET
    GE-SRC-RESET
@@ -1304,11 +1232,10 @@ create GE-LOC-LAST-BUF 1024 allot   variable GE-LOC-LAST-U
    s" 3" s" hb local-width 16-byte control output" GE-EXPECT-OUT-HAS
    s" PASS: local name over 16 bytes refused by name (rc 70, catchable, no E-UNDEFINED relabel, no crash)" type cr ;
 
-\ counted-string >255 (C-ICQ/C-EICQ/C-CQ/C-ECQ). This cap now carries a named fd-2
-\ label ("hb: counted string too long (max 255)", dot habu-recovery-pkg-scope-e0bd98e2)
-\ that disambiguates the 76 it shares with C-SIG-BAD; the assertions add that label on
-\ both the eval-catch and top-level legs. The evaluate target `c" <256 A>"` embeds a "
-\ so it is passed through an s\" wrapper with \q-escaped quotes.
+\ counted-string >255 (C-ICQ/C-EICQ/C-CQ/C-ECQ) carries the fd-2 label "hb:
+\ counted string too long (max 255)", which tells its 76 from C-SIG-BAD's; both
+\ legs assert it. The evaluate target `c" <256 A>"` embeds a " so it is passed
+\ through an s\" wrapper with \q-escaped quotes.
 : GE-RXE-CSTR-CATCH ( -- )
    GE-HB-RESET
    GE-EVAL-CATCH-SRC
@@ -1406,15 +1333,13 @@ create GE-LOC-LAST-BUF 1024 allot   variable GE-LOC-LAST-U
    GE-RXE-CSTR-TOP
    s" PASS: residual compile dies recover inside evaluate + fail-closed at top level" type cr ;
 
-\ Quotation nesting per definition (dots habu-name-the-nested-6a8e1b28,
-\ habu-open-a-quotation-f6c2a55f). Tier 0 compiles the innermost open quotation in
-\ QPATCH-CELL..QFRAME-CELL and parks each enclosing one in JIT-QUOT's frames, so
-\ JIT-QUOT:LEVELS quotations may be open at once: the checker's control-frame
-\ capacity, so the loader refuses no nesting the checker certifies. One level
-\ more refuses before anything is emitted, named with the definition and the
-\ depth it needed, rc 75 - catchable inside evaluate (the RXQ pair in
-\ GE-RAWEXIT-RESIDUAL above). The line is prose and the load path's alone:
-\ tools/check.f refuses the same source before its run, E-UNCHECKABLE at the
+\ Tier 0 compiles the innermost open quotation in QPATCH-CELL..QFRAME-CELL and
+\ parks each enclosing one in JIT-QUOT's frames, so JIT-QUOT:LEVELS quotations,
+\ the checker's control-frame capacity, may be open at once: the loader refuses
+\ no nesting the checker certifies. One level more refuses before anything is
+\ emitted, named with the definition and the depth, rc 75, catchable inside
+\ evaluate (the RXQ pair in GE-RAWEXIT-RESIDUAL). The line is the load path's
+\ alone: tools/check.f refuses the same source first, E-UNCHECKABLE at the
 \ checker's 33rd control frame.
 : GE-QNEST-SRC ( n -- ) {: depth:n :}   \ ": GEQDEEP ( n -- n ) [: ... 1+ ;] execute ... ;" then 41 GEQDEEP
    s" : GEQDEEP ( n -- n )" GE-SRC+
@@ -1447,17 +1372,15 @@ create GE-LOC-LAST-BUF 1024 allot   variable GE-LOC-LAST-U
    s" habu-crash" s" quotation-nesting no-crash" GE-EXPECT-ERR-LACKS
    s" PASS: quotations nest to the level ceiling and one more is named with its depth" type cr ;
 
-\ --- Package-scope rollback across compile-error recovery (dot habu-recovery-pkg-scope-e0bd98e2) ---
-\ A compile error aborting an in-package definition must roll the OPEN-PACKAGE scope
-\ back to the boundary scope, exactly like CP/NDICT/DP. Before the fix the package
-\ stayed dangling open and later top-level defines landed in it silently.
+\ --- Package-scope rollback across compile-error recovery ---
+\ A compile error aborting an in-package definition rolls the OPEN-PACKAGE
+\ scope back to the boundary scope, like CP/NDICT/DP.
 
 : GE-PKGSCOPE-EVAL-CLOSED ( -- )
-   \ Package opened INSIDE the failing evaluate: caught, and the eval-frame recovery
-   \ restores the evaluate-entry scope (global), so the package is CLOSED. Discriminator:
-   \ a dangling package would make the following top-level `package` nest-fail (exit 75
-   \ mid-batch, so GEC-RXOK never prints); a restored global scope opens+closes it and
-   \ reaches the fresh global define.
+   \ Package opened inside the failing evaluate: recovery restores the
+   \ evaluate-entry scope (global), so the package is closed. A dangling package
+   \ would make the following top-level `package` nest-fail (exit 75 mid-batch,
+   \ so GEC-RXOK never prints).
    GE-HB-RESET
    GE-EVAL-CATCH-SRC
    s" package PKX public export PKNOPE ;package" GE-SRC-S"
@@ -1471,10 +1394,11 @@ create GE-LOC-LAST-BUF 1024 allot   variable GE-LOC-LAST-U
    s" habu-crash" s" hb pkgscope eval-closed no-crash" GE-EXPECT-ERR-LACKS ;
 
 : GE-PKGSCOPE-CHECKER-RESYNC ( -- )
-   \ With NO intervening package op between the caught error and a checked reference:
-   \ the bare def GEC-W1 must record in GLOBAL checker scope, and the later checked
-   \ GEC-W2 (after a real package op that would orphan a mis-recorded PKX:GEC-W1) must
-   \ still resolve. An engine-only rollback (checker left stale-PKX) rc70s at GEC-W2.
+   \ No package op between the caught error and a checked reference: the bare
+   \ def GEC-W1 records in global checker scope, and the later checked GEC-W2
+   \ (after a package op that would orphan a mis-recorded PKX:GEC-W1) still
+   \ resolves. A rollback that leaves the checker in PKX refuses GEC-W2 with rc
+   \ 70.
    GE-HB-RESET
    GE-EVAL-CATCH-SRC
    s" package PKX public export PKNOPE ;package" GE-SRC-S"
@@ -1524,22 +1448,18 @@ create GE-LOC-LAST-BUF 1024 allot   variable GE-LOC-LAST-U
    s" PASS: package scope rolls back on compile-error recovery (closed/stays-open/checker/top-exit)" type cr ;
 
 
-\ Every load refusal names its file and line (dot habu-name-the-file-70acbf10).
-\ `hb: bad string literal` — and every other refusal that reaches the LCOMPILEDIE
-\ tail — used to print no path and no line, so a reader bisected the file by hand.
-\ One place prints the location now: the tail writes ` at <path>:<line>` whenever
-\ a source file is open and the newline in every case, so a die site cannot
-\ forget it and cannot spell it differently. The path is the INNERMOST open
-\ include frame's (src/core/include.f publishes it), which is what makes the
-\ nested case below the one worth pinning; the line counts newlines from the
-\ start of the buffer being evaluated, which for an include is the whole file.
+\ Every load refusal that reaches the LCOMPILEDIE tail names its file and line:
+\ the tail writes ` at <path>:<line>` whenever a source file is open, and the
+\ newline in every case. The path is the innermost open include frame's
+\ (src/core/include.f publishes it), hence the nested case below; the line
+\ counts newlines from the start of the buffer being evaluated, for an include
+\ the whole file.
 : GE-LOC-FIXTURE ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n ta:ptr tu:n :}
    GT-ROOT na nu GE-SCRIPT-PATH FS:JOIN-PATH GE-SCRIPT-U !
    GE-SCRIPT-PATH GE-SCRIPT-U @ ta tu FS:WRITE-ALL ;
 
-\ `--load <file>`, the real entry a reader uses, so the refusal travels the
-\ include path this change publishes from. Feeding the same bytes on stdin (the
-\ no-file case below) deliberately does not.
+\ `--load <file>`, the real entry, so the refusal travels the include path; the
+\ same bytes on stdin (the no-file case below) do not.
 : GE-LOC-LOAD ( -- )
    GE-HB-RESET
    s" --load" GE-ARG+
@@ -1590,14 +1510,12 @@ create GE-LOC-LAST-BUF 1024 allot   variable GE-LOC-LAST-U
    s"  at " s" stdin refusal claims no location" GE-EXPECT-ERR-LACKS ;
 
 \ A duplicate the dictionary cannot see. A program that runs a declaration's
-\ replay itself (the scanner's, src/habu/verify-source.f RECORD-PRODUCT:
-\ CHECKER-DEFPRODUCT, then GENERATED-DECL-CTOR:REPLAY-LEGACY) publishes the
-\ checked effect of every word the declaration generates and defines none of
-\ them, so the engine's wall passes a later definition of one and the checker
-\ refuses it. That refusal used to exit 78 with nothing on stderr; it now names
-\ the definition and its location as the wall does, at the line of its name,
-\ not of the closing `;` where the hook runs (src/core/check-hook.f DUP-RC,
-\ NAME-LINE).
+\ replay itself (src/habu/verify-source.f RECORD-PRODUCT: CHECKER-DEFPRODUCT,
+\ then GENERATED-DECL-CTOR:REPLAY-LEGACY) publishes the checked effect of every
+\ word the declaration generates and defines none of them, so the engine's wall
+\ passes a later definition of one and the checker refuses it, naming the
+\ definition and its location as the wall does: the line of its name, not of
+\ the closing `;` where the hook runs (src/core/check-hook.f DUP-RC, NAME-LINE).
 : GE-LOC-REPLAY-DUP ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
    {: na:ptr nu:n ta:ptr tu:n da:ptr du:n la:ptr lu:n :}
    na nu ta tu GE-LOC-FIXTURE
@@ -1634,13 +1552,10 @@ create GE-LOC-LAST-BUF 1024 allot   variable GE-LOC-LAST-U
    GE-LOC-REPLAY-DUPS
    s" PASS: load refusals name their file and line (file/nested/no-file/checker-only duplicate)" type cr ;
 
-\ Source that ends inside a construct it opened (dot habu-eof-inside-a-7a539941).
-\ A file whose last line was `: GEEND ( -- )` exited 0 at top level with GEEND
-\ dropped, and the next --load row compiled into its body. Loaded through
-\ `included` from a compiled word, the caller's next words compiled into it
-\ too, at both tiers. Every ending is refused where the source ends: rc 74, named,
-\ located on the line the definition opened on (a comment at its `(`), and
-\ catchable with the definition rolled back.
+\ Source that ends inside a construct it opened is refused where the source
+\ ends: rc 74, named, located on the line the definition opened on (a comment
+\ at its `(`), and catchable with the definition rolled back. Unrefused, the
+\ next --load row, or the words after an `included` call, compile into it.
 create GE-END-PATH PATH-CAP allot
 variable GE-END-U
 create GE-END-AT 16 allot
@@ -1739,11 +1654,10 @@ create GE-END-AT 16 allot
    GE-LOC-LOAD
    GE-END-DEF$ 1 s" require" GE-END-EXPECT ;
 
-\ A definition left open with its body on the next line. Located on the
-\ source's last line, the refusal named the body's line, or a blank line past
-\ it; it names the line of the definition's name token. hb-end.f holds the tier
-\ line, `: GEEND` on line 2, its body on line 3 and nl newlines: 0 ends it
-\ without one, 2 leaves a blank line.
+\ A definition left open with its body on the next line: the refusal names the
+\ line of the definition's name token, not the body's line or a blank line past
+\ it. hb-end.f holds the tier line, `: GEEND` on line 2, its body on line 3 and
+\ nl newlines: 0 ends it without one, 2 leaves a blank line.
 : GE-HALF-CASE ( n n ptr u8 n -- )
    {: tier:n nl:n label:ptr labelu:n :}
    GE-SRC-RESET
@@ -1802,10 +1716,10 @@ create GE-END-AT 16 allot
    S\" 5\n" s" macro evaluate" GE-EXPECT-OUT ;
 
 \ The closing direction. A `;` in a buffer that an immediate word's evaluate or
-\ included began inside an open definition closed the outer buffer's
-\ definition while the immediate word still ran, at both tiers. It is refused
-\ at the `;`, rc 74, named and located on the first line
-\ of the buffer that holds it.
+\ included began inside an open definition would close the outer buffer's
+\ definition while the immediate word still runs. It is refused at the `;` at
+\ both tiers, rc 74, named and located on the first line of the buffer that
+\ holds it.
 : GE-CLOSE-DEF$ ( -- ptr u8 n )  s" hb: source closed a definition it did not open: GEEND at " ;
 
 \ hb-end.f's immediate word evaluates the `;`: the line counts in the string.
@@ -1847,11 +1761,9 @@ create GE-END-AT 16 allot
    loop ;
 
 \ A refusal an immediate word catches inside its evaluate, while an outer
-\ buffer's definition is open. The unwind reset that definition under the
-\ immediate word, and the rest of its body ran as top-level words. The catch
-\ now returns the refusal's code
-\ and the definition keeps compiling without the refused token, closes in its
-\ own source and runs. mac defines GEENDCAT; out is the whole stdout.
+\ buffer's definition is open: the catch returns the refusal's code and the
+\ definition keeps compiling without the refused token, closes in its own
+\ source and runs. mac defines GEENDCAT; out is the whole stdout.
 : GE-CATCH-CASE ( ptr u8 n n ptr u8 n -- )
    {: mac:ptr macu:n tier:n out:ptr outu:n :}
    GE-SRC-RESET
@@ -1867,8 +1779,8 @@ create GE-END-AT 16 allot
    out outu mac macu GE-EXPECT-OUT
    s" habu-crash" mac macu GE-EXPECT-ERR-LACKS ;
 
-\ A `{:` group refused part way declares none of its names: GEA stays the
-\ word. A half-declared local GEA compiled a read of a frame never carved.
+\ A `{:` group refused part way declares none of its names: GEA stays the word,
+\ not a local whose frame was never carved.
 : GE-CATCH-LOCALS ( -- )
    GE-SRC-RESET
    s" : GEA ( -- n ) 5 ;" GE-SRC-LINE
@@ -1935,11 +1847,11 @@ create GE-END-AT 16 allot
 \ 0, the tier that compiles inside the evaluate. GEENDCAT opens n `if`s,
 \ catches ref and then a `leave` (no DO level may stay open), evaluates fol and
 \ closes the `if`s, so GEEND adds 7 only if the refused token left its 7, the
-\ data stack and every compile cell as they were. Each failed, once the band
-\ was open: the leftover pop, a lost or stale control-flow entry, DO level or
-\ BEGIN snapshot gave a wrong sum, an orphaned `then` or a bounds fault. The
-\ checker certifies a shallower nesting than the control-flow cap, so a row at
-\ the cap compiles unchecked. out is the run's whole stdout.
+\ data stack and every compile cell as they were: a leftover pop, a lost or
+\ stale control-flow entry, DO level or BEGIN snapshot gives a wrong sum, an
+\ orphaned `then` or a bounds fault. The checker certifies a shallower nesting
+\ than the control-flow cap, so a row at the cap compiles unchecked. out is the
+\ run's whole stdout.
 : GE-FAMILY-OUT ( n ptr u8 n ptr u8 n ptr u8 n -- )
    {: n:n ref:ptr refu:n fol:ptr folu:n out:ptr outu:n :}
    GE-SRC-RESET
@@ -2003,10 +1915,9 @@ create GE-END-AT 16 allot
    S\" 70\n42\n0\n" s" caught quotation capacity refusal" GE-EMIT-EXPECT ;
 
 \ A refusal two evaluates down, caught one level up, keeps what the inner
-\ evaluate completed, as at one level: GEENDIN's 7 stays in GEEND. Each popped
-\ frame put back the mark of the token that called its evaluate, so the outer
-\ pop dropped the 7 and the checker refused GEEND's `+` as an input underflow,
-\ rc 70, at both tiers.
+\ evaluate completed, as at one level: GEENDIN's 7 stays in GEEND. A popped
+\ frame that put back the mark of the token that called its evaluate would drop
+\ the 7, and the checker would refuse GEEND's `+` as an input underflow, rc 70.
 : GE-EMIT-NEST ( n -- )
    {: tier:n :}
    GE-SRC-RESET
@@ -2021,14 +1932,11 @@ create GE-END-AT 16 allot
 
 \ A structure that an evaluate two levels down opens before its refusal, which
 \ a catch one level up takes, and the outer source closes; aft is what GEENDIN
-\ runs after its evaluate, a throw once that evaluate has ended cleanly. Each
-\ popped frame put back the mark of the token that called its evaluate, so the
-\ outer pop rolled CP, the virtual stack and the body text back past the inner
-\ buffer's completed tokens while the control-flow stack, DO level, BEGIN
-\ snapshot and quotation kept them: the checker refused GEEND (rc 70), and
-\ compiled unchecked (mode 1) it exceeded the data stack bounds (rc 102) or,
-\ for `case`, returned 5 for 2. run runs GEEND; out is the whole stdout. The
-\ rows run at tier 0 only: tier 1 defers an undefined word to `;`, which
+\ runs after its evaluate, a throw once that evaluate has ended cleanly. The
+\ outer pop must not roll CP, the virtual stack or the body text back past the
+\ inner buffer's completed tokens while the control-flow stack, DO level, BEGIN
+\ snapshot and quotation keep them. run runs GEEND; out is the whole stdout.
+\ The rows run at tier 0 only: tier 1 defers an undefined word to `;`, which
 \ refuses GEEND (rc 70) with no inner throw for the catch to take; GE-EMIT-NEST
 \ holds the tier-1 case.
 : GE-DEEP-ROW ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n n ptr u8 n -- )
@@ -2060,9 +1968,7 @@ create GE-END-AT 16 allot
          s" 0 GEEND . 5 GEEND . depth ." i S\" 70\n1\n5\n0\n" GE-DEEP-ROW
    loop ;
 
-\ A `does>` refused at its signature declares no clause. DOESB was set before
-\ the signature: the definition's `;` then refused the `does>` at tier 0 (rc
-\ 70) and died in the native compiler at tier 1 (rc 67).
+\ A `does>` refused at its signature declares no clause.
 : GE-EMIT-DOES ( n -- )
    {: tier:n :}
    GE-SRC-RESET
@@ -2083,15 +1989,12 @@ create GE-END-AT 16 allot
       i GE-EMIT-DOES
    loop ;
 
-\ A control-flow word whose open entry is another structure's. The closers
-\ proved only that enough entries were open: in `begin dup 0<> if 0<> until
-\ then`, `until` took the IF entry for its loop top and `then` patched the
-\ BEGIN's loop top as a forward branch, ORing its offset into the call there.
-\ The call then landed where the engine's layout put it, in atomic-cas (the
-\ habu-crash dump, rc 134) on one build and in 2over's tail (the run printed
-\ 2) on its parent. Every closer, and `while` and `of`, now refuses an entry
-\ of another kind at its token, rc 70, named; `;`, `does>` and `;]` refuse a
-\ structure still open inside them.
+\ A control-flow word whose open entry is another structure's: every closer,
+\ and `while` and `of`, refuses an entry of another kind at its token, rc 70,
+\ named; `;`, `does>` and `;]` refuse a structure still open inside them.
+\ Counting entries is not enough: in `begin dup 0<> if 0<> until then`, `until`
+\ would take the IF entry for its loop top and `then` would patch the BEGIN's
+\ loop top as a forward branch, ORing its offset into the call there.
 : GE-KIND$ ( -- ptr u8 n )  s" hb: control-flow word does not match the open structure: " ;
 
 create GE-KIND-LINE 96 allot
@@ -2247,8 +2150,8 @@ variable GE-KIND-N
    GE-KIND$ l lu GE-EXPECT-ERR-HAS
    s" habu-crash" l lu GE-EXPECT-ERR-LACKS ;
 
-\ The opener closer c meets at top level: the shapes that crashed or ran wrong
-\ code, `begin ... then`, `if ... until` and `if ... repeat`.
+\ The opener closer c meets at top level: the shapes that would crash or run
+\ wrong code, `begin ... then`, `if ... until` and `if ... repeat`.
 : GE-KIND-TOP-OPENER ( n -- n )
    {: c:n :}
    c 2 < c 7 = or if 1 else 0 then ;
@@ -2309,14 +2212,10 @@ variable GE-KIND-N
    s" PASS: a definition or comment the source did not close, or a definition it did not open, is refused and located, a definition at the line it opened on; a macro's evaluate compiles into the definition, and its caught refusal leaves it as before the refused token" type cr ;
 
 \ An immediate word in a body whose wide local sends it through pass 2 at tier
-\ 0. Pass 2 ran the word again over the body capture, which never holds what a
-\ parsing word read: GEP2SKIP read the `1` (the word then ran `k +`: rc 102,
-\ stack bounds exceeded); GEP2FLIP's second run undefined GEP2X (rc 70);
-\ GEP2SAY's caught refusal printed twice; GEP2GRAB allotted twice; GEP2SEE's
-\ second run ran with the lowering transaction open and its blob mapped. Each
-\ runs once at both tiers, and the cell GEP2GRAB allots keeps its 77: pass 2
-\ also took DP back to the definition's start, so with the word run once the
-\ next allot wrote 99 there.
+\ 0. The body capture never holds what a parsing word read, so pass 2 must not
+\ run the word again: each runs once at both tiers, and the cell GEP2GRAB
+\ allots keeps its 77 past the next allot of 99, so pass 2 does not take DP back
+\ to the definition's start.
 
 \ imm defines the immediate word, body follows GEP2W's locals and run is the
 \ last line; hb-end.f runs at the tier.
@@ -2369,9 +2268,8 @@ variable GE-KIND-N
    s" PASS: an immediate word in a body with a wide local runs once, on the input it was written with, at both tiers" type cr ;
 
 \ Tier 0 folds a unary integer op only into an integer constant on the virtual
-\ stack. A float cast to its bits by a CAST: stays a float register or constant
-\ there; folding the register from a b f+ as an integer made FB 1+ print 2.0's bits.
-\ Each expected value is what the interpreter prints for the same body.
+\ stack; a float cast to its bits by a CAST: stays a float register or constant
+\ there. Each expected value is what the interpreter prints for the same body.
 : GE-VUN-FLOAT ( -- )
    GE-HB-RESET
    GE-SRC-RESET
@@ -2389,13 +2287,10 @@ variable GE-KIND-N
    s" PASS: tier 0 folds a unary op only into an integer constant" type cr ;
 
 \ Tier 0 pulls an arithmetic, unary, shuffle or float operand off the data stack
-\ into a pool register, beneath whatever the virtual stack already holds. Each
-\ case breaks one boundary the pulled cell crosses: operand order, a constant
-\ above it, a call, a loop snapshot shallower than the body, an if arm, a throw,
-\ an exhausted pool, float bits, a float above it across a loop, an exhausted
-\ d-register pool, a do loop's entry, exit and leave, and an exit. Each expected
-\ value is what the interpreter (or, for a control structure, tier 1) prints for
-\ the same body.
+\ into a pool register, beneath whatever the virtual stack already holds; each
+\ case breaks one boundary the pulled cell crosses. Each expected value is what
+\ the interpreter (or, for a control structure, tier 1) prints for the same
+\ body.
 : GE-VPULL ( -- )
    GE-HB-RESET
    GE-SRC-RESET
@@ -2438,13 +2333,9 @@ variable GE-KIND-N
 
 \ Tier 0 keeps `@`, `c@`, `cells`, `cell+` and `ptr-field` on the virtual
 \ stack: the loads run on registers and the address arithmetic folds or runs
-\ in place. Each case breaks one boundary: an offset address, an indexed
-\ address, a zero-extending byte load, a cell stored between two reads (a fetch
-\ never folds), a pointer table slot against the pointer it holds (register and
-\ constant operands), a fetched cell read as float bits, a fetch in a loop and
-\ across a call, a private word spelled `@`, and a protected store, which still
-\ kills the process (the last line, so it ends this run). Each expected value is
-\ what the interpreter prints for the same expressions.
+\ in place; a fetch never folds. A protected store kills the process, so it is
+\ the last line of this run. Each expected value is what the interpreter prints
+\ for the same expressions.
 : GE-VMEM ( -- )
    GE-HB-RESET
    GE-SRC-RESET
@@ -2485,11 +2376,9 @@ variable GE-KIND-N
    s" PASS: tier 0 keeps memory operands in registers and keeps every boundary" type cr ;
 
 \ Tier 0 branches on a compare's flags when the flag is the register top at
-\ `if`, `until` or `while` (jit.f LVFUSE). Each case breaks one boundary: every
-\ compare under each branch, both outcomes, signed operands, nested loops, a
-\ flag that is copied or stored, `0=` and `0<`, a float compare, and a
-\ redefined `<`, which is a call and branches on what it returns. Tier 1 runs
-\ the same source and prints the same lines.
+\ `if`, `until` or `while` (jit.f LVFUSE); a redefined `<` is a call and
+\ branches on what it returns. Tier 1 runs the same source and prints the same
+\ lines.
 : GE-VFUSE-AT ( n -- ) {: tier:n :}
    GE-HB-RESET
    GE-SRC-RESET
@@ -2543,24 +2432,11 @@ variable GE-KIND-N
    s" PASS: tier 0 branches on a compare's flags and keeps every boundary" type cr ;
 
 \ Tier 0 loops reconcile the back edge's virtual stack with the frame `begin`
-\ recorded (jit.f LVRECON). Each case breaks one boundary: a body that swaps
-\ the two frame registers (a move cycle), a constant left on top in an int
-\ slot and in a float slot, a float pair that swaps across the two register
-\ classes, a body that calls a word (spilled, so the back edge pops the frame
-\ registers), and a loop under sixteen copies of a local. The GEJ rows after
-\ them break the same boundaries at `if`/`else`/`then` joins (habu2.f J-THEN,
-\ J-ELSE): arms that leave different values or depths, a constant or a call
-\ in one arm, arms that exit, a swap cycle and a reorder across the join in
-\ int and float slots, an `if` inside a loop and loops inside an `if`, a local
-\ opened in an arm, register pressure from local copies, and a compare that
-\ ends an arm right before the next `if` (GEJFZ). The GEI rows break the
-\ boundaries of tier 0's cached loop index (habu2.f J-I): `i` at the body top
-\ of `do` and `?do`, after a call, twice in a row, under `+loop` up and down,
-\ in a nested loop and after it, after `unloop`, after a `leave` arm, in a
-\ `begin` loop and an `if` arm, with the register pool full, around a call
-\ that runs its own loop and after a caught throw out of one. Tier 1 runs the
-\ same source and prints the same lines, except the two loop cycle rows, which
-\ tier 1 refuses with E-A64RA-EDGE (regalloc.f): tier 0 runs them alone.
+\ recorded (jit.f LVRECON). The GEJ rows test that reconcile at
+\ `if`/`else`/`then` joins (habu2.f J-THEN, J-ELSE), the GEI rows tier
+\ 0's cached loop index (habu2.f J-I). Tier 1 runs the same source and prints
+\ the same lines, except the two loop cycle rows, which tier 1 refuses with
+\ E-A64RA-EDGE (regalloc.f): tier 0 runs them alone.
 : GE-VJOIN-AT ( n -- ) {: tier:n :}
    GE-HB-RESET
    GE-SRC-RESET
@@ -2640,12 +2516,7 @@ variable GE-KIND-N
    s" PASS: tier 0 loops reconcile the back edge with the begin frame" type cr ;
 
 \ Tier 0 binds a `{:` group from the virtual stack's top (habu2.f
-\ C-LBRACE-BIND-VS). Each row breaks one boundary: a computed value with its
-\ source still live below it, a group right after a call (empty virtual
-\ stack), more locals than virtual entries, small, negative and wide
-\ constants, entries deeper than the group that must stay live, a float on
-\ the virtual stack (spilled first), a group inside a loop body and one in an
-\ `if` arm. Tier 1 runs the same source and prints the same lines.
+\ C-LBRACE-BIND-VS). Tier 1 runs the same source and prints the same lines.
 : GE-VBIND-AT ( n -- ) {: tier:n :}
    GE-HB-RESET
    GE-SRC-RESET
@@ -2672,12 +2543,9 @@ variable GE-KIND-N
    s" PASS: tier 0 binds locals from the virtual stack" type cr ;
 
 \ Tier 0 compiles a definition's last call as a B after its epilogue (habu2.f
-\ EM-COMPILE-SEMI). Each row runs a tail call where a call's frame mattered: a
-\ catch as the last word, a throw tail-called under a catch, a recursion
-\ ending in an exit beside the tail call, one under a local frame, one ending
-\ in a throw, and a tail call into another word. Tier 0 alone also runs each
-\ recursion two million deep, past the machine stack a call per turn would
-\ need: tier 1 calls `recurse` and overflows there.
+\ EM-COMPILE-SEMI); each row runs a tail call where a call's frame mattered.
+\ Tier 0 alone also runs each recursion two million deep, past the machine
+\ stack a call per turn would need: tier 1 calls `recurse` and overflows there.
 : GE-VTAIL-AT ( n -- ) {: tier:n :}
    GE-HB-RESET
    GE-SRC-RESET
@@ -2710,12 +2578,8 @@ variable GE-KIND-N
 
 \ Tier 0 runs a mentioned constant or created word while its user compiles
 \ and folds what it pushed into the body (habu2.f EM-COMPILE-CALL): a constant
-\ as a literal, a created word as a DATA address in a pool register. Each row
-\ breaks one edge: a constant compared, added, negative and wider than 32 bits,
-\ one defined right before its user, a variable and a created table written
-\ and read, a does> word, a defer re-targeted twice by `is`, EXPORT aliases of
-\ a constant and of a variable, and a variable mentioned with the register pool
-\ full (GEXFULL). Tier 1 runs the same source and prints the same lines.
+\ as a literal, a created word as a DATA address in a pool register. Tier 1
+\ runs the same source and prints the same lines.
 : GE-VFIX-AT ( n -- ) {: tier:n :}
    GE-HB-RESET
    GE-SRC-RESET

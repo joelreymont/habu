@@ -1,5 +1,4 @@
 \ gate-common.f - entry wrapper for native gate helpers.
-\
 require src/lib/errors.f
 require src/lib/string.f
 require src/lib/memory.f

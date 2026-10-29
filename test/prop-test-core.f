@@ -1,18 +1,9 @@
-\ prop-test-core.f — property-based checker-soundness test, SELF-HOSTED in habu.
-\ Generates runnable typed defs, checks them, RUNS the certified ones IN-PROCESS
-\ (via `evaluate`), and fails (exit 1) if a certified def's real out-arity differs
-\ from its declared ( in -- out ) — a false-cert — or if any metamorphic amplifier
-\ (subsumption / render round-trip / composition) reports an inconsistency. No
-\ host scripting, no gforth, no spawning: generator, driver and measurement are
-\ all habu, run by bin/hb.
-\
-\ The default run shards the sweep across PROP-SHARD-N forked slots, each a
-\ distinct seed running DEFAULT-COUNT iterations, so one direct run covers
-\ N x DEFAULT-COUNT distinct-seed programs in parallel; one red shard fails the
-\ phase. The `<engine> --load test/prop-test.f -- <seed> <count>` override
-\ runs one seed serially to reproduce a specific run. Fork wrappers load before
-\ the check hook so their own definitions certify under the default checker,
-\ not the throw-on-reject prop hook.
+\ prop-test-core.f - property-based checker soundness in Habu: generates typed
+\ definitions, checks them, runs the certified ones in process (`evaluate`) and
+\ exits 1 when a certified definition's out-arity differs from its declaration
+\ (a false-cert) or a metamorphic amplifier (subsumption, render round-trip,
+\ composition) reports an inconsistency. `<engine> --load test/prop-test.f --
+\ <seed> <count>` runs one seed serially to reproduce a run.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -23,23 +14,23 @@ require src/lib/fmt.f                        \ FMT:.INT - one-line number text
 require src/lib/test/eval.f                  \ TEST-EVAL:N - one cell out of a closed text
 
 \ The harness's own words and every candidate compile at tier 0, whatever tier
-\ the caller selected (the libraries above compile at the caller's tier). Tier 1 compiles against a static stack picture and the
-\ effect the checker recorded, and refuses what this harness compiles:
-\ CLEAR-MEAS's untyped row drain (E-NELAB-UNDER) and the rejected body
-\ CONFIRM-FR? compiles through PROP-CORE and runs, which has no recorded effect
-\ (KEEP-ARITY, rc 70).
+\ the caller selected (the libraries above compile at the caller's tier). Tier 1
+\ compiles against a static stack picture and the effect the checker recorded,
+\ and refuses what this harness compiles: CLEAR-MEAS's untyped row drain
+\ (E-NELAB-UNDER) and the rejected body CONFIRM-FR? compiles through PROP-CORE
+\ and runs, which has no recorded effect (KEEP-ARITY, rc 70).
 0 set-tier
 
 variable VERD                     \ last verdict PROP-CHECK-HOOK read from CHECK!
-\ The top-level line below arms the fail-closed hook through set-check.
+\ The top-level line below arms the fail-closed hook through set-check;
+\ src/lib/process-fork.f loads before it, so its definitions certify under the
+\ default checker, not the throw-on-reject hook.
 : PROP-CHECK-HOOK ( ptr u8 n -- n )
    CHECK! dup VERD ! dup -1 <> if CHECKER-REJECT-RC throw then ;
 LOWER-CERT-HOOK:INSTALL ' PROP-CHECK-HOOK set-check
 
-\ ---- measurement: compare stack depth before and after a certified run
 variable BASE  variable MC
 \ Drains an arbitrary residual row while preserving its measured depth.
-\ Retirement owner: habu-give-tests-a-8d8cdc19.
 TRUSTED: CLEAR-MEAS  ( R n -- n )
    dup MC !  begin MC @ 0 > while  swap drop  MC @ 1- MC !  repeat ;
 
@@ -53,12 +44,11 @@ $4D3C2B1A constant CANARY
 
 ;package
 
-\ ---- seeded PRNG (LCG) ----
 2000 constant DEFAULT-COUNT
 
-\ Default seed varies per run (mono-ns clock) so the fuzzer explores a fresh
-\ space each gate instead of a frozen 250-case regression; RUN-SEED is printed
-\ (POS.) and the `bin/hb <seed> <count>` argv override reproduces any run.
+\ The default seed varies per run (mono-ns clock), so each gate explores a fresh
+\ space; RUN-SEED is printed (POS.) and the `bin/hb <seed> <count>` argv
+\ override reproduces any run.
 : FRESH-SEED ( -- n )
    mono-ns $7FFFFFFF and dup 0= if drop 1 then ;
 3 constant LOG-LIMIT
@@ -68,7 +58,7 @@ variable SEED   1 SEED !
 : RND%  ( n -- n ) {: bound:n :}
    RND bound mod ;
 
-\ ---- byte buffers; loops use per-loop counter VARIABLES (no ?do / no `i`) ----
+\ Byte buffers. Loops use per-loop counter variables, not ?do and `i`.
 512 constant BBUF-CAP
 1024 constant PBUF-CAP
 create BBUF BBUF-CAP allot   variable BLEN     \ the body
@@ -104,7 +94,7 @@ variable TFLAG                             \ sig element type: 0 = i64 (concrete
 : DEF. ( -- )  PBUF PBUF-U @ type cr ;
 : BODY. ( -- )  BBUF BLEN @ type cr ;
 
-\ ---- depth-tracked generator over the integer sublanguage ----
+\ Depth-tracked generator over the integer sublanguage.
 variable DEP  variable NIN  variable DOUT  variable K
 variable LOCN                              \ fresh mid-body local name counter (z0, z1, ...)
 variable LOC?                              \ inputs bound as locals a/b/c at the body top?
@@ -182,11 +172,10 @@ variable STEPS  variable GI
       DOUT @ DEP @ <> IF -1 PERT? ! THEN THEN
    71 NIN @ DOUT @ HEAD  BODY+ ;           \ 71 = 'G'
 
-\ ---- driver: check, then run + measure, in-process; forget each program ----
 variable NCERT  variable PROP-NFC  variable NFR  variable RJ
 variable LAST-MEAS  variable LAST-TRAP
 variable FC-KIND  variable FC-EXP  variable FC-MEAS
-\ ---- complete checkpoint/rollback: a `: G ;` grows persistent code, dictionary,
+\ Complete checkpoint/rollback: a `: G ;` grows persistent code, dictionary,
 \ certified signatures, and no-return metadata. Each candidate compiles under the
 \ check hook, which certifies every definition as it compiles, and a rejected
 \ candidate is rolled back. Two levels (program + shrink variant) let shrinking
@@ -203,7 +192,6 @@ variable CHKCPSV variable CHKNDSV variable CHKUESV
 : FORGET  ( -- )  NDSAVE @ ndict!  CPSAVE @ cp!  UESAVE @ USIGS-RESTORE-END ;
 : SMARK   ( -- )  cp@ SCPSV !   ndict@ SNDSV !   UEND @ SUESV ! ;
 : SFORGET ( -- )  SNDSV @ ndict!  SCPSV @ cp!    SUESV @ USIGS-RESTORE-END ;
-\ ---- the harness core: compiling a text ----
 \ CHK compiles its caller's text with this file's check hook armed, so the bytes
 \ the checker certifies are the bytes the engine compiles. The text runs at top
 \ level, so a text that changes the hook itself (set-check) is outside CHK's
@@ -244,7 +232,7 @@ private
 
 : CHK-MARK ( -- ) cp@ CHKCPSV ! ndict@ CHKNDSV ! UEND @ CHKUESV ! ;
 : CHK-FORGET ( -- ) CHKNDSV @ ndict! CHKCPSV @ cp! CHKUESV @ USIGS-RESTORE-END ;
-\ ---- shared measurement: build "depth BASE ! <nin×7> <nch> depth BASE @ - CLEAR-MEAS" ----
+\ Shared measurement: "depth BASE ! <nin×7> <nch> depth BASE @ - CLEAR-MEAS".
 : RUN1  ( n n -- ) {: name-ch:n in-arity:n :}
    0 PBUF-U ! s" depth BASE ! " P+
    0 RJ ! begin RJ @ in-arity < while  s" 7 " P+  RJ @ 1+ RJ ! repeat
@@ -258,9 +246,7 @@ private
 \ hook ran (the engine's duplicate-definition refusal, rc 78), or with another
 \ code after a rejection the text caught. The rule reads the code and the last
 \ verdict, not the throw's origin, so a later CHECKER-REJECT-RC after a caught
-\ rejection is indistinguishable from the hook's own and is suppressed too. The
-\ text runs at top level, so a text that changes the hook itself (set-check) is
-\ outside CHK's contract; no candidate or primitive case does.
+\ rejection is indistinguishable from the hook's own and is suppressed too.
 2 constant NO-VERDICT              \ outside CHECK!'s -1 / 0 / 1
 public
 : CHK  ( ptr u8 n -- )
@@ -311,7 +297,7 @@ private
 \ Shards suppress the (capped) metamorphic inconsistency logs so N parallel
 \ children do not interleave them on the shared stdout; false-cert lines
 \ (FC-LINE) stay unconditional because a false-cert fails the phase. The logs
-\ are capped/quiet but the finding is FATAL either way: the NSI/NRI/NCI
+\ are capped/quiet but the finding is fatal either way: the NSI/NRI/NCI
 \ counters fail the run at the summary (FINISH) and fail the shard (SHARD-CHILD)
 \ — an inconsistency-reporting property tester that exits 0 is error masking.
 public
@@ -323,9 +309,10 @@ private
    s" variant: " type PBUF PBUF-U @ type cr
    s" body: " type BODY. ;
 
-\ ---- metamorphic subsumption: an i64-certified body must also certify under the
-\ generic ( n -- n ) sig (n subsumes i64). If it does, run it too (free false-cert
-\ coverage); i64-cert but n-reject is a checker inconsistency (fatal at FINISH). ----
+\ Metamorphic subsumption: an i64-certified body must also certify under the
+\ generic ( n -- n ) sig (n subsumes i64). If it does, run it too (free
+\ false-cert coverage); i64-cert but n-reject is a checker inconsistency (fatal
+\ at FINISH).
 variable NSUB
 public
 variable NSI
@@ -336,8 +323,8 @@ private
    ELSE  NSI @ LOG-LIMIT < IF s" subsumption" LOG-META THEN  NSI @ 1+ NSI !  THEN
    SFORGET ;
 
-\ ---- metamorphic render round-trip: render the just-certified body's effect, then
-\ re-declare the SAME body with that exact rendered sig — it must re-certify. ----
+\ Metamorphic render round-trip: re-declaring the just-certified body with its
+\ rendered effect must re-certify.
 variable NRT
 public
 variable NRI
@@ -350,8 +337,8 @@ TYPED-VARIABLE RSA ptr u8
    ELSE  NRI @ LOG-LIMIT < IF s" round-trip" LOG-META THEN  NRI @ 1+ NRI !  THEN
    SFORGET ;
 
-\ ---- metamorphic composition: A:(x--y) and B:(y--z) both certified => ': C A B ;'
-\ must certify ( x -- z ) and run-match — chains arities; catches what one body can't. ----
+\ Metamorphic composition: A:(x--y) and B:(y--z) both certified => ': C A B ;'
+\ must certify ( x -- z ) and run-match; chains arities one body cannot reach.
 variable NCMP
 public
 variable NCI
@@ -370,10 +357,10 @@ variable CAI  variable CAO  variable CBO
    THEN
    SFORGET ;
 
-\ ---- shrinking: on a FALSE-CERT, delta-debug BBUF down to a minimal body that
-\ STILL satisfies a predicate (certify-and-mismatch in real use; "still certifies"
-\ in the self-test). Drops one trailing token per step, restoring any drop that
-\ breaks the predicate. Token surgery just moves BLEN — the bytes stay put. ----
+\ Shrinking: on a false-cert, delta-debug BBUF down to a minimal body that still
+\ satisfies a predicate (certify-and-mismatch in real use; "still certifies" in
+\ the self-test). Drops one trailing token per step, restoring any drop that
+\ breaks the predicate. Token surgery moves BLEN only; the bytes stay put.
 variable BSAVE
 : LAST-SPACE? ( -- bool )   \ BBUF has a last byte and it is a space
    BLEN @ 0= IF 0 0= 0= exit THEN
@@ -389,7 +376,7 @@ variable BSAVE
       LAST-TRAP @ 0= 0= IF  0 0=  ELSE  LAST-MEAS @ DOUT @ <>  THEN
    ELSE  0 0= 0=  THEN  SFORGET ;
 : STILLCERT? ( -- bool )  SMARK  REBUILD-G  PBUF PBUF-U @ CHK  VERD @ -1 =  SFORGET ;
-\ Differential boundary: deliberately compiles a checker-REJECTED body to
+\ Differential boundary: deliberately compiles a checker-rejected body to
 \ confirm a false reject, which only tier 0 does (`0 set-tier` above).
 : CONFIRM-FR? ( -- bool )   \ compile unchecked, run, and prove the rejected true-sig body matches
    SMARK  PBUF PBUF-U @ RUN
@@ -409,7 +396,6 @@ variable BSAVE
       then
    while repeat ;
 
-\ ---- driver: base program (false-cert + false-reject), then metamorphic amplifiers ----
 variable NFC0
 : ONE  ( -- )
    MARK  GEN                                 \ checkpoint, then build ": G ( ... ) <body> ;"
@@ -444,7 +430,7 @@ public
    NRT @ FMT:.INT s"  round-trip + " type  NCMP @ FMT:.INT s"  composition runs; " type
    NSI @ NRI @ + NCI @ +  FMT:.INT s"  inconsistency(ies)" type cr ;
 
-\ regression baits: programs that a SOUND checker rejects. If a regression ever
+\ Regression baits: programs a sound checker rejects. If a regression ever
 \ certifies one, either arity or type/signature soundness regressed.
 private
 : BAIT  ( ptr u8 n -- )   \ MUST NOT certify
@@ -460,8 +446,8 @@ public
    s" : G ( [ -- ) ;"                                BAIT   \ malformed quotation sig
    s" prop-test: baits OK (control/type/signature regressions rejected)" type cr ;
 
-\ alphabet self-test: every structural op class must (a) CERTIFY as a minimal
-\ ( i64 -- i64 ) body - the checker accepts the class - and (b) be GENERATED by
+\ Alphabet self-test: every structural op class must (a) certify as a minimal
+\ ( i64 -- i64 ) body - the checker accepts the class - and (b) be generated by
 \ the fuzzer within a capped deterministic-seed sweep - the class is reachable.
 \ A renumbered K table or a narrowed RND% bound that silently dropped a class
 \ from the explored space dies here instead of shrinking coverage unnoticed.
@@ -533,7 +519,7 @@ public
       s" prop-test: alphabet self-test FAILED (class unreachable)" 1 die THEN
    s" prop-test: alphabet OK (" type ALPHA-N FMT:.INT s"  op classes generated + certified)" type cr ;
 
-\ shrink self-test: a long certified ( i64 -- i64 ) body must REDUCE under the
+\ Shrink self-test: a long certified ( i64 -- i64 ) body must reduce under the
 \ "still certifies" predicate — proves the delta-debug loop + token surgery work
 \ (a sound checker never hands us a real false-cert to shrink, so exercise the
 \ machinery on an achievable predicate).
@@ -558,9 +544,7 @@ public
 ;package
 using PROP-CORE
 
-\ Fail loudly on any false-cert (`die` exits with the code; IF/THEN are
-\ compile-only so this is wrapped in a word). A clean run reaches end-of-input,
-\ which exits 0 in batch mode — no `bye` needed (the engine has none).
+\ A clean run reaches end of input, which exits 0 in batch mode.
 : NMETA ( -- n )  NSI @ NRI @ + NCI @ + ;
 : FINISH
    PROP-NFC @ 0 > IF s" prop-test: FALSE-CERT found" 1 die THEN
@@ -715,8 +699,8 @@ variable DOUT
    s" : PROP-PC ( -- n ) check@ ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( -- n ) ndict@ ; " s" " 1 CHECK-CASE
    \ data-base's pointee is a base address, which no definition may publish
-   \ under a type variable (dot habu-bound-ptr-arithmetic-8bf6b54a); the case is
-   \ about its ARITY, so it names a pointee the way any honest caller does.
+   \ under a type variable; the case is about its arity, so it names a pointee
+   \ the way any honest caller does.
    s" : PROP-PC ( -- ptr n ) data-base ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( -- n ) prot-wid-room ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( -- n ) get-current ; " s" " 1 CHECK-CASE
@@ -815,16 +799,14 @@ public
    REPRO
    FINISH ;
 
-\ ---- seed-sweep: shard the sweep across PROP-SHARD-N forked slots, each a
-\ distinct seed for DEFAULT-COUNT iterations, so one direct run covers
-\ N x DEFAULT-COUNT distinct-seed programs in parallel. Self-tests + baits run
-\ once in the parent; children run silently (SWEEP-QUIET) and die 1 on a
-\ false-cert or metamorphic inconsistency. One red shard fails the phase.
-\ Distinct seeds come from a per-run
-\ base spread by a 32-bit golden-ratio step so no two slots share an LCG walk.
-\ The gate runs this row in one pool slot beside other rows, so the sweep keeps
-\ its 4,000 programs in two shards: a wider fan-out covers nothing more and
-\ takes the other rows' CPU. ----
+\ Seed sweep: PROP-SHARD-N forked slots, each a distinct seed for DEFAULT-COUNT
+\ iterations, so one direct run covers N x DEFAULT-COUNT programs in parallel.
+\ Self-tests and baits run once in the parent; children run silently
+\ (SWEEP-QUIET) and die 1 on a false-cert or metamorphic inconsistency. One red
+\ shard fails the phase. Seeds come from a per-run base spread by a 32-bit
+\ golden-ratio step, so no two slots share an LCG walk. The gate runs this row
+\ in one pool slot beside other rows, so the sweep keeps its 4,000 programs in
+\ two shards: a wider fan-out covers nothing more and takes the other rows' CPU.
 2 constant PROP-SHARD-N
 $9E3779B1 constant PROP-SHARD-STEP
 create PROP-SHARD-PIDS PROP-SHARD-N cells allot
@@ -850,13 +832,13 @@ variable SWEEP-BASE  variable SWEEP-RED  variable SWEEP-I
    fd close ;
 : SHARD-MUTE-STDERR ( -- )
    2 MUTE-FD ;
-\ The named failure line goes to STDOUT (fd 2 is muted in shards; `die` writes
+\ The named failure line goes to stdout (fd 2 is muted in shards; `die` writes
 \ stderr, so its message would vanish) and carries the shard seed so any red is
 \ reproducible serially via `bin/hb <seed> <count>`.
 : SHARD-FAIL ( ptr u8 n -- )
    type s"  in shard seed " type RUN-SEED @ .
    s" " 1 die ;
-\ Fault-injection seam for the sweep red-path self-test ONLY. Its selected
+\ Fault-injection seam for the sweep red-path self-test only. Its selected
 \ shard fails; every other shard exits cleanly without an iteration. A negative
 \ slot disables the seam.
 variable SHARD-FAULT

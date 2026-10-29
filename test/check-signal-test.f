@@ -1,77 +1,9 @@
 \ check-signal-test.f - a stopped check.f, and a check run past its deadline,
 \ leave no process and no scratch behind.
-\
-\     bin/hb --load test/check-signal-test.f
-\
-\ THE SUBJECT is tools/check.f checking test/check-signal-subject.f, started
-\ here as a child with a private TMPDIR. check.f's run stage runs the subject in
-\ a child of its own, and the subject starts a sleeper and reports. The test
-\ signals check.f the moment the report is in, so the signal lands while check.f
-\ waits on its child; or it gives check.f a deadline the subject's wait on its
-\ sleeper outlasts, so the deadline passes while check.f waits.
-\
-\ THE WAYS THIS CAN FAIL, written down before the fix:
-\
-\  1. AN ORPHANED CHILD. check.f's child leads its own process group, so a
-\     check.f that dies of the signal, or a `timeout` that kills check.f's
-\     group, leaves the child running under init. Asserted: the subject opens
-\     the write end of a FIFO this test makes (src/lib/test/fifo.f) by the path
-\     CHECK_SIGNAL_FIFO names, and the read end reports end of file only when
-\     the last holder is gone. check.f itself, this test's own child, holds no
-\     write end: its wait status is the evidence it ended. The stdin case's
-\     program is refused before any run, so nothing under check.f could open
-\     a FIFO: that case makes none and asserts check.f's status only.
-\  2. AN ORPHANED GRANDCHILD. A kill of the child's group ends the child and
-\     not what it spawned: the sleeper leads a group of its own. Asserted by the
-\     same FIFO, which the subject maps into the sleeper.
-\  3. SCRATCH LEFT. check.f's temporary directory, holding the run stage's
-\     run.f, is made under TMPDIR. Asserted: TMPDIR is empty once check.f has
-\     ended.
-\  4. A STATUS THAT HIDES THE SIGNAL. A check.f that cleans up and then exits
-\     with a status tells its caller the check finished. Asserted: its wait
-\     status is "killed by" the signal it was sent.
-\  5. A WAIT THAT DOES NOT HEAR IT. check.f waits in a capture of its child's
-\     output, and a signal that capture never answers would hold check.f to its
-\     deadline. A child that closed its output is waited for in the reap after
-\     the capture, which has to hear it too. Each wait has a case, and each case
-\     waits EXIT-MS for check.f to end: a check.f still running then is this
-\     test's own deadline, below.
-\  6. A STOP THAT FINDS NO CHILD. check.f answers a stop after its run however
-\     the run ended, and a refused program, a usage error or a list of resident
-\     inputs ends before any child is started. Its capture row then names pid 0,
-\     and a kill of pid 0 is a kill of check.f's own process group. Asserted:
-\     check.f fed a refused program on stdin after the signal dies of that
-\     signal and names no step of its answer that threw.
-\  7. A RUN PAST ITS DEADLINE. The capture that waits on check.f's child kills
-\     it at the deadline and throws E-PROC-TIMEOUT, which left check.f as an
-\     uncaught throw - exit 67 and a bare code - and its kill ended the child
-\     alone: the sleeper went on under init. Asserted: check.f exits 70, its
-\     refusal, with one line naming the subject and the deadline, in its
-\     default mode with the run's output open and in --json-errors with it
-\     closed, so the deadline passes in each wait; and failures 1 to 3 do not
-\     happen.
-\
-\ THIS TEST'S OWN WAITS ARE NO ASSERTION RESULT. check.f's --deadline-ms, its
-\ exit 70 and its late line are the subject and are asserted. A wait this test
-\ runs around check.f - for the subject's report, for room in check.f's stdin,
-\ for check.f to end, for end of file on the FIFO - is named on stdout and
-\ thrown as E-PROC-TIMEOUT when its own deadline runs out (src/lib/test/wait.f),
-\ so the row ends as a timeout and not as a FAIL. End of file before the
-\ report, a short report, a short write or a failed read, write or poll fails
-\ the case; a descriptor a readiness poll reports broken throws E-PROC-OUTPUT.
-\ On macOS, whose poll never reports a FIFO's end of file, a subject that dies
-\ before its report is the report wait's timeout instead.
-\
-\ THE REPORT COMES BEFORE END OF FILE MEANS ANYTHING. A FIFO no writer has
-\ opened yet reads end of file too, so a case judges end of file only after
-\ the subject's report has shown it holds the write end.
-\
-\ A FAILED CASE LEAVES NOTHING EITHER. Each case ends through CASE-END whatever
-\ it asserted or threw: a check.f still running is killed and reaped, and the
-\ case waits for the processes it could not end, which the sleeper's 20 s
-\ bounds, even when ending check.f throws. Its descriptors close and the
-\ scratch clears even when that wait runs out. The scratch is under this process's runner root, which its registered
-\ cleanup removes.
+\ Runs tools/check.f on test/check-signal-subject.f as a child with a private
+\ TMPDIR; check.f's run stage runs the subject in a child of its own, which
+\ starts a sleeper and reports. Each case signals check.f once the report is in,
+\ or gives it a deadline the subject's wait on its sleeper outlasts.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -92,6 +24,10 @@ require src/core/include.f               \ SOURCE-ROOT:CANON-OS, the name --json
 
 package CHECK-SIGNAL-TEST
 
+\ This test's own waits (for the report, for room in check.f's stdin, for
+\ check.f to end, for end of file on the FIFO) are named on stdout and thrown as
+\ E-PROC-TIMEOUT (src/lib/test/wait.f), so the row ends as a timeout, not a
+\ fail.
 60000 constant READY-MS              \ check.f's static pass and two engine boots under a loaded pool
 10000 constant EXIT-MS               \ half the sleeper's 20 s: a check.f that waited it out is late
 5000 constant GONE-MS                \ the killed take a moment to finish dying
@@ -143,8 +79,6 @@ PROC-NO-FD FEED-WR !
    SIGNAL:SIGHUP SIGNAL:CATCH
    SIGNAL:RELEASE ;
 
-\ ---- the scratch ------------------------------------------------------------
-
 \ TMP, under this test's runner root, is the TMPDIR check.f is handed, so what
 \ check.f leaves is whatever TMP holds; its output sits beside it.
 : PATHS! ( -- )
@@ -163,8 +97,6 @@ PROC-NO-FD FEED-WR !
 : TMP-CLEAR ( -- )
    TMP$ FS:REMOVE-TREE
    TMP$ FS:MAKE-DIRS ;
-
-\ ---- the report FIFO --------------------------------------------------------
 
 \ A new FIFO for the case, its read end open before check.f starts, so the
 \ subject's open of the write end does not wait.
@@ -196,7 +128,8 @@ PROC-NO-FD FEED-WR !
 \ The subject's pid, before READY-MS runs out. End of file first means check.f
 \ or its child died before the subject ran: that, a short report or a failed
 \ read or poll answers false. READY-MS running out first is this test's own
-\ deadline, named and thrown as a timeout.
+\ deadline, named and thrown as a timeout. On macOS, whose poll never reports a
+\ FIFO's end of file, a subject that dies before its report is that timeout.
 : REPORT-READ? ( -- bool )
    READY-MS >MS PROC-DEADLINE-AT {: deadline:n :}
    begin REPORT-U @ REPORT-BYTES < while
@@ -211,7 +144,8 @@ PROC-NO-FD FEED-WR !
 
 \ End of file within ms: nothing under check.f holds the write end. A failed
 \ read or poll answers false. ms running out first is this test's own
-\ deadline, named and thrown as a timeout.
+\ deadline, named and thrown as a timeout. A FIFO no writer has opened reads end
+\ of file too, so it means anything only after the subject's report.
 : GONE-WITHIN? ( n -- bool )
    {: ms:n :}
    FIFO-DONE @ if true exit then
@@ -220,8 +154,6 @@ PROC-NO-FD FEED-WR !
    eof 0 < if false exit then
    true FIFO-DONE !
    true ;
-
-\ ---- check.f ----------------------------------------------------------------
 
 : OPEN-NULL ( -- n )
    s\" /dev/null\z" drop open-rd {: fd:n :}
@@ -233,7 +165,6 @@ PROC-NO-FD FEED-WR !
    fd 0 < if E-FS-OPEN throw then
    fd ;
 
-\ The arguments check.f starts with in every case.
 : CHECK-BEGIN ( -- )
    PROC-ARGV-ENV-RESET
    s" --load" >LEN PROC-ARGV+
@@ -365,6 +296,21 @@ PROC-NO-FD FEED-WR !
    LOG-TEXT LOG$ LOG-TEXT LOG-CAP FS:READ-ALL {: a:ptr u:n :}
    a u s" threw" CONTAINS? a u s" not walked" CONTAINS? or ;
 
+\ The ways a stopped check.f can leak, each asserted here:
+\ - an orphaned child: check.f's child leads its own process group, so a
+\   check.f that dies of the signal, or a `timeout` that kills its group, leaves
+\   the child under init. The subject opens the write end of the FIFO named by
+\   CHECK_SIGNAL_FIFO (src/lib/test/fifo.f); check.f, this test's child, holds
+\   none, and its wait status is the evidence it ended;
+\ - an orphaned grandchild: a kill of the child's group misses the sleeper,
+\   which leads a group of its own; the subject maps the FIFO into it;
+\ - scratch left: check.f's temporary directory, holding the run stage's run.f,
+\   is under TMPDIR, which must be empty once check.f has ended;
+\ - a status that hides the signal: a check.f that cleans up and exits tells its
+\   caller the check finished; its wait status must be killed by the signal;
+\ - a wait that does not hear it: check.f waits in a capture of its child's
+\   output, and for a child that closed its output in the reap after it; each
+\   wait has a case (CASE-CLOSED), and each waits EXIT-MS for check.f to end.
 : CASE-BODY ( n -- )
    {: sig:n :}
    CHECK-START
@@ -382,8 +328,11 @@ PROC-NO-FD FEED-WR !
    s" signal: no process under check.f is left" T-LABEL
    GONE-MS GONE-WITHIN? TTRUE ;
 
-\ SIGTERM lands while check.f reads its program, so it answers the stop once
-\ the program is refused, and no child was ever started.
+\ check.f answers a stop after its run however the run ended, and a refused
+\ program ends before any child is started: its capture row names pid 0, and a
+\ kill of pid 0 kills check.f's own process group. SIGTERM lands while check.f
+\ reads its program, so it answers once the program is refused. Nothing under
+\ check.f could open a FIFO: this case makes none and asserts check.f's status.
 : STDIN-BODY ( -- )
    CHECK-START-STDIN
    s" stdin: check.f read past what the pipe holds" T-LABEL
@@ -410,10 +359,14 @@ PROC-NO-FD FEED-WR !
    s\"  ms\n" SB-APPEND
    SB$ ;
 
-\ check.f counts the deadline from the run's start, which is before the report,
-\ so after the report it ends inside the deadline and the EXIT-MS a signal's
-\ answer gets. That bound is this test's own wait for check.f to end; check.f's
-\ deadline, its exit 70 and its late line are the subject's, asserted here.
+\ The capture that waits on check.f's child kills it at the deadline and throws
+\ E-PROC-TIMEOUT. Uncaught, that is exit 67 and a bare code, and its kill ends
+\ the child alone, leaving the sleeper under init. check.f must exit 70, its
+\ refusal, with one line naming the subject and the deadline, and leak nothing:
+\ in its default mode with the run's output open and in --json-errors with it
+\ closed, so the deadline passes in each wait. check.f counts the deadline from
+\ the run's start, before the report, so after the report it ends inside the
+\ deadline and the EXIT-MS a signal's answer gets.
 : LATE-BODY ( bool -- )
    {: json:bool :}
    json LATE-START
@@ -430,18 +383,19 @@ PROC-NO-FD FEED-WR !
    s" deadline: no process under check.f is left" T-LABEL
    GONE-MS GONE-WITHIN? TTRUE ;
 
-\ What check.f left ends on its own, before EXPIRE-MS runs out.
 : LEFT-ENDED ( -- )
    FIFO-DONE @ 0= if
       s" the processes check.f left ended on their own" T-LABEL
       EXPIRE-MS GONE-WITHIN? TTRUE
    then ;
 
-\ Whatever the body asserted or threw. Every step is a no-op for a case that
-\ passed. The wait for what check.f left runs even when ending check.f throws,
-\ and every descriptor closes and the scratch clears even when that wait throws.
-\ With its read end closed the FIFO is done, so a case that makes none waits on
-\ no earlier case's.
+\ Runs after every body, whatever it asserted or threw; each step is a no-op for
+\ a case that passed. A check.f still running is killed and reaped, and the wait
+\ for what it left (bounded by the sleeper's 20 s) runs even when that throws;
+\ every descriptor closes and the scratch clears even when the wait throws. With
+\ its read end closed the FIFO is done, so a case that makes none waits on no
+\ earlier case's. The scratch is under this process's runner root, which its
+\ registered cleanup removes.
 : CASE-END ( -- )
    [: [: CHECK-END ;]
       [: LEFT-ENDED ;] finally ;]

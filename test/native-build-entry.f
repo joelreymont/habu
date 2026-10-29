@@ -1,16 +1,11 @@
 \ The production entry refuses a bad command line before it loads the build
-\ closure (tools/native-build-args.f). A missing output argument is refused by
-\ name, and so is a bad second argument: the class the build is being asked for
-\ is settled before the target load, so a typo cannot quietly produce a product.
-\ So are an unknown `--target` profile and one whose machine this engine has no
-\ backend for. With that backend loaded, the selected action refuses an
-\ unavailable writer before the full compiler window loads; an x86-64 window's
-\ writer is loaded before that window, so a build for it writes an x86-64 ELF
-\ from either host. A same-ISA product for another OS is written without the
-\ smoke run, which only a product this host can launch gets. The entry's
-\ accepted path, the closure compiling in the executable-build scope, is every
-\ gate's whitebox engine build (test/whitebox-engine.f runs this entry with
-\ `whitebox`).
+\ closure (tools/native-build-args.f): no output argument, a bad build class, an
+\ unknown --target profile and one whose machine has no backend here. With the
+\ backend loaded, the selected action refuses an unavailable writer before the
+\ compiler window loads. A same-ISA product for another OS is written without
+\ the smoke run, which only a product this host can launch gets. The accepted
+\ path is every gate's whitebox engine build (test/whitebox-engine.f runs this
+\ entry with `whitebox`).
 require src/lib/test.f
 require src/lib/process.f
 require src/lib/process-argv.f
@@ -84,7 +79,8 @@ create CONTENT 64 allot
    S\" native-build: one explicit output path is required, then an optional `whitebox`, then an optional `--target <target>`\n" REFUSED ;
 
 \ The build class is an argument and not an inherited variable, so the argument
-\ has exactly one other spelling and everything else is refused by name.
+\ has exactly one other spelling and everything else is refused by name. It is
+\ settled before the target load, so a typo cannot quietly produce a product.
 : BAD-CLASS-CASE ( -- )
    s" and refuses a second argument that is neither `whitebox` nor `--target`" T-LABEL
    ENTRY-ARGS

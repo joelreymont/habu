@@ -1,5 +1,4 @@
 \ Focused registry/load-path acceptance for the stdlib gate entry guard.
-\ Run: bin/hb --load test/gate-entry-guard-test.f
 
 require src/lib/test.f
 require test/gate-images.f

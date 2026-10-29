@@ -1,33 +1,9 @@
-\ dynamic.f - WDYN, src/arch/wasm/dynamic.f, run: a window compiled through an
-\ open Wasm shadow (src/arch/wasm/backend.f) beside
-\ src/arch/wasm/kernel-words.f, captured and linked by WASMLINK
-\ (src/habu/link-wasm.f) once per entry, then validated by wasm-tools and run
-\ by bun (test/wasm/harness.f).
+\ dynamic.f - WDYN (src/arch/wasm/dynamic.f) run: a window compiled through an
+\ open Wasm shadow, linked by WASMLINK (src/habu/link-wasm.f) once per entry,
+\ validated by wasm-tools and run by bun (test/wasm/harness.f).
 \ Both tools must be on PATH, so this is no row of the ordinary gate:
 \ test/wasm/device.f runs it, as does `bin/hb --load test/wasm/dynamic.f` from
 \ the tree's root.
-\
-\ W06's dynamic half: a 17-input word, a function in the aligned frame,
-\ answers through execute of its code literal what its direct call answers.
-\ Quotations in their lanes, one taking a cell and answering one and one
-\ answering two, reached through execute, take their input off the stack and
-\ leave their outputs there. W07: catch of a quotation that throws MIN-N + 1,
-\ which a double would round, answers the code whole over the cell beneath the
-\ call; catch of a quotation that returns answers zero while ctx.throw-code
-\ still holds an earlier code; a trap inside a quotation passes through catch;
-\ and execute of an xt whose slot takes more cells than the stack holds traps
-\ before its function runs. Execute and catch of xt 0, which names no adapter,
-\ trap, and so does execute of an xt whose upper 32 bits are set though its
-\ low half names a slot. A package's own execute and catch are ordinary words,
-\ and a call to either answers what it answers natively. An entry reports
-\ through its last throw's code, and each code is the one the same definition
-\ throws natively.
-\
-\ .s calls kernel-words.f's `.` on each cell, deepest first, and leaves them.
-\ The window's address cells, which no linked word reaches, are in the module's
-\ data image: a code cell holds the slot its word's code literal answers, a
-\ window word's or an engine word's, and a DATA cell WPROF's image base plus
-\ the offset of the text it points at, which the image holds there.
 
 package WASM-DYNAMIC
 public
@@ -67,7 +43,6 @@ public
    AOT-ARM:WINDOW$ AOT-CAPTURE:WASM-TARGET-CAPTURE
    NSHADOW:CLOSE ;
 
-\ The window offset of an address in the open window.
 : OFF ( ptr u8 -- n )
    BYTE-VIEW data-base BYTE-VIEW - DATA-VA VA>N + AOT-ARM:D0 @ - ;
 
@@ -83,15 +58,10 @@ WASM-DYNAMIC:OPEN
 require src/arch/wasm/kernel-words.f
 package WASM-DYNAMIC-WINDOW
 private
-\ A number as a cell's address, for the load that traps.
 CAST: >CELL ( n -- ptr n )
-\ A three-input word's xt as an xt of none, for the depth shortfall.
 CAST: >NONE ( [ n n n -- ] -- [ -- ] )
-\ A three-input word's xt as the number a throw carries.
 CAST: >N ( [ n n n -- ] -- n )
-\ A number as an xt of none, for the xts that name no adapter.
 CAST: >VOID ( n -- [ -- ] )
-\ An xt of none as a number, for the upper bits set beside its slot.
 CAST: >BITS ( [ -- ] -- n )
 \ An xt that reaches MARK throws 37, where one that reached DROP3's would trap
 \ on the empty stack.
@@ -171,6 +141,7 @@ DYNAMIC-BUFFER MODULE u8
    RUN-ENTRY 2 T= TTRUE ;
 
 \ The data image of the module last written, which its data section ends with.
+\ The window's address cells, which no linked word reaches, live there.
 : IMAGE ( -- ptr u8 )
    PATH PATH-U @ FS:FILE-SIZE {: u:n :}
    u MODULE-RESERVE
@@ -192,6 +163,7 @@ DYNAMIC-BUFFER MODULE u8
    s" execute of a quotation in its lanes takes its input off the stack and leaves its outputs there" T-LABEL
    s" WASM-DYNAMIC-WINDOW:VIA-LANES" s" lanes.wasm" [: VIA-LANES ;] THROWS-AS-NATIVE ;
 
+\ MIN-N + 1 is a code a double would round.
 : W07-CASE ( -- )
    s" W07: catch of a quotation throwing MIN-N + 1 answers the code whole over the cell beneath" T-LABEL
    s" WASM-DYNAMIC-WINDOW:CAUGHT" s" caught.wasm" [: CAUGHT ;] THROWS-AS-NATIVE

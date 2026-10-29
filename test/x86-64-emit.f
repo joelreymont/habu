@@ -1,31 +1,9 @@
-\ x86-64-emit.f - the linux-x86-64 seam's instruction emitters, the x86-64
-\ runtime's data-stack moves and stencil consumer, and the x86-64 code layer's
-\ label sites, run on aarch64.
-\
-\ src/os/linux-x86-64/{sys,proc-watch,proc-control}.f and src/arch/x86-64/rt.f
-\ are ordinary Habu: they append bytes through package X64ASM into package
-\ X64CODE's sink (src/arch/x86-64/icode.f), so an aarch64 engine can run them and
-\ read back exactly what an x86_64 machine would execute. Every case below pins
-\ those bytes to a fixed string, and the `llvm-mc:` comment above each one is the
-\ source line that produced it - the same discipline, and the same LLVM 22.1.8,
-\ as test/compiler/x86-64-asm.f. The label cases are pinned the same way, with
-\ the one step llvm-mc cannot take alone: the object is linked with GNU ld at
-\ -Ttext=0x401000, the address X64CODE:ASM-LINK is given here, so the movabs
-\ immediate is the linker's own.
-\
-\ The process primitives are pinned whole, their data-stack moves included: the
-\ moves are X64RT's G-POP and G-PUSH, so the argument ORDER each primitive builds
-\ - the substance of proc-control.f - is the register field of each pop, and the
-\ result is the push of rax.
-\
-\ WHAT IT CANNOT PROVE. No x86_64 instruction executes here. The carry polarity
-\ SYS, is built around, and a linked label's address against the loaded image,
-\ are observed by the peer images test/x86-64-peer-image.f builds
-\ (docs/xcomp.md "x86-64"). A rel32 site out of reach needs a two-gigabyte
-\ stream and is not built.
-\
-\ Its own suite, because it loads the x86-64 seam's sys.f, which spells the same
-\ syscall-number words as the host's and cannot share a process with it.
+\ x86-64-emit.f - pins, on aarch64, the bytes the linux-x86-64 seam
+\ (src/os/linux-x86-64/{sys,proc-watch,proc-control}.f), src/arch/x86-64/rt.f
+\ and X64CODE's label sites emit. Each `llvm-mc:` comment is the line that
+\ produced the bytes (LLVM 22.1.8, as test/compiler/x86-64-asm.f). No x86_64
+\ instruction runs: SYS,'s carry polarity and linked addresses are observed by
+\ the images of test/x86-64-peer-image.f.
 
 require src/lib/test.f
 require src/lib/test/outcome.f
@@ -37,6 +15,7 @@ require src/arch/x86-64/asm.f
 require src/arch/x86-64/icode.f
 require src/arch/x86-64/rt.f
 
+\ Own suite: the seam's sys.f redefines host syscall words.
 s" src/os/linux-x86-64/sys.f" required
 s" src/os/linux-x86-64/proc-watch.f" required
 s" src/os/linux-x86-64/proc-control.f" required
@@ -57,8 +36,6 @@ using X64RT
    ;MATCH ;
 
 \ ---- comparing a byte span against its expected string -----------------------
-\ A malformed expected string is a defect in this suite's own data, so it dies
-\ rather than comparing against a wrong byte, exactly as the encoder suite does.
 : HEX-DIGIT ( n -- n ) {: c:n :}
    c 48 >= c 57 <= and if c 48 - exit then
    c 97 >= c 102 <= and 0= if FMATH:E-DOMAIN throw then
@@ -86,19 +63,13 @@ using X64RT
 : SINK$ ( -- ptr u8 n )
    CODE ASM-LEN ;
 
-\ Compare what the seam just emitted against the expected string, then begin the
-\ next case's stream.
 : X= ( ptr u8 n -- ) {: ea:ptr eu:n :}
    SINK$ ea eu SPAN=HEX? TTRUE
    ASM-RESET ;
 
-\ Compare a span the seam publishes as data (a stencil) against its string.
 : S= ( ptr u8 n ptr u8 n -- ) {: da:ptr dlen:n ea:ptr eu:n :}
    da dlen ea eu SPAN=HEX? TTRUE ;
 
-\ A translator emits a dozen instructions, so its expectation is accumulated one
-\ instruction at a time and each piece sits under the llvm-mc line that produced
-\ it, rather than as one unreadable string.
 256 constant WANT-CAP
 create WANT WANT-CAP allot
 variable WANT-N
@@ -117,10 +88,9 @@ variable WANT-N
    0 WANT-N ! ;
 
 \ ---- the trap ----------------------------------------------------------------
-\ The number goes in eax and zero-extends into rax; the trap is two bytes; the
-\ reconciliation puts -4096 in rcx - free, because `syscall` clobbers rcx and r11
-\ - and compares it AGAINST rax, so the borrow the subtraction produces sets CF
-\ exactly on the -errno range. `cmp rax, -4096` would set CF on success instead.
+\ rcx is free for -4096 because `syscall` clobbers rcx and r11. Comparing it
+\ AGAINST rax makes the borrow set CF exactly on the -errno range; `cmp rax,
+\ -4096` would set CF on success.
 : TRAP-CASES ( -- )
    s" SYS, loads the number, traps, then leaves CF set on -errno" T-LABEL
    \ llvm-mc: movl $257, %eax
@@ -226,14 +196,13 @@ variable WANT-N
    E= ;
 
 \ ---- the process primitives --------------------------------------------------
-\ The trap tail every one of these ends in: syscall, then the reconciliation.
 : TRAP-TAIL+ ( -- )
    s" 0f05" E+                \ llvm-mc: syscall
    s" 48c7c100f0ffff" E+      \ llvm-mc: movq $-4096, %rcx
    s" 4839c1" E+ ;            \ llvm-mc: cmpq %rax, %rcx
 
-\ r12 stands just past the top cell: a pop retreats it and then loads, a push
-\ stores and then advances it.
+\ r12 points just past the top cell: a pop retreats then loads, a push stores
+\ then advances.
 : RETREAT+ ( -- )
    s" 4983ec08" E+ ;          \ llvm-mc: subq $8, %r12
 
@@ -277,15 +246,12 @@ variable WANT-N
    E= ;
 
 \ ---- the code layer's label sites ---------------------------------------------
-\ Every site is emitted with a zero field and patched when ASM-LINK is given the
-\ address the stream loads at; these cases link at $401000, the address the
-\ llvm-mc object below was linked at.
+\ Sites are emitted zero and patched by ASM-LINK. $401000 is the -Ttext address
+\ GNU ld linked the llvm-mc object at.
 $401000 constant LINK-VA
 
 : NOPS ( n -- )  0 ?do ASM-SINK ENC-NOP loop ;
 
-\ One label behind every site and one ahead of it: three forward sites share b,
-\ two backward sites reach a, and the movabs takes b's address.
 : LINK-FIXTURE ( -- )
    LBL LBL {: a:label b:label :}
    a LBL,
@@ -298,8 +264,8 @@ $401000 constant LINK-VA
    b LBL,
    ASM-SINK ENC-RET ;
 
-\ A rel8 site at each end of its reach. The forward one's label is bound at the
-\ very end of the stream, where no instruction follows it.
+\ The forward label binds at the very end of the stream, where no instruction
+\ follows it.
 : REL8-FWD ( n -- ) {: gap:n :}
    LBL {: e:label :}
    e JMP8,  gap NOPS  e LBL, ;
@@ -346,9 +312,9 @@ $401000 constant LINK-VA
    E= ;
 
 \ ---- the code layer's refusals ------------------------------------------------
-\ Each refusal ends the build: it dies with the code layer's exit code before a
-\ byte is patched. A child evaluates one fixture so the suite survives it.
-72 constant REFUSE-RC                   \ X64CODE's refusal, src/arch/arm64/icode.f's
+\ A refusal dies before a byte is patched; a child runs each fixture so the
+\ suite survives it. A rel32 site out of reach needs a 2 GB stream: not built.
+72 constant REFUSE-RC                   \ X64CODE's refusal exit, as src/arch/arm64/icode.f's
 $1000 constant CAPTURE-CAP
 10000 constant TIMEOUT-MS
 create OUT CAPTURE-CAP allot
@@ -360,8 +326,6 @@ create ERR CAPTURE-CAP allot
 : REDEFINED ( -- )  LBL {: l:label :}  l LBL,  l LBL, ;
 : FOREIGN ( -- )  LBL LABEL>N 1 + >LABEL JMP, ;
 
-\ A label held past the end of its stream, used after the next stream has made
-\ and bound a label of its own.
 : STALE-LINKED ( -- )
    LBL {: old:label :}
    old LBL,  LINK-VA ASM-LINK
@@ -371,14 +335,12 @@ create ERR CAPTURE-CAP allot
    old LBL,  ASM-RESET
    LBL LBL,  old JMP, ;
 
-\ A driver that empties the sink with a raw BUF:CLEAR instead of ASM-RESET.
 : CUT ( -- )
    LBL {: l:label :}
    l JMP,  l LBL,
    ASM-SINK BUF:CLEAR
    LINK-VA ASM-LINK ;
 
-\ die writes its message as one line.
 : REFUSES ( ptr u8 n ptr u8 n -- )
    {: source:ptr sourceu:n want:ptr wantu:n :}
    source sourceu OUT CAPTURE-CAP >LEN ERR CAPTURE-CAP >LEN TIMEOUT-MS >MS

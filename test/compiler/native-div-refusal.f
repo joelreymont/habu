@@ -1,39 +1,9 @@
 \ native-div-refusal.f - a zero divisor refuses BY NAME in tier-1 compiled code.
-\
-\ The engine's own `/` throws E-DIV-ZERO (src/lib/errors.f, src/habu/arith-abi.f), so
-\ an interpreted program catches a zero divisor and carries on. The native
-\ compiler's lowering used to end its guard in a `brk`: the same program compiled
-\ with `1 set-tier` died with the crash handler's register dump instead, and no
-\ caller could tell the two apart before running. What is asserted here is that
-\ the CONTRACT does not depend on the tier: the code caught is the same code, the
-\ catch RESUMES - the program prints after it - and the two wrapping contracts
-\ the refusal sits between (`MIN-N -1 /` is `MIN-N`, an ordinary division is
-\ unchanged) are still what they were.
-\
-\ `mod` with an unknown or zero divisor is asserted beside `/` because its
-\ division and multiply-subtract (src/compiler/native/elaborate.f EXPAND-MODULO)
-\ inherits the refusal from the division's schema rather than carrying one of
-\ its own. Literal two uses a signed remainder sequence in the same expansion.
-\
-\ THE GUARD IS THREE INSTRUCTIONS: `cbnz` of the divisor over one instruction,
-\ `bl` to the engine's sealed (DIV-ZERO) helper - the routine the engine's own
-\ `/` branches to - and the `sdiv`. It is read out of a word's baked span through
-\ src/habu/xref.f, and it is what keeps the emitter's three instructions per
-\ operation (src/compiler/native/emit.f INSN-PER-OP) true: a word of fourteen
-\ discarded divisions over two locals is about 22 operations, which that ceiling
-\ sizes for 3 * 22 + 9 = 75 instructions, while a five-instruction guard emits
-\ 5 * 14 + 8 = 78 of them and refused the word with E-A64EMIT-CAP.
-\
-\ THE STRIPPED IMAGE is the helper's third reader. tools/hb-build.f compiles
-\ test/compiler/native-div-image.f at tier 1 and keeps only what its closure
-\ reaches, so the image catches the zero divide only if the closure followed the
-\ guard's branch into the helper. test/compiler/native-frame-slot-e2e.f builds
-\ and runs it in its shared production image.
-\
-\ The runtime cases run in a child process: `set-tier` is engine-global state,
-\ and a child's own source names its tier. ARM returns to tier 0 for the catch
-\ wrappers; the x64 host compiles them at its only tier. The one word whose
-\ bytes are read is compiled here at tier 1.
+\ The contract does not depend on the tier: tier 1 throws the interpreter's
+\ E-DIV-ZERO (src/habu/arith-abi.f), the catch resumes, `MIN-N -1 /` is MIN-N
+\ and an ordinary division is unchanged. `mod` (src/compiler/native/elaborate.f
+\ EXPAND-MODULO) inherits the refusal from the division's schema; literal two
+\ uses a signed remainder sequence in the same expansion.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -76,6 +46,10 @@ variable EXITED
      timeout  OF src u OUT$ ERR$ T-TIMED-OUT ENDOF
    ;MATCH ;
 
+\ The runtime cases run in a child: `set-tier` is engine-global state, and a
+\ child's own source names its tier. ARM returns to tier 0 for the catch
+\ wrappers; the x64 host compiles them at its only tier. GUARDED, the one word
+\ whose bytes are read, is compiled here at tier 1.
 : RUN ( ptr u8 n -- ) {: src:ptr u:n :}
    src u OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN src u STORE! ;
 
@@ -122,8 +96,15 @@ variable SRC-U
    tail tu SRC+
    SRC$ ;
 
-\ Fourteen and not thirteen, the first count the five-instruction guard refused,
-\ so the case keeps one division of margin over the derivation in the header.
+\ The guard is three instructions: `cbnz` of the divisor over one instruction,
+\ `bl` to the engine's sealed (DIV-ZERO) helper, the routine the engine's own
+\ `/` branches to, and the `sdiv`. That keeps src/compiler/native/emit.f
+\ INSN-PER-OP's three instructions per operation true: fourteen discarded
+\ divisions over two locals are about 22 operations, which that ceiling sizes
+\ for 3 * 22 + 9 = 75 instructions, while a five-instruction guard emits
+\ 5 * 14 + 8 = 78 and is refused with E-A64EMIT-CAP. Fourteen and not thirteen,
+\ the first count the five-instruction guard refused, keeps one division of
+\ margin.
 14 constant CAP-DIVS
 
 : CAPACITY-PROGRAM ( -- ptr u8 n )
@@ -170,6 +151,10 @@ variable DIV-AT                           \ where the last sdiv found stands
       lo i 4 * +  dup CODE@ SDIV-MASK and SDIV-X = if DIV-AT ! 1+ else drop then
    loop ;
 
+\ The stripped image is the helper's third reader: tools/hb-build.f compiles
+\ test/compiler/native-div-image.f at tier 1 keeping only its closure, so the
+\ image catches a zero divide only if the closure followed the guard's branch
+\ into the helper. test/compiler/native-frame-slot-e2e.f builds and runs it.
 : HELPER ( -- n ) s" (DIV-ZERO)" NDICT:HELPER-TARGET ;
 
 : GUARD-CASES ( -- )

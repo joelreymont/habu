@@ -1,16 +1,8 @@
 \ The patched host whole-source-read-test.f loads once and forks each case from.
-\ FS:FILE-SIZE answers a path's size and then, for the file the case grows, appends
-\ blank lines past every reader's first room: past src/lib/source.f's
-\ SOURCE-ROOM-MIN and past the 64 KiB a region of MEM-ALLOC-64K-SPAN rounds to.
-\ It does so on every stat, so each reader that samples the file meets bytes past
-\ its sample and grows its room to hold them. The subject's first stat also
-\ appends a require of grown.f. Each reader is loaded after the replacement and
-\ so calls it.
-\
-\ CASE! names a case's MODE, SUBJECT and GROW, the file to grow; MAIN runs it.
-\ MODE is one of check, json, all, dep, origin, origin-refused and lsp. The test
-\ calls CASE! and runs MAIN in a fork child (src/lib/test/subject.f), so the
-\ case's state, its readers' and the first-stat flag never reach the next case.
+\ FS:FILE-SIZE answers a path's size and, on every stat of the file the case
+\ grows, appends blank lines past every reader's first room (src/lib/source.f
+\ SOURCE-ROOM-MIN and the 64 KiB a MEM-ALLOC-64K-SPAN region rounds to), so each
+\ reader meets bytes past its sample and grows its room.
 
 require src/lib/string.f
 require src/lib/fs.f
@@ -52,6 +44,8 @@ create GROW-CANON PATH-CAP allot variable GROW-U
 
 public
 
+\ The subject's first stat also appends a require of grown.f; each reader loads
+\ after the replacement.
 : SIZE ( ptr u8 n -- n )
    {: path:ptr pathu:n :}
    REFUSED? if E-MEM-MAP throw then
@@ -67,6 +61,9 @@ public
    then
    size ;
 
+\ MODE is one of check, json, all, dep, origin, origin-refused and lsp; GROW is
+\ the file to grow. The test runs MAIN in a fork child (src/lib/test/subject.f),
+\ so a case's state, its readers' and the first-stat flag never reach the next.
 : CASE! ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: mode:ptr modeu:n subj:ptr subju:n grow:ptr growu:n :}
    mode modeu MODE MODE-U MODE-CAP KEEP!

@@ -1,15 +1,12 @@
-\ xt-cell-test.f - xt<effect> storage cells (dot habu-typed-xt-storage-ddad4af8).
+\ xt-cell-test.f - xt<effect> storage cells.
+\ `TYPED-VARIABLE NAME [ in -- out ]` declares a code cell whose @ recovers
+\ xt<E> as a T-QUOT: a typed store fit-checks W's certified effect against E,
+\ and `NAME @ execute` fit-checks the row as a literal xt<E> does (RSEXEC). The
+\ accessor's declared effect bakes a concrete T-QUOT into its usig scheme,
+\ freshened per occurrence, so E-INST raw-var freshening cannot erase it.
+
 \ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/fs.f
 \   test/xt-cell-test.f
-\
-\ Pins the xt<effect> storage-cell capability: `TYPED-VARIABLE NAME [ in -- out ]`
-\ declares a persistent monomorphic code cell whose @ recovers xt<E> as a T-QUOT.
-\ A typed store (`[: W ;] NAME !`) fit-checks W's certified effect against E and
-\ rejects on mismatch; fetch+execute (`NAME @ execute`) fit-checks the row against
-\ E exactly like executing a literal xt<E> (reuses RSEXEC). Persistence beats the
-\ E-INST raw-var freshening because the accessor's declared ( -- ptr [ in -- out ] )
-\ bakes a CONCRETE T-QUOT into its usig scheme, freshened alpha-equivalently per
-\ occurrence — never the erased raw address var the parent RCA describes.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -36,17 +33,14 @@ TYPED-VARIABLE XC-A ptr u8  variable XC-U
 
 \ ---- checker seam: store / fetch / execute fit-checks ------------------------
 : XC-SECTION-CHECKER ( -- )
-   \ typed store of a matching word certifies (fit-check on the certified effect)
    s" S1 ( -- ) [: SP ;] HK !" CHECK-QUIET-CANDIDATE! -1 T=
    \ wrong-effect store rejects: DBL is ( n -- n n )
    s" S2 ( -- ) [: DBL ;] HK !" CHECK-QUIET-CANDIDATE! 0 T=
-   \ fetch + execute with the right row certifies
    s" F1 ( n -- n ) HK @ execute" CHECK-QUIET-CANDIDATE! -1 T=
    \ wrong-row execute rejects: E needs an n input, none on ( -- )
    s" F2 ( -- ) HK @ execute" CHECK-QUIET-CANDIDATE! 0 T=
    \ row polymorphism: surplus depth under the arg is preserved
    s" F3 ( n n -- n n ) HK @ execute" CHECK-QUIET-CANDIDATE! -1 T=
-   \ the accessor value itself is a pointer to the declared quotation cell
    s" F4 ( -- ptr [ n -- n ] ) HK" CHECK-QUIET-CANDIDATE! -1 T= ;
 
 \ ---- live round-trip through the cell ---------------------------------------
@@ -58,7 +52,6 @@ TYPED-VARIABLE XC-A ptr u8  variable XC-U
    HK-STORE
    5 HK-RUN 6 T=
    9 HK-RUN 10 T=
-   \ re-store another matching word: the same cell now runs SP2
    HK-STORE2
    5 HK-RUN 7 T=
    9 HK-RUN 11 T= ;
@@ -75,35 +68,28 @@ TYPED-VARIABLE XC-A ptr u8  variable XC-U
 : HKB-RUN ( n n -- n ) HKB @ execute ;
 
 : XC-SECTION-BUFFER ( -- )
-   \ indexed store fit-checks; wrong-effect rejects; fetch+execute fit-checks
    s" B1 ( -- ) [: SP ;] 0 HKB !" CHECK-QUIET-CANDIDATE! -1 T=
    s" B2 ( -- ) [: DBL ;] 0 HKB !" CHECK-QUIET-CANDIDATE! 0 T=
    s" B3 ( n -- n ) 0 HKB @ execute" CHECK-QUIET-CANDIDATE! -1 T=
    s" B4 ( -- ) 0 HKB @ execute" CHECK-QUIET-CANDIDATE! 0 T=
-   \ distinct indices hold independent words
    HKB-STORE
    5 0 HKB-RUN 6 T=
    5 1 HKB-RUN 7 T= ;
 
 \ ---- tick store: `['] W HK !` retypes the tick so the store fit-checks W's -----
-\ certified effect against the cell (dot habu-typed-xt-cells-08e1dc2c). The retype
-\ no longer keys on what follows the tick: BTICK-TOK types every tick of a word the
-\ checker knows, so T1 certifying is the proof it fires (a plain-n erasure would
-\ reject it), T1 vs T2 proves the store discriminates on the EFFECT, and the buffer
-\ slot store T5 - out of scope while the retype needed a single-token lookahead onto
-\ the accessor - now fit-checks the same way. Candidate-path only, like every
-\ direct-tick fixture (the reconstructed --load body drops the target).
+\ certified effect against the cell. BTICK-TOK types every tick of a word the
+\ checker knows, so T1 certifying proves the retype fires (a plain-n erasure
+\ would reject it), and T1 against T2 proves the store discriminates on the
+\ effect. Candidate-path only, like every direct-tick fixture: the reconstructed
+\ --load body drops the target.
 : XC-SECTION-TICK-STORE ( -- )
-   \ matching-effect tick store certifies: the retype fired (else this rejects)
    s" T1 ( -- ) ['] SP HK !" CHECK-QUIET-CANDIDATE! -1 T=
-   \ mismatched-effect tick store rejects on the effect (DBL is ( n -- n n ))
    s" T2 ( -- ) ['] DBL HK !" CHECK-QUIET-CANDIDATE! 0 T=
-   \ a non-xt (plain number) store still rejects
    s" T3 ( -- ) 42 HK !" CHECK-QUIET-CANDIDATE! 0 T=
    \ a tick before a scalar sink REJECTS: the quotation cannot unify with +'s n
    s" T4 ( n -- n ) ['] SP +" CHECK-QUIET-CANDIDATE! 0 T=
-   \ a buffer slot store fit-checks too, and on the EFFECT: the index between the
-   \ tick and the accessor no longer hides the sink
+   \ a buffer slot store fit-checks on the effect too: the index between the
+   \ tick and the accessor does not hide the sink
    s" T5 ( -- ) ['] SP 0 HKB !" CHECK-QUIET-CANDIDATE! -1 T=
    s" T6 ( -- ) ['] DBL 0 HKB !" CHECK-QUIET-CANDIDATE! 0 T=
    s" T7 ( -- ) 42 0 HKB !" CHECK-QUIET-CANDIDATE! 0 T= ;
@@ -123,13 +109,10 @@ TYPED-VARIABLE XC-A ptr u8  variable XC-U
    s" BADQ2" 0 search-wl 0= TTRUE
    s" BADQ3" 0 search-wl 0= TTRUE ;
 
-\ ---- STAGE-3: plain raw variable @ execute now REJECTS (E-EXEC-OPAQUE-XT) ------
-\ dot habu-checker-exec-of-5923c543 flipped the RSEXEC T-VAR branch: executing an
-\ xt fetched from untyped memory (a raw variable or create cell) is rejected
-\ because its true stack effect is not statically known. The XCRAW launder that
-\ used to CERTIFY now REJECTS; the typed xt cell above is the SOUND alternative
-\ that fit-checks the row. XC-CODE< runs a candidate with JSON diagnostics into a
-\ buffer and asserts the reject carries the named code.
+\ ---- a plain raw variable's @ execute REJECTS (E-EXEC-OPAQUE-XT) --------------
+\ Executing an xt fetched from untyped memory (a raw variable or create cell) is
+\ refused at RSEXEC's T-VAR branch: its stack effect is not statically known.
+\ The typed xt cell above is the sound alternative.
 create XC-DBUF 8192 allot
 : XC-CODE< ( ptr u8 n -- )   \ run a candidate with JSON diags captured; assert reject (verdict 0)
    XC-DBUF 8192 DIAG-BUFFER!  0 0= DIAG-JSON!
@@ -144,19 +127,18 @@ create XC-DBUF 8192 allot
 variable XCRAW
 
 : XC-SECTION-STAGE3 ( -- )
-   \ the raw-variable launder now rejects, named E-EXEC-OPAQUE-XT (was -1 before the flip)
+   \ the raw-variable launder rejects, named E-EXEC-OPAQUE-XT
    s" L1 ( -- ) XCRAW @ execute" XC-CODE<
    s\" \"code\":\"E-EXEC-OPAQUE-XT\"" XC-CODE?
    XC-CODE-END
    \ contrast: the typed cell fit-checks the row, so a wrong-row execute rejects
    s" L2 ( -- ) HK @ execute" CHECK-QUIET-CANDIDATE! 0 T= ;
 
-\ ---- STAGE-3 CATCH: catch of a raw-variable xt now REJECTS too --------------
-\ dot habu-flip-rscatch-opaque-5da02bd5 flipped the RSCATCH T-VAR branch: catching
-\ an xt fetched from untyped memory is the same launder as executing it, so it is
-\ rejected with the same E-EXEC-OPAQUE-XT code, but the reason names 'catch'. The
-\ typed catch routes (direct tick, quotation parameter, typed xt cell, defer) fit-
-\ check the caught row and stay green.
+\ ---- catch of a raw-variable xt REJECTS too ----------------------------------
+\ RSCATCH's T-VAR branch: catching an xt fetched from untyped memory is the same
+\ launder, refused with E-EXEC-OPAQUE-XT and a reason naming 'catch'. The typed
+\ catch routes (direct tick, quotation parameter, typed xt cell, defer)
+\ fit-check the caught row.
 defer XC-DF ( n -- n )
 
 : XC-SECTION-CATCH ( -- )
@@ -165,7 +147,6 @@ defer XC-DF ( n -- n )
    s\" \"code\":\"E-EXEC-OPAQUE-XT\"" XC-CODE?
    s" Catch an xt" XC-CODE?               \ the catch-specific reason fired, not the execute one
    XC-CODE-END
-   \ typed catch routes stay green: direct tick / quotation parameter / typed cell / defer
    s" GC1 ( n -- n n ) ['] SP catch" CHECK-QUIET-CANDIDATE! -1 T=
    s" GC2 ( n [ n -- n ] -- n n ) catch" CHECK-QUIET-CANDIDATE! -1 T=
    s" GC3 ( n -- n n ) HK @ catch" CHECK-QUIET-CANDIDATE! -1 T=

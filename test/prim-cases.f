@@ -1,11 +1,11 @@
 \ prim-cases.f — the integer primitive case sets, as data.
 \
-\ One case set per row of src/habu/prims.f, in table order: every line is a
-\ row's inputs and expected outputs, ended by the shape word that runs it. The
-\ file defines no word. A file runs the sets by including it (`include`, never
-\ `require`, so a second includer in one image is not skipped) with these in
-\ scope:
-\
+\ One set per row of src/habu/prims.f, in table order: each line is a row's
+\ inputs and expected outputs, ended by its shape word. The file defines no
+\ word. An includer uses `include`, never `require` (a second includer in one
+\ image must not be skipped).
+
+\ An includer provides:
 \ - `CASES ( n -- )`, which parses the primitive name after it and opens the
 \   set for that name's zero-based overload row, and `;CASES`, which closes it;
 \ - the fourteen shape words, a flag column being 0 or 1:

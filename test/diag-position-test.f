@@ -1,38 +1,8 @@
 \ diag-position-test.f - a checker packet locates its token in the checked file.
-\
-\ `tools/check.f --json-errors` writes a packet for each definition and
-\ declaration its pre-passes refuse, and an editor puts the diagnostic where the
-\ packet says: byte_start and byte_end are 0-based offsets in the checked file,
-\ end exclusive; line and column are 1-based, the column counted in bytes, and
-\ LF ends a line. Each case writes a fixture, runs the checker on it, and
-\ asserts the four fields, the file label, and that the fixture's bytes in
-\ [byte_start, byte_end) are the packet's token, or the name as written where
-\ the packet names its definition by the checker's fold: a body over two
-\ lines, a tab,
-\ runs of spaces, CR LF, comments, strings, multibyte UTF-8, a signature on its
-\ own line, a definition after others, a top-level refusal after a definition,
-\ which names its line alone, and one in a required file, which names that
-\ file and not the subject the run labels, every packet of an --all-errors run, a
-\ bare name a global and a used public share, called and as the target of `[']`
-\ and of `is`, a public word whose private twin moves other cells and a
-\ definition whose inferred effect is not recorded, both at the definition's
-\ name, a refused `generates:` row at its name, and one whose name a global
-\ and a used public share, a `trust` row written as escaped literals,
-\ unplaced where the name decoded is not in the text, a string loader's
-\ path written as one, at top level or in a body, followed decoded and
-\ refused at a bad escape, and declaration packets: SUMTYPE, NEWTYPE with
-\ malformed parameter header (at its family name), ENUM (a body token and a
-\ close-stage fault at the family name) and STRUCTURE. The check composes the subject
-\ with the files it requires, so a packet in a required file names that
-\ file and locates there, after a file it requires in turn has returned,
-\ and a packet in the subject after a required file returns locates in
-\ the subject: plain, under --all-errors and under --verify-only, the
-\ check a language server makes.
-\ Semantic checks use CHECK's public API with captured process descriptors;
-\ its verifier and run stages still use the real child engine. That engine is
-\ HABU_UNDER_TEST when the gate sets it, else the running engine.
-\
-\ Run: bin/hb --load test/diag-position-test.f
+\ Packet contract (tools/check.f --json-errors): byte_start and byte_end are
+\ 0-based offsets, end exclusive; line and column are 1-based, the column in
+\ bytes, and LF ends a line. A packet in a required file names and locates
+\ there.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -105,8 +75,8 @@ variable RC
 : CR+ ( -- ) 13 SB-APPEND-C ;
 : TAB+ ( -- ) 9 SB-APPEND-C ;
 
-\ The string builder's text becomes fixture NAME; a copy stays to cut the
-\ packets' byte spans from.
+\ Writes the string builder's text as fixture NAME and keeps a copy for the
+\ packets' byte spans.
 : FIXTURE! ( ptr u8 n -- )
    {: name:ptr nameu:n :}
    BASE$ name nameu FX-P FS:JOIN-PATH FX-PU !
@@ -131,9 +101,11 @@ variable RC
    a DEP-P u BYTE-COPY
    u DEP-PU ! ;
 
-\ The outcome of a child that ran the program src: its exit code, -1 for a
-\ signal. A deadline is no exit code: it prints src and the capture and throws
-\ E-PROC-TIMEOUT (T-TIMED-OUT).
+\ Semantic checks call CHECK's public API with captured descriptors; the
+\ verifier and run stages use the child engine: HABU_UNDER_TEST when set, else
+\ this one. The outcome of a child that ran the program src: its exit code, -1
+\ for a signal. A deadline is no exit code: it prints src and the capture and
+\ throws E-PROC-TIMEOUT (T-TIMED-OUT).
 : STORE! ( ptr u8 n len len outcome -- )
    {: src:ptr srcu:n outu:len erru:len oc :}
    erru LEN>N ERR-U !
@@ -198,11 +170,9 @@ variable RC
    k tok toku line col bs be path pathu text textu PLACED-IN
    k s" token" tok toku FIELD= ;
 
-\ AT-IN for the fixture.
 : AT ( n ptr u8 n n n n n -- )
    FX-PATH$ FX$ AT-IN ;
 
-\ AT-IN for the required file DEP! kept.
 : DEP-AT ( n ptr u8 n n n n n -- )
    DEP-PATH$ DEP$ AT-IN ;
 
@@ -621,7 +591,6 @@ variable RC
    s" " CHECK
    0 s" size" 3 10 40 44 AT ;
 
-\ The one-line fixture NAME holding TEXT.
 : LINE-FIXTURE ( ptr u8 n ptr u8 n -- )
    {: text:ptr textu:n name:ptr nameu:n :}
    SB-RESET
@@ -1059,17 +1028,15 @@ variable RC
    k s" verdict" s" rejected" FIELD=
    k tok toku line col bs be FX-PATH$ CANON$ FX$ AT-IN ;
 
-\ A top-level row the check replays from the literals before it gets the bytes
-\ the load's literals make: an escaped literal's are its escapes decoded, a hex
-\ or a letter escape, in either slot of a `trust` row. A decoded name nothing
-\ defines is stale at that name, which the checked text does not hold, so its
-\ packet has no position. A bad escape is refused at the literal's opener, by
-\ each check as by the load, as the throw of its statement. The check's lexer
-\ reads no escape, and a defect it reads anywhere in the file is reported in
-\ its place before an earlier one, so a string after the bad escape that never
-\ closes is reported there, as after a definition that does not check.
-\ --verify-only composes the file as it reads it, so it keeps that definition's
-\ refusal before the string's.
+\ A top-level row the check replays gets the bytes the load's literals make: an
+\ escaped literal's escapes decoded (hex or letter), in either slot of a `trust`
+\ row. A decoded name nothing defines is stale and unplaced: the checked text
+\ does not hold it. A bad escape is refused at the literal's opener by each
+\ check, as the throw of its statement. The check's lexer reads no escape and
+\ reports a defect anywhere in the file in place before an earlier one, so an
+\ unclosed string after the bad escape is reported there, as after a definition
+\ that does not check; --verify-only composes the file as it reads it and keeps
+\ that definition's refusal before the string's.
 : TEST-ESCAPED-ROW ( -- )
    s" an escaped trust row: a hex escape" T-LABEL
    SB-RESET
@@ -1123,15 +1090,12 @@ variable RC
    a FX FX-U @ + u BYTE-COPY
    FX-U @ u + FX-U ! ;
 
-\ Fixture NAME: `included` of an escaped literal of STEPS `.\x2F` escapes, each
-\ the step `./`, before inc-target.f, then a use of the word that file defines.
-\ A step is five bytes as written and two decoded, so with 250 steps the path
-\ is longer than the path capacity (PATH-CAP, 1023 bytes) as written but not
-\ decoded, and with 600 decoded too. The engine's resolver measures the path
-\ decoded and refuses it only at 2048 bytes or more, joined when relative to
-\ each root searched before one holds the file, or over PATH-CAP once
-\ normalized, so it loads both, 600 steps at
-\ 3012 bytes as written.
+\ Fixture NAME: `included` of an escaped literal of STEPS `.\x2F` escapes (the
+\ step `./`, five bytes written, two decoded) before inc-target.f, then a use of
+\ the word that file defines. 250 steps exceed PATH-CAP (1023 bytes) as written
+\ only, 600 decoded too. The resolver measures the path decoded and refuses it
+\ only at 2048 bytes joined to a searched root or over PATH-CAP normalized, so
+\ the engine loads both.
 : STEPS-FIXTURE ( n ptr u8 n -- ) {: steps:n name:ptr nameu:n :}
    BASE$ name nameu FX-P FS:JOIN-PATH FX-PU !
    0 FX-U !
@@ -1158,27 +1122,19 @@ variable RC
    1 s" verdict" s" deferred" FIELD=
    1 tok toku line col bs be FX-PATH$ CANON$ FX$ AT-IN ;
 
-\ A string loader's path is the bytes the load's literal makes: an escaped
-\ literal's escapes decoded, which each check follows to the file the load
-\ reads, through `included` and through `required`, and a plain literal's
-\ spelling, backslash and all. The path capacity bounds the decoded path, as it
-\ bounds a plain one: a path that fits only decoded is followed, and one over
-\ it decoded is refused at its loader, as a plain path that long is. A loader
-\ in a body loads when the word runs, and the plain check and --all-errors
-\ follow its path after the definition, as they follow a plain one: decoded,
-\ or as written when it holds no escape, and kept for that load whatever the
-\ check decodes first, more paths in the same body or literals at top level
-\ while a package is open. --verify-only runs no body and imports nothing from
-\ one, so a call of the body's word is deferred to the run, and so is the first
-\ use of a word that file defines after it, as any name nothing in scope
-\ defines is after a call that may load source. A bad escape in a loader's literal at top level is
-\ where the load stops: each check refuses that literal once, at its opener,
-\ and follows nothing after it, here a file that is not there. In a body,
-\ opened by `:` or by its synonym `kernel:`, it is one more error of a
-\ definition the check rejects and reads past: its loader is neither followed
-\ nor refused, and that missing file, required after the body, is refused at
-\ its `require`, as after a body holding any other error; --verify-only keeps
-\ the definition's refusal before it.
+\ A string loader's path is the bytes the load's literal makes: escapes decoded,
+\ followed through `included` and `required`; a plain literal's spelling is
+\ kept, backslash and all. PATH-CAP bounds the decoded path: one that fits only
+\ decoded is followed, one over it decoded is refused at its loader. A loader in
+\ a body loads when the word runs: the plain check and --all-errors follow its
+\ path after the definition, kept for that load whatever the check decodes
+\ first. --verify-only runs no body, so it defers a call of the body's word and
+\ the first later use of a word that file defines. A bad escape at top level
+\ stops the load: each check refuses that literal once, at its opener, and
+\ follows nothing after it. In a body (`:` or `kernel:`) it is one more error of
+\ a rejected definition: its loader is neither followed nor refused, the missing
+\ file required after the body is refused at its `require`, and
+\ --verify-only keeps the definition's refusal before it.
 : TEST-ESCAPED-PATH ( -- )
    SB-RESET
    s" : INCLUDED-WORD ( -- n ) 7 ;" SB-APPEND LF+

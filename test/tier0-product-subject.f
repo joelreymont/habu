@@ -1,17 +1,7 @@
 \ tier0-product-subject.f - one program over the forms a product compiles:
-\ counted and nested loops with leave and unloop, begin/while/repeat, if/else,
-\ catch and throw, nested quotations, a create ... does> definer, variables, a
-\ deferred word bound at load and rebound at run time, floats, and string
-\ literals of every literal form. Each literal repeats `0 4 5 6 7 P T p` four
-\ times, so whatever its alignment those bytes land at offsets 4k+3: the top
-\ byte of an ARM64 instruction word, where they decode as ADR, CBZ/CBNZ,
-\ TBZ/TBNZ and B.cond. Bytes like these laid inline in the code band make the
-\ stripped link refuse the image. RUN's last line is the tier the program
-\ loaded at, so its output names the compiler of its definitions.
-\ tools/hb-build-test-lib.f HBT-SUBJECT-OUT holds that output;
-\ tools/hb-build-aot-test.f BUILD-AOT-TIERS builds it stripped at tier 0 and at
-\ tier 1, and tools/hb-build-repl-image-test.f HBT-REPL-TIER-PROGRAM builds it
-\ --repl at both tiers.
+\ loops with leave and unloop, begin/while/repeat, if/else, catch and throw,
+\ nested quotations, a create ... does> definer, variables, a deferred word
+\ rebound at run time, floats, and every string literal form.
 package TIER0-SUBJECT
 
 variable BUILT
@@ -70,6 +60,10 @@ BIND-ADD
    1.5 2.0 f* f>s . cr ;
 
 
+\ Each literal repeats `0 4 5 6 7 P T p` four times, so those bytes land at
+\ offsets 4k+3 whatever the alignment: the top byte of an ARM64 word, decoding
+\ as ADR, CBZ/CBNZ, TBZ/TBNZ and B.cond; inline in the code band they make the
+\ stripped link refuse the image.
 : STRINGS ( -- )
    s" 00004444555566667777PPPPTTTTpppp" type cr
    ." 00004444555566667777PPPPTTTTpppp" cr
@@ -81,6 +75,10 @@ BIND-ADD
 
 public
 
+\ RUN's last line is the tier it loaded at. tools/hb-build-test-lib.f
+\ HBT-SUBJECT-OUT holds the output; tools/hb-build-aot-test.f BUILD-AOT-TIERS
+\ and tools/hb-build-repl-image-test.f HBT-REPL-TIER-PROGRAM build it at both
+\ tiers.
 : RUN ( -- )
    GRID . cr
    20 FIRST-OVER . cr

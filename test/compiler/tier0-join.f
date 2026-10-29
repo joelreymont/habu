@@ -1,49 +1,7 @@
-\ tier0-join.f - tier 0 reconciles the virtual stack at every join to the
-\ layout its opener recorded, with a parallel copy.
-\
-\ `begin`, `if` and `while` record which register holds each virtual stack
-\ entry; the back edge, `then` and `repeat`'s exit (src/habu/jit.f LVRECON,
-\ LVSETF) move each entry into its recorded register, breaking a cycle through
-\ x16, push the entries deeper than the record and pop the recorded ones the
-\ path left in memory, and `else` records the true arm's end for both arms
-\ (LVRESNAP). This file pins it through the real load path (ARM's default
-\ tier is 0) by counting instructions. A loop's count runs from the back
-\ branch's target to the back branch: a body that keeps the layout emits
-\ nothing there, a body that swaps two registers is one cycle through x16 and
-\ no memory traffic, and a body that pulls one cell below the record pushes
-\ only that cell. A word with joins counts its whole code: its inputs are
-\ popped once and its outputs pushed once at `;`, so a join that spilled
-\ would add both. A compare right before a branch fuses into a b.cond
-\ (src/habu/jit.f LVFUSE) unless a join lands after the compare: J-FENCE's
-\ `then` patches the first `if` to land past the compare's csetm, so its second
-\ `if` keeps the flag, while J-FUSED's `then` lands on the compare itself and
-\ both of its `if`s fuse. Every subject also runs and its answer is checked.
-\
-\ Inside a `do`/`?do` loop tier 0 keeps the innermost index in x29 (habu2.f
-\ J-FRAME, J-I): `i` copies x29 into a pool register, and only a call or a
-\ control-flow edge makes the compiler reload it from the memory frame, which
-\ stays current because `loop` and `+loop` store every step. A reload, `i`'s
-\ (LIDX-RELOAD?,) or the step's (LIDX-LOAD?,), addresses the frame through x16
-\ (C-LOOP-TOP,) and then issues `ldr x29,[x16]`, the one instruction that
-\ writes the cache from memory; every `loop` addresses its frame through x16 to
-\ step it, so the address sequence alone does not mark a reload. L-TOP's `i` is
-\ a copy alone, L-CALL's reloads once after the call, L-NOI's `loop` reloads the
-\ index it steps after the call, and L-NEST's outer `i` reloads after the
-\ inner loop closes. L-WIDE's wide local sends it through pass 2 (habu2.f
-\ EM-P2-START), where each read of `k` spills the virtual stack and loads the
-\ local into x9 (EM-P2-LOCREF): its `i` still copies x29 and never reloads.
-\
-\ `{:` binds its locals from the virtual stack's top (habu2.f
-\ C-LBRACE-BIND-VS): a register entry is stored straight into its frame slot,
-\ a constant through x16, and only the locals below the virtual stack pop from
-\ memory, so entries deeper than the group stay in their registers. B-COMP's
-\ computed value is one store and its copy below stays live, B-CON's constant
-\ is one movz and no push, B-DEEP binds one local from a register and pops
-\ the other, and B-LOOP's group inside a loop body leaves the back edge
-\ nothing to push or pop. B-WIDE's wide local takes pass 2, which spills the
-\ virtual stack before it carves.
-\
-\ Spans come from the DICTIONARY RECORD (src/habu/xref.f), as in
+\ tier0-join.f - tier 0 reconciles the virtual stack at every join to the layout
+\ its opener recorded, with a parallel copy. Pinned by counting instructions on
+\ the real load path (ARM's default tier is 0); every subject's answer is also
+\ checked. Spans come from the dictionary record (src/habu/xref.f), as in
 \ test/compiler/tier0-compare-branch.f.
 
 require src/lib/test.f
@@ -96,8 +54,8 @@ variable MISSING                     \ names the dictionary did not answer for
    w BCOND-MASK and BCOND-OP =  w CBZ-MASK and CBZ-OP =  or ;
 
 \ The loop of the named word: from its first backward conditional branch's
-\ target up to that branch. A word without one has an empty loop and counts
-\ nothing, which every subject's expectations refuse.
+\ target up to that branch. A word without one counts nothing, which every
+\ subject's expectations refuse.
 : LOOP-SPAN ( ptr u8 n -- n n ) {: na:ptr nu:n :}
    na nu SPAN {: lo:n hi:n :}
    0 0
@@ -110,18 +68,15 @@ variable MISSING                     \ names the dictionary did not answer for
       then
    4 +loop ;
 
-\ How many instructions in lo..hi match op under mask.
 : SPAN-OPS ( n n n n -- n ) {: lo:n hi:n mask:n op:n :}
    0
    hi lo ?do
       i CODE@ mask and op = if 1+ then
    4 +loop ;
 
-\ How many instructions inside the named word's loop match op under mask.
 : LOOP-OPS ( ptr u8 n n n -- n ) {: na:ptr nu:n mask:n op:n :}
    na nu LOOP-SPAN mask op SPAN-OPS ;
 
-\ How many instructions in the named word's whole code match op under mask.
 : WORD-OPS ( ptr u8 n n n -- n ) {: na:ptr nu:n mask:n op:n :}
    na nu SPAN mask op SPAN-OPS ;
 
@@ -144,6 +99,15 @@ variable MISSING                     \ names the dictionary did not answer for
 public
 
 \ ---- the subjects ------------------------------------------------------------
+\ `begin`, `if` and `while` record which register holds each virtual stack
+\ entry; the back edge, `then` and `repeat`'s exit (src/habu/jit.f LVRECON,
+\ LVSETF) move each entry into its recorded register, breaking a cycle through
+\ x16, push the entries deeper than the record and pop the recorded ones left in
+\ memory; `else` records the true arm's end for both arms (LVRESNAP). A loop
+\ counts from the back branch's target to the back branch. A word with joins
+\ counts its whole code: inputs pop once and outputs push once at `;`, so a
+\ spilling join adds both. A compare right before a branch fuses into a b.cond
+\ (LVFUSE) unless a join lands after the compare.
 \ ( acc n ) both live in registers at `begin` and come back in them.
 : R-EXACT ( n -- n ) 0 swap begin swap 1+ swap 1- dup 0= until drop ;
 \ The two registers of `begin` come back exchanged: a 2-cycle.
@@ -167,6 +131,15 @@ public
 : J-FENCE ( n -- n ) dup 0 < dup 0= if drop dup 5 > then if 100 + then ;
 \ `then` lands on `5 >`'s compare, which the fused branch keeps.
 : J-FUSED ( n -- n ) dup 0 > if 1+ then 5 > if 1 else 0 then ;
+\ Inside a `do`/`?do` loop tier 0 keeps the innermost index in x29 (habu2.f
+\ J-FRAME, J-I): `i` copies x29, and only a call or a control-flow edge reloads
+\ it from the memory frame, which `loop` and `+loop` keep current. A reload
+\ (`i`'s LIDX-RELOAD?, or the step's LIDX-LOAD?,) addresses the frame through
+\ x16 (C-LOOP-TOP,) and issues `ldr x29,[x16]`, the one instruction that writes
+\ the cache from memory; every `loop` also addresses its frame through x16, so
+\ the address alone does not mark a reload. A wide local sends a word through
+\ pass 2 (habu2.f EM-P2-START), where each local read spills the virtual stack
+\ and loads into x9 (EM-P2-LOCREF).
 : L-INC ( n -- n ) 1+ ;
 \ `i` right after `?do` copies the index register: nothing changed it.
 : L-TOP ( n -- n ) 0 swap 0 ?do i + loop ;
@@ -180,6 +153,10 @@ public
 : L-WIDE ( option<n> n -- n )
    {: o:option<n> k:n :}
    0 k 0 ?do i k * + loop ;
+\ `{:` binds from the virtual stack's top (habu2.f C-LBRACE-BIND-VS): a register
+\ entry is stored straight into its frame slot, a constant through x16, and only
+\ the locals below the virtual stack pop from memory, so deeper entries stay in
+\ their registers. Pass 2 spills the virtual stack before it carves.
 \ The masked value binds from its register; the copy below it stays live.
 : B-COMP ( n -- n ) dup 7 and {: k:n :} k + ;
 \ The constant binds through x16.

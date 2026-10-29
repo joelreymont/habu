@@ -2,7 +2,7 @@
 \ engine and by a host with one extra primitive must produce identical
 \ executable and name map. The variant is built from a private source copy.
 \
-\ Run explicitly: bin/hb --load test/product-host-identity.f
+\ Not registered in the suite; run it by hand.
 \ The printed directory retains the copied trees and all four products.
 
 require src/lib/errors.f

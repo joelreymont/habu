@@ -22,7 +22,6 @@ variable T-IDLE
 : BIT ( n -- n ) MASK-BIT ;
 : B-BIT ( n -- n ) 32 + MASK-BIT ;
 
-\ Classifies the instruction and keeps its facts for the checks below.
 : SEE ( instruction -- )
    INSTRUCTION>N CLASSIFY C6XFACTS-FACTS:UNMAKE
    {: unit:n cross:n reads:n writes:n loads:n memory:n side:n branch:bool idle:n :}

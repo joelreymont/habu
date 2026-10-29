@@ -2,9 +2,7 @@
 \
 \ Captured diagnostic text is normalized (a caller-supplied volatile prefix,
 \ e.g. a temp root, is redacted to <root>) then compared byte-exact against a
-\ committed golden under test/golden/. --update-golden (scanned from
-\ SCRIPT-ARGV by GOLD:INIT) rewrites the golden instead of comparing, and a
-\ mismatch prints the first differing byte plus a window of both sides.
+\ committed golden under test/golden/.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -63,7 +61,6 @@ variable UPDATE
       1+
    repeat drop ;
 
-\ Does the redact prefix start at byte i of a[0..u)?
 : REDACT-AT? ( ptr u8 n n -- bool ) {: a:ptr u:n i:n :}
    REDACT-U @ 0= if FALSE exit then
    i REDACT-U @ + u > if FALSE exit then
@@ -85,6 +82,8 @@ variable UPDATE
 : PATH! ( ptr u8 n -- ) {: name:ptr nameu:n :}
    DIR$ name nameu PATH-BUF FS:JOIN-PATH PATH-U ! ;
 
+\ --update-golden (scanned from SCRIPT-ARGV by GOLD:INIT) rewrites the golden
+\ instead of comparing.
 : UPDATE-WRITE ( -- )
    DIR$ FS:MAKE-DIRS
    PATH$ NORM$ FS:WRITE-ALL
@@ -106,6 +105,7 @@ variable UPDATE
    rem WINDOW > if WINDOW else rem then {: len:n :}
    a off + len type ;
 
+\ A mismatch prints the first differing byte plus a window of both sides.
 : MISMATCH. ( -- )
    DIFF-OFF {: off:n :}
    s" golden mismatch: " type PATH$ type cr

@@ -1,25 +1,11 @@
-\ underdepth-gate.f - certified-word interpret underdepth gate regressions (dot
-\ habu-habu-certified-words-84e84eaf).
-\
-\ A word with a checker-known effect (certified `:`, TRUSTED:, defer, or an
-\ axiom'd engine-prefix word) carries its declared input arity in the dict
-\ record (DNAME-MIN-IN, flags bits 52-59), poked at certification time by the
-\ publish tails and at seal time by src/core/internal-mark.f. Executing it at
-\ bare top level with fewer interpret-stack cells must fail closed with
-\ `hb: interpret stack underdepth: <token>` + rc 70 BEFORE the body runs.
-\ Previously
-\ `: FOO2 ( n -- n n ) dup ; FOO2` on an empty stack ran rc 0 silently reading
-\ below the stack base whenever net depth stayed >= 0 (the LMAIN depth floor
-\ never tripped). Positives prove the public surface is untouched: exact and
-\ surplus depth still run, compiled calls inside checked words carry no guard,
-\ inferred user words remain executable, evaluate delivers the
-\ reject as a catchable rc-70 throw, and the satisfied-depth CHECK! probing
-\ idiom still works. The REPL recovery smoke lives in test/proc-pty.f
-\ (PTY-UNDERDEPTH).
-\
-\ Semantic cases run in disposable SUBJECT forks. Exact outcome/stdout/stderr
-\ parity retains direct `--load` and stdin representatives below.
-\
+\ underdepth-gate.f - a word with a checker-known effect (certified `:`,
+\ TRUSTED:, defer, an axiom'd engine-prefix word) carries its input arity in its
+\ record (DNAME-MIN-IN, flags bits 52-59), poked by the publish tails and at
+\ seal time by src/core/internal-mark.f. Run bare at top level on a shallower
+\ stack it fails closed with `hb: interpret stack underdepth: <token>` and rc 70
+\ before its body runs.
+
+\ The REPL recovery case is test/proc-pty.f PTY-UNDERDEPTH.
 \ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
 \   src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f
 \   test/underdepth-gate.f
@@ -89,7 +75,8 @@ create UDG-EMPTY 1 allot            \ zero-length stdin
    a UDG-IN u BYTE-COPY
    u UDG-IN-U ! ;
 
-\ Run the program as a --load file with empty stdin.
+\ Cases run in SUBJECT forks; output parity keeps direct --load and stdin
+\ representatives.
 : UDG-RUN-LOAD ( ptr u8 n -- ) {: src:ptr u:n :}
    UDG-CHILD src u FS:WRITE-ALL
    PROC-ARGV-RESET
@@ -99,7 +86,7 @@ create UDG-EMPTY 1 allot            \ zero-length stdin
    UDG-ERR UDG-CAP >LEN  UDG-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    src u UDG-STORE! ;
 
-\ Run the program as a piped stdin program (no --load), the other cold-prefix path.
+\ The other cold-prefix path: the program on stdin, no --load.
 : UDG-RUN-STDIN ( ptr u8 n -- )
    UDG-IN!
    PROC-ARGV-RESET
@@ -146,9 +133,8 @@ package UDG-MINIMUM
 
 70 constant WIDE-RC                 \ rendered before its code is thrown (RC-REJECT)
 
-\ Declare a callback whose fixed input row contains exactly `width` physical
-\ cells. The encoded DNAME-MIN-IN byte accepts 255 and rejects 256: a wider
-\ declared row is a stored signature no record can hold, refused by its width.
+\ The DNAME-MIN-IN byte accepts 255 and rejects 256: a wider declared row is a
+\ stored signature no record holds, refused by its width.
 : MIN-SIG$ ( n -- ptr u8 n ) {: width:n :}
    SB-RESET
    s" defer MINIMUM-PROBE ( " SB-APPEND
@@ -246,13 +232,10 @@ public
    s" CORE-STR=" UDG-ASSERT-UNDERDEPTH ;
 
 \ --- primitive negatives: the band covers every specified primitive ---------
-\ A primitive's seed record carries its specification row's input count in
-\ DNAME-MIN-IN (src/habu/prims.f PRIM-SPEC:MIN-IN, baked by
-\ ENGINE-PRIMS:DNAME), so a bare primitive on a shallow interpret stack takes
-\ the certified word's pre-execution reject. Bare catch, ffi-call and patch32
-\ once crashed with SIGSEGV; ?dup and 2>r read the data stack's low guard
-\ page and died rc 102, because their rows carry no atoms until an EMIN-IN!
-\ marker states the count.
+\ A primitive's seed record carries its spec row's input count in DNAME-MIN-IN
+\ (src/habu/prims.f, baked by ENGINE-PRIMS:DNAME), so a bare primitive on a
+\ shallow stack takes the same reject. A row with no atoms (?dup, 2>r) states
+\ its count with an EMIN-IN! marker.
 
 : UDG-BARE$ ( ptr u8 n -- ptr u8 n )     \ program = the bare token on one line
    SB-RESET

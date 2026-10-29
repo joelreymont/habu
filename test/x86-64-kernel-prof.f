@@ -1,101 +1,9 @@
 \ x86-64-kernel-prof.f - the profiler rows of the x86-64 kernel
-\ (src/habu/kernel-x64.f PROFILER,, src/habu/prof-x64.f) in the booted
-\ harness, cross-built for an x86-64 peer. The samples case seeds two records
-\ whose code is its own text: A, a `call B` alone, and B, a spin, with A's
-\ `ret` in the gap between them, so the return address the walk finds is A's
-\ end. Three spins are no record: one below A and two above B. The report
-\ case reads prof-report, prof-json and prof-row on fd 1 through a pipe and
-\ compares every byte with what this host's own rows print for the same
-\ state, captured at load through a pipe dup2'd onto its fd 1: once with no
-\ arena, and once for state S below over records the image seeds at the
-\ host's own record indices, so the edge table keys the same pairs into the
-\ same slots. The `indexed` count is each engine's live one: the image's
-\ replaces the host's in what the image expects. Each image is one case, and
-\ the peer that runs it must see its status:
-\
-\    hb-x64-kernel-prof           0  prof-on at the default rate; A calls B
-\                                    with rsp 64 bytes above the DO/LOOP
-\                                    stack's lower guard, where a signal frame
-\                                    pushed on that stack dies of SIGSEGV
-\                                    (139), and B spins until its counter and
-\                                    A's inclusive count move, five scratch
-\                                    registers it holds intact; the spin below
-\                                    A, rsp 64 bytes under the stack's upper
-\                                    guard, until PROF-OTHER moves; one above
-\                                    B until ARN-DEFER moves, its newest slot
-\                                    the spin's pc and return address; one with
-\                                    rbp moved until PROF-FOREIGN moves; after
-\                                    prof-off the identity of prof.f EMIT-PROF;
-\                                    prof-pc>rec of B and of the gap, and the
-\                                    edge (B, A) and B's inclusive count are
-\                                    nonzero; prof-reset clears the band, the
-\                                    counts, the edges and the stamps; prof-rate
-\                                    250 then prof-on arm the timer at 250 us
-\                                    and prof-off disarms it
-\    hb-x64-kernel-prof-negative 21  the same, expecting B's spin to fail
-\    hb-x64-kernel-prof-shared-stack
-\                                 0  prof-rate maps the arena, RLIMIT_AS 0,
-\                                    then prof-on/off works on the runtime
-\                                    signal stack and maps no other
-\    hb-x64-kernel-prof-report   0  prof-report, prof-json and prof-row with
-\                                    no arena; prof-on, prof-off, prof-reset
-\                                    and state S, then prof-report, B's
-\                                    prof-row and prof-json, each the host's
-\                                    bytes; prof-on again, and PROF-LIM 1
-\                                    while rbp is moved until PROF-FOREIGN
-\                                    moves: a foreign sample at the limit
-\                                    returns; a report while armed arms
-\                                    ITIMER_REAL again at 1000 us
-\    hb-x64-kernel-prof-rewind   0  a sampled donor executes again after a
-\                                    seed rewind; its copied package and long
-\                                    name survive ordinal reuse, the new row
-\                                    has no donor samples, both PC queries
-\                                    name only the live ordinal, and the
-\                                    sample accounting still balances
-\    hb-x64-kernel-prof-trim     0  ndict! hides a sampled row from the index
-\                                    and prof-row; its reused ordinal gets
-\                                    a new name without the old samples
-\    hb-x64-kernel-prof-retired  0  RETIRED after prof-on, then seed-ndict!,
-\                                    never restores the old span or its row
-\    hb-x64-kernel-prof-limit     0  forks; the child, its fd 1 the pipe, runs
-\                                    3 prof-on and spins, and the parent sees
-\                                    it exit 99 with its fd 1 starting
-\                                    `profiler samples 3 words `
-\    hb-x64-kernel-prof-slow      0  prof-rate 1500000 and prof-on arm the
-\                                    timer at 1 s and 500000 us; four seconds
-\                                    by mono-ns take at least two samples
-\    hb-x64-kernel-prof-resets    0  prof-rate 50, then 1000 turns of
-\                                    prof-on, a delay of 0 to 50.4 us,
-\                                    prof-reset, prof-off and the identity:
-\                                    none finds it false
-\    hb-x64-kernel-prof-rate-refused
-\                                67  prof-rate -1 throws E-PROF-RATE, which
-\                                    no handler catches
-\    hb-x64-kernel-prof-rate-caught
-\                                 0  prof-rate 250, then prof-rate -1 under
-\                                    catch: the code is E-PROF-RATE, and
-\                                    prof-on arms the timer at 250 us
-\    hb-x64-kernel-prof-arm-refused
-\                                78  -1 written into ARN-USEC past prof-rate,
-\                                    then prof-on: `hb: prof-on: cannot arm
-\                                    the interval timer` on fd 2
-\
-\ State S: B's pc deferred three times with A's return address kept beside it,
-\ twice with C's and once with 0, and pc 1, which no record owns, once; A's
-\ inclusive count 9 with no exclusive one, 4 in the per-record array and 5 in
-\ its index entry; ARN-HI at C's start, as if C were compiled after prof-on;
-\ PROF-OTHER, PROF-FOREIGN, ARN-SPILL, ARN-FRAMES and ARN-DROP nonzero; and
-\ PROF-TOT their sum with the deferred samples. A report's sync folds A's
-\ entry into the array and replays the deferred samples: B takes six
-\ exclusive and inclusive samples, the edges (B, A), (B, C) and (B, none)
-\ count 3, 2 and 1, C, which only the rebuild reaches, takes two inclusive
-\ samples, and ARN-NEW the sample at pc 1. A and B are global, and C, whose
-\ name is longer than DNAME-INL, is package X64K-PROF-Q's, so the reports
-\ print an inline name, one behind DNAME-EXT and a qualifier.
-\
-\ A spin that waits for a tick is bounded, so a tick that never comes fails
-\ its check instead of hanging the image. The host checks nothing but the
-\ build; running the images is the peer's.
+\ (src/habu/kernel-x64.f PROFILER,, src/habu/prof-x64.f) in the booted harness,
+\ cross-built for an x86-64 peer. The host checks only the build; the peer runs
+\ each image and must see its status (the table above RUN). A spin waiting for a
+\ tick is bounded, so a missing tick fails its check instead of hanging. Each
+\ case's word states what it checks.
 require src/habu/layout.f
 require src/habu/stack-abi.f
 require src/habu/prof-abi.f
@@ -162,7 +70,18 @@ $40 constant GOT                        \ and what it read
 3 constant IMAGE-INDEXED                \ the report image indexes A, B and C: one digit
 4 constant A64-INSN                     \ how far back the host's replay searches a kept cell
 
-\ State S, the header's.
+\ State S: B's pc deferred three times with A's return address kept beside it,
+\ twice with C's and once with 0, and pc 1, which no record owns, once; A's
+\ inclusive count 9 with no exclusive one, 4 in the per-record array and 5 in
+\ its index entry; ARN-HI at C's start, as if C were compiled after prof-on;
+\ PROF-OTHER, PROF-FOREIGN, ARN-SPILL, ARN-FRAMES and ARN-DROP nonzero; and
+\ PROF-TOT their sum with the deferred samples. A report's sync folds A's
+\ entry into the array and replays the deferred samples: B takes six
+\ exclusive and inclusive samples, the edges (B, A), (B, C) and (B, none)
+\ count 3, 2 and 1, C, which only the rebuild reaches, takes two inclusive
+\ samples, and ARN-NEW the sample at pc 1. A and B are global, and C, whose
+\ name is longer than DNAME-INL, is package X64K-PROF-Q's, so the reports
+\ print an inline name, one behind DNAME-EXT and a qualifier.
 3 constant FROM-A                       \ B's deferred samples A called, in the slots from 0
 2 constant FROM-C                       \ and those C called, in the slots after
 FROM-A FROM-C + constant NONE-AT        \ B's sample whose kept cell is 0
@@ -264,7 +183,10 @@ C-IX XREF-REC XREF-START constant C-START
    R11 HELD,  RDX HELD,  RSI HELD,  RDI HELD,  R10 HELD,
    out LBL, ;
 
-\ A and B behind a jump, each span its first label to its second.
+\ A and B behind a jump, each span its first label to its second. A is a `call
+\ B` alone and B a spin, with A's `ret` in the gap between them, so the return
+\ address the walk finds is A's end. The case's three other spins are no record:
+\ one below A and two above B.
 : RECORDS, ( -- label label label label )
    LBL LBL LBL LBL {: a:label a-end:label b:label b-end:label :}
    LBL {: past:label :}
@@ -418,7 +340,10 @@ C-IX XREF-REC XREF-START constant C-START
 
 \ ---- the cases ---------------------------------------------------------------
 \ The routines first, so the spin below A precedes A in the text and the code
-\ after B, the case's own, lies above the index.
+\ after B, the case's own, lies above the index. A calls B with rsp GUARD-GAP
+\ bytes above the DO/LOOP stack's lower guard, where a signal frame pushed on
+\ that stack dies of SIGSEGV (139), and B holds five scratch registers intact;
+\ the spin below A runs GUARD-GAP bytes under the stack's upper guard.
 : SAMPLES-CASE ( -- )
    [: R8 BAND IMM,  PROF-OTHER WAIT-MOVE, ;] X64HARNESS:ROUTINE, {: low:label :}
    RECORDS, {: a:label a-end:label b:label b-end:label :}
@@ -456,7 +381,6 @@ TEXTS TYPED-BUFFER TEXT-LEN n
 variable GOT-N
 variable AT-BYTE
 
-\ Capture k: its bytes and their count.
 : TEXT ( n -- ptr u8 n ) {: k:n :}  TEXT-BYTES k TEXT-CAP * +  k TEXT-LEN @ ;
 
 \ Run the quotation with this host's fd 1 on a pipe, put fd 1 back, which
@@ -567,7 +491,6 @@ variable ENTRY-AT
 : KEEP, ( n -- ) AT,  1 G-POP  0 G-POP  RAX RCX MEM-AT STORE, ;
 : RECALL, ( n -- ) AT,  0 G-POP  RAX RAX MEM-AT LOAD,  0 G-PUSH ;
 
-\ Store n into the cell at an offset in record ix.
 : RECORD-CELL!, ( n n n -- ) {: v:n ix:n off:n :}
    RAX v IMM,  RAX DBASE-REG ix DREC * off + MEM-OFF STORE, ;
 
@@ -814,6 +737,13 @@ variable ENTRY-AT
    RSP ITIMER-BYTES ADDI,
    0 G-PUSH  DEFAULT-RATE WANT ;
 
+\ The report case compares every byte the image's prof-report, prof-json and
+\ prof-row print on fd 1 with what this host's own rows print for the same
+\ state, captured at load (HOST-CAPTURES): once with no arena, and once for
+\ state S over records the image seeds at the host's own record indices, so the
+\ edge table keys the same pairs into the same slots. The `indexed` count is
+\ each engine's live one. Then a foreign sample at PROF-LIM 1 must return, and a
+\ report while armed arms ITIMER_REAL again at the default rate.
 : REPORT-CASE ( -- )
    SPANS, {: a:label a-end:label b:label b-end:label c:label c-end:label :}
    a a-end b b-end c c-end HOST-RECORDS,
@@ -962,6 +892,22 @@ variable ENTRY-AT
    0 X64HARNESS:EXPECT-DEPTH,
    X64HARNESS:EXPECT-BALANCED,
    path pathu X64HARNESS:BOOT-CLOSE, ;
+
+\ Each image's exit status, as the peer must see it:
+\    hb-x64-kernel-prof                0
+\    hb-x64-kernel-prof-negative      21  B's spin is expected to fail
+\    hb-x64-kernel-prof-shared-stack   0
+\    hb-x64-kernel-prof-report         0
+\    hb-x64-kernel-prof-rewind         0
+\    hb-x64-kernel-prof-trim           0
+\    hb-x64-kernel-prof-retired        0
+\    hb-x64-kernel-prof-limit          0  its forked child exits 99
+\    hb-x64-kernel-prof-slow           0
+\    hb-x64-kernel-prof-resets         0
+\    hb-x64-kernel-prof-rate-refused  67  E-PROF-RATE uncaught
+\    hb-x64-kernel-prof-rate-caught    0
+\    hb-x64-kernel-prof-arm-refused   78  `hb: prof-on: cannot arm the interval
+\                                         timer`
 
 public
 

@@ -1,53 +1,9 @@
-\ x86-64-kernel-ffi.f - the FFI rows of the x86-64 kernel
-\ (src/habu/kernel-x64.f FFI,) in the booted harness, cross-built for an x86-64
-\ peer. Every image seals the friend latch first, so each guard a row calls
-\ walks its whole span test and clobbers every scratch register. Each image is
-\ one case, and the peer that runs it must see its status:
-\
-\    hb-x64-kernel-ffi             0  ffi-call on libc getpid, found by DLSYM,,
-\                                     answers what the getpid row does; a SysV
-\                                     stub the image carries answers its
-\                                     argument places, rsp & 15 and al, called
-\                                     by ffi-call (8 cells), ffi-call-n (3 and 9
-\                                     cells) and ffi-call-bounded (9), each
-\                                     also a cell deeper but for ffi-call-n's 3
-\    hb-x64-kernel-ffi-negative   21  the same, expecting the wrong difference
-\                                     of the two pids
-\    hb-x64-kernel-ffi-armed      83  ffi-call-bounded whose ninth argument and
-\                                     its extent name a band cell
-\    hb-x64-kernel-ffi-call-armed 83  ffi-call whose eighth argument is a band
-\                                     cell's address
-\    hb-x64-kernel-ffi-abi         0  the ABI-planned rows: a stub folding
-\                                     xmm0..7 and al answers the fold in xmm0
-\                                     and its complement in rax, called by all
-\                                     four; the nine-place stub called by
-\                                     ffi-call-abi and ffi-call-abi-bounded
-\                                     with its last three places in stackbuf
-\                                     and junk in argbuf[6..9), the second a
-\                                     cell deeper; a stub of register places
-\                                     called by both with nstack -1
-\    hb-x64-kernel-ffi-snprintf    0  libc snprintf(buf, 8, "%.1f %.1f", 1.5,
-\                                     2.5) over zeroed stack: through
-\                                     ffi-call-n, whose al is 0, it prints
-\                                     0.0 0.0; through ffi-call-abi-bounded,
-\                                     whose al is 8, 1.5 2.5
-\    hb-x64-kernel-ffi-abi-armed  83  ffi-call-abi-bounded whose third stack
-\                                     cell and its stkext entry name a band
-\                                     cell, the regext entry of the same index
-\                                     0
-\    hb-x64-kernel-ffi-sret-armed 83  ffi-call-abi with sret set and argbuf[8]
-\                                     a band cell's address
-\    hb-x64-kernel-ffi-regext-armed
-\                                 83  ffi-call-abi-bounded whose fifth register
-\                                     slot and its regext entry name a band
-\                                     cell, the stack cells clean
-\    hb-x64-kernel-ffi-nint-armed 83  ffi-call-abi, sret 0, whose sixth
-\                                     argument, below nint, is a band cell's
-\                                     address
-\
-\ No libc symbol takes nine integer arguments, so the stub stands in, as
-\ src/lib/ffi-test.f FFI-T-SUM10 does on ARM64. The host checks each image's ELF
-\ header; running them is the peer's.
+\ x86-64-kernel-ffi.f - the FFI rows of src/habu/kernel-x64.f FFI, in the booted
+\ harness, cross-built for an x86-64 peer: one case per image. Every image seals
+\ the friend latch first, so each guard a row calls walks its whole span test
+\ and clobbers every scratch register. No libc symbol takes nine integer
+\ arguments, so a stub stands in, as test/ffi-stub-child.f SUM10 does on ARM64.
+\ The host checks each image's ELF header; running them is the peer's.
 require test/x86-64-boot-harness.f
 
 package X64K-FFI
@@ -92,14 +48,11 @@ $F constant JUNK                        \ the ABI rows' argbuf[6..9): no place
 
 : PUSH-XT, ( label -- ) {: at:label :}  RAX at MOVABS,  0 G-PUSH ;
 
-\ Store n into the scratch cell at an offset.
 : SCRATCH!, ( n n -- ) {: v:n off:n :}
    off AT,  1 G-POP
    RAX v >IMM64 ASM-SINK ENC-MOV-RI64
    RAX RCX MEM-AT ASM-SINK ENC-MOV-MR ;
 
-\ Store the address of the band cell UNIT-COMPILE-CELL into the scratch cell at
-\ an offset.
 : BAND!, ( n -- ) {: off:n :}
    off AT,  1 G-POP
    RAX DATA-REG UNIT-COMPILE-CELL MEM-OFF ASM-SINK ENC-LEA
@@ -112,13 +65,10 @@ $F constant JUNK                        \ the ABI rows' argbuf[6..9): no place
       CELL EXTS i CELL * + SCRATCH!,
    loop ;
 
-\ Store the address of the scratch cell at the first offset into the one at
-\ the second.
 : SCRATCH-AT!, ( n n -- ) {: at:n off:n :}
    off AT,  at AT,  0 G-POP  1 G-POP
    RAX RCX MEM-AT ASM-SINK ENC-MOV-MR ;
 
-\ Store a label's address into the scratch cell at an offset.
 : LABEL!, ( label n -- ) {: at:label off:n :}
    off AT,  1 G-POP  RAX at MOVABS,
    RAX RCX MEM-AT ASM-SINK ENC-MOV-MR ;
@@ -150,12 +100,10 @@ $F constant JUNK                        \ the ABI rows' argbuf[6..9): no place
    past LBL,
    text ;
 
-\ Push the address of the libc function of a name, found by DLSYM,.
 : LIBC, ( ptr u8 n -- )
    C-TEXT, {: name:label :}
    RSI name MOVABS,  X64KERNEL:DLSYM,  0 G-PUSH ;
 
-\ ---- the stub ----------------------------------------------------------------
 \ A SysV function of six register and n stack integer arguments. It folds each
 \ argument place in order into rax as one hex digit, rax * 16 + the place, then
 \ rsp & 15 at its entry as one more, then al at its entry as a byte, so a place
@@ -202,7 +150,6 @@ $F constant JUNK                        \ the ABI rows' argbuf[6..9): no place
 
 : FSTUB ( -- label ) [: FSTUB, ;] X64HARNESS:ROUTINE, ;
 
-\ ---- the cases ---------------------------------------------------------------
 \ ffi-call on getpid, the pointer from DLSYM,, less the getpid row's answer.
 : GETPID, ( -- )
    ARGS AT,  0 N,  s" getpid" LIBC,
@@ -282,7 +229,6 @@ $00352E3220352E31 constant FLOATS-TEXT    \ "1.5 2.5"
    ZEROED-CELLS 0 ?do  RAX ASM-SINK ENC-PUSH  loop
    RSP ZEROED-CELLS CELL * >IMM32 ASM-SINK ENC-ADD-RI32 ;
 
-\ Load a double's bits into an XMM register.
 : XMM-BITS, ( xmm n -- ) {: x:xmm v:n :}
    RAX v >IMM64 ASM-SINK ENC-MOV-RI64  x RAX ASM-SINK ENC-MOVQ-XR ;
 
@@ -345,8 +291,6 @@ $00352E3220352E31 constant FLOATS-TEXT    \ "1.5 2.5"
    s9 PUSH-XT, s" ffi-call-abi" ROW
    PLACES STUB-ANSWER ABI-AL + WANT ;
 
-\ An image: the sealed latch and the argument cells, the case, then the stack
-\ checks every case ends with.
 : BUILD ( [ -- ] bool ptr u8 n -- ) {: negative:bool path:ptr pathu:n :}
    negative X64HARNESS:BOOT-OPEN,
    SEAL,  ARGS,
@@ -357,6 +301,9 @@ $00352E3220352E31 constant FLOATS-TEXT    \ "1.5 2.5"
 
 public
 
+\ The peer must see status 0 from each image but hb-x64-kernel-ffi-negative,
+\ FIRST-CASE 21 (it expects the wrong difference of the two pids), and each
+\ -armed image, SEAL-VIOLATION 83.
 : RUN ( -- )
    T-RESET
    X64HARNESS:INIT

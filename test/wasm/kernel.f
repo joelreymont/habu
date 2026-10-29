@@ -1,20 +1,9 @@
-\ kernel.f - src/arch/wasm/kernel-words.f beside the engine's primitives, on the
-\ host. Each engine name that WKERNEL's map (src/arch/wasm/kernel.f) answers
-\ with a word of kernel-words.f runs twice on the same arguments, each time in a
-\ child of its own: once as the engine's primitive and once as the word the map
-\ names. The two print the same bytes to stdout and to stderr and exit alike.
-\ The arguments sit at each primitive's edges: zero, both signs, MIN-N and
-\ MAX-N, a zero divisor; for `f.` the signed zeros and NaNs, the infinities, a
-\ magnitude past MAX-N, a fraction that pads and one that truncates; for `f<=`
-\ and `f>=` equal, lesser and greater reals, a NaN on either side and the signed
-\ zeros both ways. A name no provider answers is refused with
-\ E-WLINK-UNRESOLVED.
-\
-\ The rows the map answers with hand-built functions run in Wasm, in
-\ test/wasm/device.f.
-\
-\ Registered as `SUITE wasm-kernel-words`. Run standalone from the repository
-\ root: bin/hb --load test/wasm/kernel.f
+\ src/arch/wasm/kernel-words.f beside the engine's primitives, on the host: each
+\ engine name WKERNEL's map (src/arch/wasm/kernel.f) answers with a
+\ kernel-words.f word runs as the engine's primitive and as that word, each in a
+\ child of its own, on the same edge arguments; both print the same bytes to
+\ stdout and stderr and exit alike. The map's hand-built functions run in Wasm,
+\ in test/wasm/device.f.
 
 require src/lib/test.f
 require src/lib/test/subject.f
@@ -63,7 +52,6 @@ CAP BUFFER: ERR-K
    ERR-K ek ERR-E ee T$=
    rk re T= ;
 
-\ ---- the printers ---------------------------------------------------------------
 : INTEGERS ( -- )
    s" 0" s" ." s" " SAME
    s" 7" s" ." s" " SAME
@@ -97,7 +85,6 @@ CAP BUFFER: ERR-K
    s" " s" cr" s" " SAME
    s" " s" space" s" " SAME ;
 
-\ ---- the arithmetic ----------------------------------------------------------------
 : NUMBERS ( -- )
    s" 5" s" negate" s" ." SAME
    s" $8000000000000000" s" negate" s" ." SAME
@@ -124,8 +111,6 @@ CAP BUFFER: ERR-K
    s" " s" true" s" ." SAME
    s" " s" false" s" ." SAME ;
 
-\ The engine name on equal, lesser and greater reals, a NaN on either side and
-\ the signed zeros both ways, each real by its bits.
 : ORDER ( ptr u8 n -- )
    {: nm:ptr nu:n :}
    s" 1 s>f 1 s>f" nm nu s" ." SAME
@@ -140,7 +125,7 @@ CAP BUFFER: ERR-K
    s" f<=" ORDER
    s" f>=" ORDER ;
 
-\ ---- the refusal -------------------------------------------------------------------
+\ A name no provider answers is refused with E-WLINK-UNRESOLVED.
 : UNANSWERED ( -- )
    s" key" WKERNEL:PROVIDER MATCH provider
       row OF drop ENDOF

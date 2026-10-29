@@ -3,7 +3,6 @@
 \ allocation, one call's shared outputs still do. Each refused program runs in
 \ its own subject process (the first refusal ends it); the accepted program
 \ runs in one more.
-\ bin/hb --load test/rigid-region-inferred-e2e.f
 
 require src/lib/test.f
 require src/lib/string.f
@@ -18,7 +17,6 @@ variable PROG-U
 : PRELUDE$ ( -- ptr u8 n )
    s" -1 JSON-DIAGS ! package RQ public defer RG-ONE ( -- fresh-region-a ) defer RG-PAIR ( -- fresh-region-a fresh-region-a ) defer RG-DIFF ( -- fresh-region-a fresh-region-b ) : SAME-ID ( x x -- ) 2drop ; : USE-INF RG-ONE ; : USE-PAIR RG-PAIR ; : USE-DIFF RG-DIFF ; : NEST USE-INF ; " ;
 
-\ The prelude, then the case, then the package close.
 : PROGRAM ( ptr u8 n -- ptr u8 n )
    {: case:ptr caseu:n :}
    0 PROG-U !

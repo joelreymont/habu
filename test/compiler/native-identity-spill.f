@@ -1,25 +1,7 @@
-\ native-identity-spill.f - a tier-1 frame slot is never copied onto itself.
-\
-\ A local that stays live across a call is put in a frame slot, and every block
-\ argument carrying it across a join is a copy between two values the coalescer
-\ has already put in one class. The planner used to reload such a copy's operand
-\ and store its result back, both naming the one slot that class owns, so each
-\ live local cost an `ldr xN,[sp,#K]` standing directly in front of an
-\ `str xN,[sp,#K]` at every join - 43,153 pairs in the baked engine and 9.3% of
-\ the self-build. A64RA plans neither row for a copy
-\ whose ends share a slot and A64SPILL leaves the copy out of the rewrite: T4
-\ below went from 112 instructions holding 16 such pairs to 80 holding none.
-\
-\ T4 is the reproducer that measurement named: two locals live across the first
-\ call and three across the second and third. Its third guard cannot fire - c
-\ and d are both `b HELP` - and is kept because the join it opens is one of the
-\ three the pairs were counted at.
-\
-\ The span is read through the live dictionary (XREF-REC's start and exact code
-\ length) and decoded as instruction words, so the case measures what the engine
-\ really baked rather than a restatement of the planner's own decisions. The two
-\ frame-cell counts keep it from passing vacuously: a T4 that stopped using
-\ the frame at all would hold no pairs either.
+\ A tier-1 frame slot is never copied onto itself. A local live across a call
+\ sits in a frame slot, and each block argument carrying it across a join is a
+\ copy within one coalesced class: A64RA plans no reload or store for a copy
+\ whose ends share a slot and A64SPILL leaves it out of the rewrite.
 
 require src/lib/test.f
 require src/habu/xref.f
@@ -30,6 +12,12 @@ package IDENTITY-SPILL-SUBJECT
 public
 : HELP ( n -- n ) 1 + ;
 
+\ Without the rule the baked engine holds 43,153
+\ `ldr xN,[sp,#K]; str xN,[sp,#K]` pairs (9.3% of the self-build) and T4 112
+\ instructions holding 16; with it, 80 holding none.
+\ Two locals live across the first call and three across the second and third.
+\ The third guard cannot fire (c and d are both `b HELP`) and is kept because
+\ the join it opens is one of the three the pairs were counted at.
 : T4 ( n n -- n ) {: a:n b:n :}
    a 0 < if -1 throw then
    b HELP {: c:n :}
@@ -45,7 +33,6 @@ using IDENTITY-SPILL-SUBJECT
 : NEG-A ( -- ) -1 4 T4 drop ;
 : NEG-C ( -- ) 1 -5 T4 drop ;
 
-\ ---- the emitted frame accesses ----------------------------------------------
 \ ARM64 unsigned-offset frame access: ldr/str Xt,[Xn,#imm12*8]. A tier-1 routine
 \ keeps its spill slots on sp, register 31, so a frame access is one of these two
 \ forms over that base and the immediate names the slot.
@@ -90,7 +77,11 @@ $A9000000 constant STP-FORM
    x FRAME-STR? 0= if false exit then
    w SLOT-OF x SLOT-OF = ;
 
-\ ---- one baked definition's own code -----------------------------------------
+\ The span is read through the live dictionary (XREF-REC's start and exact code
+\ length) and decoded as instruction words, so the case measures what the engine
+\ baked rather than a restatement of the planner's decisions. The two frame-cell
+\ counts keep it from passing vacuously: a T4 that stopped using the frame at
+\ all would hold no pairs either.
 : SUBJECT ( ptr u8 n -- ptr n )
    XREF-FIND dup XREF-FOUND? TTRUE ;
 

@@ -1,15 +1,9 @@
-\ A local answers to its DECLARED SPELLING, and the checker and both compilers
-\ read every name here the same way. A reference binds the local only when it
-\ matches the declaration byte for byte; word lookup stays case-insensitive, so
-\ the other spelling of those letters is the WORD - a global, a package public, a
-\ builtin, the loop index or a control word - and a spelling that names neither
-\ is undefined. Each subject runs at tier 0 and tier 1, because the three places
-\ that read a local name (src/core/checker.f LOC-REF?, src/habu/habu2.f
-\ EMIT-LOC-FIND, src/compiler/native/elaborate.f LOCAL-OF) must not disagree:
-\ two of them disagreeing is a body the checker certifies and the compiler
-\ compiles differently, which is the one failure no diagnostic would name.
-\ The ARM host runs each child at tier 0 and tier 1. The x64 host supports
-\ tier 1 only; its tier-1 child exercises the same lookup contract.
+\ A local answers to its declared spelling byte for byte; word lookup stays
+\ case-insensitive, so another spelling is the word (global, package public,
+\ builtin, loop index, control word) or undefined. The readers
+\ src/core/checker.f LOC-REF?, src/habu/habu2.f EMIT-LOC-FIND and
+\ src/compiler/native/elaborate.f LOCAL-OF must agree: a disagreement compiles a
+\ certified body differently with no diagnostic.
 require src/lib/errors.f
 require src/lib/string.f
 require src/lib/test.f
@@ -103,6 +97,7 @@ variable EXITED
 
 public
 
+\ ARM runs each child at tier 0 and tier 1; x64 at tier 1 only.
 : RUN ( -- )
    T-RESET
    HB-TARGET-LINUX-X86-64? 0= if

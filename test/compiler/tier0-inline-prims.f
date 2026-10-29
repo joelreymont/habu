@@ -1,30 +1,9 @@
-\ tier0-inline-prims.f - tier 0 COPIES a straight-line engine primitive's body
-\ into the word that names it instead of calling it.
-\
-\ The decision is made at compile time on the primitive's final bytes
-\ (src/habu/habu2.f EMIT-CINLINE): a body with no call, return, PC-relative
-\ address or literal load, and no branch leaving the body, is copied; any other
-\ body keeps its call. This file pins both halves through the real load path
-\ (ARM's default tier is 0, so no tier is selected here): the inlined subjects
-\ hold no call into their primitive's span, the refused ones hold exactly one
-\ (a BL, or a B when the call is the body's last word), and every subject
-\ still answers what the call answered. A mention of a constant or a created
-\ word is folded rather than copied (habu2.f EM-COMPILE-CALL); TEST-FIXED pins
-\ it with the same census.
-\
-\ A definition whose last word is a call ends in a B to it (habu2.f
-\ EM-COMPILE-SEMI): the link and any local frame are released first, and no
-\ return follows unless an `exit` needs one. A join landing after the call
-\ keeps the BL and the return. When that call was the body's only one, the B
-\ leaves no call behind, so the body is a leaf: a nop entry and no restore.
-\
-\ Spans come from the DICTIONARY RECORD (src/habu/xref.f), the same record the
-\ compiler resolves a call against. The decoder's positive control is an
-\ ordinary call between two definitions of this file: "no BL" is worth nothing
-\ if the decoder cannot see a call at all.
-\
-\ A word whose body only inlines stays a leaf: EM-COMPILE-RET rewrites its entry
-\ slot to a nop, so the entry word is asserted as well as the call census.
+\ tier0-inline-prims.f - tier 0 copies a straight-line primitive's body into
+\ its caller (src/habu/habu2.f EMIT-CINLINE) when it holds no call, return,
+\ PC-relative address, literal load or branch leaving the body; any other body
+\ keeps its call (a BL, or a B in tail position). ARM's default tier is 0, so
+\ none is selected here. Spans come from the dictionary record (src/habu/xref.f)
+\ the compiler resolves calls against.
 
 require src/lib/test.f
 require src/lib/errors.f
@@ -112,12 +91,9 @@ variable MISSING                     \ names the dictionary did not answer for
 : BLS ( ptr u8 n ptr u8 n -- n ) false BRANCHES-INTO ;
 : BS ( ptr u8 n ptr u8 n -- n ) true BRANCHES-INTO ;
 
-\ How many calls the named word makes into the named target's span, as a BL
-\ or as a tail B.
 : CALLS-WORD ( ptr u8 n ptr u8 n -- n ) {: na:ptr nu:n ta:ptr tu:n :}
    na nu ta tu BLS  na nu ta tu BS + ;
 
-\ How many of the named word's instructions match op under mask.
 : MASKED-OPS ( ptr u8 n n n -- n ) {: na:ptr nu:n mask:n op:n :}
    na nu SPAN {: lo:n hi:n :}
    0
@@ -125,7 +101,6 @@ variable MISSING                     \ names the dictionary did not answer for
       i CODE@ mask and op = if 1+ then
    4 +loop ;
 
-\ How many of the named word's instructions are the data-stack transfer op.
 : STACK-OPS ( ptr u8 n n -- n )
    {: op:n :}
    REG-MASK op MASKED-OPS ;
@@ -160,6 +135,8 @@ create T0-TEXT 4 allot
 public
 
 \ ---- the subjects ------------------------------------------------------------
+\ A body that only inlines stays a leaf: EM-COMPILE-RET rewrites its entry slot
+\ to a nop, so the entry word is asserted as well as the call census.
 : T0-ADD ( n n -- n ) + ;
 : T0-ROT ( n n n -- n n n ) rot ;
 : T0-FETCH ( ptr n -- n ) @ ;
@@ -187,10 +164,15 @@ public
 : T0-CREATE ( -- ) create ;
 : T0-ALIGN ( -- ) align ;
 
-\ The decoder's positive control: an ordinary call, not in tail position.
+\ The decoder's positive control, an ordinary call not in tail position: "no
+\ BL" proves nothing unless the decoder sees this one.
 : T0-CALLEE ( n -- n ) 1 lshift ;
 : T0-CALLER ( n -- n ) T0-CALLEE 1+ ;
 
+\ A definition whose last word is a call ends in a B to it (habu2.f
+\ EM-COMPILE-SEMI) after the link and any local frame are released; no return
+\ follows unless an `exit` needs one. When that call was the body's only one,
+\ the body is a leaf: a nop entry and no restore.
 \ Tail calls: plain, under a local frame, after a join, and beside an exit;
 \ then the bodies that must keep the BL: a call followed by a join, and a
 \ call that ends the arm a join lands after. T0-JOIN's `if` takes its only
@@ -274,9 +256,10 @@ variable T0-SV
 : T0-FLAGZLT ( n -- bool ) 0< ;
 
 \ Mentions of fixed values. A constant and a created word run while their user
-\ compiles and fold into it, as a literal and as a DATA address; a does> word,
-\ a defer and an EXPORT alias of a created word stay calls. T0-NEAR sits right
-\ before its user, where its code may still be writable; E-DIV-ZERO is baked.
+\ compiles and fold into it (habu2.f EM-COMPILE-CALL), as a literal and as a
+\ DATA address; a does> word, a defer and an EXPORT alias of a created word stay
+\ calls. T0-NEAR sits right before its user, where its code may still be
+\ writable; E-DIV-ZERO is baked. TEST-FIXED pins the folds with the call census.
 1000 constant T0-K
 variable T0-V
 create T0-TB 2 cells allot
@@ -522,7 +505,6 @@ private
 : CSETMS ( ptr u8 n -- n ) CSETM-MASK CSETM-OP MASKED-OPS ;
 : NEGS ( ptr u8 n -- n ) NEG-MASK NEG-OP MASKED-OPS ;
 
-\ A flag left on the stack is one csetm and no neg.
 : FLAG-CSETM ( ptr u8 n -- )
    {: na:ptr nu:n :}
    na nu CSETMS 1 T=

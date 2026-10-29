@@ -24,9 +24,7 @@ private
 
 public
 
-\ ---- the families the cases dispatch over -------------------------------------
-\ A payload-free enum, whose value is ONE cell and whose bundle therefore carries
-\ no glue at all.
+\ A payload-free enum: one cell, so its bundle carries no glue.
 ENUM hue
    red
    green
@@ -42,10 +40,9 @@ SUMTYPE box
    VARIANT two n n ;VARIANT
 ;SUMTYPE
 
-\ A product of two cells, and a family one of whose variants carries it. Its
-\ payload is TWO CELLS AND ONE VALUE, where `box`'s widest variant is two cells
-\ and two values - which is the whole of what the arm's own glue rule decides,
-\ and the pair of cases below is what binds it.
+\ pt is two cells and one value, where box's widest variant is two cells and two
+\ values: the arm's glue rule tells the two apart, and the pair of cases below
+\ binds it.
 PRODUCT pt
    FIELD x n
    FIELD y n
@@ -56,13 +53,10 @@ SUMTYPE holder
    VARIANT full pt ;VARIANT
 ;SUMTYPE
 
-\ THREE cells, which `box` and `holder` between them do not reach. The widest
-\ payload either of them carries is two, so an arm that drops one pad too many
-\ or keeps one cell too few answers the same shape as an arm that is right; a
-\ third cell is what makes the drop count and the keep count two separate
-\ numbers a fixture can tell apart. `trio` carries three INDEPENDENT cells and
-\ `hold3` carries three cells that are ONE value, which is the same pair `box`
-\ and `holder` draw one cell narrower.
+\ Three cells, which box and holder do not reach: a third cell makes an arm's
+\ drop count and keep count two numbers a fixture can tell apart. trio carries
+\ three independent cells and hold3 three cells that are one value, the pair box
+\ and holder draw one cell narrower.
 PRODUCT pt3
    FIELD x n
    FIELD y n
@@ -80,53 +74,40 @@ SUMTYPE hold3
    VARIANT full3 pt3 ;VARIANT
 ;SUMTYPE
 
-\ A PARAMETRIC FAMILY THIS PACKAGE OWNS, which is what the `construct` half of a
-\ wide instantiation needs. Minting a value of a family belongs to the package
-\ that DECLARED it, so `construct option none` cannot be spelled here at all and
-\ the reserved form's side of the story would otherwise be untestable. It is
-\ `option` in every respect that matters - one parameter, an empty variant and a
-\ one-field one - so the two spellings of one construction can be held against
-\ each other: `OPTION:NONE` is a CALL to a routine that pushes what the family
-\ declares, and `construct opt2 n2` is this chain pushing the same cells itself,
-\ and a wide instantiation has to reach both.
+\ A parametric family this package owns, for the `construct` half of a wide
+\ instantiation: `construct option none` cannot be spelled outside option's
+\ declaring package. opt2 matches option (one parameter, an empty variant and a
+\ one-field one), so `OPTION:NONE`, a call, and `construct opt2 n2`, pushed
+\ inline, are held against each other.
 ENUM opt2<a>
    VARIANT n2 ;VARIANT
    VARIANT s2 FIELD value a ;VARIANT
 ;ENUM
 
-\ A FAMILY WHOSE WIDE VARIANT STILL CARRIES A PAYLOAD, which `opt2` and `option`
-\ between them cannot reach. In both of those the variant that needs cells added
-\ is the EMPTY one, so a construction that needed pads never had a payload under
-\ them and a lowering could put the added cells anywhere below the tag and still
-\ be right. Here `g1` carries one declared payload term and `g2` carries two, so
-\ at `grow<pt>` the instantiation reserves four payload slots where the
-\ declaration reserved two: `g1` arrives with a two-cell payload on the stack AND
-\ needs a cell added between that payload and its declared pad. It is the shape
-\ that says WHERE the added cells go.
+\ A wide variant that still carries a payload: at grow<pt> the instantiation
+\ reserves four payload slots where the declaration reserves two, so g1 arrives
+\ with a two-cell payload and needs a cell added between it and its declared
+\ pad. This shape fixes where added cells go.
 SUMTYPE grow<a>
    VARIANT g1 a ;VARIANT
    VARIANT g2 a a ;VARIANT
 ;SUMTYPE
 
-\ AND A FAMILY OF TWO PARAMETERS WHOSE ARMS ARE INSTANTIATED TO DIFFERENT WIDTHS,
-\ which is the shape production met first. src/lib/process.f PROC-CAPTURE>RESULT
-\ returns `result<pcap:captured,pcap:failed>` - a two-cell ok and a three-cell
-\ err - so its `ok` arm needs a cell added and its `err` arm needs none, and the
-\ chain refused it (-8503, measured, and the census row is gone). `pair<pt,pt3>`
-\ is that shape with this file's own types.
+\ Two parameters instantiated to different widths, the shape of
+\ src/lib/process.f RUN-CAPTURE's `result<pcap:captured,pcap:failed>` (a
+\ two-cell ok, a three-cell err): ok needs a cell added and err none. The chain
+\ refused it with -8503 (measured).
 SUMTYPE pair<a,b>
    VARIANT lo a ;VARIANT
    VARIANT hi b ;VARIANT
 ;SUMTYPE
 
-\ AND A FAMILY WHOSE WIDEST DECLARED VARIANT IS NOT ITS WIDEST INSTANTIATED ONE.
-\ At `narrow<pt3>` the parametric variant needs THREE payload cells and the
-\ two-cell one still needs two, so the instantiation reserves three slots where
-\ the declaration reserved two - and `p1`, which declares one pad, instantiates
-\ none. A lowering that can only ADD cells cannot correct that, so the checker
-\ refuses the construction outright rather than certifying a width no emitter can
-\ build (src/core/type-family.f TFC-XPAD-NARROW-REJECT). It is the negative of
-\ every case below: the same shape, the other sign.
+\ The widest declared variant is not the widest instantiated one: at narrow<pt3>
+\ the instantiation reserves three slots where the declaration reserves two, and
+\ p1, declaring one pad, instantiates none. A lowering that only adds cells
+\ cannot correct that, so the checker refuses the construction
+\ (src/core/type-family.f TFC-XPAD-NARROW-REJECT): the negative of every case
+\ below.
 SUMTYPE narrow<a>
    VARIANT w2 n n ;VARIANT
    VARIANT p1 a ;VARIANT
@@ -141,7 +122,7 @@ ENUM quad
    q0 q1 q2 q3
 ;ENUM
 
-\ Seven arms, and sixteen, the selector's former arm ceiling.
+\ Seven arms, and sixteen.
 ENUM step
    p0 p1 p2 p3 p4 p5 p6
 ;ENUM
@@ -150,14 +131,13 @@ ENUM wide
    w0 w1 w2 w3 w4 w5 w6 w7 w8 w9 w10 w11 w12 w13 w14 w15
 ;ENUM
 
-\ Seventeen arms exercise growth beyond that former ceiling.
+\ Seventeen arms need the selector to grow past sixteen.
 ENUM over
    v0 v1 v2 v3 v4 v5 v6 v7 v8 v9 v10 v11 v12 v13 v14 v15 v16
 ;ENUM
 
 private
 
-\ ---- the programs the production compiler compiles ----------------------------
 : E-HUE ( hue -- n )
    MATCH hue
       red OF 10 ENDOF
@@ -191,11 +171,9 @@ private
       full OF NMX-PT:UNMAKE + + ENDOF
    ;MATCH ;
 
-\ The same payload, discarded instead of taken apart. It is two cells and ONE
-\ value, so `drop` has to take both - which is a row-wise rename inside an arm
-\ (dot habu-rename-rows-row-143c0331). The chain refused this body while a
-\ rename counted in cells; now it moves the value whole and this executes the
-\ resulting arm.
+\ The payload discarded instead of taken apart: two cells and one value, so
+\ `drop` takes both, a row-wise rename inside an arm. The chain refused this
+\ body while a rename counted cells.
 : E-DROPPED ( n holder -- n )
    MATCH holder
       empty OF ENDOF
@@ -252,22 +230,14 @@ private
       blue OF 3 ENDOF
    ;MATCH ;
 
-\ ---- a parametric family instantiated WIDER than it declares -----------------
-\ `option<a>` reserves ONE payload slot and `option<pt>` needs two, so a value of
-\ it is three cells where the family's declaration says two. Nothing in the
-\ registry can say so - the width is a function of a resolved type term - and the
-\ chain used to refuse this body by name for exactly that reason. It compiles now
-\ because the checker files the instantiated bundle width and each arm's
-\ instantiated pad count under the tokens that publish them.
-\
-\ THE TWO PAYLOAD CELLS CARRY DISTINCT ODD WEIGHTS, and that is the whole point
-\ of the arithmetic: a payload combined with a commutative operator answers the
-\ same number whichever cell came back where, so it would prove only that the
-\ right NUMBER of cells survived. Exchanging the two weights changes the answer.
-\ The value the two bodies below dispatch over. A bare `OPTION:NONE` is
-\ `option<a>` and grounds to nothing, so the instantiation has to be stated
-\ somewhere; a maker whose declared output names it is where every other caller
-\ in the tree states it.
+\ `option<a>` reserves one payload slot and `option<pt>` needs two, so its value
+\ is three cells where the declaration says two. The width depends on a resolved
+\ type term, so the checker files the instantiated bundle width and each arm's
+\ pad count under the tokens that publish them. The two payload cells carry
+\ distinct odd weights: a commutative combination would answer the same
+\ whichever cell came back where. A bare `OPTION:NONE` is `option<a>` and
+\ grounds to nothing; a maker whose declared output names the instantiation
+\ states it.
 : E-MKI ( n -- option<pt> )
    dup 0 > if  dup 3 *  swap 5 *  NMX-PT:MAKE OPTION:SOME  else  drop OPTION:NONE  then ;
 
@@ -277,15 +247,14 @@ private
       some OF NMX-PT:UNMAKE 7 * swap 11 * + ENDOF
    ;MATCH ;
 
+\ The cheapest scrutinee, for the ceiling case alone: its name is spent thirteen
+\ times in a source that must overflow the checker's table while staying inside
+\ the recorder's text cap.
+: MS ( -- sol ) construct sol ov ;
+
 \ The same one cell wider, so the arm's drop count and its keep count are two
 \ different numbers: `option<pt3>` is four cells, its `some` arm drops the tag
 \ alone and keeps three, and its `none` arm drops all four.
-\ The cheapest scrutinee this file can spell, for the ceiling case alone. Its
-\ name is two characters for the reason the family's is: every byte of it is
-\ spent thirteen times in the source that has to overflow the checker's table
-\ while staying inside the recorder's text cap.
-: MS ( -- sol ) construct sol ov ;
-
 : E-MKI3 ( n -- option<pt3> )
    dup 0 > if  dup 3 *  over 5 *  rot 7 *  NMX-PT3:MAKE OPTION:SOME  else  drop OPTION:NONE  then ;
 
@@ -295,12 +264,10 @@ private
       some OF NMX-PT3:UNMAKE 5 * swap 11 * + swap 17 * + ENDOF
    ;MATCH ;
 
-\ TWO DISPATCHES OF DIFFERENT INSTANTIATED WIDTHS IN ONE BODY. The widths are
-\ filed under the tokens that publish them, so this body is what tells a reader
-\ keyed on the TOKEN from one keyed on the family, on the definition, or on the
-\ order the forms appear in: both forms name `option`, and one pops four cells
-\ where the other pops three. A store that answered per family would give one of
-\ them the other's width and drop the wrong cells with every count agreeing.
+\ Two dispatches of different instantiated widths in one body: both name
+\ `option`, one pops four cells and the other three. The widths are filed under
+\ the publishing token; a store keyed on the family, the definition or the form
+\ order would drop the wrong cells with every count agreeing.
 : E-TWOW ( n -- n )
    dup E-MKI3 MATCH option
       none OF 0 ENDOF
@@ -312,11 +279,9 @@ private
    ;MATCH
    + ;
 
-\ AND A STRING LITERAL IN FRONT OF ONE, whose body is dispatch grammar. A
-\ literal is ONE token and the reader reports it through its own event, so a
-\ report path that forgot to step the ordinal would file this form's width under
-\ the token before it - and the arms would be compiled against whatever that
-\ token published, which here is nothing at all.
+\ A string literal before a dispatch: a literal is one token reported through
+\ its own event, so a report path that did not step the ordinal would file this
+\ form's width under the token before it, which publishes nothing.
 : E-STRINST ( n -- n )
    s" MATCH option some OF ;MATCH" 2drop
    E-MKI MATCH option
@@ -324,7 +289,6 @@ private
       some OF NMX-PT:UNMAKE 7 * swap 11 * + ENDOF
    ;MATCH ;
 
-\ ---- three payload cells, and what an arm may do with them -------------------
 \ Arms of three different widths joining, each cell weighted so an exchange
 \ shows in the answer.
 : E-TRIO ( trio -- n )
@@ -334,7 +298,7 @@ private
       t3 OF 5 * swap 11 * + swap 17 * + ENDOF
    ;MATCH ;
 
-\ A payload that crosses a nested `if` INSIDE its arm: the cells are live at the
+\ A payload that crosses a nested `if` inside its arm: the cells are live at the
 \ branch, at the join, and after it, so an arm that handed the inner structure
 \ the wrong number of them would disagree on one side only.
 : E-ARMIF ( trio -- n )
@@ -356,7 +320,7 @@ private
       t3 OF  3 0 ?do  over i *  +  loop  nip  swap 5 * + ENDOF
    ;MATCH ;
 
-\ Three cells that are ONE value, which is `holder` one cell wider: the arm
+\ Three cells that are one value, which is `holder` one cell wider: the arm
 \ keeps a bundle rather than three independent cells, and the glue it puts back
 \ is what stops a rename from taking a `pt3` apart.
 : E-HOLD3 ( hold3 -- n )
@@ -365,24 +329,14 @@ private
       full3 OF NMX-PT3:UNMAKE 5 * swap 11 * + swap 17 * + ENDOF
    ;MATCH ;
 
-\ ---- BUILDING a value of a wide instantiation ---------------------------------
-\ THE OTHER HALF OF THE STORY THE CASES ABOVE TELL. Everything above takes a value
-\ of a wide instantiation APART; these put one together, which is the operation a
-\ dispatch has nothing to dispatch over without. A construction is lowered by
-\ pushing what the family DECLARES - the generated constructor is one routine
-\ compiled once, and `construct` reads the same declared pads out of the registry
-\ - so at `option<pt>`, where the instantiation reserves two payload slots and the
-\ declaration reserves one, both spellings are one zero cell short. The checker
-\ files that difference under the construction's own token and the chain adds the
-\ cells at the site, exactly where native lowering adds them.
-\
-\ THE TWO ARMS OF EVERY MAKER BELOW NEED DIFFERENT NUMBERS, which is what makes
-\ them a pair rather than one case written twice. `some` at `option<pt>` carries a
-\ two-cell payload into a three-cell bundle and needs NOTHING added; `none`
-\ carries nothing and needs one cell. A store that answered per FAMILY, or per
-\ WORD, would hand one arm the other's number - and the `some` arm would then
-\ carry a cell too many while the `none` arm stayed short, with the two errors
-\ cancelling in any count that only added the arms up.
+\ Building a value of a wide instantiation. A construction pushes what the
+\ family declares (the generated constructor is compiled once; `construct` reads
+\ the declared pads from the registry), so at `option<pt>` both spellings are
+\ one zero cell short. The checker files the difference under the construction's
+\ token and the chain adds the cells at the site, as native lowering does. The
+\ two arms of each maker need different numbers (`some` at `option<pt>` nothing,
+\ `none` one cell), so a store keyed per family or per word would hand one arm
+\ the other's number, and the two errors cancel in any count that sums the arms.
 : E-MKC ( n -- opt2<pt> )
    dup 0 > if  dup 3 *  swap 5 *  NMX-PT:MAKE construct opt2 s2  else  drop construct opt2 n2  then ;
 
@@ -392,22 +346,17 @@ private
       s2 OF NMX-PT:UNMAKE 7 * swap 11 * + ENDOF
    ;MATCH ;
 
-\ A RECORD READER'S NEXT-LINE SHAPE, REDUCED TO WHAT BROKE. That word dispatched
-\ over one `option` and built ANOTHER at a wider instantiation in both arms, and
-\ its `none` arm is the row this case exists for: it constructed `option<obj:line>`
-\ one cell short and the chain refused the join between the two arms (-8503,
-\ measured). Here the scrutinee is `option<pt>` and what both arms build is
-\ `option<pt3>`, so the constructed instantiation is wider than the one taken
-\ apart and the two arms of the construction need two different numbers - the
-\ `some` arm's payload fills the bundle and needs nothing, the `none` arm needs
-\ two cells.
+\ A record reader's next-line shape: dispatch over `option<pt>` and build
+\ `option<pt3>` in both arms, where `some` needs nothing and `none` two cells. A
+\ `none` arm constructing one cell short made the chain refuse the join (-8503,
+\ measured).
 : E-RELAY ( option<pt> -- option<pt3> )
    MATCH option
       none OF OPTION:NONE ENDOF
       some OF NMX-PT:UNMAKE over 3 * NMX-PT3:MAKE OPTION:SOME ENDOF
    ;MATCH ;
 
-\ A WIDE CONSTRUCTION THE LOOP CARRIES ROUND ITS BACK EDGE. The value the body
+\ A wide construction the loop carries round its back edge. The value the body
 \ leaves is the value the next turn takes apart, so its pads travel the edge and
 \ the join at the top of the loop is where a bundle one cell short would meet one
 \ of the right width. The trip count is a constant, so the loop terminates
@@ -419,22 +368,17 @@ private
       dup 0 > if  dup 3 *  swap 5 *  NMX-PT:MAKE OPTION:SOME  else  drop OPTION:NONE  then
    loop ;
 
-\ A STRING LITERAL IN FRONT OF A CONSTRUCTION, for the reason E-STRINST puts one
-\ in front of a dispatch: a literal is ONE token reported through its own event,
-\ so a report path that did not step the ordinal would file this construction's
-\ cells under the token before it - which here publishes nothing, and the
-\ construction would go back to being one cell short.
+\ A string literal before a construction, for E-STRINST's reason: without the
+\ ordinal step this construction would be one cell short.
 : E-STRCON ( n -- option<pt> )
    s" OPTION:NONE construct opt2 n2" 2drop
    dup 0 > if  dup 3 *  swap 5 *  NMX-PT:MAKE OPTION:SOME  else  drop OPTION:NONE  then ;
 
-\ TWO CONSTRUCTIONS OF DIFFERENT INSTANTIATED WIDTHS IN ONE BODY, and they are of
-\ two FAMILIES because one family cannot be instantiated twice in one declared
-\ output - the checker resolves a construction's arguments from the first bundle
-\ of that family it finds there, so two `option`s would both be built at the first
-\ one's width and it refuses the body (measured). `option<pt>` adds one cell and
-\ `opt2<pt3>` adds two, so a reader keyed on the definition, or on the order the
-\ constructions appear in, gives one of them the other's number.
+\ Two constructions of different instantiated widths in one body, of two
+\ families: the checker resolves a construction's arguments from the first
+\ bundle of that family in the declared output, so two `option`s would both take
+\ the first one's width, and it refuses the body (measured). `option<pt>` adds
+\ one cell and `opt2<pt3>` two.
 : E-TWOC ( -- option<pt> opt2<pt3> )
    OPTION:NONE  construct opt2 n2 ;
 
@@ -444,12 +388,11 @@ private
       s2 OF NMX-PT3:UNMAKE 5 * swap 11 * + swap 17 * + ENDOF
    ;MATCH ;
 
-\ A CONSTRUCTION THAT HAS A PAYLOAD AND STILL NEEDS CELLS ADDED. `g1` at
-\ `grow<pt>` carries a two-cell payload and the instantiation reserves two more
-\ slots than its declaration, so one cell has to go in BETWEEN that payload and
-\ the pad the lowering already emits. Every other construction in this file needs
-\ cells for a variant that carries nothing, where anything below the tag would
-\ have done; this pair is what says the cells go above the payload.
+\ A construction with a payload that still needs cells added: g1 at grow<pt>
+\ carries a two-cell payload and the instantiation reserves two more slots, so a
+\ cell goes between the payload and the declared pad. Every other construction
+\ here adds cells for an empty variant; this pair pins that they go above the
+\ payload.
 : E-MKG ( n -- grow<pt> )
    dup 3 * swap 5 * NMX-PT:MAKE NMX-GROW:G1 ;
 
@@ -467,10 +410,9 @@ private
       g2 OF NMX-PT:UNMAKE 13 * swap 17 * + >r NMX-PT:UNMAKE 19 * swap 23 * + r> + ENDOF
    ;MATCH ;
 
-\ THE TWO PARAMETERS OF ONE FAMILY INSTANTIATED TO DIFFERENT WIDTHS. Both arms
-\ carry a payload here - there is no empty variant to hide behind - and only one
-\ of them needs a cell added, so a number taken from the family rather than from
-\ the arm's own token would be wrong for one of the two whichever way it went.
+\ The two parameters of one family instantiated to different widths: both arms
+\ carry a payload and only one needs a cell added, so a number taken from the
+\ family rather than the arm's own token is wrong for one of them.
 : E-MKP ( n -- pair<pt,pt3> )
    dup 0 > if  dup 3 * swap 5 * NMX-PT:MAKE NMX-PAIR:LO
           else  dup 3 * over 5 * rot 7 * NMX-PT3:MAKE NMX-PAIR:HI  then ;
@@ -481,9 +423,8 @@ private
       hi OF NMX-PT3:UNMAKE 5 * swap 11 * + swap 17 * + ENDOF
    ;MATCH ;
 
-\ The two answers are combined through the RETURN stack because the value left
-\ under the one just read is a BUNDLE, and a rename over a bundle is refused -
-\ which is the rule this whole file is about, met from the other side.
+\ The two answers are combined through the return stack because the value left
+\ under the one just read is a bundle, and a rename over a bundle is refused.
 : E-RDTWO ( option<pt> opt2<pt3> -- n )
    E-RDC3 >r E-INST r> 3 * + ;
 
@@ -503,8 +444,6 @@ private
       blue OF 3 ENDOF
    ;MATCH ;
 
-
-\ ---- production-source boundary cases ----------------------------------------
 
 : EV-RC ( ptr u8 n -- n )
    NATIVE-EVAL:DEFINE-RC ;
@@ -580,8 +519,6 @@ variable RC-NARROWK variable ROW-NARROWK
    NARROWK$ TRY RC-NARROWK ! NELAB:REFUSED-ROW ROW-NARROWK ! ;
 
 RUN-DYNAMIC-CASES
-
-\ ---- emitted dispatch shape --------------------------------------------------
 
 \ Source compilation retires its temporary emission. Inspect the full committed
 \ span: legacy lengths omit a trailing RET; exact spans can put cold traps after
@@ -688,8 +625,6 @@ variable QUAD-RET
    rc 0<> if rc throw then ;
 
 CAPTURE-NATIVE-EMISSION
-
-\ ---- behavior ---------------------------------------------------------------
 
 : BASIC-CASE ( -- )
    s" empty and payload arms preserve their declared values" T-LABEL
@@ -883,8 +818,6 @@ CAPTURE-NATIVE-EMISSION
       QUAD-SIZE @ 184 < TTRUE
    then
    QUAD-SIZE @ UNW-SIZE @ > TTRUE ;
-
-\ ---- hostile tag ------------------------------------------------------------
 
 $4000 constant CAP-CAP
 30000 constant CHILD-MS

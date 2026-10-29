@@ -7,17 +7,16 @@ require src/lib/errors.f
 require src/compiler/native/compiler.f
 require tools/codegen-loop-inventory.f
 
-\ Tier 1 below: the back edges each case counts are the emitted code of the
-\ optimizing compiler (tools/codegen-loop-inventory.f).
+\ Tier 1: the back edges each case counts are the optimizing compiler's code
+\ (tools/codegen-loop-inventory.f).
 1 set-tier
 
 package NJ-FIXTURE
 
 public
 
-\ Two counted loops and both indices, under each pair of openers the source
-\ language spells. The frame both openers push is the same one, so what these
-\ four rows say is that the reader finds it whichever word opened it.
+\ Both openers push the same frame, so the four rows say the reader finds it
+\ whichever word opened it.
 : NJ-IJ ( n n -- n ) {: a:n b:n :}
    0 a 0 ?do b 0 ?do i 3 * j 5 * + + loop loop ;
 tier@ constant NJ-IJ-TIER
@@ -31,42 +30,33 @@ tier@ constant NJ-IJ-TIER
 : NJ-IJ-QDO ( n n -- n ) {: a:n b:n :}
    0 a 0 ?do b 0 do i 3 * j 5 * + + loop loop ;
 
-\ `j` under an `if` inside the inner loop, read on BOTH arms so no path is left
-\ without it. The frame between the reader and the loops is what this row is
-\ about: it is not a counted one and must not be counted.
+\ The `if` frame between the reader and the loops is not counted; `j` is read on
+\ both arms.
 : NJ-IF ( n n -- n ) {: a:n b:n :}
    0 a 0 ?do b 0 ?do i 1 and 0= if j 3 * + else j 5 * + then loop loop ;
 
-\ Three counted loops. `j` is the MIDDLE one's index - one frame out from the
-\ innermost - and not the outermost's, which is what the third loop is here to
-\ tell apart.
+\ `j` is the middle loop's index, one frame out, not the outermost's.
 : NJ-TRIPLE ( n n n -- n ) {: a:n b:n c:n :}
    0 a 0 ?do b 0 ?do c 0 ?do i 3 * j 5 * + + loop loop loop ;
 
-\ Calls stay calls in the native compiler. This one renames every open loop's
-\ counters, the outer loop's included.
+\ The call renames every open loop's counters, the outer loop's included.
 : NJ-CALLEE ( n -- n )
    dup 3 * over 5 xor + swap 7 and + dup 11 * + 13 xor ;
 
 : NJ-CALL ( n n n -- n ) {: seed:n a:n b:n :}
    seed a 0 ?do b 0 ?do NJ-CALLEE j + loop loop ;
 
-\ The inner loop is left from the middle of its body while the outer one goes on
-\ turning, so the outer index is read on a path that reaches the `leave` and on
-\ one that does not.
+\ The outer index is read on a path that reaches the inner `leave` and on one
+\ that does not.
 : NJ-LEAVE ( n n -- n ) {: a:n b:n :}
    0 a 0 ?do b 0 ?do j 3 * + i 2 > if leave then loop loop ;
 
-\ A local named `j` is the local, inside two counted loops as anywhere else;
-\ docs/forth.md's local-first rule decides the spelling.
+\ A local named `j` is the local (docs/forth.md local-first rule).
 : NJ-JLOCAL ( n n n -- n ) {: j:n a:n b:n :}
    0 a 0 ?do b 0 ?do j 3 * i 5 * + + loop loop ;
 
-\ src/lib/ptx/cg-matmul-emit.f MM-KSTEP-FMA reduced to its indices: two plain `do`
-\ loops whose body computes a register number out of both of them. That body is
-\ the definition this leaf was opened by - it moved to E-HIR-UNMODELED naming `j`
-\ when the plain `do` landed - and this row is its arithmetic with the string
-\ building taken out.
+\ A ptx matmul emitter's index arithmetic without the string building: two plain
+\ `do` loops computing a register number from both indices.
 : NJ-FMA ( n n -- n ) {: a:n b:n :}
    0 a 0 do b 0 do 10 j 4 * + i + + loop loop ;
 
@@ -76,8 +66,6 @@ package NJ-TEST
 
 private
 
-\ How many loops a published routine's emitted code still holds, read off the
-\ emitted code by tools/codegen-loop-inventory.f rather than assumed.
 : LOOPS-IN ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u NLOOPINV:ROW!
    NLOOPINV:LOOPS ;
@@ -88,15 +76,12 @@ private
 : KEPT3 ( ptr u8 n -- )
    LOOPS-IN 3 T= ;
 
-\ One dynamically defined source line, caught so refusal can be asserted.
 : EV-DEF ( ptr u8 n -- n )
    NATIVE-EVAL:DEFINE-RC ;
 
 \ ---- the cases ---------------------------------------------------------------
-\ THE BOUNDS ARE UNEQUAL WHEREVER THEY CAN BE, because a rectangle whose sides
-\ are equal answers the same under an exchange of the two indices. The equal and
-\ zero pairs are still run - they are where the two openers differ - but they are
-\ never the only ones.
+\ Bounds are unequal wherever they can be: a square answers the same with the
+\ indices exchanged. Equal and zero pairs still run, where the openers differ.
 : IJ-CASE ( -- )
    s" both indices of two counted loops, under all four pairs of openers" T-LABEL
    s" NJ-FIXTURE:NJ-IJ" KEPT2
@@ -132,12 +117,9 @@ private
    s" NJ-FIXTURE:NJ-FMA" KEPT2
    2 3 NJ-FIXTURE:NJ-FMA 78 T= ;
 
-\ THE REFUSALS THAT ARE NOT THE CHAIN'S, measured where a program meets them. One
-\ counted loop is not enough for `j` and the checker says so; two counted loops
-\ that are not both open at the reader are not enough either; and `k` is not a
-\ word at all. Each is written beside the same text WITHOUT the offending
-\ placement, which compiles - so what each refusal is about is the placement and
-\ not something else in the line.
+\ Refusals that are the checker's, not the chain's: `j` under one counted loop,
+\ under two not both open at the reader, and `k`, which is no word. Each sits
+\ beside the same text without the offending placement, which compiles.
 : OUTSIDE-CASE ( -- )
    s" j under one counted loop is refused where it is written" T-LABEL
    s" : NJ-OK1 ( -- n ) 0 3 0 ?do 2 0 ?do j + loop loop ;" EV-DEF 0 T=

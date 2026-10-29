@@ -1,9 +1,8 @@
 \ The window DATA cell value's varint codec, at the widths and the malformations
 \ the engine's own content never reaches. src/habu/aot-decl.f package AOT-WINDOW
-\ is the authority for the grammar; the two emitted decoders (habu2.f
-\ APPLY-CELLS for the baked window, aot-lib.f EMIT-VGET for a stripped image's
-\ own DATA) are the same grammar in ARM64 and are pinned where they are emitted
-\ (test/gate-aot-image.f CHECK-VGET) and exercised by every build.
+\ is the authority for the grammar; the two emitted ARM64 decoders (habu2.f
+\ APPLY-CELLS for the baked window, aot-link-arm.f EMIT-VGET for a stripped
+\ image's own DATA) are exercised by every build.
 require src/lib/test.f
 require src/lib/test/guard-page.f
 require src/arch/arm64/asm.f

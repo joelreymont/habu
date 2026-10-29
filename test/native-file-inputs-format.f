@@ -1,6 +1,5 @@
 \ A truncated answer in a query row must refuse before reading past its bytes.
 \ A source row's stat stands for its bytes; only a changed stat hashes them.
-\ bin/hb --load test/native-file-inputs-format.f
 
 require src/lib/test.f
 require src/lib/le.f

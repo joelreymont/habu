@@ -1,36 +1,8 @@
 \ x86-64-kernel-pure.f - the pure-op rows of the x86-64 kernel
-\ (src/habu/kernel-x64.f PURE,) in the booted harness, cross-built for an
-\ x86-64 peer. Each image is one case, and the peer that runs it must see its
-\ status:
-\
-\    hb-x64-kernel-pure                 0  every case set of test/prim-cases.f
-\                                          and test/prim-float-cases.f, and
-\                                          ?dup
-\    hb-x64-kernel-pure-negative       21  the same, its first check expecting
-\                                          a wrong answer: `x64k-pure: dup
-\                                          overload 0 case 1` on fd 2
-\    hb-x64-kernel-pure-fdot            0  f. of eleven doubles, read back
-\                                          through a pipe on fd 1
-\    hb-x64-kernel-pure-store-armed    83  ! into a band cell
-\    hb-x64-kernel-pure-cstore-armed   83  c! into a band cell
-\    hb-x64-kernel-pure-addstore-armed 83  +! into a band cell
-\
-\ THE CASES ARE THE PARITY GATE'S. test/prim-cases.f and
-\ test/prim-float-cases.f are included into the open image, so each
-\ `<overload> CASES <name>` line stages its checks against the kernel row of
-\ that name; an overload is the same row. A case pushes its inputs, calls the
-\ row, pops each answer against the case's column and checks the data stack is
-\ back where the case found it. A float case's input goes through the kernel's
-\ `s>f` row and its real answer through `f>s`, as prim-parity.f's arms convert,
-\ except where that row is the subject and in the bit shapes RR-R and R-R,
-\ whose columns are a double's bits as they stand. The checks outnumber the
-\ statuses the harness numbers from FIRST-CASE, so each one dies through the
-\ kernel's `die` row naming its subject and case (X64HARNESS:CHECK-RCX,).
-\
-\ Every image seals the friend latch first, so each store row's guard walks
-\ its whole span test. A pointer column is a byte offset into the fixture, the
-\ harness's scratch cells in DATA; a flag column's 1 is the all-ones cell.
-\ The host checks each image's ELF header; running them is the peer's.
+\ (src/habu/kernel-x64.f PURE,) in the booted harness, cross-built for an x86-64
+\ peer. The cases are the parity gate's: test/prim-cases.f and
+\ test/prim-float-cases.f are included into the open image, each `<overload>
+\ CASES <name>` line staging checks against the kernel row of that name.
 require test/x86-64-boot-harness.f
 require src/lib/errors.f                    \ E-DIV-ZERO, the dividing rows' refusal
 require src/lib/fmt.f
@@ -41,7 +13,8 @@ using X64ASM
 using X64CODE
 using X64RT
 
-\ What test/prim-cases.f's header asks an includer for, beside the shapes.
+\ What test/prim-cases.f's includer contract asks an includer for, beside the
+\ shapes.
 X64HARNESS:MAX-CELL constant MAX-N
 X64HARNESS:MIN-CELL constant MIN-N
 3 constant BUMP                         \ the addend the `+!` scenario applies
@@ -89,18 +62,23 @@ TYPED-VARIABLE FLOATS bool              \ set while the float sets run
 : CASE+ ( -- ) CASE-N @ 1+ CASE-N ! ;
 
 \ ---- the checks --------------------------------------------------------------
+\ A case pushes its inputs, calls the row, pops each answer against its column
+\ and checks the data stack is back where it was. A float case converts through
+\ the kernel's `s>f` and `f>s` rows, as prim-parity.f's arms do, except where
+\ that row is the subject and in the bit shapes RR-R and R-R. The checks
+\ outnumber the statuses numbered from FIRST-CASE, so each dies through the
+\ kernel's `die` row naming its subject and case (X64HARNESS:CHECK-RCX,). A
+\ pointer column is a byte offset into the fixture, the harness's DATA scratch
+\ cells; a flag column's 1 is the all-ones cell.
 : CHECK, ( -- ) CASE$ X64HARNESS:CHECK-RCX, ;
 
-\ Pop a cell and check it is n.
 : WANT ( n -- ) {: v:n :}  0 G-POP  v RCX!  CHECK, ;
 
 \ Pop an address and check it lies n bytes into the fixture.
 : WANT-AT ( n -- ) {: off:n :}  off AT,  1 G-POP  0 G-POP  CHECK, ;
 
-\ A case's 0/1 flag column as the cell a flag is.
 : FLAG ( n -- n ) negate ;
 
-\ Check the case left the data stack where it found it: empty.
 : SETTLED ( -- )
    RAX DSP ASM-SINK ENC-MOV-RR
    RAX DATA-REG STACK-ABI:BASE-CELL MEM-OFF ASM-SINK ENC-SUB-RM
@@ -220,6 +198,20 @@ public
 private
 
 \ ---- the images --------------------------------------------------------------
+\ Each image is one case, with the status its peer must see:
+\    hb-x64-kernel-pure                 0  every case set of test/prim-cases.f
+\                                          and test/prim-float-cases.f, and
+\                                          ?dup
+\    hb-x64-kernel-pure-negative       21  the same, its first check expecting
+\                                          a wrong answer: `x64k-pure: dup
+\                                          overload 0 case 1` on fd 2
+\    hb-x64-kernel-pure-fdot            0  f. of eleven doubles, read back
+\                                          through a pipe on fd 1
+\    hb-x64-kernel-pure-store-armed    83  ! into a band cell
+\    hb-x64-kernel-pure-cstore-armed   83  c! into a band cell
+\    hb-x64-kernel-pure-addstore-armed 83  +! into a band cell
+\ Every image seals the friend latch first, so each store row's guard walks its
+\ whole span test.
 \ ?dup has no case set: checked Habu cannot name it, so prim-cases.f cannot
 \ hold one. Zero stays alone; anything else is doubled.
 : QDUP-CASES ( -- )
@@ -229,6 +221,8 @@ private
 
 : OPEN-IMAGE ( bool -- ) X64HARNESS:BOOT-OPEN,  SEAL, ;
 
+\ The host checks each image's ELF header; the peer runs each and must see its
+\ status.
 : CLOSE-IMAGE ( ptr u8 n -- )
    0 X64HARNESS:EXPECT-DEPTH,
    X64HARNESS:EXPECT-BALANCED,

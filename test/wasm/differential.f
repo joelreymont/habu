@@ -1,27 +1,8 @@
-\ differential.f - W31: each row's program run natively by bin/hb and built by
-\ tools/wasm-build.f into a module that wasm-tools validates and bun runs
-\ (test/wasm/harness.f), both sides held to the row. Both tools must be on
-\ PATH, so this is no row of the ordinary gate: test/wasm/device.f runs it, as
-\ does `bin/hb --load test/wasm/differential.f` from the tree's root.
-\
-\ A row is a NAME, a SOURCE that defines it and the EXPECTED bytes it prints
-\ (test/wasm/numeric-rows.f). Natively `bin/hb --load` loads SOURCE and then a
-\ file that calls NAME; for Wasm SOURCE is built with entry NAME. Each side
-\ prints EXPECTED and ends as the row says. ROW's program returns: it exits 0
-\ with nothing on stderr, and its run answers status 0. THROW-ROW's throws a
-\ code uncaught: natively the engine's uncaught throw names it, and the run
-\ answers status 1 with the code whole. TRAP-ROW's traps: natively through the
-\ crash handler, and in Wasm as a trap, status 2, which no catch takes.
-\
-\ The rows: N01-N06 with the three NaN print rows, and W32's three ?do rows,
-\ from test/wasm/numeric-rows.f; W01's cyclic edge copies and nested label
-\ depths; W03's 144 signatures; W06's 16 and 17 lanes each way, called
-\ directly and through execute; W07's full-width throw and its trap; and W31's
-\ own storage, its booleans, its real orderings and src/lib/fmath.f's SIN and COS.
-\ No Habu control word builds the cycle entered at two blocks W02 needs, so its
-\ refusal stays structural (test/wasm/structure.f).
-\
-\ The sources and modules stay in the printed directory.
+\ differential.f - W31: each row's program runs natively under bin/hb and as a
+\ module tools/wasm-build.f builds, wasm-tools validates and bun runs
+\ (test/wasm/harness.f), both held to the row. Both tools must be on PATH, so
+\ test/wasm/device.f runs it, as does `bin/hb --load test/wasm/differential.f`
+\ from the tree's root. Sources and modules stay in the printed directory.
 
 require src/lib/string.f
 require src/lib/fmt.f
@@ -179,21 +160,28 @@ public
    a DIR u BYTE-COPY  u DIR-U !
    s" wasm differential: sources and modules in " type  DIR u type cr ;
 
-\ A row whose program returns.
+\ A row is a NAME, a SOURCE that defines it and the EXPECTED bytes it prints
+\ (test/wasm/numeric-rows.f): natively `bin/hb --load` loads SOURCE then a file
+\ calling NAME; for Wasm SOURCE is built with entry NAME. ROW's program returns:
+\ exit 0, empty stderr, status 0. No Habu control word builds W02's cycle
+\ entered at two blocks, so its refusal stays structural
+\ (test/wasm/structure.f).
 : ROW ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: name:ptr nu:n src:ptr su:n want:ptr wu:n :}
    name nu src su FILES
    want wu 0 0 NATIVE
    want wu 0 0 WASM ;
 
-\ A row whose program throws code uncaught.
+\ THROW-ROW's program throws a code uncaught: natively the engine's uncaught
+\ throw names it, and the run answers status 1 with the code whole.
 : THROW-ROW ( ptr u8 n ptr u8 n ptr u8 n n -- )
    {: name:ptr nu:n src:ptr su:n want:ptr wu:n code:n :}
    name nu src su FILES
    want wu UNCAUGHT-RC code NATIVE
    want wu 1 code WASM ;
 
-\ A row whose program traps.
+\ TRAP-ROW's program traps: natively through the crash handler, in Wasm as
+\ status 2, which no catch takes.
 : TRAP-ROW ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: name:ptr nu:n src:ptr su:n want:ptr wu:n :}
    name nu src su FILES

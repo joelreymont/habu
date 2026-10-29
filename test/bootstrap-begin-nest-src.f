@@ -1,14 +1,13 @@
 \ bootstrap-begin-nest-src.f - stage0 BEGIN frames stay off the compile cells.
 
 \ Every `begin` pushes a 24-byte snapshot frame of the virtual stack, and the
-\ seed's frame area holds 28 of them (SNAP-FRAMES, bootstrap/cg/forth.fs). While
-\ those frames sat at $360..$600 in the DATA header, the 22nd landed on the
-\ seed's compile cells LASTC and RSP, the 23rd on EXITH (the
-\ EXIT placeholder chain), LVD (the open DO levels) and the first LVH cell (that
-\ level's LEAVE chain), and the rest on deeper LVH cells. So each definition
-\ below nests to the full 28 with one of those chains open across the nest: an
-\ early `exit` (EXITH) and an earlier `leave` (LVD, LVH). On the old band
-\ BN-EXIT died of SIGILL and BN-LEAVE's `loop` was refused with rc 70.
+\ seed's frame area holds 28 (SNAP-FRAMES, bootstrap/cg/forth.fs). A frame area
+\ at $360..$600 in the DATA header puts the 22nd frame on the compile cells
+\ LASTC and RSP, the 23rd on EXITH (the EXIT placeholder chain), LVD (open DO
+\ levels) and the first LVH cell (that level's LEAVE chain). Each definition
+\ nests to 28 with one chain open: an early `exit` (EXITH) or an earlier `leave`
+\ (LVD, LVH). On that band BN-EXIT dies of SIGILL and BN-LEAVE's `loop` is
+\ refused, rc 70.
 
 variable BN-FAILS
 

@@ -1,5 +1,4 @@
 \ A direct quiet composition and the ordinary load must see the same source.
-\ Run: bin/hb --load test/live-verify-source-e2e.f
 
 require src/lib/test.f
 require src/lib/fs.f
@@ -319,7 +318,6 @@ variable DUP-SRC-U
    [: DUP-SRC-A @ DUP-SRC-U @ DESIGN$ VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE ;] catch
    CHECKER-SCOPE-DONE ;
 
-\ The whole record of a duplicate: its token, its file and its place.
 : EXPECTED-DUP$ ( ptr u8 n ptr u8 n ptr u8 n -- ptr u8 n )
    {: tok:ptr toku:n file:ptr fileu:n place:ptr placeu:n :}
    SB-RESET

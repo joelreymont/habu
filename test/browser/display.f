@@ -78,7 +78,6 @@ variable ECHO-U
    s" input-b" IS? if 9 1 1 0 RECORD exit then
    s" input-c" IS? if 9 0 0 1 RECORD exit then ;
 
-\ A digit 0-15 appended in hex.
 : HEX, ( n -- )
    dup 10 < if [char] 0 + else 10 - [char] a + then
    ECHO-BUF ECHO-U @ + c!  1 ECHO-U +! ;

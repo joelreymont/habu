@@ -1,7 +1,6 @@
 \ A package's checker facts survive an artifact boundary. The dictionary stays
 \ resident while CHECKER-RESET-SOURCE makes the importing checker source-fresh.
-\ Run on a build containing the unit owner callbacks:
-\ bin/hb --load test/checker-unit-codec-e2e.f
+\ Needs a build containing the unit owner callbacks.
 
 require src/lib/test.f
 require src/lib/string.f

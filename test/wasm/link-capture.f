@@ -1,21 +1,9 @@
-\ link-capture.f - WASMLINK, src/habu/link-wasm.f: a window compiled through an
-\ open Wasm shadow with src/arch/wasm/kernel-words.f, captured and linked into
-\ one module, and the windows the link refuses.
-\
-\ The module's data image is the window's DATA as the capture found it, byte
-\ for byte; the window holds a word whose text literal lies in that DATA, and a
-\ constant no call names, whose routine the link leaves out.
-\ test/wasm/dynamic.f runs linked modules under wasm-tools and bun.
-\
-\ Each refused window is compiled, captured and linked in a child of its own,
-\ forked before this process opens a window: a call to an unbound defer reaches
-\ DEFER-UNSET without a Wasm provider, a call to `here` names a word no kernel
-\ row answers, and
-\ a window without kernel-words.f ships no WKWORDS:DOT for `.`. Each exits 74
-\ and says what it refuses.
-\
-\ Registered as `SUITE wasm-link-capture`. Run standalone from the repository
-\ root: bin/hb --load test/wasm/link-capture.f
+\ WASMLINK (src/habu/link-wasm.f): a window compiled through an open Wasm shadow
+\ with src/arch/wasm/kernel-words.f, captured and linked into one module, and
+\ the windows the link refuses. The data image is the window's DATA byte for
+\ byte; the window holds a word whose text literal lies in that DATA and a
+\ constant no call names, whose routine the link leaves out. test/wasm/dynamic.f
+\ runs linked modules under wasm-tools and bun.
 
 package LINK-CAPTURE
 public
@@ -69,9 +57,12 @@ PATH-CAP BUFFER: PATH
 variable PATH-U
 DYNAMIC-BUFFER MODULE u8
 
-\ ---- the refusals ----------------------------------------------------------------
-\ A window of text, linked in a child; answers its stdout and stderr lengths
-\ and its exit status.
+\ A window of text, compiled, captured and linked in a child of its own, forked
+\ before this process opens a window; answers its stdout and stderr lengths and
+\ its exit status. The refused windows: a call to an unbound defer reaches
+\ DEFER-UNSET without a Wasm provider, a call to `here` names a word no kernel
+\ row answers, and a window without kernel-words.f ships no WKWORDS:DOT for `.`;
+\ each exits 74 and says what it refuses.
 : CHILD ( ptr u8 n -- n n n )
    {: a:ptr u:n :}
    SB-RESET
@@ -104,7 +95,6 @@ DYNAMIC-BUFFER MODULE u8
    s" wasmlink: WKWORDS:DOT names no record the capture ships"
    s" wasmlink: a name no shipped record answers" REFUSED ;
 
-\ ---- the linked window ----------------------------------------------------------
 \ The window's DATA where this process holds it.
 : WINDOW$ ( -- ptr u8 n )
    data-base BYTE-VIEW  AOT-ARM:D0 @ DATA-VA VA>N -  +  AOT-BUF:AOT-DATA-SIZE @ ;

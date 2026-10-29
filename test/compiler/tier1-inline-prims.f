@@ -1,29 +1,7 @@
-\ tier1-inline-prims.f - tier 1 LOWERS the trivial engine primitives instead of
-\ calling them.
-\
-\ `ptr-field`, `cell+`, `cell-view`, `byte-view`, `tuck`, `max` and `mod` were
-\ compiled as calls into the engine's own primitive bodies, and 22 per cent of
-\ the self-build's samples were inside bodies a BL had entered.
-\ src/compiler/native/hir-word.f now carries a row for each
-\ of them, so this file pins the property those rows exist for: a tier-1 word
-\ that uses one of these ops contains no call into that primitive's body.
-\
-\ WHERE THE TARGET ADDRESSES COME FROM. Each primitive's span is read from the
-\ DICTIONARY RECORD its `FPRIM-L` registration made (src/habu/habu1.f), through
-\ src/habu/xref.f. That is the same record the compiler resolves a callable
-\ against, so the address a call WOULD go to and the address compared here are
-\ one fact and not two that can drift apart. `ENGINE-PRIMS` is the build-side
-\ table and is empty in a running engine, which is why it is not read here.
-\
-\ WHY THERE ARE POSITIVE CONTROLS. "No BL into these spans" is worth nothing if
-\ the decoder cannot see a call at all, so the same decoder is asked two
-\ questions it must answer YES to: an ordinary call between two definitions of
-\ this file is found, and an eligible checked store calls the sealed span guard.
-\
-\ Values are asserted as well as shapes: an op lowered to the wrong arithmetic
-\ would pass a call census and fail here. The two byte-order rows read a cell
-\ written by this file back through the other view, which is a little-endian
-\ fact and the only target this compiler emits for.
+\ tier1-inline-prims.f - tier 1 lowers the trivial engine primitives instead of
+\ calling them: a tier-1 word using `ptr-field`, `cell+`, `cell-view`,
+\ `byte-view`, `tuck`, `max` or `mod` holds no call into that primitive's body
+\ (rows in src/compiler/native/hir-word.f).
 
 require src/lib/test.f
 require src/lib/fs.f
@@ -63,6 +41,9 @@ private
    at bytes + kind target ;
 
 \ ---- the spans ---------------------------------------------------------------
+\ Spans come from each primitive's FPRIM-L dictionary record (src/habu/xref.f),
+\ the record the compiler resolves calls against; ENGINE-PRIMS is the build-side
+\ table, empty in a running engine.
 variable MISSING                     \ names the dictionary did not answer for
 
 : SPAN ( ptr u8 n -- n n ) {: na:ptr nu:n :}
@@ -99,7 +80,6 @@ variable PRIM-N
       at i cells PRIM-HI + @ < and if drop true leave then
    loop ;
 
-\ How many calls the named word makes into ANY recorded primitive body.
 : CALLS-PRIMS ( ptr u8 n -- n ) {: na:ptr nu:n :}
    na nu SPAN {: lo:n hi:n :}
    HB-TARGET-LINUX-X86-64? if
@@ -116,7 +96,6 @@ variable PRIM-N
       i BL? if i BL-TARGET IN-PRIM? if 1+ then then
    4 +loop ;
 
-\ How many calls the named word makes into one other named word.
 : CALLS-WORD ( ptr u8 n ptr u8 n -- n ) {: na:ptr nu:n ta:ptr tu:n :}
    ta tu SPAN {: tlo:n thi:n :}
    na nu SPAN {: lo:n hi:n :}
@@ -155,7 +134,8 @@ variable PRIM-N
    4 +loop ;
 
 \ ---- the subjects ------------------------------------------------------------
-\ Real checked definitions, each doing work whose answer is asserted below.
+\ Real checked definitions whose answers are asserted below: an op lowered to
+\ the wrong arithmetic passes a call census and fails there.
 create TIP-CELLS 8 cells allot       \ plain cells
 create TIP-TAB-STORE 8 cells allot   \ the block the pointer table lives in
 TYPED-VARIABLE TIP-TAB ptr n         \ and the declared cell that names its base
@@ -172,7 +152,6 @@ public
 : TIP-INDEXED! ( ptr n n -- ) {: p:ptr k:n :}
    p TIP-TAB @ k ptr-field ! ;
 
-\ `cell+` steps one cell past the cell an index names.
 : TIP-NEXT-CELL ( n -- n ) {: k:n :}
    TIP-CELLS k cells + cell+ @ ;
 
@@ -195,7 +174,8 @@ public
    {: p:ptr :}
    p @ close -1 p ! ;
 
-\ The decoder's positive control: an ordinary call, not in tail position.
+\ The decoder's positive control: an ordinary call, not in tail position. "No
+\ BL into these spans" means nothing if the decoder cannot see a call.
 : TIP-CALLEE ( n -- n ) 1 lshift ;
 : TIP-CALLER ( n -- n ) TIP-CALLEE 1+ ;
 
@@ -265,6 +245,7 @@ private
    0 TIP-INDEXED $55AA T=
    TIP-CELLS 3 cells + 7 TIP-INDEXED!
    7 TIP-INDEXED $55AA T=
+   \ $34 is the low byte: little-endian, the only order this compiler emits.
    $1234 TIP-CELLS !
    TIP-CELLS byte-view TIP-CELL-VIEW $1234 T=
    TIP-CELLS TIP-BYTE-VIEW $34 T=

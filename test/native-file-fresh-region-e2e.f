@@ -1,7 +1,6 @@
 \ A cached FILE that defines an inferred fresh-region producer replays its
 \ record, and a warm client still mints a region per call: one call's region
 \ builds, two calls compared as one region refuse.
-\ bin/hb --load test/native-file-fresh-region-e2e.f
 
 require src/lib/test.f
 require src/lib/string.f

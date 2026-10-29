@@ -1,43 +1,9 @@
 \ x86-64-kernel-crash.f - the crash handler src/habu/boot-x64.f START,
 \ installs, in the booted harness, cross-built for an x86-64 peer. Each image
-\ forks. The child moves a pipe's write end onto fd 2 and faults. The parent
-\ closes its own write end, waits, reads the pipe to EOF and checks the wait
-\ status, the byte count and every byte the handler wrote but the sixteen
-\ digits of rsp; it exits 0 when each held. The peer that runs them must see:
-\
-\    hb-x64-kernel-crash             0  every register but rsp distinct, rbp
-\                                       not canonical, a jump to $1000, which
-\                                       is never mapped: the dump, then death
-\                                       by the SIGSEGV itself,
-\                                       its three code lines 0
-\    hb-x64-kernel-crash-negative   21  the same, expecting the wrong status
-\    hb-x64-kernel-crash-region      0  rbp DATA and a jump to CP in the
-\                                       read-write code region: rip CP and the
-\                                       24 bytes the child wrote around it
-\    hb-x64-kernel-crash-region-end  0  the same at the region's last cell:
-\                                       the cell past the region reads 0
-\    hb-x64-kernel-crash-ill         0  ud2 with rbp not canonical: SIGILL,
-\                                       which no guard case reads rbp for
-\    hb-x64-kernel-crash-data        0  a push past the data stack's capacity:
-\                                       exit 102 and the line naming it
-\    hb-x64-kernel-crash-return      0  a store at the return stack's end
-\    hb-x64-kernel-crash-loop        0  a store below the loop stack's base
-\    hb-x64-kernel-crash-machine     0  a call to itself, forever: exit 102
-\                                       and the machine stack's line
-\    hb-x64-kernel-crash-past       0  rbp not canonical and a jump to the
-\                                       first byte past the region, text base
-\                                       + HABU-SPAN, never mapped: the dump,
-\                                       its three code lines 0
-\    hb-x64-kernel-crash-region-guard
-\                                    0  code at CP, made read-execute, storing
-\                                       below the loop stack's base: 102 and
-\                                       the loop line
-\    hb-x64-kernel-crash-zero-base   0  the loop stack's base cell zeroed and
-\                                       a store at LOOP-BYTES: no stack, so
-\                                       the dump
-\
-\ Without the handler each child dies of its signal and every image exits 21.
-\ The host checks each image's ELF header; running them is the peer's.
+\ forks a child that faults with a pipe on fd 2; the parent checks the wait
+\ status and every byte the handler wrote but rsp's sixteen digits, and exits 0
+\ when each held. Without the handler every image exits 21. The host checks each
+\ image's ELF header; running them is the peer's.
 require src/lib/string.f
 require src/core/engine-error.f
 require src/habu/stack-abi.f
@@ -70,7 +36,7 @@ $1000 constant UNMAPPED                         \ below vm.mmap_min_addr
 VMBASE REGION-OFF + constant REGION-VA
 REGION-VA DICT-SIZE + constant CP-VA            \ where the boot leaves r15
 REGION-VA REGION + CELL - constant LAST-VA      \ the region's last cell
-REGION-VA REGION + constant PAST-VA             \ text base + HABU-SPAN
+REGION-VA REGION + constant PAST-VA             \ never mapped
 $0B0F008948 constant STORE-CODE                 \ 48 89 00 0f 0b: mov [rax], rax; ud2
 5 constant PROT-RX                              \ PROT_READ|PROT_EXEC
 
@@ -168,7 +134,6 @@ RBP R64>N TURNED constant WILD-RBP
 : JUMP, ( n -- ) {: to:n :}
    to  X64HARNESS:POSITION JMP-BYTES +  -  >REL ASM-SINK ENC-JMP-REL32 ;
 
-\ Store a cell at an absolute address.
 : POKE, ( n n -- ) {: v:n at:n :}
    RCX at >IMM64 ASM-SINK ENC-MOV-RI64
    RAX v >IMM64 ASM-SINK ENC-MOV-RI64
@@ -320,6 +285,39 @@ $1716151413121110 constant CELL-C
    0 X64HARNESS:EXPECT-DEPTH,
    X64HARNESS:EXPECT-BALANCED,
    path pathu X64HARNESS:BOOT-CLOSE, ;
+
+\ The images and the status the peer that runs each must see:
+\
+\    hb-x64-kernel-crash             0  every register but rsp distinct, rbp
+\                                       not canonical, a jump to $1000, which
+\                                       is never mapped: the dump, then death
+\                                       by the SIGSEGV itself,
+\                                       its three code lines 0
+\    hb-x64-kernel-crash-negative   21  the same, expecting the wrong status
+\    hb-x64-kernel-crash-region      0  rbp DATA and a jump to CP in the
+\                                       read-write code region: rip CP and the
+\                                       24 bytes the child wrote around it
+\    hb-x64-kernel-crash-region-end  0  the same at the region's last cell:
+\                                       the cell past the region reads 0
+\    hb-x64-kernel-crash-ill         0  ud2 with rbp not canonical: SIGILL,
+\                                       which no guard case reads rbp for
+\    hb-x64-kernel-crash-data        0  a push past the data stack's capacity:
+\                                       exit 102 and the line naming it
+\    hb-x64-kernel-crash-return      0  a store at the return stack's end
+\    hb-x64-kernel-crash-loop        0  a store below the loop stack's base
+\    hb-x64-kernel-crash-machine     0  a call to itself, forever: exit 102
+\                                       and the machine stack's line
+\    hb-x64-kernel-crash-past       0  rbp not canonical and a jump to the
+\                                       first byte past the region, PAST-VA,
+\                                       never mapped: the dump,
+\                                       its three code lines 0
+\    hb-x64-kernel-crash-region-guard
+\                                    0  code at CP, made read-execute, storing
+\                                       below the loop stack's base: 102 and
+\                                       the loop line
+\    hb-x64-kernel-crash-zero-base   0  the loop stack's base cell zeroed and
+\                                       a store at LOOP-BYTES: no stack, so
+\                                       the dump
 
 public
 

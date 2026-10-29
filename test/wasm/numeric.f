@@ -1,14 +1,12 @@
 \ numeric.f - runs the numeric golden rows of test/wasm/numeric-rows.f natively.
-\
 \ Each row runs in a fork of this process (SUBJECT:RUN), which captures the
-\ child's stdout and stderr. The fork is for isolation: each row will be its own
-\ module on Wasm, so here each runs in a fresh copy of this image, and no row
-\ can affect another's dictionary, stack or base. The child evaluates the row's
+\ child's stdout and stderr: each row will be its own module on Wasm, so no row
+\ may affect another's dictionary, stack or base. The child evaluates the row's
 \ SOURCE as a closed program and then NAME, as the Wasm driver builds the module
-\ and then calls its entry. The row is green when the child exits 0, printed
-\ exactly the row's bytes and wrote nothing to stderr. The wasm-numeric-aot row
-\ runs this file again after test/compiler/aot-mode.f, so the rows' words are
-\ compiled by the optimizing compiler as well as the default tier.
+\ and calls its entry.
+
+\ The wasm-numeric-aot row reruns this file after test/compiler/aot-mode.f, at
+\ the optimizing compiler's tier.
 
 require src/lib/test.f
 require src/lib/string.f

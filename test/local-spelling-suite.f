@@ -1,41 +1,8 @@
 \ local-spelling-suite.f - a local answers to its DECLARED SPELLING, and a word
 \ written in its own case is that word.
-\
-\     bin/hb --load test/local-spelling-suite.f
-\
-\ WHAT IS UNDER TEST. A reference binds a live local only when its spelling
-\ matches the declaration byte for byte. Word lookup stays case-insensitive, so a
-\ body that declares `text` and writes `TEXT` names the word TEXT, while `text`
-\ still names the local. Two places decide this and they must agree: the checker
-\ (src/core/checker.f - LOCNB holds the raw declaration, LOC-REF? compares it to
-\ the raw token) and the engine's own compiled lookup (src/habu/habu2.f
-\ EMIT-LOC-FIND, which the frame carve and every reference go through). A file
-\ that loads at all has already proved they agree: a checker that read the word
-\ where the engine read the local would refuse these bodies on their arithmetic.
-\
-\ WHY IT HAS A SUITE. Three bodies in this tree lost a word to a local of the
-\ same letters, and each read as a stack error somewhere else:
-\
-\   create TEXT ... {: text size:n :} ... TEXT i + c!   \ wrote the local's source
-\   : KEY ( ptr u8 n -- ) ... {: key:ptr keyu:n :} key keyu KEY   \ called the local
-\   variable REV  ... {: rev:n :} REV @                 \ fetched through an int
-\
-\ The json-write one (dot habu-warn-when-a-8c4d889a) was fixed by renaming the
-\ local to `kp`; the other two by renaming as well. All three are written here in
-\ their original spelling and must now mean what they say.
-\
-\ WHAT WOULD BREAK EACH SECTION. Section 1 answers the word's result, so a
-\ resolver that folded case answers the local's and reds. Section 2 keeps the 883
-\ same-spelling shadows of the engine build path honest: a resolver that compared
-\ raw bytes but stored a folded name, or that dropped local-first, loses `count`
-\ and the loop-index `i` that the ij-locals landing (41b13bdd) put in both
-\ compilers. Section 3 asks the question of the TOKENS: the local's spelling
-\ inside a comment, inside a string literal and inside a longer name must not
-\ move anything. Section 4 is the refusal - a differently-cased mention with no
-\ word of that name is undefined, by name, not a silent local. Section 5 runs
-\ section 1's body through the OTHER compiler: tier 1 elaborates from the same
-\ front-end resolution, and a tier that resolved names for itself would answer
-\ tier 0's old answer here.
+\ The checker (src/core/checker.f LOCNB, LOC-REF?) and the engine's lookup
+\ (src/habu/habu2.f EMIT-LOC-FIND) must agree: a body each reads differently
+\ refuses on its arithmetic, so a file that loads proves they agree.
 
 require src/lib/errors.f
 require src/lib/prelude.f
@@ -45,7 +12,9 @@ require src/lib/test/outcome.f
 require src/lib/test/subject.f
 require src/compiler/native/compiler.f
 
-\ ---- section 1: the three incidents, compiled by tier 0 (the cold JIT) -------
+\ ---- section 1: the three incidents, compiled by tier 0 -----------------------
+\ Each body once lost a word to a local of the same letters, which read as a
+\ stack error elsewhere; a resolver that folded case answers the local's result.
 package LSP-JIT
 
 create TEXT 64 allot           \ the buffer the incident lost
@@ -65,7 +34,7 @@ variable OUT-N
 
 public
 
-\ src/lib/json-write.f FIELD-S, with the local the incident had to rename to `kp`:
+\ src/lib/json-write.f FIELD-S with its local spelled `key`:
 \ `key keyu KEY` is the local, the local, and then the WORD.
 : FIELD-S ( ptr u8 n ptr u8 n -- ) {: key:ptr keyu:n v:ptr vu:n :}
    0 OUT-N !
@@ -92,6 +61,9 @@ public
 ;package
 
 \ ---- section 2: same-spelling shadowing is untouched -------------------------
+\ The engine build path holds hundreds of same-spelling shadows: a resolver that
+\ compared raw bytes but stored a folded name, or dropped local-first, loses
+\ `count` and the loop index `i`.
 package LSP-SHADOW
 public
 
@@ -100,8 +72,8 @@ public
 : SCALE ( n -- n ) {: count:n :}
    count 3 * ;
 
-\ The ij-locals case (dot sharpening, 2026-08-13): a local named `i` declared
-\ before a counted loop answers three turns of the LOCAL, not the loop index.
+\ A local named `i` declared before a counted loop answers three turns of the
+\ LOCAL, not the loop index.
 : TURNS ( n -- n ) {: i:n :}
    0 3 0 ?do i + loop ;
 
@@ -128,8 +100,10 @@ public
 ;package
 
 \ ---- section 4: a differently-cased mention with no word of that name --------
-\ The engine writes this one to fd 2 and dies, which an in-process case cannot
-\ host, so it runs in a child: the exit status AND the message a user sees.
+\ A differently-cased mention with no word of that name is undefined, by name,
+\ not a silent local. The engine writes this one to fd 2 and dies, which an
+\ in-process case cannot host, so it runs in a child: the exit status AND the
+\ message a user sees.
 package LSP-CHILD
 public
 
@@ -156,6 +130,7 @@ variable ERR-U
 ;package
 
 \ ---- section 5: the same incident through the other compiler -----------------
+\ Tier 1 elaborates from the front end's resolution, so it answers as tier 0.
 1 set-tier
 
 package LSP-NCOMP

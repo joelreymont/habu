@@ -1,16 +1,8 @@
-\ using-test.f - `using NAME ... ;using` consumer-side package import
-\ (dot habu-using-import-pkg-a07dd7ba).
-\
-\ `using NAME` makes package NAME's PUBLIC wordlist visible to bare lookup until
-\ the matching `;using`, the enclosing `;package`, or the end of the load file.
-\ Privates stay invisible, no definition lands in NAME, qualified NAME:WORD is
-\ unchanged, and a bare tail resolving in two used packages is a hard error.
-\ Almost every case runs a source string through INCLUDE-EVALUATE under catch, so an
-\ interpret- or compile-time reject surfaces as the engine's named throw code
-\ (0 = accepted); one runs the same text through the production source verifier,
-\ which is where the checker resolves a bare tail with no engine body lookup in
-\ front of it. The checked-body cases prove the checker resolves used publics
-\ identically to the runtime: an unresolved bare tail would fail certification.
+\ using-test.f - `using NAME ... ;using`: package NAME's public wordlist is
+\ visible to bare lookup until the matching `;using`, the enclosing `;package`
+\ or the end of the load file. Privates stay invisible, definitions never land
+\ in NAME, and a bare tail resolving in two used packages is a hard error. Cases
+\ answer the throw code of their source (0 = accepted).
 
 require src/lib/prelude.f
 require src/habu/verify-source.f
@@ -18,7 +10,6 @@ require src/lib/test.f
 
 T-RESET
 
-\ evaluate a source string, returning its throw code (0 = accepted).
 TYPED-VARIABLE UCE-A ptr u8   variable UCE-U
 : UCE-GO ( -- )  UCE-A @ UCE-U @ INCLUDE-EVALUATE ;
 : UCE-CATCH ( ptr u8 n -- n )  UCE-U ! UCE-A !  [: UCE-GO ;] catch ;
@@ -48,18 +39,16 @@ public
 : RESTORE-TIER ( -- ) START-TIER @ set-tier ;
 ;package
 
-\ --- shared fixture packages (defined once; cases reference them) ---
 package UA public : AW ( -- n ) 11 ; ;package
 package UB public : BW ( -- n ) 22 ; ;package
 package UC public : AW ( -- n ) 33 ; ;package   \ same tail AW as UA -> ambiguity source
 package UP  : SECP ( -- n ) 99 ; public : PUBW ( -- n ) SECP ; ;package   \ SECP is private
 package UMM public : MM ( n -- n ) 7 + ; ;package
 
-\ shadow fixtures (dot habu-err-on-global-e62f806c): a used package whose publics
-\ collide with globals of the same name. GW's global effect DIFFERS from the
-\ public's; MW's global effect COINCIDES with the public's (the dangerous
-\ silent-wrong-bind case: no mismatch would ever surface). NC has no global, SW's
-\ global is defined later inside the using scope (the order-swapped variant).
+\ Shadow fixtures: a used package whose publics collide with globals of the same
+\ name. GW's global effect differs from the public's; MW's coincides (the silent
+\ wrong-bind case: no mismatch would surface). NC has no global; SW's global is
+\ defined later inside the using scope (the order-swapped variant).
 package USG public
    : GW ( -- n ) 1 ;
    : MW ( -- n ) 2 ;
@@ -88,8 +77,8 @@ s" package UH using UA public : UT-H1 ( -- n ) AW ; ;package UH:UT-H1 drop" UCE-
 s" package UI using UA : AW ( -- n ) 7 ; public : UT-I1 ( -- n ) AW ; ;package UI:UT-I1 drop" UCE-CATCH 0 T=
 \ a call resolved under a using stays compiled after ;using (compile-time resolution)
 s" using UA : UT-CB2 ( -- n ) AW ; ;using UT-CB2 drop" UCE-CATCH 0 T=
-\ A public MM must be callable bare through using, including in a checked body.
-\ The checker's global match-mode cell used to reject this as a global shadow.
+\ A public MM is callable bare through using, including in a checked body: the
+\ checker's global match-mode cell must not read it as a global shadow.
 s" using UMM : UT-MM ( -- n ) 60 MM ; ;using UT-MM 67 T=" UCE-CATCH 0 T=
 s" using UMM : UT-MM-V ( n -- n ) MM ; ;using" VS-CATCH 0 T=
 
@@ -102,7 +91,7 @@ s" using UP : UT-BADP ( -- n ) SECP ; ;using" UCE-CATCH E-REJECT T=
 s" AW drop" UCE-CATCH E-REJECT T=
 \ ambiguous: AW resolves in two used packages (interpret)
 s" using UA using UC AW drop ;using ;using" UCE-CATCH E-AMBIGUOUS T=
-\ A compiled body is refused by the ENGINE's own used-search, which resolves the
+\ A compiled body is refused by the engine's own used-search, which resolves the
 \ body token before the checker walks it: the same E-AMBIGUOUS the interpret leg
 \ above gets, naming the tail on fd 2. The checker keeps its own rule for the paths
 \ it resolves alone - the production source verifier is one - so the code below
@@ -133,8 +122,8 @@ s" package UJ using UA public : UT-J1 ( -- n ) AW ; ;package AW drop" UCE-CATCH 
 
 \ === a package's ;using closes only the package's own usings ===
 \ `;package` restores the using depth the package opened at, so a `;using` inside
-\ the package that closes a using opened before it is refused by name: it used to
-\ come undone at `;package`, and AW resolved past it.
+\ the package that closes a using opened before it is refused by name instead of
+\ coming undone at `;package` and leaving AW resolving past it.
 s" using UA package UQ ;using ;package AW drop ;using" UCE-CATCH E-OUTER T=
 \ the production source verifier refuses the same nesting
 s" using UA package UQ ;using ;package" VS-CATCH E-USING-OUTER T=
@@ -154,8 +143,8 @@ s" using UB ;using" VS-CATCH 0 T=
 s" ;package AW drop" UCE-CATCH E-REJECT T=
 \ A throw puts back the package scope its buffer entered with, and the checker's
 \ package mirror follows: UQF is open again, the verifier's inherited replay
-\ agrees, and a clean buffer in between changes nothing. The mirror used to stay
-\ at the top level the `;package` left it, so every replay refused E-PKG-CONTEXT.
+\ agrees, and a clean buffer in between changes nothing. A mirror left at the
+\ top level the `;package` left would refuse every replay E-PKG-CONTEXT.
 s" 1 drop" VS-CATCH 0 T=
 s" 2 drop" UCE-CATCH 0 T=
 s" 1 drop" VS-CATCH 0 T=
@@ -177,10 +166,10 @@ USING-TEST:RECLOSE 0 T= E-REJECT T=
 s" package UQU ;package" UCE-CATCH 0 T=
 
 \ The package's using floor comes back with it. The buffer closes UQP, opens a
-\ using and UQR, and throws: UQP used to keep UQR's floor, one above its depth,
-\ so its own `;using` was refused as outer, the replay seeded that floor, and
-\ `;package` restored the depth to it, reopening the using a failed buffer
-\ left in that slot (here the refused one's UA).
+\ using and UQR, and throws. Were UQP to keep UQR's floor, one above its depth,
+\ its own `;using` would be refused as outer, the replay would seed that floor,
+\ and `;package` would reopen the using a failed buffer left in that slot (here
+\ the refused one's UA).
 package UQP
 s" ;package using UB package UQR AW drop" UCE-CATCH E-REJECT T=
 s" using UA ;using" UCE-CATCH 0 T=
@@ -203,27 +192,28 @@ UQV-CUR @ set-current
 s" 1 drop" VS-CATCH 0 T=
 ;package
 
-\ === global-vs-used-public shadow (dot habu-err-on-global-e62f806c) ===
-\ A bare tail inside a using scope that resolves to a global AND a used public of
-\ the same name is ambiguous and fails closed at the reference site.
-\ global defined by an earlier load, then using-import of the same name -> reject
+\ === global-vs-used-public shadow ===
+\ A bare tail inside a using scope that resolves to a global and a used public
+\ of the same name is ambiguous and fails closed at the reference site. global
+\ defined by an earlier load, then using-import of the same name -> reject
 s" using USG : USG-R1 ( -- n ) GW ; ;using" UCE-CATCH E-SHADOW T=
 \ order-swapped: using first, global defined later in the same scope, then bareword
 s" using USG : SW ( -- n ) 9 ; : USG-R2 ( -- n ) SW ; ;using" UCE-CATCH E-SHADOW T=
-\ effects coincide: today binds the global silently and CERTIFIES; must still reject
+\ effects coincide: a silent bind to the global would certify; must reject
 s" using USG : USG-R3 ( -- n ) MW ; ;using" UCE-CATCH E-SHADOW T=
 \ qualified access is the escape: PKG:WORD reaches the used public and certifies
 s" using USG : USG-R4 ( -- n ) USG:GW ; ;using" UCE-CATCH 0 T=
-\ a used import with NO global collision keeps resolving (purely-additive contract)
+\ a used import with no global collision keeps resolving (purely-additive
+\ contract)
 s" using USG : USG-R5 ( -- n ) NC ; ;using" UCE-CATCH 0 T=
 \ no using in scope: a bare global is never a shadow error (resolves to the global)
 s" MW drop" UCE-CATCH 0 T=
 
 \ The interpreter refuses the same collision at top level and as the operand of
-\ `'`, by name, a throw its evaluate's caller catches; both used to bind the
-\ global silently. A qualified name, a tail no used package exports, a word the
-\ open package defines itself and a read after `;using` are unchanged. A buffer
-\ evaluated under its includer's using resolves through it, so it refuses too.
+\ `'`, by name, a throw its evaluate's caller catches. A qualified name, a tail
+\ no used package exports, a word the open package defines itself and a read
+\ after `;using` are unchanged. A buffer evaluated under its includer's using
+\ resolves through it, so it refuses too.
 s" using USG MW drop ;using" UCE-CATCH ENGINE-ERROR:USING-SHADOW-GLOBAL T=
 s" using USG ' MW drop ;using" UCE-CATCH ENGINE-ERROR:USING-SHADOW-GLOBAL T=
 s" using USG USG:MW drop ;using" UCE-CATCH 0 T=
@@ -296,11 +286,11 @@ s" : OPK-K ( -- n ) 7 ;" UCE-CATCH 0 T=
 s" package OPKD : OPK-K ( n -- n ) drop 41 ; ;package" UCE-CATCH 0 T=
 s" package OPKD public : OPKD-R ( -- n ) OPK-K ; ;package" UCE-CATCH E-REJECT T=
 
-\ === a buffer closes only the usings it opens (dot habu-keep-the-includer-bd7dc952) ===
+\ === a buffer closes only the usings it opens ===
 \ A load file is a using scope: a buffer's `;using` that would close a using its
-\ includer opened is refused by name, as inside a package. It used to close UA
-\ for the buffer, whose `using UB` then took UA's slot, and the depth restored
-\ at the buffer's end left the includer resolving BW where AW had been, on the
+\ includer opened is refused by name, as inside a package. Closing UA for the
+\ buffer would let its `using UB` take UA's slot, and the depth restored at the
+\ buffer's end would leave the includer resolving BW where AW had been, on the
 \ clean and the throwing path alike. A using the buffer opened closes, and the
 \ verifier's replay refuses the inherited one the same way.
 using UA
@@ -317,9 +307,9 @@ s" using UB ;using" VS-CATCH 0 T=
 \ A buffer that closes its includer's package closes the usings opened in it,
 \ and the includer gets back the depth that `;package` restored: a using the
 \ buffer opened after it ends with the buffer, and a using the includer opened
-\ before the package stays. The includer used to get its entry depth back,
-\ which reopened UA, or showed the buffer's UB in the slot UA had held. The
-\ buffer may close its own using there but not UP; the verifier's replay agrees.
+\ before the package stays. Restoring the includer's entry depth instead would
+\ reopen UA, or show the buffer's UB in the slot UA had held. The buffer may
+\ close its own using there but not UP; the verifier's replay agrees.
 using UP
 package UQK using UA
 s" ;package ;using" VS-CATCH E-USING-OUTER T=
@@ -335,14 +325,13 @@ s" PUBW drop" UCE-CATCH 0 T=
 ;using
 s" ;using" UCE-CATCH E-UNBALANCED T=
 
-\ === a throw puts back the includer's used publics (dot habu-restore-the-includer-f7be16fa) ===
+\ === a throw puts back the includer's used publics ===
 \ A buffer that closes its includer's package and opens a using writes that
-\ using into a slot the includer keeps. The throw that ends the buffer used to
-\ put back the depth and the package but not the slot, so the includer resolved
-\ BW where AW had been, and with UD in the slot the checker certified a caller
-\ against UD:AW ( n -- n ). The slot comes back now and the checker names it
-\ from its wid: UA:AW is ( -- n ), so a caller declaring ( n -- n ) is refused
-\ and one declaring ( -- n ) runs UA's.
+\ using into a slot the includer keeps. The throw puts back the slot with the
+\ depth and the package, and the checker names it from its wid. Without the
+\ slot the includer would resolve BW where AW had been, and with UD there the
+\ checker would certify a caller against UD:AW ( n -- n ). UA:AW is ( -- n ), so
+\ a caller declaring ( n -- n ) is refused and one declaring ( -- n ) runs UA's.
 package UD public : AW ( n -- n ) 100 + ; ;package
 package USING-TEST public variable UQX-V ;package
 package UQX using UA
@@ -355,15 +344,15 @@ s" : UQX-R2 ( -- n ) AW ; UQX-R2 USING-TEST:UQX-V !" UCE-CATCH 0 T=
 USING-TEST:UQX-V @ 11 T=
 ;using ;package
 
-\ === a retired used public is no candidate (dot habu-skip-retired-used-58ba2793) ===
+\ === a retired used public is no candidate ===
 \ `undefine` retires a used package's public. The engine's used-search skips it
 \ and binds the global or the one live public, else nothing; the checker binds
 \ through that search (src/core/checker.f LIVE-BIND), so a checked body
 \ certifies against the word the engine binds and runs it, and a tail with
 \ nothing left to bind is undefined. The retired publics' effects differ from
 \ the words bound in their place, so a body certified against a retired one is
-\ refused. The checker used to find the retired symbol and refused the first
-\ two shapes as E-USING-SHADOW-GLOBAL and E-USING-AMBIGUOUS.
+\ refused. A checker that found the retired symbol would refuse the first two
+\ shapes as E-USING-SHADOW-GLOBAL and E-USING-AMBIGUOUS.
 package URS public : drop ( n n -- ) 2drop ; undefine drop ;package
 package URA public : URW ( n -- n ) 1 + ; ;package
 package URB public : URW ( n -- ) drop ; undefine URW ;package
@@ -397,5 +386,4 @@ USING-TEST:UAD-V @ 2 T=
 s" using UA using UC : UAD-R2 ( -- n ) AW ; ;using ;using" UCE-CATCH E-USING-AMBIGUOUS T=
 USING-TEST:RESTORE-TIER
 
-\ ---------------------------------------------------------------------------
 T-REPORT

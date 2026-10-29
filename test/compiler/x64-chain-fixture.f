@@ -1,35 +1,7 @@
-\ x64-chain.f - the x86-64 pass chain, driven the way the native driver drives
+\ x64-chain-fixture.f - the x86-64 pass chain driven as the native driver drives
 \ it: through the rows src/arch/x86-64/passes.f (X64PASS) installs in
-\ src/compiler/native/backend.f, reached by the architecture each case's own
-\ target contract resolves to. No case names X64PASS, because the driver does
-\ not either.
-\
-\ WHAT THIS SUITE MEASURES THAT test/compiler/x64-regalloc.f CANNOT. That suite
-\ selects and allocates one module and stops at the allocator's PLAN: a routine
-\ whose plan is not empty is left as a plan. Here the plan becomes operations.
-\ The shared spill pass (src/compiler/native/spill.f, A64SPILL) rebuilds the
-\ module with this dialect's own reserve, stores and loads - it is told
-\ X64IR:LOWERING and X64IR:ENSURE-NAMED and names no machine itself - and the
-\ rebuilt module is allocated again and accepted by the validator. The stores,
-\ their frame slots and the reserve's frame size are read back off the module
-\ that comes out, by NAME, through the same frozen-module cursor the pass reads.
-\
-\ EVERY ROW OF THIS BACKEND IS FILLED: the placed case runs the driver's whole
-\ order - declare, select, fixpoint, emit at a named slot, retire - and reads the sealed image from
-\ its owned artifact, which says the x86-64 chain is reachable end to end
-\ from src/compiler/native/compiler.f.
-\
-\ WHAT PUBLICATION IS HANDED. The emit row states a sealed emission, which
-\ publication reads in NEMIT before the backend retires. The row cases read the
-\ image, the function starts and both kinds of site from the copy the context
-\ makes in NART. Nothing
-\ commits here: the publisher writes through this engine's own rows, which take
-\ whole ARM64 words, so the x86-64 commit is the x86-64 engine's.
-\
-\ ONE FIXTURE PER CONTEXT, and scoped session work releases and retires the
-\ passes on return or throw: a context that dies holding them
-\ gives its registry slots back only when a live enclosing one leaves normally
-\ (src/compiler/ir/context.f, the note on stale handles).
+\ src/compiler/native/backend.f, reached by each case's own target contract. No
+\ case names X64PASS; the driver does not either.
 
 require src/lib/test.f
 require src/lib/string.f
@@ -51,7 +23,6 @@ require src/arch/x86-64/passes.f
 package X64CHAIN-TEST
 private
 
-\ ---- the binding every case compiles under -----------------------------------
 \ A linux x86-64 contract whose integer overflow wraps, which is what makes the
 \ driver's row resolve to this backend and nothing else.
 : WBND ( -- CBIND:binding )
@@ -62,7 +33,6 @@ private
    CNUM-FAST--MATH:BIT-EXACT CNUM-COMPARE:IEEE754-UNORDERED CNUM:POLICY
    CBIND:BIND ;
 
-\ ---- the fixture's source text -----------------------------------------------
 \ One text stands behind every fixture, so each span a fixture attaches is a real
 \ byte range in bytes the module has really registered.
 create TXT
@@ -79,7 +49,10 @@ create TXT
 15 constant CLOSE-ST                 \ the closing `;`
 1 constant CLOSE-LN
 
-\ ---- the module a fixture builds into ----------------------------------------
+\ One fixture per context. Scoped session work releases and retires the passes
+\ on return or throw; a context that dies holding them gives its registry slots
+\ back only when a live enclosing one leaves normally (src/compiler/ir/context.f
+\ CTX-RETIRE).
 1 TYPED-BUFFER W-CTX IR-CTX:ctx
 1 TYPED-BUFFER W-BLD IR-BUILD:builder
 1 TYPED-BUFFER W-SRC IR-ID:ir-source-id
@@ -134,7 +107,6 @@ private
    b 0 W-BLD !
    c b TXT TXT-N IR-BUILD:ADD-SOURCE 0 W-SRC ! ;
 
-\ ---- staging one source operation --------------------------------------------
 : OPEN-OP ( HIR:opcode n n -- )
    {: o:HIR:opcode st:n ln:n :}
    CC BB  CC BB o HIR:OPCODE  IR-BUILD:BEGIN-OP
@@ -158,7 +130,6 @@ private
    CC BB v IR-BUILD:ADD-OPERAND
    CC BB IR-BUILD:END-OP drop ;
 
-\ ---- staging the function ----------------------------------------------------
 : SIGN ( n n -- IR-ID:ir-type-id )
    {: in:n out:n :}
    CELLT {: t:IR-ID:ir-type-id :}
@@ -190,16 +161,14 @@ private
    CC BB IR-BUILD:END-BLOCK drop
    CC BB IR-BUILD:END-FUN drop ;
 
-\ ---- the shapes --------------------------------------------------------------
-\ The values of the pressure shape, held while the body that reads them is
-\ staged: a local binds once, and there are more of them than a definition
-\ would want names for.
+\ The pressure shape's values, held while the body that reads them is staged: a
+\ local binds once, and there are more values than a definition would name.
 16 TYPED-BUFFER ARGV IR-ID:ir-value-id
 
 \ `: LEAF ( a -- n ) a a + a a + ... twelve times ... and then sum the twelve`.
 \ All twelve doublings are live at once where the last of them is made, and this
 \ machine has nine allocatable registers, so the values read furthest away lose
-\ theirs. The interface is ONE argument, so the pressure is over values the body
+\ theirs. The interface is one argument, so the pressure is over values the body
 \ makes one at a time, not an entry run the allocator puts away load by load.
 \
 \ The doubling is two-address and its operand is live after it, so selection
@@ -226,7 +195,6 @@ private
    DOUBLINGS-SUM RET1
    CLOSE-FUN ;
 
-\ ---- the same pressure held across control ----------------------------------
 : BLOCK-ID ( n -- IR-ID:ir-block-id )
    {: k:n :}
    BB IR-BUILD:MODULE-KEY k IR-ID:PACK-BLOCK ;
@@ -381,7 +349,6 @@ private
    3000 CONSTOP RET1
    CLOSE-FUN ;
 
-\ ---- driving the chain -------------------------------------------------------
 \ The driver's order before emission: declare what the definition takes and
 \ leaves, select, and lower to a fixpoint.
 : CHAIN-LINKED ( n n NBACK:linkage -- IR-BUILD:module )
@@ -409,9 +376,15 @@ private
    m  X64ABI:SCRATCH in out SPILL-SLOTS X64ABI:LEAF-FRAMED  A64RAV:ACCEPT
    A64RAV:ACCEPTED? ;
 
-\ ---- reading the lowered module ----------------------------------------------
+\ test/compiler/x64-regalloc.f stops at the allocator's plan. Here the shared
+\ spill pass (src/compiler/native/spill.f, A64SPILL) rebuilds the module with
+\ this dialect's reserve, stores and loads - told X64IR:LOWERING and
+\ X64IR:ENSURE-NAMED, it names no machine - and the rebuilt module is allocated
+\ again and validated. Stores, their slots and the reserve's frame size are read
+\ back by name through the frozen-module cursor the pass reads.
+
 \ A symbol is an ordinal of the module that interned it, so what identifies a
-\ form across modules is its SPELLING - which is how the spill pass itself
+\ form across modules is its spelling - which is how the spill pass itself
 \ crosses between the module it reads and the one it writes.
 64 constant NAME-CAP
 create NAMEBUF NAME-CAP allot
@@ -477,11 +450,10 @@ variable FRAME-BYTES                 \ the size the reserve carries
    n 0 ?do  m  b i NFROZEN:OP-AT  SCAN-OP  loop
    blocks ;
 
-\ ---- the cases ---------------------------------------------------------------
-\ WHAT THE NUMBERS BELOW ARE. The fixpoint takes two turns over this shape. The
+\ The fixpoint takes two turns over this shape. The
 \ first spills four of the twelve doublings; the second spills the four copies
 \ selection made for the doublings that are still live. Eight stores and eight
-\ loads over FOUR slots - 0, 8, 16 and 24 - because a slot is reused once the
+\ loads over four slots - 0, 8, 16 and 24 - because a slot is reused once the
 \ value in it is dead: each slot holds a copy up to its doubling and that
 \ doubling afterwards. So the frame the reserve carries is the highest slot plus
 \ one slot width, 32 bytes, and it is one reserve for the one function.
@@ -508,8 +480,7 @@ variable FRAME-BYTES                 \ the size the reserve carries
    A64RA:PLAN-N {: plan:n :}
    N-STORE @  N-LOAD @  N-RESERVE @  plan  same  ok ;
 
-\ ---- the two rows that finish a definition -----------------------------------
-\ A SLOT THE PUBLISHER COULD REALLY NAME: whole multiples of X64IR:SP-ALIGN are
+\ A slot the publisher could really name: whole multiples of X64IR:SP-ALIGN are
 \ the unit a code region hands out, and this one is not zero, so the emission is
 \ measured from a placement that is not the number an unplaced one would use.
 X64IR:SP-ALIGN 4 * constant EMIT-SLOT
@@ -536,7 +507,11 @@ X64IR:SP-ALIGN 4 * constant EMIT-SLOT
 : DIFF-IMAGE? ( ptr u8 n -- bool )
    s" 4981ec10000000498b0424498b4c24084829c8498904244981c408000000c3" SPAN=HEX? ;
 
-\ Retire is idempotent: this case calls it before the scoped cleanup does.
+\ The placed case runs the driver's whole order - declare, select, fixpoint,
+\ emit at a named slot, retire - and reads the sealed image from its owned
+\ artifact: the x86-64 chain is reachable end to end from
+\ src/compiler/native/compiler.f. Retire is idempotent: this case calls it
+\ before the scoped cleanup does.
 : PLACED-BODY ( IR-CTX:ctx -- n n bool bool )
    HIR-MOD
    BUILD-DIFF
@@ -550,12 +525,13 @@ X64IR:SP-ALIGN 4 * constant EMIT-SLOT
    X64EMIT:SEALED? 0= {: gone:bool :}
    sz blocks same gone ;
 
-\ ---- the rows publication reads ------------------------------------------------
-\ The owned artifact states the image the emitter sealed, no
-\ trailing return because the span is exact, and the slot it was measured from.
-\ Owned rows remain readable after backend retirement. Publication is asked
-\ while NEMIT still holds the emission: on ARM it is foreign; on x64 its
-\ deliberately unrelated slot is refused before moving CP or the dictionary.
+\ The emit row states a sealed emission that publication reads in NEMIT before
+\ the backend retires; the cases read image, function starts and both kinds of
+\ site from the context's copy in NART, which stays readable after retirement.
+\ The copy states the sealed image, no trailing return (the span is exact) and
+\ the slot it was measured from. Publication asked while NEMIT holds the
+\ emission: on ARM the target is foreign; on x86-64 the deliberately unrelated
+\ slot is refused before CP or the dictionary moves, so nothing commits here.
 : ROWS-BODY ( IR-CTX:ctx -- bool n n n n )
    HIR-MOD
    BUILD-DIFF
@@ -572,7 +548,6 @@ X64IR:SP-ALIGN 4 * constant EMIT-SLOT
    e NART:PLACEMENT {: at:n :}
    same ret at  cp@ cp0 -  ndict@ nd0 - ;
 
-\ ---- the spilling modules through the emit row -------------------------------
 \ The frame is taken on rsp by the routine's first instruction and given back by
 \ the one before its return: the spill pass opens the entry block with the
 \ reserve and stands the release in front of the return (spill.f WALK-BLOCK),
@@ -678,7 +653,6 @@ $400 constant CALLEE-ENTRY           \ the entry the caller's site names
    e NART:ADDR-SITES e 0 NART:ADDR-SITE@ e 0 NART:ADDR-SITE-KIND@
    e NART:CALL-SITES ;
 
-\ ---- a callee no rel32 reaches ------------------------------------------------
 \ Four gigabytes from the slot, so the writer refuses the call's field inside
 \ the emit row, before the emission seals, and no row is stated: a publisher
 \ asked now finds nothing to publish.

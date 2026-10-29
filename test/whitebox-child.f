@@ -1,29 +1,9 @@
-\ whitebox-child.f - the unsealed engine a spawning suite hands its children.
-\
-\ A suite of this kind names no internal engine token itself; its CHILD does -
-\ it reopens the native build window, ticks a word the seal closed - and the
-\ shipped bin/hb refuses every one of them, exit 70 with `hb: internal engine
-\ word: <TOKEN>` (src/core/internal-mark.f). Such a file is a plain SUITE and
-\ green on its own, not a WHITEBOX-SUITE row, so the gate hands it no engine.
-\ It names its children's engine itself: one private copy of the keyed unsealed
-\ engine test/whitebox-engine.f builds, copied from the gate's artifact when
-\ that already exists and built otherwise. A standalone `bin/hb --load <file>`
-\ then measures the same bytes the gate row measures - which is what the gate's
-\ own SUITE-ENGINE-ENV (test/gate-stdlib-lib.f) did for a WHITEBOX row through
-\ the environment alone, and which nothing did for a standalone run.
-\
-\ BOTH ENVIRONMENT ROWS. src/lib/engine-candidate.f is the one resolver a child's
-\ own tools ask which engine to run, and it reads HABU_UNDER_TEST first;
-\ a child that rebuilds an engine reads HABU_FIXPOINT_ENGINE
-\ (tools/build-fixpoint.f BF-ENGINE$) and must land on the same private copy,
-\ which is also where a build that promotes over it should write. Both are set
-\ BEFORE PROC-ENV-INHERIT-MISSING, which skips a name already present, so an
-\ outer HABU_UNDER_TEST=<tree>/bin/hb cannot reach past them.
-\
-\ PROVIDE makes a temp root of its own and registers it with FS:CLEANUP-TREE+.
-\ PROVIDE-IN takes a root the caller already made and owns. REMOVE is for the
-\ caller whose own cases FS:CLEANUP-RESET the shared list, where PROVIDE's
-\ registration does not survive to be run.
+\ The unsealed engine a spawning suite hands its children. Such a suite's child
+\ reopens the native build window or ticks a word the seal closed, which the
+\ shipped bin/hb refuses (exit 70, src/core/internal-mark.f). A plain SUITE gets
+\ no engine from the gate: it names one private copy of the keyed unsealed
+\ engine test/whitebox-engine.f builds, copied from the gate's artifact or
+\ built, so a standalone run measures the same bytes the gate row does.
 
 require src/lib/fs.f
 require src/lib/fs-mutate.f
@@ -43,6 +23,10 @@ public
 
 : ENGINE$ ( -- ptr u8 n ) ENGINE-BUF ENGINE-U @ ;
 
+\ PROVIDE makes a temp root of its own and registers it with FS:CLEANUP-TREE+.
+\ PROVIDE-IN takes a root the caller already made and owns. REMOVE is for the
+\ caller whose own cases FS:CLEANUP-RESET the shared list, where PROVIDE's
+\ registration does not survive to be run.
 : PROVIDE-IN ( ptr u8 n -- ) {: root:ptr rootu:n :}
    root rootu s" hb-whitebox" ENGINE-BUF FS:JOIN-PATH ENGINE-U !
    ENGINE$ WHITEBOX-ENGINE:PROVIDE ;
@@ -56,6 +40,12 @@ public
 : REMOVE ( -- )
    ROOT-U @ 0 > if ROOT$ FS:REMOVE-TREE then ;
 
+\ src/lib/engine-candidate.f, the resolver a child's tools ask, reads
+\ HABU_UNDER_TEST first; a child that rebuilds an engine reads
+\ HABU_FIXPOINT_ENGINE (tools/build-fixpoint.f BF-ENGINE$) and must land on, and
+\ promote over, the same private copy. Both are set before
+\ PROC-ENV-INHERIT-MISSING, which skips a name already present, so an outer
+\ HABU_UNDER_TEST cannot reach past them.
 : ENV+ ( -- )
    s" HABU_UNDER_TEST" >LEN ENGINE$ >LEN PROC-ENV+
    s" HABU_FIXPOINT_ENGINE" >LEN ENGINE$ >LEN PROC-ENV+ ;

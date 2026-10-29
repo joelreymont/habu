@@ -1,19 +1,7 @@
-\ xt-effect-test.f - xt<effect> value regressions (dot habu-typed-top-xt-096a8f1b,
-\ docs/design.md "Typed top level").
-\
-\ `['] W` retypes from a plain n to xt<effect(W)>: a T-QUOT of W's certified
-\ effect that execute/catch/is fit-check by the existing RSEXEC/RSCATCH/IS-APPLY
-\ quotation unification (src/core/checker.f BTICK-TOK). The effect is materialised
-\ wherever W's operand token is in the checked text (the CANDIDATE path -
-\ CHECK-CANDIDATE!), with no lookahead at the consumer: every tick of a word the
-\ checker knows is a quotation, so a consumer declares a quotation parameter
-\ (`FPRIM-L ( ptr u8 n [ -- ] -- )`, src/habu/habu1.f) and a consumer that really
-\ wants the code address as a number takes it through a TRUSTED: row of its own.
-\ Positives run each candidate in a spawned child and read its printed verdict:
-\   fit    `['] A execute`  (A's ( n -- n n ) fits the row)         -> CERT (-1)
-\   misfit `['] A execute`  on ( -- n ) (A needs an input, none)    -> REJ  (0)
-\   catch/is fit + misfit, and an unsafe-definer tick (`['] deflinear`) -> REJ.
-\
+\ xt-effect-test.f - xt<effect> value regressions (docs/design.md "Typed top
+\ level"). `['] W` is xt<effect(W)>, a T-QUOT of W's certified effect;
+\ execute, catch and is fit-check it by quotation unification
+\ (src/core/checker.f BTICK-TOK).
 \ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
 \   src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f test/xt-effect-test.f
 
@@ -65,7 +53,6 @@ create XE-EMPTY 1 allot
      timeout OF src srcu XE-OUT$ XE-ERR$ T-TIMED-OUT ENDOF
    ;MATCH ;
 
-\ Write the assembled program (SB$) to the child file and run it via --load.
 : XE-RUN ( ptr u8 n -- ) {: src:ptr srcu:n :}
    XE-CHILD src srcu FS:WRITE-ALL
    PROC-ARGV-RESET
@@ -80,8 +67,8 @@ create XE-EMPTY 1 allot
 
 \ ---- candidate program prelude + emitter -------------------------------------
 \ A: a net-+1 word; SP: a stack-preserving word; ACT: a deferred ( n -- n ). The
-\ child prints one verdict marker per CHECK-CANDIDATE! so the parent reads the
-\ certified/rejected outcome without depending on checker-internal diagnostics.
+\ child prints one verdict marker per CHECK-CANDIDATE!, so the parent reads the
+\ outcome without depending on checker-internal diagnostics.
 : XE-PRELUDE ( -- )
    SB-RESET
    s" require src/lib/errors.f" XE-LINE
@@ -94,15 +81,12 @@ create XE-EMPTY 1 allot
    S\" dup 0=  if drop .\" <<REJ>>\"  cr exit then" XE-LINE
    S\" drop .\" <<UNCK>>\" cr ;" XE-LINE ;
 
-\ Emit one labelled candidate check into the child program:
-\   ." <tag>"  s" <cand>" CHECK-CANDIDATE! XE-SHOW
-\ so the child prints "<tag><<CERT>>" / "<tag><<REJ>>". cand must hold no '"'.
+\ The child prints "<tag><<CERT>>" or "<tag><<REJ>>"; cand must hold no '"'.
 : XE-CASE-LINE ( ptr u8 n ptr u8 n -- ) {: ta:ptr tu:n ca:ptr cu:n :}
    S\" .\" " SB-APPEND  ta tu SB-APPEND  S\" \"  " SB-APPEND
    S\" s\" " SB-APPEND  ca cu SB-APPEND  S\" \" CHECK-CANDIDATE! XE-SHOW" XE-LINE ;
 
-\ All value cases run in ONE child (one spawn, not one per case). Each is a
-\ (tag, candidate) pair; the parent reads "<tag><verdict>" back from stdout.
+\ All value cases run in one child; the parent reads "<tag><verdict>" back.
 : XE-VALUES-PROG$ ( -- ptr u8 n )
    XE-PRELUDE
    s" v1:" s" B ( n -- n n ) ['] A execute"     XE-CASE-LINE
@@ -117,7 +101,7 @@ create XE-EMPTY 1 allot
    SB$ ;
 
 \ ---- assertions --------------------------------------------------------------
-: XE-HAS ( ptr u8 n -- ) XE-OUT$ 2swap CONTAINS? TTRUE ;   \ stdout carries the needle
+: XE-HAS ( ptr u8 n -- ) XE-OUT$ 2swap CONTAINS? TTRUE ;
 
 \ v9 (`['] A +`) is the scalar-sink case: the retype has no consumer lookahead, so
 \ the tick is a T-QUOT that cannot unify with +'s `n` input and the body REJECTS.
@@ -147,13 +131,9 @@ create XE-EMPTY 1 allot
    s" v9:<<REJ>>" XE-HAS ;
 
 \ ---- `[']` of a using-imported bare name (src/habu/habu2.f C-BTICK) ----------
-\ C-BTICK resolves its token the way the compile path resolves a call: LFIND,
-\ then the used packages' publics (LFINDUSED), then the undefined diagnostic.
-\ Its miss branch used to compile NOTHING - no literal, no diagnostic - so a bare
-\ name only a `using` import resolved left the body one cell short and the later
-\ `execute`/`catch` ran whatever was on top; the engine before this change dies
-\ rc 134 on the first row of XE-USING-PROG$. Both programs run in a child, so a
-\ regression is a red row here and not a crashed suite.
+\ C-BTICK resolves its token as the compile path resolves a call: LFIND, the
+\ used packages' publics (LFINDUSED), then the undefined diagnostic. Both
+\ programs run in a child, so a regression is a red row, not a crashed suite.
 94 constant XE-AMB-RC       \ ENGINE-ERROR:USING-AMBIGUOUS, the compile path's own exit
 70 constant XE-UNDEF-RC
 
@@ -167,8 +147,7 @@ create XE-EMPTY 1 allot
    s" ;package" XE-LINE
    s" using XEU-P" XE-LINE ;
 
-\ The bare tick and the qualified tick of one word, through execute, catch, a
-\ local binding, and the plain drop. Each row prints "<tag>:<value>".
+\ Each row prints "<tag>:<value>".
 : XE-USING-PROG$ ( -- ptr u8 n )
    XE-USING-PRELUDE
    s" package XEU-T" XE-LINE

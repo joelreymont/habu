@@ -32,11 +32,11 @@ variable BLR-CNT
    HB-TARGET-LINUX? if CODE-OFF + PROT-PAGE-MAX > exit then
    STRIPPED-CODE-MACOS-MAX >= ;
 
-\ Count `blr x16` words in the built image's validated code span. A correctly
-\ linked stripped image has none: under the direct-BL-only contract every native call
-\ is a direct BL that the linker relocates in place to a PC-relative branch into the
-\ copied blobs (aot-lib.f COPY-COMPACT-BLOB / RELOC-W32), so a surviving blr x16 is an
-\ un-relocated build-time engine address that would crash at load.
+\ A correctly linked stripped image has no `blr x16` in its validated code span:
+\ every native call is a direct BL the linker relocates to a PC-relative branch
+\ into the copied blobs (aot-lib.f COPY-COMPACT-BLOB / RELOC-W32), so a
+\ surviving one is an un-relocated build-time engine address that crashes at
+\ load.
 : COUNT-BLR-X16 ( n n -- n ) {: foff:n fsize:n :}      \ text-file-offset text-size -- count
    0 BLR-CNT !
    foff begin dup 4 + foff fsize + <= while
@@ -166,22 +166,18 @@ variable BLR-CNT
    s" ok" SRC-CQ
    s"  count type CR DATA-SUM WINDOW-DATUM ;" GE-SRC-LINE ;
 
-\ Persistent data region: a compile-time table built with create/comma, read in
-\ a runtime ?do/loop and accumulated into a variable via @/!/+!. Proves the AOT
-\ entry maps DATA-VA, restores the persistent content, and sets up the
-\ return/loop stack.
+\ Persistent data region: a compile-time create/comma table read in a runtime
+\ ?do/loop and accumulated through @/!/+!. Proves the AOT entry maps DATA-VA,
+\ restores the persistent content and sets up the return/loop stack.
 \
-\ Persistent-data code-window regression (dot habu-identify-code-pointers-b973e6cc,
-\ red-first). A datum whose VALUE lands in the [dbase, dbase+REGION) magnitude
-\ window -- here dbase+REGION-8, the top cell of the JIT region, free space far
-\ above the code high-water -- is NOT a pointer. The old CELL-TEXTPTR? magnitude
-\ window MISclassified it and hb-build rejected the program (exit 70); the
-\ live-extents test correctly classifies it as data, so the program builds and
-\ WINDOW-DATUM reads the datum back unchanged. The classifier's own two-sided
-\ check is SELF-TEXTPTR-DEFS, in MAKER-SELFTEST: CELL-TEXTPTR? is a linker word
-\ and this application is compiled before the linker is loaded. Use the live
-\ region: RBASE-VA is a snapshot sentinel and may name unrelated mappings under
-\ ASLR.
+\ Code-window regression: a datum whose value lands in [dbase, dbase+REGION) -
+\ here dbase+REGION-8, the region's top cell, far above the code high-water - is
+\ data, not a pointer. A magnitude-window CELL-TEXTPTR? rejected the program
+\ (exit 70); WINDOW-DATUM reads the datum back unchanged. The classifier's own
+\ two-sided check is SELF-TEXTPTR-DEFS in MAKER-SELFTEST: CELL-TEXTPTR? is a
+\ linker word and this application compiles before the linker loads. Use the
+\ live region: RBASE-VA is a snapshot sentinel and may name unrelated mappings
+\ under ASLR.
 : DATA-DEFS ( -- )
    s" create TABLE 10 , 20 , 30 ," GE-SRC-LINE
    s" variable SUM" GE-SRC-LINE
@@ -222,13 +218,11 @@ variable BLR-CNT
    s\" : AS-MAIN-CHECK ( -- ) s\" MAIN\" 0 XREF-FIND-WL XREF-FOUND? AS-FAIL" GE-SRC+
    s\"  s\" MAIN\" AS-PRI XREF-FIND-WL XREF-FOUND? 0= AS-FAIL ;" GE-SRC-LINE
    \ Representative words, one per way the packaging could regress: REC and
-   \ CLOSURE are ordinary closure-walk code, FINDADDR-PTR is the record
-   \ resolver the linker calls, DIRECT? and TARGET are the branch decoders
-   \ absorbed out of the retired AOT-BRANCH package, CELL-TEXTPTR? is the
-   \ pointer classifier, and RELOC-W32 is the aot-lib caller that used to
-   \ reach the branch decoders through the AOT-BRANCH: prefix and now calls
-   \ them bare. Each must live in AOT-LINK's private wordlist and be reachable
-   \ under no other name.
+   \ CLOSURE are closure-walk code, FINDADDR-PTR the record resolver the linker
+   \ calls, DIRECT? and TARGET the branch decoders, CELL-TEXTPTR? the pointer
+   \ classifier, RELOC-W32 the aot-lib caller that calls the decoders bare. Each
+   \ must live in AOT-LINK's private wordlist and be reachable under no other
+   \ name.
    s" : AS-NAMED-CHECK ( -- )" GE-SRC+
    s\"  s\" REC\" AS-NAMED s\" REC-NAME-PTR\" AS-NAMED" GE-SRC+
    s\"  s\" CLOSURE\" AS-NAMED s\" FINDADDR-PTR\" AS-NAMED" GE-SRC+
@@ -246,18 +240,13 @@ variable BLR-CNT
    s" AS-RUN" GE-SRC-LINE
    s" ;package" GE-SRC-LINE ;
 
-\ ---- the maker-side linker self-tests ----------------------------------------
-\
-\ SURFACE-DEFS above and the three blocks below check the LINKER: what AOT-LINK
-\ publishes, its relocation math, the span table the seed published, and its
-\ pointer classifier. All four need the linker in the dictionary, and they used
-\ to be spliced into the APPLICATION source, which worked only while the maker
-\ loaded the linker before the application. The capture window forbids that -
-\ nothing the application can require may be loaded when the window opens
-\ (docs/architecture.md "Images") - so an application naming a linker word now
-\ dies with `E-UNDEFINED ... undefined word 'CLO'`, and these run where the
-\ application and the linker first coexist instead: a file the maker's stdin
-\ requires after tools/aot-build.f, one line before AOT-LINK:BUILD-NATIVE.
+\ SURFACE-DEFS and the three blocks below check the linker: what AOT-LINK
+\ publishes, its relocation math, the seed's span table and its pointer
+\ classifier. They need the linker in the dictionary, and nothing the
+\ application requires may be loaded when the capture window opens
+\ (docs/architecture.md "Images"): an application naming a linker word dies with
+\ E-UNDEFINED. They run from a file the maker's stdin requires after
+\ tools/aot-build.f, one line before AOT-LINK:BUILD-NATIVE.
 create SELF-SRC PATH-CAP allot
 variable SELF-SRC-U
 
@@ -280,12 +269,10 @@ variable SELF-SRC-U
    S\" \" required\nAOT-LINK:BUILD-NATIVE\n" SB-APPEND
    SB$ ;
 
-\ Drive the compatibility maker with the application as argv[0], the JSON flag
-\ as argv[1], and TMPDIR as the image's directory. Hand it the script above on
-\ stdin. A build that reaches the end writes its image to TMPDIR/hb-aot-got,
-\ which is the name GB-OUT$ carries in these cases;
-\ the stale one goes first, so "an image exists" and "none was emitted" are both
-\ statements about THIS run.
+\ The compatibility maker runs with the application as argv[0], the JSON flag as
+\ argv[1], TMPDIR as the image's directory, and the script above on stdin. Its
+\ image lands at TMPDIR/hb-aot-got (GB-OUT$); the stale one goes first, so "an
+\ image exists" and "none was emitted" are both about this run.
 : MAKER-RUN ( -- )
    GB-OUT$ FS:EXISTS? if GB-OUT$ FS:REMOVE-FILE then
    GE-HB-RESET
@@ -294,26 +281,20 @@ variable SELF-SRC-U
    s" TMPDIR" >LEN GT-ROOT >LEN PROC-ENV+
    GE-HB$ SELF-STDIN$ PROCESS:WAIT-FOREVER MS>N GE-RUN-STDIN ;
 
-\ The relocation math the direct-branch capability adds: two adjacent synthetic
-\ closure MEMBERS prove MAP-IN-MEMBER treats a target at a member's end as the
-\ NEXT member's start (the >= boundary), and MAP-TARGET relocates that adjacent
-\ target to the next member's new offset. The members carry XREF-NULL for their
-\ record, which is what a word the image ships no record for looks like to this
-\ walk. Safe to scribble on the live CLO/CLO-LEN/CLO-REC/NEWOFF/NCLO: this runs
-\ before LINK and so before the program's own closure walk, and the real build
-\ recomputes the closure from scratch (aot-closure.f CLOSURE sizes the tables for
-\ the program, resets NCLO to 0 and refills them), so the synthetic values cannot
-\ leak into the image - which is why MAKER-SELFTEST runs the image it built and
-\ reads its output back. The two synthetic rows are allocated the same way the
-\ walk's are, by asking for the rows about to be written (CLO-TABLES, PLAN-TABLES),
-\ and the entry order MAP-TARGET binary-searches is built here the way PLAN-BLOBS
-\ builds it, from the rows this fixture just wrote (aot-lib.f MEMBER-ORDER).
-\ THE ADR CASE re-files member 0 at the assembler cursor the way PLAN-BLOBS does
-\ (its first member starts at ASM-LEN), so the site's new address and its target's
-\ differ by exactly the delta the compiler emitted: `ADR x0, .+4` aimed inside
-\ member 0 comes back from RELOC-W32 as the SAME instruction word, and TNEW is
-\ member 0's new offset plus the target's 4. Both assertions are exact - the
-\ harness recomputes neither the encoding nor the map.
+\ Relocation math: two adjacent synthetic closure members prove MAP-IN-MEMBER
+\ treats a target at a member's end as the next member's start (the >=
+\ boundary), and MAP-TARGET relocates it to the next member's new offset. The
+\ members carry XREF-NULL for their record, as a word the image ships no record
+\ for does. Scribbling on the live CLO/CLO-LEN/CLO-REC/NEWOFF/NCLO is safe: this
+\ runs before LINK, and aot-closure.f CLOSURE resizes the tables and resets NCLO
+\ for the program; MAKER-SELFTEST runs the image it built to prove nothing
+\ leaked. The rows are allocated as the walk's are (CLO-TABLES, PLAN-TABLES),
+\ and the entry order MAP-TARGET binary-searches is built as PLAN-BLOBS builds
+\ it (aot-lib.f MEMBER-ORDER). The ADR case re-files member 0 at the assembler
+\ cursor as PLAN-BLOBS does (its first member starts at ASM-LEN), so `ADR x0,
+\ .+4` aimed inside member 0 comes back from RELOC-W32 as the same word, and
+\ TNEW is member 0's new offset plus 4. Both assertions are exact: the harness
+\ recomputes neither the encoding nor the map.
 : SELF-AMAP-DEFS ( -- )
    s" package AOT-LINK" GE-SRC-LINE
    s" create AMAP-CODE 16 allot" GE-SRC-LINE
@@ -342,14 +323,13 @@ variable SELF-SRC-U
    s" AMAP-RUN" GE-SRC-LINE
    s" ;package" GE-SRC-LINE ;
 
-\ The span table the seed published, read in the shipped engine's own linker
-\ through the production reader, inside a real stripped build.
-\ THE FIRST TWO ASSERTIONS ARE THE WHOLE POINT and they are two-sided: a row's
-\ code has NO dictionary record (if a stripped word's row came back, the record
-\ lookup would answer and this fails) and the span table answers for it instead
-\ (if the table stopped being published, this fails). The other two pin the
-\ reader's boundaries - a row's own entry answers its row, and so does an
-\ address inside it - which is what the closure walk asks of every branch.
+\ The span table the seed published, read through the production reader in the
+\ shipped engine's linker inside a real stripped build. The first two assertions
+\ are two-sided: a row's code has no dictionary record (fails if a stripped
+\ word's record came back) and the span table answers for it (fails if the table
+\ is not published). The other two pin the reader's boundaries: a row's entry
+\ and an address inside it both answer its row, as the closure walk asks of
+\ every branch.
 : SELF-SPAN-DEFS ( -- )
    s" package AOT-LINK" GE-SRC-LINE
    s" : ASPAN-RUN ( -- ) SPAN-N 0 >" GE-SRC+
@@ -363,13 +343,11 @@ variable SELF-SRC-U
    s" ASPAN-RUN" GE-SRC-LINE
    s" ;package" GE-SRC-LINE ;
 
-\ CELL-TEXTPTR? pins BOTH directions: a value in the former [RBASE-VA,
-\ RBASE-VA+REGION) magnitude window - the top cell of the JIT region, free space
-\ far above the code high-water - is data, while a live dict-record address and a
-\ live code entry (MAIN's) are pointers. This is the classifier's own two-sided
-\ check, and the RBASE-VA/REGION expression is evaluated in the maker, so the
-\ case tracks the constants if a later dot moves the region. BUNDLE builds and
-\ runs the program that carries such a datum.
+\ CELL-TEXTPTR? pins both directions: a value in the [RBASE-VA, RBASE-VA+REGION)
+\ magnitude window - the region's top cell, far above the code high-water - is
+\ data, while a live dict-record address and a live code entry (MAIN's) are
+\ pointers. RBASE-VA/REGION is evaluated in the maker, so the case tracks the
+\ constants. BUNDLE builds and runs the program that carries such a datum.
 : SELF-TEXTPTR-DEFS ( -- )
    s" package AOT-LINK" GE-SRC-LINE
    s" : ATP-EXPECT ( bool ptr u8 n -- ) {: ok:bool label:ptr labelu:n :} ok 0= if label labelu 74 die then ;" GE-SRC-LINE
@@ -421,10 +399,9 @@ variable SELF-SRC-U
 
 : BUNDLE-SOURCE ( -- )
    GE-SRC-RESET
-   \ Legitimate aligned DATA carries BLR x16 and NOP/NOP/NOP/BL bytes: code-only
-   \ scans must not see them. The sparse image stores DATA as unaligned non-zero
-   \ runs (src/habu/aot-lib.f), so a whole-range aligned scan no longer sees
-   \ these words verbatim either; only the code-only exclusion is checked below.
+   \ Aligned DATA carries BLR x16 and NOP/NOP/NOP/BL bytes: code-only scans must
+   \ not see them. The sparse image stores DATA as unaligned non-zero runs
+   \ (src/habu/aot-lib.f), so only the code-only exclusion is checked below.
    s" align create INSTRUCTION-DATA $00 c, $02 c, $3F c, $D6 c," GE-SRC-LINE
    s" $1F c, $20 c, $03 c, $D5 c, $1F c, $20 c, $03 c, $D5 c," GE-SRC-LINE
    s" $1F c, $20 c, $03 c, $D5 c, $00 c, $00 c, $00 c, $94 c," GE-SRC-LINE
@@ -437,7 +414,7 @@ variable SELF-SRC-U
    s" TRUSTED: UNUSED-PATCH ( -- ) 0 0 patch32 ;" GE-SRC-LINE
    BUNDLE-MAIN
    \ MAIN-OWNER-CHECK is engine reflection and stays in the application; the
-   \ AOT-LINK surface check moved to MAKER-SELFTEST, where the linker exists.
+   \ AOT-LINK surface check runs in MAKER-SELFTEST, where the linker exists.
    MAIN-OWNER-CHECK ;
 
 : BUNDLE-EXPECT ( -- ptr u8 n )
@@ -469,24 +446,15 @@ variable SELF-SRC-U
    codesz GB-U.
    s"  B)" type cr ;
 
-\ Layout-bundle fetch: a program whose MAIN constructs a wide (multi-cell) layout
-\ value, stores it through `!`, then reads it back through `@` and destructures it
-\ with MATCH, printing the recovered payload. The pass-2 wide-fetch lowering
-\ (LP2VEMIT) emits a runtime call to the engine-resident LP2VEXEC tag validator
-\ before the value is used. In a stripped AOT image that call is an absolute
-\ direct BL whose target is LP2VEXEC; unless the linker rewrites it to a
-\ PC-relative branch into the copied helper, the build-time engine address ships
-\ and the fetch SIGSEGVs at load (dot habu-relocate-lp2vexec-fetch-b5472dc1).
-\ Because LP2VEXEC is now a registered engine helper the closure walk resolves the
-\ call by record address and collapses it in-image, so this MAIN runs and prints
-\ the stored payload (37). ASSERT-BLR-ABSENT then proves the collapse by
-\ construction: the validated code span contains zero un-collapsed blr x16.
-\ The store ahead of the fetch is the wide-store case: the pass-2 wide-store
-\ lowering (LP2STORE) emits a runtime call to the engine-resident (PROT-SPAN)
-\ span guard before the mutation, which likewise ships the build-time engine
-\ address and SIGSEGVs at load unless the linker relocates it (dot
-\ habu-relocate-absolute-helper-dbb53aef); reaching the fetch proves the
-\ guarded store completed.
+\ Layout-bundle fetch: MAIN stores a wide layout value through `!`, reads it
+\ back through `@`, destructures it with MATCH and prints the payload (37). The
+\ pass-2 wide-store lowering (LP2STORE) calls the engine-resident (PROT-SPAN)
+\ span guard and the wide-fetch lowering (LP2VEMIT) calls the LP2VEXEC tag
+\ validator: in a stripped image each call ships a build-time engine address and
+\ SIGSEGVs at load unless the linker relocates it. LP2VEXEC is a registered
+\ engine helper, so the closure walk collapses its call in-image;
+\ ASSERT-BLR-ABSENT proves no un-collapsed blr x16 remains, and reaching the
+\ fetch proves the guarded store completed.
 : LAYOUT-FETCH-LINES ( -- )
    s" package AOT-LAYOUT-FETCH" GE-SRC-LINE
    s" SUMTYPE res<a,b>" GE-SRC-LINE
@@ -501,7 +469,7 @@ variable SELF-SRC-U
 \ A TRUSTED: body answers a family value from loose cells. The checker records
 \ the declared row without walking the body, so the elaborator takes that row
 \ as the grouping of the cells the body left (src/compiler/native/elaborate.f
-\ TRUSTED-FRAME-RESHAPE); before it, hb-build died on GWN-MAKE with
+\ TRUSTED-FRAME-RESHAPE); without it hb-build dies on GWN-MAKE with
 \ `ncomp: cannot compile` E-NELAB-JOIN - the same width, a different grouping.
 \ Cell order: payload below, tag on top, so `7 1` is the gns arm carrying 7.
 : TRUSTED-MAKE-LINES ( -- )

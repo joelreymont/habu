@@ -53,7 +53,7 @@ include src/core/sha256.f
 package NATIVE-SHA-EDGE-TEST
 private
 create DIGEST-BUF 32 allot
-create SHA-CTX SHA256-CTX-BYTES allot   \ a context for the freshly compiled copy
+create SHA-CTX SHA256-CTX-BYTES allot
 create HEX-BUF 64 allot
 
 : HASH= ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n expected:ptr eu:n :}

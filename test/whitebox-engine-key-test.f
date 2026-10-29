@@ -3,7 +3,6 @@
 \ changed-source runtime behavior, unloaded files and cached/cold equivalence.
 \ Here direct publication uses the ordinary out root, and build failures leave
 \ no supplier, work directory or product under a private one.
-\ Run: bin/hb --load test/whitebox-engine-key-test.f
 
 require src/lib/test.f
 require src/lib/string.f

@@ -1,22 +1,9 @@
-\ type-export-suite.f — checker-level EXPORT alias suite (CHECKER-EXPORT, dot
-\ habu-compiler-pkg-re-688212c1). A WHITEBOX-SUITE row:
-\ CHECKER-EXPORT and the record queries are
-\ checker internals, which the unsealed engine binds by their recorded rows. The
-\ gate runs it on that engine, which test/whitebox-engine.f builds. Direct
-\ checker operations execute inside real engine package blocks so package
-\ authority comes from the live package:
+\ type-export-suite.f - checker-level EXPORT alias suite (CHECKER-EXPORT), a
+\ WHITEBOX-SUITE row: the unsealed engine test/whitebox-engine.f builds binds
+\ checker internals by their recorded rows.
 \     <unsealed engine> --load test/type-export-suite.f
-\ Covers: cross-package alias fidelity (one scheme, two names, source
-\ untouched), private->public promotion, defer + control-flag copy, quotation
-\ scheme fidelity, the CHECKER-EXPORT rejects the engine keyword's native walls
-\ pre-empt but the static scanner (src/habu/verify-source.f) meets directly (no
-\ package, undefined, private from a closed package, malformed qualification,
-\ sealed-system source, duplicate/self-export), scope/candidate rollback of the
-\ alias rows, and private->public promotion through the engine keyword. The
-\ keyword's dual-name execution, checked callers and primitive-source reject
-\ (E-EXPORT-PRIM, the one CHECKER-EXPORT reject the keyword reaches) are
+\ The keyword's dual-name execution, checked callers and E-EXPORT-PRIM are
 \ test/export-package.f's.
-\ A failure prints F<index> + detail; T-REPORT exits 1 on any fail.
 
 require src/lib/test.f
 require src/core/checker-owner-extension.f
@@ -69,30 +56,24 @@ public
 : ALIAS-ROOM ( -- n ) HB-TARGET-LINUX-X86-64? if 16 else 8 then ;
 : PAIR-ROOM ( -- n ) HB-TARGET-LINUX-X86-64? if 48 else 32 then ;
 ;package
-\ The probes below are checked: on the whitebox engine a body naming a
-\ checker-internal word binds that word's recorded row.
-\
-\ An alias CHECKER-EXPORT records is a fact of the checker's store: outside a
-\ replay the operation publishes no engine record, so compiled code cannot call
-\ one. The probes therefore read the alias's own record (CHECKER-RECORD-SYM?).
-\ A checked caller of an alias asks the certify path (VERIFY:CANDIDATE-IN-SCOPE),
-\ which binds through the engine's lookup: while a neutral pair is open the
-\ checker overlay publishes the alias as a record, as it does the static
-\ scanner's aliases. So a section that asks the certify path records its alias
-\ and asks inside one pair, and finalizes it: the store keeps the alias, the
-\ engine's record goes with the overlay. A package made inside the pair would be
-\ refused (ENGINE-ERROR:OVERLAY-OPEN), so the section makes it first and
-\ reopens it there.
+\ Probes run inside real engine package blocks so package authority comes from
+\ the live package.
+\ The probes below are checked: a body naming a checker-internal word binds that
+\ word's recorded row.
+\ Outside a replay a CHECKER-EXPORT alias exists only in the checker's store, so
+\ probes read its record (CHECKER-RECORD-SYM?). The certify path
+\ (VERIFY:CANDIDATE-IN-SCOPE) sees an alias only while a neutral pair is open,
+\ so a section that asks it records, asks and finalizes inside one pair. A
+\ package made inside the pair is refused (ENGINE-ERROR:OVERLAY-OPEN), so the
+\ section makes it first and reopens it there.
 : TWX-FIND-DEFER ( ptr u8 n -- bool ) CHECKER-RECORD-SYM? DFER-FIND-SYM ;
 : TWX-CTL-FLAGS ( ptr u8 n -- n ) CHECKER-RECORD-SYM? CTL-FLAGS-SYM ;
 
 
 
-\ ---------------------------------------------------------------------------
 \ 1. cross-package alias fidelity: EXPORT xps:XP-INC into xpd publishes the
 \    SAME scheme under xpd:XP-INC; the source record is untouched; a wrong
 \    declared sig through the alias still rejects.
-\ ---------------------------------------------------------------------------
 package XPS
 public
 : XP-INC ( n -- n ) 1 + ;
@@ -118,10 +99,8 @@ CHECKER-SCOPE-FINALIZE
 \ the alias has no engine record, so a live caller binds nothing (unresolvable)
 s" XPU1L ( n -- n ) xpd:XP-INC" CHECK-QUIET-CANDIDATE! 1 T=
 
-\ ---------------------------------------------------------------------------
 \ 2. private->public promotion: a bare-name source resolves through the open
 \    package's private scope and publishes under the public tail.
-\ ---------------------------------------------------------------------------
 package XPP
 : XP-HID ( n -- n ) 2 + ;
 ;package
@@ -134,11 +113,9 @@ s" xpp:XP-HID" CHECKER-FIND-USIG FOUNDF !  FOUNDF @ -1 T=
 s" XPU5 ( n -- n ) xpp:XP-HID" VERIFY:CANDIDATE-IN-SCOPE -1 T=
 CHECKER-SCOPE-FINALIZE
 
-\ ---------------------------------------------------------------------------
 \ 3. defer + control flags ride the alias: the defer flag, and the source's
 \    whole control word - the throw edge, the dead path after it and the
 \    effect's provenance (EFFECT-EXTERNAL) - but no identity.
-\ ---------------------------------------------------------------------------
 package XPF
 public
 defer XP-DEF ( n -- n )
@@ -158,10 +135,8 @@ s" xpf2:XP-DEF" TWX-CTL-FLAGS EFFECT-EXTERNAL and EFFECT-EXTERNAL T=
 s" xpf:XP-DEF" TWX-CTL-FLAGS EFFECT-EXTERNAL and EFFECT-EXTERNAL T=
 s" xpf2:XP-THR" TWX-FIND-DEFER FOUNDF !  FOUNDF @ 0 T=
 
-\ ---------------------------------------------------------------------------
 \ 4. quotation scheme fidelity: a higher-order sig survives the alias copy;
 \    a wrong quotation argument through the alias rejects.
-\ ---------------------------------------------------------------------------
 package XPQ
 public
 : XP-HOF ( [ n -- n ] n -- n ) swap execute ;
@@ -177,19 +152,15 @@ s" XPU6 ( n -- n ) [: 1 + ;] swap xpq2:XP-HOF" VERIFY:CANDIDATE-IN-SCOPE -1 T=
 s" XPU7 ( n -- n ) [: + ;] swap xpq2:XP-HOF" VERIFY:CANDIDATE-IN-SCOPE 0 T=
 CHECKER-SCOPE-FINALIZE
 
-\ ---------------------------------------------------------------------------
-\ 5. rejects. Every fail-closed path throws its named code.
-\ ---------------------------------------------------------------------------
-\ no open package.
+\ 5. rejects the engine keyword's own walls pre-empt but the static scanner
+\    (src/habu/verify-source.f) meets directly; each throws its named code.
 s" XP-INC" XN! ' XN-EXPORT catch E-EXPORT-NO-PACKAGE T=
 package XPR
 public
-\ undefined bare + qualified names.
 s" XP-NOPE" XN! ' XN-EXPORT catch E-EXPORT-UNDEFINED T=
 s" xps:XP-NOPE" XN! ' XN-EXPORT catch E-EXPORT-UNDEFINED T=
 \ private word from a CLOSED package: qualified lookup is public-only.
 s" xps:XP-PRIV" XN! ' XN-EXPORT catch E-EXPORT-UNDEFINED T=
-\ malformed qualification (double colon / edge colon) never resolves.
 s" xps:XP:BAD" XN! ' XN-EXPORT catch E-EXPORT-UNDEFINED T=
 s" :XP-INC" XN! ' XN-EXPORT catch E-EXPORT-UNDEFINED T=
 \ re-export FROM a sealed system package (latch is sealed in this process).
@@ -198,7 +169,7 @@ s" type:of" XN! ' XN-EXPORT catch E-EXPORT-SEALED T=
 s" match:arm" XN! ' XN-EXPORT catch E-EXPORT-SEALED T=
 s" engine-error:bad-tag" XN! ' XN-EXPORT catch E-EXPORT-SEALED T=
 s" engine-error:bad-tag" XN! ' XN-NAME-OK catch CHECKER-REJECT-RC T=
-\ duplicate tail in the current section.
+\ duplicate tail in the current section ($4E).
 s" xps:XP-INC" CHECKER-EXPORT
 s" xps:XP-INC" XN! ' XN-EXPORT catch $4E T=
 ;package
@@ -209,9 +180,8 @@ public
 s" XP-SELF" XN! ' XN-EXPORT catch $4E T=
 ;package
 
-\ the private source used by the closed-package reject above really is private:
-\ record it AFTER the reject probes so the earlier lookup could not see it, then
-\ prove a private record still does not resolve via the public qualifier.
+\ XP-PRIV is recorded after the closed-package reject so that lookup could not
+\ see it; a private record still does not resolve via the public qualifier.
 package XPS
 : XP-PRIV ( n -- n ) ;
 ;package
@@ -220,10 +190,8 @@ public
 s" xps:XP-PRIV" XN! ' XN-EXPORT catch E-EXPORT-UNDEFINED T=
 ;package
 
-\ ---------------------------------------------------------------------------
 \ 6. scope rollback: the alias's sym/effect rows retire with the frame; the
 \    watermarks (SYM-N, sym string pool) restore exactly.
-\ ---------------------------------------------------------------------------
 SYM-N @ P-SYMN !   SYM-STR-U @ P-SYMU !
 CHECKER-SCOPE-START
    package XRB
@@ -236,10 +204,8 @@ SYM-N @ P-SYMN @ T=
 SYM-STR-U @ P-SYMU @ T=
 s" xrb:XP-INC" CHECKER-FIND-USIG FOUNDF !  FOUNDF @ 0 T=
 
-\ ---------------------------------------------------------------------------
 \ 7. candidate rollback: alias effect, defer flag, and control flags all
 \    retire; the frame depth balances.
-\ ---------------------------------------------------------------------------
 RBF-DEPTH @ P-DEPTH !
 CHECK-CANDIDATE-START
    package XRB2
@@ -257,10 +223,8 @@ s" xrb2:XP-DEF" TWX-FIND-DEFER FOUNDF !  FOUNDF @ 0 T=
 s" xrb2:XP-DEF" TWX-CTL-FLAGS 0 T=
 s" xrb2:XP-THR" TWX-CTL-FLAGS 0 T=
 
-\ ---------------------------------------------------------------------------
 \ 8. private->public promotion through the engine keyword: a bare private name
 \    resolves in the open package and runs under its public tail.
-\ ---------------------------------------------------------------------------
 package XPG
 : XPG-HID ( n -- n ) 3 + ;
 public
@@ -316,7 +280,4 @@ s" xpc:XP-LONG-NAMED-MAKER;does" XREF-FIND XREF-FOUND? TFALSE
 ;package
 s" xpc:AFTER-FAILED-CLAUSE" XTC:SAME-CONTRACT
 
-\ ---------------------------------------------------------------------------
-\ report: "test: ok" on success, nonzero exit on any failure.
-\ ---------------------------------------------------------------------------
 T-REPORT

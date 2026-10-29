@@ -1,26 +1,9 @@
-\ whitebox-engine.f - the unsealed engine whitebox suites run on, built once
-\ per gate and shared.
-\
-\ A whitebox suite reaches inside the engine it tests: it reopens an engine
-\ package, names a pre-hook global, ticks an internal word. The shipped image
-\ closes every one of those doors - src/core/internal-mark.f marks each record
-\ with no checker-known effect DNAME-INT, and interpret and tick then fail
-\ closed on the bare token. A TRUSTED: wrapper does not reopen them, because the
-\ refusal is on the token and not on the body around it.
-\
-\ Such a suite asks the unified engine builder for --engine --whitebox. The
-\ builder validates its observed inputs and owns artifact reuse. This adapter
-\ publishes the finished product as img/whitebox-engine under its content
-\ digest so PATH$ remains available after a gate build row exits; callers still
-\ run private copies.
-\ It is never installed over bin/hb.
-\
-\ PROVIDE names the private path a caller wants its own copy at, so no suite
-\ runs from - or clobbers - the shared bytes; PATH$ names the keyed artifact
-\ itself for a caller that only reads it. Under a gate the engine must be
-\ granted (test/image-grant.f): the gate's whitebox-engine build row settles it
-\ and copies it for the WHITEBOX-SUITE rows (test/gate-images.f), and a row
-\ that fetches its own copy starts only after that row passed.
+\ whitebox-engine.f - the unsealed engine whitebox suites run on, built once per
+\ gate and shared. The shipped image marks each record with no checker-known
+\ effect DNAME-INT (src/core/internal-mark.f), so interpret and tick fail closed
+\ on the bare token, and a TRUSTED: wrapper does not reopen it. A suite asks the
+\ engine builder for --engine --whitebox; the product is published as
+\ img/whitebox-engine under its content digest and never installed over bin/hb.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -157,8 +140,12 @@ variable READY?
 public
 
 \ The unified builder validates source inputs before this process adopts a
-\ product. Later calls share that immutable result while it remains published;
-\ a missing supplier is materialized again. Bundle rows use the gate's supplier.
+\ product. Later calls share that immutable result while it remains published; a
+\ missing supplier is materialized again. Bundle rows use the gate's supplier.
+\ Under a gate the engine must be granted (test/image-grant.f): the gate's
+\ whitebox-engine build row settles it and copies it for the WHITEBOX-SUITE rows
+\ (test/gate-images.f); a row fetching its own copy starts after that row
+\ passed.
 : ENSURE ( -- )
    BUNDLE? if
       BUNDLE-PATH$ FS:EXECUTABLE? 0= if
@@ -177,7 +164,8 @@ public
    BUNDLE? if BUNDLE-PATH$ exit then
    PATH-BYTES ;
 
-\ Put a private copy of the shared unsealed engine at the caller's own path.
+\ A private copy at the caller's path, so no suite runs from or clobbers the
+\ shared bytes.
 : PROVIDE ( ptr u8 n -- ) {: dst:ptr dstu:n :}
    ENSURE
    dst dstu FS:EXISTS? if dst dstu FS:REMOVE-FILE then

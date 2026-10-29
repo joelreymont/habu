@@ -1,30 +1,9 @@
 \ prim-owner-scope.f - a package-owned primitive row admits the owner and nobody else.
 \
-\ Run: bin/hb --load test/prim-owner-scope.f
-\
-\ The subject is the general private row closer CLOSE-PRIVATE (src/core/checker.f,
-\ beside PPRIM;) and what the seal makes of it. CLOSE-PRIVATE interns a PPRIM:
-\ row into the OWNER package's private wordlist, so the row types the engine's
-\ record only inside the owner (CK-REC-BIND's owner branch).
-\ src/core/internal-mark.f then classifies the global record such a row reaches
-\ by that row, so a primitive may exist as its private row alone: callable from
-\ checked code inside its owner at both tiers, refused by name everywhere else.
-\ A checked `[']` of it is admitted and refused exactly where such a call is. A
-\ primitive that TRUSTED: bodies outside its owner call keeps a global
-\ trusted-only row beside the private one, and the matrix measures that shape
-\ too.
-\
-\ TWO ENGINES ANSWER. The owner cases need the owner open, and the product seals
-\ every package it bakes - NPUB and FFI included - so they run in a child under
-\ test/native-window-owner-child.f, the native-build handoff window, which
-\ re-includes src/core/checker.f FROM SOURCE and, through
-\ test/prim-owner-scope-prepare.f, runs the production seal over the window. The
-\ outside refusal is also asked of the running engine itself, in SUBJECT forks:
-\ that is the shipped answer a user's definition gets.
-\
-\ The transcript is compared whole rather than line by line: a case that stops
-\ emitting is as much a failure as a case that answers wrongly, and only an exact
-\ comparison catches the first.
+\ CLOSE-PRIVATE (src/core/checker.f) interns a PPRIM: row into the owner's
+\ private wordlist (CK-REC-BIND's owner branch), and src/core/internal-mark.f
+\ classifies the global record by that row: callable and tickable from checked
+\ code inside the owner at both tiers, refused by name everywhere else.
 
 require src/lib/test.f
 require src/lib/string.f
@@ -48,7 +27,9 @@ $4000 constant IO-CAP
 create OUT IO-CAP allot
 create ERR IO-CAP allot
 
-\ The expected transcript outgrows src/lib/string.f's builder, so it has its own.
+\ The transcript is compared whole: a case that stops emitting fails as surely
+\ as one that answers wrongly. It outgrows src/lib/string.f's builder, so it has
+\ its own.
 create EXP IO-CAP allot
 variable EXP-U
 
@@ -57,9 +38,14 @@ variable EXP-U
    a EXP EXP-U @ + u BYTE-COPY
    EXP-U @ u + EXP-U ! ;
 
-\ The child runs test/native-window-owner-child.f, which reopens the engine's
-\ build window: `hb: internal engine word: DECLARATIONS`, exit 70 on the sealed
-\ product. So it runs on the engine test/whitebox-child.f names.
+\ The owner cases need the owner open and the product seals every package it
+\ bakes, NPUB and FFI included, so they run in a child under
+\ test/native-window-owner-child.f, the native-build window: it re-includes
+\ src/core/checker.f from source and runs the production seal over the window
+\ through test/prim-owner-scope-prepare.f. That window exits 70 on the sealed
+\ product (`hb: internal engine word: DECLARATIONS`), so the child runs on the
+\ engine test/whitebox-child.f names. The running-engine section asks the
+\ outside refusal of this engine too: that is the shipped answer.
 : PREPARE ( -- )
    FS:CLEANUP-RESET
    s" prim-owner-scope" WHITEBOX-CHILD:PROVIDE ;
@@ -339,7 +325,6 @@ variable EXP-U
    then
    ea eu s" E-CAP-TRUSTED habu: in pos-am1-top: 'addrmap-set' is a trust-boundary primitive" ERR-HAS
    ea eu OWNER-SITE-ERRS
-   \ An owned primitive's global row refuses a checked caller outside its owner.
    ea eu s" E-CAP-TRUSTED habu: in pos-ps0-top: 'package-scope!' is a trust-boundary primitive" ERR-HAS ;
 
 \ ---- the running engine -------------------------------------------------------
@@ -347,7 +332,7 @@ variable EXP-U
 \ this suite. Each runs in its own fork, so a refusal ends only that fork. RUN is
 \ called at top level, so a case is top-level source and may open a package.
 \
-\ THE SHIPPED ANSWER IS THE WINDOW'S. The FFI pair are words of the engine
+\ The shipped answer is the window's. The FFI pair are words of the engine
 \ prefix, and a window that compiles the prefix with the host hook parked - the
 \ build's, as the one above - scans their empty bodies into ABI-only global
 \ rows; a cold boot or the Gforth reload, holding no parked hook, records none.

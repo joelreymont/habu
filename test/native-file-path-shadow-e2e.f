@@ -1,6 +1,5 @@
 \ A cached definition still reads every source path. A nearer dependency
 \ changes both the input manifest and the compiled binding.
-\ bin/hb --load test/native-file-path-shadow-e2e.f
 
 require src/lib/test.f
 require src/lib/string.f

@@ -30,11 +30,9 @@ private
    GLOBAL-WID XREF-FIND-WL XREF-FOUND? ;
 
 \ ---- reading the emitted instructions ----------------------------------------
-\ THE TWO INSTRUCTION FORMS THIS SUITE HAS TO RECOGNISE, and both are decoded
-\ from the encoding rather than searched for. An Adr is the form that adds a
-\ signed byte displacement to its own address; a Ret is what ends a function. The
-\ masks are the architecture's: bit 31 separates Adr from Adrp, and bits 28..24
-\ are the form's own five.
+\ Both forms are decoded from the encoding, not searched for: an Adr adds a
+\ signed byte displacement to its own address, a Ret ends a function. Bit 31
+\ separates Adr from Adrp; bits 28..24 are the form's own five.
 $9F000000 constant ADR-MASK
 $10000000 constant ADR-FORM
 $D65F03C0 constant RET-WORD
@@ -45,10 +43,8 @@ $D65F03C0 constant RET-WORD
 : RET? ( n -- bool )
    RET-WORD = ;
 
-\ The displacement an Adr carries: two low bits at 30..29 and nineteen high ones
-\ at 23..5, sign extended from the twenty-one bits they make together. It is
-\ built back up here rather than compared against an expected encoding, so a case
-\ states the ADDRESS it means and not a bit pattern.
+\ The Adr displacement: immlo at 30..29 and immhi at 23..5, sign extended from
+\ 21 bits, rebuilt so a case states the address it means, not a bit pattern.
 1 20 lshift constant ADR-SIGN
 
 : ADR-DELTA ( n -- n )
@@ -88,11 +84,10 @@ $D65F03C0 constant RET-WORD
       start i INSN-AT ADR? if drop i leave then
    loop ;
 
-\ And where the first Ret stands. The enclosing routine is the FIRST function of
-\ the emission and a straight-line body leaves through one return, so the
-\ instruction after this one is where the second function begins - which is the
-\ address the Adr has to compute, derived from the code itself rather than from
-\ the emitter's own table of function starts.
+\ And where the first Ret stands. The enclosing routine is the emission's first
+\ function and leaves through one return, so the next instruction begins the
+\ second function: the Adr's target, derived from the code rather than from the
+\ emitter's table of function starts.
 : RET-AT ( ptr u8 n -- n )
    {: a u:n :}
    a u REC-START {: start:n :}
@@ -101,7 +96,6 @@ $D65F03C0 constant RET-WORD
       start i INSN-AT RET? if drop i leave then
    loop ;
 
-\ The address the word's first Adr computes.
 : A64-ADR-TARGET ( ptr u8 n -- n )
    {: a u:n :}
    a u ADR-AT {: k:n :}
@@ -170,11 +164,9 @@ $D65F03C0 constant RET-WORD
    HB-TARGET-LINUX-X86-64? if X-BODY-START else A64-BODY-START then ;
 
 \ ---- the definitions the chain compiles --------------------------------------
-\ Each is compiled at top level, so the word it publishes is global and the
-\ callers this suite evaluates afterwards reach it as any program would.
-\ Every execution goes through `evaluate-closed`, or `TEST-EVAL:N` for a value,
-\ so a caller of a word that did not exist when the suite was compiled is
-\ compiled only after that new dictionary record exists.
+\ Each is compiled at top level, so its word is global. Every execution goes
+\ through `evaluate-closed`, or `TEST-EVAL:N` for a value, so a caller of a word
+\ newer than the suite is compiled after that word's record exists.
 : DEF-INC ( -- )
    s" : NQ-INC ( -- [ n -- n ] ) [: 1 + ;] ;" evaluate-closed ;
 
@@ -188,13 +180,9 @@ $D65F03C0 constant RET-WORD
    s" : NQ-THREE ( -- n [ n n -- n ] [ n n n -- n ] ) 0 [: drop ;] [: drop drop ;] ;"
    evaluate-closed ;
 
-\ A `[:` inside a parenthesised comment and another inside a string literal,
-\ both in front of the real one. Neither is a token the checker's reader hands
-\ over as an opener: the comment is consumed and never becomes a token at all,
-\ and the string is ONE token whose kind is string-literal.
-\
-\ THE TEXT IS SPELLED AS ITS BYTES because it holds a string literal of its own,
-\ and a `s"` inside a `s"` is not something this dialect writes.
+\ A `[:` inside a comment and another inside a string literal precede the real
+\ one: the comment never becomes a token and the string is one string-literal
+\ token. Spelled as bytes because a `s"` inside a `s"` cannot be written:
 \ `: NQ-HID ( -- [ n -- n ] ) ( [: ;] ) s" [: ;]" 2drop [: 1 + ;] ;`
 create HID-TXT
    58 c, 32 c, 78 c, 81 c, 45 c, 72 c, 73 c, 68 c, 32 c, 40 c,
@@ -273,11 +261,10 @@ create HID-TXT
    [: RUN-DEAD ;] E-FS-OPEN TTHROWSQ ;
 
 \ ---- the reach of the address form -------------------------------------------
-\ The field's own boundary, asked of the dialect's reader, and the standing
-\ invariant that keeps the emitter away from it. The first says the check is a
-\ bound and not a mask; the second says no emission this chain can build reaches
-\ that bound, which is why E-A64EMIT-REACH cannot fire for an Adr today. Raise
-\ INSN-MAX past the field and the second assertion is what goes red.
+\ The field's own boundary, asked of the dialect's reader (a bound, not a mask),
+\ and the invariant that no emission this chain builds reaches it, so
+\ E-A64EMIT-REACH cannot fire for an Adr: raise INSN-MAX past the field and the
+\ second assertion goes red.
 1 20 lshift constant ADR-HI
 
 : REACH-CASE ( -- )

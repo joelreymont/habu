@@ -1,13 +1,9 @@
-\ display-test.f - checked Wasm fixture through the foreign display peer.
-\ bin/hb --load test/browser/display-test.f
-\ The printed directory retains the module and exact CLI output. When Chrome is
-\ installed, macOS's application or google-chrome on PATH, the peer's --chrome
-\ option also runs the real browser (src/lib/browser/host.f); the row prints
-\ which Chrome ran, or that none was found.
-\
-\ Each kind of delivery display.f receives, bytes, load, focus and highlight,
-\ runs through src/lib/browser/host-cli.mjs once and four times, and both runs
-\ end with the same memory: every run frees its delivery's page.
+\ display-test.f - checked Wasm fixture through the foreign display peer; the
+\ printed directory retains the module and exact CLI output. With Chrome
+\ installed (macOS's application or google-chrome on PATH) --chrome also runs
+\ the real browser (src/lib/browser/host.f). Each delivery kind (bytes, load,
+\ focus, highlight) runs through src/lib/browser/host-cli.mjs once and four
+\ times; both end with the same memory because every run frees its page.
 require src/lib/string.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f

@@ -48,7 +48,6 @@ public
    SOURCE-ROOT:CWD$ rel relu TARGET FS:JOIN-PATH TARGET-U !
    TARGET TARGET-U @ rel relu AT-A FS:COPY-FILE-STREAM ;
 
-\ The tree named n under TMPDIR, with src and tools linked and test/ made.
 : TREE ( ptr u8 n -- )
    FS:MKTEMP-DIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY u ROOT-U !

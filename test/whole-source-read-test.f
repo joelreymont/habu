@@ -1,20 +1,8 @@
-\ whole-source-read-test.f - a whole-source reader reads past its size sample.
-\
-\ check.f's readers (discovery, the lints, --all-errors, the verifier's stopped
-\ file), diag-origin and the language server's read of
-\ a file its packets name each read a source whole through src/lib/source.f
-\ READ-WHOLE-FILE or READ-WHOLE-SAMPLED: the file's size is only the first
-\ room, and the read goes on to the end of the file. This process loads the
-\ readers once behind a FS:FILE-SIZE (test/whole-source-read-child.f) that appends
-\ blank lines past every first room to the file a case grows each time it
-\ answers for it, and a require of grown.f to the subject the first time. Each
-\ case runs in a fork child of it (src/lib/test/subject.f), so every reader meets
-\ bytes past the size it sampled and grows to hold them, and each case shows
-\ the readers acted on them. In one case the stat refuses with a code that is
-\ not about the file, which diag-origin passes on unchanged; in the last the
-\ server's file does not exist, which it counts as empty text.
-\
-\ Run: bin/hb --load test/whole-source-read-test.f
+\ whole-source-read-test.f - a whole-source reader (src/lib/source.f
+\ READ-WHOLE-FILE, READ-WHOLE-SAMPLED) reads past its size sample: the size is
+\ only the first room. The readers load once behind a FS:FILE-SIZE
+\ (test/whole-source-read-child.f) that grows the file past every first room;
+\ each case runs in a fork child (src/lib/test/subject.f).
 
 require src/lib/string.f
 require src/lib/test.f
@@ -27,9 +15,9 @@ require test/whole-source-read-child.f
 package WHOLE-SOURCE-READ-TEST
 private
 
-\ What a case writes fits IO-CAP, but for diag-origin's standard output: it
-\ prints its subject whole, after the child grew it by GROWTH bytes when
-\ diag-origin took its size (test/whole-source-read-child.f BLANK-LEN).
+\ Cases fit IO-CAP except diag-origin's stdout: it prints the subject whole,
+\ grown by GROWTH bytes when it took the size (whole-source-read-child.f
+\ BLANK-LEN).
 $10000 constant IO-CAP
 $11000 constant GROWTH
 GROWTH IO-CAP + constant OUT-CAP
@@ -55,9 +43,8 @@ create ERR IO-CAP allot
    a ROOT u BYTE-COPY  u ROOT-U !
    ROOT$ FS:CLEANUP-TREE+ ;
 
-\ The case's own directory, holding the subject as it starts, which is the
-\ file the case grows unless it names another; grown.f is named beside it and
-\ written only by a case that needs it.
+\ The case grows the subject unless it names another file; grown.f sits beside
+\ it, written only by a case that needs it.
 : CASE-DIR ( ptr u8 n -- ) {: mode:ptr modeu:n :}
    ROOT$ mode modeu DIR FS:JOIN-PATH DIR-U !
    DIR$ FS:MAKE-DIRS
@@ -74,11 +61,9 @@ create ERR IO-CAP allot
    {: outu:len erru:len rc:n :}
    outu LEN>N erru LEN>N rc ;
 
-\ grown.f declares a cell its definition does not produce, so check.f reports
-\ it only if every reader it ran read the subject past its sample, and the
-\ check read the require that arrived after the first stat. --verify-only reads
-\ the subject whole; a plain check also discovers its closure and runs the
-\ lints; --all-errors lexes it again.
+\ grown.f declares a cell its definition does not produce, so check.f reports it
+\ only if every reader read past its sample, including the require that arrived
+\ after the first stat.
 : CHECK-CASE ( ptr u8 n ptr u8 n -- )
    {: mode:ptr modeu:n label:ptr labelu:n :}
    mode modeu CASE-DIR
@@ -91,9 +76,8 @@ create ERR IO-CAP allot
    s" ... and reports the mismatch in grown.f" T-LABEL
    ERR erru s\" \"word\":\"grown\"" CONTAINS? TTRUE ;
 
-\ The subject requires dep.f, which defines a word twice and is the file that
-\ grows: --verify-only discovers it, stops at the duplicate, and reads it again
-\ to report the duplicate where it stands.
+\ dep.f defines a word twice and grows: --verify-only stops at the duplicate and
+\ reads dep.f again to report it where it stands.
 : DEP-CASE ( -- )
    s" dep" CASE-DIR
    DIR$ s" dep.f" GROW FS:JOIN-PATH GROW-U !
@@ -115,8 +99,8 @@ create ERR IO-CAP allot
    s" ... and copies the line that arrived after the stat" T-LABEL
    OUT outu S\" s\" grown.f\" required" CONTAINS? TTRUE ;
 
-\ A code the read meets that is not about the file, here E-MEM-MAP from the
-\ child's stat, leaves diag-origin unchanged: it is no unreadable file.
+\ A code the read meets that is not about the file (E-MEM-MAP from the child's
+\ stat) leaves diag-origin unchanged: it is no unreadable file.
 : ORIGIN-REFUSED-CASE ( -- )
    s" origin-refused" CASE-DIR
    s" origin-refused" RUN {: outu:n erru:n rc:n :}
@@ -126,9 +110,9 @@ create ERR IO-CAP allot
    s" ... and does not call the file unreadable" T-LABEL
    ERR erru s" cannot read file" CONTAINS? TFALSE ;
 
-\ The language server publishes a packet about dep.f, the file that grows,
-\ besides the subject it has open: bytes 10 to 11, the colon starting dep.f's
-\ second line, which the bytes past the sampled size leave where they were.
+\ The server publishes a packet about dep.f, the growing file, besides its open
+\ subject: bytes 10 to 11, the colon starting dep.f's second line, which the
+\ bytes past the sampled size leave in place.
 : LSP-CASE ( -- )
    s" lsp" CASE-DIR
    DIR$ s" dep.f" GROW FS:JOIN-PATH GROW-U !
@@ -140,8 +124,8 @@ create ERR IO-CAP allot
    s" ... and ranges the packet on that file's second line" T-LABEL
    OUT outu S\" \"range\":{\"start\":{\"line\":1,\"character\":0},\"end\":{\"line\":1,\"character\":1}}" CONTAINS? TTRUE ;
 
-\ The file the packet names does not exist, and it is the first the server
-\ reads: it is named on standard error and its text counts as empty.
+\ The packet's file does not exist and is the server's first read: it is named
+\ on standard error and its text counts as empty.
 : LSP-MISSING-CASE ( -- )
    s" lsp-missing" CASE-DIR
    DIR$ s" missing.f" GROW FS:JOIN-PATH GROW-U !

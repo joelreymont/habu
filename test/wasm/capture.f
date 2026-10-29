@@ -1,34 +1,7 @@
 \ capture.f - a capture taken while a Wasm shadow is open carries the shadow's
 \ routines (src/arch/wasm/capture.f into src/habu/aot-decl.f AOT-SHADOW), as
 \ test/aot-shadow-capture.f proves for x86-64.
-\
-\ WHAT IS DRIVEN. The Wasm backend loaded at run time and installed
-\ (src/arch/wasm/backend.f), a small window compiled at tier 1 by the engine's
-\ own driver with a Wasm shadow open, so each definition is also a Wasm
-\ emission in NSHADOW's map, then the real capture and the Wasm reader over
-\ it. The window holds a leaf, a call to a window word, a recursive word, a code
-\ literal naming a window word, a window DATA literal, a call to a word of the
-\ engine's own prefix, a live private helper called by a public word, a `does>`
-\ definer, a quotation and a declared code cell holding a window word's entry.
-\ The window also holds a created word (WCELL) and a defer (HOOK), both tier 0,
-\ which carry routines like any fixed word; and a `does>` child (SEVEN), whose
-\ routine the capture leaves out because its Wasm body carries no slot for the
-\ clause, so it ships with no routine. It also holds three shadowed words that ship no record, a dead private word
-\ and two dead retired ones, the second calling the first, between two shadowed
-\ records: past them a record's window index and its shipped row differ.
-\
-\ WHAT IS ASKED. Every record is found by the name it carries in the capture's
-\ shipped record table, the row the shadow keys it by: the records and their
-\ spans, each call site's target over its zero index, a self call's being its
-\ own record, the code and DATA literals' padded fields as the capture rewrote
-\ them, the prefix call by name, the code cell, and the stripped and retired
-\ words' absence, the live helper's private wordlist ID, a does> companion
-\ entering its definer's routine at the
-\ clause whose offset the definer's function address keeps, and a quotation's
-\ function address keeping its function's offset, each a FUN site.
-\
-\ Registered as `SUITE wasm-capture`. Run standalone from the repository root:
-\ bin/hb --load test/wasm/capture.f
+\ Registered as `SUITE wasm-capture`.
 
 package WSHCAP
 public
@@ -141,7 +114,6 @@ $0B constant OP-END
 : CODE-BYTE@ ( n -- n ) CODE-BUF@ + c@ ;
 : CODE-LE32@ ( n -- n ) CODE-BUF@ + LE:U32@ ;
 
-\ The padded fields a call and an address site hold.
 : INDEX@ ( n -- n ) {: at:n :} CODE-BUF@ CODE-LEN @ at WLEB:U32-PAD@ ;
 : ADDR@ ( n -- n ) {: at:n :} CODE-BUF@ CODE-LEN @ at WLEB:S64-PAD@ ;
 
@@ -181,6 +153,15 @@ $0B constant OP-END
    WSHCAP-WINDOW:WCELL BYTE-VIEW data-base BYTE-VIEW - DATA-VA VA>N +  AOT-ARM:D0 @ - ;
 
 \ ---- the capture -------------------------------------------------------------
+\ The Wasm backend (src/arch/wasm/backend.f) loads at run time and a window
+\ compiles at tier 1 with a Wasm shadow open, so each definition is also an
+\ emission in NSHADOW's map. The window holds a leaf, calls (window, recursive,
+\ prefix, private helper), code and DATA literals, a `does>` definer, a
+\ quotation and a code cell; a created word (WCELL) and a defer (HOOK), both
+\ tier 0, carry routines; a `does>` child (SEVEN) ships no routine, its Wasm
+\ body having no slot for the clause. A dead private word and two dead retired
+\ ones (the second calling the first) ship no record between two shadowed
+\ records, so past them a record's window index and its shipped row differ.
 : CAPTURE ( -- )
    PRE-R @ PRE-D @ AOT-CAPTURE:PRELUDE-MARK
    AOT-ARM:WINDOW$ AOT-CAPTURE:WASM-TARGET-CAPTURE ;
@@ -253,8 +234,10 @@ $0B constant OP-END
    dat 1- CODE-BYTE@ OP-I64-CONST T=
    dat ADDR@ WCELL-OFF T= ;
 
-\ Shipped record w's routine holds a FUN site, its padded field after an
-\ `i64.const` holding the offset off; answers nothing.
+\ Shipped record w's routine holds a FUN site whose padded field after an
+\ `i64.const` holds off. A does> companion enters its definer's routine at the
+\ clause offset the definer's function address keeps; a quotation's function
+\ address keeps its function's offset.
 : FUN-AT ( n n -- ) {: w:n off:n :}
    w AOT-SHADOW:FUN SITE-IN {: s:n :}
    s 0 >= TTRUE

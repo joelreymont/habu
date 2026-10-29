@@ -1,14 +1,5 @@
 \ select-f64.f - WSEL's f64 rows: src/arch/wasm/select.f under Habu's NaN rule
 \ (docs/xcomp.md "Floating point", src/compiler/native/hir-word.f DEF-FLOAT).
-\
-\ Each row compiles Habu source, selects it and compares function zero's shape
-\ (test/wasm/select-lib.f) with every operation's operands: `[a,b]` names the
-\ values it reads by their ordinals, each block argument and result numbered in
-\ the order the function makes it. So a row states which value each f64.select
-\ answers and which one its f64.ne tests, and with them the rule: the left
-\ operand when it is a NaN, else the right, else 9221120237041090560 -
-\ $7FF8000000000000 - when the answer is a NaN, else the answer. Executing the
-\ rows bit-exactly is the rows dot's.
 
 require src/lib/test.f
 require src/lib/string.f
@@ -23,7 +14,6 @@ require test/wasm/select-lib.f
 package WSEL-TEST
 private
 
-\ ---- the shape with operands -----------------------------------------------
 \ The values an operation reads, `[a,b]`, each by its ordinal in the module,
 \ which holds function zero alone.
 : OPNDS+ ( IR-ID:ir-op-id -- )
@@ -49,6 +39,11 @@ private
 
 : FLOW-RUN ( IR-CTX:ctx -- )    COMPILE 0 [: FLOW+ ;] FUN$ KEEP ;
 
+\ Each row compares function zero's shape with operands
+\ (test/wasm/select-lib.f), every value numbered by ordinal in the order the
+\ function makes it, so a row states which value each f64.select answers and
+\ which one its f64.ne tests: the left operand when it is a NaN, else the right,
+\ else $7FF8000000000000 when the answer is a NaN, else the answer.
 \ The source, its arity and the shape with operands function zero must select
 \ to.
 : FROW ( ptr u8 n n n ptr u8 n -- )
@@ -57,7 +52,6 @@ private
    [: FLOW-RUN ;] OUTCOME
    want wn KEPT ;
 
-\ ---- fconst, built straight in HIR -----------------------------------------
 \ The source fixture lexes no real literal, so `PQ ( -- n )` is staged: two
 \ fconst NaNs whose payloads are not the canonical one, $ABC on the left and
 \ $DEF on the right, their fadd, and the sum's bits returned.
@@ -91,14 +85,12 @@ $7FF8000000000DEF constant NAN-DEF
    ZC ZB IR-BUILD:END-OP drop
    c Z-SELECT 0 [: FLOW+ ;] FUN$ KEEP ;
 
-\ PQ's shape with operands.
 : FCONST-ROW ( ptr u8 n -- )
    {: want:ptr wn:n :}
    0 DECL-IN !  1 DECL-OUT !
    [: FCONST-BODY ;] OUTCOME
    want wn KEPT ;
 
-\ ---- the rows --------------------------------------------------------------
 \ In PA, 6 and 7 are the operands, 8 their sum and 9 the made NaN; 11 answers 9
 \ where 8 is a NaN, 13 answers 7 where 7 is one, and 15, the answer, 6 where 6
 \ is one.

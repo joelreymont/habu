@@ -5,7 +5,7 @@ require src/lib/codesign.f
 
 package PAYLOAD-NATIVE-READER
 create KEY 32 allot
-create FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this fixture's file-digest context
+create FSHA-CTX SHA256-FILE-CTX-BYTES allot
 
 : RUN ( -- )
    s" PAYLOAD-NATIVE:BUMP" EFFECT-QUERY if 79 throw then

@@ -1,5 +1,5 @@
 \ jitdump-x64.f - the live Intel JIT dump and its bounded byte decoder.
-\ Run on a native x86-64 engine: bin/hb --load test/jitdump-x64.f
+\ Needs a native x86-64 engine.
 
 require src/lib/test.f
 require test/gate-common.f

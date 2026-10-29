@@ -2,12 +2,7 @@
 \ the rewind of whatever opened it.
 \
 \ The store opens a segment at `here` when its last one cannot take a body
-\ (src/compiler/native/string.f). OPEN interns distinct bodies until one lands at
-\ or above the `here` read before its intern: that body is the first of the
-\ segment the intern opened. The caller then fails the evaluation, REPL line,
-\ definition pass or declaration that OPEN ran inside, and SURVIVED? says whether
-\ DATA resumed above the body, and whether the body kept its bytes and its row
-\ while new DATA was written after it.
+\ (src/compiler/native/string.f).
 
 require src/lib/string.f
 require src/compiler/native/string.f
@@ -52,8 +47,10 @@ CAST: N>BYTES ( n -- ptr u8 )
 
 public
 
-\ The loop is bounded at twice what one segment holds of these bodies, so a store
-\ that never opens one ends it instead of spinning.
+\ OPEN interns distinct bodies until one lands at or above the `here` read
+\ before its intern: the first body of the segment that intern opened. The loop
+\ is bounded at twice what one segment holds, so a store that never opens one
+\ ends.
 : OPEN ( -- )
    0 AT !
    256 0 ?do
@@ -61,8 +58,11 @@ public
       OPENED? if leave then
    loop ;
 
-\ Each question needs the one before it: a body below `here` is not clobbered
-\ to prove a point, and a body already clobbered is not looked up.
+\ The caller fails the evaluation, REPL line, definition pass or declaration
+\ OPEN ran inside. SURVIVED? says whether DATA resumed above the body, and
+\ whether the body kept its bytes and row while new DATA was written after it.
+\ Each question needs the one before it: a body below `here` is not clobbered to
+\ prove a point, and a body already clobbered is not looked up.
 : SURVIVED? ( -- bool )
    AT @ 0= if false exit then
    ABOVE? 0= if false exit then

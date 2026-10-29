@@ -115,15 +115,12 @@ using AOT-FILE
 
 8 constant ROWS
 $40 constant HOST-BLOB
-\ THE HOST'S WINDOW IS TWO MEGABYTES AND ONE CELL SO THE MERGE HAS TO PAD. The
-\ artifact's cells are spliced in at a BITMAP BYTE, so the merge rounds the host's
-\ span up to a multiple of BM-BYTE-SPAN (64 span bytes) and zero-fills the host's
-\ bitmap to there before the artifact's bitmap and values are appended
-\ (src/habu/aot-file.f PLACE-WDATA). A host span that was already a whole bitmap
-\ byte would splice at its own end and prove nothing; the extra cell puts the
-\ merged base 56 bytes above it, and MERGED= below refuses a merge that did not
-\ move it. Two megabytes also makes the host bitmap long enough that the
-\ artifact's own bitmap cannot be mistaken for the merged one.
+\ The host's window is 2 MiB and one cell, so the merge must pad: the artifact
+\ splices in at a bitmap byte, so the merge rounds the host span up to a
+\ multiple of BM-BYTE-SPAN (64 span bytes) and zero-fills the host bitmap to
+\ there (src/habu/aot-file.f PLACE-WDATA). The extra cell puts the merged base
+\ 56 bytes above a whole bitmap byte, which MERGED= checks; 2 MiB keeps the host
+\ bitmap longer than the artifact's.
 $200008 constant HOST-DATA
 variable HOST-D0
 variable ART-D0
@@ -244,11 +241,10 @@ variable CHAIN-VALUE
    AOTRT:KEY ART$ AOT-FILE:WRITE ;
 
 
-\ THE HOST'S OWN BASE SITS A WHOLE NUMBER OF CELLS BELOW THE ARTIFACT'S. Both
-\ windows stand on the one DATA cell grid - a capture refuses a base that is not
-\ (src/habu/aot-capture.f ACAP-BAKE-DATA) and a merge refuses a pair that is not
-\ (src/habu/aot-file.f PLACE-WDATA) - so $100 is what makes the rebase delta of
-\ MERGED-DSITES= below non-zero without leaving the grid.
+\ The host's base sits a whole number of cells below the artifact's: both
+\ windows stand on one DATA cell grid (a capture refuses otherwise,
+\ src/habu/aot-capture.f ACAP-BAKE-DATA; so does a merge, PLACE-WDATA), and $100
+\ makes MERGED-DSITES='s rebase delta non-zero.
 : HOST! ( -- )
    FORGET-COUNTS
    1 AOT-REC-N !
@@ -262,10 +258,9 @@ variable CHAIN-VALUE
 : MERGED= ( -- )
    XTOFF-N @ ROWS 1+ = ASSERT
    WDATA-BASE MERGED-DATA !
-   \ The artifact's window begins at the first BITMAP BYTE at or above the host's
-   \ own span: never below it, less than one bitmap byte above it, on the cell
-   \ grid both windows share - and, because HOST-DATA is one cell past a bitmap
-   \ byte, strictly above it, which is the pad PLACE-WDATA had to write.
+   \ The artifact's window begins at the first bitmap byte at or above the
+   \ host's span, on the shared cell grid, strictly above it since HOST-DATA is
+   \ one cell past a bitmap byte: the pad PLACE-WDATA had to write.
    MERGED-DATA @ HOST-DATA >= ASSERT
    MERGED-DATA @ HOST-DATA - BM-BYTE-SPAN < ASSERT
    MERGED-DATA @ BM-BYTE-SPAN mod 0= ASSERT
@@ -286,13 +281,10 @@ variable CHAIN-VALUE
    $1018 XTOFF-DATA-TAG 8 ROW= ;
 
 
-\ THE MERGED TABLE, DECODED RATHER THAN COUNTED. The host's bitmap is padded to
-\ where the merge placed the artifact's window and the artifact's own bitmap and
-\ values are appended there, so the block reads correctly only if the pad and
-\ both sections landed: the present-cell count, the end of the last present cell
-\ and the exact value section length are three independent ways for a botched
-\ splice to show. The artifact's own values are unchanged, so its end simply
-\ moves by where the merge placed its window.
+\ The merged table, decoded: the present-cell count, the last present cell's end
+\ and the exact value-section length are three independent ways a botched splice
+\ shows. The artifact's values are unchanged, so its end moves by where the
+\ merge placed its window.
 : MERGED-CELLS= ( -- )
    ART-CELLS @ 0 > RUN-ASSERT
    0 MCELL-AT !  0 MCELL-END !  0 MCELL-N !

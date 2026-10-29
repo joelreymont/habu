@@ -1,23 +1,8 @@
-\ extent-product-test.f — permanent regression for the checker half of the
-\ extent-role product/factorization capability (docs/design.md "Type
-\ substrate").
-\ This routes the permanent gate regression over the real built-in
-\ `extprod`/`redx` families and the free-vs-inner
-\ contraction rule. The candidate-B SURFACE half (EXTPROD:/>RED, the generated
-\ fold/split/join, the E-EXT-FACTOR value reject) is exercised maki-side in
-\ maki/extent-test.f, where the surface lives.
-\
-\ Soundness goal: a cross-sequence contraction (+Σ that sums the batch axis of a
-\ folded (B,T) row) is UNREPRESENTABLE in a checked program. The folded row is typed
-\ over the ordered product former extprod<free,inner>; a contraction accepts an inner
-\ extent (#T, #k) and REJECTS the free #B or the whole product. redx<E> names a
-\ contraction axis; the checker rejects it forming over a free extent or a product.
-\
-\ Stand-ins (like the probe, since ix/#B live in maki): xidx = the ix index family,
-\ xpb = free/batch #B, xpt = in-block/sequence #T, xpk = a head-dim inner extent,
-\ xpflat = a plain flat folded-rows extent. extprod/redx are the real families.
-\ CHECK-QUIET-CANDIDATE! : -1 accept, 0 reject. Routed positive suite: exit 0, empty
-\ stderr, stdout ends "test: ok\n" (T-REPORT dies exit 1 on any miss).
+\ extent-product-test.f - the checker half of extent-role product/factorization
+\ (docs/design.md "Type substrate"): a contraction may sum an inner extent of a
+\ folded extprod<free,inner> row, never the free extent or the whole product, so
+\ a cross-sequence contraction is unrepresentable in a checked program. The
+\ surface half is maki/extent-test.f's.
 
 require src/lib/test.f
 
@@ -26,6 +11,8 @@ EP-DIAG 8192 DIAG-BUFFER!
 
 T-RESET
 
+\ Stand-ins for maki's families: xidx the index family, xpb free #B, xpt inner
+\ #T, xpk an inner head dim, xpflat a flat extent.
 NEWTYPE xidx<a>
 NEWTYPE xpb
 NEWTYPE xpt
@@ -35,10 +22,11 @@ NEWTYPE xpflat
 \ mark the free (outer / batch) factor, exactly as EXTPROD: does at declaration.
 s" xpb" EXT-MARK-FREE-TAIL
 
-\ --- (a) product former: a folded row index is the ordered product type ----------
+\ CHECK-QUIET-CANDIDATE! answers -1 to accept, 0 to reject.
+\ A folded row index is the ordered product type.
 s" XA  ( xidx<extprod<xpb,xpt>> -- xidx<extprod<xpb,xpt>> )" CHECK-QUIET-CANDIDATE! -1 T=
 
-\ --- (e) mismatched factor: <#B,#T> is distinct from <#B,#K> ----------------------
+\ Mismatched factors: <#B,#T> is distinct from <#B,#K>.
 s" XF  ( xidx<extprod<xpb,xpt>> -- xidx<extprod<xpb,xpk>> )"  CHECK-QUIET-CANDIDATE!  0 T=
 \ ordered factors: <free,inner> distinct from <inner,free> — the free vs in-block
 \ position is representable (what the split/contraction rule reads).
@@ -47,11 +35,9 @@ s" XO  ( xidx<extprod<xpb,xpt>> -- xidx<extprod<xpt,xpb>> )"  CHECK-QUIET-CANDID
 \ factor index.
 s" XS  ( xidx<extprod<xpb,xpt>> -- xidx<xpb> )"               CHECK-QUIET-CANDIDATE!  0 T=
 
-\ --- (c) contraction rule: inner accepted, free / product rejected ---------------
-\ redx<E> is well-formed at signature parse iff E is an inner extent, so an identity
-\ over redx<E> isolates the rule (a free/product E rejects before the body matters).
-\ baseline (the leak as it is representable WITHOUT the product): a plain flat
-\ folded-rows extent is freely contractable.
+\ redx<E> is well-formed at signature parse only when E is an inner extent, so
+\ an identity over redx<E> isolates the rule. A flat folded-rows extent is
+\ freely contractable: the leak as it is without the product.
 s" XCFLAT ( redx<xpflat> -- redx<xpflat> )"                   CHECK-QUIET-CANDIDATE! -1 T=
 \ positive: the in-block (inner) extent is contractable.
 s" XCI ( redx<xpt> -- redx<xpt> )"                            CHECK-QUIET-CANDIDATE! -1 T=

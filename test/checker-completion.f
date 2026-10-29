@@ -3,53 +3,6 @@
 \ It reads checker internals, so it is a WHITEBOX-SUITE row and runs on the
 \ unsealed engine (test/whitebox-engine.f):
 \   hb-whitebox --load test/checker-completion.f
-\
-\ The verifier arms a cursor in the next body it checks (VERIFY-CURSOR-OFF) and
-\ asks which spellings bind at a top-level one (VERIFY-EACH-VISIBLE-OFF). The
-\ declarations replay as the verifier reads them (VERIFY:SOURCE-BUF-IN-SCOPE),
-\ so each body is checked on the verifier's own path. The text the checker
-\ reads is the definition's tokens from its name on, each followed by one
-\ space (src/habu/verify-source.f BODY-APPEND), so in a single-spaced source
-\ a cursor sits at its source byte less the end of the `: ` before the name.
-\
-\ How this can fail, each one a case below:
-\ - the cursor never fires, or fires at the wrong token: in the gap before a
-\   token, inside it, after the last one;
-\ - the prefix holds bytes past the cursor, or misses bytes before it;
-\ - it fires on the definition's name, or inside its signature;
-\ - an arm outlives its check, a body's or a does> clause's, after a refusal,
-\   a visitor's throw or a use handler's throw, so the next body fires at a
-\   stale cursor or the next arm is refused;
-\ - a nested arm or a nested enumeration changes the outer one;
-\ - a local is offered inside a quotation, or for a tick or `is` target;
-\ - two locals that differ only in case merge, or a spelling a local holds is
-\   offered as the word that local hides;
-\ - a refused spelling (one two used publics export) or a tombstone is offered;
-\ - the definition's own name is offered before it is declared;
-\ - enumerating changes the body's verdict, its refusal or its uses, or grows
-\   the store;
-\ - a word is offered twice, once for each source that names it;
-\ - a qualified prefix offers a private name, or a bare prefix offers bare a
-\   public of a package not in use;
-\ - a bare prefix, a package's stem or its edge colon misses a qualified
-\   spelling a qualified prefix offers there, or one only the dictionary holds;
-\ - a candidate's location is not its selected declaration's: a located word
-\   offered without its row's visit and bytes, a word the selection hides
-\   lending its location, a refused redeclaration moving it, or a local, an
-\   engine word, a word declared unarmed or one at a rewound row's offset
-\   offered with anything but 0 0 0;
-\ - an engine word the body has not used yet is missing;
-\ - a word is not spelled as it was declared: a located word as its
-\   declaration wrote it, a qualified one as the prefix's qualifier, else its
-\   package's, and the declared tail, an engine word as the dictionary holds
-\   it; or a word the selection hides lends its spelling to the one it
-\   selects;
-\ - a refused redeclaration renames the word it failed to replace, or a
-\   spelling dies with the bytes it was armed from.
-\
-\ A coverage limit, not an exact spelling: a name the checker generates with
-\ no declaration of its own (a suffix registration) keeps the store's folded
-\ spelling, so no case here pins one.
 
 require src/lib/test.f
 require src/habu/verify-source.f
@@ -67,7 +20,6 @@ package NAVL
 
 private
 
-\ ---- what one check offered ---------------------------------------------------
 \ The visitor counts every spelling it is given and keeps the ones that start
 \ with the case's filter, with their location. A filter names a handful of
 \ fixture words, so the table is the fixture's size; a spelling past it is
@@ -139,7 +91,6 @@ PTR-VARIABLE FILTER-A   variable FILTER-U
    {: a:ptr u:n :}
    a u KEPT-CI 1 =  a u KEPT-AT 0 >=  and ;
 
-\ ---- assertions -----------------------------------------------------------------
 \ Every case kept what its filter named.
 : KEPT-ALL ( -- )
    s" the filter's spellings fit the table" T-LABEL
@@ -201,7 +152,10 @@ PTR-VARIABLE FILTER-A   variable FILTER-U
    i 0 < IF EXIT THEN
    i 0 0 0 KEPT-LOC ;
 
-\ ---- a replay with the cursor armed ---------------------------------------------
+\ The verifier arms a cursor in the next body it checks (VERIFY-CURSOR-OFF) and
+\ asks which spellings bind at a top-level one (VERIFY-EACH-VISIBLE-OFF). The
+\ declarations replay as the verifier reads them (VERIFY:SOURCE-BUF-IN-SCOPE),
+\ so each body is checked on the verifier's own path.
 PTR-VARIABLE TEXT-A   variable TEXT-U
 : REPLAY ( -- ) TEXT-A @ TEXT-U @ VERIFY:SOURCE-BUF-IN-SCOPE ;
 
@@ -224,7 +178,6 @@ PTR-VARIABLE TEXT-A   variable TEXT-U
    a u PLAIN
    DISARM ;
 
-\ NAMED-AT the armed location.
 : NAMED ( ptr u8 n ptr u8 n -- n )
    VISIT AT-START AT-END NAMED-AT ;
 
@@ -242,12 +195,14 @@ PTR-VARIABLE TEXT-A   variable TEXT-U
    -1 ;
 
 \ The checked-text byte K bytes into the first NEEDLE of the one-line source
-\ TEXT: the checked text starts at the name after the first `: `.
+\ TEXT. The checker reads the definition's tokens from its name on, each
+\ followed by one space (src/habu/verify-source.f BODY-APPEND), so in a
+\ single-spaced source a cursor sits at its source byte less the end of the
+\ `: ` before the name.
 : AT ( ptr u8 n ptr u8 n n -- n )
    {: a:ptr u:n b:ptr v:n k:n :}
    a u b v FIND$ k +  a u s" : " FIND$ 2 + - ;
 
-\ ---- the fixture ----------------------------------------------------------------
 \ Two more locations: the package's DSCITEM is declared at one, so it is told
 \ from the global dscitem it hides, which takes the armed location; a refused
 \ redeclaration is armed at the other.
@@ -270,7 +225,45 @@ PTR-VARIABLE TEXT-A   variable TEXT-U
    DSC-VISIT DSC-START DSC-END [: ;] PLACED-REPLAY
    s" package DSCQ : byte-copy ( -- n ) 14 ; ;package" VERIFY:SOURCE-BUF-IN-SCOPE ;
 
-\ ---- 1. a body token -------------------------------------------------------------
+\ How this can fail, each one a case below:
+\ - the cursor never fires, or fires at the wrong token: in the gap before a
+\   token, inside it, after the last one;
+\ - the prefix holds bytes past the cursor, or misses bytes before it;
+\ - it fires on the definition's name, or inside its signature;
+\ - an arm outlives its check, a body's or a does> clause's, after a refusal,
+\   a visitor's throw or a use handler's throw, so the next body fires at a
+\   stale cursor or the next arm is refused;
+\ - a nested arm or a nested enumeration changes the outer one;
+\ - a local is offered inside a quotation, or for a tick or `is` target;
+\ - two locals that differ only in case merge, or a spelling a local holds is
+\   offered as the word that local hides;
+\ - a refused spelling (one two used publics export) or a tombstone is offered;
+\ - the definition's own name is offered before it is declared;
+\ - enumerating changes the body's verdict, its refusal or its uses, or grows
+\   the store;
+\ - a word is offered twice, once for each source that names it;
+\ - a qualified prefix offers a private name, or a bare prefix offers bare a
+\   public of a package not in use;
+\ - a bare prefix, a package's stem or its edge colon misses a qualified
+\   spelling a qualified prefix offers there, or one only the dictionary holds;
+\ - a candidate's location is not its selected declaration's: a located word
+\   offered without its row's visit and bytes, a word the selection hides
+\   lending its location, a refused redeclaration moving it, or a local, an
+\   engine word, a word declared unarmed or one at a rewound row's offset
+\   offered with anything but 0 0 0;
+\ - an engine word the body has not used yet is missing;
+\ - a word is not spelled as it was declared: a located word as its
+\   declaration wrote it, a qualified one as the prefix's qualifier, else its
+\   package's, and the declared tail, an engine word as the dictionary holds
+\   it; or a word the selection hides lends its spelling to the one it
+\   selects;
+\ - a refused redeclaration renames the word it failed to replace, or a
+\   spelling dies with the bytes it was armed from.
+\ A coverage limit, not an exact spelling: a name the checker generates with
+\ no declaration of its own (a suffix registration) keeps the store's folded
+\ spelling, so no case here pins one.
+
+\ 1. A body token.
 : PARTIAL$ ( -- ptr u8 n ) s" : CMPC ( -- n ) CMPA CMPB + ;" ;
 
 : CASE-PARTIAL ( -- )
@@ -318,7 +311,7 @@ PTR-VARIABLE TEXT-A   variable TEXT-U
    s" a cursor in the signature offers nothing" T-LABEL
    CALLS @ 0 T= ;
 
-\ ---- 2. an engine word the body has not used --------------------------------------
+\ 2. An engine word the body has not used.
 : CASE-ENGINE ( -- )
    s" du" KEPT-RESET
    s" : CMPN ( n -- n n ) dup ;" 2dup s" dup" 2 AT  [: KEEP ;] ARMED
@@ -331,7 +324,7 @@ PTR-VARIABLE TEXT-A   variable TEXT-U
    KEPT-ALL
    s" BYTE-COPY" UNPLACED ;
 
-\ ---- 3. locals -------------------------------------------------------------------
+\ 3. Locals.
 \ Locals keep their case, and a word's spelling a local holds is the local.
 : CASE-LOCAL-CASE ( -- )
    s" it" KEPT-RESET
@@ -377,7 +370,7 @@ PTR-VARIABLE TEXT-A   variable TEXT-U
    s" CMPDF" VISIT AT-START AT-END PLACED
    s" cmploc" ABSENT ;
 
-\ ---- 4. what the scope refuses, and qualified names ------------------------------
+\ 4. What the scope refuses, and qualified names.
 : CASE-AMBIGUOUS ( -- )
    s" cmp" KEPT-RESET
    s" using CMPX using CMPY : CMPU ( -- n ) CMPA ; ;using ;using" 2dup s" CMPA ;" 2 AT
@@ -398,7 +391,7 @@ PTR-VARIABLE TEXT-A   variable TEXT-U
    s" CMPP:CMPPUB" VISIT AT-START AT-END PLACED
    s" CMPP:CMPPRI" ABSENT ;
 
-\ ---- 5. a top-level cursor --------------------------------------------------------
+\ 5. A top-level cursor.
 PTR-VARIABLE TOP-A   variable TOP-U
 : TOP-ASK ( -- )
    TOP-A @ TOP-U @ CHECKER-OWNER-ABI:VISIBLE-TOP [: KEEP ;] EACH-VISIBLE ;
@@ -426,7 +419,7 @@ PTR-VARIABLE TOP-A   variable TOP-U
    s" CMPP:CMPPUB" VISIT AT-START AT-END PLACED
    s" CMPP:CMPPRI" ABSENT ;
 
-\ ---- 6. the observer changes nothing ------------------------------------------------
+\ 6. The observer changes nothing.
 \ Two bodies of the same layout, one checked unarmed and one armed: the same
 \ verdict, the same published uses at the same bytes, and the same store growth.
 variable USE-N   variable USE-SUM
@@ -486,7 +479,7 @@ variable USE-N   variable USE-SUM
    s" the armed refused body offered its candidates" T-LABEL
    s" CMPA" ONCE TTRUE ;
 
-\ ---- 7. one arm at a time, released on every exit ----------------------------------
+\ 7. One arm at a time, released on every exit.
 : CASE-NESTED-ARM ( -- )
    s" a second arm while one is armed is refused by name" T-LABEL
    5 [: KEEP ;] CURSOR!
@@ -614,7 +607,7 @@ variable DOES-USES
    s" it fires no stale visitor" T-LABEL
    CALLS @ 0 T= ;
 
-\ ---- 8. the selection spells what it binds ----------------------------------------
+\ 8. The selection spells what it binds.
 \ An earlier global dscitem, the open package's DSCITEM and a body's local
 \ dscitem: the local and the package's word are offered, each as written, and
 \ the global the package's word hides lends neither its spelling nor its
@@ -665,7 +658,7 @@ variable DOES-USES
    KEPT-ALL
    s" CMPA" VISIT AT-START AT-END PLACED ;
 
-\ ---- 9. declarations the verifier arms itself --------------------------------------
+\ 9. Declarations the verifier arms itself.
 \ Composed with a visit, the verifier arms each declaration as it reads it: a
 \ DEFTYPE's two converters each by its own name, a qualified EXPORT by the tail
 \ it is kept under, and a trust row keeps the name its declaration wrote.
@@ -711,7 +704,7 @@ variable DOES-USES
    KEPT-ALL
    s" CmpDep" OFFERED ;
 
-\ ---- 10. a rewind, then the same offset -------------------------------------------
+\ 10. A rewind, then the same offset.
 \ A neutral scope's rewind takes a located row back, and the next word the
 \ store retains, declared unarmed, lands at its offset: it is offered with no
 \ location, where a row the rewind left would lend it one.
@@ -733,7 +726,7 @@ variable REW-ROW
    s" cmprx" FOLDED
    s" cmprw" ABSENT ;
 
-\ ---- 11. qualified spellings under any prefix ---------------------------------------
+\ 11. Qualified spellings under any prefix.
 \ A bare prefix, a package's stem and its edge colon offer the package's publics
 \ behind its name, as the qualified prefix does: each as its selection spells
 \ and locates it - a replacement as its own declaration wrote it, where that
@@ -794,7 +787,7 @@ variable REW-ROW
    KEPT-ALL
    s" qalpk:QalW" VISIT AT-START AT-END PLACED ;
 
-\ ---- 12. a public only the dictionary holds -----------------------------------------
+\ 12. A public only the dictionary holds.
 \ QALD:QALDEF;does, which the store holds no symbol for, is offered under a
 \ bare prefix, the package's edge colon and a qualified prefix, as the
 \ dictionary spells it, with no location; its definer, which has a symbol too,

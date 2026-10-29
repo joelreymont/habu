@@ -1,24 +1,9 @@
-\ aot-wide-format-lib.f - the fixture of the capture-window gate row (dot
-\ habu-widen-the-aot-089f5faf). Loaded by test/aot-data-window-suite.f: the scratch
-\ tree, the builder child, the batch boot of the built engine, the boot-run
-\ report reader and the row driver. It runs nothing; the row file reopens
-\ package AOT-WIDE-FORMAT and runs the probes it owns.
-\
-\ Each probe spawns test/aot-wid-build.f in a child process with one HABU_AOT_*
-\ mode and a private TMPDIR. The mode compiles its fixture inside a capture window
-\ taken by the real AOT-CAPTURE:CAPTURE entry point, and the builder reads its
-\ own capture tables and DIES unless the capture holds what the mode is for; the
-\ lines a row matches are printed only on the far side of those refusals.
-\
-\ AND THE BOOT HALF IS HERE TOO, ON EVERY HOST. The seed runs at the end of the
-\ engine prefix on EVERY boot (dot habu-decide-arm-the-5234727b), so the boot-run
-\ entry words report into an ordinary batch boot's stdout, and a boot that dies
-\ at the seed or in the boot-run does so before any batch input is read. Before
-\ that the seed was armed at the interactive REPL entry alone and only a PTY -
-\ on Linux hosts - could observe a captured word, so on a macOS host nothing
-\ asserted that any of this boots. The fixtures' entry words print whatever fd 0
-\ is; only the REPL they install waits for a terminal, and test/proc-pty.f drives
-\ the shipped engine's captured REPL at one.
+\ aot-wide-format-lib.f - the fixture of the capture-window gate row, loaded by
+\ test/aot-data-window-suite.f, which reopens package AOT-WIDE-FORMAT and runs
+\ its probes. Each probe spawns test/aot-wid-build.f with one HABU_AOT_* mode
+\ and a private TMPDIR; the mode compiles inside a window taken by
+\ AOT-CAPTURE:CAPTURE, and the builder dies unless its capture tables hold what
+\ the mode is for, so the lines a row matches print only past those refusals.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -85,12 +70,14 @@ create HB-BUF PATH-CAP allot      variable HB-U
 : BUILD-MODE ( ptr u8 n -- )
    BUILD-OPEN  s" 1" KNOB+  BUILD-RUN ;
 
-\ Boot the built engine on an ordinary batch program and capture what it wrote.
-\ TWO things arrive in that stdout and they are different claims. The program's own
-\ answer says the image the widened bake produced is a working engine. The lines
-\ AHEAD of it are the boot-run's, printed by words that exist only because the seed
-\ copied the blob, registered the records and patched the relocation sites of THIS
-\ engine - so those are what say the capture booted.
+\ The seed runs at the end of the engine prefix on every boot, so boot-run entry
+\ words report into a batch boot's stdout and a boot dying at the seed or in the
+\ boot-run does so before any input is read, on every host. Entry words print
+\ whatever fd 0 is; only the REPL they install waits for a terminal
+\ (test/proc-pty.f drives it). The program's answer says the image is a working
+\ engine; the boot-run lines ahead of it, printed by words that exist only
+\ because the seed copied the blob, registered the records and patched this
+\ engine's relocation sites, say the capture booted.
 : BATCH-RUN ( ptr u8 n -- ) {: p:ptr pu:n :}
    PROC-ARGV-RESET
    HB$ >LEN  p pu >LEN  OUT CAP >LEN  ERR CAP >LEN  PROBE-TIMEOUT-MS >MS

@@ -1,28 +1,8 @@
 \ echo.f - ECHO, the browser host's fixture module (src/lib/browser/host.f),
 \ built by tools/wasm-build.f with the entry ECHO:TURN; test/browser/echo-test.f
-\ runs it under src/lib/browser/host-cli.mjs.
-\
-\ Each run reads the event the host wrote. Start, the zero event the first run
-\ finds, answers hello with the event's address, a fetch of `fixture` and then
-\ the text "loading", in the buffer the bytes, answered and pointer texts use,
-\ so a host that answers the fetch before it shows that text shows the bytes
-\ run's text there instead. Bytes answers the text of a checksum the module
-\ computes over the copied payload itself, so a payload the host failed to
-\ copy, or copied elsewhere, is caught: h := (31h + byte) mod 2^32 from 0, in
-\ decimal. Pointer answers the text "x,y", moved "moved x,y" and released
-\ "released x,y", x and y signed.
-\
-\ Typed text T posts twice and then answers the text T. Both posts name one span of REQ, which every typed run rewrites: the path
-\ T, then the body T twice. The second post waits behind the first, so a host
-\ must copy it before it waits. The text "trap" traps instead, at a load from
-\ the null region, the text "long path" names a path one byte longer than the
-\ posts' span, and "neg path" a path of -1 bytes. Answered answers the text of
-\ the status and then the body; status 200 fetches `fixture` in the record
-\ before them, so its answer would rewrite that status text.
-\
-\ Every run frees the event's delivery (src/lib/browser/event.f), so the texts
-\ of typed text and an answer's body name copies: typed text's in REQ, which
-\ starts with T, and a body's in ANSWER.
+\ runs it under src/lib/browser/host-cli.mjs. Every run frees the event's
+\ delivery (src/lib/browser/event.f), so typed text and an answer's body are
+\ copies, in REQ and ANSWER.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -55,7 +35,6 @@ DYNAMIC-BUFFER ANSWER u8              \ the last answer's body
 : CHAR+ ( n -- )
    TEXT TEXT-U @ + c!  TEXT-U @ 1+ TEXT-U ! ;
 
-\ The bytes appended to TEXT.
 : SAY ( ptr u8 n -- )
    {: t:ptr u:n :}
    u 0 ?do  t i + c@ CHAR+  loop ;
@@ -67,7 +46,6 @@ DYNAMIC-BUFFER ANSWER u8              \ the last answer's body
    q 0 <> if q RECURSE then
    n q 10 * - 48 + CHAR+ ;
 
-\ The digits of n after a minus sign when it is negative.
 : SIGNED ( n -- )
    {: n:n :}
    n 0< if  45 CHAR+  n negate DIGITS  else  n DIGITS  then ;
@@ -79,6 +57,9 @@ DYNAMIC-BUFFER ANSWER u8              \ the last answer's body
    s" fixture" {: path:ptr u:n :}
    1 path BYTES>N u 0 RECORD ;
 
+\ The zero event: hello with the event's address, a fetch of `fixture`, then
+\ "loading" in the buffer the bytes, answered and pointer texts share, so a host
+\ that answers the fetch before it shows that text shows the bytes run's text.
 : START ( -- )
    0 EVENT BYTES>N 0 0 RECORD
    FETCH-FIXTURE
@@ -88,12 +69,13 @@ DYNAMIC-BUFFER ANSWER u8              \ the last answer's body
    {: at:n u:n :}
    0  u 0 ?do  31 *  at i + >BYTES c@ +  $FFFFFFFF and  loop ;
 
+\ A checksum the module computes over the copied payload, h := (31h + byte)
+\ mod 2^32 from 0, in decimal: a payload not copied, or copied elsewhere, fails.
 : BYTES ( -- )
    0 TEXT-U !
    1 EVENT@ 2 EVENT@ SUM DIGITS
    TEXT-RECORD ;
 
-\ The text of the prefix, then the event's x and y.
 : AT ( ptr u8 n -- )
    0 TEXT-U !  SAY  1 EVENT@ SIGNED  44 CHAR+  2 EVENT@ SIGNED
    TEXT-RECORD ;
@@ -112,6 +94,10 @@ DYNAMIC-BUFFER ANSWER u8              \ the last answer's body
    u 0 ?do  at i + >BYTES c@  REQ REQ-U @ + i + c!  loop
    REQ-U @ u + REQ-U ! ;
 
+\ Typed text T posts twice into REQ's span, then answers T. The second post
+\ waits behind the first, so a host must copy it before it waits. "trap" traps
+\ at a load from the null region; "long path" names a path one byte past the
+\ span and "neg path" one of -1 bytes.
 : TYPED ( -- )
    1 EVENT@ 2 EVENT@ {: at:n u:n :}
    at u s" trap" IS? if  $FFFF >BYTES c@ drop exit  then
@@ -122,6 +108,8 @@ DYNAMIC-BUFFER ANSWER u8              \ the last answer's body
    4 REQ BYTES>N REQ-U @ path RECORD
    3 REQ BYTES>N u 0 RECORD ;
 
+\ The status's text, then the body; status 200 fetches `fixture` in the record
+\ before them, so its answer would rewrite that status text.
 : ANSWERED ( -- )
    3 EVENT@ 200 = if FETCH-FIXTURE then
    0 TEXT-U !  3 EVENT@ DIGITS  TEXT-RECORD

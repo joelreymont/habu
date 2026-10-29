@@ -1,14 +1,13 @@
 \ A declared engine cell past 2^31 bytes into DATA may not become a fixed row.
 \
-\ A fixed row stores the cell's DATA offset in a 32-bit field whose readers take
-\ the low 31 bits as the offset and the top bit as the window tag, and DATA spans
-\ more than 2^31 bytes. Truncating FAR's offset would hand the seed a window cell
-\ at the offset's residue, so the capture refuses (src/habu/aot-capture.f
-\ ACAP-XTCELL-LOC).
-\
-\ FAR is a PERSISTED-PTR-VARIABLE allotted 2 GiB past the engine's DATA, outside
-\ the window, and becomes a row only because it holds a window target: the same
-\ program without the store captures.
+\ A fixed row stores the cell's DATA offset in a 32-bit field: the low 31 bits
+\ are the offset, the top bit the window tag, and DATA spans more than 2^31
+\ bytes. A truncated offset would hand the seed a window cell at the residue, so
+\ the capture refuses (src/habu/aot-capture.f ACAP-XTCELL-LOC).
+
+\ FAR is a PERSISTED-PTR-VARIABLE 2 GiB past the engine's DATA, outside the
+\ window, and becomes a row only because it holds a window target: without the
+\ store the program captures.
 
 require src/arch/arm64/asm.f
 require src/arch/arm64/icode.f

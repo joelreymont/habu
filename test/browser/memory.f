@@ -58,8 +58,6 @@ private
 
 public
 
-\ Asserts, under the label, that the module at the path ends with the same
-\ memory after the steps run four times as after they run once.
 : FREED ( ptr u8 n ptr u8 n [ -- ] -- )
    {: label:ptr lu:n mod:ptr mu:n steps :}
    label lu mod mu steps 1 MEMORY-AFTER {: one:n :}

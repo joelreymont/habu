@@ -1,23 +1,9 @@
 \ load-refs.f - the files a source names as loaded, read from its tokens.
-\
-\ Three kinds, which EACH hands its visitor. REQUIRES loads the file into the
-\ same image once: `require` and a path, or a string literal handed to
-\ `required`; a file the image already holds, as it holds the engine's own,
-\ loads nothing. INCLUDES reads the file again whatever the image holds:
-\ `include` and a path, or a literal handed to `included`. LAUNCHES runs the
-\ file in a child: a string literal a known load helper consumes.
-\ test/gate-images.f reads all three into the gate's load graph, which finds
-\ the keyed images a row needs and which test/gate-entry-guard.f walks to refuse
-\ a row that runs another row's entry.
-\
-\ A string literal is the lexer's literal token (LINT-LEX:LITERAL?), never a
-\ word spelled like its opener. An escaped literal (`s\"`) names the bytes the
-\ engine decodes it to. An import whose path is no literal the engine decodes,
-\ such as a computed string handed to `required` or a literal with a bad
-\ escape, is OPAQUE: EACH skips it and OPAQUE-EACH names it.
-\
-\ Both read the tokens src/lib/source-lex.f holds for the source their caller
-\ lexed last.
+\ REQUIRES loads into the image once (a file the image holds loads nothing),
+\ INCLUDES reads again, LAUNCHES runs in a child (a literal a load helper
+\ consumes). An import whose path is no literal the engine decodes is OPAQUE.
+\ EACH and OPAQUE-EACH read src/lib/source-lex.f's tokens of the source lexed
+\ last. Used by test/gate-images.f and test/gate-entry-guard.f.
 
 require src/lib/string.f
 require src/lib/source-lex.f
@@ -32,7 +18,7 @@ public
 
 private
 
-\ The visitor EACH hands each reference to: path, line, kind.
+\ EACH's visitor takes path, line, kind.
 TYPED-VARIABLE VISIT [ ptr u8 n n n -- ]
 
 : IMPORT? ( ptr u8 n -- bool ) {: a:ptr u:n :}
@@ -49,20 +35,18 @@ TYPED-VARIABLE VISIT [ ptr u8 n n n -- ]
    a u s" required" STR=CI
    a u s" included" STR=CI or ;
 
-\ The kind of an import word.
 : IMPORT-KIND ( ptr u8 n -- n )
    {: a:ptr u:n :}
    a u s" require" STR=CI
    a u s" required" STR=CI or if REQUIRES else INCLUDES then ;
 
 \ ---- escaped literals --------------------------------------------------------
-\ An escaped literal holds what the engine's own reader decodes it to: LITERAL
-\ runs the literal's text, opener through closing quote, as a closed program
-\ under plain `evaluate`, and PATH! takes the one string it must leave. A bad
-\ escape throws; no cell or one is PATH!'s underdepth, 70; more is the closed
-\ residue, E-EVAL-RESIDUE. The decoded bytes stay in data space, as an
-\ interpret-mode `s\"` keeps them, and evaluation exits while a task is live
-\ (src/habu/interpret.f), so EACH and OPAQUE-EACH run before any task starts.
+\ LITERAL runs an escaped literal's text, opener through closing quote, under
+\ evaluate-closed, so it holds what the engine's reader decodes. A bad escape
+\ throws; zero or one cell left is PATH!'s underdepth, 70; more is
+\ E-EVAL-RESIDUE. The decoded bytes stay in data space, and evaluation exits
+\ while a task is live (src/habu/interpret.f), so EACH and OPAQUE-EACH run
+\ before any task starts.
 
 PTR-VARIABLE TEXT-A
 variable TEXT-U
@@ -84,9 +68,8 @@ private
 
 \ ---- references ---------------------------------------------------------------
 
-\ The bytes a string literal holds, and whether the engine decodes them. A plain
-\ literal holds its payload. The opener is followed by one delimiter, then the
-\ payload and its closing quote.
+\ A plain literal (a two-byte opener) holds its payload; the token is the
+\ opener, one delimiter, the payload and its closing quote.
 : LITERAL ( n -- ptr u8 n bool ) {: idx:n :}
    idx LINT-LEX:CONTENT {: a:ptr u:n :}
    idx LINT-LEX:TOKEN {: o:ptr ou:n :}
@@ -184,12 +167,10 @@ private
 
 public
 
-\ Hand every reference in the lexed source to the visitor, in source order.
 : EACH ( [ ptr u8 n n n -- ] -- )
    VISIT !
    LINT-LEX:COUNT 0 ?do i SCAN-TOKEN loop ;
 
-\ Hand the line of every opaque import to the visitor, in source order.
 : OPAQUE-EACH ( [ n -- ] -- ) {: q :}
    LINT-LEX:COUNT 0 ?do
       i OPAQUE? if i LINT-LEX:LINE@ q execute then

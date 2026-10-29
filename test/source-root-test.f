@@ -267,14 +267,13 @@ private
    DEEP-GOOD
    VISITS @ DEEP-COUNT T= LOADED @ 7 T= RESTORED ;
 
-\ A file past the frame the loader once mapped for every file (a header and
-\ 1 MiB) loads through require and include, and resumes after the small file
-\ it includes midway: each frame holds its own file's bytes, sized to them.
+\ A file larger than a header and 1 MiB loads through require and include and
+\ resumes after the small file it includes midway: each load frame is sized to
+\ its own file's bytes.
 $1000 constant LARGE-CHUNK
 192 constant LARGE-HALF                  \ chunks each side of the include: 1.5 MiB
 create CHUNK LARGE-CHUNK allot
 
-\ Byte n of a chunk: 64-byte comment lines, a backslash, a space, x's, newline.
 : LARGE-BYTE ( n -- n )
    64 mod
    {: col:n :}
@@ -310,11 +309,10 @@ create CHUNK LARGE-CHUNK allot
    A$ [: s" large/outer.f" included ;] WITH
    LOADED @ 122 T= RESTORED ;
 
-\ JOIN takes its root length from the caller, and INCLUDE-DIAG+ is an engine
-\ word any source can call. Both measure the length against the room left, so
-\ one near the maximum cell cannot wrap the sum back under the capacity and a
-\ negative one is refused (JOIN) or dropped like any piece that does not fit
-\ (INCLUDE-DIAG+).
+\ JOIN takes its root length from the caller and INCLUDE-DIAG+ is callable from
+\ any source: both measure the length against the room left, so a length near
+\ the maximum cell cannot wrap the sum under the capacity; a negative one is
+\ refused (JOIN) or dropped like any piece that does not fit (INCLUDE-DIAG+).
 PATH-CAP 1+ 2 * constant JOIN-WORK          \ include.f WORK-BYTES
 -1 1 rshift constant MAX-CELL
 create JOIN-SRC JOIN-WORK allot

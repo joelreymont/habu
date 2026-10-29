@@ -1,17 +1,14 @@
-\ layout-defer.f - DEFER-LAYOUT-BUFFER (derive-from-model deferred-offset column).
-\
-\ Proves the stage-1-validated mechanism end to end: the deferred accessor body
-\ (reading rebindable offset/count cells) type-checks IDENTICALLY to the immediate
-\ LAYOUT-BUFFER accessor under the armed LAYOUT-INTRO window; an unbound access
-\ dies NAMED; NAME-BIND sizes the storage from the counted need with grow-to-
-\ largest reuse; a bind past the sanity ceiling dies NAMED before any mutation
-\ (transactional), leaving the prior bind intact.
+\ layout-defer.f - DEFER-LAYOUT-BUFFER, a layout column whose offset and count
+\ cells are bound at run time: its accessor checks like LAYOUT-BUFFER's under
+\ the armed LAYOUT-INTRO window, an unbound access dies named, NAME-BIND sizes
+\ from the counted need reusing the largest region, and a bind past the ceiling
+\ dies named before any mutation.
 
 require src/lib/test.f
 
 T-RESET
 
-\ ---- deferred column over an arity-0 nominal scalar family (width 1) ---------
+\ A deferred column over an arity-0 nominal scalar family (width 1).
 NEWTYPE dtk
 
 \ The declaration itself is the decisive assertion: if the checker rejected the
@@ -54,7 +51,7 @@ variable DTK-I
 \ (E) shrink reuses the region; the live count shrinks, so index 2 is now oob
 2 DTK-AT-BIND
 2 DTK-IDX-RC E-LAYOUT-BOUNDS T=
-0 DTK-GET 0 T=                       \ index 0 still readable
+0 DTK-GET 0 T=
 
 \ (F) ceiling is transactional: a bind past LDEFER-CELL-MAX dies NAMED with NO
 \ mutation, so the prior (count=2) bind survives
@@ -62,7 +59,7 @@ $200000 DTK-BIND-RC E-LAYOUT-CEIL T=
 1 DTK-IDX-RC 0 T=                    \ index 1 still in bounds (prior bind intact)
 2 DTK-IDX-RC E-LAYOUT-BOUNDS T=      \ index 2 still oob (count unchanged at 2)
 
-\ ---- copy-on-grow (NAME-GROW): preserve live cells across a two-phase grow ----
+\ Copy-on-grow (NAME-GROW) keeps live cells across a two-phase grow.
 variable DTK-BASE
 CAST: DTK-ADDR ( ptr dtk -- n )   \ read the accessor's base pointer as a number
 : DTK-GROW ( -- )  DTK-I @ DTK-AT-GROW ;
@@ -84,14 +81,14 @@ DEFER-LAYOUT-BUFFER UGB-AT dtk
 3 DTK-GET 0 T=                       \ grown-into cells zeroed
 6 DTK-GET 0 T=
 6 DTK-IDX-RC 0 T=                    \ live count is exactly 7: index 6 in bounds
-7 DTK-IDX-RC E-LAYOUT-BOUNDS T=      \ index 7 oob
+7 DTK-IDX-RC E-LAYOUT-BOUNDS T=
 
 \ (H) grow-to-at-least: G's grow to 7 doubled the region (cap 5 -> max(10,7)=10),
 \ so growing to 8 fits and reuses it in place - the accessor base does not move.
 0 DTK-AT DTK-ADDR DTK-BASE !
 8 DTK-AT-GROW
 0 DTK-AT DTK-ADDR DTK-BASE @ T=      \ base unmoved => capacity grew past the request
-0 DTK-GET 111 T=                     \ live cells intact across the in-place grow
+0 DTK-GET 111 T=
 7 DTK-GET 0 T=                       \ index 7 now exposed and zeroed
 
 \ (I) growing a never-bound column dies NAMED - the caller must BIND first
@@ -100,9 +97,9 @@ DEFER-LAYOUT-BUFFER UGB-AT dtk
 \ (J) ceiling is transactional for GROW too: a grow past LDEFER-CELL-MAX dies
 \ NAMED with NO mutation, so the prior (live 8) region and its cells survive.
 $200000 DTK-GROW-RC E-LAYOUT-CEIL T=
-0 DTK-GET 111 T=                     \ live cells intact
+0 DTK-GET 111 T=
 7 DTK-IDX-RC 0 T=                    \ index 7 still in bounds (live unchanged at 8)
-8 DTK-IDX-RC E-LAYOUT-BOUNDS T=      \ index 8 still oob
+8 DTK-IDX-RC E-LAYOUT-BOUNDS T=
 
 \ (K) a within-capacity grow ZEROES the newly exposed slots even when a prior
 \ shrink left them dirty: write index 5, shrink live below it, grow back -> 0.
@@ -111,7 +108,7 @@ $200000 DTK-GROW-RC E-LAYOUT-CEIL T=
 8 DTK-AT-GROW                        \ grow back within cap -> exposes [3,8), zeroes them
 5 DTK-GET 0 T=                       \ index 5 zeroed, not the stale 555
 
-\ ---- definer rejects the same illegal types LAYOUT-BUFFER does --------------
+\ The definer refuses the illegal types LAYOUT-BUFFER refuses.
 DEFLINEAR dfl-lin
 SUMTYPE dfl-owned
    VARIANT hold dfl-lin ;VARIANT

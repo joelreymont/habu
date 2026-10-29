@@ -1,23 +1,9 @@
-\ include-refusal-e2e.f - a loader refusal that ends the process names itself.
-\
-\ An uncaught throw of a code below 256 is the process's exit status and prints
-\ nothing, so a loader refusal thrown as INCLUDE-IO-RC ended a run with exit 74
-\ and not one byte on either stream. Each case runs the engine under test
-\ (src/lib/engine-candidate.f) as a child from this process's working directory,
-\ through the words a program uses, and pins exit 74, an empty stdout and the
-\ whole of stderr: one line, ending in one LF, that names the refusal:
-\ - SOURCE-ROOT:WITH on a directory that does not exist, or on a file;
-\ - a require of an absolute path outside every root, whose directory does not
-\   exist, names the file it could not open, as one missing from a directory
-\   does;
-\ - a source canon (SOURCE-INPUT:USE) under which no directory above a path
-\   resolves;
-\ - an image save inside a top-level SOURCE-ROOT:WITH, which writes no image,
-\   run on the engine with the saver loaded (test/app-image-engine.f);
-\ - a bundle's ?ENGINE-PROVIDES of a file the engine does not carry.
-\ Each child's program, stdout and stderr stay in the case tree's cases/, whose
-\ path is printed: a program there has cases/ as its root, and no missing path
-\ lies below it or below the working directory.
+\ include-refusal-e2e.f - a loader refusal that ends the process names itself:
+\ an uncaught throw below 256 is the exit status and prints nothing, so each
+\ case pins exit 74 (INCLUDE-IO-RC), an empty stdout and a one-line stderr
+\ naming the refusal. Children run the engine under test
+\ (src/lib/engine-candidate.f) from this working directory; each case's program
+\ and streams stay in the printed cases/ tree, which no missing path lies below.
 require src/lib/test.f
 require src/lib/errors.f
 require src/lib/string.f
@@ -60,7 +46,6 @@ variable RC
    s" cases" AT FS:MAKE-DIR
    s" plain.f" AT s" \ a file, not a directory" FS:WRITE-ALL ;
 
-\ The child's program, built a piece at a time.
 : PROG+ ( ptr u8 n -- )
    {: a:ptr u:n :}
    u IO-CAP PROG-U @ - > if E-STR-CAPACITY throw then
@@ -171,8 +156,9 @@ variable RC
    ERR$ S\" bundle: this engine does not provide src/lib/absent.f\n" T$= ;
 
 \ The program on stdin, at the top level a save runs at, with the image path as
-\ its argument. The saver's image starts at tier 0, where APP-IMAGE:SAVE refuses
-\ retained code, so the program sets tier 1: only the root scope can refuse it.
+\ its argument, on the engine with the saver loaded (test/app-image-engine.f).
+\ The saver's image starts at tier 0, where APP-IMAGE:SAVE refuses retained
+\ code, so the program sets tier 1: only the root scope can refuse it.
 : SAVE-IN-WITH ( -- )
    APP-IMAGE-ENGINE:PATH$ {: eng:ptr engu:n :}
    0 PROG-U !

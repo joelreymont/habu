@@ -1,4 +1,5 @@
-\ Complete primitive and width-aware JIT transfers use the active allocation.
+\ engine-stack-wide.f - primitive and width-aware native transfers use the
+\ active stack allocation.
 require test/engine-stack-lifecycle-lib.f
 require src/lib/string.f
 
@@ -13,18 +14,12 @@ package STACK-LIFECYCLE-TEST
    SOURCE-TIER
    s" package SW public PRODUCT pair FIELD a n FIELD b n ;PRODUCT " SB-APPEND ;
 
-\ BUF is a real guarded mapping (whole STACK-ABI:PAGE-BYTES multiples only):
-\ run-in-stack refuses anything else, so every case below runs on the full
-\ 64 KB stack rather than on an extent tuned to the transfer's own width --
-\ there is no way to request a smaller guarded stack any more. The refusal
-\ itself is not retested here: test/engine-stack-lifecycle-lib.f UNGUARDED-UNCAUGHT
-\ owns the uncaught child and test/stack-guard.f RUN-IN-STACK-REFUSALS owns one
-\ case per GUARDED-EXTENT? clause.
-\ The mapping's address is held in a DECLARED pointer cell and read back through
-\ an accessor of the same name, so every case below still spells `BUF`. A
-\ `constant` is raw storage and a raw cell never holds an address, so the
-\ `constant BUF` this used to be stopped certifying with the child's `BUF` as a
-\ `ptr u8` (E-RAW-CELL-PTR).
+\ BUF is a real guarded mapping in whole STACK-ABI:PAGE-BYTES multiples, the
+\ only extent run-in-stack accepts, so every case runs on the full 64 KB stack.
+\ test/engine-stack-lifecycle-lib.f UNGUARDED-UNCAUGHT and test/stack-guard.f
+\ RUN-IN-STACK-REFUSALS own the refusal. The address lives in a declared pointer
+\ cell read through an accessor named BUF: a raw cell such as a `constant` never
+\ holds an address (E-RAW-CELL-PTR).
 : GUARDED-BUF ( -- )
    s" require src/lib/memory.f PTR-VARIABLE BUF-A STACK-ABI:PAGE-BYTES MEM:ALLOC-GUARDED drop BUF-A ! : BUF ( -- ptr u8 ) BUF-A @ ; " SB-APPEND ;
 
@@ -34,20 +29,14 @@ package STACK-LIFECYCLE-TEST
 : PAIR-RC ( ptr u8 n -- n )
    PAIR-SOURCE SB-APPEND s"  ;package" SB-APPEND SB$ CHILD-RC ;
 
-\ The capacity boundary these transfers used to be checked against, restored
-\ on the only stack that still has one: the guard page above a real mapping.
-\ RATCHET-TAIL wraps the named transfer in `begin dup <transfer> recurse
-\ again`. The declared `( n -- )` input is what makes that grow -- the checker
-\ models `recurse` as consuming the one cell `dup` just produced, and nothing
-\ pops it at runtime -- so each level leaves the stack exactly ONE cell deeper
-\ while the transfer itself runs whole and unwinds. Two things follow. The
-\ body is live: it is what fills the stack, thousands of times over, and a
-\ body that never ran could not. And because the ratchet advances one cell at
-\ a time while every transfer named below is wider than one cell, the first
-\ write past the capacity is always the transfer's own -- it arrives at a
-\ depth where the ratchet still fits and its own width no longer does. The
-\ child dies on the data guard page: ENGINE-ERROR:STACK-BOUNDS (102),
-\ "hb: stack bounds exceeded (data)".
+\ RATCHET-TAIL wraps the named transfer in `begin dup <transfer> recurse again`.
+\ The declared `( n -- )` input makes it grow: the checker models `recurse` as
+\ consuming the cell `dup` produced and nothing pops it at runtime, so each
+\ level leaves the stack one cell deeper while the transfer runs whole and
+\ unwinds. The body is live, and every transfer below is wider than one cell, so
+\ the first write past the capacity is the transfer's own. The child dies on the
+\ data guard page: ENGINE-ERROR:STACK-BOUNDS (102), "hb: stack bounds exceeded
+\ (data)".
 : RATCHET-TAIL ( ptr u8 n -- ) {: name:ptr nameu:n :}
    s"  : RATCHET ( n -- ) begin dup " SB-APPEND  name nameu SB-APPEND
    s"  recurse again ; : RATCHET0 ( -- ) 1 RATCHET ; " SB-APPEND

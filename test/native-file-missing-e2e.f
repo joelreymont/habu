@@ -1,5 +1,4 @@
 \ A missing child reaches the ordinary source reader's path-bearing diagnostic.
-\ bin/hb --load test/native-file-missing-e2e.f
 
 require src/lib/test.f
 require src/lib/string.f

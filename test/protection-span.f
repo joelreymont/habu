@@ -76,11 +76,10 @@ create ERR CAP allot
    s" require src/lib/ffi-abi.f TRUSTED: PST-RET ( -- n ) cp@ {: fn:n :} $D65F03C0 fn patch32 fn ; TRUSTED: PST-STACK ( ptr a -- n ) {: p:ptr :} FFI:RESET p 16 0 FFI:STACK-WRITABLE! FFI:ARGS FFI:FLOATS FFI:STACK FFI:REG-LENS FFI:STACK-LENS 1 PST-RET ffi-call-abi-bounded ; data-base TXN-STATE-OFF 1 cells - + PST-STACK drop" REJECTS
    s" require src/lib/ffi-abi.f TRUSTED: PST-RET ( -- n ) cp@ {: fn:n :} $D65F03C0 fn patch32 fn ; TRUSTED: PST-VALUE ( n -- n ) {: v:n :} FFI:RESET v 0 FFI:VALUE! FFI:ARGS FFI:REG-LENS 1 PST-RET ffi-call-bounded ; -1 PST-VALUE drop" ACCEPTS ;
 
-\ The task-user arena is USER-BAND, one declared run of the per-task header.
-\ The transaction band below it still rejects a store - $5000 is its first
-\ cell and $52F8 its last - and USER-BAND:START, the byte after, now accepts
-\ one: that pair is the narrowed guard, proved from both sides. The refused
-\ rows are the band's own ends.
+\ The task-user arena is USER-BAND, one declared run of the per-task header. The
+\ transaction band below it rejects a store ($5000 its first cell, $52F8 its
+\ last) and USER-BAND:START, the byte after, accepts one: the guard proved from
+\ both sides. The refused rows are the band's own ends.
 : TEST-TASK-USER ( -- )
    s" 0 data-base TXN-STATE-OFF + !" REJECTS
    s" 0 data-base TXN-STATE-OFF TXN-STATE-LEN + 1 cells - + !" REJECTS
@@ -119,7 +118,7 @@ create ERR CAP allot
    s" 0 data-base DATA-START 1- + !" ACCEPTS
    s" 0 data-base DATA-START + c!" ACCEPTS ;
 
-\ The span guard runs a bounding test (src/habu/habu1.f ENGINE-EMIT:GUARD-SPAN)
+\ The span guard runs a bounding test (src/habu/habu1.f GUARD-SPAN)
 \ in front of the band walk and skips the walk whole when a span provably
 \ misses every band, so the hull's own edges have to answer exactly as the
 \ bands do. BAND-LO is FRIEND-ARENA's base and BAND-HI is the end of the

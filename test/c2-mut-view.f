@@ -1,6 +1,5 @@
 \ C2 exclusive-view intrinsic: a two-cell stack value carries exactly one
 \ linear authority while its element parameter only describes the pointee.
-\ Run through the source load path: bin/hb --load test/c2-mut-view.f
 
 require src/lib/test.f
 require src/lib/adt/option.f

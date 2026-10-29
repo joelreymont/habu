@@ -2,9 +2,8 @@
 require src/compiler/native/compiler.f
 require src/lib/test.f
 
-\ Tier 1 below: the unbounded bodies below are never run; they exist to be
-\ accepted by the optimizing compiler's allocator, whose spilled reload stands
-\ in a predecessor of the trap block.
+\ Tier 1: the bodies exist for the optimizing compiler's allocator, whose
+\ spilled reload stands in a predecessor of the trap block.
 1 set-tier
 
 package NATIVE-ORDER-EXIT

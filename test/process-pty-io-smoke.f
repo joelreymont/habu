@@ -1,34 +1,5 @@
-\ process-pty-io-smoke.f - focused proof of the checked PTY process supervisor
-\ (src/lib/process-pty-io.f) built on the landed linear handle registry.
-\
-\ Proves, through the supervisor's public PROCESS-PTY:* lifecycle:
-\   - a spawned short-lived child is watched to exit and the watch fires;
-\   - signal 0 on the live (gated, pre-exec) target reports 0 (exists), and after
-\     teardown reaps it the same signal reports -ESRCH (gone), so the supervisor
-\     distinguishes existence from -EPERM;
-\   - teardown erases every handle field exactly once (a clean TEARDOWN-DONE is the
-\     registry's own proof it drained) and frees the slot, so more scopes than the
-\     registry has slots keep succeeding (registry balance);
-\   - a body that throws still tears its target down: the throw reaches the
-\     caller, the target's pid is gone and the slot is free, for more throwing
-\     scopes than the registry has slots;
-\   - a task halted inside a scope tears its target down as the halt unwinds the
-\     scope, for more halted tasks than the registry has slots;
-\   - a target whose owner dies inside the scope, before LAUNCH, exits on its
-\     own, so no gated target outlives its owner under init;
-\   - a process the owner spawns while a target is gated, in either mode,
-\     holds none of the target's pipe or terminal descriptors;
-\   - an owner with its standard descriptors closed still wires the target's
-\     stdout and stderr and releases it from its gate, in either mode;
-\   - the checker rejects duplicating a handle or teardown token, so a double
-\     teardown cannot even be written.
-\
-\ The pipe-I/O supervisor itself has no OS-divergent code; the one place a
-\ lifetime watch DOES diverge by backend is opening it on an already-exited
-\ process, which is exactly why the supervisor opens the watch while the target is
-\ still gated-alive. That divergence is expressed here to document the design.
-\
-\ Run: bin/hb --load test/process-pty-io-smoke.f
+\ process-pty-io-smoke.f - the checked PTY process supervisor
+\ (src/lib/process-pty-io.f) through its public PROCESS-PTY:* lifecycle.
 
 require src/lib/process-pty-io.f
 require src/lib/prelude.f
@@ -72,9 +43,8 @@ TASK:MIN-STACK TASK:TASK HALTEE
    f FD>N close ;
 
 \ ---- full supervised lifecycle ----------------------------------------------
-\ Spawn gated, probe the live target, release it, watch the exit, remember the
-\ target pid; the scope's end tears down (which reaps), then the reaped pid is
-\ confirmed gone.
+\ Teardown reaps: the target's pid then answers the null signal with -ESRCH
+\ (gone), which the supervisor tells apart from -EPERM.
 : LIFECYCLE ( -- )
    TRUE-PATH [:
       PROCESS-PTY:ALIVE? TTRUE
@@ -87,6 +57,8 @@ TASK:MIN-STACK TASK:TASK HALTEE
    TGT-PID @ SIG-PROBE kill-errno ESRCH# negate T= ;
 
 \ ---- registry balance -------------------------------------------------------
+\ Teardown erases every handle field exactly once; a clean TEARDOWN-DONE is the
+\ registry's own proof it drained.
 : CYCLE ( -- )
    TRUE-PATH [:
       PROCESS-PTY:LAUNCH
@@ -158,6 +130,8 @@ TASK:MIN-STACK TASK:TASK HALTEE
    CHECK-QUIET-CANDIDATE! 0 T= ;
 
 \ ---- OS-divergent watch-open-on-dead (the reason spawn gates) ---------------
+\ Opening a lifetime watch on an exited process diverges by backend, so the
+\ supervisor opens it while the target is still gated and alive.
 : DEAD-CHILD ( -- )
    ALIVE-R @ >FD CLOSE-OK             \ child drops the read end; holds only the write end
    s" " 0 die ;                        \ exit closes the write end -> parent read EOFs
@@ -219,9 +193,9 @@ TASK:MIN-STACK TASK:TASK HALTEE
    got 8 = if STRAND-CHECK then ;
 
 \ A gated target stays alive beyond the 100 ms deadline. A 1 kHz profiler storms
-\ the process while its watch wait is on the AIO loop; a signal reaches no
-\ thread parked in poll(2) any more, so it must neither throw, shorten the wait
-\ nor renew time.
+\ the process while its watch wait is on the AIO loop; no signal reaches a
+\ thread parked in poll(2), so the wait must neither throw, shorten nor renew
+\ time.
 : SIGNAL-WATCH-BODY ( process-pty-handle -- process-pty-handle )
    1000 prof-rate 1000000 prof-on
    mono-ns {: started:n :}
@@ -310,7 +284,6 @@ variable STD-R  variable STD-W  \ report pipe: the owner writes, this process re
    s" /dev/null" >LEN PROC-ARGV+
    STD-MISSING >LEN PROC-ARGV+ ;
 
-\ Read into the scope's half until the target hangs up or a read times out.
 : STD-BODY ( process-pty-handle -- process-pty-handle )
    PROCESS-PTY:LAUNCH
    0 STD-U !

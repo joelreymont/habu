@@ -1,20 +1,16 @@
 \ native-qualified-name.f - pending record identity for qualified definitions.
-\
-\ The engine stores a qualified definition under its bare tail and target WID,
-\ while the compiler tape retains the original PACKAGE:TAIL token. This runs the
-\ ordinary colon path in both directions: a RESULT:OK-shaped definition must
-\ compile, and a pending record moved to another package with the same tail must
-\ fail at the compiler's name-identity gate rather than pass on its tail alone.
-\
-\ It runs in test/native-window-owner.f's tier-1 window (TIER1-CASE), which
-\ supplies the optimizing compiler, src/habu/xref.f and the tier: that gate is
-\ the optimizing compiler's - at the default tier the rehomed record passes it
-\ and the file dies on its own diagnostic. A failure dies with its message, and
-\ the window reports the exit.
+\ The engine stores a qualified definition under its bare tail and target WID;
+\ the compiler tape keeps the PACKAGE:TAIL token. A RESULT:OK-shaped definition
+\ must compile, and a pending record moved to another package with the same tail
+\ must fail at the compiler's name-identity gate, not pass on its tail alone.
+
+\ Runs in test/native-window-owner.f's tier-1 window (TIER1-CASE), which
+\ supplies the optimizing compiler, src/habu/xref.f and the tier: the gate is
+\ tier 1's, and at the default tier the rehomed record passes it and the file
+\ dies on its own diagnostic.
 
 package XREF
 public
-\ Rewrite one wordlist cell of a dictionary record (this test's rehome).
 : REHOME-WID ( n ptr n -- ) patch32 ;
 ;package
 

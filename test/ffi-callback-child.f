@@ -1,9 +1,7 @@
-\ ffi-callback-child.f - one scenario per run, in a process of its own because
-\ getting it wrong ends or wedges that process. Most are refusals the engine
-\ ends the process on; one that is not refused dies 70 by name. The halted,
-\ killed, woken and fresh cases stop a task or thread inside its callback and
-\ exit 0 once it has left. src/lib/ffi-callback-test.f spawns this file once per
-\ case and reads the exit status and both streams.
+\ ffi-callback-child.f - one scenario per run, in its own process because a
+\ wrong answer ends or wedges it. src/lib/ffi-callback-test.f spawns it per case
+\ and reads the exit status and both streams. An unrefused scenario dies 70 by
+\ name; the halted, killed, woken and fresh cases exit 0 once the task has left.
 \ Run: bin/hb --load test/ffi-callback-child.f -- <case>
 require test/ffi-callback-fixture.f
 require src/lib/string.f
@@ -15,10 +13,9 @@ using FFI-CB
 
 70 constant SURVIVED-RC
 
-\ A start routine on its own exposed context whose body calls into ANOTHER
-\ context: it sorts through CMP-FN, which the scenario binds to the main
-\ region. A non-zero argument first waits for the main thread to be inside a
-\ foreign call, which is what its CB-OWNER says.
+\ Sorts through CMP-FN, which the scenario binds to the main region; a non-zero
+\ argument first waits until the main thread is inside a foreign call
+\ (CB-OWNER).
 CALLBACK: RAID ( n -- n ) 0 FALLBACK ;CALLBACK
 
 : RAID-IMPL ( n -- n ) {: wait:n :}
@@ -42,14 +39,12 @@ CALLBACK: RAID ( n -- n ) 0 FALLBACK ;CALLBACK
    fn wait THREAD-START STARTED
    WAIT-INSIDE ;
 
-\ The main context with no foreign call in flight: the main thread only spins.
 : OUTSIDE ( -- )
    0 RAID-START
    s" outside: a thread is parked on its own context" type cr
    1 GATE atomic!
    begin GATE atomic@ drop again ;
 
-\ The main context while its thread sleeps inside nanosleep.
 : SLEEPING ( -- )
    1 RAID-START
    s" sleeping: a thread is parked on its own context" type cr
@@ -57,7 +52,6 @@ CALLBACK: RAID ( n -- n ) 0 FALLBACK ;CALLBACK
    10000 >MS TASK:SLEEP
    s" ffi-callback-child: sleeping was not refused" SURVIVED-RC die ;
 
-\ A second thread on a context the first is parked inside.
 : BUSY ( -- )
    THREAD-BIND
    START-B CTX-TASK TASK:CONTEXT ENTRY {: second:n :}
@@ -79,7 +73,6 @@ CALLBACK: RAID ( n -- n ) 0 FALLBACK ;CALLBACK
    SORT-STALE
    s" ffi-callback-child: unbound was not refused" SURVIVED-RC die ;
 
-\ A worker bound the slots to its own context and ended without unbinding.
 : WORKER-STALE ( -- )
    ['] WORK-ENDS WORKER-B TASK:ACTIVATE
    WORKER-B TASK:JOIN JOINED SORTS-ALL = if
@@ -95,8 +88,8 @@ CALLBACK: RAID ( n -- n ) 0 FALLBACK ;CALLBACK
    SORT-STALE
    s" ffi-callback-child: unexposed was not refused" SURVIVED-RC die ;
 
-\ A worker exposed CTX-TASK and ended; the task still counts on the main
-\ region, so the main task may not define.
+\ The ended worker's exposed CTX-TASK still counts on the main region, so the
+\ main task may not define.
 : DEFINES ( -- )
    ['] WORK-EXPOSES WORKER-A TASK:ACTIVATE
    WORKER-A TASK:JOIN JOINED 0= if s" defines: the exposing worker was joined" type cr then
@@ -104,10 +97,10 @@ CALLBACK: RAID ( n -- n ) 0 FALLBACK ;CALLBACK
    s" variable CBC-LATE" INCLUDE-EVALUATE
    s" ffi-callback-child: defines was not refused" SURVIVED-RC die ;
 
-\ A comparator on the main task that defines once, with no task live, so the
-\ definition itself is admitted. The thunk restores C's callee-saved registers
-\ on its way out, the caller's record count and code pointer among them, so it
-\ ends the process rather than lose where the definition moved them.
+\ Defines once with no task live, so the definition is admitted. The thunk
+\ restores C's callee-saved registers, the caller's record count and code
+\ pointer among them, so it ends the process rather than lose what the
+\ definition moved.
 CALLBACK: CMP-DEFINE ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK
 
 variable DEFINED                        \ 1 once CMP-DEFINE has defined
@@ -127,9 +120,8 @@ variable DEFINED                        \ 1 once CMP-DEFINE has defined
    OUTER BYTE-VIEW ROW-N CELL fn QSORT
    s" ffi-callback-child: body-defines was not refused" SURVIVED-RC die ;
 
-\ A worker halted while parked inside its own comparator. PARK sees the request
-\ and returns, TASK:PAUSE only yields while a comparison runs, qsort completes,
-\ and the worker ends after C has returned; KILL joins it.
+\ PARK sees the halt and returns; TASK:PAUSE only yields while a comparison
+\ runs, so qsort completes and the worker ends after C returns; KILL joins it.
 CALLBACK: CMP-PARK ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK
 
 : CMP-PARK-IMPL ( ptr u8 ptr u8 -- n ) {: a b :}
@@ -154,9 +146,8 @@ CALLBACK: CMP-PARK ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK
       type cr
    then ;
 
-\ A worker killed in the middle of a sort whose comparator only yields. The
-\ first comparison holds in TASK:STOP until the kill's halt wakes it, so the
-\ TASK:PAUSE after it runs inside the callback with the request set. The sort
+\ The first comparison holds in TASK:STOP until the kill's halt wakes it, so the
+\ next TASK:PAUSE runs inside the callback with the request set; the sort
 \ completes and the worker ends at its first TASK:PAUSE after it.
 CALLBACK: CMP-YIELD ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK
 
@@ -188,9 +179,8 @@ variable PAST-PAUSE                  \ 1 if the worker ran past that TASK:PAUSE
       s" killed: the worker ended at its first TASK:PAUSE after the sort" type cr
    then ;
 
-\ A foreign thread stopped inside its callback on an exposed context: TASK:SELF
-\ there is the exposed task, so TASK:STOP parks on that task's record, and
-\ TASK:WAKE of the exposed task releases it.
+\ On an exposed context TASK:SELF is the exposed task, so TASK:STOP parks on its
+\ record and TASK:WAKE of the exposed task releases it.
 CALLBACK: STOPS ( n -- n ) 0 FALLBACK ;CALLBACK
 
 align
@@ -215,10 +205,8 @@ variable PAST-STOP                    \ 1 once STOPS's body has left its STOP
    then
    CTX-TASK TASK:KILL ;
 
-\ An exposure opens its park at zero, whatever earlier runs and exposures of the
-\ same task posted to it. On src/lib/task.f before EXPOSE drained the park, the
-\ second exposure's thread took the hint posted to the first and left its STOP
-\ with no WAKE of its own, and the second line was missing.
+\ An exposure opens its park at zero, whatever earlier exposures of the task
+\ posted; a stale hint would let the second exposure leave its STOP unwoken.
 50 constant FRESH-MS                  \ the thread's time to take a stale hint
 
 : PAUSES ( -- )
@@ -247,7 +235,6 @@ variable PAST-STOP                    \ 1 once STOPS's body has left its STOP
    STOPS-FRESH? if s" fresh: nor does a hint to an earlier exposure" type cr then
    CTX-TASK TASK:KILL ;
 
-\ A capture while a thread is parked inside a callback.
 : CAPTURES ( -- )
    THREAD-BIND
    START-FN @ 1 THREAD-START STARTED

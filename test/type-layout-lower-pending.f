@@ -1,9 +1,8 @@
-\ type-layout-lower-pending.f — width-aware lowering suite (habu-tfam-12-layout,
-\ docs/design.md "Families and layout policies"). Run BY THE ENGINE over stdin,
-\ standalone or through the native registry:
+\ type-layout-lower-pending.f — width-aware lowering (docs/design.md "Families
+\ and layout policies"): generated constructors seed bundles that cross the
+\ stack, return stack, locals and typed storage before their values are checked.
+\ Run by the engine over stdin, standalone or through the native registry:
 \     bin/hb < test/type-layout-lower-pending.f
-\ Generated constructors seed bundles which cross the stack, return stack,
-\ locals and typed storage before their values are checked.
 
 require src/lib/test.f
 
@@ -11,10 +10,8 @@ using TFAM
 
 T-RESET
 
-\ ---------------------------------------------------------------------------
 \ layout families under test: width 2 (1 payload slot + tag), width 4
 \ (3 payload slots + tag).
-\ ---------------------------------------------------------------------------
 SUMTYPE tlp-res<a,b>
   VARIANT ok  a ;VARIANT
   VARIANT err b ;VARIANT
@@ -33,16 +30,12 @@ SUMTYPE tlp-mix<a,b>
 : TLP-STORE4 ( tlp-mix<n,n> -- ) TLP-MEM4-P ! ;
 : TLP-FETCH4 ( -- tlp-mix<n,n> ) TLP-MEM4-P @ ;
 
-\ ---------------------------------------------------------------------------
-\ execution rows: whole-bundle transports at RUNTIME. The seeds are the REAL
-\ generated constructors (`tlp-res` derives package TLP--RES,
-\ `tlp-mix` derives TLP--MIX — tail hyphens escape as `--`), so the physical
-\ cells (payload, zero pads, tag) come from checked constructor bodies, not
-\ trusted raw pushes. TLP-MK2 = 7 TLP--RES:ERR -> (7, tag 1); TLP-MK4 =
-\ 91 92 93 TLP--MIX:BIG -> (91, 92, 93, tag 1). The unpackers are checked
-\ MATCH destructors: each arm binds the payload cells and pushes its variant's
-\ tag, so a transport that moved or lost a cell fails the value asserts.
-\ ---------------------------------------------------------------------------
+\ execution rows: whole-bundle transports at run time. The seeds are the real
+\ generated constructors (`tlp-res` derives package TLP--RES, `tlp-mix`
+\ TLP--MIX: a tail hyphen escapes as `--`), so the cells (payload, zero pads,
+\ tag) come from checked bodies. TLP-MK2 = (7, tag 1); TLP-MK4 = (91, 92, 93,
+\ tag 1). The checked MATCH unpackers push each variant's tag, so a moved or
+\ lost cell fails the value asserts.
 : TLP-MK2 ( -- tlp-res<n,n> ) 7 TLP--RES:ERR ;
 : TLP-MK2B ( -- tlp-res<n,n> ) 8 TLP--RES:OK ;
 \ The 2-cell unpack (payload, tag).
@@ -147,12 +140,10 @@ TLP-LOCAL-TEST:DEEP 1 T= 7 T= 4 T= 3 T= 2 T= 1 T=
 5 TLPX-REF-BRANCH 1 T= 7 T=
 -3 TLPX-REF-BRANCH 1 T= 7 T=
 
-\ ---------------------------------------------------------------------------
-\ branch-scoped bundle locals (habu-tfam-12-pass): a bundle local BOUND inside
+\ branch-scoped bundle locals: a bundle local BOUND inside
 \ a branch arm lowers by bind sequence (checker LOCW-HW + the P2-CARVE-W live
 \ replay), so sibling arms may reuse the same frame slot — at different widths.
 \ Each subject runs BOTH arms; values prove whole-bundle capture + reference.
-\ ---------------------------------------------------------------------------
 : TLPX-BRIF ( n -- n n ) 0 > if TLP-MK2 {: r :} r TLP-UN2
    else TLP-MK2B {: r :} r TLP-UN2 then ;
 5 TLPX-BRIF 1 T= 7 T=
@@ -181,9 +172,6 @@ TLP-LOCAL-TEST:DEEP 1 T= 7 T= 4 T= 3 T= 2 T= 1 T=
 1 TLPX-BROUTER 1 T= 93 T= 92 T= 91 T=
 0 TLPX-BROUTER 1 T= 93 T= 92 T= 91 T=
 
-\ ---------------------------------------------------------------------------
-\ report: "test: ok" on success, nonzero exit on any failure.
-\ ---------------------------------------------------------------------------
 T-REPORT
 
 ;using

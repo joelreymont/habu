@@ -1,5 +1,4 @@
 \ Definition reuse preserves nominal, linear and deferred declarations.
-\ bin/hb --load test/native-file-types-e2e.f
 
 require src/lib/test.f
 require src/lib/string.f
@@ -356,9 +355,8 @@ variable EXPECT-U
    3 S\" 24\n32\n" s" fresh-wide" EMPTY-STEP ;
 
 \ A reused file that declares private families in a package (an ENUM and a
-\ derived STRUCTURE) leaves the state its cold load left: the warm build's
-\ image holds the bytes of a fresh-cache build of the same tree. The first
-\ build runs on an empty cache, so it is that fresh-cache build.
+\ derived STRUCTURE) leaves the state its cold load left: the warm build's image
+\ holds the bytes of a fresh-cache build of the same tree.
 : FAMILY-HIT-CASE ( -- )
    s" a reused file of private families leaves the cold image" T-LABEL
    s" native-file-types-family" TREE
@@ -378,7 +376,6 @@ variable EXPECT-U
    s" family-warm-hb" SAVE-APP
    WARM-HASH 32 COLD-HASH 32 T$= ;
 
-\ A decimal count the builder printed.
 : COUNT-N ( ptr u8 n -- n )
    TRIM STR>NUMBER? MATCH option
      none OF T-FAIL 0 ENDOF
@@ -432,8 +429,7 @@ create ENUM-LINE 48 allot
 \ depend on that order; and a hit needing more than twice the baked capacity
 \ must reach the capacity the cold load's doubling reaches, not its need. Each
 \ one-variant ENUM adds a row to both stores, so the file declares the rows the
-\ store farther from its doubled capacity takes. The first build runs on an
-\ empty cache, so it is the fresh-cache build.
+\ store farther from its doubled capacity takes.
 : GROW-HIT-CASE ( -- )
    s" a reused file that moves a registry store leaves the cold image" T-LABEL
    BUILDER-ROWS ROWS-PAST-DOUBLE swap ROWS-PAST-DOUBLE max {: rows:n :}
@@ -458,10 +454,9 @@ create ENUM-LINE 48 allot
 
 \ A reused file whose cold load spent compile history outside its recorded
 \ definitions (a STRUCTURE whose name the package SDFAIL takes, rolled back by
-\ catch after its MAKE and UNMAKE compiled) leaves the compiler's
-\ identity counters where that cold load left them: the warm build's image
-\ holds the bytes of the fresh-cache build. The first build runs on an empty
-\ cache, so it is that fresh-cache build.
+\ catch after its MAKE and UNMAKE compiled) leaves the compiler's identity
+\ counters where that cold load left them: the warm build's image holds the
+\ bytes of the fresh-cache build.
 : ROLL-HIT-CASE ( -- )
    s" a reused file of rolled-back compiles leaves the cold image" T-LABEL
    s" native-file-types-roll" TREE
@@ -509,7 +504,6 @@ DYNAMIC-BUFFER ENTRY u8
    ;MATCH ;
 
 
-\ c.f's object path, in PROBE-IN.
 : OBJECT-PATH ( -- ptr u8 n )
    0 PROBE-IN-U !
    s" cache" AT NATIVE-FILE-APP:OBJ-DIR$ IN+ s" /" IN+ SLICE-KEY 64 IN+ s" .hfo" IN+
@@ -668,7 +662,7 @@ DYNAMIC-BUFFER ENTRY u8
    RUN-APP SUCCESS OUT$ S\" 7\n5\n" CONTAINS? TTRUE ;
 
 
-\ A cache hit never throws. CTOR-CASE's warm build reused c.f's object; a link
+\ CTOR-CASE's warm build reused c.f's object; a link
 \ row with neither effect nor grid, which the writer never exports, would
 \ leave the installed record unlinked. Preparation refuses the row, so the
 \ object is a named miss decided before any install side effect, c.f compiles

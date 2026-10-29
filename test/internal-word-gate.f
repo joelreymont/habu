@@ -1,26 +1,9 @@
-\ internal-word-gate.f - engine-internal word execution gate regressions (dot
-\ habu-hb-crash-bare-c5be6634).
-\
-\ The seal marks unchecked engine words DNAME-INT. A removed name is
-\ E-UNDEFINED in interpret mode; a retained marked name rejects with
-\ `hb: internal engine word: <token>` and rc 70. A tick of an absent name is
-\ E-UNDEFINED too; a tick of a retained marked name is refused.
-\ Previously a bare `U-TYPE` consumed below-base garbage as type-term handles
-\ and corrupted the process. Positives prove the public surface is
-\ untouched: undefined words still report E-UNDEFINED, a bare primitive short
-\ of its inputs reports underdepth, inferred user words stay executable,
-\ top-level TRUST rows / TRUSTED: / structures + type-family DSLs still work,
-\ and XREF introspection of internal words survives.
-\
-\ Semantic cases run in disposable SUBJECT forks. Exact outcome/stdout/stderr
-\ parity retains direct `--load` and stdin representatives below.
-\
-\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
-\   src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f
-\   test/internal-word-gate.f
-\
-\ INTERNAL-WORD-GATE privately owns every definition in this file, exports
-\ nothing, and has no external callers.
+\ internal-word-gate.f - engine-internal word execution gate regressions. The
+\ seal marks unchecked engine words DNAME-INT: a removed name, or a tick of an
+\ absent one, is E-UNDEFINED in interpret mode; a retained marked name rejects
+\ with `hb: internal engine word: <token>` and rc 70, and its tick is refused.
+\ Semantic cases run in disposable SUBJECT forks; direct `--load` and stdin
+\ representatives keep exact outcome, stdout and stderr parity.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -130,8 +113,7 @@ create EMPTY 1 allot            \ zero-length stdin
    ERR CAP >LEN  TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    IN$ STORE! ;
 
-\ The third child-run path, beside RUN-LOAD and RUN-STDIN above: a disposable
-\ SUBJECT fork rather than a fresh engine process.
+\ A disposable SUBJECT fork rather than a fresh engine process.
 : RUN-SUBJECT ( ptr u8 n -- ) {: src:ptr u:n :}
    src u OUT CAP >LEN ERR CAP >LEN
    TIMEOUT-MS >MS SUBJECT:RUN src u STORE! ;
@@ -277,9 +259,9 @@ create EMPTY 1 allot            \ zero-length stdin
    ;
 
 \ seed-ndict! is a top-level boundary primitive: a normal-wid record whose only
-\ checker row is trusted-only, as set-check's is. Top-level text and
-\ TRUSTED: bodies call it (the build rewinds do), the engine refuses its tick, a checked body naming it is
-\ E-CAP-TRUSTED, and search-wl finds its record.
+\ checker row is trusted-only, as set-check's is. Top-level text and TRUSTED:
+\ bodies call it (the build rewinds do), the engine refuses its tick, a checked
+\ body naming it is E-CAP-TRUSTED, and search-wl finds its record.
 : SEED-RESET-CASES ( -- )
    s" top-level seed-ndict! refuses an equal dictionary count" T-LABEL
    s" ndict@ seed-ndict!" TOKEN$ RUN-SUBJECT
@@ -354,7 +336,7 @@ create EMPTY 1 allot            \ zero-length stdin
 
 \ --- type-DSL openers are top-level-interpret-only: their ( -- ) axiom rows
 \ hide runtime input parsing + registry mutation, so UNSAFE-TOK? rejects them
-\ inside checked bodies (dot habu-checker-in-body-af7cf855, LBUF parity). ----
+\ inside checked bodies. ----
 
 : TDSL-TOP-FORGE$ ( -- ptr u8 n )    \ NEWTYPE/PRODUCT still work at top level
    SB-RESET
@@ -362,17 +344,11 @@ create EMPTY 1 allot            \ zero-length stdin
    s" PRODUCT iwgpr FIELD x n ;PRODUCT" SB-APPEND LF
    SB$ ;
 
-\ --- the retired NEWTYPE spelling. Until 2026-07-26 this definer was called
-\ TYPEFAMILY. Joel ruled (dot habu-rename-typefamily-definer-538979cc) that the
-\ arity-0 nominal wrapper definer is permanent and renamed it to NEWTYPE with no
-\ alias and no compatibility definer, because in type theory a type family is a
-\ type-level function while this declaration is exactly a Haskell newtype. The
-\ old spelling is therefore not a word at all, and the child below proves it on
-\ the real load path: rc 70 with the ordinary undefined-word diagnostic naming
-\ the token, having declared nothing. The companion child proves the tombstone is
-\ structural rather than textual - the same characters in a line comment and in a
-\ string literal are inert text, and a real NEWTYPE declaration beside them still
-\ loads, so the child exits 0. ----
+\ --- TYPEFAMILY is not a word (the arity-0 nominal definer is NEWTYPE, with no
+\ alias): the child exits rc 70 with the undefined-word diagnostic naming the
+\ token, having declared nothing. The companion child proves the refusal is
+\ structural: the same characters in a line comment and a string literal are
+\ inert, and a NEWTYPE declaration beside them loads, rc 0. ----
 
 : TOMB-RETIRED-FORGE$ ( -- ptr u8 n )   \ the retired spelling is an undefined word
    SB-RESET
@@ -406,8 +382,7 @@ create EMPTY 1 allot            \ zero-length stdin
 
 \ The DEFTYPE nominal surface and the roles.f DEFLINEAR/VALUE-RECORD definers
 \ are the same hazard class as the openers but admitted via certified usigs, not
-\ PRIM: axioms (dot habu-checker-deftype-deflinear-8e9d1dc5): declare + use each
-\ at top level.
+\ PRIM: axioms: declare + use each at top level.
 
 : ROLES-TOP-FORGE$ ( -- ptr u8 n )   \ DEFTYPE/DEFLINEAR/VALUE-RECORD at top level
    SB-RESET
@@ -421,9 +396,9 @@ create EMPTY 1 allot            \ zero-length stdin
    SB$ ;
 
 \ EXPORT must not mint a qualified alias for an UNSAFE-TOK? name: the alias
-\ spelling (PKG:NAME) would escape the name-keyed body reject (dot
-\ habu-checker-unsafety-must-d12bc784 part a). Pinned like export-package.f's
-\ E-EXPORT-PRIM case: uncaught named code E-EXPORT-UNSAFE 7120 -> rc 67.
+\ spelling (PKG:NAME) would escape the name-keyed body reject. Pinned like
+\ export-package.f's E-EXPORT-PRIM case: uncaught named code E-EXPORT-UNSAFE
+\ 7120 -> rc 67.
 
 : EXPORT-FORGE$ ( ptr u8 n -- ptr u8 n )   \ "package .. EXPORT <name> ;package"
    SB-RESET
@@ -444,8 +419,7 @@ create EMPTY 1 allot            \ zero-length stdin
 
 \ A name that is not a word at all cannot be aliased, and the engine says so
 \ before the checker is asked: EXPORT's own lookup misses and the load dies
-\ naming the token. This is the STRONGER half of the two laundering routes —
-\ nonexistence rather than a blocklist entry.
+\ naming the token.
 : ASSERT-EXPORT-ABSENT ( ptr u8 n -- ) {: a:ptr u:n :}
    EXITED @ TTRUE
    RC @ REJECT-RC T=
@@ -506,12 +480,9 @@ create EMPTY 1 allot            \ zero-length stdin
    TOMB-TEXT-FORGE$ RUN-SUBJECT ASSERT-OK
    s" packaged field reflection is checked/public" T-LABEL
    PF-REFLECT-FORGE$ RUN-LOAD ASSERT-OK
-   \ The raw implementation name is still refused, and the refusal moved EARLIER
-   \ than the checker. Before the TFAM seal PF-FIND was a global the checker had
-   \ no signature for, so the reject arrived from the publish hook as
-   \ `non-certified definition: iwg-pf-raw at 'PF-FIND'`. It is a package private
-   \ now, so the ENGINE's own find misses the token first and the body never
-   \ compiles: E-UNDEFINED, which is the answer an absent name gets.
+   \ The raw implementation name is refused before the checker: PF-FIND is a
+   \ package private, so the engine's own find misses the token and the body
+   \ never compiles: E-UNDEFINED, the answer an absent name gets.
    s" raw field reflection is unavailable to checked code" T-LABEL
    PF-RAW-FORGE$ RUN-LOAD
    s" E-UNDEFINED" ASSERT-DIAG
@@ -530,11 +501,11 @@ create EMPTY 1 allot            \ zero-length stdin
    s" DEFLINEAR" NEG-OPENER
    s" VALUE-RECORD in a checked body is rejected unsafe" T-LABEL
    s" VALUE-RECORD" NEG-OPENER
-   \ `cast:` is an interpret-mode reader keyword (habu2.f EM-INTERPRET-DEFINE-KEYWORDS)
-   \ and not a dictionary word, so a colon body holding it resolves no name and the
-   \ ENGINE answers before the checker: E-UNDEFINED naming the token, the same shift
-   \ PF-FIND made above. The declarer's own unsafe-token reject stays pinned on the
-   \ candidate path by test/cast-negative-suite.f.
+   \ `cast:` is an interpret-mode reader keyword (habu2.f
+   \ EM-INTERPRET-DEFINE-KEYWORDS) and not a dictionary word, so a colon body
+   \ holding it resolves no name and the engine answers before the checker:
+   \ E-UNDEFINED naming the token. The declarer's own unsafe-token reject is
+   \ pinned by test/cast-negative-suite.f.
    s" cast: in a checked body is an undefined word" T-LABEL
    s" cast:" OPENER-BODY-FORGE$ RUN-SUBJECT
    s" E-UNDEFINED: cast:" ASSERT-DIAG
@@ -589,13 +560,12 @@ create EMPTY 1 allot            \ zero-length stdin
    DEFER-QUOT-FORGE$ RUN-SUBJECT
    s" at 'deflinear'" ASSERT-DIAG ;
 
-\ --- laundered-execute closure (dot habu-checker-exec-of-5923c543). Executing an
-\ xt fetched from an untyped variable is now rejected at CHECK time as
-\ E-EXEC-OPAQUE-XT (RSEXEC T-VAR flip), so the definer-mint and protected-registry
-\ writes the RCA laundered through `variable V  ' W V !  : F V @ execute ;` can no
-\ longer certify. Each child rejects rc 70 with the named diagnostic before the
-\ body runs, so the mint / store never happens. The top-level store runs with
-\ the checker suspended, so the refusal each child meets is the execute's. ----
+\ --- laundered execute. Executing an xt fetched from an untyped variable is
+\ rejected at check time as E-EXEC-OPAQUE-XT, so a definer mint or protected-
+\ registry write laundered through `variable V  ' W V !  : F V @ execute ;`
+\ cannot certify: each child rejects rc 70 with the named diagnostic before the
+\ body runs. The top-level store runs with the checker suspended, so the refusal
+\ each child meets is the execute's. ----
 
 : LAUNDER-DEFINER$ ( ptr u8 n -- ptr u8 n )   \ tick <definer> into a var, launder its execute
    {: a:ptr u:n :}
@@ -607,8 +577,8 @@ create EMPTY 1 allot            \ zero-length stdin
 
 \ The tick itself refuses the protected target, so it never reaches the untyped
 \ cell: habu2.f C-BTICK carries the DNAME-INT dispatch gate C-TICK applies to a
-\ bare tick. Until it did, this source stored the xt and the interpret-level
-\ `IWG-PFV @ execute` returned the protected cell's address (measured).
+\ bare tick. Without that gate the interpret-level `IWG-PFV @ execute` returns
+\ the protected cell's address (measured).
 : PF-LAUNDER-FORGE$ ( -- ptr u8 n )   \ tick a protected registry cell, launder its execute
    SB-RESET
    s" variable IWG-PFV" SB-APPEND LF
@@ -681,27 +651,19 @@ create EMPTY 1 allot            \ zero-length stdin
    OUT$ S\" name CHECKER-VERIFY-PKG-START\nstart " CONTAINS? TTRUE
    OUT$ s" wordlist 0" CONTAINS? TTRUE ;
 
-\ --- sibling type-registry write-protection (dot habu-protect-sibling-type-44eec932).
-\ The family (TFAM), sum-variant (SUMV), interned-string, param-kind, logical-layout
-\ (src/core/type-family.f) and schema/schema-root (src/core/type-schema.f) registries
-\ are as exposed as PF-COMMIT-N was: each control cell is a din=0 data record the
-\ internal-word pass would leave executable. REG-PROTECT + IMK-SEAL-REGISTRY mark
-\ these cells DNAME-INT; capture drops their unrooted names. Compiled cold-prefix
-\ writers and certified accessors (TFAM-N@, SUMV-N@, TF-STR-U@, TF-PK-N@,
-\ SCHEMA-N@, SCHEMA-ROOT-N@) still reach the cells. ----
-\ EVERY REGISTRY CELL BELOW NOW LIVES IN A PACKAGE — SCHEMA-REG for the schema
-\ half (dot habu-seal-type-schema-c65f76cc) and TFAM for the family, variant,
-\ string-pool, param-pool, layout and product-field halves (this dot) — so each
-\ one has TWO spellings to refuse. The bare tail is E-UNDEFINED because no global
-\ record carries it. The qualified tail is E-UNDEFINED because its record was
-\ stripped (public control cells) or private and unspellable (arenas and bases).
-\ Both legs are asserted for every cell: dropping the bare leg would miss a
-\ cell that silently escaped back to global scope, dropping the qualified one
-\ would miss a private that was published by mistake.
-\
-\ Bare `'` is deliberately not asserted on a stripped tail: tick of a missing
-\ name is the same E-UNDEFINED. The schema public tick checks it; the reserved
-\ TFAM package still rejects ticks before lookup.
+\ --- sibling type-registry write-protection. The family (TFAM), sum-variant
+\ (SUMV), interned-string, param-kind, logical-layout (src/core/type-family.f)
+\ and schema/schema-root (src/core/type-schema.f) control cells are din=0 data
+\ records the internal-word pass would leave executable. REG-PROTECT +
+\ IMK-SEAL-REGISTRY mark them DNAME-INT; capture drops their unrooted names.
+\ Compiled cold-prefix writers and certified accessors (TFAM-N@, SUMV-N@,
+\ TF-STR-U@, TF-PK-N@, SCHEMA-N@, SCHEMA-ROOT-N@) still reach the cells.
+\ Each cell lives in a package (SCHEMA-REG or TFAM) and has two spellings to
+\ refuse, both asserted: the bare tail is E-UNDEFINED because no global record
+\ carries it (a cell escaped back to global scope fails this leg), the qualified
+\ tail because its record was stripped or is private (a private published by
+\ mistake fails this one). Bare `'` is not asserted on a stripped tail: tick of
+\ a missing name is the same E-UNDEFINED. ----
 64 constant QNAME-CAP
 create QNAME QNAME-CAP allot
 
@@ -727,16 +689,13 @@ create QNAME QNAME-CAP allot
    a u TOKEN$ RUN-SUBJECT                                a u ASSERT-UNDEF
    s" " pa pu a u s" " QUAL-PROG$ RUN-SUBJECT            pa pu a u QUAL-NAME$ ASSERT-UNDEF ;
 
-\ The tick leg splits by OWNER, and the split is the engine's, not a convention.
-\ `tfam` is one of the seven reserved system-package names baked into habu2.f
-\ KWDATA:RESTAB-BUF, so C-QUALIFY-SEAL-GUARD refuses `' TFAM:<anything>` with
-\ ENGINE-ERROR:SEAL-PACKAGE (rc 84) BEFORE any lookup — a strictly stronger
-\ answer than the marked record's rc 70, and one that covers privates too.
-\ SCHEMA-REG is not a reserved name. Its stripped records make `' NAME`
-\ E-UNDEFINED, as C-TICK answers any missing name. The TFAM answer is not a
-\ per-cell fact at all — it is one guard reading one name table — so it is
-\ asserted once on a public and once on a private in TFAM-SEAL-CASES below, not
-\ twenty times here. Twenty children for one rule is cost without evidence.
+\ The tick leg splits by owner. `tfam` is one of the seven reserved
+\ system-package names in habu2.f KWDATA:RESTAB-BUF, so C-QUALIFY-SEAL-GUARD
+\ refuses `' TFAM:<anything>` with ENGINE-ERROR:SEAL-PACKAGE (rc 84) before any
+\ lookup, privates included. SCHEMA-REG is not reserved: its stripped records
+\ make `' NAME` E-UNDEFINED, as C-TICK answers any missing name. The TFAM answer
+\ is one guard over one name table, so TFAM-SEAL-CASES asserts it once on a
+\ public and once on a private.
 : TF-CELL-PUB ( ptr u8 n -- )    s" TFAM:" 2swap CELL-PUB ;
 : TF-CELL-PRIV ( ptr u8 n -- )   s" TFAM:" 2swap CELL-PRIV ;
 
@@ -787,13 +746,11 @@ create QNAME QNAME-CAP allot
    s" SCH-ROOT-BOOT schema-root pool is private on both spellings" T-LABEL  s" SCH-ROOT-BOOT" SCH-CELL-PRIV
    s" SCH-ROOT-P schema-root base is private on both spellings" T-LABEL     s" SCH-ROOT-P" SCH-CELL-PRIV ;
 
-\ --- product-field registry write-protection (dot habu-protect-type-field-04d91409,
-\ Layer 1). A din=0 registry control cell (variable/create) used to stay executable
-\ at top level because the internal-word pass exempts data records; REG-PROTECT +
-\ IMK-SEAL-REGISTRY marked the PF cells DNAME-INT, and capture removes the
-\ unrooted qualified records as well as the bare spelling. The confirmed exploit
-\ `99 PF-COMMIT-N !` is E-UNDEFINED on both spellings. Both are asserted on
-\ --load and stdin, because the cold-prefix paths are separate. ----
+\ --- product-field registry write-protection. REG-PROTECT + IMK-SEAL-REGISTRY
+\ mark the PF control cells DNAME-INT (the internal-word pass exempts din=0 data
+\ records), and capture removes the unrooted qualified records and the bare
+\ spelling. The exploit `99 PF-COMMIT-N !` is E-UNDEFINED on both spellings,
+\ asserted on --load and stdin because the cold-prefix paths are separate. ----
 : PF-EXPLOIT-FORGE$ ( -- ptr u8 n )   \ the confirmed exploit: a bare registry-cell write
    SB-RESET
    s" 99 PF-COMMIT-N !" SB-APPEND LF
@@ -836,15 +793,10 @@ create QNAME QNAME-CAP allot
    LAY-CASES
    SCH-CASES ;
 
-\ --- field-liveness internalization (dot habu-internalize-field-liveness).
-\ src/core/checker.f used to publish a global CT-LIVE? primitive-effect axiom
-\ solely so the field-schema validator (type-family.f PF-NODE-KIND?) could ask
-\ whether a SCHEMA-CON's concrete-type code is live. That axiom left the
-\ checker-internal concrete-type registry query top-level executable and callable
-\ from checked user code. The axiom is gone, so CT-LIVE? now carries DNAME-INT
-\ like its sibling CT-LINEAR? — a bare call fails closed on BOTH cold-prefix
-\ paths (--load file and piped stdin) while the compiled field-validation caller
-\ is unaffected. ----
+\ --- field-liveness internalization. CT-LIVE? has no axiom and carries
+\ DNAME-INT like its sibling CT-LINEAR?: a bare call fails closed on both
+\ cold-prefix paths (--load and piped stdin), while the compiled field-schema
+\ validator (type-family.f PF-NODE-KIND?) still calls it. ----
 : CTLIVE-CASES ( -- )
    s" CT-LIVE? field-liveness query fails closed on --load" T-LABEL
    s" CT-LIVE?" TOKEN$ RUN-LOAD
@@ -853,29 +805,18 @@ create QNAME QNAME-CAP allot
    s" CT-LIVE?" TOKEN$ RUN-STDIN
    s" CT-LIVE?" ASSERT-INTERNAL ;
 
-\ --- the sealed schema registry (dot habu-seal-type-schema-c65f76cc). This
-\ group proves the package-public/private answer for a file that BECAME a package:
-\ src/core/type-schema.f keeps its schema implementation in SCHEMA-REG;
-\ private storage and rewind operations have no external spelling.
-\
-\ Before the seal, `SCHEMA-A@` was a global the marking pass reached. The bare
-\ and qualified assertions now pin removal of its unrooted dictionary name.
-\
-\ THE PRIVATE LEG IS THE PRODUCT CLAIM. SCH-RBF-P is the schema rollback-frame
-\ arena base. It is a `variable` — a data record, which the marking pass exempts
-\ by design — with no REG-PROTECT row and no reference outside its own file, and
-\ before the seal an ordinary `--load` program could write it: `0 SCH-RBF-P !`
-\ followed by any SUMTYPE declaration took the engine down with SIGSEGV (rc 134),
-\ the c5be6634 crash class reached through a name rather than a stack. Sealing is
-\ what closes it, because a package private has no top-level spelling on any of
-\ the three routes — bare, qualified, or through a `using`.
-\
-\ REOPENING IS NO ROUTE EITHER. `package SCHEMA-REG` in user source would put
-\ the private wordlist back on the bare chain, but the native build seals every
-\ package its capture ships (src/core/internal-mark.f SEAL-PACKAGES), so on this
-\ engine the reopen exits ENGINE-ERROR:SEAL-PACKAGE (84) first (habu2.f
-\ C-PACKAGE-SEAL-GUARD; test/package-seal.f pins it). No case here asserts a
-\ crash as expected behaviour. ----
+\ --- the sealed schema registry: src/core/type-schema.f keeps its schema
+\ implementation in package SCHEMA-REG; private storage and rewind operations
+\ have no external spelling, and the bare and qualified SCHEMA-A@ assertions pin
+\ removal of its unrooted name. The private leg is the product claim: SCH-RBF-P,
+\ the schema rollback-frame arena base, is a `variable` (a data record the
+\ marking pass exempts) with no REG-PROTECT row; written through a top-level
+\ name, `0 SCH-RBF-P !` and any SUMTYPE declaration crash with SIGSEGV (rc 134).
+\ A package private has no top-level spelling: bare, qualified or through
+\ `using`. Reopening is no route either: the native build seals every package
+\ its capture ships (src/core/internal-mark.f SEAL-PACKAGES), so
+\ `package SCHEMA-REG` exits ENGINE-ERROR:SEAL-PACKAGE (84) first (habu2.f
+\ C-PACKAGE-SEAL-GUARD; test/package-seal.f). ----
 
 : SEAL-BARE-FORGE$ ( -- ptr u8 n )   \ the pre-seal crash program, verbatim
    SB-RESET
@@ -951,29 +892,21 @@ create QNAME QNAME-CAP allot
    SEAL-BARE-FORGE$ RUN-LOAD
    s" E-UNDEFINED: SCH-RBF-P" ASSERT-DIAG ;
 
-\ --- the sealed family registry (dot habu-tfam-2b-sealed-1b77662c). Same three-way
-\ answer as the schema seal above, for a file that defined 572 globals and now
-\ defines 221 publics and 345 privates under `package TFAM` with nothing renamed.
-\
-\ TWO REGRESSIONS ARE THE PRODUCT CLAIM, and both were measured on master before
-\ the seal, through `bin/hb --load`:
-\   `0 TF-RBF-P !` then a SUMTYPE declaration exited 134 with a SIGSEGV register
-\   dump — the rollback-frame arena base is a `variable`, which the marking pass
-\   exempts by design, and it carried no REG-PROTECT row. It is the exact sibling
-\   of SCH-RBF-P and it is private now, so the program has no name to write.
-\   `99999 SVX-HI !` then a REJECTED declaration exited 76 `tfam: ctor index
-\   retired after its rows went`, turning a clean catchable duplicate-family reject
-\   (rc 67) into an engine die. SVX-HI has two readers outside the file, so it is
-\   public and carries the REG-PROTECT its siblings already had; TF-RBF-DEPTH (dot
-\   habu-tf-rbf-depth-614c88e0) is the other cell that gained one.
-\
-\ FIVE NAMES STAY GLOBAL AND ARE PINNED HERE, because the ENGINE resolves them by
-\ bare spelling and no package spelling can reach that lookup: TFAM-NAME$,
-\ TFL-CON-FAM?, TFL-CVAR? and TFL-MATCH-FAM? are read by habu2.f C-FIND-GLOBAL for
-\ `construct`/`match`/`;match` (and mirrored byte for byte in bootstrap/cg/forth.fs),
-\ while TFAM-CTOR-WORD? is named by an AOT-captured engine call site
-\ that the boot seed re-resolves. The negative leg below is what keeps that surface
-\ from growing: an ordinary public must NOT answer bare. ----
+\ --- the sealed family registry: type-family.f's names live under
+\ `package TFAM`, the same three-way answer as the schema seal above. Two
+\ programs are the product claim, each measured before the seal through
+\ `bin/hb --load`: `0 TF-RBF-P !` then a SUMTYPE declaration exited 134 with
+\ SIGSEGV (TF-RBF-P, the rollback-frame arena base, is a `variable` with no
+\ REG-PROTECT row, and is private); `99999 SVX-HI !` then a rejected
+\ declaration exited 76 `tfam: ctor index retired after its rows went` where a
+\ catchable duplicate-family reject (rc 67) belongs (SVX-HI has two readers
+\ outside the file, so it is public and REG-PROTECTed, as is TF-RBF-DEPTH).
+\ Five names stay global because the engine resolves them by bare spelling:
+\ TFAM-NAME$, TFL-CON-FAM?, TFL-CVAR? and TFL-MATCH-FAM? are read by habu2.f
+\ C-FIND-GLOBAL for `construct`/`match`/`;match` (mirrored in
+\ bootstrap/cg/forth.fs), and TFAM-CTOR-WORD? is named by an AOT-captured engine
+\ call site the boot seed re-resolves. The negative leg keeps that surface from
+\ growing: an ordinary public must not answer bare. ----
 
 : TSEAL-RBF-FORGE$ ( -- ptr u8 n )    \ the pre-seal SIGSEGV program, verbatim
    SB-RESET
@@ -1006,7 +939,7 @@ create QNAME QNAME-CAP allot
    s" TFAM:TFAM-N@ drop TFAM:SUMV-N@ drop" SB-APPEND LF
    SB$ ;
 
-: TSEAL-PROTECT-FORGE$ ( -- ptr u8 n ) \ the cell dot 614c88e0 named, now REG-PROTECTed
+: TSEAL-PROTECT-FORGE$ ( -- ptr u8 n ) \ TF-RBF-DEPTH, REG-PROTECTed
    SB-RESET
    s" 5 TFAM:TF-RBF-DEPTH !" SB-APPEND LF
    SB$ ;
@@ -1081,28 +1014,17 @@ create QNAME QNAME-CAP allot
    s" TFAM-SLOTS@" TOKEN$ RUN-SUBJECT
    s" E-UNDEFINED: TFAM-SLOTS@" ASSERT-DIAG ;
 
-\ --- the engine's own build chain (dot habu-give-the-build-4b825045). Three
-\ sites in it used to name a word this pass marks DNAME-INT - two through a
-\ TRUSTED: body, one through an XREF-FIND on the spelling - which keeps the name
-\ alive in a shipped image for one caller and states nothing about the word. A
-\ product image that keeps only the names the checker knows therefore could not
-\ build the next generation (`ncomp: cannot compile REG-INCOMING?`, rc 67).
-\
-\ THE THREE ANSWERS ARE NOT THE SAME ANSWER, and the point of these cases is
-\ which one each site got. Two callees the build chain really must reach carry a
-\ declared effect now, so their callers are ordinary checked Habu and the pass
-\ leaves the name callable. The third had no consumer at all - hide.f's
-\ signature-store reset was never called by anything - so `USIGS` keeps the seal
-\ and the uncalled words are gone instead.
-\
-\ AND THEIR NEIGHBOURS STAYED SEALED, which is the half a row could quietly take
-\ away: CHECKER-BOUND:MARK is what TAKES the core-prefix boundary and only
-\ src/core/lower-cert-seal.f may do that, CURSORS (in NEG-BARE above) is the
-\ number tools/build-fixpoint.f deliberately cannot hold beside the mark's own
-\ copy, and REWIND is guarded by its own body. Running REWIND in a booted engine
-\ discards the checker's symbols above the prefix, so the case below pins the
-\ outcome that makes the row safe to have: the next reference is refused, not
-\ mis-certified.
+\ --- the engine's own build chain. A shipped image keeps only the names the
+\ checker knows, so a build-chain site naming a DNAME-INT word cannot build the
+\ next generation (`ncomp: cannot compile <name>`, rc 67). Two callees the
+\ chain must reach carry a declared effect, so their callers are ordinary
+\ checked Habu; `USIGS` keeps the seal. Their neighbours stay sealed:
+\ CHECKER-BOUND:MARK takes the core-prefix boundary and only
+\ src/core/lower-cert-seal.f may do that, CURSORS
+\ (in NEG-BARE above) is the number tools/build-fixpoint.f cannot hold beside
+\ the mark's own copy, and REWIND is guarded by its own body. REWIND in a booted
+\ engine discards the checker's symbols above the prefix, so the case pins that
+\ the next reference is refused, not mis-certified.
 
 : BCC-REWIND-FORGE$ ( -- ptr u8 n )   \ a rewound boundary refuses, it does not lie
    SB-RESET
@@ -1124,30 +1046,18 @@ create QNAME QNAME-CAP allot
    s" USIGS still rejects execution (RECOVERY-RESET below)" T-LABEL
    s" USIGS" NEG ;
 
-\ --- the recovery launcher's prologue (dot habu-route-the-recovery-4ef43bd9).
-\ tools/bootstrap.sh feeds ONE boot-hide prologue to the gforth stage0 and to
-\ every sealed native stage after it, and its checker half used to be a hand
-\ rewind: `0 UEND !` and the store's terminator, written from a TRUSTED: body
-\ spelling `USIGS`. That is a fourth instance of the shape above - the seal
-\ marks `USIGS` DNAME-INT; a stage stripped to the names the checker knows
-\ could not compile the prelude the whole recovery starts from.
-\
-\ IT GOT A ROW OF ITS OWN, unlike the third site, because the reset really is
-\ distinct: CHECKER-BOUND:REWIND returns to the prefix's END and this caller
-\ reloads the prefix from its FIRST record, so it needs the store at zero, and
-\ rewinding the boundary there instead builds a stage-1 engine that cannot boot
-\ (measured: silent rc 78). The row is CHECKER-BOUND:EMPTY-STORE, a second
-\ public on the same package.
-\
-\ WHAT THE ROW IS NOT is the seam underneath it. USIGS-RESTORE-END takes the new
-\ end, and an axiom'd name is tickable whatever PRIM-TRUSTED-ONLY! says about
-\ the call site, so declaring THAT would hand every program a store write at an
-\ offset of its choosing - measured on a tree that tried it: `'
-\ USIGS-RESTORE-END` executed with $7FFFFFFF crashed with SIGSEGV. So the last
-\ case below keeps that seam sealed, beside the store base and the boundary's
-\ MARK one section above. The declared word takes no argument and its
-\ consequence is the one REWIND's case pins there - the next reference is
-\ refused, not mis-certified - which is what makes a tickable row safe to have.
+\ --- the recovery launcher's prologue. tools/bootstrap.sh feeds one boot-hide
+\ prologue to the gforth stage0 and every sealed native stage after it; its
+\ checker reset is the row CHECKER-BOUND:EMPTY-STORE, since `USIGS` is
+\ DNAME-INT. CHECKER-BOUND:REWIND returns to the prefix's end, but this caller
+\ reloads the prefix from its first record and needs the store at zero:
+\ rewinding the boundary there builds a stage-1 engine that cannot boot
+\ (measured: silent rc 78). The seam under it stays sealed: USIGS-RESTORE-END
+\ takes the new end and an axiom'd name is tickable whatever PRIM-TRUSTED-ONLY!
+\ says, so declaring it would hand every program a store write at an offset of
+\ its choosing (`' USIGS-RESTORE-END` executed with $7FFFFFFF crashed with
+\ SIGSEGV). EMPTY-STORE takes no argument and its consequence is REWIND's: the
+\ next reference is refused, not mis-certified.
 
 : RRR-EMPTY$ ( -- ptr u8 n )      \ the prologue's call, and what it costs
    SB-RESET
@@ -1171,41 +1081,22 @@ create QNAME QNAME-CAP allot
    s" the internal restore seam refuses a caller-selected offset" T-LABEL
    s" USIGS-RESTORE-END" NEG ;
 
-\ --- the sealed declaration grammar (dot habu-tfam-2b-sealed-1b77662c, third of
-\ three). src/core/sumtype.f defined 316 globals and now defines 45 publics and
-\ 271 privates under `package TYPE-DECL`, with SEVEN names left global.
-\
-\ THIS OWNER IS NOT A RESERVED SYSTEM-PACKAGE NAME, and that is the difference
-\ from TFAM-SEAL-CASES above rather than an omission here. `tfam` is in habu2.f
-\ KWDATA:RESTAB-BUF, so C-QUALIFY-SEAL-GUARD refuses `' TFAM:<anything>` with
-\ rc 84 before any lookup; `type-decl` is not in that table, so this package
-\ answers the SCHEMA-REG way: an unrooted public is E-UNDEFINED in the product,
-\ a private has no qualified spelling, and tick of a missing name is E-UNDEFINED.
-\ Reading rc 84 here would mean somebody added
-\ the name to RESTAB, which is a different design and has to be argued for.
-\
-\ ONE REGRESSION IS THE PRODUCT CLAIM, measured on master before the seal through
-\ `bin/hb --load`: `0 TDPLAN-P !` followed by any SUMTYPE declaration exited 134
-\ with a SIGSEGV register dump. TDPLAN-P is the generated-declaration plan arena
-\ base, a PTR-VARIABLE, which the marking pass exempts by design, and it carried
-\ no REG-PROTECT row -- the exact SCH-RBF-P / TF-RBF-P sibling, and one of six
-\ such cells in this file (TDPLAN-P, TDPLAN-ROW-P, TDPV-CNT-P, TDPV-CELLS-P,
-\ TDPV-OFF-P, TDPV-NODE-P). All six are private now, so the program has no name
-\ to write on any route.
-\
-\ THE SEVEN GLOBALS ARE THE DECLARATION GRAMMAR and are pinned here so the
-\ surface cannot grow: NEWTYPE, SUMTYPE and PRODUCT are the language's own block
-\ openers -- a user declaration must register from genuine top level, which is
-\ test/type-decl-suite.f's whole premise -- and CHECKER-DEFFAMILY, CHECKER-DEFSUM,
-\ CHECKER-DEFSUM-NOEND and CHECKER-DEFPRODUCT are the same grammar reached with a
-\ body text instead of the input stream. The negative leg is what bounds it: the
-\ package public each one calls must NOT answer bare.
-\
-\ REOPENING IS NO ROUTE EITHER, as in the schema block above: `package
-\ TYPE-DECL / private / 0 TDPLAN-P !` exits ENGINE-ERROR:SEAL-PACKAGE (84) at
-\ `package TYPE-DECL`, because the build seals every baked package whether or not
-\ its name is in KWDATA:RESTAB-BUF. No case here asserts a crash as expected
-\ behaviour. ----
+\ --- the sealed declaration grammar: src/core/sumtype.f defines its names under
+\ `package TYPE-DECL` with seven left global. `type-decl` is not in habu2.f
+\ KWDATA:RESTAB-BUF, so this package answers the SCHEMA-REG way, not TFAM's
+\ rc 84: an unrooted public is E-UNDEFINED in the product, a private has no
+\ qualified spelling, and tick of a missing name is E-UNDEFINED.
+\ TDPLAN-P, the declaration plan arena base, is a PTR-VARIABLE with no
+\ REG-PROTECT row: a SUMTYPE declaration after `0 TDPLAN-P !` dies of SIGSEGV
+\ (exit 134), so it and the five cells like it (TDPLAN-ROW-P, TDPV-CNT-P,
+\ TDPV-CELLS-P, TDPV-OFF-P, TDPV-NODE-P) are private.
+\ The seven globals are the declaration grammar, pinned so the surface cannot
+\ grow: the block openers NEWTYPE, SUMTYPE and PRODUCT (a user declaration
+\ registers from genuine top level) and CHECKER-DEFFAMILY, CHECKER-DEFSUM,
+\ CHECKER-DEFSUM-NOEND and CHECKER-DEFPRODUCT, the same grammar over a body
+\ text. The package public each one calls must not answer bare. Reopening exits
+\ ENGINE-ERROR:SEAL-PACKAGE (84) at `package TYPE-DECL`: the build seals every
+\ baked package, reserved or not.
 
 : DSEAL-PLAN-FORGE$ ( -- ptr u8 n )   \ the pre-seal SIGSEGV program, verbatim
    SB-RESET
@@ -1308,14 +1199,14 @@ create QNAME QNAME-CAP allot
    s" TDECL-RUN" TOKEN$ RUN-SUBJECT
    s" E-UNDEFINED: TDECL-RUN" ASSERT-DIAG ;
 
-\ --- the checker's authority gate (dot habu-visibility-discharge-548-fab55650).
-\ A word compiled at tier 1 with the check hook off keeps the row the native
-\ publication records for it: its ABI and no source authority (at tier 0 no row
-\ is recorded and its caller is E-UNDEFINED). An unsealed checker binds a
-\ checked call to such a row, and the seal pass closes the gate
-\ (src/core/internal-mark.f IMK-SEAL calls CHECKER-EFFECT-AUTHORITY:SEAL), so on
-\ the product the call is refused by name. An image whose seal skipped that call
-\ certifies the caller, as the whitebox engine does. ----
+\ --- the checker's authority gate. A word compiled at tier 1 with the check
+\ hook off keeps the row the native publication records for it: its ABI and no
+\ source authority (at tier 0 no row is recorded and its caller is
+\ E-UNDEFINED). An unsealed checker binds a checked call to such a row, and the
+\ seal pass closes the gate (src/core/internal-mark.f IMK-SEAL calls
+\ CHECKER-EFFECT-AUTHORITY:SEAL), so on the product the call is refused by name.
+\ An image whose seal skipped that call certifies the caller, as the whitebox
+\ engine does. ----
 
 : GATE-RAW ( -- )
    SB-RESET
@@ -1420,8 +1311,7 @@ create QNAME QNAME-CAP allot
    s" checked quotations and ordinary ticks remain available" T-LABEL
    GATE-VALID-TICKS$ RUN-SUBJECT ASSERT-OK ;
 
-\ --- direct/subject parity. The PARITY- group used to be its own package; the
-\ names keep that marker because they are about the direct-versus-fork
+\ --- direct/subject parity: the PARITY- names are about the direct-versus-fork
 \ comparison, not about running a child in general. ----
 
 : PARITY-RESULT ( -- ptr u8 n ptr u8 n n )

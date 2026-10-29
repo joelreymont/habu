@@ -17,19 +17,15 @@ public
 : TINY ( n -- n )
    1 + ;
 
-\ A larger callee used by the tail-call cases below.
 : BIG ( n -- n )
    dup 3 * over 5 xor + swap 7 and + dup 11 * + 13 xor ;
 
-\ A leaf: no call of any kind.
 : PLAIN ( n -- n )
    dup * 3 + ;
 
-\ A caller with two real call sites.
 : CALLS-TWICE ( n -- n )
    TINY TINY 1 + ;
 
-\ A caller with work after its call.
 : CALLS-THEN ( n -- n )
    BIG 1 + ;
 
@@ -62,11 +58,10 @@ private
    word NBR:B? if at word NBR:B-TARGET exit then
    -1 ;
 
-\ A back edge is a branch to an earlier byte of the same body, of EITHER kind.
-\ The lowering decides which: a counted loop leaves through a forward
-\ conditional and returns on one unconditional `b`, which is the shape
-\ TAIL-BRANCH? is written against (it asks where the last instruction goes
-\ rather than what it is, precisely because a back edge is a `b` too).
+\ A back edge is a branch to an earlier byte of the same body, of either kind: a
+\ counted loop leaves through a forward conditional and returns on one
+\ unconditional `b`. TAIL-BRANCH? asks where the last instruction goes rather
+\ than what it is because a back edge is a `b` too.
 : BACKEDGE? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    a u INSNS 0 ?do
@@ -130,12 +125,11 @@ public
    s" NTP-FIXTURE:OUTSIDE" TRAILER-RET? TTRUE
    s" NTP-FIXTURE:OUTSIDE" CALLS 1 T=
 
-   \ ---- and how many bytes of code each of them really is --------------------
-   \ The recorded length excludes the trailing return, so for everything that
-   \ returns it is the routine less that instruction, and for the routine that
-   \ leaves by a branch it is the whole emission. CODE-BYTES has to put the four
-   \ bytes back in the first case and NOT in the second, and the fixtures above
-   \ are already the two shapes plus the one built to fool the distinction.
+   \ The recorded length excludes the trailing return: for a returning routine
+   \ it is the routine less that instruction, for one that leaves by a branch
+   \ the whole emission. CODE-BYTES puts the four bytes back in the first case
+   \ only; the fixtures above are the two shapes plus one built to fool the
+   \ distinction.
    s" a returning routine is its recorded body and the return after it" T-LABEL
    s" NTP-FIXTURE:PLAIN" CODE-BYTES
       s" NTP-FIXTURE:PLAIN" INSNS 1+ NBR:INSN-BYTES * T=

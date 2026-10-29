@@ -1,43 +1,6 @@
 \ certify-does-definer.f - certification knows what a `does>` definer publishes.
 \ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f \
 \   src/habu/verify-source.f test/certify-does-definer.f
-\
-\ A `create ... does>` definition is a DEFINER: every word it creates carries
-\ the clause's declared effect, and the engine publishes exactly that row at
-\ creation time (src/habu/habu2.f DOESPATCH:EMIT hands the parsed clause
-\ signature to LASTC-TRUST:PUBLISH, which registers it through the checker's
-\ `trust-raw`). The source pre-verifier never executes a definer, so it has to
-\ learn the same row from the text, and until it did, a created word was
-\ E-UNDEFINED at its first typed use - measured: `bin/hb tools/check.f
-\ src/lib/queue.f` refused NG-BUFFER (src/lib/type/deftype.f:60).
-\
-\ Sections 1-3 measure the learned row through the pre-pass; section 4 runs the
-\ same definer for real, so the row the engine publishes and the row the scanner
-\ learns are pinned against each other rather than against one authority. Section
-\ 8 asks both of a `TRUSTED:` definer, whose body is asserted but whose clause is
-\ still the declaration both paths record.
-\
-\ Sections 9-12 are the definers no clause describes: one that writes its word
-\ as text and loads it through INCLUDE-EVALUATE (src/lib/task.f +USER), and
-\ src/lib/ffi-abi.f FUNCTION:, whose word comes from its declaration group.
-\ A `generates: D ( effect )` row states what D makes.
-\ Section 9 reads a row from source and from a resident package and pins it
-\ against the word the engine really generates; section 10 reads FUNCTION:'s
-\ group; section 11 holds a row to the checker scope that recorded it; section
-\ 12 is the engine refusing a row. A refused row prints its E-GENERATES-ROW line
-\ on stderr before it throws, as section 5's refused clause prints its own.
-\
-\ WHAT IS DELIBERATELY NOT LEARNED. A definer call the body reaches only
-\ conditionally, twice, or inside a quotation says nothing about what the
-\ enclosing word creates, so nothing is recorded and the created word is never
-\ accepted. Those negatives are section 3 and the last three rows of section 5,
-\ and they are what keeps the wrapper rule from being a prefix match on "calls
-\ something that creates". Such a word still calls `create`, so a top-level
-\ statement that runs it marks the wordlist it runs in: the word it creates, and
-\ every later name nothing in that wordlist resolves, is left to the run
-\ (DEFERRED, src/core/checker.f UNSEEN-COVERS?) rather than UNRESOLVED. The
-\ run at the end takes the latch and TRUSTED sections, which pin names no
-\ definer created as UNRESOLVED, before section 3 marks this file's wordlist.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -46,9 +9,9 @@ require src/lib/codegen.f
 require src/lib/ffi-abi.f
 require src/habu/verify-source.f
 
-\ The resident package definer of section 5, compiled by the ENGINE: its two
-\ spellings - qualified, and bare under `using` - are what a source can name it
-\ by, and both have to reach the one row.
+\ The resident package definer of section 5, compiled by the engine: its two
+\ spellings, qualified and bare under `using`, are what a source can name it by,
+\ and both reach one row.
 package CDD-RESP
 public
 : CDD-RP-D ( n -- ) create , does> ( -- ptr n ) ;
@@ -82,7 +45,7 @@ public
    TEXT CODEGEN:CONTENTS INCLUDE-EVALUATE ;
 ;package
 
-\ The same definer compiled by the ENGINE with its row, private definer and
+\ The same definer compiled by the engine with its row, private definer and
 \ public wrapper as section 9's sources write them: section 9 reads a source
 \ that only calls it, and runs it for real.
 package CDD-GQ4
@@ -107,7 +70,7 @@ package CERTIFY-DOES-DEFINER
 \ file's scanner never reads their text, so what they create is known only
 \ through the store the checker wrote when it certified their clause.
 : CDD-RES-D ( n -- ) create , does> ( -- ptr n ) ;
-: CDD-RES-W ( -- ) 3 CDD-RES-D ;          \ a RESIDENT wrapper: known through the checker's walk
+: CDD-RES-W ( -- ) 3 CDD-RES-D ;          \ a resident wrapper: known through the checker's walk
 : CDD-RES-P ( n -- n ) 1 + ;              \ the plain definition right after a definer
 
 \ The resident twins of C10-C12: the walk counts definer calls and notes any
@@ -118,7 +81,7 @@ package CERTIFY-DOES-DEFINER
 : CDD-DROP-Q ( [ -- ] -- ) drop ;
 : CDD-RES-QW ( n -- ) drop [: 5 CDD-RES-D ;] CDD-DROP-Q ;
 
-\ A resident definer whose CLAUSE calls a definer: its own clause is what it
+\ A resident definer whose clause calls a definer: its own clause is what it
 \ creates, and the clause walk leaves nothing for the next record.
 : CDD-RES-CD ( n -- ) create , does> ( -- ) drop 3 CDD-RES-D ;
 
@@ -136,6 +99,9 @@ TRUSTED: CDD-TRES-D ( n -- ) create , does> ( -- ptr n ) ;
 1 constant UNRESOLVED
 2 constant DEFERRED            \ a mark leaves the name to the run
 
+\ The engine publishes a does> definer's clause row at creation
+\ (src/habu/habu2.f DOESPATCH:EMIT); the pre-verifier, which runs no definer,
+\ learns it from the text.
 \ Two authorities, asked apart. A row the scanner learned is a fact of the
 \ certify path: the scan compiles nothing, so the word it names binds through
 \ the checker overlay only while the package-neutral scope holding the scan and
@@ -149,7 +115,7 @@ TRUSTED: CDD-TRES-D ( n -- ) create , does> ( -- ptr n ) ;
 : CDD-LIVE-VERDICT ( ptr u8 n -- n )
    CHECK-QUIET-CANDIDATE! ;
 
-\ ---- 1. the definer the scanner read, and the word it creates ---------------
+\ Section 1: the definer the scanner read and the word it creates.
 : CDD-SECTION-DEFINER ( -- )
    s\" : CDD-D ( n -- ) create , does> ( -- ptr n ) ;\n8 CDD-D CDD-ONE\n"
       VERIFY:SOURCE-BUF-IN-SCOPE
@@ -168,7 +134,7 @@ TRUSTED: CDD-TRES-D ( n -- ) create , does> ( -- ptr n ) ;
    s" a mixed-case `DoEs>` opens the clause, as the engine reads it" T-LABEL
    s" C1U ( -- ptr n ) CDD-ONE-U" CDD-VERDICT ACCEPTED T= ;
 
-\ ---- 2. a package definer, its straight-line wrapper, and both spellings ----
+\ Section 2: a package definer, its straight-line wrapper and both spellings.
 \ `: BUFFER ( n -- ) E-CG-CAP E-CG-VALUE BUFFER-E ;` (src/lib/codegen.f) is the
 \ production shape of the wrapper: a body whose tokens hold exactly one definer
 \ call and no control flow creates whatever that definer creates.
@@ -188,7 +154,15 @@ TRUSTED: CDD-TRES-D ( n -- ) create , does> ( -- ptr n ) ;
    s" the wrapper's created word is refused against a bare cell" T-LABEL
    s" C9 ( -- n ) CDD-WRAP" CDD-VERDICT REFUSED T= ;
 
-\ ---- 3. what a body has to be before it counts as a wrapper ----------------
+\ Section 3: what a body has to be before it counts as a wrapper. A definer call
+\ reached only conditionally, twice or inside a quotation says nothing about
+\ what the word creates, so nothing is recorded (here and the last three rows of
+\ section 5): the wrapper rule is not a prefix match on "calls something that
+\ creates". Such a word still calls `create`, so a top-level statement running
+\ it marks its wordlist: a later name nothing there resolves is left to the run
+\ (DEFERRED, src/core/checker.f UNSEEN-COVERS?), not UNRESOLVED. The run takes
+\ the latch and TRUSTED sections, which pin names as UNRESOLVED, before this one
+\ marks this file's wordlist.
 : CDD-SECTION-NOT-A-WRAPPER ( -- )
    s\" : CDD-CD ( n -- ) create , does> ( -- ptr n ) ;\n: CDD-IFW ( n -- ) dup 0= if drop 1 then CDD-CD ;\n2 CDD-IFW CDD-COND\n"
       VERIFY:SOURCE-BUF-IN-SCOPE
@@ -207,7 +181,7 @@ TRUSTED: CDD-TRES-D ( n -- ) create , does> ( -- ptr n ) ;
    s" a definer inside a quotation records nothing" T-LABEL
    s" C12 ( -- ptr n ) CDD-QUOT" CDD-VERDICT DEFERRED T= ;
 
-\ ---- 4. the learned row is the row the engine publishes ---------------------
+\ Section 4: the learned row is the row the engine publishes.
 \ The same definition, compiled and run by the engine: CDD-LIVE-ONE's effect
 \ here comes from DOESPATCH:EMIT, not from the scanner, and the two agree on
 \ both the acceptance and the refusal.
@@ -224,21 +198,17 @@ TRUSTED: CDD-TRES-D ( n -- ) create , does> ( -- ptr n ) ;
    s" the created word holds what the definer stored" T-LABEL
    CDD-LIVE-READ 8 T= ;
 
-\ ---- 5. a definer the scanner never read ------------------------------------
-\ CDD-RES-D and CDD-RESP:CDD-RP-D above were compiled by the engine in this
-\ process: no text of theirs ever reached the scanner, and before the checker
-\ kept what a certified clause creates, a source using one of them left its
-\ created word E-UNDEFINED at the first typed use - measured, `bin/hb
-\ tools/check.f src/lib/queue.f` refused NG-BUFFER, created at src/lib/type/deftype.f:61
-\ by the resident CODEGEN:BUFFER-E.
-\
-\ THE LAST ROWS ARE THE LATCH'S LIFETIME, and they are here because the store is
-\ written between two checker entry points rather than by one of them. The
-\ engine checks a clause and then the definer's own body; the scanner checks the
-\ body and then the clause. Either order must leave a plain definition with
-\ nothing, and a refused clause must leave nothing at all. The refusal row makes
-\ the engine print its own `does> at <file>:1` line on stderr before it throws:
-\ that line IS the refusal being measured, not a test failure.
+\ Section 5: a definer the scanner never read. CDD-RES-D and CDD-RESP:CDD-RP-D
+\ were compiled by the engine here; what they create is known only from the
+\ store the checker wrote when it certified their clause. Without that store,
+\ `bin/hb tools/check.f src/lib/queue.f` refused NG-BUFFER, created in
+\ src/lib/type/deftype.f by the resident CODEGEN:BUFFER-E, as E-UNDEFINED. The
+\ last rows are the latch's lifetime: the store is written between two checker
+\ entry points. The engine checks a clause and then the definer's body; the
+\ scanner checks the body and then the clause. Either order must leave a plain
+\ definition with nothing, and a refused clause nothing at all. The refusal
+\ row's `does> at <file>:1` line on stderr is the refusal being measured, not a
+\ test failure.
 : CDD-SECTION-RESIDENT ( -- )
    s\" 8 CDD-RES-D CDD-RES-ONE\n" VERIFY:SOURCE-BUF-IN-SCOPE
    s" a resident definer's created word certifies as the clause effect" T-LABEL
@@ -280,8 +250,8 @@ TRUSTED: CDD-TRES-D ( n -- ) create , does> ( -- ptr n ) ;
    s" source order: the definition after a definer creates nothing" T-LABEL
    s" C22 ( -- ptr n ) CDD-SO-MADE" CDD-VERDICT UNRESOLVED T= ;
 
-\ The refused clause and the definition after it are live definitions, so they
-\ run between two scopes.
+\ Section 6: the refused clause and the definition after it are live
+\ definitions, so they run between two scopes.
 : CDD-SECTION-LATCH-LIVE ( -- )
    s" a clause its body contradicts is refused" T-LABEL
    \ Tier 0 refuses the clause with the checker's rc 70; the native compiler,
@@ -295,11 +265,11 @@ TRUSTED: CDD-TRES-D ( n -- ) create , does> ( -- ptr n ) ;
    s" and leaves nothing for the next definition to inherit" T-LABEL
    s" C23 ( -- ptr n ) CDD-AFTER-MADE" CDD-VERDICT UNRESOLVED T= ;
 
-\ ---- 7. the wrapper latch's lifetime ----------------------------------------
-\ The wrapper fact is learned by the body WALK, and three walks are not a
-\ definition's own body: a candidate, a `does>` clause, and the definer body
-\ whose own clause already says what it creates. Each row below is a record
-\ published right after one of those walks, and each must be untouched by it.
+\ Section 7: the wrapper latch's lifetime. The wrapper fact is learned by the
+\ body walk, and three walks are not a definition's own body: a candidate, a
+\ `does>` clause, and the definer body whose own clause already says what it
+\ creates. Each row below is a record published right after one of those walks,
+\ and each must be untouched by it.
 : CDD-SECTION-WRAP-LATCH ( -- )
    s" a candidate body may be a wrapper shape and still teach nothing" T-LABEL
    s" C28 ( n -- ) CDD-RES-D" CDD-LIVE-VERDICT ACCEPTED T=
@@ -316,7 +286,7 @@ TRUSTED: CDD-TRES-D ( n -- ) create , does> ( -- ptr n ) ;
    s" C32 ( -- ptr n ) CDD-CD-MADE" CDD-VERDICT REFUSED T=
    s" what that clause created is no definer either" T-LABEL
    s" C33 ( -- ptr n ) CDD-CD-X" CDD-VERDICT UNRESOLVED T=
-   \ The same clause in SOURCE order, which is the order that could inherit: the
+   \ The same clause in source order, which is the order that could inherit: the
    \ pre-pass checks the definer's body first and the clause last, so the next
    \ record published is the created word's (verify-source CREATED-TRUST-NEXT?).
    s\" : CDD-SRC-CD ( n -- ) create , does> ( -- ) drop 3 CDD-RES-D ;\n5 CDD-SRC-CD CDD-SRC-MADE\nCDD-SRC-MADE CDD-SRC-X\n"
@@ -324,16 +294,14 @@ TRUSTED: CDD-TRES-D ( n -- ) create , does> ( -- ptr n ) ;
    s" a clause read from source arms nothing the created word takes" T-LABEL
    s" C34 ( -- ptr n ) CDD-SRC-X" CDD-VERDICT UNRESOLVED T= ;
 
-\ ---- 8. a TRUSTED definer, on both paths ------------------------------------
-\ `TRUSTED:` changes nothing about what a `does>` clause declares: the engine
-\ runs CHECK-DOES! at the `;` of a trusted definition too (habu2.f
-\ EM-COMPILE-PUBLISH-TRUSTED, ahead of DEF-TRUST:REGISTER), and the created word
-\ gets the clause's row at creation time. What used to be lost was the fact that
-\ the DEFINER creates it: the scanner skipped a trusted body blind, and the
-\ engine's latch was cleared unread at a trusted publication because such a
-\ definition has no body check to step it. Measured before the fix, `tools/check.f`
-\ on `TASK:MIN-STACK TASK:TASK T1  : F ( -- ptr n ) T1 ;` refused T1 as
-\ E-UNDEFINED with the require (read) and without it (resident).
+\ Section 8: a TRUSTED definer, on both paths. `TRUSTED:` changes nothing a
+\ `does>` clause declares: the engine runs CHECK-DOES! at a trusted definition's
+\ `;` too (habu2.f EM-COMPILE-PUBLISH-TRUSTED, ahead of DEF-TRUST:REGISTER). The
+\ fact that the definer creates the word holds on both paths: the scanner reads
+\ a trusted body, and the engine's latch survives a trusted publication, which
+\ has no body check to step it. Without that, `tools/check.f` on
+\ `TASK:MIN-STACK TASK:TASK T1  : F ( -- ptr n ) T1 ;` refused T1 as
+\ E-UNDEFINED, with the require (read) and without it (resident).
 : CDD-SECTION-TRUSTED ( -- )
    s\" TRUSTED: CDD-TD ( n -- ) create , does> ( -- ptr n ) ;\n5 CDD-TD CDD-TD-ONE\n"
       VERIFY:SOURCE-BUF-IN-SCOPE
@@ -394,7 +362,9 @@ TRUSTED: CDD-TRES-D ( n -- ) create , does> ( -- ptr n ) ;
    s" and leaves its clause for no later definition to inherit" T-LABEL
    s" C44A ( -- ptr n ) CDD-TAB-MADE" CDD-VERDICT UNRESOLVED T= ;
 
-\ ---- 9. a definer that writes its word as text ------------------------------
+\ Section 9: a definer that writes its word as text; a `generates: D ( effect )`
+\ row states what D makes. Section 10 reads FUNCTION:'s group, section 11 holds
+\ a row to the scope that recorded it, section 12 is the engine refusing a row.
 \ CDD-GEN:MAKE leaves nothing a scanner can read: its word exists only once the
 \ text it builds is evaluated, which the pre-pass never does. The row states the
 \ effect on the private definer, and the public wrapper inherits it as section
@@ -428,7 +398,7 @@ TRUSTED: CDD-TRES-D ( n -- ) create , does> ( -- ptr n ) ;
    s" and refuses the bare cell the row refuses" T-LABEL
    s" C52 ( -- n ) CDD-GD4-LIVE" CDD-VERDICT REFUSED T= ;
 
-\ ---- 10. FUNCTION: ------------------------------------------------------------
+\ Section 10: FUNCTION:.
 \ src/lib/ffi-abi.f FUNCTION: makes its word from the declaration group, so the
 \ pre-pass reads the group as the word's effect, with the one rewrite the
 \ declarer applies: an `i32` result is a cell. The live declaration is the pin.
@@ -444,23 +414,20 @@ FUNCTION: CDD-FN getpid ( -- i32 ) ;FUNCTION
    s" C55 ( -- n ) CDD-FN-READ" CDD-VERDICT ACCEPTED T=
    s" C56 ( -- ptr n ) CDD-FN-READ" CDD-VERDICT REFUSED T= ;
 
-\ ---- 11. a row lives as long as the scope that recorded it -------------------
-\ A row names its definer by the checker's symbol id, and a scope that pops
-\ hands its ids out again: a row that outlived its scope would make the next
-\ word given that id a definer (the stale pair), and a source read in two
-\ scopes would meet its own row in the second (the replay pair). Both pairs
-\ read in neutral scopes, as tools/check.f reads a source. A scope that
-\ FINALIZES keeps its ids and its rows with them, and a sibling scope popping
-\ afterwards must not take them back. Those three reads run in this package,
-\ in one neutral scope that reopens it (the run at the end): a scan's names
-\ bind through the checker overlay, so the kept scope's definer binds in the
-\ last read only while that scope is open. Each read runs in a
-\ scope of its own and answers its throw code; the stale pair's E-UNDEFINED
-\ line on stderr is the refusal being measured. The run below takes this
-\ section before section 9: its reads, in this file's own scope, are rendering statements, and
-\ the mark each leaves on the global wordlist would cover the stale pair's
-\ unresolved name for the rest of the process, leaving it to a run instead of
-\ refusing it (src/core/checker.f UNSEEN-COVERS?).
+\ Section 11: a row lives as long as the scope that recorded it. A row names its
+\ definer by the checker's symbol id, and a popped scope hands its ids out
+\ again: a row that outlived its scope would make the next word given that id a
+\ definer (the stale pair), and a source read in two scopes would meet its own
+\ row in the second (the replay pair). Both pairs read in neutral scopes, as
+\ tools/check.f reads a source. A scope that finalizes keeps its ids and rows,
+\ and a sibling scope popping afterwards must not take them back; those three
+\ reads run in one neutral scope reopening this package, since a scan's names
+\ bind through the checker overlay and the kept scope's definer binds only while
+\ that scope is open. Each read answers its throw code; the stale pair's
+\ E-UNDEFINED line on stderr is the refusal being measured. The run takes this
+\ section before section 9, whose reads in this file's scope are statements
+\ whose mark on the global wordlist would leave the stale pair's unresolved name
+\ to a run instead of refusing it (src/core/checker.f UNSEEN-COVERS?).
 TYPED-VARIABLE CDD-SRC-A ptr u8
 variable CDD-SRC-U
 
@@ -516,8 +483,9 @@ variable CDD-SRC-U
    s" through a sibling scope's pop" T-LABEL
    s\" 5 CDD-SK CDD-SKMADE\n: CDD-SKU ( -- ptr n ) CDD-SKMADE ;\n" CDD-OWN 0 T= ;
 
-\ ---- 12. the engine refuses a row it cannot keep ----------------------------
-\ The checker's own error constant, read at load time under a local name.
+\ Section 12: the engine refuses a row it cannot keep. A refused row prints its
+\ E-GENERATES-ROW line on stderr before it throws, as section 5's refused clause
+\ does. The checker's own error constant, read at load time under a local name.
 E-GENERATES-ROW constant E-GEN-ROW
 
 : CDD-SECTION-GENERATES-REFUSED ( -- )
@@ -531,7 +499,6 @@ E-GENERATES-ROW constant E-GEN-ROW
    s" an effect the checker cannot parse is refused" T-LABEL
    [: s\" : CDD-GI ( n -- ) CDD-GEN:MAKE ;\ngenerates: CDD-GI ( -- i32 )\n" evaluate-closed ;] E-GEN-ROW TTHROWSQ ;
 
-\ ---- the run ---------------------------------------------------------------
 \ Each scan and the probes that ask about it run in one package-neutral scope,
 \ which reopens this package because the scan texts name its private words;
 \ closing the scope drops what the scan published and puts this file's own

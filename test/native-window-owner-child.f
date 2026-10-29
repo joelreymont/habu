@@ -1,23 +1,15 @@
-\ native-window-owner-child.f - tools/native-build.f's window, reduced to the
-\ checker handover. RESET-ADDRESS-ROWS through LOGICAL-RESET are that tool's
-\ words, copied; LOAD-WINDOW is its LOAD-TARGET through src/core/cell-effects.f,
-\ with one fixture after the checked call-store handoff. Optional later script
-\ arguments load the fixture's dependencies through the retained continuation.
-\
-\ The verdict goes to stdout as `window: <code>` - 0 when the window accepted
-\ the fixture, the thrown code when it refused. Printing rather than exiting
-\ keeps a refusal distinguishable from an acceptance for the parent test. A
-\ deadline is no refusal: E-PROC-TIMEOUT exits PROC-TIMEOUT-RC instead, and the
-\ parent throws it again (src/lib/test/subject.f RC-TIMED-OUT).
-\
-\ src/lib/memory.f is required HERE and in no window prefix file, so through the
-\ checker handover NUM's families are host-only: the retained checker knows
-\ them and the window must not. A suite child that loads after the window's
-\ seal may require it (src/lib/test/subject.f).
+\ native-window-owner-child.f - tools/native-build-core.f's window, reduced to
+\ the checker handover: LOAD-WINDOW is its LOAD-TARGET through
+\ src/core/cell-effects.f. Later script arguments load the fixture's
+\ dependencies through the retained compiler.
 
 require src/lib/errors.f
 require src/core/prefix-boundary.f
 require src/lib/string.f
+\ src/lib/memory.f is required here and in no window prefix file, so NUM's
+\ families are host-only through the handover: the retained checker knows them
+\ and the window must not. A suite child loading after the window's seal may
+\ require it (src/lib/test/subject.f).
 require src/lib/memory.f
 require src/lib/process.f
 require src/habu/address-cells.f
@@ -39,23 +31,19 @@ variable ADDRESS-ABI
 \ The name is gone after the reset; the compiled call site is not.
 : PATH$ ( -- ptr u8 n ) PATH-BUF PATH-U @ ;
 
-\ --- copied from tools/native-build.f ---------------------------------------
+\ --- adapted from tools/native-build-core.f ---------------------------------
 
-\ Keep the host's actual engine declarations -- the cells below ITS heap floor,
-\ which the engine publishes at boot in BOOT-LAYOUT:HEAP-START-CELL -- and discard
-\ every declaration belonging to the retired heap above it. Filtered rather than
-\ truncated because the rows are not partitioned in registration order. The
-\ reasoning, the source-constant fallback and its structural bound are stated once
-\ in tools/native-build.f; this fixture reaches the window through the same steps.
+\ Keep the host's engine declarations, the cells below its heap floor
+\ (BOOT-LAYOUT:HEAP-START-CELL), and discard those of the retired heap above it:
+\ filtered, not truncated, because the rows are not partitioned in registration
+\ order (tools/native-build-core.f states why).
 : ADDR-ROWS ( -- n ) data-base SNAP-RELOC:XTCELL-N-CELL + @ ;
 
 : ADDR-ROW@ ( n -- n ) ADDRESS-CELLS:ROW@ ;
 
 \ The layout name itself, not habu2.f's host-side mirror, and no source-constant
-\ fallback: this fixture only ever runs under the engine the tree just built, so
-\ the cell is always there. Saying so out loud is the point -- a silent zero would
-\ classify every row as heap and empty the table, which is not a window this
-\ fixture can claim anything about.
+\ fallback: this fixture runs only under the engine the tree just built. A
+\ silent zero would classify every row as heap and empty the table.
 : HOST-HEAP-START ( -- n ) data-base BOOT-LAYOUT:HEAP-START-CELL + @ ;
 
 : KEEP-ROWS-BELOW ( n -- ) ADDRESS-CELLS:KEEP-BELOW ;
@@ -219,6 +207,9 @@ PTR-VARIABLE SRC-OWNER
 
 public
 
+\ The verdict prints as `window: <code>`, 0 accepted or the thrown code, so a
+\ refusal stays distinct from an acceptance; a deadline exits PROC-TIMEOUT-RC
+\ instead (src/lib/test/subject.f RC-TIMED-OUT).
 : RUN ( ptr u8 n -- )
    PATH!
    ADDRESS-CELLS:CURRENT? if 1 else 0 then ADDRESS-ABI !

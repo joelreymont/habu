@@ -1,5 +1,4 @@
 \ Compiled words can load multiple source files during an ordinary APP-BUILD.
-\ bin/hb --load test/native-file-dynamic-load-e2e.f
 
 require src/lib/test.f
 require src/lib/string.f

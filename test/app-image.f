@@ -1,10 +1,8 @@
-\ Build an application image once, outside the source checkout, from a cold
-\ native load. Run it, refuse a mistyped definition, recapture it twice with
-\ stable extents and run the third copy, carry grown and borrowed require rows
-\ and a discarded one unresolved across captures, start MAIN with arguments, a
-\ quit and an uncaught throw on a terminal, keep a grown address registry
-\ through a tier-1 rewind, refuse a retired or forged address-ABI probe, and
-\ save and run words a restored image compiled at tier 0.
+\ app-image.f - an application image built once outside the checkout from a
+\ cold native load: run, recapture with stable extents, require rows across
+\ captures, MAIN with arguments, quit and an uncaught throw on a terminal, a
+\ grown address registry through a tier-1 rewind, refused address-ABI probes,
+\ and tier-0 words a restored image compiled.
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs.f
@@ -289,9 +287,9 @@ variable PROBE-SOURCE-U
    STARTUP$ s" STARTUP-SHOULD-NOT-EXECUTE" RUN-INPUT CLEAN
    OUT swap S\" 1\n\n1\n\nquit\n" T$= ;
 
-\ fd 0 must be a real terminal: startup failures used to enter REPL recovery
-\ before its source frame existed. Output uses a small pipe so the diagnostic
-\ remains byte-exact on Linux and macOS.
+\ fd 0 must be a real terminal: a startup failure there enters REPL recovery,
+\ which needs its source frame. Output uses a small pipe so the diagnostic stays
+\ byte-exact on Linux and macOS.
 create PTY-NAME PTY:SLAVE-PATH-CAP allot
 
 \ The pair is src/lib/pty.f's on both targets; the slave is opened here, O_NOCTTY,

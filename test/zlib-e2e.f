@@ -2,7 +2,6 @@
 \ case in that one process: libz resolves at the image's first foreign call.
 \ The printed tree retains the executable, original.bin, compressed.bin and
 \ decoded.bin; the application compares original and decoded bytes itself.
-\ Run: bin/hb --load test/zlib-e2e.f
 require src/lib/test.f
 require src/lib/string.f
 require src/lib/fs.f

@@ -1,56 +1,8 @@
 \ x86-64-kernel-atomics.f - the atomics and publication rows of the x86-64
 \ kernel (src/habu/kernel-x64.f) in the booted harness, cross-built for an
 \ x86-64 peer. Every image seals the friend latch first, so each guard a row
-\ calls walks its whole span test and clobbers what it may.
-\
-\ hb-x64-kernel-atomics runs the rows on one heap scratch cell: atomic! stores
-\ a value, atomic@ reads it back, fence runs, atomic-add answers the old value
-\ and leaves the sum, and atomic-cas answers the value it found, swapping in
-\ the new one when that matches the expected value and writing nothing when it
-\ is stale. With the data stack empty and the machine stack balanced after, it
-\ exits 0; hb-x64-kernel-atomics-negative expects the wrong stored value and
-\ exits 21. hb-x64-kernel-atomics-store-armed, -add-armed and -cas-armed aim
-\ atomic!, atomic-add and atomic-cas at the band cell UNIT-COMPILE-CELL, so
-\ each row's guard exits 83, ENGINE-ERROR:SEAL-VIOLATION;
-\ hb-x64-kernel-patch32-armed aims patch32 there and exits 83 too.
-\
-\ The publication images put the code region at rest first, read-execute
-\ throughout as the ARM64 boot leaves it, so a row that writes the region
-\ outside its window faults: the crash handler dumps and dies by SIGSEGV. A
-\ probe proves a window closed: clock_gettime answers -EFAULT for a timespec the
-\ kernel cannot write. Each of these exits 0:
-\ - hb-x64-kernel-prot-window declares a span across the record band's top and
-\   into the control-flow band, opens the code band at CP with an end below it
-\   and widens it two pages on, writes each, checks the five band cells and
-\   finds the page between the code band's two declarations writable.
-\ - hb-x64-kernel-prot-window-closed opens the same window, closes it, and
-\   probes each band and the page just past the window's recorded end.
-\ - hb-x64-kernel-publish records five sites around a six-byte routine,
-\   publishes it at CP, finds CP on the next code slot, calls it, probes its
-\   page and finds the three sites in the span and its int3 fill gone; patch32
-\   then rewrites its immediate and the call answers the new value.
-\ - hb-x64-kernel-publish-fill publishes a 17-byte routine at CP and finds CP
-\   32 bytes on, bytes 17-31 int3 over poisoned cells and the cell past them
-\   untouched.
-\ - hb-x64-kernel-sites records sites out of order, one twice and one at the
-\   region's last byte, clears a middle span, a span below the region and one
-\   reaching into it, and checks the rows left.
-\ - hb-x64-kernel-retarget points a live record and the pending one at new
-\   code, marks one record internal and another with a minimum input depth, and
-\   probes the records' page.
-\ - hb-x64-kernel-does gives an inline-named parent the clause record past the
-\   pending one, finds its window closed and checks the record and its name.
-\ - hb-x64-kernel-does-long then gives a long-named parent its clause, finds
-\   the window closed and checks the record, the name zero-padded to a code
-\   slot and CP on the next slot.
-\ The armed images exit a refusal: code-publish one byte past CP
-\ (-publish-armed) or past the region (-publish-past-armed), a site outside the
-\ region (-sites-outside-armed) and xref-retarget at NDICT + 1
-\ (-retarget-armed), with the empty exact length (-retarget-empty-armed) or
-\ past CODE-SPAN:RAW-MAX (-retarget-raw-armed) exit 83; a site of the other kind
-\ at a recorded offset (-sites-kind-armed) and a site into a full band
-\ (-sites-full-armed) exit 103, SNAP-RELOC:SITE-RC. The host checks each
-\ image's ELF header; running them is the peer's.
+\ calls walks its whole span test and clobbers what it may. The host checks
+\ each image's ELF header; running them is the peer's.
 require src/habu/code-span.f
 require test/x86-64-boot-harness.f
 
@@ -68,7 +20,6 @@ using X64RT
 
 : SEAL, ( -- ) FRIEND-ARENA-LEN FRIEND-LATCH-CELL X64HARNESS:CELL!, ;
 
-\ Push the address of the DATA cell at an offset.
 : PUSH-CELL, ( n -- ) {: off:n :}
    RAX ENGINE-GPR:X64-RBASE >R64 off MEM-OFF ASM-SINK ENC-LEA
    0 G-PUSH ;
@@ -88,15 +39,14 @@ using X64RT
    VALUE X64HARNESS:EXPECT-POP,
    SUM 0 X64HARNESS:EXPECT-SCRATCH, ;
 
-\ atomic-cas with an expected and a new value: check the value it answers and
-\ the cell after.
 : CAS, ( n n n n -- ) {: expected:n new:n found:n after:n :}
    expected X64HARNESS:PUSH,  new X64HARNESS:PUSH,  0 X64HARNESS:PUSH-SCRATCH,
    s" atomic-cas" X64HARNESS:CALL-ROW,
    found X64HARNESS:EXPECT-POP,
    after 0 X64HARNESS:EXPECT-SCRATCH, ;
 
-\ Ten checks, the harness's whole budget.
+\ Ten checks, the harness's whole budget. hb-x64-kernel-atomics exits 0;
+\ hb-x64-kernel-atomics-negative expects the wrong stored value and exits 21.
 : ROWS, ( -- )
    STORE-FETCH,  ADD,
    SUM NEW SUM NEW CAS,
@@ -109,7 +59,8 @@ using X64RT
    SEAL,  ROWS,
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
-\ Push n zero operands and then the band cell's address, and call the row.
+\ Each armed row aims at the band cell UNIT-COMPILE-CELL, so its guard exits 83,
+\ ENGINE-ERROR:SEAL-VIOLATION.
 : BUILD-ARMED ( ptr u8 n n ptr u8 n -- ) {: row:ptr rowu:n args:n path:ptr pathu:n :}
    false X64HARNESS:BOOT-OPEN,
    SEAL,
@@ -119,6 +70,12 @@ using X64RT
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
 \ ---- the publication rows ----------------------------------------------------
+\ Each image puts the code region at rest first, read-execute throughout as the
+\ ARM64 boot leaves it, so a row that writes the region outside its window
+\ faults: the crash handler dumps and dies by SIGSEGV. PROBE, proves a window
+\ closed: clock_gettime answers -EFAULT for a timespec the kernel cannot write.
+\ The case images exit 0. Of the armed images, -sites-kind-armed and
+\ -sites-full-armed exit 103, SNAP-RELOC:SITE-RC; the others exit 83.
 $1000 constant PAGE                    \ the x86-64 page a window flips
 42 constant ANSWER                     \ what the published routine answers
 99 constant PATCHED                    \ what it answers once patch32 rewrites it
@@ -129,14 +86,11 @@ $1000 constant PAGE                    \ the x86-64 page a window flips
 : DATA-REG ( -- r64 ) ENGINE-GPR:X64-RBASE >R64 ;
 : DBASE-REG ( -- r64 ) ENGINE-GPR:X64-DBASE >R64 ;
 
-\ Call the routine n bytes into the region and push what it answers.
 : CALL-REGION, ( n -- ) {: off:n :}
    RAX DBASE-REG off MEM-OFF ASM-SINK ENC-LEA
    RAX ASM-SINK ENC-CALL-REG
    0 G-PUSH ;
 
-\ Push the address of the code the quotation emits, which sits in the text
-\ behind a jump, and answer its length.
 : PUSH-CODE, ( [ -- ] -- n )
    LBL LBL {: code:label past:label :}
    past JMP,
@@ -166,16 +120,13 @@ DICT-SIZE 32 + constant THIRD-SLOT
 $CCCCCCCCCCCCCCC3 constant RET-INT3S
 $CCCCCCCCCCCCCCCC constant INT3S
 
-\ Call the row on the address n bytes into the region.
 : AT-ROW, ( n ptr u8 n -- ) {: off:n row:ptr rowu:n :}
    off X64HARNESS:PUSH-REGION,  row rowu X64HARNESS:CALL-ROW, ;
 
-\ reloc-maps-clear over n bytes from the offset into the region.
 : CLEAR, ( n n -- ) {: off:n len:n :}
    off X64HARNESS:PUSH-REGION,  len X64HARNESS:PUSH,
    s" reloc-maps-clear" X64HARNESS:CALL-ROW, ;
 
-\ Check site row k holds the offset and the kind.
 : EXPECT-SITE, ( n n n -- ) {: k:n off:n kind:n :}
    SNAP-RELOC:SITE-ROWS-OFF k SNAP-RELOC:SITE-ROW-BYTES * + {: at:n :}
    0 >R32 DATA-REG at MEM-OFF ASM-SINK ENC-MOV32-RM
@@ -185,7 +136,6 @@ $CCCCCCCCCCCCCCCC constant INT3S
    0 G-PUSH
    kind KIND-SHIFT lshift off or X64HARNESS:EXPECT-POP, ;
 
-\ The offset of cell `off` of record k.
 : REC ( n n -- n ) {: k:n off:n :} k DREC * off + ;
 
 \ A record's CODE-SPAN length: the cell after its code cell.
@@ -201,7 +151,6 @@ X64KERNEL:REC-CODE CELL + constant REC-LEN
 CFSTK-OFF CELL - constant STRADDLE
 DICT-SIZE PAGE 2 * + CELL + constant WIDEN
 
-\ Declare n bytes from the offset into the region with the window's LSPAN.
 : DECLARE, ( n n -- ) {: off:n len:n :}
    RDI DBASE-REG off MEM-OFF ASM-SINK ENC-LEA
    RSI len >IMM32 ASM-SINK ENC-MOV-RI32
@@ -368,8 +317,6 @@ LONG-TAIL CELL + constant LONG-PAD
    entry X64HARNESS:PUSH-REGION,  len X64HARNESS:PUSH,
    s" does-record" X64HARNESS:CALL-ROW, ;
 
-\ The two parents, the poisoned cells the long name's pad lands in, and the
-\ region at rest.
 : DOES-SETUP, ( -- )
    s" abc" 5 0 X64HARNESS:RECORD,
    s" abcdefghijklmnopq" 6 0 X64HARNESS:RECORD,     \ past DNAME-INL: out of line
@@ -417,8 +364,6 @@ LONG-TAIL CELL + constant LONG-PAD
    0 X64HARNESS:PUSH,  dst X64HARNESS:PUSH-REGION,  len X64HARNESS:PUSH,
    s" code-publish" X64HARNESS:CALL-ROW, ;
 
-\ One image: the boot, the sealed latch, the case the quotation emits and the
-\ exit.
 : IMAGE ( [ -- ] ptr u8 n -- ) {: path:ptr pathu:n :}
    false X64HARNESS:BOOT-OPEN,
    SEAL,

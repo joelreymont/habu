@@ -1,56 +1,9 @@
-\ aot-seed-batch-suite.f - the AOT seed serves BATCH boots (dot
-\ habu-decide-arm-the-5234727b, USER RULING 2026-08-11: one dictionary surface for
-\ every boot mode).
-\
-\ WHAT IT LOCKS. The engine bakes its REPL as captured code (src/habu/stdin.f)
-\ and seeds it into the dictionary at boot.
-\ That seed used to be armed at the interactive REPL entry and nowhere else, so a
-\ piped program and a `--load` tool run could not see a captured word: 115 names
-\ existed on a tty and did not exist in batch. The seed now runs at the end of the
-\ ENGINE PREFIX stream on every boot (src/habu/habu2.f EM-COMPILE-EXIT, and
-\ BOOT-SRC:USER-END in src/habu/layout.f for how the prefix and the user program
-\ became two streams), so the batch dictionary IS the interactive dictionary.
-\
-\ WHY THE CASES ARE SHAPED THIS WAY.
-\
-\   THE THREE BATCH MODES ARE THREE DIFFERENT CODE PATHS, not three spellings of
-\   one. `--load` goes through C-SOURCE-FILE-PREFIX's load leg, a piped program
-\   through C-SOURCE-PIPE, and `hb prog.f` through the plain leg, and each one
-\   publishes the boundary between the two streams at its own store site. A case
-\   that only piped would leave two of the three sites untested, which is exactly
-\   the kind of hole the old shape hid.
-\
-\   THE SURFACE IS COMPARED AS A WHOLE. Resolving one baked word says the seed
-\   ran; it does not say the two dictionaries MATCH. test/aot-seed-surface.f folds
-\   every record name into one number, so a mode that seeded a different set, in a
-\   different order, or at a different point answers differently. The interactive
-\   half of that comparison is test/proc-pty.f's `PTY-SEED-SURFACE`, which prints
-\   the same fold at a real terminal and compares it against a batch run of the
-\   same engine; it lives there because that file is the tree's one cross-platform
-\   PTY driver and a third copy of the PTY plumbing would be worse than the split.
-\
-\   THE NAMES COME ONE PER CAPTURED FILE. One resolving name could be a fluke of
-\   one record; one name from each file the capture reads - src/habu/repl.f and
-\   the per-OS repl-term.f - says the whole captured set arrived. The debugger
-\   trio left that set when it left the engine (88b97b26 and the stdin driver's
-\   own list), and it cannot come back here through a `require`: this suite
-\   counts SEEDED RECORDS, and a definition the child loads for itself is not
-\   one. A file added to the capture adds a name here.
-\
-\   THE NEGATIVE CONTROL IS NOT GARNISH. Without it, "the baked word answered"
-\   could be read as "this engine answers anything"; an absent spelling must still
-\   exit 70 naming E-UNDEFINED.
-\
-\   THE GUARD CASE RIDES A REAL DOUBLE ARRIVAL. Every batch boot now reaches
-\   "source exhausted" TWICE - once at the end of the engine prefix and once at
-\   the end of the program - and only AOT-SEED-DONE-CELL stops the second arrival
-\   from seeding again. So counting the dictionary records that carry one baked
-\   spelling is a live test of that guard, not a staged one: delete the done-cell
-\   test in EM-COMPILE-EXIT and this case reads 2.
-\
-\ Cost: seven child engine runs of the shipped engine, no builds. Registered as
-\ `SUITE aot-seed-batch` in test/gate-stdlib-cases.f (tail-engine tier, since it
-\ spawns child engines).
+\ aot-seed-batch-suite.f - the AOT seed serves batch boots: every boot mode has
+\ one dictionary surface. The seed runs at the end of the engine prefix stream
+\ on every boot (src/habu/habu2.f EM-COMPILE-EXIT; BOOT-SRC:USER-END in
+\ src/habu/layout.f), so the batch dictionary is the interactive one. Row:
+\ `SUITE aot-seed-batch` in test/gate-stdlib-cases.f.
+
 \ Standalone:
 \   bin/hb --load src/lib/errors.f src/lib/string.f src/lib/fmt.f src/lib/test.f src/lib/memory.f \
 \     src/lib/fs.f src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f \
@@ -94,9 +47,6 @@ create PROG-BUF PATH-CAP allot   variable PROG-U
 : OUT$ ( -- ptr u8 n )    OUT OUT-U @ ;
 : SURFACE$ ( -- ptr u8 n ) s" test/aot-seed-surface.f" ;
 
-\ The engine under test: the gate's freshly built candidate when it exported one,
-\ else the running engine itself (src/lib/engine-candidate.f is the tree's one
-\ resolver of that question).
 : HB$ ( -- ptr u8 n )     ENGINE-CANDIDATE:PATH$ ;
 
 : SETUP ( -- )
@@ -116,6 +66,9 @@ create PROG-BUF PATH-CAP allot   variable PROG-U
    ;MATCH ;
 
 \ --- the three batch entries, each through its own C-SOURCE path ---------------
+\ --load takes C-SOURCE-FILE-PREFIX's load leg, a pipe C-SOURCE-PIPE and
+\ `hb prog.f` the plain leg; each publishes the prefix/program boundary at its
+\ own store site.
 
 : RUN-LOAD ( ptr u8 n -- )             \ hb --load <file>
    {: p:ptr pu:n :}
@@ -157,34 +110,36 @@ create PROG-BUF PATH-CAP allot   variable PROG-U
    ;MATCH ;
 
 \ --- the probe programs (interpreted by the child) -----------------------------
-\ Every one prints exactly one number, so a case is an integer comparison.
-\
-\ The baked words are called at INTERPRET level, which is what the seed publishes
-\ and what these cases state. A checked definition may name them as well: the
-\ engine compiles repl.f after the checker (src/habu/native-runtime.f), so their
-\ checker rows ship with it.
+\ Each prints one number. The baked words run at interpret level, which the seed
+\ publishes; a checked definition may name them too, since the engine compiles
+\ repl.f after the checker (src/habu/native-runtime.f).
 
 \ repl.f: a batch boot edits no line, so the history ring's low slot is 0 - a
 \ baked word with a value the program cannot have set itself.
 : BAKED-ONE$ ( -- ptr u8 n )
    s" HLO ." ;
 
-\ One name from each captured source, counted in the dictionary; two means every
-\ captured file's records arrived - HIST is repl.f's history ring and
-\ HBR-RAWMASK is the per-OS repl-term.f's own constant, so neither can stand in
-\ for the other. Written as a definition so the walk compiles, with the baked
-\ spellings as STRING LITERALS because the walk counts records by name.
+\ One name from each captured source, counted in the dictionary: HIST is
+\ repl.f's history ring and HBR-RAWMASK the per-OS repl-term.f's constant. The
+\ walk counts seeded records by name, so the spellings are string literals and a
+\ definition the child loads itself does not count. A file added to the capture
+\ adds a name.
 : BAKED-EACH$ ( -- ptr u8 n )
    S\" : ASB-SEEN ( ptr u8 n -- n ) {: a:ptr u:n :} 0 0 begin dup ndict@ < while dup XREF-REC XREF-NAME$ a u STR= if swap 1+ swap then 1+ repeat drop ;\n: ASB-EACH ( -- ) s\" HIST\" ASB-SEEN s\" HBR-RAWMASK\" ASB-SEEN + . ;\nASB-EACH" ;
 
-\ The done-cell guard: one record per baked spelling after BOTH arrivals at
-\ "source exhausted".
+\ Every batch boot reaches "source exhausted" twice, at the prefix end and the
+\ program end; only AOT-SEED-DONE-CELL stops the second seeding. Without its
+\ test in EM-COMPILE-EXIT this reads 2.
 : ONE-RECORD$ ( -- ptr u8 n )
    S\" : ASB-ONCE ( -- ) 0 0 begin dup ndict@ < while dup XREF-REC XREF-NAME$ s\" HLO\" STR= if swap 1+ swap then 1+ repeat drop . ;\nASB-ONCE" ;
 
 : ABSENT$ ( -- ptr u8 n )
    s" AOT-SEED-NO-SUCH-NAME ." ;
 
+\ test/aot-seed-surface.f folds every record name into one number, so a
+\ different set, order or seeding point answers differently. The interactive
+\ half is test/proc-pty.f PTY-SEED-SURFACE: that file is the one cross-platform
+\ PTY driver.
 : SURFACE-PROGRAM$ ( -- ptr u8 n )     \ the same fold the interactive half prints
    S\" s\" test/aot-seed-surface.f\" required" ;
 

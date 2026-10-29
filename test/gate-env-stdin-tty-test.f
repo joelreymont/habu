@@ -1,17 +1,9 @@
-\ gate-env-stdin-tty-test.f - controlling-terminal regression for GE-RUN-ENV.
-\
-\ The outer mode forks a non-session-leader worker, which opens a real Linux
-\ pseudoterminal without accidentally acquiring it as the outer test's own
-\ controlling terminal.  It then uses setsid(1) to run this file's driver mode
-\ as the foreground process of a new session with that terminal as its
-\ controlling terminal.  The driver then calls GE-RUN-ENV.
-\ GE-RUN-ENV's PROCESS request (src/lib/spawn.f) makes the captured child its own
-\ process-group leader, so that child is a background group relative to the
-\ terminal.  Its ordinary
-\ startup terminal ioctl must not stop it with SIGTTOU: GE-RUN-ENV promises an
-\ explicit empty standard-input pipe, not the driver's ambient terminal.
-\
-\ Run: bin/hb --load test/gate-env-stdin-tty-test.f
+\ GE-RUN-ENV's child must not stop on SIGTTOU. A non-session-leader worker opens
+\ a Linux pty without acquiring it; setsid(1) runs the driver mode in a new
+\ session with that terminal as its controlling terminal, and the driver calls
+\ GE-RUN-ENV, whose PROCESS request (src/lib/spawn.f) makes the child a
+\ background group leader. Its startup terminal ioctl must not stop it:
+\ GE-RUN-ENV gives it an explicit empty stdin pipe, not the driver's terminal.
 
 require src/lib/string.f
 require src/lib/test.f

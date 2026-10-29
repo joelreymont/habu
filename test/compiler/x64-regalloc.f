@@ -1,49 +1,9 @@
-\ x64-regalloc.f - the first x86-64 register allocation.
-\
-\ src/compiler/native/regalloc.f (A64RA) and regalloc-verify.f (A64RAV) are one
-\ allocator and one validator for the compiler rather than one per machine. What
-\ they used to spell as ARM64's - the three value types, the attribute keys, the
-\ copy and the re-emittable opcode, how many instructions an address literal is,
-\ the bytes one frame access moves and the architecture the allocation is for -
-\ now arrives in the vocabulary the dialect builds
-\ (src/compiler/native/dialect.f). This suite is what proves the vocabulary is
-\ ENOUGH: the same two passes run here over a module in which no ARM64 name
-\ appears.
-\
-\ WHAT THESE CASES MEASURE THAT AN ARM64 ALLOCATION CANNOT:
-\
-\ - THE ARCHITECTURE. The allocator refused any contract whose arch was not
-\   AARCH64. It now refuses any contract that is not the bound dialect's own
-\   machine, and an x86-64 contract allocates - which is this whole suite.
-\ - THE MISSING KEY. x86-64 has no write-back addressing, so its vocabulary
-\   declares `x64.dwb` ABSENT: no transfer moves the data-stack pointer inside
-\   its own encoding and no symbol names one. Every data-stack case below runs
-\   through the reader that has to answer "no such transfer" without a symbol.
-\ - THE COPY OPCODE. A copy is `x64.mov` here and `a64.mov` there, and the
-\   allocator coalesces by the vocabulary's opcode. The two-address case pins
-\   registers on both sides of a copy the selector inserted.
-\ - ONE-LANE ADDRESSES. `mov r64, imm64` is one instruction, so this dialect
-\   declares one address-carrier lane and the allocator does no lane arithmetic;
-\   ARM64's four move-wides must stay contiguous through spill insertion.
-\
-\ A REGISTER CONVENTION:
-\ the contract names no place, so the module is the body the source selected to
-\ and every value in it is one the allocator is free to place.
-\
-\ AND X64ABI:LEAF, WHICH IS THE DATA-STACK CONVENTION. Where the data-stack
-\ pointer STANDS over a body is the SELECTOR's policy and not something either
-\ later pass can derive from the module: A64SEL surveys the boundary transfers
-\ and stands where the fewest need an adjustment, X64SEL takes every argument's
-\ bytes at the entry and publishes every result's at the exit. The dialect is
-\ what states which of the two it is - the vocabulary's `stand` field, `survey`
-\ for a64ir and `entry-base` for x64ir (dialect.f NDIALECT:dstand) - and
-\ regalloc-verify.f VDPLACE-CK measures a module against the policy its dialect
-\ states rather than re-deriving one of them. The leaf case below is that fact
-\ measured.
-\
-\ ONE FIXTURE PER CONTEXT, and the refusing case runs inside an enclosing one:
-\ an abandoned context gives its registry slots back only when a live enclosing
-\ context leaves normally (src/compiler/ir/context.f, the note on stale handles).
+\ x64-regalloc.f - the compiler's one allocator and validator
+\ (src/compiler/native/regalloc.f A64RA, regalloc-verify.f A64RAV) over x86-64
+\ modules in which no ARM64 name appears: the proof that the vocabulary
+\ src/compiler/native/dialect.f builds carries the machine, the copy opcode, the
+\ absent write-back key and the one address-carrier lane (`mov r64, imm64`;
+\ ARM64's four move-wides stay contiguous).
 
 require src/lib/test.f
 require src/compiler/native/select-x64.f
@@ -98,6 +58,7 @@ create TXT
 $400 constant CALLEE-ENTRY           \ the address the tail case leaves through
 
 \ ---- the module a fixture builds into ----------------------------------------
+\ One fixture per context.
 1 TYPED-BUFFER W-CTX IR-CTX:ctx
 1 TYPED-BUFFER W-BLD IR-BUILD:builder
 1 TYPED-BUFFER W-SRC IR-ID:ir-source-id
@@ -466,10 +427,8 @@ $400 constant CALLEE-ENTRY           \ the address the tail case leaves through
    NEFF-NZCV:CLOBBERED NEFF-LINK:ABSENT NEFF-CONTROL:RETURNS
    NEFF:TRAITS-NONE 0 0 X64M:MACHINE NEFF:ROUTINE ;
 
-\ Bind the source dialect to the module being read and the machine dialect to
-\ the module about to be written, then select. Both the allocator and the
-\ validator are bound with THIS dialect's vocabulary and THIS machine, which is
-\ the whole point: neither pass names x86-64 anywhere in its own text.
+\ Allocator and validator are bound with this dialect's vocabulary and machine:
+\ neither pass names x86-64 in its own text.
 : SELECTED ( -- IR-BUILD:module )
    CC BB HIR:ENSURE-VOCABULARY
    CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
@@ -489,11 +448,15 @@ $400 constant CALLEE-ENTRY           \ the address the tail case leaves through
    m ;
 
 \ ---- and the same body under the data-stack convention -----------------------
-\ The other contract of this machine: the interface is as many caller cells in
-\ as the body takes and one out, so the selector writes the boundary and the
-\ validator has a stand to measure. It is x86-64's own policy that is measured,
-\ because the vocabulary x64ir builds states `entry-base` and the validator reads
-\ it there.
+\ The other contract of this machine: as many caller cells in as the body takes
+\ and one out, so the selector writes the boundary and the validator has a stand
+\ to measure. Where the data-stack pointer stands is the selector's policy,
+\ which no later pass can derive: A64SEL stands where the fewest boundary
+\ transfers need adjusting, X64SEL takes every argument at the entry and
+\ publishes every result at the exit. The vocabulary's `stand` field states it
+\ (`survey` for a64ir, `entry-base` for x64ir; dialect.f NDIALECT:dstand) and
+\ regalloc-verify.f VDPLACE-CK measures against it. Every data-stack case runs
+\ through the reader that answers the `dwb` key absent.
 : DLEAF ( n -- NEFF:routine )
    {: in:n :}
    X64ABI:SCRATCH in 1 X64ABI:LEAF ;
@@ -540,11 +503,10 @@ $400 constant CALLEE-ENTRY           \ the address the tail case leaves through
 \ `shl r64, cl` reads its count from rcx and `idiv r64` divides rdx:rax into rax
 \ and rdx, which x64ir declares in the schema as fixed registers beside the
 \ operand types. The selector lowers both shapes, and it makes every constraint
-\ satisfiable by COPYING the count and the dividend first. These modules are
-\ built straight into the machine dialect so that what they measure is the
-\ allocator alone: the constraint read out of the schema, and what becomes of a
-\ pair no copy has been inserted for. The selected shapes are cases of their own
-\ further down.
+\ satisfiable by copying the count and the dividend first. These modules are
+\ built straight into the machine dialect, so they measure the allocator alone:
+\ the constraint read out of the schema, and a pair no copy stands between. The
+\ selected shapes are cases further down.
 : X64-MOD ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    IR-BUILD:PLAN-BEGIN
@@ -793,11 +755,10 @@ $1000 constant THROW-STAND
 
 \ The routine that leaves through its callee, through the same two passes. The
 \ entry loads the argument out of cell 0 and the call site passes it in cell 0
-\ again, so a selector that re-stores it writes a value the cell already holds
-\ and the validator refuses the module by name: this case threw
-\ E-A64RAV-DKEEP (-8611) at that store until X64SEL:CALL-SAVE read the residency
-\ map. With the store elided the load has no reader either, so the whole body is
-\ the take and the branch.
+\ again; a selector that re-stores it writes a value the cell already holds and
+\ the validator refuses with E-A64RAV-DKEEP, so X64SEL:CALL-SAVE reads the
+\ residency map and elides the store. The load then has no reader either, so the
+\ whole body is the take and the branch.
 : TAIL-BODY ( IR-CTX:ctx -- bool )
    HIR-MOD
    BUILD-CALLER
@@ -831,10 +792,11 @@ $1000 constant THROW-STAND
    A64RAV:ACCEPTED? ;
 
 \ ---- and the same two forms as the SELECTOR leaves them ----------------------
-\ The count is copied and the COPY is what the form fixes to rcx, so the count
-\ itself is placed like any other value - and because nothing else reads it, the
-\ copy is coalesced back into it and one class holds rcx over both. The value
-\ shifted is tied to the result and keeps its own register.
+\ The count is copied and the copy is what the form fixes to rcx. A copy is
+\ `x64.mov` here and `a64.mov` on ARM64, and the allocator coalesces by the
+\ vocabulary's opcode: nothing else reads the count, so the copy is coalesced
+\ back into it and one class holds rcx over both. The value shifted is tied to
+\ the result and keeps its register.
 : VAR-SHIFT-BODY ( IR-CTX:ctx -- n n n n bool )
    HIR-MOD
    BUILD-VAR-SHIFT

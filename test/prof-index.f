@@ -1,26 +1,16 @@
 \ The profiler's pc index answers exactly what an exhaustive scan answers.
-\
-\ `prof-on` builds a pc-sorted live-range index of every dictionary record that
-\ owns code; the SIGALRM handler searches it instead of walking the dictionary,
-\ and `prof-pc>rec` runs that same search, so this fixture tests the attribution
-\ the handler performs rather than a copy of it.
-\
-\ THE RULE BOTH SIDES STATE: the live record with the greatest (start, record
-\ index) at or below the pc, reported only when the pc is below that record's
-\ end. LINREF below states it by scanning every record in dictionary order;
-\ CHECK-PC compares the two answers. Records with no code of their own - a
-\ package row, a retired row, an empty body - are in neither answer.
+\ prof-on builds a pc-sorted live-range index of every record that owns code;
+\ the SIGALRM handler and prof-pc>rec run the same search, so this tests the
+\ handler's attribution itself.
 require src/lib/errors.f
 require src/lib/test.f
 
 1 set-tier
 
-\ ---- the synthetic tail --------------------------------------------------
-\ Records defined here land at the top of the dictionary, so the exhaustive
-\ sweep below covers bodies of every shape this engine emits: short and long
-\ colon words, a created cell with no code, a `does>` child whose span is a
-\ suffix of its parent's, a word retired after it was defined, and the gaps
-\ between them.
+\ Records defined here sit at the dictionary's top, so the sweep covers every
+\ body shape this engine emits: short and long colon words, a created cell with
+\ no code, a does> child whose span is a suffix of its parent's, a retired word,
+\ and the gaps between them.
 package PROF-INDEX-FIXTURE
 public
 : PIF-TINY ( -- n ) 1 ;
@@ -63,6 +53,10 @@ variable PROBES
    st BESTS @ < if exit then          \ ties keep the later record, as a stable sort does
    i BEST !  st BESTS ! ;
 
+\ The rule both answers state: the live record with the greatest (start, record
+\ index) at or below the pc, reported only when the pc is below its end. Records
+\ with no code of their own (a package row, a retired row, an empty body) are in
+\ neither answer.
 : LINREF ( n -- n ) {: pc:n :}
    -1 BEST !  0 BESTS !
    ndict@ 0 ?do pc i REF-ONE loop
@@ -75,7 +69,7 @@ variable PROBES
    PROBES @ 1+ PROBES !
    pc prof-pc>rec  pc LINREF  T= ;
 
-: CHECK-REC ( n -- ) {: i:n :}   \ every boundary of record i's span
+: CHECK-REC ( n -- ) {: i:n :}
    i REC-CODE-BYTES {: len:n :}
    len 0= if exit then
    i REC-START {: st:n :}
@@ -86,7 +80,6 @@ variable PROBES
    st len + 4 - CHECK-PC
    st len + CHECK-PC ;
 
-\ ---- the whole dictionary, then every record of the synthetic tail ---------
 : SWEEP-STRIDE ( n -- ) {: stride:n :}
    ndict@ 0 ?do i CHECK-REC stride +loop ;
 

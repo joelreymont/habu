@@ -1,66 +1,9 @@
 \ x86-64-kernel-definition.f - the definition writers of the x86-64 kernel
 \ (src/habu/kernel-x64.f DEFINITION,) in the booted harness, cross-built for an
-\ x86-64 peer. Each image seeds its records and cells, puts the code region at
-\ rest and then calls the rows, so a row that writes the region outside its
-\ window faults: the crash handler dumps and dies by SIGSEGV. After a row writes
-\ a record, one check finds every band cell clear and the record's page
-\ read-execute. Every image ends by checking the data stack is empty and the
-\ machine stack balanced.
-\
-\ Each of these exits 0:
-\ - hb-x64-kernel-namespace-record builds the index, publishes a namespace row
-\   with a private wid past a seeded record and checks its index, its two fresh
-\   wids, its flags cell and WIDN-CELL; xref-search-wl then finds it under a
-\   name that differs in case.
-\ - hb-x64-kernel-namespace-private publishes a namespace row whose [8] is 0 and
-\   then gives it a private wid.
-\ - hb-x64-kernel-alias-record, after the seal and with the wid's neighbour in
-\   its bitmap cell protected, aliases a long-named source: the alias carries
-\   the source's code and length cells and its IMM, WIDE, MIN-IN and immutable
-\   VAL bits, but not its EXT bit, and xref-search-wl finds it.
-\ - hb-x64-kernel-package-scope, with a task live past the namespace row, sets
-\   the four package cells from that row, then clears them with `-1 0`.
-\ - hb-x64-kernel-def-open, after the seal, opens a definition whose name
-\   another wid holds: the pending record, its cells, and NDICT unchanged.
-\ - hb-x64-kernel-def-open-state checks the state def-open resets: its record's
-\   length cell 0, TSIG, TCSIG, DOESB, CLAUSE and TRUSTED clear, DEF-TIER-CELL taking
-\   TIER-CELL, and CP, which an inline name leaves.
-\ - hb-x64-kernel-def-open-long stores a 17-byte name at CP: CP and the entry
-\   move 32 bytes and the pad over poisoned cells is 0.
-\ - hb-x64-kernel-body-append fills BODYBUF exactly to BODYBUF-CAP.
-\ - hb-x64-kernel-body-append-pass2 appends in pass 2, which stores nothing.
-\ - hb-x64-kernel-trust-sig stores the pending definition's signature span.
-\ - hb-x64-kernel-created-sig stores the pending definition's `does>`
-\   signature span.
-\ - hb-x64-kernel-def-close ends a tier-1 definition whose state cells are set:
-\   DEF-TIER, the seven signature and clause cells and PEND clear.
-\ - hb-x64-kernel-imm-mark sets DNAME-IMM on the newest record, keeping its
-\   other bits, and leaves the record before it alone.
-\ - hb-x64-kernel-def-abort closes a failed definition's code window and
-\   clears its pending signature and body state.
-\ - hb-x64-kernel-def-abort-scope preserves a catch frame's HND, return and
-\   loop depths while clearing compile mode.
-\ hb-x64-kernel-definition-negative runs the def-open case expecting the wrong
-\ pending record and exits 21.
-\
-\ The armed images exit a refusal before any store, with nothing on fd 2:
-\ - 79, a task live, one image for each row that guards:
-\   -namespace-record-live-armed, -namespace-private-live-armed,
-\   -alias-record-live-armed, -def-open-live-armed.
-\ - 83, ENGINE-ERROR:SEAL-VIOLATION: def-open of a live name that differs only
-\   in case (-def-open-case-armed), namespace-private on a row whose [8] is set
-\   (-namespace-private-set-armed), an alias of a DNAME-INT source
-\   (-alias-record-int-armed), package-scope! `-1 5`
-\   (-package-scope-clear-armed), a 17-byte def-open with CP 32 bytes below the
-\   code ceiling (-def-open-ceiling-armed), body-append one byte past
-\   BODYBUF-CAP (-body-append-full-armed), and trust-sig!, created-sig! and
-\   def-close with nothing pending (-trust-sig-armed, -created-sig-armed,
-\   -def-close-armed), and def-close on a tier 0 definition
-\   (-def-close-tier-armed).
-\ - 84, ENGINE-ERROR:SEAL-PACKAGE, after the seal: alias-record into a wid
-\   whose bit is set (-alias-record-prot-armed) and def-open into
-\   OWNER-API-PUB-WID, always protected (-def-open-prot-armed).
-\ The host writes each image; running them is the peer's.
+\ x86-64 peer. Each image puts the code region at rest before calling the rows,
+\ so a row that writes outside its window faults (the crash handler dumps and
+\ dies by SIGSEGV); CLOSED, checks each window after a row writes a record. The
+\ host writes each image; running them is the peer's.
 require test/x86-64-boot-harness.f
 
 package X64K-DEFINITION
@@ -162,8 +105,6 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
    DOESB-CELL OR-CELL,  TRUSTED-CELL OR-CELL,  CLAUSE-CELL OR-CELL,
    0 G-PUSH ;
 
-\ The long name's second slot less its last byte: 0 when that byte opens the
-\ slot and the fifteen bytes past it are zero.
 \ The tier-1 definition def-close ends: its seven signature and clause cells
 \ set.
 : TIER-1-OPEN, ( -- )
@@ -175,6 +116,8 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
    5 DOESB-CELL X64HARNESS:CELL!,  6 TRUSTED-CELL X64HARNESS:CELL!,
    7 CLAUSE-CELL X64HARNESS:CELL!, ;
 
+\ The long name's second slot less its last byte: 0 when that byte opens the
+\ slot and the fifteen bytes past it are zero.
 : PUSH-PAD, ( -- )
    RAX DBASE-REG SECOND-SLOT MEM-OFF ASM-SINK ENC-MOV-RM
    RCX LONG$ DNAME-INL X64HARNESS:NAME-CELL >IMM32 ASM-SINK ENC-MOV-RI32
@@ -195,6 +138,41 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
    0 X64HARNESS:EXPECT-POP, ;
 
 \ ---- the rows that exit 0 -----------------------------------------------------
+\ Each of these exits 0:
+\ - hb-x64-kernel-namespace-record builds the index, publishes a namespace row
+\   with a private wid past a seeded record and checks its index, its two fresh
+\   wids, its flags cell and WIDN-CELL; xref-search-wl then finds it under a
+\   name that differs in case.
+\ - hb-x64-kernel-namespace-private publishes a namespace row whose [8] is 0 and
+\   then gives it a private wid.
+\ - hb-x64-kernel-alias-record, after the seal and with the wid's neighbour in
+\   its bitmap cell protected, aliases a long-named source: the alias carries
+\   the source's code and length cells and its IMM, WIDE, MIN-IN and immutable
+\   VAL bits, but not its EXT bit, and xref-search-wl finds it.
+\ - hb-x64-kernel-package-scope, with a task live past the namespace row, sets
+\   the four package cells from that row, then clears them with `-1 0`.
+\ - hb-x64-kernel-def-open, after the seal, opens a definition whose name
+\   another wid holds: the pending record, its cells, and NDICT unchanged.
+\ - hb-x64-kernel-def-open-state checks the state def-open resets: its record's
+\   length cell 0, TSIG, TCSIG, DOESB, CLAUSE and TRUSTED clear, DEF-TIER-CELL taking
+\   TIER-CELL, and CP, which an inline name leaves.
+\ - hb-x64-kernel-def-open-long stores a 17-byte name at CP: CP and the entry
+\   move 32 bytes and the pad over poisoned cells is 0.
+\ - hb-x64-kernel-body-append fills BODYBUF exactly to BODYBUF-CAP.
+\ - hb-x64-kernel-body-append-pass2 appends in pass 2, which stores nothing.
+\ - hb-x64-kernel-trust-sig stores the pending definition's signature span.
+\ - hb-x64-kernel-created-sig stores the pending definition's `does>`
+\   signature span.
+\ - hb-x64-kernel-def-close ends a tier-1 definition whose state cells are set:
+\   DEF-TIER, the seven signature and clause cells and PEND clear.
+\ - hb-x64-kernel-imm-mark sets DNAME-IMM on the newest record, keeping its
+\   other bits, and leaves the record before it alone.
+\ - hb-x64-kernel-def-abort closes a failed definition's code window and
+\   clears its pending signature and body state.
+\ - hb-x64-kernel-def-abort-scope preserves a catch frame's HND, return and
+\   loop depths while clearing compile mode.
+\ hb-x64-kernel-definition-negative runs the def-open case expecting the wrong
+\ pending record and exits 21.
 : NAMESPACE-RECORD-CASE, ( -- )
    s" core" 0 0 X64HARNESS:RECORD,                    \ record 0
    FIRST-WID WIDN-CELL X64HARNESS:CELL!,
@@ -369,6 +347,23 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
    13 LOOPSP-CELL X64HARNESS:EXPECT-CELL, ;
 
 \ ---- the refusals -------------------------------------------------------------
+\ The armed images exit a refusal before any store, with nothing on fd 2:
+\ - 79, a task live, one image for each row that guards:
+\   -namespace-record-live-armed, -namespace-private-live-armed,
+\   -alias-record-live-armed, -def-open-live-armed.
+\ - 83, ENGINE-ERROR:SEAL-VIOLATION: def-open of a live name that differs only
+\   in case (-def-open-case-armed), namespace-private on a row whose [8] is set
+\   (-namespace-private-set-armed), an alias of a DNAME-INT source
+\   (-alias-record-int-armed), package-scope! `-1 5`
+\   (-package-scope-clear-armed), a 17-byte def-open with CP 32 bytes below the
+\   code ceiling (-def-open-ceiling-armed), body-append one byte past
+\   BODYBUF-CAP (-body-append-full-armed), and trust-sig!, created-sig! and
+\   def-close with nothing pending (-trust-sig-armed, -created-sig-armed,
+\   -def-close-armed), and def-close on a tier 0 definition
+\   (-def-close-tier-armed).
+\ - 84, ENGINE-ERROR:SEAL-PACKAGE, after the seal: alias-record into a wid
+\   whose bit is set (-alias-record-prot-armed) and def-open into
+\   OWNER-API-PUB-WID, always protected (-def-open-prot-armed).
 \ Each call but for its refusal is one the row admits.
 : NAMESPACE-LIVE, ( -- ) LIVE,  X64HARNESS:REST,  s" ns" BOTH-WIDS NAMESPACE, ;
 

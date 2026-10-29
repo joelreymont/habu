@@ -1,22 +1,17 @@
 \ bootstrap-ptr-cell-mark-src.f - stage0 persisted-pointer definer execution.
 
 \ PERSISTED-PTR-VARIABLE (src/core/pointer-storage.f) is the boot prefix's only
-\ caller of the engine primitive `ptr-cell-mark`, so a stage0 generator that does
-\ not register that primitive cannot load the prefix at all and every stage0 build
-\ dies naming the token. The seed has no snapshot address table, so its
-\ ptr-cell-mark consumes the cell address and registers nothing
-\ (bootstrap/cg/forth.fs EMIT-MEMORY-PRIMS); that is only right if it consumes
-\ exactly the address, which is what the definer's `create here ptr-cell-mark 0 ,`
-\ depends on. So exercise the definer, not just the token: a fresh persisted slot
-\ reads null, takes a pointer and reads the same pointer back, and two slots are
-\ two distinct cells.
-\
+\ caller of `ptr-cell-mark`, so a stage0 generator without that primitive cannot
+\ load the prefix. The seed has no snapshot address table: its ptr-cell-mark
+\ consumes the cell address and registers nothing (bootstrap/cg/forth.fs
+\ EMIT-MEMORY-PRIMS), which the definer's `create here ptr-cell-mark 0 ,` needs
+\ exactly. A fresh slot reads null and round-trips a pointer; two slots are two
+\ cells.
+
 \ The definer's body is compiled before the check hook exists, so nothing types
-\ its stack for us; a seed word that consumed nothing would silently leak `here`
-\ and a seed word that consumed two cells would underflow, in both cases without
-\ disturbing the round-trip above. PCM-DEPTH-KEPT is the assertion that catches
-\ that: it brackets one PERSISTED-PTR-VARIABLE at the top level and requires the
-\ data stack to come back to the depth it went in at.
+\ its stack: a seed word consuming nothing leaks `here`, one consuming two
+\ underflows, and neither disturbs the round-trip. PCM-DEPTH-KEPT brackets one
+\ PERSISTED-PTR-VARIABLE at top level and requires the depth to come back.
 
 variable PCM-FAILS
 

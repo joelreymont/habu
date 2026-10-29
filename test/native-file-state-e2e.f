@@ -1,7 +1,6 @@
 \ DATA, prior writes, typed cells, literals, reopened packages, created words,
 \ TASK slots, task chains and exit hooks, and foreign functions survive cold
 \ compilation and warm definition reuse in small applications.
-\ bin/hb --load test/native-file-state-e2e.f
 
 require src/lib/test.f
 require src/lib/string.f

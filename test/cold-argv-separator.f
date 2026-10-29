@@ -1,21 +1,9 @@
-\ cold-argv-separator.f - the `--` argv separator on an engine that boots its
-\ prefix from source.
-\
-\ The engine scans argv for `--` in two halves, and on an UNSEEDED engine the
-\ whole cold prefix runs between them: every prefix row is a subroutine that
-\ leaves x13 holding whatever it last used it for, so the caller's scan index
-\ never survived. It started at argv[0] instead of argv[2] and found the
-\ separator anyway - argv[0] is the program and argv[1] is the flag that
-\ selected the route, and neither can be `--` - until a prefix row began leaving
-\ an arena pointer there. Then the first compare read an index past argc, no
-\ separator was found, and `--` and everything after it went to the loader as
-\ files: `include: cannot open <tree>/--`, exit 74 (dot 0eaf921f, which moved
-\ the index into the loop that reads it).
-\
-\ A seeded engine emits no prefix rows at all, so only an unseeded host can show
-\ this, and the host test/cold-engine.f emits is exactly one. Both cases load
-\ the same driver through the real command line: without a separator, and with
-\ one plus two arguments that must reach the driver instead of the loader.
+\ The `--` argv separator on an engine that boots its prefix from source. On an
+\ unseeded engine the whole cold prefix runs between the two halves of the argv
+\ scan for `--`, and any prefix row may leave x13 holding anything, so the scan
+\ index lives in the loop that reads it. A seeded engine emits no prefix rows,
+\ so only an unseeded host shows this; test/cold-engine.f emits one. Both cases
+\ load the same driver through the real command line.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -104,7 +92,6 @@ create CS-ERR CS-CAP allot
 : CS-OUT$ ( n -- ptr u8 n ) {: u:n :}
    CS-OUT u ;
 
-\ ---- cases -----------------------------------------------------------------
 
 \ The baseline: the same host, the same driver, no separator on the line. It
 \ holds under the defect too, which is what makes the pair a measurement.
@@ -121,9 +108,10 @@ create CS-ERR CS-CAP allot
    s" an unseeded --load with no separator says nothing on stderr" T-LABEL
    erru 0 T= ;
 
-\ The regression: with `-- art extra` the loader must stop at the separator. A
-\ scan that missed it handed the loader three more files and died on the first,
-\ so an empty stderr and a zero status are the two halves of the refusal.
+\ With `-- art extra` the loader must stop at the separator. A scan that missed
+\ it handed the loader three more files and died on the first (`include: cannot
+\ open <tree>/--`, exit 74), so an empty stderr and a zero status are the two
+\ halves of the refusal.
 : CS-WITH-SEPARATOR ( -- )
    CS-ARGV0  CS-DRV$ CS-ARG  s" --" CS-ARG  s" art" CS-ARG  s" extra" CS-ARG
    CS-RUN {: outu:n erru:n rc:n :}

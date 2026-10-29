@@ -118,7 +118,7 @@ SUMTYPE mixlo
 \ argument. `sp`'s parameter occurs only as a pointee, so every instantiation is
 \ two cells and an OPEN instance is placeable; `box` keeps its parameter as a
 \ payload cell, so no width exists before the argument binds and an open
-\ instance of it stays refused (dot habu-place-an-open-d7bcba49).
+\ instance of it stays refused.
 PRODUCT sp<a>
    FIELD base ptr a
    FIELD len n
@@ -138,15 +138,14 @@ create SP-BYTES 100 allot
 : SP-TAKE ( sp<t> n -- sp<t> )   {: k :} NRR-SP:UNMAKE drop k NRR-SP:MAKE ;
 : SP-SKIP ( sp<t> n -- sp<t> )   {: k :} NRR-SP:UNMAKE k - swap k + swap NRR-SP:MAKE ;
 
-\ The shape that drifted while an open row could not be placed: a call returns an
-\ open-argument bundle and a local binds the whole of it.
+\ A call returns an open-argument bundle and a local binds the whole of it.
 : SP-TAKE-LEN ( n -- n )   {: k :} SP-WHOLE k SP-TAKE {: w :} w SP-LEN ;
 : SP-SKIP-LEN ( n -- n )   {: k :} SP-WHOLE k SP-SKIP {: w :} w SP-LEN ;
 
 \ A `does>` clause's rows are rows: the created word yields a two-cell value and
 \ the clause is placed from that row's own per-cell boundaries, so the definer
-\ compiles and the word it creates runs (dot habu-give-a-does-97cd0db2). The
-\ body is src/lib/span.f's SPAN-BUFFER: shape - a reach cell and the bytes after it.
+\ compiles and the word it creates runs. The body is src/lib/span.f's
+\ SPAN-BUFFER: shape, a reach cell and the bytes after it.
 : SP-BUFFER: ( n -- )
    create dup , allot
    does> ( -- sp<u8> ) dup @ >r cell+ byte-view r> NRR-SP:MAKE ;

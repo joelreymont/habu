@@ -1,17 +1,9 @@
 \ image-grant.f - the keyed images a gate settled for this process's row.
-\
 \ A gate settles each keyed image once, in a build row of its pool
-\ (test/gate-images.f), and starts a row only after every image the row needs
-\ is settled. It names those images to the row in HABU_GATE_IMAGES, which the
-\ row's own children inherit: each family name between spaces, with one space
-\ before the first and after the last, so a row granted nothing still carries
-\ the variable.
-\
-\ A family module asks CHECK before it settles its image. Outside a gate there
-\ is no variable and any image may be settled: a standalone `bin/hb --load
-\ <row>` builds whatever it needs. Under a gate only a granted image may be, so
-\ a row that reaches an image the gate did not settle for it dies here, naming
-\ the image, instead of building it beside the gate's build row.
+\ (test/gate-images.f), and starts a row only after its images are settled. It
+\ names them in HABU_GATE_IMAGES, inherited by the row's children: each family
+\ name between spaces, with one space before the first and after the last, so a
+\ row granted nothing still carries the variable.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -48,7 +40,9 @@ public
 : VALUE$ ( -- ptr u8 n )
    GRANT-BUF GRANT-U @ ;
 
-\ Die unless this process may settle the family's image.
+\ A family module calls this before it settles its image. Outside a gate there
+\ is no variable and any image may be settled; under one, an image not granted
+\ dies here, naming it, instead of being built beside the gate's build row.
 : CHECK ( ptr u8 n -- ) {: fam:ptr famu:n :}
    NAME$ GETENV {: g:ptr gu:n :}
    gu 0 = if exit then

@@ -1,4 +1,6 @@
-\ gate-diagnostics.f - checked runner for checker diagnostic contracts.
+\ gate-diagnostics-lib.f - the cases of the checker diagnostic contract gate,
+\ each a child run of tools/check.f whose records tools/gate-json-assert.f
+\ diag-contract judges.
 
 require src/lib/string.f
 require src/lib/fs.f
@@ -210,7 +212,6 @@ TYPED-VARIABLE SPLICE-LEN len
 : REC$ ( -- ptr u8 n )
    REC-BUF REC-U @ ;
 
-\ A record of u bytes fits its buffer, or the test fails by name.
 : REC-FITS ( n -- ) {: u:n :}
    u REC-CAP > if s" record outgrows its buffer" GE-FAIL then ;
 
@@ -228,8 +229,8 @@ TYPED-VARIABLE SPLICE-LEN len
    SPLICE-BUF REC-CAP SPLICE-LEN BUF-APPEND
    SPLICE-BUF SPLICE-LEN BUF-LEN@ REC! ;
 
-\ Replace the first OLD in the record with NEW. Neither may point into the
-\ splice buffer, which the replacement rebuilds at the record's capacity.
+\ Neither string may point into the splice buffer, which the replacement
+\ rebuilds at the record's capacity.
 : REC-SWAP ( ptr u8 n ptr u8 n -- ) {: old:ptr oldu:n new:ptr newu:n :}
    REC$ old oldu FIND-SUB MATCH option
      none OF s" record has no text to replace" GE-FAIL ENDOF
@@ -484,11 +485,10 @@ TYPED-VARIABLE SPLICE-LEN len
    s" habu-json-file.err" s" file-origin diagnostic contract" DIAG-CONTRACT
    s" diag-file-origin" s" habu-json-file.err" s" habu-json-file.f" s" file origin" GJA2P ;
 
-\ A refused record names its token and any known position, under the shape
-\ and repair class its code names
-\ (tools/diag-code.f). tools/check.f runs as a child: the packet comes
-\ from its own load child, whose capture would replace the one an in-process
-\ CHECK-CAPTURE holds open.
+\ A refused record names its token and any known position, under the shape and
+\ repair class its code names (tools/diag-code.f). tools/check.f runs as a
+\ child: the packet comes from its own load child, whose capture would replace
+\ the one an in-process CHECK-CAPTURE holds open.
 : RECORD-ARGS ( ptr u8 n -- ) {: src:ptr srcu:n :}
    src srcu WRITE-SRC
    s" --load" ARG+
@@ -750,10 +750,10 @@ TYPED-VARIABLE SPLICE-LEN len
    s" EV ." GE-SRC-LINE
    s" hb published unsafe evaluate definition" GE-HB-RUN-STDIN-NZ ;
 
-\ F3: patch32 is a TRUSTED-only capability prim (machine-code sink). A CHECKED
-\ definition that calls it must be rejected with the named E-CAP-TRUSTED code and
-\ routed to the trusted_boundary_required repair class; exact private or
-\ test-local TRUSTED: builders are the audited certified path.
+\ patch32 is a TRUSTED-only capability prim (machine-code sink): a checked
+\ definition that calls it is rejected with E-CAP-TRUSTED under the
+\ trusted_boundary_required repair class; exact private or test-local TRUSTED:
+\ builders are the audited certified path.
 : CAP-TRUSTED ( -- )
    GE-HB-RESET
    GE-SRC-RESET
@@ -765,10 +765,10 @@ TYPED-VARIABLE SPLICE-LEN len
    s" habu-cap-trusted.err" s" capability diagnostic contract" DIAG-CONTRACT
    s" diag-repair-class" s" habu-cap-trusted.err" s" trusted_boundary_required" s" capability repair class" GJA2S ;
 
-\ F3-FFI: the raw AAPCS64 trampolines ffi-call / ffi-call-abi / ffi-call-abi-r
-\ are TRUSTED-only foreign-call boundaries (a checked caller could otherwise
-\ resolve any C symbol and hand it raw pointers). Each must be rejected from a
-\ CHECKED body with the named E-CAP-TRUSTED code, naming the offending prim.
+\ The raw AAPCS64 trampolines ffi-call / ffi-call-abi / ffi-call-abi-r are
+\ TRUSTED-only foreign-call boundaries: a checked caller could otherwise resolve
+\ any C symbol and hand it raw pointers. Each is rejected from a checked body
+\ with E-CAP-TRUSTED, naming the prim.
 : FFI-RAW-REJECT ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n tok:ptr toku:n :}
    GE-HB-RESET
    GE-SRC-RESET
@@ -821,11 +821,11 @@ TYPED-VARIABLE SPLICE-LEN len
    s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
    s" checked load accepted bad declared effect" GE-EXPECT-NONZERO ;
 
-\ A reject diagnostic whose expected/actual row is wider than RBUF-CAP (64) values
-\ must fail closed: the renderer caps the row instead of overflowing RBUF into
-\ adjacent DATA (which fed garbage type pointers to REND-TYPE -> SIGSEGV). 70
-\ layout values in the actual row exceed the cap; the child must still exit with
-\ the checker-reject rc and print the mismatch, never crash. (Red pre-fix: rc 134.)
+\ A reject diagnostic whose expected or actual row is wider than RBUF-CAP (64)
+\ values fails closed: the renderer caps the row instead of overflowing RBUF
+\ into adjacent DATA, which fed garbage type pointers to REND-TYPE (SIGSEGV, rc
+\ 134). 70 layout values in the actual row exceed the cap; the child exits with
+\ the checker-reject rc and prints the mismatch.
 : RENDER-CAP-CLOSED ( -- )
    GE-HB-RESET
    GE-SRC-RESET
@@ -843,11 +843,11 @@ TYPED-VARIABLE SPLICE-LEN len
    70 s" wide diagnostic row must fail closed with rc 70, not crash" GE-EXPECT-RC
    s" actual: " s" wide diagnostic row must still render the mismatch" GE-EXPECT-ERR-HAS ;
 
-\ Repair-packet family field: a layout (ADT) type mismatch must carry the
-\ involved type-family name as `"family"`; a pure-scalar mismatch must not. The
-\ field carries the interned qualified spelling — bare tail for these global
-\ families; the foreign-package pkg:tail form is pinned in test/type-decl-suite.f
-\ (TDLRJ2), since tools/check.f's scanner has no package-block support yet.
+\ A layout (ADT) type mismatch carries the involved family's interned qualified
+\ spelling as `"family"`, a bare tail for these global families; a pure-scalar
+\ mismatch carries none. The foreign-package pkg:tail form is pinned in
+\ test/type-decl-suite.f (TDLRJ2), since tools/check.f's scanner has no
+\ package-block support.
 : ADT-FAMILY ( -- )
    GE-HB-RESET
    GE-SRC-RESET
@@ -878,10 +878,9 @@ TYPED-VARIABLE SPLICE-LEN len
    s" family" s" scalar mismatch omits family field" ERR-NO-JKEY
    s" json-one-schema" s" habu-scalar-nofam.err" s" scalar mismatch schema" GJA1 ;
 
-\ Repair-packet variant/tag field: a `construct family variant` payload
-\ mismatch must carry the arm's sum-variant name (`variant`) and declaration-order
-\ `tag`, plus the family it belongs to; a pure-scalar mismatch carries none. The
-\ two-variant sum built on the SECOND variant proves `tag` tracks the actual arm
+\ A `construct family variant` payload mismatch carries the arm's sum-variant
+\ name (`variant`), its declaration-order `tag` and its family; a pure-scalar
+\ mismatch carries none. Built on the second variant, so `tag` tracks the arm
 \ (toss = 1), not a hard-coded 0.
 : ADT-VARIANT ( -- )
    GE-HB-RESET
@@ -905,12 +904,11 @@ TYPED-VARIABLE SPLICE-LEN len
    s" tag" s" scalar mismatch omits tag field" ERR-NO-JKEY
    s" json-one-schema" s" habu-scalar-novar.err" s" scalar novar schema" GJA1 ;
 
-\ Repair-packet payload_pos field: a construct payload mismatch names the
-\ 0-based declaration-order slot that failed. Both slots of the two-payload
-\ variant expect the SAME type (n), so a type-matched capture cannot tell them
-\ apart: the two arms prove the position is tracked structurally through the
-\ unification spine (top slot 1, deep slot 0). A family-only layout mismatch
-\ (no construct in scope) carries no payload_pos.
+\ A construct payload mismatch names the 0-based declaration-order slot that
+\ failed (payload_pos). Both slots of the variant expect n, so a type-matched
+\ capture cannot tell them apart: the two arms show the position is tracked
+\ through the unification spine (top slot 1, deep slot 0). A family-only layout
+\ mismatch (no construct in scope) has none.
 : ADT-PAYLOAD-POS ( -- )
    GE-HB-RESET
    GE-SRC-RESET
@@ -941,11 +939,10 @@ TYPED-VARIABLE SPLICE-LEN len
    s" payload_pos" s" family-only mismatch omits payload_pos" ERR-NO-JKEY
    s" json-one-schema" s" habu-adt-nopos.err" s" family-only nopos schema" GJA1 ;
 
-\ Repair-packet arity fields: a family applied with the wrong number of
-\ signature arguments (E-WRONG-ARITY / fix_signature_arity) carries the family's
-\ declared arity (`arity_expected`) and the written count (`arity_actual`). The
-\ arity-2 arm proves the counts track the declaration, not a hard-coded pair; a
-\ scalar mismatch carries neither.
+\ A family applied with the wrong number of signature arguments (E-WRONG-ARITY /
+\ fix_signature_arity) carries the declared arity (`arity_expected`) and the
+\ written count (`arity_actual`); the arity-2 arm shows they track the
+\ declaration, not a hard-coded pair. A scalar mismatch carries neither.
 : SIG-ARITY ( -- )
    GE-HB-RESET
    GE-SRC-RESET

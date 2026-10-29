@@ -1,10 +1,6 @@
-\ select.f - WSEL, src/arch/wasm/select.f: its calls, status, integer and
-\ checked memory rows.
-\
-\ Each row compiles Habu source, selects it and compares what the module holds
-\ (test/wasm/select-lib.f): its shape, with or without its accesses' offsets,
-\ or a function's signature, or a call's callee, or what defines one
-\ operation's operands.
+\ select.f - WSEL rows (src/arch/wasm/select.f): calls, status, integer and
+\ checked memory. Each row compiles Habu source, selects it and compares what
+\ the module holds (test/wasm/select-lib.f).
 
 require src/lib/test.f
 require src/lib/string.f
@@ -40,7 +36,6 @@ variable SEL-CELL
 package WSEL-TEST
 private
 
-\ Function k's signature as the type table renders it.
 : SIG$ ( IR-BUILD:module n -- ptr u8 n )
    {: m:IR-BUILD:module k:n :}
    m IR-BUILD:FFUN-ROWS m IR-BUILD:FKEY  m IR-BUILD:FKEY k IR-ID:PACK-FUN
@@ -48,7 +43,6 @@ private
    m IR-BUILD:FTYPE-POOL m IR-BUILD:FTYPE-ROWS sig NB 256 IR-TYPE:FRENDER
    NB swap ;
 
-\ The first call function zero makes, its blocks read in order.
 variable FOUND?
 1 TYPED-BUFFER FOUND IR-ID:ir-op-id
 
@@ -63,7 +57,6 @@ variable FOUND?
    {: bk:IR-ID:ir-block-id :}
    bk NFROZEN:OP-COUNT 0 ?do  bk i NFROZEN:OP-AT CALL-SEEN  loop ;
 
-\ Its callee's spelling.
 : CALLEE$ ( IR-BUILD:module -- ptr u8 n )
    {: m:IR-BUILD:module :}
    m NFROZEN:VIEWS!
@@ -207,7 +200,6 @@ variable Z-OPS
 variable Z-RES
 variable Z-OUT
 
-\ The first token, the wordcall on it and the argument, and a bare return.
 : Z-BODY ( IR-ID:ir-value-id -- )
    {: a:IR-ID:ir-value-id :}
    HIR-OPCODE:MEM Z-OPEN
@@ -314,7 +306,6 @@ variable USE-K                       \ and its index there
    ZC ZB IR-BUILD:END-OP drop
    c Z-SELECT ;
 
-\ What defines each operand of operation USE-K of block USE-J.
 : USES-KEEP ( IR-BUILD:module -- )  USE-J @ USE-K @ USES$ KEEP ;
 
 : ACCESS-SHAPE ( IR-CTX:ctx -- )   ACCESS-BODY 0 [: AT-BLOCK+ ;] FUN$ KEEP ;

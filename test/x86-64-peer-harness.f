@@ -1,30 +1,8 @@
 \ x86-64-peer-harness.f - the executable an x86-64 peer runs around routines
-\ the real pass rows emitted. An image is a checking entry, the routines, and
-\ the one exit syscall, staged in this order:
-\
+\ the real pass rows emitted, staged in this order:
 \    OPEN,  cases  CLOSE,  [ callee  ALIGN, ]  [ n SKIP, ]  ENTRY,  routine  WRITE-ELF
-\
-\ A routine staged past a SKIP, lands n bytes beyond where its emission placed
-\ it; LINK-CALL and LINK-CODE write its placement-dependent fields again from
-\ the emission's rows.
-\
-\ The entry calls the routine bound at ENTRY, once per case, and checks its
-\ answer, the machine and data stacks around the call, the registers a routine
-\ must keep, the OS seam and a linked label. The first failed check exits with
-\ its own status; an image whose checks all hold exits 0. Case checks exit
-\ FIRST-CASE upward in the order they are staged, below the harness's own
-\ statuses (31 and up). A negative image expects a wrong answer from its first
-\ case check, so it must exit FIRST-CASE.
-\
-\ A routine control never comes back from is called by the one TERMINAL-CASE,
-\ of its image and leaves through a STAND-IN, staged as its callee: the stand-in
-\ checks what the routine published and exits 0 itself, and a routine that
-\ returns fails the case. A routine answering the address of one of its own
-\ functions is appended with APPEND-QUOTING, which binds the label its
-\ QUOTE-CASE, compares the answer with where that function landed.
-\
-\ An image with an entry of its own (test/x86-64-skel-image.f) skips the
-\ checking entry: it stages its stream after ASM-RESET and ends with WRITE.
+\ An image with its own entry (test/x86-64-skel-image.f) skips the checking
+\ entry: it stages after ASM-RESET and ends with WRITE.
 require src/lib/test.f
 require src/lib/byte-buffer.f
 require src/habu/fdio.f
@@ -45,6 +23,11 @@ public
 
 $8000000000000000 constant MIN-CELL
 $7FFFFFFFFFFFFFFF constant MAX-CELL
+\ The entry checks each case's answer, the machine and data stacks around the
+\ call, the kept registers, the OS seam and a linked label; the first failed
+\ check exits with its own status, else the image exits 0. Case checks exit
+\ FIRST-CASE upward in staging order, below the harness's own statuses; a
+\ negative image fails its first case check, so it exits FIRST-CASE.
 21 constant FIRST-CASE
 
 private
@@ -239,7 +222,6 @@ public
    ASM-LEN X64IR:SP-ALIGN + 1- {: end:n :}
    end end X64IR:SP-ALIGN mod - PAD-TO ;
 
-\ The routine every case calls starts here.
 : ENTRY, ( -- ) ROUTINE-LBL LBL, ;
 
 \ The callee a TERMINAL-CASE,'s routine leaves through, standing in for the one

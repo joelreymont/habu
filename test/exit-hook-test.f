@@ -1,14 +1,9 @@
-\ The cleanup registry runs at process exit: one child process per exit path.
-\ Every case registers a path inside this fixture's own temp root and then
-\ leaves the process the way it means to - normally, by `die`, by an uncaught
-\ throw, or by dying inside a chained foreign hook - and the assertion is what
-\ the child left on disk. The exits of a stripped image's MAIN run in
-\ test/stripped-image.f, on the application it already builds
-\ (test/exit-hook-subject.f). The children take the directory as argument 0
-\ rather than making their own under TMPDIR, so a case that fails leaves its
-\ evidence inside the root this fixture removes.
-\ A child script resolves `require src/lib/fs-mutate.f` against the working
-\ directory, which is the checkout (test/app-image.f spawns the same way).
+\ The cleanup registry runs at process exit: one child per exit path (normal,
+\ `die`, uncaught throw, dying inside a chained foreign hook), judged by what it
+\ left on disk. A stripped image's MAIN exits run in test/stripped-image.f. A
+\ child registers inside this fixture's temp root, given as argument 0, so a
+\ failing case leaves its evidence where the fixture removes it; it resolves
+\ `require src/lib/fs-mutate.f` against the checkout (cwd), as test/app-image.f.
 require src/lib/test.f
 require src/lib/errors.f
 require src/lib/string.f
@@ -117,8 +112,8 @@ variable TREE-U
    erru s" child: dying" ERR-HAS? TTRUE
    TREE$ FS:EXISTS? TFALSE ;
 
-\ The reported defect: an uncaught top-level throw. 1 is kernel-representable,
-\ so the engine exits with the thrown code itself.
+\ An uncaught top-level throw: 1 is kernel-representable, so the engine exits
+\ with the thrown code itself.
 : CASE-THROW ( -- )
    s" throw.f" s" throw-tree" CASE-PATHS
    S\" : CHILD-MAIN ( -- ) CHILD-TREE FS:MAKE-DIR CHILD-TREE FS:CLEANUP-TREE+ 1 throw ;\n" TEXT+

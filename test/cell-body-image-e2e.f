@@ -5,7 +5,6 @@
 \ A pointer split across two `,` cells passes, because those cells are the
 \ body's grid; the same split through allot, or past the `,` run, still fails.
 \ A body still pending at an image save keeps its `,` grid in the image.
-\ Run: bin/hb --load test/cell-body-image-e2e.f
 
 require src/lib/test.f
 require src/lib/string.f

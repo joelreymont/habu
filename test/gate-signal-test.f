@@ -1,77 +1,9 @@
 \ gate-signal-test.f - a stopped gate leaves no process and no scratch behind.
-\
-\     bin/hb --load test/gate-signal-test.f
-\
-\ THE SUBJECT is the gate itself. test/gate-signal-root.f is test/run.f's own
-\ adapter on a one-row registry, started here as a child with a private TMPDIR.
-\ Its row (test/gate-signal-row.f) runs a second engine, and that one starts a
-\ burst of writers, each a process group of its own that writes under the
-\ row's scratch and then sleeps 20 s. The test signals the root the moment both
-\ engines have reported, so the signal lands while the burst is running.
-\
-\ THE WAYS THIS CAN FAIL, written down before the fix:
-\
-\  1. AN ORPHANED GRANDCHILD. Every spawned child leads its own process group
-\     (src/lib/process-tree.f), so killing a row's group ends the row and
-\     nothing the row spawned: its children go on building, reparented to init.
-\     Asserted: the row and its leaf open the write end of a FIFO this test
-\     makes (src/lib/test/fifo.f) by the path GATE_SIGNAL_FIFO names, the leaf
-\     maps it into each process it spawns, and the read end reports end of
-\     file only when the last holder is gone. The root itself, this test's own
-\     child, holds no write end: the root's wait status is the evidence it
-\     ended it.
-\  2. A ROW MID-SPAWN. A child that appears after the row's descendants were
-\     listed, or after its parent was killed, is nobody's to end.
-\     Asserted: the leaf is inside its burst when the signal lands, and one
-\     writer that got away holds the FIFO open.
-\  3. A SIGNAL DURING CLEANUP. A root that is ending its rows or removing its
-\     tree and takes the default action for the next signal dies half way.
-\     Asserted: the second-signal case below.
-\  4. A SECOND SIGNAL. An impatient second SIGTERM lands while the first is
-\     being answered; the outcome has to be the first one's.
-\     Asserted: the same signal twice, AGAIN-GAP-MS apart, changes nothing.
-\  5. SCRATCH IN USE. A tree removed while a process that can still write into
-\     it lives comes back: every writer here makes its directory with
-\     `mkdir -p` and then a file in it.
-\     Asserted: the root's TMPDIR is empty when the root has ended and still
-\     empty once every process is gone.
-\  6. A STATUS THAT HIDES THE SIGNAL. A root that cleans up and then exits 0,
-\     or 1 like a red run, tells its caller the run finished.
-\     Asserted: the root's wait status is "killed by" the signal it was sent.
-\  7. AN IGNORED SIGNAL. A root is started with its caller's ignored signals
-\     still ignored: nohup's SIGHUP, the SIGINT of a background job under a
-\     shell without job control. A root that catches one anyway undoes the
-\     caller's choice, and a test that inherits one never sees it delivered.
-\     Asserted: a root started under nohup takes no action on SIGHUP, and then
-\     answers SIGTERM like any other. For every other case this process gives
-\     its children the default action for all three before it starts a root.
-\
-\ THIS TEST'S OWN WAITS ARE NO ASSERTION RESULT. A wait for the reports, for
-\ the root to end, for end of file on the FIFO or for the reported engines to go
-\ is named on stdout and thrown as E-PROC-TIMEOUT when its own deadline runs out
-\ (src/lib/test/wait.f), so the row ends as a timeout and not as a FAIL. End of
-\ file before both reports, a short report or a failed read of them is a failed
-\ report, and fails the case. A failed poll, a descriptor the poll reports
-\ broken, or a failed read in the wait for end of file throws E-PROC-OUTPUT.
-\ On macOS, whose poll never reports a FIFO's end of file, a reporter that dies
-\ before its report is the report wait's timeout instead.
-\
-\ THE REPORTS COME BEFORE END OF FILE MEANS ANYTHING. A FIFO no writer has
-\ opened yet reads end of file too, so a case judges end of file only after
-\ both reports have shown the row and its leaf hold the write end.
-\
-\ A FAILED CASE LEAVES NOTHING EITHER, but for one case. Each case ends through
-\ SIGNAL-END whatever it asserted or threw: the root is killed
-\ and reaped, the engines that reported are killed if they are still the
-\ processes that reported, the writers nobody could name end on their own
-\ after 20 s, and the case waits for that before it returns. The one case is a
-\ root killed in the middle of a walk: what the walk had stopped stays stopped
-\ unless the kernel resumes it (test/gate-pool.f header), and a writer it does
-\ not resume - the helper's, whose group was orphaned already - outlives the
-\ wait and is left. The scratch is under this process's runner root, which its
-\ registered cleanup removes. A passing case costs none of it: the FIFO is
-\ already at end of file. When that wait runs out, the case still closes its
-\ descriptors and SIGNAL-END still clears the scratch.
+\ The subject is test/gate-signal-root.f, test/run.f's adapter on a one-row
+\ registry, started as a child with a private TMPDIR; its row
+\ (test/gate-signal-row.f) runs a second engine that starts a burst of writers,
+\ each its own process group, writing under the row's scratch and then sleeping
+\ 20 s. The root is signalled once both engines have reported, mid-burst.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -266,6 +198,10 @@ variable STAT-PATH-U
 : REPORT-ENV ( -- )
    s" GATE_SIGNAL_FIFO" >LEN FIFO$ >LEN PROC-ENV+ ;
 
+\ A wait that runs out is no assertion result: TEST-WAIT:EXPIRED names it on
+\ stdout and throws E-PROC-TIMEOUT (src/lib/test/wait.f), so the row ends as a
+\ timeout, not a FAIL.
+
 \ TRUE once fd has bytes to read or has reached end of file, FALSE when ms ran
 \ out first. A failed poll, or a descriptor the poll reports broken (POLLERR or
 \ POLLNVAL), is no answer either way: it throws E-PROC-OUTPUT.
@@ -280,6 +216,8 @@ variable STAT-PATH-U
 \ Both pids, before READY-MS runs out. End of file first means a reporter died:
 \ that, a short report or a failed read answers false. READY-MS running out
 \ first is this wait's own deadline, named and thrown as a timeout.
+\ On macOS, whose poll never reports a FIFO's end of file, a reporter that dies
+\ before its report is this timeout instead.
 : REPORTS-READ? ( -- bool )
    READY-MS >MS PROC-DEADLINE-AT {: deadline:n :}
    begin REPORT-U @ REPORT-BYTES < while
@@ -316,6 +254,8 @@ variable STAT-PATH-U
 : REPORTED# ( -- n )
    REPORT-U @ 1 cells / ;
 
+\ A FIFO no writer has opened yet reads end of file too, so a case judges end
+\ of file only after both reports show the row and its leaf hold the write end.
 \ In, and each with a start: without one a reporter cannot be told from a
 \ stranger, and every later claim about it would hold by default.
 : REPORTS-IN? ( -- bool )
@@ -344,6 +284,13 @@ variable STAT-PATH-U
       then
       SETTLE-MS PAUSE
    again ;
+
+\ A failed case leaves nothing behind, except after a root killed in the middle
+\ of a walk: what the walk stopped stays stopped unless the kernel resumes it
+\ (test/gate-pool.f header), and a writer it does not resume, the helper's,
+\ whose group was orphaned already, outlives the wait and is left.
+\ The scratch is under this process's runner root, which its registered cleanup
+\ removes. A passing case skips the wait: its FIFO is already at end of file.
 
 \ What a failed case owes: the engines that reported are killed, each only
 \ while it is still the process that reported, and the writers nobody could
@@ -486,6 +433,32 @@ variable STAT-PATH-U
 
 public
 
+\ The ways this can fail, each asserted by a case MAIN runs:
+\  1. An orphaned grandchild. Every spawned child leads its own process group
+\     (src/lib/process-tree.f), so killing a row's group leaves what the row
+\     spawned running. The row and its leaf open the write end of a FIFO
+\     (src/lib/test/fifo.f) at the path GATE_SIGNAL_FIFO names, the leaf maps it
+\     into each process it spawns, and the read end reports end of file only
+\     when the last holder is gone. The root holds no write end: its wait
+\     status is the evidence it ended.
+\  2. A row mid-spawn. A child that appears after the row's descendants were
+\     listed, or after its parent was killed, is nobody's to end. The leaf is
+\     inside its burst when the signal lands, and one writer that got away
+\     holds the FIFO open.
+\  3. A signal during cleanup. A root ending its rows or removing its tree that
+\     takes the default action for the next signal dies half way.
+\  4. A second signal. SIGTERM twice, AGAIN-GAP-MS apart, has the first one's
+\     outcome.
+\  5. Scratch in use. A tree removed while a writer lives comes back: every
+\     writer makes its directory with `mkdir -p` and then a file in it.
+\  6. A status that hides the signal. A root that cleans up and then exits 0,
+\     or 1 like a red run, tells its caller the run finished.
+\  7. An ignored signal. A root starts with its caller's ignored signals still
+\     ignored: nohup's SIGHUP, the SIGINT of a background job under a shell
+\     without job control. A root that catches one undoes the caller's choice,
+\     and a test that inherits one never sees it delivered. A root under nohup
+\     takes no action on SIGHUP, then answers SIGTERM; every other case gives
+\     its children the default action for all three before it starts a root.
 : MAIN ( -- )
    T-RESET
    SIGNALS-DEFAULT

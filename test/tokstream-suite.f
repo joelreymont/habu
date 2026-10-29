@@ -1,20 +1,9 @@
-\ tokstream-suite.f - adversarial fixtures for tools/tokstream.f, the comment-only
-\ diff instrument (dot habu-promote-the-comment-1f30b9f3).
-\
-\ The instrument's whole claim is one equality: a comment-only edit leaves the
-\ stream byte-identical, and anything else moves it. Each case writes a fixture to
-\ ONE path, runs the real tool through its real entry point
-\ (`bin/hb --load tools/tokstream.f -- <path>`) in a child, and compares the
-\ captured stream against the base run's. The path never changes between runs, so
-\ the F record is constant and the comparison is about content alone.
-\
-\ The base fixture is built to fool a text search: `--` and an `s" ..."` opener
-\ live inside a `\` line comment, a stack effect is spelled inside a string
-\ literal, and `(CMP)` is a `(`-initial WORD rather than a comment opener. The
-\ comment-strip variant also reflows the surviving source across different lines,
-\ because the stream is a token stream and whitespace is not content.
-\
-\ Run: bin/hb --load test/tokstream-suite.f
+\ tokstream-suite.f - adversarial fixtures for tools/tokstream.f, the
+\ comment-only diff instrument: a comment-only edit leaves the stream
+\ byte-identical, anything else moves it. Each case writes one fixture path, so
+\ the F record is constant, runs the real tool in a child and compares with the
+\ base run. The base hides `--`, an `s"` opener and a stack effect in comments
+\ and strings, and `(CMP)` is a word, not a comment opener.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -58,7 +47,6 @@ create EMPTY 1 allot
 : OUT$ ( -- ptr u8 n )     OUT OUT-U @ ;
 : BASE$ ( -- ptr u8 n )    BASE BASE-U @ ;
 
-\ --- fixture sources ----------------------------------------------------------
 \ Every variant below differs from BASE by exactly one edit, so a case that fails
 \ names the edit that moved the stream.
 
@@ -163,8 +151,6 @@ create EMPTY 1 allot
    s" ;package" LN
    SB$ ;
 
-\ --- child runs ---------------------------------------------------------------
-
 : TOOL$ ( -- ptr u8 n )   s" tools/tokstream.f" ;
 
 : STORE! ( len len outcome -- )
@@ -189,7 +175,6 @@ create EMPTY 1 allot
 
 : WRITE-SRC ( ptr u8 n -- )   SRC$ 2swap FS:WRITE-ALL ;
 
-\ Write the variant, run the tool on the one fixture path, require a clean exit.
 : RUN-SRC ( ptr u8 n -- )
    WRITE-SRC
    ARGV-HEAD  SRC$ >LEN PROC-ARGV+
@@ -200,8 +185,6 @@ create EMPTY 1 allot
    BASE-SRC$ RUN-SRC
    OUT BASE OUT-U @ BYTE-COPY
    OUT-U @ BASE-U ! ;
-
-\ --- cases --------------------------------------------------------------------
 
 : MOVES ( ptr u8 n ptr u8 n -- ) {: la:ptr lu:n a:ptr u:n :}
    la lu T-LABEL
@@ -229,10 +212,9 @@ create EMPTY 1 allot
    s" ( not even this one )" LN
    SB$ ;
 
-\ The F record's reason for existing: a file that leaves the sweep must show as a
-\ missing record, not as an empty diff. The second file contributes no C, L or S
-\ record at all, so ONLY its F record can distinguish the two streams - drop the F
-\ record and the two runs are byte-identical.
+\ A file that leaves the sweep must show as a missing record, not an empty diff.
+\ The second file contributes no C, L or S record, so only its F record tells
+\ the two streams apart.
 : CASE-FILE-DROP ( -- )
    s" dropping a comment-only file from the sweep moves the stream" T-LABEL
    BASE-SRC$ WRITE-SRC

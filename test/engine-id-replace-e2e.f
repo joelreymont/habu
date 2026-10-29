@@ -1,6 +1,5 @@
 \ End-to-end engine image identity across executable pathname replacement.
 \ The temporary tree, executable copies and child output are retained as evidence.
-\ Run: bin/hb --load test/engine-id-replace-e2e.f
 require src/lib/test.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f

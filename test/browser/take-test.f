@@ -1,17 +1,8 @@
 \ take-test.f - test/browser/take.f's module under bun: a delivery a turn takes
 \ with BROWSER-EVENT:TAKE (src/lib/browser/event.f) outlives the turn, and the
-\ module frees it in a later one. The module is built by tools/wasm-build.f's
-\ command line and validated by wasm-tools. bun and wasm-tools must be on PATH,
-\ so this is no row of the ordinary gate: test/wasm/device.f runs it, as does
-\ `bin/hb --load test/browser/take-test.f` from the tree's root.
-\
-\ - taken: typed "take" answers the text in its taken pages after its run, with
-\   DELIVERY and the event's fields as they were before TAKE; the next typed
-\   turn, whose delivery HANDLE frees, reads "take" back from those pages.
-\ - thrown: typed "boom" takes its delivery and throws 93; the next turn still
-\   reads "boom" from it.
-\ - freed: four take-then-free cycles end with the memory one does, so the
-\   taken pages are freed and a turn after a take frees its own delivery.
+\ module frees it in a later one. The module is built by tools/wasm-build.f and
+\ validated by wasm-tools; bun and wasm-tools must be on PATH, so
+\ test/wasm/device.f runs it, not the ordinary gate.
 
 require src/lib/string.f
 require src/lib/fs.f
@@ -67,6 +58,9 @@ variable MOD-U
    s" bun" >LEN EXE RESOLVE-EXECUTABLE {: u:len :}
    EXE u SPAWN ;
 
+\ taken: typed "take" answers the text in its taken pages after its run, with
+\ DELIVERY and the event's fields as they were before TAKE; the next typed turn,
+\ whose delivery HANDLE frees, reads "take" back from those pages.
 : TAKEN-CASE ( -- )
    s" take" s" next" HOST {: rc:n :}
    s" taken: the taken pages answer its text after the run and in the next turn" T-LABEL
@@ -75,6 +69,8 @@ variable MOD-U
    ERR ERR-U @ s" " T$=
    rc 0 T= ;
 
+\ thrown: typed "boom" takes its delivery and throws 93; the next turn still
+\ reads "boom" from it.
 : THROWN-CASE ( -- )
    s" boom" s" next" HOST {: rc:n :}
    s" thrown: a turn that throws after TAKE leaves its delivery taken" T-LABEL
@@ -84,6 +80,8 @@ variable MOD-U
 
 public
 
+\ freed: four take-then-free cycles end with the memory one does, so the taken
+\ pages are freed and a turn after a take frees its own delivery.
 : RUN ( -- )
    T-RESET SETUP
    s" browser take fixture builds" T-LABEL

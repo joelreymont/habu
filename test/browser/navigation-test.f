@@ -1,5 +1,4 @@
 \ navigation-test.f - Wasm end-to-end browser input, tree and highlight records.
-\ Run through the real host runner: bin/hb --load test/browser/navigation-test.f
 \ The printed directory keeps the module and expected/actual CLI output.
 \ Each kind of delivery navigation.f receives, typed and key, runs once and four
 \ times, and both runs end with the same memory: every run frees its delivery's

@@ -1,13 +1,6 @@
-\ dictionary-zero.f - `create … allot` reads zero after each engine path that
-\ lowers the data pointer over bytes a program wrote: a negative allot, a
-\ caught throw out of either interpret loop's evaluate, and a failed REPL line.
-\ Each case writes -1 into a block, releases it, and allots the same bytes
-\ again (docs/forth.md: `create … allot`, `BUFFER:` and `TYPED-BUFFER` allot
-\ zeroed space). Fresh DATA pages are zero; each path raises the release
-\ high-water (src/habu/layout.f DPHW-CELL) and `allot` zeroes the reused space
-\ below it. test/address-cell-index-recovery.f releases an allot of almost all
-\ of DATA, which a release that zeroed what it gave back could not finish.
-\ Run: bin/hb --load test/dictionary-zero.f
+\ `create … allot` reads zero after each engine path that lowers the data
+\ pointer over written bytes: a negative allot, a caught throw out of either
+\ interpret loop's evaluate, and a failed REPL line.
 require src/lib/test.f
 require src/lib/pty-harness.f
 require src/lib/engine-candidate.f
@@ -17,6 +10,10 @@ require src/habu/interpret.f
 package DICTIONARY-ZERO-TEST
 using PTY-HARNESS
 
+\ Each path raises the release high-water (src/habu/layout.f DPHW-CELL) and
+\ allot zeroes the reused space below it; fresh DATA pages are zero. A release
+\ that zeroed what it gave back could not finish
+\ test/address-cell-index-recovery.f's allot of almost all of DATA.
 : ZERO3? ( ptr n -- bool )
    {: p:ptr :}
    p @ 0=  p cell+ @ 0= and  p 2 cells + @ 0= and ;

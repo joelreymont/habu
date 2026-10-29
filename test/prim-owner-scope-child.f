@@ -1,55 +1,19 @@
-\ prim-owner-scope-child.f - what a package-OWNED primitive row admits, and where,
-\ once the production seal has run.
-\
-\ Runs inside test/native-window-owner-child.f's reset window, which re-includes
-\ src/core/checker.f from source; test/prim-owner-scope-prepare.f declared this
-\ fixture's rows and then ran src/core/internal-mark.f over the window, so every
-\ record below is classified exactly as the product build classifies it.
-\
-\ Five shapes of row are measured:
-\
-\ 1. PRIM-OWNER-AXIOM, a fresh name with no engine word, asked of the CHECKER
-\    only (CHECK-CANDIDATE!). A candidate binds the record the engine's lookup
-\    binds, and an owner-private row binds only as its owner's view of that
-\    record (src/core/checker.f CK-REC-BIND), so a row for a word the dictionary
-\    does not carry binds nowhere, inside its owner too. Owner-only admission is
-\    measured on the real records below.
-\ 2. A primitive whose TYPED row is owner-private: FFI-PTR>CELL and FFI-CELL>PTR
-\    (package FFI, records of the re-included checker.f that the seal
-\    classifies). The owner compiles a CHECKED caller at both tiers, a reopened
-\    owner too. The window's scan of their empty bodies leaves an ABI-only
-\    global row, so every other scope gets the trust-boundary reject
-\    (E-CAP-TRUSTED). This is the seal's case: that row grants nothing, so a
-\    pass that read only the top-level row would mark each record DNAME-INT,
-\    and the engine would then refuse the owner's call as well. A checked `[']`
-\    of the name is admitted exactly where the call is, and refused by name
-\    where it is not.
-\ 3. A row a package declares for its OWN word: util.f's global CORE-FOLD-C is
-\    still an internal engine word, because no row types that record.
-\ 4. A global PRIM-TRUSTED-ONLY! row beside the owner-private one, on two seed
-\    records: ffi-call-bounded (package FFI) and addrmap-set (package NPUB).
-\    The owner's row wins inside the owner, so its checked callers and ticks
-\    compile at both tiers. Elsewhere the global row answers: a checked caller
-\    gets the named E-CAP-TRUSTED reject, and a TRUSTED: caller keeps the call
-\    window tier 1 builds from that row.
-\ 5. An internal engine primitive a package row types: package-scope! and
-\    namespace-record carry DNAME-INT|DNAME-OWNED and are CHECKER-OVERLAY's
-\    (src/habu/prims.f). The owner's checked callers compile at both tiers,
-\    and a checked caller elsewhere gets the global trusted-only row's reject.
-\    A tick stays refused at both tiers, the owner's included, as every
-\    internal word's is: an xt would carry the call out of the owner.
-\
-\ Nothing here is EXECUTED: every compile case defines a word and throws the body
-\ away, and the shadowed global's token is refused before it runs.
+\ prim-owner-scope-child.f - what a package-OWNED primitive row admits, and
+\ where, once the production seal has run. Runs inside
+\ test/native-window-owner-child.f's reset window, which re-includes
+\ src/core/checker.f; test/prim-owner-scope-prepare.f declared this fixture's
+\ rows and ran src/core/internal-mark.f over the window, so every record below
+\ is classified exactly as the product build classifies it.
 
 require src/lib/errors.f
 
-\ Compiling a candidate is the subject, through evaluate-closed: a text that
-\ opens or closes a package moves the live package the next case is measured
-\ in, and set-tier picks the compiler it is measured under. EVC reports the
-\ reject code instead of letting it exit the window. A refusal's throw puts the
-\ text's two cells back, so EVC evaluates a copy and drops them on either path:
-\ this file is a closed program and may leave nothing.
+\ Nothing here is EXECUTED: every compile case defines a word and throws the
+\ body away, and the shadowed global's token is refused before it runs.
+\ Compiling a candidate through evaluate-closed: a text that opens or closes a
+\ package moves the live package the next case is measured in, and set-tier
+\ picks the compiler. EVC reports the reject code instead of letting it exit the
+\ window. A refusal's throw puts the text's two cells back, so EVC evaluates a
+\ copy and drops them on either path: this closed program may leave nothing.
 : EVC ( ptr u8 n -- n ) [: 2dup evaluate-closed ;] catch {: rc:n :} 2drop rc ;
 
 package PRIM-OWNER-CHILD
@@ -80,9 +44,9 @@ $0A constant LF-C
    rc E-NELAB-QUOT = if s" rejected" exit then
    rc OUTCOME$ ;
 
-\ The label is written BEFORE the subject runs. A rejected case raises through
-\ the diagnostic renderer, and reading the caller's label string back out on the
-\ far side of that printed an empty name.
+\ The label is written BEFORE the subject runs: a rejected case raises through
+\ the diagnostic renderer, after which the caller's label string read back
+\ empty.
 : LABEL ( ptr u8 n -- ) {: la:ptr lu:n :}
    s" prim-owner: " type la lu type s" : " type ;
 
@@ -98,7 +62,6 @@ $0A constant LF-C
    la lu LABEL
    sa su EVC OUTCOME$ type LF-C emit ;
 
-\ The whole path for a tick of an owned internal word.
 : EVAL-TICK ( ptr u8 n ptr u8 n -- ) {: la:ptr lu:n sa:ptr su:n :}
    la lu LABEL
    sa su EVC TICK-OUTCOME$ type LF-C emit ;
@@ -110,18 +73,24 @@ $0A constant LF-C
 : OVERLAY-OPEN ( -- ) s" package CHECKER-OVERLAY" evaluate-closed ;
 : PKG-CLOSE ( -- ) s" ;package" evaluate-closed ;
 
-\ ---- the fresh axiom: a row with no engine word binds nowhere ---------------
+\ The fresh axiom PRIM-OWNER-AXIOM, asked of the checker only
+\ (CHECK-CANDIDATE!): an owner-private row binds only as its owner's view of the
+\ record the engine's lookup binds (src/core/checker.f CK-REC-BIND), so a row
+\ for a word the dictionary does not carry binds nowhere, inside its owner too.
 : AXIOM-CASES ( -- )
    OWNER-OPEN
    s" axiom inside owner"
    s" POS-AX-IN ( n -- ) PRIM-OWNER-AXIOM" CAND
    PKG-CLOSE ;
 
-\ ---- owner-private typed rows: the owner and nobody else ----------------------
-\ Every definition name is used once: a candidate records a signature under its
-\ name, and a second definition of that name is a duplicate, not a second
-\ measurement of the same question. The first `package` of FFI and NPUB in this
-\ window creates it; each later one reopens it.
+\ Owner-private typed rows (FFI-PTR>CELL, FFI-CELL>PTR): the owner, reopened
+\ too, compiles a checked caller at both tiers. The window's scan of their empty
+\ bodies leaves an ABI-only global row, so every other scope gets E-CAP-TRUSTED.
+\ That row grants nothing: a seal that read only the top-level row would mark
+\ each record DNAME-INT and refuse the owner's call too. Every definition name
+\ is used once: a second definition of a name is a duplicate, not a second
+\ measurement. The first `package` of FFI and NPUB in this window creates it;
+\ each later one reopens it.
 : PRIVATE-T0-CASES ( -- )
    0 set-tier
    FFI-OPEN
@@ -157,10 +126,9 @@ $0A constant LF-C
    s" : POS-P2C1-TOP ( ptr a -- n ) FFI-PTR>CELL ;" EVAL
    RESTORE-T0 ;
 
-\ ---- ticks of owner-private typed rows: where the call is admitted, nowhere else
 \ A checked `[']` of the name compiles where a checked call of it compiles, and
-\ elsewhere it gets the call's refusal of the name. Every owner block here
-\ reopens its package, which the cases above created.
+\ elsewhere gets the call's refusal of the name. Every owner block here reopens
+\ its package, which the cases above created.
 : TICK-T0-CASES ( -- )
    0 set-tier
    FFI-OPEN
@@ -190,18 +158,19 @@ $0A constant LF-C
    PKG-CLOSE
    RESTORE-T0 ;
 
-\ ---- a private row for the owner's own word -----------------------------------
-\ The global CORE-FOLD-C is still an internal engine word: its token refuses.
+\ A row a package declares for its own word: util.f's global CORE-FOLD-C is
+\ still an internal engine word, since no row types that record, so its token
+\ refuses.
 : SHADOW-CASES ( -- )
    s" shadowed global top level"
    s" 65 CORE-FOLD-C drop" EVAL ;
 
-\ ---- the dual row: a global trusted-only row beside the owner's ---------------
-\ Inside the owner the private row binds the name, so a checked caller and a
-\ checked tick compile; everywhere else the global row binds it, refusing both
-\ and admitting a TRUSTED: caller. The TRUSTED: callers at tier 1 are what the
-\ global row is kept for: tier 1 builds their call window from it, and without
-\ it a TRUSTED: caller of addrmap-set outside NPUB is E-HIR-UNMODELED.
+\ The dual row on ffi-call-bounded (FFI) and addrmap-set (NPUB): inside the
+\ owner the private row binds, so checked callers and ticks compile at both
+\ tiers. Elsewhere the global PRIM-TRUSTED-ONLY! row binds, refusing both with
+\ E-CAP-TRUSTED and admitting a TRUSTED: caller, whose tier-1 call window is
+\ built from it: without it a TRUSTED: caller of addrmap-set outside NPUB is
+\ E-HIR-UNMODELED.
 : DUAL-T0-CASES ( -- )
    0 set-tier
    FFI-OPEN
@@ -257,7 +226,7 @@ $0A constant LF-C
    s" TRUSTED: POS-AM1-TR ( n -- ) addrmap-set ;" EVAL
    RESTORE-T0 ;
 
-\ ---- the engine's own owners -------------------------------------------------
+\ The engine's own owners.
 \ Each primitive here has one checked caller in the engine, a word of the
 \ package that owns its row: NPUB's publication window and record writers
 \ (src/compiler/native/publish.f), CODE-RECLAIM's relocation-map clear
@@ -487,7 +456,12 @@ $0A constant LF-C
    CK-OWNER-CASES
    TYPE-DECL-CASES ;
 
-\ ---- an internal primitive its owner's rows type -------------------------------
+\ Internal engine primitives a package row types: package-scope! and
+\ namespace-record carry DNAME-INT|DNAME-OWNED and are CHECKER-OVERLAY's
+\ (src/habu/prims.f). The owner's checked callers compile at both tiers; a
+\ checked caller elsewhere gets the global trusted-only row's reject. A tick
+\ stays refused at both tiers, the owner's included, as every internal word's
+\ is: an xt would carry the call out of the owner.
 : OWNED-CASES ( -- )
    0 set-tier
    OVERLAY-OPEN

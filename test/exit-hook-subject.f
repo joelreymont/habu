@@ -1,15 +1,13 @@
 \ A stripped application runs the process-exit hook on every one of its exits.
-\ test/stripped-image.f links this subject into its application, whose MAIN
-\ calls RUN first: RUN makes the directory named by argument 0 and registers it
-\ with FS:CLEANUP-TREE+. Given a second argument, a code, MAIN calls FINISH and
-\ returns. Code 0 RETURNS - no `die`, no uncaught throw and no REPL exit, so
-\ only the entry's own inline call to the vector (src/habu/aot-link-arm.f
-\ EMIT-EXIT-HOOK) can remove the tree - and FINISH throws any other code past
-\ the entry, to the uncaught throw the image's reporter ends the process on
-\ (src/habu/aot-link-arm.f EMIT-UNCAUGHT). Otherwise MAIN goes on to the other
-\ subjects and ends in MEM:UNMAP's `die`: the engine's BDIE reaches the leaf by
-\ a direct BL that the linker relocates through the (LEXITHOOK) engine-helper
-\ record, which is the exit a daemon takes.
+\ test/stripped-image.f links this subject; MAIN calls RUN first, which makes
+\ the directory named by argument 0 and registers it with FS:CLEANUP-TREE+.
+
+\ With a second argument, a code, MAIN calls FINISH. Code 0 returns with no
+\ `die`, throw or REPL exit, so only the entry's inline call to the vector
+\ (src/habu/aot-link-arm.f EMIT-EXIT-HOOK) can remove the tree; any other code
+\ is thrown past the entry to the image's reporter (EMIT-UNCAUGHT). Otherwise
+\ MAIN ends in MEM:UNMAP's `die`, a daemon's exit: BDIE reaches the leaf by a
+\ direct BL the linker relocates through the (LEXITHOOK) engine-helper record.
 require src/lib/string.f
 require src/lib/fs-mutate.f
 

@@ -1,25 +1,9 @@
-\ A declared address cell the window CARRIES may not hold a target the window does
-\ not place.
-\
-\ WHY THE REFUSAL EXISTS. The cell's bytes travel with the window and the seed
-\ writes its value from the row, so the only value a row can carry is a
-\ window-relative one. A raw address of the capturing process would be baked into a
-\ product whose window sits somewhere else entirely, and leaving the cell out would
-\ hand the seeded engine whichever bytes happened to be at that offset.
-\
-\ WHY IT NEEDS A FIXTURE OF ITS OWN. Until this case was written the refusal had no
-\ deliberate producer: it fired on the BOOTING ENGINE's own HOOK-CELL, which is not
-\ the window's cell at all and is now left to the engine that owns it (dot
-\ habu-keep-declared-addr-dbd7d8d9, src/habu/aot-capture.f ACAP-BAKE-DATA). So the
-\ stop that guards a real producer had no test of its own, and every capture taken
-\ inside a booted engine died on a row that engine declared at its own boot.
-\
-\ HOW THE TARGET GETS OUT OF THE WINDOW. OUTSIDE is a field created before the
-\ window opens, so its address belongs to this process and no target carries it.
-\ SLOT is a PERSISTED-PTR-VARIABLE inside the window - the declaration is what makes
-\ the capture read the cell at all - and the store happens after the window closes,
-\ so the cell's CONTENT is the only thing under test and the window's own extent is
-\ exactly SLOT's eight bytes.
+\ A declared address cell the window carries may not hold a target the window
+\ does not place: the seed writes the cell's value from its row, so only a
+\ window-relative value travels. A raw address of the capturing process would be
+\ baked into a product whose window sits elsewhere; leaving the cell out would
+\ hand the seeded engine whatever bytes sit at that offset. This fixture is the
+\ refusal's one deliberate producer (src/habu/aot-capture.f ACAP-BAKE-DATA).
 
 require src/arch/arm64/asm.f
 require src/arch/arm64/icode.f
@@ -31,6 +15,8 @@ require src/habu/aot-capture.f
 package AOT-XTCELL-TARGET-OUT-PRE
 public
 
+\ Created before the window opens: the address belongs to this process and no
+\ target carries it.
 create OUTSIDE 8 allot
 
 ;package
@@ -39,6 +25,9 @@ AOT-ARM:WINDOW-OPEN
 package AOT-XTCELL-TARGET-OUT
 public
 
+\ The declaration makes the capture read the cell. The store after WINDOW-CLOSE
+\ leaves the cell's content the only thing under test and the window's extent
+\ exactly SLOT's eight bytes.
 PERSISTED-PTR-VARIABLE SLOT
 
 ;package

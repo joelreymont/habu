@@ -127,7 +127,6 @@ variable CODE-B-O  variable CODE-B-U
    OUT$ s" files reused 0" CONTAINS? TFALSE
    export exportu AT-A {: a:ptr au:n :}
    imported importu AT-B {: b:ptr bu:n :}
-   \ Compare emitted code and live extents, then run both applications below.
    a au b bu SAME-CODE? TTRUE
    a au b bu SAME-CUT? TTRUE ;
 

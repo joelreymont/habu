@@ -1,24 +1,16 @@
-\ prim-float-cases.f — the float primitive case sets, as data.
-\
-\ One case set per float row of src/habu/prims.f, in table order, as
-\ test/prim-cases.f holds the integer rows: every line is a row's inputs and
-\ expected outputs, ended by the shape word that runs it, and the file defines
-\ no word. Source has no float literals, so every column is an integer: a
-\ runner passes each input through `s>f` and each real answer through `f>s`,
-\ except that `s>f` itself takes its input as it stands and `f>s` answers as
-\ it stands. A flag column is 0 or 1, as in prim-cases.f. That pins each row's
-\ presence and its integral behaviour; fractional semantics belong to
-\ src/lib/float-test.f and to f64 text.
-\
-\ RR-R and R-R cases are a double's bits as they stand, in and out, so they
-\ reach the NaN an operation makes: from numbers it is $7FF8000000000000 on
-\ every target, and a NaN operand passes through, the left one of two
-\ (src/compiler/native/hir-word.f DEF-FLOAT).
-\
-\ A runner includes the file (`include`, never `require`) with `CASES`,
-\ `;CASES` and the six shape words it uses in scope: NN-N NN-F RR-R
-\ ( n n n -- ) and N-N N-F R-R ( n n -- ), the first four their prim-cases.f
-\ meanings.
+\ The float primitive case sets as data, one per float row of src/habu/prims.f
+\ in table order, as test/prim-cases.f holds the integer rows; the file defines
+\ no word. Columns are integers: a runner passes each input through s>f and each
+\ real answer through f>s, except s>f's input and f>s's answer. A flag is 0 or
+\ 1. Fractional semantics belong to src/lib/float-test.f and f64 text.
+
+\ A runner includes the file (never require) with CASES, ;CASES and the shapes
+\ NN-N NN-F RR-R ( n n n -- ) and N-N N-F R-R ( n n -- ) in scope; the first
+\ four mean what they mean in prim-cases.f.
+
+\ RR-R and R-R cases are a double's bits in and out: a NaN made from numbers is
+\ $7FF8000000000000 on every target, and a NaN operand passes through, the left
+\ one of two (src/compiler/native/hir-word.f DEF-FLOAT).
 
 0 CASES f+
            3           4                   7  NN-N

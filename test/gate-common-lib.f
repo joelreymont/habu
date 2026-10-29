@@ -1,4 +1,4 @@
-\ gate-common.f - checked helpers for native tests.
+\ Checked helpers for native tests, loaded through test/gate-common.f.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -13,7 +13,7 @@ require src/lib/process-env.f
 require src/lib/content-key.f
 require src/lib/test/runner.f
 require src/lib/fd.f
-require src/lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/fmt.f
 require src/lib/engine-candidate.f
 
 $40000 constant GE-SRC-CAP
@@ -90,9 +90,9 @@ variable GE-EVAL-SRC-U
    s" spawn errno: " type PROCESS:ERRNO FMT:.INT cr ;
 
 \ Spawns pathz with argv and envp, over this process's environment, as the
-\ capture child, its stdin on in and its
-\ stdout and stderr on the capture pipes, and records its pid. Stack-preserving
-\ under catch, so GE-LAUNCH-RC answers a refusal's code.
+\ capture child, its stdin on in and its stdout and stderr on the capture pipes,
+\ and records its pid. Stack-preserving under catch, so GE-LAUNCH-RC answers a
+\ refusal's code.
 : GE-LAUNCH ( ptr u8 ptr ptr u8 ptr ptr u8 fd -- ptr u8 ptr ptr u8 ptr ptr u8 fd )
    {: pathz:ptr argv:ptr envp:ptr in:fd :}
    pathz dup ZLEN PROCESS:NEW

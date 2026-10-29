@@ -2,33 +2,8 @@
 \ run by bun through test/wasm/harness.f. It needs both tools on PATH, so it is
 \ no row of the ordinary gate; run it from the tree's root as
 \ `bin/hb --load test/wasm/device.f` (docs/bootstrap.md).
-\
-\ A one-function module writes OUT, stores a throw code that a double would
-\ round and answers status 1: all three are read back. A body that traps exits
-\ 2; one answering an i64 where its type says i32 is invalid and exits 3.
-\ W03's module (test/wasm/w03.f), 140 functions chained by calls, validates
-\ and runs to status 0 with no output. WKERNEL's hand-built rows
-\ (src/arch/wasm/kernel.f) run under callers that store cells to the context
-\ stack as compiled code does: emit writes OUT and traps one byte past it,
-\ depth counts the cells, and throw takes its code, a zero one as
-\ ENGINE-ERROR:THROW-ZERO.
-\ test/wasm/dynamic.f runs first, installs the backend and reports on its own:
-\ it links a captured window with WASMLINK and runs execute and catch through
-\ table slots and .s through kernel-words.f's `.`. test/wasm/build.f runs next
-\ and reports on its own: it builds modules by tools/wasm-build.f's command
-\ line and runs the checked-memory rows. test/wasm/data-test.f then builds a
-\ checked program and probes its task DATA, static owner and dynamic pages in a
-\ foreign peer. test/wasm/storage-test.f runs next and
-\ reports on its own: dynamic buffers grow, release and reuse pages, and a page
-\ freed twice traps. test/wasm/differential.f runs after it and reports on its
-\ own: each row's program run natively and as a module, both held to the row.
-\ test/browser/echo-test.f runs after it and reports on its own: the browser
-\ host's turns, src/lib/browser/host-cli.mjs on its echo fixture.
-\ test/browser/storage-test.f runs after it and reports on its own: deliveries in
-\ pages the module reserves and frees. test/browser/navigation-test.f checks
-\ input, tree and highlight records through the same host, and
-\ test/browser/take-test.f a delivery a turn takes and a later turn frees. The
-\ modules stay in the printed directories.
+\ The wasm and browser suites it requires run first and report on their own;
+\ the modules stay in the printed directories.
 
 require src/lib/string.f
 require src/lib/test.f
@@ -167,7 +142,6 @@ variable SITES
       word OF 2drop -1 ENDOF
    ;MATCH ;
 
-\ A call of function f, its field recorded for SITES+.
 : CALL, ( n -- )
    {: f:n :}
    $10 B,
@@ -178,7 +152,6 @@ variable SITES
    {: f:n :}
    SITES @ 0 ?do  f  i SITE-AT @  i SITE-TO @  WLINK:CALL+  loop ;
 
-\ Row k's field at byte off of its entry in WENC's header.
 : HEADER ( n n -- ptr u8 )
    {: k:n off:n :}
    WENC:BYTES 8 + k 12 * + off + ;
@@ -191,7 +164,6 @@ variable SITES
       WLINK-ORIGIN:KERNEL WLINK:FUNCTION+ drop
    loop ;
 
-\ A new link of the rows.
 : KERNEL+ ( -- )
    WLINK:RESET
    ROWS+ ;
@@ -201,7 +173,6 @@ variable SITES
    0 SITES !  0 BODY-U !
    2 B,  1 B, $7F B,  1 B, $7E B, ;
 
-\ The entry closed on the status it leaves, added and linked as name.
 : MAIN-SHUT ( ptr u8 n -- ptr u8 n )
    {: name:ptr nu:n :}
    $0B B,
@@ -219,7 +190,6 @@ variable SITES
 
 : PUSH, ( n -- )  TOP, $42 B, S64, PUSHED, ;
 
-\ A call of the row named, which passes no lane.
 : ROW, ( ptr u8 n -- )  CTX, ROW CALL, ;
 
 \ depth, its count taken in local 2 and pushed.

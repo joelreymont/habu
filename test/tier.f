@@ -1,40 +1,8 @@
-\ tier.f - the two compiler tiers, and the state that must not survive a
-\ definition.
-\
-\ ARM carries the legacy JIT at tier 0 and the IR compiler at tier 1. Intel
-\ runs only tier 1. `set-tier` selects an available compiler and `tier@` reads
-\ it back. ARM starts at tier 0; Intel starts at tier 1.
-\
-\ WHAT THIS SUITE CLAIMS, AND WHY EACH PART IS NOT ALREADY CLAIMED ELSEWHERE.
-\
-\   1. Every available tier compiles and runs a checked definition and rejects
-\      a wrong stack effect. A tier is a choice of compiler, not a choice of
-\      whether the checker runs. ARM tests both tiers; Intel tests tier 1 and
-\      the explicit refusal of tier 0.
-\
-\   2. `set-tier` refuses everything but the available tiers. A tier is not a
-\      truthy flag: 2 and -1 cannot silently pick a compiler.
-\
-\   3. On ARM, tier 0's BEGIN-snapshot depth DIES WITH THE DEFINITION. jit.f
-\      pushes a snapshot frame at each BEGIN and pops it at the back edge; a
-\      definition that FAILS between the two - an undefined word in the body,
-\      say - never reaches its back edge, so the depth stays raised. The cell
-\      is per-definition state, cleared with VSP/LVD/EXITH at both colon
-\      entries and in EM-ABORT-COMPILE-STATE, which both recovery paths reach.
-\      The frame area holds the control-flow cap's worth of frames, so a leak
-\      reaches no frame bound: the test reads the depth cell itself after the
-\      failed definitions and wants 0.
-\
-\   4. The reset does not reach INSIDE a definition. A quotation is compiled
-\      inline in its enclosing definition, so a BEGIN in a quotation and a
-\      quotation in a BEGIN share one frame stack and must still balance. If the
-\      reset had been put at a quotation boundary instead of at the definition
-\      boundary, cases 4b and 4c would pop a frame that is still live. They are
-\      here to fail if that is ever "simplified".
-\
-\ Every case runs in a CHILD PROCESS. `set-tier` is engine-global state and the
-\ leak case deliberately damages it, so a suite that ran these in-process would
-\ be testing whichever order its cases happened to run in.
+\ tier.f - the compiler tiers and the per-definition state that must not survive
+\ a definition. ARM runs tier 0 (src/habu/jit.f) and tier 1 (the IR compiler)
+\ and starts at tier 0; Intel runs only tier 1 and refuses tier 0. A tier
+\ chooses a compiler, never whether the checker runs. Every case runs in a child
+\ process: `set-tier` is engine-global and the leak case damages it.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -51,8 +19,8 @@ package TIER-TEST
 
 private
 
-\ A child's whole output. A long-name case that fails prints its name, up to
-\ 7900 bytes, and the capture has to hold it for the case to report.
+\ A failing long-name case prints its name, up to 7900 bytes; the capture holds
+\ it.
 $4000 constant CAP
 20000 constant TIMEOUT-MS
 70 constant REJECT-RC              \ checker reject / undefined word, fail-closed
@@ -80,11 +48,8 @@ variable RC     variable EXITED
 : RUN ( ptr u8 n -- ) {: src:ptr u:n :}
    src u OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN src u STORE! ;
 
-\ The SAME program through a real engine process, stdin-piped.
-\ SUBJECT:RUN forks in-process and never reaches the CLI's own eval boundary, so
-\ the recovery cases below -- which crashed exactly there -- have to exec.
-\ The engine under test: the gate's freshly built candidate when it exported
-\ one, else the running engine itself (src/lib/engine-candidate.f).
+\ A real engine process, stdin-piped: SUBJECT:RUN forks in-process and never
+\ reaches the CLI's eval boundary, where the recovery cases crashed.
 : HB$ ( -- ptr u8 n )       ENGINE-CANDIDATE:PATH$ ;
 
 : EXEC ( ptr u8 n -- ) {: src:ptr u:n :}
@@ -94,18 +59,16 @@ variable RC     variable EXITED
    src u STORE! ;
 
 \ ---- the two shapes every case asserts ---------------------------------------
-\ OK means: the child exited 0 and its stdout contains what the definition
-\ printed. Printing the answer is what proves the body RAN; a definition that
-\ compiles and is never executed passes an exit-code-only check.
+\ OK: exit 0 and stdout holds what the definition printed. Printing proves the
+\ body ran; an exit-code-only check passes a definition that never executed.
 : ASSERT-OK ( ptr u8 n -- ) {: want:ptr wu:n :}
    EXITED @ TTRUE
    RC @ 0 T=
    OUT$ want wu CONTAINS? TTRUE ;
 
-\ REJECTED means: fail-closed with the checker's code, and the diagnostic names
-\ the offending definition. The code is asserted, not the wording. The name is
-\ matched LOWERCASE because that is how the engine renders a definition name in
-\ a diagnostic (`habu: in bad: ...`), not because the case is unimportant.
+\ REJECTED: fail-closed with the checker's code (not its wording), and the
+\ diagnostic names the definition lowercase, as the engine renders it (`habu: in
+\ bad: ...`).
 : ASSERT-REJECTED ( ptr u8 n -- ) {: name:ptr nu:n :}
    EXITED @ TTRUE
    RC @ REJECT-RC T=
@@ -115,8 +78,7 @@ variable RC     variable EXITED
    EXITED @ TTRUE
    RC @ want T= ;
 
-\ The line the child prints for an uncaught code, rendered from the name so the
-\ needle follows src/lib/errors.f instead of repeating its number.
+\ Callers pass the code's src/lib/errors.f name, never its number.
 : UNCAUGHT$ ( n -- ptr u8 n )
    {: code:n :}
    SB-RESET
@@ -222,11 +184,9 @@ variable RC     variable EXITED
    ERR$ s" underflow" CONTAINS? TTRUE ;
 
 \ ---- 2b. checked code reads and selects the tier ------------------------------
-\ Registering a primitive in the engine dictionary is only half of it. Without a
-\ checker effect row the word is E-UNDEFINED inside every checked body, so
-\ `: R ( -- n ) tier@ ;` rejected and no checked build driver could select a
-\ tier at all. tier@ is an ordinary reader like check@, and set-tier's row is
-\ global, so a checked body anywhere selects a tier by calling it.
+\ Without a checker effect row a primitive is E-UNDEFINED in every checked body.
+\ tier@ is an ordinary reader like check@, and set-tier's row is global, so a
+\ checked body anywhere selects a tier by calling it.
 : TEST-CHECKER-ROWS ( -- )
    LEGACY? if
       s" tier@ is callable from a checked body on tier 0" T-LABEL
@@ -249,39 +209,27 @@ variable RC     variable EXITED
    then ;
 
 \ ---- 2b0. certification is the engine's hook CELL, read per definition --------
-\ Tier 0 reads the cell for every definition, which is what makes `0 set-check`
-\ take certification off and installing another hook move it. Tier 1 called its
-\ hook BY NAME, so the cell was decoration: the compiler certified through the
-\ instance it was built into whatever the session had installed, and a run that
-\ replaced the checker had its own files judged by the retired one.
-\
-\ The swap is asserted from BOTH sides in one program: the definition BEFORE it
-\ prints, so the real hook certified that one, and the definition AFTER it carries
-\ the installed hook's own throw code out to the process. A compiler that bound the
-\ hook by name exits 0 here and prints the same 7 - measured on the root engine -
-\ which is why the exit code is the claim and the output alone is not.
+\ Each tier reads the hook cell per definition, so `0 set-check` and installing
+\ another hook take effect. The swap is asserted from both sides: the definition
+\ before it prints 7, the one after carries the installed hook's throw code out.
+\ A compiler that bound the hook by name exits 0 and prints the same 7
+\ (measured), so the exit code is the claim.
 : TEST-HOOK-CELL ( -- )
    s" a hook installed mid-session certifies the next definition" T-LABEL
    S\" 1 set-tier\nTRUSTED: HK-STOP ( ptr u8 n -- n ) CHECK! drop 77 throw ;\n: HK-A ( -- n ) 7 ;\nHK-A . cr\nTRUSTED: HK-SWAP ( -- ) ['] HK-STOP set-check ;\nHK-SWAP\n: HK-B ( -- n ) 8 ;\n"
    EXEC
    77 ASSERT-RC
-   OUT$ s" 7" CONTAINS? TTRUE           \ the definition before the swap was certified and ran
-   ERR$ s" HK-B" CONTAINS? TTRUE ;      \ the one after it was refused by name
+   OUT$ s" 7" CONTAINS? TTRUE
+   ERR$ s" HK-B" CONTAINS? TTRUE ;
 
 \ ---- 2b'. a TRUSTED: body may call a trust-boundary primitive on BOTH tiers ---
-\ The optimizing compiler reads a callee's cell widths out of the checker's
-\ effect table for every name a body writes, and a PRIMITIVE is the one kind of
-\ name no scan can ever supply one for. `int-mark` and `min-in-mark` -- the two
-\ writers src/core/internal-mark.f seals the dictionary with -- had no row, so
-\ tier 1 could not compile their one-line TRUSTED: wrappers at all
-\ (E-HIR-UNMODELED, `ncomp: cannot compile MARK-INTERNAL at int-mark`), which is
-\ what stopped a product engine from rebuilding the tree. The JIT tier never
-\ asked, so the absence was invisible until the build selected tier 1.
-\
-\ BOTH DIRECTIONS, because a row that admitted checked callers would delete the
-\ boundary instead of crossing it: the wrapper compiles on both tiers, a plain
-\ checked body naming either primitive is refused AND the diagnostic names the
-\ primitive, and the bare name stays unreachable at top level.
+\ The optimizing compiler reads each callee's cell widths from the checker's
+\ effect table, and no scan supplies them for a primitive: without rows for
+\ `int-mark` and `min-in-mark` (the writers src/core/internal-mark.f seals with)
+\ tier 1 refused their TRUSTED: wrappers with E-HIR-UNMODELED. Both directions
+\ are pinned: the wrapper compiles on both tiers, a plain checked body naming
+\ either primitive is refused with the primitive named, and the bare name stays
+\ unreachable at top level.
 : TEST-MARK-ROWS ( -- )
    LEGACY? if
       s" int-mark's TRUSTED: wrapper compiles on tier 0" T-LABEL
@@ -321,35 +269,25 @@ variable RC     variable EXITED
    then
    ERR$ s" min-in-mark" CONTAINS? TTRUE
 
-   \ The row records an effect; it does not open the name. Both records still
-   \ carry DNAME-INT, so interpret fails closed exactly as before.
+   \ The row records an effect and does not open the name: both records carry
+   \ DNAME-INT, so interpret fails closed.
    s" the marking prims stay unreachable at top level" T-LABEL
    s" 0 int-mark" RUN  REJECT-RC ASSERT-RC
    ERR$ s" internal engine word" CONTAINS? TTRUE ;
 
 \ ---- 2c. a long name compiles on both tiers -----------------------------------
-\ Tier 0 and the dictionary hold any name the definition's 8000-byte capture
-\ holds, and tier 1 compiles each of them. Every program is generated around
-\ one name and prints the same answer on both tiers. The lengths are 65, one
-\ past the 64 bytes tier 1 once refused; 1000, past every 128-byte buffer a
-\ function name was once copied through; and 7900, the capture less the rest of
-\ the body. The forms reach each place a tier-1 compile spells the name: a body
-\ with inputs, outputs and a quotation, whose function is named after the
-\ definition; a does> definer with a quotation on each side, whose clause is its
-\ `;does` companion; a TRUSTED: body; a caller; a caller of a word that never
-\ returns, whose trap behind the call is named after the callee; a pending
-\ definition whose body calls the prior word of its name; and an ENUM variant or
-\ family, whose constructors the declaration generates as definitions holding
-\ the name in their own name and body, as a MATCH over the family and a local
-\ of its type hold it. The last three hold the name more than once, so the
-\ pending definition runs at 1000 and the ENUM forms at LN-TAIL-MAX, the longest
-\ family or variant name a declaration takes, still past every 128-byte buffer.
-\ A long family's constructors use its family name as their package name, so
-\ that program compiles them, its MATCH and its local, and stops. A refused long name
-\ is reported whole up to its newline, and a refused TRUSTED: one retracts its
-\ signature, which leaves the refusal's own code uncaught. A refusal at a
-\ 7900-byte body token names that token whole: a TRUSTED: body skips the
-\ checker, so its missing word reaches the elaborator.
+\ Lengths: 65 (past 64 bytes), 1000 (past any 128-byte name buffer) and 7900
+\ (the 8000-byte definition capture less the body). The forms reach each place a
+\ tier-1 compile spells the name: a function named after the definition, a does>
+\ clause's `;does` companion, a TRUSTED: body, a caller, the trap behind a call
+\ to a word that never returns, a pending definition calling its prior word, and
+\ an ENUM's generated constructors, MATCH and local. Forms holding the name more
+\ than once run at 1000 (pending) or LN-TAIL-MAX (ENUM). A long family's
+\ constructors take the family name as their package name. A refused long name
+\ is reported whole to its newline; a refused TRUSTED: one retracts its
+\ signature, leaving the refusal's code uncaught. A TRUSTED: body skips the
+\ checker, so a missing 7900-byte body token reaches the elaborator, which names
+\ it whole.
 $4000 constant LN-CAP
 create LN-BUF LN-CAP allot
 variable LN-U
@@ -360,8 +298,8 @@ variable LN-LEN
    a LN-BUF LN-U @ + u BYTE-COPY
    u LN-U +! ;
 
-\ The name: a two-byte stem, then `x` up to its length. A word's stem is `LN`;
-\ an ENUM family or variant is a lowercase tail, `ln`.
+\ Stem `LN` for a word, lowercase `ln` for an ENUM family or variant, then `x`
+\ to the length.
 : STEM+ ( ptr u8 n -- )
    LN+  LN-LEN @ 2 - 0 ?do s" x" LN+ loop ;
 
@@ -376,7 +314,6 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
    len LN-LEN !
    0 LN-U ! ;
 
-\ A program opens by selecting its tier.
 : TIER-OPEN ( n n -- ) {: tier:n len:n :}
    len LN-OPEN
    tier 1 = if s" 1 set-tier " LN+ exit then
@@ -399,9 +336,8 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
    s" TRUSTED: " LN+ NAME+ s"  ( -- n ) 7 ; " LN+ NAME+ s"  . cr" LN+ LN$ ;
 
 \ A TRUSTED: body whose row carries a two-cell value. Tier 0 lowers it from the
-\ certificate of a scan that enforces nothing, whatever its verdict; without
-\ that certificate the pair moves one cell wide and its cells come back out of
-\ order.
+\ certificate of a scan that enforces nothing; without that certificate the pair
+\ moves one cell wide and its cells come back out of order.
 : WIDE-TRUST$ ( n -- ptr u8 n )
    0 TIER-OPEN
    s" STRUCTURE twpair FIELD a n FIELD b n ;STRUCTURE " LN+
@@ -420,17 +356,8 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
    s" : BW-SHOW ( -- ) 9 7 BW-X . BWPAIR:UNMAKE . . . .  9 7 BW-C . . BWPAIR:UNMAKE . . . . cr ; BW-SHOW" LN+
    LN$ ;
 
-\ TRUSTED: bodies whose scans refuse a token while a two-cell value is live:
-\ a ptr-times-zero before the pair moves, after it, inside a quotation, over a
-\ callee's pair, in a branch that exits, `depth`, `over` the pair, two
-\ refusals before the pair binds a local, a ptr bound into an `n` local
-\ over the pair, unread and read, and under it, and a pair-typed local bound
-\ beside a refused `n` local, from two loose cells, and under a refused `n`
-\ local, an undeclared local beside a refused `n` local, a pair-typed local
-\ under an undeclared one, a linear local over the pair, a rejected call to a
-\ word whose row holds a naked type variable (RJ-GX), and a pair an `execute`d
-\ quotation returns (RJ-EX). The scan applies
-\ each refused token's declared effect to the rows it found, so the widths
+\ TRUSTED: bodies whose scans refuse a token while a two-cell value is live. The
+\ scan applies each refused token's declared effect to its rows, so the widths
 \ after it stay stated and both tiers move the pair whole. The bodies are
 \ independent: one process runs them all.
 : REJECT-TRUST$ ( n -- ptr u8 n )
@@ -475,15 +402,13 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
 : REJECT-TRUST-OUT$ ( -- ptr u8 n )
    S\" 7\n2\n1\n7\n2\n1\n7\n2\n1\n7\n2\n1\n7\n2\n1\n7\n2\n1\n7\n2\n1\n7\n2\n1\n0\n2\n1\n7\n2\n1\n5\n7\n2\n1\n7\n2\n1\n2\n1\n7\n2\n1\n7\n2\n1\n2\n1\n7\n2\n1\n5\n2\n1\n7\n7\n2\n1\n1\n2\n7\n2\n1\n" ;
 
-\ TRUSTED: bodies whose scans meet a token they cannot apply while a two-cell
-\ value is live: an unchecked word with no row, and `evaluate`. The widths
-\ after it are unknown, the certificate says its facts are incomplete, tier 0
-\ names the definition and exits before anything runs, and tier 1 refuses to
-\ compile it. A body compiled under `0 set-check` is still scanned by the
-\ parked hook, which gives it a row, so IC-RAW is compiled after
-\ `discard-check` drops that hook, with no checker at all; the saved hook is
-\ then armed afresh. Tier 0 only: tier 1 scans IC-RAW itself and gives it a
-\ row, so no rowless call exists there.
+\ TRUSTED: bodies whose scans meet a token they cannot apply (a rowless
+\ unchecked word, `evaluate`) while a pair is live: the certificate's facts are
+\ incomplete, tier 0 names the definition and exits before anything runs, and
+\ tier 1 refuses to compile it. Under `0 set-check` the parked hook still scans
+\ a body and gives it a row, so IC-RAW is compiled after `discard-check` and the
+\ saved hook is re-armed. Tier 0 only: tier 1 scans IC-RAW itself and gives it a
+\ row.
 : INCOMPLETE-RAW$ ( n -- ptr u8 n )
    0 TIER-OPEN
    s" check@ 0 set-check discard-check : IC-RAW swap ; set-check " LN+
@@ -601,7 +526,6 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
    s" : TN-SHORT ( -- n ) 3 ; TRUSTED: " LN+ NAME+ s"  ( -- n ) LN-MISSING ;" LN+
    LN$ ;
 
-\ The line a refusal of the name prints, from the name to the newline.
 : REFUSED-LINE$ ( ptr u8 n n -- ptr u8 n ) {: tail:ptr tu:n len:n :}
    len LN-OPEN
    s" ncomp: cannot compile " LN+ NAME+ tail tu LN+ S\" \n" LN+ LN$ ;
@@ -610,7 +534,6 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
    1 swap TIER-OPEN
    s" TRUSTED: LN-TOK ( -- n ) " LN+ NAME+ s"  ;" LN+ LN$ ;
 
-\ The line a refusal at that token prints, from the definition to the newline.
 : TOKEN-LINE$ ( n -- ptr u8 n )
    LN-OPEN
    s" ncomp: cannot compile LN-TOK at " LN+ NAME+ S\" \n" LN+ LN$ ;
@@ -754,9 +677,8 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
    ERR$ 7900 TOKEN-LINE$ CONTAINS? TTRUE ;
 
 \ ---- 2d. a refusal line names only its own token ------------------------------
-\ The elaborator names the token it refused at. A later definition refused
-\ before elaboration has no such token, and its line must not carry the earlier
-\ one's.
+\ The elaborator names the token it refused at; a later definition refused
+\ before elaboration must not carry the earlier one's.
 : TEST-REFUSAL-TOKEN ( -- )
    s" a refusal line carries no earlier definition's token" T-LABEL
    S\" 1 set-tier\nTRUSTED: TN-EV ( ptr u8 n -- ) evaluate ;\n: TN-TRY ( -- ) [: s\q TRUSTED: TN-ELAB ( -- n ) TN-ELAB-MISSING ;\q TN-EV ;] catch . cr ;\nTN-TRY\n: TN-UNEVEN ( -- n ) ;\n"
@@ -845,10 +767,12 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
    s" 1 set-tier : B4 ( n -- n ) {: u:n :} 0 0 begin dup u < while dup 3 + {: end:n :} drop 1+ end 1+ repeat drop ; 10 B4 . cr" RUN  s" 3" ASSERT-OK ;
 
 \ ---- 4. the snapshot depth dies with the definition --------------------------
-\ THE REGRESSION. Three definitions that each open a BEGIN and then fail on an
-\ undefined word, caught one at a time by `TEST-EVAL:RC`; then the depth cell,
-\ which a missed recovery reset leaves non-zero, and one good BEGIN
-\ definition that has to compile and run.
+\ Tier 0 pushes a snapshot frame at each BEGIN and pops it at the back edge, so
+\ a definition that fails between them leaves the depth raised. The cell is
+\ cleared beside VSP-CELL, LVD-CELL and EXITH-CELL at both colon entries and in
+\ EM-ABORT-COMPILE-STATE. The frame area holds the control-flow cap's worth of
+\ frames, so a leak reaches no bound: the test reads the depth cell after three
+\ failed BEGIN definitions, wants 0, and then compiles and runs a good one.
 : LEAK-SRC$ ( -- ptr u8 n )
    S\" : X3 ( -- ) 3 0 do s\q : BAD-B ( -- ) begin MISSING ;\q TEST-EVAL:RC drop loop ;\nX3\ns\q depth \q type JIT-SNAP:SP-CELL data-base + @ . cr\n: GOOD ( -- n ) 0 begin 1 + dup 5 >= until ;\nGOOD . cr\n" ;
 
@@ -861,8 +785,9 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
    RUN  s" 70" ASSERT-OK ;
 
 \ ---- 5. the reset stops at the definition boundary ---------------------------
-\ A quotation is compiled inline, so these share one frame stack with their
-\ enclosing definition and must still balance.
+\ A quotation compiles inline, so a BEGIN in a quotation and a quotation in a
+\ BEGIN share the definition's frame stack. A reset at a quotation boundary
+\ instead of the definition boundary would pop a live frame here.
 : TEST-NESTED-QUOTATIONS ( -- )
    LEGACY? if
       s" a quotation inside BEGIN keeps its frames" T-LABEL
@@ -883,17 +808,13 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
    RUN  s" 5" ASSERT-OK ;
 
 \ ---- 7. a failed definition under a top-level catch is recoverable ----------
-\ THE CRASH. `' evaluate catch` at top level installs its handler at exactly the
-\ SP that B-EVAL later records as the eval-frame boundary. The recovery treated
-\ equal as "handler inside the frame", never popped the frame, and left CP and
-\ the protection band at the abandoned definition -- so the next token was
-\ emitted into a re-protected band and the process died of SIGSEGV (rc 134)
-\ AFTER printing a correct rejection. These run as real processes because the
-\ in-process fork does not reach that boundary. A top-level `catch` of
-\ `evaluate` has no row the checker can follow, so each text saves the checker
-\ (`check@`), turns it off for the top-level `catch`, restores it inside the
-\ evaluated text before the failing definition, and then drops the text's two
-\ cells under `0 set-check` before putting the checker back.
+\ `' evaluate catch` at top level installs its handler at the SP B-EVAL records
+\ as the eval-frame boundary. Recovery that treated equal as inside the frame
+\ never popped it, and the next token was emitted into a re-protected band
+\ (SIGSEGV, rc 134, after a correct rejection). Real processes: the in-process
+\ fork does not reach that boundary. A top-level `catch` of `evaluate` has no
+\ row, so each text turns the checker off for the catch, restores it inside the
+\ evaluated text, and drops the text's two cells under `0 set-check`.
 : TEST-EVAL-RECOVERY ( -- )
    LEGACY? if
       s" tier 0 recovers from a rejected effect under a top-level catch" T-LABEL
@@ -931,12 +852,11 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
    ERR$ E-BAD-STORED-SIGNATURE UNCAUGHT$ CONTAINS? TTRUE ;
 
 \ ---- 7c. checking off still lowers wide values ------------------------------
-\ `0 set-check` empties the hook cell: the verdict is not enforced, but each
-\ tier still scans a body unjudged, signed or not, and a definer's signed does>
-\ clause, to learn their cell widths. A tier that compiled the body one cell
-\ per value moved the pair as 1 2 7. The clause scan leaves no latch for a
-\ later word: a tier whose publication kept it recorded the next checked
-\ definitions as creating the clause's word, and FOO and W printed -1.
+\ `0 set-check` empties the hook cell, but each tier still scans a body
+\ unjudged, signed or not, and a definer's signed does> clause, for its cell
+\ widths: compiled one cell per value, the pair moved as 1 2 7. The clause scan
+\ leaves no latch: a kept one recorded later checked definitions as creating the
+\ clause's word, and FOO and W printed -1.
 : UW-TIER ( n -- ) {: tier:n :}
    0 LN-OPEN
    tier 1 = if s" 1 set-tier " LN+ else s" 0 set-tier " LN+ then

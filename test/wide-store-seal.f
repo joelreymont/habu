@@ -1,12 +1,9 @@
 \ wide-store-seal.f - wide ADT store seal regression.
-\
-\ The generated checked children use the zero-valued W=2 OK constructor.  At
-\ the first-cell boundary its payload would clear the seal latch if STR ran
-\ before the guard.  At the later-cell boundary its tag would do the same after
-\ the first ordinary cell store.  Exact ENGINE-ERROR:SEAL-VIOLATION catches a missing guard
-\ or a write before the latch load; the TLP-STORE2-G lowering golden pins STR
-\ after the remaining range guard.  Together they prove the protected cell is
-\ unchanged, including on loop iterations after the first.
+\ The generated checked children use the zero-valued W=2 OK constructor: at the
+\ first-cell boundary its payload would clear the seal latch if STR ran before
+\ the guard, and at the later-cell boundary its tag would after the first
+\ ordinary cell store. Exact ENGINE-ERROR:SEAL-VIOLATION catches a missing guard
+\ or a write before the latch load, including loop iterations after the first.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -81,14 +78,12 @@ create WSS-ERR WSS-CAP allot
    WSS-LATER-BODY
    SB$ ;
 
-\ The four transaction-band fixtures name the band's own ends rather than the
-\ addresses they happened to have. A W=2 store is 16 bytes, so the lower one
-\ starts one cell below TXN-STATE-OFF and crosses into it, the upper one starts
-\ one cell below the band's end and crosses out of it, and the two neighbours sit
-\ exactly clear on either side. They were written as $4FF8/$7FF8/$4FF0/$8000 while
-\ TXN-STATE-LEN was $3000; when the band narrowed to its declared extent the upper
-\ pair stopped naming the band at all - $7FF8 landed in STRING-ABI, which is
-\ writable, so the crossing that must trap did not. Derived, they follow the band.
+\ The four transaction-band fixtures derive from the band's own ends, so they
+\ follow the band when its extent changes. A W=2 store is 16 bytes: the lower
+\ one starts one cell below TXN-STATE-OFF and crosses into it, the upper one
+\ starts one cell below the band's end and crosses out, and the two neighbours
+\ sit exactly clear on either side. A fixed address past the end can land in
+\ STRING-ABI, which is writable, so a crossing that must trap would not.
 : WSS-TXN-LOWER$ ( -- ptr u8 n )
    SB-RESET
    WSS-PRELUDE

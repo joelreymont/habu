@@ -1,4 +1,5 @@
-\ The active allocation follows stack switches and nonlocal frame restoration.
+\ engine-stack-lifecycle-lib.f - the active stack allocation follows stack
+\ switches and nonlocal frame restoration.
 require src/habu/stack-abi.f
 require src/lib/errors.f
 require src/lib/memory.f
@@ -9,10 +10,10 @@ require test/pcap-result.f
 
 package STACK-LIFECYCLE-TEST
 
-\ Every VM stack the engine will run on is a guarded mapping (src/lib/memory.f
+\ Every VM stack the engine runs on is a guarded mapping (src/lib/memory.f
 \ MEM:ALLOC-GUARDED): an inaccessible page on each side of the capacity, sized
 \ in whole STACK-ABI:PAGE-BYTES multiples. POOL is that mapping, made once and
-\ reused by every in-process case below; POOL-BYTES is its exact capacity.
+\ reused by every in-process case; POOL-BYTES is its exact capacity.
 PTR-VARIABLE POOL-A
 STACK-ABI:PAGE-BYTES MEM:ALLOC-GUARDED constant POOL-BYTES POOL-A !
 : POOL ( -- ptr u8 ) POOL-A @ ;
@@ -63,12 +64,10 @@ private
    SEEN-BASE @ POOL = TTRUE
    SEEN-CAP @ POOL-BYTES T=
    CALLER-RESTORED
-   \ There is no such thing as a zero-capacity guarded mapping any more:
    \ MEM:ALLOC-GUARDED refuses a size that is not a whole STACK-ABI:PAGE-BYTES
-   \ multiple, and run-in-stack's own GUARDED-EXTENT? proof (src/habu/habu1.f)
-   \ refuses capacity 0 before the callback ever runs, catchable as
-   \ E-STACK-UNGUARDED. The caller's own allocation is therefore never
-   \ disturbed, because the stack switch never happened.
+   \ multiple, and run-in-stack's GUARDED-EXTENT? (src/habu/habu1.f) refuses
+   \ capacity 0 before the callback runs, catchable as E-STACK-UNGUARDED: the
+   \ stack never switches, so the caller's allocation is untouched.
    s" capacity 0 is refused" T-LABEL
    ['] CAP-ZERO catch E-STACK-UNGUARDED T= CALLER-RESTORED
    s" catch restores allocation across run-in-stack" T-LABEL
@@ -95,11 +94,9 @@ variable ERRLEN
    gu wu < if 0 0= 0= exit then
    g wu w wu T-STR= ;
 
-\ Assert that GOT starts with WANT, rather than equals it whole: the guard-page
-\ crash handler (src/habu/crash.f) writes a fixed "hb: stack bounds exceeded"
-\ prefix and then names which stack faulted, so a caller that only cares about
-\ the shared prefix -- or that also wants the specific stack name checked --
-\ both go through this one comparison instead of a brittle exact match.
+\ GOT need only start with WANT: the guard-page crash handler (src/habu/crash.f)
+\ writes a fixed "hb: stack bounds exceeded" prefix, then names the stack that
+\ faulted.
 : T-PREFIX= ( ptr u8 n ptr u8 n -- ) {: g:ptr gu:n w:ptr wu:n :}
    T-NEXT
    g gu w wu PREFIX? 0= if
@@ -109,14 +106,9 @@ variable ERRLEN
    then
    T-LABEL-CLEAR ;
 
-\ A push past the capacity, and a return/loop frame past its region, both
-\ still exit ENGINE-ERROR:STACK-BOUNDS (102); only the parenthetical after the
-\ shared prefix says which, so every call site below names the specific stack
-\ it expects. T-PREFIX= against the bare "hb: stack bounds exceeded" prefix
-\ (no named helper wraps it -- every case here can name its stack) is still
-\ available for a future case that cannot determine one. A malformed
-\ run-in-stack descriptor no longer reaches this exit at all -- see
-\ UNGUARDED-UNCAUGHT below.
+\ A push past the capacity and a return/loop frame past its region both exit
+\ ENGINE-ERROR:STACK-BOUNDS (102); only the parenthetical after the shared
+\ prefix says which, so every call site names the stack it expects.
 : REFUSED-DATA ( ptr u8 n -- )
    CHILD-RC ENGINE-ERROR:STACK-BOUNDS T=
    ERR ERRLEN @ s" hb: stack bounds exceeded (data)" T-PREFIX= ;
@@ -129,9 +121,9 @@ variable ERRLEN
    CHILD-RC ENGINE-ERROR:STACK-BOUNDS T=
    ERR ERRLEN @ s" hb: stack bounds exceeded (loop)" T-PREFIX= ;
 
-\ src/habu/layout.f UNCAUGHT-RC: the deterministic exit status for an uncaught
-\ top-level throw (BTHROW THROW-NOREC), pinned here the same way
-\ test/protection-span.f and test/runtime-regression-test.f already pin it.
+\ src/habu/layout.f UNCAUGHT-RC: the exit status of an uncaught top-level throw
+\ (BTHROW THROW-NOREC), also pinned by test/protection-span.f and
+\ test/runtime-regression-test.f.
 67 constant CHILD-UNCAUGHT-RC
 
 : REFUSED-NATIVE-RSTACK ( ptr u8 n -- )
@@ -156,20 +148,12 @@ variable ERRLEN
    ERR ERRLEN @ diag diagu T$= ;
 
 \ GUARDED-EXTENT? (src/habu/habu1.f) runs at every run-in-stack switch, before
-\ the callback and before the stack switch itself, and for a freshly entered
-\ stack (used bytes = 0) it is strictly stronger than the descriptor check
-\ that used to catch a malformed extent at the same place -- so strictly
-\ stronger that the entry STACK-GUARD:CHECK-CURSOR call is gone: with
-\ cursor == base, every branch that check emits was already proven impossible.
-\ A malformed run-in-stack extent therefore never reaches the generic
-\ "hb: stack bounds exceeded" exit any more; it is a catchable
-\ E-STACK-UNGUARDED (-3802) throw.
-\ test/stack-guard.f RUN-IN-STACK-REFUSALS owns one in-process case per clause
-\ (null base, unaligned base, zero capacity, part-page capacity, wrapping
-\ capacity, DATA-region base, create/allot buffer). The case here owns the
-\ other half -- what the refusal looks like from outside a child that does not
-\ catch it -- and pins the part no in-process case can show: the callback never
-\ ran at all. Its body prints, and the child's stdout is empty.
+\ the callback and the switch, so a malformed extent is a catchable
+\ E-STACK-UNGUARDED (-3802), never the generic "hb: stack bounds exceeded" exit.
+\ test/stack-guard.f RUN-IN-STACK-REFUSALS owns one in-process case per clause;
+\ this case owns what the refusal looks like from a child that does not catch
+\ it, and that the callback never ran: its body prints, and the child's stdout
+\ is empty.
 : UNGUARDED-UNCAUGHT ( -- )
    s" an uncaught unguarded extent kills the child before its body runs" T-LABEL
    s" create BUF 32 allot : LOUD ( -- ) 42 . ; : GO ( -- ) ['] LOUD BUF 8 run-in-stack ; GO"

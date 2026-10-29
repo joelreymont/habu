@@ -37,7 +37,6 @@ variable EXITED
 
 : ENGINE$ ( -- ptr u8 n ) ENGINE-CANDIDATE:PATH$ ;
 
-\ ---- isolated tmp root ----
 create ROOT-BUF PATH-CAP allot
 variable ROOT-U
 
@@ -67,7 +66,6 @@ create SHADOW-SNAP-BUF PATH-CAP allot
 : SHADOW-SNAP$ ( -- ptr u8 n )
    ROOT s" shadow-snapshot" SHADOW-SNAP-BUF FS:JOIN-PATH SHADOW-SNAP-BUF swap ;
 
-\ ---- snapshot image reader ----
 PTR-VARIABLE IMGP
 variable IMGU
 
@@ -111,10 +109,9 @@ variable IMGU
    tr tr SNAP-TRL-DATALEN + U64@ - ;
 
 \ The return and loop stacks are guarded mappings outside DATA, so the image
-\ carries no return-stack window at all: their base cells must be zero (each
-\ run maps its own), and the values the poison fixture planted in the live
-\ return stack (the canary constants inverted) must not appear anywhere in the
-\ persisted DATA payload.
+\ carries no return-stack window: their base cells must be zero (each run maps
+\ its own), and the inverted canaries the poison fixture planted in the live
+\ return stack must not appear in the persisted DATA payload.
 : STACK-BASES-ZERO? ( -- bool )
    DATA-OFF 8 + STACK-ABI:RETURN-BASE-CELL + U64@ 0=
    DATA-OFF 8 + STACK-ABI:LOOP-BASE-CELL + U64@ 0= and ;
@@ -161,7 +158,7 @@ variable IMGU
       DATA-HEADER-OFF U64@ 8 * +
    then ;
 
-\ ---- the heap section: its bytes, or the src/habu/cell-grid.f form ----------
+\ The heap section holds the heap's bytes or the src/habu/cell-grid.f form.
 : HEAP-BYTES ( -- n )
    HB-TARGET-LINUX-X86-64? if
       X64-DATA-OFF DP-CELL + U64@ DATA-VA VA>N - DATA-START - exit then
@@ -180,14 +177,12 @@ variable IMGU
 : PRESENT-CELLS ( -- n )
    0  GRID-S 0 ?do  GROUPS-OFF i + U8@ BITS +  loop ;
 
-\ The width of the value at image offset `off`; the writer never stores a
-\ malformed one.
+\ The writer never stores a malformed value, so one fails the test.
 : WIDTH ( n -- n ) {: off:n :}
    IMG off + TRAILER-OFF off - CELL-GRID:CELL-V@ nip {: w:n :}
    w 0= if s" snapshot writer: malformed grid value" 74 die then
    w ;
 
-\ The offset of the first value `want` bytes wide, or -1.
 : VALUE-AT ( n -- n ) {: want:n :}
    VALUES-OFF  PRESENT-CELLS 0 ?do
       dup WIDTH want = if unloop exit then
@@ -201,7 +196,6 @@ variable IMGU
 : VALUES-END ( -- n )
    VALUES-OFF  PRESENT-CELLS 0 ?do  dup WIDTH +  loop ;
 
-\ Where the zero pad begins: after the heap's bytes, or after the grid's values.
 : STREAM-END ( -- n )
    GRID? if VALUES-END exit then
    HEAP-OFF HEAP-BYTES + ;
@@ -244,7 +238,6 @@ variable IMGU
    then
    DATA-OFF DATA-OFF DATA-LEN + CANARIES-ABSENT-IN? ;
 
-\ ---- child snapshot build with rc + stderr capture ----
 : CAPTURE! ( result<pcap:captured,pcap:failed> -- )
    PCAP-RESULT:>N RC ! ERR-U ! OUT-U ! ;
 
@@ -311,7 +304,6 @@ variable IMGU
    loop
    BAD-SNAP$ IMG IMGU @ FS:WRITE-ALL ;
 
-\ ---- warm snapshot probes ----
 : STORE! ( len len outcome ptr u8 n -- )
    {: outu:len erru:len oc src:ptr srcu:n :}
    outu LEN>N OUT-U !  erru LEN>N ERR-U !
@@ -345,27 +337,25 @@ variable IMGU
    RC @ FORGE-RC T=
    ERR$ s" hb: cannot publish into protected word" CONTAINS? TTRUE ;
 
-\ ---- the persisted protected-WID bitmap ------------------------------------
-\ Same shape and same rules as the engine's own read-only view
-\ (tools/prot-wid-probe.f): bit w of the band at PROT-BITS-OFF is set exactly
-\ when wordlist w is protected, and the two OWNER-API wordlists are protected by
-\ rule on every boot path rather than by a bit.
+\ Same shape and rules as the engine's read-only view (tools/prot-wid-probe.f):
+\ bit w of the band at PROT-BITS-OFF is set exactly when wordlist w is
+\ protected; the two OWNER-API wordlists are protected by rule on every boot
+\ path, not by a bit.
 variable BAND-WID
 
 : BAND-BIT? ( n -- bool ) {: wid:n :}
    DATA-OFF 8 + PROT-BITS-OFF + wid 8 / + U8@
    wid 7 and rshift 1 and 0= 0= ;
 
-\ The lowest wordlist THIS IMAGE records as protected, skipping the two that
-\ every boot path protects by rule. Membership for such a wid can only come from
-\ the band the snapshot carried, which is what the warm probes below test.
+\ The lowest wordlist this image records as protected, skipping the two every
+\ boot path protects by rule: membership for such a wid comes only from the band
+\ the snapshot carried, which the warm probes test.
 : BAND-WID! ( -- )
    0 BAND-WID !
    PROT-WID-MAX FIRST-DYNAMIC-WID ?do
       BAND-WID @ 0= i BAND-BIT? and if i BAND-WID ! then
    loop ;
 
-\ ---- warm probe sources ----------------------------------------------------
 : PROBE-DECLARE$ ( -- ptr u8 n )
    s\" ENUM sw-warm VARIANT sw-warm-a ;VARIANT ;ENUM\n: VIEW-SIZE ( IR-ARENA:view -- n ) NTAPE:TOKENS ;\n: INCREMENT ( n -- n ) 1+ ;\n41 INCREMENT .\n" ;
 
@@ -375,7 +365,6 @@ variable BAND-WID
    s"  set-current : FOO ( -- n ) 1 ;" SB-APPEND
    SB$ ;
 
-\ ---- doctored-band legs ----------------------------------------------------
 : WRITE-BAND-COPY ( -- )
    BAD-BAND$ IMG IMGU @ FS:WRITE-ALL
    BAD-BAND$ FS:CHMOD-X
@@ -386,8 +375,8 @@ variable BAND-WID
    BAD-BAND$ >LEN  OUT 0 >LEN  OUT CAP >LEN  ERR CAP >LEN  TIMEOUT-MS >MS
    RUN-ARGV-STDIN-CAPTURE-OUTCOME BAD-BAND$ STORE! ;
 
-\ Doctor one byte of the persisted image, run the result, restore the byte so the
-\ later imgdump probes still see the image the writer produced.
+\ The byte is restored after the run, so later imgdump probes see the image the
+\ writer produced.
 : DOCTOR-BYTE ( n n -- ) {: off:n val:n :}
    off U8@ {: orig:n :}
    off val U8!
@@ -579,7 +568,6 @@ variable BAND-WID
    EXITED @ TTRUE RC @ 70 T=
    ERR$ s" NO-SUCH-IMAGE-WORD" CONTAINS? TTRUE ;
 
-\ ---- scenarios ----
 : POISON-CASE ( -- )
    s" test/snapshot-writer-poison.f" BUILD-WITH
    s" poisoned snapshot builds (canaries planted and proven live)" T-LABEL
@@ -599,7 +587,6 @@ variable BAND-WID
    s" imgdump rejects a corrupted header-owned trailer locator" T-LABEL
    BAD-SNAP$ ASSERT-NO-SNAPSHOT ;
 
-\ ---- the heap in the cell grid ---------------------------------------------
 : RELOAD ( -- )
    IMG IMGU @ munmap drop
    SNAP0$ LOAD-IMAGE ;
@@ -766,7 +753,6 @@ variable PADDED
    RECAPTURE-CASE
    GRID-PAD-CASE ;
 
-\ ---- a heap that ends inside a cell -----------------------------------------
 \ The tail fixture's heap ends TAIL-BYTES into the second cell of its last
 \ group, the first cell zero, so that group stores one bitmap byte with one bit
 \ set. The extent is stored twice, as the stream's first cell and as DP in the
@@ -854,7 +840,6 @@ variable PADDED
       DOCTOR-PAD ASSERT-BAND-REFUSED
    then ;
 
-\ ---- a failed write leaves the output path as it was ------------------------
 : CLOSE-FAIL$ ( -- ptr u8 n ) s" close-fail" PATH$ ;
 
 variable STRAYS
@@ -897,7 +882,6 @@ variable STRAYS
    SNAP0$ HOLDS-IMG? TTRUE
    STRAYS@ 0 T= ;
 
-\ ---- an output that cannot be opened dies by name ---------------------------
 : MISSING$ ( -- ptr u8 n ) s" missing" PATH$ ;
 : IN-MISSING$ ( -- ptr u8 n ) s" missing/application" PATH$ ;
 
@@ -910,7 +894,6 @@ variable STRAYS
    s" an output that cannot be opened creates nothing" T-LABEL
    MISSING$ FS:EXISTS? TFALSE ;
 
-\ ---- an output the rename cannot replace dies by name -----------------------
 : DIR-OUT$ ( -- ptr u8 n ) s" dir-out" PATH$ ;
 
 \ A directory at the output path lets the sibling be written and signed, then
@@ -943,7 +926,6 @@ variable STRAYS
    ERR$ s" snap: format capability is not an engine primitive" CONTAINS? TTRUE
    SHADOW-SNAP$ FS:EXISTS? TFALSE ;
 
-\ ---- live compiler state refuses capture -----------------------------------
 : ACTIVE-SNAP$ ( -- ptr u8 n ) s" active" PATH$ ;
 : QUIESCENT-SNAP$ ( -- ptr u8 n ) s" quiescent" PATH$ ;
 
@@ -988,7 +970,7 @@ variable STRAYS
    s\" 0 set-tier\n: ACTIVE-DEF ( -- ) [: [: SNAP-WRITER-ACTIVE:SAVE ;] drop ;] drop ;\n"
    ACTIVE-REFUSED ;
 
-\ ---- policy belongs to the sealing process, not its saved image ----------
+\ Policy belongs to the sealing process, not its saved image.
 : POLICY-SAVE$ ( -- ptr u8 n )
    S\" : SAVE-POLICY ( -- ) s\q PDEP\q VOCABULARY:ALLOW-PACKAGE 0 SCRIPT-ARGV$ APP-IMAGE:SAVE ; SAVE-POLICY\n" ;
 

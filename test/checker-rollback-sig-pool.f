@@ -1,15 +1,9 @@
 \ checker-rollback-sig-pool.f - payload membership across checker rollback.
-\
-\ Arming records membership by symbol id. Freeze serializes each live member's
-\ verified effect and replaces that marker with a row offset. A candidate scope
-\ returns its symbol ids to the interner, so its membership must be retired too.
-\ Otherwise a different word can inherit coverage it never acquired, defeating
-\ the capture audit. The cases use the generated-declaration preflight's actual
-\ scope entry points and intern different names after the pop to force id reuse.
-\
-\ Test membership and missing coverage while live; only frozen payload lookups
-\ may be interpreted as serialized offsets. Counts, names and effect graphs
-\ must describe the surviving words, with no rows for rolled-back candidates.
+\ Arming records membership by symbol id; freeze replaces each live member's
+\ marker with its serialized effect's row offset. A popped candidate scope
+\ returns its ids to the interner, so its membership must be retired, or another
+\ word inherits coverage it never had and defeats the capture audit. Only a
+\ frozen lookup is a serialized offset.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -31,8 +25,8 @@ variable ROW-U
 PTR-VARIABLE STRINGS
 variable STR-U
 
-\ Whitebox payload-owner operations; the test deliberately controls the live
-\ capture window and reads its private serialized spans.
+\ Whitebox payload-owner operations: the test controls the live capture window
+\ and reads its private serialized spans.
 : FREEZE ( -- )
    CHECKER-PAYLOAD-FREEZE
    CHECKER-PAYLOAD-SPANS STR-U ! STRINGS ! ROW-U ! ROWS ! ;
@@ -80,7 +74,6 @@ variable STR-U
 : MEMBER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    s" " false a u CHECKER-ASIG-ROW-FOR 0 <> ;
 
-\ Inspect the actual serialized graph, using its owner's field definitions.
 \ This fixture's rows contain only n values and an implicit untouched tail.
 : N-ROW? ( ptr u8 n n -- bool ) {: graph:ptr off:n count:n :}
    graph off + {: node:ptr :}
@@ -109,7 +102,7 @@ variable STR-U
    a u T-LABEL
    a u CHECK! -1 T= ;
 
-\ ---- case one: the popped scope's rows may not answer for anybody ------------
+\ The popped scope's rows may not answer for anybody.
 
 : STALE-ROW-CASE ( -- )
    CHECKER-PAYLOAD-ARM
@@ -151,11 +144,9 @@ variable STR-U
    s" RBSIG-SHIM" 0 0 ROW-EFFECT? TTRUE
    s" RBSIG-REAL-A" 0 0 ROW-EFFECT? TTRUE ;
 
-\ ---- case two: the audit that has to fail loudly still can -------------------
-\ A word the checker knows and the pool has no row for is the ONE condition a
+\ A word the checker knows and the pool has no row for is the one condition a
 \ capture must refuse. Outside the arming window every definition is that word,
-\ so a stale entry there does not hand over a wrong row - it hands over a false
-\ "this one is covered", which is the silent half of the same defect.
+\ so a stale entry there hands over a false "this one is covered".
 
 : AUDIT-CASE ( -- )
    CHECKER-ASIG-DISARM
@@ -184,7 +175,6 @@ variable STR-U
    s" RBSIG-OUT-SHIM" LOOKUP TTRUE 0 T=
    s" RBSIG-OUT-A" LOOKUP TTRUE 0 T= ;
 
-\ ---- case three: the retire may not reach below the frame --------------------
 \ The mark is the frame's restored SYM-N. Membership recorded before the scope
 \ belongs to a surviving symbol; retiring from zero would lose that coverage.
 

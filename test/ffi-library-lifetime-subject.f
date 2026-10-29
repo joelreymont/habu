@@ -1,21 +1,9 @@
-\ FFI releases the library references its rows own when an image is prepared.
-\ test/stripped-image.f's application runs RUN in a stripped executable, whose
-\ line guards that
-\ executable's PREPARE: it starts with an empty lifecycle registry and FFI's
-\ registered flag clear and replays no declaration, so only its first resolution
-\ can arm FFI's cleanup. Without it the PREPARE left libzip loaded.
-\
-\ A FUNCTION: row in a library dlopens that library at its first call, and the
-\ handle is an owned reference. IMAGE-LIFECYCLE:PREPARE must release it: a
-\ PREPARE that only forgot the handle left the library loaded, and every later
-\ first call took another reference. RTLD_NOLOAD asks the loader whether the
-\ library is loaded without loading it, and each open it answers is closed
-\ again, so the probe holds no reference of its own.
-\
-\ The query names the image by the path the loader recorded for it, which the
-\ probe learns once through dladdr on a reference it opens and closes again:
-\ under RTLD_NOLOAD dyld finds a loaded image by absolute path, and answers
-\ NULL for the rendered libzip.5.dylib while that image is loaded.
+\ FFI releases the library references its rows own when an image is prepared: a
+\ FUNCTION: row dlopens its library at first call and the handle is an owned
+\ reference that IMAGE-LIFECYCLE:PREPARE must release, or every later first call
+\ takes another. test/stripped-image.f's application runs RUN in a stripped
+\ executable that starts with an empty lifecycle registry, FFI's registered flag
+\ clear and no replayed declaration: only its first resolution arms the cleanup.
 
 require src/lib/string.f
 require src/lib/test.f
@@ -47,11 +35,15 @@ PATH-BYTES SPAN-BUFFER: ZIP-NAME-Z
 PATH-BYTES BUFFER: ZIP-PATH               \ strncpy leaves its last byte the NUL
 create DL-INFO $20 allot
 
-\ <dlfcn.h> RTLD_NOLOAD: 0x10 on macOS, 0x4 in glibc.
+\ <dlfcn.h> RTLD_NOLOAD: 0x10 on macOS, 0x4 in glibc. It asks whether a library
+\ is loaded without loading it; each open it answers is closed again, so the
+\ probe holds no reference of its own.
 : NOLOAD ( -- n ) HB-TARGET-MACOS? if $10 else $4 then ;
 
-\ The path the loader records for libzip, read through a reference this opens
-\ and closes again; false when libzip does not open or name its image.
+\ The path the loader records for libzip, read once through dladdr on a
+\ reference this opens and closes again; false when libzip does not open or name
+\ its image. Under RTLD_NOLOAD dyld finds a loaded image by absolute path and
+\ answers NULL for the rendered libzip.5.dylib while that image is loaded.
 : FIND-ZIP-PATH ( -- bool )
    s" zip" 5 ZIP-NAME FFI:LIBRARY-NAME$ ZIP-NAME-Z FFI:CSTR
    FFI:NOW PROBE-OPEN {: handle:n :}

@@ -1,33 +1,9 @@
 \ replay-binding.f - a checker replay binds each name to the word the compiler
-\ would call, and hands the engine back unchanged.
-\
-\ VERIFY:SOURCE-BUF checks a source text without running it. While it replays,
-\ the engine's dictionary carries an overlay: the replay's package and using
-\ declarations drive the engine's scope cells, its definitions are published as
-\ records, and every body binds through the engine's own lookup. When the
-\ replay ends, clean or thrown, the overlay is gone: the dictionary count, the
-\ data pointer, the current wordlist, the wordlist counter, the open package
-\ and the using depth read as before, and no namespace row the replay made
-\ survives. Each row runs twice: in the candidate scope VERIFY:SOURCE-BUF opens
-\ in the caller's package, and in a package-neutral scope, as tools/check.f
-\ preverifies a source.
-\
-\ Before the overlay a replay bound against the checker's mirror of the scope.
-\ A package word the checker had no record of was invisible to the mirror, so a
-\ reopened body spelling it was typed as the engine word of that spelling (the
-\ fetch below certified where the compiler calls RB-RAW's `@`), and a qualified
-\ name the engine resolves was undefined.
-\
-\ While a neutral pair holds the overlay open the engine defines nothing live.
-\ The close puts the dictionary count, the code pointer and the wordlist
-\ counter back where the pair found them, so a word, a package row or a
-\ wordlist made inside the pair would vanish with it or be handed out twice.
-\ The engine refuses each where it is made, ENGINE-ERROR:OVERLAY-OPEN with its
-\ name, and inside `evaluate` the refusal is a throw. The close gives back only
-\ what the overlay retired, so a live `undefine` there is refused the same way
-\ before it retires the word.
-\
-\ Run: bin/hb --load test/replay-binding.f
+\ would call, and hands the engine back unchanged. While VERIFY:SOURCE-BUF
+\ replays, the engine's dictionary carries an overlay; when it ends, clean or
+\ thrown, the dictionary count, data pointer, current wordlist, wordlist
+\ counter, open package and using depth read as before. Rows run in the
+\ candidate scope and in the package-neutral scope tools/check.f preverifies in.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -163,8 +139,6 @@ variable COMPOSE       \ nonzero: there, compose the text as a file the load rea
 : WIDN ( -- n ) data-base $30 + @ ;
 : USE-DEPTH ( -- n ) data-base $9C08 + @ ;
 
-\ Replay TEXT, expect verdict WANT, and require the engine state read before
-\ the replay to read the same after it.
 : REPLAY ( ptr u8 n n -- ) {: a:ptr u:n want:n :}
    ndict@ cp@ get-current WIDN PKG-PUB USE-DEPTH
    {: nd:n cp:n cur:n widn:n pub:n use:n :}
@@ -228,21 +202,13 @@ variable COMPOSE       \ nonzero: there, compose the text as a file the load rea
    S\" using REOPEN-BIND\n: RB-U3 ( n -- n n ) dup ;\n;using\n" 7141 REPLAY ;
 
 \ The engine's `undefine R` retires R's clause with R (src/habu/xref.f
-\ XREF-RETIRE-INDEX), so a trust row naming the clause then names no word. The
-\ first row is the control: while R lives, the clause's name resolves. A definer
-\ the replay makes has its clause as well, as the engine's `does>` makes one;
-\ without it the trust of the clause was E-TRUST-UNRESOLVED, where the live
-\ load certifies it. The clause holds its name though no checker record does,
-\ so a later colon definition of that name is refused, as the live load refuses
-\ it ("duplicate definition: MK;does", rc 78). An export of a definer publishes
-\ the clause in the export's wordlist too (src/habu/habu2.f C-EXPORT): without
-\ it the trust of RB-XQ2:MK;does was E-TRUST-UNRESOLVED and the definition of
-\ MK;does after the export certified, where the live load certifies the one and
-\ refuses the other, 78. The engine's `does>` makes the clause for a TRUSTED:
-\ definer as for a checked one, and so does the replay: without it the trust of
-\ RB-TP2:TD;does was E-TRUST-UNRESOLVED and the definition of TD;does after the
-\ definer, or after its export, certified, where the live load certifies the
-\ first and refuses the other two, 78.
+\ XREF-RETIRE-INDEX); the first row, while R lives, is the control. A replayed
+\ definer gets its clause as the engine's `does>` makes one, for a TRUSTED:
+\ definer too, and an export of a definer publishes it in the export's wordlist
+\ (src/habu/habu2.f C-EXPORT). Without the clause, the trust of RB-XQ2:MK;does
+\ or RB-TP2:TD;does was E-TRUST-UNRESOLVED and a later definition of the
+\ clause's name certified, where the live load certifies the trust and refuses
+\ the definition ("duplicate definition: MK;does", rc 78).
 : CLAUSE-CASE ( -- )
    s" a replayed undefine retires the definer's does> clause with it" T-LABEL
    S\" s\" RB-DOES:RB-MK;does\" s\" -- n\" trust\n" 0 REPLAY
@@ -281,28 +247,23 @@ variable COMPOSE       \ nonzero: there, compose the text as a file the load rea
    s" and the namespace has no private wordlist after it" T-LABEL
    s" RB-PQ" XREF-NAMESPACE-WL XREF-FIND-WL XREF-PKG-PRIVATE 0 T= ;
 
-\ A primitive is no source definition's record: the engine's builder made it
-\ before the source prefix's first record (src/core/prefix-boundary.f
-\ CORE-PREFIX:FIRST-RECORD), so the engine holds it at every point and the live
-\ load refuses a definition of its name in its wordlist, "duplicate
-\ definition: dup", rc 78, as the live row at the end of this file does. A
-\ package's wordlist holds no primitive of that name. The row runs in the
-\ neutral scope, which starts at top level: the candidate scope opens where
-\ RUN stands, in this package's private section, whose wordlist holds no dup,
-\ so there the definition certifies, as it loads. The end of this file
-\ replays it in the candidate scope from top level (TOP-REPLAY).
+\ A primitive precedes the source prefix's first record
+\ (src/core/prefix-boundary.f CORE-PREFIX:FIRST-RECORD), so the live load
+\ refuses a definition of its name in the wordlist that holds it ("duplicate
+\ definition: dup", rc 78); a package's wordlist holds no primitive. The row
+\ runs neutral, from top level: the candidate scope opens in this package's
+\ private section, where the definition certifies. TOP-REPLAY covers top level.
 : PRIMITIVE-CASE ( -- )
    s" a replayed definition of a primitive's name is refused, as the live load refuses it" T-LABEL
    S\" : dup ( n -- n n ) dup ;\n" 78 REPLAY
    s" and in a package's wordlist that definition certifies" T-LABEL
    S\" package RB-PD\npublic\n: dup ( n -- n n ) dup ;\n;package\n" 0 REPLAY ;
 
-\ A live load makes as many definers and runs as many `undefine`s as its
-\ dictionary holds, and so does a replay: only the dictionary bounds the
-\ overlay's clause pairs and its undo log (src/core/checker.f CHECKER-OVERLAY).
-\ One text makes MANY definers, a pair each, and the other runs MANY
-\ `undefine`s, a log entry each: one more than the 256 a fixed table held,
-\ which refused the 257th, E-OVERLAY-CAP. GROWTH-LIVE-CASE loads both live.
+\ Only the dictionary bounds the overlay's clause pairs and undo log
+\ (src/core/checker.f CHECKER-OVERLAY), as for a live load. One text makes MANY
+\ definers, a pair each; the other runs MANY undefines, a log entry each. A
+\ fixed table of 256 refused the 257th, E-OVERLAY-CAP. GROWTH-LIVE-CASE loads
+\ both live.
 $4000 constant TEXT-CAP
 TEXT-CAP BUFFER: TEXT
 variable TEXT-U
@@ -311,14 +272,12 @@ variable TEXT-U
 : TEXT+ ( ptr u8 n -- ) TEXT TEXT-CAP TEXT-U BUF-APPEND ;
 : TEXT$ ( -- ptr u8 n ) TEXT TEXT-U BUF-LEN@ ;
 
-\ Append name I of a run: the prefix, then two letters counting from AA.
 : NAME+ ( ptr u8 n n -- )
    {: a:ptr u:n i:n :}
    a u TEXT+
    i 26 / [char] A + TEXT TEXT-CAP TEXT-U BUF-APPEND-C
    i 26 mod [char] A + TEXT TEXT-CAP TEXT-U BUF-APPEND-C ;
 
-\ MANY does> definers, then an undefine of the first and its redefinition.
 : DEFINERS$ ( -- ptr u8 n )
    TEXT-U BUF-RESET
    MANY 0 ?DO
@@ -328,7 +287,6 @@ variable TEXT-U
    S\" undefine RB-DAA\n: RB-DAA ( n -- ) create , does> ( -- n ) @ ;\n" TEXT+
    TEXT$ ;
 
-\ MANY words, then an undefine of each.
 : UNDEFINES$ ( -- ptr u8 n )
    TEXT-U BUF-RESET
    MANY 0 ?DO  s" : RB-U" i NAME+  S\"  ( -- ) ;\n" TEXT+  LOOP
@@ -341,14 +299,12 @@ variable TEXT-U
    s" a replay runs more than 256 undefines" T-LABEL
    UNDEFINES$ 0 REPLAY ;
 
-\ A live load nests as many checker scopes as its memory holds (src/core/checker.f
-\ RBF-GROW), and so does a replay: a scope opened inside the overlay keeps the
-\ one it entered from in a snapshot row, and only memory bounds the rows
-\ (CHECKER-OVERLAY SNAP-PUSH). DEEP package-neutral scopes hold a replay in the
-\ innermost: more rows than the 16 a fixed table held, which refused the 18th
-\ scope, E-OVERLAY-CAP, and than the 64 the rows' mapping starts with, so it
-\ grows with rows in it. Each inner close comes back to the scope it entered
-\ from, top level with no imports, and the outermost to the caller's.
+\ Only memory bounds nested checker scopes, live (src/core/checker.f RBF-GROW)
+\ or in a replay, where each scope opened inside the overlay keeps its entry
+\ scope in a snapshot row (CHECKER-OVERLAY SNAP-PUSH). DEEP passes the 16 a
+\ fixed table held (E-OVERLAY-CAP at the 18th scope) and the 64 rows the mapping
+\ starts with. Each inner close returns to top level with no imports, the
+\ outermost to the caller's scope.
 100 constant DEEP
 variable LIVE-NEST     \ nonzero: nest live checker scopes, else neutral ones
 variable OPENED
@@ -361,7 +317,6 @@ variable STRAYED       \ inner closes that did not come back to the top level
 : SCOPE-IN ( -- )
    LIVE-NEST @ IF CHECKER-SCOPE-START ELSE CHECKER-SCOPE-START-NEUTRAL THEN ;
 
-\ Open DEEP nested scopes, stopping at the first refusal.
 : OPEN-DEEP ( -- )
    0 OPENED !  0 OPEN-RC !
    DEEP 0 ?DO
@@ -375,7 +330,6 @@ variable STRAYED       \ inner closes that did not come back to the top level
 : TOP? ( -- bool )
    get-current TOP-CUR @ =  PKG-PUB TOP-PUB @ = and  USE-DEPTH TOP-USE @ = and ;
 
-\ Close every scope but the outermost, counting the closes that strayed.
 : CLOSE-INNER ( -- )
    0 STRAYED !
    OPENED @ 1 ?DO
@@ -418,28 +372,18 @@ variable STRAYED       \ inner closes that did not come back to the top level
    PRIVATE-CASE
    GROWTH-CASE ;
 
-\ A word the engine holds, as a warm engine holds the loaded twin of the
-\ source it replays: the replay's own definition of it is the first of its
-\ pass and certifies, and a second is refused, as the live load refuses a
-\ second compile. The candidate scope alone runs it: the package-neutral
-\ scope, where tools/check.f preverifies a source no engine has loaded,
-\ refuses even one definition of a name the checker's store holds, 78.
-\ A record the engine holds is a replayed definition's twin only if the
-\ definition makes such a record. No definition makes a does> clause, so a
-\ definition of the name of RB-WD:RB-WMK's clause, or of its alias's in RB-WX,
-\ is refused whatever the replay made before it: the definer, nothing, or a
-\ word of the definer's name that is no definer. A definer or an export of one
-\ has a clause, so one is refused where the engine's record of its name has
-\ none, as RB-WN:RB-WMK and its alias in RB-WY have none, and a word that is no
-\ definer or an export of one is refused where that record has a clause, as
-\ RB-WD:RB-WMK and its alias in RB-WX have. The scan refuses a colon
-\ definition at the `;` or `does>` that ends its body, before the body is
-\ checked, so a body the checker would refuse is refused as the duplicate. A
-\ TRUSTED: definer makes its clause as a checked one does (CLAUSE-CASE), and the
-\ twin test reads the clause of the engine's record, not its trust: RB-WD's
-\ checked definer is the twin of a replayed TRUSTED: definer, and neither it
-\ nor RB-WN's word, which has no clause, is the twin of a TRUSTED: word of the
-\ other shape. The warm live engine refuses each text, 78.
+\ A word the engine holds is the loaded twin of the replay's first definition of
+\ it, which certifies; a second is refused, as a live second compile is. Only
+\ the candidate scope runs this: the neutral scope, where tools/check.f
+\ preverifies unloaded source, refuses even one definition of a name the
+\ checker's store holds, 78. A record is a twin only if the definition makes
+\ such a record. No definition makes a does> clause, so a clause's name is
+\ refused whatever came before; a definer or its export is refused where the
+\ engine's record of the name has no clause (RB-WN), a non-definer where it has
+\ one (RB-WD). The scan refuses at the `;` or `does>` ending the body, before
+\ checking it, so a bad body is refused as the duplicate. The twin test reads
+\ the clause, not the trust: RB-WD's checked definer twins a replayed TRUSTED:
+\ definer. The warm live engine refuses each text, 78.
 : RB-WARM ( n -- n ) 1 + ;
 
 : WARM-CASE ( -- )
@@ -597,11 +541,15 @@ variable ERR-U
    RC @ ENGINE-ERROR:OVERLAY-OPEN T=
    ERR$ na nu CONTAINS? TTRUE ;
 
-\ Each refusal ran on an engine without it: the live word ended the session
-\ with the close's silent exit 83, or, after a replay row raised the overlay's
-\ high-water mark past it, survived the close as a name that no longer
-\ resolved; the wordlist was handed out again after the close; the undefined
-\ word stayed retired after it, E-UNDEFINED at its next use.
+\ While a neutral pair holds the overlay open the engine defines nothing live:
+\ the close puts the dictionary count, code pointer and wordlist counter back,
+\ so a word, package row or wordlist made inside would vanish or be handed out
+\ twice. The engine refuses each where it is made, ENGINE-ERROR:OVERLAY-OPEN
+\ with its name (a throw inside `evaluate`), and refuses a live `undefine` the
+\ same way, since the close gives back only what the overlay retired. Without
+\ the refusal the session exited 83 at the close, or a word survived as a name
+\ that no longer resolved, a wordlist was handed out twice, or an undefined word
+\ stayed retired.
 : LIVE-CASE ( -- )
    s" a live definition inside a neutral pair is refused by name" T-LABEL
    S\" CHECKER-SCOPE-START-NEUTRAL\n: RB-LIVE ( -- n ) 5 ;\nCHECKER-SCOPE-DONE\n"

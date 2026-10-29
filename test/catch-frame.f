@@ -1,13 +1,7 @@
-\ catch-frame.f - a caught throw restores the COMPLETE caller execution frame
-\ (dot habu-restore-complete-exec-abb8baca): data SP, user return-stack depth
-\ (RSP-CELL), loop-stack depth (LOOPSP-CELL), and the handler chain. The checker
-\ models `catch` as restoring both typed stacks (src/core/checker.f RSCATCH), so a
-\ throwing quotation that leaves >r litter or an open ?do frame would otherwise
-\ clobber caller return/loop state with no type mismatch.
-\
-\ Native gates run it; tools/bootstrap.sh runs the same file against the
-\ Gforth-recovered candidate, so native and recovery must agree. The cases assert
-\ the restored VALUES a checked r>/loop-index sees.
+\ catch-frame.f - a caught throw restores the whole caller frame: data SP, user
+\ return-stack depth (RSP-CELL), loop-stack depth (LOOPSP-CELL) and the handler
+\ chain. tools/bootstrap.sh also runs this file on the Gforth-recovered
+\ candidate: native and recovery agree.
 
 require src/lib/test.f
 
@@ -16,8 +10,9 @@ private
 
 variable ACC
 
-\ ---- in-process: a caught throw restores caller return/loop state ----
-
+\ The checker models `catch` as restoring both typed stacks (src/core/checker.f
+\ RSCATCH), so a throwing quotation's >r litter or open ?do frame would clobber
+\ caller state with no type mismatch.
 \ These actions have a truthful empty normal interface. Each throws after
 \ changing the live frame; a tick gives catch a fixed callable effect.
 TRUSTED: THROW-R99-7 ( -- ) 99 >r 7 throw ;

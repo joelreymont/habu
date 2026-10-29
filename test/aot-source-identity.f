@@ -26,7 +26,7 @@ create JOINED 256 allot
 create KEY 32 allot
 create BEFORE 32 allot create AFTER 32 allot
 create ART-BEFORE 32 allot create ART-AFTER 32 allot
-create FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this fixture's file-digest context
+create FSHA-CTX SHA256-FILE-CTX-BYTES allot
 $1000 constant IO-CAP
 create OUT IO-CAP allot create ERR IO-CAP allot
 

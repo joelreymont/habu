@@ -58,9 +58,8 @@ private
    loop
    s" seed-metadata: candidate has no interior name mutation" 74 die ;
 
-\ The measured candidate's bytes. MEASURE reads and walks the whole engine, and
-\ every mutation starts from the same unmodified file, so it runs once and each
-\ mutation starts from this copy instead.
+\ MEASURE reads and walks the whole engine, so it runs once; each mutation
+\ starts from this unmodified copy.
 DYNAMIC-BUFFER PRISTINE u8
 
 public

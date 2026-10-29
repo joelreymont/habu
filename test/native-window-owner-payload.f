@@ -20,12 +20,11 @@ CAST: AS-PREPARE ( n -- [ -- ] )
 
 : PAYLOAD-NUMERIC ( n -- n ) 1+ ;
 
-\ The checker as the window loaded it, which RUN's checks before and after its
-\ first PREPARE are about. The first capture preparation copies the signature
-\ store into the data span and a later one finds it there, which is what makes
-\ the first one differ. And no core-prefix boundary is marked, so NORET-COMPACT
-\ (src/core/checker.f) compacts without one: a build never takes that branch,
-\ because its capture follows src/core/lower-cert-seal.f's mark.
+\ The checker as the window loaded it. The first capture preparation copies the
+\ signature store into the data span and later ones find it there. No
+\ core-prefix boundary is marked, so NORET-COMPACT (src/core/checker.f) compacts
+\ without one, a branch a build never takes: its capture follows
+\ src/core/lower-cert-seal.f's mark.
 : FRESH? ( -- bool )
    USIGS USIGS-CAP-U @ REG-DATA-SPAN? 0=
    CHECKER-BOUND:CURSORS 0= and ;

@@ -1,20 +1,9 @@
 \ request-test.f - the browser request protocol under bun:
-\ src/lib/browser/host-cli.mjs runs test/browser/request.f's module through
-\ src/lib/browser/turn.js (src/lib/browser/host.f). The module is built by
-\ tools/wasm-build.f's command line and validated by wasm-tools. bun and
+\ src/lib/browser/host-cli.mjs runs test/browser/request.f's module, built by
+\ tools/wasm-build.f, through src/lib/browser/turn.js. bun and
 \ wasm-tools must be on PATH, so this is no row of the ordinary gate:
 \ test/wasm/device.f runs it, as does `bin/hb --load test/browser/request-test.f`
 \ from the tree's root.
-\
-\ Typed text names the requests a run makes (request.f's TYPED). The host
-\ prints a tagged request's method, path, ID, body length and body in hex when
-\ it makes the request. A reply's run answers the text of its ID, status, the
-\ drawing size when the reply arrived and its body's bytes in decimal; a legacy
-\ reply's ID and size are 0. A reply with status 470 leaves a record of a kind
-\ that names none, 471 traps, and 202 to a legacy post posts /followup.
-\
-\ The module, the answer files and each case's expected and actual transcripts
-\ stay in the printed directory.
 
 require src/lib/string.f
 require src/lib/fmt.f
@@ -55,7 +44,6 @@ PATH-CAP BUFFER: FILE
 : ID2$ ( -- ptr u8 n )  s" 9007199254740994" ;
 : ID3$ ( -- ptr u8 n )  s" 9007199254740995" ;
 
-\ The answer files' bytes.
 : NONE$ ( -- ptr u8 n )  s" " ;
 : ONE$ ( -- ptr u8 n )  s\" \x01" ;
 : TWO$ ( -- ptr u8 n )  s\" \x02" ;
@@ -67,16 +55,13 @@ PATH-CAP BUFFER: FILE
 : OUT$ ( -- ptr u8 n )  OUT OUT-U @ ;
 : ERR$ ( -- ptr u8 n )  ERR ERR-U @ ;
 
-\ The trap's message, as TRAPPED-CASE recorded it.
 : TRAP$ ( -- ptr u8 n )  TRAP TRAP-U @ ;
 
-\ The bytes written as the file name in DIR.
 : FILE! ( ptr u8 n ptr u8 n -- )
    {: a:ptr u:n name:ptr nu:n :}
    DIR DIR-U @ name nu FILE FS:JOIN-PATH {: fu:n :}
    FILE fu a u FS:WRITE-ALL ;
 
-\ The directory of this name made in DIR, its path in dst; answers its length.
 : SUBDIR ( ptr u8 n ptr u8 -- n )
    {: name:ptr nu:n dst:ptr :}
    DIR DIR-U @ name nu dst FS:JOIN-PATH {: u:n :}
@@ -98,26 +83,20 @@ PATH-CAP BUFFER: FILE
 
 : ARG+ ( ptr u8 n -- )  >LEN PROC-ARGV+ ;
 
-\ A number staged as an argument.
 : N-ARG+ ( n -- )
    SB-RESET FMT:SB-INT SB$ ARG+ ;
 
-\ The path of the file of this name in DIR staged as an argument.
 : FILE-ARG+ ( ptr u8 n -- )
    {: name:ptr nu:n :}
    DIR DIR-U @ name nu FILE FS:JOIN-PATH {: fu:n :}
    FILE fu ARG+ ;
 
-\ The program at the path, run with the arguments staged after
-\ PROC-ARGV-RESET; answers its exit status, its stdout in OUT and its stderr in
-\ ERR.
 : SPAWN ( ptr u8 len -- n )
    OUT CAP >LEN  ERR CAP >LEN  DEADLINE-MS >MS
    RUN-ARGV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N {: outu:len erru:len rc:n :}
    outu LEN>N OUT-U !  erru LEN>N ERR-U !
    rc ;
 
-\ A run that should have exited 0, its stderr shown when it did not.
 : SUCCEEDED ( n -- )
    {: rc:n :}
    rc 0<> if  ERR$ type cr  then
@@ -129,7 +108,6 @@ PATH-CAP BUFFER: FILE
    s" test/browser/request.f" ARG+  s" REQUEST-TURN:TURN" ARG+  MOD MOD-U @ ARG+
    s" bin/hb" >LEN SPAWN ;
 
-\ host-cli.mjs on the module, its steps staged after it.
 : HOST-OPEN ( -- )
    PROC-ARGV-RESET
    s" src/lib/browser/host-cli.mjs" ARG+  MOD MOD-U @ ARG+ ;
@@ -137,8 +115,9 @@ PATH-CAP BUFFER: FILE
 : TYPED+ ( ptr u8 n -- )
    s" --typed" ARG+  ARG+ ;
 
-\ The oldest waiting request answered with the status and the file of this
-\ name in DIR.
+\ Answers the oldest waiting request with the status and DIR's file of this
+\ name. request.f's replies: 470 leaves a record of no kind, 471 traps, and 202
+\ to a legacy post posts /followup.
 : ANSWER+ ( n ptr u8 n -- )
    {: status:n name:ptr nu:n :}
    s" --answer" ARG+  status N-ARG+  name nu FILE-ARG+ ;
@@ -156,7 +135,6 @@ PATH-CAP BUFFER: FILE
 : FAIL+ ( -- )
    s" --fail" ARG+ ;
 
-\ The staged host run by bun; answers its exit status.
 : HOST ( -- n )
    s" bun" >LEN EXE RESOLVE-EXECUTABLE {: u:len :}
    EXE u SPAWN ;
@@ -168,7 +146,6 @@ PATH-CAP BUFFER: FILE
 : HELLO ( -- )
    SB-RESET  s" hello" LINE ;
 
-\ Each byte in decimal and a comma, as the fixture answers a reply's body.
 : DECIMALS ( ptr u8 n -- )
    {: a:ptr u:n :}
    u 0 ?do  a i + c@ FMT:SB-U  44 SB-APPEND-C  loop ;
@@ -199,19 +176,17 @@ PATH-CAP BUFFER: FILE
    s" text " SB-APPEND  id iu SB-APPEND  32 SB-APPEND-C
    what wu SB-APPEND  32 SB-APPEND-C  body bu DECIMALS  10 SB-APPEND-C ;
 
-\ ERR's first line.
 : ERR-LINE$ ( -- ptr u8 n )
    ERR ERR-U @ 10 INDEX-OF MATCH option
       none OF ERR 0 ENDOF
       some OF IDX>N ERR swap ENDOF
    ;MATCH ;
 
-\ The line refusing a turn of the module the trap with this message ended.
 : ENDED-LINE ( ptr u8 n -- )
    s" the module trapped and has ended: RuntimeError: " SB-APPEND  LINE ;
 
-\ The expected text in SB and the actual bytes, written as the file of this
-\ name in DIR's expected and actual directories, then compared.
+\ Writes the expected text and the actual bytes as this name in DIR's expected
+\ and actual directories, then compares them.
 : SAME ( ptr u8 n ptr u8 n -- )
    {: got:ptr gu:n name:ptr nu:n :}
    WANT-DIR WANT-U @ name nu FILE FS:JOIN-PATH {: wu:n :}
@@ -222,9 +197,6 @@ PATH-CAP BUFFER: FILE
 
 \ ---- the cases --------------------------------------------------------------
 
-\ Two turns' requests, the second turn's answered first: IDs past 2^53, binary
-\ bodies both ways, the drawing size when each reply arrives, a third turn's
-\ own ID, and a BOM kept at the start of a path.
 : TAGGED-CASE ( -- )
    HOST-OPEN  s" request" TYPED+  s" get" TYPED+
    ID2$ 404 s" three.bin" ANSWER-ID+  100 80 RESIZE+  ID1$ 201 s" zff.bin" ANSWER-ID+
@@ -241,8 +213,6 @@ PATH-CAP BUFFER: FILE
    s" tagged: replies to two turns in reverse order, exact IDs, bodies, sizes, a BOM path" T-LABEL
    OUT$ s" tagged.out" SAME ;
 
-\ One run's two requests, the second answered first; a lost connection answers
-\ the first with status 0 and the error's text; a later turn still runs.
 : PARALLEL-CASE ( -- )
    HOST-OPEN  s" parallel" TYPED+
    ID2$ 404 s" three.bin" ANSWER-ID+  100 80 RESIZE+  FAIL+
@@ -256,9 +226,7 @@ PATH-CAP BUFFER: FILE
    s" parallel: one run's replies in reverse order, a lost connection answers status 0" T-LABEL
    OUT$ s" parallel.out" SAME ;
 
-\ A turn that traps while another turn's request waits ends the module: the
-\ reply's run is refused and the module prints nothing more. Records the trap's
-\ message for the cases after it.
+\ A trap ends the module. Records the trap's message for the cases after it.
 : TRAPPED-CASE ( -- )
    HOST-OPEN  s" request" TYPED+  s" trap" TYPED+  200 s" one.bin" ANSWER+
    s" trapped: the run fails" T-LABEL
@@ -275,8 +243,6 @@ PATH-CAP BUFFER: FILE
    s" trapped: the waiting request's reply is refused" T-LABEL
    ERR$ s" trapped.err" SAME ;
 
-\ One run's second reply traps: the trap is reported at once while the first
-\ request waits, and the first reply's refused run reports both reasons.
 : EARLY-TRAP-CASE ( -- )
    HOST-OPEN  s" parallel" TYPED+
    ID2$ 471 s" empty.bin" ANSWER-ID+  ID1$ 200 s" one.bin" ANSWER-ID+
@@ -290,9 +256,6 @@ PATH-CAP BUFFER: FILE
    s" early trap: reported at once, then with the refusal of its sibling" T-LABEL
    ERR$ s" early-trap.err" SAME ;
 
-\ One run's first reply leaves a record of no kind and its second traps: each
-\ is reported, the second with both reasons, and the trap ends the module, so
-\ a later turn is refused.
 : REPLY-FAILURE-CASE ( -- )
    HOST-OPEN  s" two" TYPED+  470 s" empty.bin" ANSWER+  471 s" empty.bin" ANSWER+
    s" put" TYPED+
@@ -307,9 +270,6 @@ PATH-CAP BUFFER: FILE
    s" reply failure: an invalid record, both reasons, then the later turn refused" T-LABEL
    ERR$ s" reply-failure.err" SAME ;
 
-\ One run's two tagged requests and a legacy post: all three are made before
-\ any reply, the tagged ones are answered by ID in reverse order, and the
-\ legacy reply's ID and size are 0.
 : INTERLEAVED-CASE ( -- )
    HOST-OPEN  s" interleaved" TYPED+
    ID2$ 200 s" one.bin" ANSWER-ID+  ID1$ 200 s" two.bin" ANSWER-ID+
@@ -323,9 +283,6 @@ PATH-CAP BUFFER: FILE
    s" interleaved: a legacy post does not hold back the tagged requests of its run" T-LABEL
    OUT$ s" interleaved.out" SAME ;
 
-\ The same run with its first tagged reply leaving a record of no kind: the
-\ failure is reported without ending the module, the legacy reply's 202 posts
-\ again, and a later turn runs.
 : MIXED-FAILURE-CASE ( -- )
    HOST-OPEN  s" interleaved" TYPED+
    470 s" empty.bin" ANSWER+  200 s" empty.bin" ANSWER+
@@ -345,8 +302,7 @@ PATH-CAP BUFFER: FILE
    s" mixed failure: only the invalid record is reported" T-LABEL
    ERR$ s" mixed-failure.err" SAME ;
 
-\ One run's legacy post and fetch: the fetch waits for the post's reply, whose
-\ 202 posts again first; legacy replies' IDs and sizes are 0.
+\ The fetch waits for the legacy post's reply, whose 202 posts again first.
 : LEGACY-CASE ( -- )
    HOST-OPEN  s" legacy two" TYPED+
    202 s" zff.bin" ANSWER+  203 s" zff.bin" ANSWER+  200 s" zff.bin" ANSWER+
@@ -367,7 +323,6 @@ PATH-CAP BUFFER: FILE
    MOD MOD-U @ [: s" x" TYPED+  ID1$ 201 s" zff.bin" ANSWER-ID+ ;]
    BROWSER-MEMORY-TEST:FREED ;
 
-\ The label "malformed COMMAND: WHAT".
 : MALFORMED ( ptr u8 n ptr u8 n -- )
    {: cmd:ptr cu:n what:ptr wu:n :}
    SB-RESET  s" malformed " SB-APPEND  cmd cu SB-APPEND  s" : " SB-APPEND
@@ -383,7 +338,6 @@ PATH-CAP BUFFER: FILE
    cmd cu s" no request reaches the host" MALFORMED
    OUT$ s\" hello\n" T$= ;
 
-\ A refused command whose failure names the reason.
 : REJECT ( ptr u8 n ptr u8 n -- )
    {: cmd:ptr cu:n why:ptr wu:n :}
    cmd cu REFUSED

@@ -1,21 +1,11 @@
-\ typed-storage-test.f - TYPED-VARIABLE / TYPED-BUFFER convenience definers
-\ (dot habu-nominal-storage-typed-c5f44d66).
+\ typed-storage-test.f - TYPED-VARIABLE and TYPED-BUFFER for nominal scalars,
+\ closed layout families, closed typed pointers and quotations: same-family
+\ round-trips certify and execute, other uses reject with a named E-* code, a
+\ live LAYOUT-BUFFER keeps working and a raw `variable` still cannot mint a
+\ nominal family. Closed structural cells are typed-storage-structural-test.f's.
+
 \ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/fs.f
 \   src/habu/verify-source.f test/typed-storage-test.f
-\
-\ Pins the convenience typed-storage surface: single typed cell (TYPED-VARIABLE)
-\ and typed fixed-capacity buffer (TYPED-BUFFER) for nominal scalars, closed
-\ layout families, closed typed pointers, and closed structural cells.
-\ Same-family store/fetch round-trips certify and execute; cross-family / bounds
-\ / overflow / rollback reject with a named E-* code. Two capabilities stay
-\ DISTINCT: a live LAYOUT-BUFFER over a nominal-parameterized result keeps
-\ working, and a raw `variable` still cannot mint a nominal family (the definers
-\ are the sound alternative, not a bypass).
-\
-\ The fourth admissible stored type, a CLOSED STRUCTURAL CELL (n, bool, the
-\ role tokens, `ptr u8`), is owned by test/typed-storage-structural-test.f
-\ together with the reason a bare `u8` stays out. This file keeps the nominal,
-\ layout, typed-pointer and quotation halves.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -64,9 +54,7 @@ variable TS-EVAL-U
 : TS-EVAL-RUN ( -- ) TS-EVAL-A @ TS-EVAL-U @ INCLUDE-EVALUATE ;
 : TS-EVAL ( ptr u8 n -- n ) TS-EVAL-U ! TS-EVAL-A ! [: TS-EVAL-RUN ;] catch ;
 
-\ =============================================================================
 \ 1. TYPED-VARIABLE: single nominal cell — checker seam + live round-trip
-\ =============================================================================
 TYPED-VARIABLE TSV tsk
 
 : TSV-PUT ( n -- ) N>TSK TSV ! ;
@@ -86,9 +74,7 @@ TYPED-VARIABLE TSV tsk
    42 TSV-PUT
    TSV-GET 42 T= ;
 
-\ =============================================================================
 \ 2. TYPED-BUFFER: nominal, indexed — round-trip + bounds
-\ =============================================================================
 3 TYPED-BUFFER TSB tsk
 
 : TSB-PUT ( n n -- ) {: v:n i:n :} v N>TSK i TSB ! ;
@@ -111,9 +97,7 @@ TYPED-VARIABLE TSV tsk
    TSB-LOW-RC E-STORAGE-BOUNDS T=
    TSB-HIGH-RC E-STORAGE-BOUNDS T= ;
 
-\ =============================================================================
 \ 3. TYPED-VARIABLE: closed typed pointer — checker seam + live deref round-trip
-\ =============================================================================
 TYPED-VARIABLE TSP ptr tsk
 TYPED-VARIABLE TSP-LAYOUT ptr SPAN:span<u8>
 1 TYPED-BUFFER TSP-SPANS SPAN:span<u8>
@@ -145,9 +129,7 @@ TYPED-VARIABLE TSP-LAYOUT ptr SPAN:span<u8>
    TSP-LAYOUT @ NULL-PTR = TTRUE
    TSP-NULL NULL-PTR = TTRUE ;
 
-\ =============================================================================
 \ 4. TYPED-VARIABLE / TYPED-BUFFER: closed layout family round-trip
-\ =============================================================================
 TYPED-VARIABLE TSL tsres<n,n>
 2 TYPED-BUFFER TLB tsres<n,n>
 
@@ -168,15 +150,13 @@ TYPED-VARIABLE TSL tsres<n,n>
    0 TLB-GET 11 T=
    1 TLB-GET 22 T= ;
 
-\ =============================================================================
 \ 5. Define-time admissibility rejects — a stored type is the checker's refusal,
 \    and a count only the run reads throws the named storage code
-\ =============================================================================
 : TS-SECTION-ADMISSIBILITY ( -- )
    s" TYPED-VARIABLE BAD-OPEN ptr a" TS-EVAL CHECKER-REJECT-RC T=
    s" TYPED-VARIABLE BAD-VAR a" TS-EVAL CHECKER-REJECT-RC T=
-   \ a WELL-FORMED xt<effect> quotation cell is now admissible (see
-   \ test/xt-cell-test.f); a MALFORMED quotation (missing --) still rejects
+   \ a well-formed xt<effect> quotation cell is admissible
+   \ (test/xt-cell-test.f); a malformed one (missing --) rejects
    s" TYPED-VARIABLE BAD-QUOT [ n n ]" TS-EVAL CHECKER-REJECT-RC T=
    s" TYPED-VARIABLE BAD-LIN tsowned" TS-EVAL CHECKER-REJECT-RC T=
    \ overflow: non-positive counts reject
@@ -187,9 +167,7 @@ TYPED-VARIABLE TSL tsres<n,n>
    s" BAD-QUOT" 0 search-wl 0= TTRUE
    s" BAD-ZERO" 0 search-wl 0= TTRUE ;
 
-\ =============================================================================
 \ 6. Duplicate + transactional rollback
-\ =============================================================================
 PTR-VARIABLE TS-DP
 
 : TS-DUP-DECL ( -- ) s" TYPED-VARIABLE TSV tsk" INCLUDE-EVALUATE ;
@@ -206,10 +184,8 @@ PTR-VARIABLE TS-DP
    here TS-DP 0 ptr-field @ = TTRUE
    s" BAD-RB" 0 search-wl 0= TTRUE ;
 
-\ =============================================================================
 \ 7. Distinct capability pin #1: numeric-result over a nominal keeps working
 \    through the LANDED LAYOUT-BUFFER (the existing capability is untouched)
-\ =============================================================================
 3 LAYOUT-BUFFER RES-K-BUF tsres<tsk,n>
 
 : RES-K-PUT ( n n -- ) {: v:n i:n :} v N>TSK TSRES:OK i RES-K-BUF ! ;
@@ -224,7 +200,6 @@ PTR-VARIABLE TS-DP
    0 RES-K-GET 77 T=
    2 RES-K-GET 88 T= ;
 
-\ =============================================================================
 \ 8. Distinct capability pin #2: a raw variable/create/constant still cannot
 \    mint a nominal family (TVK-RAW), while TYPED-VARIABLE is the sound path.
 \    The raw definers are registered through the verify-source RAW gate — the
@@ -232,7 +207,6 @@ PTR-VARIABLE TS-DP
 \    through the checker overlay only while the neutral scope holding the scan
 \    and its probes is open, so a laundering word naming them is asked there,
 \    on the certify path (VERIFY:CANDIDATE-IN-SCOPE).
-\ =============================================================================
 : TS-REG-RAW ( -- )
    s\" NEWTYPE rawk\nvariable RAWV\ncreate RAWC 8 allot\n7 constant RAWK"
    VERIFY:SOURCE-BUF-IN-SCOPE ;
@@ -286,19 +260,16 @@ TS-ADDRESS-ROWS TS-BEFORE-NUMBER - constant TS-NUMBER-ROWS
    TS-ADDRESS-ROWS before T=
    41 TS-CALLBACK @ execute 42 T= ;
 
-\ =============================================================================
 \ 10. The checker's storage registrars answer only inside a verifier window
-\ =============================================================================
 \ CHECKER-DEFTYPED-VARIABLE and its siblings record a definer's accessor effect
 \ for the source pre-pass (src/habu/verify-source.f), which replays the definer
 \ in a verifier window while the definer itself compiles the word. Called from
-\ source, one recorded that effect for a name the engine never defined there,
-\ and checked callers were certified against it while the engine ran what the
-\ name already bound: below, a global that answers a number where the record
-\ promised a pointer. So outside a window the registrar is refused with the
-\ code the window's other replay-only steps refuse with, E-PKG-CONTEXT, and
-\ records nothing; a package-neutral scope, which source can open, is no
-\ window: closed with CHECKER-SCOPE-FINALIZE it would keep the row.
+\ source outside a window, a registrar would record that effect for a name the
+\ engine never defined there, and checked callers would be certified against it
+\ (below, a global that answers a number where the record promised a pointer).
+\ So it is refused with E-PKG-CONTEXT, as the window's other replay-only steps
+\ are, and records nothing; a package-neutral scope, which source can open, is
+\ no window: closed with CHECKER-SCOPE-FINALIZE it would keep the row.
 70 constant E-TS-REJECT        \ the checker's compile reject (habu2.f RC-REJECT)
 
 : TS-SECTION-REPLAY-ONLY ( -- )

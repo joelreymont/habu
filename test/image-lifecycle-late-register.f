@@ -1,13 +1,8 @@
 \ A persistent lifecycle hook that registers a one-shot hook is refused by name
-\ at the capture, and no image is written.
-\ IMAGE-LIFECYCLE:PREPARE runs the one-shot hooks, releases their table, then
-\ runs the persistent ones; the capture that follows releases every
-\ DYNAMIC-BUFFER and copies DATA. Admitted, a one-shot hook registered by a
-\ persistent one left its count in the image over no table, and that image's
-\ own PREPARE threw E-BOUNDS (7122) at its first capture.
-\ The program is saved from the keyed linker image (test/preloaded-engine.f),
-\ which carries the linker's persistent PROC-MAPS:RELOAD hook
-\ (tools/aot-build-core.f): the same PREPARE runs it after the program's own.
+\ at the capture, and no image is written. IMAGE-LIFECYCLE:PREPARE runs the
+\ one-shot hooks, releases their table, then the persistent ones: admitted, the
+\ late hook's count reaches the image over no table and that image's PREPARE
+\ throws E-BOUNDS.
 require src/lib/test.f
 require src/lib/test/outcome.f
 require src/lib/string.f
@@ -60,6 +55,8 @@ variable IMAGE-U
    E-LIFECYCLE-LATE FMT:SB-INT
    SB$ ;
 
+\ The keyed linker image (test/preloaded-engine.f) saves the program; its
+\ PROC-MAPS:RELOAD hook (tools/aot-build-core.f) runs after the program's own.
 : SAVE ( -- len len outcome )
    PRELOADED-ENGINE:LINKER$ {: host:ptr hostu:n :}
    PROC-ARGV-ENV-RESET

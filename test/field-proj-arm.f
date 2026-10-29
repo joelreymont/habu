@@ -9,7 +9,7 @@ public
 
 package FIELD-PROJ-ARM
 public
-: FAM-ID ( ptr u8 n -- n )   \ top-level family name -> id
+: FAM-ID ( ptr u8 n -- n )
    {: na:ptr nu:n :}
    s" " na nu TFAM:TFAM-FIND-IN 0= if
       s" field-proj-arm: family not found" 76 die then ;

@@ -1,24 +1,9 @@
 \ verify-binding.f - the binding each reference of a quiet composition selected
 \ (src/habu/verify-source.f ON-BINDING) and the word a symbol is (SYM-SOURCE).
-\ Run: bin/hb --load test/verify-binding.f
-\
-\ A design's entry calls a vocabulary and includes files that call it by its
-\ own name, through an export and through an export of that export, call words
-\ of the same spelling the design defines, undefine an export, or the word an
-\ export names, and define that name afresh, and read one file twice. This file
-\ loads the vocabulary, so its words have no declaration location, as the
-\ image's words have none.
-\ How this can fail, each one an assertion below:
-\ - a use bound to a word with no location, or one in a loaded file, is missed;
-\ - a use in a colon body is missed or named under another file;
-\ - a position is not the token's bytes in its own file;
-\ - an export, or an export of an export, does not name the word it exports;
-\ - a word that is no export names another word;
-\ - a design-local word of the vocabulary's spelling counts as the vocabulary's;
-\ - a name undefined and defined afresh still names the word it exported;
-\ - an export names the word defined afresh in place of the one it exports;
-\ - a file read twice is reported once, or at other positions;
-\ - an export the engine bakes lost its link in the native capture.
+\ The design's files call a vocabulary directly, through an export and an
+\ export of an export, define its spellings locally, undefine and redefine an
+\ export's name, and read one file twice. This file loads the vocabulary, so its
+\ words have no declaration location, as the image's words have none.
 
 require src/lib/test.f
 require src/lib/fs.f
@@ -45,7 +30,7 @@ create ENTRY PATH-CAP allot variable ENTRY-U
    {: a:ptr u:n dst:ptr len:ptr :}
    a dst u BYTE-COPY u len ! ;
 
-\ A fixture file's bytes, built a line at a time. The entry is written last, so
+\ A fixture file's bytes, built a line at a time. The entry is written last so
 \ its bytes stay here as the subject's.
 1024 constant TEXT-CAP
 TEXT-CAP BUFFER: TEXT
@@ -119,10 +104,9 @@ TYPED-VARIABLE TEXT-U len
    REDEFINE-SOURCE-FILE
    ENTRY-TEXT ;
 
-\ Each binding the composition reports, one line: the file below the root, the
-\ use's start and end there, the symbol's identity and that of the word it is,
-\ each as package:tail/visibility. The log opens with a newline, so a whole
-\ line is found as newline, line, newline.
+\ One line per binding: the file below the root, the use's start and end, and
+\ the symbol's and its word's identity, each package:tail/visibility. The log
+\ opens with a newline, so a whole line is found as newline, line, newline.
 16384 constant LOG-CAP
 LOG-CAP BUFFER: LOG
 TYPED-VARIABLE LOG-U len

@@ -1,13 +1,5 @@
 \ gate-common-test.f - the capture checks of test/gate-common-lib.f, through the
-\ real load path. GE-CAPTURE-ACTION runs here in process: an action writing
-\ more than a pipe holds and more than GT-OUT-CAP is refused as truncated
-\ instead of blocking, a throwing action keeps its code and output, and neither
-\ leaves a file in the gate root. A child the action spawns inherits no
-\ descriptor the capture holds; output a child the action leaves running writes
-\ after the action returned is read or refused as truncated, never another
-\ code; captures nest GT-CAP-NEST-MAX deep and no deeper; and a capture nested
-\ in another's action reads its own bytes while the outer one keeps all of its
-\ own.
+\ real load path. GE-CAPTURE-ACTION runs in process.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -19,7 +11,9 @@ require test/gate-common.f
 
 package GATE-COMMON-TEST
 
-\ Past a pipe's 64 KiB and GT-OUT-CAP alike.
+\ Past a pipe's 64 KiB and GT-OUT-CAP alike: refused as truncated, not blocked.
+\ A throwing action keeps its code and output; neither leaves a file in the
+\ gate root.
 70000 constant BIG-BYTES
 
 variable ROOT-FILES
@@ -61,10 +55,9 @@ variable ROOT-FILES
    ROOT-FILES# 0 T= ;
 
 \ ---- what a child spawned in a capture inherits ------------------------------
-\ A child engine reads FDS-SRC on stdin and prints every descriptor from 3 up
-\ that is open in it, one to a line. Spawned outside a capture and from an
-\ action inside one it must print the same lines: the streams a capture saves
-\ and the files it reads back close on exec.
+\ A child engine prints every descriptor from 3 up open in it. Spawned outside a
+\ capture and from an action inside one it prints the same lines: the streams a
+\ capture saves and the files it reads back close on exec.
 256 constant FDS-CAP
 
 create FDS-BEFORE FDS-CAP allot
@@ -80,7 +73,6 @@ variable FDS-INSIDE-RC
    GE-HB-RESET
    GE-HB$ FDS-SRC GE-TIMEOUT-MS GE-RUN-STDIN ;
 
-\ The child's lines into dst, their length into up.
 : FDS-KEEP ( ptr u8 ptr n -- ) {: dst:ptr up:ptr :}
    GT-OUT$ {: a:ptr u:n :}
    u FDS-CAP > if E-STR-CAPACITY throw then
@@ -106,12 +98,11 @@ variable FDS-INSIDE-RC
    FDS-INSIDE FDS-INSIDE-U @ FDS-BEFORE FDS-BEFORE-U @ T$= ;
 
 \ ---- output a child the action leaves running writes late --------------------
-\ The action fills LATE-OUT exactly, forks a writer that adds four bytes more
-\ to the captured stdout, and waits LATE-WAIT-NS before it returns. The wait
-\ grows a microsecond a trial, so the writer's bytes land before, during or
-\ after the read across the trials. A capture reads the action's own bytes or
-\ throws E-PROC-TRUNCATED. With the size checked before the read (FS:FILE-SIZE,
-\ then FS:READ-ALL), about one trial in four ended E-FS-CAPACITY.
+\ The action fills LATE-OUT, forks a writer adding four bytes to the captured
+\ stdout and waits LATE-WAIT-NS, a microsecond more each trial, so the bytes
+\ land before, during or after the read. A capture reads the action's own bytes
+\ or throws E-PROC-TRUNCATED. Checking the size before the read (FS:FILE-SIZE
+\ then FS:READ-ALL) ended about one trial in four with E-FS-CAPACITY.
 8 constant LATE-CAP
 64 constant LATE-TRIALS
 1000 constant LATE-STEP-NS
@@ -166,11 +157,10 @@ variable LATE-ODD                        \ the first code no capture may end wit
    ROOT-FILES# 0 T= ;
 
 \ ---- the nesting bound -------------------------------------------------------
-\ DIVE-IN opens a capture whose action dives again, until a capture is refused.
 \ GT-CAP-NEST-MAX captures may be open at once: the next is refused with
-\ E-TBL-BOUNDS before it takes a frame, each capture around it answers that
-\ code as its action's, which DIVE-IN throws on, and closes as usual, so NESTED
-\ after it still finds every frame free.
+\ E-TBL-BOUNDS before it takes a frame; each capture around it answers that code
+\ as its action's and closes as usual, so NESTED after it finds every frame
+\ free.
 32 SPAN-BUFFER: DIVE-OUT
 32 SPAN-BUFFER: DIVE-ERR
 

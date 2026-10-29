@@ -1,16 +1,8 @@
-\ reopen-binding.f - a bare tail names the word its scope holds, and the checker
-\ certifies that word: the one the compiler calls.
-\
-\ Package REOPEN-BIND (test/reopen-binding-lib.f) publishes `@`, `dup` and `+`,
-\ each with an effect the engine's word of that spelling does not have. This
-\ file reopens the package and names the tails bare. Before the fix the checker
-\ typed a bare `@` by the engine's fetch rule while the compiler called the
-\ package word - `REC @` certified ( -- n ) and ran into `hb: stack bounds
-\ exceeded (data)`, exit 102 - and the JIT lowered `5 dup` and `5 3 +` as the
-\ engine's operators while the checker certified the package's. The same rows
-\ run under the optimizing compiler in the `-aot` twin.
-\
-\ Run: bin/hb --load test/reopen-binding.f
+\ A bare tail names the word its scope holds, and the checker certifies that
+\ word: the one the compiler calls. Package REOPEN-BIND
+\ (test/reopen-binding-lib.f) publishes @, dup and + with effects the engine's
+\ words of those spellings lack; this file reopens it and names the tails bare.
+\ Suite row reopen-binding-aot runs the same rows under the optimizing compiler.
 
 require src/lib/test.f
 require test/reopen-binding-lib.f

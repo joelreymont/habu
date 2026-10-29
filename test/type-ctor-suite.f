@@ -1,18 +1,9 @@
-\ type-ctor-suite.f — generated-constructor suite (docs/forth.md
-\ "Structures And Enums"). A WHITEBOX-SUITE row, like the type-decl suite: the
-\ record queries are checker internals, which the unsealed engine binds by their
-\ recorded rows. The gate runs it on that engine, which test/whitebox-engine.f
-\ builds:
+\ type-ctor-suite.f — generated-constructor suite (docs/forth.md "Structures And
+\ Enums"). A WHITEBOX-SUITE row: its record queries are checker internals, bound
+\ by their recorded rows only on the unsealed engine (test/whitebox-engine.f
+\ builds it):
 \     <unsealed engine> --load test/type-ctor-suite.f
-\ A PUBLIC arity-0 SUMTYPE generates one checked constructor word per variant in
-\ its derived constructor package (RESULT:OK shape): payload cells stay, M-p
-\ zero pads and the tag push on top, certified against the declared hidden-field
-\ sig through the checker-owned pending-constructor rule — no TRUST anywhere.
-\ Parametric (arity > 0) families are possibly-linear layouts under the v1
-\ cell-kinded params (a linear con can flow through a var), so their
-\ constructors stay unpublished until whole-bundle linear counting; their
-\ SV.CTOR-PKG metadata is still recorded. Private families generate no words and
-\ construct through the `construct` form.
+\ A constructor word pushes its payload cells, M-p zero pads, then the tag.
 
 require tools/prot-wid-probe.f
 require src/lib/adt/result.f
@@ -24,8 +15,6 @@ using TYPE-DECL
 
 T-RESET
 
-\ evaluate a declaration string, returning its throw code (0 = accepted);
-\ the type-decl-suite INCLUDE-EVALUATE catch shape.
 TYPED-VARIABLE TCE-A ptr u8   variable TCE-U
 : TCE-GO ( -- )
    TCE-A @ TCE-U @ INCLUDE-EVALUATE ;
@@ -51,10 +40,8 @@ public
 : START ( -- )
    PROT-WID-PROBE:COUNT BEFORE ! ;
 
-\ One constructor package protects exactly one wordlist, and protecting the same
-\ constructor again is a no-op. The registry is a SET now, so the second half is
-\ structural rather than a dedup scan -- but it is still the property callers rely
-\ on, and a re-add that landed on a different bit would show up here.
+\ One constructor package protects exactly one wordlist; protecting the same
+\ constructor again is a no-op.
 : FINISH ( -- )
    PROT-WID-PROBE:COUNT BEFORE @ 1+ T=
    PROT-WID-PROBE:COUNT {: before:n :}
@@ -64,19 +51,16 @@ public
 ;package
 
 
-\ ---------------------------------------------------------------------------
 \ top-level public arity-0 sum: constructors exist, certify, enforce payloads.
-\ ---------------------------------------------------------------------------
 PROT-WID-RETURN-TEST:START
 SUMTYPE zres
   VARIANT ok  n ;VARIANT
   VARIANT err n ;VARIANT
 ;SUMTYPE
 PROT-WID-RETURN-TEST:FINISH
-\ variants spelled like stack words: ZWV:DUP/ZWV:SWAP are qualified constructor
-\ defs. Declared EARLY (dot habu-qualified-defs-leak-aadeb5c9 fixed): a qualified
-\ def no longer leaks a bare-global `dup`/`swap` effect row, so every later
-\ checked body that uses bare dup/swap as PRIMS still certifies (proven below).
+\ Variants spelled like stack words: ZWV:DUP/ZWV:SWAP are qualified constructor
+\ defs, declared early so every later body that uses bare dup/swap proves the
+\ qualified def records no bare-global effect row.
 SUMTYPE zwv
   VARIANT dup n ;VARIANT
   VARIANT swap  ;VARIANT
@@ -89,13 +73,11 @@ s" GEN-CONCRETE" type cr
 \ wrong payload count/type rejects at the call site.
 s" ZB1 ( -- zres ) ZRES:OK" CHECK-QUIET-CANDIDATE! 0 T=
 s" ZB2 ( ptr u8 -- zres ) ZRES:OK" CHECK-QUIET-CANDIDATE! 0 T=
-\ raw cells still cannot forge a layout value (the pending window is closed).
+\ raw cells cannot forge a layout value.
 s" ZB3 ( n -- zres ) 0" CHECK-QUIET-CANDIDATE! 0 T=
 s" ZB4 ( n n -- zres )" CHECK-QUIET-CANDIDATE! 0 T=
 
-\ ---------------------------------------------------------------------------
 \ multi-cell payloads: M > 1, zero padding for narrow variants, ptr payloads.
-\ ---------------------------------------------------------------------------
 SUMTYPE zmix
   VARIANT small n ;VARIANT
   VARIANT big ptr u8 n n ;VARIANT
@@ -105,9 +87,7 @@ SUMTYPE zmix
 s" GEN-MIX" type cr
 s" ZB5 ( n n -- zmix ) ZMIX:BIG" CHECK-QUIET-CANDIDATE! 0 T=
 
-\ ---------------------------------------------------------------------------
 \ zero-payload variants: enum-shaped sums and padded empty variants.
-\ ---------------------------------------------------------------------------
 SUMTYPE zen
   VARIANT lit  ;VARIANT
   VARIANT dark ;VARIANT
@@ -124,10 +104,8 @@ SUMTYPE zopt
 : ZMK-SOME ( n -- zopt ) ZOPT:SOME ;
 s" GEN-OPT" type cr
 
-\ ---------------------------------------------------------------------------
 \ in-package public family: constructor package derives from (pkg, tail) and
 \ the words are callable from global scope; declaring-package state survives.
-\ ---------------------------------------------------------------------------
 package zpub
 public
 SUMTYPE tres
@@ -149,10 +127,8 @@ SUMTYPE zafter
 : ZMK-ONE ( n -- zafter ) ZAFTER:ONE ;
 s" GEN-AFTER" type cr
 
-\ ---------------------------------------------------------------------------
 \ Escaped constructor packages are called by their readable names across
-\ packages, including spellings beyond the former 32-byte cap.
-\ ---------------------------------------------------------------------------
+\ packages, including spellings longer than 32 bytes.
 package evx
 public
 SUMTYPE certify-slot
@@ -164,12 +140,12 @@ private
 \ The derived constructor package retains the escaped name.
 s" evx" s" certify-slot" TFAM-FIND-IN TCOK ! TCF !   TCOK @ -1 T=
 TCF @ TFAM-VAR-START@ SUMV-CTOR-PKG$ s" EVX-CERTIFY--SLOT" T$=
-\ and the constructors are callable cross-package by that readable name:
+\ the constructors are callable cross-package by that readable name:
 : EVX-MK-GOT  ( n -- evx:certify-slot ) EVX-CERTIFY--SLOT:CERTIFY-GOT ;
 : EVX-MK-NONE (   -- evx:certify-slot ) EVX-CERTIFY--SLOT:CERTIFY-NONE ;
 s" EVX-GET ( n -- evx:certify-slot ) EVX-CERTIFY--SLOT:CERTIFY-GOT"  CHECK-QUIET-CANDIDATE! -1 T=
 s" EVX-NON (   -- evx:certify-slot ) EVX-CERTIFY--SLOT:CERTIFY-NONE" CHECK-QUIET-CANDIDATE! -1 T=
-\ wrong payload still rejects at the readable call site (no soundness lost):
+\ wrong payload still rejects at the readable call site:
 s" EVX-BAD ( ptr u8 -- evx:certify-slot ) EVX-CERTIFY--SLOT:CERTIFY-GOT" CHECK-QUIET-CANDIDATE! 0 T=
 
 package verylongpackagename
@@ -184,12 +160,9 @@ TCF @ TFAM-VAR-START@ SUMV-CTOR-PKG$ s" VERYLONGPACKAGENAME-RESULTRESULTR" T$=
 s" LONG-GET ( n -- verylongpackagename:resultresultr ) VERYLONGPACKAGENAME-RESULTRESULTR:ONE" CHECK-QUIET-CANDIDATE! -1 T=
 s" GEN-LONG-CTOR" type cr
 
-\ ---------------------------------------------------------------------------
-\ parametric families publish: the constructor's result is
-\ one conservative logical cell while args are vars, expands to the hidden
-\ fields where instantiation proves the args non-linear (LOGHID coercion),
-\ and genuinely-linear instantiations stay fail-closed.
-\ ---------------------------------------------------------------------------
+\ parametric families publish: the constructor's result is one logical cell
+\ while args are vars, expands to the hidden fields where instantiation proves
+\ the args non-linear (LOGHID coercion), and linear instantiations reject.
 SUMTYPE zpar<a>
   VARIANT psome a ;VARIANT
 ;SUMTYPE
@@ -225,8 +198,7 @@ s" ZP2 ( ptr u8 -- zpoly<n,n> ) ZPOLY:OK" CHECK-QUIET-CANDIDATE! 0 T=
 s" ZP3 ( n -- zpoly<n,n> ) 0" CHECK-QUIET-CANDIDATE! 0 T=
 \ cross-family bundles cannot alias: a zpmix result is not a zpoly.
 s" ZP4 ( n -- zpoly<n,n> ) ZPMIX:SMALL" CHECK-QUIET-CANDIDATE! 0 T=
-\ genuinely-linear instantiations stay fail-closed (until whole-bundle
-\ linear counting): linear-arg layout sigs reject, construction included.
+\ linear-arg layout sigs reject, construction included.
 s" ZP5 ( own -- zpoly<own,n> ) ZPOLY:OK" CHECK-QUIET-CANDIDATE! 0 T=
 s" ZP6 ( zpoly<own,n> -- zpoly<own,n> )" CHECK-QUIET-CANDIDATE! 0 T=
 s" ZP7 ( own -- zpoly<own,n> ) ZPMK-G" CHECK-QUIET-CANDIDATE! 0 T=
@@ -234,9 +206,7 @@ s" ZP7 ( own -- zpoly<own,n> ) ZPMK-G" CHECK-QUIET-CANDIDATE! 0 T=
 \ body (possibly-linear conservative path).
 s" ZP8 ( n -- zpoly<n,n> zpoly<n,n> ) ZPOLY:OK dup" CHECK-QUIET-CANDIDATE! 0 T=
 
-\ ---------------------------------------------------------------------------
 \ private families export nothing: no constructor package, no words.
-\ ---------------------------------------------------------------------------
 package zp8
 private
 SUMTYPE zsec
@@ -247,39 +217,30 @@ s" zp8" s" zsec" TFAM-FIND-IN TCOK ! TCF !   TCOK @ -1 T=
 TCF @ TFAM-VAR-START@ SUMV-CTOR-PKG$ nip 0 T=
 s" ZB7 ( n -- n ) ZP8-ZSEC:HIDE" CHECK-QUIET-CANDIDATE! 1 T=   \ undefined word -> uncheckable
 
-\ ---------------------------------------------------------------------------
 \ rejected declarations generate nothing: a duplicate family neither redefines
 \ nor duplicates the existing constructor words (load survives = proof).
-\ ---------------------------------------------------------------------------
 TWX-MULTI-ERR-BEGIN
 s" SUMTYPE zres VARIANT no n ;VARIANT ;SUMTYPE" TCE-CATCH 0 T=
 TWX-MULTI-ERR-END 1 T=
 : ZMK-OK2 ( n -- zres ) ZRES:OK ;
 s" DUP-DECL-SAFE" type cr
 
-\ ---------------------------------------------------------------------------
-\ linear payloads stay rejected until whole-bundle linear accounting (regression
-\ pins).
-\ ---------------------------------------------------------------------------
-\ concrete linear payload rejects at declaration (v1 payload grammar).
+\ linear payloads reject.
+\ concrete linear payload rejects at declaration.
 TWX-MULTI-ERR-BEGIN
 s" SUMTYPE zlin VARIANT keep own ;VARIANT ;SUMTYPE" TCE-CATCH 0 T=
 TWX-MULTI-ERR-END 1 T=
 s" " s" zlin" TFAM-FIND-IN TCOK ! drop   TCOK @ 0 T=
 
-\ ---------------------------------------------------------------------------
-\ slice 3: protection. Generated packages are closed-but-callable: `package`
-\ cannot open/reopen the derived name (any case), `undefine` of a generated
-\ word rejects BEFORE retirement (still callable after the catch), and a new
-\ tail cannot certify into the constructor package. SV.CTOR-SYM records the
-\ published checker symbol.
-\ ---------------------------------------------------------------------------
+\ protection. Generated packages are closed-but-callable: `package` cannot
+\ open the derived name (any case), `undefine` of a generated word rejects
+\ before retirement, and a new tail cannot certify into the constructor
+\ package. SV.CTOR-SYM records the published checker symbol.
 s" " s" zres" TFAM-FIND-IN TCOK ! TCF !   TCOK @ -1 T=
 TCF @ TFAM-VAR-START@ SUMV-CTOR-SYM@ 0 <> TTRUE
 TCF @ TFAM-VAR-START@ 1 + SUMV-CTOR-SYM@ 0 <> TTRUE
 s" ZRES:OK" CHECKER-RECORD-SYM  TCF @ TFAM-VAR-START@ SUMV-CTOR-SYM@  T=
-\ package reopen rejects, case-insensitively; state rolls back (a later
-\ package still opens cleanly).
+\ package reopen rejects, case-insensitively; a later package still opens.
 s" package zres" TCE-CATCH E-CTOR-PROTECTED T=
 s" package ZRES" TCE-CATCH E-CTOR-PROTECTED T=
 s" package Zres" TCE-CATCH E-CTOR-PROTECTED T=
@@ -290,7 +251,7 @@ s" undefine zres:ok" TCE-CATCH E-CTOR-PROTECTED T=
 \ ...and the constructor is still fully usable afterwards.
 : ZMK-OK3 ( n -- zres ) ZRES:OK ;
 s" UNDEF-SAFE" type cr
-\ a new tail is now caught by the native protected-WID wall; seal-package.f runs
+\ a new tail is caught by the native protected-WID wall; seal-package.f runs
 \ that process-exit regression because it cannot be caught in-process.
 \ ordinary undefine of a user word still works.
 : ZDOOMED ( -- n ) 5 ;
@@ -298,18 +259,12 @@ s" undefine ZDOOMED" TCE-CATCH 0 T=
 \ native producer populated the protected-WID registry for constructor packages.
 PROT-WID-PROBE:COUNT 0 > TTRUE
 
-\ ---------------------------------------------------------------------------
-\ `construct family variant` — the checker-owned token
-\ protocol. Resolution is package-identity-owned (the family must live in the
-\ ACTIVE package; cross-package never resolves, public families included —
-\ those use the generated words), kind-gated to sum/enum, and folded like
-\ every body token. The step effect is the generated-constructor effect built
-\ inline from SUMV metadata, so payload arity/type/instantiation rejects are
-\ the same as the generated-word call sites. Operand capture runs BEFORE
-\ locals and word lookup, so family/variant tokens never resolve as either.
-\ Native construct execution is pinned by test/match-factor-pin.f's CLI
-\ positives and checked construct/MATCH round-trips; these stay CHECK candidates.
-\ ---------------------------------------------------------------------------
+\ `construct family variant`. The family must live in the ACTIVE package
+\ (cross-package uses the generated words, public families included); kind-gated
+\ to sum/enum, and folded like every body token. Payload rejects match the
+\ generated-word call sites. Operand capture runs before locals and word lookup,
+\ so family/variant tokens never resolve as either. test/match-factor-pin.f pins
+\ native construct execution; these stay CHECK candidates.
 s" CN1 ( n -- zres ) construct zres ok" CHECK-QUIET-CANDIDATE! -1 T=
 s" CN2 ( n -- zres ) construct ZRES OK" CHECK-QUIET-CANDIDATE! -1 T=   \ folded spelling
 s" CN3 ( ptr u8 n n -- zmix ) construct zmix big" CHECK-QUIET-CANDIDATE! -1 T=
@@ -320,9 +275,6 @@ s" CN7 ( ptr u8 -- zpoly<ptr u8,n> ) construct zpoly ok" CHECK-QUIET-CANDIDATE! 
 s" CN8 ( n n -- zres ) {: ok:n :} construct zres ok" CHECK-QUIET-CANDIDATE! -1 T=   \ a local `ok` cannot shadow the variant token
 s" CN9 ( n -- zres ) [: construct zres ok ;] execute" CHECK-QUIET-CANDIDATE! -1 T=
 s" CONSTRUCT-OK" type cr
-\ rejects: unknown family, unknown/wrong-family variant, non-sum family,
-\ missing operand tokens, payload arity/type/instantiation mismatches,
-\ dead-path use, open-arg transport.
 s" CB1 ( n -- zres ) construct nosuch ok" CHECK-QUIET-CANDIDATE! 0 T=
 s" CB2 ( n -- zres ) construct zres nope" CHECK-QUIET-CANDIDATE! 0 T=
 s" CB3 ( n -- zres ) construct zres some" CHECK-QUIET-CANDIDATE! 0 T=   \ zopt's variant
@@ -335,27 +287,19 @@ s" CB9 ( n n -- zmix ) construct zmix big" CHECK-QUIET-CANDIDATE! 0 T=
 s" CB10 ( n -- zres ) exit construct zres ok" CHECK-QUIET-CANDIDATE! 0 T=   \ dead path
 s" CB11 ( ptr u8 -- zpoly<n,n> ) construct zpoly ok" CHECK-QUIET-CANDIDATE! 0 T=   \ wrong instantiation
 s" CB12 ( n -- zpoly<n,n> zpoly<n,n> ) construct zpoly ok dup" CHECK-QUIET-CANDIDATE! 0 T=   \ open-arg transport
-\ variants spelled like stack words are captured operands, never word calls
-\ (`zwv` is declared with the other families above; ordering is free now).
+\ variants spelled like stack words are captured operands, never word calls.
 s" CN10 ( n -- zwv ) construct zwv dup" CHECK-QUIET-CANDIDATE! -1 T=
 s" CN11 ( -- zwv ) construct zwv swap" CHECK-QUIET-CANDIDATE! -1 T=
 s" CONSTRUCT-BAD" type cr
 
-\ ---------------------------------------------------------------------------
-\ leak-fix regressions (dot habu-qualified-defs-leak-aadeb5c9). `zwv` above
-\ published qualified ZWV:DUP/ZWV:SWAP constructor defs. Before the fix each
-\ qualified def ALSO recorded its checker effect under the BARE-GLOBAL tail,
-\ so bare dup/swap resolved to the constructor effect (shadowing the prim) and
-\ arbitrary bare tails certified calls the engine rejects. After the fix a
-\ qualified def records only ( pkg, tail ) PUBLIC.
-\ 1) bare dup/swap bind the PRIMS, not the leaked constructor rows.
+\ qualified defs record only ( pkg, tail ) PUBLIC: no bare-global tail.
+\ 1) bare dup/swap bind the PRIMS, not zwv's ZWV:DUP/ZWV:SWAP rows.
 s" LK1 ( n n -- n n ) swap" CHECK-QUIET-CANDIDATE! -1 T=
 s" LK2 ( n -- n n ) dup"    CHECK-QUIET-CANDIDATE! -1 T=
-\ 2) a plain qualified colon def leaks no bare-global tail: bare `lkw` stays an
-\ undefined word (uncheckable 1), it does NOT certify (-1) as it did with the leak.
+\ 2) a plain qualified colon def leaves bare `lkw` undefined (uncheckable 1).
 : lkpkg:lkw ( n -- n ) 1 + ;
 s" LK3 ( n -- n ) lkw"       CHECK-QUIET-CANDIDATE! 1 T=
-\ 3) the qualified spelling DOES resolve (records under ( pkg, tail ) PUBLIC).
+\ 3) the qualified spelling resolves.
 s" LK4 ( n -- n ) lkpkg:lkw" CHECK-QUIET-CANDIDATE! -1 T=
 s" LEAK-FIX" type cr
 \ ownership: in-package resolution for public AND private families; outside
@@ -378,14 +322,10 @@ s" CB14 ( n -- cnpub:cnres ) construct cnpub:cnres yes" CHECK-QUIET-CANDIDATE! 0
 s" CP3 ( n -- cnpub:cnres ) CNPUB-CNRES:YES" CHECK-QUIET-CANDIDATE! -1 T=   \ the public cross-package path
 s" CONSTRUCT-OWN" type cr
 
-\ ---------------------------------------------------------------------------
-\ Product generated words. A PUBLIC product publishes exactly two
-\ checked words in its derived package — PKG:MAKE ( fields -- fam<..> ) and
-\ PKG:UNMAKE ( fam<..> -- fields ) — both empty-bodied under the k=0 pending
-\ window: a product bundle is its field cells in slot order (no tag), so
-\ construction/destructure are physical no-ops and runtime round-trips are
+\ Product generated words. A PUBLIC product publishes PKG:MAKE ( fields --
+\ fam<..> ) and PKG:UNMAKE ( fam<..> -- fields ), both empty-bodied: a product
+\ bundle is its field cells in slot order (no tag), so runtime round-trips are
 \ identity. Same publish/protection stack as sum constructors (SUMV rows).
-\ ---------------------------------------------------------------------------
 PRODUCT zpt
   FIELD x n
   FIELD y n
@@ -399,15 +339,12 @@ TCF @ TFAM-VAR-START@ SUMV-CTOR-PKG$ s" ZPT" T$=
 TCF @ TFAM-VAR-START@ TWX-SUMV-PAYCELLS@ 2 T=
 TCF @ TFAM-VAR-START@ SUMV-CTOR-SYM@ 0 <> TTRUE
 TCF @ TFAM-VAR-START@ 1 + SUMV-CTOR-SYM@ 0 <> TTRUE
-\ checked construction/destructure compile through ordinary calls.
 : ZPT-MK ( n n -- zpt ) ZPT:MAKE ;
 : ZPT-UN ( zpt -- n n ) ZPT:UNMAKE ;
 : ZPT-RT ( -- n n ) 3 4 ZPT:MAKE ZPT:UNMAKE ;
 s" GEN-PRODUCT" type cr
-\ runtime round-trip: make/unmake are physical no-ops (field order preserved,
-\ slot0 deepest — x=3 under y=4).
+\ make/unmake are physical no-ops: slot0 deepest (x=3 under y=4).
 ZPT-RT 4 T= 3 T=
-\ user accessor compositions: destructure + ordinary drops over raw cells.
 : ZPT-X ( zpt -- n ) ZPT:UNMAKE drop ;
 : ZPT-Y ( zpt -- n ) ZPT:UNMAKE nip ;
 : ZPT-RTX ( -- n ) 7 9 ZPT:MAKE ZPT-X ;
@@ -415,12 +352,12 @@ ZPT-RT 4 T= 3 T=
 ZPT-RTX 7 T=
 ZPT-RTY 9 T=
 \ wrong payload count/type rejects at the call site; raw cells cannot forge a
-\ product and a bundle cannot split without UNMAKE (window is closed).
+\ product and a bundle cannot split without UNMAKE.
 s" PB1 ( n -- zpt ) ZPT:MAKE" CHECK-QUIET-CANDIDATE! 0 T=
 s" PB2 ( ptr u8 n -- zpt ) ZPT:MAKE" CHECK-QUIET-CANDIDATE! 0 T=
 s" PB3 ( n n -- zpt )" CHECK-QUIET-CANDIDATE! 0 T=
 s" PB4 ( zpt -- n n )" CHECK-QUIET-CANDIDATE! 0 T=
-\ whole-bundle transport still holds for constructed products.
+\ whole-bundle transport holds for constructed products.
 s" PB5 ( zpt -- zpt zpt ) dup" CHECK-QUIET-CANDIDATE! -1 T=
 \ construct is kind-gated to sum/enum: no token form for products.
 s" PB6 ( n n -- zpt ) construct zpt make" CHECK-QUIET-CANDIDATE! 0 T=
@@ -484,23 +421,17 @@ s" undefine zpt:unmake" TCE-CATCH E-CTOR-PROTECTED T=
 : ZPT-MK2 ( n n -- zpt ) ZPT:MAKE ;
 s" PRODUCT-PROTECTED" type cr
 
-\ ---------------------------------------------------------------------------
-\ layout-cap slice 4 (dot habu-checker-capability-layout-9b8540bd): width-aware
-\ construct/MATCH lowering. The checker records a per-call-site extra-pad fact
-\ (instantiated_pads - declared_pads, WF-XPAD-FLAG) so pass 2 (native
-\ EM-ADT-CON-VAR / EM-COMPILE-CALL / EM-ADT-MATCH-OF, gforth mirror) emits the
-\ arg-aware pad count. The slice-3 staged reject FLIPS: CLFC1 (generated ctor)
-\ and CLFC2 (raw `construct`) now compile AND round-trip; CLFC3 (cell) unchanged.
-\ Nested named ADTs land below. The adversarials' compile-hook stderr is expected.
-\ ---------------------------------------------------------------------------
+\ width-aware construct/MATCH lowering. The checker records a per-call-site
+\ extra-pad fact (instantiated_pads - declared_pads, WF-XPAD-FLAG) so pass 2
+\ (native EM-ADT-CON-VAR / EM-COMPILE-CALL / EM-ADT-MATCH-OF) emits the
+\ arg-aware pad count. The adversarials' compile-hook stderr is expected.
 PRODUCT clw2 FIELD x n FIELD y n ;PRODUCT
 SUMTYPE clopt<a> VARIANT none ;VARIANT VARIANT some a ;VARIANT ;SUMTYPE
 s" : CLFC1 ( -- clopt<clw2> ) CLOPT:NONE ;" TCE-CATCH 0 T=
 s" : CLFC2 ( -- clopt<clw2> ) construct clopt none ;" TCE-CATCH 0 T=
 s" : CLFC3 ( n -- clopt<n> ) CLOPT:SOME ;" TCE-CATCH 0 T=
-\ end-to-end runtime round-trips: construct a wide bundle, MATCH it back, assert
-\ the exact payload cells. Generated ctor (extra=0 SOME, extra=1 NONE), raw
-\ `construct` NONE, and MATCH's arg-aware payload skip.
+\ runtime round-trips assert the exact payload cells: generated ctor (extra=0
+\ SOME, extra=1 NONE), raw `construct` NONE, and MATCH's arg-aware payload skip.
 : CLFC-SOME ( n n -- clopt<clw2> ) CLW2:MAKE CLOPT:SOME ;
 : CLFC-NONEG ( -- clopt<clw2> ) CLOPT:NONE ;
 : CLFC-NONER ( -- clopt<clw2> ) construct clopt none ;
@@ -511,9 +442,8 @@ s" : CLFC3 ( n -- clopt<n> ) CLOPT:SOME ;" TCE-CATCH 0 T=
 CLFC-RT-SOME 7 T=
 CLFC-RT-NONEG 999 T=
 CLFC-RT-NONER 999 T=
-\ wave-B probe shapes as named payload products: result<clw2,n> (W=2 ok payload
-\ + cell err) and option<clfs3> (W=3 payload) — the shipping form of the P1/P2/P3
-\ raw runs (option<off len>, option<ptr u8 n>, result<n n,n>).
+\ named payload products: result<clw2,n> (W=2 ok payload + cell err) and
+\ option<clfs3> (W=3 payload).
 PRODUCT clfs3 FIELD a n FIELD b n FIELD c n ;PRODUCT
 SUMTYPE clfres<a,b> VARIANT ok a ;VARIANT VARIANT err b ;VARIANT ;SUMTYPE
 : CLFC-ROK ( n n -- clfres<clw2,n> ) CLW2:MAKE CLFRES:OK ;
@@ -530,15 +460,12 @@ CLFC-RT-ERR 77 T=
 : CLFC-RT-SN ( -- n ) CLFC-S3NONE CLFC-S3GET ;
 CLFC-RT-S3 6 T=
 CLFC-RT-SN -1 T=
-\ ---------------------------------------------------------------------------
-\ layout-cap slice 5 (same dot): NESTED named ADTs lower END-TO-END. A named
-\ multi-cell instantiation used as the payload arg of ANOTHER family
-\ (clopt<clfres<n,n>>) constructs, certifies, lowers, and MATCH-destructures — the
-\ slice-3/4 CLFC-NESTED staged reject FLIPS to a real round-trip. Every width site
-\ (TFAM-INST-WIDTH@ / TFC-VAR-PAYCELLS / famterm T-WIDTH) already recurses, so the
-\ SAME extra-pad model lowers each level: the inner bundle carries its own pads at
-\ its own construct site; the outer construct/match adds only the outer delta.
-\ ---------------------------------------------------------------------------
+\ NESTED named ADTs: a named multi-cell instantiation used as the payload arg
+\ of another family (clopt<clfres<n,n>>) constructs, certifies, lowers and
+\ MATCH-destructures. The inner bundle carries its own pads at its own construct
+\ site; the outer construct/match adds only the outer delta. Every width site
+\ (TFAM-INST-WIDTH@, TFC-VAR-PAYCELLS, famterm T-WIDTH) recurses, so one
+\ extra-pad model lowers each level.
 \ outer clopt<clfres<n,n>> (W=3) over inner clfres<n,n> (W=2): SOME(ok/err), NONE
 \ (generated + raw construct), nested MATCH destructure.
 : CN-IOK ( n -- clfres<n,n> ) CLFRES:OK ;
@@ -595,22 +522,15 @@ s" : CN-TRUNC ( -- clopt<clfres<n,n>> ) CLOPT:SOME ;" TCE-CATCH 70 T=
 s" : CN-OPEN ( clfres<n,a> -- clopt<clfres<n,a>> ) CLOPT:SOME ;" TCE-CATCH 70 T=
 s" LOWER-WIDTH-AWARE-ROUNDTRIP" type cr
 
-\ ---------------------------------------------------------------------------
-\ dot habu-fail-closed-on-0ab1e401: ASYMMETRIC growth. The widest-DECLARED variant
-\ is not the widest-INSTANTIATED one, so the widest-instantiated variant needs FEWER
-\ pad cells than the declared family width reserves (extra pads < 0). Pass-1 lowering
-\ keys pads off the DECLARED width, and the add-only pass-2 fact (whose native
-\ width-fact certificate requires w >= 1) cannot REMOVE the surplus declared pad, so
-\ the certified instantiated width and the only possible lowering permanently DISAGREE.
-\ A width contradiction is never a sound value, so it is rejected UNCONDITIONALLY —
-\ a real construct/MATCH fails closed (rc 70) AND a CHECK-CANDIDATE probe rejects (0),
-\ rather than certify a native bundle wider than its type. This is stronger than the
-\ open-var CONSTRUCT-WIDE-STAGED-REJECT (which keeps an unknown-width type nameable):
-\ here the width IS known and contradictory. The positive-extra variant of the SAME
-\ family + instantiation constructs, and a non-asymmetric instantiation matches — so
-\ the reject isolates to the negative extra, not the machinery. (Signed pad
-\ corrections would make these lowerable; a separately-tracked deferred capability.)
-\ ---------------------------------------------------------------------------
+\ Asymmetric growth: when the widest-declared variant is not the widest
+\ instantiated one, that variant needs fewer pad cells than the declared width
+\ reserves (extra < 0). Pass 1 keys pads off the declared width and the pass-2
+\ fact only adds (its native width-fact certificate requires w >= 1), so no
+\ lowering matches the certified width: a real construct/MATCH fails closed
+\ (rc 70) and a CHECK-QUIET-CANDIDATE! probe rejects (0). Unlike the open-var
+\ CONSTRUCT-WIDE-STAGED-REJECT, the width here is known and contradictory. The
+\ positive-extra variant of the same family constructs and a non-asymmetric
+\ instantiation matches, so the reject isolates to the negative extra.
 package XPAD-ASYM
 public
 PRODUCT clx2 FIELD x n FIELD y n ;PRODUCT
@@ -622,55 +542,37 @@ private   \ clx2/clxg stay public (constructed/matched by qualified name); every
 \ clxg<clx2> (a = width 2): W = 1 + max(wtwo=4, wthree=3) = 5. wtwo extra = -1, wthree = +1.
 s" CLXP ( clx2 clx2 -- clxg<clx2> ) construct clxg wtwo" CHECK-QUIET-CANDIDATE! 0 T=            \ width contradiction never certifies, even as a candidate probe
 s" : CLXG-BADTWO ( clx2 clx2 -- clxg<clx2> ) construct clxg wtwo ;" TCE-CATCH 70 T=            \ negative-extra construct fails closed
-\ The positive-extra variant certifies AND lowers, but the value it makes is
-\ PRODUCE-ONLY: no exhaustive MATCH can consume it, because any total MATCH must
-\ include the wtwo arm, whose negative-extra unpack fails closed (see CLXG-GET). This
-\ is current behavior, documented here; the produce-only policy question is tracked
-\ separately by the orchestrator.
+\ The positive-extra variant certifies and lowers, but its value is
+\ produce-only: any total MATCH includes the wtwo arm, whose negative-extra
+\ unpack fails closed (see CLXG-GET).
 s" : CLXG-THREE ( n n n -- clxg<clx2> ) construct clxg wthree ;" TCE-CATCH 0 T=               \ same family + instantiation, positive-extra variant compiles (produce-only, see above)
-\ wtwo arm body uses only always-defined words (2drop 0), so the reject can ONLY come
-\ from the checker's negative-extra arm reject at 'OF' — not an E-UNDEFINED accessor:
-\ inside package XPAD-ASYM the derived ctor package is XPAD-ASYM-CLX2, so a bare
-\ CLX2:UNMAKE would itself throw rc 70 and mask the fix (dead probe). This shape flips
-\ pre-fix 0 -> post-fix 70 structurally.
+\ The wtwo arm uses only always-defined words (2drop 0), so its reject can only
+\ be the negative-extra arm reject at 'OF': inside XPAD-ASYM the derived ctor
+\ package is XPAD-ASYM-CLX2, so a bare CLX2:UNMAKE would itself throw rc 70.
 s" : CLXG-GET ( clxg<clx2> -- n ) MATCH clxg wtwo OF 2drop 0 ENDOF wthree OF + + ENDOF ;MATCH ;" TCE-CATCH 70 T=   \ MATCH's negative-extra arm fails closed at 'OF'
 s" : CLXN-GET ( clxg<n> -- n ) MATCH clxg wtwo OF + ENDOF wthree OF + + ENDOF ;MATCH ;" TCE-CATCH 0 T=   \ non-asymmetric clxg<n>: same machinery matches clean
-\ Runtime depth parity for POSITIVE extra. Negative extra never certifies (the
-\ certify-time reject above discharges its runtime obligation); positive-extra
-\ clxg<clx2> cannot be consumed by any checked exhaustive MATCH, so pass-2 magnitude
-\ is verified by measuring the native cell footprint of the certified CLXG-THREE
-\ bundle. XPAD-WTHREE-W snapshots the stack depth, builds the bundle through the
-\ checked CLXG-THREE, and reads the depth delta; it MUST equal the certified width 5
-\ (pass-1 declared-width lowering emits 4 cells, pass-2 WF-XPAD-FLAG adds the one
-\ extra pad). Any wrong pass-2 magnitude (4 or 6) flips this assert. It MUST build
-\ through the checked-compiled CLXG-THREE — an unchecked in-word `construct` skips
-\ pass-2 and reads 4. Everything here is checked: TWX-XPAD-DROP-BUNDLE drops the
-\ measured layout value as the one value its ( clxg<clx2> n -- n ) effect names,
-\ so the drop takes the certified width.
-variable XPAD-D0                                              \ data-stack depth snapshot taken before the build
-: XPAD-MARK ( -- ) depth XPAD-D0 ! ;                         \ checked: snapshot the baseline depth
-: XPAD-DELTA ( -- n ) depth XPAD-D0 @ - ;                    \ checked: cells the build added to the stack
-: TWX-XPAD-DROP-BUNDLE ( clxg<clx2> n -- n ) nip ;           \ drop the measured layout value, keep the count
-: XPAD-WTHREE-W ( -- n )                                     \ native cell footprint of the certified clxg<clx2> wthree bundle
+\ Runtime depth parity for positive extra: no checked exhaustive MATCH consumes
+\ clxg<clx2>, so XPAD-WTHREE-W measures the depth delta of the certified
+\ CLXG-THREE bundle. It must be the certified width 5: pass 1 emits 4 cells from
+\ the declared width and pass 2 (WF-XPAD-FLAG) adds one pad. The bundle must be
+\ built through the checked CLXG-THREE: an unchecked in-word `construct` skips
+\ pass 2 and reads 4.
+variable XPAD-D0
+: XPAD-MARK ( -- ) depth XPAD-D0 ! ;
+: XPAD-DELTA ( -- n ) depth XPAD-D0 @ - ;
+: TWX-XPAD-DROP-BUNDLE ( clxg<clx2> n -- n ) nip ;
+: XPAD-WTHREE-W ( -- n )
    XPAD-MARK 1 2 3 CLXG-THREE XPAD-DELTA TWX-XPAD-DROP-BUNDLE ;
 XPAD-WTHREE-W 5 T=
 s" LOWER-WIDTH-ASYM-FAILCLOSED" type cr
 ;package
 
-\ ---------------------------------------------------------------------------
-\ dot habu-fail-closed-on-0ab1e401 (tagless pad arithmetic): the negative-extra reject is
-\ decided by KIND-CORRECT pad arithmetic. A STRUCTURE/PRODUCT is TAGLESS — it has one
-\ product shape and its whole width is payload; only a SUM/ENUM carries a tag cell.
-\ Subtracting a tag from a tagless family was the tagless-family regression: a wide parametric structure
-\ reported a spurious extra = -1 and was wrongly rejected. With the tag cell subtracted only
-\ for tagged families, a wide product's extra is 0 and it certifies with no exemption. A
-\ tagged SUM whose non-widest variant needs FEWER cells than the declared family reserves is
-\ still a genuine contradiction and fails closed (until signed pass-2, dot
-\ habu-construct-asymmetric-growth-0f4df0fa) — including the INSTANTIATED-TIE case, where
-\ the verdict is ORDER-INDEPENDENT (both declaration orders reject), unlike the order-dependent
-\ accept/reject a widest-variant discriminator gave. Families use string-eval so the derived
-\ accessors resolve at global scope; the runtime value/width check lives in package XPAD-TAGLESS.
-\ ---------------------------------------------------------------------------
+\ Pad arithmetic is kind-correct: a STRUCTURE/PRODUCT is tagless (its whole
+\ width is payload) and only a SUM/ENUM carries a tag cell, so a wide product's
+\ extra is 0 and it certifies. A tagged SUM whose non-widest variant needs fewer
+\ cells than the declared family reserves fails closed, including the
+\ instantiated tie, whose verdict is order-independent. Families use
+\ string-eval so the derived accessors resolve at global scope.
 \ (a) POSITIVE: a parametric STRUCTURE widens with its argument. At the wide instantiation
 \ XPG:MAKE certifies through the construct step seeded from the declared output, and XPG:UNMAKE
 \ through the same step run backwards, seeded only from the value it takes apart; a flattened or
@@ -679,7 +581,7 @@ s" LOWER-WIDTH-ASYM-FAILCLOSED" type cr
 \ canary below the bundle prove content, order and width.
 s" STRUCTURE xpginr FIELD a n FIELD b n ;STRUCTURE" TCE-CATCH 0 T=          \ width-2 structure leaf
 s" STRUCTURE xpg<a> FIELD u a FIELD z n ;STRUCTURE" TCE-CATCH 0 T=             \ parametric structure: payload widens with a
-s" XPGWIDE ( xpginr n -- xpg<xpginr> ) XPG:MAKE" CHECK-QUIET-CANDIDATE! -1 T= \ wide instantiation certifies (was rejected before the tagless-arithmetic fix)
+s" XPGWIDE ( xpginr n -- xpg<xpginr> ) XPG:MAKE" CHECK-QUIET-CANDIDATE! -1 T= \ wide instantiation certifies
 s" XPGFLAT ( n n n -- xpg<xpginr> ) XPG:MAKE" CHECK-QUIET-CANDIDATE! 0 T=      \ flattened (a b z) is not (xpginr z): still fail-closed
 s" XPGCONC ( n n -- xpg<n> ) XPG:MAKE" CHECK-QUIET-CANDIDATE! -1 T=            \ concrete non-widening instantiation certifies
 s" XPGUNW ( xpg<xpginr> -- xpginr n ) XPG:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=  \ wide UNMAKE certifies with the instantiated field types
@@ -706,12 +608,10 @@ XPGW-RT
    5551 1 2 XPGINR:MAKE 3 XPGW-MK XPGW-DROPQ 8 T= 7 T= 5551 T= ;
 XPGW-DROP-RT
 ;package
-\ (b) NEGATIVE: genuine tagged-sum contradictions that fail closed (candidate 0 / rc 70). Each
-\ is exercised through the REAL generated variant constructor (FAM:VARIANT), proven resolvable
-\ by a concrete instantiation that certifies — an undefined word would itself be rc 70, so the
-\ concrete rc 0 shows the wide rc 70 is a genuine negative-extra reject, not an undefined-word
-\ miss. Signed pass-2 (dot habu-construct-asymmetric-growth-0f4df0fa) will flip these to
-\ exact-width forms.
+\ (b) NEGATIVE: tagged-sum contradictions fail closed (candidate 0 / rc 70)
+\ through the real generated constructor (FAM:VARIANT). A concrete
+\ instantiation that certifies proves the word resolves, so the wide rc 70 is a
+\ negative-extra reject, not an undefined word.
 s" PRODUCT xw2 FIELD x n FIELD y n ;PRODUCT" TCE-CATCH 0 T=
 \ xst<xw2>: stable(n n n, declared 3) is sole argmax both ways; grow(a, declared 1) instantiates
 \ to 2 -> extra(grow) = (3-2) - (3-1) = -1 (a non-widest variant that grows).
@@ -727,16 +627,14 @@ s" TBC ( xw2 xw2 -- tbig<xw2> ) construct tbig wsm" CHECK-QUIET-CANDIDATE! 0 T= 
 s" : TBWG-CONC ( n n -- tbig<n> ) TBIG:WSM ;" TCE-CATCH 0 T=                   \ generated ctor TBIG:WSM resolves: concrete instantiation certifies
 s" : TBWG-WIDE ( xw2 xw2 -- tbig<xw2> ) TBIG:WSM ;" TCE-CATCH 70 T=            \ compiled generated ctor at the instantiated tie fails closed
 s" : TBM ( tbig<xw2> -- n ) MATCH tbig wsm OF 2drop 2drop 0 ENDOF wbig OF + + + ENDOF ;MATCH ;" TCE-CATCH 70 T=   \ tie MATCH arm fails closed
-\ order-independence pin: the SAME tie family with variants declared in the opposite order fails
-\ closed identically through BOTH the generated constructor and MATCH (a widest-variant
-\ discriminator flipped on declaration order).
+\ order independence: the same tie family with its variants declared in the
+\ opposite order fails closed identically through the constructor and MATCH.
 s" SUMTYPE tbig2<a> VARIANT wsm2 a a ;VARIANT VARIANT wbig2 n n n n ;VARIANT ;SUMTYPE" TCE-CATCH 0 T=
 s" TB2C ( xw2 xw2 -- tbig2<xw2> ) construct tbig2 wsm2" CHECK-QUIET-CANDIDATE! 0 T=   \ order-swapped reserved-construct candidate fails closed
 s" : TB2G-WIDE ( xw2 xw2 -- tbig2<xw2> ) TBIG2:WSM2 ;" TCE-CATCH 70 T=          \ order-swapped generated ctor: identical reject
 s" : TB2M ( tbig2<xw2> -- n ) MATCH tbig2 wsm2 OF 2drop 2drop 0 ENDOF wbig2 OF + + + ENDOF ;MATCH ;" TCE-CATCH 70 T=   \ order-swapped MATCH arm: identical reject
 s" TAGLESS-ARITH-KEEPS-FAILCLOSED" type cr
 
-\ ---------------------------------------------------------------------------
 \ A nested parametric application is as wide as its arguments make it: a schema
 \ application's width is its family's width at its arguments' widths, with each
 \ parameter one cell at declaration and the term's argument width under a term.
@@ -806,12 +704,9 @@ public
 NESTED-WIDTH-RT:RUN
 s" NESTED-APP-WIDTH" type cr
 
-\ ---------------------------------------------------------------------------
-\ dot habu-universal-enum-parametric-ad011c21: a parametric family APPLICATION
-\ and a single-effect QUOTATION as variant payloads construct and MATCH. The
-\ nested application rides the landed width-aware construct/MATCH lowering; the
-\ quotation payload is one xt cell recovered as its T-QUOT effect in the arm.
-\ ---------------------------------------------------------------------------
+\ A parametric family application and a single-effect quotation as variant
+\ payloads construct and MATCH; the quotation payload is one xt cell recovered
+\ as its T-QUOT effect in the arm.
 SUMTYPE pqinn<a> VARIANT yes a ;VARIANT VARIANT no ;VARIANT ;SUMTYPE
 SUMTYPE pqhold VARIANT hh pqinn<n> ;VARIANT ;SUMTYPE
 : PQ-MK ( n -- pqhold ) PQINN:YES PQHOLD:HH ;
@@ -825,9 +720,9 @@ PQ-RUN 6 T=
 \ a wrong-effect quotation cannot be stored where [ n -- n ] is required (rc 70).
 s" : PQ-BADQ ( -- pqact ) [: 0 0= ;] PQACT:RUN ;" TCE-CATCH 70 T=
 
-\ dot habu-sc-quot-full-db4d0518: full effect ROWS per quotation side. A multi-type
-\ input side, an empty input side, an empty output side, and a multi-type input (with
-\ a ptr element) plus an explicit return clause each construct, MATCH, and execute.
+\ Full effect rows per quotation side: a multi-type input, an empty input side,
+\ an empty output side, and a multi-type input with a ptr element plus an
+\ explicit return clause each construct, MATCH and execute.
 \ [ n n -- n ]: the arm feeds two inputs and executes the recovered xt.
 SUMTYPE pq2 VARIANT run [ n n -- n ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
 : PQ2-APP ( pq2 -- n ) MATCH pq2 run OF 3 4 rot execute ENDOF nop OF 0 ENDOF ;MATCH ;
@@ -855,25 +750,15 @@ SUMTYPE pqm VARIANT run [ n ptr u8 -- n ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
 PQM-RUN 105 T=
 s" PARAMETRIC-QUOT-PAYLOAD" type cr
 
-\ ---------------------------------------------------------------------------
-\ dot habu-pass-constructor-family-b9402f5b: the generator body is told WHICH
-\ family to generate instead of reading the last-registered one, so a caller can
-\ generate a family that is not the last one declared. The SUMTYPE definer runs
-\ registration and generation in one transaction; this test splits them:
-\ register two families through the shared CHECKER-DEFSUM path, each in its own
-\ real declaration transaction, then generate the FIRST one and prove the whole
-\ generated plan is that family's. The last-registered family is the second one,
-\ so a generator that still read the register would publish ZXB:TWO here
-\ instead of ZXA:ONE.
-\ ---------------------------------------------------------------------------
+\ The generator body is told which family to generate. The SUMTYPE definer runs
+\ registration and generation in one transaction; this test registers two
+\ families through CHECKER-DEFSUM, each in its own declaration transaction, then
+\ generates the first: a generator that read the last-registered family would
+\ publish ZXB:TWO instead of ZXA:ONE.
 package CTOR-FAMILY-TEST
 
-\ whitebox boundary (dot habu-hb-crash-bare-c5be6634): the engine-private
-\ registration path, generator, and plan buffer are named directly or through
-\ checked aliases.
 : DEFSUM ( ptr u8 n ptr u8 n -- ) CHECKER-DEFSUM ;
-\ the generator now takes the payload provider its caller chooses; this family
-\ is already published, so it gets the committed one the legacy definers use.
+\ an already-published family takes the committed payload provider.
 : CTOR-BODY ( n -- n ) {: fam:n :}
    TDECL-SUMV-PROVIDER fam TDECL-CTOR-WORDS-BODY ;
 : PLAN-N ( -- n ) TDPLAN-N @ ;
@@ -905,7 +790,7 @@ public
 
 CTOR-FAMILY-TEST:DECLARE
 CTOR-FAMILY-TEST:FIRST 0 < 0= TTRUE
-\ zxa is live, and is no longer the family the register names.
+\ zxa is live and is not the family the register names.
 CTOR-FAMILY-TEST:SECOND CTOR-FAMILY-TEST:FIRST <> TTRUE
 \ generate the NON-LAST family: the id comes back unchanged and the whole plan
 \ is zxa's single constructor.
@@ -924,34 +809,24 @@ s" ZQ3 ( n -- zxb ) ZXB:TWO" CHECK-QUIET-CANDIDATE! -1 T=
 
 s" EXPLICIT-CTOR-FAMILY" type cr
 
-\ ---------------------------------------------------------------------------
-\ dot habu-constructor-pass-payload-78c7069d: the shared constructor and DERIVE
-\ renderer no longer reads payload metadata itself. Its caller hands it a
-\ context cell and three quotation capabilities, and payload count, declaration
-\ order schema root, and payload cell width are read only through those.
-\ Three things are proved here.
-\  1. A provider that deliberately disagrees with the committed metadata -- it
-\     swaps the two variants' payload views -- decides the payload signature the
-\     constructors are RENDERED with. A renderer that still read the variant rows
-\     itself would render the committed signatures and fail these texts. Since
-\     8fcc7fe84be3 the generated body is the canonical `construct` form, whose
-\     certification is the committed registry's, so such a provider renders but
-\     cannot publish: the generation is refused and nothing reaches the
-\     dictionary. That refusal is the case below, beside the rendered texts.
-\  2. A provider whose answers cannot be true of the family is rejected with the
-\     named E-TDECL-PROVIDER before any text is generated: a negative count, an
-\     unknown schema root, a cell width that contradicts the schema roots the
-\     same provider returned, and a cell width wider than the family's payload
-\     slots. The family still generates normally afterwards, so a rejected
-\     provider leaves nothing behind.
+\ The shared constructor and DERIVE renderer reads payload count, declaration
+\ order schema root and payload cell width only through the context cell and
+\ three quotation capabilities its caller hands it. Proved here:
+\  1. A provider that swaps the two variants' payload views decides the
+\     signatures the constructors are rendered with. The generated body is the
+\     canonical `construct` form, certified against the committed registry, so
+\     such a provider renders but cannot publish: the generation is refused and
+\     nothing reaches the dictionary.
+\  2. A provider whose answers cannot be true of the family is rejected with
+\     E-TDECL-PROVIDER before any text is generated: a negative count, an
+\     unknown schema root, a cell width that contradicts the schema roots it
+\     returned, and a cell width wider than the family's payload slots. The
+\     family still generates normally afterwards.
 \  3. A provider over a LIVE declaration token renders a payload constructor
-\     inside the transaction that declared it. The committed provider cannot:
-\     its reads are bounded by the COMMITTED field high-water and throw
-\     E-TFAM-PAYLOAD (type-family.f). That is the wall the unified ENUM front
-\     end has to clear; this is the seam's proof that a live provider clears it.
-\     Wiring that front end to the generator is a later leaf and is deliberately
-\     not done here -- nothing below publishes a word from the live path.
-\ ---------------------------------------------------------------------------
+\     inside the transaction that declared it; the committed provider cannot:
+\     its reads are bounded by the committed field high-water and throw
+\     E-TFAM-PAYLOAD (type-family.f). Nothing below publishes a word from the
+\     live path.
 package CTOR-PAYPROV-TEST
 
 TFAM:E-TFAM-PAYLOAD constant E-COMMITTED-PAYLOAD
@@ -960,10 +835,8 @@ TFAM:E-TFAM-PAYLOAD constant E-COMMITTED-PAYLOAD
 \ refused, which is how a whole generated declaration is rejected.
 70   constant E-PREFLIGHT
 
-\ whitebox boundary (dot habu-hb-crash-bare-c5be6634): the engine-private
-\ registration, event, generator, and plan words are named directly or through
-\ checked aliases (see TWX- above). The generator's three payload capabilities carry their exact effects across
-\ those boundaries, so the checker types every provider this suite builds.
+\ The generator's three payload capabilities carry their exact effects across
+\ the whitebox boundary, so the checker types every provider this suite builds.
 : SUM-DECL ( ptr u8 n ptr u8 n -- ) CHECKER-DEFSUM ;
 : PROD-DECL ( ptr u8 n ptr u8 n -- ) CHECKER-DEFPRODUCT ;
 : LAST-FAM ( -- n ) TDECL-FAM-REG @ ;
@@ -1019,11 +892,10 @@ variable DONOR                          \ a wider variant, borrowed by WIDE-PROV
 : WIDE-PROV ( -- n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] )
    0 [: DONOR-N ;] [: DONOR-ROOT ;] [: DONOR-CELLS ;] ;
 
-\ --- providers 3: answers that CHANGE after the first call, and a count with no
-\ relation to the family at all. The snapshot is what defeats the first two: the
-\ generator asks each capability once per variant, before any text exists, so a
-\ later answer has nothing left to corrupt. FLIP-* count their own calls and
-\ report the truth once, then a wrong arity forever after.
+\ --- providers 3: answers that change after the first call, and a count with
+\ no relation to the family. The generator asks each capability once per
+\ variant, before any text exists, so a later answer has nothing to corrupt.
+\ FLIP-* report the truth once, then a wrong arity.
 variable FLIP-N-CALLS   variable FLIP-VID   variable FLIP-SEEN
 : FLIP-BASE ( n -- n ) {: vid:n :}   \ count the calls made about THIS variant
    vid FLIP-VID @ <> IF vid FLIP-VID !  0 FLIP-SEEN ! THEN
@@ -1079,8 +951,8 @@ variable ASKED   variable GOT
 : FLONG-RUN ( -- )     [: FLONG-BODY ;] DECLARATION-TRANSACTION:RUN ;
 : HUGE-RUN ( -- )      [: HUGE-BODY ;] DECLARATION-TRANSACTION:RUN ;
 
-\ --- the live declaration, driven straight through the shared event
-\ transaction exactly as the ENUM front end drives it, then rolled back.
+\ --- the live declaration, driven through the shared event transaction as the
+\ ENUM front end drives it, then rolled back.
 variable LFAM   variable LVID   variable LROOT
 variable LVBASE  variable LFBASE   variable LROWS   variable LCOUNT
 : LIVE-OPEN ( -- )
@@ -1097,7 +969,7 @@ variable LVBASE  variable LFBASE   variable LROWS   variable LCOUNT
    LFAM @ LFBASE @ 1 TFAM-FLD-RANGE!
    LFAM @ 1 TFAM-SLOTS!
    LFAM @ LVBASE @ 1 TDECL-CTOR-PUBLISH ;
-: LIVE-RENDER ( -- )       \ render only: publication is the ENUM wiring leaf's
+: LIVE-RENDER ( -- )
    TDPLAN-BEGIN
    LIVE-PROV LFAM @ TDPV-CAPTURE
    LFAM @ LVID @ TDECL-CTOR-WORD ;
@@ -1203,25 +1075,14 @@ variable LIVE-CODE
 CTOR-PAYPROV-TEST:DECLARE
 CTOR-PAYPROV-TEST:SWAP-FAMILY 0 < 0= TTRUE
 CTOR-PAYPROV-TEST:HOSTILE-FAMILY CTOR-PAYPROV-TEST:SWAP-FAMILY <> TTRUE
-\ zps renders under the SWAPPED provider: sone's signature takes stwo's one
-\ payload cell and stwo's takes sone's two, which is the renderer reading the
-\ provider and nothing else - a renderer that read the variant rows itself would
-\ render the committed signatures and fail these two texts.
-\
-\ WHAT THIS STOPPED ADMITTING, AND WHY. 8fcc7fe84be3 replaced the generated sum
-\ constructor's physical body - zero pads and the tag, rendered from the same
-\ provider - with the canonical `construct <family> <variant>`, and dropped the
-\ sum constructor's row in the sealed plan with it ("SUM/ENUM constructors do not
-\ use this authority: their generated checked bodies spell the canonical
-\ construct form, which owns both certification and lowering"). The construct
-\ rule resolves that variant's payload in the COMMITTED registry, so the body
-\ asks for the committed cells while the declared signature asks for the
-\ provider's, and the definition is refused: this case used to assert that both
-\ constructors published with the provider's effects, and it cannot, by design.
-\ The provider remains the authority for the signature TEXT and for the DERIVE
-\ walkers; it is no longer the authority for a published sum constructor's
-\ effect, and a view that contradicts the committed rows now fails closed
-\ instead of publishing a constructor whose effect lies about its payload.
+\ zps renders under the swapped provider: sone's signature takes stwo's one
+\ payload cell and stwo's takes sone's two, so the renderer reads the provider
+\ and nothing else. The generated sum constructor's body is the canonical
+\ `construct <family> <variant>`, which resolves the payload in the committed
+\ registry: the body asks for the committed cells, the declared signature for
+\ the provider's, and the definition is refused. The provider is the authority
+\ for the signature text and the DERIVE walkers, not for a published sum
+\ constructor's effect.
 CTOR-PAYPROV-TEST:SWAP-FAMILY CTOR-PAYPROV-TEST:SWAP-CODE
    CTOR-PAYPROV-TEST:PREFLIGHT-CODE T=
 CTOR-PAYPROV-TEST:GENERATED 0 T=
@@ -1235,12 +1096,10 @@ CTOR-PAYPROV-TEST:RENDERED-ROWS 2 T=
 s" ZP1 ( n -- zps ) ZPS:SONE" CHECK-QUIET-CANDIDATE! 1 T=
 s" ZP2 ( n n -- zps ) ZPS:STWO" CHECK-QUIET-CANDIDATE! 1 T=
 
-\ 1b. a provider whose answers CHANGE after the first call cannot corrupt what is
-\ generated: the generator takes the whole payload view once, before any text
-\ exists, so the constructors carry the arity that was validated. Both families
-\ derive eq, which is the path that re-read the count most often before the
-\ snapshot (once per variant per arm). The call counts prove the capability was
-\ asked exactly once per variant, not once per read.
+\ 1b. a provider whose answers change after the first call cannot corrupt what
+\ is generated: the generator takes the whole payload view once, before any
+\ text exists. Both families derive eq, which reads the count once per variant
+\ per arm; the call counts prove the capability was asked once per variant.
 CTOR-PAYPROV-TEST:FLIP-SHORT-FAMILY CTOR-PAYPROV-TEST:FLIP-SHORT-CODE 0 T=
 CTOR-PAYPROV-TEST:GENERATED CTOR-PAYPROV-TEST:FLIP-SHORT-FAMILY T=
 CTOR-PAYPROV-TEST:FLIP-CALLS 2 T=
@@ -1279,27 +1138,21 @@ CTOR-PAYPROV-TEST:LIVE-THROW CTOR-PAYPROV-TEST:COMMITTED-PAYLOAD-CODE T=
 CTOR-PAYPROV-TEST:LIVE-ROWS 1 T=
 CTOR-PAYPROV-TEST:LIVE-NAME s" PV-ZPL:ONE" T$=
 \ the live declaration's own payload cell became the constructor's input (one
-\ slot, one cell), and the body is the canonical construct form 8fcc7fe84be3
-\ replaced the zero pads and the tag with.
-\ The output family is spelled QUALIFIED: the generated word lives in the ctor
+\ slot, one cell), and the body is the canonical construct form.
+\ The output family is spelled qualified: the generated word lives in the ctor
 \ package, not the declaring one, so its signature text carries the one spelling
-\ that resolves from anywhere (the seeded-signature scope defect, dot
-\ habu-seeded-signature-loses-78c16109). This pin is the mutation guard: a
-\ generator that drops the qualifier again shortens this text and reds here.
-\ The construct body's OWN family token is bare (`construct zpl one`), which is
-\ the same spelling that defect was about, on a token `construct` resolves
-\ owner-only: it is pinned here as measured rather than corrected, because
+\ that resolves from anywhere; a generator that drops the qualifier shortens
+\ this text. The construct body's own family token is bare (`construct zpl
+\ one`), a token `construct` resolves owner-only: pinned as measured, because
 \ correcting it changes every generated constructor's text.
 CTOR-PAYPROV-TEST:LIVE-DEF
    s" PV-ZPL:ONE ( n -- pv:zpl ) construct zpl one " T$=
 
 s" PAYLOAD-PROVIDER" type cr
 
-\ ---------------------------------------------------------------------------
 \ A constructor effect may ground a generic payload/result parameter from a
 \ closed one-cell nominal family. The binding happens while equal-family result
 \ arguments pair, before the same variable meets the constructor payload.
-\ ---------------------------------------------------------------------------
 package zpub
 public
 
@@ -1360,11 +1213,10 @@ s" RFB-L1 ( rfbtag rfbpair<rfbtag,rfberr> -- rfbtag ) RFB-LATER"
 s" RFB-L2 ( rfberr rfbpair<rfbtag,rfberr> -- rfberr ) RFB-LATER"
    CHECK-QUIET-CANDIDATE! 0 T=
 
-\ The narrow seam changes none of the existing fail-closed boundaries: wide or
-\ open family terms, one-cell families containing a linear resource, and pointer-
-\ strict generic pointees cannot ground the alias variable. Nominal family and
-\ payload roles remain exact, including after logical values lower to hidden
-\ physical fields.
+\ Wide or open family terms, one-cell families containing a linear resource,
+\ and pointer-strict generic pointees cannot ground the alias variable. Nominal
+\ family and payload roles stay exact, including after logical values lower to
+\ hidden physical fields.
 : RFB-PTR-ID ( ptr rfbpair<a,a> -- ptr rfbpair<a,a> ) ;
 s" RFB-WIDE ( rfbpair<clw2,clw2> -- rfbpair<clw2,clw2> ) RFB-ALIAS"
    CHECK-QUIET-CANDIDATE! 0 T=
@@ -1400,9 +1252,6 @@ s" : RFB-PTR-GEN-BAD ( zpub:rfbwone<ptr a> -- result<zpub:rfbwone<ptr a>,n> ) RE
 s" : RFB-PTR-CON-BAD ( zpub:rfbwone<ptr a> -- result<zpub:rfbwone<ptr a>,n> ) construct result ok ;"
    TCE-CATCH 70 T=
 
-\ ---------------------------------------------------------------------------
-\ report: "test: ok" on success, nonzero exit on any failure.
-\ ---------------------------------------------------------------------------
 T-REPORT
 
 ;using

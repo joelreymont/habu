@@ -1,11 +1,9 @@
-\ The real gate adapter schedules a compiler supplier beside independent
-\ rows. A private source tree replaces only the compiler builder at the normal
-\ child process boundary. The builder cannot finish until the release row
-\ before the consumer and the later row after it have run, so a synchronous
-\ setup, or a consumer that holds the registry while it waits for the bundle,
-\ ends at the builder's bounded wait, and the bundle's build row and this test
-\ go red. Keep each registry, builder, consumer copy and transcript for replay.
-\ Run: bin/hb --load test/gate-images-test.f
+\ The real gate adapter schedules a compiler supplier beside independent rows; a
+\ private source tree replaces only the compiler builder at the child process
+\ boundary. The builder cannot finish until the release row before the consumer
+\ and the later row after it have run, so a synchronous setup, or a consumer
+\ holding the registry while it waits for the bundle, ends at the builder's
+\ bounded wait, and the bundle's build row and this test go red.
 require src/lib/test.f
 require src/lib/string.f
 require src/lib/fs.f
@@ -70,6 +68,7 @@ variable PARENT-U
 : RESULT ( result<pcap:captured,pcap:failed> -- )
    PCAP-RESULT:>N RC ! ERR-U ! OUT-U ! ;
 
+\ Registries and transcripts are kept.
 : LOG ( ptr u8 n ptr u8 n -- )
    {: outname:ptr outu:n errname:ptr erru:n :}
    outname outu AT OUT OUT-U @ FS:WRITE-ALL

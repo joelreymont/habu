@@ -7,15 +7,14 @@ require src/compiler/native/compiler.f
 
 1 set-tier
 
-\ ---- the program under test --------------------------------------------------
-\ A package of its own, and PUBLIC, because the bodies below are compiled from
-\ source text at run time and name these words the way any other program would -
-\ qualified, through the same dictionary the compiler uses for every callee.
+\ A public package of its own: the bodies below compile from source text at run
+\ time and name these words qualified, through the dictionary the compiler uses
+\ for every callee.
 package DKA
 public
 
 PTR-VARIABLE SB                      \ base of the fresh data stack
-variable SZ                          \ its size
+variable SZ
 variable ANS                         \ where a body leaves its answer
 variable PRESS-CELL
 create PRESS-BYTE 1 allot
@@ -29,7 +28,7 @@ create PRESS-BYTE 1 allot
 : SEVEN ( -- n )       7 ;
 : ANS! ( n -- )        ANS ! ;
 
-\ THE ALIASING BODY. `SEVEN` leaves its result in slot zero and the residency map
+\ `SEVEN` leaves its result in slot zero and the residency map
 \ names it there; `BASE` hands back the address of that very slot; the `c!`
 \ overwrites its low byte; and `abs` is the unrecorded external call whose
 \ save-store the map says is already true. 7 with its low byte replaced by 200
@@ -72,14 +71,12 @@ private
    xt DKA:BASE DKA:SIZE run-in-stack
    DKA:ANS @ ;
 
-\ ---- 1. the witness ----------------------------------------------------------
 : ALIAS-CASE ( -- )
    s" a checked poke reaches the production routine's own stack slot"
    T-LABEL
    ['] DKA:CLEAN RUN-XT 7 T=
    ['] DKA:POKED RUN-XT 200 T= ;
 
-\ ---- 2. a computed value handed to a call ------------------------------------
 \ Nothing ever put this value in a cell, so its store is one the pass must emit.
 \ A transfer applied twice would have read its own first answer back and called
 \ the position resident, and the callee would have taken whatever the cell held.
@@ -87,7 +84,6 @@ private
    s" a value no cell held is stored before the call that takes it" T-LABEL
    ['] DKA:SAVE RUN-XT 42 T= ;
 
-\ ---- 3. a computed value returned --------------------------------------------
 \ The same question at the exit run, which is a second transfer and a second
 \ chance to apply one twice.
 : EXIT-CASE ( -- )

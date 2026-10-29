@@ -1,69 +1,9 @@
-\ create-axiom-test.f - what `create` is to the checker, and what every reader of
-\ that answer does with it. One concern: the `PRIM: create` axiom row in
-\ src/core/checker.f (dot habu-fix-the-create-75d82809).
-\
-\ WHAT THE ROW SAID AND WHY IT WAS WRONG. It said `-- ptr a` from 2026-06-11,
-\ and the commit that wrote it said why in its own comment: "defining-word kinds
-\ ... create/variable are addresses". That is the effect of the word `create`
-\ DEFINES, filed in a table keyed by the token a BODY names, so the row asserted
-\ that CALLING `create` pushes an address. It does not: the primitive parses a
-\ name out of the input and defines it (src/habu/habu1.f BCREATE, `( "name" -- )`),
-\ and the name it defines gets `-- ptr a` from its own definer at the moment it is
-\ made (src/habu/habu2.f LASTC-TRUST:PUBLISH-PTR-A). Two authorities for one fact,
-\ and the row was the one with no claim to it.
-\
-\ WHY IT SURVIVED SO LONG, WHICH IS THE PART A SUITE HAS TO COVER. Inside a body
-\ that declares a signature the row is never read - src/core/checker.f DEFINER-TOK
-\ models `create` directly and runs before TRY-PRIMS in DO-TOK - so the one reader
-\ anybody exercises gave the right answer for the wrong reason, and every fixture
-\ written against a signed body passed either way. The readers that saw the lie
-\ ask the effect store BY NAME:
-\
-\   1. the checker's own inference, for a body with NO declared signature. That
-\      body's rendered effect is recorded under its name, so `: MK create ;`
-\      published `-- ptr a` and a CHECKED caller declaring one output then
-\      certified against a word the machine leaves nothing behind. A certificate
-\      the machine contradicts is the whole failure this file exists to keep out.
-\   2. src/compiler/native/dict.f NDICT:SPELL-ARITY, which answered 0-in/1-out, so
-\      the production compiler refused every definer body - `dup create , 1 +`, the shape
-\      src/core/enums.f ENUM+ ships - as E-NELAB-ARITY.
-\
-\ HOW THIS SUITE WOULD CATCH THE ROW COMING BACK. Restore `PE-PTR-A PE-OUT` on the
-\ row and seven assertions red (re-measured, 2026-08-18): the arity pair reads
-\ 0/1, the inferred effect reads 0/1, the bad caller certifies instead of being
-\ refused, the honest caller is refused instead of certifying, and all three
-\ compiler measurements come back E-NELAB-ARITY. It was eight while a fourth
-\ case could state a wrong arity by hand; that case is retired below, with its
-\ reason, and the three that remain carry the same discrimination.
-\
-\ AND WHAT KEEPS IT FROM PASSING FOR A LAZY REASON. Zeroing every storage row
-\ would pass a `create`-only suite, so `here`, `allot` and `,` are measured
-\ beside it and one of them reds. Reading the row as the created word's authority
-\ would pass too, so a word `create` MADE is measured and keeps its `-- ptr a`.
-\ And `create` written inside a string and inside a comment must stay a string and
-\ a comment, so a body holding either certifies as if the token were not there.
-\
-\ The create verdicts come off the production engine load path; the parser-only
-\ definer regression below calls the production source verifier directly.
-\
-\ WHY THE ROW ITSELF CARRIES NO PROSE, which is where a reader would look first.
-\ src/core/checker.f is 524245 bytes on the master this landed against and three
-\ lint tools read it whole into a $80000 (524288) fixed buffer - repo, maki-dep
-\ and error-code, each dying `lint: file exceeds buffer: src/core/checker.f`
-\ 44 bytes later. So the file has room for the corrected row (16 bytes shorter
-\ than the wrong one) and for nothing else, and this header is where the
-\ reasoning went. An empty row is not anomalous there in any case: `cr` and
-\ `space` two lines above it are empty rows too. The cliff itself is a finding
-\ of this lane, not a property anybody chose; tools/lint/text.f already carries
-\ the runtime-sized slab those three lints want in place of a fixed buffer.
-\
-\ `variable` and `constant` are parser-only keywords, so the verifier now
-\ rejects them in colon bodies through the checker's ordinary E-UNDEFINED
-\ state. `variable` needs no primitive row: its hook body uses `create`.
-\ `constant` keeps its one-cell input row because C-CONSTANT still checks the
-\ synthetic body `NAME constant` before publishing the created word's effect.
-\
-\ Run: bin/hb --load test/create-axiom-test.f
+\ create-axiom-test.f - `create`'s effect row (src/habu/prims.f `EPRIM: create
+\ EPRIM;`) is empty: `create` parses a name and defines it (src/habu/habu1.f
+\ BCREATE); the word gets `-- ptr a` from its definer (src/habu/habu2.f
+\ PUBLISH-PTR-A). Restoring `PE-PTR-A PE-OUT` reds seven assertions: the arity
+\ pair and inferred effect read 0/1, the bad caller certifies, the honest caller
+\ is refused, and the three compiler measurements answer E-NELAB-ARITY.
 
 require src/lib/test.f
 require src/habu/verify-source.f
@@ -75,15 +15,16 @@ private
 0 constant LOADED               \ what `catch` answers for a source that loaded
 70 constant REJECT-RC           \ src/core/check-hook.f LOWER-CERT-HOOK CHECK-RC (private there)
 
-\ `evaluate-closed` loads a definition the way a source file loads one, as a
-\ closed program. The suite runs at top level, so what these publish is global -
-\ the position an ordinary program's definitions occupy, and the one the
-\ inference case needs.
+\ `evaluate-closed` loads a definition as a source file loads one. At top level
+\ what these publish is global, the position the inference case needs.
 
-\ ---- what the row says, read the way the production compiler reads it ----------
-\ NDICT:SPELL-ARITY is the bridge the dot named: it resolves a spelling's active
-\ effect through the checker's effect-read export API and answers the pair in
-\ stack cells. Asking it is asking the row.
+\ Controls: `here`, `allot` and `,` are measured beside it; a word `create` made
+\ keeps `-- ptr a`; `create` in a string or a comment certifies as if absent.
+\ The parser-only definer regression calls the production source verifier
+\ directly.
+\ NDICT:SPELL-ARITY resolves a spelling's active effect through the checker's
+\ effect-read API and answers the pair in stack cells: asking it is asking the
+\ row.
 : ARITY-CASE ( -- )
    s" the checker's effect for `create` moves no stack cell in either direction" T-LABEL
    s" create" NDICT:SPELL-ARITY {: din:n dout:n :}
@@ -97,9 +38,8 @@ private
    s" ," NDICT:SPELL-ARITY {: cin:n cout:n :}
    cin 1 T=  cout 0 T= ;
 
-\ ---- and the word `create` MAKES is unaffected, because the row was never its
-\ ---- authority. The definer publishes `-- ptr a` against the new name as it
-\ ---- emits the body, so emptying the definer's own row leaves this untouched.
+\ The word `create` makes keeps `-- ptr a`: its definer publishes it against the
+\ new name as it emits the body.
 : MADE-WORD ( -- )
    s" create CAX-DAT 8 allot" evaluate-closed ;
 
@@ -116,7 +56,6 @@ private
    [: MADE-USE ;] LOADED TTHROWSQ
    s" 41 CAX-DAT !  CAX-USE" TEST-EVAL:N 41 T= ;
 
-\ ---- the load path: bodies that must load, and bodies that must not -----------
 : LOAD-EMPTY ( -- )      s" : CAX-B1 ( -- ) create ;" evaluate-closed ;
 : LOAD-PTR-A ( -- )      s" : CAX-B2 ( -- ptr a ) create ;" evaluate-closed ;
 : LOAD-N ( -- )          s" : CAX-B3 ( -- n ) create ;" evaluate-closed ;
@@ -182,10 +121,14 @@ private
    s" CAX-B7" NDICT:SPELL-ARITY {: b7in:n b7out:n :}
    b7in 0 T=  b7out 1 T= ;
 
-\ ---- the leg DEFINER-TOK does not shadow, and the miscompile it admitted ------
-\ A body with no declared signature reaches the primitive row, and what the walk
-\ infers for it is recorded under its name for every later caller. This is the
-\ case that certified a stack cell the machine never pushes.
+\ A signed body never reads the row (src/core/checker.f DEFINER-TOK models
+\ `create` before TRY-PRIMS in DO-TOK). Its readers ask the effect store by
+\ name: inference for an unsigned body, and src/compiler/native/dict.f
+\ NDICT:SPELL-ARITY, where a `-- ptr a` row refuses every definer body
+\ (`dup create , 1 +`, src/core/enums.f ENUM+) as E-NELAB-ARITY.
+\ A body with no declared signature reaches the primitive row, the leg
+\ DEFINER-TOK does not shadow, and its inferred effect is recorded under its
+\ name for every later caller.
 : INFER-MK ( -- )       s" : CAX-MK create ;" evaluate-closed ;
 : INFER-BAD ( -- )      s" : CAX-C1 ( -- ptr a ) CAX-MK ;" evaluate-closed ;
 : INFER-GOOD ( -- )     s" : CAX-C2 ( -- ) CAX-MK ;" evaluate-closed ;
@@ -209,28 +152,16 @@ private
 : COMPILER-ENUM-HALF ( -- )
    s" : CAX-D2 ( n -- n ) dup create , 1 + ;" evaluate-closed ;
 
-\ `create allot` was src/lib/string.f BUFFER:'s definer half until that definer was
-\ converted to a generated colon accessor (dot habu-the-reader-re-a65e56e5). The
-\ shape is kept here because the row it measures is about `create` moving no stack
-\ cell, and a body that allots after it is the sharpest form of that question - not
-\ because the tree still ships one.
+\ A body that allots after `create` is the sharpest form of `create` moving no
+\ stack cell.
 : COMPILER-BUFFER-HALF ( -- )
    s" : CAX-D3 ( n -- ) create allot ;" evaluate-closed ;
 
-\ THE FOURTH CASE HERE WAS A WRONG ARITY AND IT IS RETIRED, because there is no
-\ longer a caller who can state one. It handed the same body as COMPILER-ENUM-HALF
-\ to the compilation entry declared `1 2` and pinned E-NELAB-ARITY, which was the
-\ control that said the three above were refused for the arity and not for
-\ something else. The entry takes SOURCE now (dot habu-bind-checker-env-ed4f9f87)
-\ and reads what the definition takes and leaves off the checker's certificate,
-\ so a body cannot arrive with an arity that disagrees with the body: the
-\ refusal is unreachable from the production entry rather than merely unused.
-\ What still separates the two outcomes is the mutation this file's head
-\ describes - restore the row and the three measurements below turn from LOADED
-\ into E-NELAB-ARITY, which is the same discrimination the control was carrying.
-\ The cells-against-terms question that arity number now answers alone belongs to
-\ src/compiler/native/dict.f EFF-CELLS, and a case for it needs a term of a
-\ family more than one cell wide - not a definer body, so not this file.
+\ No caller can state an arity: the compilation entry reads it off the checker's
+\ certificate, so a restored row turns the three measurements below from LOADED
+\ into E-NELAB-ARITY. The cells-against-terms question belongs to
+\ src/compiler/native/dict.f EFF-CELLS, tested with a term of a family more than
+\ one cell wide.
 
 : COMPILER-CASE ( -- )
    s" the compiler accepts a body that only calls `create`" T-LABEL
@@ -242,6 +173,11 @@ private
    [: COMPILER-ENUM-HALF ;] LOADED TTHROWSQ
    [: COMPILER-BUFFER-HALF ;] LOADED TTHROWSQ ;
 
+\ `variable` and `constant` are parser-only keywords, rejected in colon bodies
+\ through E-UNDEFINED. `variable` needs no primitive row: its hook body uses
+\ `create`.
+\ `constant` keeps its one-cell input row because C-CONSTANT still checks the
+\ synthetic body `NAME constant` before publishing the created word's effect.
 \ `variable` and `constant` are parser-only defining keywords: the engine cannot
 \ compile either spelling in a colon body. Exercise the production source
 \ verifier, including inert spellings that would fool a text search.

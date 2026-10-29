@@ -1,41 +1,9 @@
-\ source-root-exe-test.f - the engine source root, found from the executable.
-\
-\ An editor starts a language server in a working directory it cannot choose,
-\ so the engine finds its own source root from where its executable lives
-\ (src/core/include.f SOURCE-ROOT:ENGINE$), with no environment variable. Each
-\ case runs a fresh child of a copy of the engine under test
-\ (src/lib/engine-candidate.f), placed in the layout the case needs, with an
-\ environment of TMPDIR alone when this run has one, so the scratch a child
-\ makes lies under it; the native build also has its own cache. Each case
-\ checks what the child prints:
-\ - the root is the working directory when it is a Habu tree (it holds the
-\   engine's first boot row), else the tree two levels above the executable
-\   when that is one, else the working directory; the executable is found by
-\   its absolute path, through a symlink and by a relative path;
-\ - a relative dependency searches its owner, the root, then the working
-\   directory, so neither a library in the working directory nor one in the
-\   entry directory stands in for the root's in a loaded file's requires; a program run as `hb prog.f`
-\   owns its top-level requires from its own canonical directory, also when
-\   started through a renamed symlink, and a require of itself is a no-op; a
-\   relative --load entry is relative to the working directory only; a library
-\   no root holds is refused by name, with no fallback;
-\ - only the root's own copy matches a frozen engine row, wherever the search
-\   reaches it: an app's own file and a file beside an executable whose
-\   directory is not a tree, each with an engine file's name, stay theirs, the
-\   root's files reached through its parent or
-\   through a symlinked working directory are the engine's, a `..` spelling
-\   that only looks like the root is not, and a frozen row with no file under
-\   the root still answers;
-\ - an application fact steers ENGINE-PROVIDES? as it steers require, and the
-\   question leaves the resolved root alone;
-\ - a boot file outside the root is refused by name;
-\ - SOURCE-ROOT:CD, PUSHPATH and POPPATH move the top-level current path,
-\   qualified or under `using SOURCE-ROOT`, and no image is saved with a path
-\   pushed;
-\ - a captured image keeps neither its engine's tree nor its root, and finds
-\   its own;
-\ - a native build from a directory that is not a tree dies at its first row
-\   and writes nothing.
+\ source-root-exe-test.f - the engine finds its source root from its executable
+\ (src/core/include.f SOURCE-ROOT:ENGINE$), with no environment variable: an
+\ editor starts a language server in a working directory it cannot choose. The
+\ root is the working directory when it is a Habu tree (it holds the engine's
+\ first boot row), else the tree two levels above the executable when that is
+\ one, else the working directory.
 
 require src/lib/test.f
 require src/lib/string.f
@@ -132,8 +100,6 @@ variable RC
 
 : LINE ( ptr u8 n -- ) SB-APPEND 10 SB-APPEND-C ;
 
-\ ---- the program a child reads on stdin -----------------------------------------
-
 : PROG-RESET ( -- ) 0 PROG-U ! ;
 
 : PLINE ( ptr u8 n -- )
@@ -152,8 +118,6 @@ variable RC
 : PATH-LINE ( ptr u8 n ptr u8 n -- )
    {: word:ptr wordu:n rel:ptr relu:n :}
    SB-RESET word wordu SB-APPEND s"  " SB-APPEND rel relu A$ SB-APPEND SB$ PLINE ;
-
-\ ---- the fixture tree ----------------------------------------------------------
 
 : TEXT ( ptr u8 n ptr u8 n -- )
    {: name:ptr nameu:n text:ptr textu:n :}
@@ -223,6 +187,8 @@ variable RC
    4 0 do s" /" SB-APPEND LONG LONG-NAME SB-APPEND loop
    SB$ A$ FS:MAKE-DIRS ;
 
+\ Each case runs a fresh child of a copy of the engine under test
+\ (src/lib/engine-candidate.f), placed in the layout it needs.
 : PREP ( -- )
    FS:CLEANUP-RESET
    s" habu-source-root-exe" FS:MKTEMP-DIR CANONICAL TTRUE TOP TOP-U COPY!
@@ -289,8 +255,6 @@ variable RC
    s" cwd" A$ FS:MAKE-DIR
    s" tools" s" cwd/tools" GATE-LINK ;
 
-\ ---- one child ------------------------------------------------------------------
-
 : RESULT! ( result<pcap:captured,pcap:failed> -- ) PCAP-RESULT:>N RC ! ERR-U ! OUT-U ! ;
 
 \ The child's environment is TMPDIR alone, when this run has one: the
@@ -302,7 +266,6 @@ variable RC
    tmpu 0= if exit then
    s" TMPDIR" >LEN tmp tmpu >LEN PROC-ENV-SET ;
 
-\ The engine at exe in cwd, with the argv the caller staged and CHILD-ENV.
 : RUN-ARGS ( ptr u8 n ptr u8 n n -- )
    {: exe:ptr exeu:n cwd:ptr cwdu:n ms:n :}
    CHILD-ENV
@@ -310,7 +273,6 @@ variable RC
    OUT IO-CAP >LEN ERR IO-CAP >LEN ms >MS
    PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE RESULT! ;
 
-\ The same with a program on stdin.
 : RUN-EXE ( ptr u8 n ptr u8 n ptr u8 n n -- )
    {: exe:ptr exeu:n cwd:ptr cwdu:n in:ptr inu:n ms:n :}
    CHILD-ENV
@@ -356,8 +318,6 @@ variable RC
    RC @ INCLUDE-IO-RC T=
    OUT-U @ 0 T=
    ERR$ want wantu T$= ;
-
-\ ---- the root -------------------------------------------------------------------
 
 \ The root, whether a frozen row answers, then a library only a root holds.
 : ROOT-PROGRAM ( -- )
@@ -461,8 +421,6 @@ variable RC
    s" require src/lib/errors.f" PLINE
    NOT-TREE-RUN ;
 
-\ ---- resolution and identity -----------------------------------------------------
-
 : APP ( -- )
    s" an app outside the tree resolves its requires through the root" T-LABEL
    PROC-ARGV-RESET
@@ -474,6 +432,9 @@ variable RC
    s" tree/bin/hb" HB-AT$ FOREIGN$ TIMEOUT-MS RUN-ARGS
    S\" test: ok\n" 0 EXPECT ;
 
+\ A relative dependency searches its owner, the root, then the working
+\ directory; a relative --load entry is relative to the working directory only;
+\ only the root's own copy matches a frozen engine row.
 \ The entry lacks src/lib/fs-list.f, which the working directory holds, and
 \ holds src/lib/fs.f, which the root's fs-list.f requires: each decoy would
 \ print its package name, and leave FS-LIST or FS undefined.
@@ -569,8 +530,6 @@ variable RC
    SB-RESET s" source root: a boot file is outside the engine root: " SB-APPEND
    s" foreign/x.f" A$ LINE SB$ REFUSAL ;
 
-\ ---- CD, PUSHPATH, POPPATH -------------------------------------------------------
-
 : CD-REFUSED ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: label:ptr labelu:n rel:ptr relu:n want:ptr wantu:n :}
    label labelu T-LABEL
@@ -654,8 +613,6 @@ variable RC
    s" CD: is not a searchable directory: " CD-REFUSED
    CD-SEARCH-ONLY CD-TOO-LONG PATH-IN-LOAD PATH-STACK ;
 
-\ ---- a captured image ------------------------------------------------------------
-
 \ A restored image starts at the working directory, so a save with a path
 \ pushed is refused by name and writes nothing.
 : SAVE-PUSHED ( -- )
@@ -717,8 +674,6 @@ variable RC
    PROC-ARGV-RESET
    IMAGE$ FOREIGN$ S\" SOURCE-ROOT:ENGINE$ type cr\n" TIMEOUT-MS RUN-EXE
    SB-RESET s" moved" A$ LINE SB$ 0 EXPECT ;
-
-\ ---- a build ---------------------------------------------------------------------
 
 \ The working directory holds only the tree's tools. Driver support comes from
 \ the host tree, but the first target source must still come from CWD.

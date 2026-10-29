@@ -1,22 +1,7 @@
-\ engine-error-package.f - behavioral engine failure ABI regressions.
-\ Native gates run it against HABU_UNDER_TEST; bootstrap.sh runs the same file
-\ against the Gforth-recovered candidate. Besides exact exits 86..88, it proves
-\ the post-seal checker bridge succeeds, and that a definition whose package
-\ context no authority can name fails closed with 70 AND names the refused state
-\ on fd 2 - the status alone cannot distinguish a named refusal from any other
-\ rc-70 reject.
-\
-\ THE FAULT IS INJECTED THROUGH SOURCE, NOT THROUGH THE IMAGE. This file used to
-\ corrupt the sole embedded `checker-package` lookup token in a copy of the engine
-\ and load package source under it. The engine no longer reaches the checker's
-\ package registrar by name - it holds the registrar execution tokens in the
-\ declaration-owner record (src/habu/layout.f NCOMP-DISPATCH:DECL-CELL) - so those
-\ baked strings are read by nothing and patching one is a no-op: the patched engine
-\ loaded the same source with rc 0 (measured). The refusal is reached instead
-\ through the state its guard actually reads: src/core/checker.f
-\ CHECKER-RESOLVE:AUTHORITY answers "no package context" when the current
-\ wordlist is neither the open package's public nor its private one, and
-\ CHECKER-PKG-CONTEXT-REJECT names that and throws the reject rc.
+\ engine-error-package.f - engine failure ABI: exact exits 86..88, the post-seal
+\ checker bridge, and a definition no authority can place in a package failing
+\ closed with 70 and naming the refused state on fd 2. Native gates run it on
+\ HABU_UNDER_TEST, bootstrap.sh on the Gforth-recovered candidate.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -47,6 +32,9 @@ variable ERR-U         \ bytes the last child wrote to fd 2
 \ one, else the running engine itself (src/lib/engine-candidate.f).
 : HB$ ( -- ptr u8 n )       ENGINE-CANDIDATE:PATH$ ;
 
+\ The fault is injected through source: the engine reaches the package registrar
+\ through src/habu/layout.f NCOMP-DISPATCH:DECL-CELL, so patching image strings
+\ is a no-op.
 : SOURCE$ ( ptr u8 n -- ptr u8 n ) {: name:ptr u:n :}
    SB-RESET
    S\" s\" engine-error-test\" " SB-APPEND
@@ -71,10 +59,9 @@ variable ERR-U         \ bytes the last child wrote to fd 2
    PACKAGE-SOURCE$ {: src:ptr u:n :}
    HB$ src u RUN-SOURCE ;
 
-\ A definition compiled into a wordlist that is neither the open package's public
-\ nor its private one: the engine's package record still names a package, the
-\ current wordlist belongs to no side of it, and no authority can say which
-\ package the definition is in.
+\ src/core/checker.f CHECKER-RESOLVE:AUTHORITY answers "no package context" when
+\ the current wordlist is neither the open package's public nor its private one;
+\ CHECKER-PKG-CONTEXT-REJECT names that and throws the reject rc.
 : NO-CONTEXT-SOURCE$ ( -- ptr u8 n )
    s" package BRIDGE-GAP public 0 set-current : W ( -- n ) 1 ; ;package" ;
 
@@ -82,11 +69,9 @@ variable ERR-U         \ bytes the last child wrote to fd 2
    NO-CONTEXT-SOURCE$ {: src:ptr u:n :}
    HB$ src u RUN-SOURCE ;
 
-\ The same refusal raised inside a nested INCLUDE-EVALUATE. BARE sets the bare
-\ wordlist current and evaluates a definition; with TRY's catch around the
-\ evaluate the reject is a throw the catch receives as 70, and without it the
-\ throw leaves the evaluate unhandled and the process exits 70. BARE restores
-\ the package's wordlist itself.
+\ Inside a nested INCLUDE-EVALUATE: with TRY's catch the reject arrives as 70;
+\ without it the throw leaves the evaluate and the process exits 70. BARE
+\ restores the package's wordlist itself.
 : BARE-PREFIX ( ptr u8 n -- ) {: pkg:ptr pkgu:n :}
    SB-RESET
    s" package " SB-APPEND
@@ -139,10 +124,9 @@ variable ERR-U         \ bytes the last child wrote to fd 2
    OUT$ s" AFTER" CONTAINS? 0= TTRUE ;
 
 : COMPILE-KEYWORD-DEFINITION ( -- )
-   \ These are the complete control and loop rows consumed before dictionary
-   \ lookup. All 28 used to publish silently. EXIT, RECURSE, UNLOOP, and {:
-   \ were especially deceptive: a later same-name use could compile rc 0 while
-   \ executing syntax semantics instead of the definition.
+   \ The complete control and loop rows consumed before dictionary lookup: a
+   \ same-name definition (EXIT, RECURSE, UNLOOP, {:) could compile rc 0 and run
+   \ the syntax instead of the definition.
    s" if" COMPILE-KEYWORD-REJECT       s" then" COMPILE-KEYWORD-REJECT
    s" else" COMPILE-KEYWORD-REJECT     s" begin" COMPILE-KEYWORD-REJECT
    s" until" COMPILE-KEYWORD-REJECT    s" again" COMPILE-KEYWORD-REJECT
@@ -184,11 +168,8 @@ variable ERR-U         \ bytes the last child wrote to fd 2
    HB$ s" 0 set-check package CHECK-OFF public : W ( -- n ) 1 ; ;package" RUN-SOURCE 0 T=
    s" a definition with no package authority fails closed" T-LABEL
    NO-CONTEXT-RC 70 T=
-   \ The exit status alone cannot tell a named refusal from a lucky one: 70 is
-   \ also what an undefined word or a rejected body exits with. So the same run's
-   \ fd 2 has to name the state the checker refused on, which is what turns the
-   \ bare `hb: uncaught throw code 7136` (rc 67) this test used to get into a
-   \ diagnostic a reader can act on.
+   \ 70 is also what an undefined word or a rejected body exits with, so fd 2
+   \ must name the state the checker refused on.
    s" a definition with no package authority names the refused state" T-LABEL
    ERR$ s" no authenticated package context" CONTAINS? TTRUE
    CAUGHT-SOURCE$ {: csrc:ptr csrcu:n :}

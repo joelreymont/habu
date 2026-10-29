@@ -1,32 +1,15 @@
-\ x86-64-boot-harness.f - the booted harness: an x86-64 image that boots as the
-\ engine does, carries the whole kernel and runs one case against the DATA the
-\ boot mapped. An image is staged in this order:
-\
-\    BOOT-OPEN,  case  BOOT-CLOSE,
-\
-\ BOOT-OPEN, emits X64BOOT's `_start`, a jump over the kernel X64KERNEL:KERNEL,
-\ emits next, and the case's entry past it; BOOT-CLOSE, exits 0 and writes
-\ the image. A case stages cells, arms DATA cells, calls kernel rows by name and
-\ checks a popped cell, the data stack's depth, the machine stack's balance
-\ and a scratch cell. The checks exit FIRST-CASE upward in the order they are
-\ staged, as the peer harness numbers its case checks; a negative image
-\ (BOOT-OPEN, given true) expects a wrong answer from its first check, so it
-\ exits FIRST-CASE. A row that ends the process ends the image with its own
-\ status.
-\
-\ The peer harness's own entry (test/x86-64-peer-harness.f OPEN,) cannot run a
-\ kernel body: its rbp is a 1 KiB window of the machine stack, CASE1, resets
-\ r12 to rbp and CLOSE, pins r13-r15, where a body reads DATA through rbp and
-\ moves those registers.
-\
-\ boot-x64.f and kernel-x64.f load the x86-64 seam globally, so they come
-\ before the peer harness, which would otherwise load it into its own private
-\ wordlist.
+\ x86-64-boot-harness.f - an x86-64 image that boots as the engine does, carries
+\ the whole kernel and runs one case against the DATA the boot mapped:
+\ BOOT-OPEN, stages the boot and the kernel, the case follows, and BOOT-CLOSE,
+\ exits 0 and writes the image.
 require src/os/linux-x86-64/elf.f
 require src/habu/boot-x64.f
 require src/arch/x86-64/rt.f
 require src/habu/kernel-x64.f
 require src/habu/code-span.f
+\ boot-x64.f and kernel-x64.f load the x86-64 seam globally, so they come
+\ before the peer harness, which would otherwise load it into its own private
+\ wordlist.
 require test/x86-64-peer-harness.f
 
 package X64HARNESS
@@ -49,9 +32,14 @@ public
 
 : SCRATCH-OFF ( -- n ) BOOT-SCRATCH-OFF ;
 
-\ Begin an image: the boot, then the kernel with fresh labels and a fresh
-\ registry, since labels die with the stream the last image linked and
-\ registry rows do not.
+\ test/x86-64-peer-harness.f OPEN, cannot run a kernel body: its rbp is a 1 KiB
+\ window of the machine stack, CASE1, resets r12 to rbp and CLOSE, pins r13-r15,
+\ where a body reads DATA through rbp and moves those registers.
+\ Checks exit FIRST-CASE upward in staging order, as the peer harness numbers
+\ its checks; a negative image (BOOT-OPEN, given true) expects a wrong answer
+\ from its first check.
+\ Fresh labels and a fresh registry per image: labels die with the stream the
+\ last image linked; registry rows do not.
 : BOOT-OPEN, ( bool -- ) {: negative:bool :}
    ASM-RESET
    X64CODE:LBL EXIT-CELL !  X64CODE:LBL ENTRY-CELL !  X64CODE:LBL BOOT-END-CELL !
@@ -66,7 +54,7 @@ public
 
 : PUSH, ( n -- ) {: v:n :}  RAX v IMM  0 G-PUSH ;
 
-\ Push a string's address and length. Its bytes sit in the text behind a jump.
+\ The string's bytes sit in the text behind a jump.
 : PUSH-TEXT, ( ptr u8 n -- ) {: a:ptr u:n :}
    X64CODE:LBL X64CODE:LBL {: text:label past:label :}
    past JMP,
@@ -76,43 +64,36 @@ public
    RAX text MOVABS,  0 G-PUSH
    u PUSH, ;
 
-\ Push the address of the scratch cell n bytes in.
 : PUSH-SCRATCH, ( n -- ) {: off:n :}
    RAX DATA-REG BOOT-SCRATCH-OFF off + MEM-OFF ASM-SINK ENC-LEA
    0 G-PUSH ;
 
-\ Store n into the DATA cell at an offset: arm the friend latch, a live task or
-\ the exit hook before a row reads it.
 : CELL!, ( n n -- ) {: v:n off:n :}
    RAX v IMM
    RAX DATA-REG off MEM-OFF ASM-SINK ENC-MOV-MR ;
 
-\ Call the kernel row registered under the name.
 : CALL-ROW, ( ptr u8 n -- ) X64KERNEL:ENTRY-LABEL CALL, ;
 
-\ Pop a cell and check it.
 : EXPECT-POP, ( n -- ) {: want:n :}  0 G-POP  want EXPECT, ;
 
-\ Check the data stack holds n cells above the base the boot published.
 : EXPECT-DEPTH, ( n -- ) {: want:n :}
    RAX DSP ASM-SINK ENC-MOV-RR
    RAX DATA-REG STACK-ABI:BASE-CELL MEM-OFF ASM-SINK ENC-SUB-RM
    want CELL * EXPECT, ;
 
-\ Check rsp stands where the boot left it: below argc, one cell under the
-\ argument vector the boot published, by the signal band boot-x64.f
-\ SIGNAL-STACK, carves off the machine stack for the life of the thread.
+\ The boot leaves rsp below argc, one cell under the argument vector it
+\ published, by the signal band boot-x64.f SIGNAL-STACK, carves off the machine
+\ stack for the life of the thread.
 : EXPECT-BALANCED, ( -- )
    RAX DATA-REG ARGV-CELL MEM-OFF ASM-SINK ENC-MOV-RM
    RAX RSP ASM-SINK ENC-SUB-RR
    CELL STACK-ABI:SIGNAL-BYTES + EXPECT, ;
 
-\ Check the scratch cell at an offset holds n.
 : EXPECT-SCRATCH, ( n n -- ) {: want:n off:n :}
    RAX DATA-REG BOOT-SCRATCH-OFF off + MEM-OFF ASM-SINK ENC-MOV-RM
    want EXPECT, ;
 
-\ End an image: exit 0 when every check held, then write it.
+\ A row that ends the process ends the image with its own status.
 : BOOT-CLOSE, ( ptr u8 n -- )
    RDI ZERO-REG,
    EXIT,
@@ -124,8 +105,7 @@ private
 : DBASE-REG ( -- r64 ) ENGINE-GPR:X64-DBASE >R64 ;
 : NDICT-REG ( -- r64 ) ENGINE-GPR:X64-NDICT >R64 ;
 
-\ One cell of an inline name: up to eight of its bytes from byte `at`,
-\ little-endian, zero past its end.
+\ Up to eight of the name's bytes from `at`, little-endian, zero past its end.
 : NAME-CELL ( ptr u8 n n -- n ) {: a:ptr u:n at:n :}
    0  CELL 0 ?do
       at i + u < if  a at i + + c@  i 8 * lshift  or  then
@@ -136,7 +116,6 @@ private
    RCX v IMM
    RCX RAX off MEM-OFF ASM-SINK ENC-MOV-MR ;
 
-\ The address of a name's bytes, which sit in the text behind a jump.
 : NAME-TEXT, ( ptr u8 n -- label ) {: a:ptr u:n :}
    X64CODE:LBL X64CODE:LBL {: text:label past:label :}
    past JMP,
@@ -147,13 +126,12 @@ private
 
 public
 
-\ Seed record r14 of the dictionary at r13 + r14 * DREC with a name, a wid and
-\ flags, and count it, laid out as X64KERNEL's record cells name them: the
-\ flags or'd with the name's length, the name inline when it fits DNAME-INL
-\ bytes and otherwise a pointer to its bytes with DNAME-EXT set, and the wid.
-\ The code cell holds the record's ordinal, its index plus one, so a found
-\ record's code is never 0, the answer for an absent name. The booted region is
-\ read-write. It clobbers rax and rcx.
+\ Seed record r14 of the dictionary at r13 + r14 * DREC as X64KERNEL's record
+\ cells name them: the flags or'd with the name's length, the name inline when
+\ it fits DNAME-INL bytes else a pointer with DNAME-EXT set, and the wid. The
+\ code cell holds the ordinal (index plus one), so a found record's code is
+\ never 0, the answer for an absent name. The booted region is read-write.
+\ Clobbers rax and rcx.
 : RECORD, ( ptr u8 n n n -- ) {: a:ptr u:n wid:n flags:n :}
    RAX NDICT-REG DREC >IMM8 ASM-SINK ENC-IMUL-RRI8
    RAX DBASE-REG ASM-SINK ENC-ADD-RR
@@ -171,7 +149,6 @@ public
    wid X64KERNEL:REC-WID ROW!,
    NDICT-REG ASM-SINK ENC-INC ;
 
-\ Pop a cell and check it is the address of record n.
 : EXPECT-ROW, ( n -- ) {: ix:n :}
    0 G-POP
    RAX DBASE-REG ASM-SINK ENC-SUB-RR
@@ -183,8 +160,7 @@ public
 ;package
 
 \ The engine-state cases' words: addresses the boot fixes only at run time
-\ (DATA, the code region), whole DATA cells, and a routine a case installs
-\ where a row calls through a DATA cell.
+\ (DATA, the code region).
 package X64HARNESS
 using X64ASM
 using X64CODE
@@ -197,27 +173,20 @@ public
    RAX DBASE-REG off MEM-OFF ASM-SINK ENC-LEA
    0 G-PUSH ;
 
-\ Pop an address and check it lies n bytes into DATA.
 : EXPECT-POP-DATA, ( n -- ) {: want:n :}
    0 G-POP  RAX DATA-REG ASM-SINK ENC-SUB-RR  want EXPECT, ;
 
-\ Pop an address and check it lies n bytes into the code region.
 : EXPECT-POP-REGION, ( n -- ) {: want:n :}
    0 G-POP  RAX DBASE-REG ASM-SINK ENC-SUB-RR  want EXPECT, ;
 
-\ Check the DATA cell at an offset holds n.
 : EXPECT-CELL, ( n n -- ) {: want:n off:n :}
    RAX DATA-REG off MEM-OFF ASM-SINK ENC-MOV-RM
    want EXPECT, ;
 
-\ Store a label's address into the DATA cell at an offset: install a routine
-\ where a row calls through the cell.
 : LABEL-CELL!, ( label n -- ) {: at:label off:n :}
    RAX at MOVABS,
    RAX DATA-REG off MEM-OFF ASM-SINK ENC-MOV-MR ;
 
-\ Emit a routine behind a jump, its body what the quotation emits and then
-\ `ret`, and answer its entry label.
 : ROUTINE, ( [ -- ] -- label )
    X64CODE:LBL X64CODE:LBL {: entry:label past:label :}
    past JMP,
@@ -232,9 +201,7 @@ public
 ;using
 ;package
 
-\ The dictionary and engine-state cases' words: DATA cells that hold an
-\ address the boot fixes only at run time, text staged in DATA, and a
-\ record's cell.
+\ The dictionary cases' words: DATA addresses the boot fixes only at run time.
 package X64HARNESS
 using X64ASM
 using X64CODE
@@ -242,34 +209,27 @@ using X64RT
 
 public
 
-\ Push the address of the DATA cell at an offset. DATA spans 2^38 bytes, past a
-\ disp32, so the offset is a 64-bit immediate added to DATA.
+\ DATA spans 2^38 bytes, past a disp32, so the offset is a 64-bit immediate
+\ added to DATA.
 : PUSH-DATA, ( n -- ) {: off:n :}
    RAX off IMM  RAX DATA-REG ASM-SINK ENC-ADD-RR
    0 G-PUSH ;
 
-\ Store the address n bytes into DATA into the DATA cell at an offset.
 : DATA-ADDR!, ( n n -- ) {: at:n off:n :}
    RAX DATA-REG at MEM-OFF ASM-SINK ENC-LEA
    RAX DATA-REG off MEM-OFF ASM-SINK ENC-MOV-MR ;
 
-\ Store the address n bytes into the code region into the DATA cell at an
-\ offset.
 : REGION-ADDR!, ( n n -- ) {: at:n off:n :}
    RAX DBASE-REG at MEM-OFF ASM-SINK ENC-LEA
    RAX DATA-REG off MEM-OFF ASM-SINK ENC-MOV-MR ;
 
-\ Store n into the cell at an offset in the code region.
 : REGION!, ( n n -- ) {: v:n off:n :}
    RAX v IMM
    RAX DBASE-REG off MEM-OFF ASM-SINK ENC-MOV-MR ;
 
-\ Store a string's bytes into DATA from an offset, eight to a cell, the last
-\ cell zero past its end.
 : TEXT!, ( ptr u8 n n -- ) {: a:ptr u:n off:n :}
    u 0 ?do  a u i NAME-CELL off i + CELL!,  CELL +loop ;
 
-\ Check the cell at an offset in record n holds n.
 : EXPECT-RECORD, ( n n n -- ) {: want:n ix:n off:n :}
    RAX DBASE-REG ix DREC * off + MEM-OFF ASM-SINK ENC-MOV-RM
    want EXPECT, ;
@@ -292,7 +252,6 @@ using X64RT
 
 public
 
-\ Push the address n bytes past a label.
 : PUSH-LABEL, ( label n -- ) {: at:label off:n :}
    RAX at MOVABS,
    RAX RAX off MEM-OFF ASM-SINK ENC-LEA
@@ -312,10 +271,9 @@ using X64RT
 
 public
 
-\ Compare rax with rcx. On a mismatch, the kernel's `die` row writes the text
-\ and LF on fd 2 and exits FIRST-CASE. A negative image expects a wrong answer
-\ from its first check of either kind, so this check, staged before any
-\ numbered one, expects one less, as EXPECT-RCX, does.
+\ Compare rax with rcx; on a mismatch the kernel's `die` row writes the text and
+\ LF on fd 2 and exits FIRST-CASE. Staged before any numbered check, so a
+\ negative image expects one less, as EXPECT-RCX, does.
 : CHECK-RCX, ( ptr u8 n -- ) {: a:ptr u:n :}
    X64CODE:LBL {: ok:label :}
    WRONG-AT @ CASE-NEXT @ = if
@@ -331,8 +289,8 @@ public
 ;using
 ;package
 
-\ The profiler cases' word: a record whose code is a span of the image's text,
-\ which the image fixes only at link time.
+\ The profiler cases' word: a record whose code is a span of text the image
+\ fixes only at link time.
 package X64HARNESS
 using X64ASM
 using X64CODE
@@ -340,10 +298,9 @@ using X64RT
 
 public
 
-\ Seed record r14 as RECORD, does, in wordlist 0 with no flags, its code the
-\ text from the first label to the second: the code cell holds the first
-\ label's address and the length cell after it the span's byte count as an
-\ exact span (src/habu/code-span.f). It clobbers rax, rcx and rdx.
+\ Seed record r14 as RECORD, does, in wordlist 0 with no flags: the code cell
+\ holds the first label's address and the length cell after it the span's byte
+\ count (src/habu/code-span.f). Clobbers rax, rcx and rdx.
 : CODE-RECORD, ( ptr u8 n label label -- ) {: a:ptr u:n first:label last:label :}
    a u 0 0 RECORD,
    RAX NDICT-REG DREC >IMM8 ASM-SINK ENC-IMUL-RRI8
@@ -361,11 +318,9 @@ public
 ;using
 ;package
 
-\ The window cases' words: the code region put at rest, a probe that proves a
-\ page closed, a poisoned cell, and the cells a case reads back. At rest the
-\ region is read-execute throughout, as the ARM64 boot leaves it, so a row
-\ that writes it outside its window faults into the crash handler's dump
-\ and dies of that signal.
+\ The window cases' words. At rest the code region is read-execute throughout,
+\ as the ARM64 boot leaves it, so a row that writes it outside its window faults
+\ into the crash handler's dump and dies of that signal.
 package X64HARNESS
 using X64ASM
 using X64CODE
@@ -384,8 +339,7 @@ public
 EXPORT NAME-CELL
 
 \ The region at rest, as habu2.f EM-SNAPSHOT-RX-FLUSH leaves it: read-execute
-\ throughout with every band closed. The boot maps it read-write and opens no
-\ band.
+\ with every band closed. The boot maps it read-write and opens no band.
 : REST, ( -- )
    RDI DBASE-REG ASM-SINK ENC-MOV-RR
    RSI REGION >IMM32 ASM-SINK ENC-MOV-RI32
@@ -400,17 +354,14 @@ EXPORT NAME-CELL
    NR-CLOCK-GETTIME SYS,
    0 G-PUSH ;
 
-\ Store -1 n bytes into the region: a store its page must admit.
 : POKE, ( n -- ) {: off:n :}
    RAX -1 >IMM32 ASM-SINK ENC-MOV-RI32
    RAX DBASE-REG off MEM-OFF ASM-SINK ENC-MOV-MR ;
 
-\ Push the cell n bytes into the region.
 : PUSH-REGION-CELL, ( n -- ) {: off:n :}
    RAX DBASE-REG off MEM-OFF ASM-SINK ENC-MOV-RM
    0 G-PUSH ;
 
-\ Push the DATA cell at an offset.
 : PUSH-DATA-CELL, ( n -- ) {: off:n :}
    RAX DATA-REG off MEM-OFF ASM-SINK ENC-MOV-RM
    0 G-PUSH ;

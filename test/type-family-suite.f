@@ -1,14 +1,8 @@
-\ type-family-suite.f — behavior suite for the package-scoped TFAM/SUMV/product/
+\ type-family-suite.f - behavior suite for the package-scoped TFAM/SUMV/product/
 \ layout/SCHEMA registries (src/core/type-family.f, src/core/type-schema.f). A
-\ WHITEBOX-SUITE row: the registry words are checker internals, which the
-\ unsealed engine binds by their recorded rows at top level and in a checked ':'
-\ body alike. The gate runs it on that engine, which test/whitebox-engine.f
-\ builds:
-\     <unsealed engine> --load test/type-family-suite.f
-\ The harness words below are ordinary checked definitions (public words only);
-\ every registry op is a top-level interpret line, naming the internal word or a
-\ checked probe of it. A failure prints F<index> + detail; T-REPORT exits 1 on
-\ any fail.
+\ WHITEBOX-SUITE row: the gate runs it on the unsealed engine
+\ test/whitebox-engine.f builds, which binds checker-internal words by their
+\ recorded rows at top level and in checked bodies. A failure prints F<index>.
 
 require src/lib/test.f
 
@@ -20,7 +14,6 @@ T-RESET
 : T-PF-DROP ( n n n ptr u8 n n n n n n n n -- )
    2drop 2drop 2drop 2drop 2drop 2drop ;
 
-\ catch-code stash (TC) + result-flag stash (FOUNDF) + id/node scratch.
 variable TC     variable FOUNDF
 TYPED-VARIABLE TF-GROW-BASE ptr n
 create TF-GROW-NAME 2 allot
@@ -30,9 +23,6 @@ variable NA     variable R1     variable L0     variable NQ
 variable NPTR   variable WBX
 variable NQDIN   variable NQDOUT  variable NQRIN   variable NQROUT
 variable NQEMP   variable NQMUL variable NQST
-\ Checker-internal words are probed at top level, by name or through a probe
-\ below. The probes are checked: on the whitebox engine a body naming an
-\ internal word binds that word's recorded row.
 : TWX-CHECKER-CAPTURE-PREPARE ( -- ) CHECKER-CAPTURE-PREPARE ;
 
 package TF-FIELD
@@ -69,8 +59,8 @@ public
 : TWX-TFL-MATCH-FAM? ( ptr u8 n -- n bool ) TFL-MATCH-FAM? ;
 : TWX-TFL-VAR? ( ptr u8 n n -- n bool ) TFL-VAR? ;
 : TWX-TFL-VPADS ( n n -- n ) TFL-VPADS ;
-\ layout-cap slice 1: build resolved T-PARAM terms directly (bypassing the sig
-\ parser, which rejects a layout arg in a cell param) to unit-test arg-aware width.
+\ Resolved T-PARAM terms built directly: the signature parser rejects a layout
+\ argument in a cell parameter.
 : TWX-MK-NULLARY ( n -- n ) {: fam:n :}       \ 0-arg term of family fam
    PARAM-SCR-N @ fam TFAM-NAME$ fam MK-PARAM ;
 : TWX-MK-UNARY ( n n -- n ) {: arg:n fam:n :}  \ fam<arg> term
@@ -80,9 +70,8 @@ public
 : TWX-FAMILY-WIDTH ( n -- n ) TWX-MK-NULLARY T-WIDTH ;
 
 
-\ Declaration parameters use one reserved-safe positional alphabet.  These
-\ direct whitebox checks pin both directions and every ordered character;
-\ f/n/r are concrete scalar tokens and therefore never map to a parameter.
+\ Declaration parameters use one reserved-safe positional alphabet; f, n and r
+\ are concrete scalar tokens and never map to a parameter.
 TFAM-DECL-PARAM-COUNT 23 T=
 0  $61 TDP-PAIR
 1  $62 TDP-PAIR
@@ -116,15 +105,12 @@ $6E TFAM-DECL-CHAR>PARAM nip TFALSE   \ n is int
 $72 TFAM-DECL-CHAR>PARAM nip TFALSE   \ r is real
 $41 TFAM-DECL-CHAR>PARAM nip TFALSE   \ uppercase is never positional
 $30 TFAM-DECL-CHAR>PARAM nip TFALSE   \ non-letter is never positional
-\ clean slate (nothing declares families during prefix load, but be explicit).
 TFAM-RESET
 SCHEMA-RESET
 
-\ F4 (dot habu-tfam-nested-param-09fa2004): TFAM-RESET must de-register the
-\ internal `field` family, else its reserved id (normally 15 — the 16th family)
-\ dangles and a later family that lands on id 15 is misclassified as a record
-\ field. After reset FIELD-FAM is -1; declaring 16 fresh families puts the 16th
-\ on id 15, yet field stays de-registered, so no misclassification is possible.
+\ TFAM-RESET must de-register the internal `field` family, else its reserved id
+\ (15, the 16th family) dangles and a later family on id 15 is misclassified as
+\ a record field.
 FIELD-FAM @ -1 T=
 s" pkgf4" CHECKER-PACKAGE-PUBLIC s" a0" 1 TK-CELL TFAM-DECL drop
 s" pkgf4" CHECKER-PACKAGE-PUBLIC s" a1" 1 TK-CELL TFAM-DECL drop
@@ -147,18 +133,14 @@ FIELD-FAM @ -1 T=        \ yet field stays de-registered — id 15 is not a fiel
 TFAM-RESET                   \ restore the clean slate for the rest of the suite
 SCHEMA-RESET
 
-\ ---------------------------------------------------------------------------
 \ 1. Families used by lookup, scope, growth and rollback checks.
-\ ---------------------------------------------------------------------------
 s" pkga" CHECKER-PACKAGE-PRIVATE s" opt"  1 TK-SUM     TFAM-DECL FID !
 s" pkgb" CHECKER-PACKAGE-PUBLIC  s" res"  2 TK-SUM     TFAM-DECL PID !
 s" pkga" CHECKER-PACKAGE-PRIVATE s" res"  0 TK-ENUM    TFAM-DECL AID !
 s" pkgc" CHECKER-PACKAGE-PUBLIC  s" pt"   0 TK-PRODUCT TFAM-DECL PTID !
 s" pkgc" CHECKER-PACKAGE-PUBLIC  s" cl"   0 TK-CELL    TFAM-DECL CLID !
 
-\ ---------------------------------------------------------------------------
 \ 2. qualified (exact-package) vs unqualified (active-scope) lookup.
-\ ---------------------------------------------------------------------------
 s" pkga" s" opt"  TFAM-FIND-IN FOUNDF !  FID @ T=  FOUNDF @ -1 T=
 s" pkga" s" nope" TFAM-FIND-IN FOUNDF ! drop  FOUNDF @ 0 T=
 s" pkga" s" opt"  TFAM-RESOLVE FOUNDF !  FID @ T=  FOUNDF @ -1 T=
@@ -166,32 +148,24 @@ s" pkga" s" opt"  TFAM-RESOLVE FOUNDF !  FID @ T=  FOUNDF @ -1 T=
 \ private res) — own-package-first + public-elsewhere.
 s" pkgc" s" res"  TFAM-RESOLVE FOUNDF !  PID @ T=  FOUNDF @ -1 T=
 
-\ ---------------------------------------------------------------------------
 \ 3. public / private isolation.
-\ ---------------------------------------------------------------------------
 s" pkgb" s" opt" TFAM-RESOLVE FOUNDF ! drop  FOUNDF @ 0 T=
 s" res" TFAM-FIND-PUBLIC FOUNDF !  PID @ T=  FOUNDF @ -1 T=
 s" opt" TFAM-FIND-PUBLIC FOUNDF ! drop  FOUNDF @ 0 T=
 
-\ ---------------------------------------------------------------------------
 \ 4. same tail across different packages -> distinct ids, both findable.
-\ ---------------------------------------------------------------------------
 AID @ PID @ = TFALSE
 s" pkga" s" res" TFAM-FIND-IN FOUNDF !  AID @ T=  FOUNDF @ -1 T=
 s" pkgb" s" res" TFAM-FIND-IN FOUNDF !  PID @ T=  FOUNDF @ -1 T=
 AID @ TFAM-ARITY@ 0 T=    PID @ TFAM-ARITY@ 2 T=
 
-\ ---------------------------------------------------------------------------
 \ 5. duplicate rejection within a package (throws E-TFAM-DUP).
 \    stack before catch: pkg-a pkg-u vis name-a name-u arity kind  (7 cells)
-\ ---------------------------------------------------------------------------
 : TFC1 ( -- ) s" pkga" CHECKER-PACKAGE-PRIVATE s" opt" 1 TK-SUM TFAM-DECL drop ;
 ' TFC1 catch
    TC !  TC @ E-TFAM-DUP T=
 
-\ ---------------------------------------------------------------------------
 \ 6. uppercase / mixed-case rejection at the declaration boundary.
-\ ---------------------------------------------------------------------------
 s" result"  TF-CANON? TTRUE
 s" opt-2"   TF-CANON? TTRUE
 s" a-b-c"   TF-CANON? TTRUE           \ internal single hyphens are fine
@@ -213,9 +187,7 @@ s" -"       TF-CANON? TFALSE
 ' TFC3 catch
    TC !  TC @ E-TFAM-CASE T=
 
-\ ---------------------------------------------------------------------------
 \ 7. no hidden-field ('@name') lookup from public signatures.
-\ ---------------------------------------------------------------------------
 s" @opt.slot0" TF-HIDDEN? TTRUE
 s" @res.tag"   TF-HIDDEN? TTRUE           \ item-7 tag row shape is hidden too
 s" opt"        TF-HIDDEN? TFALSE
@@ -226,10 +198,8 @@ s" pkgb" s" @res.tag"   TFAM-RESOLVE FOUNDF ! drop  FOUNDF @ 0 T=
 FID @ 3 TFAM-SLOTS!
 FID @ 0 PK-TYPE TFAM-PK!
 
-\ ---------------------------------------------------------------------------
 \ 9. SCHEMA nodes: valid builders, malformed rejection, root pool + growth.
 \    SCH nodes seed cap 4, roots seed cap 4 -> add >4 of each to force a grow.
-\ ---------------------------------------------------------------------------
 0 SCHEMA-PARAM NP !    NP @ SCHEMA-TAG@ SCH-PARAM T=   NP @ SCHEMA-A@ 0 T=
 1 SCHEMA-CON   NC !    NC @ SCHEMA-TAG@ SCH-CON T=     NC @ SCHEMA-A@ 1 T=
 FID @ 0 1 SCHEMA-APP NA !   NA @ SCHEMA-TAG@ SCH-APP T=   NA @ SCHEMA-C@ 1 T=
@@ -247,11 +217,8 @@ NC @ SCHEMA-ROOT+ drop   NA @ SCHEMA-ROOT+ drop
 NP @ SCHEMA-ROOT+ drop   NC @ SCHEMA-ROOT+ drop
 SCHEMA-ROOT-N@ 5 T=
 
-\ SC-QUOT quotation payload node (dot habu-sc-quot-full-db4d0518): each effect side
-\ is a full SCH-ROW node listing that side's ordered element type nodes. Build four
-\ single-element rows (din=[NP] dout=[NC] rin=[NA] rout=[NP]), then a quot; verify the
-\ side roots are SCH-ROW nodes with the expected elements, an empty side, a multi-type
-\ side, hasr normalization, and malformed-side rejection.
+\ SC-QUOT quotation payload: each effect side is a full SCH-ROW node listing
+\ that side's element type nodes in order; hasr normalizes through SCH-FLAG.
 NP @ SCHEMA-ROOT+ 1 SCHEMA-ROW NQDIN !
 NC @ SCHEMA-ROOT+ 1 SCHEMA-ROW NQDOUT !
 NA @ SCHEMA-ROOT+ 1 SCHEMA-ROW NQRIN !
@@ -284,7 +251,7 @@ NQMUL @ 0 SCHEMA-ROW-ELEM@ NP @ T=   NQMUL @ 1 SCHEMA-ROW-ELEM@ NC @ T=
 : TFC7 ( -- ) NQDIN @ NQDOUT @ NQRIN @ 99999   -1 SCHEMA-QUOT drop ;
 ' TFC7 catch TC !  TC @ E-SCHEMA-BAD T=
 
-\ SC-PTR pointer payload node: child round-trip,
+\ SCH-PTR pointer payload node: child round-trip,
 \ nesting, predicate discrimination, and malformed-child rejection.
 NC @ SCHEMA-PTR NPTR !
 NPTR @ SCHEMA-TAG@ SCH-PTR T=   NPTR @ SCHEMA-PTR? TTRUE
@@ -295,10 +262,8 @@ NC @ SCHEMA-PTR? TFALSE
 0 ' SCHEMA-PTR catch   TC ! drop  TC @ E-SCHEMA-BAD T=
 99999 ' SCHEMA-PTR catch   TC ! drop  TC @ E-SCHEMA-BAD T=
 
-\ ---------------------------------------------------------------------------
 \ 10. SUMV variants: add, per-family key, dup rejection, cross-family reuse.
 \    SUMV-ADD ( fam name-a name-u tag sch-start sch-count paycells -- id )
-\ ---------------------------------------------------------------------------
 FID @ s" ok"  0 0 0 0 SUMV-ADD VOK !    VOK @ SUMV-FAM@ FID @ T=   VOK @ TWX-SUMV-TAG@ 0 T=
 FID @ s" err" 1 0 0 1 SUMV-ADD VERR !   VERR @ SUMV-NAME$ s" err" T$=   VERR @ TWX-SUMV-PAYCELLS@ 1 T=
 PID @ s" ok"  0 0 0 0 SUMV-ADD drop         \ same 'ok' tail under a different family is fine
@@ -311,9 +276,7 @@ FID @ s" none" SUMV-FIND FOUNDF ! drop  FOUNDF @ 0 T=
 : TFC8 ( -- ) FID @ s" ok" 0 0 0 0 SUMV-ADD drop ;
 ' TFC8 catch TC !  TC @ E-TFAM-DUP T=
 
-\ ---------------------------------------------------------------------------
 \ 11. shared fields: atomic tx add, committed reflection, dup rejection.
-\ ---------------------------------------------------------------------------
 variable PFTX   variable PFOUT   variable PFIN
 variable PFBASE
 variable PFBAD  variable PFAPP   variable PFARG
@@ -368,8 +331,8 @@ TF-FIELD:OPEN PFTX !
 TC @ E-PF-OWNER T=
 PFTX @ TF-FIELD:ROLLBACK
 
-\ Optional variant ids are part of the key. Packed rows still use the current
-\ canonical cell payload ABI until a distinct packed-field ABI exists.
+\ Optional variant ids are part of the key. Packed rows use the canonical cell
+\ payload ABI.
 TF-FIELD:OPEN PFTX !
 PFTX @ FID @ VOK @ s" value" 1 0 1 0 CELL CELL PF-FLAGS-NONE TF-FIELD:ADD PFTX !
 PFTX @ FID @ VERR @ s" value" 1 0 1 0 CELL CELL PF-FLAGS-NONE TF-FIELD:ADD PFTX !
@@ -502,8 +465,8 @@ TF-FIELD:OPEN PFTX !
 ' TFC15 catch TC !
 TC @ E-PF-SCHEMA T=  PFTX @ TF-FIELD:ROLLBACK
 
-\ PARAM width is defined only for cell-kinded owner parameters. Layout/type
-\ parameters remain fail-closed until field-width instantiation exists.
+\ PARAM width is defined only for cell-kinded owner parameters; layout and type
+\ parameters are refused, having no field-width instantiation.
 0 SCHEMA-PARAM SCHEMA-ROOT+ PFBAD !
 TF-FIELD:OPEN PFTX !
 : TFC16 ( -- ) PFTX @ FID @ VOK @ s" type-param" PFBAD @ 1 1 CELL CELL CELL PF-FLAGS-NONE
@@ -523,11 +486,9 @@ PFTX @ FID @ VOK @ s" cell-param" PFBAD @ 1 1 CELL CELL CELL PF-FLAGS-NONE
 PFTX @ TF-FIELD:ROLLBACK
 FID @ 0 PK-TYPE TFAM-PK!
 
-\ Concrete-type liveness (backed by the now internal-marked checker word
-\ CT-LIVE?, dot habu-internalize-field-liveness): a field whose schema is a
-\ SCHEMA-CON over a LIVE concrete type validates and adds; a SCHEMA-CON over a
-\ dead concrete-type code (99999) is rejected E-PF-SCHEMA. Removing the global
-\ CT-LIVE? axiom must leave both outcomes unchanged.
+\ Concrete-type liveness (CT-LIVE?): a field whose schema is a SCHEMA-CON over a
+\ live concrete type validates and adds; one over a dead concrete-type code
+\ (99999) is rejected E-PF-SCHEMA.
 1 SCHEMA-CON SCHEMA-ROOT+ PFBAD !
 TF-FIELD:OPEN PFTX !
 PFTX @ PTID @ PF-NO-VARIANT s" live-con" PFBAD @ 20 1 20 cells CELL CELL PF-FLAGS-NONE
@@ -626,8 +587,8 @@ PFTX @ PTID @ PF-NO-VARIANT s" zero-app" PFAPP @
    20 1 20 cells CELL CELL PF-FLAGS-NONE TF-FIELD:ADD PFTX !
 PFTX @ TF-FIELD:ROLLBACK
 
-\ STACK and PACKED accept only the canonical cell mapping. Other policies
-\ reject otherwise-valid rows until their field ABI validators exist.
+\ STACK and PACKED accept only the canonical cell mapping. Other policies reject
+\ otherwise-valid rows: they have no field ABI validator.
 PTID @ TL-STACK-CELL-TAG TFAM-LAYOUT!
 TF-FIELD:OPEN PFTX !
 : TFC28 ( -- ) PFTX @ PTID @ PF-NO-VARIANT s" stack-bad" 1 20 1 21 cells CELL CELL PF-FLAGS-NONE
@@ -715,10 +676,8 @@ TF-FIELD:OPEN PFOUT !  TF-FIELD:OPEN PFIN !
 ' TFC35 catch TC !  TC @ E-PF-TX T=
 PFIN @ TF-FIELD:ROLLBACK  PFOUT @ TF-FIELD:ROLLBACK
 
-\ ---------------------------------------------------------------------------
 \ 12. layout records: one per family, keyed by family; dup rejection.
 \    LAY-ADD ( fam policy size align tagw -- id )
-\ ---------------------------------------------------------------------------
 FID  @ TL-STACK-CELL-TAG 16 8 8 LAY-ADD L0 !   L0 @ LAY-FAM@ FID @ T=   L0 @ LAY-SIZE@ 16 T=
 PID  @ TL-PACKED-TAG     24 8 4 LAY-ADD drop
 AID  @ TL-STACK-CELL-TAG  8 8 8 LAY-ADD drop
@@ -729,11 +688,9 @@ CLID @ LAY-FIND FOUNDF !  LAY-POLICY@ TL-CUSTOM T=  FOUNDF @ -1 T=
 : TFC36 ( -- ) FID @ TL-STACK-CELL-TAG 8 8 8 LAY-ADD drop ;
 ' TFC36 catch TC !  TC @ E-TFAM-DUP T=
 
-\ ---------------------------------------------------------------------------
 \ 12b. Constructor package names escape each hyphen in the package and family
 \ tail, join them with one hyphen, and remain spelled out through the checker's
 \ 255-byte package-name limit.
-\ ---------------------------------------------------------------------------
 TYPED-VARIABLE CPA ptr u8   variable CPU
 \ top level: bare uppercased tail, no separator.
 s" " s" result" TF-CTOR-PKG$ s" RESULT" T$=
@@ -749,7 +706,7 @@ s" a-b" s" c"      TF-CTOR-PKG$ s" A--B-C" T$=
 s" a"   s" b-c"    TF-CTOR-PKG$ s" A-B--C" T$=
 s" "    s" a-b-c"  TF-CTOR-PKG$ s" A--B--C" T$=
 
-\ Longer names keep the same spelling, including lengths past the former cap.
+\ Longer names keep the same spelling.
 s" verylongpackagename" s" result" TF-CTOR-PKG$ s" VERYLONGPACKAGENAME-RESULT" T$=       \ 26
 s" " s" verylongfamilyname" TF-CTOR-PKG$ s" VERYLONGFAMILYNAME" T$=                        \ 18
 s" abcdefghijklmno" s" pqrstuvwxyzabcde" TF-CTOR-PKG$ s" ABCDEFGHIJKLMNO-PQRSTUVWXYZABCDE" T$=      \ 15+1+16
@@ -772,10 +729,8 @@ CPA @ 254 + c@ char X T=
 ' TFC37 catch TC !
 TC @ E-PACKAGE-NAME-CAP T=
 
-\ ---------------------------------------------------------------------------
 \ 13. grow across the TFAM record / string / param-kind seed caps, then prove
 \    family id 0 survives every relocation.
-\ ---------------------------------------------------------------------------
 FID @ TF-REC@ TF-GROW-BASE !
 s" pkgd" CHECKER-PACKAGE-PUBLIC s" tree"  1 TK-SUM     TFAM-DECL drop
 s" pkgd" CHECKER-PACKAGE-PUBLIC s" list"  1 TK-SUM     TFAM-DECL drop
@@ -791,10 +746,8 @@ FID @ TFAM-KIND@ TK-SUM T=
 FID @ 0 TFAM-PK@ PK-TYPE T=
 s" pkgd" s" tree" TFAM-FIND-IN FOUNDF ! drop  FOUNDF @ -1 T=
 
-\ ---------------------------------------------------------------------------
 \ 14. snapshot persist/restore: run the exact words TWX-CHECKER-CAPTURE-PREPARE
 \    invokes and prove every store reads back identically after the bake.
-\ ---------------------------------------------------------------------------
 TFAM-SNAPSHOT-PERSIST
 SCHEMA-SNAPSHOT-PERSIST
 FID @ TFAM-NAME$ s" opt" T$=
@@ -810,7 +763,7 @@ R1 @ SCHEMA-ROOT@ SCHEMA-TAG@ SCH-PARAM T=
 NA @ SCHEMA-TAG@ SCH-APP T=
 \ SC-QUOT node (NQ, built in section 9: din=[NP] dout=[NC] rin=[NA] rout=[NP] hasr=-1)
 \ survives the bake: tag, side SCH-ROW roots, their elements, and hasr all read back
-\ from the persisted node arena + root pool (destruction review finding 3).
+\ from the persisted node arena + root pool.
 NQ @ SCHEMA-TAG@ SCH-QUOT T=
 NQ @ SCHEMA-QUOT-DIN@  NQDIN @ T=
 NQ @ SCHEMA-QUOT-DIN@  0 SCHEMA-ROW-ELEM@ NP @ T=
@@ -823,11 +776,9 @@ UNAMED @ 0 SUMV-PAY-ROOT USCH0 @ T=
 UNAMED @ 1 SUMV-PAY-FIELD FOUNDF ! PFOUT !
 FOUNDF @ -1 T=  PFOUT @ TYPE-FIELD:NAME$ s" second" T$=
 
-\ ---------------------------------------------------------------------------
 \ 15. ambiguous unqualified public resolution: two OTHER-package publics sharing
 \    a tail throw E-TFAM-AMBIG; an own-package match still wins without ambiguity;
-\    qualified (exact-package) access resolves both distinctly. (dot 2a)
-\ ---------------------------------------------------------------------------
+\    qualified (exact-package) access resolves both distinctly.
 variable AX  variable AY
 s" pkgx" CHECKER-PACKAGE-PUBLIC s" amb" 1 TK-SUM TFAM-DECL AX !
 s" pkgy" CHECKER-PACKAGE-PUBLIC s" amb" 1 TK-SUM TFAM-DECL AY !
@@ -847,11 +798,9 @@ s" pkgy" s" amb" TFAM-FIND-IN FOUNDF !  AY @ T=  FOUNDF @ -1 T=
 s" pkgx" CHECKER-PACKAGE-PUBLIC s" solo" 0 TK-ENUM TFAM-DECL drop
 s" solo" TFAM-FIND-PUBLIC FOUNDF ! drop  FOUNDF @ -1 T=
 
-\ ---------------------------------------------------------------------------
 \ 16. A global family and package-owned families may share a tail. Resolution
 \     is lexical: exact owner, exact global, then one non-global public family.
 \     The exact rows keep their independent arities through snapshot persist.
-\ ---------------------------------------------------------------------------
 variable GSPAN  variable MSPAN  variable MLOCAL  variable OPUBLIC
 s" "      CHECKER-PACKAGE-PUBLIC  s" span" 3 TK-CELL TFAM-DECL GSPAN !
 s" mem"   CHECKER-PACKAGE-PUBLIC  s" span" 6 TK-CELL TFAM-DECL MSPAN !
@@ -884,13 +833,10 @@ s" caller" s" tier" TFAM-RESOLVE FOUNDF ! OPUBLIC @ T= FOUNDF @ -1 T=
 GSPAN @ TFAM-ARITY@ 3 T=
 MSPAN @ TFAM-ARITY@ 6 T=
 
-\ ---------------------------------------------------------------------------
-\ TFL-* compiler-facing lowering surface (dot
-\ habu-tfam-10-native design A) — pure folded resolution + tag/pad metadata
-\ the native construct/MATCH emitters call by name at token positions. Same
-\ scope rules as the checker friend XTs (owner-only construct, signature-scope
-\ match), no diagnostic latch, no checker-row effect.
-\ ---------------------------------------------------------------------------
+\ TFL-* compiler-facing lowering surface: pure folded resolution + tag/pad
+\ metadata the native construct/MATCH emitters call by name at token positions.
+\ Same scope rules as the checker friend XTs (owner-only construct,
+\ signature-scope match), no diagnostic latch, no checker-row effect.
 variable LID   variable LVID
 SUMTYPE lres
   VARIANT lok  n   ;VARIANT
@@ -927,16 +873,12 @@ s" lnil" LID @ TFL-CVAR? FOUNDF !  2 T=  2 T=  FOUNDF @ -1 T=
 s" nope" LID @ TFL-CVAR? FOUNDF !  0 T=  0 T=  FOUNDF @ 0 T=
 s" TFL-SURFACE" type cr
 
-\ ---------------------------------------------------------------------------
 \ packed ABI descriptor (docs/design.md "Families and layout policies", policy
 \ TL-PACKED-TAG). PACKED-NARROW picks the smallest byte tag width holding a
 \ K-variant tag; PACKED-DESC composes ( size align tagw ) with cell payloads
-\ (align CELL) and the narrowed tag placed last, SIZE the aligned record stride.
-\ Computed for ANY family regardless of its declared policy (the accept-flip
-\ that populates LAY on POLICY packed-tag is a later sub-slice); private
-\ families (package pkpk) keep the protected-WID seal cap untouched (dot
-\ habu-seal-protwid-cap-6f1c9d2b).
-\ ---------------------------------------------------------------------------
+\ (align CELL) and the narrowed tag placed last, SIZE the aligned record stride,
+\ for any family whatever its declared policy. Private families (package pkpk)
+\ keep the protected-WID seal cap untouched.
 0 PACKED-NARROW 0 T=
 1 PACKED-NARROW 1 T=
 256 PACKED-NARROW 1 T=
@@ -964,7 +906,6 @@ s" pkpk" s" pkpkp" TFAM-FIND-IN drop PKI !
 PKI @ PACKED-DESC PTW ! PAL ! PSZ !
 PSZ @ 16 T=  PAL @ 8 T=   PTW @ 0 T=
 
-\ ---------------------------------------------------------------------------
 \ packed-tag ACCEPT. `POLICY packed-tag`
 \ declares: the family row carries TL-PACKED-TAG and the close bakes the
 \ PACKED-DESC memory descriptor into the LAY registry. packed is a MEMORY-ABI
@@ -972,7 +913,6 @@ PSZ @ 16 T=  PAL @ 8 T=   PTW @ 0 T=
 \ packed family and its stack-cell-tag twin construct, MATCH, and transport
 \ (dup/drop via nip) exactly alike — pinned differentially below. Private
 \ families (package pkac) keep the protected-WID seal cap untouched.
-\ ---------------------------------------------------------------------------
 variable PQA  variable PQB  variable PQL  variable PQF
 package pkac
 SUMTYPE pkacp POLICY packed-tag
@@ -1027,16 +967,12 @@ PQL @ LAY-SIZE@ 16 T=  PQL @ LAY-ALIGN@ 8 T=   PQL @ LAY-TAGW@ 0 T=
 7 PKAC-P-RT 7 PKAC-S-RT T=
 ;package
 
-\ ---------------------------------------------------------------------------
-\ boxed / niche-null stack width = 1 (docs/design.md
-\ "Families and layout policies"). No declaration accepts boxed/niche yet (both
-\ reject at the POLICY clause), so this shared W=1 metadata is exercised through
-\ the direct TFAM-LAYOUT! mutator, exactly like the packed descriptor (LAY) unit
-\ tests. A multi-slot SUM (default width slots+1) collapses to 1 under boxed and
-\ under niche, but keeps its cell width under stack-cell-tag AND packed (packed
-\ is a MEMORY-ABI descriptor only) — the regression guard that the branch fires
-\ for boxed/niche alone.
-\ ---------------------------------------------------------------------------
+\ boxed / niche-null stack width = 1 (docs/design.md "Families and layout
+\ policies"). No declaration accepts boxed or niche (both reject at the POLICY
+\ clause), so this W=1 metadata is exercised through the direct TFAM-LAYOUT!
+\ mutator. A multi-slot SUM (width slots+1) collapses to 1 under boxed and niche
+\ but keeps its cell width under stack-cell-tag and packed (a MEMORY-ABI
+\ descriptor only).
 s" pkgw" CHECKER-PACKAGE-PRIVATE s" wbx" 1 TK-SUM TFAM-DECL WBX !
 WBX @ 2 TFAM-SLOTS!                                           \ 2 payload slots
 WBX @ TFAM-LAYOUT-POLICY@ TL-STACK-CELL-TAG T=                \ default policy
@@ -1046,16 +982,11 @@ WBX @ TL-NICHE       TFAM-LAYOUT!   WBX @ TFAM-WIDTH@ 1 T=
 WBX @ TL-PACKED-TAG  TFAM-LAYOUT!   WBX @ TFAM-WIDTH@ 3 T=      \ packed keeps cell width
 WBX @ TL-STACK-CELL-TAG TFAM-LAYOUT!   WBX @ TFAM-WIDTH@ 3 T=      \ restored
 
-\ ---------------------------------------------------------------------------
 \ arg-aware INSTANTIATED width. T-WIDTH walks a resolved layout term's
 \ variant/product schemas, substituting each param slot by its arg's width,
-\ instead of the declared "every param is one cell" TFAM-WIDTH@. A width-1 arg
-\ reproduces the declared width (behaviour-preserving groundwork, what every
-\ cell-kinded corpus shape uses); a wide layout arg widens the sum payload — the
-\ degenerate case the declared family-only width gets wrong. The probe shapes
-\ stay rejected at the sig layer (slice 1 adds NO new accepts); these terms are
-\ built directly through MK-PARAM to exercise the width function alone.
-\ ---------------------------------------------------------------------------
+\ where TFAM-WIDTH@ counts every param as one cell. A width-1 arg reproduces the
+\ declared width; a wide layout arg widens the sum payload. The signature layer
+\ rejects these shapes, so the terms are built directly through MK-PARAM.
 variable IWP1  variable IWP3  variable IWOPT  variable IWT
 package pkiw
 ENUM pkiw1 red green ;ENUM                                         \ layout, width 1 (tag only)
@@ -1072,20 +1003,17 @@ IWOPT @ TFAM-WIDTH@ 2 T=                          \ sum: max(none=0, some=1-as-c
 \ arg-aware width == T-WIDTH of the built terms
 IWP1 @ TWX-MK-NULLARY T-WIDTH 1 T=                \ enum term self-check
 IWP3 @ TWX-MK-NULLARY T-WIDTH 3 T=                \ product term self-check
-\ behaviour-preserving: a width-1 layout arg reproduces the declared sum width
+\ a width-1 layout arg reproduces the declared sum width
 IWP1 @ TWX-MK-NULLARY IWOPT @ TWX-MK-UNARY T-WIDTH 2 T=           \ opt<enum1> == declared 2
-\ the groundwork proof: a width-3 layout arg widens the sum payload (declared width 2 was degenerate)
+\ a width-3 layout arg widens the sum payload past the declared width 2
 IWP3 @ TWX-MK-NULLARY IWOPT @ TWX-MK-UNARY IWT !
 IWT @ T-WIDTH 4 T=                                \ opt<pt3>: max(0, width(pt3)=3) + tag = 4
 IWOPT @ TFAM-WIDTH@ 2 T=                          \ family-only width unchanged (still 2) — arg-aware differs
 
-\ ---------------------------------------------------------------------------
-\ 20. field-id hardening (dot habu-harden-field-tokens): every public indexed
-\ reflection accessor rejects an out-of-band id with a catchable E-PF-ID throw
-\ instead of a process-killing `die`; TFAM-RESET refuses to discard a live
-\ field-transaction frame; and the transaction-token generation stays monotonic
-\ across reset, so a completed token can never alias a transaction begun later.
-\ ---------------------------------------------------------------------------
+\ 20. field-id hardening: every public indexed reflection accessor rejects an
+\ out-of-band id with a catchable E-PF-ID throw; TFAM-RESET refuses to discard a
+\ live field-transaction frame; and the transaction-token generation stays
+\ monotonic across reset, so a completed token never aliases a later one.
 variable PROVID   variable STOK   variable NTOK   variable RTOK   variable RCNT
 
 \ net-neutral ( -- ) probes over each public indexed accessor, reading the
@@ -1150,13 +1078,11 @@ NTOK @ STOK @ = TFALSE                 \ so a completed token can never be reiss
 ' TFC39 catch TC !  TC @ E-PF-TX T=   \ stale token never aliases the new frame
 NTOK @ TF-FIELD:ROLLBACK
 
-\ ---------------------------------------------------------------------------
-\ 21. field rollback zero-scrub (dot habu-make-field-rollback): a rolled-back
+\ 21. field rollback zero-scrub: a rolled-back
 \ provisional row is scrubbed to canonical zero in the live arena, and snapshot
 \ persistence zero-fills the unused product-field capacity, so retired bytes
 \ never enter reflection or snapshot/fixpoint identity. Raw shims read/write PF
 \ records directly (bypassing the committed-id bound) to observe retired slots.
-\ ---------------------------------------------------------------------------
 : TWX-PF-RAW@ ( n n -- n ) {: id:n off:n :} id PF-REC * PF-BASE + off cells + @ ;
 : TWX-PF-RAW! ( n n n -- ) {: v:n id:n off:n :} v id PF-REC * PF-BASE + off cells + ! ;
 variable RBPID   variable RBCN   variable RBIDX
@@ -1191,11 +1117,9 @@ RBCN @ 3 TWX-PF-RAW@ 0 T=           \ persist scrubbed the unused capacity to ze
 RBPID @ TYPE-FIELD:NO-VARIANT s" f0" TYPE-FIELD:FIND FOUNDF ! drop FOUNDF @ -1 T=
 RBPID @ TYPE-FIELD:NO-VARIANT s" f1" TYPE-FIELD:FIND FOUNDF ! drop FOUNDF @ -1 T=
 
-\ ---------------------------------------------------------------------------
 \ The sealed TYPE-NAME owner rejects every reserved variant category and only
 \ families in the global or active package scope. An unrelated package does not
 \ reserve the same tail.
-\ ---------------------------------------------------------------------------
 s" " CHECKER-PACKAGE-PUBLIC s" global-variant" 0 TK-ENUM TFAM-DECL drop
 s" variant-name-test" CHECKER-PACKAGE-PUBLIC s" local-variant" 0 TK-ENUM TFAM-DECL drop
 s" other-variant-test" CHECKER-PACKAGE-PUBLIC s" foreign-variant" 0 TK-ENUM TFAM-DECL drop
@@ -1248,9 +1172,7 @@ s" ready" TYPE-NAME:VARIANT-REQUIRE
 
 ;package
 
-\ ---------------------------------------------------------------------------
 \ report: "test: ok" on success, nonzero exit on any failure.
-\ ---------------------------------------------------------------------------
 T-REPORT
 
 ;using

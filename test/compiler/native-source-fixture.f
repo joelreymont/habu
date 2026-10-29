@@ -1,36 +1,9 @@
-\ native-source-fixture.f - the front half of the native chain, for everything
-\ that needs to run it. One concern: turning a line of straight-line Habu source
-\ into a sealed tape and the module the elaborator writes into.
-\
-\ WHY THIS IS ITS OWN FILE. Every caller turns source text into HIR the same
-\ way. A second copy of the lexer would be a second
-\ opinion about what a token is, and two harnesses would then disagree for a
-\ reason that is about them rather than about the compiler.
-\
-\ WHAT A FIXTURE STATES AND WHAT THIS FILE DERIVES. The caller states the source
-\ text. This file splits it on spaces and appends one tape token per word: a run
-\ of digits is an integer literal carrying its value, everything else is a name,
-\ and every token's byte span is its real range in the text - so spans and
-\ spellings cannot disagree with the source, and the module registers those same
-\ bytes as its source, which is what lets the selector check later that the text
-\ presented to it is the text the module was compiled from.
-\
-\ THE TEXT IS A DEFINITION WITHOUT ITS FRAME, BECAUSE THAT IS WHAT A REAL TAPE
-\ HOLDS. The tape a real compilation produces is filled by the checker's own
-\ reader, and the engine hands that reader the definition it RECONSTRUCTED: the
-\ name, the declared signature and the body, with the opening `:` and the closing
-\ `;` already consumed. There is no frame token on a produced tape and there
-\ never will be, so a caller here states `NAME body…` rather than
-\ `: NAME body… ;`. What draws the name/body boundary is the recorded parser
-\ mode, exactly as it does on a produced tape: `:` parses the defined name from
-\ the outer interpreter before it switches the parser to compiling, so the FIRST
-\ token is marked interpreting and every later one compiling. That is the one
-\ fact src/compiler/native/elaborate.f reads the frame from, so a fixture that
-\ marked two tokens interpreting would be describing a tape no producer can make.
-\
-\ NOTHING IN THIS FILE ASSERTS. It defines no case and prints nothing: it is a
-\ fixture, not a test, so it never names the harness verdict word and no gate
-\ schedules it on its own.
+\ native-source-fixture.f - the front half of the native chain: a line of
+\ straight-line Habu source becomes a sealed tape and the module the elaborator
+\ writes into. One lexer serves every caller, so harnesses cannot disagree about
+\ a token. Each token's span is its real range in the text, which the module
+\ registers as its source for the selector to check. The fixture asserts
+\ nothing.
 
 require src/compiler/native/elaborate.f
 
@@ -113,9 +86,8 @@ public
       st ln SPAN  c st ln SYM  m NTAPE:STRING-TOKEN
    NTAPE:PUSH-INTO drop ;
 
-\ A character literal, which is the kind the straight-line subset still has no
-\ model for. It is here so a fixture that needs an unmodelled KIND has one that
-\ is unmodelled for a reason rather than by accident of what has landed.
+\ A character literal, a kind the straight-line subset has no model for: a
+\ fixture that needs an unmodelled kind has one unmodelled for a reason.
 : CHAR, ( IR-CTX:ctx n n NTAPE:mode n -- )
    {: c:IR-CTX:ctx st:n ln:n m:NTAPE:mode v:n :}
    c 0 W-B @ 0 W-TP @
@@ -153,9 +125,12 @@ private
    st TXT + c@ MINUS-C <> if false exit then
    st 1+ ln 1- DIGITS? ;
 
-\ The mode is the token's place in the definition: `:` reads the defined name
-\ before it switches the parser to compiling, so the first token - the name - was
-\ read while interpreting and everything after it while compiling.
+\ The text is a definition without its frame, as a produced tape holds it: the
+\ engine hands the checker's reader the reconstructed name, signature and body,
+\ `:` and `;` consumed, so a caller states `NAME body…`. `:` reads the name
+\ before switching the parser to compiling, so the first token is marked
+\ interpreting and the rest compiling: src/compiler/native/elaborate.f reads the
+\ frame from that alone.
 : TOKEN, ( IR-CTX:ctx n n n -- )
    {: c:IR-CTX:ctx ix:n st:n ln:n :}
    ix 0= if c st ln NTAPE-MODE:INTERPRETING NAME, exit then
@@ -189,7 +164,6 @@ private
 
 public
 
-\ Append one tape token per word of the text now in TXT.
 : LEX ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    0 LX-I !
@@ -220,12 +194,9 @@ public
    c b p r HIR-WORD:REGISTER-WORDS
    p r ;
 
-\ The same model with room for `extra` rows the elaborator's own resolver will
-\ fill in. A body that names another word gains a callable row while it is being
-\ elaborated - src/compiler/native/elaborate.f RESOLVE-SCAN puts every name the
-\ engine and the checker can both answer for into the table - so a fixture whose
-\ body calls has to be given a table with somewhere to put them. Sized by the
-\ caller because how many names its own body writes is the fixture's fact.
+\ The same model with room for `extra` rows: src/compiler/native/elaborate.f
+\ RESOLVE-SCAN adds a callable row for every name the engine and the checker
+\ both answer, so a body that calls needs room, sized by the caller.
 : MODEL-ROOM ( IR-CTX:ctx IR-BUILD:builder n -- IR-ARENA:arena IR-ARENA:arena )
    {: c:IR-CTX:ctx b:IR-BUILD:builder extra:n :}
    c b IR-BUILD:MODULE-KEY  HIR-WORD:WORDS extra +  HIR-WORD:PICK-CELLS
@@ -234,13 +205,10 @@ public
    c b p r HIR-WORD:REGISTER-WORDS
    p r ;
 
-\ The same model with one `create`d data word declared beside the subset's own
-\ vocabulary, named by its spelling. A definition that mentions a data word
-\ cannot be compiled without this, because the dialect's vocabulary is the
-\ dialect's and which data words a program names is the program's; the table is
-\ therefore committed to one row more than REGISTER-WORDS writes. The spelling is
-\ the whole of the declaration: the address that word pushes is the engine's to
-\ answer, so a caller of this fixture has to have created the word it names.
+\ The same model with one `create`d data word declared by its spelling beside
+\ the subset's vocabulary: the table is committed to one row more than
+\ REGISTER-WORDS writes. The engine answers the word's address, so the caller
+\ must have created it.
 : MODEL-DATA ( IR-CTX:ctx IR-BUILD:builder ptr u8 n -- IR-ARENA:arena IR-ARENA:arena )
    {: c:IR-CTX:ctx b:IR-BUILD:builder a u:n :}
    c b IR-BUILD:MODULE-KEY HIR-WORD:WORDS 1+ HIR-WORD:PICK-CELLS HIR-WORD:NEW

@@ -23,7 +23,7 @@ package NAMED-CELLS-CAPTURE
 using AOT-BUF
 using AOT-WINDOW
 create KEY 32 allot
-create FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this fixture's file-digest context
+create FSHA-CTX SHA256-FILE-CTX-BYTES allot
 
 
 \ A third argument forges only the name of an otherwise admitted CODE row.

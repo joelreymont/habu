@@ -1,17 +1,8 @@
 \ ffi-callback-direct-child.f - C calling a callback entry directly: every
 \ argument register into MARSHAL's body, the fallback of UNSET, whose body was
 \ never stored, and a full-width n result back through START-B.
-\ src/lib/ffi-callback-test.f runs it and appends it to its transcript as the child
-\ `direct`.
-\
-\ It is a window child because an entry is a bare code address: a FUNCTION:
-\ row resolves a symbol and an entry has none, and only package FFI's owner
-\ words call an address. test/native-window-owner-child.f loads this file after
-\ test/mcode-window-prepare.f, which reopens FFI before the seal and publishes
-\ those calls. The sealed product refuses the reopen (`hb: internal engine
-\ word`, exit 70), so the child runs on the unsealed engine
-\ test/whitebox-child.f names. Each fact prints `ok   <label>` or
-\ `FAIL <label>`, then the report `test: ok`, then the window `window: 0`.
+\ src/lib/ffi-callback-test.f runs it and appends it to its transcript as the
+\ child `direct`.
 
 require src/lib/test.f
 require test/ffi-callback-fixture.f
@@ -25,6 +16,8 @@ create WANT-FLOATS                    \ 1.0 .. 8.0 as IEEE 754 doubles
 
 TYPED-VARIABLE MARSHAL-RESULT r
 
+\ Each fact prints `ok   <label>` or `FAIL <label>`, then `test: ok`, then
+\ `window: 0`.
 \ One fact: asserted under its own label and printed as a transcript line.
 : FACT ( bool ptr u8 n -- ) {: ok:bool a:ptr u:n :}
    a u T-LABEL
@@ -32,6 +25,12 @@ TYPED-VARIABLE MARSHAL-RESULT r
    ok if s" ok   " else s" FAIL " then type
    a u type cr ;
 
+\ A window child: an entry is a bare code address with no symbol for a FUNCTION:
+\ row, and only package FFI's owner words call an address.
+\ test/native-window-owner-child.f loads it after test/mcode-window-prepare.f,
+\ which reopens FFI before the seal; the sealed product refuses the reopen (`hb:
+\ internal engine word`, exit 70), so it runs on the unsealed engine
+\ test/whitebox-child.f names.
 \ C calling an entry with one integer argument.
 : CALL1 ( n n -- n ) {: arg:n fn:n :}
    FFI:RESET

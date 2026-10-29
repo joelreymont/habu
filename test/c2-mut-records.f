@@ -1,6 +1,5 @@
 \ A mutable view owns one linear capability even when its element type is
 \ linear. A record also owns each separate linear field it contains.
-\ Run through the native source load path: bin/hb --load test/c2-mut-records.f
 
 require src/lib/test.f
 require src/lib/test/subject.f

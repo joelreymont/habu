@@ -1,11 +1,10 @@
 \ gate-pool-test.f - focused coverage for fork-backed test pool workers.
-\ Run: bin/hb --load test/gate-pool-test.f
 
 require src/lib/errors.f
 require src/lib/string.f
 require src/lib/string-roles.f               \ package STR: the typed string surface
 require src/lib/fmt.f
-require src/lib/adt/option.f                 \ option<NUM:index> STR:INDEX-OF consumer (switchover wave A)
+require src/lib/adt/option.f                 \ option<NUM:index>, STR:INDEX-OF's result
 require src/lib/test.f
 require src/lib/memory.f
 require src/lib/fs.f

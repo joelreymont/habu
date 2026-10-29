@@ -1,16 +1,9 @@
 \ ffi-struct-verify.f - tools/check.f --verify-only reads FUNCTION:'s struct
 \ clauses. Loaded by src/lib/ffi-test.f on macOS arm64, inside package FFI-TEST.
-\
-\ Each declaration is a source of its own in a scratch tree, checked by a child
-\ tools/check.f on the engine under test, since the check stops at its first
-\ refusal. A source selects PROCESS-SYMBOLS and names a symbol nothing defines:
-\ LIBRARY parses its path and leaves the rest of its file to the run, so it
-\ would hide the clauses. An accepted declaration certifies clean, which shows
-\ the check resolves no symbol and needs no runtime that defines a clause word.
-\ A refused one stops the check with the code the load throws for it
-\ (src/lib/ffi-abi.f FFI), before the declaration is accepted: a statement
-\ throw's packet names it as throw_code (src/lib/verify-diagnostics.f
-\ THROW-RECORD$), -3501 for E-FFI-SYNTAX and -3500 for E-FFI-ARITY.
+\ Each declaration is its own source checked by a child tools/check.f, which
+\ stops at its first refusal. Sources select PROCESS-SYMBOLS (LIBRARY leaves the
+\ rest of its file to the run and would hide the clauses) and name no defined
+\ symbol, so a clean certify shows the check resolves none.
 
 : FFI-SV-HEAD$ ( -- ptr u8 n )
    S\" require src/lib/ffi-abi.f\nPROCESS-SYMBOLS\n24 constant FFI-SV-W\n" ;
@@ -20,8 +13,6 @@
    E2E-TREE:ROOT$ FS:CLEANUP-TREE+ ;
 
 
-\ Check the source in the string builder and keep the child's exit code and
-\ stderr.
 : FFI-SV-CHECK ( -- )
    s" test/ffi-sv.f" E2E-TREE:AT-A SB$ FS:WRITE-ALL
    s" tools/check.f" E2E-TREE:ARGS
@@ -71,6 +62,8 @@
    decl declu code codeu FFI-SV-REFUSED ;
 
 
+\ A refusal's packet names the load's code as throw_code: -3501 E-FFI-SYNTAX,
+\ -3500 E-FFI-ARITY.
 : FFI-SV-SYNTAX ( ptr u8 n -- )
    S\" \"throw_code\":-3501" FFI-SV-REFUSE ;
 : FFI-SV-ARITY ( ptr u8 n -- )

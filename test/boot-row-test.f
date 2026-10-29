@@ -1,32 +1,9 @@
-\ boot-row-test.f - what a boot row claims, and what it answers away from a tree.
-\
-\ An engine's boot rows (REQUIRE-BOOT-N, src/core/include.f) are the files the
-\ IMAGE carries, recorded portably: each row is the CWD-relative spelling the boot
-\ prefix required (97db883a). Two properties keep that registry safe and neither
-\ is checked anywhere else.
-\
-\ THE ROWS HAVE TO BE HONEST. `require` of a row is a no-op, so a row whose words
-\ the image does NOT carry turns every require of that file into a silent skip and
-\ every later reference into E-UNDEFINED - the hole dot
-\ habu-refuse-a-provided-05424fb3 was filed on, and the one a rewind that dropped
-\ the definitions without dropping the rows (src/habu/prefix-rewind.f, through
-\ REQUIRE-REG:TRUNCATE) would open. The proof needs no table of names, and
-\ deliberately so: a name table goes stale in silence and a source scanner has to
-\ re-decide what `public`, `private` and a reopened package mean. `include` loads
-\ UNCONDITIONALLY, so re-including a row on the engine that claims it must be
-\ REFUSED by a collision with what the image already holds - a duplicate
-\ definition, a sealed package, a duplicate type family, or a boot-only construct
-\ that has already run. A row whose definitions were rewound away compiles cleanly
-\ instead, and that clean exit is the failure this reports.
-\
-\ A ROW IS A MODULE IDENTITY, NOT A PATH. Away from any Habu tree a row still
-\ answers, which is what lets a tool run from any directory at all require
-\ src/lib/string.f. A module the image does NOT carry has to be refused there by name,
-\ naming the path under THIS CWD - never quietly resolved somewhere else.
-\
-\ Every case asks the ENGINE UNDER TEST (src/lib/engine-candidate.f), the row list
-\ included: a gate runs this file on one engine while naming another as the
-\ candidate, and it is the candidate's registry that is under test.
+\ boot-row-test.f - an engine's boot rows (REQUIRE-BOOT-N, src/core/include.f)
+\ are honest and answer away from a tree. `require` of a row is a no-op, so a
+\ row the image does not carry hides its words: re-including each row must be
+\ refused by a collision with what the image holds. A row is a module identity:
+\ outside any tree it still answers, and a module the image lacks is refused by
+\ name under the CWD.
 
 require src/lib/test.f
 require src/lib/string.f
@@ -98,12 +75,11 @@ variable WALKED
    src srcu out outu LEN>N oc STORE
    outu LEN>N ;
 
-\ The engine under test in cwd.
+\ Cases ask the engine under test (src/lib/engine-candidate.f).
 : RUN ( ptr u8 n ptr u8 n -- )
    {: cwd:ptr cwdu:n src:ptr srcu:n :}
    ENGINE-CANDIDATE:PATH$ cwd cwdu src srcu OUT-BUF IO-CAP RUN-INTO OUT-U ! ;
 
-\ Its copy in the directory outside any tree, run there.
 : RUN-OUTSIDE ( ptr u8 n -- )
    {: src:ptr srcu:n :}
    OUTSIDE-HB$ OUTSIDE$ src srcu OUT-BUF IO-CAP RUN-INTO OUT-U ! ;
@@ -128,10 +104,8 @@ variable WALKED
    STR-LF SRC-C+ ;
 
 \ ---- the candidate's own boot rows -------------------------------------------
-\ Asked of the candidate rather than read out of the running image: the two are
-\ different engines whenever a gate names a candidate, and only the candidate's
-\ registry is under test. The count is printed ahead of the rows so a truncated
-\ capture cannot quietly shorten the walk.
+\ Asked of the candidate, not the running image: a gate may name another engine.
+\ The count precedes the rows so a truncated capture cannot shorten the walk.
 
 : DUMP-SRC$ ( -- ptr u8 n )
    S\" : BR-ROW ( n -- ) dup REQUIRE-SLOT swap REQUIRE-LEN@ type CR ; : BR-DUMP ( -- ) REQUIRE-BOOT-N @ . CR REQUIRE-BOOT-N @ 0 ?do i BR-ROW loop ; BR-DUMP\n" ;
@@ -154,7 +128,6 @@ variable WALKED
 : DUMP-SKIP-BLANK ( -- )
    begin DUMP-AT-BLANK? while DUMP-I @ 1+ DUMP-I ! repeat ;
 
-\ The next non-empty line, or false once the capture is spent.
 : DUMP-LINE ( -- ptr u8 n bool )
    DUMP-SKIP-BLANK
    DUMP-I @ DUMP-U @ >= if NULL$ false exit then
@@ -163,7 +136,7 @@ variable WALKED
    a DUMP-I @ start -
    true ;
 
-: DUMP-REWIND ( -- )   \ back to the first row line, past the count
+: DUMP-REWIND ( -- )
    0 DUMP-I !
    DUMP-LINE drop 2drop ;
 
@@ -178,9 +151,8 @@ variable WALKED
    s"  rc=" type RC-N @ FMT:.INT cr
    ERR$ type ;
 
-\ A row is honest when the image refuses to take its definitions a second time.
-\ `include: cannot open` is excluded by name: that is the file MISSING, a different
-\ defect that must not read as proof.
+\ `include: cannot open` is excluded by name: a missing file is a different
+\ defect and must not read as proof.
 : ROW-REFUSED? ( -- bool )
    EXITED? @
    RC-N @ 0 <> and
@@ -220,15 +192,10 @@ variable WALKED
    WALKED @ 0 T<> ;
 
 \ ---- the same rows, asked from a directory that is not a Habu tree ------------
-\ A FRESH temp directory, never the temp base itself: a stray `src` symlink left
-\ behind in a shared temp directory would otherwise decide these cases. Measured
-\ on this machine - /tmp/src pointed into an unrelated checkout, and the refusal
-\ below named that checkout instead of the CWD, because CANONICAL resolves an
-\ existing prefix physically and a symlink is an existing prefix.
-\
-\ The engine runs as a copy at <outside>/bin/hb. An engine started outside a
-\ tree takes the tree two levels above its executable as its root, and the
-\ candidate's is the gate tree, so its copy is what has no root at all.
+\ A fresh temp directory, never the temp base: a stray /tmp/src symlink once
+\ decided these cases, because CANONICAL resolves an existing prefix physically.
+\ The engine runs as a copy at <outside>/bin/hb: an engine outside a tree takes
+\ the tree two levels above its executable as its root.
 
 : PREP-OUTSIDE ( -- )
    FS:CLEANUP-RESET
@@ -249,10 +216,9 @@ variable WALKED
    a u SB-APPEND
    SB$ ;
 
-\ src/arch/arm64/icode.f is a real file of this tree that the engine does NOT
-\ carry - the AOT assembler the BUILDER uses, not the compiler the engine runs.
-\ Both halves of that are asserted, so if it is ever deleted or ever becomes a
-\ boot row the case fails by name instead of quietly proving nothing.
+\ src/arch/arm64/icode.f is a tree file the engine does not carry (the builder's
+\ AOT assembler); both halves are asserted, so a deletion or a new boot row
+\ fails by name.
 : PROBE$ ( -- ptr u8 n )
    s" src/arch/arm64/icode.f" ;
 
@@ -267,8 +233,6 @@ variable WALKED
    s" the refusal names the path under this CWD" T-LABEL
    ERR$ PROBE$ EXPECT-MISSING$ CONTAINS? TTRUE ;
 
-\ The other half of the same contract: a row answers by module identity with no
-\ file below CWD to find. Losing this breaks every tool run from outside a tree.
 : OUTSIDE-PROVIDES ( -- )
    DUMP-REWIND
    s" the dump carries a first row" T-LABEL

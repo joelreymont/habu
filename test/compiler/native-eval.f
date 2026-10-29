@@ -34,7 +34,6 @@ TRUSTED: W ( n -- n ) + dup SEEN ! ;
 TRUSTED: PLUS-XT ( -- [ n -- n ] ) ['] + ;
 : INNER-UNDER$ ( -- ptr u8 n ) s" 1 ' NATIVE-EVAL-TEST:W execute" ;
 
-\ An inner text that ends inside the definition it opened.
 : INNER-OPEN$ ( -- ptr u8 n ) s" : NATIVE-EVAL-E ( -- n ) 1" ;
 
 \ The data-stack base each text of a nested pair sees.
@@ -42,7 +41,6 @@ variable OUTER-BASE
 variable INNER-BASE
 : INNER-BASE$ ( -- ptr u8 n )
    s" data-base STACK-ABI:BASE-CELL + @ NATIVE-EVAL-TEST:INNER-BASE !" ;
-\ The inner text of a pair that throws 7 once it has recorded its base.
 : INNER-THROW$ ( -- ptr u8 n )
    s" data-base STACK-ABI:BASE-CELL + @ NATIVE-EVAL-TEST:INNER-BASE ! 7 throw" ;
 
@@ -330,7 +328,6 @@ variable ERR-U
    TEXT-U BUF-RESET
    tier 0= if s" 0 set-tier " else s" 1 set-tier " then TEXT+ ;
 
-\ Runs TEXT in a child and leaves its exit code, its output in OUT and ERR.
 : TEXT-RC ( -- n )
    TEXT TEXT-U BUF-LEN@ OUT IO-CAP >LEN ERR IO-CAP >LEN 10000 >MS SUBJECT:RUN
    PROC-OUTCOME>RC RC>N {: rc:n :}
@@ -343,8 +340,8 @@ variable ERR-U
 
 \ The hook records W-FORGET's row and then throws. To the engine, T-FORGET's
 \ bare W-FORGET is both the global and the used P-FORGET:W-FORGET, so T-FORGET
-\ is refused; typed against the thrown row ( -- n n ), it certified and ran one
-\ cell short.
+\ is refused; typed against the thrown row ( -- n n ) it would certify and run
+\ one cell short.
 : HOOK-THROWN ( n -- ) {: tier:n :}
    s" a definition its hook threw back keeps no row" T-LABEL
    tier TIER-TEXT
@@ -372,7 +369,7 @@ variable ERR-U
 
 \ The same text inside Q-FORGET: T-FORGET's X-FORGET is the global ( -- n ),
 \ not the thrown-back Q-FORGET:X-FORGET ( -- n n ), so T-FORGET ( -- n n ) is
-\ refused; typed against the thrown row, it certified and ran one cell short.
+\ refused; typed against the thrown row it would certify and run one cell short.
 : ROW-THROWN ( n -- ) {: tier:n :}
    s" a definition its text threw back does not type a later caller" T-LABEL
    tier TIER-TEXT

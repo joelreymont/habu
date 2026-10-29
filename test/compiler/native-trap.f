@@ -8,17 +8,14 @@ require src/lib/process-argv.f
 require src/lib/engine-candidate.f
 require src/compiler/native/compiler.f
 
-\ Tier 1 below: the routines each case compiles are the optimizing compiler's.
 1 set-tier
 
 package NTRAP-TEST
 private
 
-\ ---- running the forge in a child --------------------------------------------
-\ The forge ends its process, so it cannot be run in this one. The child is this
-\ same file under the argument the tail dispatches on, run through the engine
-\ under test rather than through a named binary, so a candidate validation
-\ measures the candidate.
+\ The forge ends its process, so the child is this same file under the argument
+\ the tail dispatches on, run through the engine under test so that a candidate
+\ validation measures the candidate.
 $4000 constant CAP-CAP
 30000 constant CHILD-MS
 
@@ -50,9 +47,7 @@ variable CHILD-RC
 : CHILD-ERR$ ( -- ptr u8 n )
    ERR-BUF CHILD-ERR-N @ ;
 
-\ ---- the other message, and the other exit -----------------------------------
-\ A callee's name is as long as the definition capture lets it be, past every
-\ fixed buffer the message was once built in.
+\ A callee's name as long as the definition capture admits.
 1000 constant LONG-N
 LONG-N BUFFER: LONG-BUF
 
@@ -60,12 +55,10 @@ LONG-N BUFFER: LONG-BUF
    LONG-N 0 ?do 121 LONG-BUF i + c! loop
    LONG-BUF LONG-N ;
 
-\ A trap site the ELABORATOR builds after a call that does not come back says,
-\ if it is ever reached, that the certificate the caller was compiled against
-\ was false. It says so in its own words and with its own status - the
-\ diagnostic of a scrutinee whose tag matched no arm would be a lie about a word
-\ that returned - so the two are proved to differ in BOTH, in a process that
-\ dies of it.
+\ A trap the elaborator builds after a call that does not return says, if
+\ reached, that the caller's certificate was false. Its message and status
+\ differ from a no-arm tag mismatch's, which would lie about a word that
+\ returned; both differences are proved in a process that dies of it.
 : NORET-CASE ( -- )
    s" a long callee name's message holds it whole" T-LABEL
    LONG-NAME$ NTRAP:RETURNED {: a:ptr u:n rc:n :}
@@ -93,14 +86,11 @@ LONG-N BUFFER: LONG-BUF
    s" test/compiler/native-terminal-rebind.f" CHILD-RUN
    CHILD-RC @ 0 T= ;
 
-\ ---- callers of many and long-named words that never return ------------------
 \ Behind each call to a word that never returns, a tier-1 caller compiles a trap
-\ whose message names the callee whole. No table holds those names, so tier 1
-\ compiles what tier 0 runs and each caller answers what tier 0 answers; the
-\ messages share the literal store with source strings, and it grows by segments
-\ (src/compiler/native/string.f). The sizes pass what a fixed store would hold:
-\ eighty messages naming callees in 6995 bytes each are 560,640 bytes, past one
-\ segment's 512 KB arena, and 1100 callees named in a few bytes pass 1024 names.
+\ naming the callee whole, and each caller must answer what tier 0 answers. The
+\ messages share the literal store with source strings, which grows by segments
+\ (src/compiler/native/string.f): eighty 6995-byte names are 560,640 bytes, past
+\ one segment's 512 KB arena, and 1100 short callees pass 1024 names.
 $2000 constant SRC-CAP               \ one definition around a 6995-byte name
 SRC-CAP BUFFER: SRC
 variable SRC-U
@@ -218,7 +208,6 @@ public
 : RUN ( -- )
    T-RESET
 
-   \ ---- the message a mismatch carries ----
    s" a family's message says its tag matched no arm and exits BAD-TAG" T-LABEL
    s" alpha" NTRAP:BAD-TAG {: a:ptr u:n rc:n :}
    a u s" hb: bad alpha tag" T$=
@@ -227,15 +216,12 @@ public
    s" an empty name is refused, since no message could name it" T-LABEL
    [: s" " NTRAP:BAD-TAG drop drop drop ;] E-NTRAP-NAME TTHROWSQ
 
-   \ ---- what a routine compiled from source does ----
    COMPILED-GUARD-CASE
    COLD-DISPATCH-CASE
    PRIMITIVE-THROW-CASE
 
-   \ ---- callers of many and long-named words that never return ----
    NORET-ANY-CASE
 
-   \ ---- and the whole of it, in a process that dies ----
    NORET-CASE
    REBIND-CASE
 

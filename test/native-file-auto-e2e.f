@@ -1,5 +1,4 @@
 \ Automatic definition reuse through the ordinary hb-build application path.
-\ bin/hb --load test/native-file-auto-e2e.f
 
 require src/lib/test.f
 require src/lib/string.f
@@ -232,7 +231,6 @@ variable HISTORY-LIB-NEW
      ENDOF
    ;MATCH ;
 
-\ Appends every mark in the last run's output to the trace, in output order.
 : MARKS ( -- ) 0 MARK-AT ! begin MARK+ 0= until ;
 
 \ A build whose marks, fresh or replayed, join the trace in output order.

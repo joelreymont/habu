@@ -1,27 +1,9 @@
-\ Two checks meet a persistent cell that holds a code or dictionary pointer: the
-\ span scan in src/habu/aot-lib.f, which reads every cell the capture window
-\ covers, and the span bound in src/habu/aot-closure.f, which meets the same kind
-\ of cell through a recorded address naming one the window never opened over.
-\ Each must name WHICH cell, WHICH value and - for a genuine data pointer -
-\ WHICH bounds. Build three stripped images through the real native linker and
-\ read the diagnostic each is refused with.
-\
-\ WHAT IS LEFT TO REFUSE. A cell DECLARED to hold an execution token is relocated
-\ now rather than refused, and test/stripped-image.f builds and runs an
-\ image full of them (dot habu-let-a-stripped-0a064bf5). These are the cells no
-\ declaration accounts for: `' word ,` fills an untyped cell and declares
-\ nothing, so nothing may read it as a code address, and the refusal says which
-\ forms do declare one. The three facts stay identical whichever check meets the
-\ cell; the REASONS differ because the faults do - a cell below the window is not
-\ restored at all, so its declaration could not help it either.
-\
-\ RED BEFORE THE CELL LANE: a PRE-WINDOW cell holding an xt (PRE-XT below) was
-\ refused with "aot: address refers to data outside the restored span", exit 74,
-\ naming neither the cell nor the value nor the bounds, while the same class of
-\ cell inside the window was refused as unsupported persistent data, exit 70. One
-\ program was classified two ways by which check ran first, and the 74 read as an
-\ engine fault rather than a refusal (dot habu-name-the-cell-740feb52; Tender's
-\ server image took the first path and its CLI the second).
+\ aot-data-cell-refusals.f - a persistent cell holding a code or dictionary
+\ pointer is refused naming the cell, the value and, for a data pointer, the
+\ bounds, whether the span scan (src/habu/aot-lib.f) or the span bound
+\ (src/habu/aot-closure.f) meets it. A cell declared to hold an xt is relocated
+\ instead (test/stripped-image.f); `' word ,` declares nothing. Three stripped
+\ images go through the real native linker.
 require test/gate-common.f
 require test/preloaded-engine.f
 
@@ -37,7 +19,7 @@ variable IMAGE-U
 : IMAGE$ ( -- ptr u8 n ) IMAGE IMAGE-U @ ;
 
 \ TMPDIR is the gate root, so AOT-OUT's image lands at this path if one is ever
-\ emitted. Every case below must refuse before that.
+\ emitted: every case refuses before that.
 : PREPARE ( -- )
    s" aot-data-cell-refusals" GT-START
    s" subject.f" SUBJECT GT-PATH SUBJECT-U !
@@ -46,14 +28,10 @@ variable IMAGE-U
 : WRITE-SUBJECT ( ptr u8 n -- ) {: a:ptr u:n :}
    SUBJECT$ a u FS:WRITE-ALL ;
 
-\ The linker child reads its prelude from stdin, and this is the production
-\ maker script (tools/hb-build-lib.f HBB-RUN-MAKER-CMD) spelled out: phase one
-\ opens the capture window and loads the subject, phase two brings the linker in
-\ above the span, and BUILD-NATIVE links. A definition placed in the prelude
-\ AHEAD of tools/aot-build-open.f is therefore compiled before the window opens
-\ and lands in pre-window DATA; the subject file is loaded inside the window.
-\ The child runs the keyed linker image (test/preloaded-engine.f), which has the
-\ linker loaded already, so there phase two's require is a no-op.
+\ The production maker script (tools/hb-build-lib.f HBB-RUN-MAKER-CMD) on stdin:
+\ a definition ahead of tools/aot-build-open.f lands in pre-window DATA, and the
+\ subject loads inside the window. The child runs the keyed linker image
+\ (test/preloaded-engine.f), where phase two's require is a no-op.
 : LINK-ONLY$ ( -- ptr u8 n )
    S\" require tools/aot-build-open.f\nrequire tools/aot-build.f\nAOT-LINK:BUILD-NATIVE\n" ;
 
@@ -73,11 +51,9 @@ variable IMAGE-U
 : NO-IMAGE ( ptr u8 n -- ) {: label:ptr labelu:n :}
    IMAGE$ FS:EXISTS? if label labelu GE-FAIL then ;
 
-\ Each field is there AND rendered something. The fields are space separated and
-\ the last one ends the line, so an empty one is exactly what the LACKS needles
-\ find - which is what a number the emitter cannot print (a negative offset)
-\ would leave behind. Presence alone would pass on a field that was dropped, and
-\ non-emptiness alone would pass on one that was never emitted.
+\ Each field is present and non-empty: fields are space separated and the last
+\ ends the line, so an empty one (a number the emitter cannot print) is what the
+\ LACKS needles find.
 : FIELDS-FILLED ( ptr u8 n -- ) {: label:ptr labelu:n :}
    s" data-off=" label labelu GE-EXPECT-ERR-HAS
    s" data-off= " label labelu GE-EXPECT-ERR-LACKS
@@ -86,10 +62,6 @@ variable IMAGE-U
 
 \ ---- a cell inside the capture window: the span scan meets it -----------------
 
-\ `,` stores a cell with no declaration of what it holds, so the image has no
-\ authority to read this one as a code address and says which forms would give it
-\ one. A DEFER cell in the same position is relocated instead, which is what
-\ test/stripped-image.f builds and runs.
 \ The checker is suspended around the store so the image, not the checker, refuses it.
 : CASE-TICK ( -- )
    S\" : DCR-BUMP ( n -- n ) 1+ ;\ncreate DCR-TABLE check@ 0 set-check ' DCR-BUMP , set-check\n: MAIN ( -- ) DCR-TABLE @ . ;\n"
@@ -106,16 +78,10 @@ variable IMAGE-U
 
 \ ---- a cell outside it: the span bound meets the same two kinds ---------------
 
-\ THE CONSISTENCY CASE. This cell holds an xt and sits below the window, so the
-\ scan never reads it and only the span bound meets it. It keeps the
-\ unsupported-persistent-data verdict and the same three facts; its reason says
-\ the thing that is actually wrong with it, which no declaration could fix: the
-\ image does not restore this cell at all.
-\
-\ It is read in the JSON shape hb-build --json publishes. Every cell refusal
-\ renders through one writer pair, src/habu/aot-closure.f DATA-CELL-PROSE and
-\ DATA-CELL-JSON, with only the reason and suggestion as arguments, so CASE-TICK
-\ locks the three facts in the prose rendering and this case in the JSON one.
+\ This xt cell sits below the window, so only the span bound meets it: same
+\ verdict and three facts, its reason that the image does not restore the cell.
+\ Every cell refusal renders through src/habu/aot-closure.f DATA-CELL-PROSE and
+\ DATA-CELL-JSON: CASE-TICK locks the prose rendering, this case the JSON one.
 : CASE-PRE-XT ( -- )
    S\" : MAIN ( -- ) DCR-PRE-XT @ . ;\n" WRITE-SUBJECT
    s" 1"
@@ -134,8 +100,6 @@ variable IMAGE-U
       s" pre-window xt cell: named as a cell, not as a bare span bound" GE-EXPECT-ERR-LACKS
    s" pre-window xt cell: no image" NO-IMAGE ;
 
-\ A genuine data pointer keeps exit 74, and now names the recorded cell, the
-\ value, the word whose data it is, and the span it had to fall in.
 : CASE-PRE-DATA ( -- )
    S\" : MAIN ( -- ) DCR-PRE-CELL @ . ;\n" WRITE-SUBJECT
    S\" create DCR-PRE-CELL 41 ,\nrequire tools/aot-build-open.f\nrequire tools/aot-build.f\nAOT-LINK:BUILD-NATIVE\n" BUILD

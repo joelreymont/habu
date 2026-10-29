@@ -1,26 +1,8 @@
 \ linear-suite.f - `LINEAR:` mints and erases a DEFLINEAR token in its owner alone.
-\ Run: bin/hb --load test/linear-suite.f
-\
-\ A DEFLINEAR type records the package that declared it. In that package's
-\ private section `LINEAR: NAME ( payload -- PKG:tok )` mints a token and
-\ `LINEAR: NAME ( PKG:tok -- payload )` erases one: the engine's `linear:`
-\ reader keyword publishes a body-free identity word, as `cast:` does, once the
-\ checker (CHECKER-LINEAR) has certified the row. A refusal throws its named
-\ code and publishes nothing:
-\   - E-LINEAR-PAYLOAD: the row is not one linear type and one payload, a
-\                       non-linear constructor or a pointer chain ending at one
-\   - E-LINEAR-OWNER  : the current package did not declare the linear type; a
-\                       top-level DEFLINEAR has no owner, so nothing mints it
-\   - E-LINEAR-SCOPE  : the row is outside its owner's private section or its
-\                       qualified name would publish into a public wordlist
-\   - E-CAST-ARITY, E-CAST-FAM: the shapes `cast:` refuses, including different
-\                       row tails beneath the operand of an identity
-\ `cast:` still carries no linear type (E-CAST-LINEAR), in the owner too. Every
-\ front end runs: the engine's keyword evaluated as source, the source pre-pass,
-\ the check tool on written fixtures, each checked in a fork child of this
-\ process (src/lib/test/subject.f) with tools/check-core.f loaded once, and an
-\ application image saved after its type table grew past the boot store, then
-\ reopened to mint for the owner it restored.
+\ In its owner's private section `LINEAR: NAME ( payload -- PKG:tok )` mints and
+\ `( PKG:tok -- payload )` erases once CHECKER-LINEAR certifies the row; nothing
+\ mints a top-level DEFLINEAR. Fronts: the engine keyword, the source pre-pass,
+\ tools/check.f fixtures in fork children, and a reopened application image.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -50,9 +32,8 @@ NEWTYPE ofam
 ;package
 DEFLINEAR lin-free
 
-\ One source text through the production path: the engine reads it as it reads
-\ a file, so a `linear:` row meets the live keyword and checker. The answer is
-\ the code a refusal threw, or 0.
+\ The engine reads the text as it reads a file, so a `linear:` row meets the
+\ live keyword and checker. DECL answers the code a refusal threw, or 0.
 package LIN-RUN
 public
 TYPED-VARIABLE SRC-A ptr u8
@@ -165,8 +146,6 @@ s" LIN-DUP ( ptr n -- ) LIN-OWN:GIVE dup LIN-OWN:TAKE drop LIN-OWN:TAKE drop"
 s" LIN-LEAK ( ptr n -- ) LIN-OWN:GIVE drop" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ ---- the source pre-pass applies the same rules ---------------------------------
-\ VERIFY:SOURCE-BUF replays package, public and private, records each
-\ DEFLINEAR's package and certifies each row through the engine's own checker.
 package LIN-VRF
 public
 : OWNED ( -- )
@@ -261,7 +240,7 @@ variable PROG-U
    PROG PROG-U @ + c!
    PROG-U @ 1 + PROG-U ! ;
 
-\ The argv is staged; run PATH with PROG on stdin.
+\ The caller stages the argv.
 : RUN ( ptr u8 n n -- ) {: path:ptr pathu:n ms:n :}
    PROC-ENV-INHERIT-MISSING
    path pathu >LEN  PROG$ >LEN  OUT CAP >LEN  ERR CAP >LEN  ms >MS
@@ -273,14 +252,12 @@ variable PROG-U
    path ROOT-BUF size BYTE-COPY size ROOT-U !
    ROOT-BUF ROOT-U @ FS:CLEANUP-TREE+ ;
 
-\ The fork child's check of PATH, ending as tools/check.f does: a refusal's
-\ status is the child's exit code.
+\ Ends as tools/check.f does: a refusal's status is the child's exit code.
 : CHECK-CHILD ( -- )
    CHECK:RESET
    PATH$ CHECK:FILE
    CHECK:RUN dup 0 <> if throw then drop ;
 
-\ Write PROG to the fixture NAME under the root and check it in a fork child.
 : CHECK ( ptr u8 n -- ) {: name:ptr nameu:n :}
    ROOT-BUF ROOT-U @ name nameu PATH-BUF FS:JOIN-PATH PATH-U !
    PATH$ PROG$ FS:WRITE-ALL
@@ -332,7 +309,6 @@ variable PROG-U
    IMAGE$ >LEN PROC-ARGV+
    host hostu IMAGE-MS RUN ;
 
-\ The restored owner mints and erases; another package still may not.
 : REOPEN ( -- )
    0 PROG-U !
    S\" package LIM\nLINEAR: MINT ( n -- LIM:tok )\nLINEAR: ERASE ( LIM:tok -- n )\n" PROG+

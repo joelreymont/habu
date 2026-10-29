@@ -1,22 +1,13 @@
 \ numeric-rows.f - the numeric golden rows a Wasm build must print as native
-\ does: N01-N06 and the three `?do` rows of W32, as data.
-\
-\ A row is three strings and the runner's ROW word:
-\
-\     s" NAME"  s" SOURCE"  s\" EXPECTED" ROW
-\
-\ SOURCE is a whole program: it defines a word named NAME, with any helper
-\ named NAME-..., and requires what it uses. The program prints its own results
-\ with `.`, `u.` and `f.`, and ends with its stack as `depth .` and then `.s`,
-\ bottom first, before dropping it; nothing else reads its stack.
-\ A double on the stack is its bits, so `.s` prints the bits as a signed cell.
-\ A throw row catches in its own source and prints the code. EXPECTED is every
-\ byte the program prints, each printer's newline included.
-\
-\ A runner includes this file (`include`, never `require`) with ROW in scope;
-\ ROW evaluates SOURCE and then calls NAME. test/wasm/numeric.f runs the rows
-\ natively; the Wasm differential runs the same rows on a Wasm build. The file
-\ defines no word of its own.
+\ does (N01-N06, W32's `?do` rows), as data: `s" NAME" s" SOURCE" s\" EXPECTED"
+\ ROW`. A runner `include`s it (never `require`) with ROW in scope, which
+\ evaluates SOURCE and calls NAME; test/wasm/numeric.f runs it natively, the
+\ Wasm differential on a Wasm build.
+
+\ SOURCE is a whole program defining NAME (helpers NAME-...) and requiring what
+\ it uses. It prints with `.`, `u.`, `f.`, ends with `depth .` and `.s` (bottom
+\ first) and drops its stack. A double shows its bits as a signed cell. A throw
+\ row catches in its own source and prints the code. EXPECTED is every byte.
 
 \ ---- N01 signed and unsigned limits, wrapping add, subtract, multiply ----------
 s" N01-WRAP"
@@ -103,7 +94,6 @@ s" N06-CONTRACTION"
 s" require src/lib/ieee754.f : N06-CONTRACTION ( -- ) $3FF0000000400000 IEEE754:BITS>F64 fdup f* $3FF0000000800000 IEEE754:BITS>F64 f- depth . .s fdrop ;"
 s\" 1\n0\n" ROW
 
-\ The three NaN print rows.
 s" N06-PRINT-SQRT"
 s" : N06-PRINT-SQRT ( -- ) -1 s>f fsqrt f. depth . ;"
 s\" 0.000000\n0\n" ROW

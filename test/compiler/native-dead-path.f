@@ -18,11 +18,10 @@ private
 \ below is one line of source handed to `TEST-EVAL:N`, the same interpreter the
 \ definition arrived through.
 
-\ ---- 1. the definition the dot was written about ------------------------------
-\ `: JT ( n n -- n ) 0 = if drop E-A-EMPTY throw then ;` is the body the chain
-\ refused with E-NELAB-JOIN before this landed: the checker accepts it because
-\ the arm ends the path, and the chain would not because the arm left one value
-\ fewer than the fall-through.
+\ ---- 1. a dead arm narrower than the fall-through ----------------------------
+\ `: JT ( n n -- n ) 0 = if drop E-A-EMPTY throw then ;`: the checker accepts it
+\ because the arm ends the path, though the arm leaves one value fewer than the
+\ fall-through; a chain that joined the dead arm refuses it with E-NELAB-JOIN.
 : MK-JT ( -- )
    s" : DPC-JT ( n n -- n ) 0 = if drop E-A-EMPTY throw then ;" evaluate-closed ;
 
@@ -112,27 +111,21 @@ private
 \ disagreeing, in the same class as the other backstops this file keeps, and a
 \ case here would be a case about the checker wearing the chain's name.
 
-\ ---- 5. the body EVERY path of which ends ------------------------------------
-\ Such a body leaves through its trap and has no return convention at all: the
-\ elaborator closes the block at each dead call, no return is staged and no block
-\ is left open. It used to be refused by the allocation validator, because the
-\ only routine forms the compilation could choose all declared a frame this routine
-\ has no epilogue to end - it reserved one and saved its link register, and the
-\ memory order those two mint was passed on nowhere (E-A64RAV-ORDER).
+\ ---- 5. the body every path of which ends ------------------------------------
+\ Such a body leaves through its trap and has no return convention: the
+\ elaborator closes the block at each dead call, stages no return and leaves no
+\ block open. Its form is src/compiler/native/abi.f NORET-FRAMED: the
+\ direct-call trait (the routine dies in a real call), the caller's return
+\ address DESTROYED, and no frame, since nothing reads the address again and no
+\ epilogue is reached. A form that reserved a frame and saved the link register
+\ fails the allocation validator (E-A64RAV-ORDER).
+\ src/compiler/native/compiler.f asks the checker whether a definition never
+\ returns by the certificate its callers were compiled against.
 \
-\ THE FORM EXISTS NOW and this is the publication that refusal was pinned for.
-\ src/compiler/native/abi.f NORET-FRAMED declares the direct-call trait - the
-\ call is real and is what the routine dies in - declares the caller's return
-\ address DESTROYED, and owns no frame: nothing restores an address that is never
-\ read again, and no epilogue gives back a frame control never reaches.
-\ src/compiler/native/compiler.f asks the checker whether THIS definition is one
-\ that never returns, by the same certificate every other caller of it is
-\ compiled against.
-\
-\ EACH CASE IS RUN, not only compiled. A routine published under a convention
-\ nothing enters correctly would still compile; what says the convention is right
-\ is that the caller gets the code the source names, out of a call the engine
-\ made, with the data stack where the caller left it.
+\ Each case is run, not only compiled: a routine published under a wrong
+\ convention would still compile, so the proof is that the caller gets the code
+\ the source names, out of a call the engine made, with the data stack where the
+\ caller left it.
 : MK-ALLDEAD ( -- )
    s" : DPC-ALLDEAD ( n -- ) drop E-A-EMPTY throw ;" evaluate-closed ;
 
@@ -155,17 +148,13 @@ private
    s" 0 DPC-BOTHDEAD" TEST-EVAL:RC E-A-EMPTY T=
    s" 1 DPC-BOTHDEAD" TEST-EVAL:RC E-A-BOUNDS T= ;
 
-\ THE SHAPE THAT READS LIKE A TAIL CALL. Its one call is the last thing the body
-\ does and the callee takes and leaves exactly what this definition does, which
-\ is the arithmetic the tail decision is about - and the callee is DEAD, so this
-\ routine has no return for a tail branch to stand in place of. The block ended
-\ at the call and its terminator is the trap, and a routine leaving through a
-\ callee is a routine returning THROUGH somebody else.
-\
-\ THE CODE IS NOT THE ARGUMENT, so the case can tell the call from the caller.
-\ DPCY:DEADN throws one MORE than what it was handed, which no path of the caller
-\ computes: an answer equal to the argument would be a routine that returned it,
-\ and an answer equal to the code says the callee really ran.
+\ The shape that reads like a tail call: its one call is the body's last and
+\ the callee takes and leaves what this definition does, but the callee is dead,
+\ so there is no return for a tail branch to replace; the block ends at the call
+\ with the trap as its terminator.
+\ DPCY:DEADN throws one more than it was handed, which no path of the caller
+\ computes: an answer equal to the argument would be a routine that returned
+\ it, and an answer equal to the code says the callee really ran.
 : MK-TAIL-SHAPED ( -- )
    s" : DPC-TAILDEAD ( n -- n ) DPCY:DEADN ;" evaluate-closed ;
 

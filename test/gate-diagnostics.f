@@ -1,5 +1,4 @@
 \ gate-diagnostics.f - entry wrapper for checker diagnostic contracts.
-\
 require test/gate-common.f
 require tools/gate-json-assert-core.f
 require src/lib/date.f

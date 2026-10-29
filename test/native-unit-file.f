@@ -179,7 +179,6 @@ create RAW ART-CAP allot variable RAW-U
    NUNIT-FILE:CLOSE
    body size munmap 0 T= ;
 
-\ A name of u bytes, all `L`.
 create LONG 65 allot
 : LONG$ ( n -- ptr u8 n ) {: u:n :}
    u 0 ?do  [char] L LONG i + c!  loop

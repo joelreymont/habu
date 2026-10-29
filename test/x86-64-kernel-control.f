@@ -1,58 +1,7 @@
 \ x86-64-kernel-control.f - the control rows of the x86-64 kernel
 \ (src/habu/kernel-x64.f CONTROL,) in the booted harness, cross-built for an
-\ x86-64 peer. Each image is one case, and the peer that runs it must see its
-\ status:
-\
-\    hb-x64-kernel-control           76  evaluate refuses: its fd-2 line, then 76
-\    hb-x64-kernel-control-negative  21  the same, expecting the wrong depth
-\    hb-x64-kernel-eval-range       76  source-range evaluation needs the interpreter
-\    hb-x64-kernel-source-exec      76  replay needs an interpreter; the
-\                                        source-exec-run row refuses by name
-\    hb-x64-kernel-execute            0  execute; 2>r, 2r@ and 2r>; both arms of
-\                                        execute-floor
-\    hb-x64-kernel-catch              0  catch with no throw, then a throw from a
-\                                        nested call that moved the data, return,
-\                                        loop and machine stacks
-\    hb-x64-kernel-finally            0  the cleanup runs after a body that
-\                                        returns and after one that throws, whose
-\                                        code is rethrown; a throwing cleanup's
-\                                        code wins
-\    hb-x64-kernel-run-in-stack       0  a callback on the loop stack's mapping
-\                                        returns, then throws; an extent inside
-\                                        DATA throws E-STACK-UNGUARDED; each is
-\                                        caught
-\    hb-x64-kernel-source-unit        0  a clean callback, residue, a nested
-\                                        throw and an exactly full stack return
-\                                        restore the caller's stack and extent
-\    hb-x64-kernel-eval-closed        0  clean, residue, throw and a real low
-\                                        guard fault return the segment to a pool
-\    hb-x64-kernel-throw-close        0  a throw out of an open code window
-\                                        closes the band before catch resumes
-\    hb-x64-kernel-floorrec           0  the data-floor recovery entry empties
-\                                        the faulting stack and throws 70
-\    hb-x64-kernel-stack-clear        0  the trusted recovery row empties only
-\                                        the current data stack
-\    hb-x64-kernel-unset-<row>       86  execute, catch, finally cleanup and
-\                                        run-in-stack refuse a zero quotation
-\                                        with `hb: unset quotation` on fd 2
-\    hb-x64-kernel-unguarded         67  that refusal with no handler
-\    hb-x64-kernel-throw             42  42 throw with no handler: the reporter
-\                                        returns with the scratch registers
-\                                        clobbered
-\    hb-x64-kernel-throw-report      50  the reporter exits with the code plus 8
-\    hb-x64-kernel-throw-corrupt     87  a handler frame whose cursor is below its
-\                                        base: `hb: catch frame corrupt` on fd 2
-\    hb-x64-kernel-die                5  `hb: die` and LF on fd 2; the exit hook
-\                                        returns with the scratch registers
-\                                        clobbered
-\    hb-x64-kernel-die-hook           6  the exit hook dies with 6, so its cell
-\                                        was cleared before the call
-\    hb-x64-kernel-die-throw         50  a catch around a die whose exit hook
-\                                        throws 42: the throw is uncaught, so the
-\                                        reporter exits with the code plus 8
-\    hb-x64-kernel-die-wide          67  an rc past 255
-\
-\ The host checks each image's ELF header; running them is the peer's.
+\ x86-64 peer. Each image is one case; the host checks its ELF header, and the
+\ peer that runs it must see the status the images section lists.
 require test/x86-64-boot-harness.f
 
 package X64K-CONTROL
@@ -101,11 +50,9 @@ DATA-START $10000 + constant CLOSED-SCRATCH
 : PUSH-CELL, ( n -- ) {: off:n :}
    RAX DATA-REG off MEM-OFF ASM-SINK ENC-MOV-RM  0 G-PUSH ;
 
-\ Check the DATA cell at an offset holds n.
 : EXPECT-CELL, ( n n -- ) {: want:n off:n :}
    off PUSH-CELL,  want EXPECT-POP, ;
 
-\ Push the address n bytes into DATA.
 : PUSH-INSIDE, ( n -- ) {: off:n :}
    RAX DATA-REG off MEM-OFF ASM-SINK ENC-LEA  0 G-PUSH ;
 
@@ -160,7 +107,6 @@ DATA-START $10000 + constant CLOSED-SCRATCH
    RCX RAX MEM-AT ASM-SINK ENC-MOV-MR
    ;ROUTINE ;
 
-\ Run a body under finally with a cleanup, each an xt.
 : FINALLY-OF ( label label -- label ) {: body:label cleanup:label :}
    ROUTINE  body PUSH-XT,  cleanup PUSH-XT,  s" finally" ROW,  ;ROUTINE ;
 
@@ -254,6 +200,60 @@ DATA-START $10000 + constant CLOSED-SCRATCH
    ROUTINE  0 PUSH,  0 PUSH,  rc PUSH,  s" die" ROW,  ;ROUTINE ;
 
 \ ---- images ------------------------------------------------------------------
+\ Each image and the status its peer must see:
+\
+\    hb-x64-kernel-control           76  evaluate refuses: its fd-2 line, then
+\                                        76
+\    hb-x64-kernel-control-negative  21  the same, expecting the wrong depth
+\    hb-x64-kernel-eval-range        76  source-range evaluation needs the
+\                                        interpreter
+\    hb-x64-kernel-source-exec      76  replay needs an interpreter; the
+\                                        source-exec-run row refuses by name
+\    hb-x64-kernel-execute            0  execute; 2>r, 2r@ and 2r>; both arms of
+\                                        execute-floor
+\    hb-x64-kernel-catch              0  catch with no throw, then a throw from
+\                                        a nested call that moved the data,
+\                                        return, loop and machine stacks
+\    hb-x64-kernel-finally            0  the cleanup runs after a body that
+\                                        returns and after one that throws,
+\                                        whose code is rethrown; a throwing
+\                                        cleanup's code wins
+\    hb-x64-kernel-run-in-stack       0  a callback on the loop stack's mapping
+\                                        returns, then throws; an extent inside
+\                                        DATA throws E-STACK-UNGUARDED; each is
+\                                        caught
+\    hb-x64-kernel-source-unit        0  a clean callback, residue, a nested
+\                                        throw and an exactly full stack return
+\                                        restore the caller's stack and extent
+\    hb-x64-kernel-eval-closed        0  clean, residue, throw and a real low
+\                                        guard fault return the segment to a
+\                                        pool
+\    hb-x64-kernel-throw-close        0  a throw out of an open code window
+\                                        closes the band before catch resumes
+\    hb-x64-kernel-floorrec           0  the data-floor recovery entry empties
+\                                        the faulting stack and throws 70
+\    hb-x64-kernel-stack-clear        0  the trusted recovery row empties only
+\                                        the current data stack
+\    hb-x64-kernel-unset-<row>       86  execute, catch, finally cleanup and
+\                                        run-in-stack refuse a zero quotation
+\                                        with `hb: unset quotation` on fd 2
+\    hb-x64-kernel-unguarded         67  that refusal with no handler
+\    hb-x64-kernel-throw             42  42 throw with no handler: the reporter
+\                                        returns with the scratch registers
+\                                        clobbered
+\    hb-x64-kernel-throw-report      50  the reporter exits with the code plus 8
+\    hb-x64-kernel-throw-corrupt     87  a handler frame whose cursor is below
+\                                        its base: `hb: catch frame corrupt` on
+\                                        fd 2
+\    hb-x64-kernel-die                5  `hb: die` and LF on fd 2; the exit hook
+\                                        returns with the scratch registers
+\                                        clobbered
+\    hb-x64-kernel-die-hook           6  the exit hook dies with 6, so its cell
+\                                        was cleared before the call
+\    hb-x64-kernel-die-throw         50  a catch around a die whose exit hook
+\                                        throws 42: the throw is uncaught, so
+\                                        the reporter exits with the code plus 8
+\    hb-x64-kernel-die-wide          67  an rc past 255
 
 : BUILD-EVALUATE ( bool ptr u8 n -- ) {: negative:bool path:ptr pathu:n :}
    negative X64HARNESS:BOOT-OPEN,

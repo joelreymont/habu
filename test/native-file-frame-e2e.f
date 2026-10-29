@@ -3,7 +3,6 @@
 \ whole also writes one object under a key that names the file's place in the
 \ load, not its text, so an edit keeps the key. Its definitions' result
 \ digests change with their code and not with a comment or a relocation.
-\ bin/hb --load test/native-file-frame-e2e.f
 
 require src/lib/test.f
 require src/lib/string.f
@@ -82,20 +81,20 @@ variable FILL-POOL
    PROC-ENV-INHERIT-MISSING
    builder builderu INPUT INPUT-U @ CAPTURE ;
 
-\ Set the builder's engine root to root.
 : ROOT+ ( ptr u8 n -- )
    {: root:ptr rootu:n :}
    S\" s\" " IN+ root rootu IN+ S\" \" SOURCE-ROOT:ENGINE!\n" IN+ ;
 
+\ FWD-CASE through CAST-PROBE stand apart from PROBE for its body text limit
+\ (BODYBUF-CAP).
 \ A forward keeps the fault its device latched: PDEV's write latches fault 5,
 \ then forwards to the terminal, whose fault is none. fwd= prints the first
 \ write's code, PDEV's fault after it, and the second write's code less
-\ E-GENIO-IO. Kept apart from PROBE for its body text limit (BODYBUF-CAP).
+\ E-GENIO-IO.
 : FWD-CASE ( -- )
    S\" package FRAME-FWD\npublic\n: P-WRITE ( ptr u8 n -- ) 5 GENIO:FAULT! GENIO:TERMINAL GENIO:FORWARD ;\n: PDEV ( -- device ) [: FRAME-DEV:NO-EMIT ;] [: FRAME-DEV:NO-KEY ;] [: FRAME-DEV:NO-READY ;] [: FRAME-DEV:NO-READ ;] [: P-WRITE ;] [: FRAME-DEV:NO-READ ;] [: FRAME-DEV:NOTHING ;] [: FRAME-DEV:NOTHING ;] 0 GENIO:DEVICE ;\n;package\nFRAME-FWD:PDEV GENIO:OUTPUT! FRAME-DEV:WCODE GENIO:OUTPUT@ GENIO:FAULT@ FRAME-DEV:WCODE GENIO:OUTPUT@ GENIO:TERMINAL GENIO:OUTPUT! GENIO:CLOSE s\" fwd=\" type rot . swap . GENIO:E-IO - . cr\n" IN+ ;
 
 \ ffo.f, ffg.f, ffe.f and ffx.f run inside an open FUNCTION: declaration.
-\ Kept apart from PROBE for its body text limit (BODYBUF-CAP).
 : DECL-PROBE ( -- )
    s" ffo.f" LOAD+
    s" ffg.f" LOAD+
@@ -104,7 +103,6 @@ variable FILL-POOL
 
 \ ffs.f's struct-by-value call prints its checksum, on macOS only, as
 \ FFS-FIXTURE writes it; ffsl.f loads first to grow the library table.
-\ Kept apart from PROBE for its body text limit (BODYBUF-CAP).
 : FFS-PROBE ( -- )
    HB-TARGET-MACOS? if
       s" ffsl.f" LOAD+
@@ -133,8 +131,7 @@ variable FILL-POOL
 \ The loads: lbv.f and lbc.f load where no edge can stand; nproot.f loads
 \ npk.f, then npc.f, whose own require of npk.f finds it loaded; nreq.f's
 \ required of npk.f does the same; evreq.f requires npk.f from an evaluated
-\ text; nlroot.f loads the second pair. Kept apart from PROBE for its body
-\ text limit (BODYBUF-CAP).
+\ text; nlroot.f loads the second pair.
 : EDGE-PROBE ( -- )
    s" lbv.f" LOAD+
    S\" s\" lbv=\" type LBV-K LBV-KID + . cr\n" IN+
@@ -149,7 +146,6 @@ variable FILL-POOL
 
 \ The loads of the INDIRECT-FIXTURES runs that store, each followed by the
 \ value it computed.
-\ Kept apart from PROBE for its body text limit (BODYBUF-CAP).
 : INDIRECT-PROBE ( -- )
    s" mxp.f" LOAD+
    S\" s\" mx=\" type MX-K . cr\n" IN+
@@ -165,7 +161,6 @@ variable FILL-POOL
 
 \ The loads of the CAST-FIXTURES runs, each run that stores followed by the
 \ value it computed.
-\ Kept apart from PROBE for its body text limit (BODYBUF-CAP).
 : CAST-PROBE ( -- )
    s" cid.f" LOAD+
    S\" s\" cid=\" type CID-K . cr\n" IN+
@@ -181,8 +176,9 @@ variable FILL-POOL
 \ TRANSFER-ROW). Then a multi-error run refuses BROKEN's body at tier 0 and
 \ keeps its declared row as a recovery fact; broken.f binds BROKEN under the
 \ same run. BROKEN is made by broken.f's child brokendef.f, since a record
-\ made between top-level loads has no key a file can name. after.f, the first file after the run ends, stores its definition:
-\ the run's last recovery binding leaves the checker idle.
+\ made between top-level loads has no key a file can name. after.f, the first
+\ file after the run ends, stores its definition: the run's last recovery
+\ binding leaves the checker idle.
 : PROBE ( -- n )
    SESSION
    \ The moved builds allot a byte before dv.f. The loader aligns HERE when a
@@ -455,7 +451,6 @@ variable FILL-POOL
      ENDOF
    ;MATCH ;
 
-\ A field's decimal value.
 : FIELD-N ( ptr u8 n -- n )
    STR>NUMBER? MATCH option
      none OF T-FAIL 0 ENDOF
@@ -484,7 +479,6 @@ variable FILL-POOL
    s" cache" AT NATIVE-FILE-APP:OBJ-DIR$ IN+ s" /" IN+ key keyu IN+ s" .hfo" IN+
    INPUT INPUT-U @ ;
 
-\ The object file the key names exists.
 : STORED ( ptr u8 n -- ) OBJ-PATH FS:EXISTS? TTRUE ;
 
 : KEEP ( ptr u8 n ptr u8 n -- )
@@ -507,10 +501,10 @@ variable FILL-POOL
 \ build's app.f dependency rows, kept in app-cold.obj, while the session that
 \ loaded app.f is still open: the rows' record keys exist only there. It first
 \ undoes the two writes to lib.f's DATA, tally.f's run of TALLY into HITS and
-\ app.f's store of QUAD into HOOK, so lib.f's DATA stands as app.f found it, as it does where a
-\ build checks the rows, before app.f. For each split k it prints one digit,
-\ 1 when rows [0,k) still hold plus 2 when rows [k,n) do, then for each row
-\ i a 1 when row i holds, else 0.
+\ app.f's store of QUAD into HOOK, so lib.f's DATA stands as app.f found it,
+\ as it does where a build checks the rows, before app.f. For each split k it
+\ prints one digit, 1 when rows [0,k) still hold plus 2 when rows [k,n) do,
+\ then for each row i a 1 when row i holds, else 0.
 \ Section 14 is the object's dependency rows (NUNIT-OBJECT's DEPS-SLOT).
 : CHECKER ( -- )
    0 INPUT-U !
@@ -630,8 +624,9 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    name nameu s"  reason=" LINE$ s"  reason=ffi-declaration-open" ENDS-WITH? TTRUE
    name nameu NO-OBJECT ;
 
-\ Files whose installs nest under an installing parent, kept apart from
-\ FIXTURES for its body text limit (BODYBUF-CAP).
+\ Files whose installs nest under an installing parent. NEST-FIXTURES and the
+\ other *-FIXTURES words stand apart from FIXTURES: together their body text
+\ passes the 8000 bytes one definition captures (BODYBUF-CAP).
 : NEST-FIXTURES ( -- )
    \ hpar.f requires hch.f between its two segments, and hch.f requires hg1.f
    \ and hg2.f: once a comment makes hch.f compile, hg1.f's and hg2.f's
@@ -644,8 +639,7 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" hoc.f" S\" : HO-PC ( -- n ) 3 ;\n" PUT
    s" hop.f" S\" : HO-PA ( -- n ) 1 ;\nrequire hoc.f\n: HO-PB ( -- n ) 2 ;\n" PUT ;
 
-\ The DATA layout fixtures, kept apart from FIXTURES for the same reason as
-\ FFI-FIXTURES.
+\ The DATA layout fixtures.
 : DATA-FIXTURES ( -- )
    \ dv.f's variable and created table install with their DATA bytes, the
    \ top level's store and commas among them; DV-S's string literal between
@@ -685,8 +679,7 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    S\" \nFUNCTION: FFS-SUM24 hb_sum24 ( ptr u8 -- n ) 0 24 STRUCT-ARG ;FUNCTION\ncreate FFS-S 7 , 3 , -9 ,\n" IN+
    s" ffs.f" INPUT INPUT-U @ PUT ;
 
-\ The FFI fixtures, kept apart from FIXTURES: together their body text
-\ passes the 8000 bytes one definition captures (BODYBUF-CAP).
+\ The FFI fixtures.
 : FFI-FIXTURES ( -- )
    \ A file that grows a registry table refuses. ffl.f, the first FFI file,
    \ declares functions until the table grows, from any count: the rest fit.
@@ -745,7 +738,6 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
 \ records each output operation, which a hit issues again. fpar.f, fq.f,
 \ fl.f and cap.f run words no trace accounts for, so they run cold on every
 \ build and print what they read.
-\ Kept apart from FIXTURES for its body text limit (BODYBUF-CAP).
 : TEE-FIXTURES ( -- )
    s" say.f" S\" s\" said\" type cr\n66 GENIO:EMIT\n2 constant SAY-K\n" PUT
    s" pout.f" S\" s\" a\" type cr\nrequire say.f\ns\" c\" type cr\n" PUT
@@ -766,14 +758,13 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
 \ and the third build edits XA's body under the same key. dxrun.f's DXGO
 \ executes the xt dxset.f stores in DXHOOK, a data cell with no colon
 \ accessor whose closure would protect DXA; the third build edits DXA's
-\ body. ixl.f's and
-\ ixt.f's bodies run evaluate-closed on a literal: the third build edits
-\ ixl.f's literal, and IX-TEN, which ixt.f's text calls. Each text stores
-\ into its own file's variable: a store into an earlier file's data
-\ refuses the file. The rk-*.f runs
-\ push a real literal, unclassed, before or after an indirect run, and refuse
-\ alike, trusted RK-TRUST too: a contract admits an unchecked body, not a
-\ real literal in it, and RK-IS's real literal refuses after its `is`.
+\ body. ixl.f's and ixt.f's bodies run evaluate-closed on a literal: the third
+\ build edits ixl.f's literal, and IX-TEN, which ixt.f's text calls. Each text
+\ stores into its own file's variable: a store into an earlier file's data
+\ refuses the file. The rk-*.f runs push a real literal, unclassed, before or
+\ after an indirect run, and refuse alike, trusted RK-TRUST too: a contract
+\ admits an unchecked body, not a real literal in it, and RK-IS's real literal
+\ refuses after its `is`.
 \ rk-div.f's run divides and rk-mod.f's takes a remainder: scalar ops whose
 \ zero divisor traps with an outcome the operands decide, so both store.
 \ db-a.f's run writes a reserved engine header cell ($3900) through
@@ -890,9 +881,8 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" wln.f" S\" get-current 0 set-current constant WLN-CUR\nWLN-CUR set-current\n" PUT ;
 
 
-\ The loader edge fixtures, kept apart from FIXTURES for the same reason as
-\ FFI-FIXTURES. Every load below is a loader token's action at a loader cut,
-\ whether it runs the child or finds it loaded.
+\ The loader edge fixtures. Every load below is a loader token's action at a
+\ loader cut, whether it runs the child or finds it loaded.
 : EDGE-FIXTURES ( -- )
    s" npk.f" S\" : NPK ( -- n ) 1 ;\n" PUT
    s" npc.f" S\" require npk.f\n: NPC ( -- n ) NPK 1+ ;\n" PUT
@@ -914,8 +904,7 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
 \ check@ (run-unaccounted); a window inside the subject would order the
 \ subject the same way, and a dependency loaded at an earlier top level would
 \ order it too (resolution-key-unknown). list.f has no dependency and loads
-\ inside a window the app opens. Kept apart from FIXTURES for its body text
-\ limit (BODYBUF-CAP).
+\ inside a window the app opens.
 : PIN-FIXTURES ( -- )
    \ raw.f's top level stores RAW-TARGET's code address into RAW-CELL's
    \ undeclared create bytes, which the object scans because the store ran
@@ -925,8 +914,8 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" raw.f" S\" require rawt.f\ncreate RAW-CELL 0 ,\n' RAW-TARGET RAW-CELL !\n" PUT
    \ poke.f's top level stores BOARD-GO's code address 8 bytes into board.f's
    \ 16-byte BOARD, an earlier cell no address row declares, which nothing
-   \ restores: the earlier-write check refuses it. board.f loads checked in poke.f's session, before the
-   \ window, above its image floor.
+   \ restores: the earlier-write check refuses it. board.f loads checked in
+   \ poke.f's session, before the window, above its image floor.
    s" board.f" S\" create BOARD 16 allot\n: BOARD-GO ( -- ) ;\n" PUT
    s" poke.f" S\" require board.f\n' BOARD-GO BOARD 8 + !\n" PUT
    \ slot.f's declared xt cell holds its child sdeep.f's TEN, which nothing
@@ -1056,8 +1045,8 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    \ allot a data one; tier-ok.f's set-tier is a build primitive. fwrite.f's
    \ FS:WRITE-ALL, fenv.f's GETENV, dbase.f's data-base, exec-xt.f's execute and
    \ act2.f's SESSION-LIVE? leave no trace. The tick of EX is a resolution,
-   \ not a run. nest-parent.f's include opens nest-child.f,
-   \ a trace; its SESSION-LIVE? after the child leaves none. act.f closes the
+   \ not a run. nest-parent.f's include opens nest-child.f, a trace; its
+   \ SESSION-LIVE? after the child leaves none. act.f closes the
    \ compiler session, so a warm build that installs it instead of running it
    \ prints session=-1. It loads before scope.f, which must stay the last load.
    s" parse-ok.f" S\" : PO ( -- ) ;\ns\" PO\" 0 parse-imm\ncreate PK 4 cells allot\n2 constant PK-K\n" PUT
@@ -1830,9 +1819,9 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    RUNS-ADMITTED ;
 
 \ name's replay went stale at the segment row seg names, with the reason its
-\ stale line gives after the number, and the build went
-\ on in the same process from name's source where the load before that row
-\ returned: name is refused as segment-stale and writes no object.
+\ stale line gives after the number, and the build went on in the same process
+\ from name's source where the load before that row returned: name is refused
+\ as segment-stale and writes no object.
 : RESUMED ( ptr u8 n ptr u8 n -- )
    {: name:ptr nameu:n seg:ptr segu:n :}
    0 INPUT-U !
@@ -1975,9 +1964,10 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
 \ RC-N's new effect leaves rp.f's first segment fresh and its second stale:
 \ the replay has installed RP-A and loaded rc.f, so the build names the
 \ event row it stopped at, row 3 after RP-A's segment and history rows and
-\ rc.f's load, and compiles the rest of rp.f from source. SXC-N's new effect does the same to sx.f past
-\ its loads of sxm.f and sxc.f at rows 0 and 1, so it resumes at row 2; the
-\ resume never loads sxm.f again, so its marker byte and its line come once.
+\ rc.f's load, and compiles the rest of rp.f from source. SXC-N's new effect
+\ does the same to sx.f past its loads of sxm.f and sxc.f at rows 0 and 1, so
+\ it resumes at row 2; the resume never loads sxm.f again, so its marker byte
+\ and its line come once.
 \ npc.f's load of npk.f is row 0, so an effect edit of npk.f resumes it at
 \ row 1.
 : RC-INTERFACE ( -- )

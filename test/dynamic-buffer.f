@@ -10,30 +10,26 @@ CAST: TOKEN-N ( token -- n )
 
 DYNAMIC-BUFFER TOKENS token
 DYNAMIC-BUFFER OPTIONS option<n>
-\ Cells that hold addresses: the accessor hands back a pointer to a pointer, so
-\ this is the element type that reads the control head's own declared cell and
-\ moves pointers when a growing reserve copies the old capacity.
+\ Address cells: the accessor hands back a pointer to a pointer; this element
+\ type reads the head's declared cell and moves pointers when a reserve copies.
 DYNAMIC-BUFFER ADDRS ptr u8
-\ The growable BYTE row (dot habu-give-dynamic-buf-6a738e18): the element is one
-\ byte, so the accessor is `ptr u8` at byte i and c@ / c! read and write it, and
-\ a reserve counts bytes. birch's reproducer is this line and `DYNAMIC-BUFFER
-\ CELLS n`; that second name collides with the built-in `cells`
-\ (E-DUPLICATE-DEFINITION, rc 78, measured), so the bare-cell row is named here.
+\ The byte row: the accessor is `ptr u8` at byte i and a reserve counts bytes.
+\ A cell row cannot be named CELLS: it collides with the built-in `cells`
+\ (E-DUPLICATE-DEFINITION, rc 78, measured).
 DYNAMIC-BUFFER BYTES u8
 DYNAMIC-BUFFER CELLROW n
 STRUCTURE triple DERIVE addr FIELD a n FIELD b n FIELD c n ;STRUCTURE
 DYNAMIC-BUFFER WIDE triple
-\ A control record no definer generated, as a downstream table's is: a declared
-\ head and a control block of DYNAMIC-STORAGE:CONTROL-CELLS (four) cells, as
-\ the generated `NAME#base` and `NAME#ctl` are. A shorter hand-made block would
-\ overlap its neighbour's cells.
+\ A control record no definer generated, as a downstream table's: a declared
+\ head and DYNAMIC-STORAGE:CONTROL-CELLS (four) cells, as `NAME#base` and
+\ `NAME#ctl` are; a shorter block would overlap its neighbour's cells.
 PTR-VARIABLE RAW-CTRL
 create RAW-CTL 0 , 0 , 0 , 0 ,
 create MARK 8 allot
 variable RAW
 
-\ A declaration-time refusal is measured by evaluating the line and catching its
-\ code, as test/typed-storage-test.f does.
+\ Declaration refusals are measured by evaluating the line and catching its
+\ code.
 TYPED-VARIABLE DB-EVAL-A ptr u8
 variable DB-EVAL-U
 : DB-EVAL-RUN ( -- ) DB-EVAL-A @ DB-EVAL-U @ INCLUDE-EVALUATE ;

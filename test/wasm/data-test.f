@@ -1,7 +1,6 @@
 \ The checked build's DATA boundary under a foreign Wasm host. The peer,
 \ test/wasm/data-peer.mjs, only dumps the module's memory before and after its
 \ run and writes OUT; this file makes every check from those bytes.
-\ Run from the repository root: bin/hb --load test/wasm/data-test.f
 require src/lib/string.f
 require src/lib/fmt.f
 require src/lib/le.f
@@ -83,7 +82,6 @@ DYNAMIC-BUFFER AFTER u8
    HOST-OFFSET NUM-ARG HOST-BYTE NUM-ARG
    s" bun" SPAWN ;
 
-\ Reads the file at the path into bytes that hold exactly its size.
 : READ-DUMP ( ptr u8 n ptr u8 n -- )
    {: pa:ptr pu:n dst:ptr u:n :}
    pa pu dst u FS:READ-ALL u <> if E-FS-IO throw then ;
@@ -99,7 +97,6 @@ DYNAMIC-BUFFER AFTER u8
    AFTER-PATH AFTER-PATH-U @ 0 AFTER au READ-DUMP
    bu ;
 
-\ The text after the last newline once trailing blanks are trimmed.
 : LAST-LINE ( ptr u8 n -- ptr u8 n )
    RTRIM {: a:ptr u:n :}
    u begin dup 0 > while

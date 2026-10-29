@@ -1,7 +1,6 @@
 \ The profiler must retain its sampled donor's identity across a real seed
 \ rewind and give a new word at the reused ordinal a fresh profile identity.
 \ The child emits JSON as the repeatable report artifact and tests both PCs.
-\ Run: bin/hb --load test/prof-rewind.f
 
 require src/lib/test.f
 require src/lib/string.f

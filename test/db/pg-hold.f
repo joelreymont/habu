@@ -1,13 +1,9 @@
-\ pg-hold.f - the case file test/db/pg-kill-test.f has the pg harness run.
-\
-\ It connects with the conninfo that is its one script argument and reports two
-\ lines on the FIFO PG_HOLD_FIFO names: the directory the server made its
-\ socket in, and line 7 of the server's postmaster.pid, `<key> <shmid>`, which
-\ names the SysV shared-memory segment the server holds. Then it waits in
-\ pg_sleep, with a backend busy on its behalf, until the row is killed. If
-\ nothing kills it, the harness's own deadline for a case file does. Its first
-\ act opens the FIFO's write end (src/lib/test/fifo.f), and nothing here closes
-\ it.
+\ pg-hold.f - the case file test/db/pg-kill-test.f has the pg harness run. It
+\ connects with the conninfo of its one script argument and writes two lines on
+\ the FIFO PG_HOLD_FIFO names: the server's socket directory, and line 7 of its
+\ postmaster.pid, `<key> <shmid>`, naming its SysV shared-memory segment. Then
+\ it waits in pg_sleep, a backend busy for it, until killed or the harness's
+\ case deadline.
 
 require src/lib/errors.f
 require src/lib/fs.f
@@ -42,7 +38,6 @@ variable HOLD                       \ the FIFO's write end
    loop
    drop -1 ;
 
-\ Line n of the first u bytes of TEXT, without its newline.
 : LINE$ ( n n -- ptr u8 n ) {: line:n u:n :}
    line u LINE-AT {: at:n :}
    at 0 < if s" pg-hold: postmaster.pid is short" 1 die then
@@ -70,6 +65,7 @@ using PG
    PIDFILE pu TEXT PIDFILE-CAP FS:READ-ALL {: u:n :}
    SHM-LINE u LINE$ REPORT ;
 
+\ It opens the FIFO's write end first (src/lib/test/fifo.f), never closed.
 : MAIN ( -- )
    s" PG_HOLD_FIFO" TEST-FIFO:WRITER FD>N HOLD !
    SCRIPT-ARGC 1 <> if

@@ -1,106 +1,8 @@
-\ x64-emit.f - the x86-64 bytes: src/compiler/native/emit-x64.f (X64EMIT) over
-\ the routines src/compiler/native/select-x64.f selects and the allocator and its
-\ validator accept, and over two routines written straight in the machine
-\ dialect. THE EMITTER OWNS ITS SINK: a case declares where the routine goes with
-\ `X64EMIT:PLACE-AT`, emits, reads the sealed image back and retires it, which is
-\ what gives the placement back as well as the bytes. A SHADOW case emits with no
-\ placement at all: every field that depends on one is left to the rows.
-\
-\ HOW THE BYTES ARE PINNED. The WHOLE byte string of the routine is compared
-\ against a fixed expectation, the way test/compiler/x86-64-asm.f pins one
-\ encoder at a time. The `mc:` comment above each pinned line is the instruction
-\ that byte group is, one mnemonic a line, as
-\ `llvm-mc -triple=x86_64 -disassemble` read the pinned string back (LLVM 22.1.8,
-\ 2026-09-22); every line was then re-assembled with
-\ `llvm-mc -triple=x86_64 -show-encoding` and answered exactly the bytes pinned
-\ here, WITH THE TWO EXCEPTIONS NAMED BELOW. That agreement is not free:
-\ src/arch/x86-64/asm.f implements exactly one encoding per operation and none
-\ of llvm-mc's preferred short forms (05 id for `add rax`, D1 /n for a shift by
-\ one, 83 /n ib for an ALU immediate that fits a signed byte), so the fixtures
-\ below fold their immediates onto the SECOND argument, shift by a count other
-\ than one, name rax as the destination of no immediate form, and hold every
-\ folded literal outside a signed byte.
-\
-\ THE FIRST EXCEPTION IS THE DATA-STACK ADJUSTMENT, which no fixture can dodge: a
-\ pointer move is a small multiple of eight and therefore always fits the byte
-\ form llvm-mc prefers, while `x64.dtake` and `x64.dpublish` are the imm32 add
-\ and subtract of this dialect whatever the distance (emit-x64.f PUT-DMOVE).
-\ llvm-mc DISASSEMBLES the pinned 49 81 ec 10 00 00 00 as the `subq $16, %r12`
-\ its `mc:` line gives, and re-ASSEMBLES that line as the four-byte
-\ 49 83 ec 10: on those lines the instruction agrees and the encoding is the
-\ longer one this encoder has. The frame's `x64.reserve` and `x64.release` are
-\ the same imm32 subtract and add on rsp, and disagree the same way. So does
-\ the comparison with minus one every `x64.idiv` carries: llvm-mc re-assembles
-\ `cmpq $-1` as 48 83 /7 ff.
-\
-\ THE SECOND IS THE BRANCH, and it is the same kind of disagreement. A `mc:` line
-\ for a branch or a call carries the rel32 FIELD as llvm-mc printed it - `je 11`,
-\ `jmp -26`, `callq 980` - and re-assembling that line answers a fixup holding
-\ the very same number. For `callq` the encoding agrees outright, e8 having no
-\ short form; for `jmp` and `jcc` llvm-mc assembles the two-byte relaxable form
-\ (EB cb, 7x cb) where this emitter always writes the wide one, because rel8
-\ relaxation is not a condition of correctness here (src/compiler/native/
-\ emit-x64.f, "TWO PASSES"). The displacement itself is measured FROM THE END of its
-\ instruction, so the target of a pinned `jmp -26` is 26 bytes before the byte
-\ after it.
-\
-\ THE FIXTURES ARE THE CONTRACTS x64-regalloc.f ALLOCATES UNDER, one per shape.
-\ Most are the REGISTER-convention leaf: the contract names no place, so the
-\ module is the body alone and every value in it is one the allocator is free to
-\ place. Then the DATA-STACK convention (X64ABI:LEAF), where the interface is
-\ caller cells and the selector writes the boundary itself - the only shape the
-\ four data-stack crossings and the four addressed forms appear in, because the
-\ order an addressed form needs is the one the entry's `x64.dtake` minted and the
-\ exit's `x64.dpublish` consumes. Then the two contracts a call site needs:
-\ X64ABI:CALL for a routine that calls and comes back, X64ABI:TAIL for one that
-\ leaves through its callee. A call site cannot be staged in the dialect instead
-\ - the memory order it mints would be read by nobody and the validator refuses
-\ that by name - so `x64.call`, `x64.wordcall` and `x64.tailcall` reach this
-\ emitter only through the selector. Last X64ABI:NORET-LEAF-FRAMED, the
-\ contract of a routine that ends in `die`. ONE FIXTURE PER CONTEXT, and the refusing
-\ cases run inside an enclosing one, for the reason that suite gives.
-\
-\ WHAT THIS SUITE DOES NOT PIN. Of the forms this emitter renders, `x64.cmpbri`
-\ has no byte string here: the selector is deliberately unfused and mints no
-\ compare-and-branch at all, and the diamond below is the one staged in the
-\ dialect. Nor have the scalar double forms: their encoders are pinned one at a
-\ time against llvm-mc in test/compiler/x86-64-asm.f, and the routines the
-\ double fixtures below select run as images in test/x86-64-peer-routines.f,
-\ whose answers hold every render to what this engine's own float words answer.
-\ What else is left unmeasured is a byte no module of this slice can produce,
-\ and each of them is a later slice's:
-\
-\ - THE REGISTERS ABOVE rdx. The pool is rax, rcx, rdx, rsi, rdi and r8..r11
-\   (x64ir.f RESERVED-MASK), and no fixture here is wide enough for the
-\   allocator to reach past rdx, so no pinned byte sets REX.R or REX.B for an
-\   operand and none names the spl/bpl/sil/dil byte registers.
-\ - A DATA-STACK DISPLACEMENT OUTSIDE disp8, or a negative one. `x64.dslot` is
-\   signed and reaches disp32 (x64ir.f DSLOT), which wants a contract of more
-\   than sixteen cells.
-\ - A FRAME SLOT OUTSIDE disp8. The validator bounds a slot by the module's own
-\   value count (regalloc-verify.f FLOW-SLOT refuses E-A64RAV-SLOT) and the spill
-\   pass reuses a slot once its value is dead, so slot 128 wants seventeen values
-\   put away at once.
-\ - THE FORMS STILL REFUSED BY NAME, one case standing for all of them below:
-\   `x64.neg` and the selects `x64.cmpsel` and `x64.selz`. Each needs a
-\   register the machine names or a lowering, and neither is here. An
-\   `x64.fcmpset` whose condition and result count are not `gt` with one or
-\   `equal` with two is refused the same way, a case for each.
-\ - THE FIELD OF THE CALL TO `die`. Its entry is the host engine's, so the trap
-\   case pins every other byte and holds that field to the entry (DIE-ENTRY).
-\   The call to `throw` in the selected divide is held the same way
-\   (THROW-TARGET). Each case is placed at the slot at or below its entry
-\   (SLOT-BELOW), so the field reaches the entry wherever the engine loaded.
-\ - E-X64EMIT-LAYOUT, the disagreement between the two passes. It is the check
-\   that holds the writer to the measurer's numbers, and no module reaches it
-\   without a defect in one of them, so no case here can pin it.
-\ - E-X64EMIT-SHAPE, one step earlier: the block shapes it names are ones the IR
-\   builder will not hand out. A module whose return is followed by another
-\   operation is refused by `IR-BUILD:END-BLOCK`, with E-IR-FUN-TERM (-8049,
-\   measured; src/compiler/ir/fun.f TERM-CK -
-\   "a block that does not end in exactly one terminator operation", which is
-\   the empty block as well), so that branch of the emitter's shape check stands
-\   behind an invariant the builder already holds.
+\ x64-emit-fixture.f - the x86-64 bytes src/compiler/native/emit-x64.f (X64EMIT)
+\ writes for routines select-x64.f selects and the allocator and its validator
+\ accept, and for two written straight in the machine dialect. Each case pins
+\ the routine's whole byte string; a SHADOW case emits with no placement and
+\ leaves every placement-dependent field to the rows.
 
 require src/lib/test.f
 require src/lib/byte-buffer.f
@@ -117,10 +19,10 @@ package X64EMIT-TEST
 private
 
 \ ---- reading one emission back -----------------------------------------------
-\ The emitter owns its sink, so a case PLACES, emits, compares the whole sealed
-\ image and retires it. Retiring is what gives the placement back as well as the
-\ bytes, which is why every case here ends in one - the refusing cases too, the
-\ way src/compiler/native/compiler.f ends a refused definition.
+\ The emitter owns its sink: a case places (X64EMIT:PLACE-AT), emits, compares
+\ the whole sealed image and retires it. Retiring gives the placement back, so
+\ every case ends in one, the refusing cases too, as src/compiler/native/
+\ compiler.f ends a refused definition.
 : HEX-DIGIT ( n -- n ) {: c:n :}
    c 48 >= c 57 <= and if c 48 - exit then
    c 97 >= c 102 <= and 0= if FMATH:E-DOMAIN throw then
@@ -138,8 +40,6 @@ private
    loop
    true ;
 
-\ Compare the whole routine the last case emitted against the expected string,
-\ then retire it so the next case can place its own.
 : X= ( ptr u8 n -- ) {: ea:ptr eu:n :}
    X64EMIT:BYTES X64EMIT:SIZE {: da:ptr dlen:n :}
    da dlen ea eu SPAN=HEX? TTRUE
@@ -269,8 +169,8 @@ create TXT
    t IR-TYPE:FN-RESULT
    CC BB IR-BUILD:INTERN-CODE-REF ;
 
-\ A module's function table admits one function per symbol (E-IR-FUN-DUP), so a
-\ module of two names them apart.
+\ A module's function table admits one function per symbol (E-IR-FUN-DUP,
+\ -8051), so a module of two names them apart.
 : OPEN-FUN-NAMED ( IR-ID:ir-type-id ptr u8 n -- )
    {: sig:IR-ID:ir-type-id a:ptr u:n :}
    CC BB  CC BB a u IR-BUILD:INTERN-SYMBOL  IR-BUILD:BEGIN-FUN
@@ -345,6 +245,51 @@ create TXT
    CC BB IR-BUILD:END-OP drop ;
 
 \ ---- the fixtures ------------------------------------------------------------
+\ Each `mc:` comment above a pinned line is the instruction that byte group is,
+\ as `llvm-mc -triple=x86_64 -disassemble` reads it (LLVM 22.1.8); re-assembled
+\ with `-show-encoding`, every line answers the pinned bytes but for two kinds.
+\ src/arch/x86-64/asm.f has one encoding per operation and none of llvm-mc's
+\ short forms (05 id for `add rax`, D1 /n for a shift by one, 83 /n ib for an
+\ ALU immediate in a signed byte), so the fixtures fold immediates onto the
+\ second argument, shift by a count other than one, never make rax an
+\ immediate form's destination, and keep every folded literal outside a byte.
+\ First exception: `x64.dtake`/`x64.dpublish` (emit-x64.f PUT-DMOVE),
+\ `x64.reserve`/`x64.release` on rsp and the `cmpq $-1` every `x64.idiv`
+\ carries are always imm32, which llvm-mc re-assembles in the 83 /n ib form
+\ (pinned 49 81 ec 10 00 00 00, re-assembled 49 83 ec 10).
+\ Second exception: a branch's `mc:` line carries the rel32 field as llvm-mc
+\ prints it (`je 11`, `jmp -26`, `callq 980`), measured from the end of its
+\ instruction. e8 has no short form; for `jmp` and `jcc` llvm-mc assembles
+\ EB cb / 7x cb where this emitter always writes rel32 ("the two passes" below).
+\
+\ The fixtures are the contracts x64-regalloc.f allocates under, one per shape:
+\ the register-convention leaf, whose contract names no place; X64ABI:LEAF, the
+\ data-stack convention and the only shape with the data-stack crossings and
+\ addressed forms, since an addressed form needs the order the entry's
+\ `x64.dtake` mints and the exit's `x64.dpublish` consumes; X64ABI:CALL and
+\ X64ABI:TAIL for call sites, which reach the emitter only through the selector
+\ (a call staged in the dialect mints an order nobody reads, and the validator
+\ refuses it); X64ABI:NORET-LEAF-FRAMED for a routine ending in `die`. One
+\ fixture per context; the refusing cases run inside an enclosing one.
+\
+\ Not pinned: `x64.cmpbri` (the selector mints no compare-and-branch; the
+\ diamond below is staged in the dialect); the scalar double forms (encoders in
+\ test/compiler/x86-64-asm.f, routines run in test/x86-64-peer-routines.f);
+\ registers above rdx (pool rax, rcx, rdx, rsi, rdi, r8..r11, x64ir.f
+\ RESERVED-MASK; no fixture reaches past rdx, so no operand sets REX.R or REX.B
+\ and none names spl/bpl/sil/dil); a data-stack displacement outside disp8 or
+\ negative (`x64.dslot` reaches disp32, x64ir.f DSLOT: a contract of more than
+\ sixteen cells); a frame slot outside disp8 (regalloc-verify.f FLOW-SLOT
+\ bounds a slot by the module's value count and spill reuses dead slots, so
+\ slot 128 needs seventeen values put away at once); E-X64EMIT-LAYOUT, which no
+\ module reaches without a measurer or writer defect; E-X64EMIT-SHAPE, whose
+\ shapes IR-BUILD:END-BLOCK already refuses with E-IR-FUN-TERM (-8049,
+\ src/compiler/ir/fun.f TERM-CK, the empty block included).
+\ Refused by name, one case each: `x64.neg`, `x64.cmpsel`, `x64.selz`, and an
+\ `x64.fcmpset` whose condition and result count are not `gt` with one or
+\ `equal` with two. The calls to `die` and to `throw` are placed at the slot at
+\ or below their entry (SLOT-BELOW, DIE-ENTRY, THROW-TARGET), so the field
+\ reaches the entry wherever the engine loaded.
 \ `: LEAF ( a b -- n ) - ;` - the two-address subtraction that destroys its first
 \ operand, with nothing copied.
 : BUILD-DIFF ( -- )
@@ -634,10 +579,10 @@ $400 constant CALLEE-ENTRY           \ the address the tail case leaves through
 
 \ ---- the routine that ends the process ----------------------------------------
 \ `: LEAF ( -- ) s" hello" 70 die ;` in the shape the source compiler hands
-\ over (test/compiler/native-trap.f TRAP1): one `hir.trap` whose three operands
-\ are the cells `die` reads, the address, the length and the exit code. The
-\ address is a plain literal here: a literal's site is the relocatable literal
-\ case's. Nothing follows the trap and no block returns.
+\ over: one `hir.trap` whose three operands are the cells `die` reads, the
+\ address, the length and the exit code. The address is a plain literal here: a
+\ literal's site is the relocatable literal case's. Nothing follows the trap and
+\ no block returns.
 : BUILD-TRAP ( -- )
    0 0 OPEN-FUN
    $DA7A0000 CONSTOP {: a:IR-ID:ir-value-id :}
@@ -832,9 +777,8 @@ private
 \ The selector produces neither under a contract this machine lowers: a call
 \ site is E-X64SEL-CALL under the register convention, because a call hands its
 \ arguments over through the data-stack pointer such a routine never took, and
-\ no source operation lowers to `x64.neg` at all. Both are therefore staged in
-\ X64IR itself - the emitter's input is an X64IR module, and where the module
-\ came from is not its question.
+\ no source operation lowers to `x64.neg`. Both are staged in X64IR, the
+\ emitter's input.
 1 TYPED-BUFFER M-BLD IR-BUILD:builder
 1 TYPED-BUFFER M-SRC IR-ID:ir-source-id
 
@@ -851,8 +795,6 @@ private
    {: k:IR-ID:ir-symbol-id v:IR-ID:ir-attr-id :}
    CC MB k v IR-BUILD:ADD-ATTR ;
 
-\ A module's function table admits one function per symbol (E-IR-FUN-DUP,
-\ -8051, measured on a second `LEAF` here), so a module of two names them apart.
 : M-FUN-NAMED ( IR-ID:ir-type-id ptr u8 n -- )
    {: sig:IR-ID:ir-type-id a:ptr u:n :}
    CC MB  CC MB a u IR-BUILD:INTERN-SYMBOL  IR-BUILD:BEGIN-FUN
@@ -909,12 +851,11 @@ private
    M-CLOSE ;
 
 \ ---- the machine-dialect shapes the selector does not produce ----------------
-\ The selector is CORRECT AND UNFUSED (select-x64.f's own header): a comparison
+\ The selector is correct and unfused (select-x64.f's own header): a comparison
 \ feeding a branch becomes `x64.cmpset` and then `x64.brz`, never `x64.cmpbr`,
 \ and it lowers a self-call from HIR `call` only inside a definition that
 \ recurses. Both forms are the dialect's and this emitter writes both, so they
-\ are staged here the way the negator above is - the emitter's input is an X64IR
-\ module and where it came from is not its question.
+\ are staged here like the negator above.
 : M-BIND-MACHINE ( -- )
    CC MB X64M:MACHINE  CC MB X64IR:VOCABULARY  A64RA:BIND-DIALECT
    CC MB  CC MB X64IR:VOCABULARY  A64RAV:BIND-DIALECT ;
@@ -1232,9 +1173,9 @@ private
 \ Nothing selects `x64.cmpsel` or `x64.selz` yet (select-x64.f's header), so each
 \ is staged here under the data-stack boundary the divide keeps. The allocator
 \ picks the registers, so an aliasing case is an IR identity: one value standing
-\ in two operands is one register in both. SEL-TAKE leaves the memory order under
-\ the loaded cells, and each shape picks its operands off the top with a stack
-\ word.
+\ in two operands is one register in both. SEL-TAKE2 and SEL-TAKE3 leave the
+\ memory order under the loaded cells, and each shape picks its operands off
+\ the top with a stack word.
 : SEL-TAKE2 ( -- IR-ID:ir-value-id IR-ID:ir-value-id IR-ID:ir-value-id )
    M-MOD
    M-BIND-MACHINE
@@ -1634,10 +1575,10 @@ $100000000 constant FAR-ENTRY
    0 W-CTX ! CALLEE-ENTRY BUILD-REMAINDER 3 1 M-DALLOCATED 0 PLACED ;
 
 \ Where `hir.trap` goes: `die` in THIS engine's dictionary, which is what the
-\ selector names (select-x64.f TRAP-ENTRY). That address is the host's and moves
-\ with every engine build, so the call's field is not pinned as bytes: it is read
-\ back and held to the entry less the slot and the routine's own length, the
-\ call being the routine's last instruction.
+\ selector names (select-x64.f X64IR:KEY-TRAP-ENTRY). That address is the
+\ host's and moves with every engine build, so the call's field is not pinned as
+\ bytes: it is read back and held to the entry less the slot and the routine's
+\ own length, the call being the routine's last instruction.
 4 constant REL32-N                   \ the bytes of a rel32 field
 
 \ The rel32 that ends the sealed emission, little-endian and signed.
@@ -1789,10 +1730,9 @@ $100000000 constant FAR-ENTRY
    \ mc: jmp 1019
    s" e9fb030000" X= ;
 
-\ THE FAR CALL IS REFUSED BY THE WRITER AND NOT BY THE MEASURER: a measurement
-\ writes zero into every displacement field, because the field's width does not
-\ depend on the number in it, so the reach of this one is only asked once both
-\ ends are known.
+\ THE FAR CALL IS REFUSED BY THE WRITER AND NOT BY THE MEASURER: the
+\ measurement writes zero into every displacement field (above), so the reach
+\ of this one is only asked once both ends are known.
 : FARCALL-EMIT ( -- )
    CALL-ALLOCATED 0 PLACED ;
 

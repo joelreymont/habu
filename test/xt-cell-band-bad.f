@@ -1,21 +1,14 @@
-\ xt-cell-band-bad.f — `xt!` refuses a cell that does not lie inside DATA, and
-\ refuses it BEFORE the store (dot habu-seal-the-declaration-7183177e).
-\
-\ The engine's persisted-address-cell table is keyed by a cell's offset within
-\ DATA, and its three consumers -- the declaration, the snapshot writer's
-\ canonicalise and the loader's relocate -- index DATA by that offset and touch
-\ the eight bytes there. A cell outside DATA therefore names eight bytes of
-\ something else entirely in all three.
-\
-\ Nothing in the tree offers such a cell, so the fixture builds one deliberately:
-\ a fresh anonymous mmap page, which the kernel places nowhere near DATA
-\ (measured about 4.6e12 bytes below data-base on macos-arm64).
-\
-\ The refusal is a process exit rather than a throw because the declarer is engine
-\ machine code beneath the catch machinery, and because a half-declared address
-\ table must not be allowed to reach a snapshot. STORED is printed only if the
-\ store went through; its absence in the expected stdout is the proof that the
-\ refusal precedes the mutation.
+\ xt-cell-band-bad.f - `xt!` refuses a cell outside DATA, before the store.
+\ The persisted-address-cell table is keyed by a cell's DATA offset, and its
+\ three consumers (the declaration, the snapshot writer's canonicalise, the
+\ loader's relocate) touch the eight bytes at that offset. The fixture's cell is
+\ a fresh anonymous mmap page, which the kernel places far from DATA (measured
+\ about 4.6e12 bytes below data-base on macos-arm64).
+
+\ The refusal is a process exit, not a throw: the declarer is engine machine
+\ code beneath the catch machinery, and a half-declared address table must not
+\ reach a snapshot. STORED prints only if the store went through, so its absence
+\ from the expected stdout proves the refusal precedes the mutation.
 
 require src/lib/errors.f
 

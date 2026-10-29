@@ -1,26 +1,9 @@
 \ top-row-storage-test.f - the interpret row types top-level storage as a colon
-\ body does (dot habu-check-typed-storage-087ee3fa).
-\
-\ A pointer or an execution token stored into a raw cell at top level is refused
-\ before the storing word runs, with the diagnostic the same store gets inside a
-\ colon body and the checker's rc 70; the cell keeps its old contents. Each
-\ refusal runs beside its colon-body twin and asserts the same code, token and
-\ reason or operand. A `0 set-check` window stays unchecked, and the cell it
-\ leaves behind is unknown to the row, so the next typed consumer refuses it.
-\ A top-level refusal names the file and line it was read from in place of a
-\ definition: the file alone for a string `evaluate` runs, a tool's file label
-\ over the path of the file the tool set it in, and no place at the REPL.
-\ The admitted programs are the ones a row that is too strict would break:
-\ numeric and declared-cell stores, nested and sibling closed evaluation, a
-\ pointer kept across `:` and `require`, the trusted hook rows at top level,
-\ and a REPL line after one that threw.
-\
-\ The programs run through `evaluate-closed`, the top level `--load` puts every
-\ line through, so the row under test is the one this process keeps. Four
-\ boundaries take a child instead, each named at its case: a program that
-\ crashes an unchecked engine, one that rewires the search order or the check
-\ hook, one that labels the checked file, and the REPL, whose line loop only a
-\ terminal drives.
+\ body does: a refused top-level store
+\ gets its colon-body twin's code, token and reason with rc 70, and the cell
+\ keeps its old contents. Programs run through `evaluate-closed`, the row --load
+\ keeps in this process; a child runs only the boundaries named at their cases
+\ (a crash, a rewired search order or check hook, the file label, the REPL).
 require src/lib/errors.f
 require src/lib/test.f
 require src/lib/string.f
@@ -31,8 +14,8 @@ require src/lib/test/subject.f
 require src/lib/pty-harness.f
 require src/lib/engine-candidate.f
 
-\ The cells the evaluated programs name, file-global because the programs are
-\ compiled at run time in the scope a real program writes them in.
+\ File-global: the programs compile at run time in the scope a real program
+\ writes them in.
 variable TS-V
 create TS-B 8 allot
 : TS-BN ( -- ptr n ) TS-B ;
@@ -45,9 +28,9 @@ TYPED-VARIABLE TS-HK [ -- ]
 : TS-NN ( n -- ) drop ;
 
 \ A finished evaluation's segment on a borrowed stack, entered two levels deep
-\ (TS-R1 under TS-Z's `evaluate`), and a later one on the same stack one level
-\ deep whose catch runs TS-EVD again: the dead deeper segment must not displace
-\ the live one, which holds the 5 TS-NN reads.
+\ (TS-R1 under TS-Z's `evaluate`), and a later one-level segment whose catch
+\ runs TS-EVD again: the dead deeper segment must not displace the live one,
+\ which holds the 5 TS-NN reads.
 PTR-VARIABLE TS-POOL-A
 STACK-ABI:PAGE-BYTES MEM:ALLOC-GUARDED constant TS-POOL-CAP  TS-POOL-A !
 : TS-POOL ( -- ptr u8 ) TS-POOL-A @ ;
@@ -233,9 +216,8 @@ variable ERR-U
    MISMATCH S\" \"token\":\"TS-NN\"" HAS?  S\" \"actual\":\"r " HAS?
    DISARM ;
 
-\ The window survivor is a real pointer, but nothing checked it in: the row
-\ rebuilds the window's cells as unknown, and a typed consumer refuses an
-\ unknown cell whatever it holds.
+\ Nothing checked the window survivor in: the row rebuilds the window's cells as
+\ unknown, and a typed consumer refuses an unknown cell whatever it holds.
 : CASE-WINDOW-SURVIVOR ( -- )
    s" a cell pushed inside 0 set-check is refused at its next typed consumer" T-LABEL
    CLEAR ARM
@@ -245,11 +227,10 @@ variable ERR-U
    S\" \"reason\":\"unknown cell: this reads a cell beneath the cells the interpret row knows" HAS?
    DISARM UNTOUCHED ;
 
-\ A top-level token's refusal names the file and line the load read it from, in
-\ the prose and the JSON alike, and names no definition; the JSON has no column
-\ or byte. A token of a string `evaluate` runs lies outside the file's bytes,
-\ so its refusal names the file alone. The load holds the file's resolved path,
-\ so the assertions match its tail.
+\ A top-level refusal names the file and line, in prose and JSON, and no
+\ definition; the JSON has no column or byte. A string `evaluate` runs lies
+\ outside the file's bytes, so its refusal names the file alone. The load holds
+\ the resolved path, so the assertions match its tail.
 : INCLUDE-SITE ( -- )
    [: s" include test/fixtures/top-row-site.f" evaluate-closed ;] CHECK-RC TTHROWSQ ;
 
@@ -278,7 +259,6 @@ variable ERR-U
 
 \ ---- children -----------------------------------------------------------------
 
-\ src run as the subject in a fork child, its streams kept for the case.
 : CHILD ( ptr u8 n -- outcome ) {: src:ptr srcu:n :}
    src srcu OUT IO-CAP >LEN ERR IO-CAP >LEN CHILD-MS >MS SUBJECT:RUN
    {: outu:len erru:len oc :}
@@ -296,7 +276,7 @@ variable ERR-U
 : OUT-HAS? ( ptr u8 n -- )   OUT$ 2swap CONTAINS? TTRUE ;
 
 \ A child: unchecked, this program reads below the closed floor or branches to
-\ xt 0, which crashes the process that runs it.
+\ xt 0, which crashes the process.
 : CASE-EXECUTE-UNDERFLOW ( -- )
    s" ' F execute with F's input missing is refused as in a body" T-LABEL
    ARM
@@ -317,7 +297,7 @@ variable ERR-U
    S\" \"actual\":\"n \"" ERR-HAS? ;
 
 \ A child: unchecked, this program branches to the address `here` pushed inside
-\ the window, which crashes the process that runs it.
+\ the window, which crashes the process.
 : CASE-EXECUTE-UNKNOWN ( -- )
    s" execute of a cell a 0 set-check window left names the unknown cell" T-LABEL
    s" true DIAG-JSON! check@ 0 set-check here swap set-check execute" CHECK-RC EXITS
@@ -330,11 +310,10 @@ variable ERR-U
    s" true DIAG-JSON! ' evaluate execute" CHECK-RC EXITS
    S\" \"code\":\"E-EXEC-OPAQUE-XT\"" ERR-HAS?  S\" \"token\":\"execute\"" ERR-HAS? ;
 
-\ A child: unchecked, the second `2r>` pops below the cells the first left,
-\ into the return frame of the code running the program, which crashes the
-\ process. The row carries the two cells `2>r` pushed and no more, so reading
-\ below them is refused, and the prose names the return-stack reason as a body's
-\ does.
+\ A child: unchecked, the second `2r>` pops into the return frame of the code
+\ running the program, which crashes the process. The row carries only the two
+\ cells `2>r` pushed, so reading below them is refused with a body's
+\ return-stack reason.
 : CASE-RETURN-BELOW ( -- )
    s" r> below a body's return frame names the return-stack reason" T-LABEL
    DIAG-BUF DIAG-CAP DIAG-BUFFER!
@@ -345,8 +324,8 @@ variable ERR-U
    s" 1 2 2>r 2r> 2r> 2drop" CHECK-RC EXITS
    s" at '2r>' return stack: this reads below the return-stack cells pushed here expected: a b actual: " ERR-HAS? ;
 
-\ A child: DIAG-FILE! has no inverse, and the label stays on the file it was set
-\ in, here this test file, which every later case reads.
+\ A child: DIAG-FILE! has no inverse; the label stays on this test file for
+\ every later case.
 : CASE-LABEL ( -- )
    s" a tool's file label names a top-level refusal's file" T-LABEL
    S\" check@ 0 set-check s\" /subject/label.f\" DIAG-FILE! true DIAG-JSON! set-check here TS-V !"
@@ -354,12 +333,11 @@ variable ERR-U
    S\" \"file\":\"/subject/label.f\"" ERR-HAS?
    S\" \"code\":\"E-RAW-CELL-PTR\"" ERR-HAS? ;
 
-\ A child: unchecked, `c@` reads through the cell the window left, which
-\ crashes the process. The window leaves two cells; the string literal, the
-\ first checked event after it, lands over no saved row with those cells beneath
-\ it, so the row pads them as unknown. The return's `2drop` removes the string
-\ with no event between, so the next load finds the window's cells, and `c@`
-\ refuses the one it reads.
+\ A child: unchecked, `c@` reads through the window's cell, which crashes the
+\ process. The window leaves two cells; the string literal, the first checked
+\ event after it, lands over no saved row, so the row pads them as unknown. The
+\ return's `2drop` removes the string with no event between, so the next load
+\ finds the window's cells and `c@` refuses the one it reads.
 : CASE-SHORT-ROW ( -- )
    s" a literal over a row shorter than the stack leaves the cells beneath unknown" T-LABEL
    S\" true DIAG-JSON! TRUSTED: TS-EV2 ( ptr u8 n -- ) evaluate 2drop ; s\\\" check@ 0 set-check 0 0 rot set-check s\\\" abc\\\"\" TS-EV2 drop c@ . cr"
@@ -459,8 +437,6 @@ variable ERR-U
    s" ' X catch and ' X execute are admitted" T-LABEL
    [: s" ' TS-X catch drop  ' TS-X execute" evaluate-closed ;] 0 TTHROWSQ ;
 
-\ The return row is carried across steps as the data row is: the cells `2>r`
-\ pushed are the cells a later `2r>` pops, in order.
 : CASE-RETURN-ROW ( -- )
    s" 11 22 2>r 2r> - pops the pushed return cells in order" T-LABEL
    CLEAR

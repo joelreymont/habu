@@ -1,50 +1,28 @@
-\ raw-cell-pointer-refusals.f - the rejected programs for "a raw storage cell
-\ never holds an address" (dot habu-refuse-a-ptr-5ad2734e).
-\
-\ WHAT WAS WRONG. A checked word could read and write memory at any integer
-\ address with no TRUST row by passing the integer through an undeclared cell:
-\ `variable V  : PEEK ( n -- n ) V ! V @ @ ;` certified and ran, because every
-\ mention of a raw storage word re-freshens its published `-- ptr a`, so the `n`
-\ one mention stored came back from the next as a value `@` and `!` accepted as
-\ an address. `create`, `constant` and `here` published the same scheme, `c@`
-\ took the same value as a BYTE address, and `0 ptr-field` laundered the whole
-\ cell into a fully typed `ptr ptr b` that even forged nominal identities the
-\ direct fetch is refused (the seal in test/raw-storage-load-seal-test.f).
-\
-\ WHAT IS PINNED HERE. Every one of those shapes is refused, and refused with
-\ its OWN named diagnostic rather than a bare type mismatch: the code, and the
-\ prose that says what was laundered. Two controls stand beside them, because a
-\ rule that also refuses honest code is not this rule: a `create`d byte buffer
-\ handed to `type` still certifies (the raw pointee binds to the `u8` con), and
-\ a TASK:+USER slot - concrete `-- ptr n`, never a raw cell - keeps being
-\ refused for the reason it always was, WITHOUT the new code.
-\
-\ These run against the live engine's own checker through `evaluate-closed`,
-\ the interpreter `bin/hb --load` puts every definition through; a refusal is a
-\ throw out of the compile, not a value.
+\ raw-cell-pointer-refusals.f - rejected programs for "a raw storage cell never
+\ holds an address". Every mention of a raw storage word (variable, create,
+\ constant, here) re-freshens its published `-- ptr a`, so an `n` stored through
+\ one mention would come back from the next as an address `@`, `c@`, `!` or
+\ `0 ptr-field` accepts.
 require src/lib/test.f
 require src/lib/string.f
 require src/lib/task.f
 
-\ The cells the evaluated programs name. They are file-global because the
-\ programs below are compiled at run time, in the scope a real program writes
-\ them in.
+\ File-global: the programs below compile at run time, in the scope a real
+\ program writes them in.
 variable RCP-V
 create RCP-C 8 allot
 $1234 constant RCP-K
 create RCP-BYTES 256 allot
 TASK:#USER CELL TASK:+USER RCP-SLOT drop
 
-\ The DECLARED code cells the executable-value controls use. A TYPED-VARIABLE /
+\ DECLARED code cells for the executable-value controls: TYPED-VARIABLE /
 \ TYPED-BUFFER over `[ in -- out ]` mints the quotation type at the storage
-\ word, so nothing may write the cell at another type -- which is why they keep
-\ certifying while the undeclared cell next to them does not.
+\ word, so nothing may write the cell at another type.
 TYPED-VARIABLE RCP-HK [ -- n ]
 2 TYPED-BUFFER RCP-HKB [ -- n ]
 
-\ The nominal identity the field door used to forge. test/snapshot-xt-cell-decl.f
-\ keeps its own subject through a declared handle; the checked twin of its FORGE
-\ is CASE-FIELD-FORGE-NOMINAL below.
+\ The nominal identity CASE-FIELD-FORGE-NOMINAL tries to forge.
+\ test/snapshot-xt-cell-decl.f keeps its own subject through a declared handle.
 NEWTYPE rcpthing
 
 package RAW-CELL-PTR-TEST
@@ -75,15 +53,13 @@ create DIAG-BUF 8192 allot
    S\" \"repair_class\":\"declare_pointer_cell\"" ;
 
 \ An EXECUTABLE value through the same cell answers the same code with its own
-\ reason and its own repair class: the repair is a declared CODE cell, not a
-\ declared pointer cell (dot habu-refuse-an-executable-e8834546).
+\ reason and repair class: a declared CODE cell, not a declared pointer cell.
 : EXEC-REASON$ ( -- ptr u8 n )
    S\" \"reason\":\"raw storage cell: an undeclared cell cannot hold an execution token / a quotation\"" ;
 
 : EXEC-REPAIR$ ( -- ptr u8 n )
    S\" \"repair_class\":\"declare_xt_cell\"" ;
 
-\ The repair class an ordinary return-stack mismatch keeps.
 : RETURN-REPAIR$ ( -- ptr u8 n )
    S\" \"repair_class\":\"fix_return_stack\"" ;
 
@@ -93,9 +69,11 @@ create DIAG-BUF 8192 allot
 : LACKS? ( ptr u8 n -- )
    DIAG-BUFFER$ 2swap CONTAINS? TFALSE ;
 
+\ Each shape is refused with its own named diagnostic (the code and the prose
+\ naming what was laundered), not a bare mismatch.
 \ Every value-position refusal answers one code, one repair class and one
-\ reason. Asserting the reason and not only the code is what keeps the prose
-\ from silently becoming a different rule's prose.
+\ reason. Asserting the reason keeps the prose from silently becoming a
+\ different rule's prose.
 : NAMED ( -- )
    CODE$ HAS?  REPAIR$ HAS?  VALUE-REASON$ HAS? ;
 
@@ -103,8 +81,8 @@ create DIAG-BUF 8192 allot
    CODE$ HAS?  EXEC-REPAIR$ HAS?  EXEC-REASON$ HAS?
    VALUE-REASON$ LACKS?  REPAIR$ LACKS? ;
 
-\ ---- the pun itself: store an integer, fetch an address ----------------------
-
+\ The cases run the live engine's checker through `evaluate-closed`; a refusal
+\ is a throw out of the compile, not a value.
 : CASE-VARIABLE ( -- )
    s" a plain variable cannot answer an address it was never given" T-LABEL
    ARM
@@ -160,14 +138,9 @@ create DIAG-BUF 8192 allot
    NAMED
    DISARM ;
 
-\ ---- the field door ----------------------------------------------------------
-\ `ptr-field`'s row is `ptr a n -- ptr ptr b` with `b` free, so the field of a
-\ raw cell used to answer a fully typed pointer-to-pointer with no relation to
-\ the cell. The value-position rule above never sees that pointer, which is why
-\ the base has to be refused instead. It is refused at the `ptr-field` token, so
-\ the shape below is the whole bypass whatever the result is then used as -- the
-\ nominal-forgery version of it is pinned in test/raw-storage-load-seal-test.f,
-\ where a candidate check can name the family.
+\ The field door: `ptr-field`'s row is `ptr a n -- ptr ptr b` with `b` free, and
+\ the value-position rule never sees that pointer, so the raw base is refused at
+\ the `ptr-field` token whatever the result is then used as.
 
 : CASE-FIELD-FORGE ( -- )
    s" the field of a raw cell is refused, so the seal cannot be walked around" T-LABEL
@@ -177,11 +150,10 @@ create DIAG-BUF 8192 allot
    CODE$ HAS?  REPAIR$ HAS?  FIELD-REASON$ HAS?
    DISARM ;
 
-\ The same program with a NOMINAL result: the forgery the seal in
-\ test/raw-storage-load-seal-test.f exists to stop, written through the field
-\ instead of through the direct fetch. It is refused at the SAME token and by
-\ the same code as the scalar twin above -- the base is judged before the row is
-\ applied, so what the forged pointer is then read AS never enters into it.
+\ The same program with a NOMINAL result, the forgery the seal in
+\ test/raw-storage-load-seal-test.f stops, written through the field: refused at
+\ the same token by the same code, since the base is judged before the row is
+\ applied.
 : CASE-FIELD-FORGE-NOMINAL ( -- )
    s" and the nominal forgery through that field is refused at the same token" T-LABEL
    ARM
@@ -190,12 +162,9 @@ create DIAG-BUF 8192 allot
    CODE$ HAS?  REPAIR$ HAS?  FIELD-REASON$ HAS?
    DISARM ;
 
-\ ---- the refusal that lands on the signature ---------------------------------
-\ Not every raw-cell refusal has a token to sit on. Every token here accepts the
-\ value the cell hands out -- `@` takes `ptr a` and answers `a` -- and only the
-\ DECLARED output row refuses it as an address. The reason still has to be the
-\ raw-cell one rather than a bare `expected: ptr u8 actual: a`, so the naming
-\ has to survive a rejection raised after the last token was checked.
+\ A refusal with no token to sit on: every token accepts the value (`@` takes
+\ `ptr a`, answers `a`) and only the DECLARED output row refuses it, after the
+\ last token was checked. The reason is still the raw-cell one.
 : CASE-SIGNATURE-BOUNDARY ( -- )
    s" the declared output row refuses it too, and names the same rule" T-LABEL
    ARM
@@ -203,13 +172,10 @@ create DIAG-BUF 8192 allot
    NAMED
    DISARM ;
 
-\ ---- and the one that lands on the RETURN row --------------------------------
-\ The return row is judged by the same unifier and refused by the same rule, so
-\ it has to name it the same way. `>r` accepts the value the cell hands out --
-\ it moves any one cell -- and a branch join judges the two arms' return rows
-\ against each other: one arm carries the raw cell's value, the other the TASK
-\ slot's real address. Before the return row had a first-failure capture of its
-\ own this answered a bare return-stack imbalance (dot habu-name-a-raw-09fe04d0).
+\ The RETURN row is judged by the same unifier and named the same way: `>r`
+\ moves any one cell, and a branch join judges the arms' return rows against
+\ each other, one carrying the raw cell's value, the other the TASK slot's real
+\ address.
 : CASE-RETURN-JOIN ( -- )
    s" a branch join on the return row names it as well" T-LABEL
    ARM
@@ -218,15 +184,11 @@ create DIAG-BUF 8192 allot
    NAMED
    DISARM ;
 
-\ ---- the executable value ----------------------------------------------------
-\ The same cell, declared to hold an EXECUTION TOKEN. `variable ZQW
-\ : ZQWQ ( -- ptr [ -- n ] ) ZQW ;  : I1 ( -- n ) ZQWQ @ execute ;` certified on
-\ every engine before this rule: the accessor handed its caller a certified code
-\ cell, the fetched value carried a DECLARED quotation type so the
-\ opaque-execute rule (which judges opacity, not provenance) never fired, and
-\ `1 ZQW !  I1` branched to address 1. The refusal lands on the ACCESSOR, which
-\ is the whole shape: an undeclared cell never gets a code type in the first
-\ place, so there is nothing left for `execute` to judge.
+\ The executable value: with `variable ZQW  : ZQWQ ( -- ptr [ -- n ] ) ZQW ;  :
+\ I1 ( -- n ) ZQWQ @ execute ;`, `1 ZQW !  I1` would branch to address 1. The
+\ fetched value carries a declared quotation type, so the opaque-execute rule
+\ (which judges opacity, not provenance) never fires; the refusal lands on the
+\ accessor, so the cell never gets a code type.
 
 : CASE-VARIABLE-AS-XT-CELL ( -- )
    s" a plain variable cannot be declared to hold an execution token" T-LABEL
@@ -259,12 +221,8 @@ create DIAG-BUF 8192 allot
    NAMED-EXEC
    DISARM ;
 
-\ ---- the controls ------------------------------------------------------------
-
-\ The control for the return-row case above. A return row that simply does not balance
-\ is not this rule and never was: it keeps the return-stack repair class and
-\ stays unnamed, which is what keeps the capture from relabelling every
-\ return-row mismatch as a laundered pointer.
+\ Control for the return-row case: a return row that does not balance keeps the
+\ return-stack repair class and stays unnamed.
 : CASE-RETURN-BALANCE ( -- )
    s" an ordinary return-stack mismatch is still not named by this rule" T-LABEL
    ARM
@@ -273,18 +231,17 @@ create DIAG-BUF 8192 allot
    DISARM ;
 
 \ A `create`d byte buffer is the honest use of raw storage: the pointee binds to
-\ the `u8` con, which is a scalar and stays admissible. If this ever stops
-\ certifying, the rule has grown past its own statement.
+\ the scalar `u8` con.
+\ Controls: a `create`d byte buffer handed to `type` certifies; a TASK:+USER
+\ slot keeps its ordinary refusal.
 : CASE-BYTE-BUFFER ( -- )
    s" a create'd byte buffer still certifies through type" T-LABEL
    [: s" : RCP-SHOW ( -- ) RCP-BYTES 4 type ;" evaluate-closed ;] 0 TTHROWSQ ;
 
-\ The latch is raised inside the unifier, which means it can be raised by a row
-\ that is then thrown away: TRY-PRIMS applies each candidate in turn, so
-\ `V @ cell+` refuses the `ptr a -- ptr a` row and then succeeds on `n -- n`.
-\ Whatever rejects the definition AFTERWARDS must keep its own reason -- a
-\ refusal that borrowed this one would send the reader to a cell that was never
-\ the problem.
+\ The latch is raised inside the unifier, so a row that is then thrown away can
+\ raise it: TRY-PRIMS tries each candidate, and `V @ cell+` refuses the `ptr a
+\ -- ptr a` row then succeeds on `n -- n`. A later rejection keeps its own
+\ reason.
 : CASE-ABANDONED-CANDIDATE ( -- )
    s" a candidate row that was abandoned does not name the real refusal" T-LABEL
    ARM
@@ -331,9 +288,8 @@ create DIAG-BUF 8192 allot
    NAMED-EXEC
    DISARM ;
 
-\ A TASK:+USER slot publishes a CONCRETE `-- ptr n`, so it was never part of
-\ this pun and its refusal is the ordinary one it always gave. It is here to
-\ prove the new code names the new rule and nothing else.
+\ A TASK:+USER slot publishes a concrete `-- ptr n`: its refusal is the ordinary
+\ one, without the raw-cell code.
 : CASE-TASK-SLOT ( -- )
    s" a TASK:+USER slot is refused as before, and not by the new rule" T-LABEL
    ARM

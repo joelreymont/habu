@@ -1,37 +1,8 @@
 \ native-window-owner.f - the window's checker is the sole certifier for window
-\ source.
-\
-\ Each case runs test/native-window-owner-child.f - the tools/native-build.f
-\ window reduced to the checker handover - in its own engine child, and asserts
-\ the verdict that window reached for one fixture included straight after
-\ src/core/cell-effects.f:
-\   - a family the window itself declares resolves (0);
-\   - a family nothing declares does not (E-CAST-FAM 7131). This is the control:
-\     without it the accept case above would pass against a checker that
-\     certifies nothing at all;
-\   - a family only the host that opened the window declares does not
-\     (E-CAST-FAM, never E-CAST-OWNER 7135). A product engine hosting the build
-\     left its retained checker answering window certifications: that refused
-\     the first case and resolved this one in a package the window cannot see;
-\   - a prefix word compiled with the hook cell empty has its declaration as
-\     its row (test/native-window-declared-row.f), at both tiers;
-\   - a hook-less tier-1 definition whose declaration records no row, of the
-\     name an owner-private primitive types, is refused catchably
-\     (E-NELAB-UNDER -8304), under a catch the window survives with the row
-\     before it kept (test/native-window-private-axiom-catch.f),
-\     even a row of its own name that CHECK! recorded and the row after that
-\     (-prior.f). Its rollback cuts only the rows recorded since its
-\     definition began; asking the axiom instead, it died 76 (`checker:
-\     missing signature truncation mark`), and cutting the live rows of the
-\     symbol its name binds, it took the CHECK! row and every row after it.
-\
-\ The bindings fixture then loads its source closure at tier 0, and the last
-\ case is ONE window at the optimizing tier that loads every tier-1 fixture
-\ (TIER1-CASE below), the qualified-name gate among them: compiling the window's
-\ core prefix through the optimizing chain is nearly all of a case's cost, so
-\ the fixtures share one.
-\
-\ Run: bin/hb --load test/native-window-owner.f
+\ source: each case runs test/native-window-owner-child.f (the
+\ tools/native-build.f window reduced to the checker handover) in its own engine
+\ child and asserts the verdict the window reached for one fixture included
+\ straight after src/core/cell-effects.f.
 
 require src/lib/test.f
 require src/lib/string.f
@@ -79,23 +50,18 @@ create ERR IO-CAP allot
    OUT outu LEN>N want wantu T$= ;
 
 \ ---- the same window, compiled by the OPTIMIZING tier -------------------------
-\ Tier 1 is the one that reaches the checker as a CALLER: it has the checker scan
-\ each definition because the scan fills the source tape it elaborates from, so
-\ every question the tier-1 fixtures are about is asked for real only there.
-\ Tier 0 reads the engine's hook cell and asks nothing else, which is why the
-\ three tier-0 cast cases pass on a compiler that resolves the checker by name.
+\ Only tier 1 asks the checker as a caller: its scan fills the source tape it
+\ elaborates from, so the tier-1 fixtures' questions are asked for real only
+\ there. Tier 0 reads the engine's hook cell and asks nothing else, so the three
+\ tier-0 cast cases pass on a compiler that resolves the checker by name.
 \
-\ STDERR IS HALF THE CLAIM. A TRUSTED: definition's body is scanned only for that
-\ tape and its verdict is never enforced, so nothing may be rendered about it. The
-\ suppression is the OWNER's, reached through the declaration record: a compiler
-\ that bumped the quiet counter by name bumped the counter of the checker it was
-\ compiled into while the window's checker did the rendering, and this window then
-\ printed `habu: in install: at 'set-preflight'` for check-hook.f's own INSTALL --
-\ measured on the engine before the fix, with the same `window: 0` on stdout. So
-\ stderr is asserted byte-exact: the bindings window expects none, and the tier-1
-\ window exactly the one refusal a fixture judges, the optimizing compiler's
-\ `ncomp: cannot compile NCOMP-NAME-A:SAME` from the qualified-name gate. Any
-\ other byte means a scan nobody judges reached a renderer again.
+\ Stderr is half the claim. A TRUSTED: body is scanned only for that tape and
+\ its verdict is never enforced, so nothing may be rendered about it; the
+\ suppression is the owner checker's, reached through the declaration record. A
+\ compiler that bumped the quiet counter by name printed `habu: in install: at
+\ 'set-preflight'` for check-hook.f's INSTALL, with `window: 0` on stdout. So
+\ stderr is byte-exact: the bindings window expects none, the tier-1 window only
+\ `ncomp: cannot compile NCOMP-NAME-A:SAME` from the qualified-name gate.
 : WINDOW-RESULT ( ptr u8 n ptr u8 n -- ) {: want:ptr wantu:n ewant:ptr ewantu:n :}
    WHITEBOX-CHILD:ENGINE$ >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN
    PROCESS:WAIT-FOREVER
@@ -142,9 +108,10 @@ create ERR IO-CAP allot
    SOURCE-DEPS+
    S\" window: 0\n" s" " WINDOW-RESULT ;
 
-\ The tier-1 window loads its script arguments in order, then the fixture
-\ argument last; a fixture that refuses stops it at its own code. The order is
-\ each claim's precondition:
+\ One window loads every tier-1 fixture: compiling the core prefix through the
+\ optimizing chain is nearly all of a case's cost. It loads its script arguments
+\ in order, then the fixture argument last; a fixture that refuses stops it at
+\ its own code. The order is each claim's precondition:
 \   - straight after src/core/cell-effects.f, as each ran in a window of its
 \     own: the window's own family resolves (cast-ok), the checked store
 \     adopted the bootstrap one (call-store), and the rebuilt checker's
@@ -193,6 +160,16 @@ create ERR IO-CAP allot
    WHITEBOX-CHILD:ENV!
    S\" window: 0\n" S\" ncomp: cannot compile NCOMP-NAME-A:SAME\n" WINDOW-RESULT ;
 
+\ cast-ok: a family the window declares resolves. cast-bad: one nothing declares
+\ does not (E-CAST-FAM 7131), the control without which cast-ok would pass
+\ against a checker that certifies nothing. cast-host-bad: one only the host
+\ that opened the window declares does not either (E-CAST-FAM, never
+\ E-CAST-OWNER 7135). declared-row: a prefix word compiled with the hook cell
+\ empty has its declaration as its row. private-axiom-catch and -prior: a
+\ hook-less tier-1 definition whose declaration records no row, named like an
+\ owner-private primitive, is refused catchably (E-NELAB-UNDER -8304); its
+\ rollback cuts only rows recorded since its definition began, keeping the row
+\ before it, a CHECK! row of its own name and the row after that.
 : OWNER-CASES ( -- )
    PREPARE
    s" test/native-window-cast-ok.f"       S\" window: 0\n"    WINDOW-IS

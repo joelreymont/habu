@@ -16,16 +16,10 @@ private
 \ of this fixture runs on the whitebox engine, where the manual family
 \ construction below names them directly and a checked body binds their rows.
 
-\ The family just declared, resolved BY NAME in the declaring scope. This used to
-\ read TDECL-FAM-REG, the ambient "last family the legacy definer registered"
-\ variable in sumtype.f. That variable belongs to the legacy definers and their
-\ constructor adapter; the global ENUM keyword is the unified front end now, which
-\ publishes its constructors inside the declaration transaction and never writes
-\ it. Resolving the name is also the honest question — this file wants the family
-\ called `lvg-inner`, not whichever family happened to be registered last.
-\ TFAM-SIG-RESOLVE answers a found flag beside the id; dropping it would turn a
-\ name this file cannot resolve into family 0 and build the whole guard fixture
-\ on the wrong family. It fails closed instead.
+\ The family just declared, resolved by name in the declaring scope: the ENUM
+\ front end publishes constructors inside the declaration transaction and never
+\ writes src/core/sumtype.f TDECL-FAM-REG. TFAM-SIG-RESOLVE's found flag is
+\ checked: a name this file cannot resolve would otherwise build on family 0.
 : LVG-FAMID ( ptr u8 n -- n )
    TFAM-ACTIVE-PKG$ 2swap TFAM-SIG-RESOLVE
    0= IF drop s" layout-valid-guard-base: family does not resolve" 1 die THEN ;

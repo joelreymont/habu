@@ -1,18 +1,9 @@
-\ ffi-stub-child.f - the FFI staging shapes no C function witnesses on both
-\ ABIs, called against fixed AArch64 or x86-64 (SysV) stubs. src/lib/ffi-test.f runs it as a window
-\ child: test/native-window-owner-child.f loads it after
-\ test/mcode-window-prepare.f, whose owner words publish the stubs and call
-\ them. It prints `test: ok`, then the window `window: 0`.
-\
-\ An sret result (x8) has no non-variadic libc witness, and the stack spills
-\ past the argument registers come only from variadic callees, whose every
-\ variadic argument Apple's ABI puts on the stack. No libm function takes a
-\ binary32 beside a double and an integer, eight binary32 beside eight
-\ integers, or a binary32 register before a stack double. So these cases keep
-\ their exact instruction words. A minter writes them little-endian into CODE
-\ and appends them at the free code slot, which the publication then moves past,
-\ so the bytes stay put for the call that follows. A minter runs inside a
-\ definition: a top-level one would write over the line being interpreted.
+\ ffi-stub-child.f - the FFI staging shapes no C function witnesses on both ABIs
+\ (an sret result in x8, stack spills only variadic callees reach, binary32
+\ mixes no libm function takes), called against fixed AArch64 or x86-64 SysV
+\ stubs. src/lib/ffi-test.f runs it as a window child:
+\ test/native-window-owner-child.f loads it after test/mcode-window-prepare.f.
+\ It prints `test: ok`, then `window: 0`.
 
 require src/lib/string.f
 require src/lib/test.f
@@ -29,7 +20,10 @@ create OUT 1 cells allot
    CODE CODE-U @ + LE:U32!
    CODE-U @ 4 + CODE-U ! ;
 
-\ Publish the words INSN wrote at the free code slot and answer the address.
+\ A minter writes its words little-endian into CODE at the free code slot, which
+\ the publication moves past, so the bytes stay put for the call. A minter runs
+\ inside a definition: a top-level one would write over the line being
+\ interpreted.
 : MINT ( -- n )
    cp@ {: fn:n :}
    CODE fn CODE-U @ NPUB:WRITE-AT

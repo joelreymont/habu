@@ -1,14 +1,12 @@
 \ engine-suite.f — the behavior suite run BY THE ENGINE ITSELF (bin/hb), no
 \ gforth. A failure prints F<index>, assertion detail, and exits 1 via T-REPORT.
 
-\ LATCHED BEFORE THE REQUIRES, WHICH IS THE ONLY SOUND POINT. The claim is about
-\ a RESTORED engine: its thirteen lowering-certificate arena bases must be the
-\ boot buffers the image carries. Once the engine certifies definitions those
-\ arenas may legitimately grow into mmap, so asking later would assert a state
-\ this file does not control - the mistake the restored-pool block below already
-\ made once. `variable` and `!` need no harness, so the boot answer is latched
-\ here, before one user definition exists, and checked with the others further
-\ down. See src/core/layout-valid.f ARENAS-STALE.
+\ Latched before the requires: on a restored engine the thirteen
+\ lowering-certificate arena bases must be the boot buffers the image carries,
+\ and once the engine certifies definitions those arenas may grow into mmap.
+\ `variable` and `!` need no harness, so the boot answer is latched before any
+\ user definition and checked further down (src/core/layout-valid.f
+\ ARENAS-STALE).
 variable ES-CERT-STALE0
 LOWER-CERT:ARENAS-STALE ES-CERT-STALE0 !
 
@@ -180,19 +178,6 @@ TPLOOP 5 T=
 TJ 12 T=
 : TLEAVE ( -- n ) 0 10 0 do 1 + dup 4 = if leave then loop ;
 TLEAVE 4 T=
-\ CASE OF arm dispatch, branch-directly-on-flags (dot
-\ habu-branch-directly-on-4624d193). Each arm's J-OF used to materialize a boolean
-\ only to test it: ldur x9,[x19,#-8]; cmp x9,x16; cset x9,eq; cbz x9,next; drop.
-\ It now branches straight off the compare flags:
-\   ldur x9,[x19,#-8]; cmp x9,x16; b.ne next; sub x19,#8 (drop scrutinee on match)
-\ Byte-exact per-arm hex (measured within the recorded code span):
-\   before arm: F85F8269 EB10013F 9A9F17E9 B4000009 D1002273  (cset+cbz, 5 words)
-\   after  arm: F85F8269 EB10013F 54000001 D1002273           (b.ne,     4 words)
-\ (B4000009/54000001 shown with imm=0; the real placeholder carries the imm19
-\ skip offset that LPAT patches — e.g. cbz x9,+6 = B40000C9 becomes b.ne +6 =
-\ 540000C1 in the one-arm fixture below.) Controlled fixtures lose exactly 4 bytes
-\ and one executed instruction per arm: one-arm CASE 124 -> 120, two-arm 180 ->
-\ 172. TCASE below is the two-arm shape (arms 1 and 2 + a default).
 : TCASE ( n -- n )
    case
       1 of 10 endof
@@ -416,31 +401,20 @@ TC-UEND=? TTRUE
 TC-NEND=? TTRUE
 TC-SYMN=? TTRUE
 TC-SYMU=? TTRUE
-\ ---------------------------------------------------------------------------
-\ THE T-* BOUNDARY WORDS BELOW ARE DEFINITIONS AT GLOBAL SCOPE.
-\
-\ They used to be bare `s" NAME" s" SIG" trust` rows for words nothing defined.
-\ A row is now a CLAIM that the word exists and is refused otherwise
-\ (src/core/checker.f TRUST-RESOLVES?), so each one is a real word with its
-\ effect: a checked stub where checked code can produce that effect, and a
-\ `defer` where it cannot - a fresh rigid identity, a type variable or a family
-\ value made from nothing. No body is ever executed - every case hands the
-\ checker a CANDIDATE that merely names them - and none of the defers is set.
-\
-\ THEY ARE GLOBAL, AND THIS FILE IS THE ONE PLACE THAT IS ALLOWED. What this
-\ suite tests is what the engine and the checker do at genuine global top level:
-\ which scope claims a bare tail, what a package private shadows, what a checker
-\ scope retires. T-PRESO is the case that pins it - a package-owned outer word
-\ does not come back after `;package` (measured: the candidate answers 1, and
-\ the case requires -1), so packaging these would delete the property under
-\ test.
-\ ---------------------------------------------------------------------------
+\ The T-* boundary words below are global definitions. A trust row claims the
+\ word exists and is refused otherwise (src/core/checker.f TRUST-RESOLVES?), so
+\ each is a real word with its effect: a checked stub where checked code can
+\ produce that effect, else a `defer` (a fresh rigid identity, a type variable
+\ or a family value made from nothing). No body runs and no defer is set: every
+\ case hands the checker a candidate that names them.
+\ They are global because the suite tests genuine global top level: which scope
+\ claims a bare tail, what a package private shadows, what a checker scope
+\ retires. T-PRESO pins it: a package-owned outer word does not come back after
+\ `;package` (packaged, the candidate answers 1; the case requires -1).
 \ later-wins redefinition through the audited TRUST override path: the second
-\ row must replace the first for all later callers (in-place index update).
-\ T-RDF is DEFINED once and then overridden by the two rows below, which is
-\ what this case is about. A row must name a word the engine resolves, and a
-\ second definition would be a duplicate; one definition plus two
-\ rows leaves the later-wins override exactly as it was.
+\ row replaces the first for all later callers (in-place index update). T-RDF
+\ is defined once and overridden by the two rows below: a row must name a word
+\ the engine resolves, and a second definition would be a duplicate.
 : T-RDF ( n -- n ) ;
 s" T-RDF" s" n -- n" TRUST
 s" caller of first TRUST effect certifies" T-LABEL
@@ -500,23 +474,14 @@ s" public does not resolve bare outside the package" T-LABEL
 s" CUNK-PRES-BARE ( -- n ) ES-PRES-PUB" CHECK-QUIET-CANDIDATE! 1 T=
 
 \ ---- what the ENGINE's name lookup resolves ---------------------------------
-\ The block above is the checker's answer. This one is the engine's: which BODY
-\ a token binds to when LFIND resolves it. That order is a compile-time fact -
-\ bind a token to the wrong wordlist and the program runs code nobody wrote for
-\ it - so it is pinned by EXECUTION rather than by a verdict: every case below
-\ calls the word the engine resolved and reads back the number it returns.
-\
-\ THE SHARED TAIL IS T-LABEL-CAP, the global constant src/lib/test/assert.f
-\ declares and T-LABEL really reads. The fixture does not mint a global of its own:
-\ it SHADOWS that one from inside a package, in the package's private wordlist
-\ and in its public wordlist at once, which is the shape a real package has and
-\ also proves the shadow does not leak back to the word already compiled
-\ against the global. References differ from definitions only in case, which
-\ the dictionary folds. The refusals matter as much as the hits: a lookup that
-\ answers "absent" for a name that IS there compiles a program the author did
-\ not write just as surely as one that answers with the wrong row, so each one
-\ is a source the engine's own load path must refuse, with the engine's own
-\ code for refusing it.
+\ Which body a token binds to when LFIND resolves it, pinned by execution: every
+\ case calls the word the engine resolved and reads back its number.
+\ The shared tail is T-LABEL-CAP, the global constant src/lib/test/assert.f
+\ declares and T-LABEL reads. The fixture shadows it from inside a package, in
+\ the private and public wordlists at once, and proves the shadow does not
+\ reach the word already compiled against the global. References differ from
+\ definitions only in case, which the dictionary folds. Each refusal is a
+\ source the engine's own load path must refuse, with the engine's own code.
 package ES-RESO
 
 2 constant T-LABEL-CAP
@@ -574,10 +539,9 @@ public
 70 constant UNDEFINED
 78 constant DUPLICATE
 
-\ Whitebox: the engine's load path, so what a case measures is the engine
-\ refusing a source rather than a test deciding it should have. The source
-\ travels through the quotation and back out, because a quotation cannot read
-\ the enclosing word's locals.
+\ Whitebox: the engine's load path, so a case measures the engine refusing a
+\ source. The source travels through the quotation and back out, because a
+\ quotation cannot read the enclosing word's locals.
 : OUTCOME ( ptr u8 n -- n )
    [: 2dup evaluate-closed ;] catch {: rc:n :}
    2drop rc ;
@@ -661,10 +625,9 @@ s" CBAD-PTR-WIDEN-NEST ( ptr ptr u8 -- ptr ptr cell )" T-CHECK-REJECTS
 s" CBAD-PTR-UNIFY-EQ ( ptr u8 ptr cell -- bool ) =" T-CHECK-REJECTS
 s" CBAD-PTR-UNIFY-EQ-REV ( ptr cell ptr u8 -- bool ) =" T-CHECK-REJECTS
 s" CBAD-PTR-CELL-ON-BYTE ( ptr u8 -- n ) @" T-CHECK-REJECTS
-\ Cell store `!` on a byte span is rejected exactly like cell load `@`. This is
-\ the miss class the fixpoint certify caught in checker.f USIGS-CLEAR (dot
-\ habu-fix-0-usigs): a head accessor declared ( -- ptr u8 ) whose caller stores a
-\ cell with `0 WORD !` must reject, because `!` requires a ptr a target.
+\ Cell store `!` on a byte span is rejected exactly like cell load `@`: a head
+\ accessor declared ( -- ptr u8 ) whose caller stores a cell with `0 WORD !`
+\ must reject, because `!` requires a ptr a target.
 s" CBAD-PTR-CELL-STORE-ON-BYTE ( ptr u8 -- ) 0 swap !" T-CHECK-REJECTS
 s" COK-PTR-CELL-STORE ( ptr n -- ) 0 swap !" T-CHECK-PASSES
 TYPED-VARIABLE ESB-BYTE-P ptr u8
@@ -674,8 +637,8 @@ s" CBAD-USIGS-BYTE-STORE ( -- ) 0 ESB-BYTE-HEAD !" T-CHECK-REJECTS
 512 constant RSD-CAP
 create RSD-BUF RSD-CAP allot
 \ Quotation effects render recursively to QDEPTH-MAX levels: a triple-nested
-\ quot now renders fully and RECORDS (no '?' -> RQM stays 0), while a quot nested
-\ past the budget still caps at '?' and refuses recording via the unmodeled tag.
+\ quot renders fully and records (no '?', RQM stays 0), while a quot nested
+\ past the budget caps at '?' and refuses recording via the unmodeled tag.
 RSD-BUF RSD-CAP DIAG-BUFFER!
 s" triple-nested quot certifies" T-LABEL
 s" RSQ3 [: [: [: ;] ;] ;]" CHECK-QUIET-CANDIDATE! -1 T=
@@ -762,22 +725,18 @@ USIGS-GROW-CAP @ TG-GROW-CAP !
 USIGS-GROW-NEXT @ TG-GROW-NEXT !
 USIGS-USER-OFF @ TG-UOFF !
 \ --- a RESTORED pool grows correctly -------------------------------------------
-\ The grow asserts further down run after USIGS-RESET, i.e. over a runtime mmap
-\ arena, so they never exercise the case the generation chain actually meets: a
-\ pool the IMAGE carried in DATA, growing on the engine's own appends (an image
-\ whose content lands just under a grain boundary grows at its first load).
-\ THIS BLOCK ESTABLISHES THAT STATE RATHER THAN ASSUMING IT. Whether the running
-\ engine's pool is still the baked one by the time the suite gets here is a
-\ property of that engine's content against its cap, not of this file: a root
-\ engine at content 2307240 against cap 2359296 has already grown into a mapping
-\ while loading, and the first version of this block asserted the baked pool as a
-\ precondition and went red on it. USIGS-SNAPSHOT-PERSIST is the capture's own
-\ step, so it leaves the live store exactly where a restored engine finds it -
-\ freshly allotted DATA below the heap top, capped at the grain - on any engine.
-\ Then leave one append of headroom and certify AND compile a word: the certify
-\ appends across the cap and the compile reads the relocated store back through
-\ the per-symbol, no-return and node-intern indexes stamped against the pre-grow
-\ base.
+\ The grow asserts further down run after USIGS-RESET, over a runtime mmap
+\ arena. This block covers a pool the image carried in DATA, growing on the
+\ engine's own appends (an image whose content lands just under a grain
+\ boundary grows at its first load). Whether the running engine's pool is still
+\ the baked one depends on its content against its cap (a root engine at
+\ content 2307240 against cap 2359296 has already grown while loading), so the
+\ block sets the state: USIGS-SNAPSHOT-PERSIST, the capture's own step, leaves
+\ the live store where a restored engine finds it, freshly allotted DATA below
+\ the heap top, capped at the grain. With one append of headroom, a certify
+\ appends across the cap and a compile reads the relocated store back through
+\ the per-symbol, no-return and node-intern indexes stamped against the
+\ pre-grow base.
 USIGS-SNAPSHOT-PERSIST
 USIGS-P @ TG-RBASE !
 s" usigs persisted pool is DATA under the heap top" T-LABEL
@@ -803,12 +762,10 @@ s" CBAD-RESTORED-GROW ( n -- n ) drop" CHECK-QUIET-CANDIDATE! 0 T=
 \ --- a restored image's per-definition arenas are ITS OWN baked buffers --------
 \ The lowering-certificate producer's thirteen bases and six caps
 \ (src/core/lower-cert-base.f BUF-P + src/core/layout-valid.f), counted by
-\ ARENAS-STALE and latched at the top of this file before any definition could
-\ have grown one. All thirteen were stale as bare PTR-VARIABLEs - measured 12 MB
-\ above the heap top. An engine built from this same tree with only the marks
-\ reverted to bare PTR-VARIABLE - SNAP-RESET, the hook and this case all present -
-\ answers 13 here: the reset does put every base on its boot buffer at the capture,
-\ and only the relocation of a marked cell keeps that address true afterwards.
+\ ARENAS-STALE and latched at the top of this file. An engine whose marks are
+\ reverted to bare PTR-VARIABLE answers 13 here (measured 12 MB above the heap
+\ top): the reset puts every base on its boot buffer at the capture, and only
+\ the relocation of a marked cell keeps that address true afterwards.
 s" lower-cert arenas restored on their boot buffers" T-LABEL
 ES-CERT-STALE0 @ 0 T=
 : ES-USIGS-STORE ( -- )
@@ -856,8 +813,8 @@ TG-UOFF @ USIGS-USER-OFF !
 TG-UEND @ USIGS-RESTORE-END
    ;
 ES-USIGS-STORE
-\ snapshot cap policy: the smallest grain multiple >= size, and nothing above
-\ it -- a power-of-two cap baked megabytes of zero padding into every image.
+\ snapshot cap policy: the smallest grain multiple >= size and nothing above
+\ it (a power-of-two cap bakes megabytes of zero padding into every image).
 s" grain-cap floor" T-LABEL
 1 USIGS-ROUND-CAP USIGS-GRAIN T=
 s" grain-cap exact grain" T-LABEL
@@ -921,11 +878,10 @@ defer T-PTX-MLOAD ( span<space-global,f32,e> gridctx<block-256,e,m> -- tile<f32,
 defer T-PTX-MADD ( tile<f32,block-256,m> tile<f32,block-256,m> -- tile<f32,block-256,m> )
 defer T-MK-SPAN ( n -- span<space-global,f32,fresh-extent-n> )
 defer T-MK-SPAN= ( n -- span<space-global,f32,fresh-extent-n> span<space-global,f32,fresh-extent-n> )
-\ --- growable decoupled scratch arenas: crossing each init cap mid-check no
-\ longer dies and does not corrupt (each grow relocates its store).
-\ Parametric checks reuse T-MK-SPAN above.
-\ Push records: one word, so no top step between the store and the check
-\ grows SPA first (a top step pushes rows above the forced cap).
+\ --- growable decoupled scratch arenas: crossing each init cap mid-check grows
+\ (each grow relocates its store) without corruption. Parametric checks reuse
+\ T-MK-SPAN above. Push records: one word, so no top step between the store and
+\ the check grows SPA first (a top step pushes rows above the forced cap).
 : T-SPA-GROW ( -- )
    2 SPA-CAP !
    s" COK-SPAG ( -- ) 0 0 0 0 0 0 0 0 drop drop drop drop drop drop drop drop" T-CHECK-PASSES
@@ -966,16 +922,12 @@ T-DECOUPLED-RESET
    PTR-CAP @ 0= and  STL-CAP @ 0= and  TRAIL-CAP @ 0= and  LTNT-CAP @ 0= and
    PTRN @ 0= and  STLN @ 0= and  TRAIL-N @ 0= and  LTNT-N @ 0= and  TTRUE ;
 T-SCRATCH-RETIRE
-\ --- growable registries (CT / VREC / SYMS): crossing each init cap mid-run no
-\ longer dies, a relocating grow preserves lookups (SYMS rehashes its HIDX index),
-\ and a grown store persists into fresh image DATA with its names still resolving
-\ - CT, VREC and SYMS name the pool by offset. Each
-\ test lowers the live cap to force a grow, then restores the store to its baked
-\ boot buffer.
-\ whitebox boundary (dot habu-hb-crash-bare-c5be6634): the probes name
-\ checker-internal colon words in checked bodies; on the unsealed engine a
-\ checked body binds each one's recorded row. A saved store base is a pointer,
-\ so its cell is a PTR-VARIABLE.
+\ --- growable registries (CT / VREC / SYMS): crossing each init cap mid-run
+\ grows, a relocating grow preserves lookups (SYMS rehashes its HIDX index),
+\ and a grown store persists into fresh image DATA with its names still
+\ resolving (CT, VREC and SYMS name the pool by offset). Each test lowers the
+\ live cap to force a grow, then restores the store to its baked boot buffer.
+\ A saved store base is a pointer, so its cell is a PTR-VARIABLE.
 \ A probe that grows a registry and then points it back at its baked boot
 \ buffer first moves each store onto an arena copy: a grow clears the store
 \ it retires when that store is image DATA, so the retired store must not be
@@ -1141,8 +1093,7 @@ LOWER-CERT-HOOK:INSTALL
 TR-SYMS-WHITEBOX
 
 \ Registry internals predate the checker hook; a checked body binds their
-\ recorded rows on this unsealed engine. These helpers exercise registry
-\ growth and rollback through the checked assertions below.
+\ recorded rows on this unsealed engine.
 variable TR-REG-SYM-MARK
 variable TR-REG-UEND-MARK
 variable TR-REG-DFER-MARK
@@ -1241,8 +1192,7 @@ TRAIL-CAP @ 2 > TTRUE
 \ --- path compression in T-RES: at trial depth 0 a resolved var chain is
 \ compressed so intermediate vars point directly at the root; inside a trial
 \ (depth>0) compression is disabled, so a rolled-back trial can never leave a
-\ permanent var pointing at a cleared trial var. Build a v0->v1->v2->CON chain by
-\ hand and observe both behaviors, then restore the var pool.
+\ permanent var pointing at a cleared trial var.
 variable TC-V0  variable TC-V1  variable TC-V2  variable TC-CON  variable TC-FV
 variable TC-TRAIL
 : TR-PATHCOMP-WHITEBOX ( -- )
@@ -1273,11 +1223,11 @@ s" COK-POSTDEC ( a -- a ) dup drop" T-CHECK-PASSES
 \ --- locals over the compiler-matched cap fail CLOSED, not silently uncheckable
 s" COK-LOC16 ( n -- n ) {: xxxxxxxxxxxxxxxx :} xxxxxxxxxxxxxxxx" T-CHECK-PASSES
 s" CBAD-LOC17 ( n -- n ) {: xxxxxxxxxxxxxxxxx :} xxxxxxxxxxxxxxxxx" T-CHECK-REJECTS
-\ Each over-cap reject names the limit it exceeded (dot
-\ habu-report-the-local-d20f243a). The declaration token is pinned by the first
-\ failure, so the body's later reference to the rejected name must not relabel
-\ the reject as an undefined word, and the group's shape reject keeps its own
-\ code. LOCG-BUILD writes "<name> ( n ... n -- ) {: t00 t01 ... :}" binding n locals.
+\ Each over-cap reject names the limit it exceeded. The declaration token is
+\ pinned by the first failure, so the body's later reference to the rejected
+\ name must not relabel the reject as an undefined word, and the group's shape
+\ reject keeps its own code. LOCG-BUILD writes "<name> ( n ... n -- ) {: t00
+\ t01 ... :}" binding n locals.
 512 constant LOCG-CAP
 create LOCG-BUF LOCG-CAP allot
 variable LOCG-U
@@ -1368,7 +1318,7 @@ s" multi-err collects both rejects" T-LABEL
 TR-ME-END 2 T=
 s" multi-err mode cleared after end" T-LABEL
 MULTI-ERR? 0= TTRUE
-\ --- user-declarable nominal integer types (dot habu-declarable-nominal-int).
+\ --- user-declarable nominal integer types.
 \ `DEFTYPE NAME` registers a fresh nominal AND auto-derives its explicit no-op
 \ converter pair >NAME ( n -- NAME ) / NAME>N ( NAME -- n ). The nominal is
 \ distinct from n and from every other nominal (no widening); the only way across
@@ -1421,8 +1371,8 @@ s" CBAD-PTX-RET-LONE-CALL ( n n -- ) COK-PTX-RET-LONE T-PTX-SAME-EXTENT" T-CHECK
 s" COK-PTX-MASK-SHARED {: s :} s T-PTX-GRID {: g :} s g T-PTX-MLOAD s g T-PTX-MLOAD T-PTX-MADD" T-CHECK-PASSES
 s" CBAD-PTX-MASK-DISTINCT {: s :} s T-PTX-GRID {: g1 :} s T-PTX-GRID {: g2 :} s g1 T-PTX-MLOAD s g2 T-PTX-MLOAD T-PTX-MADD" T-CHECK-REJECTS
 \ --- parametric type-family (TFAM) signature parsing -------------------------
-\ Registry-driven `family<...>` parsing replacing the old PARAM-CTOR? whitelist:
-\ correct arity, reentrant nested parse, dual `ptr`, and family-id identity.
+\ Registry-driven `family<...>` parsing: correct arity, reentrant nested
+\ parse, dual `ptr`, and family-id identity.
 s" COK-TFAM-SPAN ( span<space-global,f32,extent-n> -- span<space-global,f32,extent-n> )" T-CHECK-PASSES
 s" COK-TFAM-PTRPLAIN ( ptr u8 -- ) drop" T-CHECK-PASSES
 s" COK-TFAM-PTRP ( ptr<space-global,f32> u32 -- ) drop drop" T-CHECK-PASSES
@@ -1432,13 +1382,11 @@ s" CBAD-TFAM-ARITY ( span<a,b> -- ) drop" T-CHECK-REJECTS
 s" CBAD-TFAM-ARITY4 ( tile<a,b,c,d> -- ) drop" T-CHECK-REJECTS
 s" CBAD-TFAM-UNKNOWN ( nope<n> -- ) drop" T-CHECK-REJECTS
 s" CBAD-TFAM-PTRARITY ( ptr<a> -- ) drop" T-CHECK-REJECTS
-\ Referencing a STORED nested-param sig used to crash the checker (native stack
-\ overflow) once enough arena state accumulated: LIN-TYPE-COUNT descended a bound
-\ VAR through FIELD-INNER without resolving it, reading an unrelated param-arena
-\ slot that pointed back at the var. Fixed by resolving before the field descent
-\ (src/core/checker.f LIN-TYPE-COUNT); dot habu-tfam-nested-param-09fa2004.
-\ The callees above are compiled words, so the stored sig is the one a real
-\ caller binds.
+\ A stored nested-param sig must not overflow the native stack: LIN-TYPE-COUNT
+\ resolves a bound VAR before descending through FIELD-INNER
+\ (src/core/checker.f), else it reads an unrelated param-arena slot that points
+\ back at the var. The callees above are compiled words, so the stored sig is
+\ the one a real caller binds.
 s" COK-TFAM-NEST-CALL ( acc<t,tile<t,b,m>,b> -- acc<t,tile<t,b,m>,b> ) COK-TFAM-NEST" T-CHECK-PASSES
 s" COK-TFAM-NEST4-CALL ( matrix<tile<x,y,z>,a,b,c> -- matrix<tile<x,y,z>,a,b,c> ) COK-TFAM-NEST4" T-CHECK-PASSES
 \ A row CHECK! alone recorded is the checker's, not the engine's: compiled code
@@ -1482,19 +1430,19 @@ s" COK-PTR-IN-FAM ( span<space-global,ptr<space-global,f32>,extent-n> -- ) drop"
 s" CBAD-PTR-OVERARITY ( ptr<a,b,c> -- ) drop" ' SGBAD-ARITY? T-CHECK-KIND
 s" CBAD-PTR-BARE-ROWEND ( a ptr -- ) drop" ' SGBAD-BAREPTR? T-CHECK-KIND
 s" CBAD-PTR-BARE-IN-FAM ( span<space-global,ptr,extent-n> -- ) drop" T-CHECK-REJECTS
-\ Uncapped per-param arity (dot habu-tfam-4-remainder): a family with arity > 4
-\ (old PARAM-MAX-ARGS SoA-row cap) parses, checks, persists, instantiates through
-\ the flat PARGP/VNARG/EN arg pools, and renders. Register a test-only arity-6
-\ family, then prove: bare parse; a STORED-sig reference (E-COPY + E-INST round
-\ trip); a nested arity-6 arg; a value-record field of the arity-6 family (VNARG
-\ pool); and wrong-arity rejection (5 and 7 args) with the arity diagnostic.
+\ Uncapped per-param arity: a family with arity > 4 parses, checks, persists,
+\ instantiates through the flat PARGP/VNARG/EN arg pools, and renders. A
+\ test-only arity-6 family proves: bare parse; a STORED-sig reference (E-COPY +
+\ E-INST round trip); a nested arity-6 arg; a value-record field of the arity-6
+\ family (VNARG pool); and wrong-arity rejection (5 and 7 args) with the arity
+\ diagnostic.
 s" tfam6r-big" 6 TFAM-REG-CELL
 : COK-BIG6 ( tfam6r-big<a,b,c,d,e,f> -- tfam6r-big<a,b,c,d,e,f> ) ;
 s" COK-BIG6-CALL ( tfam6r-big<a,b,c,d,e,f> -- tfam6r-big<a,b,c,d,e,f> ) COK-BIG6" T-CHECK-PASSES
 s" COK-BIG6-NEST ( tfam6r-big<a,tfam6r-big<t,u,v,w,x,y>,c,d,e,f> -- tfam6r-big<a,tfam6r-big<t,u,v,w,x,y>,c,d,e,f> )" T-CHECK-PASSES
 s" CBAD-BIG6-A5-DIAG ( tfam6r-big<a,b,c,d,e> -- ) drop" ' SGBAD-ARITY? T-CHECK-KIND
 s" CBAD-BIG6-A7-DIAG ( tfam6r-big<a,b,c,d,e,f,g> -- ) drop" ' SGBAD-ARITY? T-CHECK-KIND
-\ SC-QUOT: a quotation as a family argument (dot habu-tfam-4-remainder). SIG-TYPE
+\ SC-QUOT: a quotation as a family argument. SIG-TYPE
 \ parses [ in -- out | rin -- rout ] as one param arg (a T-QUOT term), threaded
 \ through parse, persist (E-COPY/VREC-COPY), instantiate (E-INST), and render.
 \ Prove: bare parse; a STORED-sig reference (E-COPY + REND-SIG record + E-INST);
@@ -1505,7 +1453,7 @@ s" scq-fam" 2 TFAM-REG-CELL
 s" COK-SCQ-CALL ( scq-fam<[ n -- n ],f32> -- scq-fam<[ n -- n ],f32> ) COK-SCQ" T-CHECK-PASSES
 s" COK-SCQ-RET ( scq-fam<[ n -- n | U -- U ],f32> -- scq-fam<[ n -- n | U -- U ],f32> )" T-CHECK-PASSES
 s" COK-SCQ-QNEST ( scq-fam<[ [ n -- n ] -- n ],f32> -- scq-fam<[ [ n -- n ] -- n ],f32> )" T-CHECK-PASSES
-\ Malformed-row first causes are asserted by KIND (destruction review): a missing
+\ Malformed-row first causes are asserted by KIND: a missing
 \ '--' hits SIG-PARSE-QUOT's EXPECT-SIG -> SGBAD-SYNTAX; a missing ']' after the
 \ data rows is first seen as the stray ',' by SIG-TYPE -> SGBAD-UNKNOWN (the ']'
 \ EXPECT never runs); the extra '--' after a full return clause is the fixture
@@ -1513,7 +1461,7 @@ s" COK-SCQ-QNEST ( scq-fam<[ [ n -- n ] -- n ],f32> -- scq-fam<[ [ n -- n ] -- n
 s" CBAD-SCQ-NODASH ( scq-fam<[ n n ],f32> -- ) drop" ' SGBAD-SYNTAX? T-CHECK-KIND
 s" CBAD-SCQ-NOCLOSE ( scq-fam<[ n -- n ,f32> -- ) drop" ' SGBAD-UNKNOWN? T-CHECK-KIND
 s" CBAD-SCQ-RETCLOSE ( scq-fam<[ n -- n | U -- U -- ],f32> -- ) drop" ' SGBAD-SYNTAX? T-CHECK-KIND
-\ Render acceptance (destruction review): a mismatch diagnostic must render the
+\ Render acceptance: a mismatch diagnostic must render the
 \ full parametric type — all six args of an arity-6 application, and an SC-QUOT
 \ arg's din/dout rows, where a neutral return clause renders as none — never a
 \ collapsed string or '?'.
@@ -1607,7 +1555,7 @@ s" CBAD-OWN-EXEC-NEST ( ES-OWN:own -- ES-OWN:own ES-OWN:own ) [: [: dup ;] execu
 s" COK-OWN-FRAME-WORK ( -- ) ES-OWN:T-MAKE-OWN [: ;] execute ES-OWN:T-FREE-OWN" T-CHECK-PASSES
 s" CBAD-OWN-FRAME-LEAK ( -- ) ES-OWN:T-MAKE-OWN [: ;] execute" T-CHECK-REJECTS
 s" CBAD-OWN-FRAME-DOUBLE ( -- ) ES-OWN:T-MAKE-OWN [: ;] execute ES-OWN:T-FREE-OWN ES-OWN:T-FREE-OWN" T-CHECK-REJECTS
-\ Polymorphic linear laundering (habu-linear-kind-inference): a linear copied or
+\ Polymorphic linear laundering: a linear copied or
 \ dropped while its type is still a polymorphic var — through KEEP/BI's `over` or
 \ an intra-quotation `dup`/`over`, before it binds linear — is rejected by the
 \ linear kind discipline, even though concrete-count conservation stays neutral
@@ -1621,14 +1569,12 @@ s" CBAD-OWN-QUOT-OVER-FREE ( ES-OWN:own n -- ES-OWN:own n ) [: over ES-OWN:T-FRE
 \ certifies, and a sound DIP that only MOVES the linear (1-in / 1-out) certifies.
 s" COK-N-KEEP ( n -- n ) [: 1+ ;] KEEP drop" T-CHECK-PASSES
 s" COK-OWN-DIP-PASS ( n ES-OWN:own -- n ES-OWN:own ) [: 1+ ;] DIP" T-CHECK-PASSES
-\ Linear values may not launder through {: :} locals (dot
-\ habu-checker-linear-values-a5745699). A local reference re-pushes its binding
-\ outside the LIN-SNAPSHOT/LIN-CHECK count discipline, so binding a linear into a
-\ local hid double-reference (duplication), an unreferenced local (leak), and a
-\ referenced-then-freed-twice double-consume. Binding a value that concretely
-\ resolves linear is rejected outright with E-LINEAR-LOCAL; the value must stay on
-\ the stack and be factored. Direct-stack linear discipline (COK-OWN-*/CBAD-OWN-*
-\ above) is unchanged, and non-linear locals are untouched.
+\ Linear values may not launder through {: :} locals: a local reference
+\ re-pushes its binding outside the LIN-SNAPSHOT/LIN-CHECK count discipline, so
+\ a linear local would hide duplication, a leak and a double consume. Binding a
+\ value that concretely resolves linear is rejected outright with
+\ E-LINEAR-LOCAL; the value must stay on the stack and be factored. Non-linear
+\ locals are untouched.
 s" CBAD-OWN-LOCAL-DUP ( ES-OWN:own -- ES-OWN:own ES-OWN:own ) {: x:ES-OWN:own :} x x" T-CHECK-REJECTS
 s" CBAD-OWN-LOCAL-LEAK ( ES-OWN:own -- ) {: x:ES-OWN:own :}" T-CHECK-REJECTS
 s" CBAD-OWN-LOCAL-DOUBLE-FREE ( ES-OWN:own -- ) {: x:ES-OWN:own :} x ES-OWN:T-FREE-OWN x ES-OWN:T-FREE-OWN" T-CHECK-REJECTS
@@ -1689,7 +1635,7 @@ s" CBAD-POINT-DUP ( point -- point point ) dup" T-CHECK-REJECTS
 s" CBAD-POINT-PARTIAL ( n -- point )" T-CHECK-REJECTS
 s" CBAD-BOX-RECT ( box -- rect )" T-CHECK-REJECTS
 s" CBAD-HDL-DUP ( hdl -- hdl hdl ) over over" T-CHECK-REJECTS
-\ Value-record with an arity-6 family field type (dot habu-tfam-4-remainder):
+\ Value-record with an arity-6 family field type:
 \ the field wrapper field<rec,q,tfam6r-big<6>> stores its 6-arg inner param in the
 \ VNARG pool; the roundtrip forces VREC-PUSH-FIELDS/VREC-INST to read it back.
 VALUE-RECORD tfam6r-vr q tfam6r-big<a,b,c,d,e,f> END-VALUE-RECORD
@@ -1704,7 +1650,7 @@ VALUE-RECORD scq-vr q scq-fam<[ n -- n ],f32> END-VALUE-RECORD
 : T-SCQVR> ( scq-vr -- scq-fam<[ n -- n ],f32> ) ;
 s" COK-SCQVR-ID ( scq-vr -- scq-vr )" T-CHECK-PASSES
 s" COK-SCQVR-ROUNDTRIP ( scq-fam<[ n -- n ],f32> -- scq-fam<[ n -- n ],f32> ) T->SCQVR T-SCQVR>" T-CHECK-PASSES
-\ VNARG rollback parity (destruction review): a VALUE-RECORD defined inside a
+\ VNARG rollback parity: a VALUE-RECORD defined inside a
 \ rolled-back scope allocates VR-PARAM nodes AND their VNARG runs; RBF-POP must
 \ rewind VNARG-N in lockstep with VREC-NODE-N, and a record defined BEFORE the
 \ scope must still instantiate from its (surviving, below-the-mark) VNARG run.
@@ -1719,7 +1665,7 @@ s" vnarg-rollback-rewinds" T-LABEL   VNARG-N @ TR-VNARG-RB @ T=
 s" vrec-node-rollback-parity" T-LABEL   VREC-NODE-N @ TR-VNODE-RB @ T=
 s" surviving record instantiates after rollback" T-LABEL
 s" COK-BIG6VR-POSTRB ( tfam6r-vr -- tfam6r-vr )" CHECK-QUIET-CANDIDATE! -1 T=
-\ VNARG persist read-back (destruction review): force the arg pool onto a grown
+\ VNARG persist read-back: force the arg pool onto a grown
 \ mmap store, bake it with VREC-SNAPSHOT-PERSIST, and prove a real >4-arg run
 \ still instantiates from the persisted buffer (VNARG-N stable across the bake).
 variable TR-VNARG-P0
@@ -1906,8 +1852,8 @@ create ES-TARGETZ
    65 c, 71 c, 69 c, 78 c, 84 c, 83 c, 46 c, 109 c, 100 c, 0 c,
 create DIRBASE 8 allot
 \ The directory and the link are made inside a fresh root under TMPDIR: two
-\ gates share one machine, and a fixed /tmp name let one run's mkdir meet the
-\ other's directory (EEXIST) or its rmdir remove it mid-test.
+\ gates share one machine, and a fixed /tmp name collides with the other run's
+\ mkdir (EEXIST) or rmdir.
 create ES-ROOT PATH-CAP allot
 variable ES-ROOT-U
 create ES-JOIN PATH-CAP allot
@@ -1950,8 +1896,7 @@ check@ 0 set-check
 0 4096 3 $1002 -1 0 mmap dup 0 < TFALSE dup 65 swap c! c@ 65 T=
 set-check
 
-\ floats (the f+ prim must be the FLOAT op — it was once shadowed by a
-\ jit fold helper named f+)
+\ floats
 : TFP ( -- bool ) 1.5 2.5 f+ 4.0 f= ;
 TFP TTRUE
 : TFL ( -- bool ) 1.5 2.5 f< ;
@@ -2018,7 +1963,7 @@ TRP 105 T=
    + + + + + + + + + + + ;
 TLR 78 T=
 
-\ JIT constant-push / binary-prep sharing (dot habu-share-duplicated-jit): the
+\ JIT constant-push / binary-prep sharing: the
 \ shared LVPUSHT body (LVPUSHC falls in, LVPUSHF branches in) and the LVBINIPREP
 \ probe that tail-branches into the single LVBINPREP base must reproduce every
 \ mode. Fold path (both operands constant), imm12 mode 3 (live deep + small const
@@ -2189,21 +2134,18 @@ cp@ ES-CPX-CP !
 : ES-CPX-EXT-OFF ( -- n ) HB-TARGET-LINUX-X86-64? if 32 else 28 then ;
 s" cpx-retry-ext-entry" T-LABEL ' ES-CPX-GOOD-EXTENDED-NAME ES-XT>N ES-CPX-CP @ ES-CPX-EXT-OFF + T=
 
-\ Candidate dictionary/hook smoke, folded from the former standalone GE-CAND-SMOKE
-\ candidate launch into this engine-suite run so the batch shares one HABU_UNDER_TEST
-\ spawn instead of two. Each check is an independent T= probe (no entangled stdout
-\ contract): the boot check hook is installed, a checked def compiles and runs, and a
-\ representative baked process primitive resolves. Runs on both the candidate and bin/hb.
+\ Candidate dictionary/hook smoke, independent T= probes: the boot check hook
+\ is installed, a checked def compiles and runs, and a representative baked
+\ process primitive resolves. Runs on both the candidate and bin/hb.
 s" smoke-hook-installed" T-LABEL data-base HOOK-CELL + @ 0= TFALSE
 : ES-SMOKE-SQ ( i64 -- i64 ) dup * ;
 s" smoke-checked-compile-run" T-LABEL 7 ES-SMOKE-SQ 49 T=
 s" smoke-baked-word-resolves" T-LABEL ' spawn-argv-env-cwd-io drop true TTRUE
 
-\ check@ getter round-trip (dot habu-stdlib-check-hook-fd883aea): check@ reads the
-\ live hook that set-check installed ([x20/DATA + HOOK-CELL]); reinstalling it via
-\ check@ is a no-op and the checker hook still fires afterward. This is the typed
-\ getter that removes the reason an agent reached for `dbase@ HOOK-CELL + @` (the
-\ wrong CODE base), which installed code bytes as the hook.
+\ check@ getter round-trip: check@ reads the live hook that set-check installed
+\ ([x20/DATA + HOOK-CELL]); reinstalling it via check@ is a no-op and the
+\ checker hook still fires afterward. `dbase@ HOOK-CELL + @` reads the CODE
+\ base, the wrong one.
 s" check@ reads live hook" T-LABEL check@ data-base HOOK-CELL + @ T=
 s" check@ nonzero after boot install" T-LABEL check@ 0 <> TTRUE
 check@ set-check
@@ -2211,13 +2153,12 @@ s" check@ set-check is a no-op" T-LABEL check@ data-base HOOK-CELL + @ T=
 : ES-CHK-RT ( i64 -- i64 ) dup + ;
 s" check@ round-trip: hook still fires" T-LABEL 5 ES-CHK-RT 10 T=
 
-\ --- declared-effect parametricity seal (dot habu-nominal-storage-effect-a60ba885).
-\ After body checking, every declared type-variable quantifier must still resolve
-\ to a DISTINCT variable. Any concrete specialization or alias between two
-\ declared quantifiers rejects E-NONPARAMETRIC-EFFECT.
-\ Verdict 0 = rejected, -1 = certified. `esnp` is an arity-0 nominal-scalar family;
-\ ESNP-AT is its generated LAYOUT-BUFFER pointee accessor (the only checked source
-\ of `ptr esnp`). All scaffolding is checked Habu — no trust surface is added.
+\ --- declared-effect parametricity seal. After body checking, every declared
+\ type-variable quantifier must still resolve to a DISTINCT variable. Any
+\ concrete specialization or alias between two declared quantifiers rejects
+\ E-NONPARAMETRIC-EFFECT. Verdict 0 = rejected, -1 = certified. `esnp` is an
+\ arity-0 nominal-scalar family; ESNP-AT is its generated LAYOUT-BUFFER pointee
+\ accessor (the only checked source of `ptr esnp`).
 NEWTYPE esnp
 4 LAYOUT-BUFFER ESNP-AT esnp                  \ ESNP-AT ( n -- ptr esnp ) accessor
 : ESNP-ID ( esnp -- esnp ) ;                  \ concrete nominal identity wrapper
@@ -2298,8 +2239,8 @@ DIAG-BUFFER$ s\" \"code\":\"E-NONPARAMETRIC-EFFECT\"" CONTAINS? TTRUE
 DIAG-BUFFER$ s\" \"quantifier\"" CONTAINS? TFALSE
 DIAG-BUFFER-OFF
 
-\ pointer-pointee path stays stable: the ptr instance rejects via the existing
-\ NOMPTR mismatch diagnostic, which names the family (requirement #2).
+\ pointer-pointee path stays stable: the ptr instance rejects via the NOMPTR
+\ mismatch diagnostic, which names the family.
 RSD-BUF RSD-CAP DIAG-BUFFER!
 s" ESNP-PSPEC ( -- ptr a ) 0 ESNP-AT" CHECK-CANDIDATE! 0 T=
 s" ptr-family diag names the forged family" T-LABEL
@@ -2316,12 +2257,10 @@ s" ESNP-GEN-ID-2 ( a -- a )" CHECK-QUIET-CANDIDATE! -1 T=
 s" plain-scalar fetch after a reject certifies" T-LABEL
 s" ESNP-FETCH-N-2 ( ptr n -- n ) @" CHECK-QUIET-CANDIDATE! -1 T=
 
-\ x18 Darwin-reserved regressions (dot habu-rca-engine-sigsegv-ba81a08c):
-\ XNU zeroes x18 on any trap return; pre-fix, interpret-mode escaped
-\ literals pushed base 0 once a copy crossed a fresh DATA page, and
-\ compile-mode literals crashed LPAT when the copy crossed a code page.
-\ Direct top-level fixtures (evaluate cannot carry escaped literals yet:
-\ dot habu-interpret-mode-escaped-d8dad34b).
+\ x18 is Darwin-reserved: XNU zeroes it on any trap return, so an escaped
+\ literal whose copy crosses a fresh DATA page (interpret mode) or a code page
+\ (compile mode, LPAT) must not depend on it. Direct top-level fixtures:
+\ evaluate cannot carry escaped literals.
 : TX18-CHK ( ptr u8 n -- ) 150 T=  c@ [char] A T= ;
 : TX18-QCHK ( ptr u8 n -- ) 180 T=  c@ [char] B T= ;
 S\" AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" TX18-CHK
@@ -2722,23 +2661,16 @@ TX18-DA TX18-DB TX18-DC TX18-DD TX18-DE TX18-DF TX18-DG TX18-DH TX18-DI TX18-DJ 
 TX18-DM TX18-DN TX18-DO TX18-DP TX18-DQ TX18-DR TX18-DS TX18-DT TX18-DU TX18-DV TX18-DW TX18-DX
 
 \ ---- search-wl: the answer, and the ORDER it is the answer of ---------------
-\ `search-wl` names the LAST row of one wordlist whose folded name matches. That
-\ is a different rule from "the matching row", and the difference is invisible
-\ until a key holds two rows. The definer's duplicate wall keeps every real
-\ wordlist at one live row per folded tail, so there last and first coincide;
-\ `undefine` does NOT, because it stamps every row it retires with one shared
-\ value that is no wordlist, and retiring a tail twice leaves two rows under it.
-\ Both halves are pinned below, by ROW IDENTITY - each case says which row, by
-\ the index the row was published at - so a lookup that returned the other row
-\ of a pair fails here rather than passing on a non-zero answer.
-\
-\ The whole battery is then answered TWICE: once here, and once at the very end
-\ of this file, after the ndict! block has dropped the hash index and left the
-\ linear scan answering alone. The two captures must agree row for row.
-\
-\ NO CASE WRITES A WID DOWN. Every wid is read out of the dictionary row that
-\ owns it, so what a case asserts is what the engine wrote there - and the file
-\ still loads on an engine built before there was a constant for it.
+\ `search-wl` names the LAST row of one wordlist whose folded name matches. The
+\ definer's duplicate wall keeps every real wordlist at one live row per folded
+\ tail, so there last and first coincide; `undefine` stamps every row it
+\ retires with one shared value that is no wordlist, so retiring a tail twice
+\ leaves two rows under it. Both halves are pinned by ROW IDENTITY, the index
+\ the row was published at, so a lookup that returns the other row of a pair
+\ fails here.
+\ The battery is answered twice: here, and at the end of this file after the
+\ ndict! block has rebuilt the hash index. The two captures must agree row for
+\ row. No case writes a wid down: every wid is read out of the row that owns it.
 package ES-SWL
 
 \ Whitebox: a row by index. A row's index is ndict@ in the instant before it is
@@ -2867,16 +2799,13 @@ s" search-wl: a prefix of a live tail is not that tail" T-LABEL
 s" T-LABEL-CA" 0 search-wl 0 T=
 s" T-LABEL-CAPX" 0 search-wl 0 T=
 
-\ The retired key, which is the one key a wordlist's one-row-per-tail rule does
-\ not cover: `undefine` stamps it on a row that is already published, and doing
-\ it twice to one tail leaves two rows under it. The last of the two is the
-\ answer, and that is the whole of the ordering rule stated as a fact about the
-\ engine rather than about this word's implementation.
+\ The retired key is the one key a wordlist's one-row-per-tail rule does not
+\ cover: `undefine` stamps it on a published row, and doing it twice to one
+\ tail leaves two rows under it; the last of the two is the answer.
 \ Both rows are published through the engine's own evaluate path (the whitebox
-\ ES-RES-REFUSE:OUTCOME above), which is where every other source in this file
-\ that has to land in the GLOBAL wordlist comes from. A row's index is still
-\ ndict@ in the instant before it: evaluating a source publishes what the source
-\ defines and nothing else.
+\ ES-RES-REFUSE:OUTCOME above), as every source here that must land in the
+\ GLOBAL wordlist is. Evaluating a source publishes what it defines and nothing
+\ else, so a row's index is still ndict@ in the instant before it.
 ES-SWL:MARK-RET1
 s" : ES-SWL-U ( -- n ) 1 ;" ES-RES-REFUSE:OUTCOME 0 T=
 s" search-wl: a live global tail is its own row" T-LABEL
@@ -2904,18 +2833,13 @@ ES-SWL:CAPTURE  ES-SWL:N ES-SWL:BATTERY-N T=
 \ ---- ndict! and the authority of the lookup index ---------------------------
 \ The engine reads an empty hash slot as PROOF that a name is absent, and that
 \ proof holds only while the table covers every record below NDICT. Every
-\ ndict! in the tree lowers the mark, but raising it re-exposes records whose
-\ index slots a later publication was free to reuse, so BNDSET rebuilds the
-\ table from the raised [0,NDICT) in place rather than trusting its callers -
-\ it used to DROP the table here instead, which silently downgraded every
-\ later lookup in the process to the linear scan (CG-25).
-\
-\ THIS BLOCK IS LAST IN THE FILE ON PURPOSE. It leaves the index rebuilt, and
-\ the cases that follow the raise are lookups plus the battery re-run: they
-\ are the assertion that the rebuilt table answers exactly what the original
-\ table answered, over the same shared tails the resolution block above
-\ pinned - and the claim count is asserted EQUAL to ndict, which only a real
-\ from-scratch rebuild produces.
+\ ndict! in the tree lowers the mark; raising it re-exposes records whose index
+\ slots a later publication was free to reuse, so BNDSET rebuilds the table
+\ from the raised [0,NDICT) in place rather than trusting its callers.
+\ This block is last in the file: it leaves the index rebuilt, and the lookups
+\ and battery re-run after the raise assert that the rebuilt table answers
+\ exactly what the original answered over the shared tails the resolution block
+\ pinned. The claim count equals ndict only after a from-scratch rebuild.
 package ES-NDX
 
 \ Whitebox: a fixed engine header cell, and the FORGET sink itself.

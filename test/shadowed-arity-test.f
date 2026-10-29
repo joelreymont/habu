@@ -1,21 +1,8 @@
 \ shadowed-arity-test.f - a package public whose own bare tail a private word of
-\ the same package claims (dot habu-refuse-an-arity-5affb6b7).
-\
-\ A bare tail binds the open package's PRIVATE wordlist first, so such a public
-\ definition is not what its own name binds to, and the native compiler reads a
-\ definition's contract from that binding (definition.f KEEP-ARITY asks
-\ NDICT:SPELL-ARITY with the bare name). The pair itself is the deliberate
-\ forwarder pattern - src/lib/task.f publishes `: PREPARE ( ptr n -- ) PREPARE ;`
-\ over its private PREPARE - and stays legal; what ncomp cannot survive is the
-\ two effects moving DIFFERENT numbers of cells. Before this rule that pair
-\ passed the source run and failed the native build minutes later with -8303
-\ E-NELAB-ARITY (the Tender backend's report); it is now refused at the second
-\ definition with E-SHADOWED-ARITY.
-\
-\ WHY EVERY CASE RUNS THROUGH INCLUDE-EVALUATE. The rule is about WHEN the
-\ refusal happens: at the definition, on the ordinary load path, not at the
-\ build. One source string per case makes that observable - the code comes back
-\ from the string that carried the second definition.
+\ the same package claims. A bare tail binds the open package's private wordlist
+\ first and the native compiler reads the contract from that binding
+\ (definition.f KEEP-ARITY asks NDICT:SPELL-ARITY), so effects moving different
+\ cell counts are refused at the second definition.
 
 require src/lib/prelude.f
 require src/lib/test.f
@@ -33,7 +20,9 @@ TYPED-VARIABLE SAE-A ptr u8   variable SAE-U
 
 public
 
-\ Evaluate one source string, returning its throw code (0 = accepted).
+\ One source string per case, answering its throw code (0 = accepted): the code
+\ comes back from the string that carried the second definition, so the refusal
+\ is seen at the definition, not at the build.
 : SAE-CATCH ( ptr u8 n -- n )  SAE-U ! SAE-A !  [: SAE-GO ;] catch ;
 
 \ The codes the refused cases expect. They live in the package because a global
@@ -44,14 +33,12 @@ E-SHADOWED-ARITY constant E-SHADOW-ARITY   \ src/core/checker.f SHADOW-ARITY-CK
 ;package
 
 \ === refused: the private twin's effect moves a different number of cells =====
-\ Fewer inputs than the private word. This is the reported shape: ncomp used to
-\ elaborate the public body against the private word's two inputs and reach the
-\ return with one value too many (-8303).
+\ Fewer inputs than the private word: the reported shape (ncomp's -8303
+\ E-NELAB-ARITY at the return).
 s\" package SAT-A\n: F ( n n -- n ) + ;\npublic\n: F ( n -- n ) 1 + ;\n;package"
    SHADOWED-ARITY:SAE-CATCH SHADOWED-ARITY:E-SHADOW-ARITY T=
 
-\ More inputs than the private word: the same rule from the other side (ncomp
-\ reached it as -8304 E-NELAB-UNDER, one value short of what `+` consumes).
+\ More inputs than the private word (ncomp's -8304 E-NELAB-UNDER).
 s\" package SAT-B\n: G ( n -- n ) 1 + ;\npublic\n: G ( n n -- n ) + ;\n;package"
    SHADOWED-ARITY:SAE-CATCH SHADOWED-ARITY:E-SHADOW-ARITY T=
 
@@ -71,12 +58,10 @@ s\" package SAT-M\n10 constant W\npublic\n: W ( n -- n ) 1 + ;\n;package"
    SHADOWED-ARITY:SAE-CATCH SHADOWED-ARITY:E-SHADOW-ARITY T=
 
 \ === accepted: every neighbouring shape that must stay legal =================
-\ A DEFINER-MADE PUBLIC is not judged by this rule: `constant` compiles no body
-\ for ncomp to elaborate, so the private twin's arity never reaches it. This is
-\ test/ndict-binding.f's NDB-LEFT shape (private SHARED 10, public SHARED 20),
-\ and the record a definer-made public presents to the checker is the DEFINER
-\ CALL's effect - `20 constant CV` presents ( n -- ) - not the created word's,
-\ which is why the rule is asked at the colon-definition intake alone.
+\ A definer-made public is not judged by this rule: `constant` compiles no body
+\ for ncomp to elaborate (test/ndict-binding.f's NDB-LEFT shape). The checker
+\ sees the definer call's effect, `20 constant CV` presents ( n -- ), which is
+\ why the rule is asked at the colon-definition intake alone.
 s\" package SAT-K\n10 constant CV\npublic\n20 constant CV\n;package"
    SHADOWED-ARITY:SAE-CATCH 0 T=
 s\" : SAT-K-CK ( -- ) SAT-K:CV 20 <> if s\q public constant lost its own value\q 1 die then ;\nSAT-K-CK"
@@ -88,15 +73,15 @@ s\" : SAT-K-CK ( -- ) SAT-K:CV 20 <> if s\q public constant lost its own value\q
 s\" package SAT-L\n: CW ( n -- ) drop ;\npublic\n30 constant CW\n;package"
    SHADOWED-ARITY:SAE-CATCH 0 T=
 
-\ THE FORWARDER PATTERN ITSELF. Same tail, same effect, and the bare call in the
-\ public body is the private word - which is the point of the pattern.
+\ The forwarder pattern (src/lib/task.f PREPARE): same tail, same effect, and
+\ the bare call in the public body is the private word.
 s\" package SAT-E\n: P ( n -- n ) 1 + ;\npublic\n: P ( n -- n ) P ;\n;package"
    SHADOWED-ARITY:SAE-CATCH 0 T=
 s\" : SAT-E-CK ( -- ) 41 SAT-E:P 42 <> if s\q forwarder missed the private word\q 1 die then ;\nSAT-E-CK"
    SHADOWED-ARITY:SAE-CATCH 0 T=
 
 \ Same cells through different types: two cells either way, so the compiler
-\ reads an arity that fits. Measured as accepted today and kept that way.
+\ reads an arity that fits.
 s\" package SAT-F\n: Q ( ptr u8 n -- n ) drop c@ ;\npublic\n: Q ( n n -- n ) + ;\n;package"
    SHADOWED-ARITY:SAE-CATCH 0 T=
 
@@ -104,9 +89,9 @@ s\" package SAT-F\n: Q ( ptr u8 n -- n ) drop c@ ;\npublic\n: Q ( n n -- n ) + ;
 s\" package SAT-G\n: R ( n -- n ) 1 + ;\npublic\n: S ( n n -- n ) + ;\n;package"
    SHADOWED-ARITY:SAE-CATCH 0 T=
 
-\ A PACKAGE WORD SHADOWING A GLOBAL of another arity, which is legal (docs/forth.md
-\ Packages) and is what a rule asked of the bare-name resolver instead of the
-\ record's own key would have refused.
+\ A package word shadowing a global of another arity is legal (docs/forth.md
+\ Packages); a rule asked of the bare-name resolver instead of the record's own
+\ key would refuse it.
 s" : SAT-SHADOWED ( n n -- n ) + ;" SHADOWED-ARITY:SAE-CATCH 0 T=
 s\" package SAT-H\n: SAT-SHADOWED ( n -- n ) 1 + ;\npublic\n: U ( n -- n ) SAT-SHADOWED ;\n;package"
    SHADOWED-ARITY:SAE-CATCH 0 T=
@@ -132,12 +117,10 @@ s\" package SAT-J\n: X ( n -- n ) 1 + ;\n: X ( n n -- n ) + ;\n;package"
    SHADOWED-ARITY:SAE-CATCH 78 T=
 
 \ === nothing without a live record binds a name ===============================
-\ A REFUSED public leaves nothing behind. Its symbol used to be interned before
-\ this rule threw, and a later `using` of the package then refused the bare tail
-\ as E-USING-SHADOW-GLOBAL against a public the engine never defined. The engine
-\ binds the global there, so the checked word does too: SAT-N-USE answers 7.
-\ The refusal is caught INSIDE the package, by a nested TEST-EVAL:RC, so that
-\ `;package` still closes SAT-N with its private word for the `using` to read.
+\ A refused public leaves nothing behind: a later `using` of the package binds
+\ the global, as the engine does, so SAT-N-USE answers 7 and no
+\ E-USING-SHADOW-GLOBAL is raised. A nested TEST-EVAL:RC catches the refusal
+\ inside the package so `;package` still closes SAT-N with its private word.
 s" : SAT-T ( -- n ) 7 ;" SHADOWED-ARITY:SAE-CATCH 0 T=
 s\" package SAT-N\n: SAT-T ( n n -- n ) + ;\npublic\ns\q : SAT-T ( n -- n ) 1 + ;\q TEST-EVAL:RC SHADOWED-ARITY:E-SHADOW-ARITY T=\n;package"
    SHADOWED-ARITY:SAE-CATCH 0 T=
@@ -172,8 +155,8 @@ s\" : SAT-D-CK ( -- ) SAT-DA:SAT-DA-USE SAT-DB:SAT-DB-USE + SAT-DC:SAT-DC-USE + 
 \ engine binds the private word first, so one the checker has no live record
 \ for stops the walk before the public leg: a CHECKER-UNDEFINE deleted only the
 \ checker's record (SAT-DT), and a `0 set-check` word never had one (SAT-DU).
-\ Each use below was certified against the public ( ptr u8 -- n ) and ran the
-\ private ( n -- n ) on a pointer; it is refused. The engine's own `undefine`
+\ Each use below is refused: certified against the public ( ptr u8 -- n ), it
+\ would run the private ( n -- n ) on a pointer. The engine's own `undefine`
 \ retires the private word too, and then the public twin binds (SAT-DV).
 s\" package SAT-DT\n: SAT-DT-X ( n -- n ) 1 + ;\npublic\n: SAT-DT-X ( ptr u8 -- n ) drop 5 ;\n;package"
    SHADOWED-ARITY:SAE-CATCH 0 T=

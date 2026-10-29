@@ -1,12 +1,9 @@
-\ native-hir.f - checked straight-line HIR dialect tests.
-\
-\ Exercises policy-dependent schemas and source-word ownership, memoization and
-\ refusals that ordinary compilation cannot construct: forged rows, swapped
-\ arenas, foreign symbols, full tables, invalid stages and out-of-range picks.
-\ The production load-and-execute flows in native-vocab.f and native-rename-rows.f
-\ cover arithmetic, control words and stack renames.
-\ Tier-neutral by design: the dialect and its source-word model are read back
-\ through their own API, so the tier this file loads under changes no row.
+\ native-hir.f - checked straight-line HIR dialect tests: policy-dependent
+\ schemas, source-word ownership, memoization, and refusals ordinary compilation
+\ cannot construct (forged rows, swapped arenas, foreign symbols, full tables,
+\ invalid stages, out-of-range picks). native-vocab.f and native-rename-rows.f
+\ cover arithmetic, control words and stack renames through load-and-execute.
+\ Tier-neutral: every row is read back through the dialect's own API.
 
 require src/lib/test.f
 require src/compiler/ir/symbol.f
@@ -15,17 +12,11 @@ require src/compiler/native/feed.f
 require src/compiler/native/abi.f
 
 \ ---- a table of its own module asks the binding gate too ----------------------
-\ A caller outside a session - every test, every tool - builds its table with
-\ HIR-WORD:NEW, and such a table carries no session link, so nothing consults the
-\ binding gate when one of its rows is READ: a reader holds the rows and a symbol
-\ and no interner, and cannot read a spelling back at all. The gate is therefore
-\ asked while the row is written, which is the only moment the spelling can be
-\ read, and a spelling some package has taken over gets no row - so the token
-\ falls through to the callable path and reaches that package's own word.
-\
-\ This package is the fixture: it owns `xor`, and the registration runs INSIDE
-\ it, so the table it builds must model `and` and not `xor`. Registering all 87
-\ rows unconditionally models both.
+\ A table built with HIR-WORD:NEW has no session link and a row reader has no
+\ interner, so the binding gate is asked when the row is written: a spelling a
+\ package has taken over gets no row, and the token reaches that package's word.
+\ This package owns `xor` and registers inside itself, so its table must model
+\ `and` and not `xor`; registering all 87 rows unconditionally models both.
 package HIR-BOUND-XOR
 public
 
@@ -82,9 +73,8 @@ private
    CNUM-FAST--MATH:BIT-EXACT CNUM-COMPARE:IEEE754-UNORDERED CNUM:POLICY
    CBIND:BIND ;
 
-\ The same machine WITHOUT a floating-point unit. The integer subset needs
-\ nothing more than the base feature set, so it registers; the float subset
-\ declares the floating feature and must not.
+\ The same machine without a floating-point unit: the integer subset registers,
+\ the float subset declares the floating feature and must not.
 : NOFP-BND ( -- CBIND:binding )
    CTARGET-ARCH:AARCH64 CTARGET-ABI:AAPCS64-DARWIN CTARGET-ENDIAN:LITTLE
    CTARGET-PTR--WIDTH:BITS64
@@ -135,7 +125,6 @@ private
    s" HIR opcode ordinals above the vocabulary are refused" T-LABEL
    [: OPCODE-NTH-HIGH ;] E-HIR-OPCODE TTHROWSQ ;
 
-\ Every field the arithmetic schema declares, read back off the frozen table.
 : ARITH-BODY ( IR-CTX:ctx -- n bool n bool n n n bool bool bool bool bool bool )
    {: c:IR-CTX:ctx :}
    c DIALECT-NEW {: b:IR-BUILD:builder :}
@@ -165,8 +154,6 @@ private
    TTRUE TTRUE TTRUE TTRUE
    TFALSE TFALSE 0 T= 0 T= 0 T= TFALSE 1 T= TFALSE 2 T= ;
 
-\ The constant carries the one attribute key that gives it its content, and the
-\ return is a terminator that takes the word's outputs and has no results.
 : SHAPE-BODY ( IR-CTX:ctx -- n n n bool bool bool n n bool bool )
    {: c:IR-CTX:ctx :}
    c DIALECT-NEW {: b:IR-BUILD:builder :}
@@ -190,24 +177,16 @@ private
    rv r IR-SCHEMA:FOPERAND-TAIL?
    rv r IR-SCHEMA:FTERMINATOR? ;
 
-\ The constant's attribute keys, in the order the schema declares them: the
-\ number, its address class, then its DATA origin. The ordinals are pinned because
-\ a reader
-\ that took the value off ordinal 1 and the kind off ordinal 0 would materialise
-\ the kind as the literal and record the literal as a relocation class.
+\ The constant's attribute keys in schema order: number, address class, DATA
+\ origin. The ordinals are pinned: a reader that swapped ordinals 0 and 1 would
+\ materialise the kind as the literal.
 : SHAPE-CASE ( -- )
    s" the constant and the return have the shapes section 7.2 gives them" T-LABEL
    BND [: SHAPE-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE 0 T= 1 T= TTRUE TTRUE TTRUE 3 T= 1 T= 0 T= ;
 
-\ The three memory schemas, read back off the frozen table. What is asserted is
-\ the shape the ordering rests on: the mint takes nothing and answers one order,
-\ the load takes an address and an order and answers a cell and an order, and the
-\ store takes a value, an address and an order and answers an order. The types
-\ are checked position by position, so an operand list in another order is a
-\ different type here rather than a different comment; and both accesses declare
-\ a memory effect rather than purity, which is what makes the freeze verifier
-\ demand the order they carry.
+\ Memory schema types are checked by position, and both accesses declare a
+\ memory effect, not purity: that makes the freeze verifier demand their order.
 : MEM-SHAPE-BODY ( IR-CTX:ctx -- n n bool n n bool bool bool n n bool bool bool bool bool )
    {: c:IR-CTX:ctx :}
    c DIALECT-NEW {: b:IR-BUILD:builder :}
@@ -271,12 +250,10 @@ private
    TFALSE TFALSE TFALSE TFALSE TFALSE ;
 
 \ ---- the one opcode whose trap is not the unit's policy -----------------------
-\ Division may trap under EITHER policy, because what it traps on is a zero
-\ divisor and not an overflow: the engine's own `/` branches over a `brk` when
-\ the divisor is not zero, so a lowering that dropped the check would answer
-\ zero where the interpreted word ends the process. The flag says so under both
-\ bindings, which is what makes it a fact about division rather than about the
-\ policy the unit was registered with.
+\ Division may trap under either policy: it traps on a zero divisor, not an
+\ overflow. The engine's `/` branches over a `brk` when the divisor is not zero,
+\ so a lowering that dropped the check would answer zero where the interpreted
+\ word ends the process.
 : DIV-TRAP-BODY ( IR-CTX:ctx -- bool )
    {: c:IR-CTX:ctx :}
    c DIALECT-NEW {: b:IR-BUILD:builder :}
@@ -293,14 +270,8 @@ private
    TTRUE ;
 
 \ ---- the float schemas -------------------------------------------------------
-\ The shapes the float subset rests on, read back off the frozen table. What is
-\ asserted is the TYPE at each position, because that is what makes a double a
-\ second value class rather than a cell with a different opcode over it: `f+`
-\ takes two doubles and answers one, `s>f` takes a cell and answers a double,
-\ `f>s` takes a double and answers a cell, and the reinterpretation crosses the
-\ same way with no rounding in it. A schema that named the cell type at any of
-\ these positions would let a double reach a general register with nothing
-\ refusing it.
+\ Float schemas are asserted by type at each position: a schema naming the cell
+\ type at any of them would let a double reach a general register unrefused.
 : FSHAPE-BODY ( IR-CTX:ctx -- n n bool bool bool bool bool bool bool bool bool bool )
    {: c:IR-CTX:ctx :}
    c DIALECT-NEW {: b:IR-BUILD:builder :}
@@ -335,14 +306,9 @@ private
    TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE
    1 T= 2 T= ;
 
-\ The five float comparisons, read back off the frozen table. Two things are
-\ asserted and both are the shape of a comparison rather than a detail of one:
-\ the operands are DOUBLES and the result is a CELL - a comparison answers a Habu
-\ flag, which is a number, and a schema that answered a double would put the flag
-\ in a register file no branch of this machine reads - and the two comparisons
-\ against zero take ONE operand, because the instruction they stand for compares
-\ against an immediate the form carries. A schema with two operands there would
-\ oblige every lowering to materialise a zero the instruction does not use.
+\ Float comparisons take doubles and answer a cell (a Habu flag; no branch reads
+\ a float register). The two against zero take one operand: the instruction
+\ compares against an immediate the form carries.
 : FCMP-SHAPE-BODY ( IR-CTX:ctx -- n n n bool bool bool bool bool bool bool )
    {: c:IR-CTX:ctx :}
    c DIALECT-NEW {: b:IR-BUILD:builder :}
@@ -375,10 +341,9 @@ private
    TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE
    1 T= 1 T= 2 T= ;
 
-\ And they are total and need the floating unit, exactly as the arithmetic is: a
-\ comparison against a NaN answers false rather than raising, so a schema that
-\ declared one trapping would oblige the machine stage to reproduce a trap the
-\ hardware does not take.
+\ Float comparisons are total and need the floating unit: a comparison against a
+\ NaN answers false and raises nothing. A trapping schema would oblige the
+\ machine stage to reproduce a trap the hardware does not take.
 : FCMP-TRAP-BODY ( IR-CTX:ctx -- bool bool bool bool )
    {: c:IR-CTX:ctx :}
    c DIALECT-NEW {: b:IR-BUILD:builder :}
@@ -395,9 +360,8 @@ private
    BND [: FCMP-TRAP-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE TFALSE TFALSE ;
 
-\ The double type is NOT the cell type. Everything above rests on that: if the
-\ two interned to one identity, every assertion in FSHAPE-BODY would still pass
-\ and nothing anywhere would separate a double from an integer.
+\ If the double and cell types interned to one identity, every FSHAPE-BODY
+\ assertion would still pass.
 : FTYPE-BODY ( IR-CTX:ctx -- bool )
    {: c:IR-CTX:ctx :}
    c DIALECT-NEW {: b:IR-BUILD:builder :}
@@ -411,11 +375,9 @@ private
    BND [: FTYPE-BODY ;] IR-CTX:WITH-CONTEXT
    TFALSE ;
 
-\ Float division does not trap under either policy, which is where this dialect's
-\ float rules and its integer rules part company on purpose: dividing by zero
-\ answers an infinity and zero by zero answers the default NaN. A
-\ schema that copied `hir.div`'s flag would oblige the machine stage to
-\ reproduce a trap the hardware does not raise.
+\ Float division traps under neither policy, unlike `hir.div`: x/0 answers an
+\ infinity and 0/0 the default NaN. A schema copying hir.div's flag would oblige
+\ the machine stage to reproduce a trap the hardware does not raise.
 : FDIV-TRAP-BODY ( IR-CTX:ctx -- bool bool bool )
    {: c:IR-CTX:ctx :}
    c DIALECT-NEW {: b:IR-BUILD:builder :}
@@ -472,7 +434,6 @@ private
 
 
 \ ---- the word model: the modeled vocabulary ----------------------------------
-\ The vocabulary REGISTER-WORDS declares, read back off a real module.
 : WORDS-NEW ( IR-CTX:ctx IR-BUILD:builder n n -- IR-ARENA:arena IR-ARENA:arena )
    {: c:IR-CTX:ctx b:IR-BUILD:builder rcap:n pcap:n :}
    c b IR-BUILD:MODULE-KEY rcap pcap HIR-WORD:NEW ;
@@ -497,9 +458,8 @@ private
    c DIALECT-NEW {: b:IR-BUILD:builder :}
    c b 4 HIR-WORD:PICK-CELLS WORDS-NEW
    {: p:IR-ARENA:arena r:IR-ARENA:arena :}
-   \ `catch` restores the DEPTH of both stacks and never their contents, so the
-   \ cells the caught body was handed come back stale; this case reads the
-   \ locals bound before the catch instead.
+   \ `catch` restores both stacks' depth, not their contents: read the locals
+   \ bound before the catch.
    c b p r [: TORN-REG ;] catch {: rc:n :}
    2drop 2drop
    rc
@@ -514,9 +474,8 @@ private
    BND [: TORN-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE 4 T= E-HIR-CAP T= ;
 
-\ The nine float words, each read back off a real model. `f-` binds to hir.fsub
-\ and not to hir.sub, and `s>f` and `f>s` bind to two different crossings: a row
-\ that named one for the other would compile a body that rounds the wrong way.
+\ `f-` binds to hir.fsub, not hir.sub; `s>f` and `f>s` bind to different
+\ crossings.
 : FLOAT-OPS-BODY ( IR-CTX:ctx -- bool bool bool bool bool bool bool bool bool )
    {: c:IR-CTX:ctx :}
    c MODEL-NEW {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
@@ -535,18 +494,9 @@ private
    BND [: FLOAT-OPS-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE ;
 
-\ The five float comparisons, read back off a real model. Two rows do the work
-\ that a careless table would get wrong. `f>` binds to hir.fgt and NOT to hir.flt:
-\ the row says which relation the word is, and a model that reached `f>` by
-\ turning `f<`'s operands round would answer hir.flt here. And `f0<` binds to
-\ hir.fltz and NOT to hir.flt: the comparison against zero is its own operation
-\ with its own operand count, and a row that pointed it at the two-operand form
-\ would stage an operation with an operand nothing computed.
-\
-\ The four integer rows beside them are the falsification: `f<` and `<` are two
-\ different words with two different opcodes, so a model that resolved a float
-\ word to its integer namesake - or that had let one row's spelling shadow the
-\ other's - shows up here rather than as a wrong condition four stages later.
+\ `f>` binds to hir.fgt, not to hir.flt with swapped operands; `f0<` binds to
+\ hir.fltz, its own one-operand operation. The integer rows beside them catch a
+\ float word resolved to its integer namesake.
 : FCMP-OPS-BODY ( IR-CTX:ctx -- bool bool bool bool bool bool bool bool bool )
    {: c:IR-CTX:ctx :}
    c MODEL-NEW {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
@@ -565,10 +515,8 @@ private
    BND [: FCMP-OPS-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE ;
 
-\ And the vocabulary has no float relation the engine does not have. `f<=`, `f>=`
-\ and `f<>` are not words of this system (src/habu/habu1.f EMIT-FP-PRIMS), so a
-\ model row for one would be a promise: the lookup refuses them as names it does
-\ not know, exactly as it refuses any other undeclared word.
+\ `f<=`, `f>=` and `f<>` are not words of this system (src/habu/habu1.f
+\ EMIT-FP-PRIMS): the lookup refuses them like any undeclared word.
 : FCMP-ABSENT-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c MODEL-NEW {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
@@ -581,8 +529,8 @@ private
    s" and a float relation the engine has no word for is not in the model" T-LABEL
    [: FCMP-ABSENT ;] E-HIR-UNMODELED TTHROWSQ ;
 
-\ MODELS? is the one reader that answers about a word the table never declared
-\ rather than refusing, which is what a name the PROGRAM chose for a local is.
+\ MODELS? is the one reader that answers, rather than refuses, about an
+\ undeclared word, which is what a local's name is.
 : MODELS-BODY ( IR-CTX:ctx -- bool bool )
    {: c:IR-CTX:ctx :}
    c MODEL-NEW {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
@@ -595,14 +543,9 @@ private
    TFALSE TTRUE ;
 
 \ ---- the data word these cases declare ---------------------------------------
-\ A FIXED row no longer carries a number the case chose; it carries what the
-\ engine says the named word pushes. So the cases below have to create a real
-\ data word, through the same front end any definition goes through, in the scope
-\ they run in - and what they assert the row against is that word's address read
-\ back the OTHER way, by evaluating its name. The two answers come from two
-\ different engine paths - the word model resolves a wordlist and enters the
-\ record, the assertion hands the name to the interpreter - so their agreement is
-\ a statement and not a restatement.
+\ A FIXED row carries what the engine says the named word pushes, so the cases
+\ create a real data word in their scope and check the row against the address
+\ the interpreter answers for its name: two different engine paths.
 : CELL-A! ( -- )
    s" CELL-A" 0 search-wl 0<> if exit then
    s" create CELL-A 1 cells allot" evaluate-closed ;
@@ -633,11 +576,9 @@ private
    [: FIXED-CLASS ;] E-HIR-CLASS TTHROWSQ ;
 
 \ ---- a word this definition calls --------------------------------------------
-\ A callable row carries three numbers - where the callee's code starts and what
-\ its declared effect is - and they are three separate readers because a call
-\ site publishes as many values as the callee takes and reads back as many as it
-\ leaves, and those two are different questions. The three values below are all
-\ different, so a reader wired to the wrong cell answers one of the others.
+\ A callable row's entry, input count and output count have three readers. The
+\ three values below differ, so a reader wired to the wrong cell answers
+\ another.
 $4000 constant CALLEE-ENTRY          \ an instruction address, four-byte aligned
 2 constant CALLEE-IN
 3 constant CALLEE-OUT
@@ -723,19 +664,11 @@ $4000 constant CALLEE-ENTRY          \ an instruction address, four-byte aligned
    BND [: TERMINAL-SCHEMA-BODY ;] IR-CTX:WITH-CONTEXT ;
 
 \ ---- what a callable declaration and a callable row refuse -------------------
-\ Four refusals, all measured inside ONE context. Each of them throws, and a
-\ throw that unwound out of a context would strand the arenas that context had
-\ built - the registry is small and shared, so a suite that opened a context per
-\ refusal would run out and the later cases would fail for THAT rather than for
-\ what they are about. So the context is opened once, the four attempts are
-\ caught inside it, and what the case asserts is the four codes.
-\
-\ THE FOUR ARE TWO PAIRS. The first two are category errors - a row read as a
-\ meaning it does not carry, in both directions - and the second two are the two
-\ facts this table owns about a callable declaration: no code lives at the null
-\ address, and a call site cannot publish minus one value. Whether the address is
-\ the address of a whole INSTRUCTION is the machine dialect's field, so it is
-\ deliberately not restated here.
+\ The four refusals run in one context: a throw that unwound out of a context
+\ would strand its arenas, and the shared registry is small. Two are category
+\ errors (a row read as the meaning it does not carry, both ways); two are this
+\ table's facts about a callable: no code at the null address, no call site
+\ publishing minus one value. Instruction alignment is the machine dialect's.
 align
 1 TYPED-BUFFER BC-CTX IR-CTX:ctx
 1 TYPED-BUFFER BC-BLD IR-BUILD:builder
@@ -764,9 +697,6 @@ variable BC-OUT
 : BC-AS-ENTRY ( -- )
    BC-R  BC-C BC-B s" CELL-A" HIR-WORD:KEY-SPELL  HIR-WORD:ENTRY@ drop ;
 
-\ The model both category errors are asked of: the dialect's vocabulary, one
-\ callable word and one data word, so each reader can be pointed at a row of the
-\ other meaning.
 : MODEL-BOTH ( IR-CTX:ctx -- IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena )
    {: c:IR-CTX:ctx :}
    c DIALECT-NEW {: b:IR-BUILD:builder :}
@@ -799,11 +729,9 @@ variable BC-OUT
    E-HIR-CALLEE T= E-HIR-CALLEE T= E-HIR-CLASS T= E-HIR-CLASS T= ;
 
 \ ---- a word model without a module builder -----------------------------------
-\ Every refusal below is measured against a light model: a plain module of the
-\ context, its own symbol interner, and one word of each meaning. It needs no
-\ IR-BUILD module, which matters because a fixture that throws holds its context
-\ until the enclosing harness exits, and a module of this dialect owns fifteen
-\ arenas against a sixty-four slot registry.
+\ The refusals below use a light model with no IR-BUILD module: a throwing
+\ fixture holds its context until the harness exits, and a module of this
+\ dialect owns fifteen arenas against a sixty-four slot registry.
 : LIGHT ( IR-CTX:ctx n n -- IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key )
    {: c:IR-CTX:ctx rcap:n pcap:n :}
    c IR-CTX:NEW-MODULE drop {: key:IR-ID:ir-module-key :}
@@ -880,13 +808,9 @@ variable BC-OUT
 : UNMOD ( -- )
    BND [: UNMOD-BODY ;] IR-CTX:WITH-CONTEXT ;
 
-\ A word no table here declared. The spelling is `xor` rather than a stack word,
-\ because the subset's five opcodes are a closed family and it holds no bitwise
-\ operation at all: modeling `xor` would mean adding an opcode, an elaboration
-\ and a lowering, which is a much larger commitment than adding a rename. So the
-\ spelling stays genuinely unmodeled while the rename vocabulary grows, and this
-\ fixture keeps testing what it says it tests. Every other fixture in this file
-\ that needs an arbitrary symbol of the light model uses the same spelling.
+\ `xor` stays unmodeled: the subset's five opcodes hold no bitwise operation,
+\ and modeling it needs an opcode, an elaboration and a lowering. Every fixture
+\ here that needs an arbitrary light-model symbol uses it.
 : UNDEC-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c MODEL
@@ -1285,14 +1209,11 @@ variable BC-OUT
    [: CROSSED ;] E-HIR-OWNER TTHROWSQ ;
 
 \ ---- forged rows -------------------------------------------------------------
-\ A holder who bypasses the package and appends raw cells writes a row whose
-\ shape is right and whose content is not. The seven cells are the row shape
-\ src/compiler/native/hir-word.f commits to, in its order: the word's symbol
-\ ordinal, the stored meaning, the payload, the rename's input count, its pick
-\ count, - for a callable - which of the callee's result cells belong to one
-\ multi-cell value, and whether control comes back from that callee. A change to
-\ that layout has to change this fixture too, which is why the sixth cell arrived
-\ here the day the layout gained it and the seventh the day it gained that.
+\ A raw append writes a row of the right shape and the wrong content. The seven
+\ cells follow src/compiler/native/hir-word.f's row order: symbol ordinal,
+\ meaning, payload, rename input count, pick count, a callable's multi-cell
+\ result grouping, and whether the callee returns. A layout change must change
+\ this fixture.
 : RAW-ROW ( IR-CTX:ctx IR-ARENA:arena n n n n n -- )
    {: c:IR-CTX:ctx r:IR-ARENA:arena so:n mean:n a:n in:n n:n :}
    c r so IR-ARENA:PUSH drop
@@ -1303,7 +1224,6 @@ variable BC-OUT
    c r 0 IR-ARENA:PUSH drop
    c r 0 IR-ARENA:PUSH drop ;
 
-\ One empty table, one forged row, and the symbol that names it.
 : FORGE ( IR-CTX:ctx n n n n -- IR-ARENA:arena IR-ARENA:arena IR-ID:ir-symbol-id IR-ID:ir-module-key )
    {: c:IR-CTX:ctx mean:n a:n in:n n:n :}
    c 4 4 LIGHT
@@ -1390,10 +1310,9 @@ variable BC-OUT
    [: FORGE-PICK ;] E-HIR-PICK TTHROWSQ ;
 
 \ ---- the tape join -----------------------------------------------------------
-\ A sealed source tape of `1 dup * xor`, then a string and a character literal,
-\ and a word model of the same module. The tape and the model share one symbol
-\ interner, which is what makes a spelling on the tape and a spelling in the
-\ model the same identity.
+\ A sealed tape of `1 dup * xor`, a string and a character literal, and a word
+\ model of the same module. Tape and model share one interner, so a spelling on
+\ the tape and one in the model are one identity.
 : TAPE-BUILD ( IR-CTX:ctx -- IR-ARENA:view IR-ID:ir-module-key IR-ARENA:arena )
    {: c:IR-CTX:ctx :}
    c 8 8 LIGHT
@@ -1468,26 +1387,13 @@ variable BC-OUT
    BND [: TJ-CHAR-BODY ;] IR-CTX:WITH-CONTEXT TTRUE ;
 
 \ ---- the case a body may write a dialect word in -----------------------------
-\ A row is keyed by the FOLD of its word's spelling, because that is the identity
-\ the engine gives a name: `IF` and `if` are one keyword to src/habu/habu2.f
-\ LKWCMP and `FOO` and `foo` are one word to src/habu/habu1.f's dictionary find.
-\ The cases here hold that key to the engine's own rule and to nothing wider.
-\
-\ THE FOLD MOVES `A`..`Z` AND NOTHING ELSE, WHICH IS WHY `[:` IS HERE. A fold
-\ written as "set $20 on every byte" agrees with the engine on every letter and
-\ turns `[:` into `{:` - the opener of a typed locals group - so a quotation the
-\ dialect cannot compile would be read as a locals group and the body around it
-\ would be taken apart as names. The two spellings are two keys here, and the
-\ near-miss beside it makes the same point about length: a key is the whole
-\ spelling folded, not a prefix of one.
-\
-\ AND THE TAPE'S OWN SYMBOL IS NOT FOLDED, which the raw-symbol cases pin from
-\ both sides. `DUP` and `dup` stay two identities in the module's interner - a
-\ refusal names the bytes the body wrote, and a string literal's body IS its
-\ symbol - so the fold is this table's key and not a rewrite of what the source
-\ said. A reader asked under a raw symbol that is not its own fold therefore
-\ finds no row: fail closed, by name, which is the same answer an undeclared word
-\ gets.
+\ A row is keyed by the fold of its spelling, the identity the engine gives a
+\ name (src/habu/habu2.f LKWCMP, src/habu/habu1.f dictionary find). The fold
+\ moves `A`..`Z` and nothing else: "set $20 on every byte" turns `[:` into `{:`,
+\ a locals opener. A key is the whole spelling folded, not a prefix. The tape's
+\ own symbol is not folded (a refusal names the bytes the body wrote; a string
+\ literal's body is its symbol), so a raw symbol that is not its own fold finds
+\ no row and fails closed like an undeclared word.
 : KEY-OF ( IR-CTX:ctx IR-BUILD:builder ptr u8 n -- n )
    HIR-WORD:KEY-SPELL IR-ID:SYMBOL-LOCAL ;
 
@@ -1536,11 +1442,8 @@ variable BC-OUT
    BND [: MISS-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE TTRUE TTRUE ;
 
-\ THE TWO HALVES OF A QUOTATION ARE WORDS OF THE DIALECT, which is what tells a
-\ body the chain DECLINES from one it has never heard of. They used to be neither
-\ - `[:` sat in the case above, beside a misspelling - and the difference is the
-\ whole of what naming them buys: a census reading E-NELAB-QUOT is reading a
-\ shape this dialect has a place for, while E-HIR-UNMODELED means it has none.
+\ The two halves of a quotation are dialect words: E-NELAB-QUOT reports a shape
+\ the dialect has a place for, E-HIR-UNMODELED one it has none for.
 : QUOT-MODEL-BODY ( IR-CTX:ctx -- bool bool bool bool bool )
    {: c:IR-CTX:ctx :}
    c MODEL-NEW {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
@@ -1558,18 +1461,10 @@ variable BC-OUT
    BND [: QUOT-MODEL-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE TTRUE TTRUE TTRUE ;
 
-\ THE TWO OPENERS OF A COUNTED LOOP ARE TWO ROWS, and this is where that is
-\ stated rather than left to be inferred from what the elaborator builds. `do`
-\ and `?do` take the same pair and close with the same `loop`, so nothing after
-\ the row can tell them apart; what does is which control action the row names,
-\ and a table that gave them one row would compile a `do` with `?do`'s zero-trip
-\ guard, or the other way round. Reading a row back goes through the stored code
-\ and its decoder, so these four lines are also the round trip for the code the
-\ new action was given.
-\
-\ THE LAST LINE IS WHAT MAKES THE FIRST THREE DO WORK: the two actions are not
-\ equal. Without it, an ENUM whose members all compared equal would pass every
-\ line above.
+\ `do` and `?do` are two rows: only the control action tells them apart, and one
+\ row would give `do` the zero-trip guard of `?do` or the reverse. The last line
+\ asserts the actions differ; without it an enum whose members all compared
+\ equal would pass.
 : DO-MODEL-BODY ( IR-CTX:ctx -- bool bool bool bool )
    {: c:IR-CTX:ctx :}
    c MODEL-NEW {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
@@ -1586,17 +1481,10 @@ variable BC-OUT
    BND [: DO-MODEL-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE TTRUE TTRUE ;
 
-\ THE THIRD CLOSER OF `begin` AND THE WORD THAT LEAVES A COUNTED LOOP, read back
-\ the same way and for the same reason as the two openers above: nothing after
-\ the row can tell `again` from `repeat` or `leave` from `exit`, so what does is
-\ the control action the row names. A table that gave `again` the `repeat` action
-\ would compile a loop that opens a block after it that nothing reaches, and one
-\ that gave `leave` the `exit` action would branch out of the DEFINITION where
-\ the source leaves a loop.
-\
-\ THE LAST TWO LINES ARE WHAT MAKE THE FIRST FOUR DO WORK: the four actions are
-\ pairwise different. Without them an ENUM whose members all compared equal would
-\ pass every line above.
+\ Only the control action tells `again` from `repeat` and `leave` from `exit`:
+\ `again` given `repeat`'s action opens an unreachable block after the loop, and
+\ `leave` given `exit`'s branches out of the definition. The last two lines
+\ assert the four actions are pairwise different.
 : AGAIN-LEAVE-MODEL-BODY ( IR-CTX:ctx -- bool bool bool bool bool bool )
    {: c:IR-CTX:ctx :}
    c MODEL-NEW {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
@@ -1616,15 +1504,9 @@ variable BC-OUT
    BND [: AGAIN-LEAVE-MODEL-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE ;
 
-\ THE TWO LOOP INDICES, read back the same way and for the same reason: nothing
-\ after the row can tell `i` from `j`, because neither stages an operation - each
-\ puts a value that already exists back on the compile-time vector. What tells
-\ them apart is the control action the row names, and a table that gave `j` the
-\ `index` action would compile a body that reads the INNERMOST loop where the
-\ source asks for the one outside it, at the same size and with the same blocks.
-\
-\ THE LAST TWO LINES ARE WHAT MAKE THE FIRST FOUR DO WORK: the two actions are
-\ different, and neither is the action of the word that DROPS a loop frame.
+\ Only the control action tells `i` from `j` (neither stages an operation): `j`
+\ given `index` reads the innermost loop at the same size and blocks. The last
+\ two lines assert the actions differ and neither is the frame-drop action.
 : INDEX-MODEL-BODY ( IR-CTX:ctx -- bool bool bool bool bool bool )
    {: c:IR-CTX:ctx :}
    c MODEL-NEW {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
@@ -1644,11 +1526,8 @@ variable BC-OUT
    BND [: INDEX-MODEL-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE ;
 
-\ One word is one row whichever case each declaration wrote, which is the same
-\ statement the two cases above make from the reading side. It is worth making
-\ from the writing side too: a table that took a second row for `FOO` would have
-\ two rows a lookup could reach, and which one it reached would depend on the
-\ order they were declared in.
+\ One word is one row whichever case each declaration wrote: a second row for
+\ `FOO` would make the row a lookup reaches depend on declaration order.
 : DUP-CASE-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c DIALECT-NEW {: b:IR-BUILD:builder :}
@@ -1663,11 +1542,9 @@ variable BC-OUT
 : DUP-CASE ( -- )
    BND [: DUP-CASE-BODY ;] IR-CTX:WITH-CONTEXT ;
 
-\ The frozen door states its key rather than computing it - the note beside
-\ SYM-CK says why it cannot compute one - so a row declared through it under a
-\ spelling that is not already its own fold is a row no key reaches. It fails
-\ closed, exactly as an undeclared word does, and that is pinned here so an
-\ unreachable row cannot be mistaken for a modelled word.
+\ The frozen door states its key rather than computing it (the note at SYM-CK),
+\ so a row declared through it under a spelling that is not its own fold is
+\ unreachable and fails closed like an undeclared word.
 : STATED-KEY-BODY ( IR-CTX:ctx -- bool bool )
    {: c:IR-CTX:ctx :}
    c MODEL
@@ -1695,10 +1572,9 @@ variable BC-OUT
    [: DUP-CASE ;] E-HIR-DUP TTHROWSQ ;
 
 \ ---- the schema table this dialect may fill ----------------------------------
-\ A schema table names its dialect and its schema version in its header, fixed
-\ when the module was created. HIR:NEW-BUILDER writes this dialect's own; a
-\ module created through IR-BUILD directly can be given any, and registering
-\ these opcodes into one of those is refused rather than quietly accepted.
+\ A schema table's header names its dialect and schema version. HIR:NEW-BUILDER
+\ writes this dialect's; registering into an IR-BUILD module created with
+\ another is refused.
 : OTHER-DIALECT-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    IR-BUILD:PLAN-DEFAULT
@@ -1725,10 +1601,8 @@ variable BC-OUT
    [: OTHER-VERSION ;] E-HIR-DIALECT TTHROWSQ ;
 
 \ ---- a declared symbol has to exist ------------------------------------------
-\ Belonging to this module and existing in it are two different facts. Each
-\ identity below carries the right owning module and names an ordinal the
-\ interner never minted, so only the interner itself can refuse it - which is
-\ what every declarer now asks it.
+\ Each identity below has the right owning module and an ordinal the interner
+\ never minted: only the interner can refuse it, and every declarer asks it.
 : GHOST-SYM ( IR-ARENA:arena IR-ID:ir-module-key -- IR-ID:ir-symbol-id )
    {: sy:IR-ARENA:arena key:IR-ID:ir-module-key :}
    key sy IR-SYM:SYMBOLS IR-ID:PACK-SYMBOL ;
@@ -1799,16 +1673,9 @@ variable BC-OUT
    [: XSY ;] E-IR-SYM-OWNER TTHROWSQ ;
 
 \ ---- the tape and the word model on one module -------------------------------
-\ The elaborator holds both halves of one module at once: the source tape it
-\ walks and the word model it asks what each token means. Before IR-BUILD had
-\ live readers those two could not be the same module - a tape needed the
-\ module's source registry and symbol rows, and a module under construction
-\ hands out neither - so a fixture like this one had to build the tape against a
-\ hand-made module and the schema against a real one. Here the source, the
-\ spellings, the schema table, the word model and the tape all belong to a
-\ single IR-BUILD module, and the join is what makes the lookups below work: a
-\ token's spelling is an identity of the same interner the model declared its
-\ rows from.
+\ The source, spellings, schema table, word model and tape all belong to one
+\ IR-BUILD module: a token's spelling is an identity of the interner the model
+\ declared its rows from.
 : JOINED-TAPE ( IR-CTX:ctx IR-BUILD:builder -- IR-ARENA:view )
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
    c b IR-BUILD:MODULE-KEY 4 NTAPE:NEW {: tp:IR-ARENA:arena :}
@@ -1867,10 +1734,8 @@ variable BC-OUT
       CHECK-QUIET-CANDIDATE! 0 T= ;
 
 \ ---- run ---------------------------------------------------------------------
-\ Grouped harness contexts for the same reason as the tape and immediate suites:
-\ a fixture that throws holds its context until the enclosing harness exits, so
-\ the throwing groups are kept small and every one of their fixtures builds a
-\ light word model rather than a whole module of this dialect.
+\ A throwing fixture holds its context until the harness exits, so throwing
+\ groups stay small and build a light word model, not a whole module.
 : GROUP-SHAPE ( IR-CTX:ctx -- )
    drop
    ARITH-CASE
@@ -2030,12 +1895,10 @@ variable MEMO-IDX
    [: LAZY-FOREIGN ;] E-HIR-DIALECT TTHROWSQ ;
 
 \ ---- the memo a session prototype fills --------------------------------------
-\ Two definitions of one session, each compiling into a module cloned from the
-\ session's prototype interner. The second must bind every opcode and ask for
-\ every attribute key WITHOUT interning anything: its misses are none, and
-\ interning nothing is observable from outside as a module symbol count the
-\ binding does not move. A spelling missing from the prototype shows up in the
-\ count even though the identity it answers is still correct.
+\ Two definitions of one session compile into modules cloned from the session's
+\ prototype interner. The second must bind every opcode and attribute key
+\ without interning: its module symbol count does not move. A spelling missing
+\ from the prototype shows in the count though the identity answered is right.
 : PROTO-BUILD ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c IR-CTX:NEW-MODULE drop {: k:IR-ID:ir-module-key :}
@@ -2065,28 +1928,21 @@ variable MEMO-IDX
    c b BIND-ALL
    HIR:MISSES  b IR-BUILD:SYMBOLS  before ;
 
-\ A session may already be open: under the AOT mode this suite runs in, the
-\ compiler opened one for the load that is reading this very file, and its
-\ prototype is the production one. Borrow that session when it is there and open
-\ a private one only when it is not, because a second session is refused by name
-\ and borrowing measures the real thing.
+\ Under AOT the compiler already opened a session, with the production
+\ prototype, for this file's load: borrow it when present, open a private one
+\ otherwise (a second session is refused by name).
 : SESSION-MINE ( -- )
    BND IR-CTX:SESSION-OPEN PROTO-BUILD ;
 
-\ Closing the session is the whole of it: what a session's owner holds in it -
-\ this dialect's prototype, the registered vocabulary - is stood down by
-\ IR-CTX:SESSION-CLOSE itself, so no caller has to clear the flags in the right
-\ order before it.
+\ IR-CTX:SESSION-CLOSE stands down what the owner holds in the session (this
+\ dialect's prototype, the registered vocabulary); no caller clears flags first.
 : SESSION-DROP-MINE ( -- )
    IR-CTX:SESSION-CLOSE ;
 
 \ ---- one vocabulary per load, not one per definition -------------------------
-\ The session registers this dialect's vocabulary ONCE and every definition reads
-\ those rows; a definition's own table is an OVERLAY that holds only what that
-\ definition resolves for itself. So a definition must add no vocabulary row and
-\ cost its module no symbol, while still seeing every vocabulary word. The
-\ filtered registration this replaces bought the second half by interning all 87
-\ spellings into every module and rejecting the ones the body had not written.
+\ The session registers the vocabulary once; a definition's table is an overlay
+\ holding only what that definition resolves itself. A definition adds no
+\ vocabulary row and costs its module no symbol, yet sees every vocabulary word.
 : OV-BODY ( IR-CTX:ctx -- n n bool bool )
    {: c:IR-CTX:ctx :}
    IR-BUILD:PLAN-BEGIN IR-BUILD:PLAN-DEFAULT
@@ -2119,12 +1975,9 @@ variable MEMO-IDX
    x TTRUE ;
 
 \ ---- only a clone of THE prototype reads a session row -----------------------
-\ A table defers to the session's vocabulary because its module's ordinals ARE
-\ the prototype's, which is a fact IR-BUILD recorded when it copied that
-\ interner - see IR-BUILD:CLONED-FROM?. Here is the consumer's half: while a
-\ session stands, a module that interned its own names is not a clone, so its
-\ table holds no vocabulary row and models no vocabulary word - it behaves
-\ exactly as it did before a session existed.
+\ A table defers to the session vocabulary only when its module's ordinals are
+\ the prototype's (IR-BUILD:CLONED-FROM?): a module that interned its own names
+\ holds no vocabulary row and models no vocabulary word.
 : PLAIN-BODY ( IR-CTX:ctx -- n bool )
    {: c:IR-CTX:ctx :}
    IR-BUILD:PLAN-BEGIN IR-BUILD:PLAN-DEFAULT
@@ -2148,10 +2001,7 @@ variable MEMO-IDX
    d TFALSE ;
 
 \ ---- a table of its own module asks the binding gate as it writes ------------
-\ The fixture is the package at the top of this file: the registration ran while
-\ that package owned `xor`, into a table of its own module, and such a table is
-\ never asked the gate again - its reader holds no interner and cannot read a
-\ spelling back. So the answer has to be taken while the row is written.
+\ The fixture is the HIR-BOUND-XOR package at the top of this file.
 : OWN-GATE-CASE ( -- )
    s" a table of its own module models a spelling the engine still owns" T-LABEL
    HIR-BOUND-XOR:AND-MODELED? TTRUE

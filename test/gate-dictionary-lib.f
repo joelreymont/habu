@@ -1,4 +1,5 @@
-\ gate-dictionary.f - checked runner for dictionary and checker contracts.
+\ gate-dictionary-lib.f - dictionary and checker contracts, run by
+\ test/gate-dictionary.f.
 
 require src/lib/string.f
 require src/lib/fs.f
@@ -187,22 +188,13 @@ variable CANDIDATE-VERDICT
    s" 9" GE-OUT-LINE
    SB$ s" hb long dictionary names output" GE-EXPECT-OUT ;
 
-\ ---- wordlist isolation, through the one definition context that authenticates -
-\ THE PROPERTY IS UNCHANGED: a name defined into one wordlist is not reachable in
-\ another. What changed is the only lawful way to OPEN such a wordlist. A
-\ definition's package context has to be either the exact all-zero global tuple
-\ or a live namespace record whose two WIDs are the protected engine cells
+\ ---- wordlist isolation ------------------------------------------------------
+\ A definition's package context is the all-zero global tuple or a live
+\ namespace record whose two WIDs are the protected engine cells
 \ (src/habu/xref.f LIVE-PKG), with current one of them (src/core/checker.f
-\ CHECKER-RESOLVE:AUTHORITY); `set-current` to a bare user wordlist is neither -
-\ the record cell is zero while get-current is not - so the definition is refused
-\ by CHECKER-PKG-CONTEXT-REJECT. A package is the shape that answers the same
-\ question lawfully, and it isolates for the stronger reason: the wordlist has an
-\ owner the checker can attribute every definition in it to.
-\
-\ THE WID IS TAKEN FROM THE ENGINE RATHER THAN ASSUMED. `get-current` inside the
-\ open package IS the wordlist the definition below lands in, so the second
-\ search asks about the wordlist that was actually written to; a test that named
-\ a number of its own could pass while the definition went somewhere else.
+\ CHECKER-RESOLVE:AUTHORITY); a bare user wordlist is neither, so isolation is
+\ tested through a package. The WID is read by `get-current` inside the package,
+\ so the second search asks the wordlist the definition was written to.
 : WORDLIST-SOURCE ( -- )
    GE-SRC-RESET
    s" variable LONG-WL" GE-SRC-LINE
@@ -225,12 +217,9 @@ variable CANDIDATE-VERDICT
    s" 0" GE-OUT-LINE
    SB$ s" hb long dictionary wordlist isolation output" GE-EXPECT-OUT ;
 
-\ ---- and the shape that is no longer a definition context ---------------------
-\ The negative half of the same rule, pinned so that admitting bare wordlists
-\ again is a decision somebody has to make here rather than something a later
-\ change can do quietly. The refusal is named on stderr and carries the engine's
-\ compile-reject status, which is what distinguishes a modelled refusal from the
-\ bare uncaught throw this used to be.
+\ ---- a bare wordlist is no definition context ---------------------------------
+\ CHECKER-PKG-CONTEXT-REJECT names the refusal on stderr and exits with the
+\ engine's compile-reject status, not an uncaught throw.
 : WORDLIST-BARE-SOURCE ( -- )
    GE-SRC-RESET
    s" wordlist constant BARE-WL" GE-SRC-LINE
@@ -292,13 +281,9 @@ variable CANDIDATE-VERDICT
    s" TRUSTED: BADDEF ( n -- ) create cells allot does> drop ;" GE-SRC-LINE
    76 s" does>" s" hb trusted DOES> without created signature diagnostic" GE-EVAL-FORK-BAD ;
 
-\ A failed `is` used to print the bare offending token and nothing else - no
-\ code, no cause, no hint - so a build that tripped it showed `HOOK` and exit 70
-\ (dot habu-a-failed-defer-b83bcfa5). Each cause now names itself, and the
-\ not-found case says why a bare tail under an open `using` is not found: `is`
-\ parses its target and resolves it through the engine's own lookup, which does
-\ not consult used publics. The MESSAGE is asserted, not just the exit code -
-\ the exit codes were already distinct and were not the thing that was missing.
+\ Each failed `is` and `defer` names its cause; the message is asserted, as the
+\ exit codes alone were already distinct. `is` resolves its target through the
+\ engine's own lookup, which does not consult used publics.
 : BAD-IS ( -- )
    GE-HB-RESET
    GE-SRC-RESET
@@ -375,10 +360,9 @@ variable CANDIDATE-VERDICT
    s" CBI ( i64 -- i64 i64 ) [: 1+ ;] [: 2 * ;] BI" GE-SRC-CHECK-LINE
    s" CTRI ( i64 -- i64 i64 i64 ) [: 1+ ;] [: 2 * ;] [: 3 + ;] TRI" GE-SRC-CHECK-LINE
    s" CTIMES ( i64 -- i64 ) 5 [: 1+ ;] TIMES" GE-SRC-CHECK-LINE
-   \ The array's element and the quotation's operand are ONE type in EACH/MAP/FOLD
-   \ (`ptr a` with `[ .. a .. ]`). `[: + ;]` and `[: 1+ ;]` are `n` arithmetic, so
-   \ the array is `ptr n`; `ptr i64` named a different element and only certified
-   \ while a pointee still admitted one integer type for another.
+   \ The array's element and the quotation's operand are one type in
+   \ EACH/MAP/FOLD (`ptr a` with `[ .. a .. ]`); `[: + ;]` and `[: 1+ ;]` are
+   \ `n` arithmetic, so the array is `ptr n`.
    s" CEACH ( i64 ptr n i64 -- i64 ) [: + ;] EACH" GE-SRC-CHECK-LINE
    s" CMAP ( ptr n i64 -- ) [: 1+ ;] MAP" GE-SRC-CHECK-LINE
    s" CFOLD ( ptr n i64 i64 -- i64 ) [: + ;] FOLD" GE-SRC-CHECK-LINE
@@ -677,13 +661,12 @@ variable CANDIDATE-VERDICT
    rc label labelu GE-EXPECT-RC
    needle needleu label labelu GE-EXPECT-ERR-HAS ;
 
-\ One literal grammar everywhere (engine + checker): int -?d+ | -?$h+, float
-\ shape -?d*.d+ — dot-leading spellings (.5 -.5 .0) ARE float literals; 5. and
-\ ..5 are words. The engine number parser claims shaped decimals before lookup
-\ (LITERAL-FIRST), so the checker must claim exactly the same token set or a
-\ number-shaped word certifies with an effect the runtime never executes (the
-\ src/lib/fmt.f .0 incident). Number-shaped definitions appear only inside child
-\ source strings here; reserved-name-lint forbids them in committed code.
+\ One literal grammar for engine and checker: int -?d+ | -?$h+, float -?d*.d+;
+\ dot-leading spellings (.5 -.5 .0) are float literals, 5. and ..5 are words.
+\ The engine claims shaped decimals before lookup (LITERAL-FIRST), so the
+\ checker must claim the same token set or a number-shaped word certifies with
+\ an effect the runtime never executes. Number-shaped definitions appear only in
+\ child source strings here; reserved-name-lint forbids them in committed code.
 : LITERAL-FLOAT-SRC ( -- )
    GE-SRC-RESET
    s" require src/lib/ieee754.f" GE-SRC-LINE
@@ -1090,11 +1073,8 @@ variable CANDIDATE-VERDICT
    s" P:H ." GE-SRC-LINE
    $46 s" P:H" s" package hides private qualified word" RUN-BAD-CHILD
    GE-SRC-RESET
-   \ The private word needs a name no global owns. While the engine still had a
-   \ global H (a sha256.f cell), this case spelled it H and the child refused
-   \ BAD on that cell's type - `at 'H' expected: n actual: ptr a` - without ever
-   \ reaching package visibility. A name outside every wordlist gets the
-   \ refusal the case is named for.
+   \ The private word needs a name no global owns, or the child refuses BAD on
+   \ that global's type before reaching package visibility.
    s" package P" GE-SRC-LINE
    s" : GD-PRIV ( -- n ) 1 ;" GE-SRC-LINE
    s" ;package" GE-SRC-LINE
@@ -1169,8 +1149,8 @@ variable CANDIDATE-VERDICT
    GE-HB-RESET
    GE-SRC-RESET
    \ Depth satisfies +FIELD's declared inputs ( ptr a n n ) so the body's own
-   \ state check is reached: an underdepth bare call now fails closed earlier
-   \ with `hb: interpret stack underdepth:` (test/underdepth-gate.f).
+   \ state check is reached; an underdepth bare call fails earlier with
+   \ `hb: interpret stack underdepth:` (test/underdepth-gate.f).
    s" NULL-PTR 0 CELL +FIELD GD-NO-STRUCT.FIELD" GE-SRC-LINE
    $4C s" structure: no active structure" s" structures reject field outside begin" RUN-BAD-SOURCE
    GE-SRC-RESET
@@ -1282,10 +1262,10 @@ variable CANDIDATE-VERDICT
    GE-SRC-RESET
    s" defer GD-XV-ACTION-A ( -- i64 )" GE-SRC-LINE
    s" : GD-XV-BAD-A ( -- ) [: 1 2 ;] is GD-XV-ACTION-A ;" GE-SRC-LINE
-   \ A tick now CARRIES the target's certified effect (src/core/checker.f BTICK-TOK
-   \ types every tick, with no consumer lookahead), so `is` fit-checks it like a
-   \ quotation: the misuse to pin is the MISFIT, not the spelling. The fitting tick
-   \ store is the positive in test/xt-effect-test.f (v6/v7).
+   \ A tick carries the target's certified effect (src/core/checker.f
+   \ BTICK-TOK), so `is` fit-checks it like a quotation: the case pins the
+   \ misfit. The fitting tick store is the positive in test/xt-effect-test.f
+   \ (v6/v7).
    s" defer GD-XV-ACTION-B ( n -- i64 )" GE-SRC-LINE
    s" : GD-XV-FIVE-B ( -- i64 ) 5 ;" GE-SRC-LINE
    s" : GD-XV-BAD-TICK-B ( -- ) ['] GD-XV-FIVE-B is GD-XV-ACTION-B ;" GE-SRC-LINE

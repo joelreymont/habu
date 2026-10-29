@@ -1,12 +1,9 @@
-\ field-proj-lib.f - the field-projection fixture
-\ test/field-proj-boundary-child.f uses: the family and field lookups, and
-\ accessors generated inside the window test/field-proj-arm.f arms, for
-\ a cell field, a byte-offset field and a generic field, with the words that
-\ store a bundle and read each field back by value. It asserts nothing; the
-\ child stores and reads what it claims.
-\
-\ The families are declared outside the package: the child's candidates name
-\ them bare, and FAM-ID finds them as top-level families.
+\ The field-projection fixture test/field-proj-boundary-child.f uses: family and
+\ field lookups, and accessors generated inside the window test/field-proj-arm.f
+\ arms for a cell, a byte-offset and a generic field, with words that store a
+\ bundle and read each field back. It asserts nothing. The families are declared
+\ outside the package: the child names them bare and FAM-ID finds them
+\ top-level.
 
 require test/field-proj-arm.f
 
@@ -24,16 +21,14 @@ PRODUCT fpg<a>
 package FIELD-PROJ-LIB
 public
 
-\ --- sealed friend boundary (dot habu-hb-crash-bare-c5be6634 idiom): the
-\ field-projection window is armed only by the generative crossing, so its arming
-\ word is a pre-hook internal that the seal marks non-executable, and outside
+\ The field-projection window is armed only by the generative crossing: its
+\ arming word is a pre-hook internal the seal marks non-executable, and outside
 \ its owner TYPE-DECL a trusted-only primitive (src/core/checker.f FIELD-PROJ!).
-\ The arming word is TYPE-DECL's checked FP-ARM and the family lookup is
-\ FIELD-PROJ-ARM:FAM-ID, both in test/field-proj-arm.f; a window's prepare
-\ requires that file before its seal, so this file's require is a no-op there.
+\ TYPE-DECL's checked FP-ARM and FIELD-PROJ-ARM:FAM-ID live in
+\ test/field-proj-arm.f; a window's prepare requires that file before its seal,
+\ so this file's require is a no-op there.
 : FP-CLEAR ( -- ) FIELD-PROJ-CLEAR ;
 
-\ field-id lookup helper (TYPE-FIELD:FIND is a public sealed-package API).
 : FLD-ID ( n ptr u8 n -- n ) {: fam:n na:ptr nu:n :}   \ fam name$ -> committed field id
    fam TYPE-FIELD:NO-VARIANT na nu TYPE-FIELD:FIND 0= if
       s" field-proj-lib: field not found" 76 die then ;
@@ -52,10 +47,8 @@ s" fprec" FIELD-PROJ-ARM:FAM-ID FPREC-FAM !
 FPREC-FAM @ s" a" FLD-ID FID-A !
 FPREC-FAM @ s" b" FLD-ID FID-B !
 
-\ cell field at offset 0
 s" FPX-A" FID-A @ 0 TYPE-DECL:FP-ARM
 : FPX-A ( ptr fprec -- ptr n ) 0 field-project ;
-\ byte-offset field at offset CELL
 s" FPX-B" FID-B @ CELL TYPE-DECL:FP-ARM
 : FPX-B ( ptr fprec -- ptr n ) CELL field-project ;
 

@@ -1,24 +1,7 @@
-\ wstruct.f - the WSTRUCT dialect, src/arch/wasm/wstruct.f, on the product
-\ engine.
-\
-\ Proves the contract the Wasm selector and encoder build on: with no Wasm
-\ backend registered a WSTRUCT builder is refused by the registry; every opcode
-\ of the closed vocabulary defines its schema once under a Wasm binding; a
-\ module using every form - typed block arguments, a memory token threaded from
-\ the entry block, loads and stores with their memarg, a direct and an indirect
-\ call, a two-way branch and a trap - freezes through WSTRUCT:FREEZE and reads
-\ back as a Wasm module whose double forms need scalar floating point; the
-\ substrate refuses, by its own codes, a use its definition does not dominate,
-\ a block with no terminator, a successor argument of the wrong type or on a
-\ two-way branch, an i64.const with no address kind, an opcode the module never
-\ registered, a WSTRUCT operation under a binding that is not Wasm and an f64
-\ form under a Wasm contract without scalar floating point; and WSTRUCT itself
-\ refuses an ordinal outside its vocabulary, an address kind outside NONE, DATA,
-\ CODE and FUN, and a table of another dialect or schema version.
-\
-\ ONE FIXTURE PER CONTEXT. A module holds about seventeen arenas and the live
-\ arena registry holds sixty-four, so every module below is built in its own
-\ context.
+\ wstruct.f - the WSTRUCT dialect (src/arch/wasm/wstruct.f) on the product
+\ engine: the contract the Wasm selector and encoder build on. Each refusal is
+\ by the refusing layer's own code. Every module is built in its own context: a
+\ module holds about seventeen arenas and the live arena registry sixty-four.
 
 require src/lib/test.f
 require src/compiler/native/abi.f

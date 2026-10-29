@@ -1,5 +1,4 @@
 \ Source actions run on every load while individual definitions may be reused.
-\ bin/hb --load test/native-file-replay-e2e.f
 
 require src/lib/test.f
 require src/lib/string.f

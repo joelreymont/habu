@@ -1,27 +1,9 @@
-\ deftype-suite.f - behavior contract for the DEFTYPE declaration surface
-\ (src/lib/type/deftype.f: package-scoped arity-0 type-family nominals + generated
-\ converters). Run BY THE ENGINE over stdin, like test/type-family-suite.f:
+\ deftype-suite.f - the DEFTYPE declaration surface (src/lib/type/deftype.f:
+\ package-scoped arity-0 type-family nominals and generated converters). Run by
+\ the engine over stdin, like test/type-family-suite.f:
 \     bin/hb < test/deftype-suite.f
-\ Registered directly in the native suite.
-\
-\ This suite LOCKS the value-nominal contract against regression. It proves a
-\ `DEFTYPE NAME` type behaves EXACTLY like the built-in CT-roles the older
-\ test/type-nominal-suite.f pins, PLUS the package scoping the CT-role table cannot
-\ give:
-\   - same nominal   vs same nominal   ACCEPT
-\   - one nominal    vs other nominal  REJECT (distinctness)
-\   - nominal        vs generic int n  REJECT, BOTH directions (no auto-collapse,
-\       no n-satisfies-nominal)
-\   - the ONLY boundary crossing is the generated converter pair (>NAME / NAME>N)
-\   - a converter for ONE nominal never launders into another nominal
-\   - a demanded nominal INPUT rejects a plain n (input-direction unification)
-\   - an undeclared nominal name in a signature is rejected
-\   - PACKAGE SCOPING: `DEFTYPE SERIAL` in package CAMERA and the same line in
-\       package FRAME are two DISTINCT types (the ergonomic prize a global type
-\       table cannot deliver: a second same-named declaration would collide)
-\   - a tail an effect reads as something other than the family (`ptr`) is a
-\       reserved name in every scope; shadowing another package's family is not
-\ A failure prints F<index> + detail; T-REPORT exits 1 on any fail.
+\ The converter pair (>NAME / NAME>N) is the only boundary crossing; the same
+\ name in two packages is two types. T-REPORT exits 1 on any failure.
 
 require src/lib/type/deftype.f
 require src/lib/test.f
@@ -32,13 +14,11 @@ T-RESET
 create VNDIAG-BUF 8192 allot
 VNDIAG-BUF 8192 DIAG-BUFFER!
 
-\ whitebox shim (dot habu-hb-crash-bare pattern): the checker-internal snapshot
-\ bake reached through a named checked shim, exactly like test/type-family-suite.f.
+\ Whitebox shim: the checker-internal snapshot bake through a named checked
+\ shim, as test/type-family-suite.f does.
 : TWX-SNAP-PREP ( -- ) CHECKER-CAPTURE-PREPARE ;
 
-\ ---------------------------------------------------------------------------
 \ 1. a declared value nominal, checked inside its own package.
-\ ---------------------------------------------------------------------------
 package CAMERA
 DEFTYPE SERIAL
 DEFTYPE FRAME-INDEX
@@ -47,74 +27,53 @@ DEFTYPE FRAME-INDEX
 \ direction of unification is probed, not only the output direction.
 : NEED-SERIAL ( serial -- ) SERIAL>N drop ;
 
-\ same nominal vs itself: accept.
 s" VN-ID ( serial -- serial )"              CHECK-QUIET-CANDIDATE! -1 T=
-\ nominal vs a DIFFERENT nominal: reject (distinctness), both directions.
 s" VN-CROSS ( serial -- frame-index )"      CHECK-QUIET-CANDIDATE!  0 T=
 s" VN-CROSS2 ( frame-index -- serial )"     CHECK-QUIET-CANDIDATE!  0 T=
-\ nominal vs generic int n: reject, BOTH directions (no auto-collapse).
 s" VN-N-OUT ( serial -- n )"                CHECK-QUIET-CANDIDATE!  0 T=
 s" VN-N-IN ( n -- serial )"                 CHECK-QUIET-CANDIDATE!  0 T=
-\ the generated converter pair bridges the boundary explicitly.
 s" VN-TO ( n -- serial ) >SERIAL"           CHECK-QUIET-CANDIDATE! -1 T=
 s" VN-FROM ( serial -- n ) SERIAL>N"        CHECK-QUIET-CANDIDATE! -1 T=
-\ round-trip through both converters is identity on n.
 s" VN-RT ( n -- n ) >SERIAL SERIAL>N"       CHECK-QUIET-CANDIDATE! -1 T=
-\ a converter for ONE nominal does not launder into ANOTHER nominal.
 s" VN-LAUNDER ( n -- frame-index ) >SERIAL" CHECK-QUIET-CANDIDATE!  0 T=
-\ demanded nominal INPUT: a plain n at that input rejects; a serial accepts.
 s" VN-NEED-OK ( serial -- ) NEED-SERIAL"    CHECK-QUIET-CANDIDATE! -1 T=
 s" VN-NEED-N ( n -- ) NEED-SERIAL"          CHECK-QUIET-CANDIDATE!  0 T=
 s" VN-NEED-X ( frame-index -- ) NEED-SERIAL" CHECK-QUIET-CANDIDATE! 0 T=
 ;package
 
-\ ---------------------------------------------------------------------------
 \ 2. package scoping: the SAME name in a different package is a DISTINCT type.
-\ ---------------------------------------------------------------------------
 package FRAME
 DEFTYPE SERIAL
-\ FRAME's own serial vs itself: accept.
 s" VN-F-ID ( serial -- serial )"            CHECK-QUIET-CANDIDATE! -1 T=
-\ FRAME's serial vs CAMERA's serial (qualified): distinct, both directions.
 s" VN-F-CROSS ( serial -- CAMERA:serial )"  CHECK-QUIET-CANDIDATE!  0 T=
 s" VN-F-CROSS2 ( CAMERA:serial -- serial )" CHECK-QUIET-CANDIDATE!  0 T=
 ;package
 
-\ and the reverse view, from CAMERA: CAMERA's serial vs FRAME's serial: distinct.
+\ The reverse view, from CAMERA.
 package CAMERA
 s" VN-C-CROSS ( serial -- FRAME:serial )"   CHECK-QUIET-CANDIDATE!  0 T=
 s" VN-C-SAME ( serial -- serial )"          CHECK-QUIET-CANDIDATE! -1 T=
 ;package
 
-\ ---------------------------------------------------------------------------
 \ 3. an undeclared nominal name is rejected as an unknown signature type.
-\ ---------------------------------------------------------------------------
 s" VN-UNDECL ( never-declared -- never-declared )" CHECK-QUIET-CANDIDATE! 0 T=
 
-\ ---------------------------------------------------------------------------
 \ 4. persistence: a declared nominal survives a snapshot-persist of the growable
 \    type-family store. CHECKER-CAPTURE-PREPARE bakes the grown store and rebases
-\    its pointers, so the family - and thus the nominal's checked contract - must
-\    read back identically. (Ported from the retired test/type-nominal-suite.f,
-\    re-expressed for the value-nominal family substrate.)
-\ ---------------------------------------------------------------------------
+\    its pointers, so the nominal's checked contract must read back identically.
 package PERSISTPKG
 DEFTYPE PSERIAL
-\ the nominal checks before the snapshot bake.
 s" VN-PP-PRE ( pserial -- pserial )" CHECK-QUIET-CANDIDATE! -1 T=
 TWX-SNAP-PREP
-\ the same contract survives the persist: identity accepts, projection to n rejects.
 s" VN-PP-ID ( pserial -- pserial )"  CHECK-QUIET-CANDIDATE! -1 T=
 s" VN-PP-N ( pserial -- n )"         CHECK-QUIET-CANDIDATE!  0 T=
 ;package
 
-\ ---------------------------------------------------------------------------
 \ 5. the name rule: a tail an effect reads as something other than the family is
 \    a reserved name in every scope. A bare `ptr` is the pointer constructor, so
 \    a package's own `ptr` would leave its converter `( n -- ptr )` without a
 \    pointee. Shadowing another package's family stays legal: `side` is
 \    IR-SCHEMA's public enum, and the package's own `side` is a distinct type.
-\ ---------------------------------------------------------------------------
 : MINT-PTR ( -- ) s" PTR" VNOM:MINT ;
 ' MINT-PTR catch TYPE-DECL:E-TDECL-NAME T=
 package CTORPKG
@@ -127,11 +86,9 @@ s" VN-SIDE-MK ( n -- side ) >SIDE"          CHECK-QUIET-CANDIDATE! -1 T=
 s" VN-SIDE-X ( side -- IR-SCHEMA:side )"    CHECK-QUIET-CANDIDATE!  0 T=
 ;package
 
-\ ---------------------------------------------------------------------------
 \ 6. the name length rule is the family name cap (TFAM:TF-NAME-MAX, 255 bytes):
 \    a 40-byte name and a 255-byte one declare with working converters, and a
 \    256-byte one is refused E-VNOM-CAP before anything is registered.
-\ ---------------------------------------------------------------------------
 package LONGPKG
 DEFTYPE FORTY-BYTE-SURFACE-NAME-PAST-THE-OLD-CAP
 s" VN-LONG-RT ( n -- n ) >FORTY-BYTE-SURFACE-NAME-PAST-THE-OLD-CAP FORTY-BYTE-SURFACE-NAME-PAST-THE-OLD-CAP>N" CHECK-QUIET-CANDIDATE! -1 T=

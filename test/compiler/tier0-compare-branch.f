@@ -1,17 +1,9 @@
-\ tier0-compare-branch.f - tier 0 branches on a compare's flags when the
-\ compare's flag is the register top at `if`, `while` or `until`.
-\
-\ A compare emits `cmp; csetm` (src/habu/jit.f VCMP-ENTRY). When the branch
-\ keyword finds that csetm last in the code and no open loop top recorded at
-\ or past it, LVFUSE rewinds it and the branch is one b.cond instead of a cbz
-\ on the flag. This file pins both halves through the real load path (ARM's
-\ default tier is 0): the fused subjects hold a b.cond and no csetm, the
-\ refused ones (a loop top between the compare and the branch, a flag that is
-\ copied, stored or returned, a float compare) keep the csetm, and every
-\ subject answers both outcomes of its condition.
-\
-\ Spans come from the DICTIONARY RECORD (src/habu/xref.f), as in
-\ test/compiler/tier0-inline-prims.f.
+\ Tier 0 (ARM's default) branches on a compare's flags when the flag is the
+\ register top at if, while or until: LVFUSE rewinds the cmp; csetm
+\ (src/habu/jit.f VCMP-ENTRY) when that csetm is last in the code and no open
+\ loop top sits at or past it. Fused subjects hold a b.cond and no csetm;
+\ refused ones (a loop top between, a flag copied, stored or returned, a float
+\ compare) keep the csetm. Every subject answers both outcomes.
 
 require src/lib/test.f
 require src/lib/errors.f
@@ -27,8 +19,8 @@ $FFE0FFE0 constant NEG-MASK     $CB0003E0 constant NEG-OP      \ neg xR,xM
 $FF000000 constant CBZ-MASK     $B4000000 constant CBZ-OP      \ cbz xR
 $FFE0FFFF constant MOV17-MASK   $AA0003F1 constant MOV17-OP    \ mov x17,xM
 
-\ CODE-BYTES:AT is the bounded view between an engine code address and a
-\ readable pointer; this file adds none of its own.
+\ CODE-BYTES:AT is the bounded view from an engine code address to a readable
+\ pointer; this file adds none of its own.
 : CODE@ ( n -- n )
    4 CODE-BYTES:AT drop {: p:ptr :}
    p c@
@@ -38,6 +30,7 @@ $FFE0FFFF constant MOV17-MASK   $AA0003F1 constant MOV17-OP    \ mov x17,xM
 
 variable MISSING                     \ names the dictionary did not answer for
 
+\ Spans come from src/habu/xref.f records.
 : SPAN ( ptr u8 n -- n n ) {: na:ptr nu:n :}
    na nu XREF-FIND {: rec:ptr :}
    rec XREF-FOUND? 0= if
@@ -47,7 +40,6 @@ variable MISSING                     \ names the dictionary did not answer for
    then
    rec XREF-START dup rec XREF-CODE-BYTES + ;
 
-\ How many of the named word's instructions match op under mask.
 : OPS ( ptr u8 n n n -- n ) {: na:ptr nu:n mask:n op:n :}
    na nu SPAN {: lo:n hi:n :}
    0
@@ -61,17 +53,15 @@ variable MISSING                     \ names the dictionary did not answer for
 : CBZS ( ptr u8 n -- n )  CBZ-MASK CBZ-OP OPS ;
 : MOV17S ( ptr u8 n -- n )  MOV17-MASK MOV17-OP OPS ;
 
-variable CB-K                        \ CB-NEXT?'s countdown
-variable CB-V                        \ CB-STORE's cell
+variable CB-K
+variable CB-V
 
 public
 
-\ ---- the subjects ------------------------------------------------------------
 : CB-LT ( n n -- n ) < if 1 else 2 then ;
 : CB-UNTIL ( n -- n ) begin 1- dup 0 = until ;
 : CB-ZEQ ( n -- n ) begin 1- dup 0= until ;
 : CB-WHILE ( n -- n ) begin dup 0 > while 1- repeat ;
-\ ( acc i j ): the inner loop adds j to acc, the outer runs it i times.
 : CB-NEST ( n -- n )
    0 swap begin dup 0 > while
       3 begin dup 0 > while rot 1+ rot rot 1- repeat drop

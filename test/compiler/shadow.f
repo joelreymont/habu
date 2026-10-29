@@ -1,28 +1,8 @@
 \ shadow.f - a second target compiled beside the engine's own through NSHADOW
-\ (src/compiler/native/shadow.f), read from the host's side.
-\
-\ WHAT IS DRIVEN. The words below are compiled by the engine's own tier-1
-\ driver (src/compiler/native/compiler.f) while an x86-64 shadow is open, so
-\ each one runs through the x86-64 rows in a context nested in its definition's
-\ and then through the engine's own rows, from the one frozen HIR module. The
-\ host words must still run as they always did; the map must hold, for each
-\ record publication committed, an x86-64 routine measured from no slot.
-\
-\ WHAT THE MAP IS ASKED. A leaf is one function ending in `ret`, with no rows
-\ and no trailing return split off, because an x86-64 span is exact. A call is a
-\ row naming the callee's entry on the host, at the `call` itself, whose rel32
-\ is the linker's to write and is zero. A `does>` definer is two records over
-\ one routine: the companion enters where the clause function starts, and the
-\ definer's own literal of that address holds the same offset, as an unplaced
-\ `codeaddr` does. A quotation's address is that function's offset too.
-\
-\ WHAT IS REFUSED. Publication refuses an emission another machine's backend
-\ sealed before its window, which X64KHIR's sealed x86-64 emission shows on
-\ this host. A shadow whose backend has no unplaced emission refuses the
-\ definition, publishes nothing, and leaves the engine compiling the next one.
-\ A native shadow refuses to open for another system's binding, and refuses an
-\ unplaced emission under the engine's own. A taken emission no publication claims files
-\ nothing, and the shadow's own refusals are each asserted by code.
+\ (src/compiler/native/shadow.f), read from the host's side. The words below
+\ are compiled by the tier-1 driver with an x86-64 shadow open, from one frozen
+\ HIR module: host words run unchanged, and the map holds an x86-64 routine per
+\ committed record publication, measured from no slot.
 
 require src/lib/test.f
 require src/lib/errors.f
@@ -68,7 +48,6 @@ variable BAD-EMS
 : SH-PA ( -- ) create 5 , does> ( -- n ) @ 100 + ;
 : SH-PB ( -- ) SH-PA does> ( -- ptr n ) ;
 
-\ ---- the words compiled with the shadow open ---------------------------------
 OPEN-X64
 1 set-tier
 ndict@ REC-LEAF !
@@ -86,8 +65,11 @@ ndict@ REC-SEVEN !
 ndict@ REC-PX !
 SH-PB SH-PX
 
-\ ---- reading the map ----------------------------------------------------------
-\ The row a record was filed under, or -1.
+\ A leaf is one function ending in `ret` with no rows, since an x86-64 span is
+\ exact. A call is a row at the `call` naming the callee's host entry, its rel32
+\ zero for the linker. A `does>` definer is two records over one routine: the
+\ companion enters at the clause function, whose offset the definer's literal
+\ holds as an unplaced `codeaddr` does.
 : ROW-OF ( n -- n ) {: idx:n :}
    -1
    NSHADOW:RECORDS 0 ?do
@@ -190,7 +172,11 @@ SH-PB SH-PX
    [: REC-LEAF @ EM-OF 1 NSHADOW:CALL-SITE@ drop ;] E-NSHADOW-ROW TTHROWSQ
    [: OPEN-X64 ;] E-NSHADOW-STATE TTHROWSQ ;
 
-\ ---- an x86-64 emission sealed on this host -----------------------------------
+\ Refused: an emission another machine's backend sealed before its window
+\ (X64KHIR shows one); a backend with no unplaced emission (nothing published,
+\ the engine compiles on); a native shadow for another system's binding, or for
+\ an unplaced emission under the engine's own. A taken emission no publication
+\ claims files nothing.
 \ X64KHIR compiles a kernel row through the x86-64 rows and runs `use` while its
 \ unplaced emission stands sealed in NEMIT, which is the only way this host ever
 \ holds one outside a shadow's own context.
@@ -263,16 +249,13 @@ public
 
 SHADOW-TEST:RUN-OPEN
 
-\ ---- values their fixed register cannot be kept for ---------------------------
-\ `idiv` reads its dividend from rax and leaves its quotient there, and `shl`
-\ reads its count from rcx (src/compiler/native/x64ir.f DEF-IDIV, DEF-SHIFT-CL).
-\ A value so pinned that lives across a call, which may destroy every register
-\ of the x86-64 pool, or across another divide cannot keep that register over
-\ its range, and the allocator puts it in the frame (regalloc.f MB-PIN) where it
-\ used to refuse the definition. SH-QUOT-STORE is the shape that stopped the
-\ whole engine's window compile at MSEEN-ALLOC: a local holds the quotient over
-\ the call `!` makes. The dividend and the count are held over the call by the
-\ copy the selector made for the form and coalesced into them.
+\ Values their fixed register cannot be kept for: idiv and shl pin rax and rcx
+\ (src/compiler/native/x64ir.f DEF-IDIV, DEF-SHIFT-CL). A pinned value live
+\ across a call or another divide goes to the frame (regalloc.f MB-PIN).
+\ SH-QUOT-STORE, a local holding the quotient over the call `!` makes, stopped
+\ the engine's window compile at MSEEN-ALLOC. The dividend and the count are
+\ held over the call by the copy the selector made for the form, coalesced into
+\ them.
 package SHADOW-TEST
 private
 
@@ -322,18 +305,13 @@ public
 SHADOW-TEST:RUN-PINNED
 NSHADOW:CLOSE
 
-\ ---- a load run longer than the pool -----------------------------------------
-\ An x86-64 routine takes every argument it reads out of a register in one run
-\ of loads at its entry (src/compiler/native/select-x64.f OPEN-DARGS), and the
-\ pool is nine registers. The values of a load run are stored to the frame after
-\ the whole run, which keeps the loads together (regalloc.f MB-ANCHOR) and holds
-\ each value the run has loaded in a register up to its end, so a run of ten was
-\ refused (E-A64RA-POOL) whatever could be put away. A run the registers cannot
-\ hold is divided instead. SH-TEN-READ reads ten arguments and calls nothing.
-\ SH-TEN-CROSS passes ten to a call and reads them after it, so all ten go to
-\ the frame. SH-FIELD-ADD is TYPE-FIELD-OWNER:ADD (src/core/type-family.f), the
-\ word that stopped the engine's window compile: twelve locals, ten of them read,
-\ over two calls.
+\ A load run longer than the nine-register pool: an x86-64 routine loads its
+\ register arguments in one run at entry (src/compiler/native/select-x64.f
+\ OPEN-DARGS), stored to the frame after the whole run (regalloc.f MB-ANCHOR); a
+\ run the registers cannot hold is divided, not refused (E-A64RA-POOL).
+\ SH-TEN-READ reads ten arguments and calls nothing; SH-TEN-CROSS passes ten to
+\ a call and reads them after it. SH-FIELD-ADD is TYPE-FIELD-OWNER:ADD
+\ (src/core/type-family.f): twelve locals, ten of them read, over two calls.
 package SHADOW-TEST
 private
 
@@ -388,17 +366,13 @@ public
 SHADOW-TEST:RUN-LOAD-RUN
 NSHADOW:CLOSE
 
-\ ---- a reload in front of a division ------------------------------------------
-\ idiv takes its dividend in rax and writes rdx, so a divisor read there may
-\ have neither. SH-DIV-RELOAD's divisor lives over the call `!` makes, so the
-\ fixpoint's first turn puts it away and the second reloads it in front of the
-\ idiv, where the seven sums live over the division hold the other seven
-\ registers. Putting that reload away again brought it back the same in front of
-\ the idiv, turn after turn, until the turns' modules held every builder slot
-\ (E-IR-BUILD-SLOTS). A reload is never put away, so a sum goes to the frame
-\ instead (regalloc.f MB-RELOAD?). It is RD-FIND (src/compiler/ir/arena.f)
-\ reduced, the word that stopped the engine's window compile after
-\ TYPE-FIELD-OWNER:ADD.
+\ A reload in front of a division: idiv takes its dividend in rax and writes
+\ rdx, so a divisor read there may have neither. SH-DIV-RELOAD's divisor lives
+\ over the call `!` makes and is reloaded in front of the idiv while seven sums
+\ hold the other seven registers. A reload is never put away, so a sum goes to
+\ the frame; putting the reload away repeats every fixpoint turn until the
+\ modules hold every builder slot (E-IR-BUILD-SLOTS). It is RD-FIND
+\ (src/compiler/ir/arena.f) reduced.
 package SHADOW-TEST
 private
 
@@ -432,17 +406,13 @@ public
 SHADOW-TEST:RUN-DIV-RELOAD
 NSHADOW:CLOSE
 
-\ ---- a frame lane a dominated block forwards ----------------------------------
-\ The spill pass threads the frame's memory order through block arguments, and
-\ a block's lane is the argument a frame access reads. A one-successor branch
-\ forwards it, and not only the branch ending the lane's own block: a value is
-\ read in every block it dominates. SH-LANE-FIND's first turn threads a lane
-\ through two blocks ending in a two-way branch, and the block each one
-\ dominates forwards it by its own branch to a block whose store reads it. The
-\ pass followed a block's own terminator only, so when the second turn put
-\ `used` away in one of the two blocks it found no lane there and minted a
-\ second, leaving the first one read by nobody (E-A64RAV-ORDER; spill.f
-\ F-READS!). It is RD-FIND (src/compiler/ir/arena.f) less its first guard.
+\ A frame lane a dominated block forwards: the spill pass threads the frame's
+\ memory order through block arguments, and a one-successor branch forwards a
+\ lane in every block the value dominates, not only the lane's own block.
+\ SH-LANE-FIND's second turn puts `used` away in a block reached that way;
+\ following only a block's own terminator mints a second lane and leaves the
+\ first read by nobody (E-A64RAV-ORDER; spill.f F-READS!). It is RD-FIND
+\ (src/compiler/ir/arena.f) less its first guard.
 package SHADOW-TEST
 private
 
@@ -500,17 +470,13 @@ public
 SHADOW-TEST:RUN-LANE
 NSHADOW:CLOSE
 
-\ ---- a call's results taken back around frame operations ----------------------
-\ The loads that take back the cells a call answers are one run, read in place
-\ order. SH-PICK takes fourteen back from either of two calls, and the
-\ fixpoint's later turns put frame reloads and stores between them. The
-\ validator ended the run at anything but a store to the frame, then took the
-\ next load for a call site and refused the routine (E-A64RAV-CALL). Those
-\ operations leave the callee's cells alone, so the run admits any operation
+\ A call's results taken back around frame operations: the loads that take back
+\ a call's cells are one run in place order, and the run admits any operation
 \ that neither touches the data stack nor branches, as the stores in front of a
-\ call do (regalloc-verify.f DLOAD-RUN, DSTORE-RUN). It is ROUTINE
-\ (src/arch/x86-64/passes.f) reduced, the word that stopped the engine's window
-\ compile after RD-FIND.
+\ call do (regalloc-verify.f DLOAD-RUN, DSTORE-RUN); ending it at anything but a
+\ frame store refused the routine (E-A64RAV-CALL). SH-PICK takes fourteen back
+\ from either of two calls, with frame reloads and stores between. It is ROUTINE
+\ (src/arch/x86-64/passes.f) reduced.
 package SHADOW-TEST
 private
 
@@ -551,11 +517,10 @@ public
 SHADOW-TEST:RUN-PICK
 NSHADOW:CLOSE
 
-\ ---- a value an edge passes on keeps its slot ---------------------------------
-\ The x86-64 rows of test/compiler/native-loop.f SLOT-CASE, whose comment
-\ states the shapes; select-x64.f DSTORED holds the rule. SH-SLOT-LETTER adds a
-\ call's result held in a local across the backedge of a loop that leaves early
-\ with a value.
+\ A value an edge passes on keeps its slot: the x86-64 rows of
+\ test/compiler/native-loop.f SLOT-CASE, whose comment states the shapes;
+\ select-x64.f DSTORED holds the rule. SH-SLOT-LETTER adds a call's result held
+\ in a local across the backedge of a loop that leaves early with a value.
 package SHADOW-TEST
 private
 
@@ -612,9 +577,9 @@ public
 SHADOW-TEST:RUN-SLOT
 NSHADOW:CLOSE
 
-\ ---- a shadow whose backend states no unplaced emission -----------------------
-\ The AArch64 row has none, so the definition is refused at that stage, after
-\ the shadow's earlier stages bound their passes in its context.
+\ A shadow whose backend states no unplaced emission: the AArch64 row has none,
+\ so the definition is refused at that stage, after the shadow's earlier stages
+\ bound their passes in its context.
 package SHADOW-TEST
 private
 
@@ -624,7 +589,6 @@ variable TRY-U
 : TRY-GO ( -- )
    TRY-A @ TRY-U @ INCLUDE-EVALUATE ;
 
-\ Define from source and answer what refusing the definition threw, or zero.
 : TRY-DEFINE ( ptr u8 n -- n )
    TRY-U ! TRY-A !
    [: TRY-GO ;] catch ;
@@ -642,12 +606,11 @@ NSHADOW:CLOSE
 : SH-AFTER ( n -- n ) 2 + ;
 0 set-tier
 
-\ ---- a native shadow's own refusals --------------------------------------------
-\ A native shadow opens only for the engine's own binding (src/compiler/native/
-\ shadow.f OPEN-NATIVE) and takes only a placed emission (TARGET-CK). An AArch64
-\ binding for another system than this host's names the engine's machine, so
-\ only the binding comparison refuses it. The unplaced emission is the host's
-\ own machine's, sealed with no placement, so only the placement refuses it.
+\ A native shadow's own refusals: it opens only for the engine's own binding
+\ (src/compiler/native/shadow.f OPEN-NATIVE) and takes only a placed emission
+\ (TARGET-CK). An AArch64 binding for another system names the engine's machine,
+\ so only the binding comparison refuses it; the unplaced emission is the host
+\ machine's, sealed with no placement, so only the placement refuses it.
 1 BUFFER: UNPLACED-CODE
 
 : HOST-BINDING ( -- CBIND:binding )

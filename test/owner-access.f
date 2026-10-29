@@ -1,20 +1,9 @@
-\ owner-access.f - an internal primitive that its owner's rows type.
-\
-\ A primitive whose record carries DNAME-INT has no effect the checker knows at
-\ top level, so the prompt, `'` and search-wl refuse it and a compiled call to
-\ it needs a TRUSTED: boundary. One that a package row types (src/habu/prims.f
-\ EPPRIM: ... ECLOSE-PRIVATE) also carries DNAME-OWNED (src/habu/layout.f):
-\ hidden exactly as before, while a compiled call to it is the checker's
-\ decision through its rows. package-scope! and namespace-record are
-\ CHECKER-OVERLAY's, source-unit-run and source-file-run are SOURCE-ROOT's;
-\ int-mark has no package row.
-\
-\ Each case forks a child that hands its source to `evaluate`, the engine's own
-\ interpret loop, and judges the child by its status and its streams. The
-\ owner's admitted calls need the owner open,
-\ so test/prim-owner-scope.f measures them in its unsealed window.
-\
-\ Run: bin/hb --load test/owner-access.f
+\ owner-access.f - an internal primitive its owner's rows type. A DNAME-INT
+\ primitive has no top-level effect: the prompt, `'` and search-wl refuse it and
+\ a compiled call needs a TRUSTED: boundary. One a package row types
+\ (src/habu/prims.f EPPRIM: ... ECLOSE-PRIVATE) also carries DNAME-OWNED
+\ (src/habu/layout.f): still hidden, while a compiled call is the checker's
+\ decision. Owner-open calls are test/prim-owner-scope.f's.
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/test/subject.f
@@ -29,7 +18,7 @@ create ERR IO-CAP allot
 
 : OA-MARK$ ( -- ptr u8 n ) s" @" ;
 
-\ Run the source in a child: its fd 1 and fd 2 lengths and its status.
+\ The child hands the source to `evaluate`, the engine's own interpret loop.
 : CHILD ( ptr u8 n -- len len n )
    OUT IO-CAP >LEN ERR IO-CAP >LEN 10000 >MS SUBJECT:RUN PROC-OUTCOME>RC RC>N ;
 
@@ -66,17 +55,16 @@ create ERR IO-CAP allot
 
 public
 
-\ The marker a call case prints just before the call.
 : OA-AT ( -- ) OA-MARK$ type ;
 
 private
 
-\ Unchecked code compiles a call to an owned primitive at both tiers, where no
-\ checker decides: the call runs, and each writer refuses its arguments itself
-\ (record 0 is no namespace row; an empty name) with exit 83. Tier 1 reports
-\ the global trusted-only row's E-CAP-TRUSTED, as it reports every unjudged
-\ verdict, and compiles the call. The source prints the marker just before the
-\ call.
+\ package-scope! and namespace-record are CHECKER-OVERLAY's, source-unit-run and
+\ source-file-run SOURCE-ROOT's; int-mark has no package row. Unchecked code
+\ compiles a call to an owned primitive at both tiers: the call runs, and each
+\ writer refuses its arguments itself (record 0 is no namespace row; an empty
+\ name) with exit 83. Tier 1 reports the global trusted-only row's
+\ E-CAP-TRUSTED, as it reports every unjudged verdict, and compiles the call.
 : UNCHECKED ( -- )
    s" 0 set-check : OA-SCOPE ( n n -- ) package-scope! ; 0 0 OA-AT OA-SCOPE"
    ENGINE-ERROR:SEAL-VIOLATION REACHES

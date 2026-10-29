@@ -17,11 +17,9 @@ package STACK-LIFECYCLE-TEST
       ERR i + 16 s" 0000000000000011" STR= if 1+ then
    loop ;
 
-\ run-in-stack no longer accepts a capacity-0 mapping (GUARDED-EXTENT? refuses
-\ it before the callback runs -- test/stack-guard.f CAPACITY-ZERO-REFUSAL), so
-\ both cases below run on a real 64 KB guarded stack; only the live depth at
-\ the breakpoint -- not the allocation's capacity -- decides what the dump
-\ shows.
+\ run-in-stack refuses a capacity-0 mapping (GUARDED-EXTENT?, test/stack-guard.f
+\ CAPACITY-ZERO-REFUSAL), so both cases run on a real 64 KB guarded stack: only
+\ the live depth at the breakpoint decides what the dump shows.
 : DEBUGGER-BOUNDARIES ( -- )
    s" breakpoint on a valid allocation has no top cell" T-LABEL
    s" 0 set-tier require src/habu/debug.f package SBP require src/lib/memory.f PTR-VARIABLE BUF-A STACK-ABI:PAGE-BYTES MEM:ALLOC-GUARDED drop BUF-A ! : BUF ( -- ptr u8 ) BUF-A @ ; : EMPTY ( -- ) ; ' EMPTY DEBUG:BP+ : GO ( -- ) ['] EMPTY BUF STACK-ABI:PAGE-BYTES run-in-stack ; GO ;package"
@@ -39,24 +37,17 @@ package STACK-LIFECYCLE-TEST
    DEBUGGER-LINES 7 T= ;
 
 \ A PERSISTENT breakpoint keeps its BRK planted, so the word's entry instruction
-\ never runs and the SIGTRAP handler has to be it (src/habu/habu2.f
-\ C-BP-EMULATE). A tier-0 entry is one of exactly two instructions, and the two
-\ cases below are one of each: a leaf's slot holds the nop EM-COMPILE-RET
-\ rewrote it to, and a word that calls holds `str x30,[sp,#-16]!`.
-\
-\ WHAT EACH CASE PROVES. The answer printed on stdout is the word's RETURN
-\ VALUE, reached through the emulated entry: if the handler failed to store the
-\ interrupted x30 at the lowered sp, the epilogue's `ldr x30,[sp],#16` would
-\ return through whatever was there and the child would not print 42 and exit 0.
-\ Calling the word twice also proves the breakpoint really is persistent -- the
-\ BRK is still planted for the second call -- which is the whole reason the
-\ handler emulates instead of restoring.
-\ Any other first instruction runs out of line, in the slot's trampoline. A
-\ tier-1 leaf begins with its first operation: TW with `ldur`, which means the
-\ same at any address, so its breakpoint stays persistent and fires on both
-\ calls; T2 with `b` to TW, a tail call that would branch from the wrong
-\ place, so its breakpoint degrades to one-shot and fires once. Both still
-\ return the right values.
+\ never runs and the SIGTRAP handler emulates it (src/habu/habu2.f
+\ C-BP-EMULATE). A tier-0 entry is one of two instructions, one case each: a
+\ leaf's nop (EM-COMPILE-RET rewrote it) and a caller's `str x30,[sp,#-16]!`.
+\ The printed 42 is the return value through the emulated entry: a handler that
+\ failed to store x30 at the lowered sp would return through whatever was there.
+\ The second call proves the BRK stays planted, the reason the handler emulates.
+\ Any other first instruction runs out of line, in the slot's trampoline: tier-1
+\ leaf TW begins with `ldur`, the same at any address, so its breakpoint stays
+\ persistent and fires on both calls; T2 begins with `b` to TW, which would
+\ branch from the wrong place, so its breakpoint degrades to one-shot and fires
+\ once. Both return the right values.
 : PERSISTENT-OUT-OF-LINE ( -- )
    s" persistent breakpoint runs a leaf's first instruction out of line" T-LABEL
    s" 1 set-tier require src/habu/debug.f package PBP : TW ( n -- n ) dup + ; ' TW DEBUG:BP* : GO ( -- ) 21 TW . 3 TW . ; GO ;package"

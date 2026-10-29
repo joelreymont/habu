@@ -20,14 +20,10 @@ package NDEFER-TEST
 
 private
 
-\ The dispatch cell's contents, and the engine's relocation table. Both are
-\ reads of memory the dictionary named; the deciding above them is ordinary
-\ checked Habu.
 \ A dictionary-named DATA address is an integer; reading its cell needs a pointer.
 CAST: N>CELL ( n -- ptr n )
 : CELL@ ( n -- n ) N>CELL @ ;
 : PCELL@ ( ptr n -- n ) @ ;
-\ The DATA base as an integer: its distance from the null address.
 : DBASE-N ( -- n ) data-base NULL-PTR BYTE-VIEW - ;
 
 0 constant GLOBAL-WID
@@ -40,9 +36,8 @@ CAST: N>CELL ( n -- ptr n )
 : REC-LEN ( ptr u8 n -- n )     REC XREF-LEN ;
 
 \ ---- the engine's own table of declared address cells ------------------------
-\ Read through src/habu/layout.f's published offsets, which is where the engine
-\ writes them. test/snapshot-xt-cell-decl.f reads the same two numbers the same
-\ way; both are readers of one authority rather than two copies of a rule.
+\ Read through src/habu/layout.f's published offsets, as
+\ test/snapshot-xt-cell-decl.f does: one authority, two readers.
 : XT-COUNT ( -- n )
    data-base SNAP-RELOC:XTCELL-N-CELL + PCELL@ ;
 
@@ -59,12 +54,10 @@ variable HIT
    HIT @ 0<> ;
 
 \ ---- the words the fixtures bind ---------------------------------------------
-\ Every execution below goes through `evaluate-closed`, or `TEST-EVAL:N` for a
-\ value, so a caller of a word that did not exist when the suite was compiled is
-\ compiled only after that new dictionary record exists.
-\ The deferred word, the body it is bound to, and a compiled caller of it. The
-\ caller exists because a defer is an engine trampoline: it proves a compiled
-\ call reads the cell at run time rather than merely proving direct evaluation.
+\ Every execution goes through `evaluate-closed`, or `TEST-EVAL:N` for a value,
+\ so a caller of a word defined after the suite compiled compiles after it
+\ exists. A defer is an engine trampoline: the compiled caller proves a compiled
+\ call reads the cell at run time.
 : SETUP ( -- )
    s" defer ND-HOOK ( n -- n )" evaluate-closed
    s" : ND-IMPL ( n -- n ) 1 + ;" evaluate-closed
@@ -88,10 +81,9 @@ variable HIT
    s" which a compiled caller of the defer then reaches" T-LABEL
    s" 41 ND-ACTION" TEST-EVAL:N 42 T= ;
 
-\ BIND-CASE proves the live behavior. These assertions prove the stored target
-\ is the quotation emitted with the installer and that the cell is declared by
-\ DATA offset, which is how the snapshot writer and loader find it. Neither fact
-\ depends on whether lowering copies, calls, or tail-calls either source word.
+\ The stored target is the quotation emitted with the installer, and the cell is
+\ declared by DATA offset, where the snapshot writer and loader find it; neither
+\ depends on whether lowering copies, calls or tail-calls either source word.
 : DECLARED-CASE ( -- )
    s" the cell now holds an address inside the installer's own emission" T-LABEL
    HOOK-CELL 0<> TTRUE
@@ -102,22 +94,13 @@ variable HIT
    HOOK-CELL DBASE-N - XT-LISTED? TTRUE ;
 
 \ ---- the targets that are not deferred words ---------------------------------
-\ THE HOSTILE ONE IS THE `create`d WORD. Its first data cell holds the defer
-\ magic exactly, which is the value the trailer of a real defer starts with - so
-\ a reader that searched for the magic near the record, or that simply took the
-\ cell after a record's code as a dispatch cell, would bind a quotation into an
-\ ordinary data word and the program would branch into whatever the next cell
-\ held. What refuses it is that the trailer is read at the record's own
-\ START+LEN, which for a created word is code space and not the data the word
-\ names: measured, the two are in different regions entirely.
-\
-\ THE PLAIN COLON WORD IS THE SECOND HALF OF THE SAME CLAIM. Its trailer read
-\ lands on the next definition's instructions - a perfectly ordinary integer -
-\ and it answers absent for the same reason.
-\
-\ The native checker refuses these source programs before elaboration. The
-\ resolver assertions separately prove why forged data and ordinary code are
-\ not defer targets.
+\ The `create`d word's first data cell holds the defer magic a real defer's
+\ trailer starts with; a reader searching for the magic near the record would
+\ bind into a data word. The trailer is read at the record's own START+LEN,
+\ which for a created word is code space, in a different region (measured). A
+\ plain colon word's trailer read lands on the next definition's code and
+\ answers absent the same way. The native checker refuses these programs before
+\ elaboration; the resolver assertions prove why each is no defer target.
 : SETUP-BAD ( -- )
    s" create ND-DATA  $4842444546455201 ,  0 ," evaluate-closed
    s" : ND-PLAIN ( n -- n ) 2 * ;" evaluate-closed ;

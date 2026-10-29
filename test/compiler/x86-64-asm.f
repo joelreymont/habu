@@ -1,20 +1,8 @@
-\ x86-64-asm.f — the x86_64 encoder suite (package X64ASM, src/arch/x86-64/asm.f).
-\
-\ Pure Habu: no assembler runs at test time. Every form is pinned to a fixed
-\ expected byte string, and the `llvm-mc:` comment above each case is the source
-\ line that produced it, so the suite documents where its numbers came from.
-\ The strings were produced on 2026-09-17 with
-\ `llvm-mc -triple=x86_64 -show-encoding` (LLVM 22.1.8), and the five relative
-\ branches were read back out of an object file with
-\ `llvm-mc -filetype=obj` plus `llvm-objdump -d --triple=x86_64`, because
-\ llvm-mc leaves a fixup rather than bytes for a symbolic branch target.
-\
-\ WHY SOME CASES AVOID rax AND A SHIFT COUNT OF ONE. llvm-mc prefers the
-\ accumulator short forms (05 id, A9 id, 90+r) and the D1 /n shift-by-one form.
-\ src/arch/x86-64/asm.f implements exactly one encoding per operation and none
-\ of those optimisations, so an immediate case names rcx, rbx or an extended
-\ register and a shift case uses a count other than one; the encoder and
-\ llvm-mc then agree on the general form.
+\ x86-64-asm.f - the x86_64 encoder suite (package X64ASM,
+\ src/arch/x86-64/asm.f). Each expected byte string came from
+\ `llvm-mc -triple=x86_64 -show-encoding` (LLVM 22.1.8) on the source line in
+\ the `llvm-mc:` comment above it; relative branches were read with
+\ `llvm-objdump -d` from an `llvm-mc -filetype=obj` object.
 
 require src/lib/test.f
 require src/lib/byte-buffer.f
@@ -47,9 +35,7 @@ create SINK BUF:HDR-BYTES allot
    SINK BUF:SPAN$ X64T-BL>RAW {: a:ptr u:n :}  u ;
 
 \ A malformed expected string is a defect in this suite's own data, so it dies
-\ rather than comparing against a wrong byte. FMATH:E-DOMAIN is the tree's
-\ existing "input outside this word's domain" code; the suite borrows it rather
-\ than claiming a code of its own for one literal guard.
+\ with FMATH:E-DOMAIN, the tree's "input outside this word's domain" code.
 : HEX-DIGIT ( n -- n ) {: c:n :}
    c 48 >= c 57 <= and if c 48 - exit then
    c 97 >= c 102 <= and 0= if FMATH:E-DOMAIN throw then
@@ -67,13 +53,14 @@ create SINK BUF:HDR-BYTES allot
    loop
    true ;
 
-\ Compare what the encoder just appended against the expected string, then empty
-\ the sink for the next case.
 : X= ( ptr u8 n -- ) {: ea:ptr eu:n :}
    SINK BUF:SPAN$ X64T-BL>RAW {: da:ptr dlen:n :}
    da dlen ea eu SPAN=HEX? TTRUE
    SINK BUF:CLEAR ;
 
+\ asm.f has one encoding per operation, so cases avoid rax immediates and shift
+\ counts of one, where llvm-mc picks the short forms (05 id, A9 id, 90+r,
+\ D1 /n).
 \ add and or in all five forms: register to register, register
 \ from memory, memory from register, sign-extended imm8 and imm32.
 : ALU-ADD-OR ( -- )

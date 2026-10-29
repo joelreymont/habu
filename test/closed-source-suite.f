@@ -1,20 +1,5 @@
 \ closed-source-suite.f - generated source and loaded files run as closed
 \ programs.
-\
-\ A source-generating definer renders its declaration into a src/lib/codegen.f
-\ buffer and hands the text to the loader's boundary, INCLUDE-EVALUATE
-\ (src/core/include.f), the word TYPE-DECL:TDECL-EVAL-XT is bound to for every
-\ generated core declaration. That boundary is evaluate-closed: the text runs
-\ with its floor at the definer's depth and must leave nothing. The three
-\ definers below render the same declaration and differ only in what their
-\ generator appends after it: a sound one's product certifies like any checked
-\ word, one that leaves a cell is refused E-EVAL-RESIDUE, and one that takes a
-\ cell it never pushed throws 70 with the caller's cells intact. A file loaded
-\ by require, include or --load crosses the same boundary, so
-\ test/closed-source-residue-bad.f, which ends `1 2`, is refused E-EVAL-RESIDUE
-\ through `required`. src/lib/type/deftype.f calls evaluate-closed itself and the
-\ FFI declarer in src/lib/ffi-abi.f crosses INCLUDE-EVALUATE; test/deftype-suite.f
-\ and src/lib/ffi-test.f certify their products.
 require src/lib/codegen.f
 require src/lib/errors.f
 require src/lib/test.f
@@ -35,13 +20,22 @@ $100 CODEGEN:BUFFER GEN
 
 : CROSS ( -- ) GEN CODEGEN:CONTENTS INCLUDE-EVALUATE ;
 
+\ A source-generating definer hands its rendered text to INCLUDE-EVALUATE
+\ (src/core/include.f), which TYPE-DECL:TDECL-EVAL-XT is bound to for every
+\ generated core declaration: evaluate-closed, the floor at the definer's depth,
+\ leaving nothing. The three definers below differ only in what they append: a
+\ sound one's product certifies, one leaving a cell is refused E-EVAL-RESIDUE,
+\ and one taking a cell it never pushed throws 70 with the caller's cells
+\ intact. A file loaded by require, include or --load crosses the same boundary,
+\ so test/closed-source-residue-bad.f, ending `1 2`, is refused E-EVAL-RESIDUE
+\ through `required`. test/deftype-suite.f and src/lib/ffi-test.f certify the
+\ products of src/lib/type/deftype.f (evaluate-closed) and src/lib/ffi-abi.f
+\ (INCLUDE-EVALUATE).
 : SOUND ( n ptr u8 n -- ) RENDER CROSS ;
 
-\ Pushes its value again after the declaration.
 : LEAKY ( n ptr u8 n -- ) {: v:n a:ptr u:n :}
    v a u RENDER  s"  " GEN+  v GEN CODEGEN:APPEND-DECIMAL  CROSS ;
 
-\ Drops a cell the text never pushed.
 : GREEDY ( n ptr u8 n -- ) RENDER  s"  drop" GEN+  CROSS ;
 
 : CERTIFIES ( -- )

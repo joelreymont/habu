@@ -1,26 +1,9 @@
 \ native-hookless-reject.f - ordinary hookless compilation keeps the declared
-\ row; a native build requires a certified scan of its pre-hook prefix.
-\
-\ In an ordinary `0 set-check` session, the owner's quiet scan prints its
-\ reason and enforces nothing (CHECK-HOOKLESS); the declaration becomes the
-\ definition's row, without authority (DECLARE-HOOKLESS), and the native
-\ compiler compiles against it. A body it cannot compile against that row -
-\ branches that leave different depths, a callee that is not defined - dies
-\ there as an uncaught throw, naming the token where it can. A body with no
-\ declaration, or one the checker cannot record, has no row, and KEEP-ARITY
-\ refuses it with the check hook's reject status.
-\
-\ A hook that certifies a definition through the checker and then answers 0
-\ drops it, and the rows it recorded go with it: at tier 0 the load goes on
-\ without it, at tier 1 the compiler refuses it (E-NCOMP-VERDICT). Either way
-\ a later word is checked against the word the engine binds.
-\
-\ The native build requires the same scan's verdict for its hookless prefix.
-\ Tier-neutral by design: each session subject sets the tier it compiles at, and
-\ the window is built by the engine under test. The window cases build a private
-\ copy of src/, src/lib/ and tools/ whose src/core/util.f ends in one probe
-\ definition; the printed directory keeps the copy and the last build's
-\ temporary directory.
+\ row; a native build requires a certified scan of its pre-hook prefix. In a
+\ `0 set-check` session the quiet scan prints its reason and enforces nothing
+\ (CHECK-HOOKLESS); the declaration becomes the row without authority
+\ (DECLARE-HOOKLESS), and a body without a recordable declaration has no row:
+\ KEEP-ARITY refuses it with the reject status. Each subject sets its own tier.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -61,7 +44,6 @@ variable RC
 : OUT$ ( -- ptr u8 n ) OUT OUT-U @ ;
 : ERR$ ( -- ptr u8 n ) ERR ERR-U @ ;
 
-\ Both streams are shown when the expected text is missing.
 : SHOW ( bool -- bool )
    dup 0= if OUT$ type ERR$ type then ;
 
@@ -135,10 +117,8 @@ variable RC
    s" E-UNDEFINED habu: in hr-definer: undefined word 'HR-NO-SUCH-WORD'" SAYS
    s" ncomp: cannot compile HR-DEFINER at HR-NO-SUCH-WORD" SAYS ;
 
-\ A clause is checked in its definer's regime: here a hookless one, whose body
-\ may call a word defined with checking off, so its clause may too, as at tier
-\ 0. Checked with call authority, the clause was refused that call
-\ (E-CAP-TRUSTED) and the compiler died with E-NCOMP-VERDICT.
+\ A clause is checked in its definer's regime: a hookless definer's body may
+\ call a word defined with checking off, so its clause may too, as at tier 0.
 : CLAUSE$ ( -- ptr u8 n )
    s" 1 set-tier 0 set-check : HR-CELL ( -- n ) 5 ; : HR-MAKE ( -- ) create does> ( -- n ) drop HR-CELL ; HR-MAKE HR-X HR-X . cr" ;
 
@@ -206,10 +186,12 @@ variable RC
    s" habu: in hr-kept: at '+'" SAYS ;
 
 \ ---- a hook's zero verdict: the dropped definition keeps no row -------------
-\ LIAR-FORGET certifies every definition through the engine's hook, which
-\ records its row and opens its pending window, then answers 0 for a name
-\ that starts with W. The texts outrun a source line, so each is assembled in
-\ TEXT; each closes this package first, so its words are globals as in a file.
+\ A hook that certifies a definition and answers 0 drops it with its rows: tier
+\ 0 goes on without it, tier 1 refuses it (E-NCOMP-VERDICT), and a later word is
+\ checked against the word the engine binds. LIAR-FORGET certifies through the
+\ engine's hook, then answers 0 for a name that starts with W. The texts outrun
+\ a source line, so each is assembled in TEXT; each closes this package first,
+\ so its words are globals as in a file.
 create TEXT CAP allot                  variable TEXT-U
 
 : TEXT$ ( -- ptr u8 n ) TEXT TEXT-U BUF-LEN@ ;
@@ -293,8 +275,8 @@ create TEXT CAP allot                  variable TEXT-U
    s" Q-FORGET:T-FORGET . cr" TEXT+
    TEXT$ SESSION  tier AMBIGUOUS ;
 
-\ The dropped W-FORGET left two cells; the engine's left one. Typed against the
-\ dropped row, T-FORGET ( -- n n ) certified and ran one cell short.
+\ The dropped W-FORGET left two cells, the engine's one: typed against the
+\ dropped row, T-FORGET ( -- n n ) would certify and run one cell short.
 : ZERO-SHAPE ( -- )
    s" a dropped definition's effect does not type a later caller" T-LABEL
    0 TIER-TEXT GLOBAL-W+ P-W+ LIAR+ Q-USING-P+
@@ -352,6 +334,8 @@ create TEXT CAP allot                  variable TEXT-U
    tier ZERO-REDEFINE ;
 
 \ ---- the window: a probe at the end of src/core/util.f ----------------------
+\ The engine under test builds a private copy of src/, src/lib/ and tools/; the
+\ printed directory keeps the copy and the last build's temporary directory.
 : ROOT-PATH! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr up:ptr :}
    ROOT$ a u dst FS:JOIN-PATH up ! ;
 

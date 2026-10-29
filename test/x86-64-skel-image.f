@@ -1,22 +1,7 @@
-\ x86-64-skel-image.f - cross-build the x86-64 boot, X64BOOT's `_start`, into
-\ bare executables for an x86-64 peer. After the boot, hb-x64-skel pushes the
-\ boot data stack full (STACK-ABI:BOOT-BYTES of cells), writes one cell through
-\ every address the boot published (the return and DO/LOOP stack bases, DP, the
-\ code region and its code pointer) and exits with argc read back through the
-\ user area from ARGC-CELL, so `hb-x64-skel a b` exits 3. hb-x64-skel-negative
-\ pushes one cell more, onto the guard page, and the crash handler the boot
-\ installs writes `hb: stack bounds exceeded (data)` on fd 2 and exits 102. The
-\ underflow image reads below an empty data stack; the boot's floor recovery
-\ resets its cursor and exits 70 (it has no catch handler).
-\ The guard-fetch image jumps into the data stack's low guard page. An
-\ instruction fetch there is a bounds fault (102), never an underdepth throw.
-\ The foreign-fetch image faults outside every owned stack with an aligned but
-\ unmapped RBP; the handler must dump it and die by SIGSEGV without
-\ dereferencing RBP.
-\ The gap-fetch image faults between text and REGION with the same untrusted
-\ RBP; that unmapped gap cannot authorize a DATA descriptor either.
-\ The host checks each image's ELF header; running them is the peer's.
-\
+\ Cross-builds the x86-64 boot, X64BOOT's `_start`, into bare executables for an
+\ x86-64 peer; the host checks each image's ELF header, and running them is the
+\ peer's.
+
 \ boot-x64.f loads the x86-64 seam, so it comes before the harness, which would
 \ otherwise load the seam into its own private wordlist.
 require src/habu/boot-x64.f
@@ -146,6 +131,19 @@ DATA-START $100 + constant TCB-OFF
 
 public
 
+\ hb-x64-skel pushes the boot data stack full (STACK-ABI:BOOT-BYTES of cells),
+\ writes one cell through every address the boot published (the return and
+\ DO/LOOP stack bases, DP, the code region and its code pointer) and exits with
+\ argc read through the user area from ARGC-CELL: `hb-x64-skel a b` exits 3.
+\ -negative pushes one cell more, onto the guard page: the boot's crash handler
+\ writes `hb: stack bounds exceeded (data)` on fd 2 and exits 102. -underflow
+\ reads below an empty data stack; the floor recovery resets its cursor and
+\ exits 70 (no catch handler). -guard-fetch jumps into the data stack's low
+\ guard page: an instruction fetch there is a bounds fault (102), never an
+\ underdepth throw. -foreign-fetch faults outside every owned stack with an
+\ aligned, unmapped RBP: the handler dumps it and dies by SIGSEGV without
+\ dereferencing RBP. -gap-fetch faults between text and REGION with the same
+\ RBP; that unmapped gap cannot authorize a DATA descriptor either.
 : RUN ( -- )
    STACK-ABI:BOOT-BYTES CELL / {: full:n :}
    T-RESET

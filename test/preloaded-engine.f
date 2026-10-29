@@ -1,56 +1,8 @@
-\ preloaded-engine.f - the engine with the AOT linker loaded, settled once per
-\ gate run, built on a key miss and run in place across runs.
-\
-\ A row that links a stripped image used to compile the linker -
-\ tools/aot-build.f and every src/habu/aot-*.f it loads - in each child: about
-\ 7.6 s of every such child, measured on one host. So it is compiled once, into
-\ a keyed image (test/keyed-image.f) the rows run instead of the engine:
-\ LINKER$, img/linker, the saver image test/app-image-engine.f builds with
-\ tools/aot-build.f loaded on top and saved. Its key folds the saver image's
-\ key - so it moves whenever that one does - the program, and the ordered
-\ closure of tools/aot-build.f. The host is hashed once, for the directory of
-\ the engine that builds the image (BUILD-OUT:KEY-OF!).
-\
-\ Under a gate the gate's app-image and linker build rows settle both before a
-\ row that loads this module starts (test/gate-images.f), so the row only finds
-\ them. Production hb-build keeps compiling the linker per build
-\ (tools/hb-build-lib.f): a prebuilt linker links only the subjects rule 3
-\ admits, and its maker refuses the rest by name.
-\ Ordinary raw maker children use test/aot-builder-engine.f instead: its saved
-\ support opens the application window before loading this linker.
-\
-\ RULES FOR A ROW THAT RUNS IT, beside test/app-image-engine.f's.
-\ 1. Take the path before staging the child's argv or env: a build stages its
-\    own in the same process-wide tables.
-\ 2. A link on LINKER$ keeps the production maker script verbatim; its require
-\    of tools/aot-build.f is then a no-op.
-\ 3. A subject linked on LINKER$ reaches no word the linker's load left above
-\    the engine, and no cell of it but those an AOT ownership claim names. That
-\    load ran before the capture window opens (tools/aot-build-open.f), and it
-\    holds the unbaked part of the linker's lib closure in the require registry,
-\    its packages and words in the dictionary and its cells below the window.
-\    A subject's require of one of those modules resolves to that copy; a name
-\    of one it never required resolves too, and a `package` line naming one of its
-\    packages reopens it; the engine's maker compiles the module inside the
-\    window, refuses the name and creates the package. So the maker refuses a
-\    closure that reaches such a word (`aot: closure reaches a word defined
-\    before the capture window opened word=NAME`, `E-AOT-PRE-WINDOW` under
-\    `--json-errors`, src/habu/aot-closure.f ADD-CLO) or such a cell (`aot:
-\    address refers to data outside the restored span`). A cell a named claim
-\    carries or refreshes is not such a cell: src/habu/aot-owned-cells.f
-\    COLLECT claims the FFI and TASK state the engine bakes below the window,
-\    and test/stripped-preloaded-runtime.f links and runs a subject
-\    that shares both libraries with the image. A subject that defines a word
-\    the image holds, globally or in a package it reopens, dies at that line
-\    (`duplicate definition`, rc 78), where the engine's maker dies at the
-\    library's line once the linker loads. A subject that requires such a
-\    module, or adds new words to such a package, and reaches none of the
-\    image's words links as on the engine. The image-lifecycle registry holds
-\    the linker's persistent hooks ahead of the subject's, so PREPARE runs them
-\    after the subject's, where the engine's maker runs them first.
-\ 4. A row whose children run ENGINE-CANDIDATE:PATH$ does not itself run on it:
-\    inside an image ENGINE-ID:PATH$ names the image, so outside a gate its
-\    children would run the image too.
+\ preloaded-engine.f - the engine with the AOT linker (tools/aot-build.f)
+\ loaded, a keyed image (test/keyed-image.f) built on a key miss and run in
+\ place: compiling the linker cost about 7.6 s per linking child. Production
+\ hb-build compiles the linker per build; raw maker children use
+\ test/aot-builder-engine.f.
 
 require src/lib/errors.f
 require src/lib/fs.f
@@ -79,6 +31,9 @@ variable LINKER-RESOLVED?
 : LINKER-PROGRAM$ ( -- ptr u8 n )
    S\" require tools/aot-build.f\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" ;
 
+\ The key folds the saver image's (test/app-image-engine.f), the program and
+\ tools/aot-build.f's ordered closure; test/gate-images.f settles it under a
+\ gate.
 : LINKER-KEY-BODY ( ptr u8 n CONTENT-KEY:fold -- )
    s" preloaded-engine-v1" CONTENT-KEY:TEXT+
    -rot CONTENT-KEY:TEXT+
@@ -112,18 +67,37 @@ variable LINKER-RESOLVED?
 
 public
 
-\ Settle the saver image and the linker.
 : ENSURE ( -- )
    LINKER-ENSURE ;
 
+\ Rules for a row that runs LINKER$, beside test/app-image-engine.f's:
+\ 1. Take the path before staging the child's argv or env: a build stages its
+\    own in the same process-wide tables.
+\ 2. A link keeps the production maker script verbatim; its require of
+\    tools/aot-build.f is then a no-op.
+\ 3. A subject reaches no word the linker's load left above the engine and no
+\    cell of it but those an AOT ownership claim names: that load ran before the
+\    capture window opened (tools/aot-build-open.f). A require of one of its
+\    modules, a name it never required and a `package` line naming one of its
+\    packages all resolve to that copy, where the engine's maker compiles inside
+\    the window. The maker refuses a closure reaching such a word
+\    (E-AOT-PRE-WINDOW, src/habu/aot-closure.f ADD-CLO) or cell (`aot: address
+\    refers to data outside the restored span`). src/habu/aot-owned-cells.f
+\    COLLECT claims the FFI and TASK state baked below the window
+\    (test/stripped-preloaded-runtime.f). A subject defining a word the image
+\    holds dies at that line (`duplicate definition`, rc 78). A subject that
+\    requires such a module or adds words to such a package, and reaches none of
+\    the image's words, links as on the engine. The linker's persistent hooks
+\    register ahead of the subject's, so PREPARE runs them after the subject's,
+\    where the engine's maker runs them first.
+\ 4. A row whose children run ENGINE-CANDIDATE:PATH$ does not itself run on it:
+\    inside an image ENGINE-ID:PATH$ names the image.
 : LINKER$ ( -- ptr u8 n )
    LINKER-ENSURE
    LINKER-PATH$ ;
 
-\ Run a file on LINKER$ as `--load <file>`, with this process's stdout and
-\ stderr and an empty stdin, and die with the child's status when it fails. A
-\ child whose deadline expired exits PROC-TIMEOUT-RC (test/gate-common-lib.f
-\ GE-CHILD-RUN), which is named and thrown again.
+\ A child whose deadline expired exits PROC-TIMEOUT-RC (test/gate-common-lib.f
+\ GE-CHILD-RUN) and is thrown again.
 : LINKER-LOAD ( ptr u8 n -- ) {: a:ptr u:n :}
    LINKER$ {: eng:ptr engu:n :}
    PROC-ARGV-ENV-RESET

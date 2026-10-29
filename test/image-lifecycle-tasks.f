@@ -1,5 +1,7 @@
-\ Tier 1 first: quotation-store lowering belongs to the optimizing backend
-\ under test.
+\ image-lifecycle-tasks.f - tasks across a capture: stores to a typed quotation
+\ cell reuse its one relocation row, and a capture gives back what prepared,
+\ killed and pooled tasks hold. Tier 1: quotation-store lowering belongs to the
+\ optimizing backend under test.
 1 set-tier
 
 require src/lib/test.f
@@ -87,11 +89,9 @@ CAST: >ACTION-CELL ( ptr n -- ptr [ -- ] )
    CLEANED @ 4096 T=
    IMAGE-LIFECYCLE:PREPARE CLEANED @ 4096 T= ;
 
-\ ---- the TCB a capture reaches, and what a killed task leaves in it ----------
-\ THE TCB IS RAW STORAGE, so these rows read it as cells at named offsets. Three
-\ of the five cleared cells have a TASK-ABI row because the engine's task entry
-\ loads them; TCB.THREAD and TCB.RET have none - nothing in the engine reads a
-\ pthread_t or a join's answer - so they are counted from the rows on either
+\ The TCB is raw storage, so these rows read it as cells at named offsets.
+\ TCB.THREAD and TCB.RET have no TASK-ABI row (nothing in the engine reads a
+\ pthread_t or a join's answer), so they are counted from the rows on either
 \ side, which src/lib/task.f's own layout check pins against TASK-ABI.
 TASK-ABI:XT-OFF CELL + constant THREAD-OFF
 TASK-ABI:STATUS-OFF CELL 2 * + constant RET-OFF
@@ -110,19 +110,17 @@ TASK-ABI:STATUS-OFF CELL 2 * + constant RET-OFF
 : TCB-N ( ptr n -- n )
    FFI:>CELL ;
 
-\ THE CHAIN IS EVERY TCB A PROGRAM DECLARED AND NOTHING BEFORE THEM: newest
-\ first, and the first worker this file declared ends it. src/lib/task.f is loaded by
-\ every one of its users and declares no task of its own, so nothing but the
-\ program's own workers is ever on the chain the capture sweep walks.
+\ The chain is every TCB a program declared and nothing before them, newest
+\ first: src/lib/task.f declares no task of its own, so only the program's
+\ workers are on the chain the capture sweep walks.
 : CHAIN-ROWS ( -- )
    WORKER-D LINK@ WORKER-C TCB-N T=
    WORKER-C LINK@ WORKER-B TCB-N T=
    WORKER-B LINK@ WORKER-A TCB-N T=
    WORKER-A LINK@ 0 T= ;
 
-\ A PREPARED TASK HOLDS THIS PROCESS'S MAPPINGS AND NO THREAD, so the capture
-\ gives them back and leaves the task EMPTY - and an EMPTY task is one ACTIVATE
-\ away from running, which is what the next two lines run.
+\ A prepared task holds this process's mappings and no thread, so the capture
+\ gives them back and leaves the task EMPTY, one ACTIVATE away from running.
 : PREPARED-RELEASED ( -- )
    WORKER-B TASK:PREPARE
    WORKER-B STATE@ TASK-ABI:CONSTRUCTED T=
@@ -133,14 +131,12 @@ TASK-ABI:STATUS-OFF CELL 2 * + constant RET-OFF
    CLEANED @ 1 T=
    WORKER-B STATE@ TASK-ABI:EMPTY T= ;
 
-\ AFTER THE KILL THE TCB HOLDS NOTHING THIS PROCESS TOOK BUT ITS PARK, which the
-\ capture sweep destroys (src/lib/task.f PARK-CREATE): the thread handle, the join's
-\ answer, and the data base, record count and code end PREPARE recorded are all
-\ zero, which is what lets a task that ran at load time be captured at all
-\ (src/lib/task.f TASK-RELEASE-MEM). The activated TCB is read first: the
-\ handle pthread_create stored and the data base PREPARE recorded are set, so
-\ the offsets reach the cells the kill clears, not a cell that was zero all
-\ along. Both are the main thread's own stores; the worker never writes them.
+\ After the kill the TCB holds nothing this process took but its park, which the
+\ capture sweep destroys (src/lib/task.f PARK-CREATE): the thread handle, the
+\ join's answer and PREPARE's data base, record count and code end are zero,
+\ which lets a task that ran at load time be captured (TASK-RELEASE-MEM). The
+\ activated TCB is read first, so the offsets are shown to reach cells the kill
+\ clears; the worker never writes them.
 : KILLED-CLEARED ( -- )
    ['] EMPTY-WORK WORKER-A TASK:ACTIVATE
    WORKER-A THREAD-OFF TCB@ 0 T<>
@@ -153,9 +149,8 @@ TASK-ABI:STATUS-OFF CELL 2 * + constant RET-OFF
    WORKER-A TASK-ABI:NDICT-OFF TCB@ 0 T=
    WORKER-A TASK-ABI:CP-OFF TCB@ 0 T= ;
 
-\ A TASK:NEW AFTER A CAPTURE RUNS: the capture gave the pool's mappings back and
-\ emptied it, so the later TASK:NEW maps a chunk of its own; one left behind
-\ would hand out a record in memory the capture unmapped.
+\ A TASK:NEW after a capture maps a chunk of its own: the capture unmapped the
+\ pool, and a chunk left behind would hand out a record in unmapped memory.
 : POOL-WORK ( -- ) LOCAL-WORK 0 TASK:RETURN ;
 
 \ Runs a TASK:NEW task to its end, waiting on TASK:JOIN, which answers 0 for

@@ -48,7 +48,7 @@ create SOURCE PATH-CAP allot variable SOURCE-U
 create ART PATH-CAP allot variable ART-U
 create BAD-ART PATH-CAP allot variable BAD-ART-U
 create KEY 32 allot
-create FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this fixture's file-digest context
+create FSHA-CTX SHA256-FILE-CTX-BYTES allot
 
 : ROOT$ ( -- ptr u8 n ) ROOT ROOT-U @ ;
 : SOURCE$ ( -- ptr u8 n ) SOURCE SOURCE-U @ ;

@@ -1,29 +1,8 @@
 \ host-checker-row-e2e.f - a host whose checker states a PRIM: row for another
 \ word than this tree does builds this tree into the same engine, with the same
-\ .map sidecar, as an engine of this tree does.
-\
-\ WHY A ROW. The host certifies the window's prefix, src/ up to
-\ src/core/layout-valid.f, and src/core/checker.f TRANSFER-CHECKED copies each
-\ certified effect into the window's own checker, which appends a record and a
-\ no-return row per copy, a defer row for a deferred word, and interns every
-\ name it does not hold yet. A host numbers the names it holds a PRIM: row for
-\ ahead of all others, so copies taken in the host's symbol order put the host's
-\ primitive table into the image: a word without its row moved its own record,
-\ and a word with an extra row renumbered every symbol interned after it. The
-\ prefix defines CHECKER-STORAGE-INFO, which has a row, and
-\ CHECKER-CAPTURE-PREPARE, which has none; the host here is this tree's engine
-\ built from a copy whose checker.f gives the first word's row to the second.
-\
-\ Three builds, each tools/native-build.f in a fresh process: the reference (the
-\ engine under test builds the copied tree), the host (the engine under test
-\ builds the copy with the moved row) and the rebuild (that host builds the
-\ copied tree). The engine under test has to carry this tree's compiler: a
-\ pending codegen change makes the reference and the rebuild differ by design.
-\
-\ Run explicitly: bin/hb --load test/host-checker-row-e2e.f
-\ The printed private directory keeps both source trees, the host and both
-\ products with their name maps; `tools/two-generation-build.f -- --compare`
-\ names the first differing offset of a failing pair.
+\ .map sidecar, as an engine of this tree does. Not registered in the suite; run
+\ it by hand. The engine under test must carry this tree's compiler: a pending
+\ codegen change makes reference and rebuild differ.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -78,9 +57,12 @@ variable RC
    s" host-hb" HOST HOST-U ROOT-PATH!
    s" rebuilt-hb" REBUILT REBUILT-U ROOT-PATH! ;
 
-\ The row the variant replaces, found at a line start up to its name so a
-\ changed effect still matches, and replaced through its line end. The row put
-\ in its place states the definition it is checked against below.
+\ A host numbers the names it holds a PRIM: row for ahead of all others, and
+\ checker.f TRANSFER-CHECKED copies the prefix's effects (src/ up to
+\ src/core/layout-valid.f) in the host's symbol order: a word without its row
+\ moves its own record, and one with an extra row renumbers every later symbol.
+\ The row is found at a line start up to its name, so a changed effect still
+\ matches, and replaced through its line end.
 : ROW$ ( -- ptr u8 n ) S\" \nPRIM: CHECKER-STORAGE-INFO " ;
 : NEW-ROW$ ( -- ptr u8 n ) S\" PRIM: CHECKER-CAPTURE-PREPARE PRIM;\n" ;
 : NEW-DEF$ ( -- ptr u8 n ) S\" \n: CHECKER-CAPTURE-PREPARE ( -- )\n" ;
@@ -136,7 +118,7 @@ variable RC
    s" TMPDIR" >LEN TMP$ >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING ;
 
-\ engine builds the tree it runs in into path.
+\ The engine, run in the tree, builds that tree into path.
 : BUILD ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: engine:ptr engineu:n tree:ptr treeu:n path:ptr pathu:n :}
    PROC-CWD:ARGV-ENV-CWD-RESET
@@ -164,8 +146,14 @@ variable RC
    b bu NAME-B NAME-B-U NAMES!
    NAME-A NAME-A-U @ NAME-B NAME-B-U @ CHAIN-RUN:SAME-FILES? TTRUE ;
 
-\ Private copies keep all three builds on exactly the same source bytes, and the
-\ variant's edit away from the checkout.
+\ The host is this tree's engine built from a copy whose checker.f gives
+\ CHECKER-STORAGE-INFO's PRIM: row to CHECKER-CAPTURE-PREPARE. Three builds run
+\ tools/native-build.f in fresh processes: the reference, the host, and the
+\ host's rebuild of the copied tree. Private copies keep all three builds on
+\ exactly the same source bytes, and the variant's edit away from the checkout.
+\ The printed private directory keeps both source trees, the host and both
+\ products with their name maps; `tools/two-generation-build.f -- --compare`
+\ names the first differing offset of a failing pair.
 : RUN ( -- )
    T-RESET
    SETUP

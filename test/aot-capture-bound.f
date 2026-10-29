@@ -1,44 +1,8 @@
 \ aot-capture-bound.f - the capture refusal names the record that crossed the
-\ bound (dot habu-name-the-record-eac72c28).
-\
-\ WHAT IT PINS. A window holding more dictionary records than AOT-REC-MAX
-\ (src/habu/aot-decl.f) used to die `aot-capture: too many records` and nothing
-\ else, so finding the definition that crossed it meant bisecting a tree.
-\ ACAP-REC-REFUSE (src/habu/aot-capture.f) prints the captured count, the bound
-\ and the name of the record being added first, and this fixture reads those
-\ three lines off a real refusal. They are three lines and not one because the
-\ engine's `.` ends its line and the capture layer has no mid-line formatter.
-\
-\ HOW THE BOUND IS LOWERED. A `require` path resolves against the root its
-\ requiring file was loaded from before the working directory (src/core/include.f
-\ SOURCE-ROOT:RESOLVE; the --load entry's root is its own directory), so a
-\ directory holding src/habu/aot-decl.f, src/habu/aot-capture.f and the entry
-\ file is an overlay: the child takes THAT declaration and every other require
-\ falls through to this tree. aot-capture.f is in the overlay because it requires
-\ aot-decl.f itself: loaded from the tree, that require names the tree's
-\ declaration and loads it a second time (measured: `duplicate definition:
-\ AOT-BLOB-CAP`, exit 78).
-\ Neither aot-decl.f nor aot-capture.f is baked into bin/hb - AOT-BUF:AOT-REC-MAX
-\ is E-UNDEFINED in a bare engine - so the lowered bound costs no engine build.
-\ The declaration is this tree's own file with one line rewritten and
-\ aot-capture.f is copied unchanged; the fixture dies by name when that line is
-\ gone, so the overlay cannot drift from the source.
-\
-\ WHY THE WINDOW IS PACKAGES. AOT-SIG-MAX is AOT-REC-MAX (aot-decl.f), so a
-\ lowered bound lowers the signature buffer with it and a window of checked words
-\ is refused there first (`aot-capture: the window has more checked words than
-\ the signature buffer holds`, measured). A package record is exempt from the
-\ signature walk (ACAP-?SIG skips DICT-WL:NAMESPACE) and still costs a record, so
-\ the window is two packages of one word each: four records against a bound of
-\ three, two signatures against the same three.
-\
-\ THE TWO NUMBERS AGREE BY CONSTRUCTION. ACAP-ADD-REC refuses at N = MAX, so the
-\ captured count a crossing prints is always the bound; the assertion pins the
-\ text of both lines, not a difference between them.
-\
-\ Cost: one child engine run, no builds. Registered as `SUITE aot-capture-bound`
-\ in test/gate-stdlib-cases.f.
-\ Standalone: bin/hb --load test/aot-capture-bound.f
+\ bound: ACAP-REC-REFUSE (src/habu/aot-capture.f) prints the captured count, the
+\ bound and the record's name, three lines because `.` ends its line.
+\ ACAP-ADD-REC refuses at N = MAX, so the printed count is always the bound.
+\ Registered as `SUITE aot-capture-bound` in test/gate-stdlib-cases.f.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -60,7 +24,7 @@ private
 76 constant DRIFT-RC                   \ this fixture cannot build its overlay
 30000 constant TIMEOUT-MS
 $4000 constant CAP                     \ child stdout/stderr capture
-$10000 constant DECL-CAP               \ src/habu/aot-decl.f is 35 KB today
+$10000 constant DECL-CAP               \ holds src/habu/aot-decl.f
 $1000 constant TEXT-CAP                \ one generated text at a time
 
 CAP BUFFER: OUT                 variable OUT-U
@@ -104,6 +68,15 @@ variable EXITED
 : DEC+ ( n -- )              SB-RESET FMT:SB-U SB$ TEXT+ ;
 
 \ --- the private tree --------------------------------------------------------
+\ A `require` resolves against its requiring file's root before the working
+\ directory (src/core/include.f SOURCE-ROOT:RESOLVE; a --load entry's root is
+\ its own directory), so a directory holding src/habu/aot-decl.f, aot-capture.f
+\ and the entry is an overlay: the child takes that declaration and every other
+\ require falls through to this tree. aot-capture.f is in the overlay because it
+\ requires aot-decl.f: from the tree it loads the tree's declaration a second
+\ time (`duplicate definition: AOT-BLOB-CAP`, exit 78). Neither file is in
+\ bin/hb (AOT-BUF:AOT-REC-MAX is E-UNDEFINED in a bare engine), so the lowered
+\ bound costs no engine build.
 : SETUP ( -- )
    s" habu-aot-capture-bound" FS:MKTEMP-DIR {: a:ptr u:n :}
    a ROOT-BUF u BYTE-COPY  u ROOT-U !
@@ -125,7 +98,7 @@ variable EXITED
      some OF IDX>N ENDOF
    ;MATCH ;
 
-: LINE-START ( n -- n )                      \ first byte of the line holding it
+: LINE-START ( n -- n )
    begin dup 0 > while
       DECL over 1 - + c@ 10 = if exit then
       1 -
@@ -136,6 +109,7 @@ variable EXITED
 
 \ This tree's own declaration file with one line rewritten: the bytes above that
 \ line, the lowered bound, then the bytes from the end of the matched name on.
+\ The fixture dies DRIFT-RC when that line is gone, so the overlay cannot drift.
 : OVERLAY-DECL ( -- )
    DECL-SRC$ DECL DECL-CAP FS:READ-ALL DECL-U !
    BOUND-AT {: at:n :}
@@ -149,6 +123,11 @@ variable EXITED
    CAP-SRC$ CAPDST$ FS:COPY-FILE-STREAM ;
 
 \ --- the child program --------------------------------------------------------
+\ AOT-SIG-MAX is AOT-REC-MAX (aot-decl.f), so a window of checked words is
+\ refused at the signature buffer first. A package record is exempt from the
+\ signature walk (ACAP-?SIG skips DICT-WL:NAMESPACE) and still costs a record,
+\ so the window is two packages of one word each: four records against a bound
+\ of three, two signatures against the same three.
 : ENTRY-PRELUDE+ ( -- )
    s" \ generated by test/aot-capture-bound.f" LINE+
    s" package RB-ENTRY" LINE+

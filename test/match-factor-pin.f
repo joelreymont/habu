@@ -1,6 +1,4 @@
 \ match-factor-pin.f - construct/MATCH execution and diagnostic regressions.
-\ Runs real programs in disposable engine processes and checks their results.
-\ Run: bin/hb --load test/match-factor-pin.f
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -22,10 +20,6 @@ create ERR CAP allot
 variable OUT-U
 variable ERR-U
 
-\ --- SUBJECT capture ------------------------------------------------------
-\ Run one source in a disposable fork of the running (fixpoint) engine, keeping
-\ the captured stdout/stderr byte spans for the assertions.
-
 : CAP-LENS ( len len -- )
    LEN>N ERR-U !
    LEN>N OUT-U ! ;
@@ -33,14 +27,11 @@ variable ERR-U
 : OUT$ ( -- ptr u8 n )   OUT OUT-U @ ;
 : ERR$ ( -- ptr u8 n )   ERR ERR-U @ ;
 
-\ Run one source in a disposable fork, keep the captured stdout/stderr spans,
-\ and assert its exit code.
 : RUN! ( ptr u8 n n -- ) {: src:ptr srcu:n rc:n :}
    src srcu OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN {: outu:len erru:len oc :}
    outu erru CAP-LENS
    src srcu OUT$ ERR$ oc rc T-OUTCOME-EXITED= ;
 
-\ --- assertion shapes -----------------------------------------------------
 \ Positive: exit 0, empty stderr, stdout equals the expected output.
 : POS ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: label:ptr labelu:n src:ptr srcu:n want:ptr wantu:n :}
@@ -56,42 +47,37 @@ variable ERR-U
    label labelu T-LABEL   OUT$ out outu T$=
    label labelu T-LABEL   ERR$ diag diagu CONTAINS? TTRUE ;
 
-\ The native checker rejects a malformed definition before the legacy engine
-\ reaches its construct/MATCH diagnostic tail. Both paths name the same bad
-\ token and reason; the native form also locates it inside the definition.
+\ On Linux x86-64 the native checker refuses a malformed definition before the
+\ construct/MATCH diagnostic tail; both name the same bad token and reason, and
+\ the native form also locates it inside the definition.
 : DIAG$ ( ptr u8 n ptr u8 n -- ptr u8 n )
    {: old:ptr oldu:n native:ptr nativeu:n :}
    HB-TARGET-LINUX-X86-64? if native nativeu else old oldu then ;
 
-\ --- RT: MATCH success + write-xor-execute discipline ---------------------
-\ Round-trips construct then MATCH inside one word and print the result. A run
-\ to exit 0 with the pinned stdout proves the shared legs' RW/RX flips are exact
-\ (a wrong LPROT state SIGBUSes on the checker-bridge call or faults the run).
-\ Scalar and wide round-trips share one fork.
+\ Construct then MATCH inside one word, scalar and wide in one fork: exit 0 with
+\ the pinned stdout proves the shared legs' RW/RX flips are exact (a wrong LPROT
+\ state SIGBUSes on the checker-bridge call or faults the run).
 
 : RT-CASES ( -- )
    s" rt/roundtrip"
       s\" SUMTYPE mfp\n  VARIANT ok  n ;VARIANT\n  VARIANT err n ;VARIANT\n;SUMTYPE\n: RT ( n -- n ) construct mfp ok MATCH mfp ok OF 1 + ENDOF err OF negate ENDOF ;MATCH ;\n: RTE ( n -- n ) construct mfp err MATCH mfp ok OF 1 + ENDOF err OF negate ENDOF ;MATCH ;\nSUMTYPE mfpw\n  VARIANT small n ;VARIANT\n  VARIANT big ptr u8 n n ;VARIANT\n;SUMTYPE\n: RW ( ptr u8 n n -- n ) construct mfpw big MATCH mfpw small OF 100 * ENDOF big OF nip nip ENDOF ;MATCH ;\n41 RT . 7 RTE . s\" zz\" 9 RW . cr\ns\" ok\" type cr\n"
       s\" 42\n-7\n9\n\nok\n" POS ;
 
-\ --- PKG: package wordlist restoration -------------------------------------
-\ A package owns its family + a private word, uses construct+MATCH inside, and
-\ exposes a public runner. After ;package the private word must be gone: the
-\ shared-leg BL/RET traffic and LBCAP token capture must not corrupt the
-\ compile-time wordlist. The public runner returns 45 (4 + PRIV 41); the bare
-\ PRIV reference after ;package dies E-UNDEFINED at exit 70.
+\ After ;package the package's private word must be gone: the shared-leg BL/RET
+\ traffic and LBCAP token capture must not corrupt the compile-time wordlist.
+\ The public runner returns 45 (4 + PRIV 41); a bare PRIV after ;package dies
+\ E-UNDEFINED at exit 70.
 
 : PKG-CASE ( -- )
    s" pkg/restore"
       s\" package MFPK\nSUMTYPE pk\n  VARIANT ok n ;VARIANT\n  VARIANT err n ;VARIANT\n;SUMTYPE\n: PRIV ( -- n ) 41 ;\n: RP ( n -- n ) construct pk ok MATCH pk ok OF PRIV + ENDOF err OF PRIV - ENDOF ;MATCH ;\npublic\n: RUN ( -- n ) 4 RP ;\n;package\nMFPK:RUN . cr\ns\" armed\" type cr\nPRIV . cr\n"
       70 s\" 45\n\narmed\n" s" E-UNDEFINED: PRIV" NEG ;
 
-\ --- DIAG: every factored failure branch dies at its own token -------------
-\ construct legs (LADTDIE via B): unknown family / variant, rc 70.
-\ match legs (LADTDIE via B): unknown family / variant / expected-of, rc 70.
-\ runtime tag mismatch (C-DIE-BAD-TAG inline): rc 85.
-\ certified-word interpret underdepth: rc 70 (routes through the same fail path
-\ this fixture pins the ADT legs feed).
+\ Every factored failure branch dies at its own token: construct legs (LADTDIE
+\ via B) on an unknown family or variant, rc 70; match legs on an unknown
+\ family, variant or expected-of, rc 70; a runtime tag mismatch (C-DIE-BAD-TAG
+\ inline), rc 85; a certified word's interpret underdepth, rc 70, through the
+\ same fail path the ADT legs feed.
 
 : DIAG-CASES ( -- )
    s" diag/con-fam"

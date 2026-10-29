@@ -1,12 +1,7 @@
-\ Persistent cells DECLARED to hold an execution token, bound at LOAD time and
-\ read at run time. A stripped image omits the BUILDER's code addresses from
-\ DATA, so each cell needs the row src/habu/aot-lib.f EMIT-XT-ROWS writes and
-\ the startup patch that applies it.
-\
-\ BIND IS NEVER CALLED AT RUN TIME. It is the load-time initializer, and its own
-\ code declares address cells through `xt!`, which a stripped image has no
-\ registrar for - so the closure must carry the quotation BODIES and not the word
-\ that bound them. Pulling BIND in instead fails the link outright.
+\ Persistent cells declared to hold an execution token, bound at load time and
+\ read at run time. A stripped image omits the builder's code addresses from
+\ DATA, so each cell needs the row src/habu/aot-link-arm.f EMIT-XT-ROWS writes
+\ and the startup patch that applies it.
 package AOT-XT-CELL-SUBJECT
 
 $4A constant FAILURE-RC
@@ -29,8 +24,10 @@ CAST: >STEP-SLOT ( ptr n -- ptr [ n -- n ] )
 : UNALIGNED-SLOT ( -- ptr [ n -- n ] )
    UNALIGNED byte-view 1+ cell-view >STEP-SLOT ;
 
-\ The two bodies have different lengths, so a body whose extent is measured
-\ wrong reaches the other one's code instead of its own.
+\ Load time only: BIND declares address cells through `xt!`, which a stripped
+\ image has no registrar for, so the closure carries the quotation bodies, not
+\ BIND; pulling BIND in fails the link. The two bodies differ in length, so a
+\ body whose extent is measured wrong reaches the other one's code.
 : BIND ( -- )
    ['] BUMP is STEP
    [: BUMP BUMP ;] is QSTEP

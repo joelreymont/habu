@@ -1,31 +1,7 @@
-\ encode.f - WENC, src/arch/wasm/encode.f, on the product engine.
-\
-\ Proves that a frozen WSTRUCT module is written as its emission: a straight
-\ line through every opcode with an operand form, an if/else whose arms meet,
-\ two nested loops, calls to a host word and to a function of the module, and
-\ a data and a code address literal each come out byte for byte; the header
-\ names every body with its offset, size, lanes and frame variant, a function
-\ past the lane arity taking the aligned frame; every call site is NEMIT:CALL
-\ at its own offset, a padded field WLEB reads back after the `call` opcode, its
-\ target the host entry or the callee's body offset; every address literal is a
-\ site of its kind at its own offset, a padded field WLEB reads back as its
-\ value after the `i64.const` opcode, and a number is none. Refused by name:
-\ call_indirect, a function with no body, a brz or two-byte opcode asked for
-\ one byte, a callee that is neither, a stated arity unlike the signature or
-\ past its header byte, an address kind WSTRUCT does not have, and a read after
-\ a refusal or past the last row.
-\
-\ THE BYTES ARE WASM-TOOLS'. Each pinned body is what wasm-tools 1.243.0
-\ assembles for the same function written as text, its locals declared as WENC
-\ declares them, and that module validates with the profile's features; only a
-\ call's index differs, the five-byte padded zero WENC writes where the text
-\ assembler writes one byte, and an address literal's immediate, the ten-byte
-\ padded SLEB WENC writes where the text assembler writes the shortest. The
-\ module with both padded address fields spliced in validates too.
-\
-\ ONE FIXTURE PER CONTEXT. A module holds about seventeen arenas and the live
-\ arena registry holds sixty-four, so every module below is built in its own
-\ context.
+\ encode.f - WENC (src/arch/wasm/encode.f) on the product engine: a frozen
+\ WSTRUCT module is written as its emission byte for byte, its header rows,
+\ call sites and address-literal sites read back at their offsets, and each
+\ form with no bytes refused by name.
 
 require src/lib/test.f
 require src/lib/errors.f
@@ -84,6 +60,8 @@ private
    NBACK:REGISTER ;
 
 \ ---- module rigging ----------------------------------------------------------
+\ A module holds about seventeen arenas and the live arena registry holds
+\ sixty-four, so every module is built in its own context.
 : BUILDER ( IR-CTX:ctx -- IR-BUILD:builder )
    IR-BUILD:PLAN-DEFAULT WSTRUCT:NEW-BUILDER ;
 
@@ -271,7 +249,6 @@ private
    c b  c b WSTRUCT:KEY-ADDR  c b kind WSTRUCT:ADDR-ATTR  IR-BUILD:ADD-ATTR
    c b  c b I64  END1 ;
 
-\ A number.
 : I64-K ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-value-id )
    WSTRUCT:ADDR-NONE I64-AK ;
 
@@ -330,6 +307,13 @@ TYPED-VARIABLE WANT-U len
    WANT-BUF WANT-U @ LEN>N ;
 
 \ ---- the bodies wasm-tools assembles -----------------------------------------
+\ Each pinned body is what wasm-tools 1.243.0 assembles for the same function
+\ written as text, its locals declared as WENC declares them, and that module
+\ validates with the profile's features. Only a call's index differs, the
+\ five-byte padded zero WENC writes where the text assembler writes one byte,
+\ and an address literal's immediate, the ten-byte padded SLEB WENC writes where
+\ the text assembler writes the shortest. The module with both padded address
+\ fields spliced in validates too.
 : LINE-WANT ( -- ptr u8 n )
    WANT-RESET
    s" 03117f0f7e0b7c41072102200220026a2103200320026b2104427d2113200120137c2114201420137d2115201520017e2116" W+

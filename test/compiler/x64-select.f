@@ -1,53 +1,8 @@
 \ x64-select.f - checked x86-64 instruction selection tests.
-\
-\ Proves the contract of src/compiler/native/select-x64.f: a frozen HIR module
-\ becomes a frozen X64IR module in which every source operation has become the
-\ machine operations that compute it, every source value has become the value
-\ the last of those operations defines, and every operand names that value
-\ rather than a position, a double's value is one of the XMM file; and a
-\ trapping unit, an opcode with no rule, a module the pass was not told about and
-\ a contract of another machine are each refused by name.
-\
-\ WHAT THESE FIXTURES MEASURE THAT THE ARM64 ONES CANNOT. Three answers are this
-\ machine's alone and a wrong table would pass every ARM64 case:
-\
-\ - THE IMMEDIATE FORMS. `8 +` is ONE x86-64 instruction and the literal never
-\   becomes a `x64.movi` at all, where ARM64 needs a move-wide chain unless the
-\   constant fits its own narrower field. The case asserts the operation COUNT
-\   as well as the opcode, because a literal that was materialised and then also
-\   folded would carry the right opcode and one instruction too many.
-\ - THE UNFUSED COMPARE AND BRANCH. This slice selects `x64.cmpset` and then
-\   `x64.brz` where the ARM64 pass fuses the pair into one `a64.cmpbr`. The case
-\   asserts both operations and both successors, so the fusing slice that comes
-\   next changes this case deliberately rather than silently.
-\ - THE COPY A TWO-ADDRESS FORM NEEDS. `add rd, rs` destroys rd, so an operand
-\   that is still LIVE after the form is copied with `x64.mov` before it, and an
-\   operand the form is the last reader of is not. Liveness and not a use count:
-\   the loop case below reads its operand once and still needs the copy, because
-\   the backedge brings control round to read it again. ARM64's three-register
-\   forms destroy nothing, so no ARM64 fixture measures it.
-\ - THE COPY A FIXED REGISTER NEEDS. `shl r64, cl` reads its count from rcx and
-\   `idiv r64` its dividend from rax, so the count and the dividend are copied
-\   with `x64.mov` ALWAYS - the copy is the value the allocator places in the
-\   named register, and a count the rest of the function reads is then repaired
-\   rather than refused. The cases assert that the form's operand is the copy and
-\   not the source value. ARM64's sdiv and lslv name no register at all.
-\ - THE NEGATIVE DATA-STACK OFFSET. In a routine that leaves through its callee
-\   the pointer never moves, so every argument is read BEHIND it. x86-64
-\   displacements are signed and ARM64's are not, which is why the tail case
-\   asserts the offset and not only the opcode.
-\
-\ WHY THE POSITIVE CASES BIND A WRAPPING UNIT. Whether a Habu `+` traps is the
-\ compilation unit's overflow policy, and the source dialect records the answer
-\ in its arithmetic schemas. x86-64's add wraps and this dialect has no trapping
-\ form, so a trapping unit is refused - which is a case of its own below.
-\
-\ ONE FIXTURE PER CONTEXT, and a refusing case runs inside an enclosing one: an
-\ abandoned context gives its registry slots back only when a live enclosing
-\ context leaves normally (src/compiler/ir/context.f, the note on stale handles).
-\
-\ NOT COVERED: edge splitting of a permuting back edge, and the pass's internal
-\ shape refusals.
+\ Contract of src/compiler/native/select-x64.f: a frozen HIR module becomes a
+\ frozen X64IR module whose operands name values, a double's in the XMM file; a
+\ trapping unit, an opcode with no rule, an unknown module and another machine's
+\ contract are refused by name.
 
 require src/lib/test.f
 require src/compiler/native/select-x64.f
@@ -58,8 +13,8 @@ package X64SEL-TEST
 private
 
 \ ---- bindings ----------------------------------------------------------------
-\ A linux x86-64 contract whose integer overflow wraps: the machine's own
-\ behaviour, and the one this dialect can select arithmetic under.
+\ A linux x86-64 contract whose integer overflow wraps. x86-64 add wraps and the
+\ dialect has no trapping form, so every positive case binds this one.
 : WBND ( -- CBIND:binding )
    CTARGET-ARCH:X86-64 CTARGET-ABI:SYSV-AMD64 CTARGET-ENDIAN:LITTLE
    CTARGET-PTR--WIDTH:BITS64
@@ -68,7 +23,7 @@ private
    CNUM-FAST--MATH:BIT-EXACT CNUM-COMPARE:IEEE754-UNORDERED CNUM:POLICY
    CBIND:BIND ;
 
-\ The same machine with a trapping overflow policy.
+\ The same machine with a trapping overflow policy, which selection refuses.
 : TBND ( -- CBIND:binding )
    CTARGET-ARCH:X86-64 CTARGET-ABI:SYSV-AMD64 CTARGET-ENDIAN:LITTLE
    CTARGET-PTR--WIDTH:BITS64
@@ -255,9 +210,9 @@ $400 constant CALLEE-ENTRY           \ an address; nothing here branches to it
    HIR-OPCODE:ADD x y BINOP RET1
    CLOSE-FUN ;
 
-\ `x y + x -`: the sum, and then the first argument taken off it again. The add
-\ may not destroy `x`, because the subtraction below reads it; the subtraction
-\ may destroy the sum, whose only reader it is. One function holds both answers.
+\ `x y + x -`: `add rd, rs` destroys rd, so the add copies `x` with `x64.mov`
+\ (the subtraction reads it again) and the subtraction destroys the sum, its
+\ last reader. ARM64's three-register forms destroy nothing.
 : BUILD-REUSE ( -- )
    2 1 OPEN-FUN
    ARG+ {: x:IR-ID:ir-value-id :}
@@ -298,7 +253,9 @@ $400 constant CALLEE-ENTRY           \ an address; nothing here branches to it
    HIR-OPCODE:INVERT a3 UNOP RET1
    CLOSE-FUN ;
 
-\ `: BUMP ( n -- n ) 8 + ;` - the literal the instruction carries.
+\ `: BUMP ( n -- n ) 8 + ;` - one instruction carrying the literal, no
+\ `x64.movi`: the case counts operations, since a literal materialised and also
+\ folded carries the right opcode and one instruction too many.
 : BUILD-IMM-ADD ( -- )
    1 1 OPEN-FUN
    ARG+ {: x:IR-ID:ir-value-id :}
@@ -314,8 +271,9 @@ $400 constant CALLEE-ENTRY           \ an address; nothing here branches to it
    HIR-OPCODE:LSHIFT x k BINOP RET1
    CLOSE-FUN ;
 
-\ `: VSH ( n n -- n ) lshift ;` - the count in a register, which is rcx and
-\ nowhere else.
+\ `: VSH ( n n -- n ) lshift ;` - `shl r64, cl` reads its count from rcx, so the
+\ count is always copied with `x64.mov` and the form's operand is the copy, the
+\ value the allocator places in rcx.
 : BUILD-VAR-SHIFT ( -- )
    2 1 OPEN-FUN
    ARG+ {: x:IR-ID:ir-value-id :}
@@ -323,7 +281,8 @@ $400 constant CALLEE-ENTRY           \ an address; nothing here branches to it
    HIR-OPCODE:LSHIFT x y BINOP RET1
    CLOSE-FUN ;
 
-\ `: QUOT ( n n -- n ) / ;` - rdx:rax, for the same reason.
+\ `: QUOT ( n n -- n ) / ;` - `idiv` reads its dividend from rax: copied
+\ likewise.
 : BUILD-DIV ( -- )
    2 1 OPEN-FUN
    ARG+ {: x:IR-ID:ir-value-id :}
@@ -332,8 +291,9 @@ $400 constant CALLEE-ENTRY           \ an address; nothing here branches to it
    CLOSE-FUN ;
 
 \ `: PICK ( a b -- n ) < if a else b then ;` as the elaborator leaves the
-\ branch: the entry compares and branches and each arm returns. There is no join
-\ block, because a two-way branch carries no values and each arm leaves.
+\ branch: the entry compares and branches and each arm returns, with no join
+\ block. x86-64 selects `x64.cmpset` then `x64.brz` where ARM64 fuses them into
+\ `a64.cmpbr`: the case asserts both operations and both successors.
 : BUILD-BRANCH ( -- )
    2 1 OPEN-FUN
    ARG+ {: x:IR-ID:ir-value-id :}
@@ -1493,14 +1453,13 @@ variable WANT-U
    TTRUE 1 T= TTRUE TTRUE TTRUE TTRUE 4 T= ;
 
 \ ---- the call ---------------------------------------------------------------
-\ WHAT THE RESIDENCY MAP TAKES OUT OF A CALL SITE. The entry loaded the argument
-\ out of cell 0 and this site passes that same value in cell 0, so the store is
-\ left out: a store into a cell that still holds the value stored is what
-\ regalloc-verify.f refuses by name (E-A64RAV-DKEEP), not a saving. Cell 1 is
-\ the carried value and is written. On the way back, the carried value's result
-\ has no reader, so only the answer is loaded. The site was four transfers
-\ around the call and is two, and the count is asserted because a selection that
-\ stopped eliding would carry these same opcodes at other indices.
+\ The entry loaded the argument out of cell 0 and this site passes that same
+\ value in cell 0, so the store is left out: a store into a cell that still
+\ holds the value stored is what regalloc-verify.f refuses by name
+\ (E-A64RAV-DKEEP). Cell 1 is the carried value and is written. On the way back
+\ the carried value's result has no reader, so only the answer is loaded. The
+\ count is asserted because a selection that stopped eliding would carry these
+\ same opcodes at other indices.
 : CALL-BODY ( IR-CTX:ctx -- n bool n bool n bool bool n bool n bool n bool n bool n bool bool )
    HIR-MOD
    BUILD-CALLER
@@ -1533,10 +1492,8 @@ variable WANT-U
 
 \ The same body where control leaves through the callee: the pointer never
 \ moves, so the argument is already in the cell the callee reads it from and the
-\ site stores nothing at all. With no store, nothing reads the argument out of a
-\ register either, so the entry load goes too and the whole routine is the take
-\ and the branch. It was four operations - take, load, store, branch - and the
-\ store was the one the validator refused (test/compiler/x64-regalloc.f).
+\ site stores nothing. With no store nothing reads the argument out of a
+\ register, so the entry load goes too: the routine is the take and the branch.
 : TAIL-BODY ( IR-CTX:ctx -- n bool n bool n )
    HIR-MOD
    BUILD-CALLER
@@ -1726,8 +1683,9 @@ variable WANT-U
    last 1 s" x64.dbytes" ATTR-KEY-IS? TTRUE
    last 1 ATTR-INT 16 T= ;
 
-\ A refusing case runs INSIDE an enclosing context: an abandoned context gives
-\ its registry slots back only when a live enclosing context leaves normally.
+\ A refusing case runs inside an enclosing context: an abandoned context gives
+\ its registry slots back only when a live enclosing context leaves normally
+\ (src/compiler/ir/context.f).
 : GROUP-BIND ( IR-CTX:ctx -- )        drop BIND-REFUSE-CASES ;
 : GROUP-SOURCE ( IR-CTX:ctx -- )      drop SOURCE-REFUSE-CASES ;
 : GROUP-OPCODE ( IR-CTX:ctx -- )      drop OPCODE-REFUSE-CASES ;

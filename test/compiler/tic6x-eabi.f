@@ -41,7 +41,6 @@ variable REMAINDER
 
 \ ---- running one helper -----------------------------------------------------------
 
-\ Every register holds a recognisable pattern before the call.
 : FILL-REGISTERS ( -- )
    32 0 ?do $A5000000 i + i A! $B5000000 i + i B! loop ;
 

@@ -1,50 +1,9 @@
 \ code-window.f - the code region's write bands (src/habu/habu1.f
-\ EMIT-PROT-WINDOW). Two claims, each of which a plausible edit to the engine
-\ falsifies.
-\
-\ WHERE THE REST OF THE PROOF IS, AND WHY IT IS NOT A TEST. A bracket makes
-\ writable only the pages of the three bands it declares - dictionary records,
-\ the control-flow stack, the code at CP - and a writer that fails to declare its
-\ span stores into an RX page and dies of the fault after the crash handler's
-\ report. The
-\ complete detector for THAT is the build, not a suite: `install --force`
-\ compiles the whole engine prefix through every definer, every patch path, the
-\ AOT seed and pass 2 before a single test runs, so a missing declaration cannot
-\ reach a green gate. Three were found exactly that way while the bands landed
-\ (`immediate`, the body length written at `;`, and the does> patch). Narrow a
-\ band by one page in the engine and the fixpoint build dies before this file is
-\ read; that is the mutation this design answers to, and it is why the cases
-\ below stay about protection SEMANTICS rather than about extents.
-\
-\ 1. THE TAIL IS EXECUTE-ONLY AT REST. Above an open window there is no window,
-\ and the region was flipped RX whole at the end of EM-STARTUP, so a raw store
-\ anywhere above CP dies in the crash handler. The read control pins that the
-\ refusal is about writability and not about the address being unmapped. The
-\ narrowing this design replaced - a close that recomputed its range from the CP
-\ it happened to see, and so never RXed the tail - passes the read and fails
-\ every store above CP.
-\
-\ 2. EVERY DIRECT SPILL AT CP DECLARES ITS BYTES. Instructions reach the region
-\ through LCEMIT, which grows the window itself. The string literals, the escaped
-\ literals, a definition name past DNAME-INL and the defer metadata write BYTES
-\ straight at CP, so each must call PROT-EMIT:RESERVE first. Each sweep below parks CP
-\ a fixed distance under a window page boundary and compiles one definition of
-\ that kind, so the spill begins inside the open window and runs past its end.
-\ The distance is SWEPT, in 4-byte steps, because what decides which distance
-\ straddles is how many instructions that definer emits BEFORE its spill - the
-\ sweep never has to know that number and stays correct when it changes. The
-\ literal and name sweeps run to 128 bytes; the MATCH die sweep runs to 400,
-\ because that spill sits about 250 bytes into the word.
-\
-\ Delete any one PROT-EMIT:RESERVE in the engine and this file dies compiling itself:
-\ each of the seven was checked that way, and the four literal kinds plus the
-\ MATCH die are caught here alone (the long name and the defer metadata break the
-\ engine's own build before this file even runs).
-\
-\ The cases deliberately overlap on ONE page - CW-EDGE measures from a fixed mark,
-\ not from the moving CP - so the sweeps cost the region two pages instead of
-\ hundreds. Only the last body on the page survives intact, which is why the
-\ behaviour assertions use fresh definitions compiled after CW-RESTORE.
+\ EMIT-PROT-WINDOW): the tail above CP is execute-only at rest, and every direct
+\ spill at CP declares its bytes. A missing declaration elsewhere dies in the
+\ build: `install --force` compiles the prefix through every definer and patch
+\ path, the AOT seed and pass 2, so these cases test protection semantics, not
+\ extents.
 
 require src/lib/errors.f
 require src/lib/test.f
@@ -80,6 +39,9 @@ variable CW-BASE
 
 : ACCEPTS ( ptr u8 n -- )  0 EXPECT ;
 
+\ Above an open window there is no window, and EM-STARTUP flips the region RX
+\ whole, so a raw store above CP dies in the crash handler; the read control
+\ pins that the refusal is about writability, not an unmapped address.
 : TEST-TAIL-AT-REST ( -- )
    s" a raw store above CP dies: the region tail is RX at rest" T-LABEL
    s" TRUSTED: CW-FAR ( -- ) 0 cp@ $40000 + ! ; CW-FAR" TRAPS
@@ -93,8 +55,18 @@ variable CW-BASE
    s" the control-flow stack is RX at rest as well: it is a band, not a scratch area" T-LABEL
    s" TRUSTED: CW-CFSTK ( -- ) 0 dbase@ CFSTK-OFF + ! ; CW-CFSTK" TRAPS ;
 
-\ Park CP `pad` bytes below the first window page boundary at least one whole
-\ page above the mark, so no case can reach the words compiled before the mark.
+\ Instructions reach the region through LCEMIT, which grows the window; string
+\ literals, escaped literals, a name past DNAME-INL, defer metadata and the
+\ MATCH die write bytes straight at CP and call PROT-EMIT:RESERVE first. Each
+\ sweep parks CP a distance under a window page boundary, in 4-byte steps,
+\ because how many instructions a definer emits before its spill decides which
+\ distance straddles. Without its RESERVE, each literal kind and the MATCH die
+\ kill this file's compile; the long name and the defer metadata break the
+\ engine build. The cases share one page (CW-EDGE measures from the fixed mark):
+\ only the last body survives, so behaviour checks use definitions compiled
+\ after CW-RESTORE. CW-EDGE parks CP `pad` bytes below the first window page
+\ boundary at least a page above the mark, so no case reaches the words compiled
+\ before it.
 : CW-MARK ( -- )  cp@ CW-BASE ! ;
 
 : CW-EDGE ( n -- ) {: pad:n :}
@@ -312,11 +284,9 @@ CW-MARK
 128 CW-EDGE  defer CW-D-128 ( -- )
 
 
-\ a MATCH compiles its invalid-tag die INLINE into the word, message bytes and
-\ all, at CP (habu2.f C-DIE-BAD-TAG). The die sits at the END of the MATCH, about
-\ 250 bytes into it, so this sweep runs further under the boundary than the
-\ others - the distance a spill sits from the definition's first word is exactly
-\ what the sweep is not allowed to assume.
+\ a MATCH compiles its invalid-tag die inline at CP (habu2.f C-DIE-BAD-TAG),
+\ about 250 bytes into the word, so this sweep runs to 400 bytes; the others run
+\ to 128.
 4   CW-EDGE  : CW-BT-004 ( outcome -- n ) MATCH outcome exited OF drop 1 ENDOF signaled OF drop 2 ENDOF timeout OF 3 ENDOF ;MATCH ;
 8   CW-EDGE  : CW-BT-008 ( outcome -- n ) MATCH outcome exited OF drop 1 ENDOF signaled OF drop 2 ENDOF timeout OF 3 ENDOF ;MATCH ;
 12  CW-EDGE  : CW-BT-012 ( outcome -- n ) MATCH outcome exited OF drop 1 ENDOF signaled OF drop 2 ENDOF timeout OF 3 ENDOF ;MATCH ;

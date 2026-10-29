@@ -2,27 +2,6 @@
 \ builds each public word as a module's entry, runs it and checks every line it
 \ prints. Each entry starts in a fresh module, its free list empty and its
 \ memory ending at its image's last page, P below.
-\
-\ BUFFER is one buffer's life as on the native target. 100 bytes hold index 103
-\ and not 104: the capacity is the request rounded up to a cell. Growing to
-\ 70000 bytes maps two pages at P+1, copies the old page's bytes and frees it.
-\ A refused reserve throws its code and keeps the mapping and its capacity: a
-\ negative count, a count whose bytes overflow, 4 GiB, which memory.grow
-\ refuses, and 2^48 bytes, more pages than memory32 has. A released buffer
-\ refuses every index; reserving it again takes its two pages back, cleared.
-\
-\ HOLES frees three one-page neighbours A, B, C as A, C, B: B joins both into
-\ one run of three pages, which a three-page buffer then takes whole. Freed
-\ again, a one-page buffer takes its first page and a two-page one the rest.
-\
-\ TWICE frees a mapped page twice, and INSIDE the second of two neighbouring
-\ pages again after both joined one run. Each run then overlaps a free one, so
-\ its second free traps, after the lines of the maps and frees before it.
-\
-\ REFUSED frees a mapped page with a zero length, at an address inside it, with
-\ a negative length, and at the address 2^32 past it, which no memory offset
-\ is and which wraps to it in 32 bits: each answers -1 and leaves the free list
-\ as it was, so the page then frees, maps back whole and frees again.
 package WSTORE
 private
 
@@ -129,10 +108,20 @@ public
    0 ROWS SAMPLE-NUMBER @ .  0 ROWS SAMPLE-VALUE @ f.
    1 ROWS SAMPLE-NUMBER @ .  1 ROWS SAMPLE-VALUE @ f. ;
 
+\ One buffer's life as on the native target. 100 bytes hold index 103 and not
+\ 104: the capacity is the request rounded up to a cell. Growing to 70000 bytes
+\ maps two pages at P+1, copies the old page's bytes and frees it. A refused
+\ reserve throws its code and keeps the mapping and its capacity: a negative
+\ count, a count whose bytes overflow, 4 GiB, which memory.grow refuses, and
+\ 2^48 bytes, more pages than memory32 has. A released buffer refuses every
+\ index; reserving it again takes its two pages back, cleared.
 : BUFFER ( -- )
    GROW REFUSE REUSE
    BYTES-RELEASE CELLS-RELEASE PTRS-RELEASE ;
 
+\ Frees three one-page neighbours A, B, C as A, C, B: B joins both into one run
+\ of three pages, which a three-page buffer then takes whole. Freed again, a
+\ one-page buffer takes its first page and a two-page one the rest.
 : HOLES ( -- )
    65536 A-RESERVE  65536 B-RESERVE  65536 C-RESERVE
    0 A FIRST !  0 B SECOND !
@@ -148,6 +137,9 @@ public
    0 C SECOND @ SAME .
    B-RELEASE  C-RELEASE ;
 
+\ TWICE frees a mapped page twice, and INSIDE the second of two neighbouring
+\ pages again after both joined one run. Each run then overlaps a free one, so
+\ its second free traps, after the lines of the maps and frees before it.
 : TWICE ( -- )
    65536 map-anon . {: p:ptr :}
    p 65536 munmap .
@@ -161,6 +153,10 @@ public
    q 65536 munmap .
    q 65536 munmap . ;
 
+\ Frees a mapped page with a zero length, at an address inside it, with a
+\ negative length, and at the address 2^32 past it, which no memory offset is
+\ and which wraps to it in 32 bits: each answers -1 and leaves the free list as
+\ it was, so the page then frees, maps back whole and frees again.
 : REFUSED ( -- )
    65536 map-anon . {: p:ptr :}
    p 0 munmap .

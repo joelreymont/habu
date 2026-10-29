@@ -1,37 +1,9 @@
-\ regfile.f - acceptance suite for the register-file description.
-\
-\ Covers src/compiler/native/regfile.f through its public words, and the ARM64
-\ description src/compiler/native/a64ir.f builds from it. Four things are owed:
-\
-\ 1. THE DERIVED SETS ARE DERIVED, AND FROM THE RIGHT HALF. Reserved is what a
-\    backend declares and allocatable is what is left; clobbered is what a call
-\    destroys and callee-saved is what survives. Each is checked against a set
-\    this suite computes for itself out of the declaration, not against a
-\    restatement of the module's own arithmetic, and on a description where the
-\    two answers actually differ - a file with a non-empty callee-saved set -
-\    because on ARM64 that set is empty and an implementation that returned zero
-\    unconditionally would pass every arm64 case.
-\
-\ 2. A DESCRIPTION THAT DESCRIBES NO MACHINE IS REFUSED, one case per rule with
-\    its exact code. These are the shapes a backend author gets wrong: a file of
-\    no registers, a file wider than a set can name, a register reserved that the
-\    file does not have, a file the virtual machine took all of, a call
-\    destroying a register no routine could have held, and a slot width no scaled
-\    access has.
-\
-\ 3. THE ARM64 DESCRIPTION IS DERIVED AND NOT WRITTEN AGAIN. Every field of
-\    A64IR:REGFILE is asserted against the authority it was taken from -
-\    src/compiler/native-effect.f for the file size and the reserved set, the
-\    dialect's own frame access for the slot width - so a description that
-\    started restating numbers reddens here. This is what keeps Darwin working:
-\    x18 is reserved there and ordinary on Linux, the reserved set already knows
-\    it, and a literal would not.
-\
-\ 4. THE x86_64 SHAPE IS EXPRESSIBLE AT ALL. Sixteen registers with six of them
-\    the virtual machine's is the shape docs/xcomp.md "Machine model" fixes, and
-\    the point of the description is that it can be stated before a backend
-\    exists. The allocator's own suite takes it from here and allocates under
-\    it.
+\ regfile.f - acceptance suite for the register-file description
+\ (src/compiler/native/regfile.f) and the ARM64 description
+\ src/compiler/native/a64ir.f builds from it. Expected sets are computed here
+\ from the declaration, never by the module's arithmetic; callee-saved is
+\ measured on a non-ARM64 file because ARM64's set is empty and a constant zero
+\ would pass every arm64 case.
 
 require src/lib/test.f
 require src/compiler/native/regfile.f
@@ -55,12 +27,11 @@ private
    n 0 ?do base i + NREGFILE:REGS-REG NREGFILE:REGS-WITH loop ;
 
 \ ---- an x86_64-like shape ----------------------------------------------------
-\ Sixteen general registers, six of them reserved as the virtual machine's
-\ (rbp, rbx and r12..r15 in docs/xcomp.md "Machine model"), so ten are
-\ allocatable here (the real backend also reserves rsp); sixteen floating with
-\ none reserved; eight-byte slots. Every allocatable number is one
-\ ARM64 leaves alone too, so the allocator's suite can build NEFF pools over the
-\ same registers.
+\ Sixteen general registers, six reserved as the virtual machine's (rbp, rbx and
+\ r12..r15, docs/xcomp.md "Machine model"), so ten are allocatable here (the
+\ real backend also reserves rsp); sixteen floating, none reserved; eight-byte
+\ slots. Every allocatable number is one ARM64 leaves alone too, so the
+\ allocator's suite can build NEFF pools over the same registers.
 16 constant X64-N
 10 constant X64-ALLOC-N
 6 constant X64-RES-N
@@ -73,8 +44,7 @@ private
    8 NREGFILE:FILE ;
 
 \ The same machine under a convention that keeps two registers across a call, so
-\ the callee-saved set is not empty and the derivation is measured where it says
-\ something. Nothing on ARM64 exercises this.
+\ the callee-saved set is not empty.
 2 constant X64-SAVED-N
 
 : X64-SAVED ( -- NREGFILE:file )
@@ -130,16 +100,13 @@ public
 
 \ ---- the derived sets --------------------------------------------------------
 : DERIVED ( -- )
-   \ What the declaration says.
    X64-SHAPE G-SIZE X64-N T=
    X64-SHAPE G-RES X64-ALLOC-N X64-RES-N RANGE-BITS T=
-   \ And what is derived from it: the file less the virtual machine's claim.
    X64-SHAPE G-ALC  X64-N MASK-N  X64-ALLOC-N X64-RES-N RANGE-BITS invert and T=
    X64-SHAPE G-ALC  0 X64-ALLOC-N RANGE-BITS T=
    \ Every allocatable register destroyed leaves nothing callee-saved.
    X64-SHAPE G-CLB  0 X64-ALLOC-N RANGE-BITS T=
    X64-SHAPE G-SAV  0 T=
-   \ The floating file answers the same questions in the same words.
    X64-SHAPE F-SIZE X64-N T=
    X64-SHAPE F-RES  0 T=
    X64-SHAPE F-ALC  X64-N MASK-N T=
@@ -196,10 +163,11 @@ public
       E-NREGFILE TTHROWSQ ;
 
 \ ---- the ARM64 description ---------------------------------------------------
-\ Every field against the authority it was derived from. A64M:RESERVED-GPRS
-\ already folds the platform register and everything the engine occupies
-\ together, so asserting against it is what proves the description did not
-\ restate a number - and what keeps Darwin, where x18 is reserved, correct.
+\ Every field against its authority: src/compiler/native-effect.f for the file
+\ size and the reserved set, the dialect's frame access for the slot width.
+\ A64M:RESERVED-GPRS folds the platform register and everything the engine
+\ occupies, so asserting against it proves the description restates no number
+\ and keeps Darwin, where x18 is reserved, correct.
 : ARM64 ( -- )
    A64IR:REGFILE G-SIZE A64M:FILE-SIZE T=
    A64IR:REGFILE G-RES A64M:RESERVED-GPRS T=

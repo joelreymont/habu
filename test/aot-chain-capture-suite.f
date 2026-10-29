@@ -1,20 +1,11 @@
-\ aot-chain-capture-suite.f - the AOT artifact format and the chain capture tool,
-\ both through the real load path (dot habu-retire-the-s-4fbc244f).
-\
-\ The small capture runs WRITE/READ over real records and declared
-\ address cells, clearing the row buffer before restoration. The parent checks
-\ the header's independent magic/version/count and the producer engine digest.
-\ A separate reader process checks chosen rows; MERGE checks location/target
-\ rebasing and raw-cell/instruction-chain DATA relocation sites. Old versions,
-\ partial rows, invalid row coordinates and forged closure path lengths must fail
-\ through the file reader. Synthetic DATA-site and address-row storage limits
-\ run separately in test/aot-chain-storage-suite.f on both target families.
-\
-\ The production capture tool is also loaded and must name its empty-window
-\ refusal: the booted engine already provides its chain.
-\
-\ Registered as `TEST:SUITE aot-chain-capture`. Run standalone:
-\   bin/hb --load test/aot-chain-capture-suite.f
+\ aot-chain-capture-suite.f - the AOT artifact format and the chain capture
+\ tool, both through the real load path. Real records and declared address cells
+\ go through WRITE/READ, a separate reader process and MERGE; old versions,
+\ partial rows, bad row coordinates and forged closure path lengths fail through
+\ the file reader. Storage limits: test/aot-chain-storage-suite.f. The capture
+\ tool must name its empty-window refusal: the booted engine provides its chain.
+
+\ Registered as `TEST:SUITE aot-chain-capture`.
 
 require src/lib/errors.f
 require src/lib/test.f

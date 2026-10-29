@@ -1,66 +1,8 @@
 \ x86-64-kernel-engine.f - the engine-state rows of the x86-64 kernel
 \ (src/habu/kernel-x64.f) in the booted harness, cross-built for an x86-64
-\ peer. Each image runs TASK-LIVE-GUARD, and then checks the data stack is
-\ empty. hb-x64-kernel-engine runs with no task live, as the boot leaves
-\ TASKS-LIVE-CELL, so the guard passes and the image exits 0;
-\ hb-x64-kernel-engine-negative expects the wrong depth and exits 21.
-\ hb-x64-kernel-engine-armed marks a task live first, so the guard exits 79.
-\ hb-x64-kernel-window carries text past one PROT-PAGE-MAX behind the kernel,
-\ as the whole kernel will, so its read-write segment lands a page further
-\ on; it pushes the text's span and exits 0.
-\
-\ The dictionary search images seed the same five records with
-\ X64HARNESS:RECORD, and exit 0. hb-x64-kernel-search asks `search-wl` and
-\ `xref-search-wl` with no index, so the one-wordlist search scans;
-\ hb-x64-kernel-search-index builds the index first and asks the same, so it
-\ probes. hb-x64-kernel-index-upkeep also seeds eccwbv and hktfoj, two names of
-\ one length whose keys share a first slot under wid 0, so both the insert and
-\ the probe for hktfoj walk the chain past eccwbv's record. After the build it
-\ seeds more records: one the index is not told of stays absent until
-\ HIDX-ADD, and one until HIDX-REBUILD,, and one under DICT-WL:RETIRED is found
-\ by the scan the probe leaves that wid to.
-\
-\ The heap, printer and hook rows, one image per outcome; the peer runs each
-\ and compares its status and its fd-1 and fd-2 bytes (src/habu/kernel-x64.f):
-\ - hb-x64-kernel-heap walks DP from the heap floor through allot, align, `,`
-\   and c, checks the cells they filled and returns to the floor, and exits 0;
-\ - hb-x64-kernel-heap-high allots up to the ceiling, which DP may reach, and
-\   one byte past it, which exits 76 with the DP line on fd 2;
-\ - hb-x64-kernel-heap-low allots one byte below the floor and exits 76;
-\ - hb-x64-kernel-heap-armed runs `,` with a task live and exits 79;
-\ - hb-x64-kernel-print writes the fixed bytes the ARM64 engine writes for
-\   the same values on fd 1 and exits 0;
-\ - hb-x64-kernel-genio sends output through a device row whose routine
-\   brackets the span in [ ], and past it on each path that writes fd 1;
-\ - hb-x64-kernel-hooks installs, reads and clears the three hooks at the
-\   code window's edges, suspends and resumes the checker hook with its
-\   preflight, and exits 0;
-\ - hb-x64-kernel-hooks-check, -top, -replaced and -empty each end in one
-\   hook row's fd-2 refusal and exit 70.
-\
-\ The register, dictionary, seal, wordlist and scope rows, the same way:
-\ - hb-x64-kernel-state reads the boot's registers and DATA cells through the
-\   getters and counts wordlists, and exits 0;
-\ - hb-x64-kernel-cp moves CP to both bounds of the code area and back, and
-\   -cp-low, -cp-high and -cp-unslotted each refuse one CP with 83: a code
-\   slot below the area, the region's end and a 4-aligned CP between slots;
-\ - hb-x64-kernel-ndict lowers and raises the count over an index, and exits
-\   0; -ndict-cap admits DICT-CAP and exits 74 with the fd-2 text for one
-\   more, and -ndict-floor exits 83 below the seal floor;
-\ - hb-x64-kernel-seed-ndict lowers through the floor and exits 0, and
-\   -seed-ndict-high exits 74;
-\ - hb-x64-kernel-append publishes a pending record and its does> companion
-\   and exits 0, and -append-foreign exits 83;
-\ - hb-x64-kernel-seal exits 0; -seal-undrained names two pending defers on
-\   fd 2 and exits 73;
-\ - hb-x64-kernel-drain replays two pending defers through the target
-\   checker's routines, which write them on fd 1, and exits 0;
-\   -drain-unset writes `trust-decl` on fd 2 and exits 70;
-\ - hb-x64-kernel-prot-wid, -wide-mark, -xt-store, -tier and -scope exit 0;
-\   -prot-wid-bound exits 84 with its fd-2 text, -xt-store-armed and
-\   -mark-armed exit 83, -tier-zero exits 70 with its fd-2 text, and
-\   -snap-rebase exits 76 with the REFUSE text.
-\ The host checks each image's ELF header; running them is the peer's.
+\ peer. RUN names every image and its builder's comment states its exit status
+\ (0 unless stated); the peer runs each and compares its status and its fd-1 and
+\ fd-2 bytes. The host checks each image's ELF header only.
 require src/habu/snapshot-format.f
 require src/habu/address-cells.f
 require test/x86-64-boot-harness.f
@@ -72,6 +14,9 @@ using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
 PROT-PAGE-MAX constant FILL-BYTES
 create FILL FILL-BYTES allot
 
+\ TASK-LIVE-GUARD, then an empty data stack. With no task live, as the boot
+\ leaves TASKS-LIVE-CELL, the guard passes; -negative expects the wrong depth
+\ and exits 21; -armed marks a task live first and exits 79.
 : BUILD ( bool bool ptr u8 n -- ) {: negative:bool armed:bool path:ptr pathu:n :}
    negative X64HARNESS:BOOT-OPEN,
    armed if 1 TASKS-LIVE-CELL X64HARNESS:CELL!, then
@@ -79,6 +24,8 @@ create FILL FILL-BYTES allot
    0 X64HARNESS:EXPECT-DEPTH,
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
+\ Text past one PROT-PAGE-MAX behind the kernel, as the whole kernel will carry,
+\ so the read-write segment lands a page further on; it pushes the text's span.
 : BUILD-WINDOW ( ptr u8 n -- ) {: path:ptr pathu:n :}
    false X64HARNESS:BOOT-OPEN,
    FILL FILL-BYTES X64HARNESS:PUSH-TEXT,
@@ -86,7 +33,9 @@ create FILL FILL-BYTES allot
    FILL-BYTES X64HARNESS:EXPECT-POP,
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
-\ ---- the dictionary search ---------------------------------------------------
+\ The search images seed five records with X64HARNESS:RECORD. Without an index
+\ `search-wl` and `xref-search-wl` scan the one wordlist; with HIDX-BUILD first
+\ they probe.
 7 constant OTHER-WID                   \ a public wordlist past the fixed ones
 
 \ Longer than DNAME-INL, so its record points at its bytes.
@@ -131,6 +80,11 @@ create FILL FILL-BYTES allot
    SEARCHES,
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
+\ eccwbv and hktfoj are names of one length whose keys share a first slot under
+\ wid 0, so the insert and the probe for hktfoj walk the chain past eccwbv's
+\ record. After the build, a record the index is not told of stays absent until
+\ HIDX-ADD, and another until HIDX-REBUILD, and one under DICT-WL:RETIRED is
+\ found by the scan the probe leaves that wid to.
 : BUILD-UPKEEP ( ptr u8 n -- ) {: path:ptr pathu:n :}
    false X64HARNESS:BOOT-OPEN,
    SEED,
@@ -154,7 +108,6 @@ create FILL FILL-BYTES allot
    X64HARNESS:EXPECT-BALANCED,
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
-\ ---- heap ----------------------------------------------------------------------
 $1122334455667788 constant CELL-VALUE
 
 : ROW ( ptr u8 n -- ) X64HARNESS:CALL-ROW, ;
@@ -162,7 +115,8 @@ $1122334455667788 constant CELL-VALUE
 : ALLOT, ( n -- ) X64HARNESS:PUSH,  s" allot" ROW ;
 
 \ DP starts at the heap floor, DATA-START. Three bytes and an align reach the
-\ next cell; `,` fills it and c, stores the low byte of its cell alone.
+\ next cell; `,` fills it and c, stores the low byte of its cell alone. The walk
+\ returns to the floor.
 : BUILD-HEAP ( ptr u8 n -- ) {: path:ptr pathu:n :}
    false X64HARNESS:BOOT-OPEN,
    3 ALLOT,  s" align" ROW
@@ -178,6 +132,7 @@ $1122334455667788 constant CELL-VALUE
    0 X64HARNESS:EXPECT-DEPTH,
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
+\ DP may reach the ceiling; one byte past it exits 76 with the DP line on fd 2.
 : BUILD-HEAP-HIGH ( ptr u8 n -- ) {: path:ptr pathu:n :}
    false X64HARNESS:BOOT-OPEN,
    X64KERNEL:DP-CEILING DATA-START - ALLOT,
@@ -185,18 +140,19 @@ $1122334455667788 constant CELL-VALUE
    1 ALLOT,
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
+\ One byte below the floor exits 76.
 : BUILD-HEAP-LOW ( ptr u8 n -- ) {: path:ptr pathu:n :}
    false X64HARNESS:BOOT-OPEN,
    -1 ALLOT,
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
+\ `,` with a task live exits 79.
 : BUILD-HEAP-ARMED ( ptr u8 n -- ) {: path:ptr pathu:n :}
    false X64HARNESS:BOOT-OPEN,
    1 TASKS-LIVE-CELL X64HARNESS:CELL!,
    1 X64HARNESS:PUSH,  s" ," ROW
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
-\ ---- printers ------------------------------------------------------------------
 $8000000000000000 constant MIN-CELL
 $7FFFFFFFFFFFFFFF constant MAX-CELL
 
@@ -204,7 +160,8 @@ $7FFFFFFFFFFFFFFF constant MAX-CELL
 : EMIT, ( n -- ) X64HARNESS:PUSH,  s" emit" ROW ;
 
 \ fd 1: the four cells ., -1 and 0 u., "A B", "hello" and .s of 7 -3, one per
-\ line; .s leaves the cells, and depth counts them.
+\ line, the fixed bytes the ARM64 engine writes for the same values; .s leaves
+\ the cells, and depth counts them.
 : BUILD-PRINT ( ptr u8 n -- ) {: path:ptr pathu:n :}
    false X64HARNESS:BOOT-OPEN,
    MIN-CELL DOT,  MAX-CELL DOT,  0 DOT,  -1 DOT,
@@ -218,7 +175,6 @@ $7FFFFFFFFFFFFFFF constant MAX-CELL
    0 X64HARNESS:EXPECT-DEPTH,
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
-\ ---- the output device ---------------------------------------------------------
 : TYPE, ( ptr u8 n -- ) X64HARNESS:PUSH-TEXT,  s" type" ROW ;
 : OUT! ( n -- ) GENIO-ABI:OUT-CELL X64HARNESS:CELL!, ;
 
@@ -244,7 +200,6 @@ $7FFFFFFFFFFFFFFF constant MAX-CELL
    0 X64HARNESS:EXPECT-DEPTH,
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
-\ ---- hooks ---------------------------------------------------------------------
 : CHECK-HOOK! ( n -- ) X64HARNESS:PUSH-REGION,  s" set-check" ROW ;
 : TOP-HOOK! ( n -- ) X64HARNESS:PUSH-REGION,  s" set-top-check" ROW ;
 : PREFLIGHT! ( n -- ) X64HARNESS:PUSH-REGION,  s" set-preflight" ROW ;
@@ -276,6 +231,7 @@ $7FFFFFFFFFFFFFFF constant MAX-CELL
    0 X64HARNESS:EXPECT-DEPTH,
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
+\ Each of these ends in one hook row's fd-2 refusal and exits 70.
 : BUILD-HOOKS-CHECK ( ptr u8 n -- ) {: path:ptr pathu:n :}
    false X64HARNESS:BOOT-OPEN,
    DICT-SIZE CHECK-HOOK!
@@ -296,7 +252,6 @@ $7FFFFFFFFFFFFFFF constant MAX-CELL
    0 X64HARNESS:PUSH,  s" set-preflight" ROW
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
-\ ---- engine state ------------------------------------------------------------
 40 constant FIRST-WID                  \ WIDN-CELL before the first wordlist
 
 \ The getters answer what the boot published, and wordlist counts WIDN-CELL.
@@ -322,7 +277,6 @@ $7FFFFFFFFFFFFFFF constant MAX-CELL
    row rowu ROW
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
-\ ---- the code pointer --------------------------------------------------------
 : CP!, ( n -- ) X64HARNESS:PUSH-REGION,  s" cp!" ROW ;
 
 \ The code slot, and the last one of the region.
@@ -347,7 +301,6 @@ REGION SLOT-BYTES - constant TOP-SLOT
    X64HARNESS:EXPECT-BALANCED,
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
-\ ---- the dictionary count ----------------------------------------------------
 : NDICT!, ( n -- ) X64HARNESS:PUSH,  s" ndict!" ROW ;
 : NDICT?, ( n -- ) s" ndict@" ROW  X64HARNESS:EXPECT-POP, ;
 
@@ -407,7 +360,6 @@ REGION SLOT-BYTES - constant TOP-SLOT
    SEED,  5 SEED-NDICT!,
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
-\ ---- native publication ------------------------------------------------------
 : APPEND, ( n -- ) X64HARNESS:PUSH,  s" ndict-append" ROW ;
 
 \ Record 5, delta, written and pending but not counted, under the native tier.
@@ -437,7 +389,6 @@ REGION SLOT-BYTES - constant TOP-SLOT
    PENDING,  6 NDICT!,  6 APPEND,
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
-\ ---- the seal ----------------------------------------------------------------
 : BUILD-SEAL ( ptr u8 n -- ) {: path:ptr pathu:n :}
    false X64HARNESS:BOOT-OPEN,
    s" seal-captured?" ROW  0 X64HARNESS:EXPECT-POP,
@@ -486,14 +437,15 @@ REGION SLOT-BYTES - constant TOP-SLOT
    X64HARNESS:EXPECT-BALANCED,
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
-\ A pending table the drain or the seal row meets without a checker to take it.
+\ A pending table the drain or the seal row meets without a checker to take it:
+\ SEAL-CAPTURE names the two pending defers on fd 2 and exits 73;
+\ DRAIN-PRETRUST writes `trust-decl` on fd 2 and exits 70.
 : BUILD-PENDING ( ptr u8 n ptr u8 n -- ) {: row:ptr rowu:n path:ptr pathu:n :}
    false X64HARNESS:BOOT-OPEN,
    PENDING-DEFERS,
    row rowu ROW
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
-\ ---- protected wordlists -----------------------------------------------------
 : PROT-WID!, ( n -- ) X64HARNESS:PUSH,  s" prot-wid-add" ROW ;
 : BITS ( n -- n ) CELL * PROT-BITS-OFF + ;   \ the bitmap's cell n
 
@@ -521,7 +473,6 @@ REGION SLOT-BYTES - constant TOP-SLOT
    PROT-WID-MAX PROT-WID!,
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
-\ ---- record marks and persisted cells ----------------------------------------
 \ wide-mark sets DNAME-WIDE on the newest record, hidden, and leaves the one
 \ before it alone. The record's pages start read and execute only, as a
 \ published record's are, so the row writes only through its own flip.
@@ -635,7 +586,6 @@ REGION SLOT-BYTES - constant TOP-SLOT
    X64ASM:RBP X64CODE:ASM-SINK X64ASM:ENC-POP
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
-\ ---- the compiler tier and the build scope -----------------------------------
 \ The constant rows and tier 1.
 : BUILD-TIER ( ptr u8 n -- ) {: path:ptr pathu:n :}
    false X64HARNESS:BOOT-OPEN,
@@ -807,6 +757,7 @@ public
    11 s" hb-x64-kernel-number-11" TMP-PATH BUILD-NUM
    12 s" hb-x64-kernel-number-12" TMP-PATH BUILD-NUM
    13 s" hb-x64-kernel-number-13" TMP-PATH BUILD-NUM
+   \ snap-rebase exits 76 with the REFUSE text.
    s" snap-rebase" s" hb-x64-kernel-snap-rebase" TMP-PATH BUILD-CALL
    X64HARNESS:DISPOSE
    T-REPORT ;

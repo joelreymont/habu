@@ -1,21 +1,9 @@
-\ print-min-int.f — `.` and `u.` over the one cell whose negation overflows.
-\
-\ MIN-N ($8000000000000000) has no positive magnitude: `0 - MIN-N` is MIN-N
-\ again. The engine's signed printer (src/habu/rt.f G-PRINT9) negates and then
-\ divides, so a signed divide there fed the digit loop a negative value and it
-\ wrote bytes BELOW '0' — `MIN-N .` printed `-'..--).0-*(+,))+(0(` (measured
-\ 2026-09-17, dot habu-print-min-int-074e1c48). The loop divides UNSIGNED now,
-\ which reads the pattern left by the negate as the magnitude it is.
-\
-\ HOW THE TEXT COMES BACK. `.` and `u.` write through the engine's output funnel
-\ (src/lib/genio-core.f), so a genio device makes them readable: the sink below is a
-\ write-only device that appends to a buffer, and each case installs it, prints
-\ one number, restores the terminal and only THEN asserts — a failing assertion
-\ has to reach the terminal, not the buffer it is complaining about.
-\
-\ `u.` was already right (it divided unsigned all along) and is here because the
-\ two printers share one itoa shape: a future edit to either must keep both.
-\ The checked renderer in src/lib/fmt.f has its own regression in src/lib/fmt-test.f.
+\ `.` and `u.` over MIN-N ($8000000000000000), whose negation is itself. The
+\ engine's signed printer (src/habu/rt.f G-PRINT9) negates and then divides
+\ unsigned, which reads the negated pattern as its magnitude; a signed divide
+\ there writes bytes below '0'. `u.` shares the itoa shape: an edit to either
+\ printer must keep both. src/lib/fmt.f's checked renderer is covered by
+\ src/lib/fmt-test.f.
 
 require src/lib/test.f
 require src/lib/string.f
@@ -35,9 +23,11 @@ variable SINK-N
 variable SINK-OVER                      \ a write past the buffer, latched
 variable SINK-DEV
 
-\ ---- the sink device ---------------------------------------------------------
-\ A write operation may not throw (src/lib/genio-core.f), so an overrun is latched and
-\ checked once at the end instead.
+\ `.` and `u.` write through the engine's output funnel (src/lib/genio-core.f):
+\ the sink is a write-only device appending to a buffer. Each case installs it,
+\ prints one number, restores the terminal and only then asserts, so a failing
+\ assertion reaches the terminal. A write operation may not throw, so an overrun
+\ is latched and checked once at the end.
 : SINK-RESET ( -- )
    0 SINK-N !  0 SINK-OVER ! ;
 
@@ -71,7 +61,6 @@ variable SINK-DEV
 : SINK@ ( -- GENIO:device )
    SINK-DEV @ GENIO:>DEVICE ;
 
-\ ---- one printed number, read back -------------------------------------------
 \ Both printers end their text with a newline, so the case compares what came
 \ before it and asserts the newline separately.
 : BODY$ ( -- ptr u8 n )
@@ -115,7 +104,6 @@ public
    T-RESET
    SINK-BUILD GENIO:DEVICE>N SINK-DEV !
 
-   \ `.` — signed. The first line is the whole point of the file.
    MIN-N     s" -9223372036854775808" T-DOT
    MIN-N 1+  s" -9223372036854775807" T-DOT   \ the neighbour that negates cleanly
    MAX-N     s" 9223372036854775807"  T-DOT
@@ -123,7 +111,7 @@ public
    0         s" 0"                    T-DOT
    7         s" 7"                    T-DOT
 
-   \ `u.` — unsigned. MIN-N's pattern IS the magnitude the signed printer needs.
+   \ MIN-N's pattern is the magnitude the signed printer needs.
    MIN-N     s" 9223372036854775808"  T-U.
    MIN-N 1+  s" 9223372036854775809"  T-U.
    MAX-N     s" 9223372036854775807"  T-U.

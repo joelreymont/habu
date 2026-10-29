@@ -30,25 +30,12 @@ variable ROW-SCRIPT?                     \ the row's `--` has passed
    ARGC 3 > if 3 SCRIPT-SEP? 0= if SUITE-USAGE then then
    SCRIPT-ARGC 0 <> if SUITE-USAGE then ;
 
-\ EVERY ITEM NAMES ITS OWN ENGINE TO ITS CHILDREN. A suite forks tools of its
-\ own, and src/lib/engine-candidate.f is the one resolver they all ask which engine
-\ to run: it reads HABU_UNDER_TEST first and falls back to the running engine
-\ only when nothing names one. The gate used to pass its environment through
-\ untouched, so a CI that exports HABU_UNDER_TEST=<tree>/bin/hb - which is the
-\ ordinary way to point a gate at a candidate - sent the children of a WHITEBOX
-\ item to the sealed product while the item itself ran on the whitebox engine.
-\ Thirteen suites went red with their CHILD answering `hb: internal engine word:
-\ DECLARATIONS`, and the item's own engine was never the question.
-\
-\ So the item states the answer instead of inheriting it, for both kinds: the
-\ variable a child resolves names the binary this item is being run on, and an
-\ outer value cannot reach past it. HABU_FIXPOINT_ENGINE goes with it because a
-\ suite that rebuilds an engine (tools/build-fixpoint.f BF-ENGINE$) must land on
-\ the same one - and for a whitebox item that is the gate's own private copy,
-\ which is exactly where a build that promotes over it should write.
-\
-\ Set BEFORE the inherit, which skips a name already present, so each variable
-\ has one row whatever the parent's environment holds.
+\ Each item names its own engine to its children: HABU_UNDER_TEST, which
+\ src/lib/engine-candidate.f reads first, names the binary this item runs on, so
+\ an outer value cannot send a whitebox item's children to the sealed product.
+\ HABU_FIXPOINT_ENGINE goes with it: a suite that rebuilds an engine
+\ (tools/build-fixpoint.f BF-ENGINE$) must land on the same one. Both are set
+\ before the inherit, which skips a name already present.
 : SUITE-ENGINE-ENV ( ptr u8 n -- ) {: eng:ptr engu:n :}
    s" HABU_UNDER_TEST" >LEN eng engu >LEN PROC-ENV+
    s" HABU_FIXPOINT_ENGINE" >LEN eng engu >LEN PROC-ENV+ ;
@@ -63,36 +50,29 @@ variable ROW-SCRIPT?                     \ the row's `--` has passed
    s" HABU_GATE_COMPILER_IMAGES" >LEN GT-ROOT >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING ;
 
-\ The product engine, spelled twice for two different readers. The SPAWN is
-\ relative, the way every other spawn of it in the tree is: the gate already has
-\ to be running in the checkout. The VARIABLE is the same binary spelled
-\ absolutely, because the child that resolves it may run somewhere else -
-\ test/boot-row-test.f spawns the engine under a caller's own CWD, and a
-\ relative path does not survive that (measured: E-PROC-SPAWN, exit 67).
-\ ENGINE-ID:PATH$ is this process's own executable, so the two always name one
-\ file.
+\ The spawn path is relative, as every spawn of it in the tree: the gate runs in
+\ the checkout. The variable is absolute: test/boot-row-test.f spawns the engine
+\ under a caller's CWD, where a relative path fails (measured: E-PROC-SPAWN,
+\ exit 67). ENGINE-ID:PATH$ is this process's executable, so both name one file.
 : PRODUCT-SPAWN$ ( -- ptr u8 n )
    s" bin/hb" ;
 
 : PRODUCT-ENGINE$ ( -- ptr u8 n )
    ENGINE-ID:PATH$ ;
 
-\ A ROW'S ARGV WAITS WITH IT. The row's files name the keyed images it needs
-\ (test/gate-images.f), and the readiness probe may start a build row, which
-\ stages its own argv in the same process-wide table. So the tokens are kept
-\ here as they arrive and staged only once the row is ready to spawn.
+\ A row's argv waits with it: the readiness probe may start a build row, which
+\ stages its own argv in the same process-wide table, so the tokens are kept
+\ here and staged only once the row is ready to spawn.
 : ROW-BEGIN ( -- )
    0 ROW-ARGS-U !
    0 ROW-ARG-N !
    0 0<> ROW-SCRIPT? !
    GATE-IMAGES:ROW-RESET ;
 
-\ Every argv entry goes through as written. The runner used to prepend
-\ test/compiler/aot-mode.f - `1 set-tier` - to every `test/compiler/native-*.f`
-\ row, so a suite whose assertions are tier-1 facts was green here and red on
-\ its own. The tier belongs to the code under test: such a file selects it
-\ after harness and tool requires but before its subject definitions. Every
-\ row measures what `bin/hb --load <file>` measures.
+\ Every argv entry goes through as written, so a row measures what
+\ `bin/hb --load <file>` measures; a file whose assertions are tier-1 facts
+\ selects the tier itself, after harness and tool requires and before its
+\ subject definitions.
 : ROW-ARG+ ( ptr u8 n -- ) {: a:ptr u:n :}
    ROW-ARG-N @ 1+ ROW-ARG-LENS-RESERVE
    u ROW-ARG-N @ ROW-ARG-LENS !
@@ -160,13 +140,10 @@ variable ROW-SCRIPT?                     \ the row's `--` has passed
    PRODUCT-SPAWN$ label labelu prog progu GT-POOL-START-STDIN ;
 
 \ The entry guard walks the load graph DERIVE read and refuses the registry
-\ before anything starts: this hook runs outside the catch around the rows. The
-\ keyed images the registry's rows load - the compiler bundle, fixture writer,
-\ cold host, saver and linker images, unsealed engine - settle in the pool,
-\ one build row per image beside the rows; a row whose images are not settled
-\ waits aside and starts at the first start after they are (test/gate-images.f):
-\ a broken image closure fails its build row and the rows that load it, and
-\ every other row runs.
+\ before anything starts: this hook runs outside the catch around the rows. Each
+\ keyed image settles in the pool through one build row; a row waits until its
+\ images settle (test/gate-images.f), so a broken image closure fails its build
+\ row and the rows that load it, and every other row runs.
 : SUITE-SETUP ( -- )
    SUITE-CHECK-ARGS
    GATE-IMAGES:DERIVE
@@ -215,16 +192,11 @@ variable COMPILER-OFF
    2 S\" compiler-images stderr (full):\n" write drop
    red GT-POOL-RED-ERR$ 2 FORWARD-COMPILER-FILE ;
 
-\ The pool drains softly between groups, so every registered suite runs
-\ whatever went red before it; the complete red set is reported here, once,
-\ with each suite's exit code, and decides the exit status.
-\
-\ The report is complete before the tree goes: every red row's output and its
-\ capture-file names are already on stdout, so the cleanup takes nothing the
-\ reader still needs. It runs BEFORE the red die, which ends the process - a
-\ red gate used to leave its whole pool root, and a run per red is how /tmp
-\ filled with habu-native-suite trees. A cleanup that throws is named
-\ (GT-POOL-CLEANUP), so the run still ends on its red report.
+\ The pool drains softly between groups, so every suite runs whatever went red
+\ before it; the red set is reported once here, with exit codes, and decides the
+\ exit status. Cleanup runs before the red die ends the process, else each red
+\ run leaves its pool root in /tmp; every red row's output and capture names are
+\ already on stdout. A throwing cleanup is named GT-POOL-CLEANUP.
 : SUITE-FINISH ( n -- ) {: rc:n :}
    s" suites: ran " type TEST:ITEMS-RUN GT-U-TYPE
    s"  of " type TEST:ITEMS-REGISTERED GT-U-TYPE cr

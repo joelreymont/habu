@@ -1,15 +1,8 @@
 \ An engine started from a working directory longer than PATH-CAP refuses it by
-\ name on one line: every root it resolves against fits PATH-CAP, and every
-\ path below that directory is longer still. The same entry, run from the long
-\ directory's parent, which fits, loads. PATH-CAP bounds FS:MAKE-DIRS and a
-\ child's cwd, so /bin/mkdir makes the tail past PATH-CAP and /usr/bin/env -C
-\ starts the engine in it, both naming it relative to its parent. Keep the
-\ children's logs. FS:REMOVE-TREE then removes the tail, whose paths pass
-\ PATH-CAP, through directory descriptors, and unlinks a link the tail holds to
-\ a directory beside it without following it into the sentinel there. A
-\ failed step is recorded, not fatal, and the cases run under `finally`, so an
-\ rm child removes whatever tail a failure or a throw left: no run leaves a
-\ path past PATH-CAP that nothing can remove by name.
+\ name on one line: every root it resolves against fits PATH-CAP. The same entry
+\ run from the long directory's parent loads. PATH-CAP bounds FS:MAKE-DIRS and a
+\ child's cwd, so /bin/mkdir makes the tail and /usr/bin/env -C starts the
+\ engine in it, both relative to the parent. The children's logs are kept.
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs.f
@@ -182,8 +175,12 @@ create TAIL TAIL-BYTES allot
    s" and unlinks a link to a directory without following it" T-LABEL
    SENTINEL$ FS:EXISTS? TTRUE ;
 
-\ Whatever the cases left of the tail, an rm child removes: it runs after a
-\ recorded failure or a throw, and finds nothing after a passing run.
+\ FS:REMOVE-TREE removes the tail, whose paths pass PATH-CAP, through directory
+\ descriptors, and unlinks the tail's link to SIDE without following it into the
+\ sentinel. A failed step is recorded, not fatal, and the cases run under
+\ `finally`, so this rm child removes whatever tail a failure or a throw left
+\ and finds nothing after a passing run: no run leaves a path past PATH-CAP that
+\ nothing can remove by name.
 : RM-TAIL ( CMD:command -- CMD:command )
    s" -r" CMD:ARG+ TAIL-TOP$ CMD:ARG+
    s" /bin/rm" IN-MID ;

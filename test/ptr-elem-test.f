@@ -1,30 +1,8 @@
 \ ptr-elem-test.f - a pointer's element type is part of the checker type.
-\ Run: bin/hb --load test/ptr-elem-test.f
-\
-\ WHAT THIS PINS. `ptr u8` and `ptr n` are different types. The checker must
-\ refuse to pass one where the other is declared, in BOTH directions, at every
-\ place a type meets a type: a direct call, a qualified (PKG:WORD) call, a typed
-\ local, a quotation reached through a call chain, and a control-flow join. It
-\ must also refuse a byte fetch through a cell pointer, which is the mirror of
-\ the cell fetch through a byte pointer that the width rule already refused.
-\
-\ WHY THE TEST LOOKS LIKE THIS. Every case is a whole candidate DEFINITION
-\ handed to the checker (CHECK-QUIET-CANDIDATE!, verdict -1 certified /
-\ 0 refused / 1 unresolvable), so what is measured is the real certification of
-\ real source through the real unifier - not a re-implementation of the rule.
-\ Each reject is paired with a positive control that differs only in the element
-\ type, so a checker that simply refused all pointer traffic would fail the
-\ suite instead of passing it.
-\
-\ WHAT MUST KEEP WORKING. Value-position integer widening (u8 -> u16 -> u32 ->
-\ n) is unchanged: widening is a rule about values on the stack, not about what
-\ a pointer points at. Nested pointers (`ptr ptr u8`) and a polymorphic pointee
-\ (`ptr a`) also keep behaving as before.
-\
-\ THE DEFECT THIS SUITE WOULD HAVE CAUGHT. Before the fix, CON-OK? applied its
-\ strict-pointee guard only to the width lattice, so the two generic-`n` rules
-\ underneath it still fired inside a pointee: `n` met `u8` and `ptr n` silently
-\ satisfied `ptr u8`. `PASS8-DIRECT` below certified with exit 0.
+\ `ptr u8` and `ptr n` are refused for each other in both directions at every
+\ place types meet; value widening (u8 -> n) is unchanged. Each case is a whole
+\ definition certified by CHECK-QUIET-CANDIDATE!, and each reject has a control
+\ differing only in the element type, so refusing all pointer traffic fails.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -33,10 +11,6 @@ require src/lib/test.f
 package PTR-ELEM-TEST
 
 \ ---- words the candidate definitions call ----------------------------------
-\ One pair per element type, each doing the access its element allows: c@ on a
-\ byte pointer, @ on a cell pointer. Nothing here is a fixture stand-in - these
-\ are the ordinary checked words whose declared parameter types the candidates
-\ have to satisfy.
 public
 
 : TAKE-U8 ( ptr u8 -- n )   c@ ;
@@ -58,8 +32,6 @@ private
    CHECK-QUIET-CANDIDATE! CERTIFIED T= ;
 
 \ ---- direct call ------------------------------------------------------------
-\ The measured defect and its mirror. Both operands are concrete pointers whose
-\ elements differ, so neither direction may certify.
 : DIRECT ( -- )
    s" PE-PASS8-DIRECT ( ptr n -- n ) TAKE-U8" REJECTS
    s" PE-PASSN-DIRECT ( ptr u8 -- n ) TAKE-CELL" REJECTS
@@ -76,8 +48,6 @@ private
    s" PE-SAMEN-QUAL ( ptr n -- n ) PTR-ELEM-TEST:TAKE-CELL" CERTIFIES ;
 
 \ ---- typed local ------------------------------------------------------------
-\ Binding the pointer to a named local and calling through the local must not
-\ launder the element type.
 : TYPED-LOCAL ( -- )
    s" PE-PASS8-LOCAL ( ptr n -- n ) {: p:ptr :} p TAKE-U8" REJECTS
    s" PE-PASSN-LOCAL ( ptr u8 -- n ) {: p:ptr :} p TAKE-CELL" REJECTS
@@ -85,10 +55,8 @@ private
    s" PE-SAMEN-LOCAL ( ptr n -- n ) {: p:ptr :} p TAKE-CELL" CERTIFIES ;
 
 \ ---- quotation reached through a call chain ---------------------------------
-\ A quotation's effect is unified where it is executed, not where it is written.
-\ `catch` is the checked executor whose contract also forces the quotation to be
-\ stack-preserving, so the pointer travels in and back out on the data stack -
-\ the element type has to survive that round trip.
+\ A quotation's effect is unified where it is executed; `catch` forces it to be
+\ stack-preserving, so the pointer round-trips on the data stack.
 : QUOTATION ( -- )
    s" PE-PASS8-QUOT ( ptr n -- ptr n ) [: dup TAKE-U8 drop ;] catch drop" REJECTS
    s" PE-PASSN-QUOT ( ptr u8 -- ptr u8 ) [: dup TAKE-CELL drop ;] catch drop" REJECTS
@@ -96,9 +64,6 @@ private
    s" PE-SAMEN-QUOT ( ptr n -- ptr n ) [: dup TAKE-CELL drop ;] catch drop" CERTIFIES ;
 
 \ ---- control-flow join -----------------------------------------------------
-\ Two arms that leave pointers with different elements cannot be joined: the
-\ join is a unification like any other. The positive control proves the join
-\ itself still works when both arms agree.
 : JOIN ( -- )
    s" PE-JOIN-CONSUME ( ptr u8 ptr n bool -- n ) IF drop ELSE nip THEN TAKE-U8" REJECTS
    s" PE-JOIN-MIXED-OUT ( ptr u8 ptr n bool -- ptr u8 ) IF drop ELSE nip THEN" REJECTS
@@ -107,8 +72,8 @@ private
    s" PE-JOIN-SAME-OUT ( ptr u8 ptr u8 bool -- ptr u8 ) IF drop ELSE nip THEN" CERTIFIES ;
 
 \ ---- memory access through the wrong element -------------------------------
-\ The two mirrors. Cell `@` over a byte span was already refused by the width
-\ rule; byte `c@` over a cell span is the direction the pointee rule closes.
+\ Cell `@` over a byte span is the width rule's refusal; byte `c@` over a cell
+\ span is the pointee rule's.
 : MEMORY-ACCESS ( -- )
    s" PE-CELL-FETCH-BYTES ( ptr u8 -- n ) @" REJECTS
    s" PE-BYTE-FETCH-CELLS ( ptr n -- n ) c@" REJECTS
@@ -117,9 +82,8 @@ private
    s" PE-CELL-FETCH-CELLS ( ptr n -- n ) @" CERTIFIES ;
 
 \ ---- widening is a value rule, not a pointee rule --------------------------
-\ u8 widens to n as a VALUE, and every other concrete element pair stays
-\ distinct under a pointer - including the two 64-bit generic spellings `n` and
-\ `cell`, which the leaked generic-n rules used to make interchangeable.
+\ Every concrete element pair stays distinct under a pointer, `n` and `cell`
+\ included.
 : WIDENING ( -- )
    s" PE-WIDEN-VALUE ( u8 -- n ) WANT-U32" CERTIFIES
    s" PE-WIDEN-VALUE-N ( u32 -- n ) TAKE-CELL drop 0" REJECTS
@@ -128,10 +92,6 @@ private
    s" PE-WIDEN-POINTEE-CELL ( ptr cell -- n ) TAKE-CELL" REJECTS ;
 
 \ ---- unchanged behaviour ---------------------------------------------------
-\ A nested byte pointer still matches itself and still refuses a nested cell
-\ pointer; a polymorphic pointee still binds either concrete element; and a bare
-\ integer where a pointer is declared still rejects (the pre-existing control
-\ from the original report).
 : UNCHANGED ( -- )
    s" PE-PP-SAME ( ptr ptr u8 -- ptr u8 ) TAKE-PP" CERTIFIES
    s" PE-PP-MIXED ( ptr ptr n -- ptr u8 ) TAKE-PP" REJECTS

@@ -1,20 +1,8 @@
 \ wide-typed-local-probe.f - a wide arity-0 layout value bound to a typed local
-\ (dot habu-bind-a-wide-bc67d207). Run:
-\     bin/hb --load test/wide-typed-local-probe.f
-\
+\ survives whole at runtime.
 \ The annotation records the layout's TOP (tag) hidden term, the bind records
-\ the bundle's full width in LOCW, and every reference reloads all physical
-\ cells. This file proves that at RUNTIME: a two-cell and a three-cell record
-\ survive a typed local whole through a return, an `if` arm and a `?do` loop,
-\ a bundle built inside the body binds the same way, a local read of a W=2 sum
-\ still carries its family so `MATCH` dispatches on it, a PARAMETRIC instance
-\ (`opt<n>`) rides the same path, and the annotation is still asserted (a wrong
-\ family, a scalar annotation, a wrong argument and a bare arity>0 tail all
-\ stay refused). A 26-cell record, wider than a routine's registers, keeps every
-\ cell through swap, rot, -rot, over and nip against narrower values and through
-\ a call's take-back, and 33 reals, more than the floating registers, sum
-\ exactly.
-\ It is registered twice in test/gate-stdlib-cases.f, once per tier.
+\ the bundle's full width (checker.f LOCW-HW@), and every reference reloads all
+\ physical cells. Registered twice in test/gate-stdlib-cases.f, once per tier.
 
 require src/lib/test.f
 
@@ -75,7 +63,7 @@ SUMTYPE res
 ;SUMTYPE
 
 \ parametric, and nameable in a local: an annotation is read by the SIGNATURE
-\ type grammar (dot habu-parse-local-annotations)
+\ type grammar
 SUMTYPE opt<a>
    VARIANT some a ;VARIANT
    VARIANT none  ;VARIANT
@@ -140,8 +128,8 @@ private
 
 \ ---- a bundle and a `:ptr` local in ONE group -------------------------------
 \ The group path binds the pointer's inferred pointee under the same transport
-\ rule as a group without a bundle (dot habu-bind-a-ptr-ef9f15dc): the pointee
-\ here is a layout, which a bare `ptr` local only absorbs in transport.
+\ rule as a group without a bundle: the pointee here is a layout, which a bare
+\ `ptr` local only absorbs in transport.
 : WL-GROUP ( pair ptr pair -- n )         \ pointer above the bundle
    {: p:pair q:ptr :}
    p WLP-PAIR:UNMAKE +  q @ WLP-PAIR:UNMAKE +  + ;

@@ -1,19 +1,14 @@
 \ storage-test.f - test/browser/storage.f's module under bun: its dynamic buffer
 \ and the deliveries src/lib/browser/host-cli.mjs reserves through the module
 \ share one allocator (src/lib/browser/event.f). The module is built by
-\ tools/wasm-build.f's command line and validated by wasm-tools. bun and
-\ wasm-tools must be on PATH, so this is no row of the ordinary gate:
-\ test/wasm/device.f runs it, as does `bin/hb --load test/browser/storage-test.f`
-\ from the tree's root.
-\
+\ tools/wasm-build.f and validated by wasm-tools; bun and wasm-tools must be on
+\ PATH, so test/wasm/device.f runs it, not the ordinary gate.
+
 \ The fetch is answered with a file larger than the module's image, so the
 \ fetched bytes take several pages between the buffer's first two and the ones
-\ it grows into. The run answers hello, "loading", the fetch, the checksum of
-\ the fetched bytes, which this test computes over the file, and "3,4" for one
-\ pointer. A second run then types 1000 keystrokes, each freed in its run, and
-\ ends with the same memory as the first run; a check the module failed shows
-\ as its throw code instead. The module, the file, the expected and the
-\ actual output stay in the printed directory.
+\ it grows into. A second run types 1000 keystrokes, each freed in its run, and
+\ ends with the same memory as the first; a check the module failed shows as its
+\ throw code.
 
 require src/lib/string.f
 require src/lib/fmt.f

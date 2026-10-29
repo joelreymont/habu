@@ -37,7 +37,7 @@ create ROOT-BUF PATH-CAP allot
 create FIRST-BUF PATH-CAP allot
 create SECOND-BUF PATH-CAP allot
 create SLAVE PTY:SLAVE-PATH-CAP allot
-create SCRIPT SB-CAP allot          \ one string-builder text (SB$)
+create SCRIPT SB-CAP allot
 create SERIAL-IN 1 allot
 create SERIAL-OUT 1 allot
 create UDP-IN 2 allot
@@ -189,9 +189,8 @@ TASK:MIN-STACK TASK:TASK UDP-PEER
    a SCRIPT u BYTE-COPY
    u SCRIPT-U ! ;
 
-\ A generation whose own transfer met its deadline exits PROC-TIMEOUT-RC: that is
-\ the row's deadline, printed with the program and capture and thrown, not
-\ asserted.
+\ A generation that met its own transfer deadline exits PROC-TIMEOUT-RC: the
+\ row's deadline, printed with the program and capture and thrown, not asserted.
 : CHECK-RUN ( n n n -- )
    {: outu:n erru:n rc:n :}
    SCRIPT$ OUT outu ERR erru rc SUBJECT:RC-TIMED-OUT
@@ -207,12 +206,10 @@ TASK:MIN-STACK TASK:TASK UDP-PEER
 : SAVED ( ptr u8 n -- )
    2dup FS:FILE? TTRUE FS:EXECUTABLE? TTRUE ;
 
-\ Use a small explicit environment for every child.
 : ENVIRONMENT ( -- )
    s" PATH" >LEN s" /usr/bin:/bin" >LEN PROC-ENV+
    s" LANG" >LEN s" C" >LEN PROC-ENV+ ;
 
-\ Generation 0: the saver host compiles the subject in the source tree.
 : GEN-FIRST ( -- )
    APP-IMAGE-ENGINE:PATH$ {: host:ptr hostu:n :}
    PROC-ARGV-ENV-RESET

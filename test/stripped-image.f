@@ -1,10 +1,8 @@
-\ Build one stripped application from the family's run-time subjects
-\ (test/stripped-image-subject.f) through tools/hb-build.f, then measure it,
-\ read its startup shape and run it through its real entry. One build serves
-\ every subject: each prints its line or dies naming itself, so the exact
-\ stdout says which one failed. The same image runs again for
-\ test/exit-hook-subject.f, once per exit a stripped application takes, and
-\ each run must leave the directory it registered removed.
+\ Build one stripped application from the run-time subjects
+\ (test/stripped-image-subject.f) through tools/hb-build.f, measure it, read its
+\ startup shape and run it. Each subject prints its line or dies naming itself;
+\ the same image runs test/exit-hook-subject.f once per exit, and each run must
+\ remove the directory it registered.
 require test/gate-common.f
 require test/gate-aot-image.f
 require src/lib/string.f
@@ -16,14 +14,11 @@ private
 
 600000 constant TIMEOUT-MS
 
-\ HOLE-BYTES is test/stripped-sparse-data-subject.f's hole: an image that
-\ carried it is at least that long, as that subject's image alone was before
-\ sparse DATA extents (1,704,128 bytes). IMAGE-MAX bounds this whole image,
-\ every subject's code and DATA together. The ARM image measured 181,884
-\ bytes, so its bound refuses another 80,260 bytes, whatever grows.
-\ Being below HOLE-BYTES it also refuses the hole by itself; the HOLE-BYTES
-\ check names that failure. The x86-64 fixed-page ELF measured 327,680 bytes;
-\ reject another 64 KiB page there while retaining the ARM bound.
+\ HOLE-BYTES is test/stripped-sparse-data-subject.f's hole: an image carrying it
+\ is at least that long (that subject's image alone was 1,704,128 bytes before
+\ sparse DATA extents). IMAGE-MAX bounds the whole image: ARM measured 181,884
+\ bytes, bound 80,260 above; the x86-64 fixed-page ELF measured 327,680 bytes,
+\ bound one 64 KiB page above. Below HOLE-BYTES, it also refuses the hole alone.
 1000000 constant HOLE-BYTES
 : IMAGE-MAX ( -- n ) HB-TARGET-LINUX-X86-64? if $60000 else $40000 then ;
 
@@ -47,11 +42,10 @@ variable EXIT-TREE-U
    s" application" IMAGE GT-PATH IMAGE-U !
    s" die-tree" DIE-TREE GT-PATH DIE-TREE-U ! ;
 
-\ MAIN is written per host: the macOS image also starts and stops AIO, the
-\ run-time use of src/lib/aio.f's definers; the Linux image links src/lib/aio.f without
-\ starting it. The exit-hook subject registers its directory first, and a run
-\ given its code leaves before the other subjects. UNMAP comes last because it ends
-\ the process.
+\ MAIN is per host: the macOS image starts and stops AIO (src/lib/aio.f's
+\ definers at run time); the Linux image links aio.f without starting it. The
+\ exit-hook subject registers its directory first and a run given its code
+\ leaves before the other subjects; UNMAP ends the process, so it comes last.
 : WRITE-SUBJECT ( -- )
    SB-RESET
    S\" require test/stripped-image-subject.f\nrequire test/exit-hook-subject.f\n" SB-APPEND
@@ -77,8 +71,7 @@ variable EXIT-TREE-U
    IMAGE$ FS:EXECUTABLE? 0= if s" stripped image executable" GE-FAIL then ;
 
 \ The size says the hole did not travel; the sparse subject's marks say the
-\ bytes that must travel did, since an image that stored nothing would satisfy
-\ the size alone.
+\ bytes that must travel did (an image storing nothing satisfies the size).
 : CHECK-SIZE ( -- )
    IMAGE$ FS:FILE-SIZE {: bytes:n :}
    s" stripped-image: image bytes " type bytes .
@@ -88,10 +81,9 @@ variable EXIT-TREE-U
 : EXPECTED-OUT$ ( -- ptr u8 n )
    S\" exit-hook-subject: ok\nstripped-quotation: ok\nstripped-address-pool: ok\n8\n0\n1\n23\nstripped-sparse-data: ok\nstripped\nsize=ok\nstripped-engine-id: ok\naot-xt-cells: ok\nstripped-lifecycle-prepare: ok\nstripped-lifecycle-tasks: ok\nstripped-lifecycle-semaphore: ok\nffi-library-lifetime: ok\n" ;
 
-\ A subject that fails dies with its own message and exit $4A, and a missing
-\ xt row is a wild call into builder code this process does not map, so only an
-\ image in which every subject passed and the literal survived meets all three.
-\ UNMAP's `die` is also the exit the registered directory has to go on.
+\ A failing subject dies with its message and exit $4A; a missing xt row is a
+\ wild call into unmapped builder code. UNMAP's `die` is the exit the registered
+\ directory has to go on.
 : RUN-IMAGE ( -- )
    GE-HB-RESET
    IMAGE$ GE-ARGV+
@@ -102,12 +94,11 @@ variable EXIT-TREE-U
    S\" memory: unmap failed\n" s" stripped image exact stderr" GE-EXPECT-ERR
    DIE-TREE$ FS:EXISTS? if s" a stripped application's die removes the registered tree" GE-FAIL then ;
 
-\ MAIN leaves by the code it is given, in a directory named for that code.
-\ Code 0 is the application's own return: its entry calls the exit
-\ vector inline on the way to exit(0). Any other code is an uncaught throw,
-\ which exits as an engine's does (docs/debugging.md "Reading an exit status"):
-\ a code from 1 to 255 is the status, silently, and any other code is named on
-\ stderr and exits 67. Every one of those exits runs the vector.
+\ MAIN leaves by the code it is given, in a directory named for it. Code 0 is
+\ the entry's own return through the exit vector to exit(0); any other is an
+\ uncaught throw (docs/debugging.md "Reading an exit status"): 1-255 is the
+\ status, silently; any other is named on stderr and exits 67. Every exit runs
+\ the vector.
 : RUN-EXIT ( ptr u8 n n ptr u8 n -- ) {: code:ptr codeu:n rc:n err:ptr erru:n :}
    code codeu EXIT-TREE GT-PATH EXIT-TREE-U !
    GE-HB-RESET
@@ -126,9 +117,8 @@ variable EXIT-TREE-U
    s" 256" 67 S\" hb: uncaught throw code 256\n" RUN-EXIT
    s" -2500" 67 S\" hb: uncaught throw code -2500\n" RUN-EXIT ;
 
-\ The ARM startup carries the xt-cell apply loop, so it has to keep satisfying
-\ the image gate's ARM instruction model. The x86 image's actual DATA, xt-cell,
-\ root and exit behavior is checked by RUN-IMAGE and RUN-EXITS above.
+\ The ARM startup carries the xt-cell apply loop, so it must satisfy the image
+\ gate's ARM instruction model; RUN-IMAGE and RUN-EXITS check the x86 behavior.
 : CHECK-SHAPE ( -- )
    HB-TARGET-LINUX-X86-64? if exit then
    IMAGE$ AOT-IMAGE:CODE-RANGE 2drop ;

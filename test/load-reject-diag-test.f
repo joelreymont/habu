@@ -1,18 +1,9 @@
-\ load-reject-diag-test.f - a rejecting `bin/hb --load` must identify itself.
-\
-\ Invariant (dot habu-silent-exit-70-215b2da7): a checked load refusal exits
-\ 70 WITH a named diagnostic on stderr — a silent fail-closed exit is the
-\ harness gap this campaign keeps paying for. Native lowering of an unmodeled
-\ immediate in a TRUSTED body refuses with its own named -8286 instead.
-\ Pins the direct --load leg, the require-chain leg, and the checked-body
-\ reject leg by spawning the engine on generated rejecting fixtures.
-\ The child engine is HABU_UNDER_TEST when the gate sets it, else the running engine.
-\
-\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
-\   src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f
-\   tools/gate-json-assert-core.f src/lib/argv.f
-\   tools/repair-packet-core.f test/load-reject-diag-test.f
-
+\ load-reject-diag-test.f - a rejecting `bin/hb --load` must identify itself: a
+\ checked load refusal exits 70 with a named diagnostic on stderr; native
+\ lowering of an unmodeled immediate in a
+\ TRUSTED body refuses with its own named -8286. Covers the direct --load,
+\ require-chain and checked-body legs on generated fixtures; the child engine is
+\ HABU_UNDER_TEST when set, else the running engine.
 require src/lib/errors.f
 require src/lib/string.f
 require src/lib/test.f
@@ -188,10 +179,9 @@ variable RC
 : REJECT-FIXTURES! ( -- )
    UNDEF$ s" : LRD-X ( -- ) LRD-NO-SUCH-WORD-XYZ ;" FS:WRITE-ALL
    BODY$ s" : LRD-Y ( n -- n ) drop ;" FS:WRITE-ALL
-   \ The byte pointer comes out of a DECLARED cell. The subject here is the
-   \ cell-versus-byte pointer diagnostic, and a raw `variable` no longer hands
-   \ out an address at all (E-RAW-CELL-PTR), which would refuse the fixture one
-   \ definition before the token these cases pin.
+   \ The byte pointer comes from a declared cell: a raw `variable` hands out no
+   \ address (E-RAW-CELL-PTR), which would refuse the fixture one definition
+   \ before the token these cases pin.
    BPS$ s" TYPED-VARIABLE LRD-P ptr u8 : LRD-BASE ( -- ptr u8 ) LRD-P @ ; : LRD-BPS ( -- ) 0 LRD-BASE ! ;" FS:WRITE-ALL
    BPF$ s" TYPED-VARIABLE LRD-Q ptr u8 : LRD-QBASE ( -- ptr u8 ) LRD-Q @ ; : LRD-BPF ( -- n ) LRD-QBASE @ ;" FS:WRITE-ALL
    \ A loaded file is a closed program, so the fragment shows it ran by
@@ -261,7 +251,6 @@ LOWER-CERT-HOOK:INSTALL
      timeout OF src srcu OUT OUT-U @ ERR ERR-U @ T-TIMED-OUT ENDOF
    ;MATCH ;
 
-\ Spawn `<hb> --load <fixture>` with empty stdin, capture the exit outcome.
 : RUN ( ptr u8 n -- ) {: path:ptr pathu:n :}
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
@@ -331,7 +320,7 @@ LOWER-CERT-HOOK:INSTALL
    s" in lrd-y" ASSERT-NAMED
    ERR$ s" at 'drop'" CONTAINS? TTRUE ;
 
-\ Store/fetch target mismatch (dot habu-checker-diag-for-4c443fcf): `!`/`@` need
+\ Store/fetch target mismatch: `!`/`@` need
 \ a cell-width `ptr a`; a `ptr u8` must name the pair, not just the token.
 : TEST-BYTE-PTR-STORE ( -- )
    s" cell store into a byte pointer names expected/actual" T-LABEL
@@ -375,8 +364,7 @@ LOWER-CERT-HOOK:INSTALL
    s" NEWTYPE lrd-pair<a,b> : LRD-ID ( lrd-pair<a,a> -- lrd-pair<a,a> ) ; : LRD-ALIAS ( lrd-pair<a,b> -- lrd-pair<a,b> ) LRD-ID ;" PARAMETRIC-REJECT ;
 
 \ A storage declaration whose definer cannot size its type is the checker's
-\ refusal, named for the declared word and the type, where it used to die on an
-\ uncaught E-LAYOUT-BUFFER with nothing on stderr (dot 2eb1290e).
+\ refusal, named for the declared word and the type.
 : STORAGE-REJECT ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n name:ptr nameu:n :}
    BODY$ src srcu FS:WRITE-ALL
    BODY$ RUN

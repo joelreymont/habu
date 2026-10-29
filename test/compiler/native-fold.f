@@ -1,9 +1,6 @@
-\ native-fold.f - the pairs one instruction replaces, and their emitted results.
-\
-\ Instruction selection writes the combined form where it finds the pair, so
-\ what these cases read is the whole production chain's answer for an ordinary
-\ definition: the instructions a body compiles to, and the body's own value when
-\ it runs.
+\ The pairs one instruction replaces, and their emitted results: the cases read
+\ the production chain's answer for an ordinary definition, the instructions a
+\ body compiles to and the body's own value when it runs.
 require src/lib/test.f
 require src/lib/prelude.f
 require src/lib/string.f
@@ -18,9 +15,6 @@ package NCT-FIXTURE
 
 public
 
-\ ---- the programs under test ------------------------------------------------
-\ Ordinary definitions go through the production native compiler. The cases
-\ below inspect their emitted instructions and execute them.
 
 : NCT-SQSUM ( n n -- n )
    dup * swap dup * + ;
@@ -122,13 +116,12 @@ private
 $8000000000000000 constant MIN-INT
 $7FFFFFFFFFFFFFFF constant MAX-INT
 
-\ How many multiply-adds a published routine's emitted code holds.
 : MADDS-IN ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u NCOMBINV:ROW!
    NCOMBINV:MADD-INSNS ;
 
-\ And how many plain multiplies, so a case can say that the pair really went and
-\ not merely that a multiply-add appeared beside it.
+\ Plain multiplies, so a case can say the pair really went and not merely that a
+\ multiply-add appeared beside it.
 : MULS-IN ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u NCOMBINV:ROW!
    NCOMBINV:MULS ;

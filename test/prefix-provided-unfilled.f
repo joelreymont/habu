@@ -1,16 +1,9 @@
 \ A seeded x86-64 build whose captured runtime leaves a prefix-provided row's
 \ dispatch cell empty refuses at the registry gate (76, src/habu/
-\ primitive-registry.f COMPLETE-PROVIDED, UNFILLED) and promotes no product.
-\ Without that refusal the build emits an engine whose `evaluate` stub jumps
-\ through the empty cell, and the product dies on its first load. An ARM64
-\ record is its assembly body and has no cell, so a host on another machine
-\ builds `--target linux-x86-64` with src/arch/x86-64/passes.f loaded before
-\ tools/native-build.f. The private tree holds a copy of the checkout's build
-\ sources whose src/habu/runtime-x64.f, the x86-64 seal installs, leaves out
-\ OUTER:INSTALL-EVALUATE. The sources are copies, not links: a source's identity
-\ is its physical path, so a linked one lies outside the tree, and the build
-\ refuses 74 when no compiler.f below the tree completes (tools/
-\ build-producer.f COMPILER-DONE). The printed tree keeps the build's output.
+\ primitive-registry.f COMPLETE-PROVIDED, UNFILLED) and promotes no product:
+\ without it the product's evaluate stub jumps through the empty cell. An ARM64
+\ record has no cell, so any host builds --target linux-x86-64 with
+\ src/arch/x86-64/passes.f loaded before tools/native-build.f.
 require src/lib/test.f
 require src/lib/string.f
 require src/lib/fs.f
@@ -43,7 +36,7 @@ variable RC
 : RUNTIME$ ( -- ptr u8 n ) s" src/habu/runtime-x64.f" ;
 : INSTALL$ ( -- ptr u8 n ) S\"    OUTER:INSTALL-EVALUATE\n" ;
 
-\ The x86-64 installs without the line that fills the evaluate cell.
+\ src/habu/runtime-x64.f without the line that fills the evaluate cell.
 : WRITE-RUNTIME ( -- )
    RUNTIME$ AT-A SRC SRC-CAP FS:READ-ALL SRC-U !
    SRC SRC-U @ INSTALL$ FIND-SUB MATCH option
@@ -57,6 +50,10 @@ variable RC
    RUNTIME$ AT-A SRC at FS:WRITE-ALL
    RUNTIME$ AT-A SRC past + SRC-U @ past - FS:APPEND-FILE ;
 
+\ The private tree holds copies, not links, of the build sources: a source's
+\ identity is its physical path, so a linked one lies outside the tree and the
+\ build refuses 74 when no compiler.f below it completes (tools/build-producer.f
+\ COMPILER-DONE). The printed tree keeps the build's output.
 : SETUP ( -- )
    s" prefix-provided-unfilled" FS:MKTEMP-DIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY u ROOT-U !

@@ -15,7 +15,7 @@ private
 
 \ The cells the memory rows step. The first two are what a loop which ran one
 \ turn too far would reach; all fourteen are the record the wide row reads a
-\ field at a time, which is the width the corpus row PRESSURE-LOOP has.
+\ field at a time.
 14 constant NLPT-CELLS
 create NLPT-CELL NLPT-CELLS cells allot
 
@@ -43,8 +43,6 @@ public
    -100000 NLPT-CELL 12 cells + !
    $0123456789ABCDEF NLPT-CELL 13 cells + ! ;
 
-\ ---- the production programs under test --------------------------------------
-
 \ The index added once a turn and nothing else: the whole of the sum of the
 \ indices, and the one row whose closed form needs the halving.
 : NLPT-SUM ( n -- n )
@@ -65,7 +63,7 @@ public
 : NLPT-MIX ( n n n -- n ) {: a:n seed:n len:n :}
    seed len 0 ?do a + i + 3 + loop ;
 
-\ The index added TWICE a turn, so the index term is scaled.
+\ The index added twice a turn, so the index term is scaled.
 : NLPT-TWICE ( n n -- n ) {: seed:n len:n :}
    seed len 0 ?do i + i + loop ;
 
@@ -77,11 +75,11 @@ public
 : NLPT-FROMNEG ( n n -- n ) {: seed:n len:n :}
    seed len -3 ?do i + loop ;
 
-\ A loop whose own body touches nothing, in a definition that has ALREADY read
+\ A loop whose body touches nothing, in a definition that has already read
 \ memory. The read mints the order, so every block the elaborator opens after it
-\ takes the order as one more argument and the loop's two counters stop being the
-\ last two the header holds. Nothing about the loop changed; where its counters
-\ sit did, and this row is what says the recogniser finds them by their use.
+\ takes the order as one more argument and the loop's two counters are not the
+\ last two the header holds: this row shows the recogniser finds them by their
+\ use.
 : NLPT-AFTER-LOAD ( ptr n n -- n ) {: cell:ptr len:n :}
    cell @ len 0 ?do 1 + loop ;
 
@@ -91,20 +89,17 @@ public
 : NLPT-LOAD ( ptr n n -- n ) {: cell:ptr len:n :}
    0 len 0 ?do cell @ + loop ;
 
-\ Four fields of one record read and added a turn, which is the corpus row
-\ PRESSURE-LOOP at a width a test can check by hand. Every read AND every
-\ addition between them moves; the body keeps one addition into one accumulator.
+\ Four fields of one record read and added a turn: the wide row at a width a
+\ test can check by hand. Every read and every addition between them moves; the
+\ body keeps one addition into one accumulator.
 : NLPT-FIELDS ( ptr n n -- n ) {: base:ptr len:n :}
    0 len 0 ?do
       base 16 + @  base 24 + @  base 32 + @  base 40 + @  + + + +
    loop ;
 
-\ The corpus row PRESSURE-LOOP itself, at its own width and character for
-\ character but for the fixture prefix on its name. The row is here rather than
-\ only in the comparison corpus because what the corpus harness pins is two
-\ inputs, and the arithmetic of a closed form has to answer at the trip counts
-\ nobody would run: one turn, no turns, a count that runs the loop backwards, and
-\ counts past where any loop could be run at all.
+\ The wide row: fourteen fields read a turn. The closed form's arithmetic has to
+\ answer at trip counts nobody would run: one turn, no turns, a count that runs
+\ the loop backwards, and counts past where any loop could be run at all.
 : NLPT-WIDE ( ptr n n -- n ) {: base:ptr len:n :}
    0 len 0 ?do
       base @  base 8 + @  base 16 + @  base 24 + @  base 32 + @
@@ -113,13 +108,11 @@ public
       + + + + + + + + + + + + + +
    loop ;
 
-\ ---- the refusals ------------------------------------------------------------
-
-\ A store in the body. The loop's whole point is the cell it leaves behind, and a
+\ A store in the body: the loop's point is the cell it leaves behind, and a
 \ closed form of its arithmetic would be right and its memory gone. The read
-\ beside it is what makes this row the one that holds the WRITE rule: its address
-\ cannot change with the turn either, so nothing but the write stops the body
-\ from moving whole.
+\ beside it makes this the row that holds the write rule: its address cannot
+\ change with the turn either, so only the write stops the body from moving
+\ whole.
 : NLPT-STORE ( ptr n n -- n ) {: cell:ptr len:n :}
    len 0 ?do cell @ 3 + cell ! loop
    cell @ ;
@@ -130,11 +123,11 @@ public
    len 0 ?do cell @ $C3E9EB70 xor cell ! loop
    cell @ ;
 
-\ A read AND a write in one body, with an accumulator beside them. This is the
-\ row the WRITE rule holds up on its own: both addresses are the same cell every
-\ turn, so the read would move if the address were the only question - and moving
-\ it would read the cell once where the loop reads it again after each write. The
-\ loop is kept because one operation in the body declares a write.
+\ A read and a write in one body, with an accumulator beside them: the row the
+\ write rule holds up on its own. Both addresses are the same cell every turn,
+\ so the read would move if the address were the only question, and moving it
+\ would read the cell once where the loop reads it again after each write. The
+\ loop is kept because one operation declares a write.
 : NLPT-RW ( ptr n n -- n ) {: cell:ptr len:n :}
    0 len 0 ?do cell @ + 5 cell ! loop ;
 
@@ -156,10 +149,10 @@ public
 : NLPT-TWO ( n n -- n ) {: seed:n len:n :}
    seed 1 len 0 ?do 1 + swap 2 + swap loop + ;
 
-\ THREE accumulators, which is a different refusal from two: the count of changed
-\ positions is not what stops this one - a plan that named the last of them would
-\ get that far - it is that the exit stub hands the join values the header's own
-\ arguments do not match, which is the comparison PLAN-ACC? makes second.
+\ Three accumulators, a different refusal from two: the count of changed
+\ positions is not what stops it (a plan that named the last of them would get
+\ that far); the exit stub hands the join values the header's own arguments do
+\ not match, the comparison PLAN-ACC? makes second.
 : NLPT-THREE ( n n -- n ) {: seed:n len:n :}
    seed 1 2 len 0 ?do 1 + rot 2 + rot 3 + rot loop + + ;
 
@@ -174,9 +167,9 @@ public
 : NLPT-SUB ( n n -- n ) {: seed:n len:n :}
    seed len 0 ?do 1 - loop ;
 
-\ THE ADDEND ON THE LEFT. `i swap +` computes exactly what `i +` computes, and
-\ the accumulator is the addition's SECOND operand, which is the one shape this
-\ pass declines rather than searches for.
+\ The addend on the left: `i swap +` computes what `i +` computes, and the
+\ accumulator is the addition's second operand, the one shape this pass declines
+\ rather than searches for.
 : NLPT-SWAPPED ( n -- n )
    0 swap 0 ?do i swap + loop ;
 
@@ -190,9 +183,9 @@ public
 : NLPT-VARSTART ( n n n -- n ) {: seed:n st:n len:n :}
    seed len st ?do i + loop ;
 
-\ THE START AT THE TOP OF THE RANGE, which no limit is above: the guard skips
-\ the loop at every limit, where `index + 1` would wrap to the bottom of the range
-\ and run round nearly all of it.
+\ The start at the top of the range, which no limit is above: the guard skips
+\ the loop at every limit, where `index + 1` would wrap to the bottom of the
+\ range and run round nearly all of it.
 : NLPT-MAXSTART ( n n -- n ) {: seed:n len:n :}
    seed len 9223372036854775807 ?do i + loop ;
 
@@ -213,10 +206,9 @@ private
 $8000000000000000 constant MIN-INT
 $7FFFFFFFFFFFFFFF constant MAX-INT
 
-\ How many loops a published routine's emitted code still holds. A back edge is
-\ what a loop IS in emitted code, and tools/codegen-loop-inventory.f decides one
-\ by walking the span's own control flow rather than by calling every backward
-\ branch a loop.
+\ A back edge is what a loop is in emitted code; tools/codegen-loop-inventory.f
+\ decides one by walking the span's own control flow rather than calling every
+\ backward branch a loop.
 : LOOPS-IN ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u NLOOPINV:ROW!
    NLOOPINV:LOOPS ;
@@ -227,15 +219,13 @@ $7FFFFFFFFFFFFFFF constant MAX-INT
 : KEPT ( ptr u8 n -- )
    LOOPS-IN 1 T= ;
 
-\ THE TWO CASES BELOW STATE THEIR OWN PRECONDITION AND STOP IF IT IS FALSE, which
-\ is not a skip: the precondition IS an assertion and it fails loudly first. It is
-\ here because the trip counts those cases use can only be ANSWERED, never run -
-\ a regression that stopped folding would turn a red gate into a machine that
-\ never comes back, and a gate that hangs is worse than one that fails.
+\ The two cases below state their own precondition and stop if it is false: the
+\ precondition is an assertion and fails loudly first. Their trip counts can
+\ only be answered, never run, so a regression that stopped folding would hang
+\ the gate instead of failing it.
 : STILL-A-LOOP? ( ptr u8 n -- bool )
    LOOPS-IN 0<> ;
 
-\ ---- the folded rows ---------------------------------------------------------
 \ Trip counts zero, one and sixteen. A limit below the start is TINY-CASE's row,
 \ where a stray turn would show; here it would add an index of zero.
 : SUM-CASE ( -- )
@@ -250,10 +240,9 @@ $7FFFFFFFFFFFFFFF constant MAX-INT
 \   T = MAX-INT = 2^63-1, which is odd, so the answer is T*(T-1)/2 =
 \   (2^63-1)*(2^62-1) = 2^125 - 2^63 - 2^62 + 1, and modulo 2^64 that is
 \   2^62 + 1 = 4611686018427387905.
-\   T = 2^33, which is even, so the answer is (2^32)*(2^33-1) = 2^65 - 2^32,
-\   and modulo 2^64 that is -2^32 = -4294967296. THIS IS THE ROW THE NAIVE
-\   FORMULA FAILS: T*(T-1) has already overflowed, so halving the low half
-\   answers 2^63 - 2^32 instead.
+\   T = 2^33, which is even, so the answer is (2^32)*(2^33-1) = 2^65 - 2^32, and
+\   modulo 2^64 that is -2^32 = -4294967296. The naive formula fails this row:
+\   T*(T-1) has already overflowed, so halving the low half answers 2^63 - 2^32.
 : SUM-BIG-CASE ( -- )
    s" the sum of the indices past where any loop could be run" T-LABEL
    s" NLPT-FIXTURE:NLPT-SUM" GONE
@@ -316,16 +305,12 @@ $7FFFFFFFFFFFFFFF constant MAX-INT
    NLPT-FIXTURE:NLPT-AT 0 NLPT-FIXTURE:NLPT-AFTER-LOAD 100 T=
    NLPT-FIXTURE:NLPT-AT 5 NLPT-FIXTURE:NLPT-AFTER-LOAD 105 T= ;
 
-\ ---- what the pre-header takes off the body ----------------------------------
-\ WHY A READ IN THE BODY IS NOT A REFUSAL ANY MORE. A read whose address cannot
-\ change with the turn, in a body that writes nothing and calls nothing, answers
-\ the same bytes every turn: it is work the loop repeats for no reason, and the
-\ pre-header takes it. What is left is one addition into one accumulator, which
-\ is the shape this pass already folded. NLPT-LOAD was a refusal until the move
-\ landed; what changed is that the compiler now computes the answer instead.
-\ NLPT-FIELDS is the corpus row's own shape at a width a
-\ reader can check: four reads and the additions between them all move, and its
-\ record holds the ends of the signed range so a term dropped from the sum shows.
+\ A read whose address cannot change with the turn, in a body that writes and
+\ calls nothing, answers the same bytes every turn, so the pre-header takes it
+\ and one addition into one accumulator is left. NLPT-FIELDS is the wide row's
+\ shape at a width a reader can check: four reads and the additions between them
+\ all move, and its record holds the ends of the signed range so a term dropped
+\ from the sum shows.
 : LOAD-CASE ( -- )
    s" a loop that reads one cell moves the read and folds" T-LABEL
    s" NLPT-FIXTURE:NLPT-LOAD" GONE
@@ -352,8 +337,7 @@ $7FFFFFFFFFFFFFFF constant MAX-INT
    NLPT-FIXTURE:NLPT-AT 8589934592 NLPT-FIXTURE:NLPT-FIELDS
    17179869184 T= ;
 
-\ ---- the refusals ------------------------------------------------------------
-\ The corpus row's own width through production compilation. Fourteen
+\ The wide row through production compilation. Fourteen
 \ reads and thirteen additions move; one addition into one accumulator is left,
 \ and the record holds both ends of the signed range so a term dropped from the
 \ sum or a product taken in the wrong width shows.

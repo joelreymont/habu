@@ -11,15 +11,12 @@ package STACK-LIFECYCLE-TEST
    s" E-STACK-UNGUARDED matches the engine's own spelling" T-LABEL
    E-STACK-UNGUARDED STACK-ABI:E-STACK-UNGUARDED T= ;
 
-\ A bare sequence of literal pushes at the top level is interpreted directly,
-\ not compiled as a checked word, so it carries no declared effect and the
-\ runtime data stack really holds COUNT live cells. The boot data stack is one
-\ guarded page, [base, base + STACK-ABI:BOOT-BYTES) read/write with an
-\ inaccessible page on each side (src/habu/rt.f EMIT-MAP). The interpreter's
-\ token loop keeps a few working cells above the live depth, so the last
-\ handful of cells are reachable only from compiled code; the fixture brackets
-\ that: a fill short of the page by a margin succeeds, a fill of the whole
-\ page faults (data), which places the guard page exactly at base + BOOT-BYTES.
+\ Top-level literal pushes are interpreted, not checked, so the data stack
+\ really holds COUNT cells. The boot data stack is one guarded page [base, base
+\ + STACK-ABI:BOOT-BYTES) between inaccessible pages (src/habu/rt.f EMIT-MAP).
+\ The interpreter's token loop keeps a few cells above the live depth, so a fill
+\ FILL-MARGIN-CELLS short of the page succeeds and a whole-page fill faults
+\ (data).
 16 constant FILL-MARGIN-CELLS
 STACK-ABI:BOOT-BYTES 8 / 2 * constant LIT-SRC-CAP   \ "1 " per cell of the page
 create LIT-SRC LIT-SRC-CAP allot
@@ -38,17 +35,12 @@ create LIT-SRC LIT-SRC-CAP allot
    s" filling the whole page overflows the data stack" T-LABEL
    STACK-ABI:BOOT-BYTES 8 / FILL-LITERALS$ REFUSED-DATA ;
 
-\ A word cannot call itself by bare name inside its own definition (it is not
-\ in the dictionary yet: E-UNDEFINED), so unbounded recursion goes through
-\ RECURSE, and RECURSE only leaves a residual value unreconciled against the
-\ declared effect inside a BEGIN...AGAIN loop, whose unconditional back edge
-\ makes the fall-through to `;` unreachable -- a bare tail call (`1 recurse ;`,
-\ no AGAIN) is rejected at 'recurse' for exactly that residual. Verified
-\ against the checker on the current engine. The legacy compiler stores return
-\ and DO frames in the guarded VM stacks. On Intel, Y's live >r value across
-\ recursion fills the guarded user return stack; native DO frames live in HIR,
-\ so Z exhausts the machine call stack and reports on its alternate signal
-\ stack.
+\ Unbounded recursion goes through RECURSE inside BEGIN...AGAIN: a word is not
+\ in the dictionary inside its own definition, and a bare tail call (`1 recurse
+\ ;`) is refused at 'recurse' for its residual. The legacy compiler keeps return
+\ and DO frames in the guarded VM stacks. On Intel, Y's live >r value fills the
+\ guarded user return stack; native DO frames live in HIR, so Z exhausts the
+\ machine call stack and reports on its alternate signal stack.
 : MACHINE-OVERFLOW ( ptr u8 n -- )
    CHILD-RC 128 11 + T=                          \ the dump, then death by SIGSEGV
    ERR ERRLEN @ s" habu-crash regs" T-PREFIX= ;
@@ -63,26 +55,18 @@ create LIT-SRC LIT-SRC-CAP allot
    s" : Z ( -- ) 1 0 do recurse loop ; Z"
    HB-TARGET-LINUX-X86-64? if MACHINE-OVERFLOW else REFUSED-LOOP then ;
 
-\ GUARDED-EXTENT? (src/habu/habu1.f) emits its clauses in a fixed order: base
-\ non-zero, capacity non-zero, base PAGE-BYTES aligned, capacity PAGE-BYTES
-\ aligned, base + capacity does not wrap, base outside the DATA region. The
-\ first clause that rejects is the one that decides, so every case below takes
-\ the extent ACCEPTED-EXTENT is admitted with -- POOL and POOL-BYTES, the
-\ guarded mapping test/engine-stack-lifecycle-lib.f made -- and changes exactly
-\ ONE field of it. Every clause throws the same E-STACK-UNGUARDED, so the
-\ code observed never says which one fired: attribution comes from that one
-\ changed field plus the emitted order, and from the accepted control proving
-\ the rest of the extent was fine.
+\ GUARDED-EXTENT? (src/habu/habu1.f) tests in order: base non-zero, capacity
+\ non-zero, base and capacity PAGE-BYTES aligned, no wrap, base outside DATA.
+\ Every clause throws E-STACK-UNGUARDED, so each case changes one field of the
+\ accepted extent (POOL, POOL-BYTES) and the order attributes the refusal.
 : ACCEPTED-EXTENT ( -- )
    ['] EMPTY POOL POOL-BYTES run-in-stack ;
 
 : NULL-BASE-REFUSAL ( -- )
    ['] EMPTY NULL-PTR POOL-BYTES run-in-stack ;
 
-\ A real guarded base shifted by one cell (8 bytes) is neither the mapping's
-\ own base nor PAGE-BYTES aligned any more, even though it still points inside
-\ readable/writable memory -- GUARDED-EXTENT?'s alignment proof, not a bounds
-\ probe, is what catches it.
+\ A guarded base shifted by one cell still points into read/write memory: the
+\ alignment clause, not a bounds probe, catches it.
 : UNALIGNED-BASE-REFUSAL ( -- )
    POOL {: base:ptr :}
    ['] EMPTY base 8 + POOL-BYTES run-in-stack ;
@@ -96,20 +80,14 @@ create LIT-SRC LIT-SRC-CAP allot
 : PARTIAL-PAGE-CAPACITY-REFUSAL ( -- )
    ['] EMPTY POOL POOL-BYTES 8 + run-in-stack ;
 
-\ The wrap clause, which nothing else here reaches: the capacity is non-zero
-\ and PAGE-BYTES aligned (its low 16 bits are clear), so the two alignment
-\ clauses pass and base + capacity is the first thing that fails -- it lands
-\ one page BELOW the base instead of above it.
+\ The wrap clause: the capacity is non-zero and PAGE-BYTES aligned, so base +
+\ capacity is the first to fail, landing one page below the base.
 : WRAPPING-EXTENT-REFUSAL ( -- )
    ['] EMPTY POOL $FFFFFFFFFFFF0000 run-in-stack ;
 
-\ The DATA-region clause, isolated. `data-base` is the region's own start, so
-\ it is PAGE-BYTES aligned by construction and passes every alignment and wrap
-\ clause ahead of it; the only thing wrong with it is that it is DP-heap
-\ memory. An ordinary `create`/`allot` address (GBUF below) is inside the same
-\ region but is page-aligned only by accident, so it is the base-alignment
-\ clause -- emitted first -- that decides that one, which is why the region
-\ needs a case of its own.
+\ `data-base` is PAGE-BYTES aligned by construction, so only the DATA clause
+\ refuses it; a create/allot address (GBUF) is page-aligned only by accident, so
+\ the base-alignment clause decides that one.
 : DATA-REGION-REFUSAL ( -- )
    ['] EMPTY data-base POOL-BYTES run-in-stack ;
 
@@ -136,15 +114,11 @@ create GBUF 32 allot   \ an ordinary create/allot buffer: never a guarded mappin
    s" a create/allot buffer is refused" T-LABEL
    ['] PLAIN-BUFFER-REFUSAL catch E-STACK-UNGUARDED T= ;
 
-\ src/lib/task.f PREPARE gives every task its own guarded data/return/loop stacks
-\ (TASK-STACK-BYTES rounds the requested size up to whole guard pages); a task
-\ overflowing its own data stack faults the same way the main thread's does,
-\ and the crash handler's exit_group kills the whole process, so the overflow
-\ is observable as this child process exiting 102 -- there is no per-task exit,
-\ only the process-wide fail-closed one.
-\ TASK:ACTIVATE ( [ -- ] ptr n -- ) needs a zero-effect quotation, so the
-\ recursive overflow word (declared ( n -- ), per OVERFLOW-NAMES above) is
-\ wrapped in a zero-arg starter that seeds it.
+\ src/lib/task.f PREPARE gives each task guarded stacks (TASK-STACK-BYTES rounds
+\ up to whole guard pages). A task's overflow faults like the main thread's and
+\ the crash handler's exit_group ends the process: exit 102, no per-task exit.
+\ TASK:ACTIVATE needs a zero-effect quotation, so a zero-arg starter seeds the
+\ ( n -- ) overflow word.
 : TASK-OVERFLOW ( -- )
    s" a task that overflows its own data stack exits 102 (data)" T-LABEL
    s" require src/lib/task.f : X ( n -- ) begin dup recurse again ; : X0 ( -- ) 0 X ; TASK:MIN-STACK TASK:TASK WORKER : GO ( -- ) ['] X0 WORKER TASK:ACTIVATE begin WORKER TASK:DONE? 0= while TASK:PAUSE repeat ; GO"

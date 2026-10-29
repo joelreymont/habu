@@ -1,19 +1,9 @@
-\ stdlib-standalone-load.f - prove every flat production lib module bare-loads.
-\
-\ Regression guard for habu-pkg-stdlib-modules-3197dbbc: a flat src/lib/<module>.f
-\ must `require` its own dependency closure, so `bin/hb --load src/lib/<module>.f`
-\ works in a fresh engine with no caller-supplied prelude. Hidden load-order
-\ coupling (a module using another module's words with no require line) is masked
-\ by the resident gate DAG order and surfaces only here. Each module is spawned
-\ in a fresh child engine with empty stdin; a clean exit 0 proves the module
-\ pulled its whole dependency closure itself.
-\
-\ The module list is DERIVED each run by walking src/lib/ and keeping the flat
-\ src/lib/<name>.f modules. Nested src/lib/<sub>/ research sub-libraries and *-test.f
-\ files are out of scope by structure alone (their suites cover them). There is
-\ no exclusion table: every flat module is covered automatically, so no path
-\ prefix or reserved future name can suppress a production module, and coverage
-\ fails closed on any load-order regression.
+\ Every flat src/lib/<name>.f module bare-loads (`bin/hb --load` in a fresh
+\ child, empty stdin, exit 0): it requires its own dependency closure. A missing
+\ require is masked by the gate's resident load order and surfaces only here.
+\ The list is walked from src/lib each run with no exclusion table; nested
+\ src/lib/<sub>/ and *-test.f files are out of scope, covered by their own
+\ suites.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -29,14 +19,14 @@ package STDLIB-STANDALONE-LOAD
 
 2048 constant CAP
 20000 constant TIMEOUT-MS
-$4000 constant PATHS-CAP                     \ collected flat-module path bytes
-128 constant PATHS-MAX                       \ collected flat-module slots
+$4000 constant PATHS-CAP
+128 constant PATHS-MAX
 40 constant MODULE-FLOOR                     \ min flat modules; guards a broken walk
 47 constant SLASH
 
 create OUT CAP allot
 create ERR CAP allot
-create EMPTY 1 allot                         \ zero-length stdin
+create EMPTY 1 allot
 create PATHS-BUF PATHS-CAP allot
 create PATH-OFF PATHS-MAX cells allot
 create PATH-LEN PATHS-MAX cells allot
@@ -46,8 +36,7 @@ variable PATHS-USED
 : TRUE ( -- bool ) 0 0= ;
 : FALSE ( -- bool ) 0 0= 0= ;
 
-\ ---- path predicates -------------------------------------------------------
-: SLASHES ( ptr u8 n -- n ) {: a:ptr u:n :}   \ count '/' bytes in a path
+: SLASHES ( ptr u8 n -- n ) {: a:ptr u:n :}
    0 0 begin dup u < while
       dup a + c@ SLASH = if swap 1+ swap then
       1+
@@ -57,14 +46,13 @@ variable PATHS-USED
    u su < if FALSE exit then
    a u su - +  su  sa su  STR= ;
 
-\ A flat production module is src/lib/<name>.f: a `.f` file, not a `-test.f`, with
-\ two '/' bytes (nested src/lib/<sub>/<name>.f has three and is out of scope).
+\ A flat module is src/lib/<name>.f and not a -test.f: two '/' bytes; a nested
+\ src/lib/<sub>/<name>.f has three.
 : FLAT-MODULE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" .f" SUFFIX? 0= if FALSE exit then
    a u s" -test.f" SUFFIX? if FALSE exit then
    a u SLASHES 2 = ;
 
-\ ---- collect flat modules during the walk ----------------------------------
 : PATH$ ( n -- ptr u8 n ) {: k:n :}
    PATHS-BUF PATH-OFF k cells + @ +  PATH-LEN k cells + @ ;
 
@@ -84,7 +72,6 @@ variable PATHS-USED
       1+
    repeat drop FALSE ;
 
-\ ---- spawn one bare load ---------------------------------------------------
 : LOADS ( ptr u8 n -- )
    {: p:ptr u:n :}
    PROC-ARGV-RESET

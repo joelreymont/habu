@@ -1,20 +1,16 @@
-\ native-plusloop.f - the counted loop with a step, lowered by the sole compiler.
-\
-\ The reference is Forth 2012 6.1.0140: the loop ends when the index crosses
-\ the boundary between limit-1 and limit in the step's direction. With old =
-\ index - limit and next = index' - limit that is ((old xor next) and (old xor
-\ step)) < 0. A bare sign change is not the rule: it also fires when the index
-\ wraps at the boundary opposite the limit, which must keep looping. Expected
-\ counts below are the standard's own published tables (gd2, gd7, gd8) plus
-\ explicit cases for that opposite boundary; the JIT is not consulted.
+\ The counted loop with a step, at tier 1. Forth 2012 6.1.0140: the loop ends
+\ when the index crosses the boundary between limit-1 and limit in the step's
+\ direction; with old = index - limit and next = index' - limit that is ((old
+\ xor next) and (old xor step)) < 0. A bare sign change also fires when the
+\ index wraps at the boundary opposite the limit, which must keep looping.
+\ Expected counts are the standard's tables (gd2, gd7, gd8) plus that boundary.
 require src/lib/test.f
 require src/lib/prelude.f
 require src/lib/string.f
 require src/compiler/native/compiler.f
 require tools/codegen-loop-inventory.f
 
-\ A loaded script compiles `:` through the legacy JIT unless the tier says
-\ otherwise; every word below must go through the sole native compiler.
+\ Every word below compiles at tier 1, not ARM's default tier 0.
 1 set-tier
 
 package NPL-FIXTURE
@@ -119,7 +115,6 @@ variable INCREMENT
 : DEAD ( -- )
    10 0 do 5 throw +loop ;
 
-\ The reproducer that opened this lane, run on a buffer this package owns.
 16 constant STRIDE-BYTES
 create STRIDE-BUF STRIDE-BYTES allot
 : COPY-DATA ( ptr u8 -- ) {: p:ptr :}

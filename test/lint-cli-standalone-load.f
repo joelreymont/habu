@@ -1,35 +1,9 @@
-\ lint-cli-standalone-load.f - prove every standalone lint entry point still loads.
-\
-\ Regression guard for habu-restore-dead-standalone-a362cb77. A lint entry point is
-\ a COMMAND: `bin/hb --load tools/<name>-lint.f` is how a person or a script runs it.
-\ Such an entry must `require` its own dependency closure. When it only lists the
-\ closure in a header comment and relies on the caller having loaded it first, the
-\ command is dead. Reserved-name-lint was dead that way when this guard was written.
-\
-\ Each entry is spawned in a fresh child engine with empty stdin. The verdict is
-\ deliberately NOT "exit 0": these entries RUN when loaded, so a healthy one may
-\ exit 0 (it did its work), or exit with its usage code (it loaded, then refused the
-\ argument list), or exit with a findings code. What a healthy entry never does is
-\ die while loading. A dead entry exits REJECT-RC with an E-UNDEFINED diagnostic, so
-\ the leg asserts the child exited on its own and did NOT exit REJECT-RC. That is
-\ exactly the distinction the lane required: an entry that throws while parsing
-\ arguments still passes, an entry that never finished loading does not.
-\
-\ The three ways a child can finish are kept apart. A child that merely ran out of
-\ wall clock is not a child that died, and folding the two into one boolean is how
-\ a saturated box came to be reported as a dead lint entry: the failure read
-\ "expected true got false" and named neither the deadline nor the fact that one
-\ was hit (dot habu-un-flake-lint-2535cef6). Exit, signal and timeout each get
-\ their own verdict below. A timeout is the row's deadline, not a failure: it names
-\ the entry and the budget it burned, prints the capture drained before the
-\ deadline and throws E-PROC-TIMEOUT.
-\
-\ The entry list is DERIVED each run by walking tools/ and keeping the flat
-\ tools/<name>-lint.f entries. Nested tools/lint/<name>-lint.f helpers are library
-\ pieces their parents load, and -lint-core.f / -lint-test.f are not entry points;
-\ all three drop out by structure alone. There is no exclusion table: a new lint
-\ entry is covered the moment it is added, so no reserved name can suppress one, and
-\ coverage fails closed on any load-order regression.
+\ lint-cli-standalone-load.f - every standalone lint entry (tools/<name>-lint.f,
+\ a command run with `bin/hb --load`) requires its own closure and loads. Each
+\ runs in a fresh child with empty stdin and may exit 0, with its usage code or
+\ with findings, never REJECT-RC (a dead load). Exit, signal and timeout get
+\ separate verdicts; a timeout throws E-PROC-TIMEOUT. Entries come from a walk
+\ of tools/, with no exclusion table.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -67,7 +41,7 @@ variable PATHS-USED
 : FALSE ( -- bool ) 0 0= 0= ;
 
 \ ---- path predicates -------------------------------------------------------
-: SLASHES ( ptr u8 n -- n ) {: a:ptr u:n :}   \ count '/' bytes in a path
+: SLASHES ( ptr u8 n -- n ) {: a:ptr u:n :}
    0 0 begin dup u < while
       dup a + c@ SLASH = if swap 1+ swap then
       1+
@@ -77,9 +51,8 @@ variable PATHS-USED
    u su < if FALSE exit then
    a u su - +  su  sa su  STR= ;
 
-\ A standalone lint entry is tools/<name>-lint.f: the -lint.f suffix carries it, and
-\ a single '/' keeps the nested tools/lint/ helpers out. -lint-core.f and
-\ -lint-test.f fail the suffix test, so no separate exclusion is needed.
+\ A single '/' keeps the nested tools/lint/ helpers out; -lint-core.f and
+\ -lint-test.f fail the suffix test.
 : LINT-ENTRY? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" -lint.f" SUFFIX? 0= if FALSE exit then
    a u SLASHES 1 = ;
@@ -112,10 +85,7 @@ variable PATHS-USED
    ENGINE-CANDIDATE:PATH$ >LEN  EMPTY 0 >LEN  OUT CAP >LEN
    ERR CAP >LEN  ms >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME ;
 
-\ The case label of a child that passed its deadline: the entry and the budget it
-\ burned are the two facts needed to tell a slow box from a hang. The deadline is
-\ the row's, not a failure: LOAD-VERDICT prints this label, the program and the
-\ capture through T-TIMED-OUT, which throws E-PROC-TIMEOUT.
+\ The entry and the budget it burned tell a slow box from a hang.
 : OVER-BUDGET$ ( ptr u8 n n -- ptr u8 n ) {: p:ptr u:n ms:n :}
    SB-RESET
    p u SB-APPEND
@@ -159,14 +129,9 @@ variable PATHS-USED
    repeat drop ;
 
 \ ---- fixture: a timeout is the row's deadline ------------------------------
-\ The distinction this suite exists to make is between an entry that never
-\ finished loading and one that merely ran out of wall clock, so the timeout path
-\ is exercised rather than assumed. A discovered entry is spawned through the same
-\ LOAD-VERDICT the real legs use, with a budget nothing can meet. The deadline is
-\ the row's, not a failure: the verdict counts no failure, leaves a case label
-\ naming that entry and the budget it burned, and throws E-PROC-TIMEOUT. It runs
-\ first and owns the suite's T-RESET, so the failure count it reads starts at
-\ zero.
+\ The timeout path runs through the real LOAD-VERDICT with a budget nothing can
+\ meet: no failure counted, a label naming entry and budget, E-PROC-TIMEOUT. It
+\ runs first and owns the suite's T-RESET, so the failure count starts at zero.
 1 constant UNMEETABLE-MS
 256 constant GOT-CAP
 create GOT-BUF GOT-CAP allot
@@ -206,13 +171,8 @@ variable GOT-U
    code E-PROC-TIMEOUT T= ;
 
 \ ---- fixture: scheduling is structural, no exclusion table -----------------
-\ Inject synthetic paths straight into COLLECT and assert each verdict without
-\ spawning anything. This proves discovery keeps exactly the flat tools/<name>-lint.f
-\ entries: every entry this lane repaired is scheduled, a brand-new lint entry is
-\ scheduled the moment it appears, and the shapes that are NOT entry points - a lint
-\ core, a lint suite, a nested tools/lint/ helper, and a non-lint tool - drop out by
-\ structure alone. No reserved name can suppress an entry.
-: SCHEDULES? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ inject one path; collected?
+\ Synthetic paths go straight into COLLECT; nothing is spawned.
+: SCHEDULES? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    0 PATHS-N !  0 PATHS-USED !
    a u COLLECT
    a u COLLECTED? ;

@@ -2,13 +2,8 @@
 \ select-f64.f): a definition compiled through the front end and NBACK:FREEZE,
 \ or built straight in HIR, selected by the rows a Wasm backend installs, and
 \ read back from the frozen WSTRUCT module. A row file reopens WSEL-TEST and
-\ registers those rows once in its process.
-\
-\ A shape lists per block its argument count and its operations, each with what
-\ it carries past its opcode - a number's value, an address's kind, whose value
-\ is the linker's, and a branch's destinations as block indices - and a run of
-\ one operation written once with its count. The rows are structural; executing
-\ them is the rows dot's.
+\ registers those rows once in its process. The rows are structural: nothing
+\ here executes them.
 
 require src/lib/test.f
 require src/lib/string.f
@@ -95,7 +90,6 @@ variable DECL-OUT
    src sn NSRC:TEXT!
    in IN-N !  out OUT-N !  in DECL-IN !  out DECL-OUT ! ;
 
-\ The front end: the source elaborated to HIR and frozen.
 : FROZEN ( IR-CTX:ctx -- IR-BUILD:module )
    {: c:IR-CTX:ctx :}
    c NSRC:HIR-BUILDER {: b:IR-BUILD:builder :}
@@ -172,7 +166,7 @@ variable FUN-B0                        \ the function's first block, module-loca
    loop ;
 
 \ The operation without the dialect's `wstruct.` prefix, `=value` after a
-\ number, `@data` or `@code` after an address.
+\ number, `@data` or `@code` after an address, whose value is the linker's.
 : NAME+ ( IR-ID:ir-op-id -- )
    {: o:IR-ID:ir-op-id :}
    o NFROZEN:OPCODE-AT SYM$ {: a:ptr u:n :}
@@ -356,7 +350,6 @@ TYPED-VARIABLE READER [ IR-CTX:ctx -- ]   \ what a row reads off its module
    c NSRC:HIR-BUILDER 0 Z-BLD !
    ZB  ZC ZB nm nn IR-BUILD:ADD-SOURCE  0 nn IR-BUILD:ADD-SPAN  0 Z-SPAN ! ;
 
-\ The function closed, frozen by NBACK:FREEZE, declared and selected.
 : Z-SELECT ( IR-CTX:ctx -- IR-BUILD:module )
    {: c:IR-CTX:ctx :}
    ZC ZB IR-BUILD:END-BLOCK drop

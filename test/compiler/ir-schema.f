@@ -1,18 +1,7 @@
-\ ir-schema.f - checked compiler dialect schema-table tests.
-\
-\ Proves the schema contract of src/compiler/ir/schema.f: a defined opcode
-\ reads back exactly what was declared through every reader; a second
-\ definition of the same opcode name rejects; an opcode name no schema defines
-\ names nothing, and a row appended past this package's constructors still
-\ cannot smuggle a value outside a closed vocabulary through a decoder; a
-\ schema that never declared one of its required fields rejects, one fixture
-\ per field; illegal arities, illegal effect combinations, illegal terminator
-\ shapes, and illegal target combinations each reject with their own named
-\ code; cross-owner keys, symbols,
-\ types, and identities from another context reject named; capacities reject at
-\ the committed ceilings; a frozen module serves every reader through the arena
-\ views while the retired builders reject; context teardown releases everything;
-\ and checker fixtures prove the API stays sealed.
+\ ir-schema.f - the schema contract of src/compiler/ir/schema.f: a defined
+\ opcode reads back what was declared through every reader, and each illegal
+\ schema, cross-owner reference, capacity overrun, forged row and retired
+\ builder rejects with its own named code; checker fixtures keep the API sealed.
 
 require src/lib/test.f
 require src/compiler/ir/schema.f
@@ -195,7 +184,6 @@ private
       IR-SCHEMA:SET-TARGET exit then
    CTARGET-ARCH:AARCH64 CTARGET:F-BASE IR-SCHEMA:SET-TARGET ;
 
-\ Stage one whole schema for the chosen variation.
 : STAGE ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key n -- )
    {: c:IR-CTX:ctx sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena key:IR-ID:ir-module-key v:n :}
    c sp sr key v OP-SYM IR-SCHEMA:BEGIN-OP

@@ -1,28 +1,9 @@
-\ outer-interpret.f - the interpret loop written in Habu, src/habu/interpret.f
-\ OUTER:INTERPRET, against the engine's own, through the real load path.
-\
-\ Each case is a file a child engine loads twice:
-\   --load <prelude> test/outer-loop-on.f <case>   the Habu loop reads the case
-\   --load <prelude> <case>                        the engine's evaluate reads it
-\ test/outer-loop-on.f installs the public OUTER:EVAL-FRAMED-RANGE through
-\ SOURCE-ROOT:USE-INTERPRETER. The two runs must end with the same
-\ rc, stdout and stderr, and each case states the rc and output that show what
-\ it exercised, so two runs failing alike do not pass.
-\
-\ The prelude defines with keywords the Habu loop does not read yet
-\ (`SUMTYPE`), so it loads before the switch, and a case holds
-\ only numbers, comments, the literal keywords (`s"`, `c"`, `."`, their
-\ escaped forms, `char` and `'`), the package keywords (`package`, `public`,
-\ `private`, `;package`, `using`, `;using` and `export`), words, `create`,
-\ `variable`, `constant`, `cast:` and `immediate`, and definitions (`:`, `kernel:` or
-\ `trusted:`) that end at `;` or refuse, at the latest where the input ends
-\ inside them. A case defines with the other keywords through evaluate, which
-\ the engine's loop reads.
-\
-\ Some cases are the Habu loop's alone: tier 0, whose definitions the engine's
-\ loop compiles and the Habu loop refuses. And one check runs in a forked copy
-\ of this process instead, the seam: a fork binds it to a counting spy, and a
-\ loaded file must arrive there.
+\ outer-interpret.f - OUTER:INTERPRET (src/habu/interpret.f), the interpret
+\ loop written in Habu, against the engine's own through the real load path.
+\ A child engine loads each case file twice, `--load <prelude>
+\ test/outer-loop-on.f <case>` (the Habu loop, installed through
+\ SOURCE-ROOT:USE-INTERPRETER) and `--load <prelude> <case>`: rc, stdout and
+\ stderr must match, and each case states the rc and output it exercises.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -62,7 +43,6 @@ variable SPIN-U
 : SPIN$ ( -- ptr u8 n )
    SPIN-BUF SPIN-U @ ;
 
-\ The source buffer's text, written to the file at path.
 : SRC>FILE ( ptr u8 n -- )
    GE-SRC-BUF GE-SRC-U @ FS:WRITE-ALL ;
 
@@ -77,36 +57,16 @@ variable SPIN-U
 : QLINE ( ptr u8 n -- )
    Q+ GE-SRC-LF ;
 
-\ Words the cases call: a certified word of two inputs, a trusted one that
-\ drops a cell it does not declare, an immediate word, a wide one, a word
-\ spelled as an out-of-range number, a top-row hook that logs each event and
-\ one that drops two cells more than its event carries, a word that prints a
-\ string's bytes in decimal, a package with a private word and a public one
-\ that a global twin shadows, two packages whose publics share a tail, a
-\ namespace a qualified definition made (it has no private wordlist), an
-\ integer constant, and a word that fills the dictionary (the name index goes
-\ first). OI-DUMP prints the
-\ pending definition: its record's name, flags, whether its wordlist is
-\ OI-WANT's, its body capture, its signature's length and the trusted and
-\ tier cells. OI-DOES. prints the body capture, DOESB, the created signature
-\ and how far here moved past OI-MARK. OI-SHOW is a neutral immediate that
-\ runs the word in OI-SHOWN, so a body prints its pending definition where it
-\ names OI-SHOW: an exit hook runs only after the input's end refused the
-\ definition and rolled it back. OI-ROOM is the data space left below its
-\ ceiling, and OI-ALIAS gives the last record a second name. OI-ENDED. prints
-\ the cells a definition's end clears or'd together, 0 when all are: PEND,
-\ TSIG, TCSIG, DOESB, CLAUSE, TRUSTED and the definition's tier. OI-DX holds a
-\ private does> definer whose clause name is longer than DNAME-INL bytes, and
-\ OI-DX. prints whether the record above its public export is that export's
-\ clause, and the clause's name. OI-DH holds a private definer and, in its
-\ public wordlist, a word under that definer's clause name. OI-ARM sets the exit
-\ hook (src/habu/layout.f EXIT-HOOK-CELL) to a word, OI-CR the hook that prints
-\ a newline, through OI-XT>N, the cast that reads an xt as its address: an
-\ undeclared cell holds no xt. The cast introduces no pointer or xt, so it
-\ needs no private section. OI-PARK parks a string; OI-INC-PARKED includes it
-\ as a path, OI-EVAL-PARKED evaluates it and OI-EVC-PARKED evaluates it closed,
-\ each taking and leaving nothing, so a case catches any of them as
-\ `s" text" OI-PARK ' OI-EVAL-PARKED catch` and the catch leaves only the code.
+\ Words the cases call. OI-DICT-FULL clears the name index pointer before it
+\ fills the dictionary. OI-SHOW, a neutral immediate, runs OI-SHOWN so a body
+\ prints its pending definition where it names OI-SHOW: an exit hook runs only
+\ after the input's end refused the definition and rolled it back. OI-ENDED.
+\ prints the cells a definition's end clears, or'd together: 0 when all are.
+\ OI-DX's clause name is longer than DNAME-INL bytes. OI-XT>N reads an xt as its
+\ address for OI-ARM's exit hook (src/habu/layout.f EXIT-HOOK-CELL): an
+\ undeclared cell holds no xt, and the cast introduces no pointer or xt, so it
+\ needs no private section. A case catches a parked include or evaluate as
+\ `s" text" OI-PARK ' OI-EVAL-PARKED catch`, which leaves only the code.
 : PRELUDE ( -- )
    GE-SRC-RESET
    s" : OI-TWO ( n n -- ) 2drop ;" GE-SRC-LINE
@@ -210,7 +170,6 @@ variable WANT-RC
    s" engine stderr:" type cr WANT-ERR$ type
    label labelu GE-FAIL ;
 
-\ The Habu loop's run against the kept engine run.
 : SAME ( ptr u8 n -- ) {: label:ptr labelu:n :}
    label labelu GE-RC@ WANT-RC @ <> if s" rc differs from the engine's" label labelu MISMATCH then
    GT-OUT$ WANT-OUT$ STR= 0= if s" stdout differs from the engine's" label labelu MISMATCH then
@@ -241,7 +200,6 @@ variable WANT-RC
    CASE$ SRC>FILE
    true RUN ;
 
-\ One line as the case file named, run by both loops.
 : LINE-CASE ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n name:ptr nameu:n :}
    GE-SRC-RESET
    src srcu GE-SRC-LINE
@@ -254,6 +212,15 @@ variable WANT-RC
    at atu CASE$ GE-EXPECT-ERR-HAS ;
 
 \ ---- the cases -----------------------------------------------------------------------
+\ The prelude defines with keywords the Habu loop does not read (`SUMTYPE`), so
+\ it loads before the switch. A case holds only numbers, comments, the literal
+\ keywords (`s"`, `c"`, `."`, their escaped forms, `char`, `'`), the package
+\ keywords (`package`, `public`, `private`, `;package`, `using`, `;using`,
+\ `export`), words, `create`, `variable`, `constant`, `cast:`, `immediate`, and
+\ definitions (`:`, `kernel:`, `trusted:`) that end at `;` or refuse, at the
+\ latest where the input ends inside them; other keywords go through evaluate,
+\ which the engine's loop reads. Tier-0 cases are the Habu loop's alone: the
+\ engine's loop compiles their definitions and the Habu loop refuses them.
 : NUMBERS ( -- )
    GE-SRC-RESET
    s" require src/lib/ieee754.f" GE-SRC-LINE
@@ -894,9 +861,9 @@ variable WANT-RC
    s" E-USING-SHADOW-GLOBAL" s" using shadow" GE-EXPECT-ERR-HAS ;
 
 \ The interpreter refuses the same tail by name, as a word and as a tick's
-\ operand: it used to run the global (8) where OI-PKG's public is 7. Under
-\ `evaluate` the refusal is a throw the caller catches, and the qualified
-\ name and the read after `;using` are unchanged.
+\ operand (the global answers 8, OI-PKG's public 7). Under `evaluate` the
+\ refusal is a throw the caller catches, and the qualified name and the read
+\ after `;using` are unchanged.
 : TOP-SHADOW ( -- )
    s" using OI-PKG OI-SEVEN ." s" oi-top-shadow.f" LINE-CASE
    ENGINE-ERROR:USING-SHADOW-GLOBAL
@@ -997,7 +964,6 @@ variable WANT-RC
    s" S\~ : FLOOR ( -- n ) [: s\~ using OI-FXA ;using\~ VERIFY:SOURCE-BUF ;] catch ;~ evaluate" QLINE
    s" ;package" GE-SRC-LINE ;
 
-\ The source text as the nested file named.
 : PKG-NESTED ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n name:ptr nameu:n :}
    GE-SRC-RESET
    src srcu GE-SRC-LINE
@@ -1068,8 +1034,7 @@ variable WANT-RC
 \ it still has OI-FXA. A file that closes its includer's package ends the
 \ usings opened in it, and the includer gets back the depth `;package`
 \ restored: the file's OI-FXB ends with the file and OI-FXA, opened before the
-\ package, stays. The first file used to leave OI-FXB in OI-FXA's slot, the
-\ second both open, so OI-TWIN was ambiguous.
+\ package, stays.
 : USING-INCLUDER ( -- )
    s" ;using using OI-FXB" s" oi-nested-using-includer.f" PKG-NESTED
    GE-SRC-RESET
@@ -1087,10 +1052,8 @@ variable WANT-RC
    s" E-UNDEFINED: OI-TWIN at " S\" oi-close-includer.f:1\n" ERR-AT ;
 
 \ A throw puts back the includer's used publics on both loops. The file closes
-\ OI-P, opens OI-FXN in the slot OI-FXA held and throws: the slot used to keep
-\ OI-FXN, whose OI-TWIN takes an input, so the top-level OI-TWIN added 100 to
-\ a cell below the stack and the checker refused OI-SLOT. Now both read
-\ OI-FXA's OI-TWIN.
+\ OI-P, opens OI-FXN (whose OI-TWIN takes an input) in OI-FXA's slot and
+\ throws; both loops then read OI-FXA's OI-TWIN.
 : USING-SLOT-THROW ( -- )
    s" ;package using OI-FXN OI-NOPE" s" oi-nested-slot-throw.f" PKG-NESTED
    GE-SRC-RESET
@@ -2124,6 +2087,7 @@ variable WANT-RC
    0 SPIN-U ! ;
 
 \ ---- in a forked copy of this process -----------------------------------------------
+\ The fork binds the seam to a counting spy that a loaded file must reach.
 
 variable SPY-N
 

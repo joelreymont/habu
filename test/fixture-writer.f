@@ -1,24 +1,9 @@
-\ fixture-writer.f - the native fixture writer as a keyed application image,
-\ settled once per gate run, built on a key miss and run in place.
-\
-\ Every partial-capture fixture runs test/native-fixture-write.f: once to emit
-\ the empty cold host test/cold-engine.f shares, and once for each partial image
-\ it writes. Loaded as a script, the writer compiled tools/native-emit.f at tier 1
-\ in every process: 22.8 s a write, against 0.4 s for the emission itself,
-\ measured on one host. So tools/app-build.f - the builder `hb-build --repl`
-\ runs - compiles it once into an application image that starts at the writer,
-\ and every write runs that image with the writer's own arguments.
-\
-\ THE KEY IS WHAT THE IMAGE IS BUILT FROM: the engine binary that runs the
-\ builder, the program the builder is handed, and the ordered require/include
-\ closures of the builder and of the writer. All of them go into the content key
-\ below, so another engine or an edit anywhere in either closure changes the key
-\ and the image is rebuilt; no stale writer runs. test/keyed-image.f builds and
-\ publishes the image under that key.
-\
-\ PATH$ hands out the keyed image itself, where test/cold-engine.f hands out
-\ copies of its host: the writer is only ever executed, and it writes nothing
-\ but the paths its caller names, so no caller can clobber the shared bytes.
+\ fixture-writer.f - the native fixture writer (test/native-fixture-write.f) as
+\ an application image tools/app-build.f builds on a key miss, run in place: as
+\ a script it compiled tools/native-emit.f at tier 1 per write, 22.8 s against
+\ 0.4 s for the emission. The key covers the engine binary, the builder's
+\ program and both ordered require/include closures (test/keyed-image.f). PATH$
+\ hands out the image itself: it writes only the paths its caller names.
 
 require src/lib/errors.f
 require src/lib/fs.f
@@ -84,7 +69,6 @@ variable RESOLVED?
 
 public
 
-\ Build the shared writer image unless the one on disk was built under its key.
 : ENSURE ( -- )
    RESOLVE
    KEY-HEX FAMILY$ ENGINE-KEY ENGINE-CANDIDATE:PATH$ PROGRAM$ ['] BUILD-ARGS

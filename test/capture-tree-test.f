@@ -1,56 +1,9 @@
 \ capture-tree-test.f - a capture that ends its child ends what the child started.
-\
-\     bin/hb --load test/capture-tree-test.f
-\
-\ THE SUBJECT is test/check-signal-subject.f, run as the child of a src/lib/process.f
-\ capture. It writes a line, starts a sleeper that leads a process group of its
-\ own, as every spawn does, reports its pid and waits for the sleeper. Its
-\ first act opens the write end of a FIFO this test makes (src/lib/test/fifo.f)
-\ by the path CHECK_SIGNAL_FIFO names, and it maps that end into the sleeper,
-\ so the read end reports end of file only when neither is left.
-\
-\ THE REPORT COMES BEFORE END OF FILE MEANS ANYTHING. A FIFO no writer has
-\ opened yet reads end of file too, so a case judges end of file only after
-\ the subject's report has shown it holds the write end.
-\
-\ THE WAYS A CAPTURE ENDS ITS CHILD EARLY, each of which must end the sleeper
-\ with it; a kill of the child's pid or group reaches neither the sleeper nor
-\ anything else the child spawned:
-\
-\  1. ITS DEADLINE IN THE POLL, read as a status: RUN-ARGV-ENV-CAPTURE throws
-\     E-PROC-TIMEOUT, and the line the subject wrote stays captured.
-\  2. THE SAME DEADLINE READ AS DATA: RUN-ARGV-ENV-CAPTURE-OUTCOME answers the
-\     timeout outcome with that line.
-\  3. ITS DEADLINE IN THE REAP: the subject closed its output first, so the
-\     capture read end of file on both pipes and waits for the subject's status
-\     (PROC-REAP-CAPTURE-BOUNDED) until the deadline.
-\  4. AN OVERFLOW: the line is longer than the capture holds, E-PROC-TRUNCATED.
-\  5. A REFUSED REAPER ARM: PROC-REAP-ARM throws after the spawn, as
-\     src/lib/process-fork.f SPAWN-REAPER does when its fork is refused.
-\
-\ Asserted in each: the capture's own answer, the subject reaped after a
-\ SIGKILL, and end of file on the FIFO within GONE-MS.
-\
-\ THIS TEST'S OWN WAITS ARE NO ASSERTION RESULT. The capture deadlines above are
-\ the subject and are asserted. A wait this test runs around them - for the
-\ subject's report, for end of file on the FIFO, for what a failed case left -
-\ is named on stdout and thrown as E-PROC-TIMEOUT when its own deadline runs
-\ out (src/lib/test/wait.f), so the row ends as a timeout and not as a FAIL. End
-\ of file before the report, a short report or a failed read is a failed
-\ report, and fails the case; the report's deadline running out is a timeout.
-\ On macOS, whose poll never reports a FIFO's end of file, a subject that dies
-\ before its report is that timeout instead.
-\
-\ THE DEADLINE RUNS OUT AFTER THE SLEEPER STARTS. A capture runs PROC-REAP-ARM
-\ between its spawn and its first poll. The vector each case installs waits
-\ there for the subject's report, which comes after the sleeper started, so a
-\ deadline of CAPTURE-MS has passed by the first poll however long the engine
-\ took to start. That poll still finds the line the subject wrote before it
-\ reported.
-\
-\ A FAILED CASE LEAVES NOTHING EITHER. CASE-END runs whatever the case asserted
-\ or threw, and waits for the processes the capture left, which the sleeper's
-\ 20 s bounds.
+\ Each way a capture ends its child early must end the sleeper the child
+\ started (test/check-signal-subject.f), which leads its own process group as
+\ every spawn does: a kill of the child's pid or group reaches neither. A wait
+\ this test runs around the capture is named and thrown as E-PROC-TIMEOUT
+\ (src/lib/test/wait.f), so the row ends as a timeout, not a FAIL.
 
 require src/lib/errors.f
 require src/lib/fs.f
@@ -98,6 +51,10 @@ PROC-NO-FD FIFO-RD !
    s\" check-signal-subject: up\n" ;
 
 \ ---- the report FIFO --------------------------------------------------------
+\ The subject first opens the write end, by the path CHECK_SIGNAL_FIFO names,
+\ and maps it into the sleeper, so the read end reports end of file only when
+\ neither is left. A FIFO no writer has opened reads end of file too, so end of
+\ file counts only after the subject's report.
 
 : FIFO$ ( -- ptr u8 n )
    FIFO FIFO-U @ ;
@@ -123,7 +80,9 @@ PROC-NO-FD FIFO-RD !
 \ The subject's pid, before READY-MS runs out. End of file first means the
 \ subject died before it reported: that, a short report or a failed read or
 \ poll is a failed report. READY-MS running out first is this wait's own
-\ deadline, a timeout: it answers false with REPORT-EXPIRED set.
+\ deadline, a timeout: it answers false with REPORT-EXPIRED set. On macOS, whose
+\ poll never reports a FIFO's end of file, a subject dying before its report is
+\ that timeout.
 : REPORT-READ? ( -- bool )
    READY-MS >MS PROC-DEADLINE-AT {: deadline:n :}
    begin REPORT-U @ REPORT-BYTES < while
@@ -150,11 +109,12 @@ PROC-NO-FD FIFO-RD !
 
 \ ---- the reaper arm ---------------------------------------------------------
 
-\ The subject opens the write end once the capture has spawned it, so this
-\ process waits for the report there. The wait records
-\ its deadline in REPORT-EXPIRED rather than throwing it: whatever this vector
-\ throws comes out of the capture as the capture's own code, and E-PROC-TIMEOUT
-\ is the code two cases expect from the capture.
+\ A capture runs PROC-REAP-ARM between its spawn and its first poll, after the
+\ subject has opened the write end, so this vector waits there for the report,
+\ which follows the sleeper's start: CAPTURE-MS has passed by the first poll,
+\ which still finds the line the subject wrote. The wait records its deadline in
+\ REPORT-EXPIRED rather than throwing it: whatever this vector throws comes out
+\ of the capture as its own code, and two cases expect E-PROC-TIMEOUT from it.
 : AWAIT-REPORT ( -- )
    REPORT-READ? REPORTED ! ;
 
@@ -240,6 +200,8 @@ PROC-NO-FD FIFO-RD !
    erru LEN>N 0 T=
    ASSERT-ENDED ;
 
+\ The subject closed its output first, so the capture reads end of file on both
+\ pipes and waits for the status (PROC-REAP-CAPTURE-BOUNDED) until the deadline.
 : REAP-BODY ( -- )
    true CASE-BEGIN
    [: ARM-AFTER-REPORT ;] is PROC-REAP-ARM
@@ -254,6 +216,8 @@ PROC-NO-FD FIFO-RD !
    [: [: SHORT-CAP CAPTURE-RC ;] CAPTURE-CODE throw ;] E-PROC-TRUNCATED TTHROWSQ
    ASSERT-ENDED ;
 
+\ PROC-REAP-ARM throws after the spawn, as src/lib/process-fork.f SPAWN-REAPER
+\ does when its fork is refused.
 : REFUSED-BODY ( -- )
    false CASE-BEGIN
    [: REFUSE-AFTER-REPORT ;] is PROC-REAP-ARM

@@ -1,48 +1,8 @@
 \ gate-images.f - the keyed images a gate settles in its pool, and which rows
-\ wait for each.
-\
-\ ONE MODULE PER IMAGE. An image family is what one module builds:
-\ test/compiler-images.f, test/fixture-writer.f, test/cold-engine.f,
-\ test/app-image-engine.f, test/preloaded-engine.f, test/whitebox-engine.f,
-\ test/aot-builder-engine.f, test/linker-builder-engine.f,
-\ test/app-builder-engine.f and tools/check-verify-image.f (a tool, not a test
-\ adapter: no grant check, so a row that reaches it ungranted builds its own
-\ keyed image instead of dying).
-\ Loading the module is how a file reaches the image, so a row NEEDS a family
-\ when its load closure holds the family's module: the files the row loads, and
-\ the files those import or launch (test/load-refs.f). A WHITEBOX-SUITE row
-\ also runs on the whitebox engine itself. Nothing is declared: a row that
-\ starts loading a module needs its image from then on, and a family whose
-\ module loads another's needs that one first (the cold host is the writer's
-\ output; the linker is built on the app image).
-\
-\ SETTLED ONCE, IN THE POOL. Before its first registry row the gate starts one
-\ build row per needed family, <family>-build: a bin/hb child handed `require
-\ <module>` and the family's settle word on stdin, on the product engine like
-\ any row. A family whose prerequisite is still building starts once that one
-\ passed, and never if it failed. A row that needs an image not yet settled
-\ waits aside, out of the pool: the rows after it keep starting, and it starts
-\ at the first start after its images settle, ahead of every later row not yet
-\ started (src/lib/test/suite.f PENDING). Before a sequential group and at the
-\ end of the run every wanted image settles and every waiting row starts before
-\ the pool drains. A row that needs a failed image is its own red pool row,
-\ naming the build row that failed, and every row that needs none of the
-\ failed images runs as usual.
-\
-\ GRANTED, NOT RACED. Each row is told the images settled for it
-\ (test/image-grant.f), so its own settle only finds and dates them; a settle
-\ its load closure does not show - a child reached through a load this reader
-\ cannot see - dies in that child, naming the image, instead of building it
-\ beside the gate's build row.
-\
-\ The build rows are spawned, not forked, so the gate process loads no family
-\ module: a file that loads the gate itself (test/run-cli-test.f launches
-\ test/run.f) reaches no image through it.
-\
-\ ONE GRAPH. DERIVE reads each file once and keeps every load it names, with
-\ the line naming it; test/gate-entry-guard.f walks that graph through the
-\ readers below, so the guard and the grants never disagree about what a row
-\ loads.
+\ wait for each. One module builds one image family; a row NEEDS a family when
+\ its load closure (the files it loads and those they import or launch,
+\ test/load-refs.f) holds the family's module, so nothing is declared. A
+\ WHITEBOX-SUITE row also needs the whitebox engine.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -57,8 +17,6 @@ require test/image-grant.f
 
 package GATE-IMAGES
 
-\ ---- the families ------------------------------------------------------------
-
 0 constant COMPILER
 1 constant WRITER
 2 constant COLD
@@ -71,6 +29,9 @@ package GATE-IMAGES
 9 constant CHECK-VERIFY
 10 constant FAMILY-N
 
+\ Each row is granted the images settled for it (test/image-grant.f), so its own
+\ settle only finds and dates them; a settle its closure does not show dies in
+\ that child, naming the image, instead of building beside the gate's build row.
 \ The family name each module checks its grant under (test/image-grant.f).
 : LABEL$ ( n -- ptr u8 n ) {: f:n :}
    f COMPILER = if s" compiler-images" exit then
@@ -86,7 +47,11 @@ package GATE-IMAGES
    E-TBL-BOUNDS throw ;
 
 \ A family's prerequisites come before it here: DERIVE refuses a table that
-\ lists one after.
+\ lists one after. A family whose module loads another's needs that one first
+\ (the cold host is the writer's output; the linker is built on the app image).
+\ tools/check-verify-image.f is a tool, not a test adapter: it has no grant
+\ check, so a row that reaches it ungranted builds its own keyed image instead
+\ of dying.
 : MODULE$ ( n -- ptr u8 n ) {: f:n :}
    f COMPILER = if s" test/compiler-images.f" exit then
    f WRITER = if s" test/fixture-writer.f" exit then
@@ -118,11 +83,11 @@ package GATE-IMAGES
 : BIT ( n -- n )
    1 swap lshift ;
 
-\ ---- what a file loads -------------------------------------------------------
-\
+\ test/gate-entry-guard.f walks the load graph DERIVE reads through the readers
+\ below, so the guard and the grants agree.
 \ Every file is read once, whatever number of rows load it, and named by its
 \ canonical path. A walk from a file gathers the families its whole closure
-\ reaches, and remembers that answer for the file it started from.
+\ reaches and remembers that answer for the file it started from.
 
 $2000 constant HASH-CAP                  \ slots, a power of two; half may fill
 
@@ -196,7 +161,6 @@ variable UNION
       PROBE @ 1+ HASH-CAP 1- and PROBE !
    repeat ;
 
-\ The id of a canonical path, added the first time it is seen.
 : INTERN ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u PROBE!
    SLOT-ID 0<> if SLOT-ID 1- exit then
@@ -273,7 +237,16 @@ variable UNION
    a u FS:FILE? 0= if 0 exit then
    a u SOURCE-ROOT:CANONICAL drop INTERN CLOSURE-OF ;
 
-\ ---- the build rows ----------------------------------------------------------
+\ Before its first registry row the gate starts one build row per needed family,
+\ <family>-build: a bin/hb child on the product engine handed `require <module>`
+\ and the family's settle word on stdin. A family starts once its prerequisites
+\ passed, and never if one failed. A row that needs an unsettled image waits out
+\ of the pool and starts at the first start after its images settle, ahead of
+\ every later row not yet started (src/lib/test/suite.f PENDING); before a
+\ sequential group and at the end of the run every wanted image settles. A row
+\ that needs a failed image is its own red pool row, naming the failed build
+\ row. Build rows are spawned, not forked, so the gate loads no family module:
+\ test/run-cli-test.f launches test/run.f and reaches no image through it.
 
 0 constant IDLE
 1 constant WANTED
@@ -485,8 +458,6 @@ public
 : WHITEBOX$ ( -- ptr u8 n )
    WB$ ;
 
-\ The row about to start: its load files, and whether it runs on the whitebox
-\ engine.
 : ROW-RESET ( -- )
    0 ROW-MASK ! ;
 
@@ -527,11 +498,9 @@ public
    COMPILER STATE@ FAILED <> if -1 exit then
    COMPILER SEQ@ GT-POOL-RED-FIND-SEQ ;
 
-\ ---- the load graph DERIVE read ----------------------------------------------
-\
-\ Files are numbered from 0. A file's loads are EDGE-COUNT consecutive edges
-\ from EDGE-FIRST, in source order; each names the file loaded, the line naming
-\ it and whether it is an import or a launch.
+\ The load graph DERIVE read. Files are numbered from 0. A file's loads are
+\ EDGE-COUNT consecutive edges from EDGE-FIRST, in source order; each names the
+\ file loaded, the line naming it and whether it is an import or a launch.
 
 : FILE-COUNT ( -- n )
    FILE-N @ ;

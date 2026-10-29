@@ -2,9 +2,8 @@
 \ tools/wasm-build.f's command line, validated by wasm-tools and run by bun
 \ (test/wasm/harness.f); each module's output must be its entry's lines and its
 \ status the entry's: 0, or a trap for a page freed twice. Both tools must be on
-\ PATH, so this is no row of the ordinary gate: test/wasm/device.f runs it, as
-\ does `bin/hb --load test/wasm/storage-test.f` from the tree's root. The
-\ modules, the expected and the actual output stay in the printed directory.
+\ PATH, so test/wasm/device.f runs it, not the ordinary gate. The modules, the
+\ expected and the actual output stay in the printed directory.
 
 require src/lib/string.f
 require src/lib/fs.f
@@ -36,7 +35,6 @@ variable FILE-U
 
 : ARG+ ( ptr u8 n -- )  >LEN PROC-ARGV+ ;
 
-\ The bytes written as the file name in DIR.
 : FILE! ( ptr u8 n ptr u8 n -- )
    {: a:ptr u:n name:ptr nu:n :}
    DIR DIR-U @ name nu FILE FS:JOIN-PATH FILE-U !

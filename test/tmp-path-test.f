@@ -1,13 +1,9 @@
 \ tmp-path-test.f - TMP-PATH holds a PATH-CAP path and no length wraps past it.
-\
 \ TMP-PATH (src/os/env-base.f) answers TMPDIR, a slash and the caller's name in
 \ one buffer of PATH-CAP bytes, and ends the process with exit 76 when they do
 \ not fit. It can fail four ways: an exact fill refused, one byte too many
 \ admitted, a negative length taken as room, and a length whose sum with the
-\ root wraps back into range. The refusal is a die, so each case is a child
-\ engine (test/tmp-path-child.f) whose TMPDIR is this test's own directory.
-\
-\ Run: bin/hb --load test/tmp-path-test.f
+\ root wraps back into range.
 
 require src/lib/string.f
 require src/lib/test.f
@@ -39,6 +35,8 @@ create ERR IO-CAP allot
    a ROOT u BYTE-COPY  u ROOT-U !
    ROOT$ FS:CLEANUP-TREE+ ;
 
+\ The refusal is a die, so each case is a child engine (test/tmp-path-child.f)
+\ whose TMPDIR is this test's own directory.
 : RUN ( ptr u8 n -- n n n ) {: case:ptr caseu:n :}   \ outu erru rc
    ENGINE-CANDIDATE:PATH$ {: engine:ptr engineu:n :}
    PROC-ARGV-ENV-RESET

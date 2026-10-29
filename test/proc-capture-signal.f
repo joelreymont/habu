@@ -1,27 +1,9 @@
-\ proc-capture-signal.f - a child capture must survive a signal storm.
-\
-\ poll(2) is the one blocking syscall SA_RESTART never restarts, so every timer
-\ tick delivered while the capture loop waits returns EINTR. A primitive that
-\ collapses every poll error to -1 makes src/lib/process.f read that EINTR as a real
-\ failure and raise E-PROC-OUTPUT; with the 1 kHz sampling profiler armed the
-\ capture died after one millisecond instead of returning the child's output.
-\ This arms that exact 1 kHz SIGALRM interval (prof-on drives ITIMER_REAL at the
-\ 1 ms default rate) around a quarter-second child and asserts the capture still
-\ reports a clean exit and the child's whole output. A quarter second is some
-\ 250 EINTRs, any one of which the old primitive failed on.
-\
-\ It also asserts the capture WAITED. Output and rc alone would still pass if the
-\ timer silently stopped arming, and the failure this pins is a fast one: the
-\ capture used to come back in about a millisecond, not in a quarter second.
-\ Re-verify the signal storm itself by putting prof-report before the prof-off
-\ below: the quarter-second child reads some 260 samples, every one in `poll`.
-\
-\ The same storm runs through PROC-WAIT-BOUNDED's window on a child held alive.
-\ That wait sleeps between nonblocking waitpid probes, so a tick lands in
-\ TASK:SLEEP, which resumes on its remainder, in a probe or between the two;
-\ no path a tick took is asserted. The window must end as a timeout, neither
-\ early nor stretched, and the child released afterwards is still ours to reap.
-\ Run: bin/hb --load test/proc-capture-signal.f
+\ proc-capture-signal.f - a child capture survives a signal storm. poll(2) is
+\ the one blocking syscall SA_RESTART never restarts, so each tick of the 1 kHz
+\ profiler's SIGALRM (prof-on, ITIMER_REAL) returns EINTR, which process.f must
+\ not raise as E-PROC-OUTPUT: a quarter-second child is some 250 EINTRs. The
+\ capture must also have waited, since output and rc alone pass if the timer
+\ stops arming; prof-report before prof-off shows some 260 samples, all in poll.
 
 require src/lib/errors.f
 require src/lib/prelude.f
@@ -58,7 +40,6 @@ create PCS-ERR PCS-ERR-CAP allot
    s" /bin/sh" >LEN PCS-OUT PCS-OUT-CAP >LEN PCS-ERR PCS-ERR-CAP >LEN PCS-TIMEOUT-MS >MS
    RUN-ARGV-CAPTURE PCAP-RESULT:>N ;
 
-\ The capture runs with a 1 kHz SIGALRM landing in it throughout.
 : CHECK-CAPTURE-UNDER-SIGNALS ( -- )
    PCS-SAMPLE-LIMIT prof-on
    mono-ns {: started :}
@@ -91,8 +72,11 @@ create PCS-ERR PCS-ERR-CAP allot
    in-r FD>N close
    in-w FD>N ;
 
-\ The held child's window and then its reap, with the 1 kHz SIGALRM landing in
-\ both throughout.
+\ The held child's window and its reap under the 1 kHz SIGALRM. The wait sleeps
+\ between nonblocking waitpid probes, so a tick lands in TASK:SLEEP (which
+\ resumes on its remainder), in a probe or between; no path is asserted. The
+\ window must end as a timeout, neither early nor stretched, and the released
+\ child is still ours to reap.
 : CHECK-WAIT-UNDER-SIGNALS ( -- )
    PCS-HOLD {: pid:pid in-w:n :}
    PCS-SAMPLE-LIMIT prof-on

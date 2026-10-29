@@ -1,102 +1,9 @@
 \ pg-kill-test.f - a pg row the pool kills leaves no server process, no
-\ shared-memory segment and no socket directory behind.
-\
-\     bin/hb --load test/db/pg-kill-test.f
-\
-\ THE SUBJECT is the pg row's harness, test/db/pg-cluster.f, run as the one row
-\ of a pool in this process with test/db/pg-hold.f as its case file. The case
-\ connects, reports the directory the server made its socket in and the SysV
-\ segment the server holds, and waits in pg_sleep, so the row is killed with
-\ its cluster up and a backend busy. Every
-\ process under the row holds the write end of a FIFO this test makes
-\ (src/lib/test/fifo.f) and names by PG_HOLD_FIFO: the harness and the case
-\ engine open it by path, the harness maps it into initdb and the postmaster,
-\ and each process the postmaster forks inherits it (measured: postgres keeps
-\ an inherited descriptor open in every child). The read end reports end of
-\ file only when the last of them is gone. The case ends the live row with
-\ GT-POOL-KILL-ALL, which is how a signalled gate root ends its rows
-\ (test/gate-pool.f GT-POOL-SIGNAL-DIE; test/gate-signal-test.f sends the
-\ signal itself).
-\
-\ THE WAYS THIS CAN FAIL, written down before the fix:
-\
-\  1. THE POSTMASTER LEAVES THE TREE. pg_ctl forks, calls setsid, and execs a
-\     shell that execs postgres; then pg_ctl exits. The postmaster is left in
-\     a session of its own with init for a parent, where the pool's walk
-\     (src/lib/process-tree.f) cannot reach it, and it runs on until its lock-file
-\     recheck notices the removed data directory, about a minute later. Any
-\     start path with such a step - pg_ctl, a shell's `&`, a setsid - does the
-\     same.
-\     Asserted: the FIFO reaches end of file within GONE-MS of the kill.
-\  2. THE SERVER'S CHILDREN OUTLIVE IT. Every process the postmaster forks
-\     calls setsid, so only its parent link ties it to the tree; one listed
-\     after the postmaster died would have init for a parent, and a postmaster
-\     left running forks more.
-\     Asserted: the same FIFO, which the auxiliary processes and the case's
-\     backend, busy in pg_sleep, hold as well.
-\  3. A KILL THAT RACES THE START. A walk that stops the harness while it is
-\     spawning the postmaster. Not asserted: the kill here lands after the
-\     report. The postmaster is the harness's child from the moment it
-\     exists, so it is a member like any other; the walk's macOS limit for a
-\     spawn blocked in the kernel remains (src/lib/process-tree.f).
-\  4. A SOCKET PATH PAST sun_path. postgres refuses a socket path over 103
-\     bytes on macOS, and every pool level nests TMPDIR deeper.
-\     Asserted: this row runs two pools deep - the gate's and this file's -
-\     and its server starts and reports.
-\  5. DIRECTORIES THAT OUTLIVE A SIGKILL. Nothing in the row runs after its
-\     SIGKILL, so whatever it made that the pool does not remove stays: the
-\     data directory and the socket directory.
-\     Asserted: the reported socket directory is there while the row runs and
-\     gone once the pool has killed it, and so is the row's scratch, which
-\     holds the data directory.
-\  6. A CLEAN STOP THAT REGRESSES. The harness's own stop, and its time.
-\     Asserted by the pg row's first file, test/db/pg-cluster.f itself, which
-\     ends red unless its server's stop ends it with exit 0. Not timed.
-\  7. TWO pg ROWS COLLIDING, on a port or a path. Not asserted: the server
-\     listens on no TCP port, and every directory a row uses is made by
-\     mkdir, which refuses a name that exists.
-\  8. ANOTHER GATE'S SERVER. Other agents run pg rows on this host. Nothing
-\     here names a process: the walk starts at the row's child, and this test
-\     knows the row's processes only through its own FIFO.
-\  9. A SEGMENT THAT OUTLIVES THE SERVER. PostgreSQL makes a SysV shared-memory
-\     segment keyed by its data directory's inode and removes it only on its
-\     own way out, which a SIGKILL never runs. Nothing else removes it - APFS
-\     does not hand the inode out again - and kern.sysv.shmmni caps the
-\     segments host-wide (32 here), so each one left is one PostgreSQL fewer
-\     on the host for good. Measured before the fix: one per kill, two per run
-\     of this file.
-\     Asserted: the segment the case reported (postmaster.pid line 7) is there
-\     while the row runs and gone once the pool has killed it.
-\ 10. A GRACE THAT ORPHANS. SIGTERM to a root that does not catch it ends it at
-\     once and leaves what it spawned, each leading its own group, to init
-\     before the walk can list it; a root that catches it and exits before it
-\     has ended its own tree does the same.
-\     Asserted for the harness, which catches it: the FIFO check, which the
-\     case engine - spawned, leading its own group - holds as well. A root
-\     that does not catch SIGTERM is not sent it (src/lib/process-tree.f
-\     CATCHES?), and test/gate-pool-test.f and test/gate-signal-test.f kill
-\     such trees.
-\ 11. A ROOT THAT NEVER ANSWERS. One that catches SIGTERM and has not ended
-\     inside test/gate-pool.f GT-POOL-GRACE-MS is walked and killed as it
-\     stands. Not asserted.
-\ 12. A KILL DURING initdb. initdb's backend holds the same segment while
-\     each step runs, so a kill that SIGKILLs it leaves one. The harness
-\     sends initdb SIGTERM, and initdb exits once its step has ended. Not
-\     asserted: initdb takes about 1.2 s here, and a case would need one
-\     slowed past the grace.
-\
-\ THE REPORT COMES BEFORE END OF FILE MEANS ANYTHING. A FIFO no writer has
-\ opened yet reads end of file too, so a case judges end of file only after
-\ the case file's report has shown the tree holds the write end. On macOS,
-\ whose poll never reports a FIFO's end of file, a case file that dies before
-\ its report is the report wait's timeout instead of a failed report.
-\
-\ A FAILED CASE CLEANS UP AFTER ITSELF. The case ends through CASE-END
-\ whatever it asserted or threw: the row is killed, a server the kill missed is
-\ given the minute its lock-file recheck takes to stop it, and the socket
-\ directory it reported is removed. A segment left by a server that was
-\ SIGKILLed is named with the command that removes it; nothing here removes
-\ one.
+\ shared-memory segment and no socket directory behind. It runs
+\ test/db/pg-cluster.f as a pool's one row with test/db/pg-hold.f as its case
+\ file, which reports the socket directory and SysV segment and waits in
+\ pg_sleep; the pool's walk starts at the row's child and this test sees the
+\ tree only through its FIFO.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -150,7 +57,11 @@ PROC-NO-FD FIFO-RD !
 : FIFO$ ( -- ptr u8 n )    FIFO FIFO-U @ ;
 
 \ A new FIFO for the case, its read end open before the row starts, so the
-\ harness's open of the write end does not wait.
+\ harness's open of the write end does not wait. The harness and the case
+\ engine open it by path (PG_HOLD_FIFO), the harness maps it into initdb and the
+\ postmaster, and every process the postmaster forks inherits it (measured:
+\ postgres keeps an inherited descriptor open in every child). The read end
+\ reports end of file only when the last writer is gone.
 : OPEN-FIFO ( -- )
    GT-ROOT FIFO TEST-FIFO:MAKE {: u:n r:fd :}
    u FIFO-U !
@@ -170,8 +81,7 @@ PROC-NO-FD FIFO-RD !
 \ One line into buf, a byte at a time up to its newline, before the deadline.
 \ End of file first means the case died before it reported: that, a line that
 \ fills buf with no newline, a failed read or a failed poll answers false. The
-\ deadline running out first is REPORT-READ?'s, this test's own, named for it
-\ and thrown as a timeout.
+\ deadline running out first is thrown as a timeout, named for REPORT-READ?.
 : LINE-READ? ( ptr u8 ptr n n -- bool )
    {: buf:ptr count:ptr deadline:n :}
    0 count !
@@ -185,9 +95,7 @@ PROC-NO-FD FIFO-RD !
       count @ 1+ count !
    again ;
 
-\ Both lines, before READY-MS runs out. A report the case could not finish
-\ answers false and leaves REPORTED false; READY-MS running out first is a
-\ timeout, which LINE-READ? throws.
+\ A report the case could not finish answers false and leaves REPORTED false.
 : REPORT-READ? ( -- bool )
    READY-MS >MS PROC-DEADLINE-AT {: deadline:n :}
    LINE LINE-U deadline LINE-READ? 0= if false exit then
@@ -205,10 +113,9 @@ PROC-NO-FD FIFO-RD !
       some OF ENDOF
    ;MATCH ;
 
-\ TRUE while the segment the case reported exists: IPC_STAT (2 on both
-\ hosts) answers 0 for it and -1 once it has been removed. A segment id
-\ carries a sequence number, so a removed one is not answered for by the next
-\ segment in its slot.
+\ True while the segment the case reported exists: IPC_STAT (2 on both hosts)
+\ answers 0 for it and -1 once it has been removed. A segment id carries a
+\ sequence number, so the next segment in its slot does not answer for it.
 : SEGMENT? ( -- bool )
    SHMID {: id:n :}
    id 0 < if false exit then
@@ -220,7 +127,10 @@ PROC-NO-FD FIFO-RD !
    s" ` removes it" type cr ;
 \ End of file within ms: nothing under the row holds the write end. A failed
 \ read or poll answers false. ms running out first is this test's own
-\ deadline, named and thrown as a timeout.
+\ deadline, named and thrown as a timeout. A FIFO no writer has opened reads
+\ end of file too, so it means anything only after the case's report. On macOS,
+\ whose poll never reports a FIFO's end of file, a case file that dies before
+\ its report is the report wait's timeout instead of a failed report.
 : GONE-WITHIN? ( n -- bool )
    {: ms:n :}
    FIFO-DONE @ if true exit then
@@ -229,8 +139,6 @@ PROC-NO-FD FIFO-RD !
    eof 0 < if false exit then
    true FIFO-DONE !
    true ;
-
-\ ---- the row -----------------------------------------------------------------
 
 : REPORT-ENV ( -- )
    s" PG_HOLD_FIFO" >LEN FIFO$ >LEN PROC-ENV+ ;
@@ -247,7 +155,9 @@ PROC-NO-FD FIFO-RD !
    PROC-ENV-INHERIT-MISSING
    ENGINE-CANDIDATE:PATH$ s" pg row" GT-POOL-START ;
 
-\ Up: the case reported, and the directory and the segment it named are there.
+\ The row runs two pools deep (the gate's and this file's), and every pool level
+\ nests TMPDIR deeper: postgres refuses a socket path over 103 bytes on macOS,
+\ so its server starting and reporting is the check.
 : EXPECT-LIVE ( -- )
    s" the case reported the server's socket directory and segment" T-LABEL
    REPORT-READ? TTRUE
@@ -256,7 +166,31 @@ PROC-NO-FD FIFO-RD !
    s" the server's shared-memory segment is there while the row runs" T-LABEL
    REPORTED @ if SEGMENT? else false then TTRUE ;
 
-\ Failure modes 1, 2, 5, 9 and 10, asked once the pool has ended the row.
+\ Asked once the pool has ended the row; each catches one way a kill leaks:
+\ - a postmaster outside the tree: pg_ctl (or a shell's `&`, a setsid) leaves
+\   it in a session of its own under init, out of the walk's reach
+\   (src/lib/process-tree.f), running until its lock-file recheck notices the
+\   removed data directory about a minute later;
+\ - the server's children: each calls setsid, so only its parent link ties it
+\   to the tree; the auxiliaries and the busy backend hold the FIFO as well;
+\ - a grace that orphans: a root that does not catch SIGTERM, or exits before
+\   ending its tree, leaves its group leaders to init; the harness catches it
+\   and the case engine, leading its own group, holds the FIFO. A root that
+\   does not catch SIGTERM is not sent it (src/lib/process-tree.f CATCHES?);
+\ - a SysV segment, keyed by the data directory's inode and removed only on
+\   postgres's own way out, which a SIGKILL never runs: kern.sysv.shmmni caps
+\   segments host-wide (32 here), so each one left is one PostgreSQL fewer on
+\   the host for good (measured: one per kill). The segment is postmaster.pid
+\   line 7;
+\ - directories a SIGKILL leaves: the socket directory and the row's scratch,
+\   which holds the data directory.
+\ Not asserted: a kill racing the postmaster's spawn (the walk's macOS limit for
+\ a spawn blocked in the kernel remains); a root that has not ended inside
+\ test/gate-pool.f GT-POOL-GRACE-MS (walked and killed as it stands); a kill
+\ during initdb, whose backend holds a segment (the harness sends initdb
+\ SIGTERM; a case would need initdb slowed past the grace); two rows colliding
+\ (no TCP port; mkdir refuses an existing name). test/db/pg-cluster.f ends red
+\ unless its server's clean stop exits 0.
 : EXPECT-GONE ( -- )
    s" no process under the row is left" T-LABEL
    GONE-MS GONE-WITHIN? TTRUE
@@ -269,6 +203,8 @@ PROC-NO-FD FIFO-RD !
    s" the row's scratch, and the data directory in it, is gone" T-LABEL
    0 >IDX GT-POOL-TMP$ FS:EXISTS? TFALSE ;
 
+\ The case ends the live row with GT-POOL-KILL-ALL, how a signalled gate root
+\ ends its rows (test/gate-pool.f GT-POOL-SIGNAL-DIE).
 : KILL-ALL-BODY ( -- )
    ROW-START
    EXPECT-LIVE
@@ -288,9 +224,10 @@ PROC-NO-FD FIFO-RD !
    [: REPORTED @ if SOCKETS$ FS:EXISTS? if SOCKETS$ FS:REMOVE-TREE then then ;]
    finally ;
 
-\ Whatever the body asserted or threw. Every step is a no-op for a case that
-\ passed. The sweep runs even when the kill throws, and the read end closes even when
-\ the sweep throws.
+\ Runs after every body, whatever it asserted or threw; each step is a no-op for
+\ a case that passed. The sweep runs even when the kill throws, and the read end
+\ closes even when the sweep throws. A segment a SIGKILL left is named with the
+\ command that removes it (SEGMENT-LEFT.); nothing here removes one.
 : CASE-END ( -- )
    [: [: GT-POOL-KILL-ALL ;]
       [: FIFO-DONE @ 0= if SWEEP then ;] finally ;]

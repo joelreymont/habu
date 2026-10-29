@@ -34,12 +34,11 @@ package PROGRAM-DIAGNOSTICS
    SB-RESET marker markeru SB-APPEND GE-SB-LF
    SB$ label labelu GE-EXPECT-OUT ;
 
-\ The same assertion for a refusal that says more than its die line. The AOT
-\ capture writes the coordinate it refused - an offset, a row, a range - with `type`
-\ ahead of the `die` that carries the message on stderr (src/habu/aot-capture.f), so
-\ its stdout is the marker line FOLLOWED by those lines rather than the marker
-\ alone. Requiring the marker as a PREFIX keeps what the exact form proves - the
-\ case armed, and printed nothing before it - and admits the detail a reader needs.
+\ The same assertion for a refusal that says more than its die line: the AOT
+\ capture types the coordinate it refused (an offset, a row, a range) before the
+\ `die` carrying the message on stderr (src/habu/aot-capture.f), so stdout is
+\ the marker line followed by those lines. A prefix match still proves the case
+\ armed and printed nothing before it.
 : EXPECT-MARKER-FIRST ( ptr u8 n ptr u8 n -- )
    {: marker:ptr markeru:n label:ptr labelu:n :}
    SB-RESET marker markeru SB-APPEND GE-SB-LF

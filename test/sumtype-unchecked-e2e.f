@@ -1,13 +1,9 @@
 \ A declaration that generates constructor words is refused while checking is
 \ suspended (`0 set-check`): the checker certifies those words, so a SUMTYPE,
-\ PRODUCT or STRUCTURE met there exits 70 with the standard declaration line
-\ before anything registers. Unrefused, a product died 76 ("checker: incomplete
-\ generated constructor plan") and a sum's constructors carried rows without
-\ authority, which a later checked caller refused. A NEWTYPE generates no word
-\ and is admitted inside the window; a closed `check@ 0 set-check … set-check`
-\ window leaves the declarations after it ordinary. A multi-error load counts
-\ each refusal and leaves no state behind for the next declaration.
-\ bin/hb --load test/sumtype-unchecked-e2e.f
+\ PRODUCT or STRUCTURE there exits 70 with the standard declaration line before
+\ anything registers. A NEWTYPE generates no word and is admitted inside the
+\ window; a closed `check@ 0 set-check … set-check` window leaves the
+\ declarations after it ordinary.
 
 require src/lib/test.f
 require src/lib/string.f
@@ -82,13 +78,14 @@ create ERR CAP allot
 : WANT$ ( -- ptr u8 n ) s\" 7\n0\n5\n" ;
 
 
+\ A multi-error load counts each refusal and leaves no state.
 \ Under a multi-error load a PRODUCT, a STRUCTURE and a sum whose body passes
 \ the 4096-byte declaration buffer are each refused inside the window, then the
 \ same names and a replayed sum declare with checking on. The over-long body
 \ caps its collection buffer and flags it; the oversize sum comes last and the
 \ replay right after the window, because only a replay entry meets that flag
-\ without a collector clearing it first. Left set, the flag refused the replay
-\ as `declaration too long`, rc 70.
+\ without a collector clearing it first: a flag left set refuses the replay as
+\ `declaration too long`, rc 70.
 : MULTI$ ( -- ptr u8 n )
    0 PROG-U !
    s" -1 MULTI-ERR !  0 MULTI-ERR-N !" PROG+

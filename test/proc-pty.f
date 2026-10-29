@@ -1,13 +1,7 @@
 \ proc-pty.f — focused native process/PTY harness. Run with:
 \   bin/hb --load src/lib/errors.f src/lib/process.f test/proc-pty.f
-\ The engine bakes neither POLL-IN nor the process primitives below them, so the
-\ two library files are part of the invocation; test/runtime-regression-test.f
-\ (GE-PROCESS-PTY) drives exactly this line, and the engine to test can follow
-\ as `-- <path>` or in HABU_UNDER_TEST.
-\
-\ The terminal itself — the pair, the spawn, the reads, the waits and both
-\ barrier shapes — is src/lib/pty-harness.f; this file types at the child and says
-\ what the answers must be.
+\ src/lib/pty-harness.f owns the terminal; this file types at the child and
+\ judges.
 
 require src/lib/pty-harness.f
 require src/lib/test/outcome.f
@@ -28,6 +22,10 @@ variable ERR-R
 variable ERR-W
 variable PID
 
+\ The engine bakes neither POLL-IN nor the process primitives, so both library
+\ files are part of the run line; test/runtime-regression-test.f GE-PROCESS-PTY
+\ drives this file, with the engine to test as `-- <path>` or in
+\ HABU_UNDER_TEST.
 : HB-ARG? ( -- bool )
    SCRIPT-ARGC 0 > ;
 
@@ -44,8 +42,6 @@ variable PID
    s" buf:" type cr
    BUF$ type cr ;
 
-\ The shared harness counts and names a failed case; the terminal buffer is
-\ the evidence of where the child stopped, so a failed case prints it too.
 : BUF-ON-FAIL ( n -- )
    T-FAILURES <> if BUF-DUMP then ;
 
@@ -60,14 +56,12 @@ variable PID
 : TCONTAINS ( ptr u8 n -- )
    IN-BUF? PTY-TRUE ;
 
-\ Completion: only a clean exit with this code passes; a reap that ran out of
-\ clock throws E-PROC-TIMEOUT through T-TIMED-OUT for RUN to report.
 : T-EXIT= ( ptr u8 n ptr u8 n ptr u8 n outcome n -- )
    T-FAILURES {: before:n :}
    T-OUTCOME-EXITED= before BUF-ON-FAIL ;
 
-\ Every drain starts from an empty buffer: the bytes it swallows are the ones a
-\ later wait must not be answered by.
+\ A drain clears the buffer first: the bytes it swallows must not answer a later
+\ wait.
 : MFD-DRAIN ( -- )
    BUF-CLEAR
    MASTER-FD PTY-QUIET-POLLS DRAIN ;
@@ -88,9 +82,8 @@ variable PID
 : EXPECT ( ptr u8 n -- )
    WAIT-FOR PTY-TRUE ;
 
-\ A redraw while echoing the input already contains a prompt. Completion
-\ requires a prompt after the answer, the same ordered pair in the wait
-\ (src/lib/pty-harness.f WAIT-AFTER) and the live echo regression below.
+\ A redraw while echoing the input already holds a prompt; completion needs a
+\ prompt after the answer (src/lib/pty-harness.f WAIT-AFTER).
 : PROMPT-READY? ( ptr u8 n -- bool )
    s" habu> " AFTER? ;
 
@@ -98,17 +91,15 @@ variable PID
    s" habu> " WAIT-AFTER PTY-TRUE ;
 
 \ Wait for a marker and close an absence claim's window at its end. The marker
-\ has to be one the child prints PAST the point where the rejected text could
-\ have appeared; a failed wait leaves no window, so the claim behind it is
-\ refused as well.
+\ must be one the child prints past the point where the rejected text could
+\ appear; a failed wait leaves no window, so the claim behind it is refused too.
 : BARRIER ( ptr u8 n -- )
    WAIT-BARRIER PTY-TRUE ;
 
 \ The barrier for a claim about the line before it: the child prints the hex
-\ literal in decimal, so the answer's digits are in nothing the line editor
-\ echoed back and only the evaluation can satisfy the wait. The REPL reads the
-\ next line after finishing the one before it, so this answer proves that line
-\ is over -- diagnostics, trailer and all.
+\ literal in decimal, so only the evaluation can satisfy the wait, never the
+\ editor's echo. The REPL reads the next line only after finishing the one
+\ before it, so this answer proves that line is over, diagnostics and trailer.
 : PROBE-BARRIER ( -- )
    s" $BEEF ." SEND-LINE
    s" 48879" BARRIER ;
@@ -176,27 +167,14 @@ variable PID
 : PTY-PROMPT ( -- )
    s"  ok" PROMPT-AFTER ;
 
-\ --- the two boot modes must enumerate ONE dictionary --------------------------
-\ Dot habu-decide-arm-the-5234727b (USER RULING 2026-08-11: one dictionary surface
-\ for every boot mode). The engine's baked REPL words are seeded into the
-\ dictionary at boot; that seed used to run at the interactive REPL entry
-\ alone and now runs at the end of the engine prefix on every boot. Every case in
-\ this file already depends on the interactive half - without the seed there is no
-\ prompt to type at - so what is left to prove is that the BATCH dictionary is the
-\ SAME SET, not merely a set that also answers.
-\
-\ test/aot-seed-surface.f folds every dictionary record name into one number.
-\ SEED-BATCH runs it through this engine as a PIPED program and keeps the number
-\ it printed; PTY-SEED-SURFACE types the same line at the terminal and requires
-\ the same number back. Neither side hardcodes it - it moves with every tree edit
-\ - and a mode that seeded a different set, in a different order, or at a
-\ different point cannot produce it.
-\
-\ The batch half lives here rather than in test/aot-seed-batch-suite.f (which owns
-\ the batch-only cases) because the comparison needs both modes in ONE process,
-\ this file is the tree's one cross-platform PTY driver, and its pipe vehicle is
-\ four lines away. The pty case must run FIRST, before any case types a definition
-\ into the interactive dictionary, or it would be comparing two different moments.
+\ Both boot modes must enumerate one dictionary: the engine seeds its baked REPL
+\ words at the end of the engine prefix on every boot. test/aot-seed-surface.f
+\ folds every dictionary record name into one number; SEED-BATCH runs it as a
+\ piped program and PTY-SEED-SURFACE types it at the terminal and requires the
+\ same number. Neither side hardcodes it (it moves with every tree edit), and a
+\ mode that seeded a different set, order or point cannot produce it. The batch
+\ half lives here, not in test/aot-seed-batch-suite.f, because the comparison
+\ needs both modes in one process.
 create SEEDNUM 64 allot   variable SEEDNUM-U   variable SEEDI
 
 : SEEDNUM$ ( -- ptr u8 n )    SEEDNUM SEEDNUM-U @ ;
@@ -255,9 +233,8 @@ create SEEDNUM 64 allot   variable SEEDNUM-U   variable SEEDI
    s" 49" EXPECT
    s"  ok" PROMPT-AFTER ;
 
-\ Certified word on an empty interpret stack: named underdepth reject, then
-\ the REPL recovers and the next line evaluates (LDIAGRET recovery leg; dot
-\ habu-habu-certified-words-84e84eaf).
+\ Certified word on an empty interpret stack: named underdepth reject, then the
+\ REPL recovers and the next line evaluates (LDIAGRET recovery leg).
 : PTY-UNDERDEPTH ( -- )
    s" SQ" STEP-LN
    s" hb: interpret stack underdepth: SQ" PROMPT-AFTER
@@ -313,15 +290,11 @@ create SEEDNUM 64 allot   variable SEEDNUM-U   variable SEEDI
    s" 103" EXPECT
    s"  ok" PROMPT-AFTER ;
 
-\ A line longer than the editor's buffer (dot habu-refuse-a-repl-a58c0eba).
-\ The editor held the line in 256 bytes and dropped every key past 255 with no
-\ signal, so this definition arrived without its `;`: the REPL answered " ok",
-\ the word was never defined, and the session was left compiling a body whose
-\ next line died E-UNDEFINED several interactions later. The line is now REFUSED
-\ by name - never evaluated, never saved to history - and the REPL reads on.
-\ The tail is padding rather than a second statement so that a truncating engine
-\ has something that still parses: the red is the missing refusal, not a syntax
-\ error the editor happened to cause.
+\ A line longer than the editor's 255-byte buffer is refused by name, never
+\ evaluated or saved to history, and the REPL reads on. A truncating editor
+\ drops the `;`: the REPL answers " ok", the word is never defined and the
+\ session stays compiling. The tail is padding, not a second statement, so a
+\ truncating engine still parses it: the red is the missing refusal.
 $123 constant PTY-LONG-BYTES   \ 291: the length the fixture types, and the length the refusal must name
 $140 constant PTY-LONG-CAP
 
@@ -353,11 +326,11 @@ variable PTY-LONG-U
    PROBE-BARRIER
    s"  ok" REJECT ;                            \ refused, so the line never ran
 
-: PTY-LINE-CAP-UNDEFINED ( -- )                \ and nothing of it was compiled
+: PTY-LINE-CAP-UNDEFINED ( -- )
    s" PTYLONG" STEP-LN
    s" E-UNDEFINED: PTYLONG" EXPECT ;
 
-: PTY-LINE-CAP-CONTINUES ( -- )                \ the session is still a session
+: PTY-LINE-CAP-CONTINUES ( -- )
    s" 21 3 * ." STEP-LN
    s" 63" EXPECT
    s"  ok" PROMPT-AFTER ;
@@ -621,13 +594,12 @@ variable PTY-LONG-U
    s" 6" EXPECT
    s"  ok" PROMPT-AFTER ;
 
-\ tty-REPL parity for the LCOMPILEDIE compile-error family (dot
-\ habu-convert-residual-compile-f460b9f2). A recoverable compile die typed at the
-\ interactive REPL now recovers the session exactly like an undefined word
-\ (PTY-UNKNOWN / LDIAGRET), instead of exiting the tty. Before the parity change
-\ the same dup-def line exit-group'd and killed the REPL. dup-def is the
-\ rollback-past-a-published-record case: the first PRDUP commits on its own line;
-\ the second line's failure rolls back to that line's start, so PRDUP survives.
+\ tty-REPL parity for the LCOMPILEDIE compile-error family: a recoverable
+\ compile die at the interactive REPL recovers the session like an undefined
+\ word (PTY-UNKNOWN, LDIAGRET) instead of exiting the tty. dup-def is the
+\ rollback-past-a-published-record case: the first PRDUP commits on its own
+\ line; the second line's failure rolls back to that line's start, so PRDUP
+\ survives.
 : PTY-COMPILE-DEF ( -- )
    s" : PRDUP ( -- ) ;" STEP-LN
    s"  ok" PROMPT-AFTER ;
@@ -648,13 +620,9 @@ variable PTY-LONG-U
    PTY-COMPILE-RECOVER
    PTY-COMPILE-AFTER ;
 
-\ Package-scope rollback at the tty REPL (dot habu-recovery-pkg-scope-e0bd98e2). A
-\ line that opens a package and then aborts mid-definition must roll the open-package
-\ scope back to the line-start scope (global here), NOT leave the package dangling
-\ open so later defines land in it silently. Before the fix the aborted
-\ `package PRP public : PRFOO NOPEWORD ;` left PRP open, and the next `package PRQ`
-\ nest-rejected. Now: the failing line recovers, a FRESH package opens cleanly, and
-\ the next define lands global and runs.
+\ Package-scope rollback at the tty REPL: a line that opens a package and aborts
+\ mid-definition rolls the open-package scope back to the line-start scope
+\ (global here). A dangling PRP would make the next `package PRQ` nest-reject.
 : PTY-PKGSCOPE-FAIL ( -- )
    s" package PRP public : PRFOO ( -- ) NOPEWORD ;" STEP-LN
    s" E-UNDEFINED: NOPEWORD" PROMPT-AFTER
@@ -677,8 +645,8 @@ variable PTY-LONG-U
 
 \ A line whose create is rolled back retires that record, and the next
 \ definition reuses its slot. The does> after it has no created record to
-\ patch, so it is refused by name and the session reads on, where it used to
-\ patch the reused slot's new owner.
+\ patch, so it is refused by name and the session reads on; the regression
+\ patches the reused slot's new owner.
 : PTY-LASTC-RECOVERY ( -- )
    s" create PLC-GONE 5 , PLC-NO-SUCH-WORD" STEP-LN
    s" PLC-NO-SUCH-WORD" PROMPT-AFTER
@@ -689,11 +657,10 @@ variable PTY-LONG-U
    PROBE-BARRIER
    s"  ok" REJECT ;
 
-\ The package's using floor comes back with the scope (dot
-\ habu-restore-pkg-state-d09394b9). The failing line closes PRF2, opens a using
-\ and PRF3, and aborts: recovery reopens PRF2 with its own floor, so a using
-\ PRF2 opens closes again. Before the fix PRF2 kept PRF3's floor, one above its
-\ depth, and that `;using` was refused as closing an outer using.
+\ The package's using floor comes back with the scope. The failing line closes
+\ PRF2, opens a using and PRF3, and aborts: recovery reopens PRF2 with its own
+\ floor, so a using PRF2 opens closes again. With PRF3's floor, one above PRF2's
+\ depth, that `;using` is refused as closing an outer using.
 : PTY-PKGFLOOR-OPEN ( -- )
    s" package PRF1 ;package package PRF2" STEP-LN
    s"  ok" PROMPT-AFTER ;
@@ -704,7 +671,7 @@ variable PTY-LONG-U
    PROBE-BARRIER
    s"  ok" REJECT ;
 
-: PTY-PKGFLOOR-CLOSE ( -- )                       \ the hex literal's decimal is in nothing the line editor echoed
+: PTY-PKGFLOOR-CLOSE ( -- )
    s" using PRF1 ;using ;package $C0DE ." STEP-LN
    s" 49374" EXPECT
    s"  ok" PROMPT-AFTER ;
@@ -714,12 +681,10 @@ variable PTY-LONG-U
    PTY-PKGFLOOR-FAIL
    PTY-PKGFLOOR-CLOSE ;
 
-\ The line's used publics come back with the scope (dot
-\ habu-restore-the-includer-f7be16fa). The failing line closes PRS2, opens
-\ PRS3 in the slot PRS1 held, and aborts: recovery puts PRS1 back and the
-\ checker names it again, so PRSY certifies against PRS1:PRSW and runs it.
-\ Before the fix the slot kept PRS3, whose PRSW takes an input, and PRSY was
-\ refused.
+\ The line's used publics come back with the scope. The failing line closes
+\ PRS2, opens PRS3 in the slot PRS1 held, and aborts: recovery puts PRS1 back
+\ and the checker names it again, so PRSY certifies against PRS1:PRSW and runs
+\ it. A slot left holding PRS3, whose PRSW takes an input, refuses PRSY.
 : PTY-PKGSLOT-OPEN ( -- )
    s" package PRS1 public : PRSW ( -- n ) $FACE ; ;package package PRS3 public : PRSW ( n -- n ) ; ;package package PRS2 using PRS1" STEP-LN
    s"  ok" PROMPT-AFTER ;
@@ -730,7 +695,7 @@ variable PTY-LONG-U
    PROBE-BARRIER
    s"  ok" REJECT ;
 
-: PTY-PKGSLOT-CHECK ( -- )                        \ the hex literal's decimal is in nothing the line editor echoed
+: PTY-PKGSLOT-CHECK ( -- )
    s" : PRSY ( -- n ) PRSW ; PRSY . ;package" STEP-LN
    s" 64206" EXPECT
    s"  ok" PROMPT-AFTER ;
@@ -743,19 +708,19 @@ variable PTY-LONG-U
 \ The barrier itself, against the live child. An absence claim over a buffer the
 \ child has not answered into is granted by the harness's own silence: a drain
 \ that returned on its first quiet poll leaves exactly that buffer. One leg has
-\ no barrier behind it and must be REFUSED; the other has one and must still
+\ no barrier behind it and must be refused; the other has one and must still
 \ catch the text when the child really printed it.
 : PTY-REJECT-UNBARRIERED ( -- )
    s" frobnicate" STEP-LN
-   BUF-CLEAR                          \ the child's answer is not in the buffer
-   s"  ok" WINDOW-ABSENT? 0= PTY-TRUE    \ so the claim is refused
+   BUF-CLEAR
+   s"  ok" WINDOW-ABSENT? 0= PTY-TRUE
    PROBE-BARRIER
-   s"  ok" WINDOW-ABSENT? PTY-TRUE ;     \ and granted once a barrier closes the window
+   s"  ok" WINDOW-ABSENT? PTY-TRUE ;
 
 : PTY-REJECT-CATCHES ( -- )
-   s" 5 ." STEP-LN                    \ a line that DOES print the trailer
+   s" 5 ." STEP-LN                    \ a line that does print the trailer
    PROBE-BARRIER
-   s"  ok" WINDOW-ABSENT? 0= PTY-TRUE ;  \ the window holds it, so the claim is refuted
+   s"  ok" WINDOW-ABSENT? 0= PTY-TRUE ;
 
 : PTY-REJECT-BARRIER ( -- )
    PTY-REJECT-UNBARRIERED
@@ -781,14 +746,13 @@ variable PTY-LONG-U
    PTY-THROW-LINE
    PTY-THROW-AFTER ;
 
-\ ^D becomes EOF only while the terminal is RAW, which it is only while the
-\ child sits in its line editor. A ^D that arrives while the line before it is
-\ still executing is taken by the restored canonical discipline as an
-\ empty-line EOF instead, never becomes a key, and leaves the child waiting for
-\ one that never comes -- with the harness waiting on its exit, that is a hang,
-\ not a failure. Only REDRAW prints the prompt and only after RAW-ON, so a
-\ prompt after a completed probe is proof that the editor holds the terminal.
-\ The ordered wait cannot be satisfied by the probe's echoed input.
+\ ^D becomes EOF only while the terminal is raw, which it is only while the
+\ child sits in its line editor. A ^D that arrives while the line before it
+\ still executes is taken by the restored canonical discipline as an empty-line
+\ EOF, never becomes a key, and hangs the child and the harness reaping it.
+\ Only REDRAW prints the prompt and only after RAW-ON, so a prompt after a
+\ completed probe proves the editor holds the terminal; the probe's echoed
+\ input cannot satisfy the ordered wait.
 : PTY-EDITOR-READY ( -- )
    BUF-CLEAR
    PROBE-BARRIER
@@ -801,17 +765,14 @@ variable PTY-LONG-U
    HB-EXE$ BUF$ s" " oc 0 T-EXIT=   \ the terminal carries both streams
    CLOSE-MASTER ;
 
-\ --- a terminal that hangs up mid-line ends the session -----------------------
-\ Dot habu-make-key1-end-cabdb980. KEY1 is one 1-byte read of descriptor 0. It
-\ used to drop the count, so a read of 0 (the far side hung up; a slave whose pty
-\ master has closed reads 0) or -1 (a failed read) handed back the byte still in
-\ the key buffer and the child re-ran it for ever instead of leaving the editor.
-\ That is a spin, not a failure, so this case bounds its own reap: PROC-WAIT-RC
-\ has no timeout and would hang the run the defect is meant to fail. The watch
-\ descriptor opens while the child is still alive -- macOS cannot register a
-\ process that has already exited.
-\ This case runs LAST and owns the second child: PTY-STOP-HB reaped the first and
-\ closed the master, and the harness holds one pair at a time.
+\ A terminal that hangs up mid-line ends the session. KEY1 is one 1-byte read of
+\ descriptor 0; a read of 0 (the pty master closed) or -1 must leave the editor,
+\ not replay the byte still in the key buffer for ever. That regression is a
+\ spin, so this case bounds its own reap: PROC-WAIT-RC has no timeout. The watch
+\ descriptor opens while the child is alive: macOS cannot register a process
+\ that has already exited. This case runs last and owns the second child:
+\ PTY-STOP-HB reaped the first and closed the master, and the harness holds one
+\ pair at a time.
 
 $1388 constant PTY-EXIT-MS         \ what a hung-up child gets to leave its editor
 
@@ -866,7 +827,7 @@ $1388 constant PTY-EXIT-MS         \ what a hung-up child gets to leave its edit
    SEED-BATCH                        \ the pipe-mode fold, before this file owns a pty child
    PTY-START-HB
    PTY-PROMPT
-   PTY-SEED-SURFACE                  \ FIRST at the prompt: before any case types a definition
+   PTY-SEED-SURFACE                  \ first at the prompt: before any case types a definition
    PTY-PROMPT-ORDER
    PTY-ARITH
    PTY-UNKNOWN

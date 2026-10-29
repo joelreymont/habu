@@ -16,7 +16,7 @@ variable REFUSALS
 create DECIMAL-TEXT F64-TEXT:MAX-BYTES allot
 
 \ Fixed IEEE-754 vectors, independently rounded by C strtod in FE_TONEAREST.
-\ Reader parity alone cannot detect their former shared double rounding.
+\ Reader parity alone cannot detect a double rounding both readers share.
 : FLOAT-BITS ( ptr u8 n n -- )
    {: a:ptr u:n bits:n :}
    a u num-parse {: got:n flt:bool ok:bool :}
@@ -127,7 +127,6 @@ create DECIMAL-TEXT F64-TEXT:MAX-BYTES allot
    s" 9223372036854775808.0" SPELLING  s" -9223372036854775808.0" SPELLING ;
 
 
-\ Prefix and digit shapes.
 : SHAPES ( -- )
    s" -$" SPELLING  s" ." SPELLING  s" -." SPELLING  s" -$0" SPELLING
    s" +1" SPELLING  s" --1" SPELLING  s" 0x10" SPELLING

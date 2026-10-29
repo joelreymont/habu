@@ -7,43 +7,36 @@ require src/lib/errors.f
 require src/compiler/native/compiler.f
 require tools/codegen-loop-inventory.f
 
-\ Tier 1 below: the retained back edge each case reads is the emitted code of
-\ the optimizing compiler (tools/codegen-loop-inventory.f).
+\ Tier 1: the retained back edge each case reads is the optimizing compiler's
+\ code (tools/codegen-loop-inventory.f).
 1 set-tier
 
 package NAG-FIXTURE
 
 public
 
-\ The loop that leaves through an `exit`. Its carried value changes on every
-\ turn, so a back edge that handed the header the wrong value would answer a
-\ different number rather than looping for ever.
+\ The carried value changes every turn, so a back edge handing the header the
+\ wrong value answers a different number instead of looping forever.
 : NAG-UP ( n -- n )
    begin dup 5 < if 1 + else exit then again ;
 tier@ constant NAG-UP-TIER
 
-\ Two values carried round a loop that leaves through an `exit`, with a real call
-\ in the body: the call is what makes both of them travel as operands of the back
-\ edge instead of being defined once and read where they stand. The counter's
-\ guard is `< 1` rather than `= 0` so that a counter starting BELOW zero leaves
-\ at once instead of counting away from the test for ever - which is a fixture
-\ that terminates on every input below rather than on the ones a reader checked.
+\ The real call in the body makes both values travel as back-edge operands. The
+\ guard is `< 1`, not `= 0`, so a counter starting below zero leaves at once.
 : NAG-CALLEE ( n -- n )
    dup 3 * over 5 xor + swap 7 and + dup 11 * + 13 xor ;
 
 : NAG-CALL ( n n -- n n )
    begin over 1 < if exit then swap 1 - swap NAG-CALLEE again ;
 
-\ The same with a bound local read inside the loop, so the local crosses the back
-\ edge beside the two carried values.
+\ A bound local read in the loop crosses the back edge beside the carried
+\ values.
 : NAG-LOCAL ( n n n -- n n )
    {: k:n :}
    begin over 1 < if exit then swap 1 - swap NAG-CALLEE k + again ;
 
-\ The loop that never returns at all. What it throws is the sum it accumulated,
-\ so the code names the number of turns: `NAG-ACC` over n throws
-\ -(n(n+1)/2) - 1. The `1 -` keeps the code away from zero, which `throw` treats
-\ as no throw at all.
+\ The throw code names the turn count: NAG-ACC over n throws -(n(n+1)/2) - 1;
+\ the `1 -` keeps it off zero, which `throw` ignores.
 : NAG-ACC ( n -- n n )
    0 swap
    begin
@@ -51,17 +44,14 @@ tier@ constant NAG-UP-TIER
       swap over + swap 1 -
    again ;
 
-\ One cell of storage, so that a loop with a memory access in it can be compiled
-\ beside the one without. It is public because the body that reads it is handed
-\ to the compilation as SOURCE and resolved through the running dictionary, which
-\ is outside this package's private scope.
+\ Public: the body reading it is compiled from SOURCE through the running
+\ dictionary, outside this package's private scope.
 variable NAG-CELL
 
-\ A local may be named after a control word, and the declared name wins from its
-\ group's closer onwards - which is docs/forth.md's local-first rule and the
-\ language's answer. It is here because it is the one way a body can write
-\ `again` and NOT mean the loop closer, so a chain that matched the spelling
-\ instead of asking the locals frame would compile something else entirely.
+\ A local named after a control word wins from its group's closer on
+\ (docs/forth.md local-first rule): the one way a body writes `again` without
+\ the loop closer, so a chain matching the spelling instead of the locals frame
+\ fails.
 : NAG-AGAIN-LOCAL ( n -- n )
    {: again:n :}
    again again + ;
@@ -72,9 +62,8 @@ package NAG-TEST
 
 private
 
-\ How many loops a published routine's emitted code still holds. A back edge is
-\ what a loop IS in emitted code, and tools/codegen-loop-inventory.f decides one
-\ by walking the span's own control flow.
+\ A back edge is a loop in emitted code; tools/codegen-loop-inventory.f finds
+\ one by walking the span's control flow.
 : LOOPS-IN ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u NLOOPINV:ROW!
    NLOOPINV:LOOPS ;
@@ -82,7 +71,6 @@ private
 : KEPT ( ptr u8 n -- )
    LOOPS-IN 1 T= ;
 
-\ One dynamically defined source line, caught so refusal can be asserted.
 : EV-DEF ( ptr u8 n -- n )
    NATIVE-EVAL:DEFINE-RC ;
 
@@ -117,10 +105,8 @@ private
    6 NAG-FIXTURE:NAG-AGAIN-LOCAL 12 T=
    -5 NAG-FIXTURE:NAG-AGAIN-LOCAL -10 T= ;
 
-\ THE PAIR IS THE POINT OF THIS CASE. The two texts differ in one token, and the
-\ one with `repeat` compiles: so what the refusal is about is the word and not a
-\ typo somewhere else in the line. The refusal is the CHECKER's - the chain never
-\ sees this body; the probe uses the normal reader path.
+\ The two texts differ in one token and the `repeat` one compiles, so the
+\ refusal is about the word. The checker refuses; the chain never sees the body.
 : WHILE-AGAIN-CASE ( -- )
    s" a loop a while has left cannot be closed with again" T-LABEL
    s" : NAG-WA ( n -- n ) begin dup 0 > while 1 - repeat ;" EV-DEF 0 T=
@@ -128,8 +114,8 @@ private
    s" 7 NAG-WA" TEST-EVAL:N 0 T= ;
 
 : BARE-CASE ( -- )
-   \ Neither definition is executed: both are deliberately nonreturning. The
-   \ production compile and retained back edge are the complete observations.
+   \ Neither definition runs: both never return. The compile and the retained
+   \ back edge are the observations.
    s" a loop with no call or memory access compiles" T-LABEL
    s" : NAG-BARE ( n -- n ) begin 1 - again ;" EV-DEF 0 T=
    s" and its back edge is retained" T-LABEL

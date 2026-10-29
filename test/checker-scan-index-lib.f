@@ -1,18 +1,8 @@
-\ checker-scan-index-lib.f — the shared fixture of the two checker-scan-index
-\ rows, test/checker-scan-index-suite.f and
-\ test/checker-scan-index-rollback-suite.f.
-\
-\ It holds definitions only and runs no case: the assertion words, the checked
-\ words that reach the checker's stores, their indexes and the walks
-\ that specify them, and the differential that compares every index against
-\ its walk. The suite's header says what is under test. Each row requires this
-\ file and reopens `package SCANIDX-TEST` to run its cases.
-
-\ Every definition here is a fixture helper, so they live in the rows' own
-\ package. The cases still run as top-level interpret lines inside it, and the
-\ open package is where the definitions those cases make land — which is why
-\ symbols are resolved with CHECKER-FIND-ACTIVE-SYM (the current scope) rather
-\ than as globals.
+\ checker-scan-index-lib.f - the shared fixture of
+\ test/checker-scan-index-suite.f and test/checker-scan-index-rollback-suite.f:
+\ definitions only, no case. Each row requires it and reopens `package
+\ SCANIDX-TEST`; its cases' definitions land in that open package, so symbols
+\ resolve with CHECKER-FIND-ACTIVE-SYM.
 require src/lib/test.f
 
 using TFAM
@@ -21,11 +11,9 @@ package SCANIDX-TEST
 
 T-RESET
 
-\ ---------------------------------------------------------------------------
 \ whitebox reach. The stores, their indexes, and the walks that specify them
 \ are checker-internal colon words, named directly: on the unsealed engine a
 \ checked body binds their recorded rows. The SCX- words read or combine them.
-\ ---------------------------------------------------------------------------
 : SCX-SYM-N ( -- n ) SYM-N @ ;
 \ The din cell count of the newest record the store keeps under the name's own
 \ symbol, -1 for none. The suites are about the symbol-keyed index, so this asks
@@ -47,7 +35,7 @@ TYPED-VARIABLE SCX-NU n
 : SCX-NAME! ( ptr u8 n -- ) SCX-NU ! SCX-NA ! ;
 : SCX-SYM-INTERN ( -- n ) s" " SYM-GLOBAL SCX-NA @ SCX-NU @ SYM-INTERN ;
 
-\ the two scans the dot names, read directly: SCAN-USIGS-SYM leaves its answer
+\ the two scans, read directly: SCAN-USIGS-SYM leaves its answer
 \ in FEP and returns the record end; NORET-SCAN-SYM leaves it in NORET-CTL.
 \ The memoizing entry points above them can hide a wrong answer behind a hit.
 : SCX-FEP-MINI ( -- n ) FEP @ E-MINI@ ;
@@ -57,16 +45,14 @@ create SCX-WIRE EFF-WIRE allot
    SCX-WIRE EW.NEXT @ ;
 : SCX-NORET-FLAGS ( -- n ) NORET-CTL @ XFER-FLAGS ;   \ the control word's flag bits
 
-\ Each index carries the store end it was last made exact at. A rollback that
-\ repaired the index in place leaves that mark at or below the store's new end;
-\ a rollback that did NOT leaves it above, and the next lookup is forced to
-\ rebuild the whole index from the store. Both answer correctly, so the mark is
-\ the only thing that tells them apart — and it is the whole point of the seam.
-\ The constructor index is the exception at a stale generation: SVX-TRUNCATE
-\ moves its mark with the store, since SVX-GEN already forces the rebuild.
-\ An index no lookup has built yet carries mark 0, which passes vacuously, so a
-\ row runs the differential below — it builds all five — before any rollback
-\ case reads the marks.
+\ Each index carries the store end it was last made exact at: a rollback that
+\ repaired it in place leaves the mark at or below the store's new end, one that
+\ did not leaves it above and forces a full rebuild. Both answer correctly, so
+\ the mark is the only witness. The constructor index is the exception at a
+\ stale generation: SVX-TRUNCATE moves its mark with the store, since SVX-GEN
+\ forces the rebuild. An unbuilt index carries mark 0, which passes vacuously,
+\ so a row runs the differential (it builds all five) before any rollback case
+\ reads marks.
 : SCX-UEND ( -- n ) UEND @ ;
 : SCX-USX-HI ( -- n ) USX-HI @ ;
 : SCX-NORET-END ( -- n ) NORET-END @ ;
@@ -88,18 +74,10 @@ variable NMIS                  \ differential mismatches in the current section
 variable IX
 variable REC-END
 
-\ ---------------------------------------------------------------------------
-\ the reference side of the effect and control differentials. The
-\ specification of each store, USIG-NEWEST-LINEAR and NORET-NEWEST-LINEAR,
-\ answers ONE symbol with a walk of the whole store, so asking it for every
-\ symbol walks the store once per symbol. The walks below are those same
-\ walks, made once: each record's position lands in SCX-REF under the symbol
-\ it carries, and a later record of the same symbol overwrites an earlier one,
-\ so what is left is the newest record of every symbol at once. They read the
-\ records and the store's own bounds and nothing an index maintains — no head,
-\ no back-link, no mark — and they fill their own table, so the index under
-\ test never answers for them.
-\ ---------------------------------------------------------------------------
+\ The reference side: USIG-NEWEST-LINEAR's and NORET-NEWEST-LINEAR's walks, made
+\ once over the whole store. A later record of a symbol overwrites an earlier
+\ one in SCX-REF, leaving the newest of each. They read only records and the
+\ store's bounds, nothing an index maintains, into their own table.
 DYNAMIC-BUFFER SCX-REF n       \ per symbol: newest record's offset+1, 0 = none
 variable REF-POS               \ the walk's record cursor
 variable REF-NEXT              \ ... and the link it reads
@@ -146,13 +124,9 @@ variable REF-NEXT              \ ... and the link it reads
       REF-POS @ SCX-NORET-ENTRY + REF-POS !
    REPEAT ;
 
-\ ---------------------------------------------------------------------------
-\ the differential. For every symbol the image has interned and every family
-\ it has declared, the index and the walk that specifies it agree. One
-\ assertion per store: the number of disagreements is zero. The variant and
-\ family stores are small, so their differentials still ask the specification
-\ word itself once per symbol or family.
-\ ---------------------------------------------------------------------------
+\ the differential: one assertion per store, a disagreement count of zero. The
+\ variant and family stores are small, so their differentials ask the
+\ specification word once per symbol or family.
 : SCX-DIFF-USIG ( -- n )
    SCX-USIG-REF
    0 NMIS !

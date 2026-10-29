@@ -102,7 +102,7 @@ s" 1 LAYOUT-BUFFER A:B:C lb-res<n,n>" LB-EVAL CHECKER-REJECT-RC T=
 here LB-DP 0 ptr-field !
 s" 1 LAYOUT-BUFFER TFAM:BAD lb-res<n,n>" LB-EVAL CHECKER-REJECT-RC T=
 
-\ ---- nominal scalars (arity-0 TK-CELL): LAYOUT-BUFFER is the introduction ----
+\ Nominal scalars (arity-0 TK-CELL): LAYOUT-BUFFER is the introduction.
 NEWTYPE lbtk
 NEWTYPE lbtk2
 
@@ -122,7 +122,6 @@ CAST: LBTK>N ( lbtk -- n )
 \ zero image reads as family id 0 (every raw cell is a valid nominal id)
 0 LBTK-GET 0 T=
 3 LBTK-GET 0 T=
-\ typed round-trip through the generated accessor
 7 0 LBTK-PUT  9 3 LBTK-PUT
 0 LBTK-GET 7 T=
 3 LBTK-GET 9 T=
@@ -137,7 +136,7 @@ s" LBTK-RAW-STORE ( n ptr lbtk -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
 s" LBTK-RAW-FETCH ( ptr lbtk -- n ) @" CHECK-QUIET-CANDIDATE! 0 T=
 s" LBTK-WRONG-STORE ( lbtk2 ptr lbtk -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
 s" LBTK-WRONG-FETCH ( ptr lbtk -- lbtk2 ) @" CHECK-QUIET-CANDIDATE! 0 T=
-\ pointee governance: no raw pointer acquires nominal identity (P1/P2 rejects)
+\ pointee governance: no raw pointer acquires nominal identity
 variable LBTK-RAW-CELL
 s" LBTK-VAR-P ( -- ptr lbtk ) LBTK-RAW-CELL" CHECK-QUIET-CANDIDATE! 0 T=
 s" LBTK-VAR-P2 ( -- ptr lbtk2 ) LBTK-RAW-CELL" CHECK-QUIET-CANDIDATE! 0 T=
@@ -145,12 +144,11 @@ s" LBTK-DATA-P ( -- ptr lbtk ) data-base" CHECK-QUIET-CANDIDATE! 0 T=
 s" LBTK-CAST ( ptr a -- ptr lbtk )" CHECK-QUIET-CANDIDATE! 0 T=
 \ Arithmetic transports an existing nominal pointer; it does not introduce one.
 s" LBTK-CELL+ ( ptr lbtk -- ptr lbtk ) cell+" CHECK-QUIET-CANDIDATE! -1 T=
-\ value laundering through the typed cell rejects (typed-storage ST2 pin)
+\ value laundering through the typed cell rejects
 s" LBTK-LAUNDER ( n -- lbtk ) 0 LBTK-AT ! 0 LBTK-AT @" CHECK-QUIET-CANDIDATE! 0 T=
-\ raw-definer VALUE mint (habu-nominal-storage-raw): a fetch from a raw `here`
-\ cell is a TVK-RAW var that cannot bind a nominal family in value position, so a
-\ `here`-laundered nominal scalar rejects; a plain scalar round-trip through the
-\ same raw cell still certifies (the RAW cell admits a plain representation).
+\ A fetch from a raw `here` cell is a TVK-RAW var that cannot bind a nominal
+\ family in value position, so a `here`-laundered nominal scalar rejects; a
+\ plain scalar round-trip through the same raw cell still certifies.
 s" LBTK-HERE-MINT ( n -- lbtk ) here ! here @" CHECK-QUIET-CANDIDATE! 0 T=
 s" LBTK-HERE-N ( n -- n ) here ! here @" CHECK-QUIET-CANDIDATE! -1 T=
 
@@ -170,9 +168,8 @@ here LB-DP 0 ptr-field !
 LBTK-DUP-RC $4E T=
 here LB-DP 0 ptr-field @ = TTRUE
 
-\ ---- PRODUCT positive: MAKE -> typed store -> fetch -> UNMAKE round-trip ----
-\ (mirrors the type-decl-suite TDS2/TDP executed round-trips; the product
-\ coverage above is reject-only, this pins the accepting memory path.)
+\ PRODUCT positive: MAKE, typed store, fetch and UNMAKE round-trip through
+\ memory; the product cases above only reject.
 ENUM lbhue red green blue ;ENUM
 
 PRODUCT lbrec
@@ -192,15 +189,13 @@ PRODUCT lbrec
 : LBP-HUE@ ( n -- n ) LBP-BUF @ LBREC:UNMAKE drop LBP-HUE-CODE ;
 : LBP-CNT@ ( n -- n ) LBP-BUF @ LBREC:UNMAKE nip ;
 
-\ single-slot round-trip: every field survives typed product memory.
 : LBP-ONE! ( -- ) LBHUE:GREEN 42 LBREC:MAKE 0 LBP-PUT ;
 LBP-ONE!
 0 LBP-HUE@ 1 T=
 0 LBP-CNT@ 42 T=
 
-\ multi-element positive: distinct values at three indices stay independent,
-\ and a compiled walk over every slot asserts the stored values (the depth
-\ suite pins no-throw only; this pins the values).
+\ Distinct values at three indices stay independent, and a compiled walk over
+\ every slot asserts the stored values.
 : LBP-FILL ( -- )
    LBHUE:RED 10 LBREC:MAKE 0 LBP-PUT
    LBHUE:GREEN 20 LBREC:MAKE 1 LBP-PUT

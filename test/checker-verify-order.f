@@ -1,11 +1,8 @@
 \ checker-verify-order.f - a reconstruction binds each definition as of its own
 \ record, so a later shadow of a spelling does not change an earlier verdict.
-\
-\ The program below is loaded first, exactly as a source file is. Its text is
-\ then verified warm, in this same engine, the way a build certifies a generated
-\ prefix: every definition already exists, and so does everything after it.
-\ A replay would have seen only what existed when each word was compiled; the
-\ verifier must reconstruct that order, and it must not hide anything older.
+\ The program below loads first, as a source file does, then its text is
+\ verified warm in this engine as a build certifies a generated prefix: the
+\ verifier reconstructs each word's compile-time order and hides nothing older.
 require src/lib/errors.f
 require src/lib/string.f
 require src/lib/test.f
@@ -291,25 +288,16 @@ variable LONG-U
    S\" : CVO-QAFTER ( -- ) [: if then ;] drop s\" test/fixtures/quotation-load-after.f\" included ;\n: CVO-QAFTER-USE ( n -- n ) QUOTATION-LOAD-AFTER:INCREMENT ;\n" COMPOSE-VERDICT 0 T= ;
 
 \ ---- the quiet resolver ------------------------------------------------------
-\ The scan asks of every token it reads "does this name a definer?", and it asks
-\ the resolver the rows above measure. That resolver answers two questions with
-\ a refusal rather than a symbol — a bare tail two used packages export
-\ (E-USING-AMBIGUOUS) and one a global and a used public both claim
-\ (E-USING-SHADOW-GLOBAL) — and both belong to the definition being checked, not
-\ to a question about a token, so the quiet form (checker.f
-\ CHECKER-FIND-QUIET-SYM) answers 0 for them and lets the check that follows
-\ name the refusal, exactly as USING-CASE above still measures it doing.
-\
-\ IT DEFERS THOSE TWO CODES AND NO OTHER. The probes below run while the very
-\ `using` scopes the rows above verify are open, so the two resolvers are asked
-\ the same live question and answer it differently. The raising leg cannot be
-\ driven from here: the only other refusal the walk answers is the
-\ package-context one, which these open scopes never reach, so what a third code
-\ would meet is pinned at the classifier the quiet form uses.
-\ Each probe makes the authoritative resolver print its own refusal on stderr,
-\ once - E-USING-AMBIGUOUS for `bare 'CVR-H'`, E-USING-SHADOW-GLOBAL for
-\ `bare 'CVR-F'`: those lines ARE the refusals being measured, not test
-\ failures. The quiet resolver prints nothing.
+\ The definer scan asks the resolver the rows above measure, which refuses a
+\ bare tail two used packages export (E-USING-AMBIGUOUS) or one a global and a
+\ used public both claim (E-USING-SHADOW-GLOBAL). Both belong to the definition,
+\ so the quiet form (checker.f CHECKER-FIND-QUIET-SYM) answers 0 for them and
+\ the following check names the refusal (USING-CASE). It defers those two codes
+\ and no other; the raising leg cannot be driven from here (these scopes never
+\ reach the package-context refusal), so a third code is pinned at the
+\ classifier the quiet form uses. Each probe makes the authoritative resolver
+\ print its refusal on stderr once (`bare 'CVR-H'`, `bare 'CVR-F'`): those lines
+\ are the refusals measured, not failures. The quiet resolver prints nothing.
 variable AMBIG-QUIET    variable AMBIG-ACTIVE
 variable SHADOW-QUIET   variable SHADOW-ACTIVE
 

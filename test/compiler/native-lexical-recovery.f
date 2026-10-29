@@ -1,8 +1,8 @@
 \ Tier 1's body capture keeps local and parser-operand scope lexical: a failed
-\ nested parser operand rolls back its opener before capture resumes, a local
+\ nested parser operand rolls back its opener before capture resumes; a local
 \ spelled like a control word, the string opener or a parser word is a local
-\ only inside its block and its definition's head, and a parser operand that spells a closer or a
-\ comment opener is data.
+\ only inside its block and its definition's head; a parser operand that spells
+\ a closer or a comment opener is data.
 require test/gate-common.f
 require src/lib/test.f
 
@@ -73,9 +73,9 @@ package NATIVE-LEXICAL-RECOVERY
 
 public
 
-\ Only x86-64's load loop is the Habu one that rolls back a failed parser
-\ operand. ARM64's is master's kernel reader: there the failed operand joins
-\ LEXWORD's body, which is refused for NEVER-BOUND.
+\ Only x86-64's load loop rolls back a failed parser operand. On ARM64 the
+\ kernel reader joins the failed operand to LEXWORD's body, refused for
+\ NEVER-BOUND.
 : RUN ( -- )
    HB-TARGET-LINUX-X86-64? if RECOVERY-CASE then
    SCOPE-CASE

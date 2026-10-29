@@ -1,44 +1,22 @@
-\ x86-64-seam.f - the x86_64 Linux seam, exercised from an aarch64 engine.
-\
-\ Three things this can prove on this host, and one it cannot.
-\
-\ THE IMAGE WRITER. src/os/linux-x86-64/elf.f is ordinary Habu: it reads the
-\ x86-64 code layer's stream (src/arch/x86-64/icode.f) and writes bytes into the
-\ shared image cursor (src/os/image-bytes.f), so an aarch64 engine can write an
-\ x86_64 executable header as readily as its own. That is the cross-build step
-\ docs/xcomp.md "Build and bootstrap" names, reduced to the part that exists:
-\ BUILD-ELF over an empty code stream, read back FIELD BY FIELD rather than
-\ compared against a recorded blob, because a blob says "these bytes changed"
-\ where a field says which one and to what.
-\ The seam's layout.f cannot be loaded beside the host's - both spell CODE-OFF
-\ and the engine refuses a duplicate definition - so the writer reads CODE-OFF
-\ qualified from the package that replays it (X64LAYOUT,
-\ src/os/linux-x86-64/target-layout.f), and reads the host's identical
-\ PROT-PAGE-MAX, REGION and REGION-OFF. DATA is no segment: the boot maps it
-\ and copies in the bytes of the read-only carrier at the region's end.
-\ Every address and size is pinned here as a literal, so this test fails rather
-\ than drifts if either target moves one.
-\
-\ THE RELOCATION SITE KIND. The mov r64, imm64 site (package SNAP-RELOC) is
-\ recognised, read and rewritten here over hand-built fixtures, including the
-\ near misses that must NOT read as a site.
-\
-\ THE TARGET CONTRACT. The x86-64 row in src/compiler/target.f resolves,
-\ digests, and refuses each incoherent combination with its own named error.
-\
-\ WHAT IT CANNOT PROVE. HB-TARGET-LINUX-X86-64? is a constant false on this
-\ host, so no test here can reach the x86-64 arm of a host selector
-\ (src/compiler/native/abi.f, src/habu/prof.f): those are inspection-only until
-\ an x86_64 engine exists.
+\ x86-64-seam.f - the x86_64 Linux seam from an aarch64 engine: the ELF writer
+\ (src/os/linux-x86-64/elf.f) read back field by field, the mov r64, imm64
+\ relocation site kind (SNAP-RELOC) over hand-built fixtures, and the x86-64 row
+\ of src/compiler/target.f. HB-TARGET-LINUX-X86-64? is false on this host, so
+\ the x86-64 arms of host selectors (src/compiler/native/abi.f, src/habu/prof.f)
+\ are not reached here.
 
 require src/lib/test.f
 require src/lib/errors.f
 require src/lib/byte-buffer.f
 require src/arch/x86-64/asm.f
 require src/arch/x86-64/icode.f
-
 \ The writer brings src/os/image-bytes.f in under `using X64CODE`, so its shared
-\ buffer uses the x86-64 capacity. The ARM64 code layer below has its own package.
+\ buffer uses the x86-64 capacity. The ARM64 code layer below has its own
+\ package. The seam's layout.f and the host's both define CODE-OFF, which the
+\ engine refuses twice, so the writer reads CODE-OFF qualified from X64LAYOUT
+\ (target-layout.f) and the host's identical PROT-PAGE-MAX, REGION and
+\ REGION-OFF. buffer uses the x86-64 capacity. The ARM64 code layer below has
+\ its own package.
 require src/os/linux-x86-64/target-layout.f
 s" src/os/linux-x86-64/elf.f" required
 require src/os/image-bytes.f
@@ -66,6 +44,9 @@ using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
    off U32@  off 4 + U32@ 32 lshift or ;
 
 \ ---- the fields a loader reads ----------------------------------------------
+\ Each field is read back, not compared with a recorded blob, so a failure names
+\ the field and its value. Every address and size is a literal, so this test
+\ fails rather than drifts if either target moves one.
 $400000 constant WANT-VMBASE
 $1000 constant WANT-CODE-OFF
 62 constant WANT-EM-X86-64
@@ -165,7 +146,8 @@ $228 constant WANT-RELA-OFF
 \ The code region and the DATA carrier are loadable segments this file carries
 \ no bytes of, after the read-write tail and in ascending order, as ELF orders
 \ loadable segments: the kernel maps the region zeroed and read-write at its
-\ address, and the carrier, as large as the bytes it holds, not at all.
+\ address, and the carrier, as large as the bytes it holds, not at all. DATA is
+\ no segment: the boot maps it and copies in the carrier's bytes.
 : CHECK-FIXED-PHDR ( n n n n -- ) {: i:n flags:n va:n memsz:n :}
    i PH-TYPE@ 1 T=                        \ PT_LOAD
    i PH-FLAGS@ flags T=

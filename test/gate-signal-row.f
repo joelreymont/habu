@@ -1,26 +1,7 @@
-\ gate-signal-row.f - the row test/gate-signal-test.f puts under a gate.
-\
-\ With no script argument this is the ROW: it reports its pid and runs the LEAF,
-\ this file again with `leaf` as its one argument. The leaf starts the HELPER,
-\ reports its pid and starts BURST-N writers one after another. Each writer is a
-\ /bin/sh that makes a file under TMPDIR and becomes `sleep`, so it holds the
-\ row's scratch and outlives everything above it unless something ends it.
-\ Every spawn here makes a process group of its own, which is the shape a row
-\ has while it builds an engine: two spawns deep and, for the length of the
-\ burst, between two spawns.
-\
-\ The helper starts one more writer in the background and exits at once, and
-\ the leaf does not reap it. It stays a zombie under the leaf, leading the
-\ group its writer keeps while init takes the writer as a child, so the only
-\ link from the tree to that writer is its group id: the zombie's pid. That is
-\ a row whose child forked and exited while what it forked holds the row's
-\ capture pipe.
-\
-\ Each engine's first act opens the write end of the FIFO GATE_SIGNAL_FIFO
-\ names (src/lib/test/fifo.f), and reports its pid there. The leaf maps that
-\ end into the helper and every writer, and the helper's writer inherits it
-\ from the helper. Nothing here closes it, and the test reads its end of file
-\ as "no process under the row is left".
+\ The row test/gate-signal-test.f puts under a gate. With no script argument it
+\ is the ROW: it reports its pid and runs the LEAF, this file with argument
+\ `leaf`. Every spawn makes a process group of its own, the shape of a row
+\ building an engine: two spawns deep and, during the burst, between two spawns.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -43,6 +24,11 @@ create SINK 64 allot
 variable HELPER
 variable HOLD                        \ the FIFO's write end
 
+\ Each engine's first act opens the write end of the FIFO GATE_SIGNAL_FIFO names
+\ (src/lib/test/fifo.f) and reports its pid there. The leaf maps that end into
+\ the helper and every writer; the helper's writer inherits it from the helper.
+\ Nothing closes it: the test reads its end of file as "no process under the row
+\ is left".
 : OPEN-HOLD ( -- )
    s" GATE_SIGNAL_FIFO" TEST-FIFO:WRITER FD>N HOLD ! ;
 
@@ -90,6 +76,14 @@ variable HOLD                        \ the FIFO's write end
       s" gate-signal-row: the helper's pipe refused a read" USAGE-RC die
    then ;
 
+\ Starts the HELPER, reports its pid and starts BURST-N writers one after
+\ another. Each writer is a /bin/sh that makes a file under TMPDIR and becomes
+\ `sleep`, so it holds the row's scratch and outlives everything above it unless
+\ something ends it. The helper starts one more writer in the background and
+\ exits at once, unreaped: a zombie under the leaf leading the group its writer
+\ keeps while init adopts the writer, so the only link from the tree to that
+\ writer is its group id, the zombie's pid. That is a row whose child forked and
+\ exited while what it forked holds the row's capture pipe.
 : LEAF ( -- )
    OPEN-HOLD
    START-HELPER

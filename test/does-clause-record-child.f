@@ -1,32 +1,9 @@
 \ does-clause-record-child.f - the dictionary record a does> clause gets, and
-\ the branch that aims at it.
-\
-\ WHAT THIS PROVES, AND WHY IT IS NOT A NAME SEARCH. `does>` used to leave the
-\ clause body nameless. LDOESPATCH patches the created word's RET into `b D`,
-\ and D is an address INSIDE the defining word's compiled body, so the branch
-\ names nothing: an AOT capture whose defining word lies outside the window
-\ carries a displacement measured against code the target does not have, and
-\ three compiler-chain words branched into the middle of PATHZ in a merged
-\ engine because of it (dot habu-merged-engine-nmigrate-c970bf04). The clause
-\ now carries a dictionary record of its own (src/habu/habu2.f J-DOES), so the
-\ branch aims at a record ENTRY and the seed relocates it by name.
-\
-\ Every case here therefore reads STRUCTURE and not text: the record at the
-\ parent's index PLUS ONE, the bytes of its name, its wordlist, the two spans'
-\ shared end, and the instruction actually planted at the created word's RET -
-\ decoded, so the opcode and the target are both checked.
-\
-\ THE NAME IS STILL A NAME. A wordlist holds at most one live row per folded
-\ name (src/habu/habu1.f WLFIND), and the clause is a row of its parent's
-\ wordlist, so a word already holding `<PARENT>;does` there refuses the definer
-\ at `does>` with the duplicate-definition code, under both compilers, exactly
-\ as that word is refused when it comes second. The same word in another
-\ wordlist refuses nothing. An exported definer carries its clause into the
-\ export's wordlist, under the same wall.
-\
-\ Run: bin/hb --load test/does-clause-record.f, which loads this file in the
-\ native build window: it marks the relocation maps through NPUB's checked words,
-\ which test/reloc-window-prepare.f defines there.
+\ the branch that aims at it: the clause has a record of its own (habu2.f
+\ J-DOES) one slot above its parent's, so LDOESPATCH's `b D` aims at a record
+\ entry the seed relocates by name. Cases read structure, never text. Run:
+\ bin/hb --load test/does-clause-record.f, which loads this file in the native
+\ build window (test/reloc-window-prepare.f).
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -123,16 +100,18 @@ variable MK-CP
    s" package DRP public : MK ( n -- n ) dup create , 1 + does> ( -- n ) @ ; ;package" evaluate-closed ;
 
 \ ---- a clause name a live word already holds ---------------------------------
-\ Each holder is spelled in another case than the clause would be: the
-\ comparison is folded. DUP-DEF-RC is the engine's duplicate-definition code
-\ (habu2.f C-DUP-DEF-FAIL).
+\ A wordlist holds one live row per folded name (src/habu/habu1.f WLFIND) and
+\ the clause is a row of its parent's wordlist, so a word holding
+\ `<PARENT>;does` there refuses the definer at `does>` under both compilers; in
+\ another wordlist it refuses nothing. Each holder is spelled in another case:
+\ the comparison is folded. DUP-DEF-RC is habu2.f C-DUP-DEF-FAIL's
+\ duplicate-definition code.
 $4E constant DUP-DEF-RC
 variable HELD-ND  variable HELD-CP
 
 : HELD-MARK ( -- )
    ndict@ HELD-ND !  cp@ HELD-CP ! ;
 
-\ After the refusal: nothing published, and the holder still answers.
 : ?HELD ( ptr u8 n ptr u8 n -- ) {: d:ptr du:n h:ptr hu:n :}
    s" the refused definer publishes neither record and moves no code" T-LABEL
    ndict@ HELD-ND @ T=
@@ -221,9 +200,8 @@ create ERR IO-CAP allot
    s" the clause record's name is stored out of line" T-LABEL
    a u CLAUSE XREF-REC XREF-EXT? TTRUE ;
 
-\ THE CASE THIS FILE EXISTS FOR: the instruction LDOESPATCH planted at the
-\ created word's RET is a B - never a BL, which would corrupt x30 - and its
-\ target is the clause record's entry.
+\ The instruction LDOESPATCH planted at the created word's RET is a B, never a
+\ BL (which would corrupt x30), and its target is the clause record's entry.
 : ?BRANCH ( ptr u8 n ptr u8 n -- ) {: da:ptr du:n ca:ptr cu:n :}
    s" the created word's RET holds a branch, not a call" T-LABEL
    ca cu IDX END PATCH-OP
@@ -454,18 +432,13 @@ public
 
 ;package
 
-\ Keep the structural test helpers on the already-booted engine, then switch the
-\ definitions SUBJECTS feeds through the interpreter onto the production chain.
-\ The window already holds that chain, the engine's retained compiler over the
-\ checker the window loaded (test/native-window-owner-child.f), so this file does
-\ not load src/compiler/native/compiler.f. Holding the chain is not selecting
-\ it: tier 0, the legacy JIT `:` compiler, is what every `--load` and the REPL
-\ run (src/habu/layout.f NCOMP-DISPATCH:TIER-CELL), and its J-DOES
-\ writes the clause name BEFORE the clause body, inside the parent's span. The
-\ layout measured below is the native publication's - habu2.f
-\ DOES-REC:NATIVE-PRIM appends the permanent name past both spans - so this file
-\ selects tier 1 the way an executable build does, ahead of the definitions.
-\ The one tier-0 case runs first.
+\ The window already holds the production chain
+\ (test/native-window-owner-child.f), so this file does not load
+\ src/compiler/native/compiler.f; holding it is not selecting it. Tier 0's
+\ J-DOES writes the clause name before the clause body, inside the parent's
+\ span; the layout measured below is the native publication's (habu2.f
+\ DOES-REC:NATIVE-PRIM appends the name past both spans), so after the one
+\ tier-0 case this file selects tier 1 as an executable build does.
 DOESREC-TEST:RUN-JIT
 1 set-tier
 

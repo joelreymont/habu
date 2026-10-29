@@ -1,28 +1,6 @@
-\ structure.f - WCTL, src/arch/wasm/structure.f, on the product engine.
-\
-\ Proves W01 and W02 as structural rows (the
-\ rows dot executes them): a loop edge that swaps two arguments, fans one out
-\ and rotates three doubles is written as parallel copies through one
-\ temporary per type, and an argument it hands back unchanged is not copied;
-\ two loops nested in each other, with ifs whose arms meet and a branch out of
-\ both loops, give the block, loop and if nesting and the label depth of every
-\ branch, with the copies of each edge and none for a memory token, while a
-\ block the entry never reaches is written nowhere; of two merges one block
-\ dominates, the later in reverse postorder is the outer block; the second and
-\ third functions of a module are structured in their own block windows; a
-\ function whose cycle the entry enters at two blocks is refused by name with
-\ the span of the block it was entered at; and a step or temporary outside what
-\ the last function structured holds is refused.
-\
-\ THE TRACE. A structured function reads back as one line, a word per step:
-\ bN the body of block N, loopN and blockN a label for block N, if:C an if on
-\ the value C, else, end, D=S a copy, $K=S a save into temporary K, D=$K a
-\ restore, brN:K a branch to the label of block N, K labels out, and fin a
-\ return or a trap. A value is named by the fixture that made it.
-\
-\ ONE FIXTURE PER CONTEXT. A module holds about seventeen arenas and the live
-\ arena registry holds sixty-four, so every module below is built in its own
-\ context.
+\ structure.f - WCTL, src/arch/wasm/structure.f, on the product engine: rows W01
+\ and W02 run structurally. Every module is built in its own context: a module
+\ holds about seventeen arenas and the live arena registry sixty-four.
 
 require src/lib/test.f
 require src/lib/string.f
@@ -226,6 +204,11 @@ private
    v ;
 
 \ ---- the trace ---------------------------------------------------------------
+\ A structured function reads back as one line, a word per step: bN the body of
+\ block N, loopN and blockN a label for block N, if:C an if on the value C,
+\ else, end, D=S a copy, $K=S a save into temporary K, D=$K a restore, brN:K a
+\ branch to the label of block N, K labels out, and fin a return or a trap. A
+\ value is named by the fixture that made it.
 1024 constant CAP
 CAP BUFFER: GOT-BUF
 TYPED-VARIABLE GOT-U len

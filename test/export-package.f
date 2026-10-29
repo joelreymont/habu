@@ -1,29 +1,10 @@
-\ export-package.f - EXPORT keyword engine-contract regressions (dot
-\ habu-compiler-pkg-re-688212c1).
-\
-\ Proves the interpret-level `EXPORT` keyword's fail-closed walls and its two
-\ documented roles in fresh child engines:
-\ - inside an open package it publishes an existing word under its own tail
-\   (dual-name execution, checked callers, generated-ctor sources allowed,
-\   data records allowed, DNAME-WIDE parity between source and alias at the
-\   interpret gate);
-\ - at top level it is the hb-build --repl export directive surface and
-\   consumes the name as a no-op, keeping directive-carrying programs (for
-\   example src/lib/prelude.f) directly loadable.
-\ Rejects pinned by child exit status: undefined source (rc 70, token named),
-\ sealed-system source prefix (rc 84, ENGINE-ERROR:SEAL-PACKAGE), missing name (rc 74),
-\ duplicate tail / self-export (rc 78, labeled "duplicate definition:"),
-\ primitive source (uncaught E-EXPORT-PRIM 7115 -> rc 67, code named), a
-\ private word behind a closed package (qualified lookup is public-only,
-\ rc 70), and an engine-internal (DNAME-INT) source, refused with the interpret
-\ gate's diagnosis because the alias would not carry the mark (rc 70 at top
-\ level, a catchable 70 inside evaluate).
-\
-\ Each program runs in a fresh child engine (ENGINE-CANDIDATE:PATH$:
-\ HABU_UNDER_TEST when a gate sets it, else the running engine) over piped
-\ stdin; the representative undefined and internal cases also run --load for
-\ entry-path parity, exactly like test/seal-package.f.
-\
+\ export-package.f - interpret-level `EXPORT` in fresh child engines. Inside an
+\ open package it publishes an existing word under its own tail; at top level it
+\ is the hb-build --repl export directive and consumes the name as a no-op, so a
+\ directive-carrying program (src/lib/prelude.f) still loads. An engine-internal
+\ (DNAME-INT) source is refused with the interpret gate's diagnosis, since the
+\ alias would not carry the mark.
+
 \ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
 \   src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f
 \   test/export-package.f
@@ -77,6 +58,9 @@ create XPK-EMPTY 1 allot
 : XPK-LINE ( ptr u8 n -- )   SB-APPEND XPK-LF ;
 
 \ --- forge programs -----------------------------------------------------------
+\ Child exits: sealed system-package source 84 (ENGINE-ERROR:SEAL-PACKAGE),
+\ primitive source 67 (uncaught E-EXPORT-PRIM 7115), private word behind a
+\ closed package 70 (qualified lookup is public-only).
 
 : XPK-SRC-PKG ( -- )                          \ shared source package XA with XA:W
    s" package XA" XPK-LINE
@@ -193,10 +177,9 @@ create XPK-EMPTY 1 allot
    s" 42 constant K package P public export K ;package P:K ." XPK-LINE
    SB$ ;
 
-\ Generated constructor sources are closed-but-callable: re-exporting one under
-\ a second public name is ALLOWED, a checked caller through the alias compiles,
-\ and the alias inherits DNAME-WIDE (the interpret gate rejects an alias call
-\ exactly like the source, proving the wide bit copied).
+\ Re-exporting a generated constructor (closed but callable) under a second
+\ public name is allowed, a checked caller through the alias compiles, and the
+\ alias inherits DNAME-WIDE.
 : XPK-CTOR-FORGE$ ( -- ptr u8 n )
    SB-RESET
    s" SUMTYPE xpw" XPK-LINE
@@ -233,6 +216,8 @@ create XPK-EMPTY 1 allot
    SB$ ;
 
 \ --- child spawn + outcome capture --------------------------------------------
+\ Children run ENGINE-CANDIDATE:PATH$ over piped stdin; the undefined and
+\ internal cases also run --load, as test/seal-package.f does.
 
 : XPK-STORE! ( len len outcome ptr u8 n -- )
    {: outu:len erru:len oc src:ptr srcu:n :}
@@ -331,10 +316,9 @@ create XPK-EMPTY 1 allot
    S\" 70\nafter-catch\n" XPK-OUT?
    s" hb: internal engine word: DEFER-UNSET" XPK-ERR? ;
 
-\ The wide-bit parity pair: the SOURCE ctor and its ALIAS must fail the
-\ interpret-level wide gate identically (same kind + rc), proving the alias
-\ record copied DNAME-WIDE. The exact rc is whatever the engine's wide gate
-\ exits with; equality between the two runs is the contract.
+\ The source ctor and its alias must fail the interpret-level wide gate alike
+\ (same kind and rc), proving the alias copied DNAME-WIDE; equality is the
+\ contract.
 variable XPK-WIDE-EXITED   variable XPK-WIDE-RC
 
 : XPK-WIDE-PARITY ( -- )

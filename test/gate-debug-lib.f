@@ -1,4 +1,5 @@
-\ gate-debug.f - checked runner for profiler/debug gate checks.
+\ gate-debug-lib.f - profiler and debugger gate cases, included by
+\ test/gate-debug.f.
 
 require src/lib/string.f
 require tools/jitdump-core.f
@@ -20,17 +21,14 @@ using JITDUMP      \ JD / JIT-FIND / JIT-EVALUATE, called bare in GDB-JITDUMP
    s" LONG-PROFILER-BUSY-WORD" s" profiler long-name output" GE-EXPECT-OUT-HAS
    s" PASS: profiler long dictionary names" type cr ;
 
-\ --- profiler report regressions (dots habu-make-profiler-sample-4df2965e,
-\ habu-bound-profiler-counter-235c5f48, habu-finish-the-profiler-4cdd3b18 and
-\ habu-build-the-internal-4cd07a82) ---
-\ Every report opens with one header line that states its own accounting by name:
+\ --- profiler report regressions ---
+\ Every report opens with one header line that states its own accounting:
 \
 \   profiler samples N words W other O new X foreign F frames ... indexed I usec U
 \
-\ and W + O + X + F == N is the identity the counting cases below read. They read
-\ a NAMED field rather than a column, so a report that grows another column does
-\ not quietly stop being checked; and a busy word whose loop body inlines its
-\ primitives keeps every interrupted pc inside its own code range, so the samples
+\ W + O + X + F == N is the identity the counting cases read, by field name, so
+\ a report that grows a column stays checked. A busy word whose loop inlines its
+\ primitives keeps every interrupted pc inside its own range, so its samples
 \ land in one deterministic bucket.
 
 variable GDB-I        \ GDB-NUM-AT's cursor
@@ -113,19 +111,16 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    s" : OUTER ( -- n ) BUSY 5 ;" GE-SRC-LINE
    s" ;package" GE-SRC-LINE ;
 
-\ --- dot habu-complete-queued-profiler-a5ce1ad4: the SIGALRM handler reads nothing
-\ from the interrupted context's live registers. A tick inside a foreign callee
-\ (libc's dlsym here; libzip's inflate for Tender) used to walk the callee's
-\ reuse of x20/x26/x27 and die SIGSEGV with x0 = SIGALRM; now such a sample is
-\ counted in the header's foreign field. And the profiler's total and limit no
-\ longer share $1E0/$1E8 with GTOD-SCRATCH, so a clock query after prof-on cannot
-\ turn the next tick into an early report + exit 99.
+\ --- the SIGALRM handler reads nothing from the interrupted context's live
+\ registers: a foreign callee (libc's dlsym here) may reuse x20/x26/x27, and a
+\ tick inside one counts in the header's foreign field. The profiler's total
+\ and limit do not share $1E0/$1E8 with GTOD-SCRATCH, so a clock query after
+\ prof-on cannot turn the next tick into an early report and exit 99.
 \ GDB-SYM-FOR calls dlsym for n ms of the monotonic clock, not a call count, so
 \ the sample total follows the timer rather than the host's call speed. On spark
 \ (ARM64 Linux, glibc, the default 1000 us rate) 100,000 calls took 8 or 9
-\ ticks, 46% of them inside dlsym and the rest in the FFI wrapper, so an empty
-\ foreign bucket came up by chance; 200 ms gave 200 ticks in each of 20 runs,
-\ 64 to 86 of them (38% overall) foreign.
+\ ticks and an empty foreign bucket came up by chance; 200 ms gave 200 ticks in
+\ each of 20 runs, 64 to 86 of them (38% overall) foreign.
 : GDB-PROFILER-FOREIGN ( -- )
    GE-HB-RESET
    GE-SRC-RESET
@@ -252,9 +247,9 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    then
    s" PASS: prof-rate sets the interval the next prof-on arms" type cr ;
 
-\ --- dot habu-stop-the-clock-83ae936a: prof-on arms an interval of a second or
-\ more, prof-reset holds the clock for its clears, prof-rate throws a
-\ negative interval back to its caller, and a refused arm is named and fatal.
+\ --- prof-on arms an interval of a second or more, prof-reset holds the clock
+\ for its clears, prof-rate throws a negative interval back to its caller, and a
+\ refused arm is named and fatal.
 \ GDB-DELAY ( n -- ): spin until n more nanoseconds have passed by mono-ns.
 : GDB-DELAY-SRC ( -- )
    s" : GDB-DELAY ( n -- ) mono-ns + begin dup mono-ns <= until drop ;" GE-SRC-LINE ;
@@ -427,8 +422,8 @@ variable GDB-CUT      \ GDB-AFTER's cut point
 
 \ A word counted during the phase and retired before the report loses its index
 \ entry: the sync rebuilds the index from the dictionary as it then stands. The
-\ header summed the entries, so those samples fell out of it and the identity
-\ came up short - 397 of 92,013 on a self-build. The sum walks records now.
+\ header sums records, not index entries; summing entries lost those samples
+\ (397 of 92,013 on a self-build).
 : GDB-PROFILER-RETIRED ( -- )
    GE-HB-RESET
    GE-SRC-RESET
@@ -444,9 +439,9 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    then
    s" PASS: a word retired before the report keeps its samples in the total" type cr ;
 
-\ --- the surface the profiler dots ask for: package-qualified rows, the caller
+\ The profiler's surface: package-qualified rows, the caller
 \ under each row, a stop that keeps the counters, a reset that clears them, and
-\ the same walk as JSON ---
+\ the same walk as JSON.
 
 : GDB-PROFILER-QUAL ( -- )
    GE-HB-RESET

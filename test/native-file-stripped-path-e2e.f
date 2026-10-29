@@ -1,7 +1,6 @@
 \ A stripped hb-build uses the FILE loader, then links after the loader closes.
 \ Direct maker counts prove cold compilation and warm reuse through that
 \ same opener; hb-build then proves the output is a runnable stripped image.
-\ Run: bin/hb --load test/native-file-stripped-path-e2e.f
 
 require src/lib/test.f
 require src/lib/string.f

@@ -1,26 +1,7 @@
 \ process-pty-tty-smoke.f - the supervisor's pseudo-terminal mode and its public
-\ write/await surface (dot habu-give-process-pty-0db35dea).
-\
-\ Tender's Habu-written standalone gate could not prove REPL recovery: the
-\ supervisor connected pipes, so the child engine never installed its line editor
-\ and a batch REPL stopped at the first refused definition with exit 70, and the
-\ handle exposed no child I/O. Both reproducers are the red-first cases here:
-\   - PIPE-STOPS: under WITH-TARGET the refused definition ends the child; the line
-\     after it is never evaluated (no "42"), which is the batch contract;
-\   - TTY-RECOVERS: under WITH-TTY-TARGET the child prints its prompt, refuses the same
-\     definition, evaluates `6 7 * . cr`, answers 42 and prompts again;
-\ and both drive the child through PROCESS-PTY:WRITE-LINE / AWAIT-BYTES from
-\ outside the package, which used to be E-UNDEFINED. TREE-ENDS holds the scope's
-\ teardown to what the target started: it used to end the target's pid alone.
-\
+\ write/await surface, driven through PROCESS-PTY:WRITE-LINE / AWAIT-BYTES from
+\ outside the package.
 \ Run: bin/hb --load test/process-pty-tty-smoke.f   (HABU_UNDER_TEST names the child)
-\
-\ The buffer, its compaction, the span search, the wait clock and the
-\ never-seen facts are src/lib/pty-harness.f's. The reading step, the waits and
-\ their deadline are this file's own: the bytes come through the supervisor's
-\ linear handle, which cannot be handed to the module's own descriptor reader,
-\ and a deadline shows what was read before it throws (DEADLINE), which the
-\ harness's WAIT-AFTER-WITHIN does not.
 
 require src/lib/errors.f
 require src/lib/fmt.f
@@ -50,6 +31,11 @@ $0A constant PROBE-MS              \ the pause between two probes of its pid
 : PROMPT$ ( -- ptr u8 n )    s" habu> " ;
 : ANYWHERE$ ( -- ptr u8 n )  s" " ;      \ an empty head: the tail may be anywhere
 
+\ The buffer, compaction, span search, wait clock and never-seen facts are
+\ src/lib/pty-harness.f's. The reads and waits are this file's: the bytes come
+\ through the supervisor's linear handle, which the module's descriptor reader
+\ cannot take, and DEADLINE shows what was read before it throws, which the
+\ harness's WAIT-AFTER-WITHIN does not.
 \ Read what is ready within STEP-MS into the harness buffer and append it: the
 \ count, 0 for a quiet poll, -1 once the target's side is gone. The linear
 \ handle stays on top of the stack, which is why this step is here and not in
@@ -65,31 +51,25 @@ $0A constant PROBE-MS              \ the pause between two probes of its pid
    BUF$ {: ra:ptr ru:n :}
    s" read so far (" type ru FMT:.INT s"  bytes):" type cr ra ru type cr ;
 
-\ A clock that ends while the target still holds its side has not been answered
-\ YET: a deadline, not a wrong answer, so it asserts nothing. The caller's wait
-\ is named and E-PROC-TIMEOUT thrown (TEST-WAIT:EXPIRED); the scope tears the
-\ target down on the way out, and RUN stops the loop and lets it through, so the
-\ engine's report of it is the last line on stderr. The caller has shown what it
-\ waited for.
+\ A clock that ends while the target still holds its side is a deadline, not a
+\ wrong answer, so it asserts nothing: the wait is named and E-PROC-TIMEOUT
+\ thrown (TEST-WAIT:EXPIRED). The scope tears the target down and RUN lets the
+\ throw through, so the engine's report is the last line on stderr.
 : DEADLINE ( process-pty-handle ptr u8 n -- process-pty-handle ) {: name:ptr len:n :}
    READ-SO-FAR
    name len TEST-WAIT:EXPIRED ;
 
-\ What a wait waited for, and how long.
 : WAIT-SHOW ( ptr u8 n ptr u8 n -- ) {: ha:ptr hu:n ta:ptr tu:n :}
    s" expected: " type ta tu type
    hu 0 > if s"  after " type ha hu type then
    s"  (wait budget " type WAIT-BUDGET-MS FMT:.INT s"  ms)" type cr ;
 
-\ Keep reading until the tail appears at or after the head, the target hangs up,
-\ or the wait's deadline passes. An empty head waits for the tail anywhere; a
-\ real one waits for the two in that order. A child engine answers in as many
-\ pieces as the host's scheduling chooses -- a line editor redraws on every
-\ keystroke, and a loaded box splits one echo across dozens of reads -- so no
-\ count of reads or of quiet polls bounds the wait. A partial read is not an
-\ answer and not a failure: only the markers, the hang-up and the clock end it.
-\ The hang-up answers whether the tail came before it; the clock is DEADLINE.
-\ The linear handle stays on top of the stack for READ-STEP.
+\ Read until the tail appears at or after the head, the target hangs up, or the
+\ deadline passes; an empty head waits for the tail anywhere. A child answers in
+\ as many pieces as the host's scheduling chooses (the line editor redraws on
+\ every keystroke, a loaded box splits one echo across dozens of reads), so no
+\ count of reads or quiet polls bounds the wait. The hang-up answers whether the
+\ tail came before it.
 : EXPECT-AFTER ( process-pty-handle ptr u8 n ptr u8 n -- process-pty-handle bool )
    {: ha:ptr hu:n ta:ptr tu:n :}
    WAIT-BUDGET-MS WAIT-OPEN
@@ -159,7 +139,8 @@ $0A constant PROBE-MS              \ the pause between two probes of its pid
 : BAD-DEF$ ( -- ptr u8 n )  s" : TTY-BAD ( -- n ) drop ;" ;
 : ARITH$ ( -- ptr u8 n )    s" 6 7 * . cr" ;
 
-\ ---- red-first case 1: the batch REPL over pipes stops at the refusal --------
+\ PIPE-STOPS: under WITH-TARGET a refused definition ends the child and the next
+\ line is never evaluated (the batch contract).
 : PIPE-STOPS-BODY ( process-pty-handle -- process-pty-handle )
    WATCH-RESET
    s" 42" WATCH+ {: answered:watch :}   \ the claim below outlives every compaction
@@ -177,7 +158,8 @@ $0A constant PROBE-MS              \ the pause between two probes of its pid
    HB$ [: PIPE-STOPS-BODY ;] PROCESS-PTY:WITH-TARGET
    s" PASS: batch REPL over pipes stops at the refused definition" type cr ;
 
-\ ---- red-first case 2: the REPL on a pseudo-terminal refuses and recovers ----
+\ TTY-RECOVERS: under WITH-TTY-TARGET the child refuses BAD-DEF$, answers
+\ `6 7 * . cr` with 42 and prompts again.
 : TTY-RECOVERS ( -- )
    BUF-CLEAR
    HB$ [:
@@ -212,25 +194,16 @@ $0A constant PROBE-MS              \ the pause between two probes of its pid
    s" PASS: checked layout calculation works at the REPL after bare-layout refusal" type cr ;
 
 \ An uncaught throw from inside run-in-stack reaches the tty REPL while the
-\ callback's guarded allocation is active -- run-in-stack now refuses anything
-\ that is not a real guarded mapping (src/lib/memory.f MEM:ALLOC-GUARDED), so
-\ TTY-POOL is one, and TTY-RAISE's throw still escapes uncaught from inside it.
-\ Recovery must reinstate the REPL's own allocation, not merely the prompt,
-\ and `depth` is the value that says so: src/habu/habu1.f BDEPTH subtracts the
-\ CONTENTS of the active base cell (src/habu/layout.f S0-CELL, which is
-\ STACK-ABI:BASE-CELL) from XDS, so it reads zero only when the cursor and
-\ that cell came back TOGETHER. A recovery that reset the cursor
-\ to the boot stack but left TTY-POOL's base installed would print the
-\ distance between the two mappings here instead. The four values pushed and
-\ printed ahead of it show the recovered stack works at all -- they would
-\ also fit inside the pool, which is a whole 64 KB page, so it is the zero
-\ and not the four that identifies which stack they landed on.
-\ The pool's address lives in a declared pointer cell read back through
-\ `TTY-POOL`, because a `constant` is raw storage and a raw cell never holds an
-\ address. The backing cell is named short on purpose: this whole line is TYPED
-\ AT THE REPL, whose line editor holds 256 bytes (`src/habu/repl.f` LBUF), and a
-\ line one byte over that loses its tail silently -- the definitions after the
-\ cut are simply never made and the case fails on E-UNDEFINED much later.
+\ callback's guarded allocation is active; run-in-stack takes only a real
+\ guarded mapping (src/lib/memory.f MEM:ALLOC-GUARDED), so TTY-POOL is one.
+\ Recovery must reinstate the REPL's own allocation: src/habu/habu1.f BDEPTH
+\ subtracts the contents of the active base cell (src/habu/layout.f S0-CELL)
+\ from XDS, so `depth` reads zero only when the cursor and that cell came back
+\ together. The four values printed ahead of it would also fit inside the 64 KB
+\ pool, so the zero identifies the stack. The pool's address lives in a declared
+\ pointer cell (a raw cell never holds an address), named short: this line is
+\ typed at the REPL, whose LBUF holds 256 bytes (src/habu/repl.f), and a longer
+\ line loses its tail silently, failing on E-UNDEFINED much later.
 : STACK-DEFS$ ( -- ptr u8 n )
    s" require src/lib/memory.f PTR-VARIABLE POOL-A STACK-ABI:PAGE-BYTES MEM:ALLOC-GUARDED constant TTY-POOL-CAP POOL-A ! : TTY-POOL ( -- ptr u8 ) POOL-A @ ; : TTY-RAISE ( -- ) 7 throw ; : TTY-CROSS ( -- ) ['] TTY-RAISE TTY-POOL TTY-POOL-CAP run-in-stack ;" ;
 
@@ -258,11 +231,9 @@ $0A constant PROBE-MS              \ the pause between two probes of its pid
    HB$ [: TTY-STACK-RECOVERS-BODY ;] PROCESS-PTY:WITH-TTY-TARGET
    s" PASS: REPL recovers its own stack allocation after an uncaught throw inside run-in-stack" type cr ;
 
-\ ---- a supervised child's tree ends with it ---------------------------------
 \ The target starts a sleeper on its own terminal and prints 48879, then the
-\ sleeper's pid. Teardown used to kill the target's pid alone, and the sleeper,
-\ leading a group of its own, ran out its 30 s under init (dot
-\ habu-kill-a-pty-1841a310). It ends with the target, and init reaps it.
+\ sleeper's pid. The sleeper leads a group of its own; it ends with the target,
+\ and init reaps it.
 : SLEEPER$ ( -- ptr u8 n )
    s\" PROC-ARGV-RESET s\" 30\" >LEN PROC-ARGV+ s\" /bin/sleep\" >LEN -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-IO PID>N $BEEF . . cr" ;
 
@@ -294,6 +265,7 @@ $0A constant PROBE-MS              \ the pause between two probes of its pid
       PROBE-MS >MS TASK:SLEEP
    again ;
 
+\ TREE-ENDS holds the scope's teardown to what the target started.
 : TREE-ENDS-BODY ( process-pty-handle -- n process-pty-handle )
    PROCESS-PTY:LAUNCH
    ANYWHERE$ SETTLE
@@ -310,14 +282,9 @@ $0A constant PROBE-MS              \ the pause between two probes of its pid
    pid GONE-MS GONE-WITHIN? TTRUE
    s" PASS: teardown ends what the target started" type cr ;
 
-\ ---- the prompt barrier itself is under test --------------------------------
-\ The line editor redraws prompt and line on every keystroke, so the echo of the
-\ line just typed carries prompts of its own. This case reads the buffer the
-\ barrier ended on and puts the two in order: the FIRST prompt in it is one the
-\ editor redrew, printed before the answer -- that is the one a bare
-\ `s" habu> " EXPECT!` takes, and reads append in order, so such a wait can
-\ return before the child has evaluated anything -- while the barrier's prompt
-\ is a later one that only the finished line could print.
+\ The prompt barrier itself: the FIRST prompt in the buffer the barrier ended on
+\ is one the editor redrew before the answer, which a bare `s" habu> " EXPECT!`
+\ takes; the barrier's prompt is a later one only the finished line could print.
 : ECHO-PROMPT-REJECTED-BODY ( process-pty-handle -- process-pty-handle )
    PROCESS-PTY:LAUNCH
    ANYWHERE$ SETTLE

@@ -1,23 +1,8 @@
 \ cold-naming-test.f - what a checked body may name from before the check hook.
-\
-\ The core prefix up to src/core/check-hook.f is compiled before a checker
-\ exists. An engine that boots that prefix from source holds those words in its
-\ dictionary and not in its checker, so a checked body that names one is
-\ E-UNDEFINED there unless an axiom row states the word's effect: a PRIM: row
-\ in src/core/cell-effects.f or src/core/checker.f. A
-\ tools/native-build.f engine certifies the same body, because its checker
-\ holds the rows the build host recorded for the prefix. Only a from-source
-\ boot shows the refusal, so every case here is a load on the cold fixture host
-\ (test/cold-engine.f), which reads this tree's prefix.
-\
-\ A signed `:` word of the prefix has its declaration as its row, recorded
-\ without authority: after src/core/checker.f claims the source the owner
-\ records it at the definition, and before the claim the engine logs it and the
-\ claim records it (CK-DECLARED-LOG-DRAIN). The boot's seal pass marks it
-\ internal all the same (no external row, no axiom), so the engine refuses the
-\ name before the checker asks.
-\
-\ Run: bin/hb --load test/cold-naming-test.f
+\ An engine booting the core prefix (up to src/core/check-hook.f) from source
+\ holds those words in its dictionary, not its checker: a body naming one is
+\ E-UNDEFINED unless a PRIM: row in src/core/cell-effects.f or
+\ src/core/checker.f states its effect.
 
 require src/lib/string.f
 require src/lib/test.f
@@ -45,6 +30,8 @@ create ERR IO-CAP allot
 : HOST$ ( -- ptr u8 n ) HOST HOST-U @ ;
 : PROBE$ ( -- ptr u8 n ) PROBE PROBE-U @ ;
 
+\ A tools/native-build.f engine certifies a pre-hook name, so every case loads
+\ on the cold fixture host (test/cold-engine.f), which reads the core prefix.
 : SETUP ( -- )
    FS:CLEANUP-RESET
    s" habu-cold-naming" FS:MKTEMP-DIR {: a:ptr u:n :}
@@ -68,7 +55,6 @@ create ERR IO-CAP allot
    {: outu:len erru:len rc:n :}
    erru LEN>N rc ;
 
-\ Load one definition on the cold host, after its own prefix.
 : LOAD ( ptr u8 n -- n n ) PROBE! SPAWN ;
 
 \ Four pre-hook words with axiom rows, in one load: SCOPE-FIND-AMBIGUOUS is
@@ -85,6 +71,12 @@ create ERR IO-CAP allot
    s" ... and is named as an undefined word" T-LABEL
    ERR erru s" undefined word 'REG-PROT-CAP'" CONTAINS? TTRUE ;
 
+\ A signed `:` word of the prefix has its declaration as its row, recorded
+\ without authority: after src/core/checker.f claims the source the owner
+\ records it at the definition, and before the claim the engine logs it and the
+\ claim records it (CK-DECLARED-LOG-DRAIN). The boot's seal pass marks it
+\ internal all the same (no external row, no axiom), so the engine refuses the
+\ name before the checker asks.
 \ SCHEMA-REG:SCHEMA-CON (src/core/type-schema.f) is declared ( n -- n ).
 : SEALED-NAME-CASE ( -- )
    S\" : CN-SCH ( n -- n ) SCHEMA-REG:SCHEMA-CON ;\n" LOAD {: erru:n rc:n :}

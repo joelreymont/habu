@@ -1,40 +1,7 @@
 \ name-length-test.f - every checker word source can call with a name or a text
-\ refuses a length that describes no name or no text.
-\
-\ A definer captures a word's name and one separator into the definition's body
-\ text before it writes the record (src/habu/layout.f BODYBUF-CAP), so the
-\ longest name the engine defines is BODYBUF-CAP - 1 bytes: `:` takes one of
-\ that length and refuses one byte more, rc 71. src/core/checker.f bounds every
-\ name it is handed by the same ceiling. Each checker word a source file can
-\ call with a name is driven with -1, the ceiling plus one and the maximum cell,
-\ and refuses each without a signal: a query answers no and moves no pool mark,
-\ a declaring word ends with its own refusal. A name of exactly the ceiling is
-\ still taken.
-\
-\ A declaring word's refusal ends the process, and before the fix a trusted
-\ length faulted it, so every refused case runs in a forked child. The name ends
-\ at a guard page: a word that reads past a short name faults at once instead of
-\ reading on through whatever is mapped after it.
-\
-\ CHECKER-DEFRECORD's and CHECKER-TRY-RECORD's second string is the record's
-\ field text, which is no name, and so are a definition's source text, which
-\ CHECK and its entries judge, and a signature, which CHECK-DOES! and
-\ CHECKER-DEFCAST parse: each length is refused only when it describes no
-\ memory, -1 or the maximum cell. CHECK judges raw source, and the engine
-\ captures a definition without its comments and runs of spaces, so a source
-\ text one byte past BODYBUF-CAP still certifies.
-\
-\ A stored type's text, which the storage gates parse, is bounded by the
-\ definition body text: a storage definer spells its stored type in the effect
-\ of the accessor it generates, which the engine captures into BODYBUF-CAP
-\ bytes. Each storage gate is driven with -1, BODYBUF-CAP plus one and the
-\ maximum cell, a text of exactly BODYBUF-CAP is still taken, and the past-cap
-\ text is one the gate would otherwise take.
-\
-\ A name with a second inner ':' has a length a name has and still keys no
-\ record; every word that records a symbol refuses it too (TEST-MALFORMED).
-\
-\ Run: bin/hb --load test/name-length-test.f
+\ refuses a length that describes no name or no text: -1, the ceiling plus one
+\ and the maximum cell. A query answers no and moves no pool mark; a declaring
+\ word ends with its own refusal. A name of exactly the ceiling is still taken.
 
 require src/lib/errors.f
 require src/lib/memory.f
@@ -50,12 +17,17 @@ $400 constant OUT-CAP
 $8000 constant ERR-CAP             \ a diagnostic that names a whole name
 10000 constant TIMEOUT-MS
 -1 1 rshift constant MAX-CELL
+\ A definer captures a word's name and one separator into the definition's
+\ body text (src/habu/layout.f BODYBUF-CAP) before it writes the record, and
+\ src/core/checker.f bounds every name it is handed by the same ceiling.
 BODYBUF-CAP 1 - constant CEIL      \ the longest name `:` defines
 BODYBUF-CAP constant TEXT-CAP      \ the longest stored-type text
 create OUT OUT-CAP allot
 create ERR ERR-CAP allot
 
 \ Room for a text one past its cap, in whole pages between two guard pages.
+\ Each name and text ends at a guard page, so a word that reads past a short
+\ one faults at once instead of reading on through what is mapped after it.
 \ Every byte of the names is q.
 TEXT-CAP 1 + STACK-ABI:PAGE-BYTES / 1 + STACK-ABI:PAGE-BYTES * constant ROOM
 PTR-VARIABLE NAMES
@@ -65,7 +37,6 @@ PTR-VARIABLE NAMES
    p NAMES ! ;
 NAMES!
 
-\ The `u` bytes of q that end at the guard page.
 : TAIL ( n -- ptr u8 n )
    {: u:n :}
    NAMES @ ROOM + u - u ;
@@ -202,7 +173,8 @@ variable LBL-U
    LBL-U @ u + LBL-U ! ;
 : RELABEL ( -- ) LBL LBL-U @ T-LABEL ;
 
-\ Run `src` in a child with LEN at `u`, labelled with the source and `at`.
+\ A declaring word's refusal ends the process, so every case runs `src` in a
+\ forked child, with LEN at `u`.
 : RUN-AT ( n ptr u8 n ptr u8 n -- len len outcome )
    {: u:n at:ptr atu:n src:ptr srcu:n :}
    0 LBL-U !  src srcu LBL+  s"  at " LBL+  at atu LBL+
@@ -314,9 +286,9 @@ variable LBL-U
 \ TRUSTED: body, as verify-source.f's NAMED-USE calls CHECKER-NAMED-USE: a
 \ refused name publishes no use and reads none of its bytes. TRUST-DECL and
 \ TRUST-RAW are sealed (src/core/checker.f: the interpreter refuses them), so a
-\ TRUSTED: body calls them, as the engine's own callers do. A trust row refuses a false name as it
-\ refuses one that names no word, without echoing it; a cast reaches its name
-\ once its signature certifies, and stores it.
+\ TRUSTED: body calls them, as the engine's own callers do. A trust row refuses
+\ a false name as it refuses one that names no word, without echoing it; a cast
+\ reaches its name once its signature certifies, and stores it.
 $400 constant WANT-CAP
 create WANT WANT-CAP allot
 variable WANT-U
@@ -325,7 +297,6 @@ variable WANT-U
    a WANT WANT-U @ + u BYTE-COPY
    WANT-U @ u + WANT-U ! ;
 
-\ The trust-row refusal, naming the row's name `a u`.
 : STALE$ ( ptr u8 n -- ptr u8 n )
    {: a:ptr u:n :}
    0 WANT-U !
@@ -344,12 +315,13 @@ variable WANT-U
    s" BAD$ CAST$ CHECKER-DEFCAST" 76 S\" checker: symbol string capacity overflow\n" DIES ;
 
 \ ---- a name no record is keyed by --------------------------------------------
-\ The engine defines no word named with a second inner ':' (rc 75), and
-\ CHECKER-RECORD-SYM answers symbol 0 for one. No row may carry symbol 0: a
-\ defer row keyed 0 is the defer store's terminator and hides every row after
-\ it. A trust row refuses the name as naming no word, and echoes it; every other
-\ word that records a symbol for it names it as malformed and throws. Each
-\ refusal is rendered before its throw, so the child exits 70.
+\ A name with a second inner ':' has a length a name has and keys no record:
+\ the engine defines no such word (rc 75), and CHECKER-RECORD-SYM answers
+\ symbol 0 for one. No row may carry symbol 0: a defer row keyed 0 is the
+\ defer store's terminator and hides every row after it. A trust row refuses
+\ the name as naming no word, and echoes it; every other word that records a
+\ symbol for it names it as malformed and throws. Each refusal is rendered
+\ before its throw, so the child exits 70.
 : MAL$ ( -- ptr u8 n ) s" q:q:q" ;
 : MALFORMED$ ( -- ptr u8 n )
    S\" E-BAD-QUALIFIED-RECORD habu: record for 'q:q:q' refused: malformed qualified name, where one non-edge ':' selects a package and a second ':' names no word. Use one ':' qualifier, e.g. PKG:WORD\nhb: uncaught throw code 7152\n" ;
@@ -364,18 +336,22 @@ variable WANT-U
    s" TRUSTED: NL-TD ( -- ) MAL$ SIG$ TRUST-DECL ; NL-TD" 70 MALFORMED$ MAL-DIES
    s" TRUSTED: NL-TR ( -- ) MAL$ SIG$ TRUST-RAW ; NL-TR" 70 MALFORMED$ MAL-DIES ;
 
-\ A field text is no name, so only -1 and the maximum cell describe no text.
+\ CHECKER-DEFRECORD's and CHECKER-TRY-RECORD's second string is the record's
+\ field text, which is no name, so only -1 and the maximum cell describe no
+\ text.
 : TEST-FIELD-TEXT ( -- )
    s" TRY-FIELDS" RETURNS-NO-SPAN
    s" FIELDS-IT" 70 S\" checker: empty value-record\n" DIES-NO-SPAN ;
 
-\ The storage gates answer no and move no pool mark. CHECK and every entry that
-\ reaches it end with the token buffer's refusal, which the maximum cell already
-\ met. A signature is refused as one that does not parse: a does> clause is
-\ rejected, a cast throws E-CAST-ARITY. CHECK-DOES! is trusted-only and
-\ CHECKER-DEFCAST has no effect a checked body may call, so the child names them
-\ at its top level. Declaration refusals are rendered, so that child exits 70;
-\ the cast's unrendered refusal exits 67.
+\ A definition's source text, which CHECK and its entries judge, and a
+\ signature, which CHECK-DOES! and CHECKER-DEFCAST parse, are no names either:
+\ only -1 and the maximum cell describe none of them. The storage gates answer
+\ no and move no pool mark. CHECK and every entry that reaches it end with the
+\ token buffer's refusal, which the maximum cell already met. A signature is
+\ refused as one that does not parse: a does> clause is rejected, a cast throws
+\ E-CAST-ARITY. CHECK-DOES! is trusted-only and CHECKER-DEFCAST has no effect a
+\ checked body may call, so the child names them at its top level; the cast's
+\ refusal is not rendered, so its child exits 67.
 : TOO-LARGE$ ( -- ptr u8 n ) S\" checker: token buffer too large\n" ;
 : TEST-TEXTS ( -- )
    TEXT-CAP s" LAYOUT-TEXT" RETURNS-PAST
@@ -399,7 +375,6 @@ variable WANT-U
    32 p u 2 + + c!  59 p u 3 + + c!
    p u 4 + ;
 
-\ A name of `u` bytes of byte `c`, in a fresh mapping.
 : LETTERS ( n n -- ptr u8 n )
    {: u:n c:n :}
    u MEM-ALLOC-BYTES drop {: p:ptr :}
@@ -456,8 +431,12 @@ variable WANT-U
    CEIL$ CHECKER-UNDEFINE
    CEIL$ CHECKER-RESOLVES? TFALSE ;
 
-\ A stored-type text of exactly the cap is still taken, and a source text one
-\ past it certifies.
+\ A stored type's text, which the storage gates parse, is bounded by the
+\ definition body text: a storage definer spells its stored type in the effect
+\ of the accessor it generates, which the engine captures into BODYBUF-CAP
+\ bytes, so a text of exactly the cap is still taken. CHECK judges raw source,
+\ and the engine captures a definition without its comments and runs of
+\ spaces, so a source text one past the cap still certifies.
 : TEST-TEXT-CAP ( -- )
    TEXT-CAP LEN !
    s" a stored type at the cap is a layout" T-LABEL

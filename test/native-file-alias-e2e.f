@@ -1,6 +1,5 @@
 \ Automatic FILE replay must retain exported-word identity from both a
 \ preceding FILE and the exporting FILE's own declarations.
-\ Run: bin/hb --load test/native-file-alias-e2e.f
 
 require src/lib/test.f
 require src/lib/string.f

@@ -1,9 +1,8 @@
-\ ZLIB cases for one stripped application: literal RFC 1951 streams, CRC-32
-\ vectors, zlib-framed (RFC 1950) streams and their header and trailer checks, refusals made before C is called, failures after libz has a live
-\ stream (each followed by a successful operation), and a deterministic 10 MiB
-\ payload, raw and framed, with the raw one written to the directory given as the first argument after `--`:
-\ original.bin, compressed.bin (raw DEFLATE) and decoded.bin.
-\ Built and run by test/zlib-e2e.f.
+\ ZLIB cases for one stripped application, built and run by test/zlib-e2e.f.
+\ Refusals are made before C is called; each failure after libz has a live
+\ stream is followed by a successful operation. The raw 10 MiB payload is
+\ written to the directory in the first argument after `--` as original.bin,
+\ compressed.bin (raw DEFLATE) and decoded.bin.
 require src/lib/zlib.f
 require src/lib/test.f
 require src/lib/string.f
@@ -37,7 +36,6 @@ CHECK$ ZLIB:CRC32 constant BUILD-CRC
 
 : OUT$ ( n -- ptr u8 n ) SMALL-OUT swap ;
 
-\ Decode into SMALL-OUT with the given capacity.
 : DECODE ( ptr u8 n n -- n ) {: src:ptr srcu:n cap:n :}
    src srcu SMALL-OUT cap ZLIB:INFLATE-RAW ;
 
@@ -183,7 +181,6 @@ defer FIT-CODEC ( ptr u8 n ptr u8 n -- n )
    s" the empty bound holds the empty stream" T-LABEL
    0 ZLIB:RAW-BOUND 2 >= TTRUE ;
 
-\ Decode a framed stream into SMALL-OUT with the given capacity.
 : FRAMED-DECODE ( ptr u8 n n -- n ) {: src:ptr srcu:n cap:n :}
    src srcu SMALL-OUT cap ZLIB:INFLATE-FRAMED ;
 

@@ -1,24 +1,9 @@
-\ checker-dup-record.f - a duplicate definition the checker refuses inside the
-\ caller's own scope leaves the record it collided with as it was.
-\
-\ The engine's own walls refuse a duplicate before the checker sees it (the
-\ REPL, `included` and `evaluate` all stop at habu2.f C-REJECT-DUP-DEF), so the
-\ checker's guard is reached by the source verifier run in the caller's scope,
-\ VERIFY:SOURCE-BUF-IN-SCOPE, and a caller that catches its throw goes on in
-\ that scope. CHECK asks the guard before its record step's first write: the
-\ control entry it appends is later-wins, and one appended for the refused
-\ duplicate lacks the first word's source authority, so every later caller of
-\ the first word would fail E-CAP-TRUSTED (src/core/checker.f CHECK-REC-ADMIT).
-\ The verifier asks it sooner, once it has scanned the name (src/habu/
-\ verify-source.f REFUSE-DUPLICATE), so a duplicate's body goes unchecked even
-\ in multi-error mode, as the wall leaves it uncompiled. Each case redefines a
-\ certified word in scope - with a signature, without one, and with a body
-\ that would be refused, in multi-error mode - and then proves the first word
-\ kept its authority: a caller verified in scope certifies with nothing to say,
-\ and a caller compiled by this load certifies and runs.
-\
-\ Run: bin/hb --load src/lib/errors.f src/lib/test.f src/habu/verify-source.f
-\   test/checker-dup-record.f
+\ checker-dup-record.f - a duplicate the checker refuses in the caller's scope
+\ (VERIFY:SOURCE-BUF-IN-SCOPE; the engine's walls stop it first at habu2.f
+\ C-REJECT-DUP-DEF) leaves the record it collided with intact. CHECK refuses
+\ before its record step's first write: a later-wins entry without the first
+\ word's source authority fails its later callers E-CAP-TRUSTED (checker.f
+\ CHECK-REC-ADMIT).
 
 require src/lib/errors.f
 require src/lib/test.f
@@ -64,7 +49,6 @@ $4E constant DUP-RC
    a u VERIFY-QUIET
    MULTI-ERR-END drop ;
 
-\ The text the last verification collected.
 : DIAG$ ( -- ptr u8 n )
    DIAG-BUF DIAG-U @ ;
 
@@ -88,6 +72,7 @@ s" a caller verified after it certifies" T-LABEL
 s" : CDR-TWO-USE ( -- n ) CDR-TWO ;" CDR:VERIFY-QUIET 0 T=
 CDR:DIAG$ nip 0 T=
 
+\ REFUSE-DUPLICATE (verify-source.f) leaves the body unchecked.
 : CDR-THREE ( -- n ) 3 ;
 
 s" a refused body under a certified name is refused as a duplicate" T-LABEL

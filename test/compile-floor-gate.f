@@ -1,43 +1,9 @@
 \ compile-floor-gate.f - checked performance budgets for available compiler tiers.
-\
-\ The child tools do the measurement; this gate only parses their machine-readable
-\ lines and compares each number with a named budget. Both tools time in this
-\ thread's CPU time (TIME:THREAD-CPU-NS), so a slice the scheduler hands a
-\ neighbour is not in any number. What load still moves is the core: this
-\ machine has 8 performance and 4 efficiency cores, and the same compile costs
-\ 2.5-3x as much on an efficiency core. That only ever adds time, so the
-\ gate judges the cheapest sample - the floor line's least- fields (each set's
-\ cheapest definition in five rounds) and the least of a B line's fifteen
-\ rounds - which is the cost on the fastest core the run found. Each tool says
-\ why its rounds outlast a slow stretch. Speed means nothing from a wrong word,
-\ so every bench run must print its R lines and, where tier 0 exists, tier 1's
-\ R values must equal tier 0's.
-\
-\ A least moves only when every sample pays a cost, so the floor means have a
-\ ceiling as well: a cost only some definitions pay shows in the mean alone.
-\ Each ceiling is above every mean measured and below three times the lowest,
-\ so a cost that triples a mean is red at any load: a scratch copy of
-\ tools/compile-floor.f in which every other definition costs five times its
-\ compile tripled the means and left the leasts alone, and only the ceilings
-\ turned it red. A run confined to the efficiency cores (taskpolicy -b) read
-\ trivial-t1 means of 1296-1587 us, across its 1300 ceiling, so the ceilings
-\ hold for a run at any core QoS but background.
-\
-\ MEASURED on 2026-10-01 on this machine: twenty standalone runs at load
-\ average 16-111 beside 36 busy loops, with the tools' earlier single floor
-\ round and three bench rounds, and the current tools beside seven copies of
-\ themselves and a native build at load average 143-172 (96 floor runs, 32
-\ bench runs per tier). Each ARM constant carries the range of its judged number
-\ over all of them. TOLERANCE: every budget is about 1.5x its maximum and
-\ below twice its minimum, so a doubled compile or corpus cost is red (proved
-\ with scratch copies of both tools doing twice the work per window). The
-\ child output is printed on every run: the pool keeps it for a red suite, and
-\ a standalone run (`bin/hb --load test/compile-floor-gate.f`) shows the
-\ numbers on a green engine. Lower a budget when a floor dot lands and the new
-\ maximum is known.
-\ The x86-64 arithmetic and branch budgets use five standalone tier-1 corpus
-\ runs on that native engine; their least ranges are recorded beside the two
-\ constants. The other tier-1 limits already cover those native measurements.
+\ The child tools measure; this gate parses their lines and compares each number
+\ with a named budget. Speed means nothing from a wrong word, so every bench run
+\ prints its R lines and, where tier 0 exists, tier 1's R values equal tier 0's.
+\ Child output prints on every run: the pool keeps it for a red suite, and a
+\ standalone run (`bin/hb --load test/compile-floor-gate.f`) shows the numbers.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -51,7 +17,22 @@ package COMPILE-FLOOR-GATE
 
 private
 
-\ Budgets on the leasts in microseconds; the comment is the measured range.
+\ Both tools time thread CPU (TIME:THREAD-CPU-NS), but load still moves the
+\ core: this machine has 8 performance and 4 efficiency cores, and an efficiency
+\ core compiles 2.5-3x slower. That only adds time, so the gate judges the
+\ cheapest sample: the floor line's least- fields (each set's cheapest
+\ definition in five rounds) and the least of a B line's fifteen rounds. Each
+\ tool says why its rounds outlast a slow stretch.
+\ Measured on this machine: twenty standalone runs at load average 16-111 beside
+\ 36 busy loops, with the tools' earlier single floor round and three bench
+\ rounds, and the current tools beside seven copies of themselves and a native
+\ build at load average 143-172 (96 floor runs, 32 bench runs per tier). Every
+\ budget is about 1.5x its range's maximum and below twice its minimum, so a
+\ doubled compile or corpus cost is red (proved with scratch copies of both
+\ tools doing twice the work per window). The x86-64 budgets come from five
+\ standalone tier-1 corpus runs on that native engine; the other tier-1 budgets
+\ already cover it. Lower a budget when a floor change lands and the new maximum
+\ is known. Budgets are on the leasts in microseconds; the comment is the range.
 710 constant TRIVIAL-T1-BUDGET      \ 460..468
 660 constant THREE-OP-T1-BUDGET     \ 429..436
 56 constant TRIVIAL-T0-BUDGET       \ 33..37
@@ -70,7 +51,15 @@ private
 320 constant T1-MOVE-BUDGET         \ 211..211
 1850 constant T1-LINES-BUDGET       \ 1189..1221
 
-\ Floor mean ceilings in microseconds; the comment is the measured range.
+\ A least moves only when every sample pays a cost; a cost only some definitions
+\ pay shows in the mean alone. Each ceiling is above every mean measured and
+\ below three times the lowest, so a cost that triples a mean is red at any
+\ load: a scratch tools/compile-floor.f in which every other definition cost
+\ five times its compile tripled the means, left the leasts alone, and only the
+\ ceilings turned it red. A run confined to the efficiency cores (taskpolicy -b)
+\ read trivial-t1 means of 1296-1587 us, across its 1300 ceiling, so the
+\ ceilings hold at any core QoS but background. In microseconds; the comment is
+\ the measured range.
 1300 constant TRIVIAL-T1-MEAN-CEILING   \ 481..661
 1250 constant THREE-OP-T1-MEAN-CEILING  \ 468..632
 100 constant TRIVIAL-T0-MEAN-CEILING    \ 35..69
@@ -168,7 +157,6 @@ create T0-RESULTS BENCHES cells allot
       1+
    repeat ;
 
-\ How many numbers lie between from and u.
 : TOKEN-COUNT ( ptr u8 n n -- n ) {: a:ptr u:n from:n :}
    from PARSE-POS !
    0 begin

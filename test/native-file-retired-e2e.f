@@ -1,5 +1,4 @@
 \ A FILE unit keeps a retired dictionary row and the code its old caller uses.
-\ bin/hb --load test/native-file-retired-e2e.f
 
 require src/lib/test.f
 require src/lib/string.f

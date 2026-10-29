@@ -198,7 +198,6 @@ CAST: KIND>N ( XML:kind -- n )
 : NS-DOC$ ( -- ptr u8 n ) s" <p:r xmlns:p='urn:p' xmlns:q='urn:q' q:a='v'/>" ;
 : DUP-DOC$ ( -- ptr u8 n ) s" <r xmlns:a='u' xmlns:b='u' a:x='1' b:x='2'/>" ;
 
-\ Whether a view holds exactly the bytes of text.
 : VIEW= ( read-view<p,q,u8> ptr u8 n -- bool read-view<p,q,u8> )
    {: text size:n :}
    C2-BYTES:LENGTH {: len:n view :}
@@ -207,7 +206,6 @@ CAST: KIND>N ( XML:kind -- n )
       i C2-MEM:BYTE@ swap text i + c@ = rot and swap
    loop ;
 
-\ Whether the first count bytes of a destination are exactly text.
 : MUT= ( mut-view<x,y,z,u8> n ptr u8 n -- mut-view<x,y,z,u8> bool )
    {: count:n text size:n :}
    count size = swap

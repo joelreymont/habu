@@ -1,25 +1,9 @@
-\ tier0-string-literals.f - tier 0 interns a string literal's body through NSTR.
-\
-\ ARM's default tier is 0, so every subject below is compiled by the JIT
-\ (src/habu/habu2.f C-SDQ, C-CQ, C-ESDQ, C-ECQ). Once src/compiler/native/
-\ string.f has installed NSTR:INTERN in NSTR-ABI:INTERN-CELL, a literal's body
-\ lives in a pool row in DATA, never in the definition's code: the address it
-\ pushes is a row NSTR:OWNER-ROW reports, so it lies in a DATA arena, and equal
-\ bodies push one address, within a definition and across two. A literal
-\ compiled by a definition that then failed keeps its row, so a later
-\ definition with the same body reads it back, and interning moves no data, so
-\ a `create` body around a definition keeps its layout. Spans come from the
-\ DICTIONARY RECORD (src/habu/xref.f), as in test/compiler/tier0-join.f.
-\
-\ The baked interner lies in the engine's text; an interner compiled into the
-\ code region is reached only through LNSTRINTERN's RX window, and one that
-\ throws fails the definition through evaluate while the next one compiles.
-\
-\ The two bodies tier 0 builds rather than parses intern the same way: a wide
-\ fetch's tag descriptor (LP2VEMIT) and a MATCH's bad-tag message
-\ (C-DIE-BAD-TAG). Their addresses reach the code as a DATA address chain
-\ (src/habu/address-carrier.f), so the word's code holds a chain naming the
-\ start of an NSTR row with those bytes.
+\ tier0-string-literals.f - tier 0 interns a string literal's body through NSTR
+\ (src/habu/habu2.f C-SDQ, C-CQ, C-ESDQ, C-ECQ; ARM's default tier is 0): once
+\ src/compiler/native/string.f installs NSTR:INTERN in NSTR-ABI:INTERN-CELL, the
+\ body lives in a DATA pool row NSTR:OWNER-ROW reports, equal bodies share one
+\ address, and a failed definition's row stays. Spans come from the dictionary
+\ record (src/habu/xref.f), as in test/compiler/tier0-join.f.
 
 require src/lib/test.f
 require src/lib/string.f
@@ -41,7 +25,6 @@ public
 : OWNED? ( ptr u8 -- bool )
    NULL-PTR - NSTR:OWNER-ROW >r 2drop r> ;
 
-\ ---- the subjects ------------------------------------------------------------
 : S-EMPTY ( -- ptr u8 n ) s" " ;
 : C-EMPTY ( -- ptr u8 ) c" " ;
 : S-ESC ( -- ptr u8 n ) s\" a\tb\x41\qc" ;
@@ -117,7 +100,8 @@ private
    S\" SL-KEEP s\" keep-me\" STR=" TEST-EVAL:FLAG TTRUE
    s" SL-KEEP drop TIER0-STRLIT:OWNED?" TEST-EVAL:FLAG TTRUE ;
 
-\ Interners compiled into the code region, as tier 0 compiles every word here.
+\ Interners compiled into the code region, as tier 0 compiles every word here;
+\ the baked interner lies in the engine's text.
 : SL-WRAP ( ptr u8 n -- n ) NSTR:INTERN ;
 : SL-THROW ( ptr u8 n -- n ) 99 throw ;
 
@@ -139,8 +123,11 @@ private
    S\" SL-AFTER s\" after\" STR=" TEST-EVAL:FLAG TTRUE
    s" SL-AFTER drop TIER0-STRLIT:OWNED?" TEST-EVAL:FLAG TTRUE ;
 
-\ The NSTR row a DATA chain at p names, when p starts one and the row starts at
-\ the chain's address.
+\ Tier 0 builds two bodies rather than parsing them, a wide fetch's tag
+\ descriptor (LP2VEMIT) and a MATCH's bad-tag message (C-DIE-BAD-TAG); their
+\ addresses reach the code as a DATA address chain (src/habu/address-carrier.f).
+\ The NSTR row a chain at p names, when p starts one and the row starts at the
+\ chain's address.
 : CHAIN-ROW ( ptr u8 ptr u8 -- ptr u8 n bool ) {: p:ptr end:ptr :}
    p end ADDRESS-CARRIER:CHAIN-SIZE {: size:n :}
    size ADDRESS-CARRIER:DATA-CHAIN-BYTES <> if NULL-PTR 0 false exit then

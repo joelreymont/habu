@@ -1,14 +1,9 @@
 \ main-argv.f - src/habu/main.f ENGINE-MAIN:RUN against the engine's own argv
-\ reader, through the real load path.
-\
-\ Each case is an argument list that two child engines run, each with an empty
-\ stdin:
-\   bin/hb <args>                                                 the assembly reads argv
-\   bin/hb --load src/habu/main.f test/main-argv-child.f -- <args>  RUN reads a vector built from <args>
-\ The two must end with the same rc, stdout and stderr, and each case states the
-\ rc and output that show which route ran, so two runs failing alike do not
-\ pass. An empty file list keeps the engine's status and names the cause;
-\ a full source arena must produce the same exact diagnostic on both routes.
+\ reader: each case runs `bin/hb <args>` (the assembly reads argv) and
+\ `bin/hb --load src/habu/main.f test/main-argv-child.f -- <args>` (RUN reads a
+\ vector built from <args>), both with empty stdin, which must end with the same
+\ rc, stdout and stderr. Each case states the rc and output that show which
+\ route ran, so two runs failing alike do not pass.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -128,7 +123,6 @@ variable WANT-RC
    s" " label labelu GE-EXPECT-OUT
    want wantu label labelu GE-EXPECT-ERR ;
 
-\ stderr for a path the route could not open.
 : CANNOT-OPEN$ ( ptr u8 n -- ptr u8 n )
    SB-RESET s" hb: cannot open " SB-APPEND SB-APPEND 10 SB-APPEND-C SB$ ;
 

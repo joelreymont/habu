@@ -1,15 +1,9 @@
 \ replay-scope.f - the check tool's replay scope for a test that binds names
-\ only the checker holds.
-\
-\ A row CHECK!, CHECK-UNJUDGED! or a declaration replay records has no engine
-\ record, so compiled code binds nothing to its name (src/core/checker.f "ONE
-\ LOOKUP BINDS A NAME"); only a replay binds it, through the codeless record the
-\ checker's overlay publishes for it while it is open (CHECKER-OVERLAY). A
-\ package-neutral scope opens the overlay at top level, and the verifier window
-\ is where a replay's package and using words move the engine's scope. So OPEN
-\ does what tools/check-core.f CHK-RUN-NOMINAL-LINTS does - a neutral scope,
-\ then the window the declaration owner's start opens in it - and CLOSE undoes
-\ both, and with them every record the scope published.
+\ only the checker holds. A row CHECK!, CHECK-UNJUDGED! or a declaration replay
+\ records has no engine record, so compiled code binds nothing to its name
+\ (src/core/checker.f "ONE LOOKUP BINDS A NAME"); only a replay binds it,
+\ through the codeless record the checker's overlay (CHECKER-OVERLAY) publishes
+\ while open.
 
 require src/lib/errors.f
 require src/habu/layout.f
@@ -30,6 +24,9 @@ CAST: ACTION ( n -- [ -- ] )
 
 public
 
+\ OPEN does what tools/check-core.f CHK-RUN-NOMINAL-LINTS does: a
+\ package-neutral scope, then the window the declaration owner's start opens in
+\ it; CLOSE undoes both and every record the scope published.
 : OPEN ( -- )
    CHECKER-SCOPE-START-NEUTRAL
    NCOMP-DISPATCH:DECL-VERIFY-START-OFF OWNER-XT ACTION execute ;

@@ -1,14 +1,8 @@
 \ Source-built image writer shared by partial-capture fixtures. One output
 \ argument emits an empty cold engine; three also name an artifact and its
-\ producer. The file reader verifies that producer before the normal writer
-\ imports the owned capture. Neither disk identity nor this copy claims a tier
-\ for the imported code.
-\
-\ This is an application, not a script: test/fixture-writer.f builds it once per
-\ tree into a keyed image through tools/app-build.f, which compiles it at native
-\ tier 1 and starts the image at MAIN. Every write runs that image with the
-\ arguments above. After MAIN returns the image runs its stdin as a program in
-\ the same process, which is how test/aot-wid-build.f forges the emitted code.
+\ producer, which the file reader verifies before importing the capture; no tier
+\ is claimed for imported code. test/fixture-writer.f builds it once per tree
+\ into a keyed image at tier 1 (tools/app-build.f).
 require tools/native-emit.f
 require src/lib/fs-mutate.f
 require src/lib/codesign.f
@@ -16,9 +10,8 @@ require src/lib/codesign.f
 package NATIVE-FIXTURE-WRITE
 
 create KEY 32 allot
-create FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this fixture's file-digest context
+create FSHA-CTX SHA256-FILE-CTX-BYTES allot
 
-\ The tier the writer above was compiled at.
 tier@ constant WRITER-TIER
 
 : WRITER-NATIVE ( -- )
@@ -48,4 +41,6 @@ public
 
 ;package
 
+\ After MAIN returns the image runs stdin as a program, which is how
+\ test/aot-wid-build.f forges emitted code.
 : MAIN ( -- ) NATIVE-FIXTURE-WRITE:RUN ;

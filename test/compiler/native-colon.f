@@ -1,9 +1,8 @@
 \ native-colon.f - the ordinary colon path owns native compilation.
-\
-\ This loads the production compiler and then writes ordinary definitions. The
-\ engine's own token reader captures them; no test entry evaluates source or
-\ calls the compiler directly. Execution and the live dictionary record show
-\ that the ordinary path publishes a runnable native routine.
+\ The engine's own token reader captures ordinary definitions written after the
+\ production compiler loads; no test entry evaluates source or calls the
+\ compiler. Execution and the live dictionary record show the ordinary path
+\ publishes a runnable native routine.
 require src/lib/test.f
 require src/compiler/native/compiler.f
 

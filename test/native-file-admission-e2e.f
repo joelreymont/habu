@@ -1,6 +1,5 @@
 \ An image build refuses DATA holding an undeclared code pointer or a mapped
 \ address, and admits a mapped pointer lifecycle cleanup clears, cold and warm.
-\ bin/hb --load test/native-file-admission-e2e.f
 
 require src/lib/test.f
 require src/lib/string.f

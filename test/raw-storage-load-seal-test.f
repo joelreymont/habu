@@ -1,24 +1,9 @@
-\ raw-storage-load-seal-test.f - the raw-storage nominal seal on the NATIVE
-\ `bin/hb --load` definer path (dot habu-seal-raw-storage-d5871f3f).
-\ Run: bin/hb --load test/raw-storage-load-seal-test.f
-\
-\ WHY THIS FILE IS SEPARATE FROM test/pointer-storage-test.f. That suite
-\ registers its raw definers by re-driving the source through verify-source,
-\ which is the shared pre-verification front end. This suite registers nothing:
-\ every cell below is created by the engine itself while this file loads, so the
-\ only effect the checker ever sees is the one the native definer published. The
-\ two paths used to disagree. verify-source sealed the cells and the native load
-\ path did not, so a definition could turn a plain integer into a sealed nominal
-\ with no converter, and `bin/hb --load` is the path every tool and gate runs.
-\
-\ WHAT IS PINNED. Reading back a cell of raw dictionary storage yields a value
-\ the checker refuses to bind to a nominal family OR to a POINTER, whichever
-\ definer made the cell: `variable`, `create`, `constant`, `PTR-VARIABLE`, or
-\ any user definer built from `create ... does>`. The same cells keep certifying
-\ plain scalar round-trips and byte buffers, so the seal removes the forgery and
-\ the integer-to-address launder, and nothing else.
-\
-\ Verdicts from CHECK-QUIET-CANDIDATE!: -1 certified, 0 refused, 1 unresolvable.
+\ raw-storage-load-seal-test.f - the raw-storage nominal seal on the native
+\ `bin/hb --load` definer path.
+\ The engine creates every cell as this file loads, so the checker sees only the
+\ native definers' effects (test/pointer-storage-test.f re-drives
+\ verify-source). CHECK-QUIET-CANDIDATE! verdicts: -1 certified, 0 refused, 1
+\ unresolvable.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -64,12 +49,10 @@ CELL-DEFINER DOES-CELL
    s" F5 ( -- rlsk ) DOES-CELL" CHECK-QUIET-CANDIDATE! 0 T= ;
 
 \ ---- the same cells never hold an ADDRESS either ------------------------------
-\ The seal above fences nominal identity. It said nothing about pointers, so the
-\ very same cells laundered an integer into an address with no TRUST row: store
-\ an `n` through one mention, fetch it through the next and `@` took it as a
-\ cell address, `c@` as a byte address (dot habu-refuse-a-ptr-5ad2734e). All of
-\ these are the SAME binding as the forgeries above -- a raw cell refusing a
-\ term -- so they belong beside them.
+\ The same cells never launder an integer into an address with no TRUST row:
+\ an `n` stored through one mention and fetched through the next is no cell
+\ address for `@` nor byte address for `c@`. This is the forgeries' binding, a
+\ raw cell refusing a term.
 : PUN-VAR ( -- )
    s" P1 ( n -- n ) VAR-CELL ! VAR-CELL @ @" CHECK-QUIET-CANDIDATE! 0 T= ;
 
@@ -93,9 +76,8 @@ CELL-DEFINER DOES-CELL
 : PUN-POINTER-IN ( -- )
    s" P7 ( ptr a -- ) VAR-CELL !" CHECK-QUIET-CANDIDATE! 0 T= ;
 
-\ `0 ptr-field` was the way around BOTH seals: its row answers a fully typed
-\ `ptr ptr b` unrelated to the cell, so the very program FORGE-VAR is refused
-\ for certified once it was written through the field instead.
+\ `0 ptr-field` answers a fully typed `ptr ptr b` unrelated to the cell, so
+\ FORGE-VAR's program written through the field must be refused too.
 : FORGE-FIELD ( -- )
    s" F6 ( n -- rlsk ) VAR-CELL ! VAR-CELL 0 ptr-field @ @" CHECK-QUIET-CANDIDATE! 0 T= ;
 

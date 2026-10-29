@@ -85,7 +85,6 @@ TASK:MIN-STACK TASK:TASK WORKER-B
    a b > if 1 exit then
    0 ;
 
-\ The two cells C's comparator arguments point at.
 : ROW-ORDER ( ptr u8 ptr u8 -- n ) {: a b :}
    a CELL-VIEW @ b CELL-VIEW @ SIGN-OF ;
 
@@ -109,7 +108,6 @@ DECLARE-MARSHAL
 CALLBACK: UNSET ( n -- n ) 7 FALLBACK ;CALLBACK
 CALLBACK: WHO ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK
 
-\ INNER sorted through the entry fn, from inside a comparator.
 : NEST ( n -- ) {: fn:n :}
    INNER 100 ROW-FILL
    INNER BYTE-VIEW ROW-N CELL fn QSORT

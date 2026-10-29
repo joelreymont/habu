@@ -1,31 +1,9 @@
-\ link.f - WLINK, src/arch/wasm/link.f, on the product engine.
-\
-\ Proves that encoded functions, a data image and table slots are written as one
-\ Wasm module. A function and no image come out byte for byte, exporting memory
-\ and the four wrappers. Functions are numbered kernel, captured, adapter, each
-\ in the order added, then the wrappers; types are deduplicated in the order
-\ that numbering first uses them, so a function in the aligned frame shares the
-\ type of one of no lanes, and only the latter can be the entry. Each call field
-\ holds its callee's index. An address field and a data cell hold WPROF's image
-\ base plus a target in the image, its length included, or a table slot; the
-\ table and its element segment list the slots' functions from slot 1, and
-\ slot 0 holds none. Memory's minimum is the pages the image ends in and its
-\ maximum memory32's 65536, which map-anon grows toward. W03: 140 functions
-\ and 137 types, chained by calls, have sections and bodies that walk out
-\ exactly.
-\ Refused, each by its code: an entry, call, address site, table slot or cell
-\ naming nothing the link holds, an address of kind NONE or of slot 0 among
-\ them; a reserve callee naming no function or one without map-anon's lanes;
-\ an address kind
-\ outside NONE, DATA and CODE; a site whose field is not padded or lies past its
-\ body; a cell past the image, one whose end would wrap past MAX-N included; an
-\ entry that takes or answers a lane; and an image of a negative length or one
-\ ending past memory32's 4 GiB, MAX-N bytes included.
-\
-\ The byte fixtures pin the module shape and ABI, including the run wrapper's
-\ task DATA header stores. The device gate validates and runs linked modules
-\ independently. A call or address field is checked as the padded LEB WLINK
-\ writes, where a text assembler writes the shortest.
+\ link.f - WLINK (src/arch/wasm/link.f) on the product engine: encoded
+\ functions, a data image and table slots become one Wasm module. Byte fixtures
+\ pin the module shape and ABI, the run wrapper's task DATA header stores
+\ included; the device gate validates and runs linked modules. Call and address
+\ fields are the padded LEB WLINK writes, where a text assembler writes the
+\ shortest.
 
 require src/lib/test.f
 require src/lib/errors.f
@@ -104,7 +82,6 @@ variable WALKED                       \ where the walk of the sections ended
    U32> {: u:n :}
    POS @ u ;
 
-\ Function k's type index.
 : TYPE-OF ( n -- n )
    {: k:n :}
    S-FUNCTION FROM  U32> drop
@@ -117,7 +94,6 @@ HEX-CAP BUFFER: GOT-BUF
 HEX-CAP BUFFER: WANT-BUF
 TYPED-VARIABLE WANT-U len
 
-\ The module's len bytes from at, in hex.
 : HEX$ ( n n -- ptr u8 n )
    {: at:n len:n :}
    len 0 ?do  at i + B@  GOT-BUF i 2 * +  BYTE>HEX  loop
@@ -161,6 +137,15 @@ $7FFFFFFFFFFFFFFF constant MAX-N
    0 RET-BODY  0 0 0 WLINK-ORIGIN:KERNEL ADD ;
 
 \ ---- whole modules ---------------------------------------------------------------
+\ Functions are numbered kernel, captured, adapter, each in the order added,
+\ then the wrappers; types are deduplicated in first-use order, so a function in
+\ the aligned frame shares the type of one of no lanes and only the latter can
+\ be the entry. A call field holds its callee's index; an address field or data
+\ cell holds WPROF's image base plus a target in the image (its end included),
+\ or a table slot. The table lists the slots' functions from slot 1; slot 0
+\ holds none. Memory's minimum is the pages the image ends in, its maximum
+\ memory32's 65536, which map-anon grows toward.
+
 \ The process's first link, so its image buffers have never held a byte.
 : MIN-ROW ( -- )
    WLINK:RESET

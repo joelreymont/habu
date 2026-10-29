@@ -1,39 +1,8 @@
-\ checker-surface.f - the checker symbols a product engine ships.
-\
-\ Run: bin/hb --load test/checker-surface.f
-\
-\ A capture keeps a checker symbol only when a record the image ships with its
-\ name resolves to it (src/core/checker-surface.f, src/core/checker.f
-\ CHECKER-SWEEP): the names of internal helpers the image strips stop resolving,
-\ and everything a source can name - public words, the internal words the image
-\ keeps by name, the primitive axioms, the words a program defines after boot -
-\ keeps its effect exactly as before. So this pins both halves on the product
-\ itself, where the sweep has already run:
-\   - internal globals the image keeps by name (HIDX-BUILD in checker.f,
-\     CORE-FOLD-C in util.f) keep their effects, while checked callers are
-\     refused and interpreted calls answer `internal engine word`;
-\   - a DNAME-INT word the image keeps by name (TFL-CVAR?, read by habu2.f
-\     C-FIND-GLOBAL for `construct`) keeps its effect, so a TRUSTED: body at
-\     tier 1 still compiles a call to it: the native compiler asks the checker
-\     for the callee's arity. Dropping it with the stripped helpers broke that;
-\   - a public word certifies and a short call to it is refused; the primitive
-\     axioms, including the return-stack words only the control prefix names,
-\     still certify;
-\   - a private symbol stays only while a record the image ships resolves to it
-\     and its package can be reopened, and the build seals every package it
-\     bakes (src/core/internal-mark.f SEAL-PACKAGES): CHECKER-DECL-FRAME's FRAME
-\     (a package that seals itself), CHECKER-SWEEP's DECIDE (whose private name
-\     the image strips) and CHECKER-REG's CHECKED-ROW (whose name it keeps) are
-\     all gone;
-\   - `defer`/`is`, a `does>` definer, TYPED-VARIABLE, STRUCTURE and EXPORT all
-\     work in a program loaded after boot;
-\   - an application image keeps its own package's private and public symbols
-\     (design rule 3): a snapshot ships every record with its name and an
-\     application package is not sealed, so the saved image reopens the package,
-\     certifies a definition calling the private word and runs it, while an
-\     engine package stays sealed in it.
-\ The image class is asserted first: a whitebox engine leaves these internal
-\ names open and cannot establish the product's source authority boundary.
+\ checker-surface.f - the checker symbols a product engine ships. A capture
+\ keeps a checker symbol only when a record the image ships with its name
+\ resolves to it (src/core/checker-surface.f, src/core/checker.f CHECKER-SWEEP):
+\ stripped helper names stop resolving; everything a source can name keeps its
+\ effect.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -111,6 +80,7 @@ create IMAGE-BUF PATH-CAP allot  variable IMAGE-U
 
 : KNOWN? ( ptr u8 n -- bool ) EFFECT-QUERY ;
 
+\ The image class is asserted first: a whitebox engine leaves these names open.
 : SECTION-CLASS ( -- )
    s" the engine under test is the sealed product" T-LABEL
    ENGINE-INTERNAL:IMAGE-CLASS ENGINE-INTERNAL:IMAGE-SEALED T= ;
@@ -133,6 +103,10 @@ create IMAGE-BUF PATH-CAP allot  variable IMAGE-U
 : PRIVATE-KNOWN? ( ptr u8 n ptr u8 n -- bool ) {: pa:ptr pu:n na:ptr nu:n :}
    pa pu false na nu CHECKER-ASIG-KNOWN? ;
 
+\ A private symbol stays only while a shipped record resolves to it and its
+\ package can be reopened; the build seals every package it bakes
+\ (src/core/internal-mark.f SEAL-PACKAGES). FRAME's package seals itself,
+\ DECIDE's name is stripped, CHECKED-ROW's is kept: all three are gone.
 : SECTION-PRIVATE ( -- )
    s" a private of a package that seals itself keeps no symbol" T-LABEL
    s" CHECKER-DECL-FRAME" s" FRAME" PRIVATE-KNOWN? TFALSE
@@ -141,6 +115,9 @@ create IMAGE-BUF PATH-CAP allot  variable IMAGE-U
    s" a private of every baked package keeps no symbol, named or not" T-LABEL
    s" CHECKER-REG" s" CHECKED-ROW" PRIVATE-KNOWN? TFALSE ;
 
+\ TFL-CVAR?, a DNAME-INT word habu2.f C-FIND-GLOBAL reads for `construct`, keeps
+\ its effect so a TRUSTED: body at tier 1 still compiles a call to it: the
+\ native compiler asks the checker for the callee's arity.
 : SECTION-RETAINED ( -- )
    s" an internal word the image keeps by name keeps its effect" T-LABEL
    s" TFL-CVAR?" KNOWN? TTRUE
@@ -205,7 +182,6 @@ create IMAGE-BUF PATH-CAP allot  variable IMAGE-U
    OUT CAP >LEN ERR CAP >LEN IMAGE-TIMEOUT-MS >MS
    RUN-ARGV-ENV-STDIN-CAPTURE RESULT SHOW ;
 
-\ The restored image is asked what its own checker knows, then made to use it.
 : REOPEN-APP ( -- )
    PROC-ARGV-ENV-RESET
    PROC-ENV-INHERIT-MISSING
@@ -214,7 +190,6 @@ create IMAGE-BUF PATH-CAP allot  variable IMAGE-U
    OUT CAP >LEN ERR CAP >LEN IMAGE-TIMEOUT-MS >MS
    RUN-ARGV-ENV-STDIN-CAPTURE RESULT SHOW ;
 
-\ The engine's own packages keep the seal their build gave them.
 : REOPEN-ENGINE ( -- )
    PROC-ARGV-ENV-RESET
    PROC-ENV-INHERIT-MISSING
@@ -223,6 +198,9 @@ create IMAGE-BUF PATH-CAP allot  variable IMAGE-U
    OUT CAP >LEN ERR CAP >LEN IMAGE-TIMEOUT-MS >MS
    RUN-ARGV-ENV-STDIN-CAPTURE RESULT ;
 
+\ An application image keeps its own package's private and public symbols: a
+\ snapshot ships every record with its name and an application package is not
+\ sealed. An engine package stays sealed in it.
 : SECTION-APP-IMAGE ( -- )
    FS:CLEANUP-RESET
    s" an application image saves its own package" T-LABEL

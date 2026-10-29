@@ -12,42 +12,29 @@ package CHECKER-MODEL-CASES
 using CHECKER-MODEL-PROOF
 public
 
-\ The vectors' prelude. These are the Habu realisation of the model's `wStep1`
-\ .. `wKeepAny` word effects and of its `ltok` linear con: one named word per
-\ effect, each certifying on its own. Nothing pins them to the model directly,
-\ because the vectors already do - change either side and the verdicts move
-\ apart. `deflinear` writes a row into the checker's concrete type table, which
-\ is one global table and not a wordlist, so the type name it mints is reachable
-\ unqualified from any signature however the declaration is scoped; the name is
-\ spelled distinctly for that reason.
+\ The model's `wStep1` .. `wKeepAny` word effects and its `ltok` linear con, one
+\ certifying word per effect; the vectors pin them to the model. `deflinear`
+\ writes the one global concrete type table, so the name is reachable
+\ unqualified however the declaration is scoped and is spelled distinctly.
 deflinear cmltok
 
-\ The sum family the MATCH depth vectors eliminate. It is the model's `fmres`:
-\ two variants in declaration order, each carrying one `n` of payload. A family
-\ is registered in one global type registry, like a linear type, so the name is
-\ reachable unqualified from a candidate signature however the declaration is
-\ scoped; it is spelled distinctly for that reason.
+\ The model's `fmres`: two variants in declaration order, one `n` payload each.
+\ Families live in one global registry like linear types: spelled distinctly.
 SUMTYPE cmres
   VARIANT cmok  n ;VARIANT
   VARIANT cmerr n ;VARIANT
 ;SUMTYPE
 
-\ A second sum family whose two variants carry DIFFERENT payloads. It is the
-\ model's `fmbool`, and the construct vectors use it for the one question a
-\ single-payload family cannot ask: whether the payload a construct consumes
-\ comes from the variant or merely from the family. A step that read the family
-\ would answer the same for both variants; these two answer differently.
+\ The model's `fmbool`: variants with different payloads, so a construct step
+\ that read the family instead of the variant would answer the same for both.
 SUMTYPE cmbres
   VARIANT cmbf bool ;VARIANT
   VARIANT cmbn n ;VARIANT
 ;SUMTYPE
 
-\ The two families the scrutinee-pop vectors need, and the only ones here whose
-\ bundle is more than two cells. Each variant carries TWO cells, so the bundle is
-\ three: two payload slots and the tag. `cmtwin` is `cmwide` again under another
-\ name - same variant count, same payloads, same width - so nothing but the
-\ family identity distinguishes the two, which is what those vectors are about.
-\ They are the model's `fmwide` and `fmtwin`.
+\ The model's `fmwide` and `fmtwin`, for the scrutinee-pop vectors: each variant
+\ carries two cells, a three-cell bundle; `cmtwin` repeats `cmwide`, so only the
+\ family identity distinguishes them.
 SUMTYPE cmwide
   VARIANT cmwa n n ;VARIANT
   VARIANT cmwb n n ;VARIANT
@@ -69,21 +56,11 @@ SUMTYPE cmtwin
 : DROP-POLY ( a -- ) drop ;
 : KEEP-POLY ( a -- a ) ;
 
-\ The four words the rigid host-identity vectors need. A `fresh-*` name in a
-\ signature is a TEMPLATE slot the checker mints an identity for at every call
-\ site, so a word that PRODUCES one cannot be written in checked Habu at all:
-\ minting a host identity is exactly what a host constructor does and what
-\ checked code is not allowed to do. The three producers are therefore `defer`
-\ declarations - an effect with no implementation, never set and never run -
-\ and the vectors below are their test: each of the six turns on what these
-\ four declare.
-\
-\ `MK-REGION-PAIR` names ONE slot twice, so its two outputs carry one identity;
-\ `MK-REGION` and `MK-GEN` each name one slot in a different domain, so two
-\ calls are two allocations and one call of each is two domains at the same
-\ number. `SAME-ID` is the consumer that asks whether two atoms are one
-\ identity. They are the model's `wMkRegionPair`, `wMkRegion`, `wMkGen` and
-\ `wSameId`.
+\ A `fresh-*` name is a template slot the checker mints an identity for at each
+\ call site, so checked Habu cannot produce one: the producers are `defer`
+\ declarations, never set or run. `MK-REGION-PAIR` names one slot twice (one
+\ identity); `MK-REGION` and `MK-GEN` each name one slot in a different domain.
+\ They are the model's `wMkRegionPair`, `wMkRegion`, `wMkGen` and `wSameId`.
 defer MK-REGION ( -- fresh-region-a )
 defer MK-GEN ( -- fresh-gen-a )
 defer MK-REGION-PAIR ( -- fresh-region-a fresh-region-a )
@@ -92,9 +69,8 @@ defer MK-REGION-PAIR ( -- fresh-region-a fresh-region-a )
 private
 
 \ ---- the shared program vectors ----------------------------------------------
-\ `CHECK-QUIET-CANDIDATE!` answers -1 certified, 1 unresolvable, 0 refused. The
-\ row stores the model's three-way verdict, so the mapping is written once here
-\ and an unresolvable can never be read as a refusal.
+\ `CHECK-QUIET-CANDIDATE!` answers -1 certified, 1 unresolvable, 0 refused; the
+\ mapping is written once so an unresolvable never reads as a refusal.
 
 : VERDICT-OF ( n -- n ) {: answer:n :}
    answer -1 = if V-CERT exit then
@@ -108,28 +84,12 @@ private
    k VEC-SRC$ CHECK-QUIET-CANDIDATE! VERDICT-OF k VEC-VERD@ T= ;
 
 \ ---- where these vectors have to be asked ------------------------------------
-\ Every `construct` row resolves its family in the ACTIVE package -
-\ TFAM-CONSTRUCT-FAM, src/core/type-family.f, which reads the very
-\ CHECKER-AUTH-PACKAGE$ this word reads - and the families these rows use are
-\ declared in this package. Asked from anywhere else the checker refuses every
-\ one of them with `bad construct: family not declared in the active package`,
-\ which is a correct refusal about a program nobody wrote.
-\
-\ WHAT THAT COSTS IS NOT ONLY THE RED ROWS. The three rows the model says
-\ certify go red, and the four that expect a refusal go GREEN FOR THE WRONG
-\ REASON: measured at top level, `a_sibling_variant_of_the_same_family_wants_its
-\ _own_payload` is refused for the missing family rather than for the payload
-\ its variant does not have, and so is the underflow row. Four rows that assert
-\ nothing look exactly like four rows that pass.
-\
-\ The phase reads the package authority itself and names a wrong scope before
-\ executing the vectors.
-\
-\ IT ASKS FOR THE PACKAGE AND NOT FOR A CERTIFYING PROBE, deliberately. A probe
-\ that ran a construct and required VCert would also fire if `construct` itself
-\ ever regressed, and would report that as "asked in the wrong place". The
-\ environment is what this row is about; a broken rule belongs to the rows that
-\ test the rule.
+\ Every `construct` row resolves its family in the active package
+\ (src/core/type-family.f TFAM-CONSTRUCT-FAM, reading CHECKER-AUTH-PACKAGE$).
+\ Asked elsewhere, the certifying rows refuse and the refusing rows pass for the
+\ wrong reason (`family not declared in the active package`). The phase checks
+\ the package itself: a certifying probe would blame the scope for a `construct`
+\ regression.
 : OWN-PACKAGE$ ( -- ptr u8 n )
    s" CHECKER-MODEL-CASES" ;
 

@@ -1,11 +1,8 @@
 \ process-env-big-child.f - child for the large-inherited-environment test.
-\
-\ The test spawns this program with HABU_BIG_001..HABU_BIG_600 in its
-\ environment. It counts those entries in its own envp, then inherits its whole
-\ environment into a grandchild (/usr/bin/env) and counts how many of them the
-\ grandchild reports, so the single line it prints - "big-env-child <own>
-\ <seen>" - is only "600 600" when a 600-variable environment both arrived and
-\ was passed on intact.
+\ The parent sets HABU_BIG_001..HABU_BIG_600. This prints "big-env-child <own>
+\ <seen>": the prefixed entries in its own envp, and those reported by
+\ /usr/bin/env, a grandchild inheriting the whole environment. Only "600 600"
+\ shows a 600-variable environment arrived and passed on intact.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -30,7 +27,6 @@ variable BIG-I
    n 10 >= if n 10 / RECURSE then
    n 10 mod STR-ZERO + emit ;
 
-\ Entries of this process's own envp whose name carries the test's prefix.
 : BIG-OWN ( -- n )
    0 0 begin over ENVP 0= 0= while
       over ENVP dup ZLEN BIG-NAME$ STARTS-WITH? if 1 + then

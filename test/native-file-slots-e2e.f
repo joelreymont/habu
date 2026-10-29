@@ -1,14 +1,8 @@
 \ A cached FILE replays its address cell rows: a pointer cell holding its own
 \ DATA, a quotation cell, a pointer cell holding a literal body that shares the
-\ file's literal pool with a definition's literal, and an earlier file's pointer
-\ cell a later file overwrote. The warm build reuses every file and its product
-\ is the cold one byte for byte. So it is when a file declares an earlier
-\ file's cell before its own. A file that writes an earlier file's DATA and
-\ then loads a child is refused at capture, as is one that stores in a pointer
-\ cell the end of its DATA before a child load, where the child's first DATA
-\ starts, whether the cell is its own or an earlier file's written after its
-\ last child load.
-\ bin/hb --load test/native-file-slots-e2e.f
+\ file's literal pool, and an earlier file's cell a later file overwrote, also
+\ when a file declares an earlier file's cell before its own. The warm product
+\ is the cold one byte for byte.
 
 require src/lib/test.f
 require src/lib/string.f
@@ -78,7 +72,6 @@ create LINE LINE-CAP allot  variable LINE-U
    AT {: product:ptr productu:n :}
    APP APP-U @ product productu CACHE CACHE-U @ NATIVE-FILE-APP:BUILD ;
 
-\ A build that fails prints its builder's streams.
 : BUILT ( ptr u8 n -- )
    BUILD NATIVE-FILE-APP:OUT$ NATIVE-FILE-APP:ERR$ STREAMS! SUCCESS ;
 
@@ -143,8 +136,8 @@ create LINE LINE-CAP allot  variable LINE-U
    s" warm product with an earlier cell declared first is the cold one" T-LABEL
    s" warm4-hb" SAME? TTRUE ;
 
-
-\ The refusal line for name under the tree, refused for reason.
+\ Capture refuses a file that writes an earlier file's DATA, or stores the end
+\ of its DATA in a pointer cell, before a child load.
 : REFUSAL$ ( ptr u8 n ptr u8 n -- ptr u8 n )
    {: name:ptr nameu:n why:ptr whyu:n :}
    0 LINE-U !

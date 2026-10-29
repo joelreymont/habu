@@ -75,8 +75,7 @@ using X64LAYOUT
    X64HARNESS:EXPECT-BALANCED, ;
 
 \ A real primitive registered after CONTROL still owns a seeded record. Put
-\ the registry's last row at its actual seed ordinal, not in the low fixture
-\ range where the old partial count happened to work.
+\ the registry's last row at its actual seed ordinal.
 : BUILD-LATE ( -- )
    false X64HARNESS:BOOT-OPEN,
    ENGINE-PRIMS:COUNT 1- {: row:n :}

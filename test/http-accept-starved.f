@@ -1,15 +1,9 @@
-\ http-accept-starved.f - the HTTP listener keeps listening through an accept
-\ that fails for want of descriptors (src/lib/net/http.f ACCEPT-FAILED).
-\
-\ This file runs in its own process: it lowers RLIMIT_NOFILE, fills the
-\ descriptor table and puts a pipe in place of stderr, all process-wide state
-\ no other suite can share.
-\
-\ The client's connection takes the last free descriptor, so the listener's
-\ accept is EMFILE. The listener's stderr line is the event that the accept
-\ has failed; once the filler descriptors are closed, the same listener must
-\ answer a fresh connection.
-\ Run: hb --load test/http-accept-starved.f
+\ The HTTP listener keeps listening through an accept that fails for want of
+\ descriptors (src/lib/net/http.f ACCEPT-FAILED). Its own process: it lowers
+\ RLIMIT_NOFILE, fills the descriptor table and pipes stderr, process-wide
+\ state. The client takes the last free descriptor, so accept is EMFILE; the
+\ listener's stderr line is the failure event, and once the fillers close the
+\ same listener answers a fresh connection.
 require src/lib/test.f
 require src/lib/test/wait.f
 require src/lib/prelude.f
@@ -30,7 +24,7 @@ $7F000001 constant LOOPBACK
 $1F4 constant IDLE-MS
 $7D0 constant ANSWER-MS           \ a loopback answer that slow is a hang
 1000000 constant NS-PER-MS
-$40 constant SOFT-LIMIT           \ the descriptors this process may hold
+$40 constant SOFT-LIMIT
 $100 constant LINE-CAP
 $1000 constant RES-CAP
 0 constant F-DUPFD

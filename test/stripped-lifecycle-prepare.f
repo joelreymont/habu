@@ -32,11 +32,9 @@ variable POOL-U
    SOURCE-ROOT:CURRENT$ s" stripped-lifecycle-pool-subject.f"
       POOL-BUF FS:JOIN-PATH POOL-U ! ;
 
-\ THE REFUSAL IS MEASURED AT IMAGE-LIFECYCLE:PREPARE AND NOT THROUGH hb-build,
-\ because hb-build's later phases mutate the dictionary and a live task refuses
-\ that first, with a bare exit $4F and no message at all (measured on this
-\ engine). The subject calls the one word both capture paths run, so what is
-\ pinned here is the sweep's own answer for an activated task.
+\ Measured at IMAGE-LIFECYCLE:PREPARE, the word both capture paths run, and not
+\ through hb-build: hb-build's later phases mutate the dictionary, and a live
+\ task refuses that first with a bare exit $4F and no message.
 : CAPTURE-ERR ( ptr u8 n -- len n )
    PROC-ARGV-ENV-RESET
    s" --load" >LEN PROC-ARGV+

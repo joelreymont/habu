@@ -1,7 +1,6 @@
 \ An explicit created-body grid survives a span-valued does> publication, and
 \ the cells `,` wrote from a created body's start up to the first other
 \ allocation are that body's grid.
-\ Run: bin/hb --load test/cell-body-e2e.f
 require src/lib/test.f
 require src/lib/span.f
 require src/core/cell-body.f

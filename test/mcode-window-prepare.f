@@ -1,18 +1,18 @@
 \ mcode-window-prepare.f - the owners' window for tests that run minted or
 \ emitted machine code, loaded last in test/native-window-owner-child.f's list.
-\
-\ A test that executes bytes it wrote needs two owner-private rows: the bounded
-\ FFI calls, which take a code address (package FFI), and code-publish, the
-\ code arena's append window (package NPUB). Outside its owner a checked caller
-\ of either is refused by name. This file reopens both owners before
-\ src/core/internal-mark.f seals the window and publishes one public word per
-\ row. The sealed product refuses such a reopen, so a child that loads this
-\ file runs on the unsealed engine test/whitebox-child.f names.
+\ Executing written bytes needs two owner-private rows: the bounded FFI calls,
+\ which take a code address (package FFI), and code-publish, the code arena's
+\ append window (package NPUB); outside its owner a checked caller is refused by
+\ name.
 
-\ The last declaration participant installs the declaration runner.
 \ src/lib/ffi-abi.f requires src/lib/adt/option.f, whose ENUM dies on the unset
-\ TYPE-DECL:TDECL-TXN-XT until it is, so both participants load before any
-\ library.
+\ TYPE-DECL:TDECL-TXN-XT until the last declaration participant installs the
+\ declaration runner, so both participants load before any library.
+\
+\ This file reopens both owners before src/core/internal-mark.f seals the window
+\ and publishes one public word per row. The sealed product refuses such a
+\ reopen, so its children run on the unsealed engine test/whitebox-child.f
+\ names.
 require src/core/prefix-boundary.f
 include src/core/generated-declaration-dictionary.f
 include src/core/generated-declaration-protection.f

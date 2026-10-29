@@ -1,8 +1,7 @@
-\ checker-decl-locs-lib.f - arm a declaration location as the verifier does,
-\ and find the row a name took (src/core/checker.f DECL-LOCS); and
-\ arm a completion cursor as the verifier does, for test/checker-completion.f. It
-\ reads checker internals, so only the unsealed engine
-\ (test/whitebox-engine.f) loads it.
+\ Arms a declaration location and a completion cursor as the verifier does, and
+\ finds the row a name took (src/core/checker.f DECL-LOCS), for
+\ test/checker-completion.f. It reads checker internals, so only the unsealed
+\ engine (test/whitebox-engine.f) loads it.
 
 require src/habu/verify-source.f
 
@@ -56,7 +55,6 @@ public
    a u queries VERIFY:SOURCE-BUF-THEN-IN-SCOPE
    DISARM ;
 
-\ Replay TEXT with NAME and the location armed, then QUERIES.
 : ARMED-REPLAY ( ptr u8 n ptr u8 n [ -- ] -- )
    {: na:ptr nu:n a:ptr u:n queries :}
    na nu a u VISIT AT-START AT-END queries PLACED-REPLAY ;

@@ -1,55 +1,8 @@
-\ x86-64-kernel-syscalls.f - the syscall rows of the x86-64 kernel
-\ (src/habu/kernel-x64.f) in the booted harness, cross-built for an x86-64
-\ peer. The host checks each image's ELF header; running them is the peer's.
-\
-\ The span guard. Each guard image seals the friend latch and guards a heap
-\ span with PROT-SPAN-CALL,: the span meets no band, so the guard must pass it
-\ with the latch sealed, which a guard that trapped every sealed span would
-\ not. It then guards the span of the protected cell UNIT-COMPILE-CELL and
-\ checks that the call came back balanced with the data stack empty.
-\ hb-x64-kernel-syscalls opens the latch again first, as the boot leaves it, so
-\ the guard passes and the image exits 0; hb-x64-kernel-syscalls-negative
-\ expects the wrong balance and exits 21. hb-x64-kernel-syscalls-armed keeps
-\ the latch sealed, so the guard exits 83, ENGINE-ERROR:SEAL-VIOLATION, as a
-\ raw store to that cell does on ARM64 (test/protection-span.f).
-\
-\ The rows. Each row image calls rows by name through CALL-ROW, and checks what
-\ they push, then the data stack's depth and the machine stack's balance; it
-\ exits 0 when every check held, and FIRST-CASE upward at the first that did
-\ not. The file rows work on names relative to the working directory and
-\ remove what they create, so a peer runs them in a writable scratch directory:
-\    hb-x64-kernel-sys-io    open write close-rc open-rd read ioctl close unlink
-\                            access
-\    hb-x64-kernel-sys-stat  mkdir chmod stat64 (the fixed layout) rmdir
-\    hb-x64-kernel-sys-link  symlink readlink lstat64 rename
-\    hb-x64-kernel-sys-dir   getdirentries64 realpath (a link resolves)
-\    hb-x64-kernel-sys-mem   map-anon mmap munmap, the latch sealed
-\    hb-x64-kernel-sys-time  epoch-seconds mono-ns getpid
-\    hb-x64-kernel-sys-fork  fork wait-status setpgid kill
-\    hb-x64-kernel-sys-proc  kill-errno proc-watch-open execve
-\    hb-x64-kernel-sys-poll  pipe poll (a timeout, POLLIN, -EFAULT)
-\    hb-x64-kernel-sys-dup   dup2
-\    hb-x64-kernel-sys-fcntl fcntl, and SIGPIPE ignored
-\    hb-x64-kernel-sys-spawn spawn-io spawn-argv-io spawn-argv-env-io
-\    hb-x64-kernel-sys-run   spawn-argv-env-cwd-io run-rc
-\    hb-x64-kernel-sys-spawn-live  spawn-argv-io answering while its child
-\                            runs, then spawn-io with fds 1 and 2 closed
-\    hb-x64-kernel-sys-spawn-fds  spawn-fds (a crossing map, a -1 slot and
-\                            an unmapped fd closed)
-\    hb-x64-kernel-sys-spawn-fds-fail  spawn-fds (-ENOENT, -EINVAL)
-\    hb-x64-kernel-sys-spawn-fds-ebadf  spawn-fds (a closed source on the fd
-\                            pipe2 gives the error pipe's write end, -EBADF)
-\ The spawn rows run /bin/sh with one stream through a pipe. An image holds at
-\ most ten checks (FIRST-CASE up to the peer harness's own statuses).
-\ A forked child leaves through the die row with its own status before the
-\ image's trailing checks, so the parent's wait-status proves what it ran.
-\ Four more exit 83 from a row's guard before the kernel sees the call:
-\ hb-x64-kernel-sys-mmap-armed maps MAP_FIXED over a band with the latch
-\ sealed, hb-x64-kernel-sys-ioctl-armed names that band as an _IOR target,
-\ hb-x64-kernel-sys-ioctl-closed passes an unencoded request the guard cannot
-\ size, which fails closed with the latch open, and
-\ hb-x64-kernel-sys-poll-armed passes a pollfd count whose byte length wraps,
-\ which the guard sees as every address, with the latch sealed.
+\ x86-64-kernel-syscalls.f - the syscall rows of src/habu/kernel-x64.f in the
+\ booted harness, cross-built for an x86-64 peer. The host checks each image's
+\ ELF header; running them is the peer's. The file rows work relative to the
+\ working directory and remove what they create, so a peer runs them in a
+\ writable scratch directory.
 require test/x86-64-boot-harness.f
 
 package X64K-SYSCALLS
@@ -60,7 +13,6 @@ using X64RT
 \ A heap cell above every band.
 DATA-START $10000 + constant HEAP-OFF
 
-\ Guard the one-cell span at DATA offset off.
 : GUARD-CELL, ( n -- ) {: off:n :}
    R8 ENGINE-GPR:X64-RBASE >R64 off MEM-OFF ASM-SINK ENC-LEA
    R9 CELL >IMM32 ASM-SINK ENC-MOV-RI32
@@ -68,6 +20,11 @@ DATA-START $10000 + constant HEAP-OFF
 
 : SEAL, ( -- ) FRIEND-ARENA-LEN FRIEND-LATCH-CELL X64HARNESS:CELL!, ;
 
+\ The guard images seal the friend latch and guard a heap span that meets no
+\ band, which must pass: hb-x64-kernel-syscalls opens the latch first and exits
+\ 0, -negative expects the wrong balance and exits 21, -armed keeps the latch
+\ sealed and exits 83 (ENGINE-ERROR:SEAL-VIOLATION) on UNIT-COMPILE-CELL's span,
+\ as a raw store to that cell does on ARM64 (test/protection-span.f).
 : BUILD ( bool bool ptr u8 n -- ) {: negative:bool armed:bool path:ptr pathu:n :}
    negative X64HARNESS:BOOT-OPEN,
    SEAL,
@@ -78,7 +35,6 @@ DATA-START $10000 + constant HEAP-OFF
    0 X64HARNESS:EXPECT-DEPTH,
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
-\ ---- the row cases -----------------------------------------------------------
 \ Scratch the harness hands out (PUSH-SCRATCH,): two kept cells, then the
 \ buffers rows write.
 0 constant KEPT
@@ -182,7 +138,6 @@ $400001 constant PID-CEIL               \ past the kernel's pid_max ceiling
    past LBL,
    RAX text MOVABS,  0 G-PUSH ;
 
-\ Push the address of the DATA cell at an offset.
 : DATA-AT, ( n -- ) {: off:n :}
    RAX ENGINE-GPR:X64-RBASE >R64 off MEM-OFF ASM-SINK ENC-LEA  0 G-PUSH ;
 
@@ -190,7 +145,6 @@ $400001 constant PID-CEIL               \ past the kernel's pid_max ceiling
 : SHIFTED-ROW ( ptr u8 n -- )
    RAX ASM-SINK ENC-PUSH  ROW  RCX ASM-SINK ENC-POP ;
 
-\ open, write "hello", close-rc twice, read it back, ioctl on a file, unlink.
 : IO-CASE ( -- )
    s" hbk-io" PATH, O-NEW N, MODE-644 N, s" open" ROW  KEPT KEEP,
    KEPT RECALL, s" hello" X64HARNESS:PUSH-TEXT, s" write" ROW  5 WANT
@@ -301,7 +255,8 @@ $400001 constant PID-CEIL               \ past the kernel's pid_max ceiling
    0 N, FIOCLEX N, BUF AT, s" ioctl" ROW ;
 
 \ ( pid -- pid ) after fork: the child drops the 0 and runs what the quotation
-\ emits, which ends the process; the parent goes on with the pid.
+\ emits, which ends the process through the die row with its own status before
+\ the image's trailing checks, so the parent's wait-status proves what it ran.
 : CHILD, ( [ -- ] -- )
    LBL {: parent:label :}
    RAX DSP CELL negate MEM-OFF ASM-SINK ENC-MOV-RM
@@ -394,9 +349,8 @@ $400001 constant PID-CEIL               \ past the kernel's pid_max ceiling
    KEPT2 RECALL, s" x" X64HARNESS:PUSH-TEXT, s" write" ROW  -1 WANT
    KEPT2 RECALL, s" close" ROW ;
 
-\ Read what the child wrote to the pipe's write end, which the parent closes
-\ once the child is spawned: ( pid -- ) wait for it, check it exited 0, then
-\ check the two bytes it wrote.
+\ ( pid -- ) Read what the child wrote to the pipe's write end, which the parent
+\ closes once the child is spawned.
 : CHILD-WROTE, ( n -- ) {: want:n :}
    KEPT3 KEEP,  KEPT2 RECALL, s" close" ROW
    KEPT3 RECALL, s" wait-status" ROW  0 WANT
@@ -512,7 +466,14 @@ $410 constant PID2
    SEAL,
    BUF AT, NFDS-WRAP N, 0 N, s" poll" ROW ;
 
-\ A row image: the case, then the stack checks every case ends with.
+\ A row image: the case, then the stack checks every case ends with. It exits 0
+\ when every check held, else FIRST-CASE upward at the first that did not (at
+\ most ten checks). Four row images exit 83 from a row's guard before the kernel
+\ sees the call: -sys-mmap-armed (MAP_FIXED over a band, latch sealed),
+\ -sys-ioctl-armed (that band as an _IOR target), -sys-ioctl-closed (an
+\ unencoded request the guard cannot size fails closed, latch open),
+\ -sys-poll-armed (a pollfd count whose byte length wraps, seen as every
+\ address, latch sealed).
 : ROWS ( [ -- ] ptr u8 n -- ) {: path:ptr pathu:n :}
    false X64HARNESS:BOOT-OPEN,
    execute

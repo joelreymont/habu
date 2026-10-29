@@ -28,8 +28,6 @@ variable FIRST-BAD
    1 READY atomic-add drop
    begin START atomic@ 0= while TASK:PAUSE repeat ;
 
-\ Each worker repeatedly grows its own buffer from one element to 128 and
-\ releases it, so growth and release run concurrently across tasks.
 : CHURN-A ( n -- )
    {: k:n :}
    1 A-RESERVE k 0 A ! 128 A-RESERVE
@@ -85,10 +83,9 @@ variable FIRST-BAD
      err OF NOTE-BAD ENDOF
    ;MATCH ;
 
-\ The fork holds the registry lock. Unfixed, release unmapped before taking it,
-\ so a releasing worker waited out the whole fork with a stale head and about
-\ 9 of 10 children died by SIGSEGV. Unfixed growth exposed its stale head for
-\ only a few instructions; this row catches that regression only rarely.
+\ The fork holds the registry lock: a release that unmaps before taking it hands
+\ the fork a stale head, and about 9 of 10 children die by SIGSEGV. Growth
+\ exposes a stale head for only a few instructions, so this catches that rarely.
 10 constant FORKS
 
 : START-ALL ( [ -- ] [ -- ] [ -- ] [ -- ] -- )

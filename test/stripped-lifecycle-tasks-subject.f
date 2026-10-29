@@ -1,15 +1,9 @@
-\ A task PREPAREd at load time and never activated. Its TCB holds the stack,
-\ return, loop and region mappings THIS process took, which no image restores, so
-\ the capture sweep src/lib/task.f registers has to release them and leave the task
-\ EMPTY before the stripped link reads the window. The restored image then
-\ activates the same task, which prepares mappings of its own, and reads the
-\ script arguments main reads: an application's convention is process-wide.
-\ Tasks TASK:NEW made, ran and gave back at load leave a pool of records in
-\ chunks THIS process mapped; the sweep gives the chunks back and empties the
-\ pool, so the image's own TASK:NEW maps afresh. The worker's cleanup is
-\ registered while TASK:NEW tasks hold every row of the AT-EXIT table and a row
-\ past it, so it lands in a chunk this process mapped. The capture drops the
-\ free chunk rows and moves the held one into the table the image carries.
+\ A task PREPAREd at load and never activated holds stack, return, loop and
+\ region mappings this process took, which no image restores: the capture sweep
+\ src/lib/task.f registers releases them and leaves the task EMPTY before the
+\ stripped link reads the window. The restored image activates the task again
+\ and reads main's script arguments: an application's convention is
+\ process-wide.
 require src/lib/task.f
 require src/lib/adt/result.f
 
@@ -47,10 +41,12 @@ variable MAIN-ARGC
    ;MATCH ;
 
 \ More tasks than one pool chunk holds, all running at once, then given back.
-\ A slot is cleared once its task is given back: the handle is dead, and the
-\ capture unmaps the record it names. The first task's cleanup row goes onto
-\ the free AT-EXIT rows when it is given back, so the load-time run leaves the
-\ image a non-empty free list, which the image's own run registers from.
+\ The chunks are this process's mappings: the sweep gives them back and empties
+\ the pool, so the image's own TASK:NEW maps afresh. A slot is cleared once its
+\ task is given back: the handle is dead, and the capture unmaps the record it
+\ names. The first task's cleanup row goes onto the free AT-EXIT rows when it is
+\ given back, so the image gets a non-empty free list, which its own run
+\ registers from.
 : POOL-RUN ( -- )
    0 POOL-EXIT-RAN !
    POOL-N 0 ?do TASK:MIN-STACK TASK:NEW i POOL ! loop
@@ -67,10 +63,12 @@ variable MAIN-ARGC
       s" stripped-lifecycle-tasks: pool exit callback lost" FAILURE-RC die
    then ;
 
-\ Tasks that never run, each holding a cleanup: with no row given back
-\ before, they fill the table and take a row past it. Freed in order, the
-\ last one leaves its chunk row at the head of the free rows the capture
-\ sweeps, and a registration made while they are held takes a row past it.
+\ Tasks that never run, each holding a cleanup: with no row given back before,
+\ they fill the AT-EXIT table and take a row past it. Freed in order, the last
+\ leaves its chunk row at the head of the free rows the capture sweeps. The
+\ worker's cleanup, registered while they are held, takes a row past the table
+\ in a chunk this process mapped; the capture drops the free chunk rows and
+\ moves the held one into the table the image carries.
 : HOLD-ROWS ( -- )
    HOLD-N 0 ?do
       TASK:MIN-STACK TASK:NEW dup i HOLD !

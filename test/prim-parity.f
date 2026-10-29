@@ -1,72 +1,9 @@
-\ prim-parity.f — the engine primitive parity gate.
-\
-\ src/habu/prims.f is the machine-independent specification of the engine's
-\ primitives. This file is the behaviour half of that contract: case sets
-\ written once in target-free checked Habu, run against the backend's
-\ own body AND — where the row carries a `REF` clause — against the reference
-\ implementation in src/habu/prim-ref.f, asserting the two agree. The same file
-\ runs unchanged on the next backend: same cases, same expectations, so the
-\ x86_64 and Cortex-M bodies answer the arm64 numbers or the gate is red.
-\
-\ A CASE IS DATA. `<overload> CASES <name>` opens a case set for one row and
-\ every line inside it is inputs and expected outputs:
-\
-\     0 CASES +
-\             3       4          7  NN-N
-\            -7       4         -3  NN-N
-\     ;CASES
-\
-\ The integer sets are the data file test/prim-cases.f and the float sets
-\ test/prim-float-cases.f, which this file includes and another runner can
-\ include to hold a backend to the same cases.
-\
-\ HOW A CASE REACHES A PRIMITIVE. The sealed product engine has no way for
-\ checked code to execute a name it computed: no xt table, no `evaluate`, no
-\ dynamic `execute` (docs/forth.md — execution vectors are typed `defer` words,
-\ and a quotation cannot be pushed at top level). The one route is a compiled
-\ body that spells the primitive, so each case word calls a name-keyed
-\ dispatcher whose arms are exactly that, one line per primitive:
-\
-\     na nu s" +"    STR= IF a b +             EXIT THEN
-\     na nu s" swap" STR= IF 1 2 3 4 swap ENC4 EXIT THEN
-\
-\ That arm is the only place in the gate where a primitive is named. A subject
-\ with no arm dies naming itself, and so does a row that declares a `REF` the
-\ mirror dispatcher does not answer, so the table and the gate cannot drift
-\ apart in silence. Every `REF` spelling in the table is also asserted to
-\ resolve to a real word.
-\
-\ SHUFFLERS ARE ONE NUMBER. A stack primitive is handed the sentinels 1 2 3 4
-\ and the case is the digit spelling of the whole window it leaves, the cells it
-\ must not touch included: `swap` is 1243, `2over` is 123412, `drop` is 123.
-\
-\ FLOATS REUSE THE INTEGER SHAPES. Source has no float literals, so a float case
-\ is integers and the arm converts with `s>f`/`f>s`. That pins the primitive's
-\ presence and its integral behaviour; fractional semantics belong to
-\ src/lib/float-test.f and to f64 text, not here. The two bit shapes, RR-R and R-R,
-\ cast a double's bits instead, which is how a case reaches an infinity and the
-\ NaN an operation makes.
-\
-\ COVERAGE IS BY ROW. The zero-based overload ordinal selects one row of that
-\ name in table order. Closing a nonempty case set marks that row; a
-\ numeric case never covers a pointer or boolean sibling. REF also belongs to
-\ that exact row. Uncovered rows print their absolute table index with the name;
-\ the gate reports that gap rather than failing on it. The memory store/fetch
-\ pairs exercise both primitives in one round trip and mark both rows.
-\
-\ A REFUSAL IS A CASE TOO. A primitive that rejects its inputs is pinned by the
-\ code it throws, not by a value: `NN-THROWS` runs the arm under `catch` and the
-\ case column is the expected throw code, so the two dividing refusals below read
-\ like any other row and the reference is held to the same code.
-\
-\     0 CASES /
-\             7       0   E-DIV-ZERO  NN-THROWS
-\
-\ WHAT THIS GATE CANNOT HOLD.
-\ - I/O, syscalls, process, code publication, profiler, engine-state and FFI
-\   rows. They have no (inputs -> outputs) case and no honest reference; several
-\   are TRUSTED-only or owner-private and a checked gate cannot even name them.
-\   They are listed as uncovered.
+\ prim-parity.f - the engine primitive parity gate: the case sets of
+\ test/prim-cases.f and test/prim-float-cases.f, in target-free checked Habu,
+\ run against the backend's own body and, where a src/habu/prims.f row carries
+\ `REF`, against src/habu/prim-ref.f; every backend answers the arm64 numbers. A
+\ set is data: `<overload> CASES <name>` ... `;CASES`, each line inputs, outputs
+\ and a shape (`3 4 7 NN-N`); the overload ordinal picks the row.
 
 require src/lib/test.f
 require src/lib/string.f
@@ -78,11 +15,11 @@ require src/lib/ieee754.f                  \ the bit shapes' casts
 package PARITY
 private
 
-1 constant PARITY-RC                    \ nonzero exit is the suite's red
+1 constant PARITY-RC
 $200 constant COVER-CAP                 \ >= the table's row capacity
 $40 constant SUBJ-CAP
 $80 constant LBL-CAP
-8 constant PER-LINE                     \ uncovered names printed per line
+8 constant PER-LINE
 3 constant BUMP                         \ the addend the `+!` scenario applies
 
 $7FFFFFFFFFFFFFFF constant MAX-N
@@ -120,7 +57,6 @@ $3A constant COLON-B
    IF 1 EXIT THEN
    0 ;
 
-\ ---- the stack-window encoding ----------------------------------------------
 : ENC2 ( n n -- n ) {: a:n b:n :}
    a 10 * b + ;
 
@@ -136,7 +72,6 @@ $3A constant COLON-B
 : ENC6 ( n n n n n n -- n ) {: a:n b:n c:n d:n e:n f:n :}
    a b ENC2 c ENC2 d ENC2 e ENC2 f ENC2 ;
 
-\ ---- the subject under test --------------------------------------------------
 : SUBJ$ ( -- ptr u8 n )
    SUBJ-BUF SUBJ-U @ ;
 
@@ -178,10 +113,13 @@ $3A constant COLON-B
 : CASE+ ( -- )
    SUBJ-N @ 1+ SUBJ-N ! ;
 
-\ ---- stack shufflers ---------------------------------------------------------
-\ Sentinels in, the whole remaining window encoded out. The cells the primitive
-\ must leave alone are inside the encoding, so a shuffler that reaches too deep
-\ fails here too.
+\ The sealed engine cannot execute a computed name (no xt table, `evaluate` or
+\ dynamic `execute`), so each shape's dispatcher spells every primitive in one
+\ arm; a subject with no arm, or a `REF` the mirror dispatcher does not answer,
+\ dies naming itself.
+\ Sentinels 1 2 3 4 in; the case is the digit spelling of the whole window left,
+\ untouched cells included (`swap` 1243, `2over` 123412, `drop` 123), so a
+\ shuffler that reaches too deep fails.
 : SHUF-PRIM ( ptr u8 n -- n ) {: na:ptr nu:n :}
    na nu s" dup"   STR= IF 1 2 3 4 dup   ENC5 EXIT THEN
    na nu s" drop"  STR= IF 1 2 3 4 drop  ENC3 EXIT THEN
@@ -212,7 +150,6 @@ $3A constant COLON-B
    na nu s" 2over" STR= IF 1 2 3 4 PRIM-REF:S-2OVER ENC6 EXIT THEN
    s" shuffler reference" na nu NO-ARM ;
 
-\ ---- two numbers in, one out -------------------------------------------------
 : NN-N-PRIM ( n n ptr u8 n -- n ) {: a:n b:n na:ptr nu:n :}
    na nu s" +"      STR= IF a b +      EXIT THEN
    na nu s" -"      STR= IF a b -      EXIT THEN
@@ -247,7 +184,6 @@ $3A constant COLON-B
    na nu s" rshift" STR= IF a b PRIM-REF:SHR     EXIT THEN
    s" binary reference" na nu NO-ARM ;
 
-\ ---- one number in, one out --------------------------------------------------
 : N-N-PRIM ( n ptr u8 n -- n ) {: a:n na:ptr nu:n :}
    na nu s" 1+"      STR= IF a 1+     EXIT THEN
    na nu s" 1-"      STR= IF a 1-     EXIT THEN
@@ -277,7 +213,6 @@ $3A constant COLON-B
    na nu s" char+"  STR= IF a PRIM-REF:CHAR-STEP  EXIT THEN
    s" unary reference" na nu NO-ARM ;
 
-\ ---- two numbers in, one flag out --------------------------------------------
 : NN-F-PRIM ( n n ptr u8 n -- n ) {: a:n b:n na:ptr nu:n :}
    na nu s" ="   STR= IF a b =  B>N EXIT THEN
    na nu s" <>"  STR= IF a b <> B>N EXIT THEN
@@ -299,7 +234,6 @@ $3A constant COLON-B
    na nu s" >=" STR= IF a b PRIM-REF:GE  B>N EXIT THEN
    s" order reference" na nu NO-ARM ;
 
-\ ---- one number in, one flag out ---------------------------------------------
 : N-F-PRIM ( n ptr u8 n -- n ) {: a:n na:ptr nu:n :}
    na nu s" 0="  STR= IF a 0= B>N EXIT THEN
    na nu s" 0<"  STR= IF a 0< B>N EXIT THEN
@@ -311,9 +245,8 @@ $3A constant COLON-B
    na nu s" 0<" STR= IF a PRIM-REF:ZERO-NEG? B>N EXIT THEN
    s" predicate reference" na nu NO-ARM ;
 
-\ ---- two flags in, one flag out ----------------------------------------------
-\ The boolean rows of `and`, `or` and `xor`, which are separate rows from their
-\ numeric ones and get their own arms.
+\ The boolean rows of `and`, `or` and `xor` are separate rows from their numeric
+\ ones.
 : FF-F-PRIM ( n n ptr u8 n -- n ) {: a:n b:n na:ptr nu:n :}
    na nu s" and" STR= IF a 0= 0= b 0= 0= and B>N EXIT THEN
    na nu s" or"  STR= IF a 0= 0= b 0= 0= or  B>N EXIT THEN
@@ -326,7 +259,6 @@ $3A constant COLON-B
    na nu s" xor" STR= IF a 0= 0= b 0= 0= PRIM-REF:BXOR-F B>N EXIT THEN
    s" flag reference" na nu NO-ARM ;
 
-\ ---- two numbers in, two out -------------------------------------------------
 : NN-NN-PRIM ( n n ptr u8 n -- n n ) {: a:n b:n na:ptr nu:n :}
    na nu s" /mod" STR= IF a b /mod EXIT THEN
    s" divmod" na nu NO-ARM ;
@@ -335,7 +267,10 @@ $3A constant COLON-B
    na nu s" /mod" STR= IF a b PRIM-REF:DIVREM EXIT THEN
    s" divmod reference" na nu NO-ARM ;
 
-\ ---- a double's bits in and out ----------------------------------------------
+\ Source has no float literals: a float case is integers the arm converts with
+\ `s>f`/`f>s`, which pins presence and integral behaviour (fractional semantics:
+\ src/lib/float-test.f). RR-R and R-R cast a double's bits instead, reaching
+\ infinities and NaN.
 \ No row of these has a reference, so the shapes run the primitive alone.
 : RR-R-PRIM ( n n ptr u8 n -- n ) {: a:n b:n na:ptr nu:n :}
    a IEEE754:BITS>F64 b IEEE754:BITS>F64 {: x:r y:r :}
@@ -349,10 +284,11 @@ $3A constant COLON-B
    na nu s" fsqrt" STR= IF a IEEE754:BITS>F64 fsqrt IEEE754:F64>BITS EXIT THEN
    s" unary bits" na nu NO-ARM ;
 
-\ ---- two numbers in, a refusal out -------------------------------------------
-\ The arm answers the code the primitive threw. Each drops whatever the body
-\ left, so a primitive that wrongly ANSWERS is caught by the code comparison
-\ (`catch` gives 0) rather than by an unbalanced stack further down the gate.
+\ A refusal is pinned by the code it throws: the case column is the expected
+\ code (`7 0 E-DIV-ZERO NN-THROWS`), the reference held to the same code. Each
+\ arm drops what the body left, so a primitive that wrongly answers is caught by
+\ the code comparison (`catch` gives 0), not by an unbalanced stack further down
+\ the gate.
 : NN-THROW-PRIM ( ptr u8 n -- n ) {: na:ptr nu:n :}
    na nu s" /"    STR= IF [: DV-A @ DV-B @ /    drop  ;] catch EXIT THEN
    na nu s" mod"  STR= IF [: DV-A @ DV-B @ mod  drop  ;] catch EXIT THEN
@@ -365,10 +301,8 @@ $3A constant COLON-B
    na nu s" /mod" STR= IF [: DV-A @ DV-B @ PRIM-REF:DIVREM 2drop ;] catch EXIT THEN
    s" refusing binary reference" na nu NO-ARM ;
 
-\ ---- memory ------------------------------------------------------------------
-\ A round trip over the file's own fixtures passes the case value through a
-\ store primitive and reads it back through its paired fetch primitive. Each
-\ store/fetch pair runs once and covers both rows.
+\ A store/fetch pair round-trips the case value over the file's own fixtures and
+\ covers both rows.
 : MEM-PRIM ( n ptr u8 n -- n ) {: v:n na:ptr nu:n :}
    na nu s" !" STR= IF
       v FIX-CELLS ! FIX-CELLS @ EXIT THEN
@@ -417,7 +351,12 @@ $3A constant COLON-B
    CASE+
    REF? IF s" bits reference" SUBJ$ NO-ARM THEN ;
 
-\ ---- coverage ----------------------------------------------------------------
+\ Not held here: I/O, syscall, process, code publication, profiler, engine-state
+\ and FFI rows (no inputs-to-outputs case, no honest reference; several are
+\ TRUSTED-only or owner-private); they are listed as uncovered.
+\ Coverage is by row: closing a nonempty set marks its row; a numeric case never
+\ covers a pointer or boolean sibling; REF belongs to that exact row. Uncovered
+\ rows print their absolute table index and are reported, not failed.
 : PRIM-ROW? ( n -- bool ) {: row:n :}
    row PRIM-SPEC:KIND@ PRIM-SPEC:K-PRIM =
    row PRIM-SPEC:KIND@ PRIM-SPEC:K-PKG-PRIVATE = or ;
@@ -543,7 +482,6 @@ public
 
 private
 
-\ ---- the report --------------------------------------------------------------
 : COLON-AT ( ptr u8 n -- n ) {: a:ptr u:n :}   \ first colon, or -1
    0 SI !
    BEGIN SI @ u < WHILE
@@ -561,7 +499,7 @@ private
    ra k s" PRIM-REF" STR= 0= IF NO EXIT THEN
    ra k + 1+  ru k - 1-  PRIM-REF:WID search-wl 0= 0= ;
 
-: REF-RESOLVES ( -- )                   \ every REF spelling in the table is a real word
+: REF-RESOLVES ( -- )
    0 CI !
    BEGIN CI @ PRIM-SPEC:COUNT < WHILE
       CI @ PRIM-SPEC:REF$ nip 0= 0= IF
@@ -633,8 +571,8 @@ private
 MAP-FITS
 T-RESET
 
-\ ---- the coverage map marks exactly the row a set names ----------------------
-\ It runs before the shared sets, which also cover `+`'s pointer rows.
+\ The coverage map marks exactly the row a set names. This runs before the
+\ shared sets, which also cover `+`'s pointer rows.
 0 CASES +
            3           4                   7  NN-N
 ;CASES
@@ -646,11 +584,6 @@ s" +" 2 FIND-ROW COVERED? TFALSE
 s" unknown overload is absent" T-LABEL
 s" +" 3 FIND-ROW -1 T=
 s" +" -1 FIND-ROW -1 T=
-
-\ =============================================================================
-\ The cases, in table order: the integer sets are data in test/prim-cases.f,
-\ the float sets in test/prim-float-cases.f.
-\ =============================================================================
 
 s" test/prim-cases.f" included
 s" @" MARK-PAIRED                       \ fetched by the `!` round trip

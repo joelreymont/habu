@@ -1,5 +1,4 @@
 \ font-native.f - native HarfBuzz FONT test on installed macOS fonts.
-\ Run: bin/hb --load test/font-native.f
 require src/lib/font.f
 require src/lib/test.f
 require src/lib/fs.f

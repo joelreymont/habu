@@ -1,17 +1,6 @@
-\ seal.f - friend-arena seal regressions.
-\
-\ Proves the post-seal raw-write guard (PROT-GUARD, exit ENGINE-ERROR:SEAL-VIOLATION) traps
-\ every store sink whose target lands in the sealed crown-jewel band
-\ [data-base+FRIEND-ARENA, +FRIEND-ARENA-LEN), that the latch itself is inside
-\ the band (one-way seal), that a read syscall whose buffer starts in the band is
-\ trapped, that a free hole below the band stays writable, and that normal
-\ language features which update the protected cells through engine primitives
-\ still work post-seal.
-\
-\ Semantic fixtures run in disposable SUBJECT forks of the sealed candidate.
-\ Exact outcome/stdout/stderr parity against direct `--load` and stdin runs is
-\ pinned below. Clean-start registry-capacity fixtures remain direct executions.
-\
+\ seal.f - friend-arena seal regressions: the post-seal raw-write guard
+\ (PROT-GUARD, exit ENGINE-ERROR:SEAL-VIOLATION) traps every store sink into a
+\ sealed band, and engine primitives that update protected cells still work.
 \ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
 \   src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f test/seal.f
 
@@ -66,7 +55,9 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
 : SLV-LF ( -- )
    10 SB-APPEND-C ;
 
-\ --- forge sources: each names its offset, then hits one write/read sink. ---
+\ Forge sources for the crown-jewel band [data-base+FRIEND-ARENA,
+\ +FRIEND-ARENA-LEN): each names its offset and hits one sink. The latch is
+\ inside the band (one-way seal); a free hole below the band stays writable.
 
 : SLV-CUR-FORGE$ ( -- ptr u8 n )            \ ! into CUR-CELL ($28)
    SB-RESET
@@ -104,8 +95,8 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    s" 0 data-base SLF-CUR + 8 read drop" SB-APPEND SLV-LF
    SB$ ;
 
-\ Each remaining sink hand-wires a DIFFERENT register into PROT-GUARD, so one
-\ forge per sink proves that sink's own wiring. Register noted per forge.
+\ Each remaining sink hand-wires a different register into PROT-GUARD, so one
+\ forge per sink proves that sink's own wiring.
 \ A forge that passes a band address where its sink takes an n runs with the
 \ checker suspended (`check@ 0 set-check ... set-check`), so the seal refuses it.
 
@@ -194,33 +185,31 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    s" SLF-C . cr" SB-APPEND SLV-LF
    SB$ ;
 
-\ Sealed-dictionary truncation guard. FORGET-DEFS-FROM /
-\ HIDE-DEFS-FROM resolve a name to a dict index and truncate ndict (FORGET also
-\ rewinds CP) to it; a name resolving to an ENGINE record (index below the
-\ seal-time watermark SEAL-NDICT-CELL, captured by SEAL-CAPTURE at the end of the
-\ engine source) would retire engine definitions and rewind CP into engine code.
-\ Post-seal user source must be rejected fail-closed (ENGINE-ERROR:SEAL-VIOLATION). `WORDS`
-\ is an engine word defined in xref.f, well below the watermark.
-: SLV-FORGET-ENGINE-FORGE$ ( -- ptr u8 n )       \ FORGET an engine definition
+\ Sealed-dictionary truncation guard: FORGET-DEFS-FROM and HIDE-DEFS-FROM
+\ truncate ndict (FORGET also rewinds CP) to a name's dict index. An index below
+\ the seal-time watermark SEAL-NDICT-CELL (SEAL-CAPTURE, at the end of the
+\ engine source) would retire engine definitions and rewind CP into engine code,
+\ so post-seal source is refused (ENGINE-ERROR:SEAL-VIOLATION). `WORDS` is an
+\ engine word (xref.f), well below the watermark.
+: SLV-FORGET-ENGINE-FORGE$ ( -- ptr u8 n )
    SB-RESET
    S\" s\" WORDS\" FORGET-DEFS-FROM" SB-APPEND SLV-LF
    SB$ ;
 
-: SLV-HIDE-ENGINE-FORGE$ ( -- ptr u8 n )         \ HIDE an engine definition
+: SLV-HIDE-ENGINE-FORGE$ ( -- ptr u8 n )
    SB-RESET
    S\" s\" WORDS\" HIDE-DEFS-FROM" SB-APPEND SLV-LF
    SB$ ;
 
-\ The engine-prefix TAIL gap (dot habu-tfam-2b-iii-5d25b52f): src/os/script-argv.f
-\ loads AFTER xref.f, so a watermark captured at end-of-xref left its words
-\ FORGET/HIDEable (proven rc 0). The SEAL-CAPTURE token appended at the true
-\ engine-prefix end closes it: the tail must trap like any engine definition.
-: SLV-FORGET-TAIL-FORGE$ ( -- ptr u8 n )         \ FORGET the script-argv tail
+\ The engine-prefix tail: src/os/script-argv.f loads after xref.f, and
+\ SEAL-CAPTURE sits at the true engine-prefix end, so the tail traps like any
+\ engine definition.
+: SLV-FORGET-TAIL-FORGE$ ( -- ptr u8 n )
    SB-RESET
    S\" s\" SCRIPT-ARGV$\" FORGET-DEFS-FROM" SB-APPEND SLV-LF
    SB$ ;
 
-: SLV-HIDE-TAIL-FORGE$ ( -- ptr u8 n )           \ HIDE the script-argv tail
+: SLV-HIDE-TAIL-FORGE$ ( -- ptr u8 n )
    SB-RESET
    S\" s\" SCRIPT-ARGV$\" HIDE-DEFS-FROM" SB-APPEND SLV-LF
    SB$ ;
@@ -236,16 +225,16 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    s" SLF-NDICT-ATTACK" SB-APPEND SLV-LF
    SB$ ;
 
-\ Direct checker signature-registry truncation (bypasses the FORGET/HIDE index
-\ guard, but forgets an engine word's checker signature so it can be redefined =
-\ spoof). The public CHECKER-USIGS-TRUNCATE-FROM rejects any post-seal call.
+\ Direct checker signature-registry truncation bypasses the FORGET/HIDE index
+\ guard but would forget an engine word's checker signature so it could be
+\ redefined (a spoof). CHECKER-USIGS-TRUNCATE-FROM refuses any post-seal call.
 : SLV-USIG-TRUNC-FORGE$ ( -- ptr u8 n )
    SB-RESET
    S\" s\" WORDS\" CHECKER-USIGS-TRUNCATE-FROM" SB-APPEND SLV-LF
    SB$ ;
 
-\ Positive: a user mark defined AFTER the seal is above the watermark, so
-\ FORGET/HIDE of it stays a working round-trip (retire user tail, redefine).
+\ A user mark defined after the seal is above the watermark, so FORGET/HIDE of
+\ it stays a working round-trip (retire the user tail, redefine).
 : SLV-FORGET-USER-FORGE$ ( -- ptr u8 n )
    SB-RESET
    s" : SLF-UMARK ( -- ) ;" SB-APPEND SLV-LF
@@ -289,14 +278,13 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    s" data-base SLF-UNCGH + 0 swap !" SB-APPEND SLV-LF
    SB$ ;
 
-\ Code-emit capability: cp! may select only an aligned instruction in the full
-\ DBASE code interval. A DATA address must trap at cp! itself, before any delayed
-\ emission can cross a protected band. One forge per band proves the independent
-\ code-region guard. ndict! (the paired FORGET count sink) writes records into the disjoint
-\ dict-record region (DBASE, not data-base), bounded < DICT-CAP by the room check,
-\ so it cannot land in a data-base band; the legit round-trip forge below proves
-\ its guard leaves normal FORGET intact.
-\ Each cp! forge runs with the checker suspended for the same reason.
+\ cp! may select only an aligned instruction in the full DBASE code interval: a
+\ data address traps at cp! itself, before any delayed emission can cross a
+\ protected band. One forge per band proves the code-region guard. ndict! writes
+\ records into the disjoint dict-record region (DBASE, not data-base), bounded
+\ by DICT-CAP through the room check, so it cannot land in a data-base band; the
+\ legit round-trip forge above proves its guard leaves FORGET intact. Each cp!
+\ forge runs with the checker suspended for the same reason.
 : SLV-CPSET-B2-FORGE$ ( -- ptr u8 n )       \ cp! CP into the registry band ($3CB8), then emit
    SB-RESET
    s" $3CB8 constant SLF-PWIDN" SB-APPEND SLV-LF
@@ -311,12 +299,12 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    s" : SLF-FOO ( -- n ) 1 ;" SB-APPEND SLV-LF
    SB$ ;
 
-\ FFI seal guard (cat 5 FFI-writer): a sealed-band pointer packed as a
-\ LIVE integer/pointer FFI arg must trap ENGINE-ERROR:SEAL-VIOLATION at the trampoline BEFORE
-\ the foreign call, else the callee writes through it and tampers a sealed cell.
-\ Routed via the checked FFI package with an explicit writable extent; fn=0 so
-\ the whole-span guard must fire first (an unguarded BLR to 0
-\ signals/crashes, a distinct outcome from EXIT 83). One forge per protected band.
+\ A sealed-band pointer packed as a live integer or pointer FFI arg must trap
+\ ENGINE-ERROR:SEAL-VIOLATION at the trampoline before the foreign call, else
+\ the callee writes through it into a sealed cell. Routed through the checked
+\ FFI package with an explicit writable extent; fn=0, so the whole-span guard
+\ must fire first (an unguarded BLR to 0 crashes, an outcome distinct from exit
+\ 83). One forge per protected band.
 : SLV-FFI-B1-FORGE$ ( -- ptr u8 n )         \ 16-byte write crosses band-1 lower edge
    SB-RESET
    s" require src/lib/ffi-abi.f" SB-APPEND SLV-LF
@@ -345,10 +333,10 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    s" data-base $28 + SLF-SRET drop" SB-APPEND SLV-LF
    SB$ ;
 
-\ Raw abi trampoline: a sealed-band pointer packed as a HIGH integer register
-\ arg (x6, live only at int-nargs=7) must trap -- the guard sweeps every live
-\ slot [0..int-nargs), not just the low registers. Slots 0..5 hold benign
-\ scalars so the trap is precisely attributable to arg[6].
+\ Raw abi trampoline: a sealed-band pointer packed as a high integer register
+\ arg (x6, live only at int-nargs=7) must trap: the guard sweeps every live slot
+\ [0..int-nargs), not just the low registers. Slots 0..5 hold benign scalars so
+\ the trap is attributable to arg[6].
 : SLV-FFI-A6-FORGE$ ( -- ptr u8 n )         \ sealed-band pointer as the arg[6] register arg
    SB-RESET
    s" require src/lib/ffi-abi.f" SB-APPEND SLV-LF
@@ -375,8 +363,6 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    s" SLF-MAIN" SB-APPEND SLV-LF
    SB$ ;
 
-\ --- child spawn + outcome capture ---
-
 : SLV-STORE! ( len len outcome ptr u8 n -- ) {: outu:len erru:len oc src:ptr u:n :}
    erru LEN>N SLV-ERR-U !  outu LEN>N SLV-OUT-U !
    oc MATCH outcome
@@ -390,7 +376,6 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    a SLV-IN u BYTE-COPY
    u SLV-IN-U ! ;
 
-\ Run the forge as a --load file with empty stdin.
 : SLV-RUN-LOAD ( ptr u8 n -- ) {: src:ptr u:n :}
    SLV-CHILD src u FS:WRITE-ALL
    PROC-ARGV-RESET
@@ -400,7 +385,7 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    SLV-ERR SLV-CAP >LEN  SLV-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    src u SLV-STORE! ;
 
-\ Run the forge as a piped stdin program (no --load), the other cold-prefix path.
+\ The piped stdin program (no --load) is the other cold-prefix path.
 : SLV-RUN-STDIN ( ptr u8 n -- )
    SLV-IN!
    PROC-ARGV-RESET
@@ -408,41 +393,34 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    SLV-ERR SLV-CAP >LEN  SLV-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    SLV-IN$ SLV-STORE! ;
 
+\ Fixtures run in SUBJECT forks of the sealed candidate; clean-start
+\ registry-capacity fixtures run directly.
 : SLV-SUBJECT ( ptr u8 n -- ) {: src:ptr u:n :}
    src u SLV-OUT SLV-CAP >LEN SLV-ERR SLV-CAP >LEN
    SLV-TIMEOUT-MS >MS SUBJECT:RUN src u SLV-STORE! ;
 
-: SLV-ASSERT-SEAL ( -- )                    \ child died with the seal-violation exit
+: SLV-ASSERT-SEAL ( -- )
    SLV-EXITED @ TTRUE
    SLV-RC @ SLV-SEAL-RC T= ;
 
-: SLV-ASSERT-OK ( -- )                      \ child exited cleanly
+: SLV-ASSERT-OK ( -- )
    SLV-EXITED @ TTRUE
    SLV-RC @ 0 T= ;
 
-\ --- protected-WID capacity (dots habu-seal-protwid-cap-6f1c9d2b, ------------------
-\ habu-replace-the-protected-ca920a8f). Each PUBLIC ADT family protects one wordlist
-\ (xref.f PROT-WID-CTOR-ADD -> prot-wid-add). The registry is a WID-indexed bitmap,
-\ so the ceiling is no longer a count of table rows but the wordlist-id bound
-\ PROT-WID-MAX, and prot-wid-room reports exactly how many ids are left.
-\
-\ The old shape of this test declared enough families to fill every remaining row and
-\ then one more. That is not reachable against an id bound -- it would need thousands
-\ of families -- and it was really testing arithmetic. The property that matters is
-\ the boundary itself: at zero room the declaration is rejected at the preflight with
-\ E-PROTECTION-CAP (7169), which the top-level engine boundary maps to UNCAUGHT-RC,
-\ and NOT at the irreversible prot-wid-add (exit 84), which would violate the atomic
-\ publication design. So the child drives room to a known value with the `wordlist`
-\ primitive -- the same allocator a declaration consumes -- and then declares. It is
-\ self-calibrating: it reads prot-wid-room rather than assuming a baseline, so it
-\ cannot rot as the system prefix grows.
+\ Protected-WID capacity: each public ADT family protects one wordlist (xref.f
+\ PROT-WID-CTOR-ADD -> prot-wid-add). The registry is a WID-indexed bitmap
+\ bounded by PROT-WID-MAX, and prot-wid-room reports the ids left. At zero room
+\ a declaration is refused at the preflight with E-PROTECTION-CAP (7169), not at
+\ the irreversible prot-wid-add (exit 84), which would break atomic publication.
+\ The child burns room to a known value with `wordlist`, the allocator a
+\ declaration consumes, and reads prot-wid-room rather than assuming a baseline.
 16384 constant PWG-CAP                       \ room for 256+ families at ~46 bytes each
 create PWG-BUF PWG-CAP allot
 variable PWG-U
 
 : PWG$ ( -- ptr u8 n )  PWG-BUF PWG-U @ ;
 : PWG-RESET ( -- )  0 PWG-U ! ;
-: PWG-C ( n -- ) {: c:n :}                   \ append one raw byte
+: PWG-C ( n -- ) {: c:n :}
    PWG-U @ 1+ PWG-CAP > if E-FS-CAPACITY throw then
    c  PWG-BUF PWG-U @ +  c!
    PWG-U @ 1+ PWG-U ! ;
@@ -462,8 +440,7 @@ variable PWG-U
    PWG$ ;
 
 \ Burn `prot-wid-room - spare` wordlist ids in the child, leaving exactly `spare`,
-\ then declare one public family. `wordlist` is the real allocator; nothing here
-\ simulates the shortage.
+\ then declare one public family.
 : PWG-BURN ( n -- ptr u8 n ) {: spare:n :}
    PWG-RESET
    s" : PWG-BURN-N ( n -- ) 0 ?do wordlist drop loop ;" PWG-APPEND  10 PWG-C
@@ -486,8 +463,7 @@ variable PWG-U
    SLV-EXITED @ TTRUE
    SLV-RC @ SLV-PWID-PREFLIGHT-RC T=
    SLV-ERR$ s" hb: uncaught throw code 7169" CONTAINS? TTRUE
-   \ dot habu-name-registry-exhaustion-bdd23c70: the diagnostic must name the
-   \ registry, not blame the family that happened to declare next.
+   \ The diagnostic names the registry, not the family that declared next.
    SLV-ERR$ s" the protected-wordlist registry is full" CONTAINS? TTRUE ;
 
 \ The irreversible sink refuses an id it has no bit for, names the bound, and exits
@@ -510,13 +486,11 @@ variable PWG-U
    s" prot-wid-add refuses an id at the bitmap bound and names it" T-LABEL
    PWG-OOR-FORGE$ SLV-RUN-LOAD SLV-ASSERT-PWID-OOR ;
 
-\ --- publish-into-protected-word guard (dot habu-label-two-silent-bd8e5d09) -----------
-\ Once the friend latch is sealed, publishing a definition into a protected WID (a public
-\ family's generated constructor package) via `<pkg>:WORD` must fail closed. The guard
-\ (habu2.f C-STORE-DEF-NAME) now names itself on fd 2 (LPROTPUB) with the offending word
-\ before exit 84. Red-first: the bare exit left stderr empty, so the CONTAINS assertion
-\ fails. (The sibling AOT boot-pass gate EM-AOTWIDGATE is also now labeled (LPROTAOT); it
-\ fires only on a crafted AOT/snapshot image, so its forced-reject fixture is dotted.)
+\ After the seal, publishing into a protected WID (a public family's generated
+\ constructor package) via `<pkg>:WORD` fails closed: habu2.f C-STORE-DEF-NAME
+\ names itself on fd 2 (LPROTPUB) with the offending word before exit 84. The
+\ sibling AOT boot-pass gate EM-AOTWIDGATE (LPROTAOT) fires only on a crafted
+\ AOT or snapshot image and has no fixture here.
 : SLV-PUBLISH-FORGE$ ( -- ptr u8 n )         \ define a word into a public family's protected WID
    SB-RESET
    s" SUMTYPE foo<a> VARIANT bar a ;VARIANT ;SUMTYPE" SB-APPEND SLV-LF
@@ -621,8 +595,6 @@ variable PWG-U
    s" cp! redirecting emission into band 1 traps at the sink" T-LABEL
    SLV-CPSET-B1-FORGE$ SLV-SUBJECT SLV-ASSERT-SEAL ;
 
-\ One forge per remaining guarded sink — each sink hand-wires its own PROT-GUARD
-\ register, so testing one proves nothing about another's wiring.
 : SLV-NEGATIVES-SINKS ( -- )
    s" atomic-add addr (x10) into the band traps" T-LABEL
    SLV-ATADD-FORGE$ SLV-SUBJECT SLV-ASSERT-SEAL
@@ -653,9 +625,6 @@ variable PWG-U
    s" raw abi FFI high arg[6] register into band traps before the call" T-LABEL
    SLV-FFI-A6-FORGE$ SLV-SUBJECT SLV-ASSERT-SEAL ;
 
-\ Sealed-dictionary truncation guard: FORGET-DEFS-FROM /
-\ HIDE-DEFS-FROM of an engine definition (below the seal-time ndict watermark)
-\ must trap ENGINE-ERROR:SEAL-VIOLATION after the sealed entry.
 : SLV-NEGATIVES-TRUNCATE ( -- )
    s" FORGET-DEFS-FROM of an engine def traps" T-LABEL
    SLV-FORGET-ENGINE-FORGE$ SLV-SUBJECT SLV-ASSERT-SEAL
@@ -705,18 +674,13 @@ public
 
 SEAL-SUITE:RUN
 
-\ --- Prove-absence: guarded sinks NOT covered by an automated forge above ---
-\ The 16 PROT-GUARD sinks: BSTORE/BPLUSSTORE/BCSTORE/BATSTORE/BATADD (x10=B),
-\ BATCAS (x11=C), BREAD/BSTAT64/BLSTAT64 (x1), BIOCTL/BREADLINK (x2), BPOLL/BMMAP
-\ (x0), BGETDIRENTRIES64 (x1 dirent buf + x3 basep) — all covered above. The two
-\ remaining sinks are compiler-internal and are covered by hand-review only:
-\   1. patch32 (BPATCH32, x10=B): the JIT engine-text patcher. Forging it would
-\      run a real mprotect RW->store->RX + i-cache invalidation on a live page,
-\      which is unsafe to exercise, so no automated forge. Its guard uses the B
-\      register, which IS proven by the BSTORE/BPLUSSTORE/BCSTORE/BATSTORE/
-\      atomic-add forges above; only patch32's own guard line is hand-reviewed.
-\   2. snap-rebase (BSNAPREBASE, src/habu/habu2.f: 8 PROT-GUARD 16 PROT-GUARD):
-\      the snapshot relocation primitive, driven only by the snapshot builder.
-\      Forging it would run dictionary-relative relocation rewrites, unsafe to
-\      exercise. Its x8/x16 guard registers are unique to this sink and are not
-\      exercised by any other forge, so they remain hand-review only.
+\ Guarded sinks no forge covers. The rest (BSTORE BPLUSSTORE BCSTORE BATSTORE
+\ BATADD on x10=B, BATCAS on x11=C, BREAD BSTAT64 BLSTAT64 on x1, BIOCTL
+\ BREADLINK on x2, BPOLL BMMAP on x0, BGETDIRENTRIES64 on x1 and x3) are forged
+\ above. Two compiler-internal sinks are covered by review only:
+\ - patch32 (BPATCH32, x10=B), the engine-text patcher: a forge would run a real
+\   RW, store, RX and i-cache flush on a live page. Its B register is proven by
+\   the store forges; only its own guard line is reviewed.
+\ - snap-rebase (BSNAPREBASE, src/habu/habu2.f), driven only by the snapshot
+\   builder: a forge would run its relocation rewrites. Its span guard over
+\   [x8, x16) is used by no other sink.

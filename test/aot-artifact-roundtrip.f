@@ -1,33 +1,9 @@
 \ aot-artifact-roundtrip.f - src/habu/aot-file.f's writer and reader over a real
-\ capture, in a booted bin/hb (dot habu-retire-the-s-4fbc244f).
-\
-\ WHY THE CAPTURE IS A SMALL WINDOW AND NOT THE CHAIN. The product provides every
-\ file the compiler chain's closure names, so `require` is a no-op there and the
-\ chain's window comes up empty - tools/aot-chain-capture.f says so by name and
-\ only the build's capture host can run it. The FORMAT does not care how large the
-\ window was: what it needs exercised is a capture with a non-empty blob, compact
-\ records, a name pool, a DATA window with runs in it, a protected-WID row and a
-\ closure list. A window of two words, a defer, a written cell and a sealed
-\ wordlist has all of those, and this file is the only check in the tree that
-\ carries src/habu/aot-file.f through a load at all.
-\
-\ THE MARKS COME FIRST, then the window, then the artifact writer - the same order
-\ tools/aot-chain-capture.f is built in and for the same reasons: the band below
-\ the mark is what the capture may call into, and the writer's own buffers must be
-\ allotted past the window's last DATA byte so no window word can hold one.
-\
-\ Save the complete address rows, clear their buffer and the restored counts,
-\ then compare the rows after READ. Digest equality alone cannot detect a writer
-\ and reader that both truncate the same rows.
-\
-\ THE PRODUCER KEY is sha256 of the engine running this, so the parent suite can
-\ hash bin/hb from the outside and compare against the key in the header. READ is
-\ handed the same key, which is what makes the header's producer check pass; a
-\ different key here would be refused by name and is test/aot-chain-capture-suite.f's
-\ business rather than a mode of this file.
-\
-\ Run standalone from the repository root:
-\   bin/hb --load test/aot-artifact-roundtrip.f -- /tmp/small.aot
+\ capture in a booted bin/hb, the tree's only load of aot-file.f. The product
+\ provides the chain's closure, so the capture is a small window holding every
+\ section the format carries. Marks, window and writer come in the order
+\ tools/aot-chain-capture.f uses: the writer's buffers lie past the window's
+\ DATA.
 
 package AOTRT
 public
@@ -53,10 +29,8 @@ public
 create WCELL 8 allot
 7 WCELL !
 
-\ This window's own public wordlist id, latched here and sealed below, so the
-\ capture has a protected-WID row of its own to carry: those rows travel
-\ window-relative and the section that carries them is one of the five version 6
-\ renumbered.
+\ This window's own public wordlist id, sealed below, gives the capture a
+\ protected-WID row; those rows travel window-relative.
 variable WWID
 get-current WWID !
 
@@ -64,19 +38,15 @@ get-current WWID !
 
 : B, ( n -- n ) 2 + ;
 
-\ Nothing calls it, and nothing needs to: what the format has to carry is a record
-\ and a body in the blob, and a capture takes the whole window whether or not this
-\ process ever runs what is in it. Its callee is in the same window, so the
-\ capture's call audit has nothing to refuse and nothing to record by name - an
-\ in-window call is a relative branch inside the blob that travels with it.
+\ Never called: a capture takes the whole window. Its callee is in the window,
+\ so the call audit has nothing to refuse or record: an in-window call is a
+\ relative branch inside the blob.
 : TRUNK ( n -- n )
    LEAF LEAF LEAF LEAF LEAF LEAF LEAF LEAF B, ;
 
-\ A DECLARED ADDRESS CELL OF THE WINDOW'S OWN. `is` stores an execution token into
-\ a DATA cell, which is what registers a SNAP-RELOC:XTCELL row, and a row whose
-\ cell and whose target are both inside the window is the population
-\ AOT-CAPTURE:DECLARED-IN counts. Without one the predicate below would hold over
-\ two zeroes and prove nothing, so ?XTCELLS refuses a window that has none.
+\ `is` into a window cell registers a SNAP-RELOC:XTCELL row inside the window,
+\ the population AOT-CAPTURE:DECLARED-IN counts; ?XTCELLS refuses a window with
+\ none.
 defer HOOK ( n -- n )
 : ARM-HOOK ( -- ) [: LEAF ;] is HOOK ;
 ARM-HOOK
@@ -109,11 +79,13 @@ $4C constant REFUSE-RC
 
 create KEY SHA-BYTES allot
 create SHA-A SHA-BYTES allot
-create FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this fixture's file-digest context
+create FSHA-CTX SHA256-FILE-CTX-BYTES allot
 DYNAMIC-BUFFER SAVED-XTOFF-STORAGE n
 : SAVED-XTOFFS ( -- ptr u8 ) 0 SAVED-XTOFF-STORAGE BYTE-VIEW ;
 variable SAVED-XTOFF-N
 
+\ Run standalone from the repository root:
+\   bin/hb --load test/aot-artifact-roundtrip.f -- /tmp/small.aot
 : ART$ ( -- ptr u8 n ) 0 SCRIPT-ARGV$ ;
 
 : ?ARGS ( -- )
@@ -121,10 +93,11 @@ variable SAVED-XTOFF-N
    s" aot-artifact-roundtrip: expected an artifact path and optional row-test case"
    REFUSE-RC die ;
 
-\ The engine running this, by the relative path the suite spawns it with;
-\ src/lib/engine-id.f answers the same question with a resolved path and cannot be
-\ loaded here. SHA256-FILE-IN's status is checked, so a run from the wrong directory
-\ refuses by name instead of writing a key of zeroes into the header.
+\ The engine running this, by the relative path the suite spawns it with
+\ (src/lib/engine-id.f resolves the path and cannot be loaded here). Its sha256
+\ is the producer key the parent suite hashes from outside and READ is handed;
+\ a different key is test/aot-chain-capture-suite.f's case. SHA256-FILE-IN's
+\ status is checked, so a run from the wrong directory refuses by name.
 : ENGINE$ ( -- ptr u8 n ) s" bin/hb" ;
 
 : KEY! ( -- )
@@ -176,6 +149,7 @@ variable SAVED-XTOFF-N
    loop ;
 
 
+\ Address rows are compared after READ: equal digests miss a shared truncation.
 : ?XTOFFS-RESTORED ( -- )
    XTOFF-N @ SAVED-XTOFF-N @ = if
       XTOFF-BUF@ SAVED-XTOFFS
@@ -184,12 +158,10 @@ variable SAVED-XTOFF-N
    s" aot-artifact-roundtrip: the complete address rows were not restored"
    REFUSE-RC die ;
 
-\ THE PREDICATE tools/aot-chain-capture.f ?XTOFF asserts, over a window this process
-\ really captured: the row table is the declared address cells inside the window
-\ plus the cells outside it whose target is inside their kind's span, and nothing
-\ else. The tool's own copy of it can only run in the build's capture host, so this
-\ is where the two counters are executed. The first refusal is what keeps the
-\ predicate from passing over two zeroes on a window that declared no cell at all.
+\ The predicate tools/aot-chain-capture.f ?XTOFF asserts, run here because the
+\ tool's copy runs only in the build's capture host: the rows are the declared
+\ address cells inside the window plus outside cells whose target lies in their
+\ kind's span. The first refusal keeps it from passing over two zeroes.
 : ?XTCELLS ( -- )
    AOT-ARM:D0 @ AOT-ARM:D1 @ AOT-CAPTURE:DECLARED-IN {: win:n :}
    AOT-ARM:B0 @ AOT-ARM:B1 @ AOT-ARM:D0 @ AOT-ARM:D1 @ AOT-CAPTURE:TARGETED-OUT {: out:n :}

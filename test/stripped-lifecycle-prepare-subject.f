@@ -21,18 +21,17 @@ variable RAN
    begin WORKER TASK:DONE? 0= while TASK:PAUSE repeat
    WORKER TASK:KILL ;
 
-\ A WHOLE TASK CYCLE AT LOAD, which is both halves of this subject: it caches
-\ FFI's resolved symbols for src/lib/task.f's FUNCTION: rows, and it leaves behind
-\ the TCB a killed task leaves - mappings returned and the five process-local
-\ cells cleared (src/lib/task.f TASK-RELEASE-MEM). Before that clear the stripped
-\ link refused this file at the TCB cell holding the pthread_t, which no
-\ lifecycle hook owned and which a `create … does>` body gives the refusal no
-\ name for.
+\ A whole task cycle at load, both halves of this subject: it caches FFI's
+\ resolved symbols for src/lib/task.f's FUNCTION: rows, and leaves the TCB a
+\ killed task leaves, mappings returned and the five process-local cells cleared
+\ (src/lib/task.f TASK-RELEASE-MEM). Uncleared, the TCB cell holding the
+\ pthread_t has no lifecycle hook, and in a `create … does>` body the refusal
+\ has no name for it.
 CYCLE
 
 public
 
-\ Only after the worker's body ran in THIS process: the symbols the capture
+\ Only after the worker's body ran in this process: the symbols the capture
 \ forgot have to be resolved afresh by this operation, and a stale address
 \ would fail the activation instead.
 : RUN ( -- )

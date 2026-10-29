@@ -18,7 +18,6 @@ create SLEN STR-MAX cells allot
 variable POOL-U
 variable STR-N
 
-\ ---- the shared string pool --------------------------------------------------
 \ Every text below is interned once and referred to by handle, so a table row is
 \ a run of cells and the data blocks stay readable as data.
 
@@ -39,8 +38,6 @@ public
 
 private
 
-\ ---- column storage ----------------------------------------------------------
-
 create VEC-NAME ROW-MAX cells allot
 create VEC-SRC ROW-MAX cells allot
 create VEC-VERD ROW-MAX cells allot
@@ -55,7 +52,6 @@ variable VEC-N
    i 0 < i cnt >= or if E-CMP-ROW throw then
    col i cells + @ ;
 
-\ ---- the program vectors -------------------------------------------
 \ One verdict per row, written once. `V-CERT`, `V-UNCK` and `V-REJECT` are the
 \ model's three outcomes; the cases file maps the checker's -1 / 1 / 0 into
 \ them, so an unresolvable is never read as a refusal.
@@ -97,12 +93,11 @@ private
       V-REJECT VEC-ROW ;
 
 \ The control-frame ceiling. `CF-PUSH` (src/core/checker.f) turns the frame
-\ after the last one into an UNRESOLVABLE instead of pushing it, so the
-\ sharpest pair of programs is two runs of `begin` differing only in length: at
-\ the ceiling the definition is merely unbalanced and is refused, one deeper it
-\ stops being checkable at all and the verdict changes class. Both texts are
-\ BUILT from the ceiling below rather than spelled out, so a row cannot drift
-\ from the number it is about.
+\ after the last one into an unresolvable instead of pushing it, so the sharpest
+\ pair of programs is two runs of `begin` differing only in length: at the
+\ ceiling the definition is merely unbalanced and is refused, one deeper it
+\ stops being checkable and the verdict changes class. Both texts are built
+\ from the ceiling below, so a row cannot drift from the number it is about.
 
 32 constant FRAME-CEIL
 
@@ -125,31 +120,17 @@ private
    s" one_frame_past_the_ceiling_is_unresolvable"
       s" CMV14 ( i64 -- i64 )" FRAME-CEIL 1+ V-UNCK FRAME-CAP-ROW ;
 
-\ `MATCH`'s OWN depth guard, which is a different rule from the ceiling above.
-\ A match form opens two frames of its own - one for the form, one for the
-\ branch - and `MATCH-FAM-TOK` (src/core/checker.f) refuses outright, as a HARD
-\ reject, once the frame stack is deeper than the number below, precisely so a
-\ match can never install one of its two frames and then overflow on the other.
-\ That number is therefore the deepest stack at which a match still fits, and
-\ the sharpest pair of programs is a match at exactly that depth against one a
-\ single frame deeper:
-\
-\   - at the depth below, the form takes the last two slots the ceiling has, so
-\     the very next opener is one too many and the definition stops being
-\     checkable;
-\   - one deeper, the guard refuses before any of that, and a hard reject
-\     outranks an uncheckable, so the verdict changes class.
-\
-\ Together they pin the number itself: lower the guard and the first row's
-\ verdict becomes a refusal, raise it or remove it and the second row's becomes
-\ an uncheckable. Both texts are BUILT from the number rather than spelled out.
-\ Before these rows existed, lowering the guard left the whole gate green.
-\
-\ The number is DERIVED from the ceiling rather than written down a second
-\ time, because that is the relation the checker's two literals stand in: the
-\ match guard is the frame ceiling less the frames a match form opens. A
-\ ceiling moved on one side only is then a row that no longer holds, rather
-\ than two independent numbers that happen to disagree.
+\ `MATCH`'s own depth guard, a different rule from the ceiling above. A match
+\ form opens two frames (the form's and a branch's), and `MATCH-FAM-TOK`
+\ (src/core/checker.f) hard-rejects once the frame stack is deeper than the
+\ number below, so a match never installs one frame and overflows on the other.
+\ At that depth the form takes the ceiling's last two slots and the next opener
+\ makes the definition uncheckable; one deeper the guard refuses first, and a
+\ hard reject outranks an uncheckable. Lowering the guard turns the first row
+\ into a refusal; raising or removing it turns the second into an uncheckable.
+\ Both texts are built from the number, and the number is derived from the
+\ ceiling, the relation the checker's two literals stand in: a ceiling moved on
+\ one side only breaks a row.
 
 2 constant MATCH-FRAMES               \ the form's frame, and one branch's
 FRAME-CEIL MATCH-FRAMES - constant MATCH-DEPTH-MAX
@@ -174,43 +155,29 @@ FRAME-CEIL MATCH-FRAMES - constant MATCH-DEPTH-MAX
       s" MATCH cmres cmok OF"
       V-REJECT MATCH-DEPTH-ROW ;
 
-\ Eight rows about `construct`, which nothing else here reaches. `construct` is
-\ a three-token form and a small state machine, not a word call, so the rules
-\ that decide it are the capture, the truncation test at the definition
-\ boundary, and the inline step that turns a variant payload into the family's
-\ bundle.
+\ Eight rows about `construct`, a three-token form and a small state machine:
+\ the rules are the capture, the truncation test at the definition boundary, and
+\ the inline step that turns a variant payload into the family's bundle.
+\ The first pair is the step: certifies with its payload on the row, refused
+\ without it. The second pair is the capture, and its verdicts differ in class:
+\ `construct` takes its two operands whatever they spell (`CONSTRUCT-TOK`,
+\ src/core/checker.f), so an operand naming no variant is a refusal, while the
+\ same token outside the form is an unknown word, merely uncheckable; a trailing
+\ operand that fell through to word lookup would answer uncheckable for both.
+\ The third pair is the payload's owner: two variants of one family differing
+\ only in what they carry. The last row round-trips through `MATCH`, the
+\ inverse of `construct`.
 \
-\ The first pair is the step: the same form certifies with its payload on the
-\ row and is refused without it, so a step that consumed nothing would fail the
-\ second row. The second pair is the CAPTURE, and it is the sharpest thing here
-\ because the two verdicts differ in CLASS. `construct` takes its two operands
-\ whatever they spell (`CONSTRUCT-TOK`, src/core/checker.f), so an operand that
-\ names no variant is a REFUSAL; the very same token outside the form is just a
-\ word the checker has never heard of, which is merely uncheckable. A checker
-\ that let the trailing operand fall through to the ordinary word lookup would
-\ answer uncheckable for both. The third pair is the payload's OWNER: two
-\ variants of one family differing only in what they carry, so the same input
-\ certifies for one and is refused for the other. The last row is the round
-\ trip: `construct` and `MATCH` are each other's inverse, so building a variant
-\ and immediately matching it returns the payload that was put in, and that row
-\ is the one that fails if either half stops agreeing with the other about what
-\ a bundle is.
+\ Measured by mutating the checker, rebuilding the fixpoint and rerunning this
+\ gate: dropping the `CONM` clause from `CHECK`'s open-form test turns only the
+\ unterminated row red; deleting the inline step from `CONSTRUCT-TOK` turns the
+\ first, captured, payload-owner and round-trip rows red; making the family
+\ operand close the form turns every row but the uncheckable control red.
 \
-\ Measured, by mutating the shipped checker, rebuilding the fixpoint and rerunning
-\ this gate. Dropping the `CONM` clause from `CHECK`'s open-form test turns
-\ exactly the unterminated row red and nothing else. Deleting the inline step
-\ from `CONSTRUCT-TOK` turns the first, the captured, the payload-owner and the
-\ round-trip rows red. Making the family operand close the form instead of
-\ opening the variant slot - so the third token is no longer captured - turns
-\ every row here red except the uncheckable control. Each mutation was restored
-\ byte-for-byte afterwards.
-\
-\ Scope note, and it is why the gate runs where it does. `TFAM-CONSTRUCT-FAM`
-\ (src/core/type-family.f) resolves a construct family in the ACTIVE package
-\ only, so these programs certify only when the checker is asked from inside the
-\ package that declared the family. checker-model-manifest.f supplies that
-\ scope, and checker-model-cases.f asserts CHECKER-AUTH-PACKAGE$ before asking
-\ the checker, so a missing family cannot make a refusal case pass.
+\ `TFAM-CONSTRUCT-FAM` (src/core/type-family.f) resolves a construct family in
+\ the active package only: checker-model-manifest.f supplies that scope, and
+\ checker-model-cases.f asserts CHECKER-AUTH-PACKAGE$ before asking the checker,
+\ so a missing family cannot make a refusal case pass.
 : BUILD-CONSTRUCT-VECTORS ( -- )
    s" construct_builds_the_bundle_from_the_variant_payload"
       s" CMV19 ( n -- cmres ) construct cmres cmok"
@@ -237,43 +204,27 @@ FRAME-CEIL MATCH-FRAMES - constant MATCH-DEPTH-MAX
       s" CMV26 ( n -- n ) construct cmres cmok MATCH cmres cmok OF ENDOF cmerr OF ENDOF ;MATCH"
       V-CERT VEC-ROW ;
 
-\ Two rows about `MATCH`'s SCRUTINEE POP, which is the walk that takes the
-\ scrutinee's whole width-expanded bundle off the row before any branch starts
-\ (`MATCH-SCRUT?`, src/core/checker.f). Nothing else here reaches it, because
-\ every other family in this file is two cells wide - one payload slot and the
-\ tag - and two decisions only show up above that.
-\
-\ The families the two rows use are `cmwide`, whose variants carry TWO cells
-\ each so its bundle is three, and `cmtwin`, which has the same width, the same
-\ variant count and the same payloads and only a different identity. The two
-\ programs are then the same text with the family token and the variant names
-\ changed, and their verdicts differ:
-\
-\   - the first pops a three-cell bundle whole and certifies, so a walk that
+\ Two rows about `MATCH`'s scrutinee pop, the walk that takes the scrutinee's
+\ whole width-expanded bundle off the row before any branch (`MATCH-SCRUT?`,
+\ src/core/checker.f). Every other family here is two cells wide, and both
+\ decisions show only above that. `cmwide` variants carry two cells (a
+\ three-cell bundle); `cmtwin` has the same width, variant count and payloads
+\ and a different identity. The two texts differ only in the family token and
+\ variant names:
+\   - the first pops a three-cell bundle whole and certifies; a walk that
 \     stopped short would leave the rest of the bundle on the row and fail it;
-\   - the second names a family of exactly the same width, and is REFUSED. A
-\     pop that compared cell counts and not the family id would certify it,
-\     which is why same-width is the sharp case rather than merely a different
-\     family.
+\   - the second names the same-width family and is refused; a pop that
+\     compared cell counts, not the family id, would certify it.
+\ Both families are in the signature because a `MATCH` family token resolves as
+\ a signature type name does (`TFAM-MATCH-FAM`, src/core/type-family.f).
 \
-\ Both families are named in the signature because a `MATCH` family token
-\ resolves the way a signature type name does (`TFAM-MATCH-FAM`,
-\ src/core/type-family.f); carrying `cmtwin` on the row underneath is how the
-\ second row gets to name it at all.
-\
-\ Measured, by mutating the shipped checker, rebuilding the fixpoint and
-\ rerunning this gate; the checker was restored byte-for-byte after each.
-\
-\   - dropping the family test from `MATCH-SCRUT-CELL?` turns the second row
-\     from a refusal into a certification, and it is the ONLY row that moves;
-\   - walking a three-cell bundle as two turns the first row from a
-\     certification into a refusal, and it is the only row that moves;
-\   - walking EVERY bundle as two never reaches this gate at all: the fixpoint
-\     self-check refuses the build, because `FIND-EXECUTABLE-IN-PATH`
-\     (src/lib/process-env.f) matches an `option` whose payload is itself a
-\     multi-cell layout and stops certifying. The shipped library depends on
-\     this walk, which is why the second mutation above has to name a width
-\     nothing in `src/lib/` uses.
+\ Measured by mutating the checker, rebuilding the fixpoint and rerunning this
+\ gate: dropping the family test from `MATCH-SCRUT-CELL?` moves only the second
+\ row (to certified); walking a three-cell bundle as two moves only the first
+\ (to refused); walking every bundle as two fails the fixpoint self-check,
+\ because `FIND-EXECUTABLE-IN-PATH` (src/lib/process-env.f) matches an `option`
+\ whose payload is a multi-cell layout, so the second mutation names a width
+\ nothing in `src/lib/` uses.
 : BUILD-SCRUTINEE-VECTORS ( -- )
    s" a_multi_cell_bundle_is_popped_whole"
       s" CMV27 ( cmtwin cmwide -- cmtwin n ) MATCH cmwide cmwa OF CHECKER-MODEL-CASES:DROP-N ENDOF cmwb OF CHECKER-MODEL-CASES:DROP-N ENDOF ;MATCH"
@@ -282,33 +233,25 @@ FRAME-CEIL MATCH-FRAMES - constant MATCH-DEPTH-MAX
       s" CMV28 ( cmtwin cmwide -- cmtwin n ) MATCH cmtwin cmta OF CHECKER-MODEL-CASES:DROP-N ENDOF cmtb OF CHECKER-MODEL-CASES:DROP-N ENDOF ;MATCH"
       V-REJECT VEC-ROW ;
 
-\ Six rows about rigid host-allocation identities, which nothing else here
-\ reaches. An identity is minted at a CALL SITE (`E-I-AK`, src/core/checker.f),
-\ once per template slot per instantiation, from the counter its domain owns.
-\ The rows come in three pairs and each pair turns on one thing:
-\
-\   - one call against two. `MK-REGION-PAIR` names one slot twice, so its two
-\     outputs carry ONE identity and the consumer certifies; two calls to
-\     `MK-REGION` are two allocations, the counter has advanced in between, and
-\     the same consumer is refused. A counter that restarted, or that handed
-\     out its value without advancing, would certify the second row;
-\   - two domains at the same number. `MK-REGION` and `MK-GEN` are each the
-\     FIRST mint of their own domain in that check, so both ids are 1 and the
-\     row is still refused. This is the sharp one: a comparison that looked at
-\     the number alone would certify it;
-\   - a template slot against an ordinary atom token. A `fresh-*` name in the
-\     candidate's OWN signature is the place an identity would be minted and
-\     never an identity, so naming one on both sides is refused; a `mask-*`
-\     token is an ordinary atom whose whole identity is its spelling, so the
-\     same shape certifies and differing spellings are refused.
-\
-\ Measured, by mutating the shipped checker, rebuilding the fixpoint and
-\ rerunning this gate; the checker was restored byte-for-byte after each.
-\ Dropping `ATOM-OK?`'s name comparison turns the two-domain row and the
-\ differing-spelling row from refusals into certifications and moves nothing
-\ else. Making a per-domain counter hand out its value without advancing turns
-\ the two-allocation row from a refusal into a certification and moves nothing
-\ else.
+\ Six rows about rigid host-allocation identities. An identity is minted at a
+\ call site (`E-I-AK`, src/core/checker.f), once per template slot per
+\ instantiation, from the counter its domain owns. Three pairs:
+\   - one call against two: `MK-REGION-PAIR` names one slot twice, so its two
+\     outputs carry one identity and the consumer certifies; two `MK-REGION`
+\     calls are two allocations and the same consumer is refused. A counter
+\     that restarted or did not advance would certify the second row;
+\   - two domains at the same number: `MK-REGION` and `MK-GEN` each mint first
+\     in their own domain, so both ids are 1 and the row is still refused; a
+\     comparison of the number alone would certify it;
+\   - a template slot against an atom token: a `fresh-*` name in the
+\     candidate's own signature is where an identity would be minted, never an
+\     identity, so naming one on both sides is refused; a `mask-*` token is an
+\     atom whose identity is its spelling, so the same shape certifies and
+\     differing spellings are refused.
+\ Measured by mutating the checker, rebuilding the fixpoint and rerunning this
+\ gate: dropping `ATOM-OK?`'s name comparison moves only the two-domain and
+\ differing-spelling rows (to certified); a per-domain counter that does not
+\ advance moves only the two-allocation row (to certified).
 : BUILD-ATOM-VECTORS ( -- )
    s" one_call_hands_both_its_outputs_one_identity"
       s" CMV29 ( -- ) CHECKER-MODEL-CASES:MK-REGION-PAIR CHECKER-MODEL-CASES:SAME-ID"
@@ -537,8 +480,6 @@ FRAME-CEIL MATCH-FRAMES - constant MATCH-DEPTH-MAX
 BUILD-VECTORS
 
 public
-
-\ ---- what the gate reads -----------------------------------------------------
 
 : VECTORS ( -- n )      VEC-N @ ;
 : VEC-NAME$ ( n -- ptr u8 n )    VEC-NAME swap VEC-N @ COL@ STR$ ;

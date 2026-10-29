@@ -1,23 +1,8 @@
-\ input-underflow-refusals.f - the rejected programs for "a definition may not
-\ consume below its declared inputs" (dot habu-name-an-input-45ee675e).
-\
-\ WHAT WAS WRONG. A call that took more cells than the signature left was
-\ refused at the NEXT token and given no reason at all:
-\ `: UFC ( n -- ) drop ;  : G ( -- n ) UFC 0 ;` answered `habu: in g: at '0'`
-\ and stopped there. The call itself never failed -- the declared base is an
-\ open row, so the step unified by binding it and checking carried on with a
-\ stack that had grown under the definition's feet. Only CHECK-NO-BORROW, at
-\ the boundary, noticed, by which time the pin sat on whatever token ran last.
-\
-\ WHAT IS PINNED HERE. The refusal names the token that consumes, and says how
-\ far short it was: both counts, in the reason. The controls are the other half
-\ of the rule -- a call that is short AND mistyped keeps its own mismatch
-\ (naming the type is the better answer there, and that message must not move),
-\ and a body that spends exactly what it declared still certifies.
-\
-\ These run against the live engine's own checker through `evaluate-closed`,
-\ the interpreter `bin/hb --load` puts every definition through; a refusal is a
-\ throw out of the compile, not a value.
+\ input-underflow-refusals.f - rejected programs for "a definition may not
+\ consume below its declared inputs". The refusal names the consuming token and
+\ both counts. Controls: a short and mistyped call keeps its own mismatch, and a
+\ body spending exactly what it declared still certifies. Cases run through
+\ `evaluate-closed`, the path `bin/hb --load` takes; a refusal is a throw.
 
 require src/lib/test.f
 require src/lib/string.f
@@ -61,19 +46,17 @@ create DIAG-BUF 8192 allot
 : LACKS? ( ptr u8 n -- )
    DIAG-BUFFER$ 2swap CONTAINS? TFALSE ;
 
-: TOKEN=? ( ptr u8 n -- bool )   \ is the diagnostic pinned to this token?
+: TOKEN=? ( ptr u8 n -- bool )
    SB-RESET
    S\" \"token\":\"" SB-APPEND  SB-APPEND  34 SB-APPEND-C
    DIAG-BUFFER$ SB$ CONTAINS? ;
 
-: TOKEN? ( ptr u8 n -- )   \ the token the diagnostic is pinned to
+: TOKEN? ( ptr u8 n -- )
    TOKEN=? TTRUE ;
 
 : NOT-TOKEN? ( ptr u8 n -- )
    TOKEN=? TFALSE ;
 
-\ Asserting the counts and not only the code is what keeps the reason honest:
-\ a shortfall that says the wrong depth is a shortfall nobody can act on.
 : SHORT-BY? ( ptr u8 n ptr u8 n -- ) {: needs:ptr needsu:n has:ptr hasu:n :}
    SB-RESET
    s" input underflow: the call takes more cells than the definition's declared inputs leave (needs " SB-APPEND
@@ -100,8 +83,8 @@ create DIAG-BUF 8192 allot
    NAMED  s" UFC2" TOKEN?  s" 2" s" 1" SHORT-BY?
    DISARM ;
 
-\ The locals case from the dot: binding the declared input into a local does not
-\ make another one appear, and the call still owns the refusal.
+\ Binding the declared input into a local does not make another one appear; the
+\ call still owns the refusal.
 : CASE-AFTER-LOCALS ( -- )
    s" a call after a locals binding is still refused at the call" T-LABEL
    ARM
@@ -132,8 +115,8 @@ create DIAG-BUF 8192 allot
 
 \ ---- the controls ------------------------------------------------------------
 
-\ Short AND mistyped: the type is the better answer, and this message predates
-\ the rule. If the underflow ever swallows it, the diagnostic got worse.
+\ Short and mistyped: the type is the better answer and must not be swallowed by
+\ the underflow.
 : CASE-MISTYPED-CALL ( -- )
    s" a short call that is also mistyped keeps its own mismatch" T-LABEL
    ARM

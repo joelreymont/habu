@@ -1,24 +1,9 @@
-\ top-row-hook-test.f - top-row hook engine regressions (dot
-\ habu-typed-top-engine-2b2e88aa, src/core/top-row.f).
-\
-\ The engine carries a sealed top-row hook cell (layout.f TOP-HOOK-CELL)
-\ installed only through the fail-closed `set-top-check` prim (habu1.f
-\ BSETTOPCHECK, mirroring BSETCHECK's DBASE<=xt<CP window). With a hook
-\ installed, every interpret-dispatch token class emits one event
-\ ( token-a token-u class flags ) through habu2.f LTOPHOOK: number literals
-\ (EM-INTERPRET-NUMBER), pushing string keywords (s"/S\" and c"/C\"), char
-\ literals (C-CHAR), interpret tick (C-TICK, LFIND flags), and found words
-\ pre-BLR (EM-INTERPRET-FIND, LFIND flags). Positives: an in-process logging
-\ hook observes the exact (class, token, flags) sequence for one deliberate
-\ token window — including min-in arity in the tick/word flags, a certified
-\ word's or a primitive's from its prims.f row —
-\ and `top-check@` round-trips the installed xt. Cold-prefix process negatives
-\ prove an invalid install dies rc 70 with the
-\ named diagnostic before any dispatch BLR, and a raw store into the sealed
-\ hook cells evaluated in an isolated fork traps ENGINE-ERROR:SEAL-VIOLATION
-\ while both band neighbors stay writable.
-\ Hook uninstalled = today's dispatch, proven by the rest of the native gate.
-\
+\ top-row-hook-test.f - the top-row hook (src/core/top-row.f). `set-top-check`
+\ installs an xt into the sealed cell layout.f TOP-HOOK-CELL, fail-closed like
+\ habu1.f BSETCHECK (DBASE<=xt<CP). Each interpret-dispatch token (number,
+\ string or char literal, tick, found word) fires one event
+\ ( token-a token-u class flags ) through habu2.f LTOPHOOK before its BLR.
+
 \ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/memory.f
 \   src/lib/fs.f src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f
 \   test/top-row-hook-test.f
@@ -62,7 +47,7 @@ variable TRH-OK-A
 : TRH-SLOT ( ptr a n -- ptr a )
    cells + ;
 
-: TRH-ROOM! ( n -- )                \ reject a window larger than the fixture log
+: TRH-ROOM! ( n -- )
    TRH-AU @ + TRH-ARENA-CAP > if E-TEST-CAPACITY throw then
    TRH-N @ TRH-CAP < 0= if E-TEST-CAPACITY throw then ;
 
@@ -86,7 +71,6 @@ variable TRH-OK-A
    s" ordinary load leaves compile-immediate preflight armed" T-LABEL
    data-base COMPILE-PREFLIGHT-CELL + @ 0 <> TTRUE ;
 
-\ The installed top-row hook: record ( class, token bytes, flags ) per event.
 : TRH-LOG ( ptr u8 n n n -- ) {: a u:n cls:n flg:n :}
    u TRH-ROOM!
    a TRH-ARENA TRH-AU @ + u BYTE-COPY
@@ -148,10 +132,8 @@ variable TRH-OK-A
    22 TOP-EV-WORD TRH-IN1-FLAGS   s" set-top-check" TRH-EV-ASSERT ;
 
 \ ---- in-process logging-hook window -------------------------------------------
-\ Every token between the install and the uninstall is deliberate: the expected
-\ log above enumerates the full event sequence, including the trailing
-\ `0 set-top-check` events (the word event fires pre-BLR, so the uninstall call
-\ itself is the last logged event).
+\ Every token up to the uninstall is in the expected log; the word event fires
+\ before the BLR, so `0 set-top-check` itself is the last event.
 T-RESET
 TRH-CAPACITY-TESTS
 TRH-PREFLIGHT-ARMED
@@ -231,7 +213,6 @@ create TRH-EMPTY 1 allot
    a TRH-IN u BYTE-COPY
    u TRH-IN-U ! ;
 
-\ Run the program as a --load file with empty stdin.
 : TRH-RUN-LOAD ( ptr u8 n -- ) {: src:ptr srcu:n :}
    TRH-CHILD src srcu FS:WRITE-ALL
    PROC-ARGV-RESET
@@ -241,7 +222,7 @@ create TRH-EMPTY 1 allot
    TRH-ERR TRH-IO-CAP >LEN  TRH-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    src srcu TRH-STORE! ;
 
-\ Run the program as a piped stdin program (no --load), the other cold-prefix path.
+\ The other cold-prefix path: the program on stdin, no --load.
 : TRH-RUN-STDIN ( ptr u8 n -- ) {: src:ptr srcu:n :}
    src srcu TRH-IN!
    PROC-ARGV-RESET

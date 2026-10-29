@@ -31,7 +31,7 @@ using AOT-WINDOW
 
 create BEFORE 32 allot
 create AFTER 32 allot
-create SHA-CTX SHA256-CTX-BYTES allot   \ this fixture's digest context
+create SHA-CTX SHA256-CTX-BYTES allot
 
 : WINDOW-CASE ( -- )
    AOT-CAPTURE:CODE-WINDOW {: first:n end:n copied:n :}

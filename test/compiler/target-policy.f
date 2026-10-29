@@ -1,20 +1,8 @@
 \ target-policy.f - acceptance suite for the compiler target/policy binding.
-\
-\ Covers src/compiler/digest.f, src/compiler/target.f,
-\ src/compiler/numeric-policy.f and src/compiler/binding.f through their public
-\ production words. Two properties are owed by the dot, and each is proved over
-\ the whole declarable domain rather than by example:
-\
-\ 1. MISSING OR ILLEGAL COMBINATIONS REJECT. A missing or role-swapped field is a
-\    CHECKER refusal - proved with candidate definitions that the checker declines
-\    to certify - so it never reaches runtime at all. An incoherent combination of
-\    present fields is a named throw, one case per rule, with the exact code.
-\
-\ 2. Every coherent contract and numerical policy in the finite domain
-\    constructs, while the binding and structural readers agree with its parts.
-\
-\ The enumeration uses independent index arithmetic and legality rules, so a
-\ widened rule changes the asserted domain size.
+\ Covers src/compiler/digest.f, target.f, numeric-policy.f and binding.f through
+\ their public words over the whole declarable domain: a missing or role-swapped
+\ field is a checker refusal, an incoherent combination a named throw with its
+\ code, and every coherent contract and policy constructs.
 
 require src/lib/test.f
 require src/lib/string.f
@@ -25,20 +13,18 @@ package CTPOL-TEST
 private
 
 \ ---- enumeration shape -------------------------------------------------------
-\ Target contracts: architecture x ABI x byte order x pointer width x every
-\ feature mask over the ten defined bits. A single flat index keeps the sweep to
-\ one loop; the projections below take it apart.
 7 constant ARCH#
 7 constant ABI#
 2 constant END#
 2 constant PTR#
 $400 constant RAW#
 ARCH# ABI# * END# * PTR# * RAW# * constant COMBO#
+\ The enumeration uses independent legality rules, so a widened rule changes the
+\ asserted domain size.
 \ All ten raw bits are enumerated independently of HAS? implication. The seven
 \ architecture and ABI rows admit 1036 coherent contracts.
 1036 constant LEGAL-CONTRACTS
 
-\ Numerical policies: the full product of the five families.
 2 constant OVF#
 2 constant FLT#
 2 constant CON#
@@ -360,8 +346,7 @@ variable N
       CTARGET:CONTRACT FUSED TRY-BIND ;] E-CBIND-CONTRACT TTHROWSQ
    [: A64-NO-FP STRICT CBIND:BIND DROP-BINDING ;] 0 TTHROWSQ ;
 
-\ A missing or role-swapped field never reaches runtime: the checker refuses to
-\ certify the definition. -1 is accepted, 0 refused.
+\ CHECK-QUIET-CANDIDATE! answers -1 certified, 0 refused.
 : STATIC-REJECTS ( -- )
    s" CTP-OK ( CTARGET:arch CTARGET:abi CTARGET:endian CTARGET:ptr-width CTARGET:features -- CTARGET:contract ) CTARGET:CONTRACT"
       CHECK-QUIET-CANDIDATE! -1 T=
@@ -433,8 +418,6 @@ variable N
    loop
    N @ LEGAL-POLICIES T= ;
 
-\ Every rejected policy index is rejected for the one stated reason, over the
-\ entire product of the five families.
 \ A quotation carries no locals, so the swept index travels through a cell.
 variable REJ-IX
 

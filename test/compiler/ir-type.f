@@ -1,25 +1,4 @@
-\ ir-type.f - checked compiler type-table tests.
-\
-\ Proves the IR-0.4 type-interning contract of src/compiler/ir/type.f:
-\ identical types intern to one identity across constructors and construction
-\ orders while distinct field sets mint distinct module-local identities;
-\ function-type list equality holds cell for cell (same lists intern, a
-\ different arity, element, or parameter/result split differs, and quotation
-\ versus code-reference kinds stay apart); the one undefined scalar
-\ combination rejects named; float formats and address spaces the bound
-\ target contract cannot represent reject at construction on the context's
-\ binding; type references validate against the same table so forward
-\ references, foreign-module references, and cross-context identities reject
-\ and cycles are impossible by construction; the staged function-type
-\ protocol fails closed on misuse and consumes a rejected stage; row and
-\ list-pool capacity reject named at the committed ceilings while the stores
-\ stay readable and duplicates still answer; readers project every
-\ constructor and reject wrong-kind reads; the render fixtures pin the
-\ deterministic spelling of every constructor independent of interning
-\ history; bypass-forged rows reject fail-closed; a frozen module serves
-\ every reader through the arena views while the retired builders reject;
-\ context teardown releases everything; and checker fixtures prove the
-\ identity family and the API stay sealed.
+\ ir-type.f - the type-interning contract of src/compiler/ir/type.f.
 
 require src/lib/test.f
 require src/lib/string.f
@@ -296,7 +275,6 @@ create CBUF 64 allot
 : XM-KEY ( -- )
    BND [: XM-KEY-BODY ;] IR-CTX:WITH-CONTEXT ;
 
-\ A type-id minted inside context A rejects as a reference in context B.
 : XC-INNER ( IR-ID:ir-type-id IR-CTX:ctx -- )
    {: id:IR-ID:ir-type-id c2:IR-CTX:ctx :}
    c2 8 8 TAB-NEW {: k2:IR-ID:ir-module-key b:IR-ARENA:arena rb:IR-ARENA:arena :}
@@ -358,8 +336,7 @@ create CBUF 64 allot
 : STG-END ( -- )
    BND [: STG-END-BODY ;] IR-CTX:WITH-CONTEXT ;
 
-\ A second begin while one is open rejects; the open stage is then consumed
-\ so later fixtures start clean.
+\ The open stage is consumed so later fixtures start clean.
 : STG-DBL-BODY ( IR-CTX:ctx -- n n )
    {: c:IR-CTX:ctx :}
    c 8 8 TAB-NEW {: key:IR-ID:ir-module-key a:IR-ARENA:arena r:IR-ARENA:arena :}
@@ -367,7 +344,6 @@ create CBUF 64 allot
    [: IR-TYPE:FN-BEGIN ;] catch
    c a r key IR-TYPE:QUOT IR-ID:TYPE-LOCAL ;
 
-\ The sixty-fifth staged parameter rejects; the open stage still ends.
 : STG-OVER-BODY ( IR-CTX:ctx -- n n )
    {: c:IR-CTX:ctx :}
    c 8 128 TAB-NEW {: key:IR-ID:ir-module-key a:IR-ARENA:arena r:IR-ARENA:arena :}
@@ -403,7 +379,6 @@ create CBUF 64 allot
    c b rb key
    c b rb key IR-TYPE:QUOT drop ;
 
-\ A rejected end consumes the stage: the next end has nothing to close.
 : STG-CONSUMED-BODY ( IR-CTX:ctx -- n n )
    {: c:IR-CTX:ctx :}
    c 8 8 TAB-NEW {: keya:IR-ID:ir-module-key a:IR-ARENA:arena ra:IR-ARENA:arena :}
@@ -624,7 +599,6 @@ create CBUF 64 allot
    BND [: RN-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE ;
 
-\ Nesting: a pointer to a code reference renders through the recursion.
 : RNN-BODY ( IR-CTX:ctx -- bool )
    {: c:IR-CTX:ctx :}
    c 16 16 TAB-NEW {: key:IR-ID:ir-module-key a:IR-ARENA:arena r:IR-ARENA:arena :}
@@ -661,8 +635,6 @@ create CBUF 64 allot
 : RAW-RUN ( -- )
    BND [: RAW-BODY ;] IR-CTX:WITH-CONTEXT ;
 
-\ The two stores are not interchangeable: the pool presented as the row
-\ table (and the reverse) is a format-tag reject, not a misread.
 : SWAP-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c 8 8 TAB-NEW {: key:IR-ID:ir-module-key a:IR-ARENA:arena r:IR-ARENA:arena :}
@@ -682,8 +654,6 @@ create CBUF 64 allot
 : SHAPE-RUN ( -- )
    BND [: SHAPE-BODY ;] IR-CTX:WITH-CONTEXT ;
 
-\ A bypass-appended row with an unknown kind code rejects at the decoder:
-\ the closed world holds even against raw-cell forgery.
 : KFORGE-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c 8 8 TAB-NEW {: key:IR-ID:ir-module-key a:IR-ARENA:arena r:IR-ARENA:arena :}
@@ -698,8 +668,7 @@ create CBUF 64 allot
 : KFORGE-RUN ( -- )
    BND [: KFORGE-BODY ;] IR-CTX:WITH-CONTEXT ;
 
-\ A bypass-appended pointer row that references itself: the strict-decrease
-\ recheck rejects before the renderer can loop.
+\ The strict-decrease recheck rejects before the renderer can loop.
 : CFORGE-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c 8 8 TAB-NEW {: key:IR-ID:ir-module-key a:IR-ARENA:arena r:IR-ARENA:arena :}
@@ -714,7 +683,6 @@ create CBUF 64 allot
 : CFORGE-RUN ( -- )
    BND [: CFORGE-BODY ;] IR-CTX:WITH-CONTEXT ;
 
-\ A bypass-appended function row whose pool window crosses the live pool.
 : SFORGE-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c 8 8 TAB-NEW {: key:IR-ID:ir-module-key a:IR-ARENA:arena r:IR-ARENA:arena :}
@@ -832,9 +800,8 @@ create CBUF 64 allot
    s" a type table is dead after its context ends" T-LABEL
    [: TD-READ ;] E-IR-ARENA-STALE TTHROWSQ ;
 
-\ A frozen view that outlives its context. The frozen readers resolve the
-\ registry once per call now, so the resolution itself has to refuse a row the
-\ context's teardown retired - the reader grants no read the view had lost.
+\ The frozen readers resolve the registry on every call, so the resolution must
+\ refuse a row the context's teardown retired.
 : TD-VIEW-ESC-BODY ( IR-CTX:ctx -- IR-ARENA:view )
    {: c:IR-CTX:ctx :}
    c 8 8 TAB-NEW {: key:IR-ID:ir-module-key a:IR-ARENA:arena r:IR-ARENA:arena :}

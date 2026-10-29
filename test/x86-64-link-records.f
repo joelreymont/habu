@@ -1,67 +1,8 @@
-\ x86-64-link-records.f - src/habu/link-x64.f lays a captured window out for an
-\ x86-64 image and links it: the kernel's records and the window's at their final
-\ addresses, every routine copied from the capture's shadow to a code slot with
-\ each of its sites resolved, wids rebased from the host's window to the image's
-\ numbering, the protected-wid bitmap, the name index the writer builds, and the
-\ image's xt for each declared code cell.
-\
-\ WHAT IS DRIVEN. A small window compiled at tier 1 with an x86-64 shadow open,
-\ as test/aot-shadow-capture.f compiles its own: a package, a leaf, a caller, a
-\ `does>` definer, a word whose name is past sixteen bytes, calls to kernel
-\ bodies, a code literal naming a window word, a quotation, a string literal in
-\ the window's DATA, a tail call, two declared code cells (a window word's xt
-\ and a kernel body's), and the package's public wordlist protected. Then the
-\ real capture and the shadow reader, the x86-64 kernel's rows emitted into a
-\ stream by test/x86-64-boot-harness.f, and X64LINK:LAYOUT over both, as the
-\ image writer runs it before the stream links.
-\
-\ WHAT IS ASKED. Which record lies at each image index; that each code record
-\ enters its own routine's bytes on a code slot and a does> companion enters at
-\ its clause; a long name's bytes in the code band; a kernel body's record and
-\ its min-in; each wid against the host's own, rebased; the bitmap bit; one
-\ index slot per record. And every site, read back from the laid bytes and never
-\ from the linker's placement: the instruction at the site's place in its
-\ routine is decoded, and where it lands is held against the record laid for
-\ the word it names, the kernel's own entry label for a kernel body, the
-\ capture's bytes of the routine it lands on, the offset of the string the host
-\ holds, and the function offset the capture carries.
-\
-\ THE INDEX IS READ BY THE KERNEL. The stream the kernel's rows open becomes the
-\ image hb-x64-link-index: the writer's records at the region, its code band,
-\ the record count, and its index at INDEX-VA, which HIDXP-CELL names. There the
-\ kernel's xref-search-wl, whose probe is FIND-HELPER, finds every record by its
-\ own name and wordlist, finds a name folded, and misses a name in another
-\ wordlist and an absent one. The image exits 0 when every lookup held; it runs
-\ on an x86-64 host.
-\
-\ THE INDEX IS MEASURED DETERMINISTIC. A child built with one record, one
-\ wordlist and one DATA cell more ahead of the window lays out the same bytes:
-\ records, linked code band, bitmap and index, by digest.
-\
-\ WHAT IS REFUSED. A capture the layout cannot place or link, by name, each in a
-\ child because a refusal ends the process before the layout returns: a call to
-\ a window word with no x86-64 routine (a tier-0 word), a call and a code cell
-\ naming a word of the engine's own prefix no kernel body carries, and five
-\ forged rows: a site naming the package row, the same in a `does>` definer's
-\ routine, which the refusal names by the definer, a code cell whose xt row is
-\ gone, a code cell whose xt row names the package row, and a protected-wid row
-\ outside the window. The capture refuses calls to tier-0 and retired words
-\ before any layout, because a reached shadow target must have a native
-\ routine. A declared cell holding a quotation's entry instead links to its
-\ anonymous routine. A live emitted
-\ private HELPER beside its public USER ships with its private WID, links, and
-\ runs as USER(7)=22 on a Linux x86-64 host. A public EXPORT alias of a live
-\ private body ships both names over one routine and lays out. These two and the
-\ quotation cell complete in one child, the linked one, whose window has all three.
-\
-\ LOAD ORDER. The x86-64 writer first sizes its shared image buffer under
-\ `using X64CODE`; the ARM64 code layer then supplies the capture budget.
-\
-\ Registered as `SUITE x86-64-link-records`. Run standalone from the repository
-\ root: bin/hb --load test/x86-64-link-records.f
-\ A child: bin/hb --load test/x86-64-link-records.f -- MODE, MODE one of shift
-\ stray linked callee retired wid unresolved cellname pkgsite doessite xtless
-\ pkgcell
+\ x86-64-link-records.f - src/habu/link-x64.f lays a captured x86-64 window out
+\ and links it: records at their final addresses, routines copied from the
+\ shadow to code slots with every site resolved, wids rebased to the image's
+\ numbering, the protected-wid bitmap, the name index and each declared code
+\ cell's xt.
 
 package X64LT
 public
@@ -74,6 +15,9 @@ require src/lib/string.f
 
 package X64LT
 public
+\ Registered as `SUITE x86-64-link-records`. A child: bin/hb --load
+\ test/x86-64-link-records.f -- MODE, MODE one of shift stray linked callee
+\ retired wid unresolved cellname pkgsite doessite xtless pkgcell
 : MODE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    SCRIPT-ARGC 0 > if 0 SCRIPT-ARGV$ a u STR= exit then
    false ;
@@ -94,7 +38,6 @@ variable IMAGE-PATH-U
 : SHIFT$ ( -- ptr u8 n )
    s" shift" MODE? if s" variable SHIFT-CELL wordlist drop" exit then
    s" " ;
-\ What a refusal child adds to the window.
 : EXTRA$ ( -- ptr u8 n )
    s" stripimage" MODE? if
       s" private : HELPER ( n -- n ) 3 * ; public : USER ( n -- n ) HELPER 1+ ; : IMAGE-ENTRY ( -- ) 6 USER 19 = if 42 . else 99 . then ; : IMAGE-ENTRY! ( -- ) ['] IMAGE-ENTRY data-base APP-ENTRY:XT-CELL + xt! ; IMAGE-ENTRY!"
@@ -117,8 +60,9 @@ variable IMAGE-PATH-U
 SHIFT$ evaluate
 ;package
 
-\ The image mode exercises the complete source writer. It must load before
-\ the ARM64 code layer used by the capture fixture.
+\ tools/native-emit-x64.f, the image modes' writer, sizes the shared image
+\ buffer under `using X64CODE`, so it loads before the ARM64 code layer that
+\ sets the capture budget.
 require tools/native-emit-x64.f
 require test/x86-64-boot-harness.f
 require src/lib/fs-mutate.f
@@ -148,6 +92,8 @@ package X64LT
 public
 : OPEN-X64 ( -- ) X64ABI:BINDING NSHADOW:OPEN ;
 ;package
+\ The window is compiled as test/aot-shadow-capture.f compiles its own; the
+\ kernel's rows come from test/x86-64-boot-harness.f.
 X64LT:OPEN-X64
 DATA-START ADDRESS-CELLS:KEEP-BELOW
 AOT-ARM:WINDOW-OPEN
@@ -181,7 +127,6 @@ AOT-ARM:WINDOW-CLOSE
 package X64LT
 using AOT-BUF
 
-\ ---- the window, as the capture numbers it ----------------------------------
 : WIDX ( ptr u8 n -- n ) XREF-FIND-INDEX AOT-ARM:R0 @ - ;
 : W-LEAF ( -- n ) s" X64LT-WIN:LEAF" WIDX ;
 : W-CALLER ( -- n ) s" X64LT-WIN:CALLER" WIDX ;
@@ -197,7 +142,6 @@ using AOT-BUF
 : W-HELPER ( -- n ) s" HELPER" SHIPPED ;
 : W-USER ( -- n ) s" USER" SHIPPED ;
 
-\ ---- the layout --------------------------------------------------------------
 : IMG ( n -- n ) X64LINK:PRIMS + ;
 : RF@ ( n n -- n ) {: k:n f:n :} X64LINK:DICT$ drop k DREC * + f + LE:U64@ ;
 : NAME$ ( n -- ptr u8 n ) X64LINK:REC-NAME$ ;
@@ -205,7 +149,6 @@ using AOT-BUF
 : SH@ ( n n -- n ) {: r:n f:n :}
    AOT-SHADOW:REC-BUF@ r AOT-SHADOW:REC-ROW * + f + LE:U32@ ;
 
-\ The shadow row of window record w.
 : ROW-OF ( n -- n ) {: w:n :}
    -1
    AOT-SHADOW:REC-N @ 0 ?do i 0 SH@ w = if drop i leave then loop ;
@@ -225,14 +168,12 @@ using AOT-BUF
    0
    HIDX-SLOTS 0 ?do X64LINK:INDEX$ drop i 4 * + LE:U32@ 0<> if 1+ then loop ;
 
-\ ---- the capture and the kernel ------------------------------------------------
 : CAPTURE ( -- )
    PRE-R @ PRE-D @ AOT-CAPTURE:PRELUDE-MARK
    AOT-ARM:WINDOW$ AOT-CAPTURE:TARGET-CAPTURE ;
 
 : KERNEL ( -- ) X64HARNESS:INIT  false X64HARNESS:BOOT-OPEN, ;
 
-\ ---- the cases -----------------------------------------------------------------
 : RECORDS-CASE ( -- )
    s" the image dictionary is the kernel's records, then the window's in capture order" T-LABEL
    AOT-REC-N @  AOT-ARM:R1 @ AOT-ARM:R0 @ -  T=
@@ -302,10 +243,9 @@ using AOT-BUF
    s" the writer's index holds one slot for each record" T-LABEL
    SLOTS-USED X64LINK:RECORDS T= ;
 
-\ ---- the sites, read back from the laid bytes ----------------------------------
-\ Nothing here asks the linker where it put a routine: a site's address comes from
-\ its routine's laid record and the capture's own rows, and where its instruction
-\ lands comes from decoding the image's bytes there.
+\ A site's address comes from its routine's laid record and the capture's rows,
+\ and where it lands from decoding the image's bytes there, never from the
+\ linker's placement.
 : W-TICK ( -- n ) s" X64LT-WIN:TICK" WIDX ;
 : W-QUOT ( -- n ) s" X64LT-WIN:QUOT" WIDX ;
 : W-GREET ( -- n ) s" X64LT-WIN:GREET" WIDX ;
@@ -320,26 +260,22 @@ using AOT-BUF
 
 : W-TAILER ( -- n ) s" X64LT-WIN:TAILER" WIDX ;
 : ENTRY ( n -- n ) 0 RF@ ;
-\ A kernel body's entry: its first label, by the kernel's own name lookup.
 : KENTRY ( ptr u8 n -- n ) X64KERNEL:ENTRY-LABEL X64CODE:LABEL-AT X64LINK:TEXT-VA + ;
 
-\ The shadow row whose emission holds shadow code byte n: the first, so a does>
-\ definer's and not its companion's.
+\ The first shadow row holding shadow code byte n: a does> definer's, not its
+\ companion's.
 : HOLDER ( n -- n ) {: at:n :}
    -1
    AOT-SHADOW:REC-N @ 0 ?do
       at i 4 SH@ >=  at i 4 SH@ i 8 SH@ + < and if drop i leave then
    loop ;
 
-\ Where row r's emission starts in the image, from its record's laid entry.
 : START-VA ( n -- n ) {: r:n :} r 0 SH@ IMG ENTRY  r 12 SH@ - ;
 
-\ Where site s lies in the image.
 : SITE-VA ( n -- n ) {: s:n :}
    s 0 SITE@ HOLDER {: r:n :}
    r START-VA  s 0 SITE@ r 4 SH@ - + ;
 
-\ The first site of `kind` in window word w's routine.
 : SITE-IN ( n n -- n ) {: w:n kind:n :}
    w ROW-OF {: r:n :}
    -1
@@ -355,10 +291,9 @@ using AOT-BUF
 : MOVABS? ( n -- bool ) {: va:n :}
    va BYTE@ $FE and $48 =  va 1+ BYTE@ $F8 and $B8 = and ;
 : IMM@ ( n -- n ) 2 + BAND LE:U64@ ;
-\ What the capture left in a MOVABS site's immediate.
 : CAPTURED-IMM ( n -- n ) {: s:n :} AOT-SHADOW:CODE-BUF@ s 0 SITE@ + 2 + LE:U64@ ;
 
-\ The bytes at va are LEAF's routine as the capture compiled it: it has no site.
+\ LEAF has no site, so its laid bytes equal the capture's.
 : ON-LEAF ( n -- ) {: va:n :}
    W-LEAF ROW-OF {: r:n :}
    va BAND r 8 SH@  AOT-SHADOW:CODE-BUF@ r 4 SH@ + r 8 SH@  T$= ;
@@ -389,9 +324,6 @@ using AOT-BUF
    va IMM@ W-LEAF IMG ENTRY T=
    va IMM@ ON-LEAF ;
 
-\ Every site naming a word of the engine's own prefix, `create` and `,` in the
-\ definer with the does-patch its clause needs, and `.`, is a call that lands on
-\ the entry of the kernel body that name registers.
 : NAMED-OK? ( n -- bool ) {: s:n :}
    s 8 SITE@ SITE-TARGET-MASK and POOL$ KENTRY {: want:n :}
    s SITE-VA {: va:n :}
@@ -504,11 +436,10 @@ using AOT-BUF
    off W-LEAF IMG ENTRY X64LINK:CODE-VA - T=
    raw W-LEAF IMG 8 RF@ T= ;
 
-\ ---- the private image, booted by the kernel -----------------------------------
-\ The stream KERNEL opened becomes an image: the writer's records at the region
-\ and its code band DICT-SIZE past them, where the long names lie; the count,
-\ through ndict!; then the writer's index at INDEX-VA, which HIDXP-CELL names
-\ from there on.
+\ The code band lies DICT-SIZE past the records and holds the long names. The
+\ index image exits 0 when every lookup held; it runs on an x86-64 host.
+\ xref-search-wl folds case and keys by wordlist: DUP finds dup, LEAF in
+\ wordlist 0 misses.
 : STAGE ( ptr u8 n n -- ) {: a:ptr u:n off:n :}
    u 0 ?do  a i + LE:U64@ off i + X64HARNESS:REGION!,  CELL +loop ;
 
@@ -524,8 +455,8 @@ using AOT-BUF
    a u X64HARNESS:PUSH-TEXT,  w X64HARNESS:PUSH,
    s" xref-search-wl" X64HARNESS:CALL-ROW, ;
 
-\ Or into the cell under it how far the lookup of record k by its own name and
-\ wordlist lands from record k: nothing when it finds it.
+\ Ors into the cell under it the distance from record k to where the lookup of
+\ its own name and wordlist lands: zero when it finds it.
 : LOOKUP, ( n -- ) {: k:n :}
    k NAME$ k X64KERNEL:REC-WID RF@ XREF,
    k DREC * X64HARNESS:PUSH-REGION,
@@ -575,7 +506,6 @@ using X64RT
    X64HARNESS:EXPECT-BALANCED,
    s" hb-x64-link-private" TMP-PATH X64HARNESS:BOOT-CLOSE, ;
 
-\ ---- the children --------------------------------------------------------------
 create SHA-CTX SHA256-CTX-BYTES allot
 create DIGEST 32 allot
 create HEX 64 allot
@@ -584,7 +514,6 @@ create LINE 96 allot    variable LINE-U
 : FEED ( ptr u8 n -- ) {: a:ptr u:n :} SHA-CTX a u SHA256-FEED ;
 : HEX-DIGIT ( n -- n ) dup 10 < if $30 + exit then $57 + ;
 
-\ What the layout wrote, as one digest in hex.
 : LAYOUT-HEX ( -- ptr u8 n )
    SHA-CTX SHA256-BEGIN
    X64LINK:DICT$ FEED  X64LINK:CODE$ FEED  X64LINK:BITS$ FEED  X64LINK:INDEX$ FEED
@@ -643,8 +572,11 @@ variable RC
    RC @ 0 T=
    same TTRUE ;
 
-\ The child exits the layout's refusal status, naming `w` on stdout, where the
-\ capture's refusals name what they refuse, and dying with `m`.
+\ A refusal ends the process before the layout returns, so each refusal runs in
+\ a child. The child exits 74 naming `w` on stdout, as the capture's refusals
+\ name what they refuse, and dies with `m`. The capture refuses calls to tier-0
+\ and retired words before any layout: a reached shadow target must have a
+\ native routine.
 : REFUSED ( ptr u8 n ptr u8 n ptr u8 n -- ) {: mode:ptr modeu:n w:ptr wu:n m:ptr mu:n :}
    mode modeu RUN-CHILD
    ERR ERR-U @ m mu CONTAINS?  OUT OUT-U @ w wu CONTAINS? and {: said:bool :}
@@ -760,8 +692,8 @@ variable RC
    s" xtless" s" holds window code no shipped record enters"
    s" x64link: a code cell targets code no shipped record enters" REFUSED ;
 
-\ The pkgsite and doessite children point a site, CALLER's call or the first
-\ call in CONST's routine, at row 0, the package.
+\ Row 0 is the package, which has no x86-64 routine; pkgsite forges CALLER's
+\ call to it, doessite the first call in CONST's routine.
 : FORGE-SITE ( n -- ) {: s:n :}
    SITE-REC-TAG AOT-SHADOW:SITE-BUF@ s AOT-SHADOW:SITE-ROW * + 8 + LE:U32! ;
 
@@ -771,7 +703,6 @@ variable RC
 \ The wid child moves the window's one protected row to its span.
 : FORGE-WID ( -- ) AOT-WID-SPAN @ AOT-PWIN-BUF@ LE:U32! ;
 
-\ The children that end in a refusal, before the layout returns.
 : REFUSAL? ( -- bool )
    s" stray" MODE?  s" callee" MODE? or  s" retired" MODE? or
    s" wid" MODE? or  s" unresolved" MODE? or  s" xtless" MODE? or

@@ -88,12 +88,11 @@ TASK:MIN-STACK TASK:TASK SERIAL-WORKER
 : WAIT-DONE ( ptr n -- ) {: worker:ptr :}
    begin worker TASK:DONE? 0= while TASK:PAUSE repeat ;
 
-\ A transfer that answered timeout met its 2000 ms deadline, which is no failure
-\ of the exchange (docs/gate.md
-\ "How a suite runs, and what that demands of its files"). A task asserts
-\ nothing: it ends on E-PROC-TIMEOUT, which the task runtime records, and RUN
-\ reads it once both have ended. A throw code cannot cross the process boundary:
-\ the child names the wait and exits PROC-TIMEOUT-RC.
+\ A transfer answering timeout met its 2000 ms deadline, which is not a failure
+\ of the exchange (docs/gate.md "How a suite runs, and what that demands of its
+\ files"). A task asserts nothing: it ends on E-PROC-TIMEOUT, which the task
+\ runtime records, and RUN reads it once both have ended. A throw code cannot
+\ cross the process boundary, so the child exits PROC-TIMEOUT-RC.
 : DEADLINE ( -- )
    UDP-WORKER TASK:THROW@ E-PROC-TIMEOUT = if
       s" host-io-image-subject UDP-RUN: a deadline expired" PROC-TIMEOUT-RC die

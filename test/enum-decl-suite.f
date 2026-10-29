@@ -1,25 +1,9 @@
-\ enum-decl-suite.f — behavior + rollback suite for the ENUM typed declaration
-\ front end (src/core/enum-decl.f, package ENUM-DECL, reached as ENUM-DECL:ED-RUN;
-\ dot habu-enum-parse-full-39c0dc1b). A WHITEBOX-SUITE row, like
-\ test/structure-decl-suite.f: the registry probes are engine internals, which
-\ the unsealed engine binds by their recorded rows. The gate runs it on that
-\ engine, which test/whitebox-engine.f builds:
-\     <unsealed engine> --load test/enum-decl-suite.f
-\ Proves: full and compact declarations generate typed constructors; POLICY
-\ and DERIVE headers are accepted before compact variants and reach the family
-\ record; every reject anchor (mixed mode,
-\ parameterized compact form, late compact header, compact positional payload,
-\ missing ;VARIANT / ;ENUM, malformed parameter list, empty enum,
-\ reserved / case family name, duplicate variant, every reserved variant-name
-\ category, package-scoped family collisions, and the field record's own dup /
-\ reserved / case / schema gate)
-\ fires at the offending token; a mid-declaration reject leaves every
-\ registry cursor byte-identical to the pre-declaration baseline.
-\ A failure prints F<index> + detail; T-REPORT exits 1.
-\
-\ ENUM-DECL:ED-RUN is the front-end entry: the global ENUM token still belongs to
-\ the legacy sumtype.f definer until the hard cutover, so this suite drives the
-\ new front end through its package-qualified entry rather than a global keyword.
+\ enum-decl-suite.f - behavior and rollback suite for the ENUM declaration front
+\ end (src/core/enum-decl.f, package ENUM-DECL), driven through
+\ ENUM-DECL:ED-RUN, which the global `ENUM` keyword calls: `ENUM` and ED-RUN
+\ rows run one path. A WHITEBOX-SUITE row: its registry probes are engine
+\ internals, bound only on the unsealed engine test/whitebox-engine.f builds
+\ (`<unsealed engine> --load <this file>`).
 
 require src/habu/verify-source.f   \ VERIFY:CANDIDATE-IN-SCOPE: the certify path's verdict
 require test/replay-scope.f         \ REPLAY-SCOPE: the check tool's replay scope
@@ -29,26 +13,18 @@ require src/lib/test.f
 using SCHEMA-REG
 using TFAM
 
-\ Every reject below now renders a declaration diagnostic. Capture it from the
-\ start so the suite's own output stays clean; section 22 turns the capture into
-\ assertions about the exact rendered line.
+\ Capture every reject's declaration diagnostic from the start; section 22
+\ asserts the rendered lines.
 DECL-DIAG:PROSE
 
 T-RESET
 
-\ --- boundary shims: the ENUM-DECL:ED-RUN entry is named in texts run by
-\ evaluate-closed, at top level or under TEST-EVAL:RC's catch, and some of the
-\ sealed pre-hook registry / schema reflection words are reached through named
-\ forwarders (the same idiom test/structure-decl-suite.f uses).
-\
-\ NO TRUSTED: BODY. This suite is a WHITEBOX-SUITE, so it runs on an engine
-\ whose seal never ran, where a checked body binds the real row of each registry
-\ cell and TFAM / SUMV / SCHEMA / LAY accessor it names: TFAMN@, SCHN@, SUMVN@
-\ and the two save/restore blocks are plain checked definitions, and the cases
-\ call the accessors themselves. A checked body evaluates a text with
-\ evaluate-closed (plain `evaluate` there is E-UNSAFE). The `catch` adapters are
-\ checked: each runs its word on copies of the inputs, because a throw restores
-\ the depth catch began with, and drops both so a refusal leaves only its code.
+\ --- boundary shims: ED-RUN texts run through evaluate-closed, at top level or
+\ under TEST-EVAL:RC's catch (plain `evaluate` in a checked body is E-UNSAFE).
+\ No TRUSTED: body: on the unsealed engine a checked body binds the real row of
+\ each registry accessor it names. Each `catch` adapter runs its word on copies
+\ of the inputs (a throw restores the depth catch began with) and drops both,
+\ so a refusal leaves only its code.
 : FAMID ( ptr u8 n -- n ) TFAM-ACTIVE-PKG$ 2swap TFAM-SIG-RESOLVE drop ;
 : F-VAR-START ( n -- n ) TFAM-VAR-START@ ;
 : F-VAR-COUNT ( n -- n ) TFAM-VAR-COUNT@ ;
@@ -85,7 +61,7 @@ variable Q-TOK  variable Q-FAM  variable Q-VID  variable Q-IDX
 : PAYLOAD-SCHEMA-RC ( n n n n -- n ) Q-IDX ! Q! ['] Q-SCHEMA catch ;
 : PAYLOAD-WIDTH-RC ( n n n n -- n ) Q-IDX ! Q! ['] Q-WIDTH catch ;
 
-\ The production parser and declaration runner stay unchanged.  These private
+\ The production parser and declaration runner stay unchanged. These private
 \ drivers pause only the test body between DRIVE and the runner's prepares,
 \ while declaration events and field rows are still provisional.
 package ENUM-DECL
@@ -151,28 +127,22 @@ package ENUM-DECL
 \ A declared family name is reserved in the variant-name rejects below.
 s" ENUM-DECL:ED-RUN color red green blue ;ENUM" evaluate-closed
 
-\ ---------------------------------------------------------------------------
 \ 4. A full declaration with `<a>` resolves FIELD v a as parameter 0, so the
 \    field commits (no unresolved reject).
-\ ---------------------------------------------------------------------------
 TFAMN@ FID !
 s" ENUM-DECL:ED-RUN boxe<a> VARIANT hold FIELD v a ;VARIANT ;ENUM" evaluate-closed
 TFAMN@ FID @ 1 + T=                                   \ family registered (param resolved, no rollback)
 s" boxe" FAMID TFAM-FLD-COUNT@ 1 T=                   \ the parameter field committed
 
-\ ---------------------------------------------------------------------------
-\ 4b. The full ENUM parser consumes the shared declaration alphabet.  A
+\ 4b. The full ENUM parser consumes the shared declaration alphabet. A
 \     maximum-arity declaration accepts g and z while f/n/r remain concrete;
 \     the exact inverse table is tested once in type-family-suite.f.
-\ ---------------------------------------------------------------------------
 s" ENUM-DECL:ED-RUN emap<a,b,c,d,e,g,h,i,j,k,l,m,o,p,q,s,t,u,v,w,x,y,z> VARIANT values FIELD pa a FIELD pb b FIELD pc c FIELD pd d FIELD pe e FIELD pg g FIELD flag f FIELD integer n FIELD real r FIELD last z ;VARIANT ;ENUM" evaluate-closed
 s" emap" FAMID TFAM-FLD-COUNT@ 10 T=                  \ every mapped/scalar field committed
 
-\ ---------------------------------------------------------------------------
 \ 4c. The production ENUM parser exposes only the current transaction's ordered
-\     payload view before publication.  An empty variant, a scalar field, and
+\     payload view before publication. An empty variant, a scalar field, and
 \     two ordered fields of widths one and two cover every public query.
-\ ---------------------------------------------------------------------------
 s" STRUCTURE epwide FIELD left n FIELD right n ;STRUCTURE" evaluate-closed
 s" epwide" FAMID PFB !
 
@@ -194,10 +164,8 @@ catch eproll VARIANT gone FIELD value n ;VARIANT ;ENUM
 7107 T=                                                \ forced body failure rolled back
 RC @ FID @ VS0 @ PAYLOAD-N-RC 7161 T=                \ rolled-back token is stale
 
-\ ---------------------------------------------------------------------------
 \ 7. Compact POLICY and DERIVE clauses use the same family owner as
 \    full mode, remain TK-ENUM, and may precede variants in either header order.
-\ ---------------------------------------------------------------------------
 DECL-EVENT:RESET
 s" ENUM-DECL:ED-RUN compact-policy POLICY packed-tag alpha ;ENUM" evaluate-closed
 s" compact-policy" FAMID TFAM-ENUM? TTRUE
@@ -235,26 +203,20 @@ s" compact-both-b" FAMID TFAM-LAYOUT-POLICY@ PACKED# T=
 s" compact-both-b" FAMID F-EQ? TTRUE
 s" compact-both-b" FAMID F-HASH? TTRUE
 
-\ ---------------------------------------------------------------------------
 \ 8. POLICY reaches the family record (full mode).
-\ ---------------------------------------------------------------------------
 DECL-EVENT:RESET
 s" ENUM-DECL:ED-RUN opt POLICY packed-tag VARIANT alpha ;VARIANT ;ENUM" evaluate-closed
 s" opt" FAMID TFAM-LAYOUT-POLICY@ PACKED# T=          \ family layout policy is packed-tag
 
-\ ---------------------------------------------------------------------------
 \ 9. DERIVE reaches the family record; two features on one clause are accepted.
-\ ---------------------------------------------------------------------------
 DECL-EVENT:RESET
 s" ENUM-DECL:ED-RUN der DERIVE eq hash VARIANT alpha ;VARIANT ;ENUM" evaluate-closed
 s" der" FAMID F-EQ? TTRUE                             \ eq derived
 s" der" FAMID F-HASH? TTRUE                           \ hash derived
 
-\ ---------------------------------------------------------------------------
 \ 10. A duplicate FIELD name inside a variant rejects through the field record
 \    (E-TFAM-DUP 7102) and the whole provisional declaration rolls back
 \    byte-identically.
-\ ---------------------------------------------------------------------------
 REG-MARK
 TYPE-FIELD:COUNT PFB !
 s" ENUM-DECL:ED-RUN dupf VARIANT alpha FIELD z n FIELD z n ;VARIANT ;ENUM" TEST-EVAL:RC 7102 T=
@@ -263,18 +225,14 @@ SCHN@ RB-SCH @ T=                                     \ schema nodes retired
 SUMVN@ RB-SUMV @ T=                                   \ variant rows retired
 TYPE-FIELD:COUNT PFB @ T=                             \ committed field rows retired
 
-\ ---------------------------------------------------------------------------
 \ 11. A duplicate variant name rejects (E-TFAM-DUP 7102 from SUMV-ADD) and the
 \     whole provisional declaration rolls back byte-identically.
-\ ---------------------------------------------------------------------------
 REG-MARK
 s" ENUM-DECL:ED-RUN dupv red red ;ENUM" TEST-EVAL:RC 7102 T=
 TFAMN@ RB-TFAM @ T=                                   \ family retired
 SUMVN@ RB-SUMV @ T=                                   \ variant rows retired
 
-\ ---------------------------------------------------------------------------
 \ 12. Grammar / mode / arity / name / field rejects, each at the offending token.
-\ ---------------------------------------------------------------------------
 s" ENUM-DECL:ED-RUN emix red VARIANT alpha ;VARIANT ;ENUM" TEST-EVAL:RC 7107 T=  \ mixed modes (block token in compact)
 s" ENUM-DECL:ED-RUN eac<a,b> red ;ENUM" TEST-EVAL:RC 7107 T=                \ parameterized compact form
 s" ENUM-DECL:ED-RUN ech red POLICY packed-tag ;ENUM" TEST-EVAL:RC 7107 T=  \ header clause after a compact variant
@@ -296,20 +254,16 @@ s" ENUM-DECL:ED-RUN euc VARIANT alpha FIELD x Q ;VARIANT ;ENUM" TEST-EVAL:RC 710
 s" ENUM-DECL:ED-RUN epa VARIANT alpha FIELD x a ;VARIANT ;ENUM" TEST-EVAL:RC 7109 T=  \ parameter outside declared arity
 s" ENUM-DECL:ED-RUN epg<a,b,c,d,e,g> VARIANT alpha FIELD x h ;VARIANT ;ENUM" TEST-EVAL:RC 7109 T=  \ parameter 6 is outside arity 6
 
-\ ---------------------------------------------------------------------------
 \ 13. A duplicate family name rejects (E-TFAM-DUP 7102 from TFAM-DECL).
-\ ---------------------------------------------------------------------------
 s" ENUM-DECL:ED-RUN twice red ;ENUM" evaluate-closed
 s" ENUM-DECL:ED-RUN twice red ;ENUM" TEST-EVAL:RC 7102 T=
 
-\ ---------------------------------------------------------------------------
 \ Compact and full declarations reject reserved variant names before publication;
 \ the compact `variant` keyword is a syntax token, while the full name position
 \ reaches the shared 7110 policy. Every failure restores all registry and
 \ field and family cursors. Family collisions are lexical: global and
 \ active-package families reserve their tails, while a family owned only by
 \ another package does not.
-\ ---------------------------------------------------------------------------
 package other-enum-name-test
 s" ENUM-DECL:ED-RUN foreign-variant member ;ENUM" evaluate-closed
 ;package
@@ -321,9 +275,8 @@ s" ENUM-DECL:ED-RUN local-variant member ;ENUM" evaluate-closed
 
 public
 
-\ REG-SAME / REJECT-SAME are the suite's shared "this reject changed nothing"
-\ proof. They are public so section 24 (control-word names) can reuse them
-\ instead of keeping a second copy of the cursor list.
+\ REG-SAME / REJECT-SAME are the shared "this reject changed nothing" proof,
+\ public so section 24 (control-word names) reuses them.
 : REG-SAME ( -- )
    TFAMN@ RB-TFAM @ T=
    TF-STR-U@ RB-STR @ T=
@@ -389,21 +342,14 @@ s" ENUM-DECL:ED-RUN ptr ready ;ENUM" 7110 REJECT-SAME
 
 ;package
 
-\ ---------------------------------------------------------------------------
 \ 20. Constructor generation. A public ENUM family with variants owns one sealed
-\     checked FAMILY:VARIANT constructor per variant, rendered, evaluated,
-\     certified and published by the constructor participant inside this
-\     declaration's own transaction (src/core/generated-declaration.f, package
-\     GENERATED-DECL-CTOR). The participant commits after DECL-EVENT has promoted
-\     this declaration's TYPE-FIELD rows past PF-COMMIT-N, so it generates from
-\     the ordinary committed provider and needs no provisional reader.
-\
-\     Both ENUM modes generate. The legacy sumtype.f definer already publishes
-\     constructors for a compact payloadless enum, so gating on the full TK-SUM
-\     mode alone would leave compact enums a parity gap the global-token cutover
-\     could never close. TK-PRODUCT is excluded: the STRUCTURE front end owns its
-\     own make/unmake generation.
-\ ---------------------------------------------------------------------------
+\     checked FAMILY:VARIANT constructor per variant, generated inside the
+\     declaration's own transaction by the constructor participant
+\     (src/core/generated-declaration.f, package GENERATED-DECL-CTOR). It
+\     commits after DECL-EVENT has promoted the TYPE-FIELD rows past
+\     PF-COMMIT-N, so it reads the committed provider. Both ENUM modes generate
+\     (the sumtype.f definer publishes constructors for a compact payloadless
+\     enum too); TK-PRODUCT is excluded: STRUCTURE generates its own.
 package enum-ctor-test
 public
 
@@ -424,11 +370,10 @@ variable CT-DICT   variable CT-CP   variable CT-FAM
 : ARM-IN-TX ( -- ) [: ARM-IN-TX-BODY ;] DECLARATION-TRANSACTION:RUN ;
 : ARM-IN-TX-RC ( -- n ) ['] ARM-IN-TX catch ;
 
-\ The committed payload arity, counted straight off the TYPE-FIELD registry
-\ rather than through SUMV-PAY-N — the reader the generator itself uses. This is
-\ the corrected observable: SV.SCH-COUNT is 0 for every ENUM-front-end variant by
-\ design, so the row count keyed (family, variant) is what a rendered
-\ constructor's input arity has to equal.
+\ The committed payload arity counted off the TYPE-FIELD registry, not through
+\ SUMV-PAY-N, the generator's own reader. SV.SCH-COUNT is 0 for every
+\ ENUM-front-end variant by design, so the (family, variant) row count is what a
+\ constructor's input arity must equal.
 : PAY-ROWS ( n n -- n ) {: fam:n vid:n :}
    0 CT-N !   0 CT-I !
    BEGIN CT-I @ TYPE-FIELD:COUNT < WHILE
@@ -442,9 +387,9 @@ variable CT-DICT   variable CT-CP   variable CT-FAM
 : DICT-SAME ( -- ) DICT-RECS CT-DICT @ T=  DICT-CODE CT-CP @ T= ;
 : DICT-MOVED ( -- ) DICT-RECS CT-DICT @ > TTRUE ;
 
-\ A generation failure must leave every registry cursor and the native dictionary
-\ byte-identical: whatever the generator had already
-\ defined is truncated with the rest of the declaration.
+\ A generation failure must leave every registry cursor and the native
+\ dictionary byte-identical: what the generator had defined is truncated with
+\ the rest of the declaration.
 : CTOR-REJECT ( ptr u8 n n -- ) {: a:ptr u:n want:n :}
    REG-MARK
    DICT-MARK
@@ -497,7 +442,7 @@ s" D2 ( -- dctor ) DCTOR:TWO" CHECK-QUIET-CANDIDATE! -1 T=
 s" D3 ( dctor -- n ) DCTOR:TAG" CHECK-QUIET-CANDIDATE! -1 T=
 s" D4 ( dctor dctor -- f ) DCTOR:EQ" CHECK-QUIET-CANDIDATE! -1 T=
 
-\ 20c. Compact-mode parity with the legacy definer: the same three variant names
+\ 20c. Compact mode: the same three variant names
 \      declared through `ENUM` and through ED-RUN produce the same derived
 \      constructor package spelling, the same declaration-order tags, and
 \      constructors that certify and reject identically.
@@ -518,10 +463,8 @@ s" P5 ( n -- lgpar ) LGPAR:RED" CHECK-QUIET-CANDIDATE! 0 T=
 s" P6 ( n -- fepar ) FEPAR:RED" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ 20d. The gate. A PRODUCT family is not owned here (STRUCTURE generates its own
-\      make/unmake), and the existing PRODUCT generation is untouched. Arming the
-\      participant with an unowned family is refused at the boundary rather than
-\      three phases later, and arming outside a declaration transaction is
-\      refused too.
+\      make/unmake). Arming the participant with an unowned family, or outside a
+\      declaration transaction, is refused at the boundary.
 s" PRODUCT prodctor FIELD a n FIELD b n ;PRODUCT" evaluate-closed
 s" prodctor" FAMID GENERATED-DECL-CTOR:OWNS? 0= TTRUE
 s" G1 ( n n -- prodctor ) PRODCTOR:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
@@ -584,14 +527,12 @@ undefine ROLLP:UNMAKE
 s" STRUCTURE rollp FIELD value n ;STRUCTURE" evaluate-closed
 s" RP-VALID ( n -- rollp ) ROLLP:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
 
-\ 20g. Arming a family whose constructors are already live is refused by name.
-\      This is the boundary that keeps a caller away from sumtype.f's
-\      TDPLAN-NAME+ duplicate guard, which answers a second plan row for a live
-\      word with E-TDECL-NAME so the declaration transaction can roll back. The
-\      check is an existence test on the variant
-\      row's recorded constructor symbol, so it is independent of the kind and
-\      visibility gate: msgctor still OWNS? its constructors, and its published
-\      words survive the refused transaction untouched.
+\ 20g. Arming a family whose constructors are already live is refused by name,
+\      keeping a caller away from sumtype.f's TDPLAN-NAME+ duplicate guard
+\      (E-TDECL-NAME on a second plan row for a live word). The check tests the
+\      variant row's recorded constructor symbol, independent of the kind and
+\      visibility gate: msgctor still OWNS? its constructors, and its words
+\      survive the refused transaction.
 s" msgctor" FAMID GENERATED-DECL-CTOR:OWNS? TTRUE      \ still an owning kind
 s" msgctor" FAMID F-VAR-START SUMV-CTOR-SYM@ 0 <> TTRUE             \ and already generated
 s" msgctor" FAMID enum-ctor-test:CT-FAM !
@@ -599,24 +540,13 @@ enum-ctor-test:ARM-IN-TX-RC 7176 T=                   \ named reject, inside a r
 DECLARATION-TRANSACTION:ACTIVE? 0= TTRUE             \ which rolled back and closed
 s" R1 ( -- msgctor ) MSGCTOR:QUIT" CHECK-QUIET-CANDIDATE! -1 T=   \ live words untouched
 s" R2 ( n n -- msgctor ) MSGCTOR:MOVE" CHECK-QUIET-CANDIDATE! -1 T=
-\ The two other ARM preconditions are held satisfied above rather than assumed:
-\ the open-transaction clause cannot be what fired, because ARM-IN-TX runs
-\ inside a live DECLARATION-TRANSACTION:RUN, and the kind clause cannot be what
-\ fired, because OWNS? is true for this same family. Deleting the
-\ already-generated clause reds this block and lets ARM reach the named
-\ collision refusal again.
+\ ARM's other two preconditions hold here: ARM-IN-TX runs inside
+\ DECLARATION-TRANSACTION:RUN, and OWNS? is true for this family. Deleting the
+\ already-generated clause reds this block.
 
-\ ---------------------------------------------------------------------------
-\ 21. POLICY packed-tag bakes the memory ABI descriptor (docs §22.2). The
-\     descriptor is a LAY registry row sized from the variant count and the
-\     payload slot width, so it can only be baked once those are bound: the
-\     legacy definer does it in sumtype.f CHECKER-DEFENUM-BODY (`fam
-\     TDECL-LAYOUT-DESC`, between TFAM-SLOTS! and the constructor publish), and
-\     the front end does it at the same point in ED-CLOSE. Before that call
-\     existed, a POLICY packed-tag ENUM through ENUM-DECL:ED-RUN recorded the
-\     policy on the family record but baked NO row, so the front end and the
-\     global token disagreed about the family's memory ABI.
-\ ---------------------------------------------------------------------------
+\ 21. POLICY packed-tag bakes the memory ABI descriptor, a LAY registry row
+\     sized from the variant count and the payload slot width: ED-CLOSE bakes it
+\     once those are bound (sumtype.f TDECL-LAYOUT-DESC).
 package enum-layout-test
 public
 
@@ -660,11 +590,9 @@ s" ENUM-DECL:ED-RUN lay-unified-def dfblu ;ENUM" evaluate-closed
 s" lay-legacy-def" FAMID enum-layout-test:NO-ROW
 s" lay-unified-def" FAMID enum-layout-test:NO-ROW
 
-\ 21c. Full mode: the descriptor is sized from the WIDEST variant, so the bake
-\      has to follow TFAM-SLOTS!. Legacy ENUM has no payload grammar, so the
-\      legacy comparison partner is SUMTYPE — the same TK-SUM kind, the same
-\      one-cell payload, the same packed policy. This pairing keeps working
-\      after the global ENUM token moves to the front end.
+\ 21c. Full mode: the descriptor is sized from the widest variant, so the bake
+\      follows TFAM-SLOTS!. The comparison partner is SUMTYPE: the same TK-SUM
+\      kind, one-cell payload and packed policy.
 SUMTYPE lay-legacy-pay POLICY packed-tag VARIANT lpnone ;VARIANT VARIANT lpone n ;VARIANT ;SUMTYPE
 s" ENUM-DECL:ED-RUN lay-unified-pay POLICY packed-tag VARIANT upnone ;VARIANT VARIANT upone FIELD x n ;VARIANT ;ENUM" evaluate-closed
 s" lay-legacy-pay" FAMID s" lay-unified-pay" FAMID enum-layout-test:PARITY
@@ -672,13 +600,12 @@ s" lay-unified-pay" FAMID 16 8 1 enum-layout-test:SHAPE   \ 8 payload bytes + 1 
 
 ;package
 
-\ 21d. A reject AFTER the bake retires the descriptor with the family. The two
-\      declarations below differ in one token — the payload type — and both reach
-\      ED-CLOSE, so both bake a row; the second is then refused at the constructor commit by
-\      the derive payload-role gate (a pointer payload has no derived equality,
-\      7119), which runs in the commit phase, well after ED-CLOSE. LAY-N is one
-\      of the marks the checker participant's savepoint carries, so the refused
-\      declaration's row goes back with its family.
+\ 21d. A reject after the bake retires the descriptor with the family. The two
+\      declarations below differ only in the payload type and both reach
+\      ED-CLOSE, so both bake a row; the second is refused at the constructor
+\      commit by the derive payload-role gate (a pointer payload has no derived
+\      equality, 7119). LAY-N is one of the marks the checker participant's
+\      savepoint carries, so the refused declaration's row goes with its family.
 REG-MARK
 s" ENUM-DECL:ED-RUN lay-keep POLICY packed-tag DERIVE eq VARIANT one FIELD p n ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
 LAY-N@ RB-LAY @ 1 + T=                                \ the accepted twin baked exactly one row
@@ -687,23 +614,12 @@ s" ENUM-DECL:ED-RUN lay-drop POLICY packed-tag DERIVE eq VARIANT one FIELD p ptr
 LAY-N@ RB-LAY @ T=                                    \ the refused twin left none
 TFAMN@ RB-TFAM @ T=
 
-\ ---------------------------------------------------------------------------
-\ 22. Reject diagnostics. Before this section existed, ED-RUN threw every code
-\     below with no message at all, while the legacy ENUM definer printed
-\     "habu: bad enum declaration 'x': <reason> at 'tok'". Both spellings now
-\     render through render.f's TDECL-DIAG, so the assertions here read the exact
-\     bytes that reach the diagnostic channel, captured through the same
-\     DIAG-BUFFER! / DIAG-BUFFER$ pair tools/check-core.f's CHK-DECL-CAPTURE and
-\     CHK-DECL-FLUSH use. That proves the channel. It is not an end-to-end run of
-\     the check tool over a unified declaration: check-core drives the legacy
-\     definers today and does not scan STRUCTURE at all, so that leg waits on the
-\     buffer-driven registration entry.
-\
-\     Each case asserts the WHOLE rendered line, not a substring: a message that
-\     named the wrong family, dropped the token, or picked a stale reason fails,
-\     and text supplied by the declaration itself cannot satisfy the assertion by
-\     appearing somewhere else in the buffer.
-\ ---------------------------------------------------------------------------
+\ 22. Reject diagnostics render through render.f's TDECL-DIAG; the assertions
+\     read the bytes captured through DIAG-BUFFER! / DIAG-BUFFER$, the pair
+\     tools/check-core.f CHK-DECL-CAPTURE and CHK-DECL-FLUSH use. This proves
+\     the channel, not a check-tool run. Each case asserts the whole rendered
+\     line, so text the declaration supplies cannot satisfy it by appearing
+\     elsewhere in the buffer.
 
 \ 22a. One case per reject code this suite pins, each rendering family + reason +
 \      token and rethrowing the exact code.
@@ -755,15 +671,14 @@ s" ENUM-DECL:ED-RUN dgkw alpha variant ;ENUM" TEST-EVAL:RC 7107 T=
 s" habu: bad enum declaration 'dgkw': block keyword in a compact enum at 'variant'"
 DECL-DIAG:HAS? TTRUE
 
-\ a terminator that never arrives anchors on the family, exactly as the legacy
-\ unterminated-declaration packet does (sumtype.f TDECL-ENUM-NOEND-BODY).
+\ a terminator that never arrives anchors on the family, as SUMTYPE's
+\ unterminated-declaration packet does (sumtype.f TDECL-NOEND-BODY).
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN dgnoend red" TEST-EVAL:RC 7107 T=
 s" habu: bad enum declaration 'dgnoend': missing ;ENUM at 'dgnoend'" DECL-DIAG:HAS? TTRUE
 
-\ 22b. Legacy / unified parity. The same malformed shape through the legacy ENUM
-\      definer and through ED-RUN produces the same code and the same message,
-\      differing only in the family name the two declarations had to be given.
+\ 22b. The same malformed shape through `ENUM` and through ED-RUN produces the
+\      same code and message, differing only in the family name.
 DECL-DIAG:PROSE
 s" ENUM dglegacy red red ;ENUM" TEST-EVAL:RC 7102 T=
 s" habu: bad enum declaration 'dglegacy': duplicate variant at 'red'" DECL-DIAG:HAS? TTRUE
@@ -961,21 +876,13 @@ DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:OFF
 
-\ ---------------------------------------------------------------------------
-\ 23. ED-REPLAY — registering an ENUM from tokens a tool already lexed.
-\
+\ 23. ED-REPLAY - registering an ENUM from tokens a tool already lexed.
 \     tools/check-core.f's nominal pass and src/habu/verify-source.f scan a file
-\     token by token and must register every family they meet, so a later
-\     signature in the same file resolves. They cannot let the front end call
-\     `parse-name` (they are not interpreting the file) and must define no word
-\     (they are reading source, not building a program). ED-REPLAY is that entry:
-\     the SAME grammar loop, validation, registry writes and reject packet as
-\     ED-RUN, reading its tokens from the caller's buffer.
-\
-\     Replay checks the generated constructor bodies and records their effects.
-\     Runtime code and dictionary entries are absent; later source calls must
-\     still resolve and check against those effects.
-\ ---------------------------------------------------------------------------
+\     token by token and must register every family they meet, without
+\     `parse-name` and without defining a word. ED-REPLAY runs ED-RUN's grammar
+\     loop, validation, registry writes and reject packet over the caller's
+\     buffer; it checks the generated constructor bodies and records their
+\     effects, with no runtime code or dictionary entries.
 package enum-replay-test
 public
 
@@ -1033,10 +940,8 @@ VS0 @ 2 + enum-ctor-test:CTOR-PKG$ s" RPCOMPACT" CORE-STR= TTRUE
 VS0 @ SUMV-CTOR-SYM@ 0 <> TTRUE
 VS0 @ 2 + SUMV-CTOR-SYM@ 0 <> TTRUE
 
-\ 23b. FULL mode replays too. The legacy CHECKER-DEFENUM this entry replaces read
-\      a compact list of bare variant names and nothing else, so a parameterized
-\      family header or a VARIANT block was unregisterable through the old
-\      consumers.
+\ 23b. Full mode replays too: a parameterized header and VARIANT blocks
+\      register.
 s" rpfull" s" VARIANT quit ;VARIANT VARIANT move FIELD x n FIELD y n ;VARIANT ;ENUM"
 enum-replay-test:RP-TRY 0 T=
 s" rpfull" FAMID FID !
@@ -1066,9 +971,8 @@ FID @ F-EQ? TTRUE
 FID @ F-HASH? TTRUE
 REPLAY-SCOPE:CLOSE
 
-\ 23d. A malformed replayed declaration reports through the SAME renderer as a
-\      live one — the end-to-end half of the channel claim the diagnostics leaf
-\      could only make for the live path.
+\ 23d. A malformed replayed declaration reports through the same renderer as a
+\      live one.
 DECL-DIAG:PROSE
 s" rpbadv" s" VARIANT vv stray ;VARIANT ;ENUM" enum-replay-test:RP-TRY 7107 T=
 s" habu: bad enum declaration 'rpbadv': unexpected token in variant block at 'stray'"
@@ -1079,9 +983,8 @@ s" rpbadname" s" red red ;ENUM" enum-replay-test:RP-TRY 7102 T=
 s" habu: bad enum declaration 'rpbadname': duplicate variant at 'red'"
 DECL-DIAG:HAS? TTRUE
 
-\ 23e. A buffer whose terminator is missing rejects through the front end's own
-\      end-of-input gate, exactly as a truncated live declaration does. The
-\      consumers therefore cannot register a half-read declaration by accident.
+\ 23e. A buffer missing its terminator rejects through the front end's own
+\      end-of-input gate, as a truncated live declaration does.
 DECL-DIAG:PROSE
 s" rpnoend" s" red green" enum-replay-test:RP-TRY 7107 T=
 s" habu: bad enum declaration 'rpnoend': missing ;ENUM" DECL-DIAG:HAS? TTRUE
@@ -1144,38 +1047,18 @@ FID @ VS0 @ 1 + enum-ctor-test:PAY-ROWS VID @ enum-replay-test:VS1 @ 1 + enum-ct
 VS0 @ SUMV-CTOR-SYM@ 0 <> TTRUE
 enum-replay-test:VS1 @ SUMV-CTOR-SYM@ 0 <> TTRUE
 
-\ ---------------------------------------------------------------------------
-\ 24. Control words are reserved in every declaration name position, and the list
-\     of them has exactly one owner.
-\
-\     A family, variant, or field named `if` would be compiled as the control
-\     word `if` wherever the generated code names it, so no declaration position
-\     may take one. The legacy definers have always refused them (the family
-\     gate, TYPE-NAME:FAMILY-RESERVED?); this front end only consulted the
-\     grammar-keyword list, so `ENUM-DECL:ED-RUN if red green ;ENUM` was
-\     accepted here while `ENUM if red green ;ENUM` was refused 7110 — measured
-\     on the parent commit, and the reason the global ENUM token could not move
-\     to this front end without losing the reject. The list now lives once, in
-\     TYPE-NAME:CONTROL? (src/core/type-family.f); every family definer, this
-\     front end included, reads it through TYPE-NAME:FAMILY-RESERVED?, and field
-\     rows read it from PF-RESERVED?. A second copy is what let the two drift
-\     apart.
-\
-\     24a walks the whole list so a word silently dropped from the owner is a
-\     failure here; 24b proves the two spellings of the same declaration answer
-\     identically, code and rendered line; 24c-24d cover the other two name
-\     positions; 24e proves the match is on the whole token, not a prefix or a
-\     substring, so ordinary names that merely contain a control word still
-\     declare.
-\ ---------------------------------------------------------------------------
+\ 24. Control words are reserved in every declaration name position: a family,
+\     variant or field named `if` would compile as the control word wherever
+\     generated code names it. The list lives once, in TYPE-NAME:CONTROL?
+\     (src/core/type-family.f); every family definer reads it through
+\     TYPE-NAME:FAMILY-RESERVED?, field rows through PF-RESERVED?.
 package enum-control-test
 public
 
 \ 24a. Every word on the shared list, in the family-name position. Three of them
 \      (`?do`, `+loop`, `;match`) never reach the reserved-name gate: their
 \      leading byte is not a lowercase letter, so the canonical-tail gate refuses
-\      them first with 7101. Both codes are the same on the legacy definer, which
-\      runs the same two gates in the same order.
+\      them first with 7101.
 DECL-DIAG:PROSE                          \ these 23 rejects are expected; keep stderr clean
 s" ENUM-DECL:ED-RUN if red ;ENUM"        7110 enum-name-test:REJECT-SAME
 s" ENUM-DECL:ED-RUN then red ;ENUM"      7110 enum-name-test:REJECT-SAME
@@ -1202,9 +1085,7 @@ s" ENUM-DECL:ED-RUN +loop red ;ENUM"     7101 enum-name-test:REJECT-SAME
 s" ENUM-DECL:ED-RUN ;match red ;ENUM"    7101 enum-name-test:REJECT-SAME
 DECL-DIAG:OFF
 
-\ 24b. The two spellings agree to the byte: same code, same rendered line. This
-\      is the parity the global-token cutover needs, so it is asserted on the
-\      legacy definer as well as on the front end.
+\ 24b. `ENUM` and ED-RUN agree to the byte: same code, same rendered line.
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN if red green ;ENUM" TEST-EVAL:RC 7110 T=
 s" habu: bad enum declaration 'if': reserved name at 'if'" DECL-DIAG:HAS? TTRUE
@@ -1215,10 +1096,8 @@ s" ENUM if red green ;ENUM" TEST-EVAL:RC 7110 T=
 s" habu: bad enum declaration 'if': reserved name at 'if'" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:OFF
 
-\ 24c. Variant-name position, both modes. These already refused control words
-\      before this section existed (the variant gate is TYPE-NAME:VARIANT-REQUIRE,
-\      which reads the same owner); the fixtures pin that the shared owner keeps
-\      serving them.
+\ 24c. Variant-name position, both modes: the variant gate
+\      TYPE-NAME:VARIANT-REQUIRE reads the same owner.
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN cwvc do loop ;ENUM" TEST-EVAL:RC 7110 T=
 s" habu: bad enum declaration 'cwvc': name is reserved or already taken at 'do'"
@@ -1231,11 +1110,9 @@ s" habu: bad enum declaration 'cwvf': name is reserved or already taken at 'loop
 DECL-DIAG:HAS? TTRUE
 DECL-DIAG:OFF
 
-\ 24d. Field-name position. The field row's own gate (PF-RESERVED?) answers, so
-\      the code is 7125 — the same code and the same wording a reserved
-\      generated-operation name such as `make` already produced, and the same
-\      answer the legacy PRODUCT definer now gives for the identical field name
-\      (test/type-decl-suite.f pins that half).
+\ 24d. Field-name position: the field row's gate PF-RESERVED? answers 7125, the
+\      code and wording a reserved generated-operation name such as `make` gets;
+\      test/type-decl-suite.f pins the PRODUCT definer's half.
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN cwfld VARIANT vv FIELD then n ;VARIANT ;ENUM" TEST-EVAL:RC 7125 T=
 s" habu: bad enum declaration 'cwfld': reserved field name at 'then'"
@@ -1252,22 +1129,11 @@ s" doing" FAMID TFAM-FLD-COUNT@ 2 T=
 
 ;package
 
-\ ---------------------------------------------------------------------------
-\ 25. A declaration longer than the legacy body buffer registers WHOLE.
-\
-\     sumtype.f's compact definer copied the body into one fixed 4096-byte
-\     buffer before parsing it, and TDECL-REQUIRE-FIT refused anything longer.
-\     That bound belonged to the collection strategy, not to the language: this
-\     front end reads tokens straight from the input source with a one-token
-\     pushback and never buffers a body, so the same declaration is simply
-\     accepted. The risk worth pinning is not the length itself but silent loss
-\     — a body that overflows a buffer and registers a prefix, with every tag
-\     after the gap shifted (that really happened once on the verify-source path,
-\     which is why its buffer raises instead of truncating). So this declares 700
-\     variants, ~4.2KB of body, and proves all 700 arrive with the last tag equal
-\     to 699. It is package-private, which keeps constructor generation out of it
-\     and the case fast.
-\ ---------------------------------------------------------------------------
+\ 25. A 700-variant declaration (~4.2KB of body) registers whole: this front
+\     end reads tokens from the input with a one-token pushback and buffers no
+\     body. The risk pinned is silent loss, a prefix registered with every later
+\     tag shifted, so all 700 must arrive with the last tag 699. The package is
+\     private, which keeps constructor generation out of it.
 package enum-long-test
 
 $2000 constant SRC-CAP
@@ -1312,40 +1178,24 @@ VS0 @ LONG-N 1 - + SV-TAG@ LONG-N 1 - T=   \ no gap: the last tag is N-1
 
 ;package
 
-\ ---------------------------------------------------------------------------
-\ A variant payload may name a family that owns a linear value, and the enum then
-\ owns that obligation by containment (dot habu-checker-enum-payload-9e1ae6cc).
-\
-\ The resolver used to refuse any family whose schemas reach a linear value. That
-\ made `FIELD res WSTORE:resident` legal but `FIELD model gpt2-model` reject 7109
-\ as an "unknown payload type", even though gpt2-model owns that resident through
-\ a structure field. Both forms carry the resident's obligation, so refusing the
-\ nested form bought no soundness; it only blocked the name. What actually
-\ enforces the discipline is TFAM-CONCRETE-LINEAR?, which
+\ A variant payload may name a family that owns a linear value; the enum then
+\ owns that obligation by containment. TFAM-CONCRETE-LINEAR? enforces it: it
 \ walks each variant's payload schemas, follows an application node into the
-\ family it names, and reports the containing enum linear. That walk already
-\ recursed, so it needed no change: only the refusal had to go.
-\
-\ These cases use the live ENUM keyword, which is what real source writes. They
-\ pin the registry side; test/type-linear-suite.f pins what the checker does with
-\ such a value on a row, including what a MATCH arm may do with the payload.
-\
-\ The linear owner is owned by package EDLIN. Production writes
-\ the owner that way too (maki/infer/weight-store.f owns
-\ `WSTORE:resident`), so naming it as a payload type also exercises the qualified
-\ spelling the resolver meets in real source.
-\ ---------------------------------------------------------------------------
+\ family it names, and reports the containing enum linear. These cases use the
+\ live ENUM keyword and pin the registry side; test/type-linear-suite.f pins
+\ what the checker does with such a value, MATCH arms included. Package EDLIN
+\ owns the linear owner, so the qualified spelling is exercised.
 package EDLIN
 public
 DEFLINEAR EDLIN:tok                                   \ the linear owner these fixtures nest
 ;package
 
-\ depth 1, legal before this change: a payload naming the linear con itself.
+\ depth 1: a payload naming the linear con itself.
 s" ENUM edlone VARIANT hold FIELD t EDLIN:tok ;VARIANT VARIANT none FIELD c n ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
 s" edlone" FAMID TFAM-CONCRETE-LINEAR? TTRUE
 
-\ depth 2, the shape this dot unblocks: a payload naming a linear family. This is
-\ the frozen load-result shape, with a stand-in for gpt2-model.
+\ depth 2: a payload naming a linear family, the frozen load-result shape with a
+\ stand-in for gpt2-model.
 s" STRUCTURE edlmodel FIELD res EDLIN:tok FIELD nl n ;STRUCTURE" TEST-EVAL:RC 0 T=
 s" edlmodel" FAMID TFAM-CONCRETE-LINEAR? TTRUE
 s" ENUM edl-load-result VARIANT loaded FIELD model edlmodel ;VARIANT VARIANT rejected FIELD code n ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
@@ -1379,12 +1229,8 @@ s" habu: bad enum declaration 'edlfwd': unknown payload type at 'edllater'"
 DECL-DIAG:HAS? TTRUE
 DECL-DIAG:OFF
 
-\ ---------------------------------------------------------------------------
-\ A name that DOES resolve says why it cannot be a payload type. A parametric
-\ family named bare is the one such case source can reach, and reporting it as
-\ "unknown payload type" sent readers looking for a declaration that was right
-\ there. A name that resolves to nothing still reports unknown, which is true.
-\ ---------------------------------------------------------------------------
+\ A name that resolves says why it cannot be a payload type: a parametric family
+\ named bare. A name that resolves to nothing reports unknown.
 s" ENUM edlgen<a> VARIANT hold FIELD m a ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
 DECL-DIAG:PROSE
 s" ENUM edlgenuse VARIANT hold FIELD m edlgen ;VARIANT ;ENUM" TEST-EVAL:RC 7109 T=
@@ -1392,25 +1238,14 @@ s" habu: bad enum declaration 'edlgenuse': payload type is parametric and needs 
 DECL-DIAG:HAS? TTRUE
 DECL-DIAG:OFF
 
-\ ---------------------------------------------------------------------------
-\ A variant payload may NOT name a POINTER to a linear value.
-\
-\ Accepting the family spelling above also let `FIELD p ptr edlmodel` through, and
-\ that spelling is the opposite of the one above: a pointer is a non-owning
-\ boundary, so the linearity walk stops at the pointer node and the containing
-\ enum reads NON-linear. It would then copy and drop freely while a linear
-\ resource sat behind the address — the resource laundered, which is exactly what
-\ the containment rule exists to prevent. Nothing in the tree writes that
-\ spelling, and it was legal only because no producer route happened to reach it.
-\ It is refused at the declaration door instead.
-\
-\ This is the same rule structure-decl.f applies to a field, decided by the same
-\ node walk (TFCL-NODE?), because a variant payload carries exactly the same
-\ obligation as a field. So the con spelling and the family spelling are refused
-\ alike, and the refusal holds at every depth: `ptr ptr edlmodel` rejects on the
-\ inner recursion, which anchors the diagnostic on the family that actually owns
-\ the resource. A pointer to something that owns nothing stays legal.
-\ ---------------------------------------------------------------------------
+\ A variant payload may not name a pointer to a linear value: a pointer is a
+\ non-owning boundary, so the linearity walk stops at the pointer node and the
+\ enum would read non-linear, copying and dropping freely with a linear
+\ resource behind the address. structure-decl.f applies the same rule to a
+\ field through the same node walk, TFCL-NODE?: the con and family spellings
+\ are refused alike at every depth, and `ptr ptr edlmodel` rejects on the inner
+\ recursion, anchoring the diagnostic on the family that owns the resource. A
+\ pointer to something that owns nothing stays legal.
 
 \ the two spellings side by side. Naming the value owns it; pointing at it cannot.
 s" ENUM edlowns VARIANT hold FIELD m edlmodel ;VARIANT VARIANT none FIELD c n ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
@@ -1467,12 +1302,9 @@ s" edlptrrole" FAMID TFAM-CONCRETE-LINEAR? 0= TTRUE
 s" ENUM edlptrrole2 VARIANT hold FIELD edlmodel n ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
 s" edlptrrole2" FAMID TFAM-CONCRETE-LINEAR? 0= TTRUE
 
-\ hostile comments. A variant block has NO comment syntax: its reader takes plain
-\ tokens, so `(` and `\` are ordinary tokens in a type or clause position and the
-\ whole declaration is malformed. Text that merely reads like a payload can
-\ therefore neither smuggle a type in nor be quietly skipped — and it rejects
-\ 7107, a DIFFERENT code from this rule's 7109, so no verdict here is ever
-\ produced by scanning prose.
+\ hostile comments. A variant block has no comment syntax: `(` and `\` are
+\ ordinary tokens, so the declaration is malformed and rejects 7107, not this
+\ rule's 7109.
 DECL-DIAG:PROSE
 s" ENUM edlptrpar VARIANT hold FIELD v n ( FIELD p ptr edlmodel ) ;VARIANT ;ENUM" TEST-EVAL:RC 7107 T=
 s" habu: bad enum declaration 'edlptrpar': unexpected token in variant block at '('"
@@ -1489,7 +1321,7 @@ s" habu: bad enum declaration 'edlptrtail': payload type is a pointer to a linea
 DECL-DIAG:HAS? TTRUE
 DECL-DIAG:OFF
 
-\ ---------------------------------------------------------------------------
+\ A failure prints F<index>; T-REPORT exits 1.
 T-REPORT
 
 ;using

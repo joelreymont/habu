@@ -19,12 +19,9 @@ package NSTRING-TEST
 private
 
 \ ---- the words the chain compiles --------------------------------------------
-\ Each is compiled through the production entry, which reads what the definition
-\ takes and leaves off the checker's certificate: `( -- ptr u8 n )` is TWO, an
-\ address and a length, and nothing here states it.
-\ Callers of these words, which did not exist when the suite was compiled, run
-\ through `TEST-EVAL:N`, or `TEST-EVAL:FLAG` for the flag most of these
-\ questions answer with.
+\ Each is compiled through the production entry, which reads the effect off the
+\ checker's certificate: `( -- ptr u8 n )` is two cells. Callers, compiled after
+\ the suite, run through `TEST-EVAL:N`, or `TEST-EVAL:FLAG` for a flag.
 
 : PLAIN ( -- )
    S\" : NST-PLAIN ( -- ptr u8 n ) s\" hi\" ;" evaluate-closed ;
@@ -84,10 +81,9 @@ private
    s" NST-ESCAPED nip" TEST-EVAL:N 6 T= ;
 
 \ ---- one body, one address ----------------------------------------------------
-\ THE SHARING IS THE POINT AND NOT AN ECONOMY. A store that answered a fresh
-\ address for equal bytes would leak a copy every time the pipeline re-elaborated
-\ a definition it had refused, so this is the property that stands in for "a
-\ refusal moves nothing" over the arena.
+\ Sharing is the point, not an economy: a fresh address for equal bytes would
+\ leak a copy each time the pipeline re-elaborated a refused definition, so it
+\ stands in for "a refusal moves nothing" over the arena.
 : SHARING-CASE ( -- )
    TWICE
    s" two sites writing one body push one address" T-LABEL

@@ -1,33 +1,9 @@
 \ x86-64-kernel-task.f - the task entry of the x86-64 kernel
 \ (src/habu/kernel-x64.f TASK,) in the booted harness, cross-built for an
-\ x86-64 peer. `task-entry` answers a SysV function whose one argument is a
-\ TASK-ABI descriptor: it enters the task's VM state, calls the task's xt and
-\ publishes DONE. Every image hands it the same descriptor and body. The body
-\ records the registers it starts with and the status it finds through the TCB
-\ its region holds, then pushes one cell through rax and zeroes every other
-\ scratch register, as an xt may (src/habu/kernel-x64.f), so an entry
-\ that reads the descriptor from one after the call faults. Each image is one
-\ case, and the peer that runs it must see its status:
-\
-\    hb-x64-kernel-task            0  pthread_create and pthread_join, found by
-\                                     DLSYM, and called through ffi-call, run the
-\                                     entry on a thread: both answer 0, the
-\                                     thread answers 0, the status is DONE, the
-\                                     region's TASK-TCB-CELL holds the
-\                                     descriptor and the stack base holds the
-\                                     cell the body pushed
-\    hb-x64-kernel-task-call       0  ffi-call of the entry answers 0, and the
-\                                     caller's rbp, rbx, r13, r14, r15, depth
-\                                     and balance survive it
-\    hb-x64-kernel-task-body       0  ffi-call of the entry: the body starts
-\                                     with the descriptor's r13, r14 and r15,
-\                                     rbx 0 and the status HALT-REQ the
-\                                     descriptor came with
-\    hb-x64-kernel-task-negative  21  the thread case, expecting a wrong answer
-\                                     from pthread_create, which it checks
-\                                     before the join
-\
-\ The host checks each image's ELF header; running them is the peer's.
+\ x86-64 peer. `task-entry` answers a SysV function taking a TASK-ABI
+\ descriptor: it enters the task's VM state, calls the task's xt and publishes
+\ DONE. The body pushes one cell through rax and zeroes every other scratch
+\ register, as an xt may, so an entry reading the descriptor from one faults.
 require test/x86-64-boot-harness.f
 require src/habu/task-abi.f
 
@@ -69,7 +45,6 @@ $B0B0B0B0B0 constant CALLER-RBX
 : DESC-FIELD ( n -- n ) DESC + ;
 : ARG ( n -- n ) CELL * ARGS + ;
 
-\ Push the DATA cell at an offset; pop into it.
 : PUSH-CELL, ( n -- ) {: off:n :}
    RAX DATA-REG off MEM-OFF ASM-SINK ENC-MOV-RM  0 G-PUSH ;
 : POP-CELL, ( n -- ) {: off:n :}
@@ -182,6 +157,18 @@ $B0B0B0B0B0 constant CALLER-RBX
 
 public
 
+\ Each image is one case; the peer that runs it must see its status. The host
+\ checks each image's ELF header; running them is the peer's.
+\    hb-x64-kernel-task            0  pthread_create and pthread_join, found by
+\                                     DLSYM and called through ffi-call, run the
+\                                     entry on a thread
+\    hb-x64-kernel-task-call       0  the caller's rbp, rbx, r13, r14, r15,
+\                                     depth and balance survive ffi-call of the
+\                                     entry
+\    hb-x64-kernel-task-body       0  the body starts with the descriptor's r13,
+\                                     r14 and r15, rbx 0 and status HALT-REQ
+\    hb-x64-kernel-task-negative  21  the thread case, expecting a wrong answer
+\                                     from pthread_create
 : RUN ( -- )
    T-RESET
    X64HARNESS:INIT

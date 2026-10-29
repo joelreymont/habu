@@ -1,15 +1,12 @@
 \ source-root-exe-app.f - an application outside the engine's tree.
-\
-\ test/source-root-exe-test.f copies this file to <tmp>/app/app.f, writes the
-\ app's own src/lib/errors.f beside it and runs it from an empty directory with a
-\ copy of the engine at <tmp>/tree/bin/hb, whose lib and src are the tree's:
-\
+\ test/source-root-exe-test.f copies this file to <tmp>/app/app.f with the app's
+\ own src/lib/errors.f beside it, and runs it from an empty directory with an
+\ engine copy at <tmp>/tree/bin/hb:
 \    <tmp>/tree/bin/hb --load <tmp>/app/app.f -- <working directory> <tmp>/tree
-\
-\ Every require here is relative. Neither the owner (<tmp>/app) nor the working
-\ directory holds src/lib/test.f or src/lib/fs.f, so they resolve at the engine root,
-\ and so do their own requires of the files the engine bakes. The app's own
-\ src/lib/errors.f resolves at the owner and stays the app's.
+
+\ Neither the owner nor the working directory holds src/lib/test.f or fs.f, so
+\ these relative requires resolve at the engine root; the app's errors.f
+\ resolves at the owner.
 require src/lib/test.f
 require src/lib/fs.f
 require src/lib/errors.f

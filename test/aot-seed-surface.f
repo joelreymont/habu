@@ -1,29 +1,8 @@
-\ aot-seed-surface.f - print ONE number that identifies the whole dictionary
-\ surface of the engine that loads this file.
-\
-\ WHY A NUMBER AND NOT A NAME LIST. The claim under test is that a boot's
-\ dictionary does not depend on how the boot was entered (dot
-\ habu-decide-arm-the-5234727b, USER RULING 2026-08-11: one dictionary surface for
-\ every boot mode). Comparing surfaces means comparing ~7000 names between
-\ processes; folding them into one order-sensitive number lets each mode print its
-\ answer and lets the caller compare two integers. A fold is not a name list: it
-\ cannot say WHICH name moved. That is deliberate - when the numbers disagree the
-\ suite's own message says how to get the list (the two commands are below), and
-\ the fold is what makes the comparison cheap enough to run on every boot mode.
-\
-\ WHY IT PRINTS AT LOAD. Both callers reach this file the same way: the batch
-\ modes hand the path to the engine and the interactive mode types
-\ `s" test/aot-seed-surface.f" required` at the prompt, so the file's own
-\ definitions land in the dictionary identically in both and are folded in too.
-\ Anything else here (a require of its own, an argument, a second entry point)
-\ would make the two loads differ and the comparison would measure THIS FILE.
-\
-\ It therefore requires nothing: `ndict@`, the XREF record readers and `STR=` are
-\ all engine-prefix words that exist before any user token in every mode.
-\
-\ The name list, when a mismatch needs one:
-\   bin/hb --load test/aot-seed-names.f > /tmp/batch.txt
-\   (interactive) s" test/aot-seed-names.f" required   -> compare the two
+\ aot-seed-surface.f - print one order-sensitive number folding the dictionary
+\ surface of the engine that loads this file; every boot mode must print the
+\ same one. It prints at load and requires nothing (ndict@, the XREF readers
+\ and STR= are engine-prefix words in every mode), so batch and interactive
+\ loads add the same definitions.
 
 package AOT-SEED-SURFACE
 
@@ -31,10 +10,8 @@ private
 
 variable H
 
-\ One byte into the running fold. The multiplier is an odd 32-bit prime so a byte
-\ moved between two names changes the answer (a pure xor fold would not see a
-\ swap), and the wrap is 64-bit two's complement, which is fine: the answer is an
-\ identity, not an arithmetic result.
+\ An odd prime multiplier makes a byte moved between two names change the
+\ answer (an xor fold misses a swap); the 64-bit wrap is fine for an identity.
 1000003 constant MIX-ODD
 
 : MIX ( n -- ) {: b:n :}

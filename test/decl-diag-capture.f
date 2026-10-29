@@ -1,20 +1,9 @@
-\ decl-diag-capture.f — shared declaration-diagnostic capture for the declaration
-\ suites (package DECL-DIAG).
-\
-\ It captures through the SAME words tools/check-core.f uses: CHK-DECL-CAPTURE is
-\ `CHK-JSON @ DIAG-JSON!` plus `CHK-ERR-BUF CHK-ERR-CAP DIAG-BUFFER!`, and
-\ CHK-DECL-FLUSH is `DIAG-BUFFER$` plus `DIAG-BUFFER-OFF`. A suite that asserts
-\ through this module is therefore reading the declaration packet out of the
-\ production capture channel, in whichever of the two legs — prose or JSON — the
-\ check tool would have selected, rather than out of a test-local copy of it.
-\
-\ That establishes the CHANNEL, not an end-to-end run of the check tool over a
-\ unified declaration: check-core drives the legacy definers today and does not
-\ scan STRUCTURE at all, so the end-to-end leg waits on the buffer-driven
-\ registration entry.
-\
-\ Installing a capture buffer also silences the expected diagnostics a reject
-\ suite provokes, exactly as test/type-decl-suite.f's TDIAG-BUF does.
+\ Shared declaration-diagnostic capture for the declaration suites, through the
+\ words tools/check-core.f uses (CHK-DECL-CAPTURE, CHK-DECL-FLUSH): a suite
+\ reads the declaration packet from the production capture channel in the prose
+\ or JSON leg the check tool selects. It pins the channel, not a check-tool run.
+\ A capture buffer also silences the diagnostics a reject suite provokes, as
+\ test/type-decl-suite.f's TDIAG-BUF does.
 
 package DECL-DIAG
 
@@ -49,7 +38,6 @@ public
 : JSON ( -- ) true CAPTURE-ON ;
 : OFF ( -- ) CAPTURE-OFF ;
 
-\ What the capture holds now.
 : TEXT$ ( -- ptr u8 n ) CAPTURED$ ;
 : LEN ( -- n ) CAPTURED$ nip ;
 : SILENT? ( -- bool ) LEN 0= ;
@@ -61,7 +49,6 @@ public
    au bu <> IF 0 0= 0= EXIT THEN
    aa au ba bu AT? ;
 
-\ Does the captured diagnostic contain this exact byte sequence?
 : HAS? ( ptr u8 n -- bool ) {: na:ptr nu:n :}
    CAPTURED$ {: ha:ptr hu:n :}
    0 SI !

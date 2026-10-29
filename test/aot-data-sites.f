@@ -1,6 +1,6 @@
-\ Exercise the actual packed-site appenders beyond their former 16,384 rows.
-\ No generated code is executed: the buffer contains tagged metadata cells and
-\ correctly shaped address chains, then survives file and owned-value transfer.
+\ aot-data-sites.f - the packed-site appenders past 16,384 rows. No generated
+\ code runs: the buffer holds tagged metadata cells and shaped address chains,
+\ then survives file and owned-value transfer.
 require src/lib/string.f
 require src/lib/test.f
 require src/os/script-argv.f
@@ -22,9 +22,8 @@ public
 : SITE-TEST-CODE-SCAN ( n n -- ) ACAP-SCAN-CSITES ;
 : SITE-TEST-NORMALIZE ( -- ) ACAP-NORMALIZE-DSITES ;
 : SITE-TEST-HELD? ( n -- bool ) ACAP-DSITE-HELD? ;
-\ ACAP-DEFER-SITE's last line, over the two words it composes. The word itself
-\ takes a live dictionary record and reads the defer trailer at its body, which a
-\ blob this fixture builds cannot stand in for; what is pinned here is the guard.
+\ ACAP-DEFER-SITE's guard, over the two words it composes: the word itself reads
+\ the defer trailer of a live dictionary record, which a built blob cannot be.
 : SITE-TEST-DEFER+ ( n -- ) {: site:n :}
    site ACAP-DSITE-HELD? 0= if site ACAP-ADD-DSITE then ;
 ;package
@@ -32,18 +31,17 @@ public
 package AOT-FILE
 public
 
-\ Exercise the actual overlapping tail move used by MERGE. Incoming DATA rows
-\ make a gap before 20,001 existing CODE rows; reserve must precede the move.
+\ MERGE's overlapping tail move: incoming DATA rows make a gap before 20,001
+\ existing CODE rows; reserve must precede the move.
 : SITE-TEST-GAP ( -- )
    LATCH-HOST
    S-DSITES ROW-OFF@ 12 S-DSITES ROW!
    S-CSITES ROW-OFF@ 0 S-CSITES ROW!
    BASES-AFTER-HOST OPEN-CSITE-GAP ;
 
-\ The smallest aggregate budget this format can be given: a blob filling the
-\ runtime code band, plus the fixed framing every artifact carries around it.
-\ Spelled from AOT-FILE's own constants rather than repeated, because the point
-\ is that src/arch/arm64/icode.f's AOT-SECTION-CAP has to cover exactly these.
+\ The smallest aggregate budget: a blob filling the runtime code band plus the
+\ fixed framing every artifact carries, spelled from AOT-FILE's constants
+\ because src/arch/arm64/icode.f's AOT-SECTION-CAP must cover exactly these.
 : SITE-TEST-BAND-BYTES ( -- n )
    AOT-BUF:AOT-BLOB-CAP HDR-BYTES + SEC-N ROW-BYTES * + SCAL-BYTES + CLOSURE-CAP + ;
 
@@ -136,23 +134,21 @@ TRUSTED: MARK-TEST-SITE ( n -- ) addrmap-set ;
 
 \ Regrowing the runtime region past the aggregate byte budget makes AOT-BLOB-CAP
 \ and the shared DATA/CODE site buffer unreachable and kills this file's own
-\ shared-overflow refusal, which the budget would then pre-empt. REGION grew on
-\ 2026-09-14 and AOT-SECTION-CAP did not follow; assert the inequality here, where
+\ shared-overflow refusal, which the budget would pre-empt. Asserted here, where
 \ icode.f, layout.f and aot-decl.f are all loaded, so the next growth says so.
 : ?BAND-BUDGET ( -- )
    s" the section budget admits a full code band" T-LABEL
    A64ICODE:AOT-SECTION-CAP AOT-FILE:SITE-TEST-BAND-BYTES >= TTRUE ;
 
 \ --- the window-relative DATA coordinate --------------------------------------
-\ ACAP-NORMALIZE-DSITES rewrites every listed DATA site into the coordinate the
-\ seed restores: stored = value - d0 + (d0 and 7), and the capture base is left
-\ holding that residue alone. The restore side is EM-AOT-RELOC-DATA in
-\ src/habu/habu2.f: it advances the seeded DP to the next address carrying the
-\ capture base's own residue and adds one delta to every site, so
-\ restored = stored + delta with delta a multiple of 8 - which is what keeps each
-\ captured cell as aligned as it was captured. Both site kinds and all eight
-\ residues are fed known values here, rather than re-derived from live memory as
-\ test/aot-artifact-rows.f does.
+\ ACAP-NORMALIZE-DSITES rewrites every listed DATA site to the coordinate the
+\ seed restores: stored = value - d0 + (d0 and 7), and the capture base keeps
+\ that residue alone. EM-AOT-RELOC-DATA (src/habu/habu2.f) advances the seeded
+\ DP to the next address with the capture base's residue and adds one delta to
+\ every site, so restored = stored + delta with delta a multiple of 8, which
+\ keeps each captured cell as aligned as it was captured. Both site kinds and
+\ all eight residues get known values here; test/aot-artifact-rows.f derives
+\ them from live memory.
 DATA-VA VA>N $1000 + constant NORM-BASE
 3 constant NORM-CELLS
 48 constant NORM-CHAIN-OFF    \ above the cells, 4-byte aligned, 16 bytes wide
@@ -254,11 +250,11 @@ DATA-VA VA>N $1000 + constant NORM-BASE
       CLEAR-COUNTS
       2 SCRIPT-ARGV$ s" merge" STR= if
          \ As in the address-row merge fixture, one zeroed host record marks
-         \ a captured host. The positive host span must not hide source -1.
+         \ a captured host; the positive host span must not hide source -1.
          \ One cell of host span is under a whole bitmap byte, so the merge
-         \ rounds it up to BM-BYTE-SPAN before it places the artifact's cells
-         \ (src/habu/aot-file.f PLACE-WDATA) - which is what the merged span
-         \ below is counted from.
+         \ rounds it up to BM-BYTE-SPAN before placing the artifact's cells
+         \ (src/habu/aot-file.f PLACE-WDATA); the merged span below counts
+         \ from that.
          1 AOT-REC-N ! 8 AOT-DATA-SIZE !
          KEY 0 SCRIPT-ARGV$ AOT-FILE:MERGE
       else

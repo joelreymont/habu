@@ -5,30 +5,30 @@ require src/lib/string.f
 require src/compiler/native/compiler.f
 require tools/codegen-loop-inventory.f
 
-\ Tier 1 below: the loop shapes asserted below are the optimizing compiler's
-\ (1 row fails at the default tier).
+\ Tier 1: the loop shapes asserted are the optimizing compiler's (1 row fails at
+\ the default tier).
 1 set-tier
 
 package NDO-FIXTURE
 
 public
 
-\ How many turns the loop takes, which is the whole of what the guard decides.
+\ The turn count is all the guard decides.
 : NDO-TURNS ( n n -- n ) {: lim:n st:n :}
    0 lim st do 1 + loop ;
 
 : NDO-QTURNS ( n n -- n ) {: lim:n st:n :}
    0 lim st ?do 1 + loop ;
 
-\ The indices it visits, which says the header really carries the counter a plain
-\ `do` never put on the data stack.
+\ The index sum shows the header carries the counter a plain `do` never put on
+\ the data stack.
 : NDO-SUM ( n n -- n ) {: lim:n st:n :}
    0 lim st do i + loop ;
 
 : NDO-QSUM ( n n -- n ) {: lim:n st:n :}
    0 lim st ?do i + loop ;
 
-\ The indices themselves, one by one, where a sum could hide two wrong ones.
+\ The indices one by one: a sum could hide two wrong ones.
 8 constant VISITED-CAP
 create VISITED VISITED-CAP cells allot
 variable ITERATIONS
@@ -45,30 +45,26 @@ variable ITERATIONS
    lim st ?do i VISIT loop
    ITERATIONS @ ;
 
-\ Two counted loops open at once, both plain. The inner `i` is the inner loop's,
-\ which is the frame search answering with the innermost of two frames that were
-\ pushed by the new opener.
+\ The inner `i` is the innermost of the two frames the new opener pushed.
 : NDO-NEST ( n n -- n ) {: a:n b:n :}
    0 a 0 do b 0 do i + loop loop ;
 
-\ One opener inside the other, both ways round. Both frames are the same kind, so
-\ what these two rows say is that the two openers really do nest in each other.
+\ Both frames are the same kind, so these rows say the openers nest in each
+\ other.
 : NDO-DOQ ( n n -- n ) {: a:n b:n :}
    0 a 0 do b 0 ?do i + loop loop ;
 
 : NDO-QDO ( n n -- n ) {: a:n b:n :}
    0 a 0 ?do b 0 do i + loop loop ;
 
-\ Calls stay calls in the native compiler. This one makes the loop's counters
-\ travel as operands of every edge.
+\ The call makes the loop's counters travel as operands of every edge.
 : NDO-CALLEE ( n -- n )
    dup 3 * over 5 xor + swap 7 and + dup 11 * + 13 xor ;
 
 : NDO-CALL ( n n -- n ) {: seed:n len:n :}
    seed len 0 do NDO-CALLEE loop ;
 
-\ The same with a bound local read after the call, so the local crosses every
-\ edge beside the counters.
+\ A bound local read after the call crosses every edge beside the counters.
 : NDO-LOCAL ( n n n -- n ) {: k:n seed:n len:n :}
    seed len 0 do NDO-CALLEE k + loop ;
 
@@ -83,10 +79,9 @@ private
 $8000000000000000 constant MIN-INT
 $7FFFFFFFFFFFFFFF constant MAX-INT
 
-\ How many loops a published routine's emitted code still holds. A back edge is
-\ what a loop IS in emitted code, and tools/codegen-loop-inventory.f decides one
-\ by walking the span's own control flow rather than by calling every backward
-\ branch a loop.
+\ A back edge is a loop in emitted code; tools/codegen-loop-inventory.f finds
+\ one by walking the span's control flow, not by calling every backward branch a
+\ loop.
 : LOOPS-IN ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u NLOOPINV:ROW!
    NLOOPINV:LOOPS ;
@@ -127,10 +122,9 @@ $7FFFFFFFFFFFFFFF constant MAX-INT
    MIN-INT MAX-INT NDO-FIXTURE:NDO-TURNS 1 T=
    MIN-INT MAX-INT NDO-FIXTURE:NDO-QTURNS 0 T= ;
 
-\ The same pairs read through the indices the body sees rather than a count, so a
-\ loop that ran the right number of turns from the wrong index would still be
-\ caught: the one-turn cases answer the START, and the engine's `?do` answers
-\ zero where its `do` answers that start.
+\ The index sums catch the right turn count from the wrong index: the one-turn
+\ cases answer the start, where the engine's `?do` answers zero and `do` the
+\ start.
 : SUM-CASE ( -- )
    s" equal-bound loops expose do's single index and ?do's skip" T-LABEL
    s" NDO-FIXTURE:NDO-SUM" KEPT
@@ -177,14 +171,12 @@ $7FFFFFFFFFFFFFFF constant MAX-INT
    s" NDO-FIXTURE:NDO-NEST" KEPT2
    2 3 NDO-FIXTURE:NDO-NEST 6 T= ;
 
-\ THE TWO ROWS KEEP DIFFERENT NUMBERS OF LOOPS, AND THE DIFFERENCE IS THE FOLD'S
-\ OWN PRECONDITION. With the `?do` INSIDE, the inner loop still has the guard
-\ src/compiler/native/loop.f insists on - a pre-header entered only from a `brz`
-\ over `start < limit` - so it folds and one loop is left. With the `?do`
-\ OUTSIDE, neither folds: the inner `do` has no such guard, and the outer loop's
-\ header is not the whole loop because another loop stands inside it. Both rows
-\ answer the engine either way, which is what says the fold that did fire was
-\ sound.
+\ The rows keep different loop counts, by the fold's precondition. With the
+\ `?do` inside, the inner loop keeps the guard src/compiler/native/loop.f
+\ requires (a pre-header entered only from a `brz` over `start < limit`), so it
+\ folds to one loop. With it outside, neither folds: the inner `do` lacks the
+\ guard, and the outer header is not the whole loop. Both rows answer the engine
+\ either way, which says the fold that fired was sound.
 : DOQ-CASE ( -- )
    s" the two openers nest inside each other" T-LABEL
    s" NDO-FIXTURE:NDO-DOQ" KEPT
@@ -192,10 +184,9 @@ $7FFFFFFFFFFFFFFF constant MAX-INT
    2 3 NDO-FIXTURE:NDO-DOQ 6 T=
    2 3 NDO-FIXTURE:NDO-QDO 6 T= ;
 
-\ A call in the body makes the loop's two counters travel as operands of every
-\ edge instead of being defined once in the header, which is the seam a plain
-\ opener could get wrong on its own: its edge into the header is built in the
-\ block the `do` stands in rather than in a pre-header of its own.
+\ A call in the body makes the counters travel as operands of every edge: a
+\ plain opener builds its header edge in the block the `do` stands in, not in a
+\ pre-header of its own.
 : CALL-CASE ( -- )
    s" a call in a plain do body carries the counters" T-LABEL
    s" NDO-FIXTURE:NDO-CALL" KEPT

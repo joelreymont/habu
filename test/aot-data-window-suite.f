@@ -1,35 +1,9 @@
-\ aot-data-window-suite.f - what the seed does with a capture window's DATA
-\ (dots habu-guard-aot-data-49de2ee6 and habu-bake-the-aot-7ececce8).
-\
-\ Every case boots a built engine on an ordinary batch program and reads what it
-\ wrote. The seed runs at the end of the engine prefix on every boot, before any
-\ input is read, so a boot-run report, a boot die and its exit code all reach a
-\ batch boot's output on every host (test/aot-wide-format-lib.f says why).
-\
-\ THE WINDOW'S CONTENT. EM-AOT-RELOC-DATA copies the captured DATA window instead
-\ of reserving it zeroed. The HABU_AOT_BAKE=1 window holds an INITIALISED cell and
-\ a word that reads it through a DATA address literal, run from the boot-run list,
-\ so its report carries the cell's value only if the content travelled AND the
-\ literal was rebased onto the seeded DP. The zeroed reserve reports 0.
-\
-\ THE SPAN GUARD. EM-AOT-RELOC-DATA refuses a baked span past the DATA region's
-\ headroom, naming it and exiting 82 (ENGINE-ERROR:AOT-SEED); without the bound
-\ the oversized span is accepted in silence. The content case's window, written
-\ again with its baked span forged to 2*DATA-SIZE - past any headroom, which is
-\ always under DATA-SIZE - must die at the seed. The content case is that same
-\ window with its real span, booting, so the guard neither passes an oversized
-\ span nor refuses a legal one.
-\
-\ THE DECLARED CELL. The capture zeroes every declared address cell, because the
-\ value there is a code address in the BUILDING host, and the seed writes the
-\ engine's own defer-unset xt back. The HABU_AOT_TRAP=1 window holds a `defer`
-\ nothing installs and a boot-run word that calls it, so the boot must die
-\ "defer: unset execution vector" with EXEC-VECTOR-RC. Zero would have been a
-\ jump to address 0 - measured as SIGSEGV, no diagnostic.
-\
-\ Cost: two captures and one more write. Registered as `SUITE aot-data-window`
-\ in test/gate-stdlib-cases.f. Run standalone:
-\   bin/hb --load test/aot-data-window-suite.f
+\ aot-data-window-suite.f - what the seed does with a capture window's DATA.
+\ Each case boots a built engine on a batch program; the seed runs at the end of
+\ the engine prefix before any input, so a boot-run report, a boot die and its
+\ exit code reach the output on every host (test/aot-wide-format-lib.f says
+\ why).
+\ Registered as `SUITE aot-data-window` in test/gate-stdlib-cases.f.
 
 require src/lib/string.f
 require src/lib/test.f
@@ -41,9 +15,8 @@ package AOT-WIDE-FORMAT
 
 create SPAN-BUF 32 allot   variable SPAN-U
 
-\ A boot that must die at the seed or in the boot-run. Its exit is asserted under
-\ the caller's label, so a boot that hangs or faults instead fails that case -
-\ at the deadline for a hang - rather than escaping the probe uncaught.
+\ The exit is asserted under the caller's label, so a hang (at the deadline) or
+\ a fault fails that case instead of escaping the probe uncaught.
 : BOOT-DIES ( n -- ) {: want:n :}
    PROC-ARGV-RESET
    HB$ >LEN  BATCH-PROGRAM$ >LEN  OUT CAP >LEN  ERR CAP >LEN  PROBE-TIMEOUT-MS >MS
@@ -51,13 +24,16 @@ create SPAN-BUF 32 allot   variable SPAN-U
    outu LEN>N OUT-U !  erru LEN>N ERR-U !
    BATCH-PROGRAM$ OUT outu LEN>N ERR erru LEN>N oc want T-OUTCOME-EXITED= ;
 
-\ 2*DATA-SIZE in decimal. DATA-SIZE is per target, so the forged span is
-\ computed from it rather than pinned to one host's literal.
+\ DATA-SIZE is per target, so the forged span is computed, not a host literal.
 : SPAN$ ( -- ptr u8 n )
    SB-RESET  DATA-SIZE 2 * FMT:SB-U  SB$ {: a:ptr u:n :}
    a SPAN-BUF u BYTE-COPY  u SPAN-U !
    SPAN-BUF SPAN-U @ ;
 
+\ EM-AOT-RELOC-DATA copies the captured window instead of reserving it zeroed.
+\ The HABU_AOT_BAKE=1 window's boot-run word reads an initialised cell through a
+\ DATA address literal, so it reports the value only if the content travelled
+\ and the literal was rebased onto the seeded DP; a zeroed reserve reports 0.
 : PROBE-CONTENT ( -- )
    SETUP
    s" HABU_AOT_BAKE" BUILD-MODE
@@ -73,7 +49,11 @@ create SPAN-BUF 32 allot   variable SPAN-U
    s" the initialised cell reports its own value at boot, not zero" T-LABEL
    s" awb-cell=" s" 6510728274268543578" REPORT= ;
 
-\ Runs in PROBE-CONTENT's tree: the forge is that window written again.
+\ EM-AOT-RELOC-DATA refuses a baked span past the DATA region's headroom (always
+\ under DATA-SIZE) with exit 82 (ENGINE-ERROR:AOT-SEED). The forge is
+\ PROBE-CONTENT's window written again with its span at 2*DATA-SIZE; the content
+\ case is the same window with its real span, so the guard refuses only the
+\ forge.
 : PROBE-SPAN ( -- )
    BUILD-OPEN
    s" HABU_AOT_REWRITE" s" 1" KNOB+
@@ -86,6 +66,10 @@ create SPAN-BUF 32 allot   variable SPAN-U
    ERR$ S\" hb: AOT data span out of range\n" T$=
    OUT$ s" batch-answer=" CONTAINS? 0= TTRUE ;
 
+\ The capture zeroes every declared address cell (a building-host code address)
+\ and the seed writes the engine's defer-unset xt back. HABU_AOT_TRAP=1 calls an
+\ uninstalled `defer` from the boot-run, which must die with EXEC-VECTOR-RC; a
+\ zero there was measured as SIGSEGV with no diagnostic.
 : PROBE-TRAP ( -- )
    SETUP
    s" HABU_AOT_TRAP" BUILD-MODE
@@ -103,7 +87,6 @@ create SPAN-BUF 32 allot   variable SPAN-U
    PROBE-SPAN
    PROBE-TRAP ;
 
-\ Public so the driver below runs it with the package closed.
 public
 
 : RUN ( -- )

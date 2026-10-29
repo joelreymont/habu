@@ -2,10 +2,6 @@
 \ at the edges of its byte counts and its range, the padded call and address
 \ fields read at their offsets and rewritten in place, round trips across every
 \ bit width, and each refusal by its code.
-\ Run: bin/hb --load test/wasm/leb.f
-\
-\ Bytes are written in hex, two lowercase digits a byte. A refused write or
-\ patch is checked to leave the whole buffer under it as it was.
 
 require src/lib/test.f
 require src/lib/span.f
@@ -47,7 +43,7 @@ variable STAGED-LEN
    c [char] a >= if c [char] a - $0A + exit then
    c [char] 0 - ;
 
-\ Stage the hex's bytes for a refusal, whose quotation sees no locals, with
+\ A refusal's quotation sees no locals, so the hex's bytes are staged, with
 \ canaries past them.
 : STAGE ( ptr u8 n -- )
    {: a u:n :}
@@ -64,7 +60,6 @@ variable STAGED-LEN
 : STAGED-SPAN ( -- SPAN:span<u8> )
    STAGED STAGED-LEN @ SPAN:TAKE ;
 
-\ Whether every byte of the span is still a canary.
 : CANARIES? ( SPAN:span<u8> -- bool )
    {: s :}
    true s SPAN:LEN 0 ?do s i SPAN:U8@ CANARY = and loop ;

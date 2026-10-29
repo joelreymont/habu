@@ -2,20 +2,8 @@
 \ product engine: the Wasm backend loaded at run time, installed, and driven by
 \ the engine's own tier-1 driver through an open Wasm shadow
 \ (src/compiler/native/shadow.f), as test/compiler/shadow.f drives x86-64.
-\
-\ WHAT IS PROVED. INSTALL registers the provider, which serves only the
-\ little-endian ptr32 habu-wasm-cell64-v1 contract. Real source compiled with
-\ the shadow open still runs on the host, and every record publication
-\ committed, a created word's included, is filed with one Wasm emission whose header names its one body -
-\ offset, size, lanes, frame variant - and whose call and address rows sit on
-\ the padded fields after `call` and `i64.const`, each holding what the row
-\ says: a zero index and the callee's host entry or its own body offset, an
-\ address of its kind. A does> child whose nonempty clause replaced its body
-\ stays filed but is no routine (NSHADOW:ROUTINE?) and reports no call site; an
-\ empty clause, or an empty replacement of an earlier one, keeps its routine.
-\ The placed emission row is refused by name. A definition
-\ of the engine's own machine comes out byte for byte as it did before the
-\ backend loaded.
+\ INSTALL's provider serves only the little-endian ptr32 habu-wasm-cell64-v1
+\ contract. The engine's own machine compiles byte for byte as before the load.
 
 require src/lib/test.f
 require src/lib/errors.f
@@ -74,7 +62,6 @@ private
    CTARGET-PTR--WIDTH:BITS32 CONTRACT WBACK:SERVES? TFALSE
    WASM64 WBACK:SERVES? TFALSE ;
 
-\ The provider row INSTALL published, by its id.
 : ROW-ID ( -- n )
    WBACK:ID NBACK:ID-ROW NBACK:BACKEND@
    CTARGET-BACKEND:UNMAKE 2drop drop CTARGET:ID-CODE ;
@@ -89,7 +76,6 @@ private
    WASM64 NBACK:LOWERS? TFALSE
    WASM64 NBACK:EMITS? TFALSE ;
 
-\ An address as the number a field holds.
 : >N ( ptr u8 -- n )
    NULL-PTR BYTE-VIEW - ;
 
@@ -110,9 +96,10 @@ variable REC-PX
 : OPEN-WASM ( -- )
    WBACK:BINDING NSHADOW:OPEN ;
 
-\ Definers made before the open, so only their children are filed. A Wasm
-\ body carries no patch slot, so a nonempty clause outdates its child's
-\ routine; an empty one leaves the body `create` made.
+\ Definers made before the open, so only their children are filed. A Wasm body
+\ carries no patch slot, so a nonempty clause outdates its child's routine: the
+\ child stays filed but is no routine (NSHADOW:ROUTINE?) and reports no call
+\ site. An empty clause leaves the body `create` made and keeps the routine.
 : FULLD ( n -- ) create , does> ( -- n ) @ ;
 : EMPTYD ( n -- ) create , does> ( -- ptr n ) ;
 \ PB's empty clause replaces PA's and restores the body `create` made.
@@ -120,7 +107,6 @@ variable REC-PX
 : PB ( -- ) PA does> ( -- ptr n ) ;
 
 \ Reading scaffolding precedes the open, so only the words under test are filed.
-\ Wasm's own opcodes for the bytes a row sits after, and the body's last.
 $10 constant OP-CALL
 $42 constant OP-I64-CONST
 $0B constant OP-END
@@ -188,16 +174,12 @@ ndict@ REC-LAST !
 : BYTE@ ( n n -- n ) {: e:n off:n :}
    e NSHADOW:BYTES off + c@ ;
 
-\ The len-byte little-endian number at off in emission e.
 : LE@ ( n n n -- n ) {: e:n off:n len:n :}
    0  len 0 ?do  8 lshift  e  off len + 1- i -  BYTE@ or  loop ;
 
 : HOST-ENTRY ( n -- n )
    XREF-REC XREF-START ;
 
-\ Record r's emission: entered at its first byte, no trailing return split
-\ off, the magic, one function whose header row names the one body filling
-\ the rest, ending in `end`, with in and out lanes and the lane variant.
 : ONE-BODY ( n n n -- ) {: r:n in:n out:n :}
    r EM-OF {: e:n :}
    r ROW-OF NSHADOW:ENTRY@ 0 T=
@@ -213,8 +195,6 @@ ndict@ REC-LAST !
    e HEAD-BYTES 10 + BYTE@ 0 T=
    e  e NSHADOW:SIZE 1-  BYTE@ OP-END T= ;
 
-\ Call row k of emission e: a `call` before a padded zero index, a call that
-\ comes back; answers its target.
 : CALL-ROW ( n n -- n ) {: e:n k:n :}
    e k NSHADOW:CALL-SITE@ {: at:n :}
    e at 1- BYTE@ OP-CALL T=
@@ -222,8 +202,6 @@ ndict@ REC-LAST !
    e k NSHADOW:CALL-KIND@ NEMIT:CALL T=
    e k NSHADOW:CALL-TARGET@ ;
 
-\ Address row k of emission e: an `i64.const` before a padded field; answers
-\ its kind and the value it holds.
 : ADDR-ROW ( n n -- n n ) {: e:n k:n :}
    e k NSHADOW:ADDR-SITE@ {: at:n :}
    e at 1- BYTE@ OP-I64-CONST T=
@@ -316,7 +294,6 @@ ndict@ REC-LAST !
 
 \ ---- the engine's own routine -------------------------------------------------
 
-\ Whether records a and b hold the same code bytes.
 : CODE-SAME? ( n n -- bool ) {: a:n b:n :}
    a XREF-REC XREF-CODE-BYTES {: len:n :}
    b XREF-REC XREF-CODE-BYTES len <> if false exit then

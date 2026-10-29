@@ -53,7 +53,7 @@ package NAMED-CELLS-TEST
 using AOT-BUF
 using AOT-WINDOW
 create KEY 32 allot
-create FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this fixture's file-digest context
+create FSHA-CTX SHA256-FILE-CTX-BYTES allot
 create ROOT PATH-CAP allot variable ROOT-U
 create ART PATH-CAP allot variable ART-U
 create BAD-ART PATH-CAP allot variable BAD-ART-U

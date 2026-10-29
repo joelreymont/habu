@@ -1,11 +1,9 @@
-\ A copied engine and its source tree must recognize baked modules when the
-\ invocation directory is the copied tree's parent. The copy holds the engine's
-\ first boot file, src/core/util.f, so it is a Habu tree and the engine's root
-\ (src/core/include.f SOURCE-ROOT:ENGINE$). On macOS the same child runs again
-\ under a sandbox that denies process-info-pidinfo, where proc_pidpath refuses
-\ the engine its own path: the tree must still be found, and ENGINE-ID:PATH$
-\ must still throw E-ENGINE-PATH. The engine does not bake src/lib/engine-id.f, so
-\ the copy holds it for the child. Keep the children and their logs.
+\ A copied engine and its source tree recognize baked modules when the
+\ invocation directory is the copied tree's parent: the copy holds the first
+\ boot file, src/core/util.f, so it is the engine's root (src/core/include.f
+\ SOURCE-ROOT:ENGINE$). On macOS the child reruns in a sandbox denying
+\ process-info-pidinfo: the tree is still found and ENGINE-ID:PATH$ throws
+\ E-ENGINE-PATH. src/lib/engine-id.f is not baked, so the copy holds it.
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs.f
@@ -83,7 +81,6 @@ variable RC
    s" --load" >LEN PROC-ARGV+
    s" tree/entry.f" >LEN PROC-ARGV+ ;
 
-\ Run the staged argv under the executable, from the copied tree's parent.
 : RUN-CHILD ( ptr u8 n -- ) {: exe:ptr exeu:n :}
    PROC-ENV-INHERIT-MISSING
    exe exeu >LEN ROOT$ >LEN

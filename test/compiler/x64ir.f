@@ -1,31 +1,8 @@
-\ x64ir.f - checked x86-64 machine dialect tests.
-\
-\ Proves the contract of src/compiler/native/x64ir.f: loading the low-level
-\ dialect admits the machine it builds for; registering the dialect defines the machine
-\ opcodes and their declared fields read back through the frozen schema table,
-\ with the two-address forms declaring the tie that says WHICH operand the
-\ instruction overwrites; the register file is the machine's, with the stack
-\ pointer among the registers no allocation may hand out; the conditions are the
-\ signed ones the shipped assembler spells; and an immediate, a shift count, a
-\ frame slot, a reserved frame, a data-stack offset, an entry address or a
-\ function ordinal outside its field is refused before it can be interned as an
-\ attribute.
-\
-\ WHY THE TIES ARE THE CENTRE OF THIS SUITE. On ARM64 a tie is an oddity of the
-\ move-wide overwrite; here it is how nearly every arithmetic form works, and a
-\ tie that named the wrong operand would compile into code that destroys a live
-\ value with no refusal anywhere. Each tied form is therefore read back by
-\ ordinal - the result AND the operand it names - and not merely counted.
-\
-\ WHY THE STACK POINTER IS ASSERTED RESERVED. docs/xcomp.md "Machine model"
-\ lists six virtual machine registers (rbp, rbx, r12..r15) and rsp is not among
-\ them, because ARM64's stack pointer is not one of the registers an operand
-\ field can name and the transcription carried that over. On x86-64 it is
-\ register 4: `call` pushes through it, so a routine that allocated it would
-\ destroy its own return. Nine registers are allocatable here and not ten.
-\
-\ ONE FIXTURE PER CONTEXT. A module holds about seventeen arenas and the live
-\ arena registry holds sixty-four, so each group below runs in its own context.
+\ x64ir.f - the contract of src/compiler/native/x64ir.f, the checked x86-64
+\ machine dialect: opcodes and their declared fields through the frozen schema
+\ table, the tie naming the operand each two-address form overwrites, the
+\ register file with the stack pointer reserved, the signed conditions, and the
+\ refusal of an out-of-field operand before it is interned as an attribute.
 
 require src/lib/test.f
 require src/compiler/ir/symbol.f
@@ -67,6 +44,8 @@ private
    CBIND:BIND ;
 
 \ ---- module rigging ----------------------------------------------------------
+\ A module holds about seventeen arenas and the live arena registry holds
+\ sixty-four, so each group runs in its own context.
 : MOD-NEW ( IR-CTX:ctx -- IR-BUILD:builder )
    {: c:IR-CTX:ctx :}
    IR-BUILD:PLAN-BEGIN
@@ -107,6 +86,8 @@ private
 \ ---- the register file -------------------------------------------------------
 \ The numbers are the machine's own: rbx 3, rsp 4, rbp 5 and r12..r15 are the
 \ virtual machine's, and rax, rcx, rdx, rsi, rdi and r8..r11 are what is left.
+\ `call` pushes through rsp, so a routine that allocated it would destroy its
+\ own return: nine registers are allocatable, not ten.
 : R-MASK ( -- n )
    1 3 lshift  1 4 lshift or  1 5 lshift or
    1 12 lshift or  1 13 lshift or  1 14 lshift or  1 15 lshift or ;
@@ -132,16 +113,12 @@ private
    X64IR:SLOT-WIDTH 8 T= ;
 
 \ ---- the machine, as a routine contract is written against it ----------------
-\ src/arch/x86-64/machine.f is the second instance of the description the
-\ routine-effect schema was generalised over, and the first machine that
-\ disagrees with ARM64 about facts the schema used to hold as constants. Three
-\ of those disagreements are proved here because no ARM64 case can state them:
-\ there is no link register, so `absent` is the only link field a contract of
-\ this machine may carry and the two ARM64 answers are refused; the file numbers
-\ sixteen registers, so a register the schema can write down is still not one a
-\ routine of THIS machine may hold state in; and the frame offset is counted in
-\ bytes rather than scaled by the access width, so one width reaches exactly as
-\ far as another.
+\ src/arch/x86-64/machine.f disagrees with ARM64 on three facts no ARM64 case
+\ can state: there is no link register, so `absent` is the only link field a
+\ contract may carry and the two ARM64 answers are refused; the file numbers
+\ sixteen registers, so a register the schema can write is not always one a
+\ routine of this machine may hold state in; and the frame offset is counted in
+\ bytes rather than scaled by the access width, so every width reaches as far.
 : X-ROUTINE ( NEFF:gprs NEFF:link -- NEFF:routine )
    {: gc:NEFF:gprs l:NEFF:link :}
    NEFF-CONV:REGISTER NEFF:SEQ-NONE NEFF:SEQ-NONE gc
@@ -280,6 +257,9 @@ private
    BND [: MOVE-BODY ;] IR-CTX:WITH-CONTEXT
    0 T= 1 T= 1 T= 3 T= 1 T= 0 T= ;
 
+\ On x86-64 nearly every arithmetic form is tied, and a tie naming the wrong
+\ operand compiles into code that destroys a live value with no refusal, so each
+\ tied form is read back by ordinal: the result and the operand it names.
 \ Every two-address form declares one tie, and the tie names the operand the
 \ instruction overwrites: operand 0 for the arithmetic, operand 2 for the
 \ conditional move whose destination is the value kept when the condition fails,

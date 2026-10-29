@@ -1,5 +1,4 @@
 \ pointer-storage-test.f - focused pointer-slot ownership and effect regression.
-\ Run: bin/hb --load test/pointer-storage-test.f
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -15,12 +14,10 @@ PERSISTED-PTR-VARIABLE PERSISTED-SLOT
 4 PTR-U8-TABLE TABLE-SLOT
 PERSISTED-PTR-U8-TABLE-VARIABLE TABLE-HEAD
 
-\ Reserved engine-layout cells, named by their DATA offset. Two of them, so the
-\ runtime case below can read the offset arithmetic itself rather than a layout
-\ meaning: nothing here depends on what lives at either offset, and neither is
-\ ever written. That these two lines LOAD AT ALL is the first half of the
-\ two-row rule — a prefix definer the seal marked DNAME-INT answers `internal
-\ engine word` here, not a definition.
+\ Two reserved engine-layout cells, named by DATA offset; neither is written and
+\ nothing depends on what lives at either offset. That they load at all is the
+\ first half of the two-row rule: a prefix definer the seal marked DNAME-INT
+\ answers `internal engine word` here, not a definition.
 0 RESERVED-PTR-U8-CELL RSV-CELL-A
 $18 RESERVED-PTR-U8-CELL RSV-CELL-B
 
@@ -36,9 +33,9 @@ $18 RESERVED-PTR-U8-CELL RSV-CELL-B
 : RSV-OFF-A ( -- n ) RSV-CELL-A DATA-OFF ;
 : RSV-OFF-B ( -- n ) RSV-CELL-B DATA-OFF ;
 
-\ The definer answers `data-base + the offset it was given`, which is the whole
-\ of what it promises; the difference pins that the offset is the created
-\ body's and not a constant baked into the clause.
+\ The definer promises only `data-base + the offset it was given`; the
+\ difference pins that the offset is the created body's, not a constant baked
+\ into the clause.
 : RESERVED-RUNTIME ( -- )
    RSV-OFF-A 0 T=
    RSV-OFF-B $18 T=
@@ -55,8 +52,6 @@ $18 RESERVED-PTR-U8-CELL RSV-CELL-B
 : TABLE-FIELD ( n -- ptr ptr u8 )
    cells TABLE-SLOT + 0 ptr-field ;
 
-\ A declared table is ordinary storage at runtime: the base goes into the head
-\ and a byte pointer round-trips through a cell of it.
 : TABLE-RUNTIME ( -- )
    TABLE-SLOT TABLE-HEAD !
    TABLE-HEAD @ TABLE-SLOT = TTRUE
@@ -69,19 +64,15 @@ $18 RESERVED-PTR-U8-CELL RSV-CELL-B
    [: s" PERSISTED-PTR-VARIABLE VPS-PTR : VPS-ADDR ( -- ptr ptr n ) VPS-PTR ;" VERIFY:SOURCE-BUF ;]
    catch 0 T= ;
 
-\ Declared-pointee storage (dot habu-refuse-a-ptr-5ad2734e). PTR-U8-TABLE and
-\ PERSISTED-PTR-U8-TABLE-VARIABLE spell the pointee in the does> clause, so the
-\ published effect carries no type variable, `trust-raw` has nothing to seal, and
-\ the cell holds EXACTLY the type named: it admits that type and refuses every
-\ other one, in both directions. The raw form is the control - it keeps absorbing
-\ a scalar pointee, which is all DYNAMIC-BUFFER's control head ever needs. That a
-\ raw cell REFUSES a pointer pointee is the rule's own fixture
-\ (test/compiler/raw-cell-pointer-refusals.f), not this file's: the rule lands
-\ after these conversions, and this file must read the same before and after it.
-\ The pre-scan compiles nothing: DPT, DPH and DPR bind through the checker
-\ overlay only while the neutral scope holding the scan and its probes is open,
-\ so the probes ask the certify path there (VERIFY:CANDIDATE-IN-SCOPE);
-\ VERIFY-RESERVED-SCAN below shows both answers.
+\ PTR-U8-TABLE and PERSISTED-PTR-U8-TABLE-VARIABLE spell the pointee in the
+\ does> clause, so the published effect carries no type variable, `trust-raw`
+\ has nothing to seal, and the cell admits exactly the type named, both
+\ directions. The raw form is the control: it absorbs a scalar pointee, all
+\ DYNAMIC-BUFFER's control head needs; a raw cell refusing a pointer pointee is
+\ test/compiler/raw-cell-pointer-refusals.f's case. The pre-scan compiles
+\ nothing: DPT, DPH and DPR bind through the checker overlay only while the
+\ neutral scope holding the scan is open, so the probes ask
+\ VERIFY:CANDIDATE-IN-SCOPE there.
 : REG-DECLARED-CELLS ( -- )
    s\" 4 PTR-U8-TABLE DPT\nPERSISTED-PTR-U8-TABLE-VARIABLE DPH\nPTR-VARIABLE DPR"
    VERIFY:SOURCE-BUF-IN-SCOPE ;
@@ -99,19 +90,16 @@ $18 RESERVED-PTR-U8-CELL RSV-CELL-B
    s" DP-HEAD-WRONG ( ptr ptr n -- ) DPH !" VERIFY:CANDIDATE-IN-SCOPE 0 T=
    CHECKER-SCOPE-DONE ;
 
-\ THE TWO ROWS, AND THE PAIR THAT SHOWS WHAT THEY DO. `RESERVED-PTR-U8-CELL`
-\ is written in src/core/pointer-storage.f, before the checker exists, so the
-\ seal would mark it DNAME-INT on its own; src/core/cell-effects.f states the
-\ definer's effect and src/habu/verify-source.f states what it publishes for the
-\ created word. POINTER-STORAGE:DATA-CELL is the control: same file, same
-\ phase, neither row, and checked source cannot name it. (The control is the
-\ real sibling rather than a clone of the definer because the seal runs when the
-\ engine is built - a clone written in this file is ordinary checked source and
-\ could never be sealed. test/internal-word-gate.f owns what outside source
-\ sees of the sealed name.) The control candidate feeds the control an offset
-\ and declares what it returns, `( -- ptr ptr u8 )`, the created word's effect
-\ too, so a type disagreement cannot be what fails it: the name is. The sealed name does not resolve outside
-\ the engine at all, so the candidate is unresolvable (1), not merely refused.
+\ `RESERVED-PTR-U8-CELL` is written in src/core/pointer-storage.f before the
+\ checker exists, so the seal would mark it DNAME-INT on its own; the two rows
+\ are src/core/cell-effects.f (the definer's effect) and
+\ src/habu/verify-source.f (what it publishes for the created word).
+\ POINTER-STORAGE:DATA-CELL is the control: same file and phase, neither row. It
+\ is the real sibling because the seal runs when the engine is built, so a clone
+\ here could never be sealed; test/internal-word-gate.f owns what outside source
+\ sees of a sealed name. The control candidate declares the created word's
+\ effect, so only the name fails it: unresolvable outside the engine (1), not
+\ merely refused.
 : VERIFY-RESERVED-EFFECT ( -- )
    s" RSV-BASE ( -- ptr ptr u8 ) RSV-CELL-A" CHECK-QUIET-CANDIDATE! -1 T=
    s" RSV-READ ( -- ptr u8 ) RSV-CELL-A @" CHECK-QUIET-CANDIDATE! -1 T=
@@ -119,13 +107,11 @@ $18 RESERVED-PTR-U8-CELL RSV-CELL-B
    s" RSV-READ-WRONG ( -- ptr n ) RSV-CELL-A @" CHECK-QUIET-CANDIDATE! 0 T=
    s" RSV-SEALED ( -- ptr ptr u8 ) 0 POINTER-STORAGE:DATA-CELL" CHECK-QUIET-CANDIDATE! 1 T= ;
 
-\ The scanner's own row: the pre-scan sees the same definer and publishes the
-\ same effect for the word it creates, so a source file that declares a
-\ reserved cell verifies without being run. That effect is a fact of the
-\ certify path: inside the neutral scope holding the scan a candidate binds
-\ the scanned row there, and the scan compiles nothing, so once the scope
-\ closes the engine holds no VSRSV record and a live candidate cannot bind it
-\ (1) - a replay leaves no pending definition behind.
+\ The pre-scan publishes the same effect for the word the definer creates, so a
+\ source declaring a reserved cell verifies without being run. The scan compiles
+\ nothing: a candidate binds VSRSV only inside the neutral scope holding the
+\ scan, and once it closes no VSRSV record exists, so a live candidate cannot
+\ bind it (1).
 : REG-RESERVED-CELL ( -- )
    s" $30 RESERVED-PTR-U8-CELL VSRSV" VERIFY:SOURCE-BUF-IN-SCOPE ;
 : VERIFY-RESERVED-SCAN ( -- )
