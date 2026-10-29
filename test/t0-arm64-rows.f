@@ -198,7 +198,7 @@ private
 
 : IS-ORIGIN-CASE ( -- )
    ARCH-A64
-   s" ISO ( n -- ) is T0-ROWS-TEST:ROW-HOOK " T0:COMPILE-TEXT
+   s" ISO ( [ -- n ] -- ) is T0-ROWS-TEST:ROW-HOOK " T0:COMPILE-TEXT
    T0-EMIT:SEAL-UNPLACED
    s" an `is` body files one address row" T-LABEL
    NEMIT:ADDR-SITES 1 T=
@@ -237,7 +237,7 @@ private
    s" and compares against it with cmp #imm" T-LABEL
    10 CMPI? TTRUE
    NEMIT:CLEAR
-   s" FV ( -- n ) T0-ROWS-TEST:FOLDV @ " T0:COMPILE-TEXT
+   s" FVAR ( -- n ) T0-ROWS-TEST:FOLDV @ " T0:COMPILE-TEXT
    T0-EMIT:SEAL-UNPLACED
    s" a variable folds: its body calls nothing" T-LABEL
    T0-EMIT:CALL-ROWS 0 T=
@@ -260,18 +260,18 @@ private
    cto s" T0-ROWS-TEST:KID" NDICT:CALL-TARGET T=
    NEMIT:CLEAR ;
 
-\ A fixed VAL body sealed placed while NCBSTUB is armed.
+\ A fixed STUB-VAL body sealed placed while NCBSTUB is armed.
 : STUB-CASE ( -- )
    ARCH-A64
    CB-SLOT CB-THUNK NCBSTUB:SET
-   s" VAL ( -- n ) 42 " T0:COMPILE-TEXT
+   s" STUB-VAL ( -- n ) 42 " T0:COMPILE-TEXT
    PLACE T0-EMIT:SEAL
    s" the stub is one more function, after the unit" T-LABEL
    NEMIT:FUNCTIONS 2 T=
    1 NEMIT:FUNCTION-OFFSET@ {: stub:n :}
    s" the stub is the emission's last nine words" T-LABEL
    stub NEMIT:SIZE 36 - T=
-   s" the VAL unit ends in ret just before the stub" T-LABEL
+   s" the STUB-VAL unit ends in ret just before the stub" T-LABEL
    stub 4 - WORD@ A64ASM:ENC-RET T=
    s" the stub loads x9 with the slot, every lane" T-LABEL
    stub 9 CB-SLOT CHAIN4? TTRUE
@@ -514,7 +514,7 @@ $48 c, $39 c, $CA c, $0F c, $8D c,
 
 : X86-FUSE-CASE ( -- )
    CTARGET-ARCH:X86-64 T0-EMIT:SELECT
-   s" F ( n n -- n ) < if 1 else 2 then " BODY
+   s" X86-F ( n n -- n ) < if 1 else 2 then " BODY
    s" x86-64 < if is cmp rdx,rcx then jge" T-LABEL
    NEMIT:BYTES NEMIT:SIZE X86-FUSED X86-FUSED-LEN CONTAINS? TTRUE
    NEMIT:CLEAR
@@ -559,7 +559,7 @@ $48 c, $39 c, $CA c, $0F c, $8D c,
    s" and no call of mod's kernel row" T-LABEL
    s" mod" CALLS? TFALSE
    NEMIT:CLEAR
-   s" F ( -- n n ) 1000003 7 / -1000003 7 mod " BODY
+   s" FOLD-F ( -- n n ) 1000003 7 / -1000003 7 mod " BODY
    s" literal operands fold: no sdiv and no call" T-LABEL
    SDIV? TFALSE
    T0-EMIT:CALL-ROWS 0 T=

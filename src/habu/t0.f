@@ -1,12 +1,12 @@
 \ t0.f - the tier 0 compiler's front end, package T0.
 \
-\ T0:COMPILE-TEXT walks one definition's body text as BODYBUF holds it at `;`
-\ (src/habu/definers.f DEF-COMPILE hands the same text to the compiler entry):
-\ the name, an optional `( ... )` signature it skips, then blank-separated
-\ tokens. It emits through the seam src/habu/t0-emit.f (package T0-EMIT) to the
-\ emitter selected there (src/habu/t0-x64.f for x86-64); the emitter leaves the
-\ finished body in its sink, and the caller seals it into NEMIT
-\ (T0-EMIT:SEAL or SEAL-UNPLACED).
+\ T0 compiles one definition's body text as BODYBUF holds it at `;`
+\ (src/habu/definers.f DEF-COMPILE hands the same text to the compiler entry),
+\ read as the checker's scan reported it: one row per token the checker read,
+\ the definition's name first (THE TAPE). It emits through the seam
+\ src/habu/t0-emit.f (package T0-EMIT) to the emitter selected there
+\ (src/habu/t0-x64.f for x86-64); the emitter leaves the finished body in its
+\ sink, and the caller seals it into NEMIT (T0-EMIT:SEAL or SEAL-UNPLACED).
 \
 \ T0:COMPILE is the runtime compiler entry: T0:INSTALL stores it in the cell
 \ the tier 1 `:` dispatches through (T0:DISPATCH!), with no fallback to tier 1,
@@ -18,14 +18,14 @@
 \ stub on every exit, as tier 1's does.
 \ It compiles one pending definition through the step every native compiler
 \ shares (src/compiler/native/definition.f, NDEFINITION): stage the unit, scan
-\ and capture the body inside a recording unit whose observer keeps only the
-\ verdict, enforce the verdict, check the name and arity, walk the body, seal
-\ the emission at the next code slot and publish it; a refusal is reported and
-\ retracts the rows the definition recorded, and a tick operand no record
-\ answers is reported as the engine's tick reports it (E-UNDEFINED). The name
-\ is the body text's first token. T0 classifies no body for the host yet: each one's reason is
-\ UNKNOWN, and a quotation's arity is unknown (-1 -1), as tier 1 answers for
-\ one it has none for. A definition while a target shadow is open is
+\ and capture the body inside a recording unit whose observer lays the tape
+\ and keeps the verdict, enforce the verdict, check the name and arity, walk the
+\ body, seal the emission at the next code slot and publish it; a refusal is
+\ reported and retracts the rows the definition recorded, and a tick operand no
+\ record answers is reported as the engine's tick reports it (E-UNDEFINED). The
+\ name is the tape's first row. T0 classifies no body for the host yet: each
+\ one's reason is UNKNOWN, and a quotation's arity is unknown (-1 -1), as tier 1
+\ answers for one it has none for. A definition while a target shadow is open is
 \ E-T0-SHADOW.
 \
 \ A `does>` DEFINER is one text split at M-DOES, the byte just past its
@@ -37,74 +37,89 @@
 \ quotations follow it; an empty clause's unit is still built. The clause
 \ binds locals of its own, read from its certificate at base M-DOES.
 \
-\ A TOKEN IS, IN THIS ORDER: a local in scope; a string opener (`s" c" ." s\"
-\ c\" .\"`); a control keyword (if else then begin until while repeat again do
-\ ?do loop +loop leave unloop i j case of endof endcase MATCH construct exit
-\ recurse >r r> r@ ['] [char] char is {: [: ;]); an operation T0 inlines, when
-\ the spelling binds the engine's seeded primitive (NDICT:SPELL-PRIM?): the
+\ THE EVENTS. A token is what the checker filed it as (CHECKER-TAPE's kinds):
+\ a string literal (`s" c" ." s\" c\" .\"`) or a character literal (`[char]
+\ char`); an integer, its value, or a real, its bits as one cell; a control
+\ word (if else then begin until while repeat again do ?do loop +loop leave
+\ unloop i j case of endof endcase exit recurse >r r> r@ [: ;]), by its place
+\ in the checker's list (DO-CONTROL); a local's declaration, its group's `:}`
+\ or a local read, by its bind sequence (THE LOCALS); `[']` and `is`, whose
+\ operand row follows; a MATCH's family, each arm's variant and `OF`, its
+\ `;MATCH`, and `construct`'s variant, with the family, tag and pads the
+\ checker filed; or an operand its keyword consumed (`{:`, `MATCH`,
+\ `construct` and its family), which compiles nothing, or a loaned field's
+\ name, whose call T0 refuses (WORD-CALL). A name is, by the
+\ record the checker bound it to: an operation T0 inlines, when that record is
+\ the engine's seeded primitive of the operation (THE INLINED OPERATIONS): the
 \ stack shuffles (dup drop swap over nip tuck rot -rot 2dup 2drop 2swap 2over
-\ 2>r 2r> 2r@), + - * and or xor 1+ 1- negate invert lshift rshift, cells
-\ cell+ ptr-field, / and mod by a literal neither 0 nor -1 (DIV2), the
-\ comparisons, @ and c@, and ! as a call to the primitive or one per cell (THE
-\ WIDTHS); a word the dictionary binds (NDICT:CALL-BINDING), as a call, or as
-\ the value it pushes when its definer fixed one (a constant's number, a
-\ created word's or variable's DATA address; WORD-CALL); an immediate
-\ (IMM-TOKEN says which pass); a number (OUTER:NUMBER), a float being one cell
-\ of a double's bits. Anything else throws E-T0-UNSUPPORTED, and
-\ UNSUPPORTED$ names the token until the next compile.
+\ 2>r 2r> 2r@), + - * and or xor 1+ 1- negate invert lshift rshift, cells cell+
+\ ptr-field, / and mod by a literal neither 0 nor -1 (DIV2), the comparisons,
+\ @ and c@, and ! as a call to the primitive or one per cell (THE WIDTHS); a
+\ word, as a call, or as the value it pushes when its definer fixed one (a
+\ constant's number, a created word's or variable's DATA address; WORD-CALL);
+\ an immediate (IMM-TOKEN says which pass). Anything else, a name bound to no
+\ record among them, throws E-T0-UNSUPPORTED, and UNSUPPORTED$ names the token
+\ until the next compile.
 \
-\ THE SPELLING. T0 compiles only bodies the checker certified, so it reads each
-\ token as the checker does (src/core/checker.f DO-TOK1). A local answers to
-\ its declared spelling byte for byte (LOC-REF?). Every other class is matched
-\ with ASCII case folded: the checker folds the token (TOKFOLD) before it
-\ compares it with a keyword, a string opener, `[char]` or `char`, and the
-\ dictionary lookups behind the inlined operations and the calls fold case
-\ themselves; T0 compares with STR=CI. So `IF`, `RECURSE`, `S"` and `DUP` are
-\ `if`, `recurse`, `s"` and the primitive `dup`.
+\ THE RECORDS. A name, a tick's operand and `is`'s operand lower from the
+\ record the checker bound (CHECKER-TAPE's K-NAME, K-TICK and K-IS a0, the
+\ record's dictionary index), as tier 1 lowers a call from the checker's
+\ binding (src/compiler/native/hir-word.f RESOLVE-SITE). A package's own word
+\ named like a primitive binds a record of its own and is a call. Two lookups
+\ by spelling remain: IMM-TOKEN asks CHECKER-OWNER:PARSE-IMM? whether an
+\ immediate is parse-neutral, and VALIDATE finds NFETCH-CHECK:TAGS. Otherwise
+\ the spelling is only what a refusal names.
 \
 \ THE ORDINALS. The checker files what it proved about a token under that
-\ token's ordinal in its report (src/core/checker.f SCAN-REPORT), and TOKEN
-\ counts the same way: the name is 0, the signature reports nothing, each other
-\ token is one, a string literal with its opener is one, `[char]` or `char`
-\ with its operand is one, and a tick's or `is`'s operand is one after its
-\ keyword. A quotation's first ordinal is recorded where it is skipped, and the
-\ does> clause's follows its `does>`.
+\ token's ordinal in its report (src/core/checker.f SCAN-REPORT), and the tape
+\ holds one row per ordinal: the name is 0, the signature reports nothing, each
+\ other token is one, a string literal with its opener is one, `[char]` or
+\ `char` with its operand is one, and a tick's or `is`'s operand is one after
+\ its keyword. A quotation's first ordinal is recorded where it is skipped, and
+\ the does> clause's follows its `does>`.
 \
 \ MATCH AND CONSTRUCT. `MATCH fam` reads its value as the cells the checker
 \ proved at the family token, the tag on top, and opens a case over the tag.
-\ Each arm, `variant of`, compares the tag with the variant's (NFAM:TAG); the
-\ match drops the tag and the pads the checker proved at the `of`, leaving the
-\ payload. `;MATCH` is the default arm: a tag no arm matched calls the trap
-\ routine with the family's bad-tag message (src/compiler/native/trap.f), as
-\ tier 1's MATCH-TRAP. The variant tokens, `of` and `;MATCH` are read in place,
-\ never as locals or words. `construct fam v` pushes the variant's pads as
-\ zeros, then its tag. A call to a word first pushes, as zeros, the pads the
-\ checker proved the call's instantiation adds (NDICT:CON-PADS): OPTION:NONE
-\ at option<pt>. A form whose facts are missing or disagree, as tier 1's
-\ MATCH-SCAN refuses them, is E-T0-MATCH.
+\ Each arm, `variant of`, compares the tag with the variant's; the match drops
+\ the tag and the pads the checker proved at the `of`, leaving the payload.
+\ `;MATCH` is the default arm: a tag no arm matched calls the trap routine with
+\ the family's bad-tag message (src/compiler/native/trap.f), as tier 1's
+\ MATCH-TRAP. The family and each variant's tag and pads are the events the
+\ checker filed, so no name is looked up. `construct fam v` pushes the
+\ variant's pads as zeros, then its tag. A call to a word first pushes, as
+\ zeros, the pads the checker proved the call's instantiation adds
+\ (NDICT:CON-PADS): OPTION:NONE at option<pt>. A form whose facts are missing or
+\ disagree, as tier 1's MATCH-SCAN refuses them, is E-T0-MATCH.
 \
-\ A STRING's payload starts one byte past its opener, as BODYBUF keeps it
-\ (src/habu/definers.f DEF-TEXT), and src/habu/escape.f decodes an escaped
-\ one. Its bytes are interned (NSTR:INTERN-SOURCE), so equal bodies share an
-\ address, and its address row files the source origin interning answers.
-\ `s"` pushes the address and length, `c"` the address of a count byte and
-\ the bytes, `."` passes both to `type`. A payload with no closing quote or a
-\ bad escape, and a counted one past COUNTED-MAX bytes, is E-T0-LITERAL.
+\ A STRING is one row, of its kind, whose span is the payload in the text; the
+\ checker reports its body, the payload itself for a plain literal and the
+\ decoded bytes for an escaped one (src/core/checker.f CHECKER-TAPE:STRING),
+\ which the tape copies. Its bytes are interned (NSTR:INTERN-SOURCE), so equal
+\ bodies share an address, and its address row files the source origin
+\ interning answers. `s"` pushes the address and length, `c"` the address of a
+\ count byte and the bytes, `."` passes both to `type`. A counted one past
+\ COUNTED-MAX bytes is E-T0-LITERAL. A CHARACTER literal is one row whose a0 is
+\ its operand's first byte.
 \
 \ `is W` stores the xt on the stack in deferred word W's cell: it pushes the
-\ cell's address, whose row files the origin the dictionary answers with it
-\ (NDICT:SPELL-DEFER-BINDING), and calls the engine's `xt!`, as tier 1's
-\ (src/compiler/native/elaborate.f DO-IS). A W that is no deferred word, or
-\ whose effect the dictionary holds no arity for, is E-T0-DEFER.
+\ cell's address (NDICT:REC-DEFER-CELL), whose row files W's record as its
+\ origin, and calls the engine's `xt!`, as tier 1's
+\ (src/compiler/native/elaborate.f DO-IS). A W that is no deferred word is
+\ E-T0-DEFER. Every deferred word has an arity: `defer W` without an effect is
+\ refused where it is defined, under `0 set-check` too.
 \
 \ A QUOTATION `[: ... ;]` is a unit of its own in the same emission
 \ (src/habu/t0-emit.f THE UNITS). At `[:` the body pushes the unit's address
-\ and skips the text through the matching `;]`; once the definition is
-\ compiled, each quotation is compiled from its recorded start, in the order
-\ the `[:` tokens were met, nested ones after their parent. Each unit starts
-\ with an empty virtual stack, no structure open, no loop level and no local,
-\ as the checker reads a quotation: the enclosing loop's `i` and the enclosing
-\ locals are out of its reach. A `{:` inside a quotation is E-T0-UNSUPPORTED.
+\ and skips the rows through the matching `;]`; once the definition is
+\ compiled, each quotation is compiled from its recorded first row (QORD), in
+\ the order the `[:` tokens were met, nested ones after their parent. Each
+\ unit starts with an empty virtual stack, no structure open, no loop level
+\ and no local, as the checker reads a quotation: the enclosing loop's `i` and
+\ the enclosing locals are out of its reach. A local group inside a quotation
+\ never reaches T0 as one: the checker refuses it in a checked body
+\ (E-BAD-LOCAL-SHAPE), and a TRUSTED: quotation's group arrives as plain names;
+\ the group is refused at the first name bound to no record, `:}` at the latest
+\ (E-T0-UNSUPPORTED).
 \
 \ THE VIRTUAL STACK. The top of the data stack lives in at most T0-EMIT:VREGS
 \ entries, each a vreg or a constant; below them the stack is in memory. A
@@ -163,23 +178,23 @@
 \ COMPILE-TEXT, and T0 never reads a type annotation. A bind past the
 \ certificate's count, and a body that binds fewer than it counts, is
 \ E-T0-BINDS: that certificate is not of this text; a body that binds nothing
-\ reads none, as tier 1's BINDS-CK. A local answers to its declared spelling
-\ byte for byte, ahead of the keywords and the dictionary, from its group to
-\ the closer of the structure it binds in (else, then, repeat, until, again,
+\ reads none, as tier 1's BINDS-CK. A local is its bind sequence, which the
+\ checker files at its name and at each read, in scope from its group to the
+\ closer of the structure it binds in (else, then, repeat, until, again,
 \ loop, +loop, endof, endcase), as the checker's CF-LOC-REST ends it; `while`
 \ keeps the loop's names, as tier 1's borrow does. A dead local's slots go to
 \ the next group.
 \
-\ THE CONTROL STACK holds the kind of each open structure, with the locals in
-\ scope where its block opened: an `if` or `else`; a `begin` and a `while`,
-\ which `while` puts under its `begin` as Forth's orig/dest order has it, so
-\ `begin ... while ... while ... repeat then` closes; a `do` level; a `case`,
-\ each `endof` above it and the open `of`; a `MATCH`, with its family and the
-\ cells the checker proved at the family token, tag on top (CS-FAM, CS-WID),
-\ each `endof` above it and the open `OF`. A structure that does not close,
-\ and a loop word outside the loops it needs, is E-T0-CONTROL, refused before
-\ the emitter is called: T0-EMIT's structured words (src/habu/t0-emit.f
-\ CONTROL) keep the branches and trust this nesting.
+\ THE CONTROL STACK holds the kind of each open structure, with the frame slots
+\ the locals in scope held where its block opened: an `if` or `else`; a
+\ `begin` and a `while`, which `while` puts under its `begin` as Forth's
+\ orig/dest order has it, so `begin ... while ... while ... repeat then`
+\ closes; a `do` level; a `case`, each `endof` above it and the open `of`; a
+\ `MATCH`, with its family and the cells the checker proved at the family token,
+\ tag on top (CS-FAM, CS-WID), each `endof` above it and the open `OF`. A
+\ structure that does not close, and a loop word outside the loops it needs, is
+\ E-T0-CONTROL, refused before the emitter is called: T0-EMIT's structured words
+\ (src/habu/t0-emit.f CONTROL) keep the branches and trust this nesting.
 \
 \ LOOPS. `do` and `?do` take the start and limit, push a runtime frame
 \ (T0-EMIT LOOP-PUSH: the index's home is memory), record the rest of the
@@ -192,13 +207,10 @@
 \ the loop continues.
 
 require src/lib/prelude.f
-require src/lib/string.f
-require src/lib/source-syntax.f
 require src/core/bytes.f
-require src/habu/outer.f
-require src/habu/escape.f
 require src/compiler/native/checker-owner.f
 require src/compiler/native/dict.f
+require src/core/prefix-boundary.f
 require src/compiler/native/family.f
 require src/compiler/native/trap.f
 require src/compiler/native/fetch.f
@@ -216,73 +228,89 @@ public
 -9609 constant E-LAST
 -9600 constant E-T0-UNSUPPORTED  \ a token T0 does not compile yet: UNSUPPORTED$
 -9601 constant E-T0-CONTROL      \ a control word without its opener, or a body ending inside one
--9602 constant E-T0-LITERAL      \ a string with no closing quote, a bad escape, or a counted one too long
+-9602 constant E-T0-LITERAL      \ a counted string too long
 -9603 constant E-T0-IMMEDIATE    \ an immediate other than a parse-neutral one: UNSUPPORTED$
 -9604 constant E-T0-BINDS        \ the body binds other than the certificate's count of locals
 -9605 constant E-T0-SHADOW       \ a definition while a target shadow is open: no shadow path yet
 -9606 constant E-T0-MATCH        \ a MATCH or construct the checker's facts do not bear out, as tier 1's E-NELAB-MATCH
--9607 constant E-T0-DEFER        \ `is` names no deferred word, or one with no arity
+-9607 constant E-T0-DEFER        \ `is` names no deferred word
 -9608 constant E-T0-BUNDLE       \ an operation over a width it cannot move, as tier 1's E-NELAB-BUNDLE
 
 private
 
-\ ---- the text ----------------------------------------------------------------
+\ ---- the tape ----------------------------------------------------------------
+\ THE TAPE. Row k is the token the checker's scan reported as ordinal k (the
+\ observer lays it, THE RUNTIME COMPILER): its span, an offset and a length in
+\ the definition's text, and the event the checker filed for it, a kind of
+\ CHECKER-TAPE's and its two arguments. A string row keeps its body's length,
+\ and an escaped one a copy of its decoded body in BODIES, since the checker's
+\ buffer outlives no token.
 PTR-VARIABLE TXT
-variable TXT-LEN
-variable POS
+DYNAMIC-BUFFER ROW-OFF n
+DYNAMIC-BUFFER ROW-LEN n
+DYNAMIC-BUFFER ROW-KIND n
+DYNAMIC-BUFFER ROW-A0 n
+DYNAMIC-BUFFER ROW-A1 n
+DYNAMIC-BUFFER ROW-U n               \ a string's body length
+DYNAMIC-BUFFER ROW-AT n              \ where an escaped string's body starts in BODIES, else -1
+DYNAMIC-BUFFER BODIES u8
+variable BODIES-N
+variable ROWS                        \ the rows laid
+variable SPLIT                       \ a does> definer's `does>` row, or -1
+-1 constant K-NONE                   \ a row the checker filed no event for: the `does>`
+0 constant CF-QUOT-OPEN              \ a K-CONTROL row's a0 for `[:` (src/core/checker.f CF-TOK?)
+1 constant CF-QUOT-CLOSE             \ and for `;]`
+2 constant CF-IF                     \ `if`, and so on in the checker's list
+3 constant CF-ELSE
+4 constant CF-THEN
+5 constant CF-CASE
+6 constant CF-OF
+7 constant CF-ENDOF
+8 constant CF-ENDCASE
+10 constant CF-BEGIN
+11 constant CF-UNTIL
+12 constant CF-AGAIN
+13 constant CF-WHILE
+14 constant CF-REPEAT
+15 constant CF-DO
+16 constant CF-?DO
+17 constant CF-LOOP
+18 constant CF-+LOOP
+19 constant CF-I
+20 constant CF-J
+21 constant CF-EXIT
+22 constant CF-LEAVE
+23 constant CF-UNLOOP
+24 constant CF-RECURSE
+25 constant CF-TOR                   \ `>r`, then `r>` and `r@` (RS-KEYWORD)
+26 constant CF-RFROM
+27 constant CF-RFETCH
 PTR-VARIABLE BAD
 variable BAD-LEN
 variable MISSING                     \ nonzero: the refused token is a tick operand no record answers
-variable ORD                         \ the checker's ordinal of the token TOKEN reads next
+variable ORD                         \ the ordinal of the row the walk reads next
 variable CUT                         \ the byte just past `does> `, or 0
 
 : TXT$ ( -- ptr u8 ) TXT @ ;
 
-: BLANK? ( n -- bool ) 32 <= ;
+\ Row k's span, empty past the tape.
+: ROW$ ( n -- ptr u8 n ) {: k:n :}
+   k ROWS @ >= if TXT$ 0 exit then
+   TXT$ k ROW-OFF @ +  k ROW-LEN @ ;
 
-\ The next blank-delimited token, of length zero at the end of the text.
-: AT-BLANK? ( -- bool )
-   POS @ TXT-LEN @ < if TXT$ POS @ + c@ BLANK? exit then
-   false ;
+\ The row the walk reads next, which it then passes.
+: NEXT$ ( -- ptr u8 n )
+   ORD @ ROW$
+   ORD @ ROWS @ < if 1 ORD +! then ;
 
-: IN-TOKEN? ( -- bool )
-   POS @ TXT-LEN @ < if TXT$ POS @ + c@ BLANK? 0= exit then
-   false ;
+\ Whether row k is the `;]` that ends a quotation.
+: QUOT-END? ( n -- bool ) {: k:n :}
+   k ROW-KIND @ CHECKER-TAPE:K-CONTROL =  k ROW-A0 @ CF-QUOT-CLOSE =  and ;
 
-: TOKEN ( -- ptr u8 n )
-   begin AT-BLANK? while POS @ 1+ POS ! repeat
-   POS @ {: start:n :}
-   begin IN-TOKEN? while POS @ 1+ POS ! repeat
-   POS @ start - {: u:n :}
-   u 0<> if 1 ORD +! then
-   TXT$ start + u ;
-
-\ The next token, read without consuming it: POS and ORD are restored.
-: PEEK-TOKEN ( -- ptr u8 n )
-   POS @ ORD @ {: saved:n ord:n :}
-   TOKEN
-   saved POS !  ord ORD ! ;
-
-\ `[char]` and `char` file their operand under their own ordinal, as the
-\ checker reports a character literal (src/core/checker.f PARSE-LIT?); a tick's
-\ operand takes the next one.
-: LIT-OPERAND ( -- ptr u8 n ) TOKEN -1 ORD +! ;
-
-: LIT-KEYWORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" [char]" STR=CI a u s" char" STR=CI or ;
-
-\ Whether a token takes the next one as its operand: a parsing word, or `is`
-\ naming the deferred word it stores into.
-: OPERAND? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u SOURCE-SYNTAX:PARSING-KEYWORD?  a u s" is" STR=CI  or ;
-
-\ Whether a token ends a quotation.
-: QUOT-END? ( ptr u8 n -- bool ) s" ;]" STR= ;
-
-\ Whether the unit ends here: no token follows, or the quotation's `;]` does.
+\ Whether the unit ends at the next row: the tape does, or a quotation's `;]`.
 : AT-END? ( -- bool )
-   PEEK-TOKEN {: a:ptr u:n :}
-   u 0= a u QUOT-END? or ;
+   ORD @ ROWS @ >= if true exit then
+   ORD @ QUOT-END? ;
 
 \ Throw code, naming the token for UNSUPPORTED$.
 : REFUSE ( ptr u8 n n -- ) {: a:ptr u:n code:n :}
@@ -303,7 +331,7 @@ variable CUT                         \ the byte just past `does> `, or 0
 8 constant CS-MATCH
 
 DYNAMIC-BUFFER CS-KIND n
-DYNAMIC-BUFFER CS-LOC n              \ locals in scope where the block opened
+DYNAMIC-BUFFER CS-LOC n              \ the locals' slots in scope where the block opened
 DYNAMIC-BUFFER CS-FAM n              \ a MATCH's family
 DYNAMIC-BUFFER CS-WID n              \ a MATCH's cells, the tag on top
 DYNAMIC-BUFFER CS-LAY n              \ layout k's vregs from k*VREGS, bottom first
@@ -714,44 +742,25 @@ variable WS-K                        \ operands the word moves
 : SWAP-OP ( -- ) WIDE? if s" 01" MOVE-WIDE exit then SWAP1 ;
 
 \ ---- the locals --------------------------------------------------------------
-DYNAMIC-BUFFER L-AT n                \ the name's offset in the text
-DYNAMIC-BUFFER L-LEN n
-DYNAMIC-BUFFER L-SLOT n              \ the first of its frame slots
-DYNAMIC-BUFFER L-WIDTH n             \ its cells
-variable L-N                         \ locals in scope
+\ A local is its bind sequence, the checker's number for it in the unit's
+\ certificate: a K-LOCAL-DECL row names the next one, and a K-LOCAL-REF row the
+\ one it reads.
+DYNAMIC-BUFFER L-SLOT n              \ by sequence: the first of its frame slots
+DYNAMIC-BUFFER L-WIDTH n             \ by sequence: its cells
+variable L-N                         \ the frame slots the locals in scope hold
+variable G-CELLS                     \ the cells the open group's names hold so far
 variable BINDS                       \ binds so far: the next one's certificate sequence
-variable UNIT                        \ the unit being compiled: 0 the definition
 variable CLAUSE                      \ a does> definer's clause unit, else -1
 
-: L-NAME$ ( n -- ptr u8 n ) {: k:n :} TXT$ k L-AT @ +  k L-LEN @ ;
-
-\ The latest local in scope spelled exactly so, or -1. A name of another
-\ length is passed on its length alone, before its bytes are addressed.
-: FIND-LOCAL ( ptr u8 n -- n ) {: a:ptr u:n :}
-   L-N @ begin dup 0 > while
-      1- dup L-LEN @ u = if dup L-NAME$ a u STR= if exit then then
-   repeat
-   1- ;
-
-\ The frame slots the locals in scope hold.
-: SLOTS-LIVE ( -- n )
-   L-N @ 0= if 0 exit then
-   L-N @ 1- {: k:n :}
-   k L-SLOT @ k L-WIDTH @ + ;
-
-\ Record local k, declared by the token of length u that ends at POS, on slot.
-: DECLARE ( ptr u8 n n n -- n ) {: a:ptr u:n k:n slot:n :}
-   POS @ u - {: at:n :}
-   BINDS @ at NFETCH:BINDS >= if E-T0-BINDS throw then
-   at BINDS @ NFETCH:BIND-WIDTH {: w:n :}
-   BINDS @ 1+ BINDS !
-   a u $3A INDEX-OF MATCH option         \ the name ends at the type's `:`
-      none OF u ENDOF
-      some OF IDX>N ENDOF
-   ;MATCH {: len:n :}
-   k 1+ L-AT-RESERVE  k 1+ L-LEN-RESERVE  k 1+ L-SLOT-RESERVE  k 1+ L-WIDTH-RESERVE
-   at k L-AT !  len k L-LEN !  slot k L-SLOT !  w k L-WIDTH !
-   w ;
+\ Name local seq of the open group, declared by the token at offset at, on the
+\ slots after the group's earlier names.
+: DECLARE ( n n -- ) {: seq:n at:n :}
+   seq at NFETCH:BINDS >= if E-T0-BINDS throw then
+   at seq NFETCH:BIND-WIDTH {: w:n :}
+   seq 1+ BINDS !
+   seq 1+ L-SLOT-RESERVE  seq 1+ L-WIDTH-RESERVE
+   L-N @ G-CELLS @ +  seq L-SLOT !  w seq L-WIDTH !
+   w G-CELLS +! ;
 
 \ Pop c cells into slots base .. base+c-1, the top cell into the last: first
 \ the virtual stack's entries, then the cells in memory under them, the
@@ -770,25 +779,15 @@ variable CLAUSE                      \ a does> definer's clause unit, else -1
       r RELEASE
    loop ;
 
-\ Declare the next name of a group whose earlier names hold cells; false at
-\ the `:}`.
-: GROUP-NAME ( n n n n -- n n bool ) {: first:n base:n names:n cells:n :}
-   TOKEN {: a:ptr u:n :}
-   u 0= if E-T0-CONTROL throw then
-   a u s" :}" STR= if names cells false exit then
-   a u first names + base cells + DECLARE {: w:n :}
-   names 1+  cells w +  true ;
-
-\ `{:` up to `:}`: the names come into scope once their cells are bound. A
-\ quotation's group is not compiled yet; a does> clause's is.
-: DO-GROUP ( ptr u8 n -- ) {: a:ptr u:n :}
-   UNIT @ 0<> UNIT @ CLAUSE @ <> and if a u UNSUPPORTED then
-   SLOTS-LIVE {: base:n :}
-   L-N @ {: first:n :}
-   0 0 begin first base 2swap GROUP-NAME 0= until {: names:n cells:n :}
+\ The `:}` that binds the open group: its names come into scope once their
+\ cells are bound.
+: CLOSE-GROUP ( -- )
+   L-N @ {: base:n :}
+   G-CELLS @ {: cells:n :}
    base cells + T0-EMIT:SLOTS
    base cells BIND-CELLS
-   first names + L-N ! ;
+   base cells + L-N !
+   0 G-CELLS ! ;
 
 \ Every cell of local k, pushed.
 : DO-LOCAL ( n -- ) {: k:n :}
@@ -813,13 +812,14 @@ variable CLAUSE                      \ a does> definer's clause unit, else -1
 \ no other word ever finds it set.
 variable PENDING
 
-\ Whether the next token is the keyword `if`, `while` or `until`, matched as
-\ COMPILE-TOKEN matches it: a local of that name shadows it, then KW2 and KW5
-\ compare it case-blind.
+\ Whether the checker filed the next row as the control word `if`, `while` or
+\ `until`.
 : BRANCH-NEXT? ( -- bool )
-   PEEK-TOKEN {: a:ptr u:n :}
-   a u FIND-LOCAL 0 >= if false exit then
-   a u s" if" STR=CI  a u s" while" STR=CI or  a u s" until" STR=CI or ;
+   ORD @ {: k:n :}
+   k ROWS @ >= if false exit then
+   k ROW-KIND @ CHECKER-TAPE:K-CONTROL <> if false exit then
+   k ROW-A0 @ {: code:n :}
+   code CF-IF =  code CF-WHILE = or  code CF-UNTIL = or ;
 
 \ The flag of condition c from the compare just emitted: left in the condition
 \ codes for the branch that follows, else pushed.
@@ -872,7 +872,7 @@ variable PENDING
    CS-N @ 0= if E-T0-CONTROL throw then
    CS-N @ 1- CS-KIND @ ;
 
-\ The locals in scope where the structure last popped opened.
+\ The locals' slots in scope where the structure last popped opened.
 : CS-LOC@ ( -- n ) CS-N @ CS-LOC @ ;
 
 \ The names the popped structure's block bound go out of scope.
@@ -1332,23 +1332,29 @@ DYNAMIC-BUFFER RS-V T0-EMIT:vreg     \ reserved to T0-EMIT:VREGS by RESET: one
 : 2RFROM ( -- ) PAIR-CELLS RFROM-CELLS  WS-SWAP SWAP-OP WS-SWAP ;
 : 2RFETCH ( -- ) PAIR-CELLS RFETCH-CELLS  WS-SWAP SWAP-OP WS-SWAP ;
 
-: DO-TICK ( -- )
-   TOKEN {: a:ptr u:n :}
-   a u NDICT:TICK-TARGET {: xt:n :}
-   xt 0= if
-      a u NDICT:SCOPE-REC XREF-FOUND? 0= if -1 MISSING ! then
-      a u UNSUPPORTED
-   then
+\ The code record rec offers a compiled reference, or 0: a retired record's
+\ code nothing reaches (src/compiler/native/dict.f REC-CODE).
+: REC-START ( ptr n -- n ) {: rec:ptr :}
+   rec XREF-RETIRED? if 0 exit then
+   rec XREF-START ;
+
+\ `[']` bound to record r: its operand's code address. The checker refuses a
+\ tick of an internal word in a checked body (E-CAP-TRUSTED) and admits one
+\ under TRUSTED:, as tier 1 does. Bound to none, the operand is
+\ undefined (MISSING).
+: DO-TICK ( n -- ) {: r:n :}
+   NEXT$ {: a:ptr u:n :}
+   r 0< if -1 MISSING !  a u UNSUPPORTED then
+   r XREF-REC REC-START {: xt:n :}
+   xt 0= if a u UNSUPPORTED then
    ROOM ALLOC {: r:T0-EMIT:vreg :}
    xt r T0-EMIT:ADDR-CODE
    r PUSH-REG ;
 
-\ The operand's first byte, as tier 1 compiles it (the JIT compiles `[char]`
-\ only): `[char] é` is the 195 that begins its UTF-8.
-: DO-CHAR ( -- )
-   LIT-OPERAND {: a:ptr u:n :}
-   u 0= if a u UNSUPPORTED then
-   a c@ PUSH-CONST ;
+\ Character row k: its operand's first byte, the row's a0, as tier 1 compiles
+\ it (the JIT compiles `[char]` only): `[char] é` is the 195 that begins its
+\ UTF-8.
+: DO-CHAR ( n -- ) ROW-A0 @ PUSH-CONST ;
 
 \ A call spills first; the last token of a body outside every structure leaves
 \ through the callee when the callee lies in the code region, as tier 1's
@@ -1366,7 +1372,7 @@ DYNAMIC-BUFFER RS-V T0-EMIT:vreg     \ reserved to T0-EMIT:VREGS by RESET: one
 : MOVE-OP ( ptr u8 n ptr u8 n -- ) {: a:ptr k:n outs:ptr u:n :}
    a k WIDTHS  outs u MOVE-WIDE ;
 
-\ ---- whole-width memory -------------------------------------------------------
+\ ---- whole-width memory ------------------------------------------------------
 \ The cells of the top operand of the operation at token a.
 : CELLS0 ( ptr u8 -- n ) {: a:ptr :} a 1 WIDTHS 0 WS @ ;
 
@@ -1406,12 +1412,13 @@ DYNAMIC-BUFFER RS-V T0-EMIT:vreg     \ reserved to T0-EMIT:VREGS by RESET: one
    w 0 ?do i DEEP i ADDR+ T0-EMIT:CELL-W FETCH loop
    w 1 NIP-CELLS ;
 
-\ The wide store's calls never leave as a tail: each stores a copy of one cell,
-\ so the w cells and the address are still on the stack after the last.
-: DO-STORE ( ptr u8 n -- ) {: a:ptr u:n :}
+\ `!` at a, whose primitive's entry is to. The wide store's calls never leave
+\ as a tail: each stores a copy of one cell, so the w cells and the address are
+\ still on the stack after the last.
+: DO-STORE ( ptr u8 n -- ) {: a:ptr to:n :}
    a CELLS0 {: w:n :}
    w 1 < if E-T0-BUNDLE throw then
-   a u NDICT:CALL-TARGET  a TXT$ - {: to:n loc:n :}
+   a TXT$ - {: loc:n :}
    w 1 = if to loc DO-CALL exit then
    w 0 ?do
       w i - DEEP  1 DEEP  i ADDR+
@@ -1419,55 +1426,28 @@ DYNAMIC-BUFFER RS-V T0-EMIT:vreg     \ reserved to T0-EMIT:VREGS by RESET: one
    loop
    w 1+ negate T0-EMIT:DSP+ ;
 
-\ ---- strings -------------------------------------------------------------------
-0 constant STR-NONE
-1 constant STR-PUSH                 \ s": the address and the length
-2 constant STR-COUNTED              \ c": the address of the count byte
-3 constant STR-PRINT                \ .": both, passed to `type`
-
-$22 constant QUOTE
-$5C constant BACKSLASH
+\ ---- strings -----------------------------------------------------------------
 255 constant COUNTED-MAX            \ a counted string's length is one byte
 
 DYNAMIC-BUFFER STR-BUF u8           \ a decoded or counted body before interning
 
-\ The kind of string a token opens; an escaped one is three bytes long.
-: OPENER ( ptr u8 n -- n ) {: a:ptr u:n :}
-   u 2 < u 3 > or if STR-NONE exit then
-   a u + 1- c@ QUOTE <> if STR-NONE exit then
-   u 3 = if a 1+ c@ BACKSLASH <> if STR-NONE exit then then
-   a c@ {: c:n :}
-   c [char] s = c [char] S = or if STR-PUSH exit then
-   c [char] c = c [char] C = or if STR-COUNTED exit then
-   c [char] . = if STR-PRINT exit then
-   STR-NONE ;
+\ Whether a row of this kind is a string literal.
+: STRING-KIND? ( n -- bool ) {: kind:n :}
+   kind CHECKER-TAPE:K-STRING =  kind CHECKER-TAPE:K-COUNTED-STRING = or
+   kind CHECKER-TAPE:K-PRINTED-STRING = or ;
 
-\ The first quote from s on before e, the bytes before it, and whether one is.
-: PLAIN-SPAN ( ptr u8 ptr u8 -- ptr u8 n bool ) {: s:ptr e:ptr :}
-   s begin dup e < if dup c@ QUOTE <> else false then while 1+ repeat
-   {: q:ptr :}
-   q  q s -  q e < ;
-
-\ The payload after an opener: its first byte, its closing quote and the count
-\ of bytes it stands for. POS moves past the quote.
-: SPAN ( bool -- ptr u8 ptr u8 n ) {: esc:bool :}
-   TXT$ POS @ 1+ + {: s:ptr :}
-   TXT$ TXT-LEN @ + {: e:ptr :}
-   esc if s e ESCAPE:SPAN else s e PLAIN-SPAN then {: q:ptr u:n ok:bool :}
-   ok 0= if E-T0-LITERAL throw then
-   q TXT$ - 1+ POS !
-   s q u ;
-
-\ The payload's interned address, its source origin and its length. A plain or
+\ String row k's interned address, its source origin and its length. A plain or
 \ empty body interns from the text; a decoded or counted one is built in
 \ STR-BUF first.
-: INTERN-BODY ( bool bool -- n n n ) {: esc:bool counted:bool :}
-   esc SPAN {: s:ptr q:ptr u:n :}
+: INTERN-BODY ( n bool -- n n n ) {: k:n counted:bool :}
+   TXT$ k ROW-OFF @ + {: s:ptr :}
+   k ROW-AT @ {: body:n :}
+   k ROW-U @ {: u:n :}
    counted u COUNTED-MAX > and if E-T0-LITERAL throw then
-   esc 0= u 0= or counted 0= and if s u NSTR:INTERN-SOURCE u exit then
+   body 0< u 0= or counted 0= and if s u NSTR:INTERN-SOURCE u exit then
    counted if 1 else 0 then {: at:n :}
    at u + STR-BUF-RESERVE
-   esc if s q at STR-BUF ESCAPE:COPY else s at STR-BUF u BYTE-COPY then
+   body 0< if s at STR-BUF u BYTE-COPY else body BODIES at STR-BUF u BYTE-COPY then
    counted if u 0 STR-BUF c! then
    0 STR-BUF at u + NSTR:INTERN-SOURCE u ;
 
@@ -1475,52 +1455,47 @@ DYNAMIC-BUFFER STR-BUF u8           \ a decoded or counted body before interning
 \ 1 does (src/compiler/native/elaborate.f TYPE-ENTRY).
 TRUSTED: TYPE-ENTRY ( -- n ) ['] type ;
 
-\ loc is the text's offset in the body, the call's for `."`, as tier 1's
+\ String row k. The payload's offset is the call's for `."`, as tier 1's
 \ (src/core/checker.f SPAY-B).
-: DO-STRING ( n bool n -- ) {: kind:n esc:bool loc:n :}
-   esc kind STR-COUNTED = INTERN-BODY {: v:n o:n u:n :}
+: DO-STRING ( n -- ) {: k:n :}
+   k ROW-KIND @ {: kind:n :}
+   kind CHECKER-TAPE:K-COUNTED-STRING = {: counted:bool :}
+   k counted INTERN-BODY {: v:n o:n u:n :}
    v o PUSH-ADDR
-   kind STR-COUNTED = if exit then
+   counted if exit then
    u PUSH-CONST
-   kind STR-PRINT = if TYPE-ENTRY loc DO-CALL then ;
+   kind CHECKER-TAPE:K-PRINTED-STRING = if TYPE-ENTRY k ROW-OFF @ DO-CALL then ;
 
-\ ---- is ------------------------------------------------------------------------
+\ ---- is ----------------------------------------------------------------------
 \ `is` stores through the engine's `xt!` whatever the source's package scope, as
 \ tier 1 does (src/compiler/native/elaborate.f XT-STORE-ENTRY).
 TRUSTED: XT-STORE-ENTRY ( -- n ) ['] xt! ;
 
-\ `is W` at offset loc: the xt on the stack goes into W's cell.
-: DO-IS ( n -- )
-   {: loc:n :}
-   TOKEN {: a:ptr u:n :}
-   a u NDICT:SPELL-DEFER-BINDING {: cell:n origin:n :}
+\ `is` bound to record r, at offset loc: the xt on the stack goes into r's cell.
+: DO-IS ( n n -- ) {: r:n loc:n :}
+   NEXT$ 2drop                       \ the operand
+   r 0< if E-T0-DEFER throw then
+   r XREF-REC NDICT:REC-DEFER-CELL {: cell:n :}
    cell 0= if E-T0-DEFER throw then
-   a u NDICT:SPELL-ARITY {: din:n dout:n :}
-   din NDICT:ARITY-NONE = dout NDICT:ARITY-NONE = or if E-T0-DEFER throw then
-   cell origin PUSH-ADDR
+   cell r PUSH-ADDR
    XT-STORE-ENTRY loc DO-CALL ;
 
-\ ---- quotations ------------------------------------------------------------------
+\ ---- quotations --------------------------------------------------------------
 variable NQ                         \ units met so far, the definition's included
-DYNAMIC-BUFFER QSTART n             \ where each quotation's body text starts
-DYNAMIC-BUFFER QORD n               \ and the checker's ordinal of its first token
-variable NESTED                     \ the `[:` tokens skipped inside quotations so far
+DYNAMIC-BUFFER QORD n               \ each quotation's first ordinal
+variable NESTED                     \ the `[:` rows skipped inside quotations so far
 
-\ How a token in a quotation being skipped moves the nesting depth. A string's
-\ payload, a parsing word's operand and the word `is` names are skipped with it.
-: SKIP-TOKEN ( ptr u8 n -- n ) {: a:ptr u:n :}
-   u 0= if E-T0-CONTROL throw then
-   a u s" [:" STR= if 1 NESTED +! 1 exit then
-   a u QUOT-END? if -1 exit then
-   a u OPENER STR-NONE <> if u 3 = SPAN drop 2drop 0 exit then
-   a u OPERAND? if
-      a u LIT-KEYWORD? if LIT-OPERAND else TOKEN then 2drop
-   then
+\ How row k, in a quotation being skipped, moves the nesting depth.
+: SKIP-ROW ( n -- n ) {: k:n :}
+   k ROWS @ >= if E-T0-CONTROL throw then
+   k ROW-KIND @ CHECKER-TAPE:K-CONTROL <> if 0 exit then
+   k ROW-A0 @ CF-QUOT-OPEN = if 1 NESTED +! 1 exit then
+   k QUOT-END? if -1 exit then
    0 ;
 
 \ Past the `;]` that closes the quotation just opened.
 : SKIP-QUOT ( -- )
-   1 begin dup 0 > while TOKEN SKIP-TOKEN + repeat drop ;
+   1 begin dup 0 > while ORD @ SKIP-ROW +  1 ORD +! repeat drop ;
 
 \ Push unit k's address.
 : PUSH-UNIT ( n -- ) {: k:n :}
@@ -1528,27 +1503,25 @@ variable NESTED                     \ the `[:` tokens skipped inside quotations 
    k r T0-EMIT:ADDR-QUOT
    r PUSH-REG ;
 
-\ Push the next unit's address and skip its text, compiled after this unit.
+\ Push the next unit's address and skip its rows, compiled after this unit.
 : DO-QUOT ( -- )
    NQ @ {: k:n :}
-   k 1+ QSTART-RESERVE  k 1+ QORD-RESERVE
-   POS @ k QSTART !  ORD @ k QORD !
+   k 1+ QORD-RESERVE
+   ORD @ k QORD !
    k 1+ NQ !
    SKIP-QUOT
    k PUSH-UNIT ;
 
-\ ---- the does> split -----------------------------------------------------------
-variable EMPTY-CLAUSE               \ whether no token follows the cut: the clause is empty
+\ ---- the does> split ---------------------------------------------------------
+variable EMPTY-CLAUSE               \ whether no row follows the split: the clause is empty
 variable CLAUSE-ORD                 \ the checker's ordinal of the clause's first token
 
 \ The parent leaves through `does-patch` whatever the source's package scope,
 \ as tier 1 does (src/compiler/native/elaborate.f DOES-PATCH-ENTRY).
 TRUSTED: DOES-PATCH-ENTRY ( -- n ) ['] does-patch ;
 
-\ Whether no token follows the cut: the clause is empty.
-: CLAUSE-EMPTY? ( -- bool )
-   CUT @ POS !
-   TOKEN nip 0= ;
+\ Whether no row follows the split: the clause is empty.
+: CLAUSE-EMPTY? ( -- bool ) CLAUSE-ORD @ ROWS @ >= ;
 
 \ The parent's tail, at its `does>`: `does-patch` takes the clause's entry, 0
 \ for an empty clause, and the clause's interned signature, as tier 1's
@@ -1581,31 +1554,23 @@ TRUSTED: DOES-PATCH-ENTRY ( -- n ) ['] does-patch ;
    T0-EMIT:ENDCASE,
    SCOPE-END ;
 
-\ The next arm's `variant of`, or the `;MATCH` that ends the arms. The arm
-\ compares the tag with the variant's; the match drops the tag and the pads
-\ the checker proved at the `of`, leaving the payload, and the mismatch keeps
-\ the value for the next arm.
-: ARM-HEAD ( -- )
+\ A MATCH arm's `OF`, row at, after its variant pushed the tag it compares:
+\ the match drops the tag and the pads the checker proved at the `OF`, leaving
+\ the payload, and the mismatch keeps the value for the next arm.
+: ARM-OF ( n -- ) {: at:n :}
    ARMS-AT {: k:n :}
-   TOKEN {: a:ptr u:n :}
-   a u s" ;MATCH" STR=CI if a TXT$ - k CLOSE-MATCH exit then
-   a u k CS-FAM @ NFAM:VARIANT MATCH-CK {: vid:n :}
-   ORD @ {: at:n :}
-   TOKEN s" of" STR=CI MATCH-CK
+   k CS-KIND @ CS-MATCH = MATCH-CK
    at NDICT:MATCH-CELLS {: pads:n :}
    pads NDICT:MATCH-NONE <> MATCH-CK
    k CS-WID @ 1- pads - {: pay:n :}
    pay 0 >= MATCH-CK
    at NDICT:MATCH-PAYLOAD drop pay = MATCH-CK
-   vid NFAM:TAG PUSH-CONST
    OF-TEST
    pads 0 ?do DROP1 loop ;
 
-\ `MATCH fam`: the value is the cells the checker proved at the family token,
-\ at least the family's declared width.
-: DO-MATCH ( -- )
-   ORD @ {: at:n :}
-   TOKEN NFAM:MATCH-FAM MATCH-CK {: fam:n :}
+\ `MATCH fam` at fam's row, at: the value is the cells the checker proved
+\ there, at least the family's declared width.
+: DO-MATCH ( n n -- ) {: fam:n at:n :}
    at NDICT:MATCH-CELLS {: w:n :}
    w NDICT:MATCH-NONE <> MATCH-CK
    w fam NFAM:WIDTH >= MATCH-CK
@@ -1613,154 +1578,158 @@ TRUSTED: DOES-PATCH-ENTRY ( -- n ) ['] does-patch ;
    CS-N @ {: k:n :}
    CS-MATCH L-N @ CS-PUSH
    k 1+ CS-FAM-RESERVE  k 1+ CS-WID-RESERVE
-   fam k CS-FAM !  w k CS-WID !
-   ARM-HEAD ;
+   fam k CS-FAM !  w k CS-WID ! ;
 
-\ `endof`; a MATCH's arm reads the next `variant of` or `;MATCH` after it.
-: ARM-END ( -- )
-   DO-ENDOF
-   ARMS-AT CS-KIND @ CS-MATCH = if ARM-HEAD then ;
-
-\ `construct fam v`: the variant's pads, the family's and those the checker
-\ proved the instantiation adds at the variant token, then its tag, as tier 1's
+\ `construct fam v` at v's row, at: the variant's pads, the family's and those
+\ the checker proved the instantiation adds there, then its tag, as tier 1's
 \ DO-MAKE-BUNDLE; the payload is already on the stack.
-: DO-CONSTRUCT ( -- )
-   TOKEN NFAM:CON-FAM MATCH-CK {: fam:n :}
-   ORD @ {: at:n :}
-   TOKEN fam NFAM:VARIANT MATCH-CK {: vid:n :}
+: DO-CONSTRUCT ( n n n -- ) {: tag:n pads:n at:n :}
    at NDICT:CALL-CELLS drop 0 >= MATCH-CK
-   fam vid NFAM:PADS  at NDICT:CON-PADS +  0 ?do 0 PUSH-CONST loop
-   vid NFAM:TAG PUSH-CONST ;
+   pads at NDICT:CON-PADS +  0 ?do 0 PUSH-CONST loop
+   tag PUSH-CONST ;
 
-\ ---- the keyword dispatch ----------------------------------------------------
-\ By length first, so a token compares only with the keywords of its length.
-\ An operation spelling counts only when it binds the seeded primitive
-\ (NDICT:SPELL-PRIM?); a package's own word of that name is a call.
-: OP? ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u:n b:ptr v:n :}
-   a u b v STR=CI 0= if false exit then
-   a u NDICT:SPELL-PRIM? ;
+\ ---- the inlined operations --------------------------------------------------
+\ THE INLINED OPERATIONS. Each operation T0 inlines is one of the engine's
+\ seeded primitives, a record below the source prefix's first
+\ (CORE-PREFIX:FIRST-RECORD), and OP-OF maps such a record's dictionary index to
+\ the operation's code in INLINE, 0 for none. OPS-MAP fills it once, when T0
+\ loads, by each operation's name; a record at or above the boundary is never
+\ an operation, so a package's own word of that name is a call. OP-OF is
+\ dictionary storage, so a saved image keeps it filled.
+CORE-PREFIX:FIRST-RECORD constant OP-N   \ the records OP-OF holds
+OP-N TYPED-BUFFER OP-OF n
+variable OP-HITS                     \ the seeded records OP found by the name
+variable OP-REC                      \ the last of them
 
-\ An operation over one cell: the spelling binds the primitive and the checker
-\ certified no wider operand at the token.
-: CELL-OP? ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u:n b:ptr v:n :}
-   a u b v OP? 0= if false exit then
-   a CELLS0 1 <> if E-T0-BUNDLE throw then
-   true ;
+\ End the load: operation a u names no single seeded record.
+: OP-DIE ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   s" : T0: an inlined operation names no single seeded record" {: m:ptr k:n :}
+   u k + STR-BUF-RESERVE
+   a 0 STR-BUF u BYTE-COPY
+   m u STR-BUF k BYTE-COPY
+   0 STR-BUF u k + 76 die ;
 
-: KW1 ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" i" STR=CI if [: T0-EMIT:LOOP-I ;] 1 DO-INDEX true exit then
-   a u s" j" STR=CI if [: T0-EMIT:LOOP-J ;] 2 DO-INDEX true exit then
-   a u s" +" CELL-OP? if [: + ;] T0-EMIT:OP-ADD true ALU2 true exit then
-   a u s" -" CELL-OP? if [: - ;] T0-EMIT:OP-SUB false ALU2 true exit then
-   a u s" *" CELL-OP? if MUL2 true exit then
-   a u s" /" CELL-OP? if [: / ;] [: T0-EMIT:DIV-LIT ;] DIV2 exit then
-   a u s" @" OP? if a DO-FETCH true exit then
-   a u s" !" OP? if a u DO-STORE true exit then
-   a u s" =" CELL-OP? if [: = bool>n ;] T0-EMIT:CC-EQ CMP2 true exit then
-   a u s" <" CELL-OP? if [: < bool>n ;] T0-EMIT:CC-LT CMP2 true exit then
-   a u s" >" CELL-OP? if [: > bool>n ;] T0-EMIT:CC-GT CMP2 true exit then
-   false ;
+\ Map the one seeded record named a u to code.
+: OP ( ptr u8 n n -- )
+   {: a:ptr u:n code:n :}
+   0 OP-HITS !
+   OP-N 0 ?do
+      i XREF-REC a u XREF-MATCH? if 1 OP-HITS +!  i OP-REC ! then
+   loop
+   OP-HITS @ 1 <> if a u OP-DIE then
+   code OP-REC @ OP-OF ! ;
 
-: KW2 ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" if" STR=CI if DO-IF true exit then
-   a u s" is" STR=CI if a TXT$ - DO-IS true exit then
-   a u s" do" STR=CI if DO-DO true exit then
-   a u s" of" STR=CI if DO-OF true exit then
-   a u s" {:" STR=CI if a u DO-GROUP true exit then
-   a u s" [:" STR=CI if DO-QUOT true exit then
-   a u s" >r" STR=CI if a 1 WIDTHS 0 WS @ TOR-CELLS true exit then
-   a u s" r>" STR=CI if a 1 WIDTHS 0 WS @ RFROM-CELLS true exit then
-   a u s" r@" STR=CI if a 1 WIDTHS 0 WS @ RFETCH-CELLS true exit then
-   a u s" or" CELL-OP? if [: or ;] T0-EMIT:OP-OR true ALU2 true exit then
-   a u s" 1+" CELL-OP? if 1 PUSH-CONST [: + ;] T0-EMIT:OP-ADD true ALU2 true exit then
-   a u s" 1-" CELL-OP? if 1 PUSH-CONST [: - ;] T0-EMIT:OP-SUB false ALU2 true exit then
-   a u s" c@" CELL-OP? if T0-EMIT:BYTE-W FETCH true exit then
-   a u s" 0=" CELL-OP? if [: 0= bool>n ;] T0-EMIT:CC-EQ CMP0 true exit then
-   a u s" 0<" CELL-OP? if [: 0< bool>n ;] T0-EMIT:CC-LT CMP0 true exit then
-   a u s" <>" CELL-OP? if [: <> bool>n ;] T0-EMIT:CC-NE CMP2 true exit then
-   a u s" <=" CELL-OP? if [: <= bool>n ;] T0-EMIT:CC-LE CMP2 true exit then
-   a u s" >=" CELL-OP? if [: >= bool>n ;] T0-EMIT:CC-GE CMP2 true exit then
-   false ;
+: OPS-MAP ( -- )
+   s" +" 1 OP  s" -" 2 OP  s" *" 3 OP  s" /" 4 OP  s" @" 5 OP
+   s" !" 6 OP  s" =" 7 OP  s" <" 8 OP  s" >" 9 OP  s" or" 10 OP
+   s" 1+" 11 OP  s" 1-" 12 OP  s" c@" 13 OP  s" 0=" 14 OP
+   s" 0<" 15 OP  s" <>" 16 OP  s" <=" 17 OP  s" >=" 18 OP
+   s" dup" 19 OP  s" rot" 20 OP  s" nip" 21 OP  s" 2>r" 22 OP
+   s" 2r>" 23 OP  s" 2r@" 24 OP  s" and" 25 OP  s" mod" 26 OP
+   s" xor" 27 OP  s" drop" 28 OP  s" swap" 29 OP  s" over" 30 OP
+   s" tuck" 31 OP  s" -rot" 32 OP  s" 2dup" 33 OP  s" 2drop" 34 OP
+   s" 2swap" 35 OP  s" 2over" 36 OP  s" cells" 37 OP  s" cell+" 38 OP
+   s" negate" 39 OP  s" invert" 40 OP  s" lshift" 41 OP
+   s" rshift" 42 OP  s" ptr-field" 43 OP ;
+OPS-MAP
 
-: KW3 ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" [']" STR=CI if DO-TICK true exit then
-   a u s" ?do" STR=CI if DO-?DO true exit then
-   a u s" dup" OP? if [: DUP1 ;] a 1 s" 00" SHUFFLE true exit then
-   a u s" rot" OP? if [: ROT1 ;] a 3 s" 102" SHUFFLE true exit then
-   a u s" nip" OP? if [: NIP1 ;] a 2 s" 0" SHUFFLE true exit then
-   a u s" 2>r" OP? if a 2 WIDTHS 2TOR true exit then
-   a u s" 2r>" OP? if a 2 WIDTHS 2RFROM true exit then
-   a u s" 2r@" OP? if a 2 WIDTHS 2RFETCH true exit then
-   a u s" and" CELL-OP? if [: and ;] T0-EMIT:OP-AND true ALU2 true exit then
-   a u s" mod" CELL-OP? if [: mod ;] [: T0-EMIT:MOD-LIT ;] DIV2 exit then
-   a u s" xor" CELL-OP? if [: xor ;] T0-EMIT:OP-XOR true ALU2 true exit then
-   false ;
+\ The code of the operation record r is, or 0.
+: OP-CODE ( n -- n )
+   {: r:n :}
+   r OP-N >= if 0 exit then
+   r OP-OF @ ;
 
-: KW4 ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" then" STR=CI if DO-THEN true exit then
-   a u s" else" STR=CI if DO-ELSE true exit then
-   a u s" exit" STR=CI if DO-EXIT true exit then
-   a u s" loop" STR=CI if DO-LOOP true exit then
-   a u s" case" STR=CI if DO-CASE true exit then
-   a u s" char" STR=CI if DO-CHAR true exit then
-   a u s" drop" OP? if [: DROP1 ;] a 1 s" " SHUFFLE true exit then
-   a u s" swap" OP? if [: SWAP1 ;] a 2 s" 01" SHUFFLE true exit then
-   a u s" over" OP? if [: OVER1 ;] a 2 s" 101" SHUFFLE true exit then
-   a u s" tuck" OP? if [: TUCK1 ;] a 2 s" 010" SHUFFLE true exit then
-   a u s" -rot" OP? if a 3 s" 021" MOVE-OP true exit then
-   a u s" 2dup" OP? if a 2 s" 1010" MOVE-OP true exit then
-   false ;
+\ An operation over one cell: the checker certified no wider operand at a.
+: CELL1 ( ptr u8 -- )
+   {: a:ptr :}
+   a CELLS0 1 <> if E-T0-BUNDLE throw then ;
 
-: KW5 ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" begin" STR=CI if DO-BEGIN true exit then
-   a u s" while" STR=CI if DO-WHILE true exit then
-   a u s" until" STR=CI if DO-UNTIL true exit then
-   a u s" again" STR=CI if DO-AGAIN true exit then
-   a u s" +loop" STR=CI if DO-+LOOP true exit then
-   a u s" leave" STR=CI if DO-LEAVE true exit then
-   a u s" endof" STR=CI if ARM-END true exit then
-   a u s" MATCH" STR=CI if DO-MATCH true exit then
-   a u s" 2drop" OP? if a 2 s" " MOVE-OP true exit then
-   a u s" 2swap" OP? if a 4 s" 1032" MOVE-OP true exit then
-   a u s" 2over" OP? if a 4 s" 321032" MOVE-OP true exit then
-   a u s" cells" CELL-OP? if CELLS-OP true exit then
-   a u s" cell+" CELL-OP? if
-      CELL PUSH-CONST [: + ;] T0-EMIT:OP-ADD true ALU2 true exit
-   then
-   false ;
+\ Operation code at a, whose primitive's entry is to: false when it is not
+\ inlined after all (DIV2), so the name is a call.
+: INLINE ( ptr u8 n n -- bool )
+   {: a:ptr code:n to:n :}
+   code case
+      1 of a CELL1 [: + ;] T0-EMIT:OP-ADD true ALU2 true endof
+      2 of a CELL1 [: - ;] T0-EMIT:OP-SUB false ALU2 true endof
+      3 of a CELL1 MUL2 true endof
+      4 of a CELL1 [: / ;] [: T0-EMIT:DIV-LIT ;] DIV2 endof
+      5 of a DO-FETCH true endof
+      6 of a to DO-STORE true endof
+      7 of a CELL1 [: = bool>n ;] T0-EMIT:CC-EQ CMP2 true endof
+      8 of a CELL1 [: < bool>n ;] T0-EMIT:CC-LT CMP2 true endof
+      9 of a CELL1 [: > bool>n ;] T0-EMIT:CC-GT CMP2 true endof
+      10 of a CELL1 [: or ;] T0-EMIT:OP-OR true ALU2 true endof
+      11 of a CELL1 1 PUSH-CONST [: + ;] T0-EMIT:OP-ADD true ALU2 true endof
+      12 of a CELL1 1 PUSH-CONST [: - ;] T0-EMIT:OP-SUB false ALU2 true endof
+      13 of a CELL1 T0-EMIT:BYTE-W FETCH true endof
+      14 of a CELL1 [: 0= bool>n ;] T0-EMIT:CC-EQ CMP0 true endof
+      15 of a CELL1 [: 0< bool>n ;] T0-EMIT:CC-LT CMP0 true endof
+      16 of a CELL1 [: <> bool>n ;] T0-EMIT:CC-NE CMP2 true endof
+      17 of a CELL1 [: <= bool>n ;] T0-EMIT:CC-LE CMP2 true endof
+      18 of a CELL1 [: >= bool>n ;] T0-EMIT:CC-GE CMP2 true endof
+      19 of [: DUP1 ;] a 1 s" 00" SHUFFLE true endof
+      20 of [: ROT1 ;] a 3 s" 102" SHUFFLE true endof
+      21 of [: NIP1 ;] a 2 s" 0" SHUFFLE true endof
+      22 of a 2 WIDTHS 2TOR true endof
+      23 of a 2 WIDTHS 2RFROM true endof
+      24 of a 2 WIDTHS 2RFETCH true endof
+      25 of a CELL1 [: and ;] T0-EMIT:OP-AND true ALU2 true endof
+      26 of a CELL1 [: mod ;] [: T0-EMIT:MOD-LIT ;] DIV2 endof
+      27 of a CELL1 [: xor ;] T0-EMIT:OP-XOR true ALU2 true endof
+      28 of [: DROP1 ;] a 1 s" " SHUFFLE true endof
+      29 of [: SWAP1 ;] a 2 s" 01" SHUFFLE true endof
+      30 of [: OVER1 ;] a 2 s" 101" SHUFFLE true endof
+      31 of [: TUCK1 ;] a 2 s" 010" SHUFFLE true endof
+      32 of a 3 s" 021" MOVE-OP true endof
+      33 of a 2 s" 1010" MOVE-OP true endof
+      34 of a 2 s" " MOVE-OP true endof
+      35 of a 4 s" 1032" MOVE-OP true endof
+      36 of a 4 s" 321032" MOVE-OP true endof
+      37 of a CELL1 CELLS-OP true endof
+      38 of a CELL1 CELL PUSH-CONST [: + ;] T0-EMIT:OP-ADD true ALU2 true endof
+      39 of a CELL1 [: negate ;] [: T0-EMIT:NEG ;] UNARY true endof
+      40 of a CELL1 [: invert ;] [: T0-EMIT:NOT ;] UNARY true endof
+      41 of a CELL1 [: lshift ;] T0-EMIT:SH-LEFT SHIFT2 true endof
+      42 of a CELL1 [: rshift ;] T0-EMIT:SH-RIGHT SHIFT2 true endof
+      43 of a CELL1 CELLS-OP [: + ;] T0-EMIT:OP-ADD true ALU2 true endof
+      E-T0-UNSUPPORTED throw
+   endcase ;
 
-: KW6 ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" repeat" STR=CI if DO-REPEAT true exit then
-   a u s" [char]" STR=CI if DO-CHAR true exit then
-   a u s" unloop" STR=CI if DO-UNLOOP true exit then
-   a u s" negate" CELL-OP? if [: negate ;] [: T0-EMIT:NEG ;] UNARY true exit then
-   a u s" invert" CELL-OP? if [: invert ;] [: T0-EMIT:NOT ;] UNARY true exit then
-   a u s" lshift" CELL-OP? if [: lshift ;] T0-EMIT:SH-LEFT SHIFT2 true exit then
-   a u s" rshift" CELL-OP? if [: rshift ;] T0-EMIT:SH-RIGHT SHIFT2 true exit then
-   false ;
-
-: KW7 ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" recurse" STR=CI if DO-RECURSE true exit then
-   a u s" endcase" STR=CI if DO-ENDCASE true exit then
-   false ;
-
-: KW9 ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" construct" STR=CI if DO-CONSTRUCT true exit then
-   a u s" ptr-field" CELL-OP? if
-      CELLS-OP [: + ;] T0-EMIT:OP-ADD true ALU2 true exit
-   then
-   false ;
-
-: KEYWORD ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   u 1 = if a u KW1 exit then
-   u 2 = if a u KW2 exit then
-   u 3 = if a u KW3 exit then
-   u 4 = if a u KW4 exit then
-   u 5 = if a u KW5 exit then
-   u 6 = if a u KW6 exit then
-   u 7 = if a u KW7 exit then
-   u 9 = if a u KW9 exit then
-   false ;
+\ A K-CONTROL row at a: code is the marker's place in the checker's list
+\ (src/core/checker.f CF-TOK?, then RS-KEYWORD's `>r` `r>` `r@`). The `;]`
+\ ends its unit before it is compiled (BODY), and a stray `;MATCH` (9) never
+\ certifies.
+: DO-CONTROL ( ptr u8 n -- ) {: a:ptr code:n :}
+   code case
+      CF-QUOT-OPEN of DO-QUOT endof
+      CF-IF of DO-IF endof
+      CF-ELSE of DO-ELSE endof
+      CF-THEN of DO-THEN endof
+      CF-CASE of DO-CASE endof
+      CF-OF of DO-OF endof
+      CF-ENDOF of DO-ENDOF endof        \ a case's `endof` or a MATCH's
+      CF-ENDCASE of DO-ENDCASE endof
+      CF-BEGIN of DO-BEGIN endof
+      CF-UNTIL of DO-UNTIL endof
+      CF-AGAIN of DO-AGAIN endof
+      CF-WHILE of DO-WHILE endof
+      CF-REPEAT of DO-REPEAT endof
+      CF-DO of DO-DO endof
+      CF-?DO of DO-?DO endof
+      CF-LOOP of DO-LOOP endof
+      CF-+LOOP of DO-+LOOP endof
+      CF-I of [: T0-EMIT:LOOP-I ;] 1 DO-INDEX endof
+      CF-J of [: T0-EMIT:LOOP-J ;] 2 DO-INDEX endof
+      CF-EXIT of DO-EXIT endof
+      CF-LEAVE of DO-LEAVE endof
+      CF-UNLOOP of DO-UNLOOP endof
+      CF-RECURSE of DO-RECURSE endof
+      CF-TOR of a CELLS0 TOR-CELLS endof
+      CF-RFROM of a CELLS0 RFROM-CELLS endof
+      CF-RFETCH of a CELLS0 RFETCH-CELLS endof
+      E-T0-CONTROL throw
+   endcase ;
 
 \ ---- one token ---------------------------------------------------------------
 \ An immediate the capture holds. A parse-neutral one ran as the engine read it
@@ -1772,83 +1741,98 @@ TRUSTED: DOES-PATCH-ENTRY ( -- n ) ['] does-patch ;
    a u CHECKER-OWNER:PARSE-IMM? if exit then
    a u E-T0-IMMEDIATE REFUSE ;
 
-: NUMBER ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u OUTER:NUMBER {: v:n float:bool number:bool range:bool :}
-   number 0= range or if a u UNSUPPORTED then
-   v PUSH-CONST ;
-
-\ A word the dictionary binds. One that builds a value of a wide instantiation
-\ first pushes the cells the checker proved the instantiation adds at the
-\ token (NDICT:CON-PADS), as tier 1's DO-CALL; the token TOKEN just read is
-\ ordinal ORD - 1. A fixed word, one whose definer stamped what its body
-\ pushes, is then that value, as tier 1 folds it (src/compiler/native/hir-word.f
-\ RESOLVE-SITE): a constant's number, which CMP2 and the ALU take as an
-\ immediate, or a created word's or variable's DATA address, filed with its
-\ record's ordinal so publication relocates it. The stamp is that of the
-\ record the call binds (NDICT:CALL-BINDING): a non-empty does> clause clears
-\ it, so a does> child is called. Any other word is called.
-: WORD-CALL ( ptr u8 n n n n -- ) {: a:ptr u:n to:n kind:n loc:n :}
+\ A word bound to record r, whose entry is to and definer kind is kind, at
+\ offset loc. One that builds a value of a wide instantiation first pushes the
+\ cells the checker proved the instantiation adds at the token
+\ (NDICT:CON-PADS), as tier 1's DO-CALL; the row just read is ordinal ORD - 1.
+\ A fixed word, one whose definer stamped what its body pushes, is then that
+\ value, as tier 1 folds it (src/compiler/native/hir-word.f RESOLVE-SITE): a
+\ constant's number, which CMP2 and the ALU take as an immediate, or a created
+\ word's or variable's DATA address, filed with r so publication relocates it.
+\ A non-empty does> clause clears the stamp, so a does> child is called. Any
+\ other word is called. A field-loan site, a call the checker filed a loaned
+\ field's offset and extent for (NDICT:FIELD-SPAN), is refused: tier 1 pushes
+\ both before the call (src/compiler/native/elaborate.f DO-CALL).
+: WORD-CALL ( ptr u8 n n n n n -- )
+   {: a:ptr u:n to:n kind:n r:n loc:n :}
+   ORD @ 1- NDICT:FIELD-SPAN drop 0 >= if a u UNSUPPORTED then
    ORD @ 1- NDICT:CON-PADS 0 ?do 0 PUSH-CONST loop
    kind DKIND:VAL = if to NDICT:FIXED-VAL NDICT:BOUND-VALUE PUSH-CONST exit then
-   kind DKIND:ADDR = if
-      to NDICT:FIXED-ADDR NDICT:BOUND-VALUE  a u NDICT:FIXED-OWNER  PUSH-ADDR exit
-   then
+   kind DKIND:ADDR = if to NDICT:FIXED-ADDR NDICT:BOUND-VALUE  r PUSH-ADDR exit then
    to loc DO-CALL ;
 
-: COMPILE-TOKEN ( ptr u8 n -- ) {: a:ptr u:n :}
+\ A name a u bound to record r, at offset loc: an operation T0 inlines, an
+\ immediate, or a word a compiled call may branch to (NDICT:INT-CALL? for an
+\ internal one), as RESOLVE-SITE lowers one. Bound to none, it is refused.
+: NAME-TOKEN ( ptr u8 n n n -- )
+   {: a:ptr u:n r:n loc:n :}
+   r 0< if a u UNSUPPORTED then
+   r XREF-REC {: rec:ptr :}
+   rec REC-START {: to:n :}
+   r OP-CODE {: code:n :}
+   code 0<> if a code to INLINE if exit then then
+   rec XREF-FLAGS {: flags:n :}
+   flags DNAME-IMM and 0<> if a u IMM-TOKEN exit then
+   flags DNAME-INT and 0<> if flags NDICT:INT-CALL? 0= if a u UNSUPPORTED then then
+   to 0= if a u UNSUPPORTED then
+   a u to flags DKIND:MASK and r loc WORD-CALL ;
+
+\ The row at the cursor, which the walk then passes, by the event the checker
+\ filed for it (THE EVENTS). A string or character literal's span is its
+\ payload; a name lowers from its record (THE RECORDS).
+: COMPILE-TOKEN ( -- )
+   ORD @ {: k:n :}
+   k ROW-KIND @ {: event:n :}
+   k ROW-A0 @ {: a0:n :}
+   NEXT$ {: a:ptr u:n :}
    a TXT$ - {: loc:n :}
-   a u FIND-LOCAL {: k:n :}
-   k 0 >= if k DO-LOCAL exit then
-   a u OPENER {: kind:n :}
-   kind STR-NONE <> if kind u 3 = loc u + 1+ DO-STRING exit then
-   a u KEYWORD if exit then
-   a u NDICT:CALL-BINDING {: to:n kind:n :}
-   to 0<> if a u to kind loc WORD-CALL exit then
-   a u tok-imm? 0<> if a u IMM-TOKEN exit then
-   a u NUMBER ;
+   event STRING-KIND? if k DO-STRING exit then
+   event case
+      CHECKER-TAPE:K-NAME of a u a0 loc NAME-TOKEN endof
+      CHECKER-TAPE:K-INT of a0 PUSH-CONST endof
+      CHECKER-TAPE:K-REAL of a0 PUSH-CONST endof
+      CHECKER-TAPE:K-CHAR of k DO-CHAR endof
+      CHECKER-TAPE:K-CONTROL of a a0 DO-CONTROL endof
+      CHECKER-TAPE:K-LOCAL-DECL of a0 loc DECLARE endof
+      CHECKER-TAPE:K-LOCAL-CLOSE of CLOSE-GROUP endof
+      CHECKER-TAPE:K-LOCAL-REF of a0 DO-LOCAL endof
+      CHECKER-TAPE:K-OPERAND of endof
+      CHECKER-TAPE:K-TICK of a0 DO-TICK endof
+      CHECKER-TAPE:K-IS of a0 loc DO-IS endof
+      CHECKER-TAPE:K-MATCH of a0 k DO-MATCH endof
+      CHECKER-TAPE:K-MATCH-ARM of a0 PUSH-CONST endof   \ the variant's tag
+      CHECKER-TAPE:K-MATCH-OF of k ARM-OF endof
+      CHECKER-TAPE:K-MATCH-END of loc ARMS-AT CLOSE-MATCH endof
+      CHECKER-TAPE:K-CONSTRUCT of a0 k ROW-A1 @ k DO-CONSTRUCT endof
+      a u UNSUPPORTED
+   endcase ;
 
-$29 constant CLOSE-PAREN
-
-\ Past the name and a signature, if one follows it. The checker reports the
-\ name as ordinal 0 and no token of the signature. The signature ends at its
-\ first `)` byte, as the engine's `(` reads it: `( n -- n)` ends after `n`.
-: SKIP-HEAD ( -- )
-   TOKEN 2drop
-   POS @ {: after:n :}
-   TOKEN s" (" STR= 0= if after POS ! 1 ORD ! exit then
-   begin
-      POS @ TXT-LEN @ < if TXT$ POS @ + c@ CLOSE-PAREN <> else false then
-   while POS @ 1+ POS ! repeat
-   POS @ 1+ POS !
-   1 ORD ! ;
-
-\ ---- one unit --------------------------------------------------------------------
-\ Compile tokens to the end of the unit: whether a `;]` ended it rather than
-\ the end of the text or the split's `does>`.
+\ ---- one unit ----------------------------------------------------------------
+\ Compile rows to the end of the unit: whether a `;]` ended it rather than
+\ the end of the tape or the split's `does>`.
 : BODY ( -- bool )
    begin
-      TOKEN dup 0= if 2drop false exit then
-      over TXT$ - CUT @ NDEFINITION:DOES-SPAN - = if 2drop false exit then
-      2dup QUOT-END? if 2drop true exit then
+      ORD @ ROWS @ >= if false exit then
+      ORD @ SPLIT @ = if false exit then
+      ORD @ QUOT-END? if 1 ORD +! true exit then
       COMPILE-TOKEN
    again ;
 
-\ Begin unit k with nothing open and no local in scope.
-: RESET ( n -- )
-   UNIT !
+\ Begin a unit with nothing open and no local in scope.
+: RESET ( -- )
    T0-EMIT:VREGS VS-KIND-RESERVE  T0-EMIT:VREGS VS-VAL-RESERVE  T0-EMIT:VREGS RS-V-RESERVE
    0 VS-N !  ALL-FREE FREE !  0 CS-N !  0 DO-N !  0 L-N !  0 TAILED !
-   0 DEAD !  0 PENDING ! ;
+   0 DEAD !  0 PENDING !  0 G-CELLS ! ;
 
 : FINISH ( -- )
    CS-N @ 0<> if E-T0-CONTROL throw then
    TAILED @ 0= if SPILL-ALL T0-EMIT:RETURN then
    T0-EMIT:CLOSE ;
 
-\ Quotation unit k, from its recorded start through its `;]`.
+\ Quotation unit k, from its first row through its `;]`.
 : QUOT ( n -- ) {: k:n :}
-   k QSTART @ POS !  k QORD @ ORD !
-   k RESET
+   k QORD @ ORD !
+   RESET
    k T0-EMIT:QUOT-OPEN
    BODY 0= if E-T0-CONTROL throw then
    FINISH ;
@@ -1863,30 +1847,31 @@ $29 constant CLOSE-PAREN
 : UNITS ( n -- n )
    begin dup NQ @ < while dup QUOT 1+ repeat ;
 
-\ The does> clause, unit k, from the split to the end of the text, with its
+\ The does> clause, unit k, from the split to the end of the tape, with its
 \ own locals and its own certificate at base CUT. An empty clause's unit is
 \ still built, with no address bound to it: the parent pushed 0.
 : DO-CLAUSE ( n -- ) {: k:n :}
-   CUT @ POS !  CLAUSE-ORD @ ORD !  k 1+ NQ !  k RESET  0 BINDS !
+   CLAUSE-ORD @ ORD !  k 1+ NQ !  RESET  0 BINDS !
    EMPTY-CLAUSE @ if T0-EMIT:UNIT-OPEN else k T0-EMIT:QUOT-OPEN then
    BODY if E-T0-CONTROL throw then
    FINISH
    CUT @ BINDS-CK ;
 
-\ Compile one body, split at cut when it is not 0, into the emitter's sink:
-\ the definition, its quotations, then the clause and its quotations.
-: WALK ( ptr u8 n n -- ) {: a:ptr u:n cut:n :}
-   a TXT !  u TXT-LEN !  1 NQ !  0 BINDS !
+\ Compile the staged body from its tape, split at NDEFINITION:M-DOES when it
+\ is not 0, into the emitter's sink: the definition, its quotations, then the
+\ clause and its quotations. The name is row 0, so the body starts at row 1.
+: WALK ( -- )
+   NDEFINITION:SRC$ drop TXT !
+   NDEFINITION:M-DOES @ {: cut:n :}
+   1 NQ !  0 BINDS !
    cut CUT !  -1 CLAUSE !  0 NESTED !
    cut 0<> if CLAUSE-EMPTY? else false then EMPTY-CLAUSE !
-   0 POS !
-   0 RESET
+   1 ORD !
+   RESET
    T0-EMIT:OPEN
-   SKIP-HEAD
    BODY if E-T0-CONTROL throw then
-   ORD @ CLAUSE-ORD !
    cut 0<> if
-      POS @ cut 1- <> if E-T0-CONTROL throw then
+      ORD @ SPLIT @ <> if E-T0-CONTROL throw then
       DOES-TAIL
    then
    FINISH
@@ -1902,30 +1887,84 @@ public
 \ The token the last E-T0-UNSUPPORTED or E-T0-IMMEDIATE named.
 : UNSUPPORTED$ ( -- ptr u8 n ) BAD @ BAD-LEN @ ;
 
-\ Compile one body with no split, and then its quotations, into the emitter's
-\ sink. The body's certificate is captured.
-: COMPILE-TEXT ( ptr u8 n -- ) 0 WALK ;
-
 using NDEFINITION
 private
 
-\ ---- the runtime compiler ------------------------------------------------------
+\ ---- the runtime compiler ----------------------------------------------------
 \ The scan's recording unit latches the facts the capture and the call targets
-\ read. T0 keeps no tape: its observer drops every event and keeps only the
-\ verdict the scan reached, as tier 1's tape does (src/compiler/native/feed.f
-\ ON-DONE).
+\ read. T0's observer keeps the verdict the scan reached, as tier 1's tape does
+\ (src/compiler/native/feed.f ON-DONE), and lays the tape the walk reads (THE
+\ TAPE): a row per token the scan reports, as it reports it, and at the scan's
+\ end each row's event, which the checker answers only then.
+\ A does> definer is scanned twice: its head (CHECK-DOES-HEAD), whose text
+\ starts the definition's, then its clause (CHECK-DOES-CLAUSE), whose text
+\ starts at M-DOES. The clause's ordinals go on from the head's, one past for
+\ the `does>` between them, which the checker files nothing for
+\ (CHECKER-OWNER:TAPE-ADVANCE), and its token offsets count from the clause's
+\ start. So a scan of text at the definition's start begins the tape, and the
+\ clause's scan first lays the `does>` row, the split, then its own rows at
+\ offsets from M-DOES: one tape in text order whose ordinals are the checker's.
 variable OBSERVER-ID
 variable SCAN-VERDICT
+PTR-VARIABLE SCAN-TXT                \ the text the scan reads
+variable SCAN-BASE                   \ its offset in the definition's text
+variable SCAN-LO                     \ the ordinal of its first row
+
+\ Lay the next row, of no event yet, at offset off for u bytes: its ordinal.
+: LAY-ROW ( n n -- n ) {: off:n u:n :}
+   ROWS @ {: k:n :}
+   k 1+ {: m:n :}
+   m ROW-OFF-RESERVE  m ROW-LEN-RESERVE  m ROW-KIND-RESERVE  m ROW-A0-RESERVE
+   m ROW-A1-RESERVE  m ROW-U-RESERVE  m ROW-AT-RESERVE
+   off k ROW-OFF !  u k ROW-LEN !  K-NONE k ROW-KIND !  0 k ROW-A0 !  0 k ROW-A1 !
+   0 k ROW-U !  -1 k ROW-AT !
+   m ROWS !
+   k ;
+
+\ Copy an escaped string's body for row k.
+: KEEP-BODY ( ptr u8 n n -- ) {: a:ptr u:n k:n :}
+   BODIES-N @ {: at:n :}
+   at u + BODIES-RESERVE
+   a at BODIES u BYTE-COPY
+   at k ROW-AT !
+   at u + BODIES-N ! ;
+
+: ON-SCAN ( ptr u8 n -- )
+   drop {: a:ptr :}
+   a SCAN-TXT !
+   a SRC$ drop - {: base:n :}
+   base SCAN-BASE !
+   base 0= if
+      0 ROWS !  0 BODIES-N !  -1 SPLIT !
+   else
+      base DOES-SPAN -  DOES-SPAN 1-  LAY-ROW SPLIT !
+      ROWS @ CLAUSE-ORD !
+   then
+   ROWS @ SCAN-LO ! ;
+
+\ A token's row. A string's body is copied when it is not the text at its
+\ offset, which an escaped one's is not. Row 0, the definition's name, names
+\ the unit from here on, as tier 1's KEEP-TAPE-NAME.
+: ON-TOKEN ( ptr u8 n n n n n -- )
+   drop {: a:ptr u:n off:n ru:n kind:n :}
+   SCAN-TXT @ off + {: at:ptr :}
+   SCAN-BASE @ off + ru LAY-ROW {: k:n :}
+   kind STRING-KIND? if
+      u k ROW-U !
+      a at <> if a u k KEEP-BODY then
+   then
+   k 0= if at NAME-A !  ru NAME-U ! then ;
+
+: ON-DONE ( ptr u8 n n -- )
+   SCAN-VERDICT !  2drop
+   ROWS @ SCAN-LO @ ?do
+      i CHECKER-OWNER:TAPE-EVENT  i ROW-A1 !  i ROW-A0 !  i ROW-KIND !
+   loop ;
 
 : OBSERVE ( -- )
    OBSERVER-ID BYTE-VIEW NULL-PTR BYTE-VIEW -
-   [: 2drop ;] [: 2drop 2drop 2drop ;] [: SCAN-VERDICT ! 2drop ;]
+   [: ON-SCAN ;] [: ON-TOKEN ;] [: ON-DONE ;]
    CHECKER-OWNER:TAPE-INSTALL ;
-
-\ The definition's name, the body text's first token, read in place.
-: KEEP-NAME ( -- )
-   SRC$ TXT-LEN ! TXT !  0 POS !
-   TOKEN NAME-U ! NAME-A ! ;
 
 \ The body's scan and capture, or a does> definer's head and clause, the
 \ clause named for a refusal by the definition's name.
@@ -1950,7 +1989,7 @@ variable SCAN-VERDICT
    before SOURCE-PUBLICATION-CK
    RECORD-NAME-CK
    KEEP-ARITY
-   SRC$ M-DOES @ WALK  CLAUSE @ M-DOES-FUN !
+   WALK  CLAUSE @ M-DOES-FUN !
    NQ @ [: drop -1 -1 ;] HOST-ARITIES
    NHOST:SOURCE-FREEZE
    STUB-ARM
@@ -1965,10 +2004,10 @@ variable SCAN-VERDICT
    NCBSTUB:CLEAR ;
 
 : RUN ( -- )
-   NSHADOW:OPEN? if E-T0-SHADOW throw then
    ndict@ {: before:n :}
    SCAN
    VERDICT-CK
+   NSHADOW:OPEN? if E-T0-SHADOW throw then
    E-NCOMP-STATE CHECKER-OWNER:WRITE-WINDOW
    before [: LOWER ;] [: SHUT ;] finally ;
 
@@ -1979,11 +2018,18 @@ variable SCAN-VERDICT
 
 public
 
+\ Stage and scan one body with no split, then compile it and its quotations
+\ into the emitter's sink. The scan captures the body's certificate.
+: COMPILE-TEXT ( ptr u8 n -- )
+   false STAGE-UNIT
+   0 M-DOES !
+   SCAN
+   WALK ;
+
 \ Compile the pending definition whose body text the engine captured.
 : COMPILE ( ptr u8 n -- )
    IDLE-CK
    false STAGE-UNIT
-   KEEP-NAME
    NHOST:UNKNOWN 0 NHOST:SOURCE-REFUSE
    CHECKER-OWNER:RESET-REPORT
    0 MISSING !

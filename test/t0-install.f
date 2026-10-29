@@ -4,11 +4,12 @@
 \ T0 through the normal Habu loop. The fixtures cover `:` and TRUSTED: bodies,
 \ a signature whose `)` touches its last type, quotations, strings, `char` and
 \ `[char]` of an ASCII and a UTF-8 character and `char` past a word of that
-\ name, locals, loops, case and recursion, and each is run for its result. The
-\ does> definers cover a clause, an empty clause whose child keeps its address
-\ kind, quotations nested in the parent and one in the clause, clause locals
-\ and a definer chained on another, each through a child it made. A body
-\ names a created word, which T0 folds into the body as the address the
+\ name, locals, loops, case and recursion, a real literal, whose bits match the
+\ interpreter's, and a package's own `negate`, which is called, and each is run
+\ for its result. The does> definers cover a clause, an empty clause whose child
+\ keeps its address kind, quotations nested in the parent and one in the clause,
+\ clause locals and a definer chained on another, each through a child it made.
+\ A body names a created word, which T0 folds into the body as the address the
 \ interpreter pushes. `is` binds a defer from a body, which a caller then
 \ reaches, re-points it with the keyword in capitals, binds it from inside a
 \ quotation, and binds it before a MATCH, whose facts sit past its operand; a
@@ -26,8 +27,9 @@
 \ leaves for r@ and r> and >r leaves for 2r>, a swap in a does> parent and in
 \ its clause, a 2swap and a 2over in a does> parent whose deepest operand is
 \ two cells, a three-cell product among one-cell values, a swap of two
-\ eight-cell values, whose copies fill the virtual stack, and a local bound
-\ from a forty-cell value, whose deepest cell lies past a pre-index load's
+\ eight-cell values, whose copies fill the virtual stack, a local group bound
+\ past a wide local after a structure's group, and a local bound from a
+\ forty-cell value, whose deepest cell lies past a pre-index load's
 \ reach, and that value with a cell through 2>r 2r@ 2r>, a constant under
 \ the copy; `@` and `!` of a two-, a three- and a sixteen-cell value through
 \ typed slots, with the cells beside each store unchanged and the fetch reading
@@ -47,8 +49,9 @@
 \ run `cells` over a negative count, store and fetch through a pointer table
 \ by `ptr-field`, and fold `3 cells cell+`, with a cell under each result. The
 \ fuse rows run compares straight into `if`, `while` and `until`, which branch
-\ on their condition codes, with a cell under each result. The join rows run
-\ `if`, `else` and `then` whose arms leave the virtual stack in different
+\ on their condition codes, and one before a string spelled `if`, which stays a
+\ flag, with a cell under each result. The join rows run `if`, `else` and
+\ `then` whose arms leave the virtual stack in different
 \ layouts, each both ways with a cell under its result: a call in one arm,
 \ with and without the layout's bottom cells loaded back from memory, swapped
 \ and rotated arms, a constant against a register and one whose goal vreg
@@ -109,6 +112,7 @@
 require src/lib/errors.f
 require src/lib/string.f
 require src/lib/test.f
+require src/lib/ieee754.f
 require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
@@ -139,6 +143,8 @@ TRUSTED: TWICE ( n -- n ) 2 * ;
 : CH-UP ( -- n ) CHAR A ;
 : CH-HI ( -- n ) [char] é ;
 : SIG-TIGHT ( n -- n) 1+ ;
+: R2 ( -- r ) -2.75 ;
+-2.75 IEEE754:F64>BITS constant R2-BITS   \ the interpreter's bits
 
 : SPREAD ( n n -- n )
    {: a:n b:n :}
@@ -470,6 +476,13 @@ CAST: TWIN>CELLS ( ptr twin -- ptr n )
 \ reverse, in the primitive's order: 2>r leaves its top cell on top.
 : N-RX ( n n -- n n n ) 2>r r@ r> r> >r >r 2r> ;
 : W-LOCAL ( pt n -- n pt ) {: v:pt k:n :} k v ;
+\ A group after a structure that bound its own: the frame slots, not the
+\ locals, place it past the wide local.
+: WS3 ( pt n -- n n )
+   {: w:pt k:n :}
+   k 0 > if k 2 * {: c:n :} c else 0 then
+   {: d:n :}
+   w PT-V  d k + ;
 : W-DEF ( n -- ) create 3 4 PT swap >r PT-V r> + , does> ( pt -- n pt ) @ swap ;
 5 W-DEF W39
 \ A does> parent's 2swap and 2over whose deepest operand is two cells wide,
@@ -544,6 +557,9 @@ W-DEF-2OVER W-PO
 : FU-SHADOW ( n n -- bool n )
    {: x:n if:n :}
    x 3 < if ;
+
+\ A compare before a string whose text is `if`: the compare stays a flag.
+: FU-STRING ( n -- bool ptr u8 n ) 3 < s" if" ;
 
 : WH-LT ( n -- n )
    {: n:n :}
@@ -950,6 +966,11 @@ private
    s" char and [char] push their operand's first byte" T-LABEL
    CH-ONE 49 T=  CH-UP 65 T=  CH-HI 195 T=
    s" a signature closed against its last type" T-LABEL  4 SIG-TIGHT 5 T=
+   s" a real literal is the interpreter's bits" T-LABEL
+   R2 IEEE754:F64>BITS R2-BITS T=
+   s" a package word named like an inlined operation is a call" T-LABEL
+   s" package T0-NEG-SHADOW : negate ( n -- n ) 100 + ; : NG ( -- n ) 5 negate ; NG ;package"
+   TEST-EVAL:N 105 T=
    s" locals bind deepest first" T-LABEL  5 8 SPREAD 42 T=
    s" ?do loop" T-LABEL  5 SUM-BELOW 10 T=
    s" do +loop" T-LABEL  7 EVENS 4 T=
@@ -1080,6 +1101,8 @@ private
    77 9 3 4 PT W-R PT-V 34 T= PT-V 34 T= 9 T= 77 T=
    77 3 4 PT 9 W-2R 9 T= PT-V 34 T= 9 T= PT-V 34 T= 77 T=
    77 3 4 PT 9 W-LOCAL PT-V 34 T= 9 T= 77 T=
+   s" a local group after a structure's group, past a wide local" T-LABEL
+   77 1 2 PT 5 WS3 15 T= 12 T= 77 T=
    s" a one-cell pair on the return stack in the primitive's order" T-LABEL
    77 1 2 N-RX 2 T= 1 T= 2 T= 77 T=
    s" a two-cell value in a does> parent and clause" T-LABEL
@@ -1185,6 +1208,9 @@ private
    77 3 4 false FU-STALE 1 T= 77 T=   77 4 3 true FU-STALE 12 T= 77 T=
    s" a compare before a local named if" T-LABEL
    77 1 9 FU-SHADOW 9 T= TTRUE 77 T=   77 4 9 FU-SHADOW 9 T= TFALSE 77 T=
+   s" a compare before a string spelled if" T-LABEL
+   77 1 FU-STRING s" if" T$= TTRUE 77 T=
+   77 4 FU-STRING s" if" T$= TFALSE 77 T=
    s" a compare through while and through until" T-LABEL
    77 4 WH-LT 4 T= 77 T=   77 4 UN-GE 4 T= 77 T= ;
 

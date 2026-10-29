@@ -5,10 +5,9 @@
 \ (habu2.f C-ESC-DECODE-BASIC); `\x` and `\X` take two hex digits. SPAN
 \ finds the closing quote and counts the bytes the span decodes to, and says
 \ whether every escape in it is whole; COPY writes those bytes. The
-\ interpreter's literals (src/habu/outer.f ESC-SCAN) and the tier 0 compiler
-\ (src/habu/t0.f) both read a literal through these two words. Neither
-\ allocates, refuses or bounds a length: the caller decides what a failed span
-\ or a long one means.
+\ interpreter's literals (src/habu/outer.f ESC-SCAN) read a literal through
+\ these two words. Neither allocates, refuses or bounds a length: the caller
+\ decides what a failed span or a long one means.
 
 require src/lib/prelude.f
 
