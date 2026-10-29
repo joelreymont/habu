@@ -299,8 +299,22 @@ private
    [: T0-EMIT:SEAL-UNPLACED ;] T0-EMIT:E-T0-SLOT TTHROWSQ
    NCBSTUB:CLEAR ;
 
+\ Whether no word of the sealed emission is a csetm flag or a cbz test of one.
+: NO-FLAG? ( -- bool )
+   0 0 A64ASM:ENC-CSETM $FFFF0FE0 and {: csetm:n :}
+   0 0 A64ASM:ENC-CBZ $FF000000 and {: cbz:n :}
+   true NEMIT:SIZE 4 / 0 ?do
+      i 4 * WORD@ {: w:n :}
+      w $FFFF0FE0 and csetm <>  w $FF000000 and cbz <> and and
+   loop ;
+
+\ A body with `0= while`, `>= until` and `IF` in capitals.
+: LOOPS ( -- ptr u8 n )
+   s" H ( n -- ) begin dup 0= while repeat begin dup 3 >= until 0< IF then " ;
+
 \ A compare followed by `if` branches on its condition: cmp, then b.ge past
-\ the arm, with no csetm flag and no cbz test of one.
+\ the arm, with no csetm flag and no cbz test of one. So does a compare with
+\ zero before `while`, one before `until`, and one before `IF` in capitals.
 : FUSE-CASE ( -- )
    ARCH-A64
    s" F ( n n -- n ) < if 1 else 2 then " BODY
@@ -309,12 +323,11 @@ private
    s" and its branch is b.ge, past the arm when < fails" T-LABEL
    12 WORD@ $FF00001F and  0 A64ASM:C-GE A64ASM:ENC-BCOND T=
    s" no word is a csetm or a cbz" T-LABEL
-   0 0 A64ASM:ENC-CSETM $FFFF0FE0 and {: csetm:n :}
-   0 0 A64ASM:ENC-CBZ $FF000000 and {: cbz:n :}
-   true NEMIT:SIZE 4 / 0 ?do
-      i 4 * WORD@ {: w:n :}
-      w $FFFF0FE0 and csetm <>  w $FF000000 and cbz <> and and
-   loop TTRUE
+   NO-FLAG? TTRUE
+   NEMIT:CLEAR
+   LOOPS BODY
+   s" 0= while, >= until and 0< IF: no word is a csetm or a cbz" T-LABEL
+   NO-FLAG? TTRUE
    NEMIT:CLEAR ;
 
 \ An `if` arm that swaps the compared values joins in registers: after the
@@ -448,6 +461,20 @@ $B9 c, $00 c, $00 c, $00 c, $00 c,
    NEMIT:CLEAR
    ARCH-A64 ;
 
+\ An x86-64 compare followed by `if` branches on its condition: cmp rdx,rcx,
+\ then jge rel32 past the arm.
+create X86-FUSED
+$48 c, $39 c, $CA c, $0F c, $8D c,
+5 constant X86-FUSED-LEN
+
+: X86-FUSE-CASE ( -- )
+   CTARGET-ARCH:X86-64 T0-EMIT:SELECT
+   s" F ( n n -- n ) < if 1 else 2 then " BODY
+   s" x86-64 < if is cmp rdx,rcx then jge" T-LABEL
+   NEMIT:BYTES NEMIT:SIZE X86-FUSED X86-FUSED-LEN CONTAINS? TTRUE
+   NEMIT:CLEAR
+   ARCH-A64 ;
+
 \ x86-64 provides neither operation yet: each is refused, not run.
 : X86-UNFILLED-CASE ( -- )
    CTARGET-ARCH:X86-64 T0-EMIT:SELECT
@@ -554,6 +581,7 @@ public
    LEAP-CASE
    X86-FLAGS-CASE
    X86-DIV-CASE
+   X86-FUSE-CASE
    X86-UNFILLED-CASE
    T-REPORT ;
 

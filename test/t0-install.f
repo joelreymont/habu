@@ -44,15 +44,15 @@
 \ copies that fill the virtual stack and evict a shared vreg. The cell rows
 \ run `cells` over a negative count, store and fetch through a pointer table
 \ by `ptr-field`, and fold `3 cells cell+`, with a cell under each result. The
-\ fuse rows run each compare straight into `if`, `while` and `until`, which
-\ branch on its condition codes, both ways and over counted loops, with a cell
-\ under each result. The join rows run `if`, `else` and `then` whose arms leave
-\ the virtual stack in different layouts, each both ways with a cell under its
-\ result: a call in one arm, swapped and rotated arms, a constant against a
-\ register, arms that leave more or fewer registers than the layout, an `exit`
-\ in either arm, an if/else nested in each arm, sixteen live values evicted in
-\ one arm, a copy live across an `if` whose arm writes one copy, and a fused
-\ compare whose copy and constant settle between the compare and its branch.
+\ fuse rows run compares straight into `if`, `while` and `until`, which branch
+\ on their condition codes, with a cell under each result. The join rows run
+\ `if`, `else` and `then` whose arms leave the virtual stack in different
+\ layouts, each both ways with a cell under its result: a call in one arm,
+\ swapped and rotated arms, a constant against a register, arms that leave
+\ more or fewer registers than the layout, an `exit` in either arm, an if/else
+\ nested in each arm, sixteen live values evicted in one arm, a copy live
+\ across an `if` whose arm writes one copy, and a fused compare whose copy and
+\ constant settle between the compare and its branch.
 \ The loop rows run `begin` loops whose values stay in registers around the
 \ back edge, each with a cell under its result: a byte counted in a string, a
 \ 2-cycle and a 3-cycle at the back edge, two `while` exits that leave
@@ -525,54 +525,18 @@ W-DEF-2OVER W-PO
 : FU-UNDER ( n -- n n ) 7 swap 0< if 1 else 2 then ;
 : FU-TWICE ( n n -- n ) < dup if drop 1 else drop 2 then ;
 
+\ A fused branch, then an `if` on a flag no compare in the body made: it tests
+\ the flag, not the condition codes the first compare left.
+: FU-STALE ( n n bool -- n ) rot rot < if 1 else 2 then swap if 10 + then ;
+
 \ A local named `if` shadows the keyword: the compare before it stays a flag.
 : FU-SHADOW ( n n -- bool n )
    {: x:n if:n :}
    x 3 < if ;
 
-: WH-EQ ( n -- n )
-   {: n:n :}
-   n begin dup n = while 1+ repeat ;
-
-: WH-NE ( n -- n )
-   {: n:n :}
-   0 begin dup n <> while 1+ repeat ;
-
 : WH-LT ( n -- n )
    {: n:n :}
    0 begin dup n < while 1+ repeat ;
-
-: WH-GT ( n -- n )
-   {: n:n :}
-   0 begin n over > while 1+ repeat ;
-
-: WH-LE ( n -- n )
-   {: n:n :}
-   0 begin dup n <= while 1+ repeat ;
-
-: WH-GE ( n -- n )
-   {: n:n :}
-   0 begin n over >= while 1+ repeat ;
-
-: UN-EQ ( n -- n )
-   {: n:n :}
-   0 begin 1+ dup n = until ;
-
-: UN-NE ( n -- n )
-   {: n:n :}
-   n begin 1+ dup n <> until ;
-
-: UN-LT ( n -- n )
-   {: n:n :}
-   0 begin 1+ n over < until ;
-
-: UN-GT ( n -- n )
-   {: n:n :}
-   0 begin 1+ dup n > until ;
-
-: UN-LE ( n -- n )
-   {: n:n :}
-   0 begin 1+ n over <= until ;
 
 : UN-GE ( n -- n )
    {: n:n :}
@@ -1159,11 +1123,12 @@ private
    s" literal operands fold" T-LABEL
    77 CA-FOLD 32 T= 77 T= ;
 
-\ Each compare through `if` both ways, through `while` and `until` loops that
-\ run a counted number of turns, with an immediate operand, a negative one, one
-\ on the left, a literal spilled between the compare and its branch, a flag
-\ read twice, which stays a flag, and a compare before a local named `if`; a
-\ cell under each result.
+\ Each compare through `if` both ways, through a `while` and an `until` loop
+\ whose inverted branch exits early with a wrong count, with an immediate
+\ operand, a negative one, one on the left, a literal spilled between the
+\ compare and its branch, a flag read twice, which stays a flag, an `if` on a
+\ flag no compare made after a fused one, and a compare before a local named
+\ `if`; a cell under each result.
 : FUSE-CASE ( -- )
    s" each compare through if, true and false" T-LABEL
    77 3 3 FU-EQ 1 T= 77 T=   77 3 4 FU-EQ 2 T= 77 T=
@@ -1182,14 +1147,12 @@ private
    77 -3 FU-UNDER 1 T= 7 T= 77 T=   77 3 FU-UNDER 2 T= 7 T= 77 T=
    s" a flag read twice before its if" T-LABEL
    77 3 4 FU-TWICE 1 T= 77 T=   77 4 3 FU-TWICE 2 T= 77 T=
+   s" an if on a flag no compare made, after a fused if" T-LABEL
+   77 3 4 false FU-STALE 1 T= 77 T=   77 4 3 true FU-STALE 12 T= 77 T=
    s" a compare before a local named if" T-LABEL
    77 1 9 FU-SHADOW 9 T= TTRUE 77 T=   77 4 9 FU-SHADOW 9 T= TFALSE 77 T=
-   s" each compare through while" T-LABEL
-   77 4 WH-EQ 5 T= 77 T=   77 4 WH-NE 4 T= 77 T=   77 4 WH-LT 4 T= 77 T=
-   77 4 WH-GT 4 T= 77 T=   77 4 WH-LE 5 T= 77 T=   77 4 WH-GE 5 T= 77 T=
-   s" each compare through until" T-LABEL
-   77 4 UN-EQ 4 T= 77 T=   77 4 UN-NE 5 T= 77 T=   77 4 UN-LT 5 T= 77 T=
-   77 4 UN-GT 5 T= 77 T=   77 4 UN-LE 4 T= 77 T=   77 4 UN-GE 4 T= 77 T= ;
+   s" a compare through while and through until" T-LABEL
+   77 4 WH-LT 4 T= 77 T=   77 4 UN-GE 4 T= 77 T= ;
 
 \ Each join both ways, with a cell under each result.
 : JOIN-CASE ( -- )

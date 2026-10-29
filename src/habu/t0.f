@@ -125,8 +125,9 @@
 \ an entry's vreg in place takes it through OWN, which first copies a shared
 \ vreg into a fresh one; one that overwrites it whole, reading the old value
 \ only as an input, takes it through WRITE-TARGET, which relabels the entry to
-\ a fresh vreg with no copy. A comparison writes no operand: it pushes its flag
-\ into a fresh vreg.
+\ a fresh vreg with no copy. A comparison writes no operand. Followed by `if`,
+\ `while` or `until` it leaves its condition in the flags for the branch;
+\ otherwise it pushes its flag into a fresh vreg.
 \
 \ THE WIDTHS. A stack word moves whole values: the checker measured each
 \ operand's cells at the token, and the capture of each split's certificate
@@ -255,6 +256,12 @@ variable CUT                         \ the byte just past `does> `, or 0
    u 0<> if 1 ORD +! then
    TXT$ start + u ;
 
+\ The next token, read without consuming it: POS and ORD are restored.
+: PEEK-TOKEN ( -- ptr u8 n )
+   POS @ ORD @ {: saved:n ord:n :}
+   TOKEN
+   saved POS !  ord ORD ! ;
+
 \ `[char]` and `char` file their operand under their own ordinal, as the
 \ checker reports a character literal (src/core/checker.f PARSE-LIT?); a tick's
 \ operand takes the next one.
@@ -273,9 +280,7 @@ variable CUT                         \ the byte just past `does> `, or 0
 
 \ Whether the unit ends here: no token follows, or the quotation's `;]` does.
 : AT-END? ( -- bool )
-   POS @ ORD @ {: saved:n ord:n :}
-   TOKEN {: a:ptr u:n :}
-   saved POS !  ord ORD !
+   PEEK-TOKEN {: a:ptr u:n :}
    u 0= a u QUOT-END? or ;
 
 \ Throw code, naming the token for UNSUPPORTED$.
@@ -803,26 +808,24 @@ variable CLAUSE                      \ a does> definer's clause unit, else -1
    d c T0-EMIT:SET-FLAG
    d PUSH-REG ;
 
-\ The condition (T0-EMIT:CC>N) of a compare whose flag is still in the
-\ condition codes, -1 none. A compare leaves it only when the next token is
-\ `if`, `while` or `until`, whose DO-IF, DO-WHILE or DO-UNTIL takes it, so no
-\ other word ever finds it set.
+\ One more than the condition (T0-EMIT:CC>N) of a compare whose flag is still
+\ in the condition codes, 0 none. A compare leaves it only when the next token
+\ is `if`, `while` or `until`, whose DO-IF, DO-WHILE or DO-UNTIL takes it, so
+\ no other word ever finds it set.
 variable PENDING
 
 \ Whether the next token is the keyword `if`, `while` or `until`, matched as
 \ COMPILE-TOKEN matches it: a local of that name shadows it, then KW2 and KW5
-\ compare it case-blind. POS and ORD are restored as AT-END? restores them.
+\ compare it case-blind.
 : BRANCH-NEXT? ( -- bool )
-   POS @ ORD @ {: saved:n ord:n :}
-   TOKEN {: a:ptr u:n :}
-   saved POS !  ord ORD !
+   PEEK-TOKEN {: a:ptr u:n :}
    a u FIND-LOCAL 0 >= if false exit then
    a u s" if" STR=CI  a u s" while" STR=CI or  a u s" until" STR=CI or ;
 
 \ The flag of condition c from the compare just emitted: left in the condition
 \ codes for the branch that follows, else pushed.
 : CMP-FLAG ( T0-EMIT:cc -- ) {: c:T0-EMIT:cc :}
-   BRANCH-NEXT? if c T0-EMIT:CC>N PENDING ! exit then
+   BRANCH-NEXT? if c T0-EMIT:CC>N 1+ PENDING ! exit then
    c PUSH-FLAG ;
 
 : CMP2 ( [ n n -- n ] T0-EMIT:cc -- ) {: c:T0-EMIT:cc :}
@@ -877,12 +880,12 @@ variable PENDING
 : SCOPE-END ( -- ) CS-LOC@ L-N ! ;
 
 \ Whether a compare left its condition pending for this branch.
-: CC? ( -- bool ) PENDING @ 0 >= ;
+: CC? ( -- bool ) PENDING @ 0<> ;
 
 \ The pending condition, taken.
 : CC-TAKE ( -- T0-EMIT:cc )
-   PENDING @ T0-EMIT:>CC
-   -1 PENDING ! ;
+   PENDING @ 1- T0-EMIT:>CC
+   0 PENDING ! ;
 
 \ The pending condition, taken, with the virtual stack spilled.
 : TAKE-CC ( -- T0-EMIT:cc ) CC-TAKE SPILL-ALL ;
@@ -1818,7 +1821,7 @@ $29 constant CLOSE-PAREN
    UNIT !
    T0-EMIT:VREGS VS-KIND-RESERVE  T0-EMIT:VREGS VS-VAL-RESERVE
    0 VS-N !  ALL-FREE FREE !  0 CS-N !  0 DO-N !  0 L-N !  0 TAILED !
-   0 DEAD !  -1 PENDING ! ;
+   0 DEAD !  0 PENDING ! ;
 
 : FINISH ( -- )
    CS-N @ 0<> if E-T0-CONTROL throw then
