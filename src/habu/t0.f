@@ -41,8 +41,10 @@
 \ c\" .\"`); a control keyword (if else then begin until while repeat again do
 \ ?do loop +loop leave unloop i j case of endof endcase MATCH construct exit
 \ recurse >r r> r@ ['] [char] {: [: ;]); an operation T0 inlines, when the spelling binds the
-\ engine's seeded primitive (NDICT:SPELL-PRIM?): the stack shuffles, + - * and
-\ or xor 1+ 1- negate invert lshift rshift, the comparisons, @ and c@; a word
+\ engine's seeded primitive (NDICT:SPELL-PRIM?): the stack shuffles (dup drop
+\ swap over nip tuck rot -rot 2dup 2drop 2swap 2over 2>r 2r> 2r@), + - * and
+\ or xor 1+ 1- negate invert lshift rshift, the comparisons, @ and c@, and !
+\ as a call to the primitive or one per cell (THE WIDTHS); a word
 \ the dictionary binds (NDICT:CALL-TARGET), as a call; an immediate (IMM-TOKEN
 \ says which pass); a number (OUTER:NUMBER), a float being one cell of a
 \ double's bits. Anything else throws E-T0-UNSUPPORTED, and UNSUPPORTED$ names
@@ -102,6 +104,28 @@
 \ stack to memory, so control paths meet with it empty and no snapshot or
 \ reconciliation exists. A push onto a full virtual stack spills its bottom
 \ entry.
+\
+\ THE WIDTHS. A stack word moves whole values: the checker measured each
+\ operand's cells at the token, and the capture of each split's certificate
+\ keeps them by the token's offset in the whole text (NFETCH:OPERAND-CELLS,
+\ position 0 the top, from the return row for r> r@ 2r> 2r@), so a does>
+\ definer's parent keeps its widths past the clause's check. An unmeasured
+\ operand is one cell, as the checker files only layout values.
+\ Over one-cell operands dup drop swap over nip tuck rot keep their entry
+\ moves and -rot 2dup 2drop 2swap 2over 2>r 2r> 2r@ call the primitive; a
+\ wider operand goes through MOVE-WIDE, which copies each output cell on top
+\ from the entry or memory cell it comes from, leaving in place the bottom
+\ operands the word keeps, and then removes the cells it consumed from under
+\ the copies, and a wider 2>r 2r> 2r@ through its swap and >r composition. `>r`
+\ and `r>` move every cell of the value one at a time, so a value's cells sit
+\ on the return stack in reverse and `r>` restores their order; `r@` of a
+\ wider value is `r>` and a copy pushed back. `@` and `!` move the cells the
+\ checker certified at the token, as tier 1's WIDE-LOAD and WIDE-STORE
+\ (src/compiler/native/elaborate.f): `@` loads from the address plus i cells for
+\ each cell, and `!` calls the primitive, the engine's guarded store, once per
+\ cell with the address kept under the copies. Any other operation T0 inlines
+\ over a width other than one cell, and `@` or `!` under one cell, is
+\ E-T0-BUNDLE, as tier 1's DO-OP refuses it E-NELAB-BUNDLE.
 \
 \ THE LOCALS. Each `{: ... :}` group binds its names once, left to right from
 \ the deepest cell, into slots of the body's machine-stack frame (T0-EMIT:SLOTS,
@@ -165,6 +189,7 @@ public
 -9604 constant E-T0-BINDS        \ the body binds other than the certificate's count of locals
 -9605 constant E-T0-SHADOW       \ a definition while a target shadow is open: no shadow path yet
 -9606 constant E-T0-MATCH        \ a MATCH or construct the checker's facts do not bear out, as tier 1's E-NELAB-MATCH
+-9608 constant E-T0-BUNDLE       \ an operation over a width it cannot move, as tier 1's E-NELAB-BUNDLE
 
 private
 
@@ -176,6 +201,7 @@ PTR-VARIABLE BAD
 variable BAD-LEN
 variable MISSING                     \ nonzero: the refused token is a tick operand no record answers
 variable ORD                         \ the checker's ordinal of the token TOKEN reads next
+variable CUT                         \ the byte just past `does> `, or 0
 
 : TXT$ ( -- ptr u8 ) TXT @ ;
 
@@ -448,6 +474,82 @@ variable FREE                       \ bit k set: vreg k holds no entry
 : DROP1 ( -- )
    VS-N @ 0= if -1 T0-EMIT:DSP+ exit then
    TOP REMOVE ;
+
+\ ---- whole-width moves -------------------------------------------------------
+DYNAMIC-BUFFER WS n                  \ the operands' cells, position 0 the top
+variable WS-K                        \ operands the word moves
+
+\ The cells of the k operands of the stack word at token a.
+: WIDTHS ( ptr u8 n -- ) {: a:ptr k:n :}
+   a TXT$ - {: at:n :}
+   k WS-RESERVE
+   k 0 ?do at i NFETCH:OPERAND-CELLS i WS ! loop
+   k WS-K ! ;
+
+: WIDE? ( -- bool )
+   false WS-K @ 0 ?do i WS @ 1 > or loop ;
+
+\ The depth of operand k's top cell: the cells of the operands above it.
+: DEPTH ( n -- n ) 0 swap 0 ?do i WS @ + loop ;
+
+\ The two top operands' widths exchanged, as their values were.
+: WS-SWAP ( -- ) 0 WS @ 1 WS @ 0 WS ! 1 WS ! ;
+
+\ A copy of the cell d below the top, pushed: from its entry or from memory.
+: DEEP ( n -- ) {: d:n :}
+   ROOM
+   d VS-N @ < if TOP d - COPY exit then
+   ALLOC {: r:T0-EMIT:vreg :}
+   r d VS-N @ - 1+ negate T0-EMIT:FILL
+   r PUSH-REG ;
+
+\ Push every cell of operand k, with p cells pushed above the operands so far.
+: PUT-OP ( n n -- n ) {: p:n k:n :}
+   p k DEPTH + k WS @ + 1- {: d:n :}
+   k WS @ 0 ?do d DEEP loop
+   p k WS @ + ;
+
+\ Remove the c cells under the top o: the entries among them, then the memory
+\ cells right under the entries. With part of the top o in memory, the stack is
+\ spilled and the o cells are moved down over the c.
+: NIP-CELLS ( n n -- ) {: o:n c:n :}
+   c 0= if exit then
+   o VS-N @ <= if
+      VS-N @ o - c min {: v:n :}
+      v 0 ?do TOP o - REMOVE loop
+      c v > if v c - T0-EMIT:DSP+ then
+      exit
+   then
+   SPILL-ALL
+   o 0 ?do
+      ALLOC {: r:T0-EMIT:vreg :}
+      r i o - T0-EMIT:FILL
+      r i o - c - T0-EMIT:SPILL
+      r RELEASE
+   loop
+   c negate T0-EMIT:DSP+ ;
+
+\ How many leading outputs are the bottom operands in their order.
+: KEPT ( ptr u8 n -- n ) {: outs:ptr u:n :}
+   WS-K @ u min {: m:n :}
+   m 0 ?do outs i + c@ $30 -  WS-K @ 1- i -  <> if i unloop exit then loop
+   m ;
+
+\ The WS-K operands replaced by outs, the operand positions of the outputs
+\ from the bottom as digits: the kept bottom ones stay, the rest are copied.
+: MOVE-WIDE ( ptr u8 n -- ) {: outs:ptr u:n :}
+   outs u KEPT {: j:n :}
+   WS-K @ j - DEPTH {: c:n :}
+   0 u j ?do outs i + c@ $30 - PUT-OP loop {: o:n :}
+   o c NIP-CELLS ;
+
+\ A shuffle with its entry move over one-cell operands.
+: SHUFFLE ( [ -- ] ptr u8 n ptr u8 n -- ) {: a:ptr k:n outs:ptr u:n :}
+   a k WIDTHS
+   WIDE? if drop outs u MOVE-WIDE exit then
+   execute ;
+
+: SWAP-OP ( -- ) WIDE? if s" 01" MOVE-WIDE exit then SWAP1 ;
 
 \ ---- the locals --------------------------------------------------------------
 DYNAMIC-BUFFER L-AT n                \ the name's offset in the text
@@ -773,6 +875,21 @@ variable TAILED
    r T0-EMIT:RFETCH
    r PUSH-REG ;
 
+: TOR-CELLS ( n -- ) 0 ?do DO-TOR loop ;
+: RFROM-CELLS ( n -- ) 0 ?do DO-RFROM loop ;
+
+\ The top cells of the w-cell value on the return stack, pushed back top first.
+: RE-TOR ( n -- ) 0 ?do i DEEP DO-TOR loop ;
+
+: DO-R@ ( ptr u8 -- ) {: a:ptr :}
+   a 1 WIDTHS
+   WIDE? 0= if DO-RFETCH exit then
+   0 WS @ RFROM-CELLS  0 WS @ RE-TOR ;
+
+\ `2>r` is `swap >r >r`, `2r>` is `r> r> swap`, `2r@` is `2r> 2dup 2>r`.
+: 2TOR ( -- ) SWAP-OP  1 WS @ TOR-CELLS  0 WS @ TOR-CELLS ;
+: 2RFROM ( -- ) 0 WS @ RFROM-CELLS  1 WS @ RFROM-CELLS  WS-SWAP SWAP-OP WS-SWAP ;
+
 : DO-TICK ( -- )
    TOKEN {: a:ptr u:n :}
    a u NDICT:TICK-TARGET {: xt:n :}
@@ -803,6 +920,55 @@ variable TAILED
       1 TAILED ! exit
    then
    to loc T0-EMIT:CALL ;
+
+\ The token at a, which binds the engine's primitive, as a call of it.
+: PRIM-CALL ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u NDICT:CALL-TARGET  a TXT$ - DO-CALL ;
+
+\ A stack word of k operands that T0 calls over one-cell operands, and moves
+\ as outs, MOVE-WIDE's digits, when one is wider.
+: CALL-SHUFFLE ( ptr u8 n n ptr u8 n -- ) {: a:ptr u:n k:n outs:ptr v:n :}
+   a k WIDTHS
+   WIDE? if outs v MOVE-WIDE exit then
+   a u PRIM-CALL ;
+
+\ A two-operand return-stack word: a call over one-cell operands, else the
+\ composition xt runs.
+: CALL-PAIR ( [ -- ] ptr u8 n -- ) {: a:ptr u:n :}
+   a 2 WIDTHS
+   WIDE? if execute exit then
+   drop a u PRIM-CALL ;
+
+: 2RFETCH ( -- ) 2RFROM s" 1010" MOVE-WIDE 2TOR ;
+
+\ ---- whole-width memory -------------------------------------------------------
+\ The cells of the top operand of the operation at token a.
+: CELLS0 ( ptr u8 -- n ) {: a:ptr :} a 1 WIDTHS 0 WS @ ;
+
+\ The address on top advanced by k cells.
+: ADDR+ ( n -- ) {: k:n :}
+   k 0= if exit then
+   k cells PUSH-CONST [: + ;] T0-EMIT:OP-ADD true ALU2 ;
+
+: DO-FETCH ( ptr u8 -- ) {: a:ptr :}
+   a CELLS0 {: w:n :}
+   w 1 = if T0-EMIT:CELL-W FETCH exit then
+   w 1 < if E-T0-BUNDLE throw then
+   w 0 ?do i DEEP i ADDR+ T0-EMIT:CELL-W FETCH loop
+   w 1 NIP-CELLS ;
+
+\ The wide store's calls never leave as a tail: each stores a copy of one cell,
+\ so the w cells and the address are still on the stack after the last.
+: DO-STORE ( ptr u8 n -- ) {: a:ptr u:n :}
+   a CELLS0 {: w:n :}
+   w 1 < if E-T0-BUNDLE throw then
+   a u NDICT:CALL-TARGET  a TXT$ - {: to:n loc:n :}
+   w 1 = if to loc DO-CALL exit then
+   w 0 ?do
+      w i - DEEP  1 DEEP  i ADDR+
+      SPILL-ALL  to loc T0-EMIT:CALL
+   loop
+   w 1+ negate T0-EMIT:DSP+ ;
 
 \ ---- strings -------------------------------------------------------------------
 0 constant STR-NONE
@@ -913,7 +1079,6 @@ variable NESTED                     \ the `[:` tokens skipped inside quotations 
    k PUSH-UNIT ;
 
 \ ---- the does> split -----------------------------------------------------------
-variable CUT                        \ the byte just past `does> `, or 0
 variable EMPTY-CLAUSE               \ whether no token follows the cut: the clause is empty
 variable CLAUSE-ORD                 \ the checker's ordinal of the clause's first token
 
@@ -1016,16 +1181,24 @@ TRUSTED: DOES-PATCH-ENTRY ( -- n ) ['] does-patch ;
    a u b v STR=CI 0= if false exit then
    a u NDICT:SPELL-PRIM? ;
 
+\ An operation over one cell: the spelling binds the primitive and the checker
+\ certified no wider operand at the token.
+: CELL-OP? ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u:n b:ptr v:n :}
+   a u b v OP? 0= if false exit then
+   a CELLS0 1 <> if E-T0-BUNDLE throw then
+   true ;
+
 : KW1 ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" i" STR=CI if [: T0-EMIT:LOOP-I ;] 1 DO-INDEX true exit then
    a u s" j" STR=CI if [: T0-EMIT:LOOP-J ;] 2 DO-INDEX true exit then
-   a u s" +" OP? if [: + ;] T0-EMIT:OP-ADD true ALU2 true exit then
-   a u s" -" OP? if [: - ;] T0-EMIT:OP-SUB false ALU2 true exit then
-   a u s" *" OP? if MUL2 true exit then
-   a u s" @" OP? if T0-EMIT:CELL-W FETCH true exit then
-   a u s" =" OP? if [: = bool>n ;] T0-EMIT:CC-EQ CMP2 true exit then
-   a u s" <" OP? if [: < bool>n ;] T0-EMIT:CC-LT CMP2 true exit then
-   a u s" >" OP? if [: > bool>n ;] T0-EMIT:CC-GT CMP2 true exit then
+   a u s" +" CELL-OP? if [: + ;] T0-EMIT:OP-ADD true ALU2 true exit then
+   a u s" -" CELL-OP? if [: - ;] T0-EMIT:OP-SUB false ALU2 true exit then
+   a u s" *" CELL-OP? if MUL2 true exit then
+   a u s" @" OP? if a DO-FETCH true exit then
+   a u s" !" OP? if a u DO-STORE true exit then
+   a u s" =" CELL-OP? if [: = bool>n ;] T0-EMIT:CC-EQ CMP2 true exit then
+   a u s" <" CELL-OP? if [: < bool>n ;] T0-EMIT:CC-LT CMP2 true exit then
+   a u s" >" CELL-OP? if [: > bool>n ;] T0-EMIT:CC-GT CMP2 true exit then
    false ;
 
 : KW2 ( ptr u8 n -- bool ) {: a:ptr u:n :}
@@ -1034,28 +1207,31 @@ TRUSTED: DOES-PATCH-ENTRY ( -- n ) ['] does-patch ;
    a u s" of" STR=CI if DO-OF true exit then
    a u s" {:" STR=CI if a u DO-GROUP true exit then
    a u s" [:" STR=CI if DO-QUOT true exit then
-   a u s" >r" STR=CI if DO-TOR true exit then
-   a u s" r>" STR=CI if DO-RFROM true exit then
-   a u s" r@" STR=CI if DO-RFETCH true exit then
-   a u s" or" OP? if [: or ;] T0-EMIT:OP-OR true ALU2 true exit then
-   a u s" 1+" OP? if 1 PUSH-CONST [: + ;] T0-EMIT:OP-ADD true ALU2 true exit then
-   a u s" 1-" OP? if 1 PUSH-CONST [: - ;] T0-EMIT:OP-SUB false ALU2 true exit then
-   a u s" c@" OP? if T0-EMIT:BYTE-W FETCH true exit then
-   a u s" 0=" OP? if [: 0= bool>n ;] T0-EMIT:CC-EQ CMP0 true exit then
-   a u s" 0<" OP? if [: 0< bool>n ;] T0-EMIT:CC-LT CMP0 true exit then
-   a u s" <>" OP? if [: <> bool>n ;] T0-EMIT:CC-NE CMP2 true exit then
-   a u s" <=" OP? if [: <= bool>n ;] T0-EMIT:CC-LE CMP2 true exit then
-   a u s" >=" OP? if [: >= bool>n ;] T0-EMIT:CC-GE CMP2 true exit then
+   a u s" >r" STR=CI if a 1 WIDTHS 0 WS @ TOR-CELLS true exit then
+   a u s" r>" STR=CI if a 1 WIDTHS 0 WS @ RFROM-CELLS true exit then
+   a u s" r@" STR=CI if a DO-R@ true exit then
+   a u s" or" CELL-OP? if [: or ;] T0-EMIT:OP-OR true ALU2 true exit then
+   a u s" 1+" CELL-OP? if 1 PUSH-CONST [: + ;] T0-EMIT:OP-ADD true ALU2 true exit then
+   a u s" 1-" CELL-OP? if 1 PUSH-CONST [: - ;] T0-EMIT:OP-SUB false ALU2 true exit then
+   a u s" c@" CELL-OP? if T0-EMIT:BYTE-W FETCH true exit then
+   a u s" 0=" CELL-OP? if [: 0= bool>n ;] T0-EMIT:CC-EQ CMP0 true exit then
+   a u s" 0<" CELL-OP? if [: 0< bool>n ;] T0-EMIT:CC-LT CMP0 true exit then
+   a u s" <>" CELL-OP? if [: <> bool>n ;] T0-EMIT:CC-NE CMP2 true exit then
+   a u s" <=" CELL-OP? if [: <= bool>n ;] T0-EMIT:CC-LE CMP2 true exit then
+   a u s" >=" CELL-OP? if [: >= bool>n ;] T0-EMIT:CC-GE CMP2 true exit then
    false ;
 
 : KW3 ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" [']" STR=CI if DO-TICK true exit then
    a u s" ?do" STR=CI if DO-?DO true exit then
-   a u s" dup" OP? if DUP1 true exit then
-   a u s" rot" OP? if ROT1 true exit then
-   a u s" nip" OP? if NIP1 true exit then
-   a u s" and" OP? if [: and ;] T0-EMIT:OP-AND true ALU2 true exit then
-   a u s" xor" OP? if [: xor ;] T0-EMIT:OP-XOR true ALU2 true exit then
+   a u s" dup" OP? if [: DUP1 ;] a 1 s" 00" SHUFFLE true exit then
+   a u s" rot" OP? if [: ROT1 ;] a 3 s" 102" SHUFFLE true exit then
+   a u s" nip" OP? if [: NIP1 ;] a 2 s" 0" SHUFFLE true exit then
+   a u s" 2>r" OP? if [: 2TOR ;] a u CALL-PAIR true exit then
+   a u s" 2r>" OP? if [: 2RFROM ;] a u CALL-PAIR true exit then
+   a u s" 2r@" OP? if [: 2RFETCH ;] a u CALL-PAIR true exit then
+   a u s" and" CELL-OP? if [: and ;] T0-EMIT:OP-AND true ALU2 true exit then
+   a u s" xor" CELL-OP? if [: xor ;] T0-EMIT:OP-XOR true ALU2 true exit then
    false ;
 
 : KW4 ( ptr u8 n -- bool ) {: a:ptr u:n :}
@@ -1064,10 +1240,12 @@ TRUSTED: DOES-PATCH-ENTRY ( -- n ) ['] does-patch ;
    a u s" exit" STR=CI if DO-EXIT true exit then
    a u s" loop" STR=CI if DO-LOOP true exit then
    a u s" case" STR=CI if DO-CASE true exit then
-   a u s" drop" OP? if DROP1 true exit then
-   a u s" swap" OP? if SWAP1 true exit then
-   a u s" over" OP? if OVER1 true exit then
-   a u s" tuck" OP? if TUCK1 true exit then
+   a u s" drop" OP? if [: DROP1 ;] a 1 s" " SHUFFLE true exit then
+   a u s" swap" OP? if [: SWAP1 ;] a 2 s" 01" SHUFFLE true exit then
+   a u s" over" OP? if [: OVER1 ;] a 2 s" 101" SHUFFLE true exit then
+   a u s" tuck" OP? if [: TUCK1 ;] a 2 s" 010" SHUFFLE true exit then
+   a u s" -rot" OP? if a u 3 s" 021" CALL-SHUFFLE true exit then
+   a u s" 2dup" OP? if a u 2 s" 1010" CALL-SHUFFLE true exit then
    false ;
 
 : KW5 ( ptr u8 n -- bool ) {: a:ptr u:n :}
@@ -1079,16 +1257,19 @@ TRUSTED: DOES-PATCH-ENTRY ( -- n ) ['] does-patch ;
    a u s" leave" STR=CI if DO-LEAVE true exit then
    a u s" endof" STR=CI if ARM-END true exit then
    a u s" MATCH" STR=CI if DO-MATCH true exit then
+   a u s" 2drop" OP? if a u 2 s" " CALL-SHUFFLE true exit then
+   a u s" 2swap" OP? if a u 4 s" 1032" CALL-SHUFFLE true exit then
+   a u s" 2over" OP? if a u 4 s" 321032" CALL-SHUFFLE true exit then
    false ;
 
 : KW6 ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" repeat" STR=CI if DO-REPEAT true exit then
    a u s" [char]" STR=CI if DO-CHAR true exit then
    a u s" unloop" STR=CI if DO-UNLOOP true exit then
-   a u s" negate" OP? if [: negate ;] [: T0-EMIT:NEG ;] UNARY true exit then
-   a u s" invert" OP? if [: invert ;] [: T0-EMIT:NOT ;] UNARY true exit then
-   a u s" lshift" OP? if [: lshift ;] T0-EMIT:SH-LEFT SHIFT2 true exit then
-   a u s" rshift" OP? if [: rshift ;] T0-EMIT:SH-RIGHT SHIFT2 true exit then
+   a u s" negate" CELL-OP? if [: negate ;] [: T0-EMIT:NEG ;] UNARY true exit then
+   a u s" invert" CELL-OP? if [: invert ;] [: T0-EMIT:NOT ;] UNARY true exit then
+   a u s" lshift" CELL-OP? if [: lshift ;] T0-EMIT:SH-LEFT SHIFT2 true exit then
+   a u s" rshift" CELL-OP? if [: rshift ;] T0-EMIT:SH-RIGHT SHIFT2 true exit then
    false ;
 
 : KW7 ( ptr u8 n -- bool ) {: a:ptr u:n :}
@@ -1263,7 +1444,10 @@ variable SCAN-VERDICT
 \ The body's scan and capture, or a does> definer's head and clause, the
 \ clause named for a refusal by the definition's name.
 : CHECK-UNIT ( -- n )
-   M-DOES @ 0<> if CHECK-DOES-HEAD NAME$ CHECK-DOES-CLAUSE exit then
+   M-DOES @ 0<> if
+      CHECK-DOES-HEAD
+      NAME$ CHECK-DOES-CLAUSE exit
+   then
    CHECK-SOURCE ;
 
 \ The scan's verdict stands over a hook's nonzero answer; a hook's zero answer

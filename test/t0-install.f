@@ -13,8 +13,18 @@
 \ the pad the instantiation adds; a `construct` at wrap<pt> pushes that pad
 \ itself; a MATCH over a 65-cell payload; one in a quotation after character
 \ literals and a string, whose facts sit at the ordinals those tokens advance;
-\ and a hostile tag, in a child, reaches T0's trap and exits ENGINE-ERROR:BAD-TAG.
-\ A CALLBACK: declaration compiled by T0 is handed to libc's qsort, which sorts a row through it, and its C entry lies between its
+\ and a hostile tag, in a child, reaches T0's trap and exits
+\ ENGINE-ERROR:BAD-TAG. The wide rows run each stack word T0 compiles over a
+\ two-cell product with a cell under the result, a swap in a does> parent and
+\ in its clause, a 2swap and a 2over in a does> parent whose deepest operand
+\ is two cells, a three-cell product among one-cell values, and a swap of two
+\ eight-cell values, whose copies fill the virtual stack; `@` and `!` of a
+\ two-, a three- and a sixteen-cell value through typed slots, with the cells
+\ beside each store unchanged and the fetch reading cells written through a
+\ raw view, the sixteen cells spilling the virtual stack, and a store and
+\ fetch in one body. The checker refuses every other operation over a wide
+\ value, so no row reaches E-T0-BUNDLE. A CALLBACK: declaration compiled by T0 is handed to libc's qsort, which sorts
+\ a row through it, and its C entry lies between its
 \ accessor's code and the next definition's: the stub T0 appended to the
 \ accessor's emission. The refusal rows evaluate definitions T0 refuses with
 \ its own codes, which tier 1 accepts or refuses otherwise: a non-neutral
@@ -252,6 +262,128 @@ private
          some OF T0--INSTALL--TEST-PT:UNMAKE 7 * swap 11 * + ENDOF
       ;MATCH ;] execute ;
 
+\ ---- whole values through the stack words -----------------------------------
+\ Each stack word over a value wider than a cell moves the value's every cell,
+\ as the checker measured it at the token. The readers weigh each field by its
+\ place, so a cell moved out of order or left behind changes the result.
+public
+
+PRODUCT trio
+   FIELD p n
+   FIELD q n
+   FIELD r n
+;PRODUCT
+
+PRODUCT oct
+   FIELD o1 n
+   FIELD o2 n
+   FIELD o3 n
+   FIELD o4 n
+   FIELD o5 n
+   FIELD o6 n
+   FIELD o7 n
+   FIELD o8 n
+;PRODUCT
+
+PRODUCT twin
+   FIELD lo oct
+   FIELD hi oct
+;PRODUCT
+
+private
+
+: PT ( n n -- pt ) T0--INSTALL--TEST-PT:MAKE ;
+: PT-V ( pt -- n ) T0--INSTALL--TEST-PT:UNMAKE swap 10 * + ;
+: TRIO ( n n n -- trio ) T0--INSTALL--TEST-TRIO:MAKE ;
+: TRIO-V ( trio -- n ) T0--INSTALL--TEST-TRIO:UNMAKE swap 10 * + swap 100 * + ;
+\ An eight-cell value 1..8 from a base: its value is the base, unless a cell moved.
+: OCT ( n -- oct )
+   {: b:n :} b b 1+ b 2 + b 3 + b 4 + b 5 + b 6 + b 7 + T0--INSTALL--TEST-OCT:MAKE ;
+: OCT-V ( oct -- n )
+   T0--INSTALL--TEST-OCT:UNMAKE
+   {: a:n b:n c:n d:n e:n f:n g:n h:n :}
+   b a 1+ = c a 2 + = and d a 3 + = and e a 4 + = and
+   f a 5 + = and g a 6 + = and h a 7 + = and if a else -1 then ;
+
+\ Typed slots whose `@` and `!` move two, three and sixteen cells, and a raw
+\ view of their cells: a store's neighbours prove it wrote only its own, and a
+\ fetch reads cells written through the view.
+4 TYPED-BUFFER PT-AT pt
+4 TYPED-BUFFER TRIO-AT trio
+CAST: PT>CELLS ( ptr pt -- ptr n )
+CAST: TRIO>CELLS ( ptr trio -- ptr n )
+: PT-CELL ( n -- ptr n ) 0 PT-AT PT>CELLS swap cells + ;
+: TRIO-CELL ( n -- ptr n ) 0 TRIO-AT TRIO>CELLS swap cells + ;
+: PT@ ( n -- pt ) PT-AT @ ;
+: PT! ( pt n -- ) PT-AT ! ;
+: TRIO@ ( n -- trio ) TRIO-AT @ ;
+: TRIO! ( trio n -- ) TRIO-AT ! ;
+: PT-RT ( pt n -- pt ) dup >r PT-AT ! r> PT-AT @ ;
+
+\ Two eight-cell values side by side, from bases a and b: their values are the
+\ bases, unless a cell moved.
+: TWIN ( n n -- twin ) {: a:n b:n :} a OCT b OCT T0--INSTALL--TEST-TWIN:MAKE ;
+: TWIN-V ( twin -- n n ) T0--INSTALL--TEST-TWIN:UNMAKE OCT-V >r OCT-V r> ;
+3 TYPED-BUFFER TWIN-AT twin
+CAST: TWIN>CELLS ( ptr twin -- ptr n )
+: TWIN-CELL ( n -- ptr n ) 0 TWIN-AT TWIN>CELLS swap cells + ;
+: TWIN@ ( n -- twin ) TWIN-AT @ ;
+: TWIN! ( twin n -- ) TWIN-AT ! ;
+
+\ Slot k's cells that hold the twin of bases a and b, counted.
+: TWIN-HITS ( n n n -- n )
+   {: k:n a:n b:n :}
+   0 8 0 do
+      k 16 * i + TWIN-CELL @ a i + = if 1+ then
+      k 16 * i + 8 + TWIN-CELL @ b i + = if 1+ then
+   loop ;
+
+\ Slot k's cells written through the view as the twin of bases a and b.
+: TWIN-SEED ( n n n -- )
+   {: k:n a:n b:n :}
+   8 0 do
+      a i + k 16 * i + TWIN-CELL !
+      b i + k 16 * i + 8 + TWIN-CELL !
+   loop ;
+
+\ The probe's three: a one-cell value over and under a two-cell one.
+: W-DROP ( n pt -- n ) drop ;
+: W-NIP ( pt n -- n ) nip ;
+: W-DUP ( pt -- pt pt ) dup ;
+: W-SWAP ( pt n -- n pt ) swap ;
+: W-OVER ( pt n -- pt n pt ) over ;
+: W-TUCK ( n pt -- pt n pt ) tuck ;
+: W-ROT ( pt n n -- n n pt ) rot ;
+: W--ROT ( n n pt -- pt n n ) -rot ;
+: W-2DUP ( pt n -- pt n pt n ) 2dup ;
+: W-2DROP ( n pt n -- n ) 2drop ;
+: W-2SWAP ( pt n n pt -- n pt pt n ) 2swap ;
+: W-2OVER ( pt n n n -- pt n n n pt n ) 2over ;
+: W-R ( n pt -- n pt pt ) >r r@ r> ;
+: W-2R ( pt n -- pt n pt n ) 2>r 2r@ 2r> ;
+: W-LOCAL ( pt n -- n pt ) {: v:pt k:n :} k v ;
+: W-DEF ( n -- ) create 3 4 PT swap >r PT-V r> + , does> ( pt -- n pt ) @ swap ;
+5 W-DEF W39
+\ A does> parent's 2swap and 2over whose deepest operand is two cells wide,
+\ each weighed by place into its child's cell.
+: PS-V ( n n pt n -- n )
+   {: a:n b:n v:pt c:n :}
+   a 100000 * b 10000 * + v PT-V 100 * + c + ;
+: PO-V ( pt n n n pt n -- n )
+   {: a:pt b:n c:n d:n e:pt f:n :}
+   a PT-V 100000000 * b 1000000 * + c 100000 * + d 10000 * +
+   e PT-V 100 * + f + ;
+: W-DEF-2SWAP ( -- ) create 3 4 PT 5 6 7 2swap PS-V , does> ( -- n ) @ ;
+: W-DEF-2OVER ( -- ) create 3 4 PT 5 6 7 2over PO-V , does> ( -- n ) @ ;
+W-DEF-2SWAP W-PS
+W-DEF-2OVER W-PO
+\ Three cells mixed with one on both sides.
+: W3-ROT ( n trio n -- trio n n ) rot ;
+: W3-2SWAP ( trio n pt n -- pt n trio n ) 2swap ;
+: W3-R ( n trio n -- n trio n trio ) swap >r r@ swap r> ;
+\ Sixteen cells: the copies fill the virtual stack and spill.
+: W8-SWAP ( oct oct -- oct oct ) swap ;
+
 \ ---- a clause T0 refuses -----------------------------------------------------
 \ A definer whose clause holds a counted string of 256 bytes, one past what a
 \ counted length's one byte holds.
@@ -444,6 +576,55 @@ private
    ERR-BUF CHILD-ERR-N @ s" hb: bad hue tag" CONTAINS? TTRUE
    CHILD-RC @ ENGINE-ERROR:BAD-TAG T= ;
 
+: WIDE-CASE ( -- )
+   s" drop of a two-cell value" T-LABEL
+   77 9 3 4 PT W-DROP 9 T= 77 T=
+   77 3 4 PT 9 W-NIP 9 T= 77 T=
+   77 3 4 PT W-DUP PT-V 34 T= PT-V 34 T= 77 T=
+   s" each stack word over a two-cell value" T-LABEL
+   77 3 4 PT 9 W-SWAP PT-V 34 T= 9 T= 77 T=
+   77 3 4 PT 9 W-OVER PT-V 34 T= 9 T= PT-V 34 T= 77 T=
+   77 9 3 4 PT W-TUCK PT-V 34 T= 9 T= PT-V 34 T= 77 T=
+   77 3 4 PT 8 9 W-ROT PT-V 34 T= 9 T= 8 T= 77 T=
+   77 8 9 3 4 PT W--ROT 9 T= 8 T= PT-V 34 T= 77 T=
+   77 3 4 PT 9 W-2DUP 9 T= PT-V 34 T= 9 T= PT-V 34 T= 77 T=
+   77 9 3 4 PT 8 W-2DROP 9 T= 77 T=
+   77 3 4 PT 8 9 5 6 PT W-2SWAP 8 T= PT-V 34 T= PT-V 56 T= 9 T= 77 T=
+   77 3 4 PT 7 8 9 W-2OVER 7 T= PT-V 34 T= 9 T= 8 T= 7 T= PT-V 34 T= 77 T=
+   77 9 3 4 PT W-R PT-V 34 T= PT-V 34 T= 9 T= 77 T=
+   77 3 4 PT 9 W-2R 9 T= PT-V 34 T= 9 T= PT-V 34 T= 77 T=
+   77 3 4 PT 9 W-LOCAL PT-V 34 T= 9 T= 77 T=
+   s" a two-cell value in a does> parent and clause" T-LABEL
+   77 5 6 PT W39 PT-V 56 T= 39 T= 77 T=
+   s" a does> parent's 2swap and 2over over a deepest two-cell value" T-LABEL
+   77 W-PS 673405 T= 77 T=
+   77 W-PO 3405673405 T= 77 T=
+   s" a three-cell value among one-cell values" T-LABEL
+   77 9 1 2 3 TRIO 8 W3-ROT 9 T= 8 T= TRIO-V 123 T= 77 T=
+   77 1 2 3 TRIO 9 5 6 PT 8 W3-2SWAP 9 T= TRIO-V 123 T= 8 T= PT-V 56 T= 77 T=
+   77 9 1 2 3 TRIO 8 W3-R TRIO-V 123 T= 8 T= TRIO-V 123 T= 9 T= 77 T=
+   s" two eight-cell values swapped through memory" T-LABEL
+   77 10 OCT 20 OCT W8-SWAP OCT-V 10 T= OCT-V 20 T= 77 T=
+   s" @ and ! of a two-cell value, its neighbours untouched" T-LABEL
+   11 1 PT-CELL !  44 4 PT-CELL !
+   77 3 4 PT 1 PT! 77 T=
+   2 PT-CELL @ 3 T=  3 PT-CELL @ 4 T=  1 PT-CELL @ 11 T=  4 PT-CELL @ 44 T=
+   77 1 PT@ PT-V 34 T= 77 T=
+   s" a two-cell value stored and fetched in one body" T-LABEL
+   77 5 6 PT 2 PT-RT PT-V 56 T= 77 T=
+   s" @ and ! of a three-cell value, its neighbours untouched" T-LABEL
+   22 2 TRIO-CELL !  66 6 TRIO-CELL !
+   77 1 2 3 TRIO 1 TRIO! 77 T=
+   3 TRIO-CELL @ 1 T=  4 TRIO-CELL @ 2 T=  5 TRIO-CELL @ 3 T=
+   2 TRIO-CELL @ 22 T=  6 TRIO-CELL @ 66 T=
+   77 1 TRIO@ TRIO-V 123 T= 77 T=
+   s" @ and ! of a sixteen-cell value, its neighbours untouched" T-LABEL
+   11 15 TWIN-CELL !  44 32 TWIN-CELL !
+   77 10 20 TWIN 1 TWIN! 77 T=
+   1 10 20 TWIN-HITS 16 T=  15 TWIN-CELL @ 11 T=  32 TWIN-CELL @ 44 T=
+   2 30 40 TWIN-SEED
+   77 2 TWIN@ TWIN-V 40 T= 30 T= 77 T= ;
+
 public
 
 : RUN ( -- )
@@ -452,6 +633,7 @@ public
    DOES-CASE
    MATCH-CASE
    FORGE-CASE
+   WIDE-CASE
    CALLBACK-CASE
    REFUSAL-CASE
    T-REPORT ;
