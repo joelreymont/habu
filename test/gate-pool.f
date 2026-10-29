@@ -814,15 +814,11 @@ false GT-POOL-CATCHING !
 : GT-POOL-LINE-FD ( ptr u8 n fd -- ) {: name:ptr nameu:n val:fd :}
    name nameu type s" : " type val FD>N GT-POOL-N-TYPE cr ;
 
-: GT-POOL-SPAWN-ERRNO ( pid -- n )
-   PID>N negate ;
-
-: GT-POOL-SPAWN-FAIL. ( idx ptr u8 n pid -- ) {: idx:idx path:ptr pathu:n pid:pid :}
+: GT-POOL-SPAWN-FAIL. ( idx ptr u8 n -- ) {: idx:idx path:ptr pathu:n :}
    s" FAIL: test pool spawn" type cr
    s" test" idx GT-POOL-LABEL$ GT-POOL-LINE$
    s" path" path pathu GT-POOL-LINE$
-   s" raw" pid PID>N GT-POOL-LINE-N
-   s" errno" pid GT-POOL-SPAWN-ERRNO GT-POOL-LINE-N
+   s" errno" SPAWN:ERRNO GT-POOL-LINE-N
    s" argv-count" PROC-ARGV-N @ COUNT>N GT-POOL-LINE-N
    s" env-count" PROC-ENV-N @ COUNT>N GT-POOL-LINE-N
    s" pool-live" GT-POOL-LIVE @ GT-POOL-LINE-N
@@ -851,19 +847,32 @@ false GT-POOL-CATCHING !
    drop
    code 0<> if code GT-POOL-THROW then ;
 
-: GT-POOL-SPAWN-FD ( idx ptr u8 n fd -- ) {: idx:idx path:ptr pathu:n stdin:fd :}
-   path pathu >LEN PROC-ARGV-CHECK-PATH
+\ Spawns path with the staged argv and env as slot idx's child, its stdin on
+\ stdin (a negative one inherits this process's) and its stdout and stderr on
+\ the slot's pipes, and records its pid. Stack-preserving under catch, so a
+\ refusal is reported with the staging it refused.
+: GT-POOL-LAUNCH ( idx ptr u8 n fd -- idx ptr u8 n fd ) {: idx:idx path:ptr pathu:n stdin:fd :}
    path pathu >LEN PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
    PROC-ENV-PREPARE {: envp:ptr :}
-   pathz argv envp stdin idx GT-POOL-OUT-W-PTR @ idx GT-POOL-ERR-W-PTR @
-   PROC-SPAWN-ARGV-ENV-RAW {: pid:pid :}
-   pid PID>N 0 < if
-      idx path pathu pid GT-POOL-SPAWN-FAIL.
+   pathz dup ZLEN SPAWN:NEW
+   argv SPAWN:ARGV
+   envp SPAWN:ENV
+   stdin FD>N 0 >= if 0 >FD stdin SPAWN:FD then
+   1 >FD idx GT-POOL-OUT-W-PTR @ SPAWN:FD
+   2 >FD idx GT-POOL-ERR-W-PTR @ SPAWN:FD
+   PROCESS:SPAWN idx GT-POOL-PID-PTR !
+   idx path pathu stdin ;
+
+: GT-POOL-SPAWN-FD ( idx ptr u8 n fd -- ) {: idx:idx path:ptr pathu:n stdin:fd :}
+   path pathu >LEN PROC-ARGV-CHECK-PATH
+   idx path pathu stdin [: GT-POOL-LAUNCH ;] catch {: code:n :}
+   drop drop drop drop
+   code 0<> if
+      idx path pathu GT-POOL-SPAWN-FAIL.
       PROC-ARGV-ENV-RESET
-      E-PROC-SPAWN GT-POOL-THROW
+      code GT-POOL-THROW
    then
    PROC-ARGV-ENV-RESET
-   pid idx GT-POOL-PID-PTR !
    idx GT-POOL-CLOSE-WRITES
    idx GT-POOL-ARM-SPAWN-REAPER ;
 

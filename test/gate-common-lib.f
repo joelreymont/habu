@@ -86,18 +86,38 @@ variable GE-EVAL-SRC-U
 : GE-ARGV$ ( -- ptr u8 n )
    GE-ARGV-BUF GE-ARGV-U @ ;
 
-: GE-SPAWN-FAIL. ( pid -- ) {: pid:pid :}
-   s" spawn raw code: " type pid PID>N FMT:.INT cr
-   HB-TARGET-MACOS? if
-      s" spawn errno: " type pid PID>N negate FMT:.INT cr
-   then ;
+: GE-SPAWN-FAIL. ( -- )
+   s" spawn errno: " type SPAWN:ERRNO FMT:.INT cr ;
 
-: GE-SPAWN-STDIN-CAPTURE ( ptr u8 ptr a ptr a -- ) {: pathz:ptr argv:ptr envp:ptr :}
-   pathz argv envp PROC-IN-R @ >FD PROC-OUT-W @ >FD PROC-ERR-W @ >FD
-   PROC-SPAWN-ARGV-ENV-RAW {: pid:pid :}
+\ Spawns pathz with argv and envp as the capture child, its stdin on in and its
+\ stdout and stderr on the capture pipes, and records its pid. Stack-preserving
+\ under catch, so GE-LAUNCH-RC answers a refusal's code.
+: GE-LAUNCH ( ptr u8 ptr ptr u8 ptr ptr u8 fd -- ptr u8 ptr ptr u8 ptr ptr u8 fd )
+   {: pathz:ptr argv:ptr envp:ptr in:fd :}
+   pathz dup ZLEN SPAWN:NEW
+   argv SPAWN:ARGV
+   envp SPAWN:ENV
+   0 >FD in SPAWN:FD
+   1 >FD PROC-OUT-W @ >FD SPAWN:FD
+   2 >FD PROC-ERR-W @ >FD SPAWN:FD
+   PROCESS:SPAWN PID>N PROC-PID !
+   pathz argv envp in ;
+
+\ GE-LAUNCH's catch code, with the staged argv and env reset either way.
+: GE-LAUNCH-RC ( ptr u8 ptr ptr u8 ptr ptr u8 fd -- n )
+   [: GE-LAUNCH ;] catch {: code:n :}
+   drop drop drop drop
    PROC-ARGV-ENV-RESET
-   pid PID>N 0 < if pid GE-SPAWN-FAIL. E-PROC-SPAWN PROC-THROW-CAPTURE then
-   pid PID>N PROC-PID !
+   code ;
+
+\ A refused launch prints its errno and ends the capture with its code.
+: GE-LAUNCHED ( n -- ) {: code:n :}
+   code 0= if exit then
+   GE-SPAWN-FAIL.
+   code PROC-THROW-CAPTURE ;
+
+: GE-SPAWN-STDIN-CAPTURE ( ptr u8 ptr ptr u8 ptr ptr u8 -- )
+   PROC-IN-R @ >FD GE-LAUNCH-RC GE-LAUNCHED
    PROC-IN-R PROC-CLOSE-CELL
    PROC-OUT-W PROC-CLOSE-CELL
    PROC-ERR-W PROC-CLOSE-CELL ;
@@ -122,13 +142,10 @@ variable GE-EVAL-SRC-U
    PROC-RUN-STDIN-CAPTURE-OUTCOME-LOOP
    PROC-CAPTURE-FINISH-OUTCOME GE-STORE-OUTCOME ;
 
-: GE-SPAWN-FILE-CAPTURE ( ptr u8 ptr a ptr a -- ) {: pathz:ptr argv:ptr envp:ptr :}
-   pathz argv envp GE-INFD @ >FD PROC-OUT-W @ >FD PROC-ERR-W @ >FD
-   PROC-SPAWN-ARGV-ENV-RAW {: pid:pid :}
-   PROC-ARGV-ENV-RESET
+: GE-SPAWN-FILE-CAPTURE ( ptr u8 ptr ptr u8 ptr ptr u8 -- )
+   GE-INFD @ >FD GE-LAUNCH-RC
    GE-INFD @ close
-   pid PID>N 0 < if pid GE-SPAWN-FAIL. E-PROC-SPAWN PROC-THROW-CAPTURE then
-   pid PID>N PROC-PID !
+   GE-LAUNCHED
    PROC-OUT-W PROC-CLOSE-CELL
    PROC-ERR-W PROC-CLOSE-CELL ;
 

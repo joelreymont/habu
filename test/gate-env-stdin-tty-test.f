@@ -5,8 +5,9 @@
 \ controlling terminal.  It then uses setsid(1) to run this file's driver mode
 \ as the foreground process of a new session with that terminal as its
 \ controlling terminal.  The driver then calls GE-RUN-ENV.
-\ PROC-SPAWN-ARGV-ENV-RAW makes the captured child its own process-group leader,
-\ so that child is a background group relative to the terminal.  Its ordinary
+\ GE-RUN-ENV's PROCESS request (src/lib/spawn.f) makes the captured child its own
+\ process-group leader, so that child is a background group relative to the
+\ terminal.  Its ordinary
 \ startup terminal ioctl must not stop it with SIGTTOU: GE-RUN-ENV promises an
 \ explicit empty standard-input pipe, not the driver's ambient terminal.
 \

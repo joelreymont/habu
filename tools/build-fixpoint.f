@@ -179,6 +179,7 @@ variable BF-APP-OFF
 variable BF-GEN
 variable BF-FOUND
 variable BF-PID
+variable BF-IN          \ the child's stdin BF-SPAWN-IN closes
 variable BF-STAMP-PATH-U
 variable BF-STAMP-DIR-U
 variable BF-STAMP-DEF-U
@@ -238,34 +239,63 @@ variable BF-CERT-PATH-U
 : BF-OPEN-INPUT ( ptr u8 n -- n )
    FS-PATHZ open-rd dup 0 < if E-BUILD-PATH throw then ;
 
-: BF-FINISH-PID ( pid -- n ) {: pid :}
-   PROC-ARGV-ENV-RESET
-   pid PID>N 0 < if E-PROC-SPAWN throw then
-   pid PROC-WAIT-RC MATCH result ok OF ENDOF err OF ENDOF ;MATCH ;   \ completion code (ok 0 / err nonzero)
+: BF-FINISH-PID ( pid -- n )
+   PROC-WAIT-RC MATCH result ok OF ENDOF err OF ENDOF ;MATCH ;   \ completion code (ok 0 / err nonzero)
 
-: BF-RUN-ENV-FDS ( ptr u8 n n n n -- n ) {: exe:ptr exeu infd outfd errfd :}
+\ The request for pathz with the staged argv and env, which are reset once the
+\ request holds its copy; the child inherits stdin, stdout and stderr.
+: BF-REQUEST ( ptr u8 ptr ptr u8 ptr ptr u8 -- SPAWN:request )
+   {: pathz:ptr argv:ptr envp:ptr :}
+   pathz dup ZLEN SPAWN:NEW
+   argv SPAWN:ARGV
+   envp SPAWN:ENV
+   PROC-ARGV-ENV-RESET ;
+
+\ Spawns pathz with the staged argv and env. A refusal throws E-PROC-SPAWN.
+: BF-SPAWN ( ptr u8 ptr ptr u8 ptr ptr u8 -- pid )
+   BF-REQUEST PROCESS:SPAWN ;
+
+: BF-CLOSE-IN ( -- )
+   BF-IN @ close ;
+
+\ BF-SPAWN with the child's stdin on infd, which is closed once the spawn
+\ answers or throws.
+: BF-SPAWN-IN ( ptr u8 ptr ptr u8 ptr ptr u8 n -- pid )
+   BF-IN !
+   [: BF-REQUEST 0 >FD BF-IN @ >FD SPAWN:FD PROCESS:SPAWN ;] [: BF-CLOSE-IN ;] finally ;
+
+: BF-RUN-ENV-EXE ( ptr u8 n -- n ) {: exe:ptr exeu :}
    BF-PREPARE-ENV
    PROC-ARGV-RESET
-   exe exeu >LEN PROC-ARGV-PREPARE PROC-ENV-PREPARE infd >FD outfd >FD errfd >FD
-   PROC-SPAWN-ARGV-ENV-RAW BF-FINISH-PID ;
+   exe exeu >LEN PROC-ARGV-PREPARE PROC-ENV-PREPARE
+   BF-SPAWN BF-FINISH-PID ;
 
 : BF-RUN-ENV-INFD ( ptr u8 n n -- n ) {: exe:ptr exeu infd :}
    BF-PREPARE-ENV
    PROC-ARGV-RESET
-   exe exeu >LEN PROC-ARGV-PREPARE PROC-ENV-PREPARE infd >FD -1 >FD -1 >FD
-   PROC-SPAWN-ARGV-ENV-RAW {: pid :}
-   infd close
-   pid BF-FINISH-PID ;
+   exe exeu >LEN PROC-ARGV-PREPARE PROC-ENV-PREPARE infd
+   BF-SPAWN-IN BF-FINISH-PID ;
+
+\ Spawns pathz with the staged argv and env as the capture child, its stdout on
+\ outfd and its stderr on the capture pipe, and records its pid. Stack-preserving
+\ under catch, so a refused spawn reaches PROC-THROW-CAPTURE.
+: BF-OUTFD-LAUNCH ( ptr u8 ptr ptr u8 ptr ptr u8 n -- ptr u8 ptr ptr u8 ptr ptr u8 n )
+   {: pathz:ptr argv:ptr envp:ptr outfd:n :}
+   pathz argv envp BF-REQUEST
+   1 >FD outfd >FD SPAWN:FD
+   2 >FD PROC-ERR-W @ >FD SPAWN:FD
+   PROCESS:SPAWN PID>N PROC-PID !
+   pathz argv envp outfd ;
 
 \ PROC-SPAWN-ARGV-ENV-CAPTURE with the child's stdout on a caller fd instead of
 \ the capture pipe. The out pipe the capture machine opened is never handed to
 \ the child and is closed here, so it reads EOF at once and the drain below ends
 \ on stderr alone.
-: BF-SPAWN-OUTFD-CAPTURE ( ptr u8 ptr a ptr a n -- ) {: pathz:ptr argv:ptr envp:ptr outfd:n :}
-   pathz argv envp -1 >FD outfd >FD PROC-ERR-W @ >FD PROC-SPAWN-ARGV-ENV-RAW {: pid:pid :}
-   PROC-ARGV-ENV-RESET
-   pid PID>N 0 < if E-PROC-SPAWN PROC-THROW-CAPTURE then
-   pid PROC-CAPTURE-PID!
+: BF-SPAWN-OUTFD-CAPTURE ( ptr u8 ptr ptr u8 ptr ptr u8 n -- )
+   [: BF-OUTFD-LAUNCH ;] catch {: code:n :}
+   drop drop drop drop
+   code 0<> if code PROC-THROW-CAPTURE then
+   PROC-PID @ >PID PROC-CAPTURE-PID!
    PROC-OUT-W PROC-CLOSE-CELL
    PROC-ERR-W PROC-CLOSE-CELL ;
 
@@ -299,19 +329,14 @@ variable BF-CERT-PATH-U
 : BF-RUN-STAGE-ENV-INFD ( ptr u8 n n -- n ) {: exe:ptr exeu infd :}
    BF-PREPARE-ENV
    exe exeu BF-PREPARE-STAGE-ARGV
-   PROC-ENV-PREPARE infd >FD -1 >FD -1 >FD
-   PROC-SPAWN-ARGV-ENV-RAW {: pid :}
-   infd close
-   pid BF-FINISH-PID ;
-
-: BF-RUN-ENV-EXE ( ptr u8 n -- n )
-   -1 -1 -1 BF-RUN-ENV-FDS ;
+   PROC-ENV-PREPARE infd
+   BF-SPAWN-IN BF-FINISH-PID ;
 
 : BF-RUN-STAGE-ENV-EXE ( ptr u8 n -- n )
    BF-PREPARE-ENV
    BF-PREPARE-STAGE-ARGV
-   PROC-ENV-PREPARE -1 >FD -1 >FD -1 >FD
-   PROC-SPAWN-ARGV-ENV-RAW BF-FINISH-PID ;
+   PROC-ENV-PREPARE
+   BF-SPAWN BF-FINISH-PID ;
 
 : BF-RUN-ENV-PATH-INFILE ( ptr u8 n ptr u8 n -- n ) {: exe:ptr exeu src:ptr srcu :}
    exe exeu src srcu BF-OPEN-INPUT BF-RUN-ENV-INFD ;
@@ -348,6 +373,7 @@ variable BF-CERT-PATH-U
 public
 EXPORT BF-APPEND-LINE
 EXPORT BF-FINISH-PID
+EXPORT BF-SPAWN
 private
 
 ;package
@@ -368,8 +394,8 @@ public
 : RUN ( ptr u8 n ptr u8 n -- n ) {: exe:ptr exeu:n src:ptr srcu:n :}
    BF-PREPARE-ENV
    exe exeu src srcu ARGV
-   PROC-ENV-PREPARE -1 >FD -1 >FD -1 >FD
-   PROC-SPAWN-ARGV-ENV-RAW BF-FINISH-PID ;
+   PROC-ENV-PREPARE
+   BF-SPAWN BF-FINISH-PID ;
 
 : RUN-TMP ( ptr u8 n ptr u8 n -- n ) {: exe:ptr exeu:n src:ptr srcu:n :}
    exe exeu BF-A$ src srcu BF-B$ RUN ;
@@ -994,7 +1020,7 @@ package BUILD-FIXPOINT
       BUILD-CERTIFY:TARGET$ >LEN PROC-ARGV+
    then
    ENGINE-ID:PATH$ >LEN PROC-ARGV-PREPARE PROC-ENV-PREPARE
-   -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-ENV-RAW BF-FINISH-PID
+   BF-SPAWN BF-FINISH-PID
    0<> if E-BUILD-CERTIFY throw then ;
 
 \ The stage engine reads its source from the fixed `stage2-src` name in the temp
@@ -1138,8 +1164,8 @@ variable BF-DRV-R
 : BF-RUN-CAPTURE ( ptr u8 n ptr u8 n -- n ) {: exe:ptr exeu:n art:ptr artu:n :}
    BF-PREPARE-ENV
    exe exeu art artu BF-PREPARE-CAPTURE-ARGV
-   PROC-ENV-PREPARE -1 >FD -1 >FD -1 >FD
-   PROC-SPAWN-ARGV-ENV-RAW BF-FINISH-PID ;
+   PROC-ENV-PREPARE
+   BF-SPAWN BF-FINISH-PID ;
 
 : BF-CAPTURE-INTO ( ptr u8 n -- ) {: art:ptr artu:n :}
    s" hb-host" BF-A$ art artu BF-RUN-CAPTURE BF-RC0 ;
@@ -1302,7 +1328,7 @@ variable BF-DRV-R
    s" --" >LEN PROC-ARGV+
    s" hb-native" BF-A$ >LEN PROC-ARGV+
    BF-ENGINE$ >LEN PROC-ARGV-PREPARE PROC-ENV-PREPARE
-   -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-ENV-RAW BF-FINISH-PID BF-RC0
+   BF-SPAWN BF-FINISH-PID BF-RC0
    s" hb-native" BF-EXPECT ;
 
 : BF-SAVE-SNAPSHOT ( -- )
@@ -1313,10 +1339,8 @@ variable BF-DRV-R
    s" --" >LEN PROC-ARGV+
    s" hb-new" BF-A$ >LEN PROC-ARGV+
    s" hb-snap-src" BF-A$ BF-OPEN-INPUT {: infd:n :}
-   s" hb-native" BF-A$ >LEN PROC-ARGV-PREPARE PROC-ENV-PREPARE
-   infd >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-ENV-RAW {: pid:pid :}
-   infd close
-   pid BF-FINISH-PID BF-RC0
+   s" hb-native" BF-A$ >LEN PROC-ARGV-PREPARE PROC-ENV-PREPARE infd
+   BF-SPAWN-IN BF-FINISH-PID BF-RC0
    s" hb-new" BF-EXPECT
    s" hb-new" BF-CODESIGN-VERIFY-TMP ;
 
