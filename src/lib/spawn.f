@@ -3,7 +3,8 @@
 \ PROCESS:NEW starts a request for a program path; PROCESS:ARG, PROCESS:ENV,
 \ PROCESS:HERMETIC, PROCESS:CWD, PROCESS:FD and PROCESS:CLOSED add to it;
 \ PROCESS:SPAWN spawns the child through the engine's spawn-fds
-\ (src/habu/spawn-abi.f lays out what it reads) and answers its pid.
+\ (src/habu/spawn-abi.f lays out what it reads) and answers its pid;
+\ PROCESS:DISCARD frees a request that will not be spawned.
 \ PROCESS:ARGV-ROWS and PROCESS:ENV-ROWS bridge the RAW family's
 \ NULL-terminated arrays; lane 7 deletes them along with the RAW words.
 \
@@ -29,10 +30,10 @@
 \   running with a closed stdio fd still spawns. An FD naming a closed parent fd
 \   fails the spawn with EBADF.
 \ - A request is used once. PROCESS:SPAWN frees it whatever the outcome, and a
-\   builder that throws frees it before the throw goes on; a request a caller
-\   drops on its own throw is lost. A refused spawn throws E-PROC-SPAWN with
-\   the positive errno in PROCESS:ERRNO; a spawn that succeeds sets
-\   PROCESS:ERRNO to 0.
+\   builder that throws frees it before the throw goes on; a caller that will
+\   not spawn a request DISCARDs it, on its throw paths too. A refused spawn
+\   throws E-PROC-SPAWN with the positive errno in PROCESS:ERRNO; a spawn that
+\   succeeds sets PROCESS:ERRNO to 0.
 \ - The spawn holds FD-LOCK (src/lib/fd-lock.f).
 \
 \ STORAGE CLASS. CALLER-OWNED: each request maps its own record, string chunks
@@ -368,5 +369,9 @@ public
    result 0 < if result negate ERRNO-CELL ! E-PROC-SPAWN throw then
    0 ERRNO-CELL !
    result >PID ;
+
+
+\ Frees a request that will not be spawned and everything it holds.
+: DISCARD ( PROCESS:request -- ) ERASE RELEASE ;
 
 ;package
