@@ -22013,8 +22013,9 @@ variable RTL-I                        \ retired-token local scan index
 \ unify against. Until immediates' compile-time expansion is modeled, a
 \ signature-carrying live-dictionary immediate in a checked body is a
 \ fail-closed reject (the design doc's interim, mirroring the opener
-\ treatment). Modeled parsing immediates ([char]/char via PARSE-LIT?) stay
-\ green; engine prims are modeled by TRY-PRIMS and carry no usig row.
+\ treatment). Modeled parsing immediates ([char]/char, which DO-TOK1 types
+\ as literals first) stay green; engine prims are modeled by TRY-PRIMS and
+\ carry no usig row.
 
 variable IMMERR
 
@@ -22179,7 +22180,6 @@ public
 
 : BODY-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u FORCED? IF RES-TRUE EXIT THEN
-   a u PARSE-LIT? IF RES-FALSE EXIT THEN
    a u CHECKER-FIND-ACTIVE-SYM {: sym:n :}
    sym CHECKER-FIND-USIG-SYM 0= IF RES-FALSE EXIT THEN
    a u NEUTRAL-PARSE-IMM? IF RES-FALSE EXIT THEN
@@ -23137,6 +23137,13 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    h E-DOUT@ E-INST {: dout:n :}
    UNJ-PD @ UNJ-PR @  din dout UNJ-PD @ SPLICE-SHAPE  dout swap  UNJ-SPLICE ;
 
+\ A body's `char x` or `[char] x` compiles the literal x, as the capture and
+\ tier 1 compile it, whatever word shares the spelling: the token takes its
+\ primitive row, never the dictionary word's, and swallows its operand.
+: CHAR-LIT-TOK ( ptr u8 n -- )
+   PE-SYM-OF PRIM-FIRST-SYM E-PTR EFF-APPLY
+   LITERAL-PAYLOAD-STEP ;
+
 : DO-TOK1 {: a u :}
    0 CALL-HIT !  0 TOK-DONE !  0 BWIN-HIT !
    NULL-PTR TOK-EFF !  NULL-PTR TOK-ABI-EFF !  0 TOK-ABI-DONE !
@@ -23166,6 +23173,7 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
       TKF TKFU @ MATCH-TOK
    ELSE
    a u LOC-REF? IF ELSE
+   TKF TKFU @ PARSE-LIT? IF TKF TKFU @ CHAR-LIT-TOK ELSE
    TKF TKFU @ s" construct" CORE-STR= IF CONSTRUCT-BEGIN ELSE
    TKF TKFU @ s" match" CORE-STR= IF MATCH-BEGIN ELSE
    TKF TKFU @ s" {:" CORE-STR= IF LOC-BEGIN ELSE
@@ -23193,6 +23201,7 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
       CURSYM @ PIMM-IX dup 0 < 0= IF PIMM-CNT@ PIMM-SKIP ELSE drop THEN
    THEN
    THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
+   THEN
    EXEC-OPAQUE @ IF MD-EXEC-OPAQUE MDIAG! THEN   \ name the opaque-execute reject on the pinned 'execute' token
    CATCH-OPAQUE @ IF MD-CATCH-OPAQUE MDIAG! THEN   \ name the opaque-catch reject on the pinned 'catch' token
    \ The raw-cell and base-address refusals name themselves where they are

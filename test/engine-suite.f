@@ -618,6 +618,23 @@ s\" CBAD-ESC-LETTER ( -- ptr u8 n ) s\\\" bad\\g\" " T-CHECK-REJECTS
 s\" CBAD-ESC-HEX ( -- ptr u8 n ) s\\\" bad\\xZZ\" " T-CHECK-REJECTS
 s\" CBAD-ESC-HEX-SHORT ( -- ptr u8 n ) s\\\" bad\\x4\" " T-CHECK-REJECTS
 s\" CBAD-ESC-UNTERMINATED ( -- ptr u8 n ) s\\\" no end" T-CHECK-REJECTS
+\ A body's `char x` compiles the character literal x whatever word shares the
+\ spelling, so the checker types it as that literal, never by the word.
+package ES-CHAR-PTR
+: char ( -- ptr u8 ) s" ab" drop ;
+s" CBAD-CHAR-SHADOW-PTR ( -- ptr u8 ) char x" T-CHECK-REJECTS
+;package
+package ES-CHAR-N
+: char ( n -- n ) 1+ ;
+\ The JIT compiles a body's `char` by dictionary lookup, so a call to the word
+\ above; tier 1 compiles the literal. The suite's tier is restored.
+variable ES-CHAR-TIER
+tier@ ES-CHAR-TIER !  1 set-tier
+: ES-CHAR-LIT ( -- n ) char x ;
+ES-CHAR-TIER @ set-tier
+s" a body char under a shadowing word compiles its literal" T-LABEL
+ES-CHAR-LIT 120 T=
+;package
 \ pointer arithmetic + byte view: pointee-polymorphic ptr+n arithmetic, ptr-ptr
 \ difference, and an explicit ( ptr a -- ptr u8 ) byte view all certify. A
 \ pointer's pointee element type is invariant: the u8->cell/u32 integer widening
