@@ -1,36 +1,9 @@
 \ t0-x64.f - the x86-64 emitter of the tier 0 compiler, package T0-X64.
 \
-\ It implements the operations of src/habu/t0-emit.f (package T0-EMIT), which
-\ states what each operation does on every target; this file states only the
-\ x86-64 encodings and register choices. Every word here is private, and the
-\ file ends by providing INSTALL, which stores each into its T0-EMIT cell, its
-\ branch primitives into their src/habu/t0-label.f (package T0-LABEL) cells and
-\ T0-LABEL's control words into T0-EMIT's, for CTARGET-ARCH:X86-64.
-\
-\ THE CONTRACT A COMPILED BODY KEEPS (src/habu/kernel-x64.f "A BODY'S
-\ CONTRACT"). rbp is DATA, r12 the data stack pointer, rbx and r13-r15 the
-\ other engine registers; compiled code never writes them except r12 as the
-\ stack (src/arch/x86-64/rt.f G-PUSH, G-POP). The vregs are rcx rdx rsi rdi
-\ r8-r11; rax is this file's own temporary and holds no value between two of
-\ its words. A body is entered by `call` and leaves by `ret`; nothing is
-\ saved, and its frame on the machine stack is only its own cells, rounded to
-\ 16 (src/arch/x86-64/abi.f FRAME-FOR).
-\
-\ THE SINK is one src/lib/byte-buffer.f header, as src/arch/x86-64/icode.f
-\ keeps for the kernel.
-\
-\ THE FRAME. OPEN and QUOT-OPEN emit `sub rsp, imm32` and each way out (RETURN,
-\ TAIL) emits `add rsp, imm32`, each with a zero field recorded in FRAME-AT.
-\ CLOSE writes the unit's frame size, FRAME-CELLS rounded to 16 bytes, into
-\ every field the unit recorded, so rsp keeps its alignment at every call.
-\ Slot k is the cell at rsp + 8k.
-\
-\ THE ROWS are filed into the seam as each site is emitted (t0-emit.f THE
-\ ROWS). A call or tail site is E8 or E9 rel32 with the field left zero until
-\ PATCH measures it from its placed end; an address site is movabs r64, imm64,
-\ whose imm64 starts two bytes past the row's offset. A quotation's imm64
-\ holds the unit's offset, which QUOT-OPEN writes, until PATCH adds the
-\ placement. Every branch is rel32.
+\ Implements the operations src/habu/t0-emit.f (T0-EMIT) states for every
+\ target; this file holds only x86-64 encodings and register choices. INSTALL
+\ stores its words into the T0-EMIT and src/habu/t0-label.f cells for
+\ CTARGET-ARCH:X86-64.
 
 require src/lib/errors.f
 require src/lib/byte-buffer.f
@@ -45,13 +18,12 @@ require src/habu/t0-label.f
 package T0-X64
 using X64ASM
 
-8 constant NVREG                      \ rcx rdx rsi rdi r8-r11
+8 constant NVREG
 
 \ An immediate is a sign-extended imm32.
 : IMM? ( n -- bool ) {: v:n :}
    v -2147483648 >= v 2147483647 <= and ;
 
-\ The x86 condition number of each T0-EMIT comparison, CC-EQ .. CC-GT.
 : COND ( T0-EMIT:cc -- condition )
    {: c:T0-EMIT:cc :}
    c T0-EMIT:CC>N {: k:n :}
@@ -75,10 +47,17 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
 
 : HERE-OFF ( -- n ) SINK BUF:LEN@ BUF:BLEN>N ;
 
+\ A body's contract (src/habu/kernel-x64.f "A BODY'S CONTRACT"): rbp is DATA,
+\ r12 the data stack pointer, rbx and r13-r15 the other engine registers;
+\ compiled code writes none of them except r12 as the stack
+\ (src/arch/x86-64/rt.f G-PUSH, G-POP). The vregs are rcx rdx rsi rdi r8-r11;
+\ rax is this file's temporary and holds no value between two of its words. A
+\ body is entered by `call`, leaves by `ret` and saves nothing; its frame on
+\ the machine stack is its own cells rounded to 16 (src/arch/x86-64/abi.f
+\ FRAME-FOR).
 : DSP ( -- r64 ) ENGINE-GPR:X64-DSTACK >R64 ;
 : DATA-REG ( -- r64 ) ENGINE-GPR:X64-RBASE >R64 ;
 
-\ vreg 0..3 are rcx rdx rsi rdi, 4..7 are r8..r11.
 : REG ( T0-EMIT:vreg -- r64 )
    {: v:T0-EMIT:vreg :}
    v T0-EMIT:VREG>N {: k:n :}
@@ -89,7 +68,6 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
    k 3 = if RDI exit then
    k 4 + >R64 ;
 
-\ Write the low k bytes of v at offset off of the sink, little-endian.
 : PUT ( n n n -- ) {: v:n off:n k:n :}
    SINK BUF:SPAN$ drop off + {: p:ptr :}
    k 0 ?do v i 8 * rshift $FF and p i + c! loop ;
@@ -132,7 +110,6 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
 
 : REL-TO ( n -- rel ) HERE-OFF - >REL ;
 
-\ Begin the next unit at the current offset, with an empty frame.
 : UNIT-BEGIN ( -- )
    HERE-OFF T0-EMIT:UNIT+
    NUNIT @ 1 + NUNIT !
@@ -141,6 +118,15 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
 
 
 \ ---- the body ----------------------------------------------------------------
+\ The frame: OPEN and QUOT-OPEN emit `sub rsp, imm32` and each way out emits
+\ `add rsp, imm32`, each field recorded in FRAME-AT; CLOSE writes the unit's
+\ frame size into every one. Slot k is the cell at rsp + 8k.
+\
+\ The rows (t0-emit.f "THE ROWS"): a call or tail site is E8 or E9 rel32, zero
+\ until PATCH measures it from its placed end; an address site is movabs r64,
+\ imm64, whose imm64 starts two bytes past the row's offset. A quotation's
+\ imm64 holds its unit's offset until PATCH adds the placement. Every branch is
+\ rel32.
 : OPEN ( -- )
    SINK-LIVE @ 0= if
       SINK SINK-START-BYTES BUF:N>BLEN BUF:INIT
@@ -332,7 +318,6 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
 : NEG ( T0-EMIT:vreg -- ) REG SINK ENC-NEG ;
 : NOT ( T0-EMIT:vreg -- ) REG SINK ENC-NOT ;
 
-\ setcc, then zero-extend and negate the byte into a flag.
 : SET-FLAG ( T0-EMIT:vreg T0-EMIT:cc -- )
    {: d:T0-EMIT:vreg c:T0-EMIT:cc :}
    c COND 0 >R8 SINK ENC-SETCC
@@ -370,7 +355,6 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
 \ The branch primitives T0-LABEL emits through. A forward branch is the offset
 \ of its rel32 field, waiting for its target, and a head is an offset.
 
-\ Bind the branch's forward field to here.
 : RESOLVE ( T0-LABEL:branch -- ) T0-LABEL:BRANCH>N {: at:n :}
    HERE-OFF at 4 + - at 4 PUT ;
 
@@ -433,7 +417,6 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
    p i T0-EMIT:VREG-AT REG RAX off MEM-OFF SINK
    st if ENC-MOV-MR exit then ENC-MOV-RM ;
 
-\ The depth in rax moved by k.
 : RDEPTH+ ( n -- ) {: k:n :} RAX RAX k MEM-OFF SINK ENC-LEA ;
 
 : TOR ( ptr T0-EMIT:vreg n -- ) {: p:ptr n:n :}

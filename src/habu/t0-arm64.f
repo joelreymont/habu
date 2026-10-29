@@ -1,92 +1,9 @@
 \ t0-arm64.f - the arm64 emitter of the tier 0 compiler, package T0-A64.
 \
-\ It implements the operations of src/habu/t0-emit.f (package T0-EMIT), which
-\ states what each operation does on every target; this file states only the
-\ arm64 encodings and register choices. Every word here is private, and the
-\ file ends by providing INSTALL, which stores each into its T0-EMIT cell, its
-\ branch primitives into their src/habu/t0-label.f (package T0-LABEL) cells and
-\ T0-LABEL's control words into T0-EMIT's, for CTARGET-ARCH:AARCH64.
-\
-\ THE CONTRACT A COMPILED BODY KEEPS. x19 is the data stack, which grows up: a
-\ push is `str xR,[x19],#8` and a pop `ldr xR,[x19,#-8]!` (src/habu/jit.f
-\ W-PUSHR, W-POPR). x20 is DATA and x19, x20, x26, x27 and x28 are the engine's
-\ (src/habu/layout.f ENGINE-GPR:A64-MASK); compiled code never writes them
-\ except x19 as the stack. x18 is Darwin's and never named (src/arch/arm64/asm.f
-\ XREG? refuses it). x29 caches the innermost loop's index, as it does for the
-\ JIT (src/habu/regalloc.f LIDX), and any callee may write it. The vregs are
-\ the JIT's register pool in its order, x9..x15 then x25 x23 x24 x21 x22 x6 x7
-\ x8 (src/habu/regalloc.f VRPACK, VRPACK2), the registers a body may clobber.
-\ x16 and x17 are this file's own temporaries, a literal and an address, and
-\ hold no value between two of its words (the JIT never pools them either).
-\ A body is entered by `bl` or `blr` and leaves by `ret` through x30.
-\
-\ DIVISION. `sdiv` appears only in DIV-LIT and MOD-LIT, whose divisor is a
-\ literal neither 0 nor -1 (t0-emit.f DIVISION): a zero divisor, on which the
-\ hardware answers 0 instead of throwing, never reaches it.
-\
-\ THE SINK. A unit's body is emitted into RAW, at unit-relative offsets, and
-\ CLOSE copies it into OUT, the whole emission BYTES reads, with the unit's
-\ prologue in front and its epilogue before every `ret`. Each byte-buffer is
-\ one src/lib/byte-buffer.f header; a word is appended little-endian.
-\
-\ THE FRAME is fixed at CLOSE, once the unit's size is known, so the body holds
-\ no frame size to patch. Its slots are FRAME-CELLS cells rounded to 16 bytes,
-\ slot k at sp + 8k, reserved by `sub sp,sp,#S` and given back by
-\ `add sp,sp,#S` (in 4095-page chunks, then the remainder: a frame has no cap).
-\ A unit with no slots and no call is a leaf and has neither. A unit with a
-\ CALL or CALL-SELF (LINKED) also saves x30 above its slots:
-\ `str x30,[sp,#-16]!` first and `ldr x30,[sp],#16` last, so sp keeps its
-\ 16-byte alignment at every call; a TAIL leaves with x30 as the unit found it.
-\ RETURN records the offset of its `ret` in EPI-AT and TAIL that of its `b`;
-\ CLOSE inserts the epilogue there and moves every row of the unit by the
-\ prologue and by the epilogues inserted at or before it.
-\
-\ THE BRANCHES. A control branch is a placeholder word in RAW and an entry of
-\ the open unit's branch list: its raw site, its raw target once T0-LABEL
-\ resolves it (a backward branch's at once), and its form, `b`, `b.cond` with
-\ its condition or `cbz` with its register. CLOSE writes each, since the
-\ epilogues it inserts move code: the site placed as a row is, and the target
-\ counting only the epilogues before it, so a branch to a `ret` or tail `b`
-\ lands on the epilogue in front of it. A branch never leaves its unit, so
-\ placement leaves it alone; one its field cannot reach throws E-A64EMIT-REACH.
-\
-\ THE ROWS. A unit's address sites wait in PEND and its call and tail sites in
-\ PCALL, at raw offsets, until CLOSE has laid the unit out, and CLOSE files them
-\ into the seam (t0-emit.f THE ROWS) at their final offsets. A call is `bl 0`
-\ and a tail `b 0` until PATCH writes the displacement. A data address is the
-\ chain the JIT emits for one, recorded at its first word: inside the fixed
-\ DATA mapping three words, `movz lsl32`, `movk lsl16`, `movk` (habu2.f
-\ C-DATA-RAW, the shape src/habu/address-carrier.f CHAIN-SIZE reads back), and
-\ elsewhere the four-lane `movz`, `movk lsl16`, `movk lsl32`, `movk lsl48`
-\ (habu2.f C-ADDR-RAW), every lane emitted so the publisher can rewrite it in
-\ place; a code address always takes the four lanes. A data address's row
-\ carries the origin ADDR-DATA takes, a code address's -1. A quotation's
-\ address is an `adr` relative to its own site, which QUOT-OPEN writes once the unit
-\ begins, so it files no row and placement leaves it alone. `recurse` is a `bl`
-\ to byte 0, which CLOSE writes, and files no row either.
-\
-\ THE PATCH SLOT. SLOT-CLOSE ends the unit with RETURN and CLOSE, which put
-\ any epilogue in front of the `ret`, so the `ret` is the unit's last word.
-\
-\ THE CALLBACK STUB is tier 1's (src/compiler/native/emit.f WRITE-STUB):
-\ x9 <- NCBSTUB's slot and x16 <- its thunk, each by the four-lane carrier,
-\ the thunk's one ADDR-CODE row, then `br x16`. CB-STUB appends it to OUT after
-\ the last unit is closed, so each unit's code is the same armed or not.
-\
-\ THE RETURN STACK is RSP-CELL cells deep from the base at
-\ STACK-ABI:RETURN-BASE-CELL; slot d is base + 8d, as habu2.f J-TOR and J-RPOP
-\ reach it.
-\
-\ THE INDEX CACHE. The frame cell stays the index's home, since `j` and the
-\ runtime read it, and x29 is a copy written beside every store of it, as
-\ habu2.f J-FRAME keeps it for the JIT. HELD says whether the code emitted
-\ next may read x29: a loop head sets it, and so do `i` and a step once they
-\ load it. Every call clears it, since the callee may run a loop, and so does
-\ every label a branch lands on, MARK and RESOLVE, since a branch may come
-\ from code that wrote x29; LOOP-POP and the start of a unit clear it too.
-\ While it is clear, `i`, `loop` and `+loop` load x29 from the frame first. A
-\ refused token discards the whole emission, and OPEN begins the next one
-\ clear.
+\ Implements the operations src/habu/t0-emit.f (T0-EMIT) states for every
+\ target; this file holds only arm64 encodings and register choices. INSTALL
+\ stores its words into the T0-EMIT and src/habu/t0-label.f cells for
+\ CTARGET-ARCH:AARCH64.
 
 require src/lib/errors.f
 require src/lib/byte-buffer.f
@@ -113,6 +30,17 @@ using A64ASM
 4 constant INSN                       \ the bytes of one instruction word
 31 constant SP                        \ as a base or an add/sub operand
 
+\ Registers. x19 is the data stack and grows up (src/habu/jit.f W-PUSHR,
+\ W-POPR). x19, x20 (DATA), x26, x27 and x28 are the engine's
+\ (src/habu/layout.f ENGINE-GPR:A64-MASK); compiled code writes none of them
+\ except x19 as the stack. x18 is Darwin's (src/arch/arm64/asm.f XREG? refuses
+\ it). x29 caches the innermost loop index as it does for the JIT
+\ (src/habu/regalloc.f LIDX), and any callee may write it. The vregs are the
+\ JIT's register pool in its order (src/habu/regalloc.f VRPACK, VRPACK2). x16
+\ and x17 are this file's temporaries, a literal and an address, and hold no
+\ value between two of its words. A body is entered by `bl` or `blr` and
+\ leaves by `ret` through x30.
+\
 \ The machine register of each vreg; an index past it throws E-LAYOUT-BOUNDS.
 NVREG TYPED-BUFFER REGS n
  9 0 REGS !  10 1 REGS !  11 2 REGS !  12 3 REGS !  13 4 REGS !
@@ -121,7 +49,6 @@ NVREG TYPED-BUFFER REGS n
 
 : REG ( T0-EMIT:vreg -- n ) T0-EMIT:VREG>N REGS @ ;
 
-\ The arm64 condition of each T0-EMIT comparison.
 6 TYPED-BUFFER CONDS n
 C-EQ T0-EMIT:CC-EQ T0-EMIT:CC>N CONDS !
 C-NE T0-EMIT:CC-NE T0-EMIT:CC>N CONDS !
@@ -183,7 +110,6 @@ DYNAMIC-BUFFER BR-TO n                \ raw target or -1 while open, form,
 DYNAMIC-BUFFER BR-FORM n              \ and the form's condition or register
 DYNAMIC-BUFFER BR-ARG n
 
-\ The forms of a branch.
 0 constant FORM-B
 1 constant FORM-BCOND
 2 constant FORM-CBZ
@@ -203,11 +129,9 @@ DYNAMIC-BUFFER BR-ARG n
 
 : W ( n -- ) RAW W32+ ;
 
-\ Overwrite the instruction word at byte at of OUT.
 : W32! ( n n -- ) {: w:n at:n :}
    w  OUT BUF:SPAN$ drop at +  LE:U32! ;
 
-\ Whether d fits a signed field of bits bits.
 : SIGNED? ( n n -- bool ) {: d:n bits:n :}
    1 bits 1 - lshift {: half:n :}
    d half negate >= d half < and ;
@@ -223,7 +147,6 @@ DYNAMIC-BUFFER BR-ARG n
 
 : HALF ( n n -- n ) 16 * rshift $FFFF and ;
 
-\ How many of v's four halves equal h.
 : HALVES ( n n -- n ) {: v:n h:n :}
    0 4 0 ?do v i HALF h = if 1 + then loop ;
 
@@ -268,7 +191,6 @@ DYNAMIC-BUFFER BR-ARG n
 : SCALED? ( n -- bool ) {: off:n :}
    off 0 >= off 7 and 0= and off 3 rshift IMM12-LIM < and ;
 
-\ Whether an unscaled or a writeback access reaches off: a signed nine bits.
 : SIMM9? ( n -- bool ) {: off:n :} off -256 >= off 255 <= and ;
 
 : FITS? ( n -- bool ) {: off:n :} off SCALED? off SIMM9? or ;
@@ -291,7 +213,6 @@ DYNAMIC-BUFFER BR-ARG n
 
 : DSP ( -- n ) ENGINE-GPR:A64-DSTACK ;
 
-\ Move sp by bytes into buf: 4095-page chunks, then the remainder.
 : SP-PAGES ( n bool -- n )
    if SP SP rot ENC-ADDI-LSL12 exit then
    SP SP rot ENC-SUBI-LSL12 ;
@@ -362,7 +283,6 @@ DYNAMIC-BUFFER BR-ARG n
    ADR XREG-RBASE STACK-ABI:RETURN-BASE-CELL ENC-LDR W
    ADR ADR TMP 3 ENC-ADD-LSL W ;
 
-\ Begin the next unit, with an empty body and frame and no call.
 : UNIT-BEGIN ( -- )
    RAW BUF:CLEAR
    OUT-OFF T0-EMIT:UNIT+
@@ -395,12 +315,41 @@ DYNAMIC-BUFFER BR-ARG n
    form FORM-BCOND = if d k BR-ARG @ ENC-BCOND exit then
    k BR-ARG @ d ENC-CBZ ;
 
-\ Copy RAW's bytes [from, to) to OUT.
 : COPY ( n n -- ) {: from:n to:n :}
    RAW BUF:SPAN$ drop from +  to from - BUF:N>BLEN  OUT BUF:APPEND-SPAN ;
 
 
 \ ---- the body ----------------------------------------------------------------
+\ A unit's body is emitted into RAW at unit-relative offsets; CLOSE copies it
+\ into OUT with the prologue in front and the epilogue before every `ret`.
+\
+\ The frame is fixed at CLOSE, so the body holds no frame size to patch. Its
+\ slots are FRAME-CELLS cells rounded to 16 bytes, slot k at sp + 8k, reserved
+\ and given back in 4095-page chunks then the remainder: a frame has no cap. A
+\ unit with no slots and no call is a leaf and has neither. A LINKED unit also
+\ saves x30 above its slots, keeping sp 16-byte aligned at every call; a TAIL
+\ leaves with x30 as the unit found it. CLOSE inserts the epilogue at each
+\ EPI-AT offset and moves every row of the unit by the prologue and by the
+\ epilogues inserted at or before it.
+\
+\ A control branch is a placeholder word in RAW and an entry in the open
+\ unit's branch list. CLOSE writes each, since the epilogues it inserts move
+\ code; a branch to a `ret` or tail `b` lands on the epilogue in front of it.
+\ A branch never leaves its unit, so placement leaves it alone; one its field
+\ cannot reach throws E-A64EMIT-REACH.
+\
+\ Address sites wait in PEND-AT and call and tail sites in PCALL-AT until CLOSE
+\ files them into the seam (t0-emit.f THE ROWS) at their final offsets. A data
+\ address inside the fixed DATA mapping is three words, `movz lsl32`,
+\ `movk lsl16`, `movk` (habu2.f C-DATA-RAW; src/habu/address-carrier.f
+\ CHAIN-SIZE reads the shape back); any other address is all four lanes
+\ (habu2.f C-ADDR-RAW). Every lane is emitted so the publisher can rewrite it
+\ in place. A data address's row carries the origin ADDR-DATA takes, a code
+\ address's -1. A quotation's address is an `adr` relative to its own site and
+\ `recurse` a `bl` to byte 0: neither files a row.
+\
+\ SLOT-CLOSE ends the unit with RETURN and CLOSE, so the `ret` is the unit's
+\ last word: the patch slot.
 : OPEN ( -- )
    LIVE @ 0= if
       RAW SINK-START-BYTES BUF:N>BLEN BUF:INIT
@@ -471,7 +420,9 @@ DYNAMIC-BUFFER BR-ARG n
    RETURN CLOSE
    OUT-OFF INSN - T0-EMIT:PATCH-SLOT! ;
 
-\ Append the callback stub after the last unit and answer where it starts.
+\ The callback stub is tier 1's (src/compiler/native/emit.f WRITE-STUB),
+\ appended after the last unit so each unit's code is the same armed or not.
+\ Answers where it starts.
 : CB-STUB ( -- n )
    OUT-OFF {: at:n :}
    NCBSTUB:SLOT@ CB-ID OUT CHAIN4-IN
@@ -548,7 +499,6 @@ DYNAMIC-BUFFER BR-ARG n
    {: d:T0-EMIT:vreg s:T0-EMIT:vreg :}
    d REG s REG ENC-MOV W ;
 
-\ Three moves through the temporary.
 : EXCHANGE ( T0-EMIT:vreg T0-EMIT:vreg -- )
    {: a:T0-EMIT:vreg b:T0-EMIT:vreg :}
    TMP a REG ENC-MOV W
@@ -603,7 +553,9 @@ DYNAMIC-BUFFER BR-ARG n
    v TMP LIT-R
    d REG d REG TMP ENC-MUL W ;
 
-\ x16 = n ; sdiv xd,xd,x16 (src/habu/jit.f EI/).
+\ x16 = n ; sdiv xd,xd,x16 (src/habu/jit.f EI/). `sdiv` appears only here and
+\ in MOD-LIT, whose divisor is never 0 or -1 (t0-emit.f DIVISION): the hardware
+\ answers 0 for a zero divisor.
 : DIV-LIT ( T0-EMIT:vreg n -- )
    {: d:T0-EMIT:vreg v:n :}
    v TMP LIT-R
@@ -650,6 +602,8 @@ DYNAMIC-BUFFER BR-ARG n
    d REG a REG 0 ENC-LDR W ;
 
 \ ---- the return stack --------------------------------------------------------
+\ RSP-CELL cells deep from STACK-ABI:RETURN-BASE-CELL; slot d is base + 8d, as
+\ habu2.f J-TOR and J-RPOP reach it.
 \ Vreg i of p moved to or from the slot at x17 + off.
 : RS-XFER ( ptr T0-EMIT:vreg n n bool -- ) {: p:ptr i:n off:n st:bool :}
    p i T0-EMIT:VREG-AT REG ADR off st ACCESS ;
@@ -706,7 +660,6 @@ DYNAMIC-BUFFER BR-ARG n
    0 W
    k T0-LABEL:>BRANCH ;
 
-\ Bind the forward branch to here.
 : RESOLVE ( T0-LABEL:branch -- )
    HERE-OFF swap T0-LABEL:BRANCH>N BR-TO !  0 HELD ! ;
 
@@ -751,6 +704,16 @@ DYNAMIC-BUFFER BR-ARG n
    c T0-EMIT:CC>N CONDS @ m BACK-BCOND ;
 
 \ ---- loops -------------------------------------------------------------------
+\ The frame cell stays the index's home (`j` and the runtime read it); x29 is a
+\ copy written beside every store of it, as habu2.f J-FRAME keeps it. HELD says
+\ whether the code emitted next may read x29: a loop head sets it, and so do
+\ `i` and a step once they load it. Every call clears it, since the callee may
+\ run a loop, and so does every label a branch lands on (MARK and RESOLVE),
+\ since a branch may come from code that wrote x29; LOOP-POP and a unit's start
+\ clear it too. While it is clear, `i`, `loop` and `+loop` load x29 from the
+\ frame first. A refused token discards the whole emission, and OPEN begins the
+\ next one clear.
+\
 \ x16 holds the loop stack's depth and x17 the address one frame past the
 \ innermost, base + 16 * depth (habu2.f J-FRAME's layout).
 : LDEPTH ( -- ) TMP XREG-RBASE LOOPSP-CELL ENC-LDR W ;

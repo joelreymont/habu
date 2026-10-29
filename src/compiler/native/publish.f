@@ -1,14 +1,9 @@
 \ publish.f - commit one sealed native emission to its pending dictionary record.
-\ Every refusal precedes the code window; the commit phase only copies accepted
-\ bytes, records relocation sites, and publishes the record. The emission is
-\ read from NEMIT while the backend holds it sealed, in bytes; nothing here
-\ decodes instructions.
-\
-\ THE CODE REGION IS THE RUNNING ENGINE'S, so it takes only the instructions of
-\ the machine NABI:BINDING names: an emission any other backend sealed is
-\ refused first. A shadow target's routine for the same definition is filed
-\ with the record (src/compiler/native/shadow.f), past the window, because the
-\ shadow refused whatever it could before publication began.
+\ Every refusal precedes the code window; the commit only copies accepted bytes,
+\ records relocation sites and publishes the record. The code region is the
+\ running engine's: an emission sealed for any machine but NABI:BINDING's is
+\ refused first. A shadow target's routine is filed with the record past the
+\ window (src/compiler/native/shadow.f).
 
 require src/lib/prelude.f
 require src/lib/errors.f
@@ -129,8 +124,8 @@ variable UNIT-ARMED
       fn i NEMIT:ADDR-SITE@ + RELOC-ADDR
    loop ;
 
-\ Legacy records omit the trailing return. An emission with none explicitly
-\ records its whole span, so a reader never borrows the next record's bytes.
+\ A recorded span excludes the trailing return. An emission with none records
+\ its whole span exactly, so a reader never borrows the next record's bytes.
 : RECORDED-LEN ( n -- n ) {: size:n :}
    NEMIT:RET-BYTES {: ret:n :}
    ret 0= if size CODE-SPAN:EXACT exit then
@@ -158,7 +153,6 @@ variable UNIT-ARMED
 0 CWORK-VARIABLE HELD-SIZE n
 0 CWORK-VARIABLE HELD-DEFER n           \ a defer body's dispatch cell, or 0
 
-\ A defer record's span ends at the trailer just past its code slot.
 2 cells constant TRAILER-BYTES
 create TRAILER TRAILER-BYTES allot
 
@@ -199,8 +193,8 @@ create TRAILER TRAILER-BYTES allot
    rc 0<> if NHOST:ABANDON-TAKEN rc throw then
    NHOST:PUBLISH-TAKEN ;
 
-\ `cell` is a defer body's dispatch cell, or 0. The held routine is cleared on
-\ every exit, so a refused commit leaves nothing the next one could read.
+\ The held routine is cleared on every exit, so a refused commit leaves nothing
+\ the next one could read.
 : COMMIT-OWNED ( n n n n -- ) {: idx:n fn:n size:n cell:n :}
    idx HELD-IDX !  fn HELD-FN !  size HELD-SIZE !  cell HELD-DEFER !
    [: COMMIT-OWNED-BODY ;]
@@ -230,8 +224,8 @@ create TRAILER TRAILER-BYTES allot
    size VALIDATE-EMISSION {: fn:n :}
    idx fn size ;
 
-\ Publishing the checker's one-shot minimum-input latch is engine authority.
-\ Keep the boundary at the native publisher that consumes it for this record.
+\ Publishing the checker's one-shot minimum-input latch is engine authority,
+\ kept at the native publisher that consumes it for this record.
 : PENDING-FACTS ( n -- ) {: idx:n :}
    CHECKER-OWNER:WIDE-PUBLISH
    CHECKER-OWNER:MIN-IN {: mi:n :}
@@ -252,7 +246,7 @@ create TRAILER TRAILER-BYTES allot
    off 0 <= if E-NPUB-OFFSET throw then
    idx fn size off ;
 
-\ Commit one pending body; callers decide whether to consume checker facts.
+\ Callers decide whether to consume checker facts.
 : PUBLISH-CODE ( -- n )
    PENDING-PROVE {: idx:n fn:n size:n :}
    fn NSHADOW:SOURCE-FUNS
@@ -340,9 +334,9 @@ private
 
 public
 
-\ A prepared definition reuses the interpreter's pending row.  Its name and
-\ wordlist were already written when the source definition opened.  All
-\ references and implementation facts have been prepared before this call.
+\ A prepared definition reuses the interpreter's pending row, whose name and
+\ wordlist the source definition wrote. All references and implementation
+\ facts are prepared before this call.
 : IMPORT-PENDING ( ptr u8 n n ptr n n ptr n n bool n -- n )
    {: code:ptr size:n recorded:n calls:ptr calln:n
       addrs:ptr addrn:n wide:bool minin:n :}

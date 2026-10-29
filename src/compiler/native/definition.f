@@ -1,16 +1,9 @@
-\ definition.f - the compiler-neutral step of compiling one pending definition.
-\
-\ Every native compiler compiles a pending definition the same way around its
-\ own lowering: stage the unit, scan the body or its `does>` split through the
-\ checker owner, enforce the verdict, record the row a scan did not certify,
-\ check the recorded name and arity, state the root's host facts, publish the
-\ emission by kind, and on a refusal report it and retract the rows the
-\ definition recorded. This package holds that step and the state it reads,
-\ including the pending callback stub: CALLBACK-STUB! makes the next
-\ definition a callback accessor, whose seal appends the stub.
-\ Tier 1 (src/compiler/native/compiler.f, NCOMP) calls it around its tape,
-\ elaborator and backend. It requires no tier-1 package (tape, feed, elaborator,
-\ HIR, backend), so tier 0 (src/habu/t0.f) can require it on every target.
+\ definition.f - the compiler-neutral step around one pending definition's
+\ lowering: staging, the checker scan and verdict, name and arity checks,
+\ publication by kind, the pending callback stub, and retraction on refusal.
+\ Tier 1 (src/compiler/native/compiler.f, NCOMP) and tier 0 (src/habu/t0.f)
+\ both call it. It requires no tier-1 package (tape, feed, elaborator, HIR,
+\ backend), so tier 0 can require it on every target.
 
 require src/lib/prelude.f
 require src/lib/errors.f
@@ -141,40 +134,28 @@ private
 TRUSTED: REGISTER-TRUST ( ptr u8 n ptr u8 n -- )
    CHECKER-OWNER:DECLARED-EFFECT ;
 
-\ CERTIFICATION IS THE ENGINE'S HOOK CELL, AND THE SCAN IS THE OWNER'S.
-\ Two questions were one call before this: `LOWER-CERT-HOOK:HOOK` by name both
-\ scanned the source (the tape is filled from inside a scan) and enforced a
-\ verdict, and it did so in the checker instance this file was compiled into.
-\ Tier 0 reads the hook CELL per definition, which is why `0 set-check` takes
-\ certification off it and installing another hook moves it; tier 1 could not be
-\ moved at all.
-\
-\ So: a hook in the cell owns the verdict, and it is the live checker's own hook
-\ that scans. With the cell EMPTY an ordinary definition is published
-\ uncertified, as tier 0 does under `0 set-check`. The owner's scan still fills
-\ the tape and reports its verdict. A native build requires that verdict while
-\ LOGICAL-RESET has cleared the hook and the target's check-hook.f is not loaded.
+\ Certification is the engine's hook cell; the scan is the owner's. A hook in
+\ the cell owns the verdict, and the live checker's own hook scans. Tier 0
+\ reads the cell per definition, so `0 set-check` takes certification off and
+\ installing another hook moves it. With the cell empty an ordinary definition
+\ is published uncertified; the owner's scan still fills the tape and reports
+\ its verdict. A native build requires that verdict while LOGICAL-RESET has
+\ cleared the hook and the target's check-hook.f is not loaded.
 \ The hook cell stores a raw execution token; this view states the scan's signature.
 CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
 
-\ Whether anything is certifying at all. With the hook cell empty nothing is, and
-\ ordinary compilation reports the scan's verdict without enforcing it:
-\ tier 0 publishes such a definition uncertified with its declaration as its row
-\ (habu2.f EM-COMPILE-PUBLISH-HOOKED reads HOOK-CELL), and the two tiers have to
-\ agree (DECLARE-HOOKLESS). A build requires a successful scan before recording
-\ that unjudged row; ordinary `0 set-check` sessions retain their declared row.
+\ The two tiers agree on the empty cell: tier 0 also publishes the definition
+\ uncertified with its declaration as its row (habu2.f EM-COMPILE-PUBLISH-HOOKED
+\ reads HOOK-CELL).
 : CERTIFYING? ( -- bool )
    check@ 0 <> ;
 
 70 constant RC-REJECT                 \ the check hook's reject status (check-hook.f CHECK-RC)
 
-\ The scan with the hook cell empty. Ordinary compilation does not enforce its
-\ verdict: a body it did not certify compiles against its declaration
-\ (DECLARE-HOOKLESS). A build-required scan refuses before that declaration is
-\ recorded. KEEP-ARITY refuses over an ordinary verdict only when no
-\ declaration could be recorded.
-\ The reason is printed now, while the owner still holds the scan that found it:
-\ a does> head's scan is replaced by its clause's before KEEP-ARITY runs.
+\ A build-required scan refuses before the declaration is recorded; otherwise
+\ KEEP-ARITY refuses only when no declaration could be recorded. The reason is
+\ printed here because a does> head's scan is replaced by its clause's before
+\ KEEP-ARITY runs.
 : CHECK-HOOKLESS ( ptr u8 n -- )
    {: a:ptr u:n :}
    a u CHECKER-OWNER:CHECK-UNJUDGED {: v:n :}
@@ -219,9 +200,8 @@ private
 
 public
 
-\ The `does>` split's head: its cut check, scan and capture. The caller then
-\ advances its own record past the `does>` token and checks the clause
-\ (CHECK-DOES-CLAUSE).
+\ The `does>` split's head. The caller advances its own record past the
+\ `does>` token and checks the clause (CHECK-DOES-CLAUSE).
 : CHECK-DOES-HEAD ( -- )
    DOES-CUT-CK
    CHECKER-OWNER:DOES-BEGIN
@@ -244,9 +224,9 @@ public
    CHECKER-OWNER:DOES-IN M-DOES-IN !
    CHECKER-OWNER:DOES-OUT M-DOES-OUT !
    M-DOES-IN @ 0 < M-DOES-OUT @ 0 < or if E-NCOMP-ARITY throw then
-   \ WHERE THE CLAUSE'S VALUES END, read here because the checker captured the
-   \ clause's rows for this split and the next one replaces them. A row wider
-   \ than a cell is placed from these boundaries exactly as a definition's own
+   \ Where the clause's values end, read here because the checker captured
+   \ the clause's rows for this split and the next one replaces them. A row
+   \ wider than a cell is placed from these boundaries as a definition's own
    \ row is; a row the checker could not separate into cells answers
    \ GLUE-UNKNOWN and the elaborator refuses the definer over it.
    NDICT:DOES-GLUE M-DOES-GOUT ! M-DOES-GIN !
@@ -340,30 +320,22 @@ public
    then ;
 
 \ ---- what the definition takes and leaves ------------------------------------
-\ THE CHECKER'S ANSWER AND NOT THE CALLER'S. Every callee's arity already comes
-\ from src/compiler/native/dict.f at the point it is used, and this is the same
-\ reader asked about the definition being compiled - so the routine's contract
-\ and every call to it are derived from one authority instead of agreeing by
-\ luck. It asks for CELLS, which is what NELAB:COLON checks the body's value
-\ vector against; a term of a family more than one cell wide makes the two
-\ counts differ, and dict.f EFF-CELLS is where that choice is stated.
+\ The arity is the checker's answer, from the same dict.f reader every callee's
+\ arity comes from, so the routine's contract and its calls share one
+\ authority. It asks for cells, what NELAB:COLON checks the body's value vector
+\ against; dict.f EFF-CELLS states the width rule.
 \
-\ ASKED WITH THE SOURCE SPELLING kept by KEEP-TAPE-NAME: bare for an
+\ It is asked with the source spelling KEEP-TAPE-NAME kept: bare for an
 \ author's private definition, qualified when a public definition names a
-\ different wordlist. A TRUSTED: effect is registered under that same spelling
-\ after the scan, so a family-typed qualified effect has one owner here.
+\ different wordlist. A TRUSTED: effect is registered under that same spelling.
 \
-\ THE ABSENT ANSWER. SPELL-ARITY answers ARITY-NONE for a name the checker holds
-\ no effect for, and it is refused here rather than let through to NELAB:COLON
-\ as a -1, which would refuse it as E-NELAB-ARITY and name the wrong thing. With
-\ a check hook installed nothing reaches it: E-NCOMP-VERDICT has refused every
-\ body the check did not certify. With the cell empty nothing has
-\ (CHECK-HOOKLESS), and a body the scan rejects or cannot check compiles
-\ against its declaration, which DECLARE-HOOKLESS recorded as its row. Only a
-\ definition with no recordable declaration reaches the refusal: no signature,
-\ one the checker cannot parse, or one with a scope scheme. The scan has printed
-\ why, so the refusal takes the check hook's reject status. After a certified
-\ scan nothing reaches it either: a package opened and closed by the source is
+\ ARITY-NONE is refused here: passed on as -1, NELAB:COLON would refuse it as
+\ E-NELAB-ARITY and name the wrong thing. Only a definition with no recordable
+\ declaration reaches the refusal (no signature, an unparsable one, or one with
+\ a scope scheme): a hook has refused every uncertified body, and with the cell
+\ empty DECLARE-HOOKLESS recorded the declaration. The scan has printed why, so
+\ the refusal takes the check hook's reject status. After a certified scan
+\ nothing reaches it either: a package opened and closed by the source is
 \ E-NCOMP-NAME and an unsigned body answers its inferred effect.
 : KEEP-ARITY ( -- )
    NAME$ NDICT:SPELL-ARITY {: din:n dout:n :}
@@ -442,30 +414,22 @@ public
 
 private
 
-\ A refusal after the scan owns the checker row this definition recorded: a
-\ certified scan's, a TRUSTED: declaration's, and with the hook cell empty its
-\ declared row or its multi-error recovery fact. The definition is rolled back,
-\ so its row goes too, or the next definition of the name would be a duplicate.
-\ Whichever path recorded it, the refusal puts the store back as it stood at
-\ STAGE-UNIT, when the body reached the compiler (M-ROWS): the owner truncates
-\ it to that end (checker.f CHECKER-RETRACT-ROWS). Until the caller opens the
-\ compile window, after RECORD returns (DECLARE-ROW and NFEED:RECORD-WINDOW's
-\ observers run before it), only the definition records rows, and from then to
-\ publication the window admits only the compiler's own writes, so the cut takes
-\ exactly the definition's rows: a callback (a backend pass, an observer) that
-\ would record one while the definition compiles is refused E-NCOMP-STATE. The
-\ caller owes that window: it opens CHECKER-OWNER:WRITE-WINDOW after VERDICT-CK
-\ and before anything it runs can call back (NCOMP WORK). Nothing goes when
-\ nothing was recorded, as when its declaration did not parse or had a scope
-\ scheme, and the refusal is its own for a catch to receive, TRUSTED: or not.
-\ Every row recorded before STAGE-UNIT stays: a twin's in another scope, one
-\ CHECK! recorded under its own name, and one a parsing immediate recorded as
-\ the body was read. No word outlives the cut pointing at a cut row: while the
-\ definition is pending, source a callback evaluates is its body's capture
-\ (definers.f COMPILING?), where a definer defines nothing and a `;` is refused
-\ (rc 74). Under a hook a scan that did not certify was refused before this, and
-\ the checker rolled it back itself, so the cut finds nothing to take. A does>
-\ definer rolls back through its own checker frame (DOES-FINISH).
+\ A refusal after the scan truncates the checker store to M-ROWS, its end at
+\ STAGE-UNIT (checker.f CHECKER-RETRACT-ROWS): the definition is rolled back, so
+\ its row goes too, or the next definition of the name would be a duplicate.
+\ Nothing goes when nothing was recorded (a declaration that did not parse or
+\ had a scope scheme), and the refusal keeps its own code for a catch, TRUSTED:
+\ or not.
+\ The cut takes exactly the definition's rows because the caller opens
+\ CHECKER-OWNER:WRITE-WINDOW after VERDICT-CK and before anything it runs can
+\ call back (NCOMP WORK); inside the window a callback that would record a row
+\ is refused E-NCOMP-STATE. Rows recorded before STAGE-UNIT (a twin in another
+\ scope, a CHECK! row, a parsing immediate's) stay. No word outlives the cut
+\ pointing at a cut row: source a callback evaluates while the definition is
+\ pending is its body's capture (definers.f COMPILING?), where a `;` is refused
+\ (rc 74). Under a hook a scan that did not certify was refused before this and
+\ the checker rolled it back itself, so the cut finds nothing. A does> definer
+\ rolls back through its own checker frame (DOES-FINISH).
 : RETRACT ( -- )
    M-DOES @ 0<> if
       M-DOES-FRAME @ 0<> if

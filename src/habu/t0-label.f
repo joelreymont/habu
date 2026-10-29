@@ -1,25 +1,20 @@
 \ t0-label.f - the control labels of the tier 0 compiler, package T0-LABEL.
 \
-\ The structured and counted-loop words of the seam (src/habu/t0-emit.f
-\ CONTROL) keep the same bookkeeping on every target that branches by label:
-\ the open structures, the open loop levels and their `leave` exits. This file
-\ keeps it once and emits through the branch primitives below. An emitter
-\ file (src/habu/t0-x64.f, src/habu/t0-arm64.f) implements them, and its
-\ INSTALL stores them into its architecture's slot of each cell, as it does
-\ T0-EMIT's, and stores this file's structure words into the seam's control
-\ and loop cells. A primitive runs from the slot T0-EMIT selected.
-\
-\ A branch is the number a forward primitive answers, which only RESOLVE and
-\ ENTRY-EQ read back; a head is an offset MARK answered, which a backward
-\ branch targets. Comparisons are signed.
+\ Keeps the open structures, loop levels and `leave` exits once for every
+\ target that branches by label (src/habu/t0-emit.f CONTROL). An emitter file
+\ (src/habu/t0-x64.f, src/habu/t0-arm64.f) implements the branch primitives
+\ below; its INSTALL stores them in its architecture's slot of each cell, and
+\ this file's structure words in the seam's control and loop cells.
+\ A branch is the number a forward primitive answers, read back only by RESOLVE
+\ and ENTRY-EQ; a head is an offset MARK answered. Comparisons are signed.
 
 require src/habu/t0-emit.f
 
 package T0-LABEL
 public
 
-DEFTYPE BRANCH     \ a forward branch, waiting for RESOLVE
-DEFTYPE HEAD       \ a loop head, the target of a backward branch
+DEFTYPE BRANCH
+DEFTYPE HEAD
 
 \ ---- the branch primitives ---------------------------------------------------
 \ MARK answers the head here. FWD-JUMP branches forward always, FWD-ZERO when
@@ -97,13 +92,12 @@ variable LEAVE-N
 
 : AT+ ( n -- ) POSITION swap CF-PUSH ;
 
-\ The innermost level and its head.
 : LV ( -- n ) LV-N @ 1 - ;
 : HEAD ( -- head ) LV LV-HEAD @ ;
 
 public
 
-\ Begin an emission with nothing open; an emitter's OPEN runs it.
+\ An emitter's OPEN runs this.
 : RESET ( -- ) 0 CF-N !  0 LV-N !  0 LEAVE-N ! ;
 
 \ ---- control -----------------------------------------------------------------
@@ -168,7 +162,7 @@ public
 
 : LOOP-NEXT ( T0-EMIT:vreg -- ) HEAD SLOT LOOP-NEXT-XT @ execute ;
 
-\ The level's `?do` entry now skips equal bounds only.
+\ Under `+loop` the `?do` entry skips equal bounds only: a step may count down.
 : LOOP-STEP ( T0-EMIT:vreg T0-EMIT:vreg -- )
    HEAD SLOT LOOP-STEP-XT @ execute
    LV LV-ENTRY @ {: at:n :}

@@ -1,21 +1,18 @@
 \ escape.f - decoding an escaped string literal's span, package ESCAPE.
 \
-\ An escaped literal (`s\"`, `c\"`, `.\"`) runs from its first payload byte to
-\ a closing double quote. A backslash makes the next byte an escape letter
-\ (habu2.f C-ESC-DECODE-BASIC); `\x` and `\X` take two hex digits. SPAN
-\ finds the closing quote and counts the bytes the span decodes to, and says
-\ whether every escape in it is whole; COPY writes those bytes. The
-\ interpreter's literals (src/habu/outer.f ESC-SCAN) read a literal through
-\ these two words. Neither allocates, refuses or bounds a length: the caller
-\ decides what a failed span or a long one means.
+\ A literal (`s\"`, `c\"`, `.\"`) runs to a closing double quote; escape
+\ letters follow habu2.f C-ESC-DECODE-BASIC, and `\x` and `\X` take two hex
+\ digits. src/habu/outer.f ESC-SCAN reads literals through SPAN and COPY.
+\ Neither allocates, refuses or bounds a length: the caller decides what a
+\ failed or long span means.
 
 require src/lib/prelude.f
 
 package ESCAPE
 private
 
-$22 constant QUOTE               \ a double quote closes the literal
-$5C constant BACKSLASH           \ starts an escape
+$22 constant QUOTE
+$5C constant BACKSLASH
 $0A constant NEWLINE
 
 
@@ -23,7 +20,6 @@ $0A constant NEWLINE
    c lo >= c hi <= and ;
 
 
-\ The value of byte c as a hex digit, and whether it is one.
 : HEX ( n -- n bool ) {: c:n :}
    c [char] 0 [char] 9 BETWEEN? if c [char] 0 - true exit then
    c [char] a [char] f BETWEEN? if c [char] a - 10 + true exit then
@@ -31,8 +27,7 @@ $0A constant NEWLINE
    0 false ;
 
 
-\ The byte an escape letter stands for, and whether it is one. `x` and `X`
-\ are not: HEX-STEP reads their two digits.
+\ `x` and `X` answer false: HEX-STEP reads their two digits.
 : LETTER ( n -- n bool )
    case
       QUOTE of QUOTE true endof
@@ -88,8 +83,7 @@ public
    true ;
 
 
-\ The bytes the text from s to its quote q decodes to, written from d on. SPAN
-\ must have answered true for s and q.
+\ SPAN must have answered true for s and q.
 : COPY ( ptr u8 ptr u8 ptr u8 -- ) {: s:ptr q:ptr d:ptr :}
    s d
    begin over q < while
