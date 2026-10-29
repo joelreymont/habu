@@ -5,7 +5,7 @@
 \ caller retires with CLOSE-DIR. OPEN-DIR-AT and READ-FILE-AT borrow the anchor,
 \ never close it, and refuse absolute paths. Every path is copied to private
 \ storage first; an empty, negative or over-PATH-CAP path and an empty,
-\ repeated, trailing, . or .. component throw E-FS-PATH, a NUL E-FS-PATH-UNSAFE
+\ repeated, trailing, . or .. component throw E-FS-PATH, a NUL E-FFI-NUL
 \ (.cache and a..b are ordinary names).
 \
 \ Each component opens relative to the live parent descriptor with O_NOFOLLOW,
@@ -93,12 +93,11 @@ FUNCTION: A-CLOSE-CALL close ( n -- i32 ) ;FUNCTION
    HB-TARGET-LINUX-X86-64? if $20000 $80000 or $800 or $100 or exit then
    $8000 $80000 or $800 or $100 or ;
 
-: A-SNAPSHOT ( ptr u8 n ptr u8 -- ptr u8 ) {: src:ptr u:n work:ptr :}
+: A-SNAPSHOT ( ptr u8 n ptr u8 -- ptr u8 )
+   {: src:ptr u:n work:ptr :}
    u 0 <= u PATH-CAP > or if E-FS-PATH throw then
    work A-PATH-BUF {: dst:ptr :}
-   src u dst PATHZ-CAP SPAN:MAKE SPAN:COPY
-   0 dst u + c!
-   dst ;
+   src u dst PATHZ-CAP SPAN:MAKE FFI:CSTR ;
 : A-COMPONENT-END ( ptr u8 n n -- n ) {: path:ptr u:n at:n :}
    at begin dup u < while
       path over + c@ SLASH = if exit then
@@ -113,8 +112,8 @@ FUNCTION: A-CLOSE-CALL close ( n -- i32 ) ;FUNCTION
       path from + c@ DOT = path from 1 + + c@ DOT = and
       if E-FS-PATH throw then
    then ;
-: A-VALIDATE ( ptr u8 n bool -- n ) {: path:ptr u:n base:bool :}
-   u 0 ?do path i + c@ 0= if E-FS-PATH-UNSAFE throw then loop
+: A-VALIDATE ( ptr u8 n bool -- n )
+   {: path:ptr u:n base:bool :}
    path c@ SLASH = {: absolute:bool :}
    absolute base 0= and if E-FS-PATH throw then
    u 1 = base and if
@@ -149,14 +148,15 @@ FUNCTION: A-CLOSE-CALL close ( n -- i32 ) ;FUNCTION
    work A-NEXT@ work A-CUR!
    -1 work A-NEXT! ;
 
-\ A-VALIDATE checks every component before the first open. Splitting only writes
-\ NULs into this call's snapshot, never into the caller's path.
+\ A-VALIDATE checks every component before the first open. Splitting ends each
+\ component through FFI:CSTR! inside this call's snapshot, never in the caller's
+\ path.
 : A-WALK ( ptr u8 n n ptr u8 n bool -- )
    {: path:ptr u:n start:n work:ptr parent:n file:bool :}
    start begin dup u < while
       {: at:n :}
       path u at A-COMPONENT-END {: stop:n :}
-      0 path stop + c!
+      stop at - path at + PATHZ-CAP at - SPAN:MAKE FFI:CSTR! drop
       stop u = file and if A-FILE-FLAGS else OPEN-DIR-FLAGS then {: flags:n :}
       work A-CUR@ dup 0 < if drop parent then {: from:n :}
       work from path at + flags A-OPEN-NEXT

@@ -359,25 +359,16 @@ FRAME-DIR-OFF DIR-CAP + constant FRAME-BYTES
 : CHECK-JOIN-CAP ( n -- )
    dup PATH-CAP > if CAUSE-CLEAR E-FS-CAPACITY throw then drop ;
 
-: PATH-UNSAFE? ( ptr u8 n -- bool ) {: a:ptr u :}
-   0 begin dup u < while
-      a over + c@ 0= if drop true exit then
-      1+
-   repeat drop false ;
-
-\ The length gate stays E-FS-PATH: a path longer than PATH-CAP is a bad PATH,
-\ the refusal every fs consumer tests for, and it is the same limit whatever
-\ buffer it is copied into. What the span adds is that the copy and the NUL
-\ terminator are bounds-checked against the destination's real reach, so the
-\ gate is no longer the only thing between a wrong length and an overrun.
-: PATHZ-INTO ( ptr u8 n SPAN:span<u8> -- ptr u8 ) {: a:ptr u dst :}
+\ FS owns the length gate: a path longer than PATH-CAP is E-FS-PATH, the
+\ refusal every fs consumer tests for, whatever buffer it is copied into.
+\ FFI:CSTR owns the copy, the terminator and the 0-byte refusal (E-FFI-NUL),
+\ bounded by the destination's real reach.
+: PATHZ-INTO ( ptr u8 n SPAN:span<u8> -- ptr u8 )
+   {: a:ptr u dst :}
    CAUSE-CLEAR
    u 0 < if E-FS-PATH throw then
    u PATH-CAP > if E-FS-PATH throw then
-   a u PATH-UNSAFE? if E-FS-PATH-UNSAFE throw then
-   a u dst SPAN:COPY
-   0 dst u SPAN:U8!
-   dst SPAN:$ drop ;
+   a u dst FFI:CSTR ;
 
 public
 : >PATHZ ( ptr u8 n -- ptr u8 )

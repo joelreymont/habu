@@ -359,7 +359,8 @@ variable DO-OUT-BUF?
 \ code, such as the buffer's own allocation, is not about the file.
 : DO-READ-FAIL? ( n -- bool )
    {: rc:n :}
-   rc E-FS-PATH = rc E-FS-PATH-UNSAFE = or rc E-FS-OPEN = or rc E-FS-IO = or ;
+   rc E-FS-PATH = rc E-FFI-NUL = or
+   rc E-FS-OPEN = or rc E-FS-IO = or ;
 
 : DO-READ-FAIL ( ptr u8 n -- )
    2 s" diag-origin: cannot read file: " DO-WRITE 1 die ;

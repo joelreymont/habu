@@ -18,7 +18,7 @@
 \ E-SPAN-CAPACITY and a negative URI length E-SPAN-LENGTH, so no refusal leaves
 \ a byte behind. The path is bytes, as the file system takes them: a decoded
 \ NUL or `/` is kept, and src/lib/fs.f refuses a path holding a NUL where it opens
-\ one (E-FS-PATH-UNSAFE).
+\ one (E-FFI-NUL).
 \
 \ PATH>FILE is its inverse: `file://`, an empty authority, then the absolute
 \ path with every byte but `/` and RFC 3986's unreserved ones - letters, digits

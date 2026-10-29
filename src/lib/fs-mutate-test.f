@@ -529,7 +529,7 @@ public
    FMT-COPY-SRC FMT-LONG-BUF BYTE-VIEW size 1+ FS-TEST:COPY-CAP FS-TEST:COPY-FILE ;
 
 : FMT-TEST-NUL-SECOND-PATH ( -- )
-   [: FMT-NUL-SECOND-COPY ;] E-FS-PATH-UNSAFE TTHROWSQ
+   [: FMT-NUL-SECOND-COPY ;] E-FFI-NUL TTHROWSQ
    FMT-COPY-SRC FS:FILE? TTRUE
    FMT-COPY-DST FMT-READ-BUF 64 FS:READ-ALL 8 T=
    FMT-READ-BUF 8 s" copy-src" T$= ;
@@ -1102,6 +1102,9 @@ public
 : FMT-PATH-IDENTITY-MISSING ( -- )
    FMT-BROKEN-TARGET FS:PATH-IDENTITY 2drop ;
 
+: FMT-PATH-IDENTITY-NUL ( -- )
+   S\" a\zb" FS:PATH-IDENTITY 2drop ;
+
 \ The link and its target name one file; the copy source is another.
 : FMT-TEST-PATH-IDENTITY ( -- )
    s" a symlink and its target have one identity" T-LABEL
@@ -1113,7 +1116,9 @@ public
    FMT-COPY-SRC FS:PATH-IDENTITY {: other-dev:n other-ino:n :}
    other-dev dev = other-ino ino = and TFALSE
    s" a missing path has no identity" T-LABEL
-   [: FMT-PATH-IDENTITY-MISSING ;] E-FS-STAT TTHROWSQ ;
+   [: FMT-PATH-IDENTITY-MISSING ;] E-FS-STAT TTHROWSQ
+   s" a path holding a NUL has no identity" T-LABEL
+   [: FMT-PATH-IDENTITY-NUL ;] E-FFI-NUL TTHROWSQ ;
 
 : FMT-TEST-SYMLINK ( -- )
    FMT-LINK-TARGET s" link-target" FS:WRITE-ALL

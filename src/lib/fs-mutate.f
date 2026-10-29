@@ -673,11 +673,12 @@ FUNCTION: RENAMEAT-CALL renameat ( n ptr u8 n ptr u8 -- i32 ) ;FUNCTION
 
 \ Create the sibling in dir exclusively, its name staged for SIBLING-Z:
 \ the name's length and the descriptor.
-: ATOMIC-RESERVE-AT ( n n n -- n n ) {: dir seed mode :}
+: ATOMIC-RESERVE-AT ( n n n -- n n )
+   {: dir seed mode :}
    0 begin dup ATOMIC-RETRIES < while
       dup {: attempt:n :}
       s" " seed attempt BUILD-SIBLING {: name:ptr nameu :}
-      0 ATOMIC-PATH nameu SPAN:U8!
+      nameu ATOMIC-PATH FFI:CSTR! drop
       dir name EXCL-WRITE-FLAGS mode OPENAT-CALL {: fd:n :}
       fd 0 >= if drop nameu fd exit then
       FFI:ERRNO EEXIST <> if E-FS-OPEN ERRNO-FAIL then
@@ -745,10 +746,11 @@ FUNCTION: RENAMEAT-CALL renameat ( n ptr u8 n ptr u8 -- i32 ) ;FUNCTION
 \ The sibling and the destination are named relative to the destination's
 \ directory, so no sibling path is joined and only the destination's absolute
 \ spelling meets PATH-CAP.
-: ATOMIC-WRITE-SEED ( ptr u8 n ptr u8 n n -- ) {: path:ptr pathu src:ptr srcu seed :}
+: ATOMIC-WRITE-SEED ( ptr u8 n ptr u8 n n -- )
+   {: path:ptr pathu src:ptr srcu seed :}
    srcu 0 < if CAUSE-CLEAR E-FS-CAPACITY throw then
    path pathu ATOMIC-TARGET {: dst:ptr dstu :}
-   0 PATHZ2-BUF dstu SPAN:U8!
+   dstu PATHZ2-BUF FFI:CSTR! drop
    dst dstu ATOMIC-OLD-MODE {: mode:n :}
    dst dstu ATOMIC-OPEN-DIR {: dir :}
    dir dst dst dstu ATOMIC-BASE-OFF src srcu mode seed

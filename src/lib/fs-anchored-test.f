@@ -101,7 +101,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ptr u8 n -- i32 ) ;FUNCTION
    [: ANCHOR @ >FD s" ./child" READ$ drop ;] E-FS-PATH TTHROWSQ
    [: ANCHOR @ >FD s" child/../file" READ$ drop ;] E-FS-PATH TTHROWSQ
    [: ANCHOR @ >FD s" child" drop -1 READ$ drop ;] E-FS-PATH TTHROWSQ
-   [: ANCHOR @ >FD s\" bad\zname" READ$ drop ;] E-FS-PATH-UNSAFE TTHROWSQ
+   [: ANCHOR @ >FD s\" bad\zname" READ$ drop ;] E-FFI-NUL TTHROWSQ
    [: ANCHOR @ >FD LONG PATH-CAP 1 + READ$ drop ;] E-FS-PATH TTHROWSQ
    [: ANCHOR @ >FD s" child/file" OUT 7 SPAN:TAKE FS:READ-FILE-AT drop ;] E-FS-CAPACITY TTHROWSQ
    [: ANCHOR @ >FD s" child/file" OUT 0 SPAN:TAKE FS:READ-FILE-AT drop ;] E-FS-CAPACITY TTHROWSQ

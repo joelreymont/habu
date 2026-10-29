@@ -43,8 +43,7 @@ FUNCTION: STAT-CALL stat ( ptr u8 ptr u8 -- i32 )
 
 : CHECK-PATH ( ptr u8 n -- )
    {: text bytes:n :}
-   bytes 0 <= bytes PATH-CAP > or if E-FS-PATH throw then
-   bytes 0 ?do text i + c@ 0= if unloop E-FS-PATH throw then loop ;
+   bytes 0 <= bytes PATH-CAP > or if E-FS-PATH throw then ;
 
 
 : STAT-EXISTS? ( ptr u8 SPAN:span<u8> -- bool )

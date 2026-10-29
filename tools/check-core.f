@@ -712,13 +712,15 @@ private
    CHK-MATERIALIZE-BYTES ;
 
 \ E-FS-PATH-UNSAFE: the quoting judge, SOURCE-QPATH-CHECK, refuses a double
-\ quote, backslash, CR, LF or NUL, and the file system refuses a NUL in a path.
+\ quote, backslash, CR, LF or NUL. E-FFI-NUL: the file system refuses a NUL in
+\ a path.
 : CHK-PATH-UNSAFE ( -- )
    s" check.f: source path or label contains a double quote, backslash, CR, LF or NUL" CHK-E-USAGE CHK-FAIL ;
 
 \ Every input must be a file before the engine's resolver sees it. The
-\ resolver refuses a path holding a NUL with a raw range code, and FS:FILE?
-\ refuses it with E-FS-PATH-UNSAFE instead.
+\ engine's resolver refuses a path holding a NUL with E-PATH-NUL, which check.f
+\ does not map; FS:FILE? refuses it first with E-FFI-NUL, which CHK-MATERIALIZE
+\ reports as usage.
 \
 \ The engine carries its own sources, so a run loads nothing from one and checks
 \ nothing there; rebuilding the engine checks it. An input set that is all such
@@ -839,8 +841,9 @@ private
 
 \ E-FS-PATH-UNSAFE is a path or label the run cannot quote (a named file's
 \ canonical spelling or a listed one as CHK-APPEND-LISTED spells it, in its
-\ loader line; the label, in the run stage's DIAG-FILE!) or a path holding a
-\ NUL, which the file system refuses to look up. The materializers judge each
+\ loader line; the label, in the run stage's DIAG-FILE!); E-FFI-NUL is a path
+\ holding a NUL, which the file system refuses to look up. Both are usage
+\ errors. The materializers judge each
 \ spelling after the existence check, so a missing path is still NOINPUT, and
 \ before discovery or any later stage reads the source, so the answer does not
 \ depend on what it holds.
@@ -848,7 +851,7 @@ private
    CHK-MAKE-TEMP
    [: CHK-MATERIALIZE-DISPATCH ;] catch {: rc:n :}
    rc 0= if exit then
-   rc E-FS-PATH-UNSAFE = if CHK-PATH-UNSAFE then
+   rc E-FS-PATH-UNSAFE = rc E-FFI-NUL = or if CHK-PATH-UNSAFE then
    rc throw ;
 
 : CHK-WORD-TOK? ( n -- bool ) {: k:n :}
