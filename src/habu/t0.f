@@ -297,9 +297,19 @@ variable FREE                       \ bit k set: vreg k holds no entry
    VS-N @ k 1+ ?do i i 1- COPY-ENTRY loop
    VS-N @ 1- VS-N ! ;
 
+\ Entry k written to the memory cell k above the stack pointer.
+: SPILL-ENTRY ( n -- ) {: k:n :}
+   k REG? if k VREG@ k T0-EMIT:SPILL exit then
+   k VS-VAL @ k T0-EMIT:SPILL-LIT ;
+
+\ Entry 0 written to the stack pointer's cell, which then moves up n cells.
+: PUSH-ENTRY ( n -- ) {: n:n :}
+   0 REG? if 0 VREG@ n T0-EMIT:PUSH exit then
+   0 VS-VAL @ n T0-EMIT:PUSH-LIT ;
+
 \ Spill the bottom entry to memory.
 : EVICT ( -- )
-   0 REG? if 0 VREG@ T0-EMIT:PUSH else 0 VS-VAL @ 0 T0-EMIT:SPILL-LIT 1 T0-EMIT:DSP+ then
+   1 PUSH-ENTRY
    0 REMOVE ;
 
 \ Make room for one more entry.
@@ -323,19 +333,20 @@ variable FREE                       \ bit k set: vreg k holds no entry
    K-CONST v VS-N @ ENTRY!
    VS-N @ 1+ VS-N ! ;
 
-\ Write every entry to memory and empty the virtual stack.
+\ Write every entry to memory and empty the virtual stack. Entry 0 goes last,
+\ by the push that moves the stack pointer past them all.
 : SPILL-ALL ( -- )
-   VS-N @ 0 ?do
-      i REG? if i VREG@ i T0-EMIT:SPILL else i VS-VAL @ i T0-EMIT:SPILL-LIT then
-   loop
-   VS-N @ T0-EMIT:DSP+
+   VS-N @ {: n:n :}
+   n 1 ?do n i - SPILL-ENTRY loop
+   n 0 > if n PUSH-ENTRY then
    0 VS-N !
    ALL-FREE FREE ! ;
 
-\ Entry k of m loaded from the memory cell k - m below the stack pointer.
+\ Entry k of m loaded from the memory cell k - m below the stack pointer;
+\ entry 0, the last, by the pop that moves the stack pointer down to it.
 : FILL-ENTRY ( n n -- ) {: k:n m:n :}
    ALLOC {: r:T0-EMIT:vreg :}
-   r k m - T0-EMIT:FILL
+   k 0= if r m T0-EMIT:POP else r k m - T0-EMIT:FILL then
    K-REG r T0-EMIT:VREG>N k ENTRY! ;
 
 \ At least k entries: the missing ones are loaded from memory under the rest.
@@ -343,8 +354,7 @@ variable FREE                       \ bit k set: vreg k holds no entry
    VS-N @ k >= if exit then
    k VS-N @ - {: m:n :}
    VS-N @ 0 ?do VS-N @ 1- i - dup m + COPY-ENTRY loop
-   m 0 ?do i m FILL-ENTRY loop
-   m negate T0-EMIT:DSP+
+   m 0 ?do m 1- i - m FILL-ENTRY loop
    VS-N @ m + VS-N ! ;
 
 \ Entry k in a vreg. A constant entry means a vreg is free, so k stays put.
@@ -608,7 +618,8 @@ variable CLAUSE                      \ a does> definer's clause unit, else -1
    w ;
 
 \ Pop c cells into slots base .. base+c-1, the top cell into the last: first
-\ the virtual stack's entries, then the cells in memory under them.
+\ the virtual stack's entries, then the cells in memory under them, the
+\ deepest by the pop that moves the stack pointer down to it.
 : BIND-CELLS ( n n -- ) {: base:n c:n :}
    VS-N @ c min {: v:n :}
    v 0 ?do
@@ -617,11 +628,11 @@ variable CLAUSE                      \ a does> definer's clause unit, else -1
    loop
    c v ?do
       ALLOC {: r:T0-EMIT:vreg :}
-      r i v - 1+ negate T0-EMIT:FILL
+      i v - 1+ {: d:n :}
+      i c 1- = if r d T0-EMIT:POP else r d negate T0-EMIT:FILL then
       r  base c + 1- i -  T0-EMIT:SLOT-STORE
       r RELEASE
-   loop
-   v c - T0-EMIT:DSP+ ;
+   loop ;
 
 \ Declare the next name of a group whose earlier names hold cells; false at
 \ the `:}`.

@@ -200,10 +200,32 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
    HERE-OFF T0-EMIT:ADDR-QUOT-KIND n -1 T0-EMIT:ADDR-ROW+
    d REG 0 >IMM64 SINK ENC-MOV-RI64 ;
 
-: PUSH ( T0-EMIT:vreg -- )
-   {: s:T0-EMIT:vreg :}
+\ The stack pointer moved by k cells: an add or a sub of the bytes, an imm8
+\ while they fit one.
+: DSP+ ( n -- ) {: k:n :}
+   k 0 = if exit then
+   k abs CELL * {: m:n :}
+   m 127 <= if
+      k 0 > if DSP m >IMM8 SINK ENC-ADD-RI8 exit then
+      DSP m >IMM8 SINK ENC-SUB-RI8 exit
+   then
+   k 0 > if DSP m >IMM32 SINK ENC-ADD-RI32 exit then
+   DSP m >IMM32 SINK ENC-SUB-RI32 ;
+
+\ x86-64 has no writeback: a push stores and then moves the pointer, and a pop
+\ moves it and then loads, as G-PUSH and G-POP do.
+: PUSH ( T0-EMIT:vreg n -- ) {: s:T0-EMIT:vreg k:n :}
    s REG DSP MEM-AT SINK ENC-MOV-MR
-   DSP CELL >IMM8 SINK ENC-ADD-RI8 ;
+   k DSP+ ;
+
+: PUSH-LIT ( n n -- ) {: v:n k:n :}
+   v RAX LIT-R
+   RAX DSP MEM-AT SINK ENC-MOV-MR
+   k DSP+ ;
+
+: POP ( T0-EMIT:vreg n -- ) {: d:T0-EMIT:vreg k:n :}
+   k negate DSP+
+   d REG DSP MEM-AT SINK ENC-MOV-RM ;
 
 : SPILL ( T0-EMIT:vreg n -- )
    {: s:T0-EMIT:vreg k:n :}
@@ -216,11 +238,6 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
 : FILL ( T0-EMIT:vreg n -- )
    {: d:T0-EMIT:vreg k:n :}
    d REG DSP k CELL * MEM-OFF SINK ENC-MOV-RM ;
-
-: DSP+ ( n -- ) {: k:n :}
-   k 0 = if exit then
-   k 0 > if DSP k CELL * >IMM32 SINK ENC-ADD-RI32 exit then
-   DSP k negate CELL * >IMM32 SINK ENC-SUB-RI32 ;
 
 : MOV ( T0-EMIT:vreg T0-EMIT:vreg -- )
    {: d:T0-EMIT:vreg s:T0-EMIT:vreg :}
@@ -498,6 +515,8 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
    ['] ADDR-CODE k T0-EMIT:ADDR-CODE-XT !
    ['] ADDR-QUOT k T0-EMIT:ADDR-QUOT-XT !
    ['] PUSH k T0-EMIT:PUSH-XT !
+   ['] PUSH-LIT k T0-EMIT:PUSH-LIT-XT !
+   ['] POP k T0-EMIT:POP-XT !
    ['] SPILL k T0-EMIT:SPILL-XT !
    ['] SPILL-LIT k T0-EMIT:SPILL-LIT-XT !
    ['] FILL k T0-EMIT:FILL-XT !

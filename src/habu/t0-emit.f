@@ -296,7 +296,9 @@ ARCHES TYPED-BUFFER LIT-XT [ n vreg -- ]
 ARCHES TYPED-BUFFER ADDR-DATA-XT [ n n vreg -- ]
 ARCHES TYPED-BUFFER ADDR-CODE-XT [ n vreg -- ]
 ARCHES TYPED-BUFFER ADDR-QUOT-XT [ n vreg -- ]
-ARCHES TYPED-BUFFER PUSH-XT [ vreg -- ]
+ARCHES TYPED-BUFFER PUSH-XT [ vreg n -- ]
+ARCHES TYPED-BUFFER PUSH-LIT-XT [ n n -- ]
+ARCHES TYPED-BUFFER POP-XT [ vreg n -- ]
 ARCHES TYPED-BUFFER SPILL-XT [ vreg n -- ]
 ARCHES TYPED-BUFFER SPILL-LIT-XT [ n n -- ]
 ARCHES TYPED-BUFFER FILL-XT [ vreg n -- ]
@@ -315,10 +317,16 @@ ARCHES TYPED-BUFFER SLOT-LOAD-XT [ vreg n -- ]
 : ADDR-QUOT ( n vreg -- ) CUR @ ADDR-QUOT-XT @ execute ;
 
 \ The data stack grows up: a push stores at the stack pointer and adds a cell,
-\ a pop subtracts a cell and loads. PUSH pushes one cell; SPILL,
-\ SPILL-LIT and FILL address the cell k cells above the stack pointer without
-\ moving it, and DSP+ moves it by k cells.
-: PUSH ( vreg -- ) CUR @ PUSH-XT @ execute ;
+\ a pop subtracts a cell and loads. SPILL, SPILL-LIT and FILL address the cell
+\ k cells above the stack pointer without moving it, and DSP+ moves it by k
+\ cells. PUSH and PUSH-LIT store at the stack pointer and then move it up k
+\ cells, and POP moves it down k cells and then loads the cell it reaches: with
+\ k 1 a push and a pop, and otherwise the last transfer of a k-cell spill or
+\ fill, each the one transfer at the cell the pointer starts or ends at, so the
+\ move costs no instruction of its own where the target writes back.
+: PUSH ( vreg n -- ) CUR @ PUSH-XT @ execute ;
+: PUSH-LIT ( n n -- ) CUR @ PUSH-LIT-XT @ execute ;
+: POP ( vreg n -- ) CUR @ POP-XT @ execute ;
 : SPILL ( vreg n -- ) CUR @ SPILL-XT @ execute ;
 : SPILL-LIT ( n n -- ) CUR @ SPILL-LIT-XT @ execute ;
 : FILL ( vreg n -- ) CUR @ FILL-XT @ execute ;

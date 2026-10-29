@@ -24,21 +24,22 @@
 \ ENGINE-ERROR:BAD-TAG. The wide rows run each stack word T0 compiles over a
 \ two-cell product with a cell under the result, a swap in a does> parent and
 \ in its clause, a 2swap and a 2over in a does> parent whose deepest operand is
-\ two cells, a three-cell product among one-cell values, and a swap of two
-\ eight-cell values, whose copies fill the virtual stack; `@` and `!` of a
-\ two-, a three- and a sixteen-cell value through typed slots, with the cells
-\ beside each store unchanged and the fetch reading cells written through a raw
-\ view, the sixteen cells spilling the virtual stack, and a store and fetch in
-\ one body. The checker refuses every other operation over a wide value, so no
-\ row reaches E-T0-BUNDLE. A fetch from a sum-type and an enum slot checks the
-\ stored tag and loads the value with the cell under it kept; a forged tag
-\ fetched in a child, from an enum slot and from a product's enum field, ends
-\ the process `hb: bad layout tag` with ENGINE-ERROR:BAD-TAG. A CALLBACK:
-\ declaration compiled by T0 is handed to libc's qsort, which sorts a row
-\ through it, and its C entry lies between its accessor's code and the next
-\ definition's: the stub T0 appended to the accessor's emission. The refusal
-\ rows evaluate definitions T0 refuses with its own codes, which tier 1 accepts
-\ or refuses otherwise: a non-neutral immediate in a TRUSTED: body
+\ two cells, a three-cell product among one-cell values, a swap of two
+\ eight-cell values, whose copies fill the virtual stack, and a local bound
+\ from a forty-cell value, whose deepest cell lies past a pre-index load's
+\ reach; `@` and `!` of a two-, a three- and a sixteen-cell value through typed
+\ slots, with the cells beside each store unchanged and the fetch reading cells
+\ written through a raw view, the sixteen cells spilling the virtual stack, and
+\ a store and fetch in one body. The checker refuses every other operation over
+\ a wide value, so no row reaches E-T0-BUNDLE. A fetch from a sum-type and an
+\ enum slot checks the stored tag and loads the value with the cell under it
+\ kept; a forged tag fetched in a child, from an enum slot and from a product's
+\ enum field, ends the process `hb: bad layout tag` with ENGINE-ERROR:BAD-TAG.
+\ A CALLBACK: declaration compiled by T0 is handed to libc's qsort, which sorts
+\ a row through it, and its C entry lies between its accessor's code and the
+\ next definition's: the stub T0 appended to the accessor's emission. The
+\ refusal rows evaluate definitions T0 refuses with its own codes, which tier 1
+\ accepts or refuses otherwise: a non-neutral immediate in a TRUSTED: body
 \ (E-T0-IMMEDIATE), `is` naming a primitive in a TRUSTED: body (E-T0-DEFER; the
 \ checker refuses it in a checked body), a counted string past 255 bytes in a
 \ does> clause (E-T0-LITERAL; the checker refuses a non-neutral immediate in a
@@ -314,6 +315,14 @@ PRODUCT twin
    FIELD hi oct
 ;PRODUCT
 
+PRODUCT pent
+   FIELD e1 oct
+   FIELD e2 oct
+   FIELD e3 oct
+   FIELD e4 oct
+   FIELD e5 oct
+;PRODUCT
+
 private
 
 : PT ( n n -- pt ) T0--INSTALL--TEST-PT:MAKE ;
@@ -328,6 +337,16 @@ private
    {: a:n b:n c:n d:n e:n f:n g:n h:n :}
    b a 1+ = c a 2 + = and d a 3 + = and e a 4 + = and
    f a 5 + = and g a 6 + = and h a 7 + = and if a else -1 then ;
+\ A forty-cell value 1..40 from a base, made and checked as five oct values.
+: PENT ( n -- pent )
+   {: b:n :} b OCT b 8 + OCT b 16 + OCT b 24 + OCT b 32 + OCT
+   T0--INSTALL--TEST-PENT:MAKE ;
+: PENT-V ( pent -- n )
+   T0--INSTALL--TEST-PENT:UNMAKE
+   {: a:oct b:oct c:oct d:oct e:oct :}
+   a OCT-V {: x:n :}
+   b OCT-V x 8 + = c OCT-V x 16 + = and d OCT-V x 24 + = and
+   e OCT-V x 32 + = and if x else -1 then ;
 
 \ Typed slots whose `@` and `!` move two, three and sixteen cells, and a raw
 \ view of their cells: a store's neighbours prove it wrote only its own, and a
@@ -416,6 +435,8 @@ W-DEF-2OVER W-PO
 : W3-R ( n trio n -- n trio n trio ) swap >r r@ swap r> ;
 \ Sixteen cells: the copies fill the virtual stack and spill.
 : W8-SWAP ( oct oct -- oct oct ) swap ;
+\ Forty cells bound from memory, the deepest past a pre-index load's reach.
+: W40-LOCAL ( pent n -- n pent ) {: v:pent k:n :} k v ;
 
 \ ---- is ------------------------------------------------------------------------
 defer HOOK ( n -- n )
@@ -673,6 +694,8 @@ private
    77 9 1 2 3 TRIO 8 W3-R TRIO-V 123 T= 8 T= TRIO-V 123 T= 9 T= 77 T=
    s" two eight-cell values swapped through memory" T-LABEL
    77 10 OCT 20 OCT W8-SWAP OCT-V 10 T= OCT-V 20 T= 77 T=
+   s" a forty-cell local bound from memory" T-LABEL
+   77 10 PENT 9 W40-LOCAL PENT-V 10 T= 9 T= 77 T=
    s" @ and ! of a two-cell value, its neighbours untouched" T-LABEL
    11 1 PT-CELL !  44 4 PT-CELL !
    77 3 4 PT 1 PT! 77 T=

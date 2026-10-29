@@ -254,8 +254,10 @@ DYNAMIC-BUFFER BR-ARG n
 : SCALED? ( n -- bool ) {: off:n :}
    off 0 >= off 7 and 0= and off 3 rshift IMM12-LIM < and ;
 
-: FITS? ( n -- bool ) {: off:n :}
-   off SCALED? off -256 >= off 255 <= and or ;
+\ Whether an unscaled or a writeback access reaches off: a signed nine bits.
+: SIMM9? ( n -- bool ) {: off:n :} off -256 >= off 255 <= and ;
+
+: FITS? ( n -- bool ) {: off:n :} off SCALED? off SIMM9? or ;
 
 \ The base and offset one access reaches base + off by: x17 when it does not fit.
 : ADDRESS ( n n -- n n ) {: base:n off:n :}
@@ -493,7 +495,26 @@ DYNAMIC-BUFFER BR-ARG n
    HERE-OFF T0-EMIT:ADDR-QUOT-KIND n -1 PEND+
    d REG 0 ENC-ADR W ;
 
-: PUSH ( T0-EMIT:vreg -- ) REG DSP CELL ENC-STRPOST W ;
+: DSP+ ( n -- ) {: k:n :}  DSP DSP k CELL * ADD-IMM ;
+
+\ Register r stored at the stack pointer, which then moves up k cells: one
+\ post-index `str`. A push moves at most the virtual stack's 15 cells, within
+\ the offset's reach.
+: PUSH-R ( n n -- ) {: r:n k:n :}  r DSP k CELL * ENC-STRPOST W ;
+
+: PUSH ( T0-EMIT:vreg n -- ) {: s:T0-EMIT:vreg k:n :}  s REG k PUSH-R ;
+
+: PUSH-LIT ( n n -- ) {: v:n k:n :}
+   v TMP LIT-R
+   TMP k PUSH-R ;
+
+\ The stack pointer moved down k cells, then the cell there loaded: one
+\ pre-index `ldr` while the move fits its offset.
+: POP ( T0-EMIT:vreg n -- ) {: d:T0-EMIT:vreg k:n :}
+   k CELL * negate {: off:n :}
+   off SIMM9? if d REG DSP off ENC-LDRPRE W exit then
+   k negate DSP+
+   d REG DSP 0 false ACCESS ;
 
 : SPILL ( T0-EMIT:vreg n -- )
    {: s:T0-EMIT:vreg k:n :}
@@ -508,8 +529,6 @@ DYNAMIC-BUFFER BR-ARG n
 : FILL ( T0-EMIT:vreg n -- )
    {: d:T0-EMIT:vreg k:n :}
    d REG DSP k CELL * false XFER ;
-
-: DSP+ ( n -- ) {: k:n :}  DSP DSP k CELL * ADD-IMM ;
 
 : MOV ( T0-EMIT:vreg T0-EMIT:vreg -- )
    {: d:T0-EMIT:vreg s:T0-EMIT:vreg :}
@@ -774,6 +793,8 @@ DYNAMIC-BUFFER BR-ARG n
    ['] ADDR-CODE k T0-EMIT:ADDR-CODE-XT !
    ['] ADDR-QUOT k T0-EMIT:ADDR-QUOT-XT !
    ['] PUSH k T0-EMIT:PUSH-XT !
+   ['] PUSH-LIT k T0-EMIT:PUSH-LIT-XT !
+   ['] POP k T0-EMIT:POP-XT !
    ['] SPILL k T0-EMIT:SPILL-XT !
    ['] SPILL-LIT k T0-EMIT:SPILL-LIT-XT !
    ['] FILL k T0-EMIT:FILL-XT !

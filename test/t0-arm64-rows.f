@@ -3,10 +3,12 @@
 \ a unit SLOT-CLOSE ends, a data address row's origin, the callback stub an
 \ armed NCBSTUB appends, a fixed word folded into the body (a constant into
 \ `cmp #imm`, a variable into its data address row) while a does> child stays
-\ a call, and the refusals that keep the patch slot last and an operation
-\ x86-64 does not provide from running. Bodies are compiled by
-\ T0:COMPILE-TEXT or driven through the seam, sealed into NEMIT, and checked by
-\ decoding the words NEMIT answers against the assembler's encodings.
+\ a call, the writeback transfers that move the data stack pointer with a
+\ spill's or fill's last cell, and the refusals that keep the patch slot last
+\ and an operation x86-64 does not provide from running. Bodies are compiled
+\ by T0:COMPILE-TEXT or driven through the seam, sealed into NEMIT, and
+\ checked by decoding the words NEMIT answers against the assembler's
+\ encodings.
 
 require src/lib/test.f
 require src/arch/arm64/asm.f
@@ -55,7 +57,7 @@ variable CELLV
 : ADDR-BODY ( -- )
    T0-EMIT:OPEN
    CELLV NULL-PTR - ORDINAL V0 T0-EMIT:ADDR-DATA
-   V0 T0-EMIT:PUSH
+   V0 1 T0-EMIT:PUSH
    T0-EMIT:SLOT-CLOSE ;
 
 : PATCH-SLOT-CASE ( -- )
@@ -94,6 +96,61 @@ variable CELLV
    S\" ORG ( -- ptr u8 n ) s\" abc\" " STRING-ROW
    S\" CORG ( -- ptr u8 ) c\" abc\" " STRING-ROW
    NSTR:SOURCE-END ;
+
+\ The words a leaf body of source text t emits, x19 the data stack and x16 the
+\ literal temporary, all its ret.
+19 constant DS
+16 constant LT
+
+: BODY ( ptr u8 n -- ) T0:COMPILE-TEXT T0-EMIT:SEAL-UNPLACED ;
+
+: WORDS= ( n -- ) {: n:n :}
+   s" the body is its words and a ret" T-LABEL
+   NEMIT:SIZE n 1+ 4 * T=
+   s" the ret follows them" T-LABEL
+   n 4 * WORD@ A64ASM:ENC-RET T= ;
+
+\ One cell fills by a pre-index load and spills by a post-index store. A
+\ multi-cell fill loads the upper cells at their offsets and pops with the
+\ deepest; a multi-cell spill stores the upper cells at their offsets and
+\ pushes with the bottom one.
+: WRITEBACK-CASE ( -- )
+   ARCH-A64
+   s" INC ( n -- n ) 1+ " BODY
+   s" a one-cell fill pops with ldr x9,[x19,#-8]!" T-LABEL
+   0 WORD@ 9 DS -8 A64ASM:ENC-LDRPRE T=
+   s" the add works on the filled vreg" T-LABEL
+   4 WORD@ 9 9 1 A64ASM:ENC-ADDI T=
+   s" a one-cell spill pushes with str x9,[x19],#8" T-LABEL
+   8 WORD@ 9 DS 8 A64ASM:ENC-STRPOST T=
+   3 WORDS=
+   NEMIT:CLEAR
+   s" VAL ( -- n ) 42 " BODY
+   s" a literal spill loads the temporary" T-LABEL
+   0 WORD@ LT 42 0 A64ASM:MOVZHW T=
+   s" and pushes it with str x16,[x19],#8" T-LABEL
+   4 WORD@ LT DS 8 A64ASM:ENC-STRPOST T=
+   2 WORDS=
+   NEMIT:CLEAR
+   s" SWP ( n n -- n n ) swap " BODY
+   s" a two-cell fill loads the top at -8" T-LABEL
+   0 WORD@ 9 DS -8 A64ASM:ENC-LDUR T=
+   s" and pops both with the second, ldr x10,[x19,#-16]!" T-LABEL
+   4 WORD@ 10 DS -16 A64ASM:ENC-LDRPRE T=
+   s" a two-cell spill stores the top at +8" T-LABEL
+   8 WORD@ 10 DS 8 A64ASM:ENC-STR T=
+   s" and pushes both with the bottom, str x9,[x19],#16" T-LABEL
+   12 WORD@ 9 DS 16 A64ASM:ENC-STRPOST T=
+   4 WORDS=
+   NEMIT:CLEAR
+   s" ROT3 ( n n n -- n n n ) rot " BODY
+   s" a three-cell fill loads the top at -8" T-LABEL
+   0 WORD@ 9 DS -8 A64ASM:ENC-LDUR T=
+   s" the second at -16" T-LABEL
+   4 WORD@ 10 DS -16 A64ASM:ENC-LDUR T=
+   s" and pops all three with the third, ldr x11,[x19,#-24]!" T-LABEL
+   8 WORD@ 11 DS -24 A64ASM:ENC-LDRPRE T=
+   NEMIT:CLEAR ;
 
 \ The defer an `is` body binds. Its address row names the defer's cell and files
 \ the defer's record ordinal, which the unit object resolves the cell through.
@@ -232,6 +289,7 @@ public
    IS-ORIGIN-CASE
    STUB-CASE
    FIXED-CASE
+   WRITEBACK-CASE
    SLOT-REFUSED-CASE
    X86-UNFILLED-CASE
    T-REPORT ;
