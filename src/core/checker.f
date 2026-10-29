@@ -14678,7 +14678,7 @@ public
 6 constant K-PRINTED-STRING
 \ The kinds below are what the checker judged a token to be, which its
 \ spelling does not say: a local named 1 is a K-LOCAL-REF of class K-INT.
-7 constant K-CONTROL            \ a0: the marker's place in CF-TOK?'s list
+7 constant K-CONTROL            \ a0: the marker's place in CF-TOK?'s list, or RS-KEYWORD's
 8 constant K-LOCAL-DECL         \ a0: the local's bind sequence
 9 constant K-LOCAL-REF          \ a0: the bind sequence it reads
 10 constant K-LOCAL-CLOSE       \ the `:}` that binds the group
@@ -18858,6 +18858,18 @@ defer NAMED-OPERAND-XT ( -- )
    a u CHECKER-QUALIFIED? IF EXIT THEN
    TOK-SYM @ CTL-FLAGS-SYM CTL-IDENTITY and TOK-CTL ! ;
 
+\ The engine's `>r` `r>` `r@` are compile keywords with no record, as `i` and
+\ `exit` are (src/habu/habu2.f's keyword table): a call bound to one of their
+\ axiom symbols (CK-AXIOM-SYM) is filed as a control event, 25 through 27 after
+\ CF-TOK?'s list, so a codegen tells them from an unbound name. No definition
+\ can take their names: the engine refuses a compile keyword as one.
+: RS-KEYWORD ( -- )
+   TOK-SYM @ {: sym:n :}
+   sym 0= IF EXIT THEN
+   sym s" >r" CK-AXIOM-SYM = IF CHECKER-TAPE:K-CONTROL 25 0 EVENT! EXIT THEN
+   sym s" r>" CK-AXIOM-SYM = IF CHECKER-TAPE:K-CONTROL 26 0 EVENT! EXIT THEN
+   sym s" r@" CK-AXIOM-SYM = IF CHECKER-TAPE:K-CONTROL 27 0 EVENT! THEN ;
+
 \ Once a token's role is a source call, keep its original resolution even when
 \ a later type step refuses. The declared ABI is selected by that symbol,
 \ before judgment or publication can change the active name. Its event names
@@ -18866,7 +18878,9 @@ defer NAMED-OPERAND-XT ( -- )
 : BIND-SOURCE-CALL ( ptr u8 n -- ) {: a:ptr u:n :}
    a u BIND-TOK
    a u ALLDIG? a u FLODIG? or IF EXIT THEN
-   CHECKER-TAPE:K-NAME  TOK-REC @ CHECKER-RESOLVE:REC>INDEX  0 EVENT!
+   TOK-REC @ CHECKER-RESOLVE:REC>INDEX {: ix:n :}
+   CHECKER-TAPE:K-NAME ix 0 EVENT!
+   ix 0< IF RS-KEYWORD THEN
    -1 BWIN-HIT !
    TOK-SYM @ 0= IF EXIT THEN
    BWIN-UNJUDGED @ 0= TOK-ABI-DONE @ 0= 0= or IF EXIT THEN
