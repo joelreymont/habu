@@ -8,6 +8,7 @@
 \ already present in the native cold prefix.
 
 require src/lib/adt/option.f                 \ option<n> for the number parsers (switchover wave A)
+require src/lib/fs.f
 require src/habu/code-span.f
 require src/habu/snapshot-format.f
 require tools/macho-read.f
@@ -38,9 +39,6 @@ TYPED-VARIABLE IB ptr u8                     \ image buffer
 variable IL                                  \ image length
 variable MACHO
 variable IFD
-PATH-CAP constant IPATH-CAP
-create IPATH IPATH-CAP 1 + allot
-create ISTAT 144 allot
 variable TOFF  variable TNDICT  variable TREG  variable TDATA
 variable ROFF  variable HAS-SNAP
 variable X64-IMAGE
@@ -103,17 +101,10 @@ CAST: MAP>BYTES ( n -- ptr u8 )
    SCRIPT-ARGC 2 > if IMG-USAGE then
    0 SCRIPT-ARGV$ ;
 
-: ZPATH {: a:ptr u d:ptr cap :} ( ptr u8 ptr n -- )
-   u cap > if s" imgdump: path too long" 74 die then
-   0 begin dup u < while  dup a + c@  over d + c!  1 + repeat drop  0 d u + c! ;
-
 : READ-IMG-PATH ( ptr u8 n -- )
-   IPATH IPATH-CAP ZPATH
-   IPATH ISTAT stat64 0 < IF s" imgdump: stat failed" 74 die THEN
-   ISTAT 96 + @ ISZ !
-   ISZ @ 0 > 0= IF s" imgdump: empty image" 74 die THEN
-   IPATH 0 0 open IFD !
-   IFD @ 0 < IF s" imgdump: open failed" 74 die THEN
+   FS:OPEN-SIZED 0= IF 2drop s" imgdump: open failed" 74 die THEN
+   ISZ !  FD>N IFD !
+   ISZ @ 0 > 0= IF IFD @ close s" imgdump: empty image" 74 die THEN
    0 ISZ @ 1 2 IFD @ 0 mmap
    IMG-MMAP-PTR IB!
    IFD @ close

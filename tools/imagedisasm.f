@@ -4,16 +4,12 @@
 require src/lib/string.f
 require src/lib/adt/option.f                 \ option<n> for the number parsers (switchover wave A)
 require src/arch/arm64/disasm.f
+require src/lib/fs.f
 
 package IMAGE-DISASM
 private
 
-PATH-CAP constant IMGD-PATH-CAP
-144 constant IMGD-STAT-U
 $7FFFFFFFFFFFFFF constant IMGD-HEX-MAX-PRE
-
-create IMGD-PATH IMGD-PATH-CAP 1 + allot
-create IMGD-STAT IMGD-STAT-U allot
 
 TYPED-VARIABLE IMGD-IMG ptr u8
 variable IMGD-LEN
@@ -37,27 +33,15 @@ variable IMGD-LOWER
 : IMGD-RANGE-FAIL ( -- )
    s" imagedisasm: range outside image" 74 die ;
 
-: IMGD-ZPATH ( ptr u8 n -- )
-   {: a:ptr u :}
-   u IMGD-PATH-CAP > IF s" imagedisasm: path too long" 74 die THEN
-   0 BEGIN dup u < WHILE
-      dup a + c@ over IMGD-PATH + c!
-      1 +
-   REPEAT drop
-   0 IMGD-PATH u + c! ;
-
 \ mmap answers the mapping's address as an integer; a failed map dies first.
 CAST: MAP>BYTES ( n -- ptr u8 )
 : IMGD-MMAP-PTR ( n -- ptr u8 )
    dup 0 < IF IMGD-FD @ close s" imagedisasm: mmap failed" 74 die THEN MAP>BYTES ;
 
 : IMGD-READ ( ptr u8 n -- )
-   IMGD-ZPATH
-   IMGD-PATH IMGD-STAT stat64 0 < IF s" imagedisasm: stat failed" 74 die THEN
-   IMGD-STAT 96 + @ IMGD-LEN !
-   IMGD-LEN @ 0 > 0= IF s" imagedisasm: empty image" 74 die THEN
-   IMGD-PATH 0 0 open IMGD-FD !
-   IMGD-FD @ 0 < IF s" imagedisasm: open failed" 74 die THEN
+   FS:OPEN-SIZED 0= IF 2drop s" imagedisasm: open failed" 74 die THEN
+   IMGD-LEN !  FD>N IMGD-FD !
+   IMGD-LEN @ 0 > 0= IF IMGD-FD @ close s" imagedisasm: empty image" 74 die THEN
    0 IMGD-LEN @ 1 2 IMGD-FD @ 0 mmap IMGD-MMAP-PTR IMGD-IMG!
    IMGD-FD @ close ;
 

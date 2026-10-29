@@ -16,12 +16,14 @@
 \ target; it finds the word in the current wordlist.
 \
 \ This file requires two things only, for the reason tools/tier-census.f gives:
-\ the string and formatting libraries are corpus a tier comparison wants to
-\ weigh, and a tool that loaded them for its own use could not. The two requires
-\ are src/habu/code-bytes.f, the boundary that turns a record's code address
-\ into bytes, and src/lib/tier.f, the word that selects the tier. Neither requires
-\ anything, and the only comparison they disturb is one whose corpus names one
-\ of them, which is already loaded by then.
+\ src/lib/fmt.f and src/lib/fs.f are the formatting and file corpus a tier
+\ comparison wants to weigh, and a tool that loaded them for its own use could
+\ not (a comparison of an engine-provided file such as src/lib/string.f weighs
+\ nothing for the same reason). The two requires are src/habu/code-bytes.f,
+\ the boundary that turns a record's code address into bytes, and
+\ src/lib/tier.f, the word that selects the tier. Neither requires anything,
+\ and the only comparison they disturb is one whose corpus names one of them,
+\ which is already loaded by then.
 
 require src/habu/code-bytes.f
 require src/lib/tier.f
@@ -35,8 +37,6 @@ private
 1537 constant O-WRITE-NEW           \ the engine's portable O_WRONLY|O_CREAT|O_TRUNC
 420 constant MODE-0644
 
-create PATHZ PATH-CAP 1 + allot
-
 : USAGE ( -- )
    s" usage: bin/hb --load tools/tier-dump.f -- <tier> <WORD> <out> <corpus.f>..."
    USAGE-RC die ;
@@ -46,11 +46,6 @@ create PATHZ PATH-CAP 1 + allot
    a c@ ZERO-C - {: t :}
    t 0 < t 1 > or if USAGE then
    t ;
-
-: ZPATH ( ptr u8 n -- ) {: a:ptr u :}
-   u PATH-CAP > if s" tier-dump: path too long" IO-RC die then
-   u 0 ?do a i + c@ PATHZ i + c! loop
-   0 PATHZ u + c! ;
 
 : LOAD-CORPUS ( -- )
    script-argc 3 ?do i script-argv$ required loop ;
@@ -99,9 +94,11 @@ variable HIT-IX
    bytes 0= if s" tier-dump: word has no code" USAGE-RC die then
    rec XREF-START bytes CODE-BYTES:AT ;
 
-: WRITE-SPAN ( ptr u8 n ptr u8 n -- ) {: path:ptr pu code:ptr bytes :}
-   path pu ZPATH
-   PATHZ O-WRITE-NEW MODE-0644 open {: fd :}
+\ The path goes through the engine's PATH0, not FS: this file may require
+\ nothing the corpus could want to weigh (see the header).
+: WRITE-SPAN ( ptr u8 n ptr u8 n -- )
+   {: path:ptr pu code:ptr bytes :}
+   path pu PATH0 O-WRITE-NEW MODE-0644 open {: fd :}
    fd 0 < if s" tier-dump: cannot open output" IO-RC die then
    fd code bytes write bytes <> if
       fd close

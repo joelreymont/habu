@@ -31,11 +31,12 @@
 \ nothing behind. Two processes each get a pristine engine, and the tier is
 \ selected before the first corpus token is read.
 \
-\ WHY THIS FILE REQUIRES ALMOST NOTHING. src/lib/string.f and src/lib/fmt.f are the
-\ string and formatting corpus this census most wants to weigh, and a tool that
+\ WHY THIS FILE REQUIRES ALMOST NOTHING. src/lib/fmt.f and src/lib/fs.f are the
+\ formatting and file corpus this census most wants to weigh, and a tool that
 \ loaded them for its own output could not: they would already be in the
-\ dictionary when the corpus asked for them. The decimal writer and the line
-\ buffer below are the price of being able to measure them.
+\ dictionary when the corpus asked for them (a census of an engine-provided
+\ file such as src/lib/string.f counts nothing for the same reason). The
+\ decimal writer and the line buffer below are the price of measuring them.
 \
 \ The two requires are src/habu/code-bytes.f, the boundary that turns a
 \ record's code address into bytes, and src/lib/tier.f, the word that selects the
@@ -99,8 +100,6 @@ $F2800000 constant MOVK-BITS       \ movk xD,#imm16,lsl #s, the 64-bit form
 create BUF BUF-CAP allot
 variable BUF-N
 variable FD
-
-create PATHZ PATH-CAP 1 + allot
 
 create DIG DIG-CAP allot
 variable DEC-V
@@ -286,14 +285,10 @@ variable WID-CACHE-IX              \ its namespace record index, -1 when none
    s" usage: bin/hb --load tools/tier-census.f -- <tier> <report> <corpus.f>..."
    USAGE-RC die ;
 
-: ZPATH ( ptr u8 n -- ) {: a:ptr u :}
-   u PATH-CAP > if s" tier-census: path too long" ERR-RC die then
-   u 0 ?do a i + c@ PATHZ i + c! loop
-   0 PATHZ u + c! ;
-
+\ The path goes through the engine's PATH0, not FS: this file may require
+\ nothing the corpus could want to weigh (see the header).
 : OPEN-REPORT ( ptr u8 n -- )
-   ZPATH
-   PATHZ O-WRITE-NEW MODE-0644 open FD !
+   PATH0 O-WRITE-NEW MODE-0644 open FD !
    FD @ 0 < if s" tier-census: cannot open report" ERR-RC die then ;
 
 : TIER-ARG ( ptr u8 n -- n ) {: a:ptr u :}

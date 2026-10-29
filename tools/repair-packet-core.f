@@ -7,16 +7,15 @@ require src/lib/json-write.f
 require src/lib/json-copy.f
 require src/lib/string.f
 require tools/diag-code.f
+require src/lib/fs.f
 
 \ Checked CLI packet builder. Raw fd primitives are used through checked effects.
 
 74 constant RP-E-IO
 64 constant RP-E-USAGE
-PATH-CAP 1 + constant RP-PATH-CAP
 $40000 constant RP-IN-CAP
 $8000 constant RP-OUT-CAP
 
-create RP-PATH RP-PATH-CAP allot
 create RP-OUT RP-OUT-CAP allot
 create RP-TEXT RP-IN-CAP allot
 TYPED-VARIABLE RP-READER JR:cursor
@@ -47,27 +46,13 @@ variable RP-ROW-OBJECT
    RP-IN-A @ 0= if RP-IN-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop RP-IN-A RP-PTR-U8! then
    RP-IN-A RP-PTR-U8@ ;
 
-: RP-COPY ( ptr u8 ptr u8 n -- )
-   {: a:ptr dst:ptr u:n :}
-   0 begin dup u < while
-      dup a + c@ over dst + c!
-      1+
-   repeat drop ;
-
 : RP-FAIL ( ptr u8 n n -- )
    {: a:ptr u:n code:n :}
    a u code die ;
 
-: RP-PATHZ ( ptr u8 n -- ptr u8 )
-   {: a:ptr u:n :}
-   u 1+ RP-PATH-CAP > if s" repair-packet: path too long" RP-E-IO RP-FAIL then
-   a RP-PATH u RP-COPY
-   0 RP-PATH u + c!
-   RP-PATH ;
-
 : RP-READ-FILE ( ptr u8 n -- ptr u8 n )
    {: a:ptr u:n :}
-   a u RP-PATHZ 0 0 open RP-FD !
+   a u FS:>PATHZ 0 0 open RP-FD !
    RP-FD @ 0 < if s" repair-packet: cannot open input" RP-E-IO RP-FAIL then
    0 RP-LEN !
    begin

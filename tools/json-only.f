@@ -4,13 +4,11 @@
 require src/lib/memory.f
 require src/lib/argv.f
 require tools/json-only-core.f
+require src/lib/fs.f
 
 \ Checked CLI wrapper. Raw fd primitives are used through checked effects.
 
-PATH-CAP 1 + constant JSON-ONLY-PATH-CAP
 $40000 constant JSON-ONLY-IN-CAP
-
-create JSON-ONLY-PATH JSON-ONLY-PATH-CAP allot
 
 variable JSON-ONLY-FD
 variable JSON-ONLY-LEN
@@ -33,20 +31,6 @@ variable JSON-ONLY-IN-A
    JSON-ONLY-IN-A @ 0= if JSON-ONLY-ALLOC-IN JSON-ONLY-IN-A JSON-ONLY-PTR-U8! then
    JSON-ONLY-IN-A JSON-ONLY-PTR-U8@ ;
 
-: JSON-ONLY-COPY-BYTES ( ptr u8 ptr u8 n -- )
-   {: a:ptr dst:ptr u :}
-   0 begin dup u < while
-      dup a + c@ over dst + c!
-      1+
-   repeat drop ;
-
-: JSON-ONLY-PATHZ ( ptr u8 n -- ptr u8 )
-   {: a:ptr u :}
-   u 1+ JSON-ONLY-PATH-CAP > IF s" json-only: path too long" JSON-ONLY-E-IO die THEN
-   a JSON-ONLY-PATH u JSON-ONLY-COPY-BYTES
-   0 JSON-ONLY-PATH u + c!
-   JSON-ONLY-PATH ;
-
 : JSON-ONLY-DST ( -- ptr u8 )
    JSON-ONLY-IN JSON-ONLY-LEN @ + ;
 
@@ -58,7 +42,7 @@ variable JSON-ONLY-IN-A
 
 : JSON-ONLY-READ-FILE ( ptr u8 n -- ptr u8 n )
    {: a:ptr u :}
-   a u JSON-ONLY-PATHZ 0 0 open JSON-ONLY-FD !
+   a u FS:>PATHZ 0 0 open JSON-ONLY-FD !
    JSON-ONLY-FD @ 0 < IF s" json-only: cannot open input" JSON-ONLY-E-IO die THEN
    0 JSON-ONLY-LEN !
    begin
