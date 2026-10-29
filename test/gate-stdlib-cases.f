@@ -1113,8 +1113,8 @@ SUITE file-uri
 
 \ Exact reads and full writes over pipes; the write cases run under the
 \ profiler's SIGALRM storm to force short writes.
-SUITE fd-io
-   src/lib/fd-io-test.f
+SUITE fd
+   src/lib/fd-test.f
 ;SUITE
 
 SUITE content-length

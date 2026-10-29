@@ -16,7 +16,7 @@
 require src/lib/errors.f
 require src/lib/string.f
 require src/lib/fmt.f
-require src/lib/fd-io.f
+require src/lib/fd.f
 require src/lib/fs.f
 require src/lib/source.f
 require src/lib/utf16.f
@@ -81,7 +81,7 @@ variable DISK-VALID
 
 : ERR ( ptr u8 n -- )
    {: a:ptr u:n :}
-   2 >FD a u FD-IO:WRITE-FULL ;
+   FD:STDERR a u FD:WRITE-FULL ;
 
 public
 

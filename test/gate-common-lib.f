@@ -12,6 +12,7 @@ require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/content-key.f
 require src/lib/test/runner.f
+require src/lib/fd.f
 require src/lib/fmt.f                        \ FMT:.INT - one-line number text
 require src/lib/engine-candidate.f
 
@@ -21,8 +22,6 @@ $40000 constant GE-SRC-CAP
 10 constant GE-LF
 32 constant GE-SP
 34 constant GE-DQ
-1 constant GE-STDOUT-FD
-2 constant GE-STDERR-FD
 
 s" JSON-DIAGS" s" -- ptr a" TRUST
 
@@ -368,8 +367,8 @@ variable GE-EVAL-SRC-U
    src dst dup2 dup 0 < if drop E-PROC-OUTPUT throw then drop ;
 
 : GE-EVAL-REDIRECT! ( -- )
-   PROC-OUT-W @ GE-STDOUT-FD GE-EVAL-DUP2!
-   PROC-ERR-W @ GE-STDERR-FD GE-EVAL-DUP2!
+   PROC-OUT-W @ FD:STDOUT FD>N GE-EVAL-DUP2!
+   PROC-ERR-W @ FD:STDERR FD>N GE-EVAL-DUP2!
    PROC-OUT-W PROC-CLOSE-CELL
    PROC-ERR-W PROC-CLOSE-CELL ;
 

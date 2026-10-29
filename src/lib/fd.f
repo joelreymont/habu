@@ -1,4 +1,4 @@
-\ fd-io.f - exact reads and full writes on a file descriptor.
+\ fd.f - the standard descriptors, exact reads and full writes on a file descriptor.
 \
 \ READ-EXACT fills the caller's span from a descriptor. A read may answer fewer
 \ bytes than asked - a pipe holds only what its writer has put in it - so it
@@ -39,9 +39,13 @@ require src/lib/le.f
 require src/lib/fs.f                \ FIFO?, FS-PATHZ and FS-O-WRONLY for TRY-FIFO-WRITER
 require src/lib/adt/option.f        \ option<fd>: TRY-FIFO-WRITER's none or write end
 
-package FD-IO
+package FD
 using SPAN
 public
+
+: STDIN ( -- fd ) 0 >FD ;         \ the process's standard input
+: STDOUT ( -- fd ) 1 >FD ;        \ the process's standard output
+: STDERR ( -- fd ) 2 >FD ;        \ the process's standard error
 
 \ How READ-EXACT ended: the span is full, or end of file came first, after the
 \ bytes the span now starts with.
@@ -160,10 +164,10 @@ public
    dst LEN {: want:n :}
    0 begin dup want < while
       dup f dst MORE
-      dup 0= if drop FD--IO-FILL:eof exit then
+      dup 0= if drop FD-FILL:eof exit then
       +
    repeat
-   drop FD--IO-FILL:full ;
+   drop FD-FILL:full ;
 
 : WRITE-FULL ( fd ptr u8 n -- )
    {: f:fd src:ptr u:n :}

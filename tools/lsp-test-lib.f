@@ -574,7 +574,7 @@ require src/lib/test/subject.f
 require src/lib/span.f
 require src/lib/memory.f
 require src/lib/byte-buffer.f
-require src/lib/fd-io.f
+require src/lib/fd.f
 require src/lib/fs.f
 require src/lib/source.f
 require src/lib/fs-mutate.f
@@ -1162,7 +1162,7 @@ variable OPEN-N
 : BYTE ( n fd SPAN:span<u8> n -- bool )
    {: got:n f:fd dst deadline:n :}
    f deadline AWAIT
-   f dst got SPAN:SKIP 1 SPAN:TAKE FD-IO:READ-EXACT MATCH FD-IO:fill
+   f dst got SPAN:SKIP 1 SPAN:TAKE FD:READ-EXACT MATCH FD:fill
       full OF true ENDOF
       eof OF drop false ENDOF
    ;MATCH ;
@@ -1232,7 +1232,7 @@ variable OPEN-N
    in-r FD>N close
    out-w FD>N close
    err-w FD>N close
-   in-w IN$ FD-IO:WRITE-FULL
+   in-w IN$ FD:WRITE-FULL
    in-w out-r err-r [: HEAR-AT-ONCE ;] catch {: code:n :}
    drop 2drop
    out-r FD>N close
@@ -1251,7 +1251,7 @@ variable OPEN-N
    PIPE-PAIR {: in-r:fd in-w:fd :}
    PIPE-PAIR {: out-r:fd out-w:fd :}
    PIPE-PAIR {: err-r:fd err-w:fd :}
-   in-w IN$ FD-IO:WRITE-FULL
+   in-w IN$ FD:WRITE-FULL
    in-w FD>N close
    out-r FD>N close
    err-r FD-CLOEXEC!
@@ -1431,7 +1431,7 @@ variable OPEN-N
    IN$ {: a:ptr u:n :}
    u SENT @ - PIPE-ATOM min {: k:n :}
    WRITABLE
-   IN-W @ a SENT @ + k FD-IO:WRITE-FULL
+   IN-W @ a SENT @ + k FD:WRITE-FULL
    k SENT +! ;
 
 \ Writes the input not yet written piece by piece, so a server that stopped
@@ -1446,7 +1446,7 @@ variable OPEN-N
    u SENT @ - {: left:n :}
    left PROC-STDIN-CHUNK-CAP > if STREAM exit then
    WRITABLE
-   IN-W @ a SENT @ + left FD-IO:WRITE-FULL
+   IN-W @ a SENT @ + left FD:WRITE-FULL
    u SENT ! ;
 
 \ Whether the output not yet read as frames holds a whole frame.

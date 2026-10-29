@@ -117,6 +117,7 @@ require src/lib/float.f
 require src/lib/fmath.f
 require src/lib/argv.f
 require src/lib/tier.f
+require src/lib/fd.f
 
 -7710 constant E-SCALING-UNCOMPILED
 -7711 constant E-SCALING-EXCEEDED
@@ -132,7 +133,6 @@ private
 512 constant SPAN-MIN              \ the largest size must reach at least this
 $20000 constant SRC-CAP            \ source bytes for one set
 1000 constant NS-PER-US
-2 constant ERR-FD
 $0A constant LF
 74 constant IO-RC                  \ sysexits EX_IOERR, as tools/lint/text.f uses it
 
@@ -177,7 +177,7 @@ variable BOUND-R                   \ and this is it
 \ ---- refusal ----------------------------------------------------------------
 
 : EMIT-ERR ( ptr u8 n -- ) {: msg:ptr mu :}
-   ERR-FD msg mu write mu <> if
+   FD:STDERR FD>N msg mu write mu <> if
       s" compile-scaling: stderr write failed" IO-RC die
    then ;
 

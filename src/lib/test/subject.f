@@ -17,11 +17,9 @@ require src/lib/string.f
 require src/lib/memory.f
 require src/lib/process.f
 require src/lib/process-fork.f
+require src/lib/fd.f
 
 package SUBJECT
-
-1 constant OUT-FD
-2 constant ERR-FD
 
 PTR-VARIABLE SRC-A
 variable SRC-U
@@ -63,8 +61,8 @@ create STATUS-ERR STATUS-CAP allot
 : CHILD-FDS ( -- )
    PROC-OUT-R PROC-CLOSE-CELL
    PROC-ERR-R PROC-CLOSE-CELL
-   PROC-OUT-W @ >FD OUT-FD DUP2!
-   PROC-ERR-W @ >FD ERR-FD DUP2!
+   PROC-OUT-W @ >FD FD:STDOUT FD>N DUP2!
+   PROC-ERR-W @ >FD FD:STDERR FD>N DUP2!
    PROC-OUT-W PROC-CLOSE-CELL
    PROC-ERR-W PROC-CLOSE-CELL ;
 

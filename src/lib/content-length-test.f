@@ -41,7 +41,7 @@ require src/lib/process.f
 require src/lib/process-fork.f
 require src/lib/task.f
 require src/lib/test/outcome.f
-require src/lib/fd-io.f
+require src/lib/fd.f
 require src/lib/fmt.f
 require src/lib/adt/option.f
 require src/lib/content-length.f
@@ -49,7 +49,7 @@ require src/lib/content-length.f
 package CONTENT-LENGTH-TEST
 using CONTENT-LENGTH
 using SPAN
-using FD-IO
+using FD
 using MEM
 
 $1000000 constant MAX-BODY        \ the reader's maximum: 16 MiB
@@ -335,7 +335,7 @@ TYPED-VARIABLE PAD-LEN len
 
 : SENT$ ( fd n -- ptr u8 n )
    {: r:fd u:n :}
-   r SMALL u TAKE READ-EXACT MATCH FD-IO:fill
+   r SMALL u TAKE READ-EXACT MATCH FD:fill
       full OF ENDOF
       eof OF drop 1 0 T= ENDOF
    ;MATCH

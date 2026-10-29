@@ -27,7 +27,7 @@ package ZIP
    node SNAPSHOT-OPEN node SNAP-FD @ {: fd:n :}
    node SOURCE-PTR @ node PATH-PTR ! node SOURCE-LEN @ node PATH-LEN !
    node FILE-CHUNK BUFFER-ALLOC node COPY-BUF !
-   fd >FD data len FD-IO:WRITE-FULL len node RAW-LEN !
+   fd >FD data len FD:WRITE-FULL len node RAW-LEN !
    0 len 1 2 fd 0 mmap {: mapped:n :}
    mapped -1 = if E-READ throw then
    mapped MAPPED>RAW node RAW-PTR !

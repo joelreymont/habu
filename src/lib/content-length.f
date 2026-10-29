@@ -13,7 +13,7 @@
 \ it knows the length and the module allocates nothing. Header lines are
 \ scanned in the reader's buffer; the body bytes the buffer already holds are
 \ copied out of it, and the rest are read straight into the caller's span by
-\ FD-IO:READ-EXACT. A read can take more than one message into the buffer, so
+\ FD:READ-EXACT. A read can take more than one message into the buffer, so
 \ a caller that polls the descriptor to learn whether input waits asks PENDING?
 \ first.
 \
@@ -35,7 +35,7 @@
 \ LINE-CAP + 2 bytes or a negative maximum with STATE as well.
 \
 \ SEND writes `Content-Length: N` CR LF CR LF, then the body, each through
-\ FD-IO:WRITE-FULL. It builds the header in a row of its own, so a body the
+\ FD:WRITE-FULL. It builds the header in a row of its own, so a body the
 \ caller built anywhere, the task's string builder (src/lib/string.f SB) included,
 \ goes out as it was.
 \
@@ -50,12 +50,12 @@ require src/lib/errors.f
 require src/lib/string.f
 require src/lib/span.f
 require src/lib/task.f
-require src/lib/fd-io.f
+require src/lib/fd.f
 require src/lib/adt/option.f
 
 package CONTENT-LENGTH
 using SPAN
-using FD-IO
+using FD
 public
 
 \ fd is the descriptor read; buf and cap the caller's buffer; pos is the first
@@ -264,13 +264,13 @@ private
    dup 0 < if r MALFORMED then ;
 
 \ The part of a body the buffer did not hold, read straight into the span. The
-\ reader is spent while FD-IO reads, so a read the kernel refuses (E-FS-IO)
+\ reader is spent while FD reads, so a read the kernel refuses (E-FS-IO)
 \ leaves it spent; the whole body gives its capacity back.
 : REST ( ptr reader SPAN:span<u8> n n -- )
    {: r s want:n k:n :}
    r CAP@ {: cap:n :}
    r SPEND
-   r FD@  s k want k - SUB  READ-EXACT MATCH FD-IO:fill
+   r FD@  s k want k - SUB  READ-EXACT MATCH FD:fill
       full OF ENDOF
       eof OF drop r TRUNCATED ENDOF
    ;MATCH

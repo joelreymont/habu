@@ -83,6 +83,7 @@ require src/lib/float.f
 require src/lib/fmath.f
 require src/lib/argv.f
 require src/lib/tier.f
+require src/lib/fd.f
 
 -7703 constant E-SCALE-UNCOMPILED
 -7704 constant E-SCALE-EXCEEDED
@@ -95,7 +96,6 @@ private
 8 constant POINTS-MAX              \ family members
 $8000 constant SRC-CAP             \ source bytes for one set
 1000 constant MILLI
-2 constant ERR-FD
 $0A constant LF
 74 constant IO-RC                  \ sysexits EX_IOERR, as tools/lint/text.f uses it
 
@@ -134,7 +134,7 @@ variable BOUND-MILLI               \ ratchet bound; read only when one was given
 
 \ ---- refusal ----------------------------------------------------------------
 : EMIT-ERR ( ptr u8 n -- ) {: msg:ptr mu :}
-   ERR-FD msg mu write mu <> if
+   FD:STDERR FD>N msg mu write mu <> if
       s" chain-scale: stderr write failed" IO-RC die
    then ;
 

@@ -3,6 +3,7 @@
 require tools/lint/text.f
 require src/lib/source.f
 require src/lib/string.f
+require src/lib/fd.f
 require tools/lint/intern.f
 require tools/lint/token.f
 require tools/lint/lib.f
@@ -286,6 +287,6 @@ variable REPL-ROOT-U
 : REPL-LINT  ( -- )
    REPL-LINT-CHECK 0 > if s" " 1 die then ;
 
-1 >FD REPL-OUT-FD!
+FD:STDOUT REPL-OUT-FD!
 
 ;using

@@ -51,7 +51,7 @@ require src/lib/fmt.f
 require src/lib/le.f
 require src/lib/ffi-abi.f
 require src/lib/fs.f
-require src/lib/fd-io.f
+require src/lib/fd.f
 require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
@@ -288,7 +288,7 @@ FUNCTION: ERRNO-CELL __error ( -- ptr u8 ) ;FUNCTION
    t 10 / NUM$ LINE+  [char] . LINE-C+  t 10 mod NUM$ LINE+ ;
 
 : LINE-WRITE ( -- )
-   LOG-FD @ >FD LINE LINE-U @ LEN>N FD-IO:WRITE-FULL ;
+   LOG-FD @ >FD LINE LINE-U @ LEN>N FD:WRITE-FULL ;
 
 : LINE-HEAD ( ptr u8 n n n -- ) {: tag:ptr tagu:n pid:n aux:n :}
    LINE-U BUF-RESET

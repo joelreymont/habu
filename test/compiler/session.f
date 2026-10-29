@@ -9,7 +9,7 @@ require test/compiler/native-source-fixture.f
 require test/compiler/native-chain-fixture.f
 require src/arch/x86-64/passes.f
 require src/lib/fs-mutate.f
-require src/lib/fd-io.f
+require src/lib/fd.f
 
 : COMPILER-SESSION-EDGE ( n -- n ) abs ;
 : COMPILER-SESSION-PROOF ( n -- n [ -- n ] )
@@ -255,7 +255,7 @@ TASK:MIN-STACK TASK:TASK WORKER
 : SAVE-ARTIFACT ( NART:emission -- )
    {: art:NART:emission :}
    s" compiler-session-a64" FS:MKTEMP {: path:ptr pathu:n fd:fd :}
-   fd art NART:BYTES art NART:SIZE FD-IO:WRITE-FULL
+   fd art NART:BYTES art NART:SIZE FD:WRITE-FULL
    fd FD>N close-rc 0 T=
    path pathu REMOVE-FILE ;
 

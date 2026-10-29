@@ -11,6 +11,7 @@ require src/lib/errors.f
 require src/lib/string.f
 require src/lib/memory.f
 require src/lib/fs.f
+require src/lib/fd.f
 require src/lib/source.f
 require tools/lint/text.f
 require tools/lint/token.f
@@ -409,7 +410,7 @@ public
 : RESET ( -- )
    0 RNL-BAD !
    0 RNL-JSON !
-   1 >FD OUT-FD! ;
+   FD:STDOUT OUT-FD! ;
 
 : FILE-AS ( ptr u8 n ptr u8 n -- )
    {: path:ptr pathu label:ptr labelu :}

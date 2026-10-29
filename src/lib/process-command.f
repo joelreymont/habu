@@ -45,7 +45,7 @@ require src/lib/errors.f
 require src/lib/memory.f
 require src/lib/task.f
 require src/lib/fs.f
-require src/lib/fd-io.f
+require src/lib/fd.f
 require src/lib/byte-buffer.f
 require src/lib/vector.f
 require src/lib/process.f
@@ -412,8 +412,6 @@ private
 : RC>RESULT ( n -- result<n,n> ) {: rc:n :}
    rc 0 = if rc RESULT:OK else rc RESULT:ERR then ;
 
-2 constant STDERR-FD
-
 public
 
 : OUTCOME@ ( CMD:command -- CMD:command outcome )
@@ -453,6 +451,6 @@ public
    {: path:ptr pathu:n timeout:ms code:n :}
    path pathu timeout RUN-OUTCOME PROC-OUTCOME>RC RC>N 0= if exit then
    ERR$ {: err:ptr erru:n :}
-   STDERR-FD >FD err erru FD-IO:WRITE-FULL code throw ;
+   FD:STDERR err erru FD:WRITE-FULL code throw ;
 
 ;package

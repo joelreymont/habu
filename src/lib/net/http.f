@@ -53,6 +53,7 @@ require src/lib/task.f
 require src/lib/queue.f
 require src/lib/net/tcp4.f
 require src/lib/span.f
+require src/lib/fd.f
 require src/lib/aio.f
 
 package HTTP
@@ -70,7 +71,6 @@ $C8 constant STOP-MARGIN-MS       \ scheduling slack over the longest park a sto
 $7FFFFFFF constant MAX-BODY-TIMEOUT-MS  \ TCP4's largest READABLE-WITHIN? poll
 
 ENUM served keep-open answered silent ;ENUM
-2 constant STDERR-FD
 
 JOB-SLOTS QUEUE:QUEUE JOBS
 TASK:SEMAPHORE START-READY
@@ -171,7 +171,7 @@ private
    code 0 < if DASH-BYTE idx OUT+C then
    code MAGNITUDE idx NUM$ idx OUT+
    LF idx OUT+C
-   STDERR-FD idx OUT-BUF BUF$ write drop
+   FD:STDERR FD>N idx OUT-BUF BUF$ write drop
    idx OUT-BUF BUF:CLEAR ;
 
 

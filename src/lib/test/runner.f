@@ -25,6 +25,7 @@ require src/lib/fs-mutate.f
 require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
+require src/lib/fd.f
 require src/lib/test/record.f
 require src/lib/fmt.f                        \ FMT:.INT - one-line number text, shared builder untouched
 
@@ -209,8 +210,6 @@ variable GT-TAIL-U
 \ left running wrote it after the action returned. Both streams come back on
 \ every exit path.
 10 constant GT-FD-HOLD-MIN               \ a held descriptor sits above the low ones
-1 constant GT-STDOUT-FD
-2 constant GT-STDERR-FD
 2 constant GT-CAP-ROWS                   \ a frame's rows: stdout, then stderr
 \ Captures open at once: tests nest two, and one past the bound is refused
 \ with E-TBL-BOUNDS before it takes a frame.
@@ -226,7 +225,7 @@ create GT-CAP-PATH FS-PATH-CAP allot     \ a file's path while GT-CAP-FILE opens
 
 \ fd's row in the innermost frame.
 : GT-CAP-ROW ( n -- n ) {: fd:n :}
-   GT-CAP-DEPTH @ 1- GT-CAP-ROWS * fd GT-STDOUT-FD - + ;
+   GT-CAP-DEPTH @ 1- GT-CAP-ROWS * fd FD:STDOUT FD>N - + ;
 
 : GT-CAP-SAVE ( n -- ptr n )
    GT-CAP-ROW GT-CAP-SAVES ;
@@ -237,10 +236,10 @@ create GT-CAP-PATH FS-PATH-CAP allot     \ a file's path while GT-CAP-FILE opens
 : GT-CAP-ENTER ( -- )
    GT-CAP-DEPTH @ GT-CAP-NEST-MAX >= if E-TBL-BOUNDS throw then
    GT-CAP-DEPTH @ 1+ GT-CAP-DEPTH !
-   -1 GT-STDOUT-FD GT-CAP-SAVE !
-   -1 GT-STDERR-FD GT-CAP-SAVE !
-   -1 GT-STDOUT-FD GT-CAP-READER !
-   -1 GT-STDERR-FD GT-CAP-READER ! ;
+   -1 FD:STDOUT FD>N GT-CAP-SAVE !
+   -1 FD:STDERR FD>N GT-CAP-SAVE !
+   -1 FD:STDOUT FD>N GT-CAP-READER !
+   -1 FD:STDERR FD>N GT-CAP-READER ! ;
 
 \ A copy of fd at GT-FD-HOLD-MIN or above, close-on-exec from its first
 \ instant; -1 when the host refuses.
@@ -331,8 +330,8 @@ create GT-CAP-PATH FS-PATH-CAP allot     \ a file's path while GT-CAP-FILE opens
 \ Both rows are released whatever either refuses, then the frame goes and the
 \ first refusal is thrown.
 : GT-CAP-LEAVE ( -- )
-   GT-STDOUT-FD GT-CAP-RELEASE
-   GT-STDERR-FD GT-CAP-RELEASE GT-CAP-FIRST {: rc:n :}
+   FD:STDOUT FD>N GT-CAP-RELEASE
+   FD:STDERR FD>N GT-CAP-RELEASE GT-CAP-FIRST {: rc:n :}
    GT-CAP-DEPTH @ 1- GT-CAP-DEPTH !
    rc 0<> if rc throw then ;
 
@@ -340,11 +339,11 @@ create GT-CAP-PATH FS-PATH-CAP allot     \ a file's path while GT-CAP-FILE opens
 \ gives the streams back after the read, on its path and on every throw.
 : GT-CAP-RUN ( [ -- ] ptr u8 n SPAN:span<u8> SPAN:span<u8> -- len len n )
    {: q dir:ptr diru:n out err :}
-   dir diru s" capture-out.txt" GT-STDOUT-FD GT-CAP-REDIRECT
-   dir diru s" capture-err.txt" GT-STDERR-FD GT-CAP-REDIRECT
+   dir diru s" capture-out.txt" FD:STDOUT FD>N GT-CAP-REDIRECT
+   dir diru s" capture-err.txt" FD:STDERR FD>N GT-CAP-REDIRECT
    q catch {: code:n :}
-   GT-STDOUT-FD GT-CAP-READER @ out GT-CAP-READ
-   GT-STDERR-FD GT-CAP-READER @ err GT-CAP-READ
+   FD:STDOUT FD>N GT-CAP-READER @ out GT-CAP-READ
+   FD:STDERR FD>N GT-CAP-READER @ err GT-CAP-READ
    code ;
 
 : GT-CAPTURE-ACTION ( [ -- ] ptr u8 n SPAN:span<u8> SPAN:span<u8> -- len len n )

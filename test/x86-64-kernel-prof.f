@@ -104,6 +104,7 @@ require src/lib/string.f
 require src/core/bytes.f
 require src/habu/xref.f
 require test/x86-64-boot-harness.f
+require src/lib/fd.f
 
 \ The host's words the report case names, at the host's own record indices.
 : prof-a ( -- n ) 1 ;
@@ -138,7 +139,6 @@ $40000000 constant SPIN-BOUND           \ turns a spin waits: about a second, a 
 8 constant IT-USEC                      \ the interval's microseconds
 
 \ ---- the report case's facts ---------------------------------------------------
-1 constant STDOUT
 0 constant F-DUPFD
 3 constant FD-FLOOR                     \ F_DUPFD's lowest descriptor: past the standard three
 6 constant TEXTS                        \ the captures the report case compares
@@ -462,12 +462,12 @@ variable AT-BYTE
 \ Run the quotation with this host's fd 1 on a pipe, put fd 1 back, which
 \ closes the pipe's last write end, and keep what the pipe holds as capture k.
 : CAPTURE ( [ -- ] n -- ) {: k:n :}
-   STDOUT F-DUPFD FD-FLOOR fcntl {: saved:n :}
+   FD:STDOUT FD>N F-DUPFD FD-FLOOR fcntl {: saved:n :}
    pipe {: r:n w:n rc:n :}
    saved 0 <  rc 0<>  or if s" x86-64-kernel-prof: no pipe to capture fd 1" 1 die then
-   w STDOUT dup2 drop
+   w FD:STDOUT FD>N dup2 drop
    execute
-   saved STDOUT dup2 drop  saved close  w close
+   saved FD:STDOUT FD>N dup2 drop  saved close  w close
    0 GOT-N !
    begin
       r  TEXT-BYTES k TEXT-CAP * + GOT-N @ +  TEXT-CAP GOT-N @ -  read  dup 0 >
@@ -623,10 +623,10 @@ variable ENTRY-AT
 \ of the pipe into GOT: all the rows wrote, then EOF's 0.
 : PIPED, ( [ -- ] -- )
    s" pipe" ROW  0 G-POP  WFD KEEP,  RFD KEEP,
-   WFD RECALL,  STDOUT N,  s" dup2" ROW  0 G-POP
+   WFD RECALL,  FD:STDOUT FD>N N,  s" dup2" ROW  0 G-POP
    WFD RECALL,  s" close" ROW
    execute
-   SAVED RECALL,  STDOUT N,  s" dup2" ROW  0 G-POP
+   SAVED RECALL,  FD:STDOUT FD>N N,  s" dup2" ROW  0 G-POP
    RFD RECALL,  GOT AT,  TEXT-CAP N,  s" read" ROW
    RFD RECALL,  GOT AT,  TEXT-CAP N,  s" read" ROW
    RFD RECALL,  s" close" ROW ;
@@ -718,7 +718,7 @@ variable ENTRY-AT
    1 0 0 RECORD-CELL!,  2 0 CELL RECORD-CELL!,
    s" DONOR-WITH-EXTERNAL-NAME" donor donor-end X64HARNESS:CODE-RECORD,
    1 1 DICT-WL-OFF RECORD-CELL!,
-   STDOUT N,  F-DUPFD N,  FD-FLOOR N,  s" fcntl" ROW  SAVED KEEP,
+   FD:STDOUT FD>N N,  F-DUPFD N,  FD-FLOOR N,  s" fcntl" ROW  SAVED KEEP,
    0 N,  s" prof-on" ROW
    donor CALL,  0 G-PUSH  1 WANT
    0 N,  s" seed-ndict!" ROW
@@ -749,7 +749,7 @@ variable ENTRY-AT
    NDICT-REG ZERO-REG,
    s" prof-keeper" keep keep-end X64HARNESS:CODE-RECORD,
    s" prof-hidden-donor" donor donor-end X64HARNESS:CODE-RECORD,
-   STDOUT N,  F-DUPFD N,  FD-FLOOR N,  s" fcntl" ROW  SAVED KEEP,
+   FD:STDOUT FD>N N,  F-DUPFD N,  FD-FLOOR N,  s" fcntl" ROW  SAVED KEEP,
    0 N,  s" prof-on" ROW
    donor CALL,  0 G-PUSH  1 WANT
    s" prof-off" ROW
@@ -781,7 +781,7 @@ variable ENTRY-AT
    NDICT-REG ZERO-REG,
    s" prof-keeper" keep keep-end X64HARNESS:CODE-RECORD,
    s" prof-retired-donor" donor donor-end X64HARNESS:CODE-RECORD,
-   STDOUT N,  F-DUPFD N,  FD-FLOOR N,  s" fcntl" ROW  SAVED KEEP,
+   FD:STDOUT FD>N N,  F-DUPFD N,  FD-FLOOR N,  s" fcntl" ROW  SAVED KEEP,
    0 N,  s" prof-on" ROW
    donor CALL,  0 G-PUSH  1 WANT
    s" prof-off" ROW
@@ -817,7 +817,7 @@ variable ENTRY-AT
 : REPORT-CASE ( -- )
    SPANS, {: a:label a-end:label b:label b-end:label c:label c-end:label :}
    a a-end b b-end c c-end HOST-RECORDS,
-   STDOUT N,  F-DUPFD N,  FD-FLOOR N,  s" fcntl" ROW  SAVED KEEP,
+   FD:STDOUT FD>N N,  F-DUPFD N,  FD-FLOOR N,  s" fcntl" ROW  SAVED KEEP,
    [: s" prof-report" ROW ;] PIPED,  0 SAME,
    [: s" prof-json" ROW ;] PIPED,  1 SAME,
    [: B-IX N,  s" prof-row" ROW ;] PIPED,  2 SAME,
@@ -839,7 +839,7 @@ variable ENTRY-AT
 : LIMIT-CHILD, ( -- )
    LBL LBL {: turn:label parent:label :}
    0 G-POP  RAX TEST,  C-NE parent JCC,
-   WFD RECALL,  STDOUT N,  s" dup2" ROW  0 G-POP
+   WFD RECALL,  FD:STDOUT FD>N N,  s" dup2" ROW  0 G-POP
    LIMIT-SAMPLES N,  s" prof-on" ROW
    RCX SPIN-BOUND IMM,
    turn LBL,  RCX ASM-SINK ENC-DEC  C-NE turn JCC,

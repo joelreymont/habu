@@ -1,5 +1,5 @@
-\ fd-io-test.f - exact reads and full writes over real pipes, through src/lib/fd-io.f.
-\ Run: bin/hb --load src/lib/fd-io-test.f
+\ fd-test.f - exact reads and full writes over real pipes.
+\ Run: bin/hb --load src/lib/fd-test.f
 \
 \ A pipe holds far less than PAYLOAD (64 KiB by default on Linux and at most on
 \ macOS), so one read of PAYLOAD bytes answers short and READ-EXACT has to loop.
@@ -19,10 +19,10 @@ require src/lib/process.f
 require src/lib/process-fork.f
 require src/lib/test/outcome.f
 require src/lib/test/wait.f
-require src/lib/fd-io.f
+require src/lib/fd.f
 
-package FD-IO-TEST
-using FD-IO
+package FD-TEST
+using FD
 using SPAN
 using MEM
 
@@ -42,8 +42,8 @@ variable CHILD-CODE               \ the exit code a child's part chose
 variable ERR-FD                   \ the descriptor a word run under catch uses
 variable UNTIL-AT                 \ deadline used by caught bounded-write cases
 
-: OUTCOME ( FD-IO:fill -- n )     \ FULL-MARK, or the bytes before end of file
-   MATCH FD-IO:fill
+: OUTCOME ( FD:fill -- n )        \ FULL-MARK, or the bytes before end of file
+   MATCH FD:fill
       full OF FULL-MARK ENDOF
       eof OF ENDOF
    ;MATCH ;
@@ -79,7 +79,7 @@ variable UNTIL-AT                 \ deadline used by caught bounded-write cases
 \ code is rethrown unchanged.
 : HOLD-BACK ( -- )
    [: CHILD-FD @ >FD WAIT-MS >MS POLL-IN-OR-TIMEOUT drop ;] catch {: code:n :}
-   code E-PROC-TIMEOUT = if s" fd-io-test HOLD-BACK" TEST-WAIT:EXPIRED then
+   code E-PROC-TIMEOUT = if s" fd-test HOLD-BACK" TEST-WAIT:EXPIRED then
    code 0<> if code throw then
    READER-DELAY-MS >MS TASK:SLEEP ;
 
@@ -165,7 +165,7 @@ variable UNTIL-AT                 \ deadline used by caught bounded-write cases
    w FD-FLAGS {: after:n :}
    w FD>N close
    pid REAP-READER {: oc :}
-   code E-FS-TIMEOUT = if s" fd-io-test BOUNDED-SUCCESS" TEST-WAIT:EXPIRED then
+   code E-FS-TIMEOUT = if s" fd-test BOUNDED-SUCCESS" TEST-WAIT:EXPIRED then
    code 0<> if code throw then
    after O-NONBLOCK and flags O-NONBLOCK and T=
    s" bounded reader" s" " s" " oc 0 T-OUTCOME-EXITED= ;
@@ -201,7 +201,6 @@ variable UNTIL-AT                 \ deadline used by caught bounded-write cases
    [: UNTIL-BROKEN ;] E-FS-IO TTHROWSQ
    w FD-FLAGS O-NONBLOCK and flags O-NONBLOCK and T=
    w FD>N close ;
-
 
 \ An empty span is full before any read, so it cannot mistake read's zero for
 \ end of file or block on a pipe with nothing in it; an empty write writes
@@ -325,7 +324,7 @@ variable UNTIL-AT                 \ deadline used by caught bounded-write cases
    SRC @ FREE-SPAN
    DST @ FREE-SPAN
    T-REPORT
-   s" fd-io-test: ok" type cr ;
+   s" fd-test: ok" type cr ;
 
 MAIN
 

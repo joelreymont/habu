@@ -13,7 +13,7 @@ require src/lib/fmt.f                   \ FMT:.INT - report numbers inline
 require src/lib/process.f               \ the FIFO rows' reader child and its pipe
 require src/lib/process-argv.f
 require src/lib/process-env.f           \ RESOLVE-EXECUTABLE finds mkfifo and cat
-require src/lib/fd-io.f                 \ FD-IO:TRY-FIFO-WRITER, WRITE-FULL, READ-EXACT
+require src/lib/fd.f                    \ FD:TRY-FIFO-WRITER, WRITE-FULL, READ-EXACT
 
 1 constant FS-TEST-EX-FAIL
 $34 constant FS-TEST-U16-LO
@@ -933,7 +933,7 @@ variable WRITER
 
 \ One attempt, keeping in WRITER the write end it opened.
 : ATTEMPT ( -- bool )
-   FIFO$ FD-IO:TRY-FIFO-WRITER MATCH option
+   FIFO$ FD:TRY-FIFO-WRITER MATCH option
       none OF false ENDOF
       some OF FD>N WRITER ! true ENDOF
    ;MATCH ;
@@ -957,19 +957,19 @@ variable WRITER
 
 : NO-READER ( -- )
    FS-TEST-FREE-FD {: before:n :}
-   FIFO$ FD-IO:TRY-FIFO-WRITER OPENED? FS-TEST-FALSE
+   FIFO$ FD:TRY-FIFO-WRITER OPENED? FS-TEST-FALSE
    FS-TEST-FREE-FD before FS-TEST= ;
 
 : REFUSALS ( -- )
    T-RESET
-   [: FS-TEST-BIG-PATH FD-IO:TRY-FIFO-WRITER OPENED? drop ;] E-FS-OPEN TTHROWSQ
-   [: s" no-such-habu-fs-path-for-stdlib-test" FD-IO:TRY-FIFO-WRITER OPENED? drop ;]
+   [: FS-TEST-BIG-PATH FD:TRY-FIFO-WRITER OPENED? drop ;] E-FS-OPEN TTHROWSQ
+   [: s" no-such-habu-fs-path-for-stdlib-test" FD:TRY-FIFO-WRITER OPENED? drop ;]
    E-FS-OPEN TTHROWSQ
    T-FAILURES 0 FS-TEST= ;
 
 \ Everything cat printed: the payload, then end of file.
 : OUTPUT ( fd -- )
-   OUT-BUF PAYLOAD$ nip 1+ SPAN:MAKE FD-IO:READ-EXACT MATCH FD-IO:fill
+   OUT-BUF PAYLOAD$ nip 1+ SPAN:MAKE FD:READ-EXACT MATCH FD:fill
       full OF false FS-TEST-TRUE ENDOF
       eof OF PAYLOAD$ nip FS-TEST= ENDOF
    ;MATCH
@@ -997,7 +997,7 @@ variable WRITER
    opened FS-TEST-TRUE
    opened if
       WRITER @ F-GETFL 0 fcntl NONBLOCK and 0 FS-TEST=
-      WRITER @ >FD PAYLOAD$ FD-IO:WRITE-FULL
+      WRITER @ >FD PAYLOAD$ FD:WRITE-FULL
       WRITER @ close
    then
    child REAP

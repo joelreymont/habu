@@ -58,7 +58,7 @@
 require src/lib/errors.f
 require src/lib/string.f
 require src/lib/fmt.f
-require src/lib/fd-io.f
+require src/lib/fd.f
 require src/lib/process.f
 require tools/check-verify-core.f
 require tools/lsp-docs.f
@@ -95,7 +95,7 @@ variable BATCH-K
 
 : ERR ( ptr u8 n -- )
    {: a:ptr u:n :}
-   2 >FD a u FD-IO:WRITE-FULL ;
+   FD:STDERR a u FD:WRITE-FULL ;
 
 \ A number's decimal text, in SB.
 : NUMBER$ ( n -- ptr u8 n )  SB-RESET FMT:SB-INT SB$ ;

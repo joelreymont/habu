@@ -4,6 +4,7 @@ require src/lib/errors.f
 require src/lib/string.f
 require src/lib/memory.f
 require src/lib/fs.f
+require src/lib/fd.f
 require src/lib/source.f
 require src/lib/byte-buffer.f
 require src/lib/json-write.f
@@ -566,7 +567,7 @@ public
    UB-FALSE UB-CHECK-OFF!
    UB-FALSE JSON!
    UB-FALSE STRICT!
-   1 >FD OUT-FD! ;
+   FD:STDOUT OUT-FD! ;
 
 \ PATH is read and matched against the hook registry as spelled; LABEL names it
 \ in every report.

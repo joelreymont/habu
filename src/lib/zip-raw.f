@@ -4,7 +4,7 @@
 require src/lib/zip-ffi.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
-require src/lib/fd-io.f
+require src/lib/fd.f
 require src/lib/utf8-scalar.f
 
 package ZIP
@@ -351,7 +351,7 @@ $14 constant LOCATOR-BYTES
 : EMIT-BYTES ( ptr n ptr u8 n -- )
    {: node:ptr data:ptr len:n :}
    node OUT-LEN @ len SAFE+ {: next:n :}
-   node TEMP-FD @ >FD data len FD-IO:WRITE-FULL next node OUT-LEN ! ;
+   node TEMP-FD @ >FD data len FD:WRITE-FULL next node OUT-LEN ! ;
 : EMIT-RAW ( ptr n n n -- )
    {: node:ptr off:n len:n :}
    node off len RAW-RANGE

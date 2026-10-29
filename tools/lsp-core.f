@@ -123,7 +123,7 @@ require src/lib/fmt.f
 require src/lib/span.f
 require src/lib/memory.f
 require src/lib/byte-buffer.f
-require src/lib/fd-io.f
+require src/lib/fd.f
 require src/lib/process.f
 require src/lib/adt/option.f
 require src/lib/uri.f
@@ -246,7 +246,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    {: w :}
    w JSON-WRITE:$ {: a:ptr u:n :}
    w JSON-WRITE:CLOSE
-   1 >FD a u SEND ;
+   FD:STDOUT a u SEND ;
 
 : REPLY-NULL ( JSON-RPC:id -- )
    {: i :}
@@ -475,7 +475,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    code IGNORABLE? 0= if code throw then
    SB-RESET s" lsp: ignored " SB-APPEND m mu SB-APPEND
    s" : throw " SB-APPEND code FMT:SB-INT 10 SB-APPEND-C
-   2 >FD SB$ FD-IO:WRITE-FULL ;
+   FD:STDERR SB$ FD:WRITE-FULL ;
 
 : NAMED? ( ptr u8 n ptr u8 n -- bool )
    {: m:ptr mu:n name:ptr nu:n :}
@@ -631,7 +631,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 \ Whether stdin holds input, or its end, a poll that a signal cut short asked
 \ again.
 : POLLED? ( -- bool )
-   begin 0 >FD 0 >MS POLL-IN COUNT>N dup EINTR# negate = while drop repeat
+   begin FD:STDIN 0 >MS POLL-IN COUNT>N dup EINTR# negate = while drop repeat
    0<> ;
 
 \ Whether a message waits: begun in the reader's buffer, or on stdin; or
@@ -1219,8 +1219,8 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 : TAKE-INPUT ( -- )  READ-ON SETTLE ;
 
 : SERVE ( -- )
-   1 >FD FD-NOSIGPIPE!
-   2 >FD FD-NOSIGPIPE!
+   FD:STDOUT FD-NOSIGPIPE!
+   FD:STDERR FD-NOSIGPIPE!
    REPLY-BUF 1 BUF:N>BLEN BUF:INIT       \ the smallest buffers: replies grow one,
    HELD-B 1 BUF:N>BLEN BUF:INIT          \ held bodies the other
    0 HELD-COUNT !
@@ -1235,7 +1235,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    false HOVER-MD !
    -1 LAST-CHECKED !
    construct state starting STATE!
-   INPUT 0 >FD HEAD-BUF MAX-BODY BIND
+   INPUT FD:STDIN HEAD-BUF MAX-BODY BIND
    begin
       HELD? if
          INPUT? if TAKE-INPUT else TURN then

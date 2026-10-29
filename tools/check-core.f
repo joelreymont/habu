@@ -7,6 +7,7 @@ require src/lib/memory.f
 require src/lib/vector.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
+require src/lib/fd.f
 require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f                \ the run stage spawns with an environment
@@ -585,7 +586,7 @@ private
 
 \ The --all-errors core writes its records to standard error in the run's mode.
 : CHK-ALL-STREAM ( -- )
-   2 >FD CHK-SCRATCH-BUF CHECK-ALL-ERRORS:SCRATCH-CAP CHECK-ALL-ERRORS:STREAM!
+   FD:STDERR CHK-SCRATCH-BUF CHECK-ALL-ERRORS:SCRATCH-CAP CHECK-ALL-ERRORS:STREAM!
    CHK-JSON @ CHECK-ALL-ERRORS:JSON! ;
 
 \ The pre-pass or discovery stops in one file of the composition: the subject,
@@ -1587,7 +1588,7 @@ CAST: CHK-VERIFIER-ACTION ( n -- [ -- ] )
    loop ;
 
 : CHK-RUN-BOUNDARY ( -- )
-   2 >FD CHECKED-BOUNDARY-LINT:OUT-FD!
+   FD:STDERR CHECKED-BOUNDARY-LINT:OUT-FD!
    CHK-JSON @ CHECKED-BOUNDARY-LINT:JSON!
    LINT-TRUE CHECKED-BOUNDARY-LINT:STRICT!
    CHK-SEL-MODE @ CHK-SEL-LIST = if
@@ -1599,7 +1600,7 @@ CAST: CHK-VERIFIER-ACTION ( n -- [ -- ] )
 
 : CHK-RUN-RESERVED-NAMES ( -- )
    RESERVED-NAME-LINT:RESET
-   2 >FD RESERVED-NAME-LINT:OUT-FD!
+   FD:STDERR RESERVED-NAME-LINT:OUT-FD!
    CHK-JSON @ RESERVED-NAME-LINT:JSON!
    CHK-SEL-MODE @ CHK-SEL-LIST = if
       [: RESERVED-NAME-LINT:FILE ;] CHK-LINT-LISTED
@@ -1801,7 +1802,7 @@ CAST: CHK-VERIFIER-ACTION ( n -- [ -- ] )
 
 \ The run's packets on stderr; its prose, when it wrote no packet, on stdout.
 : CHK-RUN-JSON-ONLY ( -- )
-   2 >FD 1 >FD JSON-ONLY-FDS!
+   FD:STDERR FD:STDOUT JSON-ONLY-FDS!
    CHK-ERR-BUF CHK-ERR-U @ JSON-ONLY-FILTER ;
 
 \ The run's output is routed the same way whether it passed or failed: under

@@ -88,6 +88,7 @@ require src/lib/float.f
 require src/lib/argv.f
 require src/lib/time-cpu.f
 require src/lib/tier.f
+require src/lib/fd.f
 
 -7700 constant E-FLOOR-UNCOMPILED
 -7701 constant E-FLOOR-EXCEEDED
@@ -101,7 +102,6 @@ private
 $2000 constant SRC-CAP             \ source bytes for one set
 1000 constant NS-PER-US
 1000 constant US-PER-MS
-2 constant ERR-FD
 $0A constant LF
 74 constant IO-RC                  \ sysexits EX_IOERR, as tools/lint/text.f uses it
 
@@ -142,7 +142,7 @@ variable BOUND-US                  \ ratchet floor in us; read only when a floor
 \ ---- refusal ----------------------------------------------------------------
 
 : EMIT-ERR ( ptr u8 n -- ) {: msg:ptr mu :}
-   ERR-FD msg mu write mu <> if
+   FD:STDERR FD>N msg mu write mu <> if
       s" compile-floor: stderr write failed" IO-RC die
    then ;
 

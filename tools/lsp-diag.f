@@ -42,7 +42,7 @@ require src/lib/string.f
 require src/lib/span.f
 require src/lib/byte-buffer.f
 require src/lib/adt/option.f
-require src/lib/fd-io.f
+require src/lib/fd.f
 require src/lib/fs.f
 require src/lib/uri.f
 require src/lib/content-length.f
@@ -89,7 +89,7 @@ variable ITEMS                           \ and the diagnostics in it so far
 \ Writes these bytes to stderr.
 : ERR ( ptr u8 n -- )
    {: a:ptr u:n :}
-   2 >FD a u FD-IO:WRITE-FULL ;
+   FD:STDERR a u FD:WRITE-FULL ;
 
 \ ---- packets -------------------------------------------------------------------
 
@@ -200,7 +200,7 @@ variable ITEMS                           \ and the diagnostics in it so far
    {: w :}
    w JSON-WRITE:$ {: a:ptr u:n :}
    w JSON-WRITE:CLOSE
-   1 >FD a u CONTENT-LENGTH:SEND ;
+   FD:STDOUT a u CONTENT-LENGTH:SEND ;
 
 : ITEM ( ptr u8 n -- )
    {: a:ptr u:n :}

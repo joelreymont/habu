@@ -9,7 +9,7 @@ require src/lib/memory.f
 require src/lib/vector.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
-require src/lib/fd-io.f
+require src/lib/fd.f
 require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
@@ -53,7 +53,7 @@ variable PROV-U
 : PROV-PREPARE ( -- )
    s" boundary" FS:MKTEMP {: path:ptr pathu:n fd:fd :}
    path PROV-PATH pathu BYTE-COPY pathu PROV-U !
-   fd s" 0 set-check" FD-IO:WRITE-FULL
+   fd s" 0 set-check" FD:WRITE-FULL
    fd FD>N close-rc 0 T= ;
 
 : PROV-CLEAN ( -- )
@@ -63,7 +63,7 @@ variable PROV-U
    CHECKED-BOUNDARY-LINT:RESET
    LINT-FALSE CHECKED-BOUNDARY-LINT:JSON!
    LINT-TRUE CHECKED-BOUNDARY-LINT:STRICT!
-   2 >FD CHECKED-BOUNDARY-LINT:OUT-FD!
+   FD:STDERR CHECKED-BOUNDARY-LINT:OUT-FD!
    PROV-OUT PROV-OUT-CAP LINT-OUT-BUFFER!
    PROV$ CHECKED-BOUNDARY-LINT:FILE
    LINT-OUT-BUFFER-OFF

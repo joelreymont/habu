@@ -30,6 +30,7 @@ require src/lib/num-types.f
 require src/lib/span.f
 require src/lib/memory.f
 require src/lib/net/http.f
+require src/lib/fd.f
 
 \ Force the real startup semaphore initializer to refuse after the job queue
 \ has opened. These helpers exist only in this test image.
@@ -645,7 +646,7 @@ $2710 constant PARK-MS            \ far past every stop bound
          s" http-test: libcurl code " SB-APPEND
          rc CURL:CODE>N FMT:SB-U
          S\" \n" SB-APPEND
-         2 SB$ write drop
+         FD:STDERR FD>N SB$ write drop
          rc CURL:CODE>N CURLE-TIMED-OUT = if
             s" http-test TAKE-RESPONSE" TEST-WAIT:EXPIRED
          then
@@ -1090,7 +1091,6 @@ $32 constant SPLIT-MS             \ long enough for the worker to read the first
 \ A server reports each fault on fd 2 under the id its client is given. For one
 \ server fd 2 is a file, read back after the stop; the process's own stderr
 \ waits on a saved descriptor and comes back however that server's case ends.
-2 constant STDERR-FD
 0 constant F-DUPFD
 $A constant SAVE-FD-MIN           \ the saved stderr lands clear of 0..2
 $800 constant ERR-CAP
@@ -1114,20 +1114,20 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
    s" http-stderr" FS:MKTEMP-DIR {: dir:ptr dirlen:n :}
    dir dirlen CLEANUP-TREE+
    dir dirlen s" stderr.txt" ERR-PATH-BUF JOIN-PATH ERR-PATH-U !
-   STDERR-FD F-DUPFD SAVE-FD-MIN fcntl {: saved:n :}
+   FD:STDERR FD>N F-DUPFD SAVE-FD-MIN fcntl {: saved:n :}
    saved 0 < if E-BOOM throw then
    saved SAVED-STDERR ! ;
 
 
 : STDERR-TO-FILE ( -- )
    ERR-PATH$ OPEN-APPEND-FD {: file:n :}
-   file STDERR-FD dup2 {: moved:n :}
+   file FD:STDERR FD>N dup2 {: moved:n :}
    file close
    moved 0 < if E-BOOM throw then ;
 
 
 : RESTORE-STDERR ( -- )
-   SAVED-STDERR @ STDERR-FD dup2 {: moved:n :}
+   SAVED-STDERR @ FD:STDERR FD>N dup2 {: moved:n :}
    SAVED-STDERR @ close
    moved 0 < if E-BOOM throw then ;
 

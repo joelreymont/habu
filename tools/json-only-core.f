@@ -4,6 +4,7 @@ require src/lib/errors.f
 require src/lib/memory.f
 require src/lib/jsonl.f
 require src/lib/string.f
+require src/lib/fd.f
 
 \ Checked filter. Raw fd primitives are used through checked effects.
 
@@ -55,7 +56,7 @@ variable JSON-ONLY-ROW-OBJECT
    prosefd JSON-ONLY-PROSE-FD ! ;
 
 : JSON-ONLY-DEFAULT-FDS ( -- )
-   1 >FD 2 >FD JSON-ONLY-FDS! ;
+   FD:STDOUT FD:STDERR JSON-ONLY-FDS! ;
 
 : JSON-ONLY-BUFFERS! ( ptr u8 n ptr u8 n -- ) {: json:ptr jsonu:n prose:ptr proseu:n :}
    json JSON-ONLY-JSON-A!

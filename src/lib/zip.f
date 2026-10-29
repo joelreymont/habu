@@ -79,7 +79,7 @@ $4000 constant FILE-CHUNK
 : SOURCE-STEP ( ptr n ptr u8 n -- n ) {: node:ptr buf:ptr cap:n :}
    node SOURCE-FD @ buf cap read {: got:n :}
    got 0 < got cap > or if E-READ throw then
-   got 0 > if node SNAP-FD @ >FD buf got FD-IO:WRITE-FULL then
+   got 0 > if node SNAP-FD @ >FD buf got FD:WRITE-FULL then
    got ;
 
 : COPY-SOURCE ( ptr n -- ) {: node:ptr :}

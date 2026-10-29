@@ -43,6 +43,7 @@ require src/core/engine-error.f
 require src/habu/stack-abi.f
 require test/x86-64-boot-harness.f
 require src/os/linux-x86-64/target-layout.f
+require src/lib/fd.f
 
 package X64K-CRASH
 using X64ASM
@@ -58,7 +59,6 @@ using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
 $40 constant GOT
 $400 constant GOT-CAP
 
-2 constant STDERR
 $80 constant WCOREFLAG                          \ wait4's core bit: the peer's RLIMIT_CORE
 ENGINE-ERROR:STACK-BOUNDS 8 lshift constant NAMED
 11 constant SIGSEGV
@@ -269,7 +269,7 @@ $1716151413121110 constant CELL-C
 : CHILD, ( [ -- ] -- )
    LBL {: parent:label :}
    0 G-POP  RAX RAX ASM-SINK ENC-TEST-RR  C-NE parent JCC,
-   WFD RECALL,  STDERR N,  s" dup2" ROW  0 G-POP
+   WFD RECALL,  FD:STDERR FD>N N,  s" dup2" ROW  0 G-POP
    execute
    parent LBL,
    0 G-PUSH ;
