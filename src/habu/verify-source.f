@@ -14,7 +14,7 @@ require src/habu/xref.f
 require src/compiler/workspace.f
 require src/habu/primitive-source.f
 require src/habu/engine-origin.f
-require src/lib/ffi-abi.f                 \ FFI-DECL:STRUCT-FITS?, the declarer's plan rule
+require src/lib/ffi-abi.f                 \ FFI:STRUCT-FITS?, the declarer's plan rule
 
 package VERIFY
 
@@ -3634,7 +3634,7 @@ variable FFI-SIG-U
 TYPED-VARIABLE FFI-GROUP bool
 
 \ The group as its clauses read it (FFI-CLAUSE below): each input's kind
-\ (ffi-abi.f FFI-DECL:K-VALUE and the rest) and the clauses that name it, and
+\ (ffi-abi.f FFI:K-VALUE and the rest) and the clauses that name it, and
 \ the result.
 16 constant FFI-IN-CAP                      \ ffi-abi.f ARG-MAX, the declarer's input cap
 variable FFI-IN-N
@@ -3665,10 +3665,10 @@ variable FFI-LIT-B                          \ and the newer
 
 : FFI-IN-KIND ( ptr u8 n -- n )
    {: a:ptr u:n :}
-   a u s" ptr" CORE-STR= IF FFI-DECL:K-POINTER EXIT THEN
-   a u s" r" CORE-STR= IF FFI-DECL:K-FLOAT EXIT THEN
-   a u s" f32" CORE-STR= IF FFI-DECL:K-FLOAT32 EXIT THEN
-   FFI-DECL:K-VALUE ;
+   a u s" ptr" CORE-STR= IF FFI:K-POINTER EXIT THEN
+   a u s" r" CORE-STR= IF FFI:K-FLOAT EXIT THEN
+   a u s" f32" CORE-STR= IF FFI:K-FLOAT32 EXIT THEN
+   FFI:K-VALUE ;
 
 
 \ An input the declarer refuses at the effect (ffi-abi.f IN-TOKEN, REG+), a
@@ -3806,7 +3806,7 @@ variable FFI-LIT-B                          \ and the newer
    FFI-VAR @ FFI-OUT-FP @ or IF FFI-STOP THEN
    bytes 0 <= IF FFI-STOP THEN
    i FFI-INPUT? 0= IF FFI-STOP THEN
-   i FFI-KIND @ FFI-DECL:K-POINTER <> IF FFI-STOP THEN
+   i FFI-KIND @ FFI:K-POINTER <> IF FFI-STOP THEN
    i FFI-WRIT @ IF FFI-STOP THEN
    i FFI-UNSTRUCT
    bytes i FFI-SARG ! ;
@@ -3821,7 +3821,7 @@ variable FFI-LIT-B                          \ and the newer
    FFI-RES @ 0<> FFI-VAR @ or IF FFI-STOP THEN
    bytes 0 <= IF FFI-STOP THEN
    FFI-OUT-N @ 0<> FFI-IN-N @ 0= or IF FFI-STOP THEN
-   FFI-DEST FFI-KIND @ FFI-DECL:K-POINTER <> IF FFI-STOP THEN
+   FFI-DEST FFI-KIND @ FFI:K-POINTER <> IF FFI-STOP THEN
    FFI-DEST FFI-WRIT @ IF FFI-STOP THEN
    FFI-DEST FFI-SARG @ 0<> IF FFI-STOP THEN
    bytes FFI-RES ! ;
@@ -3844,7 +3844,7 @@ variable FFI-LIT-B                          \ and the newer
    FFI-CLAUSES @ 0= IF EXIT THEN
    FFI-RES @ 0= FFI-ANY-SARG? 0= and IF EXIT THEN
    FFI-IN-N @ FFI-RES @ 0<> IF 1- THEN {: args:n :}
-   0 FFI-KIND 0 FFI-SARG args 0 FFI-REGS 0 FFI-PAYS FFI-DECL:STRUCT-FITS?
+   0 FFI-KIND 0 FFI-SARG args 0 FFI-REGS 0 FFI-PAYS FFI:STRUCT-FITS?
    0= IF E-FFI-ARITY STATEMENT-STOP THEN ;
 
 \ The library's storage definers (src/core/layout-buffer.f,
@@ -3915,7 +3915,7 @@ variable RESERVED-PTR-U8-CELL-XT s" RESERVED-PTR-U8-CELL" RESERVED-PTR-U8-CELL-X
 \ clause. In a group this scan reads, each clause
 \ is the declaration's syntax, not a call to resolve, so the check needs no
 \ runtime that defines it, and the struct clauses are held to the declarer's
-\ rules (FFI-DECL SET-STRUCT-RESULT, SET-STRUCT-ARG, CLAUSE-TARGET, SET-VARIADIC
+\ rules (FFI SET-STRUCT-RESULT, SET-STRUCT-ARG, CLAUSE-TARGET, SET-VARIADIC
 \ and the plan, FFI-STAGING): the code the load throws for a declaration is the
 \ refusal here, before the declaration is accepted. A write clause is read for
 \ the struct clause its target conflicts with and VARIADIC for its presence;

@@ -305,7 +305,7 @@ create FFI-T-LONG-PATH PATH-CAP allot
    s\" : SELECT-DISTINCT ( -- ) 10 0 ?do\n" FFI-T-SRC+
    s\"    ZZ-NAME CODEGEN:RESET s\" /tmp/habu-ffi-missing-\" ZZ-NAME CODEGEN:APPEND-STRING\n" FFI-T-SRC+
    s\"    i ZZ-NAME CODEGEN:APPEND-DECIMAL\n" FFI-T-SRC+
-   s\"    ZZ-NAME CODEGEN:CONTENTS FFI-DECL:SELECT-LIBRARY\n" FFI-T-SRC+
+   s\"    ZZ-NAME CODEGEN:CONTENTS FFI:SELECT-LIBRARY\n" FFI-T-SRC+
    s\"    s\" FUNCTION: ZZ-MISSING habu-missing ( -- n ) ;FUNCTION\" INCLUDE-EVALUATE\n" FFI-T-SRC+
    s\"    s\" undefine ZZ-MISSING\" INCLUDE-EVALUATE\n" FFI-T-SRC+
    s\" loop ;\nSELECT-DISTINCT\n" FFI-T-SRC+
@@ -467,7 +467,7 @@ create FFI-T-LONG-PATH PATH-CAP allot
       s" /usr/lib/libSystem.B.dylib"
    else
       s" libm.so.6"
-   then FFI-DECL:SELECT-LIBRARY ;
+   then FFI:SELECT-LIBRARY ;
 
 FFI-T-SELECT-MATH
 FUNCTION: FFI-T-SQRT-CALL sqrt ( r -- r ) ;FUNCTION
@@ -589,7 +589,7 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
 \ inaccessible page: the length is refused before the spelling check reads it.
 : FFI-T-GUARDED-PATH ( -- )
    FFI:LIBRARY-PATH-CAP [char] a GUARD-PAGE:TAIL
-   FFI:LIBRARY-PATH-CAP 1+ FFI-DECL:SELECT-LIBRARY ;
+   FFI:LIBRARY-PATH-CAP 1+ FFI:SELECT-LIBRARY ;
 
 : FFI-T-GUARDED-DIRECT ( -- )
    PATH-CAP [char] a GUARD-PAGE:TAIL
@@ -626,7 +626,7 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    FFI-T-LONG-SRC!
    s\" : ZZ-FOREIGN ( -- ) ZZ-LONG {: path:ptr u:n :}\n" FFI-T-SRC+
    s\" HB-TARGET-MACOS? if s\" .so\" else s\" .dylib\" then {: ext:ptr eu:n :}\n" FFI-T-SRC+
-   s\" ext path u eu - + eu BYTE-COPY path u FFI-DECL:SELECT-LIBRARY ;\nZZ-FOREIGN\n" FFI-T-SRC+
+   s\" ext path u eu - + eu BYTE-COPY path u FFI:SELECT-LIBRARY ;\nZZ-FOREIGN\n" FFI-T-SRC+
    FFI-T-SRC CODEGEN:CONTENTS ;
 
 : FFI-T-LONG-FOREIGN-LIBRARY ( -- )
@@ -771,8 +771,8 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    s" z" 1 FFI-T-NAME-B FFI:LIBRARY-NAME$ 2drop
    FFI-T-PQ-NAME$ T$=
    HB-TARGET-MACOS? if s" /opt/build.so.cache/libx.1.dylib"
-   else s" /opt/build.dylib/libx.so.1" then FFI-DECL:SELECT-LIBRARY
-   FFI-DECL:SELECT-PROCESS
+   else s" /opt/build.dylib/libx.so.1" then FFI:SELECT-LIBRARY
+   FFI:SELECT-PROCESS
    [: FFI-T-LONG-BASE ;] E-FFI-SYNTAX TTHROWSQ
    s" a negative or over-long length is refused before a byte is copied or read" T-LABEL
    [: FFI-T-CSTR-SRC -1 FFI-T-CSTR-DST FFI:CSTR ;] E-FFI-SYNTAX TTHROWSQ
@@ -781,8 +781,8 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    [: FFI-T-CSTR-SRC STR-MIN-I64 FFI:LIBRARY-PATH drop ;] E-FFI-SYNTAX TTHROWSQ
    [: FFI-T-CSTR-SRC -1 FFI:PROCESS 0 FFI:DECLARE drop ;] E-FFI-SYNTAX TTHROWSQ
    [: FFI-T-CSTR-SRC STR-MIN-I64 FFI:PROCESS 0 FFI:DECLARE drop ;] E-FFI-SYNTAX TTHROWSQ
-   [: FFI-T-CSTR-SRC -1 FFI-DECL:SELECT-LIBRARY ;] E-FFI-SYNTAX TTHROWSQ
-   [: FFI-T-CSTR-SRC STR-MIN-I64 FFI-DECL:SELECT-LIBRARY ;] E-FFI-SYNTAX TTHROWSQ
+   [: FFI-T-CSTR-SRC -1 FFI:SELECT-LIBRARY ;] E-FFI-SYNTAX TTHROWSQ
+   [: FFI-T-CSTR-SRC STR-MIN-I64 FFI:SELECT-LIBRARY ;] E-FFI-SYNTAX TTHROWSQ
    [: FFI-T-GUARDED-PATH ;] E-FFI-SYNTAX TTHROWSQ
    [: FFI-T-GUARDED-DIRECT ;] E-FFI-SYNTAX TTHROWSQ
    s" a declaration through the versioned form resolves its symbol" T-LABEL

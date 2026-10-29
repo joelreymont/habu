@@ -11,7 +11,7 @@
 : FFI-T-SA-LIBRARY ( -- )
    s" habu-ffi-struct" FS:MKTEMP-DIR {: dir:ptr diru :}
    dir diru CLEANUP-TREE+
-   dir diru STRUCT-FIXTURE:BUILD FFI-DECL:SELECT-LIBRARY ;
+   dir diru STRUCT-FIXTURE:BUILD FFI:SELECT-LIBRARY ;
 FFI-T-SA-LIBRARY
 
 FUNCTION: FFI-T-SUM8 hb_sum8 ( ptr u8 -- n ) 0 8 STRUCT-ARG ;FUNCTION

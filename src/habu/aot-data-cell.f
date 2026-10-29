@@ -204,8 +204,8 @@ variable SITE-HIT
       then
    loop ;
 
-: PREPARE-WITH-OWNERS ( n [ [ ptr u8 n -- ] -- ] n n n n n -- )
-   {: floor:n checker literal:n ffi:n decl:n task:n callback:n :}
+: PREPARE-WITH-OWNERS ( n [ [ ptr u8 n -- ] -- ] n n n n -- )
+   {: floor:n checker literal:n ffi:n task:n callback:n :}
    floor SPAN-FLOOR !
    0 SPAN-N ! 0 SPAN-CURSOR ! -1 SPAN-LAST !
    ADD-SCALARS
@@ -213,7 +213,6 @@ variable SITE-HIT
    [: CELLS+ ;] checker execute
    [: CELLS+ ;] literal CELL-PRODUCER-XT execute
    [: CELLS+ ;] [: BYTES+ ;] ffi MIXED-PRODUCER-XT execute
-   [: CELLS+ ;] [: BYTES+ ;] decl MIXED-PRODUCER-XT execute
    \ TASK owns callback controls below the FILE range and the live row table.
    \ Its declaration visitor supplies their exact cell extents even when the
    \ baked engine no longer retains the private variable records.
@@ -230,7 +229,6 @@ variable SITE-HIT
    s" CHECKER-STORAGE-CELLS" TARGET-XT CELL-PRODUCER-XT
    s" NSTR:CELL-SPANS" TARGET-XT
    s" FFI:SCAN-SPANS" TARGET-XT
-   s" FFI-DECL:SCAN-SPANS" TARGET-XT
    s" TASK:OWNED-CALLBACK-ROWS" OPTIONAL-XT
    s" FFI-CB:SCAN-SPANS" OPTIONAL-XT
    PREPARE-WITH-OWNERS ;

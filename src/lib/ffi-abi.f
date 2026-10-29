@@ -988,7 +988,7 @@ public
 \ holds 0.
 : OBSERVE ( [ n n -- ] -- ) OBSERVER-N OBSERVER ! ;
 : UNOBSERVE ( -- ) 0 OBSERVER ! ;
-\ FFI-DECL's RECORD-SCOPE, SELECT and CLEAR-SCOPE report each selection they
+\ The declarer's RECORD-SCOPE, SELECT and CLEAR-SCOPE report each selection they
 \ write.
 : NOTIFY-SCOPE ( -- ) OBS-SCOPE 0 NOTIFY ;
 \ The observer's cell. The tools declare it a process cell at their load, as
@@ -1066,9 +1066,9 @@ s" dlclose" PROCESS 1 DECLARE DLCLOSE-FN-CELL !
       row LIB-PATH-OFF + LIB-ROW-BYTES LIB-PATH-OFF - bytes execute
    loop ;
 
-public
+private
 
-: SCAN-SPANS ( [ ptr u8 n -- ] [ ptr u8 n -- ] -- )
+: TABLE-SPANS ( [ ptr u8 n -- ] [ ptr u8 n -- ] -- )
    {: cells bytes :}
    cells cells AOT-CONTROLS
    cells MAKER-FRESH-CONTROLS
@@ -1078,6 +1078,8 @@ public
       MAKER-LIB-TABLE @ MAKER-LIB-CAP @ cells bytes AOT-TABLES-AT
    PIN-FN @ PIN-FN-CAP @ PIN-LIB @ PIN-LIB-CAP @
       cells bytes AOT-TABLES-AT ;
+
+public
 
 : OWNED-BASES ( [ ptr u8 -- ] -- )
    {: claim :}
@@ -1102,18 +1104,6 @@ public
    FN-N BYTE-VIEW claim execute
    LIB-N BYTE-VIEW claim execute ;
 
-\ Both wordlists are protected here, after FFI's last definition: an engine
-\ that loads this file after its seal (tools/build-fixpoint.f's capture host)
-\ refuses any definition into a protected wordlist and exits 84.
-private
-
-get-current prot-wid-add
-
-public
-
-get-current prot-wid-add
-
-;package
 
 \ ---------------------------------------------------------------------------
 \ FUNCTION: - declare a foreign function, get a checked word.
@@ -1242,8 +1232,6 @@ get-current prot-wid-add
 \ colon definition per declaration and no interpreted residue; src/lib/ffi-test.f
 \ asserts DEPTH across a declaration.
 
-package FFI-DECL
-
 private
 
 $800 constant GEN-CAP
@@ -1288,7 +1276,7 @@ private
 
 -1 constant NO-EXT
 
-FFI:LIBRARY-PATH-CAP 1 - CODEGEN:BUFFER LIB-NAME
+LIBRARY-PATH-CAP 1 - CODEGEN:BUFFER LIB-NAME
 GEN-CAP CODEGEN:BUFFER GEN
 EFF-CAP CODEGEN:BUFFER EFF
 DIAG-CAP CODEGEN:BUFFER DIAG
@@ -1548,7 +1536,7 @@ variable SCOPE-HOOK
    pos 1+ 2 / 2 * {: pay:n :}
    \ A width past the capacity left makes the plan unfit at once, so no sum of
    \ payloads can wrap.
-   FFI:STACK-CELLS pay - 8 * bytes < if FFI:STACK-CELLS 1+ pay exit then
+   STACK-CELLS pay - 8 * bytes < if STACK-CELLS 1+ pay exit then
    pay bytes RECORD-WORDS + pay ;
 
 \ The plan of n C arguments, each with its kind in kinds and its record width,
@@ -1567,7 +1555,7 @@ variable SCOPE-HOOK
 
 \ Whether a plan's float registers and stack cells fit the struct call.
 : PLAN-FITS? ( n n -- bool ) {: flt:n stk:n :}
-   flt REG-MAX <= stk FFI:STACK-CELLS <= and ;
+   flt REG-MAX <= stk STACK-CELLS <= and ;
 
 public
 
@@ -1764,7 +1752,7 @@ private
    loop ;
 
 : SLOT ( -- n )
-   SYM-BUF SYM-U @ CUR-LIB @ INT-N @ STACK-N @ RELOC-MASK FFI:DECLARE-ROW ;
+   SYM-BUF SYM-U @ CUR-LIB @ INT-N @ STACK-N @ RELOC-MASK DECLARE-ROW ;
 
 \ What the machine return cell becomes: dropped, rebuilt from its low half for a
 \ 32-bit result, or taken whole.
@@ -1837,7 +1825,7 @@ private
 : CLEAR-SCOPE ( -- )
    0 SCOPE-WID !
    0 SCOPE-SET !
-   FFI:NOTIFY-SCOPE ;
+   NOTIFY-SCOPE ;
 
 : ENSURE-SCOPE-HOOK ( -- )
    SCOPE-HOOK @ 0= if
@@ -1849,7 +1837,7 @@ private
    ENSURE-SCOPE-HOOK
    get-current SCOPE-WID !
    1 SCOPE-SET !
-   FFI:NOTIFY-SCOPE ;
+   NOTIFY-SCOPE ;
 
 : CHECK-SCOPE ( -- )
    SCOPE-SET @ 0= if E-FFI-LIBRARY throw then
@@ -1893,7 +1881,7 @@ public
    {: lib:n wid:n set:bool :}
    lib CUR-LIB ! wid SCOPE-WID !
    set if ENSURE-SCOPE-HOOK 1 else 0 then SCOPE-SET !
-   FFI:NOTIFY-SCOPE ;
+   NOTIFY-SCOPE ;
 
 \ The declaration between FUNCTION: and ;FUNCTION: 0 when none is open, else
 \ one more than the clauses it holds. A top-level run that changes it is
@@ -1901,20 +1889,6 @@ public
 \ segment that opens or closes with one pending refuses
 \ (tools/native-unit-object.f DECL-CLOSED-CK).
 : PENDING ( -- n ) OPEN @ ;
-
-\ The parser's context, generated-text descriptors and token arrays are one
-\ declared cell grid or byte span apiece.
-: SCAN-SPANS ( [ ptr u8 n -- ] [ ptr u8 n -- ] -- )
-   {: cells bytes :}
-   cells CONTEXT-CELLS
-   LIB-NAME cells CODEGEN:SCAN-SPANS
-   GEN cells CODEGEN:SCAN-SPANS
-   EFF cells CODEGEN:SCAN-SPANS
-   DIAG cells CODEGEN:SCAN-SPANS
-   NAME-BUF TOK-CAP bytes execute
-   SYM-BUF TOK-CAP bytes execute
-   TOK-BUF TOK-CAP bytes execute
-   BASE-BUF TOK-CAP bytes execute ;
 
 \ FUNCTION: parses the name, the symbol and the effect and leaves the
 \ declaration open; the interpreter then runs any clauses; ;FUNCTION plans it,
@@ -1940,6 +1914,22 @@ public
       EMIT ;] KEEP-REST
    GEN CODEGEN:CONTENTS INCLUDE-EVALUATE ;
 
+private
+
+\ The parser's context, generated-text descriptors and token arrays are one
+\ declared cell grid or byte span apiece.
+: PARSER-SPANS ( [ ptr u8 n -- ] [ ptr u8 n -- ] -- )
+   {: cells bytes :}
+   cells CONTEXT-CELLS
+   LIB-NAME cells CODEGEN:SCAN-SPANS
+   GEN cells CODEGEN:SCAN-SPANS
+   EFF cells CODEGEN:SCAN-SPANS
+   DIAG cells CODEGEN:SCAN-SPANS
+   NAME-BUF TOK-CAP bytes execute
+   SYM-BUF TOK-CAP bytes execute
+   TOK-BUF TOK-CAP bytes execute
+   BASE-BUF TOK-CAP bytes execute ;
+
 \ A refused clause ABANDONS the declaration rather than leaving it half open:
 \ the next FUNCTION: in the file would otherwise refuse too, and the first
 \ diagnostic would name the wrong declaration. The clause word's KEEP-REST
@@ -1958,7 +1948,6 @@ public
    idx ARG-SBYTES@ 0 <> if REFUSE then
    STRUCT-BYTES @ 0 <> idx ARG-N @ 1- = and if REFUSE then ;
 
-private
 : VARIADIC-CLAUSE ( n -- ) {: fixed:n :}
    OPEN @ 0= if REFUSE then
    VAR-START @ -1 <> if REFUSE then
@@ -2021,9 +2010,9 @@ public
 : SET-STRUCT-ARG ( n n -- ) [: STRUCT-ARG-CLAUSE ;] KEEP-REST ;
 
 : SELECT-LIBRARY ( ptr u8 n -- ) {: path:ptr u:n :}
-   u 0 <= u FFI:LIBRARY-PATH-CAP >= or if E-FFI-SYNTAX throw then
+   u 0 <= u LIBRARY-PATH-CAP >= or if E-FFI-SYNTAX throw then
    path u CHECK-SPELLING
-   path u FFI:LIBRARY-PATH CUR-LIB !
+   path u LIBRARY-PATH CUR-LIB !
    RECORD-SCOPE ;
 
 \ The versioned form's own selection: two tokens, rendered for this target and
@@ -2032,12 +2021,30 @@ public
 \ one does.
 : SELECT-VERSIONED-LIBRARY ( -- )
    [: TOK@ BASE!
-      BASE-BUF BASE-U @ TOK@ TOK>VERSION LIB-NAME FFI:LIBRARY-NAME$ SELECT-LIBRARY ;]
+      BASE-BUF BASE-U @ TOK@ TOK>VERSION LIB-NAME LIBRARY-NAME$ SELECT-LIBRARY ;]
    KEEP-REST ;
 
 : SELECT-PROCESS ( -- )
-   FFI:PROCESS CUR-LIB !
+   PROCESS CUR-LIB !
    RECORD-SCOPE ;
+
+\ The storage FFI restores itself: the registry tables and the declaration
+\ parser's cells and buffers.
+: SCAN-SPANS ( [ ptr u8 n -- ] [ ptr u8 n -- ] -- )
+   {: cells bytes :}
+   cells bytes TABLE-SPANS
+   cells bytes PARSER-SPANS ;
+
+\ Both wordlists are protected here, after FFI's last definition: an engine
+\ that loads this file after its seal (tools/build-fixpoint.f's capture host)
+\ refuses any definition into a protected wordlist and exits 84.
+private
+
+get-current prot-wid-add
+
+public
+
+get-current prot-wid-add
 
 ;package
 
@@ -2046,28 +2053,28 @@ public
 \ anyway, like DEFTYPE and CAST:. All three parse the live input stream, which
 \ their ( -- ) rows do not model, so they are top-level-interpret-only.
 : LIBRARY ( -- )
-   parse-name FFI-DECL:SELECT-LIBRARY ;
+   parse-name FFI:SELECT-LIBRARY ;
 
 : VERSIONED-LIBRARY ( -- )
-   FFI-DECL:SELECT-VERSIONED-LIBRARY ;
+   FFI:SELECT-VERSIONED-LIBRARY ;
 
 : PROCESS-SYMBOLS ( -- )
-   FFI-DECL:SELECT-PROCESS ;
+   FFI:SELECT-PROCESS ;
 
 : FUNCTION: ( -- )
-   FFI-DECL:OPEN-FUNCTION ;
+   FFI:OPEN-FUNCTION ;
 
 : WRITES-BYTES ( n n -- )
-   FFI-DECL:WRITE-EXTENT ;
+   FFI:WRITE-EXTENT ;
 
 : WRITES-ARG ( n n -- )
-   FFI-DECL:WRITE-LENGTH-ARG ;
+   FFI:WRITE-LENGTH-ARG ;
 
-: VARIADIC ( n -- ) FFI-DECL:SET-VARIADIC ;
+: VARIADIC ( n -- ) FFI:SET-VARIADIC ;
 
-: STRUCT-RESULT ( n -- ) FFI-DECL:SET-STRUCT-RESULT ;
+: STRUCT-RESULT ( n -- ) FFI:SET-STRUCT-RESULT ;
 
-: STRUCT-ARG ( n n -- ) FFI-DECL:SET-STRUCT-ARG ;
+: STRUCT-ARG ( n n -- ) FFI:SET-STRUCT-ARG ;
 
 : ;FUNCTION ( -- )
-   FFI-DECL:CLOSE-FUNCTION ;
+   FFI:CLOSE-FUNCTION ;

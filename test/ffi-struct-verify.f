@@ -8,7 +8,7 @@
 \ would hide the clauses. An accepted declaration certifies clean, which shows
 \ the check resolves no symbol and needs no runtime that defines a clause word.
 \ A refused one stops the check with the code the load throws for it
-\ (src/lib/ffi-abi.f FFI-DECL), before the declaration is accepted: a statement
+\ (src/lib/ffi-abi.f FFI), before the declaration is accepted: a statement
 \ throw's packet names it as throw_code (src/lib/verify-diagnostics.f
 \ THROW-RECORD$), -3501 for E-FFI-SYNTAX and -3500 for E-FFI-ARITY.
 

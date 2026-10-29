@@ -599,10 +599,10 @@ CAST: USER-NEXT-XT ( n -- [ [ ptr u8 -- ] -- ] )
 \ engine that has both has them all.
 : FFI-BOUND? ( -- bool )
    s" FFI:OBSERVE" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT 0<>
-   s" FFI-DECL:PENDING" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT 0<> and ;
+   s" FFI:PENDING" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT 0<> and ;
 : FFI-XT ( ptr u8 n -- n ) NUNIT-CAPTURE:BOUND-PRODUCER-XT ;
 : FFI-N ( ptr u8 n -- n ) FFI-XT DEF-NUM-XT execute ;
-: FFI-SELECTION ( -- n n bool ) s" FFI-DECL:SELECTION" FFI-XT FFI-SELECTION-XT execute ;
+: FFI-SELECTION ( -- n n bool ) s" FFI:SELECTION" FFI-XT FFI-SELECTION-XT execute ;
 
 \ TASK hands its user-slot watermark cell to a claimant: USER-MARK reads it,
 \ and whether TASK is bound to; INSTALL-TASK stores USER-PUT through it.
@@ -903,7 +903,7 @@ private
 \ the definition and FFI-FN row ;FUNCTION makes, never a declaration left
 \ open across a load.
 : DECL-CLOSED-CK ( -- )
-   s" FFI-DECL:PENDING" FFI-N 0<> if s" ffi-declaration-open" FILE-REFUSE then ;
+   s" FFI:PENDING" FFI-N 0<> if s" ffi-declaration-open" FILE-REFUSE then ;
 
 \ Open the innermost file's next segment at the present cursors.
 : SEGMENT-OPEN ( -- )
@@ -2901,7 +2901,6 @@ CAST: OWNER-CELL-FN ( n -- [ [ ptr u8 -- ] -- ] )
    0 OWNER-N !
    s" NSTR:CELL-SPANS" PX CELL-OWNER
    s" FFI:SCAN-SPANS" PX PAIR-OWNER
-   s" FFI-DECL:SCAN-SPANS" PX PAIR-OWNER
    s" FFI-CB:SCAN-SPANS" PX CELL-OWNER
    s" TASK:OWNED-CELLS" PX PAIR-OWNER
    s" TASK:OWNED-CALLBACK-ROWS" PX CELL-OWNER
@@ -3018,9 +3017,8 @@ CAST: OWNER-CELL-FN ( n -- [ [ ptr u8 -- ] -- ] )
    CHECKER-CELLS {: checker:n known:bool :}
    s" NSTR:CELL-SPANS" PX {: lit:n :}
    s" FFI:SCAN-SPANS" PX {: ffi:n :}
-   s" FFI-DECL:SCAN-SPANS" PX {: decl:n :}
    s" FFI:FORGET-CACHE" PX {: forget:n :}
-   known 0= lit 0= or ffi 0= or decl 0= or forget 0= or
+   known 0= lit 0= or ffi 0= or forget 0= or
    OWNER-ROW-XT @ 0= or if
       s" cell-owners-absent" FILE-REFUSE exit
    then
@@ -3029,7 +3027,7 @@ CAST: OWNER-CELL-FN ( n -- [ [ ptr u8 -- ] -- ] )
    \ admission does not mistake its own newly owned pointer for source DATA.
    PROC-MAPS:RELOAD
    forget DEF-ACTION-XT execute
-   AOT-ARM:B0 @ checker CELL-OWNERS-FN lit ffi decl
+   AOT-ARM:B0 @ checker CELL-OWNERS-FN lit ffi
       s" TASK:OWNED-CALLBACK-ROWS" PX s" FFI-CB:SCAN-SPANS" PX
       AOT-CELL:PREPARE-WITH-OWNERS
    NUNIT-DEP:FILE-UNCHECKED? UNCHECKED !
@@ -4260,7 +4258,7 @@ TRUSTED: SLOT-STORE ( n n n -- )
       then
       kind EV-FFI-SCOPE = row 1 U64-AT 1 = and if
          row 2 U64-AT row 3 U64-AT NFILE-REF:REF>WID row 4 U64-AT 0<>
-         s" FFI-DECL:SELECT" FFI-XT FFI-SELECT-XT execute
+         s" FFI:SELECT" FFI-XT FFI-SELECT-XT execute
       then
    loop
    on if OBS-SET then ;

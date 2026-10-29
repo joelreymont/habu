@@ -285,10 +285,10 @@ variable FILL-POOL
    s" plain.f" LOAD+
    s" wra.f" LOAD+
    s" wrb.f" LOAD+
-   S\" s\" wrb=\" type FFI-DECL:SELECTION bool>n . . . cr\n" IN+
+   S\" s\" wrb=\" type FFI:SELECTION bool>n . . . cr\n" IN+
    s" wca.f" LOAD+
    s" wcb.f" LOAD+
-   S\" s\" wcb=\" type FFI-DECL:SELECTION bool>n . . . cr\n" IN+
+   S\" s\" wcb=\" type FFI:SELECTION bool>n . . . cr\n" IN+
    S\" package FRAME-P3\n" IN+
    s" pkgc.f" LOAD+
    s" cread.f" LOAD+
@@ -731,11 +731,11 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    \ reads nor changes the selection, so it stores all the same.
    s" sesa.f" S\" require src/lib/ffi-abi.f\npackage FRAME-SESA\nPROCESS-SYMBOLS\n;package\n" PUT
    s" plain.f" S\" 17 constant PLAIN-K\n" PUT
-   \ wrb.f's only FFI action, an FFI-DECL:SELECT, writes the selection wra.f
+   \ wrb.f's only FFI action, an FFI:SELECT, writes the selection wra.f
    \ left as it found it.
    s" wra.f" S\" require src/lib/ffi-abi.f\nPROCESS-SYMBOLS\n" PUT
-   s" wrb.f" S\" require src/lib/ffi-abi.f\n0 0 true FFI-DECL:SELECT\n17 constant WRB-K\n" PUT
-   \ wcb.f's IMAGE-LIFECYCLE:PREPARE runs FFI-DECL's CLEAR-SCOPE hook, which
+   s" wrb.f" S\" require src/lib/ffi-abi.f\n0 0 true FFI:SELECT\n17 constant WRB-K\n" PUT
+   \ wcb.f's IMAGE-LIFECYCLE:PREPARE runs FFI's CLEAR-SCOPE hook, which
    \ clears the scope and keeps the library wca.f selected.
    s" wca.f" S\" require src/lib/ffi-abi.f\nPROCESS-SYMBOLS\n" PUT
    s" wcb.f" S\" require src/lib/image-lifecycle.f\nIMAGE-LIFECYCLE:PREPARE\n17 constant WCB-K\n" PUT

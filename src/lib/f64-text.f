@@ -62,8 +62,8 @@ FUNCTION: SNPRINTF-CALL snprintf_l ( ptr u8 n n ptr u8 r -- i32 )
 
 \ The rounding mode is libm's on glibc; Darwin keeps it in libSystem.
 : SELECT-MATH ( -- )
-   HB-TARGET-MACOS? if FFI-DECL:SELECT-PROCESS exit then
-   s" libm.so.6" FFI-DECL:SELECT-LIBRARY ;
+   HB-TARGET-MACOS? if FFI:SELECT-PROCESS exit then
+   s" libm.so.6" FFI:SELECT-LIBRARY ;
 
 SELECT-MATH
 FUNCTION: GET-ROUND fegetround ( -- i32 ) ;FUNCTION
