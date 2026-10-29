@@ -44,14 +44,14 @@
 \ the spelling binds the engine's seeded primitive (NDICT:SPELL-PRIM?): the
 \ stack shuffles (dup drop swap over nip tuck rot -rot 2dup 2drop 2swap 2over
 \ 2>r 2r> 2r@), + - * and or xor 1+ 1- negate invert lshift rshift, cells
-\ cell+ ptr-field, the comparisons, @ and c@, and ! as a call to the
-\ primitive or one per cell (THE WIDTHS); a word the dictionary binds
-\ (NDICT:CALL-BINDING), as a call, or as the value it pushes when its definer
-\ fixed one (a constant's number, a created word's or variable's DATA
-\ address; WORD-CALL); an immediate (IMM-TOKEN says which pass); a number
-\ (OUTER:NUMBER), a float being one cell of a double's bits. Anything else
-\ throws E-T0-UNSUPPORTED, and UNSUPPORTED$ names the token until the next
-\ compile.
+\ cell+ ptr-field, / and mod by a literal in 1..T0-EMIT:DIV-LIT-MAX (DIV2), the
+\ comparisons, @ and c@, and ! as a call to the primitive or one per cell (THE
+\ WIDTHS); a word the dictionary binds (NDICT:CALL-BINDING), as a call, or as
+\ the value it pushes when its definer fixed one (a constant's number, a
+\ created word's or variable's DATA address; WORD-CALL); an immediate
+\ (IMM-TOKEN says which pass); a number (OUTER:NUMBER), a float being one cell
+\ of a double's bits. Anything else throws E-T0-UNSUPPORTED, and
+\ UNSUPPORTED$ names the token until the next compile.
 \
 \ THE SPELLING. T0 compiles only bodies the checker certified, so it reads each
 \ token as the checker does (src/core/checker.f DO-TOK1). A local answers to
@@ -550,6 +550,25 @@ variable FREE                       \ bit k set: no entry holds vreg k
    INTO-SECOND {: d:T0-EMIT:vreg s:T0-EMIT:vreg :}
    d s T0-EMIT:MULX
    TOP REMOVE ;
+
+\ Whether the top entry is a constant divisor DIV-LIT and MOD-LIT take.
+: DIVISOR? ( -- bool )
+   VS-N @ 0= if false exit then
+   TOP CONST? 0= if false exit then
+   TOP VS-VAL @ {: v:n :}
+   v 1 >= v T0-EMIT:DIV-LIT-MAX <= and ;
+
+\ `/` or `mod` by a literal divisor in 1..DIV-LIT-MAX, folded when the dividend
+\ is a constant too and else divided in place by the seam word; whether it
+\ claimed the token. Any other divisor is left to the call of the kernel row,
+\ which screens a zero divisor and MIN-N -1. The fold runs the engine's own
+\ `/` or `mod`, which truncates toward zero as every kernel's rows do.
+: DIV2 ( [ n n -- n ] [ T0-EMIT:vreg n -- ] -- bool )
+   DIVISOR? 0= if 2drop false exit then
+   2 ENSURE
+   CONST2? if drop FOLD2 true exit then
+   nip TOP 1- OWN TOP VS-VAL @ rot execute
+   TOP REMOVE true ;
 
 : SHIFT2 ( [ n n -- n ] T0-EMIT:shifter -- ) {: o:T0-EMIT:shifter :}
    2 ENSURE
@@ -1612,6 +1631,7 @@ TRUSTED: DOES-PATCH-ENTRY ( -- n ) ['] does-patch ;
    a u s" +" CELL-OP? if [: + ;] T0-EMIT:OP-ADD true ALU2 true exit then
    a u s" -" CELL-OP? if [: - ;] T0-EMIT:OP-SUB false ALU2 true exit then
    a u s" *" CELL-OP? if MUL2 true exit then
+   a u s" /" CELL-OP? if [: / ;] [: T0-EMIT:DIV-LIT ;] DIV2 exit then
    a u s" @" OP? if a DO-FETCH true exit then
    a u s" !" OP? if a u DO-STORE true exit then
    a u s" =" CELL-OP? if [: = bool>n ;] T0-EMIT:CC-EQ CMP2 true exit then
@@ -1650,6 +1670,7 @@ TRUSTED: DOES-PATCH-ENTRY ( -- n ) ['] does-patch ;
    a u s" 2r>" OP? if [: 2RFROM ;] a PAIR-OP true exit then
    a u s" 2r@" OP? if [: 2RFETCH ;] a PAIR-OP true exit then
    a u s" and" CELL-OP? if [: and ;] T0-EMIT:OP-AND true ALU2 true exit then
+   a u s" mod" CELL-OP? if [: mod ;] [: T0-EMIT:MOD-LIT ;] DIV2 exit then
    a u s" xor" CELL-OP? if [: xor ;] T0-EMIT:OP-XOR true ALU2 true exit then
    false ;
 

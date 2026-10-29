@@ -306,6 +306,29 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
    {: d:T0-EMIT:vreg v:n :}
    d REG d REG v >IMM32 SINK ENC-IMUL-RRI32 ;
 
+\ idiv divides rdx:rax and writes rax and rdx, and rdx is a vreg, so it is
+\ saved on the machine stack unless d is rdx. The divisor goes into d once
+\ the dividend is in rax; when d is rdx, which cqo writes, into rcx, saved
+\ instead. The saved register is the only one restored, so every vreg but d
+\ keeps its value.
+: DIVIDE ( T0-EMIT:vreg n bool -- )
+   {: d:T0-EMIT:vreg v:n rem:bool :}
+   d REG {: dr:r64 :}
+   dr R64>N RDX R64>N = {: in-rdx:bool :}
+   in-rdx if RCX else dr then {: sr:r64 :}
+   in-rdx if RCX else RDX then {: saved:r64 :}
+   saved SINK ENC-PUSH
+   RAX dr SINK ENC-MOV-RR
+   v sr LIT-R
+   SINK ENC-CQO
+   sr SINK ENC-IDIV
+   rem if RDX else RAX then {: res:r64 :}
+   res R64>N dr R64>N <> if dr res SINK ENC-MOV-RR then
+   saved SINK ENC-POP ;
+
+: DIV-LIT ( T0-EMIT:vreg n -- ) false DIVIDE ;
+: MOD-LIT ( T0-EMIT:vreg n -- ) true DIVIDE ;
+
 : NEG ( T0-EMIT:vreg -- ) REG SINK ENC-NEG ;
 : NOT ( T0-EMIT:vreg -- ) REG SINK ENC-NOT ;
 
@@ -534,6 +557,8 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
    ['] SHIFT-LIT k T0-EMIT:SHIFT-LIT-XT !
    ['] MULX k T0-EMIT:MULX-XT !
    ['] MUL-LIT k T0-EMIT:MUL-LIT-XT !
+   ['] DIV-LIT k T0-EMIT:DIV-LIT-XT !
+   ['] MOD-LIT k T0-EMIT:MOD-LIT-XT !
    ['] NEG k T0-EMIT:NEG-XT !
    ['] NOT k T0-EMIT:NOT-XT !
    ['] CMP k T0-EMIT:CMP-XT !

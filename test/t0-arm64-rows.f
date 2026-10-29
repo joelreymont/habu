@@ -8,9 +8,10 @@
 \ writes a fresh one, a compare that branches on its condition codes, a value
 \ filled after a call into the register its loop's back edge expects, stack
 \ words over one-cell values, and cells, cell+ and ptr-field, that call
-\ nothing, the x86-64 stack moves that leave those codes alone, and the
-\ refusals that keep the patch slot last and an operation x86-64 does not
-\ provide from running.
+\ nothing, the x86-64 stack moves that leave those codes alone, a divide by a
+\ literal (an arm64 sdiv and msub in a leap-year test, the x86-64 idiv bytes
+\ with the register it saves), and the refusals that keep the patch slot last
+\ and an operation x86-64 does not provide from running.
 \ Bodies are compiled by T0:COMPILE-TEXT or driven through the seam, sealed
 \ into NEMIT, and checked by decoding the words NEMIT answers against the
 \ assembler's encodings.
@@ -450,6 +451,76 @@ $B9 c, $00 c, $00 c, $00 c, $00 c,
    NCBSTUB:CLEAR
    ARCH-A64 ;
 
+\ Whether the sealed emission holds a word w with w and mask equal to want.
+: HAS-WORD? ( n n -- bool ) {: mask:n want:n :}
+   false NEMIT:SIZE 0 ?do i WORD@ mask and want = or 4 +loop ;
+
+\ A leap-year test divides by its literals in place: sdiv and msub, and its one
+\ call is `0<>`'s, none a divide row's.
+: LEAP-CASE ( -- )
+   ARCH-A64
+   s" LEAP ( n -- bool ) dup 4 mod 0= over 100 mod 0<> and swap 400 mod 0= or "
+   BODY
+   s" mod by a literal is an sdiv" T-LABEL
+   $FFE0FC00 $9AC00C00 HAS-WORD? TTRUE
+   s" and an msub" T-LABEL
+   $FFE08000 $9B008000 HAS-WORD? TTRUE
+   s" its one call is 0<>, no divide row" T-LABEL
+   T0-EMIT:CALL-ROWS 1 T=
+   0 T0-EMIT:CALL-ROW {: cat:n ckind:n cto:n :}
+   cto s" 0<>" NDICT:CALL-TARGET T=
+   NEMIT:CLEAR ;
+
+\ The x86-64 divide by a literal saves rdx, which idiv writes, unless the
+\ destination is rdx, and then saves rcx for the divisor.
+create X86-DIV-RCX                    \ rcx = rcx / 7
+$52 c,  $48 c, $89 c, $C8 c,  $B9 c, $07 c, $00 c, $00 c, $00 c,
+$48 c, $99 c,  $48 c, $F7 c, $F9 c,  $48 c, $89 c, $C1 c,  $5A c,
+18 constant X86-DIV-RCX-LEN
+
+create X86-DIV-RDX                    \ rdx = rdx / 7
+$51 c,  $48 c, $89 c, $D0 c,  $B9 c, $07 c, $00 c, $00 c, $00 c,
+$48 c, $99 c,  $48 c, $F7 c, $F9 c,  $48 c, $89 c, $C2 c,  $59 c,
+18 constant X86-DIV-RDX-LEN
+
+create X86-MOD-RDX                    \ rdx = rdx mod 400
+$51 c,  $48 c, $89 c, $D0 c,  $B9 c, $90 c, $01 c, $00 c, $00 c,
+$48 c, $99 c,  $48 c, $F7 c, $F9 c,  $59 c,
+15 constant X86-MOD-RDX-LEN
+
+create X86-MOD-R8                     \ r8 = r8 mod 7
+$52 c,  $4C c, $89 c, $C0 c,  $41 c, $B8 c, $07 c, $00 c, $00 c, $00 c,
+$48 c, $99 c,  $49 c, $F7 c, $F8 c,  $49 c, $89 c, $D0 c,  $5A c,
+19 constant X86-MOD-R8-LEN
+
+\ The bytes of one divide by a literal, sealed alone.
+: X86-DIV ( [ T0-EMIT:vreg n -- ] n n -- )
+   {: k:n v:n :}
+   T0-EMIT:OPEN
+   k T0-EMIT:>VREG v rot execute
+   T0-EMIT:RETURN
+   T0-EMIT:SEAL-UNPLACED ;
+
+: X86-DIV-CASE ( -- )
+   CTARGET-ARCH:X86-64 T0-EMIT:SELECT
+   s" x86-64 rcx / 7 saves rdx and divides by rcx" T-LABEL
+   [: T0-EMIT:DIV-LIT ;] 0 7 X86-DIV
+   NEMIT:BYTES NEMIT:SIZE X86-DIV-RCX X86-DIV-RCX-LEN CONTAINS? TTRUE
+   NEMIT:CLEAR
+   s" x86-64 rdx / 7 saves rcx and divides by it" T-LABEL
+   [: T0-EMIT:DIV-LIT ;] 1 7 X86-DIV
+   NEMIT:BYTES NEMIT:SIZE X86-DIV-RDX X86-DIV-RDX-LEN CONTAINS? TTRUE
+   NEMIT:CLEAR
+   s" x86-64 rdx mod 400 leaves the remainder in rdx" T-LABEL
+   [: T0-EMIT:MOD-LIT ;] 1 400 X86-DIV
+   NEMIT:BYTES NEMIT:SIZE X86-MOD-RDX X86-MOD-RDX-LEN CONTAINS? TTRUE
+   NEMIT:CLEAR
+   s" x86-64 r8 mod 7 moves the remainder from rdx" T-LABEL
+   [: T0-EMIT:MOD-LIT ;] 4 7 X86-DIV
+   NEMIT:BYTES NEMIT:SIZE X86-MOD-R8 X86-MOD-R8-LEN CONTAINS? TTRUE
+   NEMIT:CLEAR
+   ARCH-A64 ;
+
 public
 
 : RUN ( -- )
@@ -470,7 +541,9 @@ public
    MOVE-CASE
    CELLS-CASE
    STEER-CASE
+   LEAP-CASE
    X86-FLAGS-CASE
+   X86-DIV-CASE
    X86-UNFILLED-CASE
    T-REPORT ;
 

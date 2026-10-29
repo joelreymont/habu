@@ -91,8 +91,10 @@
 \ primitives. The words a source keyword names end in a comma, since a
 \ keyword cannot be a definition name.
 \
-\ DIVISION. The seam has no divide: `/`, `mod` and `/mod` are calls of the
-\ kernel rows, which screen a zero divisor and MIN-N -1.
+\ DIVISION. `/` and `mod` by a literal divisor in 1..DIV-LIT-MAX are DIV-LIT
+\ and MOD-LIT, which need neither the kernel's zero test nor its MIN-N -1
+\ screen: the divisor is never 0 nor -1. Any other divisor, and `/mod`, stay
+\ calls of the kernel rows, which screen both.
 
 require src/lib/type/deftype.f
 require src/compiler/target.f
@@ -353,6 +355,8 @@ ARCHES TYPED-BUFFER SHIFT-XT [ vreg vreg shifter -- ]
 ARCHES TYPED-BUFFER SHIFT-LIT-XT [ vreg n shifter -- ]
 ARCHES TYPED-BUFFER MULX-XT [ vreg vreg -- ]
 ARCHES TYPED-BUFFER MUL-LIT-XT [ vreg n -- ]
+ARCHES TYPED-BUFFER DIV-LIT-XT [ vreg n -- ]
+ARCHES TYPED-BUFFER MOD-LIT-XT [ vreg n -- ]
 ARCHES TYPED-BUFFER NEG-XT [ vreg -- ]
 ARCHES TYPED-BUFFER NOT-XT [ vreg -- ]
 ARCHES TYPED-BUFFER CMP-XT [ vreg vreg -- ]
@@ -374,6 +378,16 @@ ARCHES TYPED-BUFFER IMM?-XT [ n -- bool ]
 
 : MULX ( vreg vreg -- ) CUR @ MULX-XT @ execute ;
 : MUL-LIT ( vreg n -- ) CUR @ MUL-LIT-XT @ execute ;
+
+\ The largest divisor DIV-LIT and MOD-LIT take: one arm64 movz.
+65535 constant DIV-LIT-MAX
+
+\ DIV-LIT and MOD-LIT replace the dividend in d with its quotient by n,
+\ truncated toward zero, or the remainder that carries the dividend's sign, as
+\ the kernel's `/` and `mod` rows compute them; n is in 1..DIV-LIT-MAX. Every
+\ other vreg keeps its value.
+: DIV-LIT ( vreg n -- ) CUR @ DIV-LIT-XT @ execute ;
+: MOD-LIT ( vreg n -- ) CUR @ MOD-LIT-XT @ execute ;
 : NEG ( vreg -- ) CUR @ NEG-XT @ execute ;
 : NOT ( vreg -- ) CUR @ NOT-XT @ execute ;
 

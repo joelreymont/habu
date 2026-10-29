@@ -65,6 +65,10 @@
 \ under `loop` and `+loop`, `leave` from an `if` arm that swapped the values,
 \ nested levels, a swap and a rotate at the back edge, a constant and a copy
 \ under the bounds, and a full virtual stack at `do`.
+\ The division rows run `/` and `mod` by each literal T0 divides in place, from
+\ a local and folded, over positive and negative dividends against the call's
+\ answers, a dividend shared with a copy, the divisors that stay calls (65536,
+\ -3, a register and a zero one, which throws E-DIV-ZERO) and a leap-year test.
 \ A CALLBACK: declaration compiled by T0 is handed to libc's qsort, which sorts
 \ a row through it, and its C entry lies between its accessor's code and the
 \ next definition's: the stub T0 appended to the accessor's emission. The
@@ -781,6 +785,47 @@ TRUSTED: L-WAGAIN ( n n -- n n )
 : X-LEAVE ( n -- n )
    0 swap 0 do 10 0 do i 2 = if X-INNER drop leave then loop i + loop ;
 
+\ ---- division by a literal --------------------------------------------------
+\ `/` and `mod` by a literal in 1..T0-EMIT:DIV-LIT-MAX divide in place from a
+\ local and fold when the dividend is a literal too; any other divisor, DREF's
+\ register among them, stays the call of the kernel row.
+: DREF ( n n -- n n ) {: a:n b:n :} a b / a b mod ;
+
+: Q1 ( n -- n n ) {: a:n :} a 1 / a 1 mod ;
+: Q4 ( n -- n n ) {: a:n :} a 4 / a 4 mod ;
+: Q7 ( n -- n n ) {: a:n :} a 7 / a 7 mod ;
+: Q100 ( n -- n n ) {: a:n :} a 100 / a 100 mod ;
+: Q400 ( n -- n n ) {: a:n :} a 400 / a 400 mod ;
+: Q65535 ( n -- n n ) {: a:n :} a 65535 / a 65535 mod ;
+: Q65536 ( n -- n n ) {: a:n :} a 65536 / a 65536 mod ;
+: QNEG3 ( n -- n n ) {: a:n :} a -3 / a -3 mod ;
+: QZERO ( n -- n ) {: a:n :} a 0 / ;
+: MZERO ( n -- n ) {: a:n :} a 0 mod ;
+\ The dividend shared with a copy the divide must leave alone.
+: QSHARE ( n -- n n n ) dup 7 / over 7 mod ;
+
+1000003 constant FOLD-X
+: FD1 ( -- n n n n ) 1000003 1 / 1000003 1 mod -1000003 1 / -1000003 1 mod ;
+: FD4 ( -- n n n n ) 1000003 4 / 1000003 4 mod -1000003 4 / -1000003 4 mod ;
+: FD7 ( -- n n n n ) 1000003 7 / 1000003 7 mod -1000003 7 / -1000003 7 mod ;
+: FD100 ( -- n n n n )
+   1000003 100 / 1000003 100 mod -1000003 100 / -1000003 100 mod ;
+: FD400 ( -- n n n n )
+   1000003 400 / 1000003 400 mod -1000003 400 / -1000003 400 mod ;
+: FD65535 ( -- n n n n )
+   1000003 65535 / 1000003 65535 mod -1000003 65535 / -1000003 65535 mod ;
+: FDZERO ( -- n ) 7 0 / ;
+
+: LEAP? ( n -- bool ) dup 4 mod 0= over 100 mod 0<> and swap 400 mod 0= or ;
+
+21 constant NDIVS
+NDIVS TYPED-BUFFER DIVS n
+0 0 DIVS !  1 1 DIVS !  3 2 DIVS !  6 3 DIVS !  7 4 DIVS !  99 5 DIVS !
+100 6 DIVS !  399 7 DIVS !  400 8 DIVS !  65535 9 DIVS !  65536 10 DIVS !
+1000003 11 DIVS !  -1 12 DIVS !  -3 13 DIVS !  -7 14 DIVS !  -100 15 DIVS !
+-400 16 DIVS !  -65535 17 DIVS !  -1000003 18 DIVS !
+$7FFFFFFFFFFFFFFF 19 DIVS !  1 63 lshift 20 DIVS !
+
 \ ---- is ------------------------------------------------------------------------
 defer HOOK ( n -- n )
 : INC ( n -- n ) 1+ ;
@@ -1233,6 +1278,38 @@ private
    s" i after an inner level that leaves after a call" T-LABEL
    77 4 X-LEAVE 6 T= 77 T= ;
 
+: SAME2 ( n n n n -- ) {: q:n r:n q2:n r2:n :} q q2 T= r r2 T= ;
+
+\ Every dividend through the word against the call by divisor k.
+: DIV-ROW ( [ n -- n n ] n -- ) {: k:n :}
+   NDIVS 0 ?do dup i DIVS @ swap execute  i DIVS @ k DREF SAME2 loop
+   drop ;
+
+: FOLD-ROW ( n n n n n -- ) {: q:n r:n nq:n nr:n k:n :}
+   q r FOLD-X k DREF SAME2  nq nr FOLD-X negate k DREF SAME2 ;
+
+: DIV-CASE ( -- )
+   s" / and mod by 1, 4, 7, 100, 400 and 65535 equal the call's" T-LABEL
+   [: Q1 ;] 1 DIV-ROW  [: Q4 ;] 4 DIV-ROW  [: Q7 ;] 7 DIV-ROW
+   [: Q100 ;] 100 DIV-ROW  [: Q400 ;] 400 DIV-ROW  [: Q65535 ;] 65535 DIV-ROW
+   s" they truncate, the remainder taking the dividend's sign" T-LABEL
+   77 -7 Q4 -3 T= -1 T= 77 T=
+   77 -1000003 Q7 -4 T= -142857 T= 77 T=
+   s" a dividend shared with a copy leaves the copy" T-LABEL
+   77 -45 QSHARE -3 T= -6 T= -45 T= 77 T=
+   s" folded / and mod equal the call's" T-LABEL
+   FD1 1 FOLD-ROW  FD4 4 FOLD-ROW  FD7 7 FOLD-ROW
+   FD100 100 FOLD-ROW  FD400 400 FOLD-ROW  FD65535 65535 FOLD-ROW
+   FD7 -4 T= -142857 T= 4 T= 142857 T=
+   s" divisors 65536 and -3 stay calls" T-LABEL
+   [: Q65536 ;] 65536 DIV-ROW  [: QNEG3 ;] -3 DIV-ROW
+   s" a zero divisor throws E-DIV-ZERO" T-LABEL
+   [: 7 QZERO drop ;] E-DIV-ZERO TTHROWSQ
+   [: 7 MZERO drop ;] E-DIV-ZERO TTHROWSQ
+   [: FDZERO drop ;] E-DIV-ZERO TTHROWSQ
+   s" leap years" T-LABEL
+   2000 LEAP? TTRUE  1900 LEAP? TFALSE  2024 LEAP? TTRUE  2023 LEAP? TFALSE ;
+
 \ A forged tag in an enum slot and in a product's enum field: the fetch's tag
 \ check ends the child after the fixture armed it.
 : FETCH-FORGED ( -- )
@@ -1263,6 +1340,7 @@ public
    LOOP-REG-CASE
    DO-REG-CASE
    IDX-CASE
+   DIV-CASE
    FETCH-FORGE-CASE
    IS-CASE
    CALLBACK-CASE
