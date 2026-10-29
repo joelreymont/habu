@@ -1033,7 +1033,8 @@ TYPED-VARIABLE SPLICE-LEN len
 \ reads its name on its own line and its type's first token on the name's: one
 \ on the next line is missing, refused at the name or the definer, and that
 \ line is the next statement, here a declaration refused at its own place or a
-\ definition a later one calls. The contract refuses the misnamed declaration's
+\ definition a later one calls. ARENA refuses an element type as its definer
+\ refuses it. The contract refuses the misnamed declaration's
 \ record under the type class, which its reason does not take.
 : BAD-STORAGE ( -- )
    GE-HB-RESET
@@ -1071,6 +1072,7 @@ TYPED-VARIABLE SPLICE-LEN len
    s" DEFER-LAYOUT-BUFFER" GE-SRC-LINE
    s" : JSTG-N2 ( -- n ) JSTG-N1 ;" GE-SRC-LINE
    s" : JSTG-N3 ( -- n ) JSTG-N2 ;" GE-SRC-LINE
+   s" ARENA JSTG-AB u16" GE-SRC-LINE
    s" 4 LAYOUT-BUFFER JSTG-LM" GE-SRC-LINE
    s" tools/check.f --all-errors accepted refused storage" CHECK-JSON-ALL
    s" habu-bad-storage.err" WRITE-ERR
@@ -1120,7 +1122,9 @@ TYPED-VARIABLE SPLICE-LEN len
    s" layout name on the next line refused at the definer" ERR-JRAW
    s" word" s\" \"DEFER-LAYOUT-BUFFER\",\"token\":\"DEFER-LAYOUT-BUFFER\",\"reason\":\"no name for\",\"file\":\"<stdin>\",\"line\":31,\"column\":1"
    s" deferred layout name on the next line refused at the definer" ERR-JRAW
-   s" word" s\" \"JSTG-LM\",\"token\":\"JSTG-LM\",\"reason\":\"no type for\",\"file\":\"<stdin>\",\"line\":34,\"column\":17"
+   s" word" s\" \"JSTG-AB\",\"token\":\"u16\",\"reason\":\"type this definer cannot store\",\"file\":\"<stdin>\",\"line\":34,\"column\":15"
+   s" arena element type refused as its definer refuses it" ERR-JRAW
+   s" word" s\" \"JSTG-LM\",\"token\":\"JSTG-LM\",\"reason\":\"no type for\",\"file\":\"<stdin>\",\"line\":35,\"column\":17"
    s" missing layout type refused at its name" ERR-JRAW
    s" habu-bad-storage.err" s" storage diagnostic contract" DIAG-CONTRACT
    GT-ERR$ s\" \"word\":\"JSTG:A:B\"" REC-LINE-OF
@@ -1218,7 +1222,9 @@ TYPED-VARIABLE SPLICE-LEN len
 \ pre-pass defers to the run is a deferral, no refusal, whose verdict is
 \ deferred, which --verify-only answers with exit 0. Either under the other's
 \ verdict is refused. --verify-only runs as a child for RECORD-CHECK's reason: the
-\ verifier's child is captured by its own process.
+\ verifier's child is captured by its own process. An ARENA ahead of the
+\ deferred stretch is checked: its family, NAME-NEW and NAME-RELEASE certify.
+\ So a whole copy of an arena owner is refused as E-IN-PLACE, not deferred.
 : TOP-LEVEL-RECORDS ( -- )
    GE-HB-RESET
    GE-SRC-RESET
@@ -1239,6 +1245,12 @@ TYPED-VARIABLE SPLICE-LEN len
    s" habu-top-qual.err" s" top-level malformed name contract" DIAG-CONTRACT
    GE-HB-RESET
    GE-SRC-RESET
+   s" package GDX-ARENAS" GE-SRC-LINE
+   s" STRUCTURE gdxrec DERIVE addr FIELD x n ;STRUCTURE" GE-SRC-LINE
+   s" ARENA GDX-RECS gdxrec" GE-SRC-LINE
+   s" TYPED-VARIABLE GDX-POOL gdx-recs" GE-SRC-LINE
+   s" : GDX-REC-X ( -- n ) GDX-POOL GDX-RECS-NEW GDXREC-X @ GDX-POOL GDX-RECS-RELEASE ;" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
    s" : GDX-GRAB ( -- ) parse-name 2drop ;" GE-SRC-LINE
    s" GDX-GRAB x" GE-SRC-LINE
    s" habu-top-deferred.f" WRITE-SRC
@@ -1250,11 +1262,31 @@ TYPED-VARIABLE SPLICE-LEN len
    s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
    s" tools/check.f --verify-only did not answer a deferred stretch with exit 0" GE-EXPECT-OK
    s" code" s" W-CHECK-DEFERRED" s" deferred stretch code" ERR-JSTR
+   s\" \"token\":\"ARENA\"" s" an arena declaration deferred to the run" GE-EXPECT-ERR-LACKS
    s" habu-top-deferred.err" WRITE-ERR
    s" habu-top-deferred.err" s" deferred stretch contract" DIAG-CONTRACT
    GT-ERR$ REC!
    s\" \"verdict\":\"deferred\"" s\" \"verdict\":\"rejected\"" REC-SWAP
-   s" habu-top-deferred-verdict.err" s" deferral verdict is not deferred" s" rejected deferred stretch refused" REFUSED ;
+   s" habu-top-deferred-verdict.err" s" deferral verdict is not deferred" s" rejected deferred stretch refused" REFUSED
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" package GDX-OWNERS" GE-SRC-LINE
+   s" STRUCTURE gdxrec DERIVE addr FIELD x n ;STRUCTURE" GE-SRC-LINE
+   s" ARENA GDX-RECS gdxrec" GE-SRC-LINE
+   s" TYPED-VARIABLE GDX-A gdx-recs" GE-SRC-LINE
+   s" TYPED-VARIABLE GDX-B gdx-recs" GE-SRC-LINE
+   s" : GDX-COPY ( -- ) GDX-A @ GDX-B ! ;" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
+   s" habu-top-owner-copy.f" WRITE-SRC
+   s" --load" ARG+
+   s" tools/check.f" ARG+
+   s" --" ARG+
+   s" --verify-only" ARG+
+   s" habu-top-owner-copy.f" PATH-ARGV+
+   s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
+   s" code" s" E-IN-PLACE" s" arena owner copy code" ERR-JSTR
+   s" W-CHECK-DEFERRED" s" an arena owner copy deferred to the run" GE-EXPECT-ERR-LACKS
+   s" tools/check.f --verify-only accepted a whole copy of an arena owner" GE-EXPECT-NONZERO ;
 
 \ A refused `generates:` row is outside any definition, and its class
 \ says which of the row's claims failed: a name that names no word, a definer
@@ -1311,6 +1343,42 @@ TYPED-VARIABLE SPLICE-LEN len
    s" tools/check.f accepted a duplicate typed variable" CHECK-JSON-ALL
    s" token" s" GDX-TYPED" s" typed duplicate token" ERR-JSTR
    s" repair_class" s" rename_duplicate" s" typed duplicate repair class" ERR-JSTR
+
+   \ ARENA refuses a taken NAME-NEW before it declares its family.
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" STRUCTURE gdxrec DERIVE addr FIELD x n ;STRUCTURE" GE-SRC-LINE
+   s" : GDX-ARENA-NEW ( -- ) ;" GE-SRC-LINE
+   s" ARENA GDX-ARENA gdxrec" GE-SRC-LINE
+   s" tools/check.f accepted an arena whose NAME-NEW is taken" CHECK-JSON-ALL
+   s" code" s\" \"E-DUPLICATE-DEFINITION\",\"repair_class\":\"rename_duplicate\""
+      s" arena duplicate code" ERR-JRAW
+   s" token" s\" \"GDX-ARENA\",\"token_index\":0,\"file\":\"<stdin>\",\"line\":3,\"column\":7"
+      s" arena duplicate at its name" ERR-JRAW
+
+   \ An ARENA whose family is a duplicate declares no NAME-NEW, as its
+   \ definer does not, under either checker mode.
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" STRUCTURE gdxtaken DERIVE addr FIELD x n ;STRUCTURE" GE-SRC-LINE
+   s" STRUCTURE gdxrec DERIVE addr FIELD x n ;STRUCTURE" GE-SRC-LINE
+   s" ARENA GDXTAKEN gdxrec" GE-SRC-LINE
+   s" TYPED-VARIABLE GDX-TV gdxtaken" GE-SRC-LINE
+   s" : GDX-USE ( -- ptr gdxrec ) GDX-TV GDXTAKEN-NEW ;" GE-SRC-LINE
+   s" tools/check.f accepted a refused arena family's NAME-NEW" CHECK-JSON-ALL
+   s" code" s\" \"E-UNDEFINED\"" s" refused arena family NAME-NEW code" ERR-JRAW
+   s" token" s\" \"GDXTAKEN-NEW\"" s" refused arena family NAME-NEW token" ERR-JRAW
+   GE-HB-RESET
+   s" habu-arena-famdup.f" WRITE-SRC
+   s" --load" ARG+
+   s" tools/check.f" ARG+
+   s" --" ARG+
+   s" --verify-only" ARG+
+   s" habu-arena-famdup.f" PATH-ARGV+
+   s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
+   s" code" s\" \"E-UNDEFINED\"" s" verify-only refused arena family NAME-NEW code" ERR-JRAW
+   s" token" s\" \"GDXTAKEN-NEW\"" s" verify-only refused arena family NAME-NEW token" ERR-JRAW
+   s" tools/check.f --verify-only accepted a refused arena family's NAME-NEW" GE-EXPECT-NONZERO
 
    \ A sealed package's existing tail is an invalid storage name before it is
    \ a duplicate. The source pass must keep checking subsequent declarations.

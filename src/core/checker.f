@@ -10851,6 +10851,8 @@ PRIM: CWORK-SPAN PE-N PE-IN PRIM;
 PRIM: CWORK-VARIABLE PE-N PE-IN PRIM;
 PRIM: CHECKER-DEFDYNAMIC-BUFFER
    PE-PTR-U8 PE-IN PE-N PE-IN  PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+PRIM: CHECKER-DEFARENA
+   PE-PTR-U8 PE-IN PE-N PE-IN  PE-PTR-U8 PE-IN PE-N PE-IN  PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-DEFDEFER-LAYOUT-BUFFER
    PE-PTR-U8 PE-IN PE-N PE-IN  PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-LBUF-NAME-OK? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
@@ -14752,6 +14754,21 @@ PTR-VARIABLE SFX-GEN-A   variable SFX-GEN-U
    type typeu CHECKER-LBUF-SIG$ name nameu CHECKER-USIG-CERT-ADD
    name nameu s" -RESERVE" s" n --" CHECKER-DEFSUFFIX-NAME
    name nameu s" -RELEASE" s" --" CHECKER-DEFSUFFIX-NAME ;
+
+\ Checker-side registration for the ARENA gate path (verify-source
+\ RECORD-ARENA), once that has asked the live definer's questions and declared
+\ the family FAM, NAME folded (src/core/arena.f ARENA-DECL:SOURCE): the two words
+\ `NAME-NEW ( ptr FAM -- ptr <type> )` and `NAME-RELEASE ( ptr FAM -- )`.
+: CHECKER-DEFARENA
+   ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: type:ptr typeu:n fam:ptr famu:n name:ptr nameu:n :}
+   0 LBUF-SIG-U !
+   s" ptr " LBUF-SIG-APP  fam famu LBUF-SIG-APP
+   s"  -- ptr " LBUF-SIG-APP  type typeu LBUF-SIG-APP
+   name nameu s" -NEW" LBUF-SIG-BUF LBUF-SIG-U @ CHECKER-DEFSUFFIX-NAME
+   0 LBUF-SIG-U !
+   s" ptr " LBUF-SIG-APP  fam famu LBUF-SIG-APP  s"  --" LBUF-SIG-APP
+   name nameu s" -RELEASE" LBUF-SIG-BUF LBUF-SIG-U @ CHECKER-DEFSUFFIX-NAME ;
 
 \ Checker-side registration for the DEFER-LAYOUT-BUFFER gate path (verify-source
 \ RECORD-DEFER-LAYOUT-BUFFER). That definer publishes its accessor

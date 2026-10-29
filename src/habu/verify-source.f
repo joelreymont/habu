@@ -2781,6 +2781,50 @@ variable STG-TYPE-U
    DISARM
    name nameu s" " at DEF-STORAGE DEFINED-HERE ;
 
+\ Whether ARENA may publish NAME's derived word NAME+SFX: a name the definer
+\ admits that no record holds. NAME, read from byte AT, names no word itself,
+\ so a taken derived word is the duplicate, refused at NAME.
+: ARENA-WORD-FREE? ( ptr u8 n ptr u8 n n -- bool )
+   {: name:ptr nameu:n sfx:ptr sfxu:n at:n :}
+   SB-RESET  name nameu SB-APPEND  sfx sfxu SB-APPEND
+   SB$ {: gen:ptr genu:n :}
+   gen genu CHECKER-LBUF-NAME-OK? 0= IF false EXIT THEN
+   gen genu CHECKER-CERT-DUP? 0= IF true EXIT THEN
+   at TOKEN-BYTE !  nameu DUPLICATE!  false ;
+
+\ ARENA (src/core/arena.f) declares a family and two words over it from one
+\ line. The scan asks the definer's questions in its order, so a refused
+\ declaration declares no family and a refused family no word: a multi-error
+\ load counts the family's refusal and goes on, as in the definer. It registers
+\ the family from the STRUCTURE text the definer evaluates (ARENA-DECL:SOURCE)
+\ and the two words (CHECKER-DEFARENA) by their effects, so it evaluates
+\ neither body and arms no field-projection window. Without this row the line
+\ deferred the rest of the source to the run.
+: RECORD-ARENA ( -- )
+   SCAN-LINE-TOKEN TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
+   nameu 0= IF TOP-CUR-A @ TOP-CUR-U @ CHECKER-STORAGE-NAME-REFUSE EXIT THEN
+   name nameu NAME-DECLARED
+   SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
+   name nameu CHECKER-LBUF-NAME-OK? 0= IF EXIT THEN
+   name nameu s" -NEW" at ARENA-WORD-FREE? 0= IF EXIT THEN
+   name nameu s" -RELEASE" at ARENA-WORD-FREE? 0= IF EXIT THEN
+   type typeu CHECKER-DYNAMIC-INFO 0= IF
+      drop name nameu type typeu CHECKER-STORAGE-TYPE-REFUSE EXIT
+   THEN {: width:n :}
+   name nameu ARENA-DECL:TAIL {: tail:ptr tailu:n :}
+   tail tailu STRUCTURE-DECL:NAME-OK? 0= IF EXIT THEN
+   name nameu tail tailu type typeu width ARENA-DECL:SOURCE
+   2drop 2drop 2drop 2drop
+   {: fam:ptr famu:n :}
+   tail tailu + {: body:ptr :}
+   MULTI-ERR-N @ {: refused:n :}
+   tail tailu  body  fam famu + body -  STRUCTURE-DECL:SD-REPLAY-OUTCOME
+   drop 2drop
+   MULTI-ERR-N @ refused <> IF EXIT THEN
+   name nameu at nameu ARM
+   type typeu tail tailu name nameu CHECKER-DEFARENA
+   DISARM ;
+
 \ Registrars resolve the whole type before publishing a word, so an unresolved
 \ type leaves only the scoped uncertainty mark.
 : STORAGE-OUTCOME ( n -- ) {: rc:n :}
@@ -3696,6 +3740,7 @@ variable DEFER-LAYOUT-BUFFER-XT s" DEFER-LAYOUT-BUFFER" DEFER-LAYOUT-BUFFER-XT L
 variable TYPED-BUFFER-XT s" TYPED-BUFFER" TYPED-BUFFER-XT LIBRARY-XT!
 variable TYPED-VARIABLE-XT s" TYPED-VARIABLE" TYPED-VARIABLE-XT LIBRARY-XT!
 variable DYNAMIC-BUFFER-XT s" DYNAMIC-BUFFER" DYNAMIC-BUFFER-XT LIBRARY-XT!
+variable ARENA-XT s" ARENA" ARENA-XT LIBRARY-XT!
 variable CWORK-BUFFER-XT s" CWORK-BUFFER" CWORK-BUFFER-XT LIBRARY-XT!
 variable CWORK-SPAN-XT s" CWORK-SPAN" CWORK-SPAN-XT LIBRARY-XT!
 variable CWORK-VARIABLE-XT s" CWORK-VARIABLE" CWORK-VARIABLE-XT LIBRARY-XT!
@@ -3788,6 +3833,8 @@ variable VARIADIC-XT s" VARIADIC" VARIADIC-XT LIBRARY-XT!
       [: RECORD-TYPED-VARIABLE ;] catch STORAGE-OUTCOME 0 0= EXIT THEN
    a u DYNAMIC-BUFFER-XT @ s" DYNAMIC-BUFFER" LIBRARY-DEFINER? IF
       [: RECORD-DYNAMIC-BUFFER ;] catch STORAGE-OUTCOME 0 0= EXIT THEN
+   a u ARENA-XT @ s" ARENA" LIBRARY-DEFINER? IF
+      [: RECORD-ARENA ;] catch STORAGE-OUTCOME 0 0= EXIT THEN
    a u CWORK-BUFFER-XT @ s" CWORK-BUFFER" LIBRARY-DEFINER? IF
       [: RECORD-CWORK-BUFFER ;] catch STORAGE-OUTCOME 0 0= EXIT THEN
    a u CWORK-SPAN-XT @ s" CWORK-SPAN" LIBRARY-DEFINER? IF
