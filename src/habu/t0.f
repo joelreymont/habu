@@ -43,14 +43,15 @@
 \ recurse >r r> r@ ['] [char] char is {: [: ;]); an operation T0 inlines, when
 \ the spelling binds the engine's seeded primitive (NDICT:SPELL-PRIM?): the
 \ stack shuffles (dup drop swap over nip tuck rot -rot 2dup 2drop 2swap 2over
-\ 2>r 2r> 2r@), + - * and or xor 1+ 1- negate invert lshift rshift, the
-\ comparisons, @ and c@, and ! as a call to the primitive or one per cell (THE
-\ WIDTHS); a word the dictionary binds (NDICT:CALL-BINDING), as a call, or as
-\ the value it pushes when its definer fixed one (a constant's number, a
-\ created word's or variable's DATA address; WORD-CALL); an immediate
-\ (IMM-TOKEN says which pass); a number (OUTER:NUMBER), a float being one cell
-\ of a double's bits. Anything else throws E-T0-UNSUPPORTED, and
-\ UNSUPPORTED$ names the token until the next compile.
+\ 2>r 2r> 2r@), + - * and or xor 1+ 1- negate invert lshift rshift, cells
+\ cell+ ptr-field, the comparisons, @ and c@, and ! as a call to the
+\ primitive or one per cell (THE WIDTHS); a word the dictionary binds
+\ (NDICT:CALL-BINDING), as a call, or as the value it pushes when its definer
+\ fixed one (a constant's number, a created word's or variable's DATA
+\ address; WORD-CALL); an immediate (IMM-TOKEN says which pass); a number
+\ (OUTER:NUMBER), a float being one cell of a double's bits. Anything else
+\ throws E-T0-UNSUPPORTED, and UNSUPPORTED$ names the token until the next
+\ compile.
 \
 \ THE SPELLING. T0 compiles only bodies the checker certified, so it reads each
 \ token as the checker does (src/core/checker.f DO-TOK1). A local answers to
@@ -561,6 +562,13 @@ variable FREE                       \ bit k set: no entry holds vreg k
    INTO-SECOND {: d:T0-EMIT:vreg s:T0-EMIT:vreg :}
    d s o T0-EMIT:SHIFT
    TOP REMOVE ;
+
+\ A cell is 8 bytes on every T0 target: `cells` shifts left by 3, and
+\ `ptr-field` adds the shifted cell index to its base.
+3 constant CELL-SHIFT
+
+\ The top entry in cells, as bytes.
+: CELLS-OP ( -- ) CELL-SHIFT PUSH-CONST [: lshift ;] T0-EMIT:SH-LEFT SHIFT2 ;
 
 : REMOVE2 ( -- ) TOP REMOVE TOP REMOVE ;
 
@@ -1672,6 +1680,10 @@ TRUSTED: DOES-PATCH-ENTRY ( -- n ) ['] does-patch ;
    a u s" 2drop" OP? if a 2 s" " MOVE-OP true exit then
    a u s" 2swap" OP? if a 4 s" 1032" MOVE-OP true exit then
    a u s" 2over" OP? if a 4 s" 321032" MOVE-OP true exit then
+   a u s" cells" CELL-OP? if CELLS-OP true exit then
+   a u s" cell+" CELL-OP? if
+      CELL PUSH-CONST [: + ;] T0-EMIT:OP-ADD true ALU2 true exit
+   then
    false ;
 
 : KW6 ( ptr u8 n -- bool ) {: a:ptr u:n :}
@@ -1691,6 +1703,9 @@ TRUSTED: DOES-PATCH-ENTRY ( -- n ) ['] does-patch ;
 
 : KW9 ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" construct" STR=CI if DO-CONSTRUCT true exit then
+   a u s" ptr-field" CELL-OP? if
+      CELLS-OP [: + ;] T0-EMIT:OP-ADD true ALU2 true exit
+   then
    false ;
 
 : KEYWORD ( ptr u8 n -- bool ) {: a:ptr u:n :}

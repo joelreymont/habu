@@ -39,11 +39,13 @@
 \ The share rows run bodies whose copies share a vreg with their source, each
 \ with a cell under its result: in-place arithmetic, a negate and loads on a
 \ copy, a copy parked on the return stack, comparisons of a copy, and fifteen
-\ copies that fill the virtual stack and evict a shared vreg. The fuse rows run
-\ each compare straight into `if`, `while` and `until`, which branch on its
-\ condition codes, both ways and over counted loops, with a cell under each
-\ result. The join rows run `if`, `else` and `then` whose arms leave the
-\ virtual stack in different layouts, each both ways with a cell under its
+\ copies that fill the virtual stack and evict a shared vreg. The cell rows
+\ run `cells` over a negative count, store and fetch through a pointer table
+\ by `ptr-field`, and fold `3 cells cell+`, with a cell under each result. The
+\ fuse rows run each compare straight into `if`, `while` and `until`, which
+\ branch on its condition codes, both ways and over counted loops, with a cell
+\ under each result. The join rows run `if`, `else` and `then` whose arms leave
+\ the virtual stack in different layouts, each both ways with a cell under its
 \ result: a call in one arm, swapped and rotated arms, a constant against a
 \ register, arms that leave more or fewer registers than the layout, an `exit`
 \ in either arm, an if/else nested in each arm, sixteen live values evicted in
@@ -488,6 +490,13 @@ W-DEF-2OVER W-PO
 : S-FILL ( n -- n )
    dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup
    + + + + + + + + + + + + + + + ;
+
+\ ---- cell arithmetic ----------------------------------------------------------
+3 PTR-U8-TABLE CA-PT
+: CA-CELLS ( n -- n ) cells ;
+: CA-PUT ( ptr u8 n -- ) CA-PT swap ptr-field ! ;
+: CA-GET ( n -- ptr u8 ) CA-PT swap ptr-field @ ;
+: CA-FOLD ( -- n ) 3 cells cell+ ;
 
 \ ---- compares fused into their branches -------------------------------------
 \ A compare right before `if`, `while` or `until` branches on its condition.
@@ -1082,6 +1091,14 @@ private
    s" fifteen copies fill the virtual stack and evict a shared vreg" T-LABEL
    77 3 S-FILL 48 T= 77 T= ;
 
+: CELLS-CASE ( -- )
+   s" cells takes a negative count and ptr-field indexes a pointer table" T-LABEL
+   77 -2 CA-CELLS -16 T= 77 T=
+   s" AB" drop 0 CA-PUT  s" CD" drop 2 CA-PUT
+   77 2 CA-GET c@ 67 T= 77 T=   77 0 CA-GET c@ 65 T= 77 T=
+   s" literal operands fold" T-LABEL
+   77 CA-FOLD 32 T= 77 T= ;
+
 \ Each compare through `if` both ways, through `while` and `until` loops that
 \ run a counted number of turns, with an immediate operand, a negative one, one
 \ on the left, a literal spilled between the compare and its branch, a flag
@@ -1240,6 +1257,7 @@ public
    FORGE-CASE
    WIDE-CASE
    SHARE-CASE
+   CELLS-CASE
    FUSE-CASE
    JOIN-CASE
    LOOP-REG-CASE

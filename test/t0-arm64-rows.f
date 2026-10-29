@@ -7,9 +7,10 @@
 \ spill's or fill's last cell, a copy that shares its vreg until a load
 \ writes a fresh one, a compare that branches on its condition codes, a value
 \ filled after a call into the register its loop's back edge expects, stack
-\ words over one-cell values that call nothing, the x86-64 stack moves that
-\ leave those codes alone, and the refusals that keep the patch slot last and
-\ an operation x86-64 does not provide from running.
+\ words over one-cell values, and cells, cell+ and ptr-field, that call
+\ nothing, the x86-64 stack moves that leave those codes alone, and the
+\ refusals that keep the patch slot last and an operation x86-64 does not
+\ provide from running.
 \ Bodies are compiled by T0:COMPILE-TEXT or driven through the seam, sealed
 \ into NEMIT, and checked by decoding the words NEMIT answers against the
 \ assembler's encodings.
@@ -385,6 +386,18 @@ private
    T0-EMIT:CALL-ROWS 0 T=
    NEMIT:CLEAR ;
 
+\ cells, cell+ and ptr-field compute in registers and call nothing.
+: CELLS-CASE ( -- )
+   ARCH-A64
+   s" CI ( n -- n ) cells cell+ " BODY
+   s" cells and cell+ call nothing" T-LABEL
+   T0-EMIT:CALL-ROWS 0 T=
+   NEMIT:CLEAR
+   s" PF ( ptr ptr u8 n -- ptr ptr u8 ) ptr-field " BODY
+   s" ptr-field calls nothing" T-LABEL
+   T0-EMIT:CALL-ROWS 0 T=
+   NEMIT:CLEAR ;
+
 \ A do loop's sum, filled after a call, lands in the register the loop head
 \ keeps it in, as the JIT's NEED-ALLOC, steers a pull: no register move
 \ follows the call.
@@ -455,6 +468,7 @@ public
    DO-LOOP-CASE
    IDX-CASE
    MOVE-CASE
+   CELLS-CASE
    STEER-CASE
    X86-FLAGS-CASE
    X86-UNFILLED-CASE
