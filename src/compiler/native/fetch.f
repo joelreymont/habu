@@ -162,15 +162,16 @@ variable OP-N
 
 public
 
+\ Forget the definition's facts. The buffers keep their mappings, grown to the
+\ largest definition seen, for the next one: the four counts bound every read,
+\ so no row past them is seen. Image capture unmaps them through the dynamic
+\ storage registry.
 : RELEASE ( -- )
    0 COUNT !
    0 BIND-N !
    0 SPLIT-N !
    0 OP-N !
-   CHECKER-OWNER:RELEASE-CERTIFICATE
-   FACTS-RELEASE ORIGINS-RELEASE
-   WIDTHS-RELEASE SPLIT-BASE-RELEASE SPLIT-END-RELEASE
-   OP-AT-RELEASE OP-POS-RELEASE OP-W-RELEASE ;
+   CHECKER-OWNER:RELEASE-CERTIFICATE ;
 
 \ Each split body contributes its own complete snapshot under its source base.
 \ Only NSTR-owned immutable bytes survive this call; no live certificate or
