@@ -14669,7 +14669,7 @@ public
 \ have, which is a class to add here rather than a number to smuggle past.
 \ An event (CHECKER-TAPE:EVENT) is a kind and two arguments, a0 and a1, zero
 \ where none is named; a token no step judged further is an event of its class.
-0 constant K-NAME
+0 constant K-NAME               \ a0: a call's record index from 0, -1 for none
 1 constant K-INT                \ a0: the value
 2 constant K-REAL               \ a0: the value's bits
 3 constant K-STRING
@@ -18860,14 +18860,15 @@ defer NAMED-OPERAND-XT ( -- )
 
 \ Once a token's role is a source call, keep its original resolution even when
 \ a later type step refuses. The declared ABI is selected by that symbol,
-\ before judgment or publication can change the active name.
+\ before judgment or publication can change the active name. Its event names
+\ the record the call bound (TOK-REC); a step that judges the call further
+\ latches its own event after this one.
 : BIND-SOURCE-CALL ( ptr u8 n -- ) {: a:ptr u:n :}
    a u BIND-TOK
-   TOK-SYM @ 0= IF
-      a u ALLDIG? a u FLODIG? or IF EXIT THEN
-      -1 BWIN-HIT ! EXIT
-   THEN
+   a u ALLDIG? a u FLODIG? or IF EXIT THEN
+   CHECKER-TAPE:K-NAME  TOK-REC @ CHECKER-RESOLVE:REC>INDEX  0 EVENT!
    -1 BWIN-HIT !
+   TOK-SYM @ 0= IF EXIT THEN
    BWIN-UNJUDGED @ 0= TOK-ABI-DONE @ 0= 0= or IF EXIT THEN
    -1 TOK-ABI-DONE !
    TOK-SYM @ FIND-SIG-SYM IF FEP @ TOK-ABI-EFF ! THEN ;
@@ -25003,9 +25004,11 @@ variable SCAN-TOKS    \ how many tokens the pass reported, for that assertion
 \ This turn's events, filed under the ordinals the reports below take, on every
 \ pass: the token's, which is what the step that judged it latched, else
 \ EV-UNJUDGED; and a swallowed token's, an operand, since it compiles nothing of
-\ its own and its keyword's event names what it resolved to.
+\ its own and its keyword's event names what it resolved to. A literal's payload
+\ is what it compiles, so a string or character token reports its class even
+\ though its opener bound a call (BIND-SOURCE-CALL).
 : EV-COMMIT ( -- )
-   EV-HIT @ IF EV-KIND @ EV-A0 @ EV-A1 @ ELSE EV-UNJUDGED THEN
+   EV-HIT @  CPAY-ON @ SPAY-ON @ or 0=  and IF EV-KIND @ EV-A0 @ EV-A1 @ ELSE EV-UNJUDGED THEN
    REC-IX @ EV-FILE
    IS-PEND @ IF CHECKER-TAPE:K-OPERAND 0 0 REC-IX @ 1 + EV-FILE THEN ;
 
