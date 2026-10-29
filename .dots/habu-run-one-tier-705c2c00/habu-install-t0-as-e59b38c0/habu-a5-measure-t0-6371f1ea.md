@@ -1,6 +1,6 @@
 ---
 title: "A5: measure T0 against the JIT on arm64"
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-10-29T03:23:36.283303+02:00"
