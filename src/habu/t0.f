@@ -388,14 +388,16 @@ variable FREE                       \ bit k set: no entry holds vreg k
    1 n lshift invert FREE @ and FREE !
    n T0-EMIT:>VREG ;
 
+\ The lowest vreg in the nonzero mask m, allocated.
+: LOWEST ( n -- T0-EMIT:vreg ) {: m:n :}
+   0 begin 1 over lshift m and 0= while 1+ repeat CLAIM ;
+
 \ A vreg no entry or TAKE holds. A caller holding a taken vreg ALLOCs only for
 \ an entry with none, at most VREGS-1 entries being left, so a vreg is free;
 \ with none taken, entries holding every vreg hold one each, so EVICT frees the
 \ bottom one's.
 : ALLOC ( -- T0-EMIT:vreg )
-   FREE @ 0= if EVICT then
-   FREE @ {: m:n :}
-   0 begin 1 over lshift m and 0= while 1+ repeat CLAIM ;
+   FREE @ 0= if EVICT then FREE @ LOWEST ;
 
 : PUSH-REG ( T0-EMIT:vreg -- ) {: r:T0-EMIT:vreg :}
    K-REG r T0-EMIT:VREG>N VS-N @ ENTRY!
@@ -422,25 +424,21 @@ variable FREE                       \ bit k set: no entry holds vreg k
    j s CS-LAY-N @ >= if -1 exit then
    s j LAY@ ;
 
-\ The free vregs layout s names for entries 0 .. j-1.
+\ The vregs layout s names for entries 0 .. j-1.
 : HELD-BACK ( n n -- n ) {: s:n j:n :}
-   0 j 0 ?do s i AIM dup 0< if drop else 1 swap lshift or then loop
-   FREE @ and ;
+   0 j 0 ?do s i AIM dup 0< if drop else 1 swap lshift or then loop ;
 
 \ A vreg for entry j, filled from memory, steered by layout s as the arm64
 \ JIT's NEED-ALLOC, (src/habu/jit.f) steers a pull: the vreg s names for the
 \ entry is taken when free, so a value filled after a call inside a loop or an
-\ `if` lands where the back edge or `then` needs it. Otherwise the
-\ lowest free vreg is taken with the free ones s names for entries 0 .. j-1,
-\ filled after this one, held back; ENSURE fills at most VREGS entries, so
-\ a vreg is left and ALLOC evicts nothing.
+\ `if` lands where the back edge or `then` needs it. Otherwise the lowest
+\ free vreg is taken that s names for none of entries 0 .. j-1, filled after
+\ this one. ENSURE asks for at most VREGS entries, so with the held-back vregs
+\ aside one is free for LOWEST and nothing is evicted.
 : STEER ( n n -- T0-EMIT:vreg ) {: s:n j:n :}
    s j AIM {: g:n :}
    g 0< if false else 1 g lshift FREE @ and 0<> then if g CLAIM exit then
-   s j HELD-BACK {: h:n :}
-   h invert FREE @ and FREE !
-   ALLOC
-   h FREE @ or FREE ! ;
+   s j HELD-BACK invert FREE @ and LOWEST ;
 
 \ Entry k of m loaded from the memory cell k - m below the stack pointer into
 \ the vreg layout s steers it to (STEER); entry 0, the last, by the pop that

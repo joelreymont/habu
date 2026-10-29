@@ -429,25 +429,36 @@ private
    T0-EMIT:CALL-ROWS 0 T=
    NEMIT:CLEAR ;
 
-\ A do loop's sum, filled after a call, lands in the register the loop head
-\ keeps it in, as the JIT's NEED-ALLOC, steers a pull: no register move
-\ follows the call.
+\ A value filled after a call lands in the register the innermost structure
+\ with a recorded layout keeps it in, as the JIT's NEED-ALLOC, steers a pull:
+\ the body calls, and no register move follows the call. An entry filled
+\ above it keeps off the registers that layout names for the entries below,
+\ which SUM3 and SUM6 need; a do loop inside an `if` steers by the loop's
+\ layout, not the `if`'s (SUM3); and an `else` after a first arm that leaves
+\ records no layout, so the fill skips past it to the loop's (SUM6).
 public
 : STEP1 ( n -- n ) 1+ ;
 private
 
-: STEER-CASE ( -- )
-   ARCH-A64
-   s" SUM1 ( n -- n ) 0 swap 0 do i T0-ROWS-TEST:STEP1 + loop " BODY
+: STEERED ( ptr u8 n -- )
+   BODY
    0 0 A64ASM:ENC-MOV {: mov:n :}
    false 0 NEMIT:SIZE 0 ?do
       i WORD@ {: w:n :}
       over w $FFE0FFE0 and mov = and if 1+ then
       swap w $FC000000 and $94000000 = or swap
-   4 +loop nip
+   4 +loop {: called:bool moves:n :}
+   s" the body calls" T-LABEL
+   called TTRUE
    s" no register move follows the call" T-LABEL
-   0 T=
+   moves 0 T=
    NEMIT:CLEAR ;
+
+: STEER-CASE ( -- )
+   ARCH-A64
+   s" SUM1 ( n -- n ) 0 swap 0 do i T0-ROWS-TEST:STEP1 + loop " STEERED
+   s" SUM3 ( n f -- n ) if 1+ 10 0 do i T0-ROWS-TEST:STEP1 + loop then " STEERED
+   s" SUM6 ( n -- n ) 1+ 10 0 do i 5 = if leave else i T0-ROWS-TEST:STEP1 + then loop " STEERED ;
 
 \ The x86-64 stack moves leave the condition codes alone: the stack pointer
 \ moves by lea r12,[r12+8] and lea r12,[r12-8], and zero loads by mov ecx,0.
