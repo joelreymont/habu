@@ -90,8 +90,6 @@ variable HBT-IMAGE-RESAVED-U
 : HBT-ROOTED-APP$ ( -- ptr u8 n )
    S\" require src/lib/json-read.f\n: MAIN ( -- ) s\q from-root\q type cr ;\n" ;
 
-\ The rooted build uses the given out root; an empty one inherits the run's root
-\ and its app-builder family image.
 : HBT-ROOTED-BUILD ( ptr u8 n -- )
    {: root:ptr rootu:n :}
    s" 600000" root rootu HBT-IMAGE-ENV
@@ -182,7 +180,6 @@ variable HBT-IMAGE-RESAVED-U
    outu ;
 
 
-\ The first run's script: define and run X, then save the session.
 : HBT-IMAGE-SAVE-SCRIPT$ ( -- ptr u8 n )
    SB-RESET
    S\" : X ( -- n ) 7 ; X .\ns\q " SB-APPEND

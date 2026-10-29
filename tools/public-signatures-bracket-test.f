@@ -1,27 +1,9 @@
-\ public-signatures-bracket-test.f - the manifest's load-time bracket.
-\
-\ THE CLAIM UNDER TEST is provenance, not arithmetic. A manifest names one file
-\ and every row in it is stamped with that file's path, so the synthesized
-\ registry rows may only speak for families THIS LOAD declared. PS:FAM-BASE is
-\ the mark that separates them from the ones the engine arrived holding.
-\
-\ WHY THIS IS NOT A RESTATEMENT. Asserting that the manifest holds exactly the
-\ rows between FAM-BASE and TFAM-N@ would repeat the walk's own bounds and could
-\ not fail. What is asserted instead is the consequence: a family the engine
-\ came with must not be named in the manifest of a file that never mentioned it.
-\ The witness is FOUND rather than spelled - the first family below the mark that
-\ the tool's own PS:PS-ENUM-PUBLIC? / PS:PS-DRV-PUBLIC? say it would publish -
-\ so the case asks the walk's question rather than keeping a second copy of it.
-\ Measured on the seeded product: FAM-BASE is 119 and the unfiltered walk turned
-\ a 13-definition manifest into 386 definitions.
-\
-\ AN ENGINE WITH NOTHING BELOW THE MARK says so. An unseeded host carries no
-\ public enum or derived family at all before this load, so there is nothing for
-\ it to exclude; the case records that rather than passing quietly on an
-\ assertion that could not fail. The gate runs this on the product, where it is
-\ live.
-\
-\ Run: bin/hb --load tools/public-signatures-bracket-test.f
+\ public-signatures-bracket-test.f - the manifest's load-time bracket: rows stamped
+\ with one file's path speak only for families THIS load declared, above
+\ PS:FAM-BASE, so the first family below the mark that PS:PS-ENUM-PUBLIC? or
+\ PS:PS-DRV-PUBLIC? would publish must not be named. Seeded product: FAM-BASE 119;
+\ unfiltered, 13 definitions became 386. An unseeded host has none below the mark
+\ and says so. Run: bin/hb --load tools/public-signatures-bracket-test.f
 
 require src/lib/errors.f
 require src/lib/string.f

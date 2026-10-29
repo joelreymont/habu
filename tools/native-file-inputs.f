@@ -66,7 +66,6 @@ CAST: ENV-CURRENT-XT ( n -- [ ptr u8 n -- ptr u8 n ] )
    answer dst ROW-BYTES pathu + + answeru BYTE-COPY
    dst ;
 
-\ Whether the file's stat equals the one row recorded.
 : STAT= ( ptr u8 ptr u8 n -- bool )
    {: row:ptr path:ptr pathu:n :}
    path pathu FS:FILE-META {: size:n sec:n ns:n csec:n cns:n :}
@@ -212,7 +211,6 @@ public
 : ADD ( ptr u8 n ptr u8 n -- )
    LOCK ['] STORE-SOURCE ['] UNLOCK finally ;
 
-\ A loaded file's own source row: its path stamped now, its bytes hashed.
 : ADD-SOURCE ( ptr u8 n ptr u8 n -- )
    LOCK ['] STORE-OWN ['] UNLOCK finally ;
 

@@ -1,10 +1,8 @@
-\ hb-build-aot-test.f - checked fixture for tools/hb-build-lib.f: the AOT
-\ groups that build and run a program - the object producer, the native call
-\ sites, and one program whose packages carry the division refusal, the
-\ stripped span definer with its foreign calls, the empty does> clause and a
-\ multi-page DATA payload - one program over the forms a product compiles built
-\ at each tier, and the program the keyed linker image refuses.
-\ tools/hb-build-test-lib.f lists the other hb-build rows.
+\ hb-build-aot-test.f - checked fixture for tools/hb-build-lib.f's AOT groups: the
+\ object producer, native call sites, one stripped program over the division
+\ refusal, the span definer with foreign calls, the empty does> clause and a
+\ multi-page DATA payload, the product subject built at each tier, and the
+\ program the keyed linker image refuses. Other rows: tools/hb-build-test-lib.f.
 \ Run: bin/hb --load tools/hb-build-aot-test.f
 
 require tools/hb-build-test-lib.f
@@ -25,23 +23,13 @@ package HB-BUILD-CLI
 : HBT-SPAN-OUT ( -- ptr u8 n )
    HBT-SPAN-OUT-BUF HBT-SPAN-OUT-U @ ;
 
-\ THE CONTRACT THAT DOES NOT DEPEND ON THE TIER. A program that divides by zero
-\ catches ARITH-ABI:E-DIV-ZERO and carries on, and a built executable is where
-\ that used to stop being true: the lowering's guard ended in a `brk`, so the
-\ same source that refused by name under `bin/hb` died with a register dump once
-\ it was an image. The catch is asserted THROUGH A BUILT AND EXECUTED IMAGE
-\ because the relocation of the refusal's branch is what makes it true and
-\ nothing short of running the image exercises it.
-\
-\ A zero divisor in a STRIPPED image. The division is compiled by the native
-\ compiler (the image is built at tier 1, which `LOADING` holds it to), and its
-\ refusal branches to the engine's own `throw` - an address outside this
-\ payload's window that the closure walker has to follow and the build has to
-\ relocate, exactly as it does for the terminator's `die`. An image whose branch
-\ was left pointing at the building engine's text does not come back here with a
-\ code at all, and one whose refusal was dropped answers zero and throws -9051.
-\ The code is ARITH-ABI:E-DIV-ZERO, spelled out because a built source is a
-\ string and cannot see this file's constants.
+\ A zero divisor in a stripped image catches ARITH-ABI:E-DIV-ZERO: the tier-1
+\ refusal branches to the engine's `throw`, outside the payload window, which the
+\ closure walker must follow and the build relocate, as for the terminator's
+\ `die`. Only running the image exercises that: a branch left at the building
+\ engine's text returns no code, and a dropped refusal answers zero and throws
+\ -9051. The code is spelled out because a built source cannot see this file's
+\ constants.
 : HBT-AOT-DIVZ-PKG$ ( -- ptr u8 n )
    S\" package HBT-DIVZ\n: LOADING ( -- ) tier@ 1 <> if -9050 throw then ;\nLOADING\nvariable A\nvariable B\nvariable R\n: DZ ( n n -- n ) / ;\n: TRY ( -- n ) [: A @ B @ DZ R ! ;] catch ;\npublic\n: RUN ( -- ) 7 A ! 0 B ! TRY dup . cr -6400 <> if -9051 throw then 7 A ! 2 B ! TRY 0 <> if -9052 throw then R @ 3 <> if -9053 throw then ;\n;package\n" ;
 
@@ -53,20 +41,13 @@ package HB-BUILD-CLI
 4096 CODEGEN:BUFFER HBT-POSITIVES
 
 \ A `create ... does>` definer whose clause yields src/lib/span.f's two-cell
-\ span, built stripped and RUN as an image: the clause is compiled at tier 1
-\ (LOADING asserts the tier), and the span set the value belongs to - allocate,
-\ copy, skip, take, sub, release - is exercised through it (dot
-\ habu-give-a-does-97cd0db2). The program also calls getpid and gethostname
-\ through FUNCTION: declarations, resolved at the first call in the image's own
-\ process. `SPAN-BUFFER:`'s clause has a body, so the created word's last
-\ instruction is the plain B that habu2.f DOESPATCH:EMIT wrote over its RET,
-\ aimed at the parent's `;does` companion record. Only src/habu/aot-closure.f
-\ SCAN-DIRECT following a direct branch OUT of the member puts that record in
-\ the closure; without it the relocation refused this very program with `aot:
-\ PC-relative target removed or outside closure`. Running the image is what
-\ proves the clause was copied and retargeted rather than merely counted. The
-\ engine bakes both modules the program requires, so the linker image links it
-\ (KEYED-PRE-WINDOW-REFUSED below says why).
+\ span, built stripped at tier 1 (LOADING asserts it) and run: allocate, copy,
+\ skip, take, sub and release go through it, and getpid and gethostname resolve
+\ through FUNCTION: at the first call. The clause has a body, so the created word
+\ ends in the B that habu2.f DOESPATCH:EMIT wrote over its RET, aimed at the
+\ parent's `;does` record; only aot-closure.f SCAN-DIRECT following that branch
+\ out of the member puts the record in the closure. The engine bakes both
+\ required modules, so the linker image links it (see KEYED-PRE-WINDOW-REFUSED).
 : HBT-SPAN-PKG ( -- )
    S\" require src/lib/span.f\nrequire src/lib/memory.f\nrequire src/lib/ffi-abi.f\npackage HBT-SPAN\n: LOADING ( -- ) tier@ 1 <> if -9060 throw then ;\nLOADING\nPROCESS-SYMBOLS\nFUNCTION: PID getpid ( -- i32 ) ;FUNCTION\n" HBT-POSITIVES CODEGEN:APPEND-STRING
    HB-TARGET-MACOS? if
@@ -76,21 +57,16 @@ package HB-BUILD-CLI
    then
    S\" FUNCTION: HOST gethostname ( ptr u8 n -- i32 )\n   0 1 WRITES-ARG ;FUNCTION\ncreate HOST-BUF 256 allot\n64 SPAN-BUFFER: SB\npublic\n: RUN ( -- )\n   PID 0 > 0= if -9061 throw then\n   HOST-BUF BYTE-VIEW 256 HOST 0 <> if -9062 throw then\n   SB SPAN:LEN . cr\n   128 MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: s :}\n   s\" span\" s SPAN:COPY\n   s 0 4 SPAN:SUB SPAN:$ type cr\n   s 8 SPAN:SKIP 16 SPAN:TAKE SPAN:LEN . cr\n   s MEM:FREE-SPAN ;\n;package\n" HBT-POSITIVES CODEGEN:APPEND-STRING ;
 
-\ THE OTHER HALF OF THE DOES> RULE. An EMPTY clause compiles no instruction, so
-\ elaborate.f STAGE-DOES-ENTRY publishes the companion record and patches
-\ nothing: the created word keeps its RET and emits no branch at all. Such a
-\ definer must still build and run stripped - the closure has nothing extra to
-\ follow and the unreached companion record is shaken out with every other name.
-\
-\ A definer whose `does>` clause is EMPTY, in a stripped image: the created word
-\ keeps the RET `create` emitted (habu2.f DOES-REC:ELIDE-EMPTY), so it reads its
-\ cell with no branch out of its own body, and the image prints what was stored.
+\ An empty `does>` clause compiles nothing: elaborate.f STAGE-DOES-ENTRY
+\ publishes the companion record and patches nothing, so the created word keeps
+\ the RET `create` emitted (habu2.f DOES-REC:ELIDE-EMPTY), reads its cell with no
+\ branch, and still builds and runs stripped; the unreached record is shaken out.
 : HBT-AOT-DOES-PKG$ ( -- ptr u8 n )
    S\" package HBT-DOES\n: LOADING ( -- ) tier@ 1 <> if -9070 throw then ;\nLOADING\n: SLOT: ( -- ) create 0 , does> ( -- ptr n ) ;\nSLOT: S1\npublic\n: RUN ( -- ) 42 S1 ! S1 @ dup . cr 42 <> if -9071 throw then ;\n;package\n" ;
 
-\ An EXPORT alias in a stripped image (dot habu-compiler-pkg-re-688212c1): MAIN
-\ calls one word through its defining package and through a package that
-\ re-exports it, and the image prints the body's result once per name.
+\ An EXPORT alias in a stripped image: MAIN calls one word through its defining
+\ package and through a re-exporting one, and the image prints the result once
+\ per name.
 : HBT-AOT-ALIAS-PKG$ ( -- ptr u8 n )
    S\" package HBT-XA\npublic\n: W ( i64 -- i64 ) dup * ;\n;package\npackage HBT-XB\npublic\nEXPORT HBT-XA:W\n;package\n" ;
 
@@ -108,7 +84,6 @@ package HB-BUILD-CLI
    S\" : MAIN ( -- ) HBT-DIVZ:RUN HBT-SPAN:RUN HBT-DOES:RUN HBT-MULTI:RUN 5 HBT-XA:W . cr 5 HBT-XB:W . cr ;\n" HBT-POSITIVES CODEGEN:APPEND-STRING
    HBT-POSITIVES CODEGEN:CONTENTS ;
 
-\ Run an image and hold it to its whole output.
 : HBT-RUN-IMAGE-OUT ( ptr u8 n ptr u8 n -- ) {: img:ptr imgu:n want:ptr wantu:n :}
    img imgu >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
    HBT-TIMEOUT-MS >MS RUN-CAPTURE HBT-CAPTURE>N {: outn:n errn:n rcn:n :}

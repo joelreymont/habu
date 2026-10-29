@@ -1,10 +1,11 @@
 \ check-verify-test-lib.f - CHECK:VERIFY-BYTES and `tools/check.f --verify-only`.
 \ Run: bin/hb --load tools/check-verify-test.f
 \
-\ The operation is called here directly, as a language server calls it, and the
-\ command line is run as a child. Fixtures are files under a fresh TMPDIR
-\ directory; the subject's bytes are handed over in memory. What can go wrong,
-\ and the case that sees it:
+\ The operation is called directly, as a language server calls it; the command
+\ line runs as a child. Fixtures are files under a fresh TMPDIR directory; the
+\ subject's bytes are handed over in memory.
+
+\ What can go wrong, and the case that sees it:
 \
 \   a word of an earlier check, or of this process, reaches the subject   two-in-turn
 \   the subject's top-level code runs, or a dependency's                  no-run
@@ -237,7 +238,7 @@ package CHECK-VERIFY-TEST
 \ What a child of this test may write on either stream: check.f's packets from
 \ a full capture of the verifier's output fit.
 $800000 constant CAP
-\ What the verifier child's stdout once held at most: CHECK's fixed capture.
+\ 4 MiB: output past it must not be cut short (cli-whole-output).
 $400000 constant OLD-CAPTURE
 \ big.f's definitions, each a packet of some 500 bytes: more in all than
 \ OLD-CAPTURE.
@@ -252,7 +253,7 @@ variable SUBJ-U
 DYNAMIC-BUFFER OUT u8
 DYNAMIC-BUFFER ERR u8
 DYNAMIC-BUFFER FILE-BYTES u8
-DYNAMIC-BUFFER GEN u8                   \ generated source
+DYNAMIC-BUFFER GEN u8
 DYNAMIC-BUFFER ALL-ERR u8               \ --all-errors' stderr, to compare
 variable GEN-U
 variable START-NS
@@ -341,7 +342,6 @@ variable CLI-OUT-U
    ;MATCH ;
 
 
-\ Whether the verifier's child ran past its deadline.
 : TIMED-OUT? ( CHECK:verdict -- bool )
    MATCH CHECK:verdict
       incomplete OF
@@ -582,8 +582,6 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s" big.f" BIG$SRC FIXTURE ;
 
 
-\ The second check must see neither what the first declared nor a word of this
-\ process.
 : TWO-IN-TURN ( -- )
    s\" : CVT-ONE ( -- n ) 1 ;\n" s" one.f" GUARD-MS CHECK-AS
    0 s" two-in-turn: the first" EXPECT-KIND
@@ -665,15 +663,13 @@ CK-USE-MAX 1 + constant OVER-USINGS
    3 s" held: the verifier's own source" EXPECT-KIND ;
 
 
-\ Where the second line of the given text starts.
 : LINE-TWO ( ptr u8 n -- n ) {: a:ptr u:n :}
    0 begin dup u < if a over + c@ 10 <> else false then while 1+ repeat 1+ ;
 
 
 \ An open definition stops the verifier at its opener (7155, a code private to
-\ src/habu/verify-source.f): a refusal that says where, and the stop's record,
-\ the one `check.f --verify-only` writes, in VERIFY-OUT$ for a client to
-\ publish.
+\ src/habu/verify-source.f), with the record `check.f --verify-only` writes, in
+\ VERIFY-OUT$ for a client to publish.
 : OPEN-STOP ( -- )
    s\" : CVT-OPEN ( -- n ) 1\n" s" open.f" GUARD-MS CHECK-AS {: v :}
    v 1 s" open-stop: refused" EXPECT-KIND
@@ -760,8 +756,6 @@ CK-USE-MAX 1 + constant OVER-USINGS
 \ its words, and the packet it made first is kept. The input's last `using` is
 \ one past what the checker holds open: CHECKER-USING's `76 die`
 \ (src/core/checker.f), which `--load` refuses as ENGINE-ERROR:USING-OVERFLOW.
-\ The bare `generates:` this case read before no longer kills the verifier: it
-\ stops it at the reader (7187, E-MISSING-NAME).
 : NO-RESULT ( -- )
    OVER-USING$SRC s" over-using.f" GUARD-MS CHECK-AS {: v :}
    v 4 s" no-result: incomplete" EXPECT-KIND
@@ -1467,8 +1461,7 @@ $180000 constant LARGE-STDIN-LEN
 
 \ tools/source-discovery.f loads by computed paths, every one in a body
 \ (SD-CALL-ACT): calls no check makes, so the file verifies from the tree root
-\ in the operation and through --verify-only from outside the tree. The load
-\ order, context and package cases exercise check.f's mode composition.
+\ in the operation and through --verify-only from outside the tree.
 : BODY-COMPUTED ( -- )
    s" tools/source-discovery.f" TREE-BYTES s" tools/source-discovery.f" TREE$
    [: drop ;] GUARD-MS >MS CHECK:VERIFY-BYTES
@@ -1672,7 +1665,6 @@ $180000 constant LARGE-STDIN-LEN
 \ Each subject below is checked as top.f. What `bin/hb --load` does with the
 \ same text is in the comment above each case.
 
-\ How many packets LINES holds.
 : PACKETS ( ptr u8 n -- n )
    CV-START
    0 begin
@@ -3403,8 +3395,8 @@ TYPED-VARIABLE DEF-NODE SPAN:span<u8>                       \ the definition lin
    s" definitions: created" s" class" s" storage" DEF-STR
    s" definitions: created" s" -- n" DEF-EFF
    s" definitions: created" s" CVT-MK CVT-M" 5 s" defs.f" DEF-SPAN
-   \ A family name has no recording symbol: its line waits on the checker
-   \ reporting each name a registrar publishes, the Habu owner's Q1 lane.
+   \ A family name has no recording symbol: it has no line until the checker
+   \ reports each name a registrar publishes.
    s" cvt-nt" DEF
    s" definitions: no family line yet" T-LABEL DEF-NODE @ SPAN:LEN 0= TTRUE
    s" definitions: one line each" T-LABEL CHECK:VERIFY-DEFS$ OBJECTS 15 T=
@@ -4326,7 +4318,6 @@ variable SEEN-U
    label labelu T-LABEL CAND-NODE @ s" target_start" JR:T-INT VALUE SPAN:LEN 0= TTRUE ;
 
 
-\ CAND found no line.
 : NO-CAND ( ptr u8 n -- )
    {: label:ptr labelu:n :}
    label labelu T-LABEL CAND-NODE @ SPAN:LEN 0= TTRUE ;

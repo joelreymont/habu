@@ -38,23 +38,14 @@ variable PRIOR-ENGINE-ROOT-U
    CLASS-WANTED @ CLASS-WHITEBOX = if s" whitebox image" exit then
    s" product image" ;
 
-\ The running host may predate a new engine callback, and its reserved bands may be
-\ smaller than this tree's. Keep the host's actual engine declarations -- the cells
-\ below ITS heap floor -- and discard every declaration belonging to the retired
-\ heap above it.
-\
-\ THE BOUNDARY IS THE HOST'S, NOT THE TREE'S. A tree whose reserved bands grew
-\ moves DATA-START and the host that builds it did not move with it, so classifying
-\ the host's rows by the source constant keeps the host's own heap rows, which the
-\ capture then refuses by value (src/habu/aot-capture.f ACAP-TARGET-REFUSE, exit
-\ 74). The engine publishes its floor at boot in BOOT-LAYOUT:HEAP-START-CELL.
-\
-\ FILTERED, NOT TRUNCATED. A fixed-band cell is registered where its kind is
-\ decided, and for two of them that happens after the heap has started growing, so
-\ the rows are NOT partitioned in registration order -- measured 2026-09-12, a
-\ product engine carries 9 engine rows of which 2 sit past its first heap row, and
-\ stopping at the first heap row dropped them. Compacting in place keeps every
-\ engine row and preserves the order the registrar wrote.
+\ The running host may predate a new engine callback, and its reserved bands may
+\ be smaller than this tree's: keep the host's engine declarations, the cells
+\ below its own heap floor (BOOT-LAYOUT:HEAP-START-CELL), and discard those of
+\ the retired heap above it. The tree's DATA-START would keep host heap rows,
+\ which the capture refuses by value (src/habu/aot-capture.f ACAP-TARGET-REFUSE,
+\ exit 74). Rows are filtered, not truncated: two fixed-band cells register
+\ after the heap starts growing (a product engine: 2 of 9 engine rows past its
+\ first heap row), so compaction keeps every engine row in registration order.
 : ADDR-ROWS ( -- n ) data-base SNAP-RELOC:XTCELL-N-CELL + @ ;
 
 : ADDR-ROW@ ( n -- n ) ADDRESS-CELLS:ROW@ ;
@@ -93,13 +84,10 @@ variable PRIOR-ENGINE-ROOT-U
 \ The checker owner's record holds its reset entry as a code address integer.
 CAST: RESET-XT ( n -- [ -- ] )
 
-\ The retained host's literal rows come from the package that owns them, which
-\ publishes them while it is open, one segment of the active pool at a time
-\ (src/compiler/native/string.f SEGMENTS, SOURCE-SPAN, SOURCE-ROWS). This driver
-\ used to find ARENA, ARENA-CAP, R-OFF and R-LEN by name in NSTR's PRIVATE
-\ wordlist, through the namespace record, after the package had closed - four
-\ private names a shipped engine had to keep alive for one caller. A call needs
-\ none of them.
+\ The retained host's literal rows come from the package that owns them, one
+\ segment of the active pool at a time while it is open
+\ (src/compiler/native/string.f SEGMENTS, SOURCE-SPAN, SOURCE-ROWS): no private
+\ NSTR name stays alive for this caller.
 : LITERAL-SOURCE-ROWS ( n -- ptr u8 n ptr n ptr n )
    NSTR:SOURCE-ROWS ;
 
@@ -114,12 +102,9 @@ CAST: RESET-XT ( n -- [ -- ] )
    remaining CELL < if LITERAL-SPAN-REFUSE then
    size 0 < size remaining CELL - > or if LITERAL-SPAN-REFUSE then ;
 
-\ The checker publishes its own declaration owner into the engine's target
-\ declaration cell as it loads (src/core/checker.f), so the owner is a cell
-\ read: the retained host's before LOAD-TARGET and the freshly loaded target's
-\ after it, which is exactly the late binding this word used to get by
-\ evaluating `package CHECKER-REG DECLARATIONS ;package` - a private name
-\ resolved at runtime, and an unchecked span to carry its result.
+\ The checker publishes its declaration owner into the engine's target
+\ declaration cell as it loads (src/core/checker.f): the retained host's before
+\ LOAD-TARGET, the fresh target's after it.
 : CHECKER-OWNER ( -- ptr u8 )
    data-base NCOMP-DISPATCH:TARGET-DECL-CELL + 0 ptr-field @ ;
 
@@ -261,7 +246,6 @@ CAST: CELL-XT ( n -- [ -- ptr n ] )
    then
    XREF-START ;
 
-\ A private word of a package loaded into the open target code window.
 : OPEN-PRIVATE-XT ( ptr u8 n ptr u8 n -- n )
    PRIVATE-TARGET-XT OPEN-CODE ;
 
@@ -898,19 +882,15 @@ TYPED-VARIABLE WRITER-NAME-SPAN [ n -- n n ]
 : SOURCE-WRITER ( -- [ AOT-OWNED:capture ptr n n ptr u8 n -- ] )
    s" NATIVE-EMIT:WRITE-C2" SOURCE-WRITER-NAMED ;
 
-\ SOURCE LOADED AFTER THE CAPTURE COMPILES FOR THE WINDOW'S MACHINE. The
+\ Source loaded after the capture compiles for the window's machine: the
 \ window's last act, src/habu/native-runtime.f CHECKER-REG:SEAL, runs
 \ NCOMP:INSTALL, which puts the window's compiler in the dispatch cell this
-\ process shares, and that compiler lowers for the binding the window's
-\ target.f names. A window for this engine's machine compiles the writer into
-\ code this engine runs. A window for another machine cannot: the linux-x86-64
-\ window's compiler lowered the writer's first new file, src/arch/arm64/icode.f,
-\ for x86-64 inside this AArch64 engine and refused the file's first definition
-\ with E-X64EMIT-PLACE. Such a window's writer has to be compiled before the window
-\ opens, and none is. The ordinary entry checks before opening the window,
-\ so it cannot load target sources that the foreign machine does not support.
-\ Other source-writer callers still check here before writing.
-\ NABI:BINDING, compiled with this file, answers for the building engine.
+\ process shares. A window for another machine cannot compile a writer this
+\ engine runs (a linux-x86-64 window refused src/arch/arm64/icode.f's first
+\ definition with E-X64EMIT-PLACE), so its writer must be compiled before the
+\ window opens. The ordinary entry checks before opening the window; other
+\ source-writer callers check here. NABI:BINDING, compiled with this file,
+\ answers for the building engine.
 : OUTPUT-LAUNCH-CK ( -- )
    BUILD-TARGET:ACTION@ {: action:RTARGET:build-action :}
    action RTARGET:EXECUTION@ action RTARGET:BODY-TARGET@
@@ -1080,13 +1060,11 @@ variable WRITER-OVERRIDE?
    TEMP$ OUTPUT$ FS:RENAME-FILE ;
 
 \ ---- the build-side name map ---------------------------------------------------
-\ The image keeps a name only for the records something can ask for by name and
-\ strips the rest (src/habu/aot-capture.f ACAP-NAMED?). The code is all still
-\ there, so a tool that reads this image - imgdump, a debugger, an xref over a
-\ shipped engine - can still be handed a code address it cannot name. The build
-\ therefore writes the COMPLETE map beside the engine, at <image>.map: every
-\ record the capture saw, stripped ones included, with the span the image kept
-\ and the name it did not.
+\ The image keeps names only for records something can ask for by name
+\ (src/habu/aot-capture.f ACAP-NAMED?). The build writes the complete map beside
+\ the engine, at <image>.map, for tools holding a code address the image cannot
+\ name: every record the capture saw, stripped ones included, with the span the
+\ image kept and the name it did not.
 \
 \ FORMAT. A version line, a `columns` line naming the fields in order, then one
 \ row per record with fields separated by one space. The columns line is the
@@ -1523,13 +1501,10 @@ public
    DEFAULT-SOURCE-POLICY
    RUN-BUNDLE-READY ;
 
-\ The build proper, to an explicit output path, returning its result code.
-\
-\ RUN is this plus the argv convention and the exit. A driver that wants to do
-\ anything AFTER the build needs one that returns, and `die` never does: it is
-\ an unconditional exit_group, so `include tools/native-build.f` has no code
-\ path back to its caller. tools/build-profile.f prints the profiler's report
-\ after the build and is that driver.
+\ The build proper, to an explicit output path, returning its result code. RUN
+\ adds the argv convention and the exit; `die` is an unconditional exit_group,
+\ so a driver that works after the build (tools/build-profile.f prints the
+\ profiler's report) needs this one.
 : RUN-PATH-RC ( ptr u8 n -- n )
    {: out:ptr outu:n :}
    BUILD-TARGET:IDLE-CK

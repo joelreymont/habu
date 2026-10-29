@@ -1,85 +1,9 @@
 \ compile-floor.f - the tier-1 per-definition compile floor, as one number.
-\
-\ Run:
-\     bin/hb --load tools/compile-floor.f                \ report only
-\     bin/hb --load tools/compile-floor.f -- 0.5         \ report, then ratchet
-\
-\ One machine-readable line, every number in microseconds per definition (one
-\ line in the output, wrapped here):
-\
-\     floor: trivial-t1 <us> three-op-t1 <us> [trivial-t0 <us>] compiled <n>
-\            least-trivial-t1 <us> least-three-op-t1 <us> [least-trivial-t0 <us>]
-\ 
-\ The tier-0 fields appear only on ARM; x86-64 has no tier-0 compiler. The
-\ present sets report their mean over every round, and the least- fields
-\ each set's cheapest single definition in any round; compiled counts the
-\ definitions the tier-1 compiler took. The ratchet below judges the
-\ trivial-t1 mean, and the target is 500 us (0.5 ms) of it: a program pays for
-\ every definition it compiles, so the mean is the cost a quote is about, and
-\ it carries a cost only some definitions pay, which no least sees. It also
-\ carries the cores the definitions landed on, so ratchet on a quiet machine;
-\ test/compile-floor-gate.f, which runs at any load, judges each least against
-\ a budget and each mean only against a loose ceiling.
-\
-\ WHAT IS TIMED. 100 definitions `: Tn ( n -- n ) 1 + ;` and 100 definitions
-\ `: Un ( n n -- n ) swap drop ;`, each handed to the engine's
-\ `evaluate-closed` inside its own window of this thread's CPU time
-\ (TIME:THREAD-CPU-NS, src/lib/time-cpu.f). Every source string is built BEFORE
-\ the first window opens, so what a window holds is compile time and not string
-\ building. On ARM the tier-0 line compiles the trivial body a third time under
-\ its own names (`Vn`), so the contrast never redefines the set it contrasts
-\ with. A round compiles the available sets in that order, each torn down
-\ before the next is built, and a run is five rounds.
-\
-\ WHY `swap drop` IS THE SECOND BODY. It carries no combinable pair and `1 +`
-\ carries one, so the two lines together price the fold. They used to price a
-\ whole module rebuild: the pair was found after selection and the module was
-\ written again to hold the combined form, which cost about 160 us of the
-\ trivial line. Selection writes the combined form itself now, so what is left
-\ between the two lines is the work the pair's own operations cost.
-\
-\ WHY THE COUNT IS PROVED AND NOT ASSUMED. `set-tier` is engine-global state,
-\ and a tier-1 selection that silently did not take would report the JIT's
-\ number as the optimizing compiler's - which is the one mistake that makes
-\ this whole file lie. A wrapper on NCOMP-DISPATCH:XT-CELL counts every
-\ dispatch into NCOMP:COMPILE. Each tier-1 set must contribute exactly 100 and
-\ the ARM tier-0 set exactly 0, or the tool refuses with E-FLOOR-UNCOMPILED
-\ instead of printing a number.
-\
-\ AND WHY THE BORROW IS SCOPED. The dispatch cell, the tier and 200 or 300
-\ measurement dictionary entries are the engine's, not this tool's. They are
-\ taken inside MAIN,
-\ after the argument is parsed, and all three are given back through
-\ `finally` - so they are returned on the refusing path exactly as on the
-\ reporting one. Installing the wrapper at file load instead would count every
-\ definition the loading process made afterwards on tier 1; leaving the wrong
-\ tier selected would hand the caller a different compiler than it had; and leaving
-\ the measurement names behind would make the second MAIN in a process die of
-\ `duplicate definition: T1`. A process may load this file, read the line, and
-\ carry on unchanged; the in-process controls in
-\ test/compiler/compile-floor.f are what hold that open.
-\
-\ WHY CPU TIME, WHY THE LEAST, AND WHY ROUNDS. A wall-clock window also holds
-\ every slice the scheduler gave the neighbours: the same tool on one commit
-\ reported trivial-t1 anywhere from 9193 to 29407 us while sibling lanes
-\ compiled. The thread's CPU time leaves those slices out, but not the core
-\ the thread ran on: an efficiency core compiles the same set about 2.5-3x
-\ slower than a performance core, and under load part of a set lands on one.
-\ That only ever adds time, and a regression slows every definition, so a
-\ set's cheapest definition is its cost on the fastest core the run found;
-\ that is the number test/compile-floor-gate.f judges. One pass of the tier-0
-\ set is about 4 ms of CPU and fits inside one slow stretch: at load average
-\ 90 on this 12-core machine, one run in 96 read least-trivial-t0 75 us
-\ against a usual 34. Five rounds spread every set across the whole run, about
-\ half a second of CPU. The least prices only a cost every definition pays:
-\ one that only some definitions pay shows in the mean alone. Quote a number
-\ with the host and the load it was taken at.
-\
-\ THE RATCHET. Given a floor in milliseconds the tool refuses with
-\ E-FLOOR-EXCEEDED - and a nonzero exit - when the trivial tier-1 mean is
-\ above it. The comparison is against the microseconds this tool PRINTS, so a
-\ run that passes the ratchet and a run that reports a number below the floor
-\ are the same run. Without the argument it only reports.
+\   bin/hb --load tools/compile-floor.f [-- FLOOR-MS]   with FLOOR-MS (0.5): refuse
+\   a larger trivial-t1 mean, E-FLOOR-EXCEEDED. One line, us per definition:
+\   floor: trivial-t1 <us> three-op-t1 <us> [trivial-t0 <us>] compiled <n>
+\          least-trivial-t1 <us> least-three-op-t1 <us> [least-trivial-t0 <us>]
+\ The t0 fields are skipped on x86-64; compiled counts tier-1 definitions.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -130,9 +54,11 @@ create SET-LEAST SETS cells allot  \ each set's cheapest definition in any round
 variable BOUND-US                  \ ratchet floor in us; read only when a floor was given
 
 \ ---- the dispatch counter ---------------------------------------------------
-\ The wrapper stands in front of the compiler's own entry, so the count
-\ covers every definition compiled on tier 1 while it is installed and nothing
-\ else: tier 0 reaches LCOMPILE without reading this cell at all.
+\ `set-tier` is engine-global: a tier-1 selection that did not take would report
+\ tier 0's number as the optimizing compiler's. The wrapper stands in front of
+\ the compiler's own entry, so it counts every definition compiled on tier 1
+\ while installed and nothing else: tier 0 never reads this cell. Each tier-1
+\ set must add exactly SET-N and the tier-0 set 0, or E-FLOOR-UNCOMPILED.
 
 : COUNTING-COMPILE ( ptr u8 n -- )
    NC-COUNT @ 1+ NC-COUNT !
@@ -175,6 +101,17 @@ variable BOUND-US                  \ ratchet floor in us; read only when a floor
    SRC SRC-OFF ix cells + @ +  SRC-LEN ix cells + @ ;
 
 \ ---- the measured window ----------------------------------------------------
+\ Each definition is one `evaluate-closed` inside its own window of this
+\ thread's CPU time. Wall clock also holds the neighbours' slices: one commit
+\ read trivial-t1 from 9193 to 29407 us while sibling lanes compiled. CPU time
+\ still holds the core: an efficiency core compiles a set about 2.5-3x slower
+\ than a performance core. That only adds time and a regression slows every
+\ definition, so a set's least is its cost on the fastest core the run found,
+\ the number test/compile-floor-gate.f judges; a cost only some definitions pay
+\ shows in the mean alone. One tier-0 pass is about 4 ms of CPU and fits in one
+\ slow stretch (at load average 90 on 12 cores, one run in 96 read
+\ least-trivial-t0 75 us against a usual 34), so ROUNDS spread every set over
+\ about half a second of CPU. Quote a number with its host and load.
 
 : COMPILE-ONE ( n -- n )           \ CPU nanoseconds for one definition
    TIME:THREAD-CPU-NS swap
@@ -185,7 +122,6 @@ variable BOUND-US                  \ ratchet floor in us; read only when a floor
 
 : LEAST-CELL ( n -- ptr n ) cells SET-LEAST + ;
 
-\ Every definition's CPU time added to the set's sum, the cheapest kept.
 : COMPILE-SET ( n -- ) {: set :}
    SET-N 0 ?do
       i COMPILE-ONE
@@ -205,10 +141,9 @@ variable BOUND-US                  \ ratchet floor in us; read only when a floor
 
 : DISPATCHES ( -- n )  NC-COUNT @ NC-MARK @ - ;
 
-\ A measured set is scaffolding, not a result: 100 names the caller never asked
-\ for, and a second MAIN in one process would collide with every one of them
-\ (the engine refuses a redefinition outright). Removing them is what makes
-\ this tool callable twice, and so what lets the in-process controls exist.
+\ A measured set is scaffolding: a second MAIN in one process would collide with
+\ every name (the engine refuses a redefinition), so removing them is what lets
+\ test/compiler/compile-floor.f's in-process controls call this tool twice.
 : UNDEF-ONE ( n -- ) {: ix :}
    SB-RESET
    s" undefine " SB-APPEND  LIVE-PREFIX PREFIX-U @ SB-APPEND  ix FMT:SB-U
@@ -221,14 +156,9 @@ variable BOUND-US                  \ ratchet floor in us; read only when a floor
 
 \ TEARDOWN leads, so at most one set is ever live and LIVE-PREFIX always names
 \ it: the removal happens before BUILD-SET overwrites the prefix it needs.
-\ That is the invariant rather than an ordering the callers below must keep.
-\
-\ COMPILE-SET either defines every name in the set or throws, so once it has
-\ returned the whole set exists and TEARDOWN's count is exact. A throw inside
-\ it leaves SET-LIVE? clear and the partial set in the dictionary - reachable
-\ only if compiling `1 +` fails, which kills the run loudly anyway.
-\
-\ MEASURE is one round of one set: its name prefix, its body tail and its row.
+\ COMPILE-SET defines every name in the set or throws, so TEARDOWN's count is
+\ exact; a throw leaves SET-LIVE? clear and the partial set in the dictionary,
+\ reachable only if compiling `1 +` fails, which kills the run anyway.
 : MEASURE ( ptr u8 n ptr u8 n n -- ) {: px:ptr pu tx:ptr tu set :}
    TEARDOWN
    px pu tx tu BUILD-SET
@@ -245,6 +175,9 @@ variable BOUND-US                  \ ratchet floor in us; read only when a floor
    LF SB-APPEND-C
    SB$ E-FLOOR-UNCOMPILED REFUSE ;
 
+\ `swap drop` carries no combinable pair and `1 +` carries one, so the two sets
+\ together price the fold. The tier-0 set compiles the trivial body under its
+\ own names so the contrast never redefines a tier-1 set.
 : RUN-TIER1 ( -- )
    1 set-tier
    s" T" s"  ( n -- n ) 1 + ; " TRIV-T1 MEASURE
@@ -273,6 +206,11 @@ variable BOUND-US                  \ ratchet floor in us; read only when a floor
    SB$ type cr ;
 
 \ ---- the ratchet ------------------------------------------------------------
+\ The ratchet judges the trivial-t1 mean (target 500 us) as printed: a
+\ program pays for every definition it compiles, and the mean carries costs no
+\ least sees. It carries the cores too, so ratchet on a quiet machine;
+\ test/compile-floor-gate.f, which runs at any load, judges each least against
+\ a budget and each mean only against a loose ceiling.
 
 : FLOOR-US ( ptr u8 n -- n )       \ "0.5" -> 500
    STR>FLOAT MATCH option
@@ -299,6 +237,11 @@ variable BOUND-US                  \ ratchet floor in us; read only when a floor
    0 ARGV:POS$ FLOOR-US BOUND-US ! ;
 
 \ ---- the borrow ------------------------------------------------------------
+\ The dispatch cell, the tier and the measurement names are the engine's: MAIN
+\ takes them after parsing and gives all three back through `finally`, on the
+\ refusing path too. A wrapper installed at load would count every later tier-1
+\ definition, a tier left selected hands the caller another compiler, and names
+\ left behind make a second MAIN die of `duplicate definition: T1`.
 
 \ Every boot installs NCOMP:COMPILE in the tier-1 `:` dispatch, the entry
 \ COUNTING-COMPILE forwards to, so PUT-BACK ends the borrow with NCOMP:INSTALL.

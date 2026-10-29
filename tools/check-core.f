@@ -1,4 +1,7 @@
-\ check-core.f - reusable Habu-native checked engine core.
+\ check-core.f - the checked engine core behind tools/check.f: the closure walk and pre-pass
+\ (tools/check-verify-core.f), the nominal pass, the lints, and the run stage in a child on the
+\ engine src/lib/engine-candidate.f names, its output captured and replayed under the subject's
+\ name. --verify-only stops before the run stage.
 
 require src/lib/date.f
 require src/lib/errors.f
@@ -32,7 +35,7 @@ require tools/check-all-errors-core.f    \ loads src/habu/verify-source.f
 require tools/check-verify-core.f
 require src/core/checker-owner-guard.f
 
-\ Checker axioms. Retirement: habu-campaign-c2-mem-c3d7662b.
+\ Checker axioms.
 \ CHECK! certifies snippets so the fail-closed source hook compiles checked.
 \ TYPE-RESERVED? is the DEFLINEAR and VALUE-RECORD name rule.
 \ CHECKER-DEFLINEAR publishes parsed linearity metadata in the child scope.
@@ -275,7 +278,6 @@ variable CHK-TFAM-NAME-I
    msg u CHK-EXPLAIN-LN
    code CHK-THROW ;
 
-\ A path argument longer than its slot is a usage error.
 : CHK-PATH-TOO-BIG ( -- )
    s" check.f: source path exceeds capacity" CHK-E-USAGE CHK-FAIL ;
 
@@ -403,7 +405,6 @@ private
       some OF CHK-DEADLINE-SET ENDOF
    ;MATCH ;
 
-\ The argument at CHK-ARG-I, and a valued option's value with it.
 : CHK-PARSE-AT ( -- )
    CHK-ARG-I @ s" --stdin-path" CHK-ARG= if CHK-PARSE-STDIN-PATH exit then
    CHK-ARG-I @ s" --deadline-ms" CHK-ARG= if CHK-PARSE-DEADLINE exit then
@@ -1126,8 +1127,8 @@ variable CHK-EXP-ROWS
    dup 0= IF drop EXIT THEN
    drop CHK-E-CHECK CHK-THROW ;
 
-\ A malformed header is reported by CHECKER-DEFFAMILY through the declaration packet
-\ (§24), matching native/verify-source -- not a raw pre-check throw.
+\ CHECKER-DEFFAMILY reports a malformed header through the declaration packet, as
+\ src/habu/verify-source.f does, never as a raw pre-check throw.
 : CHK-TFAM-REGISTER ( n -- n ) {: k:n :}   \ k at 'newtype'; next scan index
    k 1+ CHK-TFAM-NAME-I !
    CHK-DECL-CAPTURE
@@ -1167,8 +1168,8 @@ variable CHK-EXP-ROWS
       1+
    repeat drop k LINT-FALSE ;
 
-\ Unterminated SUMTYPE is reported by CHECKER-DEFSUM-NOEND through the declaration packet
-\ (§24), matching native/verify-source -- not a raw pre-check throw.
+\ CHECKER-DEFSUM-NOEND reports an unterminated SUMTYPE through the declaration packet, as
+\ src/habu/verify-source.f does, never as a raw pre-check throw.
 : CHK-SUM-REGISTER ( n -- n ) {: k:n :}    \ k at 'sumtype'; next scan index
    k s" ;SUMTYPE" CHK-BLOCK-COLLECT 0= if
       drop
@@ -1184,43 +1185,15 @@ variable CHK-EXP-ROWS
    CHK-DECL-FAIL
    nxt ;
 
-\ ENUM/PRODUCT/STRUCTURE block declarations (items 14/15) register through the
-\ same collector so signature uses of the family later in the file resolve. The
-\ enum arm also closes the item-14 gap where an enum-declaring file failed
-\ the nominal pass with unknown-family rejects.
-\
-\ ENUM and STRUCTURE register through the unified front ends' replay entries
-\ (ENUM-DECL:ED-REPLAY, STRUCTURE-DECL:SD-REPLAY), which run the real
-\ declaration grammar over the collected tokens and define no word. ENUM used to
-\ drive sumtype.f's CHECKER-DEFENUM, which the type-DSL cutover deletes and
-\ which only ever understood the compact form; the replay entry accepts both
-\ modes. STRUCTURE had no arm at all, so any file declaring one left that family
-\ unregistered and the next declaration naming it as a payload type rejected
-\ with "unknown payload type".
-\ PRODUCT stays on the legacy definer; the cutover retires that arm with the
-\ definer itself.
-\
-\ CHK-BLOCK-COLLECT stops ON the terminator and does not buffer it, so each
-\ replayed body re-appends the exact terminator the collector just matched. The
-\ front ends parse their own terminator, and a body missing one is what their
-\ "missing ;ENUM" / "missing ;STRUCTURE" gates exist to report.
-\
-\ COMMENTS MUST SURVIVE THE CAPTURE. The engine reads a declaration body with
-\ `parse-name`, which has no comment rule, so a `\` or `(` inside one is an
-\ ordinary token that hits the name gate: `ENUM c red \ note` rejects 7101
-\ "name must be a lowercase tail at '\'". The lexer above disagrees — it drops a
-\ `\` line comment without emitting any token at all (a `( .. )` comment does
-\ become one, which is why the paren case already rejected). Rebuilding the body
-\ from those tokens would therefore LAUNDER a `\` comment out of the source and
-\ let the replay register a family the engine refuses.
-\
-\ So these two arms rebuild the body from the RAW SOURCE BYTES of the
-\ declaration window instead of from the token list: from the first body token's
-\ byte offset up to the terminator token's. That is byte-for-byte what the live
-\ keyword would have read, comments included. The span is bounded by the two
-\ token offsets the collector already found, so it is scoped strictly to one
-\ declaration; every other scan in this file, and the legacy SUMTYPE/PRODUCT
-\ arms, keep the token-joined body unchanged.
+\ ENUM, PRODUCT and STRUCTURE block declarations register through the shared collector so
+\ later signature uses of the family resolve. ENUM and STRUCTURE replay through their front
+\ ends (ENUM-DECL:ED-REPLAY, STRUCTURE-DECL:SD-REPLAY), which run the declaration grammar over
+\ the body and define no word; PRODUCT stays on its definer. CHK-BLOCK-COLLECT stops on the
+\ terminator without buffering it, so each replayed body re-appends it.
+\ These two arms rebuild the body from the raw source bytes, first body token to terminator,
+\ never from the token list: the engine reads a body with `parse-name`, which has no comment
+\ rule (`ENUM c red \ note` refuses 7101 at '\'), while the lexer drops a `\` comment, so a
+\ token-joined body would register a family the engine refuses.
 : CHK-DECL-RAW-BODY ( n n ptr u8 n -- ) {: k:n nxt:n ea:ptr eu:n :}
    CHK-VREC-RESET
    k 2 + {: b:n :}                     \ first body token
@@ -1289,20 +1262,15 @@ variable CHK-EXP-ROWS
    CHK-DECL-FAIL
    nxt ;
 
-\ Package blocks (dot habu-tools-check-scanner-685b735e) mirror verify-source's
-\ RECORD-PACKAGE/-PUBLIC/-PRIVATE/-END-PACKAGE at the checker level, so the
-\ NEWTYPE/SUMTYPE/ENUM/PRODUCT registrations above land in the declaring
-\ package under the live visibility mode (TDECL reads CHECKER-PACKAGE-*), and
-\ qualified pkg:tail signature uses resolve public-only exactly as native.
-\ The CHECKER-SCOPE frame wrapping the nominal pass saves/restores package
-\ state (RBF.PKGMODE/PKGU). Boundary: the name is the token parse-name takes
-\ after `package`, and CHK-DEFINER? refuses a missing one, while
-\ native-loader misuse (nesting, public outside a package, ':' in a name)
-\ stays fail-closed through preverify and the child run. A package the checker
-\ refuses to open, such as a name longer than its 255-byte package row, gives
-\ the scan no scope to register into, so the scan of the file stops there: the
-\ preverify meets the same statement, stops at it too and reports the throw
-\ where it stands (E-STATEMENT-THROW).
+\ Package blocks mirror verify-source's RECORD-PACKAGE/-PUBLIC/-PRIVATE/-END-PACKAGE at the
+\ checker level, so the registrations above land in the declaring package under the live
+\ visibility mode (src/core/checker.f CHECKER-PACKAGE-MODE) and qualified pkg:tail uses resolve
+\ public-only. The CHECKER-SCOPE frame around the nominal pass saves and restores package
+\ state. The name is the token parse-name takes after `package`, and CHK-DEFINER? refuses a
+\ missing one; loader misuse (nesting, public outside a package, ':' in a name) stays
+\ fail-closed through preverify and the child run. A package the checker refuses to open,
+\ such as a name longer than its 255-byte row, stops the file's scan there, where the
+\ preverify stops at the same statement (E-STATEMENT-THROW).
 variable CHK-PKG-NAME-I
 
 : CHK-PKG-OPEN ( -- )
@@ -1516,7 +1484,6 @@ CAST: CHK-VERIFIER-ACTION ( n -- [ -- ] )
    PROC-ARGV-ENV-RESET
    s" --load" CHK-ARG+ ;
 
-\ The deadline the child is given.
 : CHK-DEADLINE@ ( -- ms )
    CHK-DEADLINE @ dup 0= if drop CHK-DEADLINE-MS then >MS ;
 
@@ -1685,7 +1652,6 @@ CAST: CHK-VERIFIER-ACTION ( n -- [ -- ] )
    CHK-SOURCE-LIST-REPORT
    rc CHK-THROW ;
 
-\ The bytes of the file the pre-pass stopped in, the one VERIFY-STOPPED$ names.
 : CHK-STOPPED-SOURCE ( -- ptr u8 n )
    VERIFY-STOPPED$ VERIFY-STOP-SUBJECT? CHK-STOP-BYTES ;
 
@@ -1962,22 +1928,15 @@ public
 private
 
 \ ---- a signal that stops check.f -----------------------------------------------
-\
-\ check.f ANSWERS SIGTERM, SIGINT AND SIGHUP AS THE GATE ROOT DOES (src/lib/signal.f
-\ CATCH-STOPS). Under the default action it ends where it stands, and its run
-\ stage's child, a process group of its own, runs on under init beside the
-\ temporary directory: a `timeout` that kills check.f's group does not reach
-\ it. MAIN catches the three before it makes that directory, the capture that
-\ waits on the child hears them (src/lib/process.f PROC-STOP), and MAIN asks once
-\ more when the run's own cleanup is done, for one that arrived while no
-\ capture waited. RUN catches nothing: a program that runs a check in process
-\ keeps its own answer.
-\
-\ The answer kills the child with every process under it and reaps it
-\ (src/lib/process.f PROC-KILL-CAPTURE), removes the temporary directory, and dies
-\ of the signal. A step that throws is named and the answer goes on. A run that
-\ ended before its child started - a refused program, a usage error, resident
-\ inputs - leaves the row's pid at 0 or PROC-NO-PID, and PROC-KILL-CAPTURE
+\ check.f answers SIGTERM, SIGINT and SIGHUP as the gate root does (src/lib/signal.f
+\ CATCH-STOPS): under the default action its run stage's child, a process group of its own,
+\ runs on under init beside the temporary directory, out of reach of a `timeout` that kills
+\ check.f's group. MAIN catches the three before it makes that directory, the capture waiting
+\ on the child hears them (src/lib/process.f PROC-STOP), and MAIN asks once more after the
+\ run's cleanup. RUN catches nothing: a program that checks in process keeps its own answer.
+\ The answer kills and reaps the child's processes (PROC-KILL-CAPTURE), removes the temporary
+\ directory and dies of the signal; a step that throws is named and the answer goes on. A run
+\ that ended before its child started leaves its pid 0 or PROC-NO-PID, and PROC-KILL-CAPTURE
 \ kills nothing for either: kill(0) is check.f's own process group.
 : CHK-SAY-THROW ( ptr u8 n n -- ) {: what:ptr whatu:n code:n :}
    code 0= if exit then

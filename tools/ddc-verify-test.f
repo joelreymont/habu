@@ -2,12 +2,8 @@
 \ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
 \ src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f src/lib/process-env.f
 \ tools/ddc-verify.f tools/ddc-verify-test.f
-\
-\ Covers DDC-LOAD/DDC-SAME?/DDC-FIRST-DIFF/DDC-REPORT on synthetic artifact
-\ files, the seed path read from the bootstrap's stdout (DDC-SEED!) and the
-\ DDC-FXP$ scratch path. The full DDC-VERIFY
-\ orchestration (runs the gforth+refresh chain) is an explicit manual audit, not
-\ exercised here.
+\ The full DDC-VERIFY orchestration (the gforth and refresh chain) is a manual
+\ audit and is not exercised here.
 
 require src/lib/errors.f
 require src/lib/string.f

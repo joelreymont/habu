@@ -1,11 +1,7 @@
 \ pkg-wid-probe.f - which wordlist ids this engine's package records claim.
-\
-\ A package record carries DICT-WL's package marker in its wordlist cell and its
-\ two wordlist ids in the cells an ordinary record uses for code start and length:
-\ [0] is the public id, [8] the private one (0 when the package has none). Every
-\ id belongs to exactly one package, so two records claiming one id means two
-\ packages share a wordlist - which is what registering a captured wid into
-\ another engine's wid space produces (dot habu-rebase-captured-wids-54dec421).
+\ A package record holds DICT-WL's package marker in its wordlist cell, its public
+\ id at [0] and its private id at [8] (0 for none). Two records claiming one id is
+\ a collision, as registering a captured wid into another engine's wid space makes.
 
 require src/habu/xref.f
 

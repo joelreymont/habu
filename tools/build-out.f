@@ -1,24 +1,9 @@
-\ build-out.f - where a build writes what it makes.
-\ A build's file objects live under one out root, one directory per engine:
-\ <out>/<engine-key>/, where <engine-key> is the 64-hex SHA-256 of an engine
-\ binary's bytes (KEY-OF!). <out> is $HABU_OUT when that is set and non-empty, a
-\ relative value resolved against the canonical working directory
-\ (SOURCE-ROOT:CWD$); otherwise it is .out under that directory, so outputs go
-\ with the tree. ROOT$ is the running engine's directory (ENGINE-ID:KEY$), and
-\ its obj/<key>.hfo holds one compiled file object per file key, replaced under
-\ its own key. img/<family> holds a family's saved image and the records beside
-\ it (tools/keyed-image.f) under the directory of the engine that builds the
-\ image, which need not be the running one, so a directory holds only what one
-\ engine made. Outputs that a later engine must still find, such as the
-\ fixpoint refresh stamp, live directly under <out> (BASE$), since a refresh
-\ replaces the engine that keys <out>/<engine-key>/.
-\ No other variable, root or fallback exists, and a directory that cannot be
-\ made throws the filesystem cause (E-FS-IO with FFI:ERRNO, or E-FS-CAPACITY
-\ for a path past PATH-CAP).
-\
-\ STORAGE CLASS. PROCESS-WIDE: the paths are resolved once per process and
-\ cleared before image capture through a one-shot lifecycle hook, so a saved
-\ image resolves its own out root and engine when it first asks.
+\ build-out.f - where a build writes what it makes: <out>/<engine-key>/, the key
+\ the 64-hex SHA-256 of an engine binary (KEY-OF!). <out> is $HABU_OUT when set and
+\ non-empty (relative to SOURCE-ROOT:CWD$), else .out under the working directory.
+\ obj/<key>.hfo holds one object per file key; img/<family> lives under the engine
+\ that builds the image (tools/keyed-image.f). Outputs a later engine must find
+\ live under <out> itself (BASE$). PROCESS-WIDE: cleared before image capture.
 
 require src/lib/errors.f
 require src/lib/fs.f
@@ -33,7 +18,6 @@ package BUILD-OUT
 
 private
 
-\ The hex digits of an engine key.
 64 constant KEY-LEN
 
 create OUT-BUF PATH-CAP allot     variable OUT-U
@@ -79,7 +63,6 @@ variable CLEANUP-LIVE
 
 public
 
-\ The out root itself, for outputs not keyed by engine.
 : BASE$ ( -- ptr u8 n )
    OUT-U @ 0= if
       REGISTER-CLEANUP
@@ -97,7 +80,6 @@ public
    then
    ROOT-BUF ROOT-U @ ;
 
-\ The object file for a file key.
 : OBJ$ ( ptr u8 n -- ptr u8 n )
    {: key:ptr keyu:n :}
    keyu 0 <= if E-FS-PATH throw then

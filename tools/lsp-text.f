@@ -1,17 +1,9 @@
-\ lsp-text.f - offsets in a text as the language server counts positions: the
-\ line by LF and the character in UTF-16 units.
-\
-\ TEXT! names the text positions count in, and FILE-TEXT! names a stable read
-\ of a file on disk. FILE-SNAPSHOT! also keeps a completed read whose metadata
-\ changed while reading, for diagnostic ranges. TEXT$ gives back the text named.
-\ FS-RC? tells the code of a throw a file system call took from any other.
-\ LINE-CHARACTER answers an offset's position through a cursor: moving forward
-\ reads only the bytes between, moving back within the line keeps the line,
-\ further back starts over; so a run of offsets in order reads each byte of
-\ the text once. OFFSET-AT goes back, from a position to its offset.
-\
-\ STORAGE CLASS. PROCESS-GLOBAL: the text, the file read and the cursor belong
-\ to the server's one task.
+\ lsp-text.f - offsets in a text as the language server counts positions: the line
+\ by LF and the character in UTF-16 units. LINE-CHARACTER moves a cursor: forward
+\ reads only the bytes between, back within the line keeps the line, further back
+\ starts over, so offsets in order read each byte once.
+\ PROCESS-GLOBAL: the text, the file read and the cursor belong to the server's
+\ one task.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -85,7 +77,6 @@ variable DISK-VALID
 
 public
 
-\ Positions count in this text from now on.
 : TEXT! ( ptr u8 n -- )
    {: a:ptr u:n :}
    a TEXT-A !
@@ -93,7 +84,6 @@ public
    false DISK-VALID !
    CUR-RESET ;
 
-\ The text positions count in.
 : TEXT$ ( -- ptr u8 n )  TEXT-A @ TEXT-U @ ;
 
 \ Whether a throw of this code is a file system call's (src/lib/errors.f E-FS-*).
@@ -174,7 +164,6 @@ private
 
 public
 
-\ The Range from the line and character of its start to those of its end.
 : RANGE-VALUE ( ptr JSON-WRITE:writer n n n n -- ptr JSON-WRITE:writer )
    {: l1:n c1:n l2:n c2:n :}
    OBJECT-START
@@ -182,8 +171,6 @@ public
    s" end" KEY l2 c2 POSITION
    OBJECT-END ;
 
-\ The range member from the line and character of its start to those of its
-\ end.
 : RANGE-AT ( ptr JSON-WRITE:writer n n n n -- ptr JSON-WRITE:writer )
    {: l1:n c1:n l2:n c2:n :}
    s" range" KEY l1 c1 l2 c2 RANGE-VALUE ;
@@ -200,8 +187,6 @@ public
 
 private
 
-\ Where the line that starts at offset O of the text ends: at its LF, else at
-\ the text's end.
 : LINE-END ( n -- n )
    {: o:n :}
    TEXT-U @ o ?do

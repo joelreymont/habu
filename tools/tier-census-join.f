@@ -1,32 +1,9 @@
 \ tier-census-join.f - put two tools/tier-census.f reports side by side.
-\
-\ Run:
-\     bin/hb --load tools/tier-census-join.f -- <tier0-report> <tier1-report>
-\
-\ Prints the corpus totals for each tier with the difference, one row per word,
-\ and the words whose code grew and shrank most between the two.
-\
+\ Run: bin/hb --load tools/tier-census-join.f -- <tier0-report> <tier1-report>
 \ The reports must come from the same corpus in the same order: the join walks
-\ both row by row and refuses on the first name that disagrees. A table joined
-\ silently out of step would read as a per-word result while comparing two
-\ different words, which is the one failure that makes a census lie.
-\
-\ Storage is sized from the input, so a corpus of any size joins. Both reports
-\ are read whole, each to its end, into one growing byte buffer; the
-\ tier-0 names are offsets into that buffer rather than copies. The tier-0
-\ report is scanned once to count its `W` rows, and the row tables are reserved
-\ to that count before the rows are read. The mappings live for the run.
-\
-\ Ratios are printed in parts per thousand of the tier-0 value (`d/1000`), not
-\ as a decimal: -234 is tier 1 at 23.4 percent below tier 0. An integer column
-\ keeps the arithmetic exact and this tool free of the float formatter.
-\
-\ `sp0`/`sp1` are the frame traffic: stack-pointer-based 64-bit loads plus
-\ stores, which is what a spill, a reload and a local access all cost.
-\ `mov0`/`mov1` are register-to-register moves, the cost of a copy whose two
-\ ends the allocator gave different registers; `mvk0`/`mvk1` are the keep-moves
-\ in literal materialisation, including two per compact DATA address and three
-\ per full absolute address.
+\ both row by row and refuses on the first name that disagrees.
+\ Ratios are parts per thousand of the tier-0 value (-234 is tier 1 23.4 percent
+\ below tier 0): an integer column keeps this tool free of the float formatter.
 
 require src/lib/string.f
 require src/lib/argv.f
@@ -124,8 +101,6 @@ variable BOUND
       POS @ 1 - AT LF = if exit then
    repeat ;
 
-\ Append one report to SRC, sized from the descriptor it is read through, and
-\ point the reader at its first byte.
 : ROOM ( n -- ptr u8 ) SRC-U @ + SRC-RESERVE SRC-U @ SRC ;
 
 : LOAD-FILE ( ptr u8 n -- )
@@ -286,6 +261,9 @@ variable BOUND
 
 : NAME$ ( n -- ptr u8 n ) {: ix :} ix N-OFF @ SRC ix N-LEN @ ;
 
+\ sp: stack-pointer-based 64-bit loads plus stores (spills, reloads, locals).
+\ mov: register-to-register moves. mvk: keep-moves in literal materialisation,
+\ two per compact DATA address and three per full absolute address.
 : WORD-HEAD ( -- )
    SB-RESET
    s" word" 34 LEFT$
@@ -313,9 +291,8 @@ variable BOUND
    WORD-HEAD
    NWORDS @ 0 ?do i WORD-LINE loop ;
 
-\ TOP picks by repeated scan rather than by sorting: TOP-N is small and a sort
-\ would need a second index array for no gain. Each round takes the largest
-\ value strictly below the previous round's, so equal deltas do not repeat.
+\ A repeated scan, not a sort: TOP-N is small. Each round takes the largest
+\ value strictly below the last round's, so equal deltas print once.
 : SCAN-BEST ( n -- n ) {: sign :}
    -1 PICK !  0 BEST !
    NWORDS @ 0 ?do

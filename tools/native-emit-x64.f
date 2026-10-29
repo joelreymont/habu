@@ -1,33 +1,9 @@
-\ The linux-x86-64 writer: links a captured window to the x86-64 kernel and
-\ writes the image. The link (src/habu/link-x64.f) resolves every record, call,
-\ MOVABS literal and DATA cell at write time; no relocation runs at boot or
-\ snapshot restore.
-\
-\ WHY ITS OWN FILE, LOADED BEFORE THE WINDOW. tools/native-emit.f loads after
-\ the capture, so the window's compiler compiles it: CHECKER-REG:SEAL
-\ (src/habu/native-runtime.f) installs that compiler in the dispatch cell this
-\ process shares, and an x86-64 window's compiler lowers for x86-64, which the
-\ AArch64 engine running the build cannot run. tools/native-build-core.f
-\ therefore loads this file for a linux-x86-64 target before it resets for the
-\ window, and ahead of the AArch64 code layer, whose globals (CODE, LBL,
-\ ASM-LEN) would refuse X64CODE's tails; it holds WRITE and OPEN-SHADOW by xt.
-\ The image's routines are the x86-64 shadow the build host's compiler files
-\ beside each definition while the window loads (OPEN-SHADOW), never the
-\ window's payload, which is AArch64 code.
-\
-\ THE STREAM. Byte 0, the ELF entry, jumps over the kernel to the boot. The
-\ scalar row cell (X64BOOT:SCALAR-CELL,) follows, ahead of the kernel that
-\ fills it. The kernel's rows go next, so X64LINK:LAYOUT can enter each of its
-\ bodies in the record that names it; then the boot of a linked image
-\ (X64BOOT:SNAP-START,) and the entry (X64BOOT:ENTRY,).
-\
-\ THE FILE. The ELF src/os/linux-x86-64/elf.f builds, then the region's records
-\ (X64LINK:DICT$) at ELF-REGION-AT and its code band (X64LINK:CODE$) DICT-SIZE
-\ past them, then the DATA (X64LINK:DATA$) at ELF-DATA-AT up to its last nonzero
-\ byte, every gap zero. The region's memsz keeps its whole span, which the
-\ kernel maps zero past the bytes the file carries; DATA's bytes ride a
-\ read-only carrier exactly their size, which the boot copies into the DATA it
-\ maps.
+\ native-emit-x64.f - the linux-x86-64 writer: links a captured window to the x86-64
+\ kernel and writes the image. src/habu/link-x64.f resolves every record, call,
+\ MOVABS literal and DATA cell at write time; nothing relocates at boot or restore.
+\ tools/native-build-core.f loads this file before the window resets and ahead of
+\ the AArch64 code layer (whose CODE, LBL and ASM-LEN would refuse X64CODE's
+\ tails): the window's compiler lowers for x86-64, which the build engine cannot run.
 require src/lib/byte-buffer.f
 require src/lib/fs.f
 require src/lib/le.f
@@ -85,6 +61,10 @@ variable BOOT-AT
    repeat
    done X64CODE:LBL, ;
 
+\ Byte 0, the ELF entry, jumps over the kernel to the boot. The scalar row cell
+\ (X64BOOT:SCALAR-CELL,) precedes the kernel that fills it. The kernel's rows go
+\ next, so X64LINK:LAYOUT can enter each body in the record that names it; then the
+\ boot of a linked image (X64BOOT:SNAP-START,) and the entry (X64BOOT:ENTRY,).
 : STREAM, ( bool -- ) {: scoped:bool :}
    X64CODE:ASM-RESET
    X64CODE:LBL {: start:label :}
@@ -105,6 +85,12 @@ variable BOOT-AT
    X64CODE:TEXT-SITES, TEXT-CODE-END !
    X64BOOT:TEXT-END, ;
 
+\ The ELF src/os/linux-x86-64/elf.f builds, the region's records (X64LINK:DICT$) at
+\ ELF-REGION-AT, its code band (X64LINK:CODE$) DICT-SIZE past them, then the DATA
+\ (X64LINK:DATA$) at ELF-DATA-AT up to its last nonzero byte, every gap zero. The
+\ region's memsz keeps its whole span, which the kernel maps zero past the file's
+\ bytes; DATA's bytes ride a read-only carrier their size, which the boot copies
+\ into the DATA it maps.
 : FILE! ( ptr u8 n -- )
    {: path:ptr size:n :}
    path size FS:>PATHZ FS:O-WRONLY FS:O-CREAT or FS:O-TRUNC or
@@ -133,8 +119,8 @@ variable BOOT-AT
 
 public
 
-\ Open the shadow the window's x86-64 routines are filed in: the build host's
-\ compiler lowers each definition the window loads for x86-64 as well.
+\ The image's routines are the x86-64 shadow the build host's compiler files beside
+\ each definition the window loads, never the window's AArch64 payload.
 : OPEN-SHADOW ( bool -- )
    if X64ABI:BINDING NSHADOW:OPEN-NATIVE
    else X64ABI:BINDING NSHADOW:OPEN then ;

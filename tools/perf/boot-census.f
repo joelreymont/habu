@@ -1,50 +1,9 @@
 \ boot-census.f - follow a command's process tree and count the fresh images it
-\ ran and the forks that kept their parent's image.
-\
+\ ran and the forks that kept their parent's image. macOS only: kqueue
+\ EVFILT_PROC follows the tree, libproc reads the images.
 \   bin/hb --load tools/perf/boot-census.f -- LOGFILE CMD [ARGS...]
-\
-\ runs CMD, logs every process of its tree to LOGFILE, prints the census to
-\ stdout and exits with CMD's exit status, 1 when a signal ended it. macOS only:
-\ it follows the tree with kqueue's EVFILT_PROC and reads images with libproc.
-\
-\ FOLLOWING THE TREE. Each process is registered for NOTE_FORK, NOTE_EXEC and
-\ NOTE_EXIT (macOS has no NOTE_TRACK). A fork event lists the forker's children
-\ with proc_listpids and registers each new one, and a process is listed when it
-\ is registered too, since it may have forked before. A sweep lists the children
-\ of every live process after 200 ms without events and at least every 500 ms
-\ while they flow, for a child whose fork event came before its parent was
-\ registered. After the root exits the census waits for the rest of the tree,
-\ at most DRAIN-ROUNDS quiet ticks. A process that ends before it is listed is
-\ not seen at all, one listed after it ended cannot be registered (LOST), and
-\ an image read spanning exec is logged incomplete and retried on the next
-\ event or sweep. The exec version prevents a queued NOTE_EXEC from counting
-\ the image already observed during registration twice.
-\
-\ FORK OR EXEC. A process's image is its path (proc_pidpath) and its argv
-\ (KERN_PROCARGS2, joined with single spaces, at most ARGV-CAP bytes), read
-\ when it is registered and again on each exec event, bracketed by libproc's
-\ p_idversion, which changes even on same-path/argv exec. A child whose first
-\ image is its parent's latest image is inherited; it counts as a fork only
-\ when it exits without an observed exec. Every other child, the root and each
-\ newly observed exec version is a fresh image.
-\
-\ THE LOG, one line per event, t in milliseconds since the start:
-\   t ROOT|CHILD pid ppid path | argv
-\   t EXEC pid 0 path | argv
-\   t IMAGE pid ppid path | argv   a deferred image read recovered at a sweep
-\   t INCOMPLETE pid ppid - | -    exited before its image could be classified
-\   t FORK pid 0 - | -
-\   t EXIT pid 0 - | -              kqueue reports an exit status only to
-\                                   the parent; DONE carries the root's
-\   t LOST pid ppid - | -           a registration kqueue refused
-\   t DONE alive=A lost=L status=S  S is the root's raw wait status
-\
-\ THE CENSUS: fresh images by image bucket, fork children by image basename,
-\ refused registrations, incomplete image reads, and Habu argv shapes. Exec
-\ notifications may coalesce: only observed image generations can be counted.
-\ ABI sources: xnu bsd/sys/proc_info_private.h (PROC_PIDUNIQIDENTIFIERINFO,
-\ 56 bytes, p_idversion at byte 32) and xnu tests/exec-race-128791723.c, which
-\ checks that the version changes across exec.
+\ Logs every process to LOGFILE, prints the census to stdout and exits with
+\ CMD's exit status, 1 when a signal ended it.
 require src/lib/errors.f
 require src/lib/string.f
 require src/lib/fmt.f
@@ -253,7 +212,9 @@ FUNCTION: ERRNO-CELL __error ( -- ptr u8 ) ;FUNCTION
       1+
    repeat drop true ;
 
-\ 0 is an unavailable observation, including a process that has exited.
+\ p_idversion (xnu bsd/sys/proc_info_private.h) changes on every exec, even one
+\ that keeps path and argv (xnu tests/exec-race-128791723.c). 0 is an
+\ unavailable observation, including a process that has exited.
 : VERSION@ ( n -- n )
    PROC-PIDUNIQINFO 0 UNIQINFO UNIQINFO-BYTES PID-INFO {: bytes:n :}
    bytes 0= if 0 exit then
@@ -277,6 +238,15 @@ FUNCTION: ERRNO-CELL __error ( -- ptr u8 ) ;FUNCTION
    false ;
 
 \ ---- the log -------------------------------------------------------------------
+\ One line per event; t is milliseconds since the start, to a tenth.
+\   t ROOT|CHILD pid ppid path | argv
+\   t EXEC pid 0 path | argv
+\   t IMAGE pid ppid path | argv   a deferred image read recovered at a sweep
+\   t INCOMPLETE pid ppid - | -    exited before its image could be classified
+\   t FORK pid 0 - | -
+\   t EXIT pid 0 - | -             no status: kqueue reports it only to the parent
+\   t LOST pid ppid - | -          a registration kqueue refused
+\   t DONE alive=A lost=L status=S S is the root's raw wait status
 
 : NOW ( -- n )                     \ tenths of a millisecond since T0
    mono-ns T0 @ - 100000 / ;
@@ -321,7 +291,6 @@ FUNCTION: ERRNO-CELL __error ( -- ptr u8 ) ;FUNCTION
 : REC ( n n -- ptr n ) {: i:n f:n :}
    i REC-CELLS * f + RECS ;
 
-\ The text record i names at field f, the offset, and f + 1, the length.
 : REC$ ( n n -- ptr u8 n ) {: i:n f:n :}
    i f REC @  i f 1+ REC @ TEXT$ ;
 
@@ -340,7 +309,7 @@ FUNCTION: ERRNO-CELL __error ( -- ptr u8 ) ;FUNCTION
    i R-PATH REC$ PATH$ STR=
    i R-ARGV REC$ ARGS$ STR= and ;
 
-: ENTRY ( ptr n n -- ptr n ) {: t:ptr i:n :}   \ row i of table t
+: ENTRY ( ptr n n -- ptr n ) {: t:ptr i:n :}
    t i KEY-CELLS * cells + ;
 
 : ROW@ ( ptr n n n -- n ) {: t:ptr i:n f:n :}
@@ -358,7 +327,6 @@ FUNCTION: ERRNO-CELL __error ( -- ptr u8 ) ;FUNCTION
    loop
    -1 ;
 
-\ One more of key a u in table t, whose row count is at np.
 : COUNT+ ( ptr n ptr n ptr u8 n -- ) {: t:ptr np:ptr a:ptr u:n :}
    t np @ a u ROW-OF {: r:n :}
    r 0 >= if t r K-COUNT ROW@ 1+ t r K-COUNT ROW! exit then
@@ -407,10 +375,9 @@ FUNCTION: ERRNO-CELL __error ( -- ptr u8 ) ;FUNCTION
      some OF IDX>N a swap ENDOF
    ;MATCH ;
 
-: TOKEN-START ( ptr u8 n -- n ) {: a:ptr e:n :}    \ of the token that ends at e
+: TOKEN-START ( ptr u8 n -- n ) {: a:ptr e:n :}
    e begin dup 0 > if a over 1- + c@ STR-SPACE <> else false then while 1- repeat ;
 
-\ The start of the token that ends at e, and whether it ends in .f.
 : FILE-TOKEN? ( ptr u8 n -- n bool ) {: a:ptr e:n :}
    a e TOKEN-START {: s:n :}
    s  a s + e s - s" .f" ENDS-WITH? ;
@@ -476,8 +443,11 @@ FUNCTION: ERRNO-CELL __error ( -- ptr u8 ) ;FUNCTION
    a u 80 min ;
 
 \ ---- classifying ----------------------------------------------------------------
-\ Classify coherent observations in log order. An initial child comparison
-\ stays pending until its parent's image is available.
+\ A child whose first image is its parent's latest image is inherited; it counts
+\ as a fork only when it exits without an observed exec. Every other child, the
+\ root and each newly observed exec version is a fresh image. Observations are
+\ classified in log order; a child's first comparison waits for its parent's
+\ image. Exec notifications may coalesce: only observed images are counted.
 
 : FRESH ( n -- )                   \ record i holds a fresh image, the one just read
    1 EXEC-TOTAL +!
@@ -515,6 +485,14 @@ FUNCTION: ERRNO-CELL __error ( -- ptr u8 ) ;FUNCTION
    i FRESH ;
 
 \ ---- following the tree ---------------------------------------------------------
+\ Each process is registered for NOTE_FORK, NOTE_EXEC and NOTE_EXIT (macOS has
+\ no NOTE_TRACK). A fork event lists the forker's children; a process is also
+\ listed when it is registered, since it may have forked before. SWEEP lists the
+\ children of every live process after a quiet tick and at least every
+\ SWEEP-TENTHS while events flow, for a child whose fork event came before its
+\ parent was registered. A process that ends before it is listed is not seen;
+\ one listed after it ended cannot be registered (LOST). The exec version keeps
+\ a queued NOTE_EXEC from counting an image observed at registration twice.
 
 : PENDING+ ( n -- ) {: pid:n :}
    PENDING-N @ 1+ PENDING-RESERVE
@@ -658,15 +636,15 @@ FUNCTION: ERRNO-CELL __error ( -- ptr u8 ) ;FUNCTION
    begin STEP DONE @ 0<> until ;
 
 \ ---- the census -----------------------------------------------------------------
+\ Fresh images by bucket, fork children by basename, refused registrations,
+\ incomplete image reads and Habu argv shapes.
 
-\ Two spaces, the count right-aligned in six columns, two spaces, the key.
 : .ROW ( ptr u8 n n -- ) {: a:ptr u:n c:n :}
    c NUM$ {: d:ptr du:n :}
    s"   " type
    6 du - 0 ?do space loop
    d du type s"   " type a u type cr ;
 
-\ The undone row of t with the greatest count, the first among equals.
 : TOP ( ptr n n -- n ) {: t:ptr n:n :}
    -1 BEST !  0 BEST-COUNT !
    n 0 ?do

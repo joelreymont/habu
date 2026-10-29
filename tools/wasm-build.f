@@ -1,19 +1,9 @@
 \ wasm-build.f - one checked source file built into a Wasm module:
-\
 \    bin/hb --load tools/wasm-build.f -- <source.f> <entry> <out.wasm>
-\
-\ The running driver survives src/habu/prefix-rewind.f's top-level rewind.
-\ It then opens a Wasm window and reloads the native product's portable library
-\ sources inside it, before authored source. Replaying those canonical files
-\ gives their runtime words Wasm emissions instead of addresses in the native
-\ engine's prelude. The source path, as `--load`'s, is relative to the working
-\ directory.
-\
-\ A failure exits nonzero: a command line of other than three arguments with 64
-\ and the usage line; a source the engine cannot open or refuses, a window the
-\ capture or WASMLINK refuses, an entry that takes or leaves cells and an output
-\ path that cannot be written, with their own sentences; any other throw as the
-\ engine's uncaught throw, 67.
+\ The driver survives src/habu/prefix-rewind.f's rewind, opens a Wasm window and
+\ reloads the product's portable library sources in it before authored source, so
+\ their runtime words get Wasm emissions. The source path is relative to the cwd.
+\ Exits 64 with usage for other than three arguments, 67 for an uncaught throw.
 
 package WASM-BUILD
 ndict@ here BYTE-VIEW NULL-PTR BYTE-VIEW - variable PRE-R  variable PRE-D  PRE-D !  PRE-R !

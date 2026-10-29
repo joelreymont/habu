@@ -1,6 +1,7 @@
-\ Automatic native definition reuse. The ordinary source loader always runs;
-\ the pending native dispatch selects one definition after its source actions.
-\ Each file's object lives where tools/build-out.f puts it: BUILD-OUT:OBJ$.
+\ native-definition-cache.f - automatic native definition reuse. The ordinary
+\ source loader always runs; the pending native dispatch selects one
+\ definition after its source actions. Each file's object lives at
+\ BUILD-OUT:OBJ$ (tools/build-out.f).
 require src/lib/errors.f
 require src/lib/string.f
 require src/lib/fmt.f
@@ -39,9 +40,8 @@ package NDEF-CACHE
 private
 
 $4B8 constant LIVE-FIXED-OFF
-\ CHECKER-OWNER-EXT:BODY-CLOSE-OFF for a host whose baked package predates the
-\ field; the first commit built by the installed lane engine replaces this copy
-\ with the name.
+\ CHECKER-OWNER-EXT:BODY-CLOSE-OFF, spelled out for a host whose baked package
+\ predates the field.
 $5A0 constant BODY-CLOSE-OFF
 0 constant F-SRC
 8 constant F-SRC-U
@@ -501,7 +501,6 @@ private
    object 0 STORE-IMAGE ENTRY-HEAD + objectu BYTE-COPY
    size ;
 
-\ The object file for a file key.
 : FILE-PATH ( ptr u8 n -- ptr u8 n )
    dup 64 <> if BAD then
    BUILD-OUT:OBJ$ ;
@@ -560,7 +559,6 @@ variable TEE-ERR
 : TEE-EMIT ( n -- ) {: c:n :}
    c [: RECORD-EMIT ;] catch {: code:n :} drop code KEEP-ERR
    c TEE-PRIOR GENIO:FORWARD-EMIT ;
-\ The tee is never an input device.
 : TEE-KEY ( -- n ) GENIO:E-IO throw ;
 : TEE-READY? ( -- bool ) false ;
 : TEE-READ ( ptr u8 n -- n ) GENIO:E-IO throw ;
@@ -573,8 +571,6 @@ variable TEE-ERR
    TEE-PRIOR GENIO:FAULT@ GENIO:FAULT!
    code 0 <> if code throw then ;
 
-\ Output routed to the tee goes to the prior device again, or the terminal
-\ once that device was closed.
 : TEE-UNROUTE ( n -- ) {: tee:n :}
    GENIO:OUTPUT@ GENIO:DEVICE>N tee = if TEE-PRIOR GENIO:OUTPUT! then ;
 
@@ -626,7 +622,6 @@ variable TEE-ERR
    FRAME FRAME-BYTES ZERO-SCRATCH
    OBJECTS-U @ F-OBJ F! ;
 
-\ Close the innermost frame and drop its object region.
 : FILE-CLOSE ( -- )
    F-OBJ F@ OBJECTS-U ! -1 DEPTH +! ;
 
@@ -842,7 +837,6 @@ variable TEE-ERR
    dup TERMINAL-CALL:IN-ENGINE-TEXT? 0= if drop exit then
    ORIGIN-GETTER ! ;
 
-\ Keep the first kept bound setters; clear the cells of the rest.
 : RETIRE-KEEP ( n -- )
    {: kept:n :}
    RETIRE-N @ kept ?do
@@ -850,7 +844,6 @@ variable TEE-ERR
    loop
    kept RETIRE-N ! ;
 
-\ Clear the retire hook of each bound setter.
 : RETIRE-UNSET ( -- )
    RETIRE-N @ 0 ?do 0 i RETIRE-XTS @ RETIRE-SET-XT execute loop
    0 RETIRE-KEEP ;
@@ -917,7 +910,6 @@ variable TEE-ERR
    then
    ['] NUNIT-OBJECT:FILE-RETIRE RETIRE>N xt RETIRE-SET-XT execute ;
 
-\ The kernel's capture cut notice, to count.
 : CUT-NOTICE ( n -- )
    dup RETIRE-CUT dup NUNIT-OBJECT:FILE-CUT NFILE-REF:DICT-CUT ;
 
@@ -946,13 +938,11 @@ variable TEE-ERR
 : HOST-LOADER? ( n n n -- bool )
    SOURCE-UNIT:LOADER-KIND SOURCE-UNIT:NONE <> ;
 
-\ The token runs the target's source loader, once bound.
 : TARGET-LOADER? ( n n n -- bool )
    {: op:n rec:n entry:n :}
    TARGET-KIND @ 0= if false exit then
    op rec entry TARGET-KIND @ KIND-XT execute SOURCE-UNIT:NONE <> ;
 
-\ The token runs a source loader: the host's, or once bound the target's.
 : LOADER? ( n n n -- bool )
    {: op:n rec:n entry:n :}
    op rec entry HOST-LOADER? if true exit then
@@ -1145,12 +1135,10 @@ variable TEE-ERR
    path pathu root rootu SOURCE-ROOT:RELATIVE
    root rootu SOURCE-ROOT:ENGINE$ STR= if 0 else 1 then ;
 
-\ The file frame's dependency rows, while the cache diagnostics are on.
 : FRAME-REPORT ( -- )
    NUNIT-DEP:DIAG? @ 0= if exit then
    FRAME F-INPUT + 0 ptr-field @ F-INPUT-U F@ NUNIT-DEP:FILE-REPORT ;
 
-\ The input rows the innermost file recorded since its mark join its object.
 : ROWS-FLUSH ( -- )
    F-MARK F@ NFILE-INPUTS:MARK NFILE-INPUTS:SPAN
    FRAME F-ROOT + 0 ptr-field @ F-ROOT-U F@ NFILE-INPUTS:TREE-OUT
@@ -1243,7 +1231,6 @@ variable TEE-ERR
 
 : ORIGIN-SINK-REFUSE ( -- ) s" origin-sink" NUNIT-OBJECT:FILE-REFUSE ;
 
-\ The innermost file's journal cursors at the rows recorded so far.
 : ORIGIN-MARK ( -- )
    PRE-BOUND @ 0<> if PRE-MARK-HOOK @ execute drop else 0 then F-OCUR F!
    EARLY-MARK drop F-OSER F! ;
@@ -1385,7 +1372,6 @@ variable TEE-ERR
    HASH-RAW RESULTS-HEX SHA256>HEX
    RESULTS-HEX 16 ;
 
-\ The diagnostics line, labelled label, naming the innermost file and why.
 : FILE-LINE ( ptr u8 n ptr u8 n -- )
    {: label:ptr labelu:n why:ptr whyu:n :}
    s" native-file: " DIAG-W2 label labelu DIAG-W2
@@ -1393,8 +1379,6 @@ variable TEE-ERR
    s"  reason=" DIAG-W2 why whyu DIAG-W2
    S\" \n" DIAG-W2 ;
 
-\ Under diagnostics, the line naming why, the reason given, the innermost
-\ file has no object.
 : REFUSED-LINE ( ptr u8 n -- )
    {: why:ptr whyu:n :}
    NUNIT-DEP:DIAG? @ 0= if exit then
@@ -1481,7 +1465,6 @@ variable TEE-ERR
    loop
    S\" \n" DIAG-W2 ;
 
-\ The innermost file's object bytes in its OBJECTS region.
 : OBJECT-BYTES ( -- ptr u8 n ) F-OBJ F@ OBJECTS F-OBJ-U F@ ;
 
 \ Check the object's framing, then view its FILE sections: OPEN-FILE ends
@@ -1523,7 +1506,6 @@ variable TEE-ERR
    14 NUNIT-FILE:SECTION$ F-DONE F@ mark NUNIT-DEP:CHECK-ROWS 0= if false exit then
    mark F-DONE F! true ;
 
-\ The viewed object's dependency row count.
 : ALL-ROWS ( -- n ) 14 NUNIT-FILE:SECTION$ NUNIT-DEP:FORMAT ;
 
 \ The dependency rows the interval after event row k checks up to: those
@@ -1539,7 +1521,6 @@ variable TEE-ERR
    loop
    ALL-ROWS ;
 
-\ The head of the line that names a stale replay at event row k.
 : STALE-HEAD ( n -- )
    {: k:n :}
    s" native-file: stale path=" DIAG-W2 FRAME-PATH DIAG-W2
@@ -1794,7 +1775,6 @@ variable IMPORT-AT
    NUNIT-OBJECT:INSTALL-STOP
    off false ;
 
-\ Under diagnostics, the line naming the innermost file's replay.
 : REUSED-LINE ( -- )
    NUNIT-DEP:DIAG? @ 0= if exit then
    NUNIT-OBJECT:FILE-COUNTS
@@ -1862,8 +1842,8 @@ variable IMPORT-AT
 
 \ The active checker owner holds the pending created body, the prefix's before
 \ CHECKER-REG:HANDOVER and the target's after it; an owner that predates the
-\ slot has none. Once the lane engine is installed, its include.f CALL-UNIT
-\ closes every file run from source, so this close covers only replayed files.
+\ slot has none. src/core/include.f CALL-UNIT closes a file run from source in
+\ an engine built from this tree, so there this close covers only replayed files.
 : BODY-CLOSE ( -- )
    OWNER {: owner:ptr :}
    owner NULL-PTR = if exit then
@@ -2072,7 +2052,6 @@ variable IMPORT-AT
    HASH-RAW 32 ZERO-SCRATCH
    HASH-CELL CELL ZERO-SCRATCH ;
 
-\ The process's first session takes the seed's record count.
 : BOOT-TAKE ( -- )
    BOOT-N @ 0<> if exit then
    ndict@ BOOT-N ! ;
@@ -2182,7 +2161,6 @@ public
 
 : ARM-NATIVE-ACCEPT ( [ ptr u8 n -- ] -- bool ) ARM-NATIVE ;
 
-\ Bind the builder's prefix rows while it loads the checked prefix.
 : PREFIX-ORIGIN-USE ( [ -- n bool ] [ n [ n n n ptr u8 n ptr u8 n -- ] -- ] [ n n n ptr u8 n ptr u8 n -- ] -- )
    PRE-IMPORT-HOOK ! PRE-EACH-HOOK ! PRE-MARK-HOOK ! 1 PRE-BOUND ! ;
 : PREFIX-ORIGIN-CLEAR ( -- ) 0 PRE-BOUND ! ;

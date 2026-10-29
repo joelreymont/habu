@@ -1,4 +1,4 @@
-\ json-only-test.f - checked fixtures for tools/json-only.f.
+\ json-only-test-lib.f - checked fixtures for tools/json-only.f.
 \ Run: bin/hb --load tools/json-only-test.f
 require src/lib/errors.f
 require src/lib/string.f

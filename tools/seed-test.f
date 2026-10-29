@@ -24,7 +24,7 @@ create SET-BAD PATH-CAP allot
 create SET-SCRIPT PATH-CAP allot
 create SET-FAIL-SCRIPT PATH-CAP allot
 create SET-HEX SEED-SHA256-HEX-U allot
-create SET-FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this fixture's file-digest context
+create SET-FSHA-CTX SHA256-FILE-CTX-BYTES allot
 8192 constant SET-CAP
 73 constant SET-EXEC-BITS   \ octal 111: every execute bit
 create SET-OUT SET-CAP allot

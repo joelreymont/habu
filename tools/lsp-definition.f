@@ -1,25 +1,9 @@
-\ lsp-definition.f - the language server's go to definition: the declaration a
-\ use in an open document binds to, as the document's last check bound it once
-\ that check completed.
-\
-\ ANSWER writes the result of textDocument/definition at a byte of an open
-\ document's text: the first use of the document's last check, when it
-\ completed, whose bytes, from its start to before its end, hold the byte
-\ (tools/lsp-defs.f), and the declaration it binds to as a list of one
-\ Location. For a source declaration, the Location is the first record of the
-\ use's group, its check's group for the declaration's file
-\ (LSP-DEFS:USE-GROUP), whose token starts and ends at the declaration's bytes.
-\ For an engine primitive, it is the matching name in src/habu/prims.f.
-\ For a source-backed engine word, the check's original origin span identifies
-\ the compiled binding; its Location comes from the current declaration in
-\ that file, preferring an open document's text.
-\ A byte no use holds, a document whose last check did not complete or that has
-\ none, and a declaration no such record holds answer an empty list. A primitive
-\ whose source is missing or differs from the running table, or a source-backed
-\ engine word whose current declaration is missing or ambiguous, has none.
-\
-\ STORAGE CLASS. PROCESS-GLOBAL: the answer being written belongs to the
-\ server's one task.
+\ lsp-definition.f - textDocument/definition at a byte of an open document: the
+\ first use of its last completed check holding the byte (tools/lsp-defs.f), and
+\ the declaration it binds to as one Location: a source declaration's first record
+\ in the use's group (LSP-DEFS:USE-GROUP), a primitive's name in src/habu/prims.f,
+\ or a source-backed engine word's current declaration, by its origin span.
+\ STORAGE CLASS. PROCESS-GLOBAL: the answer belongs to the server's one task.
 
 require src/lib/json-write.f
 require src/lib/adt/option.f
@@ -36,7 +20,7 @@ using LSP-DOCS
 
 private
 
-TYPED-VARIABLE OUT ptr JSON-WRITE:writer \ the answer's writer
+TYPED-VARIABLE OUT ptr JSON-WRITE:writer
 
 \ A Location at these positions in group G.
 : LOCATION-AT ( n n n n n -- )
@@ -96,8 +80,11 @@ TYPED-VARIABLE OUT ptr JSON-WRITE:writer \ the answer's writer
 
 public
 
-\ Writes the result of textDocument/definition at this byte of the text of
-\ the document in this slot, the list the header describes, to the writer.
+\ An empty list for a byte no use holds, a document whose last check did not
+\ complete or that has none, and a declaration no record holds; also for a
+\ primitive whose source is missing or differs from the running table, or an
+\ engine word whose current declaration is missing or ambiguous. An engine word's
+\ declaration prefers an open document's text.
 : ANSWER ( ptr JSON-WRITE:writer n n -- ptr JSON-WRITE:writer )
    {: w slot:n at:n :}
    w OUT !

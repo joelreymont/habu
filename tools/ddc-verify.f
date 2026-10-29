@@ -1,31 +1,9 @@
-\ ddc-verify.f - Diverse Double-Compiling audit for the bin/hb fixpoint.
-\
-\ Builds bin/hb two independent ways and requires byte-identical output:
-\   NATIVE chain - the self-hosted fixpoint (bin/hb rebuilds bin/hb).
-\   GFORTH chain - the independent recovery host: tools/bootstrap.sh emits a raw
-\                  seed engine (hb-stdin) via Gforth, which is then taken to the
-\                  SAME native fixpoint the full recovery runs.
-\ A seed backdoor would have to be mirrored in BOTH Gforth and the native seed to
-\ survive the sha256 compare, reducing seed trust to "no coordinated cross-host
-\ backdoor". This is an EXPLICIT audit (never per-commit): it needs a working
-\ Gforth recovery host and is gated on HABU_ALLOW_BOOTSTRAP=1, like the launcher
-\ it drives (docs/bootstrap.md "DDC Audit (Diverse Double-Compiling)").
-\
-\ WHY WE COMPARE AT THE FIXPOINT, NOT THE RAW SEED: the CHECK_ONLY seed hb-stdin
-\ is captured by a Gforth-lineage stage whose live REPL sits at different
-\ absolute addresses than the native host. Its baked AOT-REPL blob therefore
-\ carries the capture host's movz/movk address immediates. EM-SEED-AOT
-\ re-relocates them at boot, so those bytes are DEAD yet host-dependent, and a
-\ raw seed-vs-fixpoint compare diverges by design. The real recovery chain
-\ (tools/bootstrap.sh) installs the seed and runs the native fixpoint refresh;
-\ that refresh re-captures the AOT blob from the canonical small engine, erasing
-\ the dead host addresses. DDC reproduces exactly that step - gforth seed ->
-\ native fixpoint refresh - and requires the resulting engine to be
-\ byte-identical to the pure-native fixpoint bin/hb.
-\
-\ The pure comparison words (DDC-SAME?/DDC-FIRST-DIFF/DDC-REPORT) plus the path
-\ helpers are covered by tools/ddc-verify-test.f; the full DDC-VERIFY
-\ orchestration is manual/audit because it runs the whole gforth+refresh chain.
+\ ddc-verify.f - Diverse Double-Compiling audit: bin/hb from the native fixpoint
+\ and from the Gforth recovery chain (tools/bootstrap.sh's seed taken to the same
+\ native fixpoint) must be byte-identical, so a seed backdoor survives only if
+\ mirrored in both Gforth and the native seed. An explicit audit, never
+\ per-commit: needs Gforth and HABU_ALLOW_BOOTSTRAP=1 (docs/bootstrap.md "DDC
+\ Audit (Diverse Double-Compiling)"). tools/ddc-verify-test.f covers the compare.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -50,7 +28,7 @@ create DDC-B-BUF DDC-BIN-CAP allot
 create DDC-A-HEX DDC-HEX-CAP allot
 create DDC-B-HEX DDC-HEX-CAP allot
 create DDC-DIG 32 allot
-create DDC-SHA-CTX SHA256-CTX-BYTES allot   \ this tool's digest context
+create DDC-SHA-CTX SHA256-CTX-BYTES allot
 create DDC-OUT DDC-CAP-OUT allot
 create DDC-ERR DDC-CAP-OUT allot
 variable DDC-A-U
@@ -81,7 +59,6 @@ variable DDC-B-U
 : DDC-SAME? ( -- bool )
    DDC-FIRST-DIFF -1 = ;
 
-\ SHA-256 hex of a loaded buffer into a 64-char out buffer.
 : DDC-BUF-HEX ( ptr u8 n ptr u8 -- ) {: a:ptr u:n out:ptr :}
    DDC-SHA-CTX a u DDC-DIG SHA256-IN
    DDC-DIG out SHA256>HEX ;
@@ -153,7 +130,6 @@ variable DDC-FXP-U
    repeat drop
    DDC-SEED-MISSING ;
 
-\ gforth-chain fixpoint path under the native-refresh root
 : DDC-FXP$ ( -- ptr u8 n )
    DDC-RF-ROOT$ s" hb-ddc-fixpoint" DDC-FXP FS:JOIN-PATH DDC-FXP-U !
    DDC-FXP DDC-FXP-U @ ;
@@ -206,10 +182,12 @@ variable DDC-FXP-U
    s" tools/build-fixpoint-main.f" DDC-ARG
    s" --" DDC-ARG  s" install" DDC-ARG  s" --force" DDC-ARG ;
 
-\ Refresh the raw gforth seed to the native fixpoint at <rf-root>/hb-ddc-fixpoint.
-\ Seed the selected build/install path with that Gforth engine, keeping the
-\ checkout's bin/hb outside this chain. HABU_OUT keeps its stamp out of the
-\ checkout.
+\ The compare is at the fixpoint, not the raw seed: the AOT blob the Gforth-lineage
+\ capture bakes (src/habu/habu2.f EMIT-AOT-SEED) carries that host's movz/movk
+\ address immediates (dead bytes EM-SEED-AOT re-relocates at boot), and the native
+\ refresh re-captures the blob from the canonical small engine, as the recovery
+\ chain does. The checkout's bin/hb stays out of this chain; HABU_OUT keeps its
+\ stamp out of the checkout.
 : DDC-RUN-REFRESH ( -- )
    DDC-STDIN$ DDC-FXP$ FS:COPY-FILE-STREAM
    DDC-FXP$ FS:CHMOD-X

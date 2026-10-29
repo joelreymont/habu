@@ -71,9 +71,6 @@ public
    LIVE-INPUT
    0 INPUT-BYTES INPUT-U @ ;
 
-\ The first package record without a key the scope SCOPE-INPUT$ last
-\ encoded names, -1 when it names none, and whether that scope names
-\ anything without a key: such a record or a wordlist nothing names.
 : SCOPE-UNKEYED ( -- n bool ) UNKEYED-ORD @ UNKEYED? @ 0<> ;
 
 : SCOPE-MATCH? ( ptr u8 n -- bool )

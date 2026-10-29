@@ -1,23 +1,7 @@
 \ lsp-test-lib.f - the language server end to end: tools/lsp.f run as a
 \ client runs it, with compatible cases sharing one child.
 \ Run: bin/hb --load tools/lsp-test.f
-\
-\ An isolated conversation is written to the server's stdin whole, and the
-\ input then ends; its stdout, stderr and exit code are read after. Every frame
-\ the server writes must be `Content-Length: N`, CR LF twice and N bytes, and
-\ the replies come in the order of the messages they answer. The rest run over
-\ pipes the test holds: answers-at-once keeps the input open, stdout-closed
-\ closes the output first, and the checked cases are held turn by turn, the
-\ messages of a turn written together once the server has answered the last and
-\ every publish read as it comes, since the server checks a document only when
-\ no input waits; references-eof and references-fault end their input before
-\ exit, and what the server writes after is read once it ends. The directory
-\ the test prints after `artifact:` keeps each case's input, output and stderr
-\ byte for byte, plus the fixtures. `exits` records each process exit. A shared
-\ session also has SESSION.trace.in, .trace.out and .trace.err for the full
-\ exchange; rerun the driver for the same timed turns with fresh fixtures. A
-\ conversation whose wait ran out keeps what was read before it.
-\
+
 \ How the server could fail, and the conversation that would show it:
 \
 \ Lifecycle
@@ -611,12 +595,11 @@ using BUF
 \ stdout and stderr is not bounded. Past its bound, any kind kills the server
 \ and fails by name.
 \
-\ The lightweight conversations took at most 793 ms with six copies of this
-\ test running at a load average of 87 to 91. A checked dependency-sharing
-\ conversation took 9032 ms during the full native gate and hit the former
-\ 9-second deadline despite a responding server. The checked deadline leaves
-\ room for concurrent native builds; the suite's CPU and wall budgets still
-\ bound a sequence of stuck conversations.
+\ Measured: the lightweight conversations take at most 793 ms with six copies
+\ of this test at a load average of 87 to 91; a checked dependency-sharing
+\ conversation took 9032 ms during the full native gate, so CHECKED-MS leaves
+\ room for concurrent native builds. The suite's CPU and wall budgets bound a
+\ sequence of stuck conversations.
 8000 constant CONVERSATION-MS
 60000 constant CHECKED-MS
 
@@ -682,12 +665,10 @@ variable OPEN-N
 : OUT$ ( -- ptr u8 n )  OUT-SPAN SPAN:$ drop OUT-LEN @ ;
 : ERR$ ( -- ptr u8 n )  ERR-SPAN SPAN:$ drop ERR-LEN @ ;
 
-\ A number's decimal text, in SB.
 : INT$ ( n -- ptr u8 n )  SB-RESET FMT:SB-INT SB$ ;
 
 \ ---- the input ----------------------------------------------------------------
 
-\ The header LSP frames a body of N bytes with, in SB.
 : HEAD$ ( n -- ptr u8 n )
    SB-RESET
    s" Content-Length: " SB-APPEND
@@ -695,7 +676,7 @@ variable OPEN-N
    s\" \r\n\r\n" SB-APPEND
    SB$ ;
 
-\ A body, framed. It never lives in SB, where the header is built.
+\ The body must not live in SB, where the header is built.
 : FRAMED ( ptr u8 n -- )
    {: a:ptr u:n :}
    u HEAD$ IN+
@@ -709,7 +690,6 @@ variable OPEN-N
    c cu IN+
    a u IN+ ;
 
-\ A request with no params, from its id's JSON text and its method.
 : ASK$ ( ptr u8 n ptr u8 n -- ptr u8 n )
    {: i:ptr iu:n m:ptr mu:n :}
    MSG-B CLEAR
@@ -719,7 +699,7 @@ variable OPEN-N
 
 : ASK ( ptr u8 n ptr u8 n -- )  ASK$ FRAMED ;
 
-\ A notification, from its method and its params' JSON text, none when empty.
+\ Empty params text sends no params.
 : TELL$ ( ptr u8 n ptr u8 n -- ptr u8 n )
    {: m:ptr mu:n p:ptr pu:n :}
    MSG-B CLEAR
@@ -742,11 +722,9 @@ variable OPEN-N
    SHUTDOWN
    EXIT-NOTE ;
 
-\ The documents, each by its URI's JSON text.
 : URI-A ( -- ptr u8 n )  s\" \"file:///habu-lsp-test/a.f\"" ;
 : URI-B ( -- ptr u8 n )  s\" \"file:///habu-lsp-test/a%20b.f\"" ;
 
-\ didOpen params, in PAR, from the JSON text of a URI, a version and a text.
 : OPEN-PARAMS ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: u:ptr uu:n v:ptr vu:n t:ptr tu:n :}
    PAR-B CLEAR
@@ -754,7 +732,6 @@ variable OPEN-N
    s\" ,\"languageId\":\"habu\",\"version\":" PAR+ v vu PAR+
    s\" ,\"text\":" PAR+ t tu PAR+ s" }}" PAR+ ;
 
-\ didChange params, in PAR, from the JSON text of a URI and of contentChanges.
 : CHANGE-PARAMS ( ptr u8 n ptr u8 n -- )
    {: u:ptr uu:n c:ptr cu:n :}
    PAR-B CLEAR
@@ -810,12 +787,10 @@ variable OPEN-N
 : A-PATH ( -- ptr u8 n )  s" a.f" FIXTURE ;
 : B-PATH ( -- ptr u8 n )  s" b.f" FIXTURE ;
 
-\ A path's file URI, in URI-SPAN.
 : URI-OF ( ptr u8 n -- ptr u8 n )
    URI-SPAN URI:PATH>FILE {: n:n :}
    URI-SPAN SPAN:$ drop n ;
 
-\ A path's file URI as a JSON string, in PAR.
 : URI+ ( ptr u8 n -- )
    URI-OF {: a:ptr u:n :}
    s\" \"" PAR+ a u PAR+ s\" \"" PAR+ ;
@@ -830,7 +805,6 @@ variable OPEN-N
    c 92 = if s" \\" PAR+ exit then
    a 1 PAR+ ;
 
-\ A document's text as a JSON string, in PAR.
 : TEXT+ ( ptr u8 n -- )
    {: a:ptr u:n :}
    s\" \"" PAR+
@@ -865,7 +839,6 @@ variable OPEN-N
       then
    loop ;
 
-\ didOpen of the document at PATH with this text and version.
 : OPENS ( ptr u8 n ptr u8 n n -- )
    {: p:ptr pu:n t:ptr tu:n v:n :}
    PAR-B CLEAR
@@ -875,7 +848,6 @@ variable OPEN-N
    s" textDocument/didOpen" PAR$ TELL
    p pu OPEN-ADD ;
 
-\ didChange of the document at PATH to this whole text and version.
 : CHANGES ( ptr u8 n ptr u8 n n -- )
    {: p:ptr pu:n t:ptr tu:n v:n :}
    PAR-B CLEAR
@@ -884,7 +856,6 @@ variable OPEN-N
    s\" },\"contentChanges\":[{\"text\":" PAR+ t tu TEXT+ s" }]}" PAR+
    s" textDocument/didChange" PAR$ TELL ;
 
-\ Params naming the document at PATH alone, in PAR.
 : NAMING ( ptr u8 n -- )
    PAR-B CLEAR
    s\" {\"textDocument\":{\"uri\":" PAR+ URI+ s" }}" PAR+ ;
@@ -903,19 +874,16 @@ variable OPEN-N
 
 \ ---- the stderr expected ------------------------------------------------------
 
-\ The line for a notification left unapplied: its method and the throw.
 : IGNORED ( ptr u8 n n -- )
    {: m:ptr mu:n code:n :}
    s\" lsp: ignored \"" WANT+ m mu WANT+ s\" \": throw " WANT+
    code INT$ WANT+ s\" \n" WANT+ ;
 
-\ The line the server stops on: the throw that stopped it.
 : STOPPED ( n -- )
    s" lsp: stopped by throw " WANT+ INT$ WANT+ s\" \n" WANT+ ;
 
 : CUT-SHORT ( -- )  s\" lsp: input ended before exit\n" WANT+ ;
 
-\ A notification the server must leave unapplied with this code.
 : UNAPPLIED ( ptr u8 n ptr u8 n n -- )
    {: m:ptr mu:n p:ptr pu:n code:n :}
    m mu p pu TELL
@@ -937,9 +905,24 @@ variable OPEN-N
    CHECK:VERIFY-LOG$ nip 0= if 2drop 2drop exit then
    SAID ;
 
+\ An isolated conversation is written to the server's stdin whole, and the
+\ input then ends; its stdout, stderr and exit code are read after. Every frame
+\ the server writes must be `Content-Length: N`, CR LF twice and N bytes, and
+\ the replies come in the order of the messages they answer. The rest run over
+\ pipes the test holds: answers-at-once keeps the input open, stdout-closed
+\ closes the output first, and the checked cases are held turn by turn, the
+\ messages of a turn written together once the server has answered the last and
+\ every publish read as it comes, since the server checks a document only when
+\ no input waits; references-eof and references-fault end their input before
+\ exit, and what the server writes after is read once it ends. The directory
+\ the test prints after `artifact:` keeps each case's input, output and stderr
+\ byte for byte, plus the fixtures. `exits` records each process exit. A shared
+\ session also has SESSION.trace.in, .trace.out and .trace.err for the full
+\ exchange; rerun the driver for the same timed turns with fresh fixtures. A
+\ conversation whose wait ran out keeps what was read before it.
+
 \ ---- running the server -------------------------------------------------------
 
-\ Starts a conversation of this name, with no input and no stderr expected.
 : CONVERSATION ( ptr u8 n -- )
    N>BLEN LABEL-B REPLACE
    IN-B CLEAR
@@ -948,27 +931,23 @@ variable OPEN-N
    0 OUT-AT !
    0 ERR-LEN ! ;
 
-\ The engine to run, with the server's command line and environment staged.
 : STAGED ( -- ptr u8 len )
    ENGINE-CANDIDATE:PATH$ >LEN
    s" --load" >LEN PROC-ARGV+
    s" tools/lsp.f" >LEN PROC-ARGV+
    PROC-ENV-INHERIT-MISSING ;
 
-\ The conversation's artifact file with this suffix, in SB.
 : ARTIFACT$ ( ptr u8 n -- ptr u8 n )
    {: x:ptr xu:n :}
    SB-RESET
    DIR$ SB-APPEND s" /" SB-APPEND LABEL$ SB-APPEND x xu SB-APPEND
    SB$ ;
 
-\ Keeps this conversation or shared case's input, output and stderr.
 : ARCHIVE-STREAMS ( -- )
    s" .in" ARTIFACT$ IN$ FS:WRITE-ALL
    s" .out" ARTIFACT$ OUT$ FS:WRITE-ALL
    s" .err" ARTIFACT$ ERR$ FS:WRITE-ALL ;
 
-\ A process that exited also records its exit code.
 : ARCHIVE ( n -- )
    {: rc:n :}
    ARCHIVE-STREAMS
@@ -1030,7 +1009,6 @@ variable OPEN-N
    ns 1000000 / FMT:SB-U s"  ms" SB-APPEND
    SB$ type cr ;
 
-\ Fails the conversation, under its name and this reason, unless the flag holds.
 : HOLDS ( bool ptr u8 n -- )
    {: ok:bool r:ptr ru:n :}
    SB-RESET LABEL$ SB-APPEND s" : " SB-APPEND r ru SB-APPEND
@@ -1091,7 +1069,6 @@ variable OPEN-N
    hu len + OUT-AT +!
    a hu + len ;
 
-\ The next frame is this body.
 : HEARD ( ptr u8 n -- )
    {: a:ptr u:n :}
    NEXT-BODY a u ALIKE ;
@@ -1130,8 +1107,6 @@ variable OPEN-N
    s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+ s\" ,\"result\":null}" MSG+
    MSG$ HEARD ;
 
-\ The empty diagnostics list published for a document, by the JSON text of the
-\ URI the server must echo.
 : PUBLISHED ( ptr u8 n -- )
    {: u:ptr uu:n :}
    MSG-B CLEAR
@@ -1139,14 +1114,12 @@ variable OPEN-N
    u uu MSG+ s\" ,\"diagnostics\":[]}}" MSG+
    MSG$ HEARD ;
 
-\ Nothing is left past the frames read, and stderr is what was expected.
 : ENDS ( -- )
    UNREAD s" " ALIKE
    ERR$ WANT$ ALIKE ;
 
 \ ---- conversations over pipes the test holds -----------------------------------
 
-\ Starts the server with these descriptors as its stdin, stdout and stderr.
 : SPAWN ( fd fd fd -- pid )
    {: i:fd o:fd e:fd :}
    STAGED i o e PROC-SPAWN-ARGV-ENV-IO ;
@@ -1177,7 +1150,6 @@ variable OPEN-N
       dup dst SPAN:LEN < if dup f dst deadline BYTE else false then
    while 1+ repeat drop ;
 
-\ The server killed if it still runs, and reaped: its wait status.
 : KILLED ( pid -- n )
    dup SIGKILL PROC-KILL-RAW drop
    PROC-WAIT-STATUS ;
@@ -1210,7 +1182,6 @@ variable OPEN-N
    err-r ERR-SPAN ERR-LEN deadline DRAIN
    in-w out-r err-r ;
 
-\ stdout-closed's read: stderr to its end.
 : HEAR-ERR ( fd -- fd )
    dup ERR-SPAN ERR-LEN CONVERSATION-MS >MS PROC-DEADLINE-AT DRAIN ;
 
@@ -1372,7 +1343,6 @@ variable OPEN-N
    1 CONVERSE
    ENDS ;
 
-\ A header line of LINE-CAP + 1 bytes.
 : LONG-LINE ( -- )
    s" X-Pad: " IN+
    CONTENT-LENGTH:LINE-CAP 6 - 0 ?do s" a" IN+ loop
@@ -1417,8 +1387,6 @@ variable OPEN-N
 
 \ ---- diagnostics conversations, held turn by turn --------------------------------
 
-\ Waits until the server's stdin takes a write; past DEADLINE it throws
-\ E-PROC-TIMEOUT.
 : WRITABLE ( -- )
    IN-W @ POLLOUT PROC-PFD!
    1 DEADLINE @ PROC-LEFT-MS MS>N DEADLINE @ PROC-POLL-RESTART {: rc:n :}
@@ -1449,7 +1417,6 @@ variable OPEN-N
    IN-W @ a SENT @ + left FD:WRITE-FULL
    u SENT ! ;
 
-\ Whether the output not yet read as frames holds a whole frame.
 : WHOLE? ( -- bool )
    UNREAD {: a:ptr u:n :}
    a u FRAME-LEN {: len:n :}
@@ -1478,7 +1445,6 @@ variable OPEN-N
       else false then
    while 1 ERR-LEN +! repeat ;
 
-\ stdout and stderr read on to their ends.
 : DRAINED ( -- )
    OUT-R @ OUT-SPAN OUT-LEN DEADLINE @ DRAIN
    ERR-R @ ERR-SPAN ERR-LEN DEADLINE @ DRAIN ;
@@ -1492,13 +1458,12 @@ variable OPEN-N
 \ The conversation's turns alone: its input ends before exit.
 : UNFINISHED ( [ -- ] -- [ -- ] )  dup execute ;
 
-\ Holds the conversation RUN writes from these turns with the server, every
-\ wait against one deadline CHECKED-MS from its start. Its input then ends,
-\ stdout and stderr are read to their ends, and the server must exit RC. A
-\ deadline kills the server, and EXITED prints the conversation and both
-\ streams and throws E-PROC-TIMEOUT. Any other throw kills the server and
-\ fails the conversation by name, and its real outcome is asserted; whether
-\ none came.
+\ Holds the conversation RUN writes from these turns, every wait against one
+\ deadline CHECKED-MS from its start. Its input then ends, stdout and stderr
+\ are read to their ends, and the server must exit RC. A deadline kills the
+\ server, and EXITED prints the conversation and both streams and throws
+\ E-PROC-TIMEOUT. Any other throw kills the server and fails the conversation
+\ by name, and its real outcome is still asserted. True when nothing threw.
 : HELD-BY ( [ -- ] [ [ -- ] -- [ -- ] ] n -- bool )
    {: turns run rc:n :}
    PIPE-PAIR {: in-r:fd in-w:fd :}
@@ -1565,7 +1530,6 @@ variable PACKET-NEXT                     \ where the check's next packet starts
       deferred OF ENDOF
    ;MATCH ;
 
-\ CHECKS-WITH no document open.
 : CHECKS ( ptr u8 n ptr u8 n -- )  [: drop ;] CHECKS-WITH ;
 
 \ The document at PATH is open with this text beside CHECKS-BESIDE's subject.
@@ -1574,12 +1538,10 @@ variable PACKET-NEXT                     \ where the check's next packet starts
    p pu SOURCE-ROOT:CANONICAL drop N>BLEN BESIDE-B REPLACE
    t tu N>BLEN BESIDE-TEXT-B REPLACE ;
 
-\ Gives EACH the document BESIDE! named.
 : BESIDE ( [ ptr u8 n ptr u8 n -- ] -- )
    {: each :}
    BESIDE-B SPAN$ BLEN>N BESIDE-TEXT-B SPAN$ BLEN>N each execute ;
 
-\ CHECKS, with the document BESIDE! named open beside the text.
 : CHECKS-BESIDE ( ptr u8 n ptr u8 n -- )  [: BESIDE ;] CHECKS-WITH ;
 
 \ The check's packet AT bytes into its output: the line from there, empty
@@ -1637,7 +1599,6 @@ variable PACKET-NEXT                     \ where the check's next packet starts
    s\" ,\"character\":" EXP+ c2 INT$ EXP+
    s\" }}" EXP+ ;
 
-\ The check's next packet for this code, advancing to the following packet.
 : PACKET-FOR ( ptr u8 n -- ptr u8 n )
    {: c:ptr cu:n :}
    PACKET-NEXT @ PACKET-FROM$ {: a:ptr u:n :}
@@ -1672,7 +1633,6 @@ variable PACKET-NEXT                     \ where the check's next packet starts
    l1 c1 l2 c2 RANGE+
    c cu a u CODED+ ;
 
-\ The next frame is the publish expected.
 : PUBLISHES ( -- )
    s" ]}}" EXP+
    HEAR
@@ -1729,7 +1689,6 @@ variable PUB-COUNT
       CLEANUP-EMPTY? LABEL$ T-LABEL TTRUE
    again ;
 
-\ Holds the conversation of this name and these turns.
 : TALK ( ptr u8 n [ -- ] -- )
    {: a:ptr u:n turns :}
    a u CONVERSATION
@@ -1884,7 +1843,6 @@ variable PUB-COUNT
 \ F's drop takes the only cell its effect leaves: E-MISMATCH at bytes 15-19.
 : TEXT-F ( -- ptr u8 n )  s" : F ( n -- n ) drop ;" ;
 
-\ The list of the document at PATH holding F's packet, at this version.
 : F-LISTED ( ptr u8 n n -- )
    {: p:ptr pu:n v:n :}
    TEXT-F p pu CHECKS
@@ -2023,7 +1981,6 @@ variable PUB-COUNT
 : TEXT-SD ( -- ptr u8 n )  s\" require dep.f\n: S ( -- n ) 1 D ;\n" ;
 : DEP-TWO ( -- ptr u8 n )  s\" : D ( n n -- n ) + ;\n" ;
 
-\ dep.f on disk holds this text.
 : DEP-WRITTEN ( ptr u8 n -- )
    {: a:ptr u:n :}
    DEP-PATH a u FS:WRITE-ALL ;
@@ -2204,7 +2161,7 @@ variable PUB-COUNT
 : LINK-DEP ( -- ptr u8 n )  s" link/dep.f" FIXTURE ;
 : REAL-DEP ( -- ptr u8 n )  s" real/dep.f" FIXTURE ;
 
-\ The path the packets name dep.f under real by.
+\ The canonical path under real, by which the packets name dep.f.
 : REAL-CANON ( -- ptr u8 n )  REAL-DEP SOURCE-ROOT:CANONICAL drop ;
 
 \ The client names S and dep.f through link, a symlink to real, and the
@@ -2310,9 +2267,7 @@ variable PUB-COUNT
 
 \ One `using` more than the checker holds open at once (CK-USE-MAX): the
 \ verifier dies in CHECKER-USING (`76 die`) and exits without a verdict, where
-\ `--load` refuses that using as ENGINE-ERROR:USING-OVERFLOW. A bare
-\ `generates:`, which this case read before, stops the verifier at the reader
-\ now (7187, E-MISSING-NAME).
+\ `--load` refuses that using as ENGINE-ERROR:USING-OVERFLOW.
 CK-USE-MAX 1 + constant OVER-USINGS
 
 : OVER-USINGS+ ( -- )
@@ -2333,8 +2288,7 @@ CK-USE-MAX 1 + constant OVER-USINGS
 
 \ H1 is refused, then one `using` more than the checker holds open: the
 \ verifier dies in CHECKER-USING (`76 die`) after writing H1's packet, which is
-\ published. A bare `generates:`, which this case read before, stops the
-\ verifier at the reader now (7187, E-MISSING-NAME).
+\ published.
 : REFUSED-OVER-TEXT ( -- )
    TXT-B CLEAR
    s\" : H1 ( n -- n ) NOSUCHWORD ;\n" N>BLEN TXT-B APPEND-SPAN
@@ -2534,7 +2488,6 @@ CK-USE-MAX 1 + constant OVER-USINGS
 : TEXT-SYM-DEP ( -- ptr u8 n )
    s\" package QD\n: QUX-P ( -- n ) 5 ;\n: QE:QUX-Q ( -- n ) 6 ;\npublic\n: QUX-DEP ( -- n ) 3 ;\nEXPORT QE:QUX-Q\n;package\nvariable QUX-V\n" ;
 
-\ workspace/symbol, by its id's JSON text, with these params' JSON text.
 : SYMBOLS-ASK ( ptr u8 n ptr u8 n -- )
    {: i:ptr iu:n p:ptr pu:n :}
    MSG-B CLEAR
@@ -2564,7 +2517,6 @@ CK-USE-MAX 1 + constant OVER-USINGS
    pu 0 > if s\" ,\"containerName\":\"" MSG+ p pu MSG+ s\" \"" MSG+ then
    s" }" MSG+ ;
 
-\ The next frame is the answer begun.
 : SYMBOLS-END ( -- )
    s" ]}" MSG+
    HEAR
@@ -2590,8 +2542,6 @@ CK-USE-MAX 1 + constant OVER-USINGS
    SAY
    s" 3" SYMBOLS-START SYMBOLS-END ;
 
-\ textDocument/documentSymbol, by its id's JSON text, of the document opened
-\ from this path.
 : OUTLINE-ASK ( ptr u8 n ptr u8 n -- )
    {: i:ptr iu:n p:ptr pu:n :}
    MSG-B CLEAR
@@ -2615,12 +2565,8 @@ CK-USE-MAX 1 + constant OVER-USINGS
    x xu MSG+ s" }}" MSG+
    MSG$ FRAMED ;
 
-\ A request by this method and id's JSON text at character C of line L of
-\ the document opened from this path.
 : AT-ASK ( ptr u8 n ptr u8 n ptr u8 n n n -- )  s" " AT-ASK-WITH ;
 
-\ textDocument/definition, by its id's JSON text, at character C of line L of
-\ the document opened from this path.
 : DEFINITION-ASK ( ptr u8 n ptr u8 n n n -- )
    {: i:ptr iu:n p:ptr pu:n l:n c:n :}
    s" textDocument/definition" i iu p pu l c AT-ASK ;
@@ -3005,8 +2951,6 @@ variable LENGTH-N                        \ the length of its directory's name
 : TEXT-DEF-B ( -- ptr u8 n )
    s\" require def-dep.f\n: DEF-USE ( -- n ) DEF-DEP DD:DEF-PUB + ;\n" ;
 
-\ The next frame answers the request with this id's JSON text with no
-\ Location.
 : NOWHERE ( ptr u8 n -- )
    {: i:ptr iu:n :}
    MSG-B CLEAR
@@ -3105,7 +3049,6 @@ DYNAMIC-BUFFER TREE-TEXT u8
    p pu TREE-READ t tu LINE-START {: at:n :}
    p pu 0 at 0 ?do i TREE-TEXT c@ 10 = if 1+ then loop ;
 
-\ The same line, with the path's file URI, in URI-SPAN, for the path.
 : URI-LINE ( ptr u8 n ptr u8 n -- ptr u8 n n )
    PATH-LINE {: at:n :} URI-OF at ;
 
@@ -3295,7 +3238,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
 \ hook is installed. Its origin remains known, but top-level dictionary calls
 \ in sumtype.f defer its source index, even for unchanged bytes. The same
 \ limitation applies to util.f and structures.f below; target.f is declarations
-\ only and remains locatable (habu-locate-origins-across-3fd3d72d).
+\ only and remains locatable.
 : PREFIX-SOURCE-PATH ( -- ptr u8 n )  s" src/core/sumtype.f" IN-TREE ;
 : PREFIX-TARGET-PATH ( -- ptr u8 n )
    HB-TARGET-MACOS? if s" src/os/macos/target.f" IN-TREE exit then
@@ -3460,8 +3403,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
 
 \ TEXT-DEF-C with its uses swapped, then one `using` more than the checker
 \ holds open, at which the verifier dies (`76 die`) and exits without a
-\ verdict as in incomplete. A bare `generates:`, which this case read before,
-\ is refused at the reader now (7187, E-MISSING-NAME).
+\ verdict as in incomplete.
 : TEXT-DEF-C-SWAPPED ( -- ptr u8 n )
    TXT-B CLEAR
    s\" : DEF-ONE ( -- n ) 1 ;\n: DEF-TWO ( -- n ) 2 ;\n: DEF-SUM ( -- n ) DEF-TWO DEF-ONE + ;\n"
@@ -3535,7 +3477,6 @@ DYNAMIC-BUFFER TREE-TEXT u8
    HEAR s" 6" -32602 REFUSED
    HEAR s" 7" -32602 REFUSED ;
 
-\ initialize from a client that supports hierarchical document symbols.
 : HIERARCHICAL-CLIENT ( -- )
    MSG-B CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"capabilities\":" MSG+
@@ -3612,8 +3553,6 @@ DYNAMIC-BUFFER TREE-TEXT u8
    SHARED? @ 0= if s\" [\"markdown\",\"plaintext\"]" INITIALIZE-AS then ;
 : PLAIN-CLIENT ( -- )  s\" [\"plaintext\"]" INITIALIZE-AS ;
 
-\ textDocument/hover, by its id's JSON text, at character C of line L of the
-\ document opened from this path.
 : HOVER-ASK ( ptr u8 n ptr u8 n n n -- )
    {: i:ptr iu:n p:ptr pu:n l:n c:n :}
    s" textDocument/hover" i iu p pu l c AT-ASK ;
@@ -3656,7 +3595,6 @@ DYNAMIC-BUFFER TREE-TEXT u8
    s\" : HV-ONE ( -- n )\n\\ package hv, hover-a.f:" HV+
    SB-RESET line FMT:SB-INT SB$ HV+ ;
 
-\ HV-ONE's lines as Markdown.
 : HV-ONE-MD ( n -- )
    TXT-B CLEAR s\" ```habu\n" HV+ HV-ONE-LINES s\" \n```" HV+ ;
 
@@ -3815,8 +3753,6 @@ DYNAMIC-BUFFER TREE-TEXT u8
 
 \ ---- document highlight ------------------------------------------------------
 
-\ textDocument/documentHighlight, by its id's JSON text, at character C of
-\ line L of the document opened from this path.
 : HIGHLIGHT-ASK ( ptr u8 n ptr u8 n n n -- )
    {: i:ptr iu:n p:ptr pu:n l:n c:n :}
    s" textDocument/documentHighlight" i iu p pu l c AT-ASK ;
@@ -4115,8 +4051,6 @@ DYNAMIC-BUFFER TREE-TEXT u8
 
 \ ---- semantic tokens ---------------------------------------------------------
 
-\ textDocument/semanticTokens/full, by its id's JSON text, of the document
-\ opened from this path.
 : TOKENS-ASK ( ptr u8 n ptr u8 n -- )
    {: i:ptr iu:n p:ptr pu:n :}
    MSG-B CLEAR
@@ -4148,7 +4082,6 @@ DYNAMIC-BUFFER TREE-TEXT u8
 : VARIABLE+ ( n n n -- )  1 0 TOKEN+ ;
 : READONLY+ ( n n n -- )  1 1 TOKEN+ ;
 
-\ The next frame is the answer begun.
 : TOKENS-END ( -- )
    s" ]}}" MSG+
    HEAR
@@ -4267,9 +4200,9 @@ DYNAMIC-BUFFER TREE-TEXT u8
 
 \ ---- declaration identities --------------------------------------------------
 
-\ No reply states a declaration identity yet, so these cases run the store in
-\ the test's own process, on the lines the test's own check of each text
-\ states, as the server's check of it would.
+\ No reply states a declaration identity, so these cases run the store in the
+\ test's own process, on the lines the test's own check of each text states,
+\ as the server's check of it would.
 
 create SNAP-B HDR-BYTES allot            \ the store's decls and uses, as SNAP-SLOT states them,
 create WAS-B HDR-BYTES allot             \ and as they were before the store changed
@@ -4506,8 +4439,6 @@ create WAS-B HDR-BYTES allot             \ and as they were before the store cha
 : TEXT-CMP-A-NEW ( -- ptr u8 n )
    s\" require cmpl-dep.f\npackage CMPA\n: CMPL-NEW ( -- n ) 5 ;\n: CMPL-TWO ( -- n ) CMPL-NEW CMPL-DEP 1 2 swap 2drop ;\n;package\nrequire src/lib/type/deftype.f\nDEFTYPE CMPL-T\n: CMPL-CVT ( -- n ) 5 >CMPL-T CMPL-T>N ;\npackage CMPQ\npublic\nDEFTYPE CMPQ-T\n;package\n: CMPQ-USE ( -- n ) 5 CMPQ:>CMPQ-T CMPQ:CMPQ-T>N ;\n" ;
 
-\ textDocument/completion, by its id's JSON text, at character C of line L of
-\ the document opened from this path.
 : COMPLETION-ASK ( ptr u8 n ptr u8 n n n -- )
    {: i:ptr iu:n p:ptr pu:n l:n c:n :}
    s" textDocument/completion" i iu p pu l c AT-ASK ;
@@ -4529,7 +4460,6 @@ create WAS-B HDR-BYTES allot             \ and as they were before the store cha
    du 0 > if s\" ,\"detail\":\"" MSG+ d du MSG+ s\" \"" MSG+ then
    s" }" MSG+ ;
 
-\ The next frame is the answer begun.
 : ITEMS-END ( -- )
    s" ]}}" MSG+
    HEAR
@@ -4685,8 +4615,6 @@ create WAS-B HDR-BYTES allot             \ and as they were before the store cha
    OVER-USINGS+
    TXT$ ;
 
-\ textDocument/documentLink, by its id's JSON text, of the document opened
-\ from this path.
 : LINKS-ASK ( ptr u8 n ptr u8 n -- )
    {: i:ptr iu:n p:ptr pu:n :}
    MSG-B CLEAR
@@ -4695,7 +4623,6 @@ create WAS-B HDR-BYTES allot             \ and as they were before the store cha
    p pu URI-OF MSG+ s\" \"}}}" MSG+
    MSG$ FRAMED ;
 
-\ The answer to the request with this id's JSON text, begun in MSG.
 : LINKS-START ( ptr u8 n -- )
    {: i:ptr iu:n :}
    MSG-B CLEAR
@@ -4726,7 +4653,6 @@ create WAS-B HDR-BYTES allot             \ and as they were before the store cha
    PAR-B CLEAR TXT$ TEXT+
    s\" ,\"tooltip\":" MSG+ PAR$ MSG+ s" }" MSG+ ;
 
-\ The answer ended: the next frame is it.
 : LINKS-END ( -- )
    s" ]}" MSG+
    HEAR
@@ -5012,7 +4938,6 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
 : DISK-URI ( ptr u8 n -- ptr u8 n )  CANON URI-OF ;
 : OPEN-URI ( ptr u8 n -- ptr u8 n )  FIXTURE URI-OF ;
 
-\ The file of this name in the artifact directory holds this text.
 : REFS-FILE ( ptr u8 n ptr u8 n -- )
    {: n:ptr nu:n t:ptr tu:n :}
    n nu FIXTURE t tu FS:WRITE-ALL ;
@@ -5069,7 +4994,6 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    m mu MSG+ s" }}" MSG+
    MSG$ FRAMED ;
 
-\ initialize's member naming the folder of this name as the root, in PAR.
 : ROOT-URI+ ( ptr u8 n -- )
    PAR-B CLEAR s\" \"rootUri\":" PAR+ FIXTURE URI+ ;
 
@@ -5081,9 +5005,6 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
 : DECL-TOO ( -- ptr u8 n )  s\" ,\"context\":{\"includeDeclaration\":true}" ;
 : DECL-NOT ( -- ptr u8 n )  s\" ,\"context\":{\"includeDeclaration\":false}" ;
 
-\ textDocument/references, by its id's JSON text, at character C of line L
-\ of the document opened from this path, with these params members after
-\ the position.
 : REFS-ASK ( ptr u8 n ptr u8 n n n ptr u8 n -- )
    {: i:ptr iu:n p:ptr pu:n l:n c:n x:ptr xu:n :}
    s" textDocument/references" i iu p pu l c x xu AT-ASK-WITH ;
@@ -6521,8 +6442,6 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
 
 \ ---- rename ------------------------------------------------------------------
 
-\ textDocument/prepareRename, by its id's JSON text, at character C of line L
-\ of the document opened from this path.
 : PREPARE-ASK ( ptr u8 n ptr u8 n n n -- )
    {: i:ptr iu:n p:ptr pu:n l:n c:n :}
    s" textDocument/prepareRename" i iu p pu l c AT-ASK ;
@@ -6546,13 +6465,12 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
 : TEXT-RN-PREP ( -- ptr u8 n )
    s\" package RNP\npublic\n: ROOK ( -- n ) 1 ;\n: TWO ( -- n ) ROOK ROOK  + ;\n;package\n: Q:Y ( -- n ) RNP:ROOK ;\n: RU ( -- n ) Q:Y 1 + ;\n" ;
 
-\ ROOK's use at its first character and at its last, Q:Y's declaring token
-\ and RNP:ROOK asked on its qualifier, each answered with the range of the
-\ tail a rename edits, including at the exact trailing edge of a use or its
-\ declaration; a space beyond that edge and the space before a use null. A
-\ use of the converter >CVT-T, whose declaring token CVT-T does not spell it,
-\ -32803 naming hover-cvt.f; a use in hu.f, whose check was refused, -32803
-\ naming it;
+\ ROOK's use at its first character and at its last, Q:Y's declaring token and
+\ RNP:ROOK asked on its qualifier, each answered with the range of the tail a
+\ rename edits, including at the exact trailing edge of a use or its
+\ declaration; a space beyond that edge and the space before a use null. A use
+\ of the converter >CVT-T, whose declaring token CVT-T does not spell it, -32803
+\ naming hover-cvt.f; a use in hu.f, whose check was refused, -32803 naming it;
 \ ref-a.f, never opened, -32602.
 : RENAME-PREPARE-TURNS ( -- )
    SESSION-INITIALIZE
@@ -6596,9 +6514,6 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" 14" 2 2 6 RANGED
    HEAR s" 15" NULL-RESULT ;
 
-\ textDocument/rename, by its id's JSON text, at character C of line L of
-\ the document opened from this path, with these params members after the
-\ position.
 : RENAME-ASK ( ptr u8 n ptr u8 n n n ptr u8 n -- )
    {: i:ptr iu:n p:ptr pu:n l:n c:n x:ptr xu:n :}
    s" textDocument/rename" i iu p pu l c x xu AT-ASK-WITH ;
@@ -6629,7 +6544,6 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
    s\" ,\"result\":{\"changes\":{" MSG+ ;
 
-\ The edits of the document at this URI come next.
 : EDITS-IN ( ptr u8 n -- )
    {: u:ptr uu:n :}
    MSG$ s" {" ENDS-WITH? 0= if s" ]," MSG+ then
@@ -6704,9 +6618,9 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" 9" ROOK-EDITS
    HEAR s" 10" NULL-RESULT ;
 
-\ newName missing or a number, each -32602; empty, or holding a space, a
-\ tab, a colon that qualifies it, a quote or a backslash, each -32803. All are answered before
-\ the document's check, whose list comes after them.
+\ newName missing or a number, each -32602; empty, or holding a space, a tab, a
+\ colon that qualifies it, a quote or a backslash, each -32803. All are answered
+\ before the document's check, whose list comes after them.
 : RENAME-PARAMS-TURNS ( -- )
    SESSION-INITIALIZE
    RN-PREP-PATH TEXT-RN-PREP 1 OPENS
@@ -7096,7 +7010,6 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
 
 \ ---- cancellation ------------------------------------------------------------
 
-\ A cancel of the request with this id's JSON text.
 : CANCELS ( ptr u8 n -- )
    {: i:ptr iu:n :}
    PAR-B CLEAR
@@ -7365,10 +7278,10 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s\" \"def-grow\"" s" refs-halt/d.f" DISK-URI 0 2 6 LOCATED
    s" src/lib/string.f" IN-TREE 1 CLEAN ;
 
-\ The input that comes while a request checks the files it gathers from.
-\ Those checks publish nothing, as intended: a document's list comes only from
-\ its own check, a turn after the answer. So each conversation writes its next
-\ turn once it hears d.f's list, which the request's own turn publishes.
+\ The input that comes while a request checks the files it gathers from. Those
+\ checks publish nothing: a document's list comes only from its own check, a
+\ turn after the answer. So each conversation writes its next turn once it
+\ hears d.f's list, which the request's own turn publishes.
 : REFS-HALTS ( -- )
    s" references-cancel" [: REFS-CANCEL-TURNS ;] TALK
    s" references-modified" [: REFS-MODIFIED-TURNS ;] TALK

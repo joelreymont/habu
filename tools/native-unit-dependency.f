@@ -1,9 +1,9 @@
-\ Observed inputs to one native definition and to one source file. Section 14
-\ carries declaration identities, checked contracts, frozen primitive schemas
-\ and fixed values; anything it cannot re-verify is an ORDERED row. A nested
-\ definition keeps a separate span in the definition arena. A file frame holds
-\ one row per kind and key, only about records the file did not make itself:
-\ those before its first ordinal or made by a child file it loaded.
+\ native-unit-dependency.f - observed inputs to one native definition and to
+\ one source file: slot 14 of the unit object (tools/native-unit-object.f
+\ DEPS-SLOT). Rows carry declaration identities, checked contracts, frozen
+\ primitive schemas and fixed values; anything not re-verifiable is ORDERED.
+\ A nested definition keeps a separate span. A file frame holds one row per
+\ kind and key, only about records before its first ordinal or made by a child.
 
 require src/lib/errors.f
 require src/lib/le.f
@@ -217,12 +217,10 @@ INSTALL-DEFAULT
    DEPTH @ 0 <= if BAD then
    DEPTH @ 1- FRAMES @ ;
 
-\ Field n of the innermost file frame.
 : FFIELD ( n -- ptr n )
    FDEPTH @ 0 <= if BAD then
    FDEPTH @ 1- FRAME-CELLS * + FFRAMES ;
 
-\ Cell f of pending run i.
 : RFIELD ( n n -- ptr n ) swap RUN-CELLS * + FRUNS ;
 
 : OPEN? ( -- bool ) DEPTH @ 0 > FDEPTH @ 0 > or ;
@@ -414,7 +412,6 @@ INSTALL-DEFAULT
 
 : HOOKED? ( -- bool ) data-base HOOK-CELL + CELL-VIEW @ 0<> ;
 
-\ Observe the checker hook cell for KERNEL-END.
 : KERNEL-LATCH ( -- )
    KERNEL-END @ 0<> if exit then
    HOOKED? {: hooked:bool :}
@@ -491,7 +488,6 @@ $8000000000000000 constant ORIGIN-FLOOR
    {: j:n o:n r:n :}
    o j 2 * OIDX ! r j 2 * 1+ OIDX ! ;
 
-\ Entry j-1 moves up to j.
 : OI-SHIFT ( n -- )
    {: j:n :}
    j j 1- OI-O j 1- OI-R OI! ;
@@ -528,7 +524,6 @@ $8000000000000000 constant ORIGIN-FLOOR
       1 OPEND-N +!
    then ;
 
-\ Cell k of slot row idx.
 : USER-CELL ( n n -- ptr n ) swap 4 * + USER-TAB ;
 
 public
@@ -562,7 +557,6 @@ public
 
 private
 
-\ Index every record below limit that has settled.
 : EXTEND ( n -- )
    {: limit:n :}
    \ A kernel without the cut notice lowers the count unseen; it writes no
@@ -683,7 +677,6 @@ public
    size 0= if NULL-PTR 0 exit then
    idx 3 USER-CELL @ USER-BYTES size ;
 
-\ Whether record ord is a slot word.
 : USER? ( n -- bool )
    {: ord:n :}
    USER-N @ 0 ?do i 0 USER-CELL @ ord = if true unloop exit then loop
@@ -955,7 +948,6 @@ private
    MEM-N @ MEMBERS !
    1 MEM-N +! ;
 
-\ Queue ord once per run.
 : QUEUE ( n -- )
    {: ord:n :}
    ord RMARK @ REPOCH @ = if exit then
@@ -1383,7 +1375,6 @@ private
    then
    ord ORDERED NULL-PTR 0 NULL-PTR 0 ADD-ROW ;
 
-\ One record's name and package, for the ordered-run line.
 : DIAG-RECORD ( ptr u8 n n -- )
    {: key:ptr keyu:n ord:n :}
    key keyu DIAG-W2
@@ -2000,7 +1991,6 @@ variable USER-READ
    CHECK-OK @ 0= if REPORT-MISS then
    CHECK-OK @ ;
 
-\ The innermost file frame's dependency row count so far.
 : FILE-ROWS ( -- n ) F-OFF FFIELD @ FBYTES 8 + LE:U64@ ;
 
 \ Whether rows [done, mark) of a file object's dependency bytes still hold;
@@ -2058,7 +2048,6 @@ variable USER-READ
    0 READERS-XT ! 0 CWORK-XT !
    8 0 ?do 0 CELL-BYTES i + c! loop ;
 
-\ Close the innermost definition frame.
 : CLOSE ( -- )
    FRAME {: off:n :}
    NFILE-REF:END-DEFINITION

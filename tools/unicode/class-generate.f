@@ -16,7 +16,7 @@ private
 10 constant OUTPUT-LINE-FEED
 64 constant SHA256-HEX-LENGTH
 create INPUT-DIGEST SHA256-HEX-LENGTH allot
-create UC-FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this tool's file-digest context
+create UC-FSHA-CTX SHA256-FILE-CTX-BYTES allot
 
 : UNICODE-PATH$ ( -- ptr u8 n )
    s" data/unicode/16.0.0/UnicodeData.txt" ;

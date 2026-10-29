@@ -1,45 +1,9 @@
-\ lsp-tokens.f - the language server's semantic tokens: a token over each
-\ word an open document's last completed check bound in it, typed by what the
-\ check states the word is.
-\
-\ LEGEND writes the semanticTokensProvider capability: the token types and
-\ modifiers whose indices and bits ANSWER writes, and that a request for a
-\ whole document's tokens is answered. ANSWER writes the result of
-\ textDocument/semanticTokens/full for an open document from its last
-\ completed check, whatever that check's verdict, while that check's
-\ positions are of the document's text: a refused or deferred check stopped
-\ reporting at a point, and what it reported before is still what it bound.
-\ While no completed check's positions are of the text, as once a check of the
-\ document starts until it completes, the list is empty.
-\
-\ A token is over the token that declares a definition the check retained in
-\ the document's own file (LSP-DEFS:DEFS-OWN-GROUP), when that token declares
-\ no other (LSP-DEFS:GROUP-REC-SOLE): a DEFTYPE's name declares both its
-\ converters and gets none. A token is also over each use the check bound in
-\ the document, a string literal before a call of a word `names:` states
-\ among them, typed by the record of its declaring token that its spelling
-\ names (LSP-DEFS:GROUP-REC-NAMED), as hover and highlight select it; a use
-\ that names no record gets none. Its type is the record's class: function
-\ for a word, variable for storage, variable and readonly for a constant. An
-\ export's record gets none, and so does a use bound to one: the verifier
-\ states the export's own class, not the exported word's. A word the check
-\ binds to no located declaration, as it binds an engine word, has no use and
-\ so no token, and the client keeps its own coloring wherever none is.
-\
-\ The tokens are listed in the order they start in the text, as LSP encodes
-\ them, each from the one before: the check publishes a literal's use after
-\ the call that follows it, so ANSWER sorts them. No two start at one byte:
-\ a definition's token declares its record alone and a use is its own token;
-\ an EXPORT's operand, which declares the export and is a use of the word it
-\ exports, gives the use's token alone.
-\ Positions count lines and UTF-16 units of the document's text (LSP-TEXT). A
-\ token is one name, or a literal's bytes, on one line, since the check binds
-\ nothing in a literal its line leaves open: its length is the character of
-\ its end less that of its start.
-\
-\ STORAGE CLASS. PROCESS-GLOBAL: the tokens of an answer are gathered into
-\ the module's buffers, which belong to the server's one task; the writer is
-\ the caller's, and the uses and definitions are those tools/lsp-defs.f keeps.
+\ lsp-tokens.f - textDocument/semanticTokens/full: a token over each word an
+\ open document's last completed check bound in it, typed by what the check
+\ states the word is. A word bound to no located declaration (an engine word)
+\ gets none, and the client keeps its own coloring there.
+\ STORAGE CLASS. PROCESS-GLOBAL: an answer's tokens gather in the module's
+\ buffers, for the server's one task; tools/lsp-defs.f keeps the uses.
 
 require src/lib/json-write.f
 require src/lib/sort.f
@@ -72,8 +36,8 @@ variable PREV-CHAR                       \ one written last
 : TOKEN@ ( n n -- n )  swap TOKEN-CELLS * + TOKENS @ ;
 : TOKEN! ( n n n -- )  swap TOKEN-CELLS * + TOKENS ! ;
 
-\ A token from byte FROM to byte TO of the text, of a record of this class,
-\ gathered unless the class is an export's.
+\ An export's record gets no token, nor a use bound to one: the verifier states
+\ the export's own class, not the exported word's.
 : GATHER ( n n n -- )
    {: from:n to:n class:n :}
    class CLASS-EXPORT = if exit then
@@ -86,7 +50,8 @@ variable PREV-CHAR                       \ one written last
    k k ORDER !
    1 TOKEN-N +! ;
 
-\ The token of each record of group G whose token declares it alone.
+\ Only a token that declares its record alone (LSP-DEFS:GROUP-REC-SOLE): a
+\ DEFTYPE's name declares both its converters and gets none.
 : DECLARED ( n -- )
    {: g:n :}
    g GROUP-FIRST begin dup 0 >= while
@@ -98,7 +63,9 @@ variable PREV-CHAR                       \ one written last
       r REC-NEXT
    repeat drop ;
 
-\ The token of use U of the text T, when its spelling names a record.
+\ Typed by the record its spelling names (LSP-DEFS:GROUP-REC-NAMED), as hover
+\ and highlight select it. A string literal before a call of a word `names:`
+\ states is a use too.
 : USED ( ptr u8 n n -- )
    {: t:ptr tu:n u:n :}
    u USE-GROUP 0 < if exit then
@@ -107,28 +74,28 @@ variable PREV-CHAR                       \ one written last
       none OF ENDOF
    ;MATCH ;
 
-\ Whether token A starts before token B.
 : EARLIER? ( n n -- bool )
    {: a:n b:n :}
    a K-START TOKEN@ b K-START TOKEN@ < ;
 
-\ ORDER sorted by where each token starts.
+\ LSP encodes each token from the one before, in start order, and the check
+\ publishes a literal's use after the call that follows it. No two start at one
+\ byte: a definition's token declares its record alone, a use is its own token,
+\ and an EXPORT's operand gives the use's token alone.
 : SORTED ( -- )
    TOKEN-N @ 2 < if exit then
    0 ORDER TOKEN-N @ [: EARLIER? ;] SORT:SORT! ;
 
-\ The type and modifiers of a token of a record of this class, not an
-\ export's.
 : TYPED ( n -- n n )
    {: class:n :}
    class CLASS-CONSTANT = if T-VARIABLE M-READONLY exit then
    class CLASS-STORAGE = if T-VARIABLE 0 exit then
    T-FUNCTION 0 ;
 
-\ Token K, written next as LSP encodes it, a comma before it unless it is
-\ the first: the lines from the line of the token written before, the
-\ characters from that token's start when on its line, else from the line's
-\ start, its length in characters, its type and its modifiers.
+\ Lines from the previous token's line; characters from its start on the same
+\ line, else from the line's start (UTF-16 units, LSP-TEXT). A token lies on one
+\ line, since the check binds nothing in a literal its line leaves open, so its
+\ length is its end's character less its start's.
 : ENCODED ( ptr JSON-WRITE:writer n bool -- ptr JSON-WRITE:writer )
    {: k:n first:bool :}
    first 0= if COMMA then
@@ -145,8 +112,6 @@ variable PREV-CHAR                       \ one written last
 
 public
 
-\ Writes the semanticTokensProvider member of the server's capabilities to
-\ the writer: the legend, and whole documents' tokens answered.
 : LEGEND ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
    s" semanticTokensProvider" KEY OBJECT-START
       s" legend" KEY OBJECT-START
@@ -161,9 +126,10 @@ public
       s" full" true FIELD-BOOL
    OBJECT-END ;
 
-\ Writes the result of textDocument/semanticTokens/full for the document in
-\ this slot, the tokens the header describes, to the writer. Positions count
-\ in the document's text from now on.
+\ From the last completed check whatever its verdict, while its positions are
+\ of the text: a refused or deferred check stopped at a point, and what it
+\ reported before is still what it bound. Otherwise, as while a check of the
+\ document runs, the list is empty. Positions count in the text from now on.
 : ANSWER ( ptr JSON-WRITE:writer n -- ptr JSON-WRITE:writer )
    {: w slot:n :}
    slot LSP-DOCS:DOC-TEXT$ {: t:ptr tu:n :}

@@ -1,10 +1,8 @@
-\ build-fixpoint-source-test.f - checked fixture for tools/build-fixpoint.f:
-\ the sources the refresh emits and certifies - the runtime capture kind of
-\ the common emitter, the checker and TFAM prefix self-certification, and the
-\ boot-prefix and phase-source certify gates. Install, stamp and CLI cases
-\ are tools/build-fixpoint-test.f; this is a gate row of its own,
-\ because one row running every build-fixpoint case took 293-338 s in the
-\ gate's pool.
+\ build-fixpoint-source-test.f - tools/build-fixpoint.f: the sources the refresh
+\ emits and certifies (the common emitter's runtime capture kind, checker and
+\ TFAM prefix self-certification, the boot-prefix and phase-source gates).
+\ Install, stamp and CLI cases are tools/build-fixpoint-test.f: one row running
+\ every case took 293-338 s in the gate's pool.
 \ Run: bin/hb --load tools/build-fixpoint-source-test.f
 
 require src/lib/string.f
@@ -188,13 +186,10 @@ package BUILD-FIXPOINT
    loop
    BF-TMP-RESET ;
 
-\ Per-file TFAM-prefix certification: type-schema.f, type-family.f, render.f,
-\ and sumtype.f certify clean via the same VERIFY:SOURCE-BUF path, each
-\ verified as the tail of its exact BF-APPEND-CHECKER-BOOT prefix context
-\ (util, cell, pointer storage, engine error, checker, then the earlier TFAM
-\ files), so de-typing any one file fails its own assert. render.f sits between
-\ type-family.f and sumtype.f in the real prefix and certifies since its cleanup
-\ (habu-make-fixpoint-certify-a11dbad5).
+\ Per-file TFAM-prefix certification: type-schema.f, type-family.f, render.f and
+\ sumtype.f each certify via VERIFY:SOURCE-BUF as the tail of their exact
+\ BF-APPEND-CHECKER-BOOT prefix (util, cell, pointer storage, engine error,
+\ checker, then the earlier TFAM files), so de-typing one fails its own assert.
 : BFT-CERT-TFAM$ ( -- ptr u8 n )
    s" cert-tfam" BF-A$ ;
 
@@ -217,24 +212,17 @@ package BUILD-FIXPOINT
    s" tfam-sumtype" BFT-CERT-TFAM$ BF-CERTIFY-RC 0 T=
    BF-TMP-RESET ;
 
-\ The stage2 and stdin build phases both emit into the one fixed `stage2-src`
-\ stage-input path. The first generation uses COMPILER-BUILD's verified
-\ `--build` route; later hb-stage generations read that same path. Therefore
-\ BF-CERTIFY-STAGE2 and
-\ BF-CERTIFY-STDIN read the same path at different times. Prove the certify path
-\ exists in each phase and that the stdin phase OVERWRITES it with distinct
-\ content — so BF-CERTIFY-STDIN certifies the stdin driver source, not stage2 twice.
-\ The boot prefix is a certify phase of its own, and it is BLOCKING. The
-\ subject is the real assembly through the real phase word, not a hand-built
-\ stand-in: BF-PREFIX-SOURCE writes the bytes the build writes and
-\ BF-CERTIFY-PREFIX is the word the build calls. The good case proves those
-\ exact bytes certify; the bad case is the SAME bytes with one type-broken
-\ definition appended, which must throw rather than warn - the fail-open
-\ variant would pass the good case identically.
-\ The two membership assertions are structural, not decorative: they name a
-\ definition from the first checker-boot file and one from deep inside
-\ checker.f, so an assembly that silently emitted nothing, or stopped after its
-\ first file, still certifies clean and would pass without them.
+\ The stage2 and stdin phases both emit into the one `stage2-src` path, so
+\ BF-CERTIFY-STAGE2 and BF-CERTIFY-STDIN read it at different times: the path
+\ exists in each phase and the stdin phase overwrites it with distinct content,
+\ so BF-CERTIFY-STDIN certifies the stdin driver, not stage2 twice.
+\ The boot prefix is a blocking certify phase. BF-PREFIX-SOURCE writes the bytes
+\ the build writes and BF-CERTIFY-PREFIX is the word the build calls. The bad
+\ case is the same bytes plus one type-broken definition, which must throw, not
+\ warn: a fail-open variant passes the good case identically. The membership
+\ assertions name a definition from the first checker-boot file and one deep in
+\ checker.f: an assembly that emitted nothing, or stopped after its first file,
+\ also certifies clean.
 : BFT-TEST-CERTIFY-BOOT-PREFIX ( -- )
    BFT-ROOT BF-TMP!
    BF-PREFIX-SOURCE

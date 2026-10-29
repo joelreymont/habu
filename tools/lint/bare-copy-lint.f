@@ -1,40 +1,9 @@
-\ bare-copy-lint.f -- BYTE-COPY, SPAN:MAKE and the engine's PATHZ and PATH0 stay with their owners.
-\
-\ Two words cross from "a pointer" to "a pointer and how far it reaches", and
-\ both of them take the reach on the caller's word: BYTE-COPY writes `n` bytes
-\ into a destination nothing checked, and SPAN:MAKE turns an address and a number
-\ into a span whose reach every later bounds check trusts. Inside src/, except src/examples/,
-\ that crossing is the library's own business - a producer there publishes spans
-\ and BYTE-COPY is how SPAN:COPY moves the bytes once the reach has been checked.
-\ Everywhere else it is a consumer re-doing by hand what the span type already
-\ does, so this lint names the site and the replacement.
-\
-\ The third crossing is the engine's path copier: PATHZ and PATH0 copy a path
-\ and its 0 terminator for the engine's own OS primitives, so they belong to
-\ src/core/, src/habu/ and test/engine-suite.f, which tests those primitives,
-\ and to tools/tier-census.f and tools/tier-dump.f, which by contract require
-\ nothing but code-bytes.f and tier.f (a library they loaded could not be
-\ measured), so they copy through the engine's PATH0 instead of FS.
-\ Everywhere else, src/lib/ included, a path reaches the OS through FS:>PATHZ or
-\ FFI:CSTR into the destination's span. A bare PATHZ or PATH0 that no local or
-\ file definition binds, outside the owners, is a finding. A hand-written
-\ `0 ... c!` terminator cannot be linted: those two owners and review guard it.
-\
+\ bare-copy-lint.f -- BYTE-COPY and SPAN:MAKE take a reach on the caller's word:
+\ outside src/ (and in src/examples/) a use redoes what the span type does. PATHZ
+\ and PATH0 copy a path for the engine's OS primitives; outside PATH-OWNED? a path
+\ goes through FS:>PATHZ or FFI:CSTR. Names each site; not a gate yet, never dies.
 \ Run, from the habu root: bin/hb --load tools/lint/bare-copy-lint.f
 \ For a consumer tree:    bin/hb --load tools/lint/bare-copy-lint.f -- /path/to/tree
-\
-\ NOT A GATE YET. Band 0 of habu-bound-pointers reports; the consumer bands
-\ convert their files and the band that finishes them turns REPORT into a die.
-\
-\ Three false alarms are ruled out by construction. Prose is not code: the scan
-\ runs on src/lib/source-lex.f, which consumes `s" ... "`, `."`, `c"` bodies
-\ and `( ... )` / `\ ...` comments the way the real parser does, so the words
-\ named in this very comment are not findings. A longer name that merely starts
-\ the same way is not the word: BYTE-COPY-LEN is counted separately and never
-\ reported, because the match is whole-token. And ownership is decided by an
-\ ANCHORED path prefix, so test/lib/x.f is a BYTE-COPY consumer while
-\ src/lib/adt/x.f is not, and src/lib/x.f is a PATHZ consumer while
-\ src/core/x.f is not.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -79,9 +48,8 @@ variable N-TEST  variable N-EX    variable N-OTHER
    v @ 1+ v ! ;
 
 \ ---- the tree to lint ---------------------------------------------------------
-\ The script's one optional argument, so a consumer repository is linted from
-\ the habu root - `bin/hb --load tools/lint/... -- /path/to/consumer` - where
-\ the lint's own `require` rows resolve. Without it the walk starts at `.`.
+\ The one optional argument names a consumer tree, linted from the habu root
+\ where the lint's own `require` rows resolve; without it the walk starts at `.`.
 create ROOT-BUF PATH-CAP allot
 variable ROOT-U
 
@@ -112,6 +80,10 @@ variable ROOT-U
    pa pu s" src/examples/" LINT-PREFIX? if LINT-FALSE exit then
    pa pu s" src/" LINT-PREFIX? ;
 
+\ The engine's copier also belongs to test/engine-suite.f, which tests those OS
+\ primitives, and to the two tier tools, which load nothing but code-bytes.f:
+\ a library they loaded would weigh nothing in their corpus (tools/tier-census.f).
+\ A hand-written `0 ... c!` terminator cannot be linted; review guards it.
 : PATH-OWNED? ( ptr u8 n -- bool )
    {: pa:ptr pu:n :}
    pa pu s" src/core/" LINT-PREFIX? if LINT-TRUE exit then
@@ -156,9 +128,9 @@ variable ROOT-U
    BAD BUMP  pa pu COUNT-DIR ;
 
 \ ---- token classification -----------------------------------------------------
-\ Only WORD tokens are looked at, so a COMMENT body and a REGISTRY row never
-\ match, and a string literal is one opaque WORD token whose text is the whole
-\ literal - never the bare name.
+\ Only WORD tokens match, and only whole: a COMMENT body, a REGISTRY row and a
+\ string literal (one WORD token whose text is the whole literal) never match,
+\ and BYTE-COPY-LEN is not BYTE-COPY.
 : LEX-WORD= ( n ptr u8 n -- bool ) {: k:n a:ptr u:n :}
    k LINT-LEX:KIND@ LINT-LEX:WORD <> if LINT-FALSE exit then
    k LINT-LEX:TOKEN a u LINT-STR=CI ;
@@ -326,14 +298,13 @@ variable IN-GROUP     \ LOCAL-BINDS? is inside a `{: … :}` group
    pa pu REL$ a u LINT-SCAN ;
 
 \ ---- the tree -----------------------------------------------------------------
-\ src/lib/fs.f's walk already skips .git, .jj, .jj-ws, .dots and .out, so a
-\ sibling workspace and the tree's scratch are never read. The repository's build directory is skipped before
-\ stat or descent; its generated trees can disappear while the lint runs.
+\ src/lib/fs.f's walk already skips .git, .jj, .jj-ws, .dots and .out. The
+\ repository's build directory is skipped before stat or descent: its generated
+\ trees can disappear while the lint runs.
 : WALK-PATH? ( ptr u8 n -- bool ) {: pa:ptr pu:n :}
    pa pu ROOT$ LINT-STR= if LINT-TRUE exit then
    pa pu REL$ s" build" LINT-STR= LINT-NOT ;
 
-\ Only `.f` sources outside that generated directory are scanned.
 : WALK-ONE ( ptr u8 n -- ) {: pa:ptr pu:n :}
    pa pu s" .f" HAS-EXT? LINT-NOT if exit then
    pa pu LINT-FILE ;

@@ -3,7 +3,7 @@
 
 require src/lib/errors.f
 require tools/lint/intern.f
-require src/lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/fmt.f                        \ FMT:.INT
 
 package LINT-INTERN
 private

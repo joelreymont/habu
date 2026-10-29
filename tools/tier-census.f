@@ -1,65 +1,16 @@
-\ tier-census.f - per-word native code size, at one compiler tier.
-\
-\ Run:
-\     bin/hb --load tools/tier-census.f -- <tier> <report> <corpus.f>...
-\
-\ Selects the tier, loads the corpus through the engine's own `required`, and
-\ writes one line per word the load defined:
-\
+\ tier-census.f - per-word native code size at one compiler tier.
+\ Run: bin/hb --load tools/tier-census.f -- <tier> <report> <corpus.f>...
+\ One line per word the load defined, then the same columns totalled on a `T`
+\ line with the word count first:
 \     W <name> <bytes> <instructions> <bl> <ldr-sp> <str-sp> <mov> <movk>
-\
-\ and then the same columns on a `T` line, with the word count first.
-\ tools/tier-census-join.f puts two such reports side by side.
-\
-\ WHY IT LOADS REAL FILES AND NOT A MODEL OF THEM. A per-word size that was
-\ measured on a renamed copy of a body would answer for the copy: the calls
-\ tier 1 folds, the locals it coalesces and the frame it builds all depend on
-\ what the body actually names. The corpus goes through `require`, the load
-\ path every other program uses, so the numbers are the engine's own.
-\
-\ WHY `require` AND NOT `include`. The registry is what keeps a shared
-\ dependency single: two corpus files that both want src/lib/fs.f must compile it
-\ once, or the second load dies of a duplicate definition and the census stops
-\ half written. It also means a file the engine already carries baked - the
-\ cold prefix, src/core, src/compiler - is skipped rather than recompiled, so
-\ such a file contributes no rows. The word count on the `T` line is what shows
-\ that: a corpus entry already in the engine moves it by nothing.
-\
-\ WHY TWO PROCESSES AND NOT ONE. `set-tier` is engine-global and a file loads
-\ once: measuring both tiers in one process would mean unloading a whole
-\ corpus - every package, every data record - and trusting that the unload left
-\ nothing behind. Two processes each get a pristine engine, and the tier is
-\ selected before the first corpus token is read.
-\
-\ WHY THIS FILE REQUIRES ALMOST NOTHING. src/lib/fmt.f and src/lib/fs.f are the
-\ formatting and file corpus this census most wants to weigh, and a tool that
-\ loaded them for its own output could not: they would already be in the
-\ dictionary when the corpus asked for them (a census of an engine-provided
-\ file such as src/lib/string.f counts nothing for the same reason). The
-\ decimal writer and the line buffer below are the price of measuring them.
-\
-\ The one require is src/habu/code-bytes.f, the boundary that turns a record's
-\ code address into bytes; `set-tier`, which selects the tier, is an engine
-\ word. code-bytes.f requires nothing and loads before MAIN takes the `ndict@`
-\ the report range starts from, so it adds no rows to any report. It pays the
-\ same price every other pre-loaded file pays, and the price is exactly one
-\ corpus: a census that names it weighs it at nothing, because it is already
-\ in the dictionary when the corpus asks. Measure such a file with a
-\ census run from a tree where it is not this tool's dependency.
-\
-\ WHAT THE COUNTS MEAN. Bytes and instructions are the whole baked span
-\ (XREF-CODE-BYTES). `bl` counts branch-with-link instructions - every call the
-\ tier did not fold. `ldr-sp` and `str-sp` count 64-bit loads and stores whose
-\ base register is the stack pointer, in BOTH the scaled and the unscaled
-\ spelling: the frame traffic a register allocator spends on spills, reloads and
-\ locals, plus the two transfers a writeback frame is made of. `mov` counts register-to-register moves
-\ (`orr xD,xzr,xS`), which is what a copy between two allocation classes costs
-\ once neither end lives in the frame - the register-level twin of the
-\ frame-slot copy that src/compiler/native/regalloc.f MB-IDENTITY-COPY? already
-\ drops. `movk` counts all 64-bit keep-moves. An absolute address has three;
-\ a compact DATA carrier has two; scalars can have them too. This column is
-\ therefore instruction traffic, not a count of address sites.
+\ tools/tier-census-join.f puts two reports side by side.
 
+\ Only this require (`set-tier` is an engine word), loaded before MAIN takes its
+\ `ndict@` mark: a file this tool loads, like one the engine provides
+\ (src/lib/string.f), is already in the dictionary when the corpus asks and
+\ weighs nothing (src/lib/fmt.f and src/lib/fs.f are corpus, hence the local
+\ decimal writer and line buffer). Measure code-bytes.f from a tree where it is
+\ not this tool's dependency.
 require src/habu/code-bytes.f
 
 package TIER-CENSUS
@@ -82,10 +33,8 @@ $94000000 constant BL-BITS
 $FFC00000 constant LS-MASK
 $F9400000 constant LDR-BITS        \ ldr xT,[xN,#imm12]
 $F9000000 constant STR-BITS        \ str xT,[xN,#imm12]
-\ The same two accesses in the unscaled signed field, which is where a frame
-\ that moves the pointer in the transfer itself is written: `str x30,[sp,#-16]!`
-\ and `ldr x30,[sp],#16`. Counting only the scaled form above would read such a
-\ frame as no frame traffic at all, so both spellings are one column.
+\ The unscaled signed field holds the writeback frame transfers
+\ (`str x30,[sp,#-16]!`, `ldr x30,[sp],#16`); both spellings count in one column.
 $FFE00000 constant LSU-MASK
 $F8400000 constant LDU-BITS        \ ldur/ldr xT,[xN],#imm9 / [xN,#imm9]!
 $F8000000 constant STU-BITS
@@ -160,12 +109,15 @@ variable WID-CACHE-IX              \ its namespace record index, -1 when none
    BUF-N @ BUF-HIGH > if FLUSH then ;
 
 \ ---- the instruction walk ---------------------------------------------------
-\ The record's code span is an address the engine hands back as a number.
-\ CODE-BYTES:AT (src/habu/code-bytes.f) is the one way a checked body turns one
-\ into bytes, and it is bounded against the running image's code, so a record
-\ whose span is not code is refused here instead of being tallied. SCAN takes
-\ the span once and walks it with pointer arithmetic, so the bound costs one
-\ check per word rather than one per instruction.
+\ CODE-BYTES:AT (src/habu/code-bytes.f) bounds the span against the running
+\ image's code, so a record whose span is not code is refused, not tallied. SCAN
+\ takes the span once, so the bound costs one check per word.
+\ Counts: bytes and instructions over the whole baked span (XREF-CODE-BYTES);
+\ bl, every call the tier did not fold; ldr-sp and str-sp, 64-bit loads and
+\ stores based on sp in both scaled and unscaled spellings; mov, `orr xD,xzr,xS`,
+\ the register twin of the frame copy regalloc.f MB-IDENTITY-COPY? drops; movk,
+\ every 64-bit keep-move (an absolute address has three, a compact DATA carrier
+\ two, scalars some), so instruction traffic, not address sites.
 
 : W32@ ( ptr u8 -- n ) {: p:ptr :}
    p c@
@@ -296,10 +248,11 @@ variable WID-CACHE-IX              \ its namespace record index, -1 when none
    t 0 < t 1 > or if USAGE then
    t ;
 
-\ `required` is the registry-aware load as a plain word on a string - what
-\ `require <path>` reaches once its path token is parsed. An argument is
-\ already a string, so calling it directly spares the census a source line to
-\ build, an `evaluate` to run it, and the trust row that `evaluate` would need.
+\ `require`, not `include`: the registry compiles a shared dependency once (a
+\ second load would die of a duplicate definition), and a file the engine
+\ carries baked (cold prefix, src/core, src/compiler) is skipped and adds no
+\ rows, which the `T` word count shows. `required` is the word `require`
+\ reaches, so an argument string needs no `evaluate` or its trust row.
 : LOAD-CORPUS ( -- )
    script-argc 2 ?do i script-argv$ required loop ;
 
@@ -311,10 +264,10 @@ variable WID-CACHE-IX              \ its namespace record index, -1 when none
 
 public
 
-\ The corpus loads AFTER the report is open and the tier is selected, and
-\ nothing is written to the report until the load has returned - so a corpus
-\ that dies mid-load leaves an empty report rather than a plausible one, and
-\ the dictionary mark is taken before the first corpus token is read.
+\ The tier is selected and the report opened before the first corpus token is
+\ read, and nothing is written until the load returns, so a corpus that dies
+\ mid-load leaves an empty report. One tier per process: `set-tier` is
+\ engine-global and a file loads once.
 : MAIN ( -- )
    script-argc 3 < if USAGE then
    0 script-argv$ TIER-ARG {: tier :}

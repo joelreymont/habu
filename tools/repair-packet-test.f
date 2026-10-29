@@ -23,7 +23,7 @@ require tools/gate-json-assert-core.f
 require src/lib/argv.f
 require tools/repair-packet-core.f
 require test/golden.f
-require src/lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/fmt.f                        \ FMT:.INT
 
 package REPAIR-PACKET-TEST
 

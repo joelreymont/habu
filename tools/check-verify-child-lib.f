@@ -1,8 +1,6 @@
-\ check-verify-child-lib.f - the verifier child's body: its tick observation,
-\ the verifier load, and CHECK-VERIFY-CHILD:MAIN. tools/check-verify-child.f
-\ states the contract, loads this file from its own tree and runs MAIN. The
-\ tick block must stay this file's first act: it precedes every verifier
-\ require.
+\ check-verify-child-lib.f - the verifier child's body. tools/check-verify-child.f
+\ states the contract, loads this file from its own tree and runs
+\ CHECK-VERIFY-CHILD:MAIN.
 
 \ The observation must precede every verifier require: those files may select a
 \ tier or replace a checker in this child, while the hypothetical subject has
@@ -53,7 +51,7 @@ create NUM NUM-CAP allot
 create NL 1 allot
 create ESC 6 allot                      \ one \u00XX escape
 variable RUN-AT                         \ where the bytes not yet written start
-DYNAMIC-BUFFER DEF-PKG u8               \ a definition's package
+DYNAMIC-BUFFER DEF-PKG u8
 variable DEF-PKG-U
 DYNAMIC-BUFFER IDX-EVENTS n              \ symbol, start, end for each declaration
 variable IDX-N
@@ -166,7 +164,6 @@ variable OF-U                           \ 0 for the other forms
    NULL$ false ;
 
 
-\ The subject's bytes, after the open documents in IN.
 : SUBJECT$ ( -- ptr u8 n )
    SUBJECT-AT @ IN SUBJECT-U @ ;
 
@@ -216,7 +213,6 @@ variable OF-U                           \ 0 for the other forms
    [: VERIFY-CUR-ACT ;] SOURCE-ROOT:WITH ;
 
 
-\ Fields shared by a duplicate diagnostic and a terminal stop.
 : STOP-FIELDS ( n n ptr u8 n bool n -- )
    {: at:n u:n file:ptr fileu:n subj:bool rc:n :}
    OUT-FD rc FD-N
@@ -244,12 +240,10 @@ variable OF-U                           \ 0 for the other forms
    E-DUP-DEFINITION STOP-FIELDS ;
 
 
-\ The digit, 0 to 15, as a lowercase hexadecimal byte.
 : HEX-DIGIT ( n -- n )
    dup 10 < if 48 + exit then 87 + ;
 
 
-\ A control byte's escape, \u00 and its two hexadecimal digits.
 : CONTROL-ESC ( n -- ptr u8 n )
    {: c:n :}
    92 ESC c!  117 ESC 1 + c!  48 ESC 2 + c!  48 ESC 3 + c!
@@ -258,8 +252,8 @@ variable OF-U                           \ 0 for the other forms
    ESC 6 ;
 
 
-\ The escape RFC 8259 requires in a string for the byte, empty for none: a
-\ quotation mark, a reverse solidus and a control character.
+\ RFC 8259's string escapes: quotation mark, reverse solidus and control bytes;
+\ empty for none.
 : ESCAPE$ ( n -- ptr u8 n )
    {: c:n :}
    c 34 = if s\" \\\"" exit then
@@ -268,8 +262,6 @@ variable OF-U                           \ 0 for the other forms
    NULL$ ;
 
 
-\ Byte I of the bytes at A: when it needs an escape, the bytes before it not
-\ yet written, then its escape.
 : JSON-BYTE ( ptr u8 n -- )
    {: a:ptr i:n :}
    a i + c@ ESCAPE$
@@ -280,7 +272,6 @@ variable OF-U                           \ 0 for the other forms
    i 1+ RUN-AT ! ;
 
 
-\ The bytes as a JSON string, written in runs between the escapes.
 : JSON-STR ( ptr u8 n -- )
    {: a:ptr u:n :}
    OUT-FD s\" \"" WRITE
@@ -444,7 +435,6 @@ variable OF-U                           \ 0 for the other forms
    then ;
 
 
-\ A checked binding, as its use line when it has one.
 : USE-LINE ( n n ptr u8 n n n n n -- )
    {: at:n end:n path:ptr pathu:n tat:n tend:n sym:n visit:n :}
    sym pathu 0<> USE-WRITTEN? 0= if exit then

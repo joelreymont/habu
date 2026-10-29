@@ -1,21 +1,9 @@
 \ manifest-lint-test.f - checked fixtures for the engine manifest lint.
+\ HOSTILE holds near misses of a require edge (a comment, a path inside a
+\ generated source string, a word starting with `require`, tokens out of order):
+\ counting one would pass a manifest row that should fail.
+\ Fixtures compose `"` from a named byte, so no fixture line reads as a require row.
 \ Run: bin/hb --load tools/manifest-lint-test.f
-\
-\ Two questions are worth testing here and they are different. The first is
-\ whether the line reader counts a require edge exactly when the tree means one:
-\ the two spellings count, and the near misses - a comment, a path inside a
-\ generated source string, a word that merely starts with `require`, the tokens
-\ in the wrong order - do not. Those are HOSTILE below, and they matter because
-\ a reader that over-counts would mark a stray file reachable and pass a
-\ manifest row that should have failed.
-\
-\ The second is whether the live manifest agrees with the live closure, which
-\ LIVE asserts by running the real lint over the real tree.
-\
-\ Fixtures that need a `"` compose it from a named byte rather than an escape,
-\ the way tools/error-code-lint-test.f does: the text stays readable and no
-\ fixture line can be mistaken for a real require row by a reader scanning this
-\ file.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -106,8 +94,6 @@ variable MLT-U
    MLT-EDGES 2 T= ;
 
 \ ---- the near misses -----------------------------------------------------------
-\ Each of these would, if counted, make some file look reachable that nothing
-\ actually requires - which is exactly the finding this lint exists to make.
 
 : COMMENTED-REQUIRE ( -- )
    MLT-RESET
@@ -168,16 +154,12 @@ variable MLT-U
    LAST-LINE-WITHOUT-LF ;
 
 \ ---- the live tree -------------------------------------------------------------
-\ The real manifest against the real closure. This is the assertion the gate
-\ cares about: a row added to src/habu/native-runtime.f for convenience fails
-\ here.
+\ A row added to src/habu/native-runtime.f that nothing requires fails here.
 
 : LIVE ( -- )
    [: MANIFEST-LINT:STRICT ;] catch 0 T= ;
 
-\ ...and the same lint, the same entry points and the same tree, over a manifest
-\ that names a file nothing requires. Without this the LIVE assertion above only
-\ proves the lint is quiet, not that it can speak.
+\ Without this case LIVE proves only that the lint is quiet.
 : STRAY-IS-FOUND ( -- )
    s" tools/manifest-lint-stray-fixture.f" MANIFEST-LINT:RUN-MANIFEST
    MANIFEST-LINT:FINDINGS 1 T= ;

@@ -1,10 +1,6 @@
-\ checked-boundary-lint-test.f - checked fixtures for tools/checked-boundary-lint.f.
-\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/memory.f
-\ src/lib/fs.f src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f
-\ tools/cli-run.f tools/hook-sites.f tools/checked-boundary-lint-core.f
-\ tools/checked-boundary-lint-test.f
-\ The registry sweeps below read the committed hook-site files, so this test
-\ must run with the repository root as the working directory.
+\ checked-boundary-lint-test-lib.f - fixtures for tools/checked-boundary-lint.f.
+\ Run from the repository root, since the registry sweeps read the committed
+\ hook-site files: bin/hb --load tools/checked-boundary-lint-test.f
 require src/lib/string.f
 
 package CBLT
@@ -174,9 +170,8 @@ create LF-BYTE 10 c,
    s" : ROGUE-OK ( n -- n ) dup ;" SB-APPEND LF
    SB$ ;
 
-\ Tier-2 escape-window audit rows (dot habu-typed-top-tier-589c550f): a
-\ set-top-check install is authorized only where tools/hook-sites.f records that
-\ (file, name) pair. An unknown name is UNAUDITED-TOP-HOOK ...
+\ A set-top-check install is authorized only where tools/hook-sites.f records
+\ that (file, name) pair. An unknown name is UNAUDITED-TOP-HOOK ...
 : TOPROGUE$ ( -- ptr u8 n )
    SB-RESET
    s" ['] EVIL-TOP-HOOK set-top-check" SB-APPEND LF
@@ -356,7 +351,6 @@ create LF-BYTE 10 c,
 : RUN-CORE-QUIET ( -- n n n )
    QUIET LINT-FALSE RUN-CORE-FILE ;
 
-\ Lint every file the registry names, through its own committed path.
 : RUN-SITES ( -- n n n )
    LINT-FALSE CORE-SETUP
    HOOK-SITES:COUNT 0 ?do i HOOK-SITES:PATH$ CHECKED-BOUNDARY-LINT:FILE loop
@@ -448,9 +442,8 @@ create LF-BYTE 10 c,
    OUT outu s" UNAUDITED-TOP-HOOK" CONTAINS? TTRUE
    OUT outu s" TR-HOOK" CONTAINS? TTRUE ;
 
-\ The regression this file exists for: before the registry drove the allowlist,
-\ any file could install a word it had named CHECK-HOOK / HOOK / LINT-CHECK-HOOK
-\ and the lint passed it.
+\ A word named CHECK-HOOK, HOOK or LINT-CHECK-HOOK installed in any other file
+\ does not pass: the registry drives the allowlist, not the name.
 : TEST-NAMEONLY ( -- )
    RUN-CORE-NAMEONLY 1 EXPECT-EXIT {: outu:n erru:n :}
    erru 0 T=

@@ -22,13 +22,9 @@ require tools/build-fixpoint.f
 require tools/event-closure-lib.f      \ EC:BUILD, used by the sandbox and the chain-key fixtures
 require test/suite-budget.f            \ CHILD-MS, every step's hang guard
 
-\ This fixture drives the tool's internals - the emitted stage sources, the
-\ stamp preimage, the chain fold - so it REOPENS package BUILD-FIXPOINT rather
-\ than importing a public surface. Exporting those internals would widen the
-\ tool's own interface for the benefit of its own test. The local fixture
-\ scopes this file used to carry (BFT-CAP, BFT-CHAIN, STALE-SEED) were there
-\ only because the file had no package of its own; they are ordinary private
-\ words of the tool's package now.
+\ The fixture drives the tool's internals (stage sources, stamp preimage, chain
+\ fold), so it reopens package BUILD-FIXPOINT instead of widening the tool's
+\ interface for its own test.
 package BUILD-FIXPOINT
 
 8192 constant BFT-CAPTURE-CAP
@@ -259,22 +255,12 @@ create BFT-ERR BFT-CAPTURE-CAP allot
    BFT-STALE s" src/arch/arm64/mnem.f" BFT-STALE-PAYLOAD-BUF BFT-STALE-PAYLOAD-U BFT-PATH!
    BFT-STALE s" src/core/lower-cert-seal.f" BFT-STALE-MARK-BUF BFT-STALE-MARK-U BFT-PATH! ;
 
-\ The sandbox needs every tools/ file the refresh loads. That list used to be
-\ written out by hand and went stale the moment build-fixpoint.f grew a require:
-\ the sandboxed refresh then died on a missing file instead of on the fault the
-\ test was about. Ask the source instead - the same ordered closure walk the
-\ stamp key uses - so the sandbox tracks the tool's own requires. src/ and src/lib/
-\ still come over whole, because the stage build reads far more of them than
-\ build-fixpoint.f's own requires name.
-\ TWO CLOSURES, and the second is the same lesson a second time. The stamp key
-\ now opens the CAPTURE TOOL's closure as well, before it consults --force and
-\ before anything is written, so a sandbox without it dies -2102 (E-FS-OPEN)
-\ ahead of every fault these fixtures inject: the stale-seed crash and the
-\ certify injection both came back as a bare uncaught throw. The entry is asked
-\ from the tool - ENTRY$ - rather than spelled here, so whatever the key walks
-\ is what the sandbox carries. A third closure is the certify driver's: the
-\ refresh spawns BF-CERTIFY-DRIVER$ as its own child, so the sandbox carries
-\ what that driver requires too.
+\ The sandbox carries every closure the refresh opens, asked from the source by the
+\ stamp key's ordered walk: build-fixpoint.f's requires; the capture tool's
+\ (ENTRY$), which the stamp key opens before --force and before any write, so a
+\ sandbox without it dies E-FS-OPEN ahead of every injected fault; and the certify
+\ driver's (BF-CERTIFY-DRIVER$, spawned as its own child). src/ and src/lib/ come
+\ over whole: the stage build reads more of them than any require names.
 
 variable IX
 
@@ -328,7 +314,6 @@ variable IX
    rc E-PROC-TIMEOUT = if rc throw then
    s" build-fixpoint-test-lib: subtest threw" T-EX-FAIL die ;
 
-\ The common driver tail: every row removes its scratch tree, then reports.
 : BFT-FINISH ( ptr u8 n -- ) {: msg:ptr msgu:n :}
    FS:CLEANUP-RUN
    BFT-ROOT FS:EXISTS? TFALSE

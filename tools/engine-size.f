@@ -1,14 +1,9 @@
-\ engine-size.f - the command line over tools/image-size-lib.f.
-\
-\ Run: <engine> --load tools/engine-size.f -- <image>
-\
-\ The image may be a baked engine, a --repl snapshot application or a stripped
-\ application; the tool reads which one it is out of the file. The measurement
-\ lives in the library because tools/hb-build-lib.f requires it too, to size
-\ what a build has just written, and a file that measures argv[0] the moment it
-\ loads cannot be required by a program that has arguments of its own.
-\ The header of tools/image-size-lib.f says what the report means and what
-\ it does not say.
+\ engine-size.f - the command line over tools/image-size-lib.f, whose header says
+\ what the report means. Run: <engine> --load tools/engine-size.f -- <image>
+\ The image may be a baked engine, a --repl snapshot or a stripped application.
+\ The measurement lives in the library because tools/hb-build-lib.f requires it,
+\ and a file that measures argv[0] as it loads cannot be required by a program
+\ with arguments of its own.
 
 require tools/image-size-lib.f
 

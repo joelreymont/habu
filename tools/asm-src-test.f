@@ -5,19 +5,18 @@ require src/lib/errors.f
 require src/lib/string.f
 require src/lib/test.f
 
-\ Probed per file and loaded with `included`, which never records the load, so a
-\ later `require src/arch/arm64/asm.f` in the same process read the file again
-\ and redefined it. `require` records what it loads and skips what is recorded.
+\ `require`, never `included`: an unrecorded load is read again and redefined by
+\ a later require of the same file.
 require src/arch/arm64/asm.f
 require src/arch/arm64/icode.f
 require src/arch/arm64/mnem.f
 
 \ The ARM64 encoders are package A64ASM's public surface (src/arch/arm64/asm.f);
-\ the trusted rows below name them the way the dictionary now records them.
+\ the trusted rows below name them qualified.
 using A64ASM
 using A64ICODE
 
-\ Raw ARM64 fixture effects. Retirement: habu-campaign-c2-mem-c3d7662b.
+\ Raw ARM64 fixture effects.
 \ MOVZHW and ENC-ADD/LDR/LDAR/BLR expose their instruction encoders.
 s" A64ASM:MOVZHW" s" n n n -- n" TRUST
 s" A64ASM:ENC-ADD" s" n n n -- n" TRUST

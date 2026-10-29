@@ -1,27 +1,8 @@
 \ aot-startup-shape.f - the instruction shapes a stripped image's startup is
-\ made of, named once for every reader of a built image.
-\
-\ Two readers walk that startup: test/gate-aot-image.f validates it and
-\ tools/image-size-lib.f attributes its bytes. Each carried its own copy of
-\ these shapes, so converting the blob's address from one `adr x9` to the four
-\ words src/habu/aot-lib.f TEXT-ADR, emits had to be done twice, and the second
-\ copy failed silently - it counted zero sequences, took the code-only path and
-\ reported `data 0 written` for every stripped image. The shapes live here so a
-\ startup change is made in one place and both readers follow it.
-\
-\ They are written with the EMITTER'S OWN ENCODERS rather than hex masks: a word
-\ is a move-wide into rd exactly when it equals that encoder's output for the rd,
-\ immediate and lane the word itself carries, so the description reads as what
-\ the emitter writes and a field this file never mentions cannot drift out of it.
-\ The only bit patterns spelled out below are the field extractions a decoder
-\ needs. The move-wide ones are checked by the predicates over them, which
-\ re-encode what they read and compare whole words; the ADR displacement is not
-\ re-encoded, because ENC-ADRD divides and a target off the word grid would not
-\ round-trip, so ADR-RD? compares every bit outside the displacement field that
-\ the encoder itself names.
-\
-\ PURE on instruction words. A reader fetches with its own bounds check - the
-\ two have different ones - and passes the words in; nothing here holds an image.
+\ made of, named once for both readers of a built image: test/gate-aot-image.f
+\ validates the startup and tools/image-size-lib.f attributes its bytes, so a
+\ startup change is made in one place. PURE on instruction words: each reader
+\ fetches with its own bounds check and passes the words in.
 
 require src/arch/arm64/asm.f
 
@@ -49,16 +30,14 @@ $1FFFFF constant ADR-DISP-ONES      \ a 21-bit displacement of all ones
 
 public
 
-\ TEXT-ADR, borrows one scratch register to hold the code base while it adds the
-\ offset to it. All four emitter sites in src/habu/aot-lib.f pass x12: the entry
-\ word (into x11), the sparse blob header in EMIT-DATA-COPY (x9, the only x9
-\ site), the signal stub (x11) and the crash handler (x11). Every reader compares
-\ against this, so a change of scratch is one edit here.
+\ TEXT-ADR, borrows one scratch register for the code base: every emitter site
+\ in src/habu/aot-link-arm.f passes x12, and every reader compares against this.
 12 constant TEXT-ADR-SCRATCH
 
-\ A move-wide word is its own encoder's output for the rd, immediate and lane it
-\ carries, and no other word is, so one equality decides the whole word. The lane
-\ is free here because a LIT64, chain writes up to four of them.
+\ Written with the emitter's own encoders, not hex masks: a move-wide word is its
+\ encoder's output for the rd, immediate and lane it carries, and no other word
+\ is, so one equality decides it and no field can drift. The lane is free
+\ because a LIT64, chain writes up to four of them.
 : MOVZ-RD? ( n n -- bool ) {: w:n rd:n :}
    rd w MOVW-LANE w MOVW-HW MOVZHW  w = ;
 
@@ -73,17 +52,18 @@ public
 : MOVW-CHUNK ( n -- n ) {: w:n :}
    w MOVW-LANE  w MOVW-HW MOVW-LANE-BITS * lshift ;
 
-\ `adr rd, .+d` for this rd, whatever the displacement.
+\ `adr rd, .+d` for this rd, whatever the displacement. Not re-encoded: ENC-ADRD
+\ divides, so a target off the word grid would not round-trip; every bit outside
+\ the displacement field the encoder names is compared instead.
 : ADR-RD? ( n n -- bool ) {: w:n rd:n :}
    w ADR-DISP-BITS invert and  rd 0 ENC-ADR = ;
 
-\ Where such a word points, given the offset it sits at.
 : ADR-TARGET ( n n -- n ) {: w:n at:n :}
    at w ADR-DISP + ;
 
-\ THE FOUR WORDS src/habu/aot-lib.f TEXT-ADR, EMITS, at `at` and into `rd`: the
-\ label's byte offset from text offset zero in an LOFF, movz/movk pair (lane 0
-\ then lane 1), `adr scratch` to the code base itself (LTEXT, bound at text
+\ THE FOUR WORDS src/habu/aot-link-arm.f TEXT-ADR, EMITS, at `at` and into `rd`:
+\ the label's byte offset from text offset zero in an LOFF, movz/movk pair (lane
+\ 0 then lane 1), `adr scratch` to the code base itself (LTEXT, bound at text
 \ offset zero, which `base` names), and the add that joins them. All four are
 \ pinned because the first word alone does not identify the sequence:
 \ EMIT-OWNED-CELLS opens a LIT64, of a DATA offset with the same `movz x9`, and
@@ -101,7 +81,7 @@ public
 : TEXT-ADR-OFFSET ( n n -- n ) {: w0:n w1:n :}
    w0 MOVW-CHUNK  w1 MOVW-CHUNK or ;
 
-\ THE HEAD OF THE BLOB'S COPY LOOP: the three words src/habu/aot-lib.f
+\ THE HEAD OF THE BLOB'S COPY LOOP: the three words src/habu/aot-link-arm.f
 \ EMIT-DATA-COPY puts at the top of its presence-map walk - the map cursor
 \ against its end, the branch out of the whole loop, and the load of the map byte
 \ this turn reads. Nothing here is a free field: the registers are the emitter's
@@ -110,9 +90,8 @@ public
 \ empty-window arm of EMIT-DATA-COPY (BLOB-LEN 0) emits no loop at all, and the
 \ two words it does emit - the span-end literal into x7 and the DP store - are
 \ the same two that end the copying arm, so only the loop separates them.
-\ Two readers: test/gate-aot-image.f CHECK-COPY pins these words in the startup
-\ it validates, and tools/image-size-lib.f FIND-COPY-LOOP looks for them in an
-\ image whose blob address it could not read.
+\ tools/image-size-lib.f FIND-COPY-LOOP looks for them in an image whose blob
+\ address it could not read.
 41 constant COPY-LOOP-WORDS          \ instructions from the loop's test to past its end
 
 : COPY-LOOP-HEAD? ( n n n -- bool ) {: w0:n w1:n w2:n :}

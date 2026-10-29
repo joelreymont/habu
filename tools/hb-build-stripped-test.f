@@ -1,9 +1,8 @@
 \ hb-build-stripped-test.f - checked fixture for tools/hb-build-lib.f: what a
-\ stripped image may own and reach: library state, a fork, claimed engine
-\ cells, fixed quotation fields, and a run-time pointer-cell mark that preserves
-\ data and stack. It also checks refusals for a missing entry, an unclaimed
-\ engine cell and a scalar holding a code address.
-\ tools/hb-build-test-lib.f lists the other hb-build rows.
+\ stripped image may own and reach (library state, a fork, claimed engine cells,
+\ fixed quotation fields, a run-time pointer-cell mark that preserves data and
+\ stack) and the refusals of a missing entry, an unclaimed engine cell and a
+\ scalar holding a code address. tools/hb-build-test-lib.f lists the other rows.
 \ Run: bin/hb --load tools/hb-build-stripped-test.f
 
 require src/lib/string.f
@@ -36,16 +35,13 @@ package HB-BUILD-CLI
 : HBT-PMK-SRC ( -- ptr u8 n )
    HBT-PMK-SRC-BUF HBT-PMK-SRC-U @ ;
 
-\ An application that touches a PERSISTENT CELL of each library it requires,
-\ src/lib/string.f's builder and src/lib/fs-mutate.f's copy buffer
-\ (COPY-BUF), and walks a tree with src/lib/fs.f's FS:WALK-FILES, which maps
-\ a context of its own for the call. Those cells are what the maker
-\ used to own before the application was read - it required app-image.f, and so
-\ src/lib/fs.f and src/lib/fs-mutate.f, before opening the capture window - which put them
-\ below the span and refused the image. The walked directory is spliced in as a
-\ literal because a stripped image reads no argv here. The application also
-\ reads all seven generated Unicode range tables: raw comma-built rows once
-\ looked like mapped pointers and made the stripped image fail before it ran.
+\ An application that touches a persistent cell of each library it requires
+\ (src/lib/string.f's builder, src/lib/fs-mutate.f's COPY-BUF) and walks a tree
+\ with FS:WALK-FILES, which maps its own context for the call: a maker that
+\ loaded those libraries before opening the capture window would put the cells
+\ below the span and refuse the image. The walked directory is a literal because
+\ a stripped image reads no argv here. All seven generated Unicode range tables
+\ are read: raw comma-built rows must not look like mapped pointers.
 : HBT-LIB-SRC-HEAD$ ( -- ptr u8 n )
    S\" require src/lib/string.f\nrequire src/lib/fs.f\nrequire src/lib/fs-mutate.f\nrequire src/lib/unicode/class.f\n\npackage HBT-SLIB\nprivate\nvariable HITS\ncreate P1 PATH-CAP allot  variable P1U\ncreate P2 PATH-CAP allot  variable P2U\n: DIR$ ( -- ptr u8 n ) s\" " ;
 
@@ -62,20 +58,15 @@ package HB-BUILD-CLI
 : HBT-LIB-EXPECTED$ ( -- ptr u8 n )
    S\" sb=ok\ncopy=ok\nfiles=3\nunicode=ok\n" ;
 
-\ THE ENGINE RUNTIME CELLS A STRIPPED IMAGE OWNS, all in one program: the
-\ environment (an explicitly set variable and an inherited one, both through
-\ GETENV, whose ENV-DATA-PTR is a baked engine cell below every
-\ window), the kernel's argv, and a src/lib/memory.f WITH-BYTES scope, whose head
-\ is the MEM-ABI band of the image's own fresh DATA region and so needs no claim.
-\ Each engine cell below the window it reaches is named in
-\ src/habu/aot-owned-cells.f, so the entry publishes or zeroes it by declaration
-\ and the closure walker admits it; nothing here is admitted for being scratch.
-\ The argv lines pin the APPLICATION convention: the image's own arguments start
-\ at argv[1], every one of them, because the stripped entry publishes its claim
-\ on APP-ENTRY:XT-CELL. The program prints them numbered, so a dropped first
-\ argument (the defect while that cell read zero and SCRIPT-ARG-START took the
-\ engine's source-list branch) shows up as a shifted index and not just a
-\ different word.
+\ The engine runtime cells a stripped image owns, in one program: the
+\ environment (one variable set explicitly, one inherited, both through GETENV,
+\ whose ENV-DATA-PTR is a baked engine cell below every window), the kernel's
+\ argv, and a src/lib/memory.f WITH-BYTES scope, whose head is the MEM-ABI band
+\ of the image's own fresh DATA region and needs no claim. Each engine cell
+\ below the window is named in src/habu/aot-owned-cells.f; nothing is admitted
+\ for being scratch. The image's own arguments start at argv[1] because the
+\ stripped entry publishes its claim on APP-ENTRY:XT-CELL; numbered lines make a
+\ dropped first argument show as a shifted index.
 : HBT-CELLS-SRC$ ( -- ptr u8 n )
    SB-RESET
    S\" require src/lib/memory.f\n: SHOW ( ptr u8 NUM:alloc-byte-len -- ) drop {: a:ptr :}\n" SB-APPEND
@@ -85,10 +76,9 @@ package HB-BUILD-CLI
    S\"    4096 MEM:BYTES-ALLOC-LEN [: SHOW ;] MEM:WITH-BYTES ;\n" SB-APPEND
    SB$ ;
 
-\ ... and an engine cell NOTHING claims is refused exactly as before. TMP-PATH is
-\ src/os/env-base.f, the same baked file as the admitted environment cells and
-\ just as transient, but its cursors are on no list - so the refusal is about the
-\ declaration and not about the file, the value or the address.
+\ An engine cell nothing claims is refused. TMP-PATH is in src/os/env-base.f,
+\ the same baked file as the admitted environment cells, but its cursors are on
+\ no list: the refusal is about the declaration, not the file, value or address.
 : HBT-UNOWNED-SRC$ ( -- ptr u8 n )
    S\" : MAIN ( -- ) s\" x\" TMP-PATH type cr ;\n" ;
 
@@ -112,16 +102,11 @@ package HB-BUILD-CLI
    SB-RESET HBT-LIB-DIR SB-APPEND s" /" SB-APPEND name nameu SB-APPEND
    SB$ body bodyu FS:WRITE-ALL ;
 
-\ THE WINDOW INVARIANT, end to end: nothing the application can require is loaded
-\ when the capture window opens, so the application's own require closure is the
-\ only library content inside the restored span. Measured before this held:
-\ FS:WALK-FILES's then-static walk state and `caller=COPY-FILE-STREAM
-\ target=FS-MUT-COPY-IN` refused this very program - the copy descriptors are
-\ locals of the call now, the walk maps its own context, and the copy BUFFER is
-\ the cell that stands there.
-\ That order is the claim, so this program builds on the engine: src/lib/fs.f and
-\ src/lib/fs-mutate.f are modules of the linker's lib closure the engine does not
-\ bake, and the linker image refuses it at FS:COPY-FILE-STREAM (E-AOT-PRE-WINDOW).
+\ The window invariant: nothing the application can require is loaded when the
+\ capture window opens, so its own require closure is the only library content
+\ in the restored span. This program builds on the engine: src/lib/fs.f and
+\ src/lib/fs-mutate.f are linker lib modules the engine does not bake, and the
+\ linker image refuses it at FS:COPY-FILE-STREAM (E-AOT-PRE-WINDOW).
 : HBT-STRIPPED-LIB-STATE ( -- )
    HBT-LIB-DIR FS:MAKE-DIR
    s" a.txt" s" one" HBT-LIB-FILE!
@@ -145,18 +130,15 @@ package HB-BUILD-CLI
 : HBT-REGISTRY-SRC$ ( -- ptr u8 n )
    S\" require src/lib/fork-child.f\n: MAIN ( -- ) ;\n" ;
 
-\ A STRIPPED IMAGE FORKS, and its child runs the resets src/lib/fork-child.f holds:
+\ A stripped image forks and its child runs src/lib/fork-child.f's resets:
 \ test/stripped-fork-subject.f's child has a park of its own only after
-\ TASK:CHILD-RESET, on Darwin, where the parent's is a Mach port the child
-\ does not hold. The registry sits in the application's window and the
-\ linker's lib closure loads above it, so a module of that closure that
-\ registered a reset as it loaded would put code and cells the image does not
-\ carry into the application's registry; HBT-REGISTRY-SRC$'s link refuses
-\ any such registration. Measured while src/lib/fs-mutate.f and src/lib/process-tree.f
-\ registered their own: `aot: address refers to data outside the restored span`,
-\ caller FS's CLEANUP-RESET, target its cleanup count. src/lib/process.f is a module of
-\ that closure the engine does not bake, so the forking program builds on the
-\ engine.
+\ TASK:CHILD-RESET on Darwin, where the parent's is a Mach port the child does
+\ not hold. The registry sits in the application's window and the linker's lib
+\ closure loads above it, so a lib module that registered a reset as it loaded
+\ would put code and cells the image does not carry into the registry;
+\ HBT-REGISTRY-SRC$'s link refuses that (`aot: address refers to data outside
+\ the restored span`). src/lib/process.f is a linker lib module the engine does
+\ not bake, so the forking program builds on the engine.
 : HBT-STRIPPED-FORK ( -- )
    HBT-AOT-OUT HBT-REMOVE-FILE?
    s" test/stripped-fork-subject.f" SOURCE-ROOT:RESOLVE drop
@@ -223,12 +205,8 @@ package HB-BUILD-CLI
    errn 0 T=
    HBT-RUN-OUT outn HBT-CELLS-NOARG-EXPECTED$ T$= ;
 
-\ ... and the engine runtime cells the stripped entry OWNS are readable in the
-\ image: the environment (explicit and inherited), argv, and a WITH-BYTES
-\ scope's mapping. Before src/habu/aot-owned-cells.f
-\ this program's GETENV access was refused. The walk reaches
-\ engine words the build stripped through the payload's span table, which the
-\ keyed linker image this build runs on reads at the address its own boot
+\ The walk reaches engine words the build stripped through the payload's span
+\ table, which the keyed linker image reads at the address its own boot
 \ published (src/habu/habu2.f EM-SNAPSHOT-RESTORE).
 : HBT-STRIPPED-ENGINE-CELLS ( -- )
    HBT-CELLS-SRC HBT-CELLS-SRC$ FS:WRITE-ALL
@@ -244,15 +222,12 @@ package HB-BUILD-CLI
    HBT-RUN-OUT outn HBT-CELLS-EXPECTED$ T$=
    HBT-CELLS-NOARG-RUN ;
 
-\ A stripped build's refusal as the CLI reports it. The link refuses a source
-\ with no global MAIN with exit 74 and two lines on stderr, `aot: entry word not
-\ found: MAIN` and its die message `aot: no entry` (src/habu/aot-closure.f
-\ NO-ENTRY-DIE); tools/hb-build.f exits with the maker's code, carries that
-\ stderr through byte for byte, prints nothing on stdout and installs no image,
-\ so this case fails if the tool swallows, rewrites, adds to or drops any of
-\ the maker's exit or diagnostic. tools/hb-build-cli-errors-test.f
-\ HBT-REFUSE-MAIN-CLI is the REPL path's. The refusals below ask the maker
-\ directly (HBT-RUN-MAKER).
+\ A source with no global MAIN: the link exits 74 with `aot: entry word not
+\ found: MAIN` and `aot: no entry` on stderr (src/habu/aot-closure.f
+\ NO-ENTRY-DIE); tools/hb-build.f exits with the maker's code, passes its stderr
+\ byte for byte, prints nothing on stdout and installs no image.
+\ tools/hb-build-cli-errors-test.f HBT-REFUSE-MAIN-CLI is the REPL path's. The
+\ refusals below ask the maker directly (HBT-RUN-MAKER).
 : HBT-STRIPPED-NO-ENTRY ( -- )
    HBT-REMOVE-AOT-OUT
    HBT-AOT-SRC s" : HBT-NO-MAIN ( -- ) ;" FS:WRITE-ALL

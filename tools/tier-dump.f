@@ -1,29 +1,9 @@
-\ tier-dump.f - write one word's baked code span, as a chosen tier compiled it.
-\
-\ Run:
+\ tier-dump.f - write one word's baked code span, as a chosen tier compiled it:
 \     bin/hb --load tools/tier-dump.f -- <tier> <WORD> <out> <corpus.f>...
 \     objdump -b binary -m aarch64 -D <out>
-\
-\ Selects the tier, loads the corpus through `required`, and writes the named
-\ word's exact code span to <out> as raw bytes. Two runs that differ only in the
-\ tier put the same source side by side, which is the only way to see what an
-\ optimization pass did to a body rather than to a total.
-\
-\ The word is looked up with XREF-FIND, so a package-qualified spelling
-\ (`ARRAY:A-LEN`) works and a private word is reachable, and the span comes from
-\ XREF-CODE-BYTES, so a body with an early exit is written whole. tools/jitdump.f
-\ is the sibling that decodes this exact live span in process on either native
-\ target; it finds the word in the current wordlist.
-\
-\ This file requires one thing only, for the reason tools/tier-census.f gives:
-\ src/lib/fmt.f and src/lib/fs.f are the formatting and file corpus a tier
-\ comparison wants to weigh, and a tool that loaded them for its own use could
-\ not (a comparison of an engine-provided file such as src/lib/string.f weighs
-\ nothing for the same reason). The require is src/habu/code-bytes.f, the
-\ boundary that turns a record's code address into bytes; `set-tier`, which
-\ selects the tier, is an engine word. code-bytes.f requires nothing, and the
-\ only comparison it disturbs is one whose corpus names it, which is already
-\ loaded by then.
+\ XREF-CODE-BYTES writes a body with an early exit whole. tools/jitdump.f decodes
+\ the same span in process. Only src/habu/code-bytes.f is required (`set-tier` is
+\ an engine word), for the reason tools/tier-census.f gives.
 
 require src/habu/code-bytes.f
 
@@ -49,12 +29,9 @@ private
 : LOAD-CORPUS ( -- )
    script-argc 3 ?do i script-argv$ required loop ;
 
-\ XREF-FIND resolves a top-level name and a `PKG:NAME` whose tail is public;
-\ a package's private words sit in a wordlist that the qualified path does not
-\ reach, and most of a tree's words are private. So a name XREF-FIND misses is
-\ looked for across every wordlist, and an ambiguous one is refused rather than
-\ resolved by position - two packages may spell a private helper the same way,
-\ and picking one silently would disassemble a word the caller did not name.
+\ XREF-FIND misses package-private words, most of a tree, so a miss is looked for
+\ across every wordlist; an ambiguous name is refused, since two packages may
+\ spell a private helper the same way.
 
 variable HITS
 variable HIT-IX
@@ -83,10 +60,8 @@ variable HIT-IX
    HITS @ 1 > if AMBIGUOUS then
    HIT-IX @ XREF-REC ;
 
-\ The record's start is an address the engine hands back as a number;
-\ CODE-BYTES:AT is the one place it becomes bytes, and it refuses a span that is
-\ not inside the running image's code, so a corrupt record cannot make this tool
-\ write whatever happens to sit at the number.
+\ CODE-BYTES:AT refuses a span outside the running image's code, so a corrupt
+\ record cannot make this tool write arbitrary memory.
 : SPAN ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
    a u FIND-REC {: rec:ptr :}
    rec XREF-CODE-BYTES {: bytes :}

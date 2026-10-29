@@ -1,41 +1,9 @@
-\ lsp-diag.f - the checker's packets published as LSP diagnostics, for the
-\ document checked and for each file besides it that they name.
-\
-\ PUBLISH takes the packets of a check that completed: tools/check-verify-core.f's
-\ schema-1 JSON objects, one per line, each naming the file it is about by its
-\ canonical absolute path. A line that is not a JSON object with a string
-\ `file` naming an absolute path is no diagnostic: it is written to stderr after
-\ `lsp: `, as it came, and published nowhere.
-\
-\ The document's own list always goes out, with its version: the packets whose
-\ file is the path its check named it by, an empty list when there are none.
-\ Each other file the packets name gets its list too, without a version, at the
-\ file URI of its path, its positions counted in its text on disk - unless an
-\ open document holds that file, whose own check owns its list. Each file a
-\ document's earlier check published a list for and this one names no more is
-\ withdrawn with an empty list, unless an open document holds it, or another
-\ document's last check published it: that document is checked again instead,
-\ so a list is only ever withdrawn by the check that would have published it.
-\ RETRACT does the same for a document closing, its own list emptied first.
-\
-\ Each packet becomes one diagnostic, its fields taken verbatim:
-\ - range: byte_start and byte_end, counted through the text as LSP counts, the
-\   line by LF and the character in UTF-16 units. A missing start is 0, a
-\   missing end the start; both are held to the text and the end to no less
-\   than the start, so the range is valid whatever the packet says. The packet's
-\   own numbers stay in data.
-\ - severity: 1 (Error) for verdict rejected or uncheckable, 3 (Information)
-\   for deferred; any other verdict leaves the severity to the client.
-\ - code, and source "habu".
-\ - message: the packet's message; without one, its code, then its suggestion
-\   when not empty, then a line `expected: ` and a line `actual: ` with those
-\   members when present.
-\ - data: the packet, whole.
-\ Strings are copied as the packet escapes them, so nothing is decoded or
-\ re-encoded on the way.
-\
-\ STORAGE CLASS. PROCESS-GLOBAL: the buffers and the list being written belong
-\ to the server's one task.
+\ lsp-diag.f - the checker's packets (tools/check-verify-core.f schema-1 JSON,
+\ one per line, each naming its file by canonical absolute path) published as LSP
+\ diagnostics for the checked document and each other file they name. A line
+\ that is not an object with a string absolute `file` goes to stderr after
+\ `lsp: `, as it came. Strings are copied as the packet escapes them, never
+\ decoded. PROCESS-GLOBAL: the buffers belong to the server's one task.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -86,7 +54,6 @@ variable ITEMS                           \ and the diagnostics in it so far
 : NEW$ ( -- ptr u8 n )  NEW-B BUF:SPAN$ BUF:BLEN>N ;
 : FILE$ ( -- ptr u8 n )  FILE-BUF FILE-U @ ;
 
-\ Writes these bytes to stderr.
 : ERR ( ptr u8 n -- )
    {: a:ptr u:n :}
    FD:STDERR a u FD:WRITE-FULL ;
@@ -122,10 +89,16 @@ variable ITEMS                           \ and the diagnostics in it so far
    false ;
 
 \ ---- diagnostics ---------------------------------------------------------------
+\ One diagnostic per packet, fields verbatim. range: byte_start and byte_end in
+\ LSP counting (lines by LF, characters in UTF-16 units); a missing start is 0, a
+\ missing end the start, both held to the text and the end to no less than the
+\ start; the packet's numbers stay in data. severity: 1 for rejected or
+\ uncheckable, 3 for deferred, else the client's. code, and source "habu".
+\ message: the packet's, else its code, its non-empty suggestion, then
+\ `expected: ` and `actual: ` lines when present. data: the whole packet.
 
 : QUOTE ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )  s\" \"" RAW ;
 
-\ A string from its raw text, as it was escaped.
 : QUOTED ( ptr JSON-WRITE:writer ptr u8 n -- ptr JSON-WRITE:writer )
    {: a:ptr u:n :}
    QUOTE a u RAW QUOTE ;
@@ -143,13 +116,11 @@ variable ITEMS                           \ and the diagnostics in it so far
    {: c:ptr cu:n :}
    COMMA s" code" KEY c cu QUOTED ;
 
-\ The suggestion on a line of its own, when the packet has one not empty.
 : SUGGESTION ( ptr JSON-WRITE:writer ptr u8 n -- ptr JSON-WRITE:writer )
    s" suggestion" STRING-MEMBER over 0 > and 0= if 2drop exit then
    {: s:ptr su:n :}
    s" \n" RAW s su RAW ;
 
-\ The member K on a line of its own, `K: ` then its text, when present.
 : PIECE ( ptr JSON-WRITE:writer ptr u8 n ptr u8 n -- ptr JSON-WRITE:writer )
    {: a:ptr u:n k:ptr ku:n :}
    a u k ku STRING-MEMBER 0= if 2drop exit then
@@ -194,7 +165,6 @@ variable ITEMS                           \ and the diagnostics in it so far
    ;MATCH
    s" diagnostics" KEY ARRAY-START ;
 
-\ The notification ended and sent.
 : CLOSING ( ptr JSON-WRITE:writer -- )
    ARRAY-END OBJECT-END END
    {: w :}
@@ -218,14 +188,19 @@ variable ITEMS                           \ and the diagnostics in it so far
    PKTS-A @ PKTS-U @ [: ITEM ;] EACH-LINE
    W CLOSING ;
 
-\ The file URI of the path in LIST-A.
 : LIST-URI ( -- ptr u8 n )
    LIST-A @ LIST-U @ URI-SPAN URI:PATH>FILE {: n:n :}
    URI-SPAN SPAN:$ drop n ;
 
 \ ---- the files besides the document ---------------------------------------------
-
-\ Whether the slot is there.
+\ The document's own list always goes out, with its version, empty when no packet
+\ names it. Each other named file gets an unversioned list at its file URI, its
+\ positions counted in its text on disk, unless an open document holds it. A file
+\ the earlier check listed and this one does not is withdrawn with an empty list,
+\ unless an open document holds it or another document's last check published
+\ it: that document is checked again, so only the check that would publish a
+\ list withdraws it. RETRACT does the same for a closing document, its own list
+\ first.
 : SLOT? ( option<n> -- bool )
    MATCH option
       some OF drop true ENDOF
@@ -259,9 +234,6 @@ variable ITEMS                           \ and the diagnostics in it so far
    s\" \n" BUF:N>BLEN NEW-B BUF:APPEND-SPAN
    NEW$ drop at + fu ;
 
-\ A packet line in the pass over all of them: not a diagnostic, it goes to
-\ stderr; of a file besides the document that nothing else lists, that file's
-\ list is published.
 : DEP ( ptr u8 n -- )
    {: a:ptr u:n :}
    a u SCREENED 0= if s" lsp: " ERR a u ERR s\" \n" ERR exit then
@@ -272,9 +244,6 @@ variable ITEMS                           \ and the diagnostics in it so far
    LIST-A @ LIST-U @ FILE-SNAPSHOT!
    LIST-URI OPTION:NONE LIST ;
 
-\ A file the document's earlier check published a list for, withdrawn unless
-\ this check published it again, an open document's own list is at its URI or
-\ another document's check claims it.
 : WITHDRAW ( ptr u8 n -- )
    {: f:ptr fu:n :}
    NEW$ f fu HAS-LINE? if exit then
@@ -291,7 +260,6 @@ public
    PUB-B 1 BUF:N>BLEN BUF:INIT
    NEW-B 1 BUF:N>BLEN BUF:INIT ;
 
-\ Publishes the packets of the check of the document in this slot.
 : PUBLISH ( n ptr u8 n -- )
    {: slot:n p:ptr pu:n :}
    p PKTS-A !

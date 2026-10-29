@@ -15,7 +15,7 @@ private
 
 10 constant LF
 
-TYPED-VARIABLE JR-ST JR:cursor           \ JR storage for every read of a member
+TYPED-VARIABLE JR-ST JR:cursor
 
 \ The line of the text at offset O, without its LF, and the offset after it.
 : LINE ( ptr u8 n n -- ptr u8 n n )
@@ -27,14 +27,12 @@ TYPED-VARIABLE JR-ST JR:cursor           \ JR storage for every read of a member
 
 public
 
-\ Hands each line of the text to Q.
 : EACH-LINE ( ptr u8 n [ ptr u8 n -- ] -- )
    {: a:ptr u:n q :}
    0 begin dup u < while
       a u rot LINE >r q execute r>
    repeat drop ;
 
-\ Whether the LF-ended lines of the text hold this one.
 : HAS-LINE? ( ptr u8 n ptr u8 n -- bool )
    {: a:ptr u:n k:ptr ku:n :}
    0 begin dup u < while

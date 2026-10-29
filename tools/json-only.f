@@ -6,8 +6,6 @@ require src/lib/argv.f
 require tools/json-only-core.f
 require src/lib/fs.f
 
-\ Checked CLI wrapper. Raw fd primitives are used through checked effects.
-
 $40000 constant JSON-ONLY-IN-CAP
 
 variable JSON-ONLY-FD

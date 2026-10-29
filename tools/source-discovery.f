@@ -1,30 +1,9 @@
 \ source-discovery.f - whole-file ordered source-composition discovery pass.
-\
-\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/memory.f src/lib/fs.f
-\ src/lib/source.f tools/source-discovery.f
-\
-\ DISCOVER:RUN lexes an entry file's ENTIRE token stream - colon bodies
-\ included - and replays every literal source-composition form against a fresh
-\ require/provided registry, driving the instrumented core loader words
-\ (included/required/provided) in record-only discovery mode so the ordered
-\ event log (src/core/include.f) captures include multiplicity and
-\ require/provided canonical registry state without loading or compiling
-\ anything. A guarded loader inside a colon body taking a literal path the loader
-\ resolves is recorded unconditionally, so the event closure over-approximates
-\ (superset of the runtime closure) and can never under-approximate a
-\ statically-visible loader call. A string loader word in a body after anything
-\ else, a path the engine's resolver refuses among them, is a call the word
-\ makes when it runs, which no check runs, and the walk reads past it. The name
-\ a definer takes is data, a loader word's too: defining, undefining or
-\ retiring one refuses nothing. The walk holds no wordlists to tell which word
-\ that spelling names after it, so a later loader form or family declaration
-\ opener with that spelling rejects fail-closed at the word, as
-\ a dynamic (non-literal) loader path and an unsupported string opener (C\" /
-\ .\") before a loader word at top level do. An escaped literal (S\")
-\ names the path its escapes decode to. A bad escape refuses nothing: at top
-\ level it ends the walk where the load stops, and in a definition, which the
-\ check rejects and reads past, the walk reads past it and follows no loader
-\ taking it. Recorded loader-token spans are entry-file byte offsets.
+\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/memory.f
+\ src/lib/fs.f src/lib/source.f tools/source-discovery.f
+\ RUN replays every literal loader form, colon bodies included, in the core
+\ loader's record-only mode (src/core/include.f event log): the closure is a
+\ superset of the runtime one. Recorded loader-token spans are entry-file offsets.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -34,7 +13,7 @@ require src/lib/fs.f
 require src/lib/source.f
 
 package DISCOVER
-using SOURCE                             \ the shared source-string emitters
+using SOURCE
 using SOURCE-ROOT
 
 PATH-CAP constant SD-PATH-CAP
@@ -53,8 +32,7 @@ $20 constant SD-SP
 1 constant SD-PEND-PATH
 2 constant SD-PEND-OTHER
 
-\ The literal path a loader word takes, however long: the engine's resolver is
-\ the only cap on it.
+\ A loader's literal path has no cap here: the engine's resolver is its only one.
 DYNAMIC-BUFFER SD-PATH u8
 create SD-ROOT SD-PATH-CAP 1+ allot
 create SD-ENTRY SD-PATH-CAP 1+ allot
@@ -149,10 +127,9 @@ variable SD-SCOPES
 : SD-BUF ( -- ptr u8 )
    SD-A @ ;
 
-\ Room for n bytes of the source being read, reusing the largest allocation.
-\ The read fills it as it grows (src/lib/source.f READ-WHOLE-SAMPLED), so a larger
-\ span takes the bytes the old one holds and is installed before the old one is
-\ released. No scanner pointer survives a read.
+\ The read grows this span as it fills it (src/lib/source.f READ-WHOLE-SAMPLED),
+\ installing a larger one before the old is released: no scanner pointer
+\ survives a read.
 : SD-ROOM ( n -- ptr u8 ) {: need:n :}
    SD-STORAGE @ {: old :}
    need old SPAN:LEN > if
@@ -268,8 +245,8 @@ variable SD-SCOPES
    a pkgu + c@ $3A <> if false exit then
    a pkgu 1+ + tailu tail tailu STR=CI ;
 
-\ The closure walk visits row occurrences in actual load order. An empty
-\ package on either side may inherit its caller's package at a load edge.
+\ An empty package on either side may inherit its caller's package at a load
+\ edge.
 : SD-C-PKG$ ( n -- ptr u8 n ) {: row:n :}
    row 0 < if 0 SD-R-BYTES 0 exit then
    row SD-R-NAME$ ;
@@ -721,8 +698,7 @@ variable SD-TERM-END
    then
    0 ;
 
-\ The u bytes at a become the path, with a byte more so that an empty one still
-\ has a byte 0.
+\ One byte more than the path, so an empty one still has a byte 0.
 : SD-PATH-FILL ( ptr u8 n -- ) {: a:ptr u:n :}
    u 1+ SD-PATH-RESERVE
    a 0 SD-PATH u BYTE-COPY
@@ -732,13 +708,11 @@ variable SD-TERM-END
 \ decode is never longer than its spelling.
 DYNAMIC-BUFFER SD-DEC u8
 
-\ A literal holding a bad escape is one the engine refuses, a bad string
-\ literal, where the load stops. At top level the walk ends at it too: it
-\ follows nothing at or after the literal and refuses nothing, leaving the
-\ literal to the check, which refuses it at its opener. In a definition it is
-\ one more error of a body the check rejects and reads past, so the walk reads
-\ past it as well, with no path pending: a loader or retirement taking it is a
-\ call in a body, nothing to follow or refuse.
+\ A literal holding a bad escape is a bad string literal: the engine refuses it
+\ where the load stops. At top level the walk ends there, follows nothing and
+\ refuses nothing; the check refuses it at its opener. In a definition the check
+\ rejects the body and reads past it, and so does the walk, with no path
+\ pending: a loader or retirement taking it is a call in a body.
 : SD-REFUSED-LITERAL ( -- )
    SD-DEF @ 0= if SD-U @ SD-I ! exit then
    0 SD-PEND ! ;
@@ -778,7 +752,6 @@ DYNAMIC-BUFFER SD-DEC u8
    a u s" provided" STR=CI if SD-K-PROVIDED exit then
    0 ;
 
-\ A loader or family opener's bit in SD-SHADOWED and SD-RETIRED.
 : SD-NAME-BIT ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u s" include" STR=CI if $01 exit then
    a u s" included" STR=CI if $02 exit then
@@ -808,9 +781,6 @@ $FF constant SD-NAMES                    \ loaders and family openers
    pend SD-PEND-PATH = if SD-PATH$ SD-RETIRE exit then
    SD-RETIRED @ SD-NAMES or SD-RETIRED ! ;
 
-\ A loader form the walk reads, whose loader word stands at OFF LEN, is refused
-\ at the word when the file has defined that word's name (E-DISC-SHADOW), and
-\ else when it has retired it (E-DISC-RETIRE).
 : SD-CHECK-USE ( n n -- ) {: off:n len:n :}
    off len SD-TOK$ SD-NAME-BIT {: bit:n :}
    bit SD-SHADOWED @ and 0<> if E-DISC-SHADOW throw then
@@ -822,13 +792,9 @@ $FF constant SD-NAMES                    \ loaders and family openers
    kind SD-K-REQUIRED = if SD-PATH$ required exit then
    SD-PATH$ provided ;
 
-\ The loader resolves the literal against its roots before it records the load:
-\ false, and nothing recorded, for a path the resolver refuses (E-PATH-NUL:
-\ holding a NUL, src/core/util.f PATHZ; E-PATH-RANGE: empty, absolute and 2048
-\ bytes or more, relative and 2048 bytes or more joined as root, `/` and path
-\ to a root searched before one holds the file, or over PATH-CAP bytes once
-\ normalized; src/core/include.f SOURCE-ROOT CHECK, SEARCH-ROOTS, JOIN! and
-\ NORMALIZE).
+\ False, and nothing recorded, for a path the loader's resolver refuses
+\ (E-PATH-NUL, a NUL in the path: src/core/util.f PATHZ; E-PATH-RANGE:
+\ src/core/include.f SOURCE-ROOT CHECK, SEARCH-ROOTS, JOIN! and NORMALIZE).
 : SD-LOAD? ( n n n -- bool )
    {: off:n len:n kind:n :}
    off len DISC-TOK!
@@ -860,7 +826,8 @@ $FF constant SD-NAMES                    \ loaders and family openers
 \ a definition). After anything else, or after a path the resolver refuses,
 \ which the call loads nothing from, it is nothing to follow or refuse.
 \ At top level the load runs while the file loads, so a path the walk cannot
-\ follow is refused. A form the walk reads, any at top level and one right after
+\ follow is refused: a dynamic one (E-DISC-DYNAMIC) and a C\" or .\" literal
+\ (E-DISC-OPENER). A form the walk reads, any at top level and one right after
 \ a path literal in a body, is refused first when the file has replaced its
 \ loader word.
 : SD-DISPATCH-LOADER ( n n n n -- ) {: off:n len:n kind:n pend:n :}
@@ -894,8 +861,6 @@ $FF constant SD-NAMES                    \ loaders and family openers
    0 SD-LOCAL-BASE !
    0 SD-SCOPES ! ;
 
-\ A definition, from its `:`, `kernel:` or `TRUSTED:` to its `;`, opens with no
-\ locals.
 : SD-DEF-OPEN ( -- )
    SD-LOCALS-RESET
    0 SD-DEF-NAME !
@@ -1166,12 +1131,11 @@ $FF constant SD-NAMES                    \ loaders and family openers
 
 public
 
-\ `throw` for a closure member's read. A zero code is no refusal; any other
-\ names the file on fd 2 and is rethrown unchanged, because the code alone
-\ (E-FS-STAT or E-FS-OPEN for a missing file) does not say which member it was.
-\ RUN-IN's reader refuses through it, so the line names no tool. The write
-\ result is dropped because the next step raises the refusal itself, as
-\ src/core/checker.f's compile rejects do.
+\ A zero code is no refusal; any other names the file on fd 2 and is rethrown
+\ unchanged, because the code alone (E-FS-STAT or E-FS-OPEN for a missing file)
+\ does not say which closure member it was. RUN-IN's reader refuses through it,
+\ so the line names no tool. The write result is dropped because the next step
+\ raises the refusal itself, as src/core/checker.f's compile rejects do.
 : READ-THROW ( ptr u8 n n -- ) {: pa:ptr pu:n rc:n :}
    rc 0= if exit then
    2 s" cannot read " write drop

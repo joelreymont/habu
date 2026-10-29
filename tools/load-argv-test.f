@@ -1,19 +1,9 @@
-\ load-argv-test.f - the `bin/hb --load` argv loader contract.
-\
+\ load-argv-test.f - the `bin/hb --load` argv loader contract: each path becomes
+\ `s" <path>" required`, so src/core/include.f decides and a path the engine
+\ already carries loads once. Every case forks the real bin/hb: the contract
+\ exists only at the process entry point.
 \ Run: bin/hb --load src/lib/test.f src/lib/fs.f src/lib/fs-mutate.f src/lib/process.f \
 \   src/lib/process-argv.f tools/load-argv-test.f
-\
-\ `--load` means "make these files loaded". The row used to write the path into
-\ the require registry as `provided` and then inline the file text anyway - it
-\ maintained a registry it never read - so the same request got two answers:
-\ `--load src/lib/errors.f` against an engine that already carries src/lib/errors.f died
-\ on a duplicate definition, while `require src/lib/errors.f` from inside a file
-\ no-opped cleanly. Since dot habu-make-load-consult-85c88fb3 the row emits
-\ `s" <path>" required` and src/core/include.f decides.
-\
-\ Every case forks the real bin/hb with a real command line: this contract only
-\ exists at the process entry point, so an in-process stand-in would prove
-\ nothing about it.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -112,8 +102,7 @@ variable LA-DANGLING-LINK-U
 
 \ ---- cases -----------------------------------------------------------------
 
-\ The whole point of the dot: a path the boot prefix already loaded may still
-\ be named on the command line. It used to be fatal.
+\ A path the boot prefix already loaded may still be named on the command line.
 : LA-SEEDED-PATH-OK ( -- )
    LA-ARGV0  LA-SEEDED$ LA-ARG  LA-PROBE$ LA-ARG
    LA-RUN {: outu:n erru:n rc:n :}
@@ -124,8 +113,7 @@ variable LA-DANGLING-LINK-U
    s" --load of a boot-prefix path says nothing on stderr" T-LABEL
    erru 0 T= ;
 
-\ The registry is keyed on the path, so a repeat on one command line collapses
-\ too. Under the old row this was the same duplicate-definition death.
+\ The registry is keyed on the path, so a repeat on one command line collapses too.
 : LA-REPEATED-PATH-OK ( -- )
    LA-ARGV0  LA-SEEDED$ LA-ARG  LA-SEEDED$ LA-ARG  LA-PROBE$ LA-ARG
    LA-RUN {: outu:n erru:n rc:n :}
@@ -144,8 +132,7 @@ variable LA-DANGLING-LINK-U
    outu LA-OUT$ s" load-argv: decoy loaded" CONTAINS? TTRUE
    outu LA-OUT$ s" load-argv: reached" CONTAINS? TTRUE ;
 
-\ A mistyped command line has to name the path it could not open. The raw argv
-\ reader this replaced always did; the include layer used to drop it.
+\ A mistyped command line names the path it could not open.
 : LA-MISSING-PATH-NAMED ( -- )
    LA-ARGV0  LA-MISS$ LA-ARG
    LA-RUN {: outu:n erru:n rc:n :}
@@ -155,9 +142,8 @@ variable LA-DANGLING-LINK-U
    erru LA-ERR$ LA-MISS$ CONTAINS? TTRUE
    erru LA-ERR$ s" cannot open" CONTAINS? TTRUE ;
 
-\ A command-line path below a dangling directory symlink used to fail while
-\ canonicalizing the invocation root, before INCLUDE-OPEN could render its
-\ path. The refusal still names the exact requested path.
+\ A path below a dangling directory symlink is refused naming the exact requested
+\ path, not while canonicalizing the invocation root.
 : LA-DANGLING-PATH-NAMED ( -- )
    LA-ARGV0  LA-DANGLING$ LA-ARG
    LA-RUN {: outu:n erru:n rc:n :}
@@ -168,8 +154,7 @@ variable LA-DANGLING-LINK-U
    s" a dangling-symlink --load path keeps the open diagnostic" T-LABEL
    erru LA-ERR$ s" cannot open" CONTAINS? TTRUE ;
 
-\ Nesting each argv file in its own evaluate must not reshape an uncaught
-\ throw: same line, same status as before the change.
+\ Nesting each argv file in its own evaluate keeps an uncaught throw's line and status.
 : LA-THROW-SHAPE ( -- )
    LA-ARGV0  LA-THROW$ LA-ARG
    LA-RUN {: outu:n erru:n rc:n :}

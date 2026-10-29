@@ -1,19 +1,8 @@
 \ build-fixpoint-certify.f - the fixpoint's certify child: one generated engine
-\ source, verified against the core prefix alone.
-\
+\ source, verified against the core prefix alone. Spawned by tools/build-fixpoint.f
+\ BF-CERTIFY-GENERATED-CORE for each generated source that redeclares the stdlib.
 \ Run: <engine> --load tools/build-fixpoint-certify.f -- LABEL PATH [PHASE TARGET]
-\
-\ tools/build-fixpoint.f BF-CERTIFY-GENERATED-CORE spawns this on the engine
-\ running the build for each generated source that redeclares the stdlib. The
-\ top-level text at the end of this file rewinds this process to the end of its
-\ core prefix (src/habu/prefix-rewind.f, top-level text because `seed-ndict!`
-\ is a top-level boundary primitive no checked body names) and then runs
-\ FINISH, ticked before the rewind took its name: the rewind removes records
-\ and keeps code and data, so the xt and every word it calls outlive their
-\ names. FINISH scans PATH's bytes under LABEL with VERIFY:SOURCE-BUF and, given
-\ a nonempty PHASE, prints the census line for TARGET. It exits 0 for a certified
-\ source, and 70 after printing the rejection and the diagnostic the scan
-\ rendered.
+\ Exits 0 for a certified source, 70 after printing the rejection and diagnostic.
 
 require src/lib/source.f                     \ SOURCE:READ-WHOLE-FILE
 require src/habu/verify-source.f         \ VERIFY:SOURCE-BUF
@@ -61,6 +50,9 @@ public
    then
    s" " 0 die ;
 
+\ The rewind (src/habu/prefix-rewind.f) runs as top-level text because
+\ `seed-ndict!` is a boundary primitive no checked body names. It removes records
+\ and keeps code and data, so FINISH, ticked before it, outlives its name.
 ' FINISH
 REWIND-CHECK-OFF
 ;package

@@ -51,13 +51,11 @@ private
    IMK-REC 0 >= TTRUE
    s" IMK-NDICT0" BOOT-XREF-MARKER-INDEX IMK-REC T= ;
 
-\ Earliest-hide depends on lookup returning the FIRST record of a name: the
-\ duplicate fixture record published before the MID watermark must win, and the
-\ match must fold case. The dictionary record
-\ of a package word stores its bare tail, so the searched name is `DUP-MARK`.
-\ Naming both fixture words keeps the duplicate load-bearing: if either package
-\ stopped publishing the tail, the file would fail to load here instead of
-\ leaving the index assertions below trivially satisfiable by a single record.
+\ Earliest-hide depends on lookup answering the FIRST record of a name, case
+\ folded: the duplicate published before MID must win. A package word's record
+\ stores its bare tail, so the searched name is `DUP-MARK`. Naming both fixture
+\ words keeps the duplicate load-bearing: a package that stopped publishing the
+\ tail fails the load instead of leaving the assertions met by one record.
 : FIRST-RECORD ( -- )
    BCG-DUP-EARLY:DUP-MARK
    BCG-DUP-LATE:DUP-MARK

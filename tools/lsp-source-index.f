@@ -1,31 +1,9 @@
-\ Locate an image word in current engine source. The verifier child scans the
-\ supplied bytes in its own process and returns surviving declaration identities;
-\ this file matches them to the image's compiled origins.
-\
-\ An origin row holds a word's compiled symbol, live code entry, source-root-
-\ relative path, accepted name and original name span: the binding locator in
-\ verifier packets, not a current editor location. It keeps no file bytes,
-\ hash or timestamp, so definition and references read the origin file's
-\ current text, an open document's first (tools/lsp-definition.f).
-\ CHECK:INDEX-BYTES scans those bytes in a candidate scope in multi-error mode,
-\ outside document checking, and reports ON-DEFINITION events: colon
-\ definitions and does> clauses must certify, trusted declarations must finish
-\ body and shape processing. A declaration matches when its canonical package,
-\ tail and visibility equal the selected image symbol's; a cursor on a
-\ declaration selects a symbol only when exactly one live origin in the file
-\ has that identity. Moving a declaration moves its Location without changing
-\ what a checked use binds to; a same-spelling call, comment or string is not a
-\ declaration.
-\ A refused scan keeps the declarations it accepted. A deferred, held,
-\ engine-provided or incomplete scan contributes no Location, even for
-\ declarations reported before the stop; a missing or ambiguous declaration
-\ contributes none either. The scan defers the whole file at a dictionary call
-\ (a loader, `undefine`, a replaceable library definer), whose execution could
-\ change any binding, and at a trusted does> definition, whose clause body the
-\ scanner skips; structural native declarations and literal openers still
-\ scan. So an unchanged prefix file with a top-level dictionary call has no
-\ source locations at all (open: habu-locate-origins-across-3fd3d72d).
-\ Primitive locations come from the separate PRIM-SOURCE table.
+\ lsp-source-index.f - locate an image word in current engine source. The verifier
+\ child scans the supplied bytes (CHECK:INDEX-BYTES) and returns surviving
+\ declaration identities; this file matches them to the image's compiled origins.
+\ An origin row is a binding locator (symbol, code entry, root-relative path, name
+\ span) with no file bytes, so lookups read the file's current text, an open
+\ document's first (tools/lsp-definition.f). Primitives come from PRIM-SOURCE.
 
 require src/lib/string.f
 require src/lib/json-read.f
@@ -178,8 +156,16 @@ variable RESULT-SYM
 
 public
 
-\ The current declaration of this compiled symbol in the supplied file.
-\ A missing or ambiguous declaration has no location.
+\ A declaration matches when its canonical package, tail and visibility equal the
+\ image symbol's; a cursor selects a symbol only when exactly one live origin in
+\ the file has that identity. A refused scan keeps the declarations it accepted; a
+\ deferred, held, engine-provided or incomplete scan gives no Location, even for
+\ declarations reported before the stop. The scan defers a whole file at a
+\ dictionary call (a loader, `undefine`, a replaceable library definer), whose
+\ execution could change any binding, and at a trusted does> definition, whose
+\ clause body the scanner skips; structural native declarations and literal
+\ openers still scan. A prefix file with a top-level dictionary call has no
+\ source locations.
 : TARGET-IN ( n ptr u8 n ptr u8 n -- n n bool )
    {: sym:n path:ptr pathu:n src:ptr srcu:n :}
    sym ENGINE-ORIGIN:TARGET
@@ -193,8 +179,6 @@ public
    src srcu path pathu SCAN
    COUNT @ 1 = if START @ END @ true else 0 0 false then ;
 
-\ Select a declaration in current bytes, then match its canonical identity
-\ against live image origins in the same file.
 : SYMBOL-IN ( ptr u8 n n ptr u8 n -- n bool )
    {: path:ptr pathu:n byte:n src:ptr srcu:n :}
    path pathu RELATIVE {: rel:ptr relu:n in-root:bool :}

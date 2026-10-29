@@ -1,56 +1,13 @@
-\ tier0-profile.f - where tier-0 compile time goes, as a sampling profile.
-\
-\ Run:
-\     bin/hb --load tools/tier0-profile.f -- corpus <usec> <file.f>...
-\     bin/hb --load tools/tier0-profile.f -- trivial <usec> <count>
-\     bin/hb --load tools/tier0-profile.f -- corpus-raw <usec> <file.f>...
-\     bin/hb --load tools/tier0-profile.f -- trivial-raw <usec> <count>
-\
-\ Selects tier 0, arms the in-binary sampling profiler (docs/debugging.md
-\ "Sampling profiler") at the given interval, compiles the workload, stops the
-\ clock and prints the profiler's own report. One line of this tool's own
-\ output precedes it:
-\
-\     P <mode> defs <n> ns <n> ns-per-def <n>
-\
-\ WHY THE TIER IS SELECTED BEFORE ANYTHING LOADS. `set-tier` is engine-global
-\ and only code compiled after it belongs to the selected tier, so the
-\ selection has to happen before the first corpus token is read - the same
-\ rule tools/tier-census.f and tools/tier-bench.f state.
-\
-\ WHY THE CORPUS LOADS THROUGH `required`. It is the registry-aware load every
-\ other program uses, so a shared dependency compiles once and a file the
-\ engine already carries baked contributes nothing. A profile taken over a
-\ renamed model of the corpus would answer for the model.
-\
-\ WHAT THE PROFILE CAN AND CANNOT SEE. The index is built by `prof-on` from
-\ the dictionary as it stands, so every word the workload DEFINES lands in the
-\ report's `new` bucket rather than in a row - which is right here, because
-\ this profiles the compiler and not the compiled code. Top-level code in a
-\ corpus file does run and is compiled after the index, so it too counts as
-\ `new`. The rows are therefore the engine's own baked compiler, checker and
-\ runtime, which is exactly the path under measurement.
-\
-\ WHY THIS FILE REQUIRES NOTHING. `set-tier`, which selects the tier, is an
-\ engine word. src/lib/string.f and src/lib/fmt.f are corpus entries; a tool that loaded them for its
-\ own output would have them in the dictionary before the corpus asked, and the
-\ profile would lose every word their compile reaches. The decimal writer below
-\ is the price of that.
-\
-\ THE `-raw` MODES ARE THE CHECKER ABLATION. `0 set-check` clears the engine's
-\ check hook, so the same source goes down the same tokenize/lookup/emit/publish
-\ path with no checking at all. The difference between a mode and its `-raw`
-\ twin is what the checker costs, measured rather than inferred from which
-\ bucket a sample landed in - the profiler cannot split the engine's own
-\ unregistered text (the interpreter loop, the tokenizer, the tier-0 emitters
-\ and the publish step all land in `other`), and this can. A `-raw` mode refuses
-\ a corpus declaring a SUMTYPE, PRODUCT, STRUCTURE or ENUM, whose generated
-\ constructors need the checker.
-\
-\ MEASURE ON A QUIET MACHINE and pin the run (`taskset -c 8`): this is wall
-\ clock, and the sample counts are only comparable between runs taken at a
-\ similar load average.
+\ tier0-profile.f - where tier-0 compile time goes, as a sampling profile
+\ (docs/debugging.md "Sampling profiler"). Prints `P <mode> defs <n> ns <n>
+\ ns-per-def <n>`, then the profiler's own report. Measure on a quiet, pinned
+\ machine (`taskset -c 8`): this is wall clock.
+\ Run: bin/hb --load tools/tier0-profile.f -- corpus|corpus-raw <usec> <file.f>...
+\      bin/hb --load tools/tier0-profile.f -- trivial|trivial-raw <usec> <count>
 
+\ Nothing loads before the corpus (`set-tier` is an engine word): src/lib/fmt.f
+\ is a corpus entry, and loading it first would hide every word its compile
+\ reaches. The decimal writer below is the price.
 package TIER0-PROF
 private
 
@@ -147,6 +104,8 @@ variable SRC-N
 
 \ ---- the two workloads ------------------------------------------------------
 
+\ `required`, the registry-aware load every program uses: a shared dependency
+\ compiles once and a file the engine carries baked contributes nothing.
 : LOAD-CORPUS ( -- )
    script-argc 2 ?do i script-argv$ required loop ;
 
@@ -168,8 +127,13 @@ variable SRC-N
 
 public
 
-\ The hook the run compiles under: a `-raw` mode clears it. `set-check` is a
-\ top-level boundary no checked body names; this is the one trusted step.
+\ A `-raw` mode is the checker ablation: `0 set-check` clears the hook, so the
+\ same source takes the same tokenize/lookup/emit/publish path unchecked, and
+\ the difference from its twin is the checker's cost (the profiler lumps the
+\ engine's unregistered text into `other`). A `-raw` mode refuses a corpus
+\ declaring a SUMTYPE, PRODUCT, STRUCTURE or ENUM: their generated constructors
+\ need the checker. `set-check` is a top-level boundary no checked body names;
+\ this is the one trusted step.
 TRUSTED: ABLATE ( -- )
    RAW? if 0 set-check then ;
 
@@ -178,10 +142,15 @@ TRUSTED: ABLATE ( -- )
    1 script-argv$ ARG>N {: usec :}
    usec 0 > 0= if USAGE then
    0 script-argv$ {: mode:ptr mu :}
+   \ set-tier is engine-global and only code compiled after it takes the tier,
+   \ so this precedes the first corpus token (as in tools/tier-census.f).
    0 set-tier
    usec prof-rate
    mode mu s" corpus" STR= mode mu s" corpus-raw" STR= or if
       ndict@ {: first :}
+      \ prof-on indexes the dictionary as it stands: every word the workload
+      \ defines, and its top-level code, lands in `new`, so the rows are the
+      \ engine's baked compiler, checker and runtime under measurement.
       0 prof-on
       mono-ns
       LOAD-CORPUS

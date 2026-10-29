@@ -1,10 +1,8 @@
-\ This object file owns only portable bytes: a header and twenty sections
-\ in slot order. Each caller names what its slots hold: NUNIT-OBJECT's FILE
-\ object, which carries every definition; an unused slot is empty.
-\
-\ Header (all integers are little-endian u64): magic at 0, version at
-\ 8, architecture at 16, package-name length at 24, package name at 32 (64
-\ bytes), source key at 96 (64 bytes), and twenty section lengths at 160.
+\ A unit object file: a header and twenty sections in slot order, portable bytes
+\ only; NUNIT-OBJECT's FILE object names what the slots hold, an unused slot empty.
+\ Header, little-endian u64s: magic 0, version 8, architecture 16, package-name
+\ length 24, package name 32 (64 bytes), source key 96 (64 bytes), twenty section
+\ lengths at 160.
 
 require src/lib/errors.f
 require src/lib/string.f

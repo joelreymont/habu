@@ -34,7 +34,7 @@ variable VERIFY-PENDING
 variable VERIFY-PENDING-LO
 variable VERIFY-PENDING-BIT
 create DIGEST-HEX 64 allot
-create UCV-FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this tool's file-digest context
+create UCV-FSHA-CTX SHA256-FILE-CTX-BYTES allot
 
 : UNICODE-PATH$ ( -- ptr u8 n )
    s" data/unicode/16.0.0/UnicodeData.txt" ;

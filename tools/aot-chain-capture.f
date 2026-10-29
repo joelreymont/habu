@@ -1,69 +1,18 @@
-\ aot-chain-capture.f — capture the native compiler chain inside a booted engine.
-\
-\ THE LINE ORDER OF THIS FILE IS THE CONTRACT. Read it top to bottom; every
-\ `require` below is placed where it is for a reason a reordering would break
-\ silently, so the file is written flat rather than factored into a library plus
-\ an entry point.
-\
-\ WHY THE CAPTURE RUNS HERE AT ALL. The metabuild host's dictionary is not the
-\ target's: a word captured there may collide with, or shadow, a word the booting
-\ engine already has, and three ordered deaths proved it (an ARM64-W32 duplicate,
-\ an ENGINE-ERROR duplicate, then regalloc.f's BMAX binding to the wrong EMITTER).
-\ So the chain is captured in a process whose dictionary IS the target's — a
-\ booted engine — and the artifact is what crosses to the metabuild.
-\
-\ WHY THE CHAIN LOADS FIRST. A captured call site travels as a NAME that the seed
-\ resolves at the boot of the shipped engine, so a window word may only call a
-\ word that engine will have. Everything this tool loads before the window opens
-\ exists in THIS process and in no target. Loading the capture's own tooling first
-\ was tried and refuted by measurement: aot-capture.f's closure requires
-\ src/arch/arm64/asm.f, the compiler chain requires asm.f too, and `require` is a
-\ no-op the second time — so the chain's words end up calling the TOOL's copy of
-\ asm.f. 98 of 18602 call sites, refused by name (first: the chain's MASK calling
-\ A64ASM's LIMM?). Chain first, tooling after: 0.
-\
-\ The window prelude loads src/habu/layout.f and src/habu/aot-arm.f.
-\ The latter exists precisely so that arming the window does not
-\ drag aot-capture.f in ahead of the chain. The two are cheap for different
-\ reasons, both measured in a booted bin/hb: layout.f is already registered
-\ there, so its `require` adds 0 records and 0 DATA bytes and is kept only as the
-\ dependency statement; aot-arm.f adds 4. asm.f, by contrast, is NOT registered —
-\ requiring it in a booted engine compiles its records — which is the whole reason
-\ it must be the chain that brings it in. NSTR loads inside the window too: a
-\ retained native host already carries it, while a source-only host needs its
-\ code captured with the compiler. Its fresh literal pool belongs to either
-\ window.
-\
-\ THE PRELUDE MARKS ARE THE FIRST THING THIS PROCESS DOES, before it defines a
-\ variable of its own, because they bound the band the capture refuses to call
-\ into: [mark, window) is every record and every DATA byte this tool added. The
-\ package opens before the marks are read — a `package` line writes a dictionary
-\ record too, and that record belongs below the mark with the engine's own words.
-\
-\ AND THE MARKS ONLY MEAN THAT IF THIS FILE IS THE FIRST THING THE PROCESS LOADS.
-\ The band audit trusts everything BELOW the mark to be a word the target engine
-\ has, which is true of the engine's own surface and of nothing else. Run the tool
-\ behind one other file and the capture succeeds while producing an unbootable
-\ seed: `bin/hb --load ...asm.f ...aot-chain-capture.f` marks asm.f's records
-\ as the engine's, drops them out of the window (code span 1194680 rather than
-\ 1215872) and bakes calls to names the target has not got. So the tool checks it,
-\ and checks it against the engine's own registry rather than against a
-\ convention: src/core/include.f freezes REQUIRE-BOOT-N at the end of the boot
-\ prefix, so REQUIRE-N minus REQUIRE-BOOT-N is exactly how many files THIS process
-\ has loaded, and the only acceptable answer is one — this file.
-\
-\ WHICH BOOTED ENGINE, and it is not the installed product. Once the chain is
-\ baked, every file its closure names is `provided` and the `require` below is a
-\ registry no-op, so the window comes up empty and this tool says so: under bin/hb
-\ it dies "the window is empty - the chain did not load". The engine that can run
-\ it is the build's capture host, which carries the same prefix with no artifact
-\ declared (tools/build-fixpoint.f BF-KEEP-HOST), and the build runs exactly this
-\ command line in it (BF-PREPARE-CAPTURE-ARGV), from the repository root:
+\ aot-chain-capture.f - capture the native compiler chain inside a booted engine,
+\ whose dictionary is the target's, and write the artifact the metabuild reads.
+\ The line order is the contract: each `require` sits where a reorder would break
+\ silently, so the file is flat. Run from the repository root in the build's
+\ capture host (tools/build-fixpoint.f BF-KEEP-HOST, BF-PREPARE-CAPTURE-ARGV):
 \   $TMPDIR/hb-host --load tools/aot-chain-capture.f -- <artifact>
-\ It prints one `name=value` line per census field and exits 0, or refuses with
-\ exit 74 and a named diagnostic — its own, or one of src/habu/aot-capture.f's.
-\ test/aot-chain-capture-suite.f runs it under bin/hb for that refusal, which is
-\ what proves this whole file and its closure still compile in a booted engine.
+
+\ Captured in the metabuild host, a word collided with or shadowed the booting
+\ engine's (an ARM64-W32 duplicate, an ENGINE-ERROR duplicate, regalloc.f's BMAX
+\ bound to the wrong EMITTER); here the dictionary is the target's.
+\ The prelude marks come first, before any variable of this tool: [mark, window)
+\ is every record and DATA byte this tool added, the band the capture refuses to
+\ call into. The package opens before the marks are read: its record belongs
+\ below the mark with the engine's words. The marks hold only when this file is
+\ the first the process loads (?FIRST).
 
 package AOT-CHAIN
 public
@@ -72,6 +21,10 @@ variable PRE-R  variable PRE-D  variable PRE-REQ  variable BOOT-REQ
 BOOT-REQ !  PRE-REQ !  PRE-D !  PRE-R !
 ;package
 
+\ layout.f is registered in a booted bin/hb (0 records, 0 DATA bytes: kept as the
+\ dependency statement); aot-arm.f adds 4 and exists so that arming the window
+\ does not load aot-capture.f ahead of the chain. asm.f is not registered, so the
+\ chain must be what brings it in.
 require src/habu/layout.f
 require src/habu/aot-arm.f
 
@@ -94,6 +47,14 @@ variable Q0  variable Q1      \ its require-registry span: the closure it loaded
 
 ;package
 
+\ The chain loads before the capture's tooling: a captured call travels as a
+\ name the shipped engine resolves at boot, so a window word may call only words
+\ that engine has. aot-capture.f's closure and the chain both require
+\ src/arch/arm64/asm.f and a second `require` is a no-op, so tooling first made
+\ 98 of 18602 call sites call the tool's asm.f (first: the chain's MASK calling
+\ A64ASM's LIMM?); chain first, 0. NSTR loads inside the window: a retained
+\ native host carries it, a source-only host needs its code captured with the
+\ compiler. Its fresh literal pool belongs to either window.
 AOT-CHAIN:OPEN
 require src/compiler/native/string.f
 NSTR:WINDOW-OPEN
@@ -101,27 +62,24 @@ require src/compiler/native/compiler.f
 NCOMP:CAPTURE-PREPARE
 AOT-CHAIN:CLOSE
 
-\ The capture's own tooling, all of it above the window's last record and past its
-\ last DATA byte. Its buffers are allotted here, so no window word can hold one of
+\ The capture's tooling sits above the window's last record and past its last
+\ DATA byte. Its buffers are allotted here, so no window word can hold one of
 \ their addresses and the DATA audit's third class ("above the window's DATA
-\ span") stays empty for structural reasons rather than lucky ones.
+\ span") stays empty by structure.
 require src/arch/arm64/icode.f
 require src/habu/aot-decl.f
 require src/habu/aot-capture.f
 
-\ The capture's IDENTITY, loaded with the same "after the window" rule. aot-ident.f
-\ turns the require-registry span above into the closure list and its digest;
-\ src/lib/engine-id.f answers the other half, the content key of the binary this
-\ capture is running in, which the metabuild recomputes over the engine it emitted
-\ and compares. Both are above the window, so neither is captured.
+\ Identity, also after the window: aot-ident.f turns the require-registry span
+\ into the closure list and its digest; src/lib/engine-id.f gives the content key
+\ of the running binary, which the metabuild recomputes over the engine it
+\ emitted and compares.
 require src/habu/aot-ident.f
 require src/lib/engine-id.f
 
-\ The artifact, and the whole-span descriptor write it needs. src/habu/fdio.f is
-\ the tree's one write-all loop and the only part of the build drivers' I/O a
-\ booted engine can load - src/habu/driver-io.f itself stops at E-UNDEFINED: MBUF,
-\ six files short of the target's image writer. Both load after the window for the
-\ same reason everything else here does.
+\ src/habu/fdio.f is the tree's one write-all loop and the only part of the build
+\ drivers' I/O a booted engine can load: src/habu/driver-io.f stops at
+\ E-UNDEFINED: MBUF, six files short of the target's image writer.
 require src/habu/fdio.f
 require src/habu/aot-file.f
 require src/lib/sort.f
@@ -132,9 +90,10 @@ public
 
 $4A constant REFUSE-RC
 
-\ One file loaded in this process, and it is this one. Asked of the engine's own
-\ require registry, so a tool run behind anything at all stops here rather than
-\ marking that thing's records as the target's.
+\ src/core/include.f freezes REQUIRE-BOOT-N at the end of the boot prefix, so
+\ REQUIRE-N minus REQUIRE-BOOT-N is the files this process loaded: exactly one,
+\ this file. Run behind asm.f, the capture marked asm.f's records as the engine's
+\ (code span 1194680 rather than 1215872) and baked calls the target lacks.
 : ?FIRST ( -- )
    PRE-REQ @ BOOT-REQ @ - 1 = if exit then
    s" aot-chain-capture: files loaded before the capture=" type
@@ -142,6 +101,10 @@ $4A constant REFUSE-RC
    s" aot-chain-capture: the capture must be the first file this process loads"
    REFUSE-RC die ;
 
+\ Under bin/hb the chain is baked, its closure is `provided` and the window comes
+\ up empty: only the capture host, the same prefix with no artifact declared, can
+\ run this tool. test/aot-chain-capture-suite.f runs it under bin/hb for this
+\ refusal, the proof that this file and its closure compile in a booted engine.
 : ?WINDOW ( -- )
    AOT-ARM:R1 @ AOT-ARM:R0 @ <> if exit then
    s" aot-chain-capture: the window is empty - the chain did not load" REFUSE-RC die ;
@@ -149,16 +112,13 @@ $4A constant REFUSE-RC
 create CHAIN-SHA 32 allot
 create HEX 64 allot
 
-\ The closure the window compiled, read out of the engine's own require registry.
-\ [Q0,Q1) is REQUIRE-N bracketed across the window, so it is exactly the files the
-\ chain pulled in and nothing else. The registry read lives here rather than in
-\ src/habu/aot-ident.f because this is the only process that has a window to
-\ bracket - the metabuild fills the same table from the artifact's own list - and
-\ because aot-ident.f has to compile in a metabuild host that carries no
-\ src/core/include.f.
-\ These are application rows, hence absolute. Store tree paths relative to CWD
-\ as boot registration does: the artifact also supplies the product's provided
-\ files, which must still match after the source tree moves.
+\ [Q0,Q1) is REQUIRE-N bracketed across the window: exactly the files the chain
+\ pulled in. The read lives here, not in src/habu/aot-ident.f: only this process
+\ has a window to bracket (the metabuild fills the table from the artifact's
+\ list), and aot-ident.f compiles in a metabuild host without src/core/include.f.
+\ Application rows are absolute; tree paths are stored relative to CWD as boot
+\ registration does, so the product's provided files still match after the
+\ source tree moves.
 : ?CLOSURE ( -- )
    Q1 @ Q0 @ > if exit then
    s" aot-chain-capture: the window loaded no file" REFUSE-RC die ;
@@ -171,15 +131,12 @@ create HEX 64 allot
       AOT-IDENT:PATH+
    loop ;
 
-\ Address rows restore the window's declared pointers and vectors, including
-\ their exact targets. DKEEP-HOOK-DEFAULT remains the explicit diagnostic-hook
-\ initialization the compiler's boot contract asks for; it is no longer a
-\ substitute for transporting every declared cell.
-\
-\ A code cell below the window is a separate load-time effect. NFEED now installs
-\ its checker observer per compilation unit, so this tool owes no such installer.
-\ Keep the independent live count below: a new pre-window installation must be
-\ named, even when its address row also travels.
+\ Address rows restore the window's declared pointers and vectors with their
+\ exact targets; DKEEP-HOOK-DEFAULT stays the diagnostic-hook initialization the
+\ compiler's boot contract asks for. A code cell below the window is a separate
+\ load-time effect: NFEED installs its checker observer per compilation unit and
+\ owes none. A new pre-window installation must be named in the live count
+\ below, even when its address row also travels.
 variable CELLS-OWED           \ pre-window cells the declared installers refill
 
 : RESOLVE-BAD ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n r:ptr ru:n :}
@@ -339,9 +296,8 @@ variable NAME-COUNT
    data? if AOT-WINDOW:XTOFF-DATA-TAG or then {: meta:n :}
    loc meta ?EXACT-ROW ;
 
-\ The compiler's hook must still be a declared code cell in this window, with
-\ a live captured target. This preserves the original fixture's substantive
-\ check without treating every other DATA pointer or vector as another hook.
+\ The compiler's hook must still be a declared code cell in this window with a
+\ live captured target; no other DATA pointer or vector is treated as a hook.
 : ?HOOK-CELL ( -- )
    s" A64RAV:DKEEP-HOOK" NDICT:SPELL-DEFER-CELL {: at:n :}
    at AOT-ARM:D0 @ < at AOT-ARM:D1 @ CELL - > or if ROW-REFUSE then
@@ -439,15 +395,11 @@ variable NAME-COUNT
 
 \ ---- the artifact, and the proof that writing it is a round trip -------------
 \
-\ THE PRODUCER KEY is the SHA-256 of the binary this process is running, taken
-\ over the path src/lib/engine-id.f resolved for itself, and the census prints the
-\ same fact in hex through ENGINE-ID:KEY$. test/aot-chain-capture-suite.f hashes
-\ bin/hb from the outside and compares it against the key in an artifact's
-\ header, so that field is a reading of a file the suite has pinned rather than a
-\ claim. The artifact it reads is the small-window one test/aot-artifact-roundtrip.f
-\ writes, because a product engine cannot capture the chain at all; what that
-\ suite proves about THIS file is that it loads in a booted engine and refuses by
-\ name there.
+\ THE PRODUCER KEY is the SHA-256 of the binary this process runs, over the path
+\ src/lib/engine-id.f resolved (the census prints it through ENGINE-ID:KEY$).
+\ test/aot-chain-capture-suite.f hashes bin/hb from outside and compares the key
+\ in the header of the small-window artifact test/aot-artifact-roundtrip.f
+\ writes: a product engine cannot capture the chain.
 \
 \ THE ROUND TRIP RUNS EVERY TIME AN ARTIFACT IS WRITTEN: write A, destroy the
 \ live buffers, read A back into them, write B from what came back, and require
@@ -464,7 +416,7 @@ variable NAME-COUNT
 \ so a read that stops short leaves poison inside the span it claimed to fill.
 
 create PROD 32 allot
-create FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this tool's file-digest context
+create FSHA-CTX SHA256-FILE-CTX-BYTES allot
 create SHA-A 32 allot
 create AHEX 64 allot
 $A5 constant POISON-BYTE

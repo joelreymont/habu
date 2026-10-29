@@ -1,14 +1,9 @@
-\ error-code-lint-test.f - checked fixtures for the E- throw-code uniqueness lint.
+\ error-code-lint-test.f - checked fixtures for the E- throw-code uniqueness
+\ lint; LIVE runs it over the real repository ledger.
 \ Run: bin/hb --load tools/error-code-lint-test.f
-\ Requiring the core also lets LIVE enforce the real repo ledger.
-\
-\ Fixtures that need a `"` or a line break compose their text from named byte
-\ helpers instead of escaped literals. Two reasons. Escaped blobs are hard to
-\ read and easy to get wrong, and the lint scans this file along with the rest
-\ of the tree, so composing the text keeps every fixture's claim inside a plain
-\ string body where the scan can see it is not code. The old escaped fixture on
-\ line 57 of this file was itself the shape that fed the live ledger phantom
-\ claims: a `\` written inside a string body.
+\ Fixtures with a `"` or a line break compose their text from Q+ and EOL+, so
+\ each fixture's claims stay inside a plain string body: the lint scans this file
+\ for the live ledger too.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -223,12 +218,12 @@ variable FIX-U
    s" -9120 constant E-BAR" ERROR-CODE-LINT:COUNT2 0 T=
    s" -9100 constant E-FOO-FIRST -9199 constant E-FOO-LAST -9130 constant E-FOO-LAST"
    s" -9150 constant E-BAR" ERROR-CODE-LINT:COUNT2 0 T=
-   \ Missing bounds remain visible as zero only at the legacy query boundary.
+   \ A missing bound shows as zero in RESERVATIONS.
    s" -9100 constant E-FOO-FIRST" ERROR-CODE-LINT:COUNT 0 T=
    -9100 0 ERROR-CODE-LINT:RESERVATIONS 1 T=
    s" -9199 constant E-FOO-LAST" ERROR-CODE-LINT:COUNT 0 T=
    0 -9199 ERROR-CODE-LINT:RESERVATIONS 1 T=
-   \ -0 was accepted by the scanner and cleared the corresponding bound.
+   \ A -0 bound reads as zero: that endpoint is cleared and nothing is reserved.
    s" -0 constant E-FOO-FIRST -9199 constant E-FOO-LAST"
    s" -9150 constant E-BAR" ERROR-CODE-LINT:COUNT2 0 T=
    0 -9199 ERROR-CODE-LINT:RESERVATIONS 1 T=
@@ -251,15 +246,13 @@ variable FIX-U
    \ a paren comment between a claim's own tokens is inert, not a separator
    s" -9001 constant ( note ) E-XA  -9001 constant E-XB" ERROR-CODE-LINT:COUNT 1 T= ;
 
-\ The print-paren `.( ... )` prints its body while the source loads; that body is
-\ text, never code, and cannot declare a constant. So only E-XB is a claim here
-\ and there is nothing for it to collide with.
+\ A `.( ... )` body is printed text and declares nothing, so only E-XB is a
+\ claim.
 : PRINT-PAREN ( -- )
    s" .( -9001 constant E-XA )  -9001 constant E-XB" ERROR-CODE-LINT:COUNT 0 T= ;
 
-\ String membership is a structural fact the shared lexer decides, not a quote
-\ count. The blinding-quote fixture is paired with the plain form that must keep
-\ the same verdict, so a scan that goes blind at the quote fails right here.
+\ String membership is the shared lexer's structural fact, not a quote count;
+\ each blinding-quote fixture is paired with a plain form that keeps its verdict.
 : STRINGS ( -- )
    BARE-QUOTE$ ERROR-CODE-LINT:COUNT 1 T=
    s" -9001 constant E-XA  -9001 constant E-XB" ERROR-CODE-LINT:COUNT 1 T=
@@ -273,9 +266,8 @@ variable FIX-U
    COMMENT-THEN-LINE$ ERROR-CODE-LINT:COUNT 1 T=
    SPLIT-CLAIM$ ERROR-CODE-LINT:COUNT 0 T= ;
 
-\ A source the lexer cannot read to the end must stop the gate by name. Reporting
-\ zero findings for the part it did read is the failure mode this whole change
-\ exists to remove.
+\ A source the lexer cannot read to the end stops the gate by name instead of
+\ reporting zero findings for the part it read.
 : FAIL-CLOSED ( -- )
    [: UNTERM$ ERROR-CODE-LINT:COUNT drop ;] ERROR-CODE-LINT:E-QUOTE TTHROWSQ ;
 

@@ -444,9 +444,8 @@ private
    row 2 IMPL@ row 3 IMPL@ LIVE-RECORD?
       if drop true else drop false then ;
 
-\ The first row whose start lies past the address: every row before it starts
-\ at or before it. The bounds live on the stack, so a search leaves no state
-\ in the image.
+\ The first row whose start lies past the address. The bounds live on the stack,
+\ so a search leaves no state in the image.
 : IMPL-UPPER ( n -- n )
    {: entry:n :}
    0 IMPL-N @
@@ -1430,8 +1429,7 @@ public
    loop
    PREP-CURSOR @ size <> if BAD then ;
 
-\ A FILE object's own references: no declarations; its LOCAL records,
-\ wordlists and DATA resolve through LOCAL-AT.
+\ A FILE object's own references carry no declarations.
 : PREPARE-FILE ( ptr u8 n -- )
    {: src:ptr size:n :}
    src size PREPARE-ROWS 0<> if BAD then
@@ -1834,7 +1832,6 @@ public
    ord R-BOUND? 0= if NULL-PTR false exit then
    ord RESULT-BYTES * RESULT-DIGESTS true ;
 
-\ The closure walk follows this many edges out of ord's result.
 : RESULT-EDGES ( n -- n ) {: ord:n :}
    ord R-BOUND? 0= if 0 exit then
    ord 2 RESULT@ ;

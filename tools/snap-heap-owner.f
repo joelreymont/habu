@@ -1,31 +1,9 @@
-\ snap-heap-owner.f - name the owner of a persisted DP-heap cell.
-\
-\ A snapshot image carries the whole DP heap verbatim, so any heap cell that
-\ holds a live process address - an execution token in the JIT region, or a
-\ pointer the host handed out through mmap - is wrong the moment the image is
-\ restored somewhere else. Finding those cells is easy: build the image twice and
-\ compare the two DATA payloads. But a byte offset does not say WHICH variable or
-\ table is at fault, and guessing an owner from what a cell contains is exactly
-\ the mistake this repair is not allowed to make.
-\
-\ Two maps close that gap, both read out of the live dictionary:
-\
-\   DUMP      `<heap offset> <name>` for every word that owns a piece of the DP
-\             heap. The owner of a drifting offset is the last line whose offset
-\             is not greater than it.
-\   CODE-MAP  `<JIT region offset> <code length> <name>` for every word that has
-\             code, plus the region base and heap top this run got. A program
-\             counter caught by a debugger watchpoint on a drifting cell turns
-\             into the name of the word that wrote it.
-\
-\ DKIND:ADDR identifies a created owner, as in tools/data-table-census.f.
-\ An ordinary word that uses an address is not its owner; `does>` clears the
-\ stamp when it replaces the created behavior. The shared SNAP-RELOC grammar
-\ reads the owner's three- or four-half carrier, bounded by its code span.
-\
-\ Run it from a process that has the source under investigation loaded and has
-\ not retired its dictionary yet. It reads the dictionary through
-\ src/habu/xref.f, which the native engine provides, and the pure carrier module.
+\ snap-heap-owner.f - name the owner of a persisted DP-heap cell. A snapshot holds
+\ the DP heap verbatim, so a cell holding a live address breaks on restore. DUMP
+\ prints `<heap offset> <name>` per heap owner: an offset's owner is the last line
+\ not greater than it. CODE-MAP prints `<JIT region offset> <code length> <name>`
+\ per word with code, headed by region base and heap top. DKIND:ADDR identifies a
+\ created owner; `does>` clears it. Run before the dictionary is retired.
 
 require src/lib/fmt.f
 require src/habu/address-carrier.f
@@ -47,9 +25,9 @@ package SNAP-HEAP-OWNER
 : HEAP-OFF ( n -- n ) {: addr:n :}
    addr data-base BYTE-VIEW NULL-PTR BYTE-VIEW - - ;
 
-\ A package record carries raw wordlist roles in fields [0] and [8] instead of a
-\ code pointer and a length - habu2.f EM-SNAPSHOT-REBASE-DICT skips them the same
-\ way - so reading its start as an address would fault. Ask the record what it is.
+\ A package record holds wordlist roles in fields [0] and [8], not a code pointer
+\ and length (habu2.f EM-SNAPSHOT-REBASE-DICT skips them too): reading its start
+\ as an address would fault.
 : CODE? ( ptr n -- bool ) {: rec:ptr :}
    rec XREF-WORDLIST XREF-NAMESPACE-WL <> ;
 
@@ -81,12 +59,10 @@ package SNAP-HEAP-OWNER
 
 public
 
-\ every heap owner in dictionary order: `<heap offset> <name>` per line
 : DUMP ( -- )
    s" heap-owner heap-map" type cr
    ndict@ 0 ?do i HEAP-SLOT loop ;
 
-\ the whole code map, headed by the region base and heap top this run got
 : CODE-MAP ( -- )
    s" heap-owner region-base " type dbase@ .
    s" heap-owner heap-top " type here data-base - .

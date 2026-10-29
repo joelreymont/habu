@@ -1,11 +1,7 @@
-\ clobber-wrap-fixture.f - negative/positive fixtures for wrapped emitter calls.
-\
-\ Read as text by clobber-lint-test.f (never loaded or executed).
-\ PROT-GUARD:CALL is the modeled wrapped call:
-\ it moves the caller's (addr,len) pair into x10/x11, then branches to the
-\ resident span guard. The guard body reads x10/x11 and touches only x12/x13, so
-\ the pair survives (x10=addr, x11=len); the move overwrites x10/x11 when the
-\ operands are not already there, and the branch clobbers x30.
+\ clobber-wrap-fixture.f - fixtures for wrapped emitter calls, read as text by
+\ clobber-lint-test.f (never loaded). PROT-GUARD:CALL, the modeled wrapped call,
+\ moves the (addr,len) pair into x10/x11 unless it is there already and branches
+\ to the resident span guard, which touches only x12/x13; the branch clobbers x30.
 
 variable LWRAP-GUARD
 variable LWRAP-CALLER

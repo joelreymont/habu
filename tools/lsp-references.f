@@ -1,129 +1,9 @@
-\ lsp-references.f - the language server's references for source declarations
-\ and built-in words. A primitive use carries its canonical PRIM-SPEC row
-\ as a negative visit; a name token in the validated prims.f selects the same
-\ row. Its subjects are all workspace .f files and open documents, since an
-\ implicit primitive needs no load. Each checked use with that row contributes
-\ a location, subject to the same source revision, deduplication and coverage
-\ warnings as source uses. Its declaration is included only while prims.f's
-\ text validates against the running specification. Built-in rename refuses.
-\ A source-backed engine use carries visit -1 and the live image origin's
-\ path and original token span as a compiled-binding locator. Its canonical
-\ engine symbol selects checked uses in every workspace file. A declaration
-\ in current engine source selects that symbol by package, tail and visibility.
-\ This inventory describes workspace references, not every use in engine
-\ source outside the workspace.
-\
-\ The following source-declaration path takes the declaration a position
-\ selects in an open document whose check completed, and every known use of it
-\ that completed checks of files whose loads reach its file bound, in those
-\ files and in every file they read.
-\
-\ SELECT takes the open document D, a byte of its text and whether the request
-\ includes the declaration. D's last completed check must be of D's current
-\ text, whether verified, refused or deferred. The byte selects a declaration
-\ as that check stated it: at a use (LSP-DEFS:DEFS-USE-AT), the declaration the
-\ use is bound to; else at a definition token of D's own file, the one that
-\ token declares, when it declares one word in one visit; else none, which
-\ answers an empty list. Its identity is the file P it is in, its token's
-\ bytes there, its lower-case tail, its package and its visibility, and the
-\ visit the check gave it tells it apart from that check's other declarations
-\ of the same identity. D's check must hold exactly one such declaration and
-\ one consistent editor version or disk stamp for P. An included
-\ declaration is placed in the text of P, the open document's that holds P,
-\ else the file's, which must still have that revision.
-\
-\ The subjects are the workspace files and open documents whose loads reach P,
-\ and D, whose check read P though its loads on disk may no longer reach it,
-\ as the walk gives them (tools/lsp-workspace.f): P first, then by path; and
-\ P before them when the walk gives no P, as for a file outside every
-\ workspace folder that no document holds. Each one is checked now for the
-\ uses of the declaration's tail (LSP-CHECK:USES), its text the open
-\ document's that holds it, else its file's: the check gives every use it
-\ binds in the subject and every use of the tail it binds in each file it
-\ reads. Every check reads each open
-\ document's text in place of its file (tools/lsp-check.f), so a subject's
-\ check reads the bytes of P that D's read, the open text when a document
-\ holds P, unless P changed on disk between them. A check numbers only its own
-\ visits, so a subject's check that read P must state the same revision and
-\ declare the word at P's token, by its identity, in one visit at most, and
-\ its uses bound to that token of the word's identity must carry that visit;
-\ one that declares the word there in no visit and binds no use of it there
-\ holds none. Each of those uses is placed in the text of the file it is in,
-\ the open document's that holds the file, else the file's, which must have
-\ the revision the check read of it, once however many checks give it. Each
-\ visit of P that declares a word at P's token must declare the word there,
-\ beside any other, as a DEFTYPE's converters are declared beside each
-\ other: a check with a visit that declares another word there and not the
-\ word conflicts, since a rename of the token would change that word too.
-\ Its file is named, and its uses of the word are placed still. A refused or
-\ deferred check contributes the bindings it reached, without certifying
-\ coverage of any file it read.
-\
-\ A file a use is placed in may also be read by a composition that does not
-\ reach P, which only a fragment or a file that depends on its loader's
-\ definitions makes, and there the same token may be bound to another word.
-\ So, once the subjects before it are gathered, pass 2 (MORE?) takes each
-\ file a location is in but P, once, and gives the subjects whose loads
-\ reach it (LSP-WORKSPACE:REACHING-AGAIN) that are no subject yet, gathered
-\ as the rest are; it runs again while they place locations in other files.
-\ Every use of the tail bound to another word by a completed check that read
-\ no P, or whose uses were placed, is kept with the subject whose check bound
-\ it. Once every subject is gathered, SETTLE
-\ names files as below and orders the locations: the declaration, when
-\ included, first, then the uses by file, P's first and the others in the
-\ byte order of their paths, then by the bytes they start and end at.
-\
-\ The request is refused, REFUSED? true and BLOCKED$ naming the file relative
-\ to the working directory and why, when the position selects a use or a token
-\ without a whole identity, a token that declares several words or one
-\ word in several visits, or a declaration D's
-\ check does not hold once or holds no consistent revision of P for; the declaration is
-\ included and P's text no longer has that revision; or a workspace folder's walk
-\ fails. Otherwise the answer comes. A file is covered only when a
-\ verified check whose uses were placed read it, or a verified check that read
-\ P and passed the tests above: only that check's bindings are to this declaration, so a check that
-\ read no P, or failed those tests, says nothing of the file's uses of it.
-\ Each file the answer could not cover is named with why (WARNING): first a
-\ workspace file whose loads discovery cannot find, but P and D, whose
-\ checks say what they read; then, as the gather finds them, a file a use is
-\ in whose text no longer has the revision the check read, a subject that
-\ cannot be read, and one whose check states no revision of P or another one,
-\ declares at P's token a word without a whole identity or the word in
-\ several visits, or binds to that token a use without a whole identity, or
-\ one of the word in another visit or while it declares the word there in
-\ none, which contributes no location, or that conflicts as above; then a
-\ file a use is placed in at whose bytes a kept use is, since its token
-\ means another word in that use's check, whose composition a rename would
-\ change; last a subject whose check was not verified, by its check's
-\ verdict (LSP-CHECK:OUTCOME$), unless another verified check covers its
-\ file. A subject pass 2 gave, whose loads do not reach P, is covered
-\ once any verified check read its file: it is then a fragment of that check's composition, whose
-\ uses of the tail that check gave.
-\
-\ PLACE selects as SELECT does and places the declaration, finding no
-\ subjects: textDocument/prepareRename answers from it, after
-\ RENAME-VERIFIED? retains the whole-file requirement for rename. TAIL-FROM
-\ gives where
-\ the declaration's tail starts in a token: at the token's start when the
-\ token spells the tail, letters compared without case as Habu compares
-\ names; else, when the token is qualified as the checker reads a name, by
-\ one colon neither its first byte nor its last, after that colon when the
-\ bytes after it spell the tail; else nowhere. Each location keeps where its
-\ tail starts, the bytes a rename edits. SPELT? holds while the use at the
-\ byte that selected the declaration and every location placed spell the
-\ tail, and UNSPELT$ says why, from the declaration, when one does not: a
-\ DEFTYPE declares its two converters at its name's token, which spells
-\ neither. EXPORT? holds when D's check records the declaration as an EXPORT
-\ of another word, and EXPORT$ says so. RE-EXPORTED? holds when a location
-\ placed is a token that also declares another word in its file, as an
-\ EXPORT's operand does: a rename that edited the token would leave
-\ that word's uses naming the old one. RE-EXPORT$ names the first such one.
-\ LOCATIONS counts the locations, LOC-URI$ gives one's URI and LOC-TAIL its
-\ range from where its tail starts. UNCOVERED$ says how many files are named,
-\ after a phrase, then each one and why, as WARNING sends it.
-\
-\ STORAGE CLASS. PROCESS-GLOBAL: the request being answered belongs to the
-\ server's one task, and SELECT starts each one afresh.
+\ lsp-references.f - textDocument/references for source declarations and built-in words: SELECT
+\ takes the declaration a position of open document D selects and gathers every use that
+\ completed checks of the files whose loads reach its file bound (tools/lsp-workspace.f).
+\ A primitive use carries its PRIM-SPEC row as a negative visit, a source-backed engine use visit
+\ -1 and its image origin; both answer for workspace files, not engine source outside them.
+\ STORAGE CLASS. PROCESS-GLOBAL: the request belongs to the server's one task; SELECT starts each afresh.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -296,7 +176,6 @@ REF-LANES REF-CHUNK * TYPED-BUFFER WAVE-DISK? n
 : OTHER@ ( n n -- n )  swap OTHER-CELLS * + OTHERS @ ;
 : OTHER! ( n n n -- )  swap OTHER-CELLS * + OTHERS ! ;
 
-\ The location K-th in the answer's order.
 : RANKED ( n -- n )  RANKS @ ;
 : MISS@ ( n n -- n )  swap MISS-CELLS * + MISSES @ ;
 : MISS! ( n n n -- )  swap MISS-CELLS * + MISSES ! ;
@@ -312,15 +191,12 @@ REF-LANES REF-CHUNK * TYPED-BUFFER WAVE-DISK? n
 
 : IMPLICIT? ( -- bool )  PRIM-ROW @ 0 >= BUILTIN-SYM @ 0 > or ;
 
-\ The path of known file K.
 : KNOWN$ ( n -- ptr u8 n )  dup K-PATH KNOWN@ swap K-PATH-U KNOWN@ POOL$ ;
 
-\ The path of subject K.
 : SUBJECT-PATH$ ( n -- ptr u8 n )  SUBS @ KNOWN$ ;
 
 : CUR$ ( -- ptr u8 n )  CUR @ SUBJECT-PATH$ ;
 
-\ The path of file F placed in.
 : FILE$ ( n -- ptr u8 n )  dup F-PATH FILE@ swap F-PATH-U FILE@ POOL$ ;
 
 \ The bytes appended to POOL: their offset there. They never lie in POOL,
@@ -404,7 +280,6 @@ REF-LANES REF-CHUNK * TYPED-BUFFER WAVE-DISK? n
    w wu POOL+ {: why:n :}
    k K-PATH KNOWN@ k K-PATH-U KNOWN@ why wu NAMED! ;
 
-\ Whether the file at this path is named.
 : NAMED? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    MISS-N @ 0 ?do
@@ -570,7 +445,6 @@ private
    {: u:n :}
    u USE-NAME$ u USE-PACKAGE$ u USE-VIS KEY? ;
 
-\ Whether these bytes are the selected declaration's token's.
 : TOKEN? ( n n -- bool )
    {: from:n to:n :}
    from TS @ = to TE @ = and ;
@@ -681,7 +555,6 @@ private
    start TS ! end TE !
    true SOURCE-LOCATED ! ;
 
-\ The declaration use U is bound to, as its line states it.
 : FROM-USE ( n -- )
    {: u:n :}
    u USE-GROUP P!
@@ -691,7 +564,6 @@ private
    u USE-VISIT VISIT !
    true FOUND ! ;
 
-\ The declaration decl D states.
 : FROM-DECL ( n -- )
    {: d:n :}
    d DECL-GROUP P!
@@ -874,6 +746,8 @@ private
 \ The subjects of D, in this slot, and the files the walk could not read. P
 \ is the first subject, as REACHING orders them, so that its own uses are
 \ read even when the walk gives none at its path; pass 2 gives none of them.
+\ A built-in word's subjects are every workspace file and open document, since
+\ an implicit word needs no load.
 : SUBJECTS! ( n -- )
    {: slot:n :}
    slot DOC-CANON$ {: a:ptr u:n :}
@@ -901,7 +775,10 @@ private
 
 \ Why the check of the subject in this slot, whose group for P is G, cannot
 \ place its uses of the declaration by their declaration, else empty, the
-\ visit it declares the word in, in SUB-VISIT: -1 when none.
+\ visit it declares the word in, in SUB-VISIT: -1 when none. A check numbers
+\ only its own visits, so it must state the revision of P that D's check read,
+\ declare the word at P's token in one visit at most, and bind its uses there
+\ in that visit.
 : DECL-WHY ( n n -- ptr u8 n )
    {: slot:n g:n :}
    -1 SUB-VISIT !
@@ -1118,7 +995,6 @@ private
 : SRC-ROOM ( n -- ptr u8 )
    1+ SRC-RESERVE 0 SRC ;
 
-\ The file at this path read into SRC, its length in SRC-U.
 : READ-SRC ( ptr u8 n -- ptr u8 n )
    {: path:ptr pathu:n :}
    path pathu FS:FILE-META {: size:n msec:n mns:n csec:n cns:n :}
@@ -1143,7 +1019,6 @@ private
    {: a:ptr u:n owner:n :}
    a u CUR$ NAME$ owner [: CONTRIBUTE ;] LSP-CHECK:USES ;
 
-\ The subject's uses from a check of its file on disk.
 : FROM-DISK ( -- )
    CUR$ [: READ-SRC ;] catch {: code:n :} 2drop
    code 0<> if
@@ -1155,7 +1030,10 @@ private
    0 SRC SRC-U @ -1 FROM-TEXT ;
 
 \ Pending subject K named by its check's verdict, unless a check whose uses
-\ are placed read its file, or any verified check did when pass 2 gave it.
+\ are placed read its file, or any verified check did when pass 2 gave it: that
+\ subject is then a fragment of the check's composition. Only a verified check
+\ that placed uses binds them to this declaration; any other says nothing of a
+\ file's uses of it.
 : SETTLED ( n -- )
    {: k:n :}
    k X-SUB PENDING@ {: s:n :}
@@ -1260,18 +1138,19 @@ public
 : PRIMITIVE-RENAME$ ( -- ptr u8 n )  s" Built-in words cannot be renamed" ;
 
 \ Selects the declaration at this byte of the text of the open document in
-\ this slot, which positions count in, and places it; or refuses the request.
+\ this slot, which positions count in, and places it, finding no subjects:
+\ textDocument/prepareRename answers from it; or refuses the request.
 : PLACE ( n n -- )  true LOCATED ;
 
 \ Selects the declaration at this byte of the text of the open document in
 \ this slot, which positions count in, places it when the request includes
-\ it, and finds the subjects; or refuses the request.
+\ it, and finds the subjects; or refuses the request. D's last completed check
+\ must be of D's current text, whether verified, refused or deferred.
 : SELECT ( n n bool -- )
    {: slot:n at:n too:bool :}
    slot at too LOCATED
    FOUND @ if slot SUBJECTS! then ;
 
-\ Whether the request is refused, and why.
 : REFUSED? ( -- bool )  REFUSED @ ;
 : BLOCKED$ ( -- ptr u8 n )  MSG$ ;
 
@@ -1286,6 +1165,7 @@ public
 
 \ Why a token does not spell the tail, said of the declaration once placed,
 \ the first location: its file, the line and text of its token, and its tail.
+\ A DEFTYPE declares its two converters at its name's token, which spells neither.
 : UNSPELT$ ( -- ptr u8 n )
    DECLARED-AT
    s" , but a token naming it does not spell it" MSG+
@@ -1315,8 +1195,9 @@ public
    s" Constructor rename cannot update MATCH arms" ;
 
 \ Whether a location placed is a token that also declares another word in its
-\ subject's file, and the first such one said: its file, the line and text
-\ of the token, and the word.
+\ subject's file, as an EXPORT's operand does, and the first such one said: its
+\ file, the line and text of the token, and the word. A rename that edited the
+\ token would leave that word's uses naming the old one.
 : RE-EXPORTED? ( -- bool )  RX-U @ 0<> ;
 : RE-EXPORT$ ( -- ptr u8 n )  RX-AT @ RX-U @ POOL$ ;
 
@@ -1340,7 +1221,9 @@ public
 
 \ Pass 2, once the subjects before it are gathered: the subjects it gives
 \ from the files the locations placed since it last ran are in, and whether
-\ it gave any.
+\ it gave any. A composition that does not reach P, a fragment or a file that
+\ depends on its loader's definitions, may read such a file and bind the same
+\ token to another word.
 : MORE? ( -- bool )
    PRIMITIVE? if false exit then
    SUB-N @ {: was:n :}
@@ -1474,7 +1357,6 @@ public
    n 2 < if exit then
    first RANKS n [: LOC< ;] SORT:SORT! ;
 
-\ Whether a file is named.
 : UNCOVERED? ( -- bool )  MISS-N @ 0 > ;
 
 \ This phrase, then how many files are named and, a line each, every one's

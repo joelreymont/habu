@@ -1,40 +1,9 @@
-\ two-generation-core.f - build engine generations from one host and say
-\ whether the chain converges or accretes image DATA, then whether it reaches
-\ its byte fixpoint.
-\
-\ Generation 1 is built by the host named on the command line (default: the
-\ checkout's own bin/hb), generation 2 by generation 1, and so on to generation
-\ 5 - each through the production entry point, tools/native-build.f. Copy the
-\ seed and write each generation in a fresh private temporary directory. No
-\ success, failure or interruption needs to move or restore the installed engine.
-\ Each build, the two of same-host mode included, uses its own empty out root
-\ (HABU_OUT) under that directory, so cached support and FILE artifacts cannot
-\ affect the comparison. A successful run removes those out roots and keeps the
-\ executables, maps and logs; a failed run keeps them for diagnosis.
-\
-\ Each generation prints one line: the image size plus the shape
-\ tools/two-generation-probe.f reads out of it. The chain fails, naming the
-\ generation, when a generation does not build or when generation 3's image
-\ size and shape differ from generation 2's - that pair agreeing is what "the
-\ chain has stopped growing" means. Two power-of-two-capped checker pools once
-\ put 2 MB of zero padding in every image, which the next host booted AND
-\ persisted again, and generation 3 died in LOAD-TARGET with
-\ "hb: data space out of range".
-\
-\ THE LAST PAIR IS COMPARED BYTE FOR BYTE, and the pair is (4,5) rather than
-\ (2,3) because the product is a function of its host as well as of the source:
-\ the capture bakes the window's DATA as its non-zero extents, so build-time
-\ residue in that DATA - cells the boot path re-initialises and no restored
-\ reader consults - changes the run partitioning and displaces every later
-\ section. Measured 2026-09-12 on linux-aarch64 from a seed hb-stdin: 21 such
-\ cells (one non-zero byte each) account for the whole of the ~1 MB by which
-\ generations 3 and 4 differ, while their restored DATA differs only in live
-\ per-process addresses. The residue reaches its own fixpoint at generation 4,
-\ where f(B4) = B4 exactly. A byte difference in the last pair is therefore a
-\ real defect - a clock, a pid, an unpinned address or an unordered walk in the
-\ build - and this is the check that names it.
-\
-\ Invocation and today's lines: docs/bootstrap.md, "Generation Chain Check".
+\ two-generation-core.f - builds engine generations 1-5 through tools/native-build.f:
+\ generation 1 by the named host (default bin/hb), each next by the one before,
+\ each in its own empty HABU_OUT under a private temporary directory, so the
+\ installed engine is never touched. Fails when a generation does not build, when
+\ generation 3's size and shape differ from generation 2's (the chain accretes
+\ DATA), or when the last pair differs by byte. Use: docs/bootstrap.md.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -51,8 +20,8 @@ require src/habu/code-span.f
 package TWO-GEN
 
 1 constant TG-FAIL-RC
-48 constant TG-ZERO                \ ASCII '0'
-10 constant TG-LF                  \ ASCII newline
+48 constant TG-ZERO
+10 constant TG-LF
 $8000 constant TG-CAP-OUT
 $1000 constant TG-SHAPE-CAP
 $8000 constant TG-CMP-CAP          \ one compare chunk per side
@@ -120,8 +89,8 @@ variable TG-COL-NAME
 
 : TG-HOST$ ( -- ptr u8 n ) TG-HOST TG-HOST-U @ ;
 
-\ hb-b<g> below this run's private directory; generation 0 is the seed copy.
-\ The buffers are the caller's so a compare can hold two generation paths at once.
+\ Generation 0 is the seed copy. The buffers are the caller's, so a compare can
+\ hold two generation paths at once.
 : TG-GEN-PATH ( n ptr u8 ptr u8 -- ptr u8 n ) {: g:n nm:ptr path:ptr :}
    g 0 < g 9 > or if E-STR-BOUNDS throw then
    s" hb-b" drop nm 4 BYTE-COPY
@@ -140,7 +109,8 @@ variable TG-COL-NAME
    TG-DIR$ TG-CACHE-NAME 7 TG-CACHE-PATH FS:JOIN-PATH {: u:n :}
    TG-CACHE-PATH u ;
 
-\ Qualified products no longer need their private out roots.
+\ A successful run removes the out roots and keeps executables, maps and logs; a
+\ failed run keeps them all.
 : TG-CACHE-CLEANUP ( n -- )
    0 ?do i 1+ TG-CACHE$ FS:REMOVE-TREE loop ;
 
@@ -229,8 +199,7 @@ variable TG-COL-NAME
    TG-SHAPE TG-SHAPE-U @ TG-PREV TG-PREV-U @ STR= and ;
 
 \ ---- the byte compare of one generation pair --------------------------------
-\ Chunked, because an engine image is over five megabytes and the count is all
-\ the caller wants: a differing byte is a defect to name, not a diff to print.
+\ Chunked: an image is over five megabytes and only the count is wanted.
 
 : TG-CMP-CLOSE ( -- )
    TG-FDA @ 0 >= if TG-FDA @ close then
@@ -366,14 +335,18 @@ variable TG-COL-NAME
    s" two-gen: gen " type gen TG-U.
    s"  owner lookup failed: throw code " type code FMT:.INT cr ;
 
-\ One line per pair, and the count the caller decides about.
 : TG-PAIR-DIFF ( n n -- n ) {: a:n b:n :}
    a TG-GEN$ b TG-GEN-B$ TG-BYTE-DIFF {: n:n :}
    s" two-gen: bytes gen " type a TG-U. s"  vs " type b TG-U. s"  " type
    n TG-DIFF-REPORT
    n ;
 
-\ The whole chain's byte report, and the fixpoint the last pair has to be at.
+\ The pair is (4,5), not (2,3): the capture bakes DATA as its non-zero extents,
+\ so build-time residue (cells boot re-initialises and nothing reads) shifts every
+\ later section. Measured on linux-aarch64: 21 such cells make the whole ~1 MB
+\ difference between generations 3 and 4; the residue is at its fixpoint at 4. A
+\ byte difference in (4,5) is a real defect: a clock, a pid, an unpinned address
+\ or an unordered walk.
 : TG-FIXPOINT ( -- )
    2 3 TG-PAIR-DIFF drop
    3 4 TG-PAIR-DIFF drop

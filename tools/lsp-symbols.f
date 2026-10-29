@@ -1,40 +1,7 @@
-\ lsp-symbols.f - the language server's workspace symbols: the definitions the
-\ open documents' last completed checks retained.
-\
-\ A definition's tail is the text after its word's first colon when that
-\ colon is neither the word's first nor its last byte, as Habu spells a
-\ qualified word PKG:WORD, else the whole word: the word a caller writes
-\ after a package's colon, also for a word re-exported by EXPORT PKG:WORD.
-\
-\ ANSWER writes the result of workspace/symbol for a query: one
-\ SymbolInformation for each definition the store keeps (tools/lsp-defs.f)
-\ whose word holds the query, or, when the query holds a colon, that the
-\ checker recorded public in the package before the query's first colon,
-\ compared whole, and whose tail holds the text after it; ASCII letters
-\ compared without case. A file several open documents' checks reached is
-\ answered once, from the check the store answers it from
-\ (LSP-DEFS:DEFS-EACH): the check of the document holding the file while the
-\ store keeps one, else the latest of them. The answer follows the store:
-\ check after check, oldest first, each check's files in the order its lines
-\ first name them.
-\ - name: for a definition the checker recorded public in a package, that
-\   package, a colon and its tail, as a caller spells it qualified; for any
-\   other, the word as the source wrote it.
-\ - kind: from the class the verifier states for the path that declared the
-\   word (tools/check-verify-child.f): 14 (Constant) for a constant, 13
-\   (Variable) for storage, 12 (Function) for a word or a re-export.
-\ - location: the range of the token that declared the word, at the URI of the
-\   checked document for its own file, whose text the range counts in, and
-\   for any other at the URI of the open document that held the file when the
-\   check completed, else at the file URI of its path.
-\ - containerName: the package the checker recorded the word under; a global
-\   has none.
-\ SYMBOL writes that SymbolInformation for one definition named by its word as
-\ the source wrote it, whatever its package: document symbols
-\ (tools/lsp-outline.f) answer with it.
-\
-\ STORAGE CLASS. PROCESS-GLOBAL: the answer being written belongs to the
-\ server's one task.
+\ lsp-symbols.f - workspace/symbol: the definitions the open documents' last
+\ completed checks retained (tools/lsp-defs.f). Document symbols
+\ (tools/lsp-outline.f) answer with SYMBOL.
+\ STORAGE CLASS. PROCESS-GLOBAL: the answer belongs to the server's one task.
 
 require src/lib/string.f
 require src/lib/adt/option.f
@@ -59,7 +26,6 @@ variable COLON-AT                        \ where its first colon is, -1 for none
 variable SHOWN-N                         \ and the symbols it lists so far
 DYNAMIC-BUFFER NAME-B u8                 \ a symbol's qualified name
 
-\ Whether the needle occurs in the text, ASCII letters compared without case.
 : CONTAINS-CI? ( ptr u8 n ptr u8 n -- bool )
    {: a:ptr u:n b:ptr v:n :}
    u v - 1+ 0 ?do
@@ -67,29 +33,29 @@ DYNAMIC-BUFFER NAME-B u8                 \ a symbol's qualified name
    loop
    false ;
 
-\ Where the text's first colon is, -1 for none.
 : COLON-IN ( ptr u8 n -- n )
    [char] : INDEX-OF MATCH option
       none OF -1 ENDOF
       some OF IDX>N ENDOF
    ;MATCH ;
 
-\ The query's text before its first colon, then after it.
 : PACKAGE$ ( -- ptr u8 n )  QUERY-A @ COLON-AT @ ;
 : TAIL$ ( -- ptr u8 n )
    COLON-AT @ 1+ {: at:n :}
    QUERY-A @ at + QUERY-U @ at - ;
 
-\ The tail of record R's word, as the header states it.
+\ The text after the word's first colon when that colon is neither its first
+\ nor its last byte, else the whole word: what a caller writes after a
+\ package's colon, also for a word re-exported by EXPORT PKG:WORD.
 : REC-TAIL$ ( n -- ptr u8 n )
    REC-WORD$ {: w:ptr wu:n :}
    w wu COLON-IN {: at:n :}
    at 0 > at wu 1- < and if w at 1+ + wu at 1+ - exit then
    w wu ;
 
-\ Whether the query lists record R: its word holds the query, or, when the
-\ query holds a colon, the checker recorded it public in the package before
-\ the first one, compared whole, and its tail holds the text after it.
+\ Its word holds the query; or, for a query with a colon, the checker recorded
+\ it public in the package before the first colon (compared whole) and its tail
+\ holds the text after it. ASCII letters compare without case.
 : LISTED? ( n -- bool )
    {: r:n :}
    r REC-WORD$ QUERY-A @ QUERY-U @ CONTAINS-CI? if true exit then
@@ -113,15 +79,19 @@ DYNAMIC-BUFFER NAME-B u8                 \ a symbol's qualified name
    w pu 1+ NAME-B wu BYTE-COPY
    0 NAME-B nu ;
 
-\ The SymbolKind of a class.
 : KIND ( n -- n )
    {: class:n :}
    class CLASS-CONSTANT = if CONSTANT-KIND exit then
    class CLASS-STORAGE = if VARIABLE-KIND exit then
    FUNCTION-KIND ;
 
-\ The SymbolInformation the header describes for record R of group G, by
-\ this name.
+\ name: PKG:TAIL for a definition recorded public in a package, else the word as
+\ written. kind: from the class the verifier states for the declaring path
+\ (tools/check-verify-child.f): Constant, Variable for storage, Function for a
+\ word or a re-export. location: the declaring token's range, at the checked
+\ document's URI for its own file, else at the URI of the open document that
+\ held the file when the check completed, else at its path's file URI.
+\ containerName: the package the word was recorded under; a global has none.
 : NAMED ( ptr JSON-WRITE:writer n n ptr u8 n -- ptr JSON-WRITE:writer )
    {: g:n r:n nm:ptr nu:n :}
    OBJECT-START
@@ -137,14 +107,13 @@ DYNAMIC-BUFFER NAME-B u8                 \ a symbol's qualified name
 
 public
 
-\ That SymbolInformation for record R of group G, named by its word.
+\ Named by its word as the source wrote it, whatever its package.
 : SYMBOL ( ptr JSON-WRITE:writer n n -- ptr JSON-WRITE:writer )
    {: g:n r:n :}
    g r r REC-WORD$ NAMED ;
 
 private
 
-\ The symbol for record R of group G listed next.
 : SHOWN ( n n -- )
    {: g:n r:n :}
    OUT @
@@ -152,7 +121,6 @@ private
    g r r NAME$ NAMED drop
    1 SHOWN-N +! ;
 
-\ The symbols of group G the query lists.
 : GROUP-SYMBOLS ( n -- )
    {: g:n :}
    g GROUP-FIRST begin dup 0 >= while
@@ -162,8 +130,10 @@ private
 
 public
 
-\ Writes the result of workspace/symbol for this query, the array the header
-\ describes, to the writer.
+\ A file several checks reached is answered once, from the check the store
+\ answers it from (LSP-DEFS:DEFS-EACH): the check of the document holding the
+\ file while the store keeps one, else the latest. The order follows the store:
+\ check after check, oldest first, each check's files in first-named order.
 : ANSWER ( ptr JSON-WRITE:writer ptr u8 n -- ptr JSON-WRITE:writer )
    {: w q:ptr qu:n :}
    w OUT !

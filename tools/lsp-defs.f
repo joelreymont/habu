@@ -1,103 +1,8 @@
-\ lsp-defs.f - the definitions and uses the open documents' last completed
-\ checks retained, decoded once per check and grouped by the file defining
-\ them.
-\
-\ DEFS-KEEP takes the file, definition and use lines of a document's completed
-\ check (CHECK:VERIFY-FILES$, CHECK:VERIFY-DEFS$ and CHECK:VERIFY-USES$: one
-\ JSON object per line, as tools/check-verify-child.f states them), plus its
-\ failed loader target when there is one, in place of what that document's
-\ last check kept, and decodes each line once. A group is
-\ one file a check read and the definitions it retained there, none if it
-\ retained none: the file's canonical path, the URI its positions count at,
-\ held as the JSON string that writes it, and its records in the order the
-\ check retained them. A record is a definition's class, its word as the source writes it,
-\ the package the checker recorded it under, empty for a global, whether it
-\ recorded it public there, the statement token that declared it, its
-\ declared effect, empty when it declared none, the bytes the token that
-\ declared it starts and ends at, as its line states them, and that token's
-\ range in LSP positions (LSP-TEXT),
-\ which gives the line it is on: a missing start is 0, a
-\ missing end the start, both are held to the text and the end
-\ to no less than the start. The range counts through the bytes the check
-\ read: the document's text for the file the check is of; for any other, the
-\ text of the open document holding it, which the check read in its place,
-\ else the file on disk. The URI is the checked document's for its own file,
-\ the one whose text the range counts through, and for any other the open
-\ document's holding the file when the check completed, else the file URI of
-\ the path.
-\ A file a check reads again, as `include` into a second package or after
-\ `undefine` does, gives each of its definitions once, as the file spells
-\ it. A record whose word a later reading declares at its token again,
-\ letters compared without case as Habu compares names, stands for several
-\ words, which REC-SEVERAL? answers, and so does that reading's own record
-\ when the file changed its spelling between the readings: each reading
-\ declares another word, in another wordlist or, after `undefine`, in the
-\ same one.
-\
-\ A use is a binding the check published, in order: the check's group for the
-\ file the use is in, which USE-IN gives, the document's own file for a check,
-\ bytes of that file's text it starts and ends at, the check's group for the
-\ file the declaration is in, and the bytes its declaring token starts and
-\ ends at there. A binding to a word without a source declaration has group
-\ -1, target bytes zero and visit -1. DEFS-USE-AT finds a located use that
-\ holds a byte of a document's text or ends at the caret. USE-GROUP gives its
-\ declaration's group, which holds the declaration as the check read it: no
-\ other check's group for the file, whose text may differ, answers for a use.
-\ USE-WORD$ gives the word as a use writes it.
-\ DEFS-USE-RANGE gives all bindings of a document's last completed check, or of
-\ the probe's, in the order the check published them.
-\ DEFS-KEEP also takes whether the check's verdict was verified, which
-\ DEFS-VERIFIED? answers while the check's positions are of the document's
-\ current text: a verified check reported every located use in the document.
-\ A references probe also reports unlocated bindings of its requested tail.
-\ DEFS-EACH gives the groups that answer for their files, the ones workspace
-\ symbols list. DEFS-OWN-GROUP gives the group of a document's own file while
-\ its last check's positions are of its current text, from that check's
-\ completion until its next check starts, so that a definition's token is
-\ found at a byte of that text only from a check of it. DEFS-GROUP-OF gives,
-\ for that same while, that check's group for a file by its path: the one a
-\ candidate the check offered at a cursor is declared in, as the check read it.
-\
-\ A group also keeps its source stamp: the supplying document's opening,
-\ slot and editor version, or the size and modification/change times captured
-\ around a disk read. Conflicting visits of one path make its locations
-\ unusable.
-\ A failed loader target has no group because no bytes were read. Its path and
-\ stat at the failed check remain with that check. A watcher or editor event
-\ affecting the path dirties the check; a request rechecks when its stat has
-\ changed, or once per request when the target existed but could not be read.
-\ A decl is the declaration identity a definition line states, one per line,
-\ so that a file read twice gives a decl per reading where it gives one
-\ record: the check's group for the declaration's file, the bytes its token
-\ starts and ends at as the line states them, the declaration visit the check
-\ gave it, which tells apart only that check's declarations, the declaration's
-\ lower-case tail, its package, empty for a global, and its visibility. A
-\ line that lacks one of these or states a malformed one gives a decl whose
-\ visit is -1, which identifies nothing. A use keeps the identity of the
-\ declaration it is bound to as its line states it, the same way.
-\ DEFS-DECL-RANGE gives the decls of a document's last completed check, which,
-\ as its definitions do, serve until a completed check replaces them. The
-\ stamps and strings are the store's own: a caller copies what it needs
-\ before the store keeps or drops another check.
-\
-\ DEFS-PROBE keeps a completed check of an open document's text or a file on
-\ disk, with the subject's supplying slot, as the probe under PROBE until
-\ DEFS-UNPROBE removes it. It keeps groups, stamps, decls and uses, but no
-\ records. None of its groups answers in another's place, so every open
-\ document's groups, decls and uses remain as they were while it is kept.
-\
-\ The store holds the groups check after check, oldest first, each check's in
-\ the order its definition lines first name their files, then the files it
-\ read that hold none. A file several open documents' checks read is answered
-\ from the check of the document holding it while the store keeps one, the
-\ one check that read that document's text, else from the latest of them: a
-\ later check's group for the same file, an empty one too, supersedes the
-\ earlier ones. DEFS-DROP removes what a document's check kept, as its close
-\ and its next check do, so a file another open document's check reached is
-\ that check's again. DEFS-USES-DROP removes only its uses, as the start of
-\ its next check does: a use is bytes of the text its check completed on,
-\ while the definitions serve until a completed check replaces them.
-\
+\ lsp-defs.f - the definitions and uses the open documents' last completed checks retained,
+\ decoded once per check (DEFS-KEEP) and grouped by the file defining them, for tools/lsp-*.f.
+\ Positions count through the bytes the check read: the checked document's text, an open
+\ document's text for a file it holds, else the file on disk. The stamps and strings are the
+\ store's own: a caller copies what it needs before the store keeps or drops another check.
 \ STORAGE CLASS. PROCESS-GLOBAL: the store belongs to the server's one task.
 
 require src/lib/string.f
@@ -215,7 +120,8 @@ private
 \ declaration's file, the bytes its declaring token starts and ends at, its
 \ declaration's identity: its visit, -1 for none, its name's and package's
 \ offsets and lengths in BYTES, and its visibility; then its check's group
-\ for the file it is in.
+\ for the file it is in. A binding to a word without a source declaration has
+\ group -1 and target bytes zero.
 0 constant U-START
 1 constant U-END
 2 constant U-GROUP
@@ -232,7 +138,8 @@ private
 
 \ A decl: its check's group for its declaration's file, the bytes its token
 \ starts and ends at, its visit, -1 for none, its name's and package's
-\ offsets and lengths in BYTES, and its visibility.
+\ offsets and lengths in BYTES, and its visibility. A file read twice gives a
+\ decl per reading where it gives one record.
 0 constant D-GROUP
 1 constant D-START
 2 constant D-END
@@ -319,7 +226,6 @@ TYPED-VARIABLE ESC-W JSON-WRITE:writer
 : DECL@ ( n n -- n )  swap DECL-CELLS * + DECLS @ ;
 : DECL! ( n n n -- )  swap DECL-CELLS * + DECLS ! ;
 
-\ The bytes at this offset of BYTES, this long.
 : AT$ ( n n -- ptr u8 n )
    {: at:n u:n :}
    at BYTES u ;
@@ -347,13 +253,11 @@ TYPED-VARIABLE ESC-W JSON-WRITE:writer
    u BYTES-U +!
    at u ;
 
-\ The string the reader is at, decoded into FILE-B.
 : STRING>FILE ( JR:reader -- JR:reader )
    JR:SPAN$ nip {: raw:n :}
    raw 1 max FILE-B-RESERVE
    0 FILE-B raw JR:STR FILE-U ! ;
 
-\ The string the reader is at, decoded into IN-B.
 : STRING>IN ( JR:reader -- JR:reader )
    JR:SPAN$ nip {: raw:n :}
    raw 1 max IN-B-RESERVE
@@ -478,7 +382,6 @@ TYPED-VARIABLE ESC-W JSON-WRITE:writer
    loop
    OPTION:NONE ;
 
-\ The file URI of the file at this path.
 : FILE-URI$ ( ptr u8 n -- ptr u8 n )
    URI-SPAN URI:PATH>FILE {: n:n :}
    URI-SPAN SPAN:$ drop n ;
@@ -497,7 +400,6 @@ public
 
 private
 
-\ The JSON string that writes this URI.
 : URI-JSON ( ptr u8 n -- ptr u8 n )
    {: u:ptr uu:n :}
    ESC-W ESC-B JSON-WRITE:OPEN-BUF
@@ -552,7 +454,6 @@ private
       none OF p pu GROUP+ ENDOF
    ;MATCH ;
 
-\ The group of the line's file, made if this check has none.
 : FILE-GROUP ( -- n )  FILE$ GROUP-AT ;
 
 \ The group of the line's file, positions counting in its text.
@@ -591,7 +492,6 @@ private
    VISIT-V @ -2 <= NAME-U @ 0 > and PKG-OK @ 0<> and VIS-V @ 0 >= and
    if VISIT-V @ else LINE-VISIT then ;
 
-\ The line's decl, last of this check's, in group G.
 : DECL+ ( n -- )
    {: g:n :}
    DECL-N @ {: d:n :}
@@ -798,7 +698,6 @@ private
    xt execute
    o len + 1+ ;
 
-\ Each of the lines, decoded, given to XT.
 : LINES ( ptr u8 n [ -- ] -- )
    {: a:ptr u:n xt :}
    0 begin dup u < while a u rot xt STEP repeat drop ;
@@ -833,14 +732,12 @@ private
    {: k:n f:n total:n :}
    k 1+ BLOCK-N @ < if k 1+ f BLOCK@ else total then ;
 
-\ COUNT cells moved down from index FROM to TO of the buffer XT indexes.
 : CELLS-DOWN ( n n n [ n -- ptr n ] -- )
    {: from:n to:n count:n xt :}
    count 0 ?do
       from i + xt execute @ to i + xt execute !
    loop ;
 
-\ Record R's offsets, DR records and DT bytes down.
 : REC-DOWN ( n n n -- )
    {: r:n dr:n dt:n :}
    r R-NEXT REC@ {: next:n :}
@@ -850,7 +747,6 @@ private
    r R-KIND REC@ dt - r R-KIND REC!
    r R-EFF REC@ dt - r R-EFF REC! ;
 
-\ Group G's offsets, DR records and DT bytes down.
 : GROUP-DOWN ( n n n -- )
    {: g:n dr:n dt:n :}
    g G-PATH GROUP@ dt - g G-PATH GROUP!
@@ -858,14 +754,12 @@ private
    g G-FIRST GROUP@ dr - g G-FIRST GROUP!
    g G-LAST GROUP@ dr - g G-LAST GROUP! ;
 
-\ Decl D's group DG groups down, and its strings DT bytes.
 : DECL-DOWN ( n n n -- )
    {: d:n dg:n dt:n :}
    d D-GROUP DECL@ dg - d D-GROUP DECL!
    d D-NAME DECL@ dt - d D-NAME DECL!
    d D-PKG DECL@ dt - d D-PKG DECL! ;
 
-\ Use U's groups DG groups down, and its strings DT bytes.
 : USE-DOWN ( n n n -- )
    {: u:n dg:n dt:n :}
    u U-GROUP USE@ dg - u U-GROUP USE!
@@ -1012,7 +906,6 @@ private
 
 public
 
-\ Readies the store, before any check.
 : DEFS-PREPARE ( -- )
    ESC-B 1 BUF:N>BLEN BUF:INIT
    false PROBE-DISK-VALID ! ;
@@ -1084,21 +977,19 @@ public
 
 : PROBE-DISK-CLEAR ( -- )  false PROBE-DISK-VALID ! ;
 
-\ Whether another group for the same file answers in this group's place.
 : GROUP-OVER? ( n -- bool )  G-OVER GROUP@ 0<> ;
 
-\ Whether the group's file is the one its check is of.
 : GROUP-OWN? ( n -- bool )  G-OWN GROUP@ 0<> ;
 
-\ Gives XT each group that answers for its file, in the store's order: each
-\ one no other group for the same file answers in place of.
+\ Gives XT each group that answers for its file, in the store's order: check
+\ after check, oldest first, each check's in the order its definition lines
+\ first name their files, then the files it read that hold none.
 : DEFS-EACH ( [ n -- ] -- )
    {: xt :}
    GROUP-N @ 0 ?do
       i GROUP-OVER? 0= if i xt execute then
    loop ;
 
-\ The path of the file the group is for.
 : GROUP-PATH$ ( n -- ptr u8 n )  PATH$ ;
 
 \ The JSON string of the URI the group's positions count at.
@@ -1110,7 +1001,6 @@ public
    g G-STAMP GROUP@ ST-DOCUMENT = if g G-SOURCE GROUP@ DOC-URI$ exit then
    g PATH$ FILE-URI$ ;
 
-\ The group's first record.
 : GROUP-FIRST ( n -- n )  G-FIRST GROUP@ ;
 
 \ The record after this one in its group, -1 after the last.
@@ -1129,7 +1019,8 @@ public
 \ Whether the checker recorded the record's word public in its package.
 : REC-PUBLIC? ( n -- bool )  R-PUBLIC REC@ 0<> ;
 
-\ The line and character the record's token starts at, then ends at.
+\ The line and character the record's token starts at, then ends at: a missing
+\ start is 0, a missing end the start, both held to the text.
 : REC-RANGE ( n -- n n n n )
    {: r:n :}
    r R-LINE REC@ r R-CHAR REC@ r R-END-LINE REC@ r R-END-CHAR REC@ ;
@@ -1149,10 +1040,11 @@ public
       none OF OPTION:NONE ENDOF
    ;MATCH ;
 
-\ The check's group for the file the use's declaration is in.
+\ The check's group for the file the use's declaration is in, which holds the
+\ declaration as that check read it: no other check's group for the file, whose
+\ text may differ, answers for a use.
 : USE-GROUP ( n -- n )  U-GROUP USE@ ;
 
-\ The check's group for the file the use is in.
 : USE-IN ( n -- n )  U-IN USE@ ;
 
 \ The bytes the use's declaring token starts and ends at, in that file.
@@ -1199,7 +1091,9 @@ public
 
 \ Whether the verdict of the last completed check of the document in this
 \ slot was verified while its positions are of the document's text; false if
-\ the store keeps no check of it or a check of it has started since.
+\ the store keeps no check of it or a check of it has started since. A verified
+\ check reported every located use in the document; a references probe also
+\ reports unlocated bindings of its requested tail.
 : DEFS-VERIFIED? ( n -- bool )
    BLOCK-OF MATCH option
       some OF {: k:n :} k B-CURRENT BLOCK@ 0<> k B-VERIFIED BLOCK@ 0<> and ENDOF
@@ -1327,7 +1221,6 @@ public
       none OF false ENDOF
    ;MATCH ;
 
-\ The check's group for the file the decl's declaration is in.
 : DECL-GROUP ( n -- n )  D-GROUP DECL@ ;
 
 \ The bytes the decl's token starts and ends at, as its line states them.

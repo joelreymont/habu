@@ -1,17 +1,9 @@
-\ zed-run-lib.f - checked remote device-run harness over ssh/scp/rsync.
-\
-\ Runs commands and ships artifacts to a remote host (default alias `zed`) using
-\ argv-spawned ssh/scp/rsync via src/lib/process-command.f - never a shell script and
-\ never a shell-interpolated remote command built from untrusted input. Remote
-\ command strings are assembled here from controlled path tokens only; test data
-\ travels as files, not as command arguments. Failures map to named E-ZED-*
-\ throw codes (src/lib/errors.f); a run whose deadline expired throws E-PROC-TIMEOUT
-\ like every other process deadline. Device availability is policy: when
-\ HABU_ZED is unset or `0`, manual callers can report that the device is
-\ unavailable; when set, every failure is fail-closed.
-\
-\ Config via env (each has a default): HABU_ZED (availability), ZED_HOST (ssh
-\ target, default `zed`), ZED_SSH/ZED_SCP/ZED_RSYNC (tool paths).
+\ zed-run-lib.f - checked remote device-run harness over argv-spawned ssh/scp/rsync
+\ (src/lib/process-command.f), never a shell. Remote commands are built from
+\ controlled path tokens only; test data travels as files. Failures throw E-ZED-*;
+\ an expired deadline throws E-PROC-TIMEOUT. With HABU_ZED unset or `0` a manual
+\ caller may report the device unavailable; set, every failure is fail-closed.
+\ ZED_HOST (default `zed`), ZED_SSH, ZED_SCP and ZED_RSYNC override.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -100,7 +92,7 @@ DEFAULT-TIMEOUT-MS TIMEOUT-MS !
    s" -o" CMD:ARG+  s" BatchMode=yes" CMD:ARG+
    s" -o" CMD:ARG+  s" ConnectTimeout=10" CMD:ARG+ ;
 
-: SSH-RUN ( CMD:command ptr u8 n -- CMD:command rc )   \ run one remote command string
+: SSH-RUN ( CMD:command ptr u8 n -- CMD:command rc )
    {: a:ptr u:n :}
    BATCH-OPTS
    HOST$ CMD:ARG+

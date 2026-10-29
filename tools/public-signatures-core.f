@@ -38,11 +38,9 @@ package PS
 1 constant PS-WORD
 2 constant PS-COMMENT
 
-\ Two live sources at once: the entry file, whose bytes have to survive the
-\ closure prescan that renders before them, and the dependency being prescanned.
-\ Both grow with the stdlib - src/lib/errors.f alone is past 80 KB - so each gets a
-\ slab sized from the file rather than a fixed arena that the next error block
-\ overruns.
+\ Two live sources: the entry file, whose bytes must survive the closure prescan
+\ that renders before them, and the dependency being prescanned. Each slab is
+\ sized from its file; src/lib/errors.f alone is past 80 KB.
 create SRC-SLAB LINT-SLAB:CELLS cells allot
 create DEP-SLAB LINT-SLAB:CELLS cells allot
 
@@ -322,14 +320,10 @@ private
    repeat drop
    PS-HAS-ALPHA? @ IF PS-TRUE ELSE PS-FALSE THEN ;
 
-\ Number-parser-claimable names (mirrors reserved-name-lint RNL-NUM-CLAIMED? so
-\ both tools agree): hb parses numeric literals BEFORE dictionary lookup, so a
-\ definition named like a literal - all digits (42), float (.0, 1.5, -.5), or
-\ $hex ($FF), optionally minus-signed - is unreachable, yet it is a real
-\ definition and must remain visible in emitted public signatures.
-\ PS-PROJECT-WORD? alone skipped these (no alpha byte): exactly how src/lib/fmt.f's
-\ old `.0` escaped the output. E-NUMERIC-DEFINITION rejects new ones; the
-\ scanner must still SEE historical ones instead of silently dropping them.
+\ The number parser runs before dictionary lookup, so a definition named like a
+\ literal (42, .0, 1.5, -.5, $FF, optionally minus-signed) is unreachable but
+\ real and stays in the manifest. It has no alpha byte, so PS-PROJECT-WORD? alone
+\ skips it. Mirrors reserved-name-lint RNL-NUM-CLAIMED?.
 : PS-DIGIT? ( n -- bool )
    dup 47 > swap 58 < and ;
 
@@ -518,9 +512,8 @@ private
    PS-TOK-A@ PS-TOK-U @ SOURCE:ESC-STRING-OPENER? IF PS-SKIP-ESC-QUOTE ELSE
    PS-TOK-A@ PS-TOK-U @ SOURCE:NORMAL-STRING-OPENER? IF PS-SKIP-QUOTE THEN THEN ;
 
-\ `(` opens a comment only as a STANDALONE token (next byte is whitespace or
-\ EOF); a paren-initial word name like `(CMP)` lexes as a WORD. This is the
-\ canonical source-token rule shared with the repository lints.
+\ `(` opens a comment only as a standalone token (next byte whitespace or EOF):
+\ `(CMP)` lexes as a WORD, the source-token rule the repository lints share.
 : PS-PAREN-STANDALONE? ( -- bool )
    PS-X @ 1+ PS-SRC-U @ >= IF PS-TRUE exit THEN
    PS-SRC-A@ PS-X @ 1+ + c@ PS-WS? ;
@@ -625,12 +618,10 @@ private
 
 : PS-MAYBE-TRUST-DEFINER ( ptr u8 n -- bool ) {: a:ptr u:n :}
    PS-TRUST @ 0= IF PS-FALSE exit THEN
-   \ `constant` bakes one physical cell: the emitted trust is the one-cell
-   \ `-- a` model, matching native C-CONSTANT / verify-source / all-errors — the
-   \ PERMANENT contract: the interpret stack is untyped by design, so no path
-   \ has a sound shape source, and wider-than-cell layout values never land
-   \ there (DNAME-WIDE dispatch gate). Layout mis-use of a constant stays
-   \ fail-closed at USE; parity locked by public-signatures-test const-layout.
+   \ `constant` bakes one cell: the trust is `-- a`, as native C-CONSTANT,
+   \ verify-source and all-errors model it; the interpret stack is untyped and
+   \ wide layout values never land there (DNAME-WIDE gate). Misuse fails closed
+   \ at use (public-signatures-test const-layout).
    a u s" constant" LINT-STR=CI IF s" -- a" PS-TRUST-DEFINER PS-TRUE exit THEN
    a u s" create" LINT-STR=CI IF s" -- ptr a" PS-TRUST-DEFINER PS-TRUE exit THEN
    a u s" variable" LINT-STR=CI IF s" -- ptr a" PS-TRUST-DEFINER PS-TRUE exit THEN
@@ -656,11 +647,9 @@ private
    PS-DEF-SIG-U @ PS-SIG-U !
    PS-PUBLIC? IF PS-EXPORTED-FLAG file-a file-u PS-EMIT-PUBLIC THEN ;
 
-\ Copy the package name into a stable buffer: the token bytes live in the
-\ transient closure and entry slabs, which the next dep read or the entry
-\ scan overwrites. Storing a raw pointer there dangles once the opener is not the
-\ last file processed - which is exactly the nested-unclosed-package case under
-\ true load order. PS-PKG-BUF is owned bytes, so the residual name survives.
+\ Token bytes live in the closure and entry slabs, which the next dep read or the
+\ entry scan overwrites; a nested unclosed package's residual name must outlive
+\ them, so it is copied into PS-PKG-BUF.
 : PS-PACKAGE-NAME! ( -- )
    PS-NEXT-TOK 0= IF exit THEN
    PS-WORD? 0= IF exit THEN
@@ -707,11 +696,8 @@ private
    PS-RESET-SCOPE
    PS-SCAN-DEFS-BODY ;
 
-\ Load the package scope its required/included closure leaves open before the
-\ entry file's own rows are rendered, so a file that continues a package opened
-\ in a dependency qualifies its public words correctly. Only scope tokens are
-\ replayed; balanced packages leave no residual and self-contained files see an
-\ empty closure, so their output is unchanged.
+\ Only scope tokens are replayed, so an entry continuing a package a dependency
+\ opened qualifies its public words; balanced packages leave no residual.
 : PS-PRESCAN-DEP ( ptr u8 n -- ) {: a:ptr u:n :}
    a u DEP-SLAB LINT-SLAB:LOAD
    DEP-SLAB LINT-SLAB:TEXT PS-LEX-START
@@ -719,12 +705,9 @@ private
       PS-WORD? IF PS-TOK$ PS-SCOPE-TOKEN? drop THEN
    repeat ;
 
-\ Replay residual scope in true load order (EC:LOAD-ORDER is depth-first,
-\ post-order), threading package open/public/private/;package state
-\ file-by-file exactly where each dep's content would load. A package left
-\ UNCLOSED across transitively-nested deps then settles to the same residual the
-\ real loader would leave. The entry file is always the last ordered element, so
-\ its deps are indices 0..ORDER-COUNT-2; it is scanned separately by the caller.
+\ EC:LOAD-ORDER is depth-first post-order, so a package unclosed across nested
+\ deps settles to the residual the loader leaves. The entry file is the last
+\ element (deps are 0..ORDER-COUNT-2); the caller scans it.
 : PS-PRESCAN-CLOSURE ( ptr u8 n -- ) {: file-a:ptr file-u:n :}
    file-a file-u EC:LOAD-ORDER
    0 PS-CLOSURE-I !
@@ -733,36 +716,18 @@ private
       PS-CLOSURE-I @ 1+ PS-CLOSURE-I !
    repeat ;
 
-\ --- THE LOAD-TIME BRACKET, and why "the live registry" is the wrong set.
-\ The synthesized rows below are stamped with the SCANNED FILE's path, so the
-\ families they may speak for are the ones THIS LOAD declared - not every family
-\ the process happens to hold. Those were the same set only while an engine
-\ arrived empty of them. A seeded engine arrives with the whole baked chain's
-\ registry already installed, and an unfiltered walk then reports a
-\ 13-definition file as defining 386 words, attributing every chain constructor
-\ to a file that never mentioned one (measured: 60,491 bytes against the same
-\ tree's unseeded host answering 1,982).
-\ THE BOUNDARY IS A HIGH-WATER TAKEN WHEN THIS FILE LOADS, which is the earliest
-\ moment the tool exists to take one. Everything below it came with the engine:
-\ the AOT seed installs its registry before any user token runs, so no family a
-\ program declares can be under this mark. Everything at or above it was
-\ declared by the program now loading - the load order the tool's own header and
-\ every caller already use, tool first and subject after. It is a constant, not
-\ a variable, because a second writer would be a second answer.
-\ It is PUBLIC because it is part of what a manifest means: a reader that wants
-\ to know which families this manifest could have spoken for needs the mark it
-\ was bracketed by, and deriving it a second time from outside would be a second
-\ answer to the same question.
+\ Families at or above FAM-BASE were declared by this load: the AOT seed installs
+\ its registry before any user token runs, and the tool loads before its subject.
+\ An unfiltered walk on a seeded engine attributed 386 words to a 13-definition
+\ file (60,491 bytes against 1,982 unseeded). Public: a manifest means the
+\ families above this mark.
 public
 TFAM-N@ constant FAM-BASE
 private
 
-\ --- synthesized public constructor signatures. Each PUBLIC ENUM
-\ family THIS LOAD declared publishes one nullary constructor per variant:
-\ word `PKG:VARIANT` (from SUMV-CTOR-PKG$/SUMV-NAME$), signature `-- family<args>`
-\ (the logical family type from name+arity, mirroring sumtype.f TDGEN-OUT-TYPE).
-\ Metadata only -- never a hidden field; payload-carrying SUM/PRODUCT constructors
-\ are a later sub-slice.
+\ Each public ENUM this load declared publishes a nullary `PKG:VARIANT` (from
+\ SUMV-CTOR-PKG$/SUMV-NAME$) with signature `-- family<args>`, typed as sumtype.f
+\ TDGEN-OUT-TYPE types it, from registry metadata, never a hidden field.
 3 constant PS-TK-ENUM                    \ TK-ENUM: payload-free sum
 create PS-CSIG-BUF PS-SIG-CAP allot   variable PS-CSIG-W
 
@@ -823,17 +788,15 @@ private
    s" exported" PS-JSON-KEY PS-TRUE PS-JSON-BOOL
    PS-DEF-END ;
 
-\ THE TOOL'S OWN STATEMENT of what a manifest may contain, so the two of them
-\ are public: the bracket's regression in tools/public-signatures-test.f has to
-\ name a family this walk WOULD have published, and re-deriving that rule beside
-\ the walk would be a second answer to the walk's own question.
+\ Public, so tools/public-signatures-bracket-test.f names a family this walk
+\ would publish without restating the rule.
 public
 : PS-ENUM-PUBLIC? ( n -- bool ) {: fam:n :}
    fam TFAM-KIND@ PS-TK-ENUM = fam TFAM-PUBLIC? and ;
 private
 
-\ derive S1: a DERIVE-eq enum also publishes PKG:TAG ( fam -- n ) and
-\ PKG:EQ ( fam fam -- bool ), synthesized from the same registry metadata.
+\ DERIVE eq adds PKG:TAG ( fam -- n ) and PKG:EQ ( fam fam -- bool ), from the
+\ same registry metadata.
 : PS-DRV-SIG$ ( n n -- ptr u8 n ) {: fam:n eq:n :}   \ "fam -- n" / "fam fam -- bool"
    PS-CSIG-RESET
    fam TFAM-NAME$ PS-CSIG-APP  32 PS-CSIG-C,
@@ -870,9 +833,9 @@ private
       fam  i  file-a file-u PS-EMIT-CTOR
    loop ;
 
-\ derive S2+S3: ANY public derived family (enum, sum, product) publishes its
-\ derived rows: TAG rides any derive on sum/enum kinds (products get no
-\ discriminant), EQ rides DERIVE eq, HASH rides DERIVE hash.
+\ Any public derived family publishes its derived rows: TAG on any derive of a
+\ sum or enum (a product has no discriminant), EQ on DERIVE eq, HASH on DERIVE
+\ hash.
 1 constant PS-TK-PRODUCT
 : PS-EMIT-FAM-DRV ( n ptr u8 n -- ) {: fam:n file-a:ptr file-u:n :}
    fam TFAM-KIND@ PS-TK-PRODUCT = 0= IF

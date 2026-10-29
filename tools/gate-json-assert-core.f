@@ -358,7 +358,6 @@ variable GJA-DIRECT
 : GJA-NO-FIELD ( SPAN:span<u8> ptr u8 n -- )
    GJA-HAS? IF s" unexpected JSON field" GJA-FAIL THEN ;
 
-\ The fields only a definition carries.
 : GJA-NO-DEF-FIELDS ( SPAN:span<u8> -- )
    dup s" token_index" GJA-NO-FIELD
    dup s" definition_source" GJA-NO-FIELD
@@ -370,7 +369,6 @@ variable GJA-DIRECT
    dup s" return_stack" GJA-NO-FIELD
    s" source_excerpt" GJA-NO-FIELD ;
 
-\ None of a definition's own fields.
 : GJA-NO-DEF ( SPAN:span<u8> -- )
    dup s" word" GJA-NO-FIELD
    GJA-NO-DEF-FIELDS ;
@@ -513,8 +511,8 @@ variable GJA-DIRECT
    root s" instruction" GJA-REQ
    s" Qualify this token as PKG:WORD for the package word meant, or rename the collision. Output only corrected Habu code." GJA-ASSERT-STR ;
 
-\ The repair class a storage record's reason takes: the renderer's eleven
-\ reasons under their class, empty for a reason the renderer never writes.
+\ The repair class a storage record's reason takes; empty for a reason the
+\ renderer never writes.
 : GJA-STORAGE-CLASS$ ( ptr u8 n -- ptr u8 n )
    s" unknown type" s" fix_storage_type" GJA-MAP-ROW IF exit THEN
    s" malformed type" s" fix_storage_type" GJA-MAP-ROW IF exit THEN
@@ -529,8 +527,6 @@ variable GJA-DIRECT
    s" no count for" s" fix_storage_count" GJA-MAP-ROW IF exit THEN
    drop 0 ;
 
-\ A storage record's class follows its reason, and its reason is one the
-\ renderer writes.
 : GJA-STORAGE-CLASS ( SPAN:span<u8> -- ) {: root:SPAN:span<u8> :}
    root s" reason" GJA-REQ GJA-STRING$ GJA-STORAGE-CLASS$ {: want:ptr wantu:n :}
    wantu 0= IF s" storage reason is not one the renderer writes" GJA-FAIL THEN

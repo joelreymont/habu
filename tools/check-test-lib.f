@@ -1,13 +1,5 @@
 \ check-test-lib.f - checked engine CLI/core smoke coverage library.
-\ Run: bin/hb --load src/lib/date.f src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/memory.f
-\ src/lib/vector.f src/lib/fs.f src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f
-\ src/lib/process-env.f src/lib/process-cwd.f src/lib/fmt.f src/lib/source.f
-\ tools/lint/text.f tools/lint/token.f tools/lint/lib.f
-\ src/lib/source-lex.f
-\ tools/diag-origin-core.f tools/gate-json-assert-core.f tools/json-only-core.f
-\ tools/checked-boundary-lint-core.f
-\ tools/check-all-errors-core.f src/lib/argv.f
-\ tools/check-core.f tools/check-test.f
+\ Run: bin/hb --load tools/check-test.f
 
 require src/lib/date.f
 require src/lib/errors.f
@@ -37,7 +29,7 @@ require tools/checked-boundary-lint-core.f
 require tools/check-all-errors-core.f
 require src/lib/argv.f
 require tools/check-core.f
-require src/lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/fmt.f                        \ FMT:.INT
 
 package CHECK-TEST
 
@@ -47,27 +39,22 @@ private
 $4000 constant BUF-CAP
 128 constant LIST-ENTRY-CAP
 
-\ What the child cases here prove is the standalone command line: the exit status
-\ of `bin/hb tools/check.f ...`, the diagnostics it writes, and the temporary
-\ files it removes. None of that depends on how long a child takes, so the
-\ millisecond budget handed to every capture is a deadlock guard: it exists so a
-\ child that never exits cannot hang the gate forever.
+\ The child cases prove the standalone command line: exit status, diagnostics
+\ and removed temporary files. None depends on a child's duration, so the
+\ millisecond budget every capture gets is a deadlock guard.
 \
-\ WORST-CHILD-MS records the busiest child measured when the guard was set, on
-\ a 12-core machine: the cleanup child, which took 4.7 to 5.0 s at an ambient
-\ load average of 13 and 11.2 to 13.4 s while eight gate pool slots were busy.
-\ HANG-MARGIN is 4 rather than the order of magnitude the cheaper fixtures can
-\ afford, because the product is bounded from above by the registry's outer
-\ timeout as well.
+\ WORST-CHILD-MS is the busiest child measured when the guard was set, on a
+\ 12-core machine: the cleanup child, 4.7 to 5.0 s at load average 13 and 11.2
+\ to 13.4 s with eight gate pool slots busy. HANG-MARGIN is 4, not the order of
+\ magnitude cheaper fixtures afford, because the registry's outer timeout also
+\ bounds the product.
 \
-\ Load can still reach the 54 s guard: nothing bounds how far a busy host
-\ stretches a child. At a load average near 73 an engine build took 2.9 times
-\ its time under ordinary gate load (259 s against about 90 s). The current
-\ cases are lighter: the heaviest child takes 0.62 s of CPU, so the guard is
-\ about 87 times that, and the whole row takes 27.7 s of user time and 117 s
-\ of wall time alone at a load average of 82. An expiry is therefore a timeout,
-\ not proof of a deadlock: CASE-HUNG names the case and rethrows
-\ E-PROC-TIMEOUT, and the gate pool labels the row TIMEOUT-UNDER-LOAD.
+\ Load can still reach the 54 s guard: at load average 73 an engine build took
+\ 2.9 times its ordinary gate time (259 s against about 90 s). The heaviest
+\ child takes 0.62 s of CPU, about 1/87 of the guard; the row takes 27.7 s user
+\ and 117 s wall alone at load average 82. An expiry is a timeout, not proof of
+\ a deadlock: CASE-HUNG names the case and rethrows E-PROC-TIMEOUT, and the
+\ gate pool labels the row TIMEOUT-UNDER-LOAD.
 13500 constant WORST-CHILD-MS
 4 constant HANG-MARGIN
 WORST-CHILD-MS HANG-MARGIN * constant CHILD-HANG-MS
@@ -192,12 +179,10 @@ variable START-NS
    ERR-A @ 0= if CAP-ALLOC ERR-A! then
    ERR-A@ ;
 
-\ Stream capture for the in-process CHECK drivers below. The check tool writes
-\ its diagnostics with plain `write` calls on the process stdout and stderr, so
-\ the only faithful way to read them back without a test-only hook inside the
-\ tool is to move those two descriptors for the duration of one run
-\ (src/lib/test/runner.f GT-CAPTURE-ACTION). The production code stays untouched
-\ and the assertions see exactly the bytes a command-line user would see.
+\ Stream capture for the in-process CHECK drivers: the tool writes diagnostics
+\ with plain `write` on stdout and stderr, so a run moves those two descriptors
+\ (src/lib/test/runner.f GT-CAPTURE-ACTION) and the assertions see the bytes a
+\ command-line user would.
 : IN-PROC ( [ -- ] -- n n n )   \ outn errn code, the same triple the CLI drivers return
    {: q :}
    q ROOT$ CAP-OUT BUF-CAP SPAN:MAKE CAP-ERR BUF-CAP SPAN:MAKE GT-CAPTURE-ACTION
@@ -205,8 +190,7 @@ variable START-NS
    outu LEN>N erru LEN>N rc ;
 
 \ CHECK:MAIN turns a non-zero run code into a throw, which the engine reports as
-\ the process exit status. The in-process drivers reproduce that mapping so a
-\ converted test still compares against the code the command line would exit with.
+\ the exit status; the in-process drivers map it the same way.
 : RUN-ACT ( -- )
    RUN dup 0 <> if throw then drop ;
 
@@ -307,10 +291,9 @@ variable START-NS
    CAPTURE>N ;
 
 \ ---- command-line drivers ---------------------------------------------------
-\ These stay on a real child process because they are the standalone entry
-\ coverage: argument parsing, reading the program from standard input, and the
-\ exit status of `bin/hb tools/check.f`. Everything else drives the same tool
-\ in this process through the CHECK package's public words, and CLI-PATH is the
+\ These run a real child: they cover argument parsing, the program on standard
+\ input, and the exit status of `bin/hb tools/check.f`. Everything else drives
+\ the tool in this process through CHECK's public words; CLI-PATH is the
 \ verdict such an in-process check must repeat.
 
 : CLI-STDIN ( ptr u8 n -- n n n )
@@ -338,10 +321,9 @@ variable START-NS
    CHECK-CAPTURE ;
 
 \ ---- in-process drivers -----------------------------------------------------
-\ Same tool, same phases, same diagnostics: only the process boundary is gone.
-\ Sources that the command line reads from standard input are selected with
-\ CHECK:SOURCE under the `<stdin>` label the tool itself uses, so every
-\ diagnostic still names the same file.
+\ Sources the command line reads from standard input are selected with
+\ CHECK:SOURCE under the tool's own `<stdin>` label, so every diagnostic names
+\ the same file.
 
 : STDIN-LABEL$ ( -- ptr u8 n )
    s" <stdin>" ;
@@ -443,13 +425,10 @@ variable START-NS
    s" primary" CLEANUP-CHILD-CASE ;
 
 \ ---- the run stage's environment --------------------------------------------
-\ The tool's run stage spawns the checked program, and a program that resolves
-\ an executable through $PATH or writes under $TMPDIR needs the environment the
-\ tool itself was given. A host may export no PATH, so a row that only read PATH
-\ could not tell a run stage that passes the environment from one that drops
-\ it. This row therefore gives the child tool an environment of its own - one
-\ marker row plus this process's - and reads the marker back out of the checked
-\ program's output. An env-less run stage prints an empty marker line instead.
+\ The run stage must pass the tool's environment to the checked program. A
+\ host may export no PATH, so the child tool gets one marker row plus this
+\ process's environment and the checked program prints the marker; an env-less
+\ run stage prints an empty marker line.
 
 : ENV-MARK$ ( -- ptr u8 n )
    s" hb-check-env-probe-9f3c" ;
@@ -573,8 +552,8 @@ variable START-NS
    s" : CKT-AFTER-BAD ( n -- n ) ;" SB-APPEND
    SB$ ;
 
-\ S2: a declaration PRE-CHECK reject (missing arity / unterminated) must report
-\ the same E-BAD-DECLARATION packet the native path emits, not a raw die.
+\ A declaration PRE-CHECK reject (missing arity, unterminated) reports the
+\ E-BAD-DECLARATION packet the native path emits, not a raw die.
 : TFAM-NOARITY$ ( -- ptr u8 n )   \ NEWTYPE with an empty parameter list
    SB-RESET
    s" NEWTYPE ckfnoar<>" SB-APPEND
@@ -642,15 +621,13 @@ variable START-NS
    s" : CKT-BAD-PARTIAL ( n -- point ) ;" SB-APPEND
    SB$ ;
 
-\ Unterminated block declarations must print their check.f diagnostic before
-\ the rc-70 throw; the CHK-THROW message shape dropped the text silently.
+\ An unterminated block declaration prints its check.f diagnostic before the
+\ rc-70 throw.
 : ENUM-NOEND$ ( -- ptr u8 n )
    s" ENUM enoend red green" ;
 
-\ --- unified STRUCTURE declarations. The nominal pass had no arm for these at
-\ all: the keyword was skipped, so the family was never registered and any later
-\ use of it as a payload type rejected with "unknown payload type". That is the
-\ live bug these cover — it made every STRUCTURE-declaring file uncheckable.
+\ --- STRUCTURE declarations: the nominal pass must register the family, or a
+\ later use of it as a payload type is refused as "unknown payload type".
 : STRUCT-GOOD$ ( -- ptr u8 n )   \ declaration + signature use of the family
    SB-RESET
    s" STRUCTURE sck FIELD lo n FIELD hi n ;STRUCTURE" SB-APPEND
@@ -658,8 +635,7 @@ variable START-NS
    s" : CKT-SD-PASS ( sck -- sck ) ;" SB-APPEND
    SB$ ;
 
-\ The shape that actually broke: a STRUCTURE family named as a later
-\ declaration's payload type inside a SUMTYPE.
+\ A STRUCTURE family named as a later SUMTYPE declaration's payload type.
 : STRUCT-PAYLOAD$ ( -- ptr u8 n )
    SB-RESET
    s" STRUCTURE spay FIELD v n ;STRUCTURE" SB-APPEND
@@ -679,18 +655,16 @@ variable START-NS
 : STRUCT-NOEND$ ( -- ptr u8 n )
    s" STRUCTURE snoend FIELD x n" ;
 
-\ --- comments inside a declaration body are SYNTAX ERRORS, and the nominal pass
-\ must say so rather than launder them.
+\ --- a comment inside a declaration body is a syntax error, and the nominal
+\ pass must refuse it.
 \
 \ The engine reads a declaration body with `parse-name`, which has no comment
-\ rule at all, so `\` and `(` inside one are ordinary tokens that hit the name
-\ gate. The nominal pass's lexer disagrees: it drops a `\` line comment without
-\ emitting any token. Rebuilding the body from those tokens therefore used to
-\ hand the replay a body the source never had — measured, `ENUM c9 red \ note`
-\ registered cleanly in the nominal pass and only died later in the child run,
-\ reporting the raw engine throw (exit 67) instead of the tool's own rendered
-\ declaration packet (exit 70). These four pin the repaired behavior: the same
-\ named reject the live keyword gives, through check's own error path.
+\ rule, so `\` and `(` there are ordinary tokens that hit the name gate. The
+\ nominal pass's lexer drops a `\` line comment, so a body rebuilt from its
+\ tokens is one the source never had: `ENUM c9 red \ note` would register in
+\ the nominal pass and die in the child run with the raw engine throw (exit
+\ 67) instead of the declaration packet (exit 70). These four expect the live
+\ keyword's named refusal through check's own error path.
 : ENUM-LINE-COMMENT$ ( -- ptr u8 n )
    SB-RESET
    s" ENUM ecmt red \ trailing note" SB-APPEND
@@ -711,19 +685,16 @@ variable START-NS
 : STRUCT-PAREN-COMMENT$ ( -- ptr u8 n )
    s" STRUCTURE spcmt FIELD a n ( note ) FIELD b n ;STRUCTURE" ;
 
-\ --- a declaration longer than a capture buffer must REJECT, never truncate.
+\ --- a declaration longer than a capture buffer is refused, never truncated.
 \
-\ The shared string builder holds 1024 bytes, so this one needs its own. The
-\ danger it guards is specific to the replay entries: they parse whatever tokens
-\ arrive and have no length gate of their own, so a capture arm that silently
-\ dropped an over-cap token would hand them a well-formed and WRONG declaration.
-\ Both capture arms therefore raise instead — this tool's CHK-VREC-ROOM answers
-\ E-FS-CAPACITY, and verify-source's BODY-APPEND answers the declaration layer's
-\ own "declaration too long" (7118), which is also what the engine's TDECL-CAP
-\ answers for the same source. test/decl-replay-verify-source.f pins the
-\ verify-source half against its exact 8000-byte bound; this pins that the same
-\ source is refused loudly, with that named code, all the way out through the
-\ real command line.
+\ The shared string builder holds 1024 bytes, so this one has its own. The
+\ replay entries parse whatever tokens arrive with no length gate, so a capture
+\ arm that dropped an over-cap token would hand them a well-formed, wrong
+\ declaration. Both arms raise: this tool's CHK-VREC-ROOM answers
+\ E-FS-CAPACITY, and verify-source's BODY-APPEND answers "declaration too long"
+\ (7118), as the engine's TDECL-CAP does. test/decl-replay-verify-source.f pins
+\ verify-source's 8000-byte bound; this case pins the named code out through
+\ the command line.
 $4000 constant LONG-CAP
 create LONG-BUF LONG-CAP allot
 variable LONG-U
@@ -953,15 +924,11 @@ variable LONG-J
    s" ;package" SB-APPEND
    SB$ ;
 
-\ Nominal-declarer sources for the check CLI's package-scoping contract. These
-\ feed the real child-engine path and are checked end to end, so they use
-\ DEFLINEAR: its interpret word is baked into the engine, so it runs in the
-\ child with no require, while a DEFTYPE source would need
-\ `require src/lib/type/deftype.f` for the child to define the declarer. The
-\ check tool's static scanner and preverify path understand both DEFLINEAR and
-\ (since stage B) the DEFTYPE family surface. A DEFLINEAR type is one linear
-\ cell whose value moves exactly once, so bodies pass it through by identity
-\ rather than dropping or binding it.
+\ Nominal-declarer sources for the check CLI's package-scoping contract, checked
+\ end to end through the child engine. They use DEFLINEAR, whose interpret word
+\ the engine bakes, so the child needs no require; a DEFTYPE source would need
+\ `require src/lib/type/deftype.f`. A DEFLINEAR value moves exactly once, so
+\ bodies pass it through by identity rather than dropping or binding it.
 : LINEAR-GOOD$ ( -- ptr u8 n )
    SB-RESET
    s" package CKL-PRIV" SB-APPEND $0a SB-APPEND-C
@@ -1014,10 +981,9 @@ variable LONG-J
    s" ;package" SB-APPEND
    SB$ ;
 
-\ Scanner package-block support (dot habu-tools-check-scanner-685b735e):
-\ CHK-NOM-STEP replays package/public/private/;package at the checker level,
-\ so family registrations land in the declaring package and the check CLI can
-\ reach the foreign qualified pkg:tail contract end to end.
+\ CHK-NOM-STEP replays package/public/private/;package at the checker level, so
+\ a family registers in its declaring package and a foreign qualified pkg:tail
+\ resolves end to end.
 : FAM-GOOD$ ( -- ptr u8 n )        \ foreign public family, qualified good use
    SB-RESET
    s" package CKFA" SB-APPEND $0a SB-APPEND-C
@@ -1188,7 +1154,7 @@ variable LONG-J
 \ spells: `'` and `char` at top level, `[char]` in a body, matched case-folded
 \ as the engine and the checker match them. After `CHAR 0` the count is the
 \ keyword's value, left to the run, and the line after such a keyword is still
-\ read: a literal bad count and an undefined name are refused as before.
+\ read, and a literal bad count and an undefined name are refused.
 : OPERAND-GOOD$ ( -- ptr u8 n )
    SB-RESET
    s" char : constant CKT-COLON : CKT-C ( -- n ) CKT-COLON ; " SB-APPEND
@@ -1219,13 +1185,13 @@ variable LONG-J
 \ runs, and the source pre-pass never sees their text: CKR-MAKE renders
 \ CKR-SEVEN. A definition naming such a product is left to the run, which
 \ certifies it, but only after the rendering statement and only in the wordlist
-\ that statement ran in; anything else unknown is still refused by the
-\ pre-pass. The text may define a package, so a qualified name there is left to
-\ the run as a bare one is. The fixtures require src/lib/ffi-abi.f for `FUNCTION:` and src/lib/task.f
-\ for TASK:+USER, the renderer src/lib/crypto/evp.f uses. The pre-pass checks
-\ FUNCTION:'s word against its declaration group and a TASK:+USER slot
-\ against the `generates:` row src/lib/task.f states. CKR-GEN's row declares
-\ only NAME, so the NAME#X it also renders is left to the run.
+\ that statement ran in; anything else unknown is still refused by the pre-pass.
+\ The text may define a package, so a qualified name there is left to the run as
+\ a bare one is. The fixtures require src/lib/ffi-abi.f for `FUNCTION:` and
+\ src/lib/task.f for TASK:+USER, the renderer src/lib/crypto/evp.f uses. The
+\ pre-pass checks FUNCTION:'s word against its declaration group and a
+\ TASK:+USER slot against the `generates:` row src/lib/task.f states. CKR-GEN's
+\ row declares only NAME, so the NAME#X it also renders is left to the run.
 : CKR-DEF+ ( -- )
    s" : CKR-MAKE ( -- ) s" SB-APPEND $22 SB-APPEND-C
    s"  : CKR-SEVEN ( -- n ) 7 ;" SB-APPEND $22 SB-APPEND-C
@@ -2023,11 +1989,10 @@ variable LONG-J
    s" : CKT-ZBAD ( n -- zrc ) ;" SB-APPEND
    SB$ ;
 
-\ Regression habu-multi-err-re-60eb58a1 (fixed by the all-errors registry-replay
-\ isolation, CHK-RUN-NOMINAL-LINTS closing its checker scope BEFORE CHK-RUN-ALL):
-\ the redrive used to re-evaluate the SUMTYPE inside the nominal pass's
-\ still-registered scope and emit a SPURIOUS E-BAD-DECLARATION duplicate-family
-\ line beside the real mismatch. Pin: exactly ONE diagnostic, the mismatch.
+\ The all-errors redrive must not re-evaluate the SUMTYPE in the nominal pass's
+\ still-registered scope (CHK-RUN-NOMINAL-LINTS closes its checker scope before
+\ CHK-RUN-ALL): exactly one diagnostic, the mismatch, and no E-BAD-DECLARATION
+\ duplicate family.
 : SUM-REDRIVE-TEST ( -- )
    TFAM-REDRIVE$ ALL-JSON-STDIN 70 T=
    {: outu:n erru:n :}
@@ -2037,28 +2002,23 @@ variable LONG-J
    CAP-ERR erru s" duplicate family" CONTAINS? TFALSE
    CAP-ERR erru 10 COUNT-CHAR 1 T= ;
 
-\ Regression habu-fix-all-errors-67f4bdf9: the full check CLI --all-errors path
-\ let a DEFTYPE family registration leak out of preverify into the redrive.
 \ CHK-RUN-PREVERIFY drives VERIFY:SOURCE-BUF-IN-SCOPE, which registers the
-\ source's family + derived casts but leaves rollback to the caller; the caller
-\ never opened a scope, so those registrations survived into CHK-HANDLE-HB. When
-\ the child load fails the JSON branch re-runs the all-errors redrive, whose own
-\ re-registration then hit the leaked family and rejected with a spurious
-\ E-DUPLICATE-DEFINITION. A DEFTYPE declarer needs `require deftype.f`
-\ for the child to define it, so a bare source is statically clean yet its child
-\ load fails E-UNDEFINED -- the honest verdict, and the only family surface that
-\ reaches the JSON redrive re-run. SUMTYPE/NEWTYPE/DEFLINEAR declarers are
-\ baked into the engine, so their child loads succeed, the redrive re-run never
-\ fires, and they were never affected (probed: all report 0 through --all-errors).
+\ source's family and derived casts and leaves rollback to the caller. A
+\ registration that survived into CHK-HANDLE-HB would make the JSON branch's
+\ all-errors redrive refuse a spurious E-DUPLICATE-DEFINITION. Only a DEFTYPE
+\ source reaches that redrive: its declarer needs `require deftype.f`, so a
+\ bare source is statically clean and its child load fails E-UNDEFINED.
+\ SUMTYPE, NEWTYPE and DEFLINEAR are baked into the engine, so their child
+\ loads succeed and the redrive never runs.
 : NOM-ALL-BARE$ ( -- ptr u8 n )   \ statically clean; bare child load is E-UNDEFINED
    SB-RESET
    s" DEFTYPE CKT-AEW" SB-APPEND $0a SB-APPEND-C
    s" : CKT-AEW-RT ( ckt-aew -- ckt-aew ) ;" SB-APPEND
    SB$ ;
 
-\ Pin: the JSON redrive re-run reports the honest child E-UNDEFINED (70), never
-\ a spurious E-DUPLICATE-DEFINITION from re-registering the preverified family.
-\ The engine writes that refusal as prose, which --json-errors puts on stdout.
+\ The JSON redrive reports the child's E-UNDEFINED (70), never a spurious
+\ E-DUPLICATE-DEFINITION from re-registering the preverified family. The
+\ engine writes that refusal as prose, which --json-errors puts on stdout.
 : NOM-REDRIVE-TEST ( -- )
    NOM-ALL-BARE$ ALL-JSON-STDIN 70 T=
    {: outu:n erru:n :}
@@ -2072,30 +2032,30 @@ variable LONG-J
    s" : CKT-AEOK-RT ( ckt-aeok -- ckt-aeok ) ;" SB-APPEND
    SB$ ;
 
-\ Green coverage: a DEFTYPE declaration through --all-errors reports zero errors
-\ end to end when the child can load the declarer.
+\ A DEFTYPE declaration through --all-errors reports zero errors when the
+\ child can load the declarer.
 : NOM-CLEAN-TEST ( -- )
    NOM-ALL-CLEAN$ ALL-JSON-STDIN 0 T=
    {: outu:n erru:n :}
    outu 0 T=
    erru 0 T= ;
 
-: TEST-TFAM-NOARITY ( -- )   \ S2 parity: malformed header -> declaration packet
+: TEST-TFAM-NOARITY ( -- )   \ malformed header -> declaration packet
    TFAM-NOARITY$ DIRECT-JSON-STDIN 70 T=
    {: outu:n erru:n :}
    outu 0 T=
    CAP-ERR erru s" E-BAD-DECLARATION" CONTAINS? TTRUE
    CAP-ERR erru s" invalid type parameter header" CONTAINS? TTRUE ;
 
-: TEST-SUM-NOEND ( -- )      \ S2 parity: unterminated sum -> declaration packet
+: TEST-SUM-NOEND ( -- )      \ unterminated sum -> declaration packet
    SUM-NOEND$ DIRECT-JSON-STDIN 70 T=
    {: outu:n erru:n :}
    outu 0 T=
    CAP-ERR erru s" E-BAD-DECLARATION" CONTAINS? TTRUE
    CAP-ERR erru s" missing ;SUMTYPE" CONTAINS? TTRUE ;
 
-\ S3 (dot habu-tfam-13-s3-truncate): the ALL-ERRORS collector path must report a
-\ truncated declaration with the same packet, fail-closed — never a silent skip.
+\ The --all-errors collector reports a truncated declaration with the same
+\ packet, never a silent skip.
 : SUM-NOEND-ALL ( -- )
    SUM-NOEND$ ALL-JSON-STDIN 70 T=
    {: outu:n erru:n :}
@@ -2611,9 +2571,10 @@ TFAM:TF-NAME-MAX constant EFFECT-N
    BAD$ BAD$SRC FS:WRITE-ALL ;
 
 
-\ C2: a declaration body over TDECL-CAP ($1000) must report the same
-\ E-BAD-DECLARATION packet (the length check fires ahead of variant parsing, so
-\ the repeated variant names never matter).
+\ A SUMTYPE body over TDECL-CAP ($1000) is refused with E-BAD-DECLARATION
+\ "declaration too long" (sumtype.f TDECL-REQUIRE-FIT) ahead of variant
+\ parsing, so the repeated variant names never matter. ENUM buffers no body and
+\ has no such bound (TEST-DECL-OVER-CAP).
 create BIG $2000 allot   variable BIG-U
 : BIG-C, ( n -- ) BIG BIG-U @ + c!  BIG-U @ 1+ BIG-U ! ;
 : BIG-APP ( ptr u8 n -- ) {: a:ptr u:n :}  u 0 ?do a i + c@ BIG-C, loop ;
@@ -2655,10 +2616,10 @@ create BIG $2000 allot   variable BIG-U
    outu 0 T=
    erru 0 T= ;
 
-\ Both diagnostic legs of a malformed STRUCTURE, through the check tool's own
-\ declaration-packet capture (CHK-DECL-CAPTURE / CHK-DECL-FLUSH). The unified
-\ front end raises through the shared DECL-REJECT packet, which renders with the
-\ same writer the legacy definers use, so the check tool collects it unchanged.
+\ Both diagnostic legs of a malformed STRUCTURE, through the check tool's
+\ declaration-packet capture (CHK-DECL-CAPTURE / CHK-DECL-FLUSH): the front end
+\ raises through the shared DECL-REJECT packet, which the tool collects
+\ unchanged.
 : TEST-STRUCT-BAD-JSON ( -- )
    STRUCT-BAD$ DIRECT-JSON-STDIN 70 T=
    {: outu:n erru:n :}
@@ -2674,8 +2635,8 @@ create BIG $2000 allot   variable BIG-U
    CAP-ERR erru s" bad structure declaration 'sbad'" CONTAINS? TTRUE
    CAP-ERR erru s" unknown field type at 'nosuchtype'" CONTAINS? TTRUE ;
 
-\ The migrated ENUM arm reports through the same packet on the prose leg too;
-\ the JSON leg is TEST-ENUM-BAD above.
+\ ENUM reports through the same packet on the prose leg; the JSON leg is
+\ TEST-ENUM-BAD.
 : TEST-ENUM-BAD-PROSE ( -- )
    ENUM-BAD$ DIRECT-STDIN 70 T=
    {: outu:n erru:n :}
@@ -2710,9 +2671,9 @@ create BIG $2000 allot   variable BIG-U
    CAP-ERR erru s" enoend" CONTAINS? TTRUE
    CAP-ERR erru s" missing ;ENUM" CONTAINS? TTRUE ;
 
-\ Each case asserts check's OWN exit (70) and its rendered packet, which is what
-\ distinguishes "the nominal pass rejected it" from "the child run happened to
-\ die later" (exit 67, no packet) — the state before the capture was repaired.
+\ Each case asserts check's own exit (70) and its rendered packet, which tells
+\ the nominal pass's refusal from a child run that died later (exit 67, no
+\ packet).
 : TEST-ENUM-LINE-COMMENT ( -- )
    ENUM-LINE-COMMENT$ DIRECT-STDIN 70 T=
    {: outu:n erru:n :}
@@ -2743,28 +2704,19 @@ create BIG $2000 allot   variable BIG-U
 
 \ How long a declaration may be, and which bound answers when it is too long.
 \
-\ 252 variants is 7812 bytes of body. That used to be refused, by the ENGINE's
-\ own 4096-byte TDECL-CAP: the legacy compact definer copied the whole body into
-\ one fixed buffer before parsing it, and `TDECL-REQUIRE-FIT` refused anything
-\ that did not fit. The global ENUM keyword is the unified front end now, which reads
-\ tokens straight from the input source with a one-token pushback and never
-\ buffers a body, so that bound is simply gone — it was a property of the old
-\ collection strategy, not of the language, and the declaration is well formed.
-\ The command exits 0; test/decl-replay-verify-source.f counts every variant of
-\ a 1000-variant body through the same front end.
+\ 252 variants is 7812 bytes of body. The ENUM front end reads tokens from the
+\ input with a one-token pushback and buffers no body, so the engine sets no
+\ length bound and the command exits 0; test/decl-replay-verify-source.f counts
+\ every variant of a 1000-variant body through the same front end.
 \
-\ One length bound is left, and it is the one that matters here: this tool does
-\ not interpret the source, it buffers each declaration through
-\ src/habu/verify-source.f's 8000-byte body buffer and replays it. That buffer
-\ RAISES rather than shortening — a buffer that cannot represent its input must
-\ say so — so a longer declaration (271 variants, 8401 bytes) still fails
-\ loudly, with the declaration layer's own "declaration too long" code 7118. It
-\ surfaces from THIS process's preverify pass, not the child run, and the
-\ preverify reports it as a statement throw naming that code, exiting 70 as for
-\ a refusal. Its exact edge is pinned in test/decl-replay-verify-source.f. What
-\ this case pins is the property that matters at the command line: a long
-\ declaration either goes through whole or is refused loudly, and is never
-\ quietly shortened into one that parses.
+\ This tool buffers each declaration through src/habu/verify-source.f's
+\ 8000-byte body buffer and replays it. That buffer raises rather than
+\ shortening, so a longer declaration (271 variants, 8401 bytes) fails with the
+\ declaration layer's "declaration too long" code 7118, from this process's
+\ preverify pass, not the child run: a statement throw naming that code, exit
+\ 70. Its exact edge is pinned in test/decl-replay-verify-source.f; this case
+\ pins that a long declaration goes through whole or is refused, and is never
+\ shortened into one that parses.
 : TEST-DECL-OVER-CAP ( -- )
    252 LONG-ENUM$ DIRECT-STDIN 0 T=
    {: outu:n erru:n :}
@@ -2796,12 +2748,10 @@ create BIG $2000 allot   variable BIG-U
    outu 0 T=
    CAP-ERR erru s" check.f: missing END-VALUE-RECORD" CONTAINS? TTRUE ;
 
-\ Same arm through the real CLI entry: `bin/hb tools/check.f fixture` must
-\ carry the diagnostic on stderr with the rc unchanged.
-\ The engine's script form reads standard input to end of file before it runs
-\ the script, so the child must be handed its own empty input. Letting it
-\ inherit whatever input this test process happens to have makes the case block
-\ until the capture timeout whenever that stream stays open.
+\ The same arm through `bin/hb tools/check.f fixture`: the diagnostic on stderr
+\ with the rc unchanged. The engine's script form reads standard input to end
+\ of file before it runs the script, so the child gets its own empty input: an
+\ inherited stream that stays open blocks the case until the capture timeout.
 : ENUM-CLI-RUN ( -- n n n )
    BAD$ ENUM-NOEND$ FS:WRITE-ALL
    PROC-ARGV-RESET
@@ -2823,12 +2773,10 @@ create BIG $2000 allot   variable BIG-U
    CAP-ERR erru s" E-MISMATCH" CONTAINS? TTRUE
    CAP-ERR erru s" field<point,y,n>" CONTAINS? TTRUE ;
 
-\ This fixture deliberately defines a word called DEFTYPE at top level, so it
-\ only type-checks in an engine whose dictionary does not already hold the real
-\ DEFTYPE declarer. This test library runs inside the gate runner, which does
-\ load src/lib/type/deftype.f, so checking the fixture here would be a true
-\ duplicate definition. The standalone tools/check.f process has the smaller
-\ dictionary the fixture needs, which is why this case keeps the child process.
+\ The fixture defines a word DEFTYPE at top level, so it checks only in an
+\ engine whose dictionary lacks the real DEFTYPE declarer. The gate runner
+\ loads src/lib/type/deftype.f, so this case keeps the child process: the
+\ standalone tools/check.f process has the smaller dictionary.
 : NOM-SCAN-TEST ( -- )
    NOM-SCAN-BODY$ CLI-STDIN 0 T=
    {: outu:n erru:n :}
@@ -3259,12 +3207,11 @@ create BIG $2000 allot   variable BIG-U
 \ is the same: the loader looks it up after the locals, unlike the `\` and `(`
 \ comments. Each form loads and checks alike and prints 5, the `42` after one
 \ is refused and `DEFLINEAR N` after one is refused at its name, on line 2.
-\ Measured before every scanner of the check looked locals up: the
-\ pre-verifier refused the `char`, `[char]` and `.(` forms (rc 74,
-\ unterminated definition) though they load, and the reserved-name lint and
-\ the nominal pass read past the `;` of every form, so the `42` after the
-\ `[']` and `'` forms was admitted and `DEFLINEAR N` after any form was
-\ refused with no location.
+\ Without that lookup the pre-verifier refuses the `char`, `[char]` and `.(`
+\ forms (rc 74, unterminated definition) though they load, and the
+\ reserved-name lint and the nominal pass read past the `;` of every form,
+\ admitting the `42` after the `[']` and `'` forms and refusing `DEFLINEAR N`
+\ after any form with no location.
 : LOCAL-KW$ ( ptr u8 n ptr u8 n -- ptr u8 n ) {: kw:ptr kwu:n tail:ptr tailu:n :}
    SB-RESET
    s" : CKT-LK ( n -- n ) {: " SB-APPEND  kw kwu SB-APPEND
@@ -3287,9 +3234,9 @@ create BIG $2000 allot   variable BIG-U
    kw kwu s" : 42 ( -- ) ;" LOCAL-KW$ DIRECT-JSON-STDIN NUMERIC-REFUSED ;
 
 \ `['] \` in a body ticks a word named `\`, as the loader reads it, and the
-\ check runs the source and prints 7. Measured before `[']` joined the
-\ pre-verifier's body keywords: its operand opened a comment there and hid the
-\ `;` (rc 74, unterminated definition).
+\ check runs the source and prints 7. A pre-verifier without `[']` among its
+\ body keywords opens a comment at the operand and hides the `;` (rc 74,
+\ unterminated definition).
 : TICK-NAME$ ( -- ptr u8 n )
    SB-RESET
    s" : \ ( -- ) ;" SB-APPEND $0a SB-APPEND-C
@@ -3299,8 +3246,8 @@ create BIG $2000 allot   variable BIG-U
 
 \ An enclosing local is still that local inside a quotation: the loader refuses
 \ it at that token (rc 75) and the check refuses it as a local in a quotation,
-\ after the `;` that ends the definition. Measured before: the pre-verifier read
-\ the `;` as the keyword's operand (rc 74, unterminated definition).
+\ after the `;` that ends the definition. A pre-verifier that reads the `;` as
+\ the keyword's operand fails rc 74, unterminated definition.
 : LOCAL-QUOTATION$ ( -- ptr u8 n )
    s" : CKT-LQ ( n -- n ) {: char :} [: char ;" ;
 
@@ -3338,8 +3285,8 @@ create BIG $2000 allot   variable BIG-U
 
 \ A body binding a 65th local is refused by the loader at that local (rc 70),
 \ and the check refuses it the same way, with the checker's located
-\ E-TOO-MANY-LOCALS. Measured before the pre-verifier stopped recording locals
-\ at the engine's cap: it died first, rc 74 with no location.
+\ E-TOO-MANY-LOCALS. A pre-verifier that records locals past the engine's cap
+\ dies first, rc 74 with no location.
 : MANY-LOCALS$ ( -- ptr u8 n )
    SB-RESET
    s" : CKT-ML ( " SB-APPEND
@@ -3565,8 +3512,7 @@ TYPED-VARIABLE CT-ROW SPAN:span<u8>
    outu 0 T= ;
 
 \ A dep loaded through a literal `s" path" included` is part of the closure:
-\ the entry's use of the dep's word preverifies (the pre-producer scan captured
-\ require/required only and rejected this good program).
+\ the entry's use of the dep's word preverifies.
 : INC-ENTRY-SRC$ ( -- ptr u8 n )
    SB-RESET
    $73 SB-APPEND-C $22 SB-APPEND-C $20 SB-APPEND-C
@@ -3694,7 +3640,7 @@ TYPED-VARIABLE CT-ROW SPAN:span<u8>
 \ effects) holds a checked `CKDREP:MAKE` with no word behind it. The scan
 \ cannot see that run, so the refusal of a later definition of the name comes
 \ from the run, and it must name the definition and where it is, as every other
-\ duplicate does: it used to exit 78 with nothing on stderr (src/core/
+\ duplicate does, never a bare exit 78 with nothing on stderr (src/core/
 \ check-hook.f DUP-RC).
 : PREPLAY-DUP$ ( -- ptr u8 n )
    SB-RESET
@@ -3712,8 +3658,8 @@ TYPED-VARIABLE CT-ROW SPAN:span<u8>
 
 \ An ordinary PRODUCT or SUMTYPE, then a definition of a name it generated. The
 \ scan replays the generated words, so the scan refuses the definition, and
-\ check.f must name it and where it is, as --load does, in every form: the
-\ record used to be a placeholder word at line 1.
+\ check.f must name it and where it is, as --load does, in every form, never as
+\ a placeholder word at line 1.
 : GDUP-PROD-AS$ ( ptr u8 n -- ptr u8 n ) {: def:ptr defu:n :}
    SB-RESET
    s" PRODUCT ckdprod FIELD x n ;PRODUCT" SB-APPEND $0a SB-APPEND-C
@@ -3905,7 +3851,6 @@ variable REQ-U
    p pu FILE
    [: RUN-ACT ;] IN-PROC ;
 
-\ `--verify-only` on the file at a path.
 : VO-FILE-RUN ( ptr u8 n -- n n n )
    RESET
    s" verify-only" OPT
@@ -4087,7 +4032,6 @@ variable REQ-U
 : REQ-THROW-AT$ ( -- ptr u8 n )
    s\" req-throw.f\",\"line\":2,\"column\":1," ;
 
-\ The refusal is reported, then the throw at the statement it left.
 : EXPECT-THROW-AT ( n n n ptr u8 n -- ) {: outu:n erru:n rc:n at:ptr atu:n :}
    rc 70 T=
    outu 0 T=
@@ -4125,8 +4069,6 @@ variable REQ-U
 : REQ-SIZE-AT$ ( -- ptr u8 n )
    s\" req-size.f\",\"line\":2,\"column\":29," ;
 
-\ The first refusal is reported, then the storage refusal at the type it could
-\ not size, which the given text names.
 : EXPECT-SIZE-AT ( n n n ptr u8 n -- ) {: outu:n erru:n rc:n at:ptr atu:n :}
    rc 70 T=
    outu 0 T=
@@ -4191,11 +4133,10 @@ variable REQ-U
    CAP-ERR erru s" st-throw.f:2:1: throw 7142 at ';using'" CONTAINS? TTRUE ;
 
 \ A name with a second ':' after a non-edge first one keys no record, and the
-\ checker refuses it where the record would be written (checker.f
-\ CHECKER-RECORD-NAME) by a throw, so the check reports it as a statement that
-\ threw, at the statement, in prose and JSON. Under --all-errors a definition
-\ refused before it is still reported: ending the process there reported
-\ nothing but the refusal's own line.
+\ checker refuses it by a throw where the record would be written (checker.f
+\ CHECKER-RECORD-NAME), so the check reports a statement that threw, at the
+\ statement, in prose and JSON. Under --all-errors a definition refused before
+\ it is still reported.
 : MALNAME$ ( -- ptr u8 n )
    s" : CKT:MAL:NAME ( -- ) ;" ;
 
@@ -4259,8 +4200,6 @@ variable REQ-U
    SB-RESET s" ckt-ut.f" REQ-LOAD+
    s" ckt-ut-req.f" REQ-WRITE ;
 
-\ A refusal reported by one record on standard error: its code and class,
-\ token and place.
 : EXPECT-RECORD ( n n ptr u8 n ptr u8 n ptr u8 n -- )
    {: erru:n rc:n code:ptr codeu:n tok:ptr toku:n at:ptr atu:n :}
    rc 70 T=
@@ -4269,7 +4208,6 @@ variable REQ-U
    CAP-ERR erru tok toku CONTAINS? TTRUE
    CAP-ERR erru at atu CONTAINS? TTRUE ;
 
-\ A refusal reported by one record, and nothing on standard output.
 : EXPECT-ONE ( n n n ptr u8 n ptr u8 n ptr u8 n -- )
    {: outu:n erru:n rc:n code:ptr codeu:n tok:ptr toku:n at:ptr atu:n :}
    outu 0 T=
@@ -4361,21 +4299,17 @@ variable REQ-U
    s" ckt-cl-dyn-req.f" CL-DYN-CODE$ CL-DYN-TOKEN$ CL-DYN-AT$ ONE-MODES
    s" ckt-cl-long.f" CL-DYN-CODE$ CL-REQUIRE-TOKEN$ CL-LONG-AT$ ONE-MODES ;
 
-\ The engine's resolver alone caps a loader's path: it refuses an absolute one
-\ of 2048 bytes or more, a relative one that is 2048 bytes or more joined as
-\ root, `/` and path to a root searched before one holds the file, and one over
-\ 1023 bytes once normalized (src/core/include.f SOURCE-ROOT CHECK,
-\ SEARCH-ROOTS, JOIN! and NORMALIZE). At top level
-\ the load runs while the file loads, so every mode refuses such a path at its
-\ loader word and follows any other literal one, however long as written: 512
-\ `./` before a file name load that file, which reports its own refusal. A
-\ string loader in a definition is a call the word makes when it runs. One
-\ after a path the resolver refuses loads nothing, so every --json-errors mode
-\ verifies its source: the walk reads past it and the composition loads
-\ nothing from it, here even where the path names a file the check would
-\ refuse. One after any other literal path loads its file, which keeps its
-\ own refusals, such as its top-level loader whose path resolves past 1023
-\ bytes. Each source is over the string builder, so the BIG row holds it.
+\ Only the engine's resolver caps a loader's path (src/core/include.f
+\ SOURCE-ROOT CHECK, SEARCH-ROOTS, JOIN! and NORMALIZE): an absolute path of
+\ 2048 bytes or more, a relative one of 2048 bytes or more once joined to a
+\ searched root, and one over 1023 bytes once normalized. A top-level loader
+\ runs while the file loads, so every mode refuses such a path at its loader
+\ word and follows any other literal path however long as written (512 `./`
+\ before a name load that file). A string loader in a definition runs only when
+\ called: after a refused path it loads nothing, so every --json-errors mode
+\ verifies its source, even where the path names a file the check would
+\ refuse; after any other literal path it loads its file, which keeps its own
+\ refusals. Each source is over the string builder, so the BIG row holds it.
 : CLB-OPEN ( ptr u8 n -- )   \ `: NAME ( -- ) s" `
    0 BIG-U !
    s" : " BIG-APP BIG-APP s"  ( -- ) s" BIG-APP $22 BIG-C, $20 BIG-C, ;
@@ -4563,8 +4497,6 @@ variable REQ-U
    s" ckt-cl-wide.f" REQ-PLAIN-RUN EXPECT-ACCEPTED
    s" ckt-cl-wide.f" REQ-ALL-RUN EXPECT-ACCEPTED ;
 
-\ A refusal: status 70, nothing on stdout, one line on stderr, whose length
-\ this answers.
 : REFUSED-LINE ( n n n -- n )
    {: outu:n erru:n rc:n :}
    rc 70 T=
@@ -4626,7 +4558,6 @@ variable REQ-U
    {: f:ptr fu:n :}
    SB-RESET s" require " SB-APPEND f fu REQ$ SB-APPEND SB$ ;
 
-\ The fixture's name after a slash, then what follows the file in the record.
 : NEST-AT$ ( ptr u8 n ptr u8 n -- ptr u8 n )
    {: f:ptr fu:n at:ptr atu:n :}
    SB-RESET $2f SB-APPEND-C f fu SB-APPEND at atu SB-APPEND SB$ ;
@@ -4754,8 +4685,6 @@ variable SS-TOK-U
 : SS-AT$ ( -- ptr u8 n )
    s" /ckt-ss.f" ;
 
-\ The prose record starts the report and names the place in the file whose
-\ name ends with the given text, the code and the token there.
 : SS-PROSE ( n ptr u8 n -- )
    {: erru:n f:ptr fu:n :}
    CAP-ERR erru s" E-STATEMENT-THROW " STARTS-WITH? TTRUE
@@ -4800,8 +4729,6 @@ variable SS-TOK-U
    SS-FILE$ NEST-SRC$ DIRECT-ALL-STDIN REFUSED-LINE SS-AT$ SS-PROSE
    SS-FILE$ NEST-SRC$ DIRECT-JSON-STDIN REFUSED-LINE SS-AT$ SS-JSON ;
 
-\ --verify-only writes the record on standard error and its prose on standard
-\ output.
 : SS-VERIFIED ( n n n ptr u8 n -- )
    {: outu:n erru:n rc:n f:ptr fu:n :}
    rc 70 T=
@@ -4864,7 +4791,6 @@ variable SS-NEST-U
    SS-FILE$ NEST-SRC$ ALL-JSON-STDIN SS-SAME
    SS-NEST$ s" ckt-ss-new.f" REQ$ VO-STDIN-RUN SS-AT$ SS-VERIFIED ;
 
-\ The line and the column of the given byte of BIG.
 : BIG-PLACE ( n -- n n )
    {: at:n :}
    1 1 at 0 ?do
@@ -4884,10 +4810,9 @@ variable SS-NEST-U
 : SS-BIG-JSON ( -- )
    BIG BIG-U @ DIRECT-JSON-STDIN REFUSED-LINE STDIN-LABEL$ SS-JSON ;
 
-\ The pre-verifier's tables grow with what a source holds, so each source below,
-\ one past a bound a table once had, verifies under --verify-only, read as a
-\ file whose loads find their file beside it. Only the verdict is asserted: the
-\ run is the program's own.
+\ The pre-verifier's tables grow with what a source holds; each source below is
+\ one past a bound a fixed table had, and verifies under --verify-only, read as
+\ a file whose loads find their file beside it. Only the verdict is asserted.
 : SS-BIG-VERIFIES ( -- )
    s" ckt-x.f" s" \ ckt-x.f - the file CAP-LOADS' definitions load" NEST-FILE
    s" ckt-big.f" BIG BIG-U @ NEST-FILE
@@ -5158,16 +5083,14 @@ variable SS-NEST-U
    CAP-ERR erru s\" \"throw_code\":7121" CONTAINS? TTRUE ;
 
 \ ---- what the checker cannot store is refused by name ------------------------
-\ Each of these ended the process with die 76 (review 389): a declared name
-\ whose derived constructor spelling overran src/core/type-family.f TF-CTOR-BUF,
-\ a package name past the checker's package row (src/core/checker.f
-\ CHECKER-PACKAGE-CAP) and a definition whose effect was deeper than the effect
-\ store's walks go (src/core/checker.f EFFECT-DEPTH-MAX) or took more cells
-\ than its record holds (EFFECT-MIN-IN-MAX). Each is now the
-\ located refusal of its declaration, statement or definition, rc 70, and the
-\ longest that fits is still taken. The sources are built in LONG-BUF.
+\ A declared name whose derived constructor spelling overruns
+\ src/core/type-family.f TF-CTOR-BUF, a package name past the checker's package
+\ row (src/core/checker.f CHECKER-PACKAGE-CAP), and a definition whose effect
+\ is deeper than the effect store's walks go (EFFECT-DEPTH-MAX) or takes more
+\ cells than its record holds (EFFECT-MIN-IN-MAX) are each the located refusal
+\ of its declaration, statement or definition, rc 70, never die 76; the longest
+\ that fits is still taken. The sources are built in LONG-BUF.
 
-\ count bytes of c into the long source.
 : CAPN-REP ( n n -- )
    {: c:n count:n :}
    count 0 ?do c LONG-C loop ;
@@ -5179,7 +5102,6 @@ variable SS-NEST-U
    c count CAPN-REP
    t tu LONG-PUT ;
 
-\ The long source as the fixture named f, checked with --json-errors.
 : CAPN-RUN ( ptr u8 n -- n n n )
    {: f:ptr fu:n :}
    f fu REQ$ LONG-BUF LONG-U @ FS:WRITE-ALL
@@ -5199,7 +5121,7 @@ variable SS-NEST-U
    CAP-ERR erru s\" \"reason\":\"name longer than 255 bytes\"" CONTAINS? TTRUE ;
 
 \ A family, variant or field name is at most 255 bytes in every declaration
-\ front end. The SUMTYPE tail and the STRUCTURE field are review 389's 1100-byte
+\ front end. The SUMTYPE tail and the STRUCTURE field are the 1100-byte
 \ fixtures; a 255-byte tail is still declared.
 : TEST-DECLARED-NAME-CAP ( -- )
    0 LONG-U !
@@ -5249,10 +5171,9 @@ variable SS-NEST-U
    CAP-ERR erru s\" \"family\":\"bbb" CONTAINS? TFALSE ;
 
 \ A package name is at most 255 bytes: `package` and `using` refuse a longer
-\ one, a statement throw at the name, as `package` does review 389's 1100-byte
-\ tf3.f and a name longer than any the engine defines (CK-NAME-MAX), which
-\ ended the process as no name at all. The 255-byte package on the lines before
-\ it is opened and closed.
+\ one by a statement throw at the name, both the 1100-byte tf3.f and a
+\ name longer than any the engine defines (CK-NAME-MAX). The 255-byte package
+\ on the lines before it is opened and closed.
 : CAPN-PKG+ ( n n -- )
    {: c:n count:n :}
    s" package " LONG-PUT
@@ -5325,10 +5246,9 @@ variable SS-NEST-U
 \ A recorded effect is at most 4096 levels deep: a row's entries, and below
 \ an entry the levels its type nests. A definition leaving 4096 cells is
 \ recorded and a caller instantiates it, while one leaving 4097, or returning a
-\ quotation that leaves 8192, is uncheckable. Review 389's bigb5.f left 10000;
-\ a record of 8191 was taken and then faulted the data stack of every checked
-\ caller. The quotation's refusal renders the top 64 cells of its row:
-\ rendering the whole row faulted the data stack (exit 102).
+\ quotation that leaves 8192, is uncheckable (the bigb5.f leaves
+\ 10000). The quotation's refusal renders the top 64 cells of its row:
+\ rendering the whole row faults the data stack (exit 102).
 : TEST-EFFECT-DEPTH-CAP ( -- )
    0 LONG-U !
    CAPN-ROWS+
@@ -5390,8 +5310,7 @@ variable SS-NEST-U
 \ returning or not, is uncheckable by that width, and so is a RECURSE in a body
 \ declared that wide. A body the run would judge cannot be deferred, since
 \ deferring records the declaration. A body refused for its own reason keeps
-\ it, and under --all-errors keeps no record. Each ended the process with die
-\ 76.
+\ it, and under --all-errors keeps no record.
 : TEST-INPUT-WIDTH-CAP ( -- )
    0 LONG-U !
    CAPN-WIDTHS+
@@ -5701,9 +5620,9 @@ variable SS-NEST-U
    s\" req-shadow-defer.f\",\"line\":2,\"column\":7," SHADOW-CASE ;
 
 \ A storage declaration whose definer cannot size its type is the checker's
-\ refusal at the type, in every mode, for every definer that sizes one (dot
-\ 2eb1290e), not a throw out of the pre-pass, which reads a DEFER-LAYOUT-BUFFER
-\ line too. Each declaration below puts its type at column 41.
+\ refusal at the type, in every mode, for every definer that sizes one, not a
+\ throw out of the pre-pass, which reads a DEFER-LAYOUT-BUFFER line too. Each
+\ declaration below puts its type at column 41.
 : STG-TB$ ( -- ptr u8 n )
    s" 4 TYPED-BUFFER CKT-STG-TB               ckt-stg-none" ;
 
@@ -5751,7 +5670,7 @@ variable SS-NEST-U
    STG-DL$ STG-CASE ;
 
 \ The pre-pass registers what DEFER-LAYOUT-BUFFER publishes, so a definition
-\ calling the accessor or either binder certifies, where each was E-UNDEFINED.
+\ calling the accessor or either binder certifies instead of E-UNDEFINED.
 : STG-DEFER-GOOD$ ( -- ptr u8 n )
    s" NEWTYPE ckt-dk DEFER-LAYOUT-BUFFER CKT-DK ckt-dk : CKT-DK-AT ( n -- ptr ckt-dk ) CKT-DK ; : CKT-DK-SIZE ( n -- ) CKT-DK-BIND ; : CKT-DK-MORE ( n -- ) CKT-DK-GROW ;" ;
 
@@ -5766,10 +5685,8 @@ variable SS-NEST-U
    CAP-ERR erru s\" \"token\":\"CKT:STG:TB\"" CONTAINS? TTRUE
    CAP-ERR erru s\" stg.f\",\"line\":1,\"column\":16," CONTAINS? TTRUE ;
 
-\ `--all-errors --source-list a b` runs all-errors on the ORIGINAL files, in
-\ order, in one session: both bad defs in b report against b's
-\ path (the pre-redrive materialized temp had zero defs, so all-errors was a
-\ no-op and only preverify's first error surfaced).
+\ `--all-errors --source-list a b` runs all-errors on the original files, in
+\ order, in one session: both bad definitions in b report against b's path.
 : LIST-ALL-TEST ( -- )
    SUP$ s\" : CKT-SEVEN ( -- n ) 7 ;\n" FS:WRITE-ALL
    USE$ s\" : CKT-GOOD-USE ( -- n ) CKT-SEVEN ;\n: CKT-BAD-ONE ( -- n n ) CKT-SEVEN ;\n: CKT-BAD-TWO ( n -- ) CKT-SEVEN ;\n" FS:WRITE-ALL
@@ -5786,11 +5703,11 @@ variable SS-NEST-U
 \ A check run in this process must give the verdict `bin/hb tools/check.f`
 \ gives the same file. The pre-pass learns a `does>` definer by its checker
 \ symbol, and a check's symbols go when its scope ends, so the next check hands
-\ the same id to its own first word. After agree.f made CKT-AG-D a definer, the
-\ edit that makes it a plain word is refused where the command line refuses it:
-\ in the pre-pass, at CKT-AG-USE. A definer row that outlived its check read the
-\ top-level call of CKT-AG-D as a definer creating the next token, the `:`, so
-\ the pre-pass never read CKT-AG-USE and the run refused it instead.
+\ the same id to its own first word: a definer row that outlived its check
+\ would read the top-level call of CKT-AG-D as a definer creating the `:` and
+\ skip CKT-AG-USE. After agree.f makes CKT-AG-D a definer, the edit that makes
+\ it a plain word is refused in the pre-pass at CKT-AG-USE, as on the command
+\ line.
 create AGREE-ERR BUF-CAP allot
 variable AGREE-ERR-U
 
@@ -5844,14 +5761,11 @@ variable AGREE-ERR-U
    s" view-family.f" REQ-RUN EXPECT-ACCEPTED ;
 
 \ A capture whose deadlock guard expires throws E-PROC-TIMEOUT from inside the
-\ process library, which used to leave the run with nothing but `hb: uncaught
-\ throw code -2502`: it named no case, no child and no budget, so a hung child
-\ and a slow one looked identical from the gate log. CASE-RUN is the one place
-\ that knows which case is running, so it is where that verdict gets its name.
-\ The code then goes on uncaught, so the engine's report stays the row's last
-\ stderr line and the gate pool labels the row TIMEOUT-UNDER-LOAD
-\ (test/gate-pool.f GT-POOL-INNER-TIMEOUT?). Every other throw keeps
-\ propagating untouched.
+\ process library, which names no case, child or budget. CASE-RUN is the one
+\ place that knows which case is running, so it names the verdict and rethrows
+\ the code: the engine's report stays the row's last stderr line and the gate
+\ pool labels the row TIMEOUT-UNDER-LOAD (test/gate-pool.f
+\ GT-POOL-INNER-TIMEOUT?). Every other throw propagates untouched.
 : CASE-HUNG ( ptr u8 n -- ) {: label:ptr labelu:n :}
    s" FAIL: " type label labelu type
    s"  - child never exited; deadlock guard ms: " type CHILD-HANG-MS FMT:.INT cr
@@ -5869,37 +5783,24 @@ variable AGREE-ERR-U
    s" PASS: " type label labelu type
    s"  (" type mono-ns START-NS @ - PROC-NS-PER-MS / FMT:.INT s"  ms)" type cr ;
 
-\ --- package-owned caller: the checker's replay scopes must start neutral ---
-\
-\ Every scope tools/check-core.f opens around a replay of the SUBJECT source
-\ has to start at neutral top level. If it inherited the caller's package
-\ instead, the subject file would be checked as if it were part of that
-\ package. The three runs below drive CHECK:RUN, the real entry point, and each
-\ one is shaped to fail at a different scope if that scope inherits:
-\
-\   NEU-FAMILY-SRC$  a top-level family declaration whose tail this package
-\                    already owns (the `NEWTYPE ckneub` line below). The
-\                    nominal pass is the first pass that registers
-\                    declarations, so an inherited CHK-RUN-NOMINAL-LINTS scope
-\                    files the subject's family under CHECK-TEST and collides
-\                    with the one already there; declared at top level, where
-\                    the subject really is, there is no collision at all.
-\   NEU-EXPORT-SRC$  a top-level EXPORT directive. The nominal pass ignores
-\                    EXPORT, so this one reaches CHK-RUN-PREVERIFY; an
-\                    inherited scope there reads the directive as an in-package
-\                    re-export of a word that package already has.
+\ --- package-owned caller: the checker's replay scopes start neutral --------
+\ Every scope tools/check-core.f opens around a replay of the subject starts at
+\ neutral top level; one that inherited the caller's package would check the
+\ subject as part of it. Each run below fails at a different scope if it
+\ inherits:
+\   NEU-FAMILY-SRC$  a top-level family whose tail this package owns (NEWTYPE
+\                    ckneub): an inherited CHK-RUN-NOMINAL-LINTS scope files it
+\                    under CHECK-TEST, where it collides.
+\   NEU-EXPORT-SRC$  a top-level EXPORT, which the nominal pass ignores: an
+\                    inherited CHK-RUN-PREVERIFY scope reads it as a re-export
+\                    of a word the package already has.
 \   BAD$SRC          a rejecting source, so the run leaves CHK-RUN-SCOPED by
 \                    the throwing path.
-\
-\ After the clean runs and after the throwing one, VERIFY:SOURCE-BUF proves the
-\ caller's package was put back exactly: it opens an INHERITING scope, which
-\ fails closed unless the checker's package mirror still matches the engine's
-\ live package record in mode, in length, and in name bytes.
-\
-\ These runs are made HERE, in the package body, because this is the only place
-\ where the checker's package really is CHECK-TEST's; a case word runs with no
-\ package open and cannot reproduce the fault. The case word below only asserts
-\ what these runs recorded.
+\ After each run VERIFY:SOURCE-BUF opens an INHERITING scope, which fails closed
+\ unless the checker's package mirror matches the engine's live package record
+\ in mode, length and name bytes. The runs are made here, in the package body,
+\ the only place where the checker's package is CHECK-TEST's; the case word
+\ only asserts what they recorded.
 
 \ The tail the subject source below also declares, owned here by CHECK-TEST.
 NEWTYPE ckneub
@@ -5943,24 +5844,13 @@ variable NEU-THROW-PKG-RC
    RESET ;
 
 \ --- a rejected declaration must not poison the tail it half-registered ---
-\
-\ The registry reads families through an index that chains rows by id, so a row
-\ left chained after its id goes out of range is found by the next lookup of
-\ that tail, which then reads a record past the end of the store. The
-\ declaration layer used to rewind the family and variant counters itself, and
-\ the retirement the outer restore ran afterwards was a no-op that told the
-\ index it was current, so the row stayed chained for the rest of the process.
-\
-\ The shape below is the one that showed it. The first source declares a sum,
-\ registers the family, and then rejects on a duplicate variant name: a clean
-\ reject, exit 70. The SECOND source declares the same tail correctly. Before
-\ the fix that second run died 76 `tfam: bad family id` — not a checker verdict
-\ at all, a hard exit out of the registry — because the duplicate-detection
-\ lookup at the head of TFAM-DECL walked the bucket the first run left behind.
-\
-\ Both runs go through CHECK:RUN, which is what the command line runs. A test
-\ that called TFAM-DECL directly would prove the registry and miss the seam the
-\ two runs share, which is where the state survived from one to the other.
+\ The registry chains family rows by id, so a row left chained after its id
+\ goes out of range is found by the next lookup of that tail, which reads past
+\ the end of the store: die 76 `tfam: bad family id` at TFAM-DECL's duplicate
+\ lookup. The first source registers a sum and rejects on a duplicate variant
+\ (exit 70); the second declares the same tail correctly. Both go through
+\ CHECK:RUN, the command line's entry: calling TFAM-DECL directly would miss the
+\ seam the two runs share.
 : POISON-BAD-SRC$ ( -- ptr u8 n )
    SB-RESET
    s" SUMTYPE cktpois<a> VARIANT ok a ;VARIANT VARIANT ok a ;VARIANT ;SUMTYPE" SB-APPEND
@@ -6144,8 +6034,7 @@ variable LC-OTHER-U
 
 \ No file in this root requires an engine-provided file, and none may: through
 \ the links, a subject that requires one (`src/lib/string.f`) is refused with an
-\ E-BAD-DECLARATION "duplicate family" whose file is `<input>`, a fault of
-\ checking in a linked root that predates the load-context replay.
+\ E-BAD-DECLARATION "duplicate family" whose file is `<input>`.
 : LC-ROOT-SETUP ( -- )
    ROOT$ s" lc-root" LC-ROOT FS:JOIN-PATH LC-ROOT-U !
    LC-ROOT$ FS:MAKE-DIR
@@ -6255,7 +6144,6 @@ variable LC-CANON-U
    path pathu LC-CANON LC-CANON-U CLI-ABS!
    label labelu T-LABEL f fu LC-CANON LC-CANON-U @ T$= ;
 
-\ One diagnostic line as stderr carries it.
 : LC-LINE$ ( ptr u8 n -- ptr u8 n )
    SB-RESET SB-APPEND $0a SB-APPEND-C SB$ ;
 
@@ -6297,7 +6185,6 @@ variable LC-CANON-U
    s" sub/lc-use.f" CHECK-ARG+
    LC-ROOT$ LC-CAPTURE s" load-context: --verify-only spawns the running engine" LC-EXPECT-CLEAN ;
 
-\ What the engine writes on stderr for a throw nothing caught.
 : LC-UNCAUGHT$ ( n -- ptr u8 n ) {: code:n :}
    SB-RESET
    s" hb: uncaught throw code " SB-APPEND
@@ -6430,7 +6317,6 @@ create LC-LONG-ENGINE LC-LONG-U allot
    s" sub/lc-locked.f" CHECK-ARG+
    NULL$ s" load-context: --json-errors's unreadable second listed file" LC-UNREAD-EXPECT ;
 
-\ What check.f says on stdout under --json-errors for a throw nothing caught.
 : LC-CHECK-UNCAUGHT$ ( n -- ptr u8 n )
    {: code:n :}
    SB-RESET
@@ -6601,16 +6487,15 @@ create LC-TYPE-BUF LC-TYPE-CAP allot
    LC-TYPE-BYTES DIRECT-JSON-STDIN s" load-context: required type, SOURCE" LC-EXPECT-CLEAN
    LC-TYPE-BYTES ALL-JSON-STDIN s" load-context: required type, SOURCE, all" LC-EXPECT-CLEAN ;
 
-\ The check quotes a path or label into a line it writes and hands a path to
-\ the file system. A path or label holding a byte the quoting refuses (double
-\ quote, backslash, CR, LF, NUL) is one usage line in every mode, on stderr or,
-\ under --json-errors, on stdout, and a listed
-\ path holding a NUL is refused before the engine's resolver sees it. The
-\ quoted spelling is the canonical path for a named file, the path as given
-\ for a listed one, and the label in the run stage: a plain named file's path
-\ as given, or a CHECK:SOURCE label. It is judged before anything reads the
-\ source, so each case's source is one a later stage refuses, and the answer
-\ is the path's whatever the file holds.
+\ The check quotes a path or label into a line it writes and hands a path to the
+\ file system. A path or label holding a byte the quoting refuses (double quote,
+\ backslash, CR, LF, NUL) is one usage line in every mode, on stderr or, under
+\ --json-errors, on stdout, and a listed path holding a NUL is refused before
+\ the engine's resolver sees it. The quoted spelling is the canonical path for a
+\ named file, the path as given for a listed one, and the label in the run
+\ stage: a plain named file's path as given, or a CHECK:SOURCE label. It is
+\ judged before anything reads the source, so each case's source is one a later
+\ stage refuses, and the answer is the path's whatever the file holds.
 : LC-UNSAFE-LINE$ ( -- ptr u8 n )
    s" check.f: source path or label contains a double quote, backslash, CR, LF or NUL"
    LC-LINE$ ;
@@ -6851,7 +6736,6 @@ create LC-TYPE-BUF LC-TYPE-CAP allot
    label labelu T-LABEL CAP-ERR erru s" E-UNDEFINED" CONTAINS? TFALSE
    label labelu T-LABEL CAP-ERR erru s" E-STATEMENT-THROW" CONTAINS? TFALSE ;
 
-\ The checker's packet.
 : UAMB-PACKET ( n ptr u8 n -- )
    {: erru:n label:ptr labelu:n :}
    erru s" code" s" E-USING-AMBIGUOUS" LC-PACKET {: p:SPAN:span<u8> :}

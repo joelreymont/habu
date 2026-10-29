@@ -1,22 +1,9 @@
 \ standalone-load-test.f - prove tool and build-side entries load in isolation.
-\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
-\   src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f tools/standalone-load-test.f
-\
-\ Regression guard for habu-standalone-support-load-7c3d9f16: a support/tool entry
-\ must `require` the exact deps its own top-level path uses, so `bin/hb --load
-\ <entry>` works WITHOUT the resident test/run.f DAG ordering. Each entry is
-\ spawned in a fresh child engine with empty stdin; a clean exit 0 proves the
-\ entry pulled its whole dependency closure itself. Before the fix,
-\ tools/public-signatures-core.f died E-UNDEFINED: COPY-UPPER (its tools/lint/text.f
-\ dep was unrequired) and tools/lint/intern.f was likewise dep-implicit.
-\ src/habu/aot-capture.f died `using: unknown package: AOT-BUF` (aot-decl.f and
-\ aot-arm.f unrequired), and src/habu/aot-decl.f died E-UNDEFINED:
-\ AOT-SECTION-CAP (src/arch/arm64/icode.f unrequired); every other loader
-\ brought those files in first. src/habu/aot-file.f, and src/habu/aot-owned.f
-\ through it, died the same way (aot-decl.f unrequired), src/arch/arm64/mnem.f
-\ died E-UNDEFINED: EMITW (icode.f unrequired), and src/habu/aot-lib.f died
-\ E-UNDEFINED: XDS (mnem.f unrequired; its loaders brought it in through
-\ src/habu/app-image.f).
+\ Run: bin/hb --load tools/standalone-load-test.f
+\ A support or tool entry must `require` every dependency its own top-level path
+\ uses, so `bin/hb --load <entry>` works without test/run.f's load order. Each
+\ entry runs in a fresh child with empty stdin; exit 0 proves it pulled its
+\ whole closure itself.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -34,7 +21,6 @@ require src/lib/test/outcome.f
 create SL-OUT SL-CAP allot
 create SL-ERR SL-CAP allot
 create SL-EMPTY 1 allot                 \ zero-length stdin
-\ Spawn `bin/hb --load <path>` with empty stdin; assert a clean exit 0.
 : SL-LOADS ( ptr u8 n -- )
    {: p:ptr u:n :}
    PROC-ARGV-RESET

@@ -1,22 +1,6 @@
-\ hb-open-failure-test.f - the installed engine's source-open contract, checked
-\ from a directory that is not a checkout.
-\
-\ bin/hb is the SEEDED PRODUCT (tools/build-fixpoint.f "TWO ENGINES, ONE
-\ PREFIX"): its cold runtime arrives from the baked AOT artifact, so a boot opens
-\ no prefix source and the engine starts anywhere. This file asserted the
-\ opposite - a boot outside the repo dying 74 on src/core/util.f, which only an
-\ engine whose build captured nothing does (src/habu/habu2.f EMIT-COLD-PREFIX,
-\ emitted for the stage2/maker engines and never for the product; the rule is
-\ SEEDED-RUNTIME? beside it) -
-\ and went red on the product for that reason. Both halves of the real contract
-\ are here now: the product needs no checkout, and a source file it is handed and
-\ cannot open is still named on stderr with exit 74 rather than skipped.
-\ The bare file argument is deliberate - that argv row reads the file through the
-\ engine's own raw arm (habu2.f LSRCRD/sopenerr, "hb: cannot open <path>"), which
-\ is the last read with no registry above it. The `--load` row asks the require
-\ registry instead and answers "include: cannot open ...": tools/load-argv-test.f
-\ owns that one.
-\
+\ hb-open-failure-test.f - from a directory that is not a checkout: the seeded
+\ product opens no prefix source, and a bare file argument it cannot open exits 74
+\ with "hb: cannot open <path>" (habu2.f LSRCRD); tools/load-argv-test.f owns --load.
 \ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/memory.f \
 \   src/lib/fs.f src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f \
 \   src/lib/process-env.f src/lib/process-cwd.f tools/hb-open-failure-test.f
@@ -52,7 +36,6 @@ variable HOF-EXE-U
 : HOF-EXE$ ( -- ptr u8 n )
    HOF-EXE HOF-EXE-U @ ;
 
-\ Copy the built engine into a fresh empty temp dir and mark it executable.
 : HOF-SETUP ( -- )
    FS:CLEANUP-RESET
    s" hb-open-failure" FS:MKTEMP-DIR {: a:ptr u:n :}

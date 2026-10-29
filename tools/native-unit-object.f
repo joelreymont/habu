@@ -34,45 +34,43 @@ private
 : BAD ( -- ) E-NUNIT-PROFILE throw ;
 
 \ A FILE object holds every compiled colon definition of one source file with
-\ the file's input and dependency rows, and what the file adds to the
-\ dictionary and DATA. Slot 0 holds the definitions' sections back to back;
-\ slot 2 one INDEX-BYTES row per definition: its ordinal past the file's first
-\ record, the length of each DEF-SLOTS section in slot order, then the span of
-\ its name token in the file's source, start and end offsets, 0 0 when the
-\ name came from other text: what the origin journal records; slot 11 the
-\ input rows; slot 14 the dependency rows. The file's own records fall in
-\ segments, each a maximal run between child loads: slot 12 holds one
-\ EVENT-BYTES row per segment and per child load, in load order, each
-\ segment row followed by the FFI registry rows its code declared and a row
-\ per TASK:+USER slot word it made. Over the
+\ the file's input and dependency rows, and what the file adds to the dictionary
+\ and DATA. Slot 0 holds the definitions' sections back to back; slot 2 one
+\ INDEX-BYTES row per definition: its ordinal past the file's first record, the
+\ length of each DEF-SLOTS section in slot order, then the span of its name
+\ token in the file's source, start and end offsets, 0 0 when the name came from
+\ other text: what the origin journal records; slot 11 the input rows; slot 14
+\ the dependency rows. The file's own records fall in segments, each a maximal
+\ run between child loads: slot 12 holds one EVENT-BYTES row per segment and per
+\ child load, in load order, each segment row followed by the FFI registry rows
+\ its code declared and a row per TASK:+USER slot word it made. Over the
 \ segments in order, slot 1 holds one RECORD-BYTES row per record, slot 6 the
-\ DATA they allotted and slot 4 one WL-BYTES row per wordlist they made.
-\ Slot 8 is empty. Slot 3 holds the
-\ names record and load rows point at, slot 13 the references record and slot
-\ rows name, in NFILE-REF ENCODE format with no declarations, and slot 16 the
-\ namespace at the file's end. Slot 9 holds one SLOT-BYTES row per declared
-\ address cell the segments declared, in registration order, and slot 10 the literal bodies slot
-\ rows point into, in definition literal framing; a slot cell in the file's
-\ DATA is zero in slot 6. A write to an earlier file's address cell is a slot
-\ row too; any other earlier DATA byte the segments changed outside the
-\ storage owners' spans refuses the file, and slot 7 is empty. Slot 15 holds one
-\ PIN-BYTES row per owner of a DATA address a stored cell holds raw: the
-\ owner's reference, the closing file's segment or an earlier declaration,
-\ then its DATA base at capture. Slot 5 holds the checker state the file
-\ added, one slice before each child load and one at its end: the slice
-\ count, the count of slot 13 references the slices name, those references,
-\ then each slice's length and bytes padded to a cell. Slot 17 holds the body
-\ of each constant record row, in row order: its recorded code length, then
-\ the code bytes its load emitted. Slot 18 holds the origin sink the file
-\ loaded under, then one ORIGIN-BYTES row per definition the sink recorded,
-\ in the order its segments recorded them: its ordinal past the file's
-\ first record, its name token's span, and the
-\ name's and path's offsets and lengths in slot 3, a zero span and path when
-\ the row is unlocated. Slot 19 holds the output operations the file's top
-\ level issued, segment after segment, one record each: its kind (OUT-EMIT or
-\ OUT-WRITE) and byte length, then its bytes, an emit's character as one
-\ cell. A segment that issued one adds one OUT row after its SEGMENT and FFI
-\ rows, also when it adds no SEGMENT row.
+\ DATA they allotted and slot 4 one WL-BYTES row per wordlist they made. Slot 8
+\ is empty. Slot 3 holds the names record and load rows point at, slot 13 the
+\ references record and slot rows name, in NFILE-REF ENCODE format with no
+\ declarations, and slot 16 the namespace at the file's end. Slot 9 holds one
+\ SLOT-BYTES row per declared address cell the segments declared, in
+\ registration order, and slot 10 the literal bodies slot rows point into, in
+\ definition literal framing; a slot cell in the file's DATA is zero in slot 6.
+\ A write to an earlier file's address cell is a slot row too; any other earlier
+\ DATA byte the segments changed outside the storage owners' spans refuses the
+\ file, and slot 7 is empty. Slot 15 holds one PIN-BYTES row per owner of a DATA
+\ address a stored cell holds raw: the owner's reference, the closing file's
+\ segment or an earlier declaration, then its DATA base at capture. Slot 5 holds
+\ the checker state the file added, one slice before each child load and one at
+\ its end: the slice count, the count of slot 13 references the slices name,
+\ those references, then each slice's length and bytes padded to a cell. Slot 17
+\ holds the body of each constant record row, in row order: its recorded code
+\ length, then the code bytes its load emitted. Slot 18 holds the origin sink
+\ the file loaded under, then one ORIGIN-BYTES row per definition the sink
+\ recorded, in the order its segments recorded them: its ordinal past the file's
+\ first record, its name token's span, and the name's and path's offsets and
+\ lengths in slot 3, a zero span and path when the row is unlocated. Slot 19
+\ holds the output operations the file's top level issued, segment after
+\ segment, one record each: its kind (OUT-EMIT or OUT-WRITE) and byte length,
+\ then its bytes, an emit's character as one cell. A segment that issued one
+\ adds one OUT row after its SEGMENT and FFI rows, also when it adds no SEGMENT
+\ row.
 42031 constant DEF-SLOTS
 14 constant DEPS-SLOT
 \ An index row's name span: after the ordinal and the eight section lengths.
@@ -93,25 +91,23 @@ private
 1 constant WL-PUBLIC    \ namespace-record's public wordlist: its package row makes it
 2 constant WL-PRIVATE   \ namespace-private of the row the reference names
 \ An event row. SEGMENT: kind, first ordinal past the file's first record,
-\ records, DATA bytes, wordlists, where in a cell HERE stood at its
-\ open, and the file's dependency row count at its close. LOAD: kind, load
-\ kind, source offset in the loading file, the requested path's offset and
-\ length, the source offset the loading file resumes at, and the file's
-\ dependency row count and input bytes when the action started. Every
-\ loader action of the file's own source writes one, whether it ran its
-\ child or found it loaded, once it started at a loader cut and returned
-\ with the loading file balanced at its resume offset; a file with any other
-\ load stores no object. FFI-LIB: kind, path
-\ offset and length, the library's index. FFI-FN: kind, symbol offset and
-\ length, library index, argument and spill counts, the function's index
-\ and its relocation mask.
-\ FFI-SCOPE: kind, role (0 the declarer's selection when the segment opened,
-\ 1 when it closed), library index, the scope wordlist's reference and 1
-\ when a scope was stated. TASK: kind, TASK's user-slot watermark at the
-\ segment's open and at its close. USER: kind, the slot word's ordinal past
-\ the file's first record, the slot's DATA offset and size, and the offsets
-\ in slot 3 of the slot's bytes as the segment's close found them and as its
-\ declaration found them. OUT: kind, the bytes' offset in slot 19 and their
+\ records, DATA bytes, wordlists, where in a cell HERE stood at its open, and
+\ the file's dependency row count at its close. LOAD: kind, load kind, source
+\ offset in the loading file, the requested path's offset and length, the source
+\ offset the loading file resumes at, and the file's dependency row count and
+\ input bytes when the action started. Every loader action of the file's own
+\ source writes one, whether it ran its child or found it loaded, once it
+\ started at a loader cut and returned with the loading file balanced at its
+\ resume offset; a file with any other load stores no object. FFI-LIB: kind,
+\ path offset and length, the library's index. FFI-FN: kind, symbol offset and
+\ length, library index, argument and spill counts, the function's index and its
+\ relocation mask. FFI-SCOPE: kind, role (0 the declarer's selection when the
+\ segment opened, 1 when it closed), library index, the scope wordlist's
+\ reference and 1 when a scope was stated. TASK: kind, TASK's user-slot
+\ watermark at the segment's open and at its close. USER: kind, the slot word's
+\ ordinal past the file's first record, the slot's DATA offset and size, and the
+\ offsets in slot 3 of the slot's bytes as the segment's close found them and as
+\ its declaration found them. OUT: kind, the bytes' offset in slot 19 and their
 \ length. Unused cells are 0.
 88 constant EVENT-BYTES
 \ An origin row: ordinal, start, end, name offset and length, path offset and
@@ -164,10 +160,9 @@ public
 
 private
 
-\ After a SEGMENT row, in order: the declarer's selection at the segment's
-\ open, one row per library or function
-\ declaration it made, reused rows included, and the selection at its close
-\ when that differs.
+\ After a SEGMENT row, in order: the declarer's selection at the segment's open,
+\ one row per library or function declaration it made, reused rows included, and
+\ the selection at its close when that differs.
 3 constant EV-FFI-LIB
 4 constant EV-FFI-FN
 5 constant EV-FFI-SCOPE
@@ -198,23 +193,21 @@ private
 9 constant EV-HIST
 \ One frame per open file: the buffers' used sizes when it opened, its first
 \ record ordinal, the open segment's marks (first ordinal, HERE, wordlist
-\ counter, address cell rows), the address cell row before the open
-\ segment's first, the bytes its
-\ segments' before-images copied, the earlier DATA sites recorded when it
-\ opened, the checker slice bytes and reference entries when it opened, its
-\ checker slice count, 1 while a checker mark is open, the open segment's
-\ FFI registry marks: the selected bank's next function index, the tables'
-\ room and the declarer's selection (library, scope wordlist, 1 when a scope
-\ was stated), the origin bytes when it opened, its sink cell first, the
-\ segment DATA bytes and the DATA floor (POOL-FLOOR) when it opened, the
-\ output bytes when it and its open segment opened, 1 while a loader action
-\ of its own source is pending, the open segment's TASK user-slot watermark
-\ with 1 when TASK was bound to read it, the compiler's identity counters at
-\ its open (module serial, context gen and epoch, builder gen, lease) with 1
-\ when the compiler's session was live, and the pending action's first
-\ ordinal, source offset, dependency row count and input bytes.
-\ A child file's bytes and sites follow its parent's and are dropped when
-\ the child closes.
+\ counter, address cell rows), the address cell row before the open segment's
+\ first, the bytes its segments' before-images copied, the earlier DATA sites
+\ recorded when it opened, the checker slice bytes and reference entries when it
+\ opened, its checker slice count, 1 while a checker mark is open, the open
+\ segment's FFI registry marks: the selected bank's next function index, the
+\ tables' room and the declarer's selection (library, scope wordlist, 1 when a
+\ scope was stated), the origin bytes when it opened, its sink cell first, the
+\ segment DATA bytes and the DATA floor (POOL-FLOOR) when it opened, the output
+\ bytes when it and its open segment opened, 1 while a loader action of its own
+\ source is pending, the open segment's TASK user-slot watermark with 1 when
+\ TASK was bound to read it, the compiler's identity counters at its open
+\ (module serial, context gen and epoch, builder gen, lease) with 1 when the
+\ compiler's session was live, and the pending action's first ordinal, source
+\ offset, dependency row count and input bytes. A child file's bytes and sites
+\ follow its parent's and are dropped when the child closes.
 0 constant FO-DEFS
 1 constant FO-INDEX
 2 constant FO-INPUTS
@@ -257,16 +250,15 @@ private
 39 constant FO-ACT-ROWS
 40 constant FO-ACT-INPUTS
 41 constant FO-CELLS
-\ An event row in memory, cell 1 an ordinal in both kinds so a dictionary
-\ cut finds the rows it retired. SEGMENT: kind, first ordinal, records, HERE,
-\ DATA bytes, first wordlist, wordlists, first
-\ address cell row, rows, the first and last rows' values, the file's
-\ dependency row count at its close and its DATA bytes' offset in SEG-DATA.
-\ LOAD: kind, the first ordinal past the
-\ action's start, load kind, source offset, path offset and length in
-\ FILE-NAMES, the resume offset, the file's dependency row count and input
-\ bytes at the action's start, then zeros. OUT: kind, the segment's first ordinal, the bytes'
-\ offset in FILE-OUTPUT and their length, then zeros.
+\ An event row in memory, cell 1 an ordinal in both kinds so a dictionary cut
+\ finds the rows it retired. SEGMENT: kind, first ordinal, records, HERE, DATA
+\ bytes, first wordlist, wordlists, first address cell row, rows, the first and
+\ last rows' values, the file's dependency row count at its close and its DATA
+\ bytes' offset in SEG-DATA. LOAD: kind, the first ordinal past the action's
+\ start, load kind, source offset, path offset and length in FILE-NAMES, the
+\ resume offset, the file's dependency row count and input bytes at the action's
+\ start, then zeros. OUT: kind, the segment's first ordinal, the bytes' offset
+\ in FILE-OUTPUT and their length, then zeros.
 13 constant EV-CELLS
 DYNAMIC-BUFFER FILE-DEFS u8
 DYNAMIC-BUFFER FILE-INDEX u8
@@ -477,12 +469,10 @@ CAST: USER-NEXT-XT ( n -- [ [ ptr u8 -- ] -- ] )
 \ Field n of file frame k, outermost first.
 : FRAME ( n n -- ptr n ) swap FO-CELLS * + FILE-FRAMES ;
 
-\ Field n of the innermost file frame.
 : FO ( n -- ptr n )
    FO-DEPTH @ 0 <= if BAD then
    FO-DEPTH @ 1- swap FRAME ;
 
-\ Field n of event row k.
 : EV ( n n -- ptr n ) swap EV-CELLS * + FILE-EVENTS ;
 
 \ Field n of segment map row m, and of the installing segment's row.
@@ -589,7 +579,6 @@ CAST: USER-NEXT-XT ( n -- [ [ ptr u8 -- ] -- ] )
    last first = if NULL-PTR 0 exit then
    first FILE-OUT last first - ;
 
-\ The DATA bytes at address va.
 : DATA-PTR ( n -- ptr u8 )
    {: va:n :}
    data-base BYTE-VIEW va DATA-VA VA>N - + ;
@@ -630,7 +619,6 @@ variable USER-PUT
    OBS-ON @ 0= if exit then
    s" FFI:UNOBSERVE" FFI-XT DEF-ACTION-XT execute 0 OBS-ON ! ;
 
-\ Whether open file k holds a refusal reason.
 : FRAME-REFUSED? ( n -- bool )
    {: k:n :}
    k WHY-END k FO-WHY FRAME @ > ;
@@ -657,13 +645,11 @@ public
 : FILE-OPEN? ( -- bool ) FO-DEPTH @ 0 > ;
 : FILE-REFUSED? ( -- bool ) FO-DEPTH @ 1- FRAME-REFUSED? ;
 
-\ The innermost file keeps its first refusal reason, and under the cache
-\ diagnostics every later one; it writes no object.
+\ FRAME-REFUSE of the innermost file.
 : FILE-REFUSE ( ptr u8 n -- )
    FILE-OPEN? 0= if 2drop exit then
    FO-DEPTH @ 1- FRAME-REFUSE ;
 
-\ Every open file refuses.
 : REFUSE-ALL ( ptr u8 n -- )
    {: reason:ptr reasonu:n :}
    FO-DEPTH @ 0 ?do reason reasonu i FRAME-REFUSE loop ;
@@ -686,7 +672,6 @@ private
 
 public
 
-\ Record a write the top level issued, in the innermost open file.
 : OUTPUT+ ( ptr u8 n -- )
    {: a:ptr u:n :}
    FILE-OPEN? 0= if exit then
@@ -694,7 +679,6 @@ public
    a OUTPUT-U @ FILE-OUTPUT u BYTE-COPY
    u OUTPUT-U +! ;
 
-\ Record an emit the top level issued, in the innermost open file.
 : EMIT+ ( n -- )
    {: c:n :}
    FILE-OPEN? 0= if exit then
@@ -725,7 +709,6 @@ public
 
 private
 
-\ The live address cell declarations.
 : SLOT-COUNT ( -- n ) ADDRESS-CELLS:LIVE-SPAN nip ;
 
 \ Address cell row idx is live and holds raw. Rows are only appended, and a
@@ -801,13 +784,13 @@ private
    dup 0= if drop exit then
    DEF-ACTION-XT execute ;
 
-\ Copy DATA from the process floor to HERE, then each slot an earlier
-\ segment's slot word holds, as the open segment's
-\ before-image, counting the bytes against the innermost file, and mark the
-\ segment's address cell rows and kernel cells, after the hooks the caller
-\ set for the segment, so their writes are never the file's. A refused file
-\ takes no image. The floor is HERE at the process's first image, lowered to
-\ HERE when a rewound dictionary leaves HERE below it.
+\ Copy DATA from the process floor to HERE, then each slot an earlier segment's
+\ slot word holds, as the open segment's before-image, counting the bytes
+\ against the innermost file, and mark the segment's address cell rows and
+\ kernel cells, after the hooks the caller set for the segment, so their writes
+\ are never the file's. A refused file takes no image. The floor is HERE at the
+\ process's first image, lowered to HERE when a rewound dictionary leaves HERE
+\ below it.
 : IMAGE-TAKE ( -- )
    SCRATCH-RETIRE
    SLOTS-MARK
@@ -896,7 +879,6 @@ private
 : COUNTERS ( -- n n n n n )
    IR-ID:SERIAL-HISTORY IR-CTX:HISTORY IR-BUILD:HISTORY NLEASE:HISTORY ;
 
-\ 1 when the compiler's session is live, else 0.
 : LIVE-N ( -- n ) NCOMP:SESSION-LIVE? if 1 else 0 then ;
 
 \ A segment opens and closes outside an FFI declaration: its object carries
@@ -905,7 +887,6 @@ private
 : DECL-CLOSED-CK ( -- )
    s" FFI:PENDING" FFI-N 0<> if s" ffi-declaration-open" FILE-REFUSE then ;
 
-\ Open the innermost file's next segment at the present cursors.
 : SEGMENT-OPEN ( -- )
    ndict@ FO-SEG-ORD FO !
    AOT-ARM:HERE-N FO-SEG-HERE FO !
@@ -1028,23 +1009,21 @@ private
    u 0= if exit then
    EV-OUT first FO-SEG-OUT FO @ u 0 0 0 0 0 EV+ ;
 
-\ Close the innermost file's open segment as one SEGMENT row, or none when
-\ it added no record, DATA, wordlist or address cell row. HERE or
-\ an address record going back, the segment opening below the end of the
-\ file's last SEGMENT row (a child rewound DATA into it), the DATA floor
-\ moving (a literal pool segment opened at HERE), the wordlist counter going
-\ back, or an address cell row removed below the segment's first refuses
-\ it. The row records the values of its first and last address cell rows, which the
-\ file's encoding checks again; its slot words add their USER rows, and a
-\ segment that moved TASK's user-slot watermark, either way, or ran a reader
-\ of it adds its TASK row, and one that moved the compiler's identity
-\ counters or opened its session its HIST row. A segment that closed a
-\ session live at its open refuses it: a replay cannot close one. A segment
-\ that opens or closes inside an FFI declaration refuses
+\ Close the innermost file's open segment as one SEGMENT row, or none when it
+\ added no record, DATA, wordlist or address cell row. HERE or an address record
+\ going back, the segment opening below the end of the file's last SEGMENT row
+\ (a child rewound DATA into it), the DATA floor moving (a literal pool segment
+\ opened at HERE), the wordlist counter going back, or an address cell row
+\ removed below the segment's first refuses it. The row records the values of
+\ its first and last address cell rows, which the file's encoding checks again;
+\ its slot words add their USER rows, and a segment that moved TASK's user-slot
+\ watermark, either way, or ran a reader of it adds its TASK row, and one that
+\ moved the compiler's identity counters or opened its session its HIST row. A
+\ segment that closed a session live at its open refuses it: a replay cannot
+\ close one. A segment that opens or closes inside an FFI declaration refuses
 \ ffi-declaration-open (DECL-CLOSED-CK). The earlier DATA bytes the segment
 \ changed are recorded whether or not it adds a row; a kernel cell it left
-\ changed refuses it. Output its top level wrote adds an OUT row after the
-\ rest.
+\ changed refuses it. Output its top level wrote adds an OUT row after the rest.
 : SEGMENT-CLOSE ( -- )
    OBS-CLEAR
    SEG-DELTAS {: dmod:n dgen:n depoch:n dbuild:n dlease:n :}
@@ -1176,7 +1155,6 @@ CAST: CK-EXPORT-XT ( n -- [ [ ptr u8 n -- n ] -- ptr u8 n ] )
    then
    rc throw ;
 
-\ Event row k is a SEGMENT row.
 : SEG? ( n -- bool ) 0 EV @ EV-SEGMENT = ;
 
 \ The closing file's record row of its own record ord, -1 when another file
@@ -1434,7 +1412,6 @@ public
    SEGMENT-OPEN CHECK-MARK IMAGE-TAKE
    0 FO-ACT FO ! ;
 
-\ The innermost file loaded under origin sink kind.
 : ORIGIN-SINK! ( n -- ) FO-ORIGIN FO @ FILE-ORIGIN LE:U64! ;
 
 \ The innermost file's origin row: the definition at ord, its name token's
@@ -1477,7 +1454,6 @@ public
 \ records no changes.
 : SEGMENT-IMAGE ( -- ) FILE-OPEN? if IMAGE-TAKE then ;
 
-\ The bytes the innermost file's before-images copied.
 : IMAGE-BYTES ( -- n ) FO-IMAGE FO @ ;
 
 : REASON$ ( -- ptr u8 n )
@@ -1997,7 +1973,8 @@ variable DEF-HELD-SIZE
    DEF-RESET ;
 
 \ The metadata row's own bounds, with no session state: the recorded length
-\ matches the code bytes, the code is whole instructions, the flags are in range.
+\ matches the code bytes, the code is whole instructions, the flags are in
+\ range.
 : META-CK ( ptr u8 n -- )
    {: meta:ptr size:n :}
    size DEF-META-BYTES <> if BAD then
@@ -2280,10 +2257,8 @@ private
 
 public
 
-\ The dictionary ordinal of the innermost file's definition row n.
 : FILE-ORD ( n -- n ) INDEX-ROW FILE-ORDS @ ;
 
-\ The name span of the innermost file's definition row n.
 : FILE-SPAN ( n -- n n )
    INDEX-ROW INDEX-BYTES * {: off:n :}
    off SPAN-AT + FILE-INDEX LE:U64@ off SPAN-END + FILE-INDEX LE:U64@ ;
@@ -2459,7 +2434,6 @@ CAST: N>U8 ( n -- ptr u8 )
    ord ORD-ROW {: row:n :}
    RK-COLON row 0 row 0 >= ;
 
-\ One RECORD-BYTES row for record ord.
 : RECORD-ROW ( n -- )
    {: ord:n :}
    ord XREF-REC {: rec:ptr :}
@@ -3085,15 +3059,14 @@ CAST: OWNER-CELL-FN ( n -- [ [ ptr u8 -- ] -- ] )
 
 public
 
-\ Encode the innermost file's records, DATA, wordlist rows,
-\ events, slots, slot literals, checker slices and pins into FILE-OUT,
-\ closing its last segment. A file that lacks a checker slice per load,
-\ whose records, slots or checker references cannot all encode, that changed
-\ earlier DATA no owner restores (EARLIER-REFUSE), or whose DATA holds an
-\ undeclared address, refuses. A refused file encodes nothing; under the
-\ cache diagnostics it still names the earlier DATA it changed in the
-\ segments it closed before it refused, since a refused file takes no image
-\ (IMAGE-TAKE).
+\ Encode the innermost file's records, DATA, wordlist rows, events, slots, slot
+\ literals, checker slices and pins into FILE-OUT, closing its last segment. A
+\ file that lacks a checker slice per load, whose records, slots or checker
+\ references cannot all encode, that changed earlier DATA no owner restores
+\ (EARLIER-REFUSE), or whose DATA holds an undeclared address, refuses. A
+\ refused file encodes nothing; under the cache diagnostics it still names the
+\ earlier DATA it changed in the segments it closed before it refused, since a
+\ refused file takes no image (IMAGE-TAKE).
 : FILE-ENCODE ( -- )
    FILE-OPEN? 0= if BAD then
    SEGMENT-CLOSE
@@ -3251,10 +3224,8 @@ private
    litsu <> if BAD then
    13 NUNIT-FILE:SECTION$ nip 0= if BAD then ;
 
-\ Field k of the u64 row at row.
 : U64-AT ( ptr u8 n -- n ) 8 * + LE:U64@ ;
 
-\ off and len frame a span within room bytes.
 : SPAN-CK ( n n n -- )
    {: off:n len:n room:n :}
    off 0 < len 0 < or off room > or len room off - > or if BAD then ;
@@ -3593,14 +3564,13 @@ private
    secu <> if BAD then
    slices OPEN-CHECKS ! ;
 
-\ off and u frame bytes within size bytes.
 : SPAN-IN? ( n n n -- bool )
    {: off:n u:n size:n :}
    off 0 >= u 0 >= and off size <= and u size off - <= and ;
 
-\ Slot 18's framing: a sink kind, then whole rows, none without a sink, each naming one of the
-\ file's records, a name and path within namesu bytes of slot 3, and an
-\ ordered span, zero when the row has no path.
+\ Slot 18's framing: a sink kind, then whole rows, none without a sink, each
+\ naming one of the file's records, a name and path within namesu bytes of slot
+\ 3, and an ordered span, zero when the row has no path.
 : ORIGIN-FRAMED? ( ptr u8 n n -- bool )
    {: sec:ptr secu:n namesu:n :}
    secu 8 < if false exit then
@@ -3876,7 +3846,6 @@ private
 
 public
 
-\ Bind the segment map as the resolver of FILE objects' own references.
 : BIND-LOCAL ( -- ) ['] MAP-LOCAL NFILE-REF:LOCAL-AT! ;
 
 \ Install the checker slices from the next one through slice n, the one the
@@ -4022,12 +3991,10 @@ TRUSTED: SLOT-STORE ( n n n -- )
    then
    ref 0 NFILE-REF:REF>DATA NULL-PTR BYTE-VIEW - ;
 
-\ Install slot row row: its value stored in its cell.
 : SLOT-ROW! ( ptr u8 -- )
    {: row:ptr :}
    row SLOT-VALUE row SLOT-CELL row 1 U64-AT SLOT-STORE ;
 
-\ The viewed object's slot row k.
 : SLOT-AT ( n -- ptr u8 ) 9 NUNIT-FILE:SECTION$ drop swap SLOT-BYTES * + ;
 : SLOT-ROWS ( -- n ) 9 NUNIT-FILE:SECTION$ nip SLOT-BYTES / ;
 
@@ -4437,14 +4404,13 @@ public
    at INS-MAP-AT ! segs INS-SEGS !
    rc 0<> if rc throw then ;
 
-\ Event row seg, a segment: its records with its DATA bytes, the wordlists
-\ it made, through its package rows and WID-REACH for the rest, and their
-\ protection, its FFI rows, its slots' bytes, its TASK row,
-\ its HIST row, then the checker slices through its own. The file's first
-\ segment starts at the file's first ordinal and adds its map row here; one
-\ after a load starts wherever the loads left the dictionary, and
-\ PREPARE-SEGMENT added its map row and prepared its checker slice. Every
-\ refusal here is a malformed object.
+\ Event row seg, a segment: its records with its DATA bytes, the wordlists it
+\ made, through its package rows and WID-REACH for the rest, and their
+\ protection, its FFI rows, its slots' bytes, its TASK row, its HIST row, then
+\ the checker slices through its own. The file's first segment starts at the
+\ file's first ordinal and adds its map row here; one after a load starts
+\ wherever the loads left the dictionary, and PREPARE-SEGMENT added its map row
+\ and prepared its checker slice. Every refusal here is a malformed object.
 : INSTALL-SEGMENT ( n -- )
    {: seg:n :}
    seg OBJ-EV {: ev:ptr :}
@@ -4650,11 +4616,11 @@ public
 \ Whether every installed namespace row that segment row seg's wordlist rows
 \ give a private wordlist is live and still has none, declaring nothing: an
 \ earlier file's, or one an earlier segment of this file made, which a file
-\ loaded since may have given one after the cold build. No dependency row
-\ checks that, so a hit never throws. A namespace row among the segment's
-\ own record rows, row rows on, is made by its install. The
-\ references are prepared as LIVE-NAME? prepares them; an earlier segment's
-\ record maps through the map row its install added.
+\ loaded since may have given one after the cold build. No dependency row checks
+\ that, so a hit never throws. A namespace row among the segment's own record
+\ rows, row rows on, is made by its install. The references are prepared as
+\ LIVE-NAME? prepares them; an earlier segment's record maps through the map row
+\ its install added.
 : WIDS-HOLD? ( n -- bool )
    {: seg:n :}
    seg SEG-BASES 2drop {: rows:n wbase:n :}
@@ -4896,19 +4862,18 @@ public
 
 \ The FILE object OPEN-FILE found is one the install replays: package,
 \ constant, address, cast, colon and deferred-word records, DATA bytes, slot
-\ rows in segments between child loads, on a checker that
-\ imports. Later lanes widen the rest. Slot 12 holds no SEGMENT row for a run that added
-\ nothing to the dictionary or DATA, so a file that
-\ added nothing and took no loader action has nothing to replay and loads
-\ from source; one that only loads replays its LOAD rows. The install makes
-\ the file's wordlists in order, each as its slot 4 row says: a package
-\ row's public one through namespace-record, a private one through
-\ namespace-private of the namespace row its owner names, a rolled-back
-\ declaration's or a bare `wordlist`'s through `wordlist` (WID-REACH), then
-\ protects the ones its row marks. The first segment's data alignment is checked here, when
-\ it opens the file; a later one's at its install. The answer names the
-\ first part it cannot replay, for the miss; empty when it can install the
-\ whole object.
+\ rows in segments between child loads, on a checker that imports. Slot 12
+\ holds no SEGMENT row for a run that added nothing to the dictionary or DATA,
+\ so a file that added nothing and took no loader action has nothing to
+\ replay and loads from source; one that only loads replays its LOAD rows.
+\ The install makes the file's wordlists in order, each as its slot 4 row
+\ says: a package row's public one through namespace-record, a private one
+\ through namespace-private of the namespace row its owner names, a
+\ rolled-back declaration's or a bare `wordlist`'s through `wordlist`
+\ (WID-REACH), then protects the ones its row marks. The first segment's
+\ data alignment is checked here, when it opens the file; a later one's at
+\ its install. The answer names the first part it cannot replay, for the
+\ miss; empty when it can install the whole object.
 : UNSUPPORTED$ ( -- ptr u8 n )
    OPEN-SEGS @ 0= OPEN-LOADS @ 0= and if s" empty-file" exit then
    OPEN-PINS @ 0<> if s" unsupported-pins" exit then

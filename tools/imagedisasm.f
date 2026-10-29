@@ -2,7 +2,7 @@
 \ Run: bin/hb --load tools/imagedisasm.f -- image offset count
 
 require src/lib/string.f
-require src/lib/adt/option.f                 \ option<n> for the number parsers (switchover wave A)
+require src/lib/adt/option.f
 require src/arch/arm64/disasm.f
 require src/lib/fs.f
 
@@ -45,19 +45,19 @@ CAST: MAP>BYTES ( n -- ptr u8 )
    0 IMGD-LEN @ 1 2 IMGD-FD @ 0 mmap IMGD-MMAP-PTR IMGD-IMG!
    IMGD-FD @ close ;
 
-: IMGD-HEX-DIGIT ( n -- option<n> )   \ SOME hex digit value, else NONE
+: IMGD-HEX-DIGIT ( n -- option<n> )
    {: c:n :}
    c STR-ZERO >= c 57 <= and IF c STR-ZERO - OPTION:SOME EXIT THEN
    c ASCII-LOWER IMGD-LOWER !
    IMGD-LOWER @ 97 >= IMGD-LOWER @ 102 <= and IF IMGD-LOWER @ 87 - OPTION:SOME EXIT THEN
    OPTION:NONE ;
 
-: IMGD-HEX-STEP ( n n -- option<n> )   \ SOME accumulated value, NONE on overflow
+: IMGD-HEX-STEP ( n n -- option<n> )   \ NONE on overflow
    {: acc:n digit:n :}
    acc IMGD-HEX-MAX-PRE > IF OPTION:NONE EXIT THEN
    acc 16 * digit + OPTION:SOME ;
 
-: IMGD-PARSE-HEX ( ptr u8 n -- option<n> )   \ SOME parsed hex value, else NONE
+: IMGD-PARSE-HEX ( ptr u8 n -- option<n> )
    {: a:ptr u:n :}
    u 0= IF OPTION:NONE EXIT THEN
    0 IMGD-HEX-I !
@@ -89,7 +89,7 @@ CAST: MAP>BYTES ( n -- ptr u8 )
 
 public
 
-: IMGD>NUMBER? ( ptr u8 n -- option<n> )   \ SOME parsed $hex/0xhex/decimal, else NONE
+: IMGD>NUMBER? ( ptr u8 n -- option<n> )   \ accepts $hex, 0xhex and decimal
    IMGD-HEX-BODY IF IMGD-PARSE-HEX EXIT THEN
    STR>NUMBER? ;
 

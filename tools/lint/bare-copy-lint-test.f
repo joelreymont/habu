@@ -1,10 +1,7 @@
-\ bare-copy-lint-test.f - classification fixtures for the bare-copy lint.
-\
-\ Every case is a hostile one: prose that reads like a call, a longer name that
-\ starts the same way, the mint under its imported spelling, and a path that
-\ contains `src/lib/` without being owned by it. The scan under test is the same
-\ LINT-SCAN the tree census runs, so a fixture that passes here is a fact about
-\ the census and not about a copy of its rule.
+\ bare-copy-lint-test.f - hostile classification fixtures for the bare-copy lint:
+\ prose that reads like a call, a longer name with the same start, the mint under
+\ its imported spelling, a path containing `src/lib/` it is not owned by. The scan
+\ is the census's own LINT-SCAN, so a passing fixture is a fact about the census.
 
 require src/lib/string.f
 require src/lib/test.f

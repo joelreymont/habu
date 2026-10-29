@@ -4,16 +4,12 @@ require src/lib/string.f
 require src/lib/string-roles.f               \ package STR: the typed string surface
 require src/lib/memory.f
 require src/lib/fs.f
-require src/lib/adt/option.f                      \ option<n> finders (switchover: lint finder trio)
+require src/lib/adt/option.f                      \ option<n> finders
 
 \ ---- whole-file read -------------------------------------------------------
-\ open/read/close are engine prims: open ( path flags mode -- fd ), read ( fd
-\ buf n -- n ), close ( fd -- ). O_RDONLY = 0. READ-FILE hands its Habu path
-\ to FS:>PATHZ for the NUL-terminated copy open takes.
-\ Lint tools load this first so shared helpers fail closed under
-\ LINT-CHECK-HOOK. CHECK! (engine checker entrypoint) is modeled as a
-\ primitive axiom so the hook definition itself compiles checked.
-\ Retirement: habu-campaign-c2-mem-c3d7662b.
+\ Lint tools load this first, so shared helpers fail closed under
+\ LINT-CHECK-HOOK. CHECK! is a primitive axiom so the hook definition itself
+\ compiles checked.
 s" CHECK!" s" ptr u8 n -- n" TRUST
 
 : LINT-CHECK-HOOK ( ptr u8 n -- n )
@@ -73,6 +69,7 @@ variable LINT-OUT-ON
    2 msg msgu LINT-FD-WRITE
    path pathu 1 die ;
 
+\ open takes a NUL-terminated path, so FS:>PATHZ copies the Habu path first.
 : READ-FILE ( ptr u8 n ptr u8 n -- ptr u8 n )
    {: a:ptr u buf:ptr cap :}
    a u FS:>PATHZ 0 0 open  RFD !
@@ -89,13 +86,10 @@ variable LINT-OUT-ON
    RFD @ close
    buf RLEN @ ;
 
-\ Runtime-sized whole-file storage for a tool whose authoritative input grows
-\ over time. A fixed `create ... allot` buffer is the wrong shape for such an
-\ input: the day the file crosses the constant the tool dies mid-run and every
-\ answer it was going to give looks like the file's fault. A slab is three cells
-\ the CALLER owns - the backing pointer, the capacity behind it, and the length
-\ last read - so a tool that has to hold two files live at once declares two
-\ slabs instead of contending for one shared buffer.
+\ Runtime-sized whole-file storage for an input that grows: a fixed buffer dies
+\ mid-run the day the file crosses its constant. A slab is three cells the
+\ caller owns (backing pointer, capacity, length last read), so a tool holding
+\ two files live declares two slabs.
 package LINT-SLAB
 
 $1000000 constant MAX-BYTES
@@ -185,7 +179,6 @@ public
    u v < IF LINT-FALSE exit THEN
    a v b v LINT-STR= ;
 
-\ LINT-FIND-SUB: SOME offset of the first occurrence of sa/su in a/u, NONE if absent.
 : LINT-FIND-SUB ( ptr u8 n ptr u8 n -- option<n> ) {: a:ptr u:n sa:ptr su:n :}
    su 0= IF 0 OPTION:SOME exit THEN
    0 begin dup u su - <= while
@@ -200,7 +193,7 @@ public
 
 \ ---- more string ops for the linters ----
 : LINT-BMOVE ( ptr u8 ptr u8 n -- )
-   \ This helper has always treated negative lengths as an empty copy.
+   \ A negative length copies nothing.
    0 max BYTE-COPY ;
 
 : LINT-FOLD ( n -- n )
@@ -230,11 +223,10 @@ public
    0 begin dup u < while  dup a + c@ ASCII-UP  over dst + c!  1+  repeat  drop ;
 : LINT-WS? ( n -- bool )  dup 32 = over 9 = or over 10 = or swap LINT-CR = or ;
 \ Whether byte i of the span a u exists and is not whitespace (LINT-INK-AT?)
-\ or is whitespace (LINT-GAP-AT?): the guards of a word scan and of the gap
-\ before it. Each reads the byte only when i is inside the span. `i u < a i +
-\ c@ LINT-WS? 0= and` reads it anyway, since `and` evaluates both operands, and
-\ the byte past a span that fills its mapping is unmapped: a source ending on a
-\ 64 KiB boundary faulted public-signatures.
+\ or is whitespace (LINT-GAP-AT?). Each reads the byte only when i is inside
+\ the span: `and` evaluates both operands, and the byte past a span that fills
+\ its mapping is unmapped (a source ending on a 64 KiB boundary faulted
+\ public-signatures).
 : LINT-INK-AT? ( ptr u8 n n -- bool )
    {: a:ptr u:n i:n :}
    i u >= IF LINT-FALSE exit THEN
@@ -265,25 +257,10 @@ public
       dup a + c@ c = IF swap 1+ swap THEN  1+
    repeat  drop ;
 
-\ Shared split results: a table of (offset, length) rows pointing into the
-\ caller's source string.
-\
-\ WHY IT IS A PACKAGE AND NOT SIX GLOBALS. Its storage used to be the global
-\ names SMAX/SOFF/SLEN/SN#, and `SLEN` is also the line length the engine's own
-\ baked line editor (src/habu/repl.f) publishes. Those two never met while the
-\ AOT seed ran on the interactive REPL only; the seed now runs at the end of the
-\ engine prefix on EVERY boot (dot habu-decide-arm-the-5234727b), so both names
-\ would land in one dictionary and the second one to arrive dies `duplicate
-\ definition` before this file's first lint runs. The package is the namespace
-\ that keeps them apart, and it is what docs/forth.md asks of a module anyway.
-\ The two scan cursors are the package's own for the same reason the storage is:
-\ the split words used to borrow READ-FILE's RGOT/RLEN, so a split during a read
-\ walked over the read's cursor.
-\ The public spellings are the ones the six consumers already call, so they call
-\ them bare through `using LINT-SPLIT` and no consumer body moves; renaming them
-\ would have edited definitions in two files that carry no package yet, and the
-\ package lint would then have demanded those files - and, transitively, their
-\ own consumers - migrate inside this dot.
+\ Shared split results: (offset, length) rows into the caller's source string.
+\ The scan cursors are the package's own, so a split during a read never moves
+\ READ-FILE's.
+\ Consumers call the public words bare through `using LINT-SPLIT`.
 package LINT-SPLIT
 private
 

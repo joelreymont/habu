@@ -2,12 +2,7 @@
 \ definition too deep to check (rewrite_uncheckable), a row-typed dup mismatch,
 \ a data-stack mismatch that outranks a return-stack leak, and a quotation's
 \ own return-stack leak.
-\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/memory.f
-\ src/lib/vector.f src/lib/fs.f src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f
-\ tools/lint/text.f tools/lint/token.f tools/lint/lib.f
-\ src/lib/source-lex.f
-\ tools/check-all-errors-core.f tools/cli-run.f
-\ tools/gate-json-assert-core.f tools/check-repair-hints-test.f
+\ Run: bin/hb --load tools/check-repair-hints-test.f
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -25,7 +20,7 @@ require src/lib/source-lex.f
 require tools/check-all-errors-core.f
 require tools/cli-run.f
 require tools/gate-json-assert-core.f
-require src/lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/fmt.f                        \ FMT:.INT
 
 package CHECK-REPAIR-HINTS-TEST
 

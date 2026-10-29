@@ -1,33 +1,8 @@
-\ aot-section-reach-lint.f — nothing may reach into the baked AOT payload
-\ section with ADR,.
-\
-\ WHY A LINT AND NOT A MEASUREMENT. The AOT section is the last of the three
-\ parts of an emitted image (src/arch/arm64/icode.f derives the code window from
-\ all three). It holds the captured compiler blob, the dictionary records, the
-\ relocation tables, the name pool and the captured DATA window: 30 KiB in the
-\ small engine and megabytes once the compiler chain is captured. ADR, reaches
-\ 1 MiB, so a reader that uses it works on every image anyone builds by hand and
-\ fails on the one that matters — the build dies `icode: adr out of reach`, at
-\ chain scale only, far from the line that caused it. That is exactly what
-\ happened (dot habu-reach-the-seed-d1326596: 29 sites at once).
-\ So the rule is about the SECTION and not about any measured distance: a
-\ reference into it goes through src/habu/habu2.f TADR,, whatever a particular
-\ label's offset happens to be today. Reordering the section's rows is then free,
-\ and this lint is what keeps the rule from decaying into the list of labels that
-\ were far enough to notice on the day it was written.
-\
-\ HOW THE SET IS DERIVED, NOT LISTED. The section's labels are read out of
-\ EMIT-AOT-SEED itself: inside that definition, `X LABEL@ LBL,` binds X here, so
-\ X is a member. Nothing is spelled out, so a row added to the section is covered
-\ the moment it is written. LIMGEND joins them because it is bound after the
-\ section, past everything the section can grow into.
-\
-\ Structure, not text: the three-token shape, the qualified-name tail rule and
-\ the label table live in tools/lint/label-triple.f, shared with the sibling
-\ startup lint and stated there. The scan runs on the shared string-aware lexer
-\ (src/lib/source-lex.f), so the same three tokens inside a comment, inside a
-\ string literal, or in the wrong order are not a binding and not a reference.
-\
+\ aot-section-reach-lint.f - nothing may reach into the baked AOT payload section
+\ with ADR,. The section grows to megabytes once the compiler chain is captured and
+\ ADR, reaches 1 MiB, so a far ADR, fails only at chain scale (`icode: adr out of
+\ reach`). A reference into it goes through src/habu/habu2.f TADR, whatever a
+\ label's offset is, so the section's rows may reorder freely.
 \ Run: bin/hb --load tools/aot-section-reach-lint.f
 
 require src/lib/errors.f
@@ -52,9 +27,8 @@ variable BAD  variable LI  variable IN-SECT
 : RESET ( -- )
    LINT-LABEL-TRIPLE:RESET  LINT-FALSE IN-SECT ! ;
 
-\ The section binds 33 labels today, well inside the shared table's cap. Its
-\ overflow is this named refusal rather than a silent truncation, because a
-\ dropped member is a member this lint stops checking.
+\ Overflow of the shared label table is a named refusal: a dropped member is one
+\ this lint stops checking.
 : CAP-FAIL ( -- )
    s" aot-section-reach-lint: more section labels than LMAX" 1 die ;
 
@@ -62,8 +36,9 @@ variable BAD  variable LI  variable IN-SECT
    LINT-LABEL-TRIPLE:ADD-LABEL LINT-NOT IF CAP-FAIL THEN ;
 
 \ ---- pass 1: the section's own labels ---------------------------------------
-\ IN-SECT opens on the `: EMIT-AOT-SEED` pair and closes on the definition's `;`.
-\ Both are whole WORD tokens, so neither can be forged from prose.
+\ Members are read from EMIT-AOT-SEED itself (`X LABEL@ LBL,` inside it binds X), so
+\ a row added to the section is covered at once. IN-SECT opens on the
+\ `: EMIT-AOT-SEED` pair and closes on its `;`, both whole WORD tokens.
 : SECT-OPEN? ( n -- bool ) {: k:n :}
    k 1+ LINT-LEX:COUNT >= IF LINT-FALSE exit THEN
    k s" :" LINT-LABEL-TRIPLE:LEX-WORD= LINT-NOT IF LINT-FALSE exit THEN
@@ -119,8 +94,10 @@ public
 \ bound inside EMIT-AOT-SEED, so pass 1 cannot find it and it is named here.
 : SEED-LABEL ( -- ) s" LIMGEND" ADD-LABEL ;
 
-\ Scan one already-loaded source. This is the whole lint; the file entry below
-\ and every fixture in the test go through it.
+\ Scan one already-loaded source; the file entry and every test fixture go through
+\ it. The three-token shape, the qualified-name tail rule and the label table live
+\ in tools/lint/label-triple.f. On the string-aware lexer (src/lib/source-lex.f) a
+\ triple inside a comment, a string or out of order is no binding.
 : SCAN-SOURCE ( ptr u8 n ptr u8 n -- ) {: pa:ptr pu:n a:ptr u:n :}
    a u LINT-LEX:SOURCE
    LINT-LEX:ERROR? IF pa pu LEX-FAIL THEN

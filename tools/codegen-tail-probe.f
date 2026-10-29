@@ -1,23 +1,8 @@
 \ codegen-tail-probe.f - which published routines end in a call followed by a
-\ return, read off the emitted code rather than off the source.
-\ One concern: the last two instructions of a word's compiled code.
-\
-\ WHY IT READS THE CODE AND NOT THE BODY. Source tokens are not machine
-\ instructions: lowering can add, remove or turn a call into a tail branch. The
-\ question a tail-call lane may act on is the machine's - is the instruction
-\ before the trailing return a branch-with-link - and this tool is where that
-\ question is asked.
-\
-\ Legacy body lengths exclude the final slot; explicit full spans include the
-\ terminal branch or trap. The record bit decides whether a trailer exists.
-\
-\ A routine with a guarded early exit has code past its first return, and one
-\ ending in a tail branch has no final return. The dictionary record states
-\ its extent; this probe and JITDUMP:JD both use that span.
-\
-\ THE NAMES ARE ARGUMENTS. A caller hands the tool the words it wants read, so a
-\ corpus lane names its own rows and nothing here has a list to keep in step with
-\ a case file.
+\ return, read off the emitted code: lowering can add, remove or turn a call into
+\ a tail branch. The words to read are arguments. The dictionary record states
+\ each extent, as for JITDUMP:JD: a legacy body length excludes the final slot, a
+\ full span (CODE-SPAN:FULL?) includes the terminal branch or trap.
 
 require src/lib/prelude.f
 require src/lib/errors.f
@@ -26,30 +11,20 @@ require src/habu/code-span.f
 require src/arch/arm64/disasm.f
 require src/compiler/native/branch.f
 require src/habu/code-bytes.f
-require src/lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/fmt.f                        \ FMT:.INT
 
 package NTAILPROBE
 
 private
 
-\ The branch forms and the displacement they carry are read through
-\ src/compiler/native/branch.f, which is the chain's one reader of that
-\ arithmetic. A probe with masks of its own would be a fourth copy of it, and
-\ the file that owns it exists because there were three.
+\ src/compiler/native/branch.f is the one reader of branch forms and their
+\ displacements; this probe keeps no masks of its own.
 NBR:INSN-BYTES constant INSN-BYTES
 
-\ The return. It used to be named here, because it is a whole word with no field
-\ in it and the branch reader owned only displacements. A second walk over
-\ emitted code now needs it too (tools/codegen-loop-inventory.f follows control
-\ through a span), so it moved to src/compiler/native/branch.f beside the branch
-\ forms rather than being spelled out twice.
 
-\ The instruction word at an address. The engine's code region is bytes, so the
-\ four are read and assembled little-endian, which is the order the machine the
-\ chain targets stores them in. The address arrives as a number, because
-\ XREF-START read it out of a dictionary record; CODE-BYTES:AT is the one place
-\ it becomes bytes, and it is bounded against the running image's code, so a
-\ record that claims a span the engine never emitted is refused here.
+\ Little-endian, the order the target stores. CODE-BYTES:AT bounds the address
+\ against the running image's code, so a record claiming a span the engine never
+\ emitted is refused.
 : W@ ( n -- n ) {: at:n :}
    at INSN-BYTES CODE-BYTES:AT drop {: p:ptr :}
    p c@
@@ -66,9 +41,8 @@ NBR:INSN-BYTES constant INSN-BYTES
 : RET? ( n -- bool )
    NBR:RET? ;
 
-\ The record of a word this tool was asked about. A name nothing published is a
-\ refusal rather than a row of zeroes, because a silent miss would read as "this
-\ routine does not end in a call" and that is the answer the lane acts on.
+\ An unpublished name is refused: a row of zeroes would read as "no tail call",
+\ the answer a lane acts on.
 : REC ( ptr u8 n -- ptr n ) {: a:ptr u:n :}
    a u XREF-FIND dup XREF-FOUND? 0= if drop E-CODEGEN-PROBE-SUBJECT throw then ;
 
@@ -78,19 +52,16 @@ NBR:INSN-BYTES constant INSN-BYTES
 : LEN ( ptr u8 n -- n )
    REC XREF-LEN ;
 
-\ A record too short to hold one instruction has no last instruction to read.
-\ Every predicate below asks this first and answers false, so the tool reports
-\ what such a record is - not a tail call - instead of throwing at a reader.
+\ The predicates answer false on a record shorter than one instruction instead of
+\ throwing at a reader.
 : READABLE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u LEN INSN-BYTES >= ;
 
 public
 
-\ The instruction word at the end of the word's recorded body.
 : LAST-BODY ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u START  a u LEN +  INSN-BYTES -  W@ ;
 
-\ And the one after it, which is where the trailing return lives.
 : TRAILER ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u REC XREF-RAW-LEN CODE-SPAN:FULL? if E-CODEGEN-PROBE-EXTENT throw then
    a u START  a u LEN +  W@ ;
@@ -101,40 +72,31 @@ public
    a u REC XREF-RAW-LEN CODE-SPAN:FULL? if false exit then
    a u TRAILER RET? ;
 
-\ How many instructions the recorded body holds.
 : INSNS ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u LEN INSN-BYTES / ;
 
-\ The instruction at an index of the body.
 : INSN@ ( ptr u8 n n -- n ) {: a:ptr u:n k:n :}
    a u START k INSN-BYTES * + W@ ;
 
-\ How many calls the routine really makes, counted from code rather than source.
 : CALLS ( ptr u8 n -- n ) {: a:ptr u:n :}
    0
    a u INSNS 0 ?do  a u i INSN@ BL? if 1+ then  loop ;
 
-\ Where the last of them is, or -1 for a routine that makes none. The lane's
-\ question is what stands between this instruction and the return.
 : LAST-CALL-IX ( ptr u8 n -- n ) {: a:ptr u:n :}
    -1
    a u INSNS 0 ?do  a u i INSN@ BL? if drop i then  loop ;
 
-\ And how many instructions do stand there. A call in tail position is followed
-\ by the routine's own teardown and nothing else, so this number is what a lane
-\ reads before and after its change: it is the epilogue the tail form deletes.
+\ The epilogue a tail form deletes: a lane reads this before and after its
+\ change.
 : AFTER-LAST-CALL ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u LAST-CALL-IX {: k:n :}
    k 0 < if -1 exit then
    a u INSNS 1- k - ;
 
-\ Whether the routine leaves through a branch to somewhere that is not itself,
-\ which is what the lowering makes of a tail call. The target decides it, not
-\ the opcode: a loop's back edge is an unconditional branch too, and asking only
-\ whether the last instruction is a `b` reports one as a tail branch.
 : LAST-BODY-AT ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u START  a u INSNS 1- INSN-BYTES *  + ;
 
+\ The target decides, not the opcode: a loop's back edge is a `b` too.
 : TAIL-BRANCH? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u READABLE? 0= if false exit then
    a u LAST-BODY B? 0= if false exit then
@@ -142,13 +104,11 @@ public
    t a u START < if true exit then
    t a u START a u LEN + > ;
 
-\ The shared dictionary contract owns extents; branch analysis above describes
-\ control flow and never supplies a missing length or borrows adjacent bytes.
+\ The record owns the extent; branch analysis never supplies a missing length or
+\ borrows adjacent bytes.
 : CODE-BYTES ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u REC XREF-CODE-BYTES ;
 
-\ One line per word: its recorded length, the calls it makes, what follows the
-\ last of them, and whether it leaves through a branch.
 : REPORT1 ( ptr u8 n -- ) {: a:ptr u:n :}
    a u type
    s"  bytes " type a u LEN FMT:.INT
@@ -158,8 +118,8 @@ public
    a u TRAILER-RET? 0= if s"  no trailing return" type then
    cr ;
 
-\ The whole of a word's compiled code with its trailing return, so a report can
-\ show what moved rather than assert it.
+\ With the trailing return, so a report shows what moved rather than asserting
+\ it.
 : DUMP ( ptr u8 n -- ) {: a:ptr u:n :}
    s" --- " type a u type s"  bytes " type a u LEN FMT:.INT cr
    a u CODE-BYTES INSN-BYTES / 0 ?do

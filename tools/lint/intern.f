@@ -52,12 +52,10 @@ CAST: ITEM>N ( NUM:item-count -- n )
    INTERN-CHUNK-USED-V INTERN-CHUNK-VEC-CAP VEC:N>ITEM VEC:INIT
    1 INTERN-READY ! ;
 
-\ live interned count
 : INTERN# ( -- n )
    INTERN-INIT-ONCE
    0 INTERN-ADDR-V VEC:LEN@ ITEM>N ;
 
-\ live chunk count
 : INTERN-CHUNK# ( -- n )
    0 INTERN-CHUNK-A-V VEC:LEN@ ITEM>N ;
 

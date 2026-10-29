@@ -10,18 +10,16 @@ variable P2U
 : P2A! ( ptr u8 -- ) P2A ! ;
 
 \ ---- attributed CLI failure -------------------------------------------------
-\ Route lint CLI entrypoints through LINT-MAIN so an uncaught throw (e.g. an
-\ E-LINT-*-CAP limit) names the tool and code instead of dying rc-only: the
-\ CLI catches its strict entry, then `s" tool" code LINT-MAIN` prints
-\ `tool: threw <code> (<name>)` and re-throws the same code, keeping the exit
-\ status identical. Output goes through LINT-OUT-WRITE so tests can capture it.
+\ A lint CLI catches its strict entry and calls `s" tool" code LINT-MAIN`, which
+\ prints `tool: threw <code> (<name>)` through LINT-OUT-WRITE and rethrows the
+\ same code, so the exit status is unchanged.
 
 24 constant LINT-MAIN-NCAP
 create LINT-MAIN-NBUF LINT-MAIN-NCAP allot
 create LINT-MAIN-LFB 1 allot
 variable LINT-MAIN-NI
 
-: LINT-MAIN-N$ ( n -- ptr u8 n ) {: v:n :}   \ signed decimal render
+: LINT-MAIN-N$ ( n -- ptr u8 n ) {: v:n :}
    LINT-MAIN-NCAP LINT-MAIN-NI !
    v 0= IF s" 0" exit THEN
    v 0 < IF 0 v - ELSE v THEN

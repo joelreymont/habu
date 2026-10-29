@@ -1,26 +1,7 @@
 \ hb-build-test-lib.f - the fixture the hb-build gate rows share: the scratch
-\ tree, the fixture sources, HBT-PREPARE, the helpers that run hb-build and the
-\ build report check. It defines no MAIN; each row file loads it and runs the
-\ groups it owns:
-\   tools/hb-build-test.f                     CLI REPL build and report,
-\                                             rejected inputs, image size,
-\                                             large sources, literal bodies
-\   tools/hb-build-cli-errors-test.f          cache path error, refused paths
-\                                             and entry names, MAIN effects
-\   tools/hb-build-timeout-test.f             maker deadlines and diagnostics
-\   tools/hb-build-timeout-env-test.f         deadline override validation
-\   tools/hb-build-timeout-json-test.f        empty override, JSON refusal
-\   tools/hb-build-aot-test.f                 AOT build and run, one program each
-\   tools/hb-build-aot-inputs-test.f          observed source and environment inputs
-\   tools/hb-build-stripped-test.f            library state, a fork, engine cells,
-\                                             quotation fields, ptr mark
-\   tools/hb-build-stripped-chain-test.f      baked constants, chain, open path
-\   tools/hb-build-stripped-lifecycle-test.f  lifecycle registry, number parsing
-\   tools/hb-build-stripped-cells-test.f      mapped cells, uncarried table
-\   tools/hb-build-stripped-cache-test.f      link equality, cached table cells
-\   tools/hb-build-repl-twin-test.f           two REPL builds, restored LASTC
-\   tools/hb-build-repl-fresh-test.f          no-op output, dynamic child edits
-\ test/gate-stdlib-cases.f registers each file as a row of its own and says why.
+\ tree, the fixture sources, HBT-PREPARE, the hb-build runners and the report
+\ check. It defines no MAIN; each row listed below loads it and runs its own
+\ groups. test/gate-stdlib-cases.f registers each row and says why.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -42,16 +23,34 @@ require tools/build-fixpoint.f
 require tools/hb-build-report.f
 require tools/hb-build-lib.f
 require src/lib/engine-candidate.f
-require src/lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/fmt.f                        \ FMT:.INT
 
 using BUILD-FIXPOINT                     \ the build tmp root
 
-\ This fixture drives the hb-build library's internals, so it REOPENS package
-\ HB-BUILD-CLI rather than importing a public surface: exporting those
-\ internals would widen the library's interface for the benefit of its own
-\ test. The local fixture scopes this file used to carry (HBT, HBT-CAP,
-\ HBT-JSON) were there only because the file had no package of its own; they
-\ are ordinary private words of the library's package now.
+\ The hb-build rows, each loading this file and running the groups it owns:
+\   tools/hb-build-test.f                     CLI REPL build and report,
+\                                             rejected inputs, image size,
+\                                             large sources, literal bodies
+\   tools/hb-build-cli-errors-test.f          cache path error, refused paths
+\                                             and entry names, MAIN effects
+\   tools/hb-build-timeout-test.f             maker deadlines and diagnostics
+\   tools/hb-build-timeout-env-test.f         deadline override validation
+\   tools/hb-build-timeout-json-test.f        empty override, JSON refusal
+\   tools/hb-build-aot-test.f                 AOT build and run, one program each
+\   tools/hb-build-aot-inputs-test.f          observed source and environment inputs
+\   tools/hb-build-aot-image-test.f           saved AOT builder, reused maker image
+\   tools/hb-build-stripped-test.f            library state, a fork, engine cells,
+\                                             quotation fields, ptr mark
+\   tools/hb-build-stripped-chain-test.f      baked constants, chain, open path
+\   tools/hb-build-stripped-lifecycle-test.f  lifecycle registry, number parsing
+\   tools/hb-build-stripped-cells-test.f      mapped cells, uncarried table
+\   tools/hb-build-stripped-cache-test.f      link equality, cached table cells
+\   tools/hb-build-repl-twin-test.f           two REPL builds, restored LASTC
+\   tools/hb-build-repl-fresh-test.f          no-op output, dynamic child edits
+\   tools/hb-build-repl-image-test.f          saved REPL builder, CWD shadow, tier
+
+\ Reopens HB-BUILD-CLI to drive its internals: exporting them would widen the
+\ library's interface for its own test.
 package HB-BUILD-CLI
 
 65536 constant HBT-CAPTURE-CAP
@@ -214,13 +213,11 @@ create HBT-LITC-SRC-BUF PATH-CAP allot
 : HBT-AOT-SRC$ ( -- ptr u8 n )
    s" create HBT-DATA 41 c, : MAIN ( -- ) HBT-DATA c@ 41 <> if -9046 throw then ; \ trailing source comment" ;
 
-\ RUN's last line calls NULL$, and that is the point of it: NULL$ is a colon
-\ word of the ENGINE's own prefix, so it sits outside this window's code and the
-\ capture records a call site for it whose callee no index of this payload can
-\ name (habu2.f EMIT-AOT-SITES leaves such a site its name; the seed resolves it
-\ in the engine it boots). Every other call here is to a primitive, which binds
-\ to a seeded record index, so the two site kinds travel in one built image and
-\ a build that can only emit one of them fails this case.
+\ NULL$ is a colon word of the engine's own prefix, outside this window's code:
+\ its call site has no callee index in this payload (habu2.f EMIT-AOT-SITES
+\ leaves it its name; the seed resolves it in the engine it boots). Every other
+\ call is to a primitive, bound to a seeded record index, so a build that can
+\ emit only one of the two site kinds fails this case.
 : HBT-AOT-SRC2$ ( -- ptr u8 n )
    S\" package HBT-NATIVE\n: LOADING ( -- ) tier@ 1 <> if -9040 throw then ;\nLOADING\npublic\n: INC ( n -- n ) 1+ ;\n: APPLY ( n [ n -- n ] -- n ) execute ;\n: RUN ( -- ) 41 [: INC ;] APPLY 42 <> if -9041 throw then NULL$ nip 0 <> if -9045 throw then ;\n;package\n: MAIN ( -- ) HBT-NATIVE:RUN ;\n" ;
 
@@ -230,17 +227,13 @@ create HBT-LITC-SRC-BUF PATH-CAP allot
 : HBT-MAPL-OUT ( -- ptr u8 n )
    HBT-MAPL-OUT-BUF HBT-MAPL-OUT-U @ ;
 
-\ THE MAPPED-CELL PROGRAM WITH ITS ALLOCATION INSIDE MAIN.
-\ tools/hb-build-stripped-cells-test.f HBT-MAPC-SRC$ allocates at load time and
-\ is refused; this one links, runs and prints. The cell the image carries is
-\ the zero it was captured with and the pointer is taken in the new process,
-\ which is what the refusal's suggestion names. The printed byte is read back
-\ out of the run-time buffer, so the pinned line proves the image reached its
-\ own mapping and not merely that it exited zero.
-\ tools/hb-build-stripped-cache-test.f HBT-STRIPPED-SAME-TWICE runs its first
-\ link against that line and links it a second time for byte equality.
-\ HBT-CALL is bound at load time: its producer address must not enter the
-\ sparse DATA payload, since the startup restores it from the stable XT row.
+\ Allocates inside MAIN, unlike tools/hb-build-stripped-cells-test.f
+\ HBT-MAPC-SRC$, which allocates at load time and is refused: the image carries
+\ the captured zero and the pointer is taken in the new process. The printed
+\ byte is read back from the run-time buffer, so the pinned line proves the
+\ image reached its own mapping. HBT-STRIPPED-SAME-TWICE links it twice for byte
+\ equality. HBT-CALL is bound at load time: its producer address must stay out
+\ of the sparse DATA payload, since startup restores it from the stable XT row.
 : HBT-MAPL-SRC$ ( -- ptr u8 n )
    SB-RESET
    S\" require src/lib/memory.f\npackage HBT-ATTR\n: HIDDEN ( -- n ) 65 ;\npublic\nEXPORT HIDDEN\n: PUBLIC ( -- n ) HIDDEN ;\n;package\n: HBT-GLOBAL ( -- n ) HBT-ATTR:PUBLIC ;\n: HBT-DEAD ( -- n ) 99 ;\n" SB-APPEND
@@ -301,25 +294,17 @@ create HBT-LITC-SRC-BUF PATH-CAP allot
    HBT-REPL-BAD-SRC HBT-REPL-BAD-SRC$ FS:WRITE-ALL
    HBT-AOT-SRC HBT-AOT-SRC$ FS:WRITE-ALL ;
 
-\ THE ENGINE A BUILD'S CHILD RUNS. A row's AOT builds, maker refusals and CLI
-\ spawns' makers run on the engine HBT-KEYED! records: the linker image
-\ (test/linker-builder-engine.f HOST$) for a row whose subjects rule 3 of
-\ test/preloaded-engine.f admits there, else the engine. Its REPL builds, app
-\ refusals, REPL CLI spawns (HBT-ARGV-BASE-REPL) and HBT-RUN-APP run on
-\ ENGINE-CANDIDATE:PATH$. The keyed builders those children select are the
-\ family images the row's load closure grants (aot-builder, linker-builder,
-\ app-builder; docs/gate.md
-\ "How a suite runs, and what that demands of its files"), each built once and
-\ found in the process's out root (tools/build-out.f): under the gate the run's,
-\ standalone the tree's (test/image-grant.f). No row overrides that root except
-\ where a case is about that root, and says so beside it.
-\ HBT-HBB-PREPARE-AOT-SOURCE keeps one build on the engine, which compiles the
-\ linker above the application: for a subject whose closure reaches a word, or
-\ an unclaimed cell, of a module of the linker's lib closure the engine does not
-\ bake, which the linker image refuses by name (test/preloaded-engine.f rule 3),
-\ and for a case about that order. A subject that only requires such a module
-\ links on the image. A row that records no image builds every program on the
-\ engine.
+\ The engine HBT-KEYED! records runs a row's AOT builds, maker refusals and CLI
+\ makers: the linker image (test/linker-builder-engine.f HOST$) for a row whose
+\ subjects test/preloaded-engine.f rule 3 admits there, else the engine. REPL
+\ builds, app refusals, HBT-ARGV-BASE-REPL spawns and HBT-RUN-APP run on
+\ ENGINE-CANDIDATE:PATH$. Keyed builders are the family images the row's load
+\ closure grants, built once in the process's out root (tools/build-out.f,
+\ test/image-grant.f); a case that overrides that root says so beside it.
+\ HBT-HBB-PREPARE-AOT-SOURCE builds on the engine: for a subject that reaches a
+\ word or unclaimed cell of a linker lib module the engine does not bake (the
+\ linker image refuses it by name, rule 3) and for a case about that order.
+\ A subject that only requires such a module links on the image.
 : HBT-KEYED! ( ptr u8 n -- )
    HBT-LINKER-BUF HBT-LINKER-U HBT-COPY! ;
 
@@ -433,35 +418,21 @@ create HBT-LITC-SRC-BUF PATH-CAP allot
    HBT-HBB-PREPARE-AOT
    BF-ENGINE-RESET ;
 
-\ A program that builds is built in this process: HBB-BUILD runs what
-\ tools/hb-build.f runs once it has parsed argv (for an AOT build the lint
-\ child, the maker, the object store and the install; for a REPL build the
-\ app-build child and the install), without the library load a CLI spawn
-\ pays before it reads argv. What the CLI wraps around them does not
-\ run here: HBB-PREPARE-TMP's private directory (the children's TMPDIR is
-\ HBT-TMP), HBB-BUILD-CLI's exit mapping and HBB-CLEANUP. A refusal ends the
-\ row in a die, the child's diagnostic on stderr: a lint refusal in
-\ HBB-FINISH-TOOL's, a maker refusal in HBB-FINISH-MAKER's. A row spawns the
-\ CLI only where the CLI is the subject: its options (CLI-REPORT), a
-\ missing TMPDIR refused and a lint refusal passed through (HBT-BUILD-MISSING-TMP),
-\ the cache path error's exit and JSON bytes (tools/hb-build-cli-errors-test.f),
-\ a maker refusal passed through (below) and the maker deadline and its
-\ override (the timeout rows).
+\ HBB-BUILD runs here what tools/hb-build.f runs after parsing argv, without
+\ the library load a CLI spawn pays. HBB-PREPARE-TMP's directory (the children's
+\ TMPDIR is HBT-TMP), HBB-BUILD-CLI's exit mapping and HBB-CLEANUP do not run
+\ here, and a refusal ends the row in a die. A row spawns the CLI only where
+\ the CLI is the subject.
 : HBT-HBB-BUILD-OUT ( -- )
    HBB-BUILD
    BF-TMP-RESET ;
 
-\ A program the link refuses goes through the same lint child and the same
-\ maker invocation, HBB-RUN-MAKER-CMD, but keeps the maker's ( outu erru rc )
-\ where HBB-FINISH-MAKER would die, so its code and its diagnostic (the maker
-\ writes it to stderr, into HBB-ERR-BUF) are asserted on the child that made
-\ them. HBT-RUN-APP does the same for the REPL build's app-build child,
-\ HBB-RUN-APP-CMD. A timeout still throws through HBB-MAKER-TIMED-OUT with its
-\ captured diagnostic. That the CLI passes a refusal through - the child's
-\ code, its stderr byte for byte, nothing on stdout, no image installed - is
-\ asserted once per build path: tools/hb-build-stripped-test.f
-\ HBT-STRIPPED-NO-ENTRY for AOT, tools/hb-build-cli-errors-test.f
-\ HBT-REFUSE-MAIN-CLI for REPL.
+\ Keeps the maker's ( outu erru rc ) where HBB-FINISH-MAKER would die, so a link
+\ refusal's code and stderr (HBB-ERR-BUF) are asserted on the child that made
+\ them; HBT-RUN-APP does the same for HBB-RUN-APP-CMD. A timeout still throws
+\ through HBB-MAKER-TIMED-OUT. The CLI's pass-through of a refusal is asserted
+\ once per build path: tools/hb-build-stripped-test.f HBT-STRIPPED-NO-ENTRY
+\ (AOT), tools/hb-build-cli-errors-test.f HBT-REFUSE-MAIN-CLI (REPL).
 : HBT-MAKER-CAPTURE>N ( len len outcome -- n n n )
    MATCH outcome
       exited OF {: outu:len erru:len rc:n :}

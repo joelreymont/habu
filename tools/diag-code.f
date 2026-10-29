@@ -1,54 +1,46 @@
-\ diag-code.f - what a checker diagnostic's code names.
-\
-\ tools/check.f --json-errors writes each diagnostic as one JSON object in the
-\ shape its code names. tools/gate-json-assert.f checks a record and
-\ tools/repair-packet.f builds its packet by the row read here, so a code
+\ diag-code.f - what a checker diagnostic's code names: its record shape, its
+\ repair classes and its evidence field. tools/gate-json-assert.f checks a record
+\ and tools/repair-packet.f builds its packet by the row read here, so a code
 \ enters both through one row.
-\
-\ THE CONTRACT. Records are newline-delimited JSON on stderr with
-\ schema_version 1, each a valid line even when the checker rejects the input;
-\ the field set per shape is what tools/gate-json-assert-core.f requires
-\ (diag-contract), over every fixture test/gate-diagnostics.f emits. verdict
-\ is `uncheckable` for E-UNCHECKABLE, `deferred` on a deferral, else
-\ `rejected`; a certified definition writes no record. A definition may fail
-\ more than one check; its record names one refusal, the one the engine's own
-\ load reports, in the load's order. line and column are one-based, column in
-\ bytes; byte_start and byte_end are zero-based, end exclusive, in the labeled
-\ file. Text with no file bytes behind it (the engine's own load, `evaluate`,
-\ checker-generated definitions) reports its definition's origin plus the
-\ token's offset in the checked text. The packet's source_excerpt is the
-\ record's definition_source: packet builders normalize, the checker emits no
-\ aliases.
-\ Under --all-errors, and in CHECK:VERIFY-BYTES, every refused definition is
-\ reported and the check goes on at the next one. A duplicate name is reported
-\ by its record in both; CHECK:VERIFY-BYTES skips the definition and goes on,
-\ --all-errors ends at it as the load does. A later definition sees a refused
-\ one by its declared signature when that parses; a use of one whose signature
-\ does not parse is E-UNDEFINED. Without --all-errors tools/check.f stops at
-\ the first refusal.
 
 require src/lib/string.f
 
 package DIAG-CODE
 public
 
+\ The record contract: newline-delimited JSON on stderr, schema_version 1, a
+\ valid line even when the input is rejected; the field set per shape is what
+\ tools/gate-json-assert-core.f requires (diag-contract) over every fixture
+\ test/gate-diagnostics.f emits. verdict is `uncheckable` for E-UNCHECKABLE,
+\ `deferred` on a deferral, else `rejected`; a certified definition writes no
+\ record. A record names one refusal, the first the engine's own load reports.
+\ line and column are one-based, column in bytes; byte_start and byte_end are
+\ zero-based, end exclusive, in the labeled file. Text with no file bytes behind
+\ it (the engine's own load, `evaluate`, checker-generated definitions) reports
+\ its definition's origin plus the token's offset in the checked text.
+\ source_excerpt is the record's definition_source: packet builders normalize,
+\ the checker emits no aliases. --all-errors and CHECK:VERIFY-BYTES report every
+\ refused definition and go on; at a duplicate name CHECK:VERIFY-BYTES skips the
+\ definition and --all-errors ends as the load does. A later definition sees a
+\ refused one by its declared signature when that parses, else its use is
+\ E-UNDEFINED. Without --all-errors tools/check.f stops at the first refusal.
+
 \ definition: a refused definition, the shape of every code without a row.
 \ declaration and storage: a refused family or storage declaration.
 \ source-span: a refusal placed in the source outside any definition.
 \ deferral: no refusal, a top-level stretch or a definition placed in the
-\ source that the source pre-pass leaves to the run. input: an input refused whole. record: a
-\ refusal, mostly of a checker record, that names its token and its place when
-\ known. warning: no refusal, since the definition loaded. using-refusal: a
-\ bare token with its used packages.
+\ source that the source pre-pass leaves to the run. input: an input refused
+\ whole. record: a refusal, mostly of a checker record, that names its token
+\ and its place when known. warning: no refusal, since the definition loaded.
+\ using-refusal: a bare token with its used packages.
 ENUM shape definition declaration storage source-span deferral input record warning using-refusal ;ENUM
 
 private
 
-\ A code's row: its shape, the repair classes it names, separated by spaces, and
-\ the field its record adds to its token. A code that names no class leaves
-\ the class to the record's own evidence: a storage refusal's is the class its
-\ reason takes (tools/gate-json-assert-core.f GJA-STORAGE-CLASS$), which
-\ GJA-STORAGE-CLASS holds it to.
+\ A code's row: its shape, the space-separated repair classes it names, and the
+\ field its record adds to its token. A code that names no class leaves the
+\ class to the record's evidence: a storage refusal's is its reason's class,
+\ held by GJA-STORAGE-CLASS (tools/gate-json-assert-core.f).
 : ROW ( ptr u8 n -- shape ptr u8 n ptr u8 n )
    {: c:ptr u:n :}
    c u s" E-BAD-DECLARATION" STR= IF
@@ -103,7 +95,6 @@ private
       construct shape warning s" " s" " EXIT THEN
    construct shape definition s" " s" " ;
 
-\ Whether CLASS is one of the space-separated NAMES.
 : NAMED? ( ptr u8 n ptr u8 n -- bool ) {: names:ptr namesu:n class:ptr classu:n :}
    0 begin
       >r names namesu 32 r> SPLIT-NEXT
@@ -114,23 +105,18 @@ private
 
 public
 
-\ The shape of a record under CODE.
 : SHAPE ( ptr u8 n -- shape )
    ROW 2drop 2drop ;
 
-\ Whether a record under CODE may carry CLASS: one of the classes its code
-\ names, or any when it names none.
 : ADMITS? ( ptr u8 n ptr u8 n -- bool ) {: c:ptr u:n class:ptr classu:n :}
    c u ROW 2drop rot drop {: names:ptr namesu:n :}
    namesu 0= IF STR-TRUE EXIT THEN
    names namesu class classu NAMED? ;
 
-\ The field a refused record under CODE adds to its token, empty when none.
+\ Empty when the code adds no field.
 : EVIDENCE ( ptr u8 n -- ptr u8 n )
    ROW 2swap 2drop rot drop ;
 
-\ Whether a record under CODE is a refusal, which a deferral and a warning are
-\ not.
 : REFUSAL? ( ptr u8 n -- bool )
    SHAPE MATCH shape
       definition OF STR-TRUE ENDOF

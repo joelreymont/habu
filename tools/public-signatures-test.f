@@ -1,8 +1,5 @@
 \ public-signatures-test.f - checked fixtures for tools/public-signatures.f.
-\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/memory.f
-\ src/lib/vector.f src/lib/fs.f src/lib/fs-mutate.f src/lib/process.f tools/lint/text.f
-\ tools/lint/intern.f tools/lint/token.f tools/lint/lib.f
-\ tools/public-signatures-core.f tools/public-signatures-test.f
+\ Run: bin/hb --load tools/public-signatures-test.f
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -21,18 +18,16 @@ require tools/public-signatures-core.f
 
 using PS
 
-\ A public ENUM registered here exercises the metadata-synthesized constructor
-\ signatures: each variant publishes a nullary `PKG:VARIANT ( -- fam )`
-\ in the manifest, drawn from TFAM/SUMV registry metadata (never a hidden field).
+\ A public ENUM publishes a nullary `PKG:VARIANT ( -- fam )` per variant, drawn
+\ from TFAM/SUMV registry metadata.
 ENUM pstcolor red green blue ;ENUM
-\ A DERIVE-eq enum additionally publishes the synthesized derived words
-\ PKG:TAG ( fam -- n ) and PKG:EQ ( fam fam -- bool ) (derive S1).
+\ DERIVE eq adds PKG:TAG ( fam -- n ) and PKG:EQ ( fam fam -- bool ).
 ENUM pstsig DERIVE eq low high ;ENUM
-\ derive S2: payload sums and products publish derived rows too; products
-\ derive EQ only (no discriminant row).
+\ Payload sums and products publish derived rows too; a product derives EQ only,
+\ no TAG.
 SUMTYPE pstsum DERIVE eq VARIANT nada ;VARIANT VARIANT some n ;VARIANT ;SUMTYPE
 PRODUCT pstprod DERIVE eq FIELD aa n ;PRODUCT
-\ derive S3: a hash-only sum publishes HASH (+TAG) but no EQ row.
+\ A hash-only sum publishes HASH and TAG but no EQ.
 SUMTYPE psthash DERIVE hash VARIANT hh n ;VARIANT ;SUMTYPE
 \ An OPAQUE family's derived words are its package's private words, so the
 \ manifest names none; the same family without the clause is the control.
@@ -221,12 +216,12 @@ variable PST-NUM-U
    PST-OUT outu s" CAPS" PST-WORD$ CONTAINS? TTRUE
    PST-OUT outu PST-EXPORTED-FALSE$ CONTAINS? TTRUE
    PST-OUT outu s" 1+" PST-WORD$ CONTAINS? TTRUE
-   \ a paren-initial word name (`(CMP)`) is a WORD, not a comment: it stays visible.
+   \ a paren-initial word name (`(CMP)`) is a WORD, not a comment.
    PST-OUT outu s" (CMP)" PST-WORD$ CONTAINS? TTRUE
    PST-OUT outu s" (i64 i64 -- i64)" PST-SIG$ CONTAINS? TTRUE
    PST-OUT outu s" LBUF" PST-WORD$ CONTAINS? TTRUE
    PST-OUT outu s" (n -- ptr ps-res<n,n>)" PST-SIG$ CONTAINS? TTRUE
-   \ a real standalone `( comment )` must still be stripped (no over-correction).
+   \ a standalone `( comment )` is still stripped.
    PST-OUT outu s" COMMENTED" PST-WORD$ CONTAINS? TFALSE
    PST-OUT outu s" MIXED" PST-WORD$ CONTAINS? TFALSE
    PST-OUT outu s" BAD" PST-WORD$ CONTAINS? TFALSE ;
@@ -275,8 +270,8 @@ variable PST-NUM-U
 : PST-DEP ( -- ptr u8 n )    PST-DEP-BUF PST-DEP-U @ ;
 : PST-ENTRY ( -- ptr u8 n )  PST-ENTRY-BUF PST-ENTRY-U @ ;
 
-\ A dependency opens a package the entry file continues; the closure pre-scan
-\ must load that package scope so the entry's public word is rendered qualified.
+\ The closure pre-scan loads the package a dependency opens and the entry
+\ continues, so the entry's public word renders qualified.
 : PST-ENTRY-SRC$ ( -- ptr u8 n )
    SB-RESET
    s" require " SB-APPEND
@@ -304,9 +299,8 @@ variable PST-NUM-U
 : PST-GDEP ( -- ptr u8 n )    PST-GDEP-BUF PST-GDEP-U @ ;
 : PST-GENTRY ( -- ptr u8 n )  PST-GENTRY-BUF PST-GENTRY-U @ ;
 
-\ The dependency is loaded only through a colon-wrapped `s" ..." required`
-\ helper; the whole-file closure producer must still hand its package scope to
-\ the pre-scan, so the entry's public word renders qualified.
+\ The dependency loads only through a colon-wrapped `s" ..." required` helper;
+\ the closure still hands its package scope to the pre-scan.
 : PST-GENTRY-SRC$ ( -- ptr u8 n )
    SB-RESET
    s" : PST-DEP-LOAD ( -- ) " SB-APPEND
@@ -338,13 +332,10 @@ variable PST-NUM-U
 : PST-NMID ( -- ptr u8 n )    PST-NMID-BUF PST-NMID-U @ ;
 : PST-NENTRY ( -- ptr u8 n )  PST-NENTRY-BUF PST-NENTRY-U @ ;
 
-\ A package opened+public in dep-open, continued unclosed through dep-mid where
-\ it switches to `private`, closed in the entry file. Load order replays
-\ dep-open then dep-mid, so the residual scope before the entry's own defs is
-\ FOO/private: NESTED is a private word (not emitted) and only SHOWN (defined
-\ after the entry re-enters `public`) renders as FOO:SHOWN. BFS closure order
-\ replays dep-mid before dep-open, so its `private` is a no-op over the not-yet
-\ -open package and the residual wrongly stays FOO/public, emitting FOO:NESTED.
+\ FOO opens public in dep-open, turns private in dep-mid and closes in the entry.
+\ Load order (dep-open, dep-mid) leaves FOO/private, so only SHOWN renders, as
+\ FOO:SHOWN; BFS closure order replays dep-mid first and wrongly leaves
+\ FOO/public, emitting FOO:NESTED.
 : PST-NMID-SRC$ ( -- ptr u8 n )
    SB-RESET
    s" require " SB-APPEND PST-NOPEN SB-APPEND PST-LF
@@ -381,14 +372,10 @@ variable PST-NUM-U
 
 : PST-CONST ( -- ptr u8 n )  PST-CONST-BUF PST-CONST-U @ ;
 
-\ `constant` bakes one physical cell, so a value of the 2-field `cae-cv` layout
-\ family records the one-cell `-- a` trust here — identical to the verify-source
-\ / all-errors / native C-CONSTANT model. This is the PERMANENT contract: the
-\ interpret stack is untyped by design, no path has a sound shape source, and
-\ carrying the producer's multi-cell type would record more cells than the
-\ constant holds. This locks that public-signatures does NOT invent a multi-cell
-\ shape (nor drop the constant); layout mis-use stays fail-closed at USE
-\ (check-all-errors-test const-layout-narrow).
+\ `constant` bakes one cell, so a `cae-cv` layout value records `-- a`, as
+\ verify-source, all-errors and native C-CONSTANT do: the interpret stack is
+\ untyped, so no multi-cell shape is invented and the constant is not dropped.
+\ Layout misuse fails closed at use (check-all-errors-test const-layout-narrow).
 : PST-CONST-SRC$ ( -- ptr u8 n )
    SB-RESET
    s" value-record cae-cv x i64 y i64 END-VALUE-RECORD" SB-APPEND PST-LF
@@ -417,12 +404,9 @@ variable PST-NUM-U
 
 : PST-SUM ( -- ptr u8 n )    PST-SUM-BUF PST-SUM-U @ ;
 
-\ A sum layout family in a passing (identity) signature renders as the LOGICAL
-\ type in public-signatures output — the family tail with its args, never the
-\ hidden `@family.slotN`/`@family.tag` physical fields (public signatures
-\ without hidden fields). It is also not narrowed to one bare cell nor to a
-\ multi-cell shape: one logical T-PARAM cell in, one out. This locks the public
-\ surface logical-only: physical layout is never exposed.
+\ A sum layout family in an identity signature renders as its logical type, the
+\ family tail with its args: never the hidden `@family.slotN` / `@family.tag`
+\ fields, and one logical cell in and one out.
 : PST-SUM-SRC$ ( -- ptr u8 n )
    SB-RESET
    s" SUMTYPE ps-res<a,b> VARIANT ok a ;VARIANT VARIANT err b ;VARIANT ;SUMTYPE" SB-APPEND PST-LF
@@ -446,12 +430,9 @@ variable PST-NUM-U
 
 : PST-NUM ( -- ptr u8 n )    PST-NUM-BUF PST-NUM-U @ ;
 
-\ Number-parser-claimable definition names (all digits, float shape, $hex,
-\ optional minus) have no alpha byte, so PS-PROJECT-WORD? alone skipped them
-\ silently - how src/lib/fmt.f's old `.0` escaped the output. The scanner must SEE
-\ them (defensive for historical trees; E-NUMERIC-DEFINITION rejects new ones).
-\ Punctuation-only names the number parser does NOT claim (`...`) stay
-\ invisible - no over-correction.
+\ Names the number parser claims (digits, float shape, $hex, optional minus) have
+\ no alpha byte and are still scanned; E-NUMERIC-DEFINITION refuses new ones.
+\ Punctuation-only names it does not claim (`...`) stay invisible.
 : PST-NUM-SRC$ ( -- ptr u8 n )
    SB-RESET
    s" : .0 ( n -- n ) dup ;" SB-APPEND PST-LF
@@ -484,8 +465,6 @@ variable PST-NUM-U
    23 PS-FAM-ARGS
    PS-CSIG$ s" <a,b,c,d,e,g,h,i,j,k,l,m,o,p,q,s,t,u,v,w,x,y,z>" T$= ;
 
-\ The registered public ENUM `pstcolor` publishes one synthesized
-\ nullary constructor per variant, `PSTCOLOR:<VARIANT> ( -- pstcolor )`.
 : PST-TEST-ENUM-CTORS ( -- )
    PST-FIX PST-RUN 0 PST-EXPECT-EXIT {: outu:n erru:n :}
    outu 0 > TTRUE
@@ -513,8 +492,6 @@ variable PST-NUM-U
    PST-OUT outu s" :EQ" PST-WORD$ CONTAINS? TFALSE  \ an OPAQUE family's: none
    PST-OUT outu s" PSTSUM:HASH" PST-WORD$ CONTAINS? TFALSE ;    \ eq-only: no hash row
 
-\ The real CLI runs in a child: queue its arguments after PROC-ARGV-RESET, then
-\ capture its output and error lengths and its exit code.
 : PST-ARG+ ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
 
 : PST-CAPTURE ( -- n n n )
@@ -569,12 +546,9 @@ public
 
 ;package
 
-\ A source whose last token ends on the last byte of the slab it is read into:
-\ the slab is the file rounded up to 64 KiB, so a 64 KiB multiple fills it.
-\ The word scan used to read the byte after that token, past the slab, which
-\ faults when nothing is mapped there. At 2 MiB nothing was, on every
-\ measured macOS run; smaller slabs mostly sat beside another mapping, where
-\ the read passed unseen.
+\ The last token ends on the slab's last byte: the slab is the file rounded up to
+\ 64 KiB, and a read one byte past it faults when nothing is mapped there (every
+\ measured macOS run at 2 MiB).
 package PST-SLAB-END
 
 $200000 constant SIZE

@@ -1,29 +1,9 @@
-\ check-verify-save.f - the saved verifier image's builder. The program
-\ tools/check-verify-image.f hands the engine on stdin loads this file once, by
-\ absolute path, at tier 1:
-\
-\    tick-order@
-\    1 set-tier
-\    s" ROOT/tools/check-verify-save.f" required
-\    CHECK-VERIFY-SAVE:TICK!
-\    0 SCRIPT-ARGV$ CHECK-VERIFY-SAVE:SAVE
-\
-\ It loads the verifier and tools/check-verify-child-lib.f, the child's body,
-\ rooted at its own tree ROOT as tools/check-verify-child.f roots them: the
-\ builder's working directory can be another Habu tree. TICK! is the fresh
-\ engine's tick observation, taken before anything loaded, as the source child
-\ takes it. SAVE binds ENTER as the image's entry and saves. The saver and the
-\ engine identity it reads are temporary: loaded after the marker below, bound
-\ into cells, then retired with their checker rows and registry rows
-\ (tools/aot-builder.f), so the image holds the boot prefix, the verifier, the
-\ lib and this file, and nothing of the saver answers `held`.
-\
-\ The image runs as `IMAGE -- SUBJECT ...`, every argument form of
-\ tools/check-verify-child.f. ENTER finds, when the image starts, the root the
-\ source child finds: SOURCE-ROOT:ENGINE-FOR$ of the engine path baked here, the
-\ working directory when that is a tree: SOURCE-ROOT:RESET cleared it at
-\ capture, and the image's own executable lies under the out root
-\ (tools/build-out.f), which need not lie in a tree.
+\ check-verify-save.f - builder of the saved verifier image. tools/check-verify-image.f
+\ feeds the engine on stdin: tick-order@ 1 set-tier s" ROOT/tools/check-verify-save.f"
+\ required CHECK-VERIFY-SAVE:TICK! 0 SCRIPT-ARGV$ CHECK-VERIFY-SAVE:SAVE
+\ It loads the verifier and tools/check-verify-child-lib.f rooted at its own tree, as
+\ tools/check-verify-child.f does. The image runs as `IMAGE -- SUBJECT ...`; ENTER
+\ finds the root the source child finds, never its executable's (tools/build-out.f).
 
 package CHECK-VERIFY-SAVE
 

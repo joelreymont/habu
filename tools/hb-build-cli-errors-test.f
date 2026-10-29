@@ -1,10 +1,7 @@
-\ hb-build-cli-errors-test.f - checked fixture for tools/hb-build-lib.f: the
-\ errors the hb-build CLI reports - an out root that is a file, as JSON and as
-\ text, a source path too long to hold, an -o too long to replace, in no
-\ directory, naming a directory or no file, or in a directory it cannot write -
-\ an -o with a 250-byte last name built and installed, and a MAIN whose effect
-\ breaks the application contract, refused by the app-build child and passed
-\ through by the CLI.
+\ hb-build-cli-errors-test.f - the hb-build CLI's errors (tools/hb-build-lib.f):
+\ an out root that is a file (JSON and text), a source path or -o too long, an
+\ -o in no directory, naming a directory or no file, or unwritable; a 250-byte
+\ -o last name that builds; a MAIN that breaks the application contract.
 \ tools/hb-build-test-lib.f lists the other hb-build rows.
 \ Run: bin/hb --load tools/hb-build-cli-errors-test.f
 
@@ -85,7 +82,6 @@ PATH-CAP 1+ BUFFER: HBT-LONG-OUT-BUF
 : HBT-LONG-NAME$ ( n -- ptr u8 n )
    HBT-ROOT nip 1+ + HBT-LONG-OUT$ ;
 
-\ A name joined under a directory, in the same buffer.
 : HBT-JOINED$ ( ptr u8 n ptr u8 n -- ptr u8 n )
    HBT-LONG-OUT-BUF FS:JOIN-PATH HBT-LONG-OUT-BUF swap ;
 
@@ -102,7 +98,6 @@ PATH-CAP 1+ BUFFER: HBT-LONG-OUT-BUF
    ou 0 T=
    HBT-ERR erru want wantu T$= ;
 
-\ The CLI refuses by name an -o one byte past PATH-CAP.
 : CLI-OUT-TOO-LONG ( -- )
    HBT-AOT-SRC PATH-CAP 1+ HBT-LONG-OUT$
    S\" hb-build: output path too long\n" HBT-REFUSED ;
@@ -175,15 +170,11 @@ $1ED constant HBT-MODE-WRITABLE             \ 0755: the owner may write again
    HBB-ERR-BUF erru s" in enter" CONTAINS? TTRUE
    erru ;
 
-\ A REPL build's refusal as the CLI reports it, on the source the child just
-\ refused: tools/hb-build.f exits with the child's code, its stderr is the
-\ child's stderr byte for byte (HBB-ERR-BUF; the CLI run captures into
-\ HBT-ERR; the tool writes the child's stdout to stderr first, so equality
-\ rests on HBT-REFUSE-MAIN-APP's empty child stdout), it prints nothing on
-\ stdout and installs no image, so this case
-\ fails if the tool swallows, rewrites, adds to or drops any of the child's
-\ exit or diagnostic. tools/hb-build-stripped-test.f HBT-STRIPPED-NO-ENTRY is
-\ the AOT path's.
+\ The CLI's report of the child's refusal: tools/hb-build.f exits with the
+\ child's code, its stderr is the child's byte for byte (the tool writes the
+\ child's stdout to stderr first, so equality rests on HBT-REFUSE-MAIN-APP's
+\ empty child stdout), nothing on stdout and no image installed.
+\ tools/hb-build-stripped-test.f HBT-STRIPPED-NO-ENTRY is the AOT path's.
 : HBT-REFUSE-MAIN-CLI ( n -- ) {: want:n :}
    HBT-ARGV-BASE-REPL
    s" --repl" >LEN PROC-ARGV+

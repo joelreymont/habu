@@ -283,27 +283,19 @@ private
 : UB-SET-CHECK-INSTALL? ( -- bool )
    s" set-check" UB-TOK=CI UB-TICK-PREV2? and ;
 
-\ The tier-2 top-level reject enforcer is installed through `set-top-check`
-\ (src/core/top-row.f TR-INSTALL, dot habu-typed-top-tier-589c550f). It is the
-\ audited escape window for the whole top-row tracker: any name installed there
-\ diverts the pre-execution reject enforcement unless the registry authorizes it
-\ for this exact file. Same `' NAME set-top-check` / `['] NAME set-top-check`
-\ shape as the set-check installs above.
+\ The tier-2 top-level reject enforcer installs through `set-top-check`
+\ (src/core/top-row.f TR-INSTALL): a name installed there diverts pre-execution
+\ reject enforcement unless the registry authorizes it for this exact file.
 : UB-SET-TOP-CHECK-INSTALL? ( -- bool )
    s" set-top-check" UB-TOK=CI UB-TICK-PREV2? and ;
 
-\ Audited checker hooks. tools/hook-sites.f is the single registry of legitimate
-\ hook identities, and a row names a file as well as a word. The installed name
-\ alone proves nothing - any file may define a word called CHECK-HOOK - so an
-\ install is audited only when the file being scanned and the installed name
-\ together match a registry row. Registry paths are the committed repo-relative
-\ spellings and are compared exactly, so `./path`, an absolute path, or a
-\ workspace-prefixed path fails closed.
+\ tools/hook-sites.f rows name a file and a word: any file may define a word called
+\ CHECK-HOOK, so an install is audited only when the scanned file and installed
+\ name match a row. Paths compare exactly as committed, so `./path`, an absolute
+\ or a workspace-prefixed path fails closed.
 : UB-HOOK-ALLOWED? ( -- bool )
    UB-FILE$ UB-PREV$ HOOK-SITES:CHECK-MATCH? ;
 
-\ Same registry, top-row rows: `set-top-check` installs are authorized by the
-\ (file, installed name) pair the registry records for that enforcer.
 : UB-TOP-HOOK-ALLOWED? ( -- bool )
    UB-FILE$ UB-PREV$ HOOK-SITES:TOP-MATCH? ;
 

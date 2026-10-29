@@ -18,8 +18,7 @@ execute
 \ Inline: <program> ' WORD JITDUMP:JD. A record supplies the terminal address;
 \ a branch, early return or immediate byte that looks like RET does not. The
 \ target's decoder (tools/jitdump-arm.f, tools/jitdump-x64.f) reads one
-\ instruction per step; the test that calls three of the public words imports
-\ the package with `using` and keeps its own definitions untouched.
+\ instruction per step.
 package JITDUMP
 private
 

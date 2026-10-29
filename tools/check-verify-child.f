@@ -1,10 +1,10 @@
 \ check-verify-child.f - the verifier child CHECK:VERIFY-BYTES,
-\ CHECK:VERIFY-BYTES-AT and CHECK:PREVERIFY-BYTES run.
-\
-\ tools/check-verify-core.f spawns it on the engine src/lib/engine-candidate.f
-\ names, by its absolute path in the tree that file was loaded from, in the
-\ caller's working directory; nothing else runs it:
-\
+\ CHECK:VERIFY-BYTES-AT and CHECK:PREVERIFY-BYTES run. Only
+\ tools/check-verify-core.f spawns it, on the engine src/lib/engine-candidate.f
+\ names, by its absolute path in that file's tree, in the caller's working
+\ directory. When that engine is its own and can save one, the saved image IMAGE
+\ (tools/check-verify-image.f, from tools/check-verify-save.f) is the child.
+
 \    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT < STDIN
 \    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT LABEL < STDIN
 \    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT --at N < STDIN
@@ -19,11 +19,7 @@
 \    IMAGE -- SUBJECT --index < STDIN
 \    IMAGE -- --batch TAIL < STDIN
 \    IMAGE -- --batch-ref TAIL < STDIN
-\
-\ IMAGE is the saved verifier image (tools/check-verify-image.f, built by
-\ tools/check-verify-save.f) core runs when the engine is its own and can save
-\ one; this file is the child on any other engine.
-\
+
 \ STDIN is the open documents, each a line `PU U` then PU bytes of PATH and U
 \ bytes of TEXT, the counts in decimal; then an empty line; then BYTES, to the
 \ end. BYTES is the subject's text and SUBJECT the canonical absolute path it is
@@ -38,7 +34,7 @@
 \ image, tools/check-verify-save.f, so no tool's word stands in for, or
 \ collides with, a word of the subject. Nothing of SUBJECT or its closure runs:
 \ the verifier scans source and records what it declares.
-\
+
 \ The verifier follows top-level loader acts in one neutral checker scope, with
 \ each file's path and positions while it is open. `require` skips held paths;
 \ `include` verifies every occurrence. The first, third and fourth forms compose
@@ -54,16 +50,15 @@
 \ stdout is the schema-1 JSON packets, one per line in verification order, each
 \ written as the checker makes it, so a child that dies has passed on every
 \ packet made before; then one result line. The first form verifies with all
-\ errors, going past a duplicate definition as past any refused definition,
-\ and writes for each duplicate, which the checker writes no packet for, a
-\ diagnostic line among the packets, for each file it reads a file line for
-\ the bytes it reads there, once however often it reads the same bytes and
-\ before anything in them, for each definition it retains a definition line,
-\ a use line for each use in the subject that the checker binds to a source
-\ target or identifies as an engine primitive, and for each top-level loader
-\ of the subject whose load reached
-\ a file a load line, one JSON object each. It answers
-\
+\ errors, going past a duplicate definition as past any refused definition.
+\ Among the packets it writes one JSON object per line: a diagnostic line for
+\ each duplicate, which the checker writes no packet for; a file line for each
+\ file it reads, once however often it reads the same bytes and before anything
+\ in them; a definition line for each definition it retains; a use line for each
+\ use in the subject the checker binds to a source target or identifies as an
+\ engine primitive; a load line for each top-level loader of the subject whose
+\ load reached a file. It answers
+
 \    check-verify: verified | refused | deferred | held
 \                | stopped RC BYTE DUP-AT DUP-LEN IN-SUBJECT FILE
 \    check-verify: duplicate 78 BYTE DUP-AT DUP-LEN IN-SUBJECT FILE
@@ -169,8 +164,8 @@
 \
 \ stderr is prose: for the first form, a line for each file whose verification
 \ a throw other than a loader's fault stopped, and whatever else the engine
-\ writes there, a `die`'s message among it. A child that ends any other way, the verifier's own `die` included,
-\ writes no result line.
+\ writes there, a `die`'s message among it. A child that ends any other way, the
+\ verifier's own `die` included, writes no result line.
 
 \ The child runs in the client's working directory, which can contain a
 \ different Habu revision. Its body belongs to this entry's tree.

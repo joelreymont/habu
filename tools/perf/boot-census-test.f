@@ -1,26 +1,8 @@
-\ boot-census-test.f - tools/perf/boot-census.f through its real entry point,
-\ in a child, on a process tree of known shape: tools/perf/boot-census-fixture.f
-\ forks one child that keeps its image and argv and spawns one /bin/sleep.
-\
-\ The ways the census can be wrong, and the assertion that catches each:
-\ (1) a child never registered (listing or registration broken): exec total
-\     below 2, no /bin/sleep row, fork total 0.
-\ (2) the fork child read as an exec (argv join or image compare wrong): fork
-\     total 0.
-\ (3) the exec child read as a fork (compared against the wrong record): fork
-\     total 2.
-\ (4) the root's exit status not propagated: CASE-STATUS.
-\ (5) the log missing its ROOT, CHILD, EXIT or DONE line: CASE-TREE's log reads.
-\ (6) usage not refused: CASE-USAGE.
-\ (7) the command run without the census's environment: CASE-ENV.
-\
-\ The engine's own bucket row is not asserted. The argv
-\ shape row is, and the census lists shapes only for an engine in the hb
-\ family: a path ending in /bin/hb, as under the gate and `bin/hb --load`, an
-\ hb-under-test candidate or a fixpoint stage engine.
-\
-\ macOS only, as the census is.
-\
+\ boot-census-test.f - tools/perf/boot-census.f through its entry point, in a
+\ child, on tools/perf/boot-census-fixture.f: one fork child that keeps its image
+\ and argv and spawns one /bin/sleep. Fork total 0 means a child went unregistered
+\ or a fork read as an exec; fork total 2 means an exec read as a fork. Argv
+\ shapes cover only HB-FAMILY? paths: bin/hb, hb-under-test, fixpoint stages. macOS only.
 \ Run: bin/hb --load tools/perf/boot-census-test.f
 require src/lib/errors.f
 require src/lib/string.f
@@ -98,7 +80,6 @@ create LOGTXT CAP allot
 
 \ --- cases --------------------------------------------------------------------
 
-\ The census's stdout and stderr, shown once when the tree case fails.
 : SHOW-RUN ( -- )
    s" boot-census stdout:" type cr OUT$ type
    s" boot-census stderr:" type cr ERR$ type ;

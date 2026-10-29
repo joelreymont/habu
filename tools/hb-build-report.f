@@ -1,16 +1,7 @@
 \ hb-build-report.f - typed in-process and wire-format hb-build reports.
-\
-\ The JSON writer keeps no state of its own, so this module owns the report
-\ bytes: REPORT-W writes into REPORT-BUF, and a span answered by one report word
-\ stays valid until the next one runs.
-\
-\ files_reused and files_compiled count the source files of the maker's
-\ application-load session, the engine source load for --engine, once per
-\ file load (each FILE-UNIT-WITH; require loads a file once): those installed
-\ from their file objects and those compiled from source, a replay that
-\ resumed from source among them (tools/native-definition-cache.f FILES-N,
-\ REUSED-N). The link-support and writer sessions are not counted; a build
-\ that launched no maker (an up-to-date REPL build) reports 0 and 0.
+\ The JSON writer keeps no state, so this module owns the report bytes: REPORT-W
+\ writes into REPORT-BUF, and a span one report word answers stays valid until the
+\ next one runs.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -151,8 +142,6 @@ public
 
 : CAPTURE-SIZE ( n n n n n n n -- )
    {: total:n code:n names:n data:n dzero:n pad:n other:n :}
-   \ The six terms plus `other` ARE the file, which is the property that lets a
-   \ build system read one of them without reading the table.
    code names + data + dzero + pad + other + total <> if
       E-BUILD-STATUS throw
    then
@@ -164,7 +153,12 @@ public
    pad SIZE-PAD !
    other SIZE-OTHER ! ;
 
-\ The maker's counts, once it succeeded; RESET leaves 0 and 0.
+\ files_reused and files_compiled count the maker's application-load session (the
+\ engine source load for --engine) once per file load: installed from file
+\ objects, and compiled from source, resumed replays among them
+\ (tools/native-definition-cache.f FILES-N, REUSED-N). Link-support and writer
+\ sessions are not counted; a build that launched no maker reports 0 and 0, as
+\ RESET leaves them.
 : CAPTURE-FILES ( n n -- )
    {: reused:n compiled:n :}
    reused FILES-REUSED-N !

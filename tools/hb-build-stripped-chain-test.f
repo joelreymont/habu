@@ -26,18 +26,13 @@ package HB-BUILD-CLI
 : HBT-CHAIN-OUT ( -- ptr u8 n )
    HBT-CHAIN-OUT-BUF HBT-CHAIN-OUT-U @ ;
 
-\ THE THREE BAKED CONSTANTS AN ORDINARY PROGRAM READS, in one program: printing
-\ an integer reaches src/lib/fmt.f INT>NUM and its copy of STR-MIN-I64$, parsing one
-\ reaches STR-PARSE-POS and STR-MAX-I64$, hashing reaches SHA-256's KK and HH0
-\ in src/core/sha256.f, whose digest context is this program's own. Those tables
-\ live in baked files, below every capture window, and each one of them refused
-\ this program before
-\ src/habu/aot-owned-cells.f named them (measured: caller=INT>NUM
-\ target=STR-MIN-I64$, caller=STR-PARSE-POS target=STR-MAX-I64$, caller=SHA256
-\ target=SHA-U). The digest is SHA-256 of "abc" from FIPS-180, so the pinned
-\ stdout below proves the CARRIED bytes arrived, not merely that the image ran:
-\ a zeroed KK or HH0 answers a different digest, and a zeroed bound table parses
-\ nothing.
+\ THE THREE BAKED CONSTANTS AN ORDINARY PROGRAM READS: printing an integer
+\ reaches src/lib/fmt.f INT>NUM and STR-MIN-I64$, parsing reaches STR-PARSE-POS
+\ and STR-MAX-I64$, hashing reaches src/core/sha256.f KK and HH0 (the digest
+\ context is the program's own). They live in baked files below every window,
+\ and src/habu/aot-owned-cells.f names them. The digest is FIPS-180 SHA-256 of
+\ "abc", so the pinned stdout proves the carried bytes arrived: a zeroed KK or
+\ HH0 answers a different digest, and a zeroed bound table parses nothing.
 : HBT-PPH-SRC$ ( -- ptr u8 n )
    SB-RESET
    S\" require src/lib/fmt.f\ncreate PPH-DIG $20 allot\ncreate PPH-HEX $40 allot\n" SB-APPEND
@@ -55,13 +50,9 @@ package HB-BUILD-CLI
    SB$ ;
 
 \ OPENING A FILE BY PATH, the smallest program that reaches the engine's path
-\ scratch: PATH0 (src/core/util.f) zero-terminates the path into PZB and hands
-\ `open` that buffer, so PATH0's compiled code spells out an address below every
-\ window. Reported from Tender, where it refused every entry point before
-\ anything else - `caller=PATH0 target=PZB` - and answered by the FRESH-BYTES
-\ claim in src/habu/aot-owned-cells.f. The printed line runs AFTER the close, so
-\ the pinned stdout proves the image opened and closed the file rather than
-\ merely exiting zero.
+\ scratch: PATH0 (src/core/util.f) zero-terminates the path into PZB, an address
+\ below every window, claimed by FRESH-BYTES in src/habu/aot-owned-cells.f. The
+\ printed line runs after the close, so stdout proves the open and the close.
 : HBT-OPENP-SRC$ ( -- ptr u8 n )
    SB-RESET
    S\" variable FD\n: OPEN-PATH ( -- )\n   s\" /dev/null\" PATH0 0 0 open FD !\n" SB-APPEND
@@ -69,16 +60,11 @@ package HB-BUILD-CLI
    S\"    FD @ close\n   s\" opened\" type cr ;\n" SB-APPEND
    SB$ ;
 
-\ A PROGRAM WHOSE CLOSURE IS ITS SIZE. HBT-CHAIN-N words, each calling the next
-\ and reaching no library, are HBT-CHAIN-N closure members beside the few the
-\ file open above reaches, which runs after the chain. 1100 is past the 1024
-\ rows the tables were once cut to by a constant - the wall that refused every
-\ Tender entry point (dot habu-size-the-stripped-b2932715) and, measured on the
-\ engine before the sizing landed, this very chain at `last_added_word='CW76'`.
-\ The image prints the chain's value rather than merely exiting, so a closure
-\ that built but lost a member is a wrong number and not a silent pass. The
-\ source is generated here because 1101 definitions is 50 KB of fixture; the
-\ builder holds one line at a time (SB-CAP is 1 KB).
+\ A PROGRAM WHOSE CLOSURE IS ITS SIZE: HBT-CHAIN-N words, each calling the next,
+\ beside the few members the file open reaches. 1100 is past 1024, the row count
+\ a fixed table size would cap. The image prints the chain's value, so a lost
+\ member is a wrong number. The source is generated: 1101 definitions is 50 KB
+\ and the builder holds one line at a time (SB-CAP is 1 KB).
 1100 constant HBT-CHAIN-N
 : HBT-SB-U+ ( n -- ) {: n:n :}
    n 0 < if E-STR-BOUNDS throw then
@@ -125,13 +111,10 @@ package HB-BUILD-CLI
    errn 0 T=
    HBT-RUN-OUT outn HBT-PPH-EXPECTED$ T$= ;
 
-\ ... and a program whose closure is larger than any constant the linker used to
-\ carry builds and runs: the tables are sized from the program (aot-closure.f
-\ CLO-CAPACITY). It also OPENS A FILE BY PATH, because the path scratch PATH0
-\ terminates into is claimed fresh with its byte length. Before that claim this
-\ program's open - Tender's minimal reproducer - was refused with `outside the
-\ restored span caller=PATH0 target=PZB`, and so was every entry point that
-\ reaches a file.
+\ ... and a program whose closure is larger than any fixed table builds and
+\ runs: the tables are sized from the program (aot-closure.f CLO-CAPACITY). It
+\ also opens a file by path: the path scratch PATH0 terminates into is claimed
+\ fresh with its byte length.
 : HBT-STRIPPED-CHAIN ( -- )
    HBT-CHAIN-SRC!
    HBT-CHAIN-OUT HBT-REMOVE-FILE?

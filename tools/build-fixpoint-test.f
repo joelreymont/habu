@@ -1,12 +1,9 @@
 \ build-fixpoint-test.f - checked fixture for tools/build-fixpoint.f: capture
-\ determinism, the stage argv and engine selection, private install cleanup,
-\ the candidate boot, cached skip, a failed build leaving no stamp, CLI
-\ footguns, watermark refusals on a cold capture host, the stamp key and its
-\ guards, the boot pin and the cold source-only host's arena limit. The
-\ stale-seed sandbox cases are tools/build-fixpoint-sandbox-test.f, and the
-\ emitted and certified sources are tools/build-fixpoint-source-test.f; each
-\ is a gate row of its own because one row running every case took 293-338 s
-\ in the gate's pool.
+\ determinism, stage argv, engine selection, install cleanup, candidate boot,
+\ cached skip, no stamp after a failed build, CLI footguns, watermark refusals,
+\ stamp key, boot pin, the cold host's arena limit. Separate rows, since one row
+\ took 293-338 s pooled: tools/build-fixpoint-sandbox-test.f and
+\ tools/build-fixpoint-source-test.f.
 \ Run: bin/hb --load tools/build-fixpoint-test.f
 
 require tools/build-fixpoint-test-lib.f
@@ -45,12 +42,12 @@ variable BFT-ART-B-U
    BFT-ARGV-LOAD-FILES
    PROC-ARGV-N @ COUNT>N ;
 
-: BFT-ARGV-FIXPOINT-NO-MAIN ( ptr u8 n ptr u8 n -- n )   \ BFT-ARGV-FIXPOINT minus the -main companion: reproduces the recovery footgun
+: BFT-ARGV-FIXPOINT-NO-MAIN ( ptr u8 n ptr u8 n -- n )   \ BFT-ARGV-FIXPOINT minus the -main companion
    BFT-ARGV-ENV+
    BFT-ARGV-LOAD-LIBS
    PROC-ARGV-N @ COUNT>N ;
 
-: BFT-ARGV-NO-PREAMBLE ( ptr u8 n ptr u8 n -- n )   \ tool source WITHOUT the lib preamble: reproduces the missing-preamble footgun (bare `E-UNDEFINED: PATH-CAP` pre-fix)
+: BFT-ARGV-NO-PREAMBLE ( ptr u8 n ptr u8 n -- n )   \ tool source without the lib preamble
    BFT-ARGV-ENV+
    s" --load" >LEN PROC-ARGV+
    s" tools/build-fixpoint.f" BFT-ARG+
@@ -278,14 +275,10 @@ variable BFT-BIN-FILES
    BFT-ERR erru s" build-fixpoint: failed" CONTAINS? TTRUE
    BFT-STAMP2 FS:FILE? TFALSE ;
 
-\ Recovery footgun (dot habu-stale-bin-hb): build-fixpoint.f loaded WITHOUT its
-\ tools/build-fixpoint-main.f companion but handed an explicit `install` verb.
-\ Pre-fix BF-CLI was never called, so the verb was silently dropped - the loaded
-\ stdin engine read its program from the closed stdin, hit EOF, and exited 0
-\ having built nothing (rc 0, empty output). The tail self-dispatch must now run
-\ the verb; a non-directory TMPDIR makes the install fail fast and die loudly,
-\ so a build verb can no longer exit 0 having done nothing. Base (unfixed
-\ source): rc 0, empty stderr -> both direction assertions fail.
+\ build-fixpoint.f loaded without tools/build-fixpoint-main.f but handed an
+\ explicit `install` verb runs the verb: a non-directory TMPDIR makes the
+\ install die loudly, so a build verb never exits 0 having done nothing (an
+\ undispatched verb exits 0 with empty output: the stdin engine reads EOF).
 : BFT-TEST-NO-MAIN-DISPATCHES ( -- )
    BFT-NOTDIR BFT-OUTDIR2 BFT-ARGV-FIXPOINT-NO-MAIN BFT-BUILD-ARGV# 1 - T=
    HB-TARGET-LINUX-X86-64? if BFT-ARGV-SNAP-FORCE else BFT-ARGV-INSTALL-FORCE then
@@ -294,13 +287,9 @@ variable BFT-BIN-FILES
    BFT-ERR erru s" build-fixpoint: failed" CONTAINS? TTRUE
    BFT-STAMP2 FS:FILE? TFALSE ;
 
-\ Missing-preamble footgun (dot habu-make-build-fixpoint): build-fixpoint.f loaded
-\ WITHOUT its lib preamble handed an explicit `install` verb. Pre-fix the first
-\ PATH-CAP buffer create died mid-load with a bare `E-UNDEFINED: PATH-CAP`
-\ (rc 70) - no hint the preamble was missing. The load-discipline guard must now
-\ fail fast with BF-USAGE-RC and a named diagnostic that lists the required load.
-\ Base (unfixed source): rc 70, stderr `E-UNDEFINED: PATH-CAP` -> both direction
-\ assertions fail.
+\ build-fixpoint.f loaded without its lib preamble fails fast with BF-USAGE-RC
+\ and a diagnostic naming the required load, not a bare `E-UNDEFINED: PATH-CAP`
+\ (rc 70) mid-load.
 : BFT-TEST-MISSING-PREAMBLE ( -- )
    BFT-NOTDIR BFT-OUTDIR2 BFT-ARGV-NO-PREAMBLE DROP
    BFT-ARGV-INSTALL-FORCE
@@ -407,9 +396,6 @@ variable BFT-BIN-FILES
    BF-STAMP-MATCH? TTRUE
    BFT-STAMP-UNSCOPE ;
 
-\ typed STR:FIND-SUB boundary: route byte-lengths through the STR: role surface,
-\ then read the found option<NUM:index> through NUM's one public
-\ projection and mint the switchover option<idx> from it.
 : BFT-FIND ( ptr u8 n ptr u8 n -- option<idx> ) {: a:ptr u:n b:ptr v:n :}
    a u STR:LENGTH b v STR:LENGTH STR:FIND-SUB MATCH option
      none OF OPTION:NONE ENDOF
@@ -422,16 +408,13 @@ variable BFT-BIN-FILES
      some OF STR-TRUE TTRUE IDX>N ENDOF
    ;MATCH ;
 
-\ THE HOST CAPABILITY THE BUILD REQUIRES, refused at the door. The payload
-\ rewinds to the mark src/core/lower-cert-seal.f records at the core prefix's
-\ end and carries no copy of that prefix, so a host engine without the mark
-\ cannot build this tree at all - BF-PREFLIGHT has to say so before a byte is
-\ emitted, not leave an undefined core word to surface from inside a generated
-\ file. The sabotage is that file with its PREFIX-MARK block cut off and nothing
-\ else changed: an engine reads its boot prefix from the tree it runs in, so the
-\ sandbox's copy IS the child's prefix. The sandbox engine is the shared cold
-\ capture host (BFT-SOURCE-HOST$, hb-host in the scratch root), so this case
-\ and the value case below run after the build, in a sandbox of their own.
+\ A host engine without the src/core/lower-cert-seal.f prefix mark cannot build
+\ this tree (the payload rewinds to that mark and carries no copy of the
+\ prefix), so BF-PREFLIGHT refuses it before a byte is emitted. The sabotage
+\ cuts the PREFIX-MARK block from that file: an engine reads its boot prefix
+\ from the tree it runs in. The sandbox engine is the shared cold capture host
+\ (BFT-SOURCE-HOST$), so this case and the value case run after the build, in a
+\ sandbox of their own.
 : BFT-MARK-SABOTAGE ( -- )
    s" src/core/lower-cert-seal.f" BFT-READ {: u:n :}
    BFT-READ-BUF u s" package PREFIX-MARK" BFT-FIND BFT-FOUND {: cut:n :}
@@ -459,18 +442,12 @@ variable BFT-BIN-FILES
    BFT-STALE-HB BFT-SOURCE-HOST$ BF-FILE= TTRUE
    BFT-STALE-STAMP FS:FILE? TFALSE ;
 
-\ THE SAME PROBE'S VALUE LAYER, forged twice. Both fixtures leave every name in
-\ place, so the resolvability clause above passes and only the value can refuse -
-\ which is the whole point of reading one: a name resolves whether or not
-\ anything ever wrote through it, and an engine built from a tree that carried
-\ the words but never took the boundary is exactly the host that would emit a
-\ rewind restoring nothing.
-\
-\ The fixture stops the file one line short of taking the boundary width, so
-\ every PREFIX-MARK name resolves, the mark still records the dictionary end and
-\ the include registry, and only CURSORS reads zero. That is the one state the
-\ name clause is blind to and the value clause exists for. The rewrite starts
-\ from the workspace file, so it cannot inherit an earlier case's damage.
+\ The probe's value layer: both forges leave every name in place, so only the
+\ value can refuse; a name resolves whether or not anything wrote through it.
+\ The fixture stops the file one line short of taking the boundary width: every
+\ PREFIX-MARK name resolves, the mark records the dictionary end and include
+\ registry, and only CURSORS reads zero. The rewrite starts from the workspace
+\ file, so it cannot inherit an earlier case's damage.
 : BFT-MARK-VALUE-FORGE ( ptr u8 n -- ) {: tail:ptr tailu:n :}
    s" src/core/lower-cert-seal.f" BFT-READ {: u:n :}
    BFT-READ-BUF u s" CHECKER-BOUND:CURSORS CU !" BFT-FIND BFT-FOUND {: cut:n :}
@@ -573,26 +550,15 @@ TYPED-VARIABLE SRC-A ptr u8
    BF-PIN-OFF!
    BF-PIN-RESET ;
 
-\ The native chain's contribution to the stamp key (package STAMP-KEY in
-\ tools/build-fixpoint.f). Two claims, and the second is what makes the first
-\ mean anything for the real refresh.
-\
-\ CLOSURE-KEY runs the production digest word over a fixture entry, so the
-\ closure it walks is built here rather than read from the tree: a content edit
-\ to a file the entry loads must change the digest, an edit to a file it does
-\ not load must leave the digest alone, and restoring the first file's bytes
-\ must restore the original digest exactly. The entry carries two decoys - a
-\ `require` of the unrelated file inside a `\` comment, and the same text inside
-\ a string literal - so a discovery pass that matched loader text instead of
-\ loader FORMS would pull the unrelated file into the closure and fail both the
-\ membership assertions and the untouched-digest claim.
-\
-\ STAMP-FOLD then pins that the refresh's own key preimage carries that digest,
-\ for THIS repository's chain entry: it rebuilds the length-framed `chain-src`
-\ fragment BF-STAMP-KEY-BEGIN is supposed to have appended and finds those exact
-\ bytes in the preimage. The same fragment built from the fixture entry's digest
-\ must be absent, so keying the wrong entry file fails here rather than passing
-\ on the tag alone.
+\ The native chain's part of the stamp key (package STAMP-KEY in
+\ tools/build-fixpoint.f). TEST-CLOSURE-KEY runs the production digest over a
+\ fixture entry: an edit to a loaded file changes the digest, an edit to an
+\ unloaded one does not, and restoring the bytes restores it. Two decoys, a
+\ `require` of the unrelated file in a `\` comment and in a string literal, fail
+\ a discovery that matches loader text instead of loader forms. TEST-STAMP-FOLD
+\ finds the fragment BF-STAMP-KEY-BEGIN appends for this repository's chain
+\ entry in the refresh's key preimage, and not the one built from the fixture's
+\ digest, so keying the wrong entry fails rather than passing on the tag alone.
 
 variable ENTRY-U
 variable DEP-U
@@ -639,11 +605,9 @@ create DG-C 40 allot
    u SB-APPEND-C
    a u SB-APPEND ;
 
-\ The framed capture-source fragment BF-STAMP-KEY-BEGIN appends for a given
-\ digest: the tag as one field, the digest as the next. The tag comes from the
-\ tool (BF-STAMP-CAPTURE-TAG$), not from a copy here - a copy is what let this
-\ case go on looking for `chain-src` after the key started writing
-\ `capture-src`, while the negative case beside it passed for the wrong reason.
+\ The framed fragment BF-STAMP-KEY-BEGIN appends for a digest: the tag field,
+\ then the digest field. The tag comes from BF-STAMP-CAPTURE-TAG$, not a copy
+\ here: a copy goes stale while the negative case passes for the wrong reason.
 : FRAGMENT$ ( ptr u8 -- ptr u8 n ) {: dg:ptr :}
    SB-RESET
    BF-STAMP-CAPTURE-TAG$ FIELD+

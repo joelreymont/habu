@@ -1,121 +1,9 @@
 \ lsp-core.f - the Habu language server: the Language Server Protocol on stdin
-\ and stdout, for any client.
-\
-\ MAIN reads framed messages (src/lib/content-length.f) and holds each one until its
-\ turn, then sorts it (src/lib/json-rpc.f) and acts on it, until the client's exit
-\ or the end of input.
-\ The server is starting, running or shut down. Starting, it answers initialize
-\ with its capabilities and any other request with -32002. Running, it answers
-\ shutdown with null, initialize with -32600, workspace/symbol with the open
-\ documents' definitions (tools/lsp-symbols.f), textDocument/documentSymbol with
-\ the document's own definitions as a flat SymbolInformation list, each as
-\ workspace symbols give it but named by its word alone (tools/lsp-outline.f),
-\ textDocument/definition with the declaration the use at the position binds
-\ to (tools/lsp-definition.f), textDocument/references with every use, in the
-\ workspace, of the declaration the position selects, and that declaration
-\ first when context.includeDeclaration is true (tools/lsp-references.f),
-\ -32803 when it refuses, and a window/showMessage warning naming the files
-\ it could not cover sent just before an answer that leaves any out,
-\ textDocument/prepareRename with the range a rename of the declaration the
-\ position selects would edit in the token there, its tail after any
-\ qualifier's colon (tools/lsp-rename.f), null when it selects none and
-\ -32803 when the selection refuses, a token selecting the declaration does
-\ not spell its tail or the declaration is an EXPORT of another word,
-\ textDocument/rename with the changes that write newName over the tail of
-\ that declaration's token and of every use references would list, -32803
-\ before any check when newName is empty or holds a byte that ends a token,
-\ a colon, a quote or a backslash, and -32803, applying no edit, when
-\ prepareRename would refuse, a location's token also declares another word
-\ or a file is not covered,
-\ textDocument/hover with what the token at the position declares or binds to
-\ (tools/lsp-hover.f), as Markdown when the client's initialize listed it in
-\ textDocument.hover.contentFormat, else as plain text,
-\ textDocument/documentHighlight with the token that declares the word at the
-\ position and that word's uses in the document (tools/lsp-highlight.f),
-\ textDocument/semanticTokens/full with a token over each word the document's
-\ last completed check bound in it, typed by what the check states the word
-\ is (tools/lsp-tokens.f), textDocument/completion with the spellings that
-\ would bind at the position (tools/lsp-completion.f), textDocument/documentLink
-\ with a link over the operand of each top-level loader of the document that
-\ reached a file, to that file (tools/lsp-links.f), a request whose params it
-\ cannot read, or names a document not open, with -32602 and any other request
-\ with -32601, and it keeps the documents the client opens, changes and
-\ closes: Full sync, each change carrying the whole text, and positions in
-\ UTF-16 units. Shut down, it answers every request with -32600. Only a
-\ running server takes a notification other than exit; the rest are dropped,
-\ as unknown ones always are.
-\
-\ The messages are served in the order they came, and the first one held is
-\ served only once no more input waits, so the messages that came behind a
-\ request are read before its work starts. INPUT? says only that one has begun
-\ to come: reading it waits for the rest. A running server answers a request
-\ -32800, doing none of its work, when a $/cancelRequest naming its id was read
-\ behind it, an id that is a string by its decoded text and a number by its
-\ JSON text, and it answers textDocument/definition, references, prepareRename,
-\ rename, hover, documentHighlight, semanticTokens/full, completion,
-\ documentSymbol or documentLink -32801 when a textDocument/didChange of its
-\ document was, since the request asked about the text that change replaces.
-\ textDocument/references and textDocument/rename, whose work is a check of
-\ each file they gather from, read the input that waits again before each of
-\ those checks and before the answer, holding every message read and serving
-\ none, and such a request is answered there -32800 when a cancel of it has
-\ been read, else -32801 when a change of any open document has, since each
-\ check it gathers from reads them all. The check under way is finished
-\ first, and a message begun is read whole, so how soon such a request stops
-\ has no bound. A cancel is otherwise an unknown notification, so one naming
-\ an id answered, unknown or not a request's changes nothing, and a check
-\ already running is not stopped. The end of input and a fault in its framing
-\ come after the messages held, even when a request read them: it is
-\ answered, and those are served, first.
-\
-\ A running server checks the documents and publishes their diagnostics
-\ (tools/lsp-check.f, tools/lsp-diag.f). Every check reads each other open
-\ document's text in place of its file. Opening or changing a document leaves
-\ it waiting for a check, and with it every other open document whose last
-\ completed check read its file (LSP-DEFS:DEFS-READ?): that check's list and
-\ definitions are of text a check no longer reads. The loader finds a file on
-\ disk, so an open document whose file is not there is no check's source
-\ (tools/check-verify-child.f), and a save may bring it there: a save, which
-\ the server asks for without its text, leaves every open document waiting,
-\ since a file saved may be one a check's loader could not find or one that
-\ now comes before the file it found. Input comes first: only when no message
-\ waits, in the reader's buffer or on stdin, or is held is one waiting document
-\ checked, the next after the last one checked, and then input is looked at
-\ again. So such a check takes a document's newest text, the edits that came
-\ while another check ran are all applied before it, and the versions
-\ published for a document only rise.
-\ A request about a document waiting for a check, textDocument/definition,
-\ textDocument/references, textDocument/prepareRename, textDocument/rename,
-\ textDocument/hover, textDocument/documentHighlight,
-\ textDocument/semanticTokens/full, textDocument/documentSymbol or
-\ textDocument/documentLink, is the exception:
-\ it checks that document first, as its turn, and is answered from that check,
-\ which takes the text the client asked about, since LSP orders a request
-\ after the changes sent before it. textDocument/references and
-\ textDocument/rename check their document the same way when it waits for a
-\ check, then each file they gather uses from, an open document's text or
-\ the file on disk, for those uses alone, publishing nothing.
-\ textDocument/completion checks its document as its turn whether it waits or
-\ not, with a cursor at the position, and is answered from that check: the
-\ spellings it offers belong to that cursor. Closing a document publishes an
-\ empty list for it, drops the definitions its last check kept and leaves
-\ waiting each open document whose last completed check read its file: that
-\ check read the closed text, and left the file's diagnostics to it.
-\
-\ The workspace folders references walks (tools/lsp-workspace.f) are those
-\ initialize's params.workspaceFolders lists, an empty list naming none, else
-\ its rootUri; a folder whose URI names no file here is passed over.
-\
-\ exit ends the process with 0 after shutdown and 1 before it, and so does the
-\ end of input, which before shutdown also says so on stderr. A notification
-\ the server cannot apply - params it cannot read, a URI that names no file
-\ here, a document not open - changes nothing, and since a notification has no
-\ reply, one stderr line says why. A response from the client is dropped: the
-\ server asks nothing. Any other throw, a framing fault or a closed stdout
-\ among them, stops the server with one stderr line naming it and exit code 1.
-\
-\ STORAGE CLASS. PROCESS-GLOBAL: the reader, the buffers and the documents
-\ belong to the server's one task.
+\ and stdout, for any client. MAIN reads framed messages
+\ (src/lib/content-length.f), holds each until its turn, sorts it
+\ (src/lib/json-rpc.f) and acts on it, until the client's exit or the end of
+\ input. Full sync, positions in UTF-16 units. PROCESS-GLOBAL: the reader, the
+\ buffers and the documents belong to the server's one task.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -219,7 +107,10 @@ variable FAULT                            \ and the throw a read of it took, 0 w
       shut-down OF false ENDOF
    ;MATCH ;
 
-\ The exit code: 0 once the client has asked for shutdown, else 1.
+\ The exit code, for exit and the end of input alike: 0 once the client has
+\ asked for shutdown, else 1; the end of input before shutdown also says so on
+\ stderr. Any other throw, a framing fault or a closed stdout among them, stops
+\ the server with one stderr line naming it and exit code 1.
 : EXIT-CODE ( -- n )
    STATE@ MATCH state
       starting OF 1 ENDOF
@@ -238,7 +129,6 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 
 \ ---- replies -----------------------------------------------------------------
 
-\ A writer on the reply bytes.
 : WRITER ( -- ptr JSON-WRITE:writer )
    W REPLY-BUF JSON-WRITE:OPEN-BUF ;
 
@@ -481,6 +371,11 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    {: m:ptr mu:n name:ptr nu:n :}
    JR-ST m mu name nu METHOD? ;
 
+\ Only a running server takes a notification other than exit; the rest are
+\ dropped, as unknown ones always are. One the server cannot apply (params it
+\ cannot read, a URI that names no file here, a document not open) changes
+\ nothing, and one stderr line says why, since a notification has no reply. A
+\ response from the client is dropped: the server asks nothing.
 : NOTIFIED ( ptr u8 n ptr u8 n -- )
    {: m:ptr mu:n p:ptr pu:n :}
    m mu s" exit" NAMED? if s" " EXIT-CODE die then
@@ -493,9 +388,21 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 
 \ ---- held messages -----------------------------------------------------------
 
+\ Messages are served in the order they came, and the first one held is served
+\ only once no more input waits, so the messages behind a request are read
+\ before its work starts. A running server answers a request -32800, doing none
+\ of its work, when a $/cancelRequest naming its id was read behind it (a string
+\ id by its decoded text, a number by its JSON text), and a request about a
+\ document's text -32801 when a didChange of that document was. References and
+\ rename read the waiting input again before each file check and before the
+\ answer, serving none: -32800 for a cancel of them, else -32801 for a change of
+\ any open document, since each check reads them all. The check under way
+\ finishes and a message begun is read whole, so how soon such a request stops
+\ has no bound. A cancel is otherwise an unknown notification and stops no
+\ running check. The end of input and a framing fault come after the messages
+\ held, even when a request read them: it is answered and those served first.
 : HELD? ( -- bool )  HELD-NEXT @ HELD-COUNT @ < ;
 
-\ The body of held message K.
 : HELD$ ( n -- ptr u8 n )
    {: k:n :}
    k 0= if 0 else k 1- HELD-ENDS @ then {: at:n :}
@@ -618,7 +525,6 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 
 \ ---- input -------------------------------------------------------------------
 
-\ Whether reading is over: the input ended, or a read of it threw.
 : SETTLED? ( -- bool )  FAULT @ 0<> AT-END @ or ;
 
 \ The body of the message the reader is at, read and held.
@@ -717,8 +623,9 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 \ a waiting document after it.
 : CHECK-NOW ( n -- )  dup LAST-CHECKED ! LSP-CHECK:RUN ;
 
-\ Checks the document in this slot first if it waits for a check, so that a
-\ request about it is answered from a check of its current text.
+\ Checks the document in this slot first if it waits for a check, so a request
+\ about it is answered from the text the client asked about: LSP orders a
+\ request after the changes sent before it.
 : CHECK-WAITING ( n -- )
    dup DOC-DIRTY? if CHECK-NOW exit then
    dup LSP-DEFS:DEFS-INPUTS-FRESH? 0= if CHECK-NOW exit then
@@ -786,9 +693,10 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    i p pu AT-READ? 0= if exit then
    WRITER i RESULT AT-SLOT @ AT-BYTE @ LSP-DEFINITION:ANSWER END SENT ;
 
-\ The symbols of the open document params.textDocument names, a flat list:
-\ the definitions its last completed check retained in it, the document
-\ checked first if it waits for a check.
+\ The symbols of the open document params.textDocument names, a flat
+\ SymbolInformation list named by word alone (tools/lsp-outline.f): the
+\ definitions its last completed check retained, the document checked first if
+\ it waits for a check.
 : DOCUMENT-SYMBOLS ( JSON-RPC:id ptr u8 n -- )
    {: i p:ptr pu:n :}
    i p pu DOCUMENT? 0= if exit then
@@ -796,7 +704,9 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    WRITER i RESULT AT-SLOT @ LSP-OUTLINE:ANSWER END SENT ;
 
 \ What the token at params.position in the open document params.textDocument
-\ names declares or binds to, as its last completed check stated it.
+\ names declares or binds to, as its last completed check stated it: Markdown
+\ when initialize listed it in textDocument.hover.contentFormat, else plain
+\ text.
 : HOVER ( JSON-RPC:id ptr u8 n -- )
    {: i p:ptr pu:n :}
    i p pu AT-READ? 0= if exit then
@@ -830,7 +740,6 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    JR:CLOSE
    p pu ;
 
-\ As POSITION!, with params.context.includeDeclaration in WITH-DECL.
 : REFS! ( ptr u8 n -- ptr u8 n )  POSITION! WITH-DECL! ;
 
 \ params.newName decoded into NAME-SPAN, its length in NAME-U.
@@ -841,7 +750,6 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 
 : NEW-NAME$ ( -- ptr u8 n )  NAME-SPAN @ SPAN:$ drop NAME-U @ ;
 
-\ As POSITION!, with params.newName in NAME-SPAN.
 : RENAME! ( ptr u8 n -- ptr u8 n )  POSITION! NEW-NAME! ;
 
 \ The request's id copied out of the held bodies, which reading input during
@@ -999,9 +907,9 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 \ The changes that write params.newName over the tail of the declaration at
 \ params.position in the open document params.textDocument names and of
 \ every use of it, as tools/lsp-rename.f states: -32803 before any check
-\ when the name cannot be written over a tail, null when the position
-\ selects none, and else -32803, applying no edit, when prepareRename would
-\ refuse or APPLIES? does.
+\ when newName is empty or holds a byte that ends a token, a colon, a quote or a
+\ backslash, null when the position selects none, and else -32803, applying no
+\ edit, when prepareRename would refuse or APPLIES? does.
 : RENAME ( JSON-RPC:id ptr u8 n -- )
    {: i p:ptr pu:n :}
    i p pu [: RENAME! ;] READ? 0= if exit then
@@ -1094,8 +1002,9 @@ variable FAULT                            \ and the throw a read of it took, 0 w
       SKIP-VALUE
    then ;
 
-\ initialize's params.workspaceFolders, an array, each folder's uri a root;
-\ else params.rootUri, a string, the root.
+\ The roots references walks (tools/lsp-workspace.f): initialize's
+\ params.workspaceFolders, each folder's uri, an empty array naming none; else
+\ params.rootUri.
 : WORKSPACE! ( ptr u8 n -- )
    {: p:ptr pu:n :}
    pu 0= if exit then
@@ -1114,6 +1023,10 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    if ROOT-AT then
    JR:CLOSE ;
 
+\ Starting, the server answers initialize with its capabilities and any other
+\ request -32002. Running, it answers shutdown with null, initialize -32600, a
+\ request whose params it cannot read or that names a document not open -32602,
+\ and an unknown one -32601. Shut down, it answers every request -32600.
 : STARTING-REQUEST ( JSON-RPC:id ptr u8 n ptr u8 n -- )
    {: i m:ptr mu:n p:ptr pu:n :}
    m mu s" initialize" NAMED? if
@@ -1186,7 +1099,6 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    0 HELD-COUNT !
    HELD-B BUF:CLEAR ;
 
-\ Every held message served, in turn.
 : TURNS ( -- )  begin HELD? while TURN repeat ;
 
 \ The input ended on a message boundary: the messages held are served, and
@@ -1197,8 +1109,18 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    rc 0= if s" " 0 die then
    s" lsp: input ended before exit" rc die ;
 
-\ The document to check now: the next one waiting after the last checked,
-\ while the server runs, no message waits and reading is not over.
+\ A running server checks the documents and publishes their diagnostics
+\ (tools/lsp-check.f, tools/lsp-diag.f); each check reads every other open
+\ document's text in place of its file. Opening or changing a document leaves it
+\ waiting, with every open document whose last completed check read its file
+\ (LSP-DEFS:DEFS-READ?). A save leaves every open document waiting: the loader
+\ finds files on disk (tools/check-verify-child.f), and a saved file may be one
+\ a check could not find or one that now precedes the file it found. Closing
+\ one publishes an empty list, drops its definitions and leaves waiting each
+\ document whose last check read its file.
+\ The document to check now: the next one waiting after the last checked, while
+\ the server runs, no message waits or is held and reading is not over. A check
+\ then takes a document's newest text, and the versions published only rise.
 : DUE ( -- option<n> )
    RUNNING? 0= if OPTION:NONE exit then
    LAST-CHECKED @ DOC-NEXT-DIRTY MATCH option

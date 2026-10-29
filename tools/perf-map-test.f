@@ -1,22 +1,9 @@
-\ perf-map-test.f - PERF-MAP:LINE$ against real `perf script` output.
-\
-\ The captured lines below are verbatim from this machine, from
-\
-\   perf record -g -o perf.data -- bin/hb --load busy.f
-\   perf script -i perf.data
-\
-\ on 2026-09-16 (perf 7.2.5-1, aarch64). Two shapes matter and both are here:
-\ the unindented sample header, whose pid and period are decimal runs that also
-\ read as hex, and the tab-indented call-chain line whose first column is the
-\ only address perf documents. A filter that mapped "anything shaped like an
-\ address" would rewrite the pid; this one maps the address column and nothing
-\ else, and that is what the first two cases pin.
-\
-\ The third case is the resolution itself. A captured address cannot be used for
-\ that - it belongs to the binary that produced the capture, and this engine is a
-\ different one - so the line is assembled from a word defined right here, whose
-\ code address this dictionary does know. That exercises the same LINE$ path the
-\ captured lines take.
+\ perf-map-test.f - PERF-MAP:LINE$ against `perf script` output captured verbatim
+\ (perf 7.2.5-1, aarch64) from
+\   perf record -g -o perf.data -- bin/hb --load <program>; perf script -i perf.data
+\ A header's pid and period also read as hex, so only a call-chain line's first
+\ column may be mapped. A captured address belongs to another binary, so the
+\ resolution case builds its line from a word defined here.
 require src/lib/errors.f
 require src/lib/string.f
 require src/lib/test.f
@@ -40,8 +27,6 @@ variable ACC
    d 10 < if [char] 0 d + exit then
    [char] a d 10 - + ;
 
-\ The value as lower-case hex, appended to the string builder. Digits come out
-\ least significant first, so they are staged in HEXBUF and replayed backwards.
 : HEX+ ( n -- )
    HV !
    0 HN !
@@ -83,9 +68,7 @@ variable ACC
 : T-HEADER-UNTOUCHED ( -- )
    HEADER$ PERF-MAP:LINE$ HEADER$ STR= TTRUE ;
 
-\ Every byte of a call-chain line survives. This is the shape the first cut of
-\ this filter lost: its line reader computed an address and dropped the byte,
-\ so every line came out empty.
+\ Every byte of a call-chain line survives, not only its mapped address.
 : T-FRAME-KEPT ( -- )
    FOREIGN-FRAME$ PERF-MAP:LINE$ {: a:ptr u:n :}
    a u s" __ctype_init+0x0" CONTAINS? TTRUE
@@ -117,8 +100,7 @@ variable ACC
    a u s" PERF-MAP-TEST:MARKER" CONTAINS? TTRUE
    a u s" (bin/hb)" CONTAINS? TTRUE ;
 
-\ The pid in a header is a seven-digit run that is also valid hex. If the filter
-\ ever starts mapping it, this is the case that says so.
+\ The header pid is a seven-digit run that is also valid hex.
 : T-PID-NOT-AN-ADDRESS ( -- )
    HEADER$ PERF-MAP:LINE$ {: a:ptr u:n :}
    a u s" 1880406" CONTAINS? TTRUE ;

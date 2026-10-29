@@ -1,35 +1,9 @@
-\ perf-map-core.f - rewrite the addresses in `perf script` output as Habu words.
-\
-\ External perf keeps the exact call chains the in-binary profiler's conservative
-\ walk can only approximate, but it prints the engine's code addresses as
-\ [unknown]: every Habu word lives in one anonymous mapping perf has no symbols
-\ for. This filter puts the names back, so
-\
+\ perf-map-core.f - rewrite the addresses in `perf script` output as Habu words,
+\ which perf prints as [unknown]: they live in one anonymous mapping.
 \   perf record -g <engine> --load prog.f
 \   perf script | <engine> --load tools/perf-map.f
-\
-\ reads as words and packages rather than hex.
-\
-\ THE INDEX IS THE PROFILER'S OWN. `prof-on` builds the pc-sorted live-range
-\ index and `prof-off` stops the clock again before the report needs a sample, so
-\ an address is resolved here by exactly the code the SIGALRM handler runs
-\ (prof-pc>rec), not by a second implementation that could disagree with it.
-\
-\ ONLY A CALL-CHAIN LINE CARRIES AN ADDRESS. perf script writes a sample as an
-\ unindented header line - "comm pid timestamp: period event:" - followed by one
-\ indented line per frame, "<hex> <symbol> (<dso>)". The header's pid and period
-\ are decimal runs that are also valid hex, so a filter that mapped "anything
-\ shaped like an address" would rewrite them; this one maps only the first token
-\ of an indented line, which is the one column perf documents as an address.
-\
-\ WHICH ADDRESSES RESOLVE: the engine is position-dependent, so a code address
-\ from another run of the SAME binary maps directly. Words the profiled program
-\ compiled for itself are not in this process's dictionary and stay hex, exactly
-\ as they do in the internal profiler's deferred bucket. The dso column is not
-\ consulted: every Habu word lives in one anonymous mapping, so the address is
-\ the only thing that can decide, and an address outside this dictionary's code
-\ range - every shared library on this machine sits far above it - resolves to
-\ nothing and is left alone.
+\ An address resolves through the profiler's own index (prof-pc>rec, the code
+\ the SIGALRM handler runs), never a second implementation that could disagree.
 require src/lib/errors.f
 require src/lib/string.f
 
@@ -61,11 +35,9 @@ variable OK
 variable MAPPED    \ has this line's address column been rewritten already
 
 \ ---- the rewritten line ------------------------------------------------------
-\ src/lib/string.f's caller-owned builder over a buffer sized for a whole line. The
-\ shared SB builder is 1 KiB, and a fixture may hand LINE$ a line that lives in
-\ it, which is also why the offset is not rendered through src/lib/fmt.f: FMT
-\ appends numbers to SB and nowhere else. A full buffer throws E-STR-CAPACITY
-\ rather than truncate.
+\ A caller-owned builder: the shared SB is 1 KiB and a fixture may hand LINE$ a
+\ line that lives in it, which is also why the offset does not go through
+\ src/lib/fmt.f (FMT appends to SB only). A full buffer throws E-STR-CAPACITY.
 : OUT+ ( ptr u8 n -- )
    OUT-BUF OUT-CAP OUT-U BUF-APPEND ;
 
@@ -147,14 +119,19 @@ variable MAPPED    \ has this line's address column been rewritten already
    u 0= if STR-FALSE exit then
    a 0 + c@ SEP? ;
 
-\ The address column is the first token of an indented line, and only that one.
+\ The address column is the first token of an indented line, and only that
+\ one: a sample's unindented header holds a decimal pid and period that are
+\ also valid hex.
 : ADDR-HERE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    MAPPED @ 0<> if STR-FALSE exit then
    a u HEX? ;
 
 public
-\ The rewritten line, in OUT-BUF. Separated from the stdin driver so a
-\ fixture can hand it a line and read the answer back.
+\ The engine is position-dependent: an address from another run of the same
+\ binary maps directly. Words the profiled program compiled stay hex, as in the
+\ internal profiler's deferred bucket. The dso column is not read: an address
+\ outside this dictionary's code range (every shared library sits above it) is
+\ left alone.
 : LINE$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    OUT-U BUF-RESET
    0 CUR !

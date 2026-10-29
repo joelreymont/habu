@@ -1,38 +1,9 @@
-\ lsp-workspace.f - the files of the workspace whose loads reach a file.
-\
-\ The subjects are the `.f` files under the folders ROOT+ adds, as FS:WALK-FILES
-\ finds them (src/lib/fs.f, which passes over .jj, .jj-ws, .git, .dots and .out), and
-\ the documents open in the server. REACHING takes a file F and a document D,
-\ each by its canonical path, and the open documents as a word that hands the
-\ word it is given each open document's canonical path and text, and gives
-\ every subject whose closure holds F, and D as a subject whatever its closure
-\ holds: F first when it is a subject, then the others in the byte order of
-\ their paths, which PATH< answers. REACHING-AGAIN does the same for another
-\ file over the graph REACHING found, walking and discovering nothing.
-\
-\ A closure is every file a check of its subject could read. A load resolves
-\ against the root that resolved the file holding it (docs/forth-card.md
-\ section 7), so a file is followed once under each root a load reaches it
-\ under: a node is a path and a root, and a subject's node is rooted at the
-\ directory holding it, as the checker roots a document it checks
-\ (tools/check-verify-core.f CHK-EXPAND-BYTES). A node's loads are the events
-\ discovery (tools/source-discovery.f) records in the text of the first open
-\ document at its path, which every check reads in place of the file, else in
-\ its file on disk, when it is there. A file outside the workspace is followed
-\ like any other and never given. A load of a file that is not there is followed
-\ no further.
-\
-\ A file whose loads cannot be found, one discovery refuses (an E-DISC-*
-\ code) or one that is there and will not be read (an E-FS-* code), loads
-\ nothing and the walk goes on: UNREADABLE and UNREADABLE$ name it and why. A
-\ root whose walk fails (an E-FS-* code) refuses the request, which then gives
-\ no subject: REFUSED? answers true and BLOCKED$ names the root. Any other
-\ throw goes on.
-\
-\ Nothing but the roots is kept from one request to the next.
-\
-\ STORAGE CLASS. PROCESS-GLOBAL: the roots and the graph of the request being
-\ answered belong to the server's one task.
+\ lsp-workspace.f - the workspace files whose loads reach a file, for the LSP
+\ server. Subjects are the .f files FS:WALK-FILES finds under the ROOT+ folders
+\ and the open documents. A node is a path and a root: a load resolves against
+\ the root that resolved its file (docs/forth-card.md section 7).
+\ PROCESS-GLOBAL: the roots and the request's graph belong to the server's one
+\ task; only the roots are kept between requests.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -58,7 +29,6 @@ private
 7 constant N-FAULT
 8 constant NODE-CELLS
 
-\ A load: the node whose file loads, and the node it loads.
 0 constant EDGE-FROM
 1 constant EDGE-TO
 2 constant EDGE-CELLS
@@ -106,9 +76,8 @@ variable ROOT-N
 variable CUR                             \ the node being followed,
 variable CUR-OPEN                        \ the open document whose text is read,
 variable CUR-ROOT                        \ and the root being walked
-\ POOL holds a byte past those it names, which POOL+ reserves with its own:
-\ its accessor refuses an index at its capacity, and a string at the end of
-\ what it names, as an empty one is, still needs the address of that index.
+\ POOL+ reserves a byte past those POOL names: the accessor refuses an index at
+\ capacity, and a string at the end, an empty one too, needs that address.
 
 : NODE@ ( n n -- n )  swap NODE-CELLS * + NODES @ ;
 : NODE! ( n n n -- )  swap NODE-CELLS * + NODES ! ;
@@ -141,8 +110,8 @@ variable CUR-ROOT                        \ and the root being walked
    u POOL-U +!
    at ;
 
-\ Why a throw of this code kept a file's loads from being found, as
-\ src/lib/errors.f names a discovery's code, and whether it is such a throw.
+\ The name of a code that keeps a file's loads from being found, as
+\ src/lib/errors.f names a discovery's code, and whether RC is one.
 : FAULT$ ( n -- ptr u8 n bool )
    {: rc:n :}
    rc LSP-TEXT:FS-RC? if s" cannot be read" true exit then
@@ -154,7 +123,6 @@ variable CUR-ROOT                        \ and the root being walked
    rc E-DISC-RETIRE = if s" E-DISC-RETIRE" true exit then
    s" " false ;
 
-\ The request refused, naming this root.
 : REFUSE ( ptr u8 n -- )
    {: a:ptr u:n :}
    u 1+ BLOCK-B-RESERVE
@@ -233,14 +201,14 @@ variable CUR-ROOT                        \ and the root being walked
 
 \ ---- the subjects ---------------------------------------------------------------
 
-\ The subject at this canonical path, rooted at its directory.
+\ The subject at this canonical path, rooted at its directory as the checker
+\ roots a document it checks (tools/check-verify-core.f CHK-EXPAND-BYTES).
 : SUBJECT ( ptr u8 n -- n )
    {: a:ptr u:n :}
    a u a u SOURCE-ROOT:DIRNAME NODE-OF {: id:n :}
    1 id N-SUBJECT NODE!
    id ;
 
-\ An open document, by its canonical path and its text.
 : OPEN+ ( ptr u8 n ptr u8 n -- )
    {: p:ptr pu:n t:ptr tu:n :}
    p pu SUBJECT {: id:n :}
@@ -251,7 +219,6 @@ variable CUR-ROOT                        \ and the root being walked
    tu o O-TEXT-U OPEN!
    o 1+ OPEN-N ! ;
 
-\ A file the walk finds, a subject when it is a `.f` file.
 : FOUND ( ptr u8 n -- )
    {: a:ptr u:n :}
    a u s" .f" ENDS-WITH? 0= if exit then
@@ -260,7 +227,8 @@ variable CUR-ROOT                        \ and the root being walked
 : WALK ( -- )
    CUR-ROOT @ ROOT-PATH$ [: FOUND ;] FS:WALK-FILES ;
 
-\ The subjects under root R; a walk that fails refuses, naming R.
+\ A walk that fails with an E-FS-* code refuses the request, naming R; any
+\ other throw propagates.
 : WALK-ROOT ( n -- )
    {: r:n :}
    r CUR-ROOT !
@@ -286,14 +254,12 @@ variable CUR-ROOT                        \ and the root being walked
    o O-TEXT OPEN@ o O-TEXT-U OPEN@ POOL$
    DISCOVER:RUN-BYTES ;
 
-\ A load of each file the last discovery's events name, by node K.
 : LOADS ( n -- )
    {: k:n :}
    EVENT-COUNT 0 ?do
       k i EVENT-PATH@ i SOURCE-EVENT:ROOT@ NODE-OF EDGE+
    loop ;
 
-\ Whether a node of this path's file is already named as one not read.
 : NAMED? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    BAD-N @ 0 ?do
@@ -301,7 +267,6 @@ variable CUR-ROOT                        \ and the root being walked
    loop
    false ;
 
-\ Node K's loads were kept from being found by a throw of code RC.
 : FAULT ( n n -- )
    {: k:n rc:n :}
    rc k N-FAULT NODE!
@@ -313,8 +278,8 @@ variable CUR-ROOT                        \ and the root being walked
 
 : FAULT? ( n -- bool )  N-FAULT NODE@ 0<> ;
 
-\ The loads discovery finds in Q's reading of the node being followed; a
-\ file whose loads it cannot find is named.
+\ A discovery refusal (E-DISC-*) or an unreadable file (E-FS-*) leaves the node
+\ with no loads and names it; any other throw propagates.
 : FOLLOW ( [ -- ] -- )
    {: q :}
    q catch {: rc:n :}
@@ -370,8 +335,6 @@ variable CUR-ROOT                        \ and the root being walked
       DISCOVER:ROWS-PASS-STABLE? and
    until ;
 
-\ Every node the subjects reach, each followed once: a node a load makes is
-\ followed in its turn.
 : EXPAND-ALL ( -- )
    0 begin dup NODE-N @ < while
       dup EXPAND 1+
@@ -381,21 +344,17 @@ variable CUR-ROOT                        \ and the root being walked
 
 : REACHES? ( n -- bool )  N-REACH NODE@ 0<> ;
 
-\ Each node of F's path reaches F.
 : MARK ( -- )
    NODE-N @ 0 ?do
       i PATH$ F$ STR= if 1 i N-REACH NODE! then
    loop ;
 
-\ Whether load E's loading node is found to reach F, through the node it
-\ loads.
 : LIFT ( n -- bool )
    {: e:n :}
    e EDGE-FROM EDGE@ {: from:n :}
    e EDGE-TO EDGE@ REACHES? from REACHES? 0= and
    dup if 1 from N-REACH NODE! then ;
 
-\ One pass over the loads, the last first: whether it found a node.
 : PASS ( -- bool )
    false
    EDGE-N @ 0 ?do EDGE-N @ 1- i - LIFT or loop ;
@@ -423,7 +382,6 @@ variable CUR-ROOT                        \ and the root being walked
 
 public
 
-\ Whether path A comes before path B in byte order.
 : PATH< ( ptr u8 n ptr u8 n -- bool )
    {: a:ptr u:n b:ptr v:n :}
    u v min 0 ?do
@@ -433,7 +391,6 @@ public
 
 private
 
-\ Whether subject A comes before subject B: F first, then by path.
 : BEFORE? ( n n -- bool )
    {: a:n b:n :}
    a PATH$ F$ STR= if true exit then
@@ -467,7 +424,6 @@ private
 
 public
 
-\ Adds a workspace folder, by its path.
 : ROOT+ ( ptr u8 n -- )
    SOURCE-ROOT:CANONICAL drop {: a:ptr u:n :}
    ROOT-BYTES-U @ {: at:n :}
@@ -480,10 +436,11 @@ public
    u r R-PATH-U ROOT!
    r 1+ ROOT-N ! ;
 
-\ Finds the subjects whose closures hold the file at canonical path F, and
-\ gives the document at canonical path D among them; both paths are taken
-\ before EACH runs. EACH is given a word taking an open document's canonical
-\ path and text, and calls it once for each open document.
+\ The subjects whose closures (every file a check of the subject could read)
+\ hold the file at canonical path F, and the document at canonical path D
+\ whatever its closure holds: F first when it is a subject, then by path. Both
+\ paths are copied before EACH runs; EACH calls the word it is given once per
+\ open document, with its canonical path and text.
 : REACHING ( ptr u8 n ptr u8 n [ [ ptr u8 n ptr u8 n -- ] -- ] -- )
    {: f:ptr fu:n d:ptr du:n each :}
    RESET
@@ -513,10 +470,8 @@ public
    GIVE-SUBJECTS
    ORDER ;
 
-\ Finds, over the graph the last REACHING found, the subjects whose closures
-\ hold the file at canonical path F, and gives that REACHING's document among
-\ them; nothing is walked or discovered, so the files it could not read stay
-\ those UNREADABLE names.
+\ REACHING for another F over the last REACHING's graph and document: nothing
+\ is walked or discovered, so UNREADABLE stays as that REACHING left it.
 : REACHING-AGAIN ( ptr u8 n -- )
    {: f:ptr fu:n :}
    f fu POOL+ F-AT !
@@ -528,11 +483,10 @@ public
    GIVE
    ORDER ;
 
-\ Whether the last REACHING refused, and the root it named.
+\ Whether the last REACHING refused, giving no subject, and the root it named.
 : REFUSED? ( -- bool )  BLOCKED @ ;
 : BLOCKED$ ( -- ptr u8 n )  0 BLOCK-B BLOCK-U @ ;
 
-\ The subjects the last REACHING gave, in its order.
 : SUBJECTS ( -- n )  HIT-N @ ;
 : SUBJECT$ ( n -- ptr u8 n )  HITS @ PATH$ ;
 

@@ -1,33 +1,8 @@
-\ tokstream.f - dump a Habu source file's code-token stream and its stack-effect
-\ signatures, through the tree's own lexer (package LINT-LEX).
-\
-\ Proof instrument for a comment-strip sweep: a comment-only edit leaves the code
-\ stream byte-identical, so `tokstream before > a; tokstream after > b; cmp a b`
-\ is the whole proof. Any edit that touches code, a signature, a string payload,
-\ or a `.( )` printing comment changes the stream.
-\
-\   bin/hb --load tools/tokstream.f -- path ...
-\
-\ The `--` is required: without it the paths are read as more --load sources and
-\ the tool sees no positional argument.
-\
-\ One record per line:
-\   F <len> <path>   each file opens the stream, so deleting a whole file cannot
-\                    pass as an empty diff.
-\   C <len> <bytes>  a code token: LINT-LEX WORD or REGISTRY, plus a `.( ... )`
-\                    printing comment, which EXECUTES and is therefore code.
-\   L <len> <bytes>  the payload a code token carries in CONTENT - the body of a
-\                    string literal. Emitted separately because the literal's own
-\                    token is just its opener, so without this row an edit inside
-\                    a quoted string would not show.
-\   S <len> <bytes>  a `( ... )` comment whose body carries `--`: a stack effect.
-\ Every other comment is dropped, which is exactly the material the sweep is
-\ allowed to remove. A `\` line comment is dropped by the lexer itself and never
-\ reaches a record, so `--` or `s" ..."` written inside one is not code here.
-\
-\ THE CALLER MUST CHECK THE EXIT CODE. A refused invocation writes an EMPTY
-\ stream, and two empty streams compare equal, so a sweep that ignores the status
-\ reads a refusal as "comment-only".
+\ tokstream.f - dump a source file's code tokens and stack-effect signatures
+\ through the tree's lexer (package LINT-LEX): a comment-only edit leaves the
+\ stream byte-identical.   bin/hb --load tools/tokstream.f -- path ...
+\ Without `--` the paths load as sources. A refused run writes an empty stream and
+\ two empty streams compare equal: the caller must check the exit code.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -44,6 +19,12 @@ require src/lib/argv.f
 package TOKSTREAM
 private
 
+\ One record per line:
+\   F <len> <path>   opens each file, so a deleted file cannot pass as an empty diff.
+\   C <len> <bytes>  a code token, or a `.( ... )` comment, which executes.
+\   L <len> <bytes>  a string literal's body; the literal's token is only its opener.
+\   S <len> <bytes>  a `( ... )` comment whose body carries `--`: a stack effect.
+\ Every other comment is dropped; the lexer drops a `\` line comment before any record.
 : EMIT ( ptr u8 n n -- ) {: a:ptr u:n tag:n :}
    tag emit  $20 emit  u FMT:.U  $20 emit  a u type  cr ;
 

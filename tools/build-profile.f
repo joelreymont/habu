@@ -1,25 +1,9 @@
-\ build-profile.f - run the engine self-build under the internal profiler.
-\
-\ Joel, 2026-09-16: "make sure that the build profiler uses our own profiler.
-\ that's the best view into our code." `strace -c` and `perf record` cannot
-\ name a word the engine compiled for itself: perf sees one anonymous mapping.
-\ This runs the self-build under prof-on and writes what our own profiler saw.
-\
-\   bin/hb --load tools/build-profile.f -- <engine-out> <text-report> <json-report>
-\
-\ The engine lands at <engine-out> through the same driver, and the build's own
-\ phase timers still go to stdout, so they sit beside the profile rather than
-\ being replaced by it.
-\
-\ Its product is byte-identical to tools/native-build.f for the same tree and
-\ host: capture stores window coordinates, and retired symbol storage is zeroed
-\ when it grows. The profiler's own DATA allocations do not enter the artifact.
-\
-\ WHY IT DOES NOT `include tools/native-build.f`. That file ends in
-\ NATIVE-BUILD:RUN, which ends in `die`, which is an unconditional exit_group:
-\ nothing after the build ever runs, so the report could never be written. This
-\ calls NATIVE-BUILD:RUN-PATH-RC, the same driver without the argv convention
-\ and the exit, and prints the report itself.
+\ build-profile.f - run the engine self-build under Habu's own profiler, which
+\ names the words the engine compiled for itself (perf sees one anonymous mapping).
+\ Run: bin/hb --load tools/build-profile.f -- <engine-out> <text-report> <json-report>
+\ The product is byte-identical to tools/native-build.f's: the profiler's DATA
+\ allocations stay out of the artifact. It calls NATIVE-BUILD:RUN-PATH-RC, not
+\ native-build.f, whose RUN ends in `die`, so the report could never be written.
 1 set-tier
 require src/lib/errors.f
 require src/lib/string.f

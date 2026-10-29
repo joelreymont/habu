@@ -1,9 +1,8 @@
-\ hb-build-stripped-cache-test.f - checked fixture for tools/hb-build-lib.f:
-\ a program that allocates at run time links and runs, two links of it are
-\ the same bytes, a refused publication leaves the prior map, and a declared
-\ cell caching a baked table's address is mapped to the carried copy, or
-\ refused when no claim names the table.
-\ tools/hb-build-test-lib.f lists the other hb-build rows.
+\ hb-build-stripped-cache-test.f - tools/hb-build-lib.f: a program that
+\ allocates at run time links and runs, two links of it are the same bytes, a
+\ refused publication leaves the prior map, and a declared cell caching a baked
+\ table's address is mapped to the carried copy, or refused when no claim names
+\ the table. tools/hb-build-test-lib.f lists the other hb-build rows.
 \ Run: bin/hb --load tools/hb-build-stripped-cache-test.f
 
 require src/lib/string.f
@@ -82,15 +81,12 @@ variable HBT-DONOR-OUT-U
 : HBT-PTRU-SRC ( -- ptr u8 n )
    HBT-PTRU-SRC-BUF HBT-PTRU-SRC-U @ ;
 
-\ A DECLARED CELL THAT HOLDS A CARRIED TABLE'S ADDRESS, stored at BUILD time. The
-\ cell travels in the window like any other byte, so before src/habu/aot-closure.f
-\ XTD-ROW mapped it the image read the ENGINE's STR-MAX-I64$ out of its own
-\ zero-filled mapping and printed nineteen NUL bytes (measured on this fixture's
-\ program). The second line is the same table spelled in code, which the closure
-\ walk has always mapped to the carried copy: equal lines are the proof that both
-\ roads answer with one address. The third is a cached pointer into the program's
-\ OWN window data, which the window restores at the address it was captured from
-\ and which the map therefore leaves alone.
+\ A declared cell holding a carried table's address, stored at build time:
+\ src/habu/aot-closure.f XTD-ROW maps it to the carried copy (unmapped, the image
+\ reads the engine's STR-MAX-I64$ from zero-filled memory and prints nineteen
+\ NUL bytes). Line 2 spells the same table in code: equal lines prove both roads
+\ give one address. Line 3 caches a pointer into the program's own window data,
+\ which the window restores at its captured address and the map leaves alone.
 : HBT-PTRC-SRC$ ( -- ptr u8 n )
    SB-RESET
    S\" require src/lib/string.f\ncreate PTRC-OWN 111 c, 107 c,\n" SB-APPEND
@@ -135,8 +131,6 @@ variable HBT-DONOR-OUT-U
    errn 0 T=
    HBT-RUN-OUT outn HBT-MAPL-EXPECTED$ T$= ;
 
-\ The images at HBT-MAPL-OUT and HBT-MAPL-OUT2 are the same length and differ
-\ at no offset.
 : HBT-MAPL-SAME-BYTES ( -- )
    HBT-MAPL-OUT2 FS:FILE-SIZE  HBT-MAPL-OUT FS:FILE-SIZE T=
    HBT-MAPL-OUT FS:FILE-SIZE MEM-ALLOC-64K-SPAN {: abuf:ptr acap:n :}
@@ -145,10 +139,9 @@ variable HBT-DONOR-OUT-U
    HBT-MAPL-OUT2 bbuf bcap FS:READ-ALL {: bu:n :}
    abuf au bbuf bu HBT-DIFF-AT -1 T= ;
 
-\ ... and TWO LINKS OF IT ARE THE SAME BYTES. This is the equality the mapped
-\ cell broke: three stripped builds of Tender's server differed in the middle
-\ bytes of eight window cells and nowhere else. Every build runs its maker, and
-\ that is asserted, not assumed.
+\ ... and two links of it are the same bytes, the equality a mapped cell breaks
+\ (unmapped, a stripped server's builds differed in eight window cells). Every
+\ build runs its maker, and that is asserted.
 : HBT-STRIPPED-SAME-TWICE ( -- )
    HBT-MAPL-SRC HBT-MAPL-SRC$ FS:WRITE-ALL
    HBT-MAPL-OUT HBT-REMOVE-FILE?
@@ -205,10 +198,8 @@ variable HBT-DONOR-OUT-U
    HBB-MAKER-RUN @ 0<> TTRUE
    HBT-DONOR-OUT$ HBT-CODE-MAPPED ;
 
-\ ... and a DECLARED CELL that holds a carried table's address is mapped to the
-\ carried copy, so the image reads the bytes it ships. The three pinned lines are
-\ the cached pointer, the same table spelled in code and a cached pointer into
-\ the program's own window data (src/habu/aot-closure.f XTD-ROW).
+\ ... and a declared cell that holds a carried table's address is mapped to the
+\ carried copy, so the image reads the bytes it ships.
 : HBT-STRIPPED-CACHED-CARRIED ( -- )
    HBT-PTRC-SRC HBT-PTRC-SRC$ FS:WRITE-ALL
    HBT-PTRC-OUT HBT-REMOVE-FILE?

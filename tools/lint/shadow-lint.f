@@ -1,19 +1,9 @@
-\ shadow-lint.f — toolchain definitions must not shadow engine PRIM names.
-\ Self-hosted shadow lint. The engine dict is later-wins and the checker
-\ records later sigs over PTAB, so a GLOBAL toolchain word named like a prim
-\ silently replaces it for every program the toolchain-loaded engine compiles.
-\ Two classes of false alarm are avoided so the report only names real clobbers.
-\ First, a definer keyword written inside a string literal — for example
-\ `s" declare it with variable or create"` — is prose, not a definition, so
-\ per-file scanning runs through the string-aware lexer in src/lib/source-lex.f,
-\ which consumes s" / s\" / ." / c" bodies as opaque spans exactly like the real
-\ parser. Second, a definition inside a `package ... ;package` block is a scoped
-\ tail (docs/forth.md § Packages: unqualified global lookup never finds it), so it
-\ cannot clobber a global prim and is not flagged; only true global-scope shadows
-\ are reported.
+\ shadow-lint.f — a global toolchain definition must not shadow an engine PRIM:
+\ the dictionary is later-wins and the checker records later sigs over the prim table, so
+\ it silently replaces the prim for every program the toolchain engine compiles.
+\ A definition inside `package ... ;package` cannot clobber a global and is not
+\ flagged. Prim names come from habu1.f's `s" NAME"` literals (plain tokenizer).
 \ Run: bin/hb --load tools/lint/text.f tools/lint/token.f tools/lint/lib.f src/lib/source-lex.f tools/lint/shadow-lint.f
-\ Prim-name extraction still tokenizes habu1.f: SCAN-PRIMS reads prim names out of
-\ its `s" NAME"` literals, so that pass keeps the plain whitespace tokenizer.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -23,15 +13,11 @@ require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
 require src/lib/source-lex.f
-require src/lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/fmt.f                        \ FMT:.INT
 
 package SHADOW-LINT-TOOL
 
-\ One file at a time, in a slab sized from the file. It was a fixed arena and the
-\ arena had been doubled twice for one file - src/core/checker.f, the largest
-\ source in the tree - which is the shape tools/lint/text.f LINT-SLAB was written
-\ to end: the day the file crosses the constant the lint dies mid-run and the
-\ failure reads as the file's fault.
+\ One file at a time, in a slab sized from the file (tools/lint/text.f LINT-SLAB).
 create FB-SLAB LINT-SLAB:CELLS cells allot
 
 : FB-LOAD ( ptr u8 n -- ptr u8 n ) {: pa:ptr pu:n :}
@@ -76,8 +62,7 @@ create PRIM-LEN PMAX cells allot   variable PN#
    a u ;
 
 \ ---- extract prim names: s" NAME" ['] X FPRIM[-L] -> NAME (habu1.f tokenized) ----
-\ A registering word is bare (FPRIM, FPRIM-L) or package-qualified
-\ (ENGINE-EMIT:FPRIM-PROVIDED).
+\ A registering word starts FPRIM (FPRIM, FPRIM-L, FPRIM-WID), bare or package-qualified.
 : FPRIM-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" FPRIM" LINT-PREFIX?  a u s" :FPRIM" LINT-CONTAINS? or ;
 
@@ -90,16 +75,12 @@ variable SI
       SI @ 1+ SI !
    repeat ;
 
-\ ---- lint one toolchain source: a GLOBAL-scope defining word whose name is a
-\ prim is a SHADOW. Definitions inside a `package ... ;package` block are scoped
-\ tails and cannot clobber a global prim, so they are not flagged. String-literal
-\ bodies are opaque to the lexer, so a definer keyword written in prose is never
-\ mistaken for a definition. ----
-\ Negative so error-code-lint keeps it globally unique — a positive code is a
-\ shared sysexits status, and 83 collided with the engine's SEAL-VIOLATION.
-\ -4800 sits in the unclaimed gap between src/lib/codegen's E-CG codes (-4700/-4701)
-\ and the -5000 cluster; src/lib/errors.f owns -2000..-4499 and the verdict policy
-\ blocks E-PV / E-TRV own -4500..-4699. It claims no reserved range.
+\ ---- lint one toolchain source: a global-scope definer whose name is a prim is
+\ a SHADOW. String-literal bodies are opaque to the lexer (src/lib/source-lex.f),
+\ so a definer keyword written in prose is never a definition. ----
+\ Negative so error-code-lint keeps it globally unique: a positive code is a
+\ shared sysexits status. -4800 sits in the gap between src/lib/codegen.f's E-CG
+\ codes (-4700/-4701) and the -5000 cluster; src/lib/errors.f owns -2000..-4499.
 -4800 constant E-SHADOW-UNTERM
 \ The second lexer defect: a primitive-axiom row with no header or no
 \ closer. It hides definitions the same way an open string does, but a scan that
@@ -148,9 +129,8 @@ variable IN-DEFINITION
    IN-PACKAGE @ LINT-NOT IF pa pu k LINT-DEFINITION THEN ;
 
 \ Fail-closed: an unterminated string means the lexer consumed the rest of the
-\ file as string body, hiding any later definitions. Name the file and throw the
-\ named code (catchable, so the gate reports a clean per-file failure) instead of
-\ silently skipping real definitions.
+\ file as string body, hiding later definitions. Name the file and throw the
+\ named code, catchable so the gate reports a clean per-file failure.
 : SL-UNTERM-FAIL ( ptr u8 n -- ) {: pa:ptr pu:n :}
    s" shadow-lint: unterminated string literal in " type pa pu type
    s"  (line " type LINT-LEX:ERROR-LINE@ FMT:.INT s" )" type cr
@@ -231,9 +211,6 @@ variable IN-DEFINITION
    s" src/habu/regalloc.f"  LINT-FILE   s" src/habu/jit.f"       LINT-FILE
    s" src/habu/sign-id.f"   LINT-FILE
    s" src/habu/habu2.f"     LINT-FILE   s" src/habu/snap-lib.f"  LINT-FILE
-   \ `1 die` alone left die's message operands to the CALLER's stack — a
-   \ latent below-base read the certified-underdepth gate now rejects (dot
-   \ habu-habu-certified-words-84e84eaf); die carries its own message.
    BAD @ 0 > IF  s" shadow-lint: " type BAD @ FMT:.INT s"  collision(s)" type cr
       s" shadow-lint: prim-name collision(s)" 1 die
    ELSE  s" shadow-lint: clean (" type PN# @ FMT:.INT s"  prims checked)" type cr  THEN ;

@@ -1,4 +1,4 @@
-\ bundle-lib-test.f - checked fixtures for tools/bundle-lib.f.
+\ bundle-lib-test-lib.f - checked fixtures for tools/bundle-lib.f.
 \ Run: bin/hb --load tools/bundle-lib-test.f (it requires what this file uses).
 require src/lib/string.f
 
@@ -194,16 +194,10 @@ create BLTT-BUNDLE-READ BLTT-BUNDLE-CAP allot
    outu 0 T=
    BLTT-ERR erru s" missing script" CONTAINS? TTRUE ;
 
-\ What a bundle carries changed when the engine started carrying part of the
-\ stdlib itself (dot habu-seed-the-stdlib-d8e3a757). src/lib/errors.f is in the boot
-\ prefix, so copying its text into the bundle redefined every word in it the
-\ moment the bundle ran; the builder now ASSUMES such a module and carries the
-\ rest. These assertions moved with that meaning, and they check the bundle's
-\ STRUCTURE rather than searching it for a path: every path here appears in the
-\ file either way, on an assume row or a provided row, so a substring test
-\ cannot tell a carried module from an assumed one. The body markers are what
-\ separates them - E-A-FIRST is defined in src/lib/errors.f and A-LEN in
-\ src/lib/array.f, so their presence is the presence of the module's text.
+\ src/lib/errors.f is in the boot prefix, so the builder assumes it and carries
+\ the rest. Every path appears in the bundle on an assume or a provided row, so
+\ the assertions check STRUCTURE: E-A-FIRST (src/lib/errors.f) and A-LEN
+\ (src/lib/array.f) mark a module's text.
 : BLTT-TEST-BUILD-BUNDLE ( -- )
    BLTT-RUN-BUNDLE-LIB 0 s" BLTT-BUILD" BLTT-EXPECT-EXIT {: outu:n erru:n :}
    outu 0 T=

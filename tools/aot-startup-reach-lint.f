@@ -1,46 +1,8 @@
-\ aot-startup-reach-lint.f — an emitter may only ADR, a label it binds itself.
-\
-\ WHY A LINT AND NOT A MEASUREMENT. `adr` carries a signed 21-bit byte delta
-\ (src/arch/arm64/icode.f ?ADR): ±1 MiB. The fixed startup src/habu/aot-lib.f
-\ EMIT-ENTRY emits sits at text offset zero, and the labels it has to address —
-\ the entry word, the crash handler, the signal stub, the sparse data blob — bind
-\ after the whole copied code band, whose size is the application's. Every image
-\ anyone builds by hand is far under 1 MiB, so an `ADR,` there works until the
-\ program that matters: Tender's standalone closure is 1.36 MB of code and its
-\ build died `icode: adr out of reach site=844 target=1363312`, at scale only and
-\ far from the line that caused it. So the rule is about the SHAPE and not about
-\ any measured distance: an emitter reaches a label it did not bind itself
-\ through src/habu/aot-lib.f TEXT-ADR,, whatever that label's offset happens to
-\ be today. This is the sibling of tools/aot-section-reach-lint.f, which keeps
-\ the same rule for the baked AOT payload section.
-\
-\ THE MODEL. A `<X> LABEL@ ADR,` triple is a finding unless
-\   - X's tail is LTEXT, the label at text offset zero that TEXT-ADR, itself
-\     reaches — it is behind every startup site, so an ADR to it is in reach by
-\     construction for any startup under 1 MiB; or
-\   - a `<X> LABEL@ LBL,` triple occurs inside the SAME definition, before or
-\     after the site. A definition's body is bounded — the emitted run is the one
-\     the word writes — so a label bound there is at most that body away, and
-\     every such pair in the scanned files is a message string or a local jump
-\     target a few dozen bytes off.
-\ A site outside any definition has no such binding and is a finding: the lint
-\ fails closed on a shape it was not taught.
-\
-\ WHAT THE MODEL DOES NOT SEE. A label passed to an emitter as a value —
-\ src/habu/crash.f C-CRASH-GUARD-REPORT takes `msg:label` and writes
-\ `1 msg ADR,` — carries no `LABEL@` and is no triple. That is acceptable here
-\ because such a label is bound by the caller inside its own emitted run
-\ (C-CRASH-STACK-GUARDS binds all four message labels in its own body, a few
-\ instructions from the reads), and because the alternative — following a value
-\ through a call — is a dataflow the lexer cannot do. The rule this lint enforces
-\ is the one that can be read off three adjacent tokens.
-\
-\ Structure, not text: the three-token shape, the qualified-name tail rule and
-\ the label table live in tools/lint/label-triple.f, shared with the sibling
-\ section lint and stated there. The scan runs on the shared string-aware lexer
-\ (src/lib/source-lex.f), so the same three tokens inside a comment, inside a
-\ string literal, or in the wrong order are not a binding and not a reference.
-\
+\ aot-startup-reach-lint.f - an emitter may only ADR, a label it binds itself.
+\ `adr` reaches ±1 MiB (src/arch/arm64/icode.f ?ADR) and the stripped startup's
+\ labels bind after the copied code band, whose size is the application's; any
+\ other label goes through src/habu/aot-link-arm.f TEXT-ADR,. The triple shape
+\ is in tools/lint/label-triple.f, shared with tools/aot-section-reach-lint.f.
 \ Run: bin/hb --load tools/aot-startup-reach-lint.f
 
 require src/lib/errors.f
@@ -62,10 +24,8 @@ create AS-SLAB LINT-SLAB:CELLS cells allot
 
 variable BAD  variable LI  variable DEND
 
-\ The largest definition in the scanned files binds eight labels, well inside
-\ the shared table's cap. Its overflow is this named refusal rather than a
-\ silent truncation, because a dropped binding turns a clean site into a finding
-\ and the reverse can never happen.
+\ The largest scanned definition binds eight labels; overflow is a named
+\ refusal rather than a spurious finding.
 : CAP-FAIL ( -- )
    s" aot-startup-reach-lint: more labels in one definition than LMAX" 1 die ;
 
@@ -73,9 +33,8 @@ variable BAD  variable LI  variable DEND
    LINT-LABEL-TRIPLE:ADD-LABEL LINT-NOT IF CAP-FAIL THEN ;
 
 \ ---- definition boundaries ---------------------------------------------------
-\ A definition opens on the `:` definer followed by a name and closes on the next
-\ bare `;`. Both are whole WORD tokens, so neither can be forged from prose, and
-\ `;package` / `;using` / `;SUITE` are other words entirely.
+\ `:` and `;` are whole WORD tokens, so prose cannot forge them, and `;package`
+\ is another word.
 : DEF-OPEN? ( n -- bool ) {: k:n :}
    k 1+ LINT-LEX:COUNT >= IF LINT-FALSE exit THEN
    k s" :" LINT-LABEL-TRIPLE:LEX-WORD= LINT-NOT IF LINT-FALSE exit THEN
@@ -88,6 +47,11 @@ variable BAD  variable LI  variable DEND
    repeat ;
 
 \ ---- the two passes, run per definition --------------------------------------
+\ A `<X> LABEL@ ADR,` triple is a finding unless X's tail is LTEXT (text offset
+\ zero, behind every startup site) or a `<X> LABEL@ LBL,` triple binds X in the
+\ same definition. A site outside any definition is a finding.
+\ Unseen: a label passed as a value (crash.f C-CRASH-GUARD-REPORT `msg:label`)
+\ carries no LABEL@; its caller C-CRASH-STACK-GUARDS binds it in its own body.
 : COLLECT-RANGE ( n n -- ) {: s:n e:n :}
    e s ?do
       i s" LBL," LINT-LABEL-TRIPLE:TRIPLE? IF
@@ -110,9 +74,8 @@ variable BAD  variable LI  variable DEND
 : CHECK-RANGE ( ptr u8 n n n -- ) {: pa:ptr pu:n s:n e:n :}
    e s ?do  pa pu i CHECK-TOKEN  loop ;
 
-\ A lexer diagnostic means the scan stopped early and every later token is
-\ invisible - including, possibly, the ADR, this lint exists to find. Fail closed
-\ and name the file rather than report a clean scan of half of it.
+\ A lexer diagnostic hides every later token, the ADR, included: fail closed and
+\ name the file.
 : LEX-FAIL ( ptr u8 n -- ) {: pa:ptr pu:n :}
    s" aot-startup-reach-lint: source did not lex: " type pa pu type
    s"  (line " type LINT-LEX:ERROR-LINE@ LINT-MAIN-N$ type s" )" type cr
@@ -120,8 +83,6 @@ variable BAD  variable LI  variable DEND
 
 public
 
-\ Scan one already-loaded source. This is the whole lint; the file entry below
-\ and every fixture in the test go through it.
 : SCAN-SOURCE ( ptr u8 n ptr u8 n -- ) {: pa:ptr pu:n a:ptr u:n :}
    a u LINT-LEX:SOURCE
    LINT-LEX:ERROR? IF pa pu LEX-FAIL THEN
@@ -134,7 +95,7 @@ public
          pa pu LI @ DEND @ CHECK-RANGE
          DEND @ LI !
       ELSE
-         LINT-LABEL-TRIPLE:RESET                 \ no enclosing definition, no bindings
+         LINT-LABEL-TRIPLE:RESET
          pa pu LI @ CHECK-TOKEN
       THEN
       LI @ 1+ LI !
@@ -149,10 +110,9 @@ public
 
 private
 
-\ The three files that emit a stripped image's fixed startup and the code it
-\ installs. src/habu/habu2.f is not here: it emits the ENGINE's startup, where
-\ every label is baked beside it, and tools/aot-section-reach-lint.f already
-\ holds it to the payload-section rule.
+\ src/habu/habu2.f is not scanned: it emits the engine's startup, where every
+\ label is baked beside it, and tools/aot-section-reach-lint.f holds it to the
+\ payload-section rule.
 : MAIN ( -- )
    FINDINGS-RESET
    s" src/habu/aot-lib.f" SCAN-FILE

@@ -1,24 +1,9 @@
-\ why-threw.f - throw-site diagnostic for opaque capacity throws.
-\
-\ A bare throw code (e.g. E-STR-CAPACITY -2201) loses the buffer that overflowed.
-\ This reports the code plus the live fill of the shared string builder (SB).
-\ It matters most in fork-worker / parallel-gate captures, where the code is
-\ all the log shows. Globals are not unwound by throw, so the reported fill
-\ reflects the state AT the throw; each field is its own `WHY-THREW:` line so
-\ it greps cleanly out of an interleaved capture file.
-\
-\ The module is `package WHY-THREW`; its two entries keep their historic
-\ spellings, which repeat the module name in the tail. That is pre-existing
-\ prefix debt, not a new pattern: shortening them would edit the body of an
-\ unpackaged 1155-line consumer (test/gate-pool.f) and pull its own packaging
-\ into this change.
-\
-\ `WHY-THREW-DUMP ( code -- )` prints the report; the gate fork-throw handler
-\ (test/gate-pool.f) calls it so any parallel worker's throw self-identifies.
-\ `WHY-THREW ( [ -- ] -- )` runs a quotation under catch, dumps, and re-throws
-\ for standalone use.
-\
-\ Run: bin/hb --load tools/why-threw.f
+\ why-threw.f - throw-site diagnostic for opaque capacity throws: the code plus
+\ the live fill of the shared string builder (SB), one `WHY-THREW:` line per field
+\ so it greps out of an interleaved capture. Globals are not unwound by throw, so
+\ the fill is the state at the throw. WHY-THREW-DUMP is the gate fork-throw
+\ handler's (test/gate-pool.f); WHY-THREW runs a quotation under catch, dumps and
+\ rethrows. Run: bin/hb --load tools/why-threw.f
 
 require src/lib/errors.f
 require src/lib/string.f

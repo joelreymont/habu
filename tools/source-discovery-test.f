@@ -1,19 +1,7 @@
-\ source-discovery-test.f - checked fixtures for the whole-file discovery pass.
+\ source-discovery-test.f - fixtures for the whole-file discovery pass
+\ (tools/source-discovery.f): its ordered load-event artifact and its refusals.
 \ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
 \ src/lib/fs-mutate.f src/lib/source.f tools/source-discovery.f tools/source-discovery-test.f
-\
-\ Proves the ordered event artifact for include/require/provided mixes (include
-\ replay-every-occurrence vs require dedup), canonical registry (equivalent spelling
-\ collapse), tool-preloaded require paths not hiding a later user require,
-\ colon-body loader capture with byte-exact token spans, a parsing keyword's
-\ operand read as data, a comment between a literal path and the word that takes
-\ it skipped as the loader skips it, the shared checked path emitter, fail-closed
-\ rejection when the artifact cannot be produced (dynamic loader path,
-\ unsupported opener, a loader word the file defined or retired, serialization
-\ overflow), a body's loader read past as the run of a word no check runs, a
-\ name a definer takes read as data, a loader word's defined, undefined or
-\ retired name refusing nothing, and the loader's own definition site read with
-\ no refusal.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -114,9 +102,8 @@ variable SDT-SRC-U
    1 EVENT-STATE@ EV-STATE-FRESH T=
    save-n REQUIRE-N ! ;
 
-\ An entry with more direct dependencies than 256: discovery records an event
-\ for each require, in order, with its own path. Line k requires sd-wXY.f,
-\ where XY spells k in two letters, so line 256 requires sd-wjw.f.
+\ More than 256 direct dependencies: one event per require, in order. Line k
+\ requires sd-wXY.f, XY spelling k in two letters (line 256 requires sd-wjw.f).
 : SDT-WIDE-LINE$ ( -- ptr u8 n )  S\" require sd-waa.f\n" ;
 17 constant SDT-WIDE-LINE                \ the bytes of SDT-WIDE-LINE$
 257 constant SDT-WIDE-N
@@ -190,13 +177,11 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
 
 \ --- only the definition openers open a definition ---------------------------
 
-\ A USER DEFINER'S NAME ENDS IN `:` AND IS STILL AN ORDINARY CALL. `64
-\ SPAN-BUFFER: SB` (src/lib/span.f) names a buffer through a `create ... does>`
-\ word, and the walk reads the whole line as calls: it consumes no name of its
-\ own, so the require after it is the event it always was. Only `:`, `kernel:`,
-\ `TRUSTED:` and, outside a definition, the engine's definers, the package
-\ keywords and `undefine` take the token that follows them as a name; a library
-\ storage definer is a call here too.
+\ A user definer's name ending in `:` is an ordinary call: `64 SPAN-BUFFER: SB`
+\ (src/lib/span.f) consumes no name, so the require after it is still an event.
+\ Only `:`, `kernel:`, `TRUSTED:` and, outside a definition, the engine's
+\ definers, the package keywords and `undefine` take the next token as a name;
+\ a library storage definer is a call here too.
 : SDT-TEST-USER-DEFINER ( -- )
    s" user-definer.f"
    S\" require sd-j.f\n64 SPAN-BUFFER: SB\n: EXAMPLE ( n -- ) {: required:n :} SB SPAN:LEN drop required drop ;\ns\" sd-k.f\" required\n"
@@ -206,23 +191,20 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
    0 EVENT-PATH@ s" sd-j.f" SDT-PATH T$=
    1 EVENT-PATH@ s" sd-k.f" SDT-PATH T$= ;
 
-\ The string the file never closes is the one refusal the walk makes about text
-\ rather than about a loader: the scan runs off the end and E-DISC-UNTERM is
-\ what a caller sees. hb-build reads an application through this walk, so a
-\ source with a bad literal is refused here before anything compiles it.
+\ An unclosed string is the walk's one refusal about text rather than a loader
+\ (E-DISC-UNTERM). hb-build reads an application through this walk, so the
+\ source is refused before anything compiles it.
 : SDT-TEST-UNTERM-STRING ( -- )
    s" unterm.f" S\" : L ( -- ) s\" sd-l.f\n" SDT-WRITE-ENTRY
    [: SDT-RUN-ENTRY ;] E-DISC-UNTERM TTHROWSQ ;
 
 \ --- a parsing keyword's operand is data -------------------------------------
 
-\ `'`, `[']`, `char` and `[char]` take the next whitespace-delimited token raw,
-\ whatever it spells, as the loader does: `char s"` is 115 and opens no string,
-\ `char \` is 92 and hides nothing after it, `' :` starts no definition and
-\ `' require` names the loader word without loading anything. In a body a local
-\ of the keyword's name is the local, so the `;` after the local `char` ends the
-\ definition and its local `require`. Each source loads, and the walk's one
-\ event is the require the loader runs.
+\ `'`, `[']`, `char` and `[char]` take the next token raw, as the loader does:
+\ `char s"` is 115 and opens no string, `char \` is 92 and hides nothing, `' :`
+\ starts no definition and `' require` loads nothing. In a body a local of the
+\ keyword's name is the local, so `;` after the local `char` ends the definition.
+\ Each source loads; the one event is the require the loader runs.
 : SDT-RAW-ONE ( ptr u8 n -- ) {: a:ptr u:n :}
    s" raw.f" a u SDT-WRITE-ENTRY
    [: SDT-RUN-ENTRY ;] 0 TTHROWSQ
@@ -240,13 +222,11 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
 
 \ --- a comment keeps a literal path ------------------------------------------
 
-\ The loader skips a comment as it skips blanks, so a literal path, a `( … )` or
-\ a `\` comment and the loader word are the literal load they are without the
-\ comment: the event the loader runs, at the loader word. A `c"` string across a
-\ comment is the opener it is without one (E-DISC-OPENER). A token that is no
-\ comment is code, whatever comments surround it, and the path is no longer
-\ the literal (E-DISC-DYNAMIC). A refused walk leaves no event to read: reading
-\ one past the log faults, so the event is read only when the walk left it.
+\ The loader skips a comment as it skips blanks: a literal path, a `( … )` or `\`
+\ comment and the loader word are the literal load, its event at the loader word.
+\ A `c"` across a comment is still an opener (E-DISC-OPENER); a non-comment token
+\ between makes the path dynamic (E-DISC-DYNAMIC). A refused walk leaves no
+\ event: reading one past the log faults, so read one only when the walk left it.
 : SDT-COMMENTED-ONE ( ptr u8 n -- )
    {: a:ptr u:n :}
    s" commented.f" a u SDT-WRITE-ENTRY
@@ -267,8 +247,7 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
 
 \ --- a loader form in a body is the run of a word no check runs ---------------
 
-\ The walk reads the entry whole, refusing nothing, and records one event: the
-\ load of PATH. A refused walk leaves no event to read.
+\ The walk refuses nothing and records one event, the load of PATH.
 : SDT-ONE-LOAD ( ptr u8 n -- ) {: pa:ptr pu:n :}
    [: SDT-RUN-ENTRY ;] 0 TTHROWSQ
    EVENT-COUNT 1 T=
@@ -280,10 +259,9 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
    s" one-event.f" a u SDT-WRITE-ENTRY
    pa pu SDT-ONE-LOAD ;
 
-\ A loader word in a body after anything but a path literal is nothing to
-\ follow or refuse. The walk reads on past it: a later literal load in the body
-\ is recorded, and `;` ends the body, so a top-level loader taking no literal
-\ after it is refused at itself.
+\ A loader word in a body after anything but a path literal is read past: a
+\ later literal load in the body is recorded, and a top-level loader taking no
+\ literal after `;` is refused at itself.
 : SDT-TEST-BODY-DYNAMIC ( -- )
    s" body-dyn.f" S\" : L ( ptr u8 n -- ) included ;\n" SDT-WRITE-ENTRY
    [: SDT-RUN-ENTRY ;] 0 TTHROWSQ
@@ -304,12 +282,11 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
 \ --- a name is data, a loader word's too --------------------------------------
 
 \ Defining, undefining or retiring a loader word's name refuses nothing: `:`,
-\ `kernel:` and `TRUSTED:` take the name as data, `include` and `require` among
-\ them, as `undefine` does at top level, and UNDEFINE-IF-DEFINED is a call
-\ whatever it takes. A loader form with another word is the one event, as is
-\ one after a package, a using or an export of the word's name, which replace
-\ no word, and after UNDEFINE-IF-DEFINED or `undefine` in a body, which retire
-\ nothing until the word runs. Each source loads.
+\ `kernel:` and `TRUSTED:` take the name as data, as `undefine` does at top
+\ level, and UNDEFINE-IF-DEFINED is a call. A loader form with another word is
+\ the one event, as is one after a package, a using or an export of the name
+\ (they replace no word) and after UNDEFINE-IF-DEFINED or `undefine` in a body
+\ (they retire nothing until the word runs). Each source loads.
 : SDT-TEST-LOADER-NAME ( -- )
    S\" package SDT-SH\n: include ( -- ) ;\nkernel: require ( -- ) ;\n;package\npackage SDT-SH2\nTRUSTED: include ( -- ) ;\n;package\ns\" sd-raw.f\" required\n"
    s" sd-raw.f" SDT-ONE-EVENT
@@ -425,13 +402,11 @@ create SDT-LOAD-ERR SDT-LOAD-CAP allot
    [: SDT-DISCOVER ;] E-DISC-RETIRE TTHROWSQ ;
 
 \ A library storage definer (src/core/layout-buffer.f, pointer-storage.f) is a
-\ word, not a keyword, so the walk reads its operand as code: storage named with
-\ a loader word's spelling is refused at it, E-DISC-DYNAMIC at PROVIDED, though
-\ it loads and the checker verifies it (check-verify-test-lib.f res-typed.f).
-\ A package may redefine the definer, and a file in the closure may do it, and
-\ the walk has no wordlists to tell which word the spelling names; after a
-\ redefinition the operand is the next statement, and `require x.f` there loads
-\ x.f. A refusal is safe, a missed load is not.
+\ word, not a keyword, so its operand is code: storage named with a loader
+\ word's spelling is refused at it, E-DISC-DYNAMIC at PROVIDED, though it loads
+\ and checks (check-verify-test-lib.f res-typed.f). The walk has no wordlists:
+\ after a redefinition of the definer, `require x.f` as its operand loads x.f.
+\ A refusal is safe, a missed load is not.
 : SDT-TEST-STORAGE-DEFINER ( -- )
    s" storage.f" S\" package CVT-RES\nTYPED-VARIABLE PROVIDED n\n;package\n" SDT-WRITE-ENTRY
    [: SDT-RUN-ENTRY ;] E-DISC-DYNAMIC TTHROWSQ
@@ -510,8 +485,8 @@ $7F0 constant SDT-OVER
    s" big-body-pad.f" S\" : L ( -- ) s\" " PATH-CAP SDT-DOT16$ S\" sd-pad.f\" required ;\n" SDT-WRITE-BIG
    s" sd-pad.f" SDT-ONE-LOAD ;
 
-\ Find loaders beyond the former 1 MiB ceiling, then grow the same scratch
-\ again. The normal smaller-file fixtures after this must not see stale text.
+\ Loaders past 1 MiB are found, the same scratch then grows again, and the
+\ smaller fixtures after this see no stale text.
 : SDT-TEST-LARGE-SOURCE ( -- )
    s" large.f" s" " SDT-WRITE-ENTRY
    SDT-DISCOVER EVENT-COUNT 0 T=
@@ -533,9 +508,6 @@ $7F0 constant SDT-OVER
 
 \ --- a tree file: the loader's own definitions ---------------------------------
 
-\ The loader's own definition site. Its definitions of the loader words refuse
-\ nothing, and it loads no source itself, so the walk that keys the engine's
-\ prefix (test/whitebox-engine.f) crosses it without losing a file.
 : SDT-TEST-LOADER-SITE ( -- )
    s" src/core/include.f" DISCOVER:RUN
    EVENT-COUNT 0 T= ;

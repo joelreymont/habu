@@ -1,4 +1,7 @@
-\ check-all-errors-core.f - reusable all-errors checker core.
+\ check-all-errors-core.f - the --all-errors checker core: checks sources as a
+\ load runs them, in one checker scope and one multi-error session, and reports
+\ every refused definition, statement throw and lexer defect as prose or JSON.
+\ The report buffers are the caller's and never grow (BUFFERS!, STREAM!).
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -16,12 +19,13 @@ require src/lib/json-write.f
 require src/lib/source-lex.f
 require src/lib/verify-diagnostics.f
 
-\ The checked source verifier is a load-time dependency: every checker scope
-\ opened below replays source through VERIFY. It is required here, at top
-\ level, because VERIFY opens its own package and packages cannot nest;
-\ the require registry makes co-loaded `require src/habu/verify-source.f`
-\ sites a no-op after the first, which is the sole dedupe protecting this
-\ line (verify-source is NOT in the engine's baked startup prefix).
+\ VERIFY opens its own package and packages cannot nest, so verify-source.f is
+\ required here at top level; every checker scope below replays source through
+\ VERIFY. It is not in the engine's baked prefix: the require registry's dedupe
+\ of co-loaded sites is the only one this line has.
+\ A replayed `constant` gets VERIFY's one-cell `-- a` effect. A wider layout
+\ value never reaches the interpret stack (DNAME-WIDE); its use is refused
+\ (tools/check-all-errors-test.f const-layout-narrow).
 require src/habu/verify-source.f
 
 package CHECK-ALL-ERRORS
@@ -178,52 +182,6 @@ variable CA-COMPOSE-LABEL-U
    a u CA-ERR
    CA-LF$ CA-ERR ;
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-\ Captures the whole `<value> constant NAME` line segment so replay defines the
-\ constant; the replay funnels through verify-source, whose one-cell `-- a`
-\ model is the PERMANENT constant contract (the interpret stack is untyped by
-\ design, no sound shape source exists, and wider-than-cell layout values never
-\ land there — DNAME-WIDE dispatch gate). A layout USE of the constant fails
-\ closed downstream; parity locked by the const-layout-narrow fixture.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 : CA-JSON-LINE? ( ptr u8 n -- bool )
    LINT-TRIM dup 0= IF 2drop CA-FALSE exit THEN
    drop c@ CA-LBRACE = ;
@@ -338,12 +296,10 @@ variable CA-COMPOSE-LABEL-U
    CA-SRC-A@ LINT-LEX:ERROR-BYTE@ + CA-LEX-TOKEN-U ;
 
 \ ---- malformed primitive-axiom row --------------------------------------------
-\ The lexer's second diagnostic. An incomplete primitive-axiom row stops the scan
-\ exactly like an open string does, but it needs its own code and its own repair
-\ text: a caller told to close a string literal will look for a quote that is not
-\ there.
-\ The prose names the code, the file, line and column of the opener, what it
-\ opens, and the opener as written.
+\ An incomplete primitive-axiom row stops the scan like an open string but gets
+\ its own code and repair text: a caller told to close a string literal would
+\ look for a quote that is not there. The prose names the code, the opener's
+\ file, line and column, what it opens, and the opener as written.
 : CA-PROSE-LEX ( ptr u8 n ptr u8 n -- )
    {: code:ptr codeu:n what:ptr whatu:n :}
    CA-JSON-WRITER
@@ -585,17 +541,13 @@ private
    u CA-SRC-U !
    a CA-SRC-A! ;
 
-\ Whole-buffer multi-error drive (Option-A no-cascade ruling on
-\ habu-multi-err-checking-42db26f4): ONE verify pass in MULTI-ERR mode emits a
-\ file-relative diagnostic for every refused definition, rejected or
-\ uncheckable, counts it in MULTI-ERR-N, records its declared signature so
-\ later callers check against it (no phantom E-UNDEFINED cascade), and
-\ continues to the next definition - the native load path and this tool now
-\ share the same machinery. A duplicate definition throws DUP-RC (reported
-\ exactly as before).
-\ The session is the caller's (SESSION), so a source's rejects are the ones
-\ counted while it was checked. A source with none still gets what the checker
-\ wrote of it, its warnings.
+\ One verify pass in MULTI-ERR mode reports every refused definition, rejected
+\ or uncheckable, counts it in MULTI-ERR-N, records its declared signature so
+\ later callers check against it (no E-UNDEFINED cascade), and continues at the
+\ next definition: the machinery the native load path uses. A duplicate
+\ definition throws DUP-RC. The session is the caller's (SESSION), so a source's
+\ rejects are those counted while it was checked; a source with none still gets
+\ its warnings.
 : CA-RUN-DEFS ( -- )
    CA-RESET-RESULTS
    MULTI-ERR-N @ {: before:n :}
@@ -704,7 +656,6 @@ public
    MULTI-ERR-END drop
    rc 0 <> IF rc throw THEN ;
 
-\ Check the source file at the given path, reporting it under the given label.
 : FILE ( ptr u8 n ptr u8 n -- ) {: labela:ptr labelu:n patha:ptr pathu:n :}
    labela labelu CA-START
    patha pathu CA-READ-SOURCE
@@ -747,7 +698,6 @@ public
    src srcu CA-SOURCE-BUF!
    [: CA-RUN-COMPOSE ;] SESSION ;
 
-\ Check an in-memory source buffer, reporting it under the given label.
 : BUF ( ptr u8 n ptr u8 n -- ) {: labela:ptr labelu:n srca:ptr srcu:n :}
    labela labelu CA-START
    srca srcu CA-SOURCE-BUF!

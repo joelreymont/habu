@@ -1,22 +1,8 @@
-\ manifest-lint-core.f - the engine manifest against its product entry points.
-\
-\ The Habu product carries the compiler, the JIT, the REPL and checked C2 storage;
-\ no other package or type signature reaches the image unless an entry point requires it.
-\ src/habu/native-runtime.f is the manifest that
-\ decides, and it is a list of `s" path" required` rows anyone can append to. This
-\ lint is what stops that. It reads the rows, walks the require graph out of the
-\ entry points declared below, and refuses a row that nothing in the closure
-\ requires and that is not itself an entry point.
-\
-\ An ENTRY POINT is a file the engine loads for its own sake rather than because
-\ something requires it: the checker completions, the seal passes, the compiler,
-\ the REPL and its terminal, and C2 storage. Each entry carries the reason it is in the image, so
-\ adding one is a deliberate edit reviewed as policy rather than a line appended
-\ to the manifest. Everything else must earn its place through a require edge.
-\
-\ SCOPE. The lint reads the manifest's `required` rows. The `provided` rows above
-\ them are the boot prefix the engine already carries when the manifest runs; they
-\ are the engine's own source, not a choice this lint can second-guess.
+\ manifest-lint-core.f - the engine manifest (src/habu/native-runtime.f's
+\ `s" path" required` rows) against its product entry points: a row that nothing in
+\ the closure requires and that is no entry point is refused. An ENTRY POINT is a
+\ file the engine loads for its own sake; each carries its reason below, so adding
+\ one is a reviewed policy edit. The `provided` rows are the boot prefix, not judged.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -158,8 +144,6 @@ variable ML-NI
    LINT-SOURCE:TEXT ML-TEXT-LINES ;
 
 \ ---- the declared entry points -------------------------------------------------
-\ Every row states why the engine carries the file. A file that no row names and
-\ that nothing in the closure requires does not belong in the image.
 
 : ML-ENTRY+ ( ptr u8 n -- ) {: a:ptr u:n :}
    a u ML-INTERN {: i:n :}
@@ -260,20 +244,17 @@ variable ML-NI
 
 public
 
-\ Test seam: read one literal as if it were a file, in closure mode, and answer
-\ how many distinct require edges it yielded. tools/manifest-lint-test.f drives
-\ the two line shapes and the near misses through this; it touches no file and
-\ leaves the table reset for the next caller.
+\ Test seam for tools/manifest-lint-test.f: one literal read as a file in closure
+\ mode, answering its distinct require edges; it touches no file and leaves the
+\ table reset.
 : EDGES-IN ( ptr u8 n -- n )
    ML-RESET
    1 ML-MODE !
    ML-TEXT-LINES
    ML-REACHED ML-COUNT ;
 
-\ The one pass: read a manifest's rows, walk the closure, report the strays.
-\ The path is an argument so a fixture manifest can be checked against the real
-\ entry points and the real tree - which is the only way to prove the lint still
-\ says no (tools/manifest-lint-stray-fixture.f).
+\ The path is an argument so a fixture manifest is checked against the real entry
+\ points and tree (tools/manifest-lint-stray-fixture.f).
 : RUN-MANIFEST ( ptr u8 n -- ) {: a:ptr u:n :}
    ML-RESET
    ML-ENTRY-POINTS

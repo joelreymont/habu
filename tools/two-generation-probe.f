@@ -1,16 +1,9 @@
-\ two-generation-probe.f - child fixture for tools/two-generation-build.f.
-\
-\ Prints, as ONE line on stdout, the shape the running engine image carries:
-\ the checker symbol count, the persisted signature and no-return stores as
-\ content bytes and baked cap, the relocation row count, the boot heap
-\ (here - data-base) and the data-space cap that heap is bounded by. Every
-\ field is read out of the live image, so the line describes the artefact and
-\ not the source that made it. The fixture's own definitions land before the
-\ read, so each number carries the same small constant of its own; the parent
-\ compares two such lines, never a line against a source figure.
-\
-\ Nothing here may print a number the way the engine's own `.` does: that ends
-\ the line, and the whole shape has to arrive as one line.
+\ two-generation-probe.f - child fixture for tools/two-generation-build.f: prints
+\ on ONE stdout line the live image's checker symbol count, signature and
+\ no-return store bytes and caps, relocation rows, boot heap and data-space cap.
+\ Its own definitions add the same constant to each number, so the parent compares
+\ two lines, never a line against a source figure. Nothing may print with `.`:
+\ that ends the line.
 
 package TWO-GEN-PROBE
 

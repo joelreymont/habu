@@ -1,58 +1,11 @@
-\ data-table-census.f - what every byte of the captured DATA heap belongs to.
-\
-\ WHY IT EXISTS. An AOT engine carries its boot DATA heap inside its own __text
-\ and copies it back at every start. The image stores that heap as its non-zero
-\ runs, so a table's zero tail costs no image bytes - but it still costs address
-\ space and copy time - while every byte that is NOT zero travels in full,
-\ whether or not the table's consumer will ever read it. A fill pointer, a
-\ sentinel row and a tail of entries left over from the build are all non-zero,
-\ and none of them is visible in a total. This census attributes every byte of
-\ [0, boot DP) to the word that owns it, so an offender can be named.
-\
-\ WHAT IT WALKS AND WHY THAT IS THE WHOLE HEAP. A `create`d or `variable` word
-\ is stamped DKIND:ADDR by its definer (src/habu/layout.f) and no other kind of
-\ record owns DATA, so the stamped records ARE the heap's owners. Sorted by
-\ address they partition the heap exactly: `allot` only moves DP forward, so
-\ each base runs to the next one and the last runs to DP. The span below the
-\ first base has no owner and is reported as two rows, split at DATA-START: the
-\ engine's own fixed cells below it, and the heap the seed and the boot prefix
-\ allotted above it before the first `create`. Both carry wid -1.
-\
-\ HOW A BASE IS READ. No record slot holds the address a `create`d word pushes.
-\ Its body is EMIT-CREATE's own (src/habu/habu2.f): a recorded MOVZ/MOVK
-\ carrier, then the push stencil and RET. So the address is read back
-\ out of that chain with the decoder its emitter's relocation pass uses,
-\ ADDRESS-CARRIER:CHAIN-VALUE. The DKIND:ADDR stamp is what makes that read sound - it
-\ says the body is still the definer's own, and `does>` clears it in the same
-\ window it patches the RET into a clause branch. A decoded value outside the
-\ DATA region ends the census by name rather than naming a wrong owner.
-\
-\ Run it in any engine; the rows are tab-separated for sorting. The entry is
-\ not called on load, so `tools/check.f` can carry this file through its child
-\ without the table filling the captured output:
+\ data-table-census.f - attributes every byte of the boot DATA heap [0, DP0) to
+\ the `create`d or `variable` word that owns it: an AOT image carries every
+\ non-zero byte in full, whether or not anything reads it.
 \   printf 'require tools/data-table-census.f\nDATA-CENSUS:RUN\n' | bin/hb
-\ Columns: offset, extent, fill, non-zero, runs, cost, wid, owner. `extent` is
-\ the bytes the owner holds up to the next owner, `fill` is one past its last
-\ non-zero byte (what a capture sized to content would carry) and `non-zero`
-\ counts the bytes inside the extent that are not zero. `runs` and `cost` model
-\ what the capture would charge for the extent, so they follow the scanners
-\ (aot-capture.f ACAP-SCAN-SEG, aot-lib.f BUILD-SPARSE-DATA) rather than the raw
-\ content: a cell that holds anything costs the unsigned LEB128 of its value, and
-\ the bitmap travels in groups - AOT-WINDOW:GROUP-SPAN bytes of the extent whose
-\ cells are all zero cost nothing at all, and one that holds any cell costs its
-\ whole AOT-WINDOW:GROUP-BYTES of bitmap (src/habu/aot-decl.f BM-COMPACT).
-\ `cost` is those value bytes plus the groups the extent keeps. A table of cells
-\ holding small numbers still costs more than its non-zero bytes;
-\ sort on this column rather than on non-zero.
-\
-\ Runs are counted inside one owner's extent, so an owner boundary splits a run
-\ the capture would keep whole. That over-counts by at most one row per owner.
-\ Groups are counted from the extent's own base rather than from the capture
-\ base the image's map is aligned to, so two neighbours sharing a group are each
-\ charged for it: at most one group per owner boundary.
+\ RUN is not called on load, so tools/check.f can carry this file. Rows are
+\ tab-separated: offset, extent, fill, nonzero, cells, cost, wid, owner.
 
-\ The boot DP, latched before this tool's own requires allocate anything. The
-\ census covers [0, DP0); everything the tool itself allots lands above it.
+\ Latched before this tool's own requires allot: the census covers [0, DP0).
 package DATA-CENSUS
 here data-base - constant DP0
 ;package
@@ -66,8 +19,8 @@ require src/habu/aot-decl.f
 
 package DATA-CENSUS
 
-\ One row per owner: the DATA offset in the high half, the dictionary index in
-\ the low half, so the two travel through one comparator.
+\ DATA offset in the high half, dictionary index in the low half, so one sort
+\ orders both.
 DYNAMIC-BUFFER T-ROW n
 variable T-N
 variable NZ        variable FILL       variable RUNS
@@ -86,7 +39,9 @@ $FFFFFFFF constant IDX-MASK
 : ROW-OFF ( n -- n ) OFF-SHIFT rshift ;
 : ROW-IDX ( n -- n ) IDX-MASK and ;
 
-\ The address the record's body pushes, as a DATA offset.
+\ No record slot holds the address: it is decoded from EMIT-CREATE's MOVZ/MOVK
+\ carrier (src/habu/habu2.f) with ADDRESS-CARRIER:CHAIN-VALUE. The DKIND:ADDR
+\ stamp says the body is still the definer's own; `does>` clears it.
 : REC-OFF ( ptr n -- n ) {: rec:ptr :}
    rec XREF-START-SLOT XREF-PTR@ {: p:ptr :}
    p p rec XREF-CODE-BYTES + ADDRESS-CARRIER:CHAIN-SIZE {: size:n :}
@@ -101,6 +56,9 @@ $FFFFFFFF constant IDX-MASK
    rec XREF-START 0= if false exit then
    rec XREF-FLAGS DKIND:MASK and DKIND:ADDR = ;
 
+\ Records stamped DKIND:ADDR (src/habu/definers.f) are the only owners of DATA.
+\ Sorted by address they partition it: each base runs to the next, the last to
+\ DP0.
 : COLLECT ( -- )
    0 T-N !
    ndict@ T-ROW-RESERVE
@@ -116,8 +74,7 @@ $FFFFFFFF constant IDX-MASK
    loop
    0 T-ROW T-N @ [: < ;] SORT:SORT! ;
 
-\ One cell of the extent, read as the unsigned number its bytes spell. Bytes
-\ past the extent read as the zeros a capture would leave there.
+\ Bytes past the extent read as zero, as the capture leaves them.
 variable CV
 
 : CELL@ ( n n n -- n ) {: base:n c:n len:n :}
@@ -130,8 +87,8 @@ variable CV
    loop
    CV @ ;
 
-\ The group a present cell puts in the image, charged once: the cells walk in
-\ ascending order, so a group is charged when the walk first enters it.
+\ Cells walk in ascending order, so a group is charged when the walk first
+\ enters it.
 variable GRP-LAST
 
 : SCAN ( n n -- ) {: base:n len:n :}
@@ -153,6 +110,12 @@ variable GRP-LAST
       then
    loop ;
 
+\ extent runs to the next owner; fill is one past the last non-zero byte. cells
+\ and cost follow the capture's scanners (aot-capture.f ACAP-SCAN-SEG,
+\ aot-link-arm.f BUILD-SPARSE-DATA): a non-zero cell costs the LEB128 of its
+\ value, and each GROUP-SPAN holding one costs GROUP-BYTES of bitmap (aot-decl.f
+\ BM-COMPACT). Sort on cost, not nonzero. Cells and groups count from the
+\ extent's own base, so neighbours sharing one are both charged.
 : ROW ( n n ptr u8 n n -- ) {: off:n len:n name:ptr nameu:n wid:n :}
    off len SCAN
    off FMT:.U TAB  len FMT:.U TAB  FILL @ FMT:.U TAB  NZ @ FMT:.U TAB
@@ -171,7 +134,8 @@ variable GRP-LAST
    k T-ROW @ ROW-IDX XREF-REC {: rec:ptr :}
    off  k END-OF off -  rec XREF-NAME$  rec XREF-WORDLIST ROW ;
 
-\ The span no record owns, split where the engine's fixed cells end.
+\ No record owns the span below the first base: the engine's fixed cells below
+\ DATA-START, and what the seed and boot prefix allotted above it.
 : HEAD-ROWS ( n -- ) {: first:n :}
    first DATA-START <= if  0 first s" (engine-cells)" -1 ROW  exit  then
    0 DATA-START s" (engine-cells)" -1 ROW

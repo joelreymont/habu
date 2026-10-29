@@ -6,8 +6,6 @@ require src/lib/jsonl.f
 require src/lib/string.f
 require src/lib/fd.f
 
-\ Checked filter. Raw fd primitives are used through checked effects.
-
 10 constant JSON-ONLY-LF-C
 74 constant JSON-ONLY-E-IO
 

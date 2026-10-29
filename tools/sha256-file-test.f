@@ -119,9 +119,8 @@ variable SFT-EDGE-U
    SFT-DG-A 32 SFT-DG-B 32 T$= ;
 
 \ ---- contexts -----------------------------------------------------------------
-\ A digest in progress lives in the caller's span, so these rows hold two and
-\ three of them at once and each one answers for its own bytes. Every digest is
-\ compared against the one-shot SHA256-IN of the same bytes.
+\ A digest in progress lives in the caller's span. Every digest is compared
+\ against the one-shot SHA256-IN of the same bytes.
 
 : SFT-DIGEST= ( ptr u8 ptr u8 -- ) {: got want :}   \ two $20-byte digests, as hex
    got SFT-HEX-A SHA256>HEX
@@ -137,8 +136,8 @@ variable SFT-EDGE-U
       ctx  a i ZPTR+  u i - piece min  SHA256-FEED
    piece +loop ;
 
-\ Both contexts over the same bytes, alternating: one byte to the first for every
-\ $40 bytes to the second, so the two digests are interleaved inside each block.
+\ One byte to the first context for every $40 to the second, so the two digests
+\ interleave inside each block.
 : SFT-FEED-BOTH ( ptr u8 ptr u8 ptr u8 n -- ) {: ca cb a u:n :}
    u 0 ?do
       ca  a i ZPTR+  1  SHA256-FEED
@@ -147,11 +146,7 @@ variable SFT-EDGE-U
       then
    loop ;
 
-\ R1. The interleaving of /home/joel/.cache/tender/habu-gaps/sha-call-state:
-\ one context is opened and left open across another's whole digest. The first
-\ pair is the FIPS "abc" vector split "a" + "bc" against "abc" whole; the second
-\ runs the 5000-byte pattern through both in different piece sizes and ends them
-\ in the opposite order.
+\ R1. One context is left open across another's whole digest.
 : SFT-TEST-INTERLEAVED ( -- )
    SFT-CTX-A SHA256-BEGIN
    SFT-CTX-A s" a" SHA256-FEED
@@ -171,9 +166,8 @@ variable SFT-EDGE-U
    SFT-DG-A SFT-BIG SFT-BIG-LEN SFT-ONE-SHOT=
    SFT-DG-B SFT-BIG SFT-BIG-LEN SFT-ONE-SHOT= ;
 
-\ R2. A context is a plain span and nothing else: copying its bytes copies the
-\ digest in progress, and the copy finishes on its own bytes. The original is fed
-\ again after the copy is taken and the copy is ended first.
+\ R2. A context is a plain span: a copy of its bytes finishes the digest in
+\ progress on its own bytes.
 : SFT-TEST-CONTEXT-COPY ( -- )
    SFT-FILL-BIG
    SFT-CTX-A SHA256-BEGIN
@@ -206,10 +200,9 @@ TASK:MIN-STACK TASK:TASK SFT-TASK-B
    0 T=
    0 T= ;
 
-\ R3. Two tasks are two pthreads (src/lib/task.f): each hashes its own
-\ 5000-byte pattern a byte at a time through its own context, so the two digests
-\ are interleaved inside every block the scheduler lets them share. A cell shared
-\ anywhere on the streaming path shows up as a digest that is not its bytes'.
+\ R3. Two tasks (pthreads, src/lib/task.f) each hash a pattern a byte at a time
+\ through their own context: a cell shared anywhere on the streaming path shows
+\ up as a digest that is not its bytes'.
 : SFT-TEST-TASKS ( -- )
    SFT-FILL-BIG
    SFT-FILL-BIG1
@@ -232,10 +225,8 @@ TASK:MIN-STACK TASK:TASK SFT-TASK-B
    SFT-CTX-S2 SFT-BIG1 SFT-BIG-LEN SFT-DG-S2 SHA256-IN
    0 TASK:RETURN ;
 
-\ S1. The scenario of /home/joel/.cache/tender/habu-gaps/sha-call-state, on
-\ contexts: two tasks run a whole one-shot digest of different bytes at the same
-\ time, each through a context of its own, and each answers its own input's
-\ single-task digest. Both tasks on ONE context fails this row (measured: the
+\ S1. Two tasks run whole one-shot digests of different bytes at once, each on
+\ its own context. Both tasks on one context fails this row (measured: the
 \ second task's BEGIN throws the first task's digest away).
 : SFT-TEST-TASKS-ONE-SHOT ( -- )
    SFT-FILL-BIG
@@ -251,10 +242,9 @@ TASK:MIN-STACK TASK:TASK SFT-TASK-B
       SFT-DG-S2 SFT-DG-D SFT-DIGEST=
    loop ;
 
-\ R6. The hash words are cells, so a context has to be cell-aligned, and every
-\ caller gets that from `create` - including this one, defined right after a
-\ one-byte allot. AArch64 would not fault on the misaligned case, so the address
-\ itself is the assertion; the digest then shows the aligned span works.
+\ R6. The hash words are cells, so a context must be cell-aligned, which
+\ `create` gives even right after a one-byte allot. AArch64 does not fault on a
+\ misaligned context, so the address itself is the assertion.
 : SFT-TEST-ALIGNED-CREATE ( -- )
    SFT-CTX-D BYTE-VIEW NULL-PTR BYTE-VIEW - CELL mod 0 T=
    SFT-FILL-BIG
@@ -263,8 +253,8 @@ TASK:MIN-STACK TASK:TASK SFT-TASK-B
    SFT-CTX-D SFT-DG-A SHA256-END
    SFT-DG-A SFT-BIG SFT-BIG-LEN SFT-ONE-SHOT= ;
 
-\ R5. SHA256>HEX reads and writes only the caller's two spans now; every nibble
-\ value proves it still renders each half of a byte in the right place.
+\ R5. SHA256>HEX reads and writes only the caller's two spans; every nibble
+\ value pins where each half of a byte renders.
 : SFT-FILL-NIB ( -- )
    32 0 ?do
       i 8 mod 2 * {: hi:n :}
@@ -311,11 +301,9 @@ TASK:MIN-STACK TASK:TASK SFT-TASK-B
 : SFT-FILE-WORK-B ( -- )
    SFT-FCTX-B SFT-FILE1$ SFT-DG-B SHA256-FILE-IN TASK:RETURN ;
 
-\ R8. Two tasks hash two files at once, each through its own file context. The
-\ descriptor and the byte count are locals and the read buffer, the path handed
-\ to the open and the digest state are the context's, so neither task can be
-\ handed the other's bytes - a shared one shows up as a digest that is not its
-\ file's.
+\ R8. Two tasks hash two files at once, each through its own file context
+\ (descriptor and count are locals; buffer, path and state are the context's):
+\ a shared one shows up as a digest that is not its file's.
 : SFT-TEST-FILE-TASKS ( -- )
    SFT-FILL-BIG
    SFT-FILL-BIG1
@@ -332,10 +320,8 @@ TASK:MIN-STACK TASK:TASK SFT-TASK-B
       SFT-DG-B SFT-DG-D SFT-DIGEST=
    loop ;
 
-\ A file whose path is longer than the 256 bytes the core's path buffer once
-\ held: the digest words take every path src/lib/fs.f takes (dot
-\ habu-digest-files-through-308dc561). One 230-byte component keeps the name
-\ under NAME_MAX while the whole path passes 256.
+\ A path longer than 256 bytes: the digest words take every path src/lib/fs.f
+\ takes. One 230-byte component keeps the name under NAME_MAX.
 : SFT-DEEP$ ( -- ptr u8 n )
    SFT-DEEP SFT-DEEP-U @ ;
 
@@ -352,11 +338,10 @@ TASK:MIN-STACK TASK:TASK SFT-TASK-B
    SFT-FCTX-A SFT-DEEP$ SFT-HEX-B SHA256-FILE-HEX-IN 0 T=
    SFT-HEX-A 64 SFT-HEX-B 64 T$= ;
 
-\ A path of exactly PATH-CAP bytes, built from the physical root: a longer
-\ symlink target also consumes the kernel limit. Use 100-byte directory
-\ components and a final name that lands on the cap. fs.f creates and writes
-\ it, and the digest words take it too; one byte more, PATH-CAP 1+, is
-\ refused by both layers alike.
+\ A path of exactly PATH-CAP bytes, built from the physical root: a symlink
+\ target would also count against the kernel limit. 100-byte directory
+\ components, then a final name that lands on the cap. PATH-CAP 1+ is refused
+\ by fs.f and the digest words alike.
 : SFT-EDGE-NAME! ( n -- ) {: n:n :}
    n 0 ?do 101 SFT-EDGE-NAME i + c! loop ;
 

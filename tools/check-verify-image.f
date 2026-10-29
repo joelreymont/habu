@@ -1,30 +1,8 @@
-\ check-verify-image.f - the saved verifier image tools/check-verify-core.f
-\ runs its child on: img/check-verify under the out root, the engine with
-\ the verifier and tools/check-verify-child-lib.f loaded at tier 1 and saved by
-\ tools/check-verify-save.f, built once per engine and closure.
-\
-\ The key is the version text, the engine's bytes and the canonical engine path
-\ the image bakes, from which ENTER finds its source root when it starts
-\ (tools/check-verify-save.f), the program (which names the entry under ROOT,
-\ the canonical tree this file was loaded from) and the content and canonical
-\ path of every file of the entry's closure (tools/keyed-image.f
-\ CLOSURE-IN-EACH+). Each file's mtime and size stamp
-\ (tools/native-file-inputs.f FILE rows) is kept, and PATH$ checks the stamps
-\ on every call: a change re-keys and builds again;
-\ an edit racing a build belongs to the next re-key, as for hb-build's makers
-\ (tools/hb-build-lib.f). A build that fails dies or throws (tools/keyed-image.f
-\ BUILD-RUN, PUBLISH); there is no fallback.
-\
-\ CAPABLE? says whether a child engine can run the image: it is this process's
-\ own engine, canonical path for canonical path, and that engine provides
-\ src/compiler/native/compiler.f, a row of every native-build product and of
-\ nothing the Gforth recovery prefix loads. Any other engine - an HABU_UNDER_TEST
-\ naming another engine, a test's shebang script - runs the source child,
-\ tools/check-verify-child.f, verdicts unchanged.
-\
-\ No IMAGE-GRANT:CHECK: this is a tool, not a test adapter (grants stay in
-\ test/, tools/keyed-image.f:5). A gate row that reaches it ungranted builds its
-\ own keyed image, an atomic rename beside the gate's, instead of dying.
+\ check-verify-image.f - the saved verifier image tools/check-verify-core.f runs its
+\ child on: img/check-verify under the out root, built once per engine and closure
+\ by tools/check-verify-save.f. A failed build dies or throws (tools/keyed-image.f
+\ BUILD-RUN, PUBLISH). No IMAGE-GRANT:CHECK: this is a tool, not a test adapter, so
+\ an ungranted gate row builds its own keyed image beside the gate's.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -96,7 +74,11 @@ s\" \" required\nCHECK-VERIFY-SAVE:TICK!\n0 SCRIPT-ARGV$ CHECK-VERIFY-SAVE:SAVE\
    ENTRY$ ROOT$ [: STAMP ;] KEYED-IMAGE:CLOSURE-IN-EACH+
    KEY-HEX CONTENT-KEY:FINAL-HEX ;
 
-\ Key, path and stamps, from the rows this resolve adds after MARK.
+\ The key: the version text, the engine's bytes, the canonical engine path the
+\ image bakes, the program, and the content and canonical path of every file in the
+\ entry's closure (tools/keyed-image.f CLOSURE-IN-EACH+). Mtime and size stamps
+\ (tools/native-file-inputs.f FILE rows) are kept and PATH$ checks them on every
+\ call; an edit racing a build belongs to the next re-key.
 : RESOLVE-IN ( -- )
    ENGINE$ STAMP
    [: FILL-KEY ;] CONTENT-KEY:WITH-FOLD
@@ -131,8 +113,10 @@ s\" \" required\nCHECK-VERIFY-SAVE:TICK!\n0 SCRIPT-ARGV$ CHECK-VERIFY-SAVE:SAVE\
 
 public
 
-\ Whether the engine at this path can run the image: this process's own
-\ engine, and one that provides the native compiler.
+\ This process's own engine, canonical path for canonical path, providing
+\ src/compiler/native/compiler.f, which every native-build product carries and the
+\ Gforth recovery prefix does not. Any other engine (HABU_UNDER_TEST naming another,
+\ a shebang script) runs tools/check-verify-child.f, verdicts unchanged.
 : CAPABLE? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    ENGINE-ID:PATH$ SOURCE-ROOT:CANONICAL drop CANON CANON-U COPY!

@@ -1,26 +1,9 @@
-\ event-closure-lib.f - ordered transitive source-composition closure list.
-\
-\ Builds the deduplicated, ordered list of files reachable from an entry file
-\ through the shared ordered event log (src/core/include.f). Discovery gathers
-\ the accepted loading edges in actual load order; BUILD publishes their
-\ breadth-first closure for content keys, while LOAD-ORDER publishes postorder
-\ for scope replay.
-\
-\ Only files that actually load contribute: `included` (replays every
-\ occurrence) and a fresh (first-seen) `required` are followed; a `required`
-\ already known through an earlier `provided`/`require` is not re-loaded, and a
-\ bare `provided` registers a path without loading it, so neither adds content.
-\ Distinct entries are deduplicated by canonical absolute pathname. Discovery
-\ itself rejects fail-closed (a top-level dynamic path or unsupported opener,
-\ or a loader or family opener made ambiguous before use); this file
-\ propagates that so a broken closure cannot be keyed. A loading event whose
-\ path is not a file joins the list like any other, and the walk refuses it
-\ where it reads the file (DISCOVER:RUN-IN names it on fd 2 and rethrows
-\ E-FS-STAT), as BUILD-WITH's reader refuses it: a closure that left it out
-\ would key fewer files than the build reads.
-\
-\ This file only produces the ordered list (BUILD / COUNT / PATH$). Content
-\ hashing and package-scope replay live in the consumers.
+\ event-closure-lib.f - the ordered, deduplicated list of files an entry file
+\ loads, read from the ordered event log (src/core/include.f): BUILD publishes
+\ the breadth-first closure for content keys, LOAD-ORDER the postorder for scope
+\ replay. Only files that load count: `included` at every occurrence, a fresh
+\ `required` once; a bare `provided` adds nothing. Entries are deduplicated by
+\ canonical absolute path. Hashing and scope replay live in the consumers.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -32,11 +15,9 @@ require tools/source-discovery.f
 package EC
 using SOURCE-ROOT
 
-\ One closure's entries and its path pool - each entry stores its own path and
-\ the root it resolved under, each at most PATH-CAP bytes, so the pool holds
-\ EC-MAX of both and a walk is refused for its entry count alone. The largest
-\ walk any consumer keys is tools/native-build.f, the engine's own prefix, well
-\ under EC-MAX.
+\ Each entry stores its path and the root it resolved under, each at most
+\ PATH-CAP bytes, so the pool holds EC-MAX of both and a walk is refused for its
+\ entry count alone. The largest keyed walk, tools/native-build.f, is well under.
 $400 constant EC-MAX
 EC-MAX 2 * PATH-CAP * constant EC-POOL-CAP
 
@@ -150,9 +131,8 @@ TYPED-VARIABLE EC-BEFORE [ ptr u8 n -- ]
       EC-I @ 1+ EC-I !
    repeat ;
 
-\ LOAD-ORDER is depth-first postorder. BUILD traverses the same accepted edges
-\ breadth-first; both expose the same files without rescanning source under a
-\ fresh, contradictory loader registry.
+\ BUILD (breadth-first) and LOAD-ORDER (postorder) walk the same accepted edges,
+\ so neither rescans source under a fresh, contradictory loader registry.
 
 : EC-CLEAR ( -- )
    0 EC-N !  0 EC-POOL-N !  0 EC-HEAD ! ;
@@ -428,8 +408,12 @@ public
 : BUILD ( ptr u8 n -- )
    ENTRY-RESOLVE drop RESOLVED-ROOT$ BUILD-IN ;
 
-\ A source owner reads every loading event from its own byte table. A missing
-\ dependency is a refusal at that read, never an omitted closure member.
+\ A source owner reads every loading event from its own byte table. Discovery
+\ fails closed (a top-level dynamic path, an unsupported opener, a loader or
+\ family opener made ambiguous before use) and this file propagates it. A
+\ loading event whose path is not a file joins the list, and the read refuses
+\ it (DISCOVER:RUN-IN names it on fd 2 and rethrows E-FS-STAT): a closure that
+\ left it out would key fewer files than the build reads.
 : BUILD-WITH ( ptr u8 n [ ptr u8 n ptr u8 n -- ptr u8 n ] -- )
    {: a:ptr u:n reader :}
    a u ENTRY-RESOLVE drop RESOLVED-ROOT$ EC-STABLE-IN

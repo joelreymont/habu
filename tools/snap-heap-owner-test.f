@@ -34,18 +34,14 @@ variable HEAP-ROWS
 variable CODE-ROWS
 variable BAD-LINES
 
-\ The name that ends a row: the rest of the line from `start`, one nonempty word.
 : MAP-NAME? ( ptr u8 n n -- bool ) {: a:ptr u:n start:n :}
    start u >= if STR-FALSE exit then
    a start + u start - 32 COUNT-CHAR 0= ;
 
-\ Whether the field at `start` is digits followed by a space, and where the
-\ next field starts.
 : MAP-FIELD ( ptr u8 n n -- n bool ) {: a:ptr u:n start:n :}
    a u 32 start SPLIT-NEXT {: f:ptr fu:n next:n more:bool :}
    next  more f fu STR-DIGITS? and ;
 
-\ `want` digit fields, then the name.
 : MAP-ROW? ( ptr u8 n n -- bool ) {: a:ptr u:n want:n :}
    0 STR-TRUE
    want 0 ?do

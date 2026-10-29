@@ -1,22 +1,9 @@
 \ launch-context.f - print a process's launch context, this one's or a child's.
-\
-\   bin/hb --load tools/launch-context.f
-\       report THIS process. Run it under each launcher whose behaviour differs
-\       and diff the reports:
-\          bin/hb --load tools/launch-context.f | grep '^ctx ' | sort > /tmp/a
-\          <other launcher> ...                                        > /tmp/b
-\          diff /tmp/a /tmp/b
-\
-\   bin/hb --load tools/launch-context.f -- child
-\       report what a CAPTURE-SPAWNED CHILD sees: it spawns this same file
-\       through the capture path fixtures use (stdout and stderr on fresh pipes,
-\       stdin left alone) and prints the child's report. That spawn shape hands
-\       the child the launcher's own fd 0, so under a terminal the child's report
-\       says `tty yes` - the difference that decides whether a spawned bare
-\       engine enters its REPL and stops on SIGTTOU as a background process
-\       group. A fixture that needs a fixed answer must pass an explicit stdin.
-\
-\ See docs/debugging.md § A child-process fixture disagrees with itself.
+\ `bin/hb --load tools/launch-context.f` reports this process: diff its `ctx `
+\ lines under each launcher. `... -- child` reports a capture-spawned child, whose
+\ fd 0 is the launcher's: under a terminal it says `tty yes`, and a bare engine
+\ then enters its REPL and stops on SIGTTOU unless given an explicit stdin.
+\ See docs/debugging.md "A child-process fixture disagrees with itself".
 
 require src/lib/errors.f
 require src/lib/string.f

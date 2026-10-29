@@ -1,11 +1,8 @@
 \ reserved-name-lint-core.f - reject definition names reserved by parser/control dispatch.
-\
-\ Also rejects number-shaped names (E-NUMERIC-DEFINITION): hb parses numeric
-\ literals BEFORE dictionary lookup (test/gate-dictionary-lib.f GD-LITERAL-FIRST),
-\ so a definition named like a literal - all digits (42), float (.0, 1.5, -.5),
-\ or $hex ($FF) - is unreachable. Names with a dot-digit tail (U.0) are also
-\ rejected: one inserted space turns the tail into a float literal, and
-\ generators misread them as float spellings (the src/lib/fmt.f .0/U.0 incident).
+\ Also rejects number-shaped names (E-NUMERIC-DEFINITION): hb parses literals
+\ before dictionary lookup (test/gate-dictionary-lib.f LITERAL-FIRST), so a name
+\ like 42, .0, 1.5, -.5 or $FF is unreachable. A dot-digit tail (U.0) is rejected
+\ too: one inserted space makes it a float literal.
 
 require src/lib/errors.f
 require src/lib/string.f

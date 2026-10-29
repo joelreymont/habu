@@ -1,58 +1,9 @@
-\ error-code-lint-core.f - E- throw-code collision lint.
-\
-\ Error codes are one global throw namespace: a thrown code is ambiguous the
-\ moment two different E- names claim it. Three live collisions motivated this
-\ lint (E-CUDA/E-FUSE at -5002, E-PTX-READBACK/E-MK-EVAL at -5003,
-\ E-LMV-NOOUT+E-LMV-REG/E-ABL-NOSUB+E-ABL-CAP at -5210/-5211). The scan walks
-\ tracked .f/.fs sources under src/, tools/, and test/ for
-\ `-NNNN constant E-*` and `NNNN constant E-*` claims and flags any numeric code
-\ owned by two different E- names.
-\
-\ Which bytes are code is decided by the one shared source lexer, package
-\ LINT-LEX in src/lib/source-lex.f. It consumes `\` line comments, `( ... )`
-\ and `.( ... )` comment bodies, and every string literal body - the plain
-\ `s" c" ."` openers and the escaped `s\" c\" .\"` openers alike - so none of
-\ that text ever reaches this scan as a token. This lint used to decide string
-\ membership itself, by counting `"` bytes per token and toggling an in-string
-\ flag on an odd count. That is a value heuristic standing in for a structural
-\ fact, and it failed in both directions: one bare `[char] "` blinded the rest
-\ of a file, a `.( ... )` body was read as code, and a `\` written INSIDE a
-\ string body made the old tokenizer strip that string's closing quote, which
-\ inverted the flag for the remainder of the file. The gate then skipped every
-\ later claim in that source while still printing `0 finding(s)`.
-\
-\ Scope and allowances (each deliberate):
-\ - A code is the literal's value as a signed cell, whatever its spelling:
-\   `$FFFFFFFFFFFFDCD7 constant E-X` claims -9001, and `-0` is 0.
-\ - Exit statuses are not claims: a value from 0 to EXIT-MAX is one the kernel
-\   can return as a process exit status, and an uncaught throw of it exits with
-\   it (src/habu/driver-io.f DRV-FAIL), so E-USAGE 64 or a mirrored engine rc
-\   means the same thing in every tool, shared by design. A positive value above
-\   EXIT-MAX can never be an exit status; it is a throw identity held to the same
-\   uniqueness and reserved ranges as a negative one.
-\ - `E-*-FIRST` / `E-*-LAST` names are range sentinels (src/lib/errors.f blocks):
-\   they alias their block's boundary member codes, not new throw identities.
-\   Each FIRST/LAST pair (matched by shared stem, e.g. E-FS-FIRST/E-FS-LAST) also
-\   reserves the inclusive [FIRST,LAST] code range for the file that declares it.
-\   An E- code claimed INSIDE another file's reserved range is a foreign
-\   claim and is flagged, even before the owning block mints that exact member.
-\ - Identical (code, name) re-registrations are allowed (re-export shims; the
-\   same constant reachable through two entry files), inside another file's
-\   reserved range too: the owner holds the identity and the copy adds no
-\   second name (src/habu/stack-abi.f E-STACK-UNGUARDED for the engine
-\   emitters that compile before src/lib/ exists; src/core/type-family.f TYPE-NAME,
-\   which loads before sumtype.f's TYPE-DECL).
-\ - `E-OWNER constant E-LOCAL` is an alias, not a claim: the value is read from
-\   the owning constant, so the owner's literal stays the code's one claim. A
-\   file that needs another's code under its own name reads it this way when
-\   the owner is loaded and visible (src/core/enum-decl.f), and re-registers
-\   the identical pair when it is not.
-\ - bootstrap/ is not walked: the frozen recovery seed is a pinned corpus in
-\   its own process space; renumbering it would break the audited seed.
-\
-\ LEDGER prints the ledger without throwing; STRICT throws on any finding and is
-\ the gate entrypoint. RESERVATIONS exposes the live ledger without letting a
-\ caller reach the tables.
+\ error-code-lint-core.f - E- throw-code collision lint: error codes are one
+\ global throw namespace. Walks .f/.fs sources under src/, tools/ and test/ and
+\ flags a code claimed by two different E- names. bootstrap/ is not walked: the
+\ recovery seed is a pinned corpus in its own process space.
+\ LINT-LEX (src/lib/source-lex.f) decides which bytes are code; a lexer defect
+\ stops the scan. STRICT is the gate entry; LEDGER prints without throwing.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -70,38 +21,27 @@ using LINT-INTERN
 public
 
 \ ---- source-defect codes ----------------------------------------------------
-\ A lexer diagnostic truncates the token table at the defect, so every later
-\ claim in that source is invisible. Continuing would certify a ledger built
-\ from a partial file: exactly the blindness this lint exists to prevent. Each
-\ defect gets its own name, the way tools/lint/shadow-lint.f splits
-\ E-SHADOW-UNTERM from E-SHADOW-REGISTRY. They are public so a caller (and the
-\ fixture that pins the refusal) can name which defect stopped a scan instead of
-\ matching a bare number. Negative, so this lint keeps them globally unique.
-\ -4808..-4810 continue the unclaimed lint-tool gap that holds E-SHADOW-UNTERM
-\ (-4800) through E-PKGDIFF-NONAME (-4807).
+\ A lexer defect hides every later claim in its source, so the scan refuses
+\ rather than certify a partial ledger. -4808..-4810 sit in the lint-tool block
+\ that starts at E-SHADOW-UNTERM (-4800).
 -4808 constant E-QUOTE   \ a string literal ran past end of input
 -4809 constant E-ROW     \ a primitive-axiom row lacked a header or its closer
-\ The residual arm: a diagnostic or token kind added to LINT-LEX after this
-\ consumer was written. It must reach a named refusal rather than borrow one of
-\ the two labels above, and it must never pass in silence.
 -4810 constant E-LEX     \ a lexer diagnostic or token kind this lint was never taught
 
 private
 
-\ The largest status the kernel can return from a process: a positive value up to
-\ it doubles as an exit status, a larger one is only ever a throw code.
+\ Exit statuses are not claims: an uncaught throw of 0..EXIT-MAX exits with that
+\ status (src/habu/driver-io.f DRV-FAIL), so E-USAGE 64 means the same in every
+\ tool by design. A larger positive value is a throw identity, held to the same
+\ uniqueness and reserved ranges as a negative one.
 255 constant EXIT-MAX
 
-2048 constant MAX-CLAIMS  \ the tree passed 1024 live claims; the table is sized above what it holds, and a full one dies rather than certifying a partial ledger
+2048 constant MAX-CLAIMS  \ the tree passed 1024 live claims
 1024 constant MAX-RES
 48 constant ZERO-C
 36 constant DOLLAR-C
 45 constant MINUS-C
 
-\ One file at a time, in a slab sized from the file. It was a fixed arena, and an
-\ arena doubled once already for src/core/checker.f is the shape tools/lint/text.f
-\ LINT-SLAB was written to end: the next source to cross the constant stops the
-\ whole ledger with a message about a buffer rather than about a code.
 create SRC-SLAB LINT-SLAB:CELLS cells allot
 create PATH PATH-CAP allot
 create DIGITS 32 allot
@@ -140,7 +80,7 @@ variable RES#
 
 variable PATH-U
 variable CLAIM#
-variable BAD                            \ collision findings (claim pairs)
+variable BAD
 variable FILE#
 variable SHOW?
 variable ND#
@@ -154,7 +94,6 @@ variable JX
 : SHOW-ON  ( -- )  LINT-TRUE  SHOW! ;
 : SHOW-OFF ( -- )  LINT-FALSE SHOW! ;
 
-\ unsigned decimal (digit-buffer print, as maki-dep/namespace lint)
 : EMIT-U ( n -- )
    0 ND# !
    dup 0= if drop ZERO-C emit exit then
@@ -167,7 +106,6 @@ variable JX
       DIGITS ND# @ + c@ emit
    repeat ;
 
-\ signed decimal
 : EMIT-N ( n -- )
    dup 0 < if MINUS-C emit 0 swap - then
    EMIT-U ;
@@ -201,12 +139,11 @@ variable JX
    repeat drop
    NV @ LINT-TRUE ;
 
-: MAG? ( ptr u8 n -- n bool ) {: a:ptr u:n :}   \ decimal or $hex magnitude
+: MAG? ( ptr u8 n -- n bool ) {: a:ptr u:n :}
    u 0= if 0 LINT-FALSE exit then
    a c@ DOLLAR-C = if a 1 + u 1- HEX? exit then
    a u DEC? ;
 
-\ negative numeric literal (-NNNN or -$HH) -> its value
 : NEG? ( ptr u8 n -- n bool ) {: a:ptr u:n :}
    u 2 < if 0 LINT-FALSE exit then
    a c@ MINUS-C <> if 0 LINT-FALSE exit then
@@ -214,14 +151,13 @@ variable JX
    ok 0= if 0 LINT-FALSE exit then
    0 v - LINT-TRUE ;
 
-\ a literal's code: its value as a signed cell, spelled with a minus or not
+\ A code is the literal's signed-cell value: `$FFFFFFFFFFFFDCD7 constant E-X`
+\ claims -9001.
 : CODE? ( ptr u8 n -- n bool ) {: a:ptr u:n :}
    a u NEG? {: code:n negative:bool :}
    negative if code LINT-TRUE exit then
    a u MAG? ;
 
-\ a code that is no exit status: any negative value, or a positive one above
-\ EXIT-MAX
 : THROW-CODE? ( n -- bool ) {: code:n :}
    code 0 <  code EXIT-MAX > or ;
 
@@ -237,11 +173,11 @@ variable JX
 : FILE$ ( file-id -- ptr u8 n ) FILE>N INTERN$ ;
 : STEM-NAME$ ( stem-id -- ptr u8 n ) STEM>N INTERN$ ;
 
-\ Every claim is recorded with its file, an identical (code, name) pair from a
-\ second file included: the pair is one identity reachable through two files,
-\ so COLLIDE? ignores same-name pairs and FOREIGN? asks whether the range's
-\ owner registers the pair itself. Dropping the second copy here used to lose
-\ which file was the owner, and the range check then flagged the re-export.
+\ Identical (code, name) re-registrations are one identity reachable through two
+\ files (re-export shims; src/habu/stack-abi.f E-STACK-UNGUARDED for emitters
+\ that compile before src/lib/), allowed inside another file's range too. Every
+\ copy is recorded with its file: COLLIDE? ignores same-name pairs and FOREIGN?
+\ asks whether the range's owner registers the pair itself.
 : CLAIM+ ( n intern-id file-id -- ) {: code:n name:intern-id file:file-id :}
    CLAIM# @ MAX-CLAIMS >= if s" error-code-lint: claim table full" 1 die then
    code name file CLAIM-MAKE CLAIM# @ CLAIM-ROWS !
@@ -254,15 +190,15 @@ variable JX
 : PATH$ ( -- ptr u8 n )  PATH PATH-U @ ;
 
 \ ---- reservation table (E-*-FIRST/E-*-LAST range blocks) --------------------
-\ A FIRST/LAST pair reserves the inclusive numeric range between its two member
-\ codes for the file that declares it (src/lib/errors.f owns every stdlib block).
-\ Pairs are keyed by shared stem (E-FS-FIRST/E-FS-LAST -> E-FS) and declaring
-\ file, so two files can each own a same-named block.
+\ E-*-FIRST / E-*-LAST are range sentinels aliasing their block's boundary codes,
+\ not new identities. A pair, keyed by shared stem (E-FS-FIRST/E-FS-LAST -> E-FS)
+\ and declaring file, reserves the inclusive [FIRST,LAST] range for that file; an
+\ E- code another file claims inside it is flagged even before the owner mints it.
 : RES-STEM@  ( n -- stem-id ) RES-ROWS RESERVATION-STEM @ ;
 : RES-OWNER@ ( n -- file-id ) RES-ROWS RESERVATION-OWNER @ ;
 : RES-STATE@ ( n -- reservation-state ) RES-ROWS RESERVATION-STATE @ ;
 
-\ name minus its -FIRST / -LAST suffix (caller guarantees SENTINEL?)
+\ the caller guarantees SENTINEL?
 : STEM$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    a u s" -FIRST" LINT-ENDS-WITH? if a u 6 - exit then
    a u 5 - ;
@@ -277,7 +213,7 @@ variable JX
    loop OPTION:NONE ;
 
 : WITH-FIRST ( reservation-state n -- reservation-state ) {: code:n :}
-   \ The scanner accepts -0. Preserve its old meaning: clear this bound.
+   \ A spelled -0 clears this bound.
    code 0= if
       MATCH reservation-state
          none OF construct reservation-state none ENDOF
@@ -335,28 +271,24 @@ variable JX
 : WORD? ( n -- bool ) {: k:n :}
    k LINT-LEX:KIND@ LINT-LEX:WORD = ;
 
-\ Kinds this scan understands. A WORD is code. A `( ... )` or `.( ... )` comment
-\ and a complete primitive-axiom row are inert spans that declare no
-\ constant, so they are stepped over whole. Any other kind is one this lint was
-\ never taught, and skipping it in silence is how a scanner goes blind: the token
-\ would span source the scan never reads while the ledger still reports zero
-\ findings.
+\ A comment and a complete primitive-axiom row declare no constant. Any other
+\ non-WORD kind is one this lint was never taught: refused, never skipped.
 : KNOWN-KIND? ( n -- bool ) {: k:n :}
    k LINT-LEX:KIND@ {: kind:n :}
    kind LINT-LEX:WORD = if LINT-TRUE exit then
    kind LINT-LEX:COMMENT = if LINT-TRUE exit then
    kind LINT-LEX:REGISTRY = ;
 
-\ Index of the next WORD token at or after k, or the token count when the source
-\ has no word left. A comment sits between words without being code, so
-\ `-9001 constant ( note ) E-XA` is still one claim.
+\ A comment between words is not code: `-9001 constant ( note ) E-XA` is one claim.
 : NEXT-WORD ( n -- n ) {: k:n :}
    k begin dup LINT-LEX:COUNT < while
       dup WORD? if exit then
       1+
    repeat ;
 
-\ token k as a `<code> constant E-NAME` claim
+\ `E-OWNER constant E-LOCAL` is an alias, not a claim: only a numeric literal
+\ claims. A file reads another's code this way when the owner is loaded
+\ (src/arch/arm32/asm.f E-OPERAND) and re-registers the identical pair when not.
 : SCAN-CLAIM ( n -- ) {: k:n :}
    k 1+ NEXT-WORD {: ki:n :}
    ki LINT-LEX:COUNT >= if exit then
@@ -368,8 +300,7 @@ variable JX
    k LINT-LEX:TOKEN CODE? {: code:n numeric:bool :}
    numeric 0= if exit then
    na nu SENTINEL? if
-      \ A sentinel bounds a range where a claim could stand. A spelled -0 clears
-      \ a bound.
+      \ A sentinel bounds a range where a claim could stand.
       code THROW-CODE? if code na nu RES+ exit then
       code 0= if
          k LINT-LEX:TOKEN NEG? if na nu RES+ exit then drop
@@ -398,9 +329,6 @@ variable JX
    s" :" type LINT-LEX:ERROR-COL@ EMIT-U
    s" : " type ;
 
-\ Fail-closed: a lexer diagnostic stops the scan at the defect, so every claim
-\ after it in that source is unreadable. Name the file, the site and the defect,
-\ then throw a catchable code rather than build the ledger from a partial file.
 : LEX-DEFECT ( -- )
    DEFECT-SITE
    LINT-LEX:ERROR-KIND@ {: kind:n :}
@@ -433,7 +361,6 @@ variable JX
    i CODE@ j CODE@ =
    i NAME@ j NAME@ NAME= 0= and ;
 
-\ one finding per colliding claim pair
 : FINDINGS ( -- )
    0 IX !
    begin IX @ CLAIM# @ < while
@@ -446,15 +373,13 @@ variable JX
    repeat ;
 
 \ ---- foreign-range findings -------------------------------------------------
-: ORDER ( n n -- n n )   \ order two bounds ascending
+: ORDER ( n n -- n n )
    2dup > if swap then ;
 
 : IN-RANGE? ( n n n -- bool ) {: code:n first:n last:n :}
    first last ORDER {: lo:n hi:n :}
    code lo >= code hi <= and ;
 
-\ the reservation's owner claims the same (code, name) itself: claim ci is a
-\ re-registration of that identity, not a foreign one
 : OWNER-REGISTERED? ( n n -- bool ) {: ci:n ri:n :}
    CLAIM# @ 0 ?do
       i OWNER@ ri RES-OWNER@ FILE=
@@ -462,8 +387,6 @@ variable JX
       i NAME@ ci NAME@ NAME= and if LINT-TRUE unloop exit then
    loop LINT-FALSE ;
 
-\ claim ci falls inside a COMPLETE reservation ri owned by another file, under
-\ a name the owner does not itself register for that code
 : FOREIGN? ( n n -- bool ) {: ci:n ri:n :}
    ri RES-STATE@ MATCH reservation-state
       none OF LINT-FALSE ENDOF
@@ -488,7 +411,6 @@ variable JX
    then
    BAD @ 1+ BAD ! ;
 
-\ one finding per (claim, foreign reservation) pair
 : RES-FINDINGS ( -- )
    0 IX !
    begin IX @ CLAIM# @ < while
@@ -533,7 +455,6 @@ variable JX
 
 public
 
-\ findings from scanning one string in isolation (reset -> scan -> pair count)
 : COUNT ( ptr u8 n -- n ) {: a:ptr u:n :}
    SHOW? @ {: show:bool :}
    SHOW-OFF
@@ -544,8 +465,6 @@ public
    show SHOW!
    BAD @ ;
 
-\ two-file finding count: OWNER source declares the block, FOREIGN source mints
-\ its claims under a different path, so a cross-file range claim can be tested.
 : COUNT2 ( ptr u8 n ptr u8 n -- n ) {: ao:ptr auo:n af:ptr auf:n :}
    SHOW? @ {: show:bool :}
    SHOW-OFF
@@ -571,11 +490,9 @@ public
       ;MATCH
    loop ;
 
-\ report view: prints the ledger without throwing
 : LEDGER ( -- )
    SHOW-ON  WALK  SUMMARY ;
 
-\ gate entry (enforcing): any code claimed by two different E- names fails
 : STRICT ( -- )
    LEDGER
    BAD @ 0 > if 1 throw then ;

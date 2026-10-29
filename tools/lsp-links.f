@@ -1,23 +1,9 @@
-\ lsp-links.f - the language server's document links: the files the top-level
-\ loaders of an open document reached, as its last check reported them once
-\ that check completed.
-\
-\ ANSWER writes the result of textDocument/documentLink for an open document:
-\ one DocumentLink for each load the document's last completed check reported
-\ (LSP-DOCS:DOC-LOADS$, the lines of CHECK:VERIFY-LOADS$ as
-\ tools/check-verify-child.f states them), in their order, and none when that
-\ check reported none or did not complete. A link's range is its loader's
-\ operand, the bytes its line states in the document's text, in LSP positions
-\ (LSP-TEXT:RANGE). Its target is the file its line names, at the URI of the
-\ open document that holds that file, else at the file's URI
-\ (LSP-DEFS:DEP-URI$). A loader that read its file has no tooltip; one that
-\ held it, the engine providing it or a load before having recorded it, says
-\ so in its tooltip, naming the file as hover does: relative to the server's
-\ working directory when it lies inside it, else by its path. A link is its
-\ line mapped: the server reads, resolves and parses nothing for it.
-\
-\ STORAGE CLASS. PROCESS-GLOBAL: the answer being written belongs to the
-\ server's one task.
+\ lsp-links.f - textDocument/documentLink: one DocumentLink per load the
+\ document's last completed check reported (LSP-DOCS:DOC-LOADS$), in order. Range:
+\ the loader's operand (LSP-TEXT:RANGE); target: the open document holding the
+\ file, else its URI (LSP-DEFS:DEP-URI$). A link is its line mapped: the server
+\ reads, resolves and parses nothing for it.
+\ STORAGE CLASS. PROCESS-GLOBAL: the answer belongs to the server's one task.
 
 require src/lib/byte-buffer.f
 require src/lib/json-read.f
@@ -44,7 +30,6 @@ variable SHOWN-N                         \ and the links written so far
 : T+ ( ptr u8 n -- )  BUF:N>BLEN TIP-B BUF:APPEND-SPAN ;
 : TIP$ ( -- ptr u8 n )  TIP-B BUF:SPAN$ BUF:BLEN>N ;
 
-\ The string the reader is at, decoded into PATH-B.
 : STRING>PATH ( JR:reader -- JR:reader )
    JR:SPAN$ nip {: raw:n :}
    raw 1 max PATH-B-RESERVE
@@ -57,7 +42,6 @@ variable SHOWN-N                         \ and the links written so far
    s" outcome" JR:STR-EQ? if JR:NEXT drop s" held" JR:STR-EQ? HELD ! exit then
    JR:NEXT drop JR:SKIP-VALUE ;
 
-\ The load line's file and outcome decoded.
 : DECODE ( ptr u8 n -- )
    {: a:ptr u:n :}
    0 PATH-U !
@@ -67,7 +51,9 @@ variable SHOWN-N                         \ and the links written so far
    begin JR:NEXT JR:T-KEY = while MEMBER repeat
    JR:CLOSE ;
 
-\ The tooltip of a link whose loader held its file.
+\ A loader that held its file (the engine provided it, or a load before recorded
+\ it) says so, naming the file as hover does: relative to the server's working
+\ directory when inside it, else by its path.
 : HELD-TIP ( -- ptr u8 n )
    TIP-B BUF:CLEAR
    s" held " T+
@@ -75,7 +61,6 @@ variable SHOWN-N                         \ and the links written so far
    s" : this loader did not read it; the engine provides it or it was already recorded." T+
    TIP$ ;
 
-\ The link for this load line.
 : LINK ( ptr u8 n -- )
    {: a:ptr u:n :}
    a u DECODE
@@ -90,12 +75,9 @@ variable SHOWN-N                         \ and the links written so far
 
 public
 
-\ Readies the answer's storage, before any link.
 : PREPARE ( -- )
    TIP-B 1 BUF:N>BLEN BUF:INIT ;
 
-\ Writes the result of textDocument/documentLink for the document in this
-\ slot, the array the header describes, to the writer.
 : ANSWER ( ptr JSON-WRITE:writer n -- ptr JSON-WRITE:writer )
    {: w slot:n :}
    w OUT !

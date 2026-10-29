@@ -9,8 +9,6 @@ require src/lib/string.f
 require tools/diag-code.f
 require src/lib/fs.f
 
-\ Checked CLI packet builder. Raw fd primitives are used through checked effects.
-
 74 constant RP-E-IO
 64 constant RP-E-USAGE
 $40000 constant RP-IN-CAP

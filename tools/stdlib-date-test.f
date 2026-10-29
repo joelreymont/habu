@@ -1,10 +1,6 @@
-\ stdlib-date-test.f - focused tests for src/lib/date.f.
-\
-\ Uses the shared src/lib/test.f assert vocabulary (T= / TTRUE / T$= / T-RESET /
-\ T-REPORT), like the sibling src/lib/property-test.f. The test shares one dictionary
-\ with the already-loaded test framework, so defining a private T= /
-\ TTRUE / T$= here collides (duplicate definition: T=). Reusing the framework
-\ words composes cleanly standalone, spawned, and in-process.
+\ stdlib-date-test.f - focused tests for src/lib/date.f on src/lib/test.f's assert
+\ words: the test shares one dictionary with the loaded framework, so a private
+\ T= here is a duplicate definition.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -76,16 +72,16 @@ TASK:SEMAPHORE DATE-START
    DATE-START TASK:SEMAPHORE-DESTROY
    DATE-READY TASK:SEMAPHORE-DESTROY ;
 
-: DATE-PARSE= {: a:ptr u:n days:n :} ( ptr u8 n n -- )   \ valid date -> SOME days
+: DATE-PARSE= {: a:ptr u:n days:n :} ( ptr u8 n n -- )
    a u DATE:PARSE-YMD MATCH option
-     none OF 0 0= 0= TTRUE ENDOF                      \ NONE = unexpected parse failure -> false
-     some OF days T= ENDOF                            \ SOME day -> compare to expected
+     none OF 0 0= 0= TTRUE ENDOF                      \ an unexpected NONE fails
+     some OF days T= ENDOF
    ;MATCH ;
 
-: DATE-PARSE-BAD ( ptr u8 n -- )                     \ invalid date -> NONE
+: DATE-PARSE-BAD ( ptr u8 n -- )
    DATE:PARSE-YMD MATCH option
-     none OF 0 0= TTRUE ENDOF                         \ NONE = correctly rejected -> true
-     some OF drop 0 0= 0= TTRUE ENDOF                 \ SOME = unexpected parse success -> false
+     none OF 0 0= TTRUE ENDOF
+     some OF drop 0 0= 0= TTRUE ENDOF                 \ an unexpected SOME fails
    ;MATCH ;
 
 : DATE-FORMAT= {: days:n a:ptr u:n :} ( n ptr u8 n -- )
@@ -96,7 +92,7 @@ TASK:SEMAPHORE DATE-START
    seconds DATE-TEST-BUF DATE-TEST-BUF-LEN DATE:FORMAT-EPOCH-UTC
    a u T$= ;
 
-: DATE-N-BAD ( -- )                                 \ a non-digit -> NONE
+: DATE-N-BAD ( -- )
    s" 98x6" drop 0 4 DATE:N MATCH option
      none OF -1 ENDOF
      some OF drop 0 ENDOF

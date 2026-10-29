@@ -1,21 +1,8 @@
-\ lsp-docs.f - the documents a language client has open: each one's URI, the
-\ file path the URI names, its text and its version, as the client last sent
-\ them, and what the server's checks keep of each.
-\
-\ A document is a slot of a growable table: byte buffers (src/lib/byte-buffer.f)
-\ for the URI, the path, the text, the path's canonical spelling, which the
-\ checker names it by, the files besides it whose diagnostics its last check
-\ published and the loads its last check reported once that check completed,
-\ then the version and a unique identity for this opening, then 1 while it
-\ waits for a check, then 1 while the slot holds a document.
-\ Closing a document frees its buffers and its slot, and an open takes the
-\ first free slot. A document is found by its URI's bytes, its path's or its
-\ canonical path's.
-\
-\ Opening or changing a document leaves it dirty, its text not yet checked.
-\ DOC-NEXT-DIRTY hands out the dirty documents slot after slot, wrapping round,
-\ so each one's turn comes however often another changes.
-\
+\ lsp-docs.f - the documents a language client has open: URI, path, text and
+\ version as the client last sent them, and what the server's checks keep.
+\ A closed document frees its buffers and its slot; an open takes the first free
+\ slot. DOC-NEXT-DIRTY hands out dirty documents slot after slot, wrapping
+\ round, so each one's turn comes however often another changes.
 \ STORAGE CLASS. PROCESS-GLOBAL: one table, for the server's one task.
 
 require src/lib/errors.f
@@ -49,13 +36,11 @@ variable NEXT-ID
 : LIVE? ( n -- bool )  LIVE-AT SLOT-CELL @ 0<> ;
 : BYTES$ ( n n -- ptr u8 n )  SLOT-CELL SPAN$ BLEN>N ;
 
-\ A new buffer at this cell of the slot, holding these bytes.
 : KEEP ( ptr u8 n n n -- )
    {: a:ptr u:n slot:n at:n :}
    slot at SLOT-CELL u 1 max N>BLEN INIT
    a u N>BLEN slot at SLOT-CELL REPLACE ;
 
-\ The buffer at this cell of the slot holds these bytes instead.
 : STORE ( ptr u8 n n n -- )
    {: a:ptr u:n slot:n at:n :}
    a u N>BLEN slot at SLOT-CELL REPLACE ;
@@ -66,7 +51,6 @@ variable NEXT-ID
    SLOT-COUNT @
    1 SLOT-COUNT +! ;
 
-\ The slot of the open document whose buffer at this cell holds these bytes.
 : HOLDER ( ptr u8 n n -- option<n> )
    {: a:ptr u:n at:n :}
    SLOT-COUNT @ 0 ?do
@@ -78,10 +62,8 @@ variable NEXT-ID
 
 public
 
-\ The slots there are, live or not.
 : DOC-SLOTS ( -- n )  SLOT-COUNT @ ;
 
-\ Whether the slot holds a document.
 : DOC-LIVE? ( n -- bool )  LIVE? ;
 
 : DOC-URI$ ( n -- ptr u8 n )  URI-AT BYTES$ ;
@@ -90,32 +72,27 @@ public
 : DOC-VERSION@ ( n -- n )  VERSION-AT SLOT-CELL @ ;
 : DOC-ID@ ( n -- n )  ID-AT SLOT-CELL @ ;
 
-\ The path the checker names the document by: its path's canonical spelling,
-\ taken when it opened.
+\ The checker names the document by its path's canonical spelling, taken at open.
 : DOC-CANON$ ( n -- ptr u8 n )  CANON-AT BYTES$ ;
 
-\ The files besides the document whose diagnostics its last check published,
-\ each path ended by LF.
+\ Each path ended by LF.
 : DOC-DEPS$ ( n -- ptr u8 n )  DEPS-AT BYTES$ ;
 : DOC-DEPS! ( ptr u8 n n -- )  DEPS-AT STORE ;
 
-\ The loads the document's last check reported, once that check completed,
-\ one JSON object per line as CHECK:VERIFY-LOADS$ gives them.
+\ The loads the last completed check reported, one JSON object per line as
+\ CHECK:VERIFY-LOADS$ gives them.
 : DOC-LOADS$ ( n -- ptr u8 n )  LOADS-AT BYTES$ ;
 : DOC-LOADS! ( ptr u8 n n -- )  LOADS-AT STORE ;
 
 : DOC-DIRTY ( n -- )  1 swap DIRTY-AT SLOT-CELL ! ;
 : DOC-CLEAN ( n -- )  0 swap DIRTY-AT SLOT-CELL ! ;
 
-\ Whether the document in this slot waits for a check.
 : DOC-DIRTY? ( n -- bool )  DIRTY-AT SLOT-CELL @ 0<> ;
 
-\ Every open document waits for a check.
 : DOC-DIRTY-ALL ( -- )
    SLOT-COUNT @ 0 ?do i LIVE? if i DOC-DIRTY then loop ;
 
-\ The first dirty document's slot after slot N, wrapping round to the first;
-\ -1 starts at the first.
+\ Wraps round; -1 starts at the first slot.
 : DOC-NEXT-DIRTY ( n -- option<n> )
    {: after:n :}
    SLOT-COUNT @ {: count:n :}
@@ -126,25 +103,19 @@ public
    loop
    OPTION:NONE ;
 
-\ Gives EACH the canonical path and text of every open document, in slot
-\ order, but the one in slot N; -1 for none.
+\ In slot order, skipping slot N; -1 skips none.
 : DOC-EACH-BUT ( n [ ptr u8 n ptr u8 n -- ] -- )
    {: but:n each :}
    SLOT-COUNT @ 0 ?do
       i LIVE? i but <> and if i DOC-CANON$ i DOC-TEXT$ each execute then
    loop ;
 
-\ The slot of the open document with this URI.
 : DOC-FIND ( ptr u8 n -- option<n> )  URI-AT HOLDER ;
 
-\ The slot of the open document holding the file the checker names by this
-\ path.
 : DOC-HOLDING ( ptr u8 n -- option<n> )  CANON-AT HOLDER ;
 
-\ The slot of the open document the client opened by this path.
 : DOC-OPENED-AS ( ptr u8 n -- option<n> )  PATH-AT HOLDER ;
 
-\ Closes the document in this slot.
 : DOC-CLOSE ( n -- )
    {: slot:n :}
    slot URI-AT SLOT-CELL DISPOSE
@@ -156,8 +127,6 @@ public
    slot DOC-CLEAN
    0 slot LIVE-AT SLOT-CELL ! ;
 
-\ The document in this slot takes a new version and text, and waits for a
-\ check.
 : DOC-CHANGE ( n n ptr u8 n -- )
    {: slot:n v:n t:ptr tu:n :}
    t tu slot TEXT-AT STORE

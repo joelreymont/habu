@@ -1,4 +1,6 @@
-\ hb-build-lib.f - native AOT/REPL build CLI library.
+\ hb-build-lib.f - native AOT/REPL build CLI library, package HB-BUILD-CLI:
+\ private but for the export block at the end. The name HB-BUILD belongs to the
+\ report module, tools/hb-build-report.f.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -28,11 +30,6 @@ require tools/event-closure-lib.f
 require tools/native-build-image.f
 require tools/build-target.f
 
-\ The hb-build command's implementation lives in package HB-BUILD-CLI.
-\ Everything below is private to it; the export block at the end of the file
-\ names the whole surface other files call. HB-BUILD is taken by the report
-\ module (tools/hb-build-report.f), a different concern with its own published
-\ surface.
 package HB-BUILD-CLI
 using BUILD-FIXPOINT                     \ shared build paths, child env and source scratch
 
@@ -385,13 +382,11 @@ variable HBB-APP-BUILDER-U
    HBB-SRC$ FS:FILE? 0= if s" hb-build: no such source" HBB-NOINPUT-RC die then
    HBB-SRC$ HBB-PATH-HAS-DQ? if s" hb-build: source path contains a double quote" HBB-USAGE-RC die then ;
 
-\ Every build gets a private directory. The engine's build mode writes fixed
-\ names into the TMPDIR it is handed (src/habu/aot-common.f `hb-aot-got`,
-\ `hb-aot-obj`), so two builds sharing one TMPDIR - every hb-build the gate
-\ pool runs at once - read each other's artifacts: one saw its image vanish
-\ (E-BUILD-PATH), another ran a stranger's application. A caller's TMPDIR is
-\ the base the private directory goes under; FS:MKTEMP-DIR refuses one that is
-\ missing or not a directory.
+\ Every build gets a private directory under the caller's TMPDIR: the engine's
+\ build mode writes fixed names there (src/habu/aot-common.f `hb-aot-got`,
+\ `hb-aot-obj`), so builds sharing one TMPDIR, as gate pool builds do, read each
+\ other's artifacts. FS:MKTEMP-DIR refuses a base that is missing or not a
+\ directory.
 : HBB-PREPARE-TMP ( -- )
    BF-TMP-RESET
    FS:CLEANUP-RESET
@@ -473,7 +468,6 @@ HBB-COUNTS-MAX BUFFER: HBB-COUNTS-BUF
    HB-BUILD:CAPTURE-FILES
    HBB-COUNTS$ FS:REMOVE-FILE ;
 
-\ Every maker launch stages its argv and env here.
 : HBB-CMD-RESET ( -- )
    PROC-ARGV-RESET
    BF-PREPARE-ENV
@@ -970,7 +964,6 @@ defer HBB-REPORT-HOOK ( -- )
    HBB-REPORT-JSON @ HBB-SIZE-REPORT @ or 0<> if HBB-FINISH exit then
    s" hb-build up to date: " type HBB-OUT$ type cr ;
 
-\ The path error in the form --json-errors chooses.
 : HBB-PATH-ERROR ( -- )
    HBB-JSON @ if HB-BUILD:PATH-ERROR$ else HB-BUILD:PATH-ERROR-TEXT$ then HBB-WERR
    HBB-WERR-LF ;
@@ -991,11 +984,9 @@ defer HBB-REPORT-HOOK ( -- )
    HBB-INSTALL-OUT
    HBB-FINISH ;
 
-\ The engine build's support image is selected through a record beside it,
-\ img/native-build-support.inputs: the selector key it was written under (64
-\ hex), the support image key it selects (64 hex), the rows length (u64), then
-\ the rows the support child read. The selector depends only on fixed support
-\ identity; the rows are checked against this invocation before the key is
+\ The engine build's support image is selected through
+\ img/native-build-support.inputs, a support record as HBB-REPL-SUPPORT-HEADER-U
+\ lays out: the rows are checked against this invocation before the key is
 \ adopted. The engine build itself always runs.
 : HBB-ENGINE-SELECT$ ( -- ptr u8 n )
    HBB-ENGINE-SELECT-PATH HBB-ENGINE-SELECT-U @ ;
@@ -1399,9 +1390,7 @@ defer HBB-REPORT-HOOK ( -- )
    HBB-CLEANUP ;
 
 \ ---------------------------------------------------------------------------
-\ The HB-BUILD-CLI surface: the words other files call, promoted in one place
-\ so the whole export list reads at a glance. tools/hb-build.f runs the entry
-\ with the package closed.
+\ tools/hb-build.f runs the entry with the package closed.
 
 public
 

@@ -38,12 +38,10 @@ private
    k WORD? 0= if LINT-FALSE exit then
    k LINT-LEX:TOKEN a u LINT-STR=CI ;
 
-\ CAST: sits among the colon-shaped forms in the table above but it is NOT one:
-\ a cast declares a name and an effect and ends at its closing paren, with no
-\ body and no `;` to close. Classifying it as COLON-KIND would leave a scan open
-\ across whatever follows until the NEXT definition's `;`, which is exactly the
-\ mis-attribution the package-diff walk is built on this classifier to avoid.
-\ LINEAR: is the same declaration shape, and its row sits among the data forms.
+\ CAST: sits among the colon-shaped forms but is not one: it ends at its closing
+\ paren, with no body and no `;`. As COLON-KIND it would leave a scan open until
+\ the next definition's `;`, the mis-attribution the package-diff walk relies on
+\ this classifier to avoid. LINEAR: has the same shape; its row is a data form.
 5 constant CAST-FORM
 
 : FORM-KIND ( n -- n ) {: k:n :}

@@ -1,11 +1,8 @@
 \ chain-plan.f - decide whether a revision needs a new engine.
-\
-\ The decision belongs in checked code.  A caller supplies the newline-separated
-\ paths changed by one revision; this file answers `engine` when a changed path
-\ can reach the native product and `focused` otherwise.  Unknown source inputs
-\ fail closed: compiler source and the bootstrap prefix are engine inputs, and the
-\ transitive closure of tools/native-build.f covers the remaining libraries.
-\ Tests and documentation are therefore allowed to reuse the previous engine.
+\ Given one revision's changed paths, newline-separated, it answers `engine` when
+\ a path can reach the native product and `focused` otherwise. Unknown source
+\ inputs fail closed: compiler source and the bootstrap prefix are engine inputs,
+\ and the closure of tools/native-build.f covers the remaining libraries.
 
 require src/lib/errors.f
 require src/lib/string.f

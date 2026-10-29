@@ -17,17 +17,15 @@ using A64ICODE
 
 IBT-LOAD-IMAGE-BYTES
 
-\ Republished test effects. Retirement: habu-campaign-c2-mem-c3d7662b.
+\ Republished test effects.
 \ MBUF exposes the audited raw image buffer; M-BOUNDS-RC its bounds status.
 s" MBUF" s" -- ptr u8" TRUST
 s" M-BOUNDS-RC" s" -- n" TRUST
-\ M-RESET resets the writer; M-HERE reads its raw cursor.
 s" M-RESET" s" --" TRUST
 \ M-LEN and M-OFF preserve the nominal roles used by negative fixtures.
 s" M-LEN" s" n -- len" TRUST
 s" M-OFF" s" n -- off" TRUST
 s" M-HERE" s" -- n" TRUST
-\ IMG-M8/M16/M32/M64 expose the four raw image emit widths.
 s" IMG-M8" s" n --" TRUST
 s" IMG-M16" s" n --" TRUST
 s" IMG-M32" s" n --" TRUST
@@ -125,12 +123,10 @@ s" MSIZE" s" -- n" TRUST
    s" x" drop -1 1 rshift >LEN M-BYTES-LEN ;
 
 \ One pad to the last byte serves the three room boundaries in turn. A write is
-\ measured against the room left: `>LEN` is a cast and not a validator, and a
-\ length near the maximum cell would wrap the sum back under MSIZE. A refused
-\ write leaves the cursor where it was, so the exact write that follows fills
-\ the buffer. Regression for the silent maker-build failure: a cursor at MSIZE
-\ must throw M-BOUNDS-RC (and M-FAIL now reports the site to stderr instead of
-\ swallowing its message).
+\ measured against the room left: `>LEN` is a cast, not a validator, and a length
+\ near the maximum cell would wrap the sum back under MSIZE. A refused write
+\ leaves the cursor in place, so the exact write after it fills the buffer; a
+\ cursor at MSIZE throws M-BOUNDS-RC.
 : IBT-TEST-ROOM ( -- )
    M-RESET  MSIZE 1- M-OFF M-PAD-OFF
    [: IBT-FILL-OVER ;] M-BOUNDS-RC TTHROWSQ

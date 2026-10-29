@@ -1,90 +1,9 @@
-\ image-size-lib.f - where every byte of a Habu image goes. The measurement
-\ half, with no entry of its own: tools/engine-size.f is the command line and
-\ tools/hb-build-lib.f requires this file to size what a build just wrote.
-\
-\ WHY IT EXISTS. "Why is bin/hb 5.8 MB?" had no answer a measurement could
-\ give. The size of the parts was folklore -- the dictionary was blamed for
-\ megabytes it does not cost -- because nothing walked the file. This does:
-\ it attributes EVERY byte of an image to a class and an owner, and refuses to
-\ report at all unless the classes sum to the file's own length. "Why is this
-\ application 24 MB?" was the same question one image class later, and the
-\ answer turned out to be neither code nor dictionary: see WHAT AN APPLICATION
-\ IMAGE IS below.
-\
-\ WHAT IT WALKS. A baked engine (no snapshot trailer) is four things on disk:
-\ the ELF header page, the engine's own emitted code, the boot-seeded primitive
-\ dictionary, and the AOT payload src/habu/habu2.f EMIT-AOT-SEED bakes last.
-\ The payload is self-describing -- every count precedes its rows -- so the walk
-\ needs no symbol table: it finds the payload by trying each 4-byte-aligned
-\ offset and keeping the one whose framing walks from its first cell to the end
-\ of the image content. A walk that lands anywhere else is refused, which is
-\ what makes a single self-consistent answer evidence rather than a guess.
-\ The section format mirrors EMIT-AOT-SEED and the record format mirrors
-\ src/habu/xref.f, the same way tools/imgdump.f mirrors them; an emitter change
-\ that this file does not follow makes the walk fail to land, loudly.
-\
-\ THE REACHABILITY CENSUS answers the second half: stripped applications and
-\ native engine captures both compact code closures, with different roots. The
-\ census marks from roots over the same call
-\ graph the closure walker uses -- direct B/BL edges in the baked code, plus the
-\ code addresses the payload's own relocation tables name -- and reports what
-\ nothing reaches. Two root sets, because "dead" means two different things:
-\   dictionary  the language surface is the API: every global and package-PUBLIC
-\               word is a root, since a program can name it. What this leaves
-\               unreachable is private code no public word can reach.
-\   entry       only the engine's own entry points are roots (its boot-run entry
-\               words and the code addresses its DATA cells hold). This is a
-\               LOWER BOUND on what a tree-shaken engine could keep, not a strip
-\               list: the interpreter resolves user tokens by name, so a public
-\               word outside this closure is still callable.
-\ Both over-approximate reachability -- gaps outside the record and stripped-span
-\ indices are root regions, and an address the payload records is a root --
-\ so a word this reports
-\ as unreachable is unreachable, and the report is a floor, never a wish.
-\ NEITHER ROOT SET MEANS ANYTHING FOR AN APPLICATION IMAGE, so the census does
-\ not run on one: a stripped image already had the closure walk run against it
-\ at build time, and a --repl image ships the interpreter, which resolves user
-\ tokens by name, so every word it carries is reachable by construction.
-\
-\ WHAT AN APPLICATION IMAGE IS. tools/hb-build.f writes two other classes and
-\ this file walks both, because "where is the size going" was asked of them and
-\ not of the engine.
-\   --repl   a SNAPSHOT: the whole donor engine's text, live dictionary rows
-\            and code, structured fixed DATA sections, and the raw user heap,
-\            followed by the 48-byte trailer (src/habu/snap-lib.f writes it,
-\            src/habu/habu2.f EM-SNAPSHOT-RESTORE reads it, src/habu/layout.f
-\            owns its geometry). Fixed unused capacity is reconstructed.
-\            The engine half is bit-for-bit a baked engine, so the walkers above
-\            measure it unchanged; only the text end moves, from TEXT-SIZE to
-\            where the region payload starts (ETEXT-END).
-\   stripped no dictionary, no compiler, no trailer: an entry, the closure of
-\            MAIN, the crash handlers, the DATA window as sparse non-zero runs,
-\            and one 8-byte relocation row per declared address cell.
-\ PRESERVED BYTES ARE THE WHOLE STORY. A snapshot stores its user heap as raw
-\ bytes, zeros and spare allocation capacity included, or as the cell grid of
-\ src/habu/cell-grid.f when that is smaller (the trailer's
-\ SNAPSHOT-FORMAT:HEAP-FIELD says which); fixed omitted capacity has its own
-\ virtual-extent report. Every file class carries a ZERO column. A stripped
-\ image carries no zero byte at all: its runs describe a span far larger than
-\ the file.
-\
-\ WHAT THE REPORT DOES NOT SAY. Code is charged to a record and a record to its
-\ package; nothing in the image names a source file, so there is no per-file
-\ attribution; global-wordlist words belong to no package and share one row.
-\ The snapshot trailer has no payload checksum: the reader's checks of version,
-\ extents, row count, section lengths and pads establish framing and geometry,
-\ not content authenticity.
-\
-\ Run: <engine> --load tools/engine-size.f -- <image>
-\
-\ x86 ELF images put the dictionary REGION in a PT_LOAD and DATA's initialized
-\ prefix in a read-only carrier PT_LOAD at the region's end, which the boot
-\ copies into the DATA it maps. Their snapshot heap follows immutable RX text; a text-site footer
-\ marks executable code, and the trailer recovers the donor text boundary.
-\ The x86 path measures those physical segments and validates raw/grid heap
-\ framing. A stripped x86 image locates its sparse DATA runs and XT rows through
-\ a versioned footer in RX text; the ARM AOT and reachability walkers below
-\ retain their ARM scope.
+\ image-size-lib.f - attributes every byte of a Habu image to a class and an
+\ owner, and refuses to report unless the classes sum to the file's length.
+\ Image classes: baked engine, --repl snapshot, stripped application. The
+\ section format mirrors src/habu/habu2.f EMIT-AOT-SEED and the record format
+\ src/habu/xref.f: an emitter change this file does not follow fails the walk.
+\ tools/engine-size.f is the command line; tools/hb-build-size.f sizes builds.
 
 require src/lib/fmt.f
 require src/lib/fs.f
@@ -97,9 +16,8 @@ require tools/aot-startup-shape.f        \ the startup's instruction shapes, nam
 require tools/image-names.f
 require tools/macho-read.f
 
-\ The engine's own layout is already in the cold prefix; the target executable
-\ layout (CODE-OFF, IMAGE-TEXT-SIZE-OFF) is not. tools/imgdump.f loads it the
-\ same way and for the same reason.
+\ The cold prefix holds the engine's own layout, not the target executable
+\ layout (CODE-OFF, IMAGE-TEXT-SIZE-OFF); tools/imgdump.f loads it the same way.
 : ES-LOAD-TARGET-LAYOUT ( -- )
    s" DATA-SIZE" XREF-FIND 0= if
       HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if
@@ -113,9 +31,16 @@ ES-LOAD-TARGET-LAYOUT
 undefine ES-LOAD-TARGET-LAYOUT
 
 require src/habu/address-carrier.f
-\ The x86 path measures a linux-x86-64 image on any host, so it reads that
-\ target's layout, qualified, under the guard below; the host's DATA-VA is not
-\ where an x86 image maps DATA on a macOS host.
+\ x86 ELF images put the dictionary REGION in a PT_LOAD and DATA's initialized
+\ prefix in a read-only carrier PT_LOAD at the region's end, which the boot
+\ copies into the DATA it maps. A snapshot heap follows immutable RX text; a
+\ text-site footer marks executable code and the trailer recovers the donor
+\ text boundary. A stripped x86 image locates its sparse DATA runs and XT rows
+\ through a versioned footer in RX text. The x86 path measures those segments
+\ and validates raw/grid heap framing; the AOT and reachability walkers are
+\ arm64 only. It reads the linux-x86-64 layout, qualified, under the guard
+\ below, on any host: the host's DATA-VA is not where an x86 image maps DATA
+\ on a macOS host.
 require src/os/linux-x86-64/target-layout.f
 
 package IMAGE-SIZE
@@ -123,9 +48,9 @@ package IMAGE-SIZE
 74 constant RC
 4 constant INSN
 
-\ The walk's own refusal. Thrown, never died: the payload search probes many
-\ offsets and every wrong one must come back as a failed walk, not as an exit.
-\ This tool's own throw range: -9240..-9249 (the -9180 decade is src/lib/errors.f TCP4).
+\ The walk's own refusal: thrown, never died, since the payload search probes
+\ many offsets and a wrong one must come back as a failed walk.
+\ Throw range -9240..-9249 (the -9180 decade is src/lib/errors.f TCP4).
 -9240 constant E-ES-FIRST
 -9249 constant E-ES-LAST
 -9240 constant E-ES-WALK
@@ -156,10 +81,9 @@ variable ILEN
 : U64@ ( n -- n ) {: off:n :}
    off U32@  off 4 + U32@ 32 lshift or ;
 
-\ How many bytes of a span are zero. A span an image stores raw (the engine's
-\ low prefix, a snapshot heap in the raw form) carries its zeros, so this is the
-\ difference between what an image CARRIES and what it SAYS, and every class is
-\ reported with it beside the byte count rather than folded into one number.
+\ How many bytes of a span are zero. A span stored raw (the engine's low
+\ prefix, a raw snapshot heap) carries its zeros, so each class reports them
+\ beside its byte count.
 variable ZACC
 
 : ZEROS ( n n -- n ) {: at:n len:n :}
@@ -229,21 +153,18 @@ variable X64
 : TEXT-SIZE ( -- n )
    MACHO @ if MACHO-READ:TEXT-END else 96 U64@ then ;
 
-\ Where the ENGINE's own text content ends, which is not the same number as the
-\ file's text extent once an application image appends payloads of its own. A
-\ baked engine ends its text where the file's text segment ends; a snapshot ends
-\ it where the region payload begins, and every walker below -- the seeded
-\ dictionary's bound, the AOT payload's framing bounds, the tail-pad test --
-\ means THIS end, never the file's. Set once, before any walk.
+\ Where the engine's own text content ends: a baked engine's at the file's
+\ text segment end, a snapshot's where the region payload begins. Every walker
+\ below (seeded dictionary bound, AOT payload framing, tail-pad test) means
+\ this end, never the file's. Set once, before any walk.
 variable ETEXT-N
 
 : ETEXT-END ( -- n )
    ETEXT-N @ ;
 
-\ The file is the RX segment (which begins at offset 0 and contains the header
-\ page) followed by the RW segment the second program header names. Checking
-\ that identity first is what makes every later offset a real one: a truncated
-\ or padded file is refused here instead of failing as a walk that does not land.
+\ The file is the RX segment (from offset 0, holding the header page) then the
+\ RW segment the second program header names. Checking that first makes every
+\ later offset real: a truncated or padded file is refused here.
 : PHDR2 ( -- n )
    ELF-EHDR-BYTES ELF-PHENTSIZE-OFF U16@ + ;
 
@@ -359,8 +280,8 @@ variable X64-DATA-PH
    ELF-EHDR-BYTES  ELF-PHNUM-OFF U16@ ELF-PHENTSIZE-OFF U16@ * + ;
 
 \ The dynamic writer's PT_INTERP and DT_* records describe the header objects,
-\ including their trailing zeros. The final RELA addend is normally all zero;
-\ scanning for a nonzero byte charged eleven bytes of it to padding.
+\ including their trailing zeros. The final RELA addend is normally all zero,
+\ so a scan for the last nonzero byte would charge eleven bytes of it to padding.
 : PHDR-FIND ( n -- n ) {: kind:n :}
    ELF-PHNUM-OFF U16@ 0 ?do
       ELF-EHDR-BYTES i ELF-PHDR-BYTES * + {: at:n :}
@@ -527,10 +448,12 @@ variable NFIRST
    then ;
 
 \ ---- the AOT payload -----------------------------------------------------------
-\ One walk of src/habu/habu2.f EMIT-AOT-SEED's emission order. Every count cell
-\ precedes its rows, two runs carry no count of their own (the DATA run bytes are
-\ the sum of the run lengths; the boot-run list is 0-terminated), and the whole
-\ payload is followed only by the zero pad that rounds the text segment up.
+\ A baked engine (no snapshot trailer) is the ELF header page, the engine's
+\ emitted code, the boot-seeded primitive dictionary, then the AOT payload
+\ src/habu/habu2.f EMIT-AOT-SEED bakes last; the walk follows its emission
+\ order. Every count cell precedes its rows; two runs carry no count (the DATA
+\ run bytes are the sum of the run lengths; the boot-run list is 0-terminated),
+\ and only the zero pad rounding the text segment up follows the payload.
 variable AOT0        variable AOT-END     variable CUR        variable FRAME-CELLS
 variable FRAME-ZERO
 variable BLOB-OFF    variable BLOB-LEN
@@ -659,13 +582,11 @@ GROUP-BYTES CELL-BITS * constant GROUP-CELLS      \ cells such a group covers
    repeat
    ACC @ len <> if E-ES-WALK throw then ;
 
-\ The bitmap states no count of present cells, so walking it is what counts
-\ them, and their value widths are what the value section that follows is long.
-\ An absent group carries no byte and no present cell, so the walk steps over
-\ its GROUP-CELLS cells; the stored groups are concatenated in group order, which
-\ is why one cursor into them is all the state the outer loop adds. It ends on
-\ the stored bytes the header declares, so a candidate whose presence map and
-\ length disagree is a failed walk rather than a mismeasured image.
+\ The bitmap states no count of present cells: this walk counts them, and their
+\ value widths give the length of the value section that follows. An absent
+\ group carries no byte, so the walk steps over its GROUP-CELLS cells; stored
+\ groups are concatenated in group order, so one cursor into them suffices. A
+\ candidate whose presence map and declared stored bytes disagree fails.
 : RUN-BYTES-MEASURE ( -- n )
    0 ACC !  0 RUN-N !  0 RUN-PREV !  0 STORED-AT !
    RUN-GROUPS @ 0 ?do
@@ -916,7 +837,10 @@ variable PACK-CUR variable PACK-END variable PACK-PREV
    CAND !
    [: CAND @ WALK-AT AOT-END ! ;] catch 0= ;
 
-\ Cheap refusal before the walk: the first cell must be a blob length that fits.
+\ The payload search needs no symbol table: FIND-AOT tries each 4-byte-aligned
+\ offset and keeps the one whose framing walks from its first cell to the end of
+\ the image content. Cheap refusal before the walk: the first cell must be a
+\ blob length that fits.
 : CANDIDATE? ( n -- bool ) {: at:n :}
    at 8 + ETEXT-END > if false exit then
    at U64@ {: len:n :}
@@ -933,21 +857,19 @@ variable PACK-CUR variable PACK-END variable PACK-PREV
 
 
 \ ---- the byte budget -----------------------------------------------------------
-\ Every row is (bytes, zero bytes). A baked engine's table prints three columns,
-\ exactly as it always has; an application image's prints the zero column too,
-\ because for a snapshot that column is the answer. Every row still lands in
-\ TOTAL, and no table is printed at all unless TOTAL is the file's own length.
+\ Every row is (bytes, zero bytes). A baked engine's table prints three
+\ columns; an application image's adds the zero column, the answer for a
+\ snapshot. Every row lands in TOTAL, and no table prints unless TOTAL is the
+\ file's own length.
 variable TOTAL       variable TOTAL-ZERO
 variable ZCOL        \ non-zero while the table carries the zero column
-\ The table is what fills the six summary numbers and what proves they sum, so
-\ a caller that wants only the summary runs the same rows with the printing
-\ suppressed rather than a second, quieter arithmetic that could disagree.
+\ The table fills the six summary numbers and proves they sum: a summary-only
+\ caller runs the same rows with printing suppressed, never a second arithmetic.
 variable QUIET
 
-\ THE SIX NUMBERS THE ONE-LINE SUMMARY CARRIES, and the seventh that makes the
-\ line an identity rather than a selection. Every class below declares which one
-\ it feeds, so the line and the table can never drift: `other` is whatever no
-\ row claimed, and the table itemises it.
+\ The six numbers of the one-line summary, and the seventh that makes the line
+\ an identity: every class declares which one it feeds, and `other` is what no
+\ row claimed, itemised by the table.
 0 constant B-OTHER
 1 constant B-CODE
 2 constant B-NAMES
@@ -1034,9 +956,8 @@ variable BK-DZERO  variable BK-PAD
    s" elf/dynamic-metadata" PHDR-END meta PHDR-END - SPAN B-OTHER ROW
    s" elf/header-pad" meta CODE-OFF meta - SPAN B-PAD ROW ;
 
-\ The engine's own text: identical in a baked engine and in the engine half a
-\ snapshot copies in front of its payloads, which is why ETEXT-END and not
-\ TEXT-SIZE bounds the walk that produced these numbers.
+\ The engine's own text, the same in a baked engine and a snapshot's engine
+\ half.
 : ENGINE-ROWS ( -- )
    s" engine/code" CODE-OFF NAMES-START CODE-OFF - SPAN B-CODE ROW
    s" engine/primitive-names" NAMES-START PNAME-BYTES @ SPAN B-NAMES ROW
@@ -1076,10 +997,9 @@ variable BK-DZERO  variable BK-PAD
    s" aot/boot-run-entries" BOOTRUN0 @ BOOTRUN-LEN @ PADDED SPAN B-OTHER ROW
    3 TILE-CELLS
    s" aot/protected-wordlists" PWIN0 @ PWIN-N @ 4 * PADDED SPAN B-OTHER ROW
-   \ The sidecar's own count cell is one of the cells above, so this row is the
-   \ two runs it frames and nothing else. Adding the cell here as well made the
-   \ classes over-count by eight bytes on any image that carries a sidecar, and
-   \ the sum-to-length refusal turned that into a walk that would not report.
+   \ The sidecar's count cell is among the cells above, so this row is the two
+   \ runs it frames: counting the cell here too over-counts by eight bytes and
+   \ the sum-to-length check refuses the image.
    s" aot/checker-sidecar" SIG-LEN @ 0 > SIGNAME-LEN @ 0 > or
       if 1 TILE-CELLS SIG0 @  SIG-LEN @ PADDED SIGNAME-LEN @ PADDED +
       else AOT-END @ 0 then SPAN B-OTHER ROW ;
@@ -1108,15 +1028,19 @@ variable BK-DZERO  variable BK-PAD
    TOTAL-ROW ;
 
 \ ---- the snapshot trailer and its two payloads ---------------------------------
-\ src/habu/layout.f owns the trailer's size and every field offset, and is the
-\ only place that may state them; src/habu/snap-lib.f SNAP:WRITE-BYTES writes
-\ the stream this reads back, src/habu/habu2.f EM-SNAPSHOT-RESTORE restores it
-\ and tools/imgdump.f reads the same six fields for its own report. The stream
-\ is: the new ELF header page, the donor engine's text content, the region
-\ payload (the dictionary slot array then the code band), the DATA window, the
-\ trailer, and the RW segment.
-\ It is read here, above the dictionary walkers, because the records a snapshot
-\ carries are inside that region payload: the cursor below needs its offsets.
+\ A --repl image is a snapshot: the whole donor engine's text, live dictionary
+\ rows and code, structured fixed DATA sections and the raw user heap, then the
+\ 48-byte trailer. Fixed unused capacity is reconstructed and has its own
+\ virtual-extent report. src/habu/layout.f owns the trailer's size and every
+\ field offset and is the only place that may state them; src/habu/snap-lib.f
+\ SNAP:WRITE-BYTES writes the stream, src/habu/habu2.f EM-SNAPSHOT-RESTORE
+\ restores it and tools/imgdump.f reads the same six fields. The stream is: the
+\ new ELF header page, the donor engine's text content, the region payload (the
+\ dictionary slot array then the code band), the DATA window, the trailer, and
+\ the RW segment. The trailer has no payload checksum: the checks of version,
+\ extents, row count, section lengths and pads establish framing and geometry,
+\ not content authenticity. Read here, above the dictionary walkers, because
+\ the record cursor needs the region payload's offsets.
 variable TRL-OFF     variable NDICT-N
 variable REG-LEN     variable DAT-LEN  variable DAT-VIRT
 variable REG-OFF     variable DAT-OFF
@@ -1206,11 +1130,11 @@ variable HEAP-VLEN  variable HEAP-CELLS
    TRL-OFF @ DAT-LEN @ - REG-STORED @ - {: r:n :}
    r CODE-OFF >=
       s" image-size: snapshot payloads do not fit in front of the trailer" ?TRL
-   \ The payloads begin where the DONOR engine's text ended, and an engine
-   \ image's text is rounded up to PROT-PAGE-MAX -- which is what turns a
-   \ trailer whose lengths were edited into a refusal. Without this, moving
-   \ REGLEN by a page slides the boundary through the donor's zero text pad,
-   \ where the classes still sum and the table is still wrong.
+   \ The payloads begin where the donor engine's text ended, rounded up to
+   \ PROT-PAGE-MAX (INSN on Mach-O): this turns a trailer whose lengths were
+   \ edited into a refusal, where moving SNAP-TRL-REGLEN by a page would
+   \ slide the boundary through the donor's zero text pad with the classes
+   \ still summing.
    r MACHO @ if INSN else PROT-PAGE-MAX then mod 0=
       s" image-size: the snapshot's payloads do not begin on the donor engine's text boundary" ?TRL
    r REG-OFF !
@@ -1257,17 +1181,14 @@ variable HEAP-VLEN  variable HEAP-CELLS
       s" image-size: snapshot DATA framing or padding is invalid" ?TRL
    DAT-PAD @ TRL-OFF @ DAT-PAD @ - ZEROS TRL-OFF @ DAT-PAD @ - =
       s" image-size: snapshot padding is not zero" ?TRL
-   \ The engine half ends where the region payload begins: every baked walker
-   \ above is bounded by this and not by the file's own text extent.
    r ETEXT-N ! ;
 
 \ ---- which of the three images is in hand -------------------------------------
-\ Read out of the file, never out of this tool's own build: a snapshot says so
-\ at a fixed offset, a baked engine carries a counted boot-seeded dictionary,
-\ and what has neither is a stripped application, which is then proved by its
-\ own blob rather than accepted by elimination. CLASSIFY, which fills this in,
-\ is at the bottom of the file with the walkers it chooses between; the class is
-\ named here because the record cursor below dispatches on it.
+\ The class is read out of the file: a snapshot says so at a fixed offset, a
+\ baked engine carries a counted boot-seeded dictionary, and what has neither
+\ is a stripped application, proved by its own blob. CLASSIFY is at the bottom
+\ of the file; the class is declared here because the record cursor dispatches
+\ on it.
 ENUM image-class engine snapshot stripped ;ENUM
 
 1 LAYOUT-BUFFER CLASS-BUF image-class
@@ -1357,11 +1278,9 @@ $FFFFFFFF constant PKG-ROW
    k LREC-FLAGS DNAME-EXT and 0<> if k LREC 24 + U64@ PTR>OFF else k LREC 24 + then
    k LREC-FLAGS DNAME-LEN-MASK and ;
 
-\ A record's code start is a pointer, and 0 is not one: it is what an untouched
-\ dictionary slot holds, so a record whose start is zero is not a record at all
-\ (tools/imgdump.f ENT? refuses the same slot for the same reason). Answering
-\ -1 here is what turns a trailer whose NDICT was raised into a refusal, instead
-\ of a walk that reads empty slots and charges the engine's header page for them.
+\ A code start of 0 is what an untouched dictionary slot holds, so it is no
+\ record (tools/imgdump.f ENT? refuses it too). Answering -1 turns a trailer
+\ whose NDICT was raised into a refusal instead of a walk over empty slots.
 : LREC-CODE ( n -- n ) {: k:n :}
    k LREC-PKG? if -1 exit then
    k LREC-START 0= if -1 exit then
@@ -1385,11 +1304,10 @@ $FFFFFFFF constant PKG-ROW
    ACC @ 1+ ;
 
 \ ---- one cursor over the two record formats ------------------------------------
-\ Everything below reads records through these words and nothing else, so the
-\ wid map, the roles, the owner collection and the rankings are written once and
-\ answer for a baked engine's compact rows and for a snapshot's live ones alike.
-\ Code is answered as a FILE OFFSET by both, which is what lets one CHAIN-VALUE
-\ decode an address literal wherever the body lives.
+\ Everything below reads records through these words only, so the wid map,
+\ roles, owner collection and rankings answer for a baked engine's compact rows
+\ and a snapshot's live ones alike. Both answer code as a file offset, so one
+\ CHAIN-VALUE decodes an address literal wherever the body lives.
 : NRECS ( -- n )
    SNAPSHOT-CLASS? if NDICT-N @ exit then  REC-N @ ;
 
@@ -1477,11 +1395,11 @@ variable WID-CAP
    s" unmapped-wordlist" ;
 
 \ Pool entries are deduplicated, so a name's bytes belong to the set of roles
-\ that reference it. A call site no longer references one: the build binds its
-\ callee to a dictionary index (src/habu/habu2.f EMIT-AOT-SITES), so the names
-\ the capture pooled for those callees are carried by nothing and land in the
-\ unreferenced row. The bytes that would leave the image with the private
-\ records are the entries NOTHING ELSE references, so the mask is per entry.
+\ referencing it. A call site references none: the build binds its callee to a
+\ dictionary index (src/habu/habu2.f EMIT-AOT-SITES), so names the capture
+\ pooled for callees land in the unreferenced row. The bytes leaving with the
+\ private records are the entries nothing else references: the mask is per
+\ entry.
 DYNAMIC-BUFFER PMASK n
 1 constant M-GLOBAL
 2 constant M-PUBLIC
@@ -1629,12 +1547,14 @@ variable SITE-NAMED    variable SITE-CALLEES  variable SITE-BAD
    s"   distinct bound callees " type SITE-CALLEES @ FMT:.U cr ;
 
 \ ---- reachability --------------------------------------------------------------
-\ The same call graph src/habu/aot-closure.f walks for a stripped application:
-\ direct B/BL edges between baked routines, plus the code addresses the payload's
-\ own relocation tables name. Each aot/code-spans row is an anonymous graph node,
-\ so its edges are followed without making every stripped span a root. Bytes in
-\ gaps outside both indices remain root regions, so an edge out of a true gap is
-\ never lost and the answer stays a floor.
+\ The census marks from roots over the call graph src/habu/aot-closure.f walks
+\ for a stripped application (direct B/BL edges between baked routines, plus
+\ the code addresses the payload's relocation tables name) and reports what
+\ nothing reaches. Each aot/code-spans row is an anonymous graph node, so its
+\ edges are followed without making every stripped span a root. Bytes in gaps
+\ outside both indices and every address the payload records are roots: the
+\ census over-approximates reachability, so a word it reports unreachable is
+\ unreachable and the report is a floor.
 $7C000000 constant BR-MASK
 $14000000 constant BR-OP                          \ B and BL differ only in the link bit
 $3FFFFFF constant BR-IMM
@@ -1710,7 +1630,6 @@ variable FALL-N                                      \ modeled fall-through edge
       k NODE-BYTES + i REND !
    loop ;
 
-\ The lowest code index whose start is not below off.
 : LOWER-BOUND ( n -- n ) {: off:n :}
    0 LO ! CODE-N @ HI !
    begin LO @ HI @ < while
@@ -1805,12 +1724,11 @@ variable FALL-N                                      \ modeled fall-through edge
       then
    loop ;
 
-\ The capture has one deliberate name-only keep outside the language surface:
-\ tools/native-build-core.f resolves NSTR:IMPORT-ROWS after the target package is
-\ loaded. It is a private word, so a surface-only census would call its record
-\ dead and, after a compactor removed its span, the next native build would fail
-\ at TARGET-IMPORTER. Keep this root explicit and qualified by its package rather
-\ than widening the surface root set or adding a broad private-name allowlist.
+\ The capture keeps one private word by name outside the language surface:
+\ tools/native-build-core.f resolves NSTR:IMPORT-ROWS after loading the target
+\ package. A surface-only census would call it dead, and a compactor removing
+\ its span would fail the next native build at TARGET-IMPORTER. The root is
+\ explicit and package-qualified, not a widened root set or private allowlist.
 : ROOT-PKG-WORD ( ptr u8 n ptr u8 n -- ) {: pkg:ptr pkgu:n name:ptr nameu:n :}
    REC-N @ 0 ?do
       i CREC-PKG? 0= i REC-ROLE ROLE-PRIVATE = and if
@@ -1871,7 +1789,9 @@ variable FALL-N                                      \ modeled fall-through edge
 
 \ The engine's own entry points: the code addresses its DATA cells hold, the
 \ code literals inside the blob, the named code sites, and the boot-run entry
-\ words the seed calls after relocation.
+\ words the seed calls after relocation. Their closure is a lower bound on
+\ what a tree-shaken engine could keep, not a strip list: the interpreter
+\ resolves user tokens by name, so a public word outside it is still callable.
 : ROOTS-ENTRY ( -- )
    XTOFF-N @ 0 ?do XTOFF0 @ i XTOFF-ROW * + ROOT-XTOFF loop
    CSITE-N @ 0 ?do CSITE0 @ i 4 * + U32@ ROOT-CSITE loop
@@ -1879,7 +1799,8 @@ variable FALL-N                                      \ modeled fall-through edge
    ROOT-BOOTRUN
    SCAN-UNOWNED ;
 
-\ The language surface: a program can name any global or package-public word.
+\ The language surface: a program can name any global or package-public word,
+\ so what this leaves unreachable is private code no public word reaches.
 : ROOTS-SURFACE ( -- )
    REC-N @ 0 ?do
       i CREC-PKG? 0= if
@@ -2053,28 +1974,22 @@ $FFFF constant ROW-MASK
    s" engine-entry" REPORT-REACH ;
 
 \ ---- who owns the DATA ---------------------------------------------------------
-\ Shared by the two image classes that carry DATA at all. A baked engine carries
-\ the window as the payload's non-zero runs, each with an (offset, length)
-\ header, so a table of cells holding small numbers costs MORE in header rows
-\ than in bytes; a snapshot carries the window verbatim, where a cell costs its
-\ bytes whatever it holds. tools/data-table-census.f asks this question of a
-\ LIVE heap; this asks it of the shipped image, where the cost is real.
-\ An owner is a record the definer stamped DKIND:ADDR (create/variable): no
-\ other record kind owns DATA. Its address is the MOVZ/MOVK chain its body
-\ pushes, read with the same decode the relocation pass uses.
-\ THE STAMP IS THE CLAIM AND THE BODY MUST BACK IT. DKIND:ADDR says the body
-\ pushes its DATA address and nothing else, and `does>` CLEARS the stamp in the
-\ same window it patches the body (src/habu/habu2.f DOESPATCH:EMIT), so a
-\ stamped record whose body is not that chain, or whose chain names an address
-\ outside this image's DATA, is a record this walk cannot read. Both are refused
-\ by name: skipping one silently would charge its table to the owner below it
-\ and the table would still add up.
-\ AN OWNER IS CHARGED UP TO THE NEXT OWNER, the rule tools/data-table-census.f
-\ states for the live heap and for the same reason: `allot` only moves DP, so
-\ consecutive bases partition the span exactly. A block allotted after a
-\ variable -- a grown arena a pointer cell reaches, heap above the last
-\ `create` -- therefore shows up under the name below it, which is a locator,
-\ not an accusation.
+\ Shared by the two classes that carry DATA. A baked engine carries the window
+\ as the payload's non-zero runs, each with an (offset, length) header, so a
+\ table of small numbers costs more in header rows than in bytes; a snapshot
+\ carries the window verbatim. tools/data-table-census.f asks this of a live
+\ heap; this asks it of the shipped image.
+\ An owner is a record the definer stamped DKIND:ADDR (create/variable); its
+\ address is the MOVZ/MOVK chain its body pushes, read with the relocation
+\ pass's decode. `does>` clears the stamp in the window it patches the body
+\ (src/habu/habu2.f DOESPATCH:EMIT), so a stamped record whose body is not
+\ that chain, or whose chain names an address outside this image's DATA, is
+\ refused by name: skipping it would charge its table to the owner below and
+\ still sum.
+\ An owner is charged up to the next owner, as tools/data-table-census.f
+\ charges the live heap: `allot` only moves DP, so consecutive bases partition
+\ the span. A block allotted after a variable (a grown arena, heap above the
+\ last `create`) shows under the name below it, a locator, not an accusation.
 DYNAMIC-BUFFER DOWNER n                           \ (DATA offset, record) packed, ascending
 DYNAMIC-BUFFER DBYTES n                           \ content bytes charged to each owner
 DYNAMIC-BUFFER DRUNS n                            \ run rows charged to each owner (engine)
@@ -2125,9 +2040,8 @@ variable UNOWNED-BYTES  variable UNOWNED-RUNS  variable UNOWNED-ROWB
    k 1+ DOWN-N @ >= if DATA-REACH exit then
    k 1+ DOWN-OFF ;
 
-\ A CELL BELONGS TO ONE OWNER, the one its own offset lands on, and its value
-\ bytes go there whole: a cell is eight bytes and an owner is a `create` base,
-\ so no cell straddles two of them.
+\ A cell belongs to the owner its own offset lands on, its value bytes whole: a
+\ cell is eight bytes and an owner is a `create` base, so no cell straddles two.
 : CHARGE-CELL ( n n -- ) {: off:n w:n :}
    off OWNER-AT {: k:n :}
    k 0 < if
@@ -2137,19 +2051,17 @@ variable UNOWNED-BYTES  variable UNOWNED-RUNS  variable UNOWNED-ROWB
    k DRUNS @ 1+ k DRUNS !
    k DBYTES @ w + k DBYTES ! ;
 
-\ A BITMAP BYTE IS CHARGED WHOLE, to the owner its first cell lands on: the
-\ eight cells it covers cost one byte however many of them are present, and
-\ splitting that byte eight ways would report bits as bytes. A presence map byte
-\ is charged the same way over the span its eight groups cover, so every byte the
-\ image spends on the bitmap reaches an owner or the unowned column.
+\ A bitmap byte is charged whole to the owner its first cell lands on: it costs
+\ one byte however many of its eight cells are present. A presence map byte is
+\ charged the same way over the span its eight groups cover, so every bitmap
+\ byte reaches an owner or the unowned column.
 : CHARGE-BM-BYTE ( n n -- ) {: off:n bytes:n :}
    off OWNER-AT {: k:n :}
    k 0 < if UNOWNED-ROWB @ bytes + UNOWNED-ROWB ! exit then
    k DOVER @ bytes + k DOVER ! ;
 
-\ An absent group costs nothing and is charged to nobody: that is the saving the
-\ grouping exists for, and an owner whose whole span is `allot`ed room shows it
-\ as a bitmap cost that is no longer there.
+\ An absent group costs nothing and is charged to nobody, so an owner whose
+\ whole span is `allot`ed room shows no bitmap cost.
 : CHARGE-RUNS ( -- )
    0 UNOWNED-BYTES !  0 UNOWNED-RUNS !  0 UNOWNED-ROWB !
    0 ACC !  0 STORED-AT !
@@ -2234,17 +2146,15 @@ variable UNOWNED-BYTES  variable UNOWNED-RUNS  variable UNOWNED-ROWB
 
 
 \ ---- a --repl application: the code band, by package ---------------------------
-\ The band holds two different things: the code of every word the image compiled
-\ into its region, and the out-of-line bytes of every name too long to sit in a
-\ record (src/habu/habu2.f C-STORE-NAME and DOES-REC:COPY-NAME both write theirs
-\ at CP, padded to a word), so the two are separated before either is attributed.
-\ EVERY BAND BYTE IS CHARGED AT MOST ONCE. The spans are sorted and walked in
-\ order, and a record is charged the bytes its own span covers THAT NO EARLIER
-\ SPAN ALREADY COVERED: an EXPORT alias and a `does>` clause put a second record
-\ over ground the first one already answers for, and charging both would report
-\ more code than the band holds. What no span covers is the `unowned` row --
-\ stored quotation bodies, hidden bodies, and the code a definition abandoned
-\ where it stood (src/habu/snap-lib.f says the retained region carries them).
+\ The band holds the code of every word the image compiled into its region and
+\ the out-of-line bytes of every name too long for a record (src/habu/habu2.f
+\ C-STORE-NAME and DOES-REC:COPY-NAME write them at CP, padded to a word); the
+\ two are separated before either is attributed. Each band byte is charged at
+\ most once: spans are walked in order and a record is charged only the bytes
+\ no earlier span covered, since an EXPORT alias or a `does>` clause puts a
+\ second record over the first one's ground. What no span covers is the
+\ `unowned` row: stored quotation bodies, hidden bodies and code a definition
+\ abandoned (src/habu/snap-lib.f: the retained region carries them).
 DYNAMIC-BUFFER BSPAN n                            \ (band offset, kind, record), ascending
 DYNAMIC-BUFFER PKGB n                             \ band code bytes per package row
 DYNAMIC-BUFFER PKGN n                             \ records charged to it
@@ -2409,10 +2319,9 @@ $10000 constant BAND-NAME                         \ the row is a name, not code
    then ;
 
 \ ---- a --repl application: the DATA window, by owner ---------------------------
-\ Verbatim is what makes this simple: the window is written as it stood, so an
-\ owner's image cost IS its extent, and the only question left is how much of
-\ that extent carries anything. No run rows to charge, and the engine's
-\ three-way sum becomes a two-way one.
+\ The window is written verbatim, so an owner's image cost is its extent; the
+\ report adds how much of it is non-zero, and the engine's three-way sum is
+\ two-way here.
 variable HEAD-W     variable HEAD-Z
 
 : CHARGE-WINDOW ( -- )
@@ -2459,10 +2368,10 @@ variable HEAD-W     variable HEAD-Z
       s"   (" type DCOST-N @ TOP-ROWS - FMT:.U s"  more owners)" type cr
    then ;
 
-\ A class that has no region and no DATA owners must not answer with the last
-\ image's numbers: one process measures several images (tools/hb-build-test.f
-\ measures two), so every accumulator this section publishes starts at zero for
-\ each of them.
+\ One process measures several images (tools/hb-build-test.f measures two), so
+\ every accumulator this section publishes starts at zero for each: a class
+\ with no region and no DATA owners must not answer with the last image's
+\ numbers.
 : ATTRIB-RESET ( -- )
    0 BAND-CODE !  0 BAND-CZERO !  0 BAND-NAMES !  0 BAND-NZERO !
    0 BAND-FREE !  0 BAND-FZERO !  0 PKG-GLOBAL !  0 PKG-UNMAPPED !
@@ -2544,30 +2453,28 @@ variable HEAD-W     variable HEAD-Z
    REPORT-HEAP ;
 
 \ ---- a stripped application ---------------------------------------------------
-\ src/habu/aot-lib.f LINK emits, in this order: the startup entry, the closure
-\ of MAIN, the crash and signal handlers, the sparse DATA blob, and one 8-byte
-\ relocation row per declared address cell. Nothing in the file frames that last
-\ pair, so the walk takes the emitter's own two statements about them.
+\ src/habu/aot-link-arm.f LINK-ARM emits, in this order: the startup entry,
+\ the closure of MAIN, the crash and signal handlers, the sparse DATA blob, and
+\ one 8-byte relocation row per declared address cell. Nothing in the file
+\ frames that last pair, so the walk takes the emitter's own two statements
+\ about them.
 \
-\ THE BLOB is named by the startup's single code-base-relative address into x9
-\ (EMIT-DATA-COPY loads the sparse header there through src/habu/aot-lib.f
-\ TEXT-ADR,; test/gate-aot-image.f already admits exactly one such sequence in
-\ the startup). Mach-O images before the DATA_CONST placement carried it at the
-\ end of __text; current images start it immediately after the GOT. The blob
-\ then frames itself: a u32 of groups and a u32 of
-\ stored bitmap bytes, the presence map and those groups, then one varint per
-\ present cell. The format is the AOT-WINDOW encoding (src/habu/aot-decl.f), so
-\ RUN-V@ above decodes a cell and GROUP-SET? reads the map.
+\ The blob is named by the startup's single code-base-relative address into x9
+\ (EMIT-DATA-COPY loads the sparse header there through src/habu/aot-link-arm.f
+\ TEXT-ADR,; test/gate-aot-image.f admits exactly one such sequence in the
+\ startup). A Mach-O blob lies in __text or immediately after the GOT
+\ (BLOB-PLACE?). The blob frames itself: a u32 of groups and a u32 of stored
+\ bitmap bytes, the presence map and those groups, then one varint per present
+\ cell. The format is the AOT-WINDOW encoding (src/habu/aot-decl.f), so RUN-V@
+\ above decodes a cell and GROUP-SET? reads the map.
 \
-\ THE ROW COUNT is the MOVZ/MOVK chain EMIT-XT-CELLS loads into x11, found
-\ behind the three-instruction idiom that rounds the byte cursor up to the rows'
-\ four-byte boundary and confirmed by the `ADR x12` that follows it and must
-\ name this image's own code base.
-\ DO NOT REPLACE THIS WITH THE LAST NON-ZERO BYTE. A row is (u32 location, u32
-\ target) and a target below 65,536 leaves the row's last two bytes zero: for
-\ an image whose last row has such a target, a last-non-zero scan ends the
-\ content two bytes early and loses eight bytes of the file to the pad. The
-\ count is read, never inferred.
+\ The row count is the MOVZ/MOVK chain EMIT-XT-CELLS loads into x11, found
+\ behind the three-instruction idiom that rounds the byte cursor up to the
+\ rows' four-byte boundary and confirmed by the `ADR x12` that follows it and
+\ must name this image's own code base. It is read, never inferred from the
+\ last non-zero byte: a row is (u32 location, u32 target) and a target below
+\ 65,536 leaves the row's last two bytes zero, so such a scan ends the content
+\ two bytes early and loses eight bytes to the pad.
 variable BLOB-AT     variable BLOB-ROWB   variable BLOB-RUNS
 variable BLOB-CARRIED  variable BLOB-SPAN variable BLOB-STOP
 variable RELOC-AT    variable RELOC-N     variable APP-END
@@ -2630,7 +2537,8 @@ variable ROWS-END
    loop
    STORED-AT @ RUN-STORED @ <> if E-ES-WALK throw then ;
 
-\ The blob's header, in the order src/habu/aot-lib.f BUILD-SPARSE-DATA writes it.
+\ The blob's header, in the order src/habu/aot-link-arm.f BUILD-SPARSE-DATA
+\ writes it.
 8 constant BLOB-HDR
 
 : BLOB-AT? ( n -- bool ) {: at:n :}
@@ -2654,14 +2562,15 @@ variable ROWS-END
    rows-end ACC @ + BLOB-STOP !
    true ;
 
-\ THE BLOB'S ADDRESS IS FOUR WORDS, not one ADR: the startup sits at text offset
-\ zero and the blob is placed after all code, which ADR's +-1 MiB cannot reach in
-\ a large program, so src/habu/aot-lib.f TEXT-ADR, emits the label's byte offset
-\ from the code base in a movz/movk pair, `adr x12` to the base itself (LTEXT,
-\ bound at text offset zero = CODE-OFF) and the add that joins them. All four are
-\ matched because the movz alone is also how EMIT-OWNED-CELLS opens a DATA-offset
-\ literal; only the whole sequence names a label. EMIT-DATA-COPY loads the blob
-\ header into x9, and that is the only site of the four that uses it.
+\ The blob's address is four words, not one ADR: the startup sits at text offset
+\ zero and the blob is placed after all code, which ADR's +-1 MiB cannot reach
+\ in a large program, so src/habu/aot-link-arm.f TEXT-ADR, emits the label's
+\ byte offset from the code base in a movz/movk pair, `adr x12` to the base
+\ itself (LTEXT, bound at text offset zero = CODE-OFF) and the add that joins
+\ them. All four are matched because the movz alone is also how
+\ EMIT-OWNED-CELLS opens a DATA-offset literal; only the whole sequence names a
+\ label. EMIT-DATA-COPY loads the blob header into x9, the only site of the
+\ four that uses it.
 : TEXT-ADR9? ( n -- bool ) {: at:n :}
    at 4 INSN * IN-IMAGE? 0= if false exit then
    at INSN@  at INSN + INSN@  at 2 INSN * + INSN@  at 3 INSN * + INSN@
@@ -2670,13 +2579,11 @@ variable ROWS-END
 : TEXT-ADR9-TARGET ( n -- n ) {: at:n :}
    at INSN@  at INSN + INSN@ AOT-STARTUP-SHAPE:TEXT-ADR-OFFSET  CODE-OFF + ;
 
-\ THE OTHER STATEMENT THE STARTUP MAKES ABOUT ITS DATA: the head of the copy
-\ loop itself (AOT-STARTUP-SHAPE:COPY-LOOP-HEAD?), which src/habu/aot-lib.f
-\ EMIT-DATA-COPY emits only when it has a blob to copy. It is read when the four
-\ words above are NOT found, so an image whose blob address this file can no
-\ longer recognise is refused by name instead of passing for code-only: the
-\ address sequence and the loop are one emitter's two halves, and an image that
-\ has the second without the first is one this reader does not understand.
+\ The startup's other statement about its DATA: the head of the copy loop
+\ (AOT-STARTUP-SHAPE:COPY-LOOP-HEAD?), which src/habu/aot-link-arm.f
+\ EMIT-DATA-COPY emits only when it has a blob. It is read when the four words
+\ above are not found, so an image whose blob address this file cannot
+\ recognise is refused by name instead of passing for code-only.
 variable COPY-AT
 
 : COPY-LOOP-AT? ( n -- bool ) {: at:n :}
@@ -2693,18 +2600,13 @@ variable COPY-AT
    repeat
    COPY-AT @ 0 >= ;
 
-\ The first such sequence whose target walks as a blob is the startup's, because
-\ the startup is the first thing emitted. Every one of them is counted as well,
-\ so an image that HAS one and whose blob does not walk is refused instead of
-\ falling back to the code-only shape and quietly absorbing the blob into
-\ app/code: a fallback that still sums is a wrong answer wearing the identity's
-\ clothes.
-\ NO SEQUENCE AT ALL IS NOT THE SAME AS NO BLOB. It is the code-only shape only
-\ when the startup carries no copy loop either; with a loop the image restores a
-\ DATA span this reader can no longer locate, and the code-only answer would be
-\ the same wrong answer in the same clothes - one that reports the blob's bytes
-\ as code and `data 0 written`. That is what a drifted TEXT-ADR, shape does to
-\ this file, and it is refused rather than reported.
+\ The first such sequence whose target walks as a blob is the startup's, since
+\ the startup is emitted first. Every sequence is counted, so an image that has
+\ one whose blob does not walk is refused instead of absorbing the blob into
+\ app/code. No sequence is the code-only shape only when the startup has no
+\ copy loop either; with a loop the image restores a DATA span this reader
+\ cannot locate (a drifted TEXT-ADR, shape), and it is refused rather than
+\ reported as code with `data 0 written`.
 : FIND-BLOB ( -- )
    -1 BLOB-AT !  0 BLOBADR-N !
    CODE-OFF IP !
@@ -2742,7 +2644,8 @@ variable COPY-AT
 
 
 \ ADD x10,x10,#3 / LSR x10,x10,#2 / LSL x10,x10,#2: the byte cursor rounded up
-\ to the four-byte boundary the rows sit on (src/habu/aot-lib.f EMIT-XT-CELLS).
+\ to the four-byte boundary the rows sit on (src/habu/aot-link-arm.f
+\ EMIT-XT-CELLS).
 $91000D4A constant XTC-ADD3
 $D342FD4A constant XTC-LSR2
 $D37EF54A constant XTC-LSL2
@@ -2757,9 +2660,9 @@ $D37EF54A constant XTC-LSL2
    at INSN IN-IMAGE? 0= if false exit then
    at INSN@ 11 AOT-STARTUP-SHAPE:MOVK-RD? ;
 
-\ The LIT64, chain by which src/habu/aot-lib.f EMIT-XT-CELLS puts the row count
-\ in x11, then the ADR x12 that must follow it and name this image's code base
-\ (EMIT-XT-CELLS' own scratch, a plain ADR, and not a TEXT-ADR, site): two
+\ The LIT64, chain by which src/habu/aot-link-arm.f EMIT-XT-CELLS puts the row
+\ count in x11, then the ADR x12 that must follow it and name this image's code
+\ base (EMIT-XT-CELLS' own scratch, a plain ADR, and not a TEXT-ADR, site): two
 \ independent statements about the same place, so a coincidental three-word
 \ match cannot be read as a row count.
 : XTC-COUNT ( n -- n ) {: at:n :}
@@ -2807,19 +2710,15 @@ $D37EF54A constant XTC-LSL2
       then
    loop ;
 
-\ A program whose capture window is empty emits no blob and therefore no blob
-\ address AND NO COPY LOOP (src/habu/aot-lib.f EMIT-DATA-COPY's BLOB-LEN 0 arm
-\ emits the span-end literal and the DP store alone), and EMIT-XT-CELLS refuses
-\ declared address cells without one, so such an image is code and nothing else.
-\ FIND-BLOB reaches here for an image with neither the address nor the loop; one
-\ that has the loop is refused there, because for it the count below would end
-\ the content past a DATA blob read as code.
-\ Here -- and ONLY here -- the last non-zero byte is a sound content end: what
-\ it ends is an A64 instruction word, and no A64 encoding has a zero top byte, so
-\ rounding it up to the instruction boundary recovers exactly the trailing zero
-\ bytes of the final instruction. The same reasoning does not hold one line
-\ further down, where the content ends in a relocation row whose target really
-\ can leave two zero bytes behind it.
+\ A program with an empty capture window emits no blob address and no copy
+\ loop (src/habu/aot-link-arm.f EMIT-DATA-COPY's BLOB-LEN 0 arm emits the
+\ span-end literal and the DP store alone), and EMIT-XT-CELLS refuses declared
+\ address cells without a blob, so such an image is code only. FIND-BLOB
+\ refuses an image with the loop and no address before here. Only here is the
+\ last non-zero byte a sound content end: it ends an A64 instruction word, and
+\ no A64 encoding has a zero top byte, so rounding up to the instruction
+\ boundary recovers the final instruction's trailing zeros. A content end in a
+\ relocation row has no such guarantee.
 : STRIP-CODE-ONLY ( -- )
    MACHO @ if TEXT-SIZE else CODE-OFF TEXT-SIZE LAST-NONZERO dup PAD4 + then
       {: end:n :}
@@ -2883,10 +2782,9 @@ $D37EF54A constant XTC-LSL2
    SUMS?
    TOTAL-ROW ;
 
-\ What a stripped image does NOT carry is the interesting half of its DATA: the
-\ cells restore a window far larger than the file, because a zero cell costs one
-\ bit and never travels as bytes. Reported beside the table rather than as a class, since none of those
-\ bytes is in the file to attribute.
+\ A stripped image's cells restore a window far larger than the file: a zero
+\ cell costs one bit and never travels as bytes. Reported beside the table, not
+\ as a class, since none of those bytes is in the file.
 : STRIP-NOTES ( -- )
    BLOB-RUNS @ 0= if
       cr s" this image's capture window is empty: it carries code and nothing else" type cr
@@ -3199,12 +3097,10 @@ $3145544953343658 constant X64-SITES-MAGIC
       stripped OF STRIP-BUDGET ENDOF
    ;MATCH ;
 
-\ The engine's censuses answer questions only a baked engine has: which records
-\ it ships, what its baked call sites bind to, what nothing reaches, and where
-\ its captured DATA heap goes. None of them is a question about an application
-\ image -- a --repl image ships the interpreter, so every word it carries is
-\ reachable by name, and a stripped image already had the closure walk run
-\ against it at build time -- so they run for one class only.
+\ The engine's censuses (shipped records, call-site bindings, what nothing
+\ reaches, captured DATA owners) run for a baked engine only: a --repl image
+\ ships the interpreter, so every word it carries is reachable by name, and a
+\ stripped image had the closure walk run against it at build time.
 : ENGINE-CENSUS ( -- )
    BUILD-WID-MAP
    BUILD-POOL-MASK
@@ -3283,7 +3179,10 @@ public
 \ Valid after MEASURE on a stripped image.
 : DATA-BLOB-RANGE ( -- n n ) BLOB-AT @ BLOB-STOP @ BLOB-AT @ - ;
 
-\ The same rows again, printed this time, with the class's own notes under them.
+\ The same rows again, printed, with the class's own notes under them. Code is
+\ charged to a record and a record to its package: nothing in the image names
+\ a source file, and global-wordlist words belong to no package and share one
+\ row.
 : REPORT ( -- )
    TABLE
    X64 @ 0= if NOTES then ;

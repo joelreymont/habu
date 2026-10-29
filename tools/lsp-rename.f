@@ -1,33 +1,9 @@
-\ lsp-rename.f - the language server's rename: the bytes of a token a rename
-\ of the declaration it selects edits, and the edits.
-\
-\ PREPARED writes the result of textDocument/prepareRename at a byte of an
-\ open document's text, once LSP-REFERENCES:PLACE has selected and placed the
-\ declaration there, refusing nothing, and the use that selected it and its
-\ declaring token spell its tail (LSP-REFERENCES:SPELT?). The result is the
-\ Range of the tail of the token at the byte, the use that holds it or else
-\ the declaring token: its bytes after a qualifier's colon. A rename edits the
-\ tail alone, so the name the client asks for is a tail and a qualifier stays.
-\
-\ WHY$ says why a new name cannot be written over a tail, else nothing: it is
-\ empty; it holds a byte that ends a token as parse-name reads one
-\ (LINT-LEX:ENGINE-DELIM?); a first colon neither first nor last, which would
-\ make the tail a qualified name; or a quote or a backslash, which a string
-\ literal naming the word, a use before a call of a names: word, could not
-\ spell as written. QUALIFIED-WHY$ says why a name WHY$ passes cannot be
-\ written over the tails the gather placed: it holds a colon and a tail
-\ follows a qualifier, so the token would have a first colon inside it and a
-\ second, a name no word has (CHECKER-QUALIFIED?).
-\
-\ ANSWER writes the result of textDocument/rename once LSP-REFERENCES:SELECT
-\ has selected the declaration and placed it, and every location is
-\ gathered, refusing nothing and naming no file: the changes that write the
-\ new name over the tail of each location (LSP-REFERENCES:LOC-TAIL), the
-\ edits of each URI together.
-\
-\ STORAGE CLASS. CALLER-OWNED: the module keeps no state; the writer is the
-\ caller's, the selection and locations LSP-REFERENCES's and the uses those
-\ tools/lsp-defs.f keeps.
+\ lsp-rename.f - the language server's rename. A rename edits a token's tail alone,
+\ its bytes after a qualifier's colon, so the new name the client asks for is a tail
+\ and a qualifier stays. PREPARED and ANSWER refuse nothing once LSP-REFERENCES has
+\ selected and placed the declaration.
+\ STORAGE CLASS. CALLER-OWNED: no state; the writer is the caller's, the selection
+\ and locations LSP-REFERENCES's, the uses tools/lsp-defs.f's.
 
 require src/lib/string.f
 require src/lib/json-write.f
@@ -56,7 +32,6 @@ private
       none OF false ENDOF
    ;MATCH ;
 
-\ Whether a byte of these passes this test.
 : ANY-BYTE? ( ptr u8 n [ n -- bool ] -- bool )
    {: a:ptr u:n test :}
    u 0 ?do
@@ -73,9 +48,10 @@ private
 
 public
 
-\ The Range of the tail of the token at this byte of the text of the open
-\ document in this slot, which positions then count in: the use that holds
-\ the byte, else the declaring token LSP-REFERENCES:PLACE placed.
+\ The Range of the tail of the token at this byte of the open document in this
+\ slot, which positions then count in: the use that holds the byte, else the
+\ declaring token LSP-REFERENCES:PLACE placed. The selecting use and the declaring
+\ token spell its tail (LSP-REFERENCES:SPELT?).
 : PREPARED ( ptr JSON-WRITE:writer n n -- ptr JSON-WRITE:writer )
    {: slot:n at:n :}
    slot LSP-DOCS:DOC-TEXT$ LSP-TEXT:TEXT!
@@ -87,7 +63,11 @@ public
    to LSP-TEXT:LINE-CHARACTER
    LSP-TEXT:RANGE-VALUE ;
 
-\ Why this new name cannot be written over a tail, else empty.
+\ Why this new name cannot be written over a tail, else empty: it is empty; it
+\ holds a byte that ends a token as parse-name reads one (LINT-LEX:ENGINE-DELIM?);
+\ its first colon is neither first nor last, making the tail a qualified name; or it
+\ holds a quote or a backslash, which a string literal naming the word (a use before
+\ a call of a names: word) could not spell.
 : WHY$ ( ptr u8 n -- ptr u8 n )
    {: a:ptr u:n :}
    u 0= if s" the new name is empty" exit then
@@ -99,8 +79,9 @@ public
    a u [: BACKSLASH = ;] ANY-BYTE? if s" the new name holds a backslash" exit then
    s" " ;
 
-\ Why this new name cannot be written over the tails the gather placed, else
-\ empty.
+\ Why a name WHY$ passes cannot be written over the tails the gather placed, else
+\ empty: it holds a colon and a tail follows a qualifier, giving the token a name no
+\ word has (CHECKER-QUALIFIED?).
 : QUALIFIED-WHY$ ( ptr u8 n -- ptr u8 n )
    {: a:ptr u:n :}
    a u [: [char] : = ;] ANY-BYTE? 0= if s" " exit then

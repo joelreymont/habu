@@ -1,9 +1,6 @@
-\ hb-build-test.f - checked fixture for tools/hb-build-lib.f: the REPL build
-\ and its report through the CLI, an install that fails, a pair publication
-\ that fails, the report a failed build invalidates, the rejected inputs,
-\ sources of HBT-LARGE-INPUT-U bytes, a string literal's body declared text
-\ while the same bytes in a `create` cell are refused, a maker that prints more
-\ than the fixed capture holds, and the size of a snapshot and a stripped image.
+\ hb-build-test.f - fixture for tools/hb-build-lib.f: the REPL build and its
+\ report through the CLI, failed installs and pair publications, rejected inputs,
+\ string-literal bodies against `create` cells, and image size classes.
 \ tools/hb-build-test-lib.f lists the other hb-build rows.
 \ Run: bin/hb --load tools/hb-build-test.f
 
@@ -13,7 +10,7 @@ require test/linker-builder-engine.f
 require test/app-builder-engine.f
 require src/lib/string.f
 require src/lib/test/outcome.f
-require src/lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/fmt.f                        \ FMT:.INT
 
 using BUILD-FIXPOINT                     \ the build tmp root
 
@@ -71,14 +68,12 @@ variable HBT-INST-FILES
    s" -o" >LEN PROC-ARGV+
    HBT-REPL-OUT >LEN PROC-ARGV+ ;
 
-\ --report-json through the CLI: a REPL build exits 0 with nothing on stderr
-\ and the report object on stdout, the report hook writing HB-BUILD:REPORT$.
-\ HBB-BUILD-REPL runs no AOT maker and sets no trace flag, so the three false
-\ fields are the reset trace as the report writes it, not a maker that was
-\ asked and missed.
-\ The output already holds stale bytes, and no other case builds over one: the
-\ CLI renames its copy onto -o (HBB-INSTALL-OUT), and HBT-RUN-REPL's exact
-\ stdout proves the new image replaced them.
+\ --report-json through the CLI: a REPL build exits 0, stderr empty, the report
+\ object (HB-BUILD:REPORT$) on stdout. HBB-BUILD-REPL runs no AOT maker and sets
+\ no trace flag, so the three false fields are the reset trace, not a maker that
+\ missed. The output already holds stale bytes, and no other case builds over
+\ one: the CLI renames its copy onto -o (HBB-INSTALL-OUT), and HBT-RUN-REPL's
+\ exact stdout proves the new image replaced them.
 : HBT-CLI-REPORT ( bool -- )
    {: size:bool :}
    HBT-ARGV-BASE-REPL
@@ -130,12 +125,12 @@ variable HBT-INST-FILES
    HBT-INST-OUT FS:DIR? TTRUE
    HBT-INST-FILES@ 0 T= ;
 
-\ A PAIR PUBLICATION THAT FAILS LEAVES -o AND ITS MAP AS THEY WERE. An AOT
-\ install publishes the maker's executable and map together (HBB-PAIR-RUN).
-\ The maker's output is planted under TMPDIR: without its map the install
-\ refuses before anything moves, unreadable it cannot be copied, and a
-\ directory at -o refuses the executable's rename after the new map was
-\ staged. A sibling left behind is an extra file beside -o and its map.
+\ A failed pair publication leaves -o and its map as they were. An AOT install
+\ publishes the maker's executable and map together (HBB-PAIR-RUN). The maker's
+\ output is planted under TMPDIR: without its map the install refuses before
+\ anything moves, unreadable it cannot be copied, and a directory at -o refuses
+\ the executable's rename after the new map was staged. A sibling left behind
+\ is an extra file beside -o and its map.
 73 constant HBT-EXEC-ONLY                  \ 0111: runnable, unreadable
 493 constant HBT-EXEC-READ                 \ 0755
 16 constant HBT-PUB-CAP
@@ -297,13 +292,10 @@ PATH-CAP BUFFER: HBT-DIR-OUT-BUF
    buf u ;
 
 \ ---- where each image class's bytes went --------------------------------------
-\ tools/image-size-lib.f attributes every byte of the image to a class and
-\ refuses to answer unless the classes sum to the file's own length, so MEASURE
-\ returning at all is the sum-to-length proof; these cases pin that the sum is
-\ the file's REAL length (not a number the walk invented), that the summary's
-\ six terms plus `other` are the same total, and the one fact that separates the
-\ two application classes -- a snapshot writes its zero bytes and a stripped
-\ image never does.
+\ tools/image-size-lib.f refuses unless its classes sum to the file's length, so
+\ MEASURE returning is the sum proof. These cases pin that the sum is the file's
+\ real length, that the summary's six terms plus `other` give the same total,
+\ and that a snapshot writes its zero bytes while a stripped image never does.
 : HBT-SIZE-SUM ( -- n )
    IMAGE-SIZE:CODE-BYTES IMAGE-SIZE:NAME-BYTES +
    IMAGE-SIZE:DATA-WRITTEN + IMAGE-SIZE:DATA-ZERO +
@@ -357,24 +349,17 @@ PATH-CAP BUFFER: HBT-DIR-OUT-BUF
    IMAGE-SIZE:DATA-OWNERS 0 T= ;
 
 \ ---- a damaged stripped DATA table ---------------------------------------------
-\ x86 stores sparse DATA runs in RX text and locates them with a footer. The
-\ real program above carries a nonzero byte; this case changes one run length,
-\ shortens the table past its XT count, then removes its footer. Each image must
-\ be refused before the reader accounts bytes outside the table or DATA window.
-\
-\ ARM copies a DATA blob through the startup sequence below. Its one-word
-\ mutation instead proves that an unlocatable copy is refused.
-\ tools/image-size-lib.f FIND-BLOB reads the blob's address out of the startup's
-\ four-word src/habu/aot-lib.f TEXT-ADR, sequence into x9. An image whose
-\ sequence it no longer recognises has none to count, and that used to be the
-\ empty-capture-window shape: the tool reported the blob and the rows as code
-\ with `data 0 written` and exited 0. It now looks for the copy loop as well,
-\ which no empty window emits, and refuses by name.
-\ The subject is one word of a REAL image: the sequence's `adr x12` -- the code
-\ base its offset is added to -- rewritten to `adr x13`, which is what a drifted
-\ scratch register looks like to this reader. The control is the same image
-\ written back unpatched and measured green, so the refusal is that word's and
-\ not the copy's.
+\ x86 stores sparse DATA runs in RX text located by a footer. This case changes
+\ one run length of the real program above, shortens the table past its XT
+\ count, then removes its footer; each image is refused before the reader counts
+\ bytes outside the table or the DATA window.
+\ ARM copies a DATA blob through the startup sequence: tools/image-size-lib.f
+\ FIND-BLOB reads the blob's address out of the four-word src/habu/aot-link-arm.f
+\ TEXT-ADR, sequence into x9, and refuses by name an image whose sequence it does
+\ not recognise but whose copy loop it finds (an empty capture window emits no
+\ copy loop). The subject is one word of a real image, the sequence's `adr x12`
+\ rewritten to `adr x13`, a drifted scratch register; the control is the same
+\ image written back unpatched and measured green.
 : HBT-LOST-CPY ( -- ptr u8 n )
    HBT-LOST-CPY-BUF HBT-LOST-CPY-U @ ;
 
@@ -517,17 +502,13 @@ PATH-CAP BUFFER: HBT-DIR-OUT-BUF
 : HBT-LITC-SRC ( -- ptr u8 n )
    HBT-LITC-SRC-BUF HBT-LITC-SRC-U @ ;
 
-\ A STRING LITERAL'S BODY IS DECLARED TEXT, and the span scan skips its cells by
-\ that declaration the way it skips a declared address cell by the engine's
-\ address-cell table: src/compiler/native/string.f writes one row per interned
-\ body when it places the bytes, and src/habu/aot-closure.f CELL-LITERAL? reads
-\ those rows - never the bytes - for every cell src/habu/aot-lib.f SCAN-DATA-CELL
-\ is about to refuse. Tender's stripped server is the case: `s" {pm}"` and the
-\ 01 byte after it, read as one aligned cell, spelled an address inside the
-\ emitted code span and the build refused the word that owns the body (AUTH
-\ ROLE-LITERAL$, dot habu-link-int-cells-45328a4d).
-\ The child derives its bytes from a live code address; a fixed Linux address
-\ does not establish this property in a Mach-O builder with ASLR.
+\ A string literal's body is declared text: src/compiler/native/string.f writes
+\ one row per interned body, and src/habu/aot-closure.f CELL-LITERAL? reads those
+\ rows, never the bytes, for every cell src/habu/aot-common.f SCAN-DATA-CELL would
+\ refuse. Tender's stripped server is the case: `s" {pm}"` and the 01 byte after
+\ it, read as one aligned cell, spell an address inside the emitted code span.
+\ The child derives its bytes from a live code address: a fixed Linux address
+\ does not hold in a Mach-O builder with ASLR.
 : HBT-LITB-SRC$ ( -- ptr u8 n )
    S\" require test/stripped-literal-subject.f\n' STRIPPED-LITERAL:ANCHOR STRIPPED-LITERAL:BODY-SOURCE evaluate\n" ;
 
@@ -535,22 +516,16 @@ PATH-CAP BUFFER: HBT-DIR-OUT-BUF
 : HBT-LITB-EXPECTED$ ( -- ptr u8 n )
    S\" literal\n" ;
 
-\ ... and THE SAME EIGHT BYTES IN A `create` CELL are refused as before. This is
-\ the control that keeps the row above honest: raw storage carries no declaration
-\ about its contents, so the value is still read as the code pointer it spells,
-\ and a build that stopped refusing it would say the pattern had drifted out of
-\ the emitted code span - in which case the row above proves nothing and this one
-\ goes red instead of both passing on a value nothing classifies.
+\ The same eight bytes in a `create` cell are refused: raw storage declares
+\ nothing, so the value is the code pointer it spells. If the pattern drifted
+\ out of the code span this row goes red instead of both passing.
 : HBT-LITC-SRC$ ( -- ptr u8 n )
    S\" require test/stripped-literal-subject.f\n' STRIPPED-LITERAL:ANCHOR STRIPPED-LITERAL:RAW\n: MAIN ( -- ) STRIPPED-LITERAL:VALUE . cr ;\n" ;
 
-\ THE CONTROL FIRST, then the body: the refusal is what proves the pattern lands
-\ in the emitted code span of a build on this image, and the link that follows
-\ is then a statement about the declaration and not about the value. The
-\ subject requires src/lib/codegen.f, which the engine bakes, so every maker carries
-\ its words below the band, and neither program reaches anything of the
-\ linker's load, so both builds link on the image (test/preloaded-engine.f
-\ rule 3).
+\ The control runs first: its refusal proves the pattern lands in this build's
+\ code span, so the link that follows is about the declaration. The subject
+\ requires src/lib/codegen.f, which the engine bakes, and neither program reaches
+\ the linker's load, so both link on the image (test/preloaded-engine.f rule 3).
 : HBT-STRIPPED-LITERAL-BODY ( -- )
    HBT-LITC-SRC HBT-LITC-SRC$ FS:WRITE-ALL
    HBT-LITC-SRC HBT-RUN-MAKER {: cout:n cerr:n crc:n :}
@@ -571,10 +546,9 @@ PATH-CAP BUFFER: HBT-DIR-OUT-BUF
    HBT-LITB-OUT HBT-REMOVE-FILE? ;
 
 \ A program that prints more than HBB-CAPTURE-CAP bytes while it compiles: a
-\ fixed capture of that size fails closed when it fills (E-PROC-TRUNCATED) and
-\ took the build down with it, so the maker's stdout capture grows instead. The
-\ program prints HBT-LOUD-LINES lines of HBT-LOUD-LINE-U bytes, one line past
-\ the cap, then HBT-LOUD-LAST$: the line a capture that stopped short loses.
+\ fixed capture fails closed when full (E-PROC-TRUNCATED), so the maker's stdout
+\ capture grows. It prints HBT-LOUD-LINES lines of HBT-LOUD-LINE-U bytes, one
+\ line past the cap, then HBT-LOUD-LAST$, the line a short capture loses.
 64 constant HBT-LOUD-LINE-U
 HBB-CAPTURE-CAP HBT-LOUD-LINE-U / 1 + constant HBT-LOUD-LINES
 variable HBT-LOUD-SRC-U
@@ -606,14 +580,10 @@ create HBT-LOUD-SRC-BUF PATH-CAP allot
    outu HBB-CAPTURE-CAP > TTRUE
    outu HBB-OUT-ROOM outu HBT-LOUD-LAST$ CONTAINS? TTRUE ;
 
-\ imgdump prints one line per dictionary record of the image it reads, so its
-\ output is the size of that image's dictionary - 407,041 bytes for the REPL
-\ application this case builds, and growing with the engine. A bounded capture
-\ buffer is the wrong instrument for it: PROC-READ-OR-PROBE-STREAM fails closed
-\ when the buffer fills (E-PROC-TRUNCATED), so the case died on its own
-\ measurement rather than on the image. stdout goes to a file, which has no size
-\ chosen in advance; stderr stays a bounded capture because an empty stderr is
-\ what this case asserts.
+\ imgdump prints one line per dictionary record: 407,041 bytes for this REPL
+\ application, growing with the engine. A bounded capture fails closed when full
+\ (PROC-READ-OR-PROBE-STREAM, E-PROC-TRUNCATED), so stdout goes to a file;
+\ stderr stays a bounded capture because an empty stderr is what this asserts.
 : HBT-IMGDUMP-REPL ( -- )
    HBT-TMP BF-TMP!
    HBT-IMGDUMP-ARGV

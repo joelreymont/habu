@@ -4,7 +4,7 @@
 \ (tools/build-fixpoint-certify.f) for a source certified against the core
 \ prefix, so each text has this one definition.
 
-require src/lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/fmt.f                        \ FMT:.INT
 require src/habu/verify-source.f         \ VERIFY:CENSUS
 require tools/build-target.f             \ the target the census names
 
@@ -33,16 +33,12 @@ public
    s"  rejected rc " type rc FMT:.INT s"  (blocking)" type cr
    diagu 0 > IF diag diagu type cr THEN ;
 
-\ Self-check certification census (dot habu-census-assert-the-f3a20b1f). The
-\ boot prefix, which the host already carries, and the assembled stage source,
-\ which a stage compile consumes, each report on a line of their own, under
-\ PHASE, the colon definitions their certify scan certified and those it
-\ deferred to the run (VERIFY:CENSUS). The process that ran the scan prints
-\ the line, after the scan certified the source; a certify fails closed on the
-\ first definition its scan refuses, rejected or uncheckable, so a phase that
-\ reaches its line refused none. The target is named because both assemblies
-\ include its src/os leg; TARGET is the build's (TARGET$ in the build's own
-\ process), whichever process prints the line.
+\ Self-check certification census: the boot prefix and the assembled stage
+\ source each print, under PHASE, the colon definitions their scan certified
+\ and those it deferred (VERIFY:CENSUS). A certify fails closed on the first
+\ refused definition, so a phase that reaches its line refused none. Both
+\ assemblies include the target's src/os leg, so the line names TARGET, the
+\ build's, whichever process prints it.
 : CENSUS ( ptr u8 n ptr u8 n -- )
    {: phase:ptr phaseu:n target:ptr targetu:n :}
    VERIFY:CENSUS {: certified:n deferred:n :}

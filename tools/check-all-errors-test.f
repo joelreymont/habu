@@ -1,10 +1,5 @@
 \ check-all-errors-test.f - checked fixtures for tools/check-all-errors.f.
-\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/memory.f
-\ src/lib/vector.f src/lib/fs.f src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f
-\ tools/lint/text.f tools/lint/token.f tools/lint/lib.f
-\ src/lib/source-lex.f
-\ tools/check-all-errors-core.f src/lib/argv.f
-\ tools/check-all-errors-test.f
+\ Run: bin/hb --load tools/check-all-errors-test.f
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -21,7 +16,7 @@ require tools/lint/lib.f
 require src/lib/source-lex.f
 require tools/check-all-errors-core.f
 require src/lib/argv.f
-require src/lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/fmt.f                        \ FMT:.INT
 
 package CHECK-ALL-ERRORS-TEST
 
@@ -141,17 +136,11 @@ create CAE-LF-BYTE 10 c,
    s" : CAE-BAD2 ( i64 -- ) >r ;" SB-APPEND CAE-LF
    SB$ ;
 
-\ Four faults: two in ENUM declarations, one in a PRODUCT and one ordinary
-\ definition reject. The global ENUM keyword is the unified front end, whose
-\ reporter is DECL-REJECT:GUARD-CODE, reached through DECL-FRONT:RUN; the
-\ PRODUCT reports through sumtype.f's TDECL-RUN; so one source exercises every
-\ reporter in one pass. Under a multi-error load every fault must be reported
-\ and the pass must continue: before GUARD-CODE grew its multi-error branch the
-\ first bad declaration ended the run and the later faults were never seen,
-\ even though TDECL-RUN had answered that way for the legacy definers all
-\ along. The good declarations prove the arm does not swallow accepted
-\ declarations, and CAE-PGOOD-USE that the refused product's rollback leaves
-\ the next product usable.
+\ Four faults: two ENUM declarations (DECL-REJECT:GUARD-CODE via DECL-FRONT:RUN),
+\ one PRODUCT (sumtype.f TDECL-RUN) and one ordinary definition, so one source
+\ reaches every reporter. A multi-error load reports every fault and continues;
+\ the good declarations prove the arm swallows none, and CAE-PGOOD-USE that the
+\ refused product's rollback leaves the next product usable.
 : CAE-DECL-SOURCE$ ( -- ptr u8 n )
    SB-RESET
    s" ENUM cae-dgood red green ;ENUM" SB-APPEND CAE-LF
@@ -686,10 +675,9 @@ $100000 constant CAE-CHILD-ERR-CAP
    s" : CAE-CGOOD ( n -- n ) CAE-CBADA ;" SB-APPEND CAE-LF
    SB$ ;
 
-\ Option-A no-cascade contract (ruling recorded on
-\ habu-multi-err-checking-42db26f4): a definition calling an earlier REJECTED
-\ definition certifies against its trusted declared signature - exactly the
-\ two real errors report, with no phantom E-UNDEFINED cascade entry.
+\ No cascade: a definition calling an earlier rejected one checks against its
+\ trusted declared signature, so exactly the two real errors report and no
+\ E-UNDEFINED entry.
 : CAE-TEST-CASCADE ( -- )
    s" cascade-no-phantom" CAE-CASE!
    CAE-IN CAE-CASCADE-SOURCE$ FS:WRITE-ALL
@@ -769,12 +757,12 @@ $100000 constant CAE-CHILD-ERR-CAP
    s" large word" T-LABEL
    CAE-ERR lerru CAE-WORD-LARGE$ CONTAINS? TTRUE ;
 
-\ ---- all-errors support-parity fixtures (census gap4) ------------------------
-\ verify-source's full re-drive replays deftype/deflinear/value-record before
-\ later definitions; per-def all-errors redrive must collect the same support
-\ or a good definition whose signature references the declared type is spuriously
-\ rejected. Each fixture pairs a good type-using def with a genuinely-bad def:
-\ the bad def forces per-def mode; before the fix the good def is ALSO reported.
+\ ---- all-errors support-parity fixtures --------------------------------------
+\ verify-source's re-drive replays deftype/deflinear/value-record before later
+\ definitions; the per-definition redrive must collect the same support, or a
+\ good definition whose signature names the declared type is rejected. Each
+\ fixture pairs a good type-using definition with a bad one that forces
+\ per-definition mode.
 
 : CAE-NOMINAL-SOURCE$ ( -- ptr u8 n )
    SB-RESET
@@ -807,17 +795,14 @@ $100000 constant CAE-CHILD-ERR-CAP
    SB$ ;
 
 \ ---- layout-constant one-cell contract parity --------------------------------
-\ `constant` bakes exactly one physical cell, so its recorded effect is the
-\ one-cell `-- a` model in EVERY path (native C-CONSTANT, verify-source
-\ RECORD-DEFINER?, this all-errors funnel, and public-signatures). This is the
-\ PERMANENT contract, not a pending narrowing: the interpret stack is untyped by
-\ design, so no path has a sound shape source — an adjacent-producer heuristic
-\ mis-carries (`MK 5 constant K`), and carrying the producer's multi-cell type
-\ would certify USE words that push fewer cells than the constant holds. A
-\ wider-than-cell layout value cannot even LAND on the interpret stack
-\ (DNAME-WIDE dispatch gate, habu-tfam-12-interpret), and a checked-body pop
-\ rejects (TD12-CONST), so every layout mis-use of a constant is fail-closed at
-\ USE — which this fixture proves end-to-end.
+\ `constant` bakes one cell, so its effect is `-- a` in every path (native
+\ C-CONSTANT, verify-source RECORD-DEFINER?, this funnel, public-signatures): the
+\ interpret stack is untyped, an adjacent-producer guess mis-carries
+\ (`MK 5 constant K`), and a multi-cell type would certify uses that push fewer
+\ cells than the constant holds. A wide layout value cannot land on the
+\ interpret stack (DNAME-WIDE gate) and a checked-body pop of one is refused
+\ (test/type-decl-suite.f TD12-CONST), so misuse fails closed at use, proved
+\ here end to end.
 : CAE-CONST-LAYOUT-SOURCE$ ( -- ptr u8 n )
    SB-RESET
    s" value-record cae-cv x i64 y i64 END-VALUE-RECORD" SB-APPEND CAE-LF
@@ -890,14 +875,12 @@ $100000 constant CAE-CHILD-ERR-CAP
    s" type-family-support" CAE-CASE!
    CAE-TFAM-SOURCE$ s" cae-tf-use" s" cae-tf-bad" CAE-CHECK-SUPPORT-PARITY ;
 
-\ ---- verify-source top-level TRUST replay (census gap5) -----------------------
-\ all-errors collects a top-level `s" NAME" s" SIG" TRUST` line and replays it
-\ through verify-source before later definitions. verify-source's RECORD-DEFINER?
-\ must dispatch that TRUST so a definition using the trusted word passes. The
-\ trust names a word defined above it, as a replayed trust row must (checker.f
-\ TRUST-RESOLVES?), and restates that `( n -- n )` identity at a pointer type:
-\ the use is an E-MISMATCH unless the replayed TRUST gave the word that effect.
-\ A clean fixture (no genuinely-bad def) exits 0 only when the TRUST replay works.
+\ ---- verify-source top-level TRUST replay ------------------------------------
+\ all-errors replays a top-level `s" NAME" s" SIG" TRUST` through verify-source
+\ before later definitions; RECORD-DEFINER? must dispatch it. The trust names a
+\ word defined above it (checker.f TRUST-RESOLVES?) and restates its
+\ `( n -- n )` at a pointer type, so the use is an E-MISMATCH unless the replay
+\ gave that effect; the clean fixture exits 0 only when the replay works.
 
 : CAE-SQ-LIT ( ptr u8 n -- ) {: a:ptr u:n :}
    115 SB-APPEND-C
@@ -987,15 +970,11 @@ $100000 constant CAE-CHILD-ERR-CAP
    CAE-CASE$ T-LABEL
    CAE-ERR erru s" cae-al-bad" CAE-WORD-JSON$ CONTAINS? TTRUE ;
 
-\ A caller that is itself inside a package is the shape that exposed the
-\ checker package-scope leak. The rollback frame the core opens SAVED the
-\ caller's checker package but left it active, so a replayed top-level EXPORT
-\ directive read as an in-package re-export and the clean source below exited
-\ CHECK-ALL-ERRORS:DUP-RC instead of 0. This whole file is package
-\ CHECK-ALL-ERRORS-TEST, so the two runs below are made HERE, in the package
-\ body, where the checker's package mode really is this package's. Calling them
-\ from a case word instead would run them with no package open and could not
-\ reproduce the defect; the case word only reports what they recorded.
+\ The core's rollback frame must restore the caller's checker package: a leaked
+\ package makes a replayed top-level EXPORT read as an in-package re-export, and
+\ the clean source exits CHECK-ALL-ERRORS:DUP-RC. These runs are made here, in
+\ the package body, where the checker's package is this one; from a case word
+\ no package is open and the defect does not reproduce.
 variable CAE-PKG-CLEAN-RC
 variable CAE-PKG-CLEAN-U
 variable CAE-PKG-REJECT-RC

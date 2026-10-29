@@ -1,13 +1,11 @@
-\ imgdump.f — habu image inspector, in habu.
-\ Run: bin/hb --load tools/imgdump.f -- <image> [image2]
-\ Reads the image path argument, locates the snapshot trailer, maps the live region
-\ payload, and prints one line per word: name $start $len (namespace rows
-\ carry public/private WIDs instead). --pc accepts one or more addresses.
-\ With two images, compares name+length first, then reports offset-only shifts.
-\ Loads the target executable layout on demand; common dictionary layout is
-\ already present in the native cold prefix.
+\ imgdump.f - habu image inspector.
+\ Run: bin/hb --load tools/imgdump.f -- <image> [image2]; --pc takes one or more
+\ addresses. One line per word: name $start $len (namespace rows carry their
+\ public/private WIDs). Two images: name and length compared first, then
+\ offset-only shifts. The target executable layout loads on demand; the common
+\ dictionary layout is already in the native cold prefix.
 
-require src/lib/adt/option.f                 \ option<n> for the number parsers (switchover wave A)
+require src/lib/adt/option.f                 \ option<n> for the number parsers
 require src/lib/fs.f
 require src/habu/code-span.f
 require src/habu/snapshot-format.f
@@ -43,12 +41,10 @@ variable TOFF  variable TNDICT  variable TREG  variable TDATA
 variable ROFF  variable HAS-SNAP
 variable X64-IMAGE
 variable RUNV  variable BESTO  variable BESTN
-\ No-trailer only: the base added to a raw dict-record xt field. A snapshot's
-\ xt fields are already canonical/absolute (SNAP-CORE?, PTR>OFF); a baked
-\ image with no trailer stores the boot-seeded dictionary's xt fields
-\ __text-relative instead (src/habu/habu2.f EM-SEED-DICT adds XREG-RBASE at
-\ boot), so imgdump must add the same base back before treating them as
-\ addresses. See NO-SNAP-XTBASE below.
+\ No-trailer only: the base added to a raw dict-record xt field. A baked image
+\ with no trailer stores seed xt fields __text-relative (src/habu/habu2.f
+\ EM-SEED-DICT adds XREG-RBASE at boot); a snapshot's are already absolute. See
+\ NO-SNAP-XTBASE.
 variable XTBASE
 variable HN  variable ISZ
 variable A-N  variable CMP-NAME-LEN-DIFF  variable CMP-OFF-DIFF  variable CMP-IDX
@@ -232,12 +228,10 @@ variable HV  variable HP
    o E-CODE-END o E-S - ;
 
 variable OKV
-\ FIND-DICT asks this of every 4-byte offset in the image and E-L is a 46-bit
-\ field (src/habu/layout.f DNAME-LEN-MASK), so a candidate whose length field
-\ is large but still inside the file made this scan megabytes of bytes even
-\ when byte 0 had already answered: `--pc` over the 5 MB bin/hb cost 130 s of
-\ CPU. The loop therefore stops at the first byte that is
-\ not printable ASCII and reads no byte past it; the answer is the same one.
+\ FIND-DICT asks this at every 4-byte offset and E-L is a 46-bit field
+\ (src/habu/layout.f DNAME-LEN-MASK): reading the whole length cost 130 s of CPU
+\ for `--pc` over the 5 MB bin/hb, so the loop stops at the first byte that is
+\ not printable ASCII.
 : PRN? {: a:ptr u :} ( ptr u8 n -- bool )     \ a..a+u all printable ascii?
    1 OKV !
    0 begin dup u < OKV @ 0<> and while
@@ -377,14 +371,9 @@ using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
    {: o:n :}
    o E-NAME-OFF dup 0 < if s" imgdump: name out of range" 74 die then
    IB@ +  o E-L ;
-\ AN EMPTY NAME IS A RECORD, NOT A CORRUPTION. habu-ship-no-dictionary-2fee2dea
-\ shipped a record with an empty pool entry for every word nothing can ask for
-\ by name, and habu-carry-code-spans-0db56c19 stopped shipping the row at all -
-\ its code span travels in the payload's AOT-SPAN table instead. A current image
-\ therefore holds no empty-named record, and every engine built between those
-\ two does. So the length floor here stays 0: it is what a dump of one of those
-\ engines walks over, and refusing it reported a shipped format as a broken
-\ file. A name length is a record field, not a plausibility test.
+\ The name length floor is 0: engines from before code spans moved to the
+\ payload's AOT-SPAN table ship records with empty names, and a name length is a
+\ record field, not a plausibility test.
 : ENT? ( n -- bool )
    {: o:n :}
    o E-CODE? if
@@ -475,20 +464,13 @@ using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
    s" imgdump: pc not found" 74 die ;
 
 \ ---- no-trailer xt base ----
-\ Without a snapshot trailer, the only part of the dictionary imgdump can
-\ locate offline is the boot-seeded table src/habu/habu2.f EM-SEED-DICT reads
-\ from the baked LDICT blob (found by FIND-DICT's counted scan): every
-\ other word is JIT-compiled into a region the kernel places at boot and is
-\ unrecoverable from a static file. EM-SEED-DICT rebases each seed record's
-\ xt by XREG-RBASE, a register loaded by `ADR x20, LANCHOR` at the image's
-\ entry (src/habu/habu2.f EM-RUNTIME-STACK) -- PC-relative, so for a
-\ fixed-base (ET_EXEC, non-PIE) arm64 executable it is a build-time constant
-\ equal to the image's own ELF entry point, readable straight from the file.
-\ A PIE image's load base is chosen by the loader at exec time and is not in
-\ the file at all, and a file that is not this kind of ELF has no such field to
-\ read, so refuse rather than guess one.
-\ On x86, the fixed REGION PT_LOAD carries absolute xt fields and no
-\ entry-point base is added; the statements above describe the ARM seed path.
+\ Without a trailer only the seed table EM-SEED-DICT reads from the baked LDICT
+\ blob (FIND-DICT's counted scan) is locatable; every other word is compiled at
+\ boot into a region the kernel places. EM-SEED-DICT rebases each seed xt by
+\ XREG-RBASE, loaded PC-relative at entry (src/habu/habu2.f EM-RUNTIME-STACK), so
+\ a fixed-base (ET_EXEC) arm64 executable's base is its ELF entry point. A PIE's
+\ base is chosen at exec and is not in the file: refuse rather than guess. On x86
+\ the fixed REGION PT_LOAD carries absolute xt fields and no base is added.
 : ELF-FIXED-BASE? ( -- bool )
    IL @ ELF-EHDR-BYTES < if IMG-FALSE exit then
    ELF-MAG-OFF I@ $FFFFFFFF and ELF-MAG <> if IMG-FALSE exit then
@@ -727,7 +709,6 @@ using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
    X64-IMAGE @ if off X64-DATA-CELL . exit then
    TOFF @ TDATA @ - off + I@ . ;
 
-\ Print snapshot dictionary and payload sizes.
 : SNAP-INFO ( -- )
    1 SCRIPT-ARGV$ READ-IMG-PATH PREP-SNAP
    HAS-SNAP @ 0= if s" no-snapshot" type cr exit then

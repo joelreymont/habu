@@ -6,12 +6,9 @@ require tools/image-size-lib.f
 
 package HB-BUILD-CLI
 
-\ Where the bytes of what this build just wrote went. The walk is the same one
-\ tools/engine-size.f runs, so the summary line and the tool cannot disagree,
-\ and it refuses to answer at all unless the classes sum to the file's length --
-\ which is what makes one line of six numbers evidence rather than a guess.
-\ --size-report prints the whole table under it; --report-json puts the same
-\ numbers in the report object instead, so the JSON stays one parseable object.
+\ Where this build's bytes went, by the walk tools/engine-size.f runs; it refuses
+\ to answer unless the classes sum to the file's length. --size-report prints the
+\ whole table; --report-json puts the numbers in the report object instead.
 : HBB-MEASURE-OUT ( -- )
    HBB-OUT$ IMAGE-SIZE:MEASURE ;
 

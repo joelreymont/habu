@@ -1,9 +1,8 @@
-\ hb-build-stripped-cells-test.f - checked fixture for tools/hb-build-lib.f:
-\ the DATA cells a stripped image refuses - a pointer into memory the build
-\ mapped, in an undeclared and in a declared cell, and a baked table no claim
-\ names. The same allocation taken at run time links and runs in
-\ tools/hb-build-stripped-cache-test.f HBT-STRIPPED-SAME-TWICE.
-\ tools/hb-build-test-lib.f lists the other hb-build rows.
+\ hb-build-stripped-cells-test.f - checked fixture for tools/hb-build-lib.f: the
+\ DATA cells a stripped image refuses (a pointer into memory the build mapped, in
+\ an undeclared and a declared cell, and a baked table no claim names). The same
+\ allocation at run time links in tools/hb-build-stripped-cache-test.f
+\ HBT-STRIPPED-SAME-TWICE; tools/hb-build-test-lib.f lists the other hb-build rows.
 \ Run: bin/hb --load tools/hb-build-stripped-cells-test.f
 
 require src/lib/string.f
@@ -23,24 +22,18 @@ package HB-BUILD-CLI
 : HBT-MAPD-SRC ( -- ptr u8 n )
    HBT-MAPD-SRC-BUF HBT-MAPD-SRC-U @ ;
 
-\ ... and a baked `create` TABLE that no claim names is refused exactly as
-\ before. TPB is src/os/env-base.f's TMP-PATH buffer, the same shape as the
-\ carried digit tables and as the claimed path scratch, and TMP-PATH-COPY-SRC
-\ spells its address before any other engine data - so a table travels because
-\ the list NAMES it, never because it is a table and never because a table in
-\ the same file, or in the file next to it, is claimed.
+\ ... and a baked `create` TABLE that no claim names is refused. TPB is
+\ src/os/env-base.f's TMP-PATH buffer, the shape of the carried digit tables and the
+\ claimed path scratch, and TMP-PATH-COPY-SRC spells its address before other
+\ engine data: a table travels only because the list names it.
 : HBT-TABLE-SRC$ ( -- ptr u8 n )
    S\" : MAIN ( -- ) s\" x\" TMP-PATH-COPY-SRC ;\n" ;
 
-\ A POINTER INTO MEMORY THE BUILD MAPPED, which is the class dot
-\ habu-refuse-a-stripped-92290c75 reported from Tender: the program takes a
-\ 64 KB buffer AT LOAD TIME and stores the address in a persistent cell, so the
-\ image carries an address only the linking process ever held - the same in
-\ every run of one image, different in every build under ASLR, and mapped by
-\ nobody when the image runs. Tender's stripped server faulted at one of eight
-\ such cells before any clone. `variable BUF` is the undeclared cell the span
-\ scan meets (src/habu/aot-lib.f AOT-DATA-TEXTPTR-CHECK); the store sits at the
-\ top level after explicitly disabling the checker for this unsafe store.
+\ A POINTER INTO MEMORY THE BUILD MAPPED: the program takes a 64 KB buffer at load
+\ time and stores its address in a persistent cell, an address nobody maps when the
+\ image runs. `variable BUF` is the undeclared cell the span scan meets
+\ (src/habu/aot-common.f AOT-DATA-TEXTPTR-CHECK); the top-level store runs with
+\ the checker disabled.
 : HBT-MAPC-SRC$ ( -- ptr u8 n )
    SB-RESET
    S\" require src/lib/memory.f\nvariable BUF\n0 set-check\nMEM-ALLOC-64K drop BUF !\n" SB-APPEND

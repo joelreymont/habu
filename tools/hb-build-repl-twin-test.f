@@ -1,16 +1,9 @@
-\ hb-build-repl-twin-test.f - checked fixture for tools/hb-build-lib.f: --repl
-\ builds of one program write the same image across the run's warm cache (A, D)
-\ and a fresh one (B) and an output of another name, at tier 1 and again at the
-\ default tier 0. The restored tier 1 image answers
-\ with its own process where the build's would be wrong: a `does>` run before
-\ the session's first `create` patches the image's own created word, a restored
-\ FILE import keeps its retired context handle stale, the AOT code-span table
-\ reads as it does in a fresh engine, and a persist that names no output path
-\ is refused.
-\ tools/hb-build-test-lib.f lists the other hb-build rows.
-\ Run: bin/hb --load tools/hb-build-repl-twin-test.f
-\ Set HABU_RETAIN_TWIN=1 to keep each tier's three executable images and FILE objects
-\ under the printed test root for independent inspection.
+\ hb-build-repl-twin-test.f - tools/hb-build-lib.f: --repl builds of one program
+\ write the same image across a warm cache (A, D), a fresh one (B) and another
+\ output name, at tier 1 and tier 0. The restored image answers with its own
+\ process: a first `does>` patches its own created word, a restored FILE import
+\ keeps its retired handle stale, the code-span table reads as fresh, and an
+\ unnamed persist is refused. Run: bin/hb --load tools/hb-build-repl-twin-test.f
 
 require tools/hb-build-test-lib.f
 require src/lib/string.f
@@ -122,11 +115,10 @@ create HBT-TWIN-OUT-D-BUF PATH-CAP allot
    HBT-ROOT s" twin0-out-d" HBT-TWIN-OUT-D-BUF HBT-TWIN-OUT-D-U HBT-PATH! ;
 
 \ An empty root leaves HABU_OUT inherited: under the gate, the run's shared out
-\ root, which holds the app-builder family image. A private root is B's out
-\ root, so B builds that image fresh. With aot
-\ set the command runs after test/compiler/aot-mode.f selected tier 1, the tier
-\ its products are built at; without it the products are built at the default
-\ tier 0.
+\ root, which holds the app-builder family image. A private root is B's, so B
+\ builds that image fresh. With aot set the command runs after
+\ test/compiler/aot-mode.f selected tier 1, the tier its products are built at;
+\ without it the products are built at the default tier 0.
 : HBT-TWIN-BUILD ( bool ptr u8 n ptr u8 n ptr u8 n -- )
    {: aot:bool tmp:ptr tmpu:n root:ptr rootu:n out:ptr outu:n :}
    PROC-ARGV-RESET
@@ -154,7 +146,6 @@ create HBT-TWIN-OUT-D-BUF PATH-CAP allot
    path pathu FS:FILE-SIZE MEM-ALLOC-64K-SPAN {: buf:ptr cap:n :}
    buf  path pathu buf cap FS:READ-ALL ;
 
-\ Run one executable with one stdin script, capturing into the given buffers.
 : HBT-TWIN-RUN ( ptr u8 n ptr u8 n ptr u8 ptr u8 -- n n n )
    {: exe:ptr exeu:n in:ptr inu:n out:ptr err:ptr :}
    PROC-ARGV-RESET
@@ -174,7 +165,6 @@ create HBT-TWIN-OUT-D-BUF PATH-CAP allot
    a au b bu HBT-DIFF-AT -1 T=
    a au d du HBT-DIFF-AT -1 T= ;
 
-\ One round: A, B and D built at one tier, then compared.
 : HBT-TWIN-ROUND ( bool -- )
    {: aot:bool :}
    aot HBT-TWIN-TMP-A NULL$ HBT-TWIN-OUT-A HBT-TWIN-BUILD
@@ -230,6 +220,8 @@ create HBT-TWIN-OUT-D-BUF PATH-CAP allot
    rcn 74 T=
    HBT-RUN-ERR errn s" snap: persist has no output path" CONTAINS? TTRUE ;
 
+\ A nonempty HABU_RETAIN_TWIN keeps the images and FILE objects under the printed
+\ test root.
 : HBT-TWIN-FINISH ( -- )
    s" HABU_RETAIN_TWIN" GETENV dup 0 > if
       2drop FS:CLEANUP-RESET

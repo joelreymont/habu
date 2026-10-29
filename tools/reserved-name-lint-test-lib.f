@@ -108,9 +108,9 @@ variable NUM-U
    SB$ ;
 
 \ Number-shaped names: the numeric parser wins over the dictionary
-\ (test/gate-dictionary-lib.f GD-LITERAL-FIRST), so these definitions are
-\ unreachable or float-confusable and must be rejected (the src/lib/fmt.f .0/U.0
-\ incident: a generator read `60 .0` as a float spelling).
+\ (test/gate-dictionary-lib.f LITERAL-FIRST), so these definitions are
+\ unreachable or float-confusable and must be rejected (`60 .0` reads as a
+\ float).
 : NUM-SRC$ ( -- ptr u8 n )
    SB-RESET
    s" : .0 ( n -- ) drop ;" SB-APPEND LF

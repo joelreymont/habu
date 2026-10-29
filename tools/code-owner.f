@@ -1,33 +1,11 @@
-\ code-owner.f - turn a live code address into the record that owns it.
-\
-\ WHAT IT IS FOR. A debugger stop, a crash dump and a breakpoint all hand back
-\ numbers: a pc, a saved x30, a value out of a defer cell. In a seeded engine
-\ those addresses are in the JIT region, where no external symbol table reaches
-\ them - `nm` and lldb see the loaded __text and nothing else - so the question
-\ "which word is that?" had no tool and was answered by arithmetic on a
-\ disassembly. The dictionary already holds the answer: every record carries its
-\ routine's start and length, so the owner of an address is the record whose span
-\ contains it. This asks that, and it runs INSIDE the engine under study, which is
-\ the only process where those records exist.
-\
-\ IT REPORTS EVERY OWNER, NOT THE FIRST. An `EXPORT` alias or a `;does` companion
-\ can put a second record over one routine's code, so an address can legitimately
-\ sit inside more than one span - and which of them a reader wants is the
-\ reader's business, not this tool's. A single answer would have to pick, and
-\ picking is how the sealed-WID gate's own predecessor got the wrong wordlist
-\ (src/habu/habu2.f EM-AOTWIDGATE).
-\
-\ THE OFFSET IS WHAT MAKES IT USABLE ACROSS RUNS. ASLR moves the region every
-\ boot, so an address caught in one process means nothing in the next; `off=` is
-\ the distance into the owning routine, which is stable, and REGION-OWNER. takes
-\ its argument that way - as a region offset - so a number read out of one run can
-\ be resolved in another.
-\
-\ Run inside the engine being studied:
+\ code-owner.f - turn a live code address into the records that own it. Runs inside
+\ the engine under study: JIT-region addresses have no external symbols, and each
+\ record holds its routine's start and length. Every owner is reported, as an
+\ `EXPORT` alias or `;does` companion can cover one routine twice. REGION-OWNER.
+\ takes a region offset, which is stable across ASLR runs.
 \   <engine> --load tools/code-owner-main.f -- <hex-or-decimal region offset>
-\ or require it and call CODE-OWNER:AT. / CODE-OWNER:REGION-OWNER. directly.
 
-require src/lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/fmt.f                        \ FMT:.INT
 
 package CODE-OWNER
 

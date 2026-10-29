@@ -1,80 +1,9 @@
-\ chain-scale.f - how the native chain's module-rebuilding pass grows with the
-\ module it rewrites, as one slope per shape.
-\
-\ Run:
-\     bin/hb --load tools/chain-scale.f              \ report only
-\     bin/hb --load tools/chain-scale.f -- 1.1       \ report, then hold the bound
-\
-\ Machine-readable lines, one per family member and then one verdict:
-\
-\     scale: <family> k <k> ops <n> plan <n> calls <n> ns-per-call <n> ns-per-handled <n>
-\     scale: slope spill-line <milli> spill-frame <milli> compiled <n>
-\
-\ A slope is ln(ns per call at the last point / at the first) over ln(operations
-\ HANDLED at the last / at the first), times 1000: 1000 is cost proportional to
-\ the work, and anything above it is a pass that does more per operation the
-\ larger the module gets. Handled is the module's own operations plus the sealed
-\ plan's decisions, because each decision is one more operation the lowering
-\ writes - on the spill-frame family the plan grows as ops^1.27, so dividing by
-\ the module size alone reads the ALLOCATOR's spill density as this pass getting
-\ slower (1192 against ops, 1017 against what it handles, on one run). The
-\ per-point ns-per-handled column is the same fact without the fit, so a reader
-\ can see whether it is flat.
-\
-\ MEASURED on aarch64 Linux, quiet box (1-minute load average under 4, no other
-\ hb over 50% CPU), 2026-09-12, on this lane's UNCOMMITTED tree - the state the
-\ commits above this one reconstruct - against its parent 495dea80:
-\
-\     spill-line 1002, spill-frame 1033   (the lane's tree)
-\     spill-line 1046, spill-frame 1160  (495dea80)
-
-\ Those runs also carried a third family, `combine`, over a body of k foldable
-\ movz/add pairs. Selection folds those pairs as it writes them, so no pass
-\ rebuilds the module for them any more and the family measures nothing.
-\
-\ Only 495dea80 is a commit a reader can check out and re-run; the pair has NOT
-\ been re-taken against the committed stack, because the box has not been quiet
-\ since. Re-run both sides before quoting these as this lane's result.
-\
-\ Results are only comparable between runs taken on an idle machine; a slope is
-\ a ratio and survives moderate load far better than the microseconds in
-\ tools/compile-floor.f, but a box compiling in four other workspaces moves it
-\ by a few percent.
-\
-\ THE TWO FAMILIES. Each is one body shape whose operation count grows with k
-\ while its SHAPE - how many functions, how many blocks per function, how many
-\ values live at once - stays put, because a slope only means something when the
-\ thing being scaled is size.
-\
-\   spill-line  28 values live across k additions each, one block: the register
-\               file overflows, so A64SPILL:REWRITE runs, and it runs on a
-\               straight line of operations.
-\   spill-frame the same 28 live values across k conditional regions: 2k+1
-\               blocks in one function, which is where the pass's per-block and
-\               per-edge work lives. The allocator dominates this family's
-\               wall time (about 90% of it at k=4) and is not what is timed.
-\
-\ WHAT IS TIMED. NPROF (src/compiler/native/prof.f) is the chain's own
-\ stopwatch: NCOMP:LOWERED opens `spill` around one A64SPILL:REWRITE call, and
-\ the pass adds the operation count of the module it was handed. This tool resets it,
-\ compiles a set, and divides by the call count the accumulator itself kept, so
-\ a definition that needed two lowering turns counts as two calls and not one.
-\ Every source string is built BEFORE the set is compiled.
-\
-\ WHY THE COUNT IS PROVED AND NOT ASSUMED. `set-tier` is engine-global state,
-\ and a tier-1 selection that silently did not take would report the JIT's
-\ number as the optimizing compiler's. A wrapper on NCOMP-DISPATCH:XT-CELL
-\ counts every dispatch into NCOMP:COMPILE; each set must contribute exactly its
-\ own definition count or the tool refuses with E-SCALE-UNCOMPILED instead of
-\ printing a number. The dispatch cell, the tier and the measurement names are
-\ all taken inside MAIN and given back through `finally`, exactly as
-\ tools/compile-floor.f takes them, so a process may load this file, read the
-\ lines, and carry on unchanged.
-\
-\ THE RATCHET. Given a bound the tool refuses with E-SCALE-EXCEEDED - and a
-\ nonzero exit - when any of the three slopes is above it. The comparison is
-\ against the milli-slopes this tool PRINTS, so a run that passes the ratchet
-\ and a run that reports slopes below the bound are the same run.
+\ chain-scale.f - how the native chain's spill rewrite grows with the module it
+\ rewrites, as one slope per body shape. Only idle-machine runs compare.
+\   bin/hb --load tools/chain-scale.f [-- BOUND]   with BOUND (1.1): refuse a
+\                                                   larger slope, E-SCALE-EXCEEDED
+\   scale: <family> k <k> ops <n> plan <n> calls <n> ns-per-call <n> ns-per-handled <n>
+\   scale: slope spill-line <milli> spill-frame <milli> compiled <n>
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -127,6 +56,9 @@ variable S-FRAME
 variable BOUND-MILLI               \ ratchet bound; read only when one was given
 
 \ ---- the dispatch counter ----------------------------------------------------
+\ `set-tier` is engine-global: a tier-1 selection that did not take would report
+\ tier 0's number as the optimizing compiler's. Each set must add exactly its
+\ own definition count or the tool refuses with E-SCALE-UNCOMPILED.
 : COUNTING-COMPILE ( ptr u8 n -- )
    NC-COUNT @ 1+ NC-COUNT !
    NCOMP:COMPILE ;
@@ -152,8 +84,10 @@ variable BOUND-MILLI               \ ratchet bound; read only when one was given
 : DEF$ ( n -- ptr u8 n ) {: ix :}
    SRC SRC-OFF ix cells + @ +  SRC-LEN ix cells + @ ;
 
-\ LIVE-N values live at once, which is what overflows the register file; k
-\ additions inside each one, so the operation count grows and the live set does not.
+\ Each family keeps its shape (functions, blocks per function, live values) as k
+\ grows: a slope means something only when size is what scales. LIVE-N values
+\ live at once overflow the register file, so A64SPILL:REWRITE runs; k
+\ additions inside each grow the operation count.
 : LINE-BODY ( n -- ) {: k :}
    SB-RESET s"  ( n -- n ) " SB-APPEND CHUNK+
    LIVE-N 0 ?do
@@ -163,8 +97,9 @@ variable BOUND-MILLI               \ ratchet bound; read only when one was given
    loop
    LIVE-N 0 ?do SB-RESET s" + " SB-APPEND CHUNK+ loop ;
 
-\ The same live set carried across k conditional regions: 2k+1 blocks in one
-\ function, so the pass's per-block and per-edge work is what grows.
+\ The same live set across k conditional regions: 2k+1 blocks in one function,
+\ where the pass's per-block and per-edge work lives. The allocator takes about
+\ 90% of this family's wall time at k=4 and is not timed.
 : FRAME-BODY ( n -- ) {: k :}
    SB-RESET s"  ( n -- n ) " SB-APPEND CHUNK+
    LIVE-N 0 ?do
@@ -225,9 +160,10 @@ variable BOUND-MILLI               \ ratchet bound; read only when one was given
    SB$ E-SCALE-UNCOMPILED REFUSE ;
 
 \ ---- one family member ------------------------------------------------------
-\ The accumulator's own call count is the divisor: a definition that needed two
-\ lowering turns contributes two calls, and one the pass never ran on
-\ contributes none.
+\ NPROF times phase `spill` around each A64SPILL:REWRITE call (LOWERED,
+\ src/arch/arm64/passes.f) and the pass adds its module's operation count. The
+\ divisor is the accumulator's own call count: a definition that needed two
+\ lowering turns contributes two calls, and one the pass never ran on none.
 : MEAN ( n n -- n ) {: total calls :}
    calls 0= if
       SB-RESET
@@ -266,10 +202,10 @@ variable BOUND-MILLI               \ ratchet bound; read only when one was given
    k ph ops RECORD ;
 
 \ ---- what the family says ---------------------------------------------------
-\ What a pass HANDLES is what it reads plus what its plan makes it write: a
-\ lowering whose plan doubled has twice the work at the same module size, and
-\ dividing by the module size alone would read the allocator's spill density as
-\ this pass getting slower.
+\ What a pass HANDLES is what it reads plus what its plan makes it write. On
+\ spill-frame the plan grows as ops^1.27: one run's slope read 1192 against ops
+\ and 1017 against what it handles, the allocator's spill density read as this
+\ pass getting slower.
 : HANDLED ( n -- n ) {: p:n :}
    p cells PT-OPS + @  p cells PT-PLAN + @ + ;
 
@@ -285,8 +221,10 @@ variable BOUND-MILLI               \ ratchet bound; read only when one was given
    p cells PT-NS + @  p HANDLED MEAN  FMT:SB-U
    SB$ type cr ;
 
-\ Two points and the widest span the family has: a power law read off its ends
-\ is what the per-point ns-per-op column above is printed to corroborate.
+\ ln(ns per call, last point over first) over ln(handled, last over first),
+\ times 1000: 1000 is cost proportional to the work, above it a pass that does
+\ more per operation as the module grows. The per-point ns-per-handled column is
+\ the same fact without the fit.
 : SLOPE-MILLI ( -- n )
    PT-N @ 2 < if E-SCALE-CAPACITY throw then
    PT-N @ 1- {: last:n :}
@@ -321,6 +259,8 @@ variable BOUND-MILLI               \ ratchet bound; read only when one was given
    SB$ type cr ;
 
 \ ---- the ratchet ------------------------------------------------------------
+\ The bound is compared with the printed milli-slopes, so a run passes exactly
+\ when every printed slope is at most the bound.
 : BOUND-MILLI-OF ( ptr u8 n -- n )   \ "1.1" -> 1100
    STR>FLOAT MATCH option
      none OF s" the bound must be a decimal slope" ARGV:FAIL ENDOF
@@ -353,6 +293,8 @@ variable BOUND-MILLI               \ ratchet bound; read only when one was given
 \ ---- the borrow -------------------------------------------------------------
 \ Every boot installs NCOMP:COMPILE in the tier-1 `:` dispatch, the entry
 \ COUNTING-COMPILE forwards to, so PUT-BACK ends the borrow with NCOMP:INSTALL.
+\ MAIN takes the dispatch, tier and measurement and gives them back through
+\ `finally`, as tools/compile-floor.f does, so a loader carries on unchanged.
 : TAKE-OVER ( -- )
    tier@ PRIOR-TIER !
    0 NC-COUNT !

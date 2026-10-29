@@ -21,7 +21,7 @@ $61 constant BL-A-LOW
 $7A constant BL-Z-LOW
 10 constant BL-DEC-BASE
 
-BL-MOD-MAX TYPED-BUFFER BL-MOD-A-SLOT ptr u8   \ one module path start per slot
+BL-MOD-MAX TYPED-BUFFER BL-MOD-A-SLOT ptr u8
 create BL-MOD-U BL-MOD-MAX cells allot
 create BL-PATH BL-PATH-CAP allot
 create BL-TMP BL-PATH-CAP allot
@@ -267,10 +267,9 @@ variable BL-RD-N
    a u BL-COPY-FILE
    a u BL-EMIT-END ;
 
-\ Mark a CARRIED module's path as already provided, so a `require src/lib/<mod>.f`
-\ line inside another bundled module short-circuits instead of re-reading the
-\ file from disk (which would redefine its words - duplicate definition). This
-\ mirrors how the native engine marks its baked prefix files provided.
+\ Mark a CARRIED module's path provided, so a `require` of it inside another
+\ bundled module does not re-read and redefine it, as the native engine marks its
+\ baked prefix files.
 : BL-EMIT-PROVIDED ( ptr u8 n -- ) {: a:ptr u:n :}
    s\" s\q " BL-WRITE                          \ emit: s"<space>
    a u BL-WRITE
@@ -317,11 +316,9 @@ variable BL-RD-N
       BL-TMP BL-TMP-LEN @ BL-OUT-A @ BL-OUT-U @ FS:RENAME-FILE
    then ;
 
-\ State a module the ENGINE already carries. The bundle does not copy such a
-\ file - a second copy would redefine every word in it the moment the bundle ran
-\ - so it records the assumption instead, and src/core/include.f
-\ ?ENGINE-PROVIDES turns that record into a load-time refusal naming the file if
-\ the engine running the bundle turns out not to have it.
+\ State a module the ENGINE already carries instead of copying it: a copy would
+\ redefine its words. src/core/include.f ?ENGINE-PROVIDES refuses the load,
+\ naming the file, when the running engine lacks it.
 : BL-EMIT-ASSUMED ( ptr u8 n -- ) {: a:ptr u:n :}
    s\" s\q " BL-WRITE
    a u BL-WRITE
@@ -329,9 +326,6 @@ variable BL-RD-N
    BL-WRITE-LF ;
 
 \ A module the engine provides is assumed; every other module is carried.
-\ "Self-contained" therefore means self-contained relative to a STATED engine
-\ surface, checked when the bundle loads - not relative to nothing, which is
-\ what copying a file the engine already has silently pretended.
 : BL-ASSUMED? ( ptr u8 n -- bool )
    ENGINE-PROVIDES? ;
 

@@ -1,10 +1,7 @@
-\ seed.f - checked native seed installation helpers.
-\
-\ Validates the seed against HABU_SEED_SHA256 when set, promotes it to bin/hb as
-\ a signed executable, runs a stdin smoke program, then refreshes it from current
-\ source with `tools/build-fixpoint-main.f -- install --force`. The --force is
-\ deliberate: this is a proof flow, so the content-key stamp skip must not stand
-\ in for the self-rebuild fixpoint.
+\ seed.f - checked native seed installation helpers: validate against
+\ HABU_SEED_SHA256 when set, promote to a signed bin/hb, smoke it, then refresh
+\ with `tools/build-fixpoint-main.f -- install --force`. The --force keeps the
+\ content-key stamp skip from standing in for the self-rebuild fixpoint.
 
 require src/lib/errors.f
 require src/lib/span.f
@@ -28,7 +25,7 @@ require src/core/sha256.f
 12 constant SEED-SMOKE-IN-U
 
 create SEED-SHA-HEX SEED-SHA256-HEX-U allot
-create SEED-FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this tool's file-digest context
+create SEED-FSHA-CTX SHA256-FILE-CTX-BYTES allot
 PATH-CAP SPAN-BUFFER: SEED-TMP-PATH     \ FS:SUFFIX-PATH's destination is a span
 create SEED-SMOKE-OUT SEED-SMOKE-OUT-CAP allot
 create SEED-SMOKE-ERR SEED-SMOKE-ERR-CAP allot

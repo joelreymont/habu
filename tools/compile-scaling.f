@@ -1,114 +1,9 @@
-\ compile-scaling.f - how register allocation scales with the size of one
-\ definition, as one slope.
-\
-\ Run:
-\     bin/hb --load tools/compile-scaling.f              \ report only
-\     bin/hb --load tools/compile-scaling.f -- 1.1       \ report, then ratchet
-\
-\ Two machine-readable families, every mean in microseconds per definition:
-\
-\     scaling: values <n> compile <us> alloc <us>        \ one line per size
-\     scaling: slope <x.xx>
-\     scaling-locals: values <n> compile <us> alloc <us>
-\     scaling-locals: slope <x.xx>
-\
-\ `alloc` is the time A64RA:ALLOCATE itself spent, read from the accumulator the
-\ allocator keeps (A64RA:ALLOC-NS), zeroed by this tool before each set. It is
-\ not a subtraction of two wall clocks and not a sampling profiler: the pass
-\ times itself, because one compile enters it several times - the spill fixpoint
-\ re-allocates the rewritten module - and no caller can see those boundaries.
-\
-\ THIS TOOL IS THE ONLY THING THAT ARMS THAT STOPWATCH, and that is a rule about
-\ the engine image and not about tidiness. The accumulator is a DATA cell, a
-\ build runs the optimizing tier over the compiler's own sources, and the AOT
-\ capture bakes DATA into the engine it produces - so a stopwatch that ran
-\ whenever the allocator ran would put the build's own duration in the image, and
-\ two same-host builds would differ in those bytes and nowhere else. A64RA
-\ therefore accumulates only between ALLOC-NS-OPEN and ALLOC-NS-CLOSE; TAKE-OVER
-\ opens the session with the rest of the borrow and PUT-BACK closes it through
-\ `finally`, so the refusing path hands back a disarmed stopwatch too, and CLOSE
-\ zeroes the cell so what a build captures is the zero it was declared with.
-\
-\ MEASURED ON 495dea80 plus this file's accumulator, and on that same tree with
-\ the three cost removals above this commit: aarch64 Linux, 12 cores, 2026-09-12,
-\ three consecutive runs of each engine at a 1-minute load average between 1.05
-\ and 2.08 with no other `hb` over 50% CPU. The `after` engine also carried a
-\ fourth step, a block-scan bisection that moved neither family and was dropped
-\ for it, so that row is this stack's. The `alloc` column in microseconds per
-\ definition, one representative run of the three - the three agreed within 0.3%
-\ at every size:
-\
-\     shape   values     32     64    128    256    512   1024   slope
-\     chain   before   1458   3187   6874  14722  33157  80408    1.15
-\     chain   after     997   1886   3639   7163  14210  28295    0.97
-\     locals  before   1459   2924   6019  12900  29128  72182    1.12
-\     locals  after    1026   1890   3611   7059  13960  27766    0.95
-\
-\ The bound the campaign wants is a slope of 1.1, which is where the ratchet
-\ argument goes. Loading the Tender source under the forced optimizing tier on
-\ the same box moved with them, 153.3 s before to 131.6 s after (one run each).
-\
-\ THE TWO SHAPES, AND WHY THEY ARE THESE.
-\
-\ `chain` opens with HOLD-N `dup 1 +` steps, which leave HOLD-N values standing
-\ on the data stack, runs a chain of `1 +` over the top of them, and consumes
-\ them with HOLD-N `+`. The standing values are read only at the end, so their
-\ live ranges span the whole body: a class with a full-length hull is what makes
-\ the allocator's per-class interval questions cost anything, and a body of only
-\ short-lived values would never ask them. The chain is what grows the count.
-\
-\ `locals` binds LOCAL-N locals from computed values and then reads them in
-\ rotation for the length of the body. Same growth, different residency - the
-\ locals arrive as values the elaborator named rather than as stack places - so
-\ a slope that held for only one body shape would show up as two slopes here.
-\
-\ WHAT THESE SHAPES DO NOT REACH, AND WHY NOT. Neither one spills, and no Habu
-\ source reached through NCOMP:COMPILE was found that does. Three ceilings stand
-\ in the way. The elaborator's compile-time value stack is 64 deep (`VMAX`,
-\ src/compiler/native/elaborate.f), so no body can stand more than 63 values up
-\ at once. A body standing 61 up was allocated at A64RA:SPILLS 0, and its value
-\ count grew 7 per extra standing value against 2.8 lower down, which is the
-\ selector lowering the deep ones onto the data stack before the allocator sees
-\ them. And a wide entry run is put away load by load (regalloc.f MB-ANCHOR),
-\ so the shapes stay below the pool to keep an empty spill plan. So what this
-\ tool measures is what the allocator costs with an EMPTY spill plan, and since
-\ those ceilings are the compiler's and not this fixture's, that is the term the
-\ Tender load pays too.
-\
-\ WHY THE VALUE COUNT IS A MEASUREMENT AND NOT AN ASSUMPTION. Each set's size is
-\ read back from A64RA:VALUES, the sealed allocation's own count, and printed.
-\ The target sizes - SIZE-BASE doubled SIZES-N times - are reached by taking a
-\ measured per-shape overhead off them, so a compiler change that moves that
-\ overhead shows up as a moved `values` column rather than as a silently
-\ mis-sized family. The tool refuses with E-SCALING-SHAPE when the family is not
-\ strictly increasing or when its largest size falls under SPAN-MIN values,
-\ because a slope over a family that did not grow is not a slope.
-\
-\ WHY THE COUNT IS PROVED AND NOT ASSUMED. `set-tier` is engine-global state and
-\ a tier-1 selection that silently did not take would report the JIT's number as
-\ the optimizing compiler's, and the JIT never enters A64RA at all - which would
-\ report `alloc 0` as a success. A wrapper on NCOMP-DISPATCH:XT-CELL counts every
-\ dispatch into NCOMP:COMPILE; each set must contribute exactly REPS or the tool
-\ refuses with E-SCALING-UNCOMPILED instead of printing a number.
-\
-\ AND WHY THE BORROW IS SCOPED. The dispatch cell, the tier and the measurement
-\ names are the engine's, not this tool's. All three are taken inside MAIN and
-\ given back through `finally`, so they are returned on the refusing path
-\ exactly as on the reporting one, and a process may load this file, read the
-\ lines and carry on unchanged. tools/compile-floor.f states the same argument
-\ at length; this tool follows it.
-\
-\ THE SLOPE. Least squares of ln(alloc) on ln(values) over the six sizes of one
-\ family, computed from the nanosecond means rather than the printed
-\ microseconds: a constant scale factor moves the intercept and not the slope,
-\ so that is the same answer with the rounding taken out. What is compared
-\ against the ratchet is the two-decimal number the tool PRINTS, so a run that
-\ passes and a run that reports a slope at or below the bound are the same run.
-\
-\ MEASURE ON A QUIET MACHINE. This is wall-clock time inside one process and
-\ nothing isolates it from the neighbours; quote a slope only with the load
-\ average it was taken at. The bar is a 1-minute load average under 4 with no
-\ other `hb` over 50% CPU.
+\ compile-scaling.f - how register allocation (A64RA:ALLOCATE) scales with the
+\ size of one definition, as one slope per body shape. Only quiet-machine runs
+\ compare: 1-minute load under 4, no other `hb` over 50% CPU; quote the load.
+\   bin/hb --load tools/compile-scaling.f [-- BOUND]   BOUND (1.1): refuse a larger slope
+\   scaling: values <n> compile <us> alloc <us>, then scaling: slope <x.xx>;
+\   scaling-locals: the same for the locals shape. Means in us per definition.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -136,13 +31,26 @@ $0A constant LF
 74 constant IO-RC                  \ sysexits EX_IOERR, as tools/lint/text.f uses it
 
 2 constant SHAPES-N
+\ `chain` stands HOLD-N values (`dup 1 +`), runs a `1 +` chain over them and
+\ consumes them with `+`: their live ranges span the body, and a full-length
+\ class is what makes the allocator's per-class interval questions cost
+\ anything. `locals` binds LOCAL-N locals and reads them in rotation: the same
+\ growth with values the elaborator named instead of stack places, so a slope
+\ that held for one body shape only shows as two slopes.
+\ Neither shape spills, and no Habu source through NCOMP:COMPILE was found that
+\ does: the elaborator's value stack is 64 deep (VMAX,
+\ src/compiler/native/elaborate.f); a body standing 61 values ran at
+\ A64RA:SPILLS 0, its value count growing 7 per standing value against 2.8 lower
+\ down (the selector lowers deep ones onto the data stack); a wide entry run is
+\ put away load by load (regalloc.f MB-ANCHOR). The tool measures the allocator
+\ with an empty spill plan, the term the Tender load pays too.
 0 constant SH-CHAIN
 1 constant SH-LOCAL
 
 12 constant HOLD-N                 \ values the chain shape stands on the stack
 8 constant LOCAL-N                 \ locals the locals shape binds
-29 constant CHAIN-OVER             \ values each shape costs besides its body,
-12 constant LOCAL-OVER             \ measured on 495dea80
+29 constant CHAIN-OVER             \ values each shape costs besides its body
+12 constant LOCAL-OVER
 
 create SRC SRC-CAP allot
 create SRC-OFF REPS cells allot
@@ -161,13 +69,16 @@ variable PRIOR-TIER                \ the tier the caller had selected
 
 8 constant PREFIX-CAP
 create LIVE-PREFIX PREFIX-CAP allot
-variable PREFIX-U                  \ length of the prefix in LIVE-PREFIX
+variable PREFIX-U
 variable SET-LIVE?                 \ that set is defined and not yet removed
 
 variable BOUND?                    \ a ratchet was given
-variable BOUND-R                   \ and this is it
+variable BOUND-R
 
 \ ---- the dispatch counter ---------------------------------------------------
+\ `set-tier` is engine-global: a tier-1 selection that did not take would report
+\ tier 0's number with `alloc 0`, as tier 0 never enters A64RA. Each set must add
+\ exactly REPS dispatches or the tool refuses with E-SCALING-UNCOMPILED.
 
 : COUNTING-COMPILE ( ptr u8 n -- )
    NC-COUNT @ 1+ NC-COUNT !
@@ -323,9 +234,11 @@ variable BOUND-R                   \ and this is it
    LF SB-APPEND-C
    SB$ E-SCALING-SHAPE REFUSE ;
 
-\ A slope over a family that did not grow, that never reached the sizes it
-\ claims, or over a set the allocator spent no measurable time on, is not a
-\ slope.
+\ Each set's size is read back from A64RA:VALUES; targets (SIZE-BASE doubled
+\ SIZES-N times) are reached by taking a measured per-shape overhead off, so a
+\ compiler change that moves the overhead shows in the `values` column. A family
+\ that does not strictly grow, tops out under SPAN-MIN, or holds a set with no
+\ measurable allocator time is refused (E-SCALING-SHAPE): it has no slope.
 : FAMILY-CK ( n -- ) {: sh:n :}
    SIZES-N 1 ?do
       i cells R-VALS + @  i 1- cells R-VALS + @ {: hi:n lo:n :}
@@ -354,6 +267,9 @@ variable BOUND-R                   \ and this is it
    loop ;
 
 \ ---- the slope --------------------------------------------------------------
+\ Least squares of ln(alloc) on ln(values) over one family's six sizes, from the
+\ nanosecond means: a scale factor moves the intercept, not the slope. The
+\ ratchet compares the printed two-decimal number.
 
 : LN-X ( n -- r )                  cells R-VALS + @ s>f FMATH:FLN ;
 : LN-Y ( n -- r )                  cells R-ALLOC + @ s>f FMATH:FLN ;
@@ -389,7 +305,6 @@ variable BOUND-R                   \ and this is it
 : ROUND2 ( r -- r )
    100.0 f* FMATH:FROUND s>f 100.0 f/ ;
 
-\ The printed number and the compared number are one number.
 : SLOPE ( -- r )
    SIZES-N s>f {: n:r :}
    SUM-X {: sx:r :}
@@ -417,6 +332,14 @@ variable BOUND-R                   \ and this is it
    SB$ type cr ;
 
 \ ---- the ratchet ------------------------------------------------------------
+\ The bound is a slope of 1.1: it refuses the allocator before its three cost
+\ removals and admits it after. alloc us per definition at 32, 64, 128, 256, 512
+\ and 1024 values, then the slope (aarch64 Linux, 12 cores, load 1.05-2.08,
+\ three runs within 0.3%):
+\     chain   before   1458   3187   6874  14722  33157  80408    1.15
+\     chain   after     997   1886   3639   7163  14210  28295    0.97
+\     locals  before   1459   2924   6019  12900  29128  72182    1.12
+\     locals  after    1026   1890   3611   7059  13960  27766    0.95
 
 : RATCHET ( n r -- ) {: sh:n s:r :}
    BOUND? @ 0= if exit then
@@ -454,6 +377,15 @@ variable BOUND-R                   \ and this is it
    0 ARGV:POS$ BOUND! ;
 
 \ ---- the borrow -------------------------------------------------------------
+\ A64RA:ALLOC-NS is the allocator's own accumulator: one compile enters
+\ A64RA:ALLOCATE several times (the spill fixpoint re-allocates) and no caller
+\ sees those boundaries. Only this tool arms it: the cell is DATA the AOT capture
+\ bakes into the engine, so a stopwatch running in every build would make two
+\ same-host builds differ there. A64RA accumulates only between ALLOC-NS-OPEN
+\ and ALLOC-NS-CLOSE, and CLOSE zeroes the cell.
+\ MAIN borrows the dispatch, the tier and the stopwatch and gives them back
+\ through `finally`, on the refusing path too: a process may load this file and
+\ carry on unchanged.
 
 \ Every boot installs NCOMP:COMPILE in the tier-1 `:` dispatch, the entry
 \ COUNTING-COMPILE forwards to, so PUT-BACK ends the borrow with NCOMP:INSTALL.

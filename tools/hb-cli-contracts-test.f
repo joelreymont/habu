@@ -163,7 +163,7 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
    HCT-ERR HCT-ERR-U @ s" --build" CONTAINS? TTRUE ;
 
 \ printf '1 2 + . cr' | hb --nonsense  ->  rc 64: the flag is rejected before the
-\ piped program can run (the old fail-open path silently ran stdin and printed 3).
+\ piped program can run.
 : HCT-EXPECT-FLAG-BEFORE-STDIN ( -- )
    PROC-ARGV-RESET
    s" --nonsense"  >LEN PROC-ARGV+

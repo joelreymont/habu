@@ -1,4 +1,4 @@
-\ diag-origin-test.f - checked fixtures for tools/diag-origin.f.
+\ diag-origin-test-lib.f - checked fixtures for tools/diag-origin.f.
 \ Run: bin/hb --load tools/diag-origin-test.f
 require src/lib/string.f
 
@@ -182,7 +182,6 @@ DGT-BIG-LEN DGT-SIZED-OUT-CAP + constant DGT-SIZED-ALLOC
    DGT-SIZED-DEF$ SB-APPEND
    SB$ ;
 
-\ Blank lines, then the definition.
 : DGT-SIZED-FILL ( ptr u8 n -- ) {: a:ptr u:n :}
    DGT-SIZED-DEF$ {: d:ptr du:n :}
    u du - 0 ?do $0a a i + c! loop

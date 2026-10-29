@@ -1,13 +1,9 @@
 \ build-fixpoint-main.f - CLI entrypoint for tools/build-fixpoint.f.
-\ The entry requires the tool. tools/bootstrap.sh, tools/seed.f and
-\ tools/ddc-verify.f compose one --load list for the whole chain, so the tool is
-\ already loaded there and the require is a no-op; tools/build-fixpoint-refresh.f
-\ is the self-contained entry that also requires the library preamble. Without
-\ the preamble, build-fixpoint.f's BF-NEED-PREAMBLE reports the load list it
-\ needs (rc 64). BUILD-FIXPOINT:BF-CLI is the fail-closed boundary: any escaped
-\ throw is reported on stderr and exits PROC-TIMEOUT-RC (124, src/lib/process.f)
-\ when it is a deadline that expired, BF-BUILD-RC (74) otherwise. A refused
-\ command line exits 64.
+\ tools/bootstrap.sh, tools/seed.f and tools/ddc-verify.f load the whole chain in
+\ one --load list, so the require is a no-op there; tools/build-fixpoint-refresh.f
+\ is the self-contained entry. BUILD-FIXPOINT:BF-CLI exits 124 (PROC-TIMEOUT-RC)
+\ for an expired deadline, 74 (BF-BUILD-RC) for any other escaped throw, and 64 for
+\ a refused command line.
 
 require tools/build-fixpoint.f
 

@@ -305,14 +305,11 @@ variable EST-MAP-U
    s" EST-ANONYMOUS-SPAN" T$=
    FS:CLEANUP-RUN ;
 
-\ THE SHIPPED PAYLOAD CARRIES NO ENGINE'S WID, and this is the row that reads it
-\ off the engine this checkout ships rather than off the build that wrote it. A
-\ record's wid field and a package row's two wid cells hold the offset from the
-\ window's first wordlist, one-based, so the base cell is the constant
-\ (src/habu/aot-decl.f WID-REL-BASE, spelled out here because the engine carries
-\ no AOT-BUF to ask) and every non-zero offset is inside the span the same cells
-\ declare. Before the rows moved, this base was the number of wordlists the
-\ BUILDING engine happened to have: 395 in the engine measured beside this.
+\ The shipped payload carries no engine's wid: this row reads it off the engine
+\ this checkout ships. A record's wid field and a package row's two wid cells
+\ hold the one-based offset from the window's first wordlist, so the base cell
+\ is the constant src/habu/aot-decl.f WID-REL-BASE (spelled out: the engine has
+\ no AOT-BUF to ask) and every non-zero offset lies inside the span they declare.
 variable EST-WID-BAD                    \ offsets outside [1, span]
 variable EST-WID-SEEN                   \ ... and the non-zero ones walked
 

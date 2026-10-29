@@ -1,23 +1,15 @@
-\ build-fixpoint.f - checked self-rebuild orchestration.
-\
-\ Load after this list, by design: the caller composes it as one --load line
-\ (tools/bootstrap.sh), so this file requires none of it.
-\ src/lib/errors.f, src/lib/string.f, src/lib/memory.f, src/lib/fs.f, src/lib/fs-mutate.f,
-\ src/lib/process.f, src/lib/process-argv.f, src/lib/process-env.f, and src/lib/codesign.f.
-\ The stamp key hashes the engine and the emitted stage sources with the baked
-\ SHA256 words; only the native-chain fold below reaches for src/lib/content-key.f
-\ and the shared closure walk, because that input is a file LIST rather than one
-\ file (see the stamp key section below).
+\ build-fixpoint.f - checked self-rebuild orchestration: emits the stage sources, certifies
+\ them, builds the capture host and the product, and keys the refresh stamp.
+\ The caller composes it as one --load line (tools/bootstrap.sh) after the library preamble
+\ BF-NEED-PREAMBLE names, so this file requires none of that preamble.
 
 require src/habu/verify-source.f
 require tools/build-target.f              \ the target the emitted sources are for
 require tools/build-certify.f            \ the certify report and census lines
 
-\ The tool itself lives in package BUILD-FIXPOINT. Everything below is private
-\ to it; the export block at the end of the file names the whole surface other
-\ files call. The sibling COMPILER-BUILD package closes and reopens
-\ BUILD-FIXPOINT, because packages do not nest, and imports what it needs
-\ with `using BUILD-FIXPOINT`.
+\ Everything below is private to BUILD-FIXPOINT; the export block at the end names the
+\ surface other files call. COMPILER-BUILD closes and reopens BUILD-FIXPOINT, since
+\ packages do not nest, and imports what it needs with `using BUILD-FIXPOINT`.
 package BUILD-FIXPOINT
 
 32768 constant BF-CMP-CAP
@@ -33,73 +25,34 @@ $10000 constant BF-CERT-DIAG-CAP
 256 constant BF-STAMP-CAP
 128 constant BF-PIN-CAP
 
-\ Load-discipline guard. build-fixpoint.f is the caller-composed depth-0 --load
-\ entry (BF-CLI-SELF-DISPATCH below); the lib preamble is --load-ed by the caller,
-\ never require-d here, so an old native seed can supply the minimal set its
-\ primitives support (see src/lib/process-env.f). Without the preamble the PATH-CAP
-\ buffer create just below otherwise dies mid-load with a bare
-\ `E-UNDEFINED: PATH-CAP`; name the required load list instead. The
-\ checker now loads fs.f through source-lex.f, so PATH-CAP alone no longer
-\ proves the caller loaded the preamble. codesign.f requires the other library
-\ modules except process-env.f; check one public word from each branch.
-\
-\ CHECKER-RESOLVES? asks which word this token would BIND to here, so the guard
-\ answers the same inside this package as outside it. It used to have to be a
-\ PUBLIC word called after `;package`, because the query it had then answered in
-\ the defining scope and reported a loaded preamble as missing from inside the
-\ package (dot habu-checker-defined-answers-1504bbde). It is an ordinary private
-\ word now.
+\ The preamble is --load-ed by the caller, never required here, so an old native seed can
+\ supply the minimal set its primitives support (src/lib/process-env.f). Without it this
+\ load would die at a bare `E-UNDEFINED: PATH-CAP`; the guard names the load list instead.
+\ PATH-CAP alone proves nothing, since source-lex.f loads fs.f: codesign.f requires every
+\ other module but process-env.f, so one public word from each branch is checked.
 : BF-NEED-PREAMBLE ( -- )
    s" CODESIGN:TOOL" CHECKER-RESOLVES?
    s" PROC-ENV-INHERIT-MISSING" CHECKER-RESOLVES? and if exit then
    s" build-fixpoint: missing required load; --load src/lib/errors.f src/lib/string.f src/lib/memory.f src/lib/fs.f src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f src/lib/process-env.f src/lib/codesign.f tools/build-fixpoint.f tools/build-fixpoint-main.f before the build verb" BF-USAGE-RC die ;
 BF-NEED-PREAMBLE
 
-\ THE HOST CAPABILITY THE EMITTED REWIND NEEDS. The stage source rewinds to the
-\ mark src/core/lower-cert-seal.f records at the core prefix's end, and it
-\ carries no copy of that prefix for an older rewind to land on. So a host
-\ engine without the mark cannot build this tree at all, and the honest place to
-\ say so is here - before a byte is emitted - naming the file and the repair.
-\ Emitting the old earliest-marker rewind instead would truncate below a prefix
-\ the source no longer re-emits, and the first symptom would be an undefined
-\ core word reported from somewhere inside a 900KB generated file.
-\
-\ CHECKER-RESOLVES? is the check because it is the only existence query in the
-\ boot prefix that answers for a package-qualified name: `search-wl` searches
-\ one wordlist on the raw spelling and a package name is not itself a
-\ dictionary word, so it answers 0 for PKG:TAIL whether or not the package has
-\ it (measured, against STR:LENGTH).
+\ The stage source rewinds to the mark src/core/lower-cert-seal.f records at the core
+\ prefix's end and carries no copy of that prefix, so a host engine without the mark cannot
+\ build this tree: refuse before a byte is emitted, naming the file and the repair.
+\ CHECKER-RESOLVES? is the only boot-prefix existence query that answers for a
+\ package-qualified name: `search-wl` answers 0 for PKG:TAIL whatever the package holds
+\ (measured against STR:LENGTH).
 : BF-WATERMARK? ( -- bool )
    s" PREFIX-MARK:CURSORS" CHECKER-RESOLVES? ;
 
-\ AND THE FACT THE NAME CANNOT CARRY. Resolvability answers "could this host
-\ compile the call"; it cannot answer "did this host's mark record the boundary
-\ set", because a name resolves whether or not anything ever wrote through it -
-\ and an engine built from a tree that carried the words but never took the
-\ boundary is exactly the host that would emit a rewind restoring nothing. So the
-\ value is read too, and it is DATA no other writer can produce: CU is private to
-\ PREFIX-MARK and src/core/lower-cert-seal.f assigns it once, from
-\ CHECKER-BOUND:CURSORS. Zero therefore means the boundary set never landed in
-\ this engine, not that it never ran - the mark is top-level in a prefix file, so
-\ every host that boots has reached it.
-\
-\ Through an evaluated text, and only after the resolvability check has passed,
-\ because the two clauses answer different hazards and the compile one comes
-\ first: a host without the word cannot COMPILE a body that names it, so this
-\ file's load would die E-UNDEFINED before any guard could speak. That is what a
-\ resolvability query is for, and it is why the value cannot simply be called.
-\
-\ WHAT THIS DELIBERATELY DOES NOT CHECK, and why the reason is a measurement and
-\ not an omission: that the recorded width still equals the seam's live one.
-\ CHECKER-BOUND lives below the lower-cert seal, and the seal is what makes it
-\ unreachable from every consumer outside the prefix - measured here,
-\ `s" CHECKER-BOUND:CURSORS" CHECKER-RESOLVES?` answers 0 on a booted engine while
-\ the same query answers -1 for PREFIX-MARK:CURSORS. Declaring the boundary's
-\ REWIND (dot habu-give-the-build-4b825045) did not move that wall: only the
-\ restore half carries a row, so CURSORS and MARK stay behind the seal and no
-\ consumer can hold the two numbers at once. The property that the count comes
-\ OFF the seam is carried by construction instead: one assignment, in the file
-\ that owns the mark, from the seam itself.
+\ A name resolves whether or not anything wrote through it, so the mark's value is read
+\ too: src/core/lower-cert-seal.f assigns it once, from CHECKER-BOUND:CURSORS, and the mark
+\ is top-level in a prefix file every booted host reached, so zero means the boundary set
+\ never landed in this engine. The value is read through an evaluated text after the
+\ resolvability check, since a host without the word cannot compile a body naming it.
+\ The recorded width is not compared with the seam's live one: CHECKER-BOUND sits behind
+\ the lower-cert seal (`s" CHECKER-BOUND:CURSORS" CHECKER-RESOLVES?` answers 0 on a booted
+\ engine, -1 for PREFIX-MARK:CURSORS), so no consumer can hold both numbers.
 variable BF-MARK-N
 
 public
@@ -157,8 +110,8 @@ create BF-REC-STAGE-DG 40 allot
 create BF-REC-STDIN-DG 40 allot
 create BF-CERT-DIAG BF-CERT-DIAG-CAP allot
 create BF-STAMP-BUF BF-STAMP-CAP allot
-create BF-SHA-CTX SHA256-CTX-BYTES allot        \ this tool's digest context
-create BF-FSHA-CTX SHA256-FILE-CTX-BYTES allot  \ ... and its file-digest context
+create BF-SHA-CTX SHA256-CTX-BYTES allot
+create BF-FSHA-CTX SHA256-FILE-CTX-BYTES allot
 create BF-STAMP-PATH-BUF PATH-CAP allot
 create BF-STAMP-DIR-BUF PATH-CAP allot
 create BF-STAMP-DEF-BUF PATH-CAP allot
@@ -300,14 +253,10 @@ variable BF-CERT-PATH-U
    PROC-OUT-W PROC-CLOSE-CELL
    PROC-ERR-W PROC-CLOSE-CELL ;
 
-\ Spawn the argv/env the CALLER has already built, with stdout on a FILE and
-\ stderr captured under the same deadline every other spawned child here gets.
-\ A capture buffer bounds a child's output by a number chosen before the child
-\ runs; a file does not, and its size is knowable afterwards - which is the only
-\ way a child whose output is a source transform can be read back through
-\ FS:FILE-SIZE (dot habu-hb-build-cannot-d09df17e). The answer is an `outcome`, so
-\ a deadline expiry is a named arm and not a bare rc.
-\
+\ Spawn the argv and env the caller built, stdout on a file and stderr captured under the
+\ deadline every child here gets. A file, unlike a capture buffer, does not bound a child's
+\ output before it runs, and FS:FILE-SIZE reads its size afterwards: the only way to read a
+\ source transform's output back. The answer is an outcome, so a deadline expiry is an arm.
 : BF-RUN-ARGV-ENV-OUTFILE ( ptr u8 n ptr u8 n ptr u8 len ms -- len outcome )
    {: exe:ptr exeu:n out:ptr outu:n err:ptr errcap:len timeout:ms :}
    out outu BF-LF-BUF 0 FS:WRITE-ALL
@@ -367,10 +316,8 @@ variable BF-CERT-PATH-U
    out outu a u BF-APPEND-BYTES
    out outu BF-APPEND-LF ;
 
-\ Promoted for the sibling packages further down this file: they are separate
-\ packages, so they reach these through `using BUILD-FIXPOINT` and cannot see
-\ private tails. Everything the rest of the repository calls is promoted in one
-\ block at the end of the file.
+\ Public for the sibling packages further down, which reach these through
+\ `using BUILD-FIXPOINT`; the repository's surface is the export block at the end.
 public
 EXPORT BF-APPEND-LINE
 EXPORT BF-FINISH-PID
@@ -452,21 +399,12 @@ package BUILD-FIXPOINT
    BF-APP-OUT BF-APP-CLOSE ;
 
 \ ---------------------------------------------------------------------------
-\ Boot-prefix hash pin: close the mid-build boot-reload TOCTOU.
-\
-\ Every checkout source file emitted into a stage image is pinned before the
-\ append or split helpers copy it. The same boot-prefix files (checker, core,
-\ target and emitter surface) are re-read across stage2, stdin and snap, and the
-\ stamp-key re-emit. Between those reads a source edit would let stage N build
-\ from one revision and stage N+1 from another, silently entering the installed
-\ image. The pin records each path's content digest on first read and
-\ re-verifies on every reload; a drifted file throws E-BUILD-BOOT-DRIFT and
-\ fails the build.
-\
-\ Design: per-file, keyed by SHA-256 of the path (fixed 32 bytes, independent of
-\ path length), value = SHA-256 of the file content. Per-file (not one digest
-\ over a concatenated manifest) so the map spans all three emissions with no
-\ separate file list to drift, and so a mismatch names the exact drifted path.
+\ Boot-prefix hash pin. Every checkout source emitted into a stage image is pinned before the
+\ append or split helpers copy it: the boot-prefix files are re-read across stage2, stdin,
+\ snap and the stamp-key re-emit, and an edit between reads would build stage N and N+1 from
+\ different revisions. The pin keys each path by its SHA-256 (32 bytes whatever its length),
+\ records its content digest on first read and throws E-BUILD-BOOT-DRIFT on a changed
+\ reload, naming the drifted path.
 : BF-PIN-RESET ( -- )
    0 BF-PIN-N ! ;
 
@@ -674,10 +612,8 @@ package BUILD-FIXPOINT
    out outu s" src/core/generated-declaration.f" BF-APPEND-SOURCE ;
 
 : BF-APPEND-DECL-FILES ( ptr u8 n -- ) {: out:ptr outu:n :}
-   \ The shared declaration-event transaction, then the STRUCTURE constructor
-   \ generator, then the STRUCTURE declarer (which calls the generator, so it must
-   \ come after it), then the ENUM declarer (a pure event-driven leaf) — all after
-   \ the checker hook.
+   \ All after the checker hook; the STRUCTURE declarer calls the constructor
+   \ generator, so it follows it.
    out outu s" src/core/decl-event.f"     BF-APPEND-SOURCE
    out outu s" src/core/structure-make.f" BF-APPEND-SOURCE
    out outu s" src/core/structure-decl.f" BF-APPEND-SOURCE
@@ -715,23 +651,12 @@ package BUILD-FIXPOINT
 : BF-APPEND-ENUMS ( ptr u8 n -- ) {: out:ptr outu :}
    out outu s" src/core/enums.f" BF-APPEND-SOURCE ;
 
-\ THE BOOT PREFIX, in the engine's own load order.
-\
-\ These are the files src/habu/habu2.f PFX-LOAD-BASE-FILES makes every engine
-\ re-read at boot, and this word is the build's mirror of that list:
-\ BF-APPEND-CHECKER-BOOT is PFX-LOAD-CHECKER-FILES, BF-APPEND-DECL-FILES is
-\ PFX-LOAD-DECL-FILES, and BF-APPEND-BOOT-CORE carries PFX-LOAD-CORE-FILES
-\ followed by the final core seal. Runtime registers the core include facts
-\ before that seal; this certification assembly needs no include registry.
-\ Each path is spelled once, in the appender that already owned it.
-\
-\ The assembly is CERTIFY-ONLY: nothing here is ever fed to a stage compile.
-\ The compiling host already carries these definitions from its own boot and
-\ the generated stage source rewinds to them (src/habu/prefix-rewind.f's
-\ top-level text) instead of recompiling them, so their static check has no
-\ other home. That check is the only gate they have (dot
-\ habu-staged-fixpoint-src-0b5fc6e6), which is why it is a build phase of its
-\ own rather than a side effect of the stage source.
+\ The boot prefix in the engine's own load order, the build's mirror of src/habu/habu2.f
+\ PFX-LOAD-BASE-FILES: BF-APPEND-CHECKER-BOOT is PFX-LOAD-CHECKER-FILES, BF-APPEND-DECL-FILES
+\ PFX-LOAD-DECL-FILES, and BF-APPEND-BOOT-CORE PFX-LOAD-CORE-FILES and the final core seal,
+\ without the include registry runtime registers before that seal. Certify-only: the
+\ compiling host carries these definitions and the stage source rewinds to them
+\ (src/habu/prefix-rewind.f), so this static check is the only gate they have.
 : BF-APPEND-BOOT-CORE ( ptr u8 n -- ) {: out:ptr outu:n :}
    out outu BF-APPEND-CORE-FILES
    out outu BF-APPEND-ROLES
@@ -760,13 +685,10 @@ package BUILD-FIXPOINT
    out outu BF-APPEND-DECL-FILES
    out outu BF-APPEND-BOOT-CORE ;
 
-\ The verifier reads the emitted buffer and does not follow require. Include
-\ the required build modules at their dependency boundaries, in habu1.f's own
-\ require order: regalloc-abi.f, address-cells.f and prof-abi.f, which
-\ data-claims.f requires for the register allocator's, the address-cell
-\ registry's and the profiler's rows, then data-claims.f itself (a module
-\ habu1.f requires but this list omits certifies as `undefined word`, which is
-\ how the DATA-CLAIMS split first failed here).
+\ The verifier reads the emitted buffer and does not follow require, so the required build
+\ modules go in at their dependency boundaries, in habu1.f's require order: regalloc-abi.f,
+\ address-cells.f and prof-abi.f, which data-claims.f requires, then data-claims.f. A module
+\ habu1.f requires but this list omits certifies as `undefined word`.
 : BF-APPEND-HABU1 ( ptr u8 n -- ) {: out:ptr outu:n :}
    out outu s" src/habu/primitive-registry.f" BF-APPEND-MODULE
    out outu s" src/habu/regalloc-abi.f" BF-APPEND-MODULE
@@ -779,14 +701,12 @@ package BUILD-FIXPOINT
    out outu s" src/habu/spawn-abi.f" BF-APPEND-MODULE
    out outu s" src/habu/habu1.f" BF-APPEND-MODULE ;
 
-\ fmt requires float and string; float requires string and option, and string
-\ requires errors and option. Nothing fmt requires reaches num-types.f,
-\ num-arithmetic.f or memory.f: they come in the prefix's order (src/habu/habu2.f
-\ PFX-LOAD-STDLIB-FILES) because num-types.f and memory.f (its WITH-BYTES `frame`
-\ STRUCTURE) declare type families, and the seed refuses a captured registry
-\ that does not start where the prefix's does (src/core/type-family.f
-\ REG-AOT-BASE-BAD): without memory.f the refreshed stdin engine died there.
-\ Prelude/errors are already restored here. Each provided fact makes the
+\ fmt requires float and string; float requires string and option, string requires errors
+\ and option. num-types.f, num-arithmetic.f and memory.f, which fmt does not reach, come in
+\ the prefix's order (src/habu/habu2.f PFX-LOAD-STDLIB-FILES) because num-types.f and
+\ memory.f (its WITH-BYTES `frame` STRUCTURE) declare type families and the seed refuses a
+\ captured registry that does not start where the prefix's does (src/core/type-family.f
+\ REG-AOT-BASE-BAD). Prelude and errors are restored already; each provided fact makes the
 \ remaining require a no-op.
 : BF-APPEND-FMT ( ptr u8 n -- ) {: out:ptr outu:n :}
    out outu s" src/lib/adt/option.f" BF-APPEND-MODULE
@@ -797,13 +717,10 @@ package BUILD-FIXPOINT
    out outu s" src/lib/float.f" BF-APPEND-MODULE
    out outu s" src/lib/fmt.f" BF-APPEND-MODULE ;
 
-\ WHAT IS NOT HERE. Every core-prefix file the compiling host already carries
-\ from its own boot is absent: the payload rewinds to the mark at the end of
-\ that prefix (src/habu/prefix-rewind.f's text, BF-APPEND-RUN-PRELUDE) rather
-\ than truncating past it and recompiling. script-argv, prelude and errors
-\ load AFTER that mark, so the rewind takes them away and the payload has to
-\ bring them back. The absent files are still statically checked, as their
-\ own build phase: BF-APPEND-BOOT-PREFIX.
+\ Core-prefix files the compiling host carries from its own boot are absent: the payload
+\ rewinds to the mark at that prefix's end (src/habu/prefix-rewind.f, BF-APPEND-RUN-PRELUDE).
+\ script-argv, prelude and errors load after that mark, so the payload brings them back.
+\ The absent files are checked as their own phase, BF-APPEND-BOOT-PREFIX.
 : BF-RECOVERY-ONLY ( -- )
    HB-TARGET-LINUX-X86-64? BUILD-TARGET:LINUX-X86-64? or if
       s" build-fixpoint: ARM source recovery only; use tools/native-build.f or tools/two-generation-build.f on x86-64"
@@ -976,39 +893,29 @@ package BUILD-FIXPOINT
    DIAG-BUFFER-OFF
    BF-CERT-RC @ ;
 
-\ BLOCKING: a generated stage source that fails VERIFY:SOURCE-BUF kills the
-\ build (E-BUILD-CERTIFY) after reporting the diagnostic. This is the staged
-\ trust induction (dot habu-staged-fixpoint-src-0b5fc6e6): the RUNNING stage-N
-\ engine certifies the full assembled stage-N+1 source - the exact bytes the
-\ build consumes, checker-boot prelude included - before any stage compile, so a
-\ type error in emitted engine source can no longer warn its way into an
-\ installed binary. No escape hatch: the gforth recovery lane (docs/bootstrap.md
-\ "No-Binary Recovery") reaches this native refresh only after a working bin/hb
-\ exists, and a tree whose generated sources reject must be repaired, not
-\ installed.
+\ A generated stage source that fails VERIFY:SOURCE-BUF kills the build (E-BUILD-CERTIFY)
+\ after reporting the diagnostic: the running stage-N engine certifies the exact stage-N+1
+\ bytes the build consumes, checker-boot prelude included, before any stage compile. No
+\ escape hatch: the gforth recovery lane (docs/bootstrap.md "No-Binary Recovery") reaches
+\ this refresh only after a working bin/hb exists, and a rejected tree must be repaired.
 : BF-CERTIFY-GENERATED ( ptr u8 n ptr u8 n -- )
    BF-CERTIFY-RC
    0= IF exit THEN
    BF-CERT-LABEL$ BF-CERT-RC @ BF-CERT-DIAG BF-CERT-DIAG-U @ BUILD-CERTIFY:REPORT
    E-BUILD-CERTIFY throw ;
 
-\ The driver a certify child loads.
 : BF-CERTIFY-DRIVER$ ( -- ptr u8 n )
    s" tools/build-fixpoint-certify.f" ;
 
-\ Generated sources redeclare the stdlib. Verify them against the core prefix
-\ in a child of the running engine (ENGINE-ID:PATH$), not BF-ENGINE$: that
-\ names the product maker, which a fixture points at this build's own output.
-\ The parent retains its build tools and registry, while every source body is
-\ checked without filename exemptions. tools/build-fixpoint-certify.f rewinds
-\ the child with src/habu/prefix-rewind.f's top-level text; the rewind keeps
-\ code/DATA alive, so the child's compiled verifier and diagnostic calls remain
-\ valid after their dictionary entries retire. A PHASE has the child print its
-\ census line once its scan certified the source, because what the scan counted
-\ (VERIFY:CENSUS) exists only in the child; the target goes with it because a
-\ cross build's target is this process's, not the child's. An empty PHASE
-\ prints none. The child exits 0 for a certified source and 70 after printing
-\ the rejection and its diagnostic; any status but 0 fails the build.
+\ Generated sources redeclare the stdlib, so they are verified against the core prefix in a
+\ child of the running engine (ENGINE-ID:PATH$), not BF-ENGINE$, the product maker a fixture
+\ points at this build's own output. Every source body is checked without filename
+\ exemptions. tools/build-fixpoint-certify.f rewinds the child with src/habu/prefix-rewind.f's
+\ text; the rewind keeps code and DATA alive, so the child's compiled verifier stays valid
+\ after its entries retire. A nonempty PHASE has the child print its census line, since
+\ VERIFY:CENSUS exists only in the child, with this process's target, a cross build's. The
+\ child exits 0 for a certified source and 70 after printing the rejection and its
+\ diagnostic; any status but 0 fails the build.
 : BF-CERTIFY-GENERATED-CORE ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: lab:ptr labu:n path:ptr pathu:n phase:ptr phaseu:n :}
    BF-PREPARE-ENV
@@ -1026,20 +933,15 @@ package BUILD-FIXPOINT
    BF-SPAWN BF-FINISH-PID
    0<> if E-BUILD-CERTIFY throw then ;
 
-\ The stage engine reads its source from the fixed `stage2-src` name in the temp
-\ root (BF-PREPARE-STAGE-ARGV runs hb-stage with just `-- <tmp>`, no --load), so
-\ both build phases emit into that one path. BF-STAGE2-SOURCE writes the stage2
-\ source, then BF-STDIN-SOURCE OVERWRITES the same path with the stdin driver
-\ source before BF-CERTIFY-STDIN runs. Each certify therefore reads the same
-\ physical path but its own phase's distinct content — the `stage2-src`/`stdin-src`
-\ argument is the diagnostic label for the phase, not a second file name.
-\ The boot prefix's own certify phase. Its bytes are assembled into their own
-\ stage-input path and read straight back through VERIFY:SOURCE-BUF; no build
-\ step ever compiles that file.
+\ The boot prefix's certify phase: its bytes go to their own stage-input path and are read
+\ back through VERIFY:SOURCE-BUF; no build step compiles that file.
 : BF-CERTIFY-PREFIX ( -- )
    s" prefix-src" s" prefix-src" BF-A$ BF-CERTIFY-GENERATED
    s" boot prefix" BUILD-CERTIFY:TARGET$ BUILD-CERTIFY:CENSUS ;
 
+\ The stage engine reads its source from the fixed `stage2-src` path in the temp root
+\ (BF-PREPARE-STAGE-ARGV passes only `-- <tmp>`), so BF-STDIN-SOURCE overwrites the stage2
+\ source there before BF-CERTIFY-STDIN: a certify's first argument names its phase, not a file.
 : BF-CERTIFY-STAGE2 ( -- )
    s" stage2-src" s" stage2-src" BF-A$ s" assembled" BF-CERTIFY-GENERATED-CORE ;
 
@@ -1124,21 +1026,14 @@ package BUILD-FIXPOINT
    BF-STAGE-FIXPOINT-FROM-SOURCE ;
 
 \ ---------------------------------------------------------------------------
-\ The chain capture, and the driver that bakes it.
-\
-\ THE DRIVER OWNS THE PATHS. docs/forth.md is explicit that a build source must
-\ not read them out of an environment, so the artifact and the engine that
-\ produced it arrive at src/habu/stdin.f as a call spliced into the source this
-\ builder generates. The generator lives here, with the rest of the build's path
-\ construction, and tools/aot-chain-bake.f is a caller of it.
-\
-\ THE TWO LITERALS GO IN A COLON BODY, never on a top-level line. An interpret-mode
-\ `s"` ALLOTS its bytes at HERE, which CAPTURE-REPL latches as the capture window's
-\ DATA base, so a top-level literal made the emitted engine depend on the LENGTH of
-\ the paths spliced into it - two builds of one tree from different temporary roots
-\ wrote engines differing in 12081 bytes. Compiled into a body the same literal
-\ lands in code below the window and the seed's canonical CODE-B0 absorbs it.
-\ src/habu/stdin.f DP-MARK refuses the top-level shape by name.
+\ The chain capture, and the driver that bakes it. A build source must not read paths from
+\ the environment (docs/forth.md), so the artifact and the engine that produced it reach
+\ src/habu/stdin.f as a call spliced into the generated source; tools/aot-chain-bake.f calls
+\ this generator. The two literals go in a colon body, never on a top-level line: an
+\ interpret-mode `s"` allots at HERE, which CAPTURE-REPL latches as the capture window's DATA
+\ base, so the engine would depend on the paths' length (two temporary roots gave engines
+\ 12081 bytes apart). In a body the literal lands in code below the window, which the seed's
+\ canonical CODE-B0 absorbs. src/habu/stdin.f DP-MARK refuses the top-level shape.
 create BF-CHAIN-DRV-BUF PATH-CAP allot   variable BF-CHAIN-DRV-U
 create BF-ART-BUF PATH-CAP allot         variable BF-ART-U
 variable BF-DRV-R
@@ -1200,14 +1095,9 @@ variable BF-DRV-R
    l 1 + tu > if l tu - BF-SRC-C@ BF-DRV-WS? 0= if BF-DRV-TAIL-BAD then then
    l 1 + tu - ;
 
-\ THE ONE SPLIT OF THE STDIN DRIVER, and the only word any generator asks. It
-\ reads src/habu/stdin.f into BF-SOURCE-BUF and answers how many of those bytes a
-\ generated driver keeps - everything up to the terminal `STDIN-DRIVER:RUN` the
-\ generator replaces. Three generators want that: this file's own chain driver,
-\ tools/aot-chain-bake.f through it, and test/aot-wid-build.f, which used to
-\ carry its own copy of the whitespace scan, the tail token and the fail-closed
-\ check. Two spellings of one fact drift, and the fact is which bytes of a
-\ shipped source file a build may keep.
+\ The one split of the stdin driver: reads src/habu/stdin.f into BF-SOURCE-BUF and answers
+\ how many bytes a generated driver keeps, up to the terminal `STDIN-DRIVER:RUN` it replaces.
+\ This file's chain driver, tools/aot-chain-bake.f and test/aot-wid-build.f all ask it.
 : BF-DRV-SOURCE-KEEP ( -- n )
    s" src/habu/stdin.f" BF-READ-SOURCE
    BF-DRV-KEEP ;
@@ -1247,19 +1137,13 @@ variable BF-DRV-R
    BF-CHAIN-ART$ s" hb-host" BF-B$ BF-CHAIN-DRIVER-FROM ;
 
 \ ---------------------------------------------------------------------------
-\ TWO ENGINES, ONE PREFIX.
-\
-\ Once the compiler chain is baked, `require src/compiler/native/compiler.f` is a
-\ registry no-op in the product and src/core/include.f dies on duplicates, so the
-\ product can never capture its own chain. The build therefore emits the same
-\ prefix twice and the two emissions differ by ONE parameter - the artifact the
-\ driver declares (src/habu/stdin.f STDIN-DRIVER:ARTIFACT!). No mode flag, no
-\ second prefix, no second source list:
-\
-\   hb-host    the CAPTURE HOST. No artifact: today's bin/hb shape. A build
-\              artifact, never installed, and the engine the capture runs in.
-\   hb-stdin   the PRODUCT, seeded from the artifact captured in hb-host.
-\              BF-INSTALL-HB checks this candidate before promoting it.
+\ Two engines, one prefix. Once the chain is baked, `require src/compiler/native/compiler.f`
+\ is a registry no-op in the product and src/core/include.f dies on duplicates, so the
+\ product cannot capture its own chain. The prefix is emitted twice, differing only in the
+\ artifact the driver declares (src/habu/stdin.f STDIN-DRIVER:ARTIFACT!):
+\   hb-host    the capture host: no artifact, never installed; the capture runs in it.
+\   hb-stdin   the product, seeded from the artifact captured in hb-host; BF-INSTALL-HB
+\              checks it before promoting it.
 : BF-EMIT-ENGINE ( ptr u8 n -- ) {: drv:ptr drvu:n :}
    s" stage2-src" drv drvu BF-EMIT-STDIN-RUN-SOURCE
    BF-CERTIFY-STDIN
@@ -1392,13 +1276,10 @@ create BF-BOOT-ERR BF-BOOT-ERR-CAP allot
    BF-ENGINE$ [: BF-INSTALL-HB-FILL ;] FS:REPLACE-STAGED
    s" hb-stdin" BF-REMOVE-TMP ;
 
-\ The CAPTURE HOST is kept beside the engine it captured for. A fixture whose
-\ subject is source-loading the chain (a capture, a load-time delta, a
-\ family-count bracket) cannot run against the product - the product already
-\ provides the chain, so the load it wants to measure is a no-op - and
-\ rebuilding a host per fixture is the cost this file exists to pay once. The
-\ path derives from BF-ENGINE$, so a fixture install under HABU_FIXPOINT_ENGINE
-\ keeps its host in its own sandbox and never writes this repo's bin.
+\ The capture host is kept beside the engine it captured for: a fixture that source-loads
+\ the chain cannot run against the product, which provides it, and rebuilding a host per
+\ fixture is the cost this file pays once. The path derives from BF-ENGINE$, so a fixture
+\ install under HABU_FIXPOINT_ENGINE keeps its host in its own sandbox.
 : BF-HOST-DST$ ( -- ptr u8 n )
    BF-ENGINE$ s" -host" BF-HOST-DST-BUF FS:SUFFIX-PATH BF-HOST-DST-U !
    BF-HOST-DST-BUF BF-HOST-DST-U @ SPAN:TAKE SPAN:$ ;
@@ -1477,30 +1358,15 @@ create BF-BOOT-ERR BF-BOOT-ERR-CAP allot
    s" engine" BF-STAMP-DG BF-STAMP-DG+ ;
 
 \ ---------------------------------------------------------------------------
-\ The stamp key - what the refresh weighs when it decides a rebuild is
-\ unnecessary: the key's preimage, and the comparison against the stored stamp.
-\
-\ The chain capture is the one build input this key cannot reach by digesting the
-\ engine and the two emitted stage sources. The capture runs in the host engine
-\ from sources read straight from the checkout, so editing the chain changes no
-\ emitted byte and no other stamp input, and the refresh would answer `fixpoint:
-\ cached` over a product baked from the older chain. Fold the CAPTURE TOOL's whole
-\ ordered require/include closure into the preimage instead - ONE row, and it
-\ subsumes the chain's own 43 files because the tool requires the chain entry
-\ inside its window. A second row over the nested set would be two authorities for
-\ one fact. Discovery is the same walk the hb-build artifact cache keys with
-\ (tools/event-closure-lib.f over tools/source-discovery.f), so exactly the files
-\ that actually load are keyed: an edit to any of them rebuilds, an edit to a file
-\ the capture does not load does not. Discovery rejects fail-closed, so a closure
-\ that cannot be reproduced fails the refresh rather than being keyed as though it
-\ were absent.
-\
-\ The closure digest is captured ONCE per process and every key derived
-\ afterwards replays that capture. The capture happens before the build, because
-\ reading the chain afterwards would record content the build never compiled: an
-\ edit landing mid-build would be written into the stamp and the next refresh
-\ would skip over an engine built from the older chain. Capturing first can only
-\ over-invalidate, which costs one rebuild and never ships a stale engine.
+\ The stamp key: the refresh's preimage and its comparison with the stored stamp. The chain
+\ capture reads sources from the checkout in the host engine, so editing the chain changes
+\ no emitted byte. The capture tool's whole ordered require/include closure is one preimage
+\ row, covering the chain since the tool requires the chain entry inside its window.
+\ Discovery is the hb-build artifact cache's walk (tools/event-closure-lib.f over
+\ tools/source-discovery.f) and refuses fail-closed, so a closure that cannot be reproduced
+\ fails the refresh. The closure digest is captured once per process, before the build: a
+\ mid-build edit read afterwards would be stamped over an engine built from the older
+\ chain. Capturing first can only over-invalidate.
 
 create CHAIN-DG 40 allot
 variable CHAIN-DONE?
@@ -1532,13 +1398,9 @@ variable CHAIN-I
    ENTRY$ CHAIN-DG CHAIN-DIGEST!
    BF-TRUE CHAIN-DONE? ! ;
 
-\ The preimage tag for the capture-source digest. It is a word because two
-\ places must spell it alike: the key below writes the field, and
-\ tools/build-fixpoint-test.f rebuilds the same framed field to prove the
-\ digest reached the preimage. While the tag was a literal in both, renaming it
-\ here left the fixture searching for a tag the key no longer writes - and the
-\ fixture's own negative case went on passing, because an absent tag is absent
-\ either way.
+\ The preimage tag for the capture-source digest, a word because tools/build-fixpoint-test.f
+\ rebuilds the same framed field: two literals drift apart on a rename unseen, since the
+\ fixture's negative case passes on an absent tag either way.
 : BF-STAMP-CAPTURE-TAG$ ( -- ptr u8 n )
    s" capture-src" ;
 
@@ -1664,12 +1526,10 @@ variable CHAIN-I
    s" snap" BF-ARG0= if BF-BUILD-SNAP-FRESH exit then
    BF-USAGE ;
 
-\ Fail-closed CLI boundary. BF-CLI catches every throw that escapes BF-MAIN,
-\ names it on stderr, and dies with a fixed status, so a failure anywhere in the
-\ refresh chain is loud and nonzero under every seed. The status is the tool's
-\ exit contract: PROC-TIMEOUT-RC (src/lib/process.f) when a deadline expired, in
-\ this process or in a child that exited with it (BF-RC0), and BF-BUILD-RC for
-\ every other throw. A refused command line exits BF-USAGE-RC.
+\ Fail-closed CLI boundary: BF-CLI catches every throw out of BF-MAIN, names it on stderr
+\ and dies with the tool's exit contract: PROC-TIMEOUT-RC (src/lib/process.f) for a deadline
+\ that expired here or in a child that exited with it (BF-RC0), BF-BUILD-RC for any other
+\ throw, BF-USAGE-RC for a refused command line.
 $80 constant BF-FAIL-CAP
 $18 constant BF-FAIL-DG-CAP
 create BF-FAIL-BUF BF-FAIL-CAP allot
@@ -1731,24 +1591,14 @@ variable BF-CLI-RAN
 
 package BUILD-FIXPOINT
 
-\ Fail-closed CLI self-dispatch. tools/build-fixpoint-main.f and
-\ tools/build-fixpoint-refresh.f are explicit wrappers that call BF-CLI. Before
-\ self-dispatch, omitting an entry wrapper from the recovery command left an
-\ explicit build verb unclaimed, so the loaded stdin engine read its program
-\ from the closed stdin, hit EOF, and exited 0 having built nothing. Run the CLI
-\ here when the command line named THIS file (SCRIPT-NAMED-LOAD?; a file another
-\ file required stays inert) AND a build verb was passed after `--`.
-\
-\ That question used to be asked as INCLUDE-DEPTH 0, which was only ever a
-\ proxy: it was true because `--load` inlined its argv files into the top-level
-\ source stream, so a named file happened to sit at depth 0. Once `--load`
-\ started loading them through the require registry (dot
-\ habu-make-load-consult-85c88fb3) every named file sat at depth 1 and the
-\ dispatch went silently inert - the exact footgun below, restored. The loader
-\ records which paths the command line named, so ask that. The verb gate keeps a co-loaded tool that consumes its own
-\ `--`-flag args (e.g. tools/hb-build.f under tools/hb-build-test-lib.f, loaded at
-\ depth 0 alongside this file) from being hijacked, and BF-CLI is idempotent so
-\ calls from either explicit entry wrapper cannot double-build.
+\ Fail-closed CLI self-dispatch. tools/build-fixpoint-main.f and tools/build-fixpoint-refresh.f
+\ call BF-CLI; without self-dispatch a recovery command omitting them leaves the loaded stdin
+\ engine reading its program from closed stdin and exiting 0, having built nothing. Run the
+\ CLI when the command line named this file (SCRIPT-NAMED-LOAD?; a required file stays
+\ inert) and a build verb follows `--`. INCLUDE-DEPTH 0 cannot answer this: `--load` loads
+\ named files at depth 1 through the require registry. The verb gate keeps a co-loaded tool
+\ that consumes its own `--` arguments (tools/hb-build.f under tools/hb-build-test-lib.f)
+\ from being hijacked, and BF-CLI runs once per process.
 : BF-CLI-VERB-ARG0? ( -- bool )
    SCRIPT-ARGC 0 <= if BF-FALSE exit then
    s" all"     BF-ARG0= if BF-TRUE exit then
@@ -1764,12 +1614,9 @@ package BUILD-FIXPOINT
    BF-CLI ;
 
 \ ---------------------------------------------------------------------------
-\ The bootstrap BUILD-FIXPOINT surface. Shared build helpers are exported by
-\ tools/build-support.f; these words belong to the orchestration above.
-\ Consumers `require tools/build-fixpoint.f` and then `using BUILD-FIXPOINT`;
-\ the tool's own test
-\ reopens `package BUILD-FIXPOINT` instead, because it drives internals no
-\ caller is meant to see.
+\ The BUILD-FIXPOINT surface. Shared build helpers are exported by tools/build-support.f.
+\ Consumers require this file and `using BUILD-FIXPOINT`; the tool's own test reopens the
+\ package to drive internals no caller sees.
 
 public
 

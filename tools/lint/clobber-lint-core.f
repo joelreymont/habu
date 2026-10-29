@@ -1,20 +1,17 @@
-\ clobber-lint.f -- register-clobber analysis for BL-able emitter routines.
-\ Self-hosted clobber lint. Run:
-\   bin/hb --load tools/lint/text.f tools/lint/token.f tools/lint/lib.f tools/lint/clobber-lint.f
+\ clobber-lint-core.f - register-clobber analysis for BL-able emitter routines.
+\ Run: bin/hb --load tools/lint/clobber-lint.f
 
 require src/lib/errors.f
 require src/lib/string.f
 require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
-require src/lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/lib/fmt.f                        \ FMT:.INT
 
 package CLOBBER-CENSUS
 
-\ Observed production floors include qualified labels and wrapped calls.
-\ Lower counts need review; dropping package tails must not hide routines.
-\ 399 -> 397 when 878e1026 retired BWAITRC (src/habu/habu1.f), whose LNX-OK
-\ and LNX-DONE openings were two routines; its calls were not counted (no BL).
+\ The production floor, qualified labels and wrapped calls included. A lower
+\ count needs review: dropping package tails must not hide routines.
 397 constant MIN-ROUTINES
 625 constant MIN-CALLS
 
@@ -214,18 +211,13 @@ variable RX  variable RACC
    0 ;
 
 \ ---- wrapped emitter calls ------------------------------------------------
-\ A wrapped emitter call is an UPPER-CASE `PKG:CALL` word that expands, at emit
-\ time, to a register-move prelude plus a branch-with-link to a shared engine
-\ helper. It is neither a bare mnemonic nor a `LABEL@ BL,` triple, so the plain
-\ scan would miss its emitted clobbers. PROT-GUARD:CALL (src/habu/habu1.f)
-\ moves the caller's (addr,len) register
-\ pair into the x10/x11 ABI the resident LPROTSPAN span guard reads, then
-\ branches to it. The guard body reads x10/x11 and touches only x12/x13, so the
-\ addr/len registers survive as x10=addr, x11=len; the branch additionally
-\ clobbers x30. Any other `:CALL` shape, or a call whose operands do not resolve
-\ to registers, fails closed via E-CLOBBER-WRAP-UNRESOLVED. C-FIND-GLOBAL is
-\ also modeled: its literal label/count arguments feed LFIND and its returned
-\ registers follow that helper's ABI.
+\ An UPPER-CASE `PKG:CALL` word emits a register-move prelude and a BL to a
+\ shared helper, so neither the mnemonic scan nor a `LABEL@ BL,` triple sees it.
+\ PROT-GUARD:CALL (src/habu/habu1.f) moves (addr,len) into x10/x11 for the
+\ LPROTSPAN guard, which touches only x12/x13; the BL clobbers x30.
+\ C-FIND-GLOBAL feeds literal label/count arguments to LFIND and returns by its
+\ ABI. Any other `:CALL` shape, or operands that do not resolve to registers,
+\ fails closed via E-CLOBBER-WRAP-UNRESOLVED.
 public
 EXPORT CL-ADD
 EXPORT E-CLOBBER-WRAP-UNRESOLVED

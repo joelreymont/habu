@@ -1,15 +1,9 @@
 \ chain-run.f - the checked generation-chain driver.
-\
-\ Run from a source snapshot with:
-\   bin/hb --load tools/chain-run-build.f -- host gen1 gen2 gen3 TMPDIR
-\
-\ The host is explicit and every child inherits only the caller's environment
-\ plus the private TMPDIR and the engine override, which names the engine that
-\ runs that build.  The host builds the first generation, the first builds the
-\ second, and the second builds a third only when the first two differ.  The
-\ result is a real exit status: a failed build or a non-fixpoint throws or dies
-\ and cannot be mistaken for a completed queue item; tools/chain-run-build.f
-\ states the statuses.
+\ Run: bin/hb --load tools/chain-run-build.f -- host gen1 gen2 gen3 TMPDIR
+\ Each child inherits only the caller's environment plus the private TMPDIR and
+\ the engine override naming the engine that runs that build. The host builds
+\ gen1, gen1 builds gen2, and gen2 builds gen3 only when the first two differ.
+\ tools/chain-run-build.f states the exit statuses.
 
 require src/lib/errors.f
 require src/lib/string.f

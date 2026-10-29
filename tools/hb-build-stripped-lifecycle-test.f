@@ -25,17 +25,13 @@ package HB-BUILD-CLI
 : HBT-HOOK-OUT ( -- ptr u8 n )
    HBT-HOOK-OUT-BUF HBT-HOOK-OUT-U @ ;
 
-\ READING THE IMAGE-LIFECYCLE REGISTRY, the second site a stripped image is
-\ refused at and the smallest program that reaches it: IMAGE-LIFECYCLE:COUNT
-\ takes the registry's private lock and reads both hook counters, so its
-\ compiled code spells three baked cells below every window. Before the fresh
-\ claims in src/habu/aot-owned-cells.f this program - and every image whose
-\ libraries register a cleanup hook on first use, which is how Tender's server
-\ and scraper reached it - was refused at `value=13964713400` with neither name
-\ (the refusal now reads `caller=STORE+748 target=COUNT+8`, the neighbour form).
-\ The printed count is the proof the claims are right and not merely quiet: a
-\ new process has registered nothing, and the lock the count is read under has
-\ to be free for the image to print at all.
+\ READING THE IMAGE-LIFECYCLE REGISTRY, the smallest program that reaches the
+\ second site a stripped image is refused at: IMAGE-LIFECYCLE:COUNT takes the
+\ registry's private lock and reads both hook counters, three baked cells below
+\ every window, claimed fresh in src/habu/aot-owned-cells.f. Every image whose
+\ libraries register a cleanup hook on first use reaches them. The printed count
+\ proves the claims right, not merely quiet: a new process has registered
+\ nothing, and the lock must be free for the image to print at all.
 : HBT-LIFE-SRC$ ( -- ptr u8 n )
    SB-RESET
    S\" require src/lib/image-lifecycle.f\n: MAIN ( -- )\n" SB-APPEND
@@ -45,30 +41,20 @@ package HB-BUILD-CLI
 : HBT-LIFE-EXPECTED$ ( -- ptr u8 n )
    S\" hooks=0\n" ;
 
-\ ... and REGISTERING one, which is the store the read above only counted.
-\ IMAGE-LIFECYCLE:REGISTER appends a quotation to the HOOKS buffer and
-\ REGISTER-PERSISTENT to the PERSISTENT table; both are quotation stores into a
-\ declared cell, which the optimizing tier lowers through QUOTATION-STORAGE:STORE
-\ and so through `xt!`. `xt!` stores the token and then calls the engine's
-\ address-cell registrar, and that call is what refused this program: with the
-\ two table bases unclaimed at `caller=STORE+424 target=DICT+56`, and with them
-\ claimed at `aot: PC-relative target removed or outside closure site=xt!`. A
-\ stripped image has no reader for the address-cell table, so the linker drops
-\ the declaration and keeps the store (src/habu/aot-closure.f AOT-DECLARATION?).
-\ PROC-ARGV+ is a REAL first-use registrant - src/lib/process-argv.f registers its
-\ RELEASE hook the first time an argument is staged - so the program reaches
-\ the store the way Tender's server and scraper do, and not only through its own
-\ two calls.
-\ THE PINNED ORDER IS WHAT PREPARE PRODUCES: the HOOKS buffer from the last
-\ registration down to the first (`hook=b` before `hook=a`, with the silent
-\ RELEASE hook ahead of both), then the PERSISTENT table the same way, because
-\ reverse order releases dependents before what they depend on. `count=4` is
-\ three of the image's own registrations plus that RELEASE hook, out of a
-\ registry that started empty. Nothing else runs PREPARE in a stripped image -
-\ the entry is `bl MAIN; exit(0)` - so MAIN calls it, after printing `exit`.
-\ The same image carries the sealed (NUM) engine helper behind num-parse:
-\ 42 has its float flag clear, 1.5 sets it, and the refused spelling 12a
-\ answers zero with both flags false.
+\ ... and REGISTERING one. IMAGE-LIFECYCLE:REGISTER and REGISTER-PERSISTENT store
+\ a quotation into a declared cell, which the optimizing tier lowers through
+\ QUOTATION-STORAGE:STORE to `xt!`, and `xt!` calls the engine's address-cell
+\ registrar. A stripped image has no reader for the address-cell table, so the
+\ linker drops the declaration and keeps the store (src/habu/aot-closure.f
+\ AOT-DECLARATION?). PROC-ARGV+ is a real first-use registrant:
+\ src/lib/process-argv.f registers its RELEASE hook when an argument is staged.
+\ The pinned order is PREPARE's: the HOOKS buffer from the last registration
+\ down (`hook=b` before `hook=a`, the silent RELEASE hook ahead of both), then
+\ the PERSISTENT table the same way, so dependents release first. `count=4` is
+\ three registrations plus RELEASE. Nothing else runs PREPARE in a stripped
+\ image (the entry is `bl MAIN; exit(0)`), so MAIN calls it after printing `exit`.
+\ The image carries the sealed (NUM) helper behind num-parse: 42 has its float
+\ flag clear, 1.5 sets it, and the refused 12a answers zero with both flags false.
 : HBT-HOOK-SRC$ ( -- ptr u8 n )
    SB-RESET
    S\" require src/lib/image-lifecycle.f\nrequire src/lib/process-argv.f\n" SB-APPEND
@@ -116,8 +102,6 @@ package HB-BUILD-CLI
    HBT-LIFE-OUT HBT-REMOVE-FILE? ;
 
 \ ... PARSES A NUMBER, REGISTERS a hook, runs it at exit and prints from it.
-\ The declaration half of `xt!` and the printed hook order are described with
-\ HBT-HOOK-SRC$ above.
 \ src/lib/process-argv.f and src/lib/fmt.f are modules of the linker's lib closure the
 \ engine does not bake, and the linker image refuses this program at
 \ PROC-ARGV+ (E-AOT-PRE-WINDOW, test/preloaded-engine.f rule 3), so it builds

@@ -1,52 +1,9 @@
-\ codegen-combine-inventory.f - how many pairs of emitted instructions one ARM64
-\ three-source instruction would replace. One concern: counting those pairs in
-\ the code a published routine actually holds.
-\
-\ WHY IT IS MEASURED BEFORE ANYTHING IS BUILT. A peephole library is worth its
-\ weight only where the shapes it matches occur, and which shapes occur is a fact
-\ about what this chain emits for this corpus - not about what ARM64 rewards in
-\ general. So the combining lane counts first and builds second, and a pattern
-\ whose count here is zero is reported as a measured zero instead of being
-\ written. The counts below are the evidence for that decision and the row-by-row
-\ prediction the finished pass is then held against.
-\
-\ WHY IT READS THE CODE AND NOT THE SOURCE. The same reason
-\ tools/codegen-tail-probe.f does, and it reads through that file's walk rather
-\ than opening a second one: a Habu body that multiplies and then adds does not
-\ necessarily emit a multiply followed by an addition. Constants are materialised
-\ into registers, callees are copied into their callers, and the register
-\ allocator decides which register each value lands in - and that last decision
-\ is what makes or breaks this particular fusion. Only the emitted code knows.
-\
-\ WHAT A CLASSIFIER HERE IS. Not a second table of bit layouts. Each `?` word
-\ decodes the register fields out of a word and asks src/arch/arm64/asm.f's own
-\ encoder to write the instruction again from them: the word IS that form exactly
-\ when the encoder reproduces it bit for bit. So the layout has one authority, the
-\ one that emitted the code, and a classifier cannot drift from the assembler it
-\ classifies - a changed encoder changes both sides of the comparison at once.
-\ The cost of that choice is the reserved-register guard below: those encoders end
-\ the process rather than return a value when a field names x18, so every
-\ classifier screens its fields first.
-\
-\ TWO NUMBERS PER PATTERN, AND WHY NEITHER ALONE IS THE ANSWER. `pairs` counts
-\ adjacent dependent pairs - a multiply whose product the very next instruction
-\ adds - and is the ceiling on what an adjacency peephole over emitted code could
-\ fuse. `safe` counts the subset where the second instruction OVERWRITES the
-\ product's register, which is the case a rewriter can take without knowing
-\ whether anything later reads that product. The gap between them is exactly the
-\ liveness question this file cannot answer and the machine dialect answers for
-\ free: src/compiler/native/a64ir.f is SSA, so "the product has one use" is a
-\ property of the value there rather than a dataflow pass. Read `safe` as the
-\ floor and `pairs` as the ceiling of what a post-selection combine gets.
-\
-\ AND WHY BOTH ARE A FLOOR FOR THE PASS THAT WILL BE WRITTEN. This file reads the
-\ FINISHED code, after the register allocator has reused registers for unrelated
-\ values. A multiply and an addition that a combine would fuse can end up with a
-\ third instruction between them writing the very register the multiply read, and
-\ then no rewriter of emitted bytes may touch them - the measured C-MAD case. The
-\ combining pass runs BEFORE the allocator, on values rather than registers,
-\ where that collision does not exist. So a count here is evidence that a shape
-\ occurs, and an undercount of what fusing it earlier is worth.
+\ codegen-combine-inventory.f - counts the pairs of emitted ARM64 instructions
+\ one three-source, shifted or folded form would replace, in the code published
+\ routines hold. It reads emitted code through tools/codegen-tail-probe.f's walk:
+\ inlining, materialised constants and register allocation decide which pairs
+\ exist. Counts read finished code, so they undercount what a combine before
+\ register allocation can fuse. test/compiler/native-fold.f asserts them.
 
 require src/lib/prelude.f
 require src/lib/errors.f
@@ -55,13 +12,14 @@ require src/arch/arm64/asm.f
 require tools/codegen-tail-probe.f
 
 package NCOMBINV
-\ The ARM64 encoders are package A64ASM's public surface (src/arch/arm64/asm.f).
 using A64ASM
 
 private
 
-\ On Darwin, screen x18 before asking an encoder that must refuse it. Linux can
-\ re-encode it normally.
+\ Each classifier re-encodes the fields it read with src/arch/arm64/asm.f's
+\ encoders and compares the whole word, so the layout has one authority. On
+\ Darwin those encoders end the process for x18, so each classifier screens its
+\ fields first; Linux re-encodes it normally.
 18 constant RESERVED-REG
 
 $1F constant REG-MASK              \ a register operand is a five-bit field
@@ -75,11 +33,8 @@ $FFF constant IMM12-MASK           \ the unsigned load/store offset field
 
 public
 
-\ The three register fields, public because they are the one place this tree
-\ decodes an ARM64 register operand out of an instruction word. The loop
-\ inventory (tools/codegen-loop-inventory.f) asks which register an instruction
-\ writes and which one a load reaches through, and a second copy of these three
-\ shifts is exactly the drift this file's own header argues against.
+\ Public: tools/codegen-loop-inventory.f decodes register fields with these,
+\ never a second copy.
 : FRD ( n -- n ) {: w:n :}
    w REG-MASK and ;
 
@@ -89,14 +44,11 @@ public
 : FRM ( n -- n ) {: w:n :}
    w 16 rshift REG-MASK and ;
 
-\ The immediate field.
 : FI12 ( n -- n ) {: w:n :}
    w 10 rshift IMM12-MASK and ;
 
-\ The unscaled load/store offset, sign-extended out of the field
-\ src/arch/arm64/asm.f packs it into. It is signed because that is the whole
-\ reason those two forms exist here: an access BELOW the base register has no
-\ spelling in the unsigned ones.
+\ Signed: an access below the base register has no spelling in the unsigned
+\ forms.
 : FSIMM9 ( n -- n ) {: w:n :}
    w SIMM9-SHIFT rshift SIMM9-MASK and {: v:n :}
    v SIMM9-SIGN and 0<> if v SIMM9-SPAN - exit then
@@ -104,8 +56,6 @@ public
 
 private
 
-\ The three-source forms' fourth register, which sits between the two fields the
-\ shifted-register forms use.
 : FRA ( n -- n ) {: w:n :}
    w 10 rshift REG-MASK and ;
 
@@ -113,13 +63,11 @@ $3F constant SHIFT-MASK            \ a shift amount for a 64-bit register
 $1FFF constant NIS-MASK            \ the packed N:immr:imms of a logical immediate
 63 constant SHIFT-TOP              \ the largest shift, and the `imms` a zero shift leaves
 
-\ The shift amount a left shift carries. src/arch/arm64/asm.f writes LSL as a
-\ bitfield move whose `imms` field is 63 - sh, so the amount is read back out of
-\ that field rather than standing in one of its own.
+\ src/arch/arm64/asm.f writes LSL as a bitfield move whose `imms` is 63 - sh, so
+\ the amount is read back out of that field.
 : FSHL ( n -- n ) {: w:n :}
    SHIFT-TOP  w 10 rshift SHIFT-MASK and  - ;
 
-\ And the one a right shift carries, which does stand in a field of its own.
 : FSHR ( n -- n ) {: w:n :}
    w 16 rshift SHIFT-MASK and ;
 
@@ -131,14 +79,11 @@ $1FFF constant NIS-MASK            \ the packed N:immr:imms of a logical immedia
    HB-TARGET-KNOWN? 0= if E-CTGT-ABI throw then
    HB-TARGET-LINUX? ;
 
-\ The three-register forms share one screen: all three fields must be registers
-\ an encoder will accept before any of them is handed to one.
 : R3-OK? ( n -- bool ) {: w:n :}
    w FRD ENCODABLE?
    w FRN ENCODABLE? and
    w FRM ENCODABLE? and ;
 
-\ The load/store forms name two registers; the offset is a field, not a register.
 : R2-OK? ( n -- bool ) {: w:n :}
    w FRD ENCODABLE?
    w FRN ENCODABLE? and ;
@@ -153,10 +98,9 @@ public
    w R3-OK? 0= if false exit then
    w FRD w FRN w FRM ENC-ADD w = ;
 
-\ The multiply-add itself: what a combined pair became. It shares its opcode with
-\ the plain multiply and is told apart by the addend field. The addend is read
-\ out and put back; a word whose addend is the zero register reproduces as a
-\ multiply here and answers false, which is what it is.
+\ The multiply-add shares its opcode with the plain multiply and is told apart by
+\ the addend field: a zero-register addend reproduces as a multiply and answers
+\ false.
 : MADD? ( n -- bool ) {: w:n :}
    w R3-OK? 0= if false exit then
    w FRA ENCODABLE? 0= if false exit then
@@ -167,10 +111,7 @@ public
    w R3-OK? 0= if false exit then
    w FRD w FRN w FRM ENC-SUB w = ;
 
-\ The add and subtract IMMEDIATE forms: what a folded constant became. Each is
-\ told from its register-register namesake the way every form here is told - by
-\ re-encoding the fields that were read out and comparing the whole word - so a
-\ shifted immediate, which these encoders do not emit, reproduces as something
+\ A shifted immediate, which these encoders do not emit, reproduces as something
 \ else and answers false.
 : ADDI? ( n -- bool ) {: w:n :}
    w R2-OK? 0= if false exit then
@@ -180,20 +121,15 @@ public
    w R2-OK? 0= if false exit then
    w FRD w FRN w FI12 ENC-SUBI w = ;
 
-\ The two compare forms, which are what every comparison of this chain begins
-\ with - the flag-materialising trio and the fused branch both open with one.
-\ The register form writes the zero register, so its destination field is not a
-\ register the allocator handed out and only the two sources are screened; the
-\ round trip still puts that field back, so a Subs writing a real register
-\ reproduces as something else and answers false, which is what it is.
+\ Every comparison this chain emits opens with one, in the flag-materialising
+\ trio and the fused branch alike. The register form writes the zero register, so
+\ only its two sources are screened; a Subs writing a real register reproduces as
+\ something else and answers false.
 : CMP? ( n -- bool ) {: w:n :}
    w FRN ENCODABLE? 0= if false exit then
    w FRM ENCODABLE? 0= if false exit then
    w FRN w FRM ENC-CMP w = ;
 
-\ And the immediate form: what a folded comparison constant became. It names one
-\ register and carries the number in the field the add and subtract immediates
-\ use, so it is recognised exactly as ADDI? is.
 : CMPI? ( n -- bool ) {: w:n :}
    w FRN ENCODABLE? 0= if false exit then
    w FRN w FI12 ENC-CMPI w = ;
@@ -222,9 +158,8 @@ public
    w R2-OK? 0= if false exit then
    w FRD w FRN w FNIS ENC-ANDI w = ;
 
-\ Its two siblings, recognised the same way. The mask itself is never
-\ reconstructed - the nis IS what the instruction holds - so the round trip is
-\ over that field and identifies the form without unpacking anything.
+\ The nis field is compared as the instruction holds it; the mask is never
+\ reconstructed.
 : ORRI? ( n -- bool ) {: w:n :}
    w R2-OK? 0= if false exit then
    w FRD w FRN w FNIS ENC-ORRI w = ;
@@ -233,9 +168,8 @@ public
    w R2-OK? 0= if false exit then
    w FRD w FRN w FNIS ENC-EORI w = ;
 
-\ Either shift whose amount an add or subtract could carry instead. ARM64's
-\ shifted-register arithmetic holds a left shift and both right shifts, so all
-\ three are asked about together.
+\ ARM64's shifted-register arithmetic holds a left shift and both right shifts,
+\ so all three count.
 : SHIFTI? ( n -- bool ) {: w:n :}
    w LSLI? if true exit then
    w LSRI? if true exit then
@@ -245,33 +179,26 @@ private
 
 \ ---- the pair predicates ------------------------------------------------------
 
-\ Whether the second instruction reads the register the first one wrote. It is
-\ the dependence that makes a pair a candidate at all.
 : READS-PRODUCT? ( n n -- bool ) {: m:n u:n :}
    u FRN m FRD =
    u FRM m FRD = or ;
 
-\ Whether the second instruction also OVERWRITES that register. A rewriter that
-\ drops the multiply takes the product away from everything that reads it later,
-\ and this is the one case where nothing can: the very next instruction puts its
-\ own result in that register, so no later reader could have been reading the
-\ product.
+\ The `safe` count: the next instruction overwrites the product, so no later
+\ reader can need it and a rewriter may drop the multiply. READS-PRODUCT? alone
+\ (`pairs`) is the ceiling an adjacency peephole could fuse; the gap is liveness,
+\ a one-use property of the value in src/compiler/native/a64ir.f's SSA.
 : KILLS-PRODUCT? ( n n -- bool ) {: m:n u:n :}
    u FRD m FRD = ;
 
 public
 
-\ A multiply whose product the next instruction adds: what one Madd replaces.
 : MADD-PAIR? ( n n -- bool ) {: m:n a:n :}
    m MUL? 0= if false exit then
    a ADD? 0= if false exit then
    m a READS-PRODUCT? ;
 
-\ A multiply whose product the next instruction SUBTRACTS: what one Msub
-\ replaces. Only the subtrahend position counts. Msub computes ra - rn*rm, so a
-\ subtraction that takes the product away from something is the form; one that
-\ takes something away FROM the product is not, and reversing it would change
-\ the answer.
+\ Only the subtrahend position counts: Msub computes ra - rn*rm, and a
+\ subtraction that takes something away from the product is not that form.
 : MSUB-PAIR? ( n n -- bool ) {: m:n s:n :}
    m MUL? 0= if false exit then
    s SUB? 0= if false exit then
@@ -285,19 +212,14 @@ public
    m s MSUB-PAIR? 0= if false exit then
    m s KILLS-PRODUCT? ;
 
-\ A shift whose result the next instruction adds or subtracts: what one
-\ shifted-register add or subtract replaces. Neither the model nor the shipped
-\ encoders carry a shifted-operand form - src/arch/arm64/asm.f writes every
-\ add and subtract with a zero shift field - so this is counted to size the
-\ pattern, not because anything may emit it.
+\ Counted to size the pattern: neither the model nor src/arch/arm64/asm.f carries
+\ a shifted-operand add or subtract.
 : SHIFT-FOLD-PAIR? ( n n -- bool ) {: s:n u:n :}
    s SHIFTI? 0= if false exit then
    u ADD? u SUB? or 0= if false exit then
    s u READS-PRODUCT? ;
 
-\ A right shift whose result the next instruction masks: what one Ubfx
-\ replaces. Counted on the same terms - the bitfield-extract form is modelled
-\ nowhere in this tree.
+\ Counted on the same terms: no bitfield-extract form is modelled in this tree.
 : BITFIELD-PAIR? ( n n -- bool ) {: s:n m:n :}
    s LSRI? 0= if false exit then
    m ANDI? 0= if false exit then
@@ -305,23 +227,17 @@ public
 
 private
 
-\ Two accesses one pairing instruction could carry: the same base register, and
-\ offsets one slot apart. Which of the two is the lower address is not asked -
-\ Ldp names them in address order and a rewriter would order them itself.
+\ Address order is not asked: Ldp names its registers in address order and a
+\ rewriter orders them itself.
 : ADJACENT-SLOTS? ( n n -- bool ) {: p:n q:n :}
    p FI12 q FI12 - 1 = if true exit then
    q FI12 p FI12 - 1 = ;
 
-\ Whether the two accesses go through the same base register and one slot apart.
 : SAME-BASE? ( n n -- bool ) {: p:n q:n :}
    p FRN q FRN = ;
 
-\ Whether a pair of LOADS could be carried by one instruction that writes both
-\ registers. Ldp writes two registers at once, so it needs two DIFFERENT ones -
-\ and neither load may be the one that computes the other's base, which the
-\ second load would then be reading through a register the first had already
-\ overwritten. Asking this is what keeps the count a count of pairs that could
-\ really be carried rather than of pairs that merely look adjacent.
+\ Ldp writes two registers at once, so they must differ, and neither load may be
+\ the one that computes the other's base.
 : LOADS-INDEPENDENT? ( n n -- bool ) {: p:n q:n :}
    p FRD q FRD = if false exit then
    p FRD q FRN = if false exit then
@@ -349,10 +265,8 @@ public
 private
 
 \ ---- the row under the counters -----------------------------------------------
-\ One routine at a time, held here so the two counting loops below can be written
-\ once each and handed a predicate. A quotation cannot read the enclosing word's
-\ locals, so the routine being counted cannot travel to the predicate as one;
-\ it is package state for exactly that reason and for no other.
+\ The routine being counted is package state because a quotation cannot read the
+\ enclosing word's locals.
 
 PTR-VARIABLE ROW-A
 variable ROW-U
@@ -371,19 +285,15 @@ public
 : INSN@ ( n -- n ) {: k:n :}
    ROW-NAME k NTAILPROBE:INSN@ ;
 
-\ How many instructions of the row satisfy a predicate.
-\
-\ local annotation cannot carry a quotation effect.
+\ The local annotation cannot carry a quotation effect.
 : COUNT1 ( [ n -- bool ] -- n ) {: q :}
    0
    INSNS 0 ?do
       i INSN@ q execute if 1+ then
    loop ;
 
-\ How many ADJACENT pairs of the row satisfy a predicate. A row of fewer than
-\ two instructions holds no pair, and is answered rather than looped over: the
-\ bound below would otherwise run backwards.
-\
+\ A row of fewer than two instructions is answered before the loop, whose bound
+\ would otherwise run backwards.
 : COUNT2 ( [ n n -- bool ] -- n ) {: q :}
    0
    INSNS 2 < if exit then
@@ -392,9 +302,8 @@ public
    loop ;
 
 \ ---- the counts themselves ----------------------------------------------------
-\ One word per column of the report, so that the file that PRINTS the inventory
-\ and the file that ASSERTS it are reading the same measurement rather than two
-\ spellings of it.
+\ One word per report column, so the printer and test/compiler/native-fold.f read
+\ one measurement.
 
 : MULS ( -- n )
    [: MUL? ;] COUNT1 ;
@@ -414,13 +323,12 @@ public
 : SHIFTS ( -- n )
    [: SHIFTI? ;] COUNT1 ;
 
-\ How many multiply-adds the row already holds: what a combining pass PUT there,
-\ as opposed to the pairs above, which are what one could still take.
+\ What a combining pass put there, as opposed to the pairs above, which are what
+\ one could still take.
 : MADD-INSNS ( -- n )
    [: MADD? ;] COUNT1 ;
 
-\ And how many folded constants the row holds, on the same terms: what the
-\ combine pass PUT there, not what one could still take.
+\ Folded constants the row holds, on the same terms.
 : ADDI-INSNS ( -- n )
    [: ADDI? ;] COUNT1 ;
 
