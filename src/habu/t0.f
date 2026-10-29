@@ -40,11 +40,11 @@
 \ A TOKEN IS, IN THIS ORDER: a local in scope; a string opener (`s" c" ." s\"
 \ c\" .\"`); a control keyword (if else then begin until while repeat again do
 \ ?do loop +loop leave unloop i j case of endof endcase MATCH construct exit
-\ recurse >r r> r@ ['] [char] {: [: ;]); an operation T0 inlines, when the spelling binds the
-\ engine's seeded primitive (NDICT:SPELL-PRIM?): the stack shuffles (dup drop
-\ swap over nip tuck rot -rot 2dup 2drop 2swap 2over 2>r 2r> 2r@), + - * and
-\ or xor 1+ 1- negate invert lshift rshift, the comparisons, @ and c@, and !
-\ as a call to the primitive or one per cell (THE WIDTHS); a word
+\ recurse >r r> r@ ['] [char] is {: [: ;]); an operation T0 inlines, when the
+\ spelling binds the engine's seeded primitive (NDICT:SPELL-PRIM?): the stack
+\ shuffles (dup drop swap over nip tuck rot -rot 2dup 2drop 2swap 2over 2>r 2r>
+\ 2r@), + - * and or xor 1+ 1- negate invert lshift rshift, the comparisons, @
+\ and c@, and ! as a call to the primitive or one per cell (THE WIDTHS); a word
 \ the dictionary binds (NDICT:CALL-TARGET), as a call; an immediate (IMM-TOKEN
 \ says which pass); a number (OUTER:NUMBER), a float being one cell of a
 \ double's bits. Anything else throws E-T0-UNSUPPORTED, and UNSUPPORTED$ names
@@ -87,6 +87,12 @@
 \ `s"` pushes the address and length, `c"` the address of a count byte and
 \ the bytes, `."` passes both to `type`. A payload with no closing quote or a
 \ bad escape, and a counted one past COUNTED-MAX bytes, is E-T0-LITERAL.
+\
+\ `is W` stores the xt on the stack in deferred word W's cell: it pushes the
+\ cell's address, whose row files the origin the dictionary answers with it
+\ (NDICT:SPELL-DEFER-BINDING), and calls the engine's `xt!`, as tier 1's
+\ (src/compiler/native/elaborate.f DO-IS). A W that is no deferred word, or
+\ whose effect the dictionary holds no arity for, is E-T0-DEFER.
 \
 \ A QUOTATION `[: ... ;]` is a unit of its own in the same emission
 \ (src/habu/t0-emit.f THE UNITS). At `[:` the body pushes the unit's address
@@ -192,6 +198,7 @@ public
 -9604 constant E-T0-BINDS        \ the body binds other than the certificate's count of locals
 -9605 constant E-T0-SHADOW       \ a definition while a target shadow is open: no shadow path yet
 -9606 constant E-T0-MATCH        \ a MATCH or construct the checker's facts do not bear out, as tier 1's E-NELAB-MATCH
+-9607 constant E-T0-DEFER        \ `is` names no deferred word, or one with no arity
 -9608 constant E-T0-BUNDLE       \ an operation over a width it cannot move, as tier 1's E-NELAB-BUNDLE
 
 private
@@ -234,6 +241,11 @@ variable CUT                         \ the byte just past `does> `, or 0
 
 : LIT-KEYWORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" [char]" STR=CI a u s" char" STR=CI or ;
+
+\ Whether a token takes the next one as its operand: a parsing word, or `is`
+\ naming the deferred word it stores into.
+: OPERAND? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u SOURCE-SYNTAX:PARSING-KEYWORD?  a u s" is" STR=CI  or ;
 
 \ Whether a token ends a quotation.
 : QUOT-END? ( ptr u8 n -- bool ) s" ;]" STR= ;
@@ -1062,6 +1074,22 @@ TRUSTED: TYPE-ENTRY ( -- n ) ['] type ;
    u PUSH-CONST
    kind STR-PRINT = if TYPE-ENTRY loc DO-CALL then ;
 
+\ ---- is ------------------------------------------------------------------------
+\ `is` stores through the engine's `xt!` whatever the source's package scope, as
+\ tier 1 does (src/compiler/native/elaborate.f XT-STORE-ENTRY).
+TRUSTED: XT-STORE-ENTRY ( -- n ) ['] xt! ;
+
+\ `is W` at offset loc: the xt on the stack goes into W's cell.
+: DO-IS ( n -- )
+   {: loc:n :}
+   TOKEN {: a:ptr u:n :}
+   a u NDICT:SPELL-DEFER-BINDING {: cell:n origin:n :}
+   cell 0= if E-T0-DEFER throw then
+   a u NDICT:SPELL-ARITY {: din:n dout:n :}
+   din NDICT:ARITY-NONE = dout NDICT:ARITY-NONE = or if E-T0-DEFER throw then
+   cell origin PUSH-ADDR
+   XT-STORE-ENTRY loc DO-CALL ;
+
 \ ---- quotations ------------------------------------------------------------------
 variable NQ                         \ units met so far, the definition's included
 DYNAMIC-BUFFER QSTART n             \ where each quotation's body text starts
@@ -1069,13 +1097,13 @@ DYNAMIC-BUFFER QORD n               \ and the checker's ordinal of its first tok
 variable NESTED                     \ the `[:` tokens skipped inside quotations so far
 
 \ How a token in a quotation being skipped moves the nesting depth. A string's
-\ payload and a parsing word's operand are skipped with it.
+\ payload, a parsing word's operand and the word `is` names are skipped with it.
 : SKIP-TOKEN ( ptr u8 n -- n ) {: a:ptr u:n :}
    u 0= if E-T0-CONTROL throw then
    a u s" [:" STR= if 1 NESTED +! 1 exit then
    a u QUOT-END? if -1 exit then
    a u OPENER STR-NONE <> if u 3 = SPAN drop 2drop 0 exit then
-   a u SOURCE-SYNTAX:PARSING-KEYWORD? if
+   a u OPERAND? if
       a u LIT-KEYWORD? if LIT-OPERAND else TOKEN then 2drop
    then
    0 ;
@@ -1224,6 +1252,7 @@ TRUSTED: DOES-PATCH-ENTRY ( -- n ) ['] does-patch ;
 
 : KW2 ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" if" STR=CI if DO-IF true exit then
+   a u s" is" STR=CI if a TXT$ - DO-IS true exit then
    a u s" do" STR=CI if DO-DO true exit then
    a u s" of" STR=CI if DO-OF true exit then
    a u s" {:" STR=CI if a u DO-GROUP true exit then

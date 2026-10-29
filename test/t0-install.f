@@ -6,39 +6,45 @@
 \ its result. The does> definers cover a clause, an empty clause whose child
 \ keeps its address kind, quotations nested in the parent and one in the
 \ clause, clause locals and a definer chained on another, each through a child
-\ it made. The MATCH rows dispatch over an enum and a sum type whose
-\ `construct`ed values carry pads, with a cell under each value proving its
-\ width; a MATCH nested in an arm, one in a case arm, one in a does> clause,
-\ and one over option<pt>, whose `none` comes from a call that pushes the pad
-\ the instantiation adds; a `construct` at wrap<pt> pushes that pad itself; a
-\ MATCH over a 65-cell payload; one in a quotation after character literals and
-\ a string, whose facts sit at the ordinals those tokens advance; and a hostile
-\ tag, in a child, reaches T0's trap and exits ENGINE-ERROR:BAD-TAG. The wide
-\ rows run each stack word T0 compiles over a two-cell product with a cell
-\ under the result, a swap in a does> parent and in its clause, a 2swap and a
-\ 2over in a does> parent whose deepest operand is two cells, a three-cell
-\ product among one-cell values, and a swap of two eight-cell values, whose
-\ copies fill the virtual stack; `@` and `!` of a two-, a three- and a
-\ sixteen-cell value through typed slots, with the cells beside each store
-\ unchanged and the fetch reading cells written through a raw view, the sixteen
-\ cells spilling the virtual stack, and a store and fetch in one body. The
-\ checker refuses every other operation over a wide value, so no row reaches
-\ E-T0-BUNDLE. A fetch from a sum-type and an enum slot checks the stored tag
-\ and loads the value with the cell under it kept; a forged tag fetched in a
-\ child, from an enum slot and from a product's enum field, ends the process
-\ `hb: bad layout tag` with ENGINE-ERROR:BAD-TAG. A CALLBACK: declaration
-\ compiled by T0 is handed to libc's qsort, which sorts a row through it, and
-\ its C entry lies between its accessor's code and the next definition's: the
-\ stub T0 appended to the accessor's emission. The refusal rows evaluate
-\ definitions T0 refuses with its own codes, which tier 1 accepts or refuses
-\ otherwise: a non-neutral immediate in a TRUSTED: body (E-T0-IMMEDIATE), a
-\ counted string past 255 bytes in a does> clause (E-T0-LITERAL; the checker
-\ refuses a non-neutral immediate in a clause even under TRUSTED:), after which
-\ the checker's rollback depth is back where it was and the definer's name
-\ defined cleanly compiles and its child runs, so the refusal rolled back the
-\ checker frame, and a definition while a target shadow is open (E-T0-SHADOW);
-\ a tick of an undefined word is the engine's undefined refusal, as under tier
-\ 1; a definition after them proves a refusal leaves the compiler idle.
+\ it made. `is` binds a defer from a body, which a caller then reaches,
+\ re-points it with the keyword in capitals, binds it from inside a quotation,
+\ and binds it before a MATCH, whose facts sit past its operand; a nested
+\ quotation that binds a defer spelled as a parsing word loads, its skip
+\ stepping over the operand. The MATCH rows dispatch over an enum and a sum
+\ type whose `construct`ed values carry pads, with a cell under each value
+\ proving its width; a MATCH nested in an arm, one in a case arm, one in a
+\ does> clause, and one over option<pt>, whose `none` comes from a call that
+\ pushes the pad the instantiation adds; a `construct` at wrap<pt> pushes that
+\ pad itself; a MATCH over a 65-cell payload; one in a quotation after
+\ character literals and a string, whose facts sit at the ordinals those tokens
+\ advance; and a hostile tag, in a child, reaches T0's trap and exits
+\ ENGINE-ERROR:BAD-TAG. The wide rows run each stack word T0 compiles over a
+\ two-cell product with a cell under the result, a swap in a does> parent and
+\ in its clause, a 2swap and a 2over in a does> parent whose deepest operand is
+\ two cells, a three-cell product among one-cell values, and a swap of two
+\ eight-cell values, whose copies fill the virtual stack; `@` and `!` of a
+\ two-, a three- and a sixteen-cell value through typed slots, with the cells
+\ beside each store unchanged and the fetch reading cells written through a raw
+\ view, the sixteen cells spilling the virtual stack, and a store and fetch in
+\ one body. The checker refuses every other operation over a wide value, so no
+\ row reaches E-T0-BUNDLE. A fetch from a sum-type and an enum slot checks the
+\ stored tag and loads the value with the cell under it kept; a forged tag
+\ fetched in a child, from an enum slot and from a product's enum field, ends
+\ the process `hb: bad layout tag` with ENGINE-ERROR:BAD-TAG. A CALLBACK:
+\ declaration compiled by T0 is handed to libc's qsort, which sorts a row
+\ through it, and its C entry lies between its accessor's code and the next
+\ definition's: the stub T0 appended to the accessor's emission. The refusal
+\ rows evaluate definitions T0 refuses with its own codes, which tier 1 accepts
+\ or refuses otherwise: a non-neutral immediate in a TRUSTED: body
+\ (E-T0-IMMEDIATE), `is` naming a primitive in a TRUSTED: body (E-T0-DEFER; the
+\ checker refuses it in a checked body), a counted string past 255 bytes in a
+\ does> clause (E-T0-LITERAL; the checker refuses a non-neutral immediate in a
+\ clause even under TRUSTED:), after which the checker's rollback depth is back
+\ where it was and the definer's name defined cleanly compiles and its child
+\ runs, so the refusal rolled back the checker frame, and a definition while a
+\ target shadow is open (E-T0-SHADOW); a tick of an undefined word is the
+\ engine's undefined refusal, as under tier 1; a definition after them proves a
+\ refusal leaves the compiler idle.
 \
 \ PROCESS BOUNDARY. T0:INSTALL replaces the dispatch for the rest of the
 \ process and nothing restores it, so this file is its suite row's only file:
@@ -396,6 +402,18 @@ W-DEF-2OVER W-PO
 \ Sixteen cells: the copies fill the virtual stack and spill.
 : W8-SWAP ( oct oct -- oct oct ) swap ;
 
+\ ---- is ------------------------------------------------------------------------
+defer HOOK ( n -- n )
+: INC ( n -- n ) 1+ ;
+: CALL-HOOK ( n -- n ) HOOK ;
+: AIM-SQUARE ( -- ) [: SQUARE ;] is HOOK ;
+: AIM-INC ( -- ) [: INC ;] IS HOOK ;
+: AIM-IN-QUOT ( -- ) [: [: TWICE ;] is HOOK ;] execute ;
+\ The checker files the MATCH facts at the ordinal past `is`'s operand.
+: AIM-MATCH ( hue -- n )
+   [: SQUARE ;] is HOOK
+   MATCH hue rojo OF 1 ENDOF verde OF 2 ENDOF azul OF 3 ENDOF ;MATCH ;
+
 \ ---- a clause T0 refuses -----------------------------------------------------
 \ A definer whose clause holds a counted string of 256 bytes, one past what a
 \ counted length's one byte holds.
@@ -513,6 +531,16 @@ private
    s" clause locals" T-LABEL  7 S6 42 T=
    s" a chained definer's clause replaces the first" T-LABEL  N9 10 T= ;
 
+: IS-CASE ( -- )
+   s" is binds a defer a caller reaches" T-LABEL  AIM-SQUARE 6 CALL-HOOK 36 T=
+   s" IS re-points it" T-LABEL  AIM-INC 6 CALL-HOOK 7 T=
+   s" is inside a quotation" T-LABEL  AIM-IN-QUOT 6 CALL-HOOK 12 T=
+   s" a MATCH after is reads the facts past its operand" T-LABEL
+   VERDE AIM-MATCH 2 T=  3 CALL-HOOK 9 T=
+   s" a quotation skips is with the parsing-word spelling it names" T-LABEL
+   s" package T0-IS-CHAR defer CHAR ( -- n ) : AIM-CHAR ( -- ) [: [: 5 ;] IS CHAR ;] execute ; ;package"
+   TEST-EVAL:RC 0 T= ;
+
 : CALLBACK-CASE ( -- )
    T0-CMP TASK:SELF-CONTEXT FFI-CB:ENTRY {: fn:n :}
    s" the C entry is the stub T0 appended to the accessor" T-LABEL
@@ -529,6 +557,8 @@ private
    T0:E-T0-IMMEDIATE T=
    s" the refusal names the immediate" T-LABEL
    T0:UNSUPPORTED$ s" T0-INSTALL-TEST:NOTHING" T$=
+   s" is naming no deferred word is refused" T-LABEL
+   s" TRUSTED: IS-PRIM ( -- ) [: 2 ;] is dup ;" TEST-EVAL:RC T0:E-T0-DEFER T=
    s" a counted string past 255 bytes in a does> clause is refused" T-LABEL
    RBF-DEPTH @ {: depth:n :}
    LONG-DEFINER TEST-EVAL:RC T0:E-T0-LITERAL T=
@@ -665,6 +695,7 @@ public
    FORGE-CASE
    WIDE-CASE
    FETCH-FORGE-CASE
+   IS-CASE
    CALLBACK-CASE
    REFUSAL-CASE
    T-REPORT ;

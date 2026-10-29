@@ -93,6 +93,27 @@ variable CELLV
    S\" CORG ( -- ptr u8 ) c\" abc\" " STRING-ROW
    NSTR:SOURCE-END ;
 
+\ The defer an `is` body binds. Its address row names the defer's cell and files
+\ the defer's record ordinal, which the unit object resolves the cell through.
+\ Public: the body runs after the package closes and names it qualified.
+public
+defer ROW-HOOK ( -- n )
+s" ROW-HOOK" XREF-FIND-CURRENT-INDEX XREF-REQUIRE-INDEX constant HOOK-IX
+private
+
+: IS-ORIGIN-CASE ( -- )
+   ARCH-A64
+   s" ISO ( n -- ) is T0-ROWS-TEST:ROW-HOOK " T0:COMPILE-TEXT
+   T0-EMIT:SEAL-UNPLACED
+   s" an `is` body files one address row" T-LABEL
+   NEMIT:ADDR-SITES 1 T=
+   0 T0-EMIT:ADDR-ROW {: at:n kind:n to:n :}
+   s" the row names the defer's cell" T-LABEL
+   s" T0-ROWS-TEST:ROW-HOOK" NDICT:SPELL-DEFER-CELL to T=
+   s" the row files the defer's record ordinal" T-LABEL
+   0 NEMIT:ADDR-SITE-ORIGIN@ HOOK-IX T=
+   NEMIT:CLEAR ;
+
 \ A fixed VAL body sealed placed while NCBSTUB is armed.
 : STUB-CASE ( -- )
    ARCH-A64
@@ -155,6 +176,7 @@ public
    T-RESET
    PATCH-SLOT-CASE
    ORIGIN-CASE
+   IS-ORIGIN-CASE
    STUB-CASE
    SLOT-REFUSED-CASE
    X86-UNFILLED-CASE
