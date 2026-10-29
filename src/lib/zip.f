@@ -40,14 +40,15 @@
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/zip-raw.f
+require src/lib/span.f
 
 package ZIP
 using FFI
 using MEM
 
-: PATH-CHECK ( ptr u8 n -- ) {: path:ptr len:n :}
-   len SIZE-CHECK len 0= if E-PATH throw then
-   len 0 ?do path i + c@ 0= if E-PATH throw then loop ;
+: PATH-CHECK ( n -- )
+   {: len:n :}
+   len SIZE-CHECK len 0= if E-PATH throw then ;
 
 : DISCARD-FAILED ( ptr n n -- ) {: node:ptr code:n :}
    node [: dup DISCARD-NODE ;] catch 2drop
@@ -56,22 +57,25 @@ using MEM
 CAST: MAPPED>RAW ( n -- ptr u8 )
 
 $4000 constant FILE-CHUNK
+PATH-CAP CSTR-ROOM constant SNAPSHOT-ROOM   \ a temp path and its terminator
 
 \ The source snapshot is a fresh FS:MKTEMP file: the node keeps its descriptor
 \ for the copy and the mapping, and copies its path, which the task's next temp
 \ reuses, into room allocated before the file exists, so no failure falls
 \ between making the file and the node owning it.
-: SNAPSHOT-WORK ( ptr n ptr u8 -- ptr n ptr u8 ) {: node:ptr copy:ptr :}
+: SNAPSHOT-WORK ( ptr n ptr u8 -- ptr n ptr u8 )
+   {: node:ptr copy:ptr :}
    s" habu-zip-source" FS:MKTEMP FD>N node SNAP-FD ! {: path:ptr len:n :}
-   path len copy CSTR
-   copy node SOURCE-PTR ! len node SOURCE-LEN ! 1 node SOURCE-LIVE !
+   path len copy SNAPSHOT-ROOM SPAN:MAKE CSTR
+   node SOURCE-PTR ! len node SOURCE-LEN ! 1 node SOURCE-LIVE !
    node copy ;
 
 \ An unusable TMPDIR, or any other refusal to make the snapshot, is E-OPEN. The
 \ room for its path is allocated outside the catch, so an allocation failure
 \ keeps its own code, as OPEN-WORK's other allocations do.
-: SNAPSHOT-OPEN ( ptr n -- ) {: node:ptr :}
-   node PATH-CAP 1+ BUFFER-ALLOC {: copy:ptr :}
+: SNAPSHOT-OPEN ( ptr n -- )
+   {: node:ptr :}
+   node SNAPSHOT-ROOM BUFFER-ALLOC {: copy:ptr :}
    node copy [: SNAPSHOT-WORK ;] catch {: code:n :}
    2drop
    code 0<> if E-OPEN throw then ;
@@ -103,8 +107,9 @@ $4000 constant FILE-CHUNK
 : OPEN-WORK ( ptr n ptr u8 n n -- ptr n ptr u8 n n )
    {: node:ptr path:ptr len:n flags:n :}
    flags node MODE !
-   node len 1+ BUFFER-ALLOC {: cpath:ptr :}
-   path len cpath CSTR cpath node PATH-PTR ! len node PATH-LEN !
+   len CSTR-ROOM {: room:n :}
+   path len node room BUFFER-ALLOC room SPAN:MAKE CSTR node PATH-PTR !
+   len node PATH-LEN !
    node SNAPSHOT-OPEN
    node PATH-PTR @ open-rd {: src:n :}
    src 0 < if E-OPEN throw then src node SOURCE-FD !
@@ -129,7 +134,7 @@ $4000 constant FILE-CHUNK
 
 : OPEN-CHECKED ( ptr u8 n n -- archive )
    {: path:ptr len:n flags:n :}
-   path len PATH-CHECK REGISTER-CLEANUP REGISTER {: archive:archive :}
+   len PATH-CHECK REGISTER-CLEANUP REGISTER {: archive:archive :}
    archive ARCHIVE-NODE {: node:ptr :}
    node path len flags OPEN-ATTEMPT {: code:n :}
    code 0<> if node code DISCARD-FAILED then

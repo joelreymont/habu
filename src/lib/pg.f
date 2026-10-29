@@ -117,6 +117,7 @@
 
 require src/lib/errors.f
 require src/lib/ffi-abi.f
+require src/lib/span.f
 require src/lib/string.f
 require src/lib/memory.f
 require src/lib/type/deftype.f
@@ -147,7 +148,7 @@ public
 -9256 constant E-HANDLE       \ a handle another task owns or an image restore invalidated, a scope's token cleared or not handed back
 -9257 constant E-CAPACITY     \ more live connections, results or parameters than this module stores, or a declaration out of range or changed after use
 -9258 constant E-PLATFORM     \ this module is qualified on Linux only, and refuses a foreign target before it binds
--9259 constant E-STATEMENT    \ an empty statement/name or embedded NUL in C-string text
+-9259 constant E-STATEMENT    \ an empty statement or name
 -9560 constant E-DEADLINE     \ a wait past the connection's DEADLINE! bound, which closed it
 -9561 constant E-BOUND        \ a DEADLINE! bound or NOTIFIED? wait outside 0..WAIT-MAX ms
 
@@ -504,16 +505,16 @@ FUNCTION: LIB-FREEMEM PQfreemem ( ptr u8 -- ) ;FUNCTION
    slot ARENA-U@ 1 + slot ARENA-U! ;
 
 
-\ Copy text plus a terminator and answer the C string's arena offset. libpq
-\ ignores text span lengths, so an embedded NUL would silently truncate it.
-\ Reserve first: an impossible length must fail without reading source bytes.
-: ARENA-CSTR ( ptr u8 n n -- n ) {: a u:n slot:n :}
+\ Copy text as a C string into the arena and answer its offset. Reserve
+\ first: an impossible length must fail without reading source bytes.
+: ARENA-CSTR ( ptr u8 n n -- n )
+   {: a u:n slot:n :}
    u 0 < if E-CAPACITY throw then
-   slot u 1 + ARENA-ENSURE
-   u 0 ?do a i + c@ 0= if E-STATEMENT throw then loop
+   u FFI:CSTR-ROOM {: room:n :}
+   slot room ARENA-ENSURE
    slot ARENA-U@ {: off:n :}
-   a u slot ARENA-BASE off + FFI:CSTR
-   off u + 1 + slot ARENA-U!
+   a u slot ARENA-BASE off + room SPAN:MAKE FFI:CSTR drop
+   off room + slot ARENA-U!
    off ;
 
 
@@ -1257,11 +1258,11 @@ REGISTER-CHILD-RESET
 \ the arena. That is what lets a caller build parameters BEFORE
 \ WITH-TRANSACTION and spend them inside the body, which is the only way into a
 \ quotation that may not read the caller's locals.
-: VERB-TEXT! ( n ptr u8 n -- ptr u8 ) {: slot:n a u:n :}
+: VERB-TEXT! ( n ptr u8 n -- ptr u8 )
+   {: slot:n a u:n :}
    u 0 <= if E-STATEMENT throw then
    u VERB-CAP 1 - > if E-CAPACITY throw then
-   a u slot VERB-BUF FFI:CSTR
-   slot VERB-BUF ;
+   a u slot VERB-BUF VERB-CAP SPAN:MAKE FFI:CSTR ;
 
 
 : RUN-VERB ( n ptr u8 n -- n )

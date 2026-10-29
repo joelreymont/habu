@@ -171,6 +171,7 @@
 \ FUNCTION: with no library selected in the declaring scope: state LIBRARY or
 \ PROCESS-SYMBOLS beside the declarations rather than inherit another file's.
 -3503 constant E-FFI-LIBRARY
+-3504 constant E-FFI-NUL           \ a string with a 0 byte handed to C, which would end it early
 \ src/lib/ffi-callback.f: a callback frame accessor used outside a live callback,
 \ a descriptor no declaration made, or a dispatch whose body was never stored.
 -3506 constant E-FFI-CALLBACK-FULL  \ retired; retained for numeric compatibility

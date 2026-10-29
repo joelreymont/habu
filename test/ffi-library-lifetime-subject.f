@@ -43,7 +43,7 @@ FUNCTION: PROBE-COPY strncpy ( ptr u8 n n -- n ) 0 2 WRITES-ARG ;FUNCTION
 FFI:LIBRARY-PATH-CAP constant PATH-BYTES
 
 PATH-BYTES CODEGEN:BUFFER ZIP-NAME
-PATH-BYTES BUFFER: ZIP-NAME-Z
+PATH-BYTES SPAN-BUFFER: ZIP-NAME-Z
 PATH-BYTES BUFFER: ZIP-PATH               \ strncpy leaves its last byte the NUL
 create DL-INFO $20 allot
 
@@ -54,7 +54,7 @@ create DL-INFO $20 allot
 \ and closes again; false when libzip does not open or name its image.
 : FIND-ZIP-PATH ( -- bool )
    s" zip" 5 ZIP-NAME FFI:LIBRARY-NAME$ ZIP-NAME-Z FFI:CSTR
-   ZIP-NAME-Z FFI:NOW PROBE-OPEN {: handle:n :}
+   FFI:NOW PROBE-OPEN {: handle:n :}
    handle 0= if false exit then
    handle s\" zip_libzip_version\z" drop PROBE-SYMBOL DL-INFO PROBE-IMAGE 0<>
    {: found:bool :}

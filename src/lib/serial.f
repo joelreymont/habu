@@ -167,13 +167,14 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 : CLOSE-RAW ( handle -- n ) HANDLE>N CLOSE-CALL ;
 
 
-: PATH-OPEN ( ptr u8 n -- n ) {: text size:n :}
-   size 1 $FFF RANGE
-   size 0 do text i + c@ 0= if E-OPERAND throw then loop
-   size 1 + MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES {: path extent:NUM:alloc-byte-len :}
-   text size path FFI:CSTR path OPEN-RAW
-   dup 0 < if drop LAST-ERROR ERRNO>N negate then
-   path extent MEM:RELEASE-BYTES ;
+\ The OS answers a path too long for it; the copy's mapping is released on
+\ every exit, the refusal of a 0 byte included.
+: PATH-OPEN ( ptr u8 n -- n )
+   {: text size:n :}
+   size 1 < if E-OPERAND throw then
+   text size size FFI:CSTR-ROOM MEM:BYTES-ALLOC-LEN
+   [: MEM:ALLOCATION>SPAN FFI:CSTR OPEN-RAW
+      dup 0 < if drop LAST-ERROR ERRNO>N negate then ;] MEM:WITH-BYTES ;
 
 
 : MAC-RAW! ( baud -- ) {: baud:baud :}

@@ -119,6 +119,9 @@ TASK:MIN-STACK TASK:TASK READER
 
 \ ---- case one: the slave of a fresh pair opens as a serial port --------------
 
+: NUL-OPEN ( -- )
+   S\" /dev/tty\x00x" SPEED SERIAL:BAUD SERIAL:OPEN8N1 OPENED drop ;
+
 : OPEN-CASE ( -- )
    SLAVE PTY:SLAVE-PATH-CAP PTY:OPEN {: m:PTY:master len:n :}
    m PTY:MASTER>N MASTER !
@@ -126,7 +129,10 @@ TASK:MIN-STACK TASK:TASK READER
    s" the slave path of a pty pair opens at 115200 8N1" T-LABEL
    SLAVE len SPEED SERIAL:BAUD SERIAL:OPEN8N1 OPENED {: fd:n :}
    fd 0 >= TTRUE
-   fd HANDLE ! ;
+   fd HANDLE !
+
+   s" a device path holding a 0 byte is refused before the OS sees it" T-LABEL
+   [: NUL-OPEN ;] E-FFI-NUL TTHROWSQ ;
 
 \ ---- case two: bytes written at the master arrive at the port ----------------
 

@@ -112,7 +112,7 @@ TASK:SEMAPHORE ZIP-START
    s" invalid.zip" PATH$ s" temporarily unavailable" FS:WRITE-ALL
    [: MALFORMED ;] E-OPEN TTHROWSQ
    [: EMPTY-PATH ;] E-PATH TTHROWSQ
-   [: NUL-PATH ;] E-PATH TTHROWSQ ;
+   [: NUL-PATH ;] E-FFI-NUL TTHROWSQ ;
 
 : CORRUPT-FIXTURE ( -- )
    ORIGINAL$ {: src:ptr len:n :}

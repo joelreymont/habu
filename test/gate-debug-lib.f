@@ -130,9 +130,9 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    GE-HB-RESET
    GE-SRC-RESET
    s" require src/lib/ffi-abi.f" GE-SRC-LINE
-   s" create GDB-SYM 16 allot" GE-SRC-LINE
-   s" : GDB-SYM-FOR ( n -- ) 1000000 * mono-ns + {: stop:n :} begin 0 GDB-SYM FFI:DLSYM drop mono-ns stop >= until ;" GE-SRC-LINE
-   S\" s\" strlen\" GDB-SYM FFI:CSTR" GE-SRC-LINE
+   s" 16 SPAN-BUFFER: GDB-SYM" GE-SRC-LINE
+   s" : GDB-SYM-FOR ( n -- ) 1000000 * mono-ns + {: stop:n :} begin 0 GDB-SYM SPAN:$ drop FFI:DLSYM drop mono-ns stop >= until ;" GE-SRC-LINE
+   S\" : GDB-SYM-NAME ( -- ) s\" strlen\" GDB-SYM FFI:CSTR drop ; GDB-SYM-NAME" GE-SRC-LINE
    S\" 100000 prof-on 200 GDB-SYM-FOR s\" dlsym loop done\" type cr prof-report" GE-SRC-LINE
    GDB-PROF-RUN
    s" profiler foreign-context ticks" GE-EXPECT-OK

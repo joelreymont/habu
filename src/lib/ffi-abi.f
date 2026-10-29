@@ -29,10 +29,13 @@
 \ library (pass FFI:GLOBAL to FFI:DLOPEN for that); on macOS it is global. An
 \ absent symbol or library is E-FFI-DLSYM at the first call, never at the
 \ declaration. An `f32` in a variadic position is refused (C promotes it;
-\ declare `r`). FFI's wordlists are protected after its last definition, so
-\ later source cannot add a call or redirect a symbol.
+\ declare `r`). A string holding a 0 byte cannot cross to C and is E-FFI-NUL;
+\ FFI is the only library code that writes a terminator. FFI's wordlists are
+\ protected after its last definition, so later source cannot add a call or
+\ redirect a symbol.
 
 s" src/lib/errors.f" required
+s" src/lib/span.f" required                   \ CSTR's destination carries its reach
 s" src/lib/string.f" required
 s" src/lib/image-lifecycle.f" required
 s" src/lib/le.f" required                     \ the four-byte C int this package reads back
@@ -185,14 +188,6 @@ $41C8 constant FFI-SCRATCH-END
    FFI-KPARAM-PBUF FFI-KPARAM-COUNT ;
 : FFI-KPARAMS>N ( -- n )
    FFI-KPARAM-PBUF PTR>CELL ;
-
-\ ---- C strings ------------------------------------------------------------
-\ Copy a Habu byte-string into dst and NUL-terminate it, yielding a C string
-\ for the callee. dst must hold at least n+1 bytes; the caller owns it.
-: COPY-CSTR ( ptr u8 n ptr u8 -- ) {: src:ptr u:n dst:ptr :}
-   u 0 < if E-FFI-SYNTAX throw then
-   src dst u BYTE-COPY
-   0 dst u + c! ;                         \ dst+u : NUL terminator
 
 \ Exact bindings use this sealed package surface. Raw calls remain TRUSTED-only
 \ and no universal binder is published.
@@ -392,6 +387,14 @@ private
    {: idx:n off:n :}
    idx LIB-ROW off + CELL-VIEW ;
 
+\ A new row's string field, read before the row is counted: the name or path is
+\ copied first, so a refused one leaves the row count as it was.
+: NAME-FIELD ( n -- SPAN:span<u8> )
+   FN-ROW FN-NAME-OFF + FN-NAME-CAP SPAN:MAKE ;
+
+: PATH-FIELD ( n -- SPAN:span<u8> )
+   LIB-ROW LIB-PATH-OFF + LIB-PATH-CAP SPAN:MAKE ;
+
 : FN-CHECK ( n -- )
    {: idx:n :}
    idx ROW-INDEX idx FN-N-CELL @ FFI-CHECK-INDEX ;
@@ -503,22 +506,15 @@ variable DLCLOSE-FN-CELL
    dup 0= if E-FFI-DLSYM throw then
    dup idx FN-ADDR! ;
 
-\ dlsym and dlopen take C strings and FN-ROW@ stops at the first NUL, so a NUL
-\ inside a span would bind, and replay as, a different name.
-: NUL-CHECK ( ptr u8 n -- ) {: s:ptr u:n :}
-   u 0 ?do s i + c@ 0= if E-FFI-SYNTAX throw then loop ;
-
-: NAME-ROOM ( ptr u8 n -- n ) {: s:ptr u:n :}
+: NAME-ROOM ( n -- )
+   {: u:n :}
    u 0 <= if E-FFI-SYNTAX throw then
-   u FN-NAME-CAP 1 - > if E-FFI-SYNTAX throw then
-   s u NUL-CHECK
-   u ;
+   u FN-NAME-CAP 1 - > if E-FFI-SYNTAX throw then ;
 
-: PATH-ROOM ( ptr u8 n -- n ) {: s:ptr u:n :}
+: PATH-ROOM ( n -- )
+   {: u:n :}
    u 0 <= if E-FFI-SYNTAX throw then
-   u LIB-PATH-CAP 1 - > if E-FFI-SYNTAX throw then
-   s u NUL-CHECK
-   u ;
+   u LIB-PATH-CAP 1 - > if E-FFI-SYNTAX throw then ;
 
 \ LIBRARY-NAME$'s two inputs, refused by the same code an over-long path is.
 : BASE-CHECK ( n -- ) {: u:n :}
@@ -599,7 +595,45 @@ public
 : KPARAM-VALUE+ ( n -- ) FFI-KPARAM-N+ ;
 : KPARAMS ( -- ptr n n ) FFI-KPARAMS ;
 : KPARAMS>CELL ( -- n ) FFI-KPARAMS>N ;
-: CSTR ( ptr u8 n ptr u8 -- ) COPY-CSTR ;
+
+\ ---- C strings ------------------------------------------------------------
+private
+\ A 0 byte among the u bytes at b would end the C string early.
+: NUL-CHECK ( ptr u8 n -- )
+   {: b u :}
+   u 0 ?do b i + c@ 0= if E-FFI-NUL throw then loop ;
+
+\ The span's base once u bytes and their 0 fit in it: u < reach, which cannot
+\ overflow as u+1 can. Refused before any byte is read or written.
+: CSTR-FIT ( n SPAN:span<u8> -- ptr u8 )
+   {: u s :}
+   u 0 < if E-SPAN-LENGTH throw then
+   s SPAN:$ {: b l :}
+   u l >= if E-SPAN-CAPACITY throw then
+   b ;
+
+public
+\ The bytes a C copy of an n-byte string occupies: the string and its 0.
+: CSTR-ROOM ( n -- n ) 1+ ;
+
+\ Terminate the n bytes already at the front of the span and answer its base
+\ as the C string.
+: CSTR! ( n SPAN:span<u8> -- ptr u8 )
+   {: u s :}
+   u s CSTR-FIT {: b :}
+   b u NUL-CHECK
+   0 b u + c!
+   b ;
+
+\ Copy a Habu string into the span as a C string. Every refusal comes before
+\ a byte is written, so a refused destination keeps what it held.
+: CSTR ( ptr u8 n SPAN:span<u8> -- ptr u8 )
+   {: src u s :}
+   u s CSTR-FIT {: b :}
+   src u NUL-CHECK
+   src u s SPAN:COPY
+   0 b u + c!
+   b ;
 
 private
 
@@ -661,14 +695,15 @@ public
 
 \ Reusing an occupied row leaves its resolved handle in place. Only a new path
 \ consumes a row; new paths grow the table only when its current capacity fills.
-: LIBRARY-PATH ( ptr u8 n -- n ) {: path:ptr u:n :}
-   path u PATH-ROOM drop
+: LIBRARY-PATH ( ptr u8 n -- n )
+   {: path:ptr u:n :}
+   u PATH-ROOM
    DECL-TAG {: tag:n :}
    path u LIB-INDEX dup 0<> if OBS-LIB over NOTIFY exit then drop
    LIB-NEW
+   path u tag LIB-N-CELL @ tag or PATH-FIELD CSTR drop
    tag LIB-N-CELL @ 1+ tag LIB-N-CELL !
    tag LIB-N-CELL @ {: row:n :}
-   path u row 1- tag or LIB-PATH CSTR
    u row 1- tag or LIB-LEN!
    0 row 1- tag or LIB-HANDLE!
    \ Keep the row: an observer that declares rows of its own moves the count.
@@ -883,9 +918,16 @@ public
 : I32-RESULT ( n -- n )
    $FFFFFFFF and $80000000 xor $80000000 - ;
 \ An exact descriptor includes the library index, complete C symbol, integer
-\ argument count, spill count and relocation mask. The terminating byte
-\ distinguishes a symbol from its prefix.
+\ argument count, spill count and relocation mask. The stored symbol's length
+\ decides along with its bytes, so neither a prefix nor a name holding a 0 byte
+\ matches a row.
 private
+
+\ Row idx's symbol length: the bytes before its terminator.
+: NAME-LEN ( n -- n )
+   {: idx:n :}
+   idx FN-NAME {: name:ptr :}
+   0 begin dup FN-NAME-CAP < over name + c@ 0<> and while 1+ repeat ;
 
 : SAME-FN? ( ptr u8 n n n n n n -- bool )
    {: name:ptr u:n lib:n argc:n spills:n reloc:n idx:n :}
@@ -893,7 +935,7 @@ private
    idx FN-ARGC@ argc <> if false exit then
    idx FN-SPILL@ spills <> if false exit then
    idx FN-RELOC@ reloc <> if false exit then
-   idx FN-NAME u + c@ 0<> if false exit then
+   idx NAME-LEN u <> if false exit then
    name u idx FN-NAME u STR= ;
 
 \ A relocation mask may name only the row's own cells: registers among its
@@ -909,7 +951,7 @@ public
 \ when none does.
 : FN-INDEX ( ptr u8 n n n n n -- n )
    {: name:ptr u:n lib:n argc:n spills:n reloc:n :}
-   name u NAME-ROOM drop
+   u NAME-ROOM
    DECL-TAG {: tag:n :}
    tag FN-N-CELL @ 0 ?do
       name u lib argc spills reloc i tag or SAME-FN? if i tag or unloop exit then
@@ -942,11 +984,11 @@ public
    name u lib argc spills reloc FN-INDEX dup 0 >= if REGISTER-CLEANUP OBS-FN over NOTIFY exit then drop
    REGISTER-CLEANUP
    FN-NEW
+   tag FN-N-CELL @ tag or {: idx:n :}
+   name u idx NAME-FIELD CSTR drop
    tag FN-N-CELL @ 1+ tag FN-N-CELL !
-   tag FN-N-CELL @ 1- tag or {: idx:n :}
    spills idx FN-SPILL-OFF FN-FIELD !
    reloc idx FN-RELOC-OFF FN-FIELD !
-   name u idx FN-NAME CSTR
    lib idx FN-LIB-OFF FN-FIELD !
    argc idx FN-ARGC-OFF FN-FIELD !
    0 idx FN-ADDR!
@@ -970,9 +1012,7 @@ public
 \ relocation mask, in DECLARE-ROW's order.
 : FN-ROW@ ( n -- ptr u8 n n n n n )
    {: idx:n :}
-   idx FN-NAME {: name:ptr :}
-   0 begin dup FN-NAME-CAP < over name + c@ 0<> and while 1+ repeat {: u:n :}
-   name u idx FN-LIB@ idx FN-ARGC@ idx FN-SPILL@ idx FN-RELOC@ ;
+   idx FN-NAME idx NAME-LEN idx FN-LIB@ idx FN-ARGC@ idx FN-SPILL@ idx FN-RELOC@ ;
 \ Library index idx's path, as LIBRARY-PATH and LIB-INDEX number it (from 1).
 : LIB-ROW@ ( n -- ptr u8 n ) 1- {: row:n :} row LIB-PATH row LIB-LEN@ ;
 : MAX-ARGS ( -- n ) FFI-MAX-ARGS ;

@@ -38,8 +38,8 @@ create FFI-T-SQRT   115 c, 113 c, 114 c, 116 c, 0 c,                            
 create FFI-T-HELLO  104 c, 101 c, 108 c, 108 c, 111 c, 0 c,                        \ "hello"
 create FFI-T-HELP   104 c, 101 c, 108 c, 112 c, 0 c,                               \ "help"
 create FFI-T-CSTR-SRC 119 c, 111 c, 114 c, 108 c, 100 c,                           \ "world" (no NUL)
-create FFI-T-CSTR-DST 8 allot
-create FFI-T-SYM-BUF 64 allot
+8 SPAN-BUFFER: FFI-T-CSTR-DST
+64 SPAN-BUFFER: FFI-T-SYM-BUF
 
 variable FFI-T-LIB
 variable FFI-T-MATH
@@ -52,9 +52,10 @@ variable FFI-T-MATH
    FFI-T-LIBM ;
 : FFI-T-OPEN ( -- n )  FFI-T-LIB-PATH FFI:NOW FFI:DLOPEN ;
 : FFI-T-SYM ( ptr u8 -- n ) {: name:ptr :}  FFI-T-LIB @ name FFI:DLSYM ;
-: FFI-T-SYM$ ( ptr u8 n -- n ) {: name:ptr nameu:n :}
-   name nameu FFI-T-SYM-BUF FFI:CSTR
-   FFI-T-LIB @ FFI-T-SYM-BUF FFI:DLSYM ;
+: FFI-T-SYM$ ( ptr u8 n -- n )
+   {: name:ptr nameu:n :}
+   name nameu FFI-T-SYM-BUF FFI:CSTR {: sym:ptr :}
+   FFI-T-LIB @ sym FFI:DLSYM ;
 : FFI-T-OPEN-MATH ( -- n )  FFI-T-MATH-PATH FFI:NOW FFI:DLOPEN ;
 : FFI-T-MSYM ( ptr u8 -- n ) {: name:ptr :}  FFI-T-MATH @ name FFI:DLSYM ;
 
@@ -687,7 +688,7 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    converted converted FFI-T-STRLEN$ s" 72.5" T$=
 
    FFI-T-CSTR-SRC 5 FFI-T-CSTR-DST FFI:CSTR       \ build "world\0" then strlen==5
-   FFI-T-CSTR-DST FFI-T-STRLEN$ 5 T=
+   FFI-T-STRLEN$ 5 T=
 
    s" FFI-T-ROLE-GOOD ( ffi-ctx -- rc ) FFI-T-CTX-SET" FFI-T-CHECK-PASSES
    s" FFI-T-ROLE-BAD ( ffi-dev -- rc ) FFI-T-CTX-SET" FFI-T-CHECK-REJECTS
@@ -712,8 +713,8 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    FFI-T-DEPTH-PROBE 0 T<>
 
    \ memcpy writes its destination and the extent is argument 2.
-   FFI-T-CSTR-DST FFI-T-HELLO 6 FFI-T-MEMCPY drop
-   FFI-T-CSTR-DST FFI-T-STRLEN$ 5 T=
+   FFI-T-CSTR-DST SPAN:$ drop FFI-T-HELLO 6 FFI-T-MEMCPY drop
+   FFI-T-CSTR-DST SPAN:$ drop FFI-T-STRLEN$ 5 T=
 
    \ A symbol nothing carries fails at the CALL, by name, not at the declaration.
    [: FFI-T-ABSENT drop ;] E-FFI-DLSYM TTHROWSQ
@@ -775,8 +776,9 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    FFI:SELECT-PROCESS
    [: FFI-T-LONG-BASE ;] E-FFI-SYNTAX TTHROWSQ
    s" a negative or over-long length is refused before a byte is copied or read" T-LABEL
-   [: FFI-T-CSTR-SRC -1 FFI-T-CSTR-DST FFI:CSTR ;] E-FFI-SYNTAX TTHROWSQ
-   [: FFI-T-CSTR-SRC STR-MIN-I64 FFI-T-CSTR-DST FFI:CSTR ;] E-FFI-SYNTAX TTHROWSQ
+   [: FFI-T-CSTR-SRC -1 FFI-T-CSTR-DST FFI:CSTR drop ;] E-SPAN-LENGTH TTHROWSQ
+   [: FFI-T-CSTR-SRC STR-MIN-I64 FFI-T-CSTR-DST FFI:CSTR drop ;] E-SPAN-LENGTH TTHROWSQ
+   [: s" abcdefgh" FFI-T-CSTR-DST FFI:CSTR drop ;] E-SPAN-CAPACITY TTHROWSQ
    [: FFI-T-CSTR-SRC -1 FFI:LIBRARY-PATH drop ;] E-FFI-SYNTAX TTHROWSQ
    [: FFI-T-CSTR-SRC STR-MIN-I64 FFI:LIBRARY-PATH drop ;] E-FFI-SYNTAX TTHROWSQ
    [: FFI-T-CSTR-SRC -1 FFI:PROCESS 0 FFI:DECLARE drop ;] E-FFI-SYNTAX TTHROWSQ
@@ -785,6 +787,19 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    [: FFI-T-CSTR-SRC STR-MIN-I64 FFI:SELECT-LIBRARY ;] E-FFI-SYNTAX TTHROWSQ
    [: FFI-T-GUARDED-PATH ;] E-FFI-SYNTAX TTHROWSQ
    [: FFI-T-GUARDED-DIRECT ;] E-FFI-SYNTAX TTHROWSQ
+   s" a string holding a 0 byte is refused before it reaches C" T-LABEL
+   0 FFI-T-CSTR-DST SPAN:FILL
+   [: s\" a\zb" FFI-T-CSTR-DST FFI:CSTR drop ;] E-FFI-NUL TTHROWSQ
+   FFI-T-CSTR-DST SPAN:$ drop c@ 0 T=                  \ a refused copy wrote nothing
+   \ A refused path or name leaves its bank without a row; a declared symbol
+   \ followed by a 0 byte is a different name, not that symbol's row.
+   FFI:NEXT-LIB {: next-lib:n :}
+   [: s\" libz\z.so" FFI:LIBRARY-PATH drop ;] E-FFI-NUL TTHROWSQ
+   FFI:NEXT-LIB next-lib T=
+   s" getpid" FFI:PROCESS 0 FFI:DECLARE drop
+   FFI:NEXT-FN {: next-fn:n :}
+   [: s\" getpid\z" FFI:PROCESS 0 FFI:DECLARE drop ;] E-FFI-NUL TTHROWSQ
+   FFI:NEXT-FN next-fn T=
    s" a declaration through the versioned form resolves its symbol" T-LABEL
    FFI-T-VERSIONED-CALL
    FFI-T-VARARGS

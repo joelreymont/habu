@@ -109,7 +109,7 @@ CONNECTIONS TYPED-BUFFER HELD-CONNS PG:connection
 
 : CONNECT-TEXT-CASES ( -- )
    s" rejected connection text releases its claimed slot" T-LABEL
-   CONNECTIONS 1+ 0 ?do [: CONNECT-NUL ;] E-STATEMENT TTHROWSQ loop
+   CONNECTIONS 1+ 0 ?do [: CONNECT-NUL ;] E-FFI-NUL TTHROWSQ loop
    OPEN PG:CLOSE ;
 
 
@@ -342,16 +342,17 @@ TYPED-VARIABLE HELD-ID n
 : NUL-TRAILING ( PG:connection -- PG:connection )
    dup S\" A\x00" TEXT+ ;
 
-: TEXT-BOUNDARY-CASES ( PG:connection -- PG:connection ) {: c :}
+: TEXT-BOUNDARY-CASES ( PG:connection -- PG:connection )
+   {: c :}
    s" text parameters reject NUL without losing staged parameters" T-LABEL
    c PARAMS
    c s" kept" TEXT+
    c [: NUL-LEADING ;] catch {: stale-lead lead-code:n :}
-   lead-code E-STATEMENT T=
+   lead-code E-FFI-NUL T=
    c [: NUL-EMBEDDED ;] catch {: stale-mid mid-code:n :}
-   mid-code E-STATEMENT T=
+   mid-code E-FFI-NUL T=
    c [: NUL-TRAILING ;] catch {: stale-tail tail-code:n :}
-   tail-code E-STATEMENT T=
+   tail-code E-FFI-NUL T=
    c s" select $1::text" [: 0 >ROW 0 >COL TEXT$ s" kept" T$= ;] WITH-RESULT
    s" empty and UTF-8 text parameters round trip exactly" T-LABEL
    c PARAMS
@@ -851,16 +852,17 @@ TYPED-VARIABLE HELD-ID n
    dup S\" p\x00q" [: ;] WITH-PREPARED ;
 
 
-: STATEMENT-BOUNDARY-CASES ( PG:connection -- PG:connection ) {: c :}
+: STATEMENT-BOUNDARY-CASES ( PG:connection -- PG:connection )
+   {: c :}
    s" statements and prepared names reject NUL before libpq" T-LABEL
    c PARAMS
    c s" kept" TEXT+
    c [: EXEC-NUL ;] catch {: stale-sql sql-code:n :}
-   sql-code E-STATEMENT T=
+   sql-code E-FFI-NUL T=
    c [: PREPARE-NUL-NAME ;] catch {: stale-prepare prepare-code:n :}
-   prepare-code E-STATEMENT T=
+   prepare-code E-FFI-NUL T=
    c [: EXEC-NUL-NAME ;] catch {: stale-name name-code:n :}
-   name-code E-STATEMENT T=
+   name-code E-FFI-NUL T=
    c s" select $1::text" [: 0 >ROW 0 >COL TEXT$ s" kept" T$= ;] WITH-RESULT
    c ;
 
