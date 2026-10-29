@@ -1,4 +1,4 @@
-\ bare-copy-lint.f -- a raw byte copy and the span mint belong to compiler and library source.
+\ bare-copy-lint.f -- BYTE-COPY, SPAN:MAKE and the engine's PATHZ and PATH0 stay with their owners.
 \
 \ Two words cross from "a pointer" to "a pointer and how far it reaches", and
 \ both of them take the reach on the caller's word: BYTE-COPY writes `n` bytes
@@ -8,6 +8,17 @@
 \ and BYTE-COPY is how SPAN:COPY moves the bytes once the reach has been checked.
 \ Everywhere else it is a consumer re-doing by hand what the span type already
 \ does, so this lint names the site and the replacement.
+\
+\ The third crossing is the engine's path copier: PATHZ and PATH0 copy a path
+\ and its 0 terminator for the engine's own OS primitives, so they belong to
+\ src/core/, src/habu/ and test/engine-suite.f, which tests those primitives,
+\ and to tools/tier-census.f and tools/tier-dump.f, which by contract require
+\ nothing but code-bytes.f and tier.f (a library they loaded could not be
+\ measured), so they copy through the engine's PATH0 instead of FS.
+\ Everywhere else, src/lib/ included, a path reaches the OS through FS:>PATHZ or
+\ FFI:CSTR into the destination's span. A bare PATHZ or PATH0 that no local or
+\ file definition binds, outside the owners, is a finding. A hand-written
+\ `0 ... c!` terminator cannot be linted: those two owners and review guard it.
 \
 \ Run, from the habu root: bin/hb --load tools/lint/bare-copy-lint.f
 \ For a consumer tree:    bin/hb --load tools/lint/bare-copy-lint.f -- /path/to/tree
@@ -21,7 +32,9 @@
 \ named in this very comment are not findings. A longer name that merely starts
 \ the same way is not the word: BYTE-COPY-LEN is counted separately and never
 \ reported, because the match is whole-token. And ownership is decided by an
-\ ANCHORED path prefix, so test/lib/x.f is a consumer while src/lib/adt/x.f is not.
+\ ANCHORED path prefix, so test/lib/x.f is a BYTE-COPY consumer while
+\ src/lib/adt/x.f is not, and src/lib/x.f is a PATHZ consumer while
+\ src/core/x.f is not.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -32,6 +45,8 @@ require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
 require src/lib/source-lex.f
+require src/lib/adt/option.f
+require tools/lint/def.f
 
 package BARE-COPY-LINT
 
@@ -47,6 +62,8 @@ variable BAD          \ findings in this run
 variable FILES        \ files scanned
 variable NEAR         \ BYTE-COPY-LEN sightings (informational, never a finding)
 variable IN-USING     \ this file said `using SPAN`, so a bare MAKE is the mint
+variable OWNS-COPY    \ this file owns BYTE-COPY and SPAN:MAKE
+variable OWNS-PATH    \ this file owns PATHZ and PATH0
 variable LI
 
 \ Per-directory finding counts. The bucket is the path's FIRST segment, which is
@@ -95,6 +112,14 @@ variable ROOT-U
    pa pu s" src/examples/" LINT-PREFIX? if LINT-FALSE exit then
    pa pu s" src/" LINT-PREFIX? ;
 
+: PATH-OWNED? ( ptr u8 n -- bool )
+   {: pa:ptr pu:n :}
+   pa pu s" src/core/" LINT-PREFIX? if LINT-TRUE exit then
+   pa pu s" src/habu/" LINT-PREFIX? if LINT-TRUE exit then
+   pa pu s" tools/tier-census.f" LINT-STR= if LINT-TRUE exit then
+   pa pu s" tools/tier-dump.f" LINT-STR= if LINT-TRUE exit then
+   pa pu s" test/engine-suite.f" LINT-STR= ;
+
 : COUNT-DIR ( ptr u8 n -- ) {: pa:ptr pu:n :}
    pa pu s" src/lib/" LINT-PREFIX? if N-LIB BUMP exit then
    pa pu s" src/examples/" LINT-PREFIX? if N-EX BUMP exit then
@@ -123,6 +148,13 @@ variable ROOT-U
    k AT-LINE.
    BAD BUMP  pa pu COUNT-DIR ;
 
+: FIND-PATH ( ptr u8 n n -- )
+   {: pa:ptr pu:n k:n :}
+   pa pu k SITE.
+   s"  -> copy through FFI:CSTR or FS; the engine's copier belongs to its owners (see the header)" type
+   k AT-LINE.
+   BAD BUMP  pa pu COUNT-DIR ;
+
 \ ---- token classification -----------------------------------------------------
 \ Only WORD tokens are looked at, so a COMMENT body and a REGISTRY row never
 \ match, and a string literal is one opaque WORD token whose text is the whole
@@ -136,14 +168,126 @@ variable ROOT-U
    k 1+ LINT-LEX:COUNT >= if LINT-FALSE exit then
    k 1+ s" SPAN" LEX-WORD= ;
 
-: LINT-TOKEN ( ptr u8 n n -- ) {: pa:ptr pu:n k:n :}
-   k USING-SPAN? if LINT-TRUE IN-USING ! exit then
+: COPY-TOKEN ( ptr u8 n n -- )
+   {: pa:ptr pu:n k:n :}
    k s" BYTE-COPY-LEN" LEX-WORD= if NEAR BUMP exit then
    k s" BYTE-COPY" LEX-WORD= if pa pu k FIND-COPY exit then
    k s" SPAN:MAKE" LEX-WORD= if pa pu k FIND-MINT exit then
    IN-USING @ if
       k s" MAKE" LEX-WORD= if pa pu k FIND-MINT then
    then ;
+
+\ ---- what binds PATHZ or PATH0 nearer than the engine ------------------------
+\ A name resolves to the nearest binding: a local of the enclosing definition,
+\ byte for byte as the engine and the checker compare locals, then a word the
+\ file defined above it, case-folded as the dictionary looks words up, and only
+\ then the engine's word. The engine hides a definition's name until its closing
+\ token, so inside its own body the name is still the engine's word; a storage
+\ definer's name binds at once. A word defined inside a package binds until the
+\ `;package` that closes it. A local is taken for its whole definition, not
+\ only the block that declared it. LINT-DEF names the definers and their kinds.
+variable DEF-AT       \ the token that opened the body being read, or -1
+variable DEF-KIND     \ the LINT-DEF kind of that body
+variable DEF-NAME     \ the token naming that body, or -1
+variable IN-PKG       \ a `package` is open
+variable DEFS-Z       \ how far the file's own PATHZ binds
+variable DEFS-0       \ how far the file's own PATH0 binds
+variable IN-GROUP     \ LOCAL-BINDS? is inside a `{: … :}` group
+0 constant NO-DEF     \ the file has not defined the name
+1 constant PKG-DEF    \ defined in the open package
+2 constant FILE-DEF   \ defined outside a package: binds to the end of the file
+
+: DEF-MARK ( ptr n -- )
+   {: v:ptr :}
+   IN-PKG @ 0= if FILE-DEF v ! exit then
+   v @ NO-DEF = if PKG-DEF v ! then ;
+
+: DEF-CLOSE ( ptr n -- )
+   {: v:ptr :}
+   v @ PKG-DEF = if NO-DEF v ! then ;
+
+\ Token k is the name a definer makes; -1 when it made none.
+: NAME-DEFINED ( n -- )
+   {: k:n :}
+   k 0 < if exit then
+   k s" PATHZ" LEX-WORD= if DEFS-Z DEF-MARK exit then
+   k s" PATH0" LEX-WORD= if DEFS-0 DEF-MARK then ;
+
+\ The token LINT-DEF names after definer k, or -1.
+: NAME-AT ( n -- n )
+   LINT-DEF:NAME-I MATCH option
+      none OF -1 ENDOF
+      some OF ENDOF
+   ;MATCH ;
+
+\ A data definer binds its name at once; any other kind opens a body that
+\ binds its name at the close.
+: OUTSIDE-STEP ( n -- )
+   {: k:n :}
+   k s" package" LEX-WORD= if LINT-TRUE IN-PKG ! exit then
+   k s" ;package" LEX-WORD= if
+      LINT-FALSE IN-PKG !  DEFS-Z DEF-CLOSE  DEFS-0 DEF-CLOSE  exit
+   then
+   k LINT-DEF:DIRECT-KIND {: kind:n :}
+   kind LINT-DEF:NONE-KIND = if exit then
+   kind LINT-DEF:DATA-KIND = if k NAME-AT NAME-DEFINED exit then
+   k DEF-AT !  kind DEF-KIND !  k NAME-AT DEF-NAME ! ;
+
+\ Read token k into the scope that holds after it.
+: SCOPE-STEP ( n -- )
+   {: k:n :}
+   k LINT-LEX:OPERAND? if exit then
+   DEF-AT @ 0 < if k OUTSIDE-STEP exit then
+   k DEF-KIND @ LINT-DEF:CLOSE? if
+      DEF-NAME @ NAME-DEFINED  -1 DEF-AT !  -1 DEF-NAME !
+   then ;
+
+\ The name group token k declares ends at its first `:`.
+: LOCAL$ ( n -- ptr u8 n )
+   {: k:n :}
+   k LINT-LEX:TOKEN {: a:ptr u:n :}
+   0 begin dup u < if a over + c@ [char] : <> else LINT-FALSE then while 1+ repeat
+   a swap ;
+
+\ A `{: … :}` group of the enclosing definition declares k: an earlier group
+\ names it, or k is itself a name in a group. The lexer marks a group's names as
+\ operands and leaves its `{:` unmarked.
+: LOCAL-BINDS? ( n -- bool )
+   {: k:n :}
+   DEF-AT @ 0 < if LINT-FALSE exit then
+   LINT-FALSE IN-GROUP !
+   k DEF-AT @ 1+ ?do
+      IN-GROUP @ if
+         i s" :}" LEX-WORD= if
+            LINT-FALSE IN-GROUP !
+         else
+            i LOCAL$ k LINT-LEX:TOKEN LINT-STR= if LINT-TRUE unloop exit then
+         then
+      else
+         i s" {:" LEX-WORD= i LINT-LEX:OPERAND? LINT-NOT and if LINT-TRUE IN-GROUP ! then
+      then
+   loop
+   IN-GROUP @ if LINT-TRUE exit then
+   LINT-FALSE ;
+
+: PATH-USE ( ptr u8 n n ptr n -- )
+   {: pa:ptr pu:n k:n v:ptr :}
+   k DEF-NAME @ = if exit then
+   v @ NO-DEF <> if exit then
+   k LOCAL-BINDS? if exit then
+   pa pu k FIND-PATH ;
+
+: PATH-TOKEN ( ptr u8 n n -- )
+   {: pa:ptr pu:n k:n :}
+   k SCOPE-STEP
+   k s" PATHZ" LEX-WORD= if pa pu k DEFS-Z PATH-USE exit then
+   k s" PATH0" LEX-WORD= if pa pu k DEFS-0 PATH-USE then ;
+
+: LINT-TOKEN ( ptr u8 n n -- )
+   {: pa:ptr pu:n k:n :}
+   k USING-SPAN? if LINT-TRUE IN-USING ! exit then
+   OWNS-COPY @ 0= if pa pu k COPY-TOKEN then
+   OWNS-PATH @ 0= if pa pu k PATH-TOKEN then ;
 
 \ ---- fail-closed on a lexer defect --------------------------------------------
 \ An unterminated literal or a malformed axiom row means the lexer swallowed the
@@ -158,11 +302,15 @@ variable ROOT-U
    s"  at line " type LINT-LEX:ERROR-LINE@ .
    E-SPAN-UNTERM throw ;
 
-: LINT-SCAN ( ptr u8 n ptr u8 n -- ) {: pa:ptr pu:n a:ptr u:n :}
+: LINT-SCAN ( ptr u8 n ptr u8 n -- )
+   {: pa:ptr pu:n a:ptr u:n :}
    a u LINT-LEX:SOURCE
    LINT-LEX:ERROR? if pa pu BCL-LEX-FAIL then
    LINT-FALSE IN-USING !
-   pa pu OWNED? if exit then
+   -1 DEF-AT !  -1 DEF-NAME !  LINT-FALSE IN-PKG !  NO-DEF DEFS-Z !  NO-DEF DEFS-0 !
+   pa pu OWNED? OWNS-COPY !
+   pa pu PATH-OWNED? OWNS-PATH !
+   OWNS-COPY @ if OWNS-PATH @ if exit then then
    0 LI !
    begin LI @ LINT-LEX:COUNT < while
       pa pu LI @ LINT-TOKEN

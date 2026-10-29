@@ -3,6 +3,7 @@
 \ Run with an artifact path and case name; the registered capture suite owns both.
 require src/lib/string.f
 require src/lib/le.f
+require src/lib/fs.f
 require test/aot-artifact-roundtrip.f
 
 package AOT-CAPTURE
@@ -51,7 +52,7 @@ public
    DERIVED AOT-IDENT:CHAIN-DIGEST
    prod BUILD-HEADER
    short 0= if VERSION 1- HDR O-VERSION + U64! then
-   path pathu PATH0 1537 493 open FD !
+   path pathu FS:>PATHZ 1537 493 open FD !
    FD @ 0 < if s" artifact-row-test: cannot write forged file" DIE then
    SHA-CTX SHA256-BEGIN
    HDR HDR-BYTES PUT
@@ -70,7 +71,7 @@ public
    PAYLOAD-DIGEST
    DERIVED AOT-IDENT:CHAIN-DIGEST
    prod BUILD-HEADER
-   path pathu PATH0 1537 493 open FD !
+   path pathu FS:>PATHZ 1537 493 open FD !
    FD @ 0 < if s" artifact-row-test: cannot write forged file" DIE then
    WRITE-BODY
    FD @ close ;
@@ -86,7 +87,7 @@ public
    prod BUILD-HEADER
    mode 0= if S-BLOB SEC-PTR dup c@ 1 xor swap c! then
    mode 3 = if S-SCALARS SEC-PTR dup c@ 1 xor swap c! then
-   path pathu PATH0 1537 493 open FD !
+   path pathu FS:>PATHZ 1537 493 open FD !
    FD @ 0 < if s" artifact-row-test: cannot write damaged file" DIE then
    mode 1 = if
       SHA-CTX SHA256-BEGIN

@@ -72,6 +72,29 @@ package BARE-COPY-LINT
    s" src/core/bytes.f" s" : F ( ptr u8 n -- ) SPAN:MAKE drop ;" BCT-SCAN 0 T=
    s" test/lib/x.f" s" : F ( ptr u8 ptr u8 n -- ) BYTE-COPY ;" BCT-SCAN 1 T= ;
 
+\ ---- PATHZ and PATH0 resolve to the nearest binding ----------------------------
+\ A local binds its name byte for byte, as the engine and the checker look locals
+\ up, so `{: pathz :}` does not bind `PATHZ`. A definition's name binds below
+\ its closing token, so inside its own body the name is still the engine's word;
+\ a storage definer's name binds at once. Either is case-folded as the
+\ dictionary looks words up, and binds until the `;package` that closes its
+\ package.
+: BCT-PATH-SHADOW ( -- )
+   s" : F ( ptr u8 n -- ptr u8 ) PATHZ ;" BCT-CONSUMER 1 T=
+   s" : F ( ptr u8 n -- ptr u8 ) PATH0 ;" BCT-CONSUMER 1 T=
+   s" : PATH0 ( ptr u8 n -- ptr u8 ) PATH0 ;" BCT-CONSUMER 1 T=
+   s" : F ( ptr u8 -- ptr u8 ) {: pathz:ptr :} pathz ;" BCT-CONSUMER 0 T=
+   s" : F ( n ptr u8 n -- ptr u8 ) {: pathz :} PATHZ ;" BCT-CONSUMER 1 T=
+   s" : G ( ptr u8 -- ) {: pathz:ptr :} ; : F ( -- ) pathz ;" BCT-CONSUMER 1 T=
+   s" : PATHZ ( -- ) ; : F ( -- ) pathz ;" BCT-CONSUMER 0 T=
+   s" create PATH0 8 allot : F ( -- ptr u8 ) PATH0 ;" BCT-CONSUMER 0 T=
+   s" : F ( -- ) PATHZ ; : PATHZ ( -- ) ;" BCT-CONSUMER 1 T=
+   s" package P : PATHZ ( -- ) ; : F ( -- ) PATHZ ; ;package : G ( -- ) PATHZ ;" BCT-CONSUMER 1 T=
+   s" src/core/y.f" s" : F ( ptr u8 n -- ptr u8 ) PATH0 ;" BCT-SCAN 0 T=
+   s" tools/tier-dump.f" PATH-OWNED? TTRUE
+   s" tools/tier-census.f" PATH-OWNED? TTRUE
+   s" tools/tier.f" PATH-OWNED? TFALSE ;
+
 \ ---- fail-closed: a defect that hides the rest of a file ----------------------
 create BCT-UB 2 allot
 
@@ -163,6 +186,7 @@ variable BCT-WITHOUT-U
    BCT-USING
    BCT-PATHS
    BCT-OWNED-EXEMPT
+   BCT-PATH-SHADOW
    BCT-FAIL-CLOSED
    BCT-TREE
    T-REPORT

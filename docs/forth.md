@@ -2384,6 +2384,10 @@ sections above.
   at `;]`; an unsigned definition's `r@` or `r>` on an input it did not push
   is rejected at the token. Use `>r … r>` within one definition (see
   **Checker & type model**).
+- **A string handed to the OS or a C library holds no 0 byte.** The byte
+  would end it early. `FFI:CSTR` refuses it before writing a byte, as
+  `E-FFI-NUL`; the engine's `PATHZ` and `PATH0` refuse it as `E-PATH-NUL`. So
+  `s\" a\zb"` is `E-FFI-NUL` at `FS:EXISTS?` and `E-PATH-NUL` at `required`.
 
 ## Spans: a pointer that carries its reach
 
