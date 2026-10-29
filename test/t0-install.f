@@ -48,11 +48,14 @@
 \ on their condition codes, with a cell under each result. The join rows run
 \ `if`, `else` and `then` whose arms leave the virtual stack in different
 \ layouts, each both ways with a cell under its result: a call in one arm,
-\ swapped and rotated arms, a constant against a register, arms that leave
-\ more or fewer registers than the layout, an `exit` in either arm, an if/else
-\ nested in each arm, sixteen live values evicted in one arm, a copy live
-\ across an `if` whose arm writes one copy, and a fused compare whose copy and
-\ constant settle between the compare and its branch.
+\ with and without the layout's bottom cells loaded back from memory, swapped
+\ and rotated arms, a constant against a register and one whose goal vreg
+\ another entry holds, arms that leave more or fewer registers than the
+\ layout, an `exit` in an `if`, an `else`, an `of` arm, a default arm and a
+\ loop with a join after each, an if/else nested in each arm, sixteen live
+\ values evicted in one arm, an else arm after a first arm that held every
+\ vreg, a copy live across an `if` whose arm writes one copy, and a fused
+\ compare whose copy and constant settle between the compare and its branch.
 \ The loop rows run `begin` loops whose values stay in registers around the
 \ back edge, each with a cell under its result: a byte counted in a string, a
 \ 2-cycle and a 3-cycle at the back edge, two `while` exits that leave
@@ -555,9 +558,7 @@ W-DEF-2OVER W-PO
 : J-SINK ( n n bool -- n ) if swap 1+ swap then - ;
 : J-PART ( n n bool -- n ) >r 1+ r> if swap 1+ swap then - ;
 : J-DEEP ( n n bool -- n ) if swap 1+ swap else J-TWICE then - ;
-: J-EXIT ( n bool -- n ) >r 1+ r> if exit then 2 * ;
 : J-EXIT-IF ( n bool -- n ) >r 1+ r> if 10 + exit else 2 * then 1+ ;
-: J-EXIT-ELSE ( n bool -- n ) >r 1+ r> if 2 * else exit then 1+ ;
 : J-NEST ( n n bool bool -- n )
    {: f:bool g:bool :}
    1+ swap 1+ swap
@@ -576,6 +577,26 @@ W-DEF-2OVER W-PO
 : J-DUP2 ( n n bool -- n ) >r 1+ swap 1+ swap r> if nip dup then + ;
 \ A copy and a constant settled between the compare and its branch.
 : J-FUSE ( n n -- n n n ) >r 1+ dup 7 r> 0< if + 1 else * 2 then ;
+
+\ The goal layout's bottom cells come back from memory after the call; the
+\ entries meet the layout's top cells.
+: J-RAISE ( n n bool -- n ) >r 1+ swap 1+ r> if J-TWICE 1+ then - ;
+\ A constant whose goal vreg another entry still holds.
+: J-KGOAL ( n n bool -- n ) >r 1+ swap 1+ swap r> if drop 5 swap then - ;
+
+\ An exit in an `if`, an `of` arm, a default arm and a loop: the join after
+\ each is reached again.
+: J-EXIT ( n bool bool -- n ) swap if drop drop 100 exit then if drop 7 then ;
+: J-EXIT-OF ( n n n -- n n ) case 0 of swap exit endof >r over 0< if swap then r> endcase ;
+: J-EXIT-CASE ( n n n -- n n ) case 0 of swap endof drop swap exit endcase over 0< if swap then ;
+: J-EXIT-LOOP ( n n -- n n ) 3 0 do 1+ dup 5 > if leave then unloop exit loop over 0< if swap then ;
+
+\ A first arm that leaves fifteen constants, each settled into a vreg, and an
+\ else arm that starts from a layout holding none of them and loads its value.
+: J-SPENT ( n bool -- n )
+   if drop 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15
+   else dup dup dup dup dup dup dup dup dup dup dup dup dup dup then
+   + + + + + + + + + + + + + + ;
 
 \ ---- loops that keep registers ------------------------------------------------
 \ Each loop keeps its values in vregs at `begin`, its exits' at `while`, and the
@@ -1158,6 +1179,7 @@ private
 : JOIN-CASE ( -- )
    s" a call in one arm" T-LABEL
    77 3 10 true J-CALL 3 T= 77 T=   77 3 10 false J-CALL 7 T= 77 T=
+   77 3 10 true J-RAISE 2 T= 77 T=   77 3 10 false J-RAISE 7 T= 77 T=
    s" swapped and rotated arms" T-LABEL
    77 3 10 true J-SWAP 7 T= 77 T=   77 3 10 false J-SWAP -7 T= 77 T=
    77 3 10 true J-ELSE -107 T= 77 T=   77 3 10 false J-ELSE 7 T= 77 T=
@@ -1165,19 +1187,28 @@ private
    s" a constant against a register" T-LABEL
    77 3 true J-CONST 9 T= 77 T=   77 3 false J-CONST 6 T= 77 T=
    77 3 true J-KONST 6 T= 77 T=   77 3 false J-KONST 9 T= 77 T=
+   77 3 10 true J-KGOAL 1 T= 77 T=   77 3 10 false J-KGOAL -7 T= 77 T=
    s" arms that leave different register counts" T-LABEL
    77 3 10 true J-SINK -6 T= 77 T=   77 3 10 false J-SINK -7 T= 77 T=
    77 3 10 true J-PART -7 T= 77 T=   77 3 10 false J-PART -8 T= 77 T=
    77 3 10 true J-DEEP -6 T= 77 T=   77 3 10 false J-DEEP -17 T= 77 T=
-   s" an exit in either arm" T-LABEL
-   77 3 true J-EXIT 4 T= 77 T=   77 3 false J-EXIT 8 T= 77 T=
+   s" an exit in an if, an else, an of, a default arm and a loop" T-LABEL
+   77 5 true true J-EXIT 100 T= 77 T=   77 5 false true J-EXIT 7 T= 77 T=
+   77 5 false false J-EXIT 5 T= 77 T=
    77 3 true J-EXIT-IF 14 T= 77 T=   77 3 false J-EXIT-IF 9 T= 77 T=
-   77 3 true J-EXIT-ELSE 9 T= 77 T=   77 3 false J-EXIT-ELSE 4 T= 77 T=
+   77 3 10 0 J-EXIT-OF 3 T= 10 T= 77 T=   77 -1 0 2 J-EXIT-OF -1 T= 0 T= 77 T=
+   77 3 10 2 J-EXIT-OF 10 T= 3 T= 77 T=
+   77 3 -4 0 J-EXIT-CASE -4 T= 3 T= 77 T=   77 3 4 0 J-EXIT-CASE 3 T= 4 T= 77 T=
+   77 3 -4 1 J-EXIT-CASE 3 T= -4 T= 77 T=
+   77 -5 9 J-EXIT-LOOP -5 T= 10 T= 77 T=   77 5 9 J-EXIT-LOOP 10 T= 5 T= 77 T=
+   77 3 -4 J-EXIT-LOOP -3 T= 3 T= 77 T=
    s" an if and else nested in each arm" T-LABEL
    77 3 10 true true J-NEST 7 T= 77 T=     77 3 10 true false J-NEST -107 T= 77 T=
    77 3 10 false true J-NEST -1007 T= 77 T=   77 3 10 false false J-NEST 7 T= 77 T=
    s" sixteen live values, evicted in one arm" T-LABEL
    77 1 -1 J-FULL 190 T= 77 T=   77 1 1 J-FULL 136 T= 77 T=
+   s" an else arm after a first arm that held every vreg" T-LABEL
+   77 4 true J-SPENT 120 T= 77 T=   77 4 false J-SPENT 60 T= 77 T=
    s" a shared vreg across an if" T-LABEL
    77 3 true J-DUP 20 T= 77 T=   77 3 false J-DUP 16 T= 77 T=
    77 3 10 true J-DUP2 22 T= 77 T=   77 3 10 false J-DUP2 15 T= 77 T=

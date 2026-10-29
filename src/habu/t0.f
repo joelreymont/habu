@@ -906,9 +906,10 @@ variable PENDING
    false k 0 ?do i REG? i VS-VAL @ v = and or loop ;
 
 \ Every entry in a vreg of its own: a constant is materialised, and an entry
-\ sharing a deeper entry's vreg gets a copy. The entries need no more vregs
-\ than there are, so ALLOC evicts nothing, and LIT and MOV keep the condition
-\ codes for a fused branch.
+\ sharing a deeper entry's vreg gets a copy. FREE is exactly the vregs no entry
+\ holds (ADOPT), less the flag `if` took off the stack, so the entries and that
+\ flag, at most VREGS, leave ALLOC a free vreg each time and it evicts nothing.
+\ LIT and MOV keep the condition codes for a fused branch.
 : SETTLE ( -- )
    VS-N @ 0 ?do
       i CONST? if i MAT drop else
@@ -930,7 +931,9 @@ variable PENDING
    from CS-LAY-N @ to CS-LAY-N !
    T0-EMIT:VREGS 0 ?do from i LAY@ to i LAY! loop ;
 
-\ The virtual stack becomes layout k, its vregs the only ones held.
+\ The virtual stack becomes layout k, its vregs the only ones held. FREE is
+\ rebuilt from the layout alone, so it is exactly the vregs no entry holds,
+\ whatever the entries it replaces or RECONCILE's moves left allocated.
 : ADOPT ( n -- ) {: k:n :}
    k CS-LAY-N @ VS-N !
    ALL-FREE FREE !
@@ -1560,7 +1563,6 @@ TRUSTED: DOES-PATCH-ENTRY ( -- n ) ['] does-patch ;
    NTRAP:ROUTINE loc DO-CALL
    begin CS-TOP-KIND CS-ENDOF = while CS-ENDOF CS-POP repeat
    CS-MATCH CS-POP
-   LAND
    T0-EMIT:ENDCASE,
    SCOPE-END ;
 
