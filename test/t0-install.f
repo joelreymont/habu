@@ -55,6 +55,13 @@
 \ sixteen live values evicted in the body, loops in each arm of an if/else,
 \ `until` on a compare of a loop value and on the loop value itself, `again`
 \ left by `exit` and by a `while`, and a fused `while` with a constant below.
+\ The counted loop rows run `do` and `?do` loops whose values stay in
+\ registers, each with a cell under its result: a value carried across `loop`,
+\ `+loop` up and down by a copy of a loop value, a step in the vreg the layout
+\ gives a dropped value's replacement, `?do` with equal and ordered bounds
+\ under `loop` and `+loop`, `leave` from an `if` arm that swapped the values,
+\ nested levels, a swap and a rotate at the back edge, a constant and a copy
+\ under the bounds, and a full virtual stack at `do`.
 \ A CALLBACK: declaration compiled by T0 is handed to libc's qsort, which sorts
 \ a row through it, and its C entry lies between its accessor's code and the
 \ next definition's: the stub T0 appended to the accessor's emission. The
@@ -650,6 +657,73 @@ TRUSTED: L-WAGAIN ( n n -- n n )
    {: a:n :}
    a begin 0 swap dup 10 < while nip 2 * repeat ;
 
+\ ---- counted loops that keep registers ----------------------------------------
+\ Each `do` keeps the values under its start and limit in vregs, and the back
+\ edge, `?do`'s skip and every `leave` reconcile to them. A body reads its
+\ inputs from locals, so the level's layout holds them in vregs.
+: D-CARRY ( n n -- n n )
+   {: a:n b:n :}
+   a b 5 0 do swap 1+ swap 2 * loop ;
+
+\ The step is a copy of a value the layout holds.
+: D-UP ( n n -- n n )
+   {: a:n k:n :}
+   a k 10 0 do swap i + swap dup +loop ;
+
+: D-DOWN ( n n -- n n )
+   {: a:n k:n :}
+   a k 0 10 do swap i + swap dup negate +loop ;
+
+\ The step sits in the vreg of the value the body dropped, which the layout
+\ gives the constant pushed in its place.
+: D-FREED ( n n n -- n n n )
+   {: c:n a:n b:n :}
+   c a b 20 0 do rot drop 100 rot rot swap 1+ swap dup 1+ +loop ;
+
+: D-QDO ( n n n n -- n n )
+   {: a:n b:n lim:n st:n :}
+   a b lim st ?do swap 1+ swap 2 * loop ;
+
+: D-QSTEP ( n n n n -- n n )
+   {: a:n k:n lim:n st:n :}
+   a k lim st ?do swap 1+ swap dup negate +loop ;
+
+\ `leave` from an arm that swapped the values: that exit carries them swapped,
+\ the loop's end does not.
+: D-LEAVE ( n n n n -- n n )
+   {: a:n b:n k:n n:n :}
+   a b n 0 do swap 1+ swap 2 * dup k > if swap leave then loop ;
+
+: D-NEST ( n n -- n n )
+   {: a:n b:n :}
+   a b 3 0 do swap 1+ swap 4 0 do 1+ i + j + loop loop ;
+
+: D-SWAP ( n n -- n n )
+   {: a:n b:n :}
+   a b 5 0 do swap 1+ loop ;
+
+: D-ROT ( n n n -- n n n )
+   {: a:n b:n c:n :}
+   a b c 4 0 do rot 1+ loop ;
+
+\ A constant and a copy under the bounds settle into vregs of their own.
+: D-KONST ( n -- n n n )
+   {: a:n :}
+   5 a dup 3 0 do 1+ loop ;
+
+\ Fifteen values fill the virtual stack at `do`, whose bounds evict two.
+: D-FULL ( n -- n )
+   dup 1+ dup 1+ dup 1+ dup 1+ dup 1+ dup 1+ dup 1+
+   dup 1+ dup 1+ dup 1+ dup 1+ dup 1+ dup 1+ dup 1+
+   4 0 do 1+ loop
+   + + + + + + + + + + + + + + ;
+
+: D-FULL-STEP ( n -- n )
+   dup 1+ dup 1+ dup 1+ dup 1+ dup 1+ dup 1+ dup 1+
+   dup 1+ dup 1+ dup 1+ dup 1+ dup 1+ dup 1+ dup 1+
+   8 0 do 1+ 2 +loop
+   + + + + + + + + + + + + + + ;
+
 \ ---- is ------------------------------------------------------------------------
 defer HOOK ( n -- n )
 : INC ( n -- n ) 1+ ;
@@ -1042,6 +1116,29 @@ private
    s" a while on a fused compare with a constant below" T-LABEL
    77 3 L-WCONST 12 T= 0 T= 77 T= ;
 
+\ Each counted loop with a cell under its result.
+: DO-REG-CASE ( -- )
+   s" a value carried and changed across do and loop" T-LABEL
+   77 3 1 D-CARRY 32 T= 8 T= 77 T=
+   s" +loop counting up and down by a copy of a loop value" T-LABEL
+   77 0 3 D-UP 3 T= 18 T= 77 T=   77 0 3 D-DOWN 3 T= 22 T= 77 T=
+   s" a +loop step in a vreg the layout gives another value" T-LABEL
+   77 7 0 4 D-FREED 4 T= 4 T= 100 T= 77 T=
+   s" ?do with equal and with ordered bounds" T-LABEL
+   77 3 1 5 5 D-QDO 1 T= 3 T= 77 T=   77 3 1 5 2 D-QDO 8 T= 6 T= 77 T=
+   77 3 2 6 6 D-QSTEP 2 T= 3 T= 77 T=   77 3 2 0 6 D-QSTEP 2 T= 7 T= 77 T=
+   s" leave from inside an if" T-LABEL
+   77 0 1 20 100 D-LEAVE 5 T= 32 T= 77 T=   77 0 1 1000 4 D-LEAVE 16 T= 4 T= 77 T=
+   s" nested loops with values live in both" T-LABEL
+   77 1 0 D-NEST 42 T= 4 T= 77 T=
+   s" a swap and a rotate at the back edge" T-LABEL
+   77 1 10 D-SWAP 4 T= 12 T= 77 T=
+   77 10 20 30 D-ROT 12 T= 31 T= 21 T= 77 T=
+   s" a constant and a copy under the bounds" T-LABEL
+   77 7 D-KONST 10 T= 7 T= 5 T= 77 T=
+   s" a full virtual stack at do" T-LABEL
+   77 1 D-FULL 124 T= 77 T=   77 1 D-FULL-STEP 124 T= 77 T= ;
+
 \ A forged tag in an enum slot and in a product's enum field: the fetch's tag
 \ check ends the child after the fixture armed it.
 : FETCH-FORGED ( -- )
@@ -1069,6 +1166,7 @@ public
    FUSE-CASE
    JOIN-CASE
    LOOP-REG-CASE
+   DO-REG-CASE
    FETCH-FORGE-CASE
    IS-CASE
    CALLBACK-CASE

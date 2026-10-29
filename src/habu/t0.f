@@ -108,15 +108,16 @@
 \ THE VIRTUAL STACK. The top of the data stack lives in at most T0-EMIT:VREGS
 \ entries, each a vreg or a constant; below them the stack is in memory. A
 \ constant becomes code only when an operation needs it in a register or the
-\ stack is spilled. The paths that meet at an `if`'s `else` and `then` and at a
-\ `begin` loop's head and exits keep their values in registers: `if` records
-\ the layout its skipped path carries, `begin` the loop head's and `while` its
-\ exit's (SNAPSHOT, every entry settled into a vreg of its own), and the paths
-\ that join there reconcile to it (RECONCILE): the arms at `else` and `then`,
-\ the back edge at `repeat`, `until` and `again`, and the fallthrough at a
-\ `then` that lands a `while` exit. Every call spills the whole virtual stack
-\ to memory, and so does every counted loop's head and exit and every `case`
-\ and MATCH join, so those paths meet with it empty. A push onto a full virtual
+\ stack is spilled. The paths that meet at an `if`'s `else` and `then`, at a
+\ `begin` loop's head and exits and at a counted loop's head and exit keep
+\ their values in registers: `if` records the layout its skipped path carries,
+\ `begin` the loop head's, `while` its exit's and `do` its level's (SNAPSHOT,
+\ every entry settled into a vreg of its own), and the paths that join there
+\ reconcile to it (RECONCILE): the arms at `else` and `then`, the back edge at
+\ `repeat`, `until`, `again`, `loop` and `+loop`, the fallthrough at a `then`
+\ that lands a `while` exit, and every `leave`. Every call spills the whole
+\ virtual stack to memory, and so does every `case` and MATCH join, so those
+\ paths meet with it empty. A push onto a full virtual
 \ stack spills its bottom entry. Entries may share a vreg: a copy (`dup`,
 \ `over`, a wide move's cell) is a second entry holding the same vreg, and a
 \ vreg is free only once no entry holds it (RELEASE). An operation that writes
@@ -177,11 +178,15 @@
 \ the emitter is called: T0-EMIT's structured words (src/habu/t0-emit.f
 \ CONTROL) keep the branches and trust this nesting.
 \
-\ LOOPS. `do` and `?do` push a runtime frame (T0-EMIT LOOP-PUSH: the index's
-\ home is memory) and open a level (LOOP-OPEN), `?do` with its entry test.
-\ `loop` and `+loop` branch back to the level's head, then LOOP-CLOSE lands
-\ its `leave` exits and entry on the pop of the frame that follows, so every
-\ way out leaves through that pop with the virtual stack spilled.
+\ LOOPS. `do` and `?do` take the start and limit, push a runtime frame
+\ (T0-EMIT LOOP-PUSH: the index's home is memory), record the rest of the
+\ virtual stack as the level's layout and open the level (LOOP-OPEN), `?do`
+\ with its entry test, which runs in the layout. `loop` and `+loop` reconcile
+\ to the layout and branch back to the level's head, `+loop`'s step reconciled
+\ into a vreg above it; `leave` reconciles to it and branches out. LOOP-CLOSE
+\ lands the `leave` exits and the entry on the pop of the frame that follows,
+\ so every way out leaves through that pop in the layout, where the code after
+\ the loop continues.
 
 require src/lib/prelude.f
 require src/lib/string.f
@@ -392,7 +397,7 @@ variable FREE                       \ bit k set: no entry holds vreg k
 
 \ The top entry in a vreg, taken off the virtual stack. The vreg stays allocated
 \ until the caller's next SPILL-ALL or RELEASE, and an entry below may still
-\ hold it: the caller writes it only once the virtual stack is spilled.
+\ hold it: the caller writes it only once no entry holds it.
 : TAKE ( -- T0-EMIT:vreg )
    1 ENSURE
    TOP MAT {: r:T0-EMIT:vreg :}
@@ -821,9 +826,9 @@ variable DEAD                        \ nonzero: the fallthrough is unreachable
 \ ---- joins -------------------------------------------------------------------
 \ A layout is the virtual stack as registers alone: count n and n distinct
 \ vregs, the top n cells of the data stack bottom first, the rest in memory.
-\ `if` records the layout its skipped path carries, `begin` its loop head's and
-\ `while` its exit's; the paths that meet there reconcile to the layout
-\ recorded first.
+\ `if` records the layout its skipped path carries, `begin` its loop head's,
+\ `while` its exit's and `do` its level's; the paths that meet there
+\ reconcile to the layout recorded first.
 
 \ Whether an entry below k holds k's vreg.
 : HELD-BELOW? ( n -- bool ) {: k:n :}
@@ -1055,32 +1060,31 @@ variable DEAD                        \ nonzero: the fallthrough is unreachable
    1 DEAD ! ;
 
 \ ---- loops -------------------------------------------------------------------
+\ A `do` level's layout L is the virtual stack under the start and limit, so it
+\ holds at most VREGS - 2 entries: the closer's step and scratch vregs lie
+\ outside it, and the emitter's loop words touch no other vreg.
 variable DO-N                       \ the open levels
 
 \ Refuse unless at least k levels are open.
 : LEVELS ( n -- ) DO-N @ > if E-T0-CONTROL throw then ;
 
-\ Keep vreg r allocated past a SPILL-ALL that freed every vreg.
-: HOLD ( T0-EMIT:vreg -- ) T0-EMIT:VREG>N 1 swap lshift invert FREE @ and FREE ! ;
-
-\ Push the frame of `do` or `?do` from ( limit start ) and spill the rest.
-: FRAME ( -- T0-EMIT:vreg T0-EMIT:vreg )
+\ Push the frame of `do` or `?do` from ( limit start ), record the rest of the
+\ virtual stack as the level's layout, and open the level, `?do` with its entry
+\ test when the flag is true. The body, the back edge, the entry's skip and
+\ every `leave` meet in the layout.
+: OPEN-LEVEL ( bool -- ) {: entry:bool :}
    TAKE {: s:T0-EMIT:vreg :}
    TAKE {: l:T0-EMIT:vreg :}
    s l T0-EMIT:LOOP-PUSH
-   LAND
-   s l ;
+   CS-N @ {: k:n :}
+   CS-DO L-N @ CS-PUSH  k SNAPSHOT
+   s l entry T0-EMIT:LOOP-OPEN
+   s RELEASE  l RELEASE
+   DO-N @ 1+ DO-N ! ;
 
-\ Open a level whose loop head is here, with `?do`'s entry test when the flag
-\ is true.
-: OPEN-LEVEL ( T0-EMIT:vreg T0-EMIT:vreg bool -- )
-   T0-EMIT:LOOP-OPEN
-   DO-N @ 1+ DO-N !
-   CS-DO L-N @ CS-PUSH ;
+: DO-DO ( -- ) false OPEN-LEVEL ;
 
-: DO-DO ( -- ) FRAME false OPEN-LEVEL ;
-
-: DO-?DO ( -- ) FRAME true OPEN-LEVEL ;
+: DO-?DO ( -- ) true OPEN-LEVEL ;
 
 \ The innermost level, which `loop` or `+loop` closes, ending its names.
 : CLOSING ( -- ) CS-DO CS-POP SCOPE-END ;
@@ -1090,28 +1094,51 @@ variable DO-N                       \ the open levels
    DO-N @ 1- DO-N !
    T0-EMIT:LOOP-CLOSE ;
 
+\ The back edge reconciles to the level's layout, in which the code after the
+\ loop continues.
 : DO-LOOP ( -- )
    CLOSING
-   LAND
+   CS-N @ RECONCILE
    ALLOC {: t:T0-EMIT:vreg :}
    t T0-EMIT:LOOP-NEXT
    t RELEASE
    CLOSE-LEVEL ;
 
+\ The first vreg layout k does not hold.
+: OUTSIDE ( n -- T0-EMIT:vreg ) {: k:n :}
+   0 begin k over T0-EMIT:>VREG LAY-HOLDS? while 1+ repeat
+   T0-EMIT:>VREG ;
+
+\ Layout k with one more vreg on top, outside it, recorded as layout k + 1.
+: STEP-LAYOUT ( n -- ) {: k:n :}
+   k 1+ LAY-ROOM  k k 1+ LAY-COPY
+   k CS-LAY-N @ {: n:n :}
+   k OUTSIDE T0-EMIT:VREG>N  k 1+ n LAY!
+   n 1+ k 1+ CS-LAY-N ! ;
+
+\ The step reconciles with the layout as a vreg above it, so the layout's moves
+\ leave it whole and LOOP-STEP may clobber it.
 : DO-+LOOP ( -- )
    CLOSING
+   CS-N @ {: k:n :}
+   k STEP-LAYOUT
+   k 1+ RECONCILE
    TAKE {: s:T0-EMIT:vreg :}
-   LAND
-   s HOLD
    ALLOC {: t:T0-EMIT:vreg :}
    s t T0-EMIT:LOOP-STEP
    s RELEASE  t RELEASE
    CLOSE-LEVEL ;
 
+\ The innermost level's control stack entry.
+: INNER-DO ( -- n )
+   CS-N @ 1- begin dup CS-KIND @ CS-DO <> while 1- repeat ;
+
+\ `leave` reconciles to the innermost level's layout, where its exit lands.
 : DO-LEAVE ( -- )
    1 LEVELS
-   SPILL-ALL
-   T0-EMIT:LEAVE, ;
+   INNER-DO RECONCILE
+   T0-EMIT:LEAVE,
+   1 DEAD ! ;
 
 : DO-UNLOOP ( -- ) 1 LEVELS T0-EMIT:LOOP-POP ;
 

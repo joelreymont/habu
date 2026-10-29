@@ -502,7 +502,9 @@ ARCHES TYPED-BUFFER LOOP-CLOSE-XT [ -- ]
 \ direction; `?do` enters while start < limit, and LOOP-STEP makes the entry
 \ of its level skip equal bounds only. LOOP-OPEN opens a level; LOOP-NEXT,
 \ LOOP-STEP and LEAVE, branch to the innermost level's head or past its end;
-\ LOOP-CLOSE lands its exits on the pop of its frame.
+\ LOOP-CLOSE lands its exits on the pop of its frame. The loop words write no
+\ vreg but those passed in, so values in the others live across every head,
+\ back edge and exit.
 
 \ Push a frame of index s and limit l; pop the innermost frame.
 : LOOP-PUSH ( vreg vreg -- ) CUR @ LOOP-PUSH-XT @ execute ;

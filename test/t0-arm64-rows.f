@@ -332,12 +332,10 @@ private
    then
    at ;
 
-\ A loop shaped as SCAN-CHAR keeps its values in registers around the back
-\ edge: nothing between the loop head and the branch back to it loads or
+\ The body sealed last keeps its loop's values in registers around the back
+\ edge: nothing between the loop head and the last branch back to it loads or
 \ stores through x19.
-: LOOP-CASE ( -- )
-   ARCH-A64
-   s" CNT ( ptr u8 n -- n ptr u8 n ) 0 rot rot begin dup 0 > while over c@ 44 = if rot 1+ rot rot then swap 1+ swap 1- repeat " BODY
+: IN-REGS ( -- )
    0 0 NEMIT:SIZE 0 ?do
       i BACK-TARGET {: t:n :}
       t i <> if 2drop t i then
@@ -350,6 +348,18 @@ private
       w 25 rshift 5 and 4 =  w 5 rshift 31 and DS =  and 0= and
    4 +loop TTRUE
    NEMIT:CLEAR ;
+
+\ A loop shaped as SCAN-CHAR.
+: LOOP-CASE ( -- )
+   ARCH-A64
+   s" CNT ( ptr u8 n -- n ptr u8 n ) 0 rot rot begin dup 0 > while over c@ 44 = if rot 1+ rot rot then swap 1+ swap 1- repeat " BODY
+   IN-REGS ;
+
+\ A do loop whose body swaps two values its head holds in registers.
+: DO-LOOP-CASE ( -- )
+   ARCH-A64
+   s" DL ( n n -- n n ) 1+ swap 1+ swap 10 0 do swap 1+ loop " BODY
+   IN-REGS ;
 
 \ The x86-64 stack moves leave the condition codes alone: the stack pointer
 \ moves by lea r12,[r12+8] and lea r12,[r12-8], and zero loads by mov ecx,0.
@@ -398,6 +408,7 @@ public
    FUSE-CASE
    JOIN-CASE
    LOOP-CASE
+   DO-LOOP-CASE
    X86-FLAGS-CASE
    X86-UNFILLED-CASE
    T-REPORT ;
