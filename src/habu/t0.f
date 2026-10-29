@@ -40,32 +40,32 @@
 \ A TOKEN IS, IN THIS ORDER: a local in scope; a string opener (`s" c" ." s\"
 \ c\" .\"`); a control keyword (if else then begin until while repeat again do
 \ ?do loop +loop leave unloop i j case of endof endcase MATCH construct exit
-\ recurse >r r> r@ ['] [char] is {: [: ;]); an operation T0 inlines, when the
-\ spelling binds the engine's seeded primitive (NDICT:SPELL-PRIM?): the stack
-\ shuffles (dup drop swap over nip tuck rot -rot 2dup 2drop 2swap 2over 2>r 2r>
-\ 2r@), + - * and or xor 1+ 1- negate invert lshift rshift, the comparisons, @
-\ and c@, and ! as a call to the primitive or one per cell (THE WIDTHS); a word
-\ the dictionary binds (NDICT:CALL-TARGET), as a call; an immediate (IMM-TOKEN
-\ says which pass); a number (OUTER:NUMBER), a float being one cell of a
-\ double's bits. Anything else throws E-T0-UNSUPPORTED, and UNSUPPORTED$ names
-\ the token until the next compile.
+\ recurse >r r> r@ ['] [char] char is {: [: ;]); an operation T0 inlines, when
+\ the spelling binds the engine's seeded primitive (NDICT:SPELL-PRIM?): the
+\ stack shuffles (dup drop swap over nip tuck rot -rot 2dup 2drop 2swap 2over
+\ 2>r 2r> 2r@), + - * and or xor 1+ 1- negate invert lshift rshift, the
+\ comparisons, @ and c@, and ! as a call to the primitive or one per cell (THE
+\ WIDTHS); a word the dictionary binds (NDICT:CALL-TARGET), as a call; an
+\ immediate (IMM-TOKEN says which pass); a number (OUTER:NUMBER), a float being
+\ one cell of a double's bits. Anything else throws E-T0-UNSUPPORTED, and
+\ UNSUPPORTED$ names the token until the next compile.
 \
 \ THE SPELLING. T0 compiles only bodies the checker certified, so it reads each
-\ token as the checker does (src/core/checker.f DO-TOK1). A local answers to its
-\ declared spelling byte for byte (LOC-REF?). Every other class is matched with
-\ ASCII case folded: the checker folds the token (TOKFOLD) before it compares
-\ it with a keyword, a string opener or `[char]`, and the dictionary lookups
-\ behind the inlined operations and the calls fold case themselves; T0 compares
-\ with STR=CI. So `IF`, `RECURSE`, `S"` and `DUP` are `if`, `recurse`, `s"`
-\ and the primitive `dup`.
+\ token as the checker does (src/core/checker.f DO-TOK1). A local answers to
+\ its declared spelling byte for byte (LOC-REF?). Every other class is matched
+\ with ASCII case folded: the checker folds the token (TOKFOLD) before it
+\ compares it with a keyword, a string opener, `[char]` or `char`, and the
+\ dictionary lookups behind the inlined operations and the calls fold case
+\ themselves; T0 compares with STR=CI. So `IF`, `RECURSE`, `S"` and `DUP` are
+\ `if`, `recurse`, `s"` and the primitive `dup`.
 \
 \ THE ORDINALS. The checker files what it proved about a token under that
 \ token's ordinal in its report (src/core/checker.f SCAN-REPORT), and TOKEN
 \ counts the same way: the name is 0, the signature reports nothing, each other
-\ token is one, a string literal with its opener is one, `[char]` with its
-\ operand is one, and a tick's or `is`'s operand is one after its keyword. A
-\ quotation's first ordinal is recorded where it is skipped, and the does>
-\ clause's follows its `does>`.
+\ token is one, a string literal with its opener is one, `[char]` or `char`
+\ with its operand is one, and a tick's or `is`'s operand is one after its
+\ keyword. A quotation's first ordinal is recorded where it is skipped, and the
+\ does> clause's follows its `does>`.
 \
 \ MATCH AND CONSTRUCT. `MATCH fam` reads its value as the cells the checker
 \ proved at the family token, the tag on top, and opens a case over the tag.
@@ -916,13 +916,12 @@ variable TAILED
    xt r T0-EMIT:ADDR-CODE
    r PUSH-REG ;
 
-\ The operand's first byte; a character past ASCII is not compiled yet.
+\ The operand's first byte, as tier 1 compiles it (the JIT compiles `[char]`
+\ only): `[char] é` is the 195 that begins its UTF-8.
 : DO-CHAR ( -- )
    LIT-OPERAND {: a:ptr u:n :}
    u 0= if a u UNSUPPORTED then
-   a c@ {: b:n :}
-   b $80 >= if a u UNSUPPORTED then
-   b PUSH-CONST ;
+   a c@ PUSH-CONST ;
 
 \ A call spills first; the last token of a body outside every structure leaves
 \ through the callee when the callee lies in the code region, as tier 1's
@@ -1290,6 +1289,7 @@ TRUSTED: DOES-PATCH-ENTRY ( -- n ) ['] does-patch ;
    a u s" exit" STR=CI if DO-EXIT true exit then
    a u s" loop" STR=CI if DO-LOOP true exit then
    a u s" case" STR=CI if DO-CASE true exit then
+   a u s" char" STR=CI if DO-CHAR true exit then
    a u s" drop" OP? if [: DROP1 ;] a 1 s" " SHUFFLE true exit then
    a u s" swap" OP? if [: SWAP1 ;] a 2 s" 01" SHUFFLE true exit then
    a u s" over" OP? if [: OVER1 ;] a 2 s" 101" SHUFFLE true exit then
