@@ -1,6 +1,6 @@
 ---
 title: T0 joins for if/else/then and begin loops
-status: open
+status: active
 priority: 1
 issue-type: task
 created-at: "2026-10-29T05:11:01.107244+02:00"
