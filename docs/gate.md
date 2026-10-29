@@ -140,8 +140,11 @@ tail is what a finished red run leaves. To keep a run's trees, give it its own
 non-directory `TMPDIR` is refused by name (`FS:MKTEMP-DIR`, src/lib/fs-mutate.f).
 Every gate run gets its own `TMPDIR` root. Keep it short: nothing refuses a
 long one up front (`GT-ROOM-CHECK` checks
-only the root's own room), and the deepest row path under it must still fit
-Habu's path capacity.
+only the root's own room), the deepest row path under it must still fit
+Habu's path capacity, and a row that binds a Unix socket under it has 103
+bytes of socket path on macOS (107 on Linux), of which macOS's default
+`/var/folders` `TMPDIR` already spends 97: the fs-mutate socket row fails
+there when run on its own.
 
 Build outputs live with the tree, under `<cwd>/.out/<engine>/` or
 `$HABU_OUT/<engine>/` (tools/build-out.f states the layout). They are
