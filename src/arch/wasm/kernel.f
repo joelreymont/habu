@@ -1,43 +1,9 @@
-\ kernel.f - WKERNEL, the engine primitives a Wasm module calls: the six whose
+\ kernel.f - WKERNEL, the engine primitives a Wasm module calls: the rows whose
 \ bodies read or write the context, hand-built as WSTRUCT functions, and the map
-\ from each engine-prefix name a module may call to its provider, one of those
-\ rows or a word of src/arch/wasm/kernel-words.f (docs/xcomp.md "Linking").
-\
-\ THE ROWS. ENCODE builds them as one module under WBACK's binding, so the Wasm
-\ backend is installed first, and leaves it as WENC's emission
-\ (src/arch/wasm/encode.f): function k is the row the map answers as k. Each
-\ takes the Habu call's row (select.f THE CALL) with the lanes its primitive
-\ has.
-\ - emit ( c -- ) stores c's low byte at WPROF's OUT base plus ctx.out-len and
-\   counts it; with OUT full it traps instead.
-\ - depth ( -- n ) answers the cells from ctx.stack-base to ctx.stack-top: the
-\   rows every caller stored (src/arch/wasm/select.f CALL-SAVE).
-\ - .s ( -- ) calls `.` on each of those cells, deepest first, and leaves them,
-\   as the engine's B.S does (src/habu/habu1.f). The call names the engine's `.`
-\   by its host entry, as a compiled `.` does, so the link resolves it through
-\   this map; a status 1 from it propagates.
-\ - throw ( n -- ) is a terminal's callee (select.f SEL-TERMINAL): it takes its
-\   code off the context stack, stores it in ctx.throw-code and answers status
-\   1. A zero code is stored as ENGINE-ERROR:THROW-ZERO, as the engine's
-\   `throw` stores it, so a catch never reads a throw as success.
-\ - map-anon ( bytes -- ptr ior ) hands out, cleared, the first free run that
-\   holds the bytes' pages, leaving its tail free when it is longer; with none,
-\   memory.grow adds those pages at the memory's current end. A count outside
-\   1..2^32 or a refused growth answers 0 -1. A host reserves through it too,
-\   by the module's reserve export (src/arch/wasm/link.f).
-\ - munmap ( ptr bytes -- ior ) puts the run back in ctx.free-head's
-\   address-sorted list, merged with the free runs it touches, and answers 0;
-\   a run that overlaps a free run traps. A count outside 1..2^32, or an
-\   address that is not a page-aligned offset below 2^32, answers -1 before the
-\   list is read, as the native munmap refuses a zero count or an unaligned
-\   address.
-\
-\ THE MAP. PROVIDER answers a row by its function or a word by its qualified
-\ spelling. Any other name is refused with E-WLINK-UNRESOLVED, since a call
-\ site naming it names no function the link can hold. src/lib/prelude.f loads
-\ before the capture window and cannot ship in it, so a prelude word links only
-\ through a word here: `true`, `false`, `f<=` and `f>=` do, while `fover` has
-\ none and is refused.
+\ from each engine-prefix name a module may call to its provider, a row or a word
+\ of src/arch/wasm/kernel-words.f (docs/xcomp.md "Linking"). ENCODE needs the
+\ Wasm backend installed: it builds the rows under WBACK's binding as WENC's
+\ emission (src/arch/wasm/encode.f), function k answering as row k.
 
 require src/lib/prelude.f
 require src/lib/string.f
@@ -147,11 +113,9 @@ variable MADE                              \ blocks built, the next one's ordina
       t:IR-ID:ir-type-id :}
    o OPEN  a USE  b USE  t CLOSE1 ;
 
-\ The i32 a widened to an i64 cell.
 : WIDE ( IR-ID:ir-value-id -- IR-ID:ir-value-id )
    WSTRUCT-OPCODE:I64-EXTEND-I32-U I64 OP1 ;
 
-\ The i64 a wrapped to an i32.
 : NARROW ( IR-ID:ir-value-id -- IR-ID:ir-value-id )
    WSTRUCT-OPCODE:I32-WRAP-I64 I32 OP1 ;
 
@@ -161,18 +125,14 @@ variable MADE                              \ blocks built, the next one's ordina
 \ log2 of memory32's 2^32 bytes: a memory offset has no bit at or above it.
 32 constant OFFSET-BITS
 
-\ The i32 count of the pages that hold the i64 bytes, which are 1 through
-\ memory32's 2^32.
+\ The i32 page count; the i64 bytes are 1 through memory32's 2^32.
 : PAGES-OF ( IR-ID:ir-value-id -- IR-ID:ir-value-id )
    WPROF:PAGE-BYTES 1- K64 WSTRUCT-OPCODE:I64-ADD I64 OP2
    PAGE-SHIFT K64 WSTRUCT-OPCODE:I64-SHR-U I64 OP2  NARROW ;
 
-\ The i64 bytes of the i32 pages.
 : BYTES-OF ( IR-ID:ir-value-id -- IR-ID:ir-value-id )
    WIDE PAGE-SHIFT K64 WSTRUCT-OPCODE:I64-SHL I64 OP2 ;
 
-\ The memory grown by the i32 pages: its previous i32 page count, or -1 when it
-\ refuses.
 : MEMORY-GROW ( IR-ID:ir-value-id -- IR-ID:ir-value-id )
    {: pages:IR-ID:ir-value-id :}
    WSTRUCT-OPCODE:MEMORY-GROW OPEN pages USE TOK USE
@@ -218,7 +178,6 @@ variable MADE                              \ blocks built, the next one's ordina
 : ST64 ( IR-ID:ir-value-id IR-ID:ir-value-id n -- )
    WSTRUCT-OPCODE:I64-STORE 3 STORE ;
 
-\ The i32 u bytes at the i32 address a cleared.
 : FILL ( IR-ID:ir-value-id IR-ID:ir-value-id -- )
    {: a:IR-ID:ir-value-id u:IR-ID:ir-value-id :}
    0 K32 {: zero:IR-ID:ir-value-id :}
@@ -239,7 +198,6 @@ variable MADE                              \ blocks built, the next one's ordina
    {: t:IR-ID:ir-type-id :}
    CTX BLD t IR-BUILD:ADD-BLOCK-ARG ;
 
-\ The entry block, opened on its context address and its token.
 : ENTRY ( -- IR-ID:ir-value-id )
    BLOCK
    I32 ARG
@@ -268,7 +226,6 @@ variable MADE                              \ blocks built, the next one's ordina
 : TRAP ( -- )
    WSTRUCT-OPCODE:UNREACHABLE OPEN CLOSE drop  BLOCK-END ;
 
-\ Returns of status 0 and the output lanes given, two or one.
 : RET2 ( IR-ID:ir-value-id IR-ID:ir-value-id -- )
    {: a:IR-ID:ir-value-id b:IR-ID:ir-value-id :}
    0 K32 RET-OPEN a USE b USE CLOSE drop BLOCK-END ;
@@ -278,7 +235,8 @@ variable MADE                              \ blocks built, the next one's ordina
    0 K32 RET-OPEN a USE CLOSE drop BLOCK-END ;
 
 \ ---- one function -------------------------------------------------------------
-\ (ctx:i32, in lanes) -> (status:i32, out lanes), the Habu call's row.
+\ (ctx:i32, in lanes) -> (status:i32, out lanes), the Habu call's row
+\ (src/arch/wasm/select.f THE CALL).
 : SIGNATURE ( n n -- IR-ID:ir-type-id )
    {: in:n out:n :}
    IR-TYPE:FN-BEGIN
@@ -304,7 +262,8 @@ variable MADE                              \ blocks built, the next one's ordina
    CTX BLD IR-BUILD:END-FUN drop ;
 
 \ ---- the rows ------------------------------------------------------------------
-\ Blocks: 0 the test, 1 the trap, 2 the store.
+\ emit ( c -- ) stores c's low byte at WPROF's OUT base plus ctx.out-len and
+\ counts it; a full OUT traps. Blocks: 0 the test, 1 the trap, 2 the store.
 : EMIT-ROW ( -- )
    s" emit" 0 1 0 FUN-OPEN
    MADE @ {: at:n :}
@@ -321,6 +280,8 @@ variable MADE                              \ blocks built, the next one's ordina
    0 K32 RET
    FUN-SHUT ;
 
+\ depth ( -- n ) answers the cells from ctx.stack-base to ctx.stack-top, the rows
+\ every caller stored (src/arch/wasm/select.f CALL-SAVE).
 : DEPTH-ROW ( -- )
    s" depth" 5 0 1 FUN-OPEN
    ENTRY {: cx:IR-ID:ir-value-id :}
@@ -350,8 +311,11 @@ variable MADE                              \ blocks built, the next one's ordina
    id 1 RESULT TOK!
    id 0 RESULT ;
 
-\ Blocks: 0 the entry, 1 the loop's head on the cell's address, 2 its body, 3
-\ the end, 4 the next cell, 5 a status 1 propagated.
+\ .s ( -- ) calls `.` on each cell, deepest first, and leaves them, as the
+\ engine's B.S does (src/habu/habu1.f); a status 1 from `.` propagates. `.` is
+\ named by its host entry, as a compiled `.` is, so the link resolves it through
+\ this map. Blocks: 0 the entry, 1 the loop's head on the cell's address, 2 its
+\ body, 3 the end, 4 the next cell, 5 a status 1 propagated.
 : DOT-S-ROW ( -- )
    s" .s" 11 0 0 FUN-OPEN
    MADE @ {: at:n :}
@@ -373,8 +337,10 @@ variable MADE                              \ blocks built, the next one's ordina
    BLOCK  s RET
    FUN-SHUT ;
 
-\ The code off the stack into ctx.throw-code, a zero one as
-\ ENGINE-ERROR:THROW-ZERO. Blocks: 0 the test, 1 a nonzero code, 2 a zero one.
+\ throw ( n -- ) is a terminal's callee (select.f SEL-TERMINAL): the code off the
+\ context stack goes to ctx.throw-code and the status is 1. A zero code is stored
+\ as ENGINE-ERROR:THROW-ZERO, as the engine's throw stores it, so a catch never
+\ reads a throw as success. Blocks: 0 the test, 1 a nonzero code, 2 a zero one.
 : THROW-ROW ( -- )
    s" throw" 14 0 0 FUN-OPEN
    MADE @ {: at:n :}
@@ -388,9 +354,9 @@ variable MADE                              \ blocks built, the next one's ordina
    BLOCK  popped TOK!  cx ENGINE-ERROR:THROW-ZERO K64 WPROF:CTX-THROW-CODE ST64  1 K32 RET
    FUN-SHUT ;
 
-\ die's terminal call is framed. Print its message through the shipped type
-\ word, retain its code for hosts that inspect it, then trap without returning
-\ a status that catch could consume.
+\ die's terminal call is framed: it prints its message through the shipped type
+\ word, keeps its code in ctx.throw-code for hosts, and traps, so no catch can
+\ consume a status.
 : TYPE-CALLEE ( -- IR-ID:ir-symbol-id )
    SB-RESET
    s" host " SB-APPEND
@@ -420,13 +386,15 @@ variable MADE                              \ blocks built, the next one's ordina
    TRAP
    FUN-SHUT ;
 
-\ First-fit from the address-sorted free list. A link is the address of the
-\ cell naming the current node: either ctx.free-head or the prior node's next.
-\ A miss grows the memory at its current end.
-\ Blocks: 0 the entry, 1 the refusal, 2 the count's bound, 3 the list's head,
-\ 4 the loop's head on the current run and the link naming it, 5 the fit, 6 the
-\ rest, 7 the next run, 8 the whole run, 9 its head with the rest left free,
-\ 10 the clearing, 11 the growth, 12 its address.
+\ map-anon ( bytes -- ptr ior ): first fit from the address-sorted free list,
+\ cleared, its tail left free when longer; a miss grows the memory at its current
+\ end. A count outside 1..2^32 or a refused growth answers 0 -1. A host reserves
+\ through it too, by the reserve export (src/arch/wasm/link.f). A link is the
+\ address of the cell naming the current node: ctx.free-head or the prior node's
+\ next. Blocks: 0 the entry, 1 the refusal, 2 the count's bound, 3 the list's
+\ head, 4 the loop's head on the current run and the link naming it, 5 the fit,
+\ 6 the rest, 7 the next run, 8 the whole run, 9 its head with the rest left
+\ free, 10 the clearing, 11 the growth, 12 its address.
 : MAP-ROW ( -- )
    s" map-anon" 20 1 2 FUN-OPEN
    MADE @ {: at:n :}
@@ -487,19 +455,18 @@ variable MADE                              \ blocks built, the next one's ordina
    old BYTES-OF 0 K64 RET2
    FUN-SHUT ;
 
-\ The count is 1 through 2^32 and addr a page-aligned memory offset exactly when
-\ bytes-1 and addr have no bit at or above OFFSET-BITS and addr none below
-\ PAGE-SHIFT; otherwise munmap answers -1 before it reads the list. The run of
-\ pages at addr joins the list before the first run that ends past addr,
-\ merged with that run and the run before it where they touch. Every run
-\ before that one ends at or before addr, so the run overlaps a free run, as a
-\ run freed twice does, exactly when that one starts before the run's end, and
-\ munmap traps before it changes the list. Otherwise it answers 0. It records
-\ nothing of what map-anon handed out, so it trusts its caller for the rest.
-\ Blocks: 0 the entry, 1 the refusal, 2 the list's head, 3 the loop's head on
-\ the current run and the link naming it, 4 the run's end, 5 the next run, 6
-\ the overlap, 7 the run after, 8 its merge, 9 no merge, 10 the link, 11 the
-\ run before, 12 its merge, 13 the return, 14 the trap.
+\ munmap ( ptr bytes -- ior ): the count must be 1 through 2^32 and addr a
+\ page-aligned offset below 2^32 (bytes-1 and addr no bit at or above
+\ OFFSET-BITS, addr none below PAGE-SHIFT), else it answers -1 before reading
+\ the list, as the native munmap refuses. The run joins the list before the
+\ first run that ends past addr, merged with it and the run before where they
+\ touch. When that run starts before the freed run's end, the freed run overlaps
+\ a free run (a double free is one case) and munmap traps before changing the
+\ list. It records nothing of what map-anon handed out and trusts its caller for
+\ the rest. Blocks: 0 the entry, 1 the refusal, 2 the list's head, 3 the loop's
+\ head on the current run and the link naming it, 4 the run's end, 5 the next
+\ run, 6 the overlap, 7 the run after, 8 its merge, 9 no merge, 10 the link,
+\ 11 the run before, 12 its merge, 13 the return, 14 the trap.
 : UNMAP-ROW ( -- )
    s" munmap" 29 2 1 FUN-OPEN
    MADE @ {: at:n :}
@@ -569,7 +536,6 @@ variable MADE                              \ blocks built, the next one's ordina
    BLOCK  TRAP
    FUN-SHUT ;
 
-\ Function k's lanes in and out.
 : LANES ( n -- n n )
    {: k:n :}
    k EMIT-FUN = if 1 0 exit then
@@ -639,6 +605,10 @@ public
 : ENCODE ( -- )
    WBACK:BINDING [: BUILD ;] IR-CTX:WITH-CONTEXT ;
 
+\ A row by its function or a word by its qualified spelling; any other name is
+\ refused with E-WLINK-UNRESOLVED. src/lib/prelude.f loads before the capture
+\ window and cannot ship in it, so a prelude word links only through a word
+\ here: `true`, `false`, `f<=` and `f>=` do, `fover` is refused.
 : PROVIDER ( ptr u8 n -- WKERNEL:provider )
    {: a:ptr u:n :}
    a u ROW-OF {: k:n :}

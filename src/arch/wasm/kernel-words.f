@@ -1,22 +1,8 @@
-\ kernel-words.f - WKWORDS, the engine primitives a Wasm module calls that are
-\ written in checked Habu over the kernel's rows instead of hand-built: WKERNEL's
-\ map (src/arch/wasm/kernel.f) names each by the engine name it answers for. The
-\ file is for the Wasm driver to load into the capture window ahead of the
-\ program and keep shipped, so these words compile for Wasm as the program's own
-\ do: each uses only words HIR models, the rows emit, map-anon and munmap, and
-\ one another.
-\
-\ DYN-ADDRESS, DYN-RESERVE and DYN-RELEASE keep the record contract of
-\ src/core/dynamic-storage.f - a declared head and a numeric control block of
-\ capacity, slot, width tag and cached bound, both passed by the generated
-\ accessor - without its registry or lock: a module saves no image, so nothing
-\ releases its buffers before one, and the slot stays zero.
-\
-\ The printers are the engine's (src/habu/rt.f G-PRINT9, G-PRINTU9; habu1.f
-\ BFDOT): the digits, then a newline. f. prints the integer part of the real's
-\ magnitude, a point and six digits of the fraction scaled by 1e6, both
-\ truncated by f>s, which saturates and answers 0 for a NaN as BFDOT's FCVTZS
-\ does, behind a `-` exactly when the real's bit 63 is set.
+\ kernel-words.f - WKWORDS, engine primitives a Wasm module calls, written in
+\ checked Habu over the kernel's rows; WKERNEL's map (src/arch/wasm/kernel.f)
+\ names each by the engine name it answers for. The Wasm driver loads this file
+\ into the capture window ahead of the program, so each word uses only words HIR
+\ models, the rows emit, map-anon, munmap and one another.
 
 require src/arch/wasm/profile.f
 
@@ -72,7 +58,6 @@ CAST: >DATA ( n -- ptr n )
    q 0 <> if q RECURSE then
    n q 10 * - 48 + emit ;
 
-\ The low six digits of f, which is not negative, zero-padded.
 : FRACTION ( n -- )
    {: f:n :}
    100000 begin dup 0 > while
@@ -113,6 +98,10 @@ public
    dup 0 < if s" byte: negative length" E-BYTE-RANGE die then
    >LEN COPY-LEN ;
 
+\ The DYN- words keep src/core/dynamic-storage.f's record contract (a declared
+\ head and a control block of capacity, slot, width tag and cached bound, both
+\ passed by the generated accessor) without its registry or lock: a module saves
+\ no image, so nothing releases its buffers before one, and the slot stays zero.
 : DYN-BOUNDS ( n n -- n ) {: idx:n count:n :}
    idx 0 < if E-BOUNDS throw then
    idx count >= if E-BOUNDS throw then
@@ -164,6 +153,10 @@ public
    0 ctl TAG !
    0 ctl BOUND ! ;
 
+\ The printers match the engine's (src/habu/rt.f G-PRINT9, G-PRINTU9; habu1.f
+\ BFDOT): the digits, then a newline. F-DOT prints the integer part of the
+\ magnitude, a point and six fraction digits, both truncated by f>s (saturating,
+\ 0 for a NaN, as BFDOT's FCVTZS), behind a `-` exactly when bit 63 is set.
 : NEWLINE ( -- )
    10 emit ;
 

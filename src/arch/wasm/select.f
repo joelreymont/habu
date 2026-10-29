@@ -1,113 +1,7 @@
 \ select.f - WSEL, the Wasm backend's selector: the folded interim HIR a
-\ definition froze (src/compiler/native/backend.f FREEZE), read through NFROZEN
-\ and written out as a WSTRUCT module frozen through WSTRUCT:FREEZE, so the full
+\ definition froze (src/compiler/native/backend.f FREEZE), read through NFROZEN,
+\ is written as a WSTRUCT module and frozen by WSTRUCT:FREEZE, whose full
 \ verifier checks what the interim freeze skipped (src/arch/wasm/wstruct.f).
-\
-\ THE CALL. Every function is (ctx:i32, in x i64) -> (status:i32, out x i64),
-\ its arity the HIR function's, and function zero's held to the DECLARE row.
-\ Past WPROF's 16 input or 16 output lanes a function takes the aligned frame
-\ instead: (ctx:i32) -> (status:i32), its inputs and outputs in the eight-byte
-\ cells of the context stack, the native data stack's layout. At
-\ every call, wordcall and terminal the live row the operation carries through
-\ is stored to the context stack, deepest cell first, and reloaded after, as
-\ the native boundary stores it (src/compiler/native/select-x64.f CALL-SAVE),
-\ so a callee that reads the stack - depth, .s, catch - sees what it sees
-\ natively; the arguments and results of a lane call travel as lanes. A call
-\ whose operands and results disagree on that row is refused, as native
-\ CALL-LIVE refuses it. Every store to the context stack, a saved row or a
-\ framed output, first checks that its cells end inside WPROF's stack region:
-\ past it they would overwrite static data, where the native stack meets its
-\ guard page, so the store faults first, as STACK-BOUNDS.
-\
-\ THE DYNAMIC CALL. The elaborator stages execute and catch as wordcalls to the
-\ engine's words, shaped by the xt each runs (src/compiler/native/elaborate.f
-\ DO-EXEC, DO-CATCH), so one callee meets every shape. Such a call is known by
-\ its entry, the global wordlist's execute or catch, never by what the spelling
-\ binds in the scope being compiled, where a package's own word of either
-\ spelling is an ordinary call. Each is selected as a framed call whatever its
-\ arity, the row and the xt stored, no lane passed and the results read back
-\ off the stack: the dynamic adapter's convention, which the
-\ runtime functions of src/arch/wasm/dynamic.f take.
-\ A quotation's address, HIR's quot, names a function of the module by its
-\ ordinal and is selected as an i64.const of WSTRUCT's kind FUN, which the
-\ encoder writes as that function's offset and the linker as its adapter's
-\ table slot, the descriptor every xt is (docs/xcomp.md "Execution tokens").
-\
-\ THE STATUS. Status 0 is a return, status 1 a catchable throw whose full code
-\ the callee stored in ctx.throw-code. Every caller tests it
-\ before it reads an output and propagates a 1 through its own return with zero
-\ outputs, leaving the context stack where the throw left it: the catch that
-\ takes the throw restores the depth, as natively. A tail call is a call then
-\ a return, self calls included: not bounded space.
-\
-\ THE TERMINAL AND THE TRAP. HIR ends control with `terminal`, a call to the
-\ engine's throw or die that carries the whole live row and states no arity
-\ (src/compiler/native/elaborate.f STAGE-TERMINAL). It is selected as the
-\ dynamic adapter's call (dynamic.f): the row stored, no lanes, so the callee
-\ takes its operands from the stack. Its status 1 propagates; a callee that
-\ came back with 0 is a fault. A fault - that, a `trap`, a store past the
-\ stack region or a pointer that fails its check - is fatal and is never a
-\ status: it records ctx.fault-kind, the exit code the native
-\ process would end with, and ctx.fault-addr, the trap's message, the top the
-\ store would have left, the pointer, or zero, then executes unreachable.
-\
-\ THE INTEGERS. Wrapping i64 arithmetic; `/` tests its divisor before any
-\ i64.div_s, storing E-DIV-ZERO and returning status 1 for zero and answering
-\ 0 - n for -1, so MIN-N -1 / is MIN-N; `mod` is elaborate.f's expansion over
-\ that division; a comparison's i32 predicate becomes the observable mask
-\ 0 - extend_u(p); the shifts are Wasm's, whose count is taken modulo 64 as the
-\ native shift-by-register takes it (src/compiler/native/hir.f); and a brz tests
-\ the whole cell through i64.eqz. A unit whose overflow policy traps makes add,
-\ sub and mul may-trap, which wrapping i64 arithmetic cannot reproduce, so it is
-\ refused.
-\
-\ THE FLOATS. A real is an f64 value, which bitsreal and realbits, the
-\ elaborator's crossings to and from cells, reinterpret. Habu's NaN rule binds
-\ Wasm: after add, sub, mul, div and sqrt the selector answers,
-\ without a branch, the left operand when it is a NaN, else the right when it
-\ is, else $7FF8000000000000 when the result is, else the result. Each test is
-\ an f64.ne of a value with itself and each answer a select, which moves bits
-\ and makes none, so a made NaN is $7FF8000000000000 and a quiet NaN operand
-\ passes through unchanged, the left of two; a signalling one passes unquieted,
-\ outside the rule. neg and abs are sign-bit operations and add nothing. A
-\ comparison answers the integer mask, f0< and f0= against +0.0. s>f is
-\ f64.convert_i64_s, nearest with ties to even, and f>s i64.trunc_sat_f64_s,
-\ which truncates, saturates and answers 0 for a NaN as src/compiler/native/
-\ hir-word.f DEF-FLOAT defines realint. Each operation is selected alone, so no
-\ multiply and add contract.
-\
-\ THE BLOCKS. HIR blocks keep their order and arguments; a function opens with a
-\ prologue block that takes the signature's arguments and branches into HIR's
-\ entry block, and ends with one block that propagates a status. A call, a
-\ terminal, a division, a stack room check and a pointer check split their
-\ block, so before a function is built its plan counts the blocks each HIR
-\ block becomes and every branch is aimed by that plan. No conditional edge
-\ meets an argument, so none needs a landing block: the elaborator aims every
-\ brz at a block that takes nothing and passes any arguments on by br, the
-\ token's included, and no block this selector puts behind a brz takes one.
-\ The interim HIR freeze does not check this, but the full verify in
-\ WSTRUCT:FREEZE refuses a brz into a block with arguments (src/compiler/ir/
-\ verify.f SUCCARGS-CK), so a stray one is refused there, never selected.
-\
-\ THE MEMORY TOKEN. HIR's token values map to WSTRUCT's; the effects this
-\ selector adds itself take the token current where they stand: the block's
-\ token argument, the prologue's, or for a block without one its first
-\ predecessor's last.
-\
-\ THE CHECKED ACCESS. A pointer is a zero-extended offset in an i64 cell and
-\ memory32 takes an i32 address, so a load or store first proves on the whole
-\ cell that the pointer's high 32 bits are zero and that it lies past the null
-\ reservation [0, WPROF:CTX-BASE), which no Wasm engine faults on since address
-\ zero is in bounds, and only then narrows it by i32.wrap_i64 (WPROF's
-\ layout). A pointer that fails is fatal, as a native access fault is,
-\ and records the exit code of native's crash handler with the pointer as its
-\ address. The access takes the narrowed address at offset 0, so the engine's
-\ bounds check covers p + n whole: an access running past the memory's end
-\ traps there and never wraps into its start. Source `!` and `c!` reach HIR as
-\ wordcalls to the engine's guarded stores (src/compiler/native/elaborate.f
-\ DO-STORE), whose guard keeps a store out of the engine's protected data
-\ bands; a module holds none of them, so each such call is selected as the
-\ checked store itself, with no call.
 
 require src/lib/prelude.f
 require src/lib/errors.f
@@ -130,7 +24,7 @@ require src/compiler/native/backend.f
 require src/arch/wasm/profile.f
 require src/arch/wasm/wstruct.f
 
-\ WSEL's codes, -9820..-9824, in the Wasm backend's block -9800..-9829.
+\ WSEL's codes, -9820..-9824, in the Wasm backend's block -9800..-9834.
 -9820 constant E-WSEL-FIRST
 -9824 constant E-WSEL-LAST
 -9820 constant E-WSEL-REFUSED \ an HIR operation this selector does not lower: c2-stow, a trusted primitive consuming a runtime-width record
@@ -357,7 +251,6 @@ HIR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
    CTX BLD WSTRUCT:KEY-VALUE v INT-ATTR
    I32 CLOSE1 ;
 
-\ The double whose IEEE 754 bits are n.
 : KF64 ( n -- IR-ID:ir-value-id )
    {: v:n :}
    WSTRUCT-OPCODE:F64-CONST OPEN
@@ -415,12 +308,15 @@ HIR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
    {: a:IR-ID:ir-value-id :}
    CTXV a WPROF:CTX-STACK-TOP ST32 ;
 
-\ top + 8n, the top after n cells more.
 : CELLS+ ( IR-ID:ir-value-id n -- IR-ID:ir-value-id )
    {: a:IR-ID:ir-value-id n:n :}
    a  n 8 * K32  WSTRUCT-OPCODE:I32-ADD I32 OP2 ;
 
-\ The fault a trap records: the native exit code and the message, or zero.
+\ THE TRAP. A fault (a terminal's status 0, a `trap`, a store past the stack
+\ region, a pointer failing its check) is fatal, never a status: FAULT records
+\ ctx.fault-kind, the exit code the native process would end with, and
+\ ctx.fault-addr (the trap's message, the top the store would have left, the
+\ pointer, or zero), then executes unreachable.
 : FAULT ( IR-ID:ir-value-id IR-ID:ir-value-id -- )
    {: kind:IR-ID:ir-value-id addr:IR-ID:ir-value-id :}
    CTXV kind WPROF:CTX-FAULT-KIND ST32
@@ -453,7 +349,12 @@ HIR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 : RET-OPEN ( IR-ID:ir-value-id -- )
    WSTRUCT-OPCODE:RETURN OPEN USE ;
 
-\ A status of zero continues in the block built next; any other propagates.
+\ THE STATUS. Status 0 is a return, status 1 a catchable throw whose full code
+\ the callee stored in ctx.throw-code. A caller tests it before reading an output
+\ and propagates a 1 through its own return with zero outputs, leaving the
+\ context stack where the throw left it: the catch restores the depth, as
+\ natively. STATUS continues in the block built next on zero; any other
+\ propagates.
 : STATUS ( IR-ID:ir-value-id -- )
    MADE @ 1+  PROP-ORD @  BRZ
    1 PROP-NEED ! ;
@@ -477,6 +378,16 @@ HIR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
    e ;
 
 \ ---- checked memory ------------------------------------------------------------
+\ THE CHECKED ACCESS. A pointer is a zero-extended offset in an i64 cell and
+\ memory32 takes an i32 address, so an access first proves on the whole cell that
+\ the high 32 bits are zero and that the pointer is past the null reservation
+\ [0, WPROF:CTX-BASE), which no Wasm engine faults on, then narrows it by
+\ i32.wrap_i64. The access uses offset 0, so the engine's bounds check covers
+\ p + n whole and an access past the memory's end traps instead of wrapping.
+\ Source `!` and `c!` reach HIR as wordcalls to the engine's guarded stores
+\ (src/compiler/native/elaborate.f DO-STORE), whose guard protects the engine's
+\ data bands; a module holds none, so each is selected as the checked store.
+\
 \ The exit status a Wasm checked-memory fault records: an access outside every
 \ stack's guard pages, where native's crash handler (src/habu/crash.f
 \ EMIT-CRASH-HANDLER) dies by the signal instead.
@@ -513,7 +424,6 @@ HIR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
    id HIR-OPCODE:WORDCALL IS? 0= if false exit then
    id 0 BND-ENTRY @ ATTR  a u 0 search-wl = ;
 
-\ A source store: a wordcall to the engine's guarded `!` or `c!`.
 : STORE-CALL? ( IR-ID:ir-op-id -- bool )
    {: id:IR-ID:ir-op-id :}
    id s" !" ENGINE-CALL?  id s" c!" ENGINE-CALL? or ;
@@ -543,6 +453,23 @@ HIR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
    id 0 NFROZEN:RESULT-AT TOK BIND ;
 
 \ ---- the shape of a call --------------------------------------------------------
+\ THE CALL. Every function is (ctx:i32, in x i64) -> (status:i32, out x i64) with
+\ the HIR function's arity; function zero's is the DECLARE row. Past WPROF's 16
+\ input or 16 output lanes it takes the frame: (ctx:i32) -> (status:i32), its
+\ inputs and outputs in the context stack's eight-byte cells, the native data
+\ stack's layout. At every call, wordcall and terminal the live row is stored to
+\ the context stack deepest cell first and reloaded after, as native CALL-SAVE
+\ (src/compiler/native/select-x64.f) stores it, so depth, .s and catch see what
+\ they see natively; a lane call's arguments and results travel as lanes.
+\
+\ THE DYNAMIC CALL. The elaborator stages execute and catch as wordcalls to the
+\ engine's words, shaped by the xt each runs (src/compiler/native/elaborate.f
+\ DO-EXEC, DO-CATCH). Such a call is known by its entry, the global wordlist's
+\ execute or catch, never by what the spelling binds in scope: a package's own
+\ word of either spelling is an ordinary call. Each is a framed call whatever
+\ its arity: the row and the xt stored, no lane, the results read back off the
+\ stack, the convention src/arch/wasm/dynamic.f's runtime functions take.
+
 \ What a call takes and leaves: RECURSE names the definition, so a self call's
 \ shape is the declaration's, and a wordcall states its callee's.
 : SHAPE ( IR-ID:ir-op-id -- n n )
@@ -561,12 +488,10 @@ HIR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
    id NFROZEN:RESULTS-OF 1- r - kk <> if E-WSEL-CALL throw then
    kk ;
 
-\ A wordcall to the engine's execute or catch, whose shape is the xt's.
 : DYNAMIC? ( IR-ID:ir-op-id -- bool )
    {: id:IR-ID:ir-op-id :}
    id s" execute" ENGINE-CALL?  id s" catch" ENGINE-CALL? or ;
 
-\ A call takes the frame past the lane arity, and a dynamic one always.
 : FRAMED-CALL? ( IR-ID:ir-op-id n n -- bool )
    {: id:IR-ID:ir-op-id a:n r:n :}
    a r FRAMED?  id DYNAMIC? or ;
@@ -585,6 +510,16 @@ HIR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
    0 ;
 
 \ ---- the plan ----------------------------------------------------------------
+\ THE BLOCKS. HIR blocks keep their order and arguments, between a prologue block
+\ that takes the signature's arguments and branches to HIR's entry and a final
+\ block that propagates a status. A call, terminal, division, stack room check or
+\ pointer check splits its block, so the plan counts the blocks each HIR block
+\ becomes and every branch is aimed by it. No conditional edge meets an argument:
+\ the elaborator aims every brz at a block that takes nothing and passes
+\ arguments, the token included, by br, and no block this selector puts behind a
+\ brz takes one. The interim freeze does not check this; WSTRUCT:FREEZE refuses a
+\ brz into a block with arguments (src/compiler/ir/verify.f SUCCARGS-CK).
+
 \ How many blocks beyond its own one HIR operation's selection builds: a
 \ division's five; a pointer check's or a stack room check's fault and the
 \ block after it; and the block after a call's or a terminal's status test.
@@ -601,8 +536,6 @@ HIR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
    1
    bk NFROZEN:OP-COUNT 0 ?do  bk i NFROZEN:OP-AT EXTRA +  loop ;
 
-\ The prologue is the function's first block, HIR's blocks follow it, and the
-\ propagating block ends it.
 : PLAN ( IR-ID:ir-fun-id -- )
    {: f:IR-ID:ir-fun-id :}
    f NFROZEN:BLOCK-COUNT {: n:n :}
@@ -625,6 +558,9 @@ HIR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
    NFROZEN:SUCC-AT ORD ;
 
 \ ---- the integer rules --------------------------------------------------------
+\ THE INTEGERS. Wrapping i64 arithmetic; `mod` is elaborate.f's expansion over
+\ `/`; the shifts are Wasm's, whose count is taken modulo 64 as the native
+\ shift-by-register takes it (src/compiler/native/hir.f).
 : SEL-CONST ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id 0 BND-VAL @ ATTR  id 0 BND-ADDR @ ATTR  K64
@@ -683,13 +619,24 @@ HIR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 : SEL-MEM ( IR-ID:ir-op-id -- )
    0 NFROZEN:RESULT-AT TOK BIND ;
 
-\ The address of the module's function whose ordinal the operation carries.
+\ A quotation's address (HIR quot) is an i64.const of WSTRUCT kind FUN naming the
+\ function's ordinal; the encoder writes the function's offset and the linker its
+\ adapter's table slot, the descriptor every xt is (docs/xcomp.md "Execution
+\ tokens").
 : SEL-QUOT ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id 0 BND-FUN @ ATTR WSTRUCT:ADDR-FUN K64
    id 0 NFROZEN:RESULT-AT swap BIND ;
 
 \ ---- the float rules ---------------------------------------------------------
+\ THE FLOATS. A real is an f64 that bitsreal and realbits reinterpret. After add,
+\ sub, mul, div and sqrt the answer is, without a branch, the left operand if it
+\ is a NaN, else the right if it is, else NAN-MADE if the result is, else the
+\ result; a signalling NaN operand passes unquieted, outside Habu's NaN rule.
+\ s>f is f64.convert_i64_s (nearest, ties to even); f>s is i64.trunc_sat_f64_s,
+\ which truncates, saturates and answers 0 for a NaN as
+\ src/compiler/native/hir-word.f DEF-FLOAT defines realint. Each operation is
+\ selected alone, so no multiply and add contract.
 \ The NaN every operation that makes one answers.
 $7FF8000000000000 constant NAN-MADE
 
@@ -855,8 +802,10 @@ $7FF8000000000000 constant NAN-MADE
    id s" c!" ENGINE-CALL? if  id WSTRUCT-OPCODE:I64-STORE8 0 SEL-STORE-CALL  exit  then
    id  id 0 BND-ENTRY @ ATTR HOST-CALLEE  SEL-CALL ;
 
-\ The whole row goes to the stack and the call passes no lane: the adapter's
-\ convention, since the operation states no arity.
+\ THE TERMINAL. HIR ends control with `terminal`, a call to the engine's throw or
+\ die carrying the whole live row and stating no arity (src/compiler/native/
+\ elaborate.f STAGE-TERMINAL). It takes the dynamic adapter's convention: the
+\ row stored, no lane. Its status 1 propagates; a status 0 is a fault.
 : SEL-TERMINAL ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id 0 OPND TOK!
@@ -953,6 +902,8 @@ $7FF8000000000000 constant NAN-MADE
    v REAL? if F64 exit then
    I64 ;
 
+\ THE MEMORY TOKEN. HIR's tokens map to WSTRUCT's; an effect this selector adds
+\ takes the token current where it stands.
 \ The token current at the block's start: its own argument, the prologue's for
 \ the entry block, else its first predecessor's last. A block without a token
 \ argument is entered with one HIR token on every edge, and every block ends on
@@ -1070,9 +1021,9 @@ $7FF8000000000000 constant NAN-MADE
 public
 
 \ ---- the stage rows ----------------------------------------------------------
-\ What the definition takes and leaves. The linkage changes nothing here: a
-\ tail call is a call then a return, and a definition that never returns simply
-\ has no return to select.
+\ What the definition takes and leaves. The linkage changes nothing here: a tail
+\ call, a self call included, is a call then a return and does not run in bounded
+\ space; a definition that never returns has no return to select.
 : DECLARE ( n n NBACK:linkage -- )
    {: in:n out:n l:NBACK:linkage :}
    in D-IN !

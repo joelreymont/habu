@@ -1,19 +1,9 @@
-\ asm.f - C6XASM, C66x instructions encoded from TI's SPRUGH7 as values, each
-\ a little-endian u32; nothing here schedules packets or emits memory.
-\
-\ REGISTERS AND UNITS. A-REG and B-REG take indices 0-31 and answer the codes
-\ A0-A31 = 0-31 and B0-B31 = 32-63. The .L unit follows the destination's
-\ bank: the first register source shares it and the second may cross. An
-\ immediate form takes the destination, the register source, then the signed
-\ constant. For ENC-LDW and ENC-STW the base's bank picks the .D unit and the
-\ data's bank the transfer side; ENC-B-REG uses .S2, crossing from an A source.
-\
-\ WHAT A CONSUMER OWNS. PARALLEL-NEXT sets the p bit and proves no packet
-\ legal: unit, cross-path and packet constraints and the latencies, four delay
-\ slots after LDW and five after a branch, are the scheduler's
-\ (src/arch/tic6x/eabi.f over facts.f; sim.f checks them on the host).
-\ test/compiler/tic6x-asm.f pins every form to the word GNU tic6x-elf-as 2.47
-\ writes for the same operands.
+\ asm.f - C6XASM, C66x instructions encoded from TI's SPRUGH7 as values, each a
+\ little-endian u32; nothing here schedules packets or emits memory. Unit,
+\ cross-path and packet constraints and the latencies (four delay slots after
+\ LDW, five after a branch) are the scheduler's: src/arch/tic6x/eabi.f over
+\ facts.f, checked on the host by sim.f. test/compiler/tic6x-asm.f pins every
+\ form to the word GNU tic6x-elf-as 2.47 writes.
 require src/lib/type/deftype.f
 require src/lib/errors.f
 
@@ -98,6 +88,10 @@ private
 
 public
 
+\ A-REG and B-REG take 0-31 and answer the codes A0-A31 = 0-31, B0-B31 = 32-63.
+\ The .L unit follows the destination's bank: the first register source shares
+\ it and the second may cross. An immediate form takes the destination, the
+\ register source, then the signed constant.
 : A-REG ( n -- gpr )
    0 31 RANGE >GPR ;
 
@@ -141,13 +135,15 @@ public
 : ENC-MV-L ( gpr gpr -- instruction )
    0 126 L-CONST ;
 
-\ Byte offsets select +/- ucst5 words without updating the base register.
+\ Byte offsets select +/- ucst5 words without updating the base register. The
+\ base's bank picks the .D unit and the data's bank the transfer side.
 : ENC-LDW ( gpr gpr byte-offset -- instruction )
    $64 MEMORY-WORD ;
 
 : ENC-STW ( gpr gpr byte-offset -- instruction )
    $74 MEMORY-WORD ;
 
+\ Uses .S2, crossing from an A source.
 : ENC-B-REG ( gpr -- instruction ) {: target:gpr :}
    target REG-NUMBER 18 lshift $362 or
    target REG-SIDE 1 xor 12 lshift or >INSTRUCTION ;
@@ -170,7 +166,7 @@ public
 : WHEN-ZERO ( instruction gpr -- instruction )
    0 0= PREDICATED ;
 
-\ The p bit joins the following instruction; packet legality belongs to scheduling.
+\ The p bit joins the following instruction into its packet.
 : PARALLEL-NEXT ( instruction -- instruction )
    CHECK-WORD 1 or >INSTRUCTION ;
 

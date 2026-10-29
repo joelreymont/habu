@@ -1,38 +1,9 @@
-\ passes.f - the x86-64 backend's pass rows in the compiler's pass table.
-\
-\ WHAT IT IS FOR. It is to src/arch/x86-64 what src/arch/arm64/passes.f is to
-\ AArch64: the row src/compiler/native/compiler.f reaches when a definition's
-\ own target contract resolves to this machine. Every stage is the sequence that
-\ file runs for ARM64, wrapping X64SEL, A64RA, A64RAV and A64SPILL; none of their
-\ state moved here.
-\
-\ THE SPILL PASS IS THE SHARED ONE. src/compiler/native/spill.f names no dialect:
-\ it is told the dialect's lowering record and how that dialect materialises a
-\ form by name, so this backend lowers its spills through the same pass the ARM64
-\ one does, bound with X64IR:LOWERING and X64IR:ENSURE-NAMED. The allocator and
-\ its validator are shared for the same reason, bound with X64M:MACHINE and
-\ X64IR:VOCABULARY.
-\
-\ EMISSION IS THIS BACKEND'S LAST ROW AND IT IS FILLED. src/compiler/native/
-\ emit-x64.f owns its byte sink, lays every block of the accepted module out in
-\ BYTES, resolves every displacement against the slot this row is handed, and
-\ seals a byte image with the lists of its call and address sites. The row then
-\ states that emission as NEMIT's rows, which src/compiler/native/publish.f
-\ reads in NEMIT before RETIRE clears them: the whole image with no trailing return,
-\ because an x86-64 span is exact, the placement, where each function starts,
-\ and each site at its instruction's first byte. RETIRE gives the image, the
-\ placement and the rows back, and is nonthrowing because the driver calls it on
-\ the refusing path too. EMIT-UNPLACED is the same emission measured from no
-\ slot: the same rows with no placement, which is what a shadow target's chain
-\ ends in (src/compiler/native/shadow.f).
-\
-\ So declare, select, the lowering fixpoint, emit and retire all run in
-\ the order src/compiler/native/compiler.f runs them;
-\ test/compiler/x64-chain.f drives that chain through this table.
-\
-\ THE SOURCE MODULE IS NOT THIS ROW'S, for the reason the ARM64 file gives:
-\ NBACK:FREEZE folds and freezes it once for every target a definition
-\ compiles to.
+\ passes.f - X64PASS, the x86-64 backend's rows in the compiler's pass table, the
+\ twin of src/arch/arm64/passes.f: src/compiler/native/compiler.f drives each
+\ stage through the row the definition's target contract resolves to. The rows
+\ wrap X64SEL, A64RA, A64RAV, A64SPILL (the shared src/compiler/native/spill.f)
+\ and X64EMIT (src/compiler/native/emit-x64.f) and hold none of their state.
+\ test/compiler/x64-chain.f drives the chain through this table.
 
 require src/lib/prelude.f
 require src/lib/errors.f
@@ -62,7 +33,6 @@ require src/compiler/native/shadow.f
 package X64PASS
 private
 
-\ The machine every emission this row seals is for.
 : ARCH ( -- CTARGET:arch )
    CTARGET-ARCH:X86-64 ;
 
@@ -76,9 +46,8 @@ variable D-BACK                      \ it calls back out
 variable D-FUNS                      \ functions sharing the emitted routine contract
 variable D-SPILLS                    \ padded spill slots that define the cumulative frame
 
-\ The driver's first stage: what this definition takes and leaves, and how
-\ control reaches and leaves it. The two counts this backend reads for itself
-\ start again here, so a stage can only see the definition it is compiling.
+\ The two counts this backend reads for itself start again here, so a stage sees
+\ only the definition it is compiling.
 : DECLARE ( n n NBACK:linkage -- )
    {: in:n out:n l:NBACK:linkage :}
    in D-IN !  out D-OUT !
@@ -115,12 +84,9 @@ variable D-SPILLS                    \ padded spill slots that define the cumula
    IR-BUILD:PLAN-DEFAULT
    c X64IR:NEW-BUILDER ;
 
-\ The allocator, its validator, the emitter and the shared spill pass, bound to
-\ the module a stage is about to write. Selection and each lowering turn both
-\ mint a machine module, and every pass that reads or writes one names that
-\ module's own symbols - which is why this is an act and not a one-time setup.
-\ The emitter is bound here too: the module it writes is whichever one the
-\ fixpoint stopped on, and only the turn that minted it can hand it its symbols.
+\ Selection and each lowering turn mint a machine module whose symbols are its
+\ own, so every pass that reads or writes one, the emitter included, is bound
+\ again for each module.
 : BIND-MACHINE ( IR-CTX:ctx IR-BUILD:builder -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
    c b X64M:MACHINE  c b X64IR:VOCABULARY  A64RA:BIND-DIALECT
@@ -133,8 +99,8 @@ variable D-SPILLS                    \ padded spill slots that define the cumula
 
 \ ---- selection ---------------------------------------------------------------
 \ The lowering pass is bound here because a module's symbols are its own. The
-\ source module is NBACK:FREEZE's, for the reason the ARM64 file gives, and the
-\ driver retires it after its last selector.
+\ source module is NBACK:FREEZE's, shared by every target the definition
+\ compiles to; the driver retires it after its last selector.
 : SELECT ( IR-CTX:ctx IR-BUILD:module -- IR-BUILD:module )
    {: c:IR-CTX:ctx m:IR-BUILD:module :}
    m X64SEL:BIND-SOURCE
@@ -193,10 +159,10 @@ variable D-SPILLS                    \ padded spill slots that define the cumula
    repeat ;
 
 \ ---- the sealed emission, as the rows publication reads ----------------------
-\ The emitter already answers in bytes, and each of its sites names an
-\ instruction's first byte, so the rows are copied across and nothing is
-\ decoded. No trailing return is split off: the span is the whole routine,
-\ whatever it ends in.
+\ Publication reads these rows in NEMIT before RETIRE clears them. The emitter
+\ answers in bytes and each site names an instruction's first byte, so the rows
+\ are copied across and nothing is decoded. An x86-64 span is exact: it is the
+\ whole routine, with no trailing return split off.
 : FUNCTION-ROWS ( -- )
    X64EMIT:FUNS 0 ?do
       i X64EMIT:FUNCTION-OFFSET@ NEMIT:FUNCTION+
@@ -230,8 +196,8 @@ variable D-SPILLS                    \ padded spill slots that define the cumula
    SEAL-ROWS ;
 
 \ ---- emission ----------------------------------------------------------------
-\ The spill binding is given back first: the fixpoint above leaves it standing
-\ when its last turn lowered. The module is then held to the routine contract.
+\ The spill binding is released first: FIXPOINT leaves it bound when its last
+\ turn lowered.
 : ACCEPTED ( IR-BUILD:module -- )
    {: m:IR-BUILD:module :}
    A64SPILL:BOUND? if A64SPILL:RELEASE then
@@ -246,7 +212,8 @@ variable D-SPILLS                    \ padded spill slots that define the cumula
    c m X64EMIT:EMIT
    at ROWS ;
 
-\ The rows answer until this row runs, on the accepting and the refusing path.
+\ Nonthrowing: the driver calls it on the accepting and the refusing path, and
+\ the rows answer until it runs.
 : RETIRE ( -- )
    X64EMIT:RETIRE
    NEMIT:CLEAR ;
@@ -266,12 +233,10 @@ variable D-SPILLS                    \ padded spill slots that define the cumula
    X64EMIT:CAPTURE-PREPARE ;
 
 \ ---- the native shadow's address sites ---------------------------------------
-\ A native shadow (src/compiler/native/shadow.f OPEN-NATIVE) copies this row's
-\ placed emission while it stands sealed in NEMIT, so every MOVABS site still
-\ carries the host address it was placed with. A code address that is one of
-\ the emission's own function starts goes back to that function's offset in the
-\ emission, the unplaced form the shadow linker reads; any other address stays
-\ as the host named it.
+\ A native shadow (src/compiler/native/shadow.f OPEN-NATIVE) copies the placed
+\ emission while it is sealed in NEMIT, so each MOVABS site holds a host address.
+\ An address of one of the emission's own function starts goes back to that
+\ function's offset, the unplaced form the shadow linker reads; any other stays.
 : FUN-OFF ( n -- n ) {: v:n :}
    NEMIT:PLACEMENT {: at:n :}
    NEMIT:FUNCTIONS 0 ?do
@@ -295,13 +260,11 @@ variable D-SPILLS                    \ padded spill slots that define the cumula
 
 public
 
-\ The emit row with no slot: a SHADOW emission (emit-x64.f), whose call fields
-\ are zero and whose rows alone say where they go, for a writer that lays the
-\ routine into its own stream and links it there - test/compiler/shadow.f's
-\ sealed row (src/habu/kernel-hir-x64.f), a shadow target every definition
-\ (src/compiler/native/shadow.f). The rows are stated with no placement, so
-\ publication, which commits only a placed emission at the slot it names, never
-\ takes them for its own. RETIRE gives this one back too.
+\ The emit row with no slot: a shadow emission (emit-x64.f) whose call fields are
+\ zero and whose rows alone say where they go, for a writer that links the
+\ routine into its own stream (src/compiler/native/shadow.f, and the sealed row
+\ of test/compiler/shadow.f in src/habu/kernel-hir-x64.f). Publication commits
+\ only a placed emission, so it never takes these rows. RETIRE releases this too.
 : EMIT-UNPLACED ( IR-CTX:ctx IR-BUILD:module -- )
    {: c:IR-CTX:ctx m:IR-BUILD:module :}
    m ACCEPTED

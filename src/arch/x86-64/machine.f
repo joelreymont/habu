@@ -1,37 +1,8 @@
-\ machine.f - the x86-64 machine, as the one description a routine contract over
-\ this backend is written against.
-\
-\ WHERE THESE NUMBERS COME FROM. Every fact here but one is read off
-\ src/compiler/native/x64ir.f, which is the machine dialect this backend lowers
-\ into, and the one is the engine's data-stack register, read off
-\ src/habu/layout.f as A64M reads its own; so this file states nothing twice:
-\   - sixteen general registers (rax..r15) and sixteen floating (xmm0..xmm15).
-\     Seven of the general file are reserved: the running engine's six - rbx,
-\     rbp and r12..r15, layout.f's ENGINE-GPR:X64-MASK - and rsp, which
-\     x64ir's RESERVED-MASK adds to them;
-\   - THERE IS NO LINK REGISTER. `call` pushes the return address onto the
-\     machine stack, so the caller's return address is not in a register a
-\     routine could preserve or clobber, and the contract's link field is
-\     `absent` here. That is the one field an ARM64 contract cannot share;
-\   - there is no zero register either, so nothing is reserved on that account;
-\   - rsp is the machine stack pointer AND an ordinary operand number, which is
-\     why it has to be reserved by name. ARM64 has no equivalent slip to make;
-\   - a frame access is a mov through a disp32 displacement, counted in BYTES
-\     and not scaled by the access width, so a byte slot and an eight-byte slot
-\     reach the same distance from the stack pointer. That is the second reading
-\     of an offset field NMACH:SLOT-REACH exists to keep apart;
-\   - the displacement is signed, so an access names a byte below its base as
-\     well as above it, with the same magnitude either way;
-\   - a mov moves a byte, a word, a dword or a qword, so the modelled widths are
-\     1, 2, 4 and 8. Unlike ARM64 there IS a halfword form;
-\   - the SysV stack alignment this port keeps is sixteen bytes, and the largest
-\     frame is the deepest displacement rounded down to it.
-\
-\ WHY IT IS A FILE OF ITS OWN. It is the x86-64 half of what
-\ src/arch/arm64/machine.f is for AArch64: the facts the target-neutral routine
-\ contract (src/compiler/native-effect.f) used to hold as ARM64 constants. It
-\ requires the machine dialect and nothing under src/os/, so an engine that
-\ carries no x86-64 backend carries no description of one either.
+\ machine.f - X64M, the x86-64 machine description routine contracts over this
+\ backend are written against; the x86-64 half of src/arch/arm64/machine.f. Every
+\ fact is read off src/compiler/native/x64ir.f, except the data-stack register,
+\ read off src/habu/layout.f. It requires nothing under src/os/, so an engine
+\ without an x86-64 backend carries no description of one.
 
 require src/lib/prelude.f
 require src/habu/layout.f
@@ -49,9 +20,10 @@ $1 1 lshift
    $1 X64IR:SLOT-WIDTH lshift or
 constant WIDTHS-N
 
-\ The description, built once at load, for the reason the ARM64 one gives: a
-\ word that described the machine per call would pay a table scan on every
-\ register a pass named, so what is kept is the ordinal NMACH hands back.
+\ Built once at load: describing per call would pay a table scan on every
+\ register a pass names, so the ordinal NMACH hands back is kept. A frame access
+\ is a mov through a signed disp32 counted in bytes, not scaled by the access
+\ width, so every width reaches the same distance above and below its base.
 : DESCRIBE ( -- n )
    X64IR:REGFILE
    NREGFILE:REGS-NONE                   \ no link register: the return address is pushed
@@ -64,21 +36,15 @@ DESCRIBE constant ROW
 public
 
 \ ---- the description ---------------------------------------------------------
-\ One value that says everything about this machine a routine contract needs.
-\ There are no fast readers beside it as there are for ARM64: no pass is written
-\ against this machine yet, and a reader nothing asks would be a second copy of
-\ a fact x64ir.f already owns.
+\ No fast readers as for ARM64: nothing asks, and one would copy a fact x64ir.f
+\ owns.
 : MACHINE ( -- NMACH:mach )   ROW NMACH:BY-ID ;
 
 \ ---- the register the running engine keeps its data-stack pointer in ---------
-\ The one door a pass emitting an access to the caller's stack asks at, the twin
-\ of A64M:DSTACK-GPR. Both numbers are the engine's own declaration in
-\ src/habu/layout.f, and src/arch/x86-64/rt.f's data-stack moves emit through
-\ the same declaration, so the compiler's code and the engine's share one stack
-\ by construction. It is ENGINE-GPR:X64-DSTACK by name and not the
-\ target-selected ENGINE-GPR:DSTACK, because the engine that loads this file to
-\ cross-build x86-64 is an ARM64 one, whose DSTACK is x19. This file reports
-\ that register, it does not decide it.
+\ The twin of A64M:DSTACK-GPR. It is ENGINE-GPR:X64-DSTACK by name, not
+\ ENGINE-GPR:DSTACK: an ARM64 engine loads this file to cross-build x86-64, and
+\ its DSTACK is x19. src/arch/x86-64/rt.f emits its data-stack moves through the
+\ same declaration, so compiler and engine code share one stack.
 : DSTACK-GPR ( -- n )   ENGINE-GPR:X64-DSTACK ;
 
 private

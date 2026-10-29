@@ -1,62 +1,7 @@
 \ link.f - WLINK, the Wasm backend's linker: encoded functions, a data image and
-\ table slots written as one Wasm module (docs/xcomp.md "Linking").
-\
-\ A FUNCTION IS A BODY AND A SIGNATURE. FUNCTION+ copies a body as WENC writes
-\ one, its local declarations, code and end, with the lanes its emission row
-\ states and its frame variant, and answers its handle: the order it was added
-\ in. Every lane is an i64 at a word boundary, so a function in its lanes has
-\ the Wasm type (i32 ctx, inputs x i64) -> (i32 status, outputs x i64), and one
-\ in the aligned frame (i32) -> (i32).
-\
-\ ONE ORDER NUMBERS EVERYTHING. Functions are numbered by origin, kernel, then
-\ captured, then adapter, each in the order it was added, and then come the
-\ wrappers: run, throw-code, out-base, out-len and, once RESERVE! named its
-\ callee, reserve. Types are deduplicated by their encoding, which is
-\ structural, in the order that numbering first uses them. A function keeps its
-\ own signature beside its type, so the aligned frame and a function of no lanes
-\ share a type and only the latter can be the entry. Table slots are numbered
-\ from 1 in the order TABLE+ adds them: slot 0 holds no function, a null
-\ funcref, so call_indirect of xt 0 traps as native execute of 0 fails. No
-\ global is declared: ctx lives in memory at WPROF's ctx base, so the global
-\ index space is empty. Nothing is imported and no start function runs.
-\
-\ A SITE IS PATCHED IN PLACE. A call site is the offset of a padded five-byte
-\ field in its caller's body, and the field gets its callee's index. An address
-\ site, a padded ten-byte field, and a data cell, eight bytes of the image low
-\ byte first, name a kind and a target. A DATA target is an offset into the
-\ image, from zero to its length, and is written as WPROF's image base plus it; a
-\ CODE target is a table slot, and is written as the slot. An indirect site,
-\ the padded five-byte field after a `call_indirect`, is written as the index of
-\ the type (i32) -> (i32), every table slot's (src/arch/wasm/dynamic.f). Only
-\ the module's copies are patched, so the rows stay as given and LINK can run
-\ again.
-\
-\ THE MODULE. Sections come in the specification's order: type, function, table
-\ when a slot was added, memory, export, element with the table from slot 1,
-\ code, and data, one active segment at WPROF's image base. The memory's
-\ minimum is the pages holding the image's end and its maximum memory32's
-\ 65536, which WKERNEL's map-anon grows toward. The exports are memory and the
-\ wrappers, whose bodies are written here through WENC's opcode bytes because
-\ their signatures lie outside WSTRUCT's call row: run initializes the task
-\ DATA stack header, stores WPROF's stack base in ctx's stack base and top and
-\ 0 in its out-len, calls the entry with WPROF's ctx base and answers its
-\ status; throw-code answers ctx's throw code, out-base WPROF's out base, and
-\ out-len ctx's out-len. reserve, (i64 bytes) -> (i64 address), calls the
-\ function RESERVE! named, map-anon, with WPROF's ctx base and the count, and
-\ answers its address, 0 when it refused, dropping its status and ior: a host
-\ copies each delivery into pages the module reserved and owns
-\ (src/lib/browser/turn.js).
-\
-\ REFUSALS. LINK reads every row before it writes. An entry, site, cell or slot
-\ naming no function, image byte or slot is E-WLINK-UNRESOLVED, as is an address
-\ of kind NONE, which names nothing; a kind outside NONE, DATA and CODE is
-\ E-WSTRUCT-ADDR. A reserve callee naming no function is E-WLINK-UNRESOLVED, and
-\ one other than map-anon's lanes, one in and two out, E-WENC-ARITY. A field
-\ that is not a padded LEB of its width inside its body is WLEB's refusal, and a
-\ cell outside the image E-SPAN-RANGE. An entry that takes or answers a lane is
-\ E-WENC-ARITY. DATA! refuses, before it reserves a byte, an image whose end
-\ passes memory32's 65536 pages: E-WLINK-MEMORY.
-\
+\ table slots written as one Wasm module (docs/xcomp.md "Linking"); the rows come
+\ from src/habu/link-wasm.f. LINK reads every row before it writes and patches
+\ only its copies, so the rows stay as given and LINK can run again.
 \ STORAGE CLASS. MODULE-OWNED: the rows, bodies and image live in this package's
 \ buffers until RESET, and the module LINK answers until the next LINK.
 
@@ -70,7 +15,7 @@ require src/arch/wasm/profile.f
 require src/arch/wasm/encode.f
 require src/compiler/native/emission.f
 
-\ WLINK's codes, -9830..-9834, in the Wasm backend's block -9800..-9834.
+\ The Wasm backend's error block is -9800..-9834 (src/lib/errors.f).
 -9830 constant E-WLINK-FIRST
 -9834 constant E-WLINK-LAST
 -9830 constant E-WLINK-UNRESOLVED  \ an entry, site, cell or slot naming no function, image byte or table slot of the link
@@ -196,7 +141,6 @@ LEB-MOST SPAN-BUFFER: LEB            \ one LEB, before it is put
 : PUT-S32 ( n -- )  LEB WLEB:S32! PUT-LEB ;
 : PUT-S64 ( n -- )  LEB WLEB:S64! PUT-LEB ;
 
-\ Four bytes, low first.
 : PUT-LE32 ( n -- )
    {: v:n :}
    4 0 do  v i 8 * rshift $FF and PUT-BYTE  loop ;
@@ -225,11 +169,13 @@ LEB-MOST SPAN-BUFFER: LEB            \ one LEB, before it is put
    id PUT-BYTE  body SIZED ;
 
 \ ---- index order ----------------------------------------------------------------
+\ Functions are numbered by origin (kernel, captured, adapter), each in the order
+\ added, then the wrappers: run, throw-code, out-base, out-len and, once RESERVE!
+\ named its callee, reserve.
 : RANKED ( n [ n -- ] -- )
    {: r:n fn :}
    NF @ 0 ?do  i FN-RANK @ r = if  i fn execute  then  loop ;
 
-\ Each function's handle, in index order: by origin, then in the order added.
 : IN-ORDER ( [ n -- ] -- )
    {: fn :}
    RANKS 0 do  i fn RANKED  loop ;
@@ -242,6 +188,9 @@ variable ENTRY-IDX
    1 NEXT +! ;
 
 \ ---- types ----------------------------------------------------------------------
+\ Types are deduplicated by their encoding, in the order the numbering first uses
+\ them. A function keeps its own signature beside its type: the aligned frame and
+\ a function of no lanes share a type, and only the latter can be the entry.
 \ The longest type: its form, then two vectors of a count's LEB and 256 types.
 1 LEB-MOST 256 + 2 * + constant TY-CAP
 TY-CAP BUFFER: TY                    \ the type being interned
@@ -270,7 +219,6 @@ variable WR-DYN                      \ (i32) -> (i32): an indirect call's
    I32 TY-BYTE
    k 0 ?do  I64 TY-BYTE  loop ;
 
-\ The type of a function in its lanes, or in the aligned frame (ctx) -> (status).
 : FN-TYPE-OF ( n -- )
    {: k:n :}
    k FN-VAR @ FRAME-ALIGNED = if 0 0 else k FN-IN @ k FN-OUT @ then {: in:n out:n :}
@@ -317,6 +265,15 @@ variable WR-DYN                      \ (i32) -> (i32): an indirect call's
    NINDS @ 0 > if  0 TY-U !  FUNC-FORM TY-BYTE  0 ROW  0 ROW  INTERN WR-DYN !  then ;
 
 \ ---- the wrappers ---------------------------------------------------------------
+\ The exports are memory and the wrappers, written through WENC's opcode bytes
+\ because their signatures lie outside WSTRUCT's call row. run initializes the
+\ task DATA stack header, stores WPROF's stack base in ctx's stack base and top
+\ and 0 in its out-len, calls the entry with WPROF's ctx base and answers its
+\ status; throw-code answers ctx's throw code, out-base WPROF's out base, out-len
+\ ctx's out-len. reserve, (i64 bytes) -> (i64 address), calls map-anon with
+\ WPROF's ctx base and the count and answers its address, 0 when refused,
+\ dropping status and ior: a host copies each delivery into pages the module
+\ reserved (src/lib/browser/turn.js).
 \ ctx's field at off := v, an i32.
 : CTX! ( n n -- )
    {: v:n off:n :}
@@ -377,6 +334,12 @@ variable WR-DYN                      \ (i32) -> (i32): an indirect call's
    OP-END PUT-BYTE ;
 
 \ ---- the sections -------------------------------------------------------------
+\ Sections in the specification's order: type, function, table when a slot was
+\ added, memory, export, element from slot 1, code, and data, one active segment
+\ at WPROF's image base. Memory's minimum is the pages holding the image's end,
+\ its maximum memory32's 65536, which WKERNEL's map-anon grows toward. No global
+\ is declared (ctx lives in memory at WPROF's ctx base), nothing is imported and
+\ no start function runs.
 : BODY$ ( n -- ptr u8 n )
    {: k:n :}
    k FN-AT @ BODIES  k FN-LEN @ ;
@@ -389,8 +352,6 @@ variable WR-DYN                      \ (i32) -> (i32): an indirect call's
    NTYPES @ PUT-U32
    0 TYPES TYPES-U @ PUT-BYTES ;
 
-\ The wrappers' types follow the functions': run, throw-code, out-base, out-len
-\ and reserve.
 : FUNCTION-SEC ( -- )
    NF @ WRAPPERS + RESERVES @ + PUT-U32
    [: FN-TYPE @ PUT-U32 ;] IN-ORDER
@@ -462,6 +423,13 @@ variable IMAGE-POS                   \ where LINK wrote the image in the module
    SEC-DATA [: DATA-SEC ;] SECTION ;
 
 \ ---- reading the rows ------------------------------------------------------------
+\ An entry, site, cell or slot naming no function, image byte or slot, and an
+\ address of kind NONE, are E-WLINK-UNRESOLVED; a kind outside NONE, DATA and
+\ CODE is E-WSTRUCT-ADDR. A reserve callee naming no function is
+\ E-WLINK-UNRESOLVED, and one without map-anon's lanes (one in, two out)
+\ E-WENC-ARITY, as is an entry that takes or answers a lane. A field that is not
+\ a padded LEB of its width inside its body is WLEB's refusal, and a cell outside
+\ the image E-SPAN-RANGE.
 \ A handle of a function the link holds.
 : RESOLVED ( n -- n )
    {: k:n :}
@@ -510,14 +478,12 @@ variable IMAGE-POS                   \ where LINK wrote the image in the module
    at 0 <  at IMAGE-U @ CELL-BYTES - > or if E-SPAN-RANGE throw then
    k CELL-KIND @ k CELL-TGT @ FINAL drop ;
 
-\ reserve's callee takes a byte count and answers an address and an ior.
 : RESERVE-CK ( -- )
    RESERVES @ 0= if exit then
    RES-FN @ RESOLVED {: f:n :}
    f FN-IN @ 1 <>  f FN-OUT @ 2 <> or  f FN-VAR @ FRAME-ALIGNED = or
    if E-WENC-ARITY throw then ;
 
-\ Every row, before a byte is written.
 : ROWS-CK ( n -- )
    ENTRY-CK
    RESERVE-CK
@@ -528,10 +494,16 @@ variable IMAGE-POS                   \ where LINK wrote the image in the module
    NCELLS @ 0 ?do  i CELL-CK  loop ;
 
 \ ---- patching the module ---------------------------------------------------------
+\ A call site is a padded five-byte field in its caller's body and gets its
+\ callee's index. An address site (a padded ten-byte field) and a data cell
+\ (eight image bytes, low first) name a kind and a target: a DATA target is an
+\ image offset, 0 to its length, written as WPROF's image base plus it; a CODE
+\ target is a table slot, written as the slot. An indirect site, the padded
+\ five-byte field after call_indirect, gets the index of (i32) -> (i32), every
+\ table slot's type (src/arch/wasm/dynamic.f).
 : MODULE ( -- SPAN:span<u8> )
    0 OUT AT @ SPAN:MAKE ;
 
-\ Eight bytes at off in the module, low first.
 : PUT-CELL ( n n -- )
    {: v:n off:n :}
    CELL-BYTES 0 do  v i 8 * rshift $FF and  off i + OUT c!  loop ;
@@ -563,8 +535,11 @@ public
    0 NF !  0 BODIES-U !  0 NCALLS !  0 NADDRS !  0 IMAGE-U !  0 NCELLS !  0 NSLOTS !
    0 NINDS !  0 RESERVES ! ;
 
-\ A body as WENC writes it, the lanes in and out its emission row states, the
-\ frame variant WENC picks for them and its origin; answers its handle.
+\ A body as WENC writes it (local declarations, code, end), the lanes in and out
+\ its emission row states, its frame variant and its origin; answers its handle,
+\ the order it was added in. Every lane is an i64 at a word boundary: a function
+\ in its lanes has type (i32 ctx, inputs x i64) -> (i32 status, outputs x i64),
+\ one in the aligned frame (i32) -> (i32).
 : FUNCTION+ ( ptr u8 n n n n WLINK:origin -- n )
    {: a u:n in:n out:n var:n o:WLINK:origin :}
    NF @ {: k:n :}
@@ -604,7 +579,8 @@ public
    f k ADDR-FN !  at k ADDR-AT !  kind k ADDR-KIND !  t k ADDR-TGT !
    1 NADDRS +! ;
 
-\ The data image, in place of any before it.
+\ The data image, in place of any before it. An image past memory32's 65536
+\ pages is refused before a byte is reserved.
 : DATA! ( ptr u8 n -- )
    {: a u:n :}
    u 0 < if E-SPAN-LENGTH throw then
@@ -621,7 +597,9 @@ public
    at k CELL-AT !  kind k CELL-KIND !  t k CELL-TGT !
    1 NCELLS +! ;
 
-\ Function f in the table's next slot; answers the slot.
+\ Function f in the table's next slot; answers the slot. Slots count from 1:
+\ slot 0 is a null funcref, so call_indirect of xt 0 traps as native execute of 0
+\ fails.
 : TABLE+ ( n -- n )
    {: f:n :}
    NSLOTS @ {: k:n :}

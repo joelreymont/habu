@@ -1,22 +1,9 @@
-\ capture.f - the capture's reader of Wasm shadow emissions: it walks NSHADOW's
-\ map of a Wasm shadow (src/arch/wasm/backend.f) and fills AOT-SHADOW's tables
-\ (src/habu/aot-decl.f), as src/habu/aot-shadow.f does for x86-64.
-\
-\ WHY ITS OWN READER. A Wasm emission's address site is the padded ten-byte
-\ SLEB after `i64.const` (src/arch/wasm/encode.f), which the x86-64 reader's
-\ MOVABS carrier can neither read nor rewrite; WLEB reads and rewrites it in
-\ place. Everything else is the x86-64 reader's, called rather than restated, so
-\ the two keep one set of rules: the map's publication order (SH-ORDER), the
-\ shipped rows (SH-SHIPPED), the stripped and retired records
-\ (SH-STRIP), a call row and every target it names (SH-CALL, SH-TARGET), and
-\ the declared code cells (SH-XTCELL). It reopens the capture's package for
-\ them, as aot-shadow.f does, and loads beside the Wasm backend, which no
-\ engine compiles in.
-\
-\ A call's field is the padded zero index the linker writes, so only its row is
-\ carried. A self call (RECURSE) names its own function's body offset, no host
-\ address; its row names the record being filed (WC-CALL), as a call to
-\ another shipped definition names that one's.
+\ capture.f - the capture's reader of Wasm shadow emissions: walks NSHADOW's map
+\ of a Wasm shadow and fills AOT-SHADOW's tables (src/habu/aot-decl.f), as
+\ src/habu/aot-shadow.f does for x86-64. Its own reader because a Wasm address
+\ site is the padded SLEB after `i64.const`, which the x86-64 MOVABS carrier
+\ cannot read or rewrite; every other rule is aot-shadow.f's, called in its
+\ reopened package. It loads beside the Wasm backend, which no engine compiles in.
 
 require src/lib/span.f
 require src/core/bytes.f
@@ -57,9 +44,11 @@ using WLEB
       at AOT-SHADOW:DATA 0 SH-SITE+
    then ;
 
-\ A call of the emission just copied. One naming a function of the emission is
-\ a self call, since the selector's only callee in its own module is function
-\ zero, the definition's (src/arch/wasm/select.f S-SELF).
+\ A call's field is the padded zero index the linker writes, so only its row is
+\ carried. A call naming a function of the emission is a self call (the
+\ selector's only callee in its own module is function zero, src/arch/wasm/
+\ select.f S-SELF): its row names the record being filed, as a call to another
+\ shipped definition names that one's.
 : WC-CALL ( n n -- ) {: e:n k:n :}
    e  e k CALL-TARGET@  SH-FUN? 0= if e k SH-CALL exit then
    SH-AT @ e k CALL-SITE@ +  AOT-SHADOW:CALL
@@ -102,7 +91,6 @@ using WLEB
 
 public
 
-\ Fill the shadow tables from the open Wasm shadow's map after capture completion.
 \ SH-INDEX and SH-ASSIGN give each shipped record its map row, which SH-TARGET
 \ reads; SH-ROOTS marks only rows a shipped record enters, since this reader
 \ follows no x86 edges.

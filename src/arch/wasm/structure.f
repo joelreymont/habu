@@ -1,45 +1,9 @@
 \ structure.f - WCTL, the Wasm backend's structured control: one function of a
-\ frozen WSTRUCT module written as Wasm's block, loop and if, with the label
-\ depth of every branch and the copies every branch's arguments need.
-\
-\ THE GRAPH IS THE INPUT. WSTRUCT is a control-flow graph (wstruct.f), so the
-\ nesting Wasm needs is derived here from a module WSTRUCT:FREEZE verified:
-\ every successor lies in its own function and every one-successor branch hands
-\ its destination exactly that block's arguments.
-\
-\ REDUCIBLE CONTROL, BY DOMINATORS. The blocks the entry reaches are numbered
-\ in reverse postorder and their immediate dominators found by Cooper, Harvey
-\ and Kennedy's iteration ("A Simple, Fast Dominance Algorithm", 2001). An edge
-\ to a block numbered no later than its source is a back edge only when that
-\ block dominates the source; otherwise control enters a cycle at two blocks,
-\ which nesting cannot express, and the function is refused with
-\ E-WCTL-IRREDUCIBLE, naming it and the span of a block the cycle is entered
-\ at (REFUSED-FUN, REFUSED-SPAN). A block a back edge enters heads a loop; a
-\ block more than one forward edge enters is a merge.
-\
-\ THE CONTROL TREE (Ramsey, "Beyond Relooper", ICFP 2022). A block is written
-\ inside a loop when it heads one. Each of its dominator-tree children that is a
-\ merge becomes the label of a Wasm block whose end that child follows, the one
-\ numbered latest outermost, so every forward branch to it leaves an enclosing
-\ block. A back edge continues the enclosing loop its destination heads. A
-\ forward branch to a block that is no merge is that block's only way in, so
-\ the block is written in place. brz becomes an if whose then arm is its
-\ nonzero successor. A label is named by the block it stands for until a branch
-\ is written; only then is it counted into a depth. Blocks the entry does not
-\ reach are written nowhere.
-\
-\ BRANCH ARGUMENTS ARE PARALLEL COPIES. Only br carries arguments, so the
-\ copies go right before its branch. Every destination is a block argument of
-\ its own, so a copy may be written once no waiting copy still reads the local
-\ it overwrites; what is left after that is cycles, each broken by saving one
-\ destination into a temporary first. A cycle's values share one type and a
-\ cycle is written out before the next is broken, so a function needs one
-\ temporary per type. A memory token has no local and is not copied, and
-\ neither is an argument handed back to itself.
-\
-\ LOOP ARITHMETIC IS THE FRONTEND'S. A loop here is a cycle the selector built:
-\ its counter, limit and exit test are ordinary operations and branches, so the
-\ meaning of DO, ?DO, +LOOP and LEAVE arrives already decided.
+\ module WSTRUCT:FREEZE verified (wstruct.f), written as Wasm block, loop and if
+\ steps with every branch's label depth and argument copies. Nesting is derived
+\ here from the control-flow graph; irreducible control is refused. Loop
+\ arithmetic is the selector's: DO, ?DO, +LOOP and LEAVE arrive as ordinary
+\ operations and branches. src/arch/wasm/encode.f writes the steps.
 
 require src/lib/prelude.f
 require src/lib/errors.f
@@ -50,7 +14,7 @@ require src/compiler/ir/fun.f
 require src/compiler/ir/build.f
 require src/compiler/native/frozen.f
 
-\ WCTL's codes, -9815..-9819, in the Wasm backend's block -9800..-9829.
+\ The Wasm backend's error block is -9800..-9834 (src/lib/errors.f).
 -9815 constant E-WCTL-FIRST
 -9819 constant E-WCTL-LAST
 -9815 constant E-WCTL-IRREDUCIBLE  \ a function whose control enters a cycle at more than one block
@@ -59,15 +23,12 @@ require src/compiler/native/frozen.f
 package WCTL
 public
 
-\ One step of the linear form the encoder writes. open-block's label is the
-\ block its end is followed by, open-loop's the block heading it; an if opened
-\ on brz's i32 condition has no label a branch names. body is a block's
-\ operations before its terminator, final a terminator with no successor
-\ (return or unreachable). copy, save and restore set a destination's local
-\ from a source, a temporary from a source, and a destination from a
-\ temporary. branch leaves for the enclosing label of its block, depth labels
-\ out. Neither a close nor the function's end is reached by falling through:
-\ every path ends in a branch or a final.
+\ open-block's label is the block that follows its end; open-loop's is the block
+\ heading it; no branch names open-if's. body is a block's operations before its
+\ terminator; final is a terminator with no successor. copy sets a destination
+\ from a source, save a temporary from a source, restore a destination from a
+\ temporary. branch's depth counts labels out. No close or function end is
+\ reached by falling through: every path ends in a branch or a final.
 ENUM step
    VARIANT open-block FIELD label IR-ID:ir-block-id ;VARIANT
    VARIANT open-loop FIELD label IR-ID:ir-block-id ;VARIANT
@@ -116,7 +77,6 @@ DYNAMIC-BUFFER CP-VIA bool           \ reads the temporary, not its source
 DYNAMIC-BUFFER CP-WAIT bool          \ not written yet
 DYNAMIC-BUFFER CP-USES n             \ waiting copies that read its destination
 
-\ What the last refusal named.
 1 TYPED-BUFFER REF-FUN IR-ID:ir-symbol-id
 1 TYPED-BUFFER REF-SPAN IR-SOURCE:span
 
@@ -157,7 +117,6 @@ DYNAMIC-BUFFER CP-USES n             \ waiting copies that read its destination
    1 SP +!
    WALKING b RPO ! ;
 
-\ Try the top block's next successor, or finish the block when none is left.
 : ADVANCE ( -- )
    SP @ 1- {: top:n :}
    top STK-B @ {: b:n :}
@@ -172,7 +131,6 @@ DYNAMIC-BUFFER CP-USES n             \ waiting copies that read its destination
    1 NPOST +!
    -1 SP +! ;
 
-\ The postorder, reversed in place and numbered.
 : RENUMBER ( -- )
    NREACH @ 2 / 0 ?do
       NREACH @ 1- i - {: k:n :}
@@ -191,7 +149,8 @@ DYNAMIC-BUFFER CP-USES n             \ waiting copies that read its destination
    RENUMBER ;
 
 \ ---- dominators ----------------------------------------------------------------
-\ Walk a up the dominator tree until it is numbered no later than b.
+\ Immediate dominators by Cooper, Harvey and Kennedy's iteration over reverse
+\ postorder ("A Simple, Fast Dominance Algorithm", 2001).
 : CLIMB ( n n -- n )
    {: a:n b:n :}
    a begin dup RPO @ b RPO @ > while DOM @ repeat ;
@@ -204,8 +163,8 @@ DYNAMIC-BUFFER CP-USES n             \ waiting copies that read its destination
 : MEET ( n n -- n )
    begin 2dup <> while MEET-STEP repeat drop ;
 
-\ The meet over the predecessors that already have a dominator. A reached
-\ block's walk parent is numbered before it, so there is always one.
+\ A reached block's walk parent is numbered before it, so one predecessor always
+\ has a dominator.
 : PRED-MEET ( n -- n )
    {: b:n :}
    -1
@@ -228,6 +187,11 @@ DYNAMIC-BUFFER CP-USES n             \ waiting copies that read its destination
    begin false MOVED ! ROUND MOVED @ 0= until ;
 
 \ ---- back edges, loop headers and merges --------------------------------------
+\ An edge to a block numbered no later than its source is a back edge only when
+\ that block dominates the source; otherwise control enters a cycle at two
+\ blocks, which nesting cannot express, and E-WCTL-IRREDUCIBLE refuses the
+\ function. A back edge's destination heads a loop; a block more than one
+\ forward edge enters is a merge.
 : IRREDUCIBLE ( n -- )
    {: y:n :}
    NFROZEN:V-FUNR NFROZEN:VW NFROZEN:MKEY 0 CUR @ IR-FUN:FSYMBOL@ 0 REF-FUN !
@@ -259,6 +223,12 @@ DYNAMIC-BUFFER CP-USES n             \ waiting copies that read its destination
    EDGES ;
 
 \ ---- one br's parallel copies ---------------------------------------------------
+\ Only br carries arguments, and every destination is a block argument of its
+\ own: a copy is written once no waiting copy reads the local it overwrites, and
+\ each remaining cycle is broken by saving one destination into a temporary. A
+\ cycle's values share one type and a cycle is written out before the next is
+\ broken, so a function needs one temporary per type. A memory token is not
+\ copied, nor is an argument handed back to itself.
 : PUT ( WCTL:step -- )
    {: s:WCTL:step :}
    NSTEPS @ 1+ STEP-ROW-RESERVE
@@ -278,7 +248,6 @@ DYNAMIC-BUFFER CP-USES n             \ waiting copies that read its destination
    d c CP-DST !  s c CP-SRC !  false c CP-VIA !  true c CP-WAIT !  0 c CP-USES !
    1 NCOPIES +! ;
 
-\ How many copies read c's destination.
 : READERS ( n -- n )
    {: c:n :}
    0
@@ -286,7 +255,6 @@ DYNAMIC-BUFFER CP-USES n             \ waiting copies that read its destination
       i CP-SRC @ c CP-DST @ NFROZEN:SAME-VALUE? if 1+ then
    loop ;
 
-\ The temporary for c's type, made when a cycle of that type is first broken.
 : TEMP-OF ( n -- n )
    CP-DST @ NFROZEN:VALUE-TYPE-AT {: t:IR-ID:ir-type-id :}
    NTEMPS @ 0 ?do
@@ -298,7 +266,6 @@ DYNAMIC-BUFFER CP-USES n             \ waiting copies that read its destination
    1 NTEMPS +!
    k ;
 
-\ A written copy has read v: the waiting copy that overwrites v has one reader fewer.
 : READ-DONE ( IR-ID:ir-value-id -- )
    {: v:IR-ID:ir-value-id :}
    NCOPIES @ 0 ?do
@@ -314,8 +281,7 @@ DYNAMIC-BUFFER CP-USES n             \ waiting copies that read its destination
    c CP-DST @ c CP-SRC @ WCTL-STEP:copy PUT
    c CP-SRC @ READ-DONE ;
 
-\ Every waiting copy lies on a cycle: save c's destination, and its reader
-\ reads the temporary instead.
+\ Every waiting copy lies on a cycle here.
 : BREAK ( n -- )
    {: c:n :}
    c TEMP-OF  c CP-DST @  WCTL-STEP:save PUT
@@ -341,7 +307,6 @@ DYNAMIC-BUFFER CP-USES n             \ waiting copies that read its destination
    WAITING if BREAK true exit then drop
    false ;
 
-\ The copies br t hands its destination, a block argument from each operand.
 : COPIES ( IR-ID:ir-op-id -- )
    {: t:IR-ID:ir-op-id :}
    t 0 NFROZEN:SUCC-AT {: to:IR-ID:ir-block-id :}
@@ -355,6 +320,11 @@ DYNAMIC-BUFFER CP-USES n             \ waiting copies that read its destination
    begin SCHEDULE 0= until ;
 
 \ ---- the control tree, written as steps --------------------------------------
+\ Ramsey, "Beyond Relooper" (ICFP 2022). A loop header is written inside its
+\ loop. Each dominator-tree child that is a merge labels a Wasm block whose end
+\ it follows, the latest numbered outermost, so every forward branch to it
+\ leaves an enclosing block. A label counts into a depth only once a branch is
+\ written. Blocks the entry does not reach are written nowhere.
 : OPEN-LABEL ( n -- )
    {: y:n :}
    LABELS @ y POS !
@@ -366,7 +336,6 @@ DYNAMIC-BUFFER CP-USES n             \ waiting copies that read its destination
    -1 LABELS +!
    WCTL-STEP:close PUT ;
 
-\ How many labels out the open label of block y is from the next step.
 : LABEL-DEPTH ( n -- n )
    POS @ LABELS @ 1- swap - ;
 
@@ -375,7 +344,8 @@ DYNAMIC-BUFFER CP-USES n             \ waiting copies that read its destination
 
 defer TREE ( n -- )
 
-\ A forward edge to a block that is no merge is that block's only way in.
+\ A forward edge to a block that is no merge is that block's only way in, so the
+\ block is written in place.
 : BRANCH ( n n -- )
    {: x:n y:n :}
    y RPO @ x RPO @ <=  y MERGE?  or if
@@ -383,7 +353,7 @@ defer TREE ( n -- )
    then
    y TREE ;
 
-\ The then arm is brz's nonzero successor, its second.
+\ brz's then arm is its nonzero successor, the second.
 : TWO-WAY ( n IR-ID:ir-op-id -- )
    {: x:n t:IR-ID:ir-op-id :}
    t 0 NFROZEN:OPERAND-AT WCTL-STEP:open-if PUT
@@ -403,7 +373,6 @@ defer TREE ( n -- )
    k 1 = if t COPIES  x  t 0 NFROZEN:SUCC-AT ORD  BRANCH exit then
    x t TWO-WAY ;
 
-\ x's merge child numbered latest before hi.
 : CHILD ( n n -- n bool )
    {: x:n hi:n :}
    hi x RPO @ 1+ - 0 ?do
@@ -412,7 +381,6 @@ defer TREE ( n -- )
    loop
    0 false ;
 
-\ x's code inside a block for each merge child numbered before hi.
 : NODE-WITHIN ( n n -- )
    {: x:n hi:n :}
    x hi CHILD {: y:n found:bool :}
@@ -443,9 +411,8 @@ BIND-TREE
 
 public
 
-\ Structure one defined function of a module WSTRUCT:FREEZE verified, which the
-\ readers below then answer for. A function whose control is irreducible is
-\ refused and leaves nothing to read.
+\ The module must have passed WSTRUCT:FREEZE. An irreducible function is refused
+\ and leaves nothing to read.
 : STRUCTURE ( IR-BUILD:module IR-ID:ir-fun-id -- )
    0 NSTEPS !  0 NTEMPS !  0 LABELS !
    ANALYSE
@@ -457,7 +424,7 @@ public
 : STEP@ ( n -- WCTL:step )
    NSTEPS @ INDEX-CK STEP-ROW @ ;
 
-\ The temporaries the copies use, one per type, the n of save and restore.
+\ One temporary per type: the n of save and restore.
 : TEMPS ( -- n )
    NTEMPS @ ;
 

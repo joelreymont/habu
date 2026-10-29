@@ -1,9 +1,9 @@
-\ icode.f — minimal single-pass assembler in the STANDALONE's Forth: emit ARM64
-\ words (asm.f encoders) into a code buffer, define labels, and resolve B/CBZ/CBNZ
-\ branches (backward immediately, forward via backpatch). Next codegen-port step
-\ after the encoders. ASM-CP counts WORDS; deltas are word-relative (ARM64 PC-relative).
-\ The encoders are package A64ASM's public surface, imported here once and called
-\ bare, which is what this layer did when they were global names.
+\ icode.f — A64ICODE, the ARM64 single-pass assembler: EMITW appends asm.f
+\ encodings to the CODE window; labels resolve B/BL, B.cond, CBZ/CBNZ, ADR and
+\ LOFF, sites, backward at once and forward by backpatch. ASM-CP counts words and
+\ branch deltas are in words.
+\ No locals: the Gforth recovery compiler checks this file before the native
+\ checker exists.
 require src/arch/arm64/asm.f
 require src/core/layout-buffer.f
 require src/core/dynamic-storage.f
@@ -12,105 +12,42 @@ using A64ASM
 public
 
 \ ---- the window this assembler emits into ------------------------------------
-\ THE WINDOW IS NOT THIS FILE'S NUMBER TO PICK. It holds one emitted image, and
-\ an image is THREE parts, each already bounded by a file that is not this one.
-\ The parts are emitted in that order (src/habu/habu2.f ENGINE-EMIT:FORTH) and
-\ the order is load-bearing: it is what keeps the first bound below true.
-\
-\ THE ENGINE CODE PART IS BOUNDED BY THIS FILE'S OWN ADR REACH. The baked-source
-\ label LSRC is emitted directly after the engine code (src/habu/habu2.f
-\ EMIT-SOURCE-BYTES) and the boot path reaches it with an ADR planted in the
-\ startup region (C-SOURCE-BAKED and C-SOURCE-APPEND-LSRC, both under
-\ EM-STARTUP - the FIRST region). Every ENGINE code byte lies between that site
-\ and that label, so engine code past the 21-bit signed ADR byte field cannot
-\ address its own baked source: the deferred patch runs ?ADR and dies `icode: adr
-\ out of reach` before any word is written. ADR-HI below is that field's
-\ exclusive bound, so it is exactly this part's allowance.
-\
-\ THE BAKED-SOURCE PART IS BOUNDED AT EMISSION. The stage driver bakes the
-\ whole source read by src/habu/stage2.f READ-SRC, so a part that outgrows
-\ the window is refused by CODE-CAP-WORDS
-\ at emission. The boot arena maps IBUFSZ plus the baked source's own length.
-\
-\ THE AOT PAYLOAD HAS ONE AGGREGATE BUDGET. It is emitted last
-\ (EMIT-AOT-SEED) and carries the compiled blob, the dictionary records, the
-\ relocation tables, the name pool and the captured DATA window - megabytes once
-\ the compiler chain is captured, and NOT bounded by any reach, because nothing
-\ addresses it with a PC-relative field: every reference into it goes through
-\ habu2.f's TADR,, which materialises the label's offset with LOFF, below and
-\ adds the text base the boot recorded. Individual section admission and the
-\ actual aggregate bytes, including framing/alignment, are checked separately.
-\
-\ This file loads before layout.f and habu2.f, so all three terms are spelled out
-\ here. habu2.f checks the third against AOT-SECTION:BYTES before emission.
-\
-\ WHAT PAYS FOR IT IS NOTHING THAT IS TOUCHED. CODE is one demand-paged
-\ anonymous mapping taken on first emit (CODE-ALLOC), by build drivers only, and
-\ nothing walks the span: the image writers copy CODELEN bytes and pad to a
-\ content-rounded TEXTSZ, and ARESET rewinds a cursor rather than clearing a
-\ buffer. What grows is reserved address space in a build process.
-\
-\ THE ARCHITECTURAL CEILING IS FAR ABOVE THIS. The window is one contiguous run
-\ of code, so a B/BL between its ends must fit the 26-bit signed word field:
-\ REL26-HI words, 128 MiB, twenty-five times this window. Past that a single-pass
-\ assembler with no veneers could not branch across its own buffer.
-\
-\ WHY IT MOVED (2026-08-14, dot habu-lift-the-image-42b2b9f4). The old window was
-\ $1ff000, chosen as a round 2 MB rather than derived, and the tree had grown into
-\ it: the stdin maker engine emitted 2,038,580 bytes of __text against a
-\ 2,093,056-byte window, 2.6% clear, and the widening lane's stage build died on
-\ this guard. The window was refusing images the boot arena would have accepted,
-\ which is the wrong file refusing first.
-\
-\ WHY IT GREW A THIRD TERM (2026-08-14, dot habu-reach-the-seed-d1326596). The
-\ two-term window was measured against an image whose AOT payload was 30 KiB. At
-\ the compiler chain's scale the payload is megabytes, and it was emitted BETWEEN
-\ the engine code and the baked source, so it counted against the ADR term: the
-\ build died `icode: adr out of reach` at 29 sites with the engine code a tenth
-\ of its allowance. Moving the payload after the source and addressing it with
-\ TADR, took it out of every reach; it is a part of the image, so it is a term of
-\ the window, and this is that term.
-\
-\ WHAT SIZES THE THIRD TERM IS THE CODE BAND, AS AN INEQUALITY:
+\ An image is three parts emitted in this order (src/habu/habu2.f
+\ ENGINE-EMIT:FORTH); the order keeps the first bound true.
+\ 1. Engine code. The baked-source label LSRC follows it (habu2.f
+\    EMIT-SOURCE-BYTES) and the startup region reaches LSRC by ADR
+\    (C-SOURCE-BAKED, C-SOURCE-APPEND-LSRC under EM-STARTUP), so engine code is
+\    bounded by the 21-bit ADR byte field, ADR-HI; past it ?ADR dies `icode: adr
+\    out of reach`.
+\ 2. Baked source, the whole of src/habu/stage2.f READ-SRC: refused at emission
+\    by CODE-CAP-WORDS. The boot arena maps IBUFSZ plus the source's length.
+\ 3. AOT payload (EMIT-AOT-SEED). No PC-relative field addresses it (habu2.f
+\    TADR, adds the text base to a LOFF, offset), so it has one aggregate budget,
+\    AOT-SECTION-CAP, which src/habu/aot-decl.f AOT-SECTION enforces.
+\ This file loads before layout.f and habu2.f, so the terms are spelled out here.
+\ CODE is a demand-paged anonymous mapping taken on first emit and nothing walks
+\ the span, so the window costs reserved address space only. A B/BL across the
+\ window must fit REL26-HI words (128 MiB).
 \
 \   AOT-SECTION-CAP >= AOT-BUF:AOT-BLOB-CAP (= CODE-BAND:BYTES)
 \                      + 136 header + 272 section table + 40 scalars
 \                      + AOT-FILE:CLOSURE-CAP
 \
-\ A capture's blob buffer IS the runtime code band (src/habu/aot-decl.f
-\ AOT-BLOB-CAP), so an artifact whose blob is a full band, plus the fixed framing
-\ aot-file.f wraps around it, is the largest one the format can produce. Below
-\ that the format contradicts itself: AOT-BLOB-CAP and the shared DATA/CODE site
-\ buffer (AOT-DSITE-MAX * 4, the same number) become unreachable, and the
-\ per-section refusal "is larger than the buffer it fills" goes dead, because the
-\ aggregate budget refuses first.
-\
-\ IT IS SPELLED OUT, not computed from src/habu/layout.f's CODE-BAND:BYTES, and
-\ test/aot-data-sites.f pins the inequality, under "the section budget admits a
-\ full code band", where both files are loaded.
-\
-\ WHY IT GREW AGAIN (2026-09-16). REGION went $A00000 -> $2000000 on 2026-09-14
-\ and took CODE-BAND:BYTES from 7,335,936 to 30,404,608 with it; this constant
-\ stayed at $1B00000 (28,311,552) and the inequality broke by 2,093,056 bytes.
-\ The AOT suite died `aot-file: encoded sections exceed their byte budget` on an
-\ artifact of 30,565,099 bytes - a full-band blob and its 20,001 DATA and 20,001
-\ CODE relocation rows. $1E00000 clears the minimum 30,536,128 and that artifact.
+\ A full-band blob plus aot-file.f's framing is the largest artifact. Below the
+\ bound AOT-BLOB-CAP and the site buffer (AOT-DSITE-MAX * 4) are unreachable and
+\ the per-section refusal is dead. test/aot-data-sites.f "the section budget
+\ admits a full code band" pins it; at CODE-BAND:BYTES 30,404,608 the minimum is
+\ 30,536,128.
 $1E00000 constant AOT-SECTION-CAP  \ aggregate payload budget, including framing/alignment
 $2300000 constant CODE-CAP-BYTES   \ ADR-HI ($100000) + SOURCE-ARENA-CAP ($400000) + AOT-SECTION-CAP
-CODE-CAP-BYTES 4 / constant CODE-CAP-WORDS  \ derived: guard can never drift from the mmap
-\ Labels and their pending-chain heads grow on demand (LBLP, FXH below). The
-\ identity shadow branches take the native recovery build past 4096 labels, and
-\ the fixups pending on them share these demand-paged tables, so they hold
-\ $2000 rows each.
+CODE-CAP-BYTES 4 / constant CODE-CAP-WORDS
+\ The fixup tables FXS, FXN and FXK hold $2000 rows each: the native recovery
+\ build's identity shadow branches pass 4096 labels, and their pending fixups
+\ share these tables. LBLP and FXH grow on demand.
 $2000 constant ICODE-TAB-CELLS
 $3 constant ICODE-TAB-COUNT
 ICODE-TAB-CELLS ICODE-TAB-COUNT * cells constant ICODE-TAB-BYTES
 72 constant ICODE-EXIT-RC
-\ THE MAPPINGS ARE POINTERS AND THEIR CELLS SAY SO. `map-anon` answers fresh
-\ anonymous storage as a pointer whose element type the caller picks, so no
-\ refinement turns a syscall result into an address. Both mappings travel in
-\ cells declared by src/core/pointer-storage.f: a raw `create`d cell may not
-\ hold an address at all (dot habu-refuse-a-ptr-5ad2734e).
 PTR-VARIABLE CODE-A
 PTR-VARIABLE ICODE-TAB-A
 variable ASM-CP
@@ -127,9 +64,6 @@ variable I-W
    CODE-CAP-BYTES map-anon 0 <> if
       drop s" icode: code mmap failed" ICODE-EXIT-RC die then ;
 
-\ An unmapped cell holds the typed null, so the first-emit test compares against
-\ NULL-PTR rather than the integer 0: the cell is a pointer now and `0=` asks a
-\ number's question.
 : CODE ( -- ptr u8 )
    CODE-A @ NULL-PTR = IF CODE-ALLOC CODE-A ! THEN
    CODE-A @ ;
@@ -157,14 +91,12 @@ variable I-W
 
 : ASM-CP? ( n -- )
    ASM-CP @ + CODE-CAP-WORDS > if s" icode: code buffer overflow" ICODE-EXIT-RC die then ;
-\ Keep stage-source words local-free: the Gforth recovery compiler must check
-\ this file before the native checker is available.
 PTR-VARIABLE EP
 : EP@ ( -- ptr u8 ) EP @ ;
 
 : EMITW ( n -- )
    I-W !
-   1 ASM-CP?  ASM-CP @ CW@ EP !        \ store u LE at CODE[ASM-CP], ASM-CP++
+   1 ASM-CP?  ASM-CP @ CW@ EP !
    I-W @ $FF and EP@ c!  I-W @ $8 rshift $FF and EP@ 1 CODE-BYTE+ c!
    I-W @ $10 rshift $FF and EP@ 2 CODE-BYTE+ c!
    I-W @ $18 rshift $FF and EP@ 3 CODE-BYTE+ c!
@@ -172,23 +104,17 @@ PTR-VARIABLE EP
 
 : PATCH ( n n -- )
    I-N ! I-W !
-   I-N @ CW@ EP !                        \ OR u into the word already at w (delta bits)
+   I-N @ CW@ EP !
    I-W @ $FF and EP@ c@ or EP@ c!
    I-W @ $8 rshift $FF and EP@ 1 CODE-BYTE+ c@ or EP@ 1 CODE-BYTE+ c!
    I-W @ $10 rshift $FF and EP@ 2 CODE-BYTE+ c@ or EP@ 2 CODE-BYTE+ c!
    I-W @ $18 rshift $FF and EP@ 3 CODE-BYTE+ c@ or EP@ 3 CODE-BYTE+ c! ;
-\ labels: LBLP[id] = defining word pos, or -1 while pending.
-\ Labels last for one emission and grow with its actual number of targets.
+\ LBLP[label] is the label's word position, or -1 while unbound.
 DYNAMIC-BUFFER LBLP n
 variable NLBL
-\ fixups: site word-pos, next slot, kind (FX-B26 / FX-B19 / FX-ADR / FX-LOFF),
-\ and one pending-chain head per label. Target identity is the owning FXH chain.
-\ The kind selects how a resolved label is encoded into the branch/ADR/movw site.
-\ It is validated before any fixup-chain, free-list, NFX, or code mutation so a
-\ corrupt or internal invalid kind fails closed instead of silently patching ADR.
-\ Three kinds carry a DELTA from the site; FX-LOFF carries the label's own byte
-\ offset from the code base, so it is the one kind whose site position does not
-\ enter its value.
+\ Fixup rows: FXS site word position, FXN next slot (pending chain or free list),
+\ FXK kind; FXH[label] heads that label's pending chain, the target's only
+\ record. A kind is validated before any table or code mutation.
 0 constant FX-B26                              \ B/BL: 26-bit word delta
 1 constant FX-B19                              \ cond/CBZ/CBNZ: 19-bit word delta
 2 constant FX-ADR                              \ ADR: 21-bit byte delta
@@ -278,27 +204,19 @@ variable FX-NEW
 
 : FX+ ( n label n -- )
    I-KIND ! LABEL>N I-LBL ! I-SITE !
-   ?FX-KIND                                     \ reject invalid kind before any mutation
+   ?FX-KIND
    FX-TAKE I-W !
    I-SITE @ I-W @ cells FXS + !
    I-KIND @ I-W @ cells FXK + !
    I-W @ FX-LINK ;
 
-\ encode a word delta into the branch word for a kind
 : D26 ( n -- n )  $3FFFFFF and ;                               \ B/BL: bits 0..25 (26-bit field)
 
 : D19 ( n -- n )  $7FFFF and 5 lshift ;                         \ cond/CBZ: bits 5..23
-\ signed-reach bounds: a relocation delta d is in range iff LO <= d < HI (LO
-\ inclusive, HI exclusive — a two's-complement signed field). These mirror the
-\ Gforth seed generator's within-based rejection in bootstrap/cg/asm.fs exactly
-\ (?REL26/?REL19 on word deltas, ENC-ADR on the byte delta), so the native
-\ single-pass assembler fails closed at the identical boundary the trusted seed
-\ already rejects. The code window (CODE-CAP-BYTES, ADR-HI +
-\ SOURCE-ARENA-CAP + AOT-SECTION-CAP) overshoots REL19/ADR reach, so a
-\ forward or backward BCOND/CBZ/CBNZ/ADR,
-\ and a large enough B/BL, must be range-checked before its delta is masked, or
-\ the mask silently wraps to the wrong target. Every emit and patch site
-\ validates before code mutation.
+\ A delta d is in reach iff LO <= d < HI. The bounds match bootstrap/cg/asm.fs
+\ (?REL26, ?REL19, ENC-ADR) so the native assembler refuses where the seed does.
+\ The code window overshoots REL19 and ADR reach, so every emit and patch site
+\ checks a delta before masking it; the mask would wrap to a wrong target.
       -33554432 constant REL26-LO   \ -2^25 words, inclusive  (B/BL 26-bit field)
        33554432 constant REL26-HI   \  2^25 words, exclusive
         -262144 constant REL19-LO   \ -2^18 words, inclusive  (cond/CBZ/CBNZ 19-bit field)
@@ -306,33 +224,22 @@ variable FX-NEW
        -1048576 constant ADR-LO     \ -2^20 bytes, inclusive  (ADR 21-bit field)
         1048576 constant ADR-HI     \  2^20 bytes, exclusive
 
-: REL26-OK? ( n -- bool )  dup REL26-LO >=  swap REL26-HI <  and ;   \ B/BL word delta in reach?
-: REL19-OK? ( n -- bool )  dup REL19-LO >=  swap REL19-HI <  and ;   \ cond/CBZ/CBNZ word delta in reach?
-: ADR-OK?   ( n -- bool )  dup ADR-LO   >=  swap ADR-HI   <  and ;   \ ADR byte delta in reach?
+: REL26-OK? ( n -- bool )  dup REL26-LO >=  swap REL26-HI <  and ;
+: REL19-OK? ( n -- bool )  dup REL19-LO >=  swap REL19-HI <  and ;
+: ADR-OK?   ( n -- bool )  dup ADR-LO   >=  swap ADR-HI   <  and ;
 
 \ ---- what a reach refusal names ----------------------------------------------
-\ A refusal that prints only its class costs a bisect of the whole assembly to
-\ place: the standalone tender build died `icode: adr out of reach` after fifty
-\ seconds of assembling with nothing else on stderr (dot
-\ habu-name-the-site-03a33e54). Each reach refusal below therefore carries four
-\ numbers after its existing text - the emitting site's byte offset from the
-\ code base, the byte offset it has to reach, the signed byte distance between
-\ them, and the field's exclusive bound - as ONE message through the same die
-\ and the same exit code. Both paths that can refuse set the first two
-\ immediately before the check, in this file's variable style: the immediate
-\ backward sites in BR-EMIT and ADR, from ASM-CP and the bound label's LBLP
-\ entry, the deferred ones in FX-PATCH from the fixup's FXS slot and the label
-\ being bound.
+\ A reach refusal prints site, target, delta and limit in bytes as one message.
+\ Every caller of ?REL26, ?REL19 and ?ADR sets I-RSITE and I-RTARGET just before
+\ the check: BR-EMIT and ADR, from ASM-CP and LBLP, FX-PATCH from FXS and ASM-CP.
 variable I-RSITE                    \ byte offset of the instruction under assembly
 variable I-RTARGET                  \ byte offset it has to reach
 variable I-RDELTA                   \ signed byte distance it would need
 variable I-RLIMIT                   \ the field's exclusive bound, in bytes
 
-\ THE NUMBER WRITER IS THIS FILE'S OWN. Both build texts load icode.f ahead of
-\ src/lib/fmt.f (tools/bootstrap.sh SRC_COMMON, tools/build-fixpoint.f
-\ BF-APPEND-COMMON), so src/lib/fmt.f's renderers do not exist yet and a
-\ refusal may not wait for them: the conversion is here, private, and built from
-\ nothing but arithmetic and this file's own byte cursor.
+\ Both build texts load this file before src/lib/fmt.f (tools/bootstrap.sh
+\ SRC_COMMON, tools/build-fixpoint.f BF-APPEND-COMMON), so it renders its own
+\ decimals.
 $14 constant IDEC-CAP               \ -9223372036854775808: nineteen digits and a sign
 $30 constant IDEC-ZERO
 $2D constant IDEC-MINUS
@@ -343,15 +250,13 @@ variable IDEC-NEG
 variable IDEC-D
 variable IDEC-N                     \ fill cursor: digits land backwards from the end
 
-: IDEC-PUT ( n -- )                 \ one character, backwards from the buffer's end
+: IDEC-PUT ( n -- )
    IDEC-N @ 1 - IDEC-N !
    IDEC-BUF IDEC-N @ CODE-BYTE+ c! ;
 
-\ MIN-N has no positive twin, so a negative v renders from -(v+1) and a pending
-\ +1: each digit is that value's digit plus the carry, and the carry clears at
-\ the first digit below nine. `/` and `mod` then see non-negative values only,
-\ which is what makes the recovery seed's Forth and the native engine render a
-\ number alike whatever they do with a negative dividend.
+\ MIN-N has no positive twin: a negative v renders from -(v+1) with a pending +1
+\ carry, so `/` and `mod` see only non-negative values and the recovery seed and
+\ the native engine render alike.
 : IDEC-DIGIT ( -- )
    IDEC-V @ 10 mod IDEC-CY @ + IDEC-D !
    IDEC-D @ 10 = IF 0 IDEC-D ! ELSE 0 IDEC-CY ! THEN
@@ -363,17 +268,15 @@ variable IDEC-N                     \ fill cursor: digits land backwards from th
    IDEC-V @ 0 < IF  0 IDEC-V @ 1 + -  IDEC-V !  1 IDEC-CY !  1 IDEC-NEG !
    ELSE  0 IDEC-CY !  0 IDEC-NEG !  THEN ;
 
-: IDEC$ ( n -- ptr u8 n )           \ signed decimal of n, in the buffer above
+: IDEC$ ( n -- ptr u8 n )
    IDEC-SET
    BEGIN IDEC-DIGIT  IDEC-V @ 0 = IDEC-CY @ 0 = and UNTIL
    IDEC-NEG @ 0 <> IF IDEC-MINUS IDEC-PUT THEN
    IDEC-BUF IDEC-N @ CODE-BYTE+  IDEC-CAP IDEC-N @ - ;
 
-\ The line is composed before it is written because `die` takes one span, and a
-\ refusal split into several writes would interleave with whatever else holds
-\ the build's stderr. The cap is derived from the parts, and outgrowing it is a
-\ refusal of its own rather than a truncated line (src/habu/aot-file.f MSG+
-\ answers the same question the same way).
+\ `die` takes one span, so the line is composed first; separate writes would
+\ interleave with other stderr output. Outgrowing IMSG-CAP is a refusal, not a
+\ truncated line.
 $20 constant IMSG-PREFIX-CAP        \ `icode: cond branch out of reach` is the longest
 $8 constant IMSG-LABEL-CAP          \ ` target=` is the longest field label
 4 constant IMSG-FIELDS
@@ -399,10 +302,10 @@ variable IMSG-V
       1 +
    REPEAT drop ;
 
-: IMSG-FIELD ( ptr u8 n n -- )      \ one field label and its number
+: IMSG-FIELD ( ptr u8 n n -- )
    IMSG-V !  IMSG+  IMSG-V @ IDEC$ IMSG+ ;
 
-: REACH-DIE ( ptr u8 n -- )         \ the class, its four numbers, this file's exit code
+: REACH-DIE ( ptr u8 n -- )
    0 IMSG-N !  IMSG+
    s"  site="   I-RSITE   @ IMSG-FIELD
    s"  target=" I-RTARGET @ IMSG-FIELD
@@ -421,38 +324,31 @@ variable IMSG-V
 : ?ADR ( n -- n )  dup ADR-OK? if exit then
    dup I-RDELTA !  ADR-HI I-RLIMIT !
    s" icode: adr out of reach" REACH-DIE ;
-\ label-offset bound: LOFF, below carries a label's byte offset from the code
-\ base — a NON-NEGATIVE absolute position, not a signed delta around a site — in
-\ the two 16-bit immediate lanes of a movz/movk pair. So its bound is that pair's
-\ own capacity, and the distance from the reading site does not enter it at all.
-\ That is the whole point of the form: the reader adds the offset to the code
-\ base it holds at runtime, so a label the 21-bit ADR field cannot reach is still
-\ addressable. The window must fit inside this field for the form to be total
-\ over the buffer.
+\ LOFF, carries a label's non-negative byte offset from the code base in the two
+\ 16-bit lanes of a movz/movk pair, not a delta: the reader adds the runtime code
+\ base, so a label past ADR reach is still addressable. The window must fit
+\ under LOFF-HI for the form to cover the buffer.
 $10 constant MOVW-LANE-BITS         \ one movz/movk immediate lane
 2 constant LOFF-LANES               \ the pair LOFF, emits
 0 constant LOFF-LO                  \ inclusive: a code-buffer byte offset is never negative
 1 LOFF-LANES MOVW-LANE-BITS * lshift constant LOFF-HI   \ exclusive: 2^32 bytes
 
-: LOFF-OK? ( n -- bool )  dup LOFF-LO >=  swap LOFF-HI <  and ;   \ label byte offset representable?
+: LOFF-OK? ( n -- bool )  dup LOFF-LO >=  swap LOFF-HI <  and ;
 
 : ?LOFF ( n -- n )  dup LOFF-OK? if exit then  s" icode: label offset out of reach" ICODE-EXIT-RC die ;
-\ emit a branch (base already encoded with delta=0) to a label; resolve or defer
+\ BR-EMIT expects BBASE, the branch encoded with a zero delta, and BKIND.
 variable BBASE  variable BKIND
 
 : BR-EMIT ( label -- )
-   LABEL>N I-LBL !                    \ BBASE/BKIND set; emits + records if fwd
+   LABEL>N I-LBL !
    I-LBL @ LBLP @  dup 0 < IF              \ pos on stack (0< isn't a standalone prim)
      drop  ASM-CP @ I-LBL @ >LABEL BKIND @ FX+  BBASE @ EMITW
-   ELSE  dup $4 * I-RTARGET !  ASM-CP @ $4 * I-RSITE !          \ named before the check
+   ELSE  dup $4 * I-RTARGET !  ASM-CP @ $4 * I-RSITE !
      ASM-CP @ -  BKIND @ FX-B26 = IF ?REL26 D26 ELSE ?REL19 D19 THEN  BBASE @ or EMITW  THEN ;
 
-\ The base word of a branch is the asm.f encoder applied to a zero delta —
-\ the same shape ADR, below already uses. Going through the encoder keeps one
-\ authority for each opcode's bit layout and for its operand refusals: the
-\ condition code and the compare-and-branch register are bounded and screened
-\ for the reserved register by ENC-BCOND and ENC-CBZ/ENC-CBNZ, before the
-\ delta this layer computes is folded in.
+\ A branch base word is its asm.f encoder applied to a zero delta, so ENC-BCOND
+\ and ENC-CBZ/ENC-CBNZ own the bit layout and screen the condition and register
+\ before this layer folds the delta in.
 : B, ( label -- )  0 ENC-B  BBASE !  FX-B26 BKIND !  BR-EMIT ;
 
 : BL, ( label -- )  0 ENC-BL BBASE !  FX-B26 BKIND !  BR-EMIT ;
@@ -466,23 +362,17 @@ variable BBASE  variable BKIND
 : CBNZ, ( n label -- )
    LABEL>N I-LBL ! I-RD !  I-RD @ 0 ENC-CBNZ BBASE !  FX-B19 BKIND !  I-LBL @ >LABEL BR-EMIT ;
 
-\ adr rd, label: PC-relative address (FX-ADR fixup when forward)
 : ADR, ( n label -- )
    LABEL>N I-LBL ! I-RD !
    I-LBL @ LBLP @ dup 0 < IF
      drop  ASM-CP @ I-LBL @ >LABEL FX-ADR FX+  I-RD @ 0 ENC-ADR EMITW
-   ELSE  dup $4 * I-RTARGET !  ASM-CP @ $4 * I-RSITE !          \ named before the check
+   ELSE  dup $4 * I-RTARGET !  ASM-CP @ $4 * I-RSITE !
      ASM-CP @ - $4 *  ?ADR  I-RD @ swap ENC-ADR EMITW  THEN ;
 
-\ movz rd, #lo16 / movk rd, #hi16, lsl 16: rd = the label's byte offset from the
-\ code base (FX-LOFF fixup when forward). The caller adds the base the running
-\ image holds, which is what makes this the reach-free companion to ADR,.
-\ The pair is ALWAYS two words wide, whichever side of the label the site is on,
-\ because a forward site has to reserve the lanes before the offset is known and
-\ a site's width may not depend on where it was emitted.
-\ The zero-immediate base words come from the move-wide encoders for the same
-\ reason ADR,'s does: one authority for the field layout, and the destination
-\ register takes that encoder's own refusals before this layer folds a lane in.
+\ LOFF, is two words on either side of the label: a forward site reserves both
+\ lanes before the offset is known, and a site's width may not depend on where
+\ it was emitted. The base words come from MOVZHW and MOVKHW, as ADR,'s from
+\ ENC-ADR.
 : LOFF, ( n label -- )
    LABEL>N I-LBL ! I-RD !
    I-LBL @ LBLP @ dup 0 < IF
@@ -491,7 +381,6 @@ variable BBASE  variable BKIND
    ELSE  $4 * ?LOFF I-X !
      I-RD @ I-X @ $FFFF and 0 MOVZHW EMITW
      I-RD @ I-X @ MOVW-LANE-BITS rshift $FFFF and 1 MOVKHW EMITW  THEN ;
-\ define a label here; backpatch and reclaim only that label's pending chain
 variable LBI
 
 : FX-ENC ( n n -- n )                            \ ( delta kind -- patchbits )
@@ -500,28 +389,21 @@ variable LBI
    dup FX-ADR = if drop $4 * ?ADR ENC-ADRD exit then
    drop s" icode: invalid fixup kind" ICODE-EXIT-RC die ;
 
-\ Deferred-patch reach is validated in FX-ENC before it returns any patch bits,
-\ so a failed patch dies before PATCH writes the site word: the failing fixup's
-\ code word and its FXS/FXK slot stay untouched (fully atomic for one fixup).
-\ A label with a multi-fixup pending chain is not atomic across the whole chain:
-\ LBL, binds the label and clears its FXH head, then walks the chain patching
-\ from the head, so fixups patched before an out-of-reach one keep their new
-\ deltas and are freed. The invariant is per-fixup: the die always precedes the
-\ current fixup's PATCH write, never mid-write.
-\ FX-LOFF is the one kind whose value is not a delta, so it binds from ASM-CP
-\ alone and writes TWO site words. Validated before either PATCH, exactly like
-\ the single-word kinds: the die precedes the first lane's write.
+\ A reach die precedes the current fixup's PATCH, so the failing site word and
+\ its slots stay untouched. A chain is not atomic: LBL, clears FXH first, and
+\ fixups patched before the failing one keep their deltas and are freed.
+\ FX-LOFF binds from ASM-CP alone and patches two words, both after ?LOFF.
 : FX-LOFF-PATCH ( -- )
-   ASM-CP @ $4 * ?LOFF I-X !                     \ the label's byte offset from the code base
+   ASM-CP @ $4 * ?LOFF I-X !
    0 I-X @ $FFFF and 0 MOVZHW  LBI @ cells FXS + @ PATCH
    0 I-X @ MOVW-LANE-BITS rshift $FFFF and 1 MOVKHW  LBI @ cells FXS + @ 1 + PATCH ;
 
 : FX-PATCH ( -- )
    LBI @ cells FXK + @ FX-LOFF = if FX-LOFF-PATCH exit then
-   LBI @ cells FXS + @ $4 * I-RSITE !            \ the deferred site, named before the check
-   ASM-CP @ $4 * I-RTARGET !                     \ the label this bind is placing
+   LBI @ cells FXS + @ $4 * I-RSITE !
+   ASM-CP @ $4 * I-RTARGET !
    ASM-CP @ LBI @ cells FXS + @ -                \ delta = here - site (words)
-   LBI @ cells FXK + @ FX-ENC                    \ delta -> patch bits by validated kind (or die)
+   LBI @ cells FXK + @ FX-ENC
    LBI @ cells FXS + @ PATCH ;
 
 : LBL, ( label -- )

@@ -1,9 +1,7 @@
-\ mnem.f — icode-style mnemonic layer over the selfhost encoders: `19 19 8 ADDI,`
-\ reads like src/cg source, so the engine-builder port stays a near-transcription.
-\ Needs asm.f + icode.f (EMITW). One concern: mnemonic -> encode+emit.
-\ The encoders are package A64ASM's public surface, imported here once and
-\ called bare: this layer is one line per mnemonic and a qualifier on every one
-\ of them would be all this file consists of.
+\ mnem.f - one word per mnemonic: encode with asm.f, emit with icode.f EMITW.
+\ The encoders are imported and called bare: a qualifier on every one-line
+\ mnemonic would be the whole file. Condition-code names live in asm.f beside
+\ ?COND.
 require src/arch/arm64/asm.f
 require src/arch/arm64/icode.f
 using A64ASM
@@ -11,16 +9,12 @@ using A64ICODE
 
 9 constant T0   10 constant T1   11 constant T2
 19 constant XDS  31 constant SP
-\ The condition-code names this layer used to define are asm.f's now: they are
-\ the vocabulary of the four-bit field ?COND bounds, so they belong beside it,
-\ and this file loads after it. They arrive through the import above.
 
 : MOVZ, ( n n -- )  0 MOVZHW EMITW ;
 
 : MOVN, ( n n -- )  0 MOVNHW EMITW ;
 
-\ MOVK, takes the shift in BITS and selects the shifted half with it, so a
-\ shift that is not a whole half is refused rather than rounded down.
+\ The shift is in bits; a shift that is not a whole half is refused, not rounded.
 : MOVK, ( n n n -- )  $10 SCALE/ MOVKHW EMITW ;
 
 : ADD, ( n n n -- )  ENC-ADD EMITW ;
@@ -81,9 +75,8 @@ using A64ICODE
 
 : STRW, ( n n n -- )  ENC-STRW EMITW ;
 
-\ The writeback pair the data stack is moved with: a push is one post-indexed
-\ store and a pop is one pre-indexed load. The offset is the byte distance the
-\ base register travels, so it is +8 for a push and -8 for a pop.
+\ The data-stack pair: push is STRPOST, +8; pop is LDRPRE, -8. The offset is the
+\ distance the base register travels.
 : STRPOST, ( n n n -- )  ENC-STRPOST EMITW ;
 
 : LDRPRE, ( n n n -- )  ENC-LDRPRE EMITW ;

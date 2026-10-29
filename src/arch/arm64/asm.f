@@ -1,12 +1,9 @@
 \ asm.f — ARM64 instruction encoders, package A64ASM (operands -> u32).
-\ Hex constants preserve the bit layout the native engine builder uses.
-\
-\ Every encoder screens its operand BEFORE packing a bit, so a bad operand dies
-\ instead of overflowing the neighbouring field; branch and ADR displacements
-\ are the exception, bounded by src/arch/arm64/icode.f (?REL26/?REL19/?ADR).
-\ Runtime image readers reach RRR, RRI, ENC-CMP, ENC-BCOND and ENC-ADR through
-\ tools/aot-startup-shape.f. Their operands stay local: a stripped image cannot
-\ read this file's baked scratch.
+\ Every encoder screens its operands before packing a bit; branch and ADR
+\ displacements are the exception, bounded by src/arch/arm64/icode.f
+\ (?REL26/?REL19/?ADR). tools/aot-startup-shape.f reaches RRR, RRI, ENC-CMP,
+\ ENC-BCOND and ENC-ADR in runtime images: their operands stay locals, since a
+\ stripped image cannot read this file's baked scratch.
 
 package A64ASM
 
@@ -14,28 +11,25 @@ $FFFFFFFF constant ARM64-W32
 
 : MSK ( n -- n ) ARM64-W32 and ;
 
-\ Every refusal in this file exits with this status, and so does the label and
-\ branch layer in src/arch/arm64/icode.f.
+\ Every refusal here and in src/arch/arm64/icode.f exits with this status.
 72 constant ASM-EXIT-RC
 
 public
 
-1  5 lshift constant REG-LIM     \ Rd/Rn/Rm/Rt register number
+1  5 lshift constant REG-LIM
 1 16 lshift constant IMM16-LIM   \ move-wide immediate, SVC number
 1  8 lshift constant IMM8-LIM    \ floating move immediate
 1 12 lshift constant IMM12-LIM   \ add/sub/compare immediate, load/store offset field
-1  4 lshift constant COND-LIM    \ condition code
+1  4 lshift constant COND-LIM
 1  2 lshift constant HW-LIM      \ move-wide shifted-half selector
 
 8 constant PAIR-SCALE
 -512 constant PAIR-MIN
 504 constant PAIR-MAX
 
-\ Nine bits at bit twelve, so a negative offset is its two's complement there.
 1 9 lshift 1 - constant SIMM9-MASK
 12 constant SIMM9-SHIFT
 
-\ x18 is platform-reserved on Darwin and ordinary on Linux.
 18 constant ARM-X18
 
  0 constant C-EQ   1 constant C-NE   2 constant C-CS   3 constant C-CC
@@ -46,10 +40,9 @@ public
 private
 
 1 13 lshift constant NIS-LIM     \ packed N:immr:imms of a logical immediate
-1  6 lshift constant SHIFT-LIM   \ shift amount for a 64-bit register
-1  3 lshift constant LANEH-LIM   \ which 16-bit lane of a vector UMOV reads
+1  6 lshift constant SHIFT-LIM
+1  3 lshift constant LANEH-LIM
 
-\ True when v is outside the unsigned field that holds 0 .. lim-1.
 : OUT? ( n n -- bool )  swap dup 0 < swap rot >= or ;
 
 : ?REG ( n -- n )
@@ -70,8 +63,8 @@ private
 : ?SHIFT ( n -- n )
    dup SHIFT-LIM OUT? IF s" asm: shift amount out of range" ASM-EXIT-RC die THEN ;
 
-\ Signed nine-bit field, -256 .. 255, counted in BYTES rather than access widths.
-1 8 lshift constant SIMM9-LIM        \ the magnitude one side of the field holds
+\ Signed nine-bit field, -256 .. 255, counted in bytes, not access widths.
+1 8 lshift constant SIMM9-LIM
 
 : ?SIMM9 ( n -- n )
    dup dup SIMM9-LIM negate < swap SIMM9-LIM >= or
@@ -87,12 +80,10 @@ private
 : ?HW ( n -- n )
    dup HW-LIM OUT? IF s" asm: move-wide half out of range" ASM-EXIT-RC die THEN ;
 
-\ Three bits, not five: the two bits below the lane index are opcode and say the
-\ lane is 16 bits wide.
+\ UMOV's 16-bit lane index: three bits, since the two bits below it are opcode.
 : ?LANEH ( n -- n )
    dup LANEH-LIM OUT? IF s" asm: vector lane index out of range" ASM-EXIT-RC die THEN ;
 
-\ Operand 31 in a logical or an add/sub form is the zero register.
 31 constant ARM-ZERO-REG
 
 : XREG? ( n -- n )
@@ -112,24 +103,20 @@ private
 
 : XRDI ( n n n -- n n n )  rot XREG? rot XREG? rot ;
 
-\ The D-register file uses the same 5-bit operand fields, but no member of it
-\ is platform-reserved, so only the field bound applies there.
+\ No D register is platform-reserved: only the field bound applies.
 : DR2 ( n n -- n n )  ?REG swap ?REG swap ;
 
 : DR3 ( n n n -- n n n )  ?REG rot ?REG rot ?REG rot ;
 
-\ The transfer names a D register (field bound only); the base names an X one.
+\ The transfer is a D register, the base an X register.
 : DRXN ( n n n -- n n n )  rot ?REG rot XREG? rot ;
 
-\ move-wide operands: destination register, 16-bit immediate, shifted half.
 : XMW3 ( n n n -- n n n )  ?HW rot XREG? rot ?IMM16 rot ;
 
-\ shifted-register 3-operand: rd rn rm
 : RRR ( n n n n -- n )
    {: rd:n rn:n rm:n op:n :}
    op rd or  rn 5 lshift or  rm 16 lshift or MSK ;
 
-\ rd rn rm ra; the addend's own five-bit field sits at bit ten.
 : RRRA ( n n n n n -- n )
    {: rd:n rn:n rm:n ra:n op:n :}
    op rd or  rn 5 lshift or
@@ -218,7 +205,6 @@ public
 
 private
 
-\ Plain GPR64 pair: Rt, Rt2, Rn, signed byte offset, opcode. No writeback.
 : PAIR-WORD ( n n n n n -- n )
    {: rt:n rt2:n rn:n off:n op:n :}
    rt XREG?  rt2 XREG? 10 lshift or  rn XREG? 5 lshift or
@@ -226,7 +212,7 @@ private
 
 public
 
-\ move-wide: rd imm16 hw -> u32
+\ Operands: rd imm16 hw.
 : MOVZHW ( n n n -- n )  XMW3 21 lshift swap 5 lshift or or $D2800000 or MSK ;
 
 : MOVKHW ( n n n -- n )  XMW3 21 lshift swap 5 lshift or or $F2800000 or MSK ;
@@ -237,8 +223,7 @@ public
 
 : ENC-SUB ( n n n -- n ) XR3 $CB000000 RRR ;
 
-\ The same add with the second source shifted left: `add xd, xn, xm, lsl #sh`.
-\ The shift type field (bits 23:22) stays 00 = LSL; the amount sits at bit ten.
+\ add xd, xn, xm, lsl #sh: the shift type, bits 23:22, stays 00 (LSL).
 : ENC-ADD-LSL ( n n n n -- n )
    ?SHIFT {: sh:n :} XR3 sh 10 lshift $8B000000 or RRR ;
 
@@ -248,20 +233,16 @@ public
 
 : ENC-EOR ( n n n -- n ) XR3 $CA000000 RRR ;
 
-\ Orr with the second source inverted: bit 21 is the shifted-register N bit.
+\ ORN: bit 21 is the shifted-register N bit, which inverts the second source.
 : ENC-ORN ( n n n -- n ) XR3 $AA200000 RRR ;
 
-\ ARM64 has no move form: `mov xd, xm` IS `orr xd, xzr, xm`.
 : ENC-MOV ( n n -- n ) ARM-ZERO-REG swap ENC-ORR ;
 
-\ ARM64 has no negate form: `neg xd, xm` IS `sub xd, xzr, xm`.
 : ENC-NEG ( n n -- n ) ARM-ZERO-REG swap ENC-SUB ;
 
-\ ARM64 has no complement form: `mvn xd, xm` IS `orn xd, xzr, xm`.
 : ENC-MVN ( n n -- n ) ARM-ZERO-REG swap ENC-ORN ;
 
-\ MUL is MADD with the addend field already full of register 31 (hence $7C00);
-\ SMULH takes three operands - a high half of a product has nothing to add.
+\ MUL is MADD with the addend field set to register 31 ($7C00).
 : ENC-MUL ( n n n -- n ) XR3 $9B007C00 RRR ;
 
 : ENC-SMULH ( n n n -- n ) XR3 $9B407C00 RRR ;
@@ -270,49 +251,44 @@ public
 
 : ENC-MSUB ( n n n n -- n ) XR4 $9B008000 RRRA ;
 
-\ add/sub immediate: rd rn imm12
 : ENC-ADDI ( n n n -- n ) XRDI ?IMM12 $91000000 RRI ;
 
 : ENC-SUBI ( n n n -- n ) XRDI ?IMM12 $D1000000 RRI ;
 
-\ The same forms with the shift bit set: imm12 counts 4 KiB pages,
-\ `add xd, xn, #imm12, lsl #12`.
+\ imm12 counts 4 KiB pages: add xd, xn, #imm12, lsl #12.
 : ENC-ADDI-LSL12 ( n n n -- n ) XRDI ?IMM12 $91400000 RRI ;
 
 : ENC-SUBI-LSL12 ( n n n -- n ) XRDI ?IMM12 $D1400000 RRI ;
 
-\ logical-shift-left immediate (LSL #sh via UBFM): rd rn sh
+\ LSL and LSR immediate are UBFM aliases.
 : ENC-LSLI ( n n n -- n )
    XRDI ?SHIFT {: rd:n rn:n sh:n :}
    $D3400000 rd or  rn 5 lshift or
    $40 sh - $3F and 16 lshift or  $3F sh - 10 lshift or MSK ;
 
-\ logical-shift-right immediate: rd rn sh
 : ENC-LSRI ( n n n -- n )
    XRDI ?SHIFT {: rd:n rn:n sh:n :}
    $D340FC00 rd or  rn 5 lshift or  sh 16 lshift or MSK ;
 
-\ compare (shifted reg) rn rm  -> subs xzr
+\ CMP is SUBS into xzr.
 : ENC-CMP ( n n -- n )
    XR2 {: rn:n rm:n :}
    $EB00001F rn 5 lshift or  rm 16 lshift or MSK ;
 
-\ compare immediate rn imm12
 : ENC-CMPI ( n n -- n )
    XR2ND ?IMM12 {: rn:n imm:n :}
    $F100001F rn 5 lshift or  imm 10 lshift or MSK ;
 
-\ compare negative immediate rn imm12 -> adds xzr: the flags of rn + imm12.
+\ CMN is ADDS into xzr: the flags of rn + imm12.
 : ENC-CMNI ( n n -- n )
    XR2ND ?IMM12 {: rn:n imm:n :}
    $B100001F rn 5 lshift or  imm 10 lshift or MSK ;
 
-\ svc #imm  ; ret
 : ENC-SVC ( n -- n ) ?IMM16 $D4000001 swap 5 lshift or MSK ;
 
 : ENC-RET ( -- n )  $D65F03C0 ;
 
-\ load/store, unsigned offset. habu scales: x-regs by 8 (?SC8), w by 4, byte by 1.
+\ Unsigned offsets are bytes, scaled to the field: x by 8, w by 4, bytes by 1.
 : ENC-LDR ( n n n -- n ) XRDI 8 SCALE/ ?IMM12 $F9400000 RRI ;
 
 : ENC-STR ( n n n -- n ) XRDI 8 SCALE/ ?IMM12 $F9000000 RRI ;
@@ -345,18 +321,13 @@ public
 
 : ENC-STRB ( n n n -- n ) XRDI ?IMM12 $39000000 RRI ;
 
-\ The two unscaled accesses, in the signed addressing mode RRSI packs.
 : ENC-LDUR ( n n n -- n ) XRDI ?SIMM9 $F8400000 RRSI ;
 
 : ENC-STUR ( n n n -- n ) XRDI ?SIMM9 $F8000000 RRSI ;
 
-\ The same signed field again, with the base register written back, which is one
-\ instruction for the pointer move a stack push, a stack pop and a link-register
-\ frame each used two for. Bits 11:10 of the unscaled encoding above name the
-\ mode: 00 is the plain offset LDUR/STUR pack, 01 is post-index (transfer at the
-\ base, THEN base += imm) and 11 is pre-index (base += imm, then transfer
-\ there). The offset is a byte count in both, so it is the amount the base
-\ moves, not a scaled slot number.
+\ Bits 11:10 of the unscaled encoding name the mode: 00 plain offset (LDUR/STUR),
+\ 01 post-index (transfer at the base, then base += imm), 11 pre-index (base +=
+\ imm, then transfer there). The offset is the byte count the base moves.
 : ENC-LDRPOST ( n n n -- n ) XRDI ?SIMM9 $F8400400 RRSI ;
 
 : ENC-STRPOST ( n n n -- n ) XRDI ?SIMM9 $F8000400 RRSI ;
@@ -369,8 +340,7 @@ public
 
 : ENC-STRW ( n n n -- n ) XRDI 4 SCALE/ ?IMM12 $B9000000 RRI ;
 
-\ The same four accesses for the D file. One opcode bit differs, bit 26 (V),
-\ which says the transferred register is of the SIMD&FP file. DDI 0487 C6.2.
+\ The D-file forms differ in bit 26 (V), the SIMD&FP file. DDI 0487 C6.2.
 : ENC-LDRD ( n n n -- n ) DRXN 8 SCALE/ ?IMM12 $FD400000 RRI ;
 
 : ENC-STRD ( n n n -- n ) DRXN 8 SCALE/ ?IMM12 $FD000000 RRI ;
@@ -379,8 +349,7 @@ public
 
 : ENC-STURD ( n n n -- n ) DRXN ?SIMM9 $FC000000 RRSI ;
 
-\ The writeback modes the D file needs: a float push is a post-index store and a
-\ float pop is a pre-index load, the same two bits in the same two positions.
+\ A float push is a post-index store and a float pop a pre-index load.
 : ENC-LDRDPRE ( n n n -- n ) DRXN ?SIMM9 $FC400C00 RRSI ;
 
 : ENC-STRDPOST ( n n n -- n ) DRXN ?SIMM9 $FC000400 RRSI ;
@@ -389,7 +358,7 @@ public
 
 : ENC-STLR ( n n -- n ) XR2 5 lshift or $C89FFC00 or MSK ;
 
-\ branches: delta is in WORDS (instruction-relative), sign-handled by the caller's mask.
+\ Branch deltas count instructions, not bytes; the field mask keeps the sign bits.
 : ENC-B ( n -- n ) $3FFFFFF and $14000000 or MSK ;
 
 : ENC-BL ( n -- n ) $3FFFFFF and $94000000 or MSK ;
@@ -406,8 +375,6 @@ public
    XR2ND {: rd:n delta:n :}
    delta $7FFFF and 5 lshift $B5000000 or rd or MSK ;
 
-\ FP (double): operands in the D-register file. DR2/DR3 bound every D field;
-\ XREG?/XR2ND then adds the reserved-register refusal to the one X operand.
 : ENC-FMOVXD ( n n -- n ) DR2 XREG? $9E670000 RR ;   \ X->D bits
 
 : ENC-FMOVDX ( n n -- n ) DR2 XR2ND $9E660000 RR ;   \ D->X bits
@@ -422,8 +389,8 @@ public
 
 : ENC-FMUL ( n n n -- n ) DR3 $1E600800 RRR ;
 
-\ The V file IS the D file, so DR2 bounds these too; UMOV's destination is the
-\ one general register here. UADDLV sums 16 bytes into 16 bits and cannot overflow.
+\ The V registers are the D registers. UADDLV sums 16 bytes into 16 bits and
+\ cannot overflow.
 : ENC-LD1V ( n n -- n ) DR2 XREG? $4C407000 RR ;
 
 : ENC-UADDLV ( n n -- n ) DR2 $6E303800 RR ;
@@ -433,26 +400,24 @@ public
    DR2 XR2ND {: rd:n rn:n :}
    $0E023C00 rd or  rn 5 lshift or  lane 18 lshift or MSK ;
 
-\ conditional set ( rd cond -- w ): cset = csinc rd, xzr, xzr, invert(cond)
+\ cset is csinc rd, xzr, xzr, invert(cond).
 : ENC-CSET ( n n -- n )
    XR2ND ?COND {: rd:n cond:n :}
    $9A9F07E0 rd or  cond 1 xor 12 lshift or MSK ;
 
-\ Csetm = csinv rd, xzr, xzr, invert(cond): a full-cell 0/-1 flag.
-\ DDI 0596 CSETM excludes AL and NV from this conditional alias.
+\ csetm is csinv rd, xzr, xzr, invert(cond): a 0/-1 cell. DDI 0596 excludes AL
+\ and NV from this alias.
 : ENC-CSETM ( n n -- n )
    XR2ND
    dup C-AL OUT? IF s" asm: mask condition out of range" ASM-EXIT-RC die THEN
    {: rd:n cond:n :}
    $DA9F03E0 rd or  cond 1 xor 12 lshift or MSK ;
 
-\ rd takes rn when the condition holds and rm when it does not, with no branch.
 \ The condition reads whatever last wrote the flags, Fcmp's NaN rule included.
 : ENC-CSEL ( n n n n -- n )
    ?COND {: cond:n :}
    XR3 $9A800000 RRR  cond 12 lshift or MSK ;
 
-\ data-processing 2-source: shift-by-register, divide
 : ENC-LSLV ( n n n -- n ) XR3 $9AC02000 RRR ;
 
 : ENC-LSRV ( n n n -- n ) XR3 $9AC02400 RRR ;
@@ -463,13 +428,13 @@ public
 
 : ENC-UDIV ( n n n -- n ) XR3 $9AC00800 RRR ;
 
-\ arithmetic shift right immediate (SBFM)
+\ ASR immediate is an SBFM alias.
 : ENC-ASRI ( n n n -- n )
    XRDI ?SHIFT {: rd:n rn:n sh:n :}
    $9340FC00 rd or  rn 5 lshift or  sh 16 lshift or MSK ;
 
-\ nis = N<<12 | immr<<6 | imms. >LIMM already builds it inside the 13-bit field,
-\ so ?NIS only fires for a caller that packs its own value.
+\ >LIMM builds the nis inside the 13-bit field, so ?NIS fires only for a caller
+\ that packs its own.
 : ENC-ANDI ( n n n -- n ) XRDI ?NIS $92000000 RRI ;
 
 : ENC-ORRI ( n n n -- n ) XRDI ?NIS $B2000000 RRI ;
@@ -479,11 +444,9 @@ public
 : >LIMM ( n -- n )
    LIMM-TRY 0= IF LIMM-BAD THEN ;
 
-\ The set of encodable masks IS the set the packer can build a nis for.
 : LIMM? ( n -- bool )
    LIMM-TRY swap drop ;
 
-\ indirect branches, trap, nop
 : ENC-BLR ( n -- n ) XREG? $D63F0000 swap 5 lshift or MSK ;
 
 : ENC-BR ( n -- n ) XREG? $D61F0000 swap 5 lshift or MSK ;
@@ -492,7 +455,7 @@ public
 
 : ENC-NOP ( -- n ) $D503201F ;
 
-\ cache maintenance to PoU (JIT coherency) + barriers
+\ Cache maintenance to the point of unification, for code coherency.
 : ENC-ICIVAU ( n -- n ) XREG? $D50B7520 or MSK ;
 
 : ENC-DCCVAU ( n -- n ) XREG? $D50B7B20 or MSK ;
@@ -501,14 +464,13 @@ public
 
 : ENC-ISB ( -- n ) $D5033FDF ;
 
-\ adr rd, . + d  (d = BYTE offset from this instruction; word-aligned here so immlo=0)
+\ d is the byte offset from this instruction.
 : ENC-ADRD ( n -- n ) dup 3 and 29 lshift  swap 4 / $7FFFF and 5 lshift or ;
 
 : ENC-ADR ( n n -- n )
    XR2ND {: rd:n imm:n :}
    $10000000 rd or  imm ENC-ADRD or MSK ;
 
-\ FP (double, D-register file): engine-grade set, golden vs habu in t-sh-fp-enc
 : ENC-FMOVDD ( n n -- n ) DR2 $1E604000 RR ;
 
 : ENC-FDIV ( n n n -- n ) DR3 $1E601800 RRR ;
@@ -525,8 +487,6 @@ public
 
 : ENC-FCMP0 ( n -- n ) ?REG $1E602008 swap 5 lshift or MSK ;
 
-\ Csel on the D file: same four operand positions, ftype says double. No operand
-\ reaches XREG? - d18 holds no platform state - and the condition reads the flags.
 : ENC-FCSEL ( n n n n -- n )
    ?COND {: cond:n :}
    DR3 $1E600C00 RRR  cond 12 lshift or MSK ;

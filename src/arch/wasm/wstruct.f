@@ -1,47 +1,9 @@
 \ wstruct.f - WSTRUCT, the Wasm backend's dialect: WebAssembly instructions as
-\ operations of a control-flow graph on the IR substrate.
-\
-\ WHY A DIALECT OF ITS OWN. NBACK:FREEZE hands every selector a module frozen
-\ with IR-BUILD:FREEZE-INTERIM (src/compiler/native/backend.f), which skips the
-\ schema, dominance, terminator, single-definition, successor-argument and span
-\ checks (src/compiler/ir/build.f FREEZE-INTERIM). A native backend gets them
-\ back by verifying its machine module whole; a Wasm backend has no machine
-\ module, so the selector builds a WSTRUCT module and freezes it with the full
-\ IR-BUILD:FREEZE before anything encodes it.
-\
-\ A GRAPH, NOT A TREE. Blocks take typed i32, i64 and f64 arguments, a branch
-\ hands its destination those arguments, and Wasm's block, loop and if are not
-\ operations here: the substrate records a region count per schema
-\ (src/compiler/ir/schema.f REGION-MAX) but IR-BUILD has no way to build a
-\ region, and the full freeze only means something - dominance, one definition,
-\ successor arguments - over a graph. src/arch/wasm/structure.f derives the
-\ dominators, loops and control tree from the frozen graph and the encoder
-\ assigns label depths as it writes.
-\
-\ TWO-WAY BRANCHES CARRY NO ARGUMENTS. `brz` names two successors and the
-\ substrate has no per-edge argument window, so both of its destinations take
-\ none and its one operand is the condition (src/compiler/ir/verify.f
-\ SUCCARGS-CK; HIR's brz is the same shape). Block arguments travel on `br`.
-\
-\ THE MEMORY ORDER IS A VALUE. Every load, store and call takes a memory token
-\ and answers the next one, so "this load happens after that store" is a
-\ dependency the module holds (the verifier refuses an effect with no token to
-\ carry it). No operation mints a token: a function's first one is an argument
-\ of its entry block, so every effect it performs is ordered after its entry,
-\ and a join takes the token as a block argument like any other value. A token
-\ is not a Wasm value; the encoder writes nothing for one.
-\
-\ THE CALL IS THE HABU CALL. A schema states one type for a variadic tail, so a
-\ call is the internal convention (select.f THE CALL), not every Wasm signature:
-\ the context address and the input lanes in, the status and the output lanes
-\ out, every lane an i64. `return` answers the same row.
-\
-\ AN ADDRESS IS A KIND OF CONSTANT. An i64.const states whether its value is a
-\ number, a data address or a code address (NONE, or NEMIT's DATA or CODE,
-\ src/compiler/native/emission.f), or the address of a function of its own
-\ module, its value that function's ordinal (HIR's quot, a quotation's or a
-\ does> clause's), because the encoder writes an address as a padded field the
-\ linker rewrites and a number as itself.
+\ operations of a control-flow graph on the IR substrate. NBACK:FREEZE's interim
+\ freeze skips the verifier's checks (src/compiler/ir/build.f FREEZE-INTERIM) and
+\ a Wasm backend has no machine module to verify whole, so the selector builds a
+\ WSTRUCT module and FREEZE runs the full IR-BUILD:FREEZE before anything encodes
+\ it. src/arch/wasm/structure.f derives the nesting from the frozen graph.
 
 require src/lib/prelude.f
 require src/lib/errors.f
@@ -54,7 +16,7 @@ require src/compiler/ir/type.f
 require src/compiler/ir/schema.f
 require src/compiler/ir/build.f
 
-\ WSTRUCT's codes, -9805..-9809, in the Wasm backend's block -9800..-9829.
+\ The Wasm backend's error block is -9800..-9834 (src/lib/errors.f).
 -9805 constant E-WSTRUCT-FIRST
 -9809 constant E-WSTRUCT-LAST
 -9805 constant E-WSTRUCT-DIALECT   \ a module whose schema table was created for another dialect or another schema version
@@ -132,10 +94,9 @@ ENUM opcode DERIVE eq
 4 constant MINOR
 
 \ ---- the opcode spellings ----------------------------------------------------
-\ The Wasm mnemonic under the dialect's prefix. A Wasm instruction's semantic
-\ rule is the specification's rule for that mnemonic and its rendering is that
-\ mnemonic, so the spelling is also each schema's rule and renderer identifier,
-\ and what a reader of a frozen module looks the opcode up by.
+\ The Wasm mnemonic under the dialect's prefix: each schema's rule and renderer
+\ identifier (the specification's rule for that mnemonic), and the key a reader
+\ of a frozen module looks the opcode up by.
 : OP-NAME ( WSTRUCT:opcode -- ptr u8 n )
    MATCH opcode
       i32-const           OF s" wstruct.i32.const" ENDOF
@@ -301,7 +262,10 @@ ENUM opcode DERIVE eq
 : KEY-CALLEE ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
    KEY-CALLEE$ IR-BUILD:INTERN-SYMBOL ;
 
-\ An i64.const's address kind: NONE or FUN below, or NEMIT's DATA or CODE.
+\ An i64.const's address kind: NONE (a number) or FUN below, or NEMIT's DATA or
+\ CODE (src/compiler/native/emission.f). A FUN value is the ordinal of a function
+\ of the module (HIR's quot: a quotation or a does> clause). The encoder writes
+\ an address as a padded field the linker rewrites, and a number as itself.
 : KEY-ADDR$ ( -- ptr u8 n )     s" wstruct.addr" ;
 
 : KEY-ADDR ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
@@ -330,8 +294,6 @@ private
 : F-FLT ( -- CTARGET:features )
    CTARGET:F-BASE CTARGET:F-SCALAR-FP CTARGET:WITH ;
 
-\ The four fields every form closes with. The spelling is the rule and the
-\ renderer (OP-NAME).
 : FINISH ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id CTARGET:features -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder op:IR-ID:ir-symbol-id f:CTARGET:features :}
    CTARGET-ARCH:WASM f IR-SCHEMA:SET-TARGET
@@ -339,18 +301,24 @@ private
    op IR-SCHEMA:SET-RENDERER
    c b IR-BUILD:DEFINE-OP ;
 
-\ A value-producing operation ends no block, names no successor, holds no
-\ region and carries no effect token.
 : PURE-VALUE ( -- )
    false 0 0 IR-SCHEMA:SET-CONTROL
    IR-SCHEMA:SET-PURE ;
 
+\ Every load, store and call takes a memory token and answers the next, and the
+\ verifier refuses an effect with no token. No operation mints one: a function's
+\ first is an argument of its entry block, and a join takes it as a block
+\ argument. A token is not a Wasm value; the encoder writes nothing for it.
 : LINEAR-MEMORY ( IR-SCHEMA:effect -- )
    {: e:IR-SCHEMA:effect :}
    false 0 0 IR-SCHEMA:SET-CONTROL
    IR--TYPE-SPACE:GENERIC IR--SCHEMA-ALIAS:UNRESTRICTED e IR-SCHEMA:SET-MEMORY ;
 
 \ ---- the forms ---------------------------------------------------------------
+\ Wasm's block, loop and if are not operations: IR-BUILD cannot build a region
+\ (src/compiler/ir/schema.f REGION-MAX is only counted), and the full freeze's
+\ dominance, one-definition and successor-argument checks need a graph. Blocks
+\ take typed i32, i64 and f64 arguments.
 : CONST-FORM ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id IR-ID:ir-type-id CTARGET:features -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder op:IR-ID:ir-symbol-id t:IR-ID:ir-type-id
       f:CTARGET:features :}
@@ -499,8 +467,10 @@ private
    false IR-SCHEMA:SET-TRAP
    c b op F-INT FINISH ;
 
-\ The first successor when the i32 condition is zero, the second otherwise -
-\ HIR's order, so a selector maps one onto the other.
+\ The first successor when the i32 condition is zero, the second otherwise:
+\ HIR's order, so a selector maps one onto the other. Neither destination takes
+\ an argument, since the substrate has no per-edge argument window
+\ (src/compiler/ir/verify.f SUCCARGS-CK); block arguments travel on br.
 : BRZ-FORM ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder op:IR-ID:ir-symbol-id w:IR-ID:ir-type-id :}
    op IR-SCHEMA:BEGIN-OP
@@ -510,7 +480,7 @@ private
    false IR-SCHEMA:SET-TRAP
    c b op F-INT FINISH ;
 
-\ The status and then the output lanes.
+\ The status and then the output lanes, the call's row.
 : RETURN-FORM ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id IR-ID:ir-type-id IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder op:IR-ID:ir-symbol-id s:IR-ID:ir-type-id
       t:IR-ID:ir-type-id :}
@@ -532,8 +502,10 @@ private
    true IR-SCHEMA:SET-TRAP
    c b op F-INT FINISH ;
 
-\ The context address and the token, then the input lanes; the status and the
-\ token, then the output lanes. The callee may trap and may touch any memory.
+\ The Habu call (select.f THE CALL), not every Wasm signature, since a schema
+\ states one type for a variadic tail: the context address and the token, then
+\ the input lanes; the status and the token, then the output lanes; every lane
+\ an i64. The callee may trap and may touch any memory.
 : CALL-FORM ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id IR-ID:ir-type-id IR-ID:ir-type-id IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder op:IR-ID:ir-symbol-id s:IR-ID:ir-type-id
       t:IR-ID:ir-type-id k:IR-ID:ir-type-id :}
@@ -666,8 +638,6 @@ public
    op ;
 
 \ ---- the freeze ---------------------------------------------------------------
-\ What a selector calls in place of IR-BUILD:FREEZE: the full freeze of a
-\ WSTRUCT table.
 : FREEZE ( IR-CTX:ctx IR-BUILD:builder -- IR-BUILD:module )
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
    c b DIALECT-CK

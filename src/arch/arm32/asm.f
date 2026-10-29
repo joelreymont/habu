@@ -1,22 +1,8 @@
 \ asm.f - A32ASM, ARMv7-R A32 and ARMv7E-M Thumb-2 instructions constructed as
-\ values; nothing here emits, lays out or relocates them.
-\
-\ OPERANDS. Destination first, then sources; a memory form takes the data
-\ register, the base register, then the byte offset, stores included. A data
-\ register is R0-R14, never PC; the short Thumb forms take R0-R7, and Thumb
-\ MOVW and MOVT refuse SP. An operand outside its form is E-OPERAND. ARM
-\ arithmetic is unconditional and sets no flags; CMP and Thumb MOVS, ADDS, SUBS
-\ and CMP set them.
-\
-\ BRANCH DISPLACEMENTS are bytes the caller computes after layout: ARM-B and
-\ ARM-BL from the instruction's address plus 8, a Thumb branch from its address
-\ plus 4.
-\
-\ SERIALIZATION. An ARM word is a little-endian u32 and a short Thumb
-\ instruction a little-endian u16. A thumb32-instruction holds its first
-\ halfword in bits 31-16 and its second in bits 15-0, each written
-\ little-endian in that order: `0 >GPR 0 THUMB-MOVW` is $F2400000, the bytes
-\ 40 F2 00 00.
+\ values; nothing here emits, lays out or relocates them. Destination first, then
+\ sources; a memory form takes the data register, the base, then the byte offset,
+\ stores included. ARM arithmetic is unconditional and sets no flags; CMP and
+\ the Thumb MOVS, ADDS, SUBS and CMP set them.
 require src/lib/type/deftype.f
 require src/lib/errors.f
 
@@ -26,6 +12,10 @@ public
 DEFTYPE GPR
 DEFTYPE CONDITION
 DEFTYPE BRANCH-OFFSET
+\ Serialization: an ARM word is a little-endian u32, a short Thumb instruction a
+\ little-endian u16. A thumb32 holds its first halfword in bits 31-16 and its
+\ second in 15-0, each written little-endian in that order: `0 >GPR 0
+\ THUMB-MOVW` is $F2400000, the bytes 40 F2 00 00.
 DEFTYPE ARM-INSTRUCTION
 DEFTYPE THUMB16-INSTRUCTION
 DEFTYPE THUMB32-INSTRUCTION
@@ -231,7 +221,7 @@ public
 : THUMB-BX ( gpr -- thumb16-instruction )
    DATA-REG 3 lshift $4700 or >THUMB16-INSTRUCTION ;
 
-\ Thumb offsets use instruction address + 4. Wide values hold first halfword high.
+\ Thumb offsets are bytes from the instruction address + 4.
 : THUMB-B-SHORT ( branch-offset -- thumb16-instruction )
    BRANCH-OFFSET>N -2048 2046 RANGE 2 ALIGNED
    2 / $7FF and $E000 or >THUMB16-INSTRUCTION ;

@@ -1,44 +1,9 @@
 \ asm.f — x86_64 instruction encoders, package X64ASM.
-\
-\ The same discipline as src/arch/arm32/asm.f and src/arch/arm64/asm.f: operands
-\ are nominal types, every encoder screens an operand BEFORE it packs a bit, and
-\ a refusal is this package's E-OPERAND. Operands come in the ARM32 and C66x
-\ sets' order: destination first, then sources, and a memory form takes the
-\ data register first and the memory operand second, stores included.
-\
-\ ONE DIFFERENCE FORCED BY THE ARCHITECTURE. An ARM32, ARM64 or C66x instruction
-\ IS a 32-bit value, so those files encode to a value and a separate layer
-\ (src/arch/arm64/mnem.f over icode.f EMITW) emits it. An x86_64 instruction is
-\ one to fifteen bytes and has no value representation, so the encode and the
-\ emit collapse into one layer here: every ENC-* word takes the byte sink as its
-\ LAST operand and appends through src/lib/byte-buffer.f (BUF:APPEND-BYTE). There is
-\ therefore no instruction nominal type in this package — the nominal typing is
-\ entirely on the operands, which is where an ill-formed instruction is caught.
-\
-\ THE SIZE CONTRACT THE LOWERING LAYER RELIES ON. Every encoder is deterministic:
-\ the emitted length is a function of the word the caller chose and of the
-\ memory operand's own displacement magnitude, never of a peephole or a
-\ relaxation pass. A caller that needs an instruction's size encodes it into a
-\ scratch buffer and reads the length. Branch width is the caller's choice too:
-\ rel8 and rel32 are separate words, and a rel is measured in bytes from the END
-\ of the instruction, which is the x86 rule (ARM32 measures from the instruction
-\ address plus 8 or 4).
-\
-\ WHAT IS DELIBERATELY NOT HERE. The accumulator short forms (05 id for
-\ add rax/imm32, A9 for test rax/imm32, 90+r for xchg rax/reg) and the D1 /n
-\ shift-by-one form are size optimisations, not capability, so each operation
-\ has exactly one encoding here. llvm-mc prefers those short forms, which is why
-\ test/compiler/x86-64-asm.f pins the general forms with registers other than
-\ rax and with shift counts other than one.
-\
-\ THE 8-BIT REGISTER FILE IS THE REX-ONLY ONE. An r8 numbered 4..7 is spl, bpl,
-\ sil or dil, never the legacy ah, ch, dh or bh, so any r8 operand at or above 4
-\ forces a REX prefix even when no REX field would otherwise be set. The legacy
-\ high-byte registers are not expressible.
-\
-\ The register name words RAX..R15 are 64-bit registers; the nominal type tails
-\ r64/r32/r16/r8 name the four register FILES. `R8` the word is the ninth 64-bit
-\ register; `r8` the type is the byte-register file.
+\ Operands are nominal types; every encoder screens an operand before it packs a
+\ bit, and a refusal is E-OPERAND. Destination comes first; a memory form takes
+\ the data register first and the memory operand second, stores included.
+\ An instruction is 1..15 bytes with no value form, so every ENC-* takes the byte
+\ sink (src/lib/byte-buffer.f) last and appends to it.
 
 require src/lib/type/deftype.f
 require src/lib/errors.f
@@ -61,11 +26,9 @@ DEFTYPE MEM
 
 E-X64ASM-OPERAND constant E-OPERAND
 
-\ `mov r64, imm64` is REX.W B8+r io, and its REX byte is always present, so the
-\ eight immediate bytes always begin at this offset from the first byte of the
-\ instruction. It is the one relocatable literal form the x86_64 design names
-\ (docs/xcomp.md "Machine model"), and the relocation writer patches at this
-\ offset.
+\ mov r64,imm64 (REX.W B8+r io) always carries REX, so its eight immediate bytes
+\ start at this offset; the relocation writer patches there. It is the one
+\ relocatable literal form (docs/xcomp.md "Machine model").
 2 constant MOV-RI64-IMM-OFF
 
 \ `call rel32` is E8 cd and `jmp rel32` E9 cd, with no prefix, so the
@@ -84,7 +47,6 @@ private
 
 : ?COND ( n -- n )  0 15 RANGE ;
 
-\ An imm8 the machine sign-extends to the operation width.
 : ?SIMM8 ( n -- n )  -128 127 RANGE ;
 
 \ A shift count. The hardware masks to six bits; a wider count is a caller bug.
@@ -97,9 +59,9 @@ private
 : ?UIMM32 ( n -- n )  0 $FFFFFFFF RANGE ;
 
 \ ---- the byte sink -----------------------------------------------------------
-\ src/lib/byte-buffer.f is the tree's checked growable byte buffer; these four are
-\ the little-endian appends this encoder needs and are private to it, so the
-\ library's public surface is unchanged.
+\ Encoded length depends only on the word chosen and the memory operand's
+\ displacement magnitude: no relaxation. A caller sizes an instruction by
+\ encoding it into a scratch buffer.
 : EMIT-B ( n ptr a -- ) {: v:n s:ptr :}
    v $FF and s BUF:APPEND-BYTE ;
 
@@ -121,8 +83,9 @@ private
 
 : WIDTH-W ( n -- n )  W64 = if 1 else 0 then ;
 
-\ An 8-bit register at or above 4 is spl/bpl/sil/dil or an r8b..r15b, and each
-\ of those is spelled only with a REX prefix present.
+\ An r8 numbered 4..7 is spl, bpl, sil or dil, never ah, ch, dh or bh, so any r8
+\ at or above 4 forces a REX prefix; the legacy high-byte registers are not
+\ expressible.
 : R8-FORCE ( n -- n )  4 >= if 1 else 0 then ;
 
 \ ---- REX, ModRM and SIB ------------------------------------------------------
@@ -341,6 +304,8 @@ private
 public
 
 \ ---- the 64-bit register file ------------------------------------------------
+\ RAX..R15 are r64; the type tails r64/r32/r16/r8 name the register files. The
+\ word R8 is the ninth 64-bit register; the type r8 is the byte-register file.
 : RAX ( -- r64 )  0 >R64 ;
 : RCX ( -- r64 )  1 >R64 ;
 : RDX ( -- r64 )  2 >R64 ;
@@ -395,9 +360,8 @@ public
 : C-G  ( -- condition ) 15 >CONDITION ;
 
 \ ---- memory operands ---------------------------------------------------------
-\ Base, base plus displacement, base plus scaled index plus displacement, and
-\ rip-relative. The index may not be rsp — that encoding names "no index" — and
-\ the scale must be 1, 2, 4 or 8.
+\ The index may not be rsp: that encoding names "no index". The scale is 1, 2, 4
+\ or 8.
 : MEM-AT ( r64 -- mem ) {: b:r64 :}
    b R64>N REG-NUM MEM-NONE 0 0 0 MEM-PACK ;
 
@@ -415,8 +379,9 @@ public
    MEM-NONE MEM-NONE 0 d ?SIMM32 1 MEM-PACK ;
 
 \ ---- group-1: add, or, adc, sbb, and, sub, xor, cmp --------------------------
-\ Five forms each: register to register, register from memory, memory from
-\ register, register with a sign-extended imm8, register with an imm32.
+\ One encoding per operation: no accumulator short forms (05 id, A9 id, 90+r)
+\ and no D1 shift-by-one. llvm-mc prefers those, so test/compiler/x86-64-asm.f
+\ pins registers other than rax and shift counts other than one.
 : ENC-ADD-RR ( r64 r64 ptr a -- ) {: d:r64 sr:r64 s:ptr :}  $00 d sr s ALU-RR ;
 : ENC-ADD-RM ( r64 mem ptr a -- ) {: d:r64 m:mem s:ptr :}   $00 d m s ALU-RM ;
 : ENC-ADD-MR ( r64 mem ptr a -- ) {: sr:r64 m:mem s:ptr :}  $00 sr m s ALU-MR ;
@@ -547,7 +512,6 @@ public
    W32 $C7 0 m 0 s RM-ENC
    imm s EMIT-D ;
 
-\ The relocatable literal. MOV-RI64-IMM-OFF names where its immediate starts.
 : ENC-MOV-RI64 ( r64 imm64 ptr a -- ) {: d:r64 v:imm64 s:ptr :}
    d R64>N REG-NUM {: n:n :}
    1 0 0 n 3 rshift 0 s EMIT-REX
@@ -555,7 +519,6 @@ public
    v IMM64>N s EMIT-Q ;
 
 \ ---- scalar double precision -------------------------------------------------
-\ Register operands are destination then source, as for the integer forms.
 \ ANDPD and XORPD operate on both 64-bit lanes; UCOMISD compares the low lane.
 \ CMPUNORDSD writes the low lane all ones when the two doubles are unordered
 \ and zero when not: CMPSD's predicate 3 is its trailing byte.
@@ -642,8 +605,8 @@ public
    W64 $8D d m s EXT-RM ;
 
 \ ---- the 32-bit zeroing idiom ------------------------------------------------
-\ Kept as the one 32-bit arithmetic form: xor of a register with itself is two
-\ bytes and clears the whole 64-bit register because a 32-bit result zero-extends.
+\ xor of a register with itself is two bytes and clears the whole 64-bit
+\ register because a 32-bit result zero-extends.
 : ENC-XOR32-RR ( r32 r32 ptr a -- ) {: d:r32 sr:r32 s:ptr :}
    W32 $31 sr R32>N REG-NUM d R32>N REG-NUM 0 s RR-ENC ;
 

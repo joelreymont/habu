@@ -1,30 +1,8 @@
-\ passes.f - WPASS, the Wasm backend's rows in the compiler's pass table
-\ (src/compiler/native/backend.f), which WBACK:INSTALL registers
-\ (src/arch/wasm/backend.f).
-\
-\ WHAT RUNS. No Wasm routine is ever placed in the engine's code region, so the
-\ rows are reached as a shadow's (src/compiler/native/shadow.f): NCOMP runs them
-\ for an open Wasm binding, in a context nested in the definition's, from the
-\ module NBACK:FREEZE froze, and ends in EMIT-UNPLACED (src/compiler/native/
-\ compiler.f SHADOW-WORK). DECLARE and SELECT are WSEL's: SELECT selects into a
-\ fresh WSTRUCT builder and freezes it with WSTRUCT:FREEZE, the full
-\ IR-BUILD:FREEZE (src/arch/wasm/wstruct.f). The lowering FIXPOINT
-\ hands that module back as it is: Wasm has no registers to allocate and no
-\ spills to lower, and rebuilding renumbers values. EMIT is refused, as there
-\ is no placed Wasm emission.
-\
-\ THE EMISSION. EMIT-UNPLACED encodes the frozen module through WENC, each
-\ function's lanes WSEL's ARITY, and ROWS states the sealed emission in NEMIT's
-\ producer rows, all in that one word, to be rebased when the backend consumer
-\ boundary (habu-give-each-backend-b6f7ea4f) replaces them. RETIRE gives the
-\ encoder's emission back and clears NEMIT; the driver runs it on the accepting
-\ and the refusing path alike, so NEMIT is empty for the engine's own emission.
-\
-\ NOTHING ELSE IS HELD. WSEL's builder and modules are the nested context's,
-\ which takes them when it leaves; WSTRUCT keeps no session prototype, each
-\ module interning its own spellings; and WSEL, WCTL and WENC keep no scratch
-\ count beside their dynamic buffers, which reserve again on use after an
-\ image capture releases them.
+\ passes.f - WPASS, the Wasm backend's rows in src/compiler/native/backend.f's
+\ pass table, registered by WBACK:INSTALL. No Wasm routine is placed in the
+\ engine's code region: NCOMP runs these rows as a shadow's
+\ (src/compiler/native/shadow.f) for an open Wasm binding, in a context nested in
+\ the definition's, ending in EMIT-UNPLACED (compiler.f SHADOW-WORK).
 
 require src/lib/prelude.f
 require src/lib/errors.f
@@ -41,11 +19,11 @@ require src/arch/wasm/encode.f
 package WPASS
 private
 
-\ The machine every emission these rows seal is for.
 : ARCH ( -- CTARGET:arch )
    CTARGET-ARCH:WASM ;
 
-\ FIXPOINT: the module selection froze, untouched.
+\ FIXPOINT hands back the module selection froze: Wasm has no registers to
+\ allocate or spills to lower, and rebuilding renumbers values.
 : AS-SELECTED ( IR-CTX:ctx IR-BUILD:module -- IR-BUILD:module )
    nip ;
 
@@ -78,12 +56,16 @@ private
    nip [: WSEL:ARITY ;] WENC:ENCODE
    ROWS ;
 
-\ The rows answer until this row runs, on the accepting and the refusing path.
+\ The rows answer until RETIRE runs, which the driver does on the accepting and
+\ the refusing path alike, so NEMIT is empty for the engine's own emission.
 : RETIRE ( -- )
    WENC:RETIRE
    NEMIT:CLEAR ;
 
-\ RELEASE, FORGET and PREPARE: nothing is held (see the header).
+\ RELEASE, FORGET and PREPARE: WSEL's builder and modules belong to the nested
+\ context, which takes them when it leaves; WSTRUCT keeps no session prototype;
+\ WSEL, WCTL and WENC keep no scratch count beside their dynamic buffers, which
+\ reserve again after an image capture releases them.
 : NOTHING-HELD ( -- ) ;
 
 : NO-PROTOTYPE ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key -- )
@@ -91,7 +73,8 @@ private
 
 public
 
-\ The rows WBACK:INSTALL registers, in NBACK-PASS's field order.
+\ In NBACK-PASS's field order. SELECT freezes a fresh WSTRUCT builder with
+\ WSTRUCT:FREEZE, the full IR-BUILD:FREEZE (src/arch/wasm/wstruct.f).
 : PASS ( -- NBACK:pass )
    [: WSEL:DECLARE ;] [: WSEL:SELECT ;] [: AS-SELECTED ;]
    [: PLACED-UNSUPPORTED ;] [: EMIT-UNPLACED ;] [: NOTHING-HELD ;] [: RETIRE ;]

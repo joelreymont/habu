@@ -1,29 +1,8 @@
-\ abi.f - the convention a Habu word is entered and left through on x86-64, as a
-\ routine contract the chain's stages can be told. It is to src/arch/x86-64 what
-\ src/compiler/native/abi.f is to ARM64, and the same four numbers describe a
-\ word: where its scratch registers come from, how many values it takes, how
-\ many it leaves and how many it spills.
-\
-\ Design 7.6 is unchanged by the machine: an externally callable Habu word takes
-\ argument i out of data-stack slot i of the caller's stack and leaves result j
-\ in slot j. What the machine changes is three fields, and each of them is a
-\ fact about x86-64 rather than a choice this file makes:
-\
-\ - THERE IS NO LINK REGISTER, so every contract here says NEFF-LINK:ABSENT.
-\   `call` pushes the return address on the machine stack; there is no register
-\   holding it for a routine to preserve or clobber, and X64M:MACHINE refuses
-\   the two ARM64 answers exactly as A64M:MACHINE refuses this one.
-\ - THE PROLOGUE SAVES NOTHING. On ARM64 a routine that calls spends the first
-\   frame slot on x30; here the eight bytes `call` pushed ARE that saving, so a
-\   frame holds the allocator's spills and nothing else, and a routine that
-\   spills nothing declares no frame however many calls it makes.
-\ - THE POOL IS NINE REGISTERS. Seven of the sixteen are the running engine's
-\   (rbx, rsp, rbp, r12..r15), which src/compiler/native/x64ir.f REGFILE
-\   decides and X64M:MACHINE NEFF:GPR-ALL reports.
-\
-\ The whole floating file is scratch here for the reason it is there: every
-\ engine float primitive moves its arguments into the machine's own float
-\ registers and its answer back out, so nothing lives across a call.
+\ abi.f - X64ABI, the x86-64 convention a Habu word is entered and left through,
+\ as a routine contract; the x86-64 twin of src/compiler/native/abi.f. Argument i
+\ comes from the caller's data-stack slot i and result j leaves in slot j. There
+\ is no link register (`call` pushes the return address), so every contract says
+\ NEFF-LINK:ABSENT; X64M:MACHINE refuses the ARM64 link answers.
 
 require src/lib/prelude.f
 require src/compiler/target.f
@@ -44,20 +23,19 @@ private
 : SLOT-SEQ ( n -- NEFF:placeseq )
    NEFF:SEQ-DSTACK ;
 
-\ The allocator's spills, rounded to the stack alignment. There is no prologue
-\ slot to add: the return address is on the machine stack and not in this frame.
+\ The allocator's spills, rounded to the stack alignment, and nothing else: the
+\ return address `call` pushed is the saving, so a routine that spills nothing
+\ has no frame however many calls it makes.
 : FRAME-FOR ( n -- n )
    {: spills:n :}
    spills X64IR:SLOT-WIDTH *  X64M:MACHINE NMACH:FRAME-ROUND ;
 
 public
 
-\ The linux x86-64 binding a routine of this convention compiles under: the SysV
-\ ABI, little-endian, 64-bit pointers. Overflow wraps, as add, sub and imul do,
-\ and the divide screens MIN-N -1 to wrap too (src/compiler/native/emit-x64.f
-\ PUT-IDIV); a trapping unit is refused by the selector. On an x86-64 host
-\ src/compiler/native/abi.f NABI:BINDING answers this same binding. This word
-\ answers it on every host, so an ARM64 engine can compile x86-64 code too.
+\ Overflow wraps, as add, sub and imul do; the divide screens MIN-N -1 to wrap
+\ too (src/compiler/native/emit-x64.f PUT-IDIV); the selector refuses a trapping
+\ unit. NABI:BINDING answers this binding on an x86-64 host; this word answers it
+\ on every host, so an ARM64 engine can compile x86-64 code.
 : BINDING ( -- CBIND:binding )
    CTARGET-ARCH:X86-64 CTARGET-ABI:SYSV-AMD64 CTARGET-ENDIAN:LITTLE
    CTARGET-PTR--WIDTH:BITS64
@@ -66,12 +44,14 @@ public
    CNUM-FAST--MATH:BIT-EXACT CNUM-COMPARE:IEEE754-UNORDERED CNUM:POLICY
    CBIND:BIND ;
 
-\ Every general register a routine of this convention may hold state in, which is
-\ a fact about the machine and the engine and never a number a caller picks.
+\ Nine of the sixteen general registers: rbx, rsp, rbp and r12..r15 are the
+\ running engine's (src/compiler/native/x64ir.f REGFILE).
 : SCRATCH ( -- NEFF:gprs )
    X64M:MACHINE NEFF:GPR-ALL ;
 
 \ No register is part of the interface, so the whole pool is declared destroyed.
+\ The whole float file is scratch: every engine float primitive moves its
+\ arguments into the machine's float registers and its answer back out.
 : LEAF-FRAMED ( NEFF:gprs n n n -- NEFF:routine )
    {: pool:NEFF:gprs in:n out:n spills:n :}
    NEFF-CONV:DSTACK
@@ -87,7 +67,7 @@ public
    0 LEAF-FRAMED ;
 
 \ The direct-call trait is what the selector builds a call site's data-stack
-\ moves from. It does NOT make a frame here: nothing is saved at the boundary.
+\ moves from; it makes no frame, as nothing is saved at the boundary.
 : CALL-FRAMED ( NEFF:gprs n n n -- NEFF:routine )
    {: pool:NEFF:gprs in:n out:n spills:n :}
    NEFF-CONV:DSTACK
@@ -103,8 +83,8 @@ public
    0 CALL-FRAMED ;
 
 \ ---- and the same convention for a word that LEAVES through its last callee ---
-\ The callee's own return goes to OUR caller, so the data stack needs no
-\ instruction at the boundary. A tail branch is a jmp and not a call: no trait.
+\ The callee's own return goes to this word's caller, so the data stack needs no
+\ instruction at the boundary. A tail branch is a jmp, not a call: no trait.
 : TAIL-FRAMED ( NEFF:gprs n n n -- NEFF:routine )
    {: pool:NEFF:gprs in:n out:n spills:n :}
    NEFF-CONV:DSTACK

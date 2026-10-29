@@ -1,12 +1,7 @@
-\ Resource and dependence facts of one instruction word from the C66x subset
-\ that src/arch/tic6x/asm.f constructs: the functional unit it occupies, the
-\ register it reads through a cross path, the registers it reads, the registers
-\ it writes at the end of its cycle and the ones a load fills after four delay
-\ slots, the register file its memory data moves on, and whether it branches
-\ or idles. The emitter's packet scheduler and the interpreter's packet checks
-\ both read these (SPRUGH7 section 3.8), so a word outside the subset is
-\ refused here rather than misjudged. The p bit is packet structure, not an
-\ instruction fact, and is ignored.
+\ facts.f - resource and dependence facts of one word of the C66x subset
+\ src/arch/tic6x/asm.f constructs, read by the emitter's packet scheduler and
+\ the interpreter's packet checks (SPRUGH7 section 3.8). A word outside the
+\ subset is refused, never misjudged. The p bit is packet structure and ignored.
 require src/lib/errors.f
 
 package C6XFACTS
@@ -126,7 +121,6 @@ variable IDLE
    kind 12 = if data READ-REG data 1+ READ-REG 2 MEMORY ! exit then
    E-DECODE throw ;
 
-\ Decodes CURRENT into the accumulators by its form.
 : DECODE ( -- )
    CURRENT @ $FFFE1FFF and 0= if 13 4 BITS 1+ IDLE ! exit then
    READ-GUARD
@@ -142,7 +136,6 @@ variable IDLE
 
 public
 
-\ The facts of one instruction word.
 : CLASSIFY ( n -- facts ) {: w:n :}
    w $FFFFFFFE and CURRENT !
    -1 UNIT ! -1 CROSS ! 0 READS ! 0 WRITES ! 0 LOADS ! 0 MEMORY ! -1 DATA-SIDE ! 0 BRANCHES ! 0 IDLE !

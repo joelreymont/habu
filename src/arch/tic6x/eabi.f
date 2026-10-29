@@ -1,9 +1,9 @@
-\ The C6000 EABI helpers TI's reused libraries need, emitted as C66x instruction
-\ words from the constructors in src/arch/tic6x/asm.f: the integer division
-\ family within SPRAB89's Table 8-9 register sets, memcpy/memset under the
-\ standard convention, and bit-exact float division. Each helper is written as
-\ a sequential program; the builder packs it into parallel execute packets and
-\ supplies the load and branch delays itself.
+\ eabi.f - the C6000 EABI helpers TI's reused libraries need, emitted as C66x
+\ instruction words from the constructors in src/arch/tic6x/asm.f: the integer
+\ division family within SPRAB89's Table 8-9 register sets, memcpy/memset under
+\ the standard convention, and bit-exact float division. Each helper is written
+\ as a sequential program; the builder packs it into parallel execute packets
+\ and supplies the load and branch delays itself.
 require src/lib/errors.f
 require src/arch/tic6x/asm.f
 require src/arch/tic6x/facts.f
@@ -93,7 +93,6 @@ variable PACKET-START
 : SLOT ( n -- ptr n ) SLOT-BYTES * SLOTS + CELL-VIEW ;
 : FIXUP ( n -- ptr n ) FIXUP-BYTES * FIXUPS + CELL-VIEW ;
 
-\ Row idx takes word w and its facts.
 : FILL-ROW ( n n -- ) {: w:n idx:n :}
    w CLASSIFY C6XFACTS-FACTS:UNMAKE
    {: unit:n cross:n reads:n writes:n loads:n memory:n side:n branch:bool idle:n :}
@@ -155,14 +154,12 @@ variable PACKET-START
    repeat
    idx READY @ CLAIM ;
 
-\ No unit used, no register on either cross path, no memory data path used.
 : CLEAR-SLOTS ( -- )
    CYCLE-MAX 0 ?do
       i SLOT {: slot:ptr :}
       0 slot SLOT.UNITS ! -1 slot SLOT.CROSS-1X ! -1 slot SLOT.CROSS-2X ! 0 slot SLOT.SIDES !
    loop ;
 
-\ Schedules the pending rows, noting the last issue cycle and the load drain.
 : SCHEDULE-BLOCK ( -- )
    CLEAR-SLOTS
    -1 LAST-CYCLE ! 0 DRAIN !
@@ -260,7 +257,6 @@ variable PACKET-START
 : PATCH ( n instruction -- ) {: at:n opcode:instruction :}
    WORDS at cells + @ 1 and opcode INSTRUCTION>N or WORDS at cells + ! ;
 
-\ A branch back to an earlier label.
 : BACK ( n n n -- ) {: target:n guard:n inverted:n :}
    0 0 guard inverted REL INSTRUCTION>N 1 CLOSE {: at:n :}
    at BRANCH-SIDE @ at target DISPLACEMENT guard inverted REL PATCH ;
@@ -283,7 +279,6 @@ variable PACKET-START
 
 : RETURN ( -- ) 3 B ENC-B-REG INSTRUCTION>N 0 CLOSE drop ;
 
-\ Every forward branch must have found its label.
 : RESOLVED ( -- )
    FIXUP-COUNT @ 0 ?do i FIXUP FIXUP.AT @ 0 >= if E-OPERAND throw then loop ;
 

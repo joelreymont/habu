@@ -1,28 +1,9 @@
-\ rt.f - x86-64 runtime emitters, package X64RT: the engine's data-stack push
-\ and pop, the syscall-result push, the consumer of the seam's syscall stencils,
-\ the output funnel with its printers and the stack guard's admission of a data
-\ stack at a switch. They are the twins of src/habu/rt.f G-PUSH / G-POP, G-OUT,
-\ G-PRINT9, G-PRINTU9, G-EMITC and STACK-GUARD:CHECK-CURSOR / EXIT-BOUNDS, of
-\ habu1.f SYS-PUSH and of src/habu/jit.f C-EMIT-STENCIL, and they append to the
-\ current code stream, X64CODE's ASM-SINK.
-\
-\ The seam files src/os/linux-x86-64/proc-watch.f and proc-control.f name their
-\ registers by x86-64 number - 7 rdi, 6 rsi, 2 rdx, 0 rax - so these moves take
-\ the number and not an X64ASM register.
-\
-\ The data-stack register is stated once, as layout.f's ENGINE-GPR:X64-DSTACK:
-\ the moves below emit through it, and so does every pass that addresses the
-\ caller's stack (src/arch/x86-64/machine.f X64M:DSTACK-GPR, read by
-\ src/compiler/native/emit-x64.f DSTACK), so code these moves emit and code the
-\ compiler emits share one stack by construction. ARM64 states its register
-\ twice, in mnem.f's XDS and layout.f, and src/habu/rt.f DSTACK-AGREE keeps the
-\ two together; x86-64 has no second statement to keep. It is read by name and
-\ not through the target-selected ENGINE-GPR:DSTACK: this file runs on the ARM64
-\ engine that cross-builds x86-64, where DSTACK is ARM64's.
-\
-\ G-OUT and EXIT-BOUNDS make their syscalls through the x86-64 seam, which this
-\ file loads globally, as src/habu/boot-x64.f does: a file that loads the seam
-\ into a private wordlist (test/x86-64-peer-harness.f) comes after this one.
+\ rt.f - X64RT, x86-64 runtime emitters appending to X64CODE's ASM-SINK: twins
+\ of src/habu/rt.f G-PUSH, G-POP, G-OUT, G-PRINT9, G-PRINTU9, G-EMITC and
+\ STACK-GUARD's CHECK-CURSOR and EXIT-BOUNDS, habu1.f SYS-PUSH and jit.f
+\ C-EMIT-STENCIL. Moves take x86-64 register numbers, as the seam files
+\ proc-watch.f and proc-control.f name them. The seam loads globally here, so a
+\ file loading it into a private wordlist (test/x86-64-peer-harness.f) follows.
 
 require src/lib/byte-buffer.f
 require src/lib/string.f
@@ -37,6 +18,10 @@ package X64RT
 using X64ASM
 using X64CODE
 
+\ ENGINE-GPR:X64-DSTACK by name, not the target-selected ENGINE-GPR:DSTACK: an
+\ ARM64 engine cross-builds x86-64 with this file. X64M:DSTACK-GPR, which
+\ src/compiler/native/emit-x64.f reads, is the same declaration, so emitted and
+\ compiled code share one stack.
 : DSP ( -- r64 )  ENGINE-GPR:X64-DSTACK >R64 ;
 : DATA-REG ( -- r64 )  ENGINE-GPR:X64-RBASE >R64 ;
 
@@ -44,7 +29,6 @@ using X64CODE
 : MOV32, ( r64 n -- ) {: r:r64 v:n :}
    r R64>N >R32 v >IMM32 ASM-SINK ENC-MOV32-RI32 ;
 
-\ Store the low byte of a register at [rsi], one byte below rsi's old value.
 : PUT-BYTE, ( r64 -- ) {: r:r64 :}
    RSI ASM-SINK ENC-DEC
    r R64>N >R8 RSI MEM-AT ASM-SINK ENC-MOV8-MR ;
@@ -68,12 +52,9 @@ public
    DSP  CELL >IMM8  ASM-SINK ENC-SUB-RI8
    r >R64  DSP MEM-AT  ASM-SINK ENC-MOV-RM ;
 
-\ The label of the output funnel's device arm, (GENIO-OUT): the twin of
-\ habu2.f's LGENIOOUT. X64KERNEL:HELPERS, makes it and emits the arm there.
-\ Entered with rdi the OUT-CELL index, rsi the span and rdx its length; it
-\ writes fd 1 while GENIO-ABI:BUSY-CELL is set, for an index past DEVICES and
-\ for a device row that is empty, and otherwise calls the row's xt with the
-\ span on the data stack (src/habu/kernel-x64.f (GENIO-OUT)).
+\ The label of the output funnel's device arm (GENIO-OUT), the twin of habu2.f's
+\ LGENIOOUT; X64KERNEL:HELPERS, makes it and emits the arm (src/habu/kernel-x64.f).
+\ Entered with rdi the OUT-CELL index, rsi the span and rdx its length.
 variable LGENIOOUT
 
 \ Write the span rsi, rdx to the current output device: the twin of G-OUT.
@@ -158,8 +139,8 @@ public
    C-B RAX RCX ASM-SINK ENC-CMOVCC
    0 G-PUSH ;
 
-\ Only filesystem calls update the running task's cause. SYS, leaves CF set
-\ for Linux's negative errno; the old primitive result remains -1 on error.
+\ Only filesystem calls update the running task's cause. SYS, leaves CF set for
+\ Linux's negative errno; the pushed result is still -1 on error.
 : FS-SYS-PUSH ( -- )
    LBL LBL {: failed:label done:label :}
    C-B failed JCC,

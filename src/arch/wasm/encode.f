@@ -1,62 +1,9 @@
 \ encode.f - WENC, the Wasm backend's encoder: a frozen WSTRUCT module written
-\ as one emission, a header and then each function's body in Wasm binary form
-\ (docs/xcomp.md "Encoder").
-\
-\ THE IDENTITIES ARE THE MODULE'S OWN. A module's symbols are its own ordinals,
-\ so ENCODE looks each WSTRUCT opcode and attribute key up in the frozen module
-\ by its spelling (src/compiler/ir/symbol.f FFIND), as HIR:FBIND does, and then
-\ compares symbols. An opcode the module never interned names none of its
-\ operations.
-\
-\ ONE LOCAL PER VALUE. The structure WCTL derives (structure.f) is written step
-\ by step: local.get for each operand, the instruction, local.set for each
-\ result, the last result first. A memory token is not a Wasm value and has no
-\ local and no bytes. The entry block's arguments are the function's
-\ parameters; every other value of a block the entry reaches has a local, and
-\ so has each of WCTL's temporaries, declared as the i32s, then the i64s, then
-\ the f64s, each in the order the steps first meet it. Wasm's validator does
-\ not know that every path leaves before a function's end, so a function whose
-\ last step closes a loop or an if ends in unreachable.
-\
-\ A CALL IS A ROW. `call` is followed by a padded five-byte function index the
-\ linker rewrites in place, here zero. Each is a call site: the offset of that
-\ field, NEMIT:CALL (P6 lowers a tail call as call then return), the target,
-\ its published host implementation when external, and its source location.
-\ An internal target has no host implementation until publication resolves its
-\ own function offset. The target is an absolute address measured, for an
-\ unplaced emission, from its first byte
-\ (src/compiler/native/emission.f). A callee spelled `host` and a decimal entry
-\ is that host word; a callee that names a function of the module is that
-\ function's body offset, which the capture reads as a self call, a call row
-\ naming the definition's own record (src/arch/wasm/capture.f WC-CALL).
-\ Refused by name with E-WENC-FORM: call_indirect, whose type index is the
-\ linker's type table's and has no emission row to carry it, and a function
-\ with no body, which an emission has no bytes for.
-\
-\ AN ADDRESS IS A ROW TOO. An i64.const states its address kind, one of
-\ WSTRUCT's four: NONE, NEMIT's DATA and CODE (src/compiler/native/emission.f)
-\ and FUN. A number, kind NONE, is its shortest SLEB. A data or code address is
-\ a padded ten-byte SLEB holding the host value, which the capture resolves
-\ and the linker rewrites in place; each is an address site: the offset of
-\ that field and its kind. A function's address, kind FUN, is a CODE site
-\ whose field holds that function's body offset, laid out once every body is
-\ written as a self call's target is, which the capture keeps as a FUN site
-\ (src/arch/wasm/capture.f) as it keeps an x86-64 `codeaddr`. Any other kind
-\ is refused with E-WSTRUCT-ADDR, as WSTRUCT refuses it where the attribute is
-\ built.
-\
-\ THE EMISSION, LITTLE-ENDIAN: MAGIC; the function count, u32; then per
-\ function its body offset u32, body size u32, inputs u8, outputs u8, frame
-\ variant u8 and a zero pad byte; then the bodies. An offset counts from the
-\ emission's first byte, and a body is a code section entry less its size: the
-\ local declarations, the code and its end. The inputs and outputs are the
-\ lanes the caller states for each function. Past WPROF's lane arity a function
-\ takes the aligned frame (variant 1) and its signature passes no lane;
-\ otherwise its signature is (ctx, inputs) -> (status, outputs) (variant 0).
-\ Readers answer the last emission encoded whole; a refused one leaves nothing.
-\
-\ STORAGE CLASS. MODULE-OWNED: the emission and its rows live in this
-\ package's buffers until the next ENCODE or RETIRE.
+\ as one emission, a header then each function's body in Wasm binary form
+\ (docs/xcomp.md "Encoder"). Calls and addresses become rows that
+\ src/arch/wasm/capture.f resolves and src/arch/wasm/link.f rewrites in place.
+\ STORAGE CLASS. MODULE-OWNED: the emission and its rows live in this package's
+\ buffers until the next ENCODE or RETIRE.
 
 require src/lib/prelude.f
 require src/lib/errors.f
@@ -79,7 +26,7 @@ require src/arch/wasm/wstruct.f
 require src/arch/wasm/profile.f
 require src/arch/wasm/structure.f
 
-\ WENC's codes, -9825..-9829, in the Wasm backend's block -9800..-9829.
+\ The Wasm backend's error block is -9800..-9834 (src/lib/errors.f).
 -9825 constant E-WENC-FIRST
 -9829 constant E-WENC-LAST
 -9825 constant E-WENC-STATE    \ a read of no emission or past its rows
@@ -117,6 +64,14 @@ $FC constant MISC-PREFIX             \ the saturating truncations' and bulk memo
 3 constant CLASSES
 
 \ ---- the header ----------------------------------------------------------------
+\ Little-endian: MAGIC; the function count, u32; then per function its body
+\ offset u32, body size u32, inputs u8, outputs u8, frame variant u8 and a zero
+\ pad byte; then the bodies. An offset counts from the emission's first byte; a
+\ body is a code section entry less its size. Inputs and outputs are the lanes
+\ the caller states. Past WPROF's lane arity a function takes the aligned frame
+\ and its signature passes no lane; otherwise it is (ctx, inputs) -> (status,
+\ outputs). Readers answer the last emission encoded whole; a refused one leaves
+\ nothing.
 8 constant HEAD-BYTES                \ the magic and the function count
 12 constant ROW-BYTES                \ one function's row
 0 constant FRAME-LANES               \ the lanes are the signature's
@@ -177,7 +132,6 @@ variable CLOSED                      \ whether the last step written closed a la
 : PUT-PAD32 ( n -- )  ROOM WLEB:U32-PAD! AT +! ;
 : PUT-PAD64 ( n -- )  ROOM WLEB:S64-PAD! AT +! ;
 
-\ An f64 constant's IEEE 754 bits, low byte first.
 : PUT-F64 ( n -- )
    {: v:n :}
    8 0 do  v i 8 * rshift $FF and PUT-BYTE  loop ;
@@ -188,7 +142,10 @@ variable CLOSED                      \ whether the last step written closed a la
    len 0 do  v i 8 * rshift $FF and  at i + EM c!  loop ;
 
 \ ---- the module's identities, looked up by spelling --------------------------------
-\ The symbol the module being encoded gave these bytes, if it interned them.
+\ A module's symbols are its own ordinals, so each WSTRUCT opcode and attribute
+\ key is looked up by spelling (src/compiler/ir/symbol.f FFIND), as HIR:FBIND
+\ does, and symbols are compared. An opcode the module never interned names none
+\ of its operations.
 : FSYMBOL ( ptr u8 n -- IR-ID:ir-symbol-id bool )
    {: p u:n :}
    NFROZEN:V-SYMP NFROZEN:VW  NFROZEN:V-SYMR NFROZEN:VW  NFROZEN:MKEY  p u IR-SYM:FFIND ;
@@ -196,7 +153,6 @@ variable CLOSED                      \ whether the last step written closed a la
 : OPCODES! ( -- )
    WSTRUCT:OPCODES 0 ?do  i WSTRUCT:NTH WSTRUCT:OP-NAME FSYMBOL  i OP-HAS !  i OP-SYM !  loop ;
 
-\ The operation's ordinal in WSTRUCT's table.
 : SLOT ( IR-ID:ir-op-id -- n )
    NFROZEN:OPCODE-AT {: sym:IR-ID:ir-symbol-id :}
    WSTRUCT:OPCODES 0 ?do
@@ -204,8 +160,7 @@ variable CLOSED                      \ whether the last step written closed a la
    loop
    E-WENC-FORM throw ;
 
-\ Where the operation's attribute under the key spelled p u sits. The freeze
-\ requires the attribute, so the module interned its key.
+\ The freeze requires the attribute, so the module interned its key.
 : ATTR-SLOT ( IR-ID:ir-op-id ptr u8 n -- n )
    {: o:IR-ID:ir-op-id p u:n :}
    p u FSYMBOL 0= if E-WENC-FORM throw then {: k:IR-ID:ir-symbol-id :}
@@ -225,6 +180,10 @@ variable CLOSED                      \ whether the last step written closed a la
    NFROZEN:V-ATTR NFROZEN:VW  NFROZEN:MKEY  a IR-ATTR:FSYM@ ;
 
 \ ---- values and their locals ------------------------------------------------------
+\ One local per value: the entry block's arguments are the parameters, in order;
+\ every other value of a block the entry reaches has a local, and so has each
+\ WCTL temporary, declared as the i32s, then the i64s, then the f64s, each in the
+\ order the steps first meet it. A memory token has no local and no bytes.
 \ A verified module types its values from WSTRUCT's schemas and its entry
 \ signature, so another type never reaches a step.
 : CLASS ( IR-ID:ir-type-id -- n )
@@ -241,7 +200,6 @@ variable CLOSED                      \ whether the last step written closed a la
 : VALUE-CLASS ( IR-ID:ir-value-id -- n )
    NFROZEN:VALUE-TYPE-AT CLASS ;
 
-\ The value type a local declaration names for a class.
 : VALTYPE ( n -- n )
    {: c:n :}
    c C-I32 = if $7F exit then
@@ -254,7 +212,6 @@ variable CLOSED                      \ whether the last step written closed a la
 : ENTRY ( -- IR-ID:ir-block-id )
    0 CUR @ 0 NFROZEN:BLOCK-AT ;
 
-\ The entry block's arguments are the parameters, in order.
 : PARAMS ( -- )
    0 NPARAMS !
    ENTRY {: bk:IR-ID:ir-block-id :}
@@ -403,7 +360,16 @@ public
 private
 
 \ ---- calls --------------------------------------------------------------------
-\ The function of this module the callee names, if it names one.
+\ `call` is followed by a padded five-byte function index the linker rewrites in
+\ place, here zero. A call site row holds the field's offset, NEMIT:CALL (a tail
+\ call is call then return), the target, its published host implementation when
+\ external, and its source location. A callee spelled `host` and a decimal entry
+\ is that host word; a callee naming a module function becomes its body offset,
+\ which the capture reads as a self call (src/arch/wasm/capture.f WC-CALL). An
+\ internal target has no host implementation until publication resolves it. The
+\ target is an absolute address, measured for an unplaced emission from its
+\ first byte (src/compiler/native/emission.f). call_indirect, whose type index
+\ is the linker's, and a function with no body are refused with E-WENC-FORM.
 : MODULE-FUN ( IR-ID:ir-symbol-id -- n bool )
    {: s:IR-ID:ir-symbol-id :}
    NFROZEN:FUN-COUNT 0 ?do
@@ -463,7 +429,6 @@ SPELL-MAX BUFFER: SPELL
 : SAME-OP? ( WSTRUCT:opcode WSTRUCT:opcode -- bool )
    WSTRUCT-OPCODE:EQ ;
 
-\ Whether the operation is a memory access, which carries a memarg.
 : ACCESS? ( WSTRUCT:opcode -- bool )
    {: o:WSTRUCT:opcode :}
    o WSTRUCT-OPCODE:I64-LOAD8-U SAME-OP?  o WSTRUCT-OPCODE:I64-STORE8 SAME-OP? or
@@ -506,8 +471,13 @@ SPELL-MAX BUFFER: SPELL
    fun k AS-FUN !
    1 NADDRS +! ;
 
-\ An i64.const's value: a number as itself, an address as a padded field and a
-\ site of its kind, a function's a CODE site its body offset fills later.
+\ An i64.const's address kind is one of WSTRUCT's four: NONE, NEMIT's DATA and
+\ CODE, and FUN. A number (NONE) is its shortest SLEB. A data or code address is
+\ a padded ten-byte SLEB holding the host value, an address site the capture
+\ resolves and the linker rewrites in place. A FUN address is a CODE site whose
+\ field holds the function's body offset, laid out once every body is written;
+\ the capture keeps it as a FUN site, as it keeps an x86-64 `codeaddr`. Any
+\ other kind is refused with E-WSTRUCT-ADDR, as WSTRUCT refuses it.
 : CELL-CONST ( IR-ID:ir-op-id -- )
    {: o:IR-ID:ir-op-id :}
    o WSTRUCT:KEY-VALUE$ INT-ATTR {: v:n :}
@@ -518,14 +488,12 @@ SPELL-MAX BUFFER: SPELL
    kind -1 ADDR-SITE+
    v PUT-PAD64 ;
 
-\ Each function's address field gets its body offset.
 : LAY-OUT-FUNS ( -- )
    NADDRS @ 0 ?do
       i AS-FUN @ {: f:n :}
       f 0 >= if  f FUN-OFF @  0 EM AT @ SPAN:MAKE  i AS-OFF @  WLEB:S64-PATCH  then
    loop ;
 
-\ The opcode and what follows it.
 : INSTR ( WSTRUCT:opcode IR-ID:ir-op-id -- )
    {: code:WSTRUCT:opcode o:IR-ID:ir-op-id :}
    code WSTRUCT-OPCODE:CALL-INDIRECT SAME-OP? if E-WENC-FORM throw then
@@ -581,7 +549,6 @@ SPELL-MAX BUFFER: SPELL
    ;MATCH ;
 
 \ ---- one function -------------------------------------------------------------------
-\ The frame variant of a function stated to take in lanes and leave out.
 : FRAME ( IR-ID:ir-fun-id n n -- n )
    {: f:IR-ID:ir-fun-id in:n out:n :}
    in 0 <  out 0 < or  in U8-MAX > or  out U8-MAX > or if E-WENC-ARITY throw then
@@ -591,6 +558,8 @@ SPELL-MAX BUFFER: SPELL
    np li 1+ <>  nr lo 1+ <> or if E-WENC-ARITY throw then
    framed if FRAME-ALIGNED else FRAME-LANES then ;
 
+\ Wasm's validator does not know that every path leaves before a function's end,
+\ so a function whose last step closes a label ends in unreachable.
 : FUNCTION ( IR-BUILD:module n [ n -- n n ] -- )
    {: m:IR-BUILD:module k:n ar :}
    m IR-BUILD:FKEY k IR-ID:PACK-FUN {: f:IR-ID:ir-fun-id :}

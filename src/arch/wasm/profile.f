@@ -1,6 +1,5 @@
-\ profile.f - WPROF, the WebAssembly the Wasm backend generates code for: V1's
-\ features, its call arity and its memory layout, as constants. The target
-\ contract carries BASE and SCALAR-FP for wasm and nothing else
+\ profile.f - WPROF, the Wasm V1 the backend targets: features, call arity and
+\ memory layout. The target contract carries only BASE and SCALAR-FP for wasm
 \ (src/compiler/target.f MASK-WASM), so these numbers live here.
 
 require src/habu/layout.f
@@ -21,15 +20,12 @@ public
 16 constant PARAMS-MAX
 16 constant RESULTS-MAX
 
-\ A Wasm page's bytes, and memory32's most pages.
 $10000 constant PAGE-BYTES
 $10000 constant PAGES-MAX
 
-\ The memory32 layout: null [0,$10000), ctx [$10000,$11000), output
-\ [$11000,$21000), data stack [$21000,$31000), the single-task DATA ABI
-\ region after it, then the captured static image. The DATA region covers the
-\ shared layout's complete reserved band through DATA-START. Dynamic mappings
-\ lie past the image's last page, in pages map-anon grows.
+\ Page 0 is null. The DATA region is the single-task DATA ABI region and covers
+\ the shared layout's reserved band through DATA-START. Dynamic mappings lie past
+\ the image's last page, in pages map-anon grows.
 $10000 constant CTX-BASE
 $11000 constant OUT-BASE
 $21000 constant STACK-BASE
@@ -39,9 +35,7 @@ DATA-BASE constant STACK-END
 DATA-START PAGE-BYTES 1- + PAGE-BYTES / PAGE-BYTES * constant DATA-BYTES
 DATA-BASE DATA-BYTES + constant IMAGE-BASE
 
-\ Each context field's byte offset inside the context. Each has its own
-\ eight-byte slot, so the i64 throw code and fault address and the i32 fields
-\ beside them are all naturally aligned.
+\ One eight-byte slot per field, so i64 and i32 fields are all naturally aligned.
 0 constant CTX-STACK-BASE
 8 constant CTX-STACK-TOP
 16 constant CTX-OUT-LEN

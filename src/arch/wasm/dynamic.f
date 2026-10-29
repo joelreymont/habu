@@ -1,37 +1,8 @@
-\ dynamic.f - WDYN, the Wasm backend's dynamic calls: the adapter that puts a
-\ function of the link in a table slot, and the runtime functions execute and
-\ catch that call through one (docs/xcomp.md "Calls", "Execution tokens").
-\
-\ AN XT IS A TABLE SLOT. ADAPTER+ gives a function of the link an adapter of
-\ type (i32 ctx) -> (i32 status), puts it in the table's next slot and answers
-\ the slot: the descriptor a quotation's or a code literal's address becomes.
-\ The adapter takes the function's inputs off the context stack and leaves its
-\ outputs there, the aligned frame's convention (src/arch/wasm/select.f THE
-\ CALL), so every slot has one Wasm type and the stack carries the Habu row.
-\ Wasm's signature check cannot see that row, so the adapter checks the depth
-\ first: a stack holding fewer cells than the function's inputs is fatal, as a
-\ read below the native stack's base faults, and records STACK-BOUNDS with the
-\ address the inputs would start at, then executes unreachable. A function in
-\ its lanes is called with its inputs as lanes, the stack top lowered past
-\ them as a direct call leaves it; a status 1 returns at once, the stack where
-\ the throw left it, and a status 0 stores the outputs where the inputs stood,
-\ after the room check every store to the stack makes when they outnumber the
-\ inputs. A function in the frame reads and writes the stack itself.
-\
-\ EXECUTE AND CATCH. The selector calls the engine's execute and catch in the
-\ frame with the xt on top (src/arch/wasm/select.f THE DYNAMIC CALL); in a
-\ module those calls reach these runtime functions. Each pops the xt and calls
-\ its slot through call_indirect, whose type field WLINK writes as the type
-\ (i32) -> (i32) (INDIRECT+). An xt is a slot, so one whose upper 32 bits are
-\ set traps before the call, and call_indirect traps on slot 0, which holds no
-\ function, and on a slot past the table. execute answers the adapter's
-\ status. catch answers 0: it restores the depth it began with less the xt,
-\ and pushes the code, the full 64-bit ctx.throw-code after a status 1 and zero
-\ after a 0. A trap passes through both, and restoring the depth restores no
-\ cell a throw overwrote (docs/xcomp.md "Exceptions and fatal failures").
-\
-\ Each body is Wasm written here through WENC's opcode bytes, as WLINK writes
-\ its wrappers: none is selected from HIR, and WENC refuses call_indirect.
+\ dynamic.f - WDYN, the Wasm backend's dynamic calls: ADAPTER+ puts a function
+\ of the link in a table slot, and the runtime execute and catch call through
+\ one (docs/xcomp.md "Calls", "Execution tokens"). An xt is a table slot. Each
+\ body is Wasm written through WENC's opcode bytes, as WLINK writes its wrappers:
+\ none is selected from HIR, and WENC refuses call_indirect.
 
 require src/lib/prelude.f
 require src/lib/span.f
@@ -112,16 +83,13 @@ variable BODY-U
    n32 U32,  I32 B,
    n64 0 > if  n64 U32,  I64 B,  then ;
 
-\ ctx's i32 field at off.
 : CTX@, ( n -- )
    {: off:n :}
    L-CTX GET,  WSTRUCT-OPCODE:I32-LOAD ALIGN-32 off MEM, ;
 
-\ AT plus n bytes.
 : AT+, ( n -- )
    L-AT GET,  I32,  WSTRUCT-OPCODE:I32-ADD OP, ;
 
-\ ctx.stack-top := AT + n bytes.
 : TOP!, ( n -- )
    {: n:n :}
    L-CTX GET,  n AT+,
@@ -139,8 +107,15 @@ variable BODY-U
    WSTRUCT-OPCODE:UNREACHABLE OP, ;
 
 \ ---- the adapter --------------------------------------------------------------
-\ AT := the stack top less in cells, where the inputs start, which must not
-\ lie below the stack's base.
+\ An adapter has type (i32 ctx) -> (i32 status) and moves the Habu row on the
+\ context stack, the aligned frame's convention (src/arch/wasm/select.f THE
+\ CALL), so every slot has one Wasm type. Wasm's signature check cannot see the
+\ row, so the adapter checks the depth first: fewer cells than the inputs is
+\ fatal, as a read below the native stack's base faults. A lane function gets
+\ its inputs as lanes with the stack top lowered past them, as a direct call
+\ leaves it; status 1 returns at once with the stack where the throw left it;
+\ status 0 stores the outputs where the inputs stood, after the room check when
+\ they outnumber the inputs. A framed function reads and writes the stack itself.
 : DEPTH, ( n -- )
    {: in:n :}
    WPROF:CTX-STACK-TOP CTX@,  in CELL-BYTES * I32,  WSTRUCT-OPCODE:I32-SUB OP,
@@ -149,17 +124,15 @@ variable BODY-U
    L-AT GET,  WPROF:CTX-STACK-BASE CTX@,  OP-I32-LT-U B,
    IF,  0 FAULT,  OP-END B, ;
 
-\ The outputs must end inside the stack region.
 : ROOM, ( n -- )
    {: out:n :}
    out CELL-BYTES * AT+,  WPROF:STACK-END I32,  OP-I32-GT-U B,
    IF,  out CELL-BYTES * FAULT,  OP-END B, ;
 
-\ A call of the function, answering where its padded index starts.
+\ Answers where the call's padded index starts.
 : CALL, ( -- n )
    WSTRUCT-OPCODE:CALL OP,  PAD32, ;
 
-\ A function in the aligned frame takes the stack as it stands.
 : FRAMED, ( n -- n )
    {: in:n :}
    1 0 LOCALS,
@@ -167,7 +140,6 @@ variable BODY-U
    L-CTX GET,  CALL,
    OP-END B, ;
 
-\ A function in its lanes: the inputs as lanes, the outputs back on the stack.
 : LANES, ( n n -- n )
    {: in:n out:n :}
    2 out LOCALS,
@@ -189,9 +161,17 @@ variable BODY-U
    at ;
 
 \ ---- the runtime functions ----------------------------------------------------
-\ Pop the xt, AT its cell, and call its slot; answers where call_indirect's
-\ padded type index starts. An xt whose upper half is not zero traps before
-\ its low half is read as the slot.
+\ The selector calls execute and catch in the frame with the xt on top
+\ (src/arch/wasm/select.f THE DYNAMIC CALL). call_indirect's type field WLINK
+\ writes as (i32) -> (i32) (INDIRECT+); it traps on slot 0, which holds no
+\ function, and on a slot past the table. execute answers the adapter's status.
+\ catch answers 0: it restores the depth it began with less the xt and pushes
+\ the code, ctx.throw-code (all 64 bits) after a status 1 and zero after a 0. A
+\ trap passes through both, and restoring the depth restores no cell a throw
+\ overwrote (docs/xcomp.md "Exceptions and fatal failures").
+\
+\ DISPATCH, answers where call_indirect's padded type index starts. An xt whose
+\ upper half is not zero traps before its low half is read as the slot.
 : DISPATCH, ( -- n )
    L-CTX GET,
    WPROF:CTX-STACK-TOP CTX@,  CELL-BYTES I32,  WSTRUCT-OPCODE:I32-SUB OP,  L-AT TEE,
@@ -207,8 +187,6 @@ variable BODY-U
    DISPATCH,
    OP-END B, ;
 
-\ The code at AT, ctx.throw-code when the status is nonzero and else zero,
-\ and the top just past it.
 : CATCH-BODY ( -- n )
    2 0 LOCALS,
    DISPATCH,

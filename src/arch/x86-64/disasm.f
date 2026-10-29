@@ -540,7 +540,7 @@ private
 
 public
 
-\ Prints one real instruction and returns its consumed byte count (1..15).
+\ Returns the consumed byte count (1..15).
 : DIS1 ( ptr u8 n n -- n )
    1 DPRINT ! DECODE DI @ ;
 

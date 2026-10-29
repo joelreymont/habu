@@ -1,25 +1,9 @@
-\ passes.f - the ARM64 backend's pass rows in the compiler's pass table.
-\
-\ WHAT IT IS FOR. src/compiler/native/compiler.f drives a compilation without
-\ naming a backend: each stage goes through the row that the definition's own
-\ target contract resolves to. This file is that row for ARM64. Every stage is
-\ the sequence the driver used to run by name, wrapping A64SEL, A64RA,
-\ A64RAV, A64SPILL and A64EMIT; none of their state moved here. The emission row
-\ also states the sealed emission as NEMIT's rows. Publication reads them in
-\ NEMIT before the RETIRE row clears them.
-\
-\ WHAT IT OWNS. The routine contract this definition compiles to. Two of its
-\ facts are this backend's own readings - how many functions share the contract
-\ (the frozen source module's function rows, read at selection) and how many
-\ spill slots the allocator settled on (A64RA:FRAME, read at each lowering
-\ turn) - and the other two are declared by the driver. ROUTINE is the only
-\ reader of all four, which is why they sit together here rather than in a
-\ driver that names no machine.
-\
-\ THE SOURCE MODULE IS NOT THIS ROW'S. NBACK:FREEZE freezes the definition's HIR
-\ module and folds its loops before any selector binds it, so every target a
-\ definition compiles to selects from the same module; SELECT binds and reads
-\ it, and the driver retires it.
+\ passes.f - A64PASS, the ARM64 backend's rows in the compiler's pass table:
+\ src/compiler/native/compiler.f drives each stage through the row the
+\ definition's target contract resolves to. The rows wrap A64SEL, A64RA, A64RAV,
+\ A64SPILL and A64EMIT and hold none of their state. The source module is
+\ NBACK:FREEZE's, folded and shared by every target the definition compiles to:
+\ SELECT binds it and the driver retires it.
 
 require src/lib/prelude.f
 require src/lib/errors.f
@@ -48,11 +32,13 @@ require src/arch/arm64/backend.f
 package A64PASS
 private
 
-\ The machine every emission this row seals is for.
 : ARCH ( -- CTARGET:arch )
    CTARGET-ARCH:AARCH64 ;
 
 \ ---- the routine contract this definition compiles to ------------------------
+\ ROUTINE is the only reader of these. D-FUNS (the frozen source module's
+\ function rows, read at selection) and D-SPILLS (A64RA:FRAME, read at each
+\ lowering turn) are this backend's readings; the driver declares the rest.
 variable D-IN                        \ cells the definition takes
 variable D-OUT                       \ cells it leaves
 variable D-DEAD                      \ control never comes back
@@ -62,9 +48,8 @@ variable D-BACK                      \ it calls back out
 variable D-FUNS                      \ functions sharing the emitted routine contract
 variable D-SPILLS                    \ padded spill slots that define the cumulative frame
 
-\ The driver's first stage: what this definition takes and leaves, and how
-\ control reaches and leaves it. The two counts this backend reads for itself
-\ start again here, so a stage can only see the definition it is compiling.
+\ The two counts this backend reads for itself start again here, so a stage sees
+\ only the definition it is compiling.
 : DECLARE ( n n NBACK:linkage -- )
    {: in:n out:n l:NBACK:linkage :}
    in D-IN !  out D-OUT !
@@ -104,10 +89,7 @@ variable D-SPILLS                    \ padded spill slots that define the cumula
    c A64IR:NEW-BUILDER ;
 
 \ ---- selection ---------------------------------------------------------------
-\ The lowering pass is bound here because a module's symbols are its own. The
-\ source module is NBACK:FREEZE's, already folded and shared with any other
-\ target this definition compiles to, so this row binds it and selects from it
-\ and the driver retires it after its last selector.
+\ The lowering pass is bound here because a module's symbols are its own.
 : SELECT ( IR-CTX:ctx IR-BUILD:module -- IR-BUILD:module )
    {: c:IR-CTX:ctx m:IR-BUILD:module :}
    m A64SEL:BIND-SOURCE
@@ -248,8 +230,8 @@ NBR:INSN-BYTES constant INSN-BYTES
 
 \ ---- emission ----------------------------------------------------------------
 \ Declared for every definition, not only one that calls, so the seam can place
-\ it at the slot it really claims. The spill binding is given back first: the
-\ fixpoint above leaves it standing when its last turn lowered.
+\ it at the slot it really claims. The spill binding is released first: FIXPOINT
+\ leaves it bound when its last turn lowered.
 : EMIT ( IR-CTX:ctx IR-BUILD:module n -- )
    {: c:IR-CTX:ctx m:IR-BUILD:module at:n :}
    A64SPILL:BOUND? if A64SPILL:RELEASE then

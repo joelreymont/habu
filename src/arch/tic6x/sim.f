@@ -1,13 +1,9 @@
-\ A host interpreter for the C66x subset that src/arch/tic6x/asm.f constructs:
-\ execute packets of up to eight instructions that all read before any writes,
-\ load results after four delay slots, branches after five, predication,
-\ multicycle NOPs, cross path stalls, and a small byte-addressed memory window.
-\ It exists to run emitted helper programs on the host against an oracle before
-\ the board does, and it refuses what SPRUGH7 section 3.8 forbids: two
-\ instructions on one unit, two registers through one cross path, two memory
-\ accesses moving data on one register file, two multicycle NOPs in a packet,
-\ two taken branches in a cycle, and two writes landing on one register in one
-\ cycle. It models no other hazard and no instruction outside the subset.
+\ sim.f - host interpreter for the C66x subset src/arch/tic6x/asm.f constructs,
+\ run on emitted helper programs against an oracle before the board. It refuses
+\ what SPRUGH7 3.8 forbids: two instructions on one unit, two registers through
+\ one cross path, two memory accesses on one register file, two multicycle NOPs
+\ in a packet, two taken branches in a cycle, two writes landing on one register
+\ in a cycle. It models no other hazard and no instruction outside the subset.
 require src/lib/errors.f
 require src/arch/tic6x/asm.f
 require src/arch/tic6x/facts.f
@@ -142,15 +138,14 @@ variable F-IDLE
    reg row PENDING.REG ! value >U32 row PENDING.VALUE ! delay 1+ row PENDING.LEFT !
    1 PENDING-COUNT +! ;
 
-\ A load landing on a register another write reached in the same cycle is undefined.
+\ A load landing on a register another write reached in the same cycle is
+\ undefined on the chip: E-CONFLICT.
 : LAND ( ptr n -- ) {: row:ptr :}
    row PENDING.REG @ {: reg:n :}
    LANDED @ reg MASK-BIT and 0 <> WRITTEN-LAST @ reg MASK-BIT and 0 <> or if E-CONFLICT throw then
    LANDED @ reg MASK-BIT or LANDED !
    row PENDING.VALUE @ reg REG! ;
 
-\ Advances every pending load by one cycle, landing those that are due; the
-\ last row takes a landed row's place.
 : SETTLE ( -- )
    0 LANDED ! 0 SCAN !
    begin SCAN @ PENDING-COUNT @ < while
@@ -183,7 +178,8 @@ variable F-IDLE
    idx STORE-ROW {: row:ptr :}
    row STORE.SIZE @ 1 = if row STORE.VALUE @ row STORE.ADDRESS @ BYTE! else row STORE.VALUE @ row STORE.ADDRESS @ WORD! then ;
 
-\ Lands the packet's writes; two on one register in one cycle are undefined.
+\ Two writes on one register in one cycle, or overlapping stores, are undefined
+\ on the chip: E-CONFLICT.
 : COMMIT ( -- )
    0 WRITTEN-LAST !
    COMMIT-COUNT @ 0 ?do i LAND-COMMIT loop
@@ -238,7 +234,6 @@ variable F-IDLE
    target BRANCH-TARGET ! 1 BRANCH-PENDING ! BRANCH-DELAY BRANCH-LEFT ! ;
 
 
-\ .L unit forms: three-operand, constant and two-operand, by op field.
 : EXECUTE-L ( -- )
    5 7 BITS {: op:n :}
    DST {: dst:n :}
@@ -305,7 +300,6 @@ variable F-IDLE
    UNMODELLED ;
 
 
-\ Loads and stores: mode bits select offset or post-modification and its sign.
 \ Loads read memory now and land after the delay; stores land with the packet.
 : EXECUTE-MEMORY ( -- )
    4 3 BITS 8 1 BITS 3 lshift or {: kind:n :}
@@ -340,7 +334,7 @@ variable F-IDLE
    value 16 SEXT dst RESULT ;
 
 
-\ Instruction idx of the packet; a relative branch counts from the fetch packet holding it.
+\ A relative branch counts from the fetch packet holding the instruction.
 : RUN-ONE ( n -- ) {: idx:n :}
    PACKET idx cells + @ $FFFFFFFE and CURRENT !
    CURRENT @ $FFFE1FFF and 0= if exit then
@@ -369,7 +363,6 @@ variable F-IDLE
    PROGRAM @ {: base:ptr :}
    base NEXT-WORD @ cells + @ >U32 1 NEXT-WORD +! ;
 
-\ The words from NEXT-WORD chained by their p bits.
 : GATHER ( -- )
    0 PACKET-COUNT ! 1 MORE !
    begin MORE @ 0 <> while
@@ -387,7 +380,6 @@ variable F-IDLE
    reg path !
    CROSS-READS @ reg MASK-BIT or CROSS-READS ! ;
 
-\ The facts of the word under check that the packet checks read.
 : DESCRIBE ( -- )
    CHECKING @ CLASSIFY C6XFACTS-FACTS:UNMAKE
    {: unit:n cross:n reads:n writes:n loads:n memory:n side:n branch:bool idle:n :}
@@ -414,7 +406,6 @@ variable F-IDLE
    0 UNITS-USED ! -1 CROSS-1X ! -1 CROSS-2X ! 0 MEMORY-SIDES ! 0 IDLE-TICKS ! 0 CROSS-READS !
    PACKET-COUNT @ 0 ?do i CHECK-ONE loop ;
 
-\ One cycle passes: due loads land, and a pending branch spends a delay slot.
 : TICK ( -- )
    SETTLE 1 CYCLES +!
    WRITTEN-LAST @ RECENT ! 0 WRITTEN-LAST !

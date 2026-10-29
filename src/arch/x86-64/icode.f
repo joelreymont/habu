@@ -1,42 +1,9 @@
-\ icode.f - the x86_64 code layer, package X64CODE.
-\
-\ X64ASM (src/arch/x86-64/asm.f) encodes an instruction by appending its bytes
-\ to a sink it is handed; this package is the sink every x86_64 code stream
-\ appends into, and the labels that stream branches to. It is the x86_64
-\ counterpart of src/arch/arm64/icode.f, and the seam (src/os/linux-x86-64/
-\ sys.f, proc-watch.f) and the image writer (elf.f) bind to it with
-\ `using X64CODE`.
-\
-\ THE STREAM. ASM-SINK is a src/lib/byte-buffer.f header. The driver owns its
-\ lifetime: `ASM-SINK n BUF:N>BLEN BUF:INIT` before the first byte and
-\ `ASM-SINK BUF:DISPOSE` when the build is done. Beginning another stream
-\ belongs to this layer: ASM-RESET empties the sink and forgets the stream's
-\ labels and sites in one step, so nothing of one stream is patched into the
-\ next. CODE and ASM-LEN read the stream back, and both fail closed on a sink
-\ that is not live.
-\
-\ LABELS AND SITES. LBL makes a label and LBL, binds it where the stream is now.
-\ JMP, JCC, CALL, (rel32), JMP8, JCC8, (rel8) and MOVABS, (mov r64, imm64)
-\ each emit their instruction with a zero field and record the field as a site
-\ of the label. Every field is the last bytes of its instruction, so a rel is
-\ measured from the field's end, the x86 rule. Nothing is patched until
-\ ASM-LINK, which is given the address byte 0 of the stream loads at: a MOVABS
-\ site takes its label's address, that base plus the label's offset (elf.f
-\ ASM-CODE links at VMBASE CODE-OFF +, so an image cannot be written with a
-\ site still zero). ASM-LINK checks every site before it patches any byte, then
-\ forgets the stream's labels and sites as ASM-RESET does. Label numbers count
-\ up across streams and are never reused, so a label held past the link or reset
-\ that ended its stream names no label of the next one.
-\
-\ REFUSALS END THE BUILD. Each one dies with REFUSE-RC, the exit code
-\ src/arch/arm64/icode.f's refusals use: an unresolved label, a rel8 or rel32
-\ delta its field cannot hold, a label bound twice, a label this stream did not
-\ make (one from a linked or reset stream, or one never made), refused where it
-\ is used and before its instruction is emitted, and a site or label past the
-\ end of the stream. The last is the backstop for a driver that empties the sink
-\ with a raw BUF:CLEAR instead of ASM-RESET: its stream's sites outlive the
-\ bytes they describe, and only the ones past the new end can be caught.
-\ test/x86-64-emit.f runs each one.
+\ icode.f - X64CODE, the x86-64 code layer: ASM-SINK, the sink X64ASM
+\ (src/arch/x86-64/asm.f) appends every instruction to, and the labels a stream
+\ branches to; the counterpart of src/arch/arm64/icode.f. The seam
+\ (src/os/linux-x86-64/sys.f, proc-watch.f) and the image writer (elf.f) bind to
+\ it with `using X64CODE`. Refusals end the build with REFUSE-RC, the code
+\ src/arch/arm64/icode.f uses; test/x86-64-emit.f runs each one.
 
 require src/lib/errors.f
 require src/lib/byte-buffer.f
@@ -49,16 +16,12 @@ package X64CODE
 using X64ASM
 public
 
-\ THE TEXT WINDOW. The image writer takes the text segment as this many bytes
-\ past its header page (elf.f MPAGE, which refuses a longer stream), and
-\ src/os/image-bytes.f sizes the image buffer from it, so it is defined before
-\ either loads. It holds the hand-written kernel alone: `_start`, the helpers
-\ and every row. The captured engine is not in it; the boot maps the code
-\ region fixed at the image base (VMBASE) plus REGION-OFF
-\ (src/habu/boot-x64.f), so the window and the read-write tail behind it must
-\ end below that. rel32 reaches the whole image, so no reach bounds the window,
-\ and it takes the allowance ARM64 gives its engine code part
-\ (src/arch/arm64/icode.f ADR-HI): 1 MiB.
+\ The text window holds the hand-written kernel alone (`_start`, the helpers,
+\ every row) past the header page; elf.f MPAGE refuses a longer stream and
+\ src/os/image-bytes.f sizes the image buffer from it. The boot maps the
+\ captured engine's code region at VMBASE plus REGION-OFF (src/habu/boot-x64.f),
+\ so the window and its read-write tail end below that. rel32 reaches the whole
+\ image, so the bound is ARM64's engine code allowance (arm64/icode.f ADR-HI).
 $100000 constant CODE-CAP-BYTES
 
 private
@@ -66,7 +29,11 @@ private
 72 constant REFUSE-RC
 -1 constant UNBOUND
 
-\ A site's kind names its field's width.
+\ JMP, JCC, CALL, (rel32), JMP8, JCC8, (rel8) and MOVABS, (abs64) emit a zero
+\ field, the last bytes of the instruction, and record it as a site of the
+\ label; a rel is measured from the field's end. Label numbers count up across
+\ streams and are never reused, so a label held past its stream's link or reset
+\ names no label of the next one. A site's kind names its field's width.
 0 constant SITE-REL8
 1 constant SITE-REL32
 2 constant SITE-ABS64
@@ -82,6 +49,9 @@ DYNAMIC-BUFFER SITE-KIND n           \ site -> SITE-REL8, SITE-REL32 or SITE-ABS
 
 public
 
+\ The driver owns ASM-SINK's lifetime: `ASM-SINK n BUF:N>BLEN BUF:INIT` before
+\ the first byte and `ASM-SINK BUF:DISPOSE` when the build is done. CODE and
+\ ASM-LEN fail closed on a sink that is not live.
 : ASM-SINK ( -- ptr u8 ) SINK ;
 : CODE ( -- ptr u8 ) SINK BUF:SPAN$ drop ;
 : ASM-LEN ( -- n ) SINK BUF:LEN@ BUF:BLEN>N ;
@@ -116,6 +86,13 @@ private
    ASM-LEN kind SITE-WIDTH - k kind SITE+ ;
 
 \ ---- linking -----------------------------------------------------------------
+\ A MOVABS site takes base plus its label's offset (elf.f ASM-CODE links at
+\ VMBASE CODE-OFF +, so no image is written with a site still zero). Refused: an
+\ unresolved label, a delta its field cannot hold, a label bound twice, a label
+\ this stream did not make (refused at use, before its instruction is emitted),
+\ and a site or label past the end of the stream: the backstop for a driver that
+\ empties the sink with BUF:CLEAR instead of ASM-RESET, catching only the sites
+\ past the new end.
 : ?IN-CODE ( n -- )
    ASM-LEN > if s" x64code: label or site past the end of the code" REFUSE then ;
 
@@ -208,11 +185,9 @@ public
    r 0 >IMM64 SINK ENC-MOV-RI64
    at k SITE-ABS64 SITE+ ;
 
-\ The offset a label of this stream is bound at, before ASM-LINK forgets it: the
-\ number the link adds the load address to. A writer that places bytes beside
-\ the stream reads it there, as src/habu/link-x64.f reads each kernel body's
-\ entry into the dictionary record that names it. An unbound label is refused
-\ as the link refuses it.
+\ Read before ASM-LINK forgets it: the number the link adds the load address
+\ to, as src/habu/link-x64.f reads each kernel body's entry into the record that
+\ names it. An unbound label is refused as the link refuses it.
 : LABEL-AT ( label -- n )
    ?KNOWN LBL-AT @ {: at:n :}
    at UNBOUND = if s" x64code: unresolved label" REFUSE then
@@ -246,14 +221,15 @@ $3145544953343658 constant TEXT-SITE-MAGIC
    code-end U32,  count U32,  TEXT-SITE-MAGIC U64,
    code-end ;
 
-\ Patch every site of the stream for code whose byte 0 loads at base, after
-\ checking all of them, then forget the stream's labels and sites.
+\ base is the address byte 0 of the stream loads at. Every site is checked before
+\ any byte is patched; then the stream's labels and sites are forgotten.
 : ASM-LINK ( n -- ) {: base:n :}
    NSITE @ 0 ?do base i SITE-CHECK loop
    NSITE @ 0 ?do base i SITE-PATCH loop
    FORGET ;
 
-\ Begin another stream: empty the sink and forget this one's labels and sites.
+\ Empties the sink and forgets this stream's labels and sites, so nothing of one
+\ stream is patched into the next.
 : ASM-RESET ( -- )
    SINK BUF:CLEAR
    FORGET ;
