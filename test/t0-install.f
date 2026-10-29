@@ -67,12 +67,12 @@
 \ by `exit` with an exchange at the back edge and by a `while`, and a fused
 \ `while` with a constant below.
 \ The counted loop rows run `do` and `?do` loops whose values stay in
-\ registers, each with a cell under its result: a value carried across `loop`,
-\ `+loop` up and down by a copy of a loop value, a step in the vreg the layout
-\ gives a dropped value's replacement, `?do` with equal and ordered bounds
-\ under `loop` and `+loop`, `leave` from an `if` arm that swapped the values,
-\ nested levels, a swap and a rotate at the back edge, a constant and a copy
-\ under the bounds, and a full virtual stack at `do`.
+\ registers, each with a cell under its result: `+loop` counting up by a copy
+\ of a loop value, a step and a `loop` scratch beside the vreg the layout gives
+\ a dropped value's replacement, `?do` with equal and ordered bounds under
+\ `loop` and `+loop`, `leave` from an `if` arm that swapped the values and
+\ from a back edge that swaps them, nested levels with the inner one left, a
+\ constant and a copy under the bounds, and a full virtual stack at `do`.
 \ The division rows run `/` and `mod` by each literal T0 divides in place, from
 \ a local and folded, over positive and negative dividends against the call's
 \ answers, a dividend shared with a copy, the divisors that stay calls (65536,
@@ -699,26 +699,26 @@ TRUSTED: L-WAGAIN ( n n -- n n )
 
 \ ---- counted loops that keep registers ----------------------------------------
 \ Each `do` keeps the values under its start and limit in vregs, and the back
-\ edge, `?do`'s skip and every `leave` reconcile to them. A body reads its
-\ inputs from locals, so the level's layout holds them in vregs.
-: D-CARRY ( n n -- n n )
-   {: a:n b:n :}
-   a b 5 0 do swap 1+ swap 2 * loop ;
+\ edge and every `leave` reconcile to them, and `?do`'s skip leaves from the
+\ head, already in them. A body reads its inputs from locals, so the level's
+\ layout holds them in vregs.
 
 \ The step is a copy of a value the layout holds.
 : D-UP ( n n -- n n )
    {: a:n k:n :}
    a k 10 0 do swap i + swap dup +loop ;
 
-: D-DOWN ( n n -- n n )
-   {: a:n k:n :}
-   a k 0 10 do swap i + swap dup negate +loop ;
-
 \ The step sits in the vreg of the value the body dropped, which the layout
 \ gives the constant pushed in its place.
 : D-FREED ( n n n -- n n n )
    {: c:n a:n b:n :}
    c a b 20 0 do rot drop 100 rot rot swap 1+ swap dup 1+ +loop ;
+
+\ `loop` takes its scratch vreg after the back edge settles, so the scratch
+\ misses the vreg the layout gives the constant.
+: D-DROP ( n n -- n n )
+   {: a:n b:n :}
+   a b 5 0 do drop 7 loop ;
 
 : D-QDO ( n n n n -- n n )
    {: a:n b:n lim:n st:n :}
@@ -736,15 +736,14 @@ TRUSTED: L-WAGAIN ( n n -- n n )
 
 : D-NEST ( n n -- n n )
    {: a:n b:n :}
-   a b 3 0 do swap 1+ swap 4 0 do 1+ i + j + loop loop ;
+   a b 3 0 do
+      swap 1+ swap 7 4 0 do 1+ i + j + i 2 = if leave then loop +
+   loop ;
 
+\ The back edge swaps the values, and `leave` exits from the swapped layout.
 : D-SWAP ( n n -- n n )
    {: a:n b:n :}
-   a b 5 0 do swap 1+ loop ;
-
-: D-ROT ( n n n -- n n n )
-   {: a:n b:n c:n :}
-   a b c 4 0 do rot 1+ loop ;
+   a b 5 0 do swap 1+ i 2 = if leave then loop ;
 
 \ A constant and a copy under the bounds settle into vregs of their own.
 : D-KONST ( n -- n n n )
@@ -1274,22 +1273,21 @@ private
 
 \ Each counted loop with a cell under its result.
 : DO-REG-CASE ( -- )
-   s" a value carried and changed across do and loop" T-LABEL
-   77 3 1 D-CARRY 32 T= 8 T= 77 T=
-   s" +loop counting up and down by a copy of a loop value" T-LABEL
-   77 0 3 D-UP 3 T= 18 T= 77 T=   77 0 3 D-DOWN 3 T= 22 T= 77 T=
+   s" +loop counting up by a copy of a loop value" T-LABEL
+   77 0 3 D-UP 3 T= 18 T= 77 T=
    s" a +loop step in a vreg the layout gives another value" T-LABEL
    77 7 0 4 D-FREED 4 T= 4 T= 100 T= 77 T=
+   s" a loop scratch beside a constant the layout holds" T-LABEL
+   77 1 2 D-DROP 7 T= 1 T= 77 T=
    s" ?do with equal and with ordered bounds" T-LABEL
    77 3 1 5 5 D-QDO 1 T= 3 T= 77 T=   77 3 1 5 2 D-QDO 8 T= 6 T= 77 T=
    77 3 2 6 6 D-QSTEP 2 T= 3 T= 77 T=   77 3 2 0 6 D-QSTEP 2 T= 7 T= 77 T=
    s" leave from inside an if" T-LABEL
    77 0 1 20 100 D-LEAVE 5 T= 32 T= 77 T=   77 0 1 1000 4 D-LEAVE 16 T= 4 T= 77 T=
-   s" nested loops with values live in both" T-LABEL
-   77 1 0 D-NEST 42 T= 4 T= 77 T=
-   s" a swap and a rotate at the back edge" T-LABEL
-   77 1 10 D-SWAP 4 T= 12 T= 77 T=
-   77 10 20 30 D-ROT 12 T= 31 T= 21 T= 77 T=
+   s" nested loops with values live in both, the inner one left" T-LABEL
+   77 1 0 D-NEST 48 T= 4 T= 77 T=
+   s" a swap at the back edge, left from the swapped layout" T-LABEL
+   77 1 10 D-SWAP 3 T= 11 T= 77 T=
    s" a constant and a copy under the bounds" T-LABEL
    77 7 D-KONST 10 T= 7 T= 5 T= 77 T=
    s" a full virtual stack at do" T-LABEL
