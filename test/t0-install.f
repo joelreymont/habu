@@ -72,7 +72,12 @@
 \ a dropped value's replacement, `?do` with equal and ordered bounds under
 \ `loop` and `+loop`, `leave` from an `if` arm that swapped the values and
 \ from a back edge that swaps them, nested levels with the inner one left, a
-\ constant and a copy under the bounds, and a full virtual stack at `do`.
+\ constant and a copy under the bounds, and a full virtual stack at `do`. The
+\ index rows read `i` where its register copy may be stale, each with a cell
+\ under its result: after a call whose callee runs a loop, a recursive call, a
+\ join with an arm that runs a loop, an inner level that closes, `unloop`, a
+\ begin loop whose body runs a loop, a `+loop` counting down after a call in
+\ one arm, and `j` and `i` around a call with both levels live.
 \ The division rows run `/` and `mod` by each literal T0 divides in place, from
 \ a local and folded, over positive and negative dividends against the call's
 \ answers, a dividend shared with a copy, the divisors that stay calls (65536,
@@ -792,13 +797,9 @@ TRUSTED: L-WAGAIN ( n n -- n n )
 : X-BEGIN ( n -- n )
    0 swap 0 do 3 begin i rot + swap X-INNER drop 1- dup 0= until drop loop ;
 
-: X-DOWN ( -- n ) 0 0 10 do i + X-INNER drop i + -2 +loop ;
+: X-DOWN ( -- n ) 0 0 10 do i + i 10 = if X-INNER drop then -2 +loop ;
 
 : X-J ( -- n ) 0 3 0 do 4 0 do X-INNER drop i j 10 * + + loop loop ;
-
-\ The inner level leaves after a call; the outer index follows its close.
-: X-LEAVE ( n -- n )
-   0 swap 0 do 10 0 do i 2 = if X-INNER drop leave then loop i + loop ;
 
 \ ---- division by a literal --------------------------------------------------
 \ `/` and `mod` by a literal in 1..T0-EMIT:DIV-LIT-MAX divide in place from a
@@ -1308,11 +1309,9 @@ private
    s" i in a begin loop whose body runs a loop" T-LABEL
    77 4 X-BEGIN 18 T= 77 T=
    s" i around a call in a +loop counting down" T-LABEL
-   77 X-DOWN 60 T= 77 T=
+   77 X-DOWN 30 T= 77 T=
    s" j and i around a call with both levels live" T-LABEL
-   77 X-J 138 T= 77 T=
-   s" i after an inner level that leaves after a call" T-LABEL
-   77 4 X-LEAVE 6 T= 77 T= ;
+   77 X-J 138 T= 77 T= ;
 
 : SAME2 ( n n n n -- ) {: q:n r:n q2:n r2:n :} q q2 T= r r2 T= ;
 

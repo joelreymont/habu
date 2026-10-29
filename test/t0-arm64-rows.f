@@ -391,7 +391,8 @@ private
    IN-REGS ;
 
 \ `i` in a straight loop body is one move from x29, the index's cache, and no
-\ word loads the index from its frame cell.
+\ word loads the index from its frame cell. A join clears the cache: the first
+\ `i` past it loads the index from its frame cell, and nothing else does.
 : IDX-CASE ( -- )
    ARCH-A64
    s" IR ( n -- n ) 0 swap 0 do i + loop " BODY
@@ -401,6 +402,10 @@ private
    0 NEMIT:SIZE 0 ?do i WORD@ $FFFFFFE0 and mov = if 1+ then 4 +loop 1 T=
    s" no word loads the index from its frame cell" T-LABEL
    true NEMIT:SIZE 0 ?do i WORD@ $FFFFFFE0 and ldur <> and 4 +loop TTRUE
+   NEMIT:CLEAR
+   s" IR2 ( n -- n ) 0 swap 0 do i 0< if 1+ then i i + + loop " BODY
+   s" only the first i past a join loads the index" T-LABEL
+   0 NEMIT:SIZE 0 ?do i WORD@ $FFFFFFE0 and ldur = if 1+ then 4 +loop 1 T=
    NEMIT:CLEAR ;
 
 \ -rot 2dup 2drop 2swap 2over 2>r 2r@ 2r> over one-cell values move entries

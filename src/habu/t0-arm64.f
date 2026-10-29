@@ -80,13 +80,13 @@
 \ THE INDEX CACHE. The frame cell stays the index's home, since `j` and the
 \ runtime read it, and x29 is a copy written beside every store of it, as
 \ habu2.f J-FRAME keeps it for the JIT. HELD says whether the code emitted
-\ next may read x29: LOOP-PUSH and a loop head set it, and so do `i` and a
-\ step once they load it. Every call clears it, since the callee may run a
-\ loop, and so does every label a branch lands on, MARK and RESOLVE, since a
-\ branch may come from code that wrote x29; LOOP-POP and the start of a unit
-\ clear it too. While it is clear, `i`, `loop` and `+loop` load x29 from the
-\ frame first. A refused token discards the whole emission, and OPEN begins
-\ the next one clear.
+\ next may read x29: a loop head sets it, and so do `i` and a step once they
+\ load it. Every call clears it, since the callee may run a loop, and so does
+\ every label a branch lands on, MARK and RESOLVE, since a branch may come
+\ from code that wrote x29; LOOP-POP and the start of a unit clear it too.
+\ While it is clear, `i`, `loop` and `+loop` load x29 from the frame first. A
+\ refused token discards the whole emission, and OPEN begins the next one
+\ clear.
 
 require src/lib/errors.f
 require src/lib/byte-buffer.f
@@ -780,8 +780,7 @@ DYNAMIC-BUFFER BR-ARG n
    LDEPTH! LTOP
    s REG ADR LIDX-OFF true XFER
    l REG ADR LLIM-OFF true XFER
-   IDX s REG ENC-MOV W
-   1 HELD ! ;
+   IDX s REG ENC-MOV W ;
 
 \ The head binds with x29 holding the index: the entry arrives from LOOP-PUSH
 \ and every back edge from LOOP-NEXT or LOOP-STEP.
