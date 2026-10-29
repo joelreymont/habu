@@ -599,7 +599,7 @@ CLOSE-DEFAULT
 \ after the write, the close and the signature succeed, so a failure never
 \ leaves a partial or unsigned executable where a later run finds it. The
 \ sibling is created exclusively under a per-process name (src/lib/fs-mutate.f
-\ RESERVE-SIBLING), so a concurrent writer of the same output stages its own.
+\ FS:RESERVE-SIBLING), so a concurrent writer of the same output stages its own.
 \ It is chosen after CANON-DATA copies DATA, so the image never holds its name.
 create STAGED FS-PATH-CAP allot
 variable STAGED-U
@@ -617,12 +617,12 @@ variable STAGED-U
 \ Keeps the sibling's path in STAGED and its descriptor in SFD and leaves the
 \ output path, so a refusal leaves the stack as it found it.
 : RESERVE-STAGED ( ptr u8 n -- ptr u8 n )
-   2dup RESERVE-SIBLING SFD ! {: path:ptr size:n :}
+   2dup FS:RESERVE-SIBLING SFD ! {: path:ptr size:n :}
    path STAGED size BYTE-COPY
    size STAGED-U ! ;
 
 \ A sibling that cannot be created (a missing or denied directory, an output
-\ path too long for the sibling's suffix) is an output that cannot be opened,
+\ directory too long for the sibling's path) is an output that cannot be opened,
 \ refused by name like PERSIST's other refusals; nothing exists yet to remove.
 : STAGE ( -- )
    OUT-PATH [: RESERVE-STAGED ;] catch {: open-code:n :} 2drop

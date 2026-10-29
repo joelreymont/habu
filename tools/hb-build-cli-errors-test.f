@@ -1,9 +1,10 @@
 \ hb-build-cli-errors-test.f - checked fixture for tools/hb-build-lib.f: the
 \ errors the hb-build CLI reports - an out root that is a file, as JSON and as
 \ text, a source path too long to hold, an -o too long to replace, in no
-\ directory, naming a directory or no file, with a last name too long for its
-\ sibling, or in a directory it cannot write - and a MAIN whose effect breaks
-\ the application contract, refused by the app-build child and passed through by the CLI.
+\ directory, naming a directory or no file, or in a directory it cannot write -
+\ an -o with a 250-byte last name built and installed, and a MAIN whose effect
+\ breaks the application contract, refused by the app-build child and passed
+\ through by the CLI.
 \ tools/hb-build-test-lib.f lists the other hb-build rows.
 \ Run: bin/hb --load tools/hb-build-cli-errors-test.f
 
@@ -101,16 +102,10 @@ FS-PATH-CAP 1+ BUFFER: HBT-LONG-OUT-BUF
    ou 0 T=
    HBT-ERR erru want wantu T$= ;
 
-\ -o is replaced through a sibling with a longer name (src/lib/fs-mutate.f
-\ SIBLING-PATH-MAX), so the CLI refuses an -o with no room for one by name.
-\ One byte past FS-PATH-CAP is the same refusal.
-: HBT-OUT-TOO-LONG ( n -- )
-   {: u:n :}
-   HBT-AOT-SRC u HBT-LONG-OUT$ S\" hb-build: output path too long\n" HBT-REFUSED ;
-
+\ The CLI refuses by name an -o one byte past FS-PATH-CAP.
 : CLI-OUT-TOO-LONG ( -- )
-   SIBLING-PATH-MAX 1+ HBT-OUT-TOO-LONG
-   FS-PATH-CAP 1+ HBT-OUT-TOO-LONG ;
+   HBT-AOT-SRC FS-PATH-CAP 1+ HBT-LONG-OUT$
+   S\" hb-build: output path too long\n" HBT-REFUSED ;
 
 \ The source path is held in a buffer of FS-PATH-CAP bytes, so the CLI refuses
 \ a longer one by name.
@@ -134,24 +129,14 @@ FS-PATH-CAP 1+ BUFFER: HBT-LONG-OUT-BUF
    HBT-AOT-SRC HBT-ROOT s" " HBT-JOINED$
    S\" hb-build: output path has no file name\n" HBT-REFUSED ;
 
-\ The sibling's name is -o's last name plus a suffix that depends on the seed
-\ it draws, and the host refuses a name past FS-MUT-NAME-MAX bytes, so the CLI
-\ refuses by name a last name with no room for the longest suffix
-\ (src/lib/fs-mutate.f SIBLING-NAME-MAX).
-: HBT-NAME-TOO-LONG ( n -- )
-   {: u:n :}
-   HBT-AOT-SRC u HBT-LONG-NAME$
-   S\" hb-build: output file name too long\n" HBT-REFUSED ;
-
-: CLI-OUT-NAME-TOO-LONG ( -- )
-   SIBLING-NAME-MAX 1+ HBT-NAME-TOO-LONG ;
-
-\ A last name of exactly SIBLING-NAME-MAX bytes is built and installed.
-: CLI-OUT-NAME-MAX ( -- )
+\ The sibling's name never carries -o's, so the host alone judges the last
+\ name: a 250-byte one, with room for its 4-byte `.map` beside it, passes the
+\ argument check and is built and installed.
+: CLI-OUT-LONG-NAME ( -- )
    HBT-ARGV-BASE
    HBT-AOT-SRC >LEN PROC-ARGV+
    s" -o" >LEN PROC-ARGV+
-   SIBLING-NAME-MAX HBT-LONG-NAME$ {: out:ptr outu:n :}
+   250 HBT-LONG-NAME$ {: out:ptr outu:n :}
    out outu >LEN PROC-ARGV+
    HBT-RUN-HB-BUILD 0 T= 2drop
    out outu FILE? TTRUE ;
@@ -226,8 +211,7 @@ public
    CLI-SRC-TOO-LONG
    CLI-OUT-NO-DIR
    CLI-OUT-NOT-FILE
-   CLI-OUT-NAME-TOO-LONG
-   CLI-OUT-NAME-MAX
+   CLI-OUT-LONG-NAME
    CLI-OUT-READ-ONLY
    HBT-BAD-MAIN-EFFECTS
    CLEANUP-RUN

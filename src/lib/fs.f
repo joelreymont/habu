@@ -17,8 +17,10 @@
 \ successful one, replaces it, and a nested call replaces the outer call's.
 \ A semantic refusal (path capacity, a malformed path) leaves zero. The
 \ guarantee covers fs.f, fs-list.f, fs-anchored.f and fs-mutate.f's
-\ REMOVE-TREE; the identity, lock and other mutation
-\ helpers do not join it. The throws stay the primary contract.
+\ REMOVE-TREE, MKDIR-MODE, MAKE-DIR, MAKE-DIRS, ATOMIC-WRITE-FILE,
+\ FS:RESERVE-SIBLING and REPLACE-STAGED, whose cleanup after a failure keeps
+\ the first failure's cause; the identity, lock and other mutation helpers do
+\ not join it. The throws stay the primary contract.
 \
 \ THE WALK visits regular files only, depth-first, in the order the platform
 \ directory stream returns (a caller that needs lexical order sorts); it skips
@@ -565,6 +567,14 @@ FUNCTION: FS-STAT-AT-CALL fstatat ( n ptr u8 ptr u8 n -- i32 )
 : FS-ERRNO-FAIL ( n -- )
    FFI:ERRNO data-base FS-ABI:ERRNO-OFF + ! throw ;
 
+package FS
+public
+\ Throw n1 with n2 as this task's FS:ERRNO: a cause read before cleanup whose
+\ own primitives replaced it.
+: CAUSE-FAIL ( n n -- )
+   data-base FS-ABI:ERRNO-OFF + ! throw ;
+;package
+
 \ Read FS-IO-FD into dst until cap bytes or end of file; the count read. A read
 \ error closes the descriptor and throws E-FS-IO.
 : FS-READ-FILL ( ptr u8 n -- n ) {: dst:ptr cap :}
@@ -709,6 +719,16 @@ FUNCTION: FS-UNLINK-AT-CALL unlinkat ( n ptr u8 n -- i32 ) ;FUNCTION
    HB-TARGET-MACOS? if $100000 $100 or $1000000 or exit then
    HB-TARGET-LINUX-X86-64? if $10000 $20000 or $80000 or exit then
    $4000 $8000 or $80000 or ;
+
+\ openat's flags for a directory used only as later calls' directory, which
+\ needs search permission, not read: FS-OPEN-DIR-FLAGS with Darwin's O_SEARCH
+\ (O_EXEC $40000000 with O_DIRECTORY, xnu bsd/sys/fcntl.h) or Linux's O_PATH
+\ $200000 (include/uapi/asm-generic/fcntl.h, which arm64 does not override).
+package FS
+: SEARCH-DIR-FLAGS ( -- n )
+   HB-TARGET-MACOS? if $40000000 FS-OPEN-DIR-FLAGS or exit then
+   $200000 FS-OPEN-DIR-FLAGS or ;
+;package
 
 : FS-DIRENT-RECLEN ( ptr u8 -- n )
    FS-DIRENT-RECLEN-OFF BYTE+ FS-U16@ ;

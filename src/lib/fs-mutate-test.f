@@ -14,6 +14,15 @@ require src/lib/test/outcome.f                      \ the TMPDIR child's outcome
 require src/lib/task.f                              \ the two-task rows at the end
 require src/lib/test/wait.f                         \ a worker's deadline at the join
 
+\ White-box access: it reopens FS so the sibling naming and the staged reserve,
+\ which no public word exposes alone, are reachable here. The definitions land
+\ in FS-TEST, so FS's public surface gains nothing for being tested.
+package FS
+: FS-TEST:BUILD-SIBLING ( ptr u8 n n n -- ptr u8 n ) BUILD-SIBLING ;
+: FS-TEST:ATOMIC-OPEN-DIR ( ptr u8 n -- n ) ATOMIC-OPEN-DIR ;
+: FS-TEST:ATOMIC-RESERVE-AT ( n n n -- n n ) ATOMIC-RESERVE-AT ;
+;package
+
 variable FMT-ROOT-U
 variable FMT-REMOVE-U
 variable FMT-RENAME-SRC-U
@@ -412,8 +421,13 @@ FS-PATH-CAP SPAN-BUFFER: FMT-LINK-READ-BUF     \ READ-LINK's destination is a sp
 : FMT-CLEANUP-PATH-TOO-LONG ( -- )
    FMT-LONG$ CLEANUP+ ;
 
-: FMT-ATOMIC-SUFFIX-NO-ROOM ( -- )
+package FS-TEST
+public
+\ A relative destination of FS-PATH-CAP bytes, whose absolute spelling under
+\ the working directory cannot fit FS-PATH-CAP.
+: ATOMIC-TARGET-NO-ROOM ( -- )
    FMT-FULL$ s" x" ATOMIC-WRITE-FILE ;
+;package
 
 \ The OS's canonical spelling of an existing path, in FMT-REAL-BUF.
 : FMT-REAL ( ptr u8 n -- ptr u8 n )
@@ -630,32 +644,64 @@ FS-PATH-CAP SPAN-BUFFER: FMT-LINK-READ-BUF     \ READ-LINK's destination is a sp
    FMT-PARENT-A REMOVE-DIR
    FMT-PARENT-B REMOVE-DIR ;
 
-: FMT-ATOMIC-TEMP ( n n -- ptr u8 n ) {: seed:n attempt:n :}
-   FMT-ATOMIC-PATH seed attempt FS-MUT-BUILD-ATOMIC-TMP ;
+package FS-TEST
+public
+\ The sibling an atomic write of path stages, for its seed and attempt.
+: SIBLING ( ptr u8 n n n -- ptr u8 n ) {: path:ptr pathu seed:n attempt:n :}
+   path path pathu FS:ATOMIC-BASE-OFF seed attempt BUILD-SIBLING ;
+
+: ATOMIC-TEMP ( n n -- ptr u8 n )
+   FMT-ATOMIC-PATH 2swap SIBLING ;
+;package
 
 : FMT-TEST-ATOMIC-COLLISION ( -- )
-   FMT-ATOMIC-SEED 0 FMT-ATOMIC-TEMP
+   FMT-ATOMIC-SEED 0 FS-TEST:ATOMIC-TEMP
    FMT-COLLIDE-BUF FMT-COLLIDE-U FMT-COPY!
    FMT-COLLIDE s" unrelated" WRITE-ALL
-   FMT-ATOMIC-PATH s" replacement" FMT-ATOMIC-SEED FS-MUT-ATOMIC-WRITE-SEED
+   FMT-ATOMIC-PATH s" replacement" FMT-ATOMIC-SEED FS:ATOMIC-WRITE-SEED
    FMT-ATOMIC-PATH FMT-READ-BUF 64 READ-ALL 11 T=
    FMT-READ-BUF 11 s" replacement" T$=
    FMT-COLLIDE FMT-READ-BUF 64 READ-ALL 9 T=
    FMT-READ-BUF 9 s" unrelated" T$=
-   FMT-ATOMIC-SEED 1 FMT-ATOMIC-TEMP
+   FMT-ATOMIC-SEED 1 FS-TEST:ATOMIC-TEMP
    FMT-UNIQUE-BUF FMT-UNIQUE-U FMT-COPY!
    FMT-UNIQUE EXISTS? TFALSE
    FMT-COLLIDE REMOVE-FILE ;
 
 : FMT-TEST-ATOMIC-FAILURE ( -- )
    FMT-MKDIR-PATH MAKE-DIR
-   FMT-MKDIR-PATH FMT-ATOMIC-FAIL-SEED 0 FS-MUT-BUILD-ATOMIC-TMP
+   FMT-MKDIR-PATH FMT-ATOMIC-FAIL-SEED 0 FS-TEST:SIBLING
    FMT-UNIQUE-BUF FMT-UNIQUE-U FMT-COPY!
-   [: FMT-MKDIR-PATH s" replacement" FMT-ATOMIC-FAIL-SEED FS-MUT-ATOMIC-WRITE-SEED ;]
+   [: FMT-MKDIR-PATH s" replacement" FMT-ATOMIC-FAIL-SEED FS:ATOMIC-WRITE-SEED ;]
    E-FS-IO TTHROWSQ
    FMT-MKDIR-PATH DIR? TTRUE
    FMT-UNIQUE EXISTS? TFALSE
    FMT-MKDIR-PATH REMOVE-DIR ;
+
+package FS-TEST
+$C0 constant MODE-0300                  \ writable and searchable, not listable
+create DROP-BOX-BUF FS-PATH-CAP allot
+variable DROP-BOX-U
+
+: DROP-BOX$ ( -- ptr u8 n )
+   DROP-BOX-BUF DROP-BOX-U @ ;
+
+public
+\ A directory its owner may write and search but not list, as a drop box is,
+\ takes an atomic write. The mode is restored before any assert; the empty
+\ directory's removal is what shows no sibling stayed.
+: ATOMIC-SEARCH-DIR ( -- )
+   FMT-MKDIR-PATH MAKE-DIR
+   FMT-MKDIR-PATH s" drop.txt" DROP-BOX-BUF JOIN-PATH DROP-BOX-U !
+   FMT-MKDIR-PATH MODE-0300 CHMOD-MODE
+   [: DROP-BOX$ s" dropped" ATOMIC-WRITE-FILE ;] catch
+   FMT-MKDIR-PATH FS-MUT-MODE-DIR CHMOD-MODE
+   0 T=
+   DROP-BOX$ FMT-READ-BUF 64 READ-ALL 7 T=
+   FMT-READ-BUF 7 s" dropped" T$=
+   DROP-BOX$ REMOVE-FILE
+   FMT-MKDIR-PATH REMOVE-DIR ;
+;package
 
 : FMT-TEST-DIRS ( -- )
    FMT-MKDIR-PATH MAKE-DIR
@@ -666,9 +712,8 @@ FS-PATH-CAP SPAN-BUFFER: FMT-LINK-READ-BUF     \ READ-LINK's destination is a sp
    FMT-NEST-C DIR? TTRUE ;
 
 \ Under a parent it cannot write, MAKE-DIRS keeps the folder already there and
-\ fails the one it must make with mkdir's own errno, EACCES. The engine's mkdir
-\ and stat primitives set no errno, so through them FFI:ERRNO read whatever the
-\ last libc call left. Each MAKE-DIRS under the read-only parent is caught so
+\ fails the one it must make with FS:ERRNO mkdir's own cause, EACCES, which the
+\ mode restored after it does not replace. Each MAKE-DIRS under the read-only parent is caught so
 \ the mode comes back before an assert. The first runs while FMT-NEST-C is still
 \ there, so a throw from it would also leave a folder the exit cleanup cannot
 \ remove.
@@ -679,11 +724,60 @@ FS-PATH-CAP SPAN-BUFFER: FMT-LINK-READ-BUF     \ READ-LINK's destination is a sp
    0 T=
    FMT-NEST-C REMOVE-DIR
    FMT-NEST-B FMT-MODE-0555 CHMOD-MODE
-   [: FMT-NEST-C MAKE-DIRS ;] catch FFI:ERRNO {: code:n cause:n :}
+   [: FMT-NEST-C MAKE-DIRS ;] catch FS:ERRNO {: code:n cause:n :}
    FMT-NEST-B FS-MUT-MODE-DIR CHMOD-MODE
    code E-FS-IO T=
    cause FMT-EACCES T=
    FMT-NEST-C DIR? TFALSE ;
+
+package FS-TEST
+create NAMED-BUF FS-PATH-CAP allot
+
+\ The test root joined with a last name of n bytes, all `n`.
+: NAMED$ ( n -- ptr u8 n )
+   {: n:n :}
+   FMT-ROOT$ {: root:ptr rootu:n :}
+   root NAMED-BUF rootu BYTE-COPY
+   FS-MUT-SLASH NAMED-BUF rootu + c!
+   rootu 1+ n + rootu 1+ ?do 110 NAMED-BUF i + c! loop
+   NAMED-BUF rootu 1+ n + ;
+
+public
+\ Past NAME_MAX, the host refuses the component: E-FS-IO with its cause.
+: DIRS-NAME-TOO-LONG ( -- )
+   [: 300 NAMED$ MAKE-DIRS ;] catch FS:ERRNO {: code:n cause:n :}
+   code E-FS-IO T=
+   cause FS:ENAMETOOLONG T= ;
+
+\ The sibling's name never carries the destination's, so any last name the host
+\ accepts, up to NAME_MAX, is written, and no sibling stays behind.
+: ATOMIC-NAMED ( n -- )
+   {: n:n :}
+   n NAMED$ s" long" FMT-ATOMIC-SEED FS:ATOMIC-WRITE-SEED
+   n NAMED$ FMT-READ-BUF 64 READ-ALL 4 T=
+   FMT-READ-BUF 4 s" long" T$=
+   n NAMED$ FMT-ATOMIC-SEED 0 SIBLING EXISTS? TFALSE
+   n NAMED$ REMOVE-FILE ;
+
+\ A last name past NAME_MAX is the host's refusal, named by its cause; the
+\ sibling it staged goes.
+: ATOMIC-NAME-TOO-LONG ( -- )
+   [: 300 NAMED$ s" x" FMT-ATOMIC-SEED FS:ATOMIC-WRITE-SEED ;] catch
+   FS:ERRNO {: code:n cause:n :}
+   code E-FS-IO T=
+   cause FS:ENAMETOOLONG T=
+   300 NAMED$ FMT-ATOMIC-SEED 0 SIBLING EXISTS? TFALSE ;
+
+\ Only the destination's own path meets FS-PATH-CAP: one exactly that long,
+\ with a 1-byte last name, is written.
+: ATOMIC-PATH-CAP ( -- )
+   FS-PATH-CAP 2 - FMT-DEEP-DIR {: dir:ptr diru:n :}
+   FS-MUT-SLASH dir diru + c!
+   [char] x dir diru 1+ + c!
+   dir FS-PATH-CAP s" capped" ATOMIC-WRITE-FILE
+   dir FS-PATH-CAP FMT-READ-BUF 64 READ-ALL 6 T=
+   FMT-READ-BUF 6 s" capped" T$= ;
+;package
 
 : FMT-TEST-TEMPS ( -- )
    FMT-TEMP-BASE s" one" FS:MKTEMP-DIR-IN 2dup DIR? TTRUE CLEANUP-DIR+
@@ -1426,14 +1520,18 @@ create P-W5DF FS-PATH-CAP allot variable P-W5DF-U
 : STAGE-RUN ( -- )
    AW$ s" old" WRITE-ALL
    AW$ FMT-MODE-0640 CHMOD-MODE
-   AW$ STAGE-SEED FS-MUT-ATOMIC-START {: dst:ptr dstu mode temp:ptr tempu fd :}
+   AW$ FS-MUT-ATOMIC-OLD-MODE {: mode :}
+   AW$ FS-MUT-ATOMIC-TARGET FS-TEST:ATOMIC-OPEN-DIR {: dir :}
+   dir STAGE-SEED FS-MUT-MODE-PRIVATE-FILE FS-TEST:ATOMIC-RESERVE-AT {: fd :} drop
+   AW$ STAGE-SEED 0 FS-TEST:SIBLING {: temp:ptr tempu :}
    s" the reserved replacement is private before writing" T-LABEL
    temp tempu STAT-MODE FS-MUT-MODE-PERM and FMT-MODE-0600 T=
    temp tempu FILE-SIZE 0 T=
-   dst dstu s" old" FILE-IS?
+   AW$ s" old" FILE-IS?
    mode FMT-MODE-0640 T=
    AW$ STAT-MODE FS-MUT-MODE-PERM and FMT-MODE-0640 T=
    fd FS-ATOMIC:CLOSE-FD 0 T=
+   dir close
    temp tempu REMOVE-FILE
    AW$ s" replacement" ATOMIC-WRITE-FILE
    s" the published replacement preserves content and mode" T-LABEL
@@ -1760,9 +1858,15 @@ public
    FMT-TEST-STAGED-CONTEXT
    FMT-TEST-ATOMIC-COLLISION
    FMT-TEST-ATOMIC-FAILURE
+   FS-TEST:ATOMIC-SEARCH-DIR
    FMT-TEST-STAGED-PRIMARY
    FMT-TEST-DIRS
    FMT-TEST-DIRS-DENIED
+   FS-TEST:DIRS-NAME-TOO-LONG
+   250 FS-TEST:ATOMIC-NAMED
+   255 FS-TEST:ATOMIC-NAMED
+   FS-TEST:ATOMIC-NAME-TOO-LONG
+   FS-TEST:ATOMIC-PATH-CAP
    FMT-TEST-TEMPS
    FMT-TEST-TEMP-COLLISION
    FMT-TEST-TEMP-SLASH
@@ -1783,7 +1887,7 @@ public
    [: FMT-COPY-CAP-PAST-BUFFER ;] E-SPAN-RANGE TTHROWSQ
    FMT-LONG!
    [: FMT-CLEANUP-PATH-TOO-LONG ;] E-SPAN-CAPACITY TTHROWSQ
-   [: FMT-ATOMIC-SUFFIX-NO-ROOM ;] E-SPAN-CAPACITY TTHROWSQ
+   [: FS-TEST:ATOMIC-TARGET-NO-ROOM ;] E-SPAN-CAPACITY TTHROWSQ
    [: FMT-TEMP-BASE-NO-ROOM ;] E-SPAN-CAPACITY TTHROWSQ
    [: FMT-REMOVE-TREE-EMPTY ;] E-FS-PATH TTHROWSQ
    FMT-TEST-REMOVE-TREE

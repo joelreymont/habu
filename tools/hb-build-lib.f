@@ -174,21 +174,17 @@ variable HBB-APP-BUILDER-U
    u FS-PATH-CAP > if s" hb-build: source path too long" HBB-USAGE-RC die then
    a u HBB-SRC! ;
 
-\ -o is replaced by renaming over it a sibling made in its directory, named
-\ its last name plus a suffix (src/lib/fs-mutate.f REPLACE-STAGED). Before it
-\ builds anything the CLI refuses by name an -o with no room for that sibling,
-\ longer than SIBLING-PATH-MAX bytes or with a last name empty or longer than
-\ SIBLING-NAME-MAX, one in a directory that is not there, and one that is a
-\ directory, which a rename cannot replace. An -o with no directory part goes
-\ in the working directory.
+\ -o is replaced by renaming over it a sibling made in its directory
+\ (src/lib/fs-mutate.f REPLACE-STAGED). Before it builds anything the CLI
+\ refuses by name an -o longer than FS-PATH-CAP bytes, one with no last name,
+\ one in a directory that is not there, and one that is a directory, which a
+\ rename cannot replace. The host alone judges the last name's length. An -o
+\ with no directory part goes in the working directory.
 : HBB-OUT-ARG! ( ptr u8 n -- )
    {: a:ptr u:n :}
-   u SIBLING-PATH-MAX > if s" hb-build: output path too long" HBB-USAGE-RC die then
+   u FS-PATH-CAP > if s" hb-build: output path too long" HBB-USAGE-RC die then
    a u BASENAME nip {: nameu:n :}
    nameu 0= if s" hb-build: output path has no file name" HBB-USAGE-RC die then
-   nameu SIBLING-NAME-MAX > if
-      s" hb-build: output file name too long" HBB-USAGE-RC die
-   then
    u nameu - {: diru:n :}
    diru 0 > if
       a diru DIR? 0= if s" hb-build: no such output directory" HBB-USAGE-RC die then
@@ -231,13 +227,13 @@ variable HBB-APP-BUILDER-U
 : HBB-REPL-DEPS-SUFFIX$ ( -- ptr u8 n )
    s" .hb-deps" ;
 
-\ A sidecar sits beside the output, but is optional for output names without
-\ enough room for the suffix and the atomic writer's own temporary suffix.
+\ A sidecar sits beside the output, but is optional for an output path
+\ without room in FS-PATH-CAP for the suffix. A sidecar name the host refuses
+\ fails its write.
 : HBB-REPL-DEPS-PATH? ( -- bool )
    HBB-OUT$ {: a:ptr u:n :}
    HBB-REPL-DEPS-SUFFIX$ {: suffix:ptr suffixu:n :}
-   u suffixu + SIBLING-PATH-MAX > if HBB-FALSE exit then
-   a u BASENAME nip suffixu + SIBLING-NAME-MAX > if HBB-FALSE exit then
+   u suffixu + FS-PATH-CAP > if HBB-FALSE exit then
    a HBB-REPL-DEPS-PATH u BYTE-COPY
    suffix HBB-REPL-DEPS-PATH u + suffixu BYTE-COPY
    u suffixu + HBB-REPL-DEPS-U !
@@ -801,7 +797,7 @@ defer HBB-PAIR-EXE-FILL ( ptr u8 n -- )
 
 : HBB-PAIR-RESERVE ( ptr u8 ptr n -- )
    {: dst:ptr up:ptr :}
-   HBB-MAP-DST$ RESERVE-SIBLING {: a:ptr u:n fd:n :}
+   HBB-MAP-DST$ FS:RESERVE-SIBLING {: a:ptr u:n fd:n :}
    a u dst up HBB-COPY-PATH!
    fd FS-ATOMIC:CLOSE-FD 0<> if E-FS-IO throw then
    dst up @ CLEANUP+ ;

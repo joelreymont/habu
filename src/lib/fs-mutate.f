@@ -2,8 +2,8 @@
 \
 \ STORAGE CLASS. TASK-LOCAL for the paths one call stages: the second NUL-padded
 \ path FS-MUT-PATHZ2-BUF (RENAME-FILE's, MAKE-SYMLINK's and the stream copy's
-\ destination), the unique `.tmp-*` sibling ATOMIC-WRITE-FILE, RESERVE-SIBLING
-\ and REPLACE-STAGED name, FS-MUT-ATOMIC-PATH, and
+\ destination), the unique `.tmp-*` sibling ATOMIC-WRITE-FILE,
+\ FS:RESERVE-SIBLING and REPLACE-STAGED name, FS-MUT-ATOMIC-PATH, and
 \ FS:MKTEMP-DIR-IN's and FS:MKTEMP's FS-MUT-TMP-PATH - the one this module
 \ RETURNS a span into - are the FS-MUT-ABI band of the per-task DATA region, so
 \ two tasks renaming, symlinking, writing atomically or making a temp at once
@@ -23,14 +23,18 @@
 \
 \ CONTRACT. Public names avoid the primitives' (the dictionary is
 \ case-insensitive): MAKE-DIR, REMOVE-DIR, MAKE-DIRS, not mkdir or rmdir. After
-\ an E-FS-IO from MAKE-DIR, MKDIR-MODE or MAKE-DIRS, FFI:ERRNO names libc's
-\ cause; MAKE-DIRS keeps a component mkdir finds existing (EEXIST) only when it
+\ an E-FS-IO from MAKE-DIR, MKDIR-MODE or MAKE-DIRS, FS:ERRNO names the host's
+\ cause (fs.f states the guarantee); MAKE-DIRS keeps a component mkdir finds existing (EEXIST) only when it
 \ is a directory or a link to one. COPY-FILE refuses a file past the caller's
 \ capacity with E-FS-CAPACITY instead of truncating. REPLACE-STAGED leaves the
 \ destination naming its old file or the whole new one: the sibling is removed
-\ if the filler or the rename throws or the filler dies. A destination longer
-\ than SIBLING-PATH-MAX is E-SPAN-CAPACITY; one whose last name is longer than
-\ SIBLING-NAME-MAX gives a sibling the host refuses, E-FS-OPEN. REMOVE-TREE
+\ if the filler or the rename throws or the filler dies. Every sibling is
+\ `<dir>/.tmp-<seed>-<attempt>`, whatever the destination's name.
+\ ATOMIC-WRITE-FILE names its sibling and destination relative to the
+\ destination's directory descriptor, so only the destination's own path meets
+\ FS-PATH-CAP and the host alone judges its last name. FS:RESERVE-SIBLING
+\ answers a path, so a directory with no room for one in FS-PATH-CAP is
+\ E-SPAN-CAPACITY. REMOVE-TREE
 \ unlinks a symlink to a directory and never descends into it, a root spelled
 \ with a trailing slash (`link/`, `lfile/`, `dang/`) included, and throws on
 \ any partial failure. Its root path must fit FS-PATH-CAP; below the root each
@@ -253,7 +257,7 @@ public
    target targetu FS-PATHZ link linku FS-MUT-PATHZ2 symlink 0 < if E-FS-IO throw then ;
 
 \ mkdir(2) is bound through libc, the way FS-NOREPLACE binds link(2), so a
-\ failure leaves its errno for the caller's FFI:ERRNO: the engine primitive
+\ failure leaves its errno in FFI:ERRNO for FS-ERRNO-FAIL: the engine primitive
 \ collapses every failure to a bare -1 (src/habu/habu1.f's errno rule).
 package FS-MKDIR
 PROCESS-SYMBOLS
@@ -264,7 +268,7 @@ public
 ;package
 
 : MKDIR-MODE ( ptr u8 n n -- ) {: a:ptr u mode :}
-   a u FS-PATHZ mode FS-MKDIR:MADE? 0= if E-FS-IO throw then ;
+   a u FS-PATHZ mode FS-MKDIR:MADE? 0= if E-FS-IO FS-ERRNO-FAIL then ;
 
 : MAKE-DIR ( ptr u8 n -- )
    FS-MUT-MODE-DIR MKDIR-MODE ;
@@ -377,14 +381,15 @@ public
    a u FS-WALK-HANDLE-BYTES MEM:BYTES-ALLOC-LEN [: FS-MUT-REMOVE-SCOPE ;] MEM:WITH-BYTES ;
 
 \ Only EEXIST can mean the folder is already there, so only it is checked
-\ with a stat. Any other failure throws at once, mkdir's errno intact.
+\ with a stat. Any other failure throws at once with mkdir's cause; a
+\ non-directory in the way throws with EEXIST, which the stat replaced.
 : FS-MUT-MKDIR-ONE ( ptr u8 n -- ) {: a:ptr u :}
    a u FS-PATHZ FS-MUT-MODE-DIR FS-MKDIR:MADE? if exit then
-   FFI:ERRNO FS-MUT-EXISTS <> if E-FS-IO throw then
-   a u DIR? 0= if E-FS-IO throw then ;
+   FFI:ERRNO FS-MUT-EXISTS <> if E-FS-IO FS-ERRNO-FAIL then
+   a u DIR? 0= if E-FS-IO FS-MUT-EXISTS FS:CAUSE-FAIL then ;
 
 : MAKE-DIRS ( ptr u8 n -- ) {: a:ptr u :}
-   u 0 <= if E-FS-PATH throw then
+   u 0 <= if FS-CAUSE-CLEAR E-FS-PATH throw then
    1 begin dup u < while
       a over + c@ FS-MUT-SLASH = if
          dup 0 > if a over FS-MUT-MKDIR-ONE then
@@ -488,21 +493,6 @@ public
    n 10 < if 1 exit then
    n 10 / RECURSE 1+ ;
 
-\ The longest `.tmp-<seed>-<attempt>` suffix RESERVE-SIBLING and
-\ ATOMIC-WRITE-FILE append to a path: the largest seed, the largest
-\ nonnegative cell `-1 1 rshift`, and the last attempt, so whether a path has
-\ room for its sibling never depends on the seed it drew.
-6 -1 1 rshift FS-MUT-U-DIGITS +
-FS-MUT-ATOMIC-RETRIES 1- FS-MUT-U-DIGITS + constant FS-MUT-SIBLING-SUFFIX-MAX
-
-\ NAME_MAX, the longest name a directory holds on Linux and macOS. The host
-\ refuses a longer one, so a sibling past it fails to open (E-FS-OPEN).
-255 constant FS-MUT-NAME-MAX
-
-\ The longest path, and the longest last name, a sibling still fits beside.
-FS-PATH-CAP FS-MUT-SIBLING-SUFFIX-MAX - constant SIBLING-PATH-MAX
-FS-MUT-NAME-MAX FS-MUT-SIBLING-SUFFIX-MAX - constant SIBLING-NAME-MAX
-
 : FS-MUT-ATOMIC-U+ ( n SPAN:span<u8> n -- n ) {: value:n dst off:n :}
    value 0 < if E-FS-PATH throw then
    value 10 >= if value 10 / dst off RECURSE else off then {: next:n :}
@@ -513,16 +503,46 @@ FS-MUT-NAME-MAX FS-MUT-SIBLING-SUFFIX-MAX - constant SIBLING-NAME-MAX
    a u EXISTS? if 0 0= exit then
    a u SYMLINK? ;
 
-: FS-MUT-BUILD-ATOMIC-TMP ( ptr u8 n n n -- ptr u8 n ) {: path:ptr pathu seed attempt :}
-   pathu 0 < if E-FS-PATH throw then
-   pathu SIBLING-PATH-MAX > if E-SPAN-CAPACITY throw then
+package FS
+\ The longest `.tmp-<seed>-<attempt>` name FS:RESERVE-SIBLING and
+\ ATOMIC-WRITE-FILE give a sibling: the largest seed, the largest nonnegative
+\ cell `-1 1 rshift`, and the last attempt, so whether a directory has room for
+\ its sibling never depends on the seed it drew.
+6 -1 1 rshift FS-MUT-U-DIGITS +
+FS-MUT-ATOMIC-RETRIES 1- FS-MUT-U-DIGITS + constant SIBLING-LEN-MAX
+
+\ The sibling's name ATOMIC-RESERVE-AT staged, NUL-terminated.
+: SIBLING-Z ( -- ptr u8 )
+   FS-MUT-ATOMIC-PATH SPAN:$ drop ;
+
+public
+\ Index of the last component, after its preceding slash, or zero when there
+\ is no slash.
+: ATOMIC-BASE-OFF ( ptr u8 n -- n )
+   {: path:ptr pathu:n :}
+   pathu begin dup 0 > while
+      dup 1 - path + c@ FS-MUT-SLASH = if exit then
+      1-
+   repeat ;
+
+private
+\ `<prefix>.tmp-<seed>-<attempt>` in this task's FS-MUT-ATOMIC-PATH. The prefix
+\ is a destination's directory with its slash, or empty for a name relative to
+\ that directory's descriptor. A prefix that leaves no room within FS-PATH-CAP
+\ for the longest sibling name is E-SPAN-CAPACITY whatever the seed, a semantic
+\ refusal.
+: BUILD-SIBLING ( ptr u8 n n n -- ptr u8 n ) {: pre:ptr preu seed attempt :}
+   FS-CAUSE-CLEAR
+   preu 0 < if E-FS-PATH throw then
+   preu SIBLING-LEN-MAX + FS-PATH-CAP > if E-SPAN-CAPACITY throw then
    FS-MUT-ATOMIC-PATH {: dst :}
-   path pathu dst SPAN:COPY
-   s" .tmp-" dst pathu SPAN:SKIP SPAN:COPY
-   seed dst pathu 5 + FS-MUT-ATOMIC-U+ {: off:n :}
+   pre preu dst SPAN:COPY
+   s" .tmp-" dst preu SPAN:SKIP SPAN:COPY
+   seed dst preu 5 + FS-MUT-ATOMIC-U+ {: off:n :}
    FS-MUT-DASH dst off SPAN:U8!
    attempt dst off 1+ FS-MUT-ATOMIC-U+ {: u:n :}
    dst u SPAN:TAKE SPAN:$ ;
+;package
 
 \ Habu's portable `open` flags do not include O_EXCL. This narrow libc call
 \ takes the host's exclusive-create flags, so creation stays one syscall.
@@ -552,23 +572,14 @@ public
 ;package
 
 \ Create and open one candidate with the exclusive flags and mode: its
-\ descriptor, -1 when the name is taken, E-FS-OPEN for any other refusal.
+\ descriptor, -1 when the name is taken, E-FS-OPEN with the host's cause for
+\ any other refusal.
 : FS-MUT-OPEN-CANDIDATE ( ptr u8 n n n -- n )
    {: path:ptr pathu flags mode :}
    path pathu FS-PATHZ flags mode FS-MUT-OPEN-CALL {: fd :}
    fd 0 >= if fd exit then
-   path pathu FS-MUT-PATH-COLLISION? if -1 exit then
-   E-FS-OPEN throw ;
-
-: FS-MUT-ATOMIC-RESERVE ( ptr u8 n n n -- ptr u8 n n ) {: path:ptr pathu seed mode :}
-   0 begin dup FS-MUT-ATOMIC-RETRIES < while
-      dup {: attempt:n :}
-      path pathu seed attempt FS-MUT-BUILD-ATOMIC-TMP
-      2dup FS-MUT-EXCL-WRITE-FLAGS mode FS-MUT-OPEN-CANDIDATE {: fd:n :}
-      fd 0 >= if rot drop fd exit then
-      2drop 1+
-   repeat drop
-   E-FS-IO throw ;
+   FFI:ERRNO FS-MUT-EXISTS = if -1 exit then
+   E-FS-OPEN FS-ERRNO-FAIL ;
 
 : FS-MUT-ATOMIC-WRITE-FD ( n ptr u8 n -- ) {: fd src:ptr srcu :}
    0 begin dup srcu < while
@@ -579,28 +590,8 @@ public
       off wr +
    repeat drop ;
 
-: FS-MUT-ATOMIC-WRITE-RUN ( n ptr u8 n ptr u8 n n -- n ptr u8 n ptr u8 n n )
-   {: fd src:ptr srcu temp:ptr tempu mode :}
-   fd src srcu FS-MUT-ATOMIC-WRITE-FD
-   mode 0 >= if temp tempu mode CHMOD-MODE then
-   fd src srcu temp tempu mode ;
-
-: FS-MUT-ATOMIC-RENAME-RUN ( ptr u8 n ptr u8 n -- ptr u8 n ptr u8 n )
-   {: temp:ptr tempu path:ptr pathu :}
-   temp tempu path pathu RENAME-FILE
-   temp tempu path pathu ;
-
 : FS-MUT-ATOMIC-CLEAN-TEMP ( ptr u8 n -- ) {: temp:ptr tempu :}
    temp tempu FS-MUT-PATH-COLLISION? if temp tempu REMOVE-FILE then ;
-
-\ Index of the last component, after its preceding slash, or zero when there
-\ is no slash. The source is already a checked, NUL-padded path.
-: FS-MUT-ATOMIC-BASE-OFF ( ptr u8 n -- n )
-   {: path:ptr pathu:n :}
-   pathu begin dup 0 > while
-      dup 1 - path + c@ FS-MUT-SLASH = if exit then
-      1-
-   repeat ;
 
 \ Resolve the complete spelling when it exists, including its final symlink.
 \ For a new basename, resolve its parent and append the basename unchanged.
@@ -611,11 +602,11 @@ public
    {: path:ptr pathu:n :}
    path pathu FS-PATHZ {: input:ptr :}
    input FS-MUT-PATHZ2-BUF SPAN:$ drop FS-PATHZ-CAP realpath {: u:n :}
-   u -2 = if E-FS-PATH throw then
+   u -2 = if FS-CAUSE-CLEAR E-FS-PATH throw then
    u 0 >= if FS-MUT-PATHZ2-BUF SPAN:$ drop u exit then
    input pathu SYMLINK? if E-FS-STAT throw then
-   input pathu FS-MUT-ATOMIC-BASE-OFF {: off:n :}
-   pathu off - 0= if E-FS-STAT throw then
+   input pathu FS:ATOMIC-BASE-OFF {: off:n :}
+   pathu off - 0= if FS-CAUSE-CLEAR E-FS-STAT throw then
    input off + pathu off - FS-MUT-ATOMIC-PATH SPAN:COPY
    off 0= if s" ." FS-PATHZ else
       off 1 = if s" /" FS-PATHZ else
@@ -623,8 +614,8 @@ public
       then
    then {: parent:ptr :}
    parent FS-MUT-PATHZ2-BUF SPAN:$ drop FS-PATHZ-CAP realpath {: parentu:n :}
-   parentu -2 = if E-FS-PATH throw then
-   parentu 0 < if E-FS-STAT throw then
+   parentu -2 = if FS-CAUSE-CLEAR E-FS-PATH throw then
+   parentu 0 < if E-FS-STAT FS-ERRNO-FAIL then
    FS-MUT-PATHZ2-BUF SPAN:$ drop parentu
    FS-MUT-ATOMIC-PATH SPAN:$ drop pathu off -
    FS-MUT-PATHZ2-BUF FS-PATH-CAP SPAN:TAKE JOIN-PATH-INTO {: targetu:n :}
@@ -637,48 +628,157 @@ public
    then
    -1 ;
 
-: FS-MUT-ATOMIC-START ( ptr u8 n n -- ptr u8 n n ptr u8 n n ) {: path:ptr pathu seed :}
-   path pathu FS-MUT-ATOMIC-TARGET {: dst:ptr dstu :}
-   dst dstu FS-MUT-ATOMIC-OLD-MODE {: mode:n :}
-   dst dstu mode
-   dst dstu seed
-   mode 0 >= if FS-MUT-MODE-PRIVATE-FILE else FS-MODE-0644 then
-   FS-MUT-ATOMIC-RESERVE ;
-
-: FS-MUT-ATOMIC-WRITE-SEED ( ptr u8 n ptr u8 n n -- ) {: path:ptr pathu src:ptr srcu seed :}
-   srcu 0 < if E-FS-CAPACITY throw then
-   path pathu seed FS-MUT-ATOMIC-START {: dst:ptr dstu mode temp:ptr tempu fd :}
-   fd src srcu temp tempu mode [: FS-MUT-ATOMIC-WRITE-RUN ;] catch {: write-code:n :}
-   2drop 2drop 2drop
-   \ Close exactly once, before publish. A failed close may already have freed
-   \ the descriptor, so retrying it could close an unrelated recycled fd.
-   fd FS-ATOMIC:CLOSE-FD {: close-code:n :}
-   write-code 0<> close-code 0<> or if
-      temp tempu FS-MUT-ATOMIC-CLEAN-TEMP
-      close-code 0<> if E-FS-IO throw then
-      write-code throw
-   then
-   temp tempu dst dstu [: FS-MUT-ATOMIC-RENAME-RUN ;] catch {: rename-code:n :}
-   2drop 2drop
-   rename-code 0<> if
-      temp tempu FS-MUT-ATOMIC-CLEAN-TEMP
-      rename-code throw
-   then ;
-
 \ Two live processes never share a pid, and the clock tells a reused pid from a
 \ sibling its last owner left behind.
 : FS-MUT-ATOMIC-SEED ( -- n )
    mono-ns getpid xor ;
 
-: ATOMIC-WRITE-FILE ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu src:ptr srcu :}
-   path pathu src srcu FS-MUT-ATOMIC-SEED FS-MUT-ATOMIC-WRITE-SEED ;
+package FS
+\ The calls ATOMIC-WRITE-FILE makes relative to its destination's directory:
+\ openat with a mode for the exclusive create, fchmod for the mode copy and
+\ renameat to publish. Each answers -1 with the cause in FFI:ERRNO.
+PROCESS-SYMBOLS
+FUNCTION: OPENAT-CALL openat ( n ptr u8 n n -- i32 ) 3 VARIADIC ;FUNCTION
+FUNCTION: FCHMOD-CALL fchmod ( n n -- i32 ) ;FUNCTION
+FUNCTION: RENAMEAT-CALL renameat ( n ptr u8 n ptr u8 -- i32 ) ;FUNCTION
 
-\ Create and open the unique `.tmp-*` sibling ATOMIC-WRITE-FILE stages through,
-\ for a writer that streams its file or must finish it before RENAME-FILE
-\ publishes it. Answers the sibling's path, which stays this task's until its
-\ next reservation, and the descriptor. The caller owns both and the removal.
-: RESERVE-SIBLING ( ptr u8 n -- ptr u8 n n )
-   FS-MUT-ATOMIC-SEED FS-MODE-0644 FS-MUT-ATOMIC-RESERVE ;
+public
+\ Reporting is best effort after a primary failure: a closed stderr must not
+\ replace the fill or rename error. The sibling is named as a directory prefix
+\ and a name, written apart from the 1 KiB string builder so even the longest
+\ legal sibling can be named.
+: STAGED-REPORT ( ptr u8 n n ptr u8 n ptr u8 n -- )
+   {: label:ptr labelu:n code:n path:ptr pathu:n name:ptr nameu:n :}
+   SB-RESET
+   s" hb: staged replacement " SB-APPEND
+   label labelu SB-APPEND
+   s"  threw " SB-APPEND
+   code FMT:SB-INT
+   s"  at " SB-APPEND
+   2 SB$ write drop
+   2 path pathu write drop
+   2 name nameu write drop
+   2 S\" \n" write drop ;
+
+private
+\ The destination's directory, opened for search only for every call that names
+\ the sibling or the destination, so a directory the caller may write and
+\ search but not list takes the write. The target is absolute, so its
+\ directory is what precedes its last slash, or the root.
+: ATOMIC-OPEN-DIR ( ptr u8 n -- n ) {: dst:ptr dstu :}
+   dst dstu ATOMIC-BASE-OFF 1- 1 max {: diru :}
+   FS-AT-CWD dst diru FS-PATHZ SEARCH-DIR-FLAGS FS-OPEN-AT-CALL {: dir :}
+   dir 0 < if E-FS-OPEN FS-ERRNO-FAIL then
+   dir ;
+
+\ Create the sibling in dir exclusively, its name staged for SIBLING-Z:
+\ the name's length and the descriptor.
+: ATOMIC-RESERVE-AT ( n n n -- n n ) {: dir seed mode :}
+   0 begin dup FS-MUT-ATOMIC-RETRIES < while
+      dup {: attempt:n :}
+      s" " seed attempt BUILD-SIBLING {: name:ptr nameu :}
+      0 FS-MUT-ATOMIC-PATH nameu SPAN:U8!
+      dir name FS-MUT-EXCL-WRITE-FLAGS mode OPENAT-CALL {: fd:n :}
+      fd 0 >= if drop nameu fd exit then
+      FFI:ERRNO FS-MUT-EXISTS <> if E-FS-OPEN FS-ERRNO-FAIL then
+      1+
+   repeat drop
+   E-FS-IO FS-ERRNO-FAIL ;
+
+\ Stack-preserving under `catch`. The write records its own cause, a refused
+\ mode copy fchmod's.
+: ATOMIC-FILL ( n ptr u8 n n -- n ptr u8 n n ) {: fd src:ptr srcu mode :}
+   fd src srcu FS-MUT-ATOMIC-WRITE-FD
+   mode 0 >= if
+      fd mode FCHMOD-CALL 0<> if E-FS-IO FS-ERRNO-FAIL then
+   then
+   fd src srcu mode ;
+
+\ Closed exactly once, before publish: a failed close may already have freed
+\ the descriptor, so retrying it could close an unrelated recycled fd.
+: ATOMIC-CLOSE ( n -- n ) {: fd :}
+   fd FS-ATOMIC:CLOSE-FD 0<> if E-FS-IO FS-ERRNO-FAIL then
+   fd ;
+
+: ATOMIC-PUBLISH ( n ptr u8 -- n ptr u8 ) {: dir name:ptr :}
+   dir SIBLING-Z dir name RENAMEAT-CALL 0<> if E-FS-IO FS-ERRNO-FAIL then
+   dir name ;
+
+: ATOMIC-UNLINK ( n -- n ) {: dir :}
+   dir SIBLING-Z 0 FS-UNLINK-AT-CALL 0<> if E-FS-IO FS-ERRNO-FAIL then
+   dir ;
+
+\ After a first failure the sibling goes; one that cannot go is named on fd 2,
+\ as REPLACE-STAGED names its own. The first failure's code and cause are
+\ thrown again whatever the removal or the report met.
+: ATOMIC-ABANDON ( n ptr u8 n n n -- ) {: dir dst:ptr off nameu code :}
+   ERRNO {: cause :}
+   dir [: ATOMIC-UNLINK ;] catch {: clean-code:n :}
+   drop
+   clean-code 0<> if
+      s" cleanup" clean-code dst off SIBLING-Z nameu STAGED-REPORT
+   then
+   code cause CAUSE-FAIL ;
+
+\ The write inside the destination's directory dir, whose name for the
+\ destination starts at off. Stack-preserving under `catch`, so the caller
+\ closes dir however it ends. The sibling's descriptor is closed once whatever
+\ the write met; after a failed write its close can only fail too.
+: ATOMIC-IN-DIR ( n ptr u8 n ptr u8 n n n -- n ptr u8 n ptr u8 n n n )
+   {: dir dst:ptr off src:ptr srcu mode seed :}
+   mode 0 >= if FS-MUT-MODE-PRIVATE-FILE else FS-MODE-0644 then {: create-mode :}
+   dir seed create-mode ATOMIC-RESERVE-AT {: nameu fd :}
+   fd src srcu mode [: ATOMIC-FILL ;] catch {: write-code:n :}
+   2drop 2drop
+   write-code 0<> if
+      fd FS-ATOMIC:CLOSE-FD drop
+      dir dst off nameu write-code ATOMIC-ABANDON
+   then
+   fd [: ATOMIC-CLOSE ;] catch {: close-code:n :}
+   drop
+   close-code 0<> if dir dst off nameu close-code ATOMIC-ABANDON then
+   dir dst off + [: ATOMIC-PUBLISH ;] catch {: rename-code:n :}
+   2drop
+   rename-code 0<> if dir dst off nameu rename-code ATOMIC-ABANDON then
+   dir dst off src srcu mode seed ;
+
+public
+\ The sibling and the destination are named relative to the destination's
+\ directory, so no sibling path is joined and only the destination's absolute
+\ spelling meets FS-PATH-CAP.
+: ATOMIC-WRITE-SEED ( ptr u8 n ptr u8 n n -- ) {: path:ptr pathu src:ptr srcu seed :}
+   srcu 0 < if FS-CAUSE-CLEAR E-FS-CAPACITY throw then
+   path pathu FS-MUT-ATOMIC-TARGET {: dst:ptr dstu :}
+   0 FS-MUT-PATHZ2-BUF dstu SPAN:U8!
+   dst dstu FS-MUT-ATOMIC-OLD-MODE {: mode:n :}
+   dst dstu ATOMIC-OPEN-DIR {: dir :}
+   dir dst dst dstu ATOMIC-BASE-OFF src srcu mode seed
+   [: ATOMIC-IN-DIR ;] catch {: code:n :}
+   2drop 2drop 2drop drop
+   ERRNO {: cause :}
+   dir FS-ATOMIC:CLOSE-FD drop
+   code 0<> if code cause CAUSE-FAIL then ;
+
+\ Create and open the unique `.tmp-*` sibling in path's directory, for a writer
+\ that streams its file or must finish it before RENAME-FILE publishes it.
+\ Answers the sibling's path, which stays this task's until its next
+\ reservation, and the descriptor. The caller owns both and the removal.
+: RESERVE-SIBLING ( ptr u8 n -- ptr u8 n n ) {: path:ptr pathu :}
+   pathu 0 < if FS-CAUSE-CLEAR E-FS-PATH throw then
+   path path pathu ATOMIC-BASE-OFF {: pre:ptr preu :}
+   FS-MUT-ATOMIC-SEED {: seed :}
+   0 begin dup FS-MUT-ATOMIC-RETRIES < while
+      dup {: attempt:n :}
+      pre preu seed attempt BUILD-SIBLING
+      2dup FS-MUT-EXCL-WRITE-FLAGS FS-MODE-0644 FS-MUT-OPEN-CANDIDATE {: fd:n :}
+      fd 0 >= if rot drop fd exit then
+      2drop 1+
+   repeat drop
+   E-FS-IO FS-ERRNO-FAIL ;
+;package
+
+: ATOMIC-WRITE-FILE ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu src:ptr srcu :}
+   path pathu src srcu FS-MUT-ATOMIC-SEED FS:ATOMIC-WRITE-SEED ;
 
 \ The longest base FS:MKTEMP-DIR-IN makes its temp in for a prefix of n bytes:
 \ its `<base>/<prefix>-<seed>-<attempt>` path still fits FS-PATH-CAP with the
@@ -1056,59 +1156,46 @@ public
 : FS-MUT-STAGED-FORGET ( ptr u8 n -- ptr u8 n )
    2dup CLEANUP-FORGET ;
 
-\ Reporting is best effort after a primary failure: a closed stderr must not
-\ replace the fill or rename error. Write the path separately from the 1 KiB
-\ string builder so even the longest legal sibling can be named.
-: FS-MUT-STAGED-REPORT ( ptr u8 n n ptr u8 n -- )
-   {: label:ptr labelu:n code:n path:ptr pathu:n :}
-   SB-RESET
-   s" hb: staged replacement " SB-APPEND
-   label labelu SB-APPEND
-   s"  threw " SB-APPEND
-   code FMT:SB-INT
-   s"  at " SB-APPEND
-   2 SB$ write drop
-   2 path pathu write drop
-   2 S\" \n" write drop ;
-
 \ Replace the file at path with the one fill writes at the path it is handed:
-\ the sibling RESERVE-SIBLING creates, its descriptor closed, renamed over path
-\ once fill returns. Until then path holds what it held, so it names its old
-\ file or the whole new one. The sibling is registered for removal at exit
+\ the sibling FS:RESERVE-SIBLING creates, its descriptor closed, renamed over
+\ path once fill returns. Until then path holds what it held, so it names its
+\ old file or the whole new one. The sibling is registered for removal at exit
 \ while it is held, so a throw from fill or the rename, or a `die` in fill,
 \ takes it with it; only a killed process leaves one behind. A refused
-\ registration refuses the claim, and the sibling goes then. fill must not reserve a
-\ sibling of its own (ATOMIC-WRITE-FILE does): RESERVE-SIBLING's path is this
-\ task's only until its next reservation.
+\ registration refuses the claim, and the sibling goes then. fill must not
+\ reserve a sibling of its own (ATOMIC-WRITE-FILE does): FS:RESERVE-SIBLING's
+\ path is this task's only until its next reservation.
 \ A caller may pass context below path; fill must return that context unchanged
 \ in shape. It can carry typed pointers and complete layout values directly.
 : REPLACE-STAGED ( R ptr u8 n [ R ptr u8 n -- R ] -- R )
    {: path:ptr pathu fill :}
-   path pathu RESERVE-SIBLING {: tmp:ptr tmpu fd :}
+   path pathu FS:RESERVE-SIBLING {: tmp:ptr tmpu fd :}
    \ Closed once, before fill opens the sibling by path; ATOMIC-WRITE-FILE says
    \ why a failed close is not retried.
    fd FS-ATOMIC:CLOSE-FD 0<> if
+      FFI:ERRNO {: close-cause:n :}
       tmp tmpu [: FS-MUT-STAGED-CLEAN ;] catch {: clean-code:n :}
       2drop
       clean-code 0<> if
-         s" close cleanup" clean-code tmp tmpu FS-MUT-STAGED-REPORT
+         s" close cleanup" clean-code tmp tmpu s" " FS:STAGED-REPORT
       then
-      E-FS-IO throw
+      E-FS-IO close-cause FS:CAUSE-FAIL
    then
    path pathu tmp tmpu fill [: FS-MUT-STAGED-RUN ;] catch {: code:n :}
    drop 2drop 2drop
    code 0<> if
+      FS:ERRNO {: cause:n :}
       tmp tmpu [: FS-MUT-STAGED-CLEAN ;] catch {: clean-code:n :}
       2drop
       clean-code 0= if
          tmp tmpu [: FS-MUT-STAGED-FORGET ;] catch {: forget-code:n :}
          2drop
          forget-code 0<> if
-            s" cleanup registration" forget-code tmp tmpu FS-MUT-STAGED-REPORT
+            s" cleanup registration" forget-code tmp tmpu s" " FS:STAGED-REPORT
          then
       else
-         s" cleanup" clean-code tmp tmpu FS-MUT-STAGED-REPORT
+         s" cleanup" clean-code tmp tmpu s" " FS:STAGED-REPORT
       then
-      code throw
+      code cause FS:CAUSE-FAIL
    then
    tmp tmpu CLEANUP-FORGET ;
