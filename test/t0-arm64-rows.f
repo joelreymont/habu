@@ -12,8 +12,10 @@
 \ stack words over one-cell values, and cells, cell+ and ptr-field, that call
 \ nothing, return-stack pair moves that touch the depth cell once each, the
 \ x86-64 stack moves that leave those codes alone, a divide by a literal (an
-\ arm64 sdiv and msub in a leap-year test, the x86-64 idiv bytes with the
-\ register it saves), and the refusals that keep the patch slot last and an
+\ arm64 sdiv and msub in a leap-year test, an sdiv and no call for 65536, -3
+\ and 10^10, no sdiv where both operands are literals or the divisor is -1,
+\ the x86-64 idiv bytes with the register it saves and a divisor wider than
+\ 32 bits loaded whole), and the refusals that keep the patch slot last and an
 \ operation x86-64 does not provide from running.
 \ Bodies are compiled by T0:COMPILE-TEXT or driven through the seam, sealed
 \ into NEMIT, and checked by decoding the words NEMIT answers against the
@@ -535,20 +537,42 @@ $48 c, $39 c, $CA c, $0F c, $8D c,
 : HAS-WORD? ( n n -- bool ) {: mask:n want:n :}
    false NEMIT:SIZE 0 ?do i WORD@ mask and want = or 4 +loop ;
 
-\ A leap-year test divides by its literals in place: sdiv and msub, and its one
-\ call is `0<>`'s, none a divide row's.
+\ Whether a call row of the sealed emission targets the word named s.
+: CALLS? ( ptr u8 n -- bool )
+   NDICT:CALL-TARGET {: to:n :}
+   false T0-EMIT:CALL-ROWS 0 ?do i T0-EMIT:CALL-ROW rot drop nip to = or loop ;
+
+\ sdiv xd, xn, xm.
+: SDIV? ( -- bool ) $FFE0FC00 $9AC00C00 HAS-WORD? ;
+
+\ A leap-year test divides by its literals in place: sdiv and msub, and no call
+\ of the kernel's `mod` row. 65536, -3 and 10^10 divide in place too; literal
+\ operands fold, and -1 stays a call.
 : LEAP-CASE ( -- )
    ARCH-A64
    s" LEAP ( n -- bool ) dup 4 mod 0= over 100 mod 0<> and swap 400 mod 0= or "
    BODY
    s" mod by a literal is an sdiv" T-LABEL
-   $FFE0FC00 $9AC00C00 HAS-WORD? TTRUE
+   SDIV? TTRUE
    s" and an msub" T-LABEL
    $FFE08000 $9B008000 HAS-WORD? TTRUE
-   s" its one call is 0<>, no divide row" T-LABEL
+   s" and no call of mod's kernel row" T-LABEL
+   s" mod" CALLS? TFALSE
+   NEMIT:CLEAR
+   s" F ( -- n n ) 1000003 7 / -1000003 7 mod " BODY
+   s" literal operands fold: no sdiv and no call" T-LABEL
+   SDIV? TFALSE
+   T0-EMIT:CALL-ROWS 0 T=
+   NEMIT:CLEAR
+   s" N ( n -- n ) -1 / " BODY
+   s" a -1 divisor stays the call of / with no sdiv" T-LABEL
    T0-EMIT:CALL-ROWS 1 T=
-   0 T0-EMIT:CALL-ROW {: cat:n ckind:n cto:n :}
-   cto s" 0<>" NDICT:CALL-TARGET T=
+   SDIV? TFALSE
+   NEMIT:CLEAR
+   s" W ( n -- n ) 65536 / -3 mod 10000000000 / " BODY
+   s" 65536, -3 and 10^10 divide in place: an sdiv and no call" T-LABEL
+   SDIV? TTRUE
+   T0-EMIT:CALL-ROWS 0 T=
    NEMIT:CLEAR ;
 
 \ The x86-64 divide by a literal saves rdx, which idiv writes, unless the
@@ -568,6 +592,12 @@ $51 c,  $48 c, $89 c, $D0 c,  $B9 c, $90 c, $01 c, $00 c, $00 c,
 $48 c, $99 c,  $48 c, $F7 c, $F9 c,  $59 c,
 15 constant X86-MOD-RDX-LEN
 
+create X86-DIV-WIDE                   \ rcx = rcx / 10^10 by a movabs divisor
+$52 c,  $48 c, $89 c, $C8 c,
+$48 c, $B9 c, $00 c, $E4 c, $0B c, $54 c, $02 c, $00 c, $00 c, $00 c,
+$48 c, $99 c,  $48 c, $F7 c, $F9 c,  $48 c, $89 c, $C1 c,  $5A c,
+23 constant X86-DIV-WIDE-LEN
+
 create X86-MOD-R8                     \ r8 = r8 mod 7
 $52 c,  $4C c, $89 c, $C0 c,  $41 c, $B8 c, $07 c, $00 c, $00 c, $00 c,
 $48 c, $99 c,  $49 c, $F7 c, $F8 c,  $49 c, $89 c, $D0 c,  $5A c,
@@ -586,6 +616,10 @@ $48 c, $99 c,  $49 c, $F7 c, $F8 c,  $49 c, $89 c, $D0 c,  $5A c,
    s" x86-64 rcx / 7 saves rdx and divides by rcx" T-LABEL
    [: T0-EMIT:DIV-LIT ;] 0 7 X86-DIV
    NEMIT:BYTES NEMIT:SIZE X86-DIV-RCX X86-DIV-RCX-LEN CONTAINS? TTRUE
+   NEMIT:CLEAR
+   s" x86-64 rcx / 10^10 loads the divisor whole" T-LABEL
+   [: T0-EMIT:DIV-LIT ;] 0 10000000000 X86-DIV
+   NEMIT:BYTES NEMIT:SIZE X86-DIV-WIDE X86-DIV-WIDE-LEN CONTAINS? TTRUE
    NEMIT:CLEAR
    s" x86-64 rdx / 7 saves rcx and divides by it" T-LABEL
    [: T0-EMIT:DIV-LIT ;] 1 7 X86-DIV

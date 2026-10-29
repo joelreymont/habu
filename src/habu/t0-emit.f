@@ -91,10 +91,11 @@
 \ primitives. The words a source keyword names end in a comma, since a
 \ keyword cannot be a definition name.
 \
-\ DIVISION. `/` and `mod` by a literal divisor in 1..DIV-LIT-MAX are DIV-LIT
-\ and MOD-LIT, which need neither the kernel's zero test nor its MIN-N -1
-\ screen: the divisor is never 0 nor -1. Any other divisor, and `/mod`, stay
-\ calls of the kernel rows, which screen both.
+\ DIVISION. `/` and `mod` by a literal divisor other than 0 and -1 are DIV-LIT
+\ and MOD-LIT. A zero divisor stays the call of the kernel row, which throws
+\ E-DIV-ZERO; -1 stays a call because x86-64 idiv faults on MIN-N -1 (arm64
+\ sdiv answers MIN-N), and one rule holds for every target. A register
+\ divisor, and `/mod`, stay calls too.
 
 require src/lib/type/deftype.f
 require src/compiler/target.f
@@ -379,12 +380,9 @@ ARCHES TYPED-BUFFER IMM?-XT [ n -- bool ]
 : MULX ( vreg vreg -- ) CUR @ MULX-XT @ execute ;
 : MUL-LIT ( vreg n -- ) CUR @ MUL-LIT-XT @ execute ;
 
-\ The largest divisor DIV-LIT and MOD-LIT take: one arm64 movz.
-65535 constant DIV-LIT-MAX
-
 \ DIV-LIT and MOD-LIT replace the dividend in d with its quotient by n,
 \ truncated toward zero, or the remainder that carries the dividend's sign, as
-\ the kernel's `/` and `mod` rows compute them; n is in 1..DIV-LIT-MAX. Every
+\ the kernel's `/` and `mod` rows compute them; n is neither 0 nor -1. Every
 \ other vreg keeps its value.
 : DIV-LIT ( vreg n -- ) CUR @ DIV-LIT-XT @ execute ;
 : MOD-LIT ( vreg n -- ) CUR @ MOD-LIT-XT @ execute ;

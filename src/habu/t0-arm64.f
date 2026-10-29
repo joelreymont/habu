@@ -21,8 +21,8 @@
 \ A body is entered by `bl` or `blr` and leaves by `ret` through x30.
 \
 \ DIVISION. `sdiv` appears only in DIV-LIT and MOD-LIT, whose divisor is a
-\ literal in 1..T0-EMIT:DIV-LIT-MAX (t0-emit.f DIVISION): a zero divisor, on
-\ which the hardware answers 0 instead of throwing, never reaches it.
+\ literal neither 0 nor -1 (t0-emit.f DIVISION): a zero divisor, on which the
+\ hardware answers 0 instead of throwing, never reaches it.
 \
 \ THE SINK. A unit's body is emitted into RAW, at unit-relative offsets, and
 \ CLOSE copies it into OUT, the whole emission BYTES reads, with the unit's
@@ -603,13 +603,13 @@ DYNAMIC-BUFFER BR-ARG n
    v TMP LIT-R
    d REG d REG TMP ENC-MUL W ;
 
-\ movz x16,#n ; sdiv xd,xd,x16 (src/habu/jit.f EI/).
+\ x16 = n ; sdiv xd,xd,x16 (src/habu/jit.f EI/).
 : DIV-LIT ( T0-EMIT:vreg n -- )
    {: d:T0-EMIT:vreg v:n :}
    v TMP LIT-R
    d REG d REG TMP ENC-SDIV W ;
 
-\ movz x16,#n ; sdiv x17,xd,x16 ; msub xd,x17,x16,xd: the dividend less the
+\ x16 = n ; sdiv x17,xd,x16 ; msub xd,x17,x16,xd: the dividend less the
 \ truncated quotient times n (src/habu/jit.f EIMOD).
 : MOD-LIT ( T0-EMIT:vreg n -- )
    {: d:T0-EMIT:vreg v:n :}

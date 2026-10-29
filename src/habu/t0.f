@@ -44,7 +44,7 @@
 \ the spelling binds the engine's seeded primitive (NDICT:SPELL-PRIM?): the
 \ stack shuffles (dup drop swap over nip tuck rot -rot 2dup 2drop 2swap 2over
 \ 2>r 2r> 2r@), + - * and or xor 1+ 1- negate invert lshift rshift, cells
-\ cell+ ptr-field, / and mod by a literal in 1..T0-EMIT:DIV-LIT-MAX (DIV2), the
+\ cell+ ptr-field, / and mod by a literal neither 0 nor -1 (DIV2), the
 \ comparisons, @ and c@, and ! as a call to the primitive or one per cell (THE
 \ WIDTHS); a word the dictionary binds (NDICT:CALL-BINDING), as a call, or as
 \ the value it pushes when its definer fixed one (a constant's number, a
@@ -562,13 +562,13 @@ variable FREE                       \ bit k set: no entry holds vreg k
    VS-N @ 0= if false exit then
    TOP CONST? 0= if false exit then
    TOP VS-VAL @ {: v:n :}
-   v 1 >= v T0-EMIT:DIV-LIT-MAX <= and ;
+   v 0 <> v -1 <> and ;
 
-\ `/` or `mod` by a literal divisor in 1..DIV-LIT-MAX, folded when the dividend
-\ is a constant too and else divided in place by the seam word; whether it
-\ claimed the token. Any other divisor is left to the call of the kernel row,
-\ which screens a zero divisor and MIN-N -1. The fold runs the engine's own
-\ `/` or `mod`, which truncates toward zero as every kernel's rows do.
+\ `/` or `mod` by a literal divisor neither 0 nor -1 (t0-emit.f DIVISION),
+\ folded when the dividend is a constant too and else divided in place by the
+\ seam word; whether it claimed the token. Any other divisor is left to the
+\ call of the kernel row. The fold runs the engine's own `/` or `mod`, which
+\ truncates toward zero as every kernel's rows do.
 : DIV2 ( [ n n -- n ] [ T0-EMIT:vreg n -- ] -- bool )
    DIVISOR? 0= if 2drop false exit then
    2 ENSURE
