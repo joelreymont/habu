@@ -149,7 +149,7 @@
 \   the child runs on the working directory's bin/hb, or is that
 \   directory's tools/check-verify-child.f                                check-test: file-load-context
 \   a top-level token the load refuses as unresolvable verifies, is
-\   refused elsewhere than where it was read, or stops the scan           top-undefined
+\   refused elsewhere than where it was read, or stops the scan           top-undefined, top-rowless
 \   an ambiguous or shadowed name at top level or after ' verifies       top-ambiguous, top-shadow, top-tick
 \   a name resolves before the statement that defines it                  top-order
 \   a number out of range, or a token only shaped like one, verifies      top-number
@@ -1734,6 +1734,13 @@ $180000 constant LARGE-STDIN-LEN
    CHECK:VERIFY-OUT$ 1 NTH-PACKET s" word" STRING$ s" cvt-short" T$= ;
 
 
+\ An engine word the checker holds no row for. Loaded: E-UNDEFINED:
+\ xref-retarget, exit 70.
+: TOP-ROWLESS ( -- )
+   s\" 0 0 0 xref-retarget\n" TOP-CHECK
+   s" top-rowless" s" xref-retarget" s" E-UNDEFINED-TOP-LEVEL" s" 1" s" 7" REFUSED-AT ;
+
+
 \ A using refusal refuses the token as it refuses a body's definition, and the
 \ scan goes on past it, as past a refused definition: a refused definition after
 \ it is a second packet, in source order, and no throw stopped the scan.
@@ -3131,7 +3138,7 @@ $180000 constant LARGE-STDIN-LEN
 \ The engine's top-level find takes an open package's own qualified name that
 \ its public wordlist lacks to the global wordlist, for `'` too, and the word
 \ it finds there may define what a bare call to it would: a renderer's text
-\ (CVT-OFP:evaluate) or an unlearned create caller (CVT-OFP:CVT-OFMK) makes
+\ (CVT-OFP:evaluate-closed) or an unlearned create caller (CVT-OFP:CVT-OFMK) makes
 \ CVT-OFQ, so a later use of it is the run's. The row of the word it finds
 \ bounds the qualified call, and with none the check discovers nothing after
 \ it. Loaded, the first subject and the last three run, exit 0; a tail no
@@ -3144,10 +3151,10 @@ $180000 constant LARGE-STDIN-LEN
    s" top-package-tail: no such tail" s" CVT-OFP:CVT-NOSUCH" s" E-UNDEFINED-TOP-LEVEL" s" 4" s" 1" REFUSED-AT
    s\" : CVT-OFG ( -- n ) 7 ;\npackage CVT-OFP\n: CVT-OFL ( -- n ) 1 ;\n;package\nCVT-OFP:CVT-OFG drop\n" TOP-CHECK
    s" top-package-tail: closed" s" CVT-OFP:CVT-OFG" s" E-UNDEFINED-TOP-LEVEL" s" 5" s" 1" REFUSED-AT
-   s\" package CVT-OFP\ns\" : CVT-OFQ ( -- n ) 7 ;\" CVT-OFP:evaluate\nCVT-OFQ drop\n;package\n" TOP-CHECK
+   s\" package CVT-OFP\ns\" : CVT-OFQ ( -- n ) 7 ;\" CVT-OFP:evaluate-closed\nCVT-OFQ drop\n;package\n" TOP-CHECK
    5 s" top-package-tail: a renderer" EXPECT-KIND
    s" top-package-tail: a renderer, two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
-   s" top-package-tail: its call" s" CVT-OFP:evaluate" s" 2" s" 28" DEFERRED-AT
+   s" top-package-tail: its call" s" CVT-OFP:evaluate-closed" s" 2" s" 28" DEFERRED-AT
    s" top-package-tail: its product" s" CVT-OFQ" s" 3" s" 1" DEFERRED-AT
    s\" : CVT-OFMK ( -- ) create ;\nparses: CVT-OFMK 1\npackage CVT-OFP\nCVT-OFP:CVT-OFMK CVT-OFQ\n: CVT-AFTER ( -- ) ;\nCVT-OFQ drop\n;package\n" TOP-CHECK
    5 s" top-package-tail: a create caller" EXPECT-KIND
@@ -4916,6 +4923,7 @@ public
    s" cli-duplicate" [: CLI-DUPLICATE ;] RUN-CASE
    s" cli-duplicate-goes-on" [: CLI-DUPLICATE-GOES-ON ;] RUN-CASE
    s" top-undefined" [: TOP-UNDEFINED ;] RUN-CASE
+   s" top-rowless" [: TOP-ROWLESS ;] RUN-CASE
    s" top-ambiguous" [: TOP-AMBIGUOUS ;] RUN-CASE
    s" top-shadow" [: TOP-SHADOW ;] RUN-CASE
    s" top-tick" [: TOP-TICK ;] RUN-CASE

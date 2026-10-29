@@ -38,13 +38,13 @@
 \ file such as src/lib/string.f counts nothing for the same reason). The
 \ decimal writer and the line buffer below are the price of measuring them.
 \
-\ The two requires are src/habu/code-bytes.f, the boundary that turns a
-\ record's code address into bytes, and src/lib/tier.f, the word that selects the
-\ tier. Neither requires anything, and both load before MAIN takes the `ndict@`
-\ the report range starts from, so they add no rows to any report. They pay the
+\ The one require is src/habu/code-bytes.f, the boundary that turns a record's
+\ code address into bytes; `set-tier`, which selects the tier, is an engine
+\ word. code-bytes.f requires nothing and loads before MAIN takes the `ndict@`
+\ the report range starts from, so it adds no rows to any report. It pays the
 \ same price every other pre-loaded file pays, and the price is exactly one
-\ corpus each: a census that names one of them weighs it at nothing, because it
-\ is already in the dictionary when the corpus asks. Measure such a file with a
+\ corpus: a census that names it weighs it at nothing, because it is already
+\ in the dictionary when the corpus asks. Measure such a file with a
 \ census run from a tree where it is not this tool's dependency.
 \
 \ WHAT THE COUNTS MEAN. Bytes and instructions are the whole baked span
@@ -61,7 +61,6 @@
 \ therefore instruction traffic, not a count of address sites.
 
 require src/habu/code-bytes.f
-require src/lib/tier.f
 
 package TIER-CENSUS
 private
@@ -321,7 +320,7 @@ public
    0 script-argv$ TIER-ARG {: tier :}
    -1 WID-CACHE !  -1 WID-CACHE-IX !
    1 script-argv$ OPEN-REPORT
-   tier TIER:SELECT
+   tier set-tier
    ndict@ {: first :}
    LOAD-CORPUS
    tier HEADER

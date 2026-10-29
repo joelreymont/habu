@@ -31,8 +31,8 @@
 \ `new`. The rows are therefore the engine's own baked compiler, checker and
 \ runtime, which is exactly the path under measurement.
 \
-\ WHY THIS FILE REQUIRES ONLY src/lib/tier.f, the one word that selects the tier.
-\ src/lib/string.f and src/lib/fmt.f are corpus entries; a tool that loaded them for its
+\ WHY THIS FILE REQUIRES NOTHING. `set-tier`, which selects the tier, is an
+\ engine word. src/lib/string.f and src/lib/fmt.f are corpus entries; a tool that loaded them for its
 \ own output would have them in the dictionary before the corpus asked, and the
 \ profile would lose every word their compile reaches. The decimal writer below
 \ is the price of that.
@@ -50,8 +50,6 @@
 \ MEASURE ON A QUIET MACHINE and pin the run (`taskset -c 8`): this is wall
 \ clock, and the sample counts are only comparable between runs taken at a
 \ similar load average.
-
-require src/lib/tier.f
 
 package TIER0-PROF
 private
@@ -180,7 +178,7 @@ TRUSTED: ABLATE ( -- )
    1 script-argv$ ARG>N {: usec :}
    usec 0 > 0= if USAGE then
    0 script-argv$ {: mode:ptr mu :}
-   0 TIER:SELECT
+   0 set-tier
    usec prof-rate
    mode mu s" corpus" STR= mode mu s" corpus-raw" STR= or if
       ndict@ {: first :}

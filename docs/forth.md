@@ -19,9 +19,11 @@ rules. Build and test procedures live in [bootstrap.md](bootstrap.md) and
   or asserting its effect, does not make it a primitive.
 - A `PPRIM:` row closed with `CLOSE-PRIVATE` instead of `PPRIM;` belongs to its
   package: only that package's checked bodies call the primitive, at both
-  tiers, and a checked caller anywhere else is refused by name. A checked `[']`
-  of it is admitted and refused exactly where that call is. At top level a call
-  of it is refused as in a body (`E-CAP-TRUSTED`) and `'` yields the xt.
+  tiers. Outside it, a call of a primitive whose one row is the private one
+  (`xref-retarget`) is `E-UNDEFINED`, in a body and at top level, and a
+  top-level `'` of it yields the xt; a body's call of one that also keeps a
+  global trusted-only row (`reloc-maps-clear`) is `E-CAP-TRUSTED`. A checked
+  `[']` of it is admitted and refused exactly where that call is.
 - Never assert that arbitrary `evaluate` preserves the stack; use typed
   quotations for known callbacks. A checked word evaluates source with
   `evaluate-closed ( ptr u8 n -- )`: the text runs on a guarded data stack of
@@ -2133,6 +2135,14 @@ sections above.
   facts govern subsequent parsing and definitions. An uncertain resident
   immediate or loader may leave dependent source deferred rather than publish
   an uncertain definition.
+- **A top-level step runs only when it is checked or deferred.** Each step
+  takes the verdict the same token takes in a body: a checked step runs, as
+  does one deferred to the run; a refused or uncheckable one prints the body's
+  diagnostic and throws the checker's rc before the word runs. A word the
+  engine holds with no row the step can see is `E-UNDEFINED`, as a body call
+  to an unknown word is. `set-tier`'s row is global, so a program's first
+  line may choose the tier before any `require`. `test/outer-interpret.f`
+  ROWLESS-STEP measures the refusal.
 - **Unknown top-level parsers stop discovery unless declared.** A word whose
   body reaches `parse-name` or `create`, or a `defer`, may consume or define
   following tokens. In `--verify-only`, it is `W-CHECK-DEFERRED`; later text

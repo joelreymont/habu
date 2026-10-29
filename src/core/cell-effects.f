@@ -15,6 +15,14 @@ PRIM: E-PATH-RANGE PE-N PE-OUT PRIM;
 PRIM: E-PATH-NUL PE-N PE-OUT PRIM;
 PRIM: SCOPE-FIND-AMBIGUOUS PE-N PE-OUT PRIM;
 
+\ The control-effect flags src/habu/verify-source.f reads at top level, from
+\ src/core/checker.f, which loads before the checker starts. Without a row a
+\ from-source prefix boot refuses the step that reads one, so the verifier would
+\ not load there (test/cold-naming-test.f).
+PRIM: CTL-RENDERS PE-N PE-OUT PRIM;
+PRIM: CTL-CREATES PE-N PE-OUT PRIM;
+PRIM: CTL-NOMINAL PE-N PE-OUT PRIM;
+
 s" PTR-VARIABLE" s" --" TRUST
 s" PERSISTED-PTR-VARIABLE" s" --" TRUST
 s" PTR-U8-TABLE" s" n --" TRUST

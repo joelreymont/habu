@@ -50,9 +50,7 @@
 \ about a second of compiling. The only files it shares with the benchmark
 \ targets are baked into the engine (src/lib/errors.f, src/lib/string.f, src/lib/memory.f,
 \ src/lib/adt/option.f), so no word under test is compiled before the selection.
-\ src/lib/tier.f, the selection itself, loads there too and shares nothing with them.
 require src/lib/time-cpu.f
-require src/lib/tier.f
 
 package TIER-SELECT
 private
@@ -73,7 +71,7 @@ public
    u 1 <> if s" tier-bench: tier must be 0 or 1" USAGE-RC die then
    a c@ ZERO-C - {: t :}
    t 0 < t 1 > or if s" tier-bench: tier must be 0 or 1" USAGE-RC die then
-   t TIER:SELECT ;
+   t set-tier ;
 
 ;package
 

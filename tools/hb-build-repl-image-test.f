@@ -7,7 +7,6 @@
 require tools/hb-build-test-lib.f
 require src/lib/string.f
 require src/lib/process-cwd.f
-require src/lib/tier.f
 require test/app-builder-engine.f
 
 package HB-BUILD-CLI
@@ -205,10 +204,10 @@ variable HBT-IMAGE-RESAVED-U
 \ a subject loaded at TIER.
 : HBT-REPL-TIER-IMAGE ( n -- )
    tier@ {: tier:n prior:n :}
-   tier TIER:SELECT
+   tier set-tier
    HBT-REPL-SRC HBT-REPL-OUT HBT-HBB-PREPARE-REPL
    HBT-HBB-BUILD-OUT
-   prior TIER:SELECT
+   prior set-tier
    HBT-IMAGE-RESAVED$ HBT-REMOVE-FILE?
    HBT-REPL-OUT HBT-IMAGE-SAVE-SCRIPT$ HBT-IMAGE-STDIN-RUN {: firstu:n :}
    tier HBT-REPL-TIER-OUT

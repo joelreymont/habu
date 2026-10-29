@@ -20,7 +20,6 @@ ndict@ here BYTE-VIEW NULL-PTR BYTE-VIEW - variable PRE-R  variable PRE-D  PRE-D
 ;package
 
 require src/os/script-argv.f
-require src/lib/tier.f
 require src/habu/aot-arm.f
 require src/habu/aot-capture.f
 require src/compiler/native/string.f
@@ -84,12 +83,12 @@ public
    here BYTE-VIEW NULL-PTR BYTE-VIEW - PRE-D !
    WBACK:INSTALL
    OPEN
-   1 TIER:SELECT
+   1 set-tier
    s" src/arch/wasm/kernel-words.f" required
    LOAD-BASE
    AOT-ARM:R0 @ ENGINE-INTERNAL:SEAL-PACKAGES
    LOAD-SOURCE
-   0 TIER:SELECT
+   0 set-tier
    CAPTURE
    LINK ;
 

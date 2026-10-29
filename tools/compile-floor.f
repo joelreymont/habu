@@ -87,7 +87,6 @@ require src/lib/fmt.f
 require src/lib/float.f
 require src/lib/argv.f
 require src/lib/time-cpu.f
-require src/lib/tier.f
 require src/lib/fd.f
 
 -7700 constant E-FLOOR-UNCOMPILED
@@ -247,14 +246,14 @@ variable BOUND-US                  \ ratchet floor in us; read only when a floor
    SB$ E-FLOOR-UNCOMPILED REFUSE ;
 
 : RUN-TIER1 ( -- )
-   1 TIER:SELECT
+   1 set-tier
    s" T" s"  ( n -- n ) 1 + ; " TRIV-T1 MEASURE
    SET-N DISPATCHES s" the trivial tier-1 set" EXPECT
    s" U" s"  ( n n -- n ) swap drop ; " THREE-T1 MEASURE
    SET-N DISPATCHES s" the three-op tier-1 set" EXPECT ;
 
 : RUN-TIER0 ( -- )
-   0 TIER:SELECT
+   0 set-tier
    s" V" s"  ( n -- n ) 1 + ; " TRIV-T0 MEASURE
    0 DISPATCHES s" the trivial tier-0 set" EXPECT ;
 
@@ -314,7 +313,7 @@ variable BOUND-US                  \ ratchet floor in us; read only when a floor
 : PUT-BACK ( -- )
    TEARDOWN
    NCOMP:INSTALL
-   PRIOR-TIER @ TIER:SELECT ;
+   PRIOR-TIER @ set-tier ;
 
 : MEASURE-ALL ( -- )
    RESET-SETS

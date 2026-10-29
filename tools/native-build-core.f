@@ -2,7 +2,6 @@
 
 require tools/native-build-deps.f
 require src/lib/executable-build.f
-require src/lib/tier.f
 require src/lib/sort.f
 
 package NATIVE-BUILD
@@ -984,8 +983,8 @@ TYPED-VARIABLE HELD-WRITER [ AOT-OWNED:capture ptr n n ptr u8 n -- ]
 variable WRITER-TIER
 : LOAD-SOURCE-WRITER ( -- )
    tier@ WRITER-TIER !
-   [: HB-TARGET-LINUX-X86-64? if 1 else 0 then TIER:SELECT READ-WRITER ;]
-      [: WRITER-TIER @ TIER:SELECT ;] finally ;
+   [: HB-TARGET-LINUX-X86-64? if 1 else 0 then set-tier READ-WRITER ;]
+      [: WRITER-TIER @ set-tier ;] finally ;
 
 \ A caller-supplied writer (RUN-PATH-WRITER-RC) runs after the source writer
 \ loads, so it can bind that writer by name (SOURCE-WRITER-NAMED).
@@ -1406,7 +1405,7 @@ variable SEALED-NAMES-U
 \ it, as in any product, and nothing refuses tier 0 bodies in the engine. The
 \ build scope's cleanup restores the caller's tier.
 : AT-TIER-1 ( R [ R -- S ] -- S )
-   1 TIER:SELECT execute ;
+   1 set-tier execute ;
 
 
 : TARGET-SCOPE ( R [ R -- S ] -- S )

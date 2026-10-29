@@ -15,7 +15,6 @@
 require src/lib/prelude.f
 require src/habu/verify-source.f
 require src/lib/test.f
-require src/lib/tier.f
 
 T-RESET
 
@@ -46,7 +45,7 @@ private
 variable START-TIER
 tier@ START-TIER !
 public
-: RESTORE-TIER ( -- ) START-TIER @ TIER:SELECT ;
+: RESTORE-TIER ( -- ) START-TIER @ set-tier ;
 ;package
 
 \ --- shared fixture packages (defined once; cases reference them) ---

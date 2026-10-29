@@ -56,7 +56,7 @@ create SECOND-BUF PATH-CAP allot variable SECOND-U
    s" --" >LEN PROC-ARGV+
    IMAGE$ >LEN PROC-ARGV+
    ENGINE-CANDIDATE:PATH$ >LEN
-   S\" require src/compiler/native/compiler.f\n1 set-tier\nrequire src/lib/tier.f\npackage DEFER-IMAGE-TIER\npublic\n: LEGACY ( -- ) HB-TARGET-LINUX-X86-64? if exit then 0 TIER:SELECT ;\n;package\n: DEFER-IMAGE-NATIVE ( n -- n ) 1+ ;\n17 DEFER-IMAGE-NATIVE . cr\nDEFER-IMAGE-TIER:LEGACY\nrequire src/habu/app-image.f\nrequire test/native-defer-image-subject.f\nrequire test/compiler/native-opcode-image.f\nNATIVE-OPCODE-IMAGE:PRINT\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" >LEN
+   S\" require src/compiler/native/compiler.f\n1 set-tier\npackage DEFER-IMAGE-TIER\npublic\n: LEGACY ( -- ) HB-TARGET-LINUX-X86-64? if exit then 0 set-tier ;\n;package\n: DEFER-IMAGE-NATIVE ( n -- n ) 1+ ;\n17 DEFER-IMAGE-NATIVE . cr\nDEFER-IMAGE-TIER:LEGACY\nrequire src/habu/app-image.f\nrequire test/native-defer-image-subject.f\nrequire test/compiler/native-opcode-image.f\nNATIVE-OPCODE-IMAGE:PRINT\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" >LEN
    OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-ENV-STDIN-CAPTURE RESULT {: outu:n :}
    S\" 18\n\ndefer-source: ok\n" {: prefix:ptr pu:n :}

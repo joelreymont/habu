@@ -116,7 +116,6 @@ require src/lib/fmt.f
 require src/lib/float.f
 require src/lib/fmath.f
 require src/lib/argv.f
-require src/lib/tier.f
 require src/lib/fd.f
 
 -7710 constant E-SCALING-UNCOMPILED
@@ -463,7 +462,7 @@ variable BOUND-R                   \ and this is it
    0 NC-COUNT !
    0 SET-LIVE? !
    ['] COUNTING-COMPILE NCOMP:DISPATCH!
-   1 TIER:SELECT
+   1 set-tier
    A64RA:ALLOC-NS-OPEN ;
 
 \ TEARDOWN first: on the refusing paths a measured set is still standing, and
@@ -472,7 +471,7 @@ variable BOUND-R                   \ and this is it
 : PUT-BACK ( -- )
    TEARDOWN
    NCOMP:INSTALL
-   PRIOR-TIER @ TIER:SELECT
+   PRIOR-TIER @ set-tier
    A64RA:ALLOC-NS-CLOSE ;
 
 : MEASURE-ALL ( -- )

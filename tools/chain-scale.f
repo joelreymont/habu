@@ -82,7 +82,6 @@ require src/lib/fmt.f
 require src/lib/float.f
 require src/lib/fmath.f
 require src/lib/argv.f
-require src/lib/tier.f
 require src/lib/fd.f
 
 -7703 constant E-SCALE-UNCOMPILED
@@ -365,11 +364,11 @@ variable BOUND-MILLI               \ ratchet bound; read only when one was given
 : PUT-BACK ( -- )
    TEARDOWN
    NCOMP:INSTALL
-   PRIOR-TIER @ TIER:SELECT
+   PRIOR-TIER @ set-tier
    NPROF:CLOSE ;
 
 : MEASURE-ALL ( -- )
-   1 TIER:SELECT
+   1 set-tier
    RUN-LINE
    RUN-FRAME
    REPORT

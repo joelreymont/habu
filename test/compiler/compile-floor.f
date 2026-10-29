@@ -43,7 +43,6 @@ require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/argv.f
 require src/lib/test/outcome.f
-require src/lib/tier.f
 
 package COMPILE-FLOOR-TEST
 
@@ -151,7 +150,7 @@ tier@ ENTRY-TIER !
 \ Requiring the tool RUNS it: that run is the success control. Empty the mock
 \ argv first so that load-time run is the reporting one whatever argv this
 \ file itself was given.
-1 TIER:SELECT
+1 set-tier
 tier@ PRIOR-TIER !
 ARGV:MOCK-CLEAR
 
@@ -184,7 +183,7 @@ private
 \ reach one, with `duplicate definition: T1`.
 : TEST-RESTORES-AFTER-REFUSAL ( -- )
    s" a refused in-process run gives both back on the way out" T-LABEL
-   1 TIER:SELECT
+   1 set-tier
    tier@ PRIOR-TIER !
    ARGV:MOCK-CLEAR  s" 0" ARGV:MOCK+
    CATCH-MAIN E-FLOOR-EXCEEDED T=
@@ -198,7 +197,7 @@ public
    TEST-RATCHET-REFUSES
    TEST-RATCHET-PASSES
    TEST-RESTORES-AFTER-REFUSAL
-   ENTRY-TIER @ TIER:SELECT
+   ENTRY-TIER @ set-tier
    ARGV:USE-SCRIPT
    T-REPORT
    s" compile-floor: ok" type cr ;

@@ -142,14 +142,17 @@ CAST: FLAG-CELL ( bool -- n )
 3 7 max 7 T=
 1 2 3 4 2swap 2 T= 1 T= 4 T= 3 T=
 1 2 3 4 2over 2 T= 1 T= 4 T= 3 T= 2 T= 1 T=
-0 ?dup 0 T=
-\ The checker does not model ?dup's two outcomes (a body using it is refused
-\ E-UNDEFINED), and a cell pushed with checking off is unknown after the window,
-\ so the engine's ?dup runs unchecked and parks its sum in a typed variable.
+\ The checker does not model ?dup's two outcomes (a body or a top-level step
+\ using it is refused E-UNDEFINED), and a cell pushed with checking off is
+\ unknown after the window, so the engine's ?dup runs unchecked and parks its
+\ results in variables.
+variable ES-QDUP-ZERO
 variable ES-QDUP-SUM
 check@ 0 set-check
+0 ?dup ES-QDUP-ZERO !
 5 ?dup + ES-QDUP-SUM !
 set-check
+ES-QDUP-ZERO @ 0 T=
 ES-QDUP-SUM @ 10 T=
 depth 0 T=
 1 2 depth 2 T= 2 T= 1 T=

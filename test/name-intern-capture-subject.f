@@ -1,6 +1,5 @@
 \ One spelling belongs to four distinct declarations. The saved images keep
 \ their effects and source order while later scopes rewind symbol text.
-require src/lib/tier.f
 require src/lib/test/eval.f
 
 package NI-ALPHA
@@ -84,9 +83,9 @@ variable BEFORE-U
    s" NI-TEMP-C" SYM-PUBLIC s" NIREWIND" SYM-FIND nip ASSERT ;
 
 : DEFINE-DELTA ( -- )
-   1 TIER:SELECT
+   1 set-tier
    s" package NI-DELTA public : NiShArEd ( n -- n ) 4 * ; ;package" evaluate-closed
-   0 TIER:SELECT ;
+   0 set-tier ;
 : DELTA-RUN ( -- n ) s" 3 NI-DELTA:NISHARED" TEST-EVAL:N ;
 
 : MEASURE ( -- )

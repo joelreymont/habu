@@ -1356,17 +1356,12 @@ private
 : RENDERS-MARK? ( ptr u8 n n -- bool )
    NCOMP-DISPATCH:DECL-VERIFY-RENDERS-OFF OWNER-XT RENDERS-ACTION execute ;
 
-\ The two masks it is asked with: a text renderer (RECORD-DEFINER?), and a text
-\ renderer or a word that calls `create` (TOP-TOKEN). They are bound at top
-\ level because the checker loads before the check hook, so a source boot has
-\ no checked row for its constants (test/cold-naming-test.f). Its top level also
-\ reads them as stale cells that `or` refuses, so each fact is first bound to a
-\ constant of this file and the masks combine those.
-CTL-RENDERS constant MARK-RENDERS
-CTL-CREATES constant FACT-CREATES
-CTL-NOMINAL constant FACT-NOMINAL
-MARK-RENDERS FACT-CREATES or constant MARK-UNSEEN
-MARK-RENDERS FACT-NOMINAL or constant MARK-NOMINAL
+\ The masks it is asked with: a text renderer (RECORD-DEFINER?), a text
+\ renderer or a word that calls `create` (TOP-TOKEN), and a text renderer or a
+\ word that registers a nominal type. src/core/cell-effects.f gives the flags
+\ their rows, so a source boot reads them too (test/cold-naming-test.f).
+CTL-RENDERS CTL-CREATES or constant MARK-UNSEEN
+CTL-RENDERS CTL-NOMINAL or constant MARK-NOMINAL
 
 \ Only a reached call whose outputs this reader does not model can introduce
 \ nominal types absent from the source. A modeled declaration checks its own
@@ -4036,7 +4031,7 @@ variable VARIADIC-XT s" VARIADIC" VARIADIC-XT LIBRARY-XT!
    \ else by TOP-TOKEN. What the text defines is still the mark's, and where a
    \ later token uses it, that stretch or definition is deferred too.
    a u QUIET-NOMINAL
-   a u MARK-RENDERS RENDERS-MARK? {: renders:bool :}
+   a u CTL-RENDERS RENDERS-MARK? {: renders:bool :}
    renders a u FFI-CLOSER? and IF
       FFI-STAGING  false FFI-CLAUSES !  false FFI-GROUP !  0 0= EXIT
    THEN
@@ -4213,7 +4208,7 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    a u num-parse nip nip IF EXIT THEN
    a u STRING-OPENER? 0= IF TICK-CONTEXT-UNKNOWN THEN
    a u QUIET-NOMINAL
-   a u MARK-RENDERS RENDERS-MARK? {: renders:bool :}
+   a u CTL-RENDERS RENDERS-MARK? {: renders:bool :}
    renders 0= IF a u MARK-UNSEEN RENDERS-MARK? drop THEN
    \ Index safety still needs every call after a refused declaration: an open
    \ diagnostic stretch must not hide a call that can change earlier bindings.

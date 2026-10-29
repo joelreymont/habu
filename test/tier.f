@@ -221,14 +221,12 @@ variable RC     variable EXITED
    OUT$ s" deferred-ok" CONTAINS? TTRUE
    ERR$ s" underflow" CONTAINS? TTRUE ;
 
-\ ---- 2b. checked code reads the tier and selects it through TIER --------------
+\ ---- 2b. checked code reads and selects the tier ------------------------------
 \ Registering a primitive in the engine dictionary is only half of it. Without a
 \ checker effect row the word is E-UNDEFINED inside every checked body, so
 \ `: R ( -- n ) tier@ ;` rejected and no checked build driver could select a
-\ tier at all. tier@ is an ordinary reader like check@. set-tier's one row is
-\ package TIER's (src/lib/tier.f), so a checked body selects a tier by calling
-\ TIER:SELECT, and a plain checked body that names set-tier itself does not find
-\ it: the selection stays one deliberate, named call.
+\ tier at all. tier@ is an ordinary reader like check@, and set-tier's row is
+\ global, so a checked body anywhere selects a tier by calling it.
 : TEST-CHECKER-ROWS ( -- )
    LEGACY? if
       s" tier@ is callable from a checked body on tier 0" T-LABEL
@@ -239,20 +237,16 @@ variable RC     variable EXITED
    s" 1 set-tier : R ( -- n ) tier@ ; R . cr" RUN  s" 1" ASSERT-OK
 
    LEGACY? if
-      s" TIER:SELECT selects from a checked body on tier 0" T-LABEL
-      s" require src/lib/tier.f : ST ( n -- ) TIER:SELECT ; 1 ST tier@ . cr" RUN  s" 1" ASSERT-OK
+      s" set-tier selects from a checked body on tier 0" T-LABEL
+      s" : ST ( n -- ) set-tier ; 1 ST tier@ . cr" RUN  s" 1" ASSERT-OK
    then
 
-   s" TIER:SELECT selects from a checked body on tier 1" T-LABEL
+   s" set-tier selects from a checked body on tier 1" T-LABEL
    LEGACY? if
-      s" 1 set-tier require src/lib/tier.f : ST ( n -- ) TIER:SELECT ; 0 ST tier@ . cr" RUN  s" 0" ASSERT-OK
+      s" 1 set-tier : ST ( n -- ) set-tier ; 0 ST tier@ . cr" RUN  s" 0" ASSERT-OK
    else
-      s" 1 set-tier require src/lib/tier.f : ST ( n -- ) TIER:SELECT ; 1 ST tier@ . cr" RUN  s" 1" ASSERT-OK
-   then
-
-   s" set-tier is undefined in a plain checked body" T-LABEL
-   s" : S ( -- ) 1 set-tier ;" RUN  REJECT-RC ASSERT-RC
-   ERR$ s" undefined word 'set-tier'" CONTAINS? TTRUE ;
+      s" 1 set-tier : ST ( n -- ) set-tier ; 1 ST tier@ . cr" RUN  s" 1" ASSERT-OK
+   then ;
 
 \ ---- 2b0. certification is the engine's hook CELL, read per definition --------
 \ Tier 0 reads the cell for every definition, which is what makes `0 set-check`
@@ -1005,7 +999,7 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
    0 ASSERT-RC OUT$
    LEGACY? if S\" 49\n49\n0\n" else S\" 49\n49\n1\n" then STR= TTRUE
    s" the scope restores a tier its body selected, through throws too" T-LABEL
-   S\" require src/lib/executable-build.f require src/lib/tier.f\n: BS-SEL ( -- ) [: 1 TIER:SELECT ;] EXECUTABLE-BUILD:WITH ;\n: BS-RUN ( -- ) [: 1 TIER:SELECT 79 throw ;] EXECUTABLE-BUILD:WITH ; BS-SEL tier@ . ' BS-RUN catch . tier@ . \n" EXEC
+   S\" require src/lib/executable-build.f\n: BS-SEL ( -- ) [: 1 set-tier ;] EXECUTABLE-BUILD:WITH ;\n: BS-RUN ( -- ) [: 1 set-tier 79 throw ;] EXECUTABLE-BUILD:WITH ; BS-SEL tier@ . ' BS-RUN catch . tier@ . \n" EXEC
    0 ASSERT-RC OUT$
    LEGACY? if S\" 0\n79\n0\n" else S\" 1\n79\n1\n" then STR= TTRUE
    s" evaluated source inside the scope compiles at the caller's tier" T-LABEL

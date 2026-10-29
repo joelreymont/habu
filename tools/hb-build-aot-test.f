@@ -12,7 +12,6 @@ require tools/image-size-lib.f          \ this fixture measures image bytes dire
 require test/linker-builder-engine.f
 require src/lib/string.f
 require src/lib/codegen.f
-require src/lib/tier.f
 
 using BUILD-FIXPOINT                     \ the build tmp root
 
@@ -172,10 +171,10 @@ package HB-BUILD-CLI
 \ Build HBT-AOT-SRC from a caller at TIER, then select the tier this row ran at.
 : HBT-TIER-BUILD ( n -- )
    tier@ {: tier:n prior:n :}
-   tier TIER:SELECT
+   tier set-tier
    HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT
    HBT-HBB-BUILD-OUT
-   prior TIER:SELECT ;
+   prior set-tier ;
 
 : BUILD-AOT-TIERS ( -- )
    HB-TARGET-LINUX-X86-64? if exit then
@@ -271,7 +270,7 @@ package HB-BUILD-CLI
 public
 : HBT-AOT-MAIN ( -- )
    T-RESET
-   1 TIER:SELECT          \ the product tier the LOADING programs hold
+   1 set-tier          \ the product tier the LOADING programs hold
    LINKER-BUILDER-ENGINE:ENSURE LINKER-BUILDER-ENGINE:HOST$ HBT-KEYED!
    HBT-PREPARE
    BUILD-AOT-OBJECT-PRODUCER

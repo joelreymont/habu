@@ -6,7 +6,7 @@
 \ fixture's rows and then ran src/core/internal-mark.f over the window, so every
 \ record below is classified exactly as the product build classifies it.
 \
-\ Four shapes of row are measured:
+\ Five shapes of row are measured:
 \
 \ 1. PRIM-OWNER-AXIOM, a fresh name with no engine word, asked of the CHECKER
 \    only (CHECK-CANDIDATE!). A candidate binds the record the engine's lookup
@@ -32,11 +32,7 @@
 \    compile at both tiers. Elsewhere the global row answers: a checked caller
 \    gets the named E-CAP-TRUSTED reject, and a TRUSTED: caller keeps the call
 \    window tier 1 builds from that row.
-\ 5. A SEED primitive whose only row is owner-private: set-tier, owned by
-\    package TIER (src/lib/tier.f). Its owner's checked callers compile at both
-\    tiers, every other scope misses the name, and the owner's public
-\    TIER:SELECT, which this file selects its tiers with, compiles everywhere.
-\ 6. An internal engine primitive a package row types: package-scope! and
+\ 5. An internal engine primitive a package row types: package-scope! and
 \    namespace-record carry DNAME-INT|DNAME-OWNED and are CHECKER-OVERLAY's
 \    (src/habu/prims.f). The owner's checked callers compile at both tiers,
 \    and a checked caller elsewhere gets the global trusted-only row's reject.
@@ -47,11 +43,10 @@
 \ away, and the shadowed global's token is refused before it runs.
 
 require src/lib/errors.f
-require src/lib/tier.f
 
 \ Compiling a candidate is the subject, through evaluate-closed: a text that
 \ opens or closes a package moves the live package the next case is measured
-\ in, and TIER:SELECT picks the compiler it is measured under. EVC reports the
+\ in, and set-tier picks the compiler it is measured under. EVC reports the
 \ reject code instead of letting it exit the window. A refusal's throw puts the
 \ text's two cells back, so EVC evaluates a copy and drops them on either path:
 \ this file is a closed program and may leave nothing.
@@ -64,7 +59,7 @@ $0A constant LF-C
 -8286 constant HIR-UNMODELED-RC
 
 : T0? ( -- bool ) HB-TARGET-LINUX-X86-64? 0= ;
-: RESTORE-T0 ( -- ) T0? if 0 TIER:SELECT then ;
+: RESTORE-T0 ( -- ) T0? if 0 set-tier then ;
 
 : VERDICT$ ( n -- ptr u8 n ) {: v:n :}
    v -1 = if s" admitted" exit then
@@ -128,7 +123,7 @@ $0A constant LF-C
 \ measurement of the same question. The first `package` of FFI and NPUB in this
 \ window creates it; each later one reopens it.
 : PRIVATE-T0-CASES ( -- )
-   0 TIER:SELECT
+   0 set-tier
    FFI-OPEN
    s" t0 ptr>cell inside owner"
    s" : POS-P2C0-IN ( ptr a -- n ) FFI-PTR>CELL ;" EVAL
@@ -151,7 +146,7 @@ $0A constant LF-C
 \ Tier 1 reads a callee's cell widths through the checker's scope, so the owner's
 \ row is the only one that can answer, and the call binds the sealed record.
 : PRIVATE-T1-CASES ( -- )
-   1 TIER:SELECT
+   1 set-tier
    FFI-OPEN
    s" t1 ptr>cell inside owner"
    s" : POS-P2C1-IN ( ptr a -- n ) FFI-PTR>CELL ;" EVAL
@@ -167,7 +162,7 @@ $0A constant LF-C
 \ elsewhere it gets the call's refusal of the name. Every owner block here
 \ reopens its package, which the cases above created.
 : TICK-T0-CASES ( -- )
-   0 TIER:SELECT
+   0 set-tier
    FFI-OPEN
    s" t0 tick ptr>cell inside owner"
    s" : POS-TP2C0-IN ( -- ) ['] FFI-PTR>CELL drop ;" EVAL
@@ -182,7 +177,7 @@ $0A constant LF-C
    PKG-CLOSE ;
 
 : TICK-T1-CASES ( -- )
-   1 TIER:SELECT
+   1 set-tier
    FFI-OPEN
    s" t1 tick cell>ptr inside owner"
    s" : POS-TC2P1-IN ( -- ) ['] FFI-CELL>PTR drop ;" EVAL
@@ -208,7 +203,7 @@ $0A constant LF-C
 \ global row is kept for: tier 1 builds their call window from it, and without
 \ it a TRUSTED: caller of addrmap-set outside NPUB is E-HIR-UNMODELED.
 : DUAL-T0-CASES ( -- )
-   0 TIER:SELECT
+   0 set-tier
    FFI-OPEN
    s" ffi call inside owner"
    s" : POS-FFI-IN ( ptr a ptr n n n -- n ) ffi-call-bounded ;" EVAL
@@ -243,7 +238,7 @@ $0A constant LF-C
    s" TRUSTED: POS-AM0-TR ( n -- ) addrmap-set ;" EVAL ;
 
 : DUAL-T1-CASES ( -- )
-   1 TIER:SELECT
+   1 set-tier
    s" t1 ffi call trusted top level"
    s" TRUSTED: POS-FFI1-TR ( ptr a ptr n n n -- n ) ffi-call-bounded ;" EVAL
    NPUB-OPEN
@@ -260,47 +255,6 @@ $0A constant LF-C
    PKG-CLOSE
    s" t1 addrmap-set trusted top level"
    s" TRUSTED: POS-AM1-TR ( n -- ) addrmap-set ;" EVAL
-   RESTORE-T0 ;
-
-\ ---- a seed primitive with its owner's row alone: set-tier in TIER ------------
-\ src/lib/tier.f, required above, already compiled TIER's own checked caller. A
-\ reopened TIER compiles another at both tiers; outside it set-tier is
-\ undefined, and TIER:SELECT is how any scope reaches it.
-: TIER-OPEN ( -- ) s" package TIER" evaluate-closed ;
-
-: OWNER-T0-CASES ( -- )
-   0 TIER:SELECT
-   TIER-OPEN
-   s" t0 set-tier inside owner"
-   s" : POS-ST0-IN ( n -- ) set-tier ;" EVAL
-   PKG-CLOSE
-   s" t0 set-tier top level"
-   s" : POS-ST0-TOP ( n -- ) set-tier ;" EVAL
-   s" t0 tier select top level"
-   s" : POS-TS0-TOP ( n -- ) TIER:SELECT ;" EVAL
-   OTHER-OPEN
-   s" t0 set-tier other package"
-   s" : POS-ST0-OTH ( n -- ) set-tier ;" EVAL
-   s" t0 tier select other package"
-   s" : POS-TS0-OTH ( n -- ) TIER:SELECT ;" EVAL
-   PKG-CLOSE ;
-
-: OWNER-T1-CASES ( -- )
-   1 TIER:SELECT
-   TIER-OPEN
-   s" t1 set-tier inside owner"
-   s" : POS-ST1-IN ( n -- ) set-tier ;" EVAL
-   PKG-CLOSE
-   s" t1 set-tier top level"
-   s" : POS-ST1-TOP ( n -- ) set-tier ;" EVAL
-   s" t1 tier select top level"
-   s" : POS-TS1-TOP ( n -- ) TIER:SELECT ;" EVAL
-   OTHER-OPEN
-   s" t1 set-tier other package"
-   s" : POS-ST1-OTH ( n -- ) set-tier ;" EVAL
-   s" t1 tier select other package"
-   s" : POS-TS1-OTH ( n -- ) TIER:SELECT ;" EVAL
-   PKG-CLOSE
    RESTORE-T0 ;
 
 \ ---- the engine's own owners -------------------------------------------------
@@ -321,7 +275,7 @@ $0A constant LF-C
 
 \ NPUB exists from the dual-row cases above, so each block here reopens it.
 : NPUB-SITE-T0-CASES ( -- )
-   0 TIER:SELECT
+   0 set-tier
    NPUB-OPEN
    s" t0 code-publish inside owner"
    s" : POS-CP0-IN ( ptr u8 n n -- ) code-publish ;" EVAL
@@ -354,7 +308,7 @@ $0A constant LF-C
    s" TRUSTED: POS-CM0-TR ( n -- ) callmap-set ;" EVAL ;
 
 : NPUB-SITE-T1-CASES ( -- )
-   1 TIER:SELECT
+   1 set-tier
    NPUB-OPEN
    s" t1 code-publish inside owner"
    s" : POS-CP1-IN ( ptr u8 n n -- ) code-publish ;" EVAL
@@ -377,7 +331,7 @@ $0A constant LF-C
 
 : RECLAIM-CASES ( -- )
    T0? if
-   0 TIER:SELECT
+   0 set-tier
    RECLAIM-OPEN
    s" t0 reloc-maps-clear inside owner"
    s" : POS-RM0-IN ( n n -- ) reloc-maps-clear ;" EVAL
@@ -397,7 +351,7 @@ $0A constant LF-C
    s" t0 reloc-maps-clear trusted top level"
    s" TRUSTED: POS-RM0-TR ( n n -- ) reloc-maps-clear ;" EVAL
    then
-   1 TIER:SELECT
+   1 set-tier
    RECLAIM-OPEN
    s" t1 reloc-maps-clear inside owner"
    s" : POS-RM1-IN ( n n -- ) reloc-maps-clear ;" EVAL
@@ -414,7 +368,7 @@ $0A constant LF-C
 \ where the global row takes any cell. A hook of another shape is refused.
 : TOP-ROW-CASES ( -- )
    T0? if
-   0 TIER:SELECT
+   0 set-tier
    TOP-ROW-OPEN
    s" t0 set-top-check inside owner"
    s" : POS-STC0-IN ( [ ptr u8 n n n -- ] -- ) set-top-check ;" EVAL
@@ -436,7 +390,7 @@ $0A constant LF-C
    s" t0 set-top-check trusted top level"
    s" TRUSTED: POS-STC0-TR ( n -- ) set-top-check ;" EVAL
    then
-   1 TIER:SELECT
+   1 set-tier
    TOP-ROW-OPEN
    s" t1 set-top-check inside owner"
    s" : POS-STC1-IN ( [ ptr u8 n n n -- ] -- ) set-top-check ;" EVAL
@@ -455,7 +409,7 @@ $0A constant LF-C
 \ row keeps the seal from marking it DNAME-INT, so its owner calls it here.
 : CK-OWNER-CASES ( -- )
    T0? if
-   0 TIER:SELECT
+   0 set-tier
    CK-OWNER-OPEN
    s" t0 check-does! inside owner"
    s" : POS-CD0-IN ( ptr u8 n ptr u8 n -- n ) CHECK-DOES! ;" EVAL
@@ -475,7 +429,7 @@ $0A constant LF-C
    s" t0 check-does! trusted top level"
    s" TRUSTED: POS-CD0-TR ( ptr u8 n ptr u8 n -- n ) CHECK-DOES! ;" EVAL
    then
-   1 TIER:SELECT
+   1 set-tier
    CK-OWNER-OPEN
    s" t1 check-does! inside owner"
    s" : POS-CD1-IN ( ptr u8 n ptr u8 n -- n ) CHECK-DOES! ;" EVAL
@@ -496,7 +450,7 @@ $0A constant LF-C
 \ (src/core/checker.f FIELD-PROJ!).
 : TYPE-DECL-CASES ( -- )
    T0? if
-   0 TIER:SELECT
+   0 set-tier
    TYPE-DECL-OPEN
    s" t0 field-proj! reopened owner after the seal"
    s" : POS-FP0-RE ( ptr u8 n n n -- ) FIELD-PROJ! ;" EVAL
@@ -510,7 +464,7 @@ $0A constant LF-C
    s" t0 field-proj! trusted top level"
    s" TRUSTED: POS-FP0-TR ( ptr u8 n n n -- ) FIELD-PROJ! ;" EVAL
    then
-   1 TIER:SELECT
+   1 set-tier
    TYPE-DECL-OPEN
    s" t1 field-proj! reopened owner after the seal"
    s" : POS-FP1-RE ( ptr u8 n n n -- ) FIELD-PROJ! ;" EVAL
@@ -535,7 +489,7 @@ $0A constant LF-C
 
 \ ---- an internal primitive its owner's rows type -------------------------------
 : OWNED-CASES ( -- )
-   0 TIER:SELECT
+   0 set-tier
    OVERLAY-OPEN
    s" t0 package-scope! inside owner"
    s" : POS-PS0-IN ( n n -- ) package-scope! ;" EVAL
@@ -544,7 +498,7 @@ $0A constant LF-C
    PKG-CLOSE
    s" t0 package-scope! top level"
    s" : POS-PS0-TOP ( n n -- ) package-scope! ;" EVAL
-   1 TIER:SELECT
+   1 set-tier
    OVERLAY-OPEN
    s" t1 package-scope! inside owner"
    s" : POS-PS1-IN ( n n -- ) package-scope! ;" EVAL
@@ -553,7 +507,7 @@ $0A constant LF-C
    s" t1 tick package-scope! inside owner"
    s" : POS-TPS1-IN ( -- ) ['] package-scope! drop ;" EVAL-TICK
    PKG-CLOSE
-   0 TIER:SELECT ;
+   0 set-tier ;
 
 public
 
@@ -566,8 +520,6 @@ public
    SHADOW-CASES
    T0? if DUAL-T0-CASES then
    DUAL-T1-CASES
-   T0? if OWNER-T0-CASES then
-   OWNER-T1-CASES
    OWNER-SITE-CASES
    OWNED-CASES
    s" prim-owner: ok" type LF-C emit ;

@@ -9,22 +9,21 @@
 require src/lib/errors.f
 require src/lib/string.f
 require src/lib/test.f
-require src/lib/tier.f
 require src/lib/test/eval.f
 require src/habu/verify-source.f
 
 \ A resident parsing immediate executes during compilation despite its neutral
 \ declared effect. The verifier must lose a prospective tier at this token.
-: CVO-SW ( -- ) 1 TIER:SELECT ;
+: CVO-SW ( -- ) 1 set-tier ;
 immediate
 s" CVO-SW" 0 parse-imm
 package CVO-I
 private
-: SWP ( -- ) 1 TIER:SELECT ;
+: SWP ( -- ) 1 set-tier ;
 immediate
 s" SWP" 0 parse-imm
 public
-: SWI ( -- ) 1 TIER:SELECT ;
+: SWI ( -- ) 1 set-tier ;
 immediate
 s" SWI" 0 parse-imm
 ;package
@@ -127,7 +126,7 @@ variable LONG-U
    0 LONG-U !
    s" package CVO-LONG public : " LONG+
    LONG-NAME 1000 LONG+
-   s"  ( -- ) 1 TIER:SELECT ; immediate ;package" LONG+
+   s"  ( -- ) 1 set-tier ; immediate ;package" LONG+
    LONG-BUF LONG-U @ evaluate-closed ;
 
 : ACT ( -- )
@@ -328,7 +327,7 @@ variable SHADOW-QUIET   variable SHADOW-ACTIVE
 
 : IMMEDIATE-CASE ( -- )
    tier@ {: old:n :}
-   0 TIER:SELECT
+   0 set-tier
    tick-order@ VERIFY:ENTRY-TICK-ORDER!
    VERIFY:REPORT-DEFERRALS
    s" a resident parsing immediate makes the later tick uncertain" T-LABEL
@@ -347,7 +346,7 @@ variable SHADOW-QUIET   variable SHADOW-ACTIVE
    s" a pending load after an unknown tick is left to the run" T-LABEL
    S\" 0 set-tier : CVI ( -- ) s\" missing-tick-order-file.f\" required ['] patch32 drop ;" COMPOSE-VERDICT 0 T=
    VERIFY:DEFERRED? TTRUE
-   old TIER:SELECT ;
+   old set-tier ;
 
 : LONG-IMMEDIATE-CASE ( -- )
    LONG-INSTALL

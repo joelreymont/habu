@@ -15,18 +15,17 @@
 \ is the sibling that decodes this exact live span in process on either native
 \ target; it finds the word in the current wordlist.
 \
-\ This file requires two things only, for the reason tools/tier-census.f gives:
+\ This file requires one thing only, for the reason tools/tier-census.f gives:
 \ src/lib/fmt.f and src/lib/fs.f are the formatting and file corpus a tier
 \ comparison wants to weigh, and a tool that loaded them for its own use could
 \ not (a comparison of an engine-provided file such as src/lib/string.f weighs
-\ nothing for the same reason). The two requires are src/habu/code-bytes.f,
-\ the boundary that turns a record's code address into bytes, and
-\ src/lib/tier.f, the word that selects the tier. Neither requires anything,
-\ and the only comparison they disturb is one whose corpus names one of them,
-\ which is already loaded by then.
+\ nothing for the same reason). The require is src/habu/code-bytes.f, the
+\ boundary that turns a record's code address into bytes; `set-tier`, which
+\ selects the tier, is an engine word. code-bytes.f requires nothing, and the
+\ only comparison it disturbs is one whose corpus names it, which is already
+\ loaded by then.
 
 require src/habu/code-bytes.f
-require src/lib/tier.f
 
 package TIER-DUMP
 private
@@ -110,7 +109,7 @@ public
 
 : MAIN ( -- )
    script-argc 4 < if USAGE then
-   0 script-argv$ TIER-ARG TIER:SELECT
+   0 script-argv$ TIER-ARG set-tier
    LOAD-CORPUS
    1 script-argv$ SPAN {: code:ptr bytes :}
    2 script-argv$ code bytes WRITE-SPAN ;

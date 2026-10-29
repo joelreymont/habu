@@ -334,6 +334,19 @@ variable WANT-RC
    70 s" internal" GE-EXPECT-RC
    S\" hb: internal engine word: DEFER-UNSET\n" s" internal" GE-EXPECT-ERR ;
 
+
+\ A top-level step is judged as a body call is. xref-retarget is an engine
+\ primitive whose one row is package NPUB's private one, so the step sees no
+\ row: it is refused by name with the checker's rc, and the word never runs.
+: ROWLESS-STEP ( -- )
+   GE-SRC-RESET
+   s" 1 . 0 0 0 xref-retarget 2 ." GE-SRC-LINE
+   s" oi-rowless-step.f" BOTH
+   70 s" rowless step" GE-EXPECT-RC
+   S\" 1\n" s" rowless step" GE-EXPECT-OUT
+   s" undefined word 'xref-retarget'" CASE$ GE-EXPECT-ERR-HAS ;
+
+
 : WIDE ( -- )
    GE-SRC-RESET
    s" OI-WIDE" GE-SRC-LINE
@@ -2157,6 +2170,7 @@ private
    UNDERFLOW
    UNDERDEPTH
    INTERNAL
+   ROWLESS-STEP
    WIDE
    HOOK-WINDOW
    HOOK-UNDERFLOW

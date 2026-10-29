@@ -20,7 +20,6 @@ require src/core/prefix-boundary.f
 require src/lib/string.f
 require src/lib/memory.f
 require src/lib/process.f
-require src/lib/tier.f
 require src/habu/address-cells.f
 require src/compiler/native/string.f
 
@@ -161,11 +160,11 @@ variable SOURCE-READY
 
 : RECOVERY-ROW ( -- )
    tier@ {: was:n :}
-   1 TIER:SELECT
+   1 set-tier
    MULTI-ERR-BEGIN
    s" : NW-RECOVERY ( n -- bool ) 1 + ;" evaluate-closed
    MULTI-ERR-END {: refused:n :}
-   was TIER:SELECT
+   was set-tier
    refused 1 <> if s" window: the recovery definition was not refused" 76 die then ;
 
 \ --- the window prefix, native-build's LOAD-TARGET through cell-effects.f ---

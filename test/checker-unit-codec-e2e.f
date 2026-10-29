@@ -308,9 +308,10 @@ CAST: CONTRACT-XT ( n -- [ n -- ptr u8 n bool ] )
    loop
    LINEAR-HITS @ 1 T= ;
 
+\ The reset retires DEFLINEAR's row, so the checker's own entry declares the type.
 : CHECK-LINEAR-PREP ( -- )
    OWNER-RESET:SOURCE
-   s" package CODEC-LIN public DEFLINEAR CODEC-LIN:tok ;package" evaluate-closed
+   S\" package CODEC-LIN public s\" CODEC-LIN:tok\" CHECKER-DEFLINEAR ;package" evaluate-closed
    MARK
    s" package CODEC-LIN public : CL-ALPHA ( -- n ) 1 ; : CL-ID ( CODEC-LIN:tok -- CODEC-LIN:tok ) ; ;package" evaluate-closed
    UNIT-EXPORT {: src:ptr size:n :}

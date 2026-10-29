@@ -17616,44 +17616,6 @@ defer CK-AOT-REC-CONTROL ( ptr n -- n bool )
    flags CTL-PARSES and 0 <> deferred or IF 2 EXIT THEN
    -1 ;
 
-\ What the load does with a top-level token it runs, or ticks when RUNS is
-\ false (CHECKER-VERIFY-TOP below). The token takes the walk a body token takes
-\ and gets a body's verdict, so a qualified token resolves as it does there.
-\ The answer is -1 when it resolves, or 2 when it resolves to a word that may
-\ read the source after it (TOP-RUNS); 3 when it resolves nowhere but a
-\ rendering statement in scope may define it (UNSEEN-COVERS?), the run's to
-\ judge; and 0 when the load refuses it, undefined or a malformed qualified
-\ name, rendered as a span record at the token (E-UNDEFINED-TOP-LEVEL,
-\ E-BAD-QUALIFIED-TOP-LEVEL) and counted under --all-errors, else thrown as a
-\ definition's refusal is. A refusal the walk answers, a using shadow or
-\ ambiguity among them, is raised as a body's is: rendered at the token and
-\ thrown (CHECKER-RESOLVE:RAISE). A token the walk does not bind is the word
-\ the engine's top-level find selects (CHECKER-TOP-SYM): a bare token the store
-\ does not hold keeps the engine's vote on its global wordlist, the boot prefix
-\ in the verifier's child, where the colliding global need not be one the
-\ checker knows and the subject's words are never compiled; the engine word it
-\ names runs as its global symbol's facts say.
-: TOP-ANSWER ( ptr u8 n bool -- n )
-   {: a:ptr u:n runs:bool :}
-   a u CHECKER-RESOLVE:WALK {: sym:n why:n :}
-   why 0 <> IF a u why CHECKER-RESOLVE:RAISE THEN
-   CHECKER-QBAD-TOK @ 0= IF
-      a u sym TOP-BOUND-SYM IF
-         dup TOP-CONTROL {: flags:n deferred:bool :}
-         dup SYM-EFFECT-UNRESOLVED? IF
-            drop flags deferred runs TOP-RUNS
-            dup -1 = IF drop 3 THEN EXIT
-         THEN
-         dup a u NAV-USE-NOW drop
-         flags deferred runs TOP-RUNS EXIT
-      THEN drop
-      a u UNSEEN-COVERS? IF 3 EXIT THEN
-   THEN
-   a USH-TOK-A !  u USH-TOK-U !
-   CHECKER-QBAD-TOK @ IF 4 ELSE 3 THEN SHADOW-DIAG-XT
-   MULTI-ERR? IF 1 MULTI-ERR-N +! 0 EXIT THEN
-   CHECKER-REJECT-RC throw ;
-
 \ The pre-pass's report of a top-level stretch it deferred to the run, located
 \ at the token that opened it.
 : CHECKER-VERIFY-DEFERRED ( ptr u8 n -- )
@@ -19284,21 +19246,33 @@ defer SCOPE-EXTERIOR-XT ( n -- bool )
 \ installed with the names: rows below).
 defer NAMED-OPERAND-XT ( -- )
 
+
+\ The identity (CTL-IDENTITY) of the word SYM a token A U binds: the engine word
+\ a step types by what it does, an intrinsic or a core op, with no row. A
+\ qualified token keeps its symbol but no identity: both compilers match an
+\ operator row on the bare spelling alone, so `P:@` reaching the global `@` is a
+\ call, judged by the row like any other call. The step (BIND-TOK) and the
+\ pre-pass (TOP-ROW?) take a token's identity from here.
+: TOK-IDENTITY ( n ptr u8 n -- n )
+   {: sym:n a:ptr u:n :}
+   a u CHECKER-QUALIFIED? IF 0 EXIT THEN
+   sym CTL-FLAGS-SYM CTL-IDENTITY and ;
+
+
 \ The body token's one resolution: the symbol the shared lookup binds it to
 \ (CHECKER-BIND), whether it bound the engine's record (WALK-REC) and the
-\ identity that symbol carries (CTL-IDENTITY). Made on the first ask for the
+\ identity that symbol carries (TOK-IDENTITY). Made on the first ask for the
 \ token DO-TOK1 is reading, and read by every later reader of that token.
 \ TOK-SPELL-A and TOK-SPELL-U hold that token as DO-TOK1 read it, in the
 \ checked text. TOK-REC retains the bound record for the compiler owner;
 \ TOK-LIVE-REC retains the live lookup result for refusal selection.
 \ A literal is claimed before any scope is asked, as the engine claims it
 \ (LITERAL-TOK? below, habu2.f EM-COMPILE-LITERAL), so its shape is never
-\ resolved as a name. A qualified token keeps its symbol but no identity: both
-\ compilers match an operator row on the bare spelling alone, so `P:@` reaching
-\ the global `@` is a call, judged by the row like any other call. A refusal the
-\ lookup raises names the token as DO-TOK1 read it, which locates in the file;
-\ `a u` may be the fold the body walk keeps in scratch.
-: BIND-TOK ( ptr u8 n -- ) {: a:ptr u:n :}
+\ resolved as a name. A refusal the lookup raises names the token as DO-TOK1
+\ read it, which locates in the file; `a u` may be the fold the body walk keeps
+\ in scratch.
+: BIND-TOK ( ptr u8 n -- )
+   {: a:ptr u:n :}
    TOK-DONE @ IF EXIT THEN
    -1 TOK-DONE !
    0 TOK-SYM !  0 TOK-CTL !  0 TOK-DEAD !
@@ -19318,8 +19292,8 @@ defer NAMED-OPERAND-XT ( -- )
       TOK-SYM @ TOK-SPELL-A @ TOK-SPELL-U @ NAV-USE
       TOK-SYM @ CTL-FLAGS-SYM CTL-NAMES and 0 <> IF NAMED-OPERAND-XT THEN
    THEN
-   a u CHECKER-QUALIFIED? IF EXIT THEN
-   TOK-SYM @ CTL-FLAGS-SYM CTL-IDENTITY and TOK-CTL ! ;
+   TOK-SYM @ a u TOK-IDENTITY TOK-CTL ! ;
+
 
 \ The engine's `>r` `r>` `r@` are compile keywords with no record, as `i` and
 \ `exit` are (src/habu/habu2.f's keyword table): a call bound to one of their
@@ -25287,12 +25261,16 @@ CK-AOT-REC-CONTROL-INSTALL
 \ reporting progress. Taking them all adds effects for words the seeded engine
 \ really has, under the scopes it really has them in, so nothing is invented and
 \ the retry's own scope walk picks the one the reference meant.
+\
+\ Rows hold the folded name the symbol store keeps (SYM-COPY-FOLD); a probe
+\ may arrive as written, so both comparisons fold the probe byte as the store
+\ does (SYM-FOLD-C).
 : CK-AOT-NAME= ( n ptr u8 n -- bool ) {: r:n a:ptr u:n :}
    r 0 CK-AOT-FIELD {: at:n :}
    at CK-AOT-STR-U u <> IF RES-FALSE EXIT THEN
    0 CK-AOT-J !
    BEGIN CK-AOT-J @ u < WHILE
-      at CK-AOT-STR-A CK-AOT-J @ + c@  a CK-AOT-J @ + c@ <> IF RES-FALSE EXIT THEN
+      at CK-AOT-STR-A CK-AOT-J @ + c@  a CK-AOT-J @ + c@ SYM-FOLD-C <> IF RES-FALSE EXIT THEN
       CK-AOT-J @ 1 + CK-AOT-J !
    REPEAT
    RES-TRUE ;
@@ -25305,7 +25283,7 @@ CK-AOT-REC-CONTROL-INSTALL
    at CK-AOT-STR-U u <> IF RES-FALSE EXIT THEN
    0 CK-AOT-J !
    BEGIN CK-AOT-J @ u < WHILE
-      at CK-AOT-STR-A CK-AOT-J @ + c@  a CK-AOT-J @ + c@ <> IF RES-FALSE EXIT THEN
+      at CK-AOT-STR-A CK-AOT-J @ + c@  a CK-AOT-J @ + c@ SYM-FOLD-C <> IF RES-FALSE EXIT THEN
       CK-AOT-J @ 1 + CK-AOT-J !
    REPEAT
    RES-TRUE ;
@@ -25356,6 +25334,12 @@ CK-AOT-REC-CONTROL-INSTALL
    CK-AOT-READY? 0= IF RES-FALSE EXIT THEN
    RES-FALSE CK-AOT-MISSES ;
 
+\ A definition's or step's verdict, as CHECK-VERDICT answers it.
+-1 constant VERDICT-CHECKED
+0 constant VERDICT-REFUSED
+1 constant VERDICT-UNCHECKABLE
+2 constant VERDICT-DEFERRED
+
 \ Would another pass see something this one could not? Asked inside CHECK, at
 \ the moment the verdict is reached, because that is where the two facts it
 \ needs already are: the pass latched E-UNDEFINED and the queue holds the names
@@ -25363,7 +25347,7 @@ CK-AOT-REC-CONTROL-INSTALL
 \ while its own diagnostic is still pending.
 : CK-AOT-RETRY-DUE? ( n -- bool )
    {: verdict:n :}
-   verdict -1 = IF RES-FALSE EXIT THEN
+   verdict VERDICT-CHECKED = IF RES-FALSE EXIT THEN
    UNDEFERR @ 0= IF RES-FALSE EXIT THEN
    CK-AOT-MISS-SERVED? ;
 
@@ -25945,17 +25929,17 @@ variable CUR-OPEN   variable CUR-PSIG
    OK @ 0=  UNCK @ 0 <>  or IF EXIT THEN
    UNFIT-WHY MDIAG!  -1 UNCK ! ;
 
-\ Verdict 2 defers the body to the run: it names a word only a rendering
+\ VERDICT-DEFERRED defers the body to the run: it names a word only a rendering
 \ statement in scope can have defined (UNSEEN-COVERS?). A malformed declaration
 \ is still refused, since the declaration is what gets recorded; past a token of
 \ unknown effect nothing downstream is a judgment, so the rest is the run's.
 \ A call to a malformed qualified name (QUALBAD) is no such token: no word can
 \ ever answer it, so its body is refused like any other, not left uncheckable.
 : CHECK-VERDICT ( -- n )
-   SGBAD @ 0 <> IF 0 EXIT THEN
-   UNSEEN @ 0 <> IF 2 EXIT THEN
-   UNSAFE @ RETIRED @ or  IMMERR @ or  LOCALBAD @ or  LINLOCBAD @ or  QDUPBAD @ or  QUALBAD @ or  CAPREQ @ or  MREJ @ or  NPBAD @ or 0 <> IF 0 ELSE
-   UNCK @ 0 <> IF 1 ELSE OK @ THEN THEN ;
+   SGBAD @ 0 <> IF VERDICT-REFUSED EXIT THEN
+   UNSEEN @ 0 <> IF VERDICT-DEFERRED EXIT THEN
+   UNSAFE @ RETIRED @ or  IMMERR @ or  LOCALBAD @ or  LINLOCBAD @ or  QDUPBAD @ or  QUALBAD @ or  CAPREQ @ or  MREJ @ or  NPBAD @ or 0 <> IF VERDICT-REFUSED ELSE
+   UNCK @ 0 <> IF VERDICT-UNCHECKABLE ELSE OK @ THEN THEN ;
 
 \ --- generated-product certification (type-family.f header).
 \ A product bundle is exactly its field cells in slot order, so generated MAKE
@@ -26470,7 +26454,7 @@ variable CAST-PATH-N
    \ whose record step below may refuse the definition by a throw (a duplicate,
    \ a name that keys no record) that would otherwise come before it; elsewhere
    \ CHECK's callers render it.
-   dup 0 =  over 1 = JSON-DIAGS @ MULTI-ERR? or and  or
+   dup VERDICT-REFUSED =  over VERDICT-UNCHECKABLE = JSON-DIAGS @ MULTI-ERR? or and  or
    \ A pass another pass will replace has not judged anything yet, so it says
    \ nothing: the diagnostic belongs to the verdict the definition is given.
    DIAG-QUIET @ 0= and CK-AOT-RETRY-DUE @ 0= and IF DIAGXT THEN
@@ -27584,7 +27568,7 @@ package CHECKER-REG
 \ reaches this word at all.
 : DOES-EFF-LATCH! ( ptr u8 n -- ) {: sa:ptr su:n :}
    DOES-EFF-CLEAR                            \ a refused clause latches nothing
-   DVERD @ -1 <> IF EXIT THEN
+   DVERD @ VERDICT-CHECKED <> IF EXIT THEN
    CHK-CAND @ 0 <> IF EXIT THEN
    sa su CREATED-RECORD-BUILD
    {: rec:n :}
@@ -27738,8 +27722,69 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
    rc 0 <> IF rc SRC-DOES-THREW  prc 0 <> IF prc throw THEN  EXIT THEN
    prc 0 <> IF prc throw THEN
    SRC-DOES-VERDICT @ {: v:n :}
-   v -1 =  v 2 =  or IF na nu CHECKER-SOURCE-CLAUSE THEN
+   v VERDICT-CHECKED =  v VERDICT-DEFERRED =  or IF na nu CHECKER-SOURCE-CLAUSE THEN
    v na nu DOES-REPORT ;
+
+
+\ Whether a word step over SYM, the token A U, finds a row, as DO-TOK-BODY asks
+\ before it refuses the name (CALL-UNDEFINED): an effect record, a primitive
+\ row, or an identity the step types by what the word does (TOK-IDENTITY).
+: TOP-ROW? ( n ptr u8 n -- bool )
+   {: sym:n a:ptr u:n :}
+   sym CHECKER-FIND-USIG-SYM IF RES-TRUE EXIT THEN
+   sym PRIM-FIRST-IDX 0 <> IF RES-TRUE EXIT THEN
+   sym a u TOK-IDENTITY 0 <> ;
+
+
+\ Take the seeded rows the name A U lacks, as the step's retry does
+\ (TOP-STEP-RETRY): true when one was taken.
+: TOP-TAKE-ROW? ( ptr u8 n -- bool )
+   {: a:ptr u:n :}
+   CK-AOT-READY? 0= IF RES-FALSE EXIT THEN
+   a u RES-TRUE CK-AOT-SERVE ;
+
+
+\ What the load does with a top-level token it runs, or ticks when RUNS is
+\ false (CHECKER-VERIFY-TOP below). The token takes the walk a body token takes
+\ and gets a body's verdict, so a qualified token resolves as it does there.
+\ The answer is -1 when it resolves, or 2 when it resolves to a word that may
+\ read the source after it (TOP-RUNS); 3 when it resolves nowhere but a
+\ rendering statement in scope may define it (UNSEEN-COVERS?), the run's to
+\ judge; and 0 when the load refuses it: undefined, a word it runs that has no
+\ row (TOP-ROW?), as the load's step refuses one, or a malformed qualified
+\ name, rendered as a span record at the token (E-UNDEFINED-TOP-LEVEL,
+\ E-BAD-QUALIFIED-TOP-LEVEL) and counted under --all-errors, else thrown as a
+\ definition's refusal is. A refusal the walk answers, a using shadow or
+\ ambiguity among them, is raised as a body's is: rendered at the token and
+\ thrown (CHECKER-RESOLVE:RAISE). A token the walk does not bind is the word
+\ the engine's top-level find selects (CHECKER-TOP-SYM): a bare token the store
+\ does not hold keeps the engine's vote on its global wordlist, the boot prefix
+\ in the verifier's child, where the colliding global need not be one the
+\ checker knows and the subject's words are never compiled; the engine word it
+\ names runs as its global symbol's facts say.
+: TOP-ANSWER ( ptr u8 n bool -- n )
+   {: a:ptr u:n runs:bool :}
+   a u CHECKER-RESOLVE:WALK {: sym:n why:n :}
+   why 0 <> IF a u why CHECKER-RESOLVE:RAISE THEN
+   CHECKER-QBAD-TOK @ 0= IF
+      a u sym TOP-BOUND-SYM IF
+         dup TOP-CONTROL {: flags:n deferred:bool :}
+         dup SYM-EFFECT-UNRESOLVED? IF
+            drop flags deferred runs TOP-RUNS
+            dup -1 = IF drop 3 THEN EXIT
+         THEN
+         runs 0=  over a u TOP-ROW?  or IF
+            dup a u NAV-USE-NOW drop
+            flags deferred runs TOP-RUNS EXIT
+         THEN
+         a u TOP-TAKE-ROW? IF drop a u runs RECURSE EXIT THEN
+      THEN drop
+      a u UNSEEN-COVERS? IF 3 EXIT THEN
+   THEN
+   a USH-TOK-A !  u USH-TOK-U !
+   CHECKER-QBAD-TOK @ IF 4 ELSE 3 THEN SHADOW-DIAG-XT
+   MULTI-ERR? IF 1 MULTI-ERR-N +! 0 EXIT THEN
+   CHECKER-REJECT-RC throw ;
 
 \ The pre-pass's question about a top-level token (src/habu/verify-source.f
 \ TOP-TOKEN): TOP-ANSWER's answer. A using refusal leaves the token's walk by
@@ -30835,9 +30880,12 @@ public
    b t 1 1 0 DIAG-POS drop drop RES-TRUE ;
 ;package
 
-\ The token's verdict as DO-TOK1 and CHECK take it. A refusal renders the
+\ The token's verdict as DO-TOK1 and CHECK take it: a checked step runs, as
+\ does one deferred to the run; a refused or uncheckable one renders the
 \ diagnostic the same token gets in a body and throws the checker's rc, so the
-\ word never runs.
+\ word never runs. A pass a seeded row answers holds its verdict, as a body's
+\ does (CK-AOT-RETRY-DUE?): TOP-STEP-RETRY takes the row and judges the next
+\ pass.
 : TOP-JUDGE ( -- )
    EXEC-OPAQUE @ IF MD-EXEC-OPAQUE MDIAG! THEN
    CATCH-OPAQUE @ IF MD-CATCH-OPAQUE MDIAG! THEN
@@ -30847,7 +30895,9 @@ public
    OK @ 0= FAILSET @ 0= and IF -1 FAILSET ! THEN
    0 USING-HOLD !
    TOK-SPELL-A @ TOK-SPELL-U @ REFUSAL-STEP
-   CHECK-VERDICT 0 <>  RCOMPILE @ 0=  and IF EXIT THEN
+   CHECK-VERDICT {: v:n :}
+   v VERDICT-CHECKED =  v VERDICT-DEFERRED =  or  RCOMPILE @ 0=  and IF EXIT THEN
+   v CK-AOT-RETRY-DUE? IF EXIT THEN
    DIAG-QUIET @ 0= IF DIAGXT THEN
    CHECKER-REJECT-RC throw ;
 
@@ -30992,11 +31042,13 @@ variable TG-GEN
 \ body takes them between its passes (CHECK-RETRY). The interpret row takes
 \ them between passes of one step: a step over a name the checker does not bind
 \ queues it (CALL-UNDEFINED, TOP-TICK-STEP). A tick step is admitted checked
-\ with an opaque xt; a word step is admitted unchecked and pushes nothing. When a
-\ seeded row answers the queue, the step's terms are released, the row taken
-\ and the step run again over a fresh load. The saved row the step loads from
-\ is not written between passes, so a pass costs the step alone. Each pass
-\ takes a row the tables lacked, so the loop ends as a body's does.
+\ with an opaque xt. A word step is held while a seeded row answers the name
+\ (TOP-JUDGE), admitted when a rendering statement in scope may define it, and
+\ refused otherwise. When a seeded row answers the queue, the step's terms are
+\ released, the row taken and the step run again over a fresh load. The saved
+\ row the step loads from is not written between passes, so a pass costs the
+\ step alone. Each pass takes a row the tables lacked, so the loop ends as a
+\ body's does.
 : TOP-STEP-RETRY ( [ -- ] n -- )
    {: live:n :}
    BEGIN live CHECKER-TOP-LOAD  dup TOP-RUN  TOP-TAKE 0= UNTIL drop ;

@@ -16,7 +16,6 @@ require src/compiler/native/trap.f
 require src/habu/code-bytes.f
 require src/arch/x86-64/disasm.f
 require test/compiler/native-match-layout.f
-require src/lib/tier.f
 
 package NMX
 private
@@ -683,9 +682,9 @@ variable QUAD-RET
 \ the caller's tier, including when the suite is loaded directly from the REPL.
 : CAPTURE-NATIVE-EMISSION ( -- )
    tier@ {: prior:n :}
-   1 TIER:SELECT
+   1 set-tier
    ['] CAPTURE-EMISSION catch {: rc:n :}
-   prior TIER:SELECT
+   prior set-tier
    rc 0<> if rc throw then ;
 
 CAPTURE-NATIVE-EMISSION

@@ -804,13 +804,10 @@ EFIXED-ABI!
 \ above takes any one cell, as set-check and set-preflight do.
 EPPRIM: TOP-ROW set-top-check
    PE-Q PE-PTR-U8 PE-QIN PE-N PE-QIN PE-N PE-QIN PE-N PE-QIN ;PE-Q PE-IN ECLOSE-PRIVATE
-\ Choosing the compiler belongs to package TIER (src/lib/tier.f), and this row is
-\ that owner's alone: TIER:SELECT is the checked caller every other scope calls,
-\ a checked body outside TIER does not find the name, and a build driver's
-\ top-level `1 set-tier` runs unchecked. No TRUSTED: body outside TIER calls it,
-\ so no global row is kept for one (tier 1 builds such a caller's call window
-\ from a global row; addrmap-set keeps its row for that).
-EPPRIM: TIER set-tier PE-N PE-IN ECLOSE-PRIVATE REACH build
+\ Choosing the compiler is a top-level step every program may take on its first
+\ line, before any require, so the row is global: a top-level step and a checked
+\ body anywhere may call set-tier.
+EPRIM: set-tier       PE-N PE-IN EPRIM; REACH build
 EPRIM: ndict@         PE-N PE-OUT EPRIM;
 \ The running engine owns capture-time construction state. A cache driver
 \ queries this word only while a definition is pending; absence means an old

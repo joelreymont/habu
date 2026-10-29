@@ -115,9 +115,11 @@ forth.md: **Stack comments**, **Stack effects**, **Words & factoring**.
 
 Refused; every row measured, code from `tools/check.f --json-errors`.
 Top-level code is checked too: each token is judged against the live stack's
-cells as the same token in a colon body, and a refusal prints the body's
-diagnostic before the word runs, and `--load` exits 70 (`evaluate-closed`
-throws 70).
+cells as the same token in a colon body. A checked step runs, as does one
+deferred to the run; a refused or uncheckable one prints the body's diagnostic
+before the word runs, and `--load` exits 70 (`evaluate-closed` throws 70).
+`set-tier`'s row is global, so a program's first line may choose the tier
+before any `require`.
 
 | you write | diagnostic |
 |---|---|
@@ -152,11 +154,13 @@ throws 70).
 | a bare `using` import a global also names, in a body, at top level or after `'` | `E-USING-SHADOW-GLOBAL`; at top level or after `'` `--load` exits with `ENGINE-ERROR:USING-SHADOW-GLOBAL` |
 | a top-level word, or `'` of one, nothing defined before it, `1.` or `$GG` among them | `E-UNDEFINED-TOP-LEVEL` at the token, before anything runs |
 | `' F execute` or `['] F execute` with F's inputs missing; `0 0 catch` or `0 execute`, a number where an xt belongs | `E-INPUT-UNDERFLOW` at `execute`; `E-MISMATCH` at `catch`, `execute` |
-| at top level, a call of a word defined inside `0 set-check`, or of a private primitive outside its package | `E-CAP-TRUSTED`, as in a body; `'` of either is admitted |
+| at top level, a call of a word defined inside `0 set-check` | `E-CAP-TRUSTED`, as in a body; `'` of it is admitted |
+| outside its package, at top level or in a body, a call of a primitive whose one row is its package's private one: `0 0 0 xref-retarget` | `E-UNDEFINED`, as a call to an unknown word is; the word never runs; `'` of it at top level is admitted |
+| outside its package, in a body, a call of a private primitive that also keeps a global trusted-only row: `0 0 reloc-maps-clear` | `E-CAP-TRUSTED` |
 | `: W ( -- ) ;`, `create`, a new `package`, `wordlist` or `undefine W` while a checker replay is open | `ENGINE-ERROR:OVERLAY-OPEN` |
 | a duplicate tail in one wordlist | `E-DUPLICATE-DEFINITION` |
 | `: USE-INF RG-ONE ;  : T3 USE-INF USE-INF SAME-ID ;` with `RG-ONE ( -- fresh-region-a )`, `SAME-ID ( x x -- )`: two calls of an inferred producer are two regions | `E-RIGID-REGION-MISMATCH` |
-| a word defined before the check hook with no external row (a `PRIM:` axiom, or a `TRUSTED:` declaration after the checker) in a checked body | `E-UNDEFINED` — **on a sealed from-source prefix boot only**, never on `bin/hb`; a constant without a row is read at top level into a file-owned constant. An unsealed boot binds a signed `:` word of the prefix to its declaration |
+| a word defined before the check hook with no external row (a `PRIM:` axiom, or a `TRUSTED:` declaration after the checker) in a checked body | `E-UNDEFINED` — **on a sealed from-source prefix boot only**, never on `bin/hb`; a top-level step that reads one is refused the same way, so its row goes in `src/core/cell-effects.f`. An unsealed boot binds a signed `:` word of the prefix to its declaration |
 | `0 set-check` then `SUMTYPE`, `PRODUCT`, `STRUCTURE` or `ENUM`, which generate constructors; `NEWTYPE` and `DEFTYPE` generate none and are admitted | `E-TDECL-UNCHECKED`, `habu: bad sumtype declaration 'name': checking is suspended; declare it where checking is on at 'name'`, nothing registered — close the window first |
 | a body the scan refuses with the hook cell empty (`0 set-check`) at tier 1 | ordinary compilation uses its declaration, with the reason on stderr and no row authority; a native build requires the prefix scan and refuses before publication (forth.md **Rules learned by refusal**) |
 | a checker scan, `generates:`, a type registration or another checker store write in a native compile callback | `E-NCOMP-STATE`, catchable, before anything changes |

@@ -12,8 +12,7 @@
 \ A checked `[']` of it is admitted and refused exactly where such a call is. A
 \ primitive that TRUSTED: bodies outside its owner call keeps a global
 \ trusted-only row beside the private one, and the matrix measures that shape
-\ too. set-tier is the private-only seed primitive: package TIER (src/lib/tier.f)
-\ owns it, and TIER:SELECT is its public word.
+\ too.
 \
 \ TWO ENGINES ANSWER. The owner cases need the owner open, and the product seals
 \ every package it bakes - NPUB and FFI included - so they run in a child under
@@ -144,22 +143,6 @@ variable EXP-U
    s" t1 tick addrmap-set other package"  s" rejected" CASE+
    s" t1 addrmap-set trusted top level"   s" compiled" CASE+ ;
 
-\ A seed primitive with its owner's row alone: set-tier, owned by TIER. The
-\ owner's public TIER:SELECT compiles in every scope.
-: OWNER-T0-LINES ( -- )
-   s" t0 set-tier inside owner"           s" compiled" CASE+
-   s" t0 set-tier top level"              s" rejected" CASE+
-   s" t0 tier select top level"           s" compiled" CASE+
-   s" t0 set-tier other package"          s" rejected" CASE+
-   s" t0 tier select other package"       s" compiled" CASE+ ;
-
-: OWNER-T1-LINES ( -- )
-   s" t1 set-tier inside owner"           s" compiled" CASE+
-   s" t1 set-tier top level"              s" rejected" CASE+
-   s" t1 tier select top level"           s" compiled" CASE+
-   s" t1 set-tier other package"          s" rejected" CASE+
-   s" t1 tier select other package"       s" compiled" CASE+ ;
-
 \ The engine's own owners. Each owner compiles its checked callers and ticks at
 \ both tiers, a reopened owner too; everywhere else they are refused by name.
 \ code-publish, xref-retarget and does-record have no global row; every other
@@ -272,8 +255,6 @@ variable EXP-U
    SHADOW-LINES
    T0? if DUAL-T0-LINES then
    DUAL-T1-LINES
-   T0? if OWNER-T0-LINES then
-   OWNER-T1-LINES
    OWNER-SITE-LINES
    OWNED-LINES
    S\" prim-owner: ok\nwindow: 0\n" EXP+
@@ -348,12 +329,6 @@ variable EXP-U
    ea eu s" E-CAP-TRUSTED habu: in pos-p2c1-top: 'FFI-PTR>CELL' is a trust-boundary primitive" ERR-HAS
    ea eu s" E-CAP-TRUSTED habu: in pos-tp2c1-top: 'FFI-PTR>CELL' is a trust-boundary primitive" ERR-HAS
    ea eu s" E-CAP-TRUSTED habu: in pos-tc2p1-oth: 'FFI-CELL>PTR' is a trust-boundary primitive" ERR-HAS
-   T0? if
-      ea eu s" E-UNDEFINED habu: in pos-st0-top: undefined word 'set-tier'" ERR-HAS
-      ea eu s" E-UNDEFINED habu: in pos-st0-oth: undefined word 'set-tier'" ERR-HAS
-   then
-   ea eu s" E-UNDEFINED habu: in pos-st1-top: undefined word 'set-tier'" ERR-HAS
-   ea eu s" E-UNDEFINED habu: in pos-st1-oth: undefined word 'set-tier'" ERR-HAS
    \ The shadowed global is still an internal engine word.
    ea eu s" hb: internal engine word: CORE-FOLD-C" ERR-HAS
    \ A dual row's global row keeps the named capability reject outside the owner.
@@ -403,8 +378,6 @@ variable EXP-U
    s" E-CAP-TRUSTED habu: in pos-sealed-alias: 'POS-ALIAS:FFI-PTR>CELL' is a trust-boundary primitive; call it only from a TRUSTED: definition" SEALED
    s" package POS-ALIAS public EXPORT FFI-PTR>CELL ;package : POS-SEALED-TALIAS ( -- ) ['] POS-ALIAS:FFI-PTR>CELL drop ;"
    s" E-CAP-TRUSTED habu: in pos-sealed-talias: 'POS-ALIAS:FFI-PTR>CELL' is a trust-boundary primitive; call it only from a TRUSTED: definition" SEALED
-   s" : POS-SEALED-ST ( n -- ) set-tier ;"
-   s" E-UNDEFINED habu: in pos-sealed-st: undefined word 'set-tier'" SEALED
    s" : POS-SEALED-XSW ( ptr u8 n n -- ptr n ) xref-search-wl ;"
    s" E-CAP-TRUSTED habu: in pos-sealed-xsw: 'xref-search-wl' is a trust-boundary primitive; call it only from a TRUSTED: definition" SEALED
    s" : POS-SEALED-MIM ( n n -- ) min-in-mark ;"
@@ -413,17 +386,6 @@ variable EXP-U
    s" E-CAP-TRUSTED habu: in pos-sealed-nda: 'ndict-append' is a trust-boundary primitive; call it only from a TRUSTED: definition" SEALED
    s" : POS-SEALED-DOS ( ptr n -- n n ) def-occ-select ;"
    s" E-CAP-TRUSTED habu: in pos-sealed-dos: 'def-occ-select' is a trust-boundary primitive; call it only from a TRUSTED: definition" SEALED ;
-
-\ set-tier is a seed primitive, not a prefix word, so no ABI-only row stands in
-\ for its owner's: outside TIER the shipped answer is E-UNDEFINED, and the
-\ owner's public word is how a user's checked definition selects a tier.
-: TIER-SELECT-RUNS ( -- )
-   s" require src/lib/tier.f : POS-OPEN-TS ( n -- ) TIER:SELECT ; 1 POS-OPEN-TS tier@ ."
-   OUT IO-CAP >LEN ERR IO-CAP >LEN SUBJECT-MS >MS SUBJECT:RUN
-   PROC-OUTCOME>RC RC>N {: outu:len erru:len rc:n :}
-   s" a checked caller of TIER:SELECT selects tier 1" T-LABEL
-   rc 0 T=
-   OUT outu LEN>N S\" 1\n" T$= ;
 
 \ NPUB's private-only primitives are engine primitives, not prefix words, so the
 \ build records no ABI-only row for them: the shipped engine refuses a checked
@@ -450,7 +412,6 @@ public
 : RUN ( -- )
    T-RESET
    RUNNING-ENGINE
-   TIER-SELECT-RUNS
    SITE-RUNNING-ENGINE
    OWNERS-SEALED
    [: PREPARE WINDOW ;] [: FS:CLEANUP-RUN ;] finally
