@@ -1873,9 +1873,9 @@ AOT-IDENT:MAX PATH-CAP 1 + * 1 + constant TAB-CAP
 create TAB TAB-CAP allot
 variable TAB-U
 
-: TAB+ ( ptr u8 n -- ) {: a:ptr u:n :}
-   a TAB TAB-U @ + u BYTE-COPY
-   0 TAB TAB-U @ + u + c!
+: TAB+ ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   a u TAB TAB-U @ + PATH-CAP 1+ PATHZ
    TAB-U @ u + 1 + TAB-U ! ;
 
 : TAB! ( -- )

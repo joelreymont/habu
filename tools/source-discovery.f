@@ -823,11 +823,12 @@ $FF constant SD-NAMES                    \ loaders and family openers
    SD-PATH$ provided ;
 
 \ The loader resolves the literal against its roots before it records the load:
-\ false, and nothing recorded, for a path the resolver refuses (E-PATH-RANGE:
-\ empty, holding a NUL, absolute and 2048 bytes or more, relative and 2048 bytes
-\ or more joined as root, `/` and path to a root searched before one holds the
-\ file, or over PATH-CAP bytes once normalized; src/core/include.f SOURCE-ROOT
-\ CHECK, SEARCH-ROOTS, JOIN! and NORMALIZE).
+\ false, and nothing recorded, for a path the resolver refuses (E-PATH-NUL:
+\ holding a NUL, src/core/util.f PATHZ; E-PATH-RANGE: empty, absolute and 2048
+\ bytes or more, relative and 2048 bytes or more joined as root, `/` and path
+\ to a root searched before one holds the file, or over PATH-CAP bytes once
+\ normalized; src/core/include.f SOURCE-ROOT CHECK, SEARCH-ROOTS, JOIN! and
+\ NORMALIZE).
 : SD-LOAD? ( n n n -- bool )
    {: off:n len:n kind:n :}
    off len DISC-TOK!
@@ -839,7 +840,7 @@ $FF constant SD-NAMES                    \ loaders and family openers
       SD-DEF @ before SD-E-SPEC !
    then
    rc 0= if true exit then
-   rc E-PATH-RANGE <> if rc throw then
+   rc E-PATH-RANGE =  rc E-PATH-NUL =  or 0= if rc throw then
    false ;
 
 \ A load at top level, which runs while the file loads, or an `include` or

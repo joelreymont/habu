@@ -1858,7 +1858,7 @@ variable PUB-COUNT
    URI-A s" 1" s" null" OPEN-PARAMS
    s" textDocument/didOpen" PAR$ LSP:E-LSP-PARAMS UNAPPLIED
    s\" \"file:///habu-lsp-test/a%00.f\"" s" 1" s\" \"\"" OPEN-PARAMS
-   s" textDocument/didOpen" PAR$ E-PATH-RANGE UNAPPLIED ;
+   s" textDocument/didOpen" PAR$ E-PATH-NUL UNAPPLIED ;
 
 \ didChange and didClose params the server cannot read, each logged.
 : BAD-CHANGES ( -- )

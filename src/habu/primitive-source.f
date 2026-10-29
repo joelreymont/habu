@@ -14,7 +14,7 @@ private
 65536 constant READ-STEP
 create PATH PATH-CAP 1+ allot
 variable PATH-U
-create PATHZ PATH-CAP 1+ allot
+create ZPATH PATH-CAP 1+ allot
 DYNAMIC-BUFFER SOURCE-B u8
 variable SOURCE-U
 DYNAMIC-BUFFER STARTS n
@@ -49,9 +49,8 @@ variable VALID
 : READ-FILE ( ptr u8 n -- bool )
    {: path:ptr pathu:n :}
    pathu 0 <= pathu PATH-CAP > or if false exit then
-   path PATHZ pathu BYTE-COPY
-   0 PATHZ pathu + c!
-   PATHZ open-rd {: fd:n :}
+   path pathu ZPATH PATH-CAP 1+ PATHZ
+   ZPATH open-rd {: fd:n :}
    fd 0 < if false exit then
    fd READ-BODY {: read-ok:bool :}
    fd close

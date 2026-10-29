@@ -465,7 +465,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 : IGNORABLE? ( n -- bool )
    {: code:n :}
    code E-LSP-PARAMS =  code E-LSP-NOT-OPEN = or  code E-JR-NUMBER = or
-   code E-PATH-RANGE = or
+   code E-PATH-RANGE = or  code E-PATH-NUL = or
    code E-URI-LAST >= code E-URI-FIRST <= and or ;
 
 : GUARDED ( ptr u8 n ptr u8 n [ ptr u8 n -- ptr u8 n ] -- )
@@ -1076,7 +1076,8 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    URI-SPAN @ SPAN:$ drop n
    [: 2dup PATH LSP-WORKSPACE:ROOT+ ;] catch {: code:n :} 2drop
    code 0= if exit then
-   code E-PATH-RANGE =  code E-URI-LAST >= code E-URI-FIRST <= and  or 0= if code throw then ;
+   code E-PATH-RANGE =  code E-PATH-NUL = or
+   code E-URI-LAST >= code E-URI-FIRST <= and  or 0= if code throw then ;
 
 \ One member of a workspace folder: its uri a root.
 : FOLDER-MEMBER ( JR:reader -- JR:reader )

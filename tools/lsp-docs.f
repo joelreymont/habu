@@ -188,7 +188,7 @@ public
 \ Opens a document: its URI, version, path and text. A URI already open takes
 \ the version and text as a change would, so each URI is held once and keeps
 \ what its checks published. A path holding a NUL or longer than PATH-CAP has
-\ no canonical spelling: E-PATH-RANGE, and nothing opens.
+\ no canonical spelling: E-PATH-NUL or E-PATH-RANGE, and nothing opens.
 : DOC-OPEN ( ptr u8 n n ptr u8 n ptr u8 n -- )
    {: u:ptr uu:n v:n p:ptr pu:n t:ptr tu:n :}
    u uu DOC-FIND MATCH option

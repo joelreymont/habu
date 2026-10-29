@@ -3307,9 +3307,9 @@ variable LOAD-END
 \ A quiet composition loads the file a loader word names under the word's
 \ claim (CLAIMED-LOAD): a fault no loader in a file below claimed stands at the
 \ word, when the file is not there or does not read (E-SOURCE-READ) and when
-\ the resolver refuses its path (E-PATH-RANGE), which discovery refuses as a
-\ capacity exceeded (E-DISC-CAPACITY). Any other fault keeps the place where it
-\ was made.
+\ the resolver refuses its path (E-PATH-RANGE, or E-PATH-NUL for a 0 byte),
+\ which discovery refuses as a capacity exceeded (E-DISC-CAPACITY). Any other
+\ fault keeps the place where it was made.
 PTR-VARIABLE LOAD-A                           \ the path a claimed or body load loads
 variable LOAD-U
 
@@ -3327,7 +3327,7 @@ variable LOAD-U
    {: q w:n wu:n :}
    q catch  0 LOAD-END !
    {: rc:n :}
-   rc E-PATH-RANGE = IF E-DISC-CAPACITY ELSE rc THEN {: code:n :}
+   rc E-PATH-RANGE =  rc E-PATH-NUL =  or IF E-DISC-CAPACITY ELSE rc THEN {: code:n :}
    code E-SOURCE-READ =  code E-DISC-CAPACITY =  or  FAULT-LEN @ 0=  and IF
       w TOKEN-BYTE !  wu FAULT-LEN !
    THEN
@@ -3372,11 +3372,12 @@ variable LOAD-U
 \ Whether a string loader's body load of LOAD$ loads its file: an `included`
 \ source the engine already provides waits until the body actually runs; other
 \ body loads keep their normal dependency validation. Also false when the
-\ resolver refuses the path (E-PATH-RANGE: holding a NUL, absolute and 2048
-\ bytes or more, relative and 2048 bytes or more joined as root, `/` and path
-\ to a root searched before one holds the file, or over PATH-CAP once
-\ normalized; src/core/include.f SOURCE-ROOT CHECK, SEARCH-ROOTS, JOIN! and
-\ NORMALIZE), as the engine's loader does when the
+\ resolver refuses the path (E-PATH-NUL: holding a NUL, src/core/util.f
+\ PATHZ; E-PATH-RANGE: absolute and 2048 bytes or more, relative and 2048
+\ bytes or more joined as root, `/` and path to a root searched before one
+\ holds the file, or over PATH-CAP once normalized; src/core/include.f
+\ SOURCE-ROOT CHECK, SEARCH-ROOTS, JOIN! and NORMALIZE), as the engine's loader
+\ does when the
 \ word runs, so discovery reads past it (tools/source-discovery.f SD-LOAD?).
 \ The catch holds the provided-source check and this path's resolution; the
 \ load resolves it again and reads the file outside it, keeping that file's
@@ -3389,7 +3390,7 @@ variable LOAD-U
    [: BODY-LOAD-RESOLVE? ;] catch {: rc:n :}
    rc 0= IF EXIT THEN
    drop
-   rc E-PATH-RANGE <> IF rc throw THEN
+   rc E-PATH-RANGE =  rc E-PATH-NUL =  or 0= IF rc throw THEN
    false ;
 
 \ The loads that wait in this file, in the order of their loaders. A file one
@@ -4421,7 +4422,7 @@ TYPED-VARIABLE THEN-ACTION [ -- ]
 \ resolved; whether that file is missing or unreadable is the caller's to ask
 \ of the file system. Any other refusal, memory's among them, stays itself.
 \ The loader refuses a resolved path past PATH-CAP before it reads one
-\ (src/core/include.f INCLUDE-CHECK-PATH), so the path fits both buffers.
+\ (src/core/include.f INCLUDE-PATH0), so the path fits both buffers.
 create READ-PATHZ PATH-CAP 1+ allot
 DYNAMIC-BUFFER READ-BUF u8                    \ the file's bytes, READ-U of them
 variable READ-U
@@ -4461,8 +4462,7 @@ variable READ-META-VALID
 : QUIET-READ ( ptr u8 n ptr u8 n -- ptr u8 n )
    2drop {: path:ptr pathu:n :}
    0 READ-META-VALID !
-   path READ-PATHZ pathu BYTE-COPY
-   0 READ-PATHZ pathu + c!
+   path pathu READ-PATHZ PATH-CAP 1+ PATHZ
    pathu READ-PATH-U !
    path pathu QUIET-FILE-META
    {: size:n msec:n mns:n csec:n cns:n valid:bool :}

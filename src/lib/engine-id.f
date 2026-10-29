@@ -10,6 +10,7 @@
 require src/lib/errors.f
 require src/lib/string.f
 require src/lib/ffi-abi.f
+require src/lib/span.f
 
 package ENGINE-ID
 
@@ -110,9 +111,8 @@ FUNCTION: OPENED-INFO proc_pidfdinfo ( n n n ptr u8 n -- i32 )
       EID-PROC-EXE open-rd exit
    then
    HB-TARGET-MACOS? if
-      EID-FSHA-CTX SHA-FILE-PATH {: pathz:ptr :}
-      CACHED-PATH pathz PATHZ
-      pathz open-rd exit
+      CACHED-PATH EID-FSHA-CTX SHA-FILE-PATH PATH-CAP 1+ SPAN:MAKE FFI:CSTR
+      open-rd exit
    then
    E-ENGINE-KEY throw ;
 

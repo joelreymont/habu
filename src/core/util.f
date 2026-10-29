@@ -71,26 +71,25 @@ variable REG-PROT-N   0 REG-PROT-N !
    u v <> IF 0 0= 0= EXIT THEN
    u 0 ?do  a i + c@ CORE-FOLD-C  b i + c@ CORE-FOLD-C  <> if 0 0= 0= unloop exit then  loop 0 0= ;
 
-\ NUL-terminated path helper for open: copy (a,u) to d, append NUL.
-\ Both guards below are load-bearing and neither may be a die. This is a library
-\ path primitive on the open path of every file reader (SHA256-FILE-IN, the makers,
-\ the REPL file loader), so a caller handed a bad length must get a catchable
-\ named refusal, not a process exit: die belongs to build-time makers and CLI
-\ boundaries (docs/forth.md § Errors), and an uncatchable exit here made every
-\ digest-file caller unable to report a too-long path. The negative check is the
-\ memory-safety guard - without it `0 d u + c!` writes the NUL BEFORE the buffer
-\ (u = -1 corrupts one byte; a large negative u faults), because the copy loop
-\ `0 BEGIN dup u <` never runs for u < 0 and cannot bound the terminator write.
-\ The checker models PATHZ/path0 as primitives with a stack effect only, so this
-\ throw is invisible to it; callers that want a process exit still get one from
-\ an uncaught throw at their top level.
+\ PATHZ is the engine's one C-path copier: it copies (a,u) into the room bytes
+\ at d and appends the NUL every OS path call reads, so src/core and src/habu
+\ write no terminator of their own. A path the OS would read short, one holding
+\ a 0 byte, is E-PATH-NUL rather than a silent truncation. Every guard throws
+\ and none may be a die: PATHZ is on the open path of every engine file reader
+\ (SHA256-FILE-IN, include, the REPL file loader), so a caller handed a bad path
+\ must get a catchable named refusal, not a process exit (docs/forth.md §
+\ Errors). The negative check is the memory-safety guard: the copy loop never
+\ runs for u < 0 and cannot bound the terminator write `0 d u + c!`. The
+\ checker models PATHZ/PATH0 as primitives with a stack effect only, so these
+\ throws are invisible to it.
 \ The tree's one path capacity, in path bytes without the NUL. A buffer that
 \ holds a whole path, core, library or tool, is sized from this constant and
 \ holds a path of this many bytes, plus a NUL where the OS reads it, so a path
 \ one layer accepts is a path every layer accepts. src/core/cell-effects.f
-\ gives this constant and E-PATH-RANGE a PRIM: row: this file loads before the
-\ checker, and without the row a checked body that names either is E-UNDEFINED
-\ on an engine that boots its prefix from source (test/cold-naming-test.f).
+\ gives this constant, E-PATH-RANGE and E-PATH-NUL a PRIM: row: this file loads
+\ before the checker, and without the row a checked body that names one is
+\ E-UNDEFINED on an engine that boots its prefix from source
+\ (test/cold-naming-test.f).
 \ The value is PATH_MAX - 1 of the smallest supported target, so every path
 \ this gate admits is one the OS accepts: Darwin's PATH_MAX is 1024 counting
 \ the NUL, and a 1024-byte path passed a cap of 1024 only for lstat to answer
@@ -107,15 +106,20 @@ variable REG-PROT-N   0 REG-PROT-N !
 \   - a bootstrap stage that cannot see this file: the Gforth fixture's
 \     NF-PATH-CAP (docs/gate.md "Separate Gforth recovery checks").
 1023 constant PATH-CAP
-7134 constant E-PATH-RANGE   \ path length negative, or longer than PATH-CAP bytes
-: PATHZ {: a:ptr u d:ptr :} ( ptr u8 n ptr u8 -- )
+7134 constant E-PATH-RANGE   \ path length negative, or no room for it and its NUL
+7165 constant E-PATH-NUL     \ a path holds a 0 byte, which would end it early
+: PATHZ ( ptr u8 n ptr u8 n -- )
+   {: a:ptr u d:ptr room :}
    u 0 < IF E-PATH-RANGE throw THEN
-   u PATH-CAP > IF E-PATH-RANGE throw THEN
-   0 BEGIN dup u < WHILE  dup a + c@  over d + c!  1 + REPEAT drop  0 d u + c! ;
+   u room >= IF E-PATH-RANGE throw THEN
+   0 BEGIN dup u < WHILE
+      dup a + c@  dup 0= IF E-PATH-NUL throw THEN  over d + c!  1 +
+   REPEAT drop  0 d u + c! ;
 create PZB PATH-CAP 1 + allot
 
-: PATH0 {: a:ptr u :} ( ptr u8 n -- ptr u8 )
-   a u PZB PATHZ  PZB ;     \ shared scratch
+: PATH0 ( ptr u8 n -- ptr u8 )
+   {: a:ptr u :}
+   a u PZB PATH-CAP 1 + PATHZ  PZB ;     \ shared scratch
 \ read a little-endian u32 from byte addr p
 variable RDP
 

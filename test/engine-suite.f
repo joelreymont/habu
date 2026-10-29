@@ -1780,14 +1780,10 @@ s" CBAD-LOCAL-SCOPE ( i64 bool -- i64 ) if {: drop:i64 :} drop else drop 0 then 
 s" CBAD-LOCAL-DEAD ( i64 -- i64 ) exit {: x:i64 :} x" T-CHECK-REJECTS
 
 \ child processes: run-rc spawns + waits (paths need a NUL)
-create ES-PZB 64 allot
-: ES-PATHZ ( ptr u8 n -- ptr u8 ) {: a:ptr u:n :}
-   0 begin dup u < while  dup a + c@  over ES-PZB + c!  1 + repeat drop
-   0 ES-PZB u + c!  ES-PZB ;
 \ run-rc has no checker row (src/habu/prims.f UNROWED:): only unchecked source calls it.
 check@ 0 set-check
-s" /usr/bin/true" ES-PATHZ run-rc 0 T=
-s" /usr/bin/false" ES-PATHZ run-rc 1 T=
+s" /usr/bin/true" PATH0 run-rc 0 T=
+s" /usr/bin/false" PATH0 run-rc 1 T=
 set-check
 
 \ spawn-fds: the child's descriptor table is exactly the request's map, through
@@ -1894,7 +1890,7 @@ ES-SFPID @ wait-status $900 T=
 
 s" spawn-fds-missing-path" T-LABEL
 0 0 ES-SFMAP!  1 1 ES-SFMAP!  2 2 ES-SFMAP!
-s" /nonexistent-habu-x" ES-PATHZ ES-ADDR SPAWN-ABI:PATH ES-REQ!
+s" /nonexistent-habu-x" PATH0 ES-ADDR SPAWN-ABI:PATH ES-REQ!
 3 ES-SFSPAWN -2 T=
 s" spawn-fds-negative-nfds" T-LABEL
 -1 ES-SFSPAWN -22 T=
@@ -1919,13 +1915,18 @@ create ES-JOIN PATH-CAP allot
 variable DFD
 : U16@ ( ptr u8 -- n ) {: a:ptr :} a c@ a 1 + c@ 8 lshift or ;
 : MODE@ ( -- n ) ES-STB 4 + U16@ ;
-s" AGENTS.md" ES-PATHZ 0 access 0 T=
-s" /nonexistent-habu-fs" ES-PATHZ 0 access -1 T=
-s" AGENTS.md" ES-PATHZ ES-STB stat64 0 T=
+s" AGENTS.md" PATH0 0 access 0 T=
+s" /nonexistent-habu-fs" PATH0 0 access -1 T=
+package ES-PATH
+: NUL ( -- ) s\" a\zb" PATH0 drop ;
+s" PATH0 refuses a path holding a 0 byte" T-LABEL
+' NUL E-PATH-NUL TTHROWSQ
+;package
+s" AGENTS.md" PATH0 ES-STB stat64 0 T=
 MODE@ $F000 and $8000 = TTRUE
-s" src" ES-PATHZ ES-STB stat64 0 T=
+s" src" PATH0 ES-STB stat64 0 T=
 MODE@ $F000 and $4000 = TTRUE
-s" src/os/macos" ES-PATHZ open-rd DFD !
+s" src/os/macos" PATH0 open-rd DFD !
 DFD @ 0 >= TTRUE
 0 DIRBASE !
 DFD @ DBUF 4096 DIRBASE getdirentries64 0 > TTRUE
@@ -1965,7 +1966,7 @@ s" " nip 0 T=
 
 \ run-rc spawn failure -> -1 (not a hang or garbage status)
 check@ 0 set-check
-s" /nonexistent-habu-x" ES-PATHZ run-rc -1 T=
+s" /nonexistent-habu-x" PATH0 run-rc -1 T=
 set-check
 
 \ snapshot-writer intrinsics are sane

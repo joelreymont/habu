@@ -46,9 +46,7 @@ variable INCLUDE-DEPTH
 variable INCLUDE-FD
 variable INCLUDE-U
 variable INCLUDE-RD
-PTR-VARIABLE INCLUDE-PATH-A
 variable INCLUDE-PATH-U
-variable INCLUDE-PATH-I
 variable REQUIRE-N
 variable REQUIRE-BOOT-N
 variable REQUIRE-BOOT-V
@@ -205,20 +203,17 @@ variable SLOT-N
    CURRENT-PTR CURRENT-U @ ;
 
 
-: CHECK ( ptr u8 n -- ) {: a:ptr u:n :}
-   u 0 <= u WORK-BYTES >= or if E-PATH-RANGE throw then
-   u 0 ?do a i + c@ 0= if E-PATH-RANGE throw then loop ;
-
-
-: COPY-Z ( ptr u8 n ptr u8 -- ) {: a:ptr u:n dst:ptr :}
-   a u CHECK
-   a dst u BYTE-COPY 0 dst u + c! ;
+: CHECK ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   u 0 <= u WORK-BYTES >= or if E-PATH-RANGE throw then ;
 
 
 \ realpath of a path into CANON-BUF: its length, -2 when that does not fit,
 \ below 0 when the path does not resolve.
 : CANON-N ( ptr u8 n -- n )
-   ZBUF COPY-Z
+   {: a:ptr u:n :}
+   a u CHECK
+   a u ZBUF WORK-BYTES PATHZ
    ZBUF CANON-BUF PATH-BYTES realpath ;
 
 public
@@ -374,14 +369,14 @@ private
    repeat ;
 
 
-: NORMALIZE-LIMIT ( ptr u8 n n -- ) {: a:ptr u:n limit:n :}
+: NORMALIZE-LIMIT ( ptr u8 n n -- )
+   {: a:ptr u:n limit:n :}
    47 NORMAL-BUF c! 1 NORMAL-U !
    0 begin dup u < while
       dup a u rot SEG-END {: end:n :}
       a over + end rot - limit NORMAL-SEG
       end 1+
-   repeat drop
-   0 NORMAL-BUF NORMAL-U @ + c! ;
+   repeat drop ;
 
 
 : NORMALIZE ( ptr u8 n -- ) INCLUDE-PATH-CAP NORMALIZE-LIMIT ;
@@ -421,7 +416,7 @@ public
 : CANONICAL ( ptr u8 n -- ptr u8 n bool )
    ABSOLUTE!
    JOIN-BUF JOIN-U @ TRY-CANON if
-      CANON-BUF NORMAL-BUF CANON-U @ 1+ BYTE-COPY
+      CANON-BUF NORMAL-BUF CANON-U @ BYTE-COPY
       CANON-U @ NORMAL-U !
       NORMAL-BUF NORMAL-U @ INCLUDE-TRUE exit
    then
@@ -474,11 +469,12 @@ private
 \ through a searchable directory. It opens nothing, so a FIFO cannot make it
 \ wait. Without errno a file and an unsearchable directory fail alike, and the
 \ refusal names what both are not.
-: ENGINE-DIR? ( n -- bool ) {: n:n :}
-   CANON-BUF ZBUF n BYTE-COPY
-   47 ZBUF n + c!
-   46 ZBUF n 1+ + c!
-   0 ZBUF n 2 + + c!
+: ENGINE-DIR? ( n -- bool )
+   {: n:n :}
+   CANON-BUF WORK-BUF n BYTE-COPY
+   47 WORK-BUF n + c!
+   46 WORK-BUF n 1+ + c!
+   WORK-BUF n 2 + ZBUF WORK-BYTES PATHZ
    ZBUF 0 access 0= ;
 
 \ A root is a searchable directory, which ENGINE-DIR? decides on every platform
@@ -697,12 +693,6 @@ using SOURCE-ROOT
 : INCLUDE-IO-DIE ( ptr u8 n -- )
    INCLUDE-CLOSE
    INCLUDE-DIE ;
-
-: INCLUDE-PATH-A@ ( -- ptr u8 )
-   INCLUDE-PATH-A @ ;
-
-: INCLUDE-PATH-A! ( ptr u8 -- )
-   INCLUDE-PATH-A ! ;
 
 : INCLUDE-CHECK-PATH ( ptr u8 n -- ptr u8 n )
    dup 0 <= if s" include: missing path" INCLUDE-DIE then
@@ -1114,7 +1104,7 @@ private
 
 \ Whether a directory carries the engine's first row: one access, no read.
 : TREE? ( ptr u8 n -- bool )
-   0 REQUIRE-SLOT 0 REQUIRE-LEN@ JOIN ZBUF COPY-Z
+   0 REQUIRE-SLOT 0 REQUIRE-LEN@ JOIN ZBUF WORK-BYTES PATHZ
    ZBUF 0 access 0= ;
 
 \ The root's length in CANON-BUF, 0 for the working directory. The same
@@ -1376,17 +1366,11 @@ variable INCLUDE-DIAG-U
 : INCLUDE-DIAG$ ( -- ptr u8 n )
    INCLUDE-DIAG INCLUDE-DIAG-U @ ;
 
-: INCLUDE-PATH-COPY ( -- )
-   0 INCLUDE-PATH-I !
-   begin INCLUDE-PATH-I @ INCLUDE-PATH-U @ < while
-      INCLUDE-PATH-A@ INCLUDE-PATH-I @ ZBYTE@ INCLUDE-PATH INCLUDE-PATH-I @ ZBYTE!
-      INCLUDE-PATH-I @ 1 + INCLUDE-PATH-I !
-   repeat ;
-
 : INCLUDE-PATH0 ( ptr u8 n -- ptr u8 )
-   INCLUDE-CHECK-PATH INCLUDE-PATH-U ! INCLUDE-PATH-A!
-   INCLUDE-PATH-COPY
-   0 INCLUDE-PATH INCLUDE-PATH-U @ ZBYTE!
+   {: a:ptr u:n :}
+   a u INCLUDE-CHECK-PATH 2drop
+   a u INCLUDE-PATH INCLUDE-PATH-CAP 1+ PATHZ
+   u INCLUDE-PATH-U !
    INCLUDE-PATH ;
 
 \ Each active load owns its source bytes until evaluation returns. A linked
@@ -2344,8 +2328,7 @@ public
    0 INCLUDE-U !
    0 INCLUDE-RD !
    INCLUDE-PATH-CAP 1 + 0 ?do 0 INCLUDE-PATH i ZBYTE! loop
-   0 INCLUDE-PATH-I !
-   NULL$ INCLUDE-PATH-U ! INCLUDE-PATH-A!
+   0 INCLUDE-PATH-U !
    0 REQUIRE-BASE !
    EVENT-OFF
    DISCOVERY-OFF

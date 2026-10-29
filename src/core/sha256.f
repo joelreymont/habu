@@ -316,9 +316,10 @@ SHA-FILE-PATH-OFF PATH-CAP + CELL + constant SHA256-FILE-CTX-BYTES
 
 \ Hash the file at [a,u) into out through the caller's file context. The
 \ path form opens once, delegates the read to the descriptor form and closes.
-: SHA256-FILE-IN ( ptr u8 ptr u8 n ptr u8 -- n ) {: fctx a u:n out :}
+: SHA256-FILE-IN ( ptr u8 ptr u8 n ptr u8 -- n )
+   {: fctx a u:n out :}
    fctx SHA-FILE-PATH {: pz :}
-   a u pz PATHZ
+   a u pz PATH-CAP 1+ PATHZ
    pz open-rd {: fd:n :}
    fd 0 < if SHA-E-OPEN exit then
    fctx fd out SHA256-FD-IN {: rc:n :}
