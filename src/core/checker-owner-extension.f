@@ -59,7 +59,14 @@ $570 constant CERT-KEPT-OFF
 $578 constant UNIT-FACTS-OFF
 \ ( n -- n n n ) the checker tape's event at an ordinal (checker.f CHECKER-TAPE:EVENT).
 $580 constant TAPE-EVENT-OFF
-TAPE-EVENT-OFF CELL + constant OWNER-BYTES
+\ ( -- n ) the width-fact rows of the last scan (checker.f WF-N@).
+$588 constant WIDTH-ROWS-OFF
+\ ( n -- n n n ) width-fact row i: the token's offset in the scanned text, the
+\ operand position and its cells (checker.f WF-FACT@).
+$590 constant WIDTH-ROW-OFF
+\ ( -- n ) the binds the last scan counted (checker.f LOCW-HW-N@).
+$598 constant LOCAL-COUNT-OFF
+LOCAL-COUNT-OFF CELL + constant OWNER-BYTES
 
 $524543434F4E5431 constant CONTRACT-MAGIC
 5 cells constant FIXED-KIND-OFF

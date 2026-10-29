@@ -1,5 +1,5 @@
-\ Copy source-bound frozen fetch descriptors, bind widths and operand widths
-\ before another checker scan runs.
+\ Copy source-bound frozen fetch descriptors and bind widths before another
+\ checker scan runs.
 require src/lib/errors.f
 require src/lib/prelude.f
 require src/compiler/digest.f
@@ -30,13 +30,6 @@ DYNAMIC-BUFFER SPLIT-BASE n
 DYNAMIC-BUFFER SPLIT-END n
 variable BIND-N
 variable SPLIT-N
-
-\ Every split's certified operand widths, its width-fact rows, keyed by the
-\ token's offset in the whole source: offset, operand position, cells.
-DYNAMIC-BUFFER OP-AT n
-DYNAMIC-BUFFER OP-POS n
-DYNAMIC-BUFFER OP-W n
-variable OP-N
 
 : BAD ( -- )
    s" ncomp: malformed or stale fetch certificate" 76 die ;
@@ -133,23 +126,6 @@ variable OP-N
    BIND-N @ SPLIT-N @ SPLIT-END !
    1 SPLIT-N +! ;
 
-\ The certificate's width-fact table: per row the token's offset in the split,
-\ the operand position, its cells and flags (lower-cert WIDTH-FACTS,).
-: KEEP-WIDTHS ( ptr u8 n n n -- ) {: data:ptr count:n source:n base:n :}
-   data count LOWER-CERT:WF-COUNT-CELL CELL@ {: rows:n :}
-   OP-N @ rows + {: total:n :}
-   total OP-AT-RESERVE  total OP-POS-RESERVE  total OP-W-RESERVE
-   rows 0 ?do
-      LOWER-CERT:HEADER-CELLS i LOWER-CERT:WF-CELLS * + {: row:n :}
-      data count row CELL@ {: offset:n :}
-      data count row 1+ CELL@ {: pos:n :}
-      data count row 2 + CELL@ {: width:n :}
-      offset 0 < offset source >= or pos 0 < or width 0 < or if BAD then
-      OP-N @ i + {: k:n :}
-      offset base + k OP-AT !  pos k OP-POS !  width k OP-W !
-   loop
-   total OP-N ! ;
-
 \ The split a source offset lies in: the last one captured at or below it.
 : SPLIT-AT ( n -- n ) {: offset:n :}
    -1
@@ -165,14 +141,13 @@ variable OP-N
 public
 
 \ Forget the definition's facts. The buffers keep their mappings, grown to the
-\ largest definition seen, for the next one: the four counts bound every read,
+\ largest definition seen, for the next one: the three counts bound every read,
 \ so no row past them is seen. Image capture unmaps them through the dynamic
 \ storage registry.
 : RELEASE ( -- )
    0 COUNT !
    0 BIND-N !
    0 SPLIT-N !
-   0 OP-N !
    CHECKER-OWNER:RELEASE-CERTIFICATE ;
 
 \ Each split body contributes its own complete snapshot under its source base.
@@ -191,7 +166,6 @@ public
    data count LOWER-CERT:NEEDS-CELL CELL@ LOWER-CERT:INCOMPLETE-NEEDS =
    if E-NELAB-BUNDLE throw then
    data count TABLES-CK
-   data count size base KEEP-WIDTHS
    data count base KEEP-BINDS
    data count FETCH-START {: start:n :}
    data count LOWER-CERT:FETCH-COUNT-CELL CELL@ 0 ?do
@@ -212,15 +186,6 @@ public
 : BINDS ( n -- n )
    SPLIT-AT {: split:n :}
    split SPLIT-END @  split SPLIT-FIRST - ;
-
-\ The cells the checker certified for operand pos of the token at this offset
-\ in the whole source, position 0 the top (checker.f WF-W-AT). An operand no
-\ row names is one cell, the checker's own answer: it files only layout values.
-: OPERAND-CELLS ( n n -- n ) {: offset:n pos:n :}
-   OP-N @ 0 ?do
-      i OP-AT @ offset =  i OP-POS @ pos =  and if i OP-W @ unloop exit then
-   loop
-   1 ;
 
 \ The certified width of bind seq in the split holding this source offset
 \ (checker.f LOCW-HW@): the cells that local holds once its body is checked.

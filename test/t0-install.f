@@ -25,8 +25,9 @@
 \ ENGINE-ERROR:BAD-TAG. The wide rows run each stack word T0 compiles over a
 \ two-cell product with a cell under the result, a one-cell pair that 2>r
 \ leaves for r@ and r> and >r leaves for 2r>, a swap in a does> parent and in
-\ its clause, a 2swap and a 2over in a does> parent whose deepest operand is
-\ two cells, a three-cell product among one-cell values, a swap of two
+\ its clause, a parent and a clause whose locals bind different widths, a
+\ 2swap and a 2over in a does> parent whose deepest operand is two cells, a
+\ three-cell product among one-cell values, a swap of two
 \ eight-cell values, whose copies fill the virtual stack, a local group bound
 \ past a wide local after a structure's group, and a local bound from a
 \ forty-cell value, whose deepest cell lies past a pre-index load's
@@ -485,6 +486,14 @@ CAST: TWIN>CELLS ( ptr twin -- ptr n )
    w PT-V  d k + ;
 : W-DEF ( n -- ) create 3 4 PT swap >r PT-V r> + , does> ( pt -- n pt ) @ swap ;
 5 W-DEF W39
+\ A does> parent and clause whose groups bind different width sequences: the
+\ parent's 2 1 then 1 2, the clause's 1 2, which reads from its own first bind.
+\ Each group's names are read out of their bind order, so a wrong width moves
+\ the wrong cells.
+: W-SPLIT ( n -- )
+   3 4 PT swap {: v:pt k:n :}  v k swap {: j:n w:pt :}  j w PT-V +  create ,
+   does> ( pt -- pt n ) @ swap {: m:n c:pt :} c m ;
+5 W-SPLIT WS39
 \ A does> parent's 2swap and 2over whose deepest operand is two cells wide,
 \ each weighed by place into its child's cell.
 : PS-V ( n n pt n -- n )
@@ -1107,6 +1116,8 @@ private
    77 1 2 N-RX 2 T= 1 T= 2 T= 77 T=
    s" a two-cell value in a does> parent and clause" T-LABEL
    77 5 6 PT W39 PT-V 56 T= 39 T= 77 T=
+   s" a does> parent's and clause's locals, each from its own binds" T-LABEL
+   77 5 6 PT WS39 39 T= PT-V 56 T= 77 T=
    s" a does> parent's 2swap and 2over over a deepest two-cell value" T-LABEL
    77 W-PS 673405 T= 77 T=
    77 W-PO 3405673405 T= 77 T=

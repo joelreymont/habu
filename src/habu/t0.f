@@ -35,7 +35,7 @@
 \ signature, then returns. The clause is the unit after every quotation of
 \ the parent text, nested ones included, as tier 1 numbers it, and its own
 \ quotations follow it; an empty clause's unit is still built. The clause
-\ binds locals of its own, read from its certificate at base M-DOES.
+\ binds locals of its own, whose cells its own scan measured (THE LOCALS).
 \
 \ THE EVENTS. A token is what the checker filed it as (CHECKER-TAPE's kinds):
 \ a string literal (`s" c" ." s\" c\" .\"`) or a character literal (`[char]
@@ -145,10 +145,10 @@
 \ otherwise it pushes its flag into a fresh vreg.
 \
 \ THE WIDTHS. A stack word moves whole values: the checker measured each
-\ operand's cells at the token, and the capture of each split's certificate
-\ keeps them by the token's offset in the whole text (NFETCH:OPERAND-CELLS,
-\ position 0 the top, from the return row for r> r@ 2r> 2r@), so a does>
-\ definer's parent keeps its widths past the clause's check. An unmeasured
+\ operand's cells at the token (position 0 the top, from the return row for r>
+\ r@ 2r> 2r@), and T0 keeps each scan's measures when the scan ends, by the
+\ token's offset in the whole text (ON-DONE, OPERAND-CELLS), so a does>
+\ definer's parent keeps its widths past the clause's scan. An unmeasured
 \ operand is one cell, as the checker files only layout values.
 \ Over one-cell operands dup drop swap over nip tuck rot keep their entry
 \ moves; -rot 2dup 2drop 2swap 2over, and those over a wider operand, go
@@ -159,7 +159,7 @@
 \ value's cells as one cell each would, so its cells sit on the return stack in
 \ reverse and `r>` restores their order, in one return-stack move per VREGS
 \ cells; `r@` and `2r@` read the cells `r>` and `2r>` would pop. `@` and `!`
-\ move the cells the checker certified at the token, as tier 1's WIDE-LOAD and
+\ move the cells the checker measured at the token, as tier 1's WIDE-LOAD and
 \ WIDE-STORE (src/compiler/native/elaborate.f): `@` loads from the address
 \ plus i cells for each cell, and `!` calls the primitive, the engine's guarded
 \ store, once per cell with the address kept under the copies. Before it
@@ -173,17 +173,16 @@
 \ THE LOCALS. Each `{: ... :}` group binds its names once, left to right from
 \ the deepest cell, into slots of the body's machine-stack frame (T0-EMIT:SLOTS,
 \ SLOT-STORE, SLOT-LOAD); a read pushes every cell of the local. A local holds
-\ as many cells as the checker certified for its bind (NFETCH:BIND-WIDTH), so
-\ the caller captures the body's certificate (NFETCH:CAPTURE at base 0) before
-\ the walk, and T0 never reads a type annotation. A bind past the
-\ certificate's count, and a body that binds fewer than it counts, is
-\ E-T0-BINDS: that certificate is not of this text; a body that binds nothing
-\ reads none, as tier 1's BINDS-CK. A local is its bind sequence, which the
-\ checker files at its name and at each read, in scope from its group to the
-\ closer of the structure it binds in (else, then, repeat, until, again,
-\ loop, +loop, endof, endcase), as the checker's CF-LOC-REST ends it; `while`
-\ keeps the loop's names, as tier 1's borrow does. A dead local's slots go to
-\ the next group.
+\ as many cells as the checker measured for its bind, which T0 keeps with the
+\ scan's count of binds when the scan ends (ON-DONE, SPLIT-BINDS), and T0 never
+\ reads a type annotation. A bind past the scan's count, and a body that binds
+\ fewer than it counts, is E-T0-BINDS: the walk and the scan disagree on its
+\ binds; a body that binds nothing reads none, as tier 1's BINDS-CK. A local is
+\ its bind sequence, which the checker files at its name and at each read, in
+\ scope from its group to the closer of the structure it binds in (else, then,
+\ repeat, until, again, loop, +loop, endof, endcase), as the checker's
+\ CF-LOC-REST ends it; `while` keeps the loop's names, as tier 1's borrow
+\ does. A dead local's slots go to the next group.
 \
 \ THE CONTROL STACK holds the kind of each open structure, with the frame slots
 \ the locals in scope held where its block opened: an `if` or `else`; a
@@ -230,7 +229,7 @@ public
 -9601 constant E-T0-CONTROL      \ a control word without its opener, or a body ending inside one
 -9602 constant E-T0-LITERAL      \ a counted string too long
 -9603 constant E-T0-IMMEDIATE    \ an immediate other than a parse-neutral one: UNSUPPORTED$
--9604 constant E-T0-BINDS        \ the body binds other than the certificate's count of locals
+-9604 constant E-T0-BINDS        \ the body binds other than its scan's count of locals
 -9605 constant E-T0-SHADOW       \ a definition while a target shadow is open: no shadow path yet
 -9606 constant E-T0-MATCH        \ a MATCH or construct the checker's facts do not bear out, as tier 1's E-NELAB-MATCH
 -9607 constant E-T0-DEFER        \ `is` names no deferred word
@@ -665,6 +664,35 @@ variable FREE                       \ bit k set: no entry holds vreg k
    VS-N @ 0= if -1 T0-EMIT:DSP+ exit then
    TOP REMOVE ;
 
+\ ---- the scans' measures -----------------------------------------------------
+\ What each scan of the definition measured, kept when the scan ends (ON-DONE),
+\ since a does> definer's clause scan replaces the head's facts before the walk:
+\ the width-fact rows, each the token's offset in the whole text, the operand
+\ position and its cells; and the binds' cells, the head's or the body's first,
+\ then the clause's.
+DYNAMIC-BUFFER MEASURE-AT n
+DYNAMIC-BUFFER MEASURE-POS n
+DYNAMIC-BUFFER MEASURE-CELLS n
+variable MEASURES
+DYNAMIC-BUFFER BIND-WIDTHS n
+variable BIND-COUNT
+variable HEAD-BINDS                  \ the binds of the scan at the text's start
+
+\ The cells the checker measured for operand pos of the token at offset at in
+\ the whole text, position 0 the top. An operand no row names is one cell, the
+\ checker's own answer: it files only layout values.
+: OPERAND-CELLS ( n n -- n ) {: at:n pos:n :}
+   MEASURES @ 0 ?do
+      i MEASURE-AT @ at =  i MEASURE-POS @ pos =  and if i MEASURE-CELLS @ unloop exit then
+   loop
+   1 ;
+
+\ The first bind and the bind count of the scan holding offset at: the clause's
+\ from CUT on, else the head's or the body's.
+: SPLIT-BINDS ( n -- n n ) {: at:n :}
+   CUT @ 0<>  at CUT @ >=  and if HEAD-BINDS @  BIND-COUNT @ HEAD-BINDS @ -  exit then
+   0 HEAD-BINDS @ ;
+
 \ ---- whole-width moves -------------------------------------------------------
 DYNAMIC-BUFFER WS n                  \ the operands' cells, position 0 the top
 variable WS-K                        \ operands the word moves
@@ -673,7 +701,7 @@ variable WS-K                        \ operands the word moves
 : WIDTHS ( ptr u8 n -- ) {: a:ptr k:n :}
    a TXT$ - {: at:n :}
    k WS-RESERVE
-   k 0 ?do at i NFETCH:OPERAND-CELLS i WS ! loop
+   k 0 ?do at i OPERAND-CELLS i WS ! loop
    k WS-K ! ;
 
 : WIDE? ( -- bool )
@@ -742,21 +770,21 @@ variable WS-K                        \ operands the word moves
 : SWAP-OP ( -- ) WIDE? if s" 01" MOVE-WIDE exit then SWAP1 ;
 
 \ ---- the locals --------------------------------------------------------------
-\ A local is its bind sequence, the checker's number for it in the unit's
-\ certificate: a K-LOCAL-DECL row names the next one, and a K-LOCAL-REF row the
-\ one it reads.
+\ A local is its bind sequence, the checker's number for it in the unit's scan:
+\ a K-LOCAL-DECL row names the next one, and a K-LOCAL-REF row the one it reads.
 DYNAMIC-BUFFER L-SLOT n              \ by sequence: the first of its frame slots
 DYNAMIC-BUFFER L-WIDTH n             \ by sequence: its cells
 variable L-N                         \ the frame slots the locals in scope hold
 variable G-CELLS                     \ the cells the open group's names hold so far
-variable BINDS                       \ binds so far: the next one's certificate sequence
+variable BINDS                       \ binds so far: the next one's sequence
 variable CLAUSE                      \ a does> definer's clause unit, else -1
 
 \ Name local seq of the open group, declared by the token at offset at, on the
 \ slots after the group's earlier names.
 : DECLARE ( n n -- ) {: seq:n at:n :}
-   seq at NFETCH:BINDS >= if E-T0-BINDS throw then
-   at seq NFETCH:BIND-WIDTH {: w:n :}
+   at SPLIT-BINDS {: first:n count:n :}
+   seq count >= if E-T0-BINDS throw then
+   first seq + BIND-WIDTHS @ {: w:n :}
    seq 1+ BINDS !
    seq 1+ L-SLOT-RESERVE  seq 1+ L-WIDTH-RESERVE
    L-N @ G-CELLS @ +  seq L-SLOT !  w seq L-WIDTH !
@@ -1640,7 +1668,7 @@ OPS-MAP
    r OP-N >= if 0 exit then
    r OP-OF @ ;
 
-\ An operation over one cell: the checker certified no wider operand at a.
+\ An operation over one cell: the checker measured no wider operand at a.
 : CELL1 ( ptr u8 -- )
    {: a:ptr :}
    a CELLS0 1 <> if E-T0-BUNDLE throw then ;
@@ -1837,18 +1865,18 @@ OPS-MAP
    BODY 0= if E-T0-CONTROL throw then
    FINISH ;
 
-\ A unit that binds must bind the count of locals the certificate captured at
-\ base n holds, as tier 1's BINDS-CK requires (src/compiler/native/elaborate.f).
+\ A unit that binds must bind the count of locals the scan at base n counted,
+\ as tier 1's BINDS-CK requires (src/compiler/native/elaborate.f).
 : BINDS-CK ( n -- ) {: base:n :}
    BINDS @ 0= if exit then
-   BINDS @ base NFETCH:BINDS <> if E-T0-BINDS throw then ;
+   BINDS @  base SPLIT-BINDS nip  <> if E-T0-BINDS throw then ;
 
 \ Quotation units from n until every unit met is compiled: the next unit.
 : UNITS ( n -- n )
    begin dup NQ @ < while dup QUOT 1+ repeat ;
 
 \ The does> clause, unit k, from the split to the end of the tape, with its
-\ own locals and its own certificate at base CUT. An empty clause's unit is
+\ own locals, measured by its own scan at base CUT. An empty clause's unit is
 \ still built, with no address bound to it: the parent pushed 0.
 : DO-CLAUSE ( n -- ) {: k:n :}
    CLAUSE-ORD @ ORD !  k 1+ NQ !  RESET  0 BINDS !
@@ -1936,6 +1964,7 @@ variable SCAN-LO                     \ the ordinal of its first row
    base SCAN-BASE !
    base 0= if
       0 ROWS !  0 BODIES-N !  -1 SPLIT !
+      0 MEASURES !  0 BIND-COUNT !  0 HEAD-BINDS !
    else
       base DOES-SPAN -  DOES-SPAN 1-  LAY-ROW SPLIT !
       ROWS @ CLAUSE-ORD !
@@ -1955,11 +1984,40 @@ variable SCAN-LO                     \ the ordinal of its first row
    then
    k 0= if at NAME-A !  ru NAME-U ! then ;
 
+: KEEP-MEASURES ( -- )
+   SCAN-BASE @ {: base:n :}
+   CHECKER-OWNER:WIDTH-ROWS {: rows:n :}
+   MEASURES @ {: m:n :}
+   m rows + {: total:n :}
+   total MEASURE-AT-RESERVE  total MEASURE-POS-RESERVE  total MEASURE-CELLS-RESERVE
+   rows 0 ?do
+      i CHECKER-OWNER:WIDTH-ROW {: off:n pos:n w:n :}
+      m i + {: k:n :}
+      off base + k MEASURE-AT !  pos k MEASURE-POS !  w k MEASURE-CELLS !
+   loop
+   total MEASURES !
+   CHECKER-OWNER:LOCAL-COUNT {: binds:n :}
+   BIND-COUNT @ {: b:n :}
+   b binds + BIND-WIDTHS-RESERVE
+   binds 0 ?do i CHECKER-OWNER:LOCAL-WIDTH  b i + BIND-WIDTHS ! loop
+   b binds + BIND-COUNT !
+   base 0= if BIND-COUNT @ HEAD-BINDS ! then ;
+
+\ The scan's verdict, its rows' events and what it measured (the scans'
+\ measures), its offsets made whole by the scan's base.
 : ON-DONE ( ptr u8 n n -- )
    SCAN-VERDICT !  2drop
    ROWS @ SCAN-LO @ ?do
       i CHECKER-OWNER:TAPE-EVENT  i ROW-A1 !  i ROW-A0 !  i ROW-KIND !
-   loop ;
+   loop
+   KEEP-MEASURES ;
+
+\ Forget the scans' measures. The buffers keep their mappings, grown to the
+\ largest definition seen, for the next one: the counts bound every read, so no
+\ row past them is seen. Image capture unmaps them through the dynamic storage
+\ registry.
+: FORGET-MEASURES ( -- )
+   0 MEASURES !  0 BIND-COUNT !  0 HEAD-BINDS ! ;
 
 : OBSERVE ( -- )
    OBSERVER-ID BYTE-VIEW NULL-PTR BYTE-VIEW -
@@ -2030,6 +2088,7 @@ public
    0 M-OPEN !
    STUB-END
    NFETCH:RELEASE
+   FORGET-MEASURES
    NHOST:SOURCE-ABANDON
    0 rc  rc E-T0-UNSUPPORTED = MISSING @ 0<> and  rc REFUSED$ SETTLE-UNIT ;
 

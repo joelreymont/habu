@@ -76,6 +76,7 @@ CAST: AS-SLOT ( n -- [ n -- n ] )
 CAST: AS-SLOT-PREDICATE ( n -- [ n -- bool ] )
 CAST: AS-FINALLY-CELLS ( n -- [ n -- n n n ] )
 CAST: AS-EVENT ( n -- [ n -- n n n ] )
+CAST: AS-WIDTH-ROW ( n -- [ n -- n n n ] )
 CAST: AS-WIDTH ( n -- [ n n -- n ] )
 CAST: AS-FAMILY ( n -- [ ptr u8 n -- n bool ] )
 CAST: AS-VARIANT ( n -- [ ptr u8 n n -- n bool ] )
@@ -568,6 +569,30 @@ TRUSTED: DECLARED-EFFECT ( ptr u8 n ptr u8 n -- )
    NCOMP-DISPATCH:DECL-WF-W-AT-OFF s" width fact" FIELD
    dup 0= if drop WF-W-AT exit then
    AS-WIDTH execute ;
+
+\ A scan's facts as its end leaves them, for a compiler that keeps them past the
+\ next scan (t0.f ON-DONE): its width-fact rows, each the token's offset in the
+\ scanned text, the operand position and its cells; and its binds, each the
+\ cells that local holds.
+: WIDTH-ROWS ( -- n )
+   CHECKER-OWNER-EXT:WIDTH-ROWS-OFF s" width rows" FIELD
+   dup 0= if drop WF-N@ exit then
+   AS-N execute ;
+
+: WIDTH-ROW ( n -- n n n )
+   CHECKER-OWNER-EXT:WIDTH-ROW-OFF s" width row" FIELD
+   dup 0= if drop WF-FACT@ exit then
+   AS-WIDTH-ROW execute ;
+
+: LOCAL-COUNT ( -- n )
+   CHECKER-OWNER-EXT:LOCAL-COUNT-OFF s" local count" FIELD
+   dup 0= if drop LOCW-HW-N@ exit then
+   AS-N execute ;
+
+: LOCAL-WIDTH ( n -- n )
+   CHECKER-OWNER-ABI:LOCAL-WIDTH-OFF s" local width" FIELD
+   dup 0= if drop LOCW-HW@ exit then
+   AS-SLOT execute ;
 
 
 \ ---- what the record a definition publishes needs from the checker ----------------

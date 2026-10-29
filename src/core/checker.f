@@ -161,6 +161,7 @@ create OWNER-STORAGE
    0 , 0 , 0 ,
    0 ,
    0 ,
+   0 , 0 , 0 ,
 \ Measure before another definition can allocate or intern in DATA.
 here OWNER-STORAGE - CHECKER-OWNER-ABI:HEADER-BYTES - constant OWNER-COMMITTED
 public
@@ -178,7 +179,7 @@ OWNER-SIZE-AGREE
 \ every guard that trusts it (checker-owner-guard.f VALIDATE). Name the last
 \ offset here so that mistake is a load failure and not a bounds refusal later.
 : OWNER-LAST-FIELD-AGREE ( -- )
-   CHECKER-OWNER-EXT:TAPE-EVENT-OFF CELL + OWNER-BYTES <> if
+   CHECKER-OWNER-EXT:LOCAL-COUNT-OFF CELL + OWNER-BYTES <> if
       s" checker: declaration-owner last field and record size disagree" 76 die then ;
 OWNER-LAST-FIELD-AGREE
 data-base TARGET-CELL + ptr-cell-mark
@@ -11365,6 +11366,7 @@ PRIM: WF-FAM@ PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: WF-WIDTH@ PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: WF-TERM@ PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: WF-FLAGS@ PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: WF-FACT@ PE-N PE-IN  PE-N PE-OUT PE-N PE-OUT PE-N PE-OUT PRIM;
 PRIM: WF-WIDE? PE-F PE-OUT PRIM;
 PRIM: WF-NEEDS-P2? PE-F PE-OUT PRIM;
 PRIM: WF-W-AT PE-N PE-IN  PE-N PE-IN  PE-N PE-OUT PRIM;
@@ -17967,6 +17969,7 @@ CHECKER-REG:}SCRATCH
 : WF-WIDTH@ ( n -- n ) WF-ROW@ WF.W @ ;
 : WF-TERM@ ( n -- n ) WF-ROW@ WF.TERM @ ;
 : WF-FLAGS@ ( n -- n ) WF-ROW@ WF.FLAGS @ ;
+: WF-FACT@ ( n -- n n n ) {: i:n :} i WF-OFF@  i WF-POS@  i WF-WIDTH@ ;
 
 : WF-ROW-COPY ( n n -- ) {: src:n dst:n :}
    src WF-ROW BYTE-VIEW dst WF-ROW BYTE-VIEW WF-REC ARENA-COPY ;
@@ -31178,6 +31181,9 @@ package CHECKER-REG
 ' CTL-DEAD?                         DECLARATIONS CTL-DEAD-OFF + xt!
 ' WF-W-AT                           DECLARATIONS WF-W-AT-OFF + xt!
 ' LOCW-HW@                          DECLARATIONS CHECKER-OWNER-ABI:LOCAL-WIDTH-OFF + xt!
+' LOCW-HW-N@                        DECLARATIONS CHECKER-OWNER-EXT:LOCAL-COUNT-OFF + xt!
+' WF-N@                             DECLARATIONS CHECKER-OWNER-EXT:WIDTH-ROWS-OFF + xt!
+' WF-FACT@                          DECLARATIONS CHECKER-OWNER-EXT:WIDTH-ROW-OFF + xt!
 ' REC-MIN-IN@                       DECLARATIONS REC-MIN-IN-OFF + xt!
 ' REC-WIDE-PUBLISH                  DECLARATIONS REC-WIDE-PUBLISH-OFF + xt!
 ' CHECK-UNJUDGED!                   DECLARATIONS CHECK-UNJUDGED-OFF + xt!
