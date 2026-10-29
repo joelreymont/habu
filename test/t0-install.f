@@ -932,7 +932,7 @@ variable CHILD-ERR-N
 variable CHILD-RC
 
 : PRODUCT$ ( -- ptr u8 n )
-   SOURCE-ROOT:CWD$ s" bin/hb" PRODUCT-PATH JOIN-PATH {: u:n :}
+   SOURCE-ROOT:CWD$ s" bin/hb" PRODUCT-PATH FS:JOIN-PATH {: u:n :}
    PRODUCT-PATH u ;
 
 : PRODUCT-ENV! ( -- )
