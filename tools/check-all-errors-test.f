@@ -46,9 +46,9 @@ TYPED-VARIABLE CAE-BUF-SRC-A ptr u8
 variable CAE-BUF-SRC-U
 variable CAE-START-NS
 
-create CAE-ROOT-BUF FS-PATH-CAP allot
-create CAE-IN-BUF FS-PATH-CAP allot
-create CAE-LARGE-BUF FS-PATH-CAP allot
+create CAE-ROOT-BUF PATH-CAP allot
+create CAE-IN-BUF PATH-CAP allot
+create CAE-LARGE-BUF PATH-CAP allot
 create CAE-OUT CAE-BUF-CAP allot
 create CAE-ERR CAE-BUF-CAP allot
 create CAE-NUM CAE-NUM-CAP allot
@@ -346,46 +346,46 @@ create CAE-LF-BYTE 10 c,
    SB$ ;
 
 : CAE-PREPARE ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" habu-check-all" FS:MKTEMP-DIR {: a:ptr u :}
    a u CAE-ROOT-BUF CAE-ROOT-U CAE-COPY!
-   CAE-ROOT CLEANUP-DIR+
-   CAE-ROOT s" input.f" CAE-IN-BUF JOIN-PATH CAE-IN-U !
-   CAE-ROOT s" large.f" CAE-LARGE-BUF JOIN-PATH CAE-LARGE-U !
-   CAE-IN CLEANUP+
-   CAE-LARGE CLEANUP+
-   CAE-IN CAE-SOURCE$ WRITE-ALL ;
+   CAE-ROOT FS:CLEANUP-DIR+
+   CAE-ROOT s" input.f" CAE-IN-BUF FS:JOIN-PATH CAE-IN-U !
+   CAE-ROOT s" large.f" CAE-LARGE-BUF FS:JOIN-PATH CAE-LARGE-U !
+   CAE-IN FS:CLEANUP+
+   CAE-LARGE FS:CLEANUP+
+   CAE-IN CAE-SOURCE$ FS:WRITE-ALL ;
 
 : CAE-APPEND-LF ( ptr u8 n -- )
-   CAE-LF-BYTE 1 APPEND-FILE ;
+   CAE-LF-BYTE 1 FS:APPEND-FILE ;
 
 : CAE-WRITE-LARGE ( -- )
-   CAE-LARGE CAE-LARGE-START$ WRITE-ALL
+   CAE-LARGE CAE-LARGE-START$ FS:WRITE-ALL
    CAE-LARGE CAE-APPEND-LF
    CAE-LARGE-LINES 0 ?do
-      CAE-LARGE CAE-LARGE-LINE$ APPEND-FILE
+      CAE-LARGE CAE-LARGE-LINE$ FS:APPEND-FILE
       CAE-LARGE CAE-APPEND-LF
    loop
-   CAE-LARGE CAE-LARGE-END$ APPEND-FILE
+   CAE-LARGE CAE-LARGE-END$ FS:APPEND-FILE
    CAE-LARGE CAE-APPEND-LF ;
 
 : CAE-WRITE-MANY-DEFS-OK ( -- )
-   CAE-LARGE CAE-EMPTY$ WRITE-ALL
+   CAE-LARGE CAE-EMPTY$ FS:WRITE-ALL
    CAE-MANY-DEFS 0 ?do
-      CAE-LARGE s" : CAE-CAP-OK-" APPEND-FILE
-      CAE-LARGE i CAE-U$ APPEND-FILE
-      CAE-LARGE s"  ( i64 -- i64 ) 1 + ;" APPEND-FILE
+      CAE-LARGE s" : CAE-CAP-OK-" FS:APPEND-FILE
+      CAE-LARGE i CAE-U$ FS:APPEND-FILE
+      CAE-LARGE s"  ( i64 -- i64 ) 1 + ;" FS:APPEND-FILE
       CAE-LARGE CAE-APPEND-LF
    loop ;
 
 : CAE-WRITE-MANY-SUPPORT ( -- )
-   CAE-LARGE CAE-EMPTY$ WRITE-ALL
+   CAE-LARGE CAE-EMPTY$ FS:WRITE-ALL
    CAE-MANY-SUPPORT 0 ?do
-      CAE-LARGE s" 7 constant CAE-CAP-SUP-" APPEND-FILE
-      CAE-LARGE i CAE-U$ APPEND-FILE
+      CAE-LARGE s" 7 constant CAE-CAP-SUP-" FS:APPEND-FILE
+      CAE-LARGE i CAE-U$ FS:APPEND-FILE
       CAE-LARGE CAE-APPEND-LF
    loop
-   CAE-LARGE s" : CAE-CAP-SUP-BAD ( i64 -- i64 ) CAE-CAP-SUP-0 + dup ;" APPEND-FILE
+   CAE-LARGE s" : CAE-CAP-SUP-BAD ( i64 -- i64 ) CAE-CAP-SUP-0 + dup ;" FS:APPEND-FILE
    CAE-LARGE CAE-APPEND-LF ;
 
 : CAE-RUN-CORE-ACT ( -- )
@@ -469,7 +469,7 @@ create CAE-LF-BYTE 10 c,
 
 : CAE-TEST-SUPPORT-SOURCE ( -- )
    s" support-source" CAE-CASE!
-   CAE-IN CAE-SUPPORT-SOURCE$ WRITE-ALL
+   CAE-IN CAE-SUPPORT-SOURCE$ FS:WRITE-ALL
    CAE-RUN 70 CAE-EXPECT-EXIT {: outu:n erru:n :}
    s" support-source stdout" T-LABEL
    CAE-OUT outu CAE-EMPTY$ T$=
@@ -482,7 +482,7 @@ create CAE-LF-BYTE 10 c,
 
 : CAE-TEST-AS-ADD-TASK-LEAK ( -- )
    s" as-add-task-leak" CAE-CASE!
-   CAE-IN CAE-AS-LEAK-SOURCE$ WRITE-ALL
+   CAE-IN CAE-AS-LEAK-SOURCE$ FS:WRITE-ALL
    CAE-RUN 70 CAE-EXPECT-EXIT {: outu:n erru:n :}
    s" as-add-task stdout" T-LABEL
    CAE-OUT outu CAE-EMPTY$ T$=
@@ -517,7 +517,7 @@ create CAE-LF-BYTE 10 c,
 
 : CAE-TEST-UNDEFINED-JSON ( -- )
    s" undefined-json" CAE-CASE!
-   CAE-IN CAE-UNDEF-SOURCE$ WRITE-ALL
+   CAE-IN CAE-UNDEF-SOURCE$ FS:WRITE-ALL
    CAE-RUN 70 CAE-EXPECT-EXIT {: outu:n erru:n :}
    s" undefined-json stdout" T-LABEL
    CAE-OUT outu CAE-EMPTY$ T$=
@@ -602,7 +602,7 @@ create CAE-LF-BYTE 10 c,
 
 : CAE-TEST-CLI-SMOKE ( -- )
    s" cli-smoke" CAE-CASE!
-   CAE-IN CAE-SOURCE$ WRITE-ALL
+   CAE-IN CAE-SOURCE$ FS:WRITE-ALL
    CAE-RUN-CLI 70 CAE-EXPECT-EXIT {: outu:n erru:n :}
    s" cli-smoke stdout" T-LABEL
    CAE-OUT outu CAE-EMPTY$ T$=
@@ -624,11 +624,11 @@ $100000 constant CAE-CHILD-ERR-CAP
 54000 constant CAE-CHILD-MS              \ the bound check-test gives a check.f child
 
 : CAE-WRITE-REFUSALS ( -- )
-   CAE-LARGE CAE-EMPTY$ WRITE-ALL
+   CAE-LARGE CAE-EMPTY$ FS:WRITE-ALL
    CAE-REFUSAL-N 0 ?do
-      CAE-LARGE s" : CAE-R" APPEND-FILE
-      CAE-LARGE i CAE-U$ APPEND-FILE
-      CAE-LARGE s"  ( i64 -- i64 ) dup ;" APPEND-FILE
+      CAE-LARGE s" : CAE-R" FS:APPEND-FILE
+      CAE-LARGE i CAE-U$ FS:APPEND-FILE
+      CAE-LARGE s"  ( i64 -- i64 ) dup ;" FS:APPEND-FILE
       CAE-LARGE CAE-APPEND-LF
    loop ;
 
@@ -692,7 +692,7 @@ $100000 constant CAE-CHILD-ERR-CAP
 \ two real errors report, with no phantom E-UNDEFINED cascade entry.
 : CAE-TEST-CASCADE ( -- )
    s" cascade-no-phantom" CAE-CASE!
-   CAE-IN CAE-CASCADE-SOURCE$ WRITE-ALL
+   CAE-IN CAE-CASCADE-SOURCE$ FS:WRITE-ALL
    CAE-RUN 70 CAE-EXPECT-EXIT {: outu:n erru:n :}
    s" cascade stdout" T-LABEL
    CAE-OUT outu CAE-EMPTY$ T$=
@@ -715,7 +715,7 @@ $100000 constant CAE-CHILD-ERR-CAP
 \ multi-error counter counts that refusal; uncounted, it would read as clean.
 : CAE-TEST-UNCHECKABLE-FAILS ( -- )
    s" all-uncheckable" CAE-CASE!
-   CAE-IN CAE-UNCHK-SOURCE$ WRITE-ALL
+   CAE-IN CAE-UNCHK-SOURCE$ FS:WRITE-ALL
    CAE-RUN 70 CAE-EXPECT-EXIT {: outu:n erru:n :}
    s" uncheckable stdout" T-LABEL
    CAE-OUT outu CAE-EMPTY$ T$=
@@ -1054,9 +1054,9 @@ public
    s" bad-registry-row-prose" [: CAE-TEST-BAD-ROW-PROSE ;] CAE-CASE-RUN
    s" cli-smoke" [: CAE-TEST-CLI-SMOKE ;] CAE-CASE-RUN
    s" cli-refusals" [: CAE-TEST-CLI-REFUSALS ;] CAE-CASE-RUN
-   CLEANUP-RUN
+   FS:CLEANUP-RUN
    s" cleanup root removed" T-LABEL
-   CAE-ROOT EXISTS? TFALSE
+   CAE-ROOT FS:EXISTS? TFALSE
    T-REPORT
    s" check-all-errors-test: ok" type cr ;
 

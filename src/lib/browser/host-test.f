@@ -92,7 +92,7 @@ variable HEAD-U
 \ The path answered 200 with the content type, its body the file's bytes.
 : SERVED ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: path:ptr pu:n file:ptr fu:n type:ptr tu:n :}
-   file fu WANT CAP READ-ALL {: u:n :}
+   file fu WANT CAP FS:READ-ALL {: u:n :}
    path pu GET 200 T=
    SB-RESET  s" Content-Type: " SB-APPEND  type tu SB-APPEND  S\" \r\n" SB-APPEND
    HEAD HEAD-U @ SB$ CONTAINS? TTRUE

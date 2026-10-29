@@ -35,8 +35,8 @@ public
 
 package VERIFY-BINDING-TEST
 
-create ROOT FS-PATH-CAP allot variable ROOT-U
-create ENTRY FS-PATH-CAP allot variable ENTRY-U
+create ROOT PATH-CAP allot variable ROOT-U
+create ENTRY PATH-CAP allot variable ENTRY-U
 
 : ROOT$ ( -- ptr u8 n ) ROOT ROOT-U @ ;
 : ENTRY$ ( -- ptr u8 n ) ENTRY ENTRY-U @ ;
@@ -55,7 +55,7 @@ TYPED-VARIABLE TEXT-U len
 : TEXT+ ( ptr u8 n -- ) TEXT TEXT-CAP TEXT-U BUF-APPEND ;
 
 : WRITE-TEXT ( ptr u8 n -- ) {: a:ptr u:n :}
-   ROOT$ a u SOURCE-ROOT:JOIN TEXT$ WRITE-ALL
+   ROOT$ a u SOURCE-ROOT:JOIN TEXT$ FS:WRITE-ALL
    TEXT-U BUF-RESET ;
 
 : PLATE-FILE ( -- )
@@ -106,14 +106,14 @@ TYPED-VARIABLE TEXT-U len
    S\" include design/redefine-source.f\n" TEXT+
    S\" ENGINE-INTERNAL:IMAGE-SEALED drop\n" TEXT+
    ROOT$ s" entry.f" SOURCE-ROOT:JOIN ENTRY ENTRY-U COPY!
-   ENTRY$ TEXT$ WRITE-ALL ;
+   ENTRY$ TEXT$ FS:WRITE-ALL ;
 
 : PREP ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" verify-binding" FS:MKTEMP-DIR SOURCE-ROOT:CANONICAL TTRUE
    ROOT ROOT-U COPY!
-   ROOT$ CLEANUP-TREE+
-   ROOT$ s" design" SOURCE-ROOT:JOIN MAKE-DIRS
+   ROOT$ FS:CLEANUP-TREE+
+   ROOT$ s" design" SOURCE-ROOT:JOIN FS:MAKE-DIRS
    TEXT-U BUF-RESET
    PLATE-FILE ALIAS-FILE CHAIN-FILE TWICE-FILE REDEFINE-FILE LOCAL-FILE
    REDEFINE-SOURCE-FILE
@@ -213,7 +213,7 @@ public
    LOG$ S\" \nentry.f 255 283 engine-internal:image-sealed/2 " CONTAINS? TTRUE
    LOG$ S\" \nentry.f 255 283 engine-internal:image-sealed/2 engine-internal:image-sealed/2\n"
    CONTAINS? TFALSE
-   CLEANUP-RUN
+   FS:CLEANUP-RUN
    T-REPORT ;
 
 ;package

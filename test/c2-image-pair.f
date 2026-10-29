@@ -12,10 +12,10 @@ package C2-IMAGE-PAIR
 
 75 constant PAIR-RC
 
-create SOURCE FS-PATH-CAP allot
-create DEST FS-PATH-CAP allot
-create FROM FS-PATH-CAP allot
-create TO FS-PATH-CAP allot
+create SOURCE PATH-CAP allot
+create DEST PATH-CAP allot
+create FROM PATH-CAP allot
+create TO PATH-CAP allot
 variable SOURCE-U
 variable DEST-U
 
@@ -34,24 +34,24 @@ variable DEST-U
    then ;
 
 : SOURCE-AT ( ptr u8 n -- ptr u8 n )
-   SOURCE$ 2swap FROM JOIN-PATH FROM swap ;
+   SOURCE$ 2swap FROM FS:JOIN-PATH FROM swap ;
 
 : DEST-AT ( ptr u8 n -- ptr u8 n )
-   DEST$ 2swap TO JOIN-PATH TO swap ;
+   DEST$ 2swap TO FS:JOIN-PATH TO swap ;
 
 : NEED-IMAGE ( ptr u8 n -- )
-   SOURCE-AT 2dup EXECUTABLE? if 2drop exit then
+   SOURCE-AT 2dup FS:EXECUTABLE? if 2drop exit then
    s" c2-image-pair: missing or nonexecutable compiler image: " type type cr
    s" c2-image-pair: invalid HABU_GATE_COMPILER_IMAGES bundle" PAIR-RC die ;
 
 : NEED-FILE ( ptr u8 n -- )
-   SOURCE-AT 2dup FILE? if 2drop exit then
+   SOURCE-AT 2dup FS:FILE? if 2drop exit then
    s" c2-image-pair: missing compiler artifact: " type type cr
    s" c2-image-pair: invalid HABU_GATE_COMPILER_IMAGES bundle" PAIR-RC die ;
 
 : COPY ( ptr u8 n ptr u8 n -- )
    {: source:ptr sourceu:n dest:ptr destu:n :}
-   source sourceu SOURCE-AT dest destu DEST-AT COPY-FILE-STREAM ;
+   source sourceu SOURCE-AT dest destu DEST-AT FS:COPY-FILE-STREAM ;
 
 public
 
@@ -60,10 +60,10 @@ public
 : PROVIDE ( ptr u8 n -- )
    {: dest:ptr destu:n :}
    destu 0 <= if E-FS-PATH throw then
-   destu FS-PATH-CAP > if E-FS-CAPACITY throw then
+   destu PATH-CAP > if E-FS-CAPACITY throw then
    dest DEST destu BYTE-COPY destu DEST-U !
    BUNDLE$ {: source:ptr sourceu:n :}
-   sourceu FS-PATH-CAP > if E-FS-CAPACITY throw then
+   sourceu PATH-CAP > if E-FS-CAPACITY throw then
    source SOURCE sourceu BYTE-COPY sourceu SOURCE-U !
    s" hb-root" NEED-IMAGE
    s" hb-ordinary" NEED-FILE
@@ -73,7 +73,7 @@ public
    s" hb-ordinary" s" hb-ordinary" COPY
    s" hb-root.map" s" hb-root.map" COPY
    s" hb-ordinary.map" s" hb-ordinary.map" COPY
-   s" hb-root" DEST-AT CHMOD-X
-   s" hb-ordinary" DEST-AT CHMOD-X ;
+   s" hb-root" DEST-AT FS:CHMOD-X
+   s" hb-ordinary" DEST-AT FS:CHMOD-X ;
 
 ;package

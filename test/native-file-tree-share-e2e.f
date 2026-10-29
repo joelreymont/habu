@@ -20,10 +20,10 @@ using NATIVE-FILE-E2E
 package NATIVE-FILE-TREE-SHARE-TEST
 
 $8000 constant CAP
-create DIR-PATH FS-PATH-CAP allot
-create SRC-PATH FS-PATH-CAP allot
-create PROD-PATH FS-PATH-CAP allot
-create CACHE-PATH FS-PATH-CAP allot
+create DIR-PATH PATH-CAP allot
+create SRC-PATH PATH-CAP allot
+create PROD-PATH PATH-CAP allot
+create CACHE-PATH PATH-CAP allot
 create OUT-A CAP allot  variable OUT-A-U
 create OUT-B CAP allot  variable OUT-B-U
 create OUT-C CAP allot  variable OUT-C-U
@@ -44,29 +44,29 @@ variable OBJS-A  variable OBJS-B  variable OBJS-C
 \ The tree dir under the test root, holding app.f and a lib.f with BASE.
 : TREE-FILES ( ptr u8 n ptr u8 n -- )
    {: dir:ptr diru:n base:ptr baseu:n :}
-   dir diru AT MAKE-DIR
-   ROOT$ dir diru DIR-PATH JOIN-PATH {: u:n :}
-   DIR-PATH u s" app.f" SRC-PATH JOIN-PATH {: appu:n :}
-   SRC-PATH appu APP WRITE-ALL
-   DIR-PATH u s" lib.f" SRC-PATH JOIN-PATH {: libu:n :}
+   dir diru AT FS:MAKE-DIR
+   ROOT$ dir diru DIR-PATH FS:JOIN-PATH {: u:n :}
+   DIR-PATH u s" app.f" SRC-PATH FS:JOIN-PATH {: appu:n :}
+   SRC-PATH appu APP FS:WRITE-ALL
+   DIR-PATH u s" lib.f" SRC-PATH FS:JOIN-PATH {: libu:n :}
    base baseu LIB {: body:ptr bodyu:n :}
-   SRC-PATH libu body bodyu WRITE-ALL ;
+   SRC-PATH libu body bodyu FS:WRITE-ALL ;
 
 \ dir/app.f into dir/app-hb with the out root every tree shares.
 : BUILD ( ptr u8 n -- n )
    {: dir:ptr diru:n :}
-   ROOT$ dir diru DIR-PATH JOIN-PATH {: u:n :}
-   DIR-PATH u s" app.f" SRC-PATH JOIN-PATH {: srcu:n :}
-   DIR-PATH u s" app-hb" PROD-PATH JOIN-PATH {: produ:n :}
-   ROOT$ s" cache" CACHE-PATH JOIN-PATH {: cacheu:n :}
+   ROOT$ dir diru DIR-PATH FS:JOIN-PATH {: u:n :}
+   DIR-PATH u s" app.f" SRC-PATH FS:JOIN-PATH {: srcu:n :}
+   DIR-PATH u s" app-hb" PROD-PATH FS:JOIN-PATH {: produ:n :}
+   ROOT$ s" cache" CACHE-PATH FS:JOIN-PATH {: cacheu:n :}
    SRC-PATH srcu PROD-PATH produ CACHE-PATH cacheu NATIVE-FILE-APP:BUILD
    NATIVE-FILE-APP:OUT$ NATIVE-FILE-APP:ERR$ STREAMS! ;
 
 \ Runs dir/app-hb; its stdout lands in OUT$.
 : RUN ( ptr u8 n -- )
    {: dir:ptr diru:n :}
-   ROOT$ dir diru DIR-PATH JOIN-PATH {: u:n :}
-   DIR-PATH u s" app-hb" PROD-PATH JOIN-PATH {: produ:n :}
+   ROOT$ dir diru DIR-PATH FS:JOIN-PATH {: u:n :}
+   DIR-PATH u s" app-hb" PROD-PATH FS:JOIN-PATH {: produ:n :}
    PROC-ARGV-ENV-RESET PROC-ENV-INHERIT-MISSING
    PROD-PATH produ s" " CAPTURE SUCCESS ;
 
@@ -98,13 +98,13 @@ variable OBJS-A  variable OBJS-B  variable OBJS-C
    s" a" OBJS-A @ COUNT-LINE
    s" b" OBJS-B @ COUNT-LINE
    s" c" OBJS-C @ COUNT-LINE
-   s" tree-share.txt" AT SB$ WRITE-ALL ;
+   s" tree-share.txt" AT SB$ FS:WRITE-ALL ;
 
 public
 : MAIN ( -- )
    T-RESET
    s" native-file-tree-share" TREE
-   s" cache" AT MAKE-DIR
+   s" cache" AT FS:MAKE-DIR
    s" a" s" 41" TREE-FILES
    s" b" s" 41" TREE-FILES
    s" c" s" 99" TREE-FILES

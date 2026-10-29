@@ -4442,10 +4442,10 @@ variable READ-META-VALID
 \ A readable stream has no reusable disk stamp. Acquisition still opens and
 \ reads it; only regular files participate in the before/after stamp check.
 : QUIET-FILE-META ( ptr u8 n -- n n n n n bool )
-   FS-TRY-STAT 0= IF 0 0 0 0 0 false EXIT THEN
-   FS-STAT-MODE@ S-IFMT and S-IFREG <> IF 0 0 0 0 0 false EXIT THEN
-   FS-STAT-SIZE@ FS-STAT-MTIME-SEC@ FS-STAT-MTIME-NS@
-   FS-STAT-CTIME-SEC@ FS-STAT-CTIME-NS@ true ;
+   FS:TRY-STAT 0= IF 0 0 0 0 0 false EXIT THEN
+   FS:STAT-MODE@ FS:S-IFMT and FS:S-IFREG <> IF 0 0 0 0 0 false EXIT THEN
+   FS:STAT-SIZE@ FS:STAT-MTIME-SEC@ FS:STAT-MTIME-NS@
+   FS:STAT-CTIME-SEC@ FS:STAT-CTIME-NS@ true ;
 
 : READ-FILL ( -- )
    0 READ-U !

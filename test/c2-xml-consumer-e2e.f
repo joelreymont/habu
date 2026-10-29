@@ -20,7 +20,7 @@ private
 : IMAGES ( -- )
    ROOT$ C2-IMAGE-PAIR:PROVIDE
    s" a rooted C2 image is supplied from the initial compiler build" T-LABEL
-   s" hb-root" AT-A EXECUTABLE? TTRUE ;
+   s" hb-root" AT-A FS:EXECUTABLE? TTRUE ;
 
 : SOURCE-CASES ( -- )
    s" hb-root" s" test/c2-xml-consumer-program.f" RUN-IMAGE
@@ -42,7 +42,7 @@ private
    s" save.out" s" save.err" SAVE-LOG
    s" the typed XML-C2 module saves into a new image" T-LABEL NEED-OK
    RC@ 0<> if exit then
-   s" hb-saved" AT-A EXECUTABLE? TTRUE ;
+   s" hb-saved" AT-A FS:EXECUTABLE? TTRUE ;
 
 : SAVED-CASES ( -- )
    s" hb-saved" s" test/c2-xml-consumer-saved.f" RUN-IMAGE

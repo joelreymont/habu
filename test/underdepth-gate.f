@@ -49,15 +49,15 @@ variable UDG-ERR-U
 variable UDG-EXITED                 \ bool: child completed by exit
 variable UDG-RC
 
-create UDG-ROOT-BUF FS-PATH-CAP allot
-create UDG-CHILD-BUF FS-PATH-CAP allot
+create UDG-ROOT-BUF PATH-CAP allot
+create UDG-CHILD-BUF PATH-CAP allot
 create UDG-IN UDG-CAP allot         \ stdin-piped program
 create UDG-OUT UDG-CAP allot
 create UDG-ERR UDG-CAP allot
 create UDG-EMPTY 1 allot            \ zero-length stdin
 
 : UDG-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: src:ptr u:n dst:ptr lenp:ptr :}
-   u FS-PATH-CAP > if E-FS-CAPACITY throw then
+   u PATH-CAP > if E-FS-CAPACITY throw then
    src dst u BYTE-COPY
    u lenp ! ;
 
@@ -91,7 +91,7 @@ create UDG-EMPTY 1 allot            \ zero-length stdin
 
 \ Run the program as a --load file with empty stdin.
 : UDG-RUN-LOAD ( ptr u8 n -- ) {: src:ptr u:n :}
-   UDG-CHILD src u WRITE-ALL
+   UDG-CHILD src u FS:WRITE-ALL
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    UDG-CHILD >LEN PROC-ARGV+
@@ -382,15 +382,15 @@ public
 ;package
 
 : UDG-PREPARE ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" habu-udg" FS:MKTEMP-DIR {: a:ptr u:n :}
    a u UDG-ROOT-BUF UDG-ROOT-U UDG-COPY!
-   UDG-ROOT CLEANUP-TREE+
-   UDG-ROOT s" forge.f" UDG-CHILD-BUF JOIN-PATH UDG-CHILD-U ! ;
+   UDG-ROOT FS:CLEANUP-TREE+
+   UDG-ROOT s" forge.f" UDG-CHILD-BUF FS:JOIN-PATH UDG-CHILD-U ! ;
 
 : UDG-CLEANUP ( -- )
-   CLEANUP-RUN
-   UDG-ROOT EXISTS? TFALSE ;
+   FS:CLEANUP-RUN
+   UDG-ROOT FS:EXISTS? TFALSE ;
 
 : UDG-MAIN ( -- )
    T-RESET

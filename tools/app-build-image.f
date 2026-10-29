@@ -15,11 +15,11 @@ package APP-BUILD-IMAGE
 
 create KEY-HEX KEYED-IMAGE:KEY-HEX-LEN allot
 create ENGINE-KEY KEYED-IMAGE:KEY-HEX-LEN allot
-create PATH-BUF FS-PATH-CAP allot
-create ENTRY-BUF FS-PATH-CAP allot
-create ROOT-BUF FS-PATH-CAP allot
-create SELECTED-BUF FS-PATH-CAP allot
-create RUNNING-BUF FS-PATH-CAP allot
+create PATH-BUF PATH-CAP allot
+create ENTRY-BUF PATH-CAP allot
+create ROOT-BUF PATH-CAP allot
+create SELECTED-BUF PATH-CAP allot
+create RUNNING-BUF PATH-CAP allot
 variable PATH-U
 variable ENTRY-U
 variable ROOT-U
@@ -39,7 +39,7 @@ TYPED-VARIABLE BEFORE [ ptr u8 n -- ]
 
 : COPY-ENTRY! ( ptr u8 n ptr u8 ptr n -- )
    {: a:ptr u:n dst:ptr up:ptr :}
-   u FS-PATH-CAP > if E-FS-CAPACITY throw then
+   u PATH-CAP > if E-FS-CAPACITY throw then
    a dst u BYTE-COPY
    u up ! ;
 

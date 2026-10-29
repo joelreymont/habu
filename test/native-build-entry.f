@@ -29,15 +29,15 @@ create ERR CAP allot
 variable OUT-U
 variable ERR-U
 variable RC
-create FOREIGN-ROOT FS-PATH-CAP allot
+create FOREIGN-ROOT PATH-CAP allot
 variable FOREIGN-ROOT-U
-create FOREIGN-OUT FS-PATH-CAP allot
+create FOREIGN-OUT PATH-CAP allot
 variable FOREIGN-OUT-U
 create CONTENT 64 allot
 : FOREIGN-OUT$ ( -- ptr u8 n ) FOREIGN-OUT FOREIGN-OUT-U @ ;
 
 : FOREIGN-OUT! ( ptr u8 n -- ) {: name:ptr size:n :}
-   FOREIGN-ROOT FOREIGN-ROOT-U @ name size FOREIGN-OUT JOIN-PATH
+   FOREIGN-ROOT FOREIGN-ROOT-U @ name size FOREIGN-OUT FS:JOIN-PATH
       FOREIGN-OUT-U ! ;
 
 : FOREIGN-ROOT! ( -- )
@@ -154,12 +154,12 @@ create CONTENT 64 allot
    DRIVE
    HB-TARGET-LINUX-X86-64? if
       S\" native-build: no writer is loaded for a --target on another machine; a writer loaded after the capture would compile for the window's machine\n" REFUSED
-      FOREIGN-OUT$ FILE? 0= TTRUE
+      FOREIGN-OUT$ FS:FILE? 0= TTRUE
    else
       RC @ 0<> if OUT OUT-U @ type ERR$ type then
       RC @ 0 T=
-      FOREIGN-OUT$ FILE? TTRUE
-      FOREIGN-OUT$ FS-PATHZ open-rd {: fd:n :}
+      FOREIGN-OUT$ FS:FILE? TTRUE
+      FOREIGN-OUT$ FS:>PATHZ open-rd {: fd:n :}
       fd 0 >= TTRUE
       fd CONTENT 64 read 64 T=
       fd close
@@ -195,7 +195,7 @@ create CONTENT 64 allot
 
 : FOREIGN-SEED ( ptr u8 n -- )
    FOREIGN-OUT!
-   FOREIGN-OUT$ s" retained native output" WRITE-ALL ;
+   FOREIGN-OUT$ s" retained native output" FS:WRITE-ALL ;
 
 : FOREIGN-RESULT ( -- )
    RC @ 74 <> if OUT OUT-U @ type ERR$ type then
@@ -203,7 +203,7 @@ create CONTENT 64 allot
    ERR-U @ 0 T=
    OUT OUT-U @ s" native-build: target process ABI or image format is not executable here" CONTAINS? TTRUE
    OUT OUT-U @ s" native-build: uncaught throw code 74" CONTAINS? TTRUE
-   FOREIGN-OUT$ CONTENT 64 READ-ALL 22 T=
+   FOREIGN-OUT$ CONTENT 64 FS:READ-ALL 22 T=
    CONTENT 22 s" retained native output" T$= ;
 
 : FOREIGN-DEFAULT ( -- )

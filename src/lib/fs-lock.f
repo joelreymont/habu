@@ -42,7 +42,7 @@ FUNCTION: FLOCK-CALL flock ( n n -- i32 ) ;FUNCTION
 public
 
 : OPEN-DIR ( ptr u8 n -- fd )
-   FS-PATHZ OPEN-FLAGS OPEN-CALL {: opened:n :}
+   FS:>PATHZ OPEN-FLAGS OPEN-CALL {: opened:n :}
    opened 0 < if E-FS-OPEN throw then
    opened >FD ;
 

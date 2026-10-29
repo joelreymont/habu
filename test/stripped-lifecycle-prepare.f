@@ -18,9 +18,9 @@ $10000 constant CAP
 600000 constant TIMEOUT-MS
 create OUT CAP allot
 create ERR CAP allot
-create RUNNING-BUF FS-PATH-CAP allot
+create RUNNING-BUF PATH-CAP allot
 variable RUNNING-U
-create POOL-BUF FS-PATH-CAP allot
+create POOL-BUF PATH-CAP allot
 variable POOL-U
 
 : RUNNING$ ( -- ptr u8 n ) RUNNING-BUF RUNNING-U @ ;
@@ -28,9 +28,9 @@ variable POOL-U
 
 : PREPARE ( -- )
    SOURCE-ROOT:CURRENT$ s" stripped-lifecycle-running-subject.f"
-      RUNNING-BUF JOIN-PATH RUNNING-U !
+      RUNNING-BUF FS:JOIN-PATH RUNNING-U !
    SOURCE-ROOT:CURRENT$ s" stripped-lifecycle-pool-subject.f"
-      POOL-BUF JOIN-PATH POOL-U ! ;
+      POOL-BUF FS:JOIN-PATH POOL-U ! ;
 
 \ THE REFUSAL IS MEASURED AT IMAGE-LIFECYCLE:PREPARE AND NOT THROUGH hb-build,
 \ because hb-build's later phases mutate the dictionary and a live task refuses

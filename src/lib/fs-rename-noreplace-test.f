@@ -7,13 +7,19 @@ require src/lib/task.f
 require src/lib/process-argv.f
 require src/lib/test/wait.f
 
+\ The private FS words this test reads, forwarded into its own package.
+package FS
+: FS-NOREPLACE-TEST:RENAME-NOREPLACE ( ptr u8 n ptr u8 n -- bool ) RENAME-NOREPLACE ;
+: FS-NOREPLACE-TEST:READ-LINK ( ptr u8 n SPAN:span<u8> -- n ) READ-LINK ;
+;package
+
 package FS-NOREPLACE-TEST
 
-create ROOT FS-PATH-CAP allot
+create ROOT PATH-CAP allot
 variable ROOT-U
-create PATHS 4 FS-PATH-CAP * allot
+create PATHS 4 PATH-CAP * allot
 create TEXT 64 allot
-FS-PATH-CAP SPAN-BUFFER: LINK-TEXT
+PATH-CAP SPAN-BUFFER: LINK-TEXT
 variable RACE-DEST-U
 variable RACE-READY
 TYPED-VARIABLE ACL-ON bool
@@ -22,72 +28,72 @@ TASK:MIN-STACK TASK:TASK WORKER-A
 TASK:MIN-STACK TASK:TASK WORKER-B
 
 : PATH ( n ptr u8 n -- ptr u8 n ) {: idx name bytes :}
-   PATHS idx FS-PATH-CAP * + {: out :}
-   out ROOT ROOT-U @ name bytes out JOIN-PATH ;
+   PATHS idx PATH-CAP * + {: out :}
+   out ROOT ROOT-U @ name bytes out FS:JOIN-PATH ;
 
 : SOURCE ( -- ptr u8 n ) 0 s" source" PATH ;
 : DEST ( -- ptr u8 n ) 1 s" dest" PATH ;
 : SOURCE-B ( -- ptr u8 n ) 2 s" source-b" PATH ;
-: RACE-DEST ( -- ptr u8 n ) PATHS 3 FS-PATH-CAP * + RACE-DEST-U @ ;
+: RACE-DEST ( -- ptr u8 n ) PATHS 3 PATH-CAP * + RACE-DEST-U @ ;
 : BAD-DEST ( -- ptr u8 n ) 1 s" absent/entry" PATH ;
 
 : CONTENT ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu expected:ptr expectedu :}
-   path pathu TEXT 64 READ-ALL {: got :}
+   path pathu TEXT 64 FS:READ-ALL {: got :}
    TEXT got expected expectedu T$= ;
 
 : SOURCE-CONTENT ( -- ) SOURCE s" source bytes" CONTENT ;
 
 : PUBLISH ( -- )
-   SOURCE s" source bytes" WRITE-ALL
+   SOURCE s" source bytes" FS:WRITE-ALL
    SOURCE DEST RENAME-NOREPLACE TTRUE
-   SOURCE FS-TRY-LSTAT TFALSE
+   SOURCE FS:TRY-LSTAT TFALSE
    DEST s" source bytes" CONTENT
-   DEST REMOVE-FILE ;
+   DEST FS:REMOVE-FILE ;
 
 : EXISTING-FILE ( -- )
-   SOURCE s" source bytes" WRITE-ALL
-   DEST s" destination bytes" WRITE-ALL
+   SOURCE s" source bytes" FS:WRITE-ALL
+   DEST s" destination bytes" FS:WRITE-ALL
    SOURCE DEST RENAME-NOREPLACE TFALSE
    SOURCE-CONTENT
    DEST s" destination bytes" CONTENT
-   SOURCE REMOVE-FILE DEST REMOVE-FILE ;
+   SOURCE FS:REMOVE-FILE DEST FS:REMOVE-FILE ;
 
 : DANGLING-LINK ( -- )
-   SOURCE s" source bytes" WRITE-ALL
-   s" absent-target" DEST MAKE-SYMLINK
-   DEST EXISTS? TFALSE
-   DEST SYMLINK? TTRUE
+   SOURCE s" source bytes" FS:WRITE-ALL
+   s" absent-target" DEST FS:MAKE-SYMLINK
+   DEST FS:EXISTS? TFALSE
+   DEST FS:SYMLINK? TTRUE
    SOURCE DEST RENAME-NOREPLACE TFALSE
    SOURCE-CONTENT
-   DEST SYMLINK? TTRUE
+   DEST FS:SYMLINK? TTRUE
    DEST LINK-TEXT READ-LINK {: got :}
    LINK-TEXT got SPAN:TAKE SPAN:$ s" absent-target" T$=
-   SOURCE REMOVE-FILE DEST REMOVE-FILE ;
+   SOURCE FS:REMOVE-FILE DEST FS:REMOVE-FILE ;
 
 : LIVE-LINK ( -- )
-   SOURCE s" source bytes" WRITE-ALL
-   s" source" DEST MAKE-SYMLINK
-   DEST FILE? TTRUE
+   SOURCE s" source bytes" FS:WRITE-ALL
+   s" source" DEST FS:MAKE-SYMLINK
+   DEST FS:FILE? TTRUE
    SOURCE DEST RENAME-NOREPLACE TFALSE
    SOURCE-CONTENT
-   DEST SYMLINK? TTRUE
+   DEST FS:SYMLINK? TTRUE
    DEST LINK-TEXT READ-LINK {: got :}
    LINK-TEXT got SPAN:TAKE SPAN:$ s" source" T$=
-   SOURCE REMOVE-FILE DEST REMOVE-FILE ;
+   SOURCE FS:REMOVE-FILE DEST FS:REMOVE-FILE ;
 
 : EXISTING-DIR ( -- )
-   SOURCE s" source bytes" WRITE-ALL
-   DEST MAKE-DIR
+   SOURCE s" source bytes" FS:WRITE-ALL
+   DEST FS:MAKE-DIR
    SOURCE DEST RENAME-NOREPLACE TFALSE
    SOURCE-CONTENT
-   DEST DIR? TTRUE
-   SOURCE REMOVE-FILE DEST REMOVE-DIR ;
+   DEST FS:DIR? TTRUE
+   SOURCE FS:REMOVE-FILE DEST FS:REMOVE-DIR ;
 
 : SAME-PATH ( -- )
-   SOURCE s" source bytes" WRITE-ALL
+   SOURCE s" source bytes" FS:WRITE-ALL
    SOURCE SOURCE RENAME-NOREPLACE TFALSE
    SOURCE-CONTENT
-   SOURCE REMOVE-FILE ;
+   SOURCE FS:REMOVE-FILE ;
 
 \ Each task joins the rendezvous and waits for the other. A peer that never
 \ arrives ends the wait with E-PROC-TIMEOUT: the task's JOIN records it and main
@@ -123,8 +129,8 @@ TASK:MIN-STACK TASK:TASK WORKER-B
 
 : RACE ( -- )
    3 s" race-dest" PATH nip RACE-DEST-U !
-   SOURCE s" source bytes" WRITE-ALL
-   SOURCE-B s" second bytes" WRITE-ALL
+   SOURCE s" source bytes" FS:WRITE-ALL
+   SOURCE-B s" second bytes" FS:WRITE-ALL
    0 RACE-READY !
    ['] RACE-A WORKER-A TASK:ACTIVATE
    ['] RACE-B WORKER-B TASK:ACTIVATE
@@ -135,29 +141,29 @@ TASK:MIN-STACK TASK:TASK WORKER-B
    a if b TFALSE else b TTRUE then
    a if
       RACE-DEST s" source bytes" CONTENT
-      SOURCE FS-TRY-LSTAT TFALSE
+      SOURCE FS:TRY-LSTAT TFALSE
       SOURCE-B s" second bytes" CONTENT
-      SOURCE-B REMOVE-FILE
+      SOURCE-B FS:REMOVE-FILE
    else
       RACE-DEST s" second bytes" CONTENT
-      SOURCE-B FS-TRY-LSTAT TFALSE
+      SOURCE-B FS:TRY-LSTAT TFALSE
       SOURCE-CONTENT
-      SOURCE REMOVE-FILE
+      SOURCE FS:REMOVE-FILE
    then
-   RACE-DEST REMOVE-FILE ;
+   RACE-DEST FS:REMOVE-FILE ;
 
 : MISSING-SOURCE ( -- ) SOURCE DEST RENAME-NOREPLACE drop ;
 : BAD-PARENT ( -- ) SOURCE BAD-DEST RENAME-NOREPLACE drop ;
 
 : OTHER-ERRORS ( -- )
    [: MISSING-SOURCE ;] E-FS-IO TTHROWSQ
-   SOURCE FS-TRY-LSTAT TFALSE
-   DEST FS-TRY-LSTAT TFALSE
-   SOURCE s" source bytes" WRITE-ALL
+   SOURCE FS:TRY-LSTAT TFALSE
+   DEST FS:TRY-LSTAT TFALSE
+   SOURCE s" source bytes" FS:WRITE-ALL
    [: BAD-PARENT ;] E-FS-IO TTHROWSQ
    SOURCE-CONTENT
-   BAD-DEST FS-TRY-LSTAT TFALSE
-   SOURCE REMOVE-FILE ;
+   BAD-DEST FS:TRY-LSTAT TFALSE
+   SOURCE FS:REMOVE-FILE ;
 
 : CHMOD-RUN ( -- )
    s" /bin/chmod" >LEN -1 >FD -1 >FD -1 >FD PROC-RUN-ARGV-IO-RC
@@ -183,10 +189,10 @@ TASK:MIN-STACK TASK:TASK WORKER-B
 
 : ACL-CLEAR ( -- )
    ACL-ON @ 0= if exit then
-   SOURCE FS-TRY-LSTAT if
+   SOURCE FS:TRY-LSTAT if
       SOURCE ACL-REMOVE
    else
-      DEST FS-TRY-LSTAT if DEST ACL-REMOVE then
+      DEST FS:TRY-LSTAT if DEST ACL-REMOVE then
    then
    false ACL-ON ! ;
 
@@ -194,12 +200,12 @@ TASK:MIN-STACK TASK:TASK WORKER-B
 \ appears on both names, so CLEAN clears it through whichever name survived.
 : UNLINK-ERROR ( -- )
    HB-TARGET-MACOS? 0= if exit then
-   SOURCE s" source bytes" WRITE-ALL
+   SOURCE s" source bytes" FS:WRITE-ALL
    ACL-ADD
    true ACL-ON !
    [: SOURCE DEST RENAME-NOREPLACE drop ;] E-FS-IO TTHROWSQ
-   SOURCE FILE? TTRUE
-   DEST FILE? TTRUE
+   SOURCE FS:FILE? TTRUE
+   DEST FS:FILE? TTRUE
    SOURCE-CONTENT
    DEST s" source bytes" CONTENT
    SOURCE DEST FS:SAMEFILE TTRUE ;
@@ -213,7 +219,7 @@ TASK:MIN-STACK TASK:TASK WORKER-B
    path ROOT bytes BYTE-COPY bytes ROOT-U !
    false ACL-ON ! ;
 
-: CLEAN ( -- ) ACL-CLEAR ROOT ROOT-U @ REMOVE-TREE ;
+: CLEAN ( -- ) ACL-CLEAR ROOT ROOT-U @ FS:REMOVE-TREE ;
 : RUN ( -- ) T-RESET SETUP [: CHECKS ;] [: CLEAN ;] finally T-REPORT ;
 
 RUN

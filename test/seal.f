@@ -42,15 +42,15 @@ variable SLV-ERR-U
 variable SLV-EXITED                 \ bool: child completed by exit
 variable SLV-RC
 
-create SLV-ROOT-BUF FS-PATH-CAP allot
-create SLV-CHILD-BUF FS-PATH-CAP allot
+create SLV-ROOT-BUF PATH-CAP allot
+create SLV-CHILD-BUF PATH-CAP allot
 create SLV-IN SLV-CAP allot          \ stdin-piped forge source
 create SLV-OUT SLV-CAP allot
 create SLV-ERR SLV-CAP allot
 create SLV-EMPTY 1 allot            \ zero-length stdin
 
 : SLV-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: src:ptr u:n dst:ptr lenp:ptr :}
-   u FS-PATH-CAP > if E-FS-CAPACITY throw then
+   u PATH-CAP > if E-FS-CAPACITY throw then
    src dst u BYTE-COPY
    u lenp ! ;
 
@@ -392,7 +392,7 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
 
 \ Run the forge as a --load file with empty stdin.
 : SLV-RUN-LOAD ( ptr u8 n -- ) {: src:ptr u:n :}
-   SLV-CHILD src u WRITE-ALL
+   SLV-CHILD src u FS:WRITE-ALL
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    SLV-CHILD >LEN PROC-ARGV+
@@ -585,15 +585,15 @@ variable PWG-U
    SLV-LANG-FORGE$ POS-LOAD ;
 
 : SLV-PREPARE ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" habu-seal" FS:MKTEMP-DIR {: a:ptr u:n :}
    a u SLV-ROOT-BUF SLV-ROOT-U SLV-COPY!
-   SLV-ROOT CLEANUP-TREE+
-   SLV-ROOT s" forge.f" SLV-CHILD-BUF JOIN-PATH SLV-CHILD-U ! ;
+   SLV-ROOT FS:CLEANUP-TREE+
+   SLV-ROOT s" forge.f" SLV-CHILD-BUF FS:JOIN-PATH SLV-CHILD-U ! ;
 
 : SLV-CLEANUP ( -- )
-   CLEANUP-RUN
-   SLV-ROOT EXISTS? TFALSE ;
+   FS:CLEANUP-RUN
+   SLV-ROOT FS:EXISTS? TFALSE ;
 
 : SLV-NEGATIVES ( -- )
    s" ! into CUR-CELL traps" T-LABEL

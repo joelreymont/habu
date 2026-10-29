@@ -35,8 +35,8 @@ require tools/build-fixpoint.f
 package CHAIN-BAKE
 using BUILD-FIXPOINT
 
-create ART-BUF FS-PATH-CAP allot   variable ART-U
-create ENG-BUF FS-PATH-CAP allot   variable ENG-U
+create ART-BUF PATH-CAP allot   variable ART-U
+create ENG-BUF PATH-CAP allot   variable ENG-U
 
 : ?ARGS ( -- )
    SCRIPT-ARGC 2 >= if exit then
@@ -44,7 +44,7 @@ create ENG-BUF FS-PATH-CAP allot   variable ENG-U
    BF-BUILD-RC die ;
 
 : PATH-COPY ( ptr u8 n ptr u8 -- ) {: a:ptr u:n d:ptr :}
-   u FS-PATH-CAP > if s" aot-chain-bake: path exceeds the buffer" BF-BUILD-RC die then
+   u PATH-CAP > if s" aot-chain-bake: path exceeds the buffer" BF-BUILD-RC die then
    a d u BYTE-COPY ;
 
 : ARGS! ( -- )

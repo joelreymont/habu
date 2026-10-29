@@ -8,12 +8,12 @@ require src/lib/process-cwd.f
 
 package HB-BUILD-CLI
 
-create HBT-MAKER-HB FS-PATH-CAP allot
-create HBT-MAKER-TOOL FS-PATH-CAP allot
-create HBT-MAKER-SHADOW FS-PATH-CAP allot
-create HBT-MAKER-OLD FS-PATH-CAP allot
-create HBT-MAKER-DIRECT-OUT FS-PATH-CAP allot
-create HBT-MAKER-OUT FS-PATH-CAP allot
+create HBT-MAKER-HB PATH-CAP allot
+create HBT-MAKER-TOOL PATH-CAP allot
+create HBT-MAKER-SHADOW PATH-CAP allot
+create HBT-MAKER-OLD PATH-CAP allot
+create HBT-MAKER-DIRECT-OUT PATH-CAP allot
+create HBT-MAKER-OUT PATH-CAP allot
 variable HBT-MAKER-HB-U
 variable HBT-MAKER-TOOL-U
 variable HBT-MAKER-SHADOW-U
@@ -73,22 +73,22 @@ create HBT-MAKER-GOT-HEX 64 allot
       {: outn:n errn:n rc:n :}
    rc 0<> if HBB-OUT-BUF outn type HBB-ERR-BUF errn type rc throw then
    outn 0<> errn 0<> or if E-BUILD-PATH throw then
-   s" hb-aot-got" BUILD-FIXPOINT:BF-A$ EXECUTABLE? 0= if E-BUILD-PATH throw then ;
+   s" hb-aot-got" BUILD-FIXPOINT:BF-A$ FS:EXECUTABLE? 0= if E-BUILD-PATH throw then ;
 
 : HBT-MAKER-CHILD? ( -- bool )
    SCRIPT-ARGC 0 > if 0 SCRIPT-ARGV$ s" path" STR= exit then
    false ;
 
 : HBT-MAKER-SHADOW-SETUP ( -- )
-   SOURCE-ROOT:ENGINE$ s" bin/hb" HBT-MAKER-HB JOIN-PATH HBT-MAKER-HB-U !
-   HBT-ROOT s" tools" HBT-MAKER-SHADOW JOIN-PATH
+   SOURCE-ROOT:ENGINE$ s" bin/hb" HBT-MAKER-HB FS:JOIN-PATH HBT-MAKER-HB-U !
+   HBT-ROOT s" tools" HBT-MAKER-SHADOW FS:JOIN-PATH
       HBT-MAKER-SHADOW-U !
-   HBT-MAKER-SHADOW$ MAKE-DIR
+   HBT-MAKER-SHADOW$ FS:MAKE-DIR
    HBT-ROOT s" tools/aot-builder.f" HBT-MAKER-SHADOW
-      JOIN-PATH HBT-MAKER-SHADOW-U !
+      FS:JOIN-PATH HBT-MAKER-SHADOW-U !
    SOURCE-ROOT:ENGINE$ s" tools/aot-builder.f"
-      HBT-MAKER-OLD JOIN-PATH HBT-MAKER-OLD-U !
-   HBT-MAKER-OLD$ HBT-MAKER-SHADOW$ COPY-FILE-STREAM ;
+      HBT-MAKER-OLD FS:JOIN-PATH HBT-MAKER-OLD-U !
+   HBT-MAKER-OLD$ HBT-MAKER-SHADOW$ FS:COPY-FILE-STREAM ;
 
 \ The saved maker a fresh process selects for an engine spelling from a working
 \ directory: the image path's length in HBT-OUT and whether it was a hit.
@@ -118,7 +118,7 @@ create HBT-MAKER-GOT-HEX 64 allot
    {: path:ptr pathu:n :}
    path pathu HBT-MAKER-OUT$ STARTS-WITH? TTRUE
    path pathu s" /img/aot-builder" ENDS-WITH? TTRUE
-   path pathu EXECUTABLE? TTRUE ;
+   path pathu FS:EXECUTABLE? TTRUE ;
 
 \ Editing the maker source under the root replaces the slot's image.
 : HBT-MAKER-ROOT-EDIT ( -- )
@@ -126,7 +126,7 @@ create HBT-MAKER-GOT-HEX 64 allot
    HBT-MAKER-HB$ HBT-ROOT HBT-MAKER-PATH-RUN drop {: oldu:n :}
    HBT-OUT oldu HBT-MAKER-OLD HBT-MAKER-OLD-U HBT-COPY!
    HBT-MAKER-OLD$ HBT-MAKER-SLOT?
-   HBT-MAKER-SHADOW$ S\" \n\\ maker source changed\n" APPEND-FILE
+   HBT-MAKER-SHADOW$ S\" \n\\ maker source changed\n" FS:APPEND-FILE
    HBT-MAKER-HB$ HBT-ROOT HBT-MAKER-PATH-RUN TFALSE {: newu:n :}
    HBT-OUT newu HBT-MAKER-OLD$ T$=
    HBT-OUT newu HBT-MAKER-SLOT? ;
@@ -151,11 +151,11 @@ create HBT-MAKER-GOT-HEX 64 allot
    rc 0 T= errn 0 T= ;
 
 : HBT-MAKER-ROOTED-BUILD ( -- )
-   HBT-AOT-SRC S\" require src/lib/json-read.f\nrequire src/lib/task.f\nvariable USER-CEILING\nTASK:#USER USER-CEILING !\n: MAIN ( -- ) TASK:#USER USER-CEILING @ <> if s\q maker user\q 74 die then s\q rooted\q type cr ;\n" WRITE-ALL
+   HBT-AOT-SRC S\" require src/lib/json-read.f\nrequire src/lib/task.f\nvariable USER-CEILING\nTASK:#USER USER-CEILING !\n: MAIN ( -- ) TASK:#USER USER-CEILING @ <> if s\q maker user\q 74 die then s\q rooted\q type cr ;\n" FS:WRITE-ALL
    HBT-REMOVE-AOT-OUT
    s" run" HBT-MAKER-ROOTED-ON
-   HBT-TMP s" hb-aot-got" HBT-AOT-OUT-BUF JOIN-PATH HBT-AOT-OUT-U !
-   HBT-AOT-OUT EXECUTABLE? TTRUE
+   HBT-TMP s" hb-aot-got" HBT-AOT-OUT-BUF FS:JOIN-PATH HBT-AOT-OUT-U !
+   HBT-AOT-OUT FS:EXECUTABLE? TTRUE
    HBT-AOT-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN
       HBT-RUN-ERR HBT-CAPTURE-CAP >LEN HBT-TIMEOUT-MS >MS
       RUN-CAPTURE HBT-CAPTURE>N {: runn:n rune:n runrc:n :}
@@ -195,7 +195,7 @@ create HBT-MAKER-GOT-HEX 64 allot
 
 : HBT-MAKER-USER-RUN ( ptr u8 n -- )
    {: want:ptr wantu:n :}
-   HBT-AOT-OUT EXECUTABLE? TTRUE
+   HBT-AOT-OUT FS:EXECUTABLE? TTRUE
    HBT-AOT-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN
       HBT-RUN-ERR HBT-CAPTURE-CAP >LEN HBT-TIMEOUT-MS >MS
       RUN-CAPTURE HBT-CAPTURE>N {: outn:n errn:n rc:n :}
@@ -204,7 +204,7 @@ create HBT-MAKER-GOT-HEX 64 allot
 
 : HBT-MAKER-DIRECT-RUN ( ptr u8 n -- )
    {: want:ptr wantu:n :}
-   HBT-TMP s" hb-aot-got" HBT-MAKER-DIRECT-OUT JOIN-PATH
+   HBT-TMP s" hb-aot-got" HBT-MAKER-DIRECT-OUT FS:JOIN-PATH
       HBT-MAKER-DIRECT-OUT-U !
    HBT-MAKER-DIRECT-OUT$ HBT-REMOVE-FILE?
    HBT-MAKER-ENV
@@ -219,7 +219,7 @@ create HBT-MAKER-GOT-HEX 64 allot
       HBT-MAKER-CAPTURE>N {: outn:n errn:n rc:n :}
    rc 0<> if HBT-OUT outn type HBT-ERR errn type rc throw then
    errn 0 T=
-   HBT-MAKER-DIRECT-OUT$ EXECUTABLE? TTRUE
+   HBT-MAKER-DIRECT-OUT$ FS:EXECUTABLE? TTRUE
    HBT-MAKER-DIRECT-OUT$ >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN
       HBT-RUN-ERR HBT-CAPTURE-CAP >LEN HBT-TIMEOUT-MS >MS
       RUN-CAPTURE HBT-CAPTURE>N {: runn:n rune:n runrc:n :}
@@ -229,7 +229,7 @@ create HBT-MAKER-GOT-HEX 64 allot
 : HBT-MAKER-USER-BAND ( -- )
    \ ZIP must load before APP-SLOT: its task-local allocations afterward
    \ would round the user ceiling and hide the odd 25-byte regression.
-   HBT-AOT-SRC S\" require src/lib/task.f\nrequire src/lib/zip.f\nTASK:#USER 25 TASK:+USER APP-SLOT drop\n: MAIN ( -- ) APP-SLOT 0 swap ! s\" user-ok\" type cr ;\n" WRITE-ALL
+   HBT-AOT-SRC S\" require src/lib/task.f\nrequire src/lib/zip.f\nTASK:#USER 25 TASK:+USER APP-SLOT drop\n: MAIN ( -- ) APP-SLOT 0 swap ! s\" user-ok\" type cr ;\n" FS:WRITE-ALL
    HBT-REMOVE-AOT-OUT
    s" bin/hb" false HBT-MAKER-REPORT-BUILD
    S\" user-ok\n" HBT-MAKER-USER-RUN
@@ -252,7 +252,7 @@ create HBT-MAKER-GOT-HEX 64 allot
    HBT-MAKER-GOT-HEX 64 HBT-MAKER-MAP-HEX 64 T$=
    S\" user-ok\n" HBT-MAKER-USER-RUN
    S\" user-ok\n" HBT-MAKER-DIRECT-RUN
-   HBT-AOT-SRC S\" require src/lib/zip.f\n: MAIN ( -- ) s\" zip-ok\" type cr ;\n" WRITE-ALL
+   HBT-AOT-SRC S\" require src/lib/zip.f\n: MAIN ( -- ) s\" zip-ok\" type cr ;\n" FS:WRITE-ALL
    HBT-REMOVE-AOT-OUT
    HBT-MAKER-HB$ true HBT-MAKER-REPORT-BUILD
    S\" zip-ok\n" HBT-MAKER-USER-RUN ;
@@ -272,13 +272,13 @@ public
    \ HBT-MAKER-CACHE-PATH asserts the hit that child left.
    HBT-TMP s" out" HBT-MAKER-OUT HBT-MAKER-OUT-U HBT-PATH!
    SOURCE-ROOT:ENGINE$ s" tools/hb-build-aot-image-test.f"
-      HBT-MAKER-TOOL JOIN-PATH HBT-MAKER-TOOL-U !
+      HBT-MAKER-TOOL FS:JOIN-PATH HBT-MAKER-TOOL-U !
    BUILD-FIXPOINT:BF-ENGINE-RESET
    HBT-MAKER-USER-BAND
    HBT-MAKER-ROOT-EDIT
    HBT-MAKER-ROOTED-BUILD
-   CLEANUP-RUN
-   HBT-ROOT EXISTS? TFALSE
+   FS:CLEANUP-RUN
+   HBT-ROOT FS:EXISTS? TFALSE
    T-REPORT
    s" hb-build-aot-image-test: ok" type cr ;
 

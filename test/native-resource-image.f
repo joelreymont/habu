@@ -20,9 +20,9 @@ $10000 constant CAP
 600000 constant TIMEOUT-MS
 create OUT CAP allot
 create ERR CAP allot
-create ROOT-BUF FS-PATH-CAP allot
-create IMAGE-BUF FS-PATH-CAP allot
-create ZIP-BUF FS-PATH-CAP allot
+create ROOT-BUF PATH-CAP allot
+create IMAGE-BUF PATH-CAP allot
+create ZIP-BUF PATH-CAP allot
 variable ROOT-U
 variable IMAGE-U
 variable ZIP-U
@@ -32,13 +32,13 @@ variable ZIP-U
 : ZIP$ ( -- ptr u8 n ) ZIP-BUF ZIP-U @ ;
 
 : PREPARE ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" native-resource-image" FS:MKTEMP-DIR {: path:ptr bytes:n :}
    path ROOT-BUF bytes BYTE-COPY bytes ROOT-U !
-   ROOT$ CLEANUP-TREE+
-   ROOT$ s" application" IMAGE-BUF JOIN-PATH IMAGE-U !
-   ROOT$ s" input.zip" ZIP-BUF JOIN-PATH ZIP-U !
-   ZIP$ ZIP-TEST:ORIGINAL$ WRITE-ALL ;
+   ROOT$ FS:CLEANUP-TREE+
+   ROOT$ s" application" IMAGE-BUF FS:JOIN-PATH IMAGE-U !
+   ROOT$ s" input.zip" ZIP-BUF FS:JOIN-PATH ZIP-U !
+   ZIP$ ZIP-TEST:ORIGINAL$ FS:WRITE-ALL ;
 
 : CLEAN ( n n n -- n ) {: outu:n erru:n rc:n :}
    rc 0<> erru 0<> or if
@@ -58,7 +58,7 @@ variable ZIP-U
    S\" 1 set-tier\nrequire test/native-resource-image-subject.f\n1 SCRIPT-ARGV$ NATIVE-RESOURCE-SUBJECT:WARM\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" >LEN
    OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-ENV-STDIN-CAPTURE PCAP-RESULT:>N CLEAN drop
-   IMAGE$ EXECUTABLE? TTRUE ;
+   IMAGE$ FS:EXECUTABLE? TTRUE ;
 
 : RELAUNCH ( -- )
    PROC-ARGV-ENV-RESET
@@ -72,7 +72,7 @@ variable ZIP-U
    OUT swap s" test: ok" CONTAINS? TTRUE ;
 
 : RUN ( -- )
-   T-RESET PREPARE BUILD RELAUNCH CLEANUP-RUN T-REPORT ;
+   T-RESET PREPARE BUILD RELAUNCH FS:CLEANUP-RUN T-REPORT ;
 
 RUN
 ;package

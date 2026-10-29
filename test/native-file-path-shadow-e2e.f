@@ -50,9 +50,9 @@ public
    T-RESET
    s" warm definitions retain the child path query" T-LABEL
    s" native-file-path-shadow" TREE
-   s" appdir" AT MAKE-DIR
-   s" childdir" AT MAKE-DIR
-   s" cache" AT MAKE-DIR
+   s" appdir" AT FS:MAKE-DIR
+   s" childdir" AT FS:MAKE-DIR
+   s" cache" AT FS:MAKE-DIR
    s" childdir/child.f"
       S\" require test/fixtures/native-file-state-dependency.f\n" PUT
    0 EDIT ! PUT-APP
@@ -67,8 +67,8 @@ public
    BUILD SUCCESS
    OUT$ s" files reused " CONTAINS? TTRUE
    OUT$ S\" files reused 0\n" CONTAINS? TFALSE
-   s" childdir/test" AT MAKE-DIR
-   s" childdir/test/fixtures" AT MAKE-DIR
+   s" childdir/test" AT FS:MAKE-DIR
+   s" childdir/test/fixtures" AT FS:MAKE-DIR
    s" childdir/test/fixtures/native-file-state-dependency.f"
       S\" package FILE-STATE-DEPENDENCY public : INCREMENT ( n -- n ) 2 + ; ;package\n" PUT
    BUILD SUCCESS

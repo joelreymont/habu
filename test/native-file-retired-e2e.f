@@ -12,7 +12,7 @@ using NATIVE-FILE-E2E
 package NATIVE-FILE-RETIRED-TEST
 
 : PREPARE ( -- )
-   s" cache" AT MAKE-DIR
+   s" cache" AT FS:MAKE-DIR
    s" unit.f"
    S\" package FILE-RETIRED\npublic\n: VALUE ( -- n ) 1 ;\n: OLD-CALLER ( -- n ) VALUE ;\nundefine VALUE\n: VALUE ( -- n ) 2 ;\n;package\ns\" retire-source-ran\" type cr\n" PUT
    s" app.f"

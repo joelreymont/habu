@@ -99,10 +99,10 @@ public
 \ The file at a path, whole, from a size the caller sampled, which is only the
 \ first room. The open or a read refuses what cannot be read (E-FS-OPEN,
 \ E-FS-IO); a caller whose refusal of a missing file is the stat's samples with
-\ FILE-SIZE.
+\ FS:FILE-SIZE.
 : READ-WHOLE-SAMPLED ( ptr u8 n n [ n -- ptr u8 ] -- n )
    {: path:ptr pathu:n first:n room :}
-   path pathu FS-PATHZ open-rd {: fd:n :}
+   path pathu FS:>PATHZ open-rd {: fd:n :}
    fd 0 < if E-FS-OPEN throw then
    fd first room 0 [: SOURCE-READ-RUN ;] catch
    {: rc:n :}
@@ -113,7 +113,7 @@ public
 \ names no regular file gives no sample.
 : READ-WHOLE-FILE ( ptr u8 n [ n -- ptr u8 ] -- n )
    {: path:ptr pathu:n room :}
-   path pathu FILE? if path pathu FILE-SIZE else 0 then {: first:n :}
+   path pathu FS:FILE? if path pathu FS:FILE-SIZE else 0 then {: first:n :}
    path pathu first room READ-WHOLE-SAMPLED ;
 
 : SOURCE-APPEND-BYTES ( ptr u8 len ptr u8 len ptr len -- )

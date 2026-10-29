@@ -8,12 +8,20 @@ require src/lib/fs-mutate.f
 require src/lib/fs-list.f
 require src/lib/task.f
 
+\ The private FS words this test reads, forwarded into its own package.
+package FS
+: FS-CAUSE-TEST:ENOENT ( -- n ) ENOENT ;
+: FS-CAUSE-TEST:ENOTDIR ( -- n ) ENOTDIR ;
+: FS-CAUSE-TEST:ELOOP ( -- n ) ELOOP ;
+: FS-CAUSE-TEST:ENAMETOOLONG ( -- n ) ENAMETOOLONG ;
+;package
+
 package FS-CAUSE-TEST
 
 22 constant DARWIN-EINVAL
 
-create ROOT-BUF FS-PATH-CAP allot
-create PATH-BUF FS-PATH-CAP allot
+create ROOT-BUF PATH-CAP allot
+create PATH-BUF PATH-CAP allot
 create READ-BUF 16 allot
 create LONG-NAME 256 allot
 variable ROOT-U
@@ -28,26 +36,26 @@ TASK:MIN-STACK TASK:TASK WORKER-B
 
 : ROOT$ ( -- ptr u8 n ) ROOT-BUF ROOT-U @ ;
 : PATH ( ptr u8 n -- ptr u8 n )
-   ROOT$ 2swap PATH-BUF JOIN-PATH PATH-BUF swap ;
+   ROOT$ 2swap PATH-BUF FS:JOIN-PATH PATH-BUF swap ;
 : SETUP ( -- )
    s" habu-fs-cause" FS:MKTEMP-DIR {: a:ptr u:n :}
    a ROOT-BUF u BYTE-COPY u ROOT-U !
    256 0 do [char] x LONG-NAME i + c! loop
-   s" file" PATH s" a" WRITE-ALL
-   s" dir" PATH MAKE-DIR
-   s" loop" s" loop" PATH MAKE-SYMLINK ;
+   s" file" PATH s" a" FS:WRITE-ALL
+   s" dir" PATH FS:MAKE-DIR
+   s" loop" s" loop" PATH FS:MAKE-SYMLINK ;
 
-: MISSING ( -- ) s" missing" PATH READ-BUF 16 READ-ALL drop ;
-: INTERMEDIATE ( -- ) s" file/child" PATH READ-BUF 16 READ-ALL drop ;
-: LOOPED ( -- ) s" loop" PATH READ-BUF 16 READ-ALL drop ;
-: TOO-LONG ( -- ) LONG-NAME 256 PATH READ-BUF 16 READ-ALL drop ;
-: NO-ROOM ( -- ) s" file" PATH READ-BUF 0 READ-ALL drop ;
-: DENIED ( -- ) s" dir/child" PATH READ-BUF 16 READ-ALL drop ;
-: BAD-PATH ( -- ) LONG-NAME FS-PATH-CAP 1 + FS-PATHZ drop ;
+: MISSING ( -- ) s" missing" PATH READ-BUF 16 FS:READ-ALL drop ;
+: INTERMEDIATE ( -- ) s" file/child" PATH READ-BUF 16 FS:READ-ALL drop ;
+: LOOPED ( -- ) s" loop" PATH READ-BUF 16 FS:READ-ALL drop ;
+: TOO-LONG ( -- ) LONG-NAME 256 PATH READ-BUF 16 FS:READ-ALL drop ;
+: NO-ROOM ( -- ) s" file" PATH READ-BUF 0 FS:READ-ALL drop ;
+: DENIED ( -- ) s" dir/child" PATH READ-BUF 16 FS:READ-ALL drop ;
+: BAD-PATH ( -- ) LONG-NAME PATH-CAP 1 + FS:>PATHZ drop ;
 : REGULAR-LIST ( -- ) s" file" PATH [: 2drop ;] FS-LIST:EACH ;
 : MISSING-LIST ( -- ) s" missing" PATH [: 2drop ;] FS-LIST:EACH ;
-: MISSING-STAT ( -- ) s" missing" PATH STAT-MODE drop ;
-: MISSING-LSTAT ( -- ) s" missing" PATH FS-TRY-LSTAT drop ;
+: MISSING-STAT ( -- ) s" missing" PATH FS:STAT-MODE drop ;
+: MISSING-LSTAT ( -- ) s" missing" PATH FS:TRY-LSTAT drop ;
 : CALLBACK-FAIL ( ptr u8 n -- ) 2drop MISSING ;
 : CALLBACK-LIST ( -- ) ROOT$ [: CALLBACK-FAIL ;] FS-LIST:EACH ;
 
@@ -69,7 +77,7 @@ TASK:MIN-STACK TASK:TASK WORKER-B
    0 TASK:RETURN ;
 
 : B-BODY ( -- )
-   [: s" AGENTS.md/child" READ-BUF 16 READ-ALL drop ;] catch
+   [: s" AGENTS.md/child" READ-BUF 16 FS:READ-ALL drop ;] catch
    E-FS-OPEN <> if 1 BAD-CODE atomic-add drop then
    FS:ERRNO CAUSE-B !
    1 BARRIER atomic-add drop
@@ -89,44 +97,44 @@ TASK:MIN-STACK TASK:TASK WORKER-B
    ['] B-BODY WORKER-B TASK:ACTIVATE
    WORKER-A JOIN-OK WORKER-B JOIN-OK
    BAD-CODE @ 0 T=
-   CAUSE-A @ FS:ENOENT T=
-   CAUSE-A-LATE @ FS:ENOENT T=
-   CAUSE-B @ FS:ENOTDIR T=
-   CAUSE-B-LATE @ FS:ENOTDIR T= ;
+   CAUSE-A @ ENOENT T=
+   CAUSE-A-LATE @ ENOENT T=
+   CAUSE-B @ ENOTDIR T=
+   CAUSE-B-LATE @ ENOTDIR T= ;
 
 : CHECK-OS ( -- )
-   [: MISSING ;] E-FS-OPEN TTHROWSQ  FS:ERRNO FS:ENOENT T=
-   s" file" PATH EXISTS? TTRUE  FS:ERRNO 0 T=
-   [: MISSING-STAT ;] E-FS-STAT TTHROWSQ  FS:ERRNO FS:ENOENT T=
-   MISSING-LSTAT FS:ERRNO FS:ENOENT T=
-   s" missing" PATH EXISTS? TFALSE  FS:ERRNO FS:ENOENT T=
-   [: MISSING-LIST ;] E-FS-LIST-OPEN TTHROWSQ  FS:ERRNO FS:ENOENT T=
-   [: INTERMEDIATE ;] E-FS-OPEN TTHROWSQ  FS:ERRNO FS:ENOTDIR T=
-   [: LOOPED ;] E-FS-OPEN TTHROWSQ  FS:ERRNO FS:ELOOP T=
-   [: TOO-LONG ;] E-FS-OPEN TTHROWSQ  FS:ERRNO FS:ENAMETOOLONG T=
-   s" dir" PATH FS-PATHZ 0 chmod 0 T=
+   [: MISSING ;] E-FS-OPEN TTHROWSQ  FS:ERRNO ENOENT T=
+   s" file" PATH FS:EXISTS? TTRUE  FS:ERRNO 0 T=
+   [: MISSING-STAT ;] E-FS-STAT TTHROWSQ  FS:ERRNO ENOENT T=
+   MISSING-LSTAT FS:ERRNO ENOENT T=
+   s" missing" PATH FS:EXISTS? TFALSE  FS:ERRNO ENOENT T=
+   [: MISSING-LIST ;] E-FS-LIST-OPEN TTHROWSQ  FS:ERRNO ENOENT T=
+   [: INTERMEDIATE ;] E-FS-OPEN TTHROWSQ  FS:ERRNO ENOTDIR T=
+   [: LOOPED ;] E-FS-OPEN TTHROWSQ  FS:ERRNO ELOOP T=
+   [: TOO-LONG ;] E-FS-OPEN TTHROWSQ  FS:ERRNO ENAMETOOLONG T=
+   s" dir" PATH FS:>PATHZ 0 chmod 0 T=
    [: DENIED ;] E-FS-OPEN TTHROWSQ  FS:ERRNO FS:EACCES T=
-   s" dir" PATH FS-PATHZ 448 chmod 0 T=
-   [: MISSING ;] E-FS-OPEN TTHROWSQ  FS:ERRNO FS:ENOENT T=
+   s" dir" PATH FS:>PATHZ 448 chmod 0 T=
+   [: MISSING ;] E-FS-OPEN TTHROWSQ  FS:ERRNO ENOENT T=
    [: BAD-PATH ;] E-FS-PATH TTHROWSQ  FS:ERRNO 0 T=
-   [: MISSING ;] E-FS-OPEN TTHROWSQ  FS:ERRNO FS:ENOENT T=
+   [: MISSING ;] E-FS-OPEN TTHROWSQ  FS:ERRNO ENOENT T=
    [: NO-ROOM ;] E-FS-CAPACITY TTHROWSQ  FS:ERRNO 0 T=
-   [: MISSING ;] E-FS-OPEN TTHROWSQ  FS:ERRNO FS:ENOENT T=
+   [: MISSING ;] E-FS-OPEN TTHROWSQ  FS:ERRNO ENOENT T=
    [: REGULAR-LIST ;] E-FS-LIST-READ TTHROWSQ
    \ getdirentries64 rejects a regular fd with EINVAL on Darwin; Linux's
    \ getdents64 reports ENOTDIR. Preserve the errno the host actually returned.
    HB-TARGET-MACOS? if
       FS:ERRNO DARWIN-EINVAL T=
    else
-      FS:ERRNO FS:ENOTDIR T=
+      FS:ERRNO ENOTDIR T=
    then
    [: CALLBACK-LIST ;] E-FS-OPEN TTHROWSQ
-   FS:ERRNO FS:ENOENT T= ;
+   FS:ERRNO ENOENT T= ;
 
 public
 : MAIN ( -- )
    SETUP CHECK-OS CHECK-TASKS
-   ROOT$ REMOVE-TREE
+   ROOT$ FS:REMOVE-TREE
    T-REPORT s" fs-cause-test: ok" type cr ;
 ;package
 

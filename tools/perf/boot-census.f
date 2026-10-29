@@ -725,7 +725,7 @@ public
 : MAIN ( -- )
    HB-TARGET-MACOS? 0= if s" boot-census: macOS only (kqueue EVFILT_PROC, libproc)" RC-HOST die then
    SCRIPT-ARGC 2 < if s" usage: bin/hb --load tools/perf/boot-census.f -- LOGFILE CMD [ARGS...]" RC-USAGE die then
-   0 SCRIPT-ARGV$ FS-PATHZ FS-O-WRONLY FS-O-CREAT or FS-O-TRUNC or FS-MODE-0644 open {: fd:n :}
+   0 SCRIPT-ARGV$ FS:>PATHZ FS:O-WRONLY FS:O-CREAT or FS:O-TRUNC or FS:MODE-0644 open {: fd:n :}
    fd 0 < if s" boot-census: cannot open LOGFILE" RC-IO die then
    fd LOG-FD !
    PID-CAP SLOT-RESERVE

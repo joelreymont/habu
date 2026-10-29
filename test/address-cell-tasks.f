@@ -15,8 +15,8 @@ $10000 constant CAP
 180000 constant TIMEOUT-MS
 create OUT CAP allot
 create ERR CAP allot
-create ROOT-BUF FS-PATH-CAP allot
-create IMAGE-BUF FS-PATH-CAP allot
+create ROOT-BUF PATH-CAP allot
+create IMAGE-BUF PATH-CAP allot
 variable ROOT-U
 variable IMAGE-U
 DYNAMIC-BUFFER IMAGE-STORAGE n
@@ -25,11 +25,11 @@ variable IMAGE-N
 : IMAGE$ ( -- ptr u8 n ) IMAGE-BUF IMAGE-U @ ;
 : BYTES ( -- ptr u8 ) 0 IMAGE-STORAGE BYTE-VIEW ;
 : PREPARE ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" address-cell-tasks" FS:MKTEMP-DIR {: a:ptr u:n :}
    a ROOT-BUF u BYTE-COPY u ROOT-U !
-   ROOT$ CLEANUP-TREE+
-   ROOT$ s" restored" IMAGE-BUF JOIN-PATH IMAGE-U ! ;
+   ROOT$ FS:CLEANUP-TREE+
+   ROOT$ s" restored" IMAGE-BUF FS:JOIN-PATH IMAGE-U ! ;
 : CLEAN ( n n n -- n ) {: outu:n erru:n rc:n :}
    rc 0<> erru 0<> or if OUT outu type ERR erru type then
    rc 0 T= erru 0 T= outu ;
@@ -53,7 +53,7 @@ variable IMAGE-N
    host hostu
    S\" 1 set-tier\nrequire test/address-cell-tasks-subject.f\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n"
    EXEC 0 T=
-   IMAGE$ EXECUTABLE? TTRUE ;
+   IMAGE$ FS:EXECUTABLE? TTRUE ;
 : CELL@ ( n -- n ) {: off:n :}
    0 8 0 ?do BYTES off i + + c@ i 8 * lshift or loop ;
 : BAD-CELL-OFF ( -- )
@@ -89,8 +89,8 @@ variable IMAGE-N
    HB-TARGET-LINUX-X86-64? if cell ELF-CELL-OFF exit then
    tr tr SNAP-TRL-DATALEN + CELL@ - 8 + cell + ;
 : POISON-CAPTURED-LOCK ( -- )
-   IMAGE$ FILE-SIZE dup IMAGE-N ! 7 + CELL / IMAGE-STORAGE-RESERVE
-   IMAGE$ BYTES IMAGE-N @ READ-ALL IMAGE-N @ T=
+   IMAGE$ FS:FILE-SIZE dup IMAGE-N ! 7 + CELL / IMAGE-STORAGE-RESERVE
+   IMAGE$ BYTES IMAGE-N @ FS:READ-ALL IMAGE-N @ T=
    IMAGE-TEXT-SIZE-OFF CELL@ IMAGE-TEXT-TRAILER-ADJ + SNAP-TRL-BYTES - {: tr:n :}
    tr SNAP-TRL-VERSION + CELL@ SNAPSHOT-FORMAT:VERSION T=
    tr LOCK-CELL DATA-CELL-OFF {: off:n :}
@@ -101,7 +101,7 @@ variable IMAGE-N
    tr INDEX-CELL DATA-CELL-OFF {: index-off:n :}
    index-off CELL@ 0 T=
    1 BYTES index-off + c!
-   IMAGE$ BYTES IMAGE-N @ WRITE-ALL
+   IMAGE$ BYTES IMAGE-N @ FS:WRITE-ALL
    IMAGE-STORAGE-RELEASE
    IMAGE$ CODESIGN:FORCE ;
 : RESTORED ( -- )
@@ -112,7 +112,7 @@ variable IMAGE-N
    FRESH BUILD
    s" captured mutex and index cells do not retain process ownership" T-LABEL
    POISON-CAPTURED-LOCK RESTORED ;
-: CLEANUP ( -- ) IMAGE-STORAGE-RELEASE CLEANUP-RUN ;
+: CLEANUP ( -- ) IMAGE-STORAGE-RELEASE FS:CLEANUP-RUN ;
 : RUN ( -- )
    T-RESET PREPARE
    [: CHECK ;] [: CLEANUP ;] finally

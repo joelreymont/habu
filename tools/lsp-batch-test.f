@@ -41,9 +41,9 @@ LSP-REFERENCES:TEST-BATCH-TAIL
 \ so c.f receives only its own bindings.
 package LSP-REFERENCES
 
-create BATCH-CURSOR-A FS-PATH-CAP allot
-create BATCH-CURSOR-B FS-PATH-CAP allot
-create BATCH-CURSOR-C FS-PATH-CAP allot
+create BATCH-CURSOR-A PATH-CAP allot
+create BATCH-CURSOR-B PATH-CAP allot
+create BATCH-CURSOR-C PATH-CAP allot
 variable BATCH-CURSOR-A-U
 variable BATCH-CURSOR-B-U
 variable BATCH-CURSOR-C-U
@@ -58,18 +58,18 @@ public
 
 : TEST-WAVE-CURSOR ( -- )
    T-RESET
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" hb-ref-wave-cursor" FS:MKTEMP-DIR {: root:ptr rootu:n :}
-   root rootu CLEANUP-TREE+
-   root rootu s" a.f" BATCH-CURSOR-A JOIN-PATH BATCH-CURSOR-A-U !
-   root rootu s" b.f" BATCH-CURSOR-B JOIN-PATH BATCH-CURSOR-B-U !
-   root rootu s" c.f" BATCH-CURSOR-C JOIN-PATH BATCH-CURSOR-C-U !
+   root rootu FS:CLEANUP-TREE+
+   root rootu s" a.f" BATCH-CURSOR-A FS:JOIN-PATH BATCH-CURSOR-A-U !
+   root rootu s" b.f" BATCH-CURSOR-B FS:JOIN-PATH BATCH-CURSOR-B-U !
+   root rootu s" c.f" BATCH-CURSOR-C FS:JOIN-PATH BATCH-CURSOR-C-U !
    BATCH-CURSOR-A BATCH-CURSOR-A-U @
-   s\" require b.f\n: A ( -- n ) 2 3 * ;\n" WRITE-ALL
+   s\" require b.f\n: A ( -- n ) 2 3 * ;\n" FS:WRITE-ALL
    BATCH-CURSOR-B BATCH-CURSOR-B-U @
-   s\" : B ( -- n ) 3 4 * ;\n" WRITE-ALL
+   s\" : B ( -- n ) 3 4 * ;\n" FS:WRITE-ALL
    BATCH-CURSOR-C BATCH-CURSOR-C-U @
-   s\" : C ( -- n ) 4 5 * ;\n" WRITE-ALL
+   s\" : C ( -- n ) 4 5 * ;\n" FS:WRITE-ALL
    FRESH
    BATCH-PRIM-ROW FROM-PRIMITIVE
    BATCH-CURSOR-A BATCH-CURSOR-A-U @ SUBJECT+
@@ -77,7 +77,7 @@ public
    BATCH-CURSOR-C BATCH-CURSOR-C-U @ SUBJECT+
    0 1 PREPARE-WAVE RUN-WAVE
    BATCH-CURSOR-B BATCH-CURSOR-B-U @
-   s\" : B ( -- n ) 9 8 * ;\n" WRITE-ALL
+   s\" : B ( -- n ) 9 8 * ;\n" FS:WRITE-ALL
    1 APPLY-WAVE
    s" named frame was consumed" T-LABEL BATCH-FALLBACK @ 0= TTRUE
    s" final frame belongs to c.f" T-LABEL
@@ -89,7 +89,7 @@ public
    LOC-N @ 2 T=
    0 L-FILE LOC@ FILE$ BATCH-CURSOR-A BATCH-CURSOR-A-U @ T$=
    1 L-FILE LOC@ FILE$ BATCH-CURSOR-C BATCH-CURSOR-C-U @ T$=
-   CLEANUP-RUN
+   FS:CLEANUP-RUN
    T-REPORT ;
 
 ;package

@@ -248,7 +248,7 @@ private
 \ EXIT-HOOK-CELL (src/habu/layout.f) is the process-exit vector the stripped
 \ entry calls before its own exit(0). ZERO IS ITS CORRECT START - a new process
 \ has registered no hook - and the library that wants one arms it inside the
-\ running image: src/lib/fs-mutate.f stores its exit hook from the same CLEANUP+
+\ running image: src/lib/fs-mutate.f stores its exit hook from the same FS:CLEANUP+
 \ call that registers a path, so an application that registers nothing leaves
 \ the vector at the mapping's zero and exits exactly as it did before. The claim
 \ is what lets a stripped image NAME the cell: without it the arm word's

@@ -52,7 +52,7 @@ public
 : RUN ( -- )
    T-RESET
    s" native-file-admission" TREE
-   s" cache" AT MAKE-DIR
+   s" cache" AT FS:MAKE-DIR
    s" undeclared code pointer declines" T-LABEL
    COLD-UNSAFE
    BUILD 70 T=

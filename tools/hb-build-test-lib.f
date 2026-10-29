@@ -71,29 +71,29 @@ variable HBT-AOT-OUT-U
 variable HBT-SPAN-SRC-U
 variable HBT-SPAN-OUT-U
 
-create HBT-ROOT-BUF FS-PATH-CAP allot
-create HBT-TMP-BUF FS-PATH-CAP allot
-create HBT-NEW-TMP-BUF FS-PATH-CAP allot
-create HBT-BAD-SRC-BUF FS-PATH-CAP allot
-create HBT-BAD-OUT-BUF FS-PATH-CAP allot
-create HBT-REPL-SRC-BUF FS-PATH-CAP allot
-create HBT-REPL-OUT-BUF FS-PATH-CAP allot
-create HBT-REPL-BAD-SRC-BUF FS-PATH-CAP allot
-create HBT-REPL-BAD-OUT-BUF FS-PATH-CAP allot
-create HBT-AOT-SRC-BUF FS-PATH-CAP allot
-create HBT-AOT-OUT-BUF FS-PATH-CAP allot
-create HBT-SPAN-SRC-BUF FS-PATH-CAP allot
-create HBT-SPAN-OUT-BUF FS-PATH-CAP allot
+create HBT-ROOT-BUF PATH-CAP allot
+create HBT-TMP-BUF PATH-CAP allot
+create HBT-NEW-TMP-BUF PATH-CAP allot
+create HBT-BAD-SRC-BUF PATH-CAP allot
+create HBT-BAD-OUT-BUF PATH-CAP allot
+create HBT-REPL-SRC-BUF PATH-CAP allot
+create HBT-REPL-OUT-BUF PATH-CAP allot
+create HBT-REPL-BAD-SRC-BUF PATH-CAP allot
+create HBT-REPL-BAD-OUT-BUF PATH-CAP allot
+create HBT-AOT-SRC-BUF PATH-CAP allot
+create HBT-AOT-OUT-BUF PATH-CAP allot
+create HBT-SPAN-SRC-BUF PATH-CAP allot
+create HBT-SPAN-OUT-BUF PATH-CAP allot
 
 create HBT-OUT HBT-CAPTURE-CAP allot
 create HBT-ERR HBT-CAPTURE-CAP allot
 create HBT-RUN-OUT HBT-CAPTURE-CAP allot
 create HBT-RUN-ERR HBT-CAPTURE-CAP allot
 
-create HBT-REPORT-BUF FS-PATH-CAP allot
+create HBT-REPORT-BUF PATH-CAP allot
 
 \ The engine a row's AOT builds run on (HBT-KEYED!); empty, the engine.
-create HBT-LINKER-BUF FS-PATH-CAP allot
+create HBT-LINKER-BUF PATH-CAP allot
 variable HBT-LINKER-U
 
 \ The three stripped-window fixtures: an application whose own require closure
@@ -126,41 +126,41 @@ variable HBT-MAPL-OUT2-U
 variable HBT-LITB-SRC-U
 variable HBT-LITB-OUT-U
 variable HBT-LITC-SRC-U
-create HBT-LIB-SRC-BUF FS-PATH-CAP allot
-create HBT-LIB-OUT-BUF FS-PATH-CAP allot
-create HBT-LIB-DIR-BUF FS-PATH-CAP allot
-create HBT-CELLS-SRC-BUF FS-PATH-CAP allot
-create HBT-CELLS-OUT-BUF FS-PATH-CAP allot
-create HBT-UNOWNED-SRC-BUF FS-PATH-CAP allot
-create HBT-PMK-SRC-BUF FS-PATH-CAP allot
-create HBT-PPH-SRC-BUF FS-PATH-CAP allot
-create HBT-PPH-OUT-BUF FS-PATH-CAP allot
-create HBT-TABLE-SRC-BUF FS-PATH-CAP allot
-create HBT-CHAIN-SRC-BUF FS-PATH-CAP allot
-create HBT-CHAIN-OUT-BUF FS-PATH-CAP allot
-create HBT-PTRC-SRC-BUF FS-PATH-CAP allot
-create HBT-PTRC-OUT-BUF FS-PATH-CAP allot
-create HBT-PTRU-SRC-BUF FS-PATH-CAP allot
-create HBT-LIFE-SRC-BUF FS-PATH-CAP allot
-create HBT-LIFE-OUT-BUF FS-PATH-CAP allot
-create HBT-HOOK-SRC-BUF FS-PATH-CAP allot
-create HBT-HOOK-OUT-BUF FS-PATH-CAP allot
-create HBT-MAPC-SRC-BUF FS-PATH-CAP allot
-create HBT-MAPD-SRC-BUF FS-PATH-CAP allot
-create HBT-MAPL-SRC-BUF FS-PATH-CAP allot
-create HBT-MAPL-OUT-BUF FS-PATH-CAP allot
-create HBT-MAPL-OUT2-BUF FS-PATH-CAP allot
-create HBT-LITB-SRC-BUF FS-PATH-CAP allot
-create HBT-LITB-OUT-BUF FS-PATH-CAP allot
-create HBT-LITC-SRC-BUF FS-PATH-CAP allot
+create HBT-LIB-SRC-BUF PATH-CAP allot
+create HBT-LIB-OUT-BUF PATH-CAP allot
+create HBT-LIB-DIR-BUF PATH-CAP allot
+create HBT-CELLS-SRC-BUF PATH-CAP allot
+create HBT-CELLS-OUT-BUF PATH-CAP allot
+create HBT-UNOWNED-SRC-BUF PATH-CAP allot
+create HBT-PMK-SRC-BUF PATH-CAP allot
+create HBT-PPH-SRC-BUF PATH-CAP allot
+create HBT-PPH-OUT-BUF PATH-CAP allot
+create HBT-TABLE-SRC-BUF PATH-CAP allot
+create HBT-CHAIN-SRC-BUF PATH-CAP allot
+create HBT-CHAIN-OUT-BUF PATH-CAP allot
+create HBT-PTRC-SRC-BUF PATH-CAP allot
+create HBT-PTRC-OUT-BUF PATH-CAP allot
+create HBT-PTRU-SRC-BUF PATH-CAP allot
+create HBT-LIFE-SRC-BUF PATH-CAP allot
+create HBT-LIFE-OUT-BUF PATH-CAP allot
+create HBT-HOOK-SRC-BUF PATH-CAP allot
+create HBT-HOOK-OUT-BUF PATH-CAP allot
+create HBT-MAPC-SRC-BUF PATH-CAP allot
+create HBT-MAPD-SRC-BUF PATH-CAP allot
+create HBT-MAPL-SRC-BUF PATH-CAP allot
+create HBT-MAPL-OUT-BUF PATH-CAP allot
+create HBT-MAPL-OUT2-BUF PATH-CAP allot
+create HBT-LITB-SRC-BUF PATH-CAP allot
+create HBT-LITB-OUT-BUF PATH-CAP allot
+create HBT-LITC-SRC-BUF PATH-CAP allot
 
 : HBT-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr lenp:ptr :}
-   u FS-PATH-CAP > if E-FS-PATH throw then
+   u PATH-CAP > if E-FS-PATH throw then
    a dst u BYTE-COPY
    u lenp ! ;
 
 : HBT-PATH! ( ptr u8 n ptr u8 n ptr u8 ptr n -- ) {: pa:ptr pu na:ptr nu dst:ptr lenp:ptr :}
-   pa pu na nu dst JOIN-PATH lenp ! ;
+   pa pu na nu dst FS:JOIN-PATH lenp ! ;
 
 : HBT-ROOT ( -- ptr u8 n )
    HBT-ROOT-BUF HBT-ROOT-U @ ;
@@ -252,12 +252,12 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
    SB$ ;
 
 : HBT-PREPARE ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" habu-hb-build" FS:MKTEMP-DIR {: a:ptr u :}
    a u HBT-ROOT-BUF HBT-ROOT-U HBT-COPY!
-   HBT-ROOT CLEANUP-TREE+
+   HBT-ROOT FS:CLEANUP-TREE+
    HBT-ROOT s" hbtmp" HBT-TMP-BUF HBT-TMP-U HBT-PATH!
-   HBT-TMP MAKE-DIR
+   HBT-TMP FS:MAKE-DIR
    HBT-ROOT s" hbtmp-new" HBT-NEW-TMP-BUF HBT-NEW-TMP-U HBT-PATH!
    HBT-ROOT s" bad.f" HBT-BAD-SRC-BUF HBT-BAD-SRC-U HBT-PATH!
    HBT-ROOT s" bad" HBT-BAD-OUT-BUF HBT-BAD-OUT-U HBT-PATH!
@@ -296,10 +296,10 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
    HBT-ROOT s" litbody.f" HBT-LITB-SRC-BUF HBT-LITB-SRC-U HBT-PATH!
    HBT-ROOT s" litbody" HBT-LITB-OUT-BUF HBT-LITB-OUT-U HBT-PATH!
    HBT-ROOT s" litcell.f" HBT-LITC-SRC-BUF HBT-LITC-SRC-U HBT-PATH!
-   HBT-BAD-SRC HBT-BAD-SRC$ WRITE-ALL
-   HBT-REPL-SRC HBT-REPL-SRC$ WRITE-ALL
-   HBT-REPL-BAD-SRC HBT-REPL-BAD-SRC$ WRITE-ALL
-   HBT-AOT-SRC HBT-AOT-SRC$ WRITE-ALL ;
+   HBT-BAD-SRC HBT-BAD-SRC$ FS:WRITE-ALL
+   HBT-REPL-SRC HBT-REPL-SRC$ FS:WRITE-ALL
+   HBT-REPL-BAD-SRC HBT-REPL-BAD-SRC$ FS:WRITE-ALL
+   HBT-AOT-SRC HBT-AOT-SRC$ FS:WRITE-ALL ;
 
 \ THE ENGINE A BUILD'S CHILD RUNS. A row's AOT builds, maker refusals and CLI
 \ spawns' makers run on the engine HBT-KEYED! records: the linker image
@@ -380,7 +380,7 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
    HBT-CAPTURE>N ;
 
 : HBT-REMOVE-FILE? ( ptr u8 n -- )
-   2dup FILE? if REMOVE-FILE else 2drop then ;
+   2dup FS:FILE? if FS:REMOVE-FILE else 2drop then ;
 
 \ The first byte two spans differ at, or -1 for identical. A pinned -1 names the
 \ offset on failure instead of printing two images into the capture.
@@ -498,7 +498,7 @@ TYPED-VARIABLE READER-STATE JR:cursor
 
 : REPORT-STRING= ( JR:reader ptr u8 n -- JR:reader ) {: want:ptr wantu:n :}
    JR:TOKEN JR:T-STR T=
-   HBT-REPORT-BUF FS-PATH-CAP JR:STR {: gotu:n :}
+   HBT-REPORT-BUF PATH-CAP JR:STR {: gotu:n :}
    HBT-REPORT-BUF gotu want wantu T$= ;
 
 : CHECK-REPORT ( ptr u8 n n n n -- )

@@ -46,8 +46,8 @@ variable OUT-U
 variable ERR-U
 variable LOGTXT-U
 
-create ROOT-BUF FS-PATH-CAP allot
-create LOG-BUF FS-PATH-CAP allot
+create ROOT-BUF PATH-CAP allot
+create LOG-BUF PATH-CAP allot
 create OUT CAP allot
 create ERR CAP allot
 create LOGTXT CAP allot
@@ -116,7 +116,7 @@ create LOGTXT CAP allot
    OUT$ s" lost registrations: 0" HAS
    OUT$ s" hb-family exec argv shapes:" HAS
    OUT$ s"        1  tools/perf/boot-census-fixture.f" HAS
-   LOG$ LOGTXT CAP READ-ALL LOGTXT-U !
+   LOG$ LOGTXT CAP FS:READ-ALL LOGTXT-U !
    LOGTXT$ s"  ROOT " HAS
    LOGTXT$ s"  CHILD " HAS
    LOGTXT$ s"  EXIT " HAS
@@ -142,7 +142,7 @@ create LOGTXT CAP allot
    OUT$ s" total fork children (no exec): 0" HAS
    OUT$ s" lost registrations: 0" HAS
    OUT$ s"        2  tools/perf/boot-census-fixture.f -- reexec" HAS
-   LOG$ LOGTXT CAP READ-ALL LOGTXT-U !
+   LOG$ LOGTXT CAP FS:READ-ALL LOGTXT-U !
    LOGTXT$ s"  EXEC " HAS
    LOGTXT$ s"  DONE alive=0 lost=0 status=0" HAS ;
 
@@ -160,16 +160,16 @@ create LOGTXT CAP allot
    USAGE-RC RUN-TOOL ;
 
 : PREPARE ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" habu-boot-census" FS:MKTEMP-DIR {: a:ptr u:n :}
-   u FS-PATH-CAP > if E-FS-CAPACITY throw then
+   u PATH-CAP > if E-FS-CAPACITY throw then
    a ROOT-BUF u BYTE-COPY  u ROOT-U !
-   ROOT$ CLEANUP-TREE+
-   ROOT$ s" census.log" LOG-BUF JOIN-PATH LOG-U ! ;
+   ROOT$ FS:CLEANUP-TREE+
+   ROOT$ s" census.log" LOG-BUF FS:JOIN-PATH LOG-U ! ;
 
 : CLEANUP ( -- )
-   CLEANUP-RUN
-   ROOT$ EXISTS? TFALSE ;
+   FS:CLEANUP-RUN
+   ROOT$ FS:EXISTS? TFALSE ;
 
 : CASES ( -- )
    T-RESET

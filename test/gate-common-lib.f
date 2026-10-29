@@ -149,7 +149,7 @@ variable GE-EVAL-SRC-U
    PROC-ERR-W PROC-CLOSE-CELL ;
 
 : GE-RUN-STDIN-FILE ( ptr u8 n ptr u8 n n -- ) {: path:ptr pathu:n inpath:ptr inpathu:n timeout:n :}
-   inpath inpathu FS-PATHZ open-rd GE-INFD !
+   inpath inpathu FS:>PATHZ open-rd GE-INFD !
    GE-INFD @ 0 < if E-FS-OPEN throw then
    GT-OUT-CAP >LEN GT-ERR-CAP >LEN PROC-CAPTURE-CHECK-CAPS
    path pathu >LEN PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
@@ -333,7 +333,7 @@ variable GE-EVAL-SRC-U
 
 : GE-SRC-FILE+ ( ptr u8 n -- ) {: path:ptr pathu:n :}
    path pathu GE-SRC-BUF GE-SRC-U @ + GE-SRC-CAP GE-SRC-U @ -
-   READ-ALL GE-RD !
+   FS:READ-ALL GE-RD !
    GE-SRC-U @ GE-RD @ + GE-SRC-U ! ;
 
 : GE-ARG+ ( ptr u8 n -- )
@@ -342,7 +342,7 @@ variable GE-EVAL-SRC-U
 
 : GE-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr up:ptr :}
    u 0 < if E-FS-PATH throw then
-   u FS-PATH-CAP > if E-FS-PATH throw then
+   u PATH-CAP > if E-FS-PATH throw then
    a dst u BYTE-COPY
    u up ! ;
 
@@ -456,9 +456,9 @@ variable GE-EVAL-SRC-U
    s" bin/hb" STR= ;
 
 : GE-REMOVE-BIN-OTHER ( ptr u8 n -- ) {: path:ptr pathu:n :}
-   path pathu FILE? if
-      path pathu GE-BIN-HB? 0= if path pathu REMOVE-FILE then
+   path pathu FS:FILE? if
+      path pathu GE-BIN-HB? 0= if path pathu FS:REMOVE-FILE then
    then ;
 
 : GE-CLEAN-BIN ( -- )
-   s" bin" [: GE-REMOVE-BIN-OTHER ;] WALK-FILES ;
+   s" bin" [: GE-REMOVE-BIN-OTHER ;] FS:WALK-FILES ;

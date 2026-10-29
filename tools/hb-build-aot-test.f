@@ -118,7 +118,7 @@ package HB-BUILD-CLI
    HBT-RUN-OUT outn want wantu T$= ;
 
 : BUILD-AOT-OBJECT-PRODUCER ( -- )
-   HBT-AOT-SRC HBT-AOT-SRC$ WRITE-ALL
+   HBT-AOT-SRC HBT-AOT-SRC$ FS:WRITE-ALL
    HBT-REMOVE-AOT-OUT
    HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT
    -1 HBB-REPORT-JSON !
@@ -130,7 +130,7 @@ package HB-BUILD-CLI
    BF-TMP-RESET ;
 
 : BUILD-AOT-NATIVE ( -- )
-   HBT-AOT-SRC HBT-AOT-SRC2$ WRITE-ALL
+   HBT-AOT-SRC HBT-AOT-SRC2$ FS:WRITE-ALL
    HBT-REMOVE-AOT-OUT
    HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT
    -1 HBB-REPORT-JSON !
@@ -140,13 +140,13 @@ package HB-BUILD-CLI
    HB-BUILD:REPORT$ JR:T-TRUE JR:T-FALSE JR:T-TRUE CHECK-REPORT
    HBT-RUN-AOT
    HBT-REMOVE-AOT-OUT
-   HBT-AOT-SRC HBT-AOT-SRC$ WRITE-ALL
+   HBT-AOT-SRC HBT-AOT-SRC$ FS:WRITE-ALL
    BF-TMP-RESET ;
 
 \ The span program's DATA blob starts after its GOT; the multi-page buffer makes
 \ DATA longer than one page.
 : BUILD-AOT-POSITIVES ( -- )
-   HBT-AOT-SRC HBT-POSITIVES-SRC$ WRITE-ALL
+   HBT-AOT-SRC HBT-POSITIVES-SRC$ FS:WRITE-ALL
    HBT-REMOVE-AOT-OUT
    HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT
    HBT-HBB-BUILD-OUT
@@ -158,7 +158,7 @@ package HB-BUILD-CLI
       MACHO-READ:DATA-BYTES $4000 > TTRUE
    then
    HBT-REMOVE-AOT-OUT
-   HBT-AOT-SRC HBT-AOT-SRC$ WRITE-ALL ;
+   HBT-AOT-SRC HBT-AOT-SRC$ FS:WRITE-ALL ;
 
 \ THE PRODUCT TIER IS THE CALLER'S. hb-build hands its own `tier@` to the maker,
 \ whose application load compiles at it. test/tier0-product-subject.f records the
@@ -180,7 +180,7 @@ package HB-BUILD-CLI
 : BUILD-AOT-TIERS ( -- )
    HB-TARGET-LINUX-X86-64? if exit then
    s" test/tier0-product-subject.f" SOURCE-ROOT:RESOLVE drop
-   HBT-AOT-SRC COPY-FILE-STREAM
+   HBT-AOT-SRC FS:COPY-FILE-STREAM
    HBT-REMOVE-AOT-OUT
    0 HBT-TIER-BUILD
    HBB-MAKER-RUN @ 0<> TTRUE
@@ -189,7 +189,7 @@ package HB-BUILD-CLI
    HBB-MAKER-RUN @ 0<> TTRUE
    1 HBT-SUBJECT-OUT HBT-AOT-OUT SB$ HBT-RUN-IMAGE-OUT
    HBT-REMOVE-AOT-OUT
-   HBT-AOT-SRC HBT-AOT-SRC$ WRITE-ALL ;
+   HBT-AOT-SRC HBT-AOT-SRC$ FS:WRITE-ALL ;
 
 \ A program requiring a module of the linker's lib closure that the engine does
 \ not bake, and calling a word of it.
@@ -207,7 +207,7 @@ package HB-BUILD-CLI
 \ --json-errors the refusal is PRE-WINDOW-DIE's prose arm, naming the word and
 \ a suggestion.
 : KEYED-PRE-WINDOW-REFUSED ( -- )
-   HBT-SPAN-SRC HBT-REQUIRED-SRC$ WRITE-ALL
+   HBT-SPAN-SRC HBT-REQUIRED-SRC$ FS:WRITE-ALL
    HBT-SPAN-SRC HBT-RUN-MAKER {: out:n err:n rc:n :}
    rc 74 T=
    HBB-ERR-BUF err s" aot: closure reaches a word defined before the capture window opened word=" CONTAINS? TTRUE
@@ -233,7 +233,7 @@ package HB-BUILD-CLI
    false ;
 
 : KEYED-BAKED-FMT ( ptr u8 n -- ) {: src:ptr srcu:n :}
-   HBT-SPAN-SRC src srcu WRITE-ALL
+   HBT-SPAN-SRC src srcu FS:WRITE-ALL
    HBT-SPAN-OUT HBT-REMOVE-FILE?
    HBT-SPAN-SRC HBT-SPAN-OUT HBT-HBB-PREPARE-AOT
    HBT-HBB-BUILD-OUT
@@ -246,7 +246,7 @@ package HB-BUILD-CLI
 \ (HBB-WERR-JSON-ONLY), so a refusal with no JSON arm reaches the caller as
 \ text.
 : KEYED-PRE-WINDOW-JSON ( -- )
-   HBT-SPAN-SRC HBT-REQUIRED-SRC$ WRITE-ALL
+   HBT-SPAN-SRC HBT-REQUIRED-SRC$ FS:WRITE-ALL
    HBT-SPAN-OUT HBT-REMOVE-FILE?
    HBT-ARGV-BASE
    s" --json-errors" >LEN PROC-ARGV+
@@ -259,7 +259,7 @@ package HB-BUILD-CLI
    HBT-ERR erru S\" \qschema_version\q:1," CONTAINS? TTRUE
    HBT-ERR erru S\" \qcode\q:\qE-AOT-PRE-WINDOW\q" CONTAINS? TTRUE
    HBT-ERR erru S\" \qword\q:\q.INT\q" CONTAINS? TTRUE
-   HBT-SPAN-OUT EXISTS? TFALSE ;
+   HBT-SPAN-OUT FS:EXISTS? TFALSE ;
 
 : KEYED-PRE-WINDOW ( -- )
    HBT-FMT-BAKED? if HBT-REQUIRED-SRC$ KEYED-BAKED-FMT exit then
@@ -279,8 +279,8 @@ public
    BUILD-AOT-POSITIVES
    BUILD-AOT-TIERS
    KEYED-PRE-WINDOW
-   CLEANUP-RUN
-   HBT-ROOT EXISTS? TFALSE
+   FS:CLEANUP-RUN
+   HBT-ROOT FS:EXISTS? TFALSE
    T-REPORT
    s" hb-build-aot-test: ok" type cr ;
 

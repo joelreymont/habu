@@ -15,8 +15,8 @@ using NATIVE-FILE-E2E
 package NATIVE-FILE-STATE-TEST
 
 $8000 constant CAP
-create FRESH-CACHE FS-PATH-CAP allot
-create FRESH-SOURCE FS-PATH-CAP allot
+create FRESH-CACHE PATH-CAP allot
+create FRESH-SOURCE PATH-CAP allot
 DYNAMIC-BUFFER CUT u8  variable CUT-U
 DYNAMIC-BUFFER PRODUCT-A u8
 DYNAMIC-BUFFER PRODUCT-B u8
@@ -74,12 +74,12 @@ create EXPECT 512 allot  variable EXPECT-U
    S\" require prefix.f\nrequire unit.f\nrequire downstream.f\n: MAIN ( -- ) FILE-STATE-CLIENT:VALUE . FILE-STATE-CLIENT:LONG . FILE-STATE-CLIENT:DEPENDENCY . FILE-STATE-A:LINK@ c@ . FILE-STATE-A:LETTERS$ drop c@ . FILE-STATE-A:EMPTY$ nip . FILE-STATE-A:WORDS$ dup . drop c@ . FILE-STATE-A:BEFORE-SPILL$ dup . drop c@ . FILE-STATE-A:AFTER-SPILL$ dup . drop c@ . 35 FILE-STATE-A:QUOTE@ execute . ;\n" PUT ;
 
 : PREPARE ( -- )
-   s" cache" AT MAKE-DIR
+   s" cache" AT FS:MAKE-DIR
    s" test/fixtures/native-file-state-prefix.f" s" prefix.f" AT 1
       NATIVE-FILE-APP:COPY-SKIP-LINES
    s" test/fixtures/native-file-state-unit.f" s" unit.f" AT 1
       NATIVE-FILE-APP:COPY-SKIP-LINES
-   s" unit.f" AT S\" s\" state-unit-source-ran\" type cr\n" APPEND-FILE
+   s" unit.f" AT S\" s\" state-unit-source-ran\" type cr\n" FS:APPEND-FILE
    s" test/fixtures/native-file-state-downstream.f" s" downstream.f" AT 1
       NATIVE-FILE-APP:COPY-SKIP-LINES
    s" test/fixtures/native-file-state-rejected.f" s" bad.f" AT 0
@@ -108,25 +108,25 @@ create EXPECT 512 allot  variable EXPECT-U
 : SAME-FILE ( ptr u8 n ptr u8 n -- )
    {: a:ptr au:n b:ptr bu:n :}
    a au AT {: apath:ptr apathu:n :}
-   apath apathu FILE-SIZE {: asize:n :}
+   apath apathu FS:FILE-SIZE {: asize:n :}
    asize 0 > TTRUE
    asize PRODUCT-A-RESERVE
-   apath apathu 0 PRODUCT-A asize READ-ALL asize T=
+   apath apathu 0 PRODUCT-A asize FS:READ-ALL asize T=
    b bu AT {: bpath:ptr bpathu:n :}
-   bpath bpathu FILE-SIZE {: bsize:n :}
+   bpath bpathu FS:FILE-SIZE {: bsize:n :}
    bsize asize T=
    bsize PRODUCT-B-RESERVE
-   bpath bpathu 0 PRODUCT-B bsize READ-ALL bsize T=
+   bpath bpathu 0 PRODUCT-B bsize FS:READ-ALL bsize T=
    0 PRODUCT-A asize 0 PRODUCT-B bsize STR= TTRUE ;
 
 \ root/product built from app.f with the empty out root root/cache of its own:
 \ it is the product a warm build of the same sources must equal.
-create COLD-CACHE FS-PATH-CAP allot  variable COLD-CACHE-U
-create COLD-SRC FS-PATH-CAP allot  variable COLD-SRC-U
+create COLD-CACHE PATH-CAP allot  variable COLD-CACHE-U
+create COLD-SRC PATH-CAP allot  variable COLD-SRC-U
 : COLD-BUILD ( ptr u8 n ptr u8 n -- n )
    {: product:ptr productu:n cache:ptr cacheu:n :}
    cache cacheu AT {: c:ptr cu:n :}
-   c cu MAKE-DIR
+   c cu FS:MAKE-DIR
    c COLD-CACHE cu BYTE-COPY cu COLD-CACHE-U !
    s" app.f" AT {: a:ptr au:n :}
    a COLD-SRC au BYTE-COPY au COLD-SRC-U !
@@ -135,7 +135,7 @@ create COLD-SRC FS-PATH-CAP allot  variable COLD-SRC-U
    NATIVE-FILE-APP:OUT$ NATIVE-FILE-APP:ERR$ STREAMS! ;
 
 : TASK-FILES ( -- )
-   s" cache" AT MAKE-DIR
+   s" cache" AT FS:MAKE-DIR
    s" prefix.f"
    S\" require src/lib/task.f\npackage FILE-TASK-STATE-PREFIX\npublic\nTASK:#USER CELL TASK:+USER PREFIX-SLOT drop\n;package\n" PUT
    s" unit.f"
@@ -219,7 +219,7 @@ create COLD-SRC FS-PATH-CAP allot  variable COLD-SRC-U
    s" task-grown-hb" EDIT-STATE$ RUN-TASK-STATE ;
 
 : FFI-FILES ( -- )
-   s" cache" AT MAKE-DIR
+   s" cache" AT FS:MAKE-DIR
    s" child.f"
    S\" require src/lib/ffi-abi.f\nPROCESS-SYMBOLS\nFUNCTION: BEFORE getpid ( -- i32 ) ;FUNCTION\n" PUT
    s" unit.f"
@@ -249,7 +249,7 @@ create COLD-SRC FS-PATH-CAP allot  variable COLD-SRC-U
 
 \ A cached task keeps its callback context chain membership and its exit hook.
 : HOOKS-FILES ( -- )
-   s" cache" AT MAKE-DIR
+   s" cache" AT FS:MAKE-DIR
    s" task.f"
    S\" require src/lib/ffi-callback.f\nrequire src/lib/task.f\npackage FILE-TASK-HOOKS\npublic\n$10000 TASK:TASK CHAINED\nCALLBACK: ENTRY ( -- ) ;CALLBACK\n: CHAIN-RUN ( -- )\n   CHAINED TASK:EXPOSE\n   ENTRY CHAINED TASK:CONTEXT FFI-CB:ENTRY drop\n   CHAINED TASK:UNEXPOSE CHAINED TASK:KILL\n   s\q task chain ok\q type cr ;\n$10000 TASK:TASK HOOKED\n: EXIT-HOOK ( -- ) E-TASK-STATE throw ;\n' EXIT-HOOK HOOKED TASK:AT-EXIT\n: BODY ( -- ) 7 TASK:RETURN ;\n: EXIT-RUN ( -- )\n   ['] BODY HOOKED TASK:ACTIVATE\n   HOOKED TASK:JOIN MATCH result\n      ok OF drop s\q missing task exit hook\q 74 die ENDOF\n      err OF E-TASK-STATE <> if 74 throw then ENDOF\n   ;MATCH\n   s\q task exit ok\q type cr ;\n;package\ns\q task-hooks-unit-ran\q type cr\n" PUT
    s" app.f" S\" require task.f\n: MAIN ( -- ) FILE-TASK-HOOKS:CHAIN-RUN FILE-TASK-HOOKS:EXIT-RUN ;\n" PUT ;
@@ -277,7 +277,7 @@ create COLD-SRC FS-PATH-CAP allot  variable COLD-SRC-U
 \ clause record as the cold compile published them. use.f calls the trusted
 \ clause by name and app.f makes a word with the definer.
 : DOES-FILES ( -- )
-   s" cache" AT MAKE-DIR
+   s" cache" AT FS:MAKE-DIR
    s" does.f"
    S\" package FILE-DOES-STATE\npublic\n: MAKE ( n -- ) create , does> ( -- n ) @ ;\ns\" MAKE;does\" s\" ptr n -- n\" trust\n;package\n" PUT
    s" use.f"
@@ -332,7 +332,7 @@ create COLD-SRC FS-PATH-CAP allot  variable COLD-SRC-U
 \ slot; saved.f only reads it, in its one segment. MAIN prints the distance
 \ from first.f's slot to later.f's, then saved.f's reading.
 : READ-FILES ( -- )
-   s" cache" AT MAKE-DIR
+   s" cache" AT FS:MAKE-DIR
    s" first.f"
    S\" require src/lib/task.f\npackage FILE-TASK-READ-FIRST\npublic\nTASK:#USER CELL TASK:+USER SLOT-A drop\n;package\n" PUT
    s" later.f"
@@ -363,7 +363,7 @@ create COLD-SRC FS-PATH-CAP allot  variable COLD-SRC-U
    s" read-v1-hb" BUILD dup SUCCESS {: v1:n :}
    OUT$ S\" files reused 0\n" CONTAINS? TTRUE
    v1 s" read-v1-hb" AT S\" 8\n" RUN-READ
-   s" app.f" AT S\" \\ task read comment\n" APPEND-FILE
+   s" app.f" AT S\" \\ task read comment\n" FS:APPEND-FILE
    true NATIVE-FILE-APP:DIAG? !
    s" read-reuse-hb" BUILD dup SUCCESS {: reuse:n :}
    false NATIVE-FILE-APP:DIAG? !
@@ -399,7 +399,7 @@ create COLD-SRC FS-PATH-CAP allot  variable COLD-SRC-U
 \ live word. The private wide cast, between two words that take nothing, is
 \ marked DNAME-WIDE; it and the public cast carry DNAME-MIN-IN 1.
 : BARE-FILES ( -- )
-   s" cache" AT MAKE-DIR
+   s" cache" AT FS:MAKE-DIR
    s" lib.f"
    S\" package FILE-BARE\n: BEFORE ( -- ) ;\nCAST: WIDE ( [ SPAN:span<u8> -- ] -- [ SPAN:span<u8> -- ] )\n: AFTER ( -- ) ;\npublic\nCAST: BARE>IDX ( n -- idx )\n;package\n" PUT
    s" redef.f"
@@ -417,7 +417,7 @@ create COLD-SRC FS-PATH-CAP allot  variable COLD-SRC-U
 : FRESH-BUILD ( ptr u8 n -- n )
    AT {: c:ptr cu:n :}
    c FRESH-CACHE cu BYTE-COPY
-   FRESH-CACHE cu MAKE-DIR
+   FRESH-CACHE cu FS:MAKE-DIR
    s" app.f" AT {: a:ptr au:n :}
    a FRESH-SOURCE au BYTE-COPY
    FRESH-SOURCE au s" fresh-bare-hb" AT FRESH-CACHE cu NATIVE-FILE-APP:BUILD
@@ -485,7 +485,7 @@ create COLD-SRC FS-PATH-CAP allot  variable COLD-SRC-U
    s" cold-hb" BUILD SUCCESS
    OUT$ S\" files reused 0\n" CONTAINS? TTRUE
    s" cold-hb" RUN-BARE
-   s" app.f" AT S\" \\ unrelated app edit\n" APPEND-FILE
+   s" app.f" AT S\" \\ unrelated app edit\n" FS:APPEND-FILE
    1 NATIVE-FILE-APP:DIAG? !
    s" warm-hb" BUILD
    0 NATIVE-FILE-APP:DIAG? !

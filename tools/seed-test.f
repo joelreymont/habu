@@ -15,17 +15,18 @@ require src/core/sha256.f
 require src/lib/codesign.f
 require tools/seed.f
 
-create SET-ROOT FS-PATH-CAP allot
-create SET-BIN FS-PATH-CAP allot
-create SET-HB FS-PATH-CAP allot
-create SET-SEED FS-PATH-CAP allot
-create SET-TEXT FS-PATH-CAP allot
-create SET-BAD FS-PATH-CAP allot
-create SET-SCRIPT FS-PATH-CAP allot
-create SET-FAIL-SCRIPT FS-PATH-CAP allot
+create SET-ROOT PATH-CAP allot
+create SET-BIN PATH-CAP allot
+create SET-HB PATH-CAP allot
+create SET-SEED PATH-CAP allot
+create SET-TEXT PATH-CAP allot
+create SET-BAD PATH-CAP allot
+create SET-SCRIPT PATH-CAP allot
+create SET-FAIL-SCRIPT PATH-CAP allot
 create SET-HEX SEED-SHA256-HEX-U allot
 create SET-FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this fixture's file-digest context
 8192 constant SET-CAP
+73 constant SET-EXEC-BITS   \ octal 111: every execute bit
 create SET-OUT SET-CAP allot
 create SET-ERR SET-CAP allot
 
@@ -39,12 +40,12 @@ variable SET-SCRIPT-U
 variable SET-FAIL-SCRIPT-U
 
 : SET-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr lenp:ptr :}
-   u FS-PATH-CAP > if E-FS-PATH throw then
+   u PATH-CAP > if E-FS-PATH throw then
    a dst u BYTE-COPY
    u lenp ! ;
 
 : SET-PATH! ( ptr u8 n ptr u8 n ptr u8 ptr n -- ) {: pa:ptr pu na:ptr nu dst:ptr lenp:ptr :}
-   pa pu na nu dst JOIN-PATH lenp ! ;
+   pa pu na nu dst FS:JOIN-PATH lenp ! ;
 
 : SET-ROOT$ ( -- ptr u8 n )
    SET-ROOT SET-ROOT-U @ ;
@@ -71,9 +72,9 @@ variable SET-FAIL-SCRIPT-U
    SET-FAIL-SCRIPT SET-FAIL-SCRIPT-U @ ;
 
 : SET-PREPARE ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" habu-seed-test" FS:MKTEMP-DIR SET-ROOT SET-ROOT-U SET-COPY!
-   SET-ROOT$ CLEANUP-TREE+
+   SET-ROOT$ FS:CLEANUP-TREE+
    SET-ROOT$ s" bin" SET-BIN SET-BIN-U SET-PATH!
    SET-ROOT$ s" hb-seed" SET-SEED SET-SEED-U SET-PATH!
    SET-BIN$ s" hb" SET-HB SET-HB-U SET-PATH!
@@ -83,13 +84,13 @@ variable SET-FAIL-SCRIPT-U
    SET-ROOT$ s" seed-build-fail.f" SET-FAIL-SCRIPT SET-FAIL-SCRIPT-U SET-PATH! ;
 
 : SET-X? ( ptr u8 n -- bool )
-   STAT-MODE FS-MUT-MODE-EXEC and FS-MUT-MODE-EXEC = ;
+   FS:STAT-MODE SET-EXEC-BITS and SET-EXEC-BITS = ;
 
 : SET-COPY-BIN-HB ( ptr u8 n -- ) {: dst:ptr dstu :}
-   s" bin/hb" dst dstu COPY-FILE-STREAM ;
+   s" bin/hb" dst dstu FS:COPY-FILE-STREAM ;
 
 : SET-TEST-SHA ( -- )
-   SET-TEXT$ s" abc" WRITE-ALL
+   SET-TEXT$ s" abc" FS:WRITE-ALL
    SET-TEXT$ s" ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad" SEED-VERIFY-SHA256
    SET-TEXT$ s" BA7816BF8F01CFEA414140DE5DAE2223B00361A396177A9CB410FF61F20015AD" SEED-VERIFY-SHA256 ;
 
@@ -100,8 +101,8 @@ variable SET-FAIL-SCRIPT-U
    SET-TEXT$ s" e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" SEED-VERIFY-SHA256 ;
 
 : SET-TEST-CODESIGN-ENSURE ( -- )
-   SET-SCRIPT$ s" #!/bin/sh\nexit 0\n" WRITE-ALL
-   SET-SCRIPT$ CHMOD-X
+   SET-SCRIPT$ s" #!/bin/sh\nexit 0\n" FS:WRITE-ALL
+   SET-SCRIPT$ FS:CHMOD-X
    SET-SCRIPT$ CODESIGN:ENSURE
    SET-SCRIPT$ CODESIGN:VERIFY ;
 
@@ -110,7 +111,7 @@ variable SET-FAIL-SCRIPT-U
    SET-FSHA-CTX SET-SEED$ SET-HEX SHA256-FILE-HEX-IN 0 T=
    SET-SEED$ SET-HEX SEED-SHA256-HEX-U SEED-VERIFY-SHA256
    SET-SEED$ SET-HB$ SEED-INSTALL
-   SET-HB$ FILE? TTRUE
+   SET-HB$ FS:FILE? TTRUE
    SET-HB$ SET-X? TTRUE
    SET-HB$ CODESIGN:VERIFY
    SET-HB$ SEED-SMOKE ;
@@ -151,9 +152,9 @@ variable SET-FAIL-SCRIPT-U
    SET-ERR erru LEN>N s" seed: build-fixpoint failed" CONTAINS? TTRUE ;
 
 : SET-TEST-BUILD-FAIL-REPLAYS-ERR ( -- )
-   SET-SCRIPT$ S\" #!/bin/sh\necho seed-child-failure-marker >&2\nexit 7\n" WRITE-ALL
-   SET-SCRIPT$ CHMOD-X
-   SET-FAIL-SCRIPT$ SET-FAIL-SOURCE$ WRITE-ALL
+   SET-SCRIPT$ S\" #!/bin/sh\necho seed-child-failure-marker >&2\nexit 7\n" FS:WRITE-ALL
+   SET-SCRIPT$ FS:CHMOD-X
+   SET-FAIL-SCRIPT$ SET-FAIL-SOURCE$ FS:WRITE-ALL
    SET-FAIL-ARGV
    s" bin/hb" >LEN SET-OUT SET-CAP >LEN SET-ERR SET-CAP >LEN
    10000 >MS RUN-ARGV-CAPTURE MATCH result
@@ -175,8 +176,8 @@ variable SET-FAIL-SCRIPT-U
    SET-TEST-BUILD-INVOKE-SAFE
    SET-TEST-BUILD-FAIL-REPLAYS-ERR
    [: SET-INSTALL-MISSING ;] E-BUILD-PATH TTHROWSQ
-   CLEANUP-RUN
-   SET-ROOT$ EXISTS? TFALSE
+   FS:CLEANUP-RUN
+   SET-ROOT$ FS:EXISTS? TFALSE
    T-REPORT
    s" seed-test: ok" type cr ;
 

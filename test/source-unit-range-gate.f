@@ -29,7 +29,7 @@ public
 : MAIN ( -- )
    T-RESET
    s" source-unit ranges through stdin" T-LABEL
-   FIXTURE$ SOURCE CAP READ-ALL {: sourceu:n :}
+   FIXTURE$ SOURCE CAP FS:READ-ALL {: sourceu:n :}
    PROC-ARGV-ENV-RESET PROC-ENV-INHERIT-MISSING
    ENGINE-CANDIDATE:PATH$ >LEN SOURCE sourceu >LEN
    OUT CAP >LEN ERR CAP >LEN 600000 >MS

@@ -14,9 +14,9 @@ require tools/native-file-inputs.f
 
 package NUNIT-FILE-TEST
 
-create ROOT FS-PATH-CAP allot variable ROOT-U
-create PATH FS-PATH-CAP allot variable PATH-U
-create LONG-SOURCE FS-PATH-CAP allot variable LONG-SOURCE-U
+create ROOT PATH-CAP allot variable ROOT-U
+create PATH PATH-CAP allot variable PATH-U
+create LONG-SOURCE PATH-CAP allot variable LONG-SOURCE-U
 create ROW 80 allot
 \ An artifact holds the header plus every SECTIONS label.
 1024 constant ART-CAP
@@ -36,9 +36,9 @@ create RAW ART-CAP allot variable RAW-U
 : SETUP ( -- )
    s" native-unit-file" FS:MKTEMP-DIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY u ROOT-U !
-   ROOT ROOT-U @ s" nbr.unit" PATH JOIN-PATH PATH-U !
+   ROOT ROOT-U @ s" nbr.unit" PATH FS:JOIN-PATH PATH-U !
    ROOT ROOT-U @ s" abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnop.f"
-      LONG-SOURCE JOIN-PATH LONG-SOURCE-U !
+      LONG-SOURCE FS:JOIN-PATH LONG-SOURCE-U !
    80 0 ?do i ROW i + c! loop ;
 
 : SECTIONS ( -- )
@@ -89,15 +89,15 @@ create RAW ART-CAP allot variable RAW-U
    12 NUNIT-FILE:SECTION$ s" retired" T$=
    19 NUNIT-FILE:SECTION$ s" output" T$=
    NUNIT-FILE:CLOSE
-   ART$ RAW ART-CAP READ-ALL RAW-U !
+   ART$ RAW ART-CAP FS:READ-ALL RAW-U !
    RAW GOOD RAW-U @ BYTE-COPY ;
 
 : RESTORE ( -- )
    GOOD RAW RAW-U @ BYTE-COPY
-   ART$ RAW RAW-U @ WRITE-ALL ;
+   ART$ RAW RAW-U @ FS:WRITE-ALL ;
 : BAD-READ ( -- ) READ-GOOD NUNIT-FILE:CLOSE ;
 : BAD-VIEW ( -- )
-   RAW ART$ FILE-SIZE NUNIT-FILE:ARCH-AARCH64 s" NBR" KEY$ NUNIT-FILE:READ-VIEW ;
+   RAW ART$ FS:FILE-SIZE NUNIT-FILE:ARCH-AARCH64 s" NBR" KEY$ NUNIT-FILE:READ-VIEW ;
 : FIRST-SECTION ( -- ) 0 NUNIT-FILE:SECTION$ 2drop ;
 
 : REFUSE ( -- )
@@ -124,17 +124,17 @@ create RAW ART-CAP allot variable RAW-U
 
 : CHECK-CORRUPT ( -- )
    s" corrupt or incompatible NBR files refuse before exposing sections" T-LABEL
-   0 RAW c! ART$ RAW RAW-U @ WRITE-ALL REFUSE
-   255 RAW 8 + c! ART$ RAW RAW-U @ WRITE-ALL REFUSE
-   255 RAW 16 + c! ART$ RAW RAW-U @ WRITE-ALL REFUSE
-   0 RAW 24 + c! ART$ RAW RAW-U @ WRITE-ALL REFUSE
-   0 RAW 32 + c! ART$ RAW RAW-U @ WRITE-ALL REFUSE
-   0 RAW 96 + c! ART$ RAW RAW-U @ WRITE-ALL REFUSE
-   81 RAW 168 + c! ART$ RAW RAW-U @ WRITE-ALL REFUSE
-   1 RAW 160 + c! 4 RAW 163 + c! ART$ RAW RAW-U @ WRITE-ALL REFUSE
-   ART$ RAW RAW-U @ 1- WRITE-ALL REFUSE
-   ART$ RAW HEADER 1- WRITE-ALL REFUSE
-   ART$ RAW RAW-U @ 1+ WRITE-ALL REFUSE ;
+   0 RAW c! ART$ RAW RAW-U @ FS:WRITE-ALL REFUSE
+   255 RAW 8 + c! ART$ RAW RAW-U @ FS:WRITE-ALL REFUSE
+   255 RAW 16 + c! ART$ RAW RAW-U @ FS:WRITE-ALL REFUSE
+   0 RAW 24 + c! ART$ RAW RAW-U @ FS:WRITE-ALL REFUSE
+   0 RAW 32 + c! ART$ RAW RAW-U @ FS:WRITE-ALL REFUSE
+   0 RAW 96 + c! ART$ RAW RAW-U @ FS:WRITE-ALL REFUSE
+   81 RAW 168 + c! ART$ RAW RAW-U @ FS:WRITE-ALL REFUSE
+   1 RAW 160 + c! 4 RAW 163 + c! ART$ RAW RAW-U @ FS:WRITE-ALL REFUSE
+   ART$ RAW RAW-U @ 1- FS:WRITE-ALL REFUSE
+   ART$ RAW HEADER 1- FS:WRITE-ALL REFUSE
+   ART$ RAW RAW-U @ 1+ FS:WRITE-ALL REFUSE ;
 
 : CHECK-EMPTY-TAIL ( -- )
    s" empty trailing sections remain valid at the exact file end" T-LABEL
@@ -147,7 +147,7 @@ create RAW ART-CAP allot variable RAW-U
    0 NUNIT-FILE:SECTION$ s" code1234" T$=
    NUNIT-FILE:SECTION-COUNT 2 ?do i NUNIT-FILE:SECTION$ nip 0 T= loop
    NUNIT-FILE:CLOSE
-   ART$ RAW ART-CAP READ-ALL {: size:n :}
+   ART$ RAW ART-CAP FS:READ-ALL {: size:n :}
    RAW size NUNIT-FILE:ARCH-AARCH64 s" NBR" KEY$ NUNIT-FILE:READ-VIEW
    NUNIT-FILE:SECTION-COUNT 2 ?do
       i NUNIT-FILE:SECTION$ 0 T= RAW size + = TTRUE
@@ -157,7 +157,7 @@ create RAW ART-CAP allot variable RAW-U
 : CHECK-LONG-INPUT ( -- )
    s" a real source file and canonical query beyond 64 path bytes survive input replay" T-LABEL
    LONG-SOURCE$ nip 64 > TTRUE
-   LONG-SOURCE$ LONG-CONTENT$ WRITE-ALL
+   LONG-SOURCE$ LONG-CONTENT$ FS:WRITE-ALL
    NFILE-INPUTS:RESET
    LONG-SOURCE$ LONG-CONTENT$ NFILE-INPUTS:ADD
    LONG-SOURCE$ LONG-SOURCE$ SOURCE-ROOT:CANON-OS NFILE-INPUTS:ADD-CANON

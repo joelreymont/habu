@@ -12,7 +12,7 @@ require src/habu/code-span.f
 package IMAGE-NAMES
 
 DYNAMIC-BUFFER TEXT n
-create PATH FS-PATH-CAP allot
+create PATH PATH-CAP allot
 variable USED variable POS variable ROWS
 variable COL-START variable COL-LEN variable COL-WID variable COL-NAME
 variable COL-KIND variable COL-ORIGIN variable COL-SOURCE
@@ -134,13 +134,13 @@ public
 : LOAD-BOUND ( ptr u8 n -- )
    {: path:ptr pathu:n :}
    0 USED ! 0 BOUND ! 0 ATTR-OK ! 0 CODE-N ! 0 NS-N !
-   pathu 4 + FS-PATH-CAP > if E-FS-CAPACITY throw then
+   pathu 4 + PATH-CAP > if E-FS-CAPACITY throw then
    path PATH pathu BYTE-COPY
    s" .map" drop PATH pathu + 4 BYTE-COPY
-   PATH pathu 4 + FILE? 0= if exit then
-   PATH pathu 4 + FILE-SIZE {: size:n :}
+   PATH pathu 4 + FS:FILE? 0= if exit then
+   PATH pathu 4 + FS:FILE-SIZE {: size:n :}
    size CELL + CELL / TEXT-RESERVE
-   PATH pathu 4 + 0 TEXT BYTE-VIEW size READ-ALL size <> if
+   PATH pathu 4 + 0 TEXT BYTE-VIEW size FS:READ-ALL size <> if
       s" image-names: short read" 74 die then
    size USED ! 0 POS !
    LINE$ s" habu-names 1" STR= 0= if 0 USED ! exit then

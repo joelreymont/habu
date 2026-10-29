@@ -44,11 +44,11 @@ $4000 constant CAP
 67 constant RC-THROW                 \ a load's uncaught throw
 74 constant RC-BUILD                 \ a window build's failure status (tools/native-build-args.f BUILD-RC)
 
-create ROOT FS-PATH-CAP allot          variable ROOT-U
-create TREE FS-PATH-CAP allot          variable TREE-U
-create TMP FS-PATH-CAP allot           variable TMP-U
-create IMAGE FS-PATH-CAP allot         variable IMAGE-U
-create UTIL FS-PATH-CAP allot          variable UTIL-U
+create ROOT PATH-CAP allot          variable ROOT-U
+create TREE PATH-CAP allot          variable TREE-U
+create TMP PATH-CAP allot           variable TMP-U
+create IMAGE PATH-CAP allot         variable IMAGE-U
+create UTIL PATH-CAP allot          variable UTIL-U
 create OUT CAP allot                   variable OUT-U
 create ERR CAP allot                   variable ERR-U
 variable RC
@@ -353,15 +353,15 @@ create TEXT CAP allot                  variable TEXT-U
 
 \ ---- the window: a probe at the end of src/core/util.f ----------------------
 : ROOT-PATH! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr up:ptr :}
-   ROOT$ a u dst JOIN-PATH up ! ;
+   ROOT$ a u dst FS:JOIN-PATH up ! ;
 
 : SETUP ( -- )
    s" native-hookless-reject" FS:MKTEMP-DIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY u ROOT-U !
    s" tree" TREE TREE-U ROOT-PATH!
-   s" tmp" TMP TMP-U ROOT-PATH! TMP$ MAKE-DIRS
+   s" tmp" TMP TMP-U ROOT-PATH! TMP$ FS:MAKE-DIRS
    s" hb" IMAGE IMAGE-U ROOT-PATH!
-   TREE$ s" src/core/util.f" UTIL JOIN-PATH UTIL-U ! ;
+   TREE$ s" src/core/util.f" UTIL FS:JOIN-PATH UTIL-U ! ;
 
 : CAPTURE-RESULT ( result<pcap:captured,pcap:failed> -- )
    MATCH result
@@ -384,8 +384,8 @@ create TEXT CAP allot                  variable TEXT-U
 \ The ordinary CLI forwards a failed maker's output to stderr; the preloaded
 \ dispatch child invokes the source driver directly, whose status is on stdout.
 : BUILD-PROBE ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n entry:ptr entryu:n :}
-   s" src/core/util.f" UTIL$ COPY-FILE-STREAM
-   UTIL$ a u APPEND-FILE
+   s" src/core/util.f" UTIL$ FS:COPY-FILE-STREAM
+   UTIL$ a u FS:APPEND-FILE
    PROC-CWD:ARGV-ENV-CWD-RESET
    s" --load" ARGV+
    entry entryu ARGV+
@@ -405,7 +405,7 @@ create TEXT CAP allot                  variable TEXT-U
    s" E-UNDEFINED habu: in probe-nz: undefined word '0<>'" SAYS
    s" native-build: uncaught throw code 70" PRINTS
    s" native-build-dispatch: ok" PRINTS
-   IMAGE$ FILE? 0= TTRUE ;
+   IMAGE$ FS:FILE? 0= TTRUE ;
 
 : WINDOW-TRUSTED ( -- )
    s" a trusted pre-hook definition compiles and supplies a caller's row" T-LABEL
@@ -414,7 +414,7 @@ create TEXT CAP allot                  variable TEXT-U
    RC @ RC-BUILD T=
    s" habu: in probe-stop: at '0='" SAYS
    s" native-build: uncaught throw code 70" SAYS
-   IMAGE$ FILE? 0= TTRUE ;
+   IMAGE$ FS:FILE? 0= TTRUE ;
 
 : RUN ( -- )
    T-RESET

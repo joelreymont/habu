@@ -10,9 +10,9 @@ require src/lib/string.f
 package CBLT
 
 \ The largest report names its fixture path ten times among about 1 KiB of
-\ other text, and a path may take FS-PATH-CAP bytes; the registry sweep below
+\ other text, and a path may take PATH-CAP bytes; the registry sweep below
 \ is smaller.
-FS-PATH-CAP 10 * $800 + constant BUF-CAP
+PATH-CAP 10 * $800 + constant BUF-CAP
 1400 constant LARGE-LINES
 512 constant SITE-CAP
 
@@ -32,20 +32,20 @@ variable QUIET-U
 variable EMPTY-U
 variable SITE-U
 
-create ROOT-BUF FS-PATH-CAP allot
-create GOOD-BUF FS-PATH-CAP allot
-create BAD-BUF FS-PATH-CAP allot
-create NOPREF-BUF FS-PATH-CAP allot
-create OFF-BUF FS-PATH-CAP allot
-create CROSS-BUF FS-PATH-CAP allot
-create LARGE-BUF FS-PATH-CAP allot
-create TRUSTED-BUF FS-PATH-CAP allot
-create ROGUE-BUF FS-PATH-CAP allot
-create TOPROGUE-BUF FS-PATH-CAP allot
-create TOPNAME-BUF FS-PATH-CAP allot
-create NAMEONLY-BUF FS-PATH-CAP allot
-create QUIET-BUF FS-PATH-CAP allot
-create EMPTY-BUF FS-PATH-CAP allot
+create ROOT-BUF PATH-CAP allot
+create GOOD-BUF PATH-CAP allot
+create BAD-BUF PATH-CAP allot
+create NOPREF-BUF PATH-CAP allot
+create OFF-BUF PATH-CAP allot
+create CROSS-BUF PATH-CAP allot
+create LARGE-BUF PATH-CAP allot
+create TRUSTED-BUF PATH-CAP allot
+create ROGUE-BUF PATH-CAP allot
+create TOPROGUE-BUF PATH-CAP allot
+create TOPNAME-BUF PATH-CAP allot
+create NAMEONLY-BUF PATH-CAP allot
+create QUIET-BUF PATH-CAP allot
+create EMPTY-BUF PATH-CAP allot
 create SITE-BUF SITE-CAP allot
 create OUT BUF-CAP allot
 create LF-BYTE 10 c,
@@ -113,7 +113,7 @@ create LF-BYTE 10 c,
    10 SB-APPEND-C ;
 
 : APPEND-LF ( ptr u8 n -- )
-   LF-BYTE 1 APPEND-FILE ;
+   LF-BYTE 1 FS:APPEND-FILE ;
 
 \ These fixtures live under a temporary directory, which is never a registry
 \ hook site, so GOOD$ arms the checker without naming a hook: it re-arms with
@@ -245,10 +245,10 @@ create LF-BYTE 10 c,
    s" \\ boundary lint large fixture padding line 0123456789 abcdefghijklmnopqrstuvwxyz" ;
 
 : WRITE-LARGE ( -- )
-   LARGE s" : LARGE-OK ( n -- n ) dup ;" WRITE-ALL
+   LARGE s" : LARGE-OK ( n -- n ) dup ;" FS:WRITE-ALL
    LARGE APPEND-LF
    LARGE-LINES 0 ?do
-      LARGE LARGE-LINE$ APPEND-FILE
+      LARGE LARGE-LINE$ FS:APPEND-FILE
       LARGE APPEND-LF
    loop ;
 
@@ -256,48 +256,48 @@ create LF-BYTE 10 c,
    s" UNCHECKED-DEFINITION" ;
 
 : PREPARE ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" habu-checked-boundary-lint" FS:MKTEMP-DIR {: a:ptr u:n :}
    a u ROOT-BUF ROOT-U COPY!
-   ROOT CLEANUP-DIR+
-   ROOT s" good.f" GOOD-BUF JOIN-PATH GOOD-U !
-   ROOT s" bad.f" BAD-BUF JOIN-PATH BAD-U !
-   ROOT s" no-preflight.f" NOPREF-BUF JOIN-PATH NOPREF-U !
-   ROOT s" off.f" OFF-BUF JOIN-PATH OFF-U !
-   ROOT s" cross.f" CROSS-BUF JOIN-PATH CROSS-U !
-   ROOT s" large.f" LARGE-BUF JOIN-PATH LARGE-U !
-   ROOT s" trusted.f" TRUSTED-BUF JOIN-PATH TRUSTED-U !
-   ROOT s" rogue.f" ROGUE-BUF JOIN-PATH ROGUE-U !
-   ROOT s" toprogue.f" TOPROGUE-BUF JOIN-PATH TOPROGUE-U !
-   ROOT s" topname.f" TOPNAME-BUF JOIN-PATH TOPNAME-U !
-   ROOT s" nameonly.f" NAMEONLY-BUF JOIN-PATH NAMEONLY-U !
-   ROOT s" quiet.f" QUIET-BUF JOIN-PATH QUIET-U !
-   ROOT s" empty.f" EMPTY-BUF JOIN-PATH EMPTY-U !
-   GOOD CLEANUP+
-   BAD CLEANUP+
-   NOPREF CLEANUP+
-   OFF CLEANUP+
-   CROSS CLEANUP+
-   LARGE CLEANUP+
-   TRUSTED CLEANUP+
-   ROGUE CLEANUP+
-   TOPROGUE CLEANUP+
-   TOPNAME CLEANUP+
-   NAMEONLY CLEANUP+
-   QUIET CLEANUP+
-   EMPTY CLEANUP+
-   GOOD GOOD$ WRITE-ALL
-   BAD BAD$ WRITE-ALL
-   NOPREF NOPREF$ WRITE-ALL
-   OFF OFF$ WRITE-ALL
-   CROSS CROSS$ WRITE-ALL
-   TRUSTED TRUSTED$ WRITE-ALL
-   ROGUE ROGUE$ WRITE-ALL
-   TOPROGUE TOPROGUE$ WRITE-ALL
-   TOPNAME TOPNAME$ WRITE-ALL
-   NAMEONLY NAMEONLY$ WRITE-ALL
-   QUIET QUIET$ WRITE-ALL
-   EMPTY EMPTY$ WRITE-ALL
+   ROOT FS:CLEANUP-DIR+
+   ROOT s" good.f" GOOD-BUF FS:JOIN-PATH GOOD-U !
+   ROOT s" bad.f" BAD-BUF FS:JOIN-PATH BAD-U !
+   ROOT s" no-preflight.f" NOPREF-BUF FS:JOIN-PATH NOPREF-U !
+   ROOT s" off.f" OFF-BUF FS:JOIN-PATH OFF-U !
+   ROOT s" cross.f" CROSS-BUF FS:JOIN-PATH CROSS-U !
+   ROOT s" large.f" LARGE-BUF FS:JOIN-PATH LARGE-U !
+   ROOT s" trusted.f" TRUSTED-BUF FS:JOIN-PATH TRUSTED-U !
+   ROOT s" rogue.f" ROGUE-BUF FS:JOIN-PATH ROGUE-U !
+   ROOT s" toprogue.f" TOPROGUE-BUF FS:JOIN-PATH TOPROGUE-U !
+   ROOT s" topname.f" TOPNAME-BUF FS:JOIN-PATH TOPNAME-U !
+   ROOT s" nameonly.f" NAMEONLY-BUF FS:JOIN-PATH NAMEONLY-U !
+   ROOT s" quiet.f" QUIET-BUF FS:JOIN-PATH QUIET-U !
+   ROOT s" empty.f" EMPTY-BUF FS:JOIN-PATH EMPTY-U !
+   GOOD FS:CLEANUP+
+   BAD FS:CLEANUP+
+   NOPREF FS:CLEANUP+
+   OFF FS:CLEANUP+
+   CROSS FS:CLEANUP+
+   LARGE FS:CLEANUP+
+   TRUSTED FS:CLEANUP+
+   ROGUE FS:CLEANUP+
+   TOPROGUE FS:CLEANUP+
+   TOPNAME FS:CLEANUP+
+   NAMEONLY FS:CLEANUP+
+   QUIET FS:CLEANUP+
+   EMPTY FS:CLEANUP+
+   GOOD GOOD$ FS:WRITE-ALL
+   BAD BAD$ FS:WRITE-ALL
+   NOPREF NOPREF$ FS:WRITE-ALL
+   OFF OFF$ FS:WRITE-ALL
+   CROSS CROSS$ FS:WRITE-ALL
+   TRUSTED TRUSTED$ FS:WRITE-ALL
+   ROGUE ROGUE$ FS:WRITE-ALL
+   TOPROGUE TOPROGUE$ FS:WRITE-ALL
+   TOPNAME TOPNAME$ FS:WRITE-ALL
+   NAMEONLY NAMEONLY$ FS:WRITE-ALL
+   QUIET QUIET$ FS:WRITE-ALL
+   EMPTY EMPTY$ FS:WRITE-ALL
    WRITE-LARGE ;
 
 : CORE-SETUP ( bool -- ) {: strict:bool :}
@@ -499,10 +499,10 @@ package CHECKED-BOUNDARY-LINT
 
 private
 
-create TP-ROOT-BUF FS-PATH-CAP allot
-create TP-GOOD-BUF FS-PATH-CAP allot
-create TP-BAD-BUF FS-PATH-CAP allot
-create TP-EMPTY-BUF FS-PATH-CAP allot
+create TP-ROOT-BUF PATH-CAP allot
+create TP-GOOD-BUF PATH-CAP allot
+create TP-BAD-BUF PATH-CAP allot
+create TP-EMPTY-BUF PATH-CAP allot
 create TP-OUT 1 allot
 
 variable TP-ROOT-U
@@ -527,17 +527,17 @@ variable TP-EMPTY-U
    TP-EMPTY-BUF TP-EMPTY-U @ ;
 
 : TP-PREPARE ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" habu-cbl-read" FS:MKTEMP-DIR {: a:ptr u:n :}
    a u TP-ROOT-BUF TP-ROOT-U TP-COPY!
-   TP-ROOT CLEANUP-TREE+
-   TP-ROOT s" good.f" TP-GOOD-BUF JOIN-PATH TP-GOOD-U !
-   TP-ROOT s" bad.f" TP-BAD-BUF JOIN-PATH TP-BAD-U !
-   TP-ROOT s" empty.f" TP-EMPTY-BUF JOIN-PATH TP-EMPTY-U !
-   TP-GOOD s\" 0 set-check\nvariable TP-RAW\n: LINT-CHECK-HOOK ( -- ) CHECK! ;\nLOWER-CERT-HOOK:INSTALL\ncheck@ set-check\n: TP-GOOD ( n -- n ) dup ;\n" WRITE-ALL
-   TP-BAD s\" 0 set-check\n: TP-BAD ( n -- n ) dup ;\n" WRITE-ALL
+   TP-ROOT FS:CLEANUP-TREE+
+   TP-ROOT s" good.f" TP-GOOD-BUF FS:JOIN-PATH TP-GOOD-U !
+   TP-ROOT s" bad.f" TP-BAD-BUF FS:JOIN-PATH TP-BAD-U !
+   TP-ROOT s" empty.f" TP-EMPTY-BUF FS:JOIN-PATH TP-EMPTY-U !
+   TP-GOOD s\" 0 set-check\nvariable TP-RAW\n: LINT-CHECK-HOOK ( -- ) CHECK! ;\nLOWER-CERT-HOOK:INSTALL\ncheck@ set-check\n: TP-GOOD ( n -- n ) dup ;\n" FS:WRITE-ALL
+   TP-BAD s\" 0 set-check\n: TP-BAD ( n -- n ) dup ;\n" FS:WRITE-ALL
    SB-RESET
-   TP-EMPTY SB$ WRITE-ALL ;
+   TP-EMPTY SB$ FS:WRITE-ALL ;
 
 : TP-FILE! ( ptr u8 n -- )
    {: path:ptr pathu:n :}
@@ -586,8 +586,8 @@ variable TP-EMPTY-U
    TP-ZERO-TEST
    TP-READ-OK-TEST
    TP-READ-THROW-TEST
-   CLEANUP-RUN
-   TP-ROOT EXISTS? TFALSE
+   FS:CLEANUP-RUN
+   TP-ROOT FS:EXISTS? TFALSE
    T-REPORT ;
 
 TP-TEST
@@ -617,8 +617,8 @@ public
    TEST-QUIET
    TEST-SITES
    TEST-DOT-SITES
-   CLEANUP-RUN
-   ROOT EXISTS? TFALSE
+   FS:CLEANUP-RUN
+   ROOT FS:EXISTS? TFALSE
    T-REPORT
    s" checked-boundary-lint-test: ok" type cr ;
 

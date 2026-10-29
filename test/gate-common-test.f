@@ -60,7 +60,7 @@ variable ROOT-FILES
 
 : ROOT-FILES# ( -- n )
    0 ROOT-FILES !
-   GT-ROOT [: ROOT-FILE+ ;] WALK-FILES
+   GT-ROOT [: ROOT-FILE+ ;] FS:WALK-FILES
    ROOT-FILES @ ;
 
 : BIG-CAPTURE ( -- )
@@ -133,8 +133,8 @@ variable FDS-INSIDE-RC
 \ to the captured stdout, and waits LATE-WAIT-NS before it returns. The wait
 \ grows a microsecond a trial, so the writer's bytes land before, during or
 \ after the read across the trials. A capture reads the action's own bytes or
-\ throws E-PROC-TRUNCATED. With the size checked before the read (FILE-SIZE,
-\ then READ-ALL), about one trial in four ended E-FS-CAPACITY.
+\ throws E-PROC-TRUNCATED. With the size checked before the read (FS:FILE-SIZE,
+\ then FS:READ-ALL), about one trial in four ended E-FS-CAPACITY.
 8 constant LATE-CAP
 64 constant LATE-TRIALS
 1000 constant LATE-STEP-NS

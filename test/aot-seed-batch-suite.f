@@ -85,8 +85,8 @@ create EMPTY 1 allot                   \ zero-length stdin
 variable RC
 variable EXITED
 
-create ROOT-BUF FS-PATH-CAP allot   variable ROOT-U
-create PROG-BUF FS-PATH-CAP allot   variable PROG-U
+create ROOT-BUF PATH-CAP allot   variable ROOT-U
+create PROG-BUF PATH-CAP allot   variable PROG-U
 
 : ROOT$ ( -- ptr u8 n )   ROOT-BUF ROOT-U @ ;
 : PROG$ ( -- ptr u8 n )   PROG-BUF PROG-U @ ;
@@ -100,11 +100,11 @@ create PROG-BUF FS-PATH-CAP allot   variable PROG-U
 : HB$ ( -- ptr u8 n )     ENGINE-CANDIDATE:PATH$ ;
 
 : SETUP ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" habu-aot-seed-batch" FS:MKTEMP-DIR {: a:ptr u:n :}
    a ROOT-BUF u BYTE-COPY  u ROOT-U !
-   ROOT$ CLEANUP-TREE+
-   ROOT$ s" prog.f" PROG-BUF JOIN-PATH PROG-U ! ;
+   ROOT$ FS:CLEANUP-TREE+
+   ROOT$ s" prog.f" PROG-BUF FS:JOIN-PATH PROG-U ! ;
 
 : STORE! ( len len outcome ptr u8 n -- )
    {: outu:len erru:len oc src:ptr srcu:n :}
@@ -141,7 +141,7 @@ create PROG-BUF FS-PATH-CAP allot   variable PROG-U
 
 \ Write a program to the private tree so the two file entries run the same text.
 : PROG! ( ptr u8 n -- )
-   PROG$ 2swap WRITE-ALL ;
+   PROG$ 2swap FS:WRITE-ALL ;
 
 : OK? ( -- )
    EXITED @ TTRUE
@@ -237,9 +237,9 @@ public
 
 : RUN ( -- )
    T-RESET
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    [: BODY ;] catch {: code:n :}
-   CLEANUP-RUN
+   FS:CLEANUP-RUN
    code 0 <> if code throw then
    T-REPORT
    s" aot-seed-batch-suite: ok" type cr ;

@@ -12,8 +12,8 @@ require src/habu/interpret.f
 package SOURCE-UNIT-RANGE-TEST
 private
 
-create ROOT FS-PATH-CAP allot variable ROOT-U
-create PATH FS-PATH-CAP allot
+create ROOT PATH-CAP allot variable ROOT-U
+create PATH PATH-CAP allot
 15000 constant LONG-SIZE
 create LONG-SOURCE LONG-SIZE allot
 variable PARENT-RUNS
@@ -44,7 +44,7 @@ TYPED-VARIABLE RANGE-Q [ n n -- ]
 : ROOT$ ( -- ptr u8 n ) ROOT ROOT-U @ ;
 : PUT ( ptr u8 n ptr u8 n -- )
    {: name:ptr nameu:n bytes:ptr size:n :}
-   ROOT$ name nameu PATH JOIN-PATH PATH swap bytes size WRITE-ALL ;
+   ROOT$ name nameu PATH FS:JOIN-PATH PATH swap bytes size FS:WRITE-ALL ;
 
 public
 : PARENT-BUMP ( -- )
@@ -371,8 +371,8 @@ TRUSTED: RUN ( -- )
    [: LOADER ;] [: RESET ;] finally
    CHECK-ABSENT
    [: ESCAPED ;] INCLUDE-RANGE-RC TTHROWSQ
-   ROOT$ s" result.txt" PATH JOIN-PATH
-   PATH swap S\" source-unit-range: ok\n" WRITE-ALL
+   ROOT$ s" result.txt" PATH FS:JOIN-PATH
+   PATH swap S\" source-unit-range: ok\n" FS:WRITE-ALL
    s" source unit range tree: " type ROOT$ type cr
    T-REPORT ;
 ;package

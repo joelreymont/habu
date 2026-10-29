@@ -17,12 +17,12 @@ require src/lib/engine-candidate.f
 
 package LSP-ENTRY-TEST
 
-create PROJECT FS-PATH-CAP allot    variable PROJECT-U
-create SERVER FS-PATH-CAP allot     variable SERVER-U
-create CHILD FS-PATH-CAP allot      variable CHILD-U
-create SUBJECT FS-PATH-CAP allot    variable SUBJECT-U
-create PATH FS-PATH-CAP allot       variable PATH-U
-create DRIVER FS-PATH-CAP allot     variable DRIVER-U
+create PROJECT PATH-CAP allot    variable PROJECT-U
+create SERVER PATH-CAP allot     variable SERVER-U
+create CHILD PATH-CAP allot      variable CHILD-U
+create SUBJECT PATH-CAP allot    variable SUBJECT-U
+create PATH PATH-CAP allot       variable PATH-U
+create DRIVER PATH-CAP allot     variable DRIVER-U
 create WIRE 16384 allot            variable WIRE-U
 create BODY 4096 allot
 
@@ -30,30 +30,30 @@ create BODY 4096 allot
    MATCH result ok OF ENDOF err OF ENDOF ;MATCH ;
 
 : PROJECT-PATH ( ptr u8 n -- ptr u8 n )
-   PROJECT PROJECT-U @ 2swap PATH JOIN-PATH PATH-U !
+   PROJECT PROJECT-U @ 2swap PATH FS:JOIN-PATH PATH-U !
    PATH PATH-U @ ;
 
 : SERVER-ENTRY ( ptr u8 n -- ptr u8 n )
-   SOURCE-ROOT:ENGINE$ 2swap SERVER JOIN-PATH SERVER-U !
+   SOURCE-ROOT:ENGINE$ 2swap SERVER FS:JOIN-PATH SERVER-U !
    SERVER SERVER-U @ ;
 
 : POISON ( ptr u8 n -- )
-   PROJECT-PATH s\" 86 throw\n" WRITE-ALL ;
+   PROJECT-PATH s\" 86 throw\n" FS:WRITE-ALL ;
 
 : SETUP ( -- )
    s" hb-lsp-entry" FS:MKTEMP-DIR {: d:ptr du:n :}
    d PROJECT du BYTE-COPY  du PROJECT-U !
-   s" tools" PROJECT-PATH MAKE-DIRS
-   s" src/core" PROJECT-PATH MAKE-DIRS
-   s" src/habu" PROJECT-PATH MAKE-DIRS
-   s" src/core/util.f" PROJECT-PATH s" " WRITE-ALL
+   s" tools" PROJECT-PATH FS:MAKE-DIRS
+   s" src/core" PROJECT-PATH FS:MAKE-DIRS
+   s" src/habu" PROJECT-PATH FS:MAKE-DIRS
+   s" src/core/util.f" PROJECT-PATH s" " FS:WRITE-ALL
    s" tools/lsp-core.f" POISON
    s" tools/check-verify-child-lib.f" POISON
    s" src/habu/verify-source.f" POISON
-   s" dep.f" PROJECT-PATH s\" : DEP ( -- n ) 1 ;\n" WRITE-ALL
+   s" dep.f" PROJECT-PATH s\" : DEP ( -- n ) 1 ;\n" FS:WRITE-ALL
    s" subject.f" PROJECT-PATH {: p:ptr pu:n :}
    p SUBJECT pu BYTE-COPY  pu SUBJECT-U !
-   SUBJECT SUBJECT-U @ s\" require dep.f\n: A ( -- n ) DEP ;\n: B ( -- n ) A ;\n" WRITE-ALL
+   SUBJECT SUBJECT-U @ s\" require dep.f\n: A ( -- n ) DEP ;\n: B ( -- n ) A ;\n" FS:WRITE-ALL
    s" tools/lsp.f" SERVER-ENTRY 2drop
    s" tools/check-verify-child.f" SERVER-ENTRY drop CHILD SERVER-U @ BYTE-COPY
    SERVER-U @ CHILD-U !
@@ -81,7 +81,7 @@ create BODY 4096 allot
    s\"  required ;] SOURCE-ROOT:WITH ;\nNESTED-LOAD\n" SB-APPEND
    s" driver.f" PROJECT-PATH {: path:ptr pathu:n :}
    path DRIVER pathu BYTE-COPY pathu DRIVER-U !
-   DRIVER DRIVER-U @ SB$ WRITE-ALL
+   DRIVER DRIVER-U @ SB$ FS:WRITE-ALL
    DRIVER DRIVER-U @ ;
 
 \ A document request forces the server to acquire and run its verifier image.
@@ -127,9 +127,9 @@ create BODY 4096 allot
    ENGINE-CANDIDATE:PATH$ 30000 >MS CMD:RUN-RC RC>N {: rc:n :}
    CMD:OUT$ {: out:ptr outu:n :}
    CMD:ERR$ {: err:ptr erru:n :}
-   name nameu s" .in" STREAM-PATH WIRE WIRE-U @ WRITE-ALL
-   name nameu s" .out" STREAM-PATH out outu WRITE-ALL
-   name nameu s" .err" STREAM-PATH err erru WRITE-ALL
+   name nameu s" .in" STREAM-PATH WIRE WIRE-U @ FS:WRITE-ALL
+   name nameu s" .out" STREAM-PATH out outu FS:WRITE-ALL
+   name nameu s" .err" STREAM-PATH err erru FS:WRITE-ALL
    rc 1 <> if err erru type cr then rc 1 T=
    err erru s\" lsp: input ended before exit\n" T$=
    out outu s\" \"version\":1,\"diagnostics\":[]" CONTAINS? TTRUE

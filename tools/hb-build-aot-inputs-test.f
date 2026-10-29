@@ -5,16 +5,17 @@
 
 require tools/hb-build-test-lib.f
 require test/linker-builder-engine.f
+require src/lib/fmt.f
 
 using BUILD-FIXPOINT                     \ the engine the nested child selects
 
 package HB-BUILD-CLI
 
-create HBT-ENV-DEP FS-PATH-CAP allot
+create HBT-ENV-DEP PATH-CAP allot
 variable HBT-ENV-DEP-U
 
-create HBT-ENV-ROOT-A FS-PATH-CAP allot
-create HBT-ENV-ROOT-B FS-PATH-CAP allot
+create HBT-ENV-ROOT-A PATH-CAP allot
+create HBT-ENV-ROOT-B PATH-CAP allot
 variable HBT-ENV-ROOT-A-U
 variable HBT-ENV-ROOT-B-U
 
@@ -38,38 +39,38 @@ variable HBT-ENV-ROOT-B-U
    HBT-RUN-ERR HBT-CAPTURE-CAP >LEN HBT-TIMEOUT-MS >MS
    RUN-ARGV-ENV-CAPTURE HBT-CAPTURE>N {: outu:n erru:n rc:n :}
    rc 0 T= erru 0 T=
-   SB-RESET value FS-MUT-SB-U HBB-LF SB-APPEND-C s" runtime" SB-APPEND
+   SB-RESET value FMT:SB-U HBB-LF SB-APPEND-C s" runtime" SB-APPEND
    HBT-RUN-OUT outu SB$ T$= ;
 
 : HBT-ENV-SELECTED-INPUT ( -- )
    s" AOT builds follow an observed environment source root" T-LABEL
    HBT-ROOT s" env-a" HBT-ENV-ROOT-A HBT-ENV-ROOT-A-U HBT-PATH!
    HBT-ROOT s" env-b" HBT-ENV-ROOT-B HBT-ENV-ROOT-B-U HBT-PATH!
-   HBT-ENV-ROOT-A HBT-ENV-ROOT-A-U @ MAKE-DIR
-   HBT-ENV-ROOT-B HBT-ENV-ROOT-B-U @ MAKE-DIR
+   HBT-ENV-ROOT-A HBT-ENV-ROOT-A-U @ FS:MAKE-DIR
+   HBT-ENV-ROOT-B HBT-ENV-ROOT-B-U @ FS:MAKE-DIR
    HBT-ENV-ROOT-A HBT-ENV-ROOT-A-U @ s" value.f" HBT-ENV-DEP HBT-ENV-DEP-U HBT-PATH!
-   HBT-ENV-DEP HBT-ENV-DEP-U @ s" package ENV-VALUE public : VALUE ( -- n ) 42 ; ;package" WRITE-ALL
+   HBT-ENV-DEP HBT-ENV-DEP-U @ s" package ENV-VALUE public : VALUE ( -- n ) 42 ; ;package" FS:WRITE-ALL
    HBT-ENV-ROOT-B HBT-ENV-ROOT-B-U @ s" value.f" HBT-ENV-DEP HBT-ENV-DEP-U HBT-PATH!
-   HBT-ENV-DEP HBT-ENV-DEP-U @ s" package ENV-VALUE public : VALUE ( -- n ) 99 ; ;package" WRITE-ALL
-   HBT-AOT-SRC S\" require src/lib/fs.f\ncreate LOAD-PATH FS-PATH-CAP allot\n: LOAD-SHARED ( -- ) s\" SHARED_ROOT\" GETENV s\" value.f\" LOAD-PATH JOIN-PATH LOAD-PATH swap required ;\nLOAD-SHARED\n: MAIN ( -- ) ENV-VALUE:VALUE . s\" AOT_RUNTIME\" GETENV type ;\n" WRITE-ALL
+   HBT-ENV-DEP HBT-ENV-DEP-U @ s" package ENV-VALUE public : VALUE ( -- n ) 99 ; ;package" FS:WRITE-ALL
+   HBT-AOT-SRC S\" require src/lib/fs.f\ncreate LOAD-PATH PATH-CAP allot\n: LOAD-SHARED ( -- ) s\" SHARED_ROOT\" GETENV s\" value.f\" LOAD-PATH FS:JOIN-PATH LOAD-PATH swap required ;\nLOAD-SHARED\n: MAIN ( -- ) ENV-VALUE:VALUE . s\" AOT_RUNTIME\" GETENV type ;\n" FS:WRITE-ALL
    HBT-ENV-ROOT-A HBT-ENV-ROOT-A-U @ HBT-ENV-BUILD
    42 HBT-ENV-RUN
    HBT-ENV-ROOT-A HBT-ENV-ROOT-A-U @ HBT-ENV-BUILD
    42 HBT-ENV-RUN
    HBT-ENV-ROOT-A HBT-ENV-ROOT-A-U @ s" value.f" HBT-ENV-DEP HBT-ENV-DEP-U HBT-PATH!
-   HBT-ENV-DEP HBT-ENV-DEP-U @ s" package ENV-VALUE public : VALUE ( -- n ) 43 ; ;package" WRITE-ALL
+   HBT-ENV-DEP HBT-ENV-DEP-U @ s" package ENV-VALUE public : VALUE ( -- n ) 43 ; ;package" FS:WRITE-ALL
    HBT-ENV-ROOT-A HBT-ENV-ROOT-A-U @ HBT-ENV-BUILD
    43 HBT-ENV-RUN
    HBT-ENV-ROOT-B HBT-ENV-ROOT-B-U @ HBT-ENV-BUILD
    99 HBT-ENV-RUN
    HBT-ENV-ROOT-B HBT-ENV-ROOT-B-U @ HBT-ENV-BUILD
    99 HBT-ENV-RUN
-   HBT-AOT-SRC HBT-AOT-SRC$ WRITE-ALL ;
+   HBT-AOT-SRC HBT-AOT-SRC$ FS:WRITE-ALL ;
 
 : HBT-ENV-SAVE ( ptr u8 n -- )
    HBT-ROOT 2swap HBT-ENV-DEP HBT-ENV-DEP-U HBT-PATH!
-   HBT-AOT-OUT HBT-ENV-DEP HBT-ENV-DEP-U @ COPY-FILE-STREAM
-   HBT-ENV-DEP HBT-ENV-DEP-U @ CHMOD-X
+   HBT-AOT-OUT HBT-ENV-DEP HBT-ENV-DEP-U @ FS:COPY-FILE-STREAM
+   HBT-ENV-DEP HBT-ENV-DEP-U @ FS:CHMOD-X
    HBT-AOT-OUT HBT-ENV-DEP HBT-ENV-DEP-U @ HBB-MAP-COPY ;
 
 
@@ -78,7 +79,7 @@ variable HBT-ENV-ROOT-B-U
 \ fixture tree; each build exercises cache selection at that process boundary.
 : HBT-SCOPED-SOURCE ( -- )
    HBT-ROOT s" run.f" HBT-ENV-DEP HBT-ENV-DEP-U HBT-PATH!
-   HBT-ENV-DEP HBT-ENV-DEP-U @ s" MAIN" WRITE-ALL
+   HBT-ENV-DEP HBT-ENV-DEP-U @ s" MAIN" FS:WRITE-ALL
    PROC-ARGV-ENV-RESET
    s" AOT_RUNTIME" >LEN s" runtime" >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
@@ -109,24 +110,24 @@ variable HBT-ENV-ROOT-B-U
 : HBT-SCOPED-INPUT ( -- )
    s" AOT builds follow scoped imports from a nested entry" T-LABEL
    HBT-ROOT s" src/server" HBT-ENV-DEP HBT-ENV-DEP-U HBT-PATH!
-   HBT-ENV-DEP HBT-ENV-DEP-U @ MAKE-DIRS
+   HBT-ENV-DEP HBT-ENV-DEP-U @ FS:MAKE-DIRS
    HBT-ROOT s" src/leaf.f" HBT-ENV-DEP HBT-ENV-DEP-U HBT-PATH!
-   HBT-ENV-DEP HBT-ENV-DEP-U @ s" package SCOPED-LEAF public : VALUE ( -- n ) 42 ; ;package" WRITE-ALL
+   HBT-ENV-DEP HBT-ENV-DEP-U @ s" package SCOPED-LEAF public : VALUE ( -- n ) 42 ; ;package" FS:WRITE-ALL
    HBT-ROOT s" src/server/main.f" HBT-AOT-SRC-BUF HBT-AOT-SRC-U HBT-PATH!
-   HBT-AOT-SRC S\" package SCOPED-ENTRY\npublic\n: LOAD ( -- )\n   SOURCE-ROOT:ACTIVE-SOURCE 2drop 2drop\n   SOURCE-ROOT:DIRNAME SOURCE-ROOT:DIRNAME\n   [: s\" ../src/leaf.f\" required ;] SOURCE-ROOT:WITH ;\n\n\n: UNUSED ( -- ) s\" absent.f\" required ;\n;package\nSCOPED-ENTRY:LOAD\n: MAIN ( -- ) SCOPED-LEAF:VALUE . s\" AOT_RUNTIME\" GETENV type ;\n" WRITE-ALL
+   HBT-AOT-SRC S\" package SCOPED-ENTRY\npublic\n: LOAD ( -- )\n   SOURCE-ROOT:ACTIVE-SOURCE 2drop 2drop\n   SOURCE-ROOT:DIRNAME SOURCE-ROOT:DIRNAME\n   [: s\" ../src/leaf.f\" required ;] SOURCE-ROOT:WITH ;\n\n\n: UNUSED ( -- ) s\" absent.f\" required ;\n;package\nSCOPED-ENTRY:LOAD\n: MAIN ( -- ) SCOPED-LEAF:VALUE . s\" AOT_RUNTIME\" GETENV type ;\n" FS:WRITE-ALL
    HBT-SCOPED-SOURCE
    HBT-ENV-ROOT-A HBT-ENV-ROOT-A-U @ HBT-ENV-BUILD
    42 HBT-ENV-RUN s" scoped-cold" HBT-ENV-SAVE
    HBT-ENV-ROOT-A HBT-ENV-ROOT-A-U @ HBT-ENV-BUILD
    42 HBT-ENV-RUN
    HBT-ROOT s" src/leaf.f" HBT-ENV-DEP HBT-ENV-DEP-U HBT-PATH!
-   HBT-ENV-DEP HBT-ENV-DEP-U @ s" package SCOPED-LEAF public : VALUE ( -- n ) 43 ; ;package" WRITE-ALL
+   HBT-ENV-DEP HBT-ENV-DEP-U @ s" package SCOPED-LEAF public : VALUE ( -- n ) 43 ; ;package" FS:WRITE-ALL
    HBT-ENV-ROOT-A HBT-ENV-ROOT-A-U @ HBT-ENV-BUILD
    43 HBT-ENV-RUN s" scoped-edited" HBT-ENV-SAVE
    HBT-ROOT s" src/leaf.f" HBT-ENV-DEP HBT-ENV-DEP-U HBT-PATH!
-   HBT-ENV-DEP HBT-ENV-DEP-U @ REMOVE-FILE
+   HBT-ENV-DEP HBT-ENV-DEP-U @ FS:REMOVE-FILE
    74 s" include: cannot open " HBT-SCOPED-REFUSED
-   HBT-ENV-DEP HBT-ENV-DEP-U @ s" package SCOPED-LEAF public : VALUE ( -- n ) drop ; ;package" WRITE-ALL
+   HBT-ENV-DEP HBT-ENV-DEP-U @ s" package SCOPED-LEAF public : VALUE ( -- n ) drop ; ;package" FS:WRITE-ALL
    70 s" input underflow" HBT-SCOPED-REFUSED
    HBT-ROOT s" aot.f" HBT-AOT-SRC-BUF HBT-AOT-SRC-U HBT-PATH! ;
 
@@ -135,7 +136,7 @@ variable HBT-ENV-ROOT-B-U
 \ than a text fragment, which the cache key must accept.
 : HBT-ENV-WORKERS ( -- )
    s" load-time tasks collect complete environment inputs" T-LABEL
-   HBT-AOT-SRC S\" require src/lib/task.f\npackage INPUT-WORKERS\nTASK:MIN-STACK TASK:TASK A\nTASK:MIN-STACK TASK:TASK B\nTASK:MIN-STACK TASK:TASK C\nTASK:MIN-STACK TASK:TASK D\nhere data-base - negate 7 and allot\nvariable READY\nvariable START\nvariable ANSWER\n: WORK ( -- )\n   1 READY atomic-add drop\n   begin START atomic@ 0= while TASK:PAUSE repeat\n   1000 0 ?do s\" SHARED_ROOT\" GETENV 2drop loop\n   s\" SHARED_ROOT\" GETENV 1- + c@ ANSWER atomic! 0 TASK:RETURN ;\n: JOIN ( ptr n -- )\n   TASK:JOIN MATCH result ok OF drop ENDOF err OF throw ENDOF ;MATCH ;\n: LOAD ( -- )\n   ['] WORK A TASK:ACTIVATE ['] WORK B TASK:ACTIVATE\n   ['] WORK C TASK:ACTIVATE ['] WORK D TASK:ACTIVATE\n   begin READY atomic@ 4 < while TASK:PAUSE repeat\n   1 START atomic!\n   1000 0 ?do s\" SHARED_ROOT\" GETENV 2drop loop\n   A JOIN B JOIN C JOIN D JOIN ;\nLOAD\npublic\n: VALUE ( -- n ) ANSWER atomic@ ;\n;package\n: MAIN ( -- ) INPUT-WORKERS:VALUE . s\" AOT_RUNTIME\" GETENV type ;\n" WRITE-ALL
+   HBT-AOT-SRC S\" require src/lib/task.f\npackage INPUT-WORKERS\nTASK:MIN-STACK TASK:TASK A\nTASK:MIN-STACK TASK:TASK B\nTASK:MIN-STACK TASK:TASK C\nTASK:MIN-STACK TASK:TASK D\nhere data-base - negate 7 and allot\nvariable READY\nvariable START\nvariable ANSWER\n: WORK ( -- )\n   1 READY atomic-add drop\n   begin START atomic@ 0= while TASK:PAUSE repeat\n   1000 0 ?do s\" SHARED_ROOT\" GETENV 2drop loop\n   s\" SHARED_ROOT\" GETENV 1- + c@ ANSWER atomic! 0 TASK:RETURN ;\n: JOIN ( ptr n -- )\n   TASK:JOIN MATCH result ok OF drop ENDOF err OF throw ENDOF ;MATCH ;\n: LOAD ( -- )\n   ['] WORK A TASK:ACTIVATE ['] WORK B TASK:ACTIVATE\n   ['] WORK C TASK:ACTIVATE ['] WORK D TASK:ACTIVATE\n   begin READY atomic@ 4 < while TASK:PAUSE repeat\n   1 START atomic!\n   1000 0 ?do s\" SHARED_ROOT\" GETENV 2drop loop\n   A JOIN B JOIN C JOIN D JOIN ;\nLOAD\npublic\n: VALUE ( -- n ) ANSWER atomic@ ;\n;package\n: MAIN ( -- ) INPUT-WORKERS:VALUE . s\" AOT_RUNTIME\" GETENV type ;\n" FS:WRITE-ALL
    HBT-ENV-ROOT-A HBT-ENV-ROOT-A-U @ HBT-ENV-BUILD
    97 HBT-ENV-RUN s" workers-a-cold" HBT-ENV-SAVE
    HBT-ENV-ROOT-A HBT-ENV-ROOT-A-U @ HBT-ENV-BUILD
@@ -147,10 +148,10 @@ variable HBT-ENV-ROOT-B-U
 
 \ Maker selection inside an enclosing input recording, counted through a
 \ loader pair that tallies each canon and read.
-create HBT-OUTER-ROWS FS-PATH-CAP 2 * allot
+create HBT-OUTER-ROWS PATH-CAP 2 * allot
 variable HBT-OUTER-CANON-N
 variable HBT-OUTER-READ-N
-create HBT-NESTED-OUT FS-PATH-CAP allot
+create HBT-NESTED-OUT PATH-CAP allot
 variable HBT-NESTED-OUT-U
 
 : HBT-OUTER-CANON ( ptr u8 n -- ptr u8 n bool )
@@ -179,7 +180,7 @@ variable HBT-NESTED-OUT-U
 : HBT-MAKER-NESTED-STEPS ( -- )
    HBB-RESET-OPTIONS
    HBB-MAKER-KEY!
-   HBB-MAKER-SUPPORT-PATH$ REMOVE-FILE
+   HBB-MAKER-SUPPORT-PATH$ FS:REMOVE-FILE
    NFILE-INPUTS:RESET
    HBT-AOT-SRC s" " NFILE-INPUTS:ADD-CONTENT
    NFILE-INPUTS:MARK NFILE-INPUTS:FROM
@@ -190,11 +191,11 @@ variable HBT-NESTED-OUT-U
    [: HBT-OUTER-CANON ;] [: HBT-OUTER-READ ;] SOURCE-INPUT:USE
    HBB-MAKER-KEY!
    end active HBT-MAKER-OUTER-HOLDS
-   HBB-MAKER-SUPPORT-PATH$ REMOVE-FILE
-   HBB-MAKER-SUPPORT-PATH$ MAKE-DIR
+   HBB-MAKER-SUPPORT-PATH$ FS:REMOVE-FILE
+   HBB-MAKER-SUPPORT-PATH$ FS:MAKE-DIR
    [: HBB-MAKER-KEY! ;] E-FS-IO TTHROWSQ
    end active HBT-MAKER-OUTER-HOLDS
-   HBB-MAKER-SUPPORT-PATH$ REMOVE-TREE
+   HBB-MAKER-SUPPORT-PATH$ FS:REMOVE-TREE
    SOURCE-INPUT:RESET
    NFILE-INPUTS:CLOSE ;
 
@@ -242,7 +243,7 @@ public
    HBT-ENV-SELECTED-INPUT
    HBT-SCOPED-INPUT
    HBT-ENV-WORKERS
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    T-REPORT
    s" observed input artifacts: " type HBT-ROOT type cr ;
 

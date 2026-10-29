@@ -19,7 +19,7 @@ $A00000 constant PAYLOAD-BYTES
 64 constant SMALL-CAP
 create SMALL-IN SMALL-CAP allot
 create SMALL-OUT SMALL-CAP allot
-create PATH FS-PATH-CAP allot
+create PATH PATH-CAP allot
 
 : CHECK$ ( -- ptr u8 n ) s" 123456789" ;
 : HELLO$ ( -- ptr u8 n ) s" hello" ;
@@ -256,7 +256,7 @@ defer FIT-CODEC ( ptr u8 n ptr u8 n -- n )
    loop drop ;
 
 : ARTIFACT$ ( ptr u8 n -- ptr u8 n ) {: name:ptr nameu:n :}
-   0 SCRIPT-ARGV$ name nameu PATH JOIN-PATH PATH swap ;
+   0 SCRIPT-ARGV$ name nameu PATH FS:JOIN-PATH PATH swap ;
 
 PTR-VARIABLE PLAIN
 PTR-VARIABLE PACKED
@@ -296,9 +296,9 @@ variable PACKED-SIZE
    BACK$ ZLIB:CRC32 PLAIN$ ZLIB:CRC32 T=
    s" a 10 MiB payload one byte over its declared size is refused" T-LABEL
    [: DECODE-SHORT ;] ZLIB:E-CAPACITY TTHROWSQ
-   s" original.bin" ARTIFACT$ PLAIN$ WRITE-ALL
-   s" compressed.bin" ARTIFACT$ PACKED$ WRITE-ALL
-   s" decoded.bin" ARTIFACT$ BACK$ WRITE-ALL
+   s" original.bin" ARTIFACT$ PLAIN$ FS:WRITE-ALL
+   s" compressed.bin" ARTIFACT$ PACKED$ FS:WRITE-ALL
+   s" decoded.bin" ARTIFACT$ BACK$ FS:WRITE-ALL
    s" a 10 MiB payload round-trips framed through the framed bound" T-LABEL
    BACK-CLEAR
    PLAIN$ PACKED @ PACKED-CAP @ ZLIB:DEFLATE-FRAMED PACKED-SIZE !

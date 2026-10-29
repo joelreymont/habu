@@ -29,7 +29,7 @@ require src/core/sha256.f
 
 create SEED-SHA-HEX SEED-SHA256-HEX-U allot
 create SEED-FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this tool's file-digest context
-FS-PATH-CAP SPAN-BUFFER: SEED-TMP-PATH     \ FS-MUT-SUFFIX-PATH's destination is a span
+PATH-CAP SPAN-BUFFER: SEED-TMP-PATH     \ FS:SUFFIX-PATH's destination is a span
 create SEED-SMOKE-OUT SEED-SMOKE-OUT-CAP allot
 create SEED-SMOKE-ERR SEED-SMOKE-ERR-CAP allot
 create SEED-BUILD-OUT SEED-BUILD-OUT-CAP allot
@@ -52,7 +52,7 @@ variable SEED-LAST
 
 : SEED-EXPECT-FILE ( ptr u8 n -- ) {: a:ptr u :}
    u 0 <= if E-BUILD-PATH throw then
-   a u FILE? 0= if E-BUILD-PATH throw then ;
+   a u FS:FILE? 0= if E-BUILD-PATH throw then ;
 
 : SEED-HEX-DIGIT? ( n -- bool ) {: c :}
    c 48 >= c 57 <= and if SEED-TRUE exit then
@@ -108,10 +108,10 @@ variable SEED-LAST
 
 : SEED-MAKE-PARENT-DIRS ( ptr u8 n -- ) {: a:ptr u :}
    a u SEED-LAST-SLASH {: idx :}
-   idx 0 > if a idx MAKE-DIRS then ;
+   idx 0 > if a idx FS:MAKE-DIRS then ;
 
 : SEED-TMP$ ( ptr u8 n -- ptr u8 n )
-   s" .seed-tmp" SEED-TMP-PATH FS-MUT-SUFFIX-PATH {: u :}
+   s" .seed-tmp" SEED-TMP-PATH FS:SUFFIX-PATH {: u :}
    SEED-TMP-PATH u SPAN:TAKE SPAN:$ ;
 
 : SEED-INSTALL ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu dst:ptr dstu :}
@@ -119,9 +119,9 @@ variable SEED-LAST
    dstu 0 <= if E-BUILD-PATH throw then
    dst dstu SEED-MAKE-PARENT-DIRS
    dst dstu SEED-TMP$ {: tmp:ptr tmpu :}
-   tmp tmpu EXISTS? if tmp tmpu REMOVE-FILE then
-   src srcu tmp tmpu COPY-FILE-STREAM
-   tmp tmpu CHMOD-X
+   tmp tmpu FS:EXISTS? if tmp tmpu FS:REMOVE-FILE then
+   src srcu tmp tmpu FS:COPY-FILE-STREAM
+   tmp tmpu FS:CHMOD-X
    tmp tmpu dst dstu CODESIGN:PROMOTE-EXECUTABLE
    dst dstu CODESIGN:ENSURE ;
 
@@ -209,6 +209,6 @@ variable SEED-LAST
 
 : SEED-MAIN ( -- )
    SCRIPT-ARGC 1 <> if SEED-USAGE then
-   0 SCRIPT-ARGV$ 2dup FILE? 0= if s" seed: not a file" SEED-NOINPUT-RC die then
+   0 SCRIPT-ARGV$ 2dup FS:FILE? 0= if s" seed: not a file" SEED-NOINPUT-RC die then
    s" bin/hb" SEED-INSTALL-SMOKE-BUILD
    s" seed OK: trusted seed rebuilt current bin/hb" type cr ;

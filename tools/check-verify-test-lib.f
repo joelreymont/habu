@@ -243,9 +243,9 @@ $400000 constant OLD-CAPTURE
 \ OLD-CAPTURE.
 10000 constant BIG-DEFS
 
-create ROOT FS-PATH-CAP allot
-create AT FS-PATH-CAP allot
-create SUBJ FS-PATH-CAP allot
+create ROOT PATH-CAP allot
+create AT PATH-CAP allot
+create SUBJ PATH-CAP allot
 variable ROOT-U
 variable AT-U
 variable SUBJ-U
@@ -270,12 +270,12 @@ variable CLI-OUT-U
 
 \ NAME in the fixture directory, canonical as every packet spells it.
 : AT$ ( ptr u8 n -- ptr u8 n )
-   ROOT$ 2swap AT JOIN-PATH AT-U !
+   ROOT$ 2swap AT FS:JOIN-PATH AT-U !
    AT AT-U @ ;
 
 
 : FIXTURE ( ptr u8 n ptr u8 n -- ) {: name:ptr nameu:n src:ptr srcu:n :}
-   name nameu AT$ src srcu WRITE-ALL ;
+   name nameu AT$ src srcu FS:WRITE-ALL ;
 
 
 \ Check SRC as the fixture NAME, which keeps its spelling in SUBJ.
@@ -296,9 +296,9 @@ variable CLI-OUT-U
 
 \ A file's bytes, in FILE-BYTES.
 : TREE-BYTES ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
-   a u FILE-SIZE {: size:n :}
+   a u FS:FILE-SIZE {: size:n :}
    size 1 max FILE-BYTES-RESERVE
-   a u 0 FILE-BYTES size READ-ALL drop
+   a u 0 FILE-BYTES size FS:READ-ALL drop
    0 FILE-BYTES size ;
 
 
@@ -485,7 +485,7 @@ variable CV-ROW-U
    s" s" SB-APPEND $22 SB-APPEND-C $20 SB-APPEND-C
    name nameu AT$ SB-APPEND
    $22 SB-APPEND-C s"  s" SB-APPEND $22 SB-APPEND-C s"  ran" SB-APPEND
-   $22 SB-APPEND-C s"  WRITE-ALL" SB-APPEND $0a SB-APPEND-C
+   $22 SB-APPEND-C s"  FS:WRITE-ALL" SB-APPEND $0a SB-APPEND-C
    SB$ ;
 
 : MARK-DEP$SRC ( -- ptr u8 n )
@@ -602,8 +602,8 @@ CK-USE-MAX 1 + constant OVER-USINGS
 : NO-RUN ( -- )
    MARK$SRC s" mark.f" GUARD-MS CHECK-AS
    0 s" no-run: verified" EXPECT-KIND
-   s" no-run: the subject wrote nothing" T-LABEL s" marker" AT$ EXISTS? TFALSE
-   s" no-run: its dependency wrote nothing" T-LABEL s" marker-dep" AT$ EXISTS? TFALSE
+   s" no-run: the subject wrote nothing" T-LABEL s" marker" AT$ FS:EXISTS? TFALSE
+   s" no-run: its dependency wrote nothing" T-LABEL s" marker-dep" AT$ FS:EXISTS? TFALSE
    s" mark.f" MARK$SRC FIXTURE
    PROC-ARGV-ENV-RESET
    s" --load" >LEN PROC-ARGV+
@@ -616,8 +616,8 @@ CK-USE-MAX 1 + constant OVER-USINGS
       signaled OF drop -1 ENDOF
       timeout OF MARK$SRC 0 OUT outu LEN>N 0 ERR erru LEN>N T-TIMED-OUT ENDOF
    ;MATCH 0 T=
-   s" no-run: the loaded subject wrote its marker" T-LABEL s" marker" AT$ EXISTS? TTRUE
-   s" no-run: the loaded dependency wrote its marker" T-LABEL s" marker-dep" AT$ EXISTS? TTRUE ;
+   s" no-run: the loaded subject wrote its marker" T-LABEL s" marker" AT$ FS:EXISTS? TTRUE
+   s" no-run: the loaded dependency wrote its marker" T-LABEL s" marker-dep" AT$ FS:EXISTS? TTRUE ;
 
 
 \ The disk copy is clean; the bytes put a rejected definition on line 4.
@@ -749,7 +749,7 @@ CK-USE-MAX 1 + constant OVER-USINGS
    [: s" nosuch-lib.f" AT$ SB-APPEND s" : no such source" SB-APPEND ;]
    STOP-LINE
    s" locked-line.f" s\" \\ locked\n" FIXTURE
-   s" locked-line.f" AT$ 0 CHMOD-MODE
+   s" locked-line.f" AT$ 0 FS:CHMOD-MODE
    s\" require locked-line.f\n" s" unread-line.f"
    s" closure-line: an unreadable source's status line"
    [: s" cannot read " SB-APPEND s" locked-line.f" AT$ SB-APPEND ;]
@@ -918,7 +918,7 @@ CK-USE-MAX 1 + constant OVER-USINGS
 \ a packet at the loader word that names it.
 : UNREADABLE-DEPENDENCY ( -- )
    s" locked-dep.f" s\" \\ locked\n" FIXTURE
-   s" locked-dep.f" AT$ 0 CHMOD-MODE
+   s" locked-dep.f" AT$ 0 FS:CHMOD-MODE
    s\" \\ unread\nrequire locked-dep.f\n" s" unread.f" GUARD-MS CHECK-AS
    1 s" unreadable-dependency: refused" EXPECT-KIND
    CHECK:VERIFY-OUT$ s" code" s" E-UNREADABLE-SOURCE" PACKET {: p:SPAN:span<u8> :}
@@ -1310,9 +1310,9 @@ $180000 constant LARGE-STDIN-LEN
 
 
 : LONG-PATH$ ( -- ptr u8 n )
-   FS-PATH-CAP 1+ GEN-RESERVE
-   FS-PATH-CAP 1+ 0 do 97 i GEN c! loop
-   0 GEN FS-PATH-CAP 1+ ;
+   PATH-CAP 1+ GEN-RESERVE
+   PATH-CAP 1+ 0 do 97 i GEN c! loop
+   0 GEN PATH-CAP 1+ ;
 
 \ A path argument longer than a path slot is a usage error, 64: apart from a
 \ refusal (70) and from an uncaught throw (67).
@@ -1554,7 +1554,7 @@ $180000 constant LARGE-STDIN-LEN
    S\" : LINE-END ( n n -- n )\n   {: at:n u:n :}\n   u at ?do i OUT c@ 10 = if i 1+ unloop exit then loop u ;\n" GEN+
    S\" : DUP-END ( n n -- n )\n   {: u:n :}\n   begin\n      {: at:n :}\n      at u >= if u exit then\n      at u LINE-END\n      {: end:n :}\n      at OUT end at - s\" check-verify: duplicate \" STARTS-WITH? if end exit then\n      end\n   again ;\npublic\n: MAIN ( -- )\n   4096 SRC-RESERVE 65536 OUT-RESERVE 65536 ERR-RESERVE\n   INPUT ARGS\n   ENGINE-ID:PATH$ >LEN 0 SRC SRC-U @ >LEN\n   0 OUT 65536 >LEN 0 ERR 65536 >LEN 60000 >MS\n   RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME {: outu:len erru:len o :}\n   o MATCH outcome\n      exited OF 0<> if s\" real verifier failed\" 74 die then ENDOF\n      signaled OF drop s\" real verifier signaled\" 74 die ENDOF\n      timeout OF s\" real verifier timed out\" 74 die ENDOF\n   ;MATCH\n   SCRIPT-ARGC 1- SCRIPT-ARGV$ s\" unclean-first-dup.f\" CONTAINS?\n   if 0 outu LEN>N DUP-END else\n      SCRIPT-ARGC 1- SCRIPT-ARGV$ s\" unclean-two-dups.f\" CONTAINS?\n      if 0 outu LEN>N DUP-END outu LEN>N DUP-END else outu LEN>N then\n   then\n   0 OUT swap type\n   s\" completed child output\" 79 die ;\n;package\nCVT-UNCLEAN:MAIN\n" GEN+
    s" unclean.f" 0 GEN GEN-U @ FIXTURE
-   s" unclean.f" AT$ CHMOD-X ;
+   s" unclean.f" AT$ FS:CHMOD-X ;
 
 
 : UNCLEAN-ANSWER ( -- )
@@ -4583,16 +4583,16 @@ variable SEEN-U
 \ Two image builds on a loaded host.
 300000 constant IMAGE-MS
 
-create STALE FS-PATH-CAP allot
-create WALK FS-PATH-CAP allot
-create DST FS-PATH-CAP allot
+create STALE PATH-CAP allot
+create WALK PATH-CAP allot
+create DST PATH-CAP allot
 variable STALE-U
 variable WALK-U
 variable TREE-U                         \ this tree's root, with its slash
 variable LINE-AT
 variable LINE-K
-create KEY-PATH FS-PATH-CAP allot
-create STALE-OUT FS-PATH-CAP allot
+create KEY-PATH PATH-CAP allot
+create STALE-OUT PATH-CAP allot
 variable STALE-OUT-U
 create KEY-READ KEYED-IMAGE:KEY-HEX-LEN allot
 
@@ -4601,10 +4601,10 @@ create KEY-READ KEYED-IMAGE:KEY-HEX-LEN allot
 \ The key an image was published under: the text of PATH.key.
 : IMAGE-KEY$ ( ptr u8 n -- ptr u8 n )
    {: path:ptr pathu:n :}
-   pathu 4 + FS-PATH-CAP > if E-FS-CAPACITY throw then
+   pathu 4 + PATH-CAP > if E-FS-CAPACITY throw then
    path KEY-PATH pathu BYTE-COPY
    s" .key" drop KEY-PATH pathu + 4 BYTE-COPY
-   KEY-PATH pathu 4 + KEY-READ KEYED-IMAGE:KEY-HEX-LEN READ-ALL
+   KEY-PATH pathu 4 + KEY-READ KEYED-IMAGE:KEY-HEX-LEN FS:READ-ALL
    KEY-READ swap ;
 
 \ The rest of the K-th (from 0) line of TEXT that starts with LEAD, empty for none.
@@ -4623,7 +4623,7 @@ create KEY-READ KEYED-IMAGE:KEY-HEX-LEN allot
 
 \ The source of a driver's word answering a verdict's kind by name.
 : IMAGE-SRC+ ( -- )
-   S\" create CVT-KP FS-PATH-CAP allot\ncreate CVT-KB 64 allot\n: IMAGE. ( -- )\n   ENGINE-CANDIDATE:PATH$ 600000 CHECK-VERIFY-IMAGE:PATH$ {: p:ptr pu:n :}\n   s\" image \" type p pu type cr\n   p CVT-KP pu BYTE-COPY\n   s\" .key\" drop CVT-KP pu + 4 BYTE-COPY\n   CVT-KP pu 4 + CVT-KB 64 READ-ALL {: ku:n :}\n   s\" key \" type CVT-KB ku type cr ;\n" GEN+ ;
+   S\" create CVT-KP PATH-CAP allot\ncreate CVT-KB 64 allot\n: IMAGE. ( -- )\n   ENGINE-CANDIDATE:PATH$ 600000 CHECK-VERIFY-IMAGE:PATH$ {: p:ptr pu:n :}\n   s\" image \" type p pu type cr\n   p CVT-KP pu BYTE-COPY\n   s\" .key\" drop CVT-KP pu + 4 BYTE-COPY\n   CVT-KP pu 4 + CVT-KB 64 FS:READ-ALL {: ku:n :}\n   s\" key \" type CVT-KB ku type cr ;\n" GEN+ ;
 
 : KIND$SRC+ ( -- )
    S\" : KIND$ ( CHECK:verdict -- ptr u8 n )\n   MATCH CHECK:verdict\n      verified OF s\" verified\" ENDOF\n      refused OF s\" refused\" ENDOF\n      engine-provided OF s\" engine-provided\" ENDOF\n      held OF s\" held\" ENDOF\n      incomplete OF {: status :} s\" incomplete\" ENDOF\n      deferred OF s\" deferred\" ENDOF\n   ;MATCH ;\n" GEN+ ;
@@ -4642,13 +4642,13 @@ create KEY-READ KEYED-IMAGE:KEY-HEX-LEN allot
 \ ROOT/stale-tree/REL for a tree file, REL its path below this tree.
 : STALE-COPY ( ptr u8 n -- )
    {: src:ptr srcu:n :}
-   STALE$ src TREE-U @ + srcu TREE-U @ - DST JOIN-PATH {: dstu:n :}
-   DST dstu SOURCE-ROOT:DIRNAME MAKE-DIRS
-   src srcu DST dstu COPY-FILE-STREAM ;
+   STALE$ src TREE-U @ + srcu TREE-U @ - DST FS:JOIN-PATH {: dstu:n :}
+   DST dstu SOURCE-ROOT:DIRNAME FS:MAKE-DIRS
+   src srcu DST dstu FS:COPY-FILE-STREAM ;
 
 : STALE-DIR ( ptr u8 n -- )
-   SOURCE-ROOT:CWD$ 2swap WALK JOIN-PATH WALK-U !
-   WALK WALK-U @ [: STALE-COPY ;] WALK-FILES ;
+   SOURCE-ROOT:CWD$ 2swap WALK FS:JOIN-PATH WALK-U !
+   WALK WALK-U @ [: STALE-COPY ;] FS:WALK-FILES ;
 
 \ A copy of this tree's tools/ and src/ under the fixture root: a tree of its own,
 \ whose closure paths key an image of its own and whose files the case edits.
@@ -4693,9 +4693,9 @@ create KEY-READ KEYED-IMAGE:KEY-HEX-LEN allot
    s\"  0 do\n      [: ENGINE-CANDIDATE:PATH$ 600000 CHECK-VERIFY-IMAGE:PATH$ 2drop ;] catch\n" GEN+
    s\"       s\" refused \" type FMT:.INT cr\n   loop ;\npublic\n" GEN+
    s\" : MAIN ( -- )\n   CHECK\n   s\" " GEN+ STALE$ GEN+
-   s\" /tools/check-verify-child-lib.f\" s\\\" \\\\ edited\\n\" APPEND-FILE\n   CHECK\n   s\" " GEN+ STALE$ GEN+
-   s\" /tools/check-verify-child-lib.f\" REMOVE-FILE\n   REFUSE ;\n;package\nCVT-STALE:MAIN\n" GEN+
-   s" stale-tree/stale-driver.f" AT$ 0 GEN GEN-U @ WRITE-ALL
+   s\" /tools/check-verify-child-lib.f\" s\\\" \\\\ edited\\n\" FS:APPEND-FILE\n   CHECK\n   s\" " GEN+ STALE$ GEN+
+   s\" /tools/check-verify-child-lib.f\" FS:REMOVE-FILE\n   REFUSE ;\n;package\nCVT-STALE:MAIN\n" GEN+
+   s" stale-tree/stale-driver.f" AT$ 0 GEN GEN-U @ FS:WRITE-ALL
    s" stale-out" AT$ STALE-OUT STALE-OUT-U COPY!
    s" stale-tree/stale-driver.f" AT$ STALE$ STALE-OUT STALE-OUT-U @ DRIVE
       {: outu:n erru:n rc:n :}
@@ -4715,7 +4715,7 @@ create KEY-READ KEYED-IMAGE:KEY-HEX-LEN allot
    s" image-stale: one image for the family" T-LABEL a au b bu T$=
    s" image-stale: published under a key" T-LABEL kau KEYED-IMAGE:KEY-HEX-LEN T=
    s" image-stale: the edit re-keys" T-LABEL ka kau kb kbu STR= TFALSE
-   s" image-stale: executable" T-LABEL b bu EXECUTABLE? TTRUE
+   s" image-stale: executable" T-LABEL b bu FS:EXECUTABLE? TTRUE
    STALE-REFUSALS 0 do
       s" image-stale: each walk refuses with the missing member's cause" T-LABEL
       out outn i REFUSED-CODE E-FS-STAT T=
@@ -4743,9 +4743,9 @@ create KEY-READ KEYED-IMAGE:KEY-HEX-LEN allot
    s" src/lib/engine-id.f" TREE$ s" read" LOAD-NEXT ;
 
 
-create CWD-TREE FS-PATH-CAP allot
+create CWD-TREE PATH-CAP allot
 variable CWD-TREE-U
-create CWD-IMAGE FS-PATH-CAP allot
+create CWD-IMAGE PATH-CAP allot
 variable CWD-IMAGE-U
 create CWD-KEY KEYED-IMAGE:KEY-HEX-LEN allot
 
@@ -4753,9 +4753,9 @@ create CWD-KEY KEYED-IMAGE:KEY-HEX-LEN allot
 \ tools, so TREE? finds the engine's first row under it.
 : CWD-TREE! ( -- )
    s" cwd-tree" AT$ CWD-TREE CWD-TREE-U COPY!
-   CWD-TREE CWD-TREE-U @ MAKE-DIRS
-   s" src" TREE$ s" cwd-tree/src" AT$ MAKE-SYMLINK
-   s" tools" TREE$ s" cwd-tree/tools" AT$ MAKE-SYMLINK ;
+   CWD-TREE CWD-TREE-U @ FS:MAKE-DIRS
+   s" src" TREE$ s" cwd-tree/src" AT$ FS:MAKE-SYMLINK
+   s" tools" TREE$ s" cwd-tree/tools" AT$ FS:MAKE-SYMLINK ;
 
 \ The image restores the engine root the source child finds: from a working
 \ directory that is no tree, a primitive use's file is under EXE-ROOT of the
@@ -4776,7 +4776,7 @@ create CWD-KEY KEYED-IMAGE:KEY-HEX-LEN allot
    s\"    s\" : CVT-D ( n -- ) drop ;\" s\" " GEN+ s" d.f" AT$ GEN+
    s\" \" [: drop ;] 60000 >MS CHECK:VERIFY-BYTES\n   s\" verdict \" type KIND$ type cr\n" GEN+
    s\"    IMAGE. CHECK:VERIFY-USES$ type ;\n;package\nCVT-CWD:MAIN\n" GEN+
-   s" cwd-driver.f" AT$ 0 GEN GEN-U @ WRITE-ALL
+   s" cwd-driver.f" AT$ 0 GEN GEN-U @ FS:WRITE-ALL
    s" cwd-driver.f" AT$ ROOT$ BUILD-OUT:BASE$ DRIVE
       {: outu:n erru:n rc:n :}
    s" image-cwd: driver exit" T-LABEL rc 0 T=
@@ -4957,7 +4957,7 @@ public
    s" top-defer-word" [: TOP-DEFER-WORD ;] RUN-CASE
    s" top-defer-comment" [: TOP-DEFER-COMMENT ;] RUN-CASE
    s" top-accepted" [: TOP-ACCEPTED ;] RUN-CASE
-   ROOT$ REMOVE-TREE
+   ROOT$ FS:REMOVE-TREE
    T-REPORT
    s" check-verify-test: ok" type cr ;
 

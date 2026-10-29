@@ -41,8 +41,8 @@ create OUT CAP allot     variable OUT-U
 create ERR CAP allot     variable ERR-U
 variable RC
 
-create ROOT-BUF FS-PATH-CAP allot    variable ROOT-U
-create HB-BUF FS-PATH-CAP allot      variable HB-U
+create ROOT-BUF PATH-CAP allot    variable ROOT-U
+create HB-BUF PATH-CAP allot      variable HB-U
 
 : ROOT$ ( -- ptr u8 n ) ROOT-BUF ROOT-U @ ;
 : HB$ ( -- ptr u8 n )   HB-BUF HB-U @ ;
@@ -55,8 +55,8 @@ create HB-BUF FS-PATH-CAP allot      variable HB-U
 : SETUP ( -- )
    s" habu-aot-wide" FS:MKTEMP-DIR {: a:ptr u:n :}
    a ROOT-BUF u BYTE-COPY  u ROOT-U !
-   ROOT$ CLEANUP-TREE+
-   ROOT$ s" hb-pwid" HB-BUF JOIN-PATH HB-U ! ;
+   ROOT$ FS:CLEANUP-TREE+
+   ROOT$ s" hb-pwid" HB-BUF FS:JOIN-PATH HB-U ! ;
 
 : BUILDER-ARGV ( -- )
    PROC-ARGV-RESET
@@ -145,9 +145,9 @@ create HB-BUF FS-PATH-CAP allot      variable HB-U
 \ throw.
 : RUN-PROBES ( [ -- ] -- )
    T-RESET
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    catch {: code:n :}
-   CLEANUP-RUN
+   FS:CLEANUP-RUN
    code 0 <> if code throw then
    T-REPORT ;
 

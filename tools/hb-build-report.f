@@ -47,7 +47,7 @@ variable SIZE-OTHER
 
 \ Worst case one quoted path byte becomes \u00XX, plus the fixed keys and values.
 6 constant REPORT-ESCAPE-MAX
-FS-PATH-CAP REPORT-ESCAPE-MAX * 512 + constant REPORT-CAP
+PATH-CAP REPORT-ESCAPE-MAX * 512 + constant REPORT-CAP
 REPORT-CAP BUFFER: REPORT-BUF
 TYPED-VARIABLE REPORT-W JSON-WRITE:writer
 

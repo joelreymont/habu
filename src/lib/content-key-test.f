@@ -19,9 +19,9 @@ package CONTENT-KEY
 variable CKT-ROOT-U
 variable CKT-SRC-U
 
-create CKT-ROOT FS-PATH-CAP allot
-create CKT-SRC FS-PATH-CAP allot
-create CKT-COPY-PATH FS-PATH-CAP allot
+create CKT-ROOT PATH-CAP allot
+create CKT-SRC PATH-CAP allot
+create CKT-COPY-PATH PATH-CAP allot
 create CKT-KEY1 80 allot
 create CKT-KEY2 80 allot
 create CKT-SEQ-A 80 allot
@@ -54,7 +54,7 @@ FUNCTION: CKT-SYNC-RANGE msync ( n n n -- i32 ) ;FUNCTION
 
 : CKT-PATH! ( ptr u8 n ptr u8 n ptr u8 ptr n -- )
    {: pa:ptr pu:n na:ptr nu:n dst:ptr lenp:ptr :}
-   pa pu na nu dst JOIN-PATH lenp ! ;
+   pa pu na nu dst FS:JOIN-PATH lenp ! ;
 
 : CKT-ROOT$ ( -- ptr u8 n )
    CKT-ROOT CKT-ROOT-U @ ;
@@ -63,14 +63,14 @@ FUNCTION: CKT-SYNC-RANGE msync ( n n n -- i32 ) ;FUNCTION
    CKT-SRC CKT-SRC-U @ ;
 
 : CKT-SETUP ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" habu-content-key" FS:MKTEMP-DIR CKT-ROOT CKT-ROOT-U CKT-COPY!
-   CKT-ROOT$ CLEANUP-TREE+
+   CKT-ROOT$ FS:CLEANUP-TREE+
    CKT-ROOT$ s" src.f" CKT-SRC CKT-SRC-U CKT-PATH! ;
 
 : CKT-CLEANUP ( -- )
-   CLEANUP-RUN
-   CKT-ROOT$ EXISTS? TFALSE ;
+   FS:CLEANUP-RUN
+   CKT-ROOT$ FS:EXISTS? TFALSE ;
 
 \ ---- overlapping folds ------------------------------------------------------
 \ The regression fold tokens exist for. Two folds run one after the other, then
@@ -167,7 +167,7 @@ variable CKT-LIVE-RC
 : CKT-MISSING-BODY ( CONTENT-KEY:fold -- )
    CKT-SCOPE-PAGE dup CKT-PAGE-AT !
    CKT-MAPPED CKT-LIVE-RC !
-   CKT-ROOT$ s" missing.f" CKT-COPY-PATH JOIN-PATH {: u:n :}
+   CKT-ROOT$ s" missing.f" CKT-COPY-PATH FS:JOIN-PATH {: u:n :}
    CKT-COPY-PATH u FILE+ CKT-KEY2 FINAL-HEX ;
 
 : CKT-MISSING-FOLD ( -- )
@@ -252,9 +252,9 @@ variable CKT-INNER-AT
    [: CKT-FILE-BODY ;] WITH-FOLD ;
 
 : CKT-LOGICAL-NAME ( -- )
-   CKT-ROOT$ s" copy.f" CKT-COPY-PATH JOIN-PATH {: copyu:n :}
-   CKT-SRC$ s" first" WRITE-ALL
-   CKT-SRC$ CKT-COPY-PATH copyu COPY-FILE-STREAM
+   CKT-ROOT$ s" copy.f" CKT-COPY-PATH FS:JOIN-PATH {: copyu:n :}
+   CKT-SRC$ s" first" FS:WRITE-ALL
+   CKT-SRC$ CKT-COPY-PATH copyu FS:COPY-FILE-STREAM
    CKT-SRC$ s" source.f" CKT-KEY1 CKT-NAMED-KEY
    CKT-COPY-PATH copyu s" source.f" CKT-KEY2 CKT-NAMED-KEY
    s" one logical name and content ignore the physical location" T-LABEL
@@ -262,7 +262,7 @@ variable CKT-INNER-AT
    CKT-COPY-PATH copyu s" renamed.f" CKT-KEY2 CKT-NAMED-KEY
    s" different logical names remain different inputs" T-LABEL
    CKT-KEY1 CKT-KEY-LEN CKT-KEY2 CKT-KEY-LEN T$<>
-   CKT-COPY-PATH copyu s" second" WRITE-ALL
+   CKT-COPY-PATH copyu s" second" FS:WRITE-ALL
    CKT-COPY-PATH copyu s" source.f" CKT-KEY2 CKT-NAMED-KEY
    s" the named file is still read from its physical path" T-LABEL
    CKT-KEY1 CKT-KEY-LEN CKT-KEY2 CKT-KEY-LEN T$<>
@@ -274,7 +274,7 @@ variable CKT-INNER-AT
 \ ---- fragments longer than one byte can count ------------------------------
 \ A fragment carries its length in two bytes (FRAG+), so a logical name of
 \ any length the tree's paths take folds whole: 256 bytes, one past what one
-\ byte counts, and FS-PATH-CAP. Two names that differ only in their last byte
+\ byte counts, and PATH-CAP. Two names that differ only in their last byte
 \ fold to different keys, so no byte past the 255th is dropped.
 create CKT-NAME CK-FRAG-MAX 1+ allot
 
@@ -325,8 +325,8 @@ create CKT-NAME CK-FRAG-MAX 1+ allot
    CKT-NAME-FILL
    s" a 256-byte logical name folds, and its last byte counts" T-LABEL
    256 CKT-LONG-NAME
-   s" a logical name of FS-PATH-CAP bytes folds, and its last byte counts" T-LABEL
-   FS-PATH-CAP CKT-LONG-NAME
+   s" a logical name of PATH-CAP bytes folds, and its last byte counts" T-LABEL
+   PATH-CAP CKT-LONG-NAME
    s" a 256-byte text and an empty text then its tail fold apart" T-LABEL
    CKT-LENGTH-UNAMBIGUOUS
    s" a fragment one byte past CK-FRAG-MAX is refused" T-LABEL

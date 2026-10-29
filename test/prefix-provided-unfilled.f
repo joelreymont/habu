@@ -28,8 +28,8 @@ $8000 constant IO-CAP
 $4000 constant SRC-CAP
 600000 constant BUILD-TIMEOUT-MS
 
-create ROOT FS-PATH-CAP allot variable ROOT-U
-create PATH FS-PATH-CAP allot
+create ROOT PATH-CAP allot variable ROOT-U
+create PATH PATH-CAP allot
 create SRC SRC-CAP allot variable SRC-U
 create OUT IO-CAP allot variable OUT-U
 create ERR IO-CAP allot variable ERR-U
@@ -38,14 +38,14 @@ variable RC
 : ROOT$ ( -- ptr u8 n ) ROOT ROOT-U @ ;
 
 : AT-A ( ptr u8 n -- ptr u8 n ) {: rel:ptr relu:n :}
-   ROOT$ rel relu PATH JOIN-PATH PATH swap ;
+   ROOT$ rel relu PATH FS:JOIN-PATH PATH swap ;
 
 : RUNTIME$ ( -- ptr u8 n ) s" src/habu/runtime-x64.f" ;
 : INSTALL$ ( -- ptr u8 n ) S\"    OUTER:INSTALL-EVALUATE\n" ;
 
 \ The x86-64 installs without the line that fills the evaluate cell.
 : WRITE-RUNTIME ( -- )
-   RUNTIME$ AT-A SRC SRC-CAP READ-ALL SRC-U !
+   RUNTIME$ AT-A SRC SRC-CAP FS:READ-ALL SRC-U !
    SRC SRC-U @ INSTALL$ FIND-SUB MATCH option
       none OF -1 ENDOF
       some OF IDX>N ENDOF
@@ -54,8 +54,8 @@ variable RC
       s" prefix-provided-unfilled: runtime-x64.f runs no OUTER:INSTALL-EVALUATE" 1 die
    then
    INSTALL$ nip at + {: past:n :}
-   RUNTIME$ AT-A SRC at WRITE-ALL
-   RUNTIME$ AT-A SRC past + SRC-U @ past - APPEND-FILE ;
+   RUNTIME$ AT-A SRC at FS:WRITE-ALL
+   RUNTIME$ AT-A SRC past + SRC-U @ past - FS:APPEND-FILE ;
 
 : SETUP ( -- )
    s" prefix-provided-unfilled" FS:MKTEMP-DIR {: a:ptr u:n :}
@@ -87,8 +87,8 @@ variable RC
    ENGINE-CANDIDATE:PATH$ >LEN ROOT$ >LEN
    OUT IO-CAP >LEN ERR IO-CAP >LEN BUILD-TIMEOUT-MS >MS
    PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE CAPTURE-RESULT
-   s" build.out" AT-A OUT OUT-U @ WRITE-ALL
-   s" build.err" AT-A ERR ERR-U @ WRITE-ALL ;
+   s" build.out" AT-A OUT OUT-U @ FS:WRITE-ALL
+   s" build.err" AT-A ERR ERR-U @ FS:WRITE-ALL ;
 
 \ The last build refused at the registry gate and left no product.
 : REFUSED ( -- )
@@ -97,7 +97,7 @@ variable RC
    OUT OUT-U @ S\" captured runtime leaves the dispatch cell empty for prefix-provided primitive evaluate-range\n" CONTAINS? TTRUE
    ERR ERR-U @ s" prims: prefix-provided row not in the captured runtime" CONTAINS? TTRUE
    s" the refused build promotes no product" T-LABEL
-   s" hb" AT-A FILE? 0= TTRUE ;
+   s" hb" AT-A FS:FILE? 0= TTRUE ;
 
 public
 

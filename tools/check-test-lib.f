@@ -72,25 +72,25 @@ $4000 constant BUF-CAP
 4 constant HANG-MARGIN
 WORST-CHILD-MS HANG-MARGIN * constant CHILD-HANG-MS
 
-create TMP-ROOT FS-PATH-CAP allot
-create BAD-PATH FS-PATH-CAP allot
-create DIRECT-PATH FS-PATH-CAP allot
-create LIST-PATH FS-PATH-CAP allot
-create INC-DEP-PATH FS-PATH-CAP allot
-create INC-ENTRY-PATH FS-PATH-CAP allot
-create SUP-PATH FS-PATH-CAP allot
-create USE-PATH FS-PATH-CAP allot
-create CYC-ROOT-PATH FS-PATH-CAP allot
-create CYC-HOST-PATH FS-PATH-CAP allot
-create CYC-ENTRY-PATH FS-PATH-CAP allot
+create TMP-ROOT PATH-CAP allot
+create BAD-PATH PATH-CAP allot
+create DIRECT-PATH PATH-CAP allot
+create LIST-PATH PATH-CAP allot
+create INC-DEP-PATH PATH-CAP allot
+create INC-ENTRY-PATH PATH-CAP allot
+create SUP-PATH PATH-CAP allot
+create USE-PATH PATH-CAP allot
+create CYC-ROOT-PATH PATH-CAP allot
+create CYC-HOST-PATH PATH-CAP allot
+create CYC-ENTRY-PATH PATH-CAP allot
 create MUT-SRC $200 allot
-create MUT-LABEL FS-PATH-CAP allot
-create MUT-PATH FS-PATH-CAP allot
+create MUT-LABEL PATH-CAP allot
+create MUT-PATH PATH-CAP allot
 create BOUNDARY-OUT BUF-CAP allot
-create CLEANUP-TMP FS-PATH-CAP allot
-create CLI-TARGET FS-PATHZ-CAP allot
-create CLI-HB FS-PATHZ-CAP allot
-create ENV-PROBE-PATH FS-PATH-CAP allot
+create CLEANUP-TMP PATH-CAP allot
+create CLI-TARGET FS:PATHZ-CAP allot
+create CLI-HB FS:PATHZ-CAP allot
+create ENV-PROBE-PATH PATH-CAP allot
 
 TYPED-VARIABLE OUT-A ptr u8
 TYPED-VARIABLE ERR-A ptr u8
@@ -165,7 +165,7 @@ variable START-NS
 \ where PWD is unset, and a link target joined to an empty PWD dangles, so a
 \ child run among LC-ROOT's links dies 74 on its own load path.
 : CLI-ABS! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n buf:ptr lenp:ptr :}
-   a u FS-PATHZ buf FS-PATHZ-CAP realpath {: n:n :}
+   a u FS:>PATHZ buf FS:PATHZ-CAP realpath {: n:n :}
    n 0 <= if E-FS-PATH throw then
    n lenp ! ;
 
@@ -214,7 +214,7 @@ variable START-NS
    BAD$ BAD$ CHECK-ALL-ERRORS:FILE ;
 
 : CORE-JSON ( ptr u8 n -- n n n ) {: src:ptr srcu:n :}
-   BAD$ src srcu WRITE-ALL
+   BAD$ src srcu FS:WRITE-ALL
    CAP-ERR BUF-CAP CAP-OUT BUF-CAP CHECK-ALL-ERRORS:BUFFERS!
    0 0= CHECK-ALL-ERRORS:JSON!
    [: CORE-ACT ;] catch {: rc:n :}
@@ -396,12 +396,12 @@ variable START-NS
    CLI-HB CLI-HB-U @ ;
 
 : CLEANUP-TMP! ( ptr u8 n -- )
-   ROOT$ 2swap CLEANUP-TMP JOIN-PATH CLEANUP-TMP-U !
-   CLEANUP-TMP$ MAKE-DIR ;
+   ROOT$ 2swap CLEANUP-TMP FS:JOIN-PATH CLEANUP-TMP-U !
+   CLEANUP-TMP$ FS:MAKE-DIR ;
 
 : CLEANUP-TMP-RESTORE ( -- )
-   CLEANUP-TMP$ 2dup EXISTS? if
-      FS-MUT-MODE-PRIVATE-DIR CHMOD-MODE
+   CLEANUP-TMP$ 2dup FS:EXISTS? if
+      FS:MODE-PRIVATE-DIR FS:CHMOD-MODE
    else
       2drop
    then ;
@@ -435,7 +435,7 @@ variable START-NS
    CLEANUP-TMP-RESTORE
    rc 0 T=
    CAP-OUT outu s" test: ok" CONTAINS? TTRUE
-   CLEANUP-TMP$ EXISTS? TFALSE
+   CLEANUP-TMP$ FS:EXISTS? TFALSE
    mode modeu erru CLEANUP-CHILD-ERR ;
 
 : TEST-CLEANUP-FAILURE ( -- )
@@ -470,7 +470,7 @@ variable START-NS
    SB$ ;
 
 : ENV-PROBE-RUN ( -- n n n )
-   ENV-PROBE$ ENV-PROBE$SRC WRITE-ALL
+   ENV-PROBE$ ENV-PROBE$SRC FS:WRITE-ALL
    CHECK-ARGV-START
    ENV-PROBE$ CHECK-ARG+
    PROC-ENV-RESET
@@ -488,7 +488,7 @@ variable START-NS
    CAP-OUT outu ENV-PATH-LINE$ CONTAINS? TTRUE ;
 
 : HB-LOAD-SRC ( ptr u8 n -- n n n ) {: src:ptr srcu:n :}
-   BAD$ src srcu WRITE-ALL
+   BAD$ src srcu FS:WRITE-ALL
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    BAD$ >LEN PROC-ARGV+
@@ -1087,21 +1087,21 @@ variable LONG-J
    SB$ ;
 
 : PREPARE ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" habu-check-test" FS:MKTEMP-DIR TMP-ROOT TMP-ROOT-U PATH-COPY!
-   ROOT$ CLEANUP-TREE+
-   ROOT$ s" bad.f" BAD-PATH JOIN-PATH BAD-U !
-   ROOT$ s" direct-source.f" DIRECT-PATH JOIN-PATH DIRECT-U !
-   ROOT$ s" local-test.f" LIST-PATH JOIN-PATH LIST-U !
-   ROOT$ s" inc-dep.f" INC-DEP-PATH JOIN-PATH INC-DEP-U !
-   ROOT$ s" inc-entry.f" INC-ENTRY-PATH JOIN-PATH INC-ENTRY-U !
-   ROOT$ s" list-sup.f" SUP-PATH JOIN-PATH SUP-U !
-   ROOT$ s" list-use.f" USE-PATH JOIN-PATH USE-U !
-   ROOT$ s" cyc-root.f" CYC-ROOT-PATH JOIN-PATH CYC-ROOT-U !
-   ROOT$ s" cyc-host.f" CYC-HOST-PATH JOIN-PATH CYC-HOST-U !
-   ROOT$ s" cyc-entry.f" CYC-ENTRY-PATH JOIN-PATH CYC-ENTRY-U !
-   ROOT$ s" env-probe.f" ENV-PROBE-PATH JOIN-PATH ENV-PROBE-U !
-   BAD$ BAD$SRC WRITE-ALL ;
+   ROOT$ FS:CLEANUP-TREE+
+   ROOT$ s" bad.f" BAD-PATH FS:JOIN-PATH BAD-U !
+   ROOT$ s" direct-source.f" DIRECT-PATH FS:JOIN-PATH DIRECT-U !
+   ROOT$ s" local-test.f" LIST-PATH FS:JOIN-PATH LIST-U !
+   ROOT$ s" inc-dep.f" INC-DEP-PATH FS:JOIN-PATH INC-DEP-U !
+   ROOT$ s" inc-entry.f" INC-ENTRY-PATH FS:JOIN-PATH INC-ENTRY-U !
+   ROOT$ s" list-sup.f" SUP-PATH FS:JOIN-PATH SUP-U !
+   ROOT$ s" list-use.f" USE-PATH FS:JOIN-PATH USE-U !
+   ROOT$ s" cyc-root.f" CYC-ROOT-PATH FS:JOIN-PATH CYC-ROOT-U !
+   ROOT$ s" cyc-host.f" CYC-HOST-PATH FS:JOIN-PATH CYC-HOST-U !
+   ROOT$ s" cyc-entry.f" CYC-ENTRY-PATH FS:JOIN-PATH CYC-ENTRY-U !
+   ROOT$ s" env-probe.f" ENV-PROBE-PATH FS:JOIN-PATH ENV-PROBE-U !
+   BAD$ BAD$SRC FS:WRITE-ALL ;
 
 : TEST-GOOD ( -- )
    [: GOOD$ VERIFY:SOURCE-BUF ;] catch 0 T= ;
@@ -1522,7 +1522,7 @@ variable LONG-J
    CHECK-CAPTURE ;
 
 : TEST-DEADLINE-OPTION ( -- )
-   DIRECT$ GOOD$ WRITE-ALL
+   DIRECT$ GOOD$ FS:WRITE-ALL
    s" 2147483647" DEADLINE-RUN
    s" deadline: the longest deadline is taken" T-LABEL 0 T=
    2drop
@@ -1542,7 +1542,7 @@ variable LONG-J
    RESET ;
 
 : TEST-FILE-PATH-COPY ( -- )
-   BAD$ BAD$SRC WRITE-ALL
+   BAD$ BAD$SRC FS:WRITE-ALL
    BAD$ MUT-PATH!
    RESET
    MUT-PATH$ FILE
@@ -1563,7 +1563,7 @@ variable LONG-J
 \ entry returns usage, retaining the caller buffer breaks after mutation, and
 \ duplicating the entry makes the definition fail preverification.
 : TEST-LIST-PROMOTION ( -- )
-   DIRECT$ GOOD$ WRITE-ALL
+   DIRECT$ GOOD$ FS:WRITE-ALL
    DIRECT$ MUT-PATH!
    RESET
    MUT-PATH$ FILE
@@ -1639,20 +1639,20 @@ variable LONG-J
    CAP-ERR erru want wantu CONTAINS? TTRUE ;
 
 : TEST-BOUNDARY-LIST ( -- )
-   LIST$ BOUNDARY-OFF$ WRITE-ALL
+   LIST$ BOUNDARY-OFF$ FS:WRITE-ALL
    [: ;] BOUNDARY-LIST-RUN s" :2:3:" BOUNDARY-PROSE$ EXPECT-BOUNDARY
    [: s" all-errors" OPT ;] BOUNDARY-LIST-RUN s" :2:3:" BOUNDARY-PROSE$ EXPECT-BOUNDARY
    [: s" json-errors" OPT ;] BOUNDARY-LIST-RUN
    {: outu:n erru:n rc:n :}
    outu erru rc BOUNDARY-JSON$ EXPECT-BOUNDARY
    CAP-ERR erru s\" \"code\":\"E-UNCHECKED-DEFINITION\"" CONTAINS? TTRUE
-   SUP$ s\" 0 set-check\n" WRITE-ALL
-   LIST$ s\" : CKT-BX ( -- n ) 1 ;\n" WRITE-ALL
+   SUP$ s\" 0 set-check\n" FS:WRITE-ALL
+   LIST$ s\" : CKT-BX ( -- n ) 1 ;\n" FS:WRITE-ALL
    [: SUP$ FILE ;] BOUNDARY-LIST-RUN
    {: outu:n erru:n rc:n :}
    outu erru rc s" :1:3:" BOUNDARY-PROSE$ EXPECT-BOUNDARY
    CAP-ERR erru BOUNDARY-MUTATION$ CONTAINS? TTRUE
-   LIST$ GOOD$ WRITE-ALL
+   LIST$ GOOD$ FS:WRITE-ALL
    [: s" src/habu/prims.f" FILE ;] BOUNDARY-LIST-RUN 0 T=
    {: outu:n erru:n :}
    outu 0 T=
@@ -1833,7 +1833,7 @@ variable LONG-J
    SB$ ;
 
 : RESERVED-LIST-TEST ( -- )
-   LIST$ RESERVED$ WRITE-ALL
+   LIST$ RESERVED$ FS:WRITE-ALL
    LIST$ LIST-RUN 1 T=
    {: outu:n erru:n :}
    outu 0 T=
@@ -1936,20 +1936,20 @@ variable LONG-J
    CHECK-CAPTURE ENGINE-PROSE$ EXPECT-ENGINE-REFUSAL
    ENGINE-SRC$ s" ./src/core/type-schema.f"
    CLI-ALL-LIST EXPECT-PROVIDED-PAIR
-   LIST$ GOOD$ WRITE-ALL
+   LIST$ GOOD$ FS:WRITE-ALL
    s" src/core/type-schema.f" LIST$ CLI-ALL-LIST 0 T=
    {: outu:n erru:n :}
    outu 0 T= erru 0 T=
    \ Nor is it linted: src/core/include.f defines the loaders the lint reserves.
    s" src/core/include.f" LIST$ CLI-ALL-LIST EXPECT-CHECKED
-   LIST$ UNDEFINED$SRC WRITE-ALL
+   LIST$ UNDEFINED$SRC FS:WRITE-ALL
    s" src/core/type-schema.f" LIST$ CLI-ALL-LIST 70 T=
    {: outu:n erru:n :}
    outu 0 T=
    CAP-ERR erru s" E-UNDEFINED" CONTAINS? TTRUE ;
 
 : PREVERIFY-DIAG-TEST ( -- )
-   LIST$ UNDEFINED$SRC WRITE-ALL
+   LIST$ UNDEFINED$SRC FS:WRITE-ALL
    LIST$ LIST-RUN 70 T=
    {: outu:n erru:n :}
    outu 0 T=
@@ -2132,7 +2132,7 @@ variable LONG-J
    path cap FILE ;
 
 : OVERCAP-PATH ( -- )
-   FS-PATH-CAP 1+ dup MEM:BYTES-ALLOC-LEN
+   PATH-CAP 1+ dup MEM:BYTES-ALLOC-LEN
    [: OVERCAP-PATH-BODY ;] MEM:WITH-BYTES ;
 
 : OVERCAP-LABEL-BODY ( n ptr u8 NUM:alloc-byte-len -- )
@@ -2140,7 +2140,7 @@ variable LONG-J
    s" " label cap SOURCE ;
 
 : OVERCAP-LABEL ( -- )
-   FS-PATH-CAP 1+ dup MEM:BYTES-ALLOC-LEN
+   PATH-CAP 1+ dup MEM:BYTES-ALLOC-LEN
    [: OVERCAP-LABEL-BODY ;] MEM:WITH-BYTES ;
 
 : TEST-SELECTION-CAPACITY ( -- )
@@ -2159,8 +2159,8 @@ variable LONG-J
 
 $180000 constant BIG-SOURCE-LEN
 
-create SCRATCH-PATH FS-PATH-CAP allot
-create SIZED-PATH FS-PATH-CAP allot
+create SCRATCH-PATH PATH-CAP allot
+create SIZED-PATH PATH-CAP allot
 variable SCRATCH-U
 variable SIZED-U
 
@@ -2175,7 +2175,7 @@ variable SIZED-U
 
 \ rmdir removes only an empty directory.
 : SCRATCH-EMPTY ( -- )
-   [: SCRATCH$ REMOVE-DIR ;] catch 0 T= ;
+   [: SCRATCH$ FS:REMOVE-DIR ;] catch 0 T= ;
 
 : SCRATCH-ENV ( -- )
    PROC-ENV-RESET
@@ -2195,8 +2195,8 @@ variable SIZED-U
 \ captured into the given buffer.
 : SCRATCH-MODE-RUN ( ptr u8 n n ptr u8 n -- n n n )
    {: src:ptr srcu:n mode:n err:ptr errcap:n :}
-   ROOT$ s" sized-source.f" SIZED-PATH JOIN-PATH SIZED-U !
-   SIZED$ src srcu WRITE-ALL
+   ROOT$ s" sized-source.f" SIZED-PATH FS:JOIN-PATH SIZED-U !
+   SIZED$ src srcu FS:WRITE-ALL
    SCRATCH-MAKE
    CHECK-ARGV-START
    mode MODE-ARGS
@@ -2556,7 +2556,7 @@ TFAM:TF-NAME-MAX constant EFFECT-N
    RESET ;
 
 : MISSING-PATH! ( ptr u8 n -- )
-   ROOT$ 2swap MUT-PATH JOIN-PATH MUT-PATH-U ! ;
+   ROOT$ 2swap MUT-PATH FS:JOIN-PATH MUT-PATH-U ! ;
 
 : MISSING-FILE ( -- )
    s" missing-source.f" MISSING-PATH!
@@ -2590,25 +2590,25 @@ TFAM:TF-NAME-MAX constant EFFECT-N
    RESET ;
 
 : TEST-REPEAT-FILE ( -- )
-   BAD$ BAD$SRC WRITE-ALL
+   BAD$ BAD$SRC FS:WRITE-ALL
    RESET
    BAD-FILE
    RUN 70 T=
-   BAD$ GOOD$ WRITE-ALL
+   BAD$ GOOD$ FS:WRITE-ALL
    RUN 0 T=
    RESET
-   BAD$ BAD$SRC WRITE-ALL ;
+   BAD$ BAD$SRC FS:WRITE-ALL ;
 
 : TEST-REPEAT-LIST ( -- )
-   BAD$ BAD$SRC WRITE-ALL
+   BAD$ BAD$SRC FS:WRITE-ALL
    RESET
    LIST-OPT
    BAD-FILE
    RUN 70 T=
-   BAD$ GOOD$ WRITE-ALL
+   BAD$ GOOD$ FS:WRITE-ALL
    RUN 0 T=
    RESET
-   BAD$ BAD$SRC WRITE-ALL ;
+   BAD$ BAD$SRC FS:WRITE-ALL ;
 
 
 \ C2: a declaration body over TDECL-CAP ($1000) must report the same
@@ -2803,7 +2803,7 @@ create BIG $2000 allot   variable BIG-U
 \ inherit whatever input this test process happens to have makes the case block
 \ until the capture timeout whenever that stream stays open.
 : ENUM-CLI-RUN ( -- n n n )
-   BAD$ ENUM-NOEND$ WRITE-ALL
+   BAD$ ENUM-NOEND$ FS:WRITE-ALL
    PROC-ARGV-RESET
    s" tools/check.f" >LEN PROC-ARGV+
    BAD$ >LEN PROC-ARGV+
@@ -3577,8 +3577,8 @@ TYPED-VARIABLE CT-ROW SPAN:span<u8>
    SB$ ;
 
 : TEST-INCLUDED-DEP ( -- )
-   INC-DEP$ s\" : CKT-EIGHT ( -- n ) 8 ;\n" WRITE-ALL
-   INC-ENTRY$ INC-ENTRY-SRC$ WRITE-ALL
+   INC-DEP$ s\" : CKT-EIGHT ( -- n ) 8 ;\n" FS:WRITE-ALL
+   INC-ENTRY$ INC-ENTRY-SRC$ FS:WRITE-ALL
    INC-ENTRY$ PATH-RUN 0 T=
    {: outu:n erru:n :}
    outu 0 T=
@@ -3611,10 +3611,10 @@ TYPED-VARIABLE CT-ROW SPAN:span<u8>
    SB$ ;
 
 : CYC-RUN ( ptr u8 n -- n n n ) {: def:ptr defu:n :}
-   CYC-ROOT$ CYC-ROOT-SRC$ WRITE-ALL
-   CYC-HOST$ def defu CYC-HOST-SRC$ WRITE-ALL
+   CYC-ROOT$ CYC-ROOT-SRC$ FS:WRITE-ALL
+   CYC-HOST$ def defu CYC-HOST-SRC$ FS:WRITE-ALL
    SB-RESET CYC-ROOT$ SB-REQUIRED
-   CYC-ENTRY$ SB$ WRITE-ALL
+   CYC-ENTRY$ SB$ FS:WRITE-ALL
    CYC-ENTRY$ PATH-RUN ;
 
 : TEST-REQUIRE-CYCLE ( -- )
@@ -3859,11 +3859,11 @@ TYPED-VARIABLE CT-ROW SPAN:span<u8>
 \ subject's text from a temporary file, where a path relative to the subject's
 \ directory does not resolve.
 
-create REQ-PATH FS-PATH-CAP allot
+create REQ-PATH PATH-CAP allot
 variable REQ-U
 
 : REQ$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}   \ a fixture in the test root
-   ROOT$ a u REQ-PATH JOIN-PATH REQ-U !
+   ROOT$ a u REQ-PATH FS:JOIN-PATH REQ-U !
    REQ-PATH REQ-U @ ;
 
 : REQ-LINE+ ( ptr u8 n -- )
@@ -3879,7 +3879,7 @@ variable REQ-U
    REQ-LIT+ s"  required" REQ-LINE+ ;
 
 : REQ-WRITE ( ptr u8 n -- )   \ the built text becomes the named fixture
-   REQ$ SB$ WRITE-ALL ;
+   REQ$ SB$ FS:WRITE-ALL ;
 
 : REQ-RUN ( ptr u8 n -- n n n )
    REQ$ PATH-RUN ;
@@ -4254,8 +4254,8 @@ variable REQ-U
 \ and fails as a refusal; a source that requires the file reports it there. The
 \ record's token is the opener as written, so an escaped opener spans 3 bytes.
 : UT-FILES ( -- )
-   s" ckt-ut.f" REQ$ UNTERM-SDQ$ WRITE-ALL
-   s" ckt-ut-esc.f" REQ$ UNTERM-ESC$ WRITE-ALL
+   s" ckt-ut.f" REQ$ UNTERM-SDQ$ FS:WRITE-ALL
+   s" ckt-ut-esc.f" REQ$ UNTERM-ESC$ FS:WRITE-ALL
    SB-RESET s" ckt-ut.f" REQ-LOAD+
    s" ckt-ut-req.f" REQ-WRITE ;
 
@@ -4323,7 +4323,7 @@ variable REQ-U
    SB-RESET s" \ unread" REQ-LINE+ s" require ckt-cl-locked.f" REQ-LINE+
    s" ckt-cl-unread.f" REQ-WRITE
    SB-RESET s" \ locked" REQ-LINE+ s" ckt-cl-locked.f" REQ-WRITE
-   s" ckt-cl-locked.f" REQ$ 0 CHMOD-MODE
+   s" ckt-cl-locked.f" REQ$ 0 FS:CHMOD-MODE
    SB-RESET CL-LONG+ s" ckt-cl-long.f" REQ-WRITE ;
 
 : CL-LOST-CODE$ ( -- ptr u8 n )
@@ -4390,7 +4390,7 @@ variable REQ-U
 : CLB-WRITE ( ptr u8 n ptr u8 n -- )   \ `" required` and TAIL, then the named fixture
    {: tail:ptr tailu:n :}
    $22 BIG-C, s"  required" BIG-APP tail tailu BIG-APP $0a BIG-C,
-   REQ$ BIG BIG-U @ WRITE-ALL ;
+   REQ$ BIG BIG-U @ FS:WRITE-ALL ;
 
 \ 1017 `./` and the 14 bytes of ckt-cl-under.f are 2048 bytes.
 : CLB-FILES ( -- )
@@ -4524,7 +4524,7 @@ variable REQ-U
    CAP-OUT outu s" ordinary stderr" CONTAINS? TTRUE ;
 
 : TEST-SUCCESS-STDERR ( -- )
-   s" ckt-noise.f" REQ$ NOISE$ WRITE-ALL
+   s" ckt-noise.f" REQ$ NOISE$ FS:WRITE-ALL
    s" ckt-noise.f" ST-JSON-RUN EXPECT-NOISE-OUT
    s" ckt-noise.f" REQ-PLAIN-RUN EXPECT-NOISE-OUT ;
 
@@ -4544,12 +4544,12 @@ variable REQ-U
    {: h:n :}
    CL-LEAVES 0 ?do
       SB-RESET h i CL-LEAF+ s" .f" SB-APPEND
-      SB$ REQ$ s\" \\ one of many\n" WRITE-ALL
+      SB$ REQ$ s\" \\ one of many\n" FS:WRITE-ALL
    loop
    SB-RESET h CL-HUB+ s" .f" SB-APPEND SB$ REQ$ {: path:ptr pathu:n :}
    SB-RESET
    CL-LEAVES 0 ?do s" require " SB-APPEND h i CL-LEAF+ s" .f" REQ-LINE+ loop
-   path pathu SB$ WRITE-ALL ;
+   path pathu SB$ FS:WRITE-ALL ;
 
 : CL-WIDE-FILES ( -- )
    CL-HUBS 0 ?do i CL-HUB-FILES loop
@@ -4582,7 +4582,7 @@ variable REQ-U
 
 : LEXD-REFUSED ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n code:ptr codeu:n at:ptr atu:n place:ptr placeu:n :}
-   LEXD-FILE$ src srcu WRITE-ALL
+   LEXD-FILE$ src srcu FS:WRITE-ALL
    src srcu DIRECT-STDIN REFUSED-LINE {: e1:n :}
    SB-RESET code codeu SB-APPEND s"  <stdin>" SB-APPEND at atu SB-APPEND
    CAP-ERR e1 SB$ STARTS-WITH? TTRUE
@@ -4620,7 +4620,7 @@ variable REQ-U
 \ JSON.
 : NEST-FILE ( ptr u8 n ptr u8 n -- )
    {: f:ptr fu:n txt:ptr txtu:n :}
-   f fu REQ$ txt txtu WRITE-ALL ;
+   f fu REQ$ txt txtu FS:WRITE-ALL ;
 
 : NEST-SRC$ ( ptr u8 n -- ptr u8 n )
    {: f:ptr fu:n :}
@@ -4825,7 +4825,7 @@ variable SS-OUT-U
 create SS-ERR BUF-CAP allot
 variable SS-ERR-U
 variable SS-RC
-create SS-NEST FS-PATH-CAP 8 + allot          \ `require ` and the file's path
+create SS-NEST PATH-CAP 8 + allot          \ `require ` and the file's path
 variable SS-NEST-U
 
 : SS-KEEP ( n n n -- )
@@ -5182,7 +5182,7 @@ variable SS-NEST-U
 \ The long source as the fixture named f, checked with --json-errors.
 : CAPN-RUN ( ptr u8 n -- n n n )
    {: f:ptr fu:n :}
-   f fu REQ$ LONG-BUF LONG-U @ WRITE-ALL
+   f fu REQ$ LONG-BUF LONG-U @ FS:WRITE-ALL
    f fu ST-JSON-RUN ;
 
 \ The declaration in fixture f is refused at its long name: the packet names
@@ -5379,7 +5379,7 @@ variable SS-NEST-U
 \ Under --all-errors CKT-WJ is refused for leaving its 256 inputs, and the
 \ check goes on past it to certify CKT-WK.
 : CAPN-WIDE-REJECTED ( -- )
-   s" capn-width-reject.f" REQ$ LONG-BUF LONG-U @ WRITE-ALL
+   s" capn-width-reject.f" REQ$ LONG-BUF LONG-U @ FS:WRITE-ALL
    s" capn-width-reject.f" REQ-PLAIN-RUN {: outu:n erru:n rc:n :}
    rc 70 T=
    CAP-ERR erru s\" \"word\":\"ckt-wj\"" CONTAINS? TTRUE
@@ -5771,8 +5771,8 @@ variable SS-NEST-U
 \ path (the pre-redrive materialized temp had zero defs, so all-errors was a
 \ no-op and only preverify's first error surfaced).
 : LIST-ALL-TEST ( -- )
-   SUP$ s\" : CKT-SEVEN ( -- n ) 7 ;\n" WRITE-ALL
-   USE$ s\" : CKT-GOOD-USE ( -- n ) CKT-SEVEN ;\n: CKT-BAD-ONE ( -- n n ) CKT-SEVEN ;\n: CKT-BAD-TWO ( n -- ) CKT-SEVEN ;\n" WRITE-ALL
+   SUP$ s\" : CKT-SEVEN ( -- n ) 7 ;\n" FS:WRITE-ALL
+   USE$ s\" : CKT-GOOD-USE ( -- n ) CKT-SEVEN ;\n: CKT-BAD-ONE ( -- n n ) CKT-SEVEN ;\n: CKT-BAD-TWO ( n -- ) CKT-SEVEN ;\n" FS:WRITE-ALL
    SUP$ USE$ CLI-ALL-LIST 70 T=
    {: outu:n erru:n :}
    outu 0 T=
@@ -6026,9 +6026,9 @@ POISON-RECORD
 \ as a server loads its checker from the engine's tree with the editor's
 \ directory current.
 
-create LC-PATH FS-PATH-CAP allot
-create LC-ROOT FS-PATH-CAP allot
-create LC-OTHER FS-PATH-CAP allot
+create LC-PATH PATH-CAP allot
+create LC-ROOT PATH-CAP allot
+create LC-OTHER PATH-CAP allot
 variable LC-PATH-U
 variable LC-ROOT-U
 variable LC-OTHER-U
@@ -6040,22 +6040,22 @@ variable LC-OTHER-U
    LC-ROOT LC-ROOT-U @ ;
 
 : LC-AT ( ptr u8 n -- ptr u8 n )
-   ROOT$ 2swap LC-PATH JOIN-PATH LC-PATH-U !
+   ROOT$ 2swap LC-PATH FS:JOIN-PATH LC-PATH-U !
    LC-PATH$ ;
 
 : LC-IN-ROOT ( ptr u8 n -- ptr u8 n )
-   LC-ROOT$ 2swap LC-PATH JOIN-PATH LC-PATH-U !
+   LC-ROOT$ 2swap LC-PATH FS:JOIN-PATH LC-PATH-U !
    LC-PATH$ ;
 
 : LC-OTHER$ ( -- ptr u8 n )
    LC-OTHER LC-OTHER-U @ ;
 
 : LC-IN-OTHER ( ptr u8 n -- ptr u8 n )
-   LC-OTHER$ 2swap LC-PATH JOIN-PATH LC-PATH-U !
+   LC-OTHER$ 2swap LC-PATH FS:JOIN-PATH LC-PATH-U !
    LC-PATH$ ;
 
 : LC-WRITE ( ptr u8 n ptr u8 n -- ) {: name:ptr nameu:n src:ptr srcu:n :}
-   name nameu LC-AT src srcu WRITE-ALL ;
+   name nameu LC-AT src srcu FS:WRITE-ALL ;
 
 : LC-DEP$SRC ( -- ptr u8 n )
    s\" : CKT-LC-SEVEN ( -- n ) 7 ;\n" ;
@@ -6132,42 +6132,42 @@ variable LC-OTHER-U
    s" lc-type-use.f" LC-TYPE-USE$SRC LC-WRITE
    LC-QUOTE$ LC-UNTERM$SRC LC-WRITE
    LC-BACK$ LC-UNTERM$SRC LC-WRITE
-   LC-QUOTE$ LC-QLINK$ LC-AT MAKE-SYMLINK
-   s" lc-bad-dep.f" LC-BLINK$ LC-AT MAKE-SYMLINK ;
+   LC-QUOTE$ LC-QLINK$ LC-AT FS:MAKE-SYMLINK
+   s" lc-bad-dep.f" LC-BLINK$ LC-AT FS:MAKE-SYMLINK ;
 
 \ Links ROOT/NAME to this tree's NAME.
 : LC-LINK ( ptr u8 n ptr u8 n -- )
    {: name:ptr nameu:n root:ptr rootu:n :}
    name nameu CLI-TARGET CLI-TARGET-U CLI-ABS!
-   root rootu name nameu LC-PATH JOIN-PATH LC-PATH-U !
-   CLI-TARGET CLI-TARGET-U @ LC-PATH$ MAKE-SYMLINK ;
+   root rootu name nameu LC-PATH FS:JOIN-PATH LC-PATH-U !
+   CLI-TARGET CLI-TARGET-U @ LC-PATH$ FS:MAKE-SYMLINK ;
 
 \ No file in this root requires an engine-provided file, and none may: through
 \ the links, a subject that requires one (`src/lib/string.f`) is refused with an
 \ E-BAD-DECLARATION "duplicate family" whose file is `<input>`, a fault of
 \ checking in a linked root that predates the load-context replay.
 : LC-ROOT-SETUP ( -- )
-   ROOT$ s" lc-root" LC-ROOT JOIN-PATH LC-ROOT-U !
-   LC-ROOT$ MAKE-DIR
+   ROOT$ s" lc-root" LC-ROOT FS:JOIN-PATH LC-ROOT-U !
+   LC-ROOT$ FS:MAKE-DIR
    s" tools" LC-ROOT$ LC-LINK
    s" src" LC-ROOT$ LC-LINK
-   s" bin" LC-IN-ROOT MAKE-DIR
-   s" bin/hb" LC-IN-ROOT s\" #!/bin/sh\nexit 97\n" WRITE-ALL
-   s" bin/hb" LC-IN-ROOT CHMOD-X
-   s" sub" LC-IN-ROOT MAKE-DIR
-   s" sub/lc-dep.f" LC-IN-ROOT LC-DEP$SRC WRITE-ALL
-   s" sub/lc-use.f" LC-IN-ROOT LC-USE$SRC WRITE-ALL
-   s" lc-check.f" LC-IN-ROOT s\" require tools/check.f\n" WRITE-ALL ;
+   s" bin" LC-IN-ROOT FS:MAKE-DIR
+   s" bin/hb" LC-IN-ROOT s\" #!/bin/sh\nexit 97\n" FS:WRITE-ALL
+   s" bin/hb" LC-IN-ROOT FS:CHMOD-X
+   s" sub" LC-IN-ROOT FS:MAKE-DIR
+   s" sub/lc-dep.f" LC-IN-ROOT LC-DEP$SRC FS:WRITE-ALL
+   s" sub/lc-use.f" LC-IN-ROOT LC-USE$SRC FS:WRITE-ALL
+   s" lc-check.f" LC-IN-ROOT s\" require tools/check.f\n" FS:WRITE-ALL ;
 
 : LC-OTHER-SETUP ( -- )
-   ROOT$ s" lc-other" LC-OTHER JOIN-PATH LC-OTHER-U !
-   LC-OTHER$ MAKE-DIR
+   ROOT$ s" lc-other" LC-OTHER FS:JOIN-PATH LC-OTHER-U !
+   LC-OTHER$ FS:MAKE-DIR
    s" src" LC-OTHER$ LC-LINK
-   s" bin" LC-IN-OTHER MAKE-DIR
-   CLI-HB$ s" bin/hb" LC-IN-OTHER MAKE-SYMLINK
-   s" tools" LC-IN-OTHER MAKE-DIR
+   s" bin" LC-IN-OTHER FS:MAKE-DIR
+   CLI-HB$ s" bin/hb" LC-IN-OTHER FS:MAKE-SYMLINK
+   s" tools" LC-IN-OTHER FS:MAKE-DIR
    s" tools/check-verify-child.f" LC-IN-OTHER
-   s\" s\" check-verify-child: stub\" 98 die\n" WRITE-ALL ;
+   s\" s\" check-verify-child: stub\" 98 die\n" FS:WRITE-ALL ;
 
 \ PROGRAM runs in the given directory with the environment the caller set,
 \ completed from this process's.
@@ -6246,7 +6246,7 @@ variable LC-POS
       then
    repeat CT-NONE ;
 
-create LC-CANON FS-PATHZ-CAP allot
+create LC-CANON FS:PATHZ-CAP allot
 variable LC-CANON-U
 
 \ A JSON packet names the file at PATH by its canonical absolute path.
@@ -6349,7 +6349,7 @@ variable LC-CANON-U
    s" sub/lc-use.f" CHECK-ARG+
    LC-NOT-ENGINE$ s" load-context: --json-errors --verify-only's engine refused" LC-REFUSED-ENGINE-JSON ;
 
-FS-PATH-CAP 1+ constant LC-LONG-U
+PATH-CAP 1+ constant LC-LONG-U
 create LC-LONG-ENGINE LC-LONG-U allot
 
 \ A selection one byte longer than a path the file system takes, which it
@@ -6389,8 +6389,8 @@ create LC-LONG-ENGINE LC-LONG-U allot
    label labelu T-LABEL CAP-OUT outu s" usable executable" CONTAINS? TFALSE ;
 
 : LC-LOCKED-SETUP ( -- )
-   s" sub/lc-locked.f" LC-IN-ROOT s\" : LC-LOCKED ( -- n ) 8 ;\n" WRITE-ALL
-   s" sub/lc-locked.f" LC-IN-ROOT 0 CHMOD-MODE ;
+   s" sub/lc-locked.f" LC-IN-ROOT s\" : LC-LOCKED ( -- n ) 8 ;\n" FS:WRITE-ALL
+   s" sub/lc-locked.f" LC-IN-ROOT 0 FS:CHMOD-MODE ;
 
 : LC-UNREAD-CASE ( -- )
    LC-LOCKED-SETUP
@@ -6463,8 +6463,8 @@ $140 constant LC-MODE-0500   \ a directory its owner may list and enter, not wri
    LC-ROOT$ LC-ENV-CAPTURE E-FS-IO label labelu LC-SCRATCH-EXPECT ;
 
 : LC-RO-TMP-CASE ( -- )
-   LC-RO-TMP$ MAKE-DIR
-   LC-RO-TMP$ LC-MODE-0500 CHMOD-MODE
+   LC-RO-TMP$ FS:MAKE-DIR
+   LC-RO-TMP$ LC-MODE-0500 FS:CHMOD-MODE
    CHECK-ARGV-START
    s" --json-errors" CHECK-ARG+
    s" sub/lc-use.f" CHECK-ARG+
@@ -6582,12 +6582,12 @@ $140 constant LC-MODE-0500   \ a directory its owner may list and enter, not wri
    erru s" code" s" E-BAD-DECLARATION" LC-PACKET s" file" LC-STRING$
    s" lc-decl.f" LC-AT s" load-context: refused declaration, file" LC-EXPECT-FILE ;
 
-FS-PATH-CAP 2 * constant LC-TYPE-CAP     \ a loader line of the longest path, and the rest
+PATH-CAP 2 * constant LC-TYPE-CAP     \ a loader line of the longest path, and the rest
 create LC-TYPE-BUF LC-TYPE-CAP allot
 
 \ lc-type-use.f's bytes, for the checks that take a source as bytes.
 : LC-TYPE-BYTES ( -- ptr u8 n )
-   s" lc-type-use.f" LC-AT LC-TYPE-BUF LC-TYPE-CAP READ-ALL {: u:n :}
+   s" lc-type-use.f" LC-AT LC-TYPE-BUF LC-TYPE-CAP FS:READ-ALL {: u:n :}
    LC-TYPE-BUF u ;
 
 \ Every pass after the closure walk visits the files it found, so a type a
@@ -6686,7 +6686,7 @@ create LC-TYPE-BUF LC-TYPE-CAP allot
 \ as it is named, and the resolver never sees it.
 : LC-LONG$ ( -- ptr u8 n )
    SB-RESET
-   FS-PATH-CAP 2 - 0 ?do $61 SB-APPEND-C loop
+   PATH-CAP 2 - 0 ?do $61 SB-APPEND-C loop
    s" .f" SB-APPEND SB$ ;
 
 : LC-LONG-LIST-CASE ( -- )
@@ -6721,7 +6721,7 @@ create LC-TYPE-BUF LC-TYPE-CAP allot
 \ names the file.
 : LC-NAMED-CASE ( ptr u8 n n ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n rc:n code:ptr codeu:n label:ptr labelu:n :}
-   LC-NAMED$ LC-IN-ROOT src srcu WRITE-ALL
+   LC-NAMED$ LC-IN-ROOT src srcu FS:WRITE-ALL
    LC-ARGV-ALL
    LC-NAMED$ CHECK-ARG+
    LC-ROOT$ LC-CAPTURE
@@ -7318,8 +7318,8 @@ create LC-TYPE-BUF LC-TYPE-CAP allot
 : TEST-GENR-CLOSURE ( -- )
    GENR-PRELUDE
    s\" generates: CKT-GMAKE ( -- n )\n" SB-APPEND
-   SUP$ SB$ WRITE-ALL
-   USE$ s\" 7 CKT-GMAKE CKT-GSEVEN\n: CKT-GUSE ( -- n ) CKT-GSEVEN ;\n" WRITE-ALL
+   SUP$ SB$ FS:WRITE-ALL
+   USE$ s\" 7 CKT-GMAKE CKT-GSEVEN\n: CKT-GUSE ( -- n ) CKT-GSEVEN ;\n" FS:WRITE-ALL
    SUP$ USE$ CLI-ALL-LIST 0 T=
    {: outu:n erru:n :}
    outu 0 T=
@@ -7534,7 +7534,7 @@ create LC-TYPE-BUF LC-TYPE-CAP allot
    s" check/generates-effect-lines" [: TEST-GENR-EFFECT-LINES ;] CASE-RUN
    s" check/generates-comment-name" [: TEST-GENR-COMMENT-NAME ;] CASE-RUN
    s" check/generates-long-effect" [: TEST-GENR-LONG-EFFECT ;] CASE-RUN
-   CLEANUP-RUN
+   FS:CLEANUP-RUN
    T-REPORT
    s" check-test: ok" type cr ;
 

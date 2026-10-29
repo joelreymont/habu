@@ -37,8 +37,8 @@ private
 $4000 constant IO-CAP
 \ Guards against a hung child, not budgets: the host runs loaded.
 120000 constant TIMEOUT-MS
-create ROOT FS-PATH-CAP allot variable ROOT-U
-create PATH FS-PATH-CAP allot
+create ROOT PATH-CAP allot variable ROOT-U
+create PATH PATH-CAP allot
 create PROG IO-CAP allot variable PROG-U
 create OUT IO-CAP allot variable OUT-U
 create ERR IO-CAP allot variable ERR-U
@@ -51,14 +51,14 @@ variable RC
 \ <root>/<rel>, until the next call.
 : AT ( ptr u8 n -- ptr u8 n )
    {: rel:ptr relu:n :}
-   ROOT$ rel relu PATH JOIN-PATH {: u:n :}
+   ROOT$ rel relu PATH FS:JOIN-PATH {: u:n :}
    PATH u ;
 
 : SETUP ( -- )
    s" habu-include-refusal" FS:MKTEMP-DIR CANONICAL TTRUE {: a:ptr u:n :}
    a ROOT u BYTE-COPY u ROOT-U !
-   s" cases" AT MAKE-DIR
-   s" plain.f" AT s" \ a file, not a directory" WRITE-ALL ;
+   s" cases" AT FS:MAKE-DIR
+   s" plain.f" AT s" \ a file, not a directory" FS:WRITE-ALL ;
 
 \ The child's program, built a piece at a time.
 : PROG+ ( ptr u8 n -- )
@@ -85,13 +85,13 @@ variable RC
 \ The child's streams, beside its program.
 : KEEP ( ptr u8 n -- )
    {: name:ptr nameu:n :}
-   name nameu s" .out" NAMED OUT OUT-U @ WRITE-ALL
-   name nameu s" .err" NAMED ERR$ WRITE-ALL ;
+   name nameu s" .out" NAMED OUT OUT-U @ FS:WRITE-ALL
+   name nameu s" .err" NAMED ERR$ FS:WRITE-ALL ;
 
 \ The engine under test runs the program as <root>/cases/<name>.f with --load.
 : LOAD-CASE ( ptr u8 n -- )
    {: name:ptr nameu:n :}
-   name nameu s" .f" NAMED PROG$ WRITE-ALL
+   name nameu s" .f" NAMED PROG$ FS:WRITE-ALL
    PROC-CWD:ARGV-ENV-CWD-RESET
    s" --load" >LEN PROC-ARGV+
    name nameu s" .f" NAMED >LEN PROC-ARGV+
@@ -183,7 +183,7 @@ variable RC
    S\" \q [: 0 SCRIPT-ARGV$ APP-IMAGE:SAVE ;] SOURCE-ROOT:WITH ;" PLINE
    s" ;package" PLINE
    s" INCLUDE-REFUSAL-SAVE:RUN" PLINE
-   s" save-in-with" s" .f" NAMED PROG$ WRITE-ALL
+   s" save-in-with" s" .f" NAMED PROG$ FS:WRITE-ALL
    PROC-CWD:ARGV-ENV-CWD-RESET
    s" --" >LEN PROC-ARGV+
    s" image" AT >LEN PROC-ARGV+
@@ -196,7 +196,7 @@ variable RC
    EXITS-74
    ERR$ S\" source root: an image cannot be saved inside a root scope\n" T$=
    s" and writes no image" T-LABEL
-   s" image" AT EXISTS? TFALSE ;
+   s" image" AT FS:EXISTS? TFALSE ;
 
 public
 

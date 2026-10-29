@@ -7,13 +7,14 @@ require src/lib/test.f
 require src/lib/memory.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
+require src/lib/fmt.f
 require src/lib/process.f
 require src/lib/build.f
 
 \ Reopen the module for BUILD-EXPECT and the package-local public builders.
 package BUILD
 
-create BUILD-TEST-PATH FS-PATH-CAP allot
+create BUILD-TEST-PATH PATH-CAP allot
 
 variable BT-ROOT-U
 variable BT-SRC-U
@@ -27,22 +28,22 @@ variable BT-TOP-DIE-SRC-U
 variable BT-BIG-SRC-U
 variable BT-BIG-BAD-SRC-U
 
-create BT-ROOT-BUF FS-PATH-CAP allot
-create BT-SRC-BUF FS-PATH-CAP allot
-create BT-MISSING-BUF FS-PATH-CAP allot
-create BT-CMD-OK-BUF FS-PATH-CAP allot
-create BT-CMD-NOART-BUF FS-PATH-CAP allot
-create BT-CMD-FAIL-BUF FS-PATH-CAP allot
-create BT-BAD-SRC-BUF FS-PATH-CAP allot
-create BT-UNCHECKABLE-SRC-BUF FS-PATH-CAP allot
-create BT-TOP-DIE-SRC-BUF FS-PATH-CAP allot
-create BT-BIG-SRC-BUF FS-PATH-CAP allot
-create BT-BIG-BAD-SRC-BUF FS-PATH-CAP allot
+create BT-ROOT-BUF PATH-CAP allot
+create BT-SRC-BUF PATH-CAP allot
+create BT-MISSING-BUF PATH-CAP allot
+create BT-CMD-OK-BUF PATH-CAP allot
+create BT-CMD-NOART-BUF PATH-CAP allot
+create BT-CMD-FAIL-BUF PATH-CAP allot
+create BT-BAD-SRC-BUF PATH-CAP allot
+create BT-UNCHECKABLE-SRC-BUF PATH-CAP allot
+create BT-TOP-DIE-SRC-BUF PATH-CAP allot
+create BT-BIG-SRC-BUF PATH-CAP allot
+create BT-BIG-BAD-SRC-BUF PATH-CAP allot
 
 \ CHECK reads a source of any size: 70000 leading spaces put the definition past
 \ the 64 KiB a fixed source buffer would hold.
 70000 constant BT-BIG-PAD
-BT-BIG-PAD FS-PATH-CAP + constant BT-BIG-CAP
+BT-BIG-PAD PATH-CAP + constant BT-BIG-CAP
 create BT-BIG-TEXT BT-BIG-CAP allot
 
 : BT-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr lenp:ptr :}
@@ -50,7 +51,7 @@ create BT-BIG-TEXT BT-BIG-CAP allot
    u lenp ! ;
 
 : BT-PATH! ( ptr u8 n ptr u8 n ptr u8 ptr n -- ) {: pa:ptr pu na:ptr nu dst:ptr lenp:ptr :}
-   pa pu na nu dst JOIN-PATH lenp ! ;
+   pa pu na nu dst FS:JOIN-PATH lenp ! ;
 
 : BT-ROOT ( -- ptr u8 n )
    BT-ROOT-BUF BT-ROOT-U @ ;
@@ -121,7 +122,7 @@ create BT-BIG-TEXT BT-BIG-CAP allot
 \ capacity and not by the shared string builder: the scratch root lives under
 \ TMPDIR, and the gate pool's 98-byte TMPDIR overflowed SB-CAP (E-STR-CAPACITY)
 \ where a 94-byte one fit. The 256 covers the script's fixed text.
-FS-PATH-CAP 7 * 256 + constant BT-SCRIPT-CAP
+PATH-CAP 7 * 256 + constant BT-SCRIPT-CAP
 create BT-SCRIPT-BUF BT-SCRIPT-CAP allot
 TYPED-VARIABLE BT-SCRIPT-LEN len
 
@@ -130,7 +131,7 @@ TYPED-VARIABLE BT-SCRIPT-LEN len
 
 : BT-SCRIPT-C, ( n -- )
    SB-RESET
-   FS-MUT-SB-U
+   FMT:SB-U
    s"  c, " SB-APPEND
    SB$ BT-SCRIPT+ ;
 
@@ -154,19 +155,19 @@ TYPED-VARIABLE BT-SCRIPT-LEN len
    BT-SCRIPT-BUF BT-SCRIPT-LEN BUF-LEN@ ;
 
 : BT-WRITE-FILE ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu src:ptr srcu :}
-   path pathu src srcu WRITE-ALL
-   path pathu CLEANUP+ ;
+   path pathu src srcu FS:WRITE-ALL
+   path pathu FS:CLEANUP+ ;
 
 : BT-WRITE-CMD ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu src:ptr srcu :}
    src srcu BT-SCRIPT$ {: code:ptr codeu :}
-   path pathu code codeu WRITE-ALL
-   path pathu CHMOD-X
-   path pathu CLEANUP+ ;
+   path pathu code codeu FS:WRITE-ALL
+   path pathu FS:CHMOD-X
+   path pathu FS:CLEANUP+ ;
 
 : BT-WRITE-CMD-OK ( -- )
-   BT-CMD-OK BT-OK-SCRIPT$ WRITE-ALL
-   BT-CMD-OK CHMOD-X
-   BT-CMD-OK CLEANUP+ ;
+   BT-CMD-OK BT-OK-SCRIPT$ FS:WRITE-ALL
+   BT-CMD-OK FS:CHMOD-X
+   BT-CMD-OK FS:CLEANUP+ ;
 
 : BT-WRITE-BIG ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu def:ptr defu :}
    BT-BIG-PAD 0 do 32 BT-BIG-TEXT i + c! loop
@@ -183,23 +184,23 @@ TYPED-VARIABLE BT-SCRIPT-LEN len
    BT-WRITE-CMD-OK
    BT-CMD-NOART s" : NOART ( -- ) ; NOART" BT-WRITE-CMD
    BT-CMD-FAIL s" NULL-PTR 0 7 die" BT-WRITE-CMD
-   BT-ART CLEANUP+
-   BT-NOART CLEANUP+ ;
+   BT-ART FS:CLEANUP+
+   BT-NOART FS:CLEANUP+ ;
 
 : BT-PREPARE ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    BT-ROOT!
-   BT-ROOT CLEANUP-DIR+
+   BT-ROOT FS:CLEANUP-DIR+
    BT-PATHS!
    BT-WRITE-FIXTURES ;
 
 : BT-CLEANUP ( -- )
-   CLEANUP-RUN
-   BT-ROOT EXISTS? TFALSE ;
+   FS:CLEANUP-RUN
+   BT-ROOT FS:EXISTS? TFALSE ;
 
 : BT-CHECK-ARTIFACT-PATH ( -- )
    BT-ROOT s" artifact.bin" ARTIFACT {: got:ptr gotu:n :}
-   BT-ROOT s" artifact.bin" BUILD-TEST-PATH JOIN-PATH {: wantu :}
+   BT-ROOT s" artifact.bin" BUILD-TEST-PATH FS:JOIN-PATH {: wantu :}
    got gotu BUILD-TEST-PATH wantu T$= ;
 
 : BT-OK-STEP ( -- n )
@@ -227,18 +228,18 @@ TYPED-VARIABLE BT-SCRIPT-LEN len
    BT-ROOT s" " ARTIFACT 2drop ;
 
 \ An artifact path is refused by its own rule when root, separator and name do
-\ not fit FS-PATH-CAP. The name is compared with the room the root leaves, so a
+\ not fit PATH-CAP. The name is compared with the room the root leaves, so a
 \ length near the maximum cell cannot wrap the sum back into range.
-create BT-LONG FS-PATH-CAP allot
+create BT-LONG PATH-CAP allot
 
 : BT-LONG! ( -- )
-   FS-PATH-CAP 0 ?do 122 BT-LONG i + c! loop ;
+   PATH-CAP 0 ?do 122 BT-LONG i + c! loop ;
 
 : BT-ARTIFACT-EXACT ( -- )
-   BT-ROOT BT-LONG FS-PATH-CAP 1- BT-ROOT-U @ - ARTIFACT nip FS-PATH-CAP T= ;
+   BT-ROOT BT-LONG PATH-CAP 1- BT-ROOT-U @ - ARTIFACT nip PATH-CAP T= ;
 
 : BT-ARTIFACT-PAST ( -- )
-   BT-ROOT BT-LONG FS-PATH-CAP BT-ROOT-U @ - ARTIFACT 2drop ;
+   BT-ROOT BT-LONG PATH-CAP BT-ROOT-U @ - ARTIFACT 2drop ;
 
 : BT-ARTIFACT-HUGE-NAME ( -- )
    BT-ROOT BT-LONG MEM-MAX-N ARTIFACT 2drop ;
@@ -285,7 +286,7 @@ create BT-LONG FS-PATH-CAP allot
 
 : BUILD-TEST-RUNS ( -- )
    BT-CMD-OK BT-ART RUN 0 T=
-   BT-ART FILE? TTRUE
+   BT-ART FS:FILE? TTRUE
    [: BT-MISSING-COMMAND ;] E-BUILD-COMMAND TTHROWSQ
    [: BT-NO-ARTIFACT ;] E-BUILD-PATH TTHROWSQ
    [: BT-FAIL-COMMAND ;] E-BUILD-STATUS TTHROWSQ ;

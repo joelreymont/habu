@@ -1121,9 +1121,9 @@ private
 \ The file at this path read into SRC, its length in SRC-U.
 : READ-SRC ( ptr u8 n -- ptr u8 n )
    {: path:ptr pathu:n :}
-   path pathu FILE-META {: size:n msec:n mns:n csec:n cns:n :}
+   path pathu FS:FILE-META {: size:n msec:n mns:n csec:n cns:n :}
    path pathu [: SRC-ROOM ;] SOURCE:READ-WHOLE-FILE SRC-U !
-   path pathu FILE-META {: after:n amsec:n amns:n acsec:n acns:n :}
+   path pathu FS:FILE-META {: after:n amsec:n amns:n acsec:n acns:n :}
    size after = msec amsec = and mns amns = and
    csec acsec = and cns acns = and 0= if VERIFY:E-SOURCE-READ throw then
    size SRC-SIZE ! msec SRC-MSEC ! mns SRC-MNS !

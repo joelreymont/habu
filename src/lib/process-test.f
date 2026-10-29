@@ -32,15 +32,15 @@ variable PT-FORK-CELL
 create PT-BUF 32 allot
 create PT-OUT 32 allot
 create PT-ERR 32 allot
-FS-PATH-CAP 1 + constant PT-PWD-CAP     \ a working directory and its line end
+PATH-CAP 1 + constant PT-PWD-CAP     \ a working directory and its line end
 create PT-PWD-OUT PT-PWD-CAP allot
-create PT-ROOT-BUF FS-PATH-CAP allot
-create PT-CAPTURE-OK-BUF FS-PATH-CAP allot
-create PT-CAPTURE-LONG-BUF FS-PATH-CAP allot
-create PT-CAPTURE-HANG-BUF FS-PATH-CAP allot
-create PT-CAPTURE-ERR-LONG-BUF FS-PATH-CAP allot
-create PT-CAPTURE-FALSE-BUF FS-PATH-CAP allot
-create PT-CAPTURE-EOF-BUF FS-PATH-CAP allot
+create PT-ROOT-BUF PATH-CAP allot
+create PT-CAPTURE-OK-BUF PATH-CAP allot
+create PT-CAPTURE-LONG-BUF PATH-CAP allot
+create PT-CAPTURE-HANG-BUF PATH-CAP allot
+create PT-CAPTURE-ERR-LONG-BUF PATH-CAP allot
+create PT-CAPTURE-FALSE-BUF PATH-CAP allot
+create PT-CAPTURE-EOF-BUF PATH-CAP allot
 4096 constant PT-CHUNK                   \ one PROC-STDIN-CHUNK-CAP write
 1024 constant PT-FILL-MAX                \ bounds the pipe fill at 4 MiB
 create PT-CHUNK-BUF PT-CHUNK allot
@@ -56,7 +56,7 @@ create PT-DRAIN-BUF PT-CHUNK allot
    u lenp ! ;
 
 : PT-PATH! ( ptr u8 n ptr u8 n ptr u8 ptr n -- ) {: pa:ptr pu na:ptr nu dst:ptr lenp:ptr :}
-   pa pu na nu dst JOIN-PATH lenp ! ;
+   pa pu na nu dst FS:JOIN-PATH lenp ! ;
 
 : PT-ROOT ( -- ptr u8 n )
    PT-ROOT-BUF PT-ROOT-U @ ;
@@ -98,8 +98,8 @@ create PT-DRAIN-BUF PT-CHUNK allot
    PT-ROOT s" capture-eof.f" PT-CAPTURE-EOF-BUF PT-CAPTURE-EOF-U PT-PATH! ;
 
 : PT-WRITE-SCRIPT ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu src:ptr srcu :}
-   path pathu src srcu WRITE-ALL
-   path pathu CLEANUP+ ;
+   path pathu src srcu FS:WRITE-ALL
+   path pathu FS:CLEANUP+ ;
 
 : PT-WRITE-SCRIPTS ( -- )
    PT-CAPTURE-OK s\" 111 emit 117 emit 116 emit create E 101 c, 114 c, 114 c, 2 E 3 write drop s\q \q 7 die" PT-WRITE-SCRIPT
@@ -110,15 +110,15 @@ create PT-DRAIN-BUF PT-CHUNK allot
    PT-CAPTURE-EOF s" 111 emit 107 emit 1 close 2 close : PT-WAIT ( -- ) mono-ns 1000000000 + begin dup mono-ns > while repeat drop ; PT-WAIT" PT-WRITE-SCRIPT ;
 
 : PT-PREPARE ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    PT-ROOT!
-   PT-ROOT CLEANUP-DIR+
+   PT-ROOT FS:CLEANUP-DIR+
    PT-PATHS!
    PT-WRITE-SCRIPTS ;
 
 : PT-CLEANUP ( -- )
-   CLEANUP-RUN
-   PT-ROOT EXISTS? TFALSE ;
+   FS:CLEANUP-RUN
+   PT-ROOT FS:EXISTS? TFALSE ;
 
 : PT-RUN-HB-SCRIPT ( ptr u8 n ptr u8 n ptr u8 n n -- n n n )
    {: script:ptr scriptu out:ptr outcap err:ptr errcap timeout :}

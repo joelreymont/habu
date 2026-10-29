@@ -12,10 +12,10 @@ $2E constant DOT-CHAR
 $63 constant C-LOWER-CHAR
 600 constant LONG-NAME-LEN
 
-create INC-CORE FS-PATH-CAP allot
-create INC-API FS-PATH-CAP allot
-create INC-MAIN FS-PATH-CAP allot
-create INC-DUP FS-PATH-CAP allot
+create INC-CORE PATH-CAP allot
+create INC-API PATH-CAP allot
+create INC-MAIN PATH-CAP allot
+create INC-DUP PATH-CAP allot
 
 variable INC-CORE-U
 variable INC-API-U
@@ -78,7 +78,7 @@ variable CANDIDATE-VERDICT
    INC-DUP INC-DUP-U @ ;
 
 : INC-PATH! ( ptr u8 n ptr u8 ptr n -- ) {: name:ptr nameu:n dst:ptr up:ptr :}
-   GT-ROOT name nameu dst JOIN-PATH up ! ;
+   GT-ROOT name nameu dst FS:JOIN-PATH up ! ;
 
 : INC-PATHS ( -- )
    s" app-core.f" INC-CORE INC-CORE-U INC-PATH!
@@ -109,7 +109,7 @@ variable CANDIDATE-VERDICT
    s" public" SB-LINE
    s" : CORE ( -- n ) H ;" SB-LINE
    s" ;package" SB-LINE
-   INC-CORE$ SB$ WRITE-ALL ;
+   INC-CORE$ SB$ FS:WRITE-ALL ;
 
 : WRITE-API-BODY ( -- )
    s" package APP" SB-LINE
@@ -120,38 +120,38 @@ variable CANDIDATE-VERDICT
 : WRITE-API-NOINC ( -- )
    SB-RESET
    WRITE-API-BODY
-   INC-API$ SB$ WRITE-ALL ;
+   INC-API$ SB$ FS:WRITE-ALL ;
 
 : WRITE-API-INCLUDE ( -- )
    SB-RESET
    INC-CORE$ SB-INCLUDE-LINE
    WRITE-API-BODY
-   INC-API$ SB$ WRITE-ALL ;
+   INC-API$ SB$ FS:WRITE-ALL ;
 
 : WRITE-MAIN-RUN ( -- )
    SB-RESET
    s" APP:GET ." SB-LINE
-   INC-MAIN$ SB$ WRITE-ALL ;
+   INC-MAIN$ SB$ FS:WRITE-ALL ;
 
 : WRITE-MAIN-INCLUDE ( -- )
    SB-RESET
    INC-API$ SB-INCLUDE-LINE
    s" APP:GET ." SB-LINE
-   INC-MAIN$ SB$ WRITE-ALL ;
+   INC-MAIN$ SB$ FS:WRITE-ALL ;
 
 : WRITE-MAIN-INCLUDED ( -- )
    SB-RESET
    INC-API$ SB-S"
    s"  included" SB-LINE
    s" APP:GET ." SB-LINE
-   INC-MAIN$ SB$ WRITE-ALL ;
+   INC-MAIN$ SB$ FS:WRITE-ALL ;
 
 : WRITE-DUP ( -- )
    SB-RESET
    s" package APP" SB-LINE
    s" : H ( -- n ) 1 ;" SB-LINE
    s" ;package" SB-LINE
-   INC-DUP$ SB$ WRITE-ALL ;
+   INC-DUP$ SB$ FS:WRITE-ALL ;
 
 : LONG-DICTIONARY-SOURCE ( -- )
    GE-SRC-RESET
@@ -1064,7 +1064,7 @@ variable CANDIDATE-VERDICT
    s" package APP" SB-LINE
    s" : H ( -- n ) 2 ;" SB-LINE
    s" ;package" SB-LINE
-   INC-MAIN$ SB$ WRITE-ALL
+   INC-MAIN$ SB$ FS:WRITE-ALL
    $4E s" duplicate definition" s" hb include rejects duplicate package reopen" RUN-LOAD-BAD ;
 
 : PACKAGE-MISUSE ( -- )

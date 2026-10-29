@@ -14,13 +14,13 @@ $8000 constant CAP
 DYNAMIC-BUFFER OUT u8 variable OUT-U
 DYNAMIC-BUFFER ERR u8 variable ERR-U
 create PROGRAM CAP allot variable PROGRAM-U
-create BUILDER FS-PATH-CAP allot variable BUILDER-U
-create SRC-PATH FS-PATH-CAP allot
-create PROD-PATH FS-PATH-CAP allot
-create CACHE-PATH FS-PATH-CAP allot
-create ENGINE-NAME FS-PATH-CAP allot  variable ENGINE-U  variable ENGINES
-create ENGINE-PATH FS-PATH-CAP allot
-create OBJ-PATH FS-PATH-CAP allot
+create BUILDER PATH-CAP allot variable BUILDER-U
+create SRC-PATH PATH-CAP allot
+create PROD-PATH PATH-CAP allot
+create CACHE-PATH PATH-CAP allot
+create ENGINE-NAME PATH-CAP allot  variable ENGINE-U  variable ENGINES
+create ENGINE-PATH PATH-CAP allot
+create OBJ-PATH PATH-CAP allot
 DYNAMIC-BUFFER SOURCE u8
 variable SOURCE-START
 
@@ -44,7 +44,7 @@ public
 : BUILDER$ ( -- ptr u8 n )
    BUILDER-U @ 0= if
       APP-BUILDER-ENGINE:PATH$ {: path:ptr pathu:n :}
-      pathu FS-PATH-CAP > if E-FS-CAPACITY throw then
+      pathu PATH-CAP > if E-FS-CAPACITY throw then
       path BUILDER pathu BYTE-COPY
       pathu BUILDER-U !
    then
@@ -54,13 +54,13 @@ public
 \ so their original leading compiler/prefix requires are omitted.
 : COPY-SKIP-LINES ( ptr u8 n ptr u8 n n -- )
    {: from:ptr fromu:n into:ptr intou:n lines:n :}
-   from fromu FILE-SIZE {: size:n :}
+   from fromu FS:FILE-SIZE {: size:n :}
    size SOURCE-RESERVE
-   from fromu 0 SOURCE BYTE-VIEW size READ-ALL size <> if E-FS-IO throw then
+   from fromu 0 SOURCE BYTE-VIEW size FS:READ-ALL size <> if E-FS-IO throw then
    0 SOURCE-START !
    lines 0 ?do size SKIP-LINE loop
    into intou 0 SOURCE BYTE-VIEW SOURCE-START @ +
-      size SOURCE-START @ - WRITE-ALL ;
+      size SOURCE-START @ - FS:WRITE-ALL ;
 \ An empty stream reserved nothing, so it has no byte to view.
 : OUT$ ( -- ptr u8 n ) OUT-U @ 0= if s" " exit then 0 OUT OUT-U @ ;
 : ERR$ ( -- ptr u8 n ) ERR-U @ 0= if s" " exit then 0 ERR ERR-U @ ;
@@ -88,9 +88,9 @@ variable DIAG?
 \ BUILD of root/source into root/product with the out root root/cache.
 : BUILD-AT ( ptr u8 n ptr u8 n ptr u8 n -- n )
    {: root:ptr rootu:n source:ptr sourceu:n product:ptr productu:n :}
-   root rootu source sourceu SRC-PATH JOIN-PATH SRC-PATH swap
-   root rootu product productu PROD-PATH JOIN-PATH PROD-PATH swap
-   root rootu s" cache" CACHE-PATH JOIN-PATH CACHE-PATH swap
+   root rootu source sourceu SRC-PATH FS:JOIN-PATH SRC-PATH swap
+   root rootu product productu PROD-PATH FS:JOIN-PATH PROD-PATH swap
+   root rootu s" cache" CACHE-PATH FS:JOIN-PATH CACHE-PATH swap
    BUILD ;
 
 private
@@ -106,6 +106,6 @@ public
    0 ENGINES !
    out outu [: NOTE-ENGINE ;] FS-LIST:EACH
    ENGINES @ 1 <> if E-FS-IO throw then
-   out outu ENGINE-NAME ENGINE-U @ ENGINE-PATH JOIN-PATH {: u:n :}
-   ENGINE-PATH u s" obj" OBJ-PATH JOIN-PATH OBJ-PATH swap ;
+   out outu ENGINE-NAME ENGINE-U @ ENGINE-PATH FS:JOIN-PATH {: u:n :}
+   ENGINE-PATH u s" obj" OBJ-PATH FS:JOIN-PATH OBJ-PATH swap ;
 ;package

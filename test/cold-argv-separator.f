@@ -34,9 +34,9 @@ $4000 constant CS-CAP
 $1000 constant CS-SRC-CAP
 60000 constant CS-TIMEOUT-MS
 
-create CS-ROOT FS-PATH-CAP allot   variable CS-ROOT-U
-create CS-HOST FS-PATH-CAP allot   variable CS-HOST-U
-create CS-DRV FS-PATH-CAP allot    variable CS-DRV-U
+create CS-ROOT PATH-CAP allot   variable CS-ROOT-U
+create CS-HOST PATH-CAP allot   variable CS-HOST-U
+create CS-DRV PATH-CAP allot    variable CS-DRV-U
 create CS-SRC CS-SRC-CAP allot     variable CS-SRC-U
 create CS-OUT CS-CAP allot
 create CS-ERR CS-CAP allot
@@ -69,15 +69,15 @@ create CS-ERR CS-CAP allot
    s" CS-REPORT" CS-LINE ;
 
 : CS-SETUP ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" habu-cold-sep" FS:MKTEMP-DIR {: a:ptr u:n :}
    a CS-ROOT u BYTE-COPY
    u CS-ROOT-U !
-   CS-ROOT$ CLEANUP-TREE+
-   CS-ROOT$ s" hb-cold" CS-HOST JOIN-PATH CS-HOST-U !
-   CS-ROOT$ s" drv.f" CS-DRV JOIN-PATH CS-DRV-U !
+   CS-ROOT$ FS:CLEANUP-TREE+
+   CS-ROOT$ s" hb-cold" CS-HOST FS:JOIN-PATH CS-HOST-U !
+   CS-ROOT$ s" drv.f" CS-DRV FS:JOIN-PATH CS-DRV-U !
    CS-DRV-SRC
-   CS-DRV$ CS-SRC CS-SRC-U @ WRITE-ALL
+   CS-DRV$ CS-SRC CS-SRC-U @ FS:WRITE-ALL
    CS-HOST$ COLD-ENGINE:PROVIDE ;
 
 : CS-ARGV0 ( -- )
@@ -145,7 +145,7 @@ public
    CS-SETUP
    CS-NO-SEPARATOR
    CS-WITH-SEPARATOR
-   CLEANUP-RUN
+   FS:CLEANUP-RUN
    T-REPORT
    s" cold-argv-separator: ok" type cr ;
 

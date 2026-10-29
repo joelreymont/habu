@@ -65,12 +65,12 @@ package HB-BUILD-CLI
    HBT-ERR erru HBT-PATH-ERROR-TEXT$ T$= ;
 
 : CLI-PATH-ERROR ( -- )
-   HBT-BAD-OUT s" out root file" WRITE-ALL
+   HBT-BAD-OUT s" out root file" FS:WRITE-ALL
    CHECK-PATH-JSON
    HBT-CHECK-PATH-TEXT
-   HBT-BAD-OUT REMOVE-FILE ;
+   HBT-BAD-OUT FS:REMOVE-FILE ;
 
-FS-PATH-CAP 1+ BUFFER: HBT-LONG-OUT-BUF
+PATH-CAP 1+ BUFFER: HBT-LONG-OUT-BUF
 
 \ A path of u bytes under the scratch root, its last name all `o`.
 : HBT-LONG-OUT$ ( n -- ptr u8 n )
@@ -87,7 +87,7 @@ FS-PATH-CAP 1+ BUFFER: HBT-LONG-OUT-BUF
 
 \ A name joined under a directory, in the same buffer.
 : HBT-JOINED$ ( ptr u8 n ptr u8 n -- ptr u8 n )
-   HBT-LONG-OUT-BUF JOIN-PATH HBT-LONG-OUT-BUF swap ;
+   HBT-LONG-OUT-BUF FS:JOIN-PATH HBT-LONG-OUT-BUF swap ;
 
 \ The CLI's refusal of a source and an -o by name, before it builds anything:
 \ the usage exit, the message on stderr and nothing on stdout.
@@ -102,15 +102,15 @@ FS-PATH-CAP 1+ BUFFER: HBT-LONG-OUT-BUF
    ou 0 T=
    HBT-ERR erru want wantu T$= ;
 
-\ The CLI refuses by name an -o one byte past FS-PATH-CAP.
+\ The CLI refuses by name an -o one byte past PATH-CAP.
 : CLI-OUT-TOO-LONG ( -- )
-   HBT-AOT-SRC FS-PATH-CAP 1+ HBT-LONG-OUT$
+   HBT-AOT-SRC PATH-CAP 1+ HBT-LONG-OUT$
    S\" hb-build: output path too long\n" HBT-REFUSED ;
 
-\ The source path is held in a buffer of FS-PATH-CAP bytes, so the CLI refuses
+\ The source path is held in a buffer of PATH-CAP bytes, so the CLI refuses
 \ a longer one by name.
 : CLI-SRC-TOO-LONG ( -- )
-   FS-PATH-CAP 1+ HBT-LONG-OUT$ HBT-AOT-OUT
+   PATH-CAP 1+ HBT-LONG-OUT$ HBT-AOT-OUT
    S\" hb-build: source path too long\n" HBT-REFUSED ;
 
 \ The sibling is made in -o's directory, so the CLI refuses an -o whose
@@ -139,9 +139,10 @@ FS-PATH-CAP 1+ BUFFER: HBT-LONG-OUT-BUF
    250 HBT-LONG-NAME$ {: out:ptr outu:n :}
    out outu >LEN PROC-ARGV+
    HBT-RUN-HB-BUILD 0 T= 2drop
-   out outu FILE? TTRUE ;
+   out outu FS:FILE? TTRUE ;
 
 $16D constant HBT-MODE-READ-ONLY            \ 0555: listable, not writable
+$1ED constant HBT-MODE-WRITABLE             \ 0755: the owner may write again
 
 : HBT-RO-DIR$ ( -- ptr u8 n )
    HBT-ROOT s" ro" HBT-JOINED$ ;
@@ -150,14 +151,14 @@ $16D constant HBT-MODE-READ-ONLY            \ 0555: listable, not writable
 \ make up front; the host refuses the sibling only at install, after the
 \ build, and the CLI names that with its IO exit and nothing on stdout.
 : CLI-OUT-READ-ONLY ( -- )
-   HBT-RO-DIR$ MAKE-DIR
-   HBT-RO-DIR$ HBT-MODE-READ-ONLY CHMOD-MODE
+   HBT-RO-DIR$ FS:MAKE-DIR
+   HBT-RO-DIR$ HBT-MODE-READ-ONLY FS:CHMOD-MODE
    HBT-ARGV-BASE
    HBT-AOT-SRC >LEN PROC-ARGV+
    s" -o" >LEN PROC-ARGV+
    HBT-ROOT s" ro/aot" HBT-JOINED$ >LEN PROC-ARGV+
    HBT-RUN-HB-BUILD {: outu:n erru:n rc:n :}
-   HBT-RO-DIR$ FS-MUT-MODE-DIR CHMOD-MODE
+   HBT-RO-DIR$ HBT-MODE-WRITABLE FS:CHMOD-MODE
    rc HBB-BUILD-RC T=
    outu 0 T=
    HBT-ERR erru S\" hb-build: cannot replace output\n" T$= ;
@@ -167,7 +168,7 @@ $16D constant HBT-MODE-READ-ONLY            \ 0555: listable, not writable
 \ compiles the startup word that calls it, and says so `in enter`. The child's
 \ stderr stays in HBB-ERR-BUF; its length is returned.
 : HBT-REFUSE-MAIN-APP ( ptr u8 n -- n )
-   HBT-REPL-BAD-SRC 2swap WRITE-ALL
+   HBT-REPL-BAD-SRC 2swap FS:WRITE-ALL
    HBT-REPL-BAD-SRC HBT-RUN-APP {: outu:n erru:n rc:n :}
    rc 70 T=
    outu 0 T=
@@ -192,7 +193,7 @@ $16D constant HBT-MODE-READ-ONLY            \ 0555: listable, not writable
    HBT-RUN-HB-BUILD {: outu:n erru:n rc:n :}
    rc 70 T= outu 0 T=
    HBT-ERR erru HBB-ERR-BUF want T$=
-   HBT-REPL-BAD-OUT EXISTS? TFALSE ;
+   HBT-REPL-BAD-OUT FS:EXISTS? TFALSE ;
 
 : HBT-BAD-MAIN-EFFECTS ( -- )
    s" : MAIN ( n -- n ) 1+ ;" HBT-REFUSE-MAIN-APP HBT-REFUSE-MAIN-CLI
@@ -214,8 +215,8 @@ public
    CLI-OUT-LONG-NAME
    CLI-OUT-READ-ONLY
    HBT-BAD-MAIN-EFFECTS
-   CLEANUP-RUN
-   HBT-ROOT EXISTS? TFALSE
+   FS:CLEANUP-RUN
+   HBT-ROOT FS:EXISTS? TFALSE
    T-REPORT
    s" hb-build-cli-errors-test: ok" type cr ;
 

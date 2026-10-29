@@ -27,10 +27,10 @@ private
 1000000 constant HOLE-BYTES
 : IMAGE-MAX ( -- n ) HB-TARGET-LINUX-X86-64? if $60000 else $40000 then ;
 
-create SUBJECT FS-PATH-CAP allot
-create IMAGE FS-PATH-CAP allot
-create DIE-TREE FS-PATH-CAP allot
-create EXIT-TREE FS-PATH-CAP allot
+create SUBJECT PATH-CAP allot
+create IMAGE PATH-CAP allot
+create DIE-TREE PATH-CAP allot
+create EXIT-TREE PATH-CAP allot
 variable SUBJECT-U
 variable IMAGE-U
 variable DIE-TREE-U
@@ -59,7 +59,7 @@ variable EXIT-TREE-U
    S\"    STRIPPED-IMAGE-SUBJECT:RUN\n" SB-APPEND
    HB-TARGET-MACOS? if S\"    AIO:START AIO:STOP\n" SB-APPEND then
    S\"    STRIPPED-IMAGE-SUBJECT:UNMAP ;\n" SB-APPEND
-   SUBJECT$ SB$ WRITE-ALL ;
+   SUBJECT$ SB$ FS:WRITE-ALL ;
 
 \ The fresh subject path has no observed-input index, so hb-build links it
 \ with the shared maker instead of restoring an artifact.
@@ -74,13 +74,13 @@ variable EXIT-TREE-U
    ENGINE-CANDIDATE:PATH$ TIMEOUT-MS GE-RUN-ENV
    s" stripped image build" GE-EXPECT-OK
    GT-ERR$ nip 0<> if s" stripped image build stderr" GE-FAIL then
-   IMAGE$ EXECUTABLE? 0= if s" stripped image executable" GE-FAIL then ;
+   IMAGE$ FS:EXECUTABLE? 0= if s" stripped image executable" GE-FAIL then ;
 
 \ The size says the hole did not travel; the sparse subject's marks say the
 \ bytes that must travel did, since an image that stored nothing would satisfy
 \ the size alone.
 : CHECK-SIZE ( -- )
-   IMAGE$ FILE-SIZE {: bytes:n :}
+   IMAGE$ FS:FILE-SIZE {: bytes:n :}
    s" stripped-image: image bytes " type bytes .
    bytes HOLE-BYTES < 0= if s" stripped image carries the DATA hole" GE-FAIL then
    bytes IMAGE-MAX < 0= if s" stripped image exceeds IMAGE-MAX" GE-FAIL then ;
@@ -100,7 +100,7 @@ variable EXIT-TREE-U
    71 s" stripped image exit through MEM:UNMAP" GE-EXPECT-RC
    EXPECTED-OUT$ s" stripped image exact stdout" GE-EXPECT-OUT
    S\" memory: unmap failed\n" s" stripped image exact stderr" GE-EXPECT-ERR
-   DIE-TREE$ EXISTS? if s" a stripped application's die removes the registered tree" GE-FAIL then ;
+   DIE-TREE$ FS:EXISTS? if s" a stripped application's die removes the registered tree" GE-FAIL then ;
 
 \ MAIN leaves by the code it is given, in a directory named for that code.
 \ Code 0 is the application's own return: its entry calls the exit
@@ -118,7 +118,7 @@ variable EXIT-TREE-U
    rc s" stripped image exit status" GE-EXPECT-RC
    S\" exit-hook-subject: ok\n" s" stripped image exit stdout" GE-EXPECT-OUT
    err erru s" stripped image exit stderr" GE-EXPECT-ERR
-   EXIT-TREE$ EXISTS? if s" a stripped application's exit removes the registered tree" GE-FAIL then ;
+   EXIT-TREE$ FS:EXISTS? if s" a stripped application's exit removes the registered tree" GE-FAIL then ;
 
 : RUN-EXITS ( -- )
    s" 0" 0 s" " RUN-EXIT

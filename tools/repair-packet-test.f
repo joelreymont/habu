@@ -41,10 +41,10 @@ variable ERR-A
 variable LABEL-A
 variable LABEL-U
 
-create ROOT-BUF FS-PATH-CAP allot
-create SRC-BUF FS-PATH-CAP allot
-create DIAG-BUF FS-PATH-CAP allot
-create PACKET-BUF FS-PATH-CAP allot
+create ROOT-BUF PATH-CAP allot
+create SRC-BUF PATH-CAP allot
+create DIAG-BUF PATH-CAP allot
+create PACKET-BUF PATH-CAP allot
 create J-OUT $8000 allot
 TYPED-VARIABLE J-W JSON-WRITE:writer
 
@@ -77,12 +77,12 @@ TYPED-VARIABLE J-W JSON-WRITE:writer
    ERR-A BUF ;
 
 : COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr lenp:ptr :}
-   u FS-PATH-CAP > if E-FS-PATH throw then
+   u PATH-CAP > if E-FS-PATH throw then
    a dst u BYTE-COPY
    u lenp ! ;
 
 : PATH! ( ptr u8 n ptr u8 n ptr u8 ptr n -- ) {: pa:ptr pu:n na:ptr nu:n dst:ptr lenp:ptr :}
-   pa pu na nu dst JOIN-PATH lenp ! ;
+   pa pu na nu dst FS:JOIN-PATH lenp ! ;
 
 : ROOT ( -- ptr u8 n )
    ROOT-BUF ROOT-U @ ;
@@ -134,10 +134,10 @@ TYPED-VARIABLE J-W JSON-WRITE:writer
    ROOT file fileu PACKET-BUF PACKET-U PATH! ;
 
 : PREPARE ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" habu-repair-packet" FS:MKTEMP-DIR {: a:ptr u :}
    a u ROOT-BUF ROOT-U COPY!
-   ROOT CLEANUP-TREE+ ;
+   ROOT FS:CLEANUP-TREE+ ;
 
 : SOURCE$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    SB-RESET
@@ -146,7 +146,7 @@ TYPED-VARIABLE J-W JSON-WRITE:writer
    SB$ ;
 
 : WRITE-SOURCE ( ptr u8 n -- ) {: a:ptr u:n :}
-   SRC a u SOURCE$ WRITE-ALL ;
+   SRC a u SOURCE$ FS:WRITE-ALL ;
 
 \ The tool runs with this process's environment, so tools/check.f makes its
 \ scratch root under the TMPDIR this run was handed.
@@ -208,7 +208,7 @@ TYPED-VARIABLE J-W JSON-WRITE:writer
    outu LEN>N erru LEN>N ;
 
 : WRITE-DIAG ( n -- ) {: erru:n :}
-   DIAG-PATH ERR erru WRITE-ALL ;
+   DIAG-PATH ERR erru FS:WRITE-ALL ;
 
 : EXPECT-CHECK-REJECT ( ptr u8 n -- ) {: label:ptr labelu:n :}
    label labelu RUN-CHECK EXPECT-EXIT-NZ {: outu:n erru:n :}
@@ -227,7 +227,7 @@ TYPED-VARIABLE J-W JSON-WRITE:writer
    PACKET$ {: a:ptr u:n :}
    LABEL$ T-LABEL
    u 0 T<>
-   PACKET a u WRITE-ALL ;
+   PACKET a u FS:WRITE-ALL ;
 
 : ASSERT-PACKET ( ptr u8 n -- ) {: class:ptr classu:n :}
    LABEL$ T-LABEL
@@ -244,7 +244,7 @@ TYPED-VARIABLE J-W JSON-WRITE:writer
 \ diagnostic is redacted to <root> so the golden stays stable across runs.
 : EXPECT-GOLDEN ( ptr u8 n -- ) {: name:ptr nameu:n :}
    ROOT SOURCE-ROOT:CANONICAL drop GOLD:REDACT!
-   PACKET OUT CAPTURE-CAP READ-ALL {: pu:n :}
+   PACKET OUT CAPTURE-CAP FS:READ-ALL {: pu:n :}
    LABEL$ T-LABEL
    OUT pu name nameu GOLDEN-NAME$ GOLD:CHECK TTRUE ;
 
@@ -463,7 +463,7 @@ TYPED-VARIABLE J-W JSON-WRITE:writer
 : TEST-USING-STRING ( -- )
    s" using-string" CASE-PATHS
    s" using-string" LABEL!
-   DIAG-PATH USING-STRING-DIAG$ WRITE-ALL
+   DIAG-PATH USING-STRING-DIAG$ FS:WRITE-ALL
    ARGV-REPAIR-DIAG
    HB-CAPTURE 74 REPAIR-TOOL$ EXPECT-EXIT {: outu:n erru:n :}
    s" using-string stdout" T-LABEL
@@ -473,18 +473,18 @@ TYPED-VARIABLE J-W JSON-WRITE:writer
 
 : TEST-TWO-DIAGS ( -- )
    s" two" CASE-PATHS
-   SRC TWO-SOURCE$ WRITE-ALL
+   SRC TWO-SOURCE$ FS:WRITE-ALL
    s" two" EXPECT-CHECK-REJECT
    MAKE-PACKET
    s" remove_producer" ASSERT-PACKET
-   PACKET OUT CAPTURE-CAP READ-ALL {: packetu:n :}
+   PACKET OUT CAPTURE-CAP FS:READ-ALL {: packetu:n :}
    s" two diagnostic count" T-LABEL
    OUT packetu COUNT2$ CONTAINS? TTRUE
    s" two" EXPECT-GOLDEN ;
 
 : DIAG-CASE ( ptr u8 n ptr u8 n ptr u8 n -- ) {: name:ptr nameu:n class:ptr classu:n diag:ptr diagu:n :}
    name nameu CASE-PATHS
-   DIAG-PATH diag diagu WRITE-ALL
+   DIAG-PATH diag diagu FS:WRITE-ALL
    name nameu LABEL!
    MAKE-PACKET
    class classu ASSERT-PACKET
@@ -557,9 +557,9 @@ TYPED-VARIABLE J-W JSON-WRITE:writer
    TEST-TWO-DIAGS
    TEST-NOARGS
    TEST-ENGINE
-   CLEANUP-RUN
+   FS:CLEANUP-RUN
    s" cleanup root removed" T-LABEL
-   ROOT EXISTS? TFALSE
+   ROOT FS:EXISTS? TFALSE
    T-REPORT
    s" repair-packet-test: ok" type cr ;
 

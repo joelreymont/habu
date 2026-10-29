@@ -66,7 +66,7 @@ package PRELOADED-ENGINE
 
 create LINKER-KEY KEYED-IMAGE:KEY-HEX-LEN allot
 create HOST-KEY KEYED-IMAGE:KEY-HEX-LEN allot   \ the saver image's, naming its img/
-create LINKER-BUF FS-PATH-CAP allot
+create LINKER-BUF PATH-CAP allot
 
 variable LINKER-U
 variable LINKER-RESOLVED?
@@ -108,7 +108,7 @@ variable LINKER-RESOLVED?
    KEYED-IMAGE:ENSURE ;
 
 : NULL-IN ( -- fd )
-   s" /dev/null" FS-PATHZ open-rd dup 0 < if drop E-FS-OPEN throw then >FD ;
+   s" /dev/null" FS:>PATHZ open-rd dup 0 < if drop E-FS-OPEN throw then >FD ;
 
 public
 

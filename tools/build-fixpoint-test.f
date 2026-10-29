@@ -23,7 +23,7 @@ package BUILD-FIXPOINT
 
 13 constant BFT-BUILD-ARGV#
 create BFT-KEY1 64 allot
-create BFT-ART-B-BUF FS-PATH-CAP allot
+create BFT-ART-B-BUF PATH-CAP allot
 variable BFT-ART-B-U
 
 : BFT-ART-B$ ( -- ptr u8 n )
@@ -50,7 +50,7 @@ variable BFT-ART-B-U
    BFT-ARGV-LOAD-LIBS
    PROC-ARGV-N @ COUNT>N ;
 
-: BFT-ARGV-NO-PREAMBLE ( ptr u8 n ptr u8 n -- n )   \ tool source WITHOUT the lib preamble: reproduces the missing-preamble footgun (bare `E-UNDEFINED: FS-PATH-CAP` pre-fix)
+: BFT-ARGV-NO-PREAMBLE ( ptr u8 n ptr u8 n -- n )   \ tool source WITHOUT the lib preamble: reproduces the missing-preamble footgun (bare `E-UNDEFINED: PATH-CAP` pre-fix)
    BFT-ARGV-ENV+
    s" --load" >LEN PROC-ARGV+
    s" tools/build-fixpoint.f" BFT-ARG+
@@ -137,16 +137,16 @@ variable BFT-ART-B-U
 \ checkout. Its bin directory belongs to the source tree, not the private
 \ install target, so cleanup must leave an unrelated file there alone.
 : BFT-CLEAN-KEEP$ ( -- ptr u8 n )
-   BFT-STALE s" bin/keep" BFT-CP-BUF JOIN-PATH BFT-CP-BUF swap ;
+   BFT-STALE s" bin/keep" BFT-CP-BUF FS:JOIN-PATH BFT-CP-BUF swap ;
 
 : BFT-CLEAN-DRIVER$ ( -- ptr u8 n )
-   BFT-STALE s" cleanup-driver.f" BFT-CP-BUF JOIN-PATH BFT-CP-BUF swap ;
+   BFT-STALE s" cleanup-driver.f" BFT-CP-BUF FS:JOIN-PATH BFT-CP-BUF swap ;
 
 : BFT-CLEAN-ARTIFACTS ( -- )
    BFT-STALE-TMP BF-TMP!
-   BFT-HB s" hb-stdin" BF-A$ COPY-FILE-STREAM
-   BFT-ROOT s" hb-host" BFT-CP-BUF JOIN-PATH BFT-CP-BUF swap
-   s" hb-host" BF-A$ COPY-FILE-STREAM
+   BFT-HB s" hb-stdin" BF-A$ FS:COPY-FILE-STREAM
+   BFT-ROOT s" hb-host" BFT-CP-BUF FS:JOIN-PATH BFT-CP-BUF swap
+   s" hb-host" BF-A$ FS:COPY-FILE-STREAM
    BF-TMP-RESET ;
 
 : BFT-CLEAN-ARGV ( -- )
@@ -165,26 +165,26 @@ variable BFT-ART-B-U
 
 : BFT-TEST-PRIVATE-CLEANUP ( -- )
    BFT-STALE-PREPARE
-   BFT-STALE-HB BFT-ENG-A COPY-FILE-STREAM
-   BFT-ENG-A CHMOD-X
-   BFT-STALE-HB REMOVE-FILE
-   BFT-CLEAN-DRIVER$ S\" package BUILD-FIXPOINT\nBF-INSTALL-HB\nBF-INSTALL-HOST\nBF-CLEAN-BIN\n;package\n" WRITE-ALL
-   BFT-CLEAN-KEEP$ s" unrelated" WRITE-ALL
+   BFT-STALE-HB BFT-ENG-A FS:COPY-FILE-STREAM
+   BFT-ENG-A FS:CHMOD-X
+   BFT-STALE-HB FS:REMOVE-FILE
+   BFT-CLEAN-DRIVER$ S\" package BUILD-FIXPOINT\nBF-INSTALL-HB\nBF-INSTALL-HOST\nBF-CLEAN-BIN\n;package\n" FS:WRITE-ALL
+   BFT-CLEAN-KEEP$ s" unrelated" FS:WRITE-ALL
    BFT-CLEAN-ARTIFACTS
    BFT-CLEAN-SPAWN {: outu:n erru:n rc:n :}
    rc 0 T=
    BFT-BIG-ERR erru BFT-EMPTY$ T$=
    BFT-ENG-B BFT-HB BF-FILE= TTRUE
    BFT-ENG-B BF-ENGINE!
-   BFT-ROOT s" hb-host" BFT-CP-BUF JOIN-PATH BFT-CP-BUF swap
+   BFT-ROOT s" hb-host" BFT-CP-BUF FS:JOIN-PATH BFT-CP-BUF swap
    BF-HOST-DST$ BF-FILE= TTRUE
    BF-ENGINE-RESET
-   BFT-CLEAN-KEEP$ FILE? TTRUE ;
+   BFT-CLEAN-KEEP$ FS:FILE? TTRUE ;
 
 \ The candidate is installed into a directory of its own, so a sibling an
 \ install left beside the engine is a file there the engine is not.
-FS-PATH-CAP BUFFER: BFT-BIN-BUF
-FS-PATH-CAP BUFFER: BFT-BIN-HB-BUF
+PATH-CAP BUFFER: BFT-BIN-BUF
+PATH-CAP BUFFER: BFT-BIN-HB-BUF
 variable BFT-BIN-U
 variable BFT-BIN-HB-U
 variable BFT-BIN-FILES
@@ -200,46 +200,46 @@ variable BFT-BIN-FILES
 
 : BFT-BIN-FILES# ( -- n )
    0 BFT-BIN-FILES !
-   BFT-BIN [: BFT-BIN-COUNT ;] WALK-FILES
+   BFT-BIN [: BFT-BIN-COUNT ;] FS:WALK-FILES
    BFT-BIN-FILES @ ;
 
 : BFT-BOOT-REFUSED ( ptr u8 n -- )
-   s" hb-stdin" BF-A$ COPY-FILE-STREAM
+   s" hb-stdin" BF-A$ FS:COPY-FILE-STREAM
    [: BF-INSTALL-HB ;] E-BUILD-STATUS TTHROWSQ
    BFT-BIN-HB s" /usr/bin/true" BF-FILE= TTRUE
    BFT-BIN-FILES# 1 T=
-   BF-BOOT-ROOT$ EXISTS? TFALSE ;
+   BF-BOOT-ROOT$ FS:EXISTS? TFALSE ;
 
 \ A candidate that passed its boot and cannot replace the engine, here a
 \ directory, fails the install with the directory as it was and no sibling.
 : BFT-RENAME-REFUSED ( -- )
-   BFT-BIN-HB REMOVE-FILE
-   BFT-BIN-HB MAKE-DIR
-   BFT-HB s" hb-stdin" BF-A$ COPY-FILE-STREAM
+   BFT-BIN-HB FS:REMOVE-FILE
+   BFT-BIN-HB FS:MAKE-DIR
+   BFT-HB s" hb-stdin" BF-A$ FS:COPY-FILE-STREAM
    [: BF-INSTALL-HB ;] E-FS-IO TTHROWSQ
-   BFT-BIN-HB DIR? TTRUE
+   BFT-BIN-HB FS:DIR? TTRUE
    BFT-BIN-FILES# 0 T=
-   BF-BOOT-ROOT$ EXISTS? TFALSE
-   BFT-BIN-HB REMOVE-DIR ;
+   BF-BOOT-ROOT$ FS:EXISTS? TFALSE
+   BFT-BIN-HB FS:REMOVE-DIR ;
 
 : BFT-TEST-CANDIDATE-BOOT ( -- )
-   BFT-ROOT s" candidate-boot" BFT-CP-BUF JOIN-PATH
-   BFT-CP-BUF swap 2dup MAKE-DIRS BF-TMP!
-   BFT-ROOT s" candidate-bin" BFT-BIN-BUF JOIN-PATH BFT-BIN-U !
-   BFT-BIN s" hb" BFT-BIN-HB-BUF JOIN-PATH BFT-BIN-HB-U !
-   BFT-BIN MAKE-DIRS
+   BFT-ROOT s" candidate-boot" BFT-CP-BUF FS:JOIN-PATH
+   BFT-CP-BUF swap 2dup FS:MAKE-DIRS BF-TMP!
+   BFT-ROOT s" candidate-bin" BFT-BIN-BUF FS:JOIN-PATH BFT-BIN-U !
+   BFT-BIN s" hb" BFT-BIN-HB-BUF FS:JOIN-PATH BFT-BIN-HB-U !
+   BFT-BIN FS:MAKE-DIRS
    BFT-BIN-HB BF-ENGINE!
-   s" /usr/bin/true" BFT-BIN-HB COPY-FILE-STREAM
+   s" /usr/bin/true" BFT-BIN-HB FS:COPY-FILE-STREAM
    \ A failed boot and a successful exit without running the probe both refuse.
    s" /usr/bin/false" BFT-BOOT-REFUSED
    s" /usr/bin/true" BFT-BOOT-REFUSED
    BFT-RENAME-REFUSED
-   BFT-HB s" hb-stdin" BF-A$ COPY-FILE-STREAM
+   BFT-HB s" hb-stdin" BF-A$ FS:COPY-FILE-STREAM
    BF-INSTALL-HB
    BFT-BIN-HB BFT-HB BF-FILE= TTRUE
-   s" hb-stdin" BF-A$ EXISTS? TFALSE
+   s" hb-stdin" BF-A$ FS:EXISTS? TFALSE
    BFT-BIN-FILES# 1 T=
-   BF-BOOT-ROOT$ EXISTS? TFALSE
+   BF-BOOT-ROOT$ FS:EXISTS? TFALSE
    BF-ENGINE-RESET BF-TMP-RESET ;
 
 \ The selected engine must be executed, not silently replaced by bin/hb.
@@ -266,9 +266,9 @@ variable BFT-BIN-FILES
    BFT-OUT outu s" fixpoint: cached " CONTAINS? TTRUE
    BFT-OUT outu s" bin/hb refresh OK" CONTAINS? TFALSE
    BFT-ROOT BF-TMP!
-   s" hb-stage" BF-A$ FILE? TFALSE
+   s" hb-stage" BF-A$ FS:FILE? TFALSE
    BF-TMP-RESET
-   BFT-HB FILE? TTRUE ;
+   BFT-HB FS:FILE? TTRUE ;
 
 : BFT-TEST-BUILD-FAIL-NO-STAMP ( -- )
    BFT-ARGV-FAIL BFT-BUILD-ARGV# T=
@@ -276,7 +276,7 @@ variable BFT-BIN-FILES
    BFT-SPAWN-FIXPOINT {: outu:n erru:n rcn:n :}
    rcn BF-BUILD-RC T=
    BFT-ERR erru s" build-fixpoint: failed" CONTAINS? TTRUE
-   BFT-STAMP2 FILE? TFALSE ;
+   BFT-STAMP2 FS:FILE? TFALSE ;
 
 \ Recovery footgun (dot habu-stale-bin-hb): build-fixpoint.f loaded WITHOUT its
 \ tools/build-fixpoint-main.f companion but handed an explicit `install` verb.
@@ -292,14 +292,14 @@ variable BFT-BIN-FILES
    BFT-SPAWN-FIXPOINT {: outu:n erru:n rcn:n :}
    rcn BF-BUILD-RC T=
    BFT-ERR erru s" build-fixpoint: failed" CONTAINS? TTRUE
-   BFT-STAMP2 FILE? TFALSE ;
+   BFT-STAMP2 FS:FILE? TFALSE ;
 
 \ Missing-preamble footgun (dot habu-make-build-fixpoint): build-fixpoint.f loaded
 \ WITHOUT its lib preamble handed an explicit `install` verb. Pre-fix the first
-\ FS-PATH-CAP buffer create died mid-load with a bare `E-UNDEFINED: FS-PATH-CAP`
+\ PATH-CAP buffer create died mid-load with a bare `E-UNDEFINED: PATH-CAP`
 \ (rc 70) - no hint the preamble was missing. The load-discipline guard must now
 \ fail fast with BF-USAGE-RC and a named diagnostic that lists the required load.
-\ Base (unfixed source): rc 70, stderr `E-UNDEFINED: FS-PATH-CAP` -> both direction
+\ Base (unfixed source): rc 70, stderr `E-UNDEFINED: PATH-CAP` -> both direction
 \ assertions fail.
 : BFT-TEST-MISSING-PREAMBLE ( -- )
    BFT-NOTDIR BFT-OUTDIR2 BFT-ARGV-NO-PREAMBLE DROP
@@ -321,13 +321,13 @@ variable BFT-BIN-FILES
 : BFT-KEY-MUT! ( n -- ) {: mut:n :}
    BF-STAMP-KEY-BEGIN
    BF-PREFIX-SOURCE
-   mut BFT-MUT-PREFIX = if s" prefix-src" BF-A$ s" \ mutated boot prefix" APPEND-FILE then
+   mut BFT-MUT-PREFIX = if s" prefix-src" BF-A$ s" \ mutated boot prefix" FS:APPEND-FILE then
    BF-STAMP-PREFIX-KEY+
    BF-STAGE2-SOURCE
-   mut BFT-MUT-STAGE = if s" stage2-src" BF-A$ s" \ mutated stage source" APPEND-FILE then
+   mut BFT-MUT-STAGE = if s" stage2-src" BF-A$ s" \ mutated stage source" FS:APPEND-FILE then
    BF-STAMP-STAGE-KEY+
    BF-STDIN-SOURCE
-   mut BFT-MUT-STDIN = if s" stage2-src" BF-A$ s" \ mutated stdin source" APPEND-FILE then
+   mut BFT-MUT-STDIN = if s" stage2-src" BF-A$ s" \ mutated stdin source" FS:APPEND-FILE then
    BF-STAMP-STDIN-KEY+
    BF-STAMP-KEY-END ;
 
@@ -357,17 +357,17 @@ variable BFT-BIN-FILES
    SB-RESET
    BFT-ZERO-KEY$ SB-APPEND
    BF-LF SB-APPEND-C
-   BFT-STAMP SB$ WRITE-ALL
+   BFT-STAMP SB$ FS:WRITE-ALL
    BF-STAMP-MATCH? TFALSE
-   BFT-STAMP s" short" WRITE-ALL
+   BFT-STAMP s" short" FS:WRITE-ALL
    BF-STAMP-MATCH? TFALSE
-   BFT-STAMP REMOVE-FILE
+   BFT-STAMP FS:REMOVE-FILE
    BF-STAMP-MATCH? TFALSE
    BFT-STAMP-UNSCOPE ;
 
 : BFT-WRITE-ENGINES ( -- )
-   BFT-ENG-A s" engine-a-bytes" WRITE-ALL
-   BFT-ENG-B s" engine-b-bytes" WRITE-ALL ;
+   BFT-ENG-A s" engine-a-bytes" FS:WRITE-ALL
+   BFT-ENG-B s" engine-b-bytes" FS:WRITE-ALL ;
 
 : BFT-TEST-STAMP-ENGINE ( -- )
    BFT-STAMP-SCOPE
@@ -389,13 +389,13 @@ variable BFT-BIN-FILES
    BFT-STAMP-SCOPE
    BFT-RECORD!
    BFT-WRITE-ENGINES
-   BFT-STAMP FILE? if BFT-STAMP REMOVE-FILE then
+   BFT-STAMP FS:FILE? if BFT-STAMP FS:REMOVE-FILE then
    BFT-ENG-A BF-ENGINE!
    BF-ALL-STAMP
-   BFT-STAMP FILE? TFALSE
+   BFT-STAMP FS:FILE? TFALSE
    BFT-HB BF-ENGINE!
    BF-ALL-STAMP
-   BFT-STAMP FILE? TTRUE
+   BFT-STAMP FS:FILE? TTRUE
    BFT-STAMP-UNSCOPE ;
 
 : BFT-TEST-STAMP-NESTED ( -- )
@@ -403,7 +403,7 @@ variable BFT-BIN-FILES
    BFT-NEST BF-STAMP-PATH!
    BFT-RECORD!
    BF-STAMP-WRITE
-   BFT-NEST FILE? TTRUE
+   BFT-NEST FS:FILE? TTRUE
    BF-STAMP-MATCH? TTRUE
    BFT-STAMP-UNSCOPE ;
 
@@ -436,15 +436,15 @@ variable BFT-BIN-FILES
    s" src/core/lower-cert-seal.f" BFT-READ {: u:n :}
    BFT-READ-BUF u s" package PREFIX-MARK" BFT-FIND BFT-FOUND {: cut:n :}
    cut 0 > TTRUE
-   BFT-STALE-MARK BFT-READ-BUF cut WRITE-ALL ;
+   BFT-STALE-MARK BFT-READ-BUF cut FS:WRITE-ALL ;
 
 : BFT-SOURCE-HOST$ ( -- ptr u8 n )
-   BFT-ROOT s" hb-host" BFT-CP-BUF JOIN-PATH BFT-CP-U !
+   BFT-ROOT s" hb-host" BFT-CP-BUF FS:JOIN-PATH BFT-CP-U !
    BFT-CP-BUF BFT-CP-U @ ;
 
 : BFT-SOURCE-HOST! ( -- )
-   BFT-SOURCE-HOST$ BFT-STALE-HB COPY-FILE-STREAM
-   BFT-STALE-HB CHMOD-X ;
+   BFT-SOURCE-HOST$ BFT-STALE-HB FS:COPY-FILE-STREAM
+   BFT-STALE-HB FS:CHMOD-X ;
 
 : BFT-TEST-WATERMARK-REQUIRED ( -- )
    BFT-STALE-PREPARE
@@ -457,7 +457,7 @@ variable BFT-BIN-FILES
    BFT-BIG-ERR erru s" src/core/lower-cert-seal.f" CONTAINS? TTRUE
    BFT-BIG-OUT outu s" self-check census" CONTAINS? TFALSE
    BFT-STALE-HB BFT-SOURCE-HOST$ BF-FILE= TTRUE
-   BFT-STALE-STAMP FILE? TFALSE ;
+   BFT-STALE-STAMP FS:FILE? TFALSE ;
 
 \ THE SAME PROBE'S VALUE LAYER, forged twice. Both fixtures leave every name in
 \ place, so the resolvability clause above passes and only the value can refuse -
@@ -475,8 +475,8 @@ variable BFT-BIN-FILES
    s" src/core/lower-cert-seal.f" BFT-READ {: u:n :}
    BFT-READ-BUF u s" CHECKER-BOUND:CURSORS CU !" BFT-FIND BFT-FOUND {: cut:n :}
    cut 0 > TTRUE
-   BFT-STALE-MARK BFT-READ-BUF cut WRITE-ALL
-   BFT-STALE-MARK tail tailu APPEND-FILE ;
+   BFT-STALE-MARK BFT-READ-BUF cut FS:WRITE-ALL
+   BFT-STALE-MARK tail tailu FS:APPEND-FILE ;
 
 : BFT-MARK-VALUE-REFUSED ( ptr u8 n -- ) {: msg:ptr msgu:n :}
    BFT-STALE-ARGV
@@ -485,7 +485,7 @@ variable BFT-BIN-FILES
    BFT-BIG-ERR erru msg msgu CONTAINS? TTRUE
    BFT-BIG-OUT outu s" self-check census" CONTAINS? TFALSE
    BFT-STALE-HB BFT-SOURCE-HOST$ BF-FILE= TTRUE
-   BFT-STALE-STAMP FILE? TFALSE ;
+   BFT-STALE-STAMP FS:FILE? TFALSE ;
 
 : BFT-TEST-WATERMARK-VALUE ( -- )
    s\" ;package\n" BFT-MARK-VALUE-FORGE
@@ -513,7 +513,7 @@ TYPED-VARIABLE SRC-A ptr u8
 
 : WRITE-SRC ( n -- )
    {: bytes:n :}
-   s" bft-srcfull.f" BF-A$ SRC-BUF bytes WRITE-ALL ;
+   s" bft-srcfull.f" BF-A$ SRC-BUF bytes FS:WRITE-ALL ;
 
 : RUN-COLD-SOURCE ( ptr u8 n -- )
    {: src:ptr srcu:n :}
@@ -554,7 +554,7 @@ TYPED-VARIABLE SRC-A ptr u8
    BF-TMP-RESET ;
 
 : BFT-CERT-WRITE ( ptr u8 n -- )
-   BFT-CERT 2swap WRITE-ALL ;
+   BFT-CERT 2swap FS:WRITE-ALL ;
 
 \ Hash-pin mismatch: pin a sandbox boot-prefix file, reload unchanged (no
 \ throw), then mutate it mid-sequence - the reload must fail closed with
@@ -568,7 +568,7 @@ TYPED-VARIABLE SRC-A ptr u8
    s" \ boot prefix v1" BFT-CERT-WRITE
    BFT-CERT BF-PIN-FILE
    BFT-CERT BF-PIN-FILE
-   BFT-CERT s" \ mid-build edit" APPEND-FILE
+   BFT-CERT s" \ mid-build edit" FS:APPEND-FILE
    [: BFT-PIN-RELOAD ;] E-BUILD-BOOT-DRIFT TTHROWSQ
    BF-PIN-OFF!
    BF-PIN-RESET ;
@@ -597,9 +597,9 @@ TYPED-VARIABLE SRC-A ptr u8
 variable ENTRY-U
 variable DEP-U
 variable OTHER-U
-create ENTRY-BUF FS-PATH-CAP allot
-create DEP-BUF FS-PATH-CAP allot
-create OTHER-BUF FS-PATH-CAP allot
+create ENTRY-BUF PATH-CAP allot
+create DEP-BUF PATH-CAP allot
+create OTHER-BUF PATH-CAP allot
 create DG-A 40 allot
 create DG-B 40 allot
 create DG-C 40 allot
@@ -613,19 +613,19 @@ create DG-C 40 allot
    {: pre:ptr preu:n a:ptr u:n post:ptr postu:n :}
    SB-RESET
    pre preu SB-APPEND a u SB-APPEND post postu SB-APPEND BFT-NL 1 SB-APPEND
-   FIXTURE-ENTRY$ SB$ APPEND-FILE ;
+   FIXTURE-ENTRY$ SB$ FS:APPEND-FILE ;
 
 \ Entry source: one real `require`, plus the same loader text hidden in a
 \ comment and in a string literal.
 : WRITE-ENTRY ( -- )
-   FIXTURE-ENTRY$ s" " WRITE-ALL
+   FIXTURE-ENTRY$ s" " FS:WRITE-ALL
    s" \ require " OTHER$ s" " ENTRY-LINE+
    s\" s\" require " OTHER$ s\" \"" ENTRY-LINE+
    s" require " DEP$ s" " ENTRY-LINE+ ;
 
 : WRITE-FIXTURES ( -- )
-   DEP$ s\" \\ dep v1\n" WRITE-ALL
-   OTHER$ s\" \\ other v1\n" WRITE-ALL
+   DEP$ s\" \\ dep v1\n" FS:WRITE-ALL
+   OTHER$ s\" \\ other v1\n" FS:WRITE-ALL
    WRITE-ENTRY ;
 
 : MEMBER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
@@ -667,13 +667,13 @@ create DG-C 40 allot
    DEP$ MEMBER? TTRUE
    OTHER$ MEMBER? TFALSE
    FIXTURE-ENTRY$ DG-A CHAIN-DIGEST!
-   DEP$ s\" \\ dep v2\n" APPEND-FILE
+   DEP$ s\" \\ dep v2\n" FS:APPEND-FILE
    FIXTURE-ENTRY$ DG-B CHAIN-DIGEST!
    DG-A BF-STAMP-DG-U DG-B BF-STAMP-DG-U STR= TFALSE
-   OTHER$ s\" \\ other v2\n" APPEND-FILE
+   OTHER$ s\" \\ other v2\n" FS:APPEND-FILE
    FIXTURE-ENTRY$ DG-C CHAIN-DIGEST!
    DG-B BF-STAMP-DG-U DG-C BF-STAMP-DG-U STR= TTRUE
-   DEP$ s\" \\ dep v1\n" WRITE-ALL
+   DEP$ s\" \\ dep v1\n" FS:WRITE-ALL
    FIXTURE-ENTRY$ DG-C CHAIN-DIGEST!
    DG-A BF-STAMP-DG-U DG-C BF-STAMP-DG-U STR= TTRUE ;
 

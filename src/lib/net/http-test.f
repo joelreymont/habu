@@ -105,9 +105,9 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 
 create RES-BUF RES-CAP allot
 REQ-CAP SPAN-BUFFER: REQ-BUF
-FS-PATH-CAP SPAN-BUFFER: ROOT-BUF
-FS-PATH-CAP SPAN-BUFFER: TREE-BUF   \ the root of the big and linked static trees
-create PATH-BUF FS-PATH-CAP allot
+PATH-CAP SPAN-BUFFER: ROOT-BUF
+PATH-CAP SPAN-BUFFER: TREE-BUF   \ the root of the big and linked static trees
+create PATH-BUF PATH-CAP allot
 ETAG-CAP SPAN-BUFFER: ETAG-BUF
 SCRIPT-CAP SPAN-BUFFER: SCRIPT-BUF  \ the transcript this run captured
 SCRIPT-CAP SPAN-BUFFER: WANT-BUF    \ the transcript this file expects
@@ -575,7 +575,7 @@ $2710 constant PARK-MS            \ far past every stop bound
 \ ---- the static fixture ------------------------------------------------------
 
 : UNDER-ROOT ( ptr u8 n -- n ) {: name:ptr len:n :}
-   ROOT$ name len PATH-BUF JOIN-PATH ;
+   ROOT$ name len PATH-BUF FS:JOIN-PATH ;
 
 
 : INDEX-TEXT$ ( -- ptr u8 n )
@@ -588,17 +588,17 @@ $2710 constant PARK-MS            \ far past every stop bound
 
 : MAKE-STATIC ( -- )
    s" http-test" FS:MKTEMP-DIR {: a:ptr u:n :}
-   a u CLEANUP-TREE+
+   a u FS:CLEANUP-TREE+
    a u ROOT-BUF SPAN:COPY
    u ROOT-U !
    s" index.html" UNDER-ROOT {: indexlen:n :}
-   PATH-BUF indexlen INDEX-TEXT$ WRITE-ALL
+   PATH-BUF indexlen INDEX-TEXT$ FS:WRITE-ALL
    s" _app" UNDER-ROOT {: applen:n :}
-   PATH-BUF applen MAKE-DIR
+   PATH-BUF applen FS:MAKE-DIR
    s" _app/immutable" UNDER-ROOT {: immutablelen:n :}
-   PATH-BUF immutablelen MAKE-DIR
+   PATH-BUF immutablelen FS:MAKE-DIR
    s" _app/immutable/app.js" UNDER-ROOT {: assetlen:n :}
-   PATH-BUF assetlen ASSET-TEXT$ WRITE-ALL ;
+   PATH-BUF assetlen ASSET-TEXT$ FS:WRITE-ALL ;
 
 
 \ ---- the CURL client ---------------------------------------------------------
@@ -1073,15 +1073,15 @@ $32 constant SPLIT-MS             \ long enough for the worker to read the first
 
 
 : WRITE-TRANSCRIPT ( -- )
-   s" build" MAKE-DIRS
-   s" build/http-transcript.txt" SCRIPT$ WRITE-ALL ;
+   s" build" FS:MAKE-DIRS
+   s" build/http-transcript.txt" SCRIPT$ FS:WRITE-ALL ;
 
 
 \ The artifact as another reader will find it: read back from its file and
 \ compared whole with the transcript this file expects.
 : TRANSCRIPT-CASE ( -- )
    WRITE-TRANSCRIPT
-   s" build/http-transcript.txt" BACK-BUF SPAN:$ READ-ALL {: got:n :}
+   s" build/http-transcript.txt" BACK-BUF SPAN:$ FS:READ-ALL {: got:n :}
    WANT-TRANSCRIPT
    BACK-BUF got SPAN:TAKE SPAN:$ WANT$ T$= ;
 
@@ -1098,7 +1098,7 @@ $800 constant ERR-CAP
 variable ERR-PATH-U
 variable ERR-U
 variable SAVED-STDERR
-create ERR-PATH-BUF FS-PATH-CAP allot
+create ERR-PATH-BUF PATH-CAP allot
 ERR-CAP SPAN-BUFFER: ERR-BUF
 
 
@@ -1112,15 +1112,15 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
 
 : SAVE-STDERR ( -- )
    s" http-stderr" FS:MKTEMP-DIR {: dir:ptr dirlen:n :}
-   dir dirlen CLEANUP-TREE+
-   dir dirlen s" stderr.txt" ERR-PATH-BUF JOIN-PATH ERR-PATH-U !
+   dir dirlen FS:CLEANUP-TREE+
+   dir dirlen s" stderr.txt" ERR-PATH-BUF FS:JOIN-PATH ERR-PATH-U !
    FD:STDERR FD>N F-DUPFD SAVE-FD-MIN fcntl {: saved:n :}
    saved 0 < if E-BOOM throw then
    saved SAVED-STDERR ! ;
 
 
 : STDERR-TO-FILE ( -- )
-   ERR-PATH$ OPEN-APPEND-FD {: file:n :}
+   ERR-PATH$ FS:OPEN-APPEND-FD {: file:n :}
    file FD:STDERR FD>N dup2 {: moved:n :}
    file close
    moved 0 < if E-BOOM throw then ;
@@ -1133,7 +1133,7 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
 
 
 : READ-STDERR ( -- )
-   ERR-PATH$ ERR-BUF SPAN:$ READ-ALL ERR-U ! ;
+   ERR-PATH$ ERR-BUF SPAN:$ FS:READ-ALL ERR-U ! ;
 
 
 \ ---- the cases ---------------------------------------------------------------
@@ -2365,26 +2365,26 @@ BIG-DIRS 2 * LONG-NAMES + 1+ constant BIG-FILES
 
 : NEW-TREE ( -- )
    s" http-static" FS:MKTEMP-DIR {: a:ptr u:n :}
-   a u CLEANUP-TREE+
+   a u FS:CLEANUP-TREE+
    a u TREE-BUF SPAN:COPY
    u TREE-U ! ;
 
 
 : TREE-UNDER ( ptr u8 n -- n ) {: name:ptr len:n :}
-   TREE$ name len PATH-BUF JOIN-PATH ;
+   TREE$ name len PATH-BUF FS:JOIN-PATH ;
 
 
 \ The file at the relative path the string builder holds, written with that
 \ path as its text.
 : SB-FILE ( -- )
    SB$ TREE-UNDER {: len:n :}
-   PATH-BUF len SB$ WRITE-ALL ;
+   PATH-BUF len SB$ FS:WRITE-ALL ;
 
 
 : BIG-DIR ( n -- ) {: d:n :}
    SB-RESET s" d" SB-APPEND d FMT:SB-U
    SB$ TREE-UNDER {: len:n :}
-   PATH-BUF len MAKE-DIR
+   PATH-BUF len FS:MAKE-DIR
    2 0 do
       SB-RESET s" d" SB-APPEND d FMT:SB-U s" /f" SB-APPEND i FMT:SB-U
       s" .txt" SB-APPEND SB-FILE
@@ -2400,7 +2400,7 @@ BIG-DIRS 2 * LONG-NAMES + 1+ constant BIG-FILES
 : BIG-FILE ( -- )
    BIG-FILE-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: big :}
    s" big.bin" TREE-UNDER {: len:n :}
-   PATH-BUF len big SPAN:$ WRITE-ALL
+   PATH-BUF len big SPAN:$ FS:WRITE-ALL
    big MEM:FREE-SPAN ;
 
 
@@ -2408,7 +2408,7 @@ BIG-DIRS 2 * LONG-NAMES + 1+ constant BIG-FILES
    NEW-TREE
    BIG-DIRS 0 do i BIG-DIR loop
    s" names" TREE-UNDER {: len:n :}
-   PATH-BUF len MAKE-DIR
+   PATH-BUF len FS:MAKE-DIR
    LONG-NAMES 0 do i LONG-NAME loop
    BIG-FILE ;
 
@@ -2433,7 +2433,7 @@ BIG-DIRS 2 * LONG-NAMES + 1+ constant BIG-FILES
    S\" Content-Length: 4194305\r\n" HAS? TTRUE
    HTTP:STOP
    HTTP:STATIC-COUNT 0 T=
-   TREE$ REMOVE-TREE ;
+   TREE$ FS:REMOVE-TREE ;
 
 
 \ ---- static trees through symlinks -------------------------------------------
@@ -2442,30 +2442,30 @@ BIG-DIRS 2 * LONG-NAMES + 1+ constant BIG-FILES
 
 : TREE-FILE ( ptr u8 n ptr u8 n -- ) {: name:ptr namelen:n text:ptr textlen:n :}
    name namelen TREE-UNDER {: len:n :}
-   PATH-BUF len text textlen WRITE-ALL ;
+   PATH-BUF len text textlen FS:WRITE-ALL ;
 
 
 : TREE-DIR ( ptr u8 n -- )
    TREE-UNDER {: len:n :}
-   PATH-BUF len MAKE-DIR ;
+   PATH-BUF len FS:MAKE-DIR ;
 
 
 : TREE-LINK ( ptr u8 n ptr u8 n -- ) {: target:ptr targetlen:n name:ptr namelen:n :}
    name namelen TREE-UNDER {: len:n :}
-   target targetlen PATH-BUF len MAKE-SYMLINK ;
+   target targetlen PATH-BUF len FS:MAKE-SYMLINK ;
 
 
 \ The refusal leaves nothing loaded, so a good tree loads next.
 : CYCLE-REFUSED ( -- )
    [: TREE$ HTTP:STATIC-ROOT ;] HTTP:E-STATIC TTHROWSQ
    HTTP:STATIC-COUNT 0 T=
-   TREE$ REMOVE-TREE
+   TREE$ FS:REMOVE-TREE
    NEW-TREE
    s" index.html" INDEX-TEXT$ TREE-FILE
    TREE$ HTTP:STATIC-ROOT
    HTTP:STATIC-COUNT 1 T=
    HTTP:STATIC-CLOSE
-   TREE$ REMOVE-TREE ;
+   TREE$ FS:REMOVE-TREE ;
 
 
 : SELF-LINK-CASE ( -- )
@@ -2516,7 +2516,7 @@ BIG-DIRS 2 * LONG-NAMES + 1+ constant BIG-FILES
    RES$ s" x" T$=
    HTTP:STOP
    HTTP:STATIC-COUNT 0 T=
-   TREE$ REMOVE-TREE ;
+   TREE$ FS:REMOVE-TREE ;
 
 
 \ The loop first: the listener's own wait and this suite's raw READABLE? ride
@@ -2580,13 +2580,13 @@ BIG-DIRS 2 * LONG-NAMES + 1+ constant BIG-FILES
    SETUP-REFUSAL-CASE
    THROWING-HOOK-CASE
    GATED-HOOK-CASE
-   ROOT$ REMOVE-TREE
+   ROOT$ FS:REMOVE-TREE
    AIO-STOP ;
 
 
 T-RESET
 LIFECYCLE
-CLEANUP-RUN
+FS:CLEANUP-RUN
 T-REPORT
 s" http-test: ok" type LF emit   \ CR here is the package constant 13, not `cr`
 

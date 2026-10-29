@@ -14,8 +14,8 @@ private
 81985529216486895 constant STEP-BASE
 32 constant FLUSH-N
 900000 constant TIMEOUT-MS
-create SUBJECT FS-PATH-CAP allot
-create IMAGE FS-PATH-CAP allot
+create SUBJECT PATH-CAP allot
+create IMAGE PATH-CAP allot
 variable SUBJECT-U
 variable IMAGE-U
 
@@ -36,20 +36,20 @@ variable IMAGE-U
    \ Flush each 32-step chunk below the 1024-byte string buffer's capacity.
    STEP-N 0 ?do
       STEP-BASE i + NUM+ S\"  +\n" SB-APPEND
-      i 1+ FLUSH-N mod 0= if SUBJECT$ SB$ APPEND-FILE SB-RESET then
+      i 1+ FLUSH-N mod 0= if SUBJECT$ SB$ FS:APPEND-FILE SB-RESET then
    loop
    S\" ;\n" SB-APPEND
-   SUBJECT$ SB$ APPEND-FILE ;
+   SUBJECT$ SB$ FS:APPEND-FILE ;
 
 : WRITE-SUBJECT ( -- )
-   SUBJECT$ S\" variable SHARED\n" WRITE-ALL
+   SUBJECT$ S\" variable SHARED\n" FS:WRITE-ALL
    CHAIN-N 0 ?do i WORD! loop
    SB-RESET
    S\" : MAIN ( -- )\n   3 SHARED !\n   0 CW" SB-APPEND
    CHAIN-N 1- NUM+
    8 0 ?do s"  SHARED @ +" SB-APPEND loop
    S\"  5001117282209792024 = if s\q reach=ok\q type cr else s\q reach: mismatch\q 74 die then ;\n" SB-APPEND
-   SUBJECT$ SB$ APPEND-FILE ;
+   SUBJECT$ SB$ FS:APPEND-FILE ;
 
 : BUILD ( -- )
    AOT-BUILDER-ENGINE:ENSURE
@@ -61,7 +61,7 @@ variable IMAGE-U
    s" HABU_FIXPOINT_ENGINE" >LEN ENGINE-CANDIDATE:PATH$ >LEN PROC-ENV+
    ENGINE-CANDIDATE:PATH$ TIMEOUT-MS GE-RUN-ENV
    s" large pooled image build" GE-EXPECT-OK
-   IMAGE$ EXECUTABLE? 0= if s" large pooled image missing" GE-FAIL then ;
+   IMAGE$ FS:EXECUTABLE? 0= if s" large pooled image missing" GE-FAIL then ;
 
 : CHECK ( -- )
    IMAGE$ AOT-IMAGE:CODE-RANGE nip 1048576 > 0= if

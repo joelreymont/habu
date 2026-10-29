@@ -15,9 +15,9 @@ $10000 constant CAP
 180000 constant TIMEOUT-MS
 create OUT CAP allot
 create ERR CAP allot
-create ROOT-BUF FS-PATH-CAP allot variable ROOT-U
-create IMAGE-BUF FS-PATH-CAP allot variable IMAGE-U
-create SECOND-BUF FS-PATH-CAP allot variable SECOND-U
+create ROOT-BUF PATH-CAP allot variable ROOT-U
+create IMAGE-BUF PATH-CAP allot variable IMAGE-U
+create SECOND-BUF PATH-CAP allot variable SECOND-U
 64 BUFFER: VOCAB-HEX
 
 : ROOT$ ( -- ptr u8 n ) ROOT-BUF ROOT-U @ ;
@@ -27,9 +27,9 @@ create SECOND-BUF FS-PATH-CAP allot variable SECOND-U
 : PREPARE ( -- )
    s" native-defer-image" FS:MKTEMP-DIR {: a:ptr u:n :}
    a ROOT-BUF u BYTE-COPY u ROOT-U !
-   ROOT$ CLEANUP-TREE+
-   ROOT$ s" first" IMAGE-BUF JOIN-PATH IMAGE-U !
-   ROOT$ s" second" SECOND-BUF JOIN-PATH SECOND-U ! ;
+   ROOT$ FS:CLEANUP-TREE+
+   ROOT$ s" first" IMAGE-BUF FS:JOIN-PATH IMAGE-U !
+   ROOT$ s" second" SECOND-BUF FS:JOIN-PATH SECOND-U ! ;
 
 : RESULT ( result<pcap:captured,pcap:failed> -- n )
    MATCH result
@@ -63,7 +63,7 @@ create SECOND-BUF FS-PATH-CAP allot variable SECOND-U
    OUT pu prefix pu T$=
    outu pu - 65 T=
    OUT pu + VOCAB-HEX 64 BYTE-COPY
-   IMAGE$ EXECUTABLE? TTRUE ;
+   IMAGE$ FS:EXECUTABLE? TTRUE ;
 
 : RUN-INPUT ( ptr u8 n ptr u8 n -- n )
    {: path:ptr pathu:n input:ptr inputu:n :}
@@ -88,7 +88,7 @@ create SECOND-BUF FS-PATH-CAP allot variable SECOND-U
    IMAGE$
    S\" require src/compiler/native/compiler.f\n1 set-tier\nDEFER-IMAGE-SUBJECT:CHECK-REASSIGNMENT\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" RUN-INPUT
    0 T=
-   SECOND$ EXECUTABLE? TTRUE ;
+   SECOND$ FS:EXECUTABLE? TTRUE ;
 
 : BODY ( -- )
    PREPARE
@@ -99,9 +99,9 @@ create SECOND-BUF FS-PATH-CAP allot variable SECOND-U
    s" restored opcode vocabulary: " type VOCAB-HEX 64 type cr ;
 
 : RUN ( -- )
-   T-RESET CLEANUP-RESET
+   T-RESET FS:CLEANUP-RESET
    [: BODY ;] catch {: code:n :}
-   CLEANUP-RUN
+   FS:CLEANUP-RUN
    code 0<> if code throw then
    T-REPORT ;
 

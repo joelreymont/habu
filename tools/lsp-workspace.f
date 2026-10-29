@@ -1,6 +1,6 @@
 \ lsp-workspace.f - the files of the workspace whose loads reach a file.
 \
-\ The subjects are the `.f` files under the folders ROOT+ adds, as WALK-FILES
+\ The subjects are the `.f` files under the folders ROOT+ adds, as FS:WALK-FILES
 \ finds them (src/lib/fs.f, which passes over .jj, .jj-ws, .git, .dots and .out), and
 \ the documents open in the server. REACHING takes a file F and a document D,
 \ each by its canonical path, and the open documents as a word that hands the
@@ -258,7 +258,7 @@ variable CUR-ROOT                        \ and the root being walked
    a u SOURCE-ROOT:CANONICAL drop SUBJECT drop ;
 
 : WALK ( -- )
-   CUR-ROOT @ ROOT-PATH$ [: FOUND ;] WALK-FILES ;
+   CUR-ROOT @ ROOT-PATH$ [: FOUND ;] FS:WALK-FILES ;
 
 \ The subjects under root R; a walk that fails refuses, naming R.
 : WALK-ROOT ( n -- )
@@ -338,7 +338,7 @@ variable CUR-ROOT                        \ and the root being walked
    k CUR !
    k OPEN-OF {: o:n :}
    o 0 >= if o CUR-OPEN ! [: OPEN-TEXT ;] FOLLOW exit then
-   k PATH$ FILE? if [: DISK-TEXT ;] FOLLOW then ;
+   k PATH$ FS:FILE? if [: DISK-TEXT ;] FOLLOW then ;
 
 \ Harvest with the same open-document reader and root as expansion. A source
 \ refusal still gives the loads before it; a later row can let a retry read
@@ -350,7 +350,7 @@ variable CUR-ROOT                        \ and the root being walked
    o 0 >= if
       o CUR-OPEN ! [: OPEN-TEXT ;] DISCOVER:HARVEST
    else
-      k PATH$ FILE? 0= if exit then
+      k PATH$ FS:FILE? 0= if exit then
       [: DISK-TEXT ;] DISCOVER:HARVEST
    then
    EVENT-COUNT 0 ?do

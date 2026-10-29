@@ -24,6 +24,11 @@ require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-fork.f
 
+\ The private FS words this test reads, forwarded into its own package.
+package FS
+: PROC-FORK-TEST:CLEANUP-COUNT ( -- n ) CLEANUP-N @ ;
+;package
+
 \ A global and a used public of one name: CHECK-CHILD-REFUSAL's source, which
 \ names it bare under `using`, is refused with E-USING-SHADOW-GLOBAL. Packages
 \ do not nest, so the pair is declared here, outside PROC-FORK-TEST.
@@ -57,10 +62,10 @@ package PROC-FORK-TEST
 \ the child's tree is gone (the machinery really ran) while the parent's tree is
 \ untouched. The fixture root itself is never registered, so no cleanup run can
 \ erase the evidence; the parent removes it at the end.
-create FIX-ROOT FS-PATH-CAP allot        \ fixture root; never registered
-create KEEP FS-PATH-CAP allot            \ registered by the parent, before the fork
-create KEEP-FILE FS-PATH-CAP allot
-create OWN FS-PATH-CAP allot             \ registered by the child, after the fork
+create FIX-ROOT PATH-CAP allot        \ fixture root; never registered
+create KEEP PATH-CAP allot            \ registered by the parent, before the fork
+create KEEP-FILE PATH-CAP allot
+create OWN PATH-CAP allot             \ registered by the child, after the fork
 variable FIX-ROOT-U
 variable KEEP-U
 variable KEEP-FILE-U
@@ -79,13 +84,13 @@ variable OWN-U
    OWN OWN-U @ ;
 
 : FIX-ROOT! ( ptr u8 n -- ) {: a:ptr u:n :}
-   u FS-PATH-CAP > if E-FS-PATH throw then
+   u PATH-CAP > if E-FS-PATH throw then
    a FIX-ROOT u BYTE-COPY
    u FIX-ROOT-U ! ;
 
 : SUB! ( ptr u8 n ptr u8 n ptr u8 ptr n -- )
    {: base:ptr baseu:n name:ptr nameu:n dst:ptr up:ptr :}
-   base baseu name nameu dst JOIN-PATH up ! ;
+   base baseu name nameu dst FS:JOIN-PATH up ! ;
 
 : PATHS! ( -- )
    s" hb-fork-cleanup" FS:MKTEMP-DIR FIX-ROOT!
@@ -94,32 +99,32 @@ variable OWN-U
    FIX-ROOT$ s" own" OWN OWN-U SUB! ;
 
 \ Child body: read the inherited depth BEFORE registering anything of its own
-\ (its own registration would add to it, and CLEANUP-RUN clears it), then clean
+\ (its own registration would add to it, and FS:CLEANUP-RUN clears it), then clean
 \ up what it registered and exit 1 when the depth was not 0.
 : CHILD-CLEANUP ( -- )
-   FS-MUT-CLEANUP-N @ {: depth:n :}
-   OWN$ MAKE-DIRS
-   OWN$ CLEANUP-TREE+
-   CLEANUP-RUN
+   CLEANUP-COUNT {: depth:n :}
+   OWN$ FS:MAKE-DIRS
+   OWN$ FS:CLEANUP-TREE+
+   FS:CLEANUP-RUN
    depth 0<> if 1 else 0 then FORK-EXIT ;
 
 : CHECK-CHILD-CLEANUP ( -- )
    PATHS!
-   KEEP$ MAKE-DIRS
-   KEEP-FILE$ s" keep" WRITE-ALL
-   KEEP$ CLEANUP-TREE+
+   KEEP$ FS:MAKE-DIRS
+   KEEP-FILE$ s" keep" FS:WRITE-ALL
+   KEEP$ FS:CLEANUP-TREE+
    PROC-FORK:CHECKED PID>N {: pid:n :}
    pid 0= if CHILD-CLEANUP then
    s" fork child inherits an empty cleanup table" T-LABEL
    pid EXPECT-CLEAN-CHILD
    s" fork child ran its own cleanup" T-LABEL
-   OWN$ EXISTS? TFALSE
+   OWN$ FS:EXISTS? TFALSE
    s" the parent's registration survives the child" T-LABEL
-   KEEP-FILE$ FILE? TTRUE
-   CLEANUP-RUN
+   KEEP-FILE$ FS:FILE? TTRUE
+   FS:CLEANUP-RUN
    s" the parent's own run removes what it registered" T-LABEL
-   KEEP$ EXISTS? TFALSE
-   FIX-ROOT$ REMOVE-TREE ;
+   KEEP$ FS:EXISTS? TFALSE
+   FIX-ROOT$ FS:REMOVE-TREE ;
 
 \ ---- a child run as its own process root -----------------------------------
 \ PROC-FORK:CHILD-MAIN runs a quotation as the child's process root: it exits 0
@@ -134,7 +139,7 @@ variable OWN-U
 \ observable here.
 -4242 constant CHILD-CODE
 3 constant DUP2-FAILED-RC
-create MAIN-ERR FS-PATH-CAP allot
+create MAIN-ERR PATH-CAP allot
 variable MAIN-ERR-U
 variable PARENT-PID
 variable MAIN-PID
@@ -151,7 +156,7 @@ create CHILD-ERR CHILD-ERR-CAP allot
    s\" hb: uncaught throw code -4242\n" ;
 
 : ERR-TO-FILE ( -- )
-   MAIN-ERR$ OPEN-APPEND-FD {: fd :}
+   MAIN-ERR$ FS:OPEN-APPEND-FD {: fd :}
    fd 2 dup2 0 < if DUP2-FAILED-RC FORK-EXIT then
    fd close ;
 
@@ -163,7 +168,7 @@ create CHILD-ERR CHILD-ERR-CAP allot
 
 : FORK-MAIN ( [ -- ] -- ) {: q :}
    getpid PARENT-PID !
-   MAIN-ERR$ s" " WRITE-ALL
+   MAIN-ERR$ s" " FS:WRITE-ALL
    PROC-FORK:CHECKED PID>N {: pid:n :}
    pid 0= if ERR-TO-FILE q PROC-FORK:CHILD-MAIN then
    ESCAPE-CHECK
@@ -174,7 +179,7 @@ create CHILD-ERR CHILD-ERR-CAP allot
    MAIN-PID @ >PID PROC-WAIT-STATUS-RAW {: status:n :}
    status 0 < TFALSE
    status PROC-STATUS>RC RC>N
-   MAIN-ERR$ CHILD-ERR CHILD-ERR-CAP READ-ALL ;
+   MAIN-ERR$ CHILD-ERR CHILD-ERR-CAP FS:READ-ALL ;
 
 : THROWER ( -- )
    CHILD-CODE throw ;
@@ -227,7 +232,7 @@ variable REFUSAL-CODE
    CHECK-CHILD-RETURNS
    CHECK-CHILD-THROWS
    CHECK-CHILD-REFUSAL
-   FIX-ROOT$ REMOVE-TREE ;
+   FIX-ROOT$ FS:REMOVE-TREE ;
 
 \ ---- reapers whose forks fail -------------------------------------------------
 \ A refused fork answers a negative pid: -1 from macOS's libc fork, -EAGAIN from

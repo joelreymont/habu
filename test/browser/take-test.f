@@ -32,10 +32,10 @@ CAP BUFFER: OUT
 CAP BUFFER: ERR
 variable OUT-U
 variable ERR-U
-FS-PATH-CAP BUFFER: EXE
-FS-PATH-CAP BUFFER: DIR
+PATH-CAP BUFFER: EXE
+PATH-CAP BUFFER: DIR
 variable DIR-U
-FS-PATH-CAP BUFFER: MOD
+PATH-CAP BUFFER: MOD
 variable MOD-U
 
 : ARG+ ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
@@ -50,7 +50,7 @@ variable MOD-U
    s" browser-take" TMPDIR-MKDIR {: a:ptr u:n :}
    a DIR u BYTE-COPY u DIR-U !
    s" browser take: module in " type DIR u type cr
-   DIR u s" take.wasm" MOD JOIN-PATH MOD-U ! ;
+   DIR u s" take.wasm" MOD FS:JOIN-PATH MOD-U ! ;
 
 : BUILD ( -- n )
    PROC-ARGV-RESET

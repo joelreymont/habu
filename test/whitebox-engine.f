@@ -42,10 +42,10 @@ package WHITEBOX-ENGINE
 
 $10000 constant IO-CAP
 
-create PATH-BUF FS-PATH-CAP allot
-create WORK-BUF FS-PATH-CAP allot
-create TMP-BUF FS-PATH-CAP allot
-create BUNDLE-BUF FS-PATH-CAP allot
+create PATH-BUF PATH-CAP allot
+create WORK-BUF PATH-CAP allot
+create TMP-BUF PATH-CAP allot
+create BUNDLE-BUF PATH-CAP allot
 create OUT IO-CAP allot
 create ERR IO-CAP allot
 create KEY-HEX KEYED-IMAGE:KEY-HEX-LEN allot
@@ -77,7 +77,7 @@ variable READY?
    BUNDLE-ROOT$ nip 0 > ;
 
 : BUNDLE-PATH$ ( -- ptr u8 n )
-   BUNDLE-ROOT$ s" hb-whitebox-source" BUNDLE-BUF JOIN-PATH BUNDLE-U !
+   BUNDLE-ROOT$ s" hb-whitebox-source" BUNDLE-BUF FS:JOIN-PATH BUNDLE-U !
    BUNDLE-BUF BUNDLE-U @ ;
 
 \ The family name: the image's name under img/, the stem of its work
@@ -87,7 +87,7 @@ variable READY?
 
 : COPY-OUT! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr up:ptr :}
    u 0 <= if E-FS-PATH throw then
-   u FS-PATH-CAP > if E-FS-CAPACITY throw then
+   u PATH-CAP > if E-FS-CAPACITY throw then
    a dst u BYTE-COPY
    u up ! ;
 
@@ -96,7 +96,7 @@ variable READY?
 \ KEYED-IMAGE:PUBLISH puts it there.
 : WORK-OPEN ( -- )
    FAMILY$ ENGINE-KEY KEYED-IMAGE:WORK-OPEN WORK-BUF WORK-U COPY-OUT!
-   WORK-BYTES FAMILY$ TMP-BUF JOIN-PATH TMP-U ! ;
+   WORK-BYTES FAMILY$ TMP-BUF FS:JOIN-PATH TMP-U ! ;
 
 : ARG ( ptr u8 n -- )
    >LEN PROC-ARGV+ ;
@@ -135,7 +135,7 @@ variable READY?
    KEY-HEX CONTENT-KEY:FINAL-HEX ;
 
 : PUBLISH ( -- )
-   TMP-BYTES EXECUTABLE? 0= if
+   TMP-BYTES FS:EXECUTABLE? 0= if
       s" whitebox-engine: builder produced no executable image" WB-RC die
    then
    [: PRODUCT-KEY-BODY ;] CONTENT-KEY:WITH-FOLD
@@ -163,7 +163,7 @@ public
 \ a missing supplier is materialized again. Bundle rows use the gate's supplier.
 : ENSURE ( -- )
    BUNDLE? if
-      BUNDLE-PATH$ EXECUTABLE? 0= if
+      BUNDLE-PATH$ FS:EXECUTABLE? 0= if
          s" whitebox-engine: suite bundle has no whitebox image" WB-RC die
       then
       exit
@@ -182,9 +182,9 @@ public
 \ Put a private copy of the shared unsealed engine at the caller's own path.
 : PROVIDE ( ptr u8 n -- ) {: dst:ptr dstu:n :}
    ENSURE
-   dst dstu EXISTS? if dst dstu REMOVE-FILE then
+   dst dstu FS:EXISTS? if dst dstu FS:REMOVE-FILE then
    BUNDLE? if BUNDLE-PATH$ else PATH-BYTES then
-   dst dstu COPY-FILE-STREAM
-   dst dstu CHMOD-X ;
+   dst dstu FS:COPY-FILE-STREAM
+   dst dstu FS:CHMOD-X ;
 
 ;package

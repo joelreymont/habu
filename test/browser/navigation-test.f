@@ -25,12 +25,12 @@ CAP BUFFER: OUT
 CAP BUFFER: ERR
 variable OUT-U
 variable ERR-U
-FS-PATH-CAP BUFFER: EXE
-FS-PATH-CAP BUFFER: DIR
+PATH-CAP BUFFER: EXE
+PATH-CAP BUFFER: DIR
 variable DIR-U
-FS-PATH-CAP BUFFER: MOD
+PATH-CAP BUFFER: MOD
 variable MOD-U
-FS-PATH-CAP BUFFER: FILE
+PATH-CAP BUFFER: FILE
 
 : ARG+ ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
 
@@ -41,7 +41,7 @@ FS-PATH-CAP BUFFER: FILE
    s" browser-navigation" FS:MKTEMP-DIR {: a:ptr u:n :}
    a DIR u BYTE-COPY u DIR-U !
    s" browser navigation: module and CLI output in " type DIR u type cr
-   DIR u s" navigation.wasm" MOD JOIN-PATH MOD-U ! ;
+   DIR u s" navigation.wasm" MOD FS:JOIN-PATH MOD-U ! ;
 
 : SPAWN ( ptr u8 len -- n )
    OUT CAP >LEN ERR CAP >LEN DEADLINE-MS >MS
@@ -83,12 +83,12 @@ FS-PATH-CAP BUFFER: FILE
 
 : OUTPUT! ( ptr u8 n -- )
    {: a:ptr n:n :}
-   DIR DIR-U @ s" expected.txt" FILE JOIN-PATH {: u:n :}
-   FILE u a n WRITE-ALL ;
+   DIR DIR-U @ s" expected.txt" FILE FS:JOIN-PATH {: u:n :}
+   FILE u a n FS:WRITE-ALL ;
 
 : ACTUAL! ( -- )
-   DIR DIR-U @ s" actual.txt" FILE JOIN-PATH {: u:n :}
-   FILE u OUT OUT-U @ WRITE-ALL ;
+   DIR DIR-U @ s" actual.txt" FILE FS:JOIN-PATH {: u:n :}
+   FILE u OUT OUT-U @ FS:WRITE-ALL ;
 
 : INPUT-CASE ( -- )
    HOST-OPEN

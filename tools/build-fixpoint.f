@@ -36,10 +36,10 @@ $10000 constant BF-CERT-DIAG-CAP
 \ Load-discipline guard. build-fixpoint.f is the caller-composed depth-0 --load
 \ entry (BF-CLI-SELF-DISPATCH below); the lib preamble is --load-ed by the caller,
 \ never require-d here, so an old native seed can supply the minimal set its
-\ primitives support (see src/lib/process-env.f). Without the preamble the FS-PATH-CAP
+\ primitives support (see src/lib/process-env.f). Without the preamble the PATH-CAP
 \ buffer create just below otherwise dies mid-load with a bare
-\ `E-UNDEFINED: FS-PATH-CAP`; name the required load list instead. The
-\ checker now loads fs.f through source-lex.f, so FS-PATH-CAP alone no longer
+\ `E-UNDEFINED: PATH-CAP`; name the required load list instead. The
+\ checker now loads fs.f through source-lex.f, so PATH-CAP alone no longer
 \ proves the caller loaded the preamble. codesign.f requires the other library
 \ modules except process-env.f; check one public word from each branch.
 \
@@ -134,7 +134,7 @@ BF-REQUIRE-WATERMARK
 \ process-env.f, which must be loaded by the caller for the guard to pass.
 require src/lib/process-cwd.f
 require src/lib/engine-id.f                  \ PATH$: the engine a certify child runs
-require src/lib/span.f                       \ SPAN-BUFFER: destinations for FS-MUT-SUFFIX-PATH
+require src/lib/span.f                       \ SPAN-BUFFER: destinations for FS:SUFFIX-PATH
 require tools/build-support.f            \ shared path, child env and source scratch
 require src/lib/content-key.f                \ the chain fold
 require tools/event-closure-lib.f        \ the chain fold
@@ -159,10 +159,10 @@ create BF-CERT-DIAG BF-CERT-DIAG-CAP allot
 create BF-STAMP-BUF BF-STAMP-CAP allot
 create BF-SHA-CTX SHA256-CTX-BYTES allot        \ this tool's digest context
 create BF-FSHA-CTX SHA256-FILE-CTX-BYTES allot  \ ... and its file-digest context
-create BF-STAMP-PATH-BUF FS-PATH-CAP allot
-create BF-STAMP-DIR-BUF FS-PATH-CAP allot
-create BF-STAMP-DEF-BUF FS-PATH-CAP allot
-FS-PATH-CAP SPAN-BUFFER: BF-HOST-DST-BUF       \ a FS-MUT-SUFFIX-PATH destination
+create BF-STAMP-PATH-BUF PATH-CAP allot
+create BF-STAMP-DIR-BUF PATH-CAP allot
+create BF-STAMP-DEF-BUF PATH-CAP allot
+PATH-CAP SPAN-BUFFER: BF-HOST-DST-BUF       \ a FS:SUFFIX-PATH destination
 BF-LF BF-LF-BUF c!
 
 variable BF-CMP-A-BUF-A
@@ -231,13 +231,13 @@ variable BF-CERT-PATH-U
    E-BUILD-STATUS throw ;
 
 : BF-RENAME-TMP ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu dst:ptr dstu :}
-   src srcu BF-A$ dst dstu BF-B$ RENAME-FILE ;
+   src srcu BF-A$ dst dstu BF-B$ FS:RENAME-FILE ;
 
 : BF-CHMOD-X-TMP ( ptr u8 n -- )
-   BF-A$ CHMOD-X ;
+   BF-A$ FS:CHMOD-X ;
 
 : BF-OPEN-INPUT ( ptr u8 n -- n )
-   FS-PATHZ open-rd dup 0 < if E-BUILD-PATH throw then ;
+   FS:>PATHZ open-rd dup 0 < if E-BUILD-PATH throw then ;
 
 : BF-FINISH-PID ( pid -- n )
    PROC-WAIT-RC MATCH result ok OF ENDOF err OF ENDOF ;MATCH ;   \ completion code (ok 0 / err nonzero)
@@ -305,13 +305,13 @@ variable BF-CERT-PATH-U
 \ A capture buffer bounds a child's output by a number chosen before the child
 \ runs; a file does not, and its size is knowable afterwards - which is the only
 \ way a child whose output is a source transform can be read back through
-\ FILE-SIZE (dot habu-hb-build-cannot-d09df17e). The answer is an `outcome`, so
+\ FS:FILE-SIZE (dot habu-hb-build-cannot-d09df17e). The answer is an `outcome`, so
 \ a deadline expiry is a named arm and not a bare rc.
 \
 : BF-RUN-ARGV-ENV-OUTFILE ( ptr u8 n ptr u8 n ptr u8 len ms -- len outcome )
    {: exe:ptr exeu:n out:ptr outu:n err:ptr errcap:len timeout:ms :}
-   out outu BF-LF-BUF 0 WRITE-ALL
-   out outu OPEN-APPEND-FD {: outfd:n :}
+   out outu BF-LF-BUF 0 FS:WRITE-ALL
+   out outu FS:OPEN-APPEND-FD {: outfd:n :}
    exe exeu >LEN PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
    PROC-ENV-PREPARE {: envp:ptr :}
    timeout PROC-CAPTURE-BEGIN
@@ -355,13 +355,13 @@ variable BF-CERT-PATH-U
    a u BF-A$ CODESIGN:VERIFY ;
 
 : BF-RESET-OUT ( ptr u8 n -- )
-   BF-OUT$ BF-SOURCE-BUF 0 WRITE-ALL ;
+   BF-OUT$ BF-SOURCE-BUF 0 FS:WRITE-ALL ;
 
 : BF-APPEND-BYTES ( ptr u8 n ptr u8 n -- ) {: out:ptr outu a:ptr u :}
-   out outu BF-OUT$ a u APPEND-FILE ;
+   out outu BF-OUT$ a u FS:APPEND-FILE ;
 
 : BF-APPEND-LF ( ptr u8 n -- ) {: out:ptr outu :}
-   out outu BF-OUT$ BF-LF-BUF 1 APPEND-FILE ;
+   out outu BF-OUT$ BF-LF-BUF 1 FS:APPEND-FILE ;
 
 : BF-APPEND-LINE ( ptr u8 n ptr u8 n -- ) {: out:ptr outu:n a:ptr u:n :}
    out outu a u BF-APPEND-BYTES
@@ -423,9 +423,9 @@ package BUILD-FIXPOINT
    -1 BF-APP-OUT ! ;
 
 : BF-APP-OPEN ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu dst:ptr dstu :}
-   src srcu FS-PATHZ open-rd BF-APP-IN !
+   src srcu FS:>PATHZ open-rd BF-APP-IN !
    BF-APP-IN @ 0 < if E-FS-OPEN BF-APP-THROW then
-   dst dstu OPEN-APPEND-FD BF-APP-OUT !
+   dst dstu FS:OPEN-APPEND-FD BF-APP-OUT !
    BF-APP-OUT @ 0 < if E-FS-OPEN BF-APP-THROW then ;
 
 : BF-APP-WRITE-CHUNK ( n -- ) {: u :}
@@ -897,9 +897,9 @@ package BUILD-FIXPOINT
 : BF-OPEN-CMP ( ptr u8 n ptr u8 n -- ) {: a:ptr au b:ptr bu :}
    -1 BF-FDA !
    -1 BF-FDB !
-   a au FS-PATHZ open-rd BF-FDA !
+   a au FS:>PATHZ open-rd BF-FDA !
    BF-FDA @ 0 < if E-BUILD-PATH throw then
-   b bu FS-PATHZ open-rd BF-FDB !
+   b bu FS:>PATHZ open-rd BF-FDB !
    BF-FDB @ 0 < if
       BF-FDA @ close -1 BF-FDA ! E-BUILD-PATH throw
    then ;
@@ -1137,8 +1137,8 @@ package BUILD-FIXPOINT
 \ wrote engines differing in 12081 bytes. Compiled into a body the same literal
 \ lands in code below the window and the seed's canonical CODE-B0 absorbs it.
 \ src/habu/stdin.f DP-MARK refuses the top-level shape by name.
-create BF-CHAIN-DRV-BUF FS-PATH-CAP allot   variable BF-CHAIN-DRV-U
-create BF-ART-BUF FS-PATH-CAP allot         variable BF-ART-U
+create BF-CHAIN-DRV-BUF PATH-CAP allot   variable BF-CHAIN-DRV-U
+create BF-ART-BUF PATH-CAP allot         variable BF-ART-U
 variable BF-DRV-R
 
 : BF-CHAIN-DRIVER$ ( -- ptr u8 n )
@@ -1223,7 +1223,7 @@ variable BF-DRV-R
    repeat ;
 
 : BF-DRV+ ( ptr u8 n -- ) {: a:ptr u:n :}
-   BF-CHAIN-DRIVER$ a u APPEND-FILE ;
+   BF-CHAIN-DRIVER$ a u FS:APPEND-FILE ;
 
 \ ( artifact-path producer-engine-path -- ): stdin.f with its tail replaced by the
 \ declaration of THIS artifact and the same call.
@@ -1232,7 +1232,7 @@ variable BF-DRV-R
    eng engu BF-DRV-PATH?
    BF-CHAIN-DRIVER-PATH!
    BF-DRV-SOURCE-KEEP {: keep:n :}
-   BF-CHAIN-DRIVER$ BF-SOURCE-BUF keep WRITE-ALL
+   BF-CHAIN-DRIVER$ BF-SOURCE-BUF keep FS:WRITE-ALL
    S\" : ART-DECL ( -- ) s\" " BF-DRV+
    art artu BF-DRV+
    S\" \" s\" " BF-DRV+
@@ -1351,7 +1351,7 @@ variable BF-DRV-R
    BF-SAVE-SNAPSHOT
    s" snapshot image OK: candidate validated" type cr ;
 
-create BF-BOOT-ROOT FS-PATH-CAP allot
+create BF-BOOT-ROOT PATH-CAP allot
 variable BF-BOOT-ROOT-U
 $100 constant BF-BOOT-OUT-CAP
 $1000 constant BF-BOOT-ERR-CAP
@@ -1396,7 +1396,7 @@ create BF-BOOT-ERR BF-BOOT-ERR-CAP allot
       E-BUILD-STATUS throw
    then ;
 
-: BF-BOOT-CLEAN ( -- ) BF-BOOT-ROOT$ REMOVE-TREE ;
+: BF-BOOT-CLEAN ( -- ) BF-BOOT-ROOT$ FS:REMOVE-TREE ;
 
 : BF-CHECK-CANDIDATE ( ptr u8 n -- )
    {: cand:ptr candu:n :}
@@ -1406,16 +1406,16 @@ create BF-BOOT-ERR BF-BOOT-ERR-CAP allot
    cand candu [: BF-BOOT-RUN ;] [: BF-BOOT-CLEAN ;] finally ;
 
 \ The candidate is copied into the engine's sibling, booted there and renamed
-\ over the engine only once it passed (src/lib/fs-mutate.f REPLACE-STAGED), so a
+\ over the engine only once it passed (src/lib/fs-mutate.f FS:REPLACE-STAGED), so a
 \ failed install leaves the engine as it was and no sibling.
 : BF-INSTALL-HB-FILL ( ptr u8 n -- )
    {: tmp:ptr tmpu:n :}
-   s" hb-stdin" BF-A$ tmp tmpu COPY-FILE-STREAM
-   tmp tmpu CHMOD-X
+   s" hb-stdin" BF-A$ tmp tmpu FS:COPY-FILE-STREAM
+   tmp tmpu FS:CHMOD-X
    tmp tmpu BF-CHECK-CANDIDATE ;
 
 : BF-INSTALL-HB ( -- )
-   BF-ENGINE$ [: BF-INSTALL-HB-FILL ;] REPLACE-STAGED
+   BF-ENGINE$ [: BF-INSTALL-HB-FILL ;] FS:REPLACE-STAGED
    s" hb-stdin" BF-REMOVE-TMP ;
 
 \ The CAPTURE HOST is kept beside the engine it captured for. A fixture whose
@@ -1426,29 +1426,29 @@ create BF-BOOT-ERR BF-BOOT-ERR-CAP allot
 \ path derives from BF-ENGINE$, so a fixture install under HABU_FIXPOINT_ENGINE
 \ keeps its host in its own sandbox and never writes this repo's bin.
 : BF-HOST-DST$ ( -- ptr u8 n )
-   BF-ENGINE$ s" -host" BF-HOST-DST-BUF FS-MUT-SUFFIX-PATH BF-HOST-DST-U !
+   BF-ENGINE$ s" -host" BF-HOST-DST-BUF FS:SUFFIX-PATH BF-HOST-DST-U !
    BF-HOST-DST-BUF BF-HOST-DST-U @ SPAN:TAKE SPAN:$ ;
 
 : BF-INSTALL-HOST-FILL ( ptr u8 n -- )
    {: tmp:ptr tmpu:n :}
-   s" hb-host" BF-A$ tmp tmpu COPY-FILE-STREAM
-   tmp tmpu CHMOD-X ;
+   s" hb-host" BF-A$ tmp tmpu FS:COPY-FILE-STREAM
+   tmp tmpu FS:CHMOD-X ;
 
 : BF-INSTALL-HOST ( -- )
-   BF-HOST-DST$ [: BF-INSTALL-HOST-FILL ;] REPLACE-STAGED ;
+   BF-HOST-DST$ [: BF-INSTALL-HOST-FILL ;] FS:REPLACE-STAGED ;
 
 : BF-BIN-HB? ( ptr u8 n -- bool )
    2dup s" bin/hb" STR= if 2drop BF-TRUE exit then
    s" bin/hb-host" STR= ;
 
 : BF-REMOVE-BIN-OTHER ( ptr u8 n -- ) {: path:ptr pathu :}
-   path pathu FILE? if
-      path pathu BF-BIN-HB? 0= if path pathu REMOVE-FILE then
+   path pathu FS:FILE? if
+      path pathu BF-BIN-HB? 0= if path pathu FS:REMOVE-FILE then
    then ;
 
 : BF-CLEAN-BIN ( -- )
    BF-ENGINE$ s" bin/hb" STR= 0= if exit then
-   s" bin" [: BF-REMOVE-BIN-OTHER ;] WALK-FILES ;
+   s" bin" [: BF-REMOVE-BIN-OTHER ;] FS:WALK-FILES ;
 
 : BF-INSTALL ( -- )
    BF-ASSERT-PRODUCT
@@ -1460,7 +1460,7 @@ create BF-BOOT-ERR BF-BOOT-ERR-CAP allot
 
 : BF-STAMP-PATH! ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0 <= if E-BUILD-PATH throw then
-   u FS-PATH-CAP > if E-BUILD-PATH throw then
+   u PATH-CAP > if E-BUILD-PATH throw then
    a BF-STAMP-PATH-BUF u BYTE-COPY
    u BF-STAMP-PATH-U ! ;
 
@@ -1468,16 +1468,16 @@ create BF-BOOT-ERR BF-BOOT-ERR-CAP allot
    0 BF-STAMP-PATH-U ! ;
 
 : BF-STAMP-DIR$ ( -- ptr u8 n )
-   BUILD-OUT:BASE$ s" fixpoint" BF-STAMP-DIR-BUF JOIN-PATH BF-STAMP-DIR-U !
+   BUILD-OUT:BASE$ s" fixpoint" BF-STAMP-DIR-BUF FS:JOIN-PATH BF-STAMP-DIR-U !
    BF-STAMP-DIR-BUF BF-STAMP-DIR-U @ ;
 
 : BF-STAMP-PATH$ ( -- ptr u8 n )
    BF-STAMP-PATH-U @ 0 > if BF-STAMP-PATH-BUF BF-STAMP-PATH-U @ exit then
-   BF-STAMP-DIR$ s" stamp" BF-STAMP-DEF-BUF JOIN-PATH BF-STAMP-DEF-U !
+   BF-STAMP-DIR$ s" stamp" BF-STAMP-DEF-BUF FS:JOIN-PATH BF-STAMP-DEF-U !
    BF-STAMP-DEF-BUF BF-STAMP-DEF-U @ ;
 
 : BF-STAMP-ENSURE-DIR ( -- )
-   BF-STAMP-PATH$ SOURCE-ROOT:DIRNAME MAKE-DIRS ;
+   BF-STAMP-PATH$ SOURCE-ROOT:DIRNAME FS:MAKE-DIRS ;
 
 : BF-STAMP-BYTES+ ( ptr u8 n -- ) {: a:ptr u:n :}
    BF-STAMP-U @ u + BF-STAMP-CAP > if E-STR-CAPACITY throw then
@@ -1617,9 +1617,9 @@ variable CHAIN-I
    BF-STAMP-KEY-END ;
 
 : BF-STAMP-READ? ( -- bool )
-   BF-STAMP-PATH$ FILE? 0= if BF-FALSE exit then
-   BF-STAMP-PATH$ FILE-SIZE BF-STAMP-HEX-U 1 + <> if BF-FALSE exit then
-   BF-STAMP-PATH$ BF-STAMP-OLD BF-STAMP-HEX-U 1 + READ-ALL BF-STAMP-HEX-U 1 + <> if BF-FALSE exit then
+   BF-STAMP-PATH$ FS:FILE? 0= if BF-FALSE exit then
+   BF-STAMP-PATH$ FS:FILE-SIZE BF-STAMP-HEX-U 1 + <> if BF-FALSE exit then
+   BF-STAMP-PATH$ BF-STAMP-OLD BF-STAMP-HEX-U 1 + FS:READ-ALL BF-STAMP-HEX-U 1 + <> if BF-FALSE exit then
    BF-STAMP-OLD BF-STAMP-HEX-U + c@ BF-LF <> if BF-FALSE exit then
    BF-TRUE ;
 
@@ -1637,7 +1637,7 @@ variable CHAIN-I
    BF-STAMP-ENSURE-DIR
    BF-STAMP-RECORDED-KEY!
    BF-LF BF-STAMP-KEY BF-STAMP-HEX-U + c!
-   BF-STAMP-PATH$ BF-STAMP-KEY BF-STAMP-HEX-U 1 + ATOMIC-WRITE-FILE ;
+   BF-STAMP-PATH$ BF-STAMP-KEY BF-STAMP-HEX-U 1 + FS:ATOMIC-WRITE-FILE ;
 
 : BF-STAMP-CACHED ( -- )
    s" fixpoint: cached " type

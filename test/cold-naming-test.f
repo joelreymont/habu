@@ -37,9 +37,9 @@ $1000 constant IO-CAP
 120000 constant TIMEOUT-MS
 70 constant REJECT-RC            \ a non-certified definition (src/core/check-hook.f)
 
-create ROOT FS-PATH-CAP allot    variable ROOT-U
-create HOST FS-PATH-CAP allot    variable HOST-U
-create PROBE FS-PATH-CAP allot   variable PROBE-U
+create ROOT PATH-CAP allot    variable ROOT-U
+create HOST PATH-CAP allot    variable HOST-U
+create PROBE PATH-CAP allot   variable PROBE-U
 create OUT IO-CAP allot
 create ERR IO-CAP allot
 
@@ -48,17 +48,17 @@ create ERR IO-CAP allot
 : PROBE$ ( -- ptr u8 n ) PROBE PROBE-U @ ;
 
 : SETUP ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" habu-cold-naming" FS:MKTEMP-DIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY  u ROOT-U !
-   ROOT$ CLEANUP-TREE+
-   ROOT$ s" hb-cold" HOST JOIN-PATH HOST-U !
-   ROOT$ s" probe.f" PROBE JOIN-PATH PROBE-U !
+   ROOT$ FS:CLEANUP-TREE+
+   ROOT$ s" hb-cold" HOST FS:JOIN-PATH HOST-U !
+   ROOT$ s" probe.f" PROBE FS:JOIN-PATH PROBE-U !
    HOST$ COLD-ENGINE:PROVIDE ;
 
 : PROBE! ( ptr u8 n -- ) {: src:ptr srcu:n :}
-   PROBE$ EXISTS? if PROBE$ REMOVE-FILE then
-   PROBE$ src srcu WRITE-ALL
+   PROBE$ FS:EXISTS? if PROBE$ FS:REMOVE-FILE then
+   PROBE$ src srcu FS:WRITE-ALL
    PROC-ARGV-ENV-RESET ;
 
 : SPAWN ( -- n n )   \ erru rc
@@ -171,7 +171,7 @@ public
    UNSEALED-PRE-CLAIM-CASES
    VERIFIER-CASE
    INTERPRETER-CASE
-   CLEANUP-RUN
+   FS:CLEANUP-RUN
    T-REPORT
    s" cold-naming-test: ok" type cr ;
 

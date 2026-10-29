@@ -20,9 +20,9 @@ $10000 constant CAP
 CAP BUFFER: OUTPUT
 CAP BUFFER: ERRORS
 CAP BUFFER: PDF
-FS-PATH-CAP BUFFER: EXE
-FS-PATH-CAP BUFFER: ROOT
-FS-PATH-CAP BUFFER: PATH
+PATH-CAP BUFFER: EXE
+PATH-CAP BUFFER: ROOT
+PATH-CAP BUFFER: PATH
 variable ROOT-U
 variable PDF-U
 variable FILES
@@ -50,7 +50,7 @@ FUNCTION: SIGNAL-CALL signal ( n n -- n ) ;FUNCTION
 : ROOT$ ( -- ptr u8 n ) ROOT ROOT-U @ ;
 : AT ( ptr u8 n -- ptr u8 n )
    {: name:ptr size:n :}
-   ROOT$ name size PATH JOIN-PATH PATH swap ;
+   ROOT$ name size PATH FS:JOIN-PATH PATH swap ;
 : DEST$ ( -- ptr u8 n ) s" pages.pdf" AT ;
 : FIRST-QDF$ ( -- ptr u8 n ) s" first-qdf.pdf" AT ;
 : SECOND-QDF$ ( -- ptr u8 n ) s" second-qdf.pdf" AT ;
@@ -97,15 +97,15 @@ FUNCTION: SIGNAL-CALL signal ( n n -- n ) ;FUNCTION
    loop
    s" </defs><use href='#t'/></svg>" SB-APPEND
    SB$ SECOND! WRITE-PAGES ;
-: RESTORE-DIR ( -- ) ROOT$ 448 CHMOD-MODE ;
+: RESTORE-DIR ( -- ) ROOT$ 448 FS:CHMOD-MODE ;
 : BAD-DEST ( -- )
-   ROOT$ 365 CHMOD-MODE
+   ROOT$ 365 FS:CHMOD-MODE
    [: WRITE-VALID ;] [: RESTORE-DIR ;] finally ;
 : BAD-RENAME ( -- )
    s" directory" AT 0 PAGES 2 SVG-PDF:WRITE-PAGES ;
 
 : PDF-READ ( ptr u8 n -- ptr u8 n )
-   PDF CAP READ-ALL dup PDF-U ! PDF swap ;
+   PDF CAP FS:READ-ALL dup PDF-U ! PDF swap ;
 
 : LIMIT-ON ( -- )
    FILE-SIZE-LIMIT OLD-LIMIT GET-LIMIT 0 T=
@@ -142,10 +142,10 @@ FUNCTION: SIGNAL-CALL signal ( n n -- n ) ;FUNCTION
    RESET-COMMAND s" --check" ARG DEST$ ARG s" qpdf" COMMAND 2drop ;
 : COUNT-FILE ( ptr u8 n -- ) 2drop 1 FILES +! ;
 : FILES# ( -- n )
-   0 FILES ! ROOT$ [: COUNT-FILE ;] WALK-FILES FILES @ ;
+   0 FILES ! ROOT$ [: COUNT-FILE ;] FS:WALK-FILES FILES @ ;
 : PRESERVED ( [ -- ] n -- )
    {: run code:n :}
-   DEST$ s" previous destination" WRITE-ALL
+   DEST$ s" previous destination" FS:WRITE-ALL
    FILES# {: before:n :}
    run code TTHROWSQ
    DEST$ PDF-READ s" previous destination" T$=
@@ -208,10 +208,10 @@ FUNCTION: SIGNAL-CALL signal ( n n -- n ) ;FUNCTION
    s" m " AFTER NUMBER x2 0.003 NEAR NUMBER y2 0.003 NEAR 2drop ;
 
 : RENAME-FAILURE ( -- )
-   s" directory/keep" AT s" existing contents" WRITE-ALL
+   s" directory/keep" AT s" existing contents" FS:WRITE-ALL
    FILES# {: before:n :}
    [: BAD-RENAME ;] E-FS-IO TTHROWSQ
-   s" directory" AT DIR? TTRUE
+   s" directory" AT FS:DIR? TTRUE
    s" directory/keep" AT PDF-READ s" existing contents" T$=
    FILES# before T=
    RETRY ;
@@ -257,13 +257,13 @@ FUNCTION: SIGNAL-CALL signal ( n n -- n ) ;FUNCTION
 
 : RUN ( -- )
    T-RESET
-   s" build" MAKE-DIRS
+   s" build" FS:MAKE-DIRS
    s" build" s" svg-pdf-e2e" FS:MKTEMP-DIR-IN {: root:ptr size:n :}
    root ROOT size BYTE-COPY size ROOT-U !
    3 PAGES-RESERVE
    SVG$ {: data:ptr datau:n :}
    data datau FIRST SPAN:COPY FIRST datau SPAN:TAKE 0 PAGES !
-   s" directory" AT MAKE-DIRS
+   s" directory" AT FS:MAKE-DIRS
    s" parser, dimensions, render, destination and finish failures preserve output" T-LABEL
    [: EMPTY ;] SVG-PDF:E-OPEN PRESERVED
    [: NEGATIVE ;] SVG-PDF:E-OPEN PRESERVED

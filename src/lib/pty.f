@@ -73,7 +73,7 @@ variable WRITTEN
 
 
 : OPEN-MASTER ( -- n )
-   s" /dev/ptmx" FS-PATHZ PTY-OPEN-FLAGS 0 open {: m:n :}
+   s" /dev/ptmx" FS:>PATHZ PTY-OPEN-FLAGS 0 open {: m:n :}
    m 0 < if E-OPEN throw then
    m ;
 

@@ -184,11 +184,11 @@ variable TILE-END
    len  at len ZEROS ;
 
 : READ-IMAGE ( ptr u8 n -- ) {: path:ptr pathu:n :}
-   path pathu FILE-SIZE {: size:n :}
+   path pathu FS:FILE-SIZE {: size:n :}
    size CELL < if s" image-size: image too small" RC die then
    size CELL 1- + CELL / IMG-RESERVE
    size ILEN !
-   path pathu IMG@ size READ-ALL size <> if
+   path pathu IMG@ size FS:READ-ALL size <> if
       s" image-size: short read" RC die
    then ;
 

@@ -13,7 +13,7 @@ private
 
 $4020 constant EST-X64-BYTES
 create EST-X64-BUF EST-X64-BYTES allot
-create EST-X64-PATH FS-PATH-CAP allot
+create EST-X64-PATH PATH-CAP allot
 variable EST-X64-PATH-U
 
 using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
@@ -70,12 +70,12 @@ $800 constant EST-X64-TABLE
 \ $1038.
 : EST-X64-SEGMENTS ( -- )
    s" x86 DATA carrier PT_LOAD has its own file-backed row" T-LABEL
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" habu-engine-size-x64" FS:MKTEMP-DIR {: root:ptr rootu:n :}
-   root rootu CLEANUP-TREE+
-   root rootu s" stripped" EST-X64-PATH JOIN-PATH EST-X64-PATH-U !
+   root rootu FS:CLEANUP-TREE+
+   root rootu s" stripped" EST-X64-PATH FS:JOIN-PATH EST-X64-PATH-U !
    EST-X64-IMAGE
-   EST-X64-PATH EST-X64-PATH-U @ EST-X64-BUF EST-X64-BYTES WRITE-ALL
+   EST-X64-PATH EST-X64-PATH-U @ EST-X64-BUF EST-X64-BYTES FS:WRITE-ALL
    EST-X64-PATH EST-X64-PATH-U @ MEASURE
    CLASS$ s" stripped" T$=
    TOTAL-BYTES EST-X64-BYTES T=
@@ -85,20 +85,20 @@ $800 constant EST-X64-TABLE
    DATA-ZERO 30 T=
    PAD-BYTES $27C8 T=
    OTHER-BYTES $1038 T=
-   CLEANUP-RUN ;
+   FS:CLEANUP-RUN ;
 
 \ With the carrier empty the file ends at the page after the RW tail: no
 \ data is written, and padding is the table gap $7E8 plus $3000 - $2020 = $FE0.
 : EST-X64-EMPTY ( -- )
    s" empty x86 fixed LOADs leave a page-rounded file" T-LABEL
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" habu-engine-size-x64-empty" FS:MKTEMP-DIR {: root:ptr rootu:n :}
-   root rootu CLEANUP-TREE+
-   root rootu s" stripped" EST-X64-PATH JOIN-PATH EST-X64-PATH-U !
+   root rootu FS:CLEANUP-TREE+
+   root rootu s" stripped" EST-X64-PATH FS:JOIN-PATH EST-X64-PATH-U !
    EST-X64-IMAGE
    0 EST-X64-BUF $F0 + !
    0 EST-X64-BUF $108 + !  0 EST-X64-BUF $110 + !
-   EST-X64-PATH EST-X64-PATH-U @ EST-X64-BUF $3000 WRITE-ALL
+   EST-X64-PATH EST-X64-PATH-U @ EST-X64-BUF $3000 FS:WRITE-ALL
    EST-X64-PATH EST-X64-PATH-U @ MEASURE
    CLASS$ s" stripped" T$=
    TOTAL-BYTES $3000 T=
@@ -106,13 +106,13 @@ $800 constant EST-X64-TABLE
    PAD-BYTES $17C8 T=
    s" a negative fixed LOAD size is not an empty segment" T-LABEL
    -1 EST-X64-BUF $108 + !  -1 EST-X64-BUF $110 + !
-   EST-X64-PATH EST-X64-PATH-U @ EST-X64-BUF $3000 WRITE-ALL
+   EST-X64-PATH EST-X64-PATH-U @ EST-X64-BUF $3000 FS:WRITE-ALL
    [: EST-X64-PATH EST-X64-PATH-U @ MEASURE ;] E-ES-WALK TTHROWSQ
    0 EST-X64-BUF $108 + !  0 EST-X64-BUF $110 + !
    -1 EST-X64-BUF $D0 + !
-   EST-X64-PATH EST-X64-PATH-U @ EST-X64-BUF $3000 WRITE-ALL
+   EST-X64-PATH EST-X64-PATH-U @ EST-X64-BUF $3000 FS:WRITE-ALL
    [: EST-X64-PATH EST-X64-PATH-U @ MEASURE ;] E-ES-WALK TTHROWSQ
-   CLEANUP-RUN ;
+   FS:CLEANUP-RUN ;
 
 ;using   \ X64LAYOUT
 
@@ -281,29 +281,29 @@ $800 constant EST-X64-TABLE
 
 \ The sidecar is written beside a stand-in image path in a private temp dir, so
 \ two runs of this fixture never read or remove each other's map.
-create EST-IMG FS-PATH-CAP allot
+create EST-IMG PATH-CAP allot
 variable EST-IMG-U
-create EST-MAP FS-PATH-CAP allot
+create EST-MAP PATH-CAP allot
 variable EST-MAP-U
 
 : EST-SPAN-SIDECAR ( -- )
    \ This synthetic span row uses the ARM packed AOT code index.
    X64 @ if exit then
    BUILD-CODE-INDEX
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" habu-image-size" FS:MKTEMP-DIR {: root:ptr rootu:n :}
-   root rootu CLEANUP-TREE+
-   root rootu s" hb" EST-IMG JOIN-PATH EST-IMG-U !
-   root rootu s" hb.map" EST-MAP JOIN-PATH EST-MAP-U !
+   root rootu FS:CLEANUP-TREE+
+   root rootu s" hb" EST-IMG FS:JOIN-PATH EST-IMG-U !
+   root rootu s" hb.map" EST-MAP FS:JOIN-PATH EST-MAP-U !
    SB-RESET
    S\" habu-names 1\ncolumns rec named start len wid name\n0 0 " SB-APPEND
    0 SPAN-START FMT:SB-U s"  " SB-APPEND
    SPAN0 @ 4 + U32@ FMT:SB-U S\"  -1 EST-ANONYMOUS-SPAN\n" SB-APPEND
-   EST-MAP EST-MAP-U @ SB$ WRITE-ALL
+   EST-MAP EST-MAP-U @ SB$ FS:WRITE-ALL
    EST-IMG EST-IMG-U @ IMAGE-NAMES:LOAD
    0 SPAN-START 0 SPAN-BYTES IMAGE-NAMES:SPAN-NAME$
    s" EST-ANONYMOUS-SPAN" T$=
-   CLEANUP-RUN ;
+   FS:CLEANUP-RUN ;
 
 \ THE SHIPPED PAYLOAD CARRIES NO ENGINE'S WID, and this is the row that reads it
 \ off the engine this checkout ships rather than off the build that wrote it. A

@@ -27,8 +27,8 @@ $10000 constant CAP
 67 constant UNCAUGHT-RC                  \ hb's exit status for an uncaught throw
 create OUT CAP allot
 create ERR CAP allot
-create ROOT-BUF FS-PATH-CAP allot
-create IMAGE-BUF FS-PATH-CAP allot
+create ROOT-BUF PATH-CAP allot
+create IMAGE-BUF PATH-CAP allot
 variable ROOT-U
 variable IMAGE-U
 
@@ -36,11 +36,11 @@ variable IMAGE-U
 : IMAGE$ ( -- ptr u8 n ) IMAGE-BUF IMAGE-U @ ;
 
 : SETUP ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" image-lifecycle-late" FS:MKTEMP-DIR {: a:ptr u:n :}
    a ROOT-BUF u BYTE-COPY u ROOT-U !
-   ROOT$ CLEANUP-TREE+
-   ROOT$ s" late-hook" IMAGE-BUF JOIN-PATH IMAGE-U ! ;
+   ROOT$ FS:CLEANUP-TREE+
+   ROOT$ s" late-hook" IMAGE-BUF FS:JOIN-PATH IMAGE-U ! ;
 
 \ The persistent hook registers a one-shot hook each time it runs, and the
 \ program saves itself to the path its argv names.
@@ -79,11 +79,11 @@ variable IMAGE-U
    dup 0= if OUT outu LEN>N type ERR erru LEN>N type then
    TTRUE
    s" and leaves no image behind" T-LABEL
-   IMAGE$ EXISTS? TFALSE ;
+   IMAGE$ FS:EXISTS? TFALSE ;
 
 : RUN ( -- )
    T-RESET SETUP
-   [: CHECK ;] [: CLEANUP-RUN ;] finally
+   [: CHECK ;] [: FS:CLEANUP-RUN ;] finally
    T-REPORT ;
 
 RUN

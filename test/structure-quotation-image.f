@@ -14,9 +14,9 @@ $4000 constant CAP
 180000 constant TIMEOUT-MS
 create OUT CAP allot
 create ERR CAP allot
-create ROOT-BUF FS-PATH-CAP allot variable ROOT-U
-create IMAGE-BUF FS-PATH-CAP allot variable IMAGE-U
-create SECOND-BUF FS-PATH-CAP allot variable SECOND-U
+create ROOT-BUF PATH-CAP allot variable ROOT-U
+create IMAGE-BUF PATH-CAP allot variable IMAGE-U
+create SECOND-BUF PATH-CAP allot variable SECOND-U
 
 : ROOT$ ( -- ptr u8 n ) ROOT-BUF ROOT-U @ ;
 : IMAGE$ ( -- ptr u8 n ) IMAGE-BUF IMAGE-U @ ;
@@ -25,9 +25,9 @@ create SECOND-BUF FS-PATH-CAP allot variable SECOND-U
 : PREPARE ( -- )
    s" structure-quotation-image" FS:MKTEMP-DIR {: a:ptr u:n :}
    a ROOT-BUF u BYTE-COPY u ROOT-U !
-   ROOT$ CLEANUP-TREE+
-   ROOT$ s" route-image" IMAGE-BUF JOIN-PATH IMAGE-U !
-   ROOT$ s" switched-image" SECOND-BUF JOIN-PATH SECOND-U ! ;
+   ROOT$ FS:CLEANUP-TREE+
+   ROOT$ s" route-image" IMAGE-BUF FS:JOIN-PATH IMAGE-U !
+   ROOT$ s" switched-image" SECOND-BUF FS:JOIN-PATH SECOND-U ! ;
 
 : RESULT ( result<pcap:captured,pcap:failed> -- n )
    MATCH result
@@ -71,7 +71,7 @@ create SECOND-BUF FS-PATH-CAP allot variable SECOND-U
    OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-ENV-STDIN-CAPTURE RESULT {: outu:n :}
    OUT outu S\" test: ok\ntest: ok\n" T$=
-   IMAGE$ EXECUTABLE? TTRUE ;
+   IMAGE$ FS:EXECUTABLE? TTRUE ;
 
 : RESTORE ( -- )
    ENVIRONMENT
@@ -90,7 +90,7 @@ create SECOND-BUF FS-PATH-CAP allot variable SECOND-U
    OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-ENV-STDIN-CAPTURE RESULT {: outu:n :}
    OUT outu S\" test: ok\n" T$=
-   SECOND$ EXECUTABLE? TTRUE ;
+   SECOND$ FS:EXECUTABLE? TTRUE ;
 
 : RESTORE-SECOND ( -- )
    ENVIRONMENT
@@ -101,9 +101,9 @@ create SECOND-BUF FS-PATH-CAP allot variable SECOND-U
    OUT outu S\" test: ok\n" T$= ;
 
 : RUN ( -- )
-   T-RESET CLEANUP-RESET
+   T-RESET FS:CLEANUP-RESET
    [: PREPARE BUILD RESTORE RESTORE-PERSIST RESTORE-SECOND ;]
-      [: CLEANUP-RUN ;] finally
+      [: FS:CLEANUP-RUN ;] finally
    T-REPORT ;
 
 RUN

@@ -27,10 +27,10 @@ $1000 constant ACRT-ERR-CAP
 30000 constant ACRT-TIMEOUT-MS
 
 create ACRT-BUF ACRT-BUF-CAP allot
-create ACRT-PATH FS-PATH-CAP allot
-create ACRT-SMALL-PATH FS-PATH-CAP allot
-create ACRT-BOUNDARY-PATH FS-PATH-CAP allot
-create ACRT-MISSING-PATH FS-PATH-CAP allot
+create ACRT-PATH PATH-CAP allot
+create ACRT-SMALL-PATH PATH-CAP allot
+create ACRT-BOUNDARY-PATH PATH-CAP allot
+create ACRT-MISSING-PATH PATH-CAP allot
 variable ACRT-FD
 variable ACRT-N
 variable ACRT-SMALL-U
@@ -105,12 +105,12 @@ TYPED-VARIABLE ACRT-ERR-A ptr u8
    ACRT-MISSING-PATH ACRT-MISSING-U @ ;
 
 : ACRT-PREPARE ( -- )
-   CLEANUP-RESET
-   s" habu-aot-report" FS:MKTEMP-DIR 2dup CLEANUP-TREE+
+   FS:CLEANUP-RESET
+   s" habu-aot-report" FS:MKTEMP-DIR 2dup FS:CLEANUP-TREE+
    {: root:ptr rootu:n :}
-   root rootu s" small.bin" ACRT-SMALL-PATH JOIN-PATH ACRT-SMALL-U !
-   root rootu s" boundary.bin" ACRT-BOUNDARY-PATH JOIN-PATH ACRT-BOUNDARY-U !
-   root rootu s" missing.bin" ACRT-MISSING-PATH JOIN-PATH ACRT-MISSING-U ! ;
+   root rootu s" small.bin" ACRT-SMALL-PATH FS:JOIN-PATH ACRT-SMALL-U !
+   root rootu s" boundary.bin" ACRT-BOUNDARY-PATH FS:JOIN-PATH ACRT-BOUNDARY-U !
+   root rootu s" missing.bin" ACRT-MISSING-PATH FS:JOIN-PATH ACRT-MISSING-U ! ;
 
 : ACRT-W32! ( n n -- ) {: w off :}
    w ACRT-BUF off + c!
@@ -241,7 +241,7 @@ variable ACRT-SHORT-CAP
    ACRT-TEST-MISUSE
    ACRT-TEST-CLI
    ACRT-TEST-CLI-REFUSED
-   CLEANUP-RUN
+   FS:CLEANUP-RUN
    s" aot-call-report-test: ok (" type ACRT-N @ 1- FMT:.INT s"  assertions)" type cr ;
 
 ;using

@@ -205,12 +205,12 @@ create CS-DBUF 8192 allot
 4096 constant CS-CHILD-CAP
 create CS-CHILD-OUT CS-CHILD-CAP allot
 create CS-CHILD-ERR CS-CHILD-CAP allot
-create CS-PRODUCT-PATH FS-PATH-CAP allot
+create CS-PRODUCT-PATH PATH-CAP allot
 
 : CS-HB$ ( -- ptr u8 n ) s" bin/hb" ;
 
 : CS-PRODUCT$ ( -- ptr u8 n )
-   SOURCE-ROOT:CWD$ CS-HB$ CS-PRODUCT-PATH JOIN-PATH {: u:n :}
+   SOURCE-ROOT:CWD$ CS-HB$ CS-PRODUCT-PATH FS:JOIN-PATH {: u:n :}
    CS-PRODUCT-PATH u ;
 
 : CS-ENV! ( -- )
@@ -222,8 +222,8 @@ create CS-PRODUCT-PATH FS-PATH-CAP allot
 \ Definition control summaries survive APP-IMAGE:SAVE. Execute the guarded
 \ source from the restored image, then load fresh unsafe source against that
 \ same image so stale and zero-test semantics must still be enforced.
-create CS-IMAGE-ROOT-BUF FS-PATH-CAP allot
-create CS-IMAGE-PATH-BUF FS-PATH-CAP allot
+create CS-IMAGE-ROOT-BUF PATH-CAP allot
+create CS-IMAGE-PATH-BUF PATH-CAP allot
 variable CS-IMAGE-ROOT-U
 variable CS-IMAGE-PATH-U
 variable CS-CHILD-OUT-U
@@ -236,8 +236,8 @@ variable CS-CHILD-ERR-U
    s" habu-catch-success" FS:MKTEMP-DIR {: path:ptr size:n :}
    path CS-IMAGE-ROOT-BUF size BYTE-COPY
    size CS-IMAGE-ROOT-U !
-   CS-IMAGE-ROOT$ CLEANUP-TREE+
-   CS-IMAGE-ROOT$ s" saved-hb" CS-IMAGE-PATH-BUF JOIN-PATH
+   CS-IMAGE-ROOT$ FS:CLEANUP-TREE+
+   CS-IMAGE-ROOT$ s" saved-hb" CS-IMAGE-PATH-BUF FS:JOIN-PATH
    CS-IMAGE-PATH-U ! ;
 
 : CS-IMAGE-RC ( result<pcap:captured,pcap:failed> -- n )
@@ -252,7 +252,7 @@ variable CS-CHILD-ERR-U
    S\" require src/habu/app-image.f\nrequire test/catch-success-image-subject.f\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" >LEN
    CS-CHILD-OUT CS-CHILD-CAP >LEN CS-CHILD-ERR CS-CHILD-CAP >LEN
    180000 >MS RUN-ARGV-ENV-STDIN-CAPTURE CS-IMAGE-RC 0 T=
-   CS-IMAGE$ EXECUTABLE? TTRUE ;
+   CS-IMAGE$ FS:EXECUTABLE? TTRUE ;
 
 : CS-IMAGE-RUN ( -- )
    PROC-ARGV-RESET
@@ -285,10 +285,10 @@ variable CS-CHILD-ERR-U
 
 : CS-SECTION-IMAGE ( -- )
    s" a saved image executes a guarded catch and still refuses forged proof" T-LABEL
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    CS-IMAGE-PREPARE
    [: CS-IMAGE-BODY ;] catch {: code:n :}
-   CLEANUP-RUN
+   FS:CLEANUP-RUN
    code 0<> if code throw then ;
 
 \ ---- where a throw edge comes from ------------------------------------------

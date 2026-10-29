@@ -14,7 +14,7 @@ package HB-BUILD-CLI
    rc HBB-USAGE-RC T=
    outu 0 T=
    HBT-ERR erru s" HB_BUILD_TIMEOUT_MS" CONTAINS? TTRUE
-   HBT-REPL-BAD-OUT EXISTS? TFALSE ;
+   HBT-REPL-BAD-OUT FS:EXISTS? TFALSE ;
 
 \ "-1" is the only case below zero: a check that refused 0 alone would still
 \ refuse the other two.
@@ -28,8 +28,8 @@ public
    T-RESET
    HBT-PREPARE
    HBT-TIMEOUT-ENV-CASES
-   CLEANUP-RUN
-   HBT-ROOT EXISTS? TFALSE
+   FS:CLEANUP-RUN
+   HBT-ROOT FS:EXISTS? TFALSE
    T-REPORT
    s" hb-build-timeout-env-test: ok" type cr ;
 

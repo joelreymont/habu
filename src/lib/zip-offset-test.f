@@ -45,7 +45,7 @@ package ZIP
    $100000003 member NEW-LOCAL ! node TEMP-OPEN
    node member WRITE-CENTRAL
    node node OUT-LEN @ BUFFER-ALLOC {: output:ptr :}
-   node TEMP-PTR @ node TEMP-LEN @ output node OUT-LEN @ READ-ALL
+   node TEMP-PTR @ node TEMP-LEN @ output node OUT-LEN @ FS:READ-ALL
    output swap after after-len T$=
    node TEMP-CLEANUP node DISCARD-NODE ;
 

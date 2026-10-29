@@ -14,21 +14,21 @@ $10000 constant CAP
 600000 constant TIMEOUT-MS
 CAP BUFFER: OUT
 CAP BUFFER: ERR
-FS-PATH-CAP BUFFER: ROOT-BUF   variable ROOT-U
-FS-PATH-CAP BUFFER: FIRST-BUF  variable FIRST-U
-FS-PATH-CAP BUFFER: SECOND-BUF variable SECOND-U
+PATH-CAP BUFFER: ROOT-BUF   variable ROOT-U
+PATH-CAP BUFFER: FIRST-BUF  variable FIRST-U
+PATH-CAP BUFFER: SECOND-BUF variable SECOND-U
 
 : ROOT$ ( -- ptr u8 n ) ROOT-BUF ROOT-U @ ;
 : FIRST$ ( -- ptr u8 n ) FIRST-BUF FIRST-U @ ;
 : SECOND$ ( -- ptr u8 n ) SECOND-BUF SECOND-U @ ;
 
 : PREPARE ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" name-intern-capture" FS:MKTEMP-DIR {: path:ptr size:n :}
    path ROOT-BUF size BYTE-COPY size ROOT-U !
-   ROOT$ CLEANUP-TREE+
-   ROOT$ s" first" FIRST-BUF JOIN-PATH FIRST-U !
-   ROOT$ s" second" SECOND-BUF JOIN-PATH SECOND-U !
+   ROOT$ FS:CLEANUP-TREE+
+   ROOT$ s" first" FIRST-BUF FS:JOIN-PATH FIRST-U !
+   ROOT$ s" second" SECOND-BUF FS:JOIN-PATH SECOND-U !
    ROOT$ WHITEBOX-CHILD:PROVIDE-IN ;
 
 : CHECK ( n n n ptr u8 n -- )
@@ -49,7 +49,7 @@ FS-PATH-CAP BUFFER: SECOND-BUF variable SECOND-U
    OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-ENV-STDIN-CAPTURE PCAP-RESULT:>N
    s" name intern: prepared" CHECK
-   FIRST$ EXECUTABLE? TTRUE ;
+   FIRST$ FS:EXECUTABLE? TTRUE ;
 
 : IMAGE-INPUT ( ptr u8 n ptr u8 n -- n n n )
    {: image:ptr imageu:n input:ptr inputu:n :}
@@ -66,7 +66,7 @@ FS-PATH-CAP BUFFER: SECOND-BUF variable SECOND-U
    S\" NAME-INTERN-SUBJECT:RECAPTURE\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n"
    IMAGE-INPUT
    s" name intern: recaptured" CHECK
-   SECOND$ EXECUTABLE? TTRUE ;
+   SECOND$ FS:EXECUTABLE? TTRUE ;
 
 : RESTORE ( -- )
    PROC-ARGV-ENV-RESET
@@ -80,7 +80,7 @@ FS-PATH-CAP BUFFER: SECOND-BUF variable SECOND-U
 public
 : RUN ( -- )
    T-RESET
-   [: PREPARE BUILD RECAPTURE RESTORE ;] [: CLEANUP-RUN ;] finally
+   [: PREPARE BUILD RECAPTURE RESTORE ;] [: FS:CLEANUP-RUN ;] finally
    T-REPORT ;
 ;package
 

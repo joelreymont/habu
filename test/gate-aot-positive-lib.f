@@ -258,7 +258,7 @@ variable BLR-CNT
 \ dies with `E-UNDEFINED ... undefined word 'CLO'`, and these run where the
 \ application and the linker first coexist instead: a file the maker's stdin
 \ requires after tools/aot-build.f, one line before AOT-LINK:BUILD-NATIVE.
-create SELF-SRC FS-PATH-CAP allot
+create SELF-SRC PATH-CAP allot
 variable SELF-SRC-U
 
 : SELF-SRC$ ( -- ptr u8 n )
@@ -268,7 +268,7 @@ variable SELF-SRC-U
    name nameu SELF-SRC GT-PATH SELF-SRC-U ! ;
 
 : WRITE-SELF-SRC ( -- )
-   SELF-SRC$ GE-SRC-BUF GE-SRC-U @ WRITE-ALL ;
+   SELF-SRC$ GE-SRC-BUF GE-SRC-U @ FS:WRITE-ALL ;
 
 \ The raw compatibility maker script with one line added: the self-test is
 \ required after the linker and before the link. A saved maker opens the
@@ -288,7 +288,7 @@ variable SELF-SRC-U
 \ statements about THIS run. The maker runs seconds of CPU, so its deadline is
 \ the long row's child hang guard.
 : MAKER-RUN ( -- )
-   GB-OUT$ EXISTS? if GB-OUT$ REMOVE-FILE then
+   GB-OUT$ FS:EXISTS? if GB-OUT$ FS:REMOVE-FILE then
    GE-HB-RESET
    GE-HB$ GE-ARGV+
    s" --" GE-ARG+ GB-SRC$ GE-ARG+ s" 0" GE-ARG+
@@ -411,7 +411,7 @@ variable SELF-SRC-U
    SELF-SOURCE WRITE-SELF-SRC
    MAKER-RUN
    0 s" maker self-test build rc" GE-EXPECT-RC
-   GB-OUT$ FILE? 0= if s" maker self-test image" GE-FAIL then
+   GB-OUT$ FS:FILE? 0= if s" maker self-test image" GE-FAIL then
    SELF-EXPECT s" maker self-test image output" GB-RUN-EXPECT
    s" PASS: maker-side linker self-tests (AOT-LINK surface, relocation math, span table, pointer classifier)" type cr ;
 

@@ -56,15 +56,15 @@ variable XPK-ERR-U
 variable XPK-EXITED                 \ bool: child completed by exit
 variable XPK-RC
 
-create XPK-ROOT-BUF FS-PATH-CAP allot
-create XPK-CHILD-BUF FS-PATH-CAP allot
+create XPK-ROOT-BUF PATH-CAP allot
+create XPK-CHILD-BUF PATH-CAP allot
 create XPK-IN XPK-CAP allot
 create XPK-OUT XPK-CAP allot
 create XPK-ERR XPK-CAP allot
 create XPK-EMPTY 1 allot
 
 : XPK-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: src:ptr u:n dst:ptr lenp:ptr :}
-   u FS-PATH-CAP > if E-FS-CAPACITY throw then
+   u PATH-CAP > if E-FS-CAPACITY throw then
    src dst u BYTE-COPY
    u lenp ! ;
 
@@ -252,7 +252,7 @@ create XPK-EMPTY 1 allot
 
 : XPK-RUN-LOAD ( ptr u8 n -- )
    {: src:ptr srcu:n :}
-   XPK-CHILD src srcu WRITE-ALL
+   XPK-CHILD src srcu FS:WRITE-ALL
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    XPK-CHILD >LEN PROC-ARGV+
@@ -278,15 +278,15 @@ create XPK-EMPTY 1 allot
    XPK-ERR XPK-ERR-U @ a u CONTAINS? TTRUE ;
 
 : XPK-PREPARE ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" habu-export-pkg" FS:MKTEMP-DIR {: a:ptr u:n :}
    a u XPK-ROOT-BUF XPK-ROOT-U XPK-COPY!
-   XPK-ROOT CLEANUP-TREE+
-   XPK-ROOT s" forge.f" XPK-CHILD-BUF JOIN-PATH XPK-CHILD-U ! ;
+   XPK-ROOT FS:CLEANUP-TREE+
+   XPK-ROOT s" forge.f" XPK-CHILD-BUF FS:JOIN-PATH XPK-CHILD-U ! ;
 
 : XPK-CLEANUP ( -- )
-   CLEANUP-RUN
-   XPK-ROOT EXISTS? TFALSE ;
+   FS:CLEANUP-RUN
+   XPK-ROOT FS:EXISTS? TFALSE ;
 
 \ --- cases ---------------------------------------------------------------------
 

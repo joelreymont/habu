@@ -164,7 +164,7 @@ ARCH-ARM64 constant ARCH-AARCH64
 : WRITE ( ptr u8 n n ptr u8 n ptr u8 n -- )
    {: path:ptr pathu:n arch:n name:ptr nameu:n key:ptr keyu:n :}
    arch name nameu key keyu PACK {: bytes:ptr size:n :}
-   path pathu bytes size ATOMIC-WRITE-FILE
+   path pathu bytes size FS:ATOMIC-WRITE-FILE
    FILE-BUF-RELEASE ;
 
 : READ-BYTES ( ptr u8 n n ptr u8 n ptr u8 n -- )
@@ -211,10 +211,10 @@ ARCH-ARM64 constant ARCH-AARCH64
    {: path:ptr pathu:n arch:n name:ptr nameu:n key:ptr keyu:n :}
    arch name nameu key keyu META-CK
    RESET
-   path pathu FILE-SIZE {: size:n :}
+   path pathu FS:FILE-SIZE {: size:n :}
    size HEADER-BYTES < if BAD then
    size FILE-BUF-RESERVE
-   path pathu 0 FILE-BUF size READ-ALL size <> if BAD then
+   path pathu 0 FILE-BUF size FS:READ-ALL size <> if BAD then
    arch name nameu key keyu 0 FILE-BUF size READ-HEADER
    0 FILE-BUF size READ-SECTIONS
    1 READY ! ;

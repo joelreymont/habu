@@ -79,13 +79,13 @@ CAST: CONTEXT>PTR ( context -- ptr u8 )
 
 : ACQUIRE ( ptr u8 -- ) {: ls:ptr :}
    IDLE CLAIMED ls FD-CELL atomic-cas IDLE <> if
-      FS-CAUSE-CLEAR E-ACTIVE throw
+      FS:CAUSE-CLEAR E-ACTIVE throw
    then
    0 ls BASE-CELL ! ;
 
 
 : OPEN ( ptr u8 ptr u8 n -- ) {: ls:ptr path:ptr size:n :}
-   path size FS-PATHZ open-rd {: handle:n :}
+   path size FS:>PATHZ open-rd {: handle:n :}
    handle 0 < if E-OPEN throw then
    handle ls FD-CELL ! ;
 
@@ -99,17 +99,17 @@ CAST: CONTEXT>PTR ( context -- ptr u8 )
 \ Validate the header before field reads, then validate the name inside rec.
 : RECORD ( n n ptr u8 -- n n ptr u8 n u8 )
    {: filled:n at:n ls:ptr :}
-   filled at - FS-DIRENT-NAME-OFFSET < if
-      FS-CAUSE-CLEAR E-ENTRY throw
+   filled at - FS:DIRENT-NAME-OFFSET < if
+      FS:CAUSE-CLEAR E-ENTRY throw
    then
    ls BLOCK at + {: ent:ptr :}
-   ent FS-DIRENT-RECLEN {: rec:n :}
-   rec FS-DIRENT-NAME-OFFSET <= rec filled at - > or if
-      FS-CAUSE-CLEAR E-ENTRY throw
+   ent FS:DIRENT-RECLEN {: rec:n :}
+   rec FS:DIRENT-NAME-OFFSET <= rec filled at - > or if
+      FS:CAUSE-CLEAR E-ENTRY throw
    then
-   ent FS-DIRENT-NAME {: name:ptr size:n :}
-   size rec FS-DIRENT-NAME-OFFSET - > if FS-CAUSE-CLEAR E-ENTRY throw then
-   filled at rec + name size ent FS-DIRENT-TYPE ;
+   ent FS:DIRENT-NAME {: name:ptr size:n :}
+   size rec FS:DIRENT-NAME-OFFSET - > if FS:CAUSE-CLEAR E-ENTRY throw then
+   filled at rec + name size ent FS:DIRENT-TYPE ;
 
 
 \ The next name except . and .., read from a new block when this one is spent;
@@ -117,7 +117,7 @@ CAST: CONTEXT>PTR ( context -- ptr u8 )
 : NEXT ( n n ptr u8 -- n n ptr u8 n u8 bool ) {: ls:ptr :}
    begin
       2dup > if
-         ls RECORD >r 2dup FS-SKIP-SELF-ENTRY? 0= if r> true exit then
+         ls RECORD >r 2dup FS:SKIP-SELF-ENTRY? 0= if r> true exit then
          2drop r> drop
       else
          2drop ls READ-BLOCK dup 0= if 0 s" " 0 false exit then 0
@@ -153,9 +153,9 @@ CAST: CONTEXT>PTR ( context -- ptr u8 )
 
 \ Writes name among the len bytes of names in dst and answers the new length.
 : INSERT ( n ptr u8 n ptr u8 n -- n ) {: len:n name:ptr size:n dst:ptr cap:n :}
-   size 0 ?do name i + c@ LF = if FS-CAUSE-CLEAR E-ENTRY throw then loop
+   size 0 ?do name i + c@ LF = if FS:CAUSE-CLEAR E-ENTRY throw then loop
    len 0 > if 1 else 0 then {: separator:n :}
-   len size + separator + cap > if FS-CAUSE-CLEAR E-CAPACITY throw then
+   len size + separator + cap > if FS:CAUSE-CLEAR E-CAPACITY throw then
    name size dst len INSERT-AT {: at:n :}
    at len = if
       separator 0 <> if LF dst len + c! then
@@ -173,7 +173,7 @@ CAST: CONTEXT>PTR ( context -- ptr u8 )
 
 \ The listing runs on the stack into these preserving words, so the catch
 \ around each gives the mapping back however it leaves - a quotation-typed
-\ local cannot be caught (src/lib/fs.f FS-WALK-RUN).
+\ local cannot be caught (src/lib/fs.f WALK-RUN).
 : EACH-RUN ( ptr u8 ptr u8 n [ ptr u8 n -- ] -- ptr u8 ptr u8 n [ ptr u8 n -- ] )
    {: ls:ptr path:ptr size:n q :}
    ls path size OPEN
@@ -207,7 +207,7 @@ public
 : INIT ( SPAN:span<u8> -- context )
    SPAN:$ {: ls:ptr cap:n :}
    cap STORAGE-BYTES < ls NULL$ drop - 1 cells mod 0<> or if
-      FS-CAUSE-CLEAR E-CAPACITY throw
+      FS:CAUSE-CLEAR E-CAPACITY throw
    then
    IDLE ls FD-CELL !
    0 ls BASE-CELL !
@@ -233,7 +233,7 @@ public
 
 : NAMES-IN ( context ptr u8 n ptr u8 n -- n )
    {: ctx path:ptr size:n dst:ptr cap:n :}
-   cap 0 < if FS-CAUSE-CLEAR E-CAPACITY throw then
+   cap 0 < if FS:CAUSE-CLEAR E-CAPACITY throw then
    ctx CONTEXT>PTR {: ls:ptr :}
    ls ACQUIRE
    ls path size dst cap 0 [: NAMES-RUN ;] catch {: code:n :}
@@ -265,7 +265,7 @@ public
 \ Writes the names except . and .. into the caller's buffer, newline-separated
 \ and in byte order, and returns the length; names holding a newline are refused.
 : NAMES ( ptr u8 n ptr u8 n -- n ) {: path:ptr size:n dst:ptr cap:n :}
-   cap 0 < if FS-CAUSE-CLEAR E-CAPACITY throw then
+   cap 0 < if FS:CAUSE-CLEAR E-CAPACITY throw then
    MAP {: ls:ptr lsu :}
    CLAIMED ls FD-CELL ! 0 ls BASE-CELL !
    ls path size dst cap 0 [: NAMES-RUN ;] catch {: code:n :}

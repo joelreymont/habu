@@ -32,8 +32,8 @@ package TOKSTREAM-TEST
 10000 constant TIMEOUT-MS
 65 constant MANY-PATHS                \ one past the 64 paths argv.f once held
 \ The many-paths case captures one fixture stream per argument: the fixture
-\ path, up to FS-PATH-CAP bytes, and under $200 bytes of tokens.
-MANY-PATHS FS-PATH-CAP $200 + * constant CAP
+\ path, up to PATH-CAP bytes, and under $200 bytes of tokens.
+MANY-PATHS PATH-CAP $200 + * constant CAP
 
 variable ROOT-U
 variable SRC-U
@@ -44,9 +44,9 @@ variable BASE-U
 variable RC
 variable EXITED
 
-create ROOT-BUF FS-PATH-CAP allot
-create SRC-BUF FS-PATH-CAP allot
-create SECOND-BUF FS-PATH-CAP allot
+create ROOT-BUF PATH-CAP allot
+create SRC-BUF PATH-CAP allot
+create SECOND-BUF PATH-CAP allot
 create OUT CAP allot
 create ERR CAP allot
 create BASE CAP allot
@@ -187,7 +187,7 @@ create EMPTY 1 allot
    RUN-ARGV-STDIN-CAPTURE-OUTCOME
    STORE! ;
 
-: WRITE-SRC ( ptr u8 n -- )   SRC$ 2swap WRITE-ALL ;
+: WRITE-SRC ( ptr u8 n -- )   SRC$ 2swap FS:WRITE-ALL ;
 
 \ Write the variant, run the tool on the one fixture path, require a clean exit.
 : RUN-SRC ( ptr u8 n -- )
@@ -236,7 +236,7 @@ create EMPTY 1 allot
 : CASE-FILE-DROP ( -- )
    s" dropping a comment-only file from the sweep moves the stream" T-LABEL
    BASE-SRC$ WRITE-SRC
-   SECOND$ SILENT-SRC$ WRITE-ALL
+   SECOND$ SILENT-SRC$ FS:WRITE-ALL
    ARGV-HEAD  SRC$ >LEN PROC-ARGV+  SECOND$ >LEN PROC-ARGV+
    SPAWN
    EXITED @ TTRUE  RC @ 0 T=
@@ -258,17 +258,17 @@ create EMPTY 1 allot
    OUT-U @ one MANY-PATHS * T= ;
 
 : PREPARE ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" habu-tokstream" FS:MKTEMP-DIR {: a:ptr u:n :}
-   u FS-PATH-CAP > if E-FS-CAPACITY throw then
+   u PATH-CAP > if E-FS-CAPACITY throw then
    a ROOT-BUF u BYTE-COPY  u ROOT-U !
-   ROOT$ CLEANUP-TREE+
-   ROOT$ s" fixture.f" SRC-BUF JOIN-PATH SRC-U !
-   ROOT$ s" second.f" SECOND-BUF JOIN-PATH SECOND-U ! ;
+   ROOT$ FS:CLEANUP-TREE+
+   ROOT$ s" fixture.f" SRC-BUF FS:JOIN-PATH SRC-U !
+   ROOT$ s" second.f" SECOND-BUF FS:JOIN-PATH SECOND-U ! ;
 
 : CLEANUP ( -- )
-   CLEANUP-RUN
-   ROOT$ EXISTS? TFALSE ;
+   FS:CLEANUP-RUN
+   ROOT$ FS:EXISTS? TFALSE ;
 
 T-RESET
 PREPARE

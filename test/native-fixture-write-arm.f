@@ -43,7 +43,7 @@ public
    AOT-FILE:OWN ['] WRITE-OWNED catch {: rc:n :}
    AOT-OWNED:CLOSE
    rc 0<> if rc throw then
-   0 SCRIPT-ARGV$ CHMOD-X
+   0 SCRIPT-ARGV$ FS:CHMOD-X
    0 SCRIPT-ARGV$ CODESIGN:ENSURE ;
 
 ;package

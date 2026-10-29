@@ -9,10 +9,10 @@ require test/suite-budget.f
 package NATIVE-DONOR-MAP-E2E
 private
 
-create ROOT-IMAGE FS-PATH-CAP allot variable ROOT-IMAGE-U
-create SUBJECT FS-PATH-CAP allot variable SUBJECT-U
-create APP FS-PATH-CAP allot variable APP-U
-create MAP FS-PATH-CAP allot variable MAP-U
+create ROOT-IMAGE PATH-CAP allot variable ROOT-IMAGE-U
+create SUBJECT PATH-CAP allot variable SUBJECT-U
+create APP PATH-CAP allot variable APP-U
+create MAP PATH-CAP allot variable MAP-U
 DYNAMIC-BUFFER MAP-TEXT u8
 
 : ROOT-IMAGE$ ( -- ptr u8 n ) ROOT-IMAGE ROOT-IMAGE-U @ ;
@@ -30,7 +30,7 @@ DYNAMIC-BUFFER MAP-TEXT u8
    \ A call target resolves to its first dictionary record, which is the
    \ private body's record for this shared xt, so the map names its file.
    SUBJECT$
-   S\" : MAIN ( -- ) NATIVE-MAP-ORIGIN:MAP-ORIGIN-B drop ;\n" WRITE-ALL ;
+   S\" : MAIN ( -- ) NATIVE-MAP-ORIGIN:MAP-ORIGIN-B drop ;\n" FS:WRITE-ALL ;
 
 : BUILD ( -- )
    GE-HB-RESET
@@ -44,9 +44,9 @@ DYNAMIC-BUFFER MAP-TEXT u8
    s" native donor stripped build" GE-EXPECT-OK ;
 
 : CHECK-MAP ( -- )
-   MAP$ FILE-SIZE {: size:n :}
+   MAP$ FS:FILE-SIZE {: size:n :}
    size MAP-TEXT-RESERVE
-   MAP$ 0 MAP-TEXT BYTE-VIEW size READ-ALL size <> if
+   MAP$ 0 MAP-TEXT BYTE-VIEW size FS:READ-ALL size <> if
       s" native donor map short read" GE-FAIL then
    0 MAP-TEXT BYTE-VIEW size
       s" MAP-ORIGIN-B word baked test/compiler/native-map-b.f"

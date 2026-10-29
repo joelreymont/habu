@@ -10,8 +10,8 @@ require src/lib/fs-mutate.f
 require src/lib/task.f
 require src/lib/fs-list.f
 
-create FLT-ROOT-BUF FS-PATH-CAP allot
-create FLT-PATH-BUF FS-PATH-CAP allot
+create FLT-ROOT-BUF PATH-CAP allot
+create FLT-PATH-BUF PATH-CAP allot
 create FLT-NAMES 64 allot
 variable FLT-ROOT-U
 variable FLT-SEEN
@@ -43,7 +43,7 @@ TYPED-VARIABLE FLT-B FS-LIST:context
    u FLT-ROOT-U ! ;
 
 : FLT-PATH ( ptr u8 n -- ptr u8 n )
-   FLT-ROOT$ 2swap FLT-PATH-BUF JOIN-PATH FLT-PATH-BUF swap ;
+   FLT-ROOT$ 2swap FLT-PATH-BUF FS:JOIN-PATH FLT-PATH-BUF swap ;
 
 : FLT-COUNT ( ptr u8 n -- )
    nip FLT-SEEN-BYTES +! 1 FLT-SEEN +! ;
@@ -59,9 +59,9 @@ TYPED-VARIABLE FLT-B FS-LIST:context
 
 \ Two files and a directory, created out of byte order.
 : FLT-TEST-ENTRIES ( -- )
-   s" b.txt" FLT-PATH s" second" WRITE-ALL
-   s" sub" FLT-PATH MAKE-DIR
-   s" a.txt" FLT-PATH s" first" WRITE-ALL
+   s" b.txt" FLT-PATH s" second" FS:WRITE-ALL
+   s" sub" FLT-PATH FS:MAKE-DIR
+   s" a.txt" FLT-PATH s" first" FS:WRITE-ALL
    FLT-EACH
    FLT-SEEN @ 3 T=
    FLT-SEEN-BYTES @ 13 T=
@@ -136,7 +136,7 @@ TYPED-VARIABLE FLT-B FS-LIST:context
    FLT-ROOT$ [: FLT-TYPE ;] FS-LIST:EACH-TYPED ;
 
 : FLT-TEST-TYPES ( -- )
-   s" no-target" s" dangling" FLT-PATH MAKE-SYMLINK
+   s" no-target" s" dangling" FLT-PATH FS:MAKE-SYMLINK
    FLT-TYPED
    FLT-TYPED-SEEN @ 4 T=
    FLT-CHECK-TYPED-BASE
@@ -146,10 +146,10 @@ TYPED-VARIABLE FLT-B FS-LIST:context
    \ filesystem always supplies a useful d_type.
    0 FLT-DIRENT-TYPE-FIXTURE 18 + c!
    0 FLT-DIRENT-TYPE-FIXTURE 20 + c!
-   FLT-DIRENT-TYPE-FIXTURE FS-DIRENT-TYPE FS-LIST:DT-UNKNOWN T=
+   FLT-DIRENT-TYPE-FIXTURE FS:DIRENT-TYPE FS-LIST:DT-UNKNOWN T=
    99 FLT-DIRENT-TYPE-FIXTURE 18 + c!
    99 FLT-DIRENT-TYPE-FIXTURE 20 + c!
-   FLT-DIRENT-TYPE-FIXTURE FS-DIRENT-TYPE 99 T= ;
+   FLT-DIRENT-TYPE-FIXTURE FS:DIRENT-TYPE 99 T= ;
 
 : FLT-MANY-PATH ( n -- ptr u8 n ) {: idx:n :}
    [char] m FLT-MANY-NAME c!
@@ -158,9 +158,9 @@ TYPED-VARIABLE FLT-B FS-LIST:context
    FLT-MANY-NAME 3 FLT-PATH ;
 
 : FLT-TEST-REFILL ( -- )
-   160 0 do i FLT-MANY-PATH s" x" WRITE-ALL loop
+   160 0 do i FLT-MANY-PATH s" x" FS:WRITE-ALL loop
    240 0 do [char] q FLT-LONG-NAME i + c! loop
-   FLT-LONG-NAME 240 FLT-PATH s" x" WRITE-ALL
+   FLT-LONG-NAME 240 FLT-PATH s" x" FS:WRITE-ALL
    FLT-TYPED
    FLT-CHECK-TYPED-REFILL
    FLT-TYPED-RESET
@@ -204,8 +204,8 @@ variable FLT-RESUMED                     \ 1 once this thread has listed sub
 TASK:MIN-STACK TASK:TASK FLT-LISTER
 
 : FLT-SUB! ( -- )
-   s" sub/one" FLT-PATH s" 1" WRITE-ALL
-   s" sub/two" FLT-PATH s" 2" WRITE-ALL ;
+   s" sub/one" FLT-PATH s" 1" FS:WRITE-ALL
+   s" sub/two" FLT-PATH s" 2" FS:WRITE-ALL ;
 
 : FLT-SUB-NAMES ( -- )
    s" sub" FLT-PATH FLT-INNER 64 FS-LIST:NAMES FLT-INNER-U ! ;
@@ -287,7 +287,7 @@ TASK:MIN-STACK TASK:TASK FLT-LISTER
 \ A quotation that throws ends its listing with the descriptor closed, so the
 \ next open is handed the number the listing held.
 : FLT-FD-NEXT ( -- n )
-   FLT-ROOT$ FS-PATHZ open-rd {: fd:n :}
+   FLT-ROOT$ FS:>PATHZ open-rd {: fd:n :}
    fd close
    fd ;
 
@@ -417,7 +417,7 @@ TASK:MIN-STACK TASK:TASK FLT-LISTER
    FLT-TEST-TYPES
    FLT-TEST-REFILL
    FLT-TEST-LONG-REFILL
-   FLT-ROOT$ REMOVE-TREE
+   FLT-ROOT$ FS:REMOVE-TREE
    T-REPORT
    s" fs-list-test: ok" type cr ;
 

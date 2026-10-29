@@ -38,16 +38,16 @@ variable OUT-U
 variable ERR-U
 CAP BUFFER: TRAP
 variable TRAP-U
-FS-PATH-CAP BUFFER: EXE
-FS-PATH-CAP BUFFER: DIR
+PATH-CAP BUFFER: EXE
+PATH-CAP BUFFER: DIR
 variable DIR-U
-FS-PATH-CAP BUFFER: MOD
+PATH-CAP BUFFER: MOD
 variable MOD-U
-FS-PATH-CAP BUFFER: WANT-DIR
+PATH-CAP BUFFER: WANT-DIR
 variable WANT-U
-FS-PATH-CAP BUFFER: GOT-DIR
+PATH-CAP BUFFER: GOT-DIR
 variable GOT-U
-FS-PATH-CAP BUFFER: FILE
+PATH-CAP BUFFER: FILE
 
 \ The fixture's request IDs, 2^53 + 1 to 2^53 + 3: past JavaScript's safe
 \ integers, so only an exact BigInt keeps them apart.
@@ -73,21 +73,21 @@ FS-PATH-CAP BUFFER: FILE
 \ The bytes written as the file name in DIR.
 : FILE! ( ptr u8 n ptr u8 n -- )
    {: a:ptr u:n name:ptr nu:n :}
-   DIR DIR-U @ name nu FILE JOIN-PATH {: fu:n :}
-   FILE fu a u WRITE-ALL ;
+   DIR DIR-U @ name nu FILE FS:JOIN-PATH {: fu:n :}
+   FILE fu a u FS:WRITE-ALL ;
 
 \ The directory of this name made in DIR, its path in dst; answers its length.
 : SUBDIR ( ptr u8 n ptr u8 -- n )
    {: name:ptr nu:n dst:ptr :}
-   DIR DIR-U @ name nu dst JOIN-PATH {: u:n :}
-   dst u MAKE-DIR
+   DIR DIR-U @ name nu dst FS:JOIN-PATH {: u:n :}
+   dst u FS:MAKE-DIR
    u ;
 
 : SETUP ( -- )
    s" browser-request" FS:MKTEMP-DIR {: a:ptr u:n :}
    a DIR u BYTE-COPY  u DIR-U !
    s" browser request: module, answers and transcripts in " type  DIR u type cr
-   DIR u s" request.wasm" MOD JOIN-PATH MOD-U !
+   DIR u s" request.wasm" MOD FS:JOIN-PATH MOD-U !
    s" expected" WANT-DIR SUBDIR WANT-U !
    s" actual" GOT-DIR SUBDIR GOT-U !
    NONE$ s" empty.bin" FILE!
@@ -105,7 +105,7 @@ FS-PATH-CAP BUFFER: FILE
 \ The path of the file of this name in DIR staged as an argument.
 : FILE-ARG+ ( ptr u8 n -- )
    {: name:ptr nu:n :}
-   DIR DIR-U @ name nu FILE JOIN-PATH {: fu:n :}
+   DIR DIR-U @ name nu FILE FS:JOIN-PATH {: fu:n :}
    FILE fu ARG+ ;
 
 \ The program at the path, run with the arguments staged after
@@ -214,10 +214,10 @@ FS-PATH-CAP BUFFER: FILE
 \ name in DIR's expected and actual directories, then compared.
 : SAME ( ptr u8 n ptr u8 n -- )
    {: got:ptr gu:n name:ptr nu:n :}
-   WANT-DIR WANT-U @ name nu FILE JOIN-PATH {: wu:n :}
-   FILE wu SB$ WRITE-ALL
-   GOT-DIR GOT-U @ name nu FILE JOIN-PATH {: fu:n :}
-   FILE fu got gu WRITE-ALL
+   WANT-DIR WANT-U @ name nu FILE FS:JOIN-PATH {: wu:n :}
+   FILE wu SB$ FS:WRITE-ALL
+   GOT-DIR GOT-U @ name nu FILE FS:JOIN-PATH {: fu:n :}
+   FILE fu got gu FS:WRITE-ALL
    got gu SB$ T$= ;
 
 \ ---- the cases --------------------------------------------------------------

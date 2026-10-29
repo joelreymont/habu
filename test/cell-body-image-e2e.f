@@ -17,30 +17,30 @@ require test/native-file-app-lib.f
 package CELL-BODY-IMAGE-TEST
 
 $8000 constant CAP
-create ROOT FS-PATH-CAP allot  variable ROOT-U
-create PATH FS-PATH-CAP allot
-create PATH-A FS-PATH-CAP allot
-create PATH-B FS-PATH-CAP allot
-create PATH-C FS-PATH-CAP allot
+create ROOT PATH-CAP allot  variable ROOT-U
+create PATH PATH-CAP allot
+create PATH-A PATH-CAP allot
+create PATH-B PATH-CAP allot
+create PATH-C PATH-CAP allot
 create OUT CAP allot  variable OUT-U
 create ERR CAP allot  variable ERR-U
 
 : ROOT$ ( -- ptr u8 n ) ROOT ROOT-U @ ;
 : AT ( ptr u8 n -- ptr u8 n )
    {: name:ptr u:n :}
-   ROOT$ name u PATH JOIN-PATH PATH swap ;
+   ROOT$ name u PATH FS:JOIN-PATH PATH swap ;
 : AT-A ( ptr u8 n -- ptr u8 n )
    {: name:ptr u:n :}
-   ROOT$ name u PATH-A JOIN-PATH PATH-A swap ;
+   ROOT$ name u PATH-A FS:JOIN-PATH PATH-A swap ;
 : AT-B ( ptr u8 n -- ptr u8 n )
    {: name:ptr u:n :}
-   ROOT$ name u PATH-B JOIN-PATH PATH-B swap ;
+   ROOT$ name u PATH-B FS:JOIN-PATH PATH-B swap ;
 : AT-C ( ptr u8 n -- ptr u8 n )
    {: name:ptr u:n :}
-   ROOT$ name u PATH-C JOIN-PATH PATH-C swap ;
+   ROOT$ name u PATH-C FS:JOIN-PATH PATH-C swap ;
 : PUT ( ptr u8 n ptr u8 n -- )
    {: name:ptr nameu:n body:ptr bodyu:n :}
-   name nameu AT body bodyu WRITE-ALL ;
+   name nameu AT body bodyu FS:WRITE-ALL ;
 : ARG ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
 
 \ The maker image resolves in the shared out root.
@@ -99,7 +99,7 @@ create ERR CAP allot  variable ERR-U
    OUT OUT-U @ expected expectedu CONTAINS? TTRUE ;
 
 : PREPARE ( -- )
-   s" cache" AT MAKE-DIR
+   s" cache" AT FS:MAKE-DIR
    s" test/fixtures/cell-body-grid.f" s" grid.f" AT 0
       NATIVE-FILE-APP:COPY-SKIP-LINES
    s" app.f"

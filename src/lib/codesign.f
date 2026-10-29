@@ -48,15 +48,15 @@ private
    0 <> if E-BUILD-STATUS throw then ;
 
 : CODESIGN-EXPECT-TOOL ( -- )
-   TOOL FILE? 0= if E-BUILD-COMMAND throw then ;
+   TOOL FS:FILE? 0= if E-BUILD-COMMAND throw then ;
 
 : CODESIGN-EXPECT-FILE ( ptr u8 n -- ) {: a:ptr u :}
    u 0 <= if E-BUILD-PATH throw then
-   a u FILE? 0= if E-BUILD-PATH throw then ;
+   a u FS:FILE? 0= if E-BUILD-PATH throw then ;
 
 : CODESIGN-EXPECT-EXECUTABLE ( ptr u8 n -- ) {: a:ptr u :}
    a u CODESIGN-EXPECT-FILE
-   a u EXECUTABLE? 0= if E-BUILD-PATH throw then ;
+   a u FS:EXECUTABLE? 0= if E-BUILD-PATH throw then ;
 
 : CODESIGN-CAPTURE ( -- n )
    PROC-ENV-RESET
@@ -110,7 +110,7 @@ private
 
 : CODESIGN-LINUX-FORCE ( ptr u8 n -- )
    2dup CODESIGN-EXPECT-FILE
-   CHMOD-X ;
+   FS:CHMOD-X ;
 
 public
 
@@ -168,8 +168,8 @@ public
 : PROMOTE-EXECUTABLE ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu dst:ptr dstu :}
    src srcu CODESIGN-EXPECT-FILE
    dstu 0 <= if E-BUILD-PATH throw then
-   src srcu CHMOD-X
-   src srcu dst dstu RENAME-FILE
+   src srcu FS:CHMOD-X
+   src srcu dst dstu FS:RENAME-FILE
    dst dstu CODESIGN-EXPECT-FILE ;
 
 : PROMOTE-SIGNED-EXECUTABLE ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu dst:ptr dstu :}

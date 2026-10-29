@@ -17,10 +17,10 @@ package NATIVE-BUILD-IMAGE
 create PROGRAM-BUF PROGRAM-CAP allot
 create KEY-HEX KEYED-IMAGE:KEY-HEX-LEN allot
 create DONOR-BUF 64 allot
-create ROOT-BUF FS-PATH-CAP allot
-create ENGINE-BUF FS-PATH-CAP allot
-create PATH-BUF FS-PATH-CAP allot
-create RESULT-PATH FS-PATH-CAP allot
+create ROOT-BUF PATH-CAP allot
+create ENGINE-BUF PATH-CAP allot
+create PATH-BUF PATH-CAP allot
+create RESULT-PATH PATH-CAP allot
 create ROW-SHA SHA256-CTX-BYTES allot
 create ROW-DIGEST 32 allot
 DYNAMIC-BUFFER RESULT-RECORD u8
@@ -60,7 +60,7 @@ variable SUPPORT-ROWS-U
 
 : COPY-PATH! ( ptr u8 n ptr u8 ptr n -- )
    {: a:ptr u:n dst:ptr up:ptr :}
-   u FS-PATH-CAP > if E-FS-CAPACITY throw then
+   u PATH-CAP > if E-FS-CAPACITY throw then
    a dst u BYTE-COPY u up ! ;
 
 : ROWS! ( ptr u8 n -- )
@@ -71,7 +71,7 @@ variable SUPPORT-ROWS-U
 
 : RESULT-OF ( ptr u8 n -- ptr u8 n )
    {: image:ptr imageu:n :}
-   imageu 7 + FS-PATH-CAP > if E-FS-CAPACITY throw then
+   imageu 7 + PATH-CAP > if E-FS-CAPACITY throw then
    image RESULT-PATH imageu BYTE-COPY
    s" .result" drop RESULT-PATH imageu + 7 BYTE-COPY
    imageu 7 + RESULT-PATH-U !
@@ -94,15 +94,15 @@ variable SUPPORT-ROWS-U
 \ The key the image at this path publishes under, from the result record its
 \ child wrote beside it.
 : ACCEPT-RESULT ( ptr u8 n -- ptr u8 )
-   RESULT-OF FILE-SIZE {: size:n :}
+   RESULT-OF FS:FILE-SIZE {: size:n :}
    size RESULT-HEADER-U < if E-NUNIT-PROFILE throw then
    size RESULT-RECORD-RESERVE
-   RESULT-PATH RESULT-PATH-U @ 0 RESULT-RECORD size READ-ALL size <>
+   RESULT-PATH RESULT-PATH-U @ 0 RESULT-RECORD size FS:READ-ALL size <>
       if E-FS-IO throw then
    0 RESULT-RECORD {: rec:ptr :}
    rec 64 + LE:U64@ {: rootu:n :}
    rec 72 + LE:U64@ {: rowsu:n :}
-   rootu 0 <= rootu FS-PATH-CAP > or if E-NUNIT-PROFILE throw then
+   rootu 0 <= rootu PATH-CAP > or if E-NUNIT-PROFILE throw then
    rootu size RESULT-HEADER-U - > if E-NUNIT-PROFILE throw then
    rowsu size RESULT-HEADER-U rootu + - <> if E-NUNIT-PROFILE throw then
    rec RESULT-HEADER-U + rootu + rowsu NFILE-INPUTS:FORMAT

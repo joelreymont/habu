@@ -23,7 +23,7 @@ package AOT-FILE
 public
 : ADDRESS-TEST-HEADER ( ptr u8 n -- )
    A64ICODE:AOT-SECTION-CAP HDR O-PAYLEN + U64!
-   HDR HDR-BYTES WRITE-ALL ;
+   HDR HDR-BYTES FS:WRITE-ALL ;
 
 \ Every section has a valid individual width/cap and the table fills this real
 \ allocation. The aggregate must refuse before a destination buffer is touched.

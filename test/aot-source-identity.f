@@ -18,10 +18,10 @@ using AOT-WINDOW
 using AOT-IDENT
 using AOT-FILE
 
-create ROOT-BUF FS-PATH-CAP allot variable ROOT-U
-create LEFT-BUF FS-PATH-CAP allot variable LEFT-U
-create RIGHT-BUF FS-PATH-CAP allot variable RIGHT-U
-create ART-BUF FS-PATH-CAP allot variable ART-U
+create ROOT-BUF PATH-CAP allot variable ROOT-U
+create LEFT-BUF PATH-CAP allot variable LEFT-U
+create RIGHT-BUF PATH-CAP allot variable RIGHT-U
+create ART-BUF PATH-CAP allot variable ART-U
 create JOINED 256 allot
 create KEY 32 allot
 create BEFORE 32 allot create AFTER 32 allot
@@ -44,19 +44,19 @@ create OUT IO-CAP allot create ERR IO-CAP allot
 : SETUP ( -- )
    s" hb-source-identity" FS:MKTEMP-DIR {: root:ptr size:n :}
    root ROOT-BUF size BYTE-COPY size ROOT-U !
-   ROOT$ CLEANUP-TREE+
-   ROOT$ s" left.f" LEFT-BUF JOIN-PATH LEFT-U !
-   ROOT$ s" right.f" RIGHT-BUF JOIN-PATH RIGHT-U !
-   ROOT$ s" source.aot" ART-BUF JOIN-PATH ART-U !
-   LEFT$ LEFT-SOURCE$ WRITE-ALL
-   RIGHT$ RIGHT-SOURCE$ WRITE-ALL
+   ROOT$ FS:CLEANUP-TREE+
+   ROOT$ s" left.f" LEFT-BUF FS:JOIN-PATH LEFT-U !
+   ROOT$ s" right.f" RIGHT-BUF FS:JOIN-PATH RIGHT-U !
+   ROOT$ s" source.aot" ART-BUF FS:JOIN-PATH ART-U !
+   LEFT$ LEFT-SOURCE$ FS:WRITE-ALL
+   RIGHT$ RIGHT-SOURCE$ FS:WRITE-ALL
    FSHA-CTX ENGINE-ID:PATH$ KEY SHA256-FILE-IN 0 T= ;
 
 : MOVE-BOUNDARY ( -- )
    LEFT-SOURCE$ JOINED swap BYTE-COPY
    RIGHT-SOURCE$ 1- JOINED LEFT-SOURCE$ nip + swap BYTE-COPY
-   LEFT$ JOINED LEFT-SOURCE$ nip RIGHT-SOURCE$ nip + 1- WRITE-ALL
-   RIGHT$ S\" \n" WRITE-ALL ;
+   LEFT$ JOINED LEFT-SOURCE$ nip RIGHT-SOURCE$ nip + 1- FS:WRITE-ALL
+   RIGHT$ S\" \n" FS:WRITE-ALL ;
 
 : SOURCE-KEY ( ptr u8 -- )
    RESET LEFT$ PATH+ RIGHT$ PATH+ CHAIN-DIGEST ;
@@ -92,7 +92,7 @@ private
 public
 
 : RUN ( -- )
-   T-RESET CLEANUP-RESET SETUP
+   T-RESET FS:CLEANUP-RESET SETUP
    s" AOT-SOURCE-TEST:LOAD-SOURCE" 0 CHILD
    0 T= OUT swap S\" 3\n" T$=
    BEFORE SOURCE-KEY ARTIFACT
@@ -106,7 +106,7 @@ public
    ERR swap S\" aot-file: the chain sources have changed since this capture\n" T$= 0 T=
    FSHA-CTX ART$ ART-AFTER SHA256-FILE-IN 0 T=
    ART-BEFORE 32 ART-AFTER 32 STR= TTRUE
-   CLEANUP-RUN T-REPORT ;
+   FS:CLEANUP-RUN T-REPORT ;
 
 ;using
 ;using

@@ -73,7 +73,7 @@ variable TAT-COUNT-READY
 
 \ A child engine's deliberately failing T= pins the one-line
 \ "assert: expected 3 got 9" shape src/lib/test/assert.f prints.
-create TAT-SCRIPT-PATH FS-PATH-CAP allot
+create TAT-SCRIPT-PATH PATH-CAP allot
 variable TAT-SCRIPT-U
 
 : TAT-LF ( -- )
@@ -93,7 +93,7 @@ variable TAT-SCRIPT-U
 : TAT-PREPARE ( -- )
    s" habu-assert-line" GT-START
    s" fail.f" TAT-SCRIPT-PATH GT-PATH TAT-SCRIPT-U !
-   TAT-SCRIPT$ TAT-FAIL-SRC$ WRITE-ALL ;
+   TAT-SCRIPT$ TAT-FAIL-SRC$ FS:WRITE-ALL ;
 
 : TAT-RUN ( -- )
    PROC-ARGV-RESET

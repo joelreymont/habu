@@ -39,7 +39,7 @@ create SOURCE 512 allot
    path pathu want wantu T$=
    name nameu s" VALUE" T$=
    end at - 5 T=
-   want wantu SOURCE 512 READ-ALL {: size:n :}
+   want wantu SOURCE 512 FS:READ-ALL {: size:n :}
    at 0 >= end size <= and TTRUE
    SOURCE at + end at - name nameu T$= ;
 

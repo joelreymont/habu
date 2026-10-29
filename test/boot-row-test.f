@@ -48,7 +48,7 @@ private
 $20000 constant DUMP-CAP          \ room for the boot and process row lists
 $4000 constant IO-CAP
 INCLUDE-PATH-CAP $40 + constant SRC-CAP
-FS-PATH-CAP 1+ constant ROOT-CAP
+PATH-CAP 1+ constant ROOT-CAP
 30000 constant TIMEOUT-MS
 
 create DUMP-BUF DUMP-CAP allot
@@ -188,7 +188,7 @@ variable WALKED
 
 : ROW-CHECK ( ptr u8 n n -- ) {: a:ptr u:n ix:n :}
    ix ROW-LABEL
-   a u EXISTS? TTRUE
+   a u FS:EXISTS? TTRUE
    s" include" a u LOADER-SRC!
    CWD$ SRC$ RUN
    ROW-REFUSED? {: refused:bool :}
@@ -231,15 +231,15 @@ variable WALKED
 \ candidate's is the gate tree, so its copy is what has no root at all.
 
 : PREP-OUTSIDE ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" habu-boot-row" FS:MKTEMP-DIR CANONICAL TTRUE {: a:ptr u:n :}
    a OUTSIDE u BYTE-COPY u OUTSIDE-U !
-   OUTSIDE$ CLEANUP-TREE+
-   OUTSIDE$ s" bin" OUTSIDE-HB JOIN-PATH {: binu:n :}
-   OUTSIDE-HB binu MAKE-DIR
-   OUTSIDE$ s" bin/hb" OUTSIDE-HB JOIN-PATH OUTSIDE-HB-U !
-   ENGINE-CANDIDATE:PATH$ OUTSIDE-HB$ COPY-FILE-STREAM
-   OUTSIDE-HB$ CHMOD-X ;
+   OUTSIDE$ FS:CLEANUP-TREE+
+   OUTSIDE$ s" bin" OUTSIDE-HB FS:JOIN-PATH {: binu:n :}
+   OUTSIDE-HB binu FS:MAKE-DIR
+   OUTSIDE$ s" bin/hb" OUTSIDE-HB FS:JOIN-PATH OUTSIDE-HB-U !
+   ENGINE-CANDIDATE:PATH$ OUTSIDE-HB$ FS:COPY-FILE-STREAM
+   OUTSIDE-HB$ FS:CHMOD-X ;
 
 : EXPECT-MISSING$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    SB-RESET
@@ -258,7 +258,7 @@ variable WALKED
 
 : OUTSIDE-REFUSES ( -- )
    s" the probe module is a real file of this tree" T-LABEL
-   PROBE$ EXISTS? TTRUE
+   PROBE$ FS:EXISTS? TTRUE
    s" require" PROBE$ LOADER-SRC! SRC$ RUN-OUTSIDE
    s" a module the image lacks is refused outside a tree" T-LABEL
    EXITED? @ TTRUE
@@ -287,7 +287,7 @@ variable WALKED
    ROWS-HONEST
    OUTSIDE-REFUSES
    OUTSIDE-PROVIDES
-   CLEANUP-RUN
+   FS:CLEANUP-RUN
    T-REPORT
    s" boot-row-test: " type WALKED @ FMT:.INT s"  rows, ok" type cr ;
 

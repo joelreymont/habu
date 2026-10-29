@@ -21,9 +21,9 @@ require test/pcap-result.f
 package GATE-IMAGES-ORCH-E2E
 private
 $40000 constant IO-CAP
-create ROOT FS-PATH-CAP allot variable ROOT-U
-create PATH FS-PATH-CAP allot
-create SOURCE FS-PATH-CAP allot
+create ROOT PATH-CAP allot variable ROOT-U
+create PATH PATH-CAP allot
+create SOURCE PATH-CAP allot
 create OUT IO-CAP allot variable OUT-U
 create ERR IO-CAP allot variable ERR-U
 variable RC
@@ -32,50 +32,50 @@ variable PARENT-U
 : ROOT$ ( -- ptr u8 n ) ROOT ROOT-U @ ;
 
 : AT ( ptr u8 n -- ptr u8 n )
-   ROOT$ 2swap PATH JOIN-PATH PATH swap ;
+   ROOT$ 2swap PATH FS:JOIN-PATH PATH swap ;
 
 : COPY ( ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n dst:ptr dstu:n :}
-   SOURCE-ROOT:CWD$ src srcu SOURCE JOIN-PATH {: u:n :}
-   SOURCE u dst dstu AT COPY-FILE-STREAM ;
+   SOURCE-ROOT:CWD$ src srcu SOURCE FS:JOIN-PATH {: u:n :}
+   SOURCE u dst dstu AT FS:COPY-FILE-STREAM ;
 
 : LINK-DIR ( ptr u8 n -- )
    {: rel:ptr relu:n :}
-   SOURCE-ROOT:CWD$ rel relu SOURCE JOIN-PATH {: u:n :}
-   SOURCE u rel relu AT MAKE-SYMLINK ;
+   SOURCE-ROOT:CWD$ rel relu SOURCE FS:JOIN-PATH {: u:n :}
+   SOURCE u rel relu AT FS:MAKE-SYMLINK ;
 
 : TEST-FILE ( ptr u8 n -- )
    {: src:ptr srcu:n :}
    SOURCE-ROOT:CWD$ nip 1+ {: prefix:n :}
    src prefix + srcu prefix - AT {: dst:ptr dstu:n :}
-   dst dstu EXISTS? if exit then
+   dst dstu FS:EXISTS? if exit then
    0 PARENT-U !
    dstu 0 ?do dst i + c@ 47 = if i PARENT-U ! then loop
-   dst PARENT-U @ MAKE-DIRS
-   src srcu dst dstu MAKE-SYMLINK ;
+   dst PARENT-U @ FS:MAKE-DIRS
+   src srcu dst dstu FS:MAKE-SYMLINK ;
 
 : SETUP ( ptr u8 n -- )
    FS:MKTEMP-DIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY u ROOT-U !
-   s" bin" AT MAKE-DIRS
-   s" test" AT MAKE-DIRS
-   ENGINE-CANDIDATE:PATH$ s" bin/hb" AT MAKE-SYMLINK
+   s" bin" AT FS:MAKE-DIRS
+   s" test" AT FS:MAKE-DIRS
+   ENGINE-CANDIDATE:PATH$ s" bin/hb" AT FS:MAKE-SYMLINK
    s" test/gate-images-orch-builder.f" s" test/compiler-images-build.f" COPY
    s" test/gate-images-orch-registry.f" s" test/gate-images-orch-registry.f" COPY
    s" test/gate-images-orch-release.f" s" test/gate-images-orch-release.f" COPY
    s" test/gate-images-orch-consumer.f" s" test/gate-images-orch-consumer.f" COPY
    s" test/gate-images-orch-later.f" s" test/gate-images-orch-later.f" COPY
    s" src" LINK-DIR s" tools" LINK-DIR
-   SOURCE-ROOT:CWD$ s" test" SOURCE JOIN-PATH
-      SOURCE swap [: TEST-FILE ;] WALK-FILES ;
+   SOURCE-ROOT:CWD$ s" test" SOURCE FS:JOIN-PATH
+      SOURCE swap [: TEST-FILE ;] FS:WALK-FILES ;
 
 : RESULT ( result<pcap:captured,pcap:failed> -- )
    PCAP-RESULT:>N RC ! ERR-U ! OUT-U ! ;
 
 : LOG ( ptr u8 n ptr u8 n -- )
    {: outname:ptr outu:n errname:ptr erru:n :}
-   outname outu AT OUT OUT-U @ WRITE-ALL
-   errname erru AT ERR ERR-U @ WRITE-ALL ;
+   outname outu AT OUT OUT-U @ FS:WRITE-ALL
+   errname erru AT ERR ERR-U @ FS:WRITE-ALL ;
 
 : RUN-GATE ( bool -- ) {: fail:bool :}
    PROC-CWD:ARGV-ENV-CWD-RESET
@@ -102,23 +102,23 @@ variable PARENT-U
 : CHECK-SUCCESS ( -- )
    RC @ 0<> if OUT OUT-U @ type ERR ERR-U @ type then
    RC @ 0 T=
-   s" pair/hb-root" AT EXECUTABLE? TTRUE
-   s" pair/hb-ordinary" AT FILE? TTRUE
-   s" pair/hb-root.map" AT FILE? TTRUE
-   s" pair/hb-ordinary.map" AT FILE? TTRUE
-   s" consumer-started" AT FILE? TTRUE
-   s" consumer" AT FILE? TTRUE
-   s" later" AT FILE? TTRUE
-   s" builder-released" AT FILE? TTRUE
+   s" pair/hb-root" AT FS:EXECUTABLE? TTRUE
+   s" pair/hb-ordinary" AT FS:FILE? TTRUE
+   s" pair/hb-root.map" AT FS:FILE? TTRUE
+   s" pair/hb-ordinary.map" AT FS:FILE? TTRUE
+   s" consumer-started" AT FS:FILE? TTRUE
+   s" consumer" AT FS:FILE? TTRUE
+   s" later" AT FS:FILE? TTRUE
+   s" builder-released" AT FS:FILE? TTRUE
    s" PASS: release" HAS-OUT TTRUE
    s" PASS: compiler-images-build" HAS-OUT TTRUE
    s" PASS: consumer" HAS-OUT TTRUE ;
 
 : CHECK-FAILURE ( -- )
    RC @ 0<> TTRUE
-   s" consumer-started" AT FILE? TFALSE
-   s" consumer" AT FILE? TFALSE
-   s" later" AT FILE? TTRUE
+   s" consumer-started" AT FS:FILE? TFALSE
+   s" consumer" AT FS:FILE? TFALSE
+   s" later" AT FS:FILE? TTRUE
    s" RED: compiler-images-build kind=exit code=73" HAS-OUT TTRUE
    s" RED: consumer kind=exit code=75" HAS-OUT TTRUE
    s" PASS: later" HAS-OUT TTRUE

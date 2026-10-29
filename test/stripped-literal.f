@@ -9,8 +9,8 @@ require test/aot-builder-engine.f
 package STRIPPED-LITERAL-TEST
 
 600000 constant TIMEOUT-MS
-create SUBJECT FS-PATH-CAP allot
-create IMAGE FS-PATH-CAP allot
+create SUBJECT PATH-CAP allot
+create IMAGE PATH-CAP allot
 variable SUBJECT-U
 variable IMAGE-U
 
@@ -23,7 +23,7 @@ variable IMAGE-U
    s" hb-aot-got" IMAGE GT-PATH IMAGE-U ! ;
 
 : WRITE-SUBJECT ( ptr u8 n -- ) {: a:ptr u:n :}
-   SUBJECT$ a u WRITE-ALL ;
+   SUBJECT$ a u FS:WRITE-ALL ;
 
 : LINK-SUBJECT ( -- )
    AOT-BUILDER-ENGINE:PATH$ {: maker:ptr makeru:n :}
@@ -43,7 +43,7 @@ variable IMAGE-U
       s" stripped compiler literal rows stay outside the window" GE-EXPECT-ERR-HAS
    s" word=SLT-COMPILER-ROWS"
       s" stripped compiler literal rows name the retaining cell" GE-EXPECT-ERR-HAS
-   IMAGE$ EXISTS? if s" stripped compiler rows emitted an image" GE-FAIL then ;
+   IMAGE$ FS:EXISTS? if s" stripped compiler rows emitted an image" GE-FAIL then ;
 
 \ The application's own bodies fill its pool's segment to the last of its 512 KB
 \ ($80000), so the link's copy of the engine literal RELEASE-RANGE dies with
@@ -66,7 +66,7 @@ variable IMAGE-U
    WRITE-FULL-SUBJECT
    LINK-SUBJECT
    s" a link into a full literal segment" GE-EXPECT-OK
-   IMAGE$ EXECUTABLE? 0= if s" a link into a full literal segment emitted no image" GE-FAIL then
+   IMAGE$ FS:EXECUTABLE? 0= if s" a link into a full literal segment emitted no image" GE-FAIL then
    GE-HB-RESET
    IMAGE$ GE-ARGV+
    IMAGE$ TIMEOUT-MS GE-RUN-ENV

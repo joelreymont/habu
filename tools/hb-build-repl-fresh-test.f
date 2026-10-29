@@ -10,6 +10,7 @@ require test/app-builder-engine.f
 require src/lib/string.f
 require tools/build-out.f
 require tools/keyed-image.f
+require src/lib/fmt.f
 
 package HB-BUILD-CLI
 
@@ -20,14 +21,14 @@ variable HBT-FRESH-SHADOW-FILE-U
 variable HBT-FRESH-OUT-U
 variable HBT-FRESH-IMG-U
 variable HBT-FRESH-PATH-U
-create HBT-FRESH-DEP-BUF FS-PATH-CAP allot
-create HBT-FRESH-ASSET-BUF FS-PATH-CAP allot
-create HBT-FRESH-OTHER-BUF FS-PATH-CAP allot
-create HBT-FRESH-SHADOW-FILE-BUF FS-PATH-CAP allot
-create HBT-FRESH-OUT-BUF FS-PATH-CAP allot
+create HBT-FRESH-DEP-BUF PATH-CAP allot
+create HBT-FRESH-ASSET-BUF PATH-CAP allot
+create HBT-FRESH-OTHER-BUF PATH-CAP allot
+create HBT-FRESH-SHADOW-FILE-BUF PATH-CAP allot
+create HBT-FRESH-OUT-BUF PATH-CAP allot
 create HBT-FRESH-ENGINE-KEY KEYED-IMAGE:KEY-HEX-LEN allot
-create HBT-FRESH-IMG-BUF FS-PATH-CAP allot
-create HBT-FRESH-PATH-BUF FS-PATH-CAP allot
+create HBT-FRESH-IMG-BUF PATH-CAP allot
+create HBT-FRESH-PATH-BUF PATH-CAP allot
 create HBT-FRESH-KEY KEYED-IMAGE:KEY-HEX-LEN allot
 create HBT-FRESH-SUPPORT-HEADER HBB-REPL-SUPPORT-HEADER-U allot
 variable HBT-FRESH-SIZE
@@ -56,7 +57,7 @@ variable HBT-FRESH-NS
       SB-APPEND HBB-LF SB-APPEND-C
    S\" require src/lib/fs.f\nrequire src/lib/build-input.f\n4 BUFFER: CONTENT\n: LOAD-ASSET ( -- ) s\" " SB-APPEND
    HBT-FRESH-ASSET-FILE SB-APPEND
-   S\" \" 2dup BUILD-INPUT:FILE CONTENT 4 READ-ALL 4 <> if E-FS-IO throw then ;\nLOAD-ASSET\n: LOAD-CHILD ( -- ) s\" " SB-APPEND
+   S\" \" 2dup BUILD-INPUT:FILE CONTENT 4 FS:READ-ALL 4 <> if E-FS-IO throw then ;\nLOAD-ASSET\n: LOAD-CHILD ( -- ) s\" " SB-APPEND
    HBT-FRESH-DEP SB-APPEND
    S\" \" required ;\nLOAD-CHILD\n: MAIN ( -- ) CONTENT 4 type HBT-FRESH:VALUE . cr ;\n" SB-APPEND
    SB$ ;
@@ -65,18 +66,18 @@ variable HBT-FRESH-NS
    {: value:n :}
    SB-RESET
    s" package HBT-FRESH public : VALUE ( -- n ) " SB-APPEND
-   value FS-MUT-SB-U
+   value FMT:SB-U
    s"  ; ;package" SB-APPEND HBB-LF SB-APPEND-C
-   HBT-FRESH-DEP SB$ WRITE-ALL ;
+   HBT-FRESH-DEP SB$ FS:WRITE-ALL ;
 
 : HBT-FRESH-MARK ( -- )
-   HBT-REPL-OUT FILE-META
+   HBT-REPL-OUT FS:FILE-META
    {: size:n sec:n ns:n csec:n cns:n :}
    csec drop cns drop
    size HBT-FRESH-SIZE ! sec HBT-FRESH-SEC ! ns HBT-FRESH-NS ! ;
 
 : HBT-FRESH-SAME? ( -- bool )
-   HBT-REPL-OUT FILE-META
+   HBT-REPL-OUT FS:FILE-META
    {: size:n sec:n ns:n csec:n cns:n :}
    csec drop cns drop
    size HBT-FRESH-SIZE @ = sec HBT-FRESH-SEC @ = and
@@ -125,20 +126,20 @@ variable HBT-FRESH-NS
 
 : HBT-FRESH-RUN ( ptr u8 n n -- )
    {: out:ptr outu:n expected:n :}
-   SB-RESET expected FS-MUT-SB-U
+   SB-RESET expected FMT:SB-U
    out outu SB$ HBT-FRESH-RUN$ ;
 
 \ The application's output: its asset's bytes, then its child's value.
 : HBT-FRESH-RUN-BOTH ( ptr u8 n n -- )
    {: asset:ptr assetu:n expected:n :}
-   SB-RESET asset assetu SB-APPEND expected FS-MUT-SB-U
+   SB-RESET asset assetu SB-APPEND expected FMT:SB-U
    HBT-REPL-OUT SB$ HBT-FRESH-RUN$ ;
 
 \ Runs while the output is fresh for the unchanged source, so only the deleted
 \ asset can make the build run, and the build refuses it.
 : HBT-FRESH-ASSET-GONE ( -- )
    s" a deleted asset fails the build" T-LABEL
-   HBT-FRESH-ASSET-FILE REMOVE-FILE
+   HBT-FRESH-ASSET-FILE FS:REMOVE-FILE
    HBT-ARGV-BASE-REPL
    s" --repl" >LEN PROC-ARGV+
    HBT-REPL-SRC >LEN PROC-ARGV+
@@ -165,7 +166,7 @@ variable HBT-FRESH-NS
       HBT-FRESH-PATH-BUF HBT-FRESH-PATH-U HBT-PATH!
    HBT-FRESH-PATH-BUF HBT-FRESH-PATH-U @ s" img"
       HBT-FRESH-IMG-BUF HBT-FRESH-IMG-U HBT-PATH!
-   s" app-builder.inputs" HBT-FRESH-IMG$ FILE? TTRUE ;
+   s" app-builder.inputs" HBT-FRESH-IMG$ FS:FILE? TTRUE ;
 
 \ Damaged support selection and a missing selected image rebuild normally
 \ through the real CLI. The case corrupts the support record and deletes the
@@ -175,29 +176,29 @@ variable HBT-FRESH-NS
 : HBT-FRESH-SUPPORT ( -- )
    HBT-TMP s" out" HBT-FRESH-OUT-BUF HBT-FRESH-OUT-U HBT-PATH!
    s" malformed selection rebuilds support" T-LABEL
-   HBT-FRESH-OTHER s" : MAIN ( -- ) 777 . cr ;" WRITE-ALL
+   HBT-FRESH-OTHER s" : MAIN ( -- ) 777 . cr ;" FS:WRITE-ALL
    HBT-FRESH-OTHER HBT-REPL-OUT HBT-FRESH-CLI-SOURCE
    HBT-REPL-OUT 777 HBT-FRESH-RUN
    HBT-FRESH-IMG!
-   s" app-builder.inputs" HBT-FRESH-IMG$ s" bad" ATOMIC-WRITE-FILE
-   HBT-FRESH-OTHER s" : MAIN ( -- ) 778 . cr ;" WRITE-ALL
+   s" app-builder.inputs" HBT-FRESH-IMG$ s" bad" FS:ATOMIC-WRITE-FILE
+   HBT-FRESH-OTHER s" : MAIN ( -- ) 778 . cr ;" FS:WRITE-ALL
    HBT-FRESH-OTHER HBT-REPL-OUT HBT-FRESH-CLI-SOURCE
    HBT-REPL-OUT 778 HBT-FRESH-RUN
    s" missing selected image rebuilds support" T-LABEL
-   s" app-builder.inputs" HBT-FRESH-IMG$ FILE-SIZE
+   s" app-builder.inputs" HBT-FRESH-IMG$ FS:FILE-SIZE
       HBB-REPL-SUPPORT-HEADER-U > TTRUE
-   s" app-builder.inputs" HBT-FRESH-IMG$ FS-PATHZ open-rd {: fd:n :}
+   s" app-builder.inputs" HBT-FRESH-IMG$ FS:>PATHZ open-rd {: fd:n :}
    fd 0 >= TTRUE
    fd HBT-FRESH-SUPPORT-HEADER HBB-REPL-SUPPORT-HEADER-U read
       HBB-REPL-SUPPORT-HEADER-U T=
    fd close
    \ The rewritten record selects the image published under its producer key.
    s" app-builder.key" HBT-FRESH-IMG$ HBT-FRESH-KEY KEYED-IMAGE:KEY-HEX-LEN
-      READ-ALL KEYED-IMAGE:KEY-HEX-LEN T=
+      FS:READ-ALL KEYED-IMAGE:KEY-HEX-LEN T=
    HBT-FRESH-SUPPORT-HEADER 64 + KEYED-IMAGE:KEY-HEX-LEN
       HBT-FRESH-KEY KEYED-IMAGE:KEY-HEX-LEN T$=
-   s" app-builder" HBT-FRESH-IMG$ REMOVE-FILE
-   HBT-FRESH-OTHER s" : MAIN ( -- ) 779 . cr ;" WRITE-ALL
+   s" app-builder" HBT-FRESH-IMG$ FS:REMOVE-FILE
+   HBT-FRESH-OTHER s" : MAIN ( -- ) 779 . cr ;" FS:WRITE-ALL
    HBT-FRESH-OTHER HBT-REPL-OUT HBT-FRESH-CLI-SOURCE
    HBT-REPL-OUT 779 HBT-FRESH-RUN ;
 
@@ -214,9 +215,9 @@ public
    HBT-ROOT s" tools/hb-build-fresh-shadow.f"
       HBT-FRESH-SHADOW-FILE-BUF HBT-FRESH-SHADOW-FILE-U HBT-PATH!
    s" asset and dynamic child freshness" T-LABEL
-   HBT-FRESH-ASSET-FILE s" AAAA" WRITE-ALL
+   HBT-FRESH-ASSET-FILE s" AAAA" FS:WRITE-ALL
    111 HBT-FRESH-DEP!
-   HBT-REPL-SRC HBT-FRESH-SOURCE$ WRITE-ALL
+   HBT-REPL-SRC HBT-FRESH-SOURCE$ FS:WRITE-ALL
    HBT-REPL-OUT HBT-FRESH-CLI
    s" AAAA" 111 HBT-FRESH-RUN-BOTH
    HBT-FRESH-MARK
@@ -226,30 +227,30 @@ public
    HBT-FRESH-SAME? TTRUE
    HBT-FRESH-SIZE-REPORT
    HBT-FRESH-SAME? TTRUE
-   HBT-FRESH-ASSET-FILE s" BBBB" WRITE-ALL
+   HBT-FRESH-ASSET-FILE s" BBBB" FS:WRITE-ALL
    HBT-REPL-OUT HBT-FRESH-CLI
    s" BBBB" 111 HBT-FRESH-RUN-BOTH
    222 HBT-FRESH-DEP!
    HBT-REPL-OUT HBT-FRESH-CLI
    s" BBBB" 222 HBT-FRESH-RUN-BOTH
    HBT-FRESH-ASSET-GONE
-   HBT-FRESH-OTHER s" : MAIN ( -- ) 333 . cr ;" WRITE-ALL
+   HBT-FRESH-OTHER s" : MAIN ( -- ) 333 . cr ;" FS:WRITE-ALL
    HBT-FRESH-OTHER HBT-REPL-OUT HBT-FRESH-CLI-SOURCE
    HBT-REPL-OUT 333 HBT-FRESH-RUN
-   HBT-REPL-SRC HBT-FRESH-SHADOW-SOURCE$ WRITE-ALL
+   HBT-REPL-SRC HBT-FRESH-SHADOW-SOURCE$ FS:WRITE-ALL
    HBT-REPL-OUT HBT-FRESH-CLI
    HBT-REPL-OUT 444 HBT-FRESH-RUN
-   HBT-FRESH-SHADOW-FILE SOURCE-ROOT:DIRNAME MAKE-DIR
+   HBT-FRESH-SHADOW-FILE SOURCE-ROOT:DIRNAME FS:MAKE-DIR
    HBT-FRESH-SHADOW-FILE
-      s" package HBT-FRESH public : VALUE ( -- n ) 555 ; ;package" WRITE-ALL
+      s" package HBT-FRESH public : VALUE ( -- n ) 555 ; ;package" FS:WRITE-ALL
    HBT-REPL-OUT HBT-FRESH-CLI
    HBT-REPL-OUT 555 HBT-FRESH-RUN
-   HBT-REPL-OUT REMOVE-FILE
+   HBT-REPL-OUT FS:REMOVE-FILE
    HBT-FRESH-OTHER HBT-REPL-OUT HBT-FRESH-CLI-SOURCE
    HBT-REPL-OUT 333 HBT-FRESH-RUN
    HBT-FRESH-SUPPORT
-   CLEANUP-RUN
-   HBT-ROOT EXISTS? TFALSE
+   FS:CLEANUP-RUN
+   HBT-ROOT FS:EXISTS? TFALSE
    T-REPORT
    s" hb-build-repl-fresh-test: ok" type cr ;
 

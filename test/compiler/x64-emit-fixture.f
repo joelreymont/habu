@@ -1012,7 +1012,7 @@ private
 \ out again before it writes it. `B-START` is indexed by a block's ordinal IN ITS
 \ FUNCTION, so the numbers the measuring pass leaves there are the LAST
 \ function's; a writer that walked function zero against them would be holding it
-\ to another routine's starts (emit-x64.f WRITE-ALL).
+\ to another routine's starts (emit-x64.f FS:WRITE-ALL).
 : BUILD-PAIR ( -- IR-BUILD:module )
    M-MOD
    M-BIND-MACHINE

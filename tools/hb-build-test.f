@@ -25,8 +25,8 @@ package HB-BUILD-CLI
 \ one, and the same copy with a single word of its startup rewritten.
 variable HBT-LOST-CPY-U
 variable HBT-LOST-OUT-U
-create HBT-LOST-CPY-BUF FS-PATH-CAP allot
-create HBT-LOST-OUT-BUF FS-PATH-CAP allot
+create HBT-LOST-CPY-BUF PATH-CAP allot
+create HBT-LOST-OUT-BUF PATH-CAP allot
 variable HBT-SEQ-AT      \ the startup's x9 code-base + offset sequence, or -1
 variable HBT-SEQ-N       \ how many the image holds
 variable HBT-SEQ-IP      \ that scan's cursor
@@ -41,8 +41,8 @@ create HBT-LARGE-CHUNK HBT-LARGE-CHUNK-U allot
 \ directory holds.
 variable HBT-INST-DIR-U
 variable HBT-INST-OUT-U
-create HBT-INST-DIR-BUF FS-PATH-CAP allot
-create HBT-INST-OUT-BUF FS-PATH-CAP allot
+create HBT-INST-DIR-BUF PATH-CAP allot
+create HBT-INST-OUT-BUF PATH-CAP allot
 variable HBT-INST-FILES
 
 : HBT-NEW-TMP ( -- ptr u8 n )
@@ -50,13 +50,13 @@ variable HBT-INST-FILES
 
 : HBT-WRITE-LARGE ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu:n src:ptr srcu:n :}
    HBT-LARGE-CHUNK-U 0 ?do 32 HBT-LARGE-CHUNK i + c! loop
-   path pathu src srcu WRITE-ALL
+   path pathu src srcu FS:WRITE-ALL
    HBT-LARGE-INPUT-U srcu - {: spaces:n :}
    spaces HBT-LARGE-CHUNK-U / 0 ?do
-      path pathu HBT-LARGE-CHUNK HBT-LARGE-CHUNK-U APPEND-FILE
+      path pathu HBT-LARGE-CHUNK HBT-LARGE-CHUNK-U FS:APPEND-FILE
    loop
    spaces HBT-LARGE-CHUNK-U mod {: rem:n :}
-   rem 0 > if path pathu HBT-LARGE-CHUNK rem APPEND-FILE then ;
+   rem 0 > if path pathu HBT-LARGE-CHUNK rem FS:APPEND-FILE then ;
 
 : HBT-ADD-BAD ( -- )
    s" --json-errors"  >LEN PROC-ARGV+
@@ -90,13 +90,13 @@ variable HBT-INST-FILES
    HBT-OUT outu JR:T-FALSE JR:T-FALSE JR:T-FALSE CHECK-REPORT ;
 
 : CLI-REPORT ( -- )
-   HBT-REPL-OUT s" stale" WRITE-ALL
+   HBT-REPL-OUT s" stale" FS:WRITE-ALL
    0 0= 0= HBT-CLI-REPORT
-   HBT-REPL-OUT FILE-META {: size:n sec:n ns:n csec:n cns:n :}
+   HBT-REPL-OUT FS:FILE-META {: size:n sec:n ns:n csec:n cns:n :}
    csec drop cns drop
    \ A fresh output still reports; with both flags JSON remains the only object.
    0 0= HBT-CLI-REPORT
-   HBT-REPL-OUT FILE-META {: after:n asec:n ans:n acsec:n acns:n :}
+   HBT-REPL-OUT FS:FILE-META {: after:n asec:n ans:n acsec:n acns:n :}
    acsec drop acns drop
    after size T= asec sec T= ans ns T= ;
 
@@ -115,19 +115,19 @@ variable HBT-INST-FILES
 
 : HBT-INST-FILES@ ( -- n )
    0 HBT-INST-FILES !
-   HBT-INST-DIR [: HBT-INST-FILE ;] WALK-FILES
+   HBT-INST-DIR [: HBT-INST-FILE ;] FS:WALK-FILES
    HBT-INST-FILES @ ;
 
 : HBT-INSTALL-FAIL ( -- )
    HBT-ROOT s" install" HBT-INST-DIR-BUF HBT-INST-DIR-U HBT-PATH!
    HBT-INST-DIR s" out" HBT-INST-OUT-BUF HBT-INST-OUT-U HBT-PATH!
-   HBT-INST-DIR MAKE-DIR
-   HBT-INST-OUT MAKE-DIR
+   HBT-INST-DIR FS:MAKE-DIR
+   HBT-INST-OUT FS:MAKE-DIR
    HBT-REPL-SRC HBT-INST-OUT HBT-HBB-PREPARE-REPL
    [: HBB-BUILD ;] E-BUILD-INSTALL TTHROWSQ
    HBB-GOT-NAME$ BF-REMOVE-TMP
    BF-TMP-RESET
-   HBT-INST-OUT DIR? TTRUE
+   HBT-INST-OUT FS:DIR? TTRUE
    HBT-INST-FILES@ 0 T= ;
 
 \ A PAIR PUBLICATION THAT FAILS LEAVES -o AND ITS MAP AS THEY WERE. An AOT
@@ -140,8 +140,8 @@ variable HBT-INST-FILES
 493 constant HBT-EXEC-READ                 \ 0755
 16 constant HBT-PUB-CAP
 create HBT-PUB-BUF HBT-PUB-CAP allot
-create HBT-PUB-DIR-BUF FS-PATH-CAP allot
-create HBT-PUB-OUT-BUF FS-PATH-CAP allot
+create HBT-PUB-DIR-BUF PATH-CAP allot
+create HBT-PUB-OUT-BUF PATH-CAP allot
 variable HBT-PUB-DIR-U
 variable HBT-PUB-OUT-U
 variable HBT-PUB-FILES
@@ -157,36 +157,36 @@ variable HBT-PUB-FILES
 
 : HBT-PUB-ALONE ( n -- ) {: count:n :}
    0 HBT-PUB-FILES !
-   HBT-PUB-DIR [: HBT-PUB-COUNT ;] WALK-FILES
+   HBT-PUB-DIR [: HBT-PUB-COUNT ;] FS:WALK-FILES
    HBT-PUB-FILES @ count T= ;
 
 : HBT-PUB-HOLDS ( ptr u8 n -- )
    {: want:ptr wantu:n :}
-   HBT-PUB-OUT FILE? {: there:bool :}
+   HBT-PUB-OUT FS:FILE? {: there:bool :}
    there TTRUE
    there 0= if exit then
-   HBT-PUB-OUT HBT-PUB-BUF HBT-PUB-CAP READ-ALL {: u:n :}
+   HBT-PUB-OUT HBT-PUB-BUF HBT-PUB-CAP FS:READ-ALL {: u:n :}
    HBT-PUB-BUF u want wantu T$= ;
 
 : HBT-PUB-MAP-HOLDS ( ptr u8 n -- )
    {: want:ptr wantu:n :}
    HBT-PUB-OUT HBB-MAP-DST!
-   HBB-MAP-DST$ HBT-PUB-BUF HBT-PUB-CAP READ-ALL {: u:n :}
+   HBB-MAP-DST$ HBT-PUB-BUF HBT-PUB-CAP FS:READ-ALL {: u:n :}
    HBT-PUB-BUF u want wantu T$= ;
 
 : HBT-PUB-SET-MAKER ( -- )
    HBT-TMP BF-TMP!
-   HBB-GOT-NAME$ BF-A$ s" source-image" WRITE-ALL
+   HBB-GOT-NAME$ BF-A$ s" source-image" FS:WRITE-ALL
    HBB-GOT-NAME$ BF-A$ HBB-MAP-SRC!
-   HBB-MAP-SRC$ s" source-map" WRITE-ALL ;
+   HBB-MAP-SRC$ s" source-map" FS:WRITE-ALL ;
 
 : HBT-PUB-PAIR-FAILS ( -- )
    HBT-ROOT s" publish" HBT-PUB-DIR-BUF HBT-PUB-DIR-U HBT-PATH!
    HBT-PUB-DIR s" out" HBT-PUB-OUT-BUF HBT-PUB-OUT-U HBT-PATH!
-   HBT-PUB-DIR MAKE-DIR
-   HBT-PUB-OUT s" previous" WRITE-ALL
+   HBT-PUB-DIR FS:MAKE-DIR
+   HBT-PUB-OUT s" previous" FS:WRITE-ALL
    HBT-PUB-OUT HBB-MAP-DST!
-   HBB-MAP-DST$ s" prior-map" WRITE-ALL
+   HBB-MAP-DST$ s" prior-map" FS:WRITE-ALL
    HBB-RESET-OPTIONS
    HBT-AOT-SRC HBT-PUB-OUT HBB-PATHS!
    HBT-PUB-SET-MAKER
@@ -196,35 +196,35 @@ variable HBT-PUB-FILES
    s" prior-map" HBT-PUB-MAP-HOLDS
    2 HBT-PUB-ALONE
    HBT-PUB-SET-MAKER
-   HBB-GOT-NAME$ BF-A$ HBT-EXEC-ONLY CHMOD-MODE
+   HBB-GOT-NAME$ BF-A$ HBT-EXEC-ONLY FS:CHMOD-MODE
    [: HBB-INSTALL-OUT ;] E-FS-OPEN TTHROWSQ
-   HBB-GOT-NAME$ BF-A$ HBT-EXEC-READ CHMOD-MODE
+   HBB-GOT-NAME$ BF-A$ HBT-EXEC-READ FS:CHMOD-MODE
    s" previous" HBT-PUB-HOLDS
    s" prior-map" HBT-PUB-MAP-HOLDS
    2 HBT-PUB-ALONE
-   HBT-PUB-OUT REMOVE-FILE
-   HBT-PUB-OUT MAKE-DIR
+   HBT-PUB-OUT FS:REMOVE-FILE
+   HBT-PUB-OUT FS:MAKE-DIR
    [: HBB-INSTALL-OUT ;] E-BUILD-INSTALL TTHROWSQ
-   HBT-PUB-OUT DIR? TTRUE
+   HBT-PUB-OUT FS:DIR? TTRUE
    s" prior-map" HBT-PUB-MAP-HOLDS
    1 HBT-PUB-ALONE
-   HBB-MAP-DST$ REMOVE-FILE
-   HBT-PUB-OUT REMOVE-DIR
+   HBB-MAP-DST$ FS:REMOVE-FILE
+   HBT-PUB-OUT FS:REMOVE-DIR
    HBB-GOT-NAME$ BF-A$ HBB-MAP-REMOVE?
-   HBB-GOT-NAME$ BF-A$ REMOVE-FILE
+   HBB-GOT-NAME$ BF-A$ FS:REMOVE-FILE
    BF-TMP-RESET
-   HBT-PUB-DIR REMOVE-DIR ;
+   HBT-PUB-DIR FS:REMOVE-DIR ;
 
 \ A build that fails invalidates the report the last one left: this runs after
 \ HBT-STRIPPED-IMAGE, whose in-process build left a valid one, and builds the
 \ same source again onto an -o that is a directory, which the install refuses.
 \ A missing source cannot stand in: its include dies with exit 74 rather than
 \ throwing.
-FS-PATH-CAP BUFFER: HBT-DIR-OUT-BUF
+PATH-CAP BUFFER: HBT-DIR-OUT-BUF
 : HBT-REPORT-INVALIDATION ( -- )
    HB-BUILD:VALID? TTRUE
-   HBT-ROOT s" dir-out" HBT-DIR-OUT-BUF JOIN-PATH {: diru:n :}
-   HBT-DIR-OUT-BUF diru MAKE-DIR
+   HBT-ROOT s" dir-out" HBT-DIR-OUT-BUF FS:JOIN-PATH {: diru:n :}
+   HBT-DIR-OUT-BUF diru FS:MAKE-DIR
    HBT-AOT-SRC HBT-DIR-OUT-BUF diru HBT-HBB-PREPARE-AOT
    [: HBB-BUILD ;] catch E-BUILD-INSTALL T=
    BF-TMP-RESET
@@ -290,10 +290,10 @@ FS-PATH-CAP BUFFER: HBT-DIR-OUT-BUF
 \ cannot bound it (see below), so the file's size is what sizes the read. A
 \ child stopped at its deadline may have printed nothing yet.
 : HBT-IMGDUMP-READ$ ( -- ptr u8 n )
-   HBT-IMGDUMP-DUMP$ FILE-SIZE {: size:n :}
+   HBT-IMGDUMP-DUMP$ FS:FILE-SIZE {: size:n :}
    size 0= if s" " exit then
    size MEM-ALLOC-64K-SPAN {: buf:ptr cap:n :}
-   HBT-IMGDUMP-DUMP$ buf cap READ-ALL {: u:n :}
+   HBT-IMGDUMP-DUMP$ buf cap FS:READ-ALL {: u:n :}
    buf u ;
 
 \ ---- where each image class's bytes went --------------------------------------
@@ -311,7 +311,7 @@ FS-PATH-CAP BUFFER: HBT-DIR-OUT-BUF
 
 : HBT-SIZE-MEASURE ( ptr u8 n -- ) {: a:ptr u:n :}
    a u IMAGE-SIZE:MEASURE
-   IMAGE-SIZE:TOTAL-BYTES  a u FILE-SIZE T=
+   IMAGE-SIZE:TOTAL-BYTES  a u FS:FILE-SIZE T=
    HBT-SIZE-SUM  IMAGE-SIZE:TOTAL-BYTES T= ;
 
 : HBT-SIZE-REPL ( -- )
@@ -400,8 +400,8 @@ FS-PATH-CAP BUFFER: HBT-DIR-OUT-BUF
 \ The image, read whole: the patch is one word inside it and the file is written
 \ back from the same bytes, so a copy that is not faithful cannot pass as one.
 : HBT-AOT-IMAGE$ ( -- ptr u8 n )
-   HBT-AOT-OUT FILE-SIZE MEM-ALLOC-64K-SPAN {: buf:ptr cap:n :}
-   HBT-AOT-OUT buf cap READ-ALL {: u:n :}
+   HBT-AOT-OUT FS:FILE-SIZE MEM-ALLOC-64K-SPAN {: buf:ptr cap:n :}
+   HBT-AOT-OUT buf cap FS:READ-ALL {: u:n :}
    buf u ;
 
 \ Every x9 sequence in the file, by the shape module's own test, so the case
@@ -437,26 +437,26 @@ FS-PATH-CAP BUFFER: HBT-DIR-OUT-BUF
    a table HBT-IMG-U32@ 0 > TTRUE
    a table 8 + HBT-IMG-U32@ {: runlen:n :}
    a textend 12 - HBT-IMG-U32@ {: tablelen:n :}
-   HBT-LOST-CPY a u WRITE-ALL
+   HBT-LOST-CPY a u FS:WRITE-ALL
    HBT-LOST-CPY HBT-MEASURE-CHILD {: outu:n erru:n rc:n :}
    HBT-ERR erru HBT-EMPTY$ T$=
    rc 0 T=
    $FFFFFFFF a table 8 + HBT-IMG-U32!
-   HBT-LOST-OUT a u WRITE-ALL
+   HBT-LOST-OUT a u FS:WRITE-ALL
    HBT-LOST-OUT HBT-MEASURE-CHILD {: outu2:n erru2:n rc2:n :}
    rc2 0 T<>
    HBT-ERR erru2 s" image-size: x86 stripped run exceeds DATA window"
       CONTAINS? TTRUE
    runlen a table 8 + HBT-IMG-U32!
    tablelen 1- a textend 12 - HBT-IMG-U32!
-   HBT-LOST-OUT a u WRITE-ALL
+   HBT-LOST-OUT a u FS:WRITE-ALL
    HBT-LOST-OUT HBT-MEASURE-CHILD {: outu3:n erru3:n rc3:n :}
    rc3 0 T<>
    HBT-ERR erru3 s" image-size: x86 stripped table is truncated"
       CONTAINS? TTRUE
    tablelen a textend 12 - HBT-IMG-U32!
    0 a textend 8 - HBT-IMG-U32!
-   HBT-LOST-OUT a u WRITE-ALL
+   HBT-LOST-OUT a u FS:WRITE-ALL
    HBT-LOST-OUT HBT-MEASURE-CHILD {: outu4:n erru4:n rc4:n :}
    rc4 0 T<>
    HBT-ERR erru4 s" image-size: x86 stripped table footer is missing"
@@ -489,14 +489,14 @@ FS-PATH-CAP BUFFER: HBT-DIR-OUT-BUF
    else
       a u HBT-SCAN-TEXT-ADR9
       HBT-SEQ-N @ 1 T=
-      HBT-LOST-CPY a u WRITE-ALL
+      HBT-LOST-CPY a u FS:WRITE-ALL
       HBT-LOST-CPY HBT-MEASURE-CHILD {: outu:n erru:n rc:n :}
       HBT-ERR erru HBT-EMPTY$ T$=
       rc 0 T=
       HBT-OUT outu s" restored DATA window: " CONTAINS? TTRUE
       13 CODE-OFF HBT-SEQ-AT @ 8 + - A64ASM:ENC-ADR
       a HBT-SEQ-AT @ 8 + HBT-IMG-U32!
-      HBT-LOST-OUT a u WRITE-ALL
+      HBT-LOST-OUT a u FS:WRITE-ALL
       HBT-LOST-OUT HBT-MEASURE-CHILD {: outu2:n erru2:n rc2:n :}
       rc2 0 T<>
       HBT-ERR erru2
@@ -552,16 +552,16 @@ FS-PATH-CAP BUFFER: HBT-DIR-OUT-BUF
 \ linker's load, so both builds link on the image (test/preloaded-engine.f
 \ rule 3).
 : HBT-STRIPPED-LITERAL-BODY ( -- )
-   HBT-LITC-SRC HBT-LITC-SRC$ WRITE-ALL
+   HBT-LITC-SRC HBT-LITC-SRC$ FS:WRITE-ALL
    HBT-LITC-SRC HBT-RUN-MAKER {: cout:n cerr:n crc:n :}
    crc 70 T=
    HBB-ERR-BUF cerr s" holds an undeclared code/dict pointer" CONTAINS? TTRUE
    HBB-ERR-BUF cerr s" word=LIT-CELL" CONTAINS? TTRUE
 
-   HBT-LITB-SRC HBT-LITB-SRC$ WRITE-ALL
+   HBT-LITB-SRC HBT-LITB-SRC$ FS:WRITE-ALL
    HBT-LITB-OUT HBT-REMOVE-FILE?
    HBT-LITB-SRC HBT-LITB-OUT HBT-HBB-PREPARE-AOT HBT-HBB-BUILD-OUT
-   HBT-LITB-OUT FILE? TTRUE
+   HBT-LITB-OUT FS:FILE? TTRUE
    HBT-LITB-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
    HBT-TIMEOUT-MS >MS RUN-CAPTURE HBT-CAPTURE>N {: outn:n errn:n rcn:n :}
    rcn 0 <> if HBT-RUN-OUT outn type HBT-RUN-ERR errn type then
@@ -578,7 +578,7 @@ FS-PATH-CAP BUFFER: HBT-DIR-OUT-BUF
 64 constant HBT-LOUD-LINE-U
 HBB-CAPTURE-CAP HBT-LOUD-LINE-U / 1 + constant HBT-LOUD-LINES
 variable HBT-LOUD-SRC-U
-create HBT-LOUD-SRC-BUF FS-PATH-CAP allot
+create HBT-LOUD-SRC-BUF PATH-CAP allot
 
 : HBT-LOUD-SRC ( -- ptr u8 n )
    HBT-LOUD-SRC-BUF HBT-LOUD-SRC-U @ ;
@@ -599,7 +599,7 @@ create HBT-LOUD-SRC-BUF FS-PATH-CAP allot
 
 : HBT-LOUD-MAKER ( -- )
    HBT-ROOT s" loud.f" HBT-LOUD-SRC-BUF HBT-LOUD-SRC-U HBT-PATH!
-   HBT-LOUD-SRC HBT-LOUD-SRC$ WRITE-ALL
+   HBT-LOUD-SRC HBT-LOUD-SRC$ FS:WRITE-ALL
    HBT-LOUD-SRC HBT-RUN-MAKER {: outu:n erru:n rc:n :}
    rc 0 <> if erru HBB-ERR-ROOM erru type then
    rc 0 T=
@@ -655,7 +655,7 @@ create HBT-LOUD-SRC-BUF FS-PATH-CAP allot
 \ made: not the directory, not the image. With a usable TMPDIR the same program
 \ reaches the lint child, whose refusal the CLI passes through.
 : HBT-BUILD-MISSING-TMP ( -- )
-   HBT-NEW-TMP EXISTS? TFALSE
+   HBT-NEW-TMP FS:EXISTS? TFALSE
    HBT-NEW-TMP HBT-ARGV-BASE-TMP
    HBT-ADD-BAD
    HBT-RUN-HB-BUILD 0 T<>
@@ -663,15 +663,15 @@ create HBT-LOUD-SRC-BUF FS-PATH-CAP allot
    HBT-OUT outu HBT-EMPTY$ T$=
    HBT-ERR erru HBT-NEW-TMP HBT-NOT-DIR-LINE$ CONTAINS? TTRUE
    HBT-ERR erru E-FS-DIR HBT-UNCAUGHT$ CONTAINS? TTRUE
-   HBT-NEW-TMP EXISTS? TFALSE
-   HBT-BAD-OUT EXISTS? TFALSE
+   HBT-NEW-TMP FS:EXISTS? TFALSE
+   HBT-BAD-OUT FS:EXISTS? TFALSE
    HBT-ARGV-BASE
    HBT-ADD-BAD
    HBT-RUN-HB-BUILD 0 T<>
    {: lintoutu linterru :}
    HBT-OUT lintoutu HBT-EMPTY$ T$=
    HBT-ERR linterru s" E-AOT-UNSUPPORTED" CONTAINS? TTRUE
-   HBT-BAD-OUT EXISTS? TFALSE ;
+   HBT-BAD-OUT FS:EXISTS? TFALSE ;
 
 \ Public so the driver below runs it with the package CLOSED: the subtests
 \ drive real builds, which resolve names in whatever package scope is open.
@@ -695,8 +695,8 @@ public
    HBT-STRIPPED-LITERAL-BODY
    HBT-STRIPPED-IMAGE
    HBT-REPORT-INVALIDATION
-   CLEANUP-RUN
-   HBT-ROOT EXISTS? TFALSE
+   FS:CLEANUP-RUN
+   HBT-ROOT FS:EXISTS? TFALSE
    T-REPORT
    s" hb-build-test: ok" type cr ;
 

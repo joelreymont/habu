@@ -33,7 +33,7 @@ package RUNTIME-REGRESSION
 
 67 constant GE-UNCAUGHT-RC
 
-create GE-SCRIPT-PATH FS-PATH-CAP allot
+create GE-SCRIPT-PATH PATH-CAP allot
 variable GE-SCRIPT-U
 
 : GE-UNCAUGHT-RUN ( ptr u8 n n ptr u8 n -- )
@@ -403,10 +403,10 @@ variable GE-DFULL-I                 \ copy/definition loop index
       buf GE-DFULL-I @ GE-DFULL-DEF
       GE-DFULL-I @ 1+ GE-DFULL-I !
    repeat
-   GE-SCRIPT-PATH GE-SCRIPT-U @ buf GE-DFULL-P @ WRITE-ALL ;
+   GE-SCRIPT-PATH GE-SCRIPT-U @ buf GE-DFULL-P @ FS:WRITE-ALL ;
 
 : GE-DICT-FULL ( -- )
-   GT-ROOT s" hb-dict-full.f" GE-SCRIPT-PATH JOIN-PATH GE-SCRIPT-U !
+   GT-ROOT s" hb-dict-full.f" GE-SCRIPT-PATH FS:JOIN-PATH GE-SCRIPT-U !
    DICT-CAP 1+ 16 * 32 + MEM:BYTES-ALLOC-LEN [: GE-DFULL-WRITE ;] MEM:WITH-BYTES
    GE-HB-RESET
    GE-SCRIPT-PATH GE-SCRIPT-U @ RUNTIME-RUNNER:FILE-LOADER
@@ -456,11 +456,11 @@ variable GE-BCAP-N          \ literal payload bytes for the fixture being writte
    buf 34 GE-BCAP-C  buf 32 GE-BCAP-C
    buf GE-BCAP-N @ GE-BCAP-FILL
    buf 34 GE-BCAP-C  buf 32 GE-BCAP-C  buf 59 GE-BCAP-C  buf 10 GE-BCAP-C
-   GE-SCRIPT-PATH GE-SCRIPT-U @ buf GE-BCAP-P @ WRITE-ALL ;
+   GE-SCRIPT-PATH GE-SCRIPT-U @ buf GE-BCAP-P @ FS:WRITE-ALL ;
 
 : GE-BCAP-RUN ( n -- ) {: payload:n :}
    payload GE-BCAP-N !
-   GT-ROOT s" hb-body-cap.f" GE-SCRIPT-PATH JOIN-PATH GE-SCRIPT-U !
+   GT-ROOT s" hb-body-cap.f" GE-SCRIPT-PATH FS:JOIN-PATH GE-SCRIPT-U !
    BODYBUF-CAP 128 + MEM:BYTES-ALLOC-LEN [: GE-BCAP-WRITE ;] MEM:WITH-BYTES
    GE-HB-RESET
    GE-SCRIPT-PATH GE-SCRIPT-U @ RUNTIME-RUNNER:FILE-LOADER ;
@@ -524,11 +524,11 @@ variable GE-NEST-J
    repeat
    buf s" ;" GE-NEST-S  buf 10 GE-NEST-C
    buf s" 5 GENEST . cr" GE-NEST-S  buf 10 GE-NEST-C
-   GE-SCRIPT-PATH GE-SCRIPT-U @ buf GE-NEST-P @ WRITE-ALL ;
+   GE-SCRIPT-PATH GE-SCRIPT-U @ buf GE-NEST-P @ FS:WRITE-ALL ;
 
 : GE-NEST-RUN ( n -- ) {: depth:n :}
    depth GE-NEST-N !
-   GT-ROOT s" hb-begin-nest.f" GE-SCRIPT-PATH JOIN-PATH GE-SCRIPT-U !
+   GT-ROOT s" hb-begin-nest.f" GE-SCRIPT-PATH FS:JOIN-PATH GE-SCRIPT-U !
    depth 40 * 64 + MEM:BYTES-ALLOC-LEN [: GE-NEST-WRITE ;] MEM:WITH-BYTES
    GE-HB-RESET
    GE-SCRIPT-PATH GE-SCRIPT-U @ RUNTIME-RUNNER:FILE-LOADER ;
@@ -1534,8 +1534,8 @@ create GE-LOC-LAST-BUF 1024 allot   variable GE-LOC-LAST-U
 \ nested case below the one worth pinning; the line counts newlines from the
 \ start of the buffer being evaluated, which for an include is the whole file.
 : GE-LOC-FIXTURE ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n ta:ptr tu:n :}
-   GT-ROOT na nu GE-SCRIPT-PATH JOIN-PATH GE-SCRIPT-U !
-   GE-SCRIPT-PATH GE-SCRIPT-U @ ta tu WRITE-ALL ;
+   GT-ROOT na nu GE-SCRIPT-PATH FS:JOIN-PATH GE-SCRIPT-U !
+   GE-SCRIPT-PATH GE-SCRIPT-U @ ta tu FS:WRITE-ALL ;
 
 \ `--load <file>`, the real entry a reader uses, so the refusal travels the
 \ include path this change publishes from. Feeding the same bytes on stdin (the
@@ -1641,7 +1641,7 @@ create GE-LOC-LAST-BUF 1024 allot   variable GE-LOC-LAST-U
 \ too, at both tiers. Every ending is refused where the source ends: rc 74, named,
 \ located on the line the definition opened on (a comment at its `(`), and
 \ catchable with the definition rolled back.
-create GE-END-PATH FS-PATH-CAP allot
+create GE-END-PATH PATH-CAP allot
 variable GE-END-U
 create GE-END-AT 16 allot
 
@@ -1654,8 +1654,8 @@ create GE-END-AT 16 allot
 
 \ The source built so far as hb-end.f.
 : GE-END-SAVE ( -- )
-   GT-ROOT s" hb-end.f" GE-END-PATH JOIN-PATH GE-END-U !
-   GE-END-PATH GE-END-U @ GE-SRC-BUF GE-SRC-U @ WRITE-ALL ;
+   GT-ROOT s" hb-end.f" GE-END-PATH FS:JOIN-PATH GE-END-U !
+   GE-END-PATH GE-END-U @ GE-SRC-BUF GE-SRC-U @ FS:WRITE-ALL ;
 
 \ The ending as the last line of hb-end.f, after the tier line.
 : GE-END-WRITE ( ptr u8 n n -- )

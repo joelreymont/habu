@@ -29,7 +29,7 @@ require tools/source-discovery.f
 package SD-TEST
 using SOURCE-ROOT
 
-FS-PATH-CAP constant SDT-PC
+PATH-CAP constant SDT-PC
 $1000 constant SDT-SRC-CAP
 
 create SDT-ROOT SDT-PC allot
@@ -52,14 +52,14 @@ variable SDT-SRC-U
    u lenp ! ;
 
 : SDT-PREP ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" habu-source-discovery-test" FS:MKTEMP-DIR SDT-ROOT SDT-ROOT-U SDT-COPY!
-   SDT-ROOT$ CLEANUP-TREE+ ;
+   SDT-ROOT$ FS:CLEANUP-TREE+ ;
 
 : SDT-WRITE-ENTRY ( ptr u8 n ptr u8 n -- )
    {: name:ptr nameu:n content:ptr contentu:n :}
-   SDT-ROOT$ name nameu SDT-ENTRY JOIN-PATH SDT-ENTRY-U !
-   SDT-ENTRY$ content contentu WRITE-ALL ;
+   SDT-ROOT$ name nameu SDT-ENTRY FS:JOIN-PATH SDT-ENTRY-U !
+   SDT-ENTRY$ content contentu FS:WRITE-ALL ;
 
 : SDT-PATH ( ptr u8 n -- ptr u8 n )
    SDT-ROOT$ 2swap JOIN CANONICAL drop ;
@@ -183,7 +183,7 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
 
 : SDT-TEST-COLON-SPAN ( -- )
    s" colon-span.f" SDT-COLON$ SDT-WRITE-ENTRY
-   SDT-ENTRY$ SDT-SRC SDT-SRC-CAP READ-ALL SDT-SRC-U !
+   SDT-ENTRY$ SDT-SRC SDT-SRC-CAP FS:READ-ALL SDT-SRC-U !
    SDT-DISCOVER
    EVENT-COUNT 1 T=
    0 SDT-EVENT-TOK$ s" required" T$= ;
@@ -250,7 +250,7 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
 : SDT-COMMENTED-ONE ( ptr u8 n -- )
    {: a:ptr u:n :}
    s" commented.f" a u SDT-WRITE-ENTRY
-   SDT-ENTRY$ SDT-SRC SDT-SRC-CAP READ-ALL SDT-SRC-U !
+   SDT-ENTRY$ SDT-SRC SDT-SRC-CAP FS:READ-ALL SDT-SRC-U !
    [: SDT-RUN-ENTRY ;] 0 TTHROWSQ
    EVENT-COUNT 1 T=
    EVENT-COUNT 1 <> if exit then
@@ -471,10 +471,10 @@ $7F0 constant SDT-OVER
 \ writes name = head + u bytes of the 16-byte piece, u a multiple of 16, + tail
 : SDT-WRITE-BIG ( ptr u8 n ptr u8 n n ptr u8 n ptr u8 n -- )
    {: name:ptr nameu:n head:ptr headu:n u:n piece:ptr pieceu:n tail:ptr tailu:n :}
-   SDT-ROOT$ name nameu SDT-ENTRY JOIN-PATH SDT-ENTRY-U !
-   SDT-ENTRY$ head headu WRITE-ALL
-   u 16 / 0 ?do SDT-ENTRY$ piece pieceu APPEND-FILE loop
-   SDT-ENTRY$ tail tailu APPEND-FILE ;
+   SDT-ROOT$ name nameu SDT-ENTRY FS:JOIN-PATH SDT-ENTRY-U !
+   SDT-ENTRY$ head headu FS:WRITE-ALL
+   u 16 / 0 ?do SDT-ENTRY$ piece pieceu FS:APPEND-FILE loop
+   SDT-ENTRY$ tail tailu FS:APPEND-FILE ;
 
 : SDT-TEST-BIG-STRING-DATA ( -- )
    s" big-ok.f" S\" s\" " SDT-BIG SDT-X16$ S\" \" 2drop\n" SDT-WRITE-BIG
@@ -516,14 +516,14 @@ $7F0 constant SDT-OVER
    s" large.f" s" " SDT-WRITE-ENTRY
    SDT-DISCOVER EVENT-COUNT 0 T=
    SDT-SRC-CAP 0 ?do 32 SDT-SRC i + c! loop
-   $100 0 ?do SDT-ENTRY$ SDT-SRC SDT-SRC-CAP APPEND-FILE loop
-   SDT-ENTRY$ S\" require sd-large-a.f\n" APPEND-FILE
+   $100 0 ?do SDT-ENTRY$ SDT-SRC SDT-SRC-CAP FS:APPEND-FILE loop
+   SDT-ENTRY$ S\" require sd-large-a.f\n" FS:APPEND-FILE
    SDT-DISCOVER
    EVENT-COUNT 1 T=
    0 EVENT-PATH@ s" sd-large-a.f" SDT-PATH T$=
    0 EVENT-TOK@ 7 T= $100000 T=
-   SDT-ENTRY$ FILE-SIZE {: end:n :}
-   SDT-ENTRY$ S\" include sd-large-b.f\n" APPEND-FILE
+   SDT-ENTRY$ FS:FILE-SIZE {: end:n :}
+   SDT-ENTRY$ S\" include sd-large-b.f\n" FS:APPEND-FILE
    SDT-DISCOVER
    EVENT-COUNT 2 T=
    0 EVENT-KIND@ EV-REQUIRED T=
@@ -610,7 +610,7 @@ $7F0 constant SDT-OVER
    [: SDT-DISCOVER ;] DISCOVER:HARVEST ;
 
 : SDT-SELECT-NAMED ( ptr u8 n -- ) {: name:ptr u:n :}
-   SDT-ROOT$ name u SDT-ENTRY JOIN-PATH SDT-ENTRY-U ! ;
+   SDT-ROOT$ name u SDT-ENTRY FS:JOIN-PATH SDT-ENTRY-U ! ;
 
 : SDT-HARVEST-NAMED ( ptr u8 n -- )
    SDT-SELECT-NAMED SDT-HARVEST-ENTRY ;
@@ -894,7 +894,7 @@ $7F0 constant SDT-OVER
    SDT-TEST-ROW-REPEAT
    SDT-TEST-ROW-CYCLE
    EVENT-OFF DISCOVERY-OFF EVENTS-RESET
-   CLEANUP-RUN
+   FS:CLEANUP-RUN
    T-REPORT
    s" source-discovery-test: ok" type cr ;
 

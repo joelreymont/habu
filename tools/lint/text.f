@@ -157,9 +157,9 @@ public
 3 constant CELLS
 
 : LOAD ( ptr u8 n ptr n -- ) {: path:ptr pathu:n s:ptr :}
-   path pathu FILE-SIZE {: size:n :}
+   path pathu FS:FILE-SIZE {: size:n :}
    path pathu size s ENSURE-CAPACITY
-   path pathu s BUF@ s CAP@ READ-ALL s LEN! ;
+   path pathu s BUF@ s CAP@ FS:READ-ALL s LEN! ;
 
 : TEXT ( ptr n -- ptr u8 n ) {: s:ptr :}
    s BUF@ s LEN@ ;

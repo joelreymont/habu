@@ -153,7 +153,7 @@ variable ML-NI
    ML-MARK @ u < if a ML-MARK @ +  u ML-MARK @ -  ML-LINE then ;
 
 : ML-SCAN-FILE ( ptr u8 n -- ) {: p:ptr pu:n :}
-   p pu FILE? 0= if exit then
+   p pu FS:FILE? 0= if exit then
    p pu LINT-SOURCE:LOAD
    LINT-SOURCE:TEXT ML-TEXT-LINES ;
 

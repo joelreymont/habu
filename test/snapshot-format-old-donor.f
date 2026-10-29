@@ -9,7 +9,7 @@ package SNAPSHOT-FORMAT-OLD-DONOR-TEST
 private
 
 600000 constant TIMEOUT-MS
-create IMAGE FS-PATH-CAP allot
+create IMAGE PATH-CAP allot
 variable IMAGE-U
 
 : IMAGE$ ( -- ptr u8 n ) IMAGE IMAGE-U @ ;
@@ -30,7 +30,7 @@ variable IMAGE-U
    GT-ERR$ s" snap: donor does not support snapshot format" CONTAINS? 0= if
       s" old donor refusal reason" GE-FAIL
    then
-   IMAGE$ EXISTS? if s" old donor wrote an image" GE-FAIL then ;
+   IMAGE$ FS:EXISTS? if s" old donor wrote an image" GE-FAIL then ;
 
 : BODY ( -- )
    PREPARE REFUSED

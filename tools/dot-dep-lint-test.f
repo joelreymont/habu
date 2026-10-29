@@ -15,14 +15,14 @@ package DOT-DEP
 
 $1000 constant TEST-OUT-CAP
 
-create TEST-ROOT-BUF FS-PATH-CAP allot
-create TEST-DOTS-BUF FS-PATH-CAP allot
-create TEST-NEST-DIR-BUF FS-PATH-CAP allot
-create TEST-ARCHIVE-DIR-BUF FS-PATH-CAP allot
-create TEST-TOP-BUF FS-PATH-CAP allot
-create TEST-NESTED-BUF FS-PATH-CAP allot
-create TEST-ARCHIVED-BUF FS-PATH-CAP allot
-create TEST-UNIQUE-BUF FS-PATH-CAP allot
+create TEST-ROOT-BUF PATH-CAP allot
+create TEST-DOTS-BUF PATH-CAP allot
+create TEST-NEST-DIR-BUF PATH-CAP allot
+create TEST-ARCHIVE-DIR-BUF PATH-CAP allot
+create TEST-TOP-BUF PATH-CAP allot
+create TEST-NESTED-BUF PATH-CAP allot
+create TEST-ARCHIVED-BUF PATH-CAP allot
+create TEST-UNIQUE-BUF PATH-CAP allot
 create TEST-OUT TEST-OUT-CAP allot
 create TEST-WANT TEST-OUT-CAP allot   \ the expected report: two paths, more than SB holds
 
@@ -81,26 +81,26 @@ variable TEST-WANT-U
    s"   - habu-a-12345678" DDP-BLOCKER$ s" habu-a-12345678" T$= ;
 
 : TEST-PREPARE-DIRS ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" habu-dot-dep-lint" FS:MKTEMP-DIR TEST-ROOT-BUF TEST-ROOT-U TEST-COPY!
-   TEST-ROOT$ CLEANUP-TREE+
-   TEST-ROOT$ s" .dots" TEST-DOTS-BUF JOIN-PATH TEST-DOTS-U !
-   TEST-DOTS$ s" parent" TEST-NEST-DIR-BUF JOIN-PATH TEST-NEST-DIR-U !
-   TEST-DOTS$ s" archive" TEST-ARCHIVE-DIR-BUF JOIN-PATH TEST-ARCHIVE-DIR-U !
-   TEST-NEST-DIR$ MAKE-DIRS
-   TEST-ARCHIVE-DIR$ MAKE-DIRS ;
+   TEST-ROOT$ FS:CLEANUP-TREE+
+   TEST-ROOT$ s" .dots" TEST-DOTS-BUF FS:JOIN-PATH TEST-DOTS-U !
+   TEST-DOTS$ s" parent" TEST-NEST-DIR-BUF FS:JOIN-PATH TEST-NEST-DIR-U !
+   TEST-DOTS$ s" archive" TEST-ARCHIVE-DIR-BUF FS:JOIN-PATH TEST-ARCHIVE-DIR-U !
+   TEST-NEST-DIR$ FS:MAKE-DIRS
+   TEST-ARCHIVE-DIR$ FS:MAKE-DIRS ;
 
 : TEST-PREPARE-PATHS ( -- )
-   TEST-DOTS$ s" habu-duplicate-12345678.md" TEST-TOP-BUF JOIN-PATH TEST-TOP-U !
-   TEST-NEST-DIR$ s" habu-duplicate-12345678.md" TEST-NESTED-BUF JOIN-PATH TEST-NESTED-U !
-   TEST-ARCHIVE-DIR$ s" habu-duplicate-12345678.md" TEST-ARCHIVED-BUF JOIN-PATH TEST-ARCHIVED-U !
-   TEST-DOTS$ s" habu-unique-87654321.md" TEST-UNIQUE-BUF JOIN-PATH TEST-UNIQUE-U ! ;
+   TEST-DOTS$ s" habu-duplicate-12345678.md" TEST-TOP-BUF FS:JOIN-PATH TEST-TOP-U !
+   TEST-NEST-DIR$ s" habu-duplicate-12345678.md" TEST-NESTED-BUF FS:JOIN-PATH TEST-NESTED-U !
+   TEST-ARCHIVE-DIR$ s" habu-duplicate-12345678.md" TEST-ARCHIVED-BUF FS:JOIN-PATH TEST-ARCHIVED-U !
+   TEST-DOTS$ s" habu-unique-87654321.md" TEST-UNIQUE-BUF FS:JOIN-PATH TEST-UNIQUE-U ! ;
 
 : TEST-PREPARE-FILES ( -- )
-   TEST-TOP$ s" malformed shadow without frontmatter\n" WRITE-ALL
-   TEST-NESTED$ s" ---\ntitle: authoritative\n---\n" WRITE-ALL
-   TEST-ARCHIVED$ s" malformed archived shadow\n" WRITE-ALL
-   TEST-UNIQUE$ s" ---\ntitle: unique\n---\n" WRITE-ALL ;
+   TEST-TOP$ s" malformed shadow without frontmatter\n" FS:WRITE-ALL
+   TEST-NESTED$ s" ---\ntitle: authoritative\n---\n" FS:WRITE-ALL
+   TEST-ARCHIVED$ s" malformed archived shadow\n" FS:WRITE-ALL
+   TEST-UNIQUE$ s" ---\ntitle: unique\n---\n" FS:WRITE-ALL ;
 
 : TEST-PREPARE ( -- )
    TEST-PREPARE-DIRS
@@ -127,7 +127,7 @@ variable TEST-WANT-U
    LINT-OUT-BUFFER-OFF
    rc 1 T=
    out outu TEST-EXPECTED$ T$=
-   CLEANUP-RUN ;
+   FS:CLEANUP-RUN ;
 
 : TEST-LIVE-LINT ( -- )
    LINT ;

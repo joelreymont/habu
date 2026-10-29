@@ -18,7 +18,7 @@ create ERR IO-CAP allot
 \ build window: `hb: internal engine word: DECLARATIONS`, exit 70 on the sealed
 \ product. So it runs on the engine test/whitebox-child.f names.
 : PREPARE ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" aot-payload-unsupported" WHITEBOX-CHILD:PROVIDE ;
 
 : ARGS ( ptr u8 n -- ) WINDOW-CHILD-ARGS:PAYLOAD WHITEBOX-CHILD:ENV! ;
@@ -63,7 +63,7 @@ create ERR IO-CAP allot
 
 : RUN ( -- )
    T-RESET
-   [: PREPARE CASES ;] [: CLEANUP-RUN ;] finally
+   [: PREPARE CASES ;] [: FS:CLEANUP-RUN ;] finally
    T-REPORT ;
 
 RUN

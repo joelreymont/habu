@@ -11,9 +11,9 @@ require test/linker-builder-engine.f
 
 package FRAME-SLOT-E2E
 private
-create SOURCE FS-PATH-CAP allot variable SOURCE-U
-create IMAGE FS-PATH-CAP allot variable IMAGE-U
-create OUTPUT FS-PATH-CAP allot variable OUTPUT-U
+create SOURCE PATH-CAP allot variable SOURCE-U
+create IMAGE PATH-CAP allot variable IMAGE-U
+create OUTPUT PATH-CAP allot variable OUTPUT-U
 
 : SOURCE$ ( -- ptr u8 n ) SOURCE SOURCE-U @ ;
 : IMAGE$ ( -- ptr u8 n ) IMAGE IMAGE-U @ ;
@@ -60,7 +60,7 @@ create OUTPUT FS-PATH-CAP allot variable OUTPUT-U
    s" test/compiler/native-div-image.f" GE-SRC-FILE+
    LONG-LITERALS
    s" : MAIN ( -- ) FRAME-SLOT-IMAGE:CASES NDIV-IMAGE:RUN NLB-SUBJECT:RUN ;" GE-SRC-LINE
-   SOURCE$ GE-SRC-BUF GE-SRC-U @ WRITE-ALL ;
+   SOURCE$ GE-SRC-BUF GE-SRC-U @ FS:WRITE-ALL ;
 
 : BUILD ( -- )
    LINKER-BUILDER-ENGINE:ENSURE
@@ -77,7 +77,7 @@ create OUTPUT FS-PATH-CAP allot variable OUTPUT-U
    ENGINE-CANDIDATE:PATH$ 600000 GE-RUN-ENV
    s" production build" GE-EXPECT-OK
    GT-ERR$ nip 0 <> if s" production build writes no diagnostic" GE-FAIL then
-   IMAGE$ EXECUTABLE? 0= if s" production executable" GE-FAIL then ;
+   IMAGE$ FS:EXECUTABLE? 0= if s" production executable" GE-FAIL then ;
 
 \ An uncaught -6400 would exit 0, a multiple of 256, and stop the output there.
 : EXPECTED$ ( -- ptr u8 n )
@@ -86,7 +86,7 @@ create OUTPUT FS-PATH-CAP allot variable OUTPUT-U
 : RUN-IMAGE ( -- )
    GE-HB-RESET
    IMAGE$ GE-TIMEOUT-MS GE-RUN-ENV
-   OUTPUT$ GT-OUT$ WRITE-ALL
+   OUTPUT$ GT-OUT$ FS:WRITE-ALL
    s" image run" GE-EXPECT-OK
    EXPECTED$ s" frame slot, division and long literal cases" GE-EXPECT-OUT ;
 

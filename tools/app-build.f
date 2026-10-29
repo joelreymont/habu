@@ -9,9 +9,9 @@ require tools/hb-build-core.f
 package APP-BUILD
 private
 
-create SAVED-ROOT FS-PATH-CAP allot
+create SAVED-ROOT PATH-CAP allot
 variable SAVED-ROOT-U
-create INPUTS-PATH FS-PATH-CAP allot
+create INPUTS-PATH PATH-CAP allot
 variable INPUTS-U
 variable SAVED-RUN
 variable REPORT
@@ -25,20 +25,20 @@ variable REPORT
    SAVED-ROOT-U @ 0 > if
       SAVED-ROOT SAVED-ROOT-U @ SOURCE-ROOT:ENGINE!
    then
-   FS-PATH-CAP 0 ?do 0 SAVED-ROOT i + c! loop
+   PATH-CAP 0 ?do 0 SAVED-ROOT i + c! loop
    0 SAVED-ROOT-U ! ;
 
 : INPUTS$ ( -- ptr u8 n )
    1 SCRIPT-ARGV$ {: a:ptr u:n :}
    s" .inputs" {: suffix:ptr suffixu:n :}
-   u suffixu + FS-PATH-CAP > if E-FS-CAPACITY throw then
+   u suffixu + PATH-CAP > if E-FS-CAPACITY throw then
    a INPUTS-PATH u BYTE-COPY
    suffix INPUTS-PATH u + suffixu BYTE-COPY
    u suffixu + INPUTS-U !
    INPUTS-PATH INPUTS-U @ ;
 
 : CLEAR-INPUTS ( -- )
-   FS-PATH-CAP 0 ?do 0 INPUTS-PATH i + c! loop
+   PATH-CAP 0 ?do 0 INPUTS-PATH i + c! loop
    0 INPUTS-U ! ;
 
 : PREPARE ( -- )
@@ -72,7 +72,7 @@ public
 \ support path before saving the application so the result carries none of it.
 : SAVE-ROOT ( -- )
    SOURCE-ROOT:ENGINE$ {: a:ptr u:n :}
-   u FS-PATH-CAP > if E-FS-CAPACITY throw then
+   u PATH-CAP > if E-FS-CAPACITY throw then
    a SAVED-ROOT u BYTE-COPY
    u SAVED-ROOT-U !
    ;

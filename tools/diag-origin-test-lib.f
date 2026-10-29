@@ -8,8 +8,8 @@ require src/lib/string.f
 variable DGT-ROOT-U
 variable DGT-IN-U
 
-create DGT-ROOT-BUF FS-PATH-CAP allot
-create DGT-IN-BUF FS-PATH-CAP allot
+create DGT-ROOT-BUF PATH-CAP allot
+create DGT-IN-BUF PATH-CAP allot
 create DGT-OUT DGT-BUF-CAP allot
 create DGT-ERR DGT-BUF-CAP allot
 
@@ -99,17 +99,17 @@ create DGT-ERR DGT-BUF-CAP allot
    SB$ ;
 
 : DGT-PREPARE ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" habu-diag-origin" FS:MKTEMP-DIR {: a:ptr u:n :}
    a u DGT-ROOT-BUF DGT-ROOT-U DGT-COPY!
-   DGT-ROOT CLEANUP-DIR+ ;
+   DGT-ROOT FS:CLEANUP-DIR+ ;
 
 \ Write a case's source in the case directory; DGT-IN names it until the next.
 : DGT-INPUT! ( ptr u8 n ptr u8 n -- )
    {: name:ptr nameu:n src:ptr srcu:n :}
-   DGT-ROOT name nameu DGT-IN-BUF JOIN-PATH DGT-IN-U !
-   DGT-IN CLEANUP+
-   DGT-IN src srcu WRITE-ALL ;
+   DGT-ROOT name nameu DGT-IN-BUF FS:JOIN-PATH DGT-IN-U !
+   DGT-IN FS:CLEANUP+
+   DGT-IN src srcu FS:WRITE-ALL ;
 
 : DGT-ARG+ ( ptr u8 n -- )
    >LEN PROC-ARGV+ ;
@@ -190,7 +190,7 @@ DGT-BIG-LEN DGT-SIZED-OUT-CAP + constant DGT-SIZED-ALLOC
 
 : DGT-SIZED-RUN ( ptr u8 n ptr u8 -- ptr u8 len len outcome ) {: src:ptr u:n out:ptr :}
    src u DGT-SIZED-FILL
-   DGT-IN src u WRITE-ALL
+   DGT-IN src u FS:WRITE-ALL
    out s" tools/diag-origin.f" out DGT-SIZED-OUT-CAP DGT-RUN ;
 
 : DGT-SIZED-BODY ( ptr u8 NUM:alloc-byte-len -- )
@@ -212,7 +212,7 @@ DGT-BIG-LEN DGT-SIZED-OUT-CAP + constant DGT-SIZED-ALLOC
    DGT-TEST-DEFINER-CHECKS
    DGT-TEST-USER-DEFINER
    DGT-TEST-SIZED
-   CLEANUP-RUN
-   DGT-ROOT EXISTS? TFALSE
+   FS:CLEANUP-RUN
+   DGT-ROOT FS:EXISTS? TFALSE
    T-REPORT
    s" diag-origin-test: ok" type cr ;

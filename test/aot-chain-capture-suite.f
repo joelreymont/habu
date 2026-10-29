@@ -19,6 +19,7 @@
 require src/lib/errors.f
 require src/lib/test.f
 require src/lib/fs.f
+require src/lib/le.f
 require src/lib/process-argv.f
 require src/lib/engine-candidate.f
 require test/aot-chain-capture-lib.f
@@ -46,7 +47,7 @@ create HDR HDR-BYTES allot
 create FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this suite's file-digest context
 create PROD-HEX HEX-LEN allot        \ sha256 of the engine under test, taken here
 create ART-HEX HEX-LEN allot         \ the producer key the artifact carries
-create ART-BUF FS-PATH-CAP allot    variable ART-U
+create ART-BUF PATH-CAP allot    variable ART-U
 
 : ART$ ( -- ptr u8 n ) ART-BUF ART-U @ ;
 : RUN-CHILD ( -- ) ENGINE-CANDIDATE:PATH$ RUN-ENGINE ;
@@ -102,9 +103,9 @@ create ART-BUF FS-PATH-CAP allot    variable ART-U
    s" aot-chain-capture-suite: child stderr:" type cr ERR$ type cr ;
 
 \ Exactly the header, read with the engine's own descriptor words: the artifact is
-\ larger than a header and READ-ALL refuses a cap smaller than the whole file.
+\ larger than a header and FS:READ-ALL refuses a cap smaller than the whole file.
 : HEADER@ ( -- )
-   ART$ FS-PATHZ open-rd {: fd:n :}
+   ART$ FS:>PATHZ open-rd {: fd:n :}
    fd 0 < if
       s" aot-chain-capture-suite: cannot open the artifact" type cr
       E-FS-OPEN throw
@@ -114,11 +115,11 @@ create ART-BUF FS-PATH-CAP allot    variable ART-U
    s" the artifact is at least a header long" T-LABEL
    got HDR-BYTES T= ;
 
-: HDR-U64@ ( n -- n ) {: at:n :} HDR at + FS-U64@ ;
+: HDR-U64@ ( n -- n ) {: at:n :} HDR at + LE:U64@ ;
 
 : PROBE-ROUNDTRIP ( -- )
    SETUP
-   ROOT$ s" small.aot" ART-BUF JOIN-PATH ART-U !
+   ROOT$ s" small.aot" ART-BUF FS:JOIN-PATH ART-U !
    RUN-ROUNDTRIP
    s" a capture writes, reads and rewrites its artifact byte for byte" T-LABEL
    CHILD-FAILED.
@@ -131,7 +132,7 @@ create ART-BUF FS-PATH-CAP allot    variable ART-U
 
 : PROBE-ARTIFACT ( -- )
    s" the artifact is at the path the capture was given" T-LABEL
-   ART$ FILE? TTRUE
+   ART$ FS:FILE? TTRUE
    HEADER@
    s" its magic is this format's" T-LABEL
    O-MAGIC HDR-U64@ MAGIC T=
@@ -140,7 +141,7 @@ create ART-BUF FS-PATH-CAP allot    variable ART-U
    s" its section count is the one the reader accepts" T-LABEL
    O-SECTIONS HDR-U64@ SECTIONS T=
    s" the header's payload length accounts for the whole file" T-LABEL
-   ART$ FILE-SIZE  HDR-BYTES O-PAYLEN HDR-U64@ +  T= ;
+   ART$ FS:FILE-SIZE  HDR-BYTES O-PAYLEN HDR-U64@ +  T= ;
 
 \ The producer key, hashed here rather than believed.
 : PROBE-PRODUCER ( -- )

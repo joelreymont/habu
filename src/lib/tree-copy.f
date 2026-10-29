@@ -17,7 +17,7 @@ package TREE-COPY
 private
 
 PTR-VARIABLE INTO-P                    variable INTO-U
-create DEST FS-PATH-CAP allot          variable DEST-U
+create DEST PATH-CAP allot          variable DEST-U
 
 : INTO$ ( -- ptr u8 n ) INTO-P @ INTO-U @ ;
 : DEST$ ( -- ptr u8 n ) DEST DEST-U @ ;
@@ -34,9 +34,9 @@ create DEST FS-PATH-CAP allot          variable DEST-U
 \ A walk callback has no context, so the root is read from INTO$.
 : MEMBER ( ptr u8 n -- )
    {: a:ptr u:n :}
-   INTO$ a u CHECKOUT-REL DEST JOIN-PATH DEST-U !
-   DEST$ SOURCE-ROOT:DIRNAME MAKE-DIRS
-   a u DEST$ COPY-FILE-STREAM ;
+   INTO$ a u CHECKOUT-REL DEST FS:JOIN-PATH DEST-U !
+   DEST$ SOURCE-ROOT:DIRNAME FS:MAKE-DIRS
+   a u DEST$ FS:COPY-FILE-STREAM ;
 
 public
 
@@ -44,7 +44,7 @@ public
 : FILE ( ptr u8 n ptr u8 n -- ) INTO! MEMBER ;
 
 \ Every file under the checkout directory path, copied the same way.
-: TREE ( ptr u8 n ptr u8 n -- ) INTO! [: MEMBER ;] WALK-FILES ;
+: TREE ( ptr u8 n ptr u8 n -- ) INTO! [: MEMBER ;] FS:WALK-FILES ;
 
 \ src/ and tools/: the sources tools/native-build.f builds from.
 : BUILD-SOURCES ( ptr u8 n -- )

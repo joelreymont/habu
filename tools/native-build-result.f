@@ -24,7 +24,7 @@ public
    rowsu rec 72 + LE:U64!
    root rec HEADER-U + rootu BYTE-COPY
    rows rec HEADER-U + rootu + rowsu BYTE-COPY
-   1 SCRIPT-ARGV$ rec HEADER-U rootu + rowsu + WRITE-ALL
+   1 SCRIPT-ARGV$ rec HEADER-U rootu + rowsu + FS:WRITE-ALL
    RECORD-RELEASE ;
 
 ;package

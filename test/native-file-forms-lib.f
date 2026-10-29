@@ -15,11 +15,11 @@ require test/native-file-app-lib.f
 package NATIVE-FILE-FORMS-TEST
 
 $8000 constant CAP
-create ROOT FS-PATH-CAP allot  variable ROOT-U
-create AT-BUF FS-PATH-CAP allot
-create AT-A-BUF FS-PATH-CAP allot
-create AT-B-BUF FS-PATH-CAP allot
-create PUT-BUF FS-PATH-CAP allot
+create ROOT PATH-CAP allot  variable ROOT-U
+create AT-BUF PATH-CAP allot
+create AT-A-BUF PATH-CAP allot
+create AT-B-BUF PATH-CAP allot
+create PUT-BUF PATH-CAP allot
 DYNAMIC-BUFFER OUT u8  variable OUT-U
 DYNAMIC-BUFFER ERR u8  variable ERR-U
 create PROGRAM CAP allot  variable PROGRAM-U
@@ -30,16 +30,16 @@ DYNAMIC-BUFFER IMAGE-B u8
 : ROOT$ ( -- ptr u8 n ) ROOT ROOT-U @ ;
 : AT ( ptr u8 n -- ptr u8 n )
    {: name:ptr u:n :}
-   ROOT$ name u AT-BUF JOIN-PATH AT-BUF swap ;
+   ROOT$ name u AT-BUF FS:JOIN-PATH AT-BUF swap ;
 : AT-A ( ptr u8 n -- ptr u8 n )
    {: name:ptr u:n :}
-   ROOT$ name u AT-A-BUF JOIN-PATH AT-A-BUF swap ;
+   ROOT$ name u AT-A-BUF FS:JOIN-PATH AT-A-BUF swap ;
 : AT-B ( ptr u8 n -- ptr u8 n )
    {: name:ptr u:n :}
-   ROOT$ name u AT-B-BUF JOIN-PATH AT-B-BUF swap ;
+   ROOT$ name u AT-B-BUF FS:JOIN-PATH AT-B-BUF swap ;
 : PUT ( ptr u8 n ptr u8 n -- )
    {: name:ptr nameu:n body:ptr bodyu:n :}
-   ROOT$ name nameu PUT-BUF JOIN-PATH PUT-BUF swap body bodyu WRITE-ALL ;
+   ROOT$ name nameu PUT-BUF FS:JOIN-PATH PUT-BUF swap body bodyu FS:WRITE-ALL ;
 \ An empty stream reserved nothing, so it has no byte to view.
 : OUT$ ( -- ptr u8 n ) OUT-U @ 0= if s" " exit then 0 OUT OUT-U @ ;
 : ERR$ ( -- ptr u8 n ) ERR-U @ 0= if s" " exit then 0 ERR ERR-U @ ;
@@ -100,12 +100,12 @@ variable CODE-B-O  variable CODE-B-U
    b bu IMAGE-SIZE:MEASURE
    IMAGE-SIZE:CODE-BLOB-RANGE CODE-B-U ! CODE-B-O !
    CODE-A-U @ CODE-B-U @ <> if false exit then
-   a au FILE-SIZE {: asize:n :}
-   b bu FILE-SIZE {: bsize:n :}
+   a au FS:FILE-SIZE {: asize:n :}
+   b bu FS:FILE-SIZE {: bsize:n :}
    asize IMAGE-A-RESERVE
    bsize IMAGE-B-RESERVE
-   a au 0 IMAGE-A BYTE-VIEW asize READ-ALL asize <> if E-FS-IO throw then
-   b bu 0 IMAGE-B BYTE-VIEW bsize READ-ALL bsize <> if E-FS-IO throw then
+   a au 0 IMAGE-A BYTE-VIEW asize FS:READ-ALL asize <> if E-FS-IO throw then
+   b bu 0 IMAGE-B BYTE-VIEW bsize FS:READ-ALL bsize <> if E-FS-IO throw then
    0 IMAGE-A BYTE-VIEW CODE-A-O @ BYTE+ CODE-A-U @
    0 IMAGE-B BYTE-VIEW CODE-B-O @ BYTE+ CODE-B-U @ STR= ;
 
@@ -137,7 +137,7 @@ public
    T-LABEL
    s" native-file-forms" FS:MKTEMP-DIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY u ROOT-U !
-   s" cache" AT MAKE-DIR
+   s" cache" AT FS:MAKE-DIR
    PREFIX ;
 
 : FINISH ( -- )

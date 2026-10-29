@@ -97,7 +97,7 @@ public
    \ A negative first instruction gap underflows both site streams.
    table 1 = if 1 else 2 then IMG@ at + c! ;
 
-: SEED-WRITE ( ptr u8 n -- ) IMG@ ILEN @ WRITE-ALL ;
+: SEED-WRITE ( ptr u8 n -- ) IMG@ ILEN @ FS:WRITE-ALL ;
 
 ;package
 
@@ -105,8 +105,8 @@ package AOT-SEED-METADATA
 
 $1000 constant CAP
 create OUT CAP allot create ERR CAP allot
-create ROOT FS-PATH-CAP allot variable ROOT-U
-create IMAGE FS-PATH-CAP allot variable IMAGE-U
+create ROOT PATH-CAP allot variable ROOT-U
+create IMAGE PATH-CAP allot variable IMAGE-U
 variable OUT-U variable ERR-U variable RC
 
 : ROOT$ ( -- ptr u8 n ) ROOT ROOT-U @ ;
@@ -123,7 +123,7 @@ variable OUT-U variable ERR-U variable RC
    IMAGE-SIZE:SEED-RESTORE
    table mode IMAGE-SIZE:SEED-MUTATE
    IMAGE$ IMAGE-SIZE:SEED-WRITE
-   IMAGE$ CHMOD-X IMAGE$ CODESIGN:FORCE
+   IMAGE$ FS:CHMOD-X IMAGE$ CODESIGN:FORCE
    IMAGE$ RUN-IMAGE
    RC @ 82 <> if ERR ERR-U @ type cr then
    RC @ 82 T=
@@ -138,8 +138,8 @@ variable OUT-U variable ERR-U variable RC
    s" the unmodified candidate executes user source" T-LABEL
    RC @ 0 T= OUT OUT-U @ s" seed-metadata-user-ran" CONTAINS? TTRUE
    s" habu-seed-metadata" FS:MKTEMP-DIR {: root:ptr rootu:n :}
-   root ROOT rootu BYTE-COPY rootu ROOT-U ! ROOT$ CLEANUP-TREE+
-   ROOT$ s" hb-corrupt" IMAGE JOIN-PATH IMAGE-U !
+   root ROOT rootu BYTE-COPY rootu ROOT-U ! ROOT$ FS:CLEANUP-TREE+
+   ROOT$ s" hb-corrupt" IMAGE FS:JOIN-PATH IMAGE-U !
    ENGINE-CANDIDATE:PATH$ IMAGE-SIZE:MEASURE IMAGE-SIZE:SEED-KEEP
    3 0 ?do
       s" unknown tag, empty/truncated/trailing stream and invalid ULEBs refuse at boot" T-LABEL
@@ -154,9 +154,9 @@ variable OUT-U variable ERR-U variable RC
 
 public
 : RUN ( -- )
-   T-RESET CLEANUP-RESET
+   T-RESET FS:CLEANUP-RESET
    [: BODY ;] catch {: code:n :}
-   CLEANUP-RUN code 0<> if code throw then
+   FS:CLEANUP-RUN code 0<> if code throw then
    T-REPORT s" aot-seed-metadata: ok" type cr ;
 ;package
 AOT-SEED-METADATA:RUN

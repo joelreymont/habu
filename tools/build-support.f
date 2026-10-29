@@ -13,8 +13,8 @@ require src/lib/source.f
 
 package BUILD-FIXPOINT
 
-create BF-ENGINE-BUF FS-PATH-CAP allot
-create BF-TMP-BUF FS-PATH-CAP allot
+create BF-ENGINE-BUF PATH-CAP allot
+create BF-TMP-BUF PATH-CAP allot
 
 variable BF-ART-PATH-A
 variable BF-OUT-PATH-A
@@ -92,7 +92,7 @@ variable BF-ENGINE-U
    BF-SOURCE-BUF ;
 
 : BF-PATH-BUF ( ptr a -- ptr u8 )
-   FS-PATH-CAP BF-BUF ;
+   PATH-CAP BF-BUF ;
 
 : BF-ART-PATH ( -- ptr u8 )
    BF-ART-PATH-A BF-PATH-BUF ;
@@ -112,7 +112,7 @@ variable BF-ENGINE-U
 : BF-TMP! ( ptr u8 n -- )
    {: a:ptr u:n :}
    u 0 < if E-BUILD-PATH throw then
-   u FS-PATH-CAP > if E-BUILD-PATH throw then
+   u PATH-CAP > if E-BUILD-PATH throw then
    a BF-TMP-BUF u BYTE-COPY
    u BF-TMP-U ! ;
 
@@ -130,8 +130,8 @@ variable BF-ENGINE-U
    {: name:ptr nameu dst:ptr :}
    BF-TMP$ {: root:ptr rootu :}
    rootu 0 <= if E-BUILD-PATH throw then
-   rootu 1 + nameu + FS-PATH-CAP > if E-BUILD-PATH throw then
-   root rootu name nameu dst JOIN-PATH ;
+   rootu 1 + nameu + PATH-CAP > if E-BUILD-PATH throw then
+   root rootu name nameu dst FS:JOIN-PATH ;
 
 : BF-ART$ ( ptr u8 n -- ptr u8 n )
    BF-ART-PATH BF-TMP> BF-ART-PATH swap ;
@@ -150,14 +150,14 @@ variable BF-ENGINE-U
 : BF-EXPECT-PATH ( ptr u8 n -- )
    {: path:ptr pathu :}
    pathu 0 <= if E-BUILD-PATH throw then
-   path pathu FILE? 0= if E-BUILD-PATH throw then ;
+   path pathu FS:FILE? 0= if E-BUILD-PATH throw then ;
 
 : BF-EXPECT ( ptr u8 n -- )
    BF-ART$ BF-EXPECT-PATH ;
 
 : BF-REMOVE-TMP ( ptr u8 n -- )
    {: a:ptr u :}
-   a u BF-A$ 2dup EXISTS? if REMOVE-FILE else 2drop then ;
+   a u BF-A$ 2dup FS:EXISTS? if FS:REMOVE-FILE else 2drop then ;
 
 : BF-PREPARE-ENV ( -- )
    PROC-ENV-RESET
@@ -165,7 +165,7 @@ variable BF-ENGINE-U
 
 : BF-READ-SOURCE ( ptr u8 n -- )
    {: path:ptr pathu:n :}
-   path pathu FILE-SIZE {: size:n :}
+   path pathu FS:FILE-SIZE {: size:n :}
    path BF-SOURCE-PATH-A !
    pathu BF-SOURCE-PATH-U !
    path pathu size [: BF-SOURCE-ROOM ;] SOURCE:READ-WHOLE-SAMPLED
@@ -174,7 +174,7 @@ variable BF-ENGINE-U
 : BF-ENGINE! ( ptr u8 n -- )
    {: a:ptr u:n :}
    u 0 <= if E-BUILD-PATH throw then
-   u FS-PATH-CAP > if E-BUILD-PATH throw then
+   u PATH-CAP > if E-BUILD-PATH throw then
    a BF-ENGINE-BUF u BYTE-COPY
    u BF-ENGINE-U ! ;
 

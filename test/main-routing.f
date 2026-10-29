@@ -10,7 +10,7 @@ package MAIN-ROUTING-TEST
 
 private
 
-create PATH-BUF FS-PATH-CAP allot
+create PATH-BUF PATH-CAP allot
 
 : FILE$ ( -- ptr u8 n )
    s" route.f" PATH-BUF GT-PATH PATH-BUF swap ;
@@ -71,9 +71,9 @@ public
 : MAIN ( -- )
    T-RESET
    s" habu-main-routing" GT-START
-   FILE$ S\" s\" FILE\" type cr\n" WRITE-ALL
-   READ$ S\" create MAIN-ROUTE-READ-BYTE 1 allot\n0 MAIN-ROUTE-READ-BYTE 1 read drop\nMAIN-ROUTE-READ-BYTE 1 type cr\n" WRITE-ALL
-   STACK$ S\" 7\n" WRITE-ALL
+   FILE$ S\" s\" FILE\" type cr\n" FS:WRITE-ALL
+   READ$ S\" create MAIN-ROUTE-READ-BYTE 1 allot\n0 MAIN-ROUTE-READ-BYTE 1 read drop\nMAIN-ROUTE-READ-BYTE 1 type cr\n" FS:WRITE-ALL
+   STACK$ S\" 7\n" FS:WRITE-ALL
    PLAIN LOAD-ROUTE NO-ARGS STACK-SCOPE UNKNOWN
    GT-CLEANUP
    T-REPORT ;

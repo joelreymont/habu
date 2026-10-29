@@ -22,15 +22,15 @@ package APP-IMAGE-TEST
 $10000 constant CAP
 create OUT CAP allot
 create ERR CAP allot
-create ROOT-BUF FS-PATH-CAP allot
-create IMAGE-BUF FS-PATH-CAP allot
-create SECOND-BUF FS-PATH-CAP allot
-create THIRD-BUF FS-PATH-CAP allot
-create PROBE-BUF FS-PATH-CAP allot
-create MUTATED-BUF FS-PATH-CAP allot
-create MUTATED-AGAIN-BUF FS-PATH-CAP allot
-create STARTUP-BUF FS-PATH-CAP allot
-create TIER-ZERO-BUF FS-PATH-CAP allot
+create ROOT-BUF PATH-CAP allot
+create IMAGE-BUF PATH-CAP allot
+create SECOND-BUF PATH-CAP allot
+create THIRD-BUF PATH-CAP allot
+create PROBE-BUF PATH-CAP allot
+create MUTATED-BUF PATH-CAP allot
+create MUTATED-AGAIN-BUF PATH-CAP allot
+create STARTUP-BUF PATH-CAP allot
+create TIER-ZERO-BUF PATH-CAP allot
 variable ROOT-U
 variable IMAGE-U
 variable SECOND-U
@@ -56,18 +56,18 @@ variable TIER-ZERO-U
 \ engine word: DECLARATIONS`, exit 70. So every spawn here runs on the engine
 \ test/whitebox-child.f names, in the temp root this file already owns.
 : PREPARE ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" app-image-test" FS:MKTEMP-DIR {: path:ptr size:n :}
    path ROOT-BUF size BYTE-COPY size ROOT-U !
-   ROOT$ CLEANUP-TREE+
-   ROOT$ s" application" IMAGE-BUF JOIN-PATH IMAGE-U !
-   ROOT$ s" second" SECOND-BUF JOIN-PATH SECOND-U !
-   ROOT$ s" third" THIRD-BUF JOIN-PATH THIRD-U !
-   ROOT$ s" require-probe.f" PROBE-BUF JOIN-PATH PROBE-U !
-   ROOT$ s" mutated" MUTATED-BUF JOIN-PATH MUTATED-U !
-   ROOT$ s" mutated-again" MUTATED-AGAIN-BUF JOIN-PATH MUTATED-AGAIN-U !
-   ROOT$ s" startup" STARTUP-BUF JOIN-PATH STARTUP-U !
-   ROOT$ s" tier-zero" TIER-ZERO-BUF JOIN-PATH TIER-ZERO-U !
+   ROOT$ FS:CLEANUP-TREE+
+   ROOT$ s" application" IMAGE-BUF FS:JOIN-PATH IMAGE-U !
+   ROOT$ s" second" SECOND-BUF FS:JOIN-PATH SECOND-U !
+   ROOT$ s" third" THIRD-BUF FS:JOIN-PATH THIRD-U !
+   ROOT$ s" require-probe.f" PROBE-BUF FS:JOIN-PATH PROBE-U !
+   ROOT$ s" mutated" MUTATED-BUF FS:JOIN-PATH MUTATED-U !
+   ROOT$ s" mutated-again" MUTATED-AGAIN-BUF FS:JOIN-PATH MUTATED-AGAIN-U !
+   ROOT$ s" startup" STARTUP-BUF FS:JOIN-PATH STARTUP-U !
+   ROOT$ s" tier-zero" TIER-ZERO-BUF FS:JOIN-PATH TIER-ZERO-U !
    ROOT$ WHITEBOX-CHILD:PROVIDE-IN ;
 
 : CLEAN ( n n n -- n ) {: outu:n erru:n rc:n :}
@@ -107,7 +107,7 @@ variable PROBE-SOURCE-U
    S\" : CHECK-THREE ( -- )\n   CHECK-TWO\n   s\q require-pool-three\q CHECK-FACT ;\n" PROBE+
    S\" : DISCARD ( -- )\n   REQUIRE-N @ {: count:n :}\n   REQUIRE-SNAPSHOT\n   s\q require-pool-discard\q provided\n   REQUIRE-RESTORE\n   REQUIRE-N @ count <> if 70 throw then ;\n" PROBE+
    S\" : CHECK-DISCARD ( -- )\n   s\q require-pool-discard\q SOURCE-ROOT:RESOLVE nip nip\n   if 70 throw then ;\n;package\n" PROBE+
-   PROBE$ PROBE-SOURCE PROBE-SOURCE-U @ ATOMIC-WRITE-FILE ;
+   PROBE$ PROBE-SOURCE PROBE-SOURCE-U @ FS:ATOMIC-WRITE-FILE ;
 
 \ Start cold: the image support selects tier 1 before it requires its
 \ dependencies. The build child loads that support cold and reports the tier in
@@ -127,7 +127,7 @@ variable PROBE-SOURCE-U
    OUT CAP >LEN ERR CAP >LEN SUITE-BUDGET:CHILD-MS >MS
    RUN-ARGV-ENV-STDIN-CAPTURE PCAP-RESULT:>N CLEAN
    OUT swap S\" 1\n\n" T$=
-   IMAGE$ EXECUTABLE? TTRUE ;
+   IMAGE$ FS:EXECUTABLE? TTRUE ;
 
 : RUN-INPUT ( ptr u8 n ptr u8 n -- n n n )
    {: path:ptr pathu:n input:ptr inputu:n :}
@@ -157,15 +157,15 @@ variable PROBE-SOURCE-U
    target targetu >LEN PROC-ARGV+
    WHITEBOX-CHILD:ENV!
    source sourceu S\" APP-IMAGE-SUBJECT:SCRATCH-CLEAN\nAPP-IMAGE-SUBJECT:RUN drop\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" RUN-INPUT CLEAN drop
-   target targetu EXECUTABLE? TTRUE ;
+   target targetu FS:EXECUTABLE? TTRUE ;
 
 \ Compare the emitted extents, independent of signing metadata. Region bytes
 \ retain the application dictionary; DATA and the engine prefix must stop
 \ growing when a fresh process recaptures without any new definitions.
 : EXTENTS ( ptr u8 n -- n n n ) {: path:ptr pathu:n :}
-   path pathu FILE-SIZE {: bytes:n :}
+   path pathu FS:FILE-SIZE {: bytes:n :}
    bytes MEM-ALLOC-BYTES drop {: image:ptr :}
-   path pathu image bytes READ-ALL bytes T=
+   path pathu image bytes FS:READ-ALL bytes T=
    image IMAGE-TEXT-SIZE-OFF + CELL-VIEW @ {: text:n :}
    image text IMAGE-TEXT-TRAILER-ADJ + SNAP-TRL-BYTES - + {: trailer:ptr :}
    trailer CELL-VIEW @ SNAP-MAGIC T=
@@ -198,7 +198,7 @@ variable PROBE-SOURCE-U
    target targetu >LEN PROC-ARGV+
    WHITEBOX-CHILD:ENV!
    source sourceu input inputu RUN-INPUT CLEAN drop
-   target targetu EXECUTABLE? TTRUE ;
+   target targetu FS:EXECUTABLE? TTRUE ;
 
 : CHECK-PROBE ( ptr u8 n ptr u8 n -- )
    {: source:ptr sourceu:n input:ptr inputu:n :}
@@ -265,7 +265,7 @@ variable PROBE-SOURCE-U
    IMAGE$
    S\" 1 set-tier\npackage IMAGE-START-TEST\nvariable STARTS\n: MAIN ( -- ) 1 STARTS +! STARTS @ . cr SCRIPT-ARGC . cr SCRIPT-ARGC 0 ?do i SCRIPT-ARGV$ type cr loop SCRIPT-ARGC 0 > if 0 SCRIPT-ARGV$ s\q quit\q STR= if s\q \q 0 die then 0 SCRIPT-ARGV$ s\q throw\q STR= if -123 throw then then ;\n' MAIN\n;package\nAPP-IMAGE:START!\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n"
    RUN-INPUT CLEAN drop
-   STARTUP$ EXECUTABLE? TTRUE ;
+   STARTUP$ FS:EXECUTABLE? TTRUE ;
 
 : CHECK-STARTUP ( -- )
    PROC-ARGV-ENV-RESET WHITEBOX-CHILD:ENV!
@@ -364,7 +364,7 @@ create PTY-NAME PTY:SLAVE-PATH-CAP allot
    S\" require src/habu/app-image.f\nrequire test/address-cell-cap-grown.f\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" >LEN
    OUT CAP >LEN ERR CAP >LEN SUITE-BUDGET:CHILD-MS >MS
    RUN-ARGV-ENV-STDIN-CAPTURE PCAP-RESULT:>N CLEAN drop
-   SECOND$ EXECUTABLE? TTRUE
+   SECOND$ FS:EXECUTABLE? TTRUE
    RUN-ADDRESS-OWNER
    CHECK-RETIRED-ABI
    CHECK-FORGED-ABI ;
@@ -384,7 +384,7 @@ create PTY-NAME PTY:SLAVE-PATH-CAP allot
 
 : RUN ( -- )
    T-RESET
-   [: PREPARE CASES ;] [: CLEANUP-RUN ;] finally
+   [: PREPARE CASES ;] [: FS:CLEANUP-RUN ;] finally
    T-REPORT ;
 
 RUN

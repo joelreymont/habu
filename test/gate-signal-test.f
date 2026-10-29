@@ -115,10 +115,10 @@ create REPORTS REPORT-BYTES allot
 create STARTS REPORT-BYTES allot     \ the start of each reported process, 0 for none
 create LOG-TEXT LOG-CAP allot
 create PAUSE-PFD 8 allot
-create TMP FS-PATH-CAP allot
-create LOG FS-PATH-CAP allot
-create NOHUP FS-PATH-CAP allot
-create FIFO FS-PATH-CAP allot
+create TMP PATH-CAP allot
+create LOG PATH-CAP allot
+create NOHUP PATH-CAP allot
+create FIFO PATH-CAP allot
 
 variable REPORT-U                    \ bytes of REPORTS read so far
 variable FIFO-U
@@ -161,9 +161,9 @@ PROC-NO-FD ROOT-WATCH !
 \ TMP, under this test's runner root, is the TMPDIR a root is handed, so what
 \ a root leaves is whatever TMP holds; the root's own output sits beside it.
 : PATHS! ( -- )
-   GT-ROOT s" tmp" TMP JOIN-PATH TMP-U !
-   GT-ROOT s" root.log" LOG JOIN-PATH LOG-U !
-   TMP$ MAKE-DIRS ;
+   GT-ROOT s" tmp" TMP FS:JOIN-PATH TMP-U !
+   GT-ROOT s" root.log" LOG FS:JOIN-PATH LOG-U !
+   TMP$ FS:MAKE-DIRS ;
 
 : ENTRY+ ( ptr u8 n -- )
    2drop ENTRY-N @ 1+ ENTRY-N ! ;
@@ -174,8 +174,8 @@ PROC-NO-FD ROOT-WATCH !
    ENTRY-N @ ;
 
 : TMP-CLEAR ( -- )
-   TMP$ REMOVE-TREE
-   TMP$ MAKE-DIRS ;
+   TMP$ FS:REMOVE-TREE
+   TMP$ FS:MAKE-DIRS ;
 
 \ ---- the report FIFO --------------------------------------------------------
 
@@ -223,7 +223,7 @@ $29 constant CLOSE-PAREN
 
 create BSD BSD-BYTES allot
 create STAT STAT-CAP allot
-create STAT-PATH FS-PATH-CAP allot
+create STAT-PATH PATH-CAP allot
 variable STAT-PATH-U
 
 : STARTED-MACOS ( n -- n ) {: pid:n :}
@@ -231,7 +231,7 @@ variable STAT-PATH-U
    BSD BSD-START-S + LE:U64@ US-PER-S * BSD BSD-START-US + LE:U64@ + ;
 
 : STAT-PATH+ ( ptr u8 n -- )
-   STAT-PATH FS-PATH-CAP STAT-PATH-U BUF-APPEND ;
+   STAT-PATH PATH-CAP STAT-PATH-U BUF-APPEND ;
 
 \ The first index from at, below end, that is not a space; then that is one.
 : PAST-SPACES ( n n -- n ) {: at:n end:n :}
@@ -375,7 +375,7 @@ variable STAT-PATH-U
    fd ;
 
 : OPEN-LOG ( -- n )
-   LOG$ FS-PATHZ FS-O-WRONLY FS-O-CREAT or FS-O-TRUNC or FS-MODE-0644 open {: fd:n :}
+   LOG$ FS:>PATHZ FS:O-WRONLY FS:O-CREAT or FS:O-TRUNC or FS:MODE-0644 open {: fd:n :}
    fd 0 < if E-FS-OPEN throw then
    fd ;
 
@@ -446,7 +446,7 @@ variable STAT-PATH-U
    ROOT-PID @ >PID SIGKILL PROC-KILL-RAW drop
    ROOT-REAP PROC-OUTCOME>RC drop
    s" the late root's output:" type cr
-   LOG-TEXT LOG$ LOG-TEXT LOG-CAP READ-ALL type cr ;
+   LOG-TEXT LOG$ LOG-TEXT LOG-CAP FS:READ-ALL type cr ;
 
 \ Failure mode 8: SIGHUP is no signal to a root under nohup, so the root and
 \ every process under it are still there IGNORED-MS later.
@@ -517,7 +517,7 @@ variable STAT-PATH-U
    0 GT-POOL-RED-TIMED-OUT-PTR @ TTRUE
    EXPECT-GONE
    s" deadline: the row's scratch is gone and stays gone" T-LABEL
-   0 >IDX GT-POOL-TMP$ EXISTS? TFALSE ;
+   0 >IDX GT-POOL-TMP$ FS:EXISTS? TFALSE ;
 
 \ Whatever the body asserted or threw. The sweep runs even when ending the
 \ pool's rows throws, and the read end closes even when the sweep's wait throws.

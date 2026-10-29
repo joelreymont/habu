@@ -22,11 +22,11 @@ private
 4096 constant CAP
 CAP BUFFER: OUT
 CAP BUFFER: ERR
-FS-PATH-CAP BUFFER: DIR
-FS-PATH-CAP BUFFER: MOD
-FS-PATH-CAP BUFFER: BEFORE-PATH
-FS-PATH-CAP BUFFER: AFTER-PATH
-FS-PATH-CAP BUFFER: EXE
+PATH-CAP BUFFER: DIR
+PATH-CAP BUFFER: MOD
+PATH-CAP BUFFER: BEFORE-PATH
+PATH-CAP BUFFER: AFTER-PATH
+PATH-CAP BUFFER: EXE
 variable OUT-U
 variable MOD-U
 variable BEFORE-PATH-U
@@ -65,9 +65,9 @@ DYNAMIC-BUFFER AFTER u8
 : SETUP ( -- )
    s" wasm-data" FS:MKTEMP-DIR {: dir:ptr u:n :}
    dir DIR u BYTE-COPY
-   DIR u s" data-region.wasm" MOD JOIN-PATH MOD-U !
-   DIR u s" before.bin" BEFORE-PATH JOIN-PATH BEFORE-PATH-U !
-   DIR u s" after.bin" AFTER-PATH JOIN-PATH AFTER-PATH-U ! ;
+   DIR u s" data-region.wasm" MOD FS:JOIN-PATH MOD-U !
+   DIR u s" before.bin" BEFORE-PATH FS:JOIN-PATH BEFORE-PATH-U !
+   DIR u s" after.bin" AFTER-PATH FS:JOIN-PATH AFTER-PATH-U ! ;
 
 : BUILD ( -- n )
    PROC-ARGV-RESET
@@ -86,13 +86,13 @@ DYNAMIC-BUFFER AFTER u8
 \ Reads the file at the path into bytes that hold exactly its size.
 : READ-DUMP ( ptr u8 n ptr u8 n -- )
    {: pa:ptr pu:n dst:ptr u:n :}
-   pa pu dst u READ-ALL u <> if E-FS-IO throw then ;
+   pa pu dst u FS:READ-ALL u <> if E-FS-IO throw then ;
 
 \ Reads both dumps; answers the first one's size, the base of the page the peer
 \ grew.
 : LOAD-DUMPS ( -- n )
-   BEFORE-PATH BEFORE-PATH-U @ FILE-SIZE {: bu:n :}
-   AFTER-PATH AFTER-PATH-U @ FILE-SIZE {: au:n :}
+   BEFORE-PATH BEFORE-PATH-U @ FS:FILE-SIZE {: bu:n :}
+   AFTER-PATH AFTER-PATH-U @ FS:FILE-SIZE {: au:n :}
    bu BEFORE-RESERVE
    au AFTER-RESERVE
    BEFORE-PATH BEFORE-PATH-U @ 0 BEFORE bu READ-DUMP

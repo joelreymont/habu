@@ -27,17 +27,17 @@ $1000 constant IO-CAP
 $2F constant SLASH
 $0A constant LF
 
-create ROOT FS-PATH-CAP allot   variable ROOT-U
+create ROOT PATH-CAP allot   variable ROOT-U
 create OUT IO-CAP allot
 create ERR IO-CAP allot
 
 : ROOT$ ( -- ptr u8 n ) ROOT ROOT-U @ ;
 
 : SETUP ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" habu-tmp-path" FS:MKTEMP-DIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY  u ROOT-U !
-   ROOT$ CLEANUP-TREE+ ;
+   ROOT$ FS:CLEANUP-TREE+ ;
 
 : RUN ( ptr u8 n -- n n n ) {: case:ptr caseu:n :}   \ outu erru rc
    ENGINE-CANDIDATE:PATH$ {: engine:ptr engineu:n :}
@@ -86,7 +86,7 @@ public
    s" over" s" one byte past PATH-CAP is refused with exit 76" REFUSED
    s" negative" s" a negative length is refused, not taken as room" REFUSED
    s" huge" s" the maximum cell is refused, not wrapped into range" REFUSED
-   CLEANUP-RUN
+   FS:CLEANUP-RUN
    T-REPORT
    s" tmp-path-test: ok" type cr ;
 

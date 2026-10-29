@@ -5,7 +5,7 @@ require test/aot-chain-capture-lib.f
 
 package AOT-CHAIN-SUITE
 
-create ART-BUF FS-PATH-CAP allot   variable ART-U
+create ART-BUF PATH-CAP allot   variable ART-U
 : ART$ ( -- ptr u8 n ) ART-BUF ART-U @ ;
 
 : RUN-CHILD ( -- ) ENGINE-CANDIDATE:PATH$ RUN-ENGINE ;
@@ -73,7 +73,7 @@ create ART-BUF FS-PATH-CAP allot   variable ART-U
 
 : BODY ( -- )
    SETUP
-   ROOT$ s" small.aot" ART-BUF JOIN-PATH ART-U !
+   ROOT$ s" small.aot" ART-BUF FS:JOIN-PATH ART-U !
    PROBE-DATA-SITES
    PROBE-ADDRESS-STORAGE ;
 

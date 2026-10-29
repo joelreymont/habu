@@ -15,7 +15,7 @@ create HBT-RACE-TEXT HBT-RACE-TEXT-CAP allot
 create HBT-RACE-IMAGE HBT-RACE-IMAGE-CAP allot
 
 : HBT-RACE-CHANGE-RT ( -- )
-   s" src/habu/rt.f" HBT-RACE-TEXT HBT-RACE-TEXT-CAP READ-ALL {: u:n :}
+   s" src/habu/rt.f" HBT-RACE-TEXT HBT-RACE-TEXT-CAP FS:READ-ALL {: u:n :}
    HBT-RACE-TEXT u s" hb: cannot map guarded VM stack" FIND-SUB MATCH option
       none OF s" rt.f has no guarded-stack diagnostic" T-EX-FAIL die ENDOF
       some OF
@@ -23,11 +23,11 @@ create HBT-RACE-IMAGE HBT-RACE-IMAGE-CAP allot
          s" hb: REVIEW map guarded VM stack" rot swap BYTE-COPY
       ENDOF
    ;MATCH
-   s" src/habu/rt.f" HBT-RACE-TEXT u WRITE-ALL ;
+   s" src/habu/rt.f" HBT-RACE-TEXT u FS:WRITE-ALL ;
 
 : HBT-RACE-IMAGE-HAS ( ptr u8 n ptr u8 n -- )
    {: yes:ptr yesu:n no:ptr nou:n :}
-   s" app" HBT-RACE-IMAGE HBT-RACE-IMAGE-CAP READ-ALL {: u:n :}
+   s" app" HBT-RACE-IMAGE HBT-RACE-IMAGE-CAP FS:READ-ALL {: u:n :}
    HBT-RACE-IMAGE u yes yesu CONTAINS? TTRUE
    HBT-RACE-IMAGE u no nou CONTAINS? TFALSE ;
 

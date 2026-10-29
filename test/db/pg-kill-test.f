@@ -124,10 +124,10 @@ package PG-KILL-TEST
 2 constant IPC-STAT
 256 constant SHMID-DS-BYTES          \ struct shmid_ds: 80 bytes on macOS, 112 on Linux
 
-create LINE FS-PATH-CAP allot        \ the socket directory the case reported
-create SHM FS-PATH-CAP allot         \ the segment line it reported: `<key> <shmid>`
+create LINE PATH-CAP allot        \ the socket directory the case reported
+create SHM PATH-CAP allot         \ the segment line it reported: `<key> <shmid>`
 create SHMID-DS SHMID-DS-BYTES allot
-create FIFO FS-PATH-CAP allot
+create FIFO PATH-CAP allot
 
 PROCESS-SYMBOLS
 
@@ -177,7 +177,7 @@ PROC-NO-FD FIFO-RD !
    {: buf:ptr count:ptr deadline:n :}
    0 count !
    begin
-      count @ FS-PATH-CAP >= if false exit then
+      count @ PATH-CAP >= if false exit then
       FIFO-RD @ deadline PROC-LEFT-MS MS>N READY-WITHIN {: ready:n :}
       ready 0= if s" pg-kill-test REPORT-READ" TEST-WAIT:EXPIRED then
       ready 0 < if false exit then
@@ -255,7 +255,7 @@ PROC-NO-FD FIFO-RD !
    s" the case reported the server's socket directory and segment" T-LABEL
    REPORT-READ? TTRUE
    s" the socket directory is there while the row runs" T-LABEL
-   REPORTED @ if SOCKETS$ EXISTS? else false then TTRUE
+   REPORTED @ if SOCKETS$ FS:EXISTS? else false then TTRUE
    s" the server's shared-memory segment is there while the row runs" T-LABEL
    REPORTED @ if SEGMENT? else false then TTRUE ;
 
@@ -268,9 +268,9 @@ PROC-NO-FD FIFO-RD !
    freed TTRUE
    freed 0= REPORTED @ and if SEGMENT-LEFT. then
    s" the socket directory is gone" T-LABEL
-   REPORTED @ if SOCKETS$ EXISTS? 0= else false then TTRUE
+   REPORTED @ if SOCKETS$ FS:EXISTS? 0= else false then TTRUE
    s" the row's scratch, and the data directory in it, is gone" T-LABEL
-   0 >IDX GT-POOL-TMP$ EXISTS? TFALSE ;
+   0 >IDX GT-POOL-TMP$ FS:EXISTS? TFALSE ;
 
 : DEADLINE-BODY ( -- )
    ROW-START
@@ -298,7 +298,7 @@ PROC-NO-FD FIFO-RD !
    [: 0 >IDX GT-POOL-CHILD-TMP-REMOVE
       s" the sweep left no process behind" T-LABEL
       EXPIRE-MS GONE-WITHIN? TTRUE ;]
-   [: REPORTED @ if SOCKETS$ EXISTS? if SOCKETS$ REMOVE-TREE then then ;]
+   [: REPORTED @ if SOCKETS$ FS:EXISTS? if SOCKETS$ FS:REMOVE-TREE then then ;]
    finally ;
 
 \ Whatever the body asserted or threw. Every step is a no-op for a case that

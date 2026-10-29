@@ -21,19 +21,19 @@ package HB-BUILD-PRODUCER-TEST
 65536 constant CAP
 262144 constant IMAGE-CAP
 600000 constant TIMEOUT-MS
-create ROOT FS-PATH-CAP allot
-create PROJECT FS-PATH-CAP allot
-create HB FS-PATH-CAP allot
-create APP FS-PATH-CAP allot
-create OUT-PATH FS-PATH-CAP allot
-create BUILDER FS-PATH-CAP allot
-create TOOL FS-PATH-CAP allot
-create SAVED FS-PATH-CAP allot
-create TMP FS-PATH-CAP allot
-create CACHE FS-PATH-CAP allot
-create RT FS-PATH-CAP allot
-create RT-B FS-PATH-CAP allot
-create LIB FS-PATH-CAP allot
+create ROOT PATH-CAP allot
+create PROJECT PATH-CAP allot
+create HB PATH-CAP allot
+create APP PATH-CAP allot
+create OUT-PATH PATH-CAP allot
+create BUILDER PATH-CAP allot
+create TOOL PATH-CAP allot
+create SAVED PATH-CAP allot
+create TMP PATH-CAP allot
+create CACHE PATH-CAP allot
+create RT PATH-CAP allot
+create RT-B PATH-CAP allot
+create LIB PATH-CAP allot
 create IMAGE IMAGE-CAP allot
 create RT-TEXT CAP allot
 create OUT CAP allot
@@ -71,32 +71,32 @@ variable RC
 : LIB$ ( -- ptr u8 n ) LIB LIB-U @ ;
 
 : PATHS ( -- )
-   ROOT$ s" project" PROJECT JOIN-PATH PROJECT-U !
-   ROOT$ s" bin/hb" HB JOIN-PATH HB-U !
-   ROOT$ s" app.f" APP JOIN-PATH APP-U !
-   ROOT$ s" app" OUT-PATH JOIN-PATH OUT-U !
-   ROOT$ s" tools/hb-build-lib.f" BUILDER JOIN-PATH BUILDER-U !
-   ROOT$ s" tools/hb-build.f" TOOL JOIN-PATH TOOL-U !
-   ROOT$ s" maker-saved.f" SAVED JOIN-PATH SAVED-U !
-   ROOT$ s" hbtmp" TMP JOIN-PATH TMP-U !
-   ROOT$ s" cache" CACHE JOIN-PATH CACHE-U !
-   ROOT$ s" src/habu/rt.f" RT JOIN-PATH RT-U !
-   ROOT$ s" rt-b.f" RT-B JOIN-PATH RT-B-U !
-   ROOT$ s" counts-lib.f" LIB JOIN-PATH LIB-U ! ;
+   ROOT$ s" project" PROJECT FS:JOIN-PATH PROJECT-U !
+   ROOT$ s" bin/hb" HB FS:JOIN-PATH HB-U !
+   ROOT$ s" app.f" APP FS:JOIN-PATH APP-U !
+   ROOT$ s" app" OUT-PATH FS:JOIN-PATH OUT-U !
+   ROOT$ s" tools/hb-build-lib.f" BUILDER FS:JOIN-PATH BUILDER-U !
+   ROOT$ s" tools/hb-build.f" TOOL FS:JOIN-PATH TOOL-U !
+   ROOT$ s" maker-saved.f" SAVED FS:JOIN-PATH SAVED-U !
+   ROOT$ s" hbtmp" TMP FS:JOIN-PATH TMP-U !
+   ROOT$ s" cache" CACHE FS:JOIN-PATH CACHE-U !
+   ROOT$ s" src/habu/rt.f" RT FS:JOIN-PATH RT-U !
+   ROOT$ s" rt-b.f" RT-B FS:JOIN-PATH RT-B-U !
+   ROOT$ s" counts-lib.f" LIB FS:JOIN-PATH LIB-U ! ;
 
 : PREPARE ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" habu-producer-cache" FS:MKTEMP-DIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY u ROOT-U !
-   ROOT$ CLEANUP-TREE+
+   ROOT$ FS:CLEANUP-TREE+
    ROOT$ TREE-COPY:BUILD-SOURCES
    s" bin/hb" ROOT$ TREE-COPY:FILE
    PATHS
-   HB$ CHMOD-X
-   PROJECT$ MAKE-DIR
-   TMP$ MAKE-DIR
-   CACHE$ MAKE-DIR
-   APP$ s" : MAIN ( -- ) ;" WRITE-ALL ;
+   HB$ FS:CHMOD-X
+   PROJECT$ FS:MAKE-DIR
+   TMP$ FS:MAKE-DIR
+   CACHE$ FS:MAKE-DIR
+   APP$ s" : MAIN ( -- ) ;" FS:WRITE-ALL ;
 
 : CAPTURE ( result<pcap:captured,pcap:failed> -- )
    MATCH result
@@ -164,9 +164,9 @@ variable RC
    s" /usr/bin/touch" RUN-TOOL ;
 
 : BUILDER-MTIME-SAME ( -- )
-   SAVED$ FILE-META {: size:n sec:n ns:n csec:n cns:n :}
+   SAVED$ FS:FILE-META {: size:n sec:n ns:n csec:n cns:n :}
    csec drop cns drop
-   BUILDER$ FILE-META {: bsize:n bsec:n bns:n bcsec:n bcns:n :}
+   BUILDER$ FS:FILE-META {: bsize:n bsec:n bns:n bcsec:n bcns:n :}
    bcsec drop bcns drop
    bsize size T= bsec sec T= bns ns T= ;
 
@@ -179,7 +179,7 @@ variable RC
    BUILDER$ READ-TEXT {: text:ptr size:n :}
    text 2 + c@ $68 T=          \ 'h' in the opening comment
    $6a text 2 + c!           \ 'j'; source length and behavior stay the same
-   BUILDER$ text size WRITE-ALL
+   BUILDER$ text size FS:WRITE-ALL
    RESTORE-BUILDER-TIME
    BUILDER-MTIME-SAME ;
 
@@ -204,7 +204,7 @@ variable RC
    OUT CAP-OUT-U @ S\" \"maker_ran\":true" CONTAINS? TTRUE ;
 
 : IMAGE-HAS ( ptr u8 n ptr u8 n -- ) {: yes:ptr yesu:n no:ptr nou:n :}
-   OUT$ IMAGE IMAGE-CAP READ-ALL {: u:n :}
+   OUT$ IMAGE IMAGE-CAP FS:READ-ALL {: u:n :}
    IMAGE u yes yesu CONTAINS? TTRUE
    IMAGE u no nou CONTAINS? TFALSE ;
 
@@ -233,14 +233,14 @@ TYPED-VARIABLE REPORT-STATE JR:cursor
 2 constant APP-FILES
 
 : FILE-COUNTS ( -- )
-   LIB$ s" : COUNTS-ONE ( -- n ) 1 ;" WRITE-ALL
-   APP$ S\" require counts-lib.f\n: MAIN ( -- ) ;\n" WRITE-ALL
+   LIB$ s" : COUNTS-ONE ( -- n ) 1 ;" FS:WRITE-ALL
+   APP$ S\" require counts-lib.f\n: MAIN ( -- ) ;\n" FS:WRITE-ALL
    BUILD-FILES {: cold-reused:n cold-compiled:n :}
    cold-reused 0 T= cold-compiled APP-FILES T=
    BUILD-FILES + APP-FILES T=
-   APP$ S\" require counts-lib.f\n: MAIN ( -- ) COUNTS-ONE drop ;\n" WRITE-ALL
+   APP$ S\" require counts-lib.f\n: MAIN ( -- ) COUNTS-ONE drop ;\n" FS:WRITE-ALL
    BUILD-FILES + APP-FILES T=
-   APP$ s" : MAIN ( -- ) ;" WRITE-ALL ;
+   APP$ s" : MAIN ( -- ) ;" FS:WRITE-ALL ;
 
 
 \ The application's load moves rt-b.f, the runtime with its guarded-stack
@@ -254,18 +254,18 @@ TYPED-VARIABLE REPORT-STATE JR:cursor
    S\" : B$ ( -- ptr u8 n ) s\" " SB-APPEND RT-B$ SB-APPEND S\" \" ;" SB-APPEND
    10 SB-APPEND-C
    s" public" SB-APPEND 10 SB-APPEND-C
-   s" : SWAP-RT ( -- ) B$ FILE? if B$ " SB-APPEND
-   S\" s\" " SB-APPEND RT$ SB-APPEND S\" \" RENAME-FILE then ;" SB-APPEND
+   s" : SWAP-RT ( -- ) B$ FS:FILE? if B$ " SB-APPEND
+   S\" s\" " SB-APPEND RT$ SB-APPEND S\" \" FS:RENAME-FILE then ;" SB-APPEND
    10 SB-APPEND-C
    s" ;package" SB-APPEND 10 SB-APPEND-C
    s" LINK-RACE-APP:SWAP-RT" SB-APPEND 10 SB-APPEND-C
    s" : MAIN ( -- ) ;" SB-APPEND 10 SB-APPEND-C
-   APP$ SB$ WRITE-ALL ;
+   APP$ SB$ FS:WRITE-ALL ;
 
 
 \ Offset of the guarded-stack diagnostic in the original runtime text.
 : RT-AT ( -- n )
-   RT$ RT-TEXT CAP READ-ALL RT-TEXT-U !
+   RT$ RT-TEXT CAP FS:READ-ALL RT-TEXT-U !
    RT-TEXT RT-TEXT-U @ s" hb: cannot map guarded VM stack" FIND-SUB MATCH option
       none OF s" rt.f has no guarded-stack diagnostic" T-EX-FAIL die ENDOF
       some OF IDX>N ENDOF
@@ -276,7 +276,7 @@ TYPED-VARIABLE REPORT-STATE JR:cursor
 : WRITE-RT-B ( -- )
    RT-AT RT-TEXT + {: at:ptr :}
    s" hb: REVIEW map guarded VM stack" at swap BYTE-COPY
-   RT-B$ RT-TEXT RT-TEXT-U @ WRITE-ALL
+   RT-B$ RT-TEXT RT-TEXT-U @ FS:WRITE-ALL
    s" hb: cannot map guarded VM stack" at swap BYTE-COPY ;
 
 
@@ -286,12 +286,12 @@ TYPED-VARIABLE REPORT-STATE JR:cursor
    WRITE-SWAP-APP
    WRITE-RT-B
    BUILD
-   RT-B$ EXISTS? TFALSE
+   RT-B$ FS:EXISTS? TFALSE
    s" hb: REVIEW map guarded VM stack" s" hb: cannot map guarded VM stack" IMAGE-HAS
-   RT$ RT-TEXT RT-TEXT-U @ WRITE-ALL
+   RT$ RT-TEXT RT-TEXT-U @ FS:WRITE-ALL
    BUILD
    s" hb: cannot map guarded VM stack" s" hb: REVIEW map guarded VM stack" IMAGE-HAS
-   APP$ s" : MAIN ( -- ) ;" WRITE-ALL ;
+   APP$ s" : MAIN ( -- ) ;" FS:WRITE-ALL ;
 
 
 public
@@ -307,8 +307,8 @@ public
    LINK-INPUT-RACE
    FILE-COUNTS
    BUILD-RACE
-   CLEANUP-RUN
-   ROOT$ EXISTS? TFALSE
+   FS:CLEANUP-RUN
+   ROOT$ FS:EXISTS? TFALSE
    T-REPORT
    s" hb-build-producer-cache-test: ok" type cr ;
 

@@ -86,9 +86,9 @@ create BCT-UB 2 allot
 
 \ The real CLI must give the same report with and without a copied consumer
 \ source under build/tmp. A file callback alone cannot prevent descent there.
-FS-PATH-CAP SPAN-BUFFER: BCT-ROOT-BUF
+PATH-CAP SPAN-BUFFER: BCT-ROOT-BUF
 variable BCT-ROOT-U
-create BCT-PATH-BUF FS-PATH-CAP allot
+create BCT-PATH-BUF PATH-CAP allot
 create BCT-WITH 4096 allot
 create BCT-WITHOUT 4096 allot
 create BCT-ERR 1024 allot
@@ -100,19 +100,19 @@ variable BCT-WITHOUT-U
    BCT-ROOT-BUF SPAN:$ drop BCT-ROOT-U @ ;
 
 : BCT-AT ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
-   BCT-ROOT$ a u BCT-PATH-BUF JOIN-PATH BCT-PATH-BUF swap ;
+   BCT-ROOT$ a u BCT-PATH-BUF FS:JOIN-PATH BCT-PATH-BUF swap ;
 
 : BCT-DIR ( ptr u8 n -- )
-   BCT-AT MAKE-DIRS ;
+   BCT-AT FS:MAKE-DIRS ;
 
 : BCT-SOURCE ( ptr u8 n -- )
-   BCT-AT s" : F ( ptr u8 ptr u8 n -- ) BYTE-COPY ;" WRITE-ALL ;
+   BCT-AT s" : F ( ptr u8 ptr u8 n -- ) BYTE-COPY ;" FS:WRITE-ALL ;
 
 : BCT-TREE! ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" habu-bare-copy-lint" FS:MKTEMP-DIR {: a:ptr u:n :}
    a u BCT-ROOT-BUF SPAN:COPY u BCT-ROOT-U !
-   BCT-ROOT$ CLEANUP-TREE+
+   BCT-ROOT$ FS:CLEANUP-TREE+
    s" builder" BCT-DIR
    s" test/build" BCT-DIR
    s" src" BCT-DIR
@@ -147,13 +147,13 @@ variable BCT-WITHOUT-U
    BCT-WITHOUT BCT-CLI BCT-WITHOUT-U !
    BCT-WITH BCT-WITH-U @ BCT-WITHOUT BCT-WITHOUT-U @ T$=
    BCT-ROOT-U @ 1- BCT-ROOT-U !
-   s" build/tmp" BCT-AT REMOVE-TREE
+   s" build/tmp" BCT-AT FS:REMOVE-TREE
    BCT-WITHOUT BCT-CLI BCT-WITHOUT-U !
    BCT-WITH BCT-WITH-U @ s" bare-copy: findings=2" CONTAINS? TTRUE
    BCT-WITH BCT-WITH-U @ s" bare-copy: builder/use.f" CONTAINS? TTRUE
    BCT-WITH BCT-WITH-U @ s" bare-copy: test/build/use.f" CONTAINS? TTRUE
    BCT-WITH BCT-WITH-U @ BCT-WITHOUT BCT-WITHOUT-U @ T$=
-   CLEANUP-RUN ;
+   FS:CLEANUP-RUN ;
 
 : BCT-MAIN ( -- )
    T-RESET

@@ -27,14 +27,14 @@ CAP BUFFER: OUT
 CAP BUFFER: ERR
 variable OUT-U
 variable ERR-U
-FS-PATH-CAP BUFFER: EXE
-FS-PATH-CAP BUFFER: DIR
+PATH-CAP BUFFER: EXE
+PATH-CAP BUFFER: DIR
 variable DIR-U
-FS-PATH-CAP BUFFER: MOD
+PATH-CAP BUFFER: MOD
 variable MOD-U
-FS-PATH-CAP BUFFER: CHROME
+PATH-CAP BUFFER: CHROME
 variable CHROME-U
-FS-PATH-CAP BUFFER: FILE
+PATH-CAP BUFFER: FILE
 variable FILE-U
 
 : ARG+ ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
@@ -49,9 +49,9 @@ variable FILE-U
    s" browser-display" FS:MKTEMP-DIR {: a:ptr u:n :}
    a DIR u BYTE-COPY u DIR-U !
    s" browser display: module and output in " type DIR u type cr
-   DIR u s" display.wasm" MOD JOIN-PATH MOD-U !
-   DIR u s" scene.bin" FILE JOIN-PATH FILE-U !
-   FILE FILE-U @ s" sixteen bytes ok" WRITE-ALL ;
+   DIR u s" display.wasm" MOD FS:JOIN-PATH MOD-U !
+   DIR u s" scene.bin" FILE FS:JOIN-PATH FILE-U !
+   FILE FILE-U @ s" sixteen bytes ok" FS:WRITE-ALL ;
 
 : BUILD ( -- n )
    PROC-ARGV-RESET
@@ -64,7 +64,7 @@ variable FILE-U
 
 \ Chrome's executable in CHROME, CHROME-U 0 when it is not installed.
 : FIND-CHROME ( -- )
-   MAC-CHROME EXISTS? if
+   MAC-CHROME FS:EXISTS? if
       MAC-CHROME {: a:ptr u:n :} a CHROME u BYTE-COPY u CHROME-U ! exit
    then
    s" google-chrome" >LEN CHROME FIND-EXECUTABLE MATCH option

@@ -578,7 +578,7 @@ private
 \ a missing or irregular file's, is only the first room.
 : CA-READ-SOURCE ( ptr u8 n -- ) {: path:ptr pu:n :}
    0 CA-SRC-CAP !
-   path pu  path pu FILE-SIZE  [: CA-SRC-ROOM ;] SOURCE:READ-WHOLE-SAMPLED CA-SRC-U ! ;
+   path pu  path pu FS:FILE-SIZE  [: CA-SRC-ROOM ;] SOURCE:READ-WHOLE-SAMPLED CA-SRC-U ! ;
 
 : CA-SOURCE-BUF! ( ptr u8 n -- ) {: a:ptr u:n :}
    u CA-SRC-CAP !

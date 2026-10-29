@@ -13,10 +13,10 @@ require src/core/sha256.f
 
 package NAMED-CELLS-SUITE
 
-create ROOT FS-PATH-CAP allot variable ROOT-U
-create COLD FS-PATH-CAP allot variable COLD-U
-create ART FS-PATH-CAP allot variable ART-U
-create IMAGE FS-PATH-CAP allot variable IMAGE-U
+create ROOT PATH-CAP allot variable ROOT-U
+create COLD PATH-CAP allot variable COLD-U
+create ART PATH-CAP allot variable ART-U
+create IMAGE PATH-CAP allot variable IMAGE-U
 create OUT $4000 allot variable OUT-U
 create ERR $4000 allot variable ERR-U
 variable CHILD-KIND variable CHILD-CODE variable CHILD-ARGC
@@ -69,10 +69,10 @@ create AFTER 32 allot
 
 : SETUP ( -- )
    s" habu-named-cells-image" FS:MKTEMP-DIR {: path:ptr size:n :}
-   path ROOT size BYTE-COPY size ROOT-U ! ROOT$ CLEANUP-TREE+
-   ROOT$ s" hb-cold" COLD JOIN-PATH COLD-U !
-   ROOT$ s" window.aot" ART JOIN-PATH ART-U !
-   ROOT$ s" hb-named" IMAGE JOIN-PATH IMAGE-U ! ;
+   path ROOT size BYTE-COPY size ROOT-U ! ROOT$ FS:CLEANUP-TREE+
+   ROOT$ s" hb-cold" COLD FS:JOIN-PATH COLD-U !
+   ROOT$ s" window.aot" ART FS:JOIN-PATH ART-U !
+   ROOT$ s" hb-named" IMAGE FS:JOIN-PATH IMAGE-U ! ;
 
 : CAPTURE ( ptr u8 n -- ) {: forged:ptr size:n :}
    HB-TARGET-LINUX-X86-64? if
@@ -81,7 +81,7 @@ create AFTER 32 allot
       s" test/aot-named-cells-capture.f"
    then LOAD s" --" ARG+ ART$ ARG+ COLD$ ARG+
    size 0 > if forged size ARG+ then
-   COLD$ NULL$ 0 RUN-CHILD LIVE ART$ EXISTS? TTRUE ;
+   COLD$ NULL$ 0 RUN-CHILD LIVE ART$ FS:EXISTS? TTRUE ;
 
 \ The writer path comes first: see FIXTURE-WRITER:PATH$.
 : WRITE-RC ( n -- ) {: code:n :}
@@ -89,14 +89,14 @@ create AFTER 32 allot
    PROC-ARGV-RESET s" --" ARG+ IMAGE$ ARG+ ART$ ARG+ COLD$ ARG+
    writer writeru NULL$ code RUN-CHILD ;
 
-: WRITE ( -- ) 0 WRITE-RC IMAGE$ EXISTS? TTRUE ;
+: WRITE ( -- ) 0 WRITE-RC IMAGE$ FS:EXISTS? TTRUE ;
 
 : IMAGE-DIGEST ( ptr u8 -- ) {: digest:ptr :}
    FSHA-CTX IMAGE$ digest SHA256-FILE-IN 0 T= ;
 
 : BUILD ( -- )
    s" the shared cold prefix host reaches this fixture's private tree" T-LABEL
-   COLD$ COLD-ENGINE:PROVIDE COLD$ EXECUTABLE? TTRUE
+   COLD$ COLD-ENGINE:PROVIDE COLD$ FS:EXECUTABLE? TTRUE
    s" actual prefix XTs and the unassigned defer are captured" T-LABEL
    NULL$ CAPTURE
    s" file and owned transfer reach the optimizing source writer" T-LABEL
@@ -121,7 +121,7 @@ create AFTER 32 allot
       OUT OUT-U @ name size CONTAINS? TTRUE
       AFTER IMAGE-DIGEST
       BEFORE 32 AFTER 32 T$=
-      IMAGE$ EXISTS? TTRUE
+      IMAGE$ FS:EXISTS? TTRUE
    else
       WRITE
       PROC-ARGV-RESET IMAGE$ NULL$ ENGINE-ERROR:AOT-SEED RUN-CHILD
@@ -134,7 +134,7 @@ create AFTER 32 allot
    s" NAMED-CELLS-WINDOW:LOCAL" FORGED ;
 
 : RUN ( -- )
-   T-RESET CLEANUP-RESET SETUP
-   [: BUILD CHECK-SEED REFUSALS ;] [: CLEANUP-RUN ;] finally T-REPORT ;
+   T-RESET FS:CLEANUP-RESET SETUP
+   [: BUILD CHECK-SEED REFUSALS ;] [: FS:CLEANUP-RUN ;] finally T-REPORT ;
 RUN
 ;package

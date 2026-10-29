@@ -9,10 +9,10 @@ package ZIP-REMOVE-CONSUMER
 
 512 constant RAW-CAP
 create RAW RAW-CAP allot
-create ROOT FS-PATH-CAP allot
+create ROOT PATH-CAP allot
 variable ROOT-LEN
-create PATH FS-PATH-CAP allot
-create BACKUP FS-PATH-CAP allot
+create PATH PATH-CAP allot
+create BACKUP PATH-CAP allot
 variable FILL-CALLS
 
 : STORED$ ( -- ptr u8 n )
@@ -26,15 +26,15 @@ variable FILL-CALLS
 : DEFLATED-LOCAL$ ( -- ptr u8 n ) DEFLATED$ drop $3D ;
 
 : ROOT$ ( -- ptr u8 n ) ROOT ROOT-LEN @ ;
-: FILE$ ( ptr u8 n -- ptr u8 n ) ROOT$ 2swap PATH JOIN-PATH PATH swap ;
+: FILE$ ( ptr u8 n -- ptr u8 n ) ROOT$ 2swap PATH FS:JOIN-PATH PATH swap ;
 : ARCHIVE$ ( -- ptr u8 n ) s" cleaned.zip" FILE$ ;
-: SAVED$ ( -- ptr u8 n ) ROOT$ s" saved.zip" BACKUP JOIN-PATH BACKUP swap ;
+: SAVED$ ( -- ptr u8 n ) ROOT$ s" saved.zip" BACKUP FS:JOIN-PATH BACKUP swap ;
 : KEPT$ ( -- ptr u8 n )
    s" kept member bytes kept member bytes kept member bytes kept member bytes kept member bytes kept member bytes kept member bytes kept member bytes " ;
 
 : SETUP ( -- )
    s" habu-zip-remove" FS:MKTEMP-DIR {: dir:ptr len:n :}
-   dir ROOT len BYTE-COPY len ROOT-LEN ! ROOT$ CLEANUP-TREE+ ;
+   dir ROOT len BYTE-COPY len ROOT-LEN ! ROOT$ FS:CLEANUP-TREE+ ;
 
 : POST-REMOVE-REPLACE ( ZIP:archive ZIP:entry -- ZIP:archive ZIP:entry )
    2dup s" resurrect" ZIP:REPLACE ;
@@ -44,10 +44,10 @@ variable FILL-CALLS
 : TRY-REMOVE ( ZIP:archive ZIP:entry -- ZIP:archive ZIP:entry )
    2dup ZIP:REMOVE ;
 : TRY-COMMIT ( ZIP:archive -- ZIP:archive ) dup ZIP:COMMIT ;
-: NO-TEMP ( ptr u8 n -- ) BASENAME s" .habu-zip-" CONTAINS? TFALSE ;
+: NO-TEMP ( ptr u8 n -- ) FS:BASENAME s" .habu-zip-" CONTAINS? TFALSE ;
 
 : CHECK-ARTIFACT ( ptr u8 n -- ) {: local:ptr local-len:n :}
-   ARCHIVE$ RAW RAW-CAP READ-ALL {: size:n :}
+   ARCHIVE$ RAW RAW-CAP FS:READ-ALL {: size:n :}
    RAW local-len local local-len T$=
    RAW size s" ZIP-REMOVED-PREVIEW-PAYLOAD-9C52E6" CONTAINS? TFALSE
    RAW size s" preview.bin" CONTAINS? TFALSE
@@ -60,7 +60,7 @@ variable FILL-CALLS
 
 : REMOVE-ONE ( ptr u8 n ptr u8 n -- )
    {: fixture:ptr fixture-len:n local:ptr local-len:n :}
-   ARCHIVE$ fixture fixture-len WRITE-ALL
+   ARCHIVE$ fixture fixture-len FS:WRITE-ALL
    ARCHIVE$ ZIP:EDIT {: archive:ZIP:archive :}
    archive ZIP:COUNT 2 T=
    archive 1 ZIP:ENTRY {: preview:ZIP:entry :}
@@ -79,7 +79,7 @@ variable FILL-CALLS
    local local-len CHECK-ARTIFACT ;
 
 : READONLY-AND-DISCARD ( -- )
-   ARCHIVE$ STORED$ WRITE-ALL
+   ARCHIVE$ STORED$ FS:WRITE-ALL
    ARCHIVE$ ZIP:OPEN {: archive:ZIP:archive :}
    archive 1 ZIP:ENTRY {: preview:ZIP:entry :}
    archive preview [: TRY-REMOVE ;] catch ZIP:E-READONLY T= 2drop
@@ -92,7 +92,7 @@ variable FILL-CALLS
    result ZIP:COUNT 2 T= result ZIP:CLOSE ;
 
 : REPLACE-THEN-REMOVE ( -- )
-   ARCHIVE$ STORED$ WRITE-ALL
+   ARCHIVE$ STORED$ FS:WRITE-ALL
    ARCHIVE$ ZIP:EDIT {: archive:ZIP:archive :}
    archive 1 ZIP:ENTRY {: preview:ZIP:entry :}
    archive preview s" staged preview" ZIP:REPLACE
@@ -102,36 +102,36 @@ variable FILL-CALLS
    STORED-LOCAL$ CHECK-ARTIFACT ;
 
 : FAILED-INSTALL ( -- )
-   ARCHIVE$ STORED$ WRITE-ALL
+   ARCHIVE$ STORED$ FS:WRITE-ALL
    ARCHIVE$ ZIP:EDIT {: archive:ZIP:archive :}
    archive 1 ZIP:ENTRY {: preview:ZIP:entry :}
    archive preview ZIP:REMOVE
-   ARCHIVE$ SAVED$ RENAME-FILE
-   ARCHIVE$ MAKE-DIR
+   ARCHIVE$ SAVED$ FS:RENAME-FILE
+   ARCHIVE$ FS:MAKE-DIR
    archive [: TRY-COMMIT ;] catch ZIP:E-COMMIT T= drop
-   ROOT$ [: NO-TEMP ;] WALK-FILES
+   ROOT$ [: NO-TEMP ;] FS:WALK-FILES
    archive ZIP:COUNT 2 T=
    archive preview ZIP:READ s" ZIP-REMOVED-PREVIEW-PAYLOAD-9C52E6" T$=
-   ARCHIVE$ REMOVE-DIR
-   SAVED$ ARCHIVE$ RENAME-FILE
+   ARCHIVE$ FS:REMOVE-DIR
+   SAVED$ ARCHIVE$ FS:RENAME-FILE
    archive ZIP:COMMIT
    STORED-LOCAL$ CHECK-ARTIFACT ;
 
 : REMOVE-ALL ( -- )
-   ARCHIVE$ STORED$ WRITE-ALL
+   ARCHIVE$ STORED$ FS:WRITE-ALL
    ARCHIVE$ ZIP:EDIT {: archive:ZIP:archive :}
    archive archive 0 ZIP:ENTRY ZIP:REMOVE
    archive archive 1 ZIP:ENTRY ZIP:REMOVE
    archive ZIP:COMMIT
    ARCHIVE$ ZIP:OPEN {: result:ZIP:archive :}
    result ZIP:COUNT 0 T= result ZIP:CLOSE
-   ARCHIVE$ RAW RAW-CAP READ-ALL {: size:n :}
+   ARCHIVE$ RAW RAW-CAP FS:READ-ALL {: size:n :}
    RAW size s" ZIP-REMOVED-PREVIEW-PAYLOAD-9C52E6" CONTAINS? TFALSE
    RAW size s" kept member bytes" CONTAINS? TFALSE ;
 
 public
 : RUN ( -- )
-   T-RESET CLEANUP-RESET SETUP
+   T-RESET FS:CLEANUP-RESET SETUP
    s" native STORE omits removed member bytes" T-LABEL
    STORED$ STORED-LOCAL$ REMOVE-ONE
    s" compressed archive omits removed member bytes" T-LABEL
@@ -144,7 +144,7 @@ public
    FAILED-INSTALL
    s" removing every member builds a valid empty archive" T-LABEL
    REMOVE-ALL
-   CLEANUP-RUN T-REPORT ;
+   FS:CLEANUP-RUN T-REPORT ;
 ;package
 
 : MAIN ( -- ) ZIP-REMOVE-CONSUMER:RUN ;

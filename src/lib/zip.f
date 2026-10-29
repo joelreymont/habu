@@ -71,7 +71,7 @@ $4000 constant FILE-CHUNK
 \ room for its path is allocated outside the catch, so an allocation failure
 \ keeps its own code, as OPEN-WORK's other allocations do.
 : SNAPSHOT-OPEN ( ptr n -- ) {: node:ptr :}
-   node FS-PATH-CAP 1+ BUFFER-ALLOC {: copy:ptr :}
+   node PATH-CAP 1+ BUFFER-ALLOC {: copy:ptr :}
    node copy [: SNAPSHOT-WORK ;] catch {: code:n :}
    2drop
    code 0<> if E-OPEN throw then ;

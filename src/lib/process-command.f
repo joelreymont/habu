@@ -255,7 +255,7 @@ private
    {: a:ptr u:n :}
    u 0 <= if E-PROC-PATH throw then
    u PATHZ-CAP 1 - > if E-PROC-PATH throw then
-   a u DIR? 0= if E-PROC-PATH throw then ;
+   a u FS:DIR? 0= if E-PROC-PATH throw then ;
 
 public
 

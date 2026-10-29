@@ -651,7 +651,7 @@ TYPED-VARIABLE OUT-OPEN bool             \ whether its stdout end is still open,
 variable DEADLINE                        \ the mono-ns time its waits run out,
 variable SENT                            \ and the bytes of its input written
 
-FS-PATH-CAP 3 * 7 + SPAN-BUFFER: URI-SPAN  \ a file URI: file:// and each byte escaped
+PATH-CAP 3 * 7 + SPAN-BUFFER: URI-SPAN  \ a file URI: file:// and each byte escaped
 TYPED-VARIABLE JR-ST JR:cursor           \ JR storage for reading a packet
 TYPED-VARIABLE HL-W JSON-WRITE:writer    \ a highlight written in this process
 TYPED-VARIABLE SHARED? bool                \ a case uses the initialized session
@@ -659,7 +659,7 @@ TYPED-VARIABLE WORKSPACE? bool             \ shared cases use one fixed root
 TYPED-VARIABLE SESSION-INIT [ -- ]
 TYPED-VARIABLE SESSION-CASES [ -- ]
 32 constant OPEN-CAP
-create OPEN-PATHS OPEN-CAP FS-PATH-CAP * allot
+create OPEN-PATHS OPEN-CAP PATH-CAP * allot
 OPEN-CAP TYPED-BUFFER OPEN-LENS n
 variable OPEN-N
 
@@ -837,14 +837,14 @@ variable OPEN-N
    u 0 ?do a i + ESCAPED+ loop
    s\" \"" PAR+ ;
 
-: OPEN-AT ( n -- ptr u8 )  FS-PATH-CAP * OPEN-PATHS + ;
+: OPEN-AT ( n -- ptr u8 )  PATH-CAP * OPEN-PATHS + ;
 : OPEN-PATH ( n -- ptr u8 n )
    dup OPEN-AT swap OPEN-LENS @ ;
 
 : OPEN-ADD ( ptr u8 n -- )
    SHARED? @ 0= if 2drop exit then
    {: p:ptr pu:n :}
-   OPEN-N @ OPEN-CAP < pu FS-PATH-CAP <= and 0= if E-TBL-BOUNDS throw then
+   OPEN-N @ OPEN-CAP < pu PATH-CAP <= and 0= if E-TBL-BOUNDS throw then
    OPEN-N @ {: idx:n :}
    p idx OPEN-AT pu BYTE-COPY
    pu idx OPEN-LENS !
@@ -964,9 +964,9 @@ variable OPEN-N
 
 \ Keeps this conversation or shared case's input, output and stderr.
 : ARCHIVE-STREAMS ( -- )
-   s" .in" ARTIFACT$ IN$ WRITE-ALL
-   s" .out" ARTIFACT$ OUT$ WRITE-ALL
-   s" .err" ARTIFACT$ ERR$ WRITE-ALL ;
+   s" .in" ARTIFACT$ IN$ FS:WRITE-ALL
+   s" .out" ARTIFACT$ OUT$ FS:WRITE-ALL
+   s" .err" ARTIFACT$ ERR$ FS:WRITE-ALL ;
 
 \ A process that exited also records its exit code.
 : ARCHIVE ( n -- )
@@ -975,7 +975,7 @@ variable OPEN-N
    MSG-B CLEAR
    LABEL$ MSG+ s"  " MSG+ rc INT$ MSG+ s\" \n" MSG+
    SB-RESET DIR$ SB-APPEND s" /exits" SB-APPEND
-   SB$ MSG$ APPEND-FILE ;
+   SB$ MSG$ FS:APPEND-FILE ;
 
 \ The shared session's complete byte trace includes initialize and shutdown;
 \ its named case files are individual segments.
@@ -986,14 +986,14 @@ variable OPEN-N
    x xu SB-APPEND SB$ ;
 
 : TRACE-WRITE ( -- )
-   s" .in" TRACE$ IN$ WRITE-ALL
-   s" .out" TRACE$ OUT$ WRITE-ALL
-   s" .err" TRACE$ ERR$ WRITE-ALL ;
+   s" .in" TRACE$ IN$ FS:WRITE-ALL
+   s" .out" TRACE$ OUT$ FS:WRITE-ALL
+   s" .err" TRACE$ ERR$ FS:WRITE-ALL ;
 
 : TRACE-APPEND ( -- )
-   s" .in" TRACE$ IN$ APPEND-FILE
-   s" .out" TRACE$ OUT$ APPEND-FILE
-   s" .err" TRACE$ ERR$ APPEND-FILE ;
+   s" .in" TRACE$ IN$ FS:APPEND-FILE
+   s" .out" TRACE$ OUT$ FS:APPEND-FILE
+   s" .err" TRACE$ ERR$ FS:APPEND-FILE ;
 
 \ The server ended so, and must have exited with this code; past its deadline,
 \ the conversation and what the server wrote are printed.
@@ -1736,7 +1736,7 @@ variable PUB-COUNT
    SHARED? @ 0= if turns HELD exit then
    0 SENT !
    CHECKED-MS >MS PROC-DEADLINE-AT DEADLINE !
-   s" " ARTIFACT$ MAKE-DIR
+   s" " ARTIFACT$ FS:MAKE-DIR
    turns execute
    LOGGED
    ENDS
@@ -1752,9 +1752,9 @@ variable PUB-COUNT
    TRACE-APPEND
    WORKSPACE? @ if
       DIR$ N>BLEN PATH-B REPLACE s" /workspace" N>BLEN PATH-B APPEND-SPAN
-      PATH-B SPAN$ BLEN>N s" /fixtures" ARTIFACT$ RENAME-FILE
+      PATH-B SPAN$ BLEN>N s" /fixtures" ARTIFACT$ FS:RENAME-FILE
       DIR$ N>BLEN PATH-B REPLACE s" /workspace" N>BLEN PATH-B APPEND-SPAN
-      PATH-B SPAN$ BLEN>N MAKE-DIR
+      PATH-B SPAN$ BLEN>N FS:MAKE-DIR
    then ;
 
 \ Holds the conversation of this name, whose turns end its input before exit
@@ -2026,7 +2026,7 @@ variable PUB-COUNT
 \ dep.f on disk holds this text.
 : DEP-WRITTEN ( ptr u8 n -- )
    {: a:ptr u:n :}
-   DEP-PATH a u WRITE-ALL ;
+   DEP-PATH a u FS:WRITE-ALL ;
 
 \ The path the packets name dep.f by: its canonical one.
 : DEP-CANON ( -- ptr u8 n )  DEP-PATH SOURCE-ROOT:CANONICAL drop ;
@@ -2176,7 +2176,7 @@ variable PUB-COUNT
    SV-NEW-PATH TEXT-SV-NEW 1 OPENS
    SAY
    TEXT-SV-NEW SV-NEW-PATH 1 s" verified" LISTED
-   SV-NEW-PATH TEXT-SV-NEW WRITE-ALL
+   SV-NEW-PATH TEXT-SV-NEW FS:WRITE-ALL
    SV-NEW-PATH SAVES
    SAY
    SV-NEW-PATH TEXT-SV-NEW BESIDE!
@@ -2195,7 +2195,7 @@ variable PUB-COUNT
    TEXT-MW MW-PATH CHECKS
    MW-PATH s" refused" COMPLETED
    MW-PATH 1 EXPECT 0 0 0 7 1 s" E-MISSING-SOURCE" DIAG+ PUBLISHES
-   MW-NEW-PATH TEXT-SV-NEW WRITE-ALL
+   MW-NEW-PATH TEXT-SV-NEW FS:WRITE-ALL
    MW-NEW-PATH WATCHES
    SAY
    TEXT-MW MW-PATH 1 s" verified" LISTED ;
@@ -2215,9 +2215,9 @@ variable PUB-COUNT
 \ path: its list holds its call's underflow, and the canonical one is
 \ withdrawn.
 : DEP-SYMLINK-TURNS ( -- )
-   s" real" FIXTURE MAKE-DIR
-   s" real" s" link" FIXTURE MAKE-SYMLINK
-   REAL-DEP DEP-BROKEN WRITE-ALL
+   s" real" FIXTURE FS:MAKE-DIR
+   s" real" s" link" FIXTURE FS:MAKE-SYMLINK
+   REAL-DEP DEP-BROKEN FS:WRITE-ALL
    SESSION-INITIALIZE
    LINK-S TEXT-SD 1 OPENS
    SAY
@@ -2458,7 +2458,7 @@ CK-USE-MAX 1 + constant OVER-USINGS
 : TEXT-DD ( -- ptr u8 n )  s\" require dd-dep.f\n: LSPT-DD ( -- n ) 2 ;\n" ;
 
 : DUP-REQUIRED-TURNS ( -- )
-   DD-DEP s\" : LSPT-DD ( -- n ) 1 ;\n" WRITE-ALL
+   DD-DEP s\" : LSPT-DD ( -- n ) 1 ;\n" FS:WRITE-ALL
    SESSION-INITIALIZE
    A-PATH TEXT-DD 1 OPENS
    SAY
@@ -2678,7 +2678,7 @@ CK-USE-MAX 1 + constant OVER-USINGS
 \ disk and B checked again, B's QUX-NEW and not A's QUX-DEP; B closed, A's
 \ QUX-DEP again, and A, whose check did not read B's file, not checked again.
 : SYMBOL-TURNS ( -- )
-   SYM-DEP-PATH TEXT-SYM-DEP WRITE-ALL
+   SYM-DEP-PATH TEXT-SYM-DEP FS:WRITE-ALL
    SESSION-INITIALIZE
    SYM-A-PATH TEXT-SYM-A 1 OPENS
    SAY
@@ -2720,7 +2720,7 @@ CK-USE-MAX 1 + constant OVER-USINGS
    SAY
    HEAR s" 6" -32602 REFUSED
    HEAR s" 7" -32602 REFUSED
-   SYM-DEP-PATH TEXT-SYM-DEP2 WRITE-ALL
+   SYM-DEP-PATH TEXT-SYM-DEP2 FS:WRITE-ALL
    SYM-B-PATH TEXT-SYM-B 2 CHANGES
    SAY
    TEXT-SYM-B SYM-B-PATH 2 s" verified" LISTED
@@ -2749,7 +2749,7 @@ CK-USE-MAX 1 + constant OVER-USINGS
 \ definitions is listed, not even A's older ones; B closed, A's again, and A,
 \ whose check did not read B's file, not checked again.
 : EMPTY-TURNS ( -- )
-   SYM-DEP-PATH TEXT-SYM-DEP WRITE-ALL
+   SYM-DEP-PATH TEXT-SYM-DEP FS:WRITE-ALL
    SESSION-INITIALIZE
    SYM-A-PATH TEXT-SYM-A 1 OPENS
    SYM-B-PATH TEXT-SYM-B 1 OPENS
@@ -2757,7 +2757,7 @@ CK-USE-MAX 1 + constant OVER-USINGS
    SESSION-CAPABILITIES
    TEXT-SYM-A SYM-A-PATH 1 s" verified" LISTED
    TEXT-SYM-B SYM-B-PATH 1 s" verified" LISTED
-   SYM-DEP-PATH TEXT-SYM-DEP3 WRITE-ALL
+   SYM-DEP-PATH TEXT-SYM-DEP3 FS:WRITE-ALL
    SYM-B-PATH TEXT-SYM-B 2 CHANGES
    SAY
    TEXT-SYM-B SYM-B-PATH 2 s" verified" LISTED
@@ -2853,7 +2853,7 @@ CK-USE-MAX 1 + constant OVER-USINGS
 
 \ The check reads rep-dep.f twice, and a query lists REV-SHARED once.
 : REINCLUDE-TURNS ( -- )
-   REP-DEP-PATH TEXT-REP-DEP WRITE-ALL
+   REP-DEP-PATH TEXT-REP-DEP FS:WRITE-ALL
    SESSION-INITIALIZE
    REP-PATH TEXT-REP 1 OPENS
    SAY
@@ -2891,7 +2891,7 @@ CK-USE-MAX 1 + constant OVER-USINGS
 \ before od.f's next check, REV-EDIT where that check read it, and once od.f
 \ is checked again, REV-DISK where the file on disk places it.
 : OPEN-DEP-TURNS ( -- )
-   OD-DEP-PATH TEXT-OD-DISK WRITE-ALL
+   OD-DEP-PATH TEXT-OD-DISK FS:WRITE-ALL
    SESSION-INITIALIZE
    OD-DEP-PATH TEXT-OD-EDIT 1 OPENS
    SAY
@@ -2910,7 +2910,7 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s" 4" SYMBOLS-START
    s" REV-EDIT" 12 OD-DEP-PATH URI-OF 1 2 10 s" " SYMBOL+
    SYMBOLS-END
-   s" od-dep.f" OD-TWIN-PATH MAKE-SYMLINK
+   s" od-dep.f" OD-TWIN-PATH FS:MAKE-SYMLINK
    OD-TWIN-PATH TEXT-OD-TWIN 1 OPENS
    SAY
    TEXT-OD-TWIN OD-TWIN-PATH 1 s" verified" LISTED
@@ -2972,7 +2972,7 @@ variable LENGTH-N                        \ the length of its directory's name
 
 \ The document is checked and published, and Z9, its last word, answered.
 : LENGTH-TURNS ( -- )
-   LENGTH-DIR MAKE-DIR
+   LENGTH-DIR FS:MAKE-DIR
    SESSION-INITIALIZE
    LENGTH-PATH TXT$ 1 OPENS
    SAY
@@ -3024,7 +3024,7 @@ variable LENGTH-N                        \ the length of its directory's name
    TEXT-SR SR-PATH CHECKS
    SR-PATH s" refused" COMPLETED
    SR-PATH 1 EXPECT 0 0 0 7 1 s" E-MISSING-SOURCE" DIAG+ PUBLISHES
-   SR-NEW-PATH TEXT-SV-NEW WRITE-ALL
+   SR-NEW-PATH TEXT-SV-NEW FS:WRITE-ALL
    s" 3" SR-PATH 1 2 DEFINITION-ASK
    SAY
    TEXT-SR SR-PATH 1 s" verified" LISTED
@@ -3033,8 +3033,8 @@ variable LENGTH-N                        \ the length of its directory's name
 \ A source that exists but cannot be read becomes readable. The request sees
 \ the failed target's changed file state and rechecks before it answers.
 : UNREAD-REQUEST-TURNS ( -- )
-   UR-DEP-PATH TEXT-SV-NEW WRITE-ALL
-   UR-DEP-PATH 0 CHMOD-MODE
+   UR-DEP-PATH TEXT-SV-NEW FS:WRITE-ALL
+   UR-DEP-PATH 0 FS:CHMOD-MODE
    SESSION-INITIALIZE
    UR-PATH TEXT-UR 1 OPENS
    SAY
@@ -3042,7 +3042,7 @@ variable LENGTH-N                        \ the length of its directory's name
    TEXT-UR UR-PATH CHECKS
    UR-PATH s" refused" COMPLETED
    UR-PATH 1 EXPECT 0 0 0 7 1 s" E-UNREADABLE-SOURCE" DIAG+ PUBLISHES
-   UR-DEP-PATH FS-MODE-0644 CHMOD-MODE
+   UR-DEP-PATH FS:MODE-0644 FS:CHMOD-MODE
    s" 3" UR-PATH 1 2 DEFINITION-ASK
    SAY
    TEXT-UR UR-PATH 1 s" verified" LISTED
@@ -3114,7 +3114,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
 \ require binding is known, but include.f's top-level dictionary calls defer
 \ its whole source index.
 : DEF-DEP-TURNS ( -- )
-   DEF-DEP-PATH TEXT-DEF-DEP WRITE-ALL
+   DEF-DEP-PATH TEXT-DEF-DEP FS:WRITE-ALL
    SESSION-INITIALIZE
    DEF-B-PATH TEXT-DEF-B 1 OPENS
    SAY
@@ -3397,7 +3397,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
 \ answered with its declaring token's range in that text, at the URI the
 \ client opened def-od-dep.f by.
 : DEF-OPEN-DEP-TURNS ( -- )
-   DEF-OD-DEP-PATH TEXT-DEF-OD-DISK WRITE-ALL
+   DEF-OD-DEP-PATH TEXT-DEF-OD-DISK FS:WRITE-ALL
    SESSION-INITIALIZE
    DEF-OD-DEP-PATH TEXT-DEF-OD-EDIT 1 OPENS
    SAY
@@ -3505,7 +3505,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
 \ answers an empty list. A document never opened, and params naming no
 \ document, are -32602.
 : OUTLINE-TURNS ( -- )
-   SYM-DEP-PATH TEXT-SYM-DEP WRITE-ALL
+   SYM-DEP-PATH TEXT-SYM-DEP FS:WRITE-ALL
    SESSION-INITIALIZE
    SYM-A-PATH TEXT-SYM-A 1 OPENS
    SAY
@@ -3549,7 +3549,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
 \ request is -32801 and the change is applied and checked after it; asked once
 \ more, the restored definitions are answered without a check.
 : OUTLINE-AFTER-CHANGE-TURNS ( -- )
-   SYM-DEP-PATH TEXT-SYM-DEP WRITE-ALL
+   SYM-DEP-PATH TEXT-SYM-DEP FS:WRITE-ALL
    HIERARCHICAL-CLIENT
    SYM-A-PATH TEXT-SYM-A 1 OPENS
    SAY
@@ -3677,7 +3677,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
 \ The uses of def-dep.f's global and, qualified, of its public word, each
 \ answered with its declaration in the file on disk.
 : HOVER-DEP-TURNS ( -- )
-   DEF-DEP-PATH TEXT-DEF-DEP WRITE-ALL
+   DEF-DEP-PATH TEXT-DEF-DEP FS:WRITE-ALL
    MARKDOWN-CLIENT
    DEF-B-PATH TEXT-DEF-B 1 OPENS
    SAY
@@ -3695,7 +3695,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
 \ and whose check reads its open text: the uses of DEF-DEPA and DEF-DEPB, each
 \ answered with its declaration in that text.
 : HOVER-OPEN-DEP-TURNS ( -- )
-   DEF-OD-DEP-PATH TEXT-DEF-OD-DISK WRITE-ALL
+   DEF-OD-DEP-PATH TEXT-DEF-OD-DISK FS:WRITE-ALL
    MARKDOWN-CLIENT
    DEF-OD-DEP-PATH TEXT-DEF-OD-EDIT 1 OPENS
    SAY
@@ -3894,7 +3894,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
 \ answered with itself alone: the declarations are in the file on disk, not in
 \ the document.
 : HIGHLIGHT-DEP-TURNS ( -- )
-   DEF-DEP-PATH TEXT-DEF-DEP WRITE-ALL
+   DEF-DEP-PATH TEXT-DEF-DEP FS:WRITE-ALL
    SESSION-INITIALIZE
    DEF-B-PATH TEXT-DEF-B 1 OPENS
    SAY
@@ -4016,7 +4016,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
 \ target declares two words, and no use is known to be of the one it names
 \ rather than of the other.
 : HIGHLIGHT-INCLUDED-TURNS ( -- )
-   HL-COMMON-PATH TEXT-HL-COMMON WRITE-ALL
+   HL-COMMON-PATH TEXT-HL-COMMON FS:WRITE-ALL
    SESSION-INITIALIZE
    HL-TWICE-PATH TEXT-HL-TWICE 1 OPENS
    SAY
@@ -4106,7 +4106,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
    slot 8 24 s" highlight-case-reread: Q:k" HL-NULL-AT ;
 
 : HIGHLIGHT-CASE-REREAD ( -- )
-   HL-CASE-PATH TEXT-HL-CASE WRITE-ALL
+   HL-CASE-PATH TEXT-HL-CASE FS:WRITE-ALL
    HL-REREAD-PATH URI-OF 1 HL-REREAD-PATH TEXT-HL-REREAD LSP-DOCS:DOC-OPEN
    HL-REREAD-PATH URI-OF LSP-DOCS:DOC-FIND MATCH option
       some OF HL-REREAD-ASK ENDOF
@@ -4209,7 +4209,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
 \ The uses of def-dep.f's global and, qualified, of its public word, typed by
 \ their declarations in the file on disk.
 : TOKENS-DEP-TURNS ( -- )
-   DEF-DEP-PATH TEXT-DEF-DEP WRITE-ALL
+   DEF-DEP-PATH TEXT-DEF-DEP FS:WRITE-ALL
    SESSION-INITIALIZE
    DEF-B-PATH TEXT-DEF-B 1 OPENS
    SAY
@@ -4475,8 +4475,8 @@ create WAS-B HDR-BYTES allot             \ and as they were before the store cha
    LSP-DEFS:PROBE LSP-DEFS:DEFS-DECL-RANGE = TTRUE ;
 
 : TEST-IDENTITIES ( -- )
-   ID-INC-PATH TEXT-ID-INC WRITE-ALL
-   ID-PROBE-PATH TEXT-ID-PROBE WRITE-ALL
+   ID-INC-PATH TEXT-ID-INC FS:WRITE-ALL
+   ID-PROBE-PATH TEXT-ID-PROBE FS:WRITE-ALL
    ID-DT-PATH TEXT-ID-DT ID-OPEN {: dt:n :}
    ID-TWICE-PATH TEXT-ID-TWICE ID-OPEN {: twice:n :}
    dt s" identities-deftype: verified" ID-KEEP
@@ -4544,7 +4544,7 @@ create WAS-B HDR-BYTES allot             \ and as they were before the store cha
 \ document with its cursor, as its turn, so the document's list comes before
 \ each answer.
 : CMP-TURNS ( -- )
-   CMP-DEP-PATH TEXT-CMP-DEP WRITE-ALL
+   CMP-DEP-PATH TEXT-CMP-DEP FS:WRITE-ALL
    CMP-A-PATH TEXT-CMP-A 1 OPENS
    SAY
    TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
@@ -4599,7 +4599,7 @@ create WAS-B HDR-BYTES allot             \ and as they were before the store cha
 \ request checks the changed text, so its list comes before the answer,
 \ which offers CMPL-NEW and no CMPL-ONE.
 : CMP-AFTER-CHANGE-TURNS ( -- )
-   CMP-DEP-PATH TEXT-CMP-DEP WRITE-ALL
+   CMP-DEP-PATH TEXT-CMP-DEP FS:WRITE-ALL
    CMP-A-PATH TEXT-CMP-A 1 OPENS
    SAY
    TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
@@ -4620,7 +4620,7 @@ create WAS-B HDR-BYTES allot             \ and as they were before the store cha
 \ the same detail: the client's filter of the first answer as the token grows
 \ to either keeps what a later request would offer.
 : CMP-QUALIFIED-TURNS ( -- )
-   CMP-DEP-PATH TEXT-CMP-DEP WRITE-ALL
+   CMP-DEP-PATH TEXT-CMP-DEP FS:WRITE-ALL
    CMP-A-PATH TEXT-CMP-A 1 OPENS
    SAY
    TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
@@ -4740,8 +4740,8 @@ create WAS-B HDR-BYTES allot             \ and as they were before the store cha
 \ the server shares, and lk-dep.f, outside it, by its path. lk-gone.f, which
 \ the check could not read, has its E-MISSING-SOURCE and no link.
 : LINK-TURNS ( -- )
-   LK-DEP-PATH TEXT-LK-LOADED WRITE-ALL
-   LK-INC-PATH TEXT-LK-LOADED WRITE-ALL
+   LK-DEP-PATH TEXT-LK-LOADED FS:WRITE-ALL
+   LK-INC-PATH TEXT-LK-LOADED FS:WRITE-ALL
    SESSION-INITIALIZE
    LK-PATH TEXT-LK 1 OPENS
    SAY
@@ -4764,9 +4764,9 @@ create WAS-B HDR-BYTES allot             \ and as they were before the store cha
 \ opened it by. That open has lk.f, whose check read lk-dep.f, checked again
 \ before the links are answered, and lk-dep.f checked after them.
 : LINK-OPEN-TURNS ( -- )
-   s" lk-real" FIXTURE MAKE-DIR
-   s" lk-real" s" lk-link" FIXTURE MAKE-SYMLINK
-   LK-REAL-DEP TEXT-LK-LOADED WRITE-ALL
+   s" lk-real" FIXTURE FS:MAKE-DIR
+   s" lk-real" s" lk-link" FIXTURE FS:MAKE-SYMLINK
+   LK-REAL-DEP TEXT-LK-LOADED FS:WRITE-ALL
    SESSION-INITIALIZE
    LK-LINK-DOC TEXT-LK-ONE 1 OPENS
    SAY
@@ -4795,7 +4795,7 @@ create WAS-B HDR-BYTES allot             \ and as they were before the store cha
 \ Links asked with the document's opening, before the server checked it: the
 \ request checks it first, so its list comes before the answer.
 : LINK-BEFORE-CHECK-TURNS ( -- )
-   LK-DEP-PATH TEXT-LK-LOADED WRITE-ALL
+   LK-DEP-PATH TEXT-LK-LOADED FS:WRITE-ALL
    SESSION-INITIALIZE
    LK-PATH TEXT-LK-ONE 1 OPENS
    s" 3" LK-PATH LINKS-ASK
@@ -4809,7 +4809,7 @@ create WAS-B HDR-BYTES allot             \ and as they were before the store cha
 \ the link at the loader's new place. Asked with a change of the document read
 \ behind them, they are -32801, and the change is applied and checked after.
 : LINK-AFTER-CHANGE-TURNS ( -- )
-   LK-DEP-PATH TEXT-LK-LOADED WRITE-ALL
+   LK-DEP-PATH TEXT-LK-LOADED FS:WRITE-ALL
    SESSION-INITIALIZE
    LK-PATH TEXT-LK-ONE 1 OPENS
    SAY
@@ -4831,7 +4831,7 @@ create WAS-B HDR-BYTES allot             \ and as they were before the store cha
 \ it stopped are of a text a check completed on, so the answer is an empty
 \ list.
 : LINK-INCOMPLETE-TURNS ( -- )
-   LK-DEP-PATH TEXT-LK-LOADED WRITE-ALL
+   LK-DEP-PATH TEXT-LK-LOADED FS:WRITE-ALL
    SESSION-INITIALIZE
    LK-PATH TEXT-LK-ONE 1 OPENS
    SAY
@@ -4862,11 +4862,11 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    {: a:ptr u:n :}
    SB-RESET s" graph/" SB-APPEND a u SB-APPEND SB$ FIXTURE ;
 
-: WS-DIR ( ptr u8 n -- )  IN-GRAPH MAKE-DIR ;
+: WS-DIR ( ptr u8 n -- )  IN-GRAPH FS:MAKE-DIR ;
 
 : WS-FILE ( ptr u8 n ptr u8 n -- )
    {: n:ptr nu:n t:ptr tu:n :}
-   n nu IN-GRAPH t tu WRITE-ALL ;
+   n nu IN-GRAPH t tu FS:WRITE-ALL ;
 
 : WS-CANON ( ptr u8 n -- ptr u8 n )  IN-GRAPH SOURCE-ROOT:CANONICAL drop ;
 
@@ -4886,7 +4886,7 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
 \ f1 from e8's root, dyn/. 9: p/a9 and q/b9 load out/x9, which loads f9 from
 \ either root.
 : WS-TREE ( -- )
-   s" graph" FIXTURE MAKE-DIR
+   s" graph" FIXTURE FS:MAKE-DIR
    s" w" WS-DIR s" out" WS-DIR s" dyn" WS-DIR
    s" w/.jj-ws" WS-DIR s" w/p" WS-DIR s" w/q" WS-DIR s" w/s" WS-DIR
    s" w/a1.f" s\" require b1.f\n" WS-FILE
@@ -4919,7 +4919,7 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s" dyn/e8.f" s\" require ../out/h8.f\n" WS-FILE
    s" out/h8.f" s\" require ../w/f1.f\n" WS-FILE
    s" dyn/z8.f" s\" : Z8 ( -- ) ;\n" WS-FILE
-   s" dyn/z8.f" IN-GRAPH 0 CHMOD-MODE ;
+   s" dyn/z8.f" IN-GRAPH 0 FS:CHMOD-MODE ;
 
 \ The open documents, as the server would hand them over: b2 without its
 \ load, c3 with one.
@@ -5015,9 +5015,9 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
 \ The file of this name in the artifact directory holds this text.
 : REFS-FILE ( ptr u8 n ptr u8 n -- )
    {: n:ptr nu:n t:ptr tu:n :}
-   n nu FIXTURE t tu WRITE-ALL ;
+   n nu FIXTURE t tu FS:WRITE-ALL ;
 
-: REFS-DIR ( ptr u8 n -- )  FIXTURE MAKE-DIR ;
+: REFS-DIR ( ptr u8 n -- )  FIXTURE FS:MAKE-DIR ;
 
 : REF-A-PATH ( -- ptr u8 n )  s" ref-a.f" FIXTURE ;
 : TEXT-REF-A ( -- ptr u8 n )  s\" : ROOK ( -- n ) 1 ;\n: TWO ( -- n ) ROOK  ROOK + ;\n" ;
@@ -5074,8 +5074,8 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    PAR-B CLEAR s\" \"rootUri\":" PAR+ FIXTURE URI+ ;
 
 : WORKSPACE-INIT ( -- )
-   s" workspace" FIXTURE MAKE-DIR
-   s" workspace/w" FIXTURE MAKE-DIR
+   s" workspace" FIXTURE FS:MAKE-DIR
+   s" workspace/w" FIXTURE FS:MAKE-DIR
    s" workspace/w" ROOT-URI+ PAR$ INITIALIZE-WITH ;
 
 : DECL-TOO ( -- ptr u8 n )  s\" ,\"context\":{\"includeDeclaration\":true}" ;
@@ -5469,8 +5469,8 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
 \ b.f owns ROOK's declaration; a.f cannot certify or supply its uses.
 : REFS-ALIAS-TURNS ( -- )
    s" refs-alias" REFS-DIR
-   REFS-ALIAS-A TEXT-REFS-ALIAS-A WRITE-ALL
-   s" a.f" REFS-ALIAS-B MAKE-SYMLINK
+   REFS-ALIAS-A TEXT-REFS-ALIAS-A FS:WRITE-ALL
+   s" a.f" REFS-ALIAS-B FS:MAKE-SYMLINK
    SESSION-INITIALIZE
    REFS-ALIAS-A TEXT-REFS-ALIAS-A 1 OPENS
    SAY SESSION-CAPABILITIES
@@ -7107,7 +7107,7 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
 \ answered -32800 and runs no check, so the document's list is published once,
 \ by the second's check, before its answer.
 : CANCEL-CMP-TURNS ( -- )
-   CMP-DEP-PATH TEXT-CMP-DEP WRITE-ALL
+   CMP-DEP-PATH TEXT-CMP-DEP FS:WRITE-ALL
    SESSION-INITIALIZE
    CMP-A-PATH TEXT-CMP-A 1 OPENS
    SAY
@@ -7142,7 +7142,7 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
 \ -32801 and runs no check; the change is applied after it and its text is
 \ checked.
 : MODIFIED-TURNS ( -- )
-   CMP-DEP-PATH TEXT-CMP-DEP WRITE-ALL
+   CMP-DEP-PATH TEXT-CMP-DEP FS:WRITE-ALL
    SESSION-INITIALIZE
    CMP-A-PATH TEXT-CMP-A 1 OPENS
    SAY
@@ -7209,7 +7209,7 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
 : TEXT-HH-NEW ( -- ptr u8 n )  s\" require d.f\n: HU ( -- n ) ROOK ROOK + ;\n" ;
 
 : HALT-TREE ( -- )
-   s" refs-halt" FIXTURE MAKE-DIRS
+   s" refs-halt" FIXTURE FS:MAKE-DIRS
    s" refs-halt/d.f" TEXT-RF REFS-FILE
    s" refs-halt/e.f" TEXT-HE REFS-FILE
    s" refs-halt/g.f" TEXT-HG REFS-FILE
@@ -7413,7 +7413,7 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    SESSION-INIT @ execute
    SAY HEAR CAPABILITIES
    TRACE-WRITE
-   WORKSPACE? @ if s" workspace/w" FIXTURE REMOVE-DIR then
+   WORKSPACE? @ if s" workspace/w" FIXTURE FS:REMOVE-DIR then
    true SHARED? !
    SESSION-CASES @ execute
    false SHARED? !

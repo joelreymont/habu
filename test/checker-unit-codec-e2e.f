@@ -23,9 +23,9 @@ variable LINEAR-HITS
 PTR-VARIABLE SAVED-OWNER
 variable SAVED-SERIAL
 variable SAVED-REGIME
-create ROOT FS-PATH-CAP allot
+create ROOT PATH-CAP allot
 variable ROOT-U
-create PATH FS-PATH-CAP allot
+create PATH PATH-CAP allot
 
 : ROOT$ ( -- ptr u8 n ) ROOT ROOT-U @ ;
 : OWNER ( -- ptr u8 ) data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ ;
@@ -145,8 +145,8 @@ CAST: CONTRACT-XT ( n -- [ n -- ptr u8 n bool ] )
    ART 6 cells + CELL-VIEW @ SERIAL MARK-SERIAL @ - T=
    s" checker-unit-codec-e2e" FS:MKTEMP-DIR {: root:ptr len:n :}
    root ROOT len BYTE-COPY len ROOT-U !
-   ROOT$ s" unit-nbr.checker-unit" PATH JOIN-PATH
-   PATH swap ART ART-U @ WRITE-ALL ;
+   ROOT$ s" unit-nbr.checker-unit" PATH FS:JOIN-PATH
+   PATH swap ART ART-U @ FS:WRITE-ALL ;
 
 : CHECK-FRESH ( -- )
    s" FRESH-RG-TWO ( -- ) UNIT-NBR:RG-ONE UNIT-NBR:RG-ONE UNIT-NBR:SAME-ID" CHECK-CANDIDATE! 0 T=
@@ -331,8 +331,8 @@ CAST: CONTRACT-XT ( n -- [ n -- ptr u8 n bool ] )
    ART ART-U @ 0 0 PREPARE INSTALL
    PREPARE-END
    SERIAL BASE-SERIAL @ ART 6 cells + CELL-VIEW @ + T=
-   ROOT$ s" unknown-linear.checker-unit" PATH JOIN-PATH
-   PATH swap BAD ART-U @ WRITE-ALL ;
+   ROOT$ s" unknown-linear.checker-unit" PATH FS:JOIN-PATH
+   PATH swap BAD ART-U @ FS:WRITE-ALL ;
 
 public
 

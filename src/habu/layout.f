@@ -2000,8 +2000,8 @@ SCI-LIMBS-OFF SCI-LIMBS cells + constant NUM-BUF-OFF
 \ FS-ABI:STAT-BYTES`, rc 70, before any target work. Build one engine from this
 \ declaration and E-FS-BAND alone, then build the tree with it.
 \
-\ THE WALK STATE IS NOT HERE: src/lib/fs.f maps a context for each WALK-FILES,
-\ WALK-FILES-IF or REMOVE-TREE call, grows it with the tree's depth and
+\ THE WALK STATE IS NOT HERE: src/lib/fs.f maps a context for each FS:WALK-FILES,
+\ FS:WALK-FILES-IF or FS:REMOVE-TREE call, grows it with the tree's depth and
 \ releases it when the call ends, so this band carries none of it and two tasks
 \ walk at once.
 \
@@ -2011,10 +2011,10 @@ SCI-LIMBS-OFF SCI-LIMBS cells + constant NUM-BUF-OFF
 \ needs - 1329 bytes of members in a 1336-byte extent.
 package FS-ABI
 public
-6 constant IO-CELLS                    \ ERRNO, FS-IO-FD, FS-IO-LEN, FS-IO-RD, FS-IO-OFF, FS-IO-WR
-256 constant STAT-BYTES                \ src/lib/fs.f FS-STAT-CAP
-1 constant PROBE-BYTES                 \ src/lib/fs.f FS-READ-PROBE-CAP
-PATH-CAP 1 + constant PATHZ-BYTES       \ src/lib/fs.f FS-PATHZ-CAP
+6 constant IO-CELLS                    \ ERRNO, IO-FD, IO-LEN, IO-RD, IO-OFF, IO-WR
+256 constant STAT-BYTES                \ src/lib/fs.f STAT-CAP
+1 constant PROBE-BYTES                 \ src/lib/fs.f READ-PROBE-CAP
+PATH-CAP 1 + constant PATHZ-BYTES       \ src/lib/fs.f FS:PATHZ-CAP
 IO-CELLS cells STAT-BYTES + PROBE-BYTES + PATHZ-BYTES + constant MEMBER-BYTES
 MEMBER-BYTES 7 + 8 / 8 * constant BYTES     \ the band base is a cell boundary
 FMT-ABI:START constant END
@@ -2033,7 +2033,7 @@ PROBE-OFF PROBE-BYTES + constant PATHZ-OFF
 \ FS-MUT-ABI is src/lib/fs-mutate.f's per-call path scratch: the second NUL-padded
 \ path every two-path syscall stages (rename, symlink, the stream copy's
 \ destination), the temporary name FS:MKTEMP-DIR-IN builds AND RETURNS a span into,
-\ and ATOMIC-WRITE-FILE's `.tmp` sibling. It is here for FS-ABI's reason, one
+\ and FS:ATOMIC-WRITE-FILE's `.tmp` sibling. It is here for FS-ABI's reason, one
 \ file further out: tools/native-build-core.f requires src/lib/fs-mutate.f to BUILD
 \ the engine, so `require src/lib/task.f` there would load the task runtime into the
 \ build tool ahead of the target. It costs the same bootstrap - an engine that
@@ -2043,7 +2043,7 @@ PROBE-OFF PROBE-BYTES + constant PATHZ-OFF
 \
 \ TWO THINGS STAY PROCESS-WIDE ON PURPOSE. The 8 KiB copy buffer is not here:
 \ 3072 + 8192 does not fit the 7408 bytes USER-BAND had free, and COPY-FILE /
-\ COPY-FILE-STREAM are the module's one single-task pair, which its header
+\ FS:COPY-FILE-STREAM are the module's one single-task pair, which its header
 \ says. Neither is the cleanup registry, 64 paths of it: that is
 \ a PROCESS exit registry, not per-call scratch - every task registers into the
 \ one table and the process runs it once.
@@ -2054,9 +2054,9 @@ PROBE-OFF PROBE-BYTES + constant PATHZ-OFF
 \ alignment; the rounding is the band's only slack.
 package FS-MUT-ABI
 public
-PATH-CAP 1 + constant PATHZ2-BYTES      \ src/lib/fs.f FS-PATHZ-CAP
-PATH-CAP constant ATOMIC-BYTES          \ src/lib/fs.f FS-PATH-CAP
-PATH-CAP constant TMP-BYTES             \ src/lib/fs.f FS-PATH-CAP
+PATH-CAP 1 + constant PATHZ2-BYTES      \ src/lib/fs.f FS:PATHZ-CAP
+PATH-CAP constant ATOMIC-BYTES
+PATH-CAP constant TMP-BYTES
 PATHZ2-BYTES ATOMIC-BYTES + TMP-BYTES + constant MEMBER-BYTES
 MEMBER-BYTES 7 + 8 / 8 * constant BYTES     \ the band base is a cell boundary
 FS-ABI:START constant END

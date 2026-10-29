@@ -86,8 +86,8 @@ create ERR CAP allot
 variable OUT-U
 variable ERR-U
 variable RC
-create ROOT-BUF FS-PATH-CAP allot  variable ROOT-U
-create IMAGE-BUF FS-PATH-CAP allot  variable IMAGE-U
+create ROOT-BUF PATH-CAP allot  variable ROOT-U
+create IMAGE-BUF PATH-CAP allot  variable IMAGE-U
 
 : VERDICT ( ptr u8 n -- n )
    CHECK-QUIET-CANDIDATE! ;
@@ -194,8 +194,8 @@ create IMAGE-BUF FS-PATH-CAP allot  variable IMAGE-U
    APP-IMAGE-ENGINE:PATH$ {: host:ptr hostu:n :}
    s" checker-surface" FS:MKTEMP-DIR {: path:ptr size:n :}
    path ROOT-BUF size BYTE-COPY size ROOT-U !
-   ROOT-BUF ROOT-U @ CLEANUP-TREE+
-   ROOT-BUF ROOT-U @ s" app" IMAGE-BUF JOIN-PATH IMAGE-U !
+   ROOT-BUF ROOT-U @ FS:CLEANUP-TREE+
+   ROOT-BUF ROOT-U @ s" app" IMAGE-BUF FS:JOIN-PATH IMAGE-U !
    PROC-ARGV-ENV-RESET
    s" --" >LEN PROC-ARGV+
    IMAGE$ >LEN PROC-ARGV+
@@ -224,11 +224,11 @@ create IMAGE-BUF FS-PATH-CAP allot  variable IMAGE-U
    RUN-ARGV-ENV-STDIN-CAPTURE RESULT ;
 
 : SECTION-APP-IMAGE ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" an application image saves its own package" T-LABEL
    SAVE-APP
    RC @ 0 T=
-   IMAGE$ EXECUTABLE? TTRUE
+   IMAGE$ FS:EXECUTABLE? TTRUE
    s" the image knows its package's public word" T-LABEL
    REOPEN-APP
    RC @ 0 T=
@@ -240,7 +240,7 @@ create IMAGE-BUF FS-PATH-CAP allot  variable IMAGE-U
    s" while an engine package stays sealed in it" T-LABEL
    REOPEN-ENGINE
    RC @ ENGINE-ERROR:SEAL-PACKAGE T=
-   CLEANUP-RUN ;
+   FS:CLEANUP-RUN ;
 
 : MAIN ( -- )
    T-RESET

@@ -20,8 +20,8 @@ require test/native-file-e2e.f
 
 using NATIVE-FILE-E2E
 package NATIVE-FILE-SLOTS-TEST
-create APP FS-PATH-CAP allot variable APP-U
-create CACHE FS-PATH-CAP allot variable CACHE-U
+create APP PATH-CAP allot variable APP-U
+create CACHE PATH-CAP allot variable CACHE-U
 DYNAMIC-BUFFER BYTES u8
 DYNAMIC-BUFFER COLD u8  variable COLD-U
 $1000 constant LINE-CAP
@@ -70,7 +70,7 @@ create LINE LINE-CAP allot  variable LINE-U
    app appu AT {: a:ptr u:n :}
    a APP u BYTE-COPY u APP-U !
    cache cacheu AT {: c:ptr cu:n :}
-   c CACHE cu BYTE-COPY cu CACHE-U ! CACHE CACHE-U @ MAKE-DIR ;
+   c CACHE cu BYTE-COPY cu CACHE-U ! CACHE CACHE-U @ FS:MAKE-DIR ;
 
 \ One build process per step: a warm build reads what the cold one stored,
 \ which only a second process can, and every step of one app shares a cache.
@@ -93,9 +93,9 @@ create LINE LINE-CAP allot  variable LINE-U
 
 : LOAD ( ptr u8 n -- n )
    AT {: path:ptr pathu:n :}
-   path pathu FILE-SIZE {: size:n :}
+   path pathu FS:FILE-SIZE {: size:n :}
    size BYTES-RESERVE
-   path pathu 0 BYTES size READ-ALL size T=
+   path pathu 0 BYTES size FS:READ-ALL size T=
    size ;
 
 : KEEP ( ptr u8 n -- )

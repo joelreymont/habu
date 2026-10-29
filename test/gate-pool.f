@@ -84,17 +84,17 @@ create GT-POOL-PFDS GT-POOL-MAX GT-POOL-FDS * GT-PFD-SZ * allot
 create GT-POOL-CHUNK GT-POOL-CHUNK-CAP allot
 create GT-POOL-NUM-BUF GT-POOL-NUM-CAP allot
 create GT-POOL-NAME-BUF GT-POOL-NAME-CAP allot
-create GT-POOL-FALLBACK-BUF FS-PATH-CAP allot
-create GT-POOL-OUT-PATHS GT-POOL-MAX FS-PATH-CAP * allot
-create GT-POOL-ERR-PATHS GT-POOL-MAX FS-PATH-CAP * allot
+create GT-POOL-FALLBACK-BUF PATH-CAP allot
+create GT-POOL-OUT-PATHS GT-POOL-MAX PATH-CAP * allot
+create GT-POOL-ERR-PATHS GT-POOL-MAX PATH-CAP * allot
 create GT-POOL-OUT-PATH-US GT-POOL-MAX cells allot
 create GT-POOL-ERR-PATH-US GT-POOL-MAX cells allot
-create GT-POOL-TMP-PATHS GT-POOL-MAX FS-PATH-CAP * allot
+create GT-POOL-TMP-PATHS GT-POOL-MAX PATH-CAP * allot
 create GT-POOL-TMP-PATH-US GT-POOL-MAX cells allot
-create GT-POOL-SOCK-PATHS GT-POOL-MAX FS-PATH-CAP * allot
+create GT-POOL-SOCK-PATHS GT-POOL-MAX PATH-CAP * allot
 create GT-POOL-SOCK-PATH-US GT-POOL-MAX cells allot
 create GT-POOL-SCRATCH-CODES GT-POOL-MAX cells allot
-create GT-POOL-SOCK-ROOT-BUF FS-PATH-CAP allot
+create GT-POOL-SOCK-ROOT-BUF PATH-CAP allot
 create GT-POOL-OUT-FDS GT-POOL-MAX cells allot
 create GT-POOL-ERR-FDS GT-POOL-MAX cells allot
 create GT-POOL-OUT-TOTALS GT-POOL-MAX cells allot
@@ -111,7 +111,7 @@ create GT-POOL-RED-EXITEDS GT-POOL-RED-MAX cells allot
 create GT-POOL-RED-TIMED-OUTS GT-POOL-RED-MAX cells allot
 create GT-POOL-RED-CODES GT-POOL-RED-MAX cells allot
 create GT-POOL-RED-SEQS GT-POOL-RED-MAX cells allot
-create GT-POOL-RED-PATH-BUF FS-PATH-CAP allot
+create GT-POOL-RED-PATH-BUF PATH-CAP allot
 create GT-POOL-RED-WAITS GT-POOL-RED-MAX cells allot
 create GT-POOL-RED-SAT-LIVES GT-POOL-RED-MAX cells allot
 create GT-POOL-RED-SAT-LIMITS GT-POOL-RED-MAX cells allot
@@ -340,10 +340,10 @@ GT-POOL-ABORT-BARE!
    idx GT-POOL-CPU-USED-PTR @ idx GT-POOL-CPU-BUDGET-PTR @ GT-POOL-OVER-BUDGET? ;
 
 : GT-POOL-OUT-PATH-BUF ( idx -- ptr u8 )
-   IDX>N FS-PATH-CAP * GT-POOL-OUT-PATHS + ;
+   IDX>N PATH-CAP * GT-POOL-OUT-PATHS + ;
 
 : GT-POOL-ERR-PATH-BUF ( idx -- ptr u8 )
-   IDX>N FS-PATH-CAP * GT-POOL-ERR-PATHS + ;
+   IDX>N PATH-CAP * GT-POOL-ERR-PATHS + ;
 
 : GT-POOL-OUT-PATH-U-PTR ( idx -- ptr n )
    IDX>N cells GT-POOL-OUT-PATH-US + ;
@@ -352,7 +352,7 @@ GT-POOL-ABORT-BARE!
    IDX>N cells GT-POOL-ERR-PATH-US + ;
 
 : GT-POOL-TMP-PATH-BUF ( idx -- ptr u8 )
-   IDX>N FS-PATH-CAP * GT-POOL-TMP-PATHS + ;
+   IDX>N PATH-CAP * GT-POOL-TMP-PATHS + ;
 
 : GT-POOL-TMP-PATH-U-PTR ( idx -- ptr n )
    IDX>N cells GT-POOL-TMP-PATH-US + ;
@@ -363,7 +363,7 @@ GT-POOL-ABORT-BARE!
    idx GT-POOL-TMP-PATH-BUF idx GT-POOL-TMP-PATH-U-PTR @ ;
 
 : GT-POOL-SOCK-PATH-BUF ( idx -- ptr u8 )
-   IDX>N FS-PATH-CAP * GT-POOL-SOCK-PATHS + ;
+   IDX>N PATH-CAP * GT-POOL-SOCK-PATHS + ;
 
 : GT-POOL-SOCK-PATH-U-PTR ( idx -- ptr n )
    IDX>N cells GT-POOL-SOCK-PATH-US + ;
@@ -481,11 +481,11 @@ GT-POOL-ABORT-BARE!
 \ itself, and a forked slot never had one.
 : GT-POOL-TREE-REMOVE ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0 <= if exit then
-   a u EXISTS? 0= if exit then
-   a u REMOVE-TREE ;
+   a u FS:EXISTS? 0= if exit then
+   a u FS:REMOVE-TREE ;
 
 \ One of a slot's directories. A removal that throws - a tree its child left
-\ with a directory it locked, which REMOVE-TREE refuses with E-FS-IO - is
+\ with a directory it locked, which FS:REMOVE-TREE refuses with E-FS-IO - is
 \ named with the row, the path and the code, and the code is the slot's
 \ (GT-POOL-OK?): the row fails and the pool goes on.
 : GT-POOL-SCRATCH-REMOVE ( ptr u8 n idx -- ) {: a:ptr u:n idx:idx :}
@@ -505,9 +505,9 @@ GT-POOL-ABORT-BARE!
 
 \ THE SOCKET ROOT. Every spawned child's socket directory (GT-POOL-CHILD-SOCK!)
 \ is made inside one directory per pool session, which goes in
-\ the cleanup registry once (src/lib/fs-mutate.f CLEANUP-TREE+). One entry a row
+\ the cleanup registry once (src/lib/fs-mutate.f FS:CLEANUP-TREE+). One entry a row
 \ would keep hundreds in the registry, which holds each entry until a
-\ CLEANUP-RUN, since a gate starts hundreds of rows. So a process that
+\ FS:CLEANUP-RUN, since a gate starts hundreds of rows. So a process that
 \ ends without retiring or killing its slots - an uncaught throw, a die -
 \ still removes every slot's directory with the root, and GT-CLEANUP removes it
 \ with the runner's root. A session's root is made at its first spawn, and
@@ -535,11 +535,11 @@ variable GT-POOL-SOCK-ROOT-U
    base baseu s" hb-sock" FS:MKTEMP-DIR-IN ;
 
 : GT-POOL-SOCK-ROOT-MAKE ( -- )
-   GT-POOL-SOCK-ROOT-U @ 0 > if GT-POOL-SOCK-ROOT$ EXISTS? if exit then then
+   GT-POOL-SOCK-ROOT-U @ 0 > if GT-POOL-SOCK-ROOT$ FS:EXISTS? if exit then then
    GT-POOL-SOCK-ROOT-NEW {: a:ptr u:n :}
    a GT-POOL-SOCK-ROOT-BUF u BYTE-COPY
    u GT-POOL-SOCK-ROOT-U !
-   GT-POOL-SOCK-ROOT$ CLEANUP-TREE+ ;
+   GT-POOL-SOCK-ROOT$ FS:CLEANUP-TREE+ ;
 
 \ A ROW'S ROOT THAT CATCHES SIGTERM IS ASKED TO END ITSELF FIRST. The kill below
 \ freezes a tree and SIGKILLs every member, and a process SIGKILLed runs none of
@@ -994,7 +994,7 @@ false GT-POOL-CATCHING !
 \ The fallback root belongs to the process, not to one pool: the memo above
 \ builds it once and GT-POOL-RESET keeps it, so every pool a suite-less user
 \ runs captures into the same directory until a drain removes it.
-\ A suite's root is the runner's (GT-START registers it with CLEANUP-TREE+),
+\ A suite's root is the runner's (GT-START registers it with FS:CLEANUP-TREE+),
 \ so this exits when there is one. Absence is tolerated the way
 \ GT-POOL-CHILD-TMP-REMOVE tolerates it. Clearing the memo is what lets a
 \ later pool in the same process capture again: it makes a fresh root with
@@ -1003,19 +1003,19 @@ false GT-POOL-CATCHING !
 : GT-POOL-FALLBACK-REMOVE ( -- )
    GT-ROOT-U @ 0 > if exit then
    GT-POOL-FALLBACK-U @ 0 <= if exit then
-   GT-POOL-FALLBACK-BUF GT-POOL-FALLBACK-U @ EXISTS? if
-      GT-POOL-FALLBACK-BUF GT-POOL-FALLBACK-U @ REMOVE-TREE
+   GT-POOL-FALLBACK-BUF GT-POOL-FALLBACK-U @ FS:EXISTS? if
+      GT-POOL-FALLBACK-BUF GT-POOL-FALLBACK-U @ FS:REMOVE-TREE
    then
    0 GT-POOL-FALLBACK-U ! ;
 
 : GT-POOL-CAPTURE-PATH! ( idx n -- ) {: idx:idx stream:n :}
    GT-POOL-CAPTURE-ROOT$
    idx GT-POOL-SEQ-PTR @ stream GT-POOL-STREAM-SUFFIX$ GT-POOL-CAPTURE-NAME
-   idx stream GT-POOL-STREAM-PATH-BUF JOIN-PATH
+   idx stream GT-POOL-STREAM-PATH-BUF FS:JOIN-PATH
    idx stream GT-POOL-STREAM-PATH-U-PTR ! ;
 
 : GT-POOL-CAPTURE-OPEN-FD ( ptr u8 n -- fd ) {: pa:ptr pu:n :}
-   pa pu FS-PATHZ FS-O-WRONLY FS-O-CREAT or FS-O-TRUNC or FS-MODE-0644 open {: raw:n :}
+   pa pu FS:>PATHZ FS:O-WRONLY FS:O-CREAT or FS:O-TRUNC or FS:MODE-0644 open {: raw:n :}
    raw 0 < if E-FS-OPEN GT-POOL-THROW then
    raw >FD ;
 
@@ -1035,7 +1035,7 @@ false GT-POOL-CATCHING !
 \ THE POOL OWNS ITS SPAWNED CHILDREN'S SCRATCH. Each gets a directory of its
 \ own beside its capture files, named TMPDIR in its environment, and the
 \ PARENT removes it when the slot retires. A child the pool killed - a timeout,
-\ a group kill - never reaches its own CLEANUP-RUN, so its temp trees survived
+\ a group kill - never reaches its own FS:CLEANUP-RUN, so its temp trees survived
 \ it and nothing ever removed them; under TMPDIR they now go with the
 \ directory, and so does anything its own children or the tools it ran left.
 \ PROC-ENV-SET, not PROC-ENV+, because the caller has already inherited its
@@ -1076,8 +1076,8 @@ false GT-POOL-CATCHING !
 : GT-POOL-CHILD-SOCK! ( idx -- ) {: idx:idx :}
    GT-POOL-SOCK-ROOT-MAKE
    GT-POOL-SOCK-ROOT$ idx GT-POOL-SEQ-PTR @ GT-POOL-NUM$
-   idx GT-POOL-SOCK-PATH-BUF JOIN-PATH idx GT-POOL-SOCK-PATH-U-PTR !
-   idx GT-POOL-SOCK$ MAKE-DIRS
+   idx GT-POOL-SOCK-PATH-BUF FS:JOIN-PATH idx GT-POOL-SOCK-PATH-U-PTR !
+   idx GT-POOL-SOCK$ FS:MAKE-DIRS
    s" HB_SOCK_TMP" >LEN idx GT-POOL-SOCK$ >LEN PROC-ENV-SET ;
 
 : GT-POOL-CHILD-TMP! ( idx -- ) {: idx:idx :}
@@ -1085,8 +1085,8 @@ false GT-POOL-CATCHING !
    GT-POOL-ENV-TMPDIR-OWN? if 0 idx GT-POOL-TMP-PATH-U-PTR ! exit then
    GT-POOL-CAPTURE-ROOT$
    idx GT-POOL-SEQ-PTR @ s" -tmp" GT-POOL-CAPTURE-NAME
-   idx GT-POOL-TMP-PATH-BUF JOIN-PATH idx GT-POOL-TMP-PATH-U-PTR !
-   idx GT-POOL-TMP$ MAKE-DIRS
+   idx GT-POOL-TMP-PATH-BUF FS:JOIN-PATH idx GT-POOL-TMP-PATH-U-PTR !
+   idx GT-POOL-TMP$ FS:MAKE-DIRS
    s" TMPDIR" >LEN idx GT-POOL-TMP$ >LEN PROC-ENV-SET ;
 
 \ The one place a slot leaves the live set, whatever its outcome was: a reap
@@ -1158,7 +1158,7 @@ false GT-POOL-CATCHING !
 : GT-POOL-RED-STREAM$ ( n n -- ptr u8 n ) {: i:n stream:n :}
    GT-POOL-CAPTURE-ROOT$
    i GT-POOL-RED-SEQ-PTR @ stream GT-POOL-STREAM-SUFFIX$ GT-POOL-CAPTURE-NAME
-   GT-POOL-RED-PATH-BUF JOIN-PATH GT-POOL-RED-PATH-U !
+   GT-POOL-RED-PATH-BUF FS:JOIN-PATH GT-POOL-RED-PATH-U !
    GT-POOL-RED-PATH-BUF GT-POOL-RED-PATH-U @ ;
 
 : GT-POOL-RED-OUT$ ( n -- ptr u8 n )
@@ -1641,7 +1641,7 @@ variable GT-POOL-UNC-SCALE              \ place value of the digit under the cur
    [: GT-CLEANUP GT-POOL-FALLBACK-REMOVE ;] catch {: code:n :}
    code 0= if exit then
    s" test pool: cleanup threw " type code GT-POOL-N-TYPE cr
-   CLEANUP-RESET ;
+   FS:CLEANUP-RESET ;
 
 : GT-POOL-SIGNAL-DIE ( n -- ) {: sig:n :}
    s" test pool: signal " type sig GT-POOL-N-TYPE

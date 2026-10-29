@@ -44,7 +44,7 @@ $2D60 constant DICT-HW-CELL
 $2DB0 constant PROGRAM-FILE-CELL
 $2DC8 constant LOCDEPTHS
 
-create OUTPUT FS-PATH-CAP allot
+create OUTPUT PATH-CAP allot
 variable OUTPUT-U
 
 \ Every persist names its output first (PATH!), copied into DATA rather than
@@ -452,7 +452,7 @@ PTR-VARIABLE SND-A
    SFD SND-ZERO-OFF SND-ZERO-CELL
    OUTPUT-U SND-ZERO-OFF SND-ZERO-CELL
    OUTPUT SND-ZERO-OFF {: out:n :}
-   FS-PATH-CAP 0 ?do out i + SND-ZERO-CELL CELL +loop ;
+   PATH-CAP 0 ?do out i + SND-ZERO-CELL CELL +loop ;
 
 CAST: PROCESS-CELLS-XT ( n -- [ [ ptr n -- ] -- ] )
 
@@ -601,7 +601,7 @@ CLOSE-DEFAULT
 \ sibling is created exclusively under a per-process name (src/lib/fs-mutate.f
 \ FS:RESERVE-SIBLING), so a concurrent writer of the same output stages its own.
 \ It is chosen after CANON-DATA copies DATA, so the image never holds its name.
-create STAGED FS-PATH-CAP allot
+create STAGED PATH-CAP allot
 variable STAGED-U
 
 : STAGED-PATH ( -- ptr u8 n ) STAGED STAGED-U @ ;
@@ -612,7 +612,7 @@ variable STAGED-U
 \ the removal skips it. A full registry refuses the claim, and the empty sibling
 \ goes then.
 : CLAIM ( ptr u8 n -- ptr u8 n )
-   2dup CLEANUP+ ;
+   2dup FS:CLEANUP+ ;
 
 \ Keeps the sibling's path in STAGED and its descriptor in SFD and leaves the
 \ output path, so a refusal leaves the stack as it found it.
@@ -628,16 +628,16 @@ variable STAGED-U
    OUT-PATH [: RESERVE-STAGED ;] catch {: open-code:n :} 2drop
    open-code 0<> if s" snap: cannot open output" 74 die then
    STAGED-PATH [: CLAIM ;] catch {: claim-code:n :} 2drop
-   claim-code 0<> if STAGED-PATH REMOVE-FILE claim-code throw then ;
+   claim-code 0<> if STAGED-PATH FS:REMOVE-FILE claim-code throw then ;
 
 \ rename replaces the output path in one step: it names the previous file or
 \ the whole signed image, never a part of either. An output the rename cannot
 \ replace (a directory in its place) is refused by name, and the exit hook
 \ removes the sibling.
 : PUBLISH ( -- )
-   STAGED-PATH CHMOD-X
+   STAGED-PATH FS:CHMOD-X
    STAGED-PATH SIGN-ID:PROG$ CODESIGN:SIGN-AS
-   [: STAGED-PATH OUT-PATH RENAME-FILE ;] catch
+   [: STAGED-PATH OUT-PATH FS:RENAME-FILE ;] catch
    0<> if s" snap: cannot replace output" 74 die then ;
 
 : WRITE-PAD ( -- )
@@ -729,7 +729,7 @@ CAST: REGION-CELL ( n -- ptr n )
 public
 
 : PATH! ( ptr u8 n -- ) {: path:ptr size:n :}
-   size 0 <= size FS-PATH-CAP >= or if
+   size 0 <= size PATH-CAP >= or if
       s" snap: invalid output path length" 74 die
    then
    path OUTPUT size BYTE-COPY

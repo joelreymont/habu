@@ -12,11 +12,11 @@ require test/app-builder-engine.f
 
 package HB-BUILD-CLI
 
-create HBT-IMAGE-HB-BUF FS-PATH-CAP allot
-create HBT-IMAGE-TOOL-BUF FS-PATH-CAP allot
-create HBT-IMAGE-SHADOW-BUF FS-PATH-CAP allot
-create HBT-IMAGE-SOURCE-BUF FS-PATH-CAP allot
-create HBT-IMAGE-TIER1-BUF FS-PATH-CAP allot
+create HBT-IMAGE-HB-BUF PATH-CAP allot
+create HBT-IMAGE-TOOL-BUF PATH-CAP allot
+create HBT-IMAGE-SHADOW-BUF PATH-CAP allot
+create HBT-IMAGE-SOURCE-BUF PATH-CAP allot
+create HBT-IMAGE-TIER1-BUF PATH-CAP allot
 variable HBT-IMAGE-HB-U
 variable HBT-IMAGE-TOOL-U
 variable HBT-IMAGE-SHADOW-U
@@ -26,7 +26,7 @@ variable HBT-IMAGE-TIER1
 variable HBT-IMAGE-SIZE
 variable HBT-IMAGE-SEC
 variable HBT-IMAGE-NS
-create HBT-IMAGE-RESAVED-BUF FS-PATH-CAP allot
+create HBT-IMAGE-RESAVED-BUF PATH-CAP allot
 variable HBT-IMAGE-RESAVED-U
 
 : HBT-IMAGE-HB$ ( -- ptr u8 n ) HBT-IMAGE-HB-BUF HBT-IMAGE-HB-U @ ;
@@ -36,13 +36,13 @@ variable HBT-IMAGE-RESAVED-U
 : HBT-IMAGE-RESAVED$ ( -- ptr u8 n ) HBT-IMAGE-RESAVED-BUF HBT-IMAGE-RESAVED-U @ ;
 
 : HBT-IMAGE-PATHS ( -- )
-   SOURCE-ROOT:ENGINE$ s" bin/hb" HBT-IMAGE-HB-BUF JOIN-PATH HBT-IMAGE-HB-U !
-   SOURCE-ROOT:ENGINE$ s" tools/hb-build.f" HBT-IMAGE-TOOL-BUF JOIN-PATH HBT-IMAGE-TOOL-U !
+   SOURCE-ROOT:ENGINE$ s" bin/hb" HBT-IMAGE-HB-BUF FS:JOIN-PATH HBT-IMAGE-HB-U !
+   SOURCE-ROOT:ENGINE$ s" tools/hb-build.f" HBT-IMAGE-TOOL-BUF FS:JOIN-PATH HBT-IMAGE-TOOL-U !
    SOURCE-ROOT:ENGINE$ s" test/compiler/aot-mode.f"
-      HBT-IMAGE-TIER1-BUF JOIN-PATH HBT-IMAGE-TIER1-U ! ;
+      HBT-IMAGE-TIER1-BUF FS:JOIN-PATH HBT-IMAGE-TIER1-U ! ;
 
 : HBT-IMAGE-SHADOW-PATH ( -- )
-   HBT-ROOT s" tools/app-build.f" HBT-IMAGE-SHADOW-BUF JOIN-PATH HBT-IMAGE-SHADOW-U ! ;
+   HBT-ROOT s" tools/app-build.f" HBT-IMAGE-SHADOW-BUF FS:JOIN-PATH HBT-IMAGE-SHADOW-U ! ;
 
 \ An empty root leaves HABU_OUT inherited: under the gate, the run's shared out
 \ root, which holds the app-builder family image. A private out root keeps its
@@ -86,7 +86,7 @@ variable HBT-IMAGE-RESAVED-U
    HBT-ERR erru s" hb-build: code=E-PROC-TIMEOUT maker=repl" CONTAINS? TTRUE
    HBT-ERR erru HBT-REPL-SRC CONTAINS? TTRUE
    HBT-ERR erru s" timeout_ms=1" CONTAINS? TTRUE
-   HBT-REPL-OUT EXISTS? TFALSE ;
+   HBT-REPL-OUT FS:EXISTS? TFALSE ;
 
 : HBT-ROOTED-APP$ ( -- ptr u8 n )
    S\" require src/lib/json-read.f\n: MAIN ( -- ) s\q from-root\q type cr ;\n" ;
@@ -104,7 +104,7 @@ variable HBT-IMAGE-RESAVED-U
    rc 0 <> if HBT-OUT outu type HBT-ERR erru type then
    rc 0 T=
    erru 0 T=
-   HBT-REPL-OUT EXECUTABLE? TTRUE ;
+   HBT-REPL-OUT FS:EXECUTABLE? TTRUE ;
 
 : HBT-ROOTED-RUN ( -- )
    HBT-REPL-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN
@@ -115,18 +115,18 @@ variable HBT-IMAGE-RESAVED-U
    HBT-RUN-ERR erru HBT-EMPTY$ T$= ;
 
 : HBT-ROOTED-MARK ( -- )
-   HBT-REPL-OUT FILE-META {: size:n sec:n ns:n csec:n cns:n :}
+   HBT-REPL-OUT FS:FILE-META {: size:n sec:n ns:n csec:n cns:n :}
    csec drop cns drop
    size HBT-IMAGE-SIZE ! sec HBT-IMAGE-SEC ! ns HBT-IMAGE-NS ! ;
 
 : HBT-ROOTED-SAME? ( -- bool )
-   HBT-REPL-OUT FILE-META {: size:n sec:n ns:n csec:n cns:n :}
+   HBT-REPL-OUT FS:FILE-META {: size:n sec:n ns:n csec:n cns:n :}
    csec drop cns drop
    size HBT-IMAGE-SIZE @ = sec HBT-IMAGE-SEC @ = and
    ns HBT-IMAGE-NS @ = and ;
 
 : HBT-ROOTED-COLD-WARM ( -- )
-   HBT-REPL-SRC HBT-ROOTED-APP$ WRITE-ALL
+   HBT-REPL-SRC HBT-ROOTED-APP$ FS:WRITE-ALL
    NULL$ HBT-ROOTED-BUILD
    HBT-ROOTED-RUN
    HBT-ROOTED-MARK
@@ -141,18 +141,18 @@ variable HBT-IMAGE-RESAVED-U
 \ can never hit again: they build in the row's private cache.
 : HBT-ROOTED-PRODUCER-SHADOW ( -- )
    HBT-IMAGE-SHADOW-PATH
-   HBT-IMAGE-SHADOW$ SOURCE-ROOT:DIRNAME MAKE-DIR
+   HBT-IMAGE-SHADOW$ SOURCE-ROOT:DIRNAME FS:MAKE-DIR
    SOURCE-ROOT:ENGINE$ s" tools/app-build.f"
-      HBT-IMAGE-SOURCE-BUF JOIN-PATH HBT-IMAGE-SOURCE-U !
+      HBT-IMAGE-SOURCE-BUF FS:JOIN-PATH HBT-IMAGE-SOURCE-U !
    HBT-IMAGE-SOURCE-BUF HBT-IMAGE-SOURCE-U @
-      HBT-IMAGE-SHADOW$ COPY-FILE-STREAM
+      HBT-IMAGE-SHADOW$ FS:COPY-FILE-STREAM
    HBT-TMP HBT-ROOTED-BUILD
    HBT-ROOTED-SAME? TFALSE
    HBT-ROOTED-RUN
    HBT-ROOTED-MARK
    HBT-TMP HBT-ROOTED-BUILD
    HBT-ROOTED-SAME? TTRUE
-   HBT-IMAGE-SHADOW$ S\" \\ edited\n" APPEND-FILE
+   HBT-IMAGE-SHADOW$ S\" \\ edited\n" FS:APPEND-FILE
    HBT-TMP HBT-ROOTED-BUILD
    HBT-ROOTED-SAME? TFALSE
    HBT-ROOTED-RUN ;
@@ -228,7 +228,7 @@ variable HBT-IMAGE-RESAVED-U
    HB-TARGET-LINUX-X86-64? if exit then
    HBT-ROOT s" resaved" HBT-IMAGE-RESAVED-BUF HBT-IMAGE-RESAVED-U HBT-PATH!
    s" test/tier0-product-subject.f" SOURCE-ROOT:RESOLVE drop
-   HBT-REPL-SRC COPY-FILE-STREAM
+   HBT-REPL-SRC FS:COPY-FILE-STREAM
    1 HBT-REPL-TIER-IMAGE
    0 HBT-REPL-TIER-IMAGE ;
 
@@ -243,8 +243,8 @@ public
    HBT-ROOTED-PRODUCER-SHADOW
    HBT-ROOTED-TIER
    HBT-REPL-TIER-PROGRAM
-   CLEANUP-RUN
-   HBT-ROOT EXISTS? TFALSE
+   FS:CLEANUP-RUN
+   HBT-ROOT FS:EXISTS? TFALSE
    T-REPORT
    s" hb-build-repl-image-test: ok" type cr ;
 

@@ -20,14 +20,14 @@ private
 $4000 constant IO-CAP
 180000 constant TIMEOUT-MS
 64 constant KEY-LEN
-create ROOT FS-PATH-CAP allot variable ROOT-U
-create TREE FS-PATH-CAP allot variable TREE-U
-create ENGINE FS-PATH-CAP allot variable ENGINE-U
-create SAVED FS-PATH-CAP allot variable SAVED-U
-create DUMP FS-PATH-CAP allot variable DUMP-U
-create SEEN FS-PATH-CAP allot variable SEEN-U
+create ROOT PATH-CAP allot variable ROOT-U
+create TREE PATH-CAP allot variable TREE-U
+create ENGINE PATH-CAP allot variable ENGINE-U
+create SAVED PATH-CAP allot variable SAVED-U
+create DUMP PATH-CAP allot variable DUMP-U
+create SEEN PATH-CAP allot variable SEEN-U
 create KEY KEY-LEN allot variable KEY-U
-create LOG FS-PATH-CAP allot
+create LOG PATH-CAP allot
 create OUT IO-CAP allot variable OUT-U
 create ERR IO-CAP allot variable ERR-U
 variable RC
@@ -45,23 +45,23 @@ variable AT
 : SETUP ( -- )
    s" hb-engine-id-capture" FS:MKTEMP-DIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY u ROOT-U !
-   ROOT$ s" tree" TREE JOIN-PATH TREE-U !
-   TREE$ s" bin" LOG JOIN-PATH {: binu:n :}
-   LOG binu MAKE-DIRS
-   TREE$ s" bin/hb" ENGINE JOIN-PATH ENGINE-U !
-   ENGINE-CANDIDATE:PATH$ ENGINE$ COPY-FILE-STREAM
-   ENGINE$ CHMOD-X
-   ROOT$ s" saved" SAVED JOIN-PATH SAVED-U !
-   ROOT$ s" data" DUMP JOIN-PATH DUMP-U ! ;
+   ROOT$ s" tree" TREE FS:JOIN-PATH TREE-U !
+   TREE$ s" bin" LOG FS:JOIN-PATH {: binu:n :}
+   LOG binu FS:MAKE-DIRS
+   TREE$ s" bin/hb" ENGINE FS:JOIN-PATH ENGINE-U !
+   ENGINE-CANDIDATE:PATH$ ENGINE$ FS:COPY-FILE-STREAM
+   ENGINE$ FS:CHMOD-X
+   ROOT$ s" saved" SAVED FS:JOIN-PATH SAVED-U !
+   ROOT$ s" data" DUMP FS:JOIN-PATH DUMP-U ! ;
 
 : RESULT ( result<pcap:captured,pcap:failed> -- )
    PCAP-RESULT:>N RC ! ERR-U ! OUT-U ! ;
 
 : LOG-RESULT ( ptr u8 n ptr u8 n -- ) {: outname:ptr outu:n errname:ptr erru:n :}
-   ROOT$ outname outu LOG JOIN-PATH {: size:n :}
-   LOG size OUT OUT-U @ WRITE-ALL
-   ROOT$ errname erru LOG JOIN-PATH {: esize:n :}
-   LOG esize ERR ERR-U @ WRITE-ALL ;
+   ROOT$ outname outu LOG FS:JOIN-PATH {: size:n :}
+   LOG size OUT OUT-U @ FS:WRITE-ALL
+   ROOT$ errname erru LOG FS:JOIN-PATH {: esize:n :}
+   LOG esize ERR ERR-U @ FS:WRITE-ALL ;
 
 : CHECK-RESULT ( -- )
    RC @ 0<> if OUT OUT-U @ type ERR ERR-U @ type then
@@ -77,7 +77,7 @@ variable AT
    PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE RESULT
    s" save.out" s" save.err" LOG-RESULT
    CHECK-RESULT
-   SAVED$ EXECUTABLE? TTRUE ;
+   SAVED$ FS:EXECUTABLE? TTRUE ;
 
 \ The line of OUT that starts at start, and the offset after its newline.
 : OUT-LINE ( n -- ptr u8 n n )
@@ -94,7 +94,7 @@ variable AT
 \ The child printed its PATH$, then its KEY$, before it saved.
 : KEEP-PRINTED ( -- )
    0 OUT-LINE {: p:ptr pu:n next:n :}
-   p pu SEEN FS-PATH-CAP KEEP SEEN-U !
+   p pu SEEN PATH-CAP KEEP SEEN-U !
    next OUT-LINE drop KEY KEY-LEN KEEP KEY-U !
    SEEN-U @ 0 > TTRUE
    KEY-U @ KEY-LEN T= ;
@@ -114,9 +114,9 @@ variable AT
 
 : SCAN ( ptr u8 n -- )
    {: path:ptr pathu:n :}
-   path pathu FILE-SIZE {: bytes:n :}
+   path pathu FS:FILE-SIZE {: bytes:n :}
    bytes MEM-ALLOC-BYTES drop {: buf:ptr :}
-   path pathu buf bytes READ-ALL bytes T=
+   path pathu buf bytes FS:READ-ALL bytes T=
    buf bytes SEEN$ COUNT-IN {: path-hits:n :}
    buf bytes KEY-HEX$ COUNT-IN {: key-hits:n :}
    buf bytes munmap 0 T=
@@ -131,7 +131,7 @@ variable AT
    PROC-ARGV-ENV-RESET PROC-ENV-INHERIT-MISSING
    s" --" >LEN PROC-ARGV+ DUMP$ >LEN PROC-ARGV+
    SAVED$ >LEN SOURCE-ROOT:CWD$ >LEN
-   S\" require src/lib/fs.f\n0 SCRIPT-ARGV$ data-base BYTE-VIEW here data-base - WRITE-ALL\n" >LEN
+   S\" require src/lib/fs.f\n0 SCRIPT-ARGV$ data-base BYTE-VIEW here data-base - FS:WRITE-ALL\n" >LEN
    OUT IO-CAP >LEN ERR IO-CAP >LEN TIMEOUT-MS >MS
    PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE RESULT
    s" dump.out" s" dump.err" LOG-RESULT

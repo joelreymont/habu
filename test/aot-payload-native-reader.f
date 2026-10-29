@@ -14,7 +14,7 @@ create FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this fixture's file-digest conte
    \ File identity verifies the bytes; it does not invent an origin claim.
    AOT-FILE:OWN dup NATIVE-LAYOUT:CURRENT 1 SCRIPT-ARGV$ NATIVE-EMIT:WRITE
    AOT-OWNED:CLOSE
-   1 SCRIPT-ARGV$ CHMOD-X
+   1 SCRIPT-ARGV$ FS:CHMOD-X
    1 SCRIPT-ARGV$ CODESIGN:ENSURE
    s" native graph artifact baked" type cr ;
 

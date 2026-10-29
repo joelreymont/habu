@@ -25,7 +25,7 @@ create ERR CAP allot     variable ERR-U
 create EMPTY 1 allot                          \ zero-length stdin
 variable RC
 
-create ROOT-BUF FS-PATH-CAP allot   variable ROOT-U
+create ROOT-BUF PATH-CAP allot   variable ROOT-U
 
 : ROOT$ ( -- ptr u8 n ) ROOT-BUF ROOT-U @ ;
 : OUT$ ( -- ptr u8 n ) OUT OUT-U @ ;
@@ -36,7 +36,7 @@ create ROOT-BUF FS-PATH-CAP allot   variable ROOT-U
 : SETUP ( -- )
    s" habu-aot-chain" FS:MKTEMP-DIR {: a:ptr u:n :}
    a ROOT-BUF u BYTE-COPY  u ROOT-U !
-   ROOT$ CLEANUP-TREE+ ;
+   ROOT$ FS:CLEANUP-TREE+ ;
 
 : RUN-ENGINE ( ptr u8 n -- )
    >LEN  EMPTY 0 >LEN  OUT CAP >LEN  ERR CAP >LEN  CHILD-TIMEOUT-MS >MS
@@ -63,9 +63,9 @@ create ROOT-BUF FS-PATH-CAP allot   variable ROOT-U
 \ throw.
 : RUN-PROBES ( [ -- ] -- )
    T-RESET
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    catch {: code:n :}
-   CLEANUP-RUN
+   FS:CLEANUP-RUN
    code 0 <> if code throw then
    T-REPORT ;
 

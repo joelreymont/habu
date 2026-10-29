@@ -9,9 +9,9 @@ require test/aot-builder-engine.f
 package STRIPPED-ENTRY-TEST
 
 600000 constant TIMEOUT-MS
-create SUBJECT FS-PATH-CAP allot
-create IMAGE FS-PATH-CAP allot
-create GOT FS-PATH-CAP allot
+create SUBJECT PATH-CAP allot
+create IMAGE PATH-CAP allot
+create GOT PATH-CAP allot
 variable SUBJECT-U
 variable IMAGE-U
 variable GOT-U
@@ -27,7 +27,7 @@ variable GOT-U
    S\" package STRIPPED-ENTRY-NO-GLOBAL\nprivate\n: MAIN ( -- ) ;\npublic\n: MAIN ( -- ) ;\n;package\n" ;
 
 : WRITE-SUBJECT ( ptr u8 n -- ) {: a:ptr u:n :}
-   SUBJECT$ a u WRITE-ALL ;
+   SUBJECT$ a u FS:WRITE-ALL ;
 
 : PREPARE ( -- )
    s" stripped-entry" GT-START
@@ -38,7 +38,7 @@ variable GOT-U
    COLLISIONS$ WRITE-SUBJECT ;
 
 : BUILD ( -- )
-   IMAGE$ EXISTS? if IMAGE$ REMOVE-FILE then
+   IMAGE$ FS:EXISTS? if IMAGE$ FS:REMOVE-FILE then
    GE-HB-RESET
    ENGINE-CANDIDATE:PATH$ GE-ARGV+
    s" --load" GE-ARG+
@@ -52,7 +52,7 @@ variable GOT-U
 : BUILT ( ptr u8 n -- ) {: label:ptr labelu:n :}
    label labelu GE-EXPECT-OK
    GT-ERR$ nip 0<> if label labelu GE-FAIL then
-   IMAGE$ EXECUTABLE? 0= if label labelu GE-FAIL then ;
+   IMAGE$ FS:EXECUTABLE? 0= if label labelu GE-FAIL then ;
 
 : RUN-IMAGE ( ptr u8 n ptr u8 n -- )
    {: want:ptr wantu:n label:ptr labelu:n :}
@@ -69,7 +69,7 @@ variable GOT-U
 \ tools/hb-build-stripped-test.f HBT-STRIPPED-NO-ENTRY proves the tool passes
 \ the refusal's exit 74 and diagnostic through. The maker writes GOT$.
 : MAKER-BUILD ( -- )
-   GOT$ EXISTS? if GOT$ REMOVE-FILE then
+   GOT$ FS:EXISTS? if GOT$ FS:REMOVE-FILE then
    AOT-BUILDER-ENGINE:PATH$ {: maker:ptr makeru:n :}
    GE-HB-RESET
    maker makeru GE-ARGV+
@@ -82,7 +82,7 @@ variable GOT-U
 : REFUSED ( ptr u8 n -- ) {: label:ptr labelu:n :}
    74 label labelu GE-EXPECT-RC
    s" aot: entry word not found:" label labelu GE-EXPECT-ERR-HAS
-   GOT$ EXISTS? if label labelu GE-FAIL then ;
+   GOT$ FS:EXISTS? if label labelu GE-FAIL then ;
 
 : DEFAULT-ENTRY ( -- )
    BUILD

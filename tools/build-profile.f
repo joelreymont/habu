@@ -59,7 +59,7 @@ variable REPORT-FD
 : REDIRECT ( ptr u8 n -- ) {: pa:ptr pu:n :}
    1 F-DUPFD REPORT-FD-MIN fcntl SAVED-OUT !
    SAVED-OUT @ 0 < if s" build-profile: cannot save stdout" E-BUILD-PROFILE-IO die then
-   pa pu FS-PATHZ FS-O-WRONLY FS-O-CREAT or FS-O-TRUNC or FS-MODE-0644 open REPORT-FD !
+   pa pu FS:>PATHZ FS:O-WRONLY FS:O-CREAT or FS:O-TRUNC or FS:MODE-0644 open REPORT-FD !
    REPORT-FD @ 0 < if s" build-profile: cannot open a report file" E-BUILD-PROFILE-IO die then
    REPORT-FD @ 1 dup2 0 < if s" build-profile: cannot redirect stdout" E-BUILD-PROFILE-IO die then ;
 

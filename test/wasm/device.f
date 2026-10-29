@@ -59,9 +59,9 @@ package WASM-DEVICE
 private
 using WASM-W03
 
-FS-PATH-CAP BUFFER: DIR
+PATH-CAP BUFFER: DIR
 variable DIR-U
-FS-PATH-CAP BUFFER: PATH
+PATH-CAP BUFFER: PATH
 variable PATH-U
 
 : SETUP ( -- )
@@ -72,8 +72,8 @@ variable PATH-U
 \ The module run calling function e, written as name in DIR; answers its path.
 : MODULE ( n ptr u8 n -- ptr u8 n )
    {: e:n name:ptr nu:n :}
-   DIR DIR-U @ name nu PATH JOIN-PATH PATH-U !
-   PATH PATH-U @  e WLINK:LINK  WRITE-ALL
+   DIR DIR-U @ name nu PATH FS:JOIN-PATH PATH-U !
+   PATH PATH-U @  e WLINK:LINK  FS:WRITE-ALL
    PATH PATH-U @ ;
 
 \ ---- bodies, in WASM-W03's buffer, test/wasm/w03.f --------------------------------

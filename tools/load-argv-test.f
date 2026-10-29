@@ -34,13 +34,13 @@ $4000 constant LA-CAP
 \ asserted here, so this file does not have to track the prefix table.
 : LA-SEEDED$ ( -- ptr u8 n )   s" src/lib/errors.f" ;
 
-create LA-ROOT   FS-PATH-CAP allot
-create LA-PROBE  FS-PATH-CAP allot
-create LA-THROW  FS-PATH-CAP allot
-create LA-DECOY  FS-PATH-CAP allot
-create LA-MISS   FS-PATH-CAP allot
-create LA-DANGLING FS-PATH-CAP allot
-create LA-DANGLING-LINK FS-PATH-CAP allot
+create LA-ROOT   PATH-CAP allot
+create LA-PROBE  PATH-CAP allot
+create LA-THROW  PATH-CAP allot
+create LA-DECOY  PATH-CAP allot
+create LA-MISS   PATH-CAP allot
+create LA-DANGLING PATH-CAP allot
+create LA-DANGLING-LINK PATH-CAP allot
 create LA-OUT    LA-CAP allot
 create LA-ERR    LA-CAP allot
 
@@ -75,23 +75,23 @@ variable LA-DANGLING-LINK-U
    s\" \\ mentions src/lib/errors.f in a comment\n: LA-D ( -- ptr u8 n ) s\" src/lib/errors.f\" ;\ns\" load-argv: decoy loaded\" type cr\n" ;
 
 : LA-SETUP ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" habu-load-argv" FS:MKTEMP-DIR {: a:ptr u:n :}
    a LA-ROOT u BYTE-COPY
    u LA-ROOT-U !
-   LA-ROOT$ CLEANUP-TREE+
-   LA-ROOT$ s" probe.f"   LA-PROBE JOIN-PATH LA-PROBE-U !
-   LA-ROOT$ s" thrower.f" LA-THROW JOIN-PATH LA-THROW-U !
-   LA-ROOT$ s" decoy.f"   LA-DECOY JOIN-PATH LA-DECOY-U !
-   LA-ROOT$ s" missing.f" LA-MISS  JOIN-PATH LA-MISS-U !
-   LA-ROOT$ s" src/lib/test.f" LA-DANGLING JOIN-PATH LA-DANGLING-U !
-   LA-ROOT$ s" src" LA-DANGLING-LINK JOIN-PATH LA-DANGLING-LINK-U !
-   LA-DANGLING-LINK$ MAKE-DIR
-   LA-ROOT$ s" src/lib" LA-DANGLING-LINK JOIN-PATH LA-DANGLING-LINK-U !
-   s" missing-lib" LA-DANGLING-LINK$ MAKE-SYMLINK
-   LA-PROBE$ LA-PROBE-SRC$ WRITE-ALL
-   LA-THROW$ LA-THROW-SRC$ WRITE-ALL
-   LA-DECOY$ LA-DECOY-SRC$ WRITE-ALL ;
+   LA-ROOT$ FS:CLEANUP-TREE+
+   LA-ROOT$ s" probe.f"   LA-PROBE FS:JOIN-PATH LA-PROBE-U !
+   LA-ROOT$ s" thrower.f" LA-THROW FS:JOIN-PATH LA-THROW-U !
+   LA-ROOT$ s" decoy.f"   LA-DECOY FS:JOIN-PATH LA-DECOY-U !
+   LA-ROOT$ s" missing.f" LA-MISS  FS:JOIN-PATH LA-MISS-U !
+   LA-ROOT$ s" src/lib/test.f" LA-DANGLING FS:JOIN-PATH LA-DANGLING-U !
+   LA-ROOT$ s" src" LA-DANGLING-LINK FS:JOIN-PATH LA-DANGLING-LINK-U !
+   LA-DANGLING-LINK$ FS:MAKE-DIR
+   LA-ROOT$ s" src/lib" LA-DANGLING-LINK FS:JOIN-PATH LA-DANGLING-LINK-U !
+   s" missing-lib" LA-DANGLING-LINK$ FS:MAKE-SYMLINK
+   LA-PROBE$ LA-PROBE-SRC$ FS:WRITE-ALL
+   LA-THROW$ LA-THROW-SRC$ FS:WRITE-ALL
+   LA-DECOY$ LA-DECOY-SRC$ FS:WRITE-ALL ;
 
 : LA-ARGV0 ( -- )
    PROC-ARGV-RESET
@@ -189,7 +189,7 @@ public
    LA-MISSING-PATH-NAMED
    LA-DANGLING-PATH-NAMED
    LA-THROW-SHAPE
-   CLEANUP-RUN
+   FS:CLEANUP-RUN
    T-REPORT
    s" load-argv-test: ok" type cr ;
 

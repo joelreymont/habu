@@ -104,9 +104,9 @@ $8000 constant LOG-CAP
 
 create REPORT REPORT-BYTES allot
 create LOG-TEXT LOG-CAP allot
-create TMP FS-PATH-CAP allot
-create LOG FS-PATH-CAP allot
-create FIFO FS-PATH-CAP allot
+create TMP PATH-CAP allot
+create LOG PATH-CAP allot
+create FIFO PATH-CAP allot
 create FEED FEED-CHUNK allot         \ newlines: blank lines to check.f
 
 variable REPORT-U                    \ bytes of REPORT read so far
@@ -148,9 +148,9 @@ PROC-NO-FD FEED-WR !
 \ TMP, under this test's runner root, is the TMPDIR check.f is handed, so what
 \ check.f leaves is whatever TMP holds; its output sits beside it.
 : PATHS! ( -- )
-   GT-ROOT s" tmp" TMP JOIN-PATH TMP-U !
-   GT-ROOT s" check.log" LOG JOIN-PATH LOG-U !
-   TMP$ MAKE-DIRS ;
+   GT-ROOT s" tmp" TMP FS:JOIN-PATH TMP-U !
+   GT-ROOT s" check.log" LOG FS:JOIN-PATH LOG-U !
+   TMP$ FS:MAKE-DIRS ;
 
 : ENTRY+ ( ptr u8 n -- )
    2drop ENTRY-N @ 1+ ENTRY-N ! ;
@@ -161,8 +161,8 @@ PROC-NO-FD FEED-WR !
    ENTRY-N @ ;
 
 : TMP-CLEAR ( -- )
-   TMP$ REMOVE-TREE
-   TMP$ MAKE-DIRS ;
+   TMP$ FS:REMOVE-TREE
+   TMP$ FS:MAKE-DIRS ;
 
 \ ---- the report FIFO --------------------------------------------------------
 
@@ -229,7 +229,7 @@ PROC-NO-FD FEED-WR !
    fd ;
 
 : OPEN-LOG ( -- n )
-   LOG$ FS-PATHZ FS-O-WRONLY FS-O-CREAT or FS-O-TRUNC or FS-MODE-0644 open {: fd:n :}
+   LOG$ FS:>PATHZ FS:O-WRONLY FS:O-CREAT or FS:O-TRUNC or FS:MODE-0644 open {: fd:n :}
    fd 0 < if E-FS-OPEN throw then
    fd ;
 
@@ -356,13 +356,13 @@ PROC-NO-FD FEED-WR !
    CHECK-PID @ >PID SIGKILL PROC-KILL-RAW drop
    CHECK-REAP PROC-OUTCOME>RC drop
    s" the late check.f's output:" type cr
-   LOG-TEXT LOG$ LOG-TEXT LOG-CAP READ-ALL type cr ;
+   LOG-TEXT LOG$ LOG-TEXT LOG-CAP FS:READ-ALL type cr ;
 
 \ check.f names each step of its answer that threw (tools/check-core.f
 \ CHK-SAY-THROW), and src/lib/process.f a walk of the child's tree it could not
 \ finish (PROC-WALK-REPORT).
 : LOG-THREW? ( -- bool )
-   LOG-TEXT LOG$ LOG-TEXT LOG-CAP READ-ALL {: a:ptr u:n :}
+   LOG-TEXT LOG$ LOG-TEXT LOG-CAP FS:READ-ALL {: a:ptr u:n :}
    a u s" threw" CONTAINS? a u s" not walked" CONTAINS? or ;
 
 : CASE-BODY ( n -- )
@@ -423,7 +423,7 @@ PROC-NO-FD FEED-WR !
    s" deadline: check.f exits its refusal status" T-LABEL
    CHECK-REAP PROC-OUTCOME>RC RC>N 70 T=
    s" deadline: one line names the subject and the deadline" T-LABEL
-   LOG-TEXT LOG$ LOG-TEXT LOG-CAP READ-ALL json LATE-LINE$ T$=
+   LOG-TEXT LOG$ LOG-TEXT LOG-CAP FS:READ-ALL json LATE-LINE$ T$=
    s" deadline: the scratch is gone when check.f has ended" T-LABEL
    TMP-ENTRIES 0 T=
    CHECK-END

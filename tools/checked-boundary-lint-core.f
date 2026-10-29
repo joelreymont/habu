@@ -546,7 +546,7 @@ private
 \ first room (src/lib/source.f READ-WHOLE-SAMPLED). The scan takes the bytes after
 \ the read, which may move the storage.
 : UB-READ-SCAN ( -- )
-   UB-FILE$  UB-FILE$ FILE-SIZE  [: UB-SRC-ROOM ;] SOURCE:READ-WHOLE-SAMPLED UB-SRC-U !
+   UB-FILE$  UB-FILE$ FS:FILE-SIZE  [: UB-SRC-ROOM ;] SOURCE:READ-WHOLE-SAMPLED UB-SRC-U !
    0 UB-SRC-MEM UB-SRC-A!
    UB-SCAN ;
 

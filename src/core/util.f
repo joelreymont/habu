@@ -85,13 +85,12 @@ variable REG-PROT-N   0 REG-PROT-N !
 \ throw is invisible to it; callers that want a process exit still get one from
 \ an uncaught throw at their top level.
 \ The tree's one path capacity, in path bytes without the NUL. A buffer that
-\ holds a whole path, core, library or tool, is sized from this constant
-\ (src/lib/fs.f's FS-PATH-CAP is its library name) and holds a path of this many
-\ bytes, plus a NUL where the OS reads it, so a path one layer accepts is a
-\ path every layer accepts. src/core/cell-effects.f gives this constant and
-\ E-PATH-RANGE a PRIM: row: this file loads before the checker, and without
-\ the row a checked body that names either is E-UNDEFINED on an engine that
-\ boots its prefix from source (test/cold-naming-test.f).
+\ holds a whole path, core, library or tool, is sized from this constant and
+\ holds a path of this many bytes, plus a NUL where the OS reads it, so a path
+\ one layer accepts is a path every layer accepts. src/core/cell-effects.f
+\ gives this constant and E-PATH-RANGE a PRIM: row: this file loads before the
+\ checker, and without the row a checked body that names either is E-UNDEFINED
+\ on an engine that boots its prefix from source (test/cold-naming-test.f).
 \ The value is PATH_MAX - 1 of the smallest supported target, so every path
 \ this gate admits is one the OS accepts: Darwin's PATH_MAX is 1024 counting
 \ the NUL, and a 1024-byte path passed a cap of 1024 only for lstat to answer

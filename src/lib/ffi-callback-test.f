@@ -46,8 +46,8 @@ create WANT-BUF SCRIPT-CAP allot      \ the transcript this file expects
 create BACK-BUF SCRIPT-CAP allot      \ the transcript read back from its file
 create OUT CAP allot
 create ERR CAP allot
-create SUBJECT-BUF FS-PATH-CAP allot
-create IMAGE-BUF FS-PATH-CAP allot
+create SUBJECT-BUF PATH-CAP allot
+create IMAGE-BUF PATH-CAP allot
 
 variable SCRIPT-U
 variable WANT-U
@@ -455,7 +455,7 @@ CALLBACK: PAD-F ( -- ) ;CALLBACK
    rc 0 T= ;
 
 : CASE-DIRECT ( -- )
-   [: DIRECT-RUN ;] [: CLEANUP-RUN ;] finally ;
+   [: DIRECT-RUN ;] [: FS:CLEANUP-RUN ;] finally ;
 
 \ ---- a stripped image ---------------------------------------------------------------
 : SUBJECT$ ( -- ptr u8 n ) SUBJECT-BUF SUBJECT-U @ ;
@@ -495,7 +495,7 @@ CALLBACK: PAD-F ( -- ) ;CALLBACK
    s" ffi-callback" GT-START
    s" subject.f" SUBJECT-BUF GT-PATH SUBJECT-U !
    s" application" IMAGE-BUF GT-PATH IMAGE-U !
-   SUBJECT$ SUBJECT-SOURCE$ WRITE-ALL
+   SUBJECT$ SUBJECT-SOURCE$ FS:WRITE-ALL
    BUILD-IMAGE LINKED
    s" stripped" RUN-IMAGE TRANSCRIBE ;
 
@@ -659,9 +659,9 @@ CALLBACK: PAD-F ( -- ) ;CALLBACK
 \ The artifact as another reader will find it: read back from its file and
 \ compared whole.
 : TRANSCRIPT-CASE ( -- )
-   s" build" MAKE-DIRS
-   s" build/ffi-callback-transcript.txt" SCRIPT$ WRITE-ALL
-   s" build/ffi-callback-transcript.txt" BACK-BUF SCRIPT-CAP READ-ALL {: got:n :}
+   s" build" FS:MAKE-DIRS
+   s" build/ffi-callback-transcript.txt" SCRIPT$ FS:WRITE-ALL
+   s" build/ffi-callback-transcript.txt" BACK-BUF SCRIPT-CAP FS:READ-ALL {: got:n :}
    WANT-TRANSCRIPT
    s" build/ffi-callback-transcript.txt is the transcript this file expects" T-LABEL
    BACK-BUF got WANT$ T$= ;

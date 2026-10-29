@@ -46,26 +46,26 @@ STRUCTURE pstopq OPAQUE DERIVE eq FIELD aa n ;STRUCTURE
 ;package
 
 \ The largest report names the fixture path seventeen times, each beside
-\ under $100 bytes of JSON, and the path may take FS-PATH-CAP bytes.
-17 FS-PATH-CAP $100 + * constant PST-BUF-CAP
+\ under $100 bytes of JSON, and the path may take PATH-CAP bytes.
+17 PATH-CAP $100 + * constant PST-BUF-CAP
 
 variable PST-ROOT-U
 variable PST-FIX-U
 TYPED-VARIABLE PST-RUN-A ptr u8
 variable PST-RUN-U
 
-create PST-ROOT-BUF FS-PATH-CAP allot
-create PST-FIX-BUF FS-PATH-CAP allot
-create PST-DEP-BUF FS-PATH-CAP allot
-create PST-ENTRY-BUF FS-PATH-CAP allot
-create PST-GDEP-BUF FS-PATH-CAP allot
-create PST-GENTRY-BUF FS-PATH-CAP allot
-create PST-CONST-BUF FS-PATH-CAP allot
-create PST-NOPEN-BUF FS-PATH-CAP allot
-create PST-NMID-BUF FS-PATH-CAP allot
-create PST-NENTRY-BUF FS-PATH-CAP allot
-create PST-SUM-BUF FS-PATH-CAP allot
-create PST-NUM-BUF FS-PATH-CAP allot
+create PST-ROOT-BUF PATH-CAP allot
+create PST-FIX-BUF PATH-CAP allot
+create PST-DEP-BUF PATH-CAP allot
+create PST-ENTRY-BUF PATH-CAP allot
+create PST-GDEP-BUF PATH-CAP allot
+create PST-GENTRY-BUF PATH-CAP allot
+create PST-CONST-BUF PATH-CAP allot
+create PST-NOPEN-BUF PATH-CAP allot
+create PST-NMID-BUF PATH-CAP allot
+create PST-NENTRY-BUF PATH-CAP allot
+create PST-SUM-BUF PATH-CAP allot
+create PST-NUM-BUF PATH-CAP allot
 create PST-OUT PST-BUF-CAP allot
 create PST-ERR PST-BUF-CAP allot
 variable PST-DEP-U
@@ -159,13 +159,13 @@ variable PST-NUM-U
    s" usage: tools/public-signatures.f [--trust] file ..." ;
 
 : PST-PREPARE ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" habu-public-signatures" FS:MKTEMP-DIR {: a:ptr u :}
    a u PST-ROOT-BUF PST-ROOT-U PST-COPY!
-   PST-ROOT CLEANUP-DIR+
-   PST-ROOT s" public-signatures-fixture.f" PST-FIX-BUF JOIN-PATH PST-FIX-U !
-   PST-FIX CLEANUP+
-   PST-FIX PST-FIXTURE$ WRITE-ALL ;
+   PST-ROOT FS:CLEANUP-DIR+
+   PST-ROOT s" public-signatures-fixture.f" PST-FIX-BUF FS:JOIN-PATH PST-FIX-U !
+   PST-FIX FS:CLEANUP+
+   PST-FIX PST-FIXTURE$ FS:WRITE-ALL ;
 
 : PST-CORE-SETUP ( n -- ) {: flag:n :}
    PST-OUT PST-BUF-CAP PS-OUT-BUFFER!
@@ -287,12 +287,12 @@ variable PST-NUM-U
    SB$ ;
 
 : PST-PREPARE-CLOSURE ( -- )
-   PST-ROOT s" ps-dep-pkg.f" PST-DEP-BUF JOIN-PATH PST-DEP-U !
-   PST-ROOT s" ps-entry-pkg.f" PST-ENTRY-BUF JOIN-PATH PST-ENTRY-U !
-   PST-DEP CLEANUP+
-   PST-ENTRY CLEANUP+
-   PST-DEP s\" package FOO\n" WRITE-ALL
-   PST-ENTRY PST-ENTRY-SRC$ WRITE-ALL ;
+   PST-ROOT s" ps-dep-pkg.f" PST-DEP-BUF FS:JOIN-PATH PST-DEP-U !
+   PST-ROOT s" ps-entry-pkg.f" PST-ENTRY-BUF FS:JOIN-PATH PST-ENTRY-U !
+   PST-DEP FS:CLEANUP+
+   PST-ENTRY FS:CLEANUP+
+   PST-DEP s\" package FOO\n" FS:WRITE-ALL
+   PST-ENTRY PST-ENTRY-SRC$ FS:WRITE-ALL ;
 
 : PST-TEST-CLOSURE-PKG ( -- )
    PST-PREPARE-CLOSURE
@@ -320,12 +320,12 @@ variable PST-NUM-U
    SB$ ;
 
 : PST-PREPARE-GUARDED ( -- )
-   PST-ROOT s" ps-dep-guard.f" PST-GDEP-BUF JOIN-PATH PST-GDEP-U !
-   PST-ROOT s" ps-entry-guard.f" PST-GENTRY-BUF JOIN-PATH PST-GENTRY-U !
-   PST-GDEP CLEANUP+
-   PST-GENTRY CLEANUP+
-   PST-GDEP s\" package GFOO\n" WRITE-ALL
-   PST-GENTRY PST-GENTRY-SRC$ WRITE-ALL ;
+   PST-ROOT s" ps-dep-guard.f" PST-GDEP-BUF FS:JOIN-PATH PST-GDEP-U !
+   PST-ROOT s" ps-entry-guard.f" PST-GENTRY-BUF FS:JOIN-PATH PST-GENTRY-U !
+   PST-GDEP FS:CLEANUP+
+   PST-GENTRY FS:CLEANUP+
+   PST-GDEP s\" package GFOO\n" FS:WRITE-ALL
+   PST-GENTRY PST-GENTRY-SRC$ FS:WRITE-ALL ;
 
 : PST-TEST-CLOSURE-GUARDED-PKG ( -- )
    PST-PREPARE-GUARDED
@@ -361,15 +361,15 @@ variable PST-NUM-U
    SB$ ;
 
 : PST-PREPARE-NESTED ( -- )
-   PST-ROOT s" ps-nest-open.f" PST-NOPEN-BUF JOIN-PATH PST-NOPEN-U !
-   PST-ROOT s" ps-nest-mid.f" PST-NMID-BUF JOIN-PATH PST-NMID-U !
-   PST-ROOT s" ps-nest-entry.f" PST-NENTRY-BUF JOIN-PATH PST-NENTRY-U !
-   PST-NOPEN CLEANUP+
-   PST-NMID CLEANUP+
-   PST-NENTRY CLEANUP+
-   PST-NOPEN s\" package FOO\npublic\n" WRITE-ALL
-   PST-NMID PST-NMID-SRC$ WRITE-ALL
-   PST-NENTRY PST-NENTRY-SRC$ WRITE-ALL ;
+   PST-ROOT s" ps-nest-open.f" PST-NOPEN-BUF FS:JOIN-PATH PST-NOPEN-U !
+   PST-ROOT s" ps-nest-mid.f" PST-NMID-BUF FS:JOIN-PATH PST-NMID-U !
+   PST-ROOT s" ps-nest-entry.f" PST-NENTRY-BUF FS:JOIN-PATH PST-NENTRY-U !
+   PST-NOPEN FS:CLEANUP+
+   PST-NMID FS:CLEANUP+
+   PST-NENTRY FS:CLEANUP+
+   PST-NOPEN s\" package FOO\npublic\n" FS:WRITE-ALL
+   PST-NMID PST-NMID-SRC$ FS:WRITE-ALL
+   PST-NENTRY PST-NENTRY-SRC$ FS:WRITE-ALL ;
 
 : PST-TEST-CLOSURE-NESTED ( -- )
    PST-PREPARE-NESTED
@@ -398,9 +398,9 @@ variable PST-NUM-U
    SB$ ;
 
 : PST-PREPARE-CONST ( -- )
-   PST-ROOT s" ps-const-layout.f" PST-CONST-BUF JOIN-PATH PST-CONST-U !
-   PST-CONST CLEANUP+
-   PST-CONST PST-CONST-SRC$ WRITE-ALL ;
+   PST-ROOT s" ps-const-layout.f" PST-CONST-BUF FS:JOIN-PATH PST-CONST-U !
+   PST-CONST FS:CLEANUP+
+   PST-CONST PST-CONST-SRC$ FS:WRITE-ALL ;
 
 : PST-CONST-K-TRUST$ ( -- ptr u8 n )
    s" CAE-CV-K" s" -- a" PST-TRUST$ ;
@@ -430,9 +430,9 @@ variable PST-NUM-U
    SB$ ;
 
 : PST-PREPARE-SUM ( -- )
-   PST-ROOT s" ps-sum-layout.f" PST-SUM-BUF JOIN-PATH PST-SUM-U !
-   PST-SUM CLEANUP+
-   PST-SUM PST-SUM-SRC$ WRITE-ALL ;
+   PST-ROOT s" ps-sum-layout.f" PST-SUM-BUF FS:JOIN-PATH PST-SUM-U !
+   PST-SUM FS:CLEANUP+
+   PST-SUM PST-SUM-SRC$ FS:WRITE-ALL ;
 
 : PST-TEST-SUM-LAYOUT ( -- )
    PST-PREPARE-SUM
@@ -463,9 +463,9 @@ variable PST-NUM-U
    SB$ ;
 
 : PST-PREPARE-NUM ( -- )
-   PST-ROOT s" ps-num-name.f" PST-NUM-BUF JOIN-PATH PST-NUM-U !
-   PST-NUM CLEANUP+
-   PST-NUM PST-NUM-SRC$ WRITE-ALL ;
+   PST-ROOT s" ps-num-name.f" PST-NUM-BUF FS:JOIN-PATH PST-NUM-U !
+   PST-NUM FS:CLEANUP+
+   PST-NUM PST-NUM-SRC$ FS:WRITE-ALL ;
 
 : PST-TEST-NUM-NAMES ( -- )
    PST-PREPARE-NUM
@@ -553,7 +553,7 @@ package PST-CAST
 
 public
 : RUN ( -- )
-   PST-FIX SOURCE$ WRITE-ALL
+   PST-FIX SOURCE$ FS:WRITE-ALL
    \ The real child compiles the nominal declarations before scanning them.
    false SCAN 0 PST-EXPECT-EXIT {: outu:n erru:n :}
    erru 0 T=
@@ -580,7 +580,7 @@ package PST-SLAB-END
 $200000 constant SIZE
 
 variable PATH-U
-create PATH-BUF FS-PATH-CAP allot
+create PATH-BUF PATH-CAP allot
 
 : PATH ( -- ptr u8 n )
    PATH-BUF PATH-U @ ;
@@ -594,13 +594,13 @@ create PATH-BUF FS-PATH-CAP allot
    TAIL$ {: t:ptr tu:n :}
    u tu - 0 ?do 10 a i + c! loop
    t a u tu - + tu BYTE-COPY
-   PATH a u WRITE-ALL
+   PATH a u FS:WRITE-ALL
    a u MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
 
 public
 : RUN ( -- )
-   PST-ROOT s" ps-slab-end.f" PATH-BUF JOIN-PATH PATH-U !
-   PATH CLEANUP+
+   PST-ROOT s" ps-slab-end.f" PATH-BUF FS:JOIN-PATH PATH-U !
+   PATH FS:CLEANUP+
    WRITE-FIXTURE
    PROC-ARGV-RESET
    s" --load" PST-ARG+ s" tools/public-signatures.f" PST-ARG+
@@ -630,8 +630,8 @@ public
    PST-TEST-SUM-LAYOUT
    PST-CAST:RUN
    PST-SLAB-END:RUN
-   CLEANUP-RUN
-   PST-ROOT EXISTS? TFALSE
+   FS:CLEANUP-RUN
+   PST-ROOT FS:EXISTS? TFALSE
    T-REPORT
    s" public-signatures-test: ok" type cr ;
 

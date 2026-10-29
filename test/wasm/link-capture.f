@@ -65,7 +65,7 @@ $1000 constant CAP
 60000 constant DEADLINE-MS
 CAP BUFFER: OUT
 CAP BUFFER: ERR
-FS-PATH-CAP BUFFER: PATH
+PATH-CAP BUFFER: PATH
 variable PATH-U
 DYNAMIC-BUFFER MODULE u8
 
@@ -111,15 +111,15 @@ DYNAMIC-BUFFER MODULE u8
 
 \ The module, read back; its data section, last, ends with the image.
 : LINKED ( -- )
-   s" link-capture" FS:MKTEMP-DIR  s" link-capture.wasm"  PATH JOIN-PATH PATH-U !
+   s" link-capture" FS:MKTEMP-DIR  s" link-capture.wasm"  PATH FS:JOIN-PATH PATH-U !
    s" LINK-CAPTURE-WINDOW:MAIN" PATH PATH-U @ WASMLINK:LINK
-   PATH PATH-U @ FILE-SIZE {: u:n :}
+   PATH PATH-U @ FS:FILE-SIZE {: u:n :}
    u MODULE-RESERVE
-   PATH PATH-U @ 0 MODULE u READ-ALL u T= ;
+   PATH PATH-U @ 0 MODULE u FS:READ-ALL u T= ;
 
 : IMAGE-CASE ( -- )
    s" the module's data image is the window's DATA as the capture found it" T-LABEL
-   PATH PATH-U @ FILE-SIZE {: u:n :}
+   PATH PATH-U @ FS:FILE-SIZE {: u:n :}
    WINDOW$ {: a:ptr n:n :}
    0 MODULE u n - +  n  a n  STR= TTRUE ;
 

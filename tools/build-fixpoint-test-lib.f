@@ -61,27 +61,27 @@ TYPED-VARIABLE BFT-BIG-ERR-A ptr u8
 TYPED-VARIABLE BFT-READ-A ptr u8
 variable BFT-READ-CAP
 
-create BFT-ROOT-BUF FS-PATH-CAP allot
-create BFT-HB-BUF FS-PATH-CAP allot
-create BFT-PREFIX-BUF FS-PATH-CAP allot
-create BFT-STAGE2-BUF FS-PATH-CAP allot
-create BFT-OUTDIR-BUF FS-PATH-CAP allot
-create BFT-OUTDIR2-BUF FS-PATH-CAP allot
-create BFT-STAMP-BUF FS-PATH-CAP allot
-create BFT-STAMP2-BUF FS-PATH-CAP allot
-create BFT-NEST-BUF FS-PATH-CAP allot
-create BFT-NOTDIR-BUF FS-PATH-CAP allot
-create BFT-ENG-A-BUF FS-PATH-CAP allot
-create BFT-ENG-B-BUF FS-PATH-CAP allot
-create BFT-CERT-BUF FS-PATH-CAP allot
-create BFT-STALE-BUF FS-PATH-CAP allot
-create BFT-STALE-HB-BUF FS-PATH-CAP allot
-create BFT-STALE-TMP-BUF FS-PATH-CAP allot
-create BFT-STALE-OUTDIR-BUF FS-PATH-CAP allot
-create BFT-STALE-STAMP-BUF FS-PATH-CAP allot
-create BFT-STALE-PAYLOAD-BUF FS-PATH-CAP allot
-create BFT-STALE-MARK-BUF FS-PATH-CAP allot
-create BFT-CP-BUF FS-PATH-CAP allot
+create BFT-ROOT-BUF PATH-CAP allot
+create BFT-HB-BUF PATH-CAP allot
+create BFT-PREFIX-BUF PATH-CAP allot
+create BFT-STAGE2-BUF PATH-CAP allot
+create BFT-OUTDIR-BUF PATH-CAP allot
+create BFT-OUTDIR2-BUF PATH-CAP allot
+create BFT-STAMP-BUF PATH-CAP allot
+create BFT-STAMP2-BUF PATH-CAP allot
+create BFT-NEST-BUF PATH-CAP allot
+create BFT-NOTDIR-BUF PATH-CAP allot
+create BFT-ENG-A-BUF PATH-CAP allot
+create BFT-ENG-B-BUF PATH-CAP allot
+create BFT-CERT-BUF PATH-CAP allot
+create BFT-STALE-BUF PATH-CAP allot
+create BFT-STALE-HB-BUF PATH-CAP allot
+create BFT-STALE-TMP-BUF PATH-CAP allot
+create BFT-STALE-OUTDIR-BUF PATH-CAP allot
+create BFT-STALE-STAMP-BUF PATH-CAP allot
+create BFT-STALE-PAYLOAD-BUF PATH-CAP allot
+create BFT-STALE-MARK-BUF PATH-CAP allot
+create BFT-CP-BUF PATH-CAP allot
 create BFT-NL 10 c,
 create BFT-OUT BFT-CAPTURE-CAP allot
 create BFT-ERR BFT-CAPTURE-CAP allot
@@ -98,12 +98,12 @@ create BFT-ERR BFT-CAPTURE-CAP allot
    BFT-READ-CAP ! ;
 
 : BFT-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr lenp:ptr :}
-   u FS-PATH-CAP > if E-FS-PATH throw then
+   u PATH-CAP > if E-FS-PATH throw then
    a dst u BYTE-COPY
    u lenp ! ;
 
 : BFT-PATH! ( ptr u8 n ptr u8 n ptr u8 ptr n -- ) {: pa:ptr pu na:ptr nu dst:ptr lenp:ptr :}
-   pa pu na nu dst JOIN-PATH lenp ! ;
+   pa pu na nu dst FS:JOIN-PATH lenp ! ;
 
 : BFT-ROOT ( -- ptr u8 n )
    BFT-ROOT-BUF BFT-ROOT-U @ ;
@@ -185,26 +185,26 @@ create BFT-ERR BFT-CAPTURE-CAP allot
    >LEN PROC-ARGV+ ;
 
 : BFT-PREPARE ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" habu-build-fixpoint" FS:MKTEMP-DIR {: a:ptr u :}
    a u BFT-ROOT-BUF BFT-ROOT-U BFT-COPY!
-   BFT-ROOT CLEANUP-TREE+
+   BFT-ROOT FS:CLEANUP-TREE+
    BFT-ROOT s" hb-stdin" BFT-HB-BUF BFT-HB-U BFT-PATH!
-   s" bin/hb" BFT-HB COPY-FILE-STREAM
-   BFT-HB CHMOD-X
+   s" bin/hb" BFT-HB FS:COPY-FILE-STREAM
+   BFT-HB FS:CHMOD-X
    BFT-ROOT s" prefix-src" BFT-PREFIX-BUF BFT-PREFIX-U BFT-PATH!
    BFT-ROOT s" stage2-src" BFT-STAGE2-BUF BFT-STAGE2-U BFT-PATH!
    BFT-ROOT s" out" BFT-OUTDIR-BUF BFT-OUTDIR-U BFT-PATH!
    BFT-ROOT s" out2" BFT-OUTDIR2-BUF BFT-OUTDIR2-U BFT-PATH!
    BFT-OUTDIR s" fixpoint/stamp" BFT-STAMP-BUF BFT-STAMP-U BFT-PATH!
    BFT-OUTDIR2 s" fixpoint/stamp" BFT-STAMP2-BUF BFT-STAMP2-U BFT-PATH!
-   BFT-STAMP SOURCE-ROOT:DIRNAME MAKE-DIRS
+   BFT-STAMP SOURCE-ROOT:DIRNAME FS:MAKE-DIRS
    BFT-ROOT s" nested/stamps/stamp" BFT-NEST-BUF BFT-NEST-U BFT-PATH!
    BFT-ROOT s" not-a-dir" BFT-NOTDIR-BUF BFT-NOTDIR-U BFT-PATH!
    BFT-ROOT s" engine-a" BFT-ENG-A-BUF BFT-ENG-A-U BFT-PATH!
    BFT-ROOT s" engine-b" BFT-ENG-B-BUF BFT-ENG-B-U BFT-PATH!
    BFT-ROOT s" cert-source.f" BFT-CERT-BUF BFT-CERT-U BFT-PATH!
-   BFT-NOTDIR s" plain file, not a directory" WRITE-ALL ;
+   BFT-NOTDIR s" plain file, not a directory" FS:WRITE-ALL ;
 
 : BFT-ARGV-LOAD-LIBS ( -- )   \ the --load prefix through build-fixpoint.f, WITHOUT the CLI entry companion
    s" --load"  >LEN PROC-ARGV+
@@ -239,8 +239,8 @@ create BFT-ERR BFT-CAPTURE-CAP allot
    outn errn code ;
 
 : BFT-READ ( ptr u8 n -- n ) {: pa:ptr pu:n :}
-   pa pu FILE-SIZE BFT-ALLOC-READ
-   pa pu BFT-READ-BUF BFT-READ-CAP @ READ-ALL ;
+   pa pu FS:FILE-SIZE BFT-ALLOC-READ
+   pa pu BFT-READ-BUF BFT-READ-CAP @ FS:READ-ALL ;
 
 \ The stale-seed sandbox: a private copy of src/, src/lib/, the refresh's tools/
 \ closure and bin/hb, with its own tmp and stamp, so a case can break a source
@@ -251,7 +251,7 @@ create BFT-ERR BFT-CAPTURE-CAP allot
 : BFT-STALE-PATHS! ( -- )
    s" habu-bft-stale" FS:MKTEMP-DIR {: a:ptr u:n :}
    a u BFT-STALE-BUF BFT-STALE-U BFT-COPY!
-   BFT-STALE CLEANUP-TREE+
+   BFT-STALE FS:CLEANUP-TREE+
    BFT-STALE s" bin/hb" BFT-STALE-HB-BUF BFT-STALE-HB-U BFT-PATH!
    BFT-STALE s" tmp" BFT-STALE-TMP-BUF BFT-STALE-TMP-U BFT-PATH!
    BFT-STALE s" out" BFT-STALE-OUTDIR-BUF BFT-STALE-OUTDIR-U BFT-PATH!
@@ -289,14 +289,14 @@ variable IX
 : BFT-STALE-PREPARE ( -- )
    BFT-STALE-PATHS!
    BFT-ALLOC-BIG
-   BFT-STALE-TMP MAKE-DIRS
+   BFT-STALE-TMP FS:MAKE-DIRS
    s" src" BFT-STALE TREE-COPY:TREE
    s" tools/build-fixpoint.f" COPY-CLOSURE
    ENTRY$ COPY-CLOSURE
    BF-CERTIFY-DRIVER$ COPY-CLOSURE
    s" tools/build-fixpoint-main.f" BFT-STALE TREE-COPY:FILE
    s" bin/hb" BFT-STALE TREE-COPY:FILE
-   BFT-STALE-HB CHMOD-X ;
+   BFT-STALE-HB FS:CHMOD-X ;
 
 : BFT-STALE-ARGV ( -- )
    PROC-ARGV-RESET
@@ -330,8 +330,8 @@ variable IX
 
 \ The common driver tail: every row removes its scratch tree, then reports.
 : BFT-FINISH ( ptr u8 n -- ) {: msg:ptr msgu:n :}
-   CLEANUP-RUN
-   BFT-ROOT EXISTS? TFALSE
+   FS:CLEANUP-RUN
+   BFT-ROOT FS:EXISTS? TFALSE
    T-REPORT
    msg msgu type cr ;
 

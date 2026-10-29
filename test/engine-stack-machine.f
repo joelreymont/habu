@@ -24,8 +24,8 @@ private
 600000 constant BUILD-MS
 11 constant SIGSEGV
 
-create SUBJECT FS-PATH-CAP allot
-create IMAGE FS-PATH-CAP allot
+create SUBJECT PATH-CAP allot
+create IMAGE PATH-CAP allot
 variable SUBJECT-U
 variable IMAGE-U
 
@@ -98,7 +98,7 @@ variable IMAGE-U
 \ it installs the handler (src/habu/aot-lib.f EMIT-ENTRY). The fresh subject
 \ path has no observed-input index, so hb-build links it with the shared maker.
 : STRIPPED ( -- )
-   SUBJECT$ S\" TRUSTED: R ( -- ) recurse recurse ;\n: MAIN ( -- ) R ;\n" WRITE-ALL
+   SUBJECT$ S\" TRUSTED: R ( -- ) recurse recurse ;\n: MAIN ( -- ) R ;\n" FS:WRITE-ALL
    AOT-BUILDER-ENGINE:ENSURE
    GE-HB-RESET
    ENGINE-CANDIDATE:PATH$ GE-ARGV+

@@ -15,7 +15,7 @@ using DISCOVER
 using EC
 package SOURCE-ROOT-TEST
 
-FS-PATH-CAP 1+ constant CAP
+PATH-CAP 1+ constant CAP
 create ROOT CAP allot
 create APP-A CAP allot
 create APP-B CAP allot
@@ -58,32 +58,32 @@ private
    SCRIPT-NAMED-LOAD? if 1 else 0 then SAVED-NAMED @ T= ;
 
 : PREP ( -- )
-   CLEANUP-RESET 0 LOADED !
+   FS:CLEANUP-RESET 0 LOADED !
    CURRENT$ SAVED-ROOT SAVED-ROOT-U COPY!
    INCLUDE-DEPTH @ SAVED-DEPTH !
    SCRIPT-NAMED-LOAD? if 1 else 0 then SAVED-NAMED !
    s" habu-source-root" FS:MKTEMP-DIR CANONICAL TTRUE ROOT ROOT-U COPY!
-   ROOT$ CLEANUP-TREE+
+   ROOT$ FS:CLEANUP-TREE+
    ROOT$ s" a" JOIN APP-A APP-A-U COPY!
    ROOT$ s" b" JOIN APP-B APP-B-U COPY!
-   s" src/nested" A-PATH MAKE-DIRS
-   s" src" B-PATH MAKE-DIRS
-   s" src/leaf.f" A-PATH s" 1 SOURCE-ROOT-TEST:BUMP" WRITE-ALL
-   s" src/nested/dep.f" A-PATH s" require src/leaf.f" WRITE-ALL
-   s" src/leaf.f" B-PATH s" 10 SOURCE-ROOT-TEST:BUMP" WRITE-ALL
-   s" main.f" B-PATH s" require src/leaf.f" WRITE-ALL
-   s" boom.f" A-PATH s" 9132 throw" WRITE-ALL
+   s" src/nested" A-PATH FS:MAKE-DIRS
+   s" src" B-PATH FS:MAKE-DIRS
+   s" src/leaf.f" A-PATH s" 1 SOURCE-ROOT-TEST:BUMP" FS:WRITE-ALL
+   s" src/nested/dep.f" A-PATH s" require src/leaf.f" FS:WRITE-ALL
+   s" src/leaf.f" B-PATH s" 10 SOURCE-ROOT-TEST:BUMP" FS:WRITE-ALL
+   s" main.f" B-PATH s" require src/leaf.f" FS:WRITE-ALL
+   s" boom.f" A-PATH s" 9132 throw" FS:WRITE-ALL
    s" ." s" habu-root-fallback" FS:MKTEMP-DIR-IN FALLBACK FALLBACK-U COPY!
-   FALLBACK$ CLEANUP-TREE+
-   s" leaf.f" FALLBACK-PATH s" 100 SOURCE-ROOT-TEST:BUMP" WRITE-ALL
+   FALLBACK$ FS:CLEANUP-TREE+
+   s" leaf.f" FALLBACK-PATH s" 100 SOURCE-ROOT-TEST:BUMP" FS:WRITE-ALL
    SB-RESET s" require " SB-APPEND
    s" leaf.f" FALLBACK-PATH SB-APPEND
-   s" shared.f" FALLBACK-PATH SB$ WRITE-ALL
-   FALLBACK$ A-PATH MAKE-DIRS
-   s" leaf.f" FALLBACK-PATH A-PATH s" 1000 SOURCE-ROOT-TEST:BUMP" WRITE-ALL
+   s" shared.f" FALLBACK-PATH SB$ FS:WRITE-ALL
+   FALLBACK$ A-PATH FS:MAKE-DIRS
+   s" leaf.f" FALLBACK-PATH A-PATH s" 1000 SOURCE-ROOT-TEST:BUMP" FS:WRITE-ALL
    SB-RESET S\" require src/nested/dep.f\nrequire src/leaf.f\nrequire " SB-APPEND
    s" shared.f" FALLBACK-PATH SB-APPEND
-   s" main.f" A-PATH SB$ WRITE-ALL ;
+   s" main.f" A-PATH SB$ FS:WRITE-ALL ;
 
 : LOAD-ENTRIES ( -- )
    s" main.f" A-PATH script-required
@@ -94,7 +94,7 @@ private
 : ALIASES ( -- )
    s" src/leaf.f" A-PATH TARGET TARGET-U COPY!
    s" src/alias.f" A-PATH LINK LINK-U COPY!
-   TARGET TARGET-U @ LINK LINK-U @ MAKE-SYMLINK
+   TARGET TARGET-U @ LINK LINK-U @ FS:MAKE-SYMLINK
    s" src/./nested/../leaf.f" A-PATH required
    LINK LINK-U @ required
    TARGET TARGET-U @ required
@@ -138,19 +138,19 @@ private
 
 : ENGINE-LINK ( ptr u8 n -- ) {: name:ptr nameu:n :}
    CWD$ name nameu JOIN TARGET TARGET-U COPY!
-   TARGET TARGET-U @ INVOCATION$ name nameu JOIN MAKE-SYMLINK ;
+   TARGET TARGET-U @ INVOCATION$ name nameu JOIN FS:MAKE-SYMLINK ;
 
 : PREP-ENGINE-ALIASES ( -- )
-   INVOCATION$ MAKE-DIR
+   INVOCATION$ FS:MAKE-DIR
    s" src" ENGINE-LINK s" test" ENGINE-LINK
-   ROOT$ s" other/nested" JOIN MAKE-DIRS
-   ROOT$ s" other/src/lib" JOIN MAKE-DIRS
-   ROOT$ s" other/src/lib/errors.f" JOIN s" 100 SOURCE-ROOT-ALIAS-CHILD:BUMP" WRITE-ALL
+   ROOT$ s" other/nested" JOIN FS:MAKE-DIRS
+   ROOT$ s" other/src/lib" JOIN FS:MAKE-DIRS
+   ROOT$ s" other/src/lib/errors.f" JOIN s" 100 SOURCE-ROOT-ALIAS-CHILD:BUMP" FS:WRITE-ALL
    ROOT$ s" other/nested" JOIN TARGET TARGET-U COPY!
-   TARGET TARGET-U @ INVOCATION$ s" branch" JOIN MAKE-SYMLINK
-   s" src/lib" A-PATH MAKE-DIRS s" src/lib" B-PATH MAKE-DIRS
-   s" src/lib/errors.f" A-PATH s" 1 SOURCE-ROOT-ALIAS-CHILD:BUMP" WRITE-ALL
-   s" src/lib/errors.f" B-PATH s" 10 SOURCE-ROOT-ALIAS-CHILD:BUMP" WRITE-ALL ;
+   TARGET TARGET-U @ INVOCATION$ s" branch" JOIN FS:MAKE-SYMLINK
+   s" src/lib" A-PATH FS:MAKE-DIRS s" src/lib" B-PATH FS:MAKE-DIRS
+   s" src/lib/errors.f" A-PATH s" 1 SOURCE-ROOT-ALIAS-CHILD:BUMP" FS:WRITE-ALL
+   s" src/lib/errors.f" B-PATH s" 10 SOURCE-ROOT-ALIAS-CHILD:BUMP" FS:WRITE-ALL ;
 
 \ A fresh process must carry its frozen engine facts into a symlinked checkout.
 \ The child also keeps owner-local modules and symlink/.. targets distinct.
@@ -214,7 +214,7 @@ private
    SB-RESET DEEP-NAME+ SB$ A-PATH ;
 
 : DEEP-MAKE ( ptr u8 n bool -- ) {: prefix:ptr prefixu:n fail:bool :}
-   prefix prefixu A-PATH MAKE-DIRS
+   prefix prefixu A-PATH FS:MAKE-DIRS
    DEEP-COUNT 0 ?do
       prefix prefixu i DEEP-PATH TARGET TARGET-U COPY!
       SB-RESET i FMT:SB-U S\"  SOURCE-ROOT-TEST:ENTER\n" SB-APPEND
@@ -231,7 +231,7 @@ private
          then
       then
       i FMT:SB-U S\"  SOURCE-ROOT-TEST:LEAVE-FRAME\n" SB-APPEND
-      TARGET TARGET-U @ SB$ WRITE-ALL
+      TARGET TARGET-U @ SB$ FS:WRITE-ALL
    loop ;
 
 : DEEP-THROW ( -- )
@@ -250,7 +250,7 @@ private
 
 : DEEP-LOADS ( -- )
    s" deeply nested throws restore the caller before another dependency chain" T-LABEL
-   s" shared.f" A-PATH s" 7 SOURCE-ROOT-TEST:BUMP" WRITE-ALL
+   s" shared.f" A-PATH s" 7 SOURCE-ROOT-TEST:BUMP" FS:WRITE-ALL
    s" bad" true DEEP-MAKE
    s" good" false DEEP-MAKE
    0 ACTIVE ! 0 VISITS ! 0 LOADED !
@@ -280,21 +280,21 @@ create CHUNK LARGE-CHUNK allot
 
 : LARGE-CHUNKS+ ( n -- )
    {: count:n :}
-   count 0 ?do TARGET TARGET-U @ CHUNK LARGE-CHUNK APPEND-FILE loop ;
+   count 0 ?do TARGET TARGET-U @ CHUNK LARGE-CHUNK FS:APPEND-FILE loop ;
 
 : LARGE-MAKE ( -- )
-   s" large" A-PATH MAKE-DIRS
+   s" large" A-PATH FS:MAKE-DIRS
    LARGE-CHUNK 0 ?do i LARGE-BYTE CHUNK i + c! loop
-   s" large/small.f" A-PATH s" 1 SOURCE-ROOT-TEST:BUMP" WRITE-ALL
+   s" large/small.f" A-PATH s" 1 SOURCE-ROOT-TEST:BUMP" FS:WRITE-ALL
    s" large/big.f" A-PATH TARGET TARGET-U COPY!
-   TARGET TARGET-U @ CHUNK LARGE-CHUNK WRITE-ALL
+   TARGET TARGET-U @ CHUNK LARGE-CHUNK FS:WRITE-ALL
    LARGE-HALF 1- LARGE-CHUNKS+
-   TARGET TARGET-U @ S\" include large/small.f\n" APPEND-FILE
+   TARGET TARGET-U @ S\" include large/small.f\n" FS:APPEND-FILE
    LARGE-HALF LARGE-CHUNKS+
-   TARGET TARGET-U @ S\" 10 SOURCE-ROOT-TEST:BUMP\n" APPEND-FILE
+   TARGET TARGET-U @ S\" 10 SOURCE-ROOT-TEST:BUMP\n" FS:APPEND-FILE
    s" large/outer.f" A-PATH
       S\" require large/big.f\nrequire large/big.f\ninclude large/big.f\n100 SOURCE-ROOT-TEST:BUMP\n"
-      WRITE-ALL ;
+      FS:WRITE-ALL ;
 
 \ require loads big.f once (its small.f and its tail: 11), the second require
 \ skips it, include loads it again (11), and outer.f's own tail adds 100.
@@ -351,7 +351,7 @@ create JOIN-SRC JOIN-WORK allot
    T-RESET PREP
    LOAD-ENTRIES ALIASES PROVIDED-MISSING THROW-RESTORES DISCOVERY CLOSURE DEEP-LOADS LARGE-LOADS DEEP-EVALS
    ENGINE-ALIASES JOIN-ROOM DIAG-ROOM DIRNAMES
-   CLEANUP-RUN T-REPORT ;
+   FS:CLEANUP-RUN T-REPORT ;
 
 RUN
 ;package

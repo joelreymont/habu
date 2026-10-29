@@ -61,11 +61,11 @@ create OUT CAP allot
 create ERR CAP allot
 create FX CAP allot
 create EMPTY 1 allot
-create BASE FS-PATH-CAP allot
-create FX-P FS-PATH-CAP allot
+create BASE PATH-CAP allot
+create FX-P PATH-CAP allot
 create DEP CAP allot
-create DEP-P FS-PATH-CAP allot
-create CANON FS-PATHZ-CAP allot
+create DEP-P PATH-CAP allot
+create CANON FS:PATHZ-CAP allot
 
 variable BASE-U
 variable FX-U
@@ -94,12 +94,12 @@ variable RC
    ERR ERR-U @ ;
 
 : ROOT! ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" habu-diag-position" FS:MKTEMP-DIR SOURCE-ROOT:CANONICAL drop
    {: a:ptr u:n :}
    a BASE u BYTE-COPY
    u BASE-U !
-   BASE$ CLEANUP-TREE+ ;
+   BASE$ FS:CLEANUP-TREE+ ;
 
 : LF+ ( -- ) 10 SB-APPEND-C ;
 : CR+ ( -- ) 13 SB-APPEND-C ;
@@ -109,17 +109,17 @@ variable RC
 \ packets' byte spans from.
 : FIXTURE! ( ptr u8 n -- )
    {: name:ptr nameu:n :}
-   BASE$ name nameu FX-P JOIN-PATH FX-PU !
+   BASE$ name nameu FX-P FS:JOIN-PATH FX-PU !
    SB$
    {: a:ptr u:n :}
    a FX u BYTE-COPY
    u FX-U !
-   FX-PATH$ FX$ WRITE-ALL ;
+   FX-PATH$ FX$ FS:WRITE-ALL ;
 
 \ PATH with every link resolved: the checker names a required file so, and
 \ --verify-only its subject too.
 : CANON$ ( ptr u8 n -- ptr u8 n )
-   FS-PATHZ CANON FS-PATHZ-CAP realpath {: n:n :}
+   FS:>PATHZ CANON FS:PATHZ-CAP realpath {: n:n :}
    n 0 <= IF E-FS-PATH throw THEN
    CANON n ;
 
@@ -1133,12 +1133,12 @@ variable RC
 \ normalized, so it loads both, 600 steps at
 \ 3012 bytes as written.
 : STEPS-FIXTURE ( n ptr u8 n -- ) {: steps:n name:ptr nameu:n :}
-   BASE$ name nameu FX-P JOIN-PATH FX-PU !
+   BASE$ name nameu FX-P FS:JOIN-PATH FX-PU !
    0 FX-U !
    s\" s\\\" " FX+
    steps 0 ?do s\" .\\x2F" FX+ loop
    s\" inc-target.f\" included\nINCLUDED-WORD drop\n" FX+
-   FX-PATH$ FX$ WRITE-ALL ;
+   FX-PATH$ FX$ FS:WRITE-ALL ;
 
 \ The plain check and --all-errors certify the fixture; --verify-only gives two
 \ deferrals: the call CALL of a body's loader, at the start of line CLINE from
@@ -1538,7 +1538,7 @@ variable RC
    TEST-CONTROL-OPEN
    TEST-MATCH-DEPTH-PAYLOAD
    TEST-USING-ORDER
-   CLEANUP-RUN
+   FS:CLEANUP-RUN
    T-REPORT
    s" diag-position-test: ok" type cr ;
 

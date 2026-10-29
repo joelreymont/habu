@@ -21,17 +21,17 @@ package PRODUCT-HOST-TEST
 $4000 constant CAP
 1800000 constant BUILD-TIMEOUT-MS
 
-create ROOT FS-PATH-CAP allot          variable ROOT-U
-create TREE FS-PATH-CAP allot          variable TREE-U
-create VARIANT-ROOT FS-PATH-CAP allot  variable VARIANT-ROOT-U
-create TMP FS-PATH-CAP allot           variable TMP-U
-create BASE FS-PATH-CAP allot          variable BASE-U
-create REF FS-PATH-CAP allot           variable REF-U
-create HOST FS-PATH-CAP allot          variable HOST-U
-create REBUILT FS-PATH-CAP allot       variable REBUILT-U
-create DEST FS-PATH-CAP allot          variable DEST-U
-create NAME-A FS-PATH-CAP allot        variable NAME-A-U
-create NAME-B FS-PATH-CAP allot        variable NAME-B-U
+create ROOT PATH-CAP allot          variable ROOT-U
+create TREE PATH-CAP allot          variable TREE-U
+create VARIANT-ROOT PATH-CAP allot  variable VARIANT-ROOT-U
+create TMP PATH-CAP allot           variable TMP-U
+create BASE PATH-CAP allot          variable BASE-U
+create REF PATH-CAP allot           variable REF-U
+create HOST PATH-CAP allot          variable HOST-U
+create REBUILT PATH-CAP allot       variable REBUILT-U
+create DEST PATH-CAP allot          variable DEST-U
+create NAME-A PATH-CAP allot        variable NAME-A-U
+create NAME-B PATH-CAP allot        variable NAME-B-U
 create OUT CAP allot                   variable OUT-U
 create ERR CAP allot                   variable ERR-U
 variable RC
@@ -47,14 +47,14 @@ variable RC
 : DEST$ ( -- ptr u8 n ) DEST DEST-U @ ;
 
 : ROOT-PATH! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr up:ptr :}
-   ROOT$ a u dst JOIN-PATH up ! ;
+   ROOT$ a u dst FS:JOIN-PATH up ! ;
 
 : SETUP ( -- )
    s" product-host-identity" FS:MKTEMP-DIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY u ROOT-U !
    s" tree" TREE TREE-U ROOT-PATH!
    s" variant" VARIANT-ROOT VARIANT-ROOT-U ROOT-PATH!
-   s" tmp" TMP TMP-U ROOT-PATH! TMP$ MAKE-DIRS
+   s" tmp" TMP TMP-U ROOT-PATH! TMP$ FS:MAKE-DIRS
    s" base-hb" BASE BASE-U ROOT-PATH!
    s" ref-hb" REF REF-U ROOT-PATH!
    s" host-hb" HOST HOST-U ROOT-PATH!
@@ -70,10 +70,10 @@ variable RC
 
 : INSERT-ROW ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: path:ptr pathu:n anchor:ptr anchoru:n row:ptr rowu:n :}
-   VARIANT$ path pathu DEST JOIN-PATH DEST-U !
-   DEST$ FILE-SIZE {: size:n :}
+   VARIANT$ path pathu DEST FS:JOIN-PATH DEST-U !
+   DEST$ FS:FILE-SIZE {: size:n :}
    size MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES {: buf:ptr len :}
-   DEST$ buf size READ-ALL size <> if
+   DEST$ buf size FS:READ-ALL size <> if
       s" product-host-identity: short variant source read" 74 die
    then
    buf size anchor anchoru FIND-SUB MATCH option
@@ -81,9 +81,9 @@ variable RC
          s" product-host-identity: primitive insertion anchor missing" 74 die
       ENDOF
       some OF IDX>N {: at:n :}
-         DEST$ buf at WRITE-ALL
-         DEST$ row rowu APPEND-FILE
-         DEST$ buf at + size at - APPEND-FILE
+         DEST$ buf at FS:WRITE-ALL
+         DEST$ row rowu FS:APPEND-FILE
+         DEST$ buf at + size at - FS:APPEND-FILE
       ENDOF
    ;MATCH
    buf len MEM:RELEASE-BYTES ;
@@ -127,7 +127,7 @@ variable RC
 
 : NAMES! ( ptr u8 n ptr u8 ptr n -- )
    {: path:ptr pathu:n dst:ptr up:ptr :}
-   pathu s" .names" nip + FS-PATH-CAP > if E-FS-PATH throw then
+   pathu s" .names" nip + PATH-CAP > if E-FS-PATH throw then
    path dst pathu BYTE-COPY
    s" .names" dst pathu + swap BYTE-COPY
    pathu s" .names" nip + up ! ;

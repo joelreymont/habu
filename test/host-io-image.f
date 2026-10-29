@@ -34,9 +34,9 @@ $E6 constant UDP-REPLY
 
 create OUT CAP allot
 create ERR CAP allot
-create ROOT-BUF FS-PATH-CAP allot
-create FIRST-BUF FS-PATH-CAP allot
-create SECOND-BUF FS-PATH-CAP allot
+create ROOT-BUF PATH-CAP allot
+create FIRST-BUF PATH-CAP allot
+create SECOND-BUF PATH-CAP allot
 create SLAVE PTY:SLAVE-PATH-CAP allot
 create SCRIPT SB-CAP allot          \ one string-builder text (SB$)
 create SERIAL-IN 1 allot
@@ -68,12 +68,12 @@ TASK:MIN-STACK TASK:TASK UDP-PEER
 : SCRIPT$ ( -- ptr u8 n ) SCRIPT SCRIPT-U @ ;
 
 : PREPARE ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" host-io-image-test" FS:MKTEMP-DIR {: path:ptr size:n :}
    path ROOT-BUF size BYTE-COPY size ROOT-U !
-   ROOT$ CLEANUP-TREE+
-   ROOT$ s" first" FIRST-BUF JOIN-PATH FIRST-U !
-   ROOT$ s" second" SECOND-BUF JOIN-PATH SECOND-U ! ;
+   ROOT$ FS:CLEANUP-TREE+
+   ROOT$ s" first" FIRST-BUF FS:JOIN-PATH FIRST-U !
+   ROOT$ s" second" SECOND-BUF FS:JOIN-PATH SECOND-U ! ;
 
 \ The pair is the device: this process holds a slave descriptor for the whole
 \ run, so the subject's CLOSE between rounds does not hang the master up;
@@ -206,7 +206,7 @@ TASK:MIN-STACK TASK:TASK UDP-PEER
    OUT outu S\" io=ok\nio=ok\n" T$= ;
 
 : SAVED ( ptr u8 n -- )
-   2dup FILE? TTRUE EXECUTABLE? TTRUE ;
+   2dup FS:FILE? TTRUE FS:EXECUTABLE? TTRUE ;
 
 \ Use a small explicit environment for every child.
 : ENVIRONMENT ( -- )
@@ -251,7 +251,7 @@ TASK:MIN-STACK TASK:TASK UDP-PEER
    SECOND$ false GEN-RESTORED ;
 
 : CLEANUP ( -- )
-   PEERS-STOP CLOSE-PEERS AIO:STOP CLEANUP-RUN ;
+   PEERS-STOP CLOSE-PEERS AIO:STOP FS:CLEANUP-RUN ;
 
 public
 

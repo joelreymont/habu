@@ -13,8 +13,8 @@ require test/native-file-e2e.f
 
 using NATIVE-FILE-E2E
 package NATIVE-FILE-FRESH-REGION-TEST
-create APP FS-PATH-CAP allot variable APP-U
-create CACHE FS-PATH-CAP allot variable CACHE-U
+create APP PATH-CAP allot variable APP-U
+create CACHE PATH-CAP allot variable CACHE-U
 
 \ One build process per step: the edit between builds is the boundary under
 \ test, and every step shares one cache.
@@ -27,7 +27,7 @@ public
    T-RESET
    s" native-file-fresh-region" TREE
    s" cache" AT {: cache:ptr cacheu:n :}
-   cache CACHE cacheu BYTE-COPY cacheu CACHE-U ! CACHE CACHE-U @ MAKE-DIR
+   cache CACHE cacheu BYTE-COPY cacheu CACHE-U ! CACHE CACHE-U @ FS:MAKE-DIR
    s" app.f" AT {: app:ptr appu:n :}
    app APP appu BYTE-COPY appu APP-U !
    s" unit.f" S\" package RQ public\ndefer RG-ONE ( -- fresh-region-a )\n: SAME-ID ( x x -- ) 2drop ;\n: USE-INF RG-ONE ;\n;package\n" PUT

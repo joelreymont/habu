@@ -45,7 +45,7 @@ variable JOT-ERR-A
    JOT-BUF-CAP swap JOT-ALLOC-SIZED-BUF ;
 
 : JOT-ALLOC-PATH ( ptr a -- ptr u8 )
-   FS-PATH-CAP swap JOT-ALLOC-SIZED-BUF ;
+   PATH-CAP swap JOT-ALLOC-SIZED-BUF ;
 
 : JOT-ROOT-BUF ( -- ptr u8 )
    JOT-ROOT-A JOT-ALLOC-PATH ;
@@ -66,12 +66,12 @@ variable JOT-ERR-A
    JOT-IN-BUF JOT-IN-U @ ;
 
 : JOT-PREPARE ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" habu-json-only" FS:MKTEMP-DIR {: a:ptr u:n :}
    a u JOT-ROOT-BUF JOT-ROOT-U JOT-COPY!
-   JOT-ROOT CLEANUP-DIR+
-   JOT-ROOT s" stderr.in" JOT-IN-BUF JOIN-PATH JOT-IN-U !
-   JOT-IN CLEANUP+ ;
+   JOT-ROOT FS:CLEANUP-DIR+
+   JOT-ROOT s" stderr.in" JOT-IN-BUF FS:JOIN-PATH JOT-IN-U !
+   JOT-IN FS:CLEANUP+ ;
 
 : JOT-DQ ( -- )
    34 SB-APPEND-C ;
@@ -252,7 +252,7 @@ variable JOT-ERR-A
    JOT-DEEP-CASE
    JOT-FULL-CASE
    JOT-NOARG
-   CLEANUP-RUN
-   JOT-ROOT EXISTS? TFALSE
+   FS:CLEANUP-RUN
+   JOT-ROOT FS:EXISTS? TFALSE
    T-REPORT
    s" json-only-test: ok" type cr ;

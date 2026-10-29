@@ -18,8 +18,8 @@ package PROCESS-CWD-TEST
 6 constant PCT-OK-U
 PROC-PATHZ-CAP 1 + constant PCT-LONG-U
 
-create PCT-ROOT FS-PATH-CAP allot
-create PCT-REL FS-PATH-CAP allot
+create PCT-ROOT PATH-CAP allot
+create PCT-REL PATH-CAP allot
 create PCT-OUT PCT-CAP allot
 create PCT-ERR PCT-CAP allot
 create PCT-LONG PCT-LONG-U allot
@@ -58,13 +58,13 @@ variable PCT-I
    PCT-CAPTURE>N ;
 
 : PCT-SETUP-ROOT ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" hb-process-cwd" FS:MKTEMP-DIR {: root:ptr rootu :}
    root PCT-ROOT rootu BYTE-COPY
    rootu PCT-ROOT-U !
-   PCT-ROOT PCT-ROOT-U @ CLEANUP-TREE+
-   PCT-ROOT PCT-ROOT-U @ s" rel.txt" PCT-REL JOIN-PATH PCT-REL-U !
-   PCT-REL PCT-REL-U @ PCT-OK PCT-OK-U WRITE-ALL ;
+   PCT-ROOT PCT-ROOT-U @ FS:CLEANUP-TREE+
+   PCT-ROOT PCT-ROOT-U @ s" rel.txt" PCT-REL FS:JOIN-PATH PCT-REL-U !
+   PCT-REL PCT-REL-U @ PCT-OK PCT-OK-U FS:WRITE-ALL ;
 
 : PCT-RUN-CAT-CWD ( -- )
    PCT-SETUP-ROOT
@@ -74,11 +74,11 @@ variable PCT-I
    PCT-CAPTURE
    0 T= 0 T= PCT-OK-U T=
    PCT-OUT PCT-OK-U PCT-OK PCT-OK-U T$=
-   s" README.md" FILE? TTRUE
-   s" rel.txt" FILE? TFALSE
+   s" README.md" FS:FILE? TTRUE
+   s" rel.txt" FS:FILE? TFALSE
    PROC-ARGV-N @ 0 T=
    PROC-ENV-N @ 0 T=
-   CLEANUP-RUN ;
+   FS:CLEANUP-RUN ;
 
 : PCT-RUN-STDIN-CAPTURE ( -- )
    PCT-SETUP-ROOT
@@ -89,7 +89,7 @@ variable PCT-I
    PCT-OUT PCT-OK-U PCT-OK PCT-OK-U T$=
    PROC-ARGV-N @ 0 T=
    PROC-ENV-N @ 0 T=
-   CLEANUP-RUN ;
+   FS:CLEANUP-RUN ;
 
 : PCT-MISSING-CWD ( -- )
    PCT-RESET

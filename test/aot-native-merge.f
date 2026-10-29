@@ -27,10 +27,10 @@ using AOT-BUF
 using AOT-WINDOW
 
 create KEY 32 allot
-create DIR FS-PATH-CAP allot variable DIR-U
-create HOST FS-PATH-CAP allot variable HOST-U
-create PART FS-PATH-CAP allot variable PART-U
-create DONE FS-PATH-CAP allot variable DONE-U
+create DIR PATH-CAP allot variable DIR-U
+create HOST PATH-CAP allot variable HOST-U
+create PART PATH-CAP allot variable PART-U
+create DONE PATH-CAP allot variable DONE-U
 create FIRST 32 allot
 
 variable H-RECS variable H-SHRECS variable H-SHCODE
@@ -95,14 +95,14 @@ private
 
 : FILES! ( -- )
    s" habu-aot-native-merge" FS:MKTEMP-DIR {: p:ptr u:n :}
-   p u CLEANUP-TREE+
+   p u FS:CLEANUP-TREE+
    p DIR u BYTE-COPY u DIR-U !
-   DIR DIR-U @ s" host.aot" HOST JOIN-PATH HOST-U !
-   DIR DIR-U @ s" partial.aot" PART JOIN-PATH PART-U !
-   DIR DIR-U @ s" merged.aot" DONE JOIN-PATH DONE-U ! ;
+   DIR DIR-U @ s" host.aot" HOST FS:JOIN-PATH HOST-U !
+   DIR DIR-U @ s" partial.aot" PART FS:JOIN-PATH PART-U !
+   DIR DIR-U @ s" merged.aot" DONE FS:JOIN-PATH DONE-U ! ;
 
 public
-: PREPARE ( -- ) T-RESET CLEANUP-RESET FILES! ;
+: PREPARE ( -- ) T-RESET FS:CLEANUP-RESET FILES! ;
 
 : HOST-CAPTURE ( -- )
    CAPTURE
@@ -163,7 +163,7 @@ public
    KEY DONE DONE-U @ AOT-FILE:READ
    KEY DONE DONE-U @ AOT-FILE:WRITE
    AOT-FILE:SHA$ FIRST 32 T$=
-   CLEANUP-RUN T-REPORT ;
+   FS:CLEANUP-RUN T-REPORT ;
 ;using
 ;using
 ;package

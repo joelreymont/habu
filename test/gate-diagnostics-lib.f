@@ -15,9 +15,9 @@ using PS
 
 64 constant USAGE-RC
 
-create PATH-BUF FS-PATH-CAP allot
-create PATH2-BUF FS-PATH-CAP allot
-create LABEL-BUF FS-PATH-CAP allot
+create PATH-BUF PATH-CAP allot
+create PATH2-BUF PATH-CAP allot
+create LABEL-BUF PATH-CAP allot
 variable PATH-U
 variable PATH2-U
 variable LABEL-U
@@ -144,15 +144,15 @@ TYPED-VARIABLE SPLICE-LEN len
 
 : WRITE-ERR ( ptr u8 n -- )
    PATH!
-   PATH$ GT-ERR$ WRITE-ALL ;
+   PATH$ GT-ERR$ FS:WRITE-ALL ;
 
 : WRITE-OUT ( ptr u8 n -- )
    PATH!
-   PATH$ GT-OUT$ WRITE-ALL ;
+   PATH$ GT-OUT$ FS:WRITE-ALL ;
 
 : WRITE-SRC ( ptr u8 n -- )
    PATH!
-   PATH$ GE-SRC-BUF GE-SRC-U @ WRITE-ALL ;
+   PATH$ GE-SRC-BUF GE-SRC-U @ FS:WRITE-ALL ;
 
 : GJA1-RUN ( ptr u8 n ptr u8 n -- ) {: mode:ptr modeu:n file:ptr fileu:n :}
    file fileu PATH!
@@ -256,14 +256,14 @@ TYPED-VARIABLE SPLICE-LEN len
 
 : WRITE-REC ( ptr u8 n -- )
    PATH!
-   PATH$ REC$ WRITE-ALL ;
+   PATH$ REC$ FS:WRITE-ALL ;
 
 \ tools/gate-json-assert.f diag-contract refuses the record and says why. It
 \ runs in its own process, since a refusal ends the process.
 : REFUSED ( ptr u8 n ptr u8 n ptr u8 n -- ) {: file:ptr fileu:n why:ptr whyu:n label:ptr labelu:n :}
    label labelu GT-PROGRESS-RUN
    file fileu PATH!
-   PATH$ REC$ WRITE-ALL
+   PATH$ REC$ FS:WRITE-ALL
    GE-HB-RESET
    s" --load" GE-ARG+
    s" tools/gate-json-assert.f" GE-ARG+
@@ -1367,7 +1367,7 @@ TYPED-VARIABLE SPLICE-LEN len
    PS-JSON-DOC-END
    PS-ERR$ nip 0 <> if s" public-signatures stderr" GE-FAIL then
    s" public-signatures.json" PATH!
-   PATH$ PS-OUT$ WRITE-ALL
+   PATH$ PS-OUT$ FS:WRITE-ALL
    PS-BUFFERS-OFF
    s" public-signatures" s" public-signatures.json" s" public signatures output" GJA1 ;
 

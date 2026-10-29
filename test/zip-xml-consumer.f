@@ -11,9 +11,9 @@ private
 
 136 constant ZIP-SIZE
 38 constant XML-OFFSET
-create ROOT FS-PATH-CAP allot
+create ROOT PATH-CAP allot
 variable ROOT-LEN
-create PATH FS-PATH-CAP allot
+create PATH PATH-CAP allot
 create IMAGE ZIP-SIZE allot
 create CONTEXT 0 ,
 create CHUNK 7 allot
@@ -27,7 +27,7 @@ CAST: KIND>N ( XML:kind -- n )
 
 : ROOT$ ( -- ptr u8 n ) ROOT ROOT-LEN @ ;
 : FILE$ ( ptr u8 n -- ptr u8 n )
-   ROOT$ 2swap PATH JOIN-PATH PATH swap ;
+   ROOT$ 2swap PATH FS:JOIN-PATH PATH swap ;
 
 : FILL ( ptr n SPAN:span<u8> -- n )
    {: ctx:ptr dst :}
@@ -89,10 +89,10 @@ CAST: KIND>N ( XML:kind -- n )
 : SETUP ( -- )
    s" habu-zip-xml" FS:MKTEMP-DIR {: root:ptr len:n :}
    root ROOT len BYTE-COPY len ROOT-LEN !
-   s" sample.zip" FILE$ ZIP$ WRITE-ALL
+   s" sample.zip" FILE$ ZIP$ FS:WRITE-ALL
    ZIP$ IMAGE swap BYTE-COPY
    $48 IMAGE XML-OFFSET 3 + + c!
-   s" corrupt.zip" FILE$ IMAGE ZIP-SIZE WRITE-ALL ;
+   s" corrupt.zip" FILE$ IMAGE ZIP-SIZE FS:WRITE-ALL ;
 
 public
 : RUN ( -- )

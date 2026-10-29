@@ -20,9 +20,9 @@ package NATIVE-MAP-SEED-MERGE
 using AOT-BUF
 private
 
-create SOURCE FS-PATH-CAP allot
+create SOURCE PATH-CAP allot
 variable SOURCE-U
-create OUTPUT FS-PATH-CAP allot
+create OUTPUT PATH-CAP allot
 variable OUTPUT-U
 create KEY 32 allot
 create HASH SHA256-FILE-CTX-BYTES allot
@@ -47,13 +47,13 @@ create HASH SHA256-FILE-CTX-BYTES allot
    loop drop ;
 
 : GENERATE ( -- )
-   2 SCRIPT-ARGV$ s" seed-prefix.f" SOURCE JOIN-PATH SOURCE-U !
-   SOURCE$ s" " WRITE-ALL
+   2 SCRIPT-ARGV$ s" seed-prefix.f" SOURCE FS:JOIN-PATH SOURCE-U !
+   SOURCE$ s" " FS:WRITE-ALL
    3 ARG-N 0 ?do
       SB-RESET s" 0 constant SG" SB-APPEND
       i NAME+
       S\" \n" SB-APPEND
-      SOURCE$ SB$ APPEND-FILE
+      SOURCE$ SB$ FS:APPEND-FILE
    loop ;
 
 : CAPTURE ( -- )
@@ -68,11 +68,11 @@ create HASH SHA256-FILE-CTX-BYTES allot
       s" seed merge: cannot hash producer" 76 die then
    KEY 0 SCRIPT-ARGV$ AOT-FILE:MERGE
    AOT-REC-N @ 4 ARG-N <> if s" seed merge: merged record count" 76 die then
-   2 SCRIPT-ARGV$ s" hb-seed-merged" OUTPUT JOIN-PATH OUTPUT-U !
+   2 SCRIPT-ARGV$ s" hb-seed-merged" OUTPUT FS:JOIN-PATH OUTPUT-U !
    AOT-FILE:OWN
    dup NATIVE-LAYOUT:CURRENT OUTPUT$ NATIVE-EMIT:WRITE-C2
    AOT-OWNED:CLOSE
-   OUTPUT$ CHMOD-X
+   OUTPUT$ FS:CHMOD-X
    OUTPUT$ CODESIGN:ENSURE ;
 
 public

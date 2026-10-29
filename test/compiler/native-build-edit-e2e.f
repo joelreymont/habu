@@ -39,26 +39,26 @@ package NATIVE-BUILD-EDIT-TEST
 
 $20000 constant CAP
 1800000 constant BUILD-MS
-create ROOT FS-PATH-CAP allot       variable ROOT-U
-create PATH FS-PATH-CAP allot       variable PATH-U
-create HOST FS-PATH-CAP allot       variable HOST-U
-create OUTPUT FS-PATH-CAP allot     variable OUTPUT-U
-create CACHE FS-PATH-CAP allot      variable CACHE-U
-create TMP FS-PATH-CAP allot        variable TMP-U
-create CMP-A FS-PATH-CAP allot      variable CMP-A-U
-create CMP-B FS-PATH-CAP allot      variable CMP-B-U
-create BASE-ROOT FS-PATH-CAP allot  variable BASE-ROOT-U
-create DONOR-ROOT FS-PATH-CAP allot variable DONOR-ROOT-U
-create DONOR-HOST FS-PATH-CAP allot variable DONOR-HOST-U
+create ROOT PATH-CAP allot       variable ROOT-U
+create PATH PATH-CAP allot       variable PATH-U
+create HOST PATH-CAP allot       variable HOST-U
+create OUTPUT PATH-CAP allot     variable OUTPUT-U
+create CACHE PATH-CAP allot      variable CACHE-U
+create TMP PATH-CAP allot        variable TMP-U
+create CMP-A PATH-CAP allot      variable CMP-A-U
+create CMP-B PATH-CAP allot      variable CMP-B-U
+create BASE-ROOT PATH-CAP allot  variable BASE-ROOT-U
+create DONOR-ROOT PATH-CAP allot variable DONOR-ROOT-U
+create DONOR-HOST PATH-CAP allot variable DONOR-HOST-U
 DYNAMIC-BUFFER EDIT-SOURCE u8
 DYNAMIC-BUFFER IMAGE-SOURCE u8
 variable IMAGE-U
 create OUT CAP allot               variable OUT-U
 create ERR CAP allot               variable ERR-U
-create OVERLAY FS-PATH-CAP allot    variable OVERLAY-U
-create RACE-A FS-PATH-CAP allot     variable RACE-A-U
-create RACE-B FS-PATH-CAP allot     variable RACE-B-U
-create RACE-CORE FS-PATH-CAP allot  variable RACE-CORE-U
+create OVERLAY PATH-CAP allot    variable OVERLAY-U
+create RACE-A PATH-CAP allot     variable RACE-A-U
+create RACE-B PATH-CAP allot     variable RACE-B-U
+create RACE-CORE PATH-CAP allot  variable RACE-CORE-U
 TYPED-VARIABLE ENGINE-JSON-STATE JR:cursor
 create BASE-ROLES 192 allot
 create WARM-ROLES 192 allot
@@ -100,7 +100,7 @@ variable ENGINE-WHITEBOX
 
 : AT ( ptr u8 n -- ptr u8 n )
    {: rel:ptr relu:n :}
-   ROOT$ rel relu PATH JOIN-PATH PATH-U !
+   ROOT$ rel relu PATH FS:JOIN-PATH PATH-U !
    PATH PATH-U @ ;
 
 : IMAGE-SYMBOL-PATH ( -- )
@@ -110,22 +110,22 @@ variable ENGINE-WHITEBOX
 
 : PATH! ( ptr u8 n ptr u8 ptr n -- )
    {: rel:ptr relu:n dst:ptr size:ptr :}
-   ROOT$ rel relu dst JOIN-PATH size ! ;
+   ROOT$ rel relu dst FS:JOIN-PATH size ! ;
 
 : PREPARE ( -- )
    0 OVERLAY-U !
    s" native-build-edit-e2e" FS:MKTEMP-DIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY u ROOT-U !
    ROOT$ TREE-COPY:BUILD-SOURCES
-   s" bin" AT MAKE-DIR
+   s" bin" AT FS:MAKE-DIR
    s" bin/hb" HOST HOST-U PATH!
-   ENGINE-CANDIDATE:PATH$ HOST$ COPY-FILE-STREAM
-   HOST$ CHMOD-X
-   s" cached" AT MAKE-DIR
-   s" cold" AT MAKE-DIR
-   s" rejected" AT MAKE-DIR
-   s" logs" AT MAKE-DIR
-   s" scratch" AT MAKE-DIR ;
+   ENGINE-CANDIDATE:PATH$ HOST$ FS:COPY-FILE-STREAM
+   HOST$ FS:CHMOD-X
+   s" cached" AT FS:MAKE-DIR
+   s" cold" AT FS:MAKE-DIR
+   s" rejected" AT FS:MAKE-DIR
+   s" logs" AT FS:MAKE-DIR
+   s" scratch" AT FS:MAKE-DIR ;
 
 \ The extra --load installs a different live compiler entry in the donor.
 \ It emits an instruction in the next code slot after each compiled word,
@@ -133,7 +133,7 @@ variable ENGINE-WHITEBOX
 : LIVE-EMITTER ( -- )
    s" src/live-emitter-override.f" AT
    S\" 1 set-tier\nrequire src/compiler/native/compiler.f\npackage BUILD-EDIT-OVERRIDE private\nTRUSTED: EMIT ( ptr u8 n -- )\n   NCOMP:COMPILE\n   HB-TARGET-LINUX-X86-64? if\n      $90909090 cp@ patch32  cp@ 16 + cp!\n   else\n      $D503201F cp@ patch32  cp@ 4 + cp!\n   then ;\n' EMIT NCOMP:DISPATCH!\n;package\n"
-   WRITE-ALL ;
+   FS:WRITE-ALL ;
 
 \ Each edit rewrites only its own file in the private source tree. Distinct
 \ packages leave the other two FILEs independent, while the REPL can observe
@@ -149,23 +149,23 @@ variable ENGINE-WHITEBOX
 : DIVISION-FILE ( n -- )
    {: denominator:n :}
    s" src/core/division-probe.f" AT
-   S\" package BUILD-EDIT-DIV\npublic\n: DENOMINATOR ( -- n ) " WRITE-ALL
+   S\" package BUILD-EDIT-DIV\npublic\n: DENOMINATOR ( -- n ) " FS:WRITE-ALL
    SB-RESET denominator FMT:SB-INT
-   s" src/core/division-probe.f" AT SB$ APPEND-FILE
+   s" src/core/division-probe.f" AT SB$ FS:APPEND-FILE
    s" src/core/division-probe.f" AT
-   S\"  ;\n84 DENOMINATOR / constant DIV-VALUE\n;package\n" APPEND-FILE ;
+   S\"  ;\n84 DENOMINATOR / constant DIV-VALUE\n;package\n" FS:APPEND-FILE ;
 
 : EARLY ( bool -- )
    {: changed:bool :}
    s" src/compiler/ir/symbol.f" ROOT$ TREE-COPY:FILE
-   s" src/compiler/ir/symbol.f" AT FILE-SIZE {: prior:n :}
+   s" src/compiler/ir/symbol.f" AT FS:FILE-SIZE {: prior:n :}
    S\" \npackage BUILD-EDIT-TWIN-A public\n: TWIN ( -- n ) 7 ;\n;package\npackage BUILD-EDIT-EARLY public\n: TWIN ( -- n ) 9 ;\n-1777 abs constant ABS-VALUE\n: ABS-READ ( -- n ) ABS-VALUE ;\n: DIRECT ( -- ptr u8 n bool ) kernel-producer$ ;\n: QUOTED ( -- ptr u8 n bool ) [: kernel-producer$ ;] execute ;\n"
       {: body:ptr bodyu:n :}
    body bodyu 0 TWIN-AT {: first:n :}
    body bodyu first 4 + TWIN-AT {: second:n :}
    prior first + FIRST-AT !
    prior second + SECOND-AT !
-   s" src/compiler/ir/symbol.f" AT body bodyu APPEND-FILE
+   s" src/compiler/ir/symbol.f" AT body bodyu FS:APPEND-FILE
    changed if
       28 DIV-WANT !
       3 DIVISION-FILE
@@ -178,31 +178,31 @@ variable ENGINE-WHITEBOX
       S\" : VALUE ( -- n ) 111 ;\n;package\nrequire src/core/division-probe.f\n"
    else
       S\" : VALUE ( -- n ) 101 ;\n;package\nrequire src/core/division-probe.f\n"
-   then APPEND-FILE ;
+   then FS:APPEND-FILE ;
 
 : PREFIX-FILE ( n -- )
    {: value:n :}
    s" src/core/util.f" ROOT$ TREE-COPY:FILE
    s" src/core/util.f" AT
-   S\" \npackage BUILD-EDIT-PREFIX public\n: VALUE ( -- n ) " APPEND-FILE
+   S\" \npackage BUILD-EDIT-PREFIX public\n: VALUE ( -- n ) " FS:APPEND-FILE
    s" src/core/util.f" AT
-   SB-RESET value FMT:SB-INT SB$ APPEND-FILE
+   SB-RESET value FMT:SB-INT SB$ FS:APPEND-FILE
    s" src/core/util.f" AT
-   S\"  ;\n;package\n" APPEND-FILE
+   S\"  ;\n;package\n" FS:APPEND-FILE
    s" src/core/engine-error-effects.f" ROOT$ TREE-COPY:FILE
    s" src/core/engine-error-effects.f" AT
-   S\" PPRIM: BUILD-EDIT-PREFIX VALUE PE-N PE-OUT PPRIM;\n" APPEND-FILE ;
+   S\" PPRIM: BUILD-EDIT-PREFIX VALUE PE-N PE-OUT PPRIM;\n" FS:APPEND-FILE ;
 
 : PREFIX-REJECT ( -- )
    s" src/core/util.f" AT
    S\" \npackage BUILD-EDIT-PREFIX-BAD public\n: BAD ( -- ptr u8 ) 1 ;\n;package\n"
-   APPEND-FILE ;
+   FS:APPEND-FILE ;
 
 : ZERO-DENOMINATOR ( -- )
    s" src/core/division-probe.f" AT {: path:ptr pathu:n :}
-   path pathu FILE-SIZE {: size:n :}
+   path pathu FS:FILE-SIZE {: size:n :}
    size EDIT-SOURCE-RESERVE
-   path pathu 0 EDIT-SOURCE size READ-ALL size <> if
+   path pathu 0 EDIT-SOURCE size FS:READ-ALL size <> if
       s" native edit: early source read short" 76 die
    then
    0 EDIT-SOURCE size s" : DENOMINATOR ( -- n ) 3 ;" FIND-SUB MATCH option
@@ -210,13 +210,13 @@ variable ENGINE-WHITEBOX
       some OF IDX>N ENDOF
    ;MATCH {: off:n :}
    s" : DENOMINATOR ( -- n ) 0 ;" off EDIT-SOURCE swap BYTE-COPY
-   path pathu 0 EDIT-SOURCE size WRITE-ALL
+   path pathu 0 EDIT-SOURCE size FS:WRITE-ALL
    EDIT-SOURCE-RELEASE ;
 
 : REDEFINE-DIVISION ( -- )
    s" src/core/division-probe.f" AT
    S\" \npackage BUILD-EDIT-DIV-MEM\nprivate\nvariable HIT\n: / ( n n -- n ) 2drop 1 HIT ! 1 ;\npublic\n84 2 / constant VALUE\n;package\n"
-   APPEND-FILE ;
+   FS:APPEND-FILE ;
 
 : MIDDLE ( bool -- )
    {: changed:bool :}
@@ -226,7 +226,7 @@ variable ENGINE-WHITEBOX
       S\" \npackage BUILD-EDIT-MIDDLE public\n: VALUE ( -- n ) 211 ;\n;package\n"
    else
       S\" \npackage BUILD-EDIT-MIDDLE public\n: VALUE ( -- n ) 201 ;\n;package\n"
-   then APPEND-FILE ;
+   then FS:APPEND-FILE ;
 
 : LATE ( bool -- )
    {: changed:bool :}
@@ -236,14 +236,14 @@ variable ENGINE-WHITEBOX
       S\" \npackage BUILD-EDIT-LATE public\n: VALUE ( -- n ) 311 ;\n;package\n"
    else
       S\" \npackage BUILD-EDIT-LATE public\n: VALUE ( -- n ) 301 ;\n;package\n"
-   then APPEND-FILE
+   then FS:APPEND-FILE
    s" src/habu/debug.f" AT
-   S\" package BUILD-EDIT-TYPED\npublic\nNEWTYPE token\nSTRUCTURE pair FIELD left n FIELD right n ;STRUCTURE\nSUMTYPE answer VARIANT value n ;VARIANT ;SUMTYPE\nTYPED-VARIABLE SAVED answer\nPERSISTED-PTR-VARIABLE LINK\ncreate NUMBER 42 ,\n: INIT ( -- ) 41 construct answer value SAVED ! NUMBER LINK ! ;\n: RESULT ( -- n ) SAVED @ MATCH answer value OF ENDOF ;MATCH ;\n: PAIR-SUM ( -- n ) 20 22 BUILD--EDIT--TYPED-PAIR:MAKE BUILD--EDIT--TYPED-PAIR:UNMAKE + ;\n: STORED ( -- n ) LINK @ @ ;\nINIT\n;package\n" APPEND-FILE ;
+   S\" package BUILD-EDIT-TYPED\npublic\nNEWTYPE token\nSTRUCTURE pair FIELD left n FIELD right n ;STRUCTURE\nSUMTYPE answer VARIANT value n ;VARIANT ;SUMTYPE\nTYPED-VARIABLE SAVED answer\nPERSISTED-PTR-VARIABLE LINK\ncreate NUMBER 42 ,\n: INIT ( -- ) 41 construct answer value SAVED ! NUMBER LINK ! ;\n: RESULT ( -- n ) SAVED @ MATCH answer value OF ENDOF ;MATCH ;\n: PAIR-SUM ( -- n ) 20 22 BUILD--EDIT--TYPED-PAIR:MAKE BUILD--EDIT--TYPED-PAIR:UNMAKE + ;\n: STORED ( -- n ) LINK @ @ ;\nINIT\n;package\n" FS:APPEND-FILE ;
 
 : REJECT-LATE ( -- )
    s" src/habu/debug.f" AT
    S\" \npackage BUILD-EDIT-REJECT public\n: BAD ( -- ptr u8 ) 1 ;\n;package\n"
-   APPEND-FILE ;
+   FS:APPEND-FILE ;
 
 \ The new FILE is loaded after checker handover and before the first runtime
 \ requirement. Refining 1+ at that exact boundary must invalidate its saved
@@ -251,24 +251,24 @@ variable ENGINE-WHITEBOX
 : MANIFEST-PREFIX ( ptr u8 n ptr u8 n -- )
    {: insert:ptr insertu:n needle:ptr needleu:n :}
    s" src/habu/native-runtime.f" AT {: path:ptr pathu:n :}
-   path pathu FILE-SIZE {: size:n :}
+   path pathu FS:FILE-SIZE {: size:n :}
    size EDIT-SOURCE-RESERVE
-   path pathu 0 EDIT-SOURCE size READ-ALL size <> if
+   path pathu 0 EDIT-SOURCE size FS:READ-ALL size <> if
       s" native edit: manifest read short" 76 die
    then
    0 EDIT-SOURCE size needle needleu FIND-SUB MATCH option
       none OF s" native edit: manifest anchor missing" 76 die ENDOF
       some OF IDX>N ENDOF
    ;MATCH {: off:n :}
-   path pathu 0 EDIT-SOURCE off WRITE-ALL
-   path pathu insert insertu APPEND-FILE
-   path pathu off EDIT-SOURCE size off - APPEND-FILE
+   path pathu 0 EDIT-SOURCE off FS:WRITE-ALL
+   path pathu insert insertu FS:APPEND-FILE
+   path pathu off EDIT-SOURCE size off - FS:APPEND-FILE
    EDIT-SOURCE-RELEASE ;
 
 : HANDOVER-FILE ( -- )
    s" src/core/handover-step.f" AT
    S\" s\" handover step source\" type cr\npackage BUILD-HANDOVER\npublic\n: STEP ( ptr u8 -- ptr u8 ) 1+ ;\n;package\n"
-   WRITE-ALL
+   FS:WRITE-ALL
    S\" s\" src/core/handover-step.f\" required\n"
    S\" s\" src/core/enums.f\" required"
    MANIFEST-PREFIX ;
@@ -288,7 +288,7 @@ variable ENGINE-WHITEBOX
       S\" \npackage BUILD-PREFIX-FACT\npublic\n43 constant VALUE\n: TWICE ( n -- n ) 2 * ;\n;package\n"
    else
       S\" \npackage BUILD-PREFIX-FACT\npublic\n41 constant VALUE\n: TWICE ( n -- n ) 2 * ;\n;package\n"
-   then APPEND-FILE ;
+   then FS:APPEND-FILE ;
 
 \ The replacement checker has published its target owner here, while the
 \ retained source owner still certifies definitions until HANDOVER.
@@ -300,12 +300,12 @@ variable ENGINE-WHITEBOX
       S\" \npackage BUILD-PREFIX-LATE\npublic\n10 constant VALUE\n: TWICE ( n -- n ) 2 * ;\n;package\n"
    else
       S\" \npackage BUILD-PREFIX-LATE\npublic\n9 constant VALUE\n: TWICE ( n -- n ) 2 * ;\n;package\n"
-   then APPEND-FILE ;
+   then FS:APPEND-FILE ;
 
 : PREFIX-CONSUMER ( -- )
    s" src/core/prefix-fact-consumer.f" AT
    S\" package BUILD-PREFIX-ALIAS\npublic\nEXPORT BUILD-PREFIX-FACT:TWICE\n;package\npackage BUILD-PREFIX-CONSUMER\npublic\n: RESULT ( -- n ) BUILD-PREFIX-FACT:VALUE BUILD-PREFIX-ALIAS:TWICE ;\n: LATE ( -- n ) BUILD-PREFIX-LATE:VALUE BUILD-PREFIX-LATE:TWICE ;\n;package\n"
-   WRITE-ALL
+   FS:WRITE-ALL
    S\" s\" src/core/prefix-fact-consumer.f\" required\n"
    S\" s\" src/core/enums.f\" required"
    MANIFEST-PREFIX ;
@@ -327,13 +327,13 @@ variable ENGINE-WHITEBOX
 
 : KERNEL-BODY-EDIT ( -- )
    s" src/habu/habu2.f" AT {: path:ptr pathu:n :}
-   path pathu FILE-SIZE {: size:n :}
+   path pathu FS:FILE-SIZE {: size:n :}
    size MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop {: data:ptr :}
-   path pathu data size READ-ALL size <> if
+   path pathu data size FS:READ-ALL size <> if
       s" native edit: kernel source read short" 76 die
    then
    data size PATCH-KERNEL-BODY
-   path pathu data size WRITE-ALL
+   path pathu data size FS:WRITE-ALL
    data size MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
 
 : ARG ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
@@ -346,8 +346,8 @@ variable ENGINE-WHITEBOX
 
 : LOGS ( ptr u8 n -- )
    {: label:ptr labelu:n :}
-   label labelu s" .out" LOG-PATH OUT$ WRITE-ALL
-   label labelu s" .err" LOG-PATH ERR$ WRITE-ALL ;
+   label labelu s" .out" LOG-PATH OUT$ FS:WRITE-ALL
+   label labelu s" .err" LOG-PATH ERR$ FS:WRITE-ALL ;
 
 : ELAPSED ( ptr u8 n -- )
    {: label:ptr labelu:n :}
@@ -356,14 +356,14 @@ variable ENGINE-WHITEBOX
    TIME:MONO-NS START-NS @ - 1000000 / FMT:SB-INT
    S\" \n" SB-APPEND
    SB$ 2dup type
-   s" logs/times.txt" AT 2swap APPEND-FILE ;
+   s" logs/times.txt" AT 2swap FS:APPEND-FILE ;
 
 : BUILD-SETUP ( ptr u8 n ptr u8 n -- )
    {: output:ptr outputu:n cache:ptr cacheu:n :}
    output outputu OUTPUT OUTPUT-U PATH!
    cache cacheu CACHE CACHE-U PATH!
    s" scratch" TMP TMP-U PATH!
-   CACHE$ MAKE-DIRS
+   CACHE$ FS:MAKE-DIRS
    PROC-CWD:ARGV-ENV-CWD-RESET
    s" TMPDIR" >LEN TMP$ >LEN PROC-ENV+
    s" HABU_OUT" >LEN CACHE$ >LEN PROC-ENV+
@@ -417,7 +417,7 @@ variable ENGINE-WHITEBOX
 : SUCCESS ( n -- )
    dup 0<> if OUT$ type ERR$ type then
    0 T=
-   OUTPUT$ FILE? TTRUE
+   OUTPUT$ FS:FILE? TTRUE
    OUT$ s" native-build OK:" CONTAINS? TTRUE
    OUT$ s" (product image)" CONTAINS? TTRUE ;
 
@@ -460,9 +460,9 @@ variable ENGINE-WHITEBOX
 \ identical when the second host reuses the first host's FILE cache.
 : PATCH-DONOR-ABS ( -- )
    s" src/habu/habu1.f" AT {: path:ptr pathu:n :}
-   path pathu FILE-SIZE {: size:n :}
+   path pathu FS:FILE-SIZE {: size:n :}
    size EDIT-SOURCE-RESERVE
-   path pathu 0 EDIT-SOURCE size READ-ALL size <> if
+   path pathu 0 EDIT-SOURCE size FS:READ-ALL size <> if
       s" native edit: donor source read changed" 76 die
    then
    s"    A G-POP  A 0 CMPI,  C-GE PRIM-DONE LABEL@ BCOND,  A SP A SUB,  PRIM-DONE LABEL@ LBL,  A G-PUSH ;"
@@ -471,19 +471,19 @@ variable ENGINE-WHITEBOX
       none OF s" native edit: donor abs body missing" 76 die ENDOF
       some OF IDX>N ENDOF
    ;MATCH {: off:n :}
-   path pathu 0 EDIT-SOURCE off WRITE-ALL
-   path pathu s"    A G-POP  A 0 CMPI,  C-GE PRIM-DONE LABEL@ BCOND,  A SP A SUB,  PRIM-DONE LABEL@ LBL," APPEND-FILE
-   path pathu S\" \n   LBL {: ordinary:label :}\n" APPEND-FILE
-   path pathu S\"    A 1777 CMPI,  C-NE ordinary LABEL@ BCOND,\n" APPEND-FILE
-   path pathu s"    A A 1 ADDI,  ordinary LBL,  A G-PUSH ;" APPEND-FILE
-   path pathu off oldu + EDIT-SOURCE size off oldu + - APPEND-FILE
+   path pathu 0 EDIT-SOURCE off FS:WRITE-ALL
+   path pathu s"    A G-POP  A 0 CMPI,  C-GE PRIM-DONE LABEL@ BCOND,  A SP A SUB,  PRIM-DONE LABEL@ LBL," FS:APPEND-FILE
+   path pathu S\" \n   LBL {: ordinary:label :}\n" FS:APPEND-FILE
+   path pathu S\"    A 1777 CMPI,  C-NE ordinary LABEL@ BCOND,\n" FS:APPEND-FILE
+   path pathu s"    A A 1 ADDI,  ordinary LBL,  A G-PUSH ;" FS:APPEND-FILE
+   path pathu off oldu + EDIT-SOURCE size off oldu + - FS:APPEND-FILE
    EDIT-SOURCE-RELEASE ;
 
 : PATCH-DONOR-DIV ( -- )
    s" src/habu/habu1.f" AT {: path:ptr pathu:n :}
-   path pathu FILE-SIZE {: size:n :}
+   path pathu FS:FILE-SIZE {: size:n :}
    size EDIT-SOURCE-RESERVE
-   path pathu 0 EDIT-SOURCE size READ-ALL size <> if
+   path pathu 0 EDIT-SOURCE size FS:READ-ALL size <> if
       s" native edit: donor source read short" 76 die
    then
    S\" : BDIV ( -- )\n   B G-POP A G-POP  BDIV0?  A A B SDIV, A G-PUSH ;"
@@ -492,9 +492,9 @@ variable ENGINE-WHITEBOX
       none OF s" native edit: donor division body missing" 76 die ENDOF
       some OF IDX>N ENDOF
    ;MATCH {: off:n :}
-   path pathu 0 EDIT-SOURCE off WRITE-ALL
-   path pathu S\" : BDIV ( -- )\n   B G-POP A G-POP  BDIV0?\n   LBL {: ordinary:label :} LBL {: done:label :}\n   A 84 CMPI, C-NE ordinary BCOND,\n   B 3 CMPI, C-NE ordinary BCOND,\n   A A B SDIV, A A 1 ADDI, A G-PUSH  done B,\n   ordinary LBL, A A B SDIV, A G-PUSH  done LBL, ;" APPEND-FILE
-   path pathu off oldu + EDIT-SOURCE size off oldu + - APPEND-FILE
+   path pathu 0 EDIT-SOURCE off FS:WRITE-ALL
+   path pathu S\" : BDIV ( -- )\n   B G-POP A G-POP  BDIV0?\n   LBL {: ordinary:label :} LBL {: done:label :}\n   A 84 CMPI, C-NE ordinary BCOND,\n   B 3 CMPI, C-NE ordinary BCOND,\n   A A B SDIV, A A 1 ADDI, A G-PUSH  done B,\n   ordinary LBL, A A B SDIV, A G-PUSH  done LBL, ;" FS:APPEND-FILE
+   path pathu off oldu + EDIT-SOURCE size off oldu + - FS:APPEND-FILE
    EDIT-SOURCE-RELEASE ;
 
 \ These forms copy the same register value and preserve the surrounding state,
@@ -502,18 +502,18 @@ variable ENGINE-WHITEBOX
 : PATCH-EMITTER ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: name:ptr nameu:n old:ptr oldu:n new:ptr newu:n :}
    name nameu AT {: path:ptr pathu:n :}
-   path pathu FILE-SIZE {: size:n :}
+   path pathu FS:FILE-SIZE {: size:n :}
    size EDIT-SOURCE-RESERVE
-   path pathu 0 EDIT-SOURCE size READ-ALL size <> if
+   path pathu 0 EDIT-SOURCE size FS:READ-ALL size <> if
       s" native edit: emitter source read changed" 76 die
    then
    0 EDIT-SOURCE size old oldu FIND-SUB MATCH option
       none OF s" native edit: emitter body missing" 76 die ENDOF
       some OF IDX>N ENDOF
    ;MATCH {: off:n :}
-   path pathu 0 EDIT-SOURCE off WRITE-ALL
-   path pathu new newu APPEND-FILE
-   path pathu off oldu + EDIT-SOURCE size off oldu + - APPEND-FILE
+   path pathu 0 EDIT-SOURCE off FS:WRITE-ALL
+   path pathu new newu FS:APPEND-FILE
+   path pathu off oldu + EDIT-SOURCE size off oldu + - FS:APPEND-FILE
    EDIT-SOURCE-RELEASE ;
 
 : PATCH-DONOR-EMITTER ( -- )
@@ -531,15 +531,15 @@ variable ENGINE-WHITEBOX
 : DONOR-EMITTER ( -- )
    ROOT$ {: base:ptr baseu:n :}
    base BASE-ROOT baseu BYTE-COPY baseu BASE-ROOT-U !
-   ROOT$ s" emitter-source" DONOR-ROOT JOIN-PATH DONOR-ROOT-U !
+   ROOT$ s" emitter-source" DONOR-ROOT FS:JOIN-PATH DONOR-ROOT-U !
    DONOR-ROOT DONOR-ROOT-U @ TREE-COPY:BUILD-SOURCES
    DONOR-ROOT DONOR-ROOT-U @ ROOT!
-   s" bin" AT MAKE-DIR
-   s" donor" AT MAKE-DIR
-   s" logs" AT MAKE-DIR
-   s" scratch" AT MAKE-DIR
-   HOST$ s" bin/hb" AT COPY-FILE-STREAM
-   s" bin/hb" AT CHMOD-X
+   s" bin" AT FS:MAKE-DIR
+   s" donor" AT FS:MAKE-DIR
+   s" logs" AT FS:MAKE-DIR
+   s" scratch" AT FS:MAKE-DIR
+   HOST$ s" bin/hb" AT FS:COPY-FILE-STREAM
+   s" bin/hb" AT FS:CHMOD-X
    PATCH-DONOR-EMITTER
    s" emitter-donor" s" donor/hb" s" donor-cache" BUILD SUCCESS
    s" donor/hb" DONOR-HOST DONOR-HOST-U PATH!
@@ -549,18 +549,18 @@ variable ENGINE-WHITEBOX
 : DONOR-DEBUG ( -- )
    ROOT$ {: base:ptr baseu:n :}
    base BASE-ROOT baseu BYTE-COPY baseu BASE-ROOT-U !
-   ROOT$ s" debug-source" DONOR-ROOT JOIN-PATH DONOR-ROOT-U !
+   ROOT$ s" debug-source" DONOR-ROOT FS:JOIN-PATH DONOR-ROOT-U !
    DONOR-ROOT DONOR-ROOT-U @ TREE-COPY:BUILD-SOURCES
    DONOR-ROOT DONOR-ROOT-U @ ROOT!
-   s" bin" AT MAKE-DIR
-   s" donor" AT MAKE-DIR
-   s" logs" AT MAKE-DIR
-   s" scratch" AT MAKE-DIR
-   HOST$ s" bin/hb" AT COPY-FILE-STREAM
-   s" bin/hb" AT CHMOD-X
+   s" bin" AT FS:MAKE-DIR
+   s" donor" AT FS:MAKE-DIR
+   s" logs" AT FS:MAKE-DIR
+   s" scratch" AT FS:MAKE-DIR
+   HOST$ s" bin/hb" AT FS:COPY-FILE-STREAM
+   s" bin/hb" AT FS:CHMOD-X
    PATCH-DONOR-EMITTER
    s" src/habu/debug.f" AT
-      S\" \n\\ debug-only donor change\n" APPEND-FILE
+      S\" \n\\ debug-only donor change\n" FS:APPEND-FILE
    s" debug-donor" s" donor/hb" s" donor-cache" BUILD SUCCESS
    s" donor/hb" DONOR-HOST DONOR-HOST-U PATH!
    BASE-ROOT BASE-ROOT-U @ ROOT!
@@ -570,15 +570,15 @@ variable ENGINE-WHITEBOX
    {: edit :}
    ROOT$ {: base:ptr baseu:n :}
    base BASE-ROOT baseu BYTE-COPY baseu BASE-ROOT-U !
-   ROOT$ s" donor-source" DONOR-ROOT JOIN-PATH DONOR-ROOT-U !
+   ROOT$ s" donor-source" DONOR-ROOT FS:JOIN-PATH DONOR-ROOT-U !
    DONOR-ROOT DONOR-ROOT-U @ TREE-COPY:BUILD-SOURCES
    DONOR-ROOT DONOR-ROOT-U @ ROOT!
-   s" bin" AT MAKE-DIR
-   s" donor" AT MAKE-DIR
-   s" logs" AT MAKE-DIR
-   s" scratch" AT MAKE-DIR
-   HOST$ s" bin/hb" AT COPY-FILE-STREAM
-   s" bin/hb" AT CHMOD-X
+   s" bin" AT FS:MAKE-DIR
+   s" donor" AT FS:MAKE-DIR
+   s" logs" AT FS:MAKE-DIR
+   s" scratch" AT FS:MAKE-DIR
+   HOST$ s" bin/hb" AT FS:COPY-FILE-STREAM
+   s" bin/hb" AT FS:CHMOD-X
    edit execute
    s" donor-build" s" donor/hb" s" cache" BUILD SUCCESS
    s" donor/hb" DONOR-HOST DONOR-HOST-U PATH!
@@ -587,9 +587,9 @@ variable ENGINE-WHITEBOX
 
 : PATCH-WRITER ( -- )
    s" src/habu/habu2.f" AT {: path:ptr pathu:n :}
-   path pathu FILE-SIZE {: size:n :}
+   path pathu FS:FILE-SIZE {: size:n :}
    size EDIT-SOURCE-RESERVE
-   path pathu 0 EDIT-SOURCE size READ-ALL size <> if
+   path pathu 0 EDIT-SOURCE size FS:READ-ALL size <> if
       s" native edit: writer source read changed" 76 die
    then
    s" ['] BKERNELPRODUCER FPRIM" {: old:ptr oldu:n :}
@@ -597,9 +597,9 @@ variable ENGINE-WHITEBOX
       none OF s" native edit: kernel entry missing" 76 die ENDOF
       some OF IDX>N ENDOF
    ;MATCH {: off:n :}
-   path pathu 0 EDIT-SOURCE off WRITE-ALL
-   path pathu s" ['] BKERNELPRODUCER NOP, FPRIM" APPEND-FILE
-   path pathu off oldu + EDIT-SOURCE size off oldu + - APPEND-FILE
+   path pathu 0 EDIT-SOURCE off FS:WRITE-ALL
+   path pathu s" ['] BKERNELPRODUCER NOP, FPRIM" FS:APPEND-FILE
+   path pathu off oldu + EDIT-SOURCE size off oldu + - FS:APPEND-FILE
    EDIT-SOURCE-RELEASE ;
 
 : ROLE-FIND ( ptr u8 n -- ptr u8 )
@@ -716,13 +716,13 @@ variable ENGINE-WHITEBOX
    CMP-A CMP-A-U @ CMP-B CMP-B-U @ CHAIN-RUN:SAME-FILES? TTRUE ;
 
 : SAVE-BASE-PRODUCT ( -- )
-   s" baseline" AT MAKE-DIR
+   s" baseline" AT FS:MAKE-DIR
    s" cached/hb" CMP-A CMP-A-U PATH!
    s" baseline/hb" CMP-B CMP-B-U PATH!
-   CMP-A CMP-A-U @ CMP-B CMP-B-U @ COPY-FILE-STREAM
+   CMP-A CMP-A-U @ CMP-B CMP-B-U @ FS:COPY-FILE-STREAM
    s" cached/hb.map" CMP-A CMP-A-U PATH!
    s" baseline/hb.map" CMP-B CMP-B-U PATH!
-   CMP-A CMP-A-U @ CMP-B CMP-B-U @ COPY-FILE-STREAM ;
+   CMP-A CMP-A-U @ CMP-B CMP-B-U @ FS:COPY-FILE-STREAM ;
 
 : SAME-BASE-PRODUCT ( -- )
    s" cached/hb" CMP-A CMP-A-U PATH!
@@ -819,8 +819,8 @@ variable ENGINE-WHITEBOX
    s" rejected" s" rejected/hb" s" cache" BUILD 0<> TTRUE
    OUT$ s" expected: ptr u8 actual: n" CONTAINS?
    ERR$ s" expected: ptr u8 actual: n" CONTAINS? or TTRUE
-   s" rejected/hb" AT EXISTS? TFALSE
-   s" rejected/hb.map" AT EXISTS? TFALSE ;
+   s" rejected/hb" AT FS:EXISTS? TFALSE
+   s" rejected/hb.map" AT FS:EXISTS? TFALSE ;
 
 : FINISH ( -- )
    s" native build edit artifacts: " type ROOT$ type cr
@@ -829,15 +829,15 @@ variable ENGINE-WHITEBOX
 : ENGINE-SUCCESS ( n -- )
    dup 0<> if OUT$ type ERR$ type then
    0 T=
-   OUTPUT$ EXECUTABLE? TTRUE
-   s" cached/hb.map" AT FILE? TTRUE
+   OUTPUT$ FS:EXECUTABLE? TTRUE
+   s" cached/hb.map" AT FS:FILE? TTRUE
    OUT$ s" hb-build OK:" CONTAINS? TTRUE ;
 
 : ENGINE-PRODUCT-HAS ( ptr u8 n ptr u8 n -- )
    {: wanted:ptr wantedu:n absent:ptr absentu:n :}
-   OUTPUT$ FILE-SIZE {: size:n :}
+   OUTPUT$ FS:FILE-SIZE {: size:n :}
    size EDIT-SOURCE-RESERVE
-   OUTPUT$ 0 EDIT-SOURCE size READ-ALL size T=
+   OUTPUT$ 0 EDIT-SOURCE size FS:READ-ALL size T=
    0 EDIT-SOURCE size wanted wantedu CONTAINS? TTRUE
    0 EDIT-SOURCE size absent absentu CONTAINS? TFALSE
    EDIT-SOURCE-RELEASE ;
@@ -846,16 +846,16 @@ variable ENGINE-WHITEBOX
 \ source closure. The next engine build must take an edit to it.
 : ENGINE-RUNTIME-EDIT ( -- )
    s" src/habu/rt.f" AT {: path:ptr pathu:n :}
-   path pathu FILE-SIZE {: size:n :}
+   path pathu FS:FILE-SIZE {: size:n :}
    size EDIT-SOURCE-RESERVE
-   path pathu 0 EDIT-SOURCE size READ-ALL size T=
+   path pathu 0 EDIT-SOURCE size FS:READ-ALL size T=
    0 EDIT-SOURCE size s" hb: cannot map guarded VM stack" FIND-SUB
    MATCH option
       none OF s" native edit: runtime diagnostic missing" 76 die ENDOF
       some OF IDX>N ENDOF
    ;MATCH {: off:n :}
    s" hb: REVIEW map guarded VM stack" off EDIT-SOURCE swap BYTE-COPY
-   path pathu 0 EDIT-SOURCE size WRITE-ALL
+   path pathu 0 EDIT-SOURCE size FS:WRITE-ALL
    EDIT-SOURCE-RELEASE ;
 
 : RACE-A$ ( -- ptr u8 n ) RACE-A RACE-A-U @ ;
@@ -868,8 +868,8 @@ variable ENGINE-WHITEBOX
    s" tools/native-build-core.f" RACE-CORE RACE-CORE-U PATH!
    s" scratch/core-a.f" RACE-A RACE-A-U PATH!
    s" scratch/core-b.f" RACE-B RACE-B-U PATH!
-   RACE-CORE$ RACE-A$ COPY-FILE-STREAM
-   RACE-CORE$ RACE-B$ COPY-FILE-STREAM
+   RACE-CORE$ RACE-A$ FS:COPY-FILE-STREAM
+   RACE-CORE$ RACE-B$ FS:COPY-FILE-STREAM
    s" scratch/core-b.f"
       S\" : RUN ( -- )\n   BUILD-ARGS!"
       S\" : RUN ( -- )\n   s\q support-B\q type cr\n   BUILD-ARGS!"
@@ -881,37 +881,37 @@ variable ENGINE-WHITEBOX
    SB-RESET
    S\" : LOAD ( -- )\n   s\q " SB-APPEND RACE-B$ SB-APPEND
    S\" \q s\q " SB-APPEND RACE-CORE$ SB-APPEND
-   S\" \q COPY-FILE-STREAM\n   s\q tools/native-build-core.f\q required\n   s\q "
+   S\" \q FS:COPY-FILE-STREAM\n   s\q tools/native-build-core.f\q required\n   s\q "
       SB-APPEND RACE-A$ SB-APPEND
    S\" \q s\q " SB-APPEND RACE-CORE$ SB-APPEND
-   S\" \q COPY-FILE-STREAM ;" SB-APPEND
+   S\" \q FS:COPY-FILE-STREAM ;" SB-APPEND
    s" tools/native-build-support.f"
       S\" : LOAD ( -- )\n   s\q tools/native-build-core.f\q required ;"
       SB$ PATCH-EMITTER ;
 
 : ENGINE-SUPPORT-A ( -- )
-   RACE-A$ RACE-B$ COPY-FILE-STREAM ;
+   RACE-A$ RACE-B$ FS:COPY-FILE-STREAM ;
 
 : ENGINE-OVERLAY! ( ptr u8 n -- )
-   ROOT$ 2swap OVERLAY JOIN-PATH OVERLAY-U !
-   OVERLAY OVERLAY-U @ MAKE-DIRS ;
+   ROOT$ 2swap OVERLAY FS:JOIN-PATH OVERLAY-U !
+   OVERLAY OVERLAY-U @ FS:MAKE-DIRS ;
 
 : ENGINE-OVERLAY-REWIND ( ptr u8 n -- )
    {: root:ptr rootu:n :}
-   root rootu s" src/habu" TMP JOIN-PATH TMP-U !
-   TMP TMP-U @ MAKE-DIRS
-   root rootu s" src/habu/window-rewind.f" TMP JOIN-PATH TMP-U !
-   TMP TMP-U @ S\" s\" engine rewind overlay selected\" 73 die\n" WRITE-ALL ;
+   root rootu s" src/habu" TMP FS:JOIN-PATH TMP-U !
+   TMP TMP-U @ FS:MAKE-DIRS
+   root rootu s" src/habu/window-rewind.f" TMP FS:JOIN-PATH TMP-U !
+   TMP TMP-U @ S\" s\" engine rewind overlay selected\" 73 die\n" FS:WRITE-ALL ;
 
 : ENGINE-OVERLAY-REFUSED ( n -- )
    73 T=
    ERR$ s" engine rewind overlay selected" CONTAINS? TTRUE
-   OUTPUT$ EXISTS? TFALSE ;
+   OUTPUT$ FS:EXISTS? TFALSE ;
 
 : ENGINE-JSON-SUCCESS ( n -- )
    dup 0<> if OUT$ type ERR$ type then
    0 T=
-   OUTPUT$ EXECUTABLE? TTRUE
+   OUTPUT$ FS:EXECUTABLE? TTRUE
    ERR-U @ 0 T=
    ENGINE-JSON-STATE OUT$ JR:INIT
    JR:NEXT JR:T-OBJ T=
@@ -929,7 +929,7 @@ variable ENGINE-WHITEBOX
    s" --load" ARG s" tools/native-build.f" ARG
    s" --" ARG OUTPUT$ ARG
    s" compat-timeout" BUILD-RUN 124 T=
-   OUTPUT$ EXISTS? TFALSE ;
+   OUTPUT$ FS:EXISTS? TFALSE ;
 
 : ENGINE-ARTIFACT ( -- )
    T-RESET
@@ -1033,8 +1033,8 @@ variable ENGINE-WHITEBOX
    s" division-zero" s" rejected/hb" s" cache" BUILD 0<> TTRUE
    OUT$ s" uncaught throw code -6400" CONTAINS?
    ERR$ s" uncaught throw code -6400" CONTAINS? or TTRUE
-   s" rejected/hb" AT EXISTS? TFALSE
-   s" rejected/hb.map" AT EXISTS? TFALSE
+   s" rejected/hb" AT FS:EXISTS? TFALSE
+   s" rejected/hb.map" AT FS:EXISTS? TFALSE
    3 DIVISION-FILE
    s" division-restored" s" cached/hb" s" cache" BUILD SUCCESS
    101 201 301 RUN-IMAGE
@@ -1105,7 +1105,7 @@ variable ENGINE-WHITEBOX
    s" preloaded emitter changes live dispatch, not baked role" T-LABEL
    PREPARE LIVE-EMITTER
    s" src/live-emitter-probe.f" AT
-   S\" package BUILD-EDIT-PROBE private\nCAST: ENTRY>N ( [ ptr u8 n -- ] -- n )\nCAST: >CODE ( n -- ptr n )\n: B>N ( bool -- n ) if -1 else 0 then ;\n: LIVE-ROLE? ( -- bool ) SOURCE-PRODUCER:COMPILER SOURCE-PRODUCER:ROLE$ >r 2drop r> ;\n: LIVE-DISPATCH? ( -- bool ) data-base NCOMP-DISPATCH:XT-CELL + CELL-VIEW @ ['] NCOMP:COMPILE ENTRY>N <> ;\n: LIVE-SAMPLE ( -- n ) 3 ;\n: LIVE-MARKER? ( -- bool ) HB-TARGET-LINUX-X86-64? if cp@ 16 - >CODE @ $FFFFFFFF and $90909090 = else cp@ 4 - >CODE @ $FFFFFFFF and $D503201F = then ;\ns\" role-known=\" type LIVE-ROLE? B>N . cr\ns\" dispatch-changed=\" type LIVE-DISPATCH? B>N . cr\ns\" sample=\" type LIVE-SAMPLE . cr\ns\" marker=\" type LIVE-MARKER? B>N . cr\n;package\n" WRITE-ALL
+   S\" package BUILD-EDIT-PROBE private\nCAST: ENTRY>N ( [ ptr u8 n -- ] -- n )\nCAST: >CODE ( n -- ptr n )\n: B>N ( bool -- n ) if -1 else 0 then ;\n: LIVE-ROLE? ( -- bool ) SOURCE-PRODUCER:COMPILER SOURCE-PRODUCER:ROLE$ >r 2drop r> ;\n: LIVE-DISPATCH? ( -- bool ) data-base NCOMP-DISPATCH:XT-CELL + CELL-VIEW @ ['] NCOMP:COMPILE ENTRY>N <> ;\n: LIVE-SAMPLE ( -- n ) 3 ;\n: LIVE-MARKER? ( -- bool ) HB-TARGET-LINUX-X86-64? if cp@ 16 - >CODE @ $FFFFFFFF and $90909090 = else cp@ 4 - >CODE @ $FFFFFFFF and $D503201F = then ;\ns\" role-known=\" type LIVE-ROLE? B>N . cr\ns\" dispatch-changed=\" type LIVE-DISPATCH? B>N . cr\ns\" sample=\" type LIVE-SAMPLE . cr\ns\" marker=\" type LIVE-MARKER? B>N . cr\n;package\n" FS:WRITE-ALL
    PROC-CWD:ARGV-ENV-CWD-RESET
    PROC-ENV-INHERIT-MISSING
    s" --load" ARG
@@ -1131,10 +1131,10 @@ variable ENGINE-WHITEBOX
 \ emitted image. Unchanged definitions reuse their source compilation while
 \ the edited writer is compiled for the fresh target.
 : WRITER-RECOVERY ( -- )
-   s" tools/native-emit.f" AT S\" \nE-FS-PATH throw\n" APPEND-FILE
+   s" tools/native-emit.f" AT S\" \nE-FS-PATH throw\n" FS:APPEND-FILE
    s" writer-recovery.f" AT
    S\" 1 set-tier\nrequire tools/native-build-core.f\npackage WRITER-RECOVERY private\n: DRIVE ( -- n ) 0 SCRIPT-ARGV$ NATIVE-BUILD:RUN-PATH-RC ;\npublic\n: RUN ( -- )\n   tier@ {: prior:n :}\n   DRIVE E-FS-PATH <> if 76 throw then\n   tier@ prior <> if 76 throw then\n   BUILD-TARGET:IDLE-CK\n   s\" writer recovery: ok\" type cr ;\n;package\nWRITER-RECOVERY:RUN\n"
-      WRITE-ALL
+      FS:WRITE-ALL
    \ The child needs the original donor dictionary: loading a target rewinds
    \ its source records and installs its compiler before the writer fails.
    s" cached/hb" s" cache" BUILD-SETUP
@@ -1152,7 +1152,7 @@ variable ENGINE-WHITEBOX
    \ native-only target window's compilation scope.
    s" tools/native-emit.f" AT
    S\" \npackage BUILD-WRITER-TIER\npublic\n: CHECK ( -- ) HB-TARGET-LINUX-X86-64? if 1 else 0 then tier@ <> if s\" native edit: transient writer tier\" 76 die then ;\n;package\nBUILD-WRITER-TIER:CHECK\n"
-      APPEND-FILE
+      FS:APPEND-FILE
    false EARLY false MIDDLE false LATE
    s" base" s" cached/hb" s" cache" BUILD SUCCESS
    DEFINITION-COMPILE
@@ -1188,8 +1188,8 @@ variable ENGINE-WHITEBOX
    OUT$ s" primitive state changed" CONTAINS? TTRUE
    ERR$ s" habu: in step: at '1+'" CONTAINS? TTRUE
    ERR$ s" expected: ptr u8 actual: n" CONTAINS? TTRUE
-   s" rejected/hb" AT EXISTS? TFALSE
-   s" rejected/hb.map" AT EXISTS? TFALSE
+   s" rejected/hb" AT FS:EXISTS? TFALSE
+   s" rejected/hb.map" AT FS:EXISTS? TFALSE
    FINISH ;
 
 \ The first FILEs execute on the retained checker and loader. The same
@@ -1217,8 +1217,8 @@ variable ENGINE-WHITEBOX
    s" prefix-rejected" s" rejected/hb" s" cache" BUILD 0<> TTRUE
    OUT$ s" expected: ptr u8 actual: n" CONTAINS?
    ERR$ s" expected: ptr u8 actual: n" CONTAINS? or TTRUE
-   s" rejected/hb" AT EXISTS? TFALSE
-   s" rejected/hb.map" AT EXISTS? TFALSE
+   s" rejected/hb" AT FS:EXISTS? TFALSE
+   s" rejected/hb.map" AT FS:EXISTS? TFALSE
    FINISH ;
 
 \ These two cold builds consume identical source bytes under different roots
@@ -1234,22 +1234,22 @@ variable ENGINE-WHITEBOX
    false 1 COUNTS
    101 201 301 RUN-IMAGE
    BASE-ROLES SAVE-ROLES
-   BASE-ROOT BASE-ROOT-U @ s" source-copy" DONOR-ROOT JOIN-PATH DONOR-ROOT-U !
+   BASE-ROOT BASE-ROOT-U @ s" source-copy" DONOR-ROOT FS:JOIN-PATH DONOR-ROOT-U !
    DONOR-ROOT DONOR-ROOT-U @ TREE-COPY:BUILD-SOURCES
    DONOR-ROOT DONOR-ROOT-U @ ROOT!
-   s" cached" AT MAKE-DIR
-   s" logs" AT MAKE-DIR
-   s" scratch" AT MAKE-DIR
+   s" cached" AT FS:MAKE-DIR
+   s" logs" AT FS:MAKE-DIR
+   s" scratch" AT FS:MAKE-DIR
    false EARLY false MIDDLE false LATE
    s" source-copy-b" s" cached/hb" s" cache" BUILD SUCCESS
    false 1 COUNTS
    101 201 301 RUN-IMAGE
    COLD-ROLES SAVE-ROLES
    BASE-ROLES COLD-ROLES SAME-ROLES? TTRUE
-   BASE-ROOT BASE-ROOT-U @ s" cached/hb" CMP-A JOIN-PATH CMP-A-U !
+   BASE-ROOT BASE-ROOT-U @ s" cached/hb" CMP-A FS:JOIN-PATH CMP-A-U !
    s" cached/hb" CMP-B CMP-B-U PATH!
    CMP-A CMP-A-U @ CMP-B CMP-B-U @ CHAIN-RUN:SAME-FILES? TTRUE
-   BASE-ROOT BASE-ROOT-U @ s" cached/hb.map" CMP-A JOIN-PATH CMP-A-U !
+   BASE-ROOT BASE-ROOT-U @ s" cached/hb.map" CMP-A FS:JOIN-PATH CMP-A-U !
    s" cached/hb.map" CMP-B CMP-B-U PATH!
    CMP-A CMP-A-U @ CMP-B CMP-B-U @ CHAIN-RUN:SAME-FILES? TTRUE
    BASE-ROOT BASE-ROOT-U @ ROOT!

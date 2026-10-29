@@ -26,7 +26,7 @@ $C constant PET-BIG-NAME-U               \ prefix plus three digits
 create PET-BIG-NAME PET-BIG-NAME-U allot
 create PET-OUT PET-CAP allot
 create PET-ERR PET-CAP allot
-create PET-PATH FS-PATH-CAP allot
+create PET-PATH PATH-CAP allot
 create PET-EARLY-IN PET-EARLY-IN-CAP allot
 variable PET-I
 variable PET-START-NS

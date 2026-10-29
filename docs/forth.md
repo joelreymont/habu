@@ -372,7 +372,7 @@ and always available, for a one-off call or to escape a collision.
   reaches past it.** Inside `package APP` a bare `open` is `APP:OPEN`; in
   a checked body under `using DOC` a bare `close` is refused against
   `DOC:CLOSE`. There is no qualifier for the global "" wordlist: reach the
-  operation through a differently named word (`OPEN-APPEND-FD`, the primitive's
+  operation through a differently named word (`FS:OPEN-APPEND-FD`, the primitive's
   sibling `close-rc`) or rename the package word. Operator spellings too: once a
   package defines `@` or `+`, a bare `@` or `+` in its later bodies is the
   package word, whatever its operands; a body compiled before the definition
@@ -2303,7 +2303,7 @@ sections above.
   closes with a declaration open is `ffi-declaration-open`. Otherwise it is
   `run-unaccounted word=W` and the object refuses `ordered-dependency`, so the
   file compiles on every build: `s" HOME" GETENV`, `data-base`, `' W execute`,
-  a top-level `WRITE-ALL` and `PROCESS-SYMBOLS` each refuse. A run that
+  a top-level `FS:WRITE-ALL` and `PROCESS-SYMBOLS` each refuse. A run that
   declares CWORK storage or writes a CWORK default, and loaded no child file,
   is `run-writes-cwork word=W` whatever else it left: compiler working state
   is never carried, so the file compiles on every build

@@ -65,7 +65,7 @@ variable CMP-LEFT
       ok OF drop ENDOF
       err OF BUILD-FAILED ENDOF
    ;MATCH
-   out outu EXISTS? 0= if E-BUILD-PATH throw then ;
+   out outu FS:EXISTS? 0= if E-BUILD-PATH throw then ;
 
 : BUILD ( ptr u8 n ptr u8 n ptr u8 n -- )
    [: BUILD-IN ;] CMD:WITH-COMMAND ;
@@ -74,12 +74,12 @@ public
 
 : SAME-FILES? ( ptr u8 n ptr u8 n -- bool )
    {: a:ptr au:n b:ptr bu:n :}
-   a au FILE-SIZE b bu FILE-SIZE <> if false exit then
-   a au FS-PATHZ open-rd CMP-FDA !
+   a au FS:FILE-SIZE b bu FS:FILE-SIZE <> if false exit then
+   a au FS:>PATHZ open-rd CMP-FDA !
    CMP-FDA @ 0 < if E-FS-OPEN throw then
-   b bu FS-PATHZ open-rd CMP-FDB !
+   b bu FS:>PATHZ open-rd CMP-FDB !
    CMP-FDB @ 0 < if CMP-FDA @ close E-FS-OPEN throw then
-   a au FILE-SIZE CMP-LEFT !
+   a au FS:FILE-SIZE CMP-LEFT !
    begin CMP-LEFT @ 0 > while
       CMP-LEFT @ CMP-CAP min {: take:n :}
       CMP-FDA @ CMP-A take read {: got-a:n :}

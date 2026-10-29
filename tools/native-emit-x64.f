@@ -107,8 +107,8 @@ variable BOOT-AT
 
 : FILE! ( ptr u8 n -- )
    {: path:ptr size:n :}
-   path size FS-PATHZ FS-O-WRONLY FS-O-CREAT or FS-O-TRUNC or
-   FS-MODE-0644 open {: fd:n :}
+   path size FS:>PATHZ FS:O-WRONLY FS:O-CREAT or FS:O-TRUNC or
+   FS:MODE-0644 open {: fd:n :}
    fd 0 < if s" native-emit: cannot open image" REFUSE-RC die then
    X64LINK:TEXT-VA X64CODE:ASM-LINK
    X64LINK:REGION$ {: region:ptr region-len:n :}

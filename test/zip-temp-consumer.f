@@ -14,7 +14,7 @@ public
 : TEMP-RUN ( -- )
    T-RESET
    0 SCRIPT-ARGV$ {: path:ptr len:n :}
-   path len ORIGINAL$ WRITE-ALL
+   path len ORIGINAL$ FS:WRITE-ALL
    path len [: TRY-TEMP ;] catch {: code:n :} 2drop
    code ZIP:E-OPEN T=
    T-REPORT path len type cr ;

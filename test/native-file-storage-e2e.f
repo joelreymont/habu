@@ -23,10 +23,10 @@ using NATIVE-FILE-E2E
 package NATIVE-FILE-STORAGE-TEST
 
 $10000 constant STREAM-CAP
-create CASE-PATH FS-PATH-CAP allot
-create OUT-PATH FS-PATH-CAP allot  variable OUT-U
-create DIR-PATH FS-PATH-CAP allot  variable DIR-U
-create ENTRY-PATH FS-PATH-CAP allot
+create CASE-PATH PATH-CAP allot
+create OUT-PATH PATH-CAP allot  variable OUT-U
+create DIR-PATH PATH-CAP allot  variable DIR-U
+create ENTRY-PATH PATH-CAP allot
 create CWD-OUT STREAM-CAP allot
 create CWD-ERR STREAM-CAP allot
 DYNAMIC-BUFFER BYTES u8
@@ -55,11 +55,11 @@ variable OBJECT-N
 \ dir/name under the tree, in CASE-PATH.
 : IN ( ptr u8 n ptr u8 n -- ptr u8 n )
    {: dir:ptr diru:n name:ptr nameu:n :}
-   dir diru AT name nameu CASE-PATH JOIN-PATH CASE-PATH swap ;
+   dir diru AT name nameu CASE-PATH FS:JOIN-PATH CASE-PATH swap ;
 
 : WRITE-IN ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: dir:ptr diru:n name:ptr nameu:n body:ptr bodyu:n :}
-   dir diru name nameu IN body bodyu WRITE-ALL ;
+   dir diru name nameu IN body bodyu FS:WRITE-ALL ;
 
 : OUT-ROOT$ ( -- ptr u8 n ) OUT-PATH OUT-U @ ;
 
@@ -70,7 +70,7 @@ variable OBJECT-N
 
 : CASE-DIR ( ptr u8 n -- )
    {: dir:ptr diru:n :}
-   dir diru AT MAKE-DIR
+   dir diru AT FS:MAKE-DIR
    dir diru s" out" OUT-IN ;
 
 \ A build of dir/app into dir/out by engine, diagnostics on, in the out root;
@@ -144,9 +144,9 @@ variable OBJECT-N
 \ The file's bytes in BYTES.
 : LOAD ( ptr u8 n -- n )
    {: path:ptr pathu:n :}
-   path pathu FILE-SIZE {: size:n :}
+   path pathu FS:FILE-SIZE {: size:n :}
    size BYTES-RESERVE
-   path pathu 0 BYTES size READ-ALL size T=
+   path pathu 0 BYTES size FS:READ-ALL size T=
    size ;
 
 : KEEP-A ( ptr u8 n -- )
@@ -176,7 +176,7 @@ variable OBJECT-N
 \ The object directory's entry name, in ENTRY-PATH.
 : ENTRY$ ( ptr u8 n -- ptr u8 n )
    {: name:ptr nameu:n :}
-   DIR$ name nameu ENTRY-PATH JOIN-PATH ENTRY-PATH swap ;
+   DIR$ name nameu ENTRY-PATH FS:JOIN-PATH ENTRY-PATH swap ;
 
 \ A file object: 64 hex digits, .hfo.
 : OBJECT? ( ptr u8 n -- bool )
@@ -189,8 +189,8 @@ variable OBJECT-N
 \ Count the file objects in one engine's directory under the out root.
 : TALLY-ENGINE ( ptr u8 n -- )
    {: name:ptr nameu:n :}
-   OUT-ROOT$ name nameu ENTRY-PATH JOIN-PATH {: u:n :}
-   ENTRY-PATH u s" obj" DIR-PATH JOIN-PATH DIR-U !
+   OUT-ROOT$ name nameu ENTRY-PATH FS:JOIN-PATH {: u:n :}
+   ENTRY-PATH u s" obj" DIR-PATH FS:JOIN-PATH DIR-U !
    DIR$ [: TALLY ;] FS-LIST:EACH ;
 
 \ The file objects every engine keeps under the out root.
@@ -206,7 +206,7 @@ variable OBJECT-N
    name nameu ENTRY$ {: path:ptr u:n :}
    path u LOAD {: size:n :}
    size 1- BYTES dup c@ $FF xor swap c!
-   path u 0 BYTES size WRITE-ALL
+   path u 0 BYTES size FS:WRITE-ALL
    1 FLIP-N +! ;
 
 : FLIP-ALL ( -- n )
@@ -221,7 +221,7 @@ variable OBJECT-N
 \ tree's .out, the default out root.
 : KEEP-CASE ( -- )
    s" an object survives a build that does not use it" T-LABEL
-   s" keep" AT MAKE-DIR
+   s" keep" AT FS:MAKE-DIR
    0 OUT-U !
    s" keep" s" lib.f" LIB-V1$ WRITE-IN
    s" keep" s" app.f" APP$ WRITE-IN
@@ -271,9 +271,9 @@ variable OBJECT-N
 : SPAWN ( ptr u8 n ptr u8 n ptr u8 n -- pid )
    {: app:ptr appu:n out:ptr outu:n log:ptr logu:n :}
    NATIVE-FILE-APP:BUILDER$ {: builder:ptr builderu:n :}
-   s" race" s" drive" IN FS-PATHZ open-rd {: in:n :}
+   s" race" s" drive" IN FS:>PATHZ open-rd {: in:n :}
    in 0 < if E-FS-OPEN throw then
-   s" race" log logu IN OPEN-APPEND-FD {: fd:n :}
+   s" race" log logu IN FS:OPEN-APPEND-FD {: fd:n :}
    s" race" app appu out outu ENGINE-CANDIDATE:PATH$ STAGE
    builder builderu >LEN in >FD fd >FD fd >FD PROC-SPAWN-ARGV-ENV-IO
    in close

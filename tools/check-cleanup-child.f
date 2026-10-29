@@ -34,7 +34,7 @@ private
 $1000 constant PROV-OUT-CAP
 \ Mode 0500 preserves search but denies the write needed by the final rmdir.
 
-create PROV-PATH FS-PATH-CAP allot
+create PROV-PATH PATH-CAP allot
 create PROV-OUT PROV-OUT-CAP allot
 
 variable PROV-U
@@ -97,7 +97,7 @@ variable PROV-U
    PROV-CLEAN ;
 
 : PROV-CLEANUP ( -- )
-   PROV$ REMOVE-FILE ;
+   PROV$ FS:REMOVE-FILE ;
 
 : SOURCE-LF ( -- )
    $0A SB-APPEND-C ;
@@ -115,7 +115,7 @@ variable PROV-U
    s" package CHECK-CLEANUP-SUBJECT" SB-APPEND SOURCE-LF
    s" : LOCK-TMP ( -- ) " SB-APPEND SOURCE-TMP$
    $20 SB-APPEND-C SEARCH-ONLY-DIR-MODE$ SB-APPEND
-   s"  CHMOD-MODE" SB-APPEND
+   s"  FS:CHMOD-MODE" SB-APPEND
    primary if
       s"  s" SB-APPEND SOURCE-DQ
       s"  cleanup primary" SB-APPEND SOURCE-DQ
@@ -141,10 +141,10 @@ variable PROV-U
    E-STR-BOUNDS throw ;
 
 : RESTORE-TMP ( -- )
-   TMP$ FS-MUT-MODE-PRIVATE-DIR CHMOD-MODE ;
+   TMP$ FS:MODE-PRIVATE-DIR FS:CHMOD-MODE ;
 
 : REMOVE-TMP ( -- )
-   TMP$ REMOVE-DIR ;
+   TMP$ FS:REMOVE-DIR ;
 
 : SELECT-PROBE ( -- )
    s" " s" selection-probe.f" CHECK:SOURCE ;
@@ -158,7 +158,7 @@ variable PROV-U
    [: SELECT-PROBE ;] catch 0 T=
    CHECK:RESET
    REMOVE-TMP
-   TMP$ EXISTS? TFALSE ;
+   TMP$ FS:EXISTS? TFALSE ;
 
 public
 

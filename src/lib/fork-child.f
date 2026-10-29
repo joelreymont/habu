@@ -31,7 +31,7 @@
 \ reset it registered as it loaded would land in the application's registry
 \ with code and cells the image does not carry (tools/hb-build-stripped-test.f
 \ HBT-STRIPPED-FORK refuses that link). Such an owner publishes its reset -
-\ TASK:CHILD-RESET, CLEANUP-RESET, PROC-TREE:CHILD-RESET - and
+\ TASK:CHILD-RESET, FS:CLEANUP-RESET, PROC-TREE:CHILD-RESET - and
 \ src/lib/process-fork.f, which requires it and holds RAW, the one fork,
 \ registers it.
 \

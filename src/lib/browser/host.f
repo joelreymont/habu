@@ -29,26 +29,26 @@ private
    SOURCE-ROOT:CURRENT$ a u SOURCE-ROOT:JOIN ;
 
 \ The file at the path into the buffer of its size; a file that changed size
-\ since it was measured is E-FS-IO, or READ-ALL's E-FS-CAPACITY.
+\ since it was measured is E-FS-IO, or FS:READ-ALL's E-FS-CAPACITY.
 : READ ( ptr u8 n ptr u8 n -- )
    {: a:ptr u:n dst:ptr cap:n :}
    a u PATH {: path:ptr pathu:n :}
    path pathu BUILD-INPUT:FILE
-   path pathu dst cap READ-ALL cap <> if E-FS-IO throw then ;
+   path pathu dst cap FS:READ-ALL cap <> if E-FS-IO throw then ;
 
-s" src/lib/browser/index.html" PATH FILE-SIZE constant INDEX-U
+s" src/lib/browser/index.html" PATH FS:FILE-SIZE constant INDEX-U
 INDEX-U BUFFER: INDEX
 s" src/lib/browser/index.html" INDEX INDEX-U READ
 
-s" src/lib/browser/host.js" PATH FILE-SIZE constant HOST-U
+s" src/lib/browser/host.js" PATH FS:FILE-SIZE constant HOST-U
 HOST-U BUFFER: HOST
 s" src/lib/browser/host.js" HOST HOST-U READ
 
-s" src/lib/browser/viewport.js" PATH FILE-SIZE constant VIEWPORT-U
+s" src/lib/browser/viewport.js" PATH FS:FILE-SIZE constant VIEWPORT-U
 VIEWPORT-U BUFFER: VIEWPORT
 s" src/lib/browser/viewport.js" VIEWPORT VIEWPORT-U READ
 
-s" src/lib/browser/turn.js" PATH FILE-SIZE constant TURN-U
+s" src/lib/browser/turn.js" PATH FS:FILE-SIZE constant TURN-U
 TURN-U BUFFER: TURN
 s" src/lib/browser/turn.js" TURN TURN-U READ
 

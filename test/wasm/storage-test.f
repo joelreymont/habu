@@ -22,11 +22,11 @@ private
 4096 constant CAP
 CAP BUFFER: OUT
 CAP BUFFER: ERR
-FS-PATH-CAP BUFFER: DIR
+PATH-CAP BUFFER: DIR
 variable DIR-U
-FS-PATH-CAP BUFFER: MOD
+PATH-CAP BUFFER: MOD
 variable MOD-U
-FS-PATH-CAP BUFFER: FILE
+PATH-CAP BUFFER: FILE
 variable FILE-U
 
 : SETUP ( -- )
@@ -39,14 +39,14 @@ variable FILE-U
 \ The bytes written as the file name in DIR.
 : FILE! ( ptr u8 n ptr u8 n -- )
    {: a:ptr u:n name:ptr nu:n :}
-   DIR DIR-U @ name nu FILE JOIN-PATH FILE-U !
-   FILE FILE-U @ a u WRITE-ALL ;
+   DIR DIR-U @ name nu FILE FS:JOIN-PATH FILE-U !
+   FILE FILE-U @ a u FS:WRITE-ALL ;
 
 \ storage.f built into the module file name in DIR, whose run calls entry;
 \ answers the driver's status.
 : BUILD ( ptr u8 n ptr u8 n -- n )
    {: entry:ptr eu:n name:ptr nu:n :}
-   DIR DIR-U @ name nu MOD JOIN-PATH MOD-U !
+   DIR DIR-U @ name nu MOD FS:JOIN-PATH MOD-U !
    PROC-ARGV-RESET
    s" --load" ARG+  s" tools/wasm-build.f" ARG+  s" --" ARG+
    s" test/wasm/storage.f" ARG+  entry eu ARG+  MOD MOD-U @ ARG+

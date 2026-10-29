@@ -19,15 +19,15 @@ package ZLIB-E2E
 private
 
 $8000 constant IO-CAP
-create ROOT FS-PATH-CAP allot variable ROOT-U
-create PATH FS-PATH-CAP allot
+create ROOT PATH-CAP allot variable ROOT-U
+create PATH PATH-CAP allot
 create OUT IO-CAP allot variable OUT-U
 create ERR IO-CAP allot variable ERR-U
 variable RC
 
 : ROOT$ ( -- ptr u8 n ) ROOT ROOT-U @ ;
 : FILE$ ( ptr u8 n -- ptr u8 n ) {: rel:ptr size:n :}
-   ROOT$ rel size PATH JOIN-PATH PATH swap ;
+   ROOT$ rel size PATH FS:JOIN-PATH PATH swap ;
 : APP$ ( -- ptr u8 n ) s" zlib-proof" FILE$ ;
 : ARG ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
 
@@ -50,7 +50,7 @@ variable RC
    s" test/zlib-source.f" ARG s" -o" ARG APP$ ARG
    ENGINE-CANDIDATE:PATH$ RUN
    s" the ZLIB cases build as a stripped application" T-LABEL
-   NEED-OK APP$ EXECUTABLE? TTRUE ;
+   NEED-OK APP$ FS:EXECUTABLE? TTRUE ;
 
 : NATIVE-RUN ( -- )
    PROC-CWD:ARGV-ENV-CWD-RESET
@@ -59,9 +59,9 @@ variable RC
    s" the application passes every case and keeps its artifacts" T-LABEL
    NEED-OK
    OUT OUT-U @ s" zlib-source: ok" CONTAINS? TTRUE
-   s" original.bin" FILE$ FILE? TTRUE
-   s" compressed.bin" FILE$ FILE? TTRUE
-   s" decoded.bin" FILE$ FILE? TTRUE ;
+   s" original.bin" FILE$ FS:FILE? TTRUE
+   s" compressed.bin" FILE$ FS:FILE? TTRUE
+   s" decoded.bin" FILE$ FS:FILE? TTRUE ;
 
 public
 : MAIN ( -- )

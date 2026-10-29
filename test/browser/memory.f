@@ -18,7 +18,7 @@ private
 8192 constant CAP
 CAP BUFFER: OUT
 CAP BUFFER: ERR
-FS-PATH-CAP BUFFER: EXE
+PATH-CAP BUFFER: EXE
 
 : ARG+ ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
 

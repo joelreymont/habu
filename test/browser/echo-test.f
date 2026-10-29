@@ -58,12 +58,12 @@ CAP BUFFER: OUT
 CAP BUFFER: ERR
 variable OUT-U
 variable ERR-U
-FS-PATH-CAP BUFFER: EXE
-FS-PATH-CAP BUFFER: DIR
+PATH-CAP BUFFER: EXE
+PATH-CAP BUFFER: DIR
 variable DIR-U
-FS-PATH-CAP BUFFER: MOD
+PATH-CAP BUFFER: MOD
 variable MOD-U
-FS-PATH-CAP BUFFER: FILE
+PATH-CAP BUFFER: FILE
 DYNAMIC-BUFFER PAYLOAD u8
 
 : SMALL$ ( -- ptr u8 n )  s" the fixture's bytes" ;
@@ -74,14 +74,14 @@ DYNAMIC-BUFFER PAYLOAD u8
 \ The bytes written as the file name in DIR.
 : FILE! ( ptr u8 n ptr u8 n -- )
    {: a:ptr u:n name:ptr nu:n :}
-   DIR DIR-U @ name nu FILE JOIN-PATH {: fu:n :}
-   FILE fu a u WRITE-ALL ;
+   DIR DIR-U @ name nu FILE FS:JOIN-PATH {: fu:n :}
+   FILE fu a u FS:WRITE-ALL ;
 
 : SETUP ( -- )
    s" browser-echo" FS:MKTEMP-DIR {: a:ptr u:n :}
    a DIR u BYTE-COPY  u DIR-U !
    s" browser echo: module and files in " type  DIR u type cr
-   DIR u s" echo.wasm" MOD JOIN-PATH MOD-U !
+   DIR u s" echo.wasm" MOD FS:JOIN-PATH MOD-U !
    SMALL$ s" small.bin" FILE!
    LANDED$ s" landed.txt" FILE!
    REFUSED$ s" refused.txt" FILE!
@@ -134,7 +134,7 @@ DYNAMIC-BUFFER PAYLOAD u8
 : ANSWER+ ( n ptr u8 n -- )
    {: status:n name:ptr nu:n :}
    s" --answer" ARG+  status N-ARG+
-   DIR DIR-U @ name nu FILE JOIN-PATH {: fu:n :}
+   DIR DIR-U @ name nu FILE FS:JOIN-PATH {: fu:n :}
    FILE fu ARG+ ;
 
 \ The staged host run by bun; answers its exit status.
@@ -186,7 +186,7 @@ DYNAMIC-BUFFER PAYLOAD u8
 \ Byte i is the low byte of i + i/509; 509 is prime, so the pages differ and a
 \ page copied to the wrong place changes the checksum.
 : LARGE-CASE ( -- )
-   WPROF:IMAGE-BASE  MOD MOD-U @ FILE-SIZE +  PAGE-BYTES +  13 + {: u:n :}
+   WPROF:IMAGE-BASE  MOD MOD-U @ FS:FILE-SIZE +  PAGE-BYTES +  13 + {: u:n :}
    u PAYLOAD-RESERVE
    u 0 ?do  i  i 509 / +  $FF and  i PAYLOAD c!  loop
    0 PAYLOAD u s" large.bin" FILE!

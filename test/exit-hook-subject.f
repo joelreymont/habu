@@ -1,7 +1,7 @@
 \ A stripped application runs the process-exit hook on every one of its exits.
 \ test/stripped-image.f links this subject into its application, whose MAIN
 \ calls RUN first: RUN makes the directory named by argument 0 and registers it
-\ with CLEANUP-TREE+. Given a second argument, a code, MAIN calls FINISH and
+\ with FS:CLEANUP-TREE+. Given a second argument, a code, MAIN calls FINISH and
 \ returns. Code 0 RETURNS - no `die`, no uncaught throw and no REPL exit, so
 \ only the entry's own inline call to the vector (src/habu/aot-link-arm.f
 \ EMIT-EXIT-HOOK) can remove the tree - and FINISH throws any other code past
@@ -18,8 +18,8 @@ public
 
 : RUN ( -- )
    0 SCRIPT-ARGV$ {: path:ptr pathu :}
-   path pathu MAKE-DIR
-   path pathu CLEANUP-TREE+
+   path pathu FS:MAKE-DIR
+   path pathu FS:CLEANUP-TREE+
    s" exit-hook-subject: ok" type cr ;
 
 : RETURN? ( -- bool )

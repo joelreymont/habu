@@ -14,9 +14,9 @@ private
 
 $8000 constant CAP
 120000 constant TIMEOUT-MS
-create ROOT FS-PATH-CAP allot  variable ROOT-U
-create PATH FS-PATH-CAP allot  variable PATH-U
-create IMAGE FS-PATH-CAP allot variable IMAGE-U
+create ROOT PATH-CAP allot  variable ROOT-U
+create PATH PATH-CAP allot  variable PATH-U
+create IMAGE PATH-CAP allot variable IMAGE-U
 create OUT CAP allot variable OUT-U
 create ERR CAP allot variable ERR-U
 variable RC
@@ -25,20 +25,20 @@ variable RC
 : IMAGE$ ( -- ptr u8 n ) IMAGE IMAGE-U @ ;
 
 : PATH! ( ptr u8 n -- ) {: rel:ptr size:n :}
-   ROOT$ rel size PATH JOIN-PATH PATH-U ! ;
+   ROOT$ rel size PATH FS:JOIN-PATH PATH-U ! ;
 
 : SETUP ( -- )
    s" c2-init-accessor-e2e" FS:MKTEMP-DIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY u ROOT-U !
-   ROOT$ s" hb-saved" IMAGE JOIN-PATH IMAGE-U ! ;
+   ROOT$ s" hb-saved" IMAGE FS:JOIN-PATH IMAGE-U ! ;
 
 : RESULT ( result<pcap:captured,pcap:failed> -- )
    PCAP-RESULT:>N RC ! ERR-U ! OUT-U ! ;
 
 : SAVE-LOG ( ptr u8 n ptr u8 n -- )
    {: outpath:ptr outu:n errpath:ptr erru:n :}
-   outpath outu PATH! PATH PATH-U @ OUT OUT-U @ WRITE-ALL
-   errpath erru PATH! PATH PATH-U @ ERR ERR-U @ WRITE-ALL ;
+   outpath outu PATH! PATH PATH-U @ OUT OUT-U @ FS:WRITE-ALL
+   errpath erru PATH! PATH PATH-U @ ERR ERR-U @ FS:WRITE-ALL ;
 
 : CHECK ( ptr u8 n -- ) {: marker:ptr size:n :}
    RC @ 0<> if OUT OUT-U @ type ERR ERR-U @ type then
@@ -56,7 +56,7 @@ variable RC
    s" build.out" s" build.err" SAVE-LOG
    s" the generated declaration saves into an application image" T-LABEL
    RC @ 0 T=
-   RC @ 0= if IMAGE$ EXECUTABLE? TTRUE then ;
+   RC @ 0= if IMAGE$ FS:EXECUTABLE? TTRUE then ;
 
 : SOURCE ( -- )
    PROC-CWD:ARGV-ENV-CWD-RESET

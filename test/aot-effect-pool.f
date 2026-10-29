@@ -34,7 +34,7 @@ public
 
 : EFFECT-TEST-HEADER ( ptr u8 n -- )
    A64ICODE:AOT-SECTION-CAP HDR O-PAYLEN + U64!
-   HDR HDR-BYTES WRITE-ALL ;
+   HDR HDR-BYTES FS:WRITE-ALL ;
 
 ;package
 
@@ -43,10 +43,10 @@ using AOT-BUF
 using AOT-WINDOW
 
 1536 constant WORDS
-create ROOT FS-PATH-CAP allot variable ROOT-U
-create SOURCE FS-PATH-CAP allot variable SOURCE-U
-create ART FS-PATH-CAP allot variable ART-U
-create BAD-ART FS-PATH-CAP allot variable BAD-ART-U
+create ROOT PATH-CAP allot variable ROOT-U
+create SOURCE PATH-CAP allot variable SOURCE-U
+create ART PATH-CAP allot variable ART-U
+create BAD-ART PATH-CAP allot variable BAD-ART-U
 create KEY 32 allot
 create FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this fixture's file-digest context
 
@@ -60,19 +60,19 @@ create FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this fixture's file-digest conte
 
 public
 : GENERATE ( -- )
-   T-RESET CLEANUP-RESET
+   T-RESET FS:CLEANUP-RESET
    s" habu-effect-pool" FS:MKTEMP-DIR {: path:ptr u:n :}
-   path ROOT u BYTE-COPY u ROOT-U ! ROOT$ CLEANUP-TREE+
-   ROOT$ s" definitions.f" SOURCE JOIN-PATH SOURCE-U !
-   ROOT$ s" effects.aot" ART JOIN-PATH ART-U !
-   ROOT$ s" bad-header.aot" BAD-ART JOIN-PATH BAD-ART-U !
-   SOURCE$ S\" package EFFECT-POOL-WINDOW public\nNEWTYPE effect-tag\n" WRITE-ALL
+   path ROOT u BYTE-COPY u ROOT-U ! ROOT$ FS:CLEANUP-TREE+
+   ROOT$ s" definitions.f" SOURCE FS:JOIN-PATH SOURCE-U !
+   ROOT$ s" effects.aot" ART FS:JOIN-PATH ART-U !
+   ROOT$ s" bad-header.aot" BAD-ART FS:JOIN-PATH BAD-ART-U !
+   SOURCE$ S\" package EFFECT-POOL-WINDOW public\nNEWTYPE effect-tag\n" FS:WRITE-ALL
    WORDS 0 ?do
       SB-RESET s" : EFFECT-" SB-APPEND i NAME+
       S\"  ( n n n n -- n n n n ) 1+ ;\n" SB-APPEND
-      SOURCE$ SB$ APPEND-FILE
+      SOURCE$ SB$ FS:APPEND-FILE
    loop
-   SOURCE$ S\" ;package\n" APPEND-FILE ;
+   SOURCE$ S\" ;package\n" FS:APPEND-FILE ;
 
 \ Loads the generated definitions. The path is computed, so the load is a call
 \ in a body, which discovery reads past rather than refusing.
@@ -286,7 +286,7 @@ private
    MERGE
    s" effect-pool: rows=" type WORDS FMT:.INT s"  bytes=" type EXPECTED-U @ FMT:.INT cr
    EXPECTED-RELEASE SIG-STR-STORAGE-RELEASE AOT-SIG-PAYLOAD:STORAGE-RELEASE
-   CLEANUP-RUN T-REPORT ;
+   FS:CLEANUP-RUN T-REPORT ;
 
 RUN
 ;using

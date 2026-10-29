@@ -1139,7 +1139,7 @@ $FF constant SD-NAMES                    \ loaders and family openers
 \ whose refusal (E-FS-STAT) stays a missing or irregular entry's, is only the
 \ first room.
 : SD-READ-ENTRY ( ptr u8 n -- ) {: pa:ptr pu:n :}
-   pa pu  pa pu FILE-SIZE  [: SD-ROOM ;] READ-WHOLE-SAMPLED SD-U !
+   pa pu  pa pu FS:FILE-SIZE  [: SD-ROOM ;] READ-WHOLE-SAMPLED SD-U !
    SD-STORAGE @ SPAN:$ drop SD-A ! ;
 
 : SD-KIND-NAME ( n -- ptr u8 n ) {: kind:n :}

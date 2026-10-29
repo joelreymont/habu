@@ -159,16 +159,16 @@ create EMPTY 1 allot                 \ zero-length stdin
 variable RC
 variable EXITED
 
-create ROOT-BUF FS-PATH-CAP allot    variable ROOT-U
-create HBPWID-BUF FS-PATH-CAP allot   variable HBPWID-U
-create FORGE-BUF FS-PATH-CAP allot    variable FORGE-U
-create REFUSE-BUF FS-PATH-CAP allot   variable REFUSE-U
-create REFUSE-HB-BUF FS-PATH-CAP allot  variable REFUSE-HB-U
-create GATE-BUF FS-PATH-CAP allot     variable GATE-U
-create GATE-HB-BUF FS-PATH-CAP allot  variable GATE-HB-U
-create COLD-ROOT-BUF FS-PATH-CAP allot variable COLD-ROOT-U
-create COLD-SRC FS-PATH-CAP allot
-create COLD-DST FS-PATH-CAP allot
+create ROOT-BUF PATH-CAP allot    variable ROOT-U
+create HBPWID-BUF PATH-CAP allot   variable HBPWID-U
+create FORGE-BUF PATH-CAP allot    variable FORGE-U
+create REFUSE-BUF PATH-CAP allot   variable REFUSE-U
+create REFUSE-HB-BUF PATH-CAP allot  variable REFUSE-HB-U
+create GATE-BUF PATH-CAP allot     variable GATE-U
+create GATE-HB-BUF PATH-CAP allot  variable GATE-HB-U
+create COLD-ROOT-BUF PATH-CAP allot variable COLD-ROOT-U
+create COLD-SRC PATH-CAP allot
+create COLD-DST PATH-CAP allot
 
 : ROOT$ ( -- ptr u8 n )   ROOT-BUF ROOT-U @ ;
 : HBPWID$ ( -- ptr u8 n ) HBPWID-BUF HBPWID-U @ ;
@@ -182,12 +182,12 @@ create COLD-DST FS-PATH-CAP allot
 : ERR$ ( -- ptr u8 n )    ERR ERR-U @ ;
 
 : SETUP ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" habu-aot-wid" FS:MKTEMP-DIR {: a:ptr u:n :}
    a ROOT-BUF u BYTE-COPY  u ROOT-U !
-   ROOT$ CLEANUP-TREE+
-   ROOT$ s" hb-pwid" HBPWID-BUF JOIN-PATH HBPWID-U !
-   ROOT$ s" forge.f" FORGE-BUF JOIN-PATH FORGE-U ! ;
+   ROOT$ FS:CLEANUP-TREE+
+   ROOT$ s" hb-pwid" HBPWID-BUF FS:JOIN-PATH HBPWID-U !
+   ROOT$ s" forge.f" FORGE-BUF FS:JOIN-PATH FORGE-U ! ;
 
 : REQUIRE-PROBE ( -- )
    T-FAILURES 0 <> if
@@ -200,16 +200,16 @@ create COLD-DST FS-PATH-CAP allot
 : REFUSE-SETUP ( -- )
    s" habu-aot-wid-refuse" FS:MKTEMP-DIR {: a:ptr u:n :}
    a REFUSE-BUF u BYTE-COPY  u REFUSE-U !
-   REFUSE-ROOT$ CLEANUP-TREE+
-   REFUSE-ROOT$ s" hb-pwid" REFUSE-HB-BUF JOIN-PATH REFUSE-HB-U ! ;
+   REFUSE-ROOT$ FS:CLEANUP-TREE+
+   REFUSE-ROOT$ s" hb-pwid" REFUSE-HB-BUF FS:JOIN-PATH REFUSE-HB-U ! ;
 
 \ Same rule for the boot-gate build: its own tree, so the engine a probe boots
 \ can only be the one that build wrote.
 : GATE-SETUP ( -- )
    s" habu-aot-wid-gate" FS:MKTEMP-DIR {: a:ptr u:n :}
    a GATE-BUF u BYTE-COPY  u GATE-U !
-   GATE-ROOT$ CLEANUP-TREE+
-   GATE-ROOT$ s" hb-pwid" GATE-HB-BUF JOIN-PATH GATE-HB-U ! ;
+   GATE-ROOT$ FS:CLEANUP-TREE+
+   GATE-ROOT$ s" hb-pwid" GATE-HB-BUF FS:JOIN-PATH GATE-HB-U ! ;
 
 \ --- decimal text for the builder's environment knobs ---
 create NUM-BUF 32 allot   variable NUM-U
@@ -281,7 +281,7 @@ create NUM-BUF 32 allot   variable NUM-U
    ;MATCH ;
 
 : FORGE-LOAD ( ptr u8 n ptr u8 n -- ) {: e:ptr eu:n s:ptr su:n :}   \ e=engine s=source, run as --load
-   FORGE$ s su WRITE-ALL
+   FORGE$ s su FS:WRITE-ALL
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    FORGE$ >LEN PROC-ARGV+
@@ -495,7 +495,7 @@ create PRB PRB-CAP allot   variable PRB-U
 : ASSERT-BUILD-REFUSED ( ptr u8 n -- ) {: m:ptr mu:n :}
    RC @ 0 <> TTRUE
    ERR$ m mu CONTAINS? TTRUE
-   REFUSE-HB$ EXISTS? 0= TTRUE ;
+   REFUSE-HB$ FS:EXISTS? 0= TTRUE ;
 
 : PROBE-REFUSE-ADDRESS-SPAN ( -- )
    s" capture refuses a recorded chain its window cannot place" T-LABEL
@@ -527,7 +527,7 @@ create PRB PRB-CAP allot   variable PRB-U
       s" aot-wid-suite: builder stderr:" type cr ERR$ type cr
       RC @ throw
    then
-   GATE-HB$ EXISTS? 0= if
+   GATE-HB$ FS:EXISTS? 0= if
       s" aot-wid-suite: builder wrote no engine" type cr
       E-FS-OPEN throw
    then ;
@@ -535,7 +535,7 @@ create PRB PRB-CAP allot   variable PRB-U
 : BUILT-GATE ( -- )
    BUILD-GATE
    RC @ 0 T=
-   GATE-HB$ EXISTS? TTRUE
+   GATE-HB$ FS:EXISTS? TTRUE
    REQUIRE-GATE-BUILD ;
 
 \ --- the wid rebase (dot habu-rebase-captured-wids-54dec421) --------------------
@@ -552,15 +552,15 @@ create PRB PRB-CAP allot   variable PRB-U
 \ the seed. Only top-row.f, the last cold-prefix file, gains fixture source;
 \ every other file is linked unchanged into this private invocation directory.
 : COLD-PATH ( ptr u8 n -- ptr u8 n )
-   COLD-ROOT$ 2swap COLD-DST JOIN-PATH COLD-DST swap ;
+   COLD-ROOT$ 2swap COLD-DST FS:JOIN-PATH COLD-DST swap ;
 
 : COLD-LINK ( ptr u8 n -- ) {: a:ptr u:n :}
-   SOURCE-ROOT:CWD$ a u COLD-SRC JOIN-PATH {: srcu:n :}
-   COLD-SRC srcu a u COLD-PATH MAKE-SYMLINK ;
+   SOURCE-ROOT:CWD$ a u COLD-SRC FS:JOIN-PATH {: srcu:n :}
+   COLD-SRC srcu a u COLD-PATH FS:MAKE-SYMLINK ;
 
 : COLD-CORE-LINK ( ptr u8 n -- ) {: a:ptr u:n :}
    a u s" src/core/top-row.f" STR= if exit then
-   a u COLD-PATH 2dup SOURCE-ROOT:DIRNAME MAKE-DIRS 2drop
+   a u COLD-PATH 2dup SOURCE-ROOT:DIRNAME FS:MAKE-DIRS 2drop
    a u COLD-LINK ;
 
 : COLD-FIXTURE$ ( n bool -- ptr u8 n ) {: wid:n sealed:bool :}
@@ -582,16 +582,16 @@ create PRB PRB-CAP allot   variable PRB-U
 \ Each target gets its own directory, so the sealed and the ordinary target
 \ boot the one GATE=2 engine against two prefixes.
 : COLD-SETUP ( ptr u8 n n bool -- ) {: dir:ptr diru:n wid:n sealed:bool :}
-   GATE-ROOT$ dir diru COLD-ROOT-BUF JOIN-PATH COLD-ROOT-U !
-   COLD-ROOT$ MAKE-DIR
+   GATE-ROOT$ dir diru COLD-ROOT-BUF FS:JOIN-PATH COLD-ROOT-U !
+   COLD-ROOT$ FS:MAKE-DIR
    s" tools" COLD-LINK
-   s" src/core" COLD-PATH MAKE-DIRS
+   s" src/core" COLD-PATH FS:MAKE-DIRS
    s" src/lib" COLD-LINK
    s" src/habu" COLD-LINK s" src/os" COLD-LINK
    s" src/arch" COLD-LINK s" src/compiler" COLD-LINK
-   s" src/core" [: COLD-CORE-LINK ;] WALK-FILES
-   s" src/core/top-row.f" s" src/core/top-row.f" COLD-PATH COPY-FILE-STREAM
-   s" src/core/top-row.f" COLD-PATH wid sealed COLD-FIXTURE$ APPEND-FILE ;
+   s" src/core" [: COLD-CORE-LINK ;] FS:WALK-FILES
+   s" src/core/top-row.f" s" src/core/top-row.f" COLD-PATH FS:COPY-FILE-STREAM
+   s" src/core/top-row.f" COLD-PATH wid sealed COLD-FIXTURE$ FS:APPEND-FILE ;
 
 : COLD-RUN ( ptr u8 n -- )
    {: e:ptr eu:n :}
@@ -601,7 +601,7 @@ create PRB PRB-CAP allot   variable PRB-U
    PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE-OUTCOME e eu STORE! ;
 
 : COLD-PROBE ( -- )
-   FORGE$ ALIAS-PROBE$ WRITE-ALL
+   FORGE$ ALIAS-PROBE$ FS:WRITE-ALL
    PROC-ARGV-RESET s" --load" >LEN PROC-ARGV+ FORGE$ >LEN PROC-ARGV+
    GATE-HB$ COLD-RUN ;
 
@@ -660,7 +660,7 @@ variable SOURCE-WID                  \ the ordinal the capture gave AWBGATE, as 
    OUT$ s" window record AWBGATE names wordlist" CONTAINS?
    ERR$ s" window record AWBGATE names wordlist" CONTAINS? or TTRUE
    s" ... and no engine is written" T-LABEL
-   GATE-HB$ EXISTS? 0= TTRUE ;
+   GATE-HB$ FS:EXISTS? 0= TTRUE ;
 
 \ The seed's own refusal, which the capture-side audit makes unreachable from a
 \ real capture: only a baked window that disagrees with the baked records can
@@ -701,7 +701,7 @@ variable SOURCE-WID                  \ the ordinal the capture gave AWBGATE, as 
       s" aot-wid-suite: builder stderr:" type cr ERR$ type cr
       RC @ throw
    then
-   HBPWID$ EXISTS? 0= if
+   HBPWID$ FS:EXISTS? 0= if
       s" aot-wid-suite: builder wrote no engine" type cr
       E-FS-OPEN throw
    then ;
@@ -711,7 +711,7 @@ variable SOURCE-WID                  \ the ordinal the capture gave AWBGATE, as 
    s" aot-wid variant engine builds cleanly" T-LABEL
    RC @ 0 T=
    s" hb-pwid variant exists after build" T-LABEL
-   HBPWID$ EXISTS? TTRUE
+   HBPWID$ FS:EXISTS? TTRUE
    REQUIRE-VARIANT-BUILD
    PROBE-VARIANT ;
 
@@ -745,9 +745,9 @@ public
 
 : RUN ( -- )
    T-RESET
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    [: BODY ;] catch {: code:n :}
-   CLEANUP-RUN
+   FS:CLEANUP-RUN
    code 0 <> if code throw then
    T-REPORT
    s" aot-wid-suite: ok" type cr ;

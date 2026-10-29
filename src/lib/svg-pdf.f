@@ -14,7 +14,7 @@
 \ the page is CSS px * 72/96 points with no rounding or crop. A page side over
 \ MAX-PAGE-PT (14,400 pt, 200 in, the PDF 1.7 Appendix C limit, no UserUnit)
 \ throws E-SIZE before that page draws; nothing is clamped or rescaled.
-\ The destination is replaced by one REPLACE-STAGED only after every page
+\ The destination is replaced by one FS:REPLACE-STAGED only after every page
 \ rendered and the surface finished cleanly, so any failure leaves it intact
 \ and removes the staged sibling; every call releases its GError, handles,
 \ contexts and surface on success or throw.
@@ -129,7 +129,7 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 8 cells TASK:+USER STATE drop
    HEIGHT 0.75 f* MAX-PAGE-PT s>f f> or if E-SIZE throw then ;
 
 : OPEN-PDF ( ptr u8 n -- )
-   FS-PATHZ WIDTH 0.75 f* HEIGHT 0.75 f* PDF-OPEN SURFACE-CELL !
+   FS:>PATHZ WIDTH 0.75 f* HEIGHT 0.75 f* PDF-OPEN SURFACE-CELL !
    SURFACE-CELL @ SURFACE-STATUS 0<> if E-RENDER throw then ;
 
 : RENDER-PAGE ( -- )
@@ -176,13 +176,13 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 8 cells TASK:+USER STATE drop
 : WRITE-BODY ( ptr u8 n ptr u8 n -- )
    {: path:ptr pathu:n data:ptr size:n :}
    data size OPEN-SVG
-   path pathu [: RENDER-PDF ;] REPLACE-STAGED ;
+   path pathu [: RENDER-PDF ;] FS:REPLACE-STAGED ;
 
 : WRITE-PAGES-BODY ( ptr u8 n ptr SPAN:span<u8> n -- )
    {: path:ptr pathu:n pages:ptr count:n :}
    count 0 <= if E-OPEN throw then
    pages 0 PAGE-AT SPAN:$ OPEN-SVG
-   pages count path pathu [: RENDER-PAGES ;] REPLACE-STAGED 2drop ;
+   pages count path pathu [: RENDER-PAGES ;] FS:REPLACE-STAGED 2drop ;
 
 public
 

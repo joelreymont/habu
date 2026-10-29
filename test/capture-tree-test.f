@@ -77,7 +77,7 @@ package CAPTURE-TREE-TEST
 create REPORT REPORT-BYTES allot
 create OUT-BUF CAP allot
 create ERR-BUF CAP allot
-create FIFO FS-PATH-CAP allot
+create FIFO PATH-CAP allot
 
 variable REPORT-U                    \ bytes of REPORT read so far
 variable FIFO-U

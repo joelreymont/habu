@@ -58,7 +58,7 @@ FUNCTION: READ-CALL read ( n ptr u8 n -- n )
    parent FD>N 0 >= if child >FD parent PROCESS:FD then ;
 
 : READ-END ( ptr u8 n -- fd ) {: a:ptr u:n :}
-   a u FS-PATHZ O-NONBLOCK 0 open {: rd:n :}
+   a u FS:>PATHZ O-NONBLOCK 0 open {: rd:n :}
    rd 0 < if E-FS-OPEN throw then
    rd >FD {: r:fd :}
    r FD-CLOEXEC!
@@ -68,14 +68,14 @@ public
 
 \ A new FIFO in the directory dir, named fifo-<k> by a count no earlier MAKE
 \ of this process used, so a writer a failed case left cannot open a later
-\ case's. Its path goes to dst, FS-PATH-CAP bytes, and its length is answered
+\ case's. Its path goes to dst, PATH-CAP bytes, and its length is answered
 \ with the read end: nonblocking and close-on-exec. A refused mkfifo or open
 \ throws E-FS-OPEN.
 : MAKE ( ptr u8 n ptr u8 -- n fd ) {: dir:ptr diru:n dst:ptr :}
    MADE @ 1+ MADE !
    SB-RESET s" fifo-" SB-APPEND MADE @ FMT:SB-INT
-   dir diru SB$ dst JOIN-PATH {: u:n :}
-   dst u FS-PATHZ MODE MKFIFO-CALL 0<> if E-FS-OPEN throw then
+   dir diru SB$ dst FS:JOIN-PATH {: u:n :}
+   dst u FS:>PATHZ MODE MKFIFO-CALL 0<> if E-FS-OPEN throw then
    u dst u READ-END ;
 
 \ The write end of the FIFO the environment variable name gives the path of,

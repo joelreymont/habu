@@ -15,10 +15,10 @@ package HB-BUILD-CLI
    S\" : MAIN ( -- ) s\" maker-out\" type cr 2 s\" maker-err\" write drop mono-ns 10000000000 + begin dup mono-ns > while repeat drop ;\n" ;
 
 : HBT-PREPARE-BLOCK-MAKER ( -- )
-   HBT-AOT-SRC HBT-BLOCK-MAKER$ WRITE-ALL
+   HBT-AOT-SRC HBT-BLOCK-MAKER$ FS:WRITE-ALL
    HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT
    HBB-BUILD
-   HBT-AOT-OUT EXECUTABLE? TTRUE
+   HBT-AOT-OUT FS:EXECUTABLE? TTRUE
    BF-TMP-RESET ;
 
 : HBT-MAKER-TIMEOUT-JSON ( -- )
@@ -38,7 +38,7 @@ package HB-BUILD-CLI
    s" stdout" JR:FIND-KEY TTRUE S\" maker-out\n" REPORT-STRING=
    s" stderr" JR:FIND-KEY TTRUE s" maker-err" REPORT-STRING=
    JR:CLOSE
-   HBT-REPL-BAD-OUT EXISTS? TFALSE ;
+   HBT-REPL-BAD-OUT FS:EXISTS? TFALSE ;
 
 \ The text form, on the REPL path. HBB-MAKER-TIMED-OUT writes it for both
 \ builds and only its maker= differs; the AOT path's timeout is the JSON case.
@@ -54,11 +54,11 @@ package HB-BUILD-CLI
    HBT-ERR erru S\" maker-err\nhb-build: code=E-PROC-TIMEOUT maker=repl" CONTAINS? TTRUE
    HBT-ERR erru s" 2500" CONTAINS? TTRUE
    HBT-ERR erru HBT-AOT-SRC CONTAINS? TTRUE
-   HBT-REPL-BAD-OUT EXISTS? TFALSE ;
+   HBT-REPL-BAD-OUT FS:EXISTS? TFALSE ;
 
 : HBT-MAKER-TIMEOUTS ( -- )
    HBT-PREPARE-BLOCK-MAKER
-   HBT-AOT-SRC HBT-AOT-SRC$ WRITE-ALL
+   HBT-AOT-SRC HBT-AOT-SRC$ FS:WRITE-ALL
    HBT-MAKER-TIMEOUT-JSON
    HBT-MAKER-TIMEOUT-REPL ;
 
@@ -69,8 +69,8 @@ public
    LINKER-BUILDER-ENGINE:ENSURE LINKER-BUILDER-ENGINE:HOST$ HBT-KEYED!
    HBT-PREPARE
    HBT-MAKER-TIMEOUTS
-   CLEANUP-RUN
-   HBT-ROOT EXISTS? TFALSE
+   FS:CLEANUP-RUN
+   HBT-ROOT FS:EXISTS? TFALSE
    T-REPORT
    s" hb-build-timeout-test: ok" type cr ;
 

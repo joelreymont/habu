@@ -11,9 +11,9 @@ require test/native-file-e2e.f
 
 using NATIVE-FILE-E2E
 package NATIVE-FILE-CWORK-TEST
-create APP FS-PATH-CAP allot variable APP-U
-create BIN-PATH FS-PATH-CAP allot variable BIN-PATH-U
-create CACHE FS-PATH-CAP allot variable CACHE-U
+create APP PATH-CAP allot variable APP-U
+create BIN-PATH PATH-CAP allot variable BIN-PATH-U
+create CACHE PATH-CAP allot variable CACHE-U
 
 : BUILD ( ptr u8 n -- )
    AT {: a:ptr u:n :} a BIN-PATH u BYTE-COPY u BIN-PATH-U !
@@ -90,7 +90,7 @@ public
    T-RESET
    s" native-file-cwork" TREE
    s" cache" AT {: cache:ptr cacheu:n :}
-   cache CACHE cacheu BYTE-COPY cacheu CACHE-U ! CACHE CACHE-U @ MAKE-DIR
+   cache CACHE cacheu BYTE-COPY cacheu CACHE-U ! CACHE CACHE-U @ FS:MAKE-DIR
    s" app.f" AT {: app:ptr appu:n :}
    app APP appu BYTE-COPY appu APP-U !
    s" unit.f" S\" package CWORK-FILE public\n-1 CWORK-VARIABLE VALUE n\n;package\ns\" cwork unit source ran\" type cr\n" PUT

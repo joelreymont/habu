@@ -70,9 +70,9 @@ TYPED-VARIABLE JR-ST JR:cursor           \ JR storage for screening a packet lin
 create PUB-B BUF:HDR-BYTES allot         \ a notification's bytes, grown as written
 create NEW-B BUF:HDR-BYTES allot         \ the files this check published lists for
 TYPED-VARIABLE W JSON-WRITE:writer
-create FILE-BUF FS-PATH-CAP allot        \ a packet's file, decoded
+create FILE-BUF PATH-CAP allot        \ a packet's file, decoded
 variable FILE-U
-FS-PATH-CAP 3 * 7 + SPAN-BUFFER: URI-SPAN  \ a file's URI: file:// and each byte escaped
+PATH-CAP 3 * 7 + SPAN-BUFFER: URI-SPAN  \ a file's URI: file:// and each byte escaped
 
 TYPED-VARIABLE LINE-A ptr u8             \ the packet line being screened
 variable LINE-U
@@ -103,7 +103,7 @@ variable ITEMS                           \ and the diagnostics in it so far
    JR:NEXT JR:T-OBJ <> if JR:CLOSE exit then
    s" file" JR:FIND-KEY 0= if JR:CLOSE exit then
    JR:TOKEN JR:T-STR <> if JR:CLOSE exit then
-   FILE-BUF FS-PATH-CAP JR:STR >r
+   FILE-BUF PATH-CAP JR:STR >r
    JR:FINISH
    r> FILE-U ! ;
 

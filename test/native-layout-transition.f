@@ -16,20 +16,20 @@ $2000 constant CAP
 300000 constant BUILD-MS
 create OUT CAP allot
 create ERR CAP allot
-create BUNDLE-DIR FS-PATH-CAP allot
+create BUNDLE-DIR PATH-CAP allot
 variable BUNDLE-U
-create BUNDLE-FILE FS-PATH-CAP allot
+create BUNDLE-FILE PATH-CAP allot
 
 : ARG ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
 
 : BUNDLE$ ( -- ptr u8 n ) BUNDLE-DIR BUNDLE-U @ ;
 
 : BUNDLE-FILE? ( ptr u8 n -- bool )
-   BUNDLE$ 2swap BUNDLE-FILE JOIN-PATH BUNDLE-FILE swap FILE? ;
+   BUNDLE$ 2swap BUNDLE-FILE FS:JOIN-PATH BUNDLE-FILE swap FS:FILE? ;
 
 : BUILD ( -- )
    SCRIPT-ARGC 1 <> if s" layout transition: one donor path required" 76 die then
-   s" build" MAKE-DIRS
+   s" build" FS:MAKE-DIRS
    PROC-ARGV-ENV-RESET
    PROC-ENV-INHERIT-MISSING
    s" --load" ARG
@@ -46,8 +46,8 @@ create BUNDLE-FILE FS-PATH-CAP allot
    rc 0 T= ;
 
 : BUILD-BUNDLE ( -- )
-   SOURCE-ROOT:CWD$ s" build/layout-bundle" BUNDLE-DIR JOIN-PATH BUNDLE-U !
-   BUNDLE$ MAKE-DIRS
+   SOURCE-ROOT:CWD$ s" build/layout-bundle" BUNDLE-DIR FS:JOIN-PATH BUNDLE-U !
+   BUNDLE$ FS:MAKE-DIRS
    PROC-ARGV-ENV-RESET
    s" HABU_GATE_COMPILER_BUNDLE" >LEN s" 1" >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
@@ -69,8 +69,8 @@ public
    T-RESET
    s" old layout donor builds current source" T-LABEL
    BUILD
-   s" build/hb-layout-transition" FILE? TTRUE
-   s" build/hb-layout-transition.map" FILE? TTRUE
+   s" build/hb-layout-transition" FS:FILE? TTRUE
+   s" build/hb-layout-transition.map" FS:FILE? TTRUE
    s" old layout donor builds compiler bundle" T-LABEL
    BUILD-BUNDLE
    s" hb-whitebox-source" BUNDLE-FILE? TTRUE

@@ -40,13 +40,13 @@ private
 139 constant CRASH-RC                  \ 128 + SIGSEGV: native dies of the trap after its dump
 CAP BUFFER: OUT
 CAP BUFFER: ERR
-FS-PATH-CAP BUFFER: DIR
+PATH-CAP BUFFER: DIR
 variable DIR-U
-FS-PATH-CAP BUFFER: SRC
+PATH-CAP BUFFER: SRC
 variable SRC-U
-FS-PATH-CAP BUFFER: CALLER
+PATH-CAP BUFFER: CALLER
 variable CALLER-U
-FS-PATH-CAP BUFFER: MODULE
+PATH-CAP BUFFER: MODULE
 variable MODULE-U
 PTR-VARIABLE NAME-A
 variable NAME-U
@@ -63,7 +63,7 @@ variable GEN-U
 : PATH ( ptr u8 n ptr u8 -- n )
    {: sfx:ptr su:n buf:ptr :}
    SB-RESET  NAME$ SB-APPEND  sfx su SB-APPEND
-   DIR DIR-U @ SB$ buf JOIN-PATH ;
+   DIR DIR-U @ SB$ buf FS:JOIN-PATH ;
 
 \ The row's files: SOURCE as NAME.f, NAME's call as NAME-call.f, and its
 \ module's path, NAME.wasm.
@@ -73,9 +73,9 @@ variable GEN-U
    s" .f" SRC PATH SRC-U !
    s" -call.f" CALLER PATH CALLER-U !
    s" .wasm" MODULE PATH MODULE-U !
-   SRC SRC-U @ src su WRITE-ALL
+   SRC SRC-U @ src su FS:WRITE-ALL
    SB-RESET  NAME$ SB-APPEND  S\" \n" SB-APPEND
-   CALLER CALLER-U @ SB$ WRITE-ALL ;
+   CALLER CALLER-U @ SB$ FS:WRITE-ALL ;
 
 \ bin/hb run on the arguments staged after PROC-ARGV-RESET: the lengths of its
 \ stdout and stderr, and its exit status.

@@ -17,15 +17,15 @@ package DICTIONARY-CAPACITY-TEST
 2000000 constant SOURCE-CAP
 8192 constant CAPTURE-CAP
 create SOURCE SOURCE-CAP allot  variable SOURCE-U
-create ROOT FS-PATH-CAP allot  variable ROOT-U
-create PATH FS-PATH-CAP allot
+create ROOT PATH-CAP allot  variable ROOT-U
+create PATH PATH-CAP allot
 create OUT CAPTURE-CAP allot  variable OUT-U
 create ERR CAPTURE-CAP allot  variable ERR-U
 create PROGRAM CAPTURE-CAP allot  variable PROGRAM-U
 
 : AT ( ptr u8 n -- ptr u8 n )
    {: name:ptr size:n :}
-   ROOT ROOT-U @ name size PATH JOIN-PATH PATH swap ;
+   ROOT ROOT-U @ name size PATH FS:JOIN-PATH PATH swap ;
 
 : SOURCE-RESET ( -- ) 0 SOURCE-U ! ;
 
@@ -64,7 +64,7 @@ create PROGRAM CAPTURE-CAP allot  variable PROGRAM-U
    WORDS 0 ?do i DEFINITION loop
    s" : CAP-SUM ( -- n ) DC000000 DC052999 + ;" SOURCE-LINE
    s" : MAIN ( -- ) CAP-SUM . ;" SOURCE-LINE
-   s" source.f" AT SOURCE SOURCE-U @ WRITE-ALL ;
+   s" source.f" AT SOURCE SOURCE-U @ FS:WRITE-ALL ;
 
 : ARG ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
 

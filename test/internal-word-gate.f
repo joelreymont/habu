@@ -54,15 +54,15 @@ variable ERR-U
 variable EXITED                 \ bool: child completed by exit
 variable RC
 
-create ROOT-BUF FS-PATH-CAP allot
-create CHILD-BUF FS-PATH-CAP allot
+create ROOT-BUF PATH-CAP allot
+create CHILD-BUF PATH-CAP allot
 create IN CAP allot         \ stdin-piped program
 create OUT CAP allot
 create ERR CAP allot
 create EMPTY 1 allot            \ zero-length stdin
 
 : COPY! ( ptr u8 n ptr u8 ptr n -- ) {: src:ptr u:n dst:ptr lenp:ptr :}
-   u FS-PATH-CAP > if E-FS-CAPACITY throw then
+   u PATH-CAP > if E-FS-CAPACITY throw then
    src dst u BYTE-COPY
    u lenp ! ;
 
@@ -100,7 +100,7 @@ create EMPTY 1 allot            \ zero-length stdin
 
 \ Run the program as a --load file with empty stdin.
 : RUN-LOAD ( ptr u8 n -- ) {: src:ptr u:n :}
-   CHILD src u WRITE-ALL
+   CHILD src u FS:WRITE-ALL
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    CHILD >LEN PROC-ARGV+
@@ -109,7 +109,7 @@ create EMPTY 1 allot            \ zero-length stdin
    src u STORE! ;
 
 : RUN-CHECK ( ptr u8 n -- ) {: src:ptr u:n :}
-   CHILD src u WRITE-ALL
+   CHILD src u FS:WRITE-ALL
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    s" tools/check.f" >LEN PROC-ARGV+
@@ -1458,15 +1458,15 @@ create QNAME QNAME-CAP allot
    RAW-FORGE$ PARITY-POS-LOAD ;
 
 : PREPARE ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" habu-iwg" FS:MKTEMP-DIR {: a:ptr u:n :}
    a u ROOT-BUF ROOT-U COPY!
-   ROOT CLEANUP-TREE+
-   ROOT s" forge.f" CHILD-BUF JOIN-PATH CHILD-U ! ;
+   ROOT FS:CLEANUP-TREE+
+   ROOT s" forge.f" CHILD-BUF FS:JOIN-PATH CHILD-U ! ;
 
 : CLEANUP ( -- )
-   CLEANUP-RUN
-   ROOT EXISTS? TFALSE ;
+   FS:CLEANUP-RUN
+   ROOT FS:EXISTS? TFALSE ;
 
 : MAIN ( -- )
    T-RESET

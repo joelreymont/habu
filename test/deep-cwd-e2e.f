@@ -1,10 +1,10 @@
 \ An engine started from a working directory longer than PATH-CAP refuses it by
 \ name on one line: every root it resolves against fits PATH-CAP, and every
 \ path below that directory is longer still. The same entry, run from the long
-\ directory's parent, which fits, loads. FS-PATH-CAP bounds MAKE-DIRS and a
+\ directory's parent, which fits, loads. PATH-CAP bounds FS:MAKE-DIRS and a
 \ child's cwd, so /bin/mkdir makes the tail past PATH-CAP and /usr/bin/env -C
 \ starts the engine in it, both naming it relative to its parent. Keep the
-\ children's logs. REMOVE-TREE then removes the tail, whose paths pass
+\ children's logs. FS:REMOVE-TREE then removes the tail, whose paths pass
 \ PATH-CAP, through directory descriptors, and unlinks a link the tail holds to
 \ a directory beside it without following it into the sentinel there. A
 \ failed step is recorded, not fatal, and the cases run under `finally`, so an
@@ -27,12 +27,12 @@ private
 
 $4000 constant IO-CAP
 30000 constant TIMEOUT-MS
-create ROOT FS-PATH-CAP allot variable ROOT-U
-create ENTRY FS-PATH-CAP allot variable ENTRY-U
-create ENGINE FS-PATH-CAP allot variable ENGINE-U
-create MID FS-PATH-CAP allot variable MID-U
-create SIDE FS-PATH-CAP allot variable SIDE-U
-create PATH FS-PATH-CAP allot
+create ROOT PATH-CAP allot variable ROOT-U
+create ENTRY PATH-CAP allot variable ENTRY-U
+create ENGINE PATH-CAP allot variable ENGINE-U
+create MID PATH-CAP allot variable MID-U
+create SIDE PATH-CAP allot variable SIDE-U
+create PATH PATH-CAP allot
 create OUT IO-CAP allot
 create ERR IO-CAP allot
 variable OUT-U
@@ -46,14 +46,14 @@ variable RC
 : SIDE$ ( -- ptr u8 n ) SIDE SIDE-U @ ;
 
 \ TAIL is three 200-byte segments, MID is ROOT$/deep/TAIL and the long
-\ directory is MID/TAIL, past PATH-CAP whenever MID fits FS-PATH-CAP. The
-\ removed root TOP$ is MID/<first segment>, and it fits FS-PATH-CAP only for a
+\ directory is MID/TAIL, past PATH-CAP whenever MID fits PATH-CAP. The
+\ removed root TOP$ is MID/<first segment>, and it fits PATH-CAP only for a
 \ ROOT$ of at most ROOT-MAX bytes; SETUP dies naming a longer root and the
 \ bound.
 200 constant SEG-BYTES
 SEG-BYTES 1 + 3 * 1 - constant TAIL-BYTES
 \ 6: the /deep/ after ROOT$; 1: the slash before the first segment.
-FS-PATH-CAP 6 - TAIL-BYTES - 1 - SEG-BYTES - constant ROOT-MAX
+PATH-CAP 6 - TAIL-BYTES - 1 - SEG-BYTES - constant ROOT-MAX
 create TAIL TAIL-BYTES allot
 
 : TAIL$ ( -- ptr u8 n ) TAIL TAIL-BYTES ;
@@ -82,25 +82,25 @@ create TAIL TAIL-BYTES allot
    u ROOT-MAX > if
       SB-RESET s" deep-cwd: root " SB-APPEND ROOT$ SB-APPEND
       s"  is longer than " SB-APPEND ROOT-MAX FMT:SB-INT
-      s"  bytes, so ROOT/deep/TAIL/<segment> passes FS-PATH-CAP" SB-APPEND
+      s"  bytes, so ROOT/deep/TAIL/<segment> passes PATH-CAP" SB-APPEND
       SB$ 1 die
    then
    ENGINE-CANDIDATE:PATH$ SOURCE-ROOT:CANONICAL TTRUE {: e:ptr eu:n :}
    e ENGINE eu BYTE-COPY eu ENGINE-U !
-   ROOT$ s" entry.f" ENTRY JOIN-PATH ENTRY-U !
-   ENTRY$ S\" package DEEP-CWD-CHILD\npublic\n: RUN ( -- ) s\q deep cwd: ok\q type cr ;\n;package\nDEEP-CWD-CHILD:RUN\n" WRITE-ALL
+   ROOT$ s" entry.f" ENTRY FS:JOIN-PATH ENTRY-U !
+   ENTRY$ S\" package DEEP-CWD-CHILD\npublic\n: RUN ( -- ) s\q deep cwd: ok\q type cr ;\n;package\nDEEP-CWD-CHILD:RUN\n" FS:WRITE-ALL
    TAIL!
-   ROOT$ s" deep" PATH JOIN-PATH {: pathu:n :}
-   PATH pathu TAIL$ MID JOIN-PATH MID-U !
-   MID$ MAKE-DIRS ;
+   ROOT$ s" deep" PATH FS:JOIN-PATH {: pathu:n :}
+   PATH pathu TAIL$ MID FS:JOIN-PATH MID-U !
+   MID$ FS:MAKE-DIRS ;
 
 : MAKE-TAIL ( CMD:command -- CMD:command )
    s" -p" CMD:ARG+ TAIL$ CMD:ARG+
    s" /bin/mkdir" IN-MID ;
 
 : SAVE ( ptr u8 n ptr u8 n -- ) {: rel:ptr relu:n data:ptr size:n :}
-   ROOT$ rel relu PATH JOIN-PATH {: pathu:n :}
-   PATH pathu data size WRITE-ALL ;
+   ROOT$ rel relu PATH FS:JOIN-PATH {: pathu:n :}
+   PATH pathu data size FS:WRITE-ALL ;
 
 : ENGINE-ARGV+ ( -- )
    ENGINE$ >LEN PROC-ARGV+
@@ -146,12 +146,12 @@ create TAIL TAIL-BYTES allot
 
 \ PATH holds one answer at a time: each caller consumes it before the next.
 : SENTINEL$ ( -- ptr u8 n )
-   SIDE$ s" sentinel" PATH JOIN-PATH {: u:n :}
+   SIDE$ s" sentinel" PATH FS:JOIN-PATH {: u:n :}
    PATH u ;
 
 
 : TOP$ ( -- ptr u8 n )
-   MID$ TAIL-TOP$ PATH JOIN-PATH {: u:n :}
+   MID$ TAIL-TOP$ PATH FS:JOIN-PATH {: u:n :}
    PATH u ;
 
 
@@ -164,23 +164,23 @@ create TAIL TAIL-BYTES allot
 \ SIDE is beside the deep tree and holds the sentinel. The link to it sits in
 \ the deepest tail directory, past PATH-CAP, so ln makes it relative to MID.
 : LINK-SIDE ( -- )
-   ROOT$ s" side" SIDE JOIN-PATH SIDE-U !
-   SIDE$ MAKE-DIR
-   SENTINEL$ s" kept" WRITE-ALL
-   TAIL$ s" side" PATH JOIN-PATH [: LINK ;] CMD:WITH-COMMAND ;
+   ROOT$ s" side" SIDE FS:JOIN-PATH SIDE-U !
+   SIDE$ FS:MAKE-DIR
+   SENTINEL$ s" kept" FS:WRITE-ALL
+   TAIL$ s" side" PATH FS:JOIN-PATH [: LINK ;] CMD:WITH-COMMAND ;
 
 
 : REMOVE-TAIL ( -- )
    LINK-SIDE
-   [: TOP$ REMOVE-TREE ;] catch {: code:n :}
-   s" REMOVE-TREE removes a tree whose paths pass PATH-CAP" T-LABEL
+   [: TOP$ FS:REMOVE-TREE ;] catch {: code:n :}
+   s" FS:REMOVE-TREE removes a tree whose paths pass PATH-CAP" T-LABEL
    code 0 T=
    code 0= if
-      s" REMOVE-TREE removed it" T-LABEL
-      TOP$ EXISTS? TFALSE
+      s" FS:REMOVE-TREE removed it" T-LABEL
+      TOP$ FS:EXISTS? TFALSE
    then
    s" and unlinks a link to a directory without following it" T-LABEL
-   SENTINEL$ EXISTS? TTRUE ;
+   SENTINEL$ FS:EXISTS? TTRUE ;
 
 \ Whatever the cases left of the tail, an rm child removes: it runs after a
 \ recorded failure or a throw, and finds nothing after a passing run.
@@ -189,7 +189,7 @@ create TAIL TAIL-BYTES allot
    s" /bin/rm" IN-MID ;
 
 : CLEAR-TAIL ( -- )
-   TOP$ EXISTS? 0= if exit then
+   TOP$ FS:EXISTS? 0= if exit then
    [: RM-TAIL ;] CMD:WITH-COMMAND ;
 
 public

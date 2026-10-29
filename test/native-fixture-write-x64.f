@@ -13,7 +13,7 @@ package NATIVE-FIXTURE-WRITE
 private
 
 $10000 constant IO-CAP
-create HOST FS-PATH-CAP allot
+create HOST PATH-CAP allot
 create OUT IO-CAP allot
 create ERR IO-CAP allot
 variable HOST-U
@@ -26,7 +26,7 @@ variable HOST-U
 \ pathname cannot reuse a writer holding a stale one.
 : HOST! ( -- )
    ENGINE-CANDIDATE:PATH$ {: a:ptr u:n :}
-   u 0 <= u FS-PATH-CAP > or if E-FS-PATH throw then
+   u 0 <= u PATH-CAP > or if E-FS-PATH throw then
    a HOST u BYTE-COPY
    u HOST-U ! ;
 

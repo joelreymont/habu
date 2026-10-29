@@ -28,8 +28,8 @@ require test/preloaded-engine.f
 package AOT-DATA-CELL-REFUSAL-TEST
 
 600000 constant TIMEOUT-MS
-create SUBJECT FS-PATH-CAP allot
-create IMAGE FS-PATH-CAP allot
+create SUBJECT PATH-CAP allot
+create IMAGE PATH-CAP allot
 variable SUBJECT-U
 variable IMAGE-U
 
@@ -44,7 +44,7 @@ variable IMAGE-U
    s" hb-aot-got" IMAGE GT-PATH IMAGE-U ! ;
 
 : WRITE-SUBJECT ( ptr u8 n -- ) {: a:ptr u:n :}
-   SUBJECT$ a u WRITE-ALL ;
+   SUBJECT$ a u FS:WRITE-ALL ;
 
 \ The linker child reads its prelude from stdin, and this is the production
 \ maker script (tools/hb-build-lib.f HBB-RUN-MAKER-CMD) spelled out: phase one
@@ -71,7 +71,7 @@ variable IMAGE-U
    s" 0" in inu BUILD-DIAG ;
 
 : NO-IMAGE ( ptr u8 n -- ) {: label:ptr labelu:n :}
-   IMAGE$ EXISTS? if label labelu GE-FAIL then ;
+   IMAGE$ FS:EXISTS? if label labelu GE-FAIL then ;
 
 \ Each field is there AND rendered something. The fields are space separated and
 \ the last one ends the line, so an empty one is exactly what the LACKS needles

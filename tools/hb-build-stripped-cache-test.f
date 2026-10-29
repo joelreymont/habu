@@ -16,12 +16,12 @@ require test/aot-builder-engine.f
 \ this row reopens it the way tools/hb-build-test-lib.f does.
 package HB-BUILD-CLI
 
-create HBT-MAP-PATH FS-PATH-CAP allot
-create HBT-MAP-PATH2 FS-PATH-CAP allot
+create HBT-MAP-PATH PATH-CAP allot
+create HBT-MAP-PATH2 PATH-CAP allot
 variable HBT-MAP-PATH-U
 DYNAMIC-BUFFER HBT-MAP-TEXT u8
-create HBT-DONOR-BUF FS-PATH-CAP allot
-create HBT-DONOR-OUT-BUF FS-PATH-CAP allot
+create HBT-DONOR-BUF PATH-CAP allot
+create HBT-DONOR-OUT-BUF PATH-CAP allot
 variable HBT-DONOR-U
 variable HBT-DONOR-OUT-U
 
@@ -30,21 +30,21 @@ variable HBT-DONOR-OUT-U
 
 : HBT-MAP$ ( ptr u8 n -- ptr u8 n )
    {: a:ptr u:n :}
-   u 4 + FS-PATH-CAP > if E-FS-CAPACITY throw then
+   u 4 + PATH-CAP > if E-FS-CAPACITY throw then
    a HBT-MAP-PATH u BYTE-COPY
    s" .map" drop HBT-MAP-PATH u + 4 BYTE-COPY
    HBT-MAP-PATH u 4 + ;
 
 : HBT-MAP2$ ( ptr u8 n -- ptr u8 n )
    {: a:ptr u:n :}
-   u 4 + FS-PATH-CAP > if E-FS-CAPACITY throw then
+   u 4 + PATH-CAP > if E-FS-CAPACITY throw then
    a HBT-MAP-PATH2 u BYTE-COPY
    s" .map" drop HBT-MAP-PATH2 u + 4 BYTE-COPY
    HBT-MAP-PATH2 u 4 + ;
 
 : HBT-CODE-ATTR ( ptr u8 n -- )
    {: a:ptr u:n :}
-   a u HBT-MAP$ FILE? TTRUE
+   a u HBT-MAP$ FS:FILE? TTRUE
    a u IMAGE-SIZE:MEASURE
    IMAGE-SIZE:ATTR? TTRUE
    IMAGE-SIZE:ATTR-BYTES IMAGE-SIZE:CODE-BYTES T=
@@ -58,9 +58,9 @@ variable HBT-DONOR-OUT-U
 
 : HBT-MAPL-ATTR ( -- )
    HBT-MAPL-OUT HBT-MAP$ {: path:ptr pathu:n :}
-   path pathu FILE-SIZE {: size:n :}
+   path pathu FS:FILE-SIZE {: size:n :}
    size HBT-MAP-TEXT-RESERVE
-   path pathu 0 HBT-MAP-TEXT BYTE-VIEW size READ-ALL size T=
+   path pathu 0 HBT-MAP-TEXT BYTE-VIEW size FS:READ-ALL size T=
    0 HBT-MAP-TEXT BYTE-VIEW size {: map:ptr mapu:n :}
    map mapu s" 64K-ALLOC-LEN word baked src/lib/memory.f" CONTAINS? TTRUE
    map mapu s" ALLOC-64K word baked src/lib/memory.f" CONTAINS? TTRUE
@@ -127,7 +127,7 @@ variable HBT-DONOR-OUT-U
 \ program tools/hb-build-stripped-cells-test.f HBT-STRIPPED-MAPPED-CELL refuses,
 \ written the way that refusal suggests.
 : HBT-RUN-MAPL ( -- )
-   HBT-MAPL-OUT FILE? TTRUE
+   HBT-MAPL-OUT FS:FILE? TTRUE
    HBT-MAPL-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
    HBT-TIMEOUT-MS >MS RUN-CAPTURE HBT-CAPTURE>N {: outn:n errn:n rcn:n :}
    rcn 0 <> if HBT-RUN-OUT outn type HBT-RUN-ERR errn type then
@@ -138,11 +138,11 @@ variable HBT-DONOR-OUT-U
 \ The images at HBT-MAPL-OUT and HBT-MAPL-OUT2 are the same length and differ
 \ at no offset.
 : HBT-MAPL-SAME-BYTES ( -- )
-   HBT-MAPL-OUT2 FILE-SIZE  HBT-MAPL-OUT FILE-SIZE T=
-   HBT-MAPL-OUT FILE-SIZE MEM-ALLOC-64K-SPAN {: abuf:ptr acap:n :}
-   HBT-MAPL-OUT abuf acap READ-ALL {: au:n :}
-   HBT-MAPL-OUT2 FILE-SIZE MEM-ALLOC-64K-SPAN {: bbuf:ptr bcap:n :}
-   HBT-MAPL-OUT2 bbuf bcap READ-ALL {: bu:n :}
+   HBT-MAPL-OUT2 FS:FILE-SIZE  HBT-MAPL-OUT FS:FILE-SIZE T=
+   HBT-MAPL-OUT FS:FILE-SIZE MEM-ALLOC-64K-SPAN {: abuf:ptr acap:n :}
+   HBT-MAPL-OUT abuf acap FS:READ-ALL {: au:n :}
+   HBT-MAPL-OUT2 FS:FILE-SIZE MEM-ALLOC-64K-SPAN {: bbuf:ptr bcap:n :}
+   HBT-MAPL-OUT2 bbuf bcap FS:READ-ALL {: bu:n :}
    abuf au bbuf bu HBT-DIFF-AT -1 T= ;
 
 \ ... and TWO LINKS OF IT ARE THE SAME BYTES. This is the equality the mapped
@@ -150,7 +150,7 @@ variable HBT-DONOR-OUT-U
 \ bytes of eight window cells and nowhere else. Every build runs its maker, and
 \ that is asserted, not assumed.
 : HBT-STRIPPED-SAME-TWICE ( -- )
-   HBT-MAPL-SRC HBT-MAPL-SRC$ WRITE-ALL
+   HBT-MAPL-SRC HBT-MAPL-SRC$ FS:WRITE-ALL
    HBT-MAPL-OUT HBT-REMOVE-FILE?
    HBT-MAPL-OUT2 HBT-REMOVE-FILE?
    HBT-MAPL-SRC HBT-MAPL-OUT HBT-HBB-PREPARE-AOT HBT-HBB-BUILD-OUT
@@ -168,18 +168,18 @@ variable HBT-DONOR-OUT-U
 \ throws E-BUILD-INSTALL and the map beside -o keeps its prior bytes.
 : HBT-STRIPPED-RENAME-FAILS ( -- )
    HBT-ROOT s" install-blocked" HBT-DONOR-OUT-BUF HBT-DONOR-OUT-U HBT-PATH!
-   HBT-DONOR-OUT$ MAKE-DIR
-   HBT-DONOR-OUT$ HBT-MAP$ s" previous map" WRITE-ALL
+   HBT-DONOR-OUT$ FS:MAKE-DIR
+   HBT-DONOR-OUT$ HBT-MAP$ s" previous map" FS:WRITE-ALL
    HBT-MAPL-SRC HBT-DONOR-OUT$ HBT-HBB-PREPARE-AOT
    [: HBT-HBB-BUILD-OUT ;] E-BUILD-INSTALL TTHROWSQ
-   HBT-DONOR-OUT$ DIR? TTRUE
+   HBT-DONOR-OUT$ FS:DIR? TTRUE
    HBT-DONOR-OUT$ HBT-MAP$ {: path:ptr pathu:n :}
-   path pathu FILE-SIZE {: size:n :}
+   path pathu FS:FILE-SIZE {: size:n :}
    size HBT-MAP-TEXT-RESERVE
-   path pathu 0 HBT-MAP-TEXT BYTE-VIEW size READ-ALL size T=
+   path pathu 0 HBT-MAP-TEXT BYTE-VIEW size FS:READ-ALL size T=
    0 HBT-MAP-TEXT BYTE-VIEW size s" previous map" T$=
-   path pathu REMOVE-FILE
-   HBT-DONOR-OUT$ REMOVE-DIR ;
+   path pathu FS:REMOVE-FILE
+   HBT-DONOR-OUT$ FS:REMOVE-DIR ;
 
 \ Select a symlink whose target has a map, but whose own sibling map is absent.
 \ Only the selected sibling supplies attribution: restoring it must invalidate
@@ -187,10 +187,10 @@ variable HBT-DONOR-OUT-U
 : HBT-DONOR-MAP-KEY ( -- )
    HBT-ROOT s" donor" HBT-DONOR-BUF HBT-DONOR-U HBT-PATH!
    HBT-ROOT s" donor-out" HBT-DONOR-OUT-BUF HBT-DONOR-OUT-U HBT-PATH!
-   HBT-LINKER HBT-MAP$ FILE? TTRUE
-   HBT-LINKER HBT-DONOR$ MAKE-SYMLINK
-   HBT-DONOR$ HBT-MAP$ FILE? TFALSE
-   HBT-MAPL-SRC HBT-MAPL-SRC$ WRITE-ALL
+   HBT-LINKER HBT-MAP$ FS:FILE? TTRUE
+   HBT-LINKER HBT-DONOR$ FS:MAKE-SYMLINK
+   HBT-DONOR$ HBT-MAP$ FS:FILE? TFALSE
+   HBT-MAPL-SRC HBT-MAPL-SRC$ FS:WRITE-ALL
    HBT-MAPL-SRC HBT-DONOR-OUT$ HBT-HBB-PREPARE-AOT
    HBT-DONOR$ HBT-ENGINE!
    HBT-HBB-BUILD-OUT
@@ -198,7 +198,7 @@ variable HBT-DONOR-OUT-U
    HBT-DONOR-OUT$ HBT-CODE-ATTR
    IMAGE-NAMES:UNKNOWN-BYTES 0 > TTRUE
    IMAGE-NAMES:BAKED-SOURCE? TFALSE
-   HBT-LINKER HBT-MAP$ HBT-DONOR$ HBT-MAP2$ COPY-FILE-STREAM
+   HBT-LINKER HBT-MAP$ HBT-DONOR$ HBT-MAP2$ FS:COPY-FILE-STREAM
    HBT-MAPL-SRC HBT-DONOR-OUT$ HBT-HBB-PREPARE-AOT
    HBT-DONOR$ HBT-ENGINE!
    HBT-HBB-BUILD-OUT
@@ -210,13 +210,13 @@ variable HBT-DONOR-OUT-U
 \ the cached pointer, the same table spelled in code and a cached pointer into
 \ the program's own window data (src/habu/aot-closure.f XTD-ROW).
 : HBT-STRIPPED-CACHED-CARRIED ( -- )
-   HBT-PTRC-SRC HBT-PTRC-SRC$ WRITE-ALL
+   HBT-PTRC-SRC HBT-PTRC-SRC$ FS:WRITE-ALL
    HBT-PTRC-OUT HBT-REMOVE-FILE?
    HBT-PTRC-SRC HBT-PTRC-OUT HBT-HBB-PREPARE-AOT HBT-HBB-BUILD-OUT
-   HBT-PTRC-OUT FILE? TTRUE
+   HBT-PTRC-OUT FS:FILE? TTRUE
    \ The carried DATA table needs no baked word.
    HBT-PTRC-OUT HBT-CODE-ATTR
-   HBT-MAPL-OUT2 HBT-MAP$ HBT-PTRC-OUT HBT-MAP2$ COPY-FILE-STREAM
+   HBT-MAPL-OUT2 HBT-MAP$ HBT-PTRC-OUT HBT-MAP2$ FS:COPY-FILE-STREAM
    HBT-PTRC-OUT IMAGE-SIZE:MEASURE
    IMAGE-SIZE:ATTR? TFALSE
    HBT-PTRC-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
@@ -230,7 +230,7 @@ variable HBT-DONOR-OUT-U
 \ ... while a declared cell holding a baked table on no list is refused, naming
 \ the cell that holds the address rather than a code site.
 : HBT-STRIPPED-CACHED-UNOWNED ( -- )
-   HBT-PTRU-SRC HBT-PTRU-SRC$ WRITE-ALL
+   HBT-PTRU-SRC HBT-PTRU-SRC$ FS:WRITE-ALL
    HBT-PTRU-SRC HBT-RUN-MAKER {: uout:n uerr:n urc:n :}
    urc 70 T=
    HBB-ERR-BUF uerr s" declared data cell holds an engine address outside the restored span" CONTAINS? TTRUE
@@ -250,8 +250,8 @@ public
    HBT-DONOR-MAP-KEY
    HBT-STRIPPED-CACHED-CARRIED
    HBT-STRIPPED-CACHED-UNOWNED
-   CLEANUP-RUN
-   HBT-ROOT EXISTS? TFALSE
+   FS:CLEANUP-RUN
+   HBT-ROOT FS:EXISTS? TFALSE
    T-REPORT
    s" hb-build-stripped-cache-test: ok" type cr ;
 

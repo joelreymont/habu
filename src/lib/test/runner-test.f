@@ -15,15 +15,15 @@ require src/lib/process-env.f                \ a child run with a TMPDIR of its 
 require src/lib/fmt.f
 require src/lib/test/runner.f
 
-create GTT-OK-PATH FS-PATH-CAP allot
-create GTT-FAIL-PATH FS-PATH-CAP allot
-create GTT-HANG-PATH FS-PATH-CAP allot
-create GTT-LINE-PATH FS-PATH-CAP allot
-create GTT-REC-PATH FS-PATH-CAP allot
-create GTT-DETAIL-PATH FS-PATH-CAP allot
-create GTT-ROOM-PATH FS-PATH-CAP allot
-create GTT-LONG-PATH FS-PATH-CAP allot
-create GTT-TMP-PATH FS-PATH-CAP allot
+create GTT-OK-PATH PATH-CAP allot
+create GTT-FAIL-PATH PATH-CAP allot
+create GTT-HANG-PATH PATH-CAP allot
+create GTT-LINE-PATH PATH-CAP allot
+create GTT-REC-PATH PATH-CAP allot
+create GTT-DETAIL-PATH PATH-CAP allot
+create GTT-ROOM-PATH PATH-CAP allot
+create GTT-LONG-PATH PATH-CAP allot
+create GTT-TMP-PATH PATH-CAP allot
 create GTT-NAME GT-NAME-MAX 1+ allot
 200 constant GTT-SEG-MAX                 \ a long directory's longest name
 128 constant GTT-LINE-CAP
@@ -132,13 +132,13 @@ variable GTT-OFI
    SB-RESET
    s" require src/lib/fs-mutate.f" SB-APPEND GTT-LF
    s" require src/lib/test/runner.f" SB-APPEND GTT-LF
-   s" create P FS-PATH-CAP allot" SB-APPEND GTT-LF
+   s" create P PATH-CAP allot" SB-APPEND GTT-LF
    s" create N GT-NAME-MAX allot" SB-APPEND GTT-LF
    s" : ROOM ( -- )" SB-APPEND GTT-LF
    s"    GT-NAME-MAX 0 ?do 110 N i + c! loop" SB-APPEND GTT-LF
    s"    " SB-APPEND GTT-ROOM-PREFIX$ GTT-LIT+ s"  GT-START" SB-APPEND GTT-LF
    s"    N GT-NAME-MAX P GT-PATH {: u:n :}" SB-APPEND GTT-LF
-   s"    P u " SB-APPEND s" room" GTT-LIT+ s"  WRITE-ALL" SB-APPEND GTT-LF
+   s"    P u " SB-APPEND s" room" GTT-LIT+ s"  FS:WRITE-ALL" SB-APPEND GTT-LF
    s"    " SB-APPEND s" room-ok" GTT-LIT+ s"  type cr" SB-APPEND GTT-LF
    s"    GT-CLEANUP ;" SB-APPEND GTT-LF
    s" ROOM" SB-APPEND GTT-LF
@@ -159,10 +159,10 @@ variable GTT-OFI
    s" require src/lib/process-argv.f" SB-APPEND GTT-LF
    s" require src/lib/test/runner.f" SB-APPEND GTT-LF
    s" PROC-ARGV-RESET" SB-APPEND GTT-LF
-   GTT-DETAIL$ SB$ WRITE-ALL
+   GTT-DETAIL$ SB$ FS:WRITE-ALL
    SB-RESET
    GTT-FAIL$ GTT-LIT+ s"  >LEN PROC-ARGV+" SB-APPEND GTT-LF
-   GTT-DETAIL$ SB$ APPEND-FILE
+   GTT-DETAIL$ SB$ FS:APPEND-FILE
    SB-RESET
    s" bin/hb" GTT-LIT+ s"  GT-RUN-DEFAULT" SB-APPEND GTT-LF
    s" 7 " SB-APPEND s" rc-pass" GTT-LIT+ s"  GT-RC=" SB-APPEND GTT-LF
@@ -173,7 +173,7 @@ variable GTT-OFI
    \ Ends itself: a child that falls off the end waits on the stdin it
    \ inherited, so its cost would be the caller's stdin and not its own work.
    s" NULL-PTR 0 0 die" SB-APPEND GTT-LF
-   GTT-DETAIL$ SB$ APPEND-FILE ;
+   GTT-DETAIL$ SB$ FS:APPEND-FILE ;
 
 \ Golden, written out rather than derived, so a change in what the runner prints
 \ cannot rewrite its own expectation. The blank line after each captured stream
@@ -221,20 +221,20 @@ variable GTT-OFI
    u GTT-LINE-LEN ! ;
 
 : GTT-LINE-FILE-RESET ( -- )
-   GTT-LINE$ SB-RESET SB$ WRITE-ALL ;
+   GTT-LINE$ SB-RESET SB$ FS:WRITE-ALL ;
 
 : GTT-LINE-FLUSH-LINES ( -- )
-   GTT-LINE$ OPEN-APPEND-FD GTT-LINE-FD !
+   GTT-LINE$ FS:OPEN-APPEND-FD GTT-LINE-FD !
    GTT-LINE-FD @ GTT-LINE-BUF GTT-LINE-LEN GT-FLUSH-LINES-FD
    GTT-LINE-FD @ close ;
 
 : GTT-LINE-FLUSH-REMAINDER ( -- )
-   GTT-LINE$ OPEN-APPEND-FD GTT-LINE-FD !
+   GTT-LINE$ FS:OPEN-APPEND-FD GTT-LINE-FD !
    GTT-LINE-FD @ GTT-LINE-BUF GTT-LINE-LEN GT-FLUSH-REMAINDER-FD
    GTT-LINE-FD @ close ;
 
 : GTT-LINE-FILE$ ( -- ptr u8 n )
-   GTT-LINE$ GTT-READ-BUF GTT-LINE-CAP READ-ALL
+   GTT-LINE$ GTT-READ-BUF GTT-LINE-CAP FS:READ-ALL
    GTT-READ-BUF swap ;
 
 : GTT-PATHS! ( -- )
@@ -247,7 +247,7 @@ variable GTT-OFI
    s" room.f" GTT-ROOM-PATH GT-PATH GTT-ROOM-U ! ;
 
 : GTT-WRITE ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu src:ptr srcu :}
-   path pathu src srcu WRITE-ALL ;
+   path pathu src srcu FS:WRITE-ALL ;
 
 : GTT-PREPARE ( -- )
    s" habu-test-runner" GT-START
@@ -310,10 +310,10 @@ variable GTT-OFI
    PROC-CLOSE-CAPTURE-FDS ;
 
 : GTT-TEST-TEMP-ROOT ( -- )
-   GT-ROOT DIR? TTRUE
-   GTT-OK$ FILE? TTRUE
-   GTT-FAIL$ FILE? TTRUE
-   GTT-HANG$ FILE? TTRUE ;
+   GT-ROOT FS:DIR? TTRUE
+   GTT-OK$ FS:FILE? TTRUE
+   GTT-FAIL$ FS:FILE? TTRUE
+   GTT-HANG$ FS:FILE? TTRUE ;
 
 : GTT-TEST-PASSING-COMMAND ( -- )
    GTT-RUN-OK
@@ -470,7 +470,7 @@ variable GTT-OFI
    begin GTT-TMP-U @ n < while
       n GTT-TMP-U @ - GTT-SEG-LEN GTT-SEG+
    repeat
-   GTT-TMP-PATH n 2dup MAKE-DIRS ;
+   GTT-TMP-PATH n 2dup FS:MAKE-DIRS ;
 
 \ room.f run by bin/hb with tmp as its TMPDIR and the rest of the environment
 \ inherited.
@@ -536,7 +536,7 @@ variable GTT-OFI
    GTT-TEST-ROOM
    GTT-TEST-NAME-MAX
    GT-CLEANUP
-   GT-ROOT EXISTS? TFALSE
+   GT-ROOT FS:EXISTS? TFALSE
    T-REPORT
    GT-REPORT
    s" test-runner-test: ok" type cr ;

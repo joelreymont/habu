@@ -403,7 +403,7 @@ private
 \ file's, is only the first room (src/lib/source.f READ-WHOLE-SAMPLED).
 : RNL-LOAD-SOURCE ( ptr u8 n -- ) {: path:ptr pathu :}
    0 RNL-SRC-CAP !
-   path pathu  path pathu FILE-SIZE  [: RNL-SRC-ROOM ;] SOURCE:READ-WHOLE-SAMPLED RNL-SRC-U ! ;
+   path pathu  path pathu FS:FILE-SIZE  [: RNL-SRC-ROOM ;] SOURCE:READ-WHOLE-SAMPLED RNL-SRC-U ! ;
 
 public
 

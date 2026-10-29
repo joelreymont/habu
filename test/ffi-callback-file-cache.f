@@ -7,8 +7,8 @@ require test/aot-builder-engine.f
 package FFI-CB-FILE-CACHE-TEST
 
 600000 constant TIMEOUT-MS
-create SUBJECT FS-PATH-CAP allot
-create IMAGE FS-PATH-CAP allot
+create SUBJECT PATH-CAP allot
+create IMAGE PATH-CAP allot
 variable SUBJECT-U
 variable IMAGE-U
 
@@ -39,7 +39,7 @@ variable IMAGE-U
          s" cold callback file build" GE-FAIL
       then
    then
-   IMAGE$ EXECUTABLE? 0= if s" callback FILE image missing" GE-FAIL then ;
+   IMAGE$ FS:EXECUTABLE? 0= if s" callback FILE image missing" GE-FAIL then ;
 
 : RUN-IMAGE ( -- )
    GE-HB-RESET
@@ -50,21 +50,21 @@ variable IMAGE-U
    s" " s" callback FILE image stderr" GE-EXPECT-ERR ;
 
 : WRITE-SUBJECT ( bool -- ) {: unbound:bool :}
-   SUBJECT$ S\" require src/lib/ffi-callback.f\nCALLBACK: FILE-BOUND ( -- ) ;CALLBACK\n" WRITE-ALL
+   SUBJECT$ S\" require src/lib/ffi-callback.f\nCALLBACK: FILE-BOUND ( -- ) ;CALLBACK\n" FS:WRITE-ALL
    \ Numeric fallbacks force descriptor growth and retirement before capture.
    \ MAIN also reaches the public seed-entry primitive: its code span must be
    \ disjoint from the shared thunk's, with FILE-BOUND still the first row.
-   SUBJECT$ S\" CALLBACK: FIRST ( -- n ) 456 FALLBACK ;CALLBACK\nCALLBACK: SECOND ( -- n ) 456 FALLBACK ;CALLBACK\n" APPEND-FILE
-   SUBJECT$ S\" FILE-BOUND TASK:SELF-CONTEXT FFI-CB:ENTRY drop\n" APPEND-FILE
-   SUBJECT$ S\" s\q callback declaration source ran\q type cr\n" APPEND-FILE
+   SUBJECT$ S\" CALLBACK: FIRST ( -- n ) 456 FALLBACK ;CALLBACK\nCALLBACK: SECOND ( -- n ) 456 FALLBACK ;CALLBACK\n" FS:APPEND-FILE
+   SUBJECT$ S\" FILE-BOUND TASK:SELF-CONTEXT FFI-CB:ENTRY drop\n" FS:APPEND-FILE
+   SUBJECT$ S\" s\q callback declaration source ran\q type cr\n" FS:APPEND-FILE
    unbound if
-      SUBJECT$ S\" FILE-BOUND FFI-CB:UNBIND\n" APPEND-FILE
+      SUBJECT$ S\" FILE-BOUND FFI-CB:UNBIND\n" FS:APPEND-FILE
    then
-   SUBJECT$ S\" PERSISTED-PTR-VARIABLE FILE-ROWS\nvariable FILE-ROW-VISITS\n" APPEND-FILE
-   SUBJECT$ S\" : KEEP-ROW ( ptr u8 n -- ) {: a:ptr u:n :} FILE-ROW-VISITS @ 0= if a 0 ptr-field @ FILE-ROWS ! then 1 FILE-ROW-VISITS +! ;\n" APPEND-FILE
-   SUBJECT$ S\" : BOUND-REGION ( -- n ) 0 FILE-ROW-VISITS ! ['] KEEP-ROW TASK:OWNED-CALLBACK-ROWS FILE-ROWS @ CB-ROW-REGION + CELL-VIEW atomic@ ;\n" APPEND-FILE
-   SUBJECT$ S\" : ROW-MOVES ( -- n ) FILE-ROWS @ 2 cells + CELL-VIEW atomic@ ;\n: FRESH-ROW ( -- ) BOUND-REGION dup . cr 0<> if 74 throw then ROW-MOVES dup . cr 0<> if 74 throw then ;\n" APPEND-FILE
-   SUBJECT$ S\" require test/stripped-callback-subject.f\n: MAIN ( -- ) 0 FFI:CALLBACK-ENTRY drop FRESH-ROW s\q fresh callback binding: ok\q type cr STRIPPED-CALLBACK-SUBJECT:RUN ;\n" APPEND-FILE ;
+   SUBJECT$ S\" PERSISTED-PTR-VARIABLE FILE-ROWS\nvariable FILE-ROW-VISITS\n" FS:APPEND-FILE
+   SUBJECT$ S\" : KEEP-ROW ( ptr u8 n -- ) {: a:ptr u:n :} FILE-ROW-VISITS @ 0= if a 0 ptr-field @ FILE-ROWS ! then 1 FILE-ROW-VISITS +! ;\n" FS:APPEND-FILE
+   SUBJECT$ S\" : BOUND-REGION ( -- n ) 0 FILE-ROW-VISITS ! ['] KEEP-ROW TASK:OWNED-CALLBACK-ROWS FILE-ROWS @ CB-ROW-REGION + CELL-VIEW atomic@ ;\n" FS:APPEND-FILE
+   SUBJECT$ S\" : ROW-MOVES ( -- n ) FILE-ROWS @ 2 cells + CELL-VIEW atomic@ ;\n: FRESH-ROW ( -- ) BOUND-REGION dup . cr 0<> if 74 throw then ROW-MOVES dup . cr 0<> if 74 throw then ;\n" FS:APPEND-FILE
+   SUBJECT$ S\" require test/stripped-callback-subject.f\n: MAIN ( -- ) 0 FFI:CALLBACK-ENTRY drop FRESH-ROW s\q fresh callback binding: ok\q type cr STRIPPED-CALLBACK-SUBJECT:RUN ;\n" FS:APPEND-FILE ;
 
 : BODY ( -- )
    s" ffi-callback-file-cache" GT-START

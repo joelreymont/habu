@@ -18,8 +18,8 @@ package NATIVE-FILE-TYPES-TEST
 create HASH-CTX SHA256-FILE-CTX-BYTES allot
 create WARM-HASH 32 allot
 create COLD-HASH 32 allot
-create SOURCE-PATH FS-PATH-CAP allot
-create PRODUCT-PATH FS-PATH-CAP allot
+create SOURCE-PATH PATH-CAP allot
+create PRODUCT-PATH PATH-CAP allot
 create PARTIAL-REFS 1024 allot
 create LIVE-KEY 256 allot
 create PENDING-KEY 256 allot
@@ -110,18 +110,18 @@ variable EXPECT-U
    s" types.f"
       S\" package FILE-SHAPE public\nSTRUCTURE scratch OPAQUE DERIVE addr\nFIELD a n\n"
       PUT
-   wide if s" types.f" AT S\" FIELD walk n\n" APPEND-FILE then
+   wide if s" types.f" AT S\" FIELD walk n\n" FS:APPEND-FILE then
    s" types.f" AT
       S\" ;STRUCTURE\nSTRUCTURE context OPAQUE DERIVE addr\nFIELD scratch scratch\n;STRUCTURE\nSTRUCTURE client OPAQUE DERIVE addr\nFIELD ctx ptr context\n;STRUCTURE\n: SIZE ( -- n ) CONTEXT-BYTES ;\n: VALUE ( ptr context -- n ) CONTEXT-SCRATCH "
-      APPEND-FILE
+      FS:APPEND-FILE
    s" types.f" AT
-      wide if s" SCRATCH-WALK" else s" SCRATCH-A" then APPEND-FILE
+      wide if s" SCRATCH-WALK" else s" SCRATCH-A" then FS:APPEND-FILE
    s" types.f" AT
-      S\"  dup 42 swap ! @ ;\nPRODUCT request FIELD first n\n" APPEND-FILE
-   wide if s" types.f" AT S\" FIELD second n\n" APPEND-FILE then
-   s" types.f" AT S\" ;PRODUCT\n: REQUEST ( -- request ) 1 " APPEND-FILE
-   wide if s" types.f" AT s" 2 " APPEND-FILE then
-   s" types.f" AT S\" FILE--SHAPE-REQUEST:MAKE ;\n;package\n" APPEND-FILE ;
+      S\"  dup 42 swap ! @ ;\nPRODUCT request FIELD first n\n" FS:APPEND-FILE
+   wide if s" types.f" AT S\" FIELD second n\n" FS:APPEND-FILE then
+   s" types.f" AT S\" ;PRODUCT\n: REQUEST ( -- request ) 1 " FS:APPEND-FILE
+   wide if s" types.f" AT s" 2 " FS:APPEND-FILE then
+   s" types.f" AT S\" FILE--SHAPE-REQUEST:MAKE ;\n;package\n" FS:APPEND-FILE ;
 
 : HASH-APP ( ptr u8 -- )
    {: digest:ptr :}
@@ -129,14 +129,14 @@ variable EXPECT-U
 
 : SAVE-APP ( ptr u8 n -- )
    {: name:ptr nameu:n :}
-   ROOT$ s" app-hb" SOURCE-PATH JOIN-PATH SOURCE-PATH swap
+   ROOT$ s" app-hb" SOURCE-PATH FS:JOIN-PATH SOURCE-PATH swap
    name nameu AT 0 NATIVE-FILE-APP:COPY-SKIP-LINES ;
 
 : BUILD-FRESH ( ptr u8 n -- n )
    {: cache:ptr cacheu:n :}
-   cache cacheu AT MAKE-DIR
-   ROOT$ s" app.f" SOURCE-PATH JOIN-PATH SOURCE-PATH swap
-   ROOT$ s" app-hb" PRODUCT-PATH JOIN-PATH PRODUCT-PATH swap
+   cache cacheu AT FS:MAKE-DIR
+   ROOT$ s" app.f" SOURCE-PATH FS:JOIN-PATH SOURCE-PATH swap
+   ROOT$ s" app-hb" PRODUCT-PATH FS:JOIN-PATH PRODUCT-PATH swap
    cache cacheu AT NATIVE-FILE-APP:BUILD
    NATIVE-FILE-APP:OUT$ NATIVE-FILE-APP:ERR$ STREAMS! ;
 
@@ -146,12 +146,12 @@ variable EXPECT-U
    NATIVE-FILE-APP:OUT$ NATIVE-FILE-APP:ERR$ STREAMS! ;
 
 : PREPARE ( -- )
-   s" cache" AT MAKE-DIR
+   s" cache" AT FS:MAKE-DIR
    s" test/fixtures/native-file-state-prefix.f" s" prefix.f" AT 1
       NATIVE-FILE-APP:COPY-SKIP-LINES
    s" test/fixtures/native-file-types-unit.f" s" unit.f" AT 1
       NATIVE-FILE-APP:COPY-SKIP-LINES
-   s" unit.f" AT S\" s\" types-unit-source-ran\" type cr\n" APPEND-FILE
+   s" unit.f" AT S\" s\" types-unit-source-ran\" type cr\n" FS:APPEND-FILE
    s" test/fixtures/native-file-types-downstream.f" s" downstream.f" AT 1
       NATIVE-FILE-APP:COPY-SKIP-LINES
    s" test/fixtures/native-file-types-rejected.f" s" bad.f" AT 0
@@ -165,7 +165,7 @@ variable EXPECT-U
 
 : SHIFT-PREFIX ( -- )
    s" prefix.f" AT
-   S\" package FILE-SHIFT\npublic\nNEWTYPE unrelated\n;package\n" APPEND-FILE ;
+   S\" package FILE-SHIFT\npublic\nNEWTYPE unrelated\n;package\n" FS:APPEND-FILE ;
 
 : RUN-IMPORTED ( -- )
    PROC-ARGV-ENV-RESET PROC-ENV-INHERIT-MISSING
@@ -249,7 +249,7 @@ variable EXPECT-U
    s" probe3.f" LOAD-LINE
    s" app-hb" PROBE-RUN
    OUT$ S\" save-refused\n" CONTAINS? TTRUE
-   s" app3" AT EXISTS? TFALSE
+   s" app3" AT FS:EXISTS? TFALSE
    OUT$ S\" 99\n" CONTAINS? TTRUE
    0 EXPECT-U !
    s" native-file: refused path=" EXPECT 512 EXPECT-U BUF-APPEND
@@ -270,7 +270,7 @@ variable EXPECT-U
 : SHAPE-CASE ( -- )
    s" a nested family edit invalidates generated storage definitions" T-LABEL
    s" native-file-types-shape" TREE
-   s" cache" AT MAKE-DIR
+   s" cache" AT FS:MAKE-DIR
    false SHAPE-SOURCE
    \ Width frames, checked deferred binding and logical-immediate encoding must
    \ leave the same captured bytes when their bodies are reused from the cache.
@@ -312,9 +312,9 @@ variable EXPECT-U
 \ the store's high-water instead makes the warm build throw 76.
 : WIDTH-SOURCE ( n -- ) {: k:n :}
    s" a.f" S\" package FILE-WIDE public\nSTRUCTURE wide OPAQUE DERIVE addr FIELD a n\n" PUT
-   k 1 > if s" a.f" AT S\" FIELD b n\n" APPEND-FILE then
-   k 2 > if s" a.f" AT S\" FIELD c n\n" APPEND-FILE then
-   s" a.f" AT S\" ;STRUCTURE\n: SIZE ( -- n ) WIDE-BYTES ;\n;package\n" APPEND-FILE ;
+   k 1 > if s" a.f" AT S\" FIELD b n\n" FS:APPEND-FILE then
+   k 2 > if s" a.f" AT S\" FIELD c n\n" FS:APPEND-FILE then
+   s" a.f" AT S\" ;STRUCTURE\n: SIZE ( -- n ) WIDE-BYTES ;\n;package\n" FS:APPEND-FILE ;
 
 : EMPTY-STEP ( n ptr u8 n ptr u8 n -- )
    {: k:n out:ptr outu:n fresh:ptr freshu:n :}
@@ -333,7 +333,7 @@ variable EXPECT-U
 : EMPTY-RANGE-CASE ( -- )
    s" a reused empty family range survives store shifts in an earlier file" T-LABEL
    s" native-file-types-empty" TREE
-   s" cache" AT MAKE-DIR
+   s" cache" AT FS:MAKE-DIR
    s" b.f"
       S\" package FILE-TAGS\nSUMTYPE mark VARIANT none ;VARIANT ;SUMTYPE\nSUMTYPE hook VARIANT call [ -- ] ;VARIANT VARIANT wrap mark<> ;VARIANT ;SUMTYPE\npublic\nSTRUCTURE empty ;STRUCTURE\n: KEEP ( ptr empty -- ptr empty ) ;\n: CODE ( -- n ) 32 ;\n;package\n"
       PUT
@@ -362,7 +362,7 @@ variable EXPECT-U
 : FAMILY-HIT-CASE ( -- )
    s" a reused file of private families leaves the cold image" T-LABEL
    s" native-file-types-family" TREE
-   s" cache" AT MAKE-DIR
+   s" cache" AT FS:MAKE-DIR
    s" decl.f"
       S\" package PZ private\nENUM shade VARIANT red ;VARIANT VARIANT blue ;VARIANT ;ENUM\nSTRUCTURE sdfail DERIVE addr FIELD a n ;STRUCTURE\n;package\n"
       PUT
@@ -438,12 +438,12 @@ create ENUM-LINE 48 allot
    s" a reused file that moves a registry store leaves the cold image" T-LABEL
    BUILDER-ROWS ROWS-PAST-DOUBLE swap ROWS-PAST-DOUBLE max {: rows:n :}
    s" native-file-types-grow" TREE
-   s" cache" AT MAKE-DIR
+   s" cache" AT FS:MAKE-DIR
    s" decl.f" S\" package PZ private\n" PUT
    rows 0 ?do
-      s" decl.f" AT ENUM-LINE i ENUM-LINE! APPEND-FILE
+      s" decl.f" AT ENUM-LINE i ENUM-LINE! FS:APPEND-FILE
    loop
-   s" decl.f" AT S\" ;package\n" APPEND-FILE
+   s" decl.f" AT S\" ;package\n" FS:APPEND-FILE
    s" app.f" S\" require decl.f\n: MAIN ( -- ) 41 . ;\n" PUT
    s" app-hb" BUILD SUCCESS
    OUT$ S\" files reused 0\n" CONTAINS? TTRUE
@@ -465,7 +465,7 @@ create ENUM-LINE 48 allot
 : ROLL-HIT-CASE ( -- )
    s" a reused file of rolled-back compiles leaves the cold image" T-LABEL
    s" native-file-types-roll" TREE
-   s" cache" AT MAKE-DIR
+   s" cache" AT FS:MAKE-DIR
    s" decl.f"
       S\" package SDFAIL public\n: A ( -- n ) 7 ;\n;package\n: ROLLED ( -- n ) [: s\" STRUCTURE sdfail DERIVE addr FIELD a n ;STRUCTURE\" evaluate-closed ;] catch ;\nROLLED constant ROLL-RC\n"
       PUT
@@ -522,10 +522,10 @@ DYNAMIC-BUFFER ENTRY u8
 \ IMPORT-RUN).
 : OPEN-UNIT ( -- ptr u8 n )
    OBJECT-PATH {: path:ptr pathu:n :}
-   path pathu FILE-SIZE {: size:n :}
+   path pathu FS:FILE-SIZE {: size:n :}
    size ENTRY-RESERVE
    0 ENTRY BYTE-VIEW {: e:ptr :}
-   path pathu e size READ-ALL size <> if E-FS-IO throw then
+   path pathu e size FS:READ-ALL size <> if E-FS-IO throw then
    e 16 + size 16 - NUNIT-FILE:ARCH-AARCH64 s" FILE" SLICE-KEY 64
       NUNIT-FILE:READ-VIEW
    5 NUNIT-FILE:SECTION$ drop {: sec:ptr :}
@@ -538,10 +538,10 @@ DYNAMIC-BUFFER ENTRY u8
 \ read, and write it back over c.f's object.
 : RESEAL-UNIT ( -- )
    OBJECT-PATH {: path:ptr pathu:n :}
-   path pathu FILE-SIZE {: size:n :}
+   path pathu FS:FILE-SIZE {: size:n :}
    0 ENTRY BYTE-VIEW {: e:ptr :}
    e 16 + size 16 - NDEF-CACHE:CHECKSUM e 8 + LE:U64!
-   path pathu e size WRITE-ALL ;
+   path pathu e size FS:WRITE-ALL ;
 
 
 \ Flip the low bit of the unit magic, the unit's first cell, of c.f's checker
@@ -587,7 +587,7 @@ DYNAMIC-BUFFER ENTRY u8
 \ case whose app.f must compile from source against what c.f left edits a
 \ comment into it first: the new bytes give app.f a key no object holds.
 : EDIT-APP ( -- )
-   s" app.f" AT S\" \\ edited\n" APPEND-FILE ;
+   s" app.f" AT S\" \\ edited\n" FS:APPEND-FILE ;
 
 \ c.f declares private products, whose MAKE and UNMAKE are words of package
 \ FCTOR. app.f, compiled from source in every build (each
@@ -600,7 +600,7 @@ DYNAMIC-BUFFER ENTRY u8
 : CTOR-CASE ( -- )
    s" a reused product keeps its constructor for a later file's typed call" T-LABEL
    s" native-file-types-ctor" TREE
-   s" cache" AT MAKE-DIR
+   s" cache" AT FS:MAKE-DIR
    s" c.f"
       S\" package FCTOR\nPRODUCT pair FIELD x n FIELD y n ;PRODUCT\nPRODUCT box<a> FIELD v a ;PRODUCT\npublic\n: CODE ( -- n ) 5 ;\n;package\n"
       PUT
@@ -630,7 +630,7 @@ DYNAMIC-BUFFER ENTRY u8
 : CTOR-PREFIX-CASE ( -- )
    s" a constructor word interned before its file refuses that file's capture" T-LABEL
    s" native-file-types-ctor-prefix" TREE
-   s" cache" AT MAKE-DIR
+   s" cache" AT FS:MAKE-DIR
    s" a.f" S\" package FCTOR\n: PAIR-MAKE ( -- ) ;\nundefine PAIR-MAKE\n;package\n" PUT
    s" c.f"
       S\" package FCTOR\nPRODUCT pair FIELD x n FIELD y n ;PRODUCT\npublic\n: RUN ( -- n ) 3 4 PAIR-MAKE PAIR-UNMAKE + ;\n;package\n"

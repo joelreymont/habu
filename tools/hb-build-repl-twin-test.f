@@ -29,14 +29,14 @@ variable HBT-TWIN-TMP-B-U
 variable HBT-TWIN-OUT-A-U
 variable HBT-TWIN-OUT-B-U
 variable HBT-TWIN-OUT-D-U
-create HBT-TWIN-SRC-BUF FS-PATH-CAP allot
-create HBT-TWIN-CHILD-BUF FS-PATH-CAP allot
-create HBT-TWIN-CTX-BUF FS-PATH-CAP allot
-create HBT-TWIN-TMP-A-BUF FS-PATH-CAP allot
-create HBT-TWIN-TMP-B-BUF FS-PATH-CAP allot
-create HBT-TWIN-OUT-A-BUF FS-PATH-CAP allot
-create HBT-TWIN-OUT-B-BUF FS-PATH-CAP allot
-create HBT-TWIN-OUT-D-BUF FS-PATH-CAP allot
+create HBT-TWIN-SRC-BUF PATH-CAP allot
+create HBT-TWIN-CHILD-BUF PATH-CAP allot
+create HBT-TWIN-CTX-BUF PATH-CAP allot
+create HBT-TWIN-TMP-A-BUF PATH-CAP allot
+create HBT-TWIN-TMP-B-BUF PATH-CAP allot
+create HBT-TWIN-OUT-A-BUF PATH-CAP allot
+create HBT-TWIN-OUT-B-BUF PATH-CAP allot
+create HBT-TWIN-OUT-D-BUF PATH-CAP allot
 
 : HBT-TWIN-SRC ( -- ptr u8 n ) HBT-TWIN-SRC-BUF HBT-TWIN-SRC-U @ ;
 : HBT-TWIN-CHILD ( -- ptr u8 n ) HBT-TWIN-CHILD-BUF HBT-TWIN-CHILD-U @ ;
@@ -107,11 +107,11 @@ create HBT-TWIN-OUT-D-BUF FS-PATH-CAP allot
    HBT-ROOT s" twin-out-a" HBT-TWIN-OUT-A-BUF HBT-TWIN-OUT-A-U HBT-PATH!
    HBT-ROOT s" twin-direct-image" HBT-TWIN-OUT-B-BUF HBT-TWIN-OUT-B-U HBT-PATH!
    HBT-ROOT s" twin-out-d" HBT-TWIN-OUT-D-BUF HBT-TWIN-OUT-D-U HBT-PATH!
-   HBT-TWIN-TMP-A MAKE-DIR
-   HBT-TWIN-TMP-B MAKE-DIR
-   HBT-TWIN-CHILD HBT-TWIN-CHILD$ WRITE-ALL
-   HBT-TWIN-CTX HBT-TWIN-CTX$ WRITE-ALL
-   HBT-TWIN-SRC HBT-TWIN-SRC$ WRITE-ALL ;
+   HBT-TWIN-TMP-A FS:MAKE-DIR
+   HBT-TWIN-TMP-B FS:MAKE-DIR
+   HBT-TWIN-CHILD HBT-TWIN-CHILD$ FS:WRITE-ALL
+   HBT-TWIN-CTX HBT-TWIN-CTX$ FS:WRITE-ALL
+   HBT-TWIN-SRC HBT-TWIN-SRC$ FS:WRITE-ALL ;
 
 \ The tier 0 round's three outputs. B keeps its TMPDIR and out root: the
 \ builder image there does not depend on the tier (the tier reaches the maker
@@ -151,8 +151,8 @@ create HBT-TWIN-OUT-D-BUF FS-PATH-CAP allot
    rc 0 T= ;
 
 : HBT-TWIN-READ ( ptr u8 n -- ptr u8 n ) {: path:ptr pathu:n :}
-   path pathu FILE-SIZE MEM-ALLOC-64K-SPAN {: buf:ptr cap:n :}
-   buf  path pathu buf cap READ-ALL ;
+   path pathu FS:FILE-SIZE MEM-ALLOC-64K-SPAN {: buf:ptr cap:n :}
+   buf  path pathu buf cap FS:READ-ALL ;
 
 \ Run one executable with one stdin script, capturing into the given buffers.
 : HBT-TWIN-RUN ( ptr u8 n ptr u8 n ptr u8 ptr u8 -- n n n )
@@ -232,11 +232,11 @@ create HBT-TWIN-OUT-D-BUF FS-PATH-CAP allot
 
 : HBT-TWIN-FINISH ( -- )
    s" HABU_RETAIN_TWIN" GETENV dup 0 > if
-      2drop CLEANUP-RESET
+      2drop FS:CLEANUP-RESET
       s" hb-build-repl-twin-test artifacts: " type HBT-ROOT type cr
    else
-      2drop CLEANUP-RUN
-      HBT-ROOT EXISTS? TFALSE
+      2drop FS:CLEANUP-RUN
+      HBT-ROOT FS:EXISTS? TFALSE
    then ;
 
 \ Public so the driver below runs it with the package CLOSED: the subtests

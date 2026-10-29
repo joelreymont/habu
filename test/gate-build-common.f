@@ -2,6 +2,7 @@
 
 require src/lib/string.f
 require src/lib/memory.f
+require src/lib/le.f
 require tools/gate-json-assert-core.f
 require test/gate-common.f
 
@@ -49,9 +50,9 @@ $200000401 constant GB-ELF-DLSYM-RINFO
 \ report needs room for every relocated site.
 $40000 constant GB-REPORT-CAP
 
-create GB-SRC-PATH FS-PATH-CAP allot
-create GB-OUT-PATH FS-PATH-CAP allot
-create GB-REPORT-PATH FS-PATH-CAP allot
+create GB-SRC-PATH PATH-CAP allot
+create GB-OUT-PATH PATH-CAP allot
+create GB-REPORT-PATH PATH-CAP allot
 
 variable GB-SRC-U
 variable GB-OUT-U
@@ -102,7 +103,7 @@ variable GB-LC-OFF
    name nameu GB-REPORT-PATH GT-PATH GB-REPORT-U ! ;
 
 : GB-WRITE-SRC ( -- )
-   GB-SRC$ GE-SRC-BUF GE-SRC-U @ WRITE-ALL ;
+   GB-SRC$ GE-SRC-BUF GE-SRC-U @ FS:WRITE-ALL ;
 
 : GB-TARGET-UNKNOWN ( -- )
    E-BUILD-SOURCE throw ;
@@ -173,9 +174,9 @@ variable GB-LC-OFF
    need GB-EXEC-ALLOC ;
 
 : GB-READ-EXEC ( ptr u8 n -- ) {: path:ptr pathu :}
-   path pathu FILE-SIZE {: need :}
+   path pathu FS:FILE-SIZE {: need :}
    need GB-EXEC-ENSURE
-   path pathu GB-EXEC-BUF GB-EXEC-CAPACITY READ-ALL GB-EXEC-U !
+   path pathu GB-EXEC-BUF GB-EXEC-CAPACITY FS:READ-ALL GB-EXEC-U !
    GB-EXEC-U @ need <> if E-BUILD-SOURCE throw then ;
 
 : GB-RANGE ( n n -- ) {: off u :}
@@ -197,7 +198,7 @@ variable GB-LC-OFF
 
 : GB-U64-OFF ( n -- n ) {: off :}
    off 8 GB-RANGE
-   off GB-ADDR FS-U64@ ;
+   off GB-ADDR LE:U64@ ;
 
 : GB-SECTION-TEXT? ( n -- bool )
    GB-ADDR 6 s" __text" STR= ;

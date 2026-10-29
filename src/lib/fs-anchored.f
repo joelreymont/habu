@@ -2,9 +2,9 @@
 \
 \ OPEN-DIR starts at / for an absolute path or . for a relative one (the whole
 \ paths / and . are valid) and returns an owned directory descriptor the
-\ caller retires with CLOSE. OPEN-DIR-AT and READ-FILE-AT borrow the anchor,
+\ caller retires with CLOSE-DIR. OPEN-DIR-AT and READ-FILE-AT borrow the anchor,
 \ never close it, and refuse absolute paths. Every path is copied to private
-\ storage first; an empty, negative or over-FS-PATH-CAP path and an empty,
+\ storage first; an empty, negative or over-PATH-CAP path and an empty,
 \ repeated, trailing, . or .. component throw E-FS-PATH, a NUL E-FS-PATH-UNSAFE
 \ (.cache and a..b are ordinary names).
 \
@@ -38,8 +38,8 @@ private
 2 constant A-RESULT-CELL
 3 cells constant A-PATH-OFF
 \ libc struct stat has cell alignment, independently of the byte path's length.
-A-PATH-OFF FS-PATHZ-CAP + CELL 1- + CELL negate and constant A-STAT-OFF
-A-STAT-OFF FS-STAT-CAP + constant A-PROBE-OFF
+A-PATH-OFF PATHZ-CAP + CELL 1- + CELL negate and constant A-STAT-OFF
+A-STAT-OFF STAT-CAP + constant A-PROBE-OFF
 A-PROBE-OFF 1 + constant A-WORK-BYTES
 4 constant A-INTERRUPTED
 
@@ -94,32 +94,32 @@ FUNCTION: A-CLOSE-CALL close ( n -- i32 ) ;FUNCTION
    $8000 $80000 or $800 or $100 or ;
 
 : A-SNAPSHOT ( ptr u8 n ptr u8 -- ptr u8 ) {: src:ptr u:n work:ptr :}
-   u 0 <= u FS-PATH-CAP > or if E-FS-PATH throw then
+   u 0 <= u PATH-CAP > or if E-FS-PATH throw then
    work A-PATH-BUF {: dst:ptr :}
-   src u dst FS-PATHZ-CAP SPAN:MAKE SPAN:COPY
+   src u dst PATHZ-CAP SPAN:MAKE SPAN:COPY
    0 dst u + c!
    dst ;
 : A-COMPONENT-END ( ptr u8 n n -- n ) {: path:ptr u:n at:n :}
    at begin dup u < while
-      path over + c@ FS-SLASH = if exit then
+      path over + c@ SLASH = if exit then
       1+
    repeat ;
 : A-COMPONENT-OK ( ptr u8 n n -- ) {: path:ptr from:n stop:n :}
    stop from = if E-FS-PATH throw then
    stop from - 1 = if
-      path from + c@ FS-DOT = if E-FS-PATH throw then
+      path from + c@ DOT = if E-FS-PATH throw then
    then
    stop from - 2 = if
-      path from + c@ FS-DOT = path from 1 + + c@ FS-DOT = and
+      path from + c@ DOT = path from 1 + + c@ DOT = and
       if E-FS-PATH throw then
    then ;
 : A-VALIDATE ( ptr u8 n bool -- n ) {: path:ptr u:n base:bool :}
    u 0 ?do path i + c@ 0= if E-FS-PATH-UNSAFE throw then loop
-   path c@ FS-SLASH = {: absolute:bool :}
+   path c@ SLASH = {: absolute:bool :}
    absolute base 0= and if E-FS-PATH throw then
    u 1 = base and if
       absolute if 1 exit then
-      path c@ FS-DOT = if 1 exit then
+      path c@ DOT = if 1 exit then
    then
    absolute if 1 else 0 then {: start:n :}
    start begin dup u < while
@@ -129,21 +129,21 @@ FUNCTION: A-CLOSE-CALL close ( n -- i32 ) ;FUNCTION
       stop u < if stop 1 + else stop then
    repeat
    drop
-   path u 1 - + c@ FS-SLASH = if E-FS-PATH throw then
+   path u 1 - + c@ SLASH = if E-FS-PATH throw then
    start ;
 
 : A-OPEN-BASE ( ptr u8 ptr u8 -- ) {: path:ptr work:ptr :}
-   path c@ FS-SLASH = if
-      FS-AT-CWD S\" /\z" drop FS-OPEN-DIR-FLAGS FS-OPEN-AT-CALL
+   path c@ SLASH = if
+      AT-CWD S\" /\z" drop OPEN-DIR-FLAGS OPEN-AT-CALL
    else
-      FS-AT-CWD S\" .\z" drop FS-OPEN-DIR-FLAGS FS-OPEN-AT-CALL
+      AT-CWD S\" .\z" drop OPEN-DIR-FLAGS OPEN-AT-CALL
    then
-   dup 0 < if drop E-FS-OPEN FS-ERRNO-FAIL then
+   dup 0 < if drop E-FS-OPEN ERRNO-FAIL then
    work A-CUR! ;
 
 : A-OPEN-NEXT ( ptr u8 n ptr u8 n -- ) {: work:ptr parent:n component:ptr flags:n :}
-   parent component flags FS-OPEN-AT-CALL
-   dup 0 < if drop E-FS-OPEN FS-ERRNO-FAIL then
+   parent component flags OPEN-AT-CALL
+   dup 0 < if drop E-FS-OPEN ERRNO-FAIL then
    work A-NEXT!
    work A-CUR-CELL A-CLOSE-SLOT dup 0<> if CAUSE! E-FS-IO throw then drop
    work A-NEXT@ work A-CUR!
@@ -157,7 +157,7 @@ FUNCTION: A-CLOSE-CALL close ( n -- i32 ) ;FUNCTION
       {: at:n :}
       path u at A-COMPONENT-END {: stop:n :}
       0 path stop + c!
-      stop u = file and if A-FILE-FLAGS else FS-OPEN-DIR-FLAGS then {: flags:n :}
+      stop u = file and if A-FILE-FLAGS else OPEN-DIR-FLAGS then {: flags:n :}
       work A-CUR@ dup 0 < if drop parent then {: from:n :}
       work from path at + flags A-OPEN-NEXT
       stop u < if stop 1 + else stop then
@@ -178,8 +178,8 @@ FUNCTION: A-CLOSE-CALL close ( n -- i32 ) ;FUNCTION
    anchor src u work ;
 
 : A-REGULAR ( ptr u8 -- ) {: work:ptr :}
-   work A-CUR@ work A-STAT-BUF FSTAT-CALL 0<> if E-FS-STAT FS-ERRNO-FAIL then
-   work A-STAT-BUF FS-LIBC-MODE@ S-IFMT and S-IFREG <> if E-FS-STAT throw then ;
+   work A-CUR@ work A-STAT-BUF FSTAT-CALL 0<> if E-FS-STAT ERRNO-FAIL then
+   work A-STAT-BUF LIBC-MODE@ S-IFMT and S-IFREG <> if E-FS-STAT throw then ;
 
 : A-READ-STEP ( ptr u8 ptr u8 n -- n ) {: work:ptr dst:ptr count:n :}
    begin
@@ -216,7 +216,7 @@ public
    A-MAP {: work:ptr len:NUM:alloc-byte-len :}
    src u work [: A-OPEN-RUN ;] catch {: code:n :}
    drop 2drop
-   FS:ERRNO {: cause:n :}
+   ERRNO {: cause:n :}
    work A-CUR@ {: opened:n :}
    code 0= if -1 work A-CUR! then
    work len code cause A-FINISH
@@ -226,7 +226,7 @@ public
    A-MAP {: work:ptr len:NUM:alloc-byte-len :}
    anchor src u work [: A-OPEN-AT-RUN ;] catch {: code:n :}
    drop 2drop drop
-   FS:ERRNO {: cause:n :}
+   ERRNO {: cause:n :}
    work A-CUR@ {: opened:n :}
    code 0= if -1 work A-CUR! then
    work len code cause A-FINISH
@@ -237,12 +237,12 @@ public
    A-MAP {: work:ptr len:NUM:alloc-byte-len :}
    anchor src u dst work [: A-READ-RUN ;] catch {: code:n :}
    drop 2drop 2drop
-   FS:ERRNO {: cause:n :}
+   ERRNO {: cause:n :}
    work A-RESULT-CELL A-SLOT @ {: got:n :}
    work len code cause A-FINISH
    got ;
-: CLOSE ( fd -- )
+: CLOSE-DIR ( fd -- )
    0 CAUSE!
-   FD>N A-CLOSE-CALL 0<> if E-FS-IO FS-ERRNO-FAIL then ;
+   FD>N A-CLOSE-CALL 0<> if E-FS-IO ERRNO-FAIL then ;
 
 ;package

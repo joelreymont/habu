@@ -36,9 +36,9 @@ $10000 constant IO-CAP
 
 create KEY-HEX KEYED-IMAGE:KEY-HEX-LEN allot
 create ENGINE-KEY KEYED-IMAGE:KEY-HEX-LEN allot   \ the writer image's, naming its img/
-create PATH-BUF FS-PATH-CAP allot
-create WORK-BUF FS-PATH-CAP allot
-create TMP-BUF FS-PATH-CAP allot
+create PATH-BUF PATH-CAP allot
+create WORK-BUF PATH-CAP allot
+create TMP-BUF PATH-CAP allot
 create OUT IO-CAP allot
 create ERR IO-CAP allot
 
@@ -79,7 +79,7 @@ variable RESOLVED?
 
 : COPY-OUT! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr up:ptr :}
    u 0 <= if E-FS-PATH throw then
-   u FS-PATH-CAP > if E-FS-CAPACITY throw then
+   u PATH-CAP > if E-FS-CAPACITY throw then
    a dst u BYTE-COPY
    u up ! ;
 
@@ -88,7 +88,7 @@ variable RESOLVED?
 \ KEYED-IMAGE:PUBLISH puts it there.
 : WORK-OPEN ( -- )
    FAMILY$ ENGINE-KEY KEYED-IMAGE:WORK-OPEN WORK-BUF WORK-U COPY-OUT!
-   WORK-BYTES FAMILY$ TMP-BUF JOIN-PATH TMP-U ! ;
+   WORK-BYTES FAMILY$ TMP-BUF FS:JOIN-PATH TMP-U ! ;
 
 : ARG ( ptr u8 n -- )
    >LEN PROC-ARGV+ ;
@@ -118,7 +118,7 @@ variable RESOLVED?
    rc 0 <> if s" cold-engine: native fixture writer failed" rc die then ;
 
 : PUBLISH ( -- )
-   TMP-BYTES EXECUTABLE? 0= if
+   TMP-BYTES FS:EXECUTABLE? 0= if
       s" cold-engine: writer produced no executable host" COLD-RC die then
    KEY-HEX FAMILY$ ENGINE-KEY TMP-BYTES KEYED-IMAGE:PUBLISH ;
 
@@ -158,8 +158,8 @@ public
 \ Put a private copy of the shared cold host at the caller's own path.
 : PROVIDE ( ptr u8 n -- ) {: dst:ptr dstu:n :}
    ENSURE
-   dst dstu EXISTS? if dst dstu REMOVE-FILE then
-   PATH-BYTES dst dstu COPY-FILE-STREAM
-   dst dstu CHMOD-X ;
+   dst dstu FS:EXISTS? if dst dstu FS:REMOVE-FILE then
+   PATH-BYTES dst dstu FS:COPY-FILE-STREAM
+   dst dstu FS:CHMOD-X ;
 
 ;package

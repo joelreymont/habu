@@ -191,15 +191,15 @@ variable TRH-ERR-U
 variable TRH-EXITED
 variable TRH-RC
 
-create TRH-ROOT-BUF FS-PATH-CAP allot
-create TRH-CHILD-BUF FS-PATH-CAP allot
+create TRH-ROOT-BUF PATH-CAP allot
+create TRH-CHILD-BUF PATH-CAP allot
 create TRH-IN TRH-IO-CAP allot
 create TRH-OUT TRH-IO-CAP allot
 create TRH-ERR TRH-IO-CAP allot
 create TRH-EMPTY 1 allot
 
 : TRH-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: src:ptr u:n dst:ptr lenp:ptr :}
-   u FS-PATH-CAP > if E-FS-CAPACITY throw then
+   u PATH-CAP > if E-FS-CAPACITY throw then
    src dst u BYTE-COPY
    u lenp ! ;
 
@@ -233,7 +233,7 @@ create TRH-EMPTY 1 allot
 
 \ Run the program as a --load file with empty stdin.
 : TRH-RUN-LOAD ( ptr u8 n -- ) {: src:ptr srcu:n :}
-   TRH-CHILD src srcu WRITE-ALL
+   TRH-CHILD src srcu FS:WRITE-ALL
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    TRH-CHILD >LEN PROC-ARGV+
@@ -445,15 +445,15 @@ create TRH-EMPTY 1 allot
    s" 7" TRH-ASSERT-OUT ;
 
 : TRH-PREPARE ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" habu-trh" FS:MKTEMP-DIR {: a:ptr u:n :}
    a u TRH-ROOT-BUF TRH-ROOT-U TRH-COPY!
-   TRH-ROOT CLEANUP-TREE+
-   TRH-ROOT s" forge.f" TRH-CHILD-BUF JOIN-PATH TRH-CHILD-U ! ;
+   TRH-ROOT FS:CLEANUP-TREE+
+   TRH-ROOT s" forge.f" TRH-CHILD-BUF FS:JOIN-PATH TRH-CHILD-U ! ;
 
 : TRH-CLEANUP ( -- )
-   CLEANUP-RUN
-   TRH-ROOT EXISTS? TFALSE ;
+   FS:CLEANUP-RUN
+   TRH-ROOT FS:EXISTS? TFALSE ;
 
 : TRH-MAIN ( -- )
    TRH-PREPARE

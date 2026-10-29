@@ -23,11 +23,11 @@ using SOURCE-ROOT
 private
 
 variable CP-READY
-create CP-ENTRY FS-PATH-CAP allot
+create CP-ENTRY PATH-CAP allot
 variable CP-ENTRY-U
-create CP-CANON FS-PATH-CAP allot
+create CP-CANON PATH-CAP allot
 variable CP-CANON-U
-create CP-JJ-PATH FS-PATH-CAP allot
+create CP-JJ-PATH PATH-CAP allot
 variable CP-JJ-U
 65536 constant CP-FILE-CAP
 create CP-FILE CP-FILE-CAP allot
@@ -93,8 +93,8 @@ public
 
 : FILE-PLAN ( ptr u8 n -- n )
    {: path:ptr pathu:n :}
-   path pathu FILE? 0= if E-FS-OPEN throw then
-   path pathu CP-FILE CP-FILE-CAP READ-ALL {: u:n :}
+   path pathu FS:FILE? 0= if E-FS-OPEN throw then
+   path pathu CP-FILE CP-FILE-CAP FS:READ-ALL {: u:n :}
    CP-FILE u TEXT-PLAN ;
 
 private

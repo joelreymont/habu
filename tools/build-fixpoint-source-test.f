@@ -11,14 +11,14 @@ require src/lib/string.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 
-\ The tool binds this ordinary FILE-SIZE replacement when it loads. For one
+\ The tool binds this ordinary FS:FILE-SIZE replacement when it loads. For one
 \ armed path, the sample precedes a 68 KiB append, so its owning reader must
 \ grow beyond the first allocator granule and keep the bytes already read.
 package BFT-SIZE
 private
 $11000 constant PAD-N
 create PAD PAD-N allot
-create PATH FS-PATH-CAP allot variable PATH-U
+create PATH PATH-CAP allot variable PATH-U
 create TAIL 128 allot variable TAIL-U
 variable ARMED
 
@@ -37,23 +37,26 @@ public
 
 : SIZE ( ptr u8 n -- n )
    {: path:ptr pathu:n :}
-   path pathu FILE-SIZE {: size:n :}
+   path pathu FS:FILE-SIZE {: size:n :}
    ARMED @ path pathu PATH PATH-U @ STR= and if
       ARMED @ -2 = if
          0 ARMED !
-         path pathu REMOVE-FILE
-         path pathu MAKE-DIRS
+         path pathu FS:REMOVE-FILE
+         path pathu FS:MAKE-DIRS
          size exit
       then
       0 ARMED !
-      path pathu PAD PAD-N APPEND-FILE
-      path pathu TAIL TAIL-U @ APPEND-FILE
+      path pathu PAD PAD-N FS:APPEND-FILE
+      path pathu TAIL TAIL-U @ FS:APPEND-FILE
    then
    size ;
 ;package
 
+package FS
+public
 undefine FILE-SIZE
 : FILE-SIZE ( ptr u8 n -- n ) BFT-SIZE:SIZE ;
+;package
 
 require tools/build-fixpoint-writer-test-lib.f
 require src/lib/fmt.f
@@ -67,7 +70,7 @@ package BUILD-FIXPOINT
 
 : BFT-TEST-WHOLE-READ ( -- )
    BFT-ROOT BF-TMP!
-   BFT-WHOLE$ S\" package BFT-WHOLE public\n: HEAD ( -- n ) 1 ;\n;package\n" WRITE-ALL
+   BFT-WHOLE$ S\" package BFT-WHOLE public\n: HEAD ( -- n ) 1 ;\n;package\n" FS:WRITE-ALL
    BFT-WHOLE$ BF-READ-SOURCE
    BF-SOURCE-LEN @ BFT-WHOLE$ BFT-READ T=
    BF-SOURCE-BUF BF-SOURCE-LEN @ BFT-READ-BUF BF-SOURCE-LEN @ STR= TTRUE
@@ -81,11 +84,11 @@ package BUILD-FIXPOINT
 \ and one the certify leaves to the run: it calls what `evaluate` renders.
 : BFT-CENSUS-ROWS ( ptr u8 n -- )
    {: p:ptr u:n :}
-   p u S\" PRIM: s\\\"    PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;\n" WRITE-ALL
-   p u S\" PRIM: c\\\"    PE-PTR-U8 PE-OUT PRIM;\nPRIM: .\\\"    PRIM;\n" APPEND-FILE
-   p u S\" : HEAD ( -- n ) 1 ;\n: MIDDLE ( -- n ) 2 ;\n" APPEND-FILE
-   p u S\" : TAIL ( -- ptr u8 n ) s\" quoted\" ;\n" APPEND-FILE
-   p u S\" s\" : MADE ( -- n ) 3 ;\" evaluate\n: USE ( -- n ) MADE ;\n" APPEND-FILE ;
+   p u S\" PRIM: s\\\"    PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;\n" FS:WRITE-ALL
+   p u S\" PRIM: c\\\"    PE-PTR-U8 PE-OUT PRIM;\nPRIM: .\\\"    PRIM;\n" FS:APPEND-FILE
+   p u S\" : HEAD ( -- n ) 1 ;\n: MIDDLE ( -- n ) 2 ;\n" FS:APPEND-FILE
+   p u S\" : TAIL ( -- ptr u8 n ) s\" quoted\" ;\n" FS:APPEND-FILE
+   p u S\" s\" : MADE ( -- n ) 3 ;\" evaluate\n: USE ( -- n ) MADE ;\n" FS:APPEND-FILE ;
 
 \ The census is what the certify scan judged: a string-word row's name is read
 \ as the row reads it, so it hides none of the definitions after it, and the
@@ -102,26 +105,26 @@ package BUILD-FIXPOINT
 : BFT-TEST-WHOLE-ERRORS ( -- )
    BFT-ROOT BF-TMP!
    [: s" absent-src" BF-A$ BF-READ-SOURCE ;] E-FS-STAT TTHROWSQ
-   BFT-WHOLE$ s" read must fail" WRITE-ALL
+   BFT-WHOLE$ s" read must fail" FS:WRITE-ALL
    BFT-WHOLE$ BFT-SIZE:BREAK-READ
    [: BFT-WHOLE$ BF-READ-SOURCE ;] E-FS-IO TTHROWSQ
-   BFT-WHOLE$ REMOVE-DIR
-   BFT-WHOLE$ s" reusable after read error" WRITE-ALL
+   BFT-WHOLE$ FS:REMOVE-DIR
+   BFT-WHOLE$ s" reusable after read error" FS:WRITE-ALL
    BFT-WHOLE$ BF-READ-SOURCE
    BF-SOURCE-BUF BF-SOURCE-LEN @ s" reusable after read error" STR= TTRUE
    BF-TMP-RESET ;
 
 : BFT-TEST-WHOLE-CERTIFY ( -- )
-   BFT-CERT S\" package BFT-GROW public\n: HEAD ( -- n ) 1 ;\n;package\n" WRITE-ALL
+   BFT-CERT S\" package BFT-GROW public\n: HEAD ( -- n ) 1 ;\n;package\n" FS:WRITE-ALL
    BFT-CERT S\" : TAIL ( -- n ) 2 ;\n" BFT-SIZE:ARM
    s" whole-cert" BFT-CERT BF-CERTIFY-RC 0 T=
    BFT-CERT S\" : BAD ( -- n ) ;\n" BFT-SIZE:ARM
    s" whole-cert" BFT-CERT BF-CERTIFY-RC 70 T=
    BF-CERT-DIAG BF-CERT-DIAG-U @ s" 'BAD'" CONTAINS? TTRUE
-   BFT-CERT S\" package BFT-GROW public\n: HEAD ( -- n ) 1 ;\n;package\n" WRITE-ALL
-   BFT-CERT S\" : TAIL ( -- n ) 2 ;\n" APPEND-FILE
+   BFT-CERT S\" package BFT-GROW public\n: HEAD ( -- n ) 1 ;\n;package\n" FS:WRITE-ALL
+   BFT-CERT S\" : TAIL ( -- n ) 2 ;\n" FS:APPEND-FILE
    s" whole-core" BFT-CERT s" " BF-CERTIFY-GENERATED-CORE
-   BFT-CERT S\" : BAD ( -- n ) ;\n" APPEND-FILE
+   BFT-CERT S\" : BAD ( -- n ) ;\n" FS:APPEND-FILE
    [: s" whole-core" BFT-CERT s" " BF-CERTIFY-GENERATED-CORE ;]
       E-BUILD-CERTIFY TTHROWSQ ;
 
@@ -233,24 +236,24 @@ package BUILD-FIXPOINT
 : BFT-TEST-CERTIFY-BOOT-PREFIX ( -- )
    BFT-ROOT BF-TMP!
    BF-PREFIX-SOURCE
-   BFT-PREFIX FILE? TTRUE
+   BFT-PREFIX FS:FILE? TTRUE
    BF-CERTIFY-PREFIX
    BFT-PREFIX BFT-READ {: u:n :}
    BFT-READ-BUF u s" : CORE-STR=" CONTAINS? TTRUE
    BFT-READ-BUF u s" : SUFFIX$ (" CONTAINS? TTRUE
    BFT-READ-BUF u s" : CHECK! (" CONTAINS? TTRUE
-   s" prefix-src" BF-A$ s" : BFT-PFX-BAD ( n -- n ) drop ;" APPEND-FILE
+   s" prefix-src" BF-A$ s" : BFT-PFX-BAD ( n -- n ) drop ;" FS:APPEND-FILE
    [: BF-CERTIFY-PREFIX ;] E-BUILD-CERTIFY TTHROWSQ
    BF-TMP-RESET ;
 
 : BFT-TEST-CERTIFY-PHASE-SOURCES ( -- )
    BFT-ROOT BF-TMP!
    BF-STAGE2-SOURCE
-   BFT-STAGE2 FILE? TTRUE
+   BFT-STAGE2 FS:FILE? TTRUE
    BF-CERTIFY-STAGE2
    BF-RECORD-STAGE
    BF-STDIN-SOURCE
-   BFT-STAGE2 FILE? TTRUE
+   BFT-STAGE2 FS:FILE? TTRUE
    BF-CERTIFY-STDIN
    BF-RECORD-STDIN
    BF-REC-STAGE-DG BF-STAMP-DG-U BF-REC-STDIN-DG BF-STAMP-DG-U STR= TFALSE

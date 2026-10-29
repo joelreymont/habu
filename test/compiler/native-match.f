@@ -892,14 +892,14 @@ $4000 constant CAP-CAP
 
 create OUT-BUF CAP-CAP allot
 create ERR-BUF CAP-CAP allot
-create PRODUCT-PATH FS-PATH-CAP allot
+create PRODUCT-PATH PATH-CAP allot
 
 variable CHILD-OUT-N
 variable CHILD-ERR-N
 variable CHILD-RC
 
 : PRODUCT$ ( -- ptr u8 n )
-   SOURCE-ROOT:CWD$ s" bin/hb" PRODUCT-PATH JOIN-PATH {: u:n :}
+   SOURCE-ROOT:CWD$ s" bin/hb" PRODUCT-PATH FS:JOIN-PATH {: u:n :}
    PRODUCT-PATH u ;
 
 : PRODUCT-ENV! ( -- )

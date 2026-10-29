@@ -42,7 +42,7 @@ $5401 constant TIO-GET-SYSV          \ TCGETS
 1 constant F-GETFD
 
 create TIO-BUF TIO-CAP allot
-create MARK-BUF FS-PATH-CAP allot
+create MARK-BUF PATH-CAP allot
 
 variable MARK-U
 
@@ -119,14 +119,14 @@ variable MARK-U
    s" bin/hb" ;
 
 : MARK$ ( ptr u8 n ptr u8 n -- ptr u8 n ) {: ba:ptr bu:n ra:ptr ru:n :}
-   ba bu ra ru MARK-BUF JOIN-PATH MARK-U !
+   ba bu ra ru MARK-BUF FS:JOIN-PATH MARK-U !
    MARK-BUF MARK-U @ ;
 
 : PWD-MARKER ( -- )
    s" PWD" GETENV dup 0= if
       2drop s" pwd-has bin/hb" s" (PWD unset)" LINE$ exit
    then
-   ENGINE-REL$ MARK$ FILE? {: found:bool :}
+   ENGINE-REL$ MARK$ FS:FILE? {: found:bool :}
    s" pwd-has bin/hb" found YN$ LINE$ ;
 
 \ Working-directory identity, structurally: whether the engine a caller resolves
@@ -134,7 +134,7 @@ variable MARK-U
 \ PWD names the same tree. A stale PWD - a parent that chdir()ed without
 \ updating it - shows up here as a yes/no split.
 : MARKERS ( -- )
-   s" cwd-has bin/hb" ENGINE-REL$ FILE? YN$ LINE$
+   s" cwd-has bin/hb" ENGINE-REL$ FS:FILE? YN$ LINE$
    PWD-MARKER ;
 
 public

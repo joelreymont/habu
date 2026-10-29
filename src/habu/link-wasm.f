@@ -452,7 +452,7 @@ variable VAL-AT                      \ the next cell value in the capture's valu
 \ The module written to path, the stack as it found it.
 : PUT ( ptr u8 n ptr u8 n -- ptr u8 n ptr u8 n )
    {: path:ptr pu:n m:ptr mu:n :}
-   path pu m mu WRITE-ALL
+   path pu m mu FS:WRITE-ALL
    path pu m mu ;
 
 public

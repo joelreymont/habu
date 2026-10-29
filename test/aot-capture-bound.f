@@ -68,11 +68,11 @@ CAP BUFFER: ERR                 variable ERR-U
 1 BUFFER: EMPTY                                  \ zero-length stdin
 DECL-CAP BUFFER: DECL           variable DECL-U
 TEXT-CAP BUFFER: TEXT           variable TEXT-U
-FS-PATH-CAP BUFFER: ROOT-BUF    variable ROOT-U
-FS-PATH-CAP BUFFER: SRCDIR-BUF  variable SRCDIR-U
-FS-PATH-CAP BUFFER: DECLDST-BUF variable DECLDST-U
-FS-PATH-CAP BUFFER: CAPDST-BUF  variable CAPDST-U
-FS-PATH-CAP BUFFER: ENTRY-BUF   variable ENTRY-U
+PATH-CAP BUFFER: ROOT-BUF    variable ROOT-U
+PATH-CAP BUFFER: SRCDIR-BUF  variable SRCDIR-U
+PATH-CAP BUFFER: DECLDST-BUF variable DECLDST-U
+PATH-CAP BUFFER: CAPDST-BUF  variable CAPDST-U
+PATH-CAP BUFFER: ENTRY-BUF   variable ENTRY-U
 variable RC
 variable EXITED
 
@@ -107,12 +107,12 @@ variable EXITED
 : SETUP ( -- )
    s" habu-aot-capture-bound" FS:MKTEMP-DIR {: a:ptr u:n :}
    a ROOT-BUF u BYTE-COPY  u ROOT-U !
-   ROOT$ CLEANUP-TREE+
-   ROOT$ s" src/habu" SRCDIR-BUF JOIN-PATH SRCDIR-U !
-   SRCDIR$ MAKE-DIRS
-   SRCDIR$ s" aot-decl.f" DECLDST-BUF JOIN-PATH DECLDST-U !
-   SRCDIR$ s" aot-capture.f" CAPDST-BUF JOIN-PATH CAPDST-U !
-   ROOT$ s" entry.f" ENTRY-BUF JOIN-PATH ENTRY-U ! ;
+   ROOT$ FS:CLEANUP-TREE+
+   ROOT$ s" src/habu" SRCDIR-BUF FS:JOIN-PATH SRCDIR-U !
+   SRCDIR$ FS:MAKE-DIRS
+   SRCDIR$ s" aot-decl.f" DECLDST-BUF FS:JOIN-PATH DECLDST-U !
+   SRCDIR$ s" aot-capture.f" CAPDST-BUF FS:JOIN-PATH CAPDST-U !
+   ROOT$ s" entry.f" ENTRY-BUF FS:JOIN-PATH ENTRY-U ! ;
 
 : DRIFT ( -- )
    s" aot-capture-bound: no `" type NEEDLE$ type s" ` in " type DECL-SRC$ type cr
@@ -137,16 +137,16 @@ variable EXITED
 \ This tree's own declaration file with one line rewritten: the bytes above that
 \ line, the lowered bound, then the bytes from the end of the matched name on.
 : OVERLAY-DECL ( -- )
-   DECL-SRC$ DECL DECL-CAP READ-ALL DECL-U !
+   DECL-SRC$ DECL DECL-CAP FS:READ-ALL DECL-U !
    BOUND-AT {: at:n :}
    at 0 < if DRIFT then
    at NEEDLE$ nip + {: to:n :}
-   DECLDST$ DECL at LINE-START WRITE-ALL
-   DECLDST$ LOWERED$ APPEND-FILE
-   DECLDST$ DECL to + DECL-U @ to - APPEND-FILE ;
+   DECLDST$ DECL at LINE-START FS:WRITE-ALL
+   DECLDST$ LOWERED$ FS:APPEND-FILE
+   DECLDST$ DECL to + DECL-U @ to - FS:APPEND-FILE ;
 
 : OVERLAY-CAPTURE ( -- )
-   CAP-SRC$ CAPDST$ COPY-FILE-STREAM ;
+   CAP-SRC$ CAPDST$ FS:COPY-FILE-STREAM ;
 
 \ --- the child program --------------------------------------------------------
 : ENTRY-PRELUDE+ ( -- )
@@ -186,7 +186,7 @@ variable EXITED
 
 : ENTRY-WRITE ( -- )
    TEXT-RESET  ENTRY-PRELUDE+ ENTRY-WINDOW+ ENTRY-CAPTURE+
-   ENTRY$ TEXT$ WRITE-ALL ;
+   ENTRY$ TEXT$ FS:WRITE-ALL ;
 
 \ --- the child run -----------------------------------------------------------
 : STORE! ( len len outcome -- )
@@ -240,9 +240,9 @@ public
 
 : RUN ( -- )
    T-RESET
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    [: BODY ;] catch {: code:n :}
-   CLEANUP-RUN
+   FS:CLEANUP-RUN
    code 0 <> if code throw then
    T-REPORT
    s" aot-capture-bound: ok" type cr ;

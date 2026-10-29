@@ -39,17 +39,17 @@ require tools/native-file-inputs.f
 
 package CHECK-VERIFY-IMAGE
 
-FS-PATH-CAP 128 + constant PROGRAM-CAP
+PATH-CAP 128 + constant PROGRAM-CAP
 
-create ROOT FS-PATH-CAP allot          variable ROOT-U
-create ENTRY FS-PATH-CAP allot         variable ENTRY-U
+create ROOT PATH-CAP allot          variable ROOT-U
+create ENTRY PATH-CAP allot         variable ENTRY-U
 create PROGRAM PROGRAM-CAP allot       variable PROGRAM-U
 create KEY-HEX KEYED-IMAGE:KEY-HEX-LEN allot
 create ENGINE-KEY KEYED-IMAGE:KEY-HEX-LEN allot
-create PATH-BUF FS-PATH-CAP allot      variable PATH-U
-create ENGINE-BUF FS-PATH-CAP allot    variable ENGINE-U      \ the engine PATH$ is asked for
-create KEYED-ENGINE FS-PATH-CAP allot  variable KEYED-ENGINE-U \ the engine the key was made for
-create CANON FS-PATH-CAP allot         variable CANON-U       \ this engine's canonical path
+create PATH-BUF PATH-CAP allot      variable PATH-U
+create ENGINE-BUF PATH-CAP allot    variable ENGINE-U      \ the engine PATH$ is asked for
+create KEYED-ENGINE PATH-CAP allot  variable KEYED-ENGINE-U \ the engine the key was made for
+create CANON PATH-CAP allot         variable CANON-U       \ this engine's canonical path
 DYNAMIC-BUFFER STAMPS u8               variable STAMPS-U      \ the stamp rows of the last resolve
 TYPED-VARIABLE RESOLVED bool
 
@@ -62,7 +62,7 @@ TYPED-VARIABLE RESOLVED bool
 
 : COPY! ( ptr u8 n ptr u8 ptr n -- )
    {: a:ptr u:n dst:ptr up:ptr :}
-   u FS-PATH-CAP > if E-FS-CAPACITY throw then
+   u PATH-CAP > if E-FS-CAPACITY throw then
    a dst u BYTE-COPY
    u up ! ;
 
@@ -77,7 +77,7 @@ TYPED-VARIABLE RESOLVED bool
 \ tools/check-verify-save.f ROOT! builds from, so the key walks the closure the
 \ build loads: a root that links to a tree (tools/check-test-lib.f LC-ROOT)
 \ keys the same files and shares the image.
-SOURCE-ROOT:CURRENT$ s" tools/check-verify-save.f" ENTRY JOIN-PATH
+SOURCE-ROOT:CURRENT$ s" tools/check-verify-save.f" ENTRY FS:JOIN-PATH
 ENTRY swap SOURCE-ROOT:CANONICAL drop ENTRY ENTRY-U COPY!
 ENTRY$ SOURCE-ROOT:DIRNAME SOURCE-ROOT:DIRNAME ROOT ROOT-U COPY!
 0 PROGRAM-U !

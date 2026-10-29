@@ -257,7 +257,7 @@ TASK:MIN-STACK TASK:TASK WORKER
    s" compiler-session-a64" FS:MKTEMP {: path:ptr pathu:n fd:fd :}
    fd art NART:BYTES art NART:SIZE FD:WRITE-FULL
    fd FD>N close-rc 0 T=
-   path pathu REMOVE-FILE ;
+   path pathu FS:REMOVE-FILE ;
 
 : PARENT-PROOF ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}

@@ -15,7 +15,7 @@ require tools/native-file-inputs.f
 package NFILE-INPUTS-FORMAT-TEST
 
 create ROW 72 allot
-create SOURCE-PATH FS-PATH-CAP allot
+create SOURCE-PATH PATH-CAP allot
 variable SOURCE-U
 variable OUTER-CALLS
 variable INNER-CALLS
@@ -56,8 +56,8 @@ FUNCTION: MKFIFO-CALL mkfifo ( ptr u8 n -- i32 ) ;FUNCTION
    T-RESET
    NFILE-INPUTS:RESET
    SOURCE$ s" " NFILE-INPUTS:ADD-CONTENT
-   SOURCE$ REMOVE-FILE
-   SOURCE$ FS-PATHZ 384 MKFIFO-CALL 0 T=
+   SOURCE$ FS:REMOVE-FILE
+   SOURCE$ FS:>PATHZ 384 MKFIFO-CALL 0 T=
    [: NFILE-INPUTS:BYTES$ NFILE-INPUTS:CHECK ;]
       E-NUNIT-PROFILE TTHROWSQ
    NFILE-INPUTS:CLOSE
@@ -87,7 +87,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ptr u8 n -- i32 ) ;FUNCTION
 
 : SOURCE-CASE ( -- )
    s" a source row whose stat matches is fresh without hashing" T-LABEL
-   SOURCE$ s" : A 1 ;" WRITE-ALL
+   SOURCE$ s" : A 1 ;" FS:WRITE-ALL
    NFILE-INPUTS:RESET
    SOURCE$ s" : A 1 ;" NFILE-INPUTS:ADD-SOURCE
    SROWS-COPY
@@ -98,7 +98,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ptr u8 n -- i32 ) ;FUNCTION
    SROWS 32 + LE:U64@ 1+ SROWS 32 + LE:U64!
    SROWS$ NFILE-INPUTS:FRESH? TTRUE
    s" changed bytes are stale" T-LABEL
-   SOURCE$ s" : A 22 ;" WRITE-ALL
+   SOURCE$ s" : A 22 ;" FS:WRITE-ALL
    NFILE-INPUTS:BYTES$ NFILE-INPUTS:FRESH? TFALSE
    s" a truncated source row is malformed, not stale" T-LABEL
    [: SROWS SROWS-U @ 1- NFILE-INPUTS:FRESH? drop ;] E-NUNIT-FILE TTHROWSQ ;
@@ -118,12 +118,12 @@ public
    s" xy" drop ROW 67 + 2 BYTE-COPY
    [: ROW 69 NFILE-INPUTS:FORMAT ;] E-NUNIT-FILE TTHROWSQ
    s" native-input-content" FS:MKTEMP-DIR {: root:ptr rootu:n :}
-   root rootu s" source.f" SOURCE-PATH JOIN-PATH SOURCE-U !
-   SOURCE$ s" : A 1 ;" WRITE-ALL
+   root rootu s" source.f" SOURCE-PATH FS:JOIN-PATH SOURCE-U !
+   SOURCE$ s" : A 1 ;" FS:WRITE-ALL
    NFILE-INPUTS:RESET
    SOURCE$ s" " NFILE-INPUTS:ADD-CONTENT
    NFILE-INPUTS:BYTES$ NFILE-INPUTS:CHECK
-   SOURCE$ s" : A 2 ;" WRITE-ALL
+   SOURCE$ s" : A 2 ;" FS:WRITE-ALL
    [: NFILE-INPUTS:BYTES$ NFILE-INPUTS:CHECK ;] E-NUNIT-PROFILE TTHROWSQ
    s" a scoped source callback returns to its caller after a throw" T-LABEL
    CALLBACK-SCOPE
@@ -131,7 +131,7 @@ public
    s" a recorded content path replaced by a FIFO is stale" T-LABEL
    FIFO-STALE
    NFILE-INPUTS:CLOSE
-   root rootu REMOVE-TREE
+   root rootu FS:REMOVE-TREE
    T-REPORT ;
 
 ;package

@@ -37,14 +37,14 @@ require src/habu/app-image.f
 package AOT-LINK
 private
 
-create SAVED-ROOT FS-PATH-CAP allot
+create SAVED-ROOT PATH-CAP allot
 variable SAVED-ROOT-U
 
 : RESTORE-ROOT ( -- )
    SAVED-ROOT-U @ 0 > if
       SAVED-ROOT SAVED-ROOT-U @ SOURCE-ROOT:ENGINE!
    then
-   FS-PATH-CAP 0 ?do 0 SAVED-ROOT i + c! loop
+   PATH-CAP 0 ?do 0 SAVED-ROOT i + c! loop
    0 SAVED-ROOT-U ! ;
 
 : JSON-FLAG? ( ptr u8 n -- bool )
@@ -58,7 +58,7 @@ variable SAVED-ROOT-U
    SCRIPT-ARGC 4 = if
       2 SCRIPT-ARGV$ s" --donor" STR= 0= if
          s" aot-build: donor option missing" 74 die then
-      3 SCRIPT-ARGV$ FILE? 0= if
+      3 SCRIPT-ARGV$ FS:FILE? 0= if
          s" aot-build: donor image missing" 74 die then
    then
    SCRIPT-ARGC 3 = if
@@ -98,7 +98,7 @@ variable SAVED-ROOT-U
 : SAVE-IN-SCOPE ( ptr u8 n -- )
    {: path:ptr pathu:n :}
    SOURCE-ROOT:ENGINE$ {: root:ptr rootu:n :}
-   rootu FS-PATH-CAP > if E-FS-CAPACITY throw then
+   rootu PATH-CAP > if E-FS-CAPACITY throw then
    root SAVED-ROOT rootu BYTE-COPY
    rootu SAVED-ROOT-U !
    path pathu APP-IMAGE:SAVE ;
@@ -117,7 +117,7 @@ variable SAVED-ROOT-U
    manifest NULL-PTR = if exit then
    NFILE-INPUTS:BYTES$ {: bytes:ptr size:n :}
    size 0= if E-NUNIT-PROFILE throw then
-   manifest manifestu bytes size APPEND-FILE ;
+   manifest manifestu bytes size FS:APPEND-FILE ;
 
 : LOAD-LINK-IN-SCOPE ( -- )
    s" aot" ['] LOAD-LINK-CACHED NDEF-CACHE:WITH-QUIET ;

@@ -57,7 +57,7 @@ variable DDC-A-U
 variable DDC-B-U
 
 : DDC-READ ( ptr u8 n ptr u8 n -- n ) {: pa:ptr pu:n buf:ptr cap:n :}
-   pa pu buf cap READ-ALL ;
+   pa pu buf cap FS:READ-ALL ;
 
 \ Load both artifact files into the compare buffers; throw on read failure so a
 \ missing/short chain artifact is never silently treated as a match.
@@ -107,13 +107,13 @@ variable DDC-B-U
 
 \ ---- audit orchestration (manual; runs the gforth chain + native refresh) ----
 
-create DDC-GF-ROOT FS-PATH-CAP allot         \ gforth chain TMPDIR root
+create DDC-GF-ROOT PATH-CAP allot         \ gforth chain TMPDIR root
 variable DDC-GF-ROOT-U
-create DDC-RF-ROOT FS-PATH-CAP allot          \ native-refresh TMPDIR + out root
+create DDC-RF-ROOT PATH-CAP allot          \ native-refresh TMPDIR + out root
 variable DDC-RF-ROOT-U
-create DDC-STDIN FS-PATH-CAP allot            \ raw gforth seed, as the bootstrap names it
+create DDC-STDIN PATH-CAP allot            \ raw gforth seed, as the bootstrap names it
 variable DDC-STDIN-U
-create DDC-FXP FS-PATH-CAP allot              \ gforth-chain fixpoint: <rf-root>/hb-ddc-fixpoint
+create DDC-FXP PATH-CAP allot              \ gforth-chain fixpoint: <rf-root>/hb-ddc-fixpoint
 variable DDC-FXP-U
 
 : DDC-GF-ROOT! ( ptr u8 n -- ) {: a:ptr u:n :} a DDC-GF-ROOT u BYTE-COPY  u DDC-GF-ROOT-U ! ;
@@ -136,7 +136,7 @@ variable DDC-FXP-U
 
 \ The seed path from the line of the bootstrap's stdout that starts with
 \ DDC-SEED-PREFIX$, into DDC-STDIN. Output with no such line, or one whose
-\ path is empty or longer than FS-PATH-CAP, names no seed: DDC-E-SEED.
+\ path is empty or longer than PATH-CAP, names no seed: DDC-E-SEED.
 : DDC-SEED! ( ptr u8 n -- ) {: out:ptr outu:n :}
    DDC-SEED-PREFIX$ nip {: pu:n :}
    0 begin dup outu <= while
@@ -144,7 +144,7 @@ variable DDC-FXP-U
       out outu 10 start SPLIT-NEXT {: line:ptr lineu:n next:n valid:bool :}
       valid line lineu DDC-SEED-PREFIX$ STARTS-WITH? and if
          lineu pu - {: seedu:n :}
-         seedu 0= seedu FS-PATH-CAP > or if DDC-SEED-MISSING then
+         seedu 0= seedu PATH-CAP > or if DDC-SEED-MISSING then
          line pu + DDC-STDIN seedu BYTE-COPY
          seedu DDC-STDIN-U !
          exit
@@ -155,7 +155,7 @@ variable DDC-FXP-U
 
 \ gforth-chain fixpoint path under the native-refresh root
 : DDC-FXP$ ( -- ptr u8 n )
-   DDC-RF-ROOT$ s" hb-ddc-fixpoint" DDC-FXP JOIN-PATH DDC-FXP-U !
+   DDC-RF-ROOT$ s" hb-ddc-fixpoint" DDC-FXP FS:JOIN-PATH DDC-FXP-U !
    DDC-FXP DDC-FXP-U @ ;
 
 : DDC-REQUIRE-BOOTSTRAP ( -- )
@@ -211,8 +211,8 @@ variable DDC-FXP-U
 \ checkout's bin/hb outside this chain. HABU_OUT keeps its stamp out of the
 \ checkout.
 : DDC-RUN-REFRESH ( -- )
-   DDC-STDIN$ DDC-FXP$ COPY-FILE-STREAM
-   DDC-FXP$ CHMOD-X
+   DDC-STDIN$ DDC-FXP$ FS:COPY-FILE-STREAM
+   DDC-FXP$ FS:CHMOD-X
    PROC-ARGV-RESET
    PROC-ENV-RESET
    DDC-REFRESH-ARGV+

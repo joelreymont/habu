@@ -10,7 +10,7 @@ require test/ffi-struct-fixture.f
 package FFI-CB-FULL-IMAGE-TEST
 
 600000 constant TIMEOUT-MS
-create IMAGE FS-PATH-CAP allot
+create IMAGE PATH-CAP allot
 variable IMAGE-U
 2048 CODEGEN:BUFFER SCRIPT
 
@@ -44,7 +44,7 @@ variable IMAGE-U
    s" --" GE-ARG+ IMAGE$ GE-ARG+
    ENGINE-CANDIDATE:PATH$ in inu TIMEOUT-MS GE-RUN-STDIN
    s" full callback image save" GE-EXPECT-OK
-   IMAGE$ EXECUTABLE? 0= if s" full callback image missing" GE-FAIL then ;
+   IMAGE$ FS:EXECUTABLE? 0= if s" full callback image missing" GE-FAIL then ;
 
 : RUN-IMAGE ( -- )
    GE-HB-RESET

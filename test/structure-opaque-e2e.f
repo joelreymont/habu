@@ -22,7 +22,7 @@ private
    s" structure-opaque-e2e" TREE
    s" test/structure-opaque-fixture.f" COPY-TEST
    s" test/structure-opaque-program.f" COPY-TEST
-   s" test/structure-opaque-forge.f" AT-A FORGE$ WRITE-ALL ;
+   s" test/structure-opaque-forge.f" AT-A FORGE$ FS:WRITE-ALL ;
 
 : VERIFY-ARGS ( ptr u8 n -- ) {: source:ptr size:n :}
    s" tools/check.f" ARGS

@@ -54,9 +54,9 @@ using AOT-BUF
 using AOT-WINDOW
 create KEY 32 allot
 create FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this fixture's file-digest context
-create ROOT FS-PATH-CAP allot variable ROOT-U
-create ART FS-PATH-CAP allot variable ART-U
-create BAD-ART FS-PATH-CAP allot variable BAD-ART-U
+create ROOT PATH-CAP allot variable ROOT-U
+create ART PATH-CAP allot variable ART-U
+create BAD-ART PATH-CAP allot variable BAD-ART-U
 create OUT 4096 allot create ERR 4096 allot
 DYNAMIC-BUFFER SAVED n
 variable SAVED-N
@@ -160,11 +160,11 @@ private
    s" NAMED-CELLS-TEST:TRUNCATED-MERGE" 75 s" name pool ends inside an entry" REFUSE ;
 
 : RUN ( -- )
-   T-RESET CLEANUP-RESET
+   T-RESET FS:CLEANUP-RESET
    s" habu-named-cells" FS:MKTEMP-DIR {: path:ptr size:n :}
-   path ROOT size BYTE-COPY size ROOT-U ! path size CLEANUP-TREE+
-   path size s" window.aot" ART JOIN-PATH ART-U !
-   path size s" malformed.aot" BAD-ART JOIN-PATH BAD-ART-U !
+   path ROOT size BYTE-COPY size ROOT-U ! path size FS:CLEANUP-TREE+
+   path size s" window.aot" ART FS:JOIN-PATH ART-U !
+   path size s" malformed.aot" BAD-ART FS:JOIN-PATH BAD-ART-U !
    FSHA-CTX ENGINE-ID:PATH$ KEY SHA256-FILE-IN 0 T=
    NAMED-CELLS-WINDOW:CHECK
    7 NAMED-CELLS-WINDOW:ALIAS-SLOT @ execute 10 T=
@@ -174,7 +174,7 @@ private
    KEY ART$ AOT-FILE:WRITE
    RELEASE-SOURCE READ CHECK-ROWS
    REFUSALS
-   SAVED-RELEASE SAVED-NAMES-RELEASE CLEANUP-RUN T-REPORT ;
+   SAVED-RELEASE SAVED-NAMES-RELEASE FS:CLEANUP-RUN T-REPORT ;
 ' RUN
 ;using
 ;using

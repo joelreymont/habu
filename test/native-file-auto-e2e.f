@@ -103,7 +103,7 @@ variable DIAG-START
 
 : HOOK-CASE ( -- )
    s" a preinstalled checker retains authority during app load" T-LABEL
-   s" hook-cache" AT MAKE-DIR
+   s" hook-cache" AT FS:MAKE-DIR
    s" app.f" S\" : MAIN ( -- ) 42 . ;\n" PUT
    s" hook-cache" AT RUN-SAVED-IN SUCCESS
    s" hook-cache" AT RUN-SAVED-IN SUCCESS REUSED
@@ -150,12 +150,12 @@ variable HISTORY-LIB-NEW
 
 : HISTORY-FILE ( ptr u8 n -- )
    {: path:ptr pathu:n :}
-   path pathu BASENAME {: a:ptr u:n :}
+   path pathu FS:BASENAME {: a:ptr u:n :}
    a u s" .hfo" ENDS-WITH? u 68 = and if
       1 HISTORY-N +!
-      path pathu FILE-SIZE {: size:n :}
+      path pathu FS:FILE-SIZE {: size:n :}
       size CAP > if E-FS-IO throw then
-      path pathu HISTORY-OBJ size READ-ALL size <> if E-FS-IO throw then
+      path pathu HISTORY-OBJ size FS:READ-ALL size <> if E-FS-IO throw then
       a 64 HISTORY-LIB-KEY 64 STR= if
          size HISTORY-LIB HISTORY-LIB-U HISTORY-LIB-NEW HISTORY-KEEP
       else
@@ -166,7 +166,7 @@ variable HISTORY-LIB-NEW
 \ The file objects under the history out root: one <64 hex>.hfo each.
 : HISTORY-ENTRIES ( -- n )
    0 HISTORY-N ! 0 HISTORY-APP-NEW ! 0 HISTORY-LIB-NEW !
-   s" history-cache" AT ['] HISTORY-FILE WALK-FILES
+   s" history-cache" AT ['] HISTORY-FILE FS:WALK-FILES
    HISTORY-N @ ;
 
 \ app.f requires lib.f, which holds HIST-KEEP, and prints HIST-KEEP + n.
@@ -328,7 +328,7 @@ variable HISTORY-LIB-NEW
    ERR$ s" expected: ptr u8 actual: n" CONTAINS? TTRUE ;
 
 : PRIVATE-CASES ( -- )
-   [: s" private-cache" AT MAKE-DIR
+   [: s" private-cache" AT FS:MAKE-DIR
       s" native-file-auto-primitive" WHITEBOX-CHILD:PROVIDE
       PRIVATE-CASE ;]
    [: WHITEBOX-CHILD:REMOVE ;] finally ;
@@ -412,7 +412,7 @@ variable HISTORY-LIB-NEW
    1 DIAG? !
    RUN-DEFINITION SUCCESS
    0 DIAG? !
-   s" definition-edit.err" AT ERR$ WRITE-ALL
+   s" definition-edit.err" AT ERR$ FS:WRITE-ALL
    OUT$ S\" files reused 1\n" CONTAINS? TTRUE
    \ The edit leaves app.f's stored object stale: a named miss, not a silent one.
    ERR$ s" /app.f reason=input-stale" CONTAINS? TTRUE
@@ -420,16 +420,16 @@ variable HISTORY-LIB-NEW
    OUT$ S\" 42\n7\n0\n" CONTAINS? TTRUE ;
 
 : LITERAL-IMAGE-SAVE ( -- )
-   s" app-hb" AT FILE-SIZE {: size:n :}
+   s" app-hb" AT FS:FILE-SIZE {: size:n :}
    size LITERAL-IMAGE-RESERVE
-   s" app-hb" AT 0 LITERAL-IMAGE BYTE-VIEW size READ-ALL size T=
+   s" app-hb" AT 0 LITERAL-IMAGE BYTE-VIEW size FS:READ-ALL size T=
    size LITERAL-IMAGE-U ! ;
 
 : LITERAL-IMAGE-SAME? ( -- bool )
-   s" app-hb" AT FILE-SIZE {: size:n :}
+   s" app-hb" AT FS:FILE-SIZE {: size:n :}
    size LITERAL-IMAGE-U @ <> if false exit then
    size LITERAL-COLD-RESERVE
-   s" app-hb" AT 0 LITERAL-COLD BYTE-VIEW size READ-ALL size <> if E-FS-IO throw then
+   s" app-hb" AT 0 LITERAL-COLD BYTE-VIEW size FS:READ-ALL size <> if E-FS-IO throw then
    0 LITERAL-IMAGE BYTE-VIEW size 0 LITERAL-COLD BYTE-VIEW size STR= ;
 
 
@@ -453,8 +453,8 @@ variable HISTORY-LIB-NEW
 
 : DIAG-CASE ( -- )
    s" opt-in fallback diagnostics follow actual compile attempts" T-LABEL
-   s" diag-cache" AT MAKE-DIR
-   s" diag-on-cache" AT MAKE-DIR
+   s" diag-cache" AT FS:MAKE-DIR
+   s" diag-on-cache" AT FS:MAKE-DIR
    s" app.f" S\" : HELPER ( -- n ) 42 ;\nTRUSTED: MAIN ( -- ) HELPER . cr ;\n" PUT
    0 DIAG? !
    s" diag-cache" AT RUN-WATCHED-IN SUCCESS
@@ -465,7 +465,7 @@ variable HISTORY-LIB-NEW
    1 DIAG? !
    s" diag-on-cache" AT RUN-WATCHED-IN SUCCESS
    0 DIAG? !
-   s" diag.err" AT ERR$ WRITE-ALL
+   s" diag.err" AT ERR$ FS:WRITE-ALL
    \ app.f compiles its two definitions, one compile-attempt line each.
    DIAG-LINES 2 T=
    ERR$ s" reason=eligible-cache-miss name=HELPER path=" CONTAINS? TTRUE
@@ -525,8 +525,8 @@ variable HISTORY-LIB-NEW
 
 : BODY-EDIT-CASE ( -- )
    s" unchanged neighbors reuse across same-file body edits" T-LABEL
-   s" body-edit-cache" AT MAKE-DIR
-   s" body-edit-fresh-cache" AT MAKE-DIR
+   s" body-edit-cache" AT FS:MAKE-DIR
+   s" body-edit-fresh-cache" AT FS:MAKE-DIR
    -1 BODY-EDIT-SOURCE
    s" body-edit-cache" AT RUN-SAVED-IN SUCCESS
    SOURCE-ACTION-ONCE
@@ -552,7 +552,7 @@ variable HISTORY-LIB-NEW
 
 : BODY-READER-CASE ( -- )
    s" a newly parsing binding cannot reuse an unchanged body" T-LABEL
-   s" body-reader-cache" AT MAKE-DIR
+   s" body-reader-cache" AT FS:MAKE-DIR
    \ Only READER-KEEP can be reused; MIDDLE changes on each build.
    s" reader.f"
       S\" package FILE-READER public\n: STEP ( -- ) s\" mode-step\" type ;\n;package\n"
@@ -576,7 +576,7 @@ variable HISTORY-LIB-NEW
 
 : LITERAL-EVENT-CASE ( -- )
    s" a reused body follows source literal calls after an edited prefix" T-LABEL
-   s" literal-fresh-cache" AT MAKE-DIR
+   s" literal-fresh-cache" AT FS:MAKE-DIR
    s" prefix.f" S\" package FILE-LITERAL public\n: OLD ( -- ptr u8 n ) s\" oldBBBB\" ;\n;package\n" PUT
    s" app.f" S\" require prefix.f\nCAST: LIT-PTR>N ( ptr u8 -- n )\n: BODY ( -- ptr u8 n ) s\" seven77\" 2drop s\" \" 2drop s\" twelve123456\" 2drop s\" oldBBBB\" ;\n: BODY-LOOP ( n -- n ) {: len:n :} 0 len 0 ?do c\" oldBBBB\" LIT-PTR>N + loop ;\n: BODY-PTR ( -- n ) c\" oldBBBB\" LIT-PTR>N ;\n: MAIN ( -- ) BODY type cr 3 BODY-LOOP 3 BODY-PTR * = if s\" loop-ok\" else s\" loop-bad\" then type cr ;\n" PUT
    RUN-DEFINITION SUCCESS
@@ -594,8 +594,8 @@ variable HISTORY-LIB-NEW
 
 : LITERAL-LOOP-CASE ( -- )
    s" the counted literal loop alone reuses its native object" T-LABEL
-   s" literal-loop-cache" AT MAKE-DIR
-   s" literal-loop-fresh-cache" AT MAKE-DIR
+   s" literal-loop-cache" AT FS:MAKE-DIR
+   s" literal-loop-fresh-cache" AT FS:MAKE-DIR
    s" prefix.f" S\" package FILE-LITERAL public\n: OLD ( -- ptr u8 n ) s\" oldBBBB\" ;\n;package\n" PUT
    s" app.f" S\" require prefix.f\nCAST: LIT-PTR>N ( ptr u8 -- n )\n: BODY-LOOP ( n -- n ) {: len:n :} 0 len 0 ?do c\" oldBBBB\" LIT-PTR>N + loop ;\ns\" address-loop-folded \" type NLOOP:FOLDED . cr\n: SCALAR-LOOP ( n -- n ) {: len:n :} 0 len 0 ?do 42 + loop ;\ns\" scalar-loop-folded \" type NLOOP:FOLDED . cr\n: MAIN ( -- ) FILE-LITERAL:OLD type cr 3 BODY-LOOP 3 c\" oldBBBB\" LIT-PTR>N * = if s\" loop-ok\" else s\" loop-bad\" then type cr ;\n" PUT
    RUN-LITERAL-LOOP SUCCESS
@@ -633,8 +633,8 @@ variable HISTORY-LIB-NEW
 
 : SEGMENT-EVENT-CASE ( -- )
    s" unused literal events preserve sharing across segment splits and merges" T-LABEL
-   s" segment-split-fresh-cache" AT MAKE-DIR
-   s" segment-merge-fresh-cache" AT MAKE-DIR
+   s" segment-split-fresh-cache" AT FS:MAKE-DIR
+   s" segment-merge-fresh-cache" AT FS:MAKE-DIR
    false SEGMENT-PREFIX SEGMENT-APP
    RUN-DEFINITION SUCCESS
    RUN-APP SUCCESS OUT$ s" share" CONTAINS? TTRUE
@@ -676,17 +676,17 @@ variable HISTORY-LIB-NEW
 : GENERATED-CASE ( -- )
    s" words a declaration generates store and reuse like other definitions" T-LABEL
    1 DIAG? !
-   s" generated-fresh-cache" AT MAKE-DIR
+   s" generated-fresh-cache" AT FS:MAKE-DIR
    GENERATED-DECL
    40 GENERATED-SOURCE
    s" generated-cache" AT RUN-SAVED-IN SUCCESS
-   s" generated-cold.err" AT ERR$ WRITE-ALL
+   s" generated-cold.err" AT ERR$ FS:WRITE-ALL
    ERR$ S\" compile-attempt reason=eligible-cache-miss name=RED\n" CONTAINS? TTRUE
    ERR$ S\" compile-attempt reason=eligible-cache-miss name=MAKE\n" CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ S\" 3\n7110\n7\n40\n11\n" CONTAINS? TTRUE
    41 GENERATED-SOURCE
    s" generated-cache" AT RUN-SAVED-IN SUCCESS
-   s" generated-warm.err" AT ERR$ WRITE-ALL
+   s" generated-warm.err" AT ERR$ FS:WRITE-ALL
    REUSED
    \ Only app.f changed: decl.f, its generated words and the wordlists they
    \ made, installs from its object, and app.f compiles MAIN alone.
@@ -710,16 +710,16 @@ variable HISTORY-LIB-NEW
 : CUT-CASE ( -- )
    s" a dictionary cut drops the hidden definition from the file object" T-LABEL
    1 DIAG? !
-   s" cut-cache" AT MAKE-DIR
+   s" cut-cache" AT FS:MAKE-DIR
    s" app.f"
       S\" : CUT-OLD ( -- n ) 5 ;\ns\" CUT-OLD\" HIDE-DEFS-FROM\n: CUT-NEW ( -- n ) 6 ;\n: MAIN ( -- ) CUT-NEW . ;\n" PUT
    s" cut-cache" AT RUN-SAVED-IN SUCCESS
-   s" cut-cold.err" AT ERR$ WRITE-ALL
+   s" cut-cold.err" AT ERR$ FS:WRITE-ALL
    ERR$ s" native-file: refused" CONTAINS? TFALSE
    ERR$ s"  defs=2 " CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ S\" 6\n" CONTAINS? TTRUE
    s" cut-cache" AT RUN-SAVED-IN SUCCESS REUSED
-   s" cut-warm.err" AT ERR$ WRITE-ALL
+   s" cut-warm.err" AT ERR$ FS:WRITE-ALL
    ERR$ s" native-file: refused" CONTAINS? TFALSE
    \ A reused app.f prints no object line; its record count proves the cut
    \ dropped CUT-OLD (a leftover gives records=3).
@@ -731,11 +731,11 @@ public
 : MAIN ( -- )
    T-RESET
    s" native-file-auto" TREE
-   s" direct-cache" AT MAKE-DIR
-   s" execute-cache" AT MAKE-DIR
-   s" definition-cache" AT MAKE-DIR
-   s" history-cache" AT MAKE-DIR
-   s" generated-cache" AT MAKE-DIR
+   s" direct-cache" AT FS:MAKE-DIR
+   s" execute-cache" AT FS:MAKE-DIR
+   s" definition-cache" AT FS:MAKE-DIR
+   s" history-cache" AT FS:MAKE-DIR
+   s" generated-cache" AT FS:MAKE-DIR
    SCRIPT-ARGC 0 > if
       0 SCRIPT-ARGV$ s" primitive" STR= if
          PRIMITIVE-CASES

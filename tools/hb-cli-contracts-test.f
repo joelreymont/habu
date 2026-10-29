@@ -23,14 +23,14 @@ variable HCT-ERR-U
 variable HCT-RC
 variable HCT-EXITED
 
-create HCT-ROOT-BUF FS-PATH-CAP allot
-create HCT-CHILD-BUF FS-PATH-CAP allot
+create HCT-ROOT-BUF PATH-CAP allot
+create HCT-CHILD-BUF PATH-CAP allot
 create HCT-OUT HCT-CAP allot
 create HCT-ERR HCT-CAP allot
 create HCT-EMPTY 1 allot   \ zero-length stdin
 
 : HCT-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: src:ptr u dst:ptr lenp:ptr :}
-   u FS-PATH-CAP > if E-FS-CAPACITY throw then
+   u PATH-CAP > if E-FS-CAPACITY throw then
    src dst u BYTE-COPY
    u lenp ! ;
 
@@ -111,12 +111,12 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
 
 
 : HCT-PREPARE ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" habu-cli-contracts" FS:MKTEMP-DIR {: a:ptr u :}
    a u HCT-ROOT-BUF HCT-ROOT-U HCT-COPY!
-   HCT-ROOT CLEANUP-TREE+
-   HCT-ROOT s" stdin-data-tool.f" HCT-CHILD-BUF JOIN-PATH HCT-CHILD-U !
-   HCT-CHILD HCT-CHILD$ WRITE-ALL ;
+   HCT-ROOT FS:CLEANUP-TREE+
+   HCT-ROOT s" stdin-data-tool.f" HCT-CHILD-BUF FS:JOIN-PATH HCT-CHILD-U !
+   HCT-CHILD HCT-CHILD$ FS:WRITE-ALL ;
 
 : HCT-STORE! ( len len outcome ptr u8 n -- )
    {: outu:len erru:len oc src:ptr srcu:n :}
@@ -187,7 +187,7 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
    HCT-EXITED @ TTRUE  HCT-RC @ 0 T= ;
 
 : HCT-EXPECT-BUILD-ARGV ( -- )
-   HCT-CHILD HCT-BUILD$ WRITE-ALL
+   HCT-CHILD HCT-BUILD$ FS:WRITE-ALL
    PROC-ARGV-RESET
    s" --build" >LEN PROC-ARGV+
    HCT-CHILD >LEN PROC-ARGV+
@@ -204,7 +204,7 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
 
 
 : HCT-ARGV-LOAD ( -- )
-   HCT-CHILD HCT-ARGV$ WRITE-ALL
+   HCT-CHILD HCT-ARGV$ FS:WRITE-ALL
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    HCT-CHILD >LEN PROC-ARGV+ ;
@@ -246,8 +246,8 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
    HCT-EXPECT-BUILD-ARGV
    HCT-EXPECT-ARGV-NONE
    HCT-EXPECT-ARGV-VALUES
-   CLEANUP-RUN
-   HCT-ROOT EXISTS? TFALSE
+   FS:CLEANUP-RUN
+   HCT-ROOT FS:EXISTS? TFALSE
    T-REPORT
    s" hb-cli-contracts-test: ok" type cr ;
 

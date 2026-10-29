@@ -36,7 +36,7 @@ require src/lib/span.f
 require src/lib/ffi-abi.f
 require src/lib/task.f
 require src/lib/le.f
-require src/lib/fs.f                \ FIFO?, FS-PATHZ and FS-O-WRONLY for TRY-FIFO-WRITER
+require src/lib/fs.f                \ FS:FIFO?, FS:>PATHZ and FS:O-WRONLY for TRY-FIFO-WRITER
 require src/lib/adt/option.f        \ option<fd>: TRY-FIFO-WRITER's none or write end
 
 package FD
@@ -197,8 +197,8 @@ public
 \ descriptor whose O_NONBLOCK cannot be cleared is closed and throws E-FS-IO.
 : TRY-FIFO-WRITER ( ptr u8 n -- option<fd> )
    {: pa:ptr pu:n :}
-   pa pu FIFO? 0= if E-FS-OPEN throw then
-   pa pu FS-PATHZ FS-O-WRONLY O-NONBLOCK or OPEN-CALL {: opened:n :}
+   pa pu FS:FIFO? 0= if E-FS-OPEN throw then
+   pa pu FS:>PATHZ FS:O-WRONLY O-NONBLOCK or OPEN-CALL {: opened:n :}
    opened 0 < if
       FFI:ERRNO ENXIO = if OPTION:NONE exit then
       E-FS-OPEN throw

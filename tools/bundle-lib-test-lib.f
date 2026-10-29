@@ -11,10 +11,10 @@ variable BLTT-DRIVER-U
 variable BLTT-BUNDLE-U
 variable BLTT-MISSING-U
 
-create BLTT-ROOT-BUF FS-PATH-CAP allot
-create BLTT-DRIVER-BUF FS-PATH-CAP allot
-create BLTT-BUNDLE-BUF FS-PATH-CAP allot
-create BLTT-MISSING-BUF FS-PATH-CAP allot
+create BLTT-ROOT-BUF PATH-CAP allot
+create BLTT-DRIVER-BUF PATH-CAP allot
+create BLTT-BUNDLE-BUF PATH-CAP allot
+create BLTT-MISSING-BUF PATH-CAP allot
 create BLTT-OUT BLTT-BUF-CAP allot
 create BLTT-ERR BLTT-BUF-CAP allot
 create BLTT-BUNDLE-READ BLTT-BUNDLE-CAP allot
@@ -24,7 +24,7 @@ create BLTT-BUNDLE-READ BLTT-BUNDLE-CAP allot
    u lenp ! ;
 
 : BLTT-PATH! ( ptr u8 n ptr u8 n ptr u8 ptr n -- ) {: pa:ptr pu:n na:ptr nu:n dst:ptr lenp:ptr :}
-   pa pu na nu dst JOIN-PATH lenp ! ;
+   pa pu na nu dst FS:JOIN-PATH lenp ! ;
 
 : BLTT-ROOT ( -- ptr u8 n )
    BLTT-ROOT-BUF BLTT-ROOT-U @ ;
@@ -79,16 +79,16 @@ create BLTT-BUNDLE-READ BLTT-BUNDLE-CAP allot
    SB$ ;
 
 : BLTT-PREPARE ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" hb-bundle-lib" FS:MKTEMP-DIR {: a:ptr u:n :}
    a u BLTT-ROOT-BUF BLTT-ROOT-U BLTT-COPY!
-   BLTT-ROOT CLEANUP-DIR+
+   BLTT-ROOT FS:CLEANUP-DIR+
    BLTT-ROOT s" driver.f" BLTT-DRIVER-BUF BLTT-DRIVER-U BLTT-PATH!
    BLTT-ROOT s" bundle.f" BLTT-BUNDLE-BUF BLTT-BUNDLE-U BLTT-PATH!
    BLTT-ROOT s" no-such-script.f" BLTT-MISSING-BUF BLTT-MISSING-U BLTT-PATH!
-   BLTT-DRIVER CLEANUP+
-   BLTT-BUNDLE CLEANUP+
-   BLTT-DRIVER BLTT-DRIVER$ WRITE-ALL ;
+   BLTT-DRIVER FS:CLEANUP+
+   BLTT-BUNDLE FS:CLEANUP+
+   BLTT-DRIVER BLTT-DRIVER$ FS:WRITE-ALL ;
 
 : BLTT-ARG+ ( ptr u8 n -- )
    >LEN PROC-ARGV+ ;
@@ -208,7 +208,7 @@ create BLTT-BUNDLE-READ BLTT-BUNDLE-CAP allot
    BLTT-RUN-BUNDLE-LIB 0 s" BLTT-BUILD" BLTT-EXPECT-EXIT {: outu:n erru:n :}
    outu 0 T=
    BLTT-ERR erru BLTT-EMPTY$ T$=
-   BLTT-BUNDLE BLTT-BUNDLE-READ BLTT-BUNDLE-CAP READ-ALL {: bundleu:n :}
+   BLTT-BUNDLE BLTT-BUNDLE-READ BLTT-BUNDLE-CAP FS:READ-ALL {: bundleu:n :}
    s" an engine-provided module is stated, not copied" T-LABEL
    BLTT-BUNDLE-READ bundleu s\" s\q src/lib/errors.f\q ?ENGINE-PROVIDES" CONTAINS? TTRUE
    s" an engine-provided module's body is absent" T-LABEL
@@ -234,7 +234,7 @@ create BLTT-BUNDLE-READ BLTT-BUNDLE-CAP allot
    BLTT-TEST-MISSING-SCRIPT
    BLTT-TEST-BUILD-BUNDLE
    BLTT-TEST-RUN-BUNDLE
-   CLEANUP-RUN
-   BLTT-ROOT EXISTS? TFALSE
+   FS:CLEANUP-RUN
+   BLTT-ROOT FS:EXISTS? TFALSE
    T-REPORT
    BLTT-OK$ type cr ;

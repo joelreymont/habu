@@ -25,7 +25,7 @@ require tools/event-closure-lib.f
 
 package EC-TEST
 
-FS-PATH-CAP constant ECT-PC
+PATH-CAP constant ECT-PC
 
 create ECT-ROOT ECT-PC allot
 create ECT-ENTRY ECT-PC allot
@@ -37,11 +37,11 @@ create ECT-ALIAS ECT-PC allot
 create ECT-KEY-A 80 allot
 create ECT-KEY-B 80 allot
 create ECT-READ-SRC $1000 allot
-create ECT-RA-ENTRY FS-PATH-CAP allot
-create ECT-RB-ENTRY FS-PATH-CAP allot
-create ECT-SHARED FS-PATH-CAP allot
-create ECT-PATH FS-PATH-CAP allot
-create ECT-RAW FS-PATH-CAP 1+ 2 * allot
+create ECT-RA-ENTRY PATH-CAP allot
+create ECT-RB-ENTRY PATH-CAP allot
+create ECT-SHARED PATH-CAP allot
+create ECT-PATH PATH-CAP allot
+create ECT-RAW PATH-CAP 1+ 2 * allot
 variable ECT-ROOT-U
 variable ECT-ENTRY-U
 variable ECT-DA-U
@@ -71,7 +71,7 @@ variable ECT-BEFORE-CALLS
 : ECT-UN$ ( -- ptr u8 n )     ECT-UN ECT-UN-U @ ;
 
 : ECT-MK ( ptr u8 n ptr u8 ptr n -- ) {: na:ptr nu:n dst:ptr up:ptr :}
-   ECT-ROOT$ na nu dst JOIN-PATH up ! ;
+   ECT-ROOT$ na nu dst FS:JOIN-PATH up ! ;
 
 : ECT-DQ ( -- )   34 SB-APPEND-C ;
 : ECT-SP ( -- )   32 SB-APPEND-C ;
@@ -91,7 +91,7 @@ variable ECT-BEFORE-CALLS
    ECT-LF ;
 
 : ECT-WRITE ( ptr u8 n ptr u8 n -- ) {: pa:ptr pu:n ca:ptr cu:n :}
-   pa pu ca cu WRITE-ALL ;
+   pa pu ca cu FS:WRITE-ALL ;
 
 : ECT-WRITE-REL ( ptr u8 n ptr u8 n -- )
    {: na:ptr nu:n ca:ptr cu:n :}
@@ -101,7 +101,7 @@ variable ECT-BEFORE-CALLS
 : ECT-READ-PATH ( ptr u8 n ptr u8 n -- ptr u8 n )
    {: pa:ptr pu:n root:ptr rootu:n :}
    root rootu 2drop
-   pa pu ECT-READ-SRC $1000 READ-ALL ECT-READ-SRC swap ;
+   pa pu ECT-READ-SRC $1000 FS:READ-ALL ECT-READ-SRC swap ;
 
 67 constant ECT-UNCAUGHT-RC
 20000 constant ECT-CHILD-MS
@@ -111,10 +111,10 @@ ECT-OUT-CAP BUFFER: ECT-OUT
 ECT-ERR-CAP BUFFER: ECT-ERR
 
 : ECT-PREP ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" habu-event-closure-test" FS:MKTEMP-DIR SOURCE-ROOT:CANONICAL TTRUE {: a:ptr u:n :}
    a ECT-ROOT u BYTE-COPY  u ECT-ROOT-U !
-   ECT-ROOT$ CLEANUP-TREE+
+   ECT-ROOT$ FS:CLEANUP-TREE+
    s" entry.f" ECT-ENTRY ECT-ENTRY-U ECT-MK
    s" dep-a.f" ECT-DA ECT-DA-U ECT-MK
    s" dep-b.f" ECT-DB ECT-DB-U ECT-MK
@@ -142,7 +142,7 @@ ECT-ERR-CAP BUFFER: ECT-ERR
 \ --- ordering / dedup ---------------------------------------------------------
 \ One require line per write: SB holds one path and its line, not three.
 : ECT-REQ+ ( ptr u8 n -- ) {: a:ptr u:n :}
-   SB-RESET a u ECT-REQ-LINE ECT-ENTRY$ SB$ APPEND-FILE ;
+   SB-RESET a u ECT-REQ-LINE ECT-ENTRY$ SB$ FS:APPEND-FILE ;
 
 : ECT-TEST-ORDER ( -- )
    ECT-DA$ s\" \\ a\n" ECT-WRITE
@@ -199,7 +199,7 @@ ECT-ERR-CAP BUFFER: ECT-ERR
    then ;
 
 : ECT-TEST-SELECTED-ROOT ( -- )
-   ECT-ROOT$ s" sub" SOURCE-ROOT:JOIN MAKE-DIR
+   ECT-ROOT$ s" sub" SOURCE-ROOT:JOIN FS:MAKE-DIR
    s" sub/entry.f" ECT-PATH ECT-PATH-U ECT-MK
    ECT-PATH$ s" " ECT-WRITE
    ECT-DA$ s" " ECT-WRITE
@@ -362,8 +362,8 @@ ECT-ERR-CAP BUFFER: ECT-ERR
 \ The same included source resolves a relative require under each loader root.
 \ BUILD deduplicates its path but must still find both distinct dependencies.
 : ECT-TEST-INCLUDE-ROOTS ( -- )
-   s" root-a/sub" ECT-PATH ECT-PATH-U ECT-MK ECT-PATH$ MAKE-DIRS
-   s" root-b" ECT-PATH ECT-PATH-U ECT-MK ECT-PATH$ MAKE-DIRS
+   s" root-a/sub" ECT-PATH ECT-PATH-U ECT-MK ECT-PATH$ FS:MAKE-DIRS
+   s" root-b" ECT-PATH ECT-PATH-U ECT-MK ECT-PATH$ FS:MAKE-DIRS
    s" root-a/entry.f" ECT-RA-ENTRY ECT-RA-ENTRY-U ECT-MK
    s" root-b/entry.f" ECT-RB-ENTRY ECT-RB-ENTRY-U ECT-MK
    s" root-a/sub/shared.f" ECT-SHARED ECT-SHARED-U ECT-MK
@@ -453,7 +453,7 @@ ECT-ERR-CAP BUFFER: ECT-ERR
    ECT-ERR erru LEN>N ECT-DC$ CONTAINS? TTRUE ;
 
 : ECT-READ ( ptr u8 n ptr u8 n -- ptr u8 n )
-   2drop ECT-READ-SRC $1000 READ-ALL ECT-READ-SRC swap ;
+   2drop ECT-READ-SRC $1000 FS:READ-ALL ECT-READ-SRC swap ;
 
 \ A sibling load defines the family opener before use.f reaches it. The
 \ child loads dep-c.f, despite use.f having no prior local load event.
@@ -573,7 +573,7 @@ ECT-ERR-CAP BUFFER: ECT-ERR
    E-DISC-SHADOW TTHROWSQ ;
 
 : ECT-TEST-MISSING ( -- )
-   ECT-DC$ FILE? if ECT-DC$ REMOVE-FILE then
+   ECT-DC$ FS:FILE? if ECT-DC$ FS:REMOVE-FILE then
    ECT-DA$ s\" \\ a\n" ECT-WRITE
    SB-RESET ECT-DA$ ECT-REQ-LINE ECT-DC$ ECT-REQ-LINE ECT-ENTRY$ SB$ ECT-WRITE
    s" ECT-ENTRY$ EC:BUILD" ECT-REFUSES-MISSING
@@ -584,7 +584,7 @@ ECT-ERR-CAP BUFFER: ECT-ERR
    ECT-DA$ s\" \\ a v1\n" ECT-WRITE
    SB-RESET ECT-DA$ ECT-REQ-LINE ECT-ENTRY$ SB$ ECT-WRITE
    ECT-KEY-A ECT-CLOSURE-KEY
-   ECT-DA$ s\" \\ a v2 changed\n" APPEND-FILE
+   ECT-DA$ s\" \\ a v2 changed\n" FS:APPEND-FILE
    ECT-KEY-B ECT-CLOSURE-KEY
    ECT-KEY-A 64 ECT-KEY-B 64 STR= TFALSE ;
 
@@ -596,7 +596,7 @@ ECT-ERR-CAP BUFFER: ECT-ERR
    ECT-KEY-A 64 ECT-KEY-B 64 STR= TTRUE ;
 
 : ECT-TEST-KEY-ALIAS ( -- )
-   ECT-ENTRY$ ECT-ALIAS ECT-ALIAS-U @ MAKE-SYMLINK
+   ECT-ENTRY$ ECT-ALIAS ECT-ALIAS-U @ FS:MAKE-SYMLINK
    ECT-KEY-A ECT-CLOSURE-KEY
    ECT-ALIAS ECT-ALIAS-U @ ECT-KEY-B ECT-KEY-FOR
    ECT-KEY-A 64 ECT-KEY-B 64 STR= TTRUE ;
@@ -606,7 +606,7 @@ ECT-ERR-CAP BUFFER: ECT-ERR
    ECT-UN$ s\" \\ unrelated v1\n" ECT-WRITE
    SB-RESET ECT-DA$ ECT-REQ-LINE ECT-ENTRY$ SB$ ECT-WRITE
    ECT-KEY-A ECT-CLOSURE-KEY
-   ECT-UN$ s\" \\ unrelated v2\n" APPEND-FILE
+   ECT-UN$ s\" \\ unrelated v2\n" FS:APPEND-FILE
    ECT-KEY-B ECT-CLOSURE-KEY
    ECT-KEY-A 64 ECT-KEY-B 64 STR= TTRUE ;
 
@@ -636,7 +636,7 @@ ECT-ERR-CAP BUFFER: ECT-ERR
    ECT-DA$ s\" \\ a guarded v1\n" ECT-WRITE
    ECT-ENTRY$ ECT-GUARDED-ENTRY$ ECT-WRITE
    ECT-KEY-A ECT-CLOSURE-KEY
-   ECT-DA$ s\" \\ a guarded v2\n" APPEND-FILE
+   ECT-DA$ s\" \\ a guarded v2\n" FS:APPEND-FILE
    ECT-KEY-B ECT-CLOSURE-KEY
    ECT-KEY-A 64 ECT-KEY-B 64 STR= TFALSE ;
 
@@ -674,7 +674,7 @@ ECT-ERR-CAP BUFFER: ECT-ERR
    ECT-TEST-COLON-WRAPPED
    ECT-TEST-KEY-COLON-DEP-EDIT
    EC:RESET
-   CLEANUP-RUN
+   FS:CLEANUP-RUN
    T-REPORT
    s" event-closure-test: ok" type cr ;
 

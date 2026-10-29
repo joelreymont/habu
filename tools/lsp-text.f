@@ -68,9 +68,9 @@ variable DISK-VALID
 \ a missing file's, is only the first room (src/lib/source.f READ-WHOLE-SAMPLED).
 : SLURP ( ptr u8 n -- ptr u8 n )
    {: f:ptr fu:n :}
-   f fu FILE-META {: size:n msec:n mns:n csec:n cns:n :}
-   f fu  f fu FILE-SIZE  [: DISK-ROOM ;] SOURCE:READ-WHOLE-SAMPLED DISK-U !
-   f fu FILE-META {: after:n amsec:n amns:n acsec:n acns:n :}
+   f fu FS:FILE-META {: size:n msec:n mns:n csec:n cns:n :}
+   f fu  f fu FS:FILE-SIZE  [: DISK-ROOM ;] SOURCE:READ-WHOLE-SAMPLED DISK-U !
+   f fu FS:FILE-META {: after:n amsec:n amns:n acsec:n acns:n :}
    size after = msec amsec = and mns amns = and
    csec acsec = and cns acns = and if
       size DISK-SIZE ! msec DISK-MSEC ! mns DISK-MNS !
@@ -147,13 +147,13 @@ public
 
 : DISK-CURRENT? ( ptr u8 n -- bool )
    DISK-VALID @ 0= if 2drop false exit then
-   FS-TRY-STAT 0= if false exit then
-   FS-STAT-MODE@ S-IFMT and S-IFREG <> if false exit then
-   FS-STAT-SIZE@ DISK-SIZE @ =
-   FS-STAT-MTIME-SEC@ DISK-MSEC @ = and
-   FS-STAT-MTIME-NS@ DISK-MNS @ = and
-   FS-STAT-CTIME-SEC@ DISK-CSEC @ = and
-   FS-STAT-CTIME-NS@ DISK-CNS @ = and ;
+   FS:TRY-STAT 0= if false exit then
+   FS:STAT-MODE@ FS:S-IFMT and FS:S-IFREG <> if false exit then
+   FS:STAT-SIZE@ DISK-SIZE @ =
+   FS:STAT-MTIME-SEC@ DISK-MSEC @ = and
+   FS:STAT-MTIME-NS@ DISK-MNS @ = and
+   FS:STAT-CTIME-SEC@ DISK-CSEC @ = and
+   FS:STAT-CTIME-NS@ DISK-CNS @ = and ;
 
 \ The line and UTF-16 character of an offset held to the text: below it is its
 \ start, past it its end.

@@ -17,9 +17,9 @@ require src/lib/fs-lock.f
 package FS-LOCK-TEST
 
 1 constant F-GETFD
-create ROOT FS-PATH-CAP allot
-create FILE-PATH FS-PATH-CAP allot
-create MARK-PATH FS-PATH-CAP allot
+create ROOT PATH-CAP allot
+create FILE-PATH PATH-CAP allot
+create MARK-PATH PATH-CAP allot
 create SIGNAL 1 allot
 variable ROOT-U
 variable MARK-U
@@ -83,7 +83,7 @@ variable HELD-FD
    fd FS-LOCK:TRY 0= if 1 CHILD-EXIT then
    w FD>N SIGNAL 1 write 1 <> if 2 CHILD-EXIT then
    HOLD-MS >MS TASK:SLEEP
-   MARK-PATH MARK-U @ s" released" WRITE-ALL
+   MARK-PATH MARK-U @ s" released" FS:WRITE-ALL
    fd FD>N close
    0 CHILD-EXIT ;
 
@@ -92,7 +92,7 @@ variable HELD-FD
 \ after the release, when the marker exists; then the parent holds the lock
 \ and a further holder's TRY answers false.
 : WAIT-BLOCKS ( -- )
-   ROOT$ s" released" MARK-PATH JOIN-PATH MARK-U !
+   ROOT$ s" released" MARK-PATH FS:JOIN-PATH MARK-U !
    PIPE-PAIR {: r:fd w:fd :}
    PROC-FORK:CHECKED {: holder:pid :}
    holder PID>N 0= if w CHILD-HOLDS then
@@ -101,7 +101,7 @@ variable HELD-FD
    r FD>N close
    ROOT$ FS-LOCK:OPEN-DIR {: fd:fd :}
    fd FS-LOCK:WAIT
-   MARK-PATH MARK-U @ EXISTS? TTRUE
+   MARK-PATH MARK-U @ FS:EXISTS? TTRUE
    fd FD>N HELD-FD !
    PROC-FORK:CHECKED {: child:pid :}
    child PID>N 0= if CHILD-BUSY then
@@ -131,8 +131,8 @@ variable HELD-FD
 : BAD-FD ( -- ) -1 >FD FS-LOCK:TRY drop ;
 : BAD-WAIT ( -- ) -1 >FD FS-LOCK:WAIT ;
 : BAD-DIR ( -- )
-   ROOT$ s" file" FILE-PATH JOIN-PATH {: u:n :}
-   FILE-PATH u s" x" WRITE-ALL
+   ROOT$ s" file" FILE-PATH FS:JOIN-PATH {: u:n :}
+   FILE-PATH u s" x" FS:WRITE-ALL
    FILE-PATH u FS-LOCK:OPEN-DIR FD>N close ;
 
 : ERRORS ( -- )
@@ -143,7 +143,7 @@ variable HELD-FD
 : RUN ( -- )
    T-RESET SETUP
    [: BUSY-AND-CLOSE DEATH-RELEASES WAIT-BLOCKS EXEC-DOES-NOT-INHERIT ERRORS ;] catch {: code:n :}
-   ROOT$ REMOVE-TREE
+   ROOT$ FS:REMOVE-TREE
    code 0<> if code throw then
    T-REPORT ;
 

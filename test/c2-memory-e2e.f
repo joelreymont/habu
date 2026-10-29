@@ -38,8 +38,8 @@ private
 : IMAGES ( -- )
    ROOT$ C2-IMAGE-PAIR:PROVIDE
    s" unique owner native images are supplied" T-LABEL
-   s" hb-root" AT-A EXECUTABLE? TTRUE
-   s" hb-ordinary" AT-A EXECUTABLE? TTRUE
+   s" hb-root" AT-A FS:EXECUTABLE? TTRUE
+   s" hb-ordinary" AT-A FS:EXECUTABLE? TTRUE
    s" hb-root" AT-A IMAGE-NAMES:LOAD
    IMAGE-NAMES:BOUND? TTRUE
    s" hb-ordinary" AT-A IMAGE-NAMES:LOAD
@@ -186,7 +186,7 @@ private
    s" save.out" s" save.err" SAVE-LOG
    s" rooted image saves the unique wrapper" T-LABEL NEED-OK
    RC@ 0<> if exit then
-   s" hb-saved" AT-A EXECUTABLE? TTRUE
+   s" hb-saved" AT-A FS:EXECUTABLE? TTRUE
    PROC-CWD:ARGV-ENV-CWD-RESET
    s" hb-saved"
    S\" : C2-ENTRY-RAW ( n ptr u8 n -- n ptr u8 n ) s\q raw callback entered\q type cr ;\n0 ' C2-ENTRY-RAW C2-MEMORY-WRAPPER:TWICE .\ns\q accepted\q type cr\n"
@@ -237,10 +237,10 @@ private
    s" live-save.out" s" live-save.err" SAVE-LOG
    s" live capture fails and capture after close succeeds" T-LABEL
    s" c2-memory-live-save: closed" EXPECT-OK
-   s" hb-live-loan" AT-A EXISTS? TFALSE
-   s" hb-live-owner" AT-A EXISTS? TFALSE
-   s" hb-live-append" AT-A EXISTS? TFALSE
-   s" hb-after" AT-A EXECUTABLE? TTRUE
+   s" hb-live-loan" AT-A FS:EXISTS? TFALSE
+   s" hb-live-owner" AT-A FS:EXISTS? TFALSE
+   s" hb-live-append" AT-A FS:EXISTS? TFALSE
+   s" hb-after" AT-A FS:EXECUTABLE? TTRUE
    s" hb-after" s" test/c2-owner-producer-program.f" RUN-IMAGE
    s" after-append.out" s" after-append.err" SAVE-LOG
    s" a saved image appends through a fresh owner after refused live capture" T-LABEL
@@ -252,7 +252,7 @@ private
    s" live-init.out" s" live-init.err" SAVE-LOG
    s" live initialized storage refuses capture" T-LABEL
    s" c2-init-live-save: closed" EXPECT-OK
-   s" hb-live-init" AT-A EXISTS? TFALSE ;
+   s" hb-live-init" AT-A FS:EXISTS? TFALSE ;
 
 : PARTIAL-CASE ( -- )
    s" test/c2-memory-partial-write.f" ARGS
@@ -263,7 +263,7 @@ private
    s" partial capture cannot bind public C2 entries" T-LABEL
    RC@ 74 T=
    OUT$ s" c2-partial: code bytes " CONTAINS? TTRUE
-   s" hb-partial" AT-A EXISTS? TFALSE ;
+   s" hb-partial" AT-A FS:EXISTS? TFALSE ;
 
 public
 

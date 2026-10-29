@@ -23,7 +23,7 @@ private
 WPROF:STACK-BASE WPROF:OUT-BASE - constant OUT-CAP   \ the OUT region, all a run writes
 4096 constant ERR-CAP
 
-FS-PATH-CAP BUFFER: EXE
+PATH-CAP BUFFER: EXE
 OUT-CAP BUFFER: OUT
 ERR-CAP BUFFER: ERR
 variable OUT-U

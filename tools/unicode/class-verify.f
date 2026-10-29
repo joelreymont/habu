@@ -192,13 +192,13 @@ create UCV-FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this tool's file-digest cont
    repeat drop ;
 
 : LOAD-UNICODE-TRUTH ( -- )
-   UNICODE-PATH$ 2dup FILE-SIZE 1+ MEM-ALLOC-64K-SPAN {: path:ptr pathu:n buf:ptr cap:n :}
-   path pathu buf cap READ-ALL {: got:n :}
+   UNICODE-PATH$ 2dup FS:FILE-SIZE 1+ MEM-ALLOC-64K-SPAN {: path:ptr pathu:n buf:ptr cap:n :}
+   path pathu buf cap FS:READ-ALL {: got:n :}
    buf got VERIFY-UNICODE-BYTES ;
 
 : LOAD-PROPERTY-TRUTH ( -- )
-   PROPERTIES-PATH$ 2dup FILE-SIZE 1+ MEM-ALLOC-64K-SPAN {: path:ptr pathu:n buf:ptr cap:n :}
-   path pathu buf cap READ-ALL {: got:n :}
+   PROPERTIES-PATH$ 2dup FS:FILE-SIZE 1+ MEM-ALLOC-64K-SPAN {: path:ptr pathu:n buf:ptr cap:n :}
+   path pathu buf cap FS:READ-ALL {: got:n :}
    buf got VERIFY-PROPS-BYTES ;
 
 : CHECK-DIGEST ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu:n want:ptr wantu:n :}
@@ -257,8 +257,8 @@ create UCV-FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this tool's file-digest cont
 : CHECK-REGENERATION ( -- )
    UNICODE-CLASS-TOOL:LOAD-PINNED
    UNICODE-CLASS-TOOL:RENDER {: generated:ptr generatedu:n :}
-   DATA-PATH$ 2dup FILE-SIZE 1+ MEM-ALLOC-64K-SPAN {: path:ptr pathu:n buf:ptr cap:n :}
-   path pathu buf cap READ-ALL {: got:n :}
+   DATA-PATH$ 2dup FS:FILE-SIZE 1+ MEM-ALLOC-64K-SPAN {: path:ptr pathu:n buf:ptr cap:n :}
+   path pathu buf cap FS:READ-ALL {: got:n :}
    generated generatedu buf got STR= 0= if E-MISMATCH throw then ;
 
 public

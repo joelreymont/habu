@@ -39,26 +39,26 @@ $1000 constant CAP
 create OUT CAP allot
 create ERR CAP allot
 create EMPTY 1 allot
-create BASE FS-PATH-CAP allot
-create UNDEF-P FS-PATH-CAP allot
-create BODY-P FS-PATH-CAP allot
-create OUTER-P FS-PATH-CAP allot
-create FRAG-P FS-PATH-CAP allot
-create SIDE-P FS-PATH-CAP allot
-create INC-P FS-PATH-CAP allot
-create REQ-P FS-PATH-CAP allot
-create SIGLESS-P FS-PATH-CAP allot
-create TOP-INC-P FS-PATH-CAP allot
-create TOP-REQ-P FS-PATH-CAP allot
-create RUNTIME-P FS-PATH-CAP allot
-create MODELED-P FS-PATH-CAP allot
-create TRUSTED-P FS-PATH-CAP allot
-create BPS-P FS-PATH-CAP allot
-create BPF-P FS-PATH-CAP allot
-create RES-P FS-PATH-CAP allot
-create RTYPE-P FS-PATH-CAP allot
-create RNEST-P FS-PATH-CAP allot
-create RCATCH-P FS-PATH-CAP allot
+create BASE PATH-CAP allot
+create UNDEF-P PATH-CAP allot
+create BODY-P PATH-CAP allot
+create OUTER-P PATH-CAP allot
+create FRAG-P PATH-CAP allot
+create SIDE-P PATH-CAP allot
+create INC-P PATH-CAP allot
+create REQ-P PATH-CAP allot
+create SIGLESS-P PATH-CAP allot
+create TOP-INC-P PATH-CAP allot
+create TOP-REQ-P PATH-CAP allot
+create RUNTIME-P PATH-CAP allot
+create MODELED-P PATH-CAP allot
+create TRUSTED-P PATH-CAP allot
+create BPS-P PATH-CAP allot
+create BPF-P PATH-CAP allot
+create RES-P PATH-CAP allot
+create RTYPE-P PATH-CAP allot
+create RNEST-P PATH-CAP allot
+create RCATCH-P PATH-CAP allot
 
 variable BASE-U
 variable UNDEF-U
@@ -151,18 +151,18 @@ variable RC
    pre preu SB-APPEND
    frag fragu SB-APPEND
    post postu SB-APPEND
-   path pathu SB$ WRITE-ALL ;
+   path pathu SB$ FS:WRITE-ALL ;
 
 : PATH! ( ptr u8 n ptr u8 ptr n -- )
    {: name:ptr nameu:n dst:ptr lenp:ptr :}
-   BASE$ name nameu dst JOIN-PATH lenp ! ;
+   BASE$ name nameu dst FS:JOIN-PATH lenp ! ;
 
 : ROOT! ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" habu-load-reject-diag" FS:MKTEMP-DIR {: a:ptr u:n :}
    a BASE u BYTE-COPY
    u BASE-U !
-   BASE$ CLEANUP-TREE+ ;
+   BASE$ FS:CLEANUP-TREE+ ;
 
 : PATHS! ( -- )
    s" undef.f" UNDEF-P UNDEF-U PATH!
@@ -186,22 +186,22 @@ variable RC
    s" residue-caught.f" RCATCH-P RCATCH-U PATH! ;
 
 : REJECT-FIXTURES! ( -- )
-   UNDEF$ s" : LRD-X ( -- ) LRD-NO-SUCH-WORD-XYZ ;" WRITE-ALL
-   BODY$ s" : LRD-Y ( n -- n ) drop ;" WRITE-ALL
+   UNDEF$ s" : LRD-X ( -- ) LRD-NO-SUCH-WORD-XYZ ;" FS:WRITE-ALL
+   BODY$ s" : LRD-Y ( n -- n ) drop ;" FS:WRITE-ALL
    \ The byte pointer comes out of a DECLARED cell. The subject here is the
    \ cell-versus-byte pointer diagnostic, and a raw `variable` no longer hands
    \ out an address at all (E-RAW-CELL-PTR), which would refuse the fixture one
    \ definition before the token these cases pin.
-   BPS$ s" TYPED-VARIABLE LRD-P ptr u8 : LRD-BASE ( -- ptr u8 ) LRD-P @ ; : LRD-BPS ( -- ) 0 LRD-BASE ! ;" WRITE-ALL
-   BPF$ s" TYPED-VARIABLE LRD-Q ptr u8 : LRD-QBASE ( -- ptr u8 ) LRD-Q @ ; : LRD-BPF ( -- n ) LRD-QBASE @ ;" WRITE-ALL
+   BPS$ s" TYPED-VARIABLE LRD-P ptr u8 : LRD-BASE ( -- ptr u8 ) LRD-P @ ; : LRD-BPS ( -- ) 0 LRD-BASE ! ;" FS:WRITE-ALL
+   BPF$ s" TYPED-VARIABLE LRD-Q ptr u8 : LRD-QBASE ( -- ptr u8 ) LRD-Q @ ; : LRD-BPF ( -- n ) LRD-QBASE @ ;" FS:WRITE-ALL
    \ A loaded file is a closed program, so the fragment shows it ran by
    \ printing: it can take no cell from its loader and leave none.
-   FRAG$ s" 74 ." WRITE-ALL
-   SIDE$ S\" [ s\" LRD-FRAGMENT-EXECUTED\" type ]" WRITE-ALL
+   FRAG$ s" 74 ." FS:WRITE-ALL
+   SIDE$ S\" [ s\" LRD-FRAGMENT-EXECUTED\" type ]" FS:WRITE-ALL
    SB-RESET
    s" include " SB-APPEND
    UNDEF$ SB-APPEND
-   OUTER$ SB$ WRITE-ALL ;
+   OUTER$ SB$ FS:WRITE-ALL ;
 
 : IMM-FIXTURES! ( -- )
    s" -1 JSON-DIAGS ! : LRD-IMM-I ( -- ) 73 include "
@@ -213,23 +213,23 @@ variable RC
 LOWER-CERT-HOOK:INSTALL
 -1 JSON-DIAGS !
 : LRD-IMM-S ( mystery:foo -- n ) RAW-IMM 73 ;
-" WRITE-ALL ;
+" FS:WRITE-ALL ;
 
 \ One definition per append: SB holds one path and its text, not three.
 : RUNTIME-DEF+ ( ptr u8 n ptr u8 n -- ) {: pre:ptr preu:n post:ptr postu:n :}
    SB-RESET
    pre preu SB-APPEND FRAG$ SB-APPEND post postu SB-APPEND
-   RUNTIME$ SB$ APPEND-FILE ;
+   RUNTIME$ SB$ FS:APPEND-FILE ;
 
 : RUNTIME-FIXTURE! ( -- )
-   RUNTIME$ s" " WRITE-ALL
+   RUNTIME$ s" " FS:WRITE-ALL
    S\" : RUN-I ( -- ) s\" " S\" \" included ; " RUNTIME-DEF+
    S\" : RUN-R ( -- ) s\" " S\" \" required ; " RUNTIME-DEF+
    S\" : RUN-P ( -- ) s\" " S\" \" provided ; RUN-I RUN-R RUN-P" RUNTIME-DEF+ ;
 
 : RESIDUE-FIXTURES! ( -- )
-   RES$ s" 1 2" WRITE-ALL
-   RTYPE$ s" NEWTYPE lrd-length 0" WRITE-ALL
+   RES$ s" 1 2" FS:WRITE-ALL
+   RTYPE$ s" NEWTYPE lrd-length 0" FS:WRITE-ALL
    s" require " RES$ s" " RNEST$ FRAG-FIXTURE!
    S\" : LRD-T ( -- ) [: s\" " RES$ S\" \" required ;] catch . ; LRD-T"
       RCATCH$ FRAG-FIXTURE! ;
@@ -238,8 +238,8 @@ LOWER-CERT-HOOK:INSTALL
    s" include " FRAG$ s" " TOP-INC$ FRAG-FIXTURE!
    s" require " FRAG$ s" " TOP-REQ$ FRAG-FIXTURE!
    RUNTIME-FIXTURE!
-   MODELED$ S\" : PI ( -- ) ; immediate s\" PI\" 0 parse-imm : PIM ( -- n ) PI 73 ; PIM ." WRITE-ALL
-   TRUSTED$ S\" -1 JSON-DIAGS ! : LRD-TRUST-IMM ( -- ) ; immediate TRUSTED: LRD-TRUST-BODY ( -- n ) LRD-TRUST-IMM 73 ;" WRITE-ALL ;
+   MODELED$ S\" : PI ( -- ) ; immediate s\" PI\" 0 parse-imm : PIM ( -- n ) PI 73 ; PIM ." FS:WRITE-ALL
+   TRUSTED$ S\" -1 JSON-DIAGS ! : LRD-TRUST-IMM ( -- ) ; immediate TRUSTED: LRD-TRUST-BODY ( -- n ) LRD-TRUST-IMM 73 ;" FS:WRITE-ALL ;
 
 : FIXTURES! ( -- )
    REJECT-FIXTURES!
@@ -350,7 +350,7 @@ LOWER-CERT-HOOK:INSTALL
    ERR$ s" actual: ptr u8" CONTAINS? TTRUE ;
 
 : PARAMETRIC-REJECT ( ptr u8 n -- )
-   BODY$ 2swap WRITE-ALL
+   BODY$ 2swap FS:WRITE-ALL
    BODY$ RUN
    s" E-NONPARAMETRIC-EFFECT" ASSERT-NAMED ;
 
@@ -369,7 +369,7 @@ LOWER-CERT-HOOK:INSTALL
    s" raw storage cannot restrict a quotation output variable" T-LABEL
    s" create LRD-RAW 1 cells allot : LRD-RAW-QUOT ( [ -- a ] -- ) execute LRD-RAW ! ;" PARAMETRIC-REJECT
    s" concrete storage and generic transport retain their declared effects" T-LABEL
-   BODY$ s" create LRD-RAW 1 cells allot : LRD-RAW-N ( n -- ) LRD-RAW ! ; : LRD-ID ( a -- a ) ; : LRD-ROUNDTRIP ( n -- n ) LRD-ID dup LRD-RAW-N ; 41 LRD-ROUNDTRIP . cr" WRITE-ALL
+   BODY$ s" create LRD-RAW 1 cells allot : LRD-RAW-N ( n -- ) LRD-RAW ! ; : LRD-ID ( a -- a ) ; : LRD-ROUNDTRIP ( n -- n ) LRD-ID dup LRD-RAW-N ; 41 LRD-ROUNDTRIP . cr" FS:WRITE-ALL
    BODY$ RUN s" 41" ASSERT-OK-OUT
    s" family arguments keep distinct declared variables" T-LABEL
    s" NEWTYPE lrd-pair<a,b> : LRD-ID ( lrd-pair<a,a> -- lrd-pair<a,a> ) ; : LRD-ALIAS ( lrd-pair<a,b> -- lrd-pair<a,b> ) LRD-ID ;" PARAMETRIC-REJECT ;
@@ -378,7 +378,7 @@ LOWER-CERT-HOOK:INSTALL
 \ refusal, named for the declared word and the type, where it used to die on an
 \ uncaught E-LAYOUT-BUFFER with nothing on stderr (dot 2eb1290e).
 : STORAGE-REJECT ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n name:ptr nameu:n :}
-   BODY$ src srcu WRITE-ALL
+   BODY$ src srcu FS:WRITE-ALL
    BODY$ RUN
    name nameu ASSERT-NAMED
    ERR$ s" : unknown type 'lrd-stg-none'" CONTAINS? TTRUE ;
@@ -470,11 +470,11 @@ LOWER-CERT-HOOK:INSTALL
 
 : TEST-UNREPORTED-REJECT ( -- )
    s" a custom hook's unreported reject retains the compiler fallback" T-LABEL
-   BODY$ s" 1 set-tier TRUSTED: LRD-SILENT-HOOK ( ptr u8 n -- n ) 2drop 70 throw ; -1 JSON-DIAGS ! ' LRD-SILENT-HOOK set-check : LRD-CUSTOM ( -- ) ;" WRITE-ALL
+   BODY$ s" 1 set-tier TRUSTED: LRD-SILENT-HOOK ( ptr u8 n -- n ) 2drop 70 throw ; -1 JSON-DIAGS ! ' LRD-SILENT-HOOK set-check : LRD-CUSTOM ( -- ) ;" FS:WRITE-ALL
    BODY$ RUN
    s" ncomp: cannot compile" ASSERT-NAMED
    s" a silent diagnostic defer retains the hook fallback" T-LABEL
-   BODY$ s" TRUSTED: LRD-MUTE-DIAG ( -- ) [: ;] is DIAGXT ; LRD-MUTE-DIAG -1 JSON-DIAGS ! : LRD-MUTED ( -- n ) ;" WRITE-ALL
+   BODY$ s" TRUSTED: LRD-MUTE-DIAG ( -- ) [: ;] is DIAGXT ; LRD-MUTE-DIAG -1 JSON-DIAGS ! : LRD-MUTED ( -- n ) ;" FS:WRITE-ALL
    BODY$ RUN
    s" hook: non-certified definition: lrd-muted" ASSERT-NAMED ;
 
@@ -506,7 +506,7 @@ LOWER-CERT-HOOK:INSTALL
    TEST-IMM-TRUSTED
    TEST-UNREPORTED-REJECT
    TEST-PREFLIGHT-POSITIVES
-   CLEANUP-RUN
+   FS:CLEANUP-RUN
    T-REPORT
    s" load-reject-diag-test: ok" type cr ;
 

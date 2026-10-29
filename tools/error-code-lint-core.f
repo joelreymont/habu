@@ -515,7 +515,7 @@ variable JX
    SRC-SLAB LINT-SLAB:TEXT SCAN-TEXT ;
 
 : ROOT ( ptr u8 n -- )
-   [: SCAN-FILE ;] WALK-FILES ;
+   [: SCAN-FILE ;] FS:WALK-FILES ;
 
 : WALK ( -- )
    RESET-LEDGER  0 FILE# !

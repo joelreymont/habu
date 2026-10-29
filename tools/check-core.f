@@ -77,14 +77,14 @@ $7FFFFFFF constant CHK-DEADLINE-MAX
 45 constant CHK-DASH
 
 create CHK-NUM-BUF CHK-NUM-CAP allot
-create CHK-ROOT-BUF FS-PATH-CAP allot
-create CHK-SRC-PATH-BUF FS-PATH-CAP allot
-create CHK-RUN-PATH-BUF FS-PATH-CAP allot
-create CHK-MARK-PATH-BUF FS-PATH-CAP allot
-create CHK-SUBJ-BUF FS-PATH-CAP allot
-create CHK-SEL-LABEL-BUF FS-PATH-CAP allot
-create CHK-STDIN-PATH-BUF FS-PATH-CAP allot
-create CHK-POS-BUF CHK-MAX-POS FS-PATH-CAP * allot
+create CHK-ROOT-BUF PATH-CAP allot
+create CHK-SRC-PATH-BUF PATH-CAP allot
+create CHK-RUN-PATH-BUF PATH-CAP allot
+create CHK-MARK-PATH-BUF PATH-CAP allot
+create CHK-SUBJ-BUF PATH-CAP allot
+create CHK-SEL-LABEL-BUF PATH-CAP allot
+create CHK-STDIN-PATH-BUF PATH-CAP allot
+create CHK-POS-BUF CHK-MAX-POS PATH-CAP * allot
 create CHK-POS-U CHK-MAX-POS cells allot
 create CHK-ONE 1 allot
 
@@ -308,7 +308,7 @@ variable CHK-TFAM-NAME-I
    u 0 > if a c@ CHK-DASH = else 0 0= 0= then ;
 
 : CHK-POS-SLOT ( n -- ptr u8 )
-   FS-PATH-CAP * CHK-POS-BUF + ;
+   PATH-CAP * CHK-POS-BUF + ;
 
 : CHK-POS-U-SLOT ( n -- ptr n )
    cells CHK-POS-U + ;
@@ -320,7 +320,7 @@ variable CHK-TFAM-NAME-I
    idx CHK-POS-U-SLOT @ ;
 
 : CHK-ADD-POS ( ptr u8 n -- ) {: a:ptr u:n :}
-   u FS-PATH-CAP > if E-FS-CAPACITY throw then
+   u PATH-CAP > if E-FS-CAPACITY throw then
    CHK-POS-N @ CHK-MAX-POS >= if CHK-USAGE then
    a CHK-POS-N @ CHK-POS-SLOT u BYTE-COPY
    u CHK-POS-N @ CHK-POS-U-SLOT !
@@ -384,7 +384,7 @@ private
    CHK-STDIN-PATH-U @ 0<> if CHK-USAGE then
    CHK-ARG-I @ CHK-ARG$ {: a:ptr u:n :}
    u 0= if CHK-USAGE then
-   u FS-PATH-CAP > if E-FS-CAPACITY throw then
+   u PATH-CAP > if E-FS-CAPACITY throw then
    a CHK-STDIN-PATH-BUF u BYTE-COPY
    u CHK-STDIN-PATH-U ! ;
 
@@ -476,7 +476,7 @@ private
    CHK-RUN-TEMP-CLEAR ;
 
 : CHK-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr lenp:ptr :}
-   u FS-PATH-CAP > if E-FS-CAPACITY throw then
+   u PATH-CAP > if E-FS-CAPACITY throw then
    a dst u BYTE-COPY
    u lenp ! ;
 
@@ -496,14 +496,14 @@ private
    CHK-SUBJ-BUF CHK-SUBJ-U @ ;
 
 : CHK-SUBJ! ( ptr u8 n -- ) {: a:ptr u:n :}
-   u FS-PATH-CAP > if E-FS-CAPACITY throw then
+   u PATH-CAP > if E-FS-CAPACITY throw then
    a CHK-SUBJ-BUF u BYTE-COPY
    u CHK-SUBJ-U ! ;
 
 : CHK-TEMP-CLEAN ( -- )
    CHK-ROOT-U @ 0= if exit then
-   CHK-ROOT 2dup EXISTS? if REMOVE-TREE else 2drop then
-   CHK-ROOT CLEANUP-FORGET
+   CHK-ROOT 2dup FS:EXISTS? if FS:REMOVE-TREE else 2drop then
+   CHK-ROOT FS:CLEANUP-FORGET
    0 CHK-ROOT-U !
    0 CHK-SRC-PATH-U !
    0 CHK-RUN-PATH-U !
@@ -541,10 +541,10 @@ private
 : CHK-MAKE-TEMP ( -- )
    s" habu-check" FS:MKTEMP-DIR SOURCE-ROOT:CANON-OS 0= if E-FS-IO throw then
    CHK-ROOT-BUF CHK-ROOT-U CHK-COPY!
-   CHK-ROOT CLEANUP-TREE+
-   CHK-ROOT s" source.f" CHK-SRC-PATH-BUF JOIN-PATH CHK-SRC-PATH-U !
-   CHK-ROOT s" run.f" CHK-RUN-PATH-BUF JOIN-PATH CHK-RUN-PATH-U !
-   CHK-ROOT s" subject.f" CHK-MARK-PATH-BUF JOIN-PATH CHK-MARK-PATH-U ! ;
+   CHK-ROOT FS:CLEANUP-TREE+
+   CHK-ROOT s" source.f" CHK-SRC-PATH-BUF FS:JOIN-PATH CHK-SRC-PATH-U !
+   CHK-ROOT s" run.f" CHK-RUN-PATH-BUF FS:JOIN-PATH CHK-RUN-PATH-U !
+   CHK-ROOT s" subject.f" CHK-MARK-PATH-BUF FS:JOIN-PATH CHK-MARK-PATH-U ! ;
 
 : CHK-LABEL-STDIN ( -- )
    s" <stdin>" CHK-LABEL-U ! CHK-LABEL-A CHK-PTR-U8! ;
@@ -651,7 +651,7 @@ private
    CHK-ENTRY-ID CHK-EXPAND CHK-EXPAND-REPORT ;
 
 : CHK-WRITE-EXPANDED-SOURCE ( -- )
-   CHK-SRC-PATH CHK-SRC-BUF CHK-EXP-OUT-U @ LEN>N WRITE-ALL
+   CHK-SRC-PATH CHK-SRC-BUF CHK-EXP-OUT-U @ LEN>N FS:WRITE-ALL
    CHK-SRC-PATH CHK-SRC-U ! CHK-SRC-A CHK-PTR-U8! ;
 
 : CHK-EXP-APP ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -702,7 +702,7 @@ private
 \ leaves as they visit a named file's, that file under its label.
 : CHK-MATERIALIZE-BYTES ( -- )
    CHK-SRC-BUF CHK-SRC-U @ {: a:ptr u:n :}
-   CHK-SRC-PATH a u WRITE-ALL
+   CHK-SRC-PATH a u FS:WRITE-ALL
    a u CHK-SRC-PATH CHK-LABEL CHK-EXPAND-BYTES CHK-EXPAND-REPORT
    CHK-SRC-PATH CHK-SOURCE! ;
 
@@ -717,7 +717,7 @@ private
    s" check.f: source path or label contains a double quote, backslash, CR, LF or NUL" CHK-E-USAGE CHK-FAIL ;
 
 \ Every input must be a file before the engine's resolver sees it. The
-\ resolver refuses a path holding a NUL with a raw range code, and FILE?
+\ resolver refuses a path holding a NUL with a raw range code, and FS:FILE?
 \ refuses it with E-FS-PATH-UNSAFE instead.
 \
 \ The engine carries its own sources, so a run loads nothing from one and checks
@@ -754,7 +754,7 @@ private
    CHK-ENGINE-SUG$ CHK-ERR-LN ;
 
 : CHK-CHECK-INPUTS ( -- )
-   [: FILE? ;] CHK-INPUTS-ALL? 0= if s" check.f: no such source" CHK-E-NOINPUT CHK-FAIL then
+   [: FS:FILE? ;] CHK-INPUTS-ALL? 0= if s" check.f: no such source" CHK-E-NOINPUT CHK-FAIL then
    [: ENGINE-PROVIDES? ;] CHK-INPUTS-ALL? 0= if exit then
    CHK-POS-N @ 0 ?do
       i CHK-POS$ CHK-JSON @ if CHK-ENGINE-JSON else CHK-ENGINE-PROSE then
@@ -816,7 +816,7 @@ public
 : SOURCE ( ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n label:ptr labelu:n :}
    CHK-SEL-MODE @ CHK-SEL-NONE <> if CHK-USAGE then
-   labelu FS-PATH-CAP > if E-FS-CAPACITY throw then
+   labelu PATH-CAP > if E-FS-CAPACITY throw then
    srcu CHK-SEL-SRC-ROOM drop
    {: dst:ptr :}
    src dst srcu BYTE-COPY
@@ -1486,7 +1486,7 @@ CAST: CHK-VERIFIER-ACTION ( n -- [ -- ] )
 : CHK-WRITE-MARKED ( -- )
    CHK-RUN-RESET
    CHK-SUBJ$ CHK-RUN-ORIGIN+
-   CHK-MARK-PATH CHK-RUN-BUF CHK-RUN-U @ WRITE-ALL
+   CHK-MARK-PATH CHK-RUN-BUF CHK-RUN-U @ FS:WRITE-ALL
    CHK-RUN-RESET ;
 
 : CHK-BUILD-READER ( -- )
@@ -1738,7 +1738,7 @@ CAST: CHK-VERIFIER-ACTION ( n -- [ -- ] )
 \ The pre-pass runs in the verifier child, on the engine's image
 \ (CHECK:PREVERIFY-BYTES), so the words it resolves are the engine's and the
 \ ones the subject loads, the words the run will have, never a word only this
-\ process loaded: src/lib/fs.f's FILE-SIZE for check.f, src/lib/test.f's T= for a
+\ process loaded: src/lib/fs.f's FS:FILE-SIZE for check.f, src/lib/test.f's T= for a
 \ harness that checks in process. Its packets and the child's prose come
 \ first, then what its stop leaves.
 : CHK-PREVERIFY-REPORT ( result<n,outcome> -- )
@@ -1794,7 +1794,7 @@ CAST: CHK-VERIFIER-ACTION ( n -- [ -- ] )
    CHK-MAP-U @ LEN>N CHK-ERR-U ! ;
 
 : CHK-RUN-HB ( -- )
-   CHK-RUN-PATH CHK-RUN-BUF CHK-RUN-U @ WRITE-ALL
+   CHK-RUN-PATH CHK-RUN-BUF CHK-RUN-U @ FS:WRITE-ALL
    CHK-LOAD-RESET
    CHK-RUN-PATH CHK-ARG+
    CHK-RUN-CAPPED
@@ -1864,7 +1864,7 @@ CAST: CHK-VERIFIER-ACTION ( n -- [ -- ] )
 \ the file system refuses to read fails the check as it fails the walk.
 : CHK-VERIFY-FILE ( -- ptr u8 n )
    0 CHK-POS$ {: a:ptr u:n :}
-   a u FILE? 0= if s" check.f: no such source" CHK-E-NOINPUT CHK-FAIL then
+   a u FS:FILE? 0= if s" check.f: no such source" CHK-E-NOINPUT CHK-FAIL then
    [: CHK-VERIFY-READ ;] CHK-READ-RC 0<> if a u CANONICAL drop CHK-READ-FAIL then
    a u ;
 

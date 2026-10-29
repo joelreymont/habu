@@ -118,7 +118,7 @@ variable COUNTED?
 \ build input: where a counted session whose body succeeded writes
 \ `<reused> <compiled>` and a newline before CLOSE, for hb-build's report
 \ (tools/hb-build-lib.f HBB-COUNTS-READ). Empty writes nothing.
-FS-PATH-CAP BUFFER: COUNTS-PATH
+PATH-CAP BUFFER: COUNTS-PATH
 variable COUNTS-PATH-U
 variable DISPATCH-BUSY
 variable DISPATCH-ORIGINAL
@@ -484,9 +484,9 @@ private
 \ Publish the image built in STORE-IMAGE under path, sealing its checksum.
 : IMAGE-WRITE ( ptr u8 n n -- )
    {: path:ptr pathu:n size:n :}
-   pathu FS-PATH-CAP > if E-FS-PATH throw then
+   pathu PATH-CAP > if E-FS-PATH throw then
    0 STORE-IMAGE 16 + size 16 - CHECKSUM 0 STORE-IMAGE 8 + LE:U64!
-   path pathu 0 STORE-IMAGE size ATOMIC-WRITE-FILE ;
+   path pathu 0 STORE-IMAGE size FS:ATOMIC-WRITE-FILE ;
 
 : IMAGE ( ptr u8 n ptr u8 n -- n )
    {: magic:ptr magicu:n object:ptr objectu:n :}
@@ -505,9 +505,9 @@ private
 \ Remove a stale object. Another build may already have replaced or removed
 \ it, so an absent file is not a failure; the next store writes over it.
 : DISCARD ( ptr u8 n -- )
-   [: 2dup REMOVE-FILE ;] catch {: a:ptr u:n code:n :}
+   [: 2dup FS:REMOVE-FILE ;] catch {: a:ptr u:n code:n :}
    code 0= if exit then
-   a u FS-TRY-LSTAT 0= if exit then
+   a u FS:TRY-LSTAT 0= if exit then
    code throw ;
 
 : ZERO-SCRATCH ( ptr u8 n -- )
@@ -2022,7 +2022,7 @@ variable IMPORT-AT
    s" HABU_BUILD_COUNTS" GETENV {: a:ptr u:n :}
    0 COUNTS-PATH-U !
    u 0= if exit then
-   u FS-PATH-CAP > if E-FS-CAPACITY throw then
+   u PATH-CAP > if E-FS-CAPACITY throw then
    a COUNTS-PATH u BYTE-COPY
    u COUNTS-PATH-U ! ;
 
@@ -2031,7 +2031,7 @@ variable IMPORT-AT
    SB-RESET
    REUSED-N @ FMT:SB-U STR-SPACE SB-APPEND-C
    FILES-N @ REUSED-N @ - FMT:SB-U 10 SB-APPEND-C
-   COUNTS-PATH COUNTS-PATH-U @ SB$ ATOMIC-WRITE-FILE ;
+   COUNTS-PATH COUNTS-PATH-U @ SB$ FS:ATOMIC-WRITE-FILE ;
 
 : CLEAR-SCRATCH ( -- )
    0 REUSED-N ! 0 FILES-N !
@@ -2043,7 +2043,7 @@ variable IMPORT-AT
    NULL-PTR REQUEST-MANIFEST ! 0 REQUEST-MANIFEST-U !
    NULL-PTR DISPATCH-SOURCE ! 0 DISPATCH-SOURCE-U !
    NULL-PTR STAGED-REASON ! 0 STAGED-REASON-U !
-   COUNTS-PATH FS-PATH-CAP ZERO-SCRATCH 0 COUNTS-PATH-U !
+   COUNTS-PATH PATH-CAP ZERO-SCRATCH 0 COUNTS-PATH-U !
    FILE-KEY-HEX 64 ZERO-SCRATCH
    RESULTS-HEX 64 ZERO-SCRATCH
    HASH-CTX SHA256-CTX-BYTES ZERO-SCRATCH
@@ -2233,7 +2233,7 @@ public
    manifest NULL-PTR <> if
       NFILE-INPUTS:BYTES$ {: bytes:ptr size:n :}
       size 0= if BAD then
-      manifest manifestu bytes size ATOMIC-WRITE-FILE
+      manifest manifestu bytes size FS:ATOMIC-WRITE-FILE
    then ;
 
 : REQUEST-RUN ( -- )

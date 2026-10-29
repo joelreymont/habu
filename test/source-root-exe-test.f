@@ -48,11 +48,18 @@ require src/lib/process-cwd.f
 require src/lib/engine-candidate.f
 require test/pcap-result.f
 
+\ The private FS words this test reads, forwarded into its own package.
+package FS
+: SOURCE-ROOT-EXE-TEST:COPY-CAP ( -- n ) COPY-CAP ;
+: SOURCE-ROOT-EXE-TEST:COPY-FILE ( ptr u8 n ptr u8 n n -- ) COPY-FILE ;
+: SOURCE-ROOT-EXE-TEST:MODE-DIR ( -- n ) MODE-DIR ;
+;package
+
 using SOURCE-ROOT
 package SOURCE-ROOT-EXE-TEST
 private
 
-FS-PATH-CAP 1+ constant CAP
+PATH-CAP 1+ constant CAP
 $10000 constant IO-CAP
 $1000 constant PROG-CAP
 \ Guards against a hung child, not budgets: the host runs loaded.
@@ -108,20 +115,20 @@ variable RC
 \ paths at once.
 : A$ ( ptr u8 n -- ptr u8 n )
    {: rel:ptr relu:n :}
-   TOP$ rel relu PA JOIN-PATH PA swap ;
+   TOP$ rel relu PA FS:JOIN-PATH PA swap ;
 
 : B$ ( ptr u8 n -- ptr u8 n )
    {: rel:ptr relu:n :}
-   TOP$ rel relu PB JOIN-PATH PB swap ;
+   TOP$ rel relu PB FS:JOIN-PATH PB swap ;
 
 : HB-AT$ ( ptr u8 n -- ptr u8 n )
    {: rel:ptr relu:n :}
-   TOP$ rel relu PE JOIN-PATH PE swap ;
+   TOP$ rel relu PE FS:JOIN-PATH PE swap ;
 
 \ <gate tree>/<rel>
 : GATE-B$ ( ptr u8 n -- ptr u8 n )
    {: rel:ptr relu:n :}
-   GATE$ rel relu PB JOIN-PATH PB swap ;
+   GATE$ rel relu PB FS:JOIN-PATH PB swap ;
 
 : LINE ( ptr u8 n -- ) SB-APPEND 10 SB-APPEND-C ;
 
@@ -150,32 +157,32 @@ variable RC
 
 : TEXT ( ptr u8 n ptr u8 n -- )
    {: name:ptr nameu:n text:ptr textu:n :}
-   name nameu A$ text textu WRITE-ALL ;
+   name nameu A$ text textu FS:WRITE-ALL ;
 
 \ <tmp>/<link> names <gate tree>/<sub>.
 : GATE-LINK ( ptr u8 n ptr u8 n -- )
    {: sub:ptr subu:n link:ptr linku:n :}
-   sub subu GATE-B$ link linku A$ MAKE-SYMLINK ;
+   sub subu GATE-B$ link linku A$ FS:MAKE-SYMLINK ;
 
 \ <tmp>/<rel> is a copy of the engine under test: a symlink would resolve to
 \ the candidate's own location.
 : PLACE-ENGINE ( ptr u8 n -- )
    {: rel:ptr relu:n :}
-   HB$ rel relu A$ COPY-FILE-STREAM
-   rel relu A$ CHMOD-X ;
+   HB$ rel relu A$ FS:COPY-FILE-STREAM
+   rel relu A$ FS:CHMOD-X ;
 
 \ <tmp>/b/<path> is a real copy of the gate tree's file: a symlink back would
 \ resolve to the gate tree.
 : B-COPY ( ptr u8 n -- )
    {: a:ptr u:n :}
-   a u FILE? 0= if exit then
-   B-ROOT$ a u CWD$ RELATIVE COPY-DST JOIN-PATH {: size:n :}
-   COPY-DST size DIRNAME MAKE-DIRS
-   a u COPY-DST size COPY-FILE-STREAM ;
+   a u FS:FILE? 0= if exit then
+   B-ROOT$ a u CWD$ RELATIVE COPY-DST FS:JOIN-PATH {: size:n :}
+   COPY-DST size DIRNAME FS:MAKE-DIRS
+   a u COPY-DST size FS:COPY-FILE-STREAM ;
 
 : B-TREE ( -- )
    s" b" A$ B-ROOT B-ROOT-U COPY!
-   s" src" [: B-COPY ;] WALK-FILES ;
+   s" src" [: B-COPY ;] FS:WALK-FILES ;
 
 \ A package whose one word answers n, standing in for a file the engine bakes.
 : MARKER ( ptr u8 n n -- )
@@ -191,7 +198,7 @@ variable RC
    s" require src/lib/fs-list.f" LINE
    s" package SOURCE-ROOT-EXE-WD" LINE
    S\" : YN ( bool -- ) if s\q yes\q else s\q no\q then type cr ;" LINE
-   s" FS-LIST:DT-DIR 4 = FS:ENOENT 2 = and YN" LINE
+   s" FS-LIST:DT-DIR 4 = FS:EACCES 13 = and YN" LINE
    s" ;package" LINE ;
 
 \ A package that names itself as it loads, standing in for a library file.
@@ -214,72 +221,72 @@ variable RC
 : DEEP-DIRS ( -- )
    SB-RESET s" deep" SB-APPEND
    4 0 do s" /" SB-APPEND LONG LONG-NAME SB-APPEND loop
-   SB$ A$ MAKE-DIRS ;
+   SB$ A$ FS:MAKE-DIRS ;
 
 : PREP ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" habu-source-root-exe" FS:MKTEMP-DIR CANONICAL TTRUE TOP TOP-U COPY!
-   TOP$ CLEANUP-TREE+
+   TOP$ FS:CLEANUP-TREE+
    CWD$ GATE GATE-U COPY!
    ENGINE-CANDIDATE:PATH$ CANONICAL TTRUE HB HB-U COPY!
-   s" foreign" A$ MAKE-DIR
+   s" foreign" A$ FS:MAKE-DIR
    s" foreign" A$ FOREIGN FOREIGN-U COPY!
    \ The executable's tree, its files the gate tree's, and a link to its engine.
-   s" tree/bin" A$ MAKE-DIRS
+   s" tree/bin" A$ FS:MAKE-DIRS
    s" tree/bin/hb" PLACE-ENGINE
    s" src" s" tree/src" GATE-LINK
-   s" bin" A$ MAKE-DIR
-   s" tree/bin/hb" B$ s" bin/hb" A$ MAKE-SYMLINK
+   s" bin" A$ FS:MAKE-DIR
+   s" tree/bin/hb" B$ s" bin/hb" A$ FS:MAKE-SYMLINK
    \ A lone engine, and a tree that has no lib.
-   s" x" A$ MAKE-DIR
+   s" x" A$ FS:MAKE-DIR
    s" x/hb" PLACE-ENGINE
-   s" p/bin" A$ MAKE-DIRS
+   s" p/bin" A$ FS:MAKE-DIRS
    s" p/bin/hb" PLACE-ENGINE
-   s" p/src" A$ MAKE-DIR
+   s" p/src" A$ FS:MAKE-DIR
    s" src/core" s" p/src/core" GATE-LINK
    \ An engine whose directory is not a tree, beside an engine file's name.
-   s" q/bin" A$ MAKE-DIRS
+   s" q/bin" A$ FS:MAKE-DIRS
    s" q/bin/hb" PLACE-ENGINE
-   s" q/src/lib" A$ MAKE-DIRS
+   s" q/src/lib" A$ FS:MAKE-DIRS
    s" SOURCE-ROOT-EXE-NOT-TREE" 4 MARKER s" q/src/lib/errors.f" SB$ TEXT
    \ A real copy of the tree, with an engine of its own.
    B-TREE
-   s" b/bin" A$ MAKE-DIRS
+   s" b/bin" A$ FS:MAKE-DIRS
    s" b/bin/hb" PLACE-ENGINE
-   s" app/src/lib" A$ MAKE-DIRS
-   s" test/source-root-exe-app.f" s" app/app.f" A$ FS-MUT-COPY-CAP COPY-FILE
+   s" app/src/lib" A$ FS:MAKE-DIRS
+   s" test/source-root-exe-app.f" s" app/app.f" A$ COPY-CAP COPY-FILE
    s" SOURCE-ROOT-EXE-APP-ERRORS" 1 MARKER s" app/src/lib/errors.f" SB$ TEXT
-   s" wd-app/src/lib" A$ MAKE-DIRS
+   s" wd-app/src/lib" A$ FS:MAKE-DIRS
    WD-APP s" wd-app/wd.f" SB$ TEXT
    s" SOURCE-ROOT-EXE-ENTRY-DECOY" DECOY s" wd-app/src/lib/fs.f" SB$ TEXT
-   s" shadow/src/lib" A$ MAKE-DIRS
+   s" shadow/src/lib" A$ FS:MAKE-DIRS
    s" SOURCE-ROOT-EXE-WD-DECOY" DECOY s" shadow/src/lib/fs-list.f" SB$ TEXT
    \ A program behind a link of another name requires the file beside it, then
    \ itself.
-   s" real" A$ MAKE-DIR
+   s" real" A$ FS:MAKE-DIR
    s" real/x.f" S\" require y.f\nrequire x.f\ns\q x\q type cr\n" TEXT
    s" real/y.f" S\" s\q y\q type cr\n" TEXT
-   s" links" A$ MAKE-DIR
-   s" real/x.f" B$ s" links/tool" A$ MAKE-SYMLINK
-   s" other/nested" A$ MAKE-DIRS
-   s" other/src/lib" A$ MAKE-DIRS
+   s" links" A$ FS:MAKE-DIR
+   s" real/x.f" B$ s" links/tool" A$ FS:MAKE-SYMLINK
+   s" other/nested" A$ FS:MAKE-DIRS
+   s" other/src/lib" A$ FS:MAKE-DIRS
    s" SOURCE-ROOT-EXE-OTHER" 3 MARKER s" other/src/lib/errors.f" SB$ TEXT
-   s" other/nested" B$ s" tree/branch" A$ MAKE-SYMLINK
-   s" wd" A$ MAKE-DIR
-   s" wd/src" A$ MAKE-DIRS
+   s" other/nested" B$ s" tree/branch" A$ FS:MAKE-SYMLINK
+   s" wd" A$ FS:MAKE-DIR
+   s" wd/src" A$ FS:MAKE-DIRS
    s" src/lib" s" wd/src/lib" GATE-LINK
-   s" cd/sub" A$ MAKE-DIRS
+   s" cd/sub" A$ FS:MAKE-DIRS
    CD-FILE s" cd/x.f" SB$ TEXT
    SB-RESET s" SOURCE-ROOT:CD " SB-APPEND TOP$ LINE s" cd-load.f" SB$ TEXT
    s" first.f" S\" \\ A file loaded before CD.\n" TEXT
    s" push-load.f" S\" SOURCE-ROOT:PUSHPATH\n" TEXT
    s" pop-load.f" S\" SOURCE-ROOT:POPPATH\n" TEXT
-   s" search-only" A$ MAKE-DIR
+   s" search-only" A$ FS:MAKE-DIR
    LONG-NAME 0 ?do 97 LONG i + c! loop
    DEEP-DIRS
-   s" moved/bin" A$ MAKE-DIRS
+   s" moved/bin" A$ FS:MAKE-DIRS
    s" src" s" moved/src" GATE-LINK
-   s" cwd" A$ MAKE-DIR
+   s" cwd" A$ FS:MAKE-DIR
    s" tools" s" cwd/tools" GATE-LINK ;
 
 \ ---- one child ------------------------------------------------------------------
@@ -573,10 +580,10 @@ variable RC
 
 : CD-SEARCH-ONLY ( -- )
    s" a directory searchable without read permission is a current path" T-LABEL
-   s" search-only" A$ SEARCH-ONLY CHMOD-MODE
+   s" search-only" A$ SEARCH-ONLY FS:CHMOD-MODE
    PROG-RESET s" SOURCE-ROOT:CD" s" search-only" PATH-LINE s" SOURCE-ROOT:CD" PLINE
    RUN-TREE
-   s" search-only" A$ FS-MUT-MODE-DIR CHMOD-MODE
+   s" search-only" A$ MODE-DIR FS:CHMOD-MODE
    SB-RESET s" search-only" A$ LINE SB$ 0 EXPECT ;
 
 \ Each step is one prompt line, so the path grows past the cap only by joining.
@@ -663,7 +670,7 @@ variable RC
    s" tree/bin/hb" HB-AT$ FOREIGN$ PROG$ SAVE-TIMEOUT-MS RUN-EXE
    S\" PUSHPATH: an image cannot be saved with a path pushed\n" REFUSAL
    s" the refused save writes no image" T-LABEL
-   s" pushed" A$ EXISTS? TFALSE ;
+   s" pushed" A$ FS:EXISTS? TFALSE ;
 
 \ The image is saved by an engine whose tree no loaded file's canonical path
 \ contains (its src is a link), so the tree's bytes can only come from
@@ -695,7 +702,7 @@ variable RC
    s" tree/bin/hb" HB-AT$ FOREIGN$ PROG$ SAVE-TIMEOUT-MS RUN-EXE
    RC @ 0= 0= if SHOW then
    RC @ 0 T=
-   IMAGE$ EXECUTABLE? {: saved:bool :}
+   IMAGE$ FS:EXECUTABLE? {: saved:bool :}
    saved TTRUE
    saved 0= if exit then
    s" the restored image holds neither its engine's tree nor that root" T-LABEL
@@ -728,7 +735,7 @@ variable RC
    PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE RESULT!
    s" cwd" A$ s" /src/habu/window-rewind.f" CANNOT-OPEN
    s" the failed build writes no engine" T-LABEL
-   s" hb-foreign" A$ EXISTS? TFALSE ;
+   s" hb-foreign" A$ FS:EXISTS? TFALSE ;
 
 : MAIN ( -- )
    T-RESET
@@ -736,7 +743,7 @@ variable RC
    EXE-TREE CWD-TREE LONE PARTIAL NOT-TREE
    APP WD ENTRY ALIAS FIX-1 FIX-2 BOOT-OUTSIDE
    PATH-WORDS SAVE-PUSHED CAPTURE BUILD-OUTSIDE
-   CLEANUP-RUN
+   FS:CLEANUP-RUN
    T-REPORT
    s" source-root-exe-test: ok" type cr ;
 

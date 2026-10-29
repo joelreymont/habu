@@ -17,7 +17,7 @@ $1000 constant SMOKE-CAP
 create SMOKE-OUT SMOKE-CAP allot
 create SMOKE-ERR SMOKE-CAP allot
 
-create PRIOR-ENGINE-ROOT FS-PATH-CAP allot
+create PRIOR-ENGINE-ROOT PATH-CAP allot
 variable PRIOR-ENGINE-ROOT-U
 
 \ The driver comes from the donor tree; every target source belongs to CWD.
@@ -820,7 +820,7 @@ s" AOT-CAPTURE" s" ACAP-DICT>CAP" PRIVATE-TARGET-XT
    NAMES-SOURCE-ALIGN
    CHECK-FIXED-ROWS ;
 
-FS-PATH-CAP constant OUTPUT-CAP
+PATH-CAP constant OUTPUT-CAP
 create OUTPUT-BUF OUTPUT-CAP allot
 variable OUTPUT-U
 create TEMP-BUF OUTPUT-CAP allot
@@ -837,7 +837,7 @@ variable SMOKE-DIR-U
    path c@ 47 = if
       path OUTPUT-BUF size BYTE-COPY size OUTPUT-U ! exit
    then
-   SOURCE-ROOT:CWD$ path size OUTPUT-BUF JOIN-PATH OUTPUT-U ! ;
+   SOURCE-ROOT:CWD$ path size OUTPUT-BUF FS:JOIN-PATH OUTPUT-U ! ;
 
 : OUTPUT! ( ptr u8 n -- ) {: path:ptr size:n :}
    path size ABSOLUTE-OUTPUT!
@@ -849,7 +849,7 @@ variable SMOKE-DIR-U
 
 : SMOKE-DIR! ( -- )
    s" hb-native-smoke" FS:MKTEMP-DIR {: path:ptr size:n :}
-   path size CLEANUP-TREE+
+   path size FS:CLEANUP-TREE+
    path SMOKE-DIR size BYTE-COPY size SMOKE-DIR-U ! ;
 
 \ XREF-START answers the source writer's entry as a code address integer, and
@@ -1005,7 +1005,7 @@ variable WRITER-OVERRIDE?
    drop
    owned AOT-OWNED:CLOSE
    rc 0<> if rc throw then
-   TEMP$ CHMOD-X ;
+   TEMP$ FS:CHMOD-X ;
 
 : SMOKE-RESULT ( result<pcap:captured,pcap:failed> -- n n n )
    MATCH result
@@ -1067,7 +1067,7 @@ variable WRITER-OVERRIDE?
    TEMP$ CODESIGN:ENSURE ;
 
 : PROMOTE ( -- )
-   TEMP$ OUTPUT$ RENAME-FILE ;
+   TEMP$ OUTPUT$ FS:RENAME-FILE ;
 
 \ ---- the build-side name map ---------------------------------------------------
 \ The image keeps a name only for the records something can ask for by name and
@@ -1320,7 +1320,7 @@ variable NAMES-NI
    NAMES-HASH-CTX OUTPUT$ NAMES-HASH-HEX SHA256-FILE-HEX-IN
       dup 0<> if throw then drop
    NAMES-HASH-HEX NAMES-A@ NAMES-HASH-OFF @ + 64 BYTE-COPY
-   NAMES-PATH$ NAMES-A@ NAMES-U @ WRITE-ALL ;
+   NAMES-PATH$ NAMES-A@ NAMES-U @ FS:WRITE-ALL ;
 
 \ The suite builder's private directory is absolute. Each capture retains its
 \ rows until the corresponding final image exists and can bind their hash.
@@ -1335,7 +1335,7 @@ variable SEALED-NAMES-U
 
 : BUNDLE-OUTPUT ( ptr u8 n ptr u8 n -- )
    {: dir:ptr diru:n name:ptr nameu:n :}
-   dir diru name nameu BUNDLE-PATH JOIN-PATH BUNDLE-PATH-U !
+   dir diru name nameu BUNDLE-PATH FS:JOIN-PATH BUNDLE-PATH-U !
    BUNDLE-PATH BUNDLE-PATH-U @ OUTPUT! ;
 
 : OWN-CAPTURE ( -- AOT-OWNED:capture )
@@ -1344,7 +1344,7 @@ variable SEALED-NAMES-U
 : WRITE-BUNDLE-CAPTURE ( AOT-OWNED:capture [ AOT-OWNED:capture ptr n n ptr u8 n -- ] -- )
    {: writer :}
    NATIVE-LAYOUT:CURRENT OUTPUT$ writer execute
-   OUTPUT$ CHMOD-X ;
+   OUTPUT$ FS:CHMOD-X ;
 
 : BUNDLE-PREPARE ( -- )
    BUILD-TARGET:CURRENT RTARGET:CORE MATCH RTARGET:core-result
@@ -1423,8 +1423,8 @@ variable SEALED-NAMES-U
    rc 0<> if rc throw then ;
 
 : REMOVE-STALE-TEMP ( -- )
-   TEMP$ 2dup SYMLINK? if REMOVE-FILE exit then
-   2dup EXISTS? if REMOVE-FILE else 2drop then ;
+   TEMP$ 2dup FS:SYMLINK? if FS:REMOVE-FILE exit then
+   2dup FS:EXISTS? if FS:REMOVE-FILE else 2drop then ;
 
 : IMAGE-CAPTURE ( -- AOT-OWNED:capture )
    SOURCE-CHECK @ execute
@@ -1473,10 +1473,10 @@ variable SEALED-NAMES-U
 
 : RUN-FILE-INNER ( -- n )
    BUILD-TARGET:IDLE-CK
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    0 TARGET-SOURCE-BOUND !
    REMOVE-STALE-TEMP
-   TEMP$ CLEANUP+
+   TEMP$ FS:CLEANUP+
    SMOKE-DIR!
    \ The load owns WINDOW-OPEN through WINDOW-CLOSE. Cache session setup and
    \ reset outside it only bind loader state; finish audits and owns the window.
@@ -1486,7 +1486,7 @@ variable SEALED-NAMES-U
       BUILD-CORE:WITH {: rc:n :}
    RESTORE-HOST-UNIT
    CLEANUP-SOURCE
-   CLEANUP-RUN
+   FS:CLEANUP-RUN
    rc 0<> if s" native-build: uncaught throw code " type rc . cr then
    rc ;
 

@@ -43,9 +43,9 @@ variable LABEL-U
 TYPED-VARIABLE PHASE-A ptr u8
 variable PHASE-U
 
-create ROOT-BUF FS-PATH-CAP allot
-create SRC-BUF FS-PATH-CAP allot
-create DIAG-BUF FS-PATH-CAP allot
+create ROOT-BUF PATH-CAP allot
+create SRC-BUF PATH-CAP allot
+create DIAG-BUF PATH-CAP allot
 create OUT BUF-CAP allot
 create ERR BUF-CAP allot
 
@@ -54,7 +54,7 @@ create ERR BUF-CAP allot
    u lenp ! ;
 
 : PATH! ( ptr u8 n ptr u8 n ptr u8 ptr n -- ) {: pa:ptr pu:n na:ptr nu:n dst:ptr lenp:ptr :}
-   pa pu na nu dst JOIN-PATH lenp ! ;
+   pa pu na nu dst FS:JOIN-PATH lenp ! ;
 
 : ROOT ( -- ptr u8 n )
    ROOT-BUF ROOT-U @ ;
@@ -91,10 +91,10 @@ create ERR BUF-CAP allot
    SB$ ;
 
 : SRC-CLEAR ( -- )
-   SRC EMPTY$ WRITE-ALL ;
+   SRC EMPTY$ FS:WRITE-ALL ;
 
 : SRC+ ( ptr u8 n -- )
-   SRC 2swap APPEND-FILE ;
+   SRC 2swap FS:APPEND-FILE ;
 
 \ A quotation literal pushes a cell and returns: the return rows named are the
 \ quotation's own, not the definition's around it.
@@ -124,14 +124,14 @@ create ERR BUF-CAP allot
    SB$ ;
 
 : PREPARE ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" habu-check-repair-hints" FS:MKTEMP-DIR {: a:ptr u :}
    a u ROOT-BUF ROOT-U COPY!
-   ROOT CLEANUP-DIR+
+   ROOT FS:CLEANUP-DIR+
    ROOT s" input.f" SRC-BUF SRC-U PATH!
    ROOT s" diag.jsonl" DIAG-BUF DIAG-U PATH!
-   SRC CLEANUP+
-   DIAG CLEANUP+ ;
+   SRC FS:CLEANUP+
+   DIAG FS:CLEANUP+ ;
 
 : RUN-CHECK-ACT ( -- )
    LABEL$ SRC CHECK-ALL-ERRORS:FILE ;
@@ -200,7 +200,7 @@ create ERR BUF-CAP allot
    BAD-BATCH-SOURCE
    s" repair-batch" s" check" CONTEXT!
    s" repair-batch" RUN-CHECK 70 EXPECT-DIAG {: erru:n :}
-   DIAG ERR erru WRITE-ALL
+   DIAG ERR erru FS:WRITE-ALL
    s" repair-batch" s" schema" CONTEXT!
    DIAG GJA-JSON-LINES-SCHEMA ;
 
@@ -233,8 +233,8 @@ create ERR BUF-CAP allot
    T-RESET
    PREPARE
    CASES
-   CLEANUP-RUN
-   ROOT EXISTS? TFALSE
+   FS:CLEANUP-RUN
+   ROOT FS:EXISTS? TFALSE
    T-REPORT
    s" check-repair-hints-test: ok" type cr ;
 

@@ -33,9 +33,9 @@ CAP BUFFER: CAP-ERR
 : TMP$ ( -- ptr u8 n )
    s" TMPDIR" GETENV dup 0= if 2drop s" /tmp" then ;
 
-FS-PATH-CAP BUFFER: PATH-A
+PATH-CAP BUFFER: PATH-A
 variable PATH-A-U
-FS-PATH-CAP BUFFER: PATH-B
+PATH-CAP BUFFER: PATH-B
 variable PATH-B-U
 
 : PATH$ ( -- ptr u8 n ) PATH-A PATH-A-U @ ;
@@ -59,7 +59,7 @@ variable PATH-B-U
    n 1- 1 ?do [char] a FIXTURE i + c! loop
    [char] " FIXTURE n 1- + c!
    tail FIXTURE n + tu BYTE-COPY
-   PATH$ FIXTURE n tu + WRITE-ALL ;
+   PATH$ FIXTURE n tu + FS:WRITE-ALL ;
 
 : LONG-FIXTURE ( -- )
    LONG-N s\" \n7" STRING-FIXTURE ;
@@ -67,7 +67,7 @@ variable PATH-B-U
 \ POSIX open-rd takes the lowest free descriptor. With no other opens between
 \ the probe and JSONL:OPEN, the next probe verifies the cursor owns that fd.
 : FREE-FD ( -- n )
-   s" /dev/null" FS-PATHZ open-rd {: fd:n :}
+   s" /dev/null" FS:>PATHZ open-rd {: fd:n :}
    fd 0 >= TTRUE
    fd close-rc 0 T=
    fd ;
@@ -147,7 +147,7 @@ variable PATH-B-U
 
 : FILE ( -- )
    LONG-FIXTURE
-   PATH$ FILE-SIZE LONG-N 2 + T=
+   PATH$ FS:FILE-SIZE LONG-N 2 + T=
    LONG-N OPEN-KNOWN {: fd:n :}
    A LONG-N STRING-LINE
    A 7 INT-LINE
@@ -169,7 +169,7 @@ variable PATH-B-U
    FREE-FD fd2 T= ;
 
 : EMPTY-LINES ( -- )
-   PATH$ s\" \n\n{\qx\q:7}\n\n\n9" WRITE-ALL
+   PATH$ s\" \n\n{\qx\q:7}\n\n\n9" FS:WRITE-ALL
    16 OPEN-KNOWN {: fd:n :}
    A JSONL:NEXT TTRUE
    A READ-ONE
@@ -177,16 +177,16 @@ variable PATH-B-U
    A 9 INT-LINE
    A JSONL:NEXT TFALSE
    FREE-FD fd T=
-   PATH$ s\" \n\n" WRITE-ALL
+   PATH$ s\" \n\n" FS:WRITE-ALL
    16 OPEN-KNOWN drop
    A JSONL:NEXT TFALSE
-   PATH$ s" " WRITE-ALL
+   PATH$ s" " FS:WRITE-ALL
    16 OPEN-KNOWN {: fd2:n :}
    A JSONL:NEXT TFALSE
    FREE-FD fd2 T= ;
 
 : CR-LIMIT ( -- )
-   PATH$ s\" 7\r\n" WRITE-ALL
+   PATH$ s\" 7\r\n" FS:WRITE-ALL
    FREE-FD {: fd:n :}
    [: A PATH$ 1 BUF:N>BLEN JSONL:OPEN A JSONL:NEXT drop ;] JSONL:E-LIMIT TTHROWSQ
    FREE-FD fd T=
@@ -221,7 +221,7 @@ variable PATH-B-U
    [: A JSONL:NEXT drop ;] JSONL:E-STATE TTHROWSQ ;
 
 : OPEN-TWICE ( -- )
-   PATH$ s\" 1\n2" WRITE-ALL
+   PATH$ s\" 1\n2" FS:WRITE-ALL
    16 OPEN-KNOWN {: fd:n :}
    [: A PATH$ 16 BUF:N>BLEN JSONL:OPEN ;] JSONL:E-STATE TTHROWSQ
    FREE-FD fd 1+ T=
@@ -230,7 +230,7 @@ variable PATH-B-U
    FREE-FD fd T= ;
 
 : READER-EARLY ( -- )
-   PATH$ s\" 1\n" WRITE-ALL
+   PATH$ s\" 1\n" FS:WRITE-ALL
    16 OPEN-KNOWN drop
    [: A JSONL:READER JR:CLOSE ;] JSONL:E-STATE TTHROWSQ
    A 1 INT-LINE
@@ -238,7 +238,7 @@ variable PATH-B-U
    [: A JSONL:READER JR:CLOSE ;] JSONL:E-STATE TTHROWSQ ;
 
 : CLOSE-EARLY ( -- )
-   PATH$ s\" 1\n2" WRITE-ALL
+   PATH$ s\" 1\n2" FS:WRITE-ALL
    16 OPEN-KNOWN {: fd:n :}
    A JSONL:NEXT TTRUE
    A JSONL:CLOSE
@@ -248,8 +248,8 @@ variable PATH-B-U
 
 \ Both cursors hold a live reader at once, so shared backing would corrupt one.
 : INTERLEAVE ( -- )
-   PATH$ s\" 1\n2" WRITE-ALL
-   PATH-B$ s\" 3\n{\qx\q:7}" WRITE-ALL
+   PATH$ s\" 1\n2" FS:WRITE-ALL
+   PATH-B$ s\" 3\n{\qx\q:7}" FS:WRITE-ALL
    A PATH$ 16 BUF:N>BLEN JSONL:OPEN
    B PATH-B$ 16 BUF:N>BLEN JSONL:OPEN
    A JSONL:NEXT TTRUE
@@ -269,7 +269,7 @@ variable PATH-B-U
    DEEP-N 0 ?do [char] [ DEEP-FIXTURE i + c! loop
    DEEP-N 0 ?do [char] ] DEEP-FIXTURE DEEP-N + i + c! loop
    s\" \n7" DEEP-FIXTURE DEEP-N 2 * + swap BYTE-COPY
-   PATH$ DEEP-FIXTURE DEEP-N 2 * 2 + WRITE-ALL
+   PATH$ DEEP-FIXTURE DEEP-N 2 * 2 + FS:WRITE-ALL
    DEEP-N 2 * OPEN-KNOWN {: fd:n :}
    A JSONL:NEXT TTRUE
    A JSONL:READER
@@ -310,7 +310,7 @@ public
    READ-FAULT OPEN-MISSING OPEN-TWICE READER-EARLY CLOSE-EARLY
    INTERLEAVE DEEP-LINE
    CLOSE-FAULT
-   PATH-B$ REMOVE-FILE
+   PATH-B$ FS:REMOVE-FILE
    LONG-FIXTURE ;
 ;package
 

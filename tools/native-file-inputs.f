@@ -69,7 +69,7 @@ CAST: ENV-CURRENT-XT ( n -- [ ptr u8 n -- ptr u8 n ] )
 \ Whether the file's stat equals the one row recorded.
 : STAT= ( ptr u8 ptr u8 n -- bool )
    {: row:ptr path:ptr pathu:n :}
-   path pathu FILE-META {: size:n sec:n ns:n csec:n cns:n :}
+   path pathu FS:FILE-META {: size:n sec:n ns:n csec:n cns:n :}
    csec drop cns drop
    sec row 32 + LE:U64@ =
    ns row 40 + LE:U64@ = and
@@ -78,13 +78,13 @@ CAST: ENV-CURRENT-XT ( n -- [ ptr u8 n -- ptr u8 n ] )
 : CHECK-FILE ( ptr u8 ptr u8 n -- )
    {: row:ptr path:ptr pathu:n :}
    row 24 + LE:U64@ 1 <> if MALFORMED then
-   path pathu FILE? 0= if BAD then
+   path pathu FS:FILE? 0= if BAD then
    row path pathu STAT= 0= if BAD then ;
 
 : STAMP-FILE ( ptr u8 ptr u8 n -- )
    {: row:ptr path:ptr pathu:n :}
-   path pathu FILE? 0= if 0 row 24 + LE:U64! exit then
-   path pathu FILE-META {: size:n sec:n ns:n csec:n cns:n :}
+   path pathu FS:FILE? 0= if 0 row 24 + LE:U64! exit then
+   path pathu FS:FILE-META {: size:n sec:n ns:n csec:n cns:n :}
    csec drop cns drop
    sec row 32 + LE:U64!
    ns row 40 + LE:U64!
@@ -98,7 +98,7 @@ CAST: ENV-CURRENT-XT ( n -- [ ptr u8 n -- ptr u8 n ] )
 : CHECK-CONTENT ( ptr u8 ptr u8 n -- )
    {: row:ptr path:ptr pathu:n :}
    row 24 + LE:U64@ 1 <> if MALFORMED then
-   path pathu FILE? 0= if BAD then
+   path pathu FS:FILE? 0= if BAD then
    CONTENT-SHA path pathu CONTENT-DIGEST SHA256-FILE-IN
       dup 0<> if BAD then drop
    row 32 + 32 CONTENT-DIGEST 32 STR= 0= if BAD then ;
@@ -107,7 +107,7 @@ CAST: ENV-CURRENT-XT ( n -- [ ptr u8 n -- ptr u8 n ] )
 \ one is fresh only when the file still hashes to the bytes that ran.
 : CHECK-SOURCE ( ptr u8 ptr u8 n -- )
    {: row:ptr path:ptr pathu:n :}
-   path pathu FILE? 0= if BAD then
+   path pathu FS:FILE? 0= if BAD then
    row 24 + LE:U64@ 1 = row path pathu STAT= and if exit then
    CONTENT-SHA path pathu CONTENT-DIGEST SHA256-FILE-IN
       dup 0<> if BAD then drop

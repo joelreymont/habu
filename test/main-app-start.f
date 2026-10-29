@@ -8,8 +8,8 @@ require src/lib/engine-candidate.f
 package MAIN-APP-START-TEST
 private
 
-create SUBJECT FS-PATH-CAP allot
-create IMAGE FS-PATH-CAP allot
+create SUBJECT PATH-CAP allot
+create IMAGE PATH-CAP allot
 variable SUBJECT-U
 variable IMAGE-U
 
@@ -22,7 +22,7 @@ variable IMAGE-U
    s" application" IMAGE GT-PATH IMAGE-U !
    SUBJECT$
    S\" require src/os/script-argv.f\nrequire src/lib/string.f\ncreate APP-LF 10 c,\n: APP-HOOK ( -- ) 2 s\" HOOK\" write drop 2 APP-LF 1 write drop ;\nTRUSTED: HOOK-PTR ( -- ptr [ -- ] ) data-base EXIT-HOOK-CELL + ;\n: MAIN ( -- )\n   [: APP-HOOK ;] HOOK-PTR xt!\n   s\" APP \" type SCRIPT-ARGC .\n   0 SCRIPT-ARGV$ 2dup type cr\n   2dup s\" fail\" STR= if 2drop 91 throw then\n   s\" wide\" STR= if -1234 throw then ;\n"
-   WRITE-ALL ;
+   FS:WRITE-ALL ;
 
 : BUILD ( -- )
    GE-HB-RESET
@@ -33,7 +33,7 @@ variable IMAGE-U
    S\" \" required\n' MAIN APP-IMAGE:START!\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" SB-APPEND
    GE-HB$ SB$ GE-TIMEOUT-MS GE-RUN-STDIN
    s" build application" GE-EXPECT-OK
-   IMAGE$ EXECUTABLE? TTRUE ;
+   IMAGE$ FS:EXECUTABLE? TTRUE ;
 
 : RUN-APP ( ptr u8 n ptr u8 n -- ) {: arg:ptr argu:n input:ptr inu:n :}
    GE-HB-RESET

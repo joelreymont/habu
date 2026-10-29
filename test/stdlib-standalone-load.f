@@ -68,7 +68,7 @@ variable PATHS-USED
 : PATH$ ( n -- ptr u8 n ) {: k:n :}
    PATHS-BUF PATH-OFF k cells + @ +  PATH-LEN k cells + @ ;
 
-: COLLECT ( ptr u8 n -- ) {: a:ptr u:n :}     \ WALK-FILES callback
+: COLLECT ( ptr u8 n -- ) {: a:ptr u:n :}     \ FS:WALK-FILES callback
    a u FLAT-MODULE? 0= if exit then
    PATHS-N @ PATHS-MAX >= if E-TBL-BOUNDS throw then
    PATHS-USED @ u + PATHS-CAP > if E-TBL-BOUNDS throw then
@@ -107,7 +107,7 @@ public
 : RUN ( -- )
    T-RESET
    0 PATHS-N !  0 PATHS-USED !
-   s" src/lib" [: COLLECT ;] WALK-FILES
+   s" src/lib" [: COLLECT ;] FS:WALK-FILES
    s" flat lib modules discovered" T-LABEL  PATHS-N @ MODULE-FLOOR >= TTRUE
    s" src/lib/json-read.f discovered" T-LABEL   s" src/lib/json-read.f" COLLECTED? TTRUE
    LOAD-ALL

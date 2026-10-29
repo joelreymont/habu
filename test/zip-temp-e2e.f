@@ -16,9 +16,9 @@ require test/pcap-result.f
 package ZIP-TEMP-E2E
 
 $4000 constant CAP
-create ROOT FS-PATH-CAP allot variable ROOT-U
-create BAD FS-PATH-CAP allot variable BAD-U
-create ARCHIVE FS-PATH-CAP allot variable ARCHIVE-U
+create ROOT PATH-CAP allot variable ROOT-U
+create BAD PATH-CAP allot variable BAD-U
+create ARCHIVE PATH-CAP allot variable ARCHIVE-U
 create OUT CAP allot variable OUT-U
 create ERR CAP allot variable ERR-U
 variable RC
@@ -32,9 +32,9 @@ variable RC
 : SETUP ( -- )
    s" zip-temp" FS:MKTEMP-DIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY u ROOT-U !
-   ROOT$ s" not-a-dir" BAD JOIN-PATH BAD-U !
-   ROOT$ s" temp.zip" ARCHIVE JOIN-PATH ARCHIVE-U !
-   BAD$ s" x" WRITE-ALL ;
+   ROOT$ s" not-a-dir" BAD FS:JOIN-PATH BAD-U !
+   ROOT$ s" temp.zip" ARCHIVE FS:JOIN-PATH ARCHIVE-U !
+   BAD$ s" x" FS:WRITE-ALL ;
 
 \ TMPDIR is staged before the parent's rows are inherited, and inheriting skips
 \ a name already staged, so the child sees exactly one TMPDIR: BAD.

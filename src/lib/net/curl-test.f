@@ -92,15 +92,15 @@ $4000001 constant HUGE-BODY-U           \ one past the 64 MiB that once capped a
 $4001000 constant HUGE-U                \ a page past the 64 MiB span CURL once refused
 251 constant HUGE-PERIOD                \ a prime period, so a shifted copy cannot match
 
-create ROOT-BUF FS-PATH-CAP allot
-create FILE-BUF FS-PATH-CAP allot
-create JAR-BUF FS-PATH-CAP allot
+create ROOT-BUF PATH-CAP allot
+create FILE-BUF PATH-CAP allot
+create JAR-BUF PATH-CAP allot
 create BODY-BUF BODY-CAP allot
 create REQ-BUF REQ-CAP allot
 create RES-BUF RES-CAP allot
 create HEADER-BUF HEADER-CAP allot
 create HEADER-SAVED HEADER-CAP allot
-create TRANSCRIPT-PATH FS-PATH-CAP allot
+create TRANSCRIPT-PATH PATH-CAP allot
 create TRANSCRIPT-BUF HEADER-CAP allot
 create JAR-TEXT-BUF RES-CAP allot
 create NUM-BUF NUM-CAP allot
@@ -977,7 +977,7 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
 \ ---- fixtures ----------------------------------------------------------------
 
 : UNDER-ROOT ( ptr u8 n ptr u8 -- n ) {: name:ptr nameu:n dst:ptr :}
-   ROOT$ name nameu dst JOIN-PATH ;
+   ROOT$ name nameu dst FS:JOIN-PATH ;
 
 
 : MAKE-ROOT ( -- )
@@ -990,7 +990,7 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
 
 \ The only file on disk is the one the file:// case must NOT be able to read.
 : WRITE-FIXTURES ( -- )
-   FILE$ HELLO$ WRITE-ALL ;
+   FILE$ HELLO$ FS:WRITE-ALL ;
 
 
 : FILE-URL$ ( -- ptr u8 n )
@@ -1160,8 +1160,8 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    SB$ {: transcript:ptr u:n :}
    transcript TRANSCRIPT-BUF u BYTE-COPY
    u TRANSCRIPT-U !
-   TRANSCRIPT-PATH pathu TRANSCRIPT-BUF TRANSCRIPT-U @ WRITE-ALL
-   TRANSCRIPT-PATH pathu TRANSCRIPT-BUF HEADER-CAP READ-ALL
+   TRANSCRIPT-PATH pathu TRANSCRIPT-BUF TRANSCRIPT-U @ FS:WRITE-ALL
+   TRANSCRIPT-PATH pathu TRANSCRIPT-BUF HEADER-CAP FS:READ-ALL
       TRANSCRIPT-U @ T=
    TRANSCRIPT-BUF TRANSCRIPT-U @ SB$ T$= ;
 
@@ -1176,7 +1176,7 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
 \ tab-separated fields, so each is looked for on its own. The jar is read into
 \ its own buffer: REQ-BUF belongs to the server task.
 : JAR-HAS? ( ptr u8 n -- bool ) {: needle:ptr needleu:n :}
-   JAR$ JAR-TEXT-BUF RES-CAP READ-ALL {: u:n :}
+   JAR$ JAR-TEXT-BUF RES-CAP FS:READ-ALL {: u:n :}
    u 0 ?do JAR-TEXT-BUF u needle needleu i TEXT-AT? if true unloop exit then loop
    false ;
 
@@ -1423,7 +1423,7 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
 
 : TEST-COOKIES ( -- )
    COOKIE-FIRST
-   JAR$ FILE? TTRUE
+   JAR$ FS:FILE? TTRUE
    s" probe" JAR-HAS? TTRUE
    s" value1" JAR-HAS? TTRUE
    COOKIE-SECOND ;
@@ -1658,7 +1658,7 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    subject BODY-CAP >LEN FETCH
    subject CURL:CLEANUP
    s" a file:// URL is refused and its bytes never reach the buffer" T-LABEL
-   FILE$ FILE? TTRUE
+   FILE$ FS:FILE? TTRUE
    LAST-KIND @ KIND-FAILED T=
    LAST-CODE @ 1 T=
    UNTOUCHED? TTRUE ;
@@ -2715,7 +2715,7 @@ variable DEFER-RETURNED
 : TEARDOWN ( -- )
    STOP-SERVER
    CLOSE-SILENT
-   ROOT$ REMOVE-TREE ;
+   ROOT$ FS:REMOVE-TREE ;
 
 
 variable FIRST-RECORDS

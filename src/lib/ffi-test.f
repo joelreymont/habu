@@ -9,7 +9,7 @@ require src/lib/fmt.f                  \ the code the child prints is rendered f
 require src/lib/process.f
 require src/lib/process-argv.f         \ the growth case needs a child engine
 require src/lib/process-env.f          \ the stub child runs on the unsealed engine
-require src/lib/fs-mutate.f            \ CLEANUP-RUN - that engine's private copy
+require src/lib/fs-mutate.f            \ FS:CLEANUP-RUN - that engine's private copy
 require src/lib/le.f                   \ the spilled %n out-parameter is a C int
 require src/lib/memory.f               \ the read-only page the %n format is copied into
 require test/whitebox-child.f
@@ -455,7 +455,7 @@ create FFI-T-LONG-PATH PATH-CAP allot
 
 : FFI-T-STUBS ( -- )
    [: s" ffi-stub" WHITEBOX-CHILD:PROVIDE FFI-T-STUB-ARGS FFI-T-STUB-RESULT ;]
-   [: CLEANUP-RUN ;] finally ;
+   [: FS:CLEANUP-RUN ;] finally ;
 
 \ The libm rows ride the ABI call: sqrt a float argument and a float result,
 \ fma three float registers, scalbln a float register beside all 64 bits of the

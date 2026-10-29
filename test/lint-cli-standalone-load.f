@@ -89,7 +89,7 @@ variable PATHS-USED
 : PATH$ ( n -- ptr u8 n ) {: k:n :}
    PATHS-BUF PATH-OFF k cells + @ +  PATH-LEN k cells + @ ;
 
-: COLLECT ( ptr u8 n -- ) {: a:ptr u:n :}     \ WALK-FILES callback
+: COLLECT ( ptr u8 n -- ) {: a:ptr u:n :}     \ FS:WALK-FILES callback
    a u LINT-ENTRY? 0= if exit then
    PATHS-N @ PATHS-MAX >= if E-TBL-BOUNDS throw then
    PATHS-USED @ u + PATHS-CAP > if E-TBL-BOUNDS throw then
@@ -194,7 +194,7 @@ variable GOT-U
 
 : TIMEOUT-VERDICT ( -- )
    0 PATHS-N !  0 PATHS-USED !
-   s" tools" [: COLLECT ;] WALK-FILES
+   s" tools" [: COLLECT ;] FS:WALK-FILES
    PATHS-N @ 0 <= if E-TBL-BOUNDS throw then
    T-RESET
    [: 0 PATH$ UNMEETABLE-MS LOAD-VERDICT ;] catch {: code:n :}
@@ -241,7 +241,7 @@ public
    TIMEOUT-VERDICT                           \ owns the suite's T-RESET; see its comment
    FIXTURE
    0 PATHS-N !  0 PATHS-USED !
-   s" tools" [: COLLECT ;] WALK-FILES
+   s" tools" [: COLLECT ;] FS:WALK-FILES
    s" tools/reserved-name-lint.f discovered" T-LABEL
       s" tools/reserved-name-lint.f" COLLECTED? TTRUE
    LOAD-ALL

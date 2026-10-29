@@ -18,9 +18,9 @@ TYPED-VARIABLE IMAGE FONT:image
 
 : READ-FONT ( ptr u8 n -- ptr u8 n )
    {: path:ptr len:n :}
-   path len FILE-SIZE {: size:n :}
+   path len FS:FILE-SIZE {: size:n :}
    size MEM-ALLOC-BYTES {: data:ptr cap:n :}
-   path len data cap READ-ALL cap T=
+   path len data cap FS:READ-ALL cap T=
    data cap ;
 
 : INPUT-FONT ( -- ptr u8 n ) FONT-PATH$ READ-FONT ;
@@ -34,7 +34,7 @@ TYPED-VARIABLE IMAGE FONT:image
 : WRITE-IMAGE ( FONT:image ptr u8 n -- )
    {: image:FONT:image path:ptr len:n :}
    image FONT:SVG$ {: svg:ptr bytes:n :}
-   path len svg bytes WRITE-ALL ;
+   path len svg bytes FS:WRITE-ALL ;
 
 : DRAW-CHECK ( FONT:font -- )
    {: face:FONT:font :}

@@ -52,30 +52,30 @@ $7FFFFFFF constant HBB-MAKER-MAX-MS
 136 constant HBB-MAKER-SUPPORT-HEADER-U
 136 constant HBB-ENGINE-SUPPORT-HEADER-U
 
-create HBB-SRC-PATH FS-PATH-CAP allot
-create HBB-OUT-PATH FS-PATH-CAP allot
+create HBB-SRC-PATH PATH-CAP allot
+create HBB-OUT-PATH PATH-CAP allot
 create HBB-MAKER-KEY-HEX 80 allot
-create HBB-MAP-SRC FS-PATH-CAP allot
-create HBB-MAP-DST FS-PATH-CAP allot
-create HBB-PAIR-STAGE FS-PATH-CAP allot
-create HBB-PAIR-BACKUP FS-PATH-CAP allot
-create HBB-REPL-DEPS-PATH FS-PATH-CAP allot
-create HBB-MAKER-INPUTS-PATH FS-PATH-CAP allot
-create HBB-COUNTS-PATH FS-PATH-CAP allot
-create HBB-REPL-SUPPORT-PATH FS-PATH-CAP allot
+create HBB-MAP-SRC PATH-CAP allot
+create HBB-MAP-DST PATH-CAP allot
+create HBB-PAIR-STAGE PATH-CAP allot
+create HBB-PAIR-BACKUP PATH-CAP allot
+create HBB-REPL-DEPS-PATH PATH-CAP allot
+create HBB-MAKER-INPUTS-PATH PATH-CAP allot
+create HBB-COUNTS-PATH PATH-CAP allot
+create HBB-REPL-SUPPORT-PATH PATH-CAP allot
 create HBB-REPL-SUPPORT-KEY 64 allot
-create HBB-REPL-RUNNING-ROOT FS-PATH-CAP allot
-create HBB-REPL-SELECTED-ROOT FS-PATH-CAP allot
-create HBB-MAKER-RUNNING-ROOT FS-PATH-CAP allot
-create HBB-MAKER-SELECTED-ROOT FS-PATH-CAP allot
-create HBB-MAKER-SUPPORT-PATH FS-PATH-CAP allot
+create HBB-REPL-RUNNING-ROOT PATH-CAP allot
+create HBB-REPL-SELECTED-ROOT PATH-CAP allot
+create HBB-MAKER-RUNNING-ROOT PATH-CAP allot
+create HBB-MAKER-SELECTED-ROOT PATH-CAP allot
+create HBB-MAKER-SUPPORT-PATH PATH-CAP allot
 create HBB-MAKER-SUPPORT-KEY 64 allot
 create HBB-REPL-ENGINE-DIGEST 32 allot
 create HBB-BUILDER-KEY 64 allot   \ BF-ENGINE$'s engine key, naming its img/
 create HBB-REPL-ENGINE-SHA SHA256-FILE-CTX-BYTES allot
 create HBB-ENGINE-SELECT-KEY 64 allot
-create HBB-ENGINE-SELECT-PATH FS-PATH-CAP allot
-create HBB-ENGINE-IMAGE-PATH FS-PATH-CAP allot
+create HBB-ENGINE-SELECT-PATH PATH-CAP allot
+create HBB-ENGINE-IMAGE-PATH PATH-CAP allot
 create HBB-LF-BUF 1 allot
 HBB-LF HBB-LF-BUF c!
 
@@ -157,7 +157,7 @@ variable HBB-APP-BUILDER-U
    s" usage: tools/hb-build.f [--engine [--whitebox] [--target TARGET] | --repl | --json-errors] [options] [source.f] -o out" HBB-USAGE-RC die ;
 
 : HBB-COPY-PATH! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr up:ptr :}
-   u FS-PATH-CAP > if E-BUILD-PATH throw then
+   u PATH-CAP > if E-BUILD-PATH throw then
    a dst u BYTE-COPY
    u up ! ;
 
@@ -167,29 +167,29 @@ variable HBB-APP-BUILDER-U
 : HBB-OUT! ( ptr u8 n -- )
    HBB-OUT-PATH HBB-OUT-U HBB-COPY-PATH! ;
 
-\ The source path is held in FS-PATH-CAP bytes, so the CLI refuses a longer
+\ The source path is held in PATH-CAP bytes, so the CLI refuses a longer
 \ one by name, before it builds anything.
 : HBB-SRC-ARG! ( ptr u8 n -- )
    {: a:ptr u:n :}
-   u FS-PATH-CAP > if s" hb-build: source path too long" HBB-USAGE-RC die then
+   u PATH-CAP > if s" hb-build: source path too long" HBB-USAGE-RC die then
    a u HBB-SRC! ;
 
 \ -o is replaced by renaming over it a sibling made in its directory
-\ (src/lib/fs-mutate.f REPLACE-STAGED). Before it builds anything the CLI
-\ refuses by name an -o longer than FS-PATH-CAP bytes, one with no last name,
+\ (src/lib/fs-mutate.f FS:REPLACE-STAGED). Before it builds anything the CLI
+\ refuses by name an -o longer than PATH-CAP bytes, one with no last name,
 \ one in a directory that is not there, and one that is a directory, which a
 \ rename cannot replace. The host alone judges the last name's length. An -o
 \ with no directory part goes in the working directory.
 : HBB-OUT-ARG! ( ptr u8 n -- )
    {: a:ptr u:n :}
-   u FS-PATH-CAP > if s" hb-build: output path too long" HBB-USAGE-RC die then
-   a u BASENAME nip {: nameu:n :}
+   u PATH-CAP > if s" hb-build: output path too long" HBB-USAGE-RC die then
+   a u FS:BASENAME nip {: nameu:n :}
    nameu 0= if s" hb-build: output path has no file name" HBB-USAGE-RC die then
    u nameu - {: diru:n :}
    diru 0 > if
-      a diru DIR? 0= if s" hb-build: no such output directory" HBB-USAGE-RC die then
+      a diru FS:DIR? 0= if s" hb-build: no such output directory" HBB-USAGE-RC die then
    then
-   a u DIR? if s" hb-build: output path is a directory" HBB-USAGE-RC die then
+   a u FS:DIR? if s" hb-build: output path is a directory" HBB-USAGE-RC die then
    a u HBB-OUT! ;
 
 : HBB-SRC$ ( -- ptr u8 n )
@@ -199,7 +199,7 @@ variable HBB-APP-BUILDER-U
    HBB-OUT-PATH HBB-OUT-U @ ;
 
 : HBB-MAP-PATH! ( ptr u8 n ptr u8 -- n ) {: a:ptr u:n dst:ptr :}
-   u 4 + FS-PATH-CAP > if E-BUILD-PATH throw then
+   u 4 + PATH-CAP > if E-BUILD-PATH throw then
    a dst u BYTE-COPY
    s" .map" drop dst u + 4 BYTE-COPY
    u 4 + ;
@@ -209,17 +209,17 @@ variable HBB-APP-BUILDER-U
 : HBB-MAP-SRC$ ( -- ptr u8 n ) HBB-MAP-SRC HBB-MAP-SRC-U @ ;
 : HBB-MAP-DST$ ( -- ptr u8 n ) HBB-MAP-DST HBB-MAP-DST-U @ ;
 
-: HBB-MAP-FILL ( ptr u8 n -- ) HBB-MAP-SRC$ 2swap COPY-FILE-STREAM ;
+: HBB-MAP-FILL ( ptr u8 n -- ) HBB-MAP-SRC$ 2swap FS:COPY-FILE-STREAM ;
 : HBB-MAP-COPY ( ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n dst:ptr dstu:n :}
    src srcu HBB-MAP-SRC!
    dst dstu HBB-MAP-DST!
-   HBB-MAP-SRC$ FILE? 0= if E-BUILD-PATH throw then
-   HBB-MAP-DST$ [: HBB-MAP-FILL ;] REPLACE-STAGED ;
+   HBB-MAP-SRC$ FS:FILE? 0= if E-BUILD-PATH throw then
+   HBB-MAP-DST$ [: HBB-MAP-FILL ;] FS:REPLACE-STAGED ;
 
 : HBB-MAP-REMOVE? ( ptr u8 n -- )
    HBB-MAP-SRC!
-   HBB-MAP-SRC$ FILE? if HBB-MAP-SRC$ REMOVE-FILE then ;
+   HBB-MAP-SRC$ FS:FILE? if HBB-MAP-SRC$ FS:REMOVE-FILE then ;
 
 : HBB-REPL-DEPS$ ( -- ptr u8 n )
    HBB-REPL-DEPS-PATH HBB-REPL-DEPS-U @ ;
@@ -228,12 +228,12 @@ variable HBB-APP-BUILDER-U
    s" .hb-deps" ;
 
 \ A sidecar sits beside the output, but is optional for an output path
-\ without room in FS-PATH-CAP for the suffix. A sidecar name the host refuses
+\ without room in PATH-CAP for the suffix. A sidecar name the host refuses
 \ fails its write.
 : HBB-REPL-DEPS-PATH? ( -- bool )
    HBB-OUT$ {: a:ptr u:n :}
    HBB-REPL-DEPS-SUFFIX$ {: suffix:ptr suffixu:n :}
-   u suffixu + FS-PATH-CAP > if HBB-FALSE exit then
+   u suffixu + PATH-CAP > if HBB-FALSE exit then
    a HBB-REPL-DEPS-PATH u BYTE-COPY
    suffix HBB-REPL-DEPS-PATH u + suffixu BYTE-COPY
    u suffixu + HBB-REPL-DEPS-U !
@@ -382,7 +382,7 @@ variable HBB-APP-BUILDER-U
    HBB-I @ HBB-ARG$ HBB-SRC-ARG!
    HBB-I @ 1+ s" -o" HBB-ARG= 0= if HBB-USAGE then
    HBB-I @ 2 + HBB-ARG$ HBB-OUT-ARG!
-   HBB-SRC$ FILE? 0= if s" hb-build: no such source" HBB-NOINPUT-RC die then
+   HBB-SRC$ FS:FILE? 0= if s" hb-build: no such source" HBB-NOINPUT-RC die then
    HBB-SRC$ HBB-PATH-HAS-DQ? if s" hb-build: source path contains a double quote" HBB-USAGE-RC die then ;
 
 \ Every build gets a private directory. The engine's build mode writes fixed
@@ -394,8 +394,8 @@ variable HBB-APP-BUILDER-U
 \ missing or not a directory.
 : HBB-PREPARE-TMP ( -- )
    BF-TMP-RESET
-   CLEANUP-RESET
-   s" hb-build-native" FS:MKTEMP-DIR 2dup BF-TMP! CLEANUP-TREE+ ;
+   FS:CLEANUP-RESET
+   s" hb-build-native" FS:MKTEMP-DIR 2dup BF-TMP! FS:CLEANUP-TREE+ ;
 
 \ The out root is made before any maker runs, so a root that cannot be made
 \ fails the build up front as a path error rather than midway as a file error.
@@ -406,7 +406,7 @@ variable HBB-APP-BUILDER-U
    rc throw ;
 
 : HBB-CLEANUP ( -- )
-   CLEANUP-RUN
+   FS:CLEANUP-RUN
    HBB-ENGINE-RECORD-RELEASE
    HBB-OUT-CAPTURE-RELEASE
    HBB-ERR-CAPTURE-RELEASE
@@ -436,7 +436,7 @@ HBB-COUNTS-MAX BUFFER: HBB-COUNTS-BUF
 
 : HBB-COUNTS$ ( -- ptr u8 n )
    s" hb-build-counts" BF-A$ {: a:ptr u:n :}
-   u FS-PATH-CAP > if E-BUILD-PATH throw then
+   u PATH-CAP > if E-BUILD-PATH throw then
    a HBB-COUNTS-PATH u BYTE-COPY
    u HBB-COUNTS-U !
    HBB-COUNTS-PATH HBB-COUNTS-U @ ;
@@ -445,7 +445,7 @@ HBB-COUNTS-MAX BUFFER: HBB-COUNTS-BUF
 \ so that a maker that exits 0 without writing it, or an earlier in-process
 \ build sharing this TMP directory, cannot hand this build stale counts.
 : HBB-COUNTS-ARM ( -- )
-   HBB-COUNTS$ 2dup EXISTS? if REMOVE-FILE else 2drop then
+   HBB-COUNTS$ 2dup FS:EXISTS? if FS:REMOVE-FILE else 2drop then
    s" HABU_BUILD_COUNTS" >LEN HBB-COUNTS$ >LEN PROC-ENV-SET ;
 
 : HBB-COUNT ( ptr u8 n -- n )
@@ -459,10 +459,10 @@ HBB-COUNTS-MAX BUFFER: HBB-COUNTS-BUF
 \ A successful maker finished its counted session, so a missing or malformed
 \ file is a maker that did not report: E-BUILD-STATUS.
 : HBB-COUNTS-READ ( -- )
-   HBB-COUNTS$ FILE? 0= if E-BUILD-STATUS throw then
-   HBB-COUNTS$ FILE-SIZE {: size:n :}
+   HBB-COUNTS$ FS:FILE? 0= if E-BUILD-STATUS throw then
+   HBB-COUNTS$ FS:FILE-SIZE {: size:n :}
    size 2 < size HBB-COUNTS-MAX > or if E-BUILD-STATUS throw then
-   HBB-COUNTS$ HBB-COUNTS-BUF size READ-ALL size <> if E-BUILD-STATUS throw then
+   HBB-COUNTS$ HBB-COUNTS-BUF size FS:READ-ALL size <> if E-BUILD-STATUS throw then
    HBB-COUNTS-BUF size 1- + c@ 10 <> if E-BUILD-STATUS throw then
    HBB-COUNTS-BUF size 1- STR-SPACE INDEX-OF MATCH option
       none OF E-BUILD-STATUS throw ENDOF
@@ -471,7 +471,7 @@ HBB-COUNTS-MAX BUFFER: HBB-COUNTS-BUF
    HBB-COUNTS-BUF sp HBB-COUNT
    HBB-COUNTS-BUF sp 1+ + size 2 - sp - HBB-COUNT
    HB-BUILD:CAPTURE-FILES
-   HBB-COUNTS$ REMOVE-FILE ;
+   HBB-COUNTS$ FS:REMOVE-FILE ;
 
 \ Every maker launch stages its argv and env here.
 : HBB-CMD-RESET ( -- )
@@ -487,7 +487,7 @@ HBB-COUNTS-MAX BUFFER: HBB-COUNTS-BUF
 : HBB-MAKER-INPUTS$ ( -- ptr u8 n )
    HBB-GOT-NAME$ BF-A$ {: a:ptr u:n :}
    s" .inputs" {: suffix:ptr suffixu:n :}
-   u suffixu + FS-PATH-CAP > if E-BUILD-PATH throw then
+   u suffixu + PATH-CAP > if E-BUILD-PATH throw then
    a HBB-MAKER-INPUTS-PATH u BYTE-COPY
    suffix HBB-MAKER-INPUTS-PATH u + suffixu BYTE-COPY
    u suffixu + HBB-MAKER-INPUTS-U !
@@ -495,10 +495,10 @@ HBB-COUNTS-MAX BUFFER: HBB-COUNTS-BUF
 
 : HBB-INPUTS-READ ( ptr u8 n -- ptr u8 n )
    {: path:ptr pathu:n :}
-   path pathu FILE-SIZE {: size:n :}
+   path pathu FS:FILE-SIZE {: size:n :}
    size 0 <= if E-NUNIT-FILE throw then
    size HBB-INPUTS-RESERVE
-   path pathu 0 HBB-INPUTS size READ-ALL size <> if E-FS-IO throw then
+   path pathu 0 HBB-INPUTS size FS:READ-ALL size <> if E-FS-IO throw then
    0 HBB-INPUTS size ;
 
 : HBB-KEY-FILE+ ( CONTENT-KEY:fold ptr u8 n -- CONTENT-KEY:fold )
@@ -532,7 +532,7 @@ HBB-COUNTS-MAX BUFFER: HBB-COUNTS-BUF
 : HBB-KEY-DONOR-MAP+ ( CONTENT-KEY:fold -- CONTENT-KEY:fold )
    HBB-REPL @ if exit then
    BF-ENGINE$ HBB-MAP-SRC!
-   HBB-MAP-SRC$ FILE? if
+   HBB-MAP-SRC$ FS:FILE? if
       s" donor-map:present" CONTENT-KEY:TEXT+
       HBB-MAP-SRC$ HBB-KEY-FILE+
    else
@@ -581,10 +581,10 @@ HBB-COUNTS-MAX BUFFER: HBB-COUNTS-BUF
       HBB-MAKER-SUPPORT-PATH HBB-MAKER-SUPPORT-U KEYED-IMAGE:PATH! ;
 
 : HBB-MAKER-SUPPORT-CHECK ( -- )
-   HBB-MAKER-SUPPORT-PATH$ FILE-SIZE {: size:n :}
+   HBB-MAKER-SUPPORT-PATH$ FS:FILE-SIZE {: size:n :}
    size HBB-MAKER-SUPPORT-HEADER-U <= if E-NUNIT-PROFILE throw then
    size HBB-MAKER-SUPPORT-RESERVE
-   HBB-MAKER-SUPPORT-PATH$ 0 HBB-MAKER-SUPPORT size READ-ALL size <>
+   HBB-MAKER-SUPPORT-PATH$ 0 HBB-MAKER-SUPPORT size FS:READ-ALL size <>
       if E-NUNIT-PROFILE throw then
    0 HBB-MAKER-SUPPORT {: rec:ptr :}
    rec 64 HBB-MAKER-SUPPORT-KEY 64 STR= 0= if E-NUNIT-PROFILE throw then
@@ -595,7 +595,7 @@ HBB-COUNTS-MAX BUFFER: HBB-COUNTS-BUF
    rec 64 + HBB-MAKER-KEY-HEX 64 BYTE-COPY ;
 
 : HBB-MAKER-SUPPORT-FRESH? ( -- bool )
-   HBB-MAKER-SUPPORT-PATH$ FILE? 0= if HBB-FALSE exit then
+   HBB-MAKER-SUPPORT-PATH$ FS:FILE? 0= if HBB-FALSE exit then
    [: HBB-MAKER-SUPPORT-CHECK ;] catch {: rc:n :}
    HBB-MAKER-SUPPORT-RELEASE
    rc 0= if HBB-TRUE exit then
@@ -611,7 +611,7 @@ HBB-COUNTS-MAX BUFFER: HBB-COUNTS-BUF
    rowsu rec 128 + LE:U64!
    rows rec HBB-MAKER-SUPPORT-HEADER-U + rowsu BYTE-COPY
    HBB-MAKER-SUPPORT-PATH$ rec HBB-MAKER-SUPPORT-HEADER-U rowsu +
-      ATOMIC-WRITE-FILE ;
+      FS:ATOMIC-WRITE-FILE ;
 
 : HBB-MAKER-KEY-IN-ROOT ( -- )
    HBB-MAKER-SUPPORT-SELECT
@@ -758,7 +758,7 @@ HBB-COUNTS-MAX BUFFER: HBB-COUNTS-BUF
    ;MATCH ;
 
 \ Every file hb-build writes at -o is written to its sibling and renamed over
-\ -o only once it is whole and executable (src/lib/fs-mutate.f REPLACE-STAGED), so
+\ -o only once it is whole and executable (src/lib/fs-mutate.f FS:REPLACE-STAGED), so
 \ a failed install leaves -o as it was and no sibling.
 \ HBB-FILLING is set only while the fill runs, so HBB-REPLACE-OUT tells the
 \ fill's own failure (its source, the bytes it writes) from the replace's: a
@@ -773,7 +773,7 @@ variable HBB-FILLING
    0 HBB-FILLING ! ;
 
 : HBB-REPLACE-RUN ( -- )
-   HBB-OUT$ [: HBB-FILL-RUN ;] REPLACE-STAGED ;
+   HBB-OUT$ [: HBB-FILL-RUN ;] FS:REPLACE-STAGED ;
 
 : HBB-REPLACE-OUT ( [ ptr u8 n -- ] -- )
    is HBB-FILL
@@ -784,7 +784,7 @@ variable HBB-FILLING
    rc E-FS-OPEN = rc E-FS-IO = or if E-BUILD-INSTALL throw then
    rc throw ;
 
-\ The executable's REPLACE-STAGED fill publishes the already staged map only
+\ The executable's FS:REPLACE-STAGED fill publishes the already staged map only
 \ after its executable copy and chmod have completed. The outer rename is the
 \ last step; a refusal there puts the prior map back from its sibling.
 defer HBB-PAIR-EXE-FILL ( ptr u8 n -- )
@@ -799,8 +799,8 @@ defer HBB-PAIR-EXE-FILL ( ptr u8 n -- )
    {: dst:ptr up:ptr :}
    HBB-MAP-DST$ FS:RESERVE-SIBLING {: a:ptr u:n fd:n :}
    a u dst up HBB-COPY-PATH!
-   fd FS-ATOMIC:CLOSE-FD 0<> if E-FS-IO throw then
-   dst up @ CLEANUP+ ;
+   fd FS:CLOSE-FD 0<> if E-FS-IO throw then
+   dst up @ FS:CLEANUP+ ;
 
 : HBB-PAIR-STAGE-RESERVE ( -- )
    HBB-PAIR-STAGE HBB-PAIR-STAGE-U HBB-PAIR-RESERVE ;
@@ -815,10 +815,10 @@ defer HBB-PAIR-EXE-FILL ( ptr u8 n -- )
    code throw ;
 
 : HBB-PAIR-STAGE-MAP ( -- )
-   HBB-MAP-SRC$ FILE? 0= if E-BUILD-PATH throw then
+   HBB-MAP-SRC$ FS:FILE? 0= if E-BUILD-PATH throw then
    [: HBB-PAIR-STAGE-RESERVE ;] catch HBB-PAIR-RESERVE-CODE
-   HBB-MAP-SRC$ HBB-PAIR-STAGE$ COPY-FILE-STREAM
-   HBB-MAP-DST$ FS-TRY-LSTAT if
+   HBB-MAP-SRC$ HBB-PAIR-STAGE$ FS:COPY-FILE-STREAM
+   HBB-MAP-DST$ FS:TRY-LSTAT if
       [: HBB-PAIR-BACKUP-RESERVE ;] catch HBB-PAIR-RESERVE-CODE
       -1 HBB-PAIR-HAD-MAP !
    then ;
@@ -827,28 +827,28 @@ defer HBB-PAIR-EXE-FILL ( ptr u8 n -- )
    2dup HBB-PAIR-EXE-FILL
    2drop
    HBB-PAIR-HAD-MAP @ if
-      HBB-MAP-DST$ HBB-PAIR-BACKUP$ RENAME-FILE
+      HBB-MAP-DST$ HBB-PAIR-BACKUP$ FS:RENAME-FILE
       -1 HBB-PAIR-MOVED !
    then
-   HBB-PAIR-STAGE$ HBB-MAP-DST$ RENAME-FILE
+   HBB-PAIR-STAGE$ HBB-MAP-DST$ FS:RENAME-FILE
    -1 HBB-PAIR-COMMITTED ! ;
 
 : HBB-PAIR-ROLLBACK ( -- )
    HBB-PAIR-MOVED @ if
-      HBB-PAIR-BACKUP$ HBB-MAP-DST$ RENAME-FILE
+      HBB-PAIR-BACKUP$ HBB-MAP-DST$ FS:RENAME-FILE
    else
-      HBB-PAIR-COMMITTED @ if HBB-MAP-DST$ REMOVE-FILE then
+      HBB-PAIR-COMMITTED @ if HBB-MAP-DST$ FS:REMOVE-FILE then
    then ;
 
 : HBB-PAIR-CLEAN-ONE ( ptr u8 n -- )
    {: a:ptr u:n :}
    u 0= if exit then
-   a u FS-MUT-ATOMIC-CLEAN-TEMP
-   a u CLEANUP-FORGET ;
+   a u FS:ATOMIC-CLEAN-TEMP
+   a u FS:CLEANUP-FORGET ;
 
 : HBB-PAIR-CLEAN-BACKUP ( -- )
    HBB-PAIR-KEEP-BACKUP @ if
-      HBB-PAIR-BACKUP$ CLEANUP-FORGET
+      HBB-PAIR-BACKUP$ FS:CLEANUP-FORGET
    else
       HBB-PAIR-BACKUP$ HBB-PAIR-CLEAN-ONE
    then ;
@@ -911,8 +911,8 @@ defer HBB-PAIR-EXE-FILL ( ptr u8 n -- )
 \ copied.
 : HBB-INSTALL-FILL ( ptr u8 n -- )
    {: tmp:ptr tmpu:n :}
-   HBB-GOT-NAME$ BF-A$ tmp tmpu COPY-FILE-STREAM
-   tmp tmpu CHMOD-X ;
+   HBB-GOT-NAME$ BF-A$ tmp tmpu FS:COPY-FILE-STREAM
+   tmp tmpu FS:CHMOD-X ;
 
 : HBB-INSTALL-OUT ( -- )
    HBB-GOT-NAME$ BF-EXPECT
@@ -925,12 +925,12 @@ defer HBB-PAIR-EXE-FILL ( ptr u8 n -- )
       [: HBB-INSTALL-FILL ;] HBB-PAIR-RUN
    then
    HBB-GOT-NAME$ BF-A$ HBB-MAP-REMOVE?
-   HBB-GOT-NAME$ BF-A$ REMOVE-FILE ;
+   HBB-GOT-NAME$ BF-A$ FS:REMOVE-FILE ;
 
 \ A maker that exits without writing its inputs record must not hand this build
 \ an earlier build's record, so every maker run removes it first.
 : HBB-MAKER-INPUTS-CLEAR ( -- )
-   HBB-MAKER-INPUTS$ 2dup EXISTS? if REMOVE-FILE else 2drop then ;
+   HBB-MAKER-INPUTS$ 2dup FS:EXISTS? if FS:REMOVE-FILE else 2drop then ;
 
 : HBB-RUN-MAKER ( -- )
    -1 HBB-MAKER-RUN !
@@ -1019,10 +1019,10 @@ defer HBB-REPORT-HOOK ( -- )
    rec HBB-ENGINE-SUPPORT-HEADER-U + rec 128 + LE:U64@ ;
 
 : HBB-ENGINE-SELECT-CHECK ( -- )
-   HBB-ENGINE-SELECT$ FILE-SIZE {: size:n :}
+   HBB-ENGINE-SELECT$ FS:FILE-SIZE {: size:n :}
    size HBB-ENGINE-SUPPORT-HEADER-U <= if E-NUNIT-PROFILE throw then
    size HBB-ENGINE-RECORD-RESERVE
-   HBB-ENGINE-SELECT$ 0 HBB-ENGINE-RECORD size READ-ALL size <>
+   HBB-ENGINE-SELECT$ 0 HBB-ENGINE-RECORD size FS:READ-ALL size <>
       if E-NUNIT-PROFILE throw then
    0 HBB-ENGINE-RECORD {: rec:ptr :}
    rec 64 HBB-ENGINE-SELECT-KEY 64 STR= 0= if E-NUNIT-PROFILE throw then
@@ -1031,7 +1031,7 @@ defer HBB-REPORT-HOOK ( -- )
    HBB-ENGINE-SUPPORT-ROWS$ NFILE-INPUTS:CHECK ;
 
 : HBB-ENGINE-SELECT-FRESH? ( -- bool )
-   HBB-ENGINE-SELECT$ FILE? 0= if HBB-FALSE exit then
+   HBB-ENGINE-SELECT$ FS:FILE? 0= if HBB-FALSE exit then
    [: HBB-ENGINE-SELECT-CHECK ;] catch {: rc:n :}
    rc 0= if HBB-TRUE exit then
    rc E-NUNIT-PROFILE = rc E-NUNIT-FILE = or if HBB-FALSE exit then
@@ -1068,7 +1068,7 @@ defer HBB-REPORT-HOOK ( -- )
    rowsu rec 128 + LE:U64!
    rows rec HBB-ENGINE-SUPPORT-HEADER-U + rowsu BYTE-COPY
    HBB-ENGINE-SELECT$ rec HBB-ENGINE-SUPPORT-HEADER-U rowsu +
-      ATOMIC-WRITE-FILE
+      FS:ATOMIC-WRITE-FILE
    HBB-ENGINE-RECORD-RELEASE ;
 
 : HBB-ENGINE-CMD ( -- len len outcome )
@@ -1133,10 +1133,10 @@ defer HBB-REPORT-HOOK ( -- )
    bytes 16 + LE:U64@ {: engu:n :}
    bytes 24 + LE:U64@ {: outu:n :}
    bytes 32 + LE:U64@ {: rootu:n :}
-   srcu 0 <= srcu FS-PATH-CAP > or
-   engu 0 <= engu FS-PATH-CAP > or or
-   outu 0 <= outu FS-PATH-CAP > or or
-   rootu 0 <= rootu FS-PATH-CAP > or or if E-NUNIT-PROFILE throw then
+   srcu 0 <= srcu PATH-CAP > or
+   engu 0 <= engu PATH-CAP > or or
+   outu 0 <= outu PATH-CAP > or or
+   rootu 0 <= rootu PATH-CAP > or or if E-NUNIT-PROFILE throw then
    srcu engu + outu + rootu + size HBB-REPL-DEPS-HEADER-U - >= if E-NUNIT-PROFILE throw then
    bytes HBB-REPL-DEPS-HEADER-U + srcu HBB-SRC$ STR= 0= if E-NUNIT-PROFILE throw then
    bytes HBB-REPL-DEPS-HEADER-U srcu + + engu BF-ENGINE$ STR= 0= if E-NUNIT-PROFILE throw then
@@ -1154,9 +1154,9 @@ defer HBB-REPORT-HOOK ( -- )
 \ The sidecar records the files and resolution queries the actual application
 \ load used. A damaged or missing sidecar is a miss; it must never skip a build.
 : HBB-REPL-FRESH? ( -- bool )
-   HBB-OUT$ EXECUTABLE? 0= if HBB-FALSE exit then
+   HBB-OUT$ FS:EXECUTABLE? 0= if HBB-FALSE exit then
    HBB-REPL-DEPS-PATH? 0= if HBB-FALSE exit then
-   HBB-REPL-DEPS$ FILE? 0= if HBB-FALSE exit then
+   HBB-REPL-DEPS$ FS:FILE? 0= if HBB-FALSE exit then
    [: HBB-REPL-FRESH-CHECK ;] catch {: rc:n :}
    HBB-INPUTS-RELEASE
    rc 0= if HBB-TRUE exit then
@@ -1201,7 +1201,7 @@ defer HBB-REPORT-HOOK ( -- )
    -1 HBB-REPL-PRODUCER-READY ! ;
 
 : HBB-REPL-SUPPORT-FRESH? ( -- bool )
-   HBB-REPL-SUPPORT-PATH$ FILE? 0= if HBB-FALSE exit then
+   HBB-REPL-SUPPORT-PATH$ FS:FILE? 0= if HBB-FALSE exit then
    [: HBB-REPL-SUPPORT-CHECK ;] catch {: rc:n :}
    HBB-INPUTS-RELEASE
    rc 0= if
@@ -1221,7 +1221,7 @@ defer HBB-REPORT-HOOK ( -- )
    0 HBB-REPL-PRODUCER
       rec HBB-REPL-SUPPORT-HEADER-U + rowsu BYTE-COPY
    HBB-REPL-SUPPORT-PATH$ rec HBB-REPL-SUPPORT-HEADER-U rowsu +
-      ATOMIC-WRITE-FILE ;
+      FS:ATOMIC-WRITE-FILE ;
 
 \ Record the selected builder's make dependencies before its image is chosen.
 \ An edit while that builder runs belongs to the next invocation.
@@ -1313,7 +1313,7 @@ defer HBB-REPORT-HOOK ( -- )
    NFILE-INPUTS:APPEND
    0 HBB-REPL-PRODUCER HBB-REPL-PRODUCER-U @ NFILE-INPUTS:APPEND
    HBB-OUT$ s" " NFILE-INPUTS:ADD-MTIME
-   HBB-REPL-DEPS$ NFILE-INPUTS:BYTES$ HBB-REPL-PACK-INPUTS ATOMIC-WRITE-FILE ;
+   HBB-REPL-DEPS$ NFILE-INPUTS:BYTES$ HBB-REPL-PACK-INPUTS FS:ATOMIC-WRITE-FILE ;
 
 : HBB-REPL-SAVE-INPUTS ( -- )
    HBB-REPL-DEPS-PATH? HBB-REPL-PRODUCER-READY @ 0<> and if
@@ -1328,7 +1328,7 @@ defer HBB-REPORT-HOOK ( -- )
 
 : HBB-REPL-INVALIDATE-DEPS ( -- )
    HBB-REPL-DEPS-PATH? 0= if exit then
-   HBB-REPL-DEPS$ FILE? if HBB-REPL-DEPS$ REMOVE-FILE then ;
+   HBB-REPL-DEPS$ FS:FILE? if HBB-REPL-DEPS$ FS:REMOVE-FILE then ;
 
 : HBB-BUILD-REPL ( -- )
    HBB-REPL-ROOT!

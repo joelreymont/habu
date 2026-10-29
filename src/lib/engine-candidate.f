@@ -24,7 +24,7 @@ require src/lib/process-env.f
 require src/lib/engine-id.f
 
 \ GETENV (src/os/env-base.f) and the >LEN/LEN>N role coercions (src/core/roles.f)
-\ are engine-provided; PROC-ENV-DEFAULT$? is src/lib/process-env.f, EXECUTABLE? is
+\ are engine-provided; PROC-ENV-DEFAULT$? is src/lib/process-env.f, FS:EXECUTABLE? is
 \ src/lib/fs.f, ENGINE-ID:PATH$ is src/lib/engine-id.f.
 
 package ENGINE-CANDIDATE
@@ -45,7 +45,7 @@ private
 
 \ Fail closed unless the path names a real executable.
 : VALIDATE$ ( ptr u8 n -- ptr u8 n )
-   2dup EXECUTABLE? 0= if E-FS-OPEN throw then ;
+   2dup FS:EXECUTABLE? 0= if E-FS-OPEN throw then ;
 
 public
 

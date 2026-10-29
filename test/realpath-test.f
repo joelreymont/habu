@@ -5,11 +5,11 @@ require src/lib/fs-mutate.f
 
 package REALPATH-TEST
 
-FS-PATH-CAP 2 + constant CAP
+PATH-CAP 2 + constant CAP
 create OUT CAP allot
 create EXPECT CAP allot
-create TARGET FS-PATH-CAP allot
-create LINK FS-PATH-CAP allot
+create TARGET PATH-CAP allot
+create LINK PATH-CAP allot
 variable EXPECT-N
 variable TARGET-N
 variable LINK-N
@@ -24,12 +24,12 @@ variable LINK-N
 
 
 : CWD ( n -- n )
-   s" ." FS-PATHZ OUT 1+ rot realpath ;
+   s" ." FS:>PATHZ OUT 1+ rot realpath ;
 
 
 : CAPACITY ( -- )
    CLEAR
-   FS-PATH-CAP CWD dup 0 > TTRUE EXPECT-N !
+   PATH-CAP CWD dup 0 > TTRUE EXPECT-N !
    OUT 1+ EXPECT EXPECT-N @ 1+ BYTE-COPY
    OUT c@ $5A T=
    OUT EXPECT-N @ 1+ + c@ 0 T=
@@ -49,27 +49,27 @@ variable LINK-N
 
 : SYMLINK ( -- )
    s" habu-realpath" FS:MKTEMP-DIR {: root:ptr rootu:n :}
-   root rootu CLEANUP-TREE+
-   root rootu s" target.f" TARGET JOIN-PATH TARGET-N !
-   root rootu s" alias.f" LINK JOIN-PATH LINK-N !
-   TARGET TARGET-N @ s" target" WRITE-ALL
-   TARGET TARGET-N @ LINK LINK-N @ MAKE-SYMLINK
-   TARGET TARGET-N @ FS-PATHZ EXPECT CAP realpath dup 0 > TTRUE EXPECT-N !
-   LINK LINK-N @ FS-PATHZ OUT CAP realpath EXPECT-N @ T=
+   root rootu FS:CLEANUP-TREE+
+   root rootu s" target.f" TARGET FS:JOIN-PATH TARGET-N !
+   root rootu s" alias.f" LINK FS:JOIN-PATH LINK-N !
+   TARGET TARGET-N @ s" target" FS:WRITE-ALL
+   TARGET TARGET-N @ LINK LINK-N @ FS:MAKE-SYMLINK
+   TARGET TARGET-N @ FS:>PATHZ EXPECT CAP realpath dup 0 > TTRUE EXPECT-N !
+   LINK LINK-N @ FS:>PATHZ OUT CAP realpath EXPECT-N @ T=
    OUT EXPECT-N @ EXPECT EXPECT-N @ T$=
-   LINK LINK-N @ REMOVE-FILE
+   LINK LINK-N @ FS:REMOVE-FILE
    CLEAR
-   LINK LINK-N @ FS-PATHZ OUT 1+ FS-PATH-CAP realpath -1 T=
+   LINK LINK-N @ FS:>PATHZ OUT 1+ PATH-CAP realpath -1 T=
    UNTOUCHED ;
 
 
 public
 
 : RUN ( -- )
-   T-RESET CLEANUP-RESET
+   T-RESET FS:CLEANUP-RESET
    CAPACITY
    SYMLINK
-   CLEANUP-RUN
+   FS:CLEANUP-RUN
    T-REPORT ;
 
 ;package

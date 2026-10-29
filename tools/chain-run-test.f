@@ -13,13 +13,13 @@ require tools/chain-run.f
 package CHAIN-RUN-TEST
 using SOURCE-ROOT
 
-create ROOT FS-PATH-CAP allot
+create ROOT PATH-CAP allot
 variable ROOT-U
-create A FS-PATH-CAP allot
+create A PATH-CAP allot
 variable A-U
-create B FS-PATH-CAP allot
+create B PATH-CAP allot
 variable B-U
-create HOST FS-PATH-CAP allot
+create HOST PATH-CAP allot
 variable HOST-U
 create BIG-A 32769 allot
 create BIG-B 32769 allot
@@ -33,14 +33,14 @@ create BIG-B 32769 allot
    a dst u BYTE-COPY u up ! ;
 
 : PREP ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" chain-run-test" FS:MKTEMP-DIR ROOT ROOT-U COPY!
-   ROOT$ CLEANUP-TREE+
+   ROOT$ FS:CLEANUP-TREE+
    ROOT$ s" a" JOIN A A-U COPY!
    ROOT$ s" b" JOIN B B-U COPY!
    ROOT$ s" host" JOIN HOST HOST-U COPY!
-   A$ s" same" WRITE-ALL
-   B$ s" same" WRITE-ALL ;
+   A$ s" same" FS:WRITE-ALL
+   B$ s" same" FS:WRITE-ALL ;
 
 : BIG-PREP ( -- )
    32769 0 ?do i 255 and BIG-A i + c! i 255 and BIG-B i + c! loop ;
@@ -50,8 +50,8 @@ create BIG-B 32769 allot
 \ build. Returns the entry's own exit status.
 : CHAIN-RC ( CMD:command ptr u8 n -- CMD:command n )
    {: script:ptr scriptu:n :}
-   HOST$ script scriptu WRITE-ALL
-   HOST$ CHMOD-X
+   HOST$ script scriptu FS:WRITE-ALL
+   HOST$ FS:CHMOD-X
    CMD:RESET
    s" --load" CMD:ARG+
    s" tools/chain-run-build.f" CMD:ARG+
@@ -83,7 +83,7 @@ create BIG-B 32769 allot
 
 : CHAIN-EXITS ( -- ) [: CHAIN-EXITS-IN ;] CMD:WITH-COMMAND ;
 
-: GEN-SIZE ( ptr u8 n -- n ) {: a:ptr u:n :} ROOT$ a u JOIN FILE-SIZE ;
+: GEN-SIZE ( ptr u8 n -- n ) {: a:ptr u:n :} ROOT$ a u JOIN FS:FILE-SIZE ;
 
 \ Each generation is built by the one before. The stand-in engines copy their
 \ own bytes to the output, the fourth argument after
@@ -98,7 +98,7 @@ create BIG-B 32769 allot
    s" an engine that differs from its own build is no fixpoint" T-LABEL
    S\" #!/bin/sh\ncp \q$0\q \q$4\q\necho >> \q$4\q\n" CHAIN-RC
    CHAIN-RUN:FAIL-RC T=
-   s" gen3" GEN-SIZE HOST$ FILE-SIZE 3 + T= ;
+   s" gen3" GEN-SIZE HOST$ FS:FILE-SIZE 3 + T= ;
 
 : CHAIN-LINEAGE ( -- ) [: CHAIN-LINEAGE-IN ;] CMD:WITH-COMMAND ;
 
@@ -106,20 +106,20 @@ create BIG-B 32769 allot
    T-RESET PREP
    s" equal files compare equal" T-LABEL
    A$ B$ CHAIN-RUN:SAME-FILES? TTRUE
-   B$ s" changed" WRITE-ALL
+   B$ s" changed" FS:WRITE-ALL
    s" changed files compare unequal" T-LABEL
    A$ B$ CHAIN-RUN:SAME-FILES? 0= TTRUE
    BIG-PREP
-   A$ BIG-A 32769 WRITE-ALL
-   B$ BIG-B 32769 WRITE-ALL
+   A$ BIG-A 32769 FS:WRITE-ALL
+   B$ BIG-B 32769 FS:WRITE-ALL
    s" exact comparison crosses a chunk boundary" T-LABEL
    A$ B$ CHAIN-RUN:SAME-FILES? TTRUE
    1 BIG-B 32768 + c!
-   B$ BIG-B 32769 WRITE-ALL
+   B$ BIG-B 32769 FS:WRITE-ALL
    A$ B$ CHAIN-RUN:SAME-FILES? 0= TTRUE
    CHAIN-EXITS
    CHAIN-LINEAGE
-   ROOT$ REMOVE-TREE
+   ROOT$ FS:REMOVE-TREE
    T-REPORT ;
 
 MAIN

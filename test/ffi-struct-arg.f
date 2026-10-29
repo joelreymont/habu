@@ -10,7 +10,7 @@
 
 : FFI-T-SA-LIBRARY ( -- )
    s" habu-ffi-struct" FS:MKTEMP-DIR {: dir:ptr diru :}
-   dir diru CLEANUP-TREE+
+   dir diru FS:CLEANUP-TREE+
    dir diru STRUCT-FIXTURE:BUILD FFI:SELECT-LIBRARY ;
 FFI-T-SA-LIBRARY
 

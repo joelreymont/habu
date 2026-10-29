@@ -4,11 +4,11 @@ require src/lib/process-env.f
 
 package GATE-ORCH-RELEASE
 private
-create PATH FS-PATH-CAP allot
+create PATH PATH-CAP allot
 public
 : RUN ( -- )
-   s" HABU_GATE_COMPILER_IMAGES" GETENV s" release" PATH JOIN-PATH
-   PATH swap s" release" WRITE-ALL
+   s" HABU_GATE_COMPILER_IMAGES" GETENV s" release" PATH FS:JOIN-PATH
+   PATH swap s" release" FS:WRITE-ALL
    s" release row passed" type cr ;
 ;package
 

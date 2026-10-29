@@ -485,7 +485,7 @@ variable FILL-POOL
    INPUT INPUT-U @ ;
 
 \ The object file the key names exists.
-: STORED ( ptr u8 n -- ) OBJ-PATH EXISTS? TTRUE ;
+: STORED ( ptr u8 n -- ) OBJ-PATH FS:EXISTS? TTRUE ;
 
 : KEEP ( ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n dest:ptr destu:n :}
@@ -526,10 +526,10 @@ variable FILL-POOL
 : KEEP-OBJ ( ptr u8 n ptr u8 n -- )
    {: key:ptr keyu:n name:ptr nameu:n :}
    key keyu OBJ-PATH {: path:ptr pathu:n :}
-   path pathu FILE-SIZE {: size:n :}
+   path pathu FS:FILE-SIZE {: size:n :}
    size OBJ-HEAD > dup TTRUE 0= if exit then
    size OBJ-RESERVE
-   path pathu 0 OBJ BYTE-VIEW size READ-ALL size <> if E-FS-IO throw then
+   path pathu 0 OBJ BYTE-VIEW size FS:READ-ALL size <> if E-FS-IO throw then
    name nameu 0 OBJ BYTE-VIEW OBJ-HEAD BYTE+ size OBJ-HEAD - PUT ;
 
 : KEEP-OBJECT ( -- ) s" app.f" KEY$ s" app-cold.obj" KEEP-OBJ ;
@@ -847,7 +847,7 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
 \ refuses, so it runs on every build.
 : SX-FIXTURES ( -- )
    0 INPUT-U !
-   S\" s\" sx-mark\" type cr\ns\" " IN+ s" sxmark.txt" AT IN+ S\" \" s\" x\" APPEND-FILE\n" IN+
+   S\" s\" sx-mark\" type cr\ns\" " IN+ s" sxmark.txt" AT IN+ S\" \" s\" x\" FS:APPEND-FILE\n" IN+
    s" sxm.f" INPUT INPUT-U @ PUT
    s" sxc.f" S\" : SXC-N ( -- n ) 2 ;\n" PUT
    s" sx.f" S\" require sxm.f\nrequire sxc.f\n: SX-B ( -- n ) SXC-N 1+ ;\n" PUT ;
@@ -1035,7 +1035,7 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    \ engine helper (PROT-SPAN): the body's MEMORY reason accounts for the store,
    \ so the closure admits the helper. A run that reaches a seed word no REACH
    \ class covers refuses its file: reach.f's TOOL-POKE reaches the compiler's
-   \ SESSION-LIVE?, fw-def.f's FW the builder's WRITE-ALL, out.f's OUT-A emit.
+   \ SESSION-LIVE?, fw-def.f's FW the builder's FS:WRITE-ALL, out.f's OUT-A emit.
    s" act-ok.f" S\" variable AK\n: AK-INIT ( -- ) 7 AK ! ;\nAK-INIT\n3 constant AK-K\n" PUT
    \ exit.f's run of EX-GUARD reaches die, which ends the process: a run
    \ that dies leaves no result to store, so the closure admits it.
@@ -1043,7 +1043,7 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" tool-def.f" S\" : TOOL-POKE ( -- ) NCOMP:SESSION-LIVE? drop ;\n" PUT
    s" reach.f" S\" require tool-def.f\n1 constant REACH-K\nTOOL-POKE\n" PUT
    0 INPUT-U !
-   S\" : FW ( -- ) s\" " IN+ s" fw.txt" AT IN+ S\" \" s\" x\" WRITE-ALL ;\nFW\n" IN+
+   S\" : FW ( -- ) s\" " IN+ s" fw.txt" AT IN+ S\" \" s\" x\" FS:WRITE-ALL ;\nFW\n" IN+
    s" fw-def.f" INPUT INPUT-U @ PUT
    s" out.f" S\" : OUT-A ( -- ) 65 emit ;\nOUT-A\n" PUT
    INDIRECT-FIXTURES
@@ -1054,7 +1054,7 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    \ A seed word run at top level is admitted only by the trace its run leaves.
    \ parse-ok.f's parse-imm adds a unit fact, cells is a stack primitive and
    \ allot a data one; tier-ok.f's set-tier is a build primitive. fwrite.f's
-   \ WRITE-ALL, fenv.f's GETENV, dbase.f's data-base, exec-xt.f's execute and
+   \ FS:WRITE-ALL, fenv.f's GETENV, dbase.f's data-base, exec-xt.f's execute and
    \ act2.f's SESSION-LIVE? leave no trace. The tick of EX is a resolution,
    \ not a run. nest-parent.f's include opens nest-child.f,
    \ a trace; its SESSION-LIVE? after the child leaves none. act.f closes the
@@ -1063,7 +1063,7 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" parse-ok.f" S\" : PO ( -- ) ;\ns\" PO\" 0 parse-imm\ncreate PK 4 cells allot\n2 constant PK-K\n" PUT
    s" tier-ok.f" S\" 1 set-tier\n5 constant TO-K\n" PUT
    0 INPUT-U !
-   S\" 1 constant FW-K\ns\" " IN+ s" fwrite.txt" AT IN+ S\" \" s\" x\" WRITE-ALL\n" IN+
+   S\" 1 constant FW-K\ns\" " IN+ s" fwrite.txt" AT IN+ S\" \" s\" x\" FS:WRITE-ALL\n" IN+
    s" fwrite.f" INPUT INPUT-U @ PUT
    s" fenv.f" S\" 1 constant FE-K\ns\" HOME\" GETENV nip constant FE-N\n" PUT
    s" dbase.f" S\" 1 constant DB-K\ndata-base DB-K + drop\n" PUT
@@ -1533,10 +1533,10 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" a run that reaches a compiler word refuses its file" T-LABEL
    s" reach.f" FRAME$ s"  reason=run-reaches-kernel-word word=SESSION-LIVE?" ENDS-WITH? TTRUE
    s" reach.f" NO-OBJECT
-   s" a run that reaches the builder's WRITE-ALL refuses its file and still writes" T-LABEL
+   s" a run that reaches the builder's FS:WRITE-ALL refuses its file and still writes" T-LABEL
    s" fw-def.f" s"  reason=" LINE$ s" fw-def.f reason=run-reaches-kernel-word word=WRITE-ALL" T$=
    s" fw-def.f" NO-OBJECT
-   s" fw.txt" AT EXISTS? TTRUE
+   s" fw.txt" AT FS:EXISTS? TTRUE
    s" a run that reaches the unclassed emit refuses its file and still prints" T-LABEL
    s" out.f" s"  reason=" LINE$ s" out.f reason=run-reaches-kernel-word word=emit" T$=
    s" out.f" NO-OBJECT
@@ -1615,7 +1615,7 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" a seed word run that leaves no trace refuses its file" T-LABEL
    s" fwrite.f" FRAME$ s"  reason=run-unaccounted word=WRITE-ALL" ENDS-WITH? TTRUE
    s" fwrite.f" NO-OBJECT
-   s" fwrite.txt" AT EXISTS? TTRUE
+   s" fwrite.txt" AT FS:EXISTS? TTRUE
    s" fenv.f" FRAME$ s"  reason=run-unaccounted word=GETENV" ENDS-WITH? TTRUE
    s" fenv.f" NO-OBJECT
    s" dbase.f" FRAME$ s"  reason=run-unaccounted word=data-base" ENDS-WITH? TTRUE
@@ -1886,13 +1886,13 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" a cold build writes the stale build's con.f object" T-LABEL
    s" con.f" KEY$ s" con-cold.obj" KEEP-OBJ
    s" con-warm.obj" AT {: warm:ptr warmp:n :}
-   warm warmp FILE-SIZE {: warmu:n :}
+   warm warmp FS:FILE-SIZE {: warmu:n :}
    warmu WARM-RESERVE
-   warm warmp 0 WARM BYTE-VIEW warmu READ-ALL warmu <> if E-FS-IO throw then
+   warm warmp 0 WARM BYTE-VIEW warmu FS:READ-ALL warmu <> if E-FS-IO throw then
    s" con-cold.obj" AT {: cold:ptr coldp:n :}
-   cold coldp FILE-SIZE {: coldu:n :}
+   cold coldp FS:FILE-SIZE {: coldu:n :}
    coldu OBJ-RESERVE
-   cold coldp 0 OBJ BYTE-VIEW coldu READ-ALL coldu <> if E-FS-IO throw then
+   cold coldp 0 OBJ BYTE-VIEW coldu FS:READ-ALL coldu <> if E-FS-IO throw then
    0 OBJ BYTE-VIEW coldu 0 WARM BYTE-VIEW warmu T$= ;
 
 \ ret-use.f's object names its place under ret-late.f, so under alt.f it is
@@ -1985,7 +1985,7 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" sxc.f" S\" : SXC-N ( -- u8 ) 2 ;\n" PUT
    s" npk.f" S\" : NPK ( -- u8 ) 1 ;\n" PUT
    s" nproot.f" S\" require npk.f\nrequire npc.f\n" PUT
-   s" sxmark.txt" AT FILE-SIZE {: marks:n :}
+   s" sxmark.txt" AT FS:FILE-SIZE {: marks:n :}
    s" an effect edit of rc.f resumes rp.f at its stale second segment" T-LABEL
    PROBE
    s" rc-interface-out.log" OUT$ PUT
@@ -1996,7 +1996,7 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" a resumed sx.f runs its cold child sxm.f once" T-LABEL
    OUT$ S\" sx=3\n" CONTAINS? TTRUE
    s" sx.f" s" 2" RESUMED
-   s" sxmark.txt" AT FILE-SIZE marks 1+ T=
+   s" sxmark.txt" AT FS:FILE-SIZE marks 1+ T=
    s" an effect edit of npk.f resumes npc.f after its edge" T-LABEL
    OUT$ S\" npc=2\n" CONTAINS? TTRUE
    s" npc.f" s" 1" RESUMED ;
@@ -2055,7 +2055,7 @@ public
 : MAIN ( -- )
    T-RESET
    s" native-file-frame" TREE
-   s" cache" AT MAKE-DIR
+   s" cache" AT FS:MAKE-DIR
    FIXTURES
    \ Each build below is its own builder process: a key that stays stable
    \ across separate builds is the boundary under test.
@@ -2118,7 +2118,7 @@ public
    s" a second build writes the same app.f and con-dep.f objects" T-LABEL
    \ app.f's object would install; without it this process compiles app.f
    \ again, and the line compares the two processes' exports.
-   APP-KEY KEY-LEN OBJ-PATH REMOVE-FILE
+   APP-KEY KEY-LEN OBJ-PATH FS:REMOVE-FILE
    1 FILL-POOL !
    PROBE
    0 FILL-POOL !
@@ -2222,7 +2222,7 @@ public
    \ new branch words land in its call sites and TALLY captures the new
    \ address; masked, they keep app.f's results. A warm app.f would hand
    \ back its stored bytes and prove nothing about the mask.
-   s" cache" AT REMOVE-TREE s" cache" AT MAKE-DIR
+   s" cache" AT FS:REMOVE-TREE s" cache" AT FS:MAKE-DIR
    s" " s" 2 *" s" 3 TWICE drop" LIB-SOURCE
    s" a changed TWICE body keeps both keys and app.f's results" REBUILT
    s" a cold build holds the moved og.f's and jrn.f's origin rows" T-LABEL

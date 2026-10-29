@@ -37,8 +37,8 @@ package HOF
 $2000 constant HOF-CAP
 10000 constant HOF-TIMEOUT-MS
 
-create HOF-ROOT FS-PATH-CAP allot
-create HOF-EXE  FS-PATH-CAP allot
+create HOF-ROOT PATH-CAP allot
+create HOF-EXE  PATH-CAP allot
 create HOF-IN   1 allot                       \ zero-length stdin: EOF, never a REPL
 create HOF-OUT  HOF-CAP allot
 create HOF-ERR  HOF-CAP allot
@@ -54,14 +54,14 @@ variable HOF-EXE-U
 
 \ Copy the built engine into a fresh empty temp dir and mark it executable.
 : HOF-SETUP ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" hb-open-failure" FS:MKTEMP-DIR {: a:ptr u:n :}
    a HOF-ROOT u BYTE-COPY
    u HOF-ROOT-U !
-   HOF-ROOT$ CLEANUP-TREE+
-   HOF-ROOT$ s" hb" HOF-EXE JOIN-PATH HOF-EXE-U !
-   s" bin/hb" HOF-EXE$ COPY-FILE-STREAM
-   HOF-EXE$ CHMOD-X ;
+   HOF-ROOT$ FS:CLEANUP-TREE+
+   HOF-ROOT$ s" hb" HOF-EXE FS:JOIN-PATH HOF-EXE-U !
+   s" bin/hb" HOF-EXE$ FS:COPY-FILE-STREAM
+   HOF-EXE$ FS:CHMOD-X ;
 
 : HOF-CAPTURE>N ( result<pcap:captured,pcap:failed> -- n n n )   \ outn errn code (0 on clean exit)
    MATCH result
@@ -106,7 +106,7 @@ variable HOF-EXE-U
    HOF-SETUP
    HOF-BOOTS-OUTSIDE-REPO
    HOF-MISSING-SOURCE-NAMED
-   CLEANUP-RUN
+   FS:CLEANUP-RUN
    T-REPORT
    s" hb-open-failure-test: ok" type cr ;
 

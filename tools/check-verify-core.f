@@ -92,7 +92,7 @@ using SOURCE-ROOT
 74 constant CHK-E-IOERR
 
 \ The closure's files, as many as it holds: each one's path and the root that
-\ resolved it, FS-PATH-CAP bytes apiece, their lengths and its walk state (0
+\ resolved it, PATH-CAP bytes apiece, their lengths and its walk state (0
 \ not walked, 1 walking, 2 walked); the direct dependencies found and not yet
 \ followed, each with the file whose loader word names it, where that word
 \ starts there and its length; and the files walked, dependencies first.
@@ -132,7 +132,7 @@ variable CHK-EXPAND-TOP
 : CHK-DEP-PATH ( n -- ptr u8 )
    {: id:n :}
    id CHK-DEP-CHECK
-   id FS-PATH-CAP * CHK-DEP-PATHS ;
+   id PATH-CAP * CHK-DEP-PATHS ;
 
 : CHK-DEP-U ( n -- ptr n )
    {: id:n :}
@@ -151,7 +151,7 @@ variable CHK-EXPAND-TOP
 : CHK-DEP-ROOT$ ( n -- ptr u8 n )
    {: id:n :}
    id CHK-DEP-CHECK
-   id FS-PATH-CAP * CHK-DEP-ROOTS
+   id PATH-CAP * CHK-DEP-ROOTS
    id CHK-DEP-ROOT-US @ ;
 
 : CHK-DEP-MATCH? ( ptr u8 n n -- bool ) {: a:ptr u:n id:n :}
@@ -165,14 +165,14 @@ variable CHK-EXPAND-TOP
 
 : CHK-DEP-NEW ( ptr u8 n ptr u8 n -- n )
    {: a:ptr u:n root:ptr rootu:n :}
-   u FS-PATH-CAP > rootu FS-PATH-CAP > or if E-FS-CAPACITY throw then
+   u PATH-CAP > rootu PATH-CAP > or if E-FS-CAPACITY throw then
    CHK-DEP-N @ {: id:n :}
-   id 1+ FS-PATH-CAP * dup CHK-DEP-PATHS-RESERVE CHK-DEP-ROOTS-RESERVE
+   id 1+ PATH-CAP * dup CHK-DEP-PATHS-RESERVE CHK-DEP-ROOTS-RESERVE
    id 1+ dup CHK-DEP-US-RESERVE dup CHK-DEP-ROOT-US-RESERVE CHK-DEP-STATES-RESERVE
    id 1+ CHK-DEP-N !
    a id CHK-DEP-PATH u BYTE-COPY
    u id CHK-DEP-U !
-   root id FS-PATH-CAP * CHK-DEP-ROOTS rootu BYTE-COPY
+   root id PATH-CAP * CHK-DEP-ROOTS rootu BYTE-COPY
    rootu id CHK-DEP-ROOT-US !
    0 id CHK-DEP-STATE !
    id ;
@@ -304,7 +304,7 @@ variable CHK-EXPAND-TOP
    id CHK-DISC-ID !
    CHK-DIR-N @
    id CHK-BYTES-ID @ <> if
-      id CHK-DEP$ FILE? 0= if CHK-E-NOINPUT throw then
+      id CHK-DEP$ FS:FILE? 0= if CHK-E-NOINPUT throw then
    then
    CHK-DISCOVER-ACT
    CHK-EVENTS>DEPS
@@ -368,7 +368,7 @@ DYNAMIC-BUFFER CHK-FILE-SRC u8          \ a closure file's bytes, read for a rec
 \ taken after the read, which may move the storage.
 : CHK-FILE-READ ( ptr u8 n -- ptr u8 n )
    {: path:ptr pathu:n :}
-   path pathu  path pathu FILE-SIZE  [: CHK-FILE-ROOM ;] SOURCE:READ-WHOLE-SAMPLED
+   path pathu  path pathu FS:FILE-SIZE  [: CHK-FILE-ROOM ;] SOURCE:READ-WHOLE-SAMPLED
    {: u:n :}
    0 CHK-FILE-SRC u ;
 
@@ -603,14 +603,14 @@ variable VFY-OUT-U
 variable VFY-LOG-U
 variable VFY-ANSWER
 TYPED-VARIABLE VFY-DEADLINE ms          \ the child's, for VFY-CAPTURE
-create VFY-PATH FS-PATH-CAP allot
+create VFY-PATH PATH-CAP allot
 variable VFY-PATH-U
-create VFY-CHILD FS-PATH-CAP allot
+create VFY-CHILD PATH-CAP allot
 variable VFY-CHILD-U
 
 \ While this file loads, SOURCE-ROOT:CURRENT$ is the root that resolved it.
 \ The child beside it is fixed here before the working directory can name another tree.
-SOURCE-ROOT:CURRENT$ s" tools/check-verify-child.f" VFY-CHILD JOIN-PATH VFY-CHILD-U !
+SOURCE-ROOT:CURRENT$ s" tools/check-verify-child.f" VFY-CHILD FS:JOIN-PATH VFY-CHILD-U !
 
 TYPED-VARIABLE VFY-PREPASS bool         \ the child runs check.f's pre-pass ...
 TYPED-VARIABLE VFY-INDEX? bool          \ standalone candidate scan
@@ -626,7 +626,7 @@ TYPED-VARIABLE VFY-STOP-SUBJ bool       \ whether that is in the subject's bytes
 variable VFY-STOP-OFF                   \ and the file it is in, in VFY-OUT,
 variable VFY-STOP-U
 variable VFY-FAULT-LEN                  \ a stop at a loader's fault: the loader token's length,
-create VFY-TARGET FS-PATH-CAP allot     \ and the file it could not read, empty for none
+create VFY-TARGET PATH-CAP allot     \ and the file it could not read, empty for none
 variable VFY-TARGET-U
 
 
@@ -663,7 +663,7 @@ variable VFY-TARGET-U
 : VFY-PATH! ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0= if E-FS-PATH throw then
    a u CANONICAL drop {: c:ptr cu:n :}
-   cu FS-PATH-CAP > if E-FS-CAPACITY throw then
+   cu PATH-CAP > if E-FS-CAPACITY throw then
    c VFY-PATH cu BYTE-COPY
    cu VFY-PATH-U ! ;
 
@@ -797,7 +797,7 @@ TYPED-VARIABLE CHK-ENGINE-REFUSED bool  \ a child's engine selection ended the c
 \ process-wide tables (tools/keyed-image.f BUILD-RUN). A build that fails
 \ throws or dies; nothing falls back.
 600000 constant VFY-BUILD-MS            \ as tools/hb-build-lib.f HBB-MAKER-DEFAULT-MS
-create VFY-EXE FS-PATH-CAP allot
+create VFY-EXE PATH-CAP allot
 variable VFY-EXE-U
 TYPED-VARIABLE VFY-IMAGE? bool          \ VFY-EXE is the image: no --load of the source child
 
@@ -806,7 +806,7 @@ TYPED-VARIABLE VFY-IMAGE? bool          \ VFY-EXE is the image: no --load of the
    a u CHECK-VERIFY-IMAGE:CAPABLE? dup VFY-IMAGE? !
    if a u VFY-BUILD-MS CHECK-VERIFY-IMAGE:PATH$ else a u then
    {: p:ptr pu:n :}
-   pu FS-PATH-CAP > if E-PROC-PATH throw then
+   pu PATH-CAP > if E-PROC-PATH throw then
    p VFY-EXE pu BYTE-COPY
    pu VFY-EXE-U ! ;
 
@@ -929,7 +929,7 @@ TYPED-VARIABLE VFY-IMAGE? bool          \ VFY-EXE is the image: no --load of the
    at e VFY-FIELD-N {: len:n len-ok:bool :}
    e end < if e 1+ else end then {: t:n :}
    end t - {: tu:n :}
-   len-ok len 0 >= and tu FS-PATH-CAP <= and 0= if false exit then
+   len-ok len 0 >= and tu PATH-CAP <= and 0= if false exit then
    len VFY-FAULT-LEN !
    t VFY-OUT VFY-TARGET tu BYTE-COPY
    tu VFY-TARGET-U !
@@ -1003,7 +1003,7 @@ TYPED-VARIABLE VFY-IMAGE? bool          \ VFY-EXE is the image: no --load of the
 \ keeps discovery's code.
 : VFY-FAULT-CLASS ( n -- n ) {: rc:n :}
    rc VERIFY:E-SOURCE-READ <> if rc exit then
-   VFY-TARGET$ EXISTS? if CHK-E-IOERR exit then
+   VFY-TARGET$ FS:EXISTS? if CHK-E-IOERR exit then
    CHK-E-NOINPUT ;
 
 
@@ -1563,7 +1563,7 @@ VFY-LANES TYPED-BUFFER VFY-LANE-END outcome
 variable VFY-LANE-IN-TOP
 variable VFY-LANE-META-TOP
 variable VFY-LANE-OPEN-TOP
-create VFY-LANE-ENGINE FS-PATH-CAP allot
+create VFY-LANE-ENGINE PATH-CAP allot
 variable VFY-LANE-ENGINE-U
 
 TASK:MIN-STACK TASK:TASK VFY-TASK0
@@ -1766,7 +1766,7 @@ public
    0 VFY-LANE-OPEN-TOP !
    VFY-LANES 0 ?do 0 i VFY-LANE-STARTED ! loop
    VFY-EXE! VFY-EXE$ {: a:ptr u:n :}
-   u FS-PATH-CAP > if E-PROC-PATH throw then
+   u PATH-CAP > if E-PROC-PATH throw then
    a VFY-LANE-ENGINE u BYTE-COPY
    u VFY-LANE-ENGINE-U ! ;
 

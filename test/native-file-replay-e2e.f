@@ -15,7 +15,7 @@ package NATIVE-FILE-REPLAY-TEST
 
 $8000 constant CAP
 create INPUT CAP allot variable INPUT-U
-create CANON-EXPECT FS-PATH-CAP allot variable CANON-EXPECT-U
+create CANON-EXPECT PATH-CAP allot variable CANON-EXPECT-U
 variable EDIT
 \ Set while a probe must name why its file missed (HABU_NATIVE_CACHE_DIAG).
 variable DIAG
@@ -46,15 +46,15 @@ DYNAMIC-BUFFER WARM-PRODUCT u8
 : SAME-FILE ( ptr u8 n ptr u8 n -- )
    {: a:ptr au:n b:ptr bu:n :}
    a au AT {: apath:ptr apathu:n :}
-   apath apathu FILE-SIZE {: asize:n :}
+   apath apathu FS:FILE-SIZE {: asize:n :}
    asize 0 > TTRUE
    asize COLD-PRODUCT-RESERVE
-   apath apathu 0 COLD-PRODUCT asize READ-ALL asize T=
+   apath apathu 0 COLD-PRODUCT asize FS:READ-ALL asize T=
    b bu AT {: bpath:ptr bpathu:n :}
-   bpath bpathu FILE-SIZE {: bsize:n :}
+   bpath bpathu FS:FILE-SIZE {: bsize:n :}
    bsize asize T=
    bsize WARM-PRODUCT-RESERVE
-   bpath bpathu 0 WARM-PRODUCT bsize READ-ALL bsize T=
+   bpath bpathu 0 WARM-PRODUCT bsize FS:READ-ALL bsize T=
    0 COLD-PRODUCT asize 0 WARM-PRODUCT bsize STR= TTRUE ;
 
 : REPORT ( -- ) OUT$ s" files reused " CONTAINS? TTRUE ;
@@ -67,19 +67,19 @@ DYNAMIC-BUFFER WARM-PRODUCT u8
    S\" : REVIEW-MAYBE-EDIT ( -- ) s\" HABU_REVIEW_EDIT\" GETENV nip 0 > if s\" "
       INPUT CAP INPUT-U BUF-APPEND
    s" child.f" AT INPUT CAP INPUT-U BUF-APPEND
-   S\" \" s\" : REVIEW-CHILD ( -- n ) 42 ;\" WRITE-ALL then ; REVIEW-MAYBE-EDIT\n"
+   S\" \" s\" : REVIEW-CHILD ( -- n ) 42 ;\" FS:WRITE-ALL then ; REVIEW-MAYBE-EDIT\n"
       INPUT CAP INPUT-U BUF-APPEND
    s" mutate.f" INPUT INPUT-U @ PUT ;
 
 variable REMOVED
 : REMOVE-CONTAINER ( ptr u8 n -- )
    2dup s" .hfo" ENDS-WITH? if
-      REMOVE-FILE 1 REMOVED +! exit
+      FS:REMOVE-FILE 1 REMOVED +! exit
    then 2drop ;
 
 : EVICT-CACHE ( ptr u8 n -- )
    0 REMOVED !
-   AT ['] REMOVE-CONTAINER WALK-FILES
+   AT ['] REMOVE-CONTAINER FS:WALK-FILES
    REMOVED @ 0 > TTRUE ;
 
 \ A replayed child may close the compiler session opened by an earlier parent
@@ -126,7 +126,7 @@ variable REMOVED
 
 : SCOPE-CASES ( -- )
    s" a FILE consumer is keyed by its incoming using scope" T-LABEL
-   s" cache-using" AT MAKE-DIR
+   s" cache-using" AT FS:MAKE-DIR
    s" scope-consumer.f" S\" : REVIEW-CONSUME ( -- n ) REVIEW-PICK 1+ ;\n" PUT
    S\" using REVIEW-SCOPE-A\n" SCOPE-PROBE
    REPORT
@@ -158,7 +158,7 @@ variable REMOVED
    s" test/native-file-replay-e2e.f" SOURCE-ROOT:CANONICAL TTRUE
       {: a:ptr u:n :}
    a CANON-EXPECT u BYTE-COPY u CANON-EXPECT-U !
-   s" cache-canon" AT MAKE-DIR
+   s" cache-canon" AT FS:MAKE-DIR
    s" canonical.f"
       S\" package REVIEW-CANON\nprivate\nPERSISTED-PTR-VARIABLE SAVED\nvariable SAVED-U\n: CAPTURE ( -- ) s\" test/native-file-replay-e2e.f\" SOURCE-ROOT:CANONICAL drop {: a:ptr u:n :} a SAVED ! u SAVED-U ! ;\npublic\n: TEXT$ ( -- ptr u8 n ) SAVED @ SAVED-U @ ;\nCAPTURE\n;package\n"
       PUT
@@ -173,7 +173,7 @@ variable REMOVED
 
 : SESSION-CLOSE-CASE ( -- )
    s" FILE replay closes a nested session before the next range" T-LABEL
-   s" cache-close" AT MAKE-DIR
+   s" cache-close" AT FS:MAKE-DIR
    s" session-close.f" S\" IR-CTX:SESSION-CLOSE\n" PUT
    s" session-parent.f"
       S\" : REVIEW-BEFORE ( -- ) ;\ninclude session-close.f\n1 constant REVIEW-SESSION-VALUE\n" PUT
@@ -194,7 +194,7 @@ variable REMOVED
 
 : FOREIGN-CASE ( -- )
    s" FILE source opening a foreign IR session remains a source load" T-LABEL
-   s" cache-foreign" AT MAKE-DIR
+   s" cache-foreign" AT FS:MAKE-DIR
    s" foreign.f" S\" REVIEW-OPEN\n" PUT
    S\" : REVIEW-OPEN ( -- ) NABI:BINDING IR-CTX:SESSION-OPEN drop ;\n"
       s" foreign.f" s" cache-foreign"
@@ -211,7 +211,7 @@ variable REMOVED
 
 : ROOT-REGISTRY-CASE ( -- )
    s" an app FILE does not reuse an unrelated live compiler session" T-LABEL
-   s" cache-root-registry" AT MAKE-DIR
+   s" cache-root-registry" AT FS:MAKE-DIR
    s" root-registry.f" S\" : REVIEW-ROOT-REGISTRY ( -- n ) 42 ;\n" PUT
    s" " s" root-registry.f" s" cache-root-registry"
       S\" s\" root-registry=\" type REVIEW-ROOT-REGISTRY . cr\n"
@@ -226,7 +226,7 @@ variable REMOVED
 
 : SYMBOL-CASE ( -- )
    s" FILE replay reuses a symbol interned then undefined before the unit" T-LABEL
-   s" cache-symbol" AT MAKE-DIR
+   s" cache-symbol" AT FS:MAKE-DIR
    s" symbol.f"
       S\" package REVIEW-SYMBOL public\n: NUMBER ( -- n ) 5 ;\n;package\ns\" symbol-source-ran\" type cr\n" PUT
    S\" package REVIEW-SYMBOL public\n: KEEP ( -- n ) 7 ;\n: NUMBER ( -- n ) 3 ;\nundefine NUMBER\n;package\n"
@@ -307,7 +307,7 @@ variable REMOVED
    OUTSIDE-REJECTED
    0 DIAG !
    s" a warm build reusing a file loaded inside a package saves the cold product" T-LABEL
-   s" cache-defer-app" AT MAKE-DIR
+   s" cache-defer-app" AT FS:MAKE-DIR
    DEFER-APP
    s" defer-app.f" s" defer-hb" s" cache-defer-app" BUILD-IN SUCCESS
    OUT$ S\" files reused 0\n" CONTAINS? TTRUE
@@ -317,7 +317,7 @@ variable REMOVED
 
 : DEFER-CASE ( -- )
    s" FILE replay relocates a private defer cell from its exact declaration" T-LABEL
-   s" cache-defer" AT MAKE-DIR
+   s" cache-defer" AT FS:MAKE-DIR
    s" defer.f" DEFER-SOURCE$ PUT
    DEFER-PREFIX$ s" defer.f" s" cache-defer" DEFER-TAIL$ SESSION-PROBE
    REPORT
@@ -332,7 +332,7 @@ variable REMOVED
 
 : DEFER-PUBLISHED-CASE ( -- )
    s" a FILE source defer publishes its contract before caching its users" T-LABEL
-   s" cache-defer-published" AT MAKE-DIR
+   s" cache-defer-published" AT FS:MAKE-DIR
    s" published-defer.f"
       S\" package REVIEW-PUBLISHED\npublic\ndefer SLOT ( n -- n )\n: TWO ( n -- n ) 2 + ;\n: INSTALL ( -- ) ['] TWO is SLOT ;\n: USE ( n -- n ) SLOT ;\n;package\n" PUT
    S\" package REVIEW-CONTRACT\nprivate\nCAST: CONTRACT-XT ( n -- [ n -- ptr u8 n bool ] )\npublic\n: STATUS ( ptr u8 n -- n ) XREF-FIND-INDEX data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ CHECKER-OWNER-EXT:RECORD-CONTRACT-OFF + CELL-VIEW @ CONTRACT-XT execute nip nip if -1 else 0 then ;\n;package\n"
@@ -351,7 +351,7 @@ variable REMOVED
    OUT$ s" contract=-1" CONTAINS? TTRUE
    OUT$ s" published=42" CONTAINS? TTRUE
    s" a warm build reusing a published defer saves the cold product" T-LABEL
-   s" cache-defer-published-app" AT MAKE-DIR
+   s" cache-defer-published-app" AT FS:MAKE-DIR
    s" published-app.f"
       S\" include published-defer.f\n: MAIN ( -- ) REVIEW-PUBLISHED:INSTALL 40 REVIEW-PUBLISHED:USE . ;\n" PUT
    s" published-app.f" s" published-hb" s" cache-defer-published-app" BUILD-IN
@@ -364,7 +364,7 @@ variable REMOVED
 
 : DEFER-REPLACEMENT-CASE ( -- )
    s" FILE replay refuses a same-key colon or variable replacing a defer" T-LABEL
-   s" cache-defer-replace" AT MAKE-DIR
+   s" cache-defer-replace" AT FS:MAKE-DIR
    s" replace.f" DEFER-SOURCE$ PUT
    DEFER-PREFIX$ s" replace.f" s" cache-defer-replace" DEFER-TAIL$
       SESSION-PROBE
@@ -379,7 +379,7 @@ variable REMOVED
 
 : DEFER-ALIAS-CASE ( -- )
    s" a cached installer binds the exported private defer declaration" T-LABEL
-   s" cache-defer-alias" AT MAKE-DIR
+   s" cache-defer-alias" AT FS:MAKE-DIR
    s" alias-defer.f"
       S\" : ALIAS-INSTALL ( -- ) ['] ALIAS-TWO is REVIEW-ALIAS:SLOT ;\n"
       PUT
@@ -398,7 +398,7 @@ variable REMOVED
 
 : DEFER-EFFECT-CASE ( -- )
    s" a changed defer effect rejects its incompatible cached installer" T-LABEL
-   s" cache-defer-effect" AT MAKE-DIR
+   s" cache-defer-effect" AT FS:MAKE-DIR
    s" effect-defer.f" DEFER-SOURCE$ PUT
    DEFER-PREFIX$ s" effect-defer.f" s" cache-defer-effect"
       DEFER-TAIL$ SESSION-PROBE
@@ -410,7 +410,7 @@ variable REMOVED
 
 : DEFER-RETIRED-CASE ( -- )
    s" a retained installer updates its retired defer, not the redeclared name" T-LABEL
-   s" cache-defer-retired" AT MAKE-DIR
+   s" cache-defer-retired" AT FS:MAKE-DIR
    s" retired.f" DEFER-SOURCE$ PUT
    S\" package REVIEW-DEFER private\ndefer SLOT ( n -- n )\n: TWO ( n -- n ) 2 + ;\n: OLD-CALL ( n -- n ) SLOT ;\n"
       {: prefix:ptr prefixu:n :}
@@ -430,7 +430,7 @@ variable REMOVED
 
 : EVICTED-CHILD-CASE ( -- )
    s" evicted definition containers compile from source" T-LABEL
-   s" cache-changed-child" AT MAKE-DIR
+   s" cache-changed-child" AT FS:MAKE-DIR
    s" changed-parent.f"
       S\" include changed-child.f\n: REVIEW-PARENT ( -- n ) REVIEW-CHANGED:VALUE 1+ ;\n" PUT
    s" changed-child.f"
@@ -449,7 +449,7 @@ variable REMOVED
 
 : EMPTY-CHILD-CASE ( -- )
    s" an empty child can be selected without source-buffer bounds" T-LABEL
-   s" cache-empty-child" AT MAKE-DIR
+   s" cache-empty-child" AT FS:MAKE-DIR
    s" empty-child.f" s" " PUT
    s" empty-parent.f"
       S\" include empty-child.f\n: REVIEW-EMPTY ( -- n ) 42 ;\n" PUT
@@ -464,7 +464,7 @@ variable REMOVED
 
 : TRAILING-COLON-CASE ( -- )
    s" a trailing-colon word is an ordinary global FILE input" T-LABEL
-   s" cache-trailing-colon" AT MAKE-DIR
+   s" cache-trailing-colon" AT FS:MAKE-DIR
    s" trailing-provider.f"
       S\" : REVIEW-EDGE: ( -- n ) 42 ;\n" PUT
    s" trailing-colon.f"
@@ -482,7 +482,7 @@ variable REMOVED
 
 : NESTED-SCOPE-CASE ( -- )
    s" parent scope refs remain owned across a child FILE" T-LABEL
-   s" cache-nested-scope" AT MAKE-DIR
+   s" cache-nested-scope" AT FS:MAKE-DIR
    s" nested-scope-child.f" S\" : B2 ( -- n ) 2 ;\n" PUT
    s" nested-scope-parent.f"
       S\" package REVIEW-NESTED public\n: A1 ( -- n ) 40 ;\ninclude nested-scope-child.f\n;package\n: REVIEW-NESTED-RESULT ( -- n ) REVIEW-NESTED:A1 REVIEW-NESTED:B2 + ;\n" PUT
@@ -505,7 +505,7 @@ variable REMOVED
 
 : QUALIFIED-GLOBAL-CASE ( -- )
    s" qualified open-package global fallback keeps source semantics" T-LABEL
-   s" cache-qualified-global" AT MAKE-DIR
+   s" cache-qualified-global" AT FS:MAKE-DIR
    s" qualified-provider.f"
       S\" : GLOBAL-WORD ( -- n ) 91 ;\n" PUT
    s" qualified-global.f"
@@ -521,7 +521,7 @@ variable REMOVED
 
 : CHILD-CLOSES-PACKAGE-CASE ( -- )
    s" a descendant after an inherited package closes can hit" T-LABEL
-   s" cache-child-closes" AT MAKE-DIR
+   s" cache-child-closes" AT FS:MAKE-DIR
    s" closes-grand.f" S\" : REVIEW-GRAND ( -- n ) 2 ;\n" PUT
    s" closes-child.f" S\" ;package\ninclude closes-grand.f\n" PUT
    s" closes-parent.f"
@@ -556,7 +556,7 @@ variable REMOVED
 \ replay, so it refuses scope-after-load on every build.
 : CHILD-OPENS-PACKAGE-CASE ( -- )
    s" a child opening a package leaves later sibling dependencies live" T-LABEL
-   s" cache-child-opens" AT MAKE-DIR
+   s" cache-child-opens" AT FS:MAKE-DIR
    s" opens-child.f"
       S\" package REVIEW-OPEN public\n: VALUE ( -- n ) 40 ;\n" PUT
    s" opens-sibling.f"
@@ -589,7 +589,7 @@ variable REMOVED
 \ by the key a warm install, which publishes it once, gives it.
 : PTR-RESTAMP-CASE ( -- )
    s" a FILE reading a does> record it defines reuses its stored key" T-LABEL
-   s" cache-restamp" AT MAKE-DIR
+   s" cache-restamp" AT FS:MAKE-DIR
    s" restamp.f"
       S\" package REVIEW-RESTAMP\npublic\nPTR-VARIABLE SLOT\n: READ ( -- ptr u8 ) SLOT @ ;\n;package\n" PUT
    S\" s\" restamp\" drop REVIEW-RESTAMP:SLOT !\ns\" restamp=\" type REVIEW-RESTAMP:READ 7 type cr\n"
@@ -632,7 +632,7 @@ variable REMOVED
 
 : RETIRED-DATA-CASE ( -- )
    s" a run reaching a retired variable's DATA reuses its file" T-LABEL
-   s" cache-retired-data" AT MAKE-DIR
+   s" cache-retired-data" AT FS:MAKE-DIR
    s" 7" s" RD-SEVEN" s" " RV-BASE
    s" rv-user.f" S\" RV-DEF RX\nRD-DEF RY\n" PUT
    s" rv-app.f" S\" require rv-base.f\nrequire rv-user.f\n: MAIN ( -- ) RX @ . RY @ . RV @ . ;\n" PUT
@@ -690,8 +690,8 @@ variable REMOVED
 \ reuses file, and compare it with a build in the empty cold cache.
 : FFI-REUSE ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
    {: file:ptr fileu:n body:ptr bodyu:n cache:ptr cacheu:n cold:ptr coldu:n :}
-   cache cacheu AT MAKE-DIR
-   cold coldu AT MAKE-DIR
+   cache cacheu AT FS:MAKE-DIR
+   cold coldu AT FS:MAKE-DIR
    S\" VERSIONED-LIBRARY z 1\n" FFI-ZL
    file fileu body bodyu PUT
    file fileu s" 0" FFI-APP
@@ -739,7 +739,7 @@ public
    T-RESET
    s" FILE selection preserves carried values, from include and from included with an argument, and using scope" T-LABEL
    s" native-file-replay" TREE
-   s" cache" AT MAKE-DIR
+   s" cache" AT FS:MAKE-DIR
    s" defs.f" S\" package REVIEW-USING public : VALUE ( -- n ) 41 ; ;package\n" PUT
    s" child.f" S\" : REVIEW-CHILD ( -- n ) REVIEW-USING:VALUE ;\n" PUT
    s" arg.f" S\" \\ no definitions\n" PUT

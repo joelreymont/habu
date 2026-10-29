@@ -20,9 +20,9 @@
 \ BEFORE PROC-ENV-INHERIT-MISSING, which skips a name already present, so an
 \ outer HABU_UNDER_TEST=<tree>/bin/hb cannot reach past them.
 \
-\ PROVIDE makes a temp root of its own and registers it with CLEANUP-TREE+.
+\ PROVIDE makes a temp root of its own and registers it with FS:CLEANUP-TREE+.
 \ PROVIDE-IN takes a root the caller already made and owns. REMOVE is for the
-\ caller whose own cases CLEANUP-RESET the shared list, where PROVIDE's
+\ caller whose own cases FS:CLEANUP-RESET the shared list, where PROVIDE's
 \ registration does not survive to be run.
 
 require src/lib/fs.f
@@ -32,8 +32,8 @@ require test/whitebox-engine.f
 
 package WHITEBOX-CHILD
 
-create ROOT-BUF FS-PATH-CAP allot
-create ENGINE-BUF FS-PATH-CAP allot
+create ROOT-BUF PATH-CAP allot
+create ENGINE-BUF PATH-CAP allot
 variable ROOT-U
 variable ENGINE-U
 
@@ -44,17 +44,17 @@ public
 : ENGINE$ ( -- ptr u8 n ) ENGINE-BUF ENGINE-U @ ;
 
 : PROVIDE-IN ( ptr u8 n -- ) {: root:ptr rootu:n :}
-   root rootu s" hb-whitebox" ENGINE-BUF JOIN-PATH ENGINE-U !
+   root rootu s" hb-whitebox" ENGINE-BUF FS:JOIN-PATH ENGINE-U !
    ENGINE$ WHITEBOX-ENGINE:PROVIDE ;
 
 : PROVIDE ( ptr u8 n -- )
    FS:MKTEMP-DIR {: root:ptr rootu:n :}
    root ROOT-BUF rootu BYTE-COPY rootu ROOT-U !
-   ROOT$ CLEANUP-TREE+
+   ROOT$ FS:CLEANUP-TREE+
    ROOT$ PROVIDE-IN ;
 
 : REMOVE ( -- )
-   ROOT-U @ 0 > if ROOT$ REMOVE-TREE then ;
+   ROOT-U @ 0 > if ROOT$ FS:REMOVE-TREE then ;
 
 : ENV+ ( -- )
    s" HABU_UNDER_TEST" >LEN ENGINE$ >LEN PROC-ENV+

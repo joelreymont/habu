@@ -24,7 +24,7 @@ private
 : IMAGES ( -- )
    ROOT$ C2-IMAGE-PAIR:PROVIDE
    s" native C2 field loan image is supplied" T-LABEL
-   s" hb-root" AT-A EXECUTABLE? TTRUE ;
+   s" hb-root" AT-A FS:EXECUTABLE? TTRUE ;
 
 : SOURCE-CASES ( -- )
    s" hb-root" s" test/c2-field-loan-kind.f" RUN-IMAGE
@@ -66,7 +66,7 @@ private
    s" a field-loan wrapper saves with its complete scheme" T-LABEL
    RC@ 0 T=
    RC@ 0<> if exit then
-   s" hb-saved" AT-A EXECUTABLE? TTRUE
+   s" hb-saved" AT-A FS:EXECUTABLE? TTRUE
    s" hb-saved" s" test/c2-field-loan-saved.f" RUN-IMAGE
    s" saved-source.out" s" saved-source.err" SAVE-LOG
    s" a fresh saved-image source consumer opens a field loan" T-LABEL

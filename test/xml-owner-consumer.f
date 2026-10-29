@@ -238,8 +238,8 @@ CAST: ENCODING>N ( XML:encoding -- n )
    index 3 mod 0= if s" part-utf8.xml" else
       index 3 mod 1 = if s" part-utf16le.xml" else s" part-utf16be.xml" then
    then
-   0 SCRIPT-ARGV$ 2swap INPUT JOIN-PATH INPUT swap
-   WRITTEN written WRITE-ALL ;
+   0 SCRIPT-ARGV$ 2swap INPUT FS:JOIN-PATH INPUT swap
+   WRITTEN written FS:WRITE-ALL ;
 
 : CLOSED-VIEW ( -- ) SAVED-OWNER @ XML:OWNER-ORIGINAL$ 2drop ;
 : CLOSED-MAP ( -- ) SAVED-OWNER @ 0 >OFF 0 >LEN XML:OWNER-RANGE 2drop ;

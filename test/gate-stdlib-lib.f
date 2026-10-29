@@ -200,7 +200,7 @@ variable COMPILER-OFF
 
 : FORWARD-COMPILER-FILE ( ptr u8 n n -- )
    {: path:ptr pathu:n dest:n :}
-   path pathu FS-PATHZ open-rd {: fd:n :}
+   path pathu FS:>PATHZ open-rd {: fd:n :}
    fd 0 < if E-FS-OPEN throw then
    begin
       fd COMPILER-CHUNK COMPILER-CHUNK-CAP read {: u:n :}

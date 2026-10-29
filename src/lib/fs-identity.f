@@ -8,6 +8,7 @@
 \ STORAGE CLASS. CALLER-OWNED: each call allocates and releases its own MEM
 \ mapping; no module state.
 require src/lib/fs.f
+require src/lib/le.f
 require src/lib/memory.f
 require src/lib/ffi-abi.f
 require src/lib/span.f
@@ -16,24 +17,19 @@ package FS
 using MEM
 
 private
-2 constant NO-ENTRY
 8 constant INODE-OFFSET
-256 constant STAT-BYTES
-STAT-BYTES FS-PATHZ-CAP + constant WORK-BYTES
+STAT-CAP PATHZ-CAP + constant WORK-BYTES
 
 PROCESS-SYMBOLS
 FUNCTION: STAT-CALL stat ( ptr u8 ptr u8 -- i32 )
-   1 STAT-BYTES WRITES-BYTES
+   1 STAT-CAP WRITES-BYTES
 ;FUNCTION
 
-: UNSIGNED-INT ( ptr u8 -- n )
-   dup FS-U16@ swap 2 + FS-U16@ 16 lshift or ;
-
 : DEVICE-INODE ( ptr u8 -- n n ) {: buffer :}
-   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if buffer FS-U64@ else
-      HB-TARGET-MACOS? if buffer UNSIGNED-INT else E-FS-STAT throw then
+   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if buffer LE:U64@ else
+      HB-TARGET-MACOS? if buffer LE:U32@ else E-FS-STAT throw then
    then
-   buffer INODE-OFFSET + FS-U64@ ;
+   buffer INODE-OFFSET + LE:U64@ ;
 
 : FD-IDENTITY ( fd ptr u8 -- n n ) {: file buffer :}
    file FD>N buffer FSTAT-CALL 0<> if E-FS-STAT throw then
@@ -47,14 +43,14 @@ FUNCTION: STAT-CALL stat ( ptr u8 ptr u8 -- i32 )
 
 : CHECK-PATH ( ptr u8 n -- )
    {: text bytes:n :}
-   bytes 0 <= bytes FS-PATH-CAP > or if E-FS-PATH throw then
+   bytes 0 <= bytes PATH-CAP > or if E-FS-PATH throw then
    bytes 0 ?do text i + c@ 0= if unloop E-FS-PATH throw then loop ;
 
 
 : STAT-EXISTS? ( ptr u8 SPAN:span<u8> -- bool )
    {: path output :}
-   path output 0 SPAN:AT STAT-CALL 0= if FS-TRUE exit then
-   FFI:ERRNO NO-ENTRY = if FS-FALSE exit then
+   path output 0 SPAN:AT STAT-CALL 0= if true exit then
+   FFI:ERRNO ENOENT = if false exit then
    E-FS-STAT throw ;
 
 
@@ -64,10 +60,10 @@ FUNCTION: STAT-CALL stat ( ptr u8 ptr u8 -- i32 )
 : IDENTITY ( ptr u8 n SPAN:span<u8> -- n n bool )
    {: text bytes:n work :}
    text bytes CHECK-PATH
-   text bytes  work STAT-BYTES FS-PATHZ-CAP SPAN:SUB  FS-PATHZ-INTO
-   work 0 STAT-BYTES SPAN:SUB STAT-EXISTS? if
-      work 0 SPAN:AT DEVICE-INODE FS-TRUE
-   else 0 0 FS-FALSE then ;
+   text bytes  work STAT-CAP PATHZ-CAP SPAN:SUB  PATHZ-INTO
+   work 0 STAT-CAP SPAN:SUB STAT-EXISTS? if
+      work 0 SPAN:AT DEVICE-INODE true
+   else 0 0 false then ;
 
 
 : COMPARE-IDENTITIES ( ptr u8 n ptr u8 n ptr u8 NUM:alloc-byte-len -- bool )
@@ -81,6 +77,10 @@ FUNCTION: STAT-CALL stat ( ptr u8 ptr u8 -- i32 )
    ALLOCATION>SPAN {: text bytes:n work :}
    text bytes work IDENTITY 0= if E-FS-STAT throw then ;
 
+\ Compare the actual open files, independent of later path or symlink changes.
+: SAME-OPEN-FILE? ( fd fd -- bool )
+   STAT-CAP BYTES-ALLOC-LEN [: COMPARE-FDS ;] WITH-BYTES ;
+
 public
 \ WITH-BYTES hands the quotation exactly the WORK-BYTES mapping it allocated
 \ here; ALLOCATION>SPAN preserves that producer's base and reach together.
@@ -90,10 +90,6 @@ public
 \ The device and inode the path names, through any symlinks.
 : PATH-IDENTITY ( ptr u8 n -- n n )
    WORK-BYTES BYTES-ALLOC-LEN [: LOOKUP-IDENTITY ;] WITH-BYTES ;
-
-\ Compare the actual open files, independent of later path or symlink changes.
-: SAME-OPEN-FILE? ( fd fd -- bool )
-   STAT-BYTES BYTES-ALLOC-LEN [: COMPARE-FDS ;] WITH-BYTES ;
 
 ;using
 ;package

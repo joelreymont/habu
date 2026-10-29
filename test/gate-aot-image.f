@@ -17,7 +17,7 @@ variable RX-END
 variable DATA-OFF
 variable DATA-COUNT
 variable ROOT-CALL
-create CODE-PATH FS-PATH-CAP allot
+create CODE-PATH PATH-CAP allot
 
 : IMAGE-CK ( bool -- )
    0= if E-BUILD-SOURCE throw then ;
@@ -142,9 +142,9 @@ public
 : CODE-REPORT ( -- )
    GB-OUT$ CODE-RANGE {: off:n size:n :}
    s" hb-aot-code" CODE-PATH GT-PATH {: pathu:n :}
-   CODE-PATH pathu off GB-ADDR size WRITE-ALL
+   CODE-PATH pathu off GB-ADDR size FS:WRITE-ALL
    CODE-PATH pathu GB-REPORT-BUF GB-REPORT-CAP AOT-CALL-REPORT:REPORT-JSON-BUFFER
    {: out:ptr outu:n :}
-   GB-REPORT$ out outu WRITE-ALL ;
+   GB-REPORT$ out outu FS:WRITE-ALL ;
 
 ;package

@@ -10,19 +10,19 @@ require tools/check-exit-test-lib.f
 
 package CHECK-DRIVERS-TEST
 private
-create ROOT FS-PATH-CAP allot variable ROOT-U
-create PATH FS-PATH-CAP allot
-create TARGET FS-PATH-CAP allot
+create ROOT PATH-CAP allot variable ROOT-U
+create PATH PATH-CAP allot
+create TARGET PATH-CAP allot
 : ROOT$ ( -- ptr u8 n ) ROOT ROOT-U @ ;
 : AT ( ptr u8 n -- ptr u8 n )
    {: a:ptr u:n :}
-   ROOT$ a u PATH JOIN-PATH PATH swap ;
+   ROOT$ a u PATH FS:JOIN-PATH PATH swap ;
 : SAVE ( ptr u8 n -- )
    {: src:ptr srcu:n :}
-   src srcu BASENAME {: stem:ptr u:n :}
-   stem u AT MAKE-DIRS
-   stem u s" out" TARGET JOIN-PATH TARGET swap AT CHECK-EXIT:OUT$ WRITE-ALL
-   stem u s" err" TARGET JOIN-PATH TARGET swap AT CHECK-EXIT:ERR$ WRITE-ALL ;
+   src srcu FS:BASENAME {: stem:ptr u:n :}
+   stem u AT FS:MAKE-DIRS
+   stem u s" out" TARGET FS:JOIN-PATH TARGET swap AT CHECK-EXIT:OUT$ FS:WRITE-ALL
+   stem u s" err" TARGET FS:JOIN-PATH TARGET swap AT CHECK-EXIT:ERR$ FS:WRITE-ALL ;
 : DRIVER ( ptr u8 n n -- )
    {: src:ptr srcu:n want:n :}
    src srcu ROOT$ CHECK-EXIT:DIRECT {: oc :}

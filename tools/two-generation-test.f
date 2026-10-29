@@ -7,21 +7,21 @@ require tools/two-generation-core.f
 package TWO-GEN
 private
 
-create TGT-ROOT FS-PATH-CAP allot
+create TGT-ROOT PATH-CAP allot
 variable TGT-ROOT-U
-create TGT-A FS-PATH-CAP allot
+create TGT-A PATH-CAP allot
 variable TGT-A-U
-create TGT-B FS-PATH-CAP allot
+create TGT-B PATH-CAP allot
 variable TGT-B-U
-create TGT-M FS-PATH-CAP allot
+create TGT-M PATH-CAP allot
 variable TGT-M-U
-create TGT-HOST FS-PATH-CAP allot
+create TGT-HOST PATH-CAP allot
 variable TGT-HOST-U
-create TGT-INHERITED FS-PATH-CAP allot
+create TGT-INHERITED PATH-CAP allot
 variable TGT-INHERITED-U
-create TGT-CACHE-A FS-PATH-CAP allot
+create TGT-CACHE-A PATH-CAP allot
 variable TGT-CACHE-A-U
-create TGT-CACHE-B FS-PATH-CAP allot
+create TGT-CACHE-B PATH-CAP allot
 variable TGT-CACHE-B-U
 67 constant TGT-UNCAUGHT-RC                 \ hb's exit status for an uncaught throw
 
@@ -35,15 +35,15 @@ variable TGT-CACHE-B-U
 : TGT-CACHE-B$ ( -- ptr u8 n ) TGT-CACHE-B TGT-CACHE-B-U @ ;
 
 : TGT-PREP ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" habu-two-generation" FS:MKTEMP-DIR {: a:ptr u:n :}
    a TGT-ROOT u BYTE-COPY u TGT-ROOT-U !
-   TGT-ROOT$ CLEANUP-TREE+
-   TGT-ROOT$ s" a" TGT-A JOIN-PATH TGT-A-U !
-   TGT-ROOT$ s" b" TGT-B JOIN-PATH TGT-B-U !
-   TGT-ROOT$ s" missing" TGT-M JOIN-PATH TGT-M-U !
-   TGT-ROOT$ s" host" TGT-HOST JOIN-PATH TGT-HOST-U !
-   TGT-ROOT$ s" inherited" TGT-INHERITED JOIN-PATH TGT-INHERITED-U ! ;
+   TGT-ROOT$ FS:CLEANUP-TREE+
+   TGT-ROOT$ s" a" TGT-A FS:JOIN-PATH TGT-A-U !
+   TGT-ROOT$ s" b" TGT-B FS:JOIN-PATH TGT-B-U !
+   TGT-ROOT$ s" missing" TGT-M FS:JOIN-PATH TGT-M-U !
+   TGT-ROOT$ s" host" TGT-HOST FS:JOIN-PATH TGT-HOST-U !
+   TGT-ROOT$ s" inherited" TGT-INHERITED FS:JOIN-PATH TGT-INHERITED-U ! ;
 
 : TGT-COMPARE ( n n -- ) {: count:n first:n :}
    TGT-A$ TGT-B$ TG-BYTE-DIFF count T=
@@ -51,43 +51,43 @@ variable TGT-CACHE-B-U
 
 : TGT-BYTES ( -- )
    s" whole-byte comparison covers empty, unequal length and chunk boundaries" T-LABEL
-   TGT-A$ s" " WRITE-ALL TGT-B$ s" " WRITE-ALL
+   TGT-A$ s" " FS:WRITE-ALL TGT-B$ s" " FS:WRITE-ALL
    0 -1 TGT-COMPARE
-   TGT-B$ s" x" WRITE-ALL -1 0 TGT-COMPARE
-   TGT-A$ s" abcd" WRITE-ALL TGT-B$ s" abXd" WRITE-ALL
+   TGT-B$ s" x" FS:WRITE-ALL -1 0 TGT-COMPARE
+   TGT-A$ s" abcd" FS:WRITE-ALL TGT-B$ s" abXd" FS:WRITE-ALL
    1 2 TGT-COMPARE
-   TGT-B$ s" aX" WRITE-ALL -1 1 TGT-COMPARE
+   TGT-B$ s" aX" FS:WRITE-ALL -1 1 TGT-COMPARE
    TG-CMP-CAP 0 ?do 0 TG-CMP-A i + c! loop
-   TGT-A$ TG-CMP-A TG-CMP-CAP WRITE-ALL
-   TGT-B$ TG-CMP-A TG-CMP-CAP WRITE-ALL
-   TGT-A$ s" tail" APPEND-FILE TGT-B$ s" taiX" APPEND-FILE
+   TGT-A$ TG-CMP-A TG-CMP-CAP FS:WRITE-ALL
+   TGT-B$ TG-CMP-A TG-CMP-CAP FS:WRITE-ALL
+   TGT-A$ s" tail" FS:APPEND-FILE TGT-B$ s" taiX" FS:APPEND-FILE
    1 TG-CMP-CAP 3 + TGT-COMPARE
    TG-CMP-CAP 0 ?do 0 TG-CMP-A i + c! loop
-   TGT-B$ TG-CMP-A TG-CMP-CAP WRITE-ALL
+   TGT-B$ TG-CMP-A TG-CMP-CAP FS:WRITE-ALL
    -1 TG-CMP-CAP TGT-COMPARE ;
 
 : TGT-MAP$ ( -- ptr u8 n )
-   TGT-ROOT$ s" a.map" TG-MAP-PATH JOIN-PATH
+   TGT-ROOT$ s" a.map" TG-MAP-PATH FS:JOIN-PATH
    TG-MAP-PATH swap ;
 
 : TGT-NAMES ( -- )
    s" sidecar owners use column names and half-open code spans" T-LABEL
    TGT-A$ 12 TG-MAP-NAME$ s" " T$=
    TGT-MAP$
-   S\" habu-names 1\ncolumns rec named start len wid name\n0 1 0 16 0 FIRST\n1 0 24 2147483656 3 HIDDEN\n2 1 4 200 -1 PACKAGE\n" WRITE-ALL
+   S\" habu-names 1\ncolumns rec named start len wid name\n0 1 0 16 0 FIRST\n1 0 24 2147483656 3 HIDDEN\n2 1 4 200 -1 PACKAGE\n" FS:WRITE-ALL
    TGT-A$ 0 TG-MAP-NAME$ s" FIRST" T$=
    TGT-A$ 19 TG-MAP-NAME$ s" FIRST" T$=
    TGT-A$ 20 TG-MAP-NAME$ s" " T$=
    TGT-A$ 24 TG-MAP-NAME$ s" HIDDEN" T$=
    TGT-A$ 32 TG-MAP-NAME$ s" " T$=
    TGT-MAP$
-   S\" habu-names 1\ncolumns name extra len wid start\nMOVED ignored 2147483656 3 24\n" WRITE-ALL
+   S\" habu-names 1\ncolumns name extra len wid start\nMOVED ignored 2147483656 3 24\n" FS:WRITE-ALL
    TGT-A$ 27 TG-MAP-NAME$ s" MOVED" T$=
-   TGT-MAP$ S\" habu-names 2\ncolumns start len wid name\n0 8 0 NEW\n" WRITE-ALL
+   TGT-MAP$ S\" habu-names 2\ncolumns start len wid name\n0 8 0 NEW\n" FS:WRITE-ALL
    TGT-A$ 0 TG-MAP-NAME$ s" " T$=
-   TGT-MAP$ S\" habu-names 1\ncolumns start len name\n0 8 BAD\n" WRITE-ALL
+   TGT-MAP$ S\" habu-names 1\ncolumns start len name\n0 8 BAD\n" FS:WRITE-ALL
    TGT-A$ 0 TG-MAP-NAME$ s" " T$=
-   TGT-MAP$ S\" habu-names 1\ncolumns start len wid name\n0 invalid 0 BAD\n" WRITE-ALL
+   TGT-MAP$ S\" habu-names 1\ncolumns start len wid name\n0 invalid 0 BAD\n" FS:WRITE-ALL
    TGT-A$ 0 TG-MAP-NAME$ s" " T$= ;
 
 : TGT-IMAGE ( -- )
@@ -95,7 +95,7 @@ variable TGT-CACHE-B-U
    ENGINE-CANDIDATE:PATH$ IMAGE-SIZE:MEASURE
    IMAGE-SIZE:CODE-BLOB-RANGE {: at:n len:n :}
    at 0 > TTRUE len 0 > TTRUE
-   at len + ENGINE-CANDIDATE:PATH$ FILE-SIZE < TTRUE ;
+   at len + ENGINE-CANDIDATE:PATH$ FS:FILE-SIZE < TTRUE ;
 
 \ --compare of file a against the given path: stdout and stderr lengths, rc.
 : TGT-CLI-RUN ( ptr u8 n -- len len n ) {: b:ptr bu:n :}
@@ -138,22 +138,22 @@ variable TGT-CACHE-B-U
 : TGT-CACHE-CHILD ( -- )
    s" HABU_OUT" GETENV {: root:ptr rootu:n :}
    rootu 0= if s" two-gen-test: no out root" 1 die then
-   root rootu s" seen" TG-PATH JOIN-PATH {: pathu:n :}
-   TG-PATH pathu EXISTS? if s" two-gen-test: dirty out root" 1 die then
-   root rootu MAKE-DIRS
-   TG-PATH pathu s" seen" WRITE-ALL
-   4 SCRIPT-ARGV$ root rootu WRITE-ALL ;
+   root rootu s" seen" TG-PATH FS:JOIN-PATH {: pathu:n :}
+   TG-PATH pathu FS:EXISTS? if s" two-gen-test: dirty out root" 1 die then
+   root rootu FS:MAKE-DIRS
+   TG-PATH pathu s" seen" FS:WRITE-ALL
+   4 SCRIPT-ARGV$ root rootu FS:WRITE-ALL ;
 
 : TGT-CACHE-HOST ( -- )
    SB-RESET
    S\" #!/bin/sh\nexec \q" SB-APPEND
    ENGINE-CANDIDATE:PATH$ SB-APPEND
    S\" \q --load tools/two-generation-test.f -- cache-child \q$@\q\n" SB-APPEND
-   TGT-HOST$ SB$ WRITE-ALL
-   TGT-HOST$ CHMOD-X ;
+   TGT-HOST$ SB$ FS:WRITE-ALL
+   TGT-HOST$ FS:CHMOD-X ;
 
 : TGT-CACHE-READ ( n ptr u8 ptr n -- ) {: g:n buf:ptr size:ptr :}
-   g TG-GEN$ buf FS-PATH-CAP READ-ALL size ! ;
+   g TG-GEN$ buf PATH-CAP FS:READ-ALL size ! ;
 
 : TGT-CACHE ( -- )
    s" builds use private out roots and discard only those after success" T-LABEL
@@ -162,9 +162,9 @@ variable TGT-CACHE-B-U
    root TG-ROOT rootu BYTE-COPY
    rootu TG-ROOT-U !
    TGT-HOST$ TG-HOST!
-   TGT-INHERITED$ MAKE-DIR
-   TGT-INHERITED$ s" seen" TG-PATH JOIN-PATH {: pathu:n :}
-   TG-PATH pathu s" old" WRITE-ALL
+   TGT-INHERITED$ FS:MAKE-DIR
+   TGT-INHERITED$ s" seen" TG-PATH FS:JOIN-PATH {: pathu:n :}
+   TG-PATH pathu s" old" FS:WRITE-ALL
    PROC-ENV-DEFAULT-RESET
    s" HABU_OUT" >LEN TGT-INHERITED$ >LEN PROC-ENV-DEFAULT+
    1 TG-BUILD {: err1:len rc1:n :}
@@ -181,25 +181,25 @@ variable TGT-CACHE-B-U
    TGT-CACHE-A$ TGT-ROOT$ STARTS-WITH? TTRUE
    TGT-CACHE-B$ TGT-ROOT$ STARTS-WITH? TTRUE
    TGT-CACHE-A$ TGT-CACHE-B$ STR= TFALSE
-   TGT-CACHE-A$ DIR? TTRUE
-   TGT-CACHE-B$ DIR? TTRUE
+   TGT-CACHE-A$ FS:DIR? TTRUE
+   TGT-CACHE-B$ FS:DIR? TTRUE
    2 TG-CACHE-CLEANUP
-   TGT-CACHE-A$ EXISTS? TFALSE
-   TGT-CACHE-B$ EXISTS? TFALSE
-   1 TG-GEN$ TG-OUT TG-CAP-OUT READ-ALL {: out1:n :}
+   TGT-CACHE-A$ FS:EXISTS? TFALSE
+   TGT-CACHE-B$ FS:EXISTS? TFALSE
+   1 TG-GEN$ TG-OUT TG-CAP-OUT FS:READ-ALL {: out1:n :}
    TG-OUT out1 TGT-CACHE-A$ T$=
-   2 TG-GEN$ TG-OUT TG-CAP-OUT READ-ALL {: out2:n :}
+   2 TG-GEN$ TG-OUT TG-CAP-OUT FS:READ-ALL {: out2:n :}
    TG-OUT out2 TGT-CACHE-B$ T$=
-   TGT-INHERITED$ s" seen" TG-PATH JOIN-PATH
-   TG-PATH swap TG-OUT TG-CAP-OUT READ-ALL {: seen:n :}
+   TGT-INHERITED$ s" seen" TG-PATH FS:JOIN-PATH
+   TG-PATH swap TG-OUT TG-CAP-OUT FS:READ-ALL {: seen:n :}
    TG-OUT seen s" old" T$= ;
 
 : TGT-RUN ( -- )
    T-RESET TGT-PREP TGT-BYTES TGT-NAMES TGT-IMAGE
    s" the command refuses unequal products and accepts equal ones" T-LABEL
-   1 TGT-CLI TGT-A$ TGT-B$ COPY-FILE-STREAM 0 TGT-CLI
+   1 TGT-CLI TGT-A$ TGT-B$ FS:COPY-FILE-STREAM 0 TGT-CLI
    TGT-CLI-MISSING TGT-CACHE
-   TG-MAP-RELEASE CLEANUP-RUN T-REPORT ;
+   TG-MAP-RELEASE FS:CLEANUP-RUN T-REPORT ;
 
 : TGT-MAIN ( -- )
    SCRIPT-ARGC 0 > if

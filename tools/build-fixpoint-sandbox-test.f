@@ -26,9 +26,9 @@ package BUILD-FIXPOINT
 \ models is a semantic runtime failure, not a type error.
 : BFT-STALE-SABOTAGE ( -- )
    s" src/arch/arm64/mnem.f" BFT-READ {: u:n :}
-   BFT-STALE-PAYLOAD s" TRUSTED: BFT-STALE-CRASH ( -- ) 1 0 ! ; BFT-STALE-CRASH" WRITE-ALL
-   BFT-STALE-PAYLOAD BFT-NL 1 APPEND-FILE
-   BFT-STALE-PAYLOAD BFT-READ-BUF u APPEND-FILE ;
+   BFT-STALE-PAYLOAD s" TRUSTED: BFT-STALE-CRASH ( -- ) 1 0 ! ; BFT-STALE-CRASH" FS:WRITE-ALL
+   BFT-STALE-PAYLOAD BFT-NL 1 FS:APPEND-FILE
+   BFT-STALE-PAYLOAD BFT-READ-BUF u FS:APPEND-FILE ;
 
 : BFT-TEST-STALE-INSTALL ( -- )
    BFT-STALE-PREPARE
@@ -40,7 +40,7 @@ package BUILD-FIXPOINT
    BFT-BIG-ERR erru s" E-BUILD-STATUS" CONTAINS? TTRUE
    BFT-BIG-ERR erru s" habu-crash regs" CONTAINS? TTRUE
    BFT-STALE-HB s" bin/hb" BF-FILE= TTRUE
-   BFT-STALE-STAMP FILE? TFALSE ;
+   BFT-STALE-STAMP FS:FILE? TFALSE ;
 
 \ Staged-fixpoint refusal regression (dot habu-staged-fixpoint-src-0b5fc6e6):
 \ a deliberately type-broken CHECKED definition in a source file of the
@@ -53,12 +53,12 @@ package BUILD-FIXPOINT
 \ stale-seed one.
 : BFT-STALE-PAYLOAD-RESTORE ( -- )
    s" src/arch/arm64/mnem.f" BFT-READ {: u:n :}
-   BFT-STALE-PAYLOAD BFT-READ-BUF u WRITE-ALL ;
+   BFT-STALE-PAYLOAD BFT-READ-BUF u FS:WRITE-ALL ;
 
 : BFT-CERT-INJ-SABOTAGE ( -- )
    BFT-STALE-PAYLOAD-RESTORE
-   BFT-STALE-PAYLOAD s" : BFT-CERT-INJ ( n -- n ) drop ;" APPEND-FILE
-   BFT-STALE-PAYLOAD BFT-NL 1 APPEND-FILE ;
+   BFT-STALE-PAYLOAD s" : BFT-CERT-INJ ( n -- n ) drop ;" FS:APPEND-FILE
+   BFT-STALE-PAYLOAD BFT-NL 1 FS:APPEND-FILE ;
 
 : BFT-TEST-CERT-INJECT-INSTALL ( -- )
    BFT-CERT-INJ-SABOTAGE
@@ -70,7 +70,7 @@ package BUILD-FIXPOINT
    BFT-BIG-ERR erru s" build-fixpoint: failed" CONTAINS? TTRUE
    BFT-BIG-ERR erru s" E-BUILD-CERTIFY" CONTAINS? TTRUE
    BFT-STALE-HB s" bin/hb" BF-FILE= TTRUE
-   BFT-STALE-STAMP FILE? TFALSE ;
+   BFT-STALE-STAMP FS:FILE? TFALSE ;
 
 \ Public so the driver below runs with the package CLOSED, as a gate row must.
 public

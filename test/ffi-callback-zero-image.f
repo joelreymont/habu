@@ -6,8 +6,8 @@ require test/aot-builder-engine.f
 package FFI-CB-ZERO-IMAGE-TEST
 
 600000 constant TIMEOUT-MS
-create SUBJECT FS-PATH-CAP allot
-create IMAGE FS-PATH-CAP allot
+create SUBJECT PATH-CAP allot
+create IMAGE PATH-CAP allot
 variable SUBJECT-U
 variable IMAGE-U
 
@@ -24,7 +24,7 @@ variable IMAGE-U
    AOT-BUILDER-ENGINE:STDIN$
    TIMEOUT-MS GE-RUN-STDIN
    s" zero callback image build" GE-EXPECT-OK
-   IMAGE$ EXECUTABLE? 0= if s" zero callback image missing" GE-FAIL then ;
+   IMAGE$ FS:EXECUTABLE? 0= if s" zero callback image missing" GE-FAIL then ;
 
 : RUN-IMAGE ( -- )
    GE-HB-RESET
@@ -38,7 +38,7 @@ variable IMAGE-U
    s" ffi-callback-zero-image" GT-START
    s" subject.f" SUBJECT GT-PATH SUBJECT-U !
    s" hb-aot-got" IMAGE GT-PATH IMAGE-U !
-   SUBJECT$ S\" require src/lib/ffi-callback.f\n: MAIN ( -- ) s\" zero-callback-image: ok\" type cr ;\n" WRITE-ALL
+   SUBJECT$ S\" require src/lib/ffi-callback.f\n: MAIN ( -- ) s\" zero-callback-image: ok\" type cr ;\n" FS:WRITE-ALL
    BUILD RUN-IMAGE
    s" PASS: zero callback stripped image" type cr ;
 

@@ -13,12 +13,12 @@ require src/lib/process-argv.f
 variable CLI-TOOLS-U
 variable CLI-TOOLS-TRUST-U
 
-create CLI-TOOLS-BUF FS-PATH-CAP allot
-create CLI-TOOLS-TRUST-BUF FS-PATH-CAP allot
+create CLI-TOOLS-BUF PATH-CAP allot
+create CLI-TOOLS-TRUST-BUF PATH-CAP allot
 
 : CLI-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr up:ptr :}
    u 0 < if E-FS-PATH throw then
-   u FS-PATH-CAP > if E-FS-PATH throw then
+   u PATH-CAP > if E-FS-PATH throw then
    a dst u BYTE-COPY
    u up ! ;
 

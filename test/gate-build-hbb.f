@@ -16,7 +16,7 @@ using HB-BUILD-CLI                       \ the hb-build options and entry
 : GB-HBB-BUILD-OUT ( ptr u8 n -- ) {: label:ptr labelu :}
    HBB-BUILD
    BF-TMP-RESET
-   GB-OUT$ FILE? 0= if label labelu GE-FAIL then ;
+   GB-OUT$ FS:FILE? 0= if label labelu GE-FAIL then ;
 
 : GB-HBB-BUILD ( ptr u8 n -- )
    GB-WRITE-SRC

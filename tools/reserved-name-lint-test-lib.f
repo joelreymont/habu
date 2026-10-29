@@ -6,17 +6,17 @@ require src/lib/string.f
 package RESERVED-NAME-LINT-TEST
 
 \ The longest report is the TFAM fixture's eight diagnostics, each naming a
-\ fixture path of up to FS-PATH-CAP bytes beside a message under $80 bytes.
-8 FS-PATH-CAP $80 + * constant BUF-CAP
+\ fixture path of up to PATH-CAP bytes beside a message under $80 bytes.
+8 PATH-CAP $80 + * constant BUF-CAP
 
-create ROOT FS-PATH-CAP allot
-create GOOD FS-PATH-CAP allot
-create BAD FS-PATH-CAP allot
-create CASEFOLD FS-PATH-CAP allot
-create LOADER FS-PATH-CAP allot
-create TFAM FS-PATH-CAP allot
-create CONTROL FS-PATH-CAP allot
-create NUM FS-PATH-CAP allot
+create ROOT PATH-CAP allot
+create GOOD PATH-CAP allot
+create BAD PATH-CAP allot
+create CASEFOLD PATH-CAP allot
+create LOADER PATH-CAP allot
+create TFAM PATH-CAP allot
+create CONTROL PATH-CAP allot
+create NUM PATH-CAP allot
 create OUT BUF-CAP allot
 
 variable ROOT-U
@@ -131,23 +131,23 @@ variable NUM-U
    SB$ ;
 
 : PREPARE ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" habu-reserved-name-lint" FS:MKTEMP-DIR ROOT ROOT-U COPY!
-   ROOT$ CLEANUP-TREE+
-   ROOT$ s" good.f" GOOD JOIN-PATH GOOD-U !
-   ROOT$ s" bad.f" BAD JOIN-PATH BAD-U !
-   ROOT$ s" case.f" CASEFOLD JOIN-PATH CASEFOLD-U !
-   ROOT$ s" loader.f" LOADER JOIN-PATH LOADER-U !
-   ROOT$ s" tfam.f" TFAM JOIN-PATH TFAM-U !
-   ROOT$ s" control.f" CONTROL JOIN-PATH CONTROL-U !
-   ROOT$ s" numeric.f" NUM JOIN-PATH NUM-U !
-   GOOD$ GOOD-SRC$ WRITE-ALL
-   BAD$ BAD-SRC$ WRITE-ALL
-   CASEFOLD$ CASEFOLD-SRC$ WRITE-ALL
-   LOADER$ LOADER-SRC$ WRITE-ALL
-   TFAM$ TFAM-SRC$ WRITE-ALL
-   CONTROL$ CONTROL-SRC$ WRITE-ALL
-   NUM$ NUM-SRC$ WRITE-ALL ;
+   ROOT$ FS:CLEANUP-TREE+
+   ROOT$ s" good.f" GOOD FS:JOIN-PATH GOOD-U !
+   ROOT$ s" bad.f" BAD FS:JOIN-PATH BAD-U !
+   ROOT$ s" case.f" CASEFOLD FS:JOIN-PATH CASEFOLD-U !
+   ROOT$ s" loader.f" LOADER FS:JOIN-PATH LOADER-U !
+   ROOT$ s" tfam.f" TFAM FS:JOIN-PATH TFAM-U !
+   ROOT$ s" control.f" CONTROL FS:JOIN-PATH CONTROL-U !
+   ROOT$ s" numeric.f" NUM FS:JOIN-PATH NUM-U !
+   GOOD$ GOOD-SRC$ FS:WRITE-ALL
+   BAD$ BAD-SRC$ FS:WRITE-ALL
+   CASEFOLD$ CASEFOLD-SRC$ FS:WRITE-ALL
+   LOADER$ LOADER-SRC$ FS:WRITE-ALL
+   TFAM$ TFAM-SRC$ FS:WRITE-ALL
+   CONTROL$ CONTROL-SRC$ FS:WRITE-ALL
+   NUM$ NUM-SRC$ FS:WRITE-ALL ;
 
 : CORE-SETUP ( bool -- ) {: json:bool :}
    RESERVED-NAME-LINT:RESET
@@ -286,8 +286,8 @@ public
    TEST-CONTROL
    TEST-NUMERIC
    TEST-NUMERIC-JSON
-   CLEANUP-RUN
-   ROOT$ EXISTS? TFALSE
+   FS:CLEANUP-RUN
+   ROOT$ FS:EXISTS? TFALSE
    T-REPORT
    s" reserved-name-lint-test: ok" type cr ;
 

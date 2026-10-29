@@ -85,7 +85,7 @@ variable ROOT-U
    ROOT-U @ {: ru:n :}
    pa pu ROOT$ LINT-PREFIX? if
       pu ru > if
-         ROOT$ FS-JOIN-SEPARATED? if pa ru + pu ru - exit then
+         ROOT$ FS:JOIN-SEPARATED? if pa ru + pu ru - exit then
          pa ru + c@ [char] / = if pa ru + 1+ pu ru - 1- exit then
       then
    then
@@ -207,7 +207,7 @@ variable ROOT-U
 : CENSUS ( -- )
    RESET
    ROOT!
-   ROOT$ [: WALK-PATH? ;] [: WALK-ONE ;] WALK-FILES-IF
+   ROOT$ [: WALK-PATH? ;] [: WALK-ONE ;] FS:WALK-FILES-IF
    REPORT ;
 
 CENSUS

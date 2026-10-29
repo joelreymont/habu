@@ -17,18 +17,18 @@ require src/os/script-argv.f
 package GATE-ORCH-BUILDER
 private
 60000000000 constant RELEASE-NS
-create PATH FS-PATH-CAP allot
+create PATH PATH-CAP allot
 create NOISE 1024 allot
 
 : AT ( ptr u8 n -- ptr u8 n )
-   0 SCRIPT-ARGV$ 2swap PATH JOIN-PATH PATH swap ;
+   0 SCRIPT-ARGV$ 2swap PATH FS:JOIN-PATH PATH swap ;
 
 : EVIDENCE ( ptr u8 n -- ptr u8 n )
-   s" HABU_GATE_ORCH_EVIDENCE" GETENV 2swap PATH JOIN-PATH PATH swap ;
+   s" HABU_GATE_ORCH_EVIDENCE" GETENV 2swap PATH FS:JOIN-PATH PATH swap ;
 
 : RELEASE-SEEN? ( -- bool )
-   s" release" AT FILE?
-   s" later" EVIDENCE FILE? and ;
+   s" release" AT FS:FILE?
+   s" later" EVIDENCE FS:FILE? and ;
 
 : WAIT-RELEASE ( -- )
    [: RELEASE-SEEN? ;] mono-ns RELEASE-NS +
@@ -65,14 +65,14 @@ public
       FAILURE-NOISE
       s" builder failed after release" 73 die
    then
-   s" hb-root" AT s" rooted" WRITE-ALL
-   s" hb-root" AT CHMOD-X
-   s" hb-ordinary" AT s" ordinary" WRITE-ALL
-   s" hb-root.map" AT s" names" WRITE-ALL
-   s" hb-ordinary.map" AT s" names" WRITE-ALL
-   s" hb-whitebox-source" AT s" whitebox" WRITE-ALL
-   s" hb-whitebox-source" AT CHMOD-X
-   s" builder-released" EVIDENCE s" builder saw release" WRITE-ALL ;
+   s" hb-root" AT s" rooted" FS:WRITE-ALL
+   s" hb-root" AT FS:CHMOD-X
+   s" hb-ordinary" AT s" ordinary" FS:WRITE-ALL
+   s" hb-root.map" AT s" names" FS:WRITE-ALL
+   s" hb-ordinary.map" AT s" names" FS:WRITE-ALL
+   s" hb-whitebox-source" AT s" whitebox" FS:WRITE-ALL
+   s" hb-whitebox-source" AT FS:CHMOD-X
+   s" builder-released" EVIDENCE s" builder saw release" FS:WRITE-ALL ;
 ;package
 
 GATE-ORCH-BUILDER:RUN

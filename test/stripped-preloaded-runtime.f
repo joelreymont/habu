@@ -8,8 +8,8 @@ package STRIPPED-PRELOADED-RUNTIME-TEST
 private
 
 600000 constant TIMEOUT-MS
-create SUBJECT FS-PATH-CAP allot
-create IMAGE FS-PATH-CAP allot
+create SUBJECT PATH-CAP allot
+create IMAGE PATH-CAP allot
 variable SUBJECT-U
 variable IMAGE-U
 4096 CODEGEN:BUFFER SUBJECT-SRC
@@ -34,12 +34,12 @@ variable IMAGE-U
    SUBJECT-SRC CODEGEN:APPEND-STRING
    S\" package STRIPPED-PRELOADED-RUNTIME-SUBJECT\nprivate\nTASK:#USER CELL TASK:+USER USER-SLOT drop\nvariable USER-CEILING\nTASK:#USER USER-CEILING !\nvariable SHORT-ID\nvariable LONG-ID\ns\" /tmp/habu-ffi-capture-path\" FFI:LIBRARY-PATH SHORT-ID !\ns\" /tmp/habu-ffi-capture-path-extra\" FFI:LIBRARY-PATH LONG-ID !\ncreate EXTRA-PATH 64 allot\nvariable PREFIX-U\nvariable EXTRA-N\n: FILL-PATHS ( -- )\n   s\" /tmp/habu-ffi-extra-\" dup PREFIX-U ! EXTRA-PATH swap BYTE-COPY\n   270 0 ?do\n      EXTRA-PATH PREFIX-U @ + {: dst:ptr :}\n      EXTRA-N @ {: idx:n :}\n      idx 100 / [char] 0 + dst c!\n      idx 10 / 10 mod [char] 0 + dst 1+ c!\n      idx 10 mod [char] 0 + dst 2 + c!\n      EXTRA-PATH PREFIX-U @ 3 + FFI:LIBRARY-PATH drop\n      1 EXTRA-N +!\n   loop ;\npublic\n: RUN ( -- )\n   PID 0 > 0= if s\" stripped-preloaded-runtime: pid\" 74 die then\n   FILL-PATHS\n   depth 0 <> if s\" stripped-preloaded-runtime: ffi stack\" 74 die then\n   s\" /tmp/habu-ffi-capture-path\" FFI:LIBRARY-PATH SHORT-ID @ <> if s\" stripped-preloaded-runtime: short path\" 74 die then\n   s\" /tmp/habu-ffi-capture-path-extra\" FFI:LIBRARY-PATH LONG-ID @ <> if s\" stripped-preloaded-runtime: long path\" 74 die then\n   PID 0 > 0= if s\" stripped-preloaded-runtime: full pid\" 74 die then\n   TASK:#USER USER-CEILING @ <> if s\" stripped-preloaded-runtime: task user\" 74 die then\n   s\" stripped-preloaded-runtime: ok\" type cr ;\n;package\n: MAIN ( -- )\n   SCRIPT-ARGC 0 > if\n      0 SCRIPT-ARGV$ s\" bounds\" STR= if DATA-SIZE allot exit then\n   then\n   STRIPPED-PRELOADED-RUNTIME-SUBJECT:RUN ;\n"
    SUBJECT-SRC CODEGEN:APPEND-STRING
-   SUBJECT$ SUBJECT-SRC CODEGEN:CONTENTS WRITE-ALL ;
+   SUBJECT$ SUBJECT-SRC CODEGEN:CONTENTS FS:WRITE-ALL ;
 
 : WRITE-PREWINDOW-SUBJECT ( -- )
    SUBJECT-SRC CODEGEN:RESET
    S\" require src/lib/ffi-abi.f\nFFI:IMAGE-MARK 2drop drop constant PRE-FN-END\nFFI:IMAGE-MARK 2drop nip constant PRE-LIB-END\nPROCESS-SYMBOLS\nFUNCTION: PID getpid ( -- i32 ) ;FUNCTION\n: MAIN ( -- )\n   FFI:RESET PRE-FN-END 270 - FFI:CALL 0 <= if s\" stripped-preloaded-runtime: first preloaded row\" 74 die then\n   FFI:RESET PRE-FN-END 1- FFI:CALL 0 <= if s\" stripped-preloaded-runtime: last preloaded row\" 74 die then\n   PID 0 > 0= if s\" stripped-preloaded-runtime: new row\" 74 die then\n   depth 0 <> if s\" stripped-preloaded-runtime: function stack\" 74 die then\n   s\" /tmp/habu-ffi-prewindow-missing-0\" FFI:LIBRARY-PATH PRE-LIB-END 270 - 1+ <> if s\" stripped-preloaded-runtime: first preloaded path\" 74 die then\n   s\" /tmp/habu-ffi-prewindow-missing-269\" FFI:LIBRARY-PATH PRE-LIB-END <> if s\" stripped-preloaded-runtime: last preloaded path\" 74 die then\n   FFI:IMAGE-MARK 2drop nip {: before:n :}\n   s\" /tmp/habu-ffi-runtime-new\" FFI:LIBRARY-PATH before 1+ <> if s\" stripped-preloaded-runtime: new path\" 74 die then\n   PID 0 > 0= if s\" stripped-preloaded-runtime: pid\" 74 die then\n   depth 0 <> if s\" stripped-preloaded-runtime: path stack\" 74 die then\n   s\" stripped-preloaded-runtime: ok\" type cr ;\n" SUBJECT-SRC CODEGEN:APPEND-STRING
-   SUBJECT$ SUBJECT-SRC CODEGEN:CONTENTS WRITE-ALL ;
+   SUBJECT$ SUBJECT-SRC CODEGEN:CONTENTS FS:WRITE-ALL ;
 
 : MAKER$ ( -- ptr u8 n )
    S\" require tools/aot-build-open.f\nrequire tools/aot-build.f\nAOT-LINK:BUILD-NATIVE\n" ;
@@ -55,7 +55,7 @@ variable IMAGE-U
    s" TMPDIR" >LEN GT-ROOT >LEN PROC-ENV+
    linker linkeru maker makeru TIMEOUT-MS GE-RUN-STDIN
    s" preloaded runtime build" GE-EXPECT-OK
-   IMAGE$ EXECUTABLE? 0= if s" preloaded runtime image missing" GE-FAIL then ;
+   IMAGE$ FS:EXECUTABLE? 0= if s" preloaded runtime image missing" GE-FAIL then ;
 
 : BUILD ( ptr u8 n -- ) SUBJECT$ 2swap BUILD-SOURCE ;
 

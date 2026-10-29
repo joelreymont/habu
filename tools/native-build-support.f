@@ -5,7 +5,7 @@ require tools/native-build-support-deps.f
 package NATIVE-BUILD-SUPPORT
 private
 
-create SAVED-ROOT FS-PATH-CAP allot
+create SAVED-ROOT PATH-CAP allot
 variable SAVED-ROOT-U
 
 \ Compile the ordinary driver inside a build scope, as the source entry does.
@@ -23,14 +23,14 @@ private
    SAVED-ROOT-U @ 0 > if
       SAVED-ROOT SAVED-ROOT-U @ SOURCE-ROOT:ENGINE!
    then
-   FS-PATH-CAP 0 ?do 0 SAVED-ROOT i + c! loop
+   PATH-CAP 0 ?do 0 SAVED-ROOT i + c! loop
    0 SAVED-ROOT-U ! ;
 
 public
 
 : SAVE-ROOT ( -- )
    SOURCE-ROOT:ENGINE$ {: a:ptr u:n :}
-   u FS-PATH-CAP > if E-FS-CAPACITY throw then
+   u PATH-CAP > if E-FS-CAPACITY throw then
    a SAVED-ROOT u BYTE-COPY
    u SAVED-ROOT-U ! ;
 

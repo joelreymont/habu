@@ -15,15 +15,15 @@ package HB-BUILD-PREFIX-PRODUCER-TEST
 
 65536 constant CAP
 600000 constant TIMEOUT-MS
-create ROOT FS-PATH-CAP allot
-create HB FS-PATH-CAP allot
-create APP FS-PATH-CAP allot
-create OUT-PATH FS-PATH-CAP allot
-create PRODUCER FS-PATH-CAP allot
-create HELPER FS-PATH-CAP allot
-create WRAPPER FS-PATH-CAP allot
-create TMP FS-PATH-CAP allot
-create CACHE FS-PATH-CAP allot
+create ROOT PATH-CAP allot
+create HB PATH-CAP allot
+create APP PATH-CAP allot
+create OUT-PATH PATH-CAP allot
+create PRODUCER PATH-CAP allot
+create HELPER PATH-CAP allot
+create WRAPPER PATH-CAP allot
+create TMP PATH-CAP allot
+create CACHE PATH-CAP allot
 create OUT CAP allot
 create ERR CAP allot
 variable ROOT-U
@@ -50,33 +50,33 @@ variable RC
 : CACHE$ ( -- ptr u8 n ) CACHE CACHE-U @ ;
 
 : PATHS ( -- )
-   ROOT$ s" bin/hb" HB JOIN-PATH HB-U !
-   ROOT$ s" app.f" APP JOIN-PATH APP-U !
-   ROOT$ s" app" OUT-PATH JOIN-PATH OUT-U !
-   ROOT$ s" producer.f" PRODUCER JOIN-PATH PRODUCER-U !
-   ROOT$ s" helper.f" HELPER JOIN-PATH HELPER-U !
-   ROOT$ s" hbtmp" TMP JOIN-PATH TMP-U ! ;
+   ROOT$ s" bin/hb" HB FS:JOIN-PATH HB-U !
+   ROOT$ s" app.f" APP FS:JOIN-PATH APP-U !
+   ROOT$ s" app" OUT-PATH FS:JOIN-PATH OUT-U !
+   ROOT$ s" producer.f" PRODUCER FS:JOIN-PATH PRODUCER-U !
+   ROOT$ s" helper.f" HELPER FS:JOIN-PATH HELPER-U !
+   ROOT$ s" hbtmp" TMP FS:JOIN-PATH TMP-U ! ;
 
 : PREPARE ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" habu-prefix-producer" FS:MKTEMP-DIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY u ROOT-U !
-   ROOT$ CLEANUP-TREE+
+   ROOT$ FS:CLEANUP-TREE+
    ROOT$ TREE-COPY:BUILD-SOURCES
    PATHS
-   HB$ SOURCE-ROOT:DIRNAME MAKE-DIRS
+   HB$ SOURCE-ROOT:DIRNAME FS:MAKE-DIRS
    s" HABU_UNDER_TEST" GETENV dup 0= if
-      2drop s" bin/hb" then HB$ COPY-FILE-STREAM
-   HB$ CHMOD-X
-   TMP$ MAKE-DIR
-   APP$ s" : MAIN ( -- ) FILE-PRODUCER:VALUE . ;" WRITE-ALL ;
+      2drop s" bin/hb" then HB$ FS:COPY-FILE-STREAM
+   HB$ FS:CHMOD-X
+   TMP$ FS:MAKE-DIR
+   APP$ s" : MAIN ( -- ) FILE-PRODUCER:VALUE . ;" FS:WRITE-ALL ;
 
 \ Each case keys its objects and builder images in its own out root
 \ under the one prepared tree.
 : CACHE! ( ptr u8 n -- )
    {: name:ptr nameu:n :}
-   ROOT$ name nameu CACHE JOIN-PATH CACHE-U !
-   CACHE$ MAKE-DIR ;
+   ROOT$ name nameu CACHE FS:JOIN-PATH CACHE-U !
+   CACHE$ FS:MAKE-DIR ;
 
 : CAPTURE ( result<pcap:captured,pcap:failed> -- )
    MATCH result
@@ -88,8 +88,8 @@ variable RC
 
 : WRAPPER! ( ptr u8 n ptr u8 n -- )
    {: name:ptr nameu:n body:ptr bodyu:n :}
-   ROOT$ name nameu WRAPPER JOIN-PATH WRAPPER-U !
-   WRAPPER$ body bodyu WRITE-ALL ;
+   ROOT$ name nameu WRAPPER FS:JOIN-PATH WRAPPER-U !
+   WRAPPER$ body bodyu FS:WRITE-ALL ;
 
 : BUILD ( ptr u8 n ptr u8 n n -- )
    {: input:ptr inputu:n expect:ptr expectu:n edit:n :}
@@ -119,20 +119,20 @@ variable RC
 
 : INCLUDE-CASE ( -- )
    s" cache-include" CACHE!
-   PRODUCER$ S\" include helper.f\n" WRITE-ALL
-   HELPER$ S\" package FILE-PRODUCER public : VALUE ( -- n ) 41 ; ;package\n" WRITE-ALL
+   PRODUCER$ S\" include helper.f\n" FS:WRITE-ALL
+   HELPER$ S\" package FILE-PRODUCER public : VALUE ( -- n ) 41 ; ;package\n" FS:WRITE-ALL
    s" launch.f" S\" require tools/app-build.f\nrequire producer.f\n" WRAPPER!
    S\" require launch.f\nAPP-BUILD:RUN\n" s" compiled 1" 0 BUILD
    s" 41" RUN-APP
-   HELPER$ S\" package FILE-PRODUCER public : PAD ( -- n ) 999 ; : VALUE ( -- n ) 41 ; ;package\n" WRITE-ALL
+   HELPER$ S\" package FILE-PRODUCER public : PAD ( -- n ) 999 ; : VALUE ( -- n ) 41 ; ;package\n" FS:WRITE-ALL
    \ An unrelated preloaded declaration leaves MAIN reusable.
    S\" require launch.f\nAPP-BUILD:RUN\n" s" compiled 0" 0 BUILD
    s" 41" RUN-APP ;
 
 : EDIT-AFTER-LOAD-CASE ( -- )
    s" cache-edit" CACHE!
-   PRODUCER$ S\" package FILE-PRODUCER public : VALUE ( -- n ) 41 ; ;package\n" WRITE-ALL
-   s" launch.f" S\" require tools/app-build.f\nrequire producer.f\n: MAYBE-EDIT ( -- ) s\" HABU_PREFIX_TEST_EDIT\" GETENV nip 0 > if s\" producer.f\" s\" package FILE-PRODUCER public : PAD ( -- n ) 999 ; : VALUE ( -- n ) 999 ; ;package\" WRITE-ALL then ;\nMAYBE-EDIT\n" WRAPPER!
+   PRODUCER$ S\" package FILE-PRODUCER public : VALUE ( -- n ) 41 ; ;package\n" FS:WRITE-ALL
+   s" launch.f" S\" require tools/app-build.f\nrequire producer.f\n: MAYBE-EDIT ( -- ) s\" HABU_PREFIX_TEST_EDIT\" GETENV nip 0 > if s\" producer.f\" s\" package FILE-PRODUCER public : PAD ( -- n ) 999 ; : VALUE ( -- n ) 999 ; ;package\" FS:WRITE-ALL then ;\nMAYBE-EDIT\n" WRAPPER!
    S\" require launch.f\nAPP-BUILD:RUN\n" s" compiled 1" 1 BUILD
    s" 41" RUN-APP
    \ The new process relinks reused MAIN to the VALUE it loaded.
@@ -146,8 +146,8 @@ public
    PREPARE
    INCLUDE-CASE
    EDIT-AFTER-LOAD-CASE
-   CLEANUP-RUN
-   ROOT$ EXISTS? TFALSE
+   FS:CLEANUP-RUN
+   ROOT$ FS:EXISTS? TFALSE
    T-REPORT
    s" hb-build-prefix-producer-test: ok" type cr ;
 

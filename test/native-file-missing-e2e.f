@@ -15,7 +15,7 @@ public
    T-RESET
    s" missing FILE child names its path" T-LABEL
    s" native-file-missing" TREE
-   s" cache" AT MAKE-DIR
+   s" cache" AT FS:MAKE-DIR
    s" app.f" S\" require absent-child.f\n: MAIN ( -- ) ;\n" PUT
    ROOT$ s" app.f" s" app-hb" NATIVE-FILE-APP:BUILD-AT 74 T=
    NATIVE-FILE-APP:ERR$ s" include: cannot open " CONTAINS? TTRUE

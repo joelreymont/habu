@@ -609,7 +609,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 : BLOCK-IN-CLOSED ( -- )
    HALT-ARMED @ 0= if exit then
    0 HALT-ARMED !
-   HALTED$ OPEN-APPEND-FD HALT-FD !
+   HALTED$ FS:OPEN-APPEND-FD HALT-FD !
    mono-ns STOP-BOUND-MS GRACE-MS + NS-PER-MS * + {: deadline:n :}
    begin
       POLL-MS >MS TASK:SLEEP
@@ -1129,8 +1129,8 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    saved SAVED-STDERR ! ;
 
 : STDERR-TO-FILE ( -- )
-   ERR-PATH$ s" " WRITE-ALL
-   ERR-PATH$ OPEN-APPEND-FD {: file:n :}
+   ERR-PATH$ s" " FS:WRITE-ALL
+   ERR-PATH$ FS:OPEN-APPEND-FD {: file:n :}
    file FD:STDERR FD>N dup2 {: moved:n :}
    file close-rc drop
    moved 0 < if E-SILENT throw then ;
@@ -1141,7 +1141,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    moved 0 < if E-SILENT throw then ;
 
 : ERR-WRITTEN ( -- n )
-   ERR-PATH$ FILE-SIZE ERR-WANT-U @ >= if 1 else 0 then ;
+   ERR-PATH$ FS:FILE-SIZE ERR-WANT-U @ >= if 1 else 0 then ;
 
 : THROWING ( -- )
    STDERR-TO-FILE
@@ -1162,14 +1162,14 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 \ the socket's handle and the code.
 : THROW-CASE ( -- )
    s" a throwing handler" SECTION
-   s" build" MAKE-DIRS
+   s" build" FS:MAKE-DIRS
    0 ERR-WANT-U !
    SAVE-STDERR
    [: THROWING ;] [: RESTORE-STDERR ;] finally
    s" each fault reported" T-LABEL
-   ERR-PATH$ ERR-BUF SPAN:$ READ-ALL ERR-U !
+   ERR-PATH$ ERR-BUF SPAN:$ FS:READ-ALL ERR-U !
    ERR$ ERR-WANT$ T$=
-   ERR-PATH$ REMOVE-FILE ;
+   ERR-PATH$ FS:REMOVE-FILE ;
 
 \ More sockets than the server has workers stay open, and plain requests are
 \ still answered: no socket holds a worker.
@@ -1373,12 +1373,12 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 \ pipe's among them, now another file's.
 : STALE-CASE ( -- )
    s" a send after the stop" T-LABEL
-   STRAY$ s" " WRITE-ALL
-   STRAYS 0 ?do STRAY$ OPEN-APPEND-FD i STRAY-FD ! loop
+   STRAY$ s" " FS:WRITE-ALL
+   STRAYS 0 ?do STRAY$ FS:OPEN-APPEND-FD i STRAY-FD ! loop
    [: SEND-STALE ;] E-WS-CLOSED TTHROWSQ
-   STRAY$ FILE-SIZE 0 T=
+   STRAY$ FS:FILE-SIZE 0 T=
    STRAYS 0 ?do i STRAY-FD @ close-rc drop loop
-   STRAY$ REMOVE-FILE ;
+   STRAY$ FS:REMOVE-FILE ;
 
 \ With one idle socket open, WS:STOP returns once WS's task has given
 \ everything back, never waiting out STOP-BOUND-MS.
@@ -1400,7 +1400,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 \ written: its peer reads the end of the stream.
 : HALT-CASE ( -- )
    s" a stop that kills a blocked handler" SECTION
-   HALTED$ s" " WRITE-ALL
+   HALTED$ s" " FS:WRITE-ALL
    0 HALT-FD !
    CROWD WS:START
    OPENS drop {: conn:TCP4:connection :}
@@ -1408,11 +1408,11 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    1 HALT-ARMED !
    WS:STOP
    HALT-FD @ ONE-BYTE 1 write 1 T=
-   HALTED$ FILE-SIZE 1 T=
+   HALTED$ FS:FILE-SIZE 1 T=
    HALT-FD @ close-rc drop
    other ENDS
    conn TCP4:CLOSE DROP-STATUS
-   HALTED$ REMOVE-FILE ;
+   HALTED$ FS:REMOVE-FILE ;
 
 
 : TASK-CODE ( -- n )
@@ -1628,7 +1628,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 \ one line on stderr with its code, and WS:STOP still ends the run.
 : FAULT-CASE ( -- )
    s" a task that fails" T-LABEL
-   s" build" MAKE-DIRS
+   s" build" FS:MAKE-DIRS
    0 ERR-WANT-U !
    0 FILL-N !
    0 FILL-CODE !
@@ -1638,9 +1638,9 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    [: FAULTING ;] [: UNFILL RESTORE-STDERR ;] finally
    [: WS:STOP ;] catch 0 T=
    s" the task's fault reported once" T-LABEL
-   ERR-PATH$ ERR-BUF SPAN:$ READ-ALL ERR-U !
+   ERR-PATH$ ERR-BUF SPAN:$ FS:READ-ALL ERR-U !
    ERR$ ERR-WANT$ T$=
-   ERR-PATH$ REMOVE-FILE ;
+   ERR-PATH$ FS:REMOVE-FILE ;
 
 : SEND-HELD ( -- )
    0 HELD @ s" wrapped" WS:SEND-TEXT ;
@@ -1935,9 +1935,9 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 \ compared whole with the transcript this file expects.
 : TRANSCRIPT-CASE ( -- )
    s" the transcript" T-LABEL
-   s" build" MAKE-DIRS
-   s" build/ws-transcript.txt" SCRIPT$ WRITE-ALL
-   s" build/ws-transcript.txt" BACK-BUF SPAN:$ READ-ALL {: got:n :}
+   s" build" FS:MAKE-DIRS
+   s" build/ws-transcript.txt" SCRIPT$ FS:WRITE-ALL
+   s" build/ws-transcript.txt" BACK-BUF SPAN:$ FS:READ-ALL {: got:n :}
    WANT-TRANSCRIPT
    BACK-BUF got SPAN:TAKE SPAN:$ WANT$ T$= ;
 

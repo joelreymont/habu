@@ -46,7 +46,7 @@ public
    T-RESET
    s" stripped build clears transient application path" T-LABEL
    s" native-file-stripped-path" TREE
-   s" cache" AT MAKE-DIR
+   s" cache" AT FS:MAKE-DIR
    s" leaf.f" S\" package FILE-PATH-LEAF\npublic\n: VALUE ( -- n ) 42 ;\n;package\n" PUT
    s" app.f" S\" require leaf.f\n: MAIN ( -- ) FILE-PATH-LEAF:VALUE . ;\n" PUT
    s" cache" MAKER SUCCESS
@@ -57,7 +57,7 @@ public
    s" hb-aot-got" CHECK-RUN
    \ Keep the simple leaf above free of library requirements: its linker loads
    \ them after the capture window. This app loads them inside the window.
-   s" env-cache" AT MAKE-DIR
+   s" env-cache" AT FS:MAKE-DIR
    s" app.f" S\" require src/lib/fs.f\nrequire src/lib/engine-id.f\nrequire src/lib/process-env.f\n: MAIN ( -- ) PROC-ENV-RESET 42 . ;\n" PUT
    s" env-cache" BUILD SUCCESS
    s" app-hb" CHECK-RUN

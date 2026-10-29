@@ -273,7 +273,7 @@ private
 
 : TEST-STORE-AFTER-CALL ( -- )
    s" a guarded store keeps its address through a call" T-LABEL
-   s" /dev/null" FS-PATHZ open-rd {: fd:n :}
+   s" /dev/null" FS:>PATHZ open-rd {: fd:n :}
    fd 0 >= TTRUE
    fd TIP-CELLS !
    TIP-CELLS byte-view cell-view TIP-CLOSE-CELL

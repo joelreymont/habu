@@ -24,8 +24,8 @@ require src/lib/fs-mutate.f
 package MAPPED
 private
 
-create SINK-DIR FS-PATH-CAP allot
-create SINK-PATH FS-PATH-CAP allot
+create SINK-DIR PATH-CAP allot
+create SINK-PATH PATH-CAP allot
 variable SINK-FD
 
 : DIR! ( ptr u8 n -- n ) {: a:ptr u:n :}
@@ -34,11 +34,11 @@ variable SINK-FD
 
 : OPEN-SINK ( -- n )
    s" habu-mapped" FS:MKTEMP-DIR DIR! {: du:n :}
-   SINK-DIR du s" sink" SINK-PATH JOIN-PATH {: u:n :}
-   SINK-PATH u FS-PATHZ FS-O-WRONLY FS-O-CREAT or FS-O-TRUNC or FS-MODE-0644 open {: fd:n :}
+   SINK-DIR du s" sink" SINK-PATH FS:JOIN-PATH {: u:n :}
+   SINK-PATH u FS:>PATHZ FS:O-WRONLY FS:O-CREAT or FS:O-TRUNC or FS:MODE-0644 open {: fd:n :}
    fd 0 < if E-FS-OPEN throw then
-   SINK-PATH u REMOVE-FILE
-   SINK-DIR du REMOVE-DIR
+   SINK-PATH u FS:REMOVE-FILE
+   SINK-DIR du FS:REMOVE-DIR
    fd SINK-FD !
    fd ;
 

@@ -16,9 +16,9 @@ TYPED-VARIABLE OLD-IMAGE FONT:image
    s" /System/Library/Fonts/Supplemental/Arial.ttf" ;
 
 : LOAD-FONT ( -- FONT:font )
-   FONT-PATH$ FILE-SIZE {: size:n :}
+   FONT-PATH$ FS:FILE-SIZE {: size:n :}
    size MEM-ALLOC-BYTES {: data:ptr cap:n :}
-   FONT-PATH$ data cap READ-ALL cap T=
+   FONT-PATH$ data cap FS:READ-ALL cap T=
    data cap 0 FONT:OPEN {: face:FONT:font :}
    data cap MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES
    face ;
@@ -41,7 +41,7 @@ public
    LOAD-FONT {: face:FONT:font :}
    face s" B" 1000 FONT:RENDER {: image:FONT:image :}
    image FONT:SVG$ {: svg:ptr bytes:n :}
-   s" build/font-image.svg" svg bytes WRITE-ALL
+   s" build/font-image.svg" svg bytes FS:WRITE-ALL
    image FONT:FREE face FONT:CLOSE
    T-REPORT ;
 

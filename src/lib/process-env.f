@@ -102,7 +102,7 @@ public
 
 \ The PATH scan reads a split field as STR:SPLIT-NEXT states it: a NUM:byte-len
 \ field length and a NUM:byte-off cursor. Both have to cross into the engine's
-\ own len/off roles, because PROC-TRY-PATH-SEG, JOIN-PATH and the PROC-PATH-I
+\ own len/off roles, because PROC-TRY-PATH-SEG, FS:JOIN-PATH and the PROC-PATH-I
 \ cursor cell are stated in those and that chain reaches this file's public entry.
 \ Two checked role-to-role casts at this file's scope do the crossing, so no raw
 \ cell exists in between and NUM is not reopened. Raw storage rejects nominal
@@ -436,20 +436,20 @@ public
    ;MATCH ;
 
 : PROC-EXECUTABLE? ( ptr u8 len -- bool )
-   LEN>N EXECUTABLE? ;
+   LEN>N FS:EXECUTABLE? ;
 
 : PROC-COPY-PATH ( ptr u8 len ptr u8 -- len ) {: a:ptr u dst:ptr :}
    u LEN>N 0 < if E-PROC-PATH throw then
-   u LEN>N FS-PATH-CAP > if E-PROC-PATH throw then
+   u LEN>N PATH-CAP > if E-PROC-PATH throw then
    a dst u LEN>N BYTE-COPY
    u ;
 
 : PROC-JOIN-PATH-SEG ( ptr u8 len ptr u8 len ptr u8 -- len )
    {: seg:ptr segu cmd:ptr cmdu dst:ptr :}
    segu LEN>N 0= if
-      s" ." cmd cmdu LEN>N dst JOIN-PATH >LEN
+      s" ." cmd cmdu LEN>N dst FS:JOIN-PATH >LEN
    else
-      seg segu LEN>N cmd cmdu LEN>N dst JOIN-PATH >LEN
+      seg segu LEN>N cmd cmdu LEN>N dst FS:JOIN-PATH >LEN
    then ;
 
 : PROC-TRY-PATH-SEG ( ptr u8 len ptr u8 len ptr u8 -- option<len> )   \ SOME resolved length if executable, else NONE

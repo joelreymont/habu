@@ -18,10 +18,10 @@ require tools/native-build-core.f
 package NATIVE-BUILD
 private
 
-create MAP-ORIGIN-PATH FS-PATH-CAP allot
+create MAP-ORIGIN-PATH PATH-CAP allot
 DYNAMIC-BUFFER MAP-ORIGIN-TEXT u8
-create SEED-IMAGE FS-PATH-CAP allot
-create SEED-ART FS-PATH-CAP allot
+create SEED-IMAGE PATH-CAP allot
+create SEED-ART PATH-CAP allot
 create SEED-KEY 32 allot
 create SEED-HASH SHA256-FILE-CTX-BYTES allot
 $10000 constant SEED-OUTPUT-CAP
@@ -139,10 +139,10 @@ CAST: ORIGIN-AT-XT ( n -- [ ptr u8 n n -- n bool ] )
 : MAP-ORIGIN-CHECK ( ptr u8 n -- )
    {: dir:ptr diru:n :}
    T-RESET
-   dir diru s" hb-root.map" MAP-ORIGIN-PATH JOIN-PATH {: pathu:n :}
-   MAP-ORIGIN-PATH pathu FILE-SIZE {: size:n :}
+   dir diru s" hb-root.map" MAP-ORIGIN-PATH FS:JOIN-PATH {: pathu:n :}
+   MAP-ORIGIN-PATH pathu FS:FILE-SIZE {: size:n :}
    size MAP-ORIGIN-TEXT-RESERVE
-   MAP-ORIGIN-PATH pathu 0 MAP-ORIGIN-TEXT BYTE-VIEW size READ-ALL size T=
+   MAP-ORIGIN-PATH pathu 0 MAP-ORIGIN-TEXT BYTE-VIEW size FS:READ-ALL size T=
    0 MAP-ORIGIN-TEXT BYTE-VIEW size {: map:ptr mapu:n :}
    s" retired records do not shift the next definitions' source paths" T-LABEL
    map mapu s" MAP-ORIGIN-A " CONTAINS? TFALSE
@@ -198,7 +198,7 @@ CAST: TARGET-N-XT ( n -- [ -- n ] )
 : RUN-SEED-CHECK ( ptr u8 n ptr u8 n bool -- )
    {: dir:ptr diru:n image:ptr imageu:n growth:bool :}
    T-RESET
-   dir diru image imageu SEED-IMAGE JOIN-PATH {: pathu:n :}
+   dir diru image imageu SEED-IMAGE FS:JOIN-PATH {: pathu:n :}
    PROC-ARGV-ENV-RESET
    PROC-ENV-INHERIT-MISSING
    s" --load" >LEN PROC-ARGV+
@@ -314,7 +314,7 @@ CAST: TARGET-N-XT ( n -- [ -- n ] )
 
 : SAVE-FULL ( ptr u8 n -- )
    {: dir:ptr diru:n :}
-   dir diru s" seed-runtime.aot" SEED-ART JOIN-PATH {: pathu:n :}
+   dir diru s" seed-runtime.aot" SEED-ART FS:JOIN-PATH {: pathu:n :}
    AOT-IDENT:RESET
    s" test/compiler/native-host-bundle-check.f" AOT-IDENT:PATH+
    SEED-HASH ENGINE-ID:PATH$ SEED-KEY SHA256-FILE-IN 0<> if
@@ -323,8 +323,8 @@ CAST: TARGET-N-XT ( n -- [ -- n ] )
 
 : GROWTH-CHILD ( ptr u8 n -- )
    {: dir:ptr diru:n :}
-   dir diru s" seed-runtime.aot" SEED-ART JOIN-PATH {: pathu:n :}
-   dir diru s" hb-root" SEED-IMAGE JOIN-PATH {: child-u:n :}
+   dir diru s" seed-runtime.aot" SEED-ART FS:JOIN-PATH {: pathu:n :}
+   dir diru s" hb-root" SEED-IMAGE FS:JOIN-PATH {: child-u:n :}
    PROC-ARGV-ENV-RESET
    PROC-ENV-INHERIT-MISSING
    s" --load" >LEN PROC-ARGV+

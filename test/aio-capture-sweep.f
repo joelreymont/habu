@@ -17,9 +17,9 @@ $10000 constant CAP
 600000 constant TIMEOUT-MS
 create OUT CAP allot
 create ERR CAP allot
-create SWEEP-BUF FS-PATH-CAP allot
+create SWEEP-BUF PATH-CAP allot
 variable SWEEP-U
-create HELD-BUF FS-PATH-CAP allot
+create HELD-BUF PATH-CAP allot
 variable HELD-U
 
 : SWEEP$ ( -- ptr u8 n ) SWEEP-BUF SWEEP-U @ ;
@@ -27,9 +27,9 @@ variable HELD-U
 
 : PREPARE ( -- )
    SOURCE-ROOT:CURRENT$ s" aio-capture-sweep-subject.f"
-      SWEEP-BUF JOIN-PATH SWEEP-U !
+      SWEEP-BUF FS:JOIN-PATH SWEEP-U !
    SOURCE-ROOT:CURRENT$ s" aio-capture-held-subject.f"
-      HELD-BUF JOIN-PATH HELD-U ! ;
+      HELD-BUF FS:JOIN-PATH HELD-U ! ;
 
 : CHILD ( ptr u8 n -- len len n )
    PROC-ARGV-ENV-RESET

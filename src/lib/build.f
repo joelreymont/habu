@@ -35,7 +35,7 @@ package BUILD
 58 constant BUILD-COLON
 59 constant BUILD-SEMI
 
-create BUILD-PATH-BUF FS-PATH-CAP allot
+create BUILD-PATH-BUF PATH-CAP allot
 
 PTR-VARIABLE BUILD-SOURCE               \ the mapping CHECK reads the file into
 variable BUILD-SOURCE-LEN
@@ -119,7 +119,7 @@ public
 
 : CHECK ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0 <= if E-BUILD-SOURCE throw then
-   a u FILE? 0= if E-BUILD-SOURCE throw then
+   a u FS:FILE? 0= if E-BUILD-SOURCE throw then
    a u FS:OPEN-SIZED {: file:fd size:n found:bool :}
    found 0= if E-BUILD-SOURCE throw then
    size 0= if file FD>N close E-BUILD-SOURCE throw then
@@ -130,7 +130,7 @@ private
 
 : BUILD-EXPECT ( ptr u8 n -- ) {: a:ptr u :}
    u 0 <= if E-BUILD-PATH throw then
-   a u FILE? 0= if E-BUILD-PATH throw then ;
+   a u FS:FILE? 0= if E-BUILD-PATH throw then ;
 
 public
 
@@ -139,8 +139,8 @@ public
    nameu 0 <= if E-BUILD-PATH throw then
    \ The name is compared with the room the root and its separator leave: in a
    \ sum, a length near the maximum cell wraps back into range.
-   nameu FS-PATH-CAP 1 - rootu - > if E-BUILD-PATH throw then
-   root rootu name nameu BUILD-PATH-BUF JOIN-PATH
+   nameu PATH-CAP 1 - rootu - > if E-BUILD-PATH throw then
+   root rootu name nameu BUILD-PATH-BUF FS:JOIN-PATH
    BUILD-PATH-BUF swap ;
 
 : STEP ( ptr u8 n [ -- n ] -- ) {: name:ptr nameu:n q :}
@@ -155,13 +155,13 @@ private
 \ command script that falls into the stdin REPL after its body would block the
 \ whole build. Give every build child /dev/null so the REPL sees immediate EOF.
 : BUILD-DEV-NULL-RD ( -- fd )
-   s" /dev/null" FS-PATHZ open-rd dup 0 < if drop E-FS-OPEN throw then >FD ;
+   s" /dev/null" FS:>PATHZ open-rd dup 0 < if drop E-FS-OPEN throw then >FD ;
 
 public
 
 : RUN ( ptr u8 n ptr u8 n -- n ) {: cmd:ptr cmdu:n artifact:ptr artifactu:n :}
    cmdu 0 <= if E-BUILD-COMMAND throw then
-   cmd cmdu FILE? 0= if E-BUILD-COMMAND throw then
+   cmd cmdu FS:FILE? 0= if E-BUILD-COMMAND throw then
    BUILD-DEV-NULL-RD {: nullfd:fd :}
    cmd cmdu >LEN nullfd -1 >FD -1 >FD PROC-RUN-IO-RC   \ result<n,n> on the stack
    nullfd FD>N close                                    \ close nullfd; the result stays below

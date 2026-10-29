@@ -165,10 +165,10 @@ package AOTSH
 using AOT-BUF
 
 32 constant SHA-BYTES
-create DIR FS-PATH-CAP allot    variable DIR-U       \ where the artifacts go
-create ART FS-PATH-CAP allot    variable ART-U       \ the capture's own
-create FORGED FS-PATH-CAP allot    variable FORGED-U \ one with a field changed
-create HOST FS-PATH-CAP allot    variable HOST-U     \ the capture without its shadow
+create DIR PATH-CAP allot    variable DIR-U       \ where the artifacts go
+create ART PATH-CAP allot    variable ART-U       \ the capture's own
+create FORGED PATH-CAP allot    variable FORGED-U \ one with a field changed
+create HOST PATH-CAP allot    variable HOST-U     \ the capture without its shadow
 create SHA-CTX SHA256-CTX-BYTES allot
 create DIGESTS SHA-BYTES 4 * allot   \ the four tables' digests before the round trip
 create REREAD SHA-BYTES allot
@@ -393,11 +393,11 @@ create FIRST SHA-BYTES allot         \ the first WRITE's file digest
 
 \ The path of `name` in the artifacts' directory, into `dst`.
 : IN-DIR ( ptr u8 n ptr u8 -- n ) {: na:ptr nu:n dst:ptr :}
-   DIR DIR-U @ na nu dst JOIN-PATH ;
+   DIR DIR-U @ na nu dst FS:JOIN-PATH ;
 
 : ARTIFACT! ( -- )
    s" habu-aot-shadow-capture" FS:MKTEMP-DIR {: a:ptr u:n :}
-   a u CLEANUP-TREE+
+   a u FS:CLEANUP-TREE+
    a DIR u BYTE-COPY  u DIR-U !
    s" shadow.aot" ART IN-DIR ART-U !
    AOTSH-KEY:IDENT! ;

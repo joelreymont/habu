@@ -22,13 +22,13 @@ $4000 constant CAP
 $2F constant SLASH
 $78 constant LOWER-X
 
-create ROOT FS-PATH-CAP allot       variable ROOT-U
-create LONG-ROOT FS-PATH-CAP allot  variable LONG-U
-create QUOTED-ROOT FS-PATH-CAP allot variable QUOTED-U
-create OVERFLOW-ROOT FS-PATH-CAP allot variable OVERFLOW-U
-create FORGED-ROOT FS-PATH-CAP allot variable FORGED-U
-create BIN-SFX FS-PATH-CAP allot     variable BIN-SFX-U
-create OUT-SFX FS-PATH-CAP allot     variable OUT-SFX-U
+create ROOT PATH-CAP allot       variable ROOT-U
+create LONG-ROOT PATH-CAP allot  variable LONG-U
+create QUOTED-ROOT PATH-CAP allot variable QUOTED-U
+create OVERFLOW-ROOT PATH-CAP allot variable OVERFLOW-U
+create FORGED-ROOT PATH-CAP allot variable FORGED-U
+create BIN-SFX PATH-CAP allot     variable BIN-SFX-U
+create OUT-SFX PATH-CAP allot     variable OUT-SFX-U
 variable BIN#  variable OUT#  variable OUT-OK
 create OUT CAP allot
 create ERR CAP allot
@@ -74,19 +74,19 @@ create ERR CAP allot
 \ slot directory - <suite root>/pool-<pid>-<seq>-tmp, 97 bytes measured - which
 \ makes SETUP throw E-FS-CAPACITY before the first build, so this test runs on
 \ its own (docs/gate.md), where TMPDIR, then /tmp, is the shortest base a run
-\ can offer; CLEANUP-TREE+ below removes the tree.
+\ can offer; FS:CLEANUP-TREE+ below removes the tree.
 : SETUP ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" habu-nf-path" FS:MKTEMP-DIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY  u ROOT-U !
-   ROOT$ CLEANUP-TREE+
+   ROOT$ FS:CLEANUP-TREE+
    LONG-ROOT!
    OVERFLOW-ROOT!
-   ROOT$ S\" lane one 'quote; dollar$ \qdouble\q [brackets]" QUOTED-ROOT JOIN-PATH QUOTED-U !
-   LONG$ MAKE-DIRS
-   QUOTED$ MAKE-DIRS
-   ROOT$ s" forged" FORGED-ROOT JOIN-PATH FORGED-U !
-   FORGED$ MAKE-DIRS ;
+   ROOT$ S\" lane one 'quote; dollar$ \qdouble\q [brackets]" QUOTED-ROOT FS:JOIN-PATH QUOTED-U !
+   LONG$ FS:MAKE-DIRS
+   QUOTED$ FS:MAKE-DIRS
+   ROOT$ s" forged" FORGED-ROOT FS:JOIN-PATH FORGED-U !
+   FORGED$ FS:MAKE-DIRS ;
 
 : GF-ENV ( ptr u8 n -- ) {: root:ptr rootu:n :}
    PROC-ENV-RESET
@@ -115,11 +115,11 @@ create ERR CAP allot
 
 : SEEN-OUT ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu:n a:ptr u:n :}
    a OUT-SFX u BYTE-COPY  u OUT-SFX-U !  1 OUT# +!
-   path pathu OUT CAP READ-ALL {: outu:n :}
+   path pathu OUT CAP FS:READ-ALL {: outu:n :}
    OUT outu S\" ok\n" STR= OUT-OK ! ;
 
 : ARTIFACT ( ptr u8 n -- ) {: path:ptr pathu:n :}
-   path pathu BASENAME {: name:ptr nameu:n :}
+   path pathu FS:BASENAME {: name:ptr nameu:n :}
    name nameu s" nf-bin-" SUFFIX$ {: b:ptr bu:n :}
    b bu STR-DIGITS? if b bu SEEN-BIN exit then
    name nameu s" nf-out-" SUFFIX$ {: o:ptr ou:n :}
@@ -130,7 +130,7 @@ create ERR CAP allot
 \ directory, so one bin and one out sharing a digit suffix is that exact pair.
 : ARTIFACTS-OK? ( ptr u8 n -- bool ) {: root:ptr rootu:n :}
    0 BIN# !  0 OUT# !  false OUT-OK !
-   root rootu [: ARTIFACT ;] WALK-FILES
+   root rootu [: ARTIFACT ;] FS:WALK-FILES
    BIN# @ 1 = OUT# @ 1 = and OUT-OK @ 0<> and
    BIN-SFX BIN-SFX-U @ OUT-SFX OUT-SFX-U @ STR= and ;
 
@@ -203,7 +203,7 @@ public
    NONZERO-CONTROL-CASE
    COMMAND-CAPACITY-CASE
    OVERFLOW-CASE
-   CLEANUP-RUN
+   FS:CLEANUP-RUN
    T-REPORT ;
 
 ;package

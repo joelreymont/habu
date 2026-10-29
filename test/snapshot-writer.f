@@ -38,7 +38,7 @@ variable EXITED
 : ENGINE$ ( -- ptr u8 n ) ENGINE-CANDIDATE:PATH$ ;
 
 \ ---- isolated tmp root ----
-create ROOT-BUF FS-PATH-CAP allot
+create ROOT-BUF PATH-CAP allot
 variable ROOT-U
 
 : ROOT ( -- ptr u8 n )
@@ -50,22 +50,22 @@ variable ROOT-U
 
 : SETUP-ROOT ( -- )
    s" habu-snapshot-writer" FS:MKTEMP-DIR ROOT!
-   ROOT CLEANUP-TREE+ ;
+   ROOT FS:CLEANUP-TREE+ ;
 
-create PATH-BUF FS-PATH-CAP allot
+create PATH-BUF PATH-CAP allot
 : PATH$ ( ptr u8 n -- ptr u8 n )
    {: name:ptr size:n :}
-   ROOT name size PATH-BUF JOIN-PATH PATH-BUF swap ;
+   ROOT name size PATH-BUF FS:JOIN-PATH PATH-BUF swap ;
 : SNAP0$ ( -- ptr u8 n ) s" application" PATH$ ;
 : SNAP-SRC$ ( -- ptr u8 n ) s" probe.f" PATH$ ;
 : BAD-SNAP$ ( -- ptr u8 n ) s" bad-locator" PATH$ ;
 : BAD-BAND$ ( -- ptr u8 n ) s" bad-registry" PATH$ ;
-create SHADOW-SRC-BUF FS-PATH-CAP allot
-create SHADOW-SNAP-BUF FS-PATH-CAP allot
+create SHADOW-SRC-BUF PATH-CAP allot
+create SHADOW-SNAP-BUF PATH-CAP allot
 : SHADOW-SRC$ ( -- ptr u8 n )
-   ROOT s" shadow.f" SHADOW-SRC-BUF JOIN-PATH SHADOW-SRC-BUF swap ;
+   ROOT s" shadow.f" SHADOW-SRC-BUF FS:JOIN-PATH SHADOW-SRC-BUF swap ;
 : SHADOW-SNAP$ ( -- ptr u8 n )
-   ROOT s" shadow-snapshot" SHADOW-SNAP-BUF JOIN-PATH SHADOW-SNAP-BUF swap ;
+   ROOT s" shadow-snapshot" SHADOW-SNAP-BUF FS:JOIN-PATH SHADOW-SNAP-BUF swap ;
 
 \ ---- snapshot image reader ----
 PTR-VARIABLE IMGP
@@ -75,9 +75,9 @@ variable IMGU
    IMGP @ ;
 
 : LOAD-IMAGE ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u FILE-SIZE {: sz:n :}
+   a u FS:FILE-SIZE {: sz:n :}
    sz MEM-ALLOC-BYTES drop IMGP !
-   a u IMG sz READ-ALL IMGU !
+   a u IMG sz FS:READ-ALL IMGU !
    IMGU @ sz <> if s" snapshot writer short read" 74 die then ;
 
 : U64@ ( n -- n ) {: k:n :}
@@ -309,7 +309,7 @@ variable IMGU
    8 0 ?do
       0 IMG IMAGE-TEXT-SIZE-OFF i + + c!
    loop
-   BAD-SNAP$ IMG IMGU @ WRITE-ALL ;
+   BAD-SNAP$ IMG IMGU @ FS:WRITE-ALL ;
 
 \ ---- warm snapshot probes ----
 : STORE! ( len len outcome ptr u8 n -- )
@@ -322,7 +322,7 @@ variable IMGU
    ;MATCH ;
 
 : WARM-LOAD ( ptr u8 n -- ) {: s:ptr su:n :}
-   SNAP-SRC$ s su WRITE-ALL
+   SNAP-SRC$ s su FS:WRITE-ALL
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    SNAP-SRC$ >LEN PROC-ARGV+
@@ -377,8 +377,8 @@ variable BAND-WID
 
 \ ---- doctored-band legs ----------------------------------------------------
 : WRITE-BAND-COPY ( -- )
-   BAD-BAND$ IMG IMGU @ WRITE-ALL
-   BAD-BAND$ CHMOD-X
+   BAD-BAND$ IMG IMGU @ FS:WRITE-ALL
+   BAD-BAND$ FS:CHMOD-X
    BAD-BAND$ CODESIGN:FORCE ;
 
 : RUN-BAND-COPY ( -- )
@@ -585,7 +585,7 @@ variable BAND-WID
    s" poisoned snapshot builds (canaries planted and proven live)" T-LABEL
    RC @ 0<> if OUT OUT-U @ type ERR$ type then
    RC @ 0 T=
-   SNAP0$ EXISTS? TTRUE
+   SNAP0$ FS:EXISTS? TTRUE
    SNAP0$ LOAD-IMAGE
    STREAM-SHAPE-CASE
    s" snapshot carries no return stack: base cells zero" T-LABEL
@@ -863,22 +863,22 @@ variable STRAYS
 \ did not exist before, or anything beside the application image or the
 \ directory output named after it.
 : STRAY ( ptr u8 n -- )
-   BASENAME {: a:ptr u:n :}
+   FS:BASENAME {: a:ptr u:n :}
    a u s" close-fail" STARTS-WITH?  a u s" application." STARTS-WITH?  or
    a u s" dir-out." STARTS-WITH?  or
    if 1 STRAYS +! then ;
 
 : STRAYS@ ( -- n )
    0 STRAYS !
-   ROOT [: STRAY ;] WALK-FILES
+   ROOT [: STRAY ;] FS:WALK-FILES
    STRAYS @ ;
 
 \ The file holds exactly the bytes LOAD-IMAGE read last.
 : HOLDS-IMG? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u FILE? 0= if false exit then
-   a u FILE-SIZE IMGU @ <> if false exit then
+   a u FS:FILE? 0= if false exit then
+   a u FS:FILE-SIZE IMGU @ <> if false exit then
    IMGU @ MEM-ALLOC-BYTES {: buf:ptr size:n :}
-   a u buf size READ-ALL size =
+   a u buf size FS:READ-ALL size =
    buf size IMG IMGU @ STR= and
    buf size munmap drop ;
 
@@ -888,7 +888,7 @@ variable STRAYS
    RC @ OUTPUT-FAIL-RC T=
    ERR$ s" snap: output close failed" CONTAINS? TTRUE
    s" a failed write leaves no image where there was none" T-LABEL
-   CLOSE-FAIL$ EXISTS? TFALSE
+   CLOSE-FAIL$ FS:EXISTS? TFALSE
    STRAYS@ 0 T=
    RELOAD
    s" test/snapshot-writer-close-fail.f" BUILD-WITH
@@ -908,7 +908,7 @@ variable STRAYS
    RC @ OUTPUT-FAIL-RC T=
    ERR$ s" snap: cannot open output" CONTAINS? TTRUE
    s" an output that cannot be opened creates nothing" T-LABEL
-   MISSING$ EXISTS? TFALSE ;
+   MISSING$ FS:EXISTS? TFALSE ;
 
 \ ---- an output the rename cannot replace dies by name -----------------------
 : DIR-OUT$ ( -- ptr u8 n ) s" dir-out" PATH$ ;
@@ -916,13 +916,13 @@ variable STRAYS
 \ A directory at the output path lets the sibling be written and signed, then
 \ refuses the rename.
 : REPLACE-FAIL-CASE ( -- )
-   DIR-OUT$ MAKE-DIR
+   DIR-OUT$ FS:MAKE-DIR
    DIR-OUT$ s" src/lib/string.f" BUILD-WITH-TO
    s" an output the rename cannot replace is refused by name" T-LABEL
    RC @ OUTPUT-FAIL-RC T=
    ERR$ s" snap: cannot replace output" CONTAINS? TTRUE
    s" the refused output stays as it was and the staged image goes" T-LABEL
-   DIR-OUT$ DIR? TTRUE
+   DIR-OUT$ FS:DIR? TTRUE
    STRAYS@ 0 T= ;
 
 : SHADOW$ ( -- ptr u8 n )
@@ -935,13 +935,13 @@ variable STRAYS
 \ The shadow answers the version the writer checks for, so only the capability
 \ check can refuse it.
 : SHADOW-CASE ( -- )
-   SHADOW-SRC$ SHADOW$ WRITE-ALL
+   SHADOW-SRC$ SHADOW$ FS:WRITE-ALL
    SHADOW-SNAP$ SHADOW-SRC$ BUILD-WITH-TO
    s" a source-shadowed capability cannot authorize capture" T-LABEL
    RC @ 74 <> if OUT OUT-U @ type ERR$ type then
    RC @ 74 T=
    ERR$ s" snap: format capability is not an engine primitive" CONTAINS? TTRUE
-   SHADOW-SNAP$ EXISTS? TFALSE ;
+   SHADOW-SNAP$ FS:EXISTS? TFALSE ;
 
 \ ---- live compiler state refuses capture -----------------------------------
 : ACTIVE-SNAP$ ( -- ptr u8 n ) s" active" PATH$ ;
@@ -958,7 +958,7 @@ variable STRAYS
    RC @ 74 <> if OUT OUT-U @ type ERR$ type then
    RC @ 74 T=
    ERR$ why whyu CONTAINS? TTRUE
-   ACTIVE-SNAP$ EXISTS? TFALSE ;
+   ACTIVE-SNAP$ FS:EXISTS? TFALSE ;
 
 : ACTIVE-REFUSED ( ptr u8 n -- )
    s" snap: active compiler state at capture" ACTIVE-REFUSED-WITH ;
@@ -971,7 +971,7 @@ variable STRAYS
    s" a capture from the immediate with nothing open saves" T-LABEL
    RC @ 0<> if OUT OUT-U @ type ERR$ type then
    RC @ 0 T=
-   QUIESCENT-SNAP$ EXISTS? TTRUE
+   QUIESCENT-SNAP$ FS:EXISTS? TTRUE
    s" a capture with a definition open is refused" T-LABEL
    s\" : ACTIVE-DEF ( -- ) SNAP-WRITER-ACTIVE:SAVE ;\n" ACTIVE-REFUSED
    \ The image copies the unit cell, so a restored engine would call the dead
@@ -1016,12 +1016,12 @@ variable STRAYS
    POLICY-PROBE$ WARM-STDIN
    EXITED @ TTRUE  RC @ 0 T=  ERR-U @ 0 T=
    OUT OUT-U @ S\" 0\n0\n" T$=
-   POLICY-ARTIFACT$ label labelu APPEND-FILE
-   POLICY-ARTIFACT$ OUT OUT-U @ APPEND-FILE ;
+   POLICY-ARTIFACT$ label labelu FS:APPEND-FILE
+   POLICY-ARTIFACT$ OUT OUT-U @ FS:APPEND-FILE ;
 
 : POLICY-CASE ( -- )
-   s" build" MAKE-DIRS
-   POLICY-ARTIFACT$ s" " WRITE-ALL
+   s" build" FS:MAKE-DIRS
+   POLICY-ARTIFACT$ s" " FS:WRITE-ALL
    POLICY-SAVE$ S\" allow\n" POLICY-IMAGE-CASE
    POLICY-SEALED-SAVE$ S\" sealed\n" POLICY-IMAGE-CASE ;
 
@@ -1043,9 +1043,9 @@ public
 
 : RUN ( -- )
    T-RESET
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    [: BODY ;] catch {: code:n :}
-   CLEANUP-RUN
+   FS:CLEANUP-RUN
    code 0 <> if code throw then
    T-REPORT
    s" snapshot-writer-test: ok" type cr ;

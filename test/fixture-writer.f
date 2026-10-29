@@ -32,7 +32,7 @@ package FIXTURE-WRITER
 
 create KEY-HEX KEYED-IMAGE:KEY-HEX-LEN allot
 create ENGINE-KEY KEYED-IMAGE:KEY-HEX-LEN allot   \ the candidate's, naming its img/
-create PATH-BUF FS-PATH-CAP allot
+create PATH-BUF PATH-CAP allot
 
 variable PATH-U
 variable RESOLVED?

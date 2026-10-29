@@ -62,7 +62,7 @@ variable EXP-U
 \ build window: `hb: internal engine word: DECLARATIONS`, exit 70 on the sealed
 \ product. So it runs on the engine test/whitebox-child.f names.
 : PREPARE ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" prim-owner-scope" WHITEBOX-CHILD:PROVIDE ;
 
 : ARG ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
@@ -453,7 +453,7 @@ public
    TIER-SELECT-RUNS
    SITE-RUNNING-ENGINE
    OWNERS-SEALED
-   [: PREPARE WINDOW ;] [: CLEANUP-RUN ;] finally
+   [: PREPARE WINDOW ;] [: FS:CLEANUP-RUN ;] finally
    T-REPORT ;
 ;package
 

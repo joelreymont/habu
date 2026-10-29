@@ -41,7 +41,7 @@ require src/lib/fmt.f                        \ FMT:.INT - one-line number text, 
 \ it makes, so whether a row's name joins never depends on how long TMPDIR is.
 64 constant GT-NAME-MAX
 
-create GT-ROOT-BUF FS-PATH-CAP allot
+create GT-ROOT-BUF PATH-CAP allot
 create GT-OUT-BUF GT-OUT-CAP allot
 create GT-ERR-BUF GT-ERR-CAP allot
 create GT-FAIL-NAMES GT-FAIL-MAX GT-FAIL-NAME-CAP * allot
@@ -99,17 +99,17 @@ variable GT-TAIL-U
 
 : GT-COPY-ROOT! ( ptr u8 n -- ) {: a:ptr u :}
    u 0 < if E-FS-PATH throw then
-   u FS-PATH-CAP > if E-FS-PATH throw then
+   u PATH-CAP > if E-FS-PATH throw then
    a GT-ROOT-BUF u BYTE-COPY
    u GT-ROOT-U ! ;
 
 : GT-CLEANUP ( -- )
-   CLEANUP-RUN ;
+   FS:CLEANUP-RUN ;
 
 : GT-PATH ( ptr u8 n ptr u8 -- n ) {: name:ptr nameu dst:ptr :}
    GT-EXPECT-ROOT
    nameu GT-NAME-MAX > if E-FS-CAPACITY throw then
-   GT-ROOT name nameu dst JOIN-PATH ;
+   GT-ROOT name nameu dst FS:JOIN-PATH ;
 
 : GT-FAIL-STORED ( -- n )
    GT-FAIL# @ GT-FAIL-MAX > if GT-FAIL-MAX exit then
@@ -220,7 +220,7 @@ variable GT-TAIL-U
 GT-CAP-NEST-MAX GT-CAP-ROWS * TYPED-BUFFER GT-CAP-SAVES n
 GT-CAP-NEST-MAX GT-CAP-ROWS * TYPED-BUFFER GT-CAP-READERS n
 variable GT-CAP-DEPTH                    \ frames in use
-create GT-CAP-PATH FS-PATH-CAP allot     \ a file's path while GT-CAP-FILE opens it
+create GT-CAP-PATH PATH-CAP allot     \ a file's path while GT-CAP-FILE opens it
 1 BUFFER: GT-CAP-PROBE                   \ the byte a reader past a full span looks for
 
 \ fd's row in the innermost frame.
@@ -251,12 +251,12 @@ create GT-CAP-PATH FS-PATH-CAP allot     \ a file's path while GT-CAP-FILE opens
 \ comes back; on a throw nothing is held.
 : GT-CAP-FILE ( ptr u8 n ptr u8 n -- n n )
    {: dir:ptr diru:n name:ptr nameu:n :}
-   dir diru name nameu GT-CAP-PATH JOIN-PATH {: pathu:n :}
-   GT-CAP-PATH pathu FS-PATHZ
-   FS-O-WRONLY FS-O-CREAT or FS-O-TRUNC or FS-O-APPEND or FS-MODE-0644 open {: wr:n :}
+   dir diru name nameu GT-CAP-PATH FS:JOIN-PATH {: pathu:n :}
+   GT-CAP-PATH pathu FS:>PATHZ
+   FS:O-WRONLY FS:O-CREAT or FS:O-TRUNC or FS:O-APPEND or FS:MODE-0644 open {: wr:n :}
    wr 0 < if E-FS-OPEN throw then
-   GT-CAP-PATH pathu FS-PATHZ open-rd {: opened:n :}
-   GT-CAP-PATH pathu FS-PATHZ unlink {: gone:n :}
+   GT-CAP-PATH pathu FS:>PATHZ open-rd {: opened:n :}
+   GT-CAP-PATH pathu FS:>PATHZ unlink {: gone:n :}
    opened 0 < if wr close E-FS-OPEN throw then
    opened GT-CAP-DUP {: rd:n :}
    opened close
@@ -554,15 +554,15 @@ create GT-CAP-PATH FS-PATH-CAP allot     \ a file's path while GT-CAP-FILE opens
    s" test-runner: failures" GT-EX-FAIL die ;
 
 \ The longest TMPDIR GT-START takes for a root prefix of n bytes: the root
-\ FS:MKTEMP-DIR makes under it, a slash and a GT-NAME-MAX name fit FS-PATH-CAP.
+\ FS:MKTEMP-DIR makes under it, a slash and a GT-NAME-MAX name fit PATH-CAP.
 : GT-TMPDIR-MAX ( n -- n )
-   TEMP-DIR-BASE-MAX 1- GT-NAME-MAX - ;
+   FS:TEMP-DIR-BASE-MAX 1- GT-NAME-MAX - ;
 
 \ A TMPDIR longer than that is refused once, here, before anything is made: a
 \ named failure with its length and the limit, then the report's exit. A row's
 \ own deeper paths are not checked here: the deepest, streaming-sha256's deep
-\ file (tools/sha256-file-test.f), must still fit FS-PATH-CAP (src/lib/fs.f
-\ FS-PATHZ-INTO), so a gate TMPDIR must be short enough to leave it room. An
+\ file (tools/sha256-file-test.f), must still fit PATH-CAP (src/lib/fs.f
+\ PATHZ-INTO), so a gate TMPDIR must be short enough to leave it room. An
 \ empty TMPDIR counts as the /tmp FS:MKTEMP-DIR then uses.
 : GT-ROOM-CHECK ( n -- ) {: prefixu:n :}
    s" TMPDIR" GETENV dup 0= if 2drop s" /tmp" then nip {: tmpu:n :}
@@ -572,14 +572,14 @@ create GT-CAP-PATH FS-PATH-CAP allot     \ a file's path while GT-CAP-FILE opens
    s" runner: TMPDIR is " type tmpu FMT:.INT
    s"  bytes; at most " type max FMT:.INT
    s"  leave the root and a " type GT-NAME-MAX FMT:.INT
-   s" -byte name within FS-PATH-CAP " type FS-PATH-CAP FMT:.INT
+   s" -byte name within PATH-CAP " type PATH-CAP FMT:.INT
    cr
    GT-REPORT ;
 
 : GT-START ( ptr u8 n -- ) {: prefix:ptr prefixu :}
    GT-RESET
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    0 GT-ROOT-U !
    prefixu GT-ROOM-CHECK
    prefix prefixu FS:MKTEMP-DIR GT-COPY-ROOT!
-   GT-ROOT CLEANUP-TREE+ ;
+   GT-ROOT FS:CLEANUP-TREE+ ;

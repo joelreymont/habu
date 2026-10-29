@@ -13,8 +13,8 @@ require src/lib/test/assert.f          \ T-EX-FAIL
 package STRUCT-FIXTURE
 
 $1800 CODEGEN:BUFFER SRC
-create SRC-PATH FS-PATH-CAP allot
-create LIB-PATH FS-PATH-CAP allot
+create SRC-PATH PATH-CAP allot
+create LIB-PATH PATH-CAP allot
 variable SRC-U
 variable LIB-U
 
@@ -109,9 +109,9 @@ public
 : BUILD ( ptr u8 n -- ptr u8 n ) {: dir:ptr diru :}
    SRC CODEGEN:RESET
    TYPES SUMS PLACEMENTS OWNERSHIP RESULTS
-   dir diru s" hb-struct.c" SRC-PATH JOIN-PATH SRC-U !
-   dir diru s" libhbstruct.dylib" LIB-PATH JOIN-PATH LIB-U !
-   SRC-PATH SRC-U @ SRC CODEGEN:CONTENTS WRITE-ALL
+   dir diru s" hb-struct.c" SRC-PATH FS:JOIN-PATH SRC-U !
+   dir diru s" libhbstruct.dylib" LIB-PATH FS:JOIN-PATH LIB-U !
+   SRC-PATH SRC-U @ SRC CODEGEN:CONTENTS FS:WRITE-ALL
    CC
    LIB-PATH LIB-U @ ;
 

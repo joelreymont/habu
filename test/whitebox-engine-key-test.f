@@ -22,14 +22,14 @@ package WHITEBOX-KEY-TEST
 
 65536 constant CAP
 32 constant DIGEST-LEN
-create ROOT FS-PATH-CAP allot
-create HB FS-PATH-CAP allot
-create PREFIX FS-PATH-CAP allot
-create IMAGE FS-PATH-CAP allot
-create TMP FS-PATH-CAP allot
-create OUT-ROOT FS-PATH-CAP allot
-create DIR FS-PATH-CAP allot
-create IMG-DIR FS-PATH-CAP allot
+create ROOT PATH-CAP allot
+create HB PATH-CAP allot
+create PREFIX PATH-CAP allot
+create IMAGE PATH-CAP allot
+create TMP PATH-CAP allot
+create OUT-ROOT PATH-CAP allot
+create DIR PATH-CAP allot
+create IMG-DIR PATH-CAP allot
 create OUT CAP allot
 create ERR CAP allot
 create ENG-A DIGEST-LEN allot
@@ -69,7 +69,7 @@ variable RC
    s" habu-whitebox-copy" FS:MKTEMP-DIR SOURCE-ROOT:CANONICAL TTRUE
    {: tmp:ptr tmpu:n :}
    tmp TMP tmpu BYTE-COPY tmpu TMP-U !
-   TMP$ s" whitebox" IMAGE JOIN-PATH IMAGE-U !
+   TMP$ s" whitebox" IMAGE FS:JOIN-PATH IMAGE-U !
    ENG-A ENGINE-DIGEST! ;
 
 : PREPARE-FAILURES ( -- )
@@ -77,12 +77,12 @@ variable RC
    a ROOT u BYTE-COPY u ROOT-U !
    ROOT$ TREE-COPY:BUILD-SOURCES
    s" test" ROOT$ TREE-COPY:TREE
-   ROOT$ s" bin/hb" HB JOIN-PATH HB-U !
-   ROOT$ s" tmp" TMP JOIN-PATH TMP-U !
-   HB$ SOURCE-ROOT:DIRNAME MAKE-DIRS
-   ENGINE-CANDIDATE:PATH$ HB$ COPY-FILE-STREAM
-   HB$ CHMOD-X
-   TMP$ MAKE-DIR ;
+   ROOT$ s" bin/hb" HB FS:JOIN-PATH HB-U !
+   ROOT$ s" tmp" TMP FS:JOIN-PATH TMP-U !
+   HB$ SOURCE-ROOT:DIRNAME FS:MAKE-DIRS
+   ENGINE-CANDIDATE:PATH$ HB$ FS:COPY-FILE-STREAM
+   HB$ FS:CHMOD-X
+   TMP$ FS:MAKE-DIR ;
 
 : ENV ( -- )
    PROC-CWD:ARGV-ENV-CWD-RESET
@@ -101,7 +101,7 @@ variable RC
 : RESULT ( len len outcome -- ) RESULT-RC 0 T= ;
 
 : PROVIDER$ ( -- ptr u8 n )
-   S\" require test/whitebox-engine.f\nrequire src/lib/test.f\nrequire src/os/script-argv.f\npackage WB-REQUEST\nFS-PATH-CAP BUFFER: SAVED\nvariable USED\n: SAVED$ ( -- ptr u8 n ) SAVED USED @ ;\n: RUN ( -- )\n T-RESET\n WHITEBOX-ENGINE:PATH$ {: a:ptr u:n :}\n a SAVED u BYTE-COPY u USED !\n s\" supplier: \" type SAVED$ type cr\n s\" BEGIN-REUSE\" type cr\n SAVED$ WHITEBOX-ENGINE:PATH$ T$=\n 0 SCRIPT-ARGV$ WHITEBOX-ENGINE:PROVIDE\n SAVED$ WHITEBOX-ENGINE:PATH$ T$=\n SAVED$ EXECUTABLE? TTRUE\n s\" END-REUSE\" type cr\n T-REPORT ;\n' RUN\n;package\nexecute\n" ;
+   S\" require test/whitebox-engine.f\nrequire src/lib/test.f\nrequire src/os/script-argv.f\npackage WB-REQUEST\nPATH-CAP BUFFER: SAVED\nvariable USED\n: SAVED$ ( -- ptr u8 n ) SAVED USED @ ;\n: RUN ( -- )\n T-RESET\n WHITEBOX-ENGINE:PATH$ {: a:ptr u:n :}\n a SAVED u BYTE-COPY u USED !\n s\" supplier: \" type SAVED$ type cr\n s\" BEGIN-REUSE\" type cr\n SAVED$ WHITEBOX-ENGINE:PATH$ T$=\n 0 SCRIPT-ARGV$ WHITEBOX-ENGINE:PROVIDE\n SAVED$ WHITEBOX-ENGINE:PATH$ T$=\n SAVED$ FS:EXECUTABLE? TTRUE\n s\" END-REUSE\" type cr\n T-REPORT ;\n' RUN\n;package\nexecute\n" ;
 
 : PROVIDE ( -- )
    ENV
@@ -125,9 +125,9 @@ variable RC
 \ The img/ directory of one engine's out root holds no whitebox image, key or
 \ work directory.
 : IMG-CLEAN ( ptr u8 n -- ) {: name:ptr nameu:n :}
-   OUT-ROOT$ name nameu DIR JOIN-PATH DIR-U !
-   DIR$ s" img" IMG-DIR JOIN-PATH IMG-DIR-U !
-   IMG-DIR$ EXISTS? if IMG-DIR$ [: NO-SUPPLIER ;] FS-LIST:EACH then ;
+   OUT-ROOT$ name nameu DIR FS:JOIN-PATH DIR-U !
+   DIR$ s" img" IMG-DIR FS:JOIN-PATH IMG-DIR-U !
+   IMG-DIR$ FS:EXISTS? if IMG-DIR$ [: NO-SUPPLIER ;] FS-LIST:EACH then ;
 
 : FAILURE-REQUEST$ ( -- ptr u8 n )
    S\" require test/whitebox-engine.f\nrequire src/lib/test.f\nT-RESET\n: REQUEST ( -- ) s\" failed-whitebox\" WHITEBOX-ENGINE:PROVIDE ;\n' REQUEST E-PROC-TIMEOUT TTHROWS\nT-REPORT\n" ;
@@ -138,14 +138,14 @@ variable RC
    PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE-OUTCOME RESULT-RC ;
 
 : ASSERT-NO-PRODUCT ( -- )
-   IMAGE$ EXISTS? TFALSE
-   OUT-ROOT$ EXISTS? if OUT-ROOT$ [: IMG-CLEAN ;] FS-LIST:EACH then ;
+   IMAGE$ FS:EXISTS? TFALSE
+   OUT-ROOT$ FS:EXISTS? if OUT-ROOT$ [: IMG-CLEAN ;] FS-LIST:EACH then ;
 
 : FAILURE-CASES ( -- )
    PREPARE-FAILURES
    s" whitebox failure artifacts: " type ROOT$ type cr
-   ROOT$ s" out" OUT-ROOT JOIN-PATH OUT-ROOT-U !
-   ROOT$ s" failed-whitebox" IMAGE JOIN-PATH IMAGE-U !
+   ROOT$ s" out" OUT-ROOT FS:JOIN-PATH OUT-ROOT-U !
+   ROOT$ s" failed-whitebox" IMAGE FS:JOIN-PATH IMAGE-U !
    s" a fresh whitebox build deadline remains a caught timeout" T-LABEL
    ENV
    s" HABU_OUT" >LEN OUT-ROOT$ >LEN PROC-ENV-SET
@@ -153,9 +153,9 @@ variable RC
    FAILURE-REQUEST 0 T=
    ASSERT-NO-PRODUCT
    s" an ordinary builder failure keeps exit 67" T-LABEL
-   ROOT$ s" tools/native-build-support.f" PREFIX JOIN-PATH PREFIX-U !
+   ROOT$ s" tools/native-build-support.f" PREFIX FS:JOIN-PATH PREFIX-U !
    \ Fail in the real support child before unrelated compiler initialization.
-   PREFIX$ S\" require src/lib/fs.f\ns\" whitebox-missing-input.f\" FILE-SIZE drop\n" WRITE-ALL
+   PREFIX$ S\" require src/lib/fs.f\ns\" whitebox-missing-input.f\" FS:FILE-SIZE drop\n" FS:WRITE-ALL
    ENV
    s" HABU_OUT" >LEN OUT-ROOT$ >LEN PROC-ENV-SET
    FAILURE-REQUEST 67 T=

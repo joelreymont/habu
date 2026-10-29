@@ -17,17 +17,17 @@ require src/lib/jsonl.f
 
 package LIVE-VERIFY-SOURCE-TEST
 
-create ROOT FS-PATH-CAP allot variable ROOT-U
-create ENTRY FS-PATH-CAP allot variable ENTRY-U
-create DESIGN FS-PATH-CAP allot variable DESIGN-U
-create MISSING FS-PATH-CAP allot variable MISSING-U
-create TARGET FS-PATH-CAP allot variable TARGET-U
-create NESTED FS-PATH-CAP allot variable NESTED-U
-create NESTED-DESIGN FS-PATH-CAP allot variable NESTED-DESIGN-U
-create DUP-DEP FS-PATH-CAP allot variable DUP-DEP-U
-create DUP-MADE FS-PATH-CAP allot variable DUP-MADE-U
-create STREAM FS-PATH-CAP allot variable STREAM-U
-create STREAM-PARENT FS-PATH-CAP allot variable STREAM-PARENT-U
+create ROOT PATH-CAP allot variable ROOT-U
+create ENTRY PATH-CAP allot variable ENTRY-U
+create DESIGN PATH-CAP allot variable DESIGN-U
+create MISSING PATH-CAP allot variable MISSING-U
+create TARGET PATH-CAP allot variable TARGET-U
+create NESTED PATH-CAP allot variable NESTED-U
+create NESTED-DESIGN PATH-CAP allot variable NESTED-DESIGN-U
+create DUP-DEP PATH-CAP allot variable DUP-DEP-U
+create DUP-MADE PATH-CAP allot variable DUP-MADE-U
+create STREAM PATH-CAP allot variable STREAM-U
+create STREAM-PARENT PATH-CAP allot variable STREAM-PARENT-U
 
 PROCESS-SYMBOLS
 FUNCTION: MKFIFO-CALL mkfifo ( ptr u8 n -- i32 ) ;FUNCTION
@@ -66,12 +66,12 @@ private
    S\" \\ nested\nrequire src/examples/no-such.f\n" ;
 
 : PREP ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" live-verify-source" FS:MKTEMP-DIR SOURCE-ROOT:CANONICAL TTRUE
    ROOT ROOT-U COPY!
-   ROOT$ CLEANUP-TREE+
+   ROOT$ FS:CLEANUP-TREE+
    ROOT$ s" entry" SOURCE-ROOT:JOIN ENTRY ENTRY-U COPY!
-   ENTRY$ MAKE-DIRS
+   ENTRY$ FS:MAKE-DIRS
    ENTRY$ s" design.f" SOURCE-ROOT:JOIN DESIGN DESIGN-U COPY!
    ENTRY$ s" missing.f" SOURCE-ROOT:JOIN MISSING MISSING-U COPY!
    ENTRY$ s" nested-design.f" SOURCE-ROOT:JOIN
@@ -79,19 +79,19 @@ private
    ROOT$ s" src/examples/no-such.f" SOURCE-ROOT:JOIN TARGET TARGET-U COPY!
    ROOT$ s" nested.f" SOURCE-ROOT:JOIN NESTED NESTED-U COPY!
    ROOT$ s" shared.f" SOURCE-ROOT:JOIN
-      S\" package LV-ROOT\npublic\n: VALUE ( -- n ) 41 ;\n;package\n" WRITE-ALL
+      S\" package LV-ROOT\npublic\n: VALUE ( -- n ) 41 ;\n;package\n" FS:WRITE-ALL
    ROOT$ s" runtime.f" SOURCE-ROOT:JOIN
-      S\" 29 LIVE-VERIFY-SOURCE-TEST:ACTUAL !\n" WRITE-ALL
+      S\" 29 LIVE-VERIFY-SOURCE-TEST:ACTUAL !\n" FS:WRITE-ALL
    ENTRY$ s" shared.f" SOURCE-ROOT:JOIN
-      S\" package LV-ENTRY\npublic\n: VALUE ( -- n ) 99 ;\n;package\n" WRITE-ALL
-   DESIGN$ DESIGN-SRC$ WRITE-ALL
-   MISSING$ MISSING-SRC$ WRITE-ALL
-   NESTED$ NESTED-SRC$ WRITE-ALL
-   NESTED-DESIGN$ S\" require nested.f\n" WRITE-ALL
+      S\" package LV-ENTRY\npublic\n: VALUE ( -- n ) 99 ;\n;package\n" FS:WRITE-ALL
+   DESIGN$ DESIGN-SRC$ FS:WRITE-ALL
+   MISSING$ MISSING-SRC$ FS:WRITE-ALL
+   NESTED$ NESTED-SRC$ FS:WRITE-ALL
+   NESTED-DESIGN$ S\" require nested.f\n" FS:WRITE-ALL
    ROOT$ s" dup-dep.f" SOURCE-ROOT:JOIN DUP-DEP DUP-DEP-U COPY!
-   DUP-DEP$ S\" \\ dep\n: ZQX-B ( -- n ) 1 ;\n: ZQX-B ( -- n ) 2 ;\n" WRITE-ALL
+   DUP-DEP$ S\" \\ dep\n: ZQX-B ( -- n ) 1 ;\n: ZQX-B ( -- n ) 2 ;\n" FS:WRITE-ALL
    ROOT$ s" dup-made.f" SOURCE-ROOT:JOIN DUP-MADE DUP-MADE-U COPY!
-   DUP-MADE$ S\" DYNAMIC-BUFFER LV-GD u8\n" WRITE-ALL ;
+   DUP-MADE$ S\" DYNAMIC-BUFFER LV-GD u8\n" FS:WRITE-ALL ;
 
 \ Failure cases: quiet acquisition refuses a readable FIFO; it reuses a prior
 \ regular file's stamp for the stream; the incremental verifier accepts disk
@@ -101,7 +101,7 @@ private
    S\" package LV-STREAM public : VALUE ( -- n ) 41 ; ;package\n" ;
 
 : STREAM-WRITER ( -- )
-   STREAM$ FS-PATHZ FS-O-WRONLY 384 open {: fd:n :}
+   STREAM$ FS:>PATHZ FS:O-WRONLY 384 open {: fd:n :}
    fd 0 < if s" FIFO writer open failed" 74 die then
    STREAM-SRC$ {: a:ptr u:n :}
    fd a u write {: wrote:n :}
@@ -195,12 +195,12 @@ TYPED-VARIABLE JSON-READER JR:cursor
    CHECK:VERIFY-OUT$ s\" \"line\":2,\"column\":1" CONTAINS? TTRUE ;
 
 : STREAM-LOAD ( -- )
-   ENTRY$ s" regular.f" SOURCE-ROOT:JOIN S\" \\ regular source\n" WRITE-ALL
+   ENTRY$ s" regular.f" SOURCE-ROOT:JOIN S\" \\ regular source\n" FS:WRITE-ALL
    ENTRY$ s" stream.f" SOURCE-ROOT:JOIN STREAM STREAM-U COPY!
    ENTRY$ s" stream-parent.f" SOURCE-ROOT:JOIN
       STREAM-PARENT STREAM-PARENT-U COPY!
-   STREAM-PARENT$ S\" \\ parent\nrequire stream.f\n" WRITE-ALL
-   STREAM$ FS-PATHZ 384 MKFIFO-CALL 0 T=
+   STREAM-PARENT$ S\" \\ parent\nrequire stream.f\n" FS:WRITE-ALL
+   STREAM$ FS:>PATHZ 384 MKFIFO-CALL 0 T=
    0 STREAM-SEEN ! 0 REGULAR-SEEN !
    ['] STREAM-FILE is VERIFY:ON-FILE
    ENTRY$ [: [: VERIFY-STREAM ;] WITH-WRITER ;] SOURCE-ROOT:WITH
@@ -264,7 +264,7 @@ TYPED-VARIABLE JSON-READER JR:cursor
    VERIFY:SOURCE-COMPOSE-STOPPED-SUBJECT? TFALSE
    VERIFY:TOKEN-BYTE@ 9 T=
    VERIFY:FAULT-LEN@ 7 T=
-   NESTED$ s" changed after the scan" WRITE-ALL
+   NESTED$ s" changed after the scan" FS:WRITE-ALL
    VERIFY:E-SOURCE-READ VERIFY-DIAGNOSTICS:COMPOSE-FAULT-RECORD$
    {: rec:ptr recu:n :}
    rec recu s\" \"code\":\"E-MISSING-SOURCE\"" CONTAINS? TTRUE
@@ -471,7 +471,7 @@ public
    s" generated duplicate name reads no source bytes" T-LABEL
    MADE-DUP
    RUNTIME-COVERAGE
-   CLEANUP-RUN
+   FS:CLEANUP-RUN
    T-REPORT ;
 
 ;package

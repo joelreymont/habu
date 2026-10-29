@@ -50,15 +50,15 @@ variable SPK-ERR-U
 variable SPK-EXITED                 \ bool: child completed by exit
 variable SPK-RC
 
-create SPK-ROOT-BUF FS-PATH-CAP allot
-create SPK-CHILD-BUF FS-PATH-CAP allot
+create SPK-ROOT-BUF PATH-CAP allot
+create SPK-CHILD-BUF PATH-CAP allot
 create SPK-IN SPK-CAP allot          \ stdin-piped forge source
 create SPK-OUT SPK-CAP allot
 create SPK-ERR SPK-CAP allot
 create SPK-EMPTY 1 allot             \ zero-length stdin
 
 : SPK-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: src:ptr u:n dst:ptr lenp:ptr :}
-   u FS-PATH-CAP > if E-FS-CAPACITY throw then
+   u PATH-CAP > if E-FS-CAPACITY throw then
    src dst u BYTE-COPY
    u lenp ! ;
 
@@ -206,7 +206,7 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
 
 \ Run the forge as a --load file with empty stdin.
 : SPK-RUN-LOAD ( ptr u8 n -- ) {: src:ptr u:n :}
-   SPK-CHILD src u WRITE-ALL
+   SPK-CHILD src u FS:WRITE-ALL
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    SPK-CHILD >LEN PROC-ARGV+
@@ -267,15 +267,15 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
    SPK-OK-PKG-FORGE$ POS-LOAD ;
 
 : SPK-PREPARE ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" habu-seal-pkg" FS:MKTEMP-DIR {: a:ptr u:n :}
    a u SPK-ROOT-BUF SPK-ROOT-U SPK-COPY!
-   SPK-ROOT CLEANUP-TREE+
-   SPK-ROOT s" forge.f" SPK-CHILD-BUF JOIN-PATH SPK-CHILD-U ! ;
+   SPK-ROOT FS:CLEANUP-TREE+
+   SPK-ROOT s" forge.f" SPK-CHILD-BUF FS:JOIN-PATH SPK-CHILD-U ! ;
 
 : SPK-CLEANUP ( -- )
-   CLEANUP-RUN
-   SPK-ROOT EXISTS? TFALSE ;
+   FS:CLEANUP-RUN
+   SPK-ROOT FS:EXISTS? TFALSE ;
 
 : SPK-TYPE-REOPEN$ ( -- ptr u8 n )
    SB-RESET

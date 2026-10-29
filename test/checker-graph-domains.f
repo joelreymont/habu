@@ -52,9 +52,9 @@ create ERR IO-CAP allot
    s" shared-dag" 0 RUN-CASE ;
 
 : RUN ( -- )
-   T-RESET CLEANUP-RESET
+   T-RESET FS:CLEANUP-RESET
    [: s" checker-graph-domains" WHITEBOX-CHILD:PROVIDE CASES ;]
-   [: CLEANUP-RUN ;] finally
+   [: FS:CLEANUP-RUN ;] finally
    T-REPORT ;
 
 RUN

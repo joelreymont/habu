@@ -22,7 +22,7 @@ package PG-HOLD
 $1000 constant PIDFILE-CAP
 10 constant NEWLINE
 
-create PIDFILE FS-PATH-CAP allot
+create PIDFILE PATH-CAP allot
 create TEXT PIDFILE-CAP allot
 variable HOLD                       \ the FIFO's write end
 
@@ -65,9 +65,9 @@ using PG
 
 : REPORT-SEGMENT ( PG:connection -- ) {: c:PG:connection :}
    c s" show data_directory"
-   [: 0 >ROW 0 >COL TEXT$ s" postmaster.pid" PIDFILE JOIN-PATH swap ;] WITH-RESULT
+   [: 0 >ROW 0 >COL TEXT$ s" postmaster.pid" PIDFILE FS:JOIN-PATH swap ;] WITH-RESULT
    {: pu:n :}
-   PIDFILE pu TEXT PIDFILE-CAP READ-ALL {: u:n :}
+   PIDFILE pu TEXT PIDFILE-CAP FS:READ-ALL {: u:n :}
    SHM-LINE u LINE$ REPORT ;
 
 : MAIN ( -- )

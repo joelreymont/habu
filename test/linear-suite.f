@@ -242,9 +242,9 @@ create ERR CAP allot
 variable OUT-U
 variable ERR-U
 variable RC
-create ROOT-BUF FS-PATH-CAP allot  variable ROOT-U
-create PATH-BUF FS-PATH-CAP allot  variable PATH-U
-create IMAGE-BUF FS-PATH-CAP allot  variable IMAGE-U
+create ROOT-BUF PATH-CAP allot  variable ROOT-U
+create PATH-BUF PATH-CAP allot  variable PATH-U
+create IMAGE-BUF PATH-CAP allot  variable IMAGE-U
 PROG-CAP BUFFER: PROG
 variable PROG-U
 
@@ -271,7 +271,7 @@ variable PROG-U
 : ROOT ( -- )
    s" linear-suite" FS:MKTEMP-DIR {: path:ptr size:n :}
    path ROOT-BUF size BYTE-COPY size ROOT-U !
-   ROOT-BUF ROOT-U @ CLEANUP-TREE+ ;
+   ROOT-BUF ROOT-U @ FS:CLEANUP-TREE+ ;
 
 \ The fork child's check of PATH, ending as tools/check.f does: a refusal's
 \ status is the child's exit code.
@@ -282,8 +282,8 @@ variable PROG-U
 
 \ Write PROG to the fixture NAME under the root and check it in a fork child.
 : CHECK ( ptr u8 n -- ) {: name:ptr nameu:n :}
-   ROOT-BUF ROOT-U @ name nameu PATH-BUF JOIN-PATH PATH-U !
-   PATH$ PROG$ WRITE-ALL
+   ROOT-BUF ROOT-U @ name nameu PATH-BUF FS:JOIN-PATH PATH-U !
+   PATH$ PROG$ FS:WRITE-ALL
    0 PROG-U !
    s" CHECK-CHILD" OUT CAP >LEN ERR CAP >LEN CHECK-MS >MS SUBJECT:RUN
    PROC-OUTCOME>RC RC>N {: outu:len erru:len rc:n :}
@@ -322,7 +322,7 @@ variable PROG-U
 
 : SAVE ( -- )
    APP-IMAGE-ENGINE:PATH$ {: host:ptr hostu:n :}
-   ROOT-BUF ROOT-U @ s" app" IMAGE-BUF JOIN-PATH IMAGE-U !
+   ROOT-BUF ROOT-U @ s" app" IMAGE-BUF FS:JOIN-PATH IMAGE-U !
    0 PROG-U !
    S\" 1 set-tier\n" PROG+
    FILLER
@@ -342,7 +342,7 @@ variable PROG-U
    IMAGE$ IMAGE-MS RUN ;
 
 : MAIN ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    ROOT
    s" tools/check.f certifies a module that mints in its owner" T-LABEL
    OK-FIXTURE s" lin-ok.f" CHECK
@@ -362,13 +362,13 @@ variable PROG-U
    s" an application image keeps the owner of a type in its grown table" T-LABEL
    SAVE
    RC @ 0 T=
-   IMAGE$ EXECUTABLE? TTRUE
+   IMAGE$ FS:EXECUTABLE? TTRUE
    s" so the reopened owner mints and erases, and another package may not" T-LABEL
    REOPEN
    OUT$ s\" 42\n" CONTAINS? TTRUE
    ERR$ s" hb: uncaught throw code 7196" CONTAINS? TTRUE
    RC @ 67 T=
-   CLEANUP-RUN ;
+   FS:CLEANUP-RUN ;
 
 MAIN
 ;package

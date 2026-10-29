@@ -115,7 +115,7 @@ variable CODE                          \ the last child's exit code, -1 when it 
    nu 0 > if name nu SB-APPEND else s" -" SB-APPEND then
    s"  rc=" SB-APPEND CODE @ FMT:SB-INT s"  " SB-APPEND
    SAID+ LF SB-APPEND-C
-   ARTIFACT$ SB$ APPEND-FILE ;
+   ARTIFACT$ SB$ FS:APPEND-FILE ;
 
 \ ---- the verdict --------------------------------------------------------------
 
@@ -341,8 +341,8 @@ public
 
 : RUN ( -- )
    T-RESET
-   s" build" MAKE-DIRS
-   ARTIFACT$ s" " WRITE-ALL
+   s" build" FS:MAKE-DIRS
+   ARTIFACT$ s" " FS:WRITE-ALL
    ADMITTED
    LOADERS KEYWORDS SCOPES WIDENING
    BODIES MODELED

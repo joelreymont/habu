@@ -58,7 +58,7 @@ create ERR IO-CAP allot
 \ product refuses: `hb: internal engine word: DECLARATIONS`, exit 70. So they
 \ all run on the engine test/whitebox-child.f names.
 : PREPARE ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" native-window-owner" WHITEBOX-CHILD:PROVIDE ;
 
 : ARG+ ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
@@ -232,7 +232,7 @@ public
 
 : RUN ( -- )
    T-RESET
-   [: OWNER-CASES RECOVERY-CASE ;] [: CLEANUP-RUN ;] finally
+   [: OWNER-CASES RECOVERY-CASE ;] [: FS:CLEANUP-RUN ;] finally
    T-REPORT
    s" native-window-owner: ok" type cr ;
 

@@ -12,7 +12,7 @@
 \ stdout and stderr; the first that fails ends the run, and the row's last line
 \ names it. This process stops the server however the children end - exit,
 \ failed assertion, die, crash or a deadline - and the cleanup registry
-\ (src/lib/fs-mutate.f CLEANUP-TREE+) removes the directories it made when this
+\ (src/lib/fs-mutate.f FS:CLEANUP-TREE+) removes the directories it made when this
 \ process exits, including by die. A run that a step's deadline ended exits
 \ as a timeout, which a gate pool tells apart from a failure (FAIL-ROW).
 \
@@ -112,15 +112,15 @@ $7FFFFFFF constant CASE-MAX-MS  \ poll(2) receives a signed 32-bit millisecond c
 -1 constant NO-PID
 -1 constant NO-FD
 
-FS-PATH-CAP BUFFER: INITDB      variable INITDB-U
-FS-PATH-CAP BUFFER: POSTGRES    variable POSTGRES-U
-FS-PATH-CAP BUFFER: ROOT        variable ROOT-U
-FS-PATH-CAP BUFFER: SOCKETS     variable SOCKETS-U
-FS-PATH-CAP BUFFER: DATA        variable DATA-U
-FS-PATH-CAP BUFFER: LOG         variable LOG-U
-FS-PATH-CAP BUFFER: INITDB-LOG  variable INITDB-LOG-U
-FS-PATH-CAP BUFFER: PIDFILE     variable PIDFILE-U
-FS-PATH-CAP $40 + constant TEXT-CAP
+PATH-CAP BUFFER: INITDB      variable INITDB-U
+PATH-CAP BUFFER: POSTGRES    variable POSTGRES-U
+PATH-CAP BUFFER: ROOT        variable ROOT-U
+PATH-CAP BUFFER: SOCKETS     variable SOCKETS-U
+PATH-CAP BUFFER: DATA        variable DATA-U
+PATH-CAP BUFFER: LOG         variable LOG-U
+PATH-CAP BUFFER: INITDB-LOG  variable INITDB-LOG-U
+PATH-CAP BUFFER: PIDFILE     variable PIDFILE-U
+PATH-CAP $40 + constant TEXT-CAP
 TEXT-CAP BUFFER: CONNINFO       variable CONNINFO-U
 CAPTURE-CAP BUFFER: OUT
 
@@ -187,7 +187,7 @@ DEFAULT-CASE-MS CASE-MS !
    ;MATCH ;
 
 : SOCKETS! ( ptr u8 n -- ) {: a:ptr u:n :}
-   u FS-PATH-CAP > if E-FS-PATH throw then
+   u PATH-CAP > if E-FS-PATH throw then
    a SOCKETS u BYTE-COPY  u SOCKETS-U ! ;
 
 \ A made directory's name lives in the per-task band the next FS:MKTEMP-DIR-IN
@@ -196,17 +196,17 @@ DEFAULT-CASE-MS CASE-MS !
 : MAKE-DIRS ( -- )
    s" habu-pg" FS:MKTEMP-DIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY  u ROOT-U !
-   ROOT$ CLEANUP-TREE+
+   ROOT$ FS:CLEANUP-TREE+
    s" HB_SOCK_TMP" GETENV dup 0 > if
       SOCKETS!
    else
       2drop s" habu-pg" FS:MKTEMP-DIR SOCKETS!
-      SOCKETS$ CLEANUP-TREE+
+      SOCKETS$ FS:CLEANUP-TREE+
    then
-   ROOT$ s" data" DATA JOIN-PATH DATA-U !
-   ROOT$ s" postgres.log" LOG JOIN-PATH LOG-U !
-   ROOT$ s" initdb.log" INITDB-LOG JOIN-PATH INITDB-LOG-U !
-   DATA$ s" postmaster.pid" PIDFILE JOIN-PATH PIDFILE-U ! ;
+   ROOT$ s" data" DATA FS:JOIN-PATH DATA-U !
+   ROOT$ s" postgres.log" LOG FS:JOIN-PATH LOG-U !
+   ROOT$ s" initdb.log" INITDB-LOG FS:JOIN-PATH INITDB-LOG-U !
+   DATA$ s" postmaster.pid" PIDFILE FS:JOIN-PATH PIDFILE-U ! ;
 
 \ libpq splits a conninfo at spaces, so it quotes the directory.
 : TEXTS! ( -- )
@@ -259,8 +259,8 @@ DEFAULT-CASE-MS CASE-MS !
    cr false ;
 
 : SHOW-LOG ( ptr u8 n -- ) {: path:ptr pathu:n :}
-   path pathu EXISTS? 0= if exit then
-   path pathu OUT CAPTURE-CAP READ-ALL {: n:n :}
+   path pathu FS:EXISTS? 0= if exit then
+   path pathu OUT CAPTURE-CAP FS:READ-ALL {: n:n :}
    OUT n type ;
 
 
@@ -285,7 +285,7 @@ DEFAULT-CASE-MS CASE-MS !
    fd ;
 
 : OPEN-LOG ( ptr u8 n -- n )
-   FS-PATHZ FS-O-WRONLY FS-O-CREAT or FS-O-TRUNC or FS-MODE-0644 open {: fd:n :}
+   FS:>PATHZ FS:O-WRONLY FS:O-CREAT or FS:O-TRUNC or FS:MODE-0644 open {: fd:n :}
    fd 0 < if E-FS-OPEN throw then
    fd ;
 
@@ -330,7 +330,7 @@ DEFAULT-CASE-MS CASE-MS !
 \ The server's status line says `ready` once it accepts connections. A file
 \ that will not open or is not yet that long is a server not that far yet.
 : STATUS-READY? ( -- bool )
-   PIDFILE$ FS-PATHZ open-rd {: fd:n :}
+   PIDFILE$ FS:>PATHZ open-rd {: fd:n :}
    fd 0 < if false exit then
    fd OUT CAPTURE-CAP read {: got:n :}
    fd close
@@ -449,7 +449,7 @@ DEFAULT-CASE-MS CASE-MS !
    SERVER @ NO-PID <> if SERVER @ >PID SIGQUIT PROC-KILL-RAW drop then
    s" case engine kill" [: CASE-KILL ;] catch SAY-THROW
    s" postgres stop" [: QUIT-MS STOP ;] catch SAY-THROW
-   s" cleanup" [: CLEANUP-RUN ;] catch SAY-THROW
+   s" cleanup" [: FS:CLEANUP-RUN ;] catch SAY-THROW
    s" pg-cluster: signal" sig SIGNAL:DIE-OF ;
 
 : SIGNAL-CHECK ( -- )
@@ -558,7 +558,7 @@ DEFAULT-CASE-MS CASE-MS !
    s" PG_HOLD_FIFO" TEST-FIFO:WRITER FD>N HOLD ! ;
 
 \ The log is shown for a server that never came up, once STOP has ended it:
-\ SHOW-LOG's READ-ALL throws E-FS-CAPACITY on a log over CAPTURE-CAP, which a
+\ SHOW-LOG's FS:READ-ALL throws E-FS-CAPACITY on a log over CAPTURE-CAP, which a
 \ server that ran the cases may write.
 : MAIN ( -- )
    OPEN-HOLD

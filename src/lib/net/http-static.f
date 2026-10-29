@@ -1,7 +1,7 @@
 \ http-static.f - one directory tree served from memory. STATIC-ROOT reads the
 \ whole tree before the server starts, so the tables are written while no task
 \ is live and a request costs no file system call. The tables grow with the
-\ tree and STATIC-CLOSE gives them back; only a path wider than FS-PATH-CAP is
+\ tree and STATIC-CLOSE gives them back; only a path wider than PATH-CAP is
 \ refused.
 \
 \ Symlinks are followed, so a linked directory is served under its link's path.
@@ -48,9 +48,9 @@ DYNAMIC-BUFFER DIR-DEVICE n
 DYNAMIC-BUFFER DIR-INODE n
 DYNAMIC-BUFFER TEXT-ROW u8               \ the served paths and their ETags
 
-FS-PATH-CAP SPAN-BUFFER: PATH-BUF
-FS-PATH-CAP SPAN-BUFFER: URL-BUF
-FS-PATH-CAP SPAN-BUFFER: LIST-BUF        \ the directory being listed
+PATH-CAP SPAN-BUFFER: PATH-BUF
+PATH-CAP SPAN-BUFFER: URL-BUF
+PATH-CAP SPAN-BUFFER: LIST-BUF        \ the directory being listed
 \ SHA256-IN and SHA256>HEX write a digest of their own fixed size and take no
 \ capacity, so these two are the library's bound and not a span's.
 create DIGEST-RAW DIGEST-BYTES allot
@@ -61,7 +61,7 @@ variable FILE-COUNT
 variable DIR-HEAD
 variable DIR-TAIL
 variable ROOT-U
-FS-PATH-CAP SPAN-BUFFER: ROOT-BUF
+PATH-CAP SPAN-BUFFER: ROOT-BUF
 
 
 : ROOT$ ( -- ptr u8 n )
@@ -141,9 +141,9 @@ DEFAULT-RULES
 
 : UNDER-ROOT ( ptr u8 n -- n ) {: rel:ptr len:n :}
    len 0= if ROOT$ {: base:ptr baselen:n :} base baselen PATH-BUF SPAN:COPY baselen exit then
-   \ JOIN-PATH checks its own FS-PATH-CAP and takes no capacity: the bound is
+   \ FS:JOIN-PATH checks its own PATH-CAP and takes no capacity: the bound is
    \ src/lib/fs.f's, and PATH-BUF is that wide.
-   ROOT$ rel 1+ len 1- PATH-BUF SPAN:$ drop JOIN-PATH ;
+   ROOT$ rel 1+ len 1- PATH-BUF SPAN:$ drop FS:JOIN-PATH ;
 
 
 : ETAG-HASH-IN ( ptr u8 n ptr u8 -- ptr u8 n ptr u8 )
@@ -183,7 +183,7 @@ DEFAULT-RULES
 \ The stack is kept, so the catch around it can give the body back.
 : FILE-ENTRY ( ptr u8 n n SPAN:span<u8> n -- ptr u8 n n SPAN:span<u8> n )
    {: url:ptr urllen:n pathlen:n body at:n :}
-   PATH-BUF pathlen SPAN:TAKE SPAN:$ body SPAN:$ READ-ALL {: got:n :}
+   PATH-BUF pathlen SPAN:TAKE SPAN:$ body SPAN:$ FS:READ-ALL {: got:n :}
    url urllen TEXT+ at FILE-PATH-AT !
    urllen at FILE-PATH-N !
    got at FILE-BODY-N !
@@ -199,7 +199,7 @@ DEFAULT-RULES
    FILE-COUNT @ {: at:n :}
    at 1+ FILE-ROWS
    url urllen UNDER-ROOT {: pathlen:n :}
-   PATH-BUF pathlen SPAN:TAKE SPAN:$ FILE-SIZE 1 max
+   PATH-BUF pathlen SPAN:TAKE SPAN:$ FS:FILE-SIZE 1 max
       BYTES-ALLOC-LEN ALLOC-SPAN {: body :}
    url urllen pathlen body at [: FILE-ENTRY ;] catch {: code:n :}
    2drop 2drop drop
@@ -240,7 +240,7 @@ DEFAULT-RULES
 
 
 : URL-JOIN ( ptr u8 n ptr u8 n -- n ) {: base:ptr baselen:n name:ptr namelen:n :}
-   baselen namelen + 1+ FS-PATH-CAP > if E-STATIC throw then
+   baselen namelen + 1+ PATH-CAP > if E-STATIC throw then
    base baselen URL-BUF SPAN:COPY
    SLASH URL-BUF baselen SPAN:U8!
    name namelen URL-BUF baselen 1+ SPAN:SKIP SPAN:COPY
@@ -250,10 +250,10 @@ DEFAULT-RULES
 : ENTRY ( ptr u8 n ptr u8 n -- ) {: base:ptr baselen:n name:ptr namelen:n :}
    base baselen name namelen URL-JOIN {: urllen:n :}
    URL-BUF urllen SPAN:TAKE SPAN:$ UNDER-ROOT {: pathlen:n :}
-   PATH-BUF pathlen SPAN:TAKE SPAN:$ DIR? if
+   PATH-BUF pathlen SPAN:TAKE SPAN:$ FS:DIR? if
       URL-BUF urllen SPAN:TAKE SPAN:$ DIR-HEAD @ DIR+ exit
    then
-   PATH-BUF pathlen SPAN:TAKE SPAN:$ FILE? if URL-BUF urllen SPAN:TAKE SPAN:$ LOAD-FILE then ;
+   PATH-BUF pathlen SPAN:TAKE SPAN:$ FS:FILE? if URL-BUF urllen SPAN:TAKE SPAN:$ LOAD-FILE then ;
 
 
 \ One name in the directory DIR-HEAD names. Its url is taken again for every
@@ -385,9 +385,9 @@ public
 \ table. Rejected arguments/context and listener-open failures retain it.
 : STATIC-ROOT ( ptr u8 n -- ) {: root:ptr len:n :}
    len 0 <= if E-STATIC throw then
-   len FS-PATH-CAP >= if E-STATIC throw then
+   len PATH-CAP >= if E-STATIC throw then
    FILE-COUNT @ 0 <> if E-STATE throw then
-   root len DIR? 0= if E-STATIC throw then
+   root len FS:DIR? 0= if E-STATIC throw then
    root len ROOT-BUF SPAN:COPY
    len ROOT-U !
    0 TEXT-U !

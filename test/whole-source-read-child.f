@@ -1,5 +1,5 @@
 \ The patched host whole-source-read-test.f loads once and forks each case from.
-\ FILE-SIZE answers a path's size and then, for the file the case grows, appends
+\ FS:FILE-SIZE answers a path's size and then, for the file the case grows, appends
 \ blank lines past every reader's first room: past src/lib/source.f's
 \ SOURCE-ROOM-MIN and past the 64 KiB a region of MEM-ALLOC-64K-SPAN rounds to.
 \ It does so on every stat, so each reader that samples the file meets bytes past
@@ -25,10 +25,10 @@ create MODE MODE-CAP allot variable MODE-U
 $11000 constant BLANK-LEN
 create BLANKS BLANK-LEN allot
 
-create SUBJECT-PATH FS-PATH-CAP allot variable SUBJECT-PATH-U
-create GROW-PATH FS-PATH-CAP allot variable GROW-PATH-U
-create SUBJECT-CANON FS-PATH-CAP allot variable SUBJECT-U
-create GROW-CANON FS-PATH-CAP allot variable GROW-U
+create SUBJECT-PATH PATH-CAP allot variable SUBJECT-PATH-U
+create GROW-PATH PATH-CAP allot variable GROW-PATH-U
+create SUBJECT-CANON PATH-CAP allot variable SUBJECT-U
+create GROW-CANON PATH-CAP allot variable GROW-U
 
 : SUBJECT$ ( -- ptr u8 n )
    SUBJECT-PATH SUBJECT-PATH-U @ ;
@@ -55,31 +55,34 @@ public
 : SIZE ( ptr u8 n -- n )
    {: path:ptr pathu:n :}
    REFUSED? if E-MEM-MAP throw then
-   path pathu FILE-SIZE {: size:n :}
+   path pathu FS:FILE-SIZE {: size:n :}
    path pathu SOURCE-ROOT:CANONICAL drop {: canon:ptr canonu:n :}
    canon canonu GROW-CANON GROW-U @ STR= if
       BLANK-LEN 0 ?do $0a BLANKS i + c! loop
-      path pathu BLANKS BLANK-LEN APPEND-FILE
+      path pathu BLANKS BLANK-LEN FS:APPEND-FILE
    then
    REQUIRED @ 0= canon canonu SUBJECT-CANON SUBJECT-U @ STR= and if
       1 REQUIRED !
-      path pathu S\" s\" grown.f\" required\n" APPEND-FILE
+      path pathu S\" s\" grown.f\" required\n" FS:APPEND-FILE
    then
    size ;
 
 : CASE! ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: mode:ptr modeu:n subj:ptr subju:n grow:ptr growu:n :}
    mode modeu MODE MODE-U MODE-CAP KEEP!
-   subj subju SUBJECT-PATH SUBJECT-PATH-U FS-PATH-CAP KEEP!
-   grow growu GROW-PATH GROW-PATH-U FS-PATH-CAP KEEP!
-   SUBJECT$ SOURCE-ROOT:CANONICAL drop SUBJECT-CANON SUBJECT-U FS-PATH-CAP KEEP!
-   GROW$ SOURCE-ROOT:CANONICAL drop GROW-CANON GROW-U FS-PATH-CAP KEEP!
+   subj subju SUBJECT-PATH SUBJECT-PATH-U PATH-CAP KEEP!
+   grow growu GROW-PATH GROW-PATH-U PATH-CAP KEEP!
+   SUBJECT$ SOURCE-ROOT:CANONICAL drop SUBJECT-CANON SUBJECT-U PATH-CAP KEEP!
+   GROW$ SOURCE-ROOT:CANONICAL drop GROW-CANON GROW-U PATH-CAP KEEP!
    0 REQUIRED ! ;
 
 ;package
 
+package FS
+public
 undefine FILE-SIZE
 : FILE-SIZE ( ptr u8 n -- n ) WHOLE-SOURCE-READ-CHILD:SIZE ;
+;package
 
 require tools/check-core.f
 require tools/lsp-diag.f
@@ -89,7 +92,7 @@ private
 
 \ The packet the language server publishes, built here rather than in SB,
 \ which the server writes while it publishes: a path and the fields around it.
-FS-PATH-CAP 256 + constant PKT-CAP
+PATH-CAP 256 + constant PKT-CAP
 create PKT PKT-CAP allot
 variable PKT-U
 

@@ -287,7 +287,7 @@ variable MNS-V
 variable CSEC-V
 variable CNS-V
 variable META-MASK
-create PROBE-PATH FS-PATH-CAP allot
+create PROBE-PATH PATH-CAP allot
 variable PROBE-PATH-U
 variable PROBE-SIZE
 variable PROBE-MSEC
@@ -304,7 +304,7 @@ variable TARGET-V                        \ a use's declaring token's,
 variable TARGET-END-V
 variable LINE-AT                         \ and where its strings start in BYTES
 variable CUR-G                           \ the group positions count for, -1 for none
-FS-PATH-CAP 3 * 7 + SPAN-BUFFER: URI-SPAN  \ a file's URI: file:// and each byte escaped
+PATH-CAP 3 * 7 + SPAN-BUFFER: URI-SPAN  \ a file's URI: file:// and each byte escaped
 create ESC-B BUF:HDR-BYTES allot         \ a URI's JSON string
 TYPED-VARIABLE ESC-W JSON-WRITE:writer
 
@@ -987,28 +987,28 @@ private
    pathu 0= if exit then
    path pathu BYTES+ k B-UNREAD BLOCK!
    pathu k B-UNREAD-U BLOCK!
-   path pathu FS-TRY-STAT 0= if exit then
+   path pathu FS:TRY-STAT 0= if exit then
    1 k B-UNREAD-STAT BLOCK!
-   FS-STAT-MODE@ k B-UNREAD-MODE BLOCK!
-   FS-STAT-SIZE@ k B-UNREAD-SIZE BLOCK!
-   FS-STAT-MTIME-SEC@ k B-UNREAD-MSEC BLOCK!
-   FS-STAT-MTIME-NS@ k B-UNREAD-MNS BLOCK!
-   FS-STAT-CTIME-SEC@ k B-UNREAD-CSEC BLOCK!
-   FS-STAT-CTIME-NS@ k B-UNREAD-CNS BLOCK! ;
+   FS:STAT-MODE@ k B-UNREAD-MODE BLOCK!
+   FS:STAT-SIZE@ k B-UNREAD-SIZE BLOCK!
+   FS:STAT-MTIME-SEC@ k B-UNREAD-MSEC BLOCK!
+   FS:STAT-MTIME-NS@ k B-UNREAD-MNS BLOCK!
+   FS:STAT-CTIME-SEC@ k B-UNREAD-CSEC BLOCK!
+   FS:STAT-CTIME-NS@ k B-UNREAD-CNS BLOCK! ;
 
 : UNREAD-STABLE? ( n -- bool )
    {: k:n :}
    k B-UNREAD-U BLOCK@ 0= if true exit then
-   k UNREAD-PATH$ FS-TRY-STAT {: now:bool :}
+   k UNREAD-PATH$ FS:TRY-STAT {: now:bool :}
    k B-UNREAD-STAT BLOCK@ 0<> {: had:bool :}
    now 0= if had 0= exit then
    had 0= if false exit then
-   FS-STAT-MODE@ k B-UNREAD-MODE BLOCK@ =
-   FS-STAT-SIZE@ k B-UNREAD-SIZE BLOCK@ = and
-   FS-STAT-MTIME-SEC@ k B-UNREAD-MSEC BLOCK@ = and
-   FS-STAT-MTIME-NS@ k B-UNREAD-MNS BLOCK@ = and
-   FS-STAT-CTIME-SEC@ k B-UNREAD-CSEC BLOCK@ = and
-   FS-STAT-CTIME-NS@ k B-UNREAD-CNS BLOCK@ = and ;
+   FS:STAT-MODE@ k B-UNREAD-MODE BLOCK@ =
+   FS:STAT-SIZE@ k B-UNREAD-SIZE BLOCK@ = and
+   FS:STAT-MTIME-SEC@ k B-UNREAD-MSEC BLOCK@ = and
+   FS:STAT-MTIME-NS@ k B-UNREAD-MNS BLOCK@ = and
+   FS:STAT-CTIME-SEC@ k B-UNREAD-CSEC BLOCK@ = and
+   FS:STAT-CTIME-NS@ k B-UNREAD-CNS BLOCK@ = and ;
 
 public
 
@@ -1075,7 +1075,7 @@ public
 \ or the verifier's own disk read stamp.
 : PROBE-DISK-STAMP! ( ptr u8 n n n n n n -- )
    {: path:ptr pathu:n size:n msec:n mns:n csec:n cns:n :}
-   pathu FS-PATH-CAP > if E-PATH-RANGE throw then
+   pathu PATH-CAP > if E-PATH-RANGE throw then
    path PROBE-PATH pathu BYTE-COPY
    pathu PROBE-PATH-U !
    size PROBE-SIZE ! msec PROBE-MSEC ! mns PROBE-MNS !
@@ -1257,13 +1257,13 @@ public
       some OF drop false exit ENDOF
       none OF ENDOF
    ;MATCH
-   g PATH$ FS-TRY-STAT 0= if false exit then
-   FS-STAT-MODE@ S-IFMT and S-IFREG <> if false exit then
-   FS-STAT-SIZE@ g G-SIZE GROUP@ =
-   FS-STAT-MTIME-SEC@ g G-MSEC GROUP@ = and
-   FS-STAT-MTIME-NS@ g G-MNS GROUP@ = and
-   FS-STAT-CTIME-SEC@ g G-CSEC GROUP@ = and
-   FS-STAT-CTIME-NS@ g G-CNS GROUP@ = and ;
+   g PATH$ FS:TRY-STAT 0= if false exit then
+   FS:STAT-MODE@ FS:S-IFMT and FS:S-IFREG <> if false exit then
+   FS:STAT-SIZE@ g G-SIZE GROUP@ =
+   FS:STAT-MTIME-SEC@ g G-MSEC GROUP@ = and
+   FS:STAT-MTIME-NS@ g G-MNS GROUP@ = and
+   FS:STAT-CTIME-SEC@ g G-CSEC GROUP@ = and
+   FS:STAT-CTIME-NS@ g G-CNS GROUP@ = and ;
 
 \ Load exactly the group's source and check its revision. A disk read changed
 \ midstream has no valid stamp.

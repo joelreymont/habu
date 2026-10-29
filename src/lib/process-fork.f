@@ -31,7 +31,7 @@ require src/core/dynamic-storage.f
 require src/habu/address-cells.f
 require src/lib/process.f
 require src/lib/fd-lock.f                    \ the fourth lock RAW holds while it forks
-require src/lib/fs-mutate.f                  \ CLEANUP-RESET, registered below
+require src/lib/fs-mutate.f                  \ FS:CLEANUP-RESET, registered below
 require src/lib/process-tree.f               \ PROC-TREE:CHILD-RESET, registered below
 require src/lib/fork-child.f                 \ the resets RAW runs in the child
 
@@ -50,17 +50,17 @@ private
 \ (tools/hb-build-stripped-test.f HBT-STRIPPED-FORK).
 \
 \ The fs cleanup table is process-owned state: its entries name paths THIS
-\ process created and promised to remove, and CLEANUP-RUN deletes every entry
+\ process created and promised to remove, and FS:CLEANUP-RUN deletes every entry
 \ in it. A child inherits a copy of that table, but not the ownership it
 \ records - those paths still belong to the live parent - so running an
 \ inherited entry deletes somebody else's files. Emptied, the table leaves the
 \ child cleaning up exactly what the child registers, which is the only thing
 \ it owns. (Measured before this reset: a gate pool member that ran its own
-\ cleanups also ran the driver's `GT-ROOT CLEANUP-TREE+` and removed the whole
+\ cleanups also ran the driver's `GT-ROOT FS:CLEANUP-TREE+` and removed the whole
 \ capture root out from under its live siblings.)
 : REGISTER-RESETS ( -- )
    [: TASK:CHILD-RESET ;] FORK-CHILD:REGISTER
-   [: CLEANUP-RESET ;] FORK-CHILD:REGISTER
+   [: FS:CLEANUP-RESET ;] FORK-CHILD:REGISTER
    [: PROC-TREE:CHILD-RESET ;] FORK-CHILD:REGISTER ;
 REGISTER-RESETS
 
@@ -124,7 +124,7 @@ public
 \ 255. The fork copied the parent's catch frames (HND-CELL) and its tty REPL
 \ recovery route (REPLH-CELL), so a throw would otherwise resume the parent's
 \ catch, or its prompt, in the child; both are cleared before q runs. The exit
-\ hook stays: RAW's child resets ran CLEANUP-RESET, so the inherited
+\ hook stays: RAW's child resets ran FS:CLEANUP-RESET, so the inherited
 \ CLEANUP-AT-EXIT removes only what the child itself registers.
 : CHILD-MAIN ( [ -- ] -- ) {: q :}
    0 data-base HND-CELL + !

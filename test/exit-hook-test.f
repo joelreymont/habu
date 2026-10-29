@@ -27,9 +27,9 @@ $10000 constant CAP
 create OUT CAP allot
 create ERR CAP allot
 create TEXT-BUF TEXT-CAP allot
-create ROOT-BUF FS-PATH-CAP allot
-create SCRIPT-BUF FS-PATH-CAP allot
-create TREE-BUF FS-PATH-CAP allot
+create ROOT-BUF PATH-CAP allot
+create SCRIPT-BUF PATH-CAP allot
+create TREE-BUF PATH-CAP allot
 variable TEXT-U
 variable ROOT-U
 variable SCRIPT-U
@@ -48,18 +48,18 @@ variable TREE-U
    TEXT-U @ srcu + TEXT-U ! ;
 
 : PREPARE ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" exit-hook" FS:MKTEMP-DIR {: path:ptr pathu :}
    path ROOT-BUF pathu BYTE-COPY pathu ROOT-U !
-   ROOT$ CLEANUP-TREE+ ;
+   ROOT$ FS:CLEANUP-TREE+ ;
 
 : TREE-PATH ( ptr u8 n -- ) {: name:ptr nameu :}
-   ROOT$ name nameu TREE-BUF JOIN-PATH TREE-U ! ;
+   ROOT$ name nameu TREE-BUF FS:JOIN-PATH TREE-U ! ;
 
 \ The script path, the directory the child is told to register, and the two
 \ lines every child script starts with.
 : CASE-PATHS ( ptr u8 n ptr u8 n -- ) {: script:ptr scriptu tree:ptr treeu :}
-   ROOT$ script scriptu SCRIPT-BUF JOIN-PATH SCRIPT-U !
+   ROOT$ script scriptu SCRIPT-BUF FS:JOIN-PATH SCRIPT-U !
    tree treeu TREE-PATH
    0 TEXT-U !
    S\" require src/lib/fs-mutate.f\n" TEXT+
@@ -81,7 +81,7 @@ variable TREE-U
 \ working directory are the ones the suite itself runs with. Capture gives the
 \ child no stdin, so the script's own exit is what the case measures.
 : RUN-CHILD ( -- n n n )
-   SCRIPT$ TEXT$ ATOMIC-WRITE-FILE
+   SCRIPT$ TEXT$ FS:ATOMIC-WRITE-FILE
    PROC-ARGV-ENV-RESET
    s" --load" >LEN PROC-ARGV+
    SCRIPT$ >LEN PROC-ARGV+
@@ -97,53 +97,53 @@ variable TREE-U
 \ A normal top-level exit (the engine's LRBYE) reaches the vector.
 : CASE-NORMAL ( -- )
    s" normal.f" s" normal-tree" CASE-PATHS
-   S\" : CHILD-MAIN ( -- ) CHILD-TREE MAKE-DIR CHILD-TREE CLEANUP-TREE+ ;\n" TEXT+
+   S\" : CHILD-MAIN ( -- ) CHILD-TREE FS:MAKE-DIR CHILD-TREE FS:CLEANUP-TREE+ ;\n" TEXT+
    S\" CHILD-MAIN\n" TEXT+
    RUN-CHILD {: outu:n erru:n rc:n :}
    s" a normal exit removes the registered tree" T-LABEL
    outu erru rc 0 EXPECT-RC
    erru 0 T=
-   TREE$ EXISTS? TFALSE ;
+   TREE$ FS:EXISTS? TFALSE ;
 
 \ `die` writes its message and exits with its own code; the hook runs between
 \ the two and the code it is carrying is untouched.
 : CASE-DIE ( -- )
    s" die.f" s" die-tree" CASE-PATHS
-   S\" : CHILD-MAIN ( -- ) CHILD-TREE MAKE-DIR CHILD-TREE CLEANUP-TREE+ s\q child: dying\q 7 die ;\n" TEXT+
+   S\" : CHILD-MAIN ( -- ) CHILD-TREE FS:MAKE-DIR CHILD-TREE FS:CLEANUP-TREE+ s\q child: dying\q 7 die ;\n" TEXT+
    S\" CHILD-MAIN\n" TEXT+
    RUN-CHILD {: outu:n erru:n rc:n :}
    s" die removes the registered tree and keeps its exit code" T-LABEL
    outu erru rc 7 EXPECT-RC
    erru s" child: dying" ERR-HAS? TTRUE
-   TREE$ EXISTS? TFALSE ;
+   TREE$ FS:EXISTS? TFALSE ;
 
 \ The reported defect: an uncaught top-level throw. 1 is kernel-representable,
 \ so the engine exits with the thrown code itself.
 : CASE-THROW ( -- )
    s" throw.f" s" throw-tree" CASE-PATHS
-   S\" : CHILD-MAIN ( -- ) CHILD-TREE MAKE-DIR CHILD-TREE CLEANUP-TREE+ 1 throw ;\n" TEXT+
+   S\" : CHILD-MAIN ( -- ) CHILD-TREE FS:MAKE-DIR CHILD-TREE FS:CLEANUP-TREE+ 1 throw ;\n" TEXT+
    S\" CHILD-MAIN\n" TEXT+
    RUN-CHILD {: outu:n erru:n rc:n :}
    s" an uncaught throw removes the registered tree" T-LABEL
    outu erru rc 1 EXPECT-RC
-   TREE$ EXISTS? TFALSE ;
+   TREE$ FS:EXISTS? TFALSE ;
 
-\ A removal that fails is reported on fd 2 and changes nothing else. CLEANUP-RUN
+\ A removal that fails is reported on fd 2 and changes nothing else. FS:CLEANUP-RUN
 \ no-ops on a path that is already gone, so the failure has to come from a
-\ removal the kernel refuses: a non-empty directory registered with CLEANUP-DIR+
+\ removal the kernel refuses: a non-empty directory registered with FS:CLEANUP-DIR+
 \ is rmdir ENOTEMPTY, which fs.f names E-FS-IO (-2105).
 : CASE-REPORT ( -- )
    s" report.f" s" report-tree" CASE-PATHS
-   S\" create CHILD-BUF FS-PATH-CAP allot\n" TEXT+
-   S\" : CHILD-INNER ( -- ) CHILD-TREE s\q inner\q CHILD-BUF JOIN-PATH {: u :} CHILD-BUF u MAKE-DIR ;\n" TEXT+
-   S\" : CHILD-MAIN ( -- ) CHILD-TREE MAKE-DIR CHILD-INNER CHILD-TREE CLEANUP-DIR+ s\q child: dying\q 9 die ;\n" TEXT+
+   S\" create CHILD-BUF PATH-CAP allot\n" TEXT+
+   S\" : CHILD-INNER ( -- ) CHILD-TREE s\q inner\q CHILD-BUF FS:JOIN-PATH {: u :} CHILD-BUF u FS:MAKE-DIR ;\n" TEXT+
+   S\" : CHILD-MAIN ( -- ) CHILD-TREE FS:MAKE-DIR CHILD-INNER CHILD-TREE FS:CLEANUP-DIR+ s\q child: dying\q 9 die ;\n" TEXT+
    S\" CHILD-MAIN\n" TEXT+
    RUN-CHILD {: outu:n erru:n rc:n :}
    s" a cleanup that throws is reported on fd 2 and keeps the exit code" T-LABEL
    outu erru rc 9 EXPECT-RC
    erru s" child: dying" ERR-HAS? TTRUE
    erru s" hb: cleanup at exit threw -2105" ERR-HAS? TTRUE
-   TREE$ EXISTS? TTRUE ;
+   TREE$ FS:EXISTS? TTRUE ;
 
 \ The chain. The child takes the process's single exit slot for a hook of its
 \ own BEFORE it registers anything; registration saves that vector and installs
@@ -157,14 +157,14 @@ variable TREE-U
    s" chain.f" s" chain-tree" CASE-PATHS
    S\" : CHILD-HOOK ( -- ) s\q hook: dying\q 3 die ;\n" TEXT+
    S\" TRUSTED: CHILD-ARM ( -- ) ['] CHILD-HOOK data-base EXIT-HOOK-CELL + ! ;\n" TEXT+
-   S\" : CHILD-MAIN ( -- ) CHILD-ARM CHILD-TREE MAKE-DIR CHILD-TREE CLEANUP-TREE+ s\q outer: dying\q 5 die ;\n" TEXT+
+   S\" : CHILD-MAIN ( -- ) CHILD-ARM CHILD-TREE FS:MAKE-DIR CHILD-TREE FS:CLEANUP-TREE+ s\q outer: dying\q 5 die ;\n" TEXT+
    S\" CHILD-MAIN\n" TEXT+
    RUN-CHILD {: outu:n erru:n rc:n :}
    s" registering chains a foreign hook instead of replacing it" T-LABEL
    outu erru rc 3 EXPECT-RC
    erru s" outer: dying" ERR-HAS? TTRUE
    erru s" hook: dying" ERR-HAS? TTRUE
-   TREE$ EXISTS? TFALSE ;
+   TREE$ FS:EXISTS? TFALSE ;
 
 \ A hook that throws, armed while `die` runs inside a `catch`. The engine runs
 \ the hook with the handler chain empty, so its throw is uncaught and ends the
@@ -187,13 +187,13 @@ variable TREE-U
    erru s" neg" ERR-HAS? TTRUE
    outu 0 T= ;
 
-\ REPLACE-STAGED registers the sibling it reserves, so a `die` inside the
+\ FS:REPLACE-STAGED registers the sibling it reserves, so a `die` inside the
 \ filler - the image writer's on a failed open or write - takes the sibling
 \ with it, and the file it was replacing stays as it was: one file, its old
 \ bytes.
 16 constant STAGED-CAP
 create STAGED-BUF STAGED-CAP allot
-create STAGED-OUT-BUF FS-PATH-CAP allot
+create STAGED-OUT-BUF PATH-CAP allot
 variable STAGED-OUT-U
 variable STAGED-FILES
 
@@ -204,24 +204,24 @@ variable STAGED-FILES
 
 : STAGED-FILES# ( -- n )
    0 STAGED-FILES !
-   TREE$ [: STAGED-COUNT ;] WALK-FILES
+   TREE$ [: STAGED-COUNT ;] FS:WALK-FILES
    STAGED-FILES @ ;
 
 : CASE-STAGED ( -- )
    s" staged.f" s" staged-tree" CASE-PATHS
-   S\" create CHILD-BUF FS-PATH-CAP allot\nvariable CHILD-U\n" TEXT+
+   S\" create CHILD-BUF PATH-CAP allot\nvariable CHILD-U\n" TEXT+
    S\" : CHILD-OUT ( -- ptr u8 n ) CHILD-BUF CHILD-U @ ;\n" TEXT+
-   S\" : CHILD-OUT! ( -- ) CHILD-TREE s\q out\q CHILD-BUF JOIN-PATH CHILD-U ! ;\n" TEXT+
+   S\" : CHILD-OUT! ( -- ) CHILD-TREE s\q out\q CHILD-BUF FS:JOIN-PATH CHILD-U ! ;\n" TEXT+
    S\" : CHILD-FILL ( ptr u8 n -- ) 2drop s\q child: dying\q 7 die ;\n" TEXT+
-   S\" : CHILD-MAIN ( -- ) CHILD-TREE MAKE-DIR CHILD-OUT! CHILD-OUT s\q previous\q WRITE-ALL\n" TEXT+
-   S\"    CHILD-OUT [: CHILD-FILL ;] REPLACE-STAGED ;\n" TEXT+
+   S\" : CHILD-MAIN ( -- ) CHILD-TREE FS:MAKE-DIR CHILD-OUT! CHILD-OUT s\q previous\q FS:WRITE-ALL\n" TEXT+
+   S\"    CHILD-OUT [: CHILD-FILL ;] FS:REPLACE-STAGED ;\n" TEXT+
    S\" CHILD-MAIN\n" TEXT+
    RUN-CHILD {: outu:n erru:n rc:n :}
    s" a die while a file is replaced keeps it and removes the sibling" T-LABEL
    outu erru rc 7 EXPECT-RC
    erru s" child: dying" ERR-HAS? TTRUE
-   TREE$ s" out" STAGED-OUT-BUF JOIN-PATH STAGED-OUT-U !
-   STAGED-OUT$ STAGED-BUF STAGED-CAP READ-ALL {: u:n :}
+   TREE$ s" out" STAGED-OUT-BUF FS:JOIN-PATH STAGED-OUT-U !
+   STAGED-OUT$ STAGED-BUF STAGED-CAP FS:READ-ALL {: u:n :}
    STAGED-BUF u s" previous" T$=
    STAGED-FILES# 1 T= ;
 
@@ -237,7 +237,7 @@ variable STAGED-FILES
 
 : RUN ( -- )
    T-RESET
-   [: BODY ;] [: CLEANUP-RUN ;] finally
+   [: BODY ;] [: FS:CLEANUP-RUN ;] finally
    T-REPORT
    s" exit-hook-test: ok" type cr ;
 

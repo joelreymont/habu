@@ -5,7 +5,7 @@
 \ a file its packets name each read a source whole through src/lib/source.f
 \ READ-WHOLE-FILE or READ-WHOLE-SAMPLED: the file's size is only the first
 \ room, and the read goes on to the end of the file. This process loads the
-\ readers once behind a FILE-SIZE (test/whole-source-read-child.f) that appends
+\ readers once behind a FS:FILE-SIZE (test/whole-source-read-child.f) that appends
 \ blank lines past every first room to the file a case grows each time it
 \ answers for it, and a require of grown.f to the subject the first time. Each
 \ case runs in a fork child of it (src/lib/test/subject.f), so every reader meets
@@ -35,11 +35,11 @@ $11000 constant GROWTH
 GROWTH IO-CAP + constant OUT-CAP
 600000 constant TIMEOUT-MS
 
-create ROOT FS-PATH-CAP allot   variable ROOT-U
-create DIR FS-PATH-CAP allot    variable DIR-U
-create SUBJECT FS-PATH-CAP allot   variable SUBJECT-U
-create GROWN FS-PATH-CAP allot  variable GROWN-U
-create GROW FS-PATH-CAP allot   variable GROW-U
+create ROOT PATH-CAP allot   variable ROOT-U
+create DIR PATH-CAP allot    variable DIR-U
+create SUBJECT PATH-CAP allot   variable SUBJECT-U
+create GROWN PATH-CAP allot  variable GROWN-U
+create GROW PATH-CAP allot   variable GROW-U
 create OUT OUT-CAP allot
 create ERR IO-CAP allot
 
@@ -50,21 +50,21 @@ create ERR IO-CAP allot
 : GROW$ ( -- ptr u8 n ) GROW GROW-U @ ;
 
 : SETUP ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" habu-whole-source-read" FS:MKTEMP-DIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY  u ROOT-U !
-   ROOT$ CLEANUP-TREE+ ;
+   ROOT$ FS:CLEANUP-TREE+ ;
 
 \ The case's own directory, holding the subject as it starts, which is the
 \ file the case grows unless it names another; grown.f is named beside it and
 \ written only by a case that needs it.
 : CASE-DIR ( ptr u8 n -- ) {: mode:ptr modeu:n :}
-   ROOT$ mode modeu DIR JOIN-PATH DIR-U !
-   DIR$ MAKE-DIRS
-   DIR$ s" grow.f" SUBJECT JOIN-PATH SUBJECT-U !
-   DIR$ s" grown.f" GROWN JOIN-PATH GROWN-U !
-   DIR$ s" grow.f" GROW JOIN-PATH GROW-U !
-   SUBJECT$ S\" \\ grows each time its size is taken\n" WRITE-ALL ;
+   ROOT$ mode modeu DIR FS:JOIN-PATH DIR-U !
+   DIR$ FS:MAKE-DIRS
+   DIR$ s" grow.f" SUBJECT FS:JOIN-PATH SUBJECT-U !
+   DIR$ s" grown.f" GROWN FS:JOIN-PATH GROWN-U !
+   DIR$ s" grow.f" GROW FS:JOIN-PATH GROW-U !
+   SUBJECT$ S\" \\ grows each time its size is taken\n" FS:WRITE-ALL ;
 
 : RUN ( ptr u8 n -- n n n ) {: mode:ptr modeu:n :}   \ outu erru rc
    mode modeu SUBJECT$ GROW$ WHOLE-SOURCE-READ-CHILD:CASE!
@@ -82,7 +82,7 @@ create ERR IO-CAP allot
 : CHECK-CASE ( ptr u8 n ptr u8 n -- )
    {: mode:ptr modeu:n label:ptr labelu:n :}
    mode modeu CASE-DIR
-   GROWN$ S\" : GROWN ( -- n ) ;\n" WRITE-ALL
+   GROWN$ S\" : GROWN ( -- n ) ;\n" FS:WRITE-ALL
    mode modeu RUN {: outu:n erru:n rc:n :}
    label labelu T-LABEL
    rc 0 T=
@@ -96,10 +96,10 @@ create ERR IO-CAP allot
 \ to report the duplicate where it stands.
 : DEP-CASE ( -- )
    s" dep" CASE-DIR
-   DIR$ s" dep.f" GROW JOIN-PATH GROW-U !
-   SUBJECT$ S\" s\" dep.f\" required\n" WRITE-ALL
-   GROWN$ S\" : GROWN ( -- n ) 1 ;\n" WRITE-ALL
-   GROW$ S\" : TWICE ( -- n ) 1 ;\n: TWICE ( -- n ) 2 ;\n" WRITE-ALL
+   DIR$ s" dep.f" GROW FS:JOIN-PATH GROW-U !
+   SUBJECT$ S\" s\" dep.f\" required\n" FS:WRITE-ALL
+   GROWN$ S\" : GROWN ( -- n ) 1 ;\n" FS:WRITE-ALL
+   GROW$ S\" : TWICE ( -- n ) 1 ;\n: TWICE ( -- n ) 2 ;\n" FS:WRITE-ALL
    s" dep" RUN {: outu:n erru:n rc:n :}
    s" a verify-only dependency is read past each sampled size" T-LABEL
    rc 0 T=
@@ -131,8 +131,8 @@ create ERR IO-CAP allot
 \ second line, which the bytes past the sampled size leave where they were.
 : LSP-CASE ( -- )
    s" lsp" CASE-DIR
-   DIR$ s" dep.f" GROW JOIN-PATH GROW-U !
-   GROW$ S\" \\ comment\n: BAD ( -- n ) ;\n" WRITE-ALL
+   DIR$ s" dep.f" GROW FS:JOIN-PATH GROW-U !
+   GROW$ S\" \\ comment\n: BAD ( -- n ) ;\n" FS:WRITE-ALL
    s" lsp" RUN {: outu:n erru:n rc:n :}
    s" the language server reads a file a packet names past its sampled size" T-LABEL
    rc 0 T=
@@ -144,7 +144,7 @@ create ERR IO-CAP allot
 \ reads: it is named on standard error and its text counts as empty.
 : LSP-MISSING-CASE ( -- )
    s" lsp-missing" CASE-DIR
-   DIR$ s" missing.f" GROW JOIN-PATH GROW-U !
+   DIR$ s" missing.f" GROW FS:JOIN-PATH GROW-U !
    s" lsp" RUN {: outu:n erru:n rc:n :}
    s" the language server counts a file it cannot read as empty" T-LABEL
    rc 0 T=
@@ -165,7 +165,7 @@ public
    ORIGIN-REFUSED-CASE
    LSP-CASE
    LSP-MISSING-CASE
-   CLEANUP-RUN
+   FS:CLEANUP-RUN
    T-REPORT
    s" whole-source-read-test: ok" type cr ;
 

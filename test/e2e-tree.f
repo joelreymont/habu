@@ -20,9 +20,9 @@ private
 
 $8000 constant IO-CAP
 
-create ROOT FS-PATH-CAP allot variable ROOT-U
-create PATH FS-PATH-CAP allot
-create TARGET FS-PATH-CAP allot variable TARGET-U
+create ROOT PATH-CAP allot variable ROOT-U
+create PATH PATH-CAP allot
+create TARGET PATH-CAP allot variable TARGET-U
 create OUT IO-CAP allot variable OUT-U
 create ERR IO-CAP allot variable ERR-U
 variable RC-CELL
@@ -38,22 +38,22 @@ public
 : RC@ ( -- n ) RC-CELL @ ;
 
 : AT-A ( ptr u8 n -- ptr u8 n ) {: rel:ptr relu:n :}
-   ROOT$ rel relu PATH JOIN-PATH PATH swap ;
+   ROOT$ rel relu PATH FS:JOIN-PATH PATH swap ;
 
 : LINK ( ptr u8 n -- ) {: rel:ptr relu:n :}
-   SOURCE-ROOT:CWD$ rel relu TARGET JOIN-PATH TARGET-U !
-   TARGET TARGET-U @ rel relu AT-A MAKE-SYMLINK ;
+   SOURCE-ROOT:CWD$ rel relu TARGET FS:JOIN-PATH TARGET-U !
+   TARGET TARGET-U @ rel relu AT-A FS:MAKE-SYMLINK ;
 
 : COPY-TEST ( ptr u8 n -- ) {: rel:ptr relu:n :}
-   SOURCE-ROOT:CWD$ rel relu TARGET JOIN-PATH TARGET-U !
-   TARGET TARGET-U @ rel relu AT-A COPY-FILE-STREAM ;
+   SOURCE-ROOT:CWD$ rel relu TARGET FS:JOIN-PATH TARGET-U !
+   TARGET TARGET-U @ rel relu AT-A FS:COPY-FILE-STREAM ;
 
 \ The tree named n under TMPDIR, with src and tools linked and test/ made.
 : TREE ( ptr u8 n -- )
    FS:MKTEMP-DIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY u ROOT-U !
    s" src" LINK s" tools" LINK
-   s" test" AT-A MAKE-DIRS ;
+   s" test" AT-A FS:MAKE-DIRS ;
 
 : ARGS ( ptr u8 n -- ) {: source:ptr size:n :}
    PROC-CWD:ARGV-ENV-CWD-RESET
@@ -81,8 +81,8 @@ public
 
 : SAVE-LOG ( ptr u8 n ptr u8 n -- )
    {: outpath:ptr outu:n errpath:ptr erru:n :}
-   outpath outu AT-A OUT$ WRITE-ALL
-   errpath erru AT-A ERR$ WRITE-ALL ;
+   outpath outu AT-A OUT$ FS:WRITE-ALL
+   errpath erru AT-A ERR$ FS:WRITE-ALL ;
 
 : NEED-OK ( -- )
    RC@ 0<> if OUT$ type ERR$ type then

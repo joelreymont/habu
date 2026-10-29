@@ -35,12 +35,12 @@ private
 CAP BUFFER: OUT
 CAP BUFFER: ERR
 variable OUT-U
-FS-PATH-CAP BUFFER: EXE
-FS-PATH-CAP BUFFER: DIR
+PATH-CAP BUFFER: EXE
+PATH-CAP BUFFER: DIR
 variable DIR-U
-FS-PATH-CAP BUFFER: MOD
+PATH-CAP BUFFER: MOD
 variable MOD-U
-FS-PATH-CAP BUFFER: FILE
+PATH-CAP BUFFER: FILE
 variable FILE-U
 DYNAMIC-BUFFER PAYLOAD u8
 
@@ -49,8 +49,8 @@ DYNAMIC-BUFFER PAYLOAD u8
 : SETUP ( -- )
    s" browser-storage" FS:MKTEMP-DIR {: a:ptr u:n :}
    a DIR u BYTE-COPY u DIR-U !
-   DIR u s" storage.wasm" MOD JOIN-PATH MOD-U !
-   DIR u s" payload.bin" FILE JOIN-PATH FILE-U !
+   DIR u s" storage.wasm" MOD FS:JOIN-PATH MOD-U !
+   DIR u s" payload.bin" FILE FS:JOIN-PATH FILE-U !
    s" browser storage: module, payload and output in " type DIR u type cr ;
 
 : SPAWN ( ptr u8 len -- n )
@@ -72,10 +72,10 @@ DYNAMIC-BUFFER PAYLOAD u8
    0 u 0 ?do 31 * a i + c@ + $FFFFFFFF and loop ;
 
 : PAYLOAD! ( -- n )
-   WPROF:IMAGE-BASE MOD MOD-U @ FILE-SIZE + WPROF:PAGE-BYTES + 13 + {: u:n :}
+   WPROF:IMAGE-BASE MOD MOD-U @ FS:FILE-SIZE + WPROF:PAGE-BYTES + 13 + {: u:n :}
    u PAYLOAD-RESERVE
    u 0 ?do i i 509 / + $FF and i PAYLOAD c! loop
-   FILE FILE-U @ 0 PAYLOAD u WRITE-ALL
+   FILE FILE-U @ 0 PAYLOAD u FS:WRITE-ALL
    0 PAYLOAD u SUM ;
 
 : WANT ( n -- ptr u8 n )
@@ -127,16 +127,16 @@ public
    OUT wu want wu T$=
    wu MEMORY-NEXT
    OUT OUT-U @ BROWSER-MEMORY-TEST:MEMORY {: base:n :}
-   DIR DIR-U @ s" payload.bin" FILE JOIN-PATH FILE-U !
+   DIR DIR-U @ s" payload.bin" FILE FS:JOIN-PATH FILE-U !
    s" each freed keystroke's pages serve the next, and the fetched bytes keep their checksum" T-LABEL
    true HOST 0 T=
    sum WANT drop drop
    s\" text typed 1000\n" SB-APPEND
    SB$ {: all:ptr allu:n :}
-   DIR DIR-U @ s" actual.txt" FILE JOIN-PATH FILE-U !
-   FILE FILE-U @ OUT OUT-U @ WRITE-ALL
-   DIR DIR-U @ s" expected.txt" FILE JOIN-PATH FILE-U !
-   FILE FILE-U @ all allu WRITE-ALL
+   DIR DIR-U @ s" actual.txt" FILE FS:JOIN-PATH FILE-U !
+   FILE FILE-U @ OUT OUT-U @ FS:WRITE-ALL
+   DIR DIR-U @ s" expected.txt" FILE FS:JOIN-PATH FILE-U !
+   FILE FILE-U @ all allu FS:WRITE-ALL
    OUT allu all allu T$=
    allu MEMORY-NEXT
    s" 1000 keystrokes leave memory as the first run left it" T-LABEL

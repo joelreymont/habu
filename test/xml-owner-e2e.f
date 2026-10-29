@@ -17,9 +17,9 @@ private
 
 $8000 constant IO-CAP
 512 constant FILE-CAP
-create ROOT FS-PATH-CAP allot variable ROOT-U
-create PATH FS-PATH-CAP allot
-create SUBJECT FS-PATH-CAP allot variable SUBJECT-U
+create ROOT PATH-CAP allot variable ROOT-U
+create PATH PATH-CAP allot
+create SUBJECT PATH-CAP allot variable SUBJECT-U
 create OUT IO-CAP allot variable OUT-U
 create ERR IO-CAP allot variable ERR-U
 create FILE-BYTES FILE-CAP allot
@@ -27,9 +27,9 @@ create EXPECTED FILE-CAP allot
 variable RC
 
 : ROOT$ ( -- ptr u8 n ) ROOT ROOT-U @ ;
-: APP$ ( -- ptr u8 n ) ROOT$ s" xml-owner-app" PATH JOIN-PATH PATH swap ;
+: APP$ ( -- ptr u8 n ) ROOT$ s" xml-owner-app" PATH FS:JOIN-PATH PATH swap ;
 : FILE$ ( ptr u8 n -- ptr u8 n ) {: rel:ptr size:n :}
-   ROOT$ rel size PATH JOIN-PATH PATH swap ;
+   ROOT$ rel size PATH FS:JOIN-PATH PATH swap ;
 
 : RUN-INPUT ( ptr u8 n ptr u8 n -- )
    {: program size:n input input-size:n :}
@@ -62,7 +62,7 @@ variable RC
    AOT-BUILDER-ENGINE:ENSURE
    \ A subject under this run's fresh root keys a new artifact, so every run links.
    s" consumer.f" FILE$ SUBJECT swap dup SUBJECT-U ! BYTE-COPY
-   s" test/xml-owner-consumer.f" SUBJECT SUBJECT-U @ COPY-FILE-STREAM
+   s" test/xml-owner-consumer.f" SUBJECT SUBJECT-U @ FS:COPY-FILE-STREAM
    PROC-CWD:ARGV-ENV-CWD-RESET
    s" HABU_FIXPOINT_ENGINE" >LEN ENGINE-CANDIDATE:PATH$ >LEN PROC-ENV+
    s" --load" >LEN PROC-ARGV+
@@ -74,7 +74,7 @@ variable RC
    ENGINE-CANDIDATE:PATH$
    s" " RUN-INPUT
    s" the same public consumer builds as a native application" T-LABEL
-   NEED-OK APP$ EXECUTABLE? TTRUE ;
+   NEED-OK APP$ FS:EXECUTABLE? TTRUE ;
 
 : NATIVE-RUN ( -- )
    SOURCE-ARGS
@@ -108,7 +108,7 @@ variable RC
    s" SRC-MINT" FAIL-LOAD ;
 
 : FILE-READ ( ptr u8 n -- n )
-   FILE$ FILE-BYTES FILE-CAP READ-ALL ;
+   FILE$ FILE-BYTES FILE-CAP FS:READ-ALL ;
 
 : UTF8-ARTIFACT ( -- )
    s" part-utf8.xml" FILE-READ
@@ -156,7 +156,7 @@ public
    root ROOT size BYTE-COPY size ROOT-U !
    SOURCE-RUN REFUSALS BUILD NATIVE-RUN
    UTF8-ARTIFACT true UTF16-ARTIFACT false UTF16-ARTIFACT
-   APP$ REMOVE-FILE
+   APP$ FS:REMOVE-FILE
    s" xml-owner-e2e tree: " type ROOT$ type cr
    T-REPORT ;
 ;package

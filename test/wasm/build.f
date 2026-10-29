@@ -41,11 +41,11 @@ private
 CAP BUFFER: OUT
 CAP BUFFER: ERR
 variable ERR-U
-FS-PATH-CAP BUFFER: DIR
+PATH-CAP BUFFER: DIR
 variable DIR-U
-FS-PATH-CAP BUFFER: SRC
+PATH-CAP BUFFER: SRC
 variable SRC-U
-FS-PATH-CAP BUFFER: MOD
+PATH-CAP BUFFER: MOD
 variable MOD-U
 DYNAMIC-BUFFER MODULE u8
 
@@ -71,14 +71,14 @@ DYNAMIC-BUFFER MODULE u8
 \ text written as the file name in DIR, the source the next build reads.
 : SOURCE! ( ptr u8 n ptr u8 n -- )
    {: text:ptr tu:n name:ptr nu:n :}
-   DIR DIR-U @ name nu SRC JOIN-PATH SRC-U !
-   SRC SRC-U @ text tu WRITE-ALL ;
+   DIR DIR-U @ name nu SRC FS:JOIN-PATH SRC-U !
+   SRC SRC-U @ text tu FS:WRITE-ALL ;
 
 \ The source built into the module file name in DIR, whose run calls entry;
 \ answers the driver's status.
 : BUILD ( ptr u8 n ptr u8 n -- n )
    {: e:ptr eu:n name:ptr nu:n :}
-   DIR DIR-U @ name nu MOD JOIN-PATH MOD-U !
+   DIR DIR-U @ name nu MOD FS:JOIN-PATH MOD-U !
    COMMAND  SRC SRC-U @ ARG+  e eu ARG+  MOD MOD-U @ ARG+
    DRIVER ;
 
@@ -148,21 +148,21 @@ DYNAMIC-BUFFER MODULE u8
    s" MAIN" s" reached-definer.wasm" BUILD 74 T=
    ERR ERR-U @ RTRIM
    s" wasmlink: a name WKERNEL's map does not answer" T$=
-   MOD MOD-U @ EXISTS? TFALSE
+   MOD MOD-U @ FS:EXISTS? TFALSE
    s" package ADV public : MAKER ( -- ) create 0 , does> ( -- ) drop ; ;package"
    s" companion-entry.f" SOURCE!
    s" a direct does> companion entry is refused before writing a module" T-LABEL
    s" ADV:MAKER;does" s" companion-entry.wasm" BUILD 74 T=
    ERR ERR-U @ RTRIM
    s" wasmlink: runtime-reached does> companion has no Wasm routine" T$=
-   MOD MOD-U @ EXISTS? TFALSE
+   MOD MOD-U @ FS:EXISTS? TFALSE
    S\" package ADV\nprivate\nvariable ACTION\npublic\n: MAKER ( -- ) create 0 , does> ( -- ) drop ;\n: MAIN ( -- ) ;\n' MAKER;does ACTION xt!\n;package\n"
    s" companion-cell.f" SOURCE!
    s" a code cell reaching a does> companion is refused before output" T-LABEL
    s" ADV:MAIN" s" companion-cell.wasm" BUILD 74 T=
    ERR ERR-U @ RTRIM
    s" wasmlink: runtime-reached does> companion has no Wasm routine" T$=
-   MOD MOD-U @ EXISTS? TFALSE
+   MOD MOD-U @ FS:EXISTS? TFALSE
    s" require src/lib/span.f 2 SPAN-CELLS: C : MAIN ( -- ) C SPAN:CELL-LEN . ;"
    s" span-cells.f" SOURCE!
    s" a reached static cell-span producer is refused without a Wasm routine" T-LABEL
@@ -242,9 +242,9 @@ variable POS                         \ where the walk of the module reads next
 \ The end of the memory of the module just built: the pages its memory section
 \ states, read past the magic, the version and the sections before it.
 : MEMORY-END ( -- n )
-   MOD MOD-U @ FILE-SIZE {: u:n :}
+   MOD MOD-U @ FS:FILE-SIZE {: u:n :}
    u MODULE-RESERVE
-   MOD MOD-U @ 0 MODULE u READ-ALL u T=
+   MOD MOD-U @ 0 MODULE u FS:READ-ALL u T=
    0 MODULE {: m:ptr :}
    8 POS !
    begin m POS @ + c@ SEC-MEMORY <> while

@@ -63,7 +63,7 @@ create SPAN-BUF 32 allot   variable SPAN-U
    s" HABU_AOT_BAKE" BUILD-MODE
    s" a window holding an initialised cell builds cleanly" REQUIRE-BUILD
    s" the content variant image exists after the build" T-LABEL
-   HB$ EXISTS? TTRUE
+   HB$ FS:EXISTS? TTRUE
    BATCH-OK
    s" the content variant runs a batch program with its real span" T-LABEL
    RC @ 0 T=
@@ -91,7 +91,7 @@ create SPAN-BUF 32 allot   variable SPAN-U
    s" HABU_AOT_TRAP" BUILD-MODE
    s" a window holding an uninstalled defer builds cleanly" REQUIRE-BUILD
    s" the trap variant image exists after the build" T-LABEL
-   HB$ EXISTS? TTRUE
+   HB$ FS:EXISTS? TTRUE
    s" the boot-run's call through the re-trapped cell exits EXEC-VECTOR-RC, not a fault" T-LABEL
    EXEC-VECTOR-RC BOOT-DIES
    s" ... naming the unset vector, before any input is read" T-LABEL

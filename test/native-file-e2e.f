@@ -17,8 +17,8 @@ package NATIVE-FILE-E2E
 private
 
 $8000 constant CAP
-create ROOT FS-PATH-CAP allot  variable ROOT-U
-create PATH FS-PATH-CAP allot
+create ROOT PATH-CAP allot  variable ROOT-U
+create PATH PATH-CAP allot
 DYNAMIC-BUFFER OUT u8  variable OUT-U
 DYNAMIC-BUFFER ERR u8  variable ERR-U
 create PROGRAM CAP allot  variable PROGRAM-U
@@ -47,11 +47,11 @@ public
 
 : AT ( ptr u8 n -- ptr u8 n )
    {: name:ptr u:n :}
-   ROOT$ name u PATH JOIN-PATH PATH swap ;
+   ROOT$ name u PATH FS:JOIN-PATH PATH swap ;
 
 : PUT ( ptr u8 n ptr u8 n -- )
    {: name:ptr nameu:n body:ptr bodyu:n :}
-   name nameu AT body bodyu WRITE-ALL ;
+   name nameu AT body bodyu FS:WRITE-ALL ;
 
 : ARG ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
 

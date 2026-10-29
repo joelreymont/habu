@@ -46,7 +46,7 @@ package NATIVE-FILE-DYNAMIC-LOAD-TEST
 : ENVIRONMENT ( -- )
    s" cached definitions preserve environment-selected loads" T-LABEL
    s" native-file-env-load" TREE
-   s" cache" AT MAKE-DIR s" a" AT MAKE-DIR s" b" AT MAKE-DIR
+   s" cache" AT FS:MAKE-DIR s" a" AT FS:MAKE-DIR s" b" AT FS:MAKE-DIR
    s" a/type.f" S\" package SHARED public NEWTYPE rownum\n: ANSWER ( -- n ) 42 ; ;package\n" PUT
    s" b/type.f" S\" package SHARED public NEWTYPE rownum\n: ANSWER ( -- n ) 99 ; ;package\n" PUT
    s" loader.f" S\" package LOADER\n: LOAD ( -- ) s\" type.f\" required ;\n: RUN ( -- ) s\" SHARED_ROOT\" GETENV [: LOAD ;] SOURCE-ROOT:WITH ;\n' RUN ;package execute\n" PUT
@@ -79,7 +79,7 @@ public
    T-RESET
    s" compiled required actions run with cached definitions" T-LABEL
    s" native-file-dynamic-load" TREE
-   s" cache" AT MAKE-DIR
+   s" cache" AT FS:MAKE-DIR
    s" a.f" S\" package A public : VALUE ( -- n ) 41 ; ;package\n" PUT
    s" b.f" S\" package B public : VALUE ( -- n ) 1 ; ;package\n" PUT
    s" app.f" S\" : LOAD-BOTH ( -- ) s\" a.f\" required s\" b.f\" required ;\nLOAD-BOTH\n: MAIN ( -- ) A:VALUE B:VALUE + . ;\n" PUT

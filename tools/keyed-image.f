@@ -46,11 +46,11 @@ private
 $10000 constant IO-CAP
 75 constant BUILD-RC
 
-create ENGINE-BUF FS-PATH-CAP allot
-create WORK-BUF FS-PATH-CAP allot
-create TMP-BUF FS-PATH-CAP allot
-create PATH-BUF FS-PATH-CAP allot
-create KEY-PATH-BUF FS-PATH-CAP allot
+create ENGINE-BUF PATH-CAP allot
+create WORK-BUF PATH-CAP allot
+create TMP-BUF PATH-CAP allot
+create PATH-BUF PATH-CAP allot
+create KEY-PATH-BUF PATH-CAP allot
 create KEY-READ KEY-HEX-LEN 1 + allot
 create OUT IO-CAP allot
 create ERR IO-CAP allot
@@ -102,7 +102,7 @@ TYPED-VARIABLE ARGS-XT [ ptr u8 n -- ]
 
 : COPY-OUT! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr up:ptr :}
    u 0 <= if E-FS-PATH throw then
-   u FS-PATH-CAP > if E-FS-CAPACITY throw then
+   u PATH-CAP > if E-FS-CAPACITY throw then
    a dst u BYTE-COPY
    u up ! ;
 
@@ -110,7 +110,7 @@ TYPED-VARIABLE ARGS-XT [ ptr u8 n -- ]
 \ under the directory of the engine whose key follows the family.
 : PATHS! ( ptr u8 n ptr u8 -- )
    BUILD-OUT:IMG$ PATH-BUF PATH-U COPY-OUT!
-   PATH-U @ 4 + FS-PATH-CAP > if E-FS-CAPACITY throw then
+   PATH-U @ 4 + PATH-CAP > if E-FS-CAPACITY throw then
    PATH-BUF KEY-PATH-BUF PATH-U @ BYTE-COPY
    s" .key" drop KEY-PATH-BUF PATH-U @ + 4 BYTE-COPY
    PATH-U @ 4 + KEY-PATH-U ! ;
@@ -118,7 +118,7 @@ TYPED-VARIABLE ARGS-XT [ ptr u8 n -- ]
 public
 
 \ The path of a family's image, built by the engine whose key follows the
-\ family, into the caller's FS-PATH-CAP buffer and length cell.
+\ family, into the caller's PATH-CAP buffer and length cell.
 : PATH! ( ptr u8 n ptr u8 ptr u8 ptr n -- )
    {: fam:ptr famu:n ekey:ptr dst:ptr up:ptr :}
    fam famu ekey BUILD-OUT:IMG$ dst up COPY-OUT! ;
@@ -127,12 +127,12 @@ public
 \ the family, is executable and was published under this key.
 \ A key that cannot be opened (missing) or holds any length other than
 \ KEY-HEX-LEN is a miss: the empty key of a publish in progress, and a longer
-\ file, which READ-ALL refuses with E-FS-CAPACITY. Every other error throws.
+\ file, which FS:READ-ALL refuses with E-FS-CAPACITY. Every other error throws.
 : FRESH? ( ptr u8 ptr u8 n ptr u8 -- bool )
    {: key:ptr fam:ptr famu:n ekey:ptr :}
    fam famu ekey PATHS!
-   PATH$ EXECUTABLE? 0= if false exit then
-   0 [: drop KEY-PATH$ KEY-READ KEY-HEX-LEN 1 + READ-ALL ;] catch {: rc:n :}
+   PATH$ FS:EXECUTABLE? 0= if false exit then
+   0 [: drop KEY-PATH$ KEY-READ KEY-HEX-LEN 1 + FS:READ-ALL ;] catch {: rc:n :}
    rc E-FS-OPEN = rc E-FS-CAPACITY = or if drop false exit then
    rc 0<> if rc throw then
    KEY-HEX-LEN <> if false exit then
@@ -145,10 +145,10 @@ public
 : WORK-OPEN ( ptr u8 n ptr u8 -- ptr u8 n )
    {: fam:ptr famu:n ekey:ptr :}
    fam famu ekey BUILD-OUT:IMG$ SOURCE-ROOT:DIRNAME fam famu FS:MKTEMP-DIR-IN
-   2dup CLEANUP-TREE+ ;
+   2dup FS:CLEANUP-TREE+ ;
 
 : WORK-CLOSE ( ptr u8 n -- )
-   2dup REMOVE-TREE CLEANUP-FORGET ;
+   2dup FS:REMOVE-TREE FS:CLEANUP-FORGET ;
 
 \ Publish the image at tmp as the family's, built under the key by the engine
 \ whose key follows the family: an empty key first, which FRESH? reads as a
@@ -156,9 +156,9 @@ public
 : PUBLISH ( ptr u8 ptr u8 n ptr u8 ptr u8 n -- )
    {: key:ptr fam:ptr famu:n ekey:ptr tmp:ptr tmpu:n :}
    fam famu ekey PATHS!
-   KEY-PATH$ key 0 ATOMIC-WRITE-FILE
-   tmp tmpu PATH$ RENAME-FILE
-   KEY-PATH$ key KEY-HEX-LEN ATOMIC-WRITE-FILE ;
+   KEY-PATH$ key 0 FS:ATOMIC-WRITE-FILE
+   tmp tmpu PATH$ FS:RENAME-FILE
+   KEY-PATH$ key KEY-HEX-LEN FS:ATOMIC-WRITE-FILE ;
 
 private
 
@@ -193,7 +193,7 @@ private
    rc 0 <> if s" image build failed" FAILED$ rc die then ;
 
 : PUBLISH-BUILT ( -- )
-   TMP$ EXECUTABLE? 0= if
+   TMP$ FS:EXECUTABLE? 0= if
       s" builder produced no executable image" FAILED$ BUILD-RC die
    then
    RESULT-KEY @ if TMP$ RESULT-XT @ execute KEY-A ! then
@@ -204,7 +204,7 @@ private
 \ process, whose exit registry removes what WORK-OPEN registered.
 : EMIT ( -- )
    FAMILY$ EKEY-A @ WORK-OPEN WORK-BUF WORK-U COPY-OUT!
-   WORK$ FAMILY$ TMP-BUF JOIN-PATH TMP-U !
+   WORK$ FAMILY$ TMP-BUF FS:JOIN-PATH TMP-U !
    ['] BUILD-RUN catch EMIT-RC !
    EMIT-RC @ 0 = if ['] PUBLISH-BUILT catch EMIT-RC ! then
    WORK$ WORK-CLOSE

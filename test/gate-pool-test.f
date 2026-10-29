@@ -20,6 +20,12 @@ require src/lib/engine-candidate.f
 require test/gate-pool.f
 require test/pcap-result.f
 
+\ The private FS words this test reads, forwarded into its own package.
+package FS
+: GATE-POOL-TEST:CLEANUP-COUNT ( -- n ) CLEANUP-N @ ;
+: GATE-POOL-TEST:MODE-DIR ( -- n ) MODE-DIR ;
+;package
+
 package GATE-POOL-TEST
 private
 
@@ -35,7 +41,7 @@ GPT-BIG-CHUNK GPT-BIG-N * constant GPT-BIG-BYTES
 create GPT-OUT GPT-CAP allot
 create GPT-ERR GPT-CAP allot
 create GPT-BIG-BUF GPT-BIG-CHUNK allot
-create GPT-ROOT-SAVE FS-PATH-CAP allot
+create GPT-ROOT-SAVE PATH-CAP allot
 
 variable GPT-COW
 TYPED-VARIABLE GPT-BIG-A ptr u8
@@ -272,12 +278,12 @@ private
    then ;
 
 : GPT-BIG-FILE-LEN ( -- n )
-   0 >IDX GT-POOL-OUT-FILE$ GPT-BIG-A @ GPT-BIG-BYTES $400 + READ-ALL ;
+   0 >IDX GT-POOL-OUT-FILE$ GPT-BIG-A @ GPT-BIG-BYTES $400 + FS:READ-ALL ;
 
 : GPT-BIG-EXPECT ( -- )
    0 >IDX GT-POOL-OUT-U-PTR @ GT-OUT-CAP T=
    0 >IDX GT-POOL-OUT-TOTAL-PTR @ GPT-BIG-BYTES T=
-   0 >IDX GT-POOL-OUT-FILE$ FILE? TTRUE
+   0 >IDX GT-POOL-OUT-FILE$ FS:FILE? TTRUE
    GPT-BIG-FILE-LEN GPT-BIG-BYTES T=
    GPT-BIG-A @ c@ $41 T=
    GPT-BIG-A @ GPT-BIG-BYTES 1- BYTE+ c@ $41 T=
@@ -293,7 +299,7 @@ private
 
 : GPT-ROOT-SAVE! ( -- )
    GT-ROOT {: a:ptr u:n :}
-   u FS-PATH-CAP > if E-FS-PATH throw then
+   u PATH-CAP > if E-FS-PATH throw then
    a GPT-ROOT-SAVE u BYTE-COPY
    u GPT-ROOT-SAVE-U ! ;
 
@@ -328,7 +334,7 @@ private
 1500 constant GPT-GK-DELAY-MS
 3000 constant GPT-GK-GONE-MS       \ past DELAY, so a grandchild the kill missed has written by then
 
-create GPT-GK-SENTINEL FS-PATH-CAP allot
+create GPT-GK-SENTINEL PATH-CAP allot
 create GPT-GK-SLEEP-PFD 64 allot
 variable GPT-GK-SENTINEL-U
 
@@ -345,7 +351,7 @@ variable GPT-GK-SENTINEL-U
 
 : GPT-GK-GRANDCHILD ( -- )
    GPT-GK-DELAY-MS GPT-SLEEP-MS
-   GPT-GK-SENTINEL$ s" grandchild-was-here" WRITE-ALL
+   GPT-GK-SENTINEL$ s" grandchild-was-here" FS:WRITE-ALL
    s" " 0 die ;
 
 : GPT-GK-CHILD ( -- )
@@ -360,7 +366,7 @@ variable GPT-GK-SENTINEL-U
    1 GPT-GK-GONE-MS GPT-GK-GONE-MS >MS PROC-DEADLINE-AT PROC-POLL-RESTART 0 > ;
 
 : GPT-GK-SENTINEL! ( -- )
-   GT-ROOT s" group-kill-sentinel" GPT-GK-SENTINEL JOIN-PATH GPT-GK-SENTINEL-U ! ;
+   GT-ROOT s" group-kill-sentinel" GPT-GK-SENTINEL FS:JOIN-PATH GPT-GK-SENTINEL-U ! ;
 
 : GPT-GROUP-KILL-CASE ( -- )
    s" gate-pool-group-kill" GT-START
@@ -376,7 +382,7 @@ variable GPT-GK-SENTINEL-U
    rd GPT-GK-GONE? TTRUE
    rd FD>N close
    s" group-kill: grandchild sentinel absent" T-LABEL
-   GPT-GK-SENTINEL$ EXISTS? TFALSE
+   GPT-GK-SENTINEL$ FS:EXISTS? TFALSE
    GT-CLEANUP ;
 
 \ Regression for the parent-death reaper's wait(-1) conflict: the reaper armed
@@ -428,7 +434,7 @@ variable GPT-GK-SENTINEL-U
    GT-CLEANUP ;
 
 \ Fork-inherited cleanup registrations. src/lib/fs-mutate.f's cleanup table records
-\ the paths THIS process owns and CLEANUP-RUN deletes every entry in it, so a
+\ the paths THIS process owns and FS:CLEANUP-RUN deletes every entry in it, so a
 \ fork child that inherits the parent's entries and runs its own cleanups
 \ deletes paths the live parent still owns. In the gate that was the driver's
 \ whole capture root, removed out from under its running siblings (E-FS-OPEN /
@@ -438,13 +444,13 @@ variable GPT-GK-SENTINEL-U
 \ The evidence lives in a private temp tree that is deliberately NOT registered
 \ for cleanup: an unfixed child also runs the inherited GT-ROOT entry, and
 \ evidence kept under GT-ROOT would be erased by the very bug it records.
-create GPT-FC-EV FS-PATH-CAP allot        \ evidence root; never registered
-create GPT-FC-PARENT FS-PATH-CAP allot    \ registered by the parent, before the fork
-create GPT-FC-PARENT-FILE FS-PATH-CAP allot
-create GPT-FC-CHILD FS-PATH-CAP allot     \ registered by the child, after the fork
-create GPT-FC-CHILD-FILE FS-PATH-CAP allot
-create GPT-FC-DEPTH FS-PATH-CAP allot     \ one byte: 1 when the child inherited an entry
-create GPT-FC-DONE FS-PATH-CAP allot      \ written after the child's CLEANUP-RUN returns
+create GPT-FC-EV PATH-CAP allot        \ evidence root; never registered
+create GPT-FC-PARENT PATH-CAP allot    \ registered by the parent, before the fork
+create GPT-FC-PARENT-FILE PATH-CAP allot
+create GPT-FC-CHILD PATH-CAP allot     \ registered by the child, after the fork
+create GPT-FC-CHILD-FILE PATH-CAP allot
+create GPT-FC-DEPTH PATH-CAP allot     \ one byte: 1 when the child inherited an entry
+create GPT-FC-DONE PATH-CAP allot      \ written after the child's FS:CLEANUP-RUN returns
 create GPT-FC-BYTE 8 allot                \ a whole cell, so what follows stays aligned
 variable GPT-FC-EV-U
 variable GPT-FC-PARENT-U
@@ -476,13 +482,13 @@ variable GPT-FC-DONE-U
    GPT-FC-DONE GPT-FC-DONE-U @ ;
 
 : GPT-FC-EV! ( ptr u8 n -- ) {: a:ptr u:n :}
-   u FS-PATH-CAP > if E-FS-PATH throw then
+   u PATH-CAP > if E-FS-PATH throw then
    a GPT-FC-EV u BYTE-COPY
    u GPT-FC-EV-U ! ;
 
 : GPT-FC-SUB! ( ptr u8 n ptr u8 n ptr u8 ptr n -- )
    {: base:ptr baseu:n name:ptr nameu:n dst:ptr up:ptr :}
-   base baseu name nameu dst JOIN-PATH up ! ;
+   base baseu name nameu dst FS:JOIN-PATH up ! ;
 
 : GPT-FC-PATHS! ( -- )
    s" hb-fork-cleanup" FS:MKTEMP-DIR GPT-FC-EV!
@@ -494,28 +500,28 @@ variable GPT-FC-DONE-U
    GPT-FC-EV$ s" done" GPT-FC-DONE GPT-FC-DONE-U GPT-FC-SUB! ;
 
 : GPT-FC-REGISTER-PARENT ( -- )
-   GPT-FC-PARENT$ MAKE-DIRS
-   GPT-FC-PARENT-FILE$ s" keep" WRITE-ALL
-   GPT-FC-PARENT$ CLEANUP-TREE+ ;
+   GPT-FC-PARENT$ FS:MAKE-DIRS
+   GPT-FC-PARENT-FILE$ s" keep" FS:WRITE-ALL
+   GPT-FC-PARENT$ FS:CLEANUP-TREE+ ;
 
 \ The fork worker records whether it inherited any cleanup entry - one byte, 1
 \ or 0, written before it touches the table - then registers and runs its OWN
 \ cleanup. It asserts nothing: a failed assertion in a fork child still exits 0, so every
 \ verdict belongs to the parent.
 : GPT-FC-WORKER ( -- )
-   FS-MUT-CLEANUP-N @ 0<> if 1 else 0 then GPT-FC-BYTE c!
-   GPT-FC-DEPTH$ GPT-FC-BYTE 1 WRITE-ALL
-   GPT-FC-CHILD$ MAKE-DIRS
-   GPT-FC-CHILD-FILE$ s" mark" WRITE-ALL
-   GPT-FC-CHILD$ CLEANUP-TREE+
-   CLEANUP-RUN
-   GPT-FC-DONE$ s" done" WRITE-ALL ;
+   CLEANUP-COUNT 0<> if 1 else 0 then GPT-FC-BYTE c!
+   GPT-FC-DEPTH$ GPT-FC-BYTE 1 FS:WRITE-ALL
+   GPT-FC-CHILD$ FS:MAKE-DIRS
+   GPT-FC-CHILD-FILE$ s" mark" FS:WRITE-ALL
+   GPT-FC-CHILD$ FS:CLEANUP-TREE+
+   FS:CLEANUP-RUN
+   GPT-FC-DONE$ s" done" FS:WRITE-ALL ;
 
 \ Poison the byte before reading it, so a short or empty read cannot pass for a
 \ recorded 0, and demand exactly the one byte the child wrote.
 : GPT-FC-DEPTH@ ( -- n )
    $FF GPT-FC-BYTE c!
-   GPT-FC-DEPTH$ GPT-FC-BYTE 1 READ-ALL {: got:n :}
+   GPT-FC-DEPTH$ GPT-FC-BYTE 1 FS:READ-ALL {: got:n :}
    got 1 <> if E-FS-IO throw then
    GPT-FC-BYTE c@ ;
 
@@ -531,17 +537,17 @@ variable GPT-FC-DONE-U
    s" fork cleanup: the child inherits an empty cleanup table" T-LABEL
    GPT-FC-DEPTH@ 0 T=
    s" fork cleanup: the child ran its own cleanup" T-LABEL
-   GPT-FC-CHILD$ EXISTS? TFALSE
+   GPT-FC-CHILD$ FS:EXISTS? TFALSE
    s" fork cleanup: the child ran to completion" T-LABEL
-   GPT-FC-DONE$ FILE? TTRUE
+   GPT-FC-DONE$ FS:FILE? TTRUE
    s" fork cleanup: the parent's directory survives the child" T-LABEL
-   GPT-FC-PARENT$ DIR? TTRUE
+   GPT-FC-PARENT$ FS:DIR? TTRUE
    s" fork cleanup: the parent's file survives the child" T-LABEL
-   GPT-FC-PARENT-FILE$ FILE? TTRUE
+   GPT-FC-PARENT-FILE$ FS:FILE? TTRUE
    GT-CLEANUP
    s" fork cleanup: the parent's own run removes what it registered" T-LABEL
-   GPT-FC-PARENT$ EXISTS? TFALSE
-   GPT-FC-EV$ REMOVE-TREE ;
+   GPT-FC-PARENT$ FS:EXISTS? TFALSE
+   GPT-FC-EV$ FS:REMOVE-TREE ;
 
 \ A stdin-fed slot: the child engine reads its source from the pool's pipe,
 \ and its output reaches the slot's capture like any spawned child's.
@@ -723,9 +729,9 @@ variable GPT-RF-VIC-PID
    s" child tmp: the child made its tree under that directory" T-LABEL
    GPT-CT-PRINTED$ 0 >IDX GT-POOL-TMP$ STARTS-WITH? TTRUE
    s" child tmp: the child's tree is gone after the drain" T-LABEL
-   GPT-CT-PRINTED$ EXISTS? TFALSE
+   GPT-CT-PRINTED$ FS:EXISTS? TFALSE
    s" child tmp: the slot's scratch directory is gone too" T-LABEL
-   0 >IDX GT-POOL-TMP$ EXISTS? TFALSE ;
+   0 >IDX GT-POOL-TMP$ FS:EXISTS? TFALSE ;
 
 : GPT-CHILD-TMP-CASE ( -- )
    s" gate-pool-child-tmp" GT-START
@@ -741,7 +747,7 @@ variable GPT-RF-VIC-PID
 
 \ A SCRATCH THAT WILL NOT GO FAILS ITS ROW, NOT THE POOL (gate-pool.f
 \ GT-POOL-CHILD-TMP-REMOVE). A row can leave a tree under its TMPDIR that
-\ REMOVE-TREE cannot take apart: a directory the row locked, holding an entry,
+\ FS:REMOVE-TREE cannot take apart: a directory the row locked, holding an entry,
 \ refuses that entry's unlink with EACCES and the removal throws E-FS-IO. The
 \ refusal is named with the row, the path and the code, the row is red, and the
 \ pool goes on to the next row; the run's own cleanup meets the same tree under
@@ -751,20 +757,20 @@ variable GPT-RF-VIC-PID
 \ The tree is slot/d/d, the outer d locked (mode 0555) over the inner one.
 $16D constant GPT-DS-LOCKED-MODE
 
-create GPT-DS-PATH FS-PATH-CAP allot
+create GPT-DS-PATH PATH-CAP allot
 
 \ slot/d/d/... with level components below the slot, in GPT-DS-PATH.
 : GPT-DS-PATH$ ( ptr u8 n n -- ptr u8 n ) {: slot:ptr slotu:n level:n :}
    slotu 0 ?do slot i + c@ GPT-DS-PATH i + c! loop
    level 0 ?do
-      FS-SLASH GPT-DS-PATH slotu i 2 * + + c!
+      FS:SLASH GPT-DS-PATH slotu i 2 * + + c!
       100 GPT-DS-PATH slotu i 2 * + 1+ + c!
    loop
    GPT-DS-PATH slotu level 2 * + ;
 
 : GPT-DS-MAKE ( ptr u8 n -- ) {: slot:ptr slotu:n :}
-   slot slotu 2 GPT-DS-PATH$ MAKE-DIRS
-   slot slotu 1 GPT-DS-PATH$ GPT-DS-LOCKED-MODE CHMOD-MODE ;
+   slot slotu 2 GPT-DS-PATH$ FS:MAKE-DIRS
+   slot slotu 1 GPT-DS-PATH$ GPT-DS-LOCKED-MODE FS:CHMOD-MODE ;
 
 : GPT-DS-CASE ( -- )
    s" gate-pool-locked-scratch" GT-START
@@ -794,7 +800,7 @@ create GPT-DS-PATH FS-PATH-CAP allot
    ;MATCH {: lineu:n :}
    rest lineu ;
 
-\ text followed by E-FS-IO, the code REMOVE-TREE refuses the tree with.
+\ text followed by E-FS-IO, the code FS:REMOVE-TREE refuses the tree with.
 : GPT-DS-CODE$ ( ptr u8 n -- ptr u8 n ) {: text:ptr textu:n :}
    SB-RESET
    text textu SB-APPEND
@@ -822,10 +828,10 @@ create GPT-DS-PATH FS-PATH-CAP allot
 
 \ The case's tree goes once its lock is lifted, with the child's root.
 : GPT-DS-CLEAN ( ptr u8 n ptr u8 n -- ) {: slot:ptr slotu:n root:ptr rootu:n :}
-   slot slotu 1 GPT-DS-PATH$ FS-MUT-MODE-DIR CHMOD-MODE
-   root rootu REMOVE-TREE
+   slot slotu 1 GPT-DS-PATH$ MODE-DIR FS:CHMOD-MODE
+   root rootu FS:REMOVE-TREE
    s" locked scratch: the case's tree is gone" T-LABEL
-   root rootu EXISTS? TFALSE ;
+   root rootu FS:EXISTS? TFALSE ;
 
 : GPT-DS-REPORT ( -- )
    s" locked-scratch-case" GPT-MODE-CAPTURE {: outu:n erru:n code:n :}
@@ -863,7 +869,7 @@ variable GPT-FR-U
 : GPT-FR-SRC$ ( -- ptr u8 n )
    GPT-FR-U BUF-RESET
    S\" require test/gate-pool.f\n" GPT-FR+
-   S\" create FR-ROOT FS-PATH-CAP allot\nvariable FR-ROOT-U\n" GPT-FR+
+   S\" create FR-ROOT PATH-CAP allot\nvariable FR-ROOT-U\n" GPT-FR+
    S\" : FR-SAVE ( ptr u8 n -- ) {: a:ptr u:n :}\n" GPT-FR+
    S\"    a FR-ROOT u BYTE-COPY u FR-ROOT-U ! ;\n" GPT-FR+
    S\" : FR-ROUND ( -- )\n" GPT-FR+
@@ -872,7 +878,7 @@ variable GPT-FR-U
    S\"    GT-POOL-FALLBACK-ROOT$ FR-SAVE\n" GPT-FR+
    S\"    GT-POOL-DRAIN ;\n" GPT-FR+
    S\" : FR-GONE? ( -- bool )\n" GPT-FR+
-   S\"    FR-ROOT FR-ROOT-U @ EXISTS? 0= ;\n" GPT-FR+
+   S\"    FR-ROOT FR-ROOT-U @ FS:EXISTS? 0= ;\n" GPT-FR+
    S\" : FR-MAIN ( -- )\n" GPT-FR+
    S\"    PROC-ENV-RESET PROC-ENV-INHERIT-MISSING\n" GPT-FR+
    S\"    FR-ROUND FR-GONE?\n" GPT-FR+

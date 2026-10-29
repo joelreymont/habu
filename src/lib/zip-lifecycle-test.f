@@ -15,10 +15,10 @@ package ZIP
 using FFI
 using IMAGE-LIFECYCLE
 
-create BASE FS-PATH-CAP allot
+create BASE PATH-CAP allot
 variable BASE-LEN
-create PATH-BUF FS-PATH-CAP allot
-create SNAP-PATH FS-PATH-CAP allot
+create PATH-BUF PATH-CAP allot
+create SNAP-PATH PATH-CAP allot
 variable SNAP-PATH-U
 TYPED-VARIABLE OWNER archive
 variable OWNER-LIVE
@@ -34,14 +34,14 @@ TASK:SEMAPHORE LOCK-RELEASE
 
 
 : INPUT$ ( -- ptr u8 n )
-   BASE BASE-LEN @ s" input.zip" PATH-BUF JOIN-PATH PATH-BUF swap ;
+   BASE BASE-LEN @ s" input.zip" PATH-BUF FS:JOIN-PATH PATH-BUF swap ;
 
 
 : LIFECYCLE-SETUP ( -- )
    s" habu-zip-lifecycle" FS:MKTEMP-DIR {: directory bytes:n :}
    directory BASE bytes BYTE-COPY bytes BASE-LEN !
-   BASE bytes CLEANUP-TREE+
-   INPUT$ ZIP-TEST:ORIGINAL$ WRITE-ALL ;
+   BASE bytes FS:CLEANUP-TREE+
+   INPUT$ ZIP-TEST:ORIGINAL$ FS:WRITE-ALL ;
 
 
 \ The library may retire this identity before its application owner runs.
@@ -165,14 +165,14 @@ TASK:SEMAPHORE LOCK-RELEASE
    node SOURCE-PTR @ SNAP-PATH node SOURCE-LEN @ BYTE-COPY
    node SOURCE-LEN @ SNAP-PATH-U !
    s" the open archive's snapshot exists" T-LABEL
-   SNAP-PATH SNAP-PATH-U @ EXISTS? TTRUE
+   SNAP-PATH SNAP-PATH-U @ FS:EXISTS? TTRUE
    archive CLOSE
    s" CLOSE removed the archive's snapshot" T-LABEL
-   SNAP-PATH SNAP-PATH-U @ EXISTS? TFALSE ;
+   SNAP-PATH SNAP-PATH-U @ FS:EXISTS? TFALSE ;
 
 \ Even a failed open registers the retirement; every PREPARE leaves nothing.
 : LIFECYCLE-RUN ( -- )
-   T-RESET CLEANUP-RESET
+   T-RESET FS:CLEANUP-RESET
    LIFECYCLE-SETUP
    PREPARE LIFECYCLE-ASSERT-CLEAR
    LIFECYCLE-USE REGISTERED @ 1 T=
@@ -182,7 +182,7 @@ TASK:SEMAPHORE LOCK-RELEASE
    SNAPSHOT-REMOVED
    FORK-UNDER-ZIP-LOCK
    HALT-DURING-CLOSE
-   CLEANUP-RUN T-REPORT ;
+   FS:CLEANUP-RUN T-REPORT ;
 
 
 LIFECYCLE-RUN

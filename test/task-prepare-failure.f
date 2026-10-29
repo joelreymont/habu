@@ -30,7 +30,7 @@ TASK:MIN-STACK TASK:TASK WORKER
 : IDLE ( -- ) ;
 
 : STATM-PAGES ( -- n )
-   s" /proc/self/statm" STATM STATM-CAP READ-ALL {: u:n :}
+   s" /proc/self/statm" STATM STATM-CAP FS:READ-ALL {: u:n :}
    0 u 0 do
       STATM i + c@ dup $20 = if drop unloop exit then
       $30 - swap 10 * +

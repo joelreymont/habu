@@ -24,7 +24,7 @@ package MAIN-ARGV-TEST
 variable CASES
 
 \ ---- the files --------------------------------------------------------------------
-create PATH-BUF FS-PATH-CAP allot
+create PATH-BUF PATH-CAP allot
 
 \ The fixture name's path in this run's directory. Valid until the next call;
 \ GE-ARG+ copies it.
@@ -32,7 +32,7 @@ create PATH-BUF FS-PATH-CAP allot
    PATH-BUF GT-PATH PATH-BUF swap ;
 
 : FIXTURE ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n name:ptr nameu:n :}
-   name nameu FIX src srcu WRITE-ALL ;
+   name nameu FIX src srcu FS:WRITE-ALL ;
 
 : FIXTURES ( -- )
    S\" s\" A\" type cr\n" s" a.f" FIXTURE
@@ -139,10 +139,10 @@ variable WANT-RC
 
 \ A fixture's canonical path, as a location prints it: the run directory may
 \ resolve through a symbolic link (macOS /var is /private/var).
-create REAL-BUF FS-PATHZ-CAP allot
+create REAL-BUF FS:PATHZ-CAP allot
 
 : REAL ( ptr u8 n -- ptr u8 n )
-   FIX FS-PATHZ REAL-BUF FS-PATHZ-CAP realpath {: u:n :}
+   FIX FS:>PATHZ REAL-BUF FS:PATHZ-CAP realpath {: u:n :}
    u 0 <= if s" a fixture's canonical path" GE-FAIL then
    REAL-BUF u ;
 
@@ -284,7 +284,7 @@ TYPED-VARIABLE BLANKS-A ptr u8
    s" big.f" FIX nip S\" s\" \" provided\n" nip + ;
 
 : BIG ( n -- ) {: u:n :}
-   s" big.f" FIX BLANKS u WRITE-ALL ;
+   s" big.f" FIX BLANKS u FS:WRITE-ALL ;
 
 : BUILD-BIG ( -- )
    s" --build" GE-ARG+ s" big.f" FIX GE-ARG+ ;

@@ -23,7 +23,7 @@ private
 : IMAGES ( -- )
    ROOT$ C2-IMAGE-PAIR:PROVIDE
    s" rooted image is supplied" T-LABEL
-   s" hb-root" AT-A FILE? TTRUE ;
+   s" hb-root" AT-A FS:FILE? TTRUE ;
 
 : SOURCE-CASES ( -- )
    s" hb-root" s" test/c2-view-record-source.f" RUN-IMAGE
@@ -44,7 +44,7 @@ private
    RUN-INPUT
    s" save.out" s" save.err" SAVE-LOG
    s" borrowed field schemas survive native capture" T-LABEL NEED-OK
-   s" hb-saved" AT-A EXECUTABLE? TTRUE
+   s" hb-saved" AT-A FS:EXECUTABLE? TTRUE
    s" hb-saved" s" test/c2-view-record-saved.f" RUN-IMAGE
    s" saved.out" s" saved.err" SAVE-LOG
    s" a fresh saved image constructs and consumes the records" T-LABEL

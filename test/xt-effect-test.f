@@ -40,14 +40,14 @@ variable XE-ERR-U
 variable XE-EXITED
 variable XE-RC
 
-create XE-ROOT-BUF FS-PATH-CAP allot
-create XE-CHILD-BUF FS-PATH-CAP allot
+create XE-ROOT-BUF PATH-CAP allot
+create XE-CHILD-BUF PATH-CAP allot
 create XE-OUT XE-CAP allot
 create XE-ERR XE-CAP allot
 create XE-EMPTY 1 allot
 
 : XE-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: src:ptr u:n dst:ptr lenp:ptr :}
-   u FS-PATH-CAP > if E-FS-CAPACITY throw then
+   u PATH-CAP > if E-FS-CAPACITY throw then
    src dst u BYTE-COPY
    u lenp ! ;
 
@@ -67,7 +67,7 @@ create XE-EMPTY 1 allot
 
 \ Write the assembled program (SB$) to the child file and run it via --load.
 : XE-RUN ( ptr u8 n -- ) {: src:ptr srcu:n :}
-   XE-CHILD src srcu WRITE-ALL
+   XE-CHILD src srcu FS:WRITE-ALL
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    XE-CHILD >LEN PROC-ARGV+
@@ -245,15 +245,15 @@ create XE-EMPTY 1 allot
    XE-ERR$ s" E-UNDEFINED: XEU-NOSUCH" CONTAINS? TTRUE ;
 
 : XE-PREPARE ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" habu-xe" FS:MKTEMP-DIR {: a:ptr u:n :}
    a u XE-ROOT-BUF XE-ROOT-U XE-COPY!
-   XE-ROOT CLEANUP-TREE+
-   XE-ROOT s" cand.f" XE-CHILD-BUF JOIN-PATH XE-CHILD-U ! ;
+   XE-ROOT FS:CLEANUP-TREE+
+   XE-ROOT s" cand.f" XE-CHILD-BUF FS:JOIN-PATH XE-CHILD-U ! ;
 
 : XE-CLEANUP ( -- )
-   CLEANUP-RUN
-   XE-ROOT EXISTS? TFALSE ;
+   FS:CLEANUP-RUN
+   XE-ROOT FS:EXISTS? TFALSE ;
 
 : XE-MAIN ( -- )
    T-RESET

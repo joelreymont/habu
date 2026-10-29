@@ -11,7 +11,7 @@ private
 
 variable HIT
 create RESULT 1 allot
-create PATH FS-PATH-CAP allot
+create PATH PATH-CAP allot
 
 : INNER ( -- ) 11 HIT ! ;
 
@@ -53,9 +53,9 @@ EXPORT INVOKE
    [: WRONG-EFFECT ;] 70 TTHROWSQ
    T-REPORT
    s" native-quote-forward" FS:MKTEMP-DIR {: dir:ptr len:n :}
-   dir len s" result.bin" PATH JOIN-PATH {: path-u:n :}
+   dir len s" result.bin" PATH FS:JOIN-PATH {: path-u:n :}
    HIT @ RESULT c!
-   PATH path-u RESULT 1 WRITE-ALL
+   PATH path-u RESULT 1 FS:WRITE-ALL
    s" native quote artifact: " type PATH path-u type cr ;
 
 ;package

@@ -63,11 +63,11 @@ create TG-OUT TG-CAP-OUT allot
 create TG-ERR TG-CAP-OUT allot
 create TG-SHAPE TG-SHAPE-CAP allot
 create TG-PREV TG-SHAPE-CAP allot
-create TG-HOST FS-PATH-CAP allot
-create TG-ROOT FS-PATH-CAP allot
-create TG-PATH FS-PATH-CAP allot
-create TG-PATH-B FS-PATH-CAP allot
-create TG-CACHE-PATH FS-PATH-CAP allot
+create TG-HOST PATH-CAP allot
+create TG-ROOT PATH-CAP allot
+create TG-PATH PATH-CAP allot
+create TG-PATH-B PATH-CAP allot
+create TG-CACHE-PATH PATH-CAP allot
 create TG-NAME 8 allot
 create TG-NAME-B 8 allot
 create TG-CACHE-NAME 8 allot
@@ -90,7 +90,7 @@ variable TG-SEED-ARG
 
 \ The build emits a complete .map file, including code without shipped names.
 DYNAMIC-BUFFER TG-MAP n
-create TG-MAP-PATH FS-PATH-CAP allot
+create TG-MAP-PATH PATH-CAP allot
 variable TG-MAP-U
 variable TG-MAP-POS
 variable TG-COL-START
@@ -114,7 +114,7 @@ variable TG-COL-NAME
    s" two-gen: products " type TG-DIR$ type cr ;
 
 : TG-HOST! ( ptr u8 n -- ) {: a:ptr u:n :}
-   u FS-PATH-CAP > if E-STR-BOUNDS throw then
+   u PATH-CAP > if E-STR-BOUNDS throw then
    a TG-HOST u BYTE-COPY
    u TG-HOST-U ! ;
 
@@ -126,7 +126,7 @@ variable TG-COL-NAME
    g 0 < g 9 > or if E-STR-BOUNDS throw then
    s" hb-b" drop nm 4 BYTE-COPY
    g TG-ZERO + nm 4 + c!
-   TG-DIR$ nm 5 path JOIN-PATH {: u:n :}
+   TG-DIR$ nm 5 path FS:JOIN-PATH {: u:n :}
    path u ;
 
 : TG-GEN$ ( n -- ptr u8 n ) TG-NAME TG-PATH TG-GEN-PATH ;
@@ -137,12 +137,12 @@ variable TG-COL-NAME
    g 0 < g 9 > or if E-STR-BOUNDS throw then
    s" cache-" drop TG-CACHE-NAME 6 BYTE-COPY
    g TG-ZERO + TG-CACHE-NAME 6 + c!
-   TG-DIR$ TG-CACHE-NAME 7 TG-CACHE-PATH JOIN-PATH {: u:n :}
+   TG-DIR$ TG-CACHE-NAME 7 TG-CACHE-PATH FS:JOIN-PATH {: u:n :}
    TG-CACHE-PATH u ;
 
 \ Qualified products no longer need their private out roots.
 : TG-CACHE-CLEANUP ( n -- )
-   0 ?do i 1+ TG-CACHE$ REMOVE-TREE loop ;
+   0 ?do i 1+ TG-CACHE$ FS:REMOVE-TREE loop ;
 
 \ The first line of a capture, so a stop names one diagnostic, not a trace.
 : TG-LINE1 ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
@@ -154,8 +154,8 @@ variable TG-COL-NAME
 
 : TG-HOST0 ( -- )
    SCRIPT-ARGC TG-SEED-ARG @ > if TG-SEED-ARG @ SCRIPT-ARGV$ else TG-BIN$ then
-   0 TG-GEN$ COPY-FILE-STREAM
-   0 TG-GEN$ CHMOD-X
+   0 TG-GEN$ FS:COPY-FILE-STREAM
+   0 TG-GEN$ FS:CHMOD-X
    0 TG-GEN$ TG-HOST! ;
 
 \ Only the stderr length and the completion code matter to a caller: a build
@@ -210,11 +210,11 @@ variable TG-COL-NAME
 : TG-GEN ( n -- ) {: g:n :}
    g TG-BUILD {: errl:len code:n :}
    code 0 <> if g errl code TG-STOPPED then
-   g TG-GEN$ EXISTS? 0= if
+   g TG-GEN$ FS:EXISTS? 0= if
       s" two-gen: gen " type g TG-U. s"  built no engine" type cr
       g TG-FAILED
    then
-   g TG-GEN$ FILE-SIZE TG-IMG !
+   g TG-GEN$ FS:FILE-SIZE TG-IMG !
    g TG-GEN$ TG-PROBE
    g TG-REPORT
    g TG-GEN$ TG-HOST! ;
@@ -241,9 +241,9 @@ variable TG-COL-NAME
 : TG-CMP-OPEN ( ptr u8 n ptr u8 n -- ) {: a:ptr au:n b:ptr bu:n :}
    -1 TG-FDA !
    -1 TG-FDB !
-   a au FS-PATHZ open-rd TG-FDA !
+   a au FS:>PATHZ open-rd TG-FDA !
    TG-FDA @ 0 < if E-FS-OPEN throw then
-   b bu FS-PATHZ open-rd TG-FDB !
+   b bu FS:>PATHZ open-rd TG-FDB !
    TG-FDB @ 0 < if TG-CMP-CLOSE E-FS-OPEN throw then ;
 
 : TG-READ ( n ptr u8 -- n ) {: fd:n buf:ptr :}
@@ -319,14 +319,14 @@ variable TG-COL-NAME
    then s" " ;
 
 : TG-MAP-NAME$ ( ptr u8 n n -- ptr u8 n ) {: path:ptr pathu:n off:n :}
-   pathu 4 + FS-PATH-CAP > if E-FS-CAPACITY throw then
+   pathu 4 + PATH-CAP > if E-FS-CAPACITY throw then
    path TG-MAP-PATH pathu BYTE-COPY
    s" .map" drop TG-MAP-PATH pathu + 4 BYTE-COPY
-   TG-MAP-PATH pathu 4 + FILE? 0= if s" " exit then
-   TG-MAP-PATH pathu 4 + FILE-SIZE dup TG-MAP-U ! CELL + CELL / TG-MAP-RESERVE
-   \ A file that shrank after FILE-SIZE leaves the previous generation's bytes
+   TG-MAP-PATH pathu 4 + FS:FILE? 0= if s" " exit then
+   TG-MAP-PATH pathu 4 + FS:FILE-SIZE dup TG-MAP-U ! CELL + CELL / TG-MAP-RESERVE
+   \ A file that shrank after FS:FILE-SIZE leaves the previous generation's bytes
    \ past the read in TG-MAP, and they would parse as this map's rows.
-   TG-MAP-PATH pathu 4 + 0 TG-MAP BYTE-VIEW TG-MAP-U @ READ-ALL
+   TG-MAP-PATH pathu 4 + 0 TG-MAP BYTE-VIEW TG-MAP-U @ FS:READ-ALL
    TG-MAP-U @ <> if E-FS-IO throw then
    0 TG-MAP-POS !
    TG-MAP-LINE$ s" habu-names 1" STR= 0= if s" " exit then

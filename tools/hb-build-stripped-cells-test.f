@@ -70,7 +70,7 @@ package HB-BUILD-CLI
 \ the cell that holds it. The value is left out of the pin because it is an mmap
 \ address: it differs in every build, which is the fault itself.
 : HBT-STRIPPED-MAPPED-CELL ( -- )
-   HBT-MAPC-SRC HBT-MAPC-SRC$ WRITE-ALL
+   HBT-MAPC-SRC HBT-MAPC-SRC$ FS:WRITE-ALL
    HBT-MAPC-SRC HBT-RUN-MAKER {: cout:n cerr:n crc:n :}
    crc 0 <> TTRUE
    HBB-ERR-BUF cerr s" holds a pointer into memory the build mapped" CONTAINS? TTRUE
@@ -80,14 +80,14 @@ package HB-BUILD-CLI
 
 \ ... and so is one in a DECLARED cell, at the other site and by its own name.
 : HBT-STRIPPED-MAPPED-DECLARED ( -- )
-   HBT-MAPD-SRC HBT-MAPD-SRC$ WRITE-ALL
+   HBT-MAPD-SRC HBT-MAPD-SRC$ FS:WRITE-ALL
    HBT-MAPD-SRC HBT-RUN-MAKER {: dout:n derr:n drc:n :}
    drc 0 <> TTRUE
    HBB-ERR-BUF derr s" holds a pointer into memory the build mapped" CONTAINS? TTRUE
    HBB-ERR-BUF derr s" word=PBUF" CONTAINS? TTRUE ;
 
 : HBT-STRIPPED-MAPPED-BYTES ( -- )
-   HBT-MAPC-SRC HBT-MAPB-SRC$ WRITE-ALL
+   HBT-MAPC-SRC HBT-MAPB-SRC$ FS:WRITE-ALL
    HBT-MAPC-SRC HBT-RUN-MAKER {: outu:n erru:n rc:n :}
    rc 0 <> TTRUE
    HBB-ERR-BUF erru s" holds a pointer into memory the build mapped" CONTAINS? TTRUE
@@ -96,7 +96,7 @@ package HB-BUILD-CLI
 \ ... while a baked create table on no list is refused however much it looks like
 \ the carried ones.
 : HBT-STRIPPED-UNCARRIED-TABLE ( -- )
-   HBT-TABLE-SRC HBT-TABLE-SRC$ WRITE-ALL
+   HBT-TABLE-SRC HBT-TABLE-SRC$ FS:WRITE-ALL
    HBT-TABLE-SRC HBT-RUN-MAKER {: tout:n terr:n trc:n :}
    trc 0 <> TTRUE
    HBB-ERR-BUF terr s" outside the restored span" CONTAINS? TTRUE
@@ -114,8 +114,8 @@ public
    HBT-STRIPPED-MAPPED-DECLARED
    HBT-STRIPPED-MAPPED-BYTES
    HBT-STRIPPED-UNCARRIED-TABLE
-   CLEANUP-RUN
-   HBT-ROOT EXISTS? TFALSE
+   FS:CLEANUP-RUN
+   HBT-ROOT FS:EXISTS? TFALSE
    T-REPORT
    s" hb-build-stripped-cells-test: ok" type cr ;
 

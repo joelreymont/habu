@@ -24,7 +24,7 @@ create DDP-NUM-BUF DDP-NUM-CAP allot
 create DDP-CHAR-BUF 1 allot
 create PATH-BUF DDP-FILE-CAP allot
 
-create ROOT-BUF FS-PATH-CAP allot
+create ROOT-BUF PATH-CAP allot
 create IDS VEC:HEADER-CELLS cells allot
 create ROW-IDS VEC:HEADER-CELLS cells allot
 create ROW-PATH-OFFSETS VEC:HEADER-CELLS cells allot
@@ -96,17 +96,17 @@ CAST: ITEM>N ( NUM:item-count -- n )
    s" .md" LINT-ENDS-WITH? ;
 
 : DDP-DOT-ID$ ( ptr u8 n -- ptr u8 n )
-   BASENAME DDP-MD-U DDP-DROP-TAIL ;
+   FS:BASENAME DDP-MD-U DDP-DROP-TAIL ;
 
 : ROOT$ ( -- ptr u8 n )
    ROOT-BUF ROOT-U @ ;
 
 : ROOT! ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0 <= IF E-FS-PATH throw THEN
-   u FS-PATH-CAP > IF E-FS-PATH throw THEN
+   u PATH-CAP > IF E-FS-PATH throw THEN
    a ROOT-BUF u BYTE-COPY
    u 0 > IF a u 1- + c@ 47 = IF u ROOT-U ! exit THEN THEN
-   u 1+ FS-PATH-CAP > IF E-FS-PATH throw THEN
+   u 1+ PATH-CAP > IF E-FS-PATH throw THEN
    47 ROOT-BUF u + c!
    u 1+ ROOT-U ! ;
 
@@ -313,9 +313,9 @@ public
 
 : LINT-ROOT ( ptr u8 n -- )
    RESET
-   ROOT$ [: DDP-COLLECT-DOT ;] WALK-FILES
+   ROOT$ [: DDP-COLLECT-DOT ;] FS:WALK-FILES
    REPORT-DUPLICATES
-   ROOT$ [: DDP-SCAN-DOT ;] WALK-FILES
+   ROOT$ [: DDP-SCAN-DOT ;] FS:WALK-FILES
    SUMMARY
    DDP-BAD @ 0 > IF 1 throw THEN ;
 

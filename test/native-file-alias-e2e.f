@@ -39,7 +39,7 @@ public
    T-RESET
    s" FILE alias identity survives automatic cold and edited-consumer builds" T-LABEL
    s" native-file-alias" TREE
-   s" direct-cache" AT MAKE-DIR
+   s" direct-cache" AT FS:MAKE-DIR
    SOURCE ALIAS CONSUMER
    RUN-DIRECT SUCCESS
    OUT$ s" files reused 0" CONTAINS? TTRUE

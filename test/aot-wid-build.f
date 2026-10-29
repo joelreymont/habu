@@ -101,11 +101,11 @@ $10000 constant IO-CAP
 74 constant BUILD-RC
 
 create DRV-BUF DRV-CAP allot   variable DRV-U
-create DRV-PATH-BUF FS-PATH-CAP allot   variable DRV-PATH-U
-create ROOT-BUF FS-PATH-CAP allot variable ROOT-U
-create COLD-BUF FS-PATH-CAP allot variable COLD-U
-create ART-BUF FS-PATH-CAP allot variable ART-U
-create IMAGE-BUF FS-PATH-CAP allot variable IMAGE-U
+create DRV-PATH-BUF PATH-CAP allot   variable DRV-PATH-U
+create ROOT-BUF PATH-CAP allot variable ROOT-U
+create COLD-BUF PATH-CAP allot variable COLD-U
+create ART-BUF PATH-CAP allot variable ART-U
+create IMAGE-BUF PATH-CAP allot variable IMAGE-U
 create OUT IO-CAP allot
 create ERR IO-CAP allot
 variable WINDOW-ENDED
@@ -117,18 +117,18 @@ variable WINDOW-ENDED
 
 : PATHS ( -- )
    s" TMPDIR" GETENV {: a:ptr u:n :}
-   u 0= u FS-PATH-CAP > or if
+   u 0= u PATH-CAP > or if
       s" aot-wid-build: TMPDIR must name a private directory" BUILD-RC die then
    a ROOT-BUF u BYTE-COPY u ROOT-U !
-   ROOT$ s" hb-cold" COLD-BUF JOIN-PATH COLD-U !
-   ROOT$ s" window.aot" ART-BUF JOIN-PATH ART-U !
-   ROOT$ s" hb-pwid" IMAGE-BUF JOIN-PATH IMAGE-U ! ;
+   ROOT$ s" hb-cold" COLD-BUF FS:JOIN-PATH COLD-U !
+   ROOT$ s" window.aot" ART-BUF FS:JOIN-PATH ART-U !
+   ROOT$ s" hb-pwid" IMAGE-BUF FS:JOIN-PATH IMAGE-U ! ;
 
 : DRV-PATH$ ( -- ptr u8 n )
    DRV-PATH-BUF DRV-PATH-U @ ;
 
 : DRV-PATH! ( -- )                 \ <TMPDIR>/pwid-driver.f
-   ROOT$ s" pwid-driver.f" DRV-PATH-BUF JOIN-PATH DRV-PATH-U ! ;
+   ROOT$ s" pwid-driver.f" DRV-PATH-BUF FS:JOIN-PATH DRV-PATH-U ! ;
 
 : DRV-RESET ( -- )
    0 DRV-U ! ;
@@ -494,7 +494,7 @@ variable WINDOW-ENDED
    INJECT
    ARTIFACT-WRITE
    DRV-IMPORT-CHECK
-   DRV-PATH$ DRV-BUF DRV-U @ WRITE-ALL ;
+   DRV-PATH$ DRV-BUF DRV-U @ FS:WRITE-ALL ;
 
 : FORGE? ( -- bool )
    SPAN-ENV$ nip 0 >
@@ -513,7 +513,7 @@ variable WINDOW-ENDED
    s"    lab LABEL>N A64ICODE:LBLP @ 4 * {: off:n :}" DRV-LINE
    s"    off 0< off CODELEN @ 8 - > or if 79 throw then" DRV-LINE
    s"    A64ICODE:CODE off + {: dst:ptr :}" DRV-LINE
-   s"    dst FS-U64@ old <> if 79 throw then" DRV-LINE
+   s"    0 8 0 ?do dst i + c@ i 8 * lshift or loop old <> if 79 throw then" DRV-LINE
    s"    8 0 ?do value i 8 * rshift dst i + c! loop ;" DRV-LINE
    s" : RUN ( -- )" DRV-LINE
    SPAN-FORGE-LINE WID-FORGE-LINE
@@ -565,9 +565,9 @@ variable WINDOW-ENDED
 \ it replaces goes first, so an image after the rewrite can only be the rewrite's
 \ and never the earlier write left in place.
 : REWRITE-SETUP ( -- )
-   ART$ EXISTS? COLD$ EXECUTABLE? and 0= if
+   ART$ FS:EXISTS? COLD$ FS:EXECUTABLE? and 0= if
       s" aot-wid-build: rewrite found no earlier capture in TMPDIR" BUILD-RC die then
-   IMAGE$ EXISTS? if IMAGE$ REMOVE-FILE then ;
+   IMAGE$ FS:EXISTS? if IMAGE$ FS:REMOVE-FILE then ;
 
 public
 

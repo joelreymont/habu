@@ -4,11 +4,11 @@ require src/lib/process-env.f
 
 package GATE-ORCH-LATER
 private
-create PATH FS-PATH-CAP allot
+create PATH PATH-CAP allot
 public
 : RUN ( -- )
-   s" HABU_GATE_ORCH_EVIDENCE" GETENV s" later" PATH JOIN-PATH
-   PATH swap s" later passed" WRITE-ALL
+   s" HABU_GATE_ORCH_EVIDENCE" GETENV s" later" PATH FS:JOIN-PATH
+   PATH swap s" later passed" FS:WRITE-ALL
    s" later row passed" type cr ;
 ;package
 

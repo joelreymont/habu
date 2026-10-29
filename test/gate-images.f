@@ -228,7 +228,7 @@ variable UNION
 : REF ( ptr u8 n n n -- )
    {: a:ptr u:n line:n kind:n :}
    kind LOAD-REFS:LAUNCHES <> {: import:bool :}
-   a u FILE? 0= if exit then
+   a u FS:FILE? 0= if exit then
    a u SOURCE-ROOT:CANONICAL drop {: path:ptr pathu:n :}
    import 0= path pathu s" .f" ENDS-WITH? 0= and if exit then
    path pathu INTERN line import EDGE+ ;
@@ -271,7 +271,7 @@ variable UNION
 
 \ The families a file reaches; a path that names no file reaches none.
 : FILE-MASK ( ptr u8 n -- n ) {: a:ptr u:n :}
-   a u FILE? 0= if 0 exit then
+   a u FS:FILE? 0= if 0 exit then
    a u SOURCE-ROOT:CANONICAL drop INTERN CLOSURE-OF ;
 
 \ ---- the build rows ----------------------------------------------------------
@@ -292,7 +292,7 @@ create SEQS FAMILY-N cells allot         \ a live build row's capture seq
 create PRES FAMILY-N cells allot         \ the families each one needs first
 create PROGRAM-BUF PROGRAM-CAP allot
 create LABEL-BUF GT-FAIL-NAME-CAP allot
-create WB-BUF FS-PATH-CAP allot
+create WB-BUF PATH-CAP allot
 
 variable PROGRAM-U
 variable LABEL-U
@@ -314,7 +314,7 @@ TYPED-VARIABLE START-XT [ ptr u8 n ptr u8 n ptr u8 n n -- ]
    WB-BUF WB-U @ ;
 
 : MODULE! ( n -- ) {: f:n :}
-   f MODULE$ FILE? 0= if
+   f MODULE$ FS:FILE? 0= if
       s" gate images: " type f LABEL$ type s"  has no module " type
       f MODULE$ type cr
       E-SUITE-ROW throw

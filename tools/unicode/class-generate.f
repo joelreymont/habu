@@ -43,13 +43,13 @@ create UC-FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this tool's file-digest conte
    PROPERTIES-PATH$ EXPECTED-PROPERTIES-DIGEST$ VERIFY-FILE-DIGEST ;
 
 : LOAD-UNICODE-FILE ( -- )
-   UNICODE-PATH$ 2dup FILE-SIZE 1+ MEM-ALLOC-64K-SPAN {: path:ptr pathu:n buf:ptr cap:n :}
-   path pathu buf cap READ-ALL {: got:n :}
+   UNICODE-PATH$ 2dup FS:FILE-SIZE 1+ MEM-ALLOC-64K-SPAN {: path:ptr pathu:n buf:ptr cap:n :}
+   path pathu buf cap FS:READ-ALL {: got:n :}
    buf got PARSE-UNICODE ;
 
 : LOAD-PROPERTIES-FILE ( -- )
-   PROPERTIES-PATH$ 2dup FILE-SIZE 1+ MEM-ALLOC-64K-SPAN {: path:ptr pathu:n buf:ptr cap:n :}
-   path pathu buf cap READ-ALL {: got:n :}
+   PROPERTIES-PATH$ 2dup FS:FILE-SIZE 1+ MEM-ALLOC-64K-SPAN {: path:ptr pathu:n buf:ptr cap:n :}
+   path pathu buf cap FS:READ-ALL {: got:n :}
    buf got PARSE-PROPERTIES ;
 
 : OUT$ ( ptr u8 n -- )
@@ -151,6 +151,6 @@ public
 
 : WRITE-PINNED ( -- )
    LOAD-PINNED
-   OUTPUT-PATH$ RENDER ATOMIC-WRITE-FILE ;
+   OUTPUT-PATH$ RENDER FS:ATOMIC-WRITE-FILE ;
 
 ;package

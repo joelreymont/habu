@@ -17,9 +17,9 @@ $10000 constant CAP
 600000 constant TIMEOUT-MS
 create OUT CAP allot
 create ERR CAP allot
-create ROOT-BUF FS-PATH-CAP allot
-create FIRST-BUF FS-PATH-CAP allot
-create SECOND-BUF FS-PATH-CAP allot
+create ROOT-BUF PATH-CAP allot
+create FIRST-BUF PATH-CAP allot
+create SECOND-BUF PATH-CAP allot
 variable ROOT-U
 variable FIRST-U
 variable SECOND-U
@@ -29,12 +29,12 @@ variable SECOND-U
 : SECOND$ ( -- ptr u8 n ) SECOND-BUF SECOND-U @ ;
 
 : PREPARE ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" process-image-test" FS:MKTEMP-DIR {: path:ptr size:n :}
    path ROOT-BUF size BYTE-COPY size ROOT-U !
-   ROOT$ CLEANUP-TREE+
-   ROOT$ s" first" FIRST-BUF JOIN-PATH FIRST-U !
-   ROOT$ s" second" SECOND-BUF JOIN-PATH SECOND-U ! ;
+   ROOT$ FS:CLEANUP-TREE+
+   ROOT$ s" first" FIRST-BUF FS:JOIN-PATH FIRST-U !
+   ROOT$ s" second" SECOND-BUF FS:JOIN-PATH SECOND-U ! ;
 
 : CLEAN ( n n n -- ) {: outu:n erru:n rc:n :}
    rc 0<> erru 0<> or if
@@ -59,7 +59,7 @@ variable SECOND-U
    S\" 1 set-tier\nrequire test/process-image-subject.f\nPROCESS-IMAGE-SUBJECT:CLEAN\nSIGNAL:INIT\nSIGNAL:SIGUSR1 SIGNAL:CATCH\ns\q HABU_SAVED\q >LEN s\q x\q >LEN PROC-ENV+\ns\q HABU_SAVED\q >LEN s\q x\q >LEN PROC-ENV-DEFAULT+\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" >LEN
    OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-ENV-STDIN-CAPTURE PCAP-RESULT:>N CLEAN
-   FIRST$ EXECUTABLE? TTRUE ;
+   FIRST$ FS:EXECUTABLE? TTRUE ;
 
 : RESTORE ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu:n input:ptr inputu:n :}
    ENVIRONMENT
@@ -76,7 +76,7 @@ variable SECOND-U
    next nextu >LEN PROC-ARGV+
    path pathu
    S\" PROCESS-IMAGE-SUBJECT:CLEAN\nPROCESS-IMAGE-SUBJECT:FIRST-FD\nPROCESS-IMAGE-SUBJECT:EMPTY-ARGV\nPROCESS-IMAGE-SUBJECT:USE\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" RESTORE
-   next nextu EXECUTABLE? TTRUE ;
+   next nextu FS:EXECUTABLE? TTRUE ;
 
 : CHECK-IMAGES ( -- )
    BUILD
@@ -87,7 +87,7 @@ variable SECOND-U
 
 : RUN ( -- )
    T-RESET PREPARE
-   [: CHECK-IMAGES ;] [: CLEANUP-RUN ;] finally
+   [: CHECK-IMAGES ;] [: FS:CLEANUP-RUN ;] finally
    T-REPORT ;
 
 RUN

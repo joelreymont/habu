@@ -604,8 +604,8 @@ $14 constant LOCATOR-BYTES
    {: node:ptr :}
    node TEMP-FD @ -1 node TEMP-FD ! C-CLOSE-FD 0 <> if E-COMMIT throw then ;
 : TEMP-INSTALL ( ptr n -- ) {: node:ptr :}
-   node TEMP-PTR @ node TEMP-LEN @ node PATH-PTR @ node PATH-LEN @ STAT-MODE CHMOD-MODE
-   node TEMP-PTR @ node TEMP-LEN @ node PATH-PTR @ node PATH-LEN @ RENAME-FILE
+   node TEMP-PTR @ node TEMP-LEN @ node PATH-PTR @ node PATH-LEN @ FS:STAT-MODE FS:CHMOD-MODE
+   node TEMP-PTR @ node TEMP-LEN @ node PATH-PTR @ node PATH-LEN @ FS:RENAME-FILE
    0 node TEMP-LIVE ! ;
 : COMMIT-WORK ( ptr n -- ptr n )
    {: node:ptr :}
@@ -615,7 +615,7 @@ $14 constant LOCATOR-BYTES
 : TEMP-CLEANUP ( ptr n -- ) {: node:ptr :}
    node TEMP-LIVE @ 0= if exit then
    node TEMP-FD @ 0 >= if node TEMP-FD @ close then
-   node TEMP-PTR @ node TEMP-LEN @ FS-PATHZ unlink drop 0 node TEMP-LIVE ! ;
+   node TEMP-PTR @ node TEMP-LEN @ FS:>PATHZ unlink drop 0 node TEMP-LIVE ! ;
 \ `catch` restores the DEPTH of both stacks and never their contents, so the
 \ node the caught body was handed comes back stale and the cleanup below must
 \ use the handle this word already holds.

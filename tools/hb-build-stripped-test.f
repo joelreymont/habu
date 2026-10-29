@@ -38,7 +38,7 @@ package HB-BUILD-CLI
 
 \ An application that touches a PERSISTENT CELL of each library it requires,
 \ src/lib/string.f's builder and src/lib/fs-mutate.f's copy buffer
-\ (FS-MUT-COPY-BUF), and walks a tree with src/lib/fs.f's WALK-FILES, which maps
+\ (COPY-BUF), and walks a tree with src/lib/fs.f's FS:WALK-FILES, which maps
 \ a context of its own for the call. Those cells are what the maker
 \ used to own before the application was read - it required app-image.f, and so
 \ src/lib/fs.f and src/lib/fs-mutate.f, before opening the capture window - which put them
@@ -47,17 +47,17 @@ package HB-BUILD-CLI
 \ reads all seven generated Unicode range tables: raw comma-built rows once
 \ looked like mapped pointers and made the stripped image fail before it ran.
 : HBT-LIB-SRC-HEAD$ ( -- ptr u8 n )
-   S\" require src/lib/string.f\nrequire src/lib/fs.f\nrequire src/lib/fs-mutate.f\nrequire src/lib/unicode/class.f\n\npackage HBT-SLIB\nprivate\nvariable HITS\ncreate P1 FS-PATH-CAP allot  variable P1U\ncreate P2 FS-PATH-CAP allot  variable P2U\n: DIR$ ( -- ptr u8 n ) s\" " ;
+   S\" require src/lib/string.f\nrequire src/lib/fs.f\nrequire src/lib/fs-mutate.f\nrequire src/lib/unicode/class.f\n\npackage HBT-SLIB\nprivate\nvariable HITS\ncreate P1 PATH-CAP allot  variable P1U\ncreate P2 PATH-CAP allot  variable P2U\n: DIR$ ( -- ptr u8 n ) s\" " ;
 
 : HBT-LIB-SRC-TAIL$ ( -- ptr u8 n )
-   S\" \" ;\n: JOIN! ( ptr u8 n ptr u8 ptr n -- ) {: name:ptr nameu dst:ptr lenp:ptr :}\n   SB-RESET DIR$ SB-APPEND s\" /\" SB-APPEND name nameu SB-APPEND\n   SB$ {: a:ptr u:n :} a dst u BYTE-COPY u lenp ! ;\n: P1$ ( -- ptr u8 n ) P1 P1U @ ;\n: P2$ ( -- ptr u8 n ) P2 P2U @ ;\npublic\n: RUN ( -- )\n   SB-RESET s\" sb=\" SB-APPEND s\" ok\" SB-APPEND SB$ type cr\n   s\" a.txt\" P1 P1U JOIN!\n   s\" b.txt\" P2 P2U JOIN!\n   P1$ P2$ COPY-FILE-STREAM\n   P2$ FILE? if s\" copy=ok\" type cr then\n   0 HITS !\n   DIR$ [: 2drop HITS @ 1 + HITS ! ;] WALK-FILES\n   HITS @ 3 = if s\" files=3\" type cr then\n   248 UNICODE-CLASS:LETTER? 705 UNICODE-CLASS:LETTER? and\n   706 UNICODE-CLASS:LETTER? 0= and\n   $1D7CE UNICODE-CLASS:NUMBER? and\n   $3000 UNICODE-CLASS:WHITE-SPACE? and\n   $2160 UNICODE-CLASS:ALPHABETIC? and\n   $5B0 UNICODE-CLASS:ALPHABETIC? and\n   $10400 UNICODE-CLASS:UPPERCASE? and\n   $24B6 UNICODE-CLASS:UPPERCASE? and\n   if s\" unicode=ok\" type cr then ;\n;package\n: MAIN ( -- ) HBT-SLIB:RUN ;\n" ;
+   S\" \" ;\n: JOIN! ( ptr u8 n ptr u8 ptr n -- ) {: name:ptr nameu dst:ptr lenp:ptr :}\n   SB-RESET DIR$ SB-APPEND s\" /\" SB-APPEND name nameu SB-APPEND\n   SB$ {: a:ptr u:n :} a dst u BYTE-COPY u lenp ! ;\n: P1$ ( -- ptr u8 n ) P1 P1U @ ;\n: P2$ ( -- ptr u8 n ) P2 P2U @ ;\npublic\n: RUN ( -- )\n   SB-RESET s\" sb=\" SB-APPEND s\" ok\" SB-APPEND SB$ type cr\n   s\" a.txt\" P1 P1U JOIN!\n   s\" b.txt\" P2 P2U JOIN!\n   P1$ P2$ FS:COPY-FILE-STREAM\n   P2$ FS:FILE? if s\" copy=ok\" type cr then\n   0 HITS !\n   DIR$ [: 2drop HITS @ 1 + HITS ! ;] FS:WALK-FILES\n   HITS @ 3 = if s\" files=3\" type cr then\n   248 UNICODE-CLASS:LETTER? 705 UNICODE-CLASS:LETTER? and\n   706 UNICODE-CLASS:LETTER? 0= and\n   $1D7CE UNICODE-CLASS:NUMBER? and\n   $3000 UNICODE-CLASS:WHITE-SPACE? and\n   $2160 UNICODE-CLASS:ALPHABETIC? and\n   $5B0 UNICODE-CLASS:ALPHABETIC? and\n   $10400 UNICODE-CLASS:UPPERCASE? and\n   $24B6 UNICODE-CLASS:UPPERCASE? and\n   if s\" unicode=ok\" type cr then ;\n;package\n: MAIN ( -- ) HBT-SLIB:RUN ;\n" ;
 
 \ Written in three pieces: the directory is as long as the scratch root makes
 \ it, so the source goes to the file without passing through a fixed buffer.
 : HBT-LIB-SRC! ( -- )
-   HBT-LIB-SRC HBT-LIB-SRC-HEAD$ WRITE-ALL
-   HBT-LIB-SRC HBT-LIB-DIR APPEND-FILE
-   HBT-LIB-SRC HBT-LIB-SRC-TAIL$ APPEND-FILE ;
+   HBT-LIB-SRC HBT-LIB-SRC-HEAD$ FS:WRITE-ALL
+   HBT-LIB-SRC HBT-LIB-DIR FS:APPEND-FILE
+   HBT-LIB-SRC HBT-LIB-SRC-TAIL$ FS:APPEND-FILE ;
 
 : HBT-LIB-EXPECTED$ ( -- ptr u8 n )
    S\" sb=ok\ncopy=ok\nfiles=3\nunicode=ok\n" ;
@@ -110,26 +110,26 @@ package HB-BUILD-CLI
 
 : HBT-LIB-FILE! ( ptr u8 n ptr u8 n -- ) {: name:ptr nameu body:ptr bodyu :}
    SB-RESET HBT-LIB-DIR SB-APPEND s" /" SB-APPEND name nameu SB-APPEND
-   SB$ body bodyu WRITE-ALL ;
+   SB$ body bodyu FS:WRITE-ALL ;
 
 \ THE WINDOW INVARIANT, end to end: nothing the application can require is loaded
 \ when the capture window opens, so the application's own require closure is the
 \ only library content inside the restored span. Measured before this held:
-\ WALK-FILES's then-static walk state and `caller=COPY-FILE-STREAM
+\ FS:WALK-FILES's then-static walk state and `caller=COPY-FILE-STREAM
 \ target=FS-MUT-COPY-IN` refused this very program - the copy descriptors are
 \ locals of the call now, the walk maps its own context, and the copy BUFFER is
 \ the cell that stands there.
 \ That order is the claim, so this program builds on the engine: src/lib/fs.f and
 \ src/lib/fs-mutate.f are modules of the linker's lib closure the engine does not
-\ bake, and the linker image refuses it at COPY-FILE-STREAM (E-AOT-PRE-WINDOW).
+\ bake, and the linker image refuses it at FS:COPY-FILE-STREAM (E-AOT-PRE-WINDOW).
 : HBT-STRIPPED-LIB-STATE ( -- )
-   HBT-LIB-DIR MAKE-DIR
+   HBT-LIB-DIR FS:MAKE-DIR
    s" a.txt" s" one" HBT-LIB-FILE!
    s" c.txt" s" two" HBT-LIB-FILE!
    HBT-LIB-SRC!
    HBT-LIB-OUT HBT-REMOVE-FILE?
    HBT-LIB-SRC HBT-LIB-OUT HBT-HBB-PREPARE-AOT-SOURCE HBT-HBB-BUILD-OUT
-   HBT-LIB-OUT FILE? TTRUE
+   HBT-LIB-OUT FS:FILE? TTRUE
    HBT-LIB-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
    HBT-TIMEOUT-MS >MS RUN-CAPTURE HBT-CAPTURE>N {: outn:n errn:n rcn:n :}
    rcn 0 <> if HBT-RUN-OUT outn type HBT-RUN-ERR errn type then
@@ -153,23 +153,23 @@ package HB-BUILD-CLI
 \ registered a reset as it loaded would put code and cells the image does not
 \ carry into the application's registry; HBT-REGISTRY-SRC$'s link refuses
 \ any such registration. Measured while src/lib/fs-mutate.f and src/lib/process-tree.f
-\ registered their own: `aot: address refers to data outside the restored span
-\ caller=CLEANUP-RESET target=FS-MUT-CLEANUP-N`. src/lib/process.f is a module of
+\ registered their own: `aot: address refers to data outside the restored span`,
+\ caller FS's CLEANUP-RESET, target its cleanup count. src/lib/process.f is a module of
 \ that closure the engine does not bake, so the forking program builds on the
 \ engine.
 : HBT-STRIPPED-FORK ( -- )
    HBT-AOT-OUT HBT-REMOVE-FILE?
    s" test/stripped-fork-subject.f" SOURCE-ROOT:RESOLVE drop
-   HBT-AOT-SRC COPY-FILE-STREAM
+   HBT-AOT-SRC FS:COPY-FILE-STREAM
    HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT-SOURCE HBT-HBB-BUILD-OUT
-   HBT-AOT-OUT FILE? TTRUE
+   HBT-AOT-OUT FS:FILE? TTRUE
    HBT-AOT-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
    HBT-TIMEOUT-MS >MS RUN-CAPTURE HBT-CAPTURE>N {: outn:n errn:n rcn:n :}
    rcn 0 <> if HBT-RUN-OUT outn type HBT-RUN-ERR errn type then
    rcn 0 T=
    errn 0 T=
    HBT-RUN-OUT outn S\" child=ok\n" T$=
-   HBT-AOT-SRC HBT-REGISTRY-SRC$ WRITE-ALL
+   HBT-AOT-SRC HBT-REGISTRY-SRC$ FS:WRITE-ALL
    HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT-SOURCE HBT-HBB-BUILD-OUT
    HBT-RUN-AOT
    HBT-AOT-OUT HBT-REMOVE-FILE? ;
@@ -231,10 +231,10 @@ package HB-BUILD-CLI
 \ keyed linker image this build runs on reads at the address its own boot
 \ published (src/habu/habu2.f EM-SNAPSHOT-RESTORE).
 : HBT-STRIPPED-ENGINE-CELLS ( -- )
-   HBT-CELLS-SRC HBT-CELLS-SRC$ WRITE-ALL
+   HBT-CELLS-SRC HBT-CELLS-SRC$ FS:WRITE-ALL
    HBT-CELLS-OUT HBT-REMOVE-FILE?
    HBT-CELLS-SRC HBT-CELLS-OUT HBT-HBB-PREPARE-AOT HBT-HBB-BUILD-OUT
-   HBT-CELLS-OUT FILE? TTRUE
+   HBT-CELLS-OUT FS:FILE? TTRUE
    HBT-CELLS-CHILD-ARGV-ENV
    HBT-CELLS-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
    HBT-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE HBT-CAPTURE>N {: outn:n errn:n rcn:n :}
@@ -255,7 +255,7 @@ package HB-BUILD-CLI
 \ directly (HBT-RUN-MAKER).
 : HBT-STRIPPED-NO-ENTRY ( -- )
    HBT-REMOVE-AOT-OUT
-   HBT-AOT-SRC s" : HBT-NO-MAIN ( -- ) ;" WRITE-ALL
+   HBT-AOT-SRC s" : HBT-NO-MAIN ( -- ) ;" FS:WRITE-ALL
    HBT-ARGV-BASE
    HBT-AOT-SRC >LEN PROC-ARGV+
    s" -o" >LEN PROC-ARGV+
@@ -264,11 +264,11 @@ package HB-BUILD-CLI
    rc 74 T=
    outu 0 T=
    HBT-ERR erru S\" aot: entry word not found: MAIN\naot: no entry\n" T$=
-   HBT-AOT-OUT FILE? TFALSE ;
+   HBT-AOT-OUT FS:FILE? TFALSE ;
 
 \ ... while an engine cell on no list is still refused, with its own diagnostic.
 : HBT-STRIPPED-UNOWNED-CELL ( -- )
-   HBT-UNOWNED-SRC HBT-UNOWNED-SRC$ WRITE-ALL
+   HBT-UNOWNED-SRC HBT-UNOWNED-SRC$ FS:WRITE-ALL
    HBT-UNOWNED-SRC HBT-RUN-MAKER {: nout:n nerr:n nrc:n :}
    nrc 0 <> TTRUE
    HBB-ERR-BUF nerr s" outside the restored span" CONTAINS? TTRUE
@@ -278,9 +278,9 @@ package HB-BUILD-CLI
 \ The linker keeps the pointer store and replaces the stripped registrar call
 \ with a stack pop. The image must read its restored bytes with balanced stack.
 : HBT-STRIPPED-PTR-MARK ( -- )
-   HBT-PMK-SRC HBT-PMK-SRC$ WRITE-ALL
+   HBT-PMK-SRC HBT-PMK-SRC$ FS:WRITE-ALL
    HBT-PMK-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT-SOURCE HBT-HBB-BUILD-OUT
-   HBT-AOT-OUT FILE? TTRUE
+   HBT-AOT-OUT FS:FILE? TTRUE
    HBT-AOT-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
    HBT-TIMEOUT-MS >MS RUN-CAPTURE HBT-CAPTURE>N {: outn:n errn:n rcn:n :}
    rcn 0 <> if HBT-RUN-OUT outn type HBT-RUN-ERR errn type then
@@ -314,8 +314,8 @@ public
    HBT-STRIPPED-UNOWNED-CELL
    HBT-STRIPPED-PTR-MARK
    HBT-STRIPPED-QUOT-LOOKALIKE
-   CLEANUP-RUN
-   HBT-ROOT EXISTS? TFALSE
+   FS:CLEANUP-RUN
+   HBT-ROOT FS:EXISTS? TFALSE
    T-REPORT
    s" hb-build-stripped-test: ok" type cr ;
 

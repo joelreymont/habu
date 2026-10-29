@@ -10,11 +10,11 @@ require test/pcap-result.f
 
 package ENGINE-ID-REPLACE-E2E
 
-create ROOT FS-PATH-CAP allot variable ROOT-U
-create IMAGE FS-PATH-CAP allot variable IMAGE-U
-create REPLACEMENT FS-PATH-CAP allot variable REPLACEMENT-U
-create OLD FS-PATH-CAP allot variable OLD-U
-create LOG FS-PATH-CAP allot
+create ROOT PATH-CAP allot variable ROOT-U
+create IMAGE PATH-CAP allot variable IMAGE-U
+create REPLACEMENT PATH-CAP allot variable REPLACEMENT-U
+create OLD PATH-CAP allot variable OLD-U
+create LOG PATH-CAP allot
 create OUT $4000 allot variable OUT-U
 create ERR $4000 allot variable ERR-U
 variable RC
@@ -27,18 +27,18 @@ variable RC
 : SETUP ( -- )
    s" hb-engine-id-replace" FS:MKTEMP-DIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY u ROOT-U !
-   ROOT$ s" engine" IMAGE JOIN-PATH IMAGE-U !
-   ROOT$ s" replacement" REPLACEMENT JOIN-PATH REPLACEMENT-U !
-   ROOT$ s" old-engine" OLD JOIN-PATH OLD-U !
-   ENGINE-CANDIDATE:PATH$ IMAGE$ COPY-FILE-STREAM
-   IMAGE$ CHMOD-X
-   REPLACEMENT$ s" replacement image, not the running executable" WRITE-ALL ;
+   ROOT$ s" engine" IMAGE FS:JOIN-PATH IMAGE-U !
+   ROOT$ s" replacement" REPLACEMENT FS:JOIN-PATH REPLACEMENT-U !
+   ROOT$ s" old-engine" OLD FS:JOIN-PATH OLD-U !
+   ENGINE-CANDIDATE:PATH$ IMAGE$ FS:COPY-FILE-STREAM
+   IMAGE$ FS:CHMOD-X
+   REPLACEMENT$ s" replacement image, not the running executable" FS:WRITE-ALL ;
 
 : LOG-RESULT ( ptr u8 n ptr u8 n -- ) {: outname:ptr outu:n errname:ptr erru:n :}
-   ROOT$ outname outu LOG JOIN-PATH {: size:n :}
-   LOG size OUT OUT-U @ WRITE-ALL
-   ROOT$ errname erru LOG JOIN-PATH {: esize:n :}
-   LOG esize ERR ERR-U @ WRITE-ALL ;
+   ROOT$ outname outu LOG FS:JOIN-PATH {: size:n :}
+   LOG size OUT OUT-U @ FS:WRITE-ALL
+   ROOT$ errname erru LOG FS:JOIN-PATH {: esize:n :}
+   LOG esize ERR ERR-U @ FS:WRITE-ALL ;
 
 : RUN-CHILD ( bool -- ) {: replace?:bool :}
    PROC-ARGV-RESET
@@ -66,8 +66,8 @@ public
    SETUP
    false RUN-CHILD
    true RUN-CHILD
-   OLD$ FILE? TTRUE
-   IMAGE$ FILE? TTRUE
+   OLD$ FS:FILE? TTRUE
+   IMAGE$ FS:FILE? TTRUE
    T-REPORT
    s" engine-id replacement artifact: " type ROOT$ type cr ;
 

@@ -17,13 +17,13 @@
 
 : FFI-SV-SETUP ( -- )
    s" ffi-struct-verify" E2E-TREE:TREE
-   E2E-TREE:ROOT$ CLEANUP-TREE+ ;
+   E2E-TREE:ROOT$ FS:CLEANUP-TREE+ ;
 
 
 \ Check the source in the string builder and keep the child's exit code and
 \ stderr.
 : FFI-SV-CHECK ( -- )
-   s" test/ffi-sv.f" E2E-TREE:AT-A SB$ WRITE-ALL
+   s" test/ffi-sv.f" E2E-TREE:AT-A SB$ FS:WRITE-ALL
    s" tools/check.f" E2E-TREE:ARGS
    s" --" >LEN PROC-ARGV+
    s" --verify-only" >LEN PROC-ARGV+

@@ -18,9 +18,9 @@ $10000 constant CAP
 
 create NORM-BUF CAP allot
 create READ-BUF CAP allot
-create PATH-BUF FS-PATH-CAP allot
-create REDACT-BUF FS-PATH-CAP allot
-create ROOT-BUF FS-PATH-CAP allot
+create PATH-BUF PATH-CAP allot
+create REDACT-BUF PATH-CAP allot
+create ROOT-BUF PATH-CAP allot
 variable NORM-U
 variable READ-U
 variable PATH-U
@@ -83,11 +83,11 @@ variable UPDATE
    repeat drop ;
 
 : PATH! ( ptr u8 n -- ) {: name:ptr nameu:n :}
-   DIR$ name nameu PATH-BUF JOIN-PATH PATH-U ! ;
+   DIR$ name nameu PATH-BUF FS:JOIN-PATH PATH-U ! ;
 
 : UPDATE-WRITE ( -- )
-   DIR$ MAKE-DIRS
-   PATH$ NORM$ WRITE-ALL
+   DIR$ FS:MAKE-DIRS
+   PATH$ NORM$ FS:WRITE-ALL
    s" golden updated: " type PATH$ type cr ;
 
 : MINLEN ( -- n )
@@ -129,13 +129,13 @@ public
    repeat drop ;
 
 : ROOT! ( ptr u8 n -- ) {: a:ptr u:n :}
-   u FS-PATH-CAP > if E-FS-PATH throw then
+   u PATH-CAP > if E-FS-PATH throw then
    a ROOT-BUF u BYTE-COPY
    u ROOT-U ! ;
 
 \ Set the volatile prefix (temp root) to redact to <root>; empty clears it.
 : REDACT! ( ptr u8 n -- ) {: a:ptr u:n :}
-   u FS-PATH-CAP > if E-FS-PATH throw then
+   u PATH-CAP > if E-FS-PATH throw then
    a REDACT-BUF u BYTE-COPY
    u REDACT-U ! ;
 
@@ -150,11 +150,11 @@ public
    src srcu NORMALIZE
    name nameu PATH!
    UPDATE? if UPDATE-WRITE TRUE exit then
-   PATH$ EXISTS? 0= if
+   PATH$ FS:EXISTS? 0= if
       s" missing golden (run with --update-golden): " type PATH$ type cr
       FALSE exit
    then
-   PATH$ READ-BUF CAP READ-ALL READ-U !
+   PATH$ READ-BUF CAP FS:READ-ALL READ-U !
    NORM$ READ$ STR= dup 0= if MISMATCH. then ;
 
 ;package

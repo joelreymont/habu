@@ -82,7 +82,7 @@ $4000 constant CAP
 
 create OUT CAP allot
 create ERR CAP allot
-create SANDBOX FS-PATH-CAP allot
+create SANDBOX PATH-CAP allot
 variable VICTIM
 variable TARGET
 

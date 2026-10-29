@@ -139,9 +139,9 @@ private
 using WASM-DYNAMIC-WINDOW
 
 \ ---- the runs ---------------------------------------------------------------------
-FS-PATH-CAP BUFFER: DIR
+PATH-CAP BUFFER: DIR
 variable DIR-U
-FS-PATH-CAP BUFFER: PATH
+PATH-CAP BUFFER: PATH
 variable PATH-U
 DYNAMIC-BUFFER MODULE u8
 
@@ -154,7 +154,7 @@ DYNAMIC-BUFFER MODULE u8
 \ validates, and the status its run exits with.
 : RUN-ENTRY ( ptr u8 n ptr u8 n -- bool n )
    {: e:ptr eu:n name:ptr nu:n :}
-   DIR DIR-U @ name nu PATH JOIN-PATH PATH-U !
+   DIR DIR-U @ name nu PATH FS:JOIN-PATH PATH-U !
    e eu PATH PATH-U @ WASMLINK:LINK
    PATH PATH-U @ WASM-HARNESS:VALID?
    PATH PATH-U @ WASM-HARNESS:RUN ;
@@ -172,9 +172,9 @@ DYNAMIC-BUFFER MODULE u8
 
 \ The data image of the module last written, which its data section ends with.
 : IMAGE ( -- ptr u8 )
-   PATH PATH-U @ FILE-SIZE {: u:n :}
+   PATH PATH-U @ FS:FILE-SIZE {: u:n :}
    u MODULE-RESERVE
-   PATH PATH-U @ 0 MODULE u READ-ALL u T=
+   PATH PATH-U @ 0 MODULE u FS:READ-ALL u T=
    0 MODULE u AOT-BUF:AOT-DATA-SIZE @ - + ;
 
 \ The module of entry e throws the slot its code literal answers, which the

@@ -23,11 +23,11 @@ create OUT IO-CAP allot
 create ERR IO-CAP allot
 create IN IO-CAP allot                  \ a verifier child's stdin
 variable PRE-OUT-U
-create ART FS-PATH-CAP allot
+create ART PATH-CAP allot
 variable ART-U
-create IMAGE FS-PATH-CAP allot
+create IMAGE PATH-CAP allot
 variable IMAGE-U
-create SUBJECT FS-PATH-CAP allot
+create SUBJECT PATH-CAP allot
 variable SUBJECT-U
 
 : ART$ ( -- ptr u8 n ) ART ART-U @ ;
@@ -41,10 +41,10 @@ variable SUBJECT-U
 \ temp root this file already owns.
 : SETUP ( -- )
    s" habu-payload-graph" FS:MKTEMP-DIR {: path:ptr u:n :}
-   path u CLEANUP-TREE+
-   path u s" metadata.aot" ART JOIN-PATH ART-U !
-   path u s" hb-partial" IMAGE JOIN-PATH IMAGE-U !
-   path u s" control.f" SUBJECT JOIN-PATH SUBJECT-U !
+   path u FS:CLEANUP-TREE+
+   path u s" metadata.aot" ART FS:JOIN-PATH ART-U !
+   path u s" hb-partial" IMAGE FS:JOIN-PATH IMAGE-U !
+   path u s" control.f" SUBJECT FS:JOIN-PATH SUBJECT-U !
    path u WHITEBOX-CHILD:PROVIDE-IN ;
 
 : ARG ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
@@ -202,7 +202,7 @@ variable SUBJECT-U
    IMAGE$ 0 s" native graph cold verifier: ok" CHILD drop
    PRE-OUT$ type
    s" a fresh seeded image executes the imported bare public word" T-LABEL
-   SUBJECT$ COLD-COMPLETION$ WRITE-ALL
+   SUBJECT$ COLD-COMPLETION$ FS:WRITE-ALL
    PROC-ARGV-RESET s" --load" ARG SUBJECT$ ARG
    PROC-ENV-RESET
    s" HABU_UNDER_TEST" >LEN IMAGE$ >LEN PROC-ENV+
@@ -249,7 +249,7 @@ variable SUBJECT-U
 
 : CONTROL-RUN ( ptr u8 n n ptr u8 n -- )
    {: source:ptr sourceu:n rc:n message:ptr messageu:n :}
-   SUBJECT$ source sourceu WRITE-ALL
+   SUBJECT$ source sourceu FS:WRITE-ALL
    PROC-ARGV-RESET s" --load" ARG SUBJECT$ ARG
    PROC-ENV-RESET
    s" HABU_UNDER_TEST" >LEN IMAGE$ >LEN PROC-ENV+
@@ -319,7 +319,7 @@ variable SUBJECT-U
 
 : RUN ( -- )
    T-RESET
-   [: SETUP CASES ;] [: CLEANUP-RUN ;] finally
+   [: SETUP CASES ;] [: FS:CLEANUP-RUN ;] finally
    T-REPORT ;
 
 RUN

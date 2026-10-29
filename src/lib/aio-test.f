@@ -101,7 +101,7 @@ create POKE-BYTE $41 c,
 AIO-TEST-ALIGN8
 create XFER-PAT XFER-N allot
 AIO-TEST-ALIGN8
-create XFER-PATH-BUF FS-PATH-CAP allot
+create XFER-PATH-BUF PATH-CAP allot
 AIO-TEST-ALIGN8
 create XFER-SA SOCKADDR-N allot
 AIO-TEST-ALIGN8
@@ -485,8 +485,8 @@ TASK:MIN-STACK TASK:TASK FAN7
 : XFER-FILE! ( -- )
    XFER-PAT PAT-FILL
    s" habu-aio" FS:MKTEMP-DIR {: a:ptr u :}
-   a u s" xfer.bin" XFER-PATH-BUF JOIN-PATH XFER-PATH-U !
-   XFER-PATH XFER-PAT XFER-N WRITE-ALL ;
+   a u s" xfer.bin" XFER-PATH-BUF FS:JOIN-PATH XFER-PATH-U !
+   XFER-PATH XFER-PAT XFER-N FS:WRITE-ALL ;
 
 \ One READ through the loop: a fresh allocation in, the bytes the kernel moved
 \ out, and the buffer checked against the pattern at the file offset `at` before
@@ -505,7 +505,7 @@ TASK:MIN-STACK TASK:TASK FAN7
 \ advances it, so the two halves come back in order.
 : CASE-XFER-FILE ( -- )
    XFER-FILE!
-   XFER-PATH FS-PATHZ open-rd XFER-FD !
+   XFER-PATH FS:>PATHZ open-rd XFER-FD !
    XFER-FD @ 0 >= TTRUE
    XFER-FD @ XFER-N 0 0 READ-ONCE XFER-N T=
    XFER-FD @ XFER-HALF -1 0 READ-ONCE XFER-HALF T=

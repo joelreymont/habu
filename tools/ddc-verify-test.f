@@ -22,11 +22,11 @@ require tools/ddc-verify.f
 
 package DDCT
 
-create ROOT-BUF FS-PATH-CAP allot
+create ROOT-BUF PATH-CAP allot
 variable ROOT-U
-create A-PATH FS-PATH-CAP allot
+create A-PATH PATH-CAP allot
 variable A-U
-create B-PATH FS-PATH-CAP allot
+create B-PATH PATH-CAP allot
 variable B-U
 
 : ROOT$ ( -- ptr u8 n ) ROOT-BUF ROOT-U @ ;
@@ -34,7 +34,7 @@ variable B-U
 : B$ ( -- ptr u8 n ) B-PATH B-U @ ;
 
 : PATH! ( ptr u8 n ptr u8 ptr n -- ) {: name:ptr nameu:n dst:ptr up:ptr :}
-   ROOT$ name nameu dst JOIN-PATH up ! ;
+   ROOT$ name nameu dst FS:JOIN-PATH up ! ;
 
 : ROOT! ( ptr u8 n -- ) {: a:ptr u:n :}
    a ROOT-BUF u BYTE-COPY  u ROOT-U ! ;
@@ -45,8 +45,8 @@ variable B-U
    s" b.bin" B-PATH B-U PATH! ;
 
 : TEST-IDENTICAL ( -- )
-   A$ s" fixpoint-artifact-bytes" WRITE-ALL
-   B$ s" fixpoint-artifact-bytes" WRITE-ALL
+   A$ s" fixpoint-artifact-bytes" FS:WRITE-ALL
+   B$ s" fixpoint-artifact-bytes" FS:WRITE-ALL
    A$ B$ DDC-LOAD
    s" identical same?" T-LABEL
    DDC-SAME? TTRUE
@@ -56,8 +56,8 @@ variable B-U
    s" a" s" b" DDC-REPORT 0 T= ;
 
 : TEST-ONE-BYTE-DIFF ( -- )
-   A$ s" fixpoint-artifact-bytes" WRITE-ALL
-   B$ s" fixpoint-artifact-Xytes" WRITE-ALL   \ differs at offset 18
+   A$ s" fixpoint-artifact-bytes" FS:WRITE-ALL
+   B$ s" fixpoint-artifact-Xytes" FS:WRITE-ALL   \ differs at offset 18
    A$ B$ DDC-LOAD
    s" diff same?" T-LABEL
    DDC-SAME? TFALSE
@@ -67,8 +67,8 @@ variable B-U
    s" a" s" b" DDC-REPORT DDC-DIVERGENT-RC T= ;
 
 : TEST-LENGTH-DIFF ( -- )
-   A$ s" short" WRITE-ALL
-   B$ s" short-plus-tail" WRITE-ALL
+   A$ s" short" FS:WRITE-ALL
+   B$ s" short-plus-tail" FS:WRITE-ALL
    A$ B$ DDC-LOAD
    s" length same?" T-LABEL
    DDC-SAME? TFALSE
@@ -110,7 +110,7 @@ variable B-U
    TEST-PATHS
    TEST-SEED-MISSING
    TEST-REQUIRE-BOOTSTRAP
-   ROOT$ REMOVE-TREE
+   ROOT$ FS:REMOVE-TREE
    T-REPORT
    s" ddc-verify-test: ok" type cr ;
 

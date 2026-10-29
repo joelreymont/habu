@@ -26,7 +26,7 @@ variable SPARE-MASTER
 
 \ The slave end, opened the way a device driver under test opens a serial port.
 : SLAVE-FD ( n -- n ) {: u:n :}
-   SLAVE u FS-PATHZ PTY:PTY-OPEN-FLAGS 0 open ;
+   SLAVE u FS:>PATHZ PTY:PTY-OPEN-FLAGS 0 open ;
 
 : PAIR ( PTY:master n -- ) {: m:PTY:master u:n :}
    s" the slave is a host pseudoterminal device" T-LABEL

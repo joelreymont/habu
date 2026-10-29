@@ -40,14 +40,14 @@ $7E constant TILDE
 variable CASES
 
 \ ---- the files --------------------------------------------------------------------
-create PRELUDE-BUF FS-PATH-CAP allot
+create PRELUDE-BUF PATH-CAP allot
 variable PRELUDE-U
-create CASE-BUF FS-PATH-CAP allot
+create CASE-BUF PATH-CAP allot
 variable CASE-U
-create NESTED-BUF FS-PATH-CAP allot
+create NESTED-BUF PATH-CAP allot
 variable NESTED-U
 \ The spin prelude's path; SPIN-U is 0 while a case runs without it.
-create SPIN-BUF FS-PATH-CAP allot
+create SPIN-BUF PATH-CAP allot
 variable SPIN-U
 
 : PRELUDE$ ( -- ptr u8 n )
@@ -64,7 +64,7 @@ variable SPIN-U
 
 \ The source buffer's text, written to the file at path.
 : SRC>FILE ( ptr u8 n -- )
-   GE-SRC-BUF GE-SRC-U @ WRITE-ALL ;
+   GE-SRC-BUF GE-SRC-U @ FS:WRITE-ALL ;
 
 \ Source text in which each `~` stands for a double quote, which a string in
 \ this file cannot hold.

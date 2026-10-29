@@ -1892,13 +1892,13 @@ create DIRBASE 8 allot
 \ The directory and the link are made inside a fresh root under TMPDIR: two
 \ gates share one machine, and a fixed /tmp name let one run's mkdir meet the
 \ other's directory (EEXIST) or its rmdir remove it mid-test.
-create ES-ROOT FS-PATH-CAP allot
+create ES-ROOT PATH-CAP allot
 variable ES-ROOT-U
-create ES-JOIN FS-PATH-CAP allot
+create ES-JOIN PATH-CAP allot
 : ES-ROOT$ ( -- ptr u8 n ) ES-ROOT ES-ROOT-U @ ;
 : ES-ROOT! ( ptr u8 n -- ) {: a:ptr u:n :}  a ES-ROOT u BYTE-COPY  u ES-ROOT-U ! ;
 : ES-TMPZ ( ptr u8 n -- ptr u8 ) {: name:ptr nameu:n :}
-   ES-ROOT$ name nameu ES-JOIN JOIN-PATH {: u:n :}  ES-JOIN u FS-PATHZ ;
+   ES-ROOT$ name nameu ES-JOIN FS:JOIN-PATH {: u:n :}  ES-JOIN u FS:>PATHZ ;
 variable DFD
 : U16@ ( ptr u8 -- n ) {: a:ptr :} a c@ a 1 + c@ 8 lshift or ;
 : MODE@ ( -- n ) ES-STB 4 + U16@ ;
@@ -1924,7 +1924,7 @@ MODE@ $F000 and $A000 = TTRUE
 s" link" ES-TMPZ RLB 64 readlink 9 T=
 RLB c@ 65 T=
 s" link" ES-TMPZ unlink 0 T=
-ES-ROOT$ FS-PATHZ rmdir 0 T=
+ES-ROOT$ FS:>PATHZ rmdir 0 T=
 check@ 0 set-check
 0 4096 3 $1002 -1 0 mmap dup 0 < TFALSE dup 65 swap c! c@ 65 T=
 set-check

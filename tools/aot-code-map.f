@@ -11,9 +11,9 @@ package AOT-LINK
 
 DYNAMIC-BUFFER MAP-TEXT u8
 variable MAP-U
-create MAP-PATH FS-PATH-CAP allot
+create MAP-PATH PATH-CAP allot
 variable MAP-PATH-U
-create MAP-IMAGE FS-PATH-CAP allot
+create MAP-IMAGE PATH-CAP allot
 variable MAP-IMAGE-U
 create MAP-HASH-CTX SHA256-FILE-CTX-BYTES allot
 create MAP-HASH-HEX 64 allot
@@ -46,7 +46,7 @@ variable MAP-DONOR-USED
    value MAP-DIGITS+ ;
 
 : MAP-PATH! ( ptr u8 n -- ) {: a:ptr u:n :}
-   u 4 + FS-PATH-CAP > if E-FS-CAPACITY throw then
+   u 4 + PATH-CAP > if E-FS-CAPACITY throw then
    a MAP-PATH u BYTE-COPY
    s" .map" drop MAP-PATH u + 4 BYTE-COPY
    u 4 + MAP-PATH-U ! ;
@@ -193,7 +193,7 @@ variable MAP-DONOR-USED
 
 : MAP-WRITE ( -- )
    AOT-OUT {: image:ptr imageu:n :}
-   imageu FS-PATH-CAP > if E-FS-CAPACITY throw then
+   imageu PATH-CAP > if E-FS-CAPACITY throw then
    image MAP-IMAGE imageu BYTE-COPY
    imageu MAP-IMAGE-U !
    image imageu MAP-PATH!
@@ -205,6 +205,6 @@ variable MAP-DONOR-USED
       dup 0<> if throw then drop
    s" image-sha256 " MAP+ MAP-HASH-HEX 64 MAP+ 10 MAP-CHAR+
    MAP-ROWS
-   MAP-PATH MAP-PATH-U @ 0 MAP-TEXT BYTE-VIEW MAP-U @ WRITE-ALL ;
+   MAP-PATH MAP-PATH-U @ 0 MAP-TEXT BYTE-VIEW MAP-U @ FS:WRITE-ALL ;
 
 ;package

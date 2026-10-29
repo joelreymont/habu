@@ -21,12 +21,12 @@ private
 
 $4000 constant IO-CAP
 30000 constant TIMEOUT-MS
-create ROOT FS-PATH-CAP allot variable ROOT-U
-create TREE FS-PATH-CAP allot variable TREE-U
-create PATH FS-PATH-CAP allot variable PATH-U
-create SRC FS-PATH-CAP allot variable SRC-U
-create ENGINE FS-PATH-CAP allot variable ENGINE-U
-create SANDBOX FS-PATH-CAP allot
+create ROOT PATH-CAP allot variable ROOT-U
+create TREE PATH-CAP allot variable TREE-U
+create PATH PATH-CAP allot variable PATH-U
+create SRC PATH-CAP allot variable SRC-U
+create ENGINE PATH-CAP allot variable ENGINE-U
+create SANDBOX PATH-CAP allot
 create OUT IO-CAP allot
 create ERR IO-CAP allot
 variable OUT-U
@@ -38,15 +38,15 @@ variable RC
 : ENGINE$ ( -- ptr u8 n ) ENGINE ENGINE-U @ ;
 
 : PATH! ( ptr u8 n -- )
-   TREE$ 2swap PATH JOIN-PATH PATH-U ! ;
+   TREE$ 2swap PATH FS:JOIN-PATH PATH-U ! ;
 
 : COPY-SOURCE ( ptr u8 n -- ) {: rel:ptr relu:n :}
    rel relu PATH!
-   SOURCE-ROOT:CWD$ rel relu SRC JOIN-PATH SRC-U !
-   SRC SRC-U @ PATH PATH-U @ COPY-FILE-STREAM ;
+   SOURCE-ROOT:CWD$ rel relu SRC FS:JOIN-PATH SRC-U !
+   SRC SRC-U @ PATH PATH-U @ FS:COPY-FILE-STREAM ;
 
 : ENTRY+ ( ptr u8 n -- ) {: a:ptr u:n :}
-   PATH PATH-U @ a u APPEND-FILE ;
+   PATH PATH-U @ a u FS:APPEND-FILE ;
 
 \ With the argument `refused` the child first asserts that the kernel refused
 \ it its path, so the sandboxed case cannot pass on a host that answers.
@@ -61,13 +61,13 @@ variable RC
 : SETUP ( -- )
    s" habu-boot-relocation" FS:MKTEMP-DIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY u ROOT-U !
-   ROOT$ s" tree" TREE JOIN-PATH TREE-U !
-   s" bin" PATH! PATH PATH-U @ MAKE-DIRS
-   s" src/lib/c2-memory" PATH! PATH PATH-U @ MAKE-DIRS
-   s" src/core" PATH! PATH PATH-U @ MAKE-DIRS
-   TREE$ s" bin/hb" ENGINE JOIN-PATH ENGINE-U !
-   ENGINE-CANDIDATE:PATH$ ENGINE$ COPY-FILE-STREAM
-   ENGINE$ CHMOD-X
+   ROOT$ s" tree" TREE FS:JOIN-PATH TREE-U !
+   s" bin" PATH! PATH PATH-U @ FS:MAKE-DIRS
+   s" src/lib/c2-memory" PATH! PATH PATH-U @ FS:MAKE-DIRS
+   s" src/core" PATH! PATH PATH-U @ FS:MAKE-DIRS
+   TREE$ s" bin/hb" ENGINE FS:JOIN-PATH ENGINE-U !
+   ENGINE-CANDIDATE:PATH$ ENGINE$ FS:COPY-FILE-STREAM
+   ENGINE$ FS:CHMOD-X
    s" src/lib/errors.f" COPY-SOURCE
    s" src/lib/c2-memory.f" COPY-SOURCE
    s" src/lib/c2-memory/owner-runtime.f" COPY-SOURCE
@@ -76,8 +76,8 @@ variable RC
    WRITE-ENTRY ;
 
 : SAVE ( ptr u8 n ptr u8 n -- ) {: rel:ptr relu:n data:ptr size:n :}
-   ROOT$ rel relu PATH JOIN-PATH {: pathu:n :}
-   PATH pathu data size WRITE-ALL ;
+   ROOT$ rel relu PATH FS:JOIN-PATH {: pathu:n :}
+   PATH pathu data size FS:WRITE-ALL ;
 
 : ENGINE-ARGV+ ( -- )
    s" --load" >LEN PROC-ARGV+

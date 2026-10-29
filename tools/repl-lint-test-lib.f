@@ -14,23 +14,23 @@ variable RLT-WATCH-U
 variable RLT-STEPPER-U
 variable RLT-DEBUG-U
 
-create RLT-ROOT-BUF FS-PATH-CAP allot
-create RLT-SRC-DIR-BUF FS-PATH-CAP allot
-create RLT-STDIN-BUF FS-PATH-CAP allot
-create RLT-REPL-BUF FS-PATH-CAP allot
-create RLT-WATCH-BUF FS-PATH-CAP allot
-create RLT-STEPPER-BUF FS-PATH-CAP allot
-create RLT-DEBUG-BUF FS-PATH-CAP allot
+create RLT-ROOT-BUF PATH-CAP allot
+create RLT-SRC-DIR-BUF PATH-CAP allot
+create RLT-STDIN-BUF PATH-CAP allot
+create RLT-REPL-BUF PATH-CAP allot
+create RLT-WATCH-BUF PATH-CAP allot
+create RLT-STEPPER-BUF PATH-CAP allot
+create RLT-DEBUG-BUF PATH-CAP allot
 create RLT-OUT RLT-CAP allot
 create RLT-ERR RLT-CAP allot
 
 : RLT-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr lenp:ptr :}
-   u FS-PATH-CAP > if E-FS-PATH throw then
+   u PATH-CAP > if E-FS-PATH throw then
    a dst u BYTE-COPY
    u lenp ! ;
 
 : RLT-PATH! ( ptr u8 n ptr u8 n ptr u8 ptr n -- ) {: pa:ptr pu:n na:ptr nu:n dst:ptr lenp:ptr :}
-   pa pu na nu dst JOIN-PATH lenp ! ;
+   pa pu na nu dst FS:JOIN-PATH lenp ! ;
 
 : RLT-ROOT ( -- ptr u8 n )
    RLT-ROOT-BUF RLT-ROOT-U @ ;
@@ -96,21 +96,21 @@ create RLT-ERR RLT-CAP allot
    s" repl-lint: 1 finding(s)" ;
 
 : RLT-PREPARE ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" habu-repl-lint" FS:MKTEMP-DIR {: a:ptr u:n :}
    a u RLT-ROOT-BUF RLT-ROOT-U RLT-COPY!
-   RLT-ROOT CLEANUP-TREE+
+   RLT-ROOT FS:CLEANUP-TREE+
    RLT-ROOT s" src/habu" RLT-SRC-DIR-BUF RLT-SRC-DIR-U RLT-PATH!
-   RLT-SRC-DIR MAKE-DIRS
+   RLT-SRC-DIR FS:MAKE-DIRS
    RLT-SRC-DIR s" stdin.f" RLT-STDIN-BUF RLT-STDIN-U RLT-PATH!
    RLT-SRC-DIR s" repl.f" RLT-REPL-BUF RLT-REPL-U RLT-PATH!
    RLT-SRC-DIR s" debug-watch.f" RLT-WATCH-BUF RLT-WATCH-U RLT-PATH!
    RLT-SRC-DIR s" stepper.f" RLT-STEPPER-BUF RLT-STEPPER-U RLT-PATH!
    RLT-SRC-DIR s" debug.f" RLT-DEBUG-BUF RLT-DEBUG-U RLT-PATH!
-   RLT-STDIN RLT-STDIN$ WRITE-ALL
-   RLT-WATCH RLT-EMPTY$ WRITE-ALL
-   RLT-STEPPER RLT-EMPTY$ WRITE-ALL
-   RLT-DEBUG RLT-EMPTY$ WRITE-ALL ;
+   RLT-STDIN RLT-STDIN$ FS:WRITE-ALL
+   RLT-WATCH RLT-EMPTY$ FS:WRITE-ALL
+   RLT-STEPPER RLT-EMPTY$ FS:WRITE-ALL
+   RLT-DEBUG RLT-EMPTY$ FS:WRITE-ALL ;
 
 : RLT-RUN-CORE ( -- n n n )
    RLT-ROOT REPL-ROOT!
@@ -124,13 +124,13 @@ create RLT-ERR RLT-CAP allot
    outu erru ;
 
 : RLT-TEST-GOOD ( -- )
-   RLT-REPL RLT-GOOD$ WRITE-ALL
+   RLT-REPL RLT-GOOD$ FS:WRITE-ALL
    RLT-RUN-CORE 0 RLT-EXPECT-CODE {: outu:n erru:n :}
    RLT-OUT outu RLT-GOOD-OUT$ T$=
    RLT-ERR erru RLT-EMPTY$ T$= ;
 
 : RLT-TEST-BAD ( -- )
-   RLT-REPL RLT-BAD$ WRITE-ALL
+   RLT-REPL RLT-BAD$ FS:WRITE-ALL
    RLT-RUN-CORE 1 RLT-EXPECT-CODE {: outu:n erru:n :}
    erru 0 T=
    RLT-OUT outu RLT-BAD-FINDING$ CONTAINS? TTRUE
@@ -160,7 +160,7 @@ create RLT-ERR RLT-CAP allot
    RLT-TEST-GOOD
    RLT-TEST-BAD
    RLT-TEST-SPAN-END
-   CLEANUP-RUN
-   RLT-ROOT EXISTS? TFALSE
+   FS:CLEANUP-RUN
+   RLT-ROOT FS:EXISTS? TFALSE
    T-REPORT
    s" repl-lint-test: ok" type cr ;

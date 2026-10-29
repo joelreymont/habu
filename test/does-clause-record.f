@@ -14,7 +14,7 @@ require test/window-child-args.f
 package DOES-CLAUSE-RECORD-SUITE
 
 : PREPARE ( -- )
-   CLEANUP-RESET
+   FS:CLEANUP-RESET
    s" does-clause-record" WHITEBOX-CHILD:PROVIDE ;
 
 : ARGS ( -- )
@@ -28,7 +28,7 @@ package DOES-CLAUSE-RECORD-SUITE
 
 : RUN ( -- )
    T-RESET
-   [: PREPARE ARGS RESULT ;] [: CLEANUP-RUN ;] finally
+   [: PREPARE ARGS RESULT ;] [: FS:CLEANUP-RUN ;] finally
    T-REPORT ;
 
 RUN
