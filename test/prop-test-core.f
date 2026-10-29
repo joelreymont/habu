@@ -842,8 +842,9 @@ variable SWEEP-BASE  variable SWEEP-RED  variable SWEEP-I
 \ diagnostics on stderr (x N shards) would overflow the gate's bounded stderr
 \ capture. A false-cert reports on stdout (FC-LINE) and via the shard's
 \ nonzero exit, so muting stderr is safe.
-: MUTE-FD ( n -- ) {: dst:n :}
-   s" /dev/null" >LEN PROC-PATHZ PROP-O-WRONLY 0 open {: fd:n :}
+: MUTE-FD ( n -- )
+   {: dst:n :}
+   s" /dev/null" FS:>PATHZ PROP-O-WRONLY 0 open {: fd:n :}
    fd 0 < if exit then
    fd dst dup2 drop
    fd close ;

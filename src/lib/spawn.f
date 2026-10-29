@@ -21,6 +21,8 @@
 \   HERMETIC request gives the child only its own rows. ENV refuses an empty
 \   name and one holding `=` with E-PROC-ENV; ENV-ROWS copies its rows unchecked.
 \ - cwd: the last CWD's directory, else this process's.
+\ - A path, argument, environment name or value, or directory holding a 0 byte
+\   cannot cross to C: E-FFI-NUL (src/lib/ffi-abi.f's CSTR).
 \ - descriptors: the map starts [0 1 2]. `child parent FD` makes the child's fd
 \   `child` the parent's fd `parent`, a child fd past the map growing it with
 \   closed slots; CLOSED closes a slot inside the map and does nothing past it.
@@ -43,6 +45,8 @@
 
 require src/lib/errors.f
 require src/lib/memory.f
+require src/lib/span.f
+require src/lib/ffi-abi.f
 require src/lib/string.f
 require src/lib/task.f
 require src/lib/vector.f
@@ -119,13 +123,11 @@ HERM-AT 1+ constant RECORD-CELLS
    rc throw ;
 
 
-\ A NUL-terminated copy of the bytes in the request's own chunks.
+\ A C-string copy of the bytes in the request's own chunks.
 : ZCOPY ( ptr u8 n ptr n -- ptr u8 )
    {: src:ptr len h:ptr :}
-   len 1+ h CHUNKS PROC-CHUNKS:OWNED-ROOM {: dst:ptr :}
-   src dst len BYTE-COPY
-   0 dst len + c!
-   dst ;
+   len FFI:CSTR-ROOM {: need :}
+   src len need h CHUNKS PROC-CHUNKS:OWNED-ROOM need SPAN:MAKE FFI:CSTR ;
 
 
 \ Pushes a copy of every string before the array's NULL.
@@ -168,17 +170,18 @@ HERM-AT 1+ constant RECORD-CELLS
    repeat drop ;
 
 
-\ A NUL-terminated name=value copy in the request's own chunks.
+\ A C-string name=value copy in the request's own chunks.
 : ADD-ENV ( ptr n ptr u8 n ptr u8 n -- ptr n ptr u8 n ptr u8 n )
    {: h:ptr name:ptr namelen val:ptr vallen :}
    namelen 0 < vallen 0 < or if E-PROC-ENV throw then
    name namelen CHECK-NAME
-   namelen vallen + 2 + h CHUNKS PROC-CHUNKS:OWNED-ROOM {: dst:ptr :}
-   name dst namelen BYTE-COPY
-   EQUAL-BYTE dst namelen + c!
-   val dst namelen + 1+ vallen BYTE-COPY
-   0 dst namelen + 1+ vallen + c!
-   dst h ENVS VEC:PUSH drop
+   namelen 1+ vallen + {: rowlen :}
+   rowlen FFI:CSTR-ROOM {: need :}
+   need h CHUNKS PROC-CHUNKS:OWNED-ROOM need SPAN:MAKE {: room :}
+   name namelen room SPAN:COPY
+   EQUAL-BYTE room namelen SPAN:U8!
+   val vallen room namelen 1+ SPAN:SKIP SPAN:COPY
+   rowlen room FFI:CSTR! h ENVS VEC:PUSH drop
    h name namelen val vallen ;
 
 

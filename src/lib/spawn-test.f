@@ -365,6 +365,16 @@ variable DEAD-FD
    PROCESS:ERRNO EBADF T= ;
 
 
+\ 11a: each string a request copies is refused at the copy, so no child runs on
+\ a truncated one.
+: TEST-NUL ( -- )
+   s" a 0 byte in a path, argument, environment name or value, or directory is refused" T-LABEL
+   [: s\" /usr/bin/\ztrue" PROCESS:NEW PROCESS:SPAWN drop ;] E-FFI-NUL TTHROWSQ
+   [: s" /usr/bin/true" PROCESS:NEW s\" a\zb" PROCESS:ARG PROCESS:SPAWN drop ;] E-FFI-NUL TTHROWSQ
+   [: s" /usr/bin/true" PROCESS:NEW s" K" s\" b\zC=x" PROCESS:ENV PROCESS:SPAWN drop ;] E-FFI-NUL TTHROWSQ
+   [: s" /usr/bin/true" PROCESS:NEW s\" K\zL" s" v" PROCESS:ENV PROCESS:SPAWN drop ;] E-FFI-NUL TTHROWSQ
+   [: s" /usr/bin/true" PROCESS:NEW s\" /tmp\zx" PROCESS:CWD PROCESS:SPAWN drop ;] E-FFI-NUL TTHROWSQ ;
+
 : CLOSED-STDOUT-CHILD ( -- n )
    s" /bin/sh" PROCESS:NEW
    s" exec 2>/dev/null; printf z || exit 7" SH
@@ -432,6 +442,7 @@ public
    TEST-ARGV-CHUNKS
    TEST-MISSING
    TEST-REFUSALS
+   TEST-NUL
    TEST-CLOSED-STDIO
    TEST-DISCARD
    T-REPORT
