@@ -39,7 +39,7 @@
 \ are one $28 TASK:+USER row. The caller owns destination spans; each handle
 \ owns its request list and captured response. The one-time global init flags
 \ (GLOBAL-DONE, GLOBAL-REGISTERED) are PROCESS-WIDE, as curl_global_init requires.
-\ So is the multiplexed transfer table at the end of this file: one loop task
+\ So are the multiplexed transfer records at the end of this file: one loop task
 \ owns the multi handle and the records, and a record is claimed atomically by
 \ whichever task starts a transfer.
 require src/lib/errors.f
@@ -48,6 +48,8 @@ require src/lib/le.f                          \ the foreign cells are little-end
 require src/lib/ffi-abi.f
 require src/lib/type/deftype.f
 require src/lib/image-lifecycle.f
+require src/lib/memory.f                      \ the grown record chunks
+require src/lib/num-types.f                   \ the alloc-byte-len a chunk carries
 require src/lib/task.f
 require src/lib/aio.f                         \ the loop waits on AIO tickets
 require src/lib/adt/result.f                  \ TASK:JOIN's answer, read by LOOP-STOP
@@ -90,7 +92,6 @@ E-CURL-OPERAND constant E-OPERAND
 E-CURL-PLATFORM constant E-PLATFORM
 E-CURL-STATE constant E-STATE
 E-CURL-RESULT constant E-RESULT
-E-CURL-CAPACITY constant E-CAPACITY
 
 private
 
@@ -669,7 +670,6 @@ private
 \ callbacks, and Habu hands libcurl no callback - the same rule PERFORM's
 \ memstream answers.
 
-$20 constant MAX-TRANSFERS                \ transfers in flight at once
 $400 constant FD-SETSIZE                  \ an fd_set holds bits 0..1023
 $80 constant FD-SET-BYTES                 \ those bits, eight to the byte
 $40 constant WAKE-CHUNK                   \ bytes taken off the wake pipe at once
@@ -728,24 +728,37 @@ BEGIN-STRUCTURE REC-BYTES
    CELL +FIELD R.OFFSET
    CELL +FIELD R.BODY
    CELL +FIELD R.DELIVERED
+   CELL +FIELD R.OWNER                    \ the TCB pointer TASK:WAKE takes
+   CELL +FIELD R.TARGET                   \ the span's address
+   \ open_memstream's buffer and length, for the body and for the header
+   \ capture, because the loop is what closes the streams and the opening
+   \ task's row is not where it can read. The FFI writes them as bytes.
+   CELL +FIELD R.BUF
+   CELL +FIELD R.BUF-LEN
+   CELL +FIELD R.HBUF
+   CELL +FIELD R.HLEN
 END-STRUCTURE
 
 \ One record per transfer, in cells the loop reads with atomic@ and atomic!.
-\ BUFFER: and TYPED-BUFFER both allot zeroed storage on a cell-rounded address,
-\ which is the alignment every row below wants - the atomic record fields, and
-\ the fd_sets, the CURLMsg copy and the out-parameter cells libcurl reads and
-\ writes as aligned C objects.
-MAX-TRANSFERS REC-BYTES * 8 / TYPED-BUFFER REC-CELLS n
+\ The records live in a chain of chunks, as AIO's do: a link cell, then the
+\ records. The first chunk is static and each grown one holds as many records
+\ as all before it plus RECS-FIRST, so REC passes at most log2 links. A chunk
+\ never moves and goes back only at a capture, so a record's index is stable
+\ for the loop and for the owners that read a record without the facility.
+$20 constant RECS-FIRST
+CELL constant CHUNK-HEAD
 
-\ The owner as the TCB pointer TASK:WAKE takes and the span as the address it
-\ is, both in declared rows, so this module needs no address cast of its own.
-MAX-TRANSFERS TYPED-BUFFER REC-OWNER ptr n
-MAX-TRANSFERS TYPED-BUFFER REC-TARGETS ptr u8
+\ BUFFER: allots zeroed storage on a cell-rounded address and a grown chunk is
+\ a mapping, page-aligned, which is the alignment every row below wants - the
+\ atomic record fields, and the fd_sets, the CURLMsg copy and the
+\ out-parameter cells libcurl reads and writes as aligned C objects.
+CHUNK-HEAD RECS-FIRST REC-BYTES * + BUFFER: CURL-RECS
 
-\ Two cells per record for open_memstream's buffer and length, because the loop
-\ is what closes the stream and the opening task's row is not where it can read.
-\ The FFI writes them, so the row is bytes.
-MAX-TRANSFERS 4 * cells BUFFER: REC-STREAM-CELLS
+\ The records the published chunks hold. Grown under the facility, after the
+\ chunk's link; read with atomic@ by an owner checking an index.
+variable REC-COUNT
+RECS-FIRST REC-COUNT !
+variable MAPS-ARMED                       \ the capture sweep below is registered
 
 \ The three fd_sets libcurl fills, the fds an armed ticket already covers, the
 \ int and long out-parameters of the multi calls, one copied CURLMsg, and the
@@ -796,27 +809,53 @@ CAST: TICKET>N ( AIO:ticket -- n )
 
 \ ---- the records -------------------------------------------------------------
 
+\ A record chunk, which this module names by address as n: 0 ends the chain.
+CAST: CURL-N>PTR ( n -- ptr n )
+
+\ A record's two pointer cells, as the slots they are.
+CAST: OWNER-SLOT ( ptr n -- ptr ptr n )
+CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
+
+: CHUNK-FIRST ( -- n )
+   CURL-RECS CELL-VIEW FFI:>CELL ;
+
+: CHUNK-NEXT ( n -- n )
+   CURL-N>PTR atomic@ ;
+
+: CHUNK-REC ( n n -- ptr n ) {: c:n k:n :}
+   c CHUNK-HEAD + k REC-BYTES * + CURL-N>PTR ;
+
+: CHUNK-LEN ( n -- NUM:alloc-byte-len )
+   REC-BYTES * CHUNK-HEAD + MEM:BYTES-ALLOC-LEN ;
+
+: CHUNK-LAST ( -- n )
+   CHUNK-FIRST begin dup CHUNK-NEXT dup 0<> while nip repeat drop ;
+
+\ REC-CHECK bounds every index by the published chunks, so an index past them
+\ here is this module's own defect.
+: CHUNK-AFTER ( n -- n )
+   CHUNK-NEXT dup 0= if s" curl: record index" E-STATE die then ;
+
+
 : REC-CHECK ( n -- n ) {: idx:n :}
-   idx 0 < idx MAX-TRANSFERS >= or if E-OPERAND throw then
+   idx 0 < idx REC-COUNT atomic@ >= or if E-OPERAND throw then
    idx ;
 
 
-: REC ( n -- ptr n ) REC-CHECK {: idx:n :}
-   idx REC-BYTES * 8 / REC-CELLS ;
+\ The walk carries the chunk, the index left and the chunk's record count.
+: REC ( n -- ptr n ) REC-CHECK
+   CHUNK-FIRST swap RECS-FIRST
+   begin 2dup >= while
+      swap over - swap 2 *
+      rot CHUNK-AFTER -rot
+   repeat
+   drop CHUNK-REC ;
 
 
-: REC-BUF-CELL ( n -- ptr u8 ) REC-CHECK {: idx:n :}
-   REC-STREAM-CELLS idx $20 * + ;
-
-
-: REC-LEN-CELL ( n -- ptr u8 ) REC-CHECK {: idx:n :}
-   REC-STREAM-CELLS idx $20 * + $08 + ;
-
-: REC-HBUF-CELL ( n -- ptr u8 ) REC-CHECK {: idx:n :}
-   REC-STREAM-CELLS idx $20 * + $10 + ;
-
-: REC-HLEN-CELL ( n -- ptr u8 ) REC-CHECK {: idx:n :}
-   REC-STREAM-CELLS idx $20 * + $18 + ;
+: REC-BUF-CELL ( n -- ptr u8 )  REC R.BUF BYTE-VIEW ;
+: REC-LEN-CELL ( n -- ptr u8 )  REC R.BUF-LEN BYTE-VIEW ;
+: REC-HBUF-CELL ( n -- ptr u8 ) REC R.HBUF BYTE-VIEW ;
+: REC-HLEN-CELL ( n -- ptr u8 ) REC R.HLEN BYTE-VIEW ;
 
 
 : REC-STATE@ ( n -- n )     REC R.STATE atomic@ ;
@@ -825,25 +864,101 @@ CAST: TICKET>N ( AIO:ticket -- n )
 : REC-STREAM@ ( n -- n )    REC R.STREAM @ ;
 : REC-HSTREAM@ ( n -- n )   REC R.HSTREAM @ ;
 : REC-MODE@ ( n -- n )      REC R.MODE @ ;
-: REC-TARGET@ ( n -- ptr u8 ) REC-CHECK REC-TARGETS @ ;
-: REC-OWNER@ ( n -- ptr n ) REC-CHECK REC-OWNER @ ;
+: REC-TARGET@ ( n -- ptr u8 ) REC R.TARGET TARGET-SLOT @ ;
+: REC-OWNER@ ( n -- ptr n ) REC R.OWNER OWNER-SLOT @ ;
+
+
+: REC-TARGET! ( ptr u8 n -- ) {: target idx:n :}
+   target idx REC R.TARGET TARGET-SLOT ! ;
 
 
 : REC-STATE! ( n n -- ) {: state:n idx:n :}
    state idx REC R.STATE atomic! ;
 
 
-\ One claim wins: the state cell moves FREE -> CLAIMING in one step, so two
-\ tasks starting a transfer at the same moment are handed different records.
-\ CLAIMING is a state the loop passes over, so a record is never added to the
-\ multi handle before the submitter has finished filling it.
-: REC-CLAIM ( -- n )
-   MAX-TRANSFERS 0 ?do
-      STATE-FREE STATE-CLAIMING i REC R.STATE atomic-cas STATE-FREE = if
-         i unloop exit
+\ A grown chunk is this process's: a capture gives it back so the image carries
+\ only the static first chunk. A record in flight in one is the program's
+\ defect, named here: await every transfer before a capture.
+: CHUNK-RETIRE ( n n -- ) {: c:n len:n :}
+   len 0 ?do
+      c i CHUNK-REC R.STATE atomic@ STATE-FREE <> if
+         s" curl: transfer in flight at capture - await it before the build or snapshot captures"
+         E-STATE die
+      then
+   loop
+   c CURL-N>PTR BYTE-VIEW len CHUNK-LEN MEM:RELEASE-BYTES ;
+
+
+\ The walk carries the next chunk and the record count of the one after. The
+\ facility keeps a loop turn from walking the chain while it is cut.
+: RECS-SWEEP ( -- )
+   CURL-LOCK TASK:GET
+   CHUNK-FIRST CHUNK-NEXT RECS-FIRST 2 *
+   0 CHUNK-FIRST CURL-N>PTR atomic!
+   begin over 0<> while
+      over CHUNK-NEXT -rot
+      swap over CHUNK-RETIRE 2 *
+   repeat
+   2drop
+   RECS-FIRST REC-COUNT atomic!
+   0 MAPS-ARMED !
+   CURL-LOCK TASK:RELEASE ;
+
+
+\ Armed before a chunk is mapped, so no mapping exists without its cleanup;
+\ the flag is set only after REGISTER completes, as AIO's MAPS-ARM.
+: MAPS-ARM ( -- )
+   MAPS-ARMED @ 0<> if exit then
+   [: RECS-SWEEP ;] IMAGE-LIFECYCLE:REGISTER
+   1 MAPS-ARMED ! ;
+
+
+\ A fresh mapping is zero: every record free. The chunk is linked once it is
+\ whole, and REC-COUNT grows after the link, so a reader that sees the count
+\ finds the chunk.
+: REC-GROW ( -- )
+   MAPS-ARM
+   REC-COUNT @ RECS-FIRST + {: len:n :}
+   len CHUNK-LEN MEM:ALLOC-BYTES drop FFI:>CELL {: c:n :}
+   c CHUNK-LAST CURL-N>PTR atomic!
+   REC-COUNT @ len + REC-COUNT atomic! ;
+
+
+\ The first free record of the chunk at c, whose records start at index base,
+\ claimed, or -1. One claim wins: the state cell moves FREE -> CLAIMING in one
+\ step, so two tasks starting a transfer at the same moment are handed
+\ different records. CLAIMING is a state the loop passes over, so a record is
+\ never added to the multi handle before the submitter has finished filling it.
+: CHUNK-CLAIM ( n n n -- n ) {: c:n base:n len:n :}
+   len 0 ?do
+      STATE-FREE STATE-CLAIMING c i CHUNK-REC R.STATE atomic-cas STATE-FREE = if
+         base i + unloop exit
       then
    loop
    -1 ;
+
+
+\ The walk carries the chunk, its first index and its record count.
+: FREE-CLAIM ( -- n )
+   CHUNK-FIRST 0 RECS-FIRST
+   begin
+      >r 2dup r@ CHUNK-CLAIM r> swap
+      dup 0 >= if nip nip nip exit then drop
+      >r r@ + r> 2 *
+      rot CHUNK-NEXT dup 0= if drop 2drop -1 exit then -rot
+   again ;
+
+
+\ A free record, grown into when every one is taken. Every claim runs under
+\ CURL-LOCK, which is what lets REC-GROW append without a race. Answers a code
+\ and the index: 0 and the record, or the code the growth threw and -1, which
+\ the claim answers because it holds the facility.
+: REC-CLAIM ( -- n n )
+   FREE-CLAIM dup 0 < if
+      drop [: REC-GROW ;] catch dup 0<> if -1 exit then drop
+      FREE-CLAIM
+   then
+   0 swap ;
 
 
 \ A record is free again only after its handle is cleared, so a scan can never
@@ -881,7 +996,7 @@ CAST: TICKET>N ( AIO:ticket -- n )
 
 
 : TABLE-CLEAR ( -- )
-   MAX-TRANSFERS 0 ?do i REC-RELEASE loop ;
+   REC-COUNT @ 0 ?do i REC-RELEASE loop ;
 
 
 \ The record a handle is in, or -1. A handle is in at most one record at a time
@@ -889,7 +1004,7 @@ CAST: TICKET>N ( AIO:ticket -- n )
 \ how a task finds its own transfer: asking libcurl about a handle the loop may
 \ be driving is exactly what it must not do.
 : REC-FIND ( n -- n ) {: easy:n :}
-   MAX-TRANSFERS 0 ?do
+   REC-COUNT @ 0 ?do
       i REC-STATE@ STATE-FREE <> if
          i REC-EASY@ easy = if i unloop exit then
       then
@@ -898,7 +1013,7 @@ CAST: TICKET>N ( AIO:ticket -- n )
 
 
 : ANY-BUSY? ( -- bool )
-   MAX-TRANSFERS 0 ?do
+   REC-COUNT @ 0 ?do
       i REC-STATE@ STATE-FREE <> if true unloop exit then
    loop
    false ;
@@ -910,8 +1025,8 @@ CAST: TICKET>N ( AIO:ticket -- n )
    stream idx REC R.STREAM !
    headers idx REC R.HSTREAM !
    0 idx REC R.ADDED !
-   target idx REC-CHECK REC-TARGETS !
-   TASK:SELF idx REC-CHECK REC-OWNER !
+   target idx REC-TARGET!
+   TASK:SELF idx REC R.OWNER OWNER-SLOT !
    KIND-FAILED idx REC R.KIND !
    0 idx REC R.STATUS !
    0 idx REC R.LEN !
@@ -1171,7 +1286,7 @@ CAST: TICKET>N ( AIO:ticket -- n )
 
 
 : SERVICE-RECORDS ( -- n )
-   MAX-TRANSFERS 0 ?do
+   REC-COUNT @ 0 ?do
       i SERVICE-ONE dup CURLM-OK <> if unloop exit then drop
    loop
    CURLM-OK ;
@@ -1449,7 +1564,7 @@ CAST: TICKET>N ( AIO:ticket -- n )
 : FAIL-ALL ( -- )
    CURL-LOCK TASK:GET
    1 STOP-FLAG atomic!
-   MAX-TRANSFERS 0 ?do i FAIL-ONE loop
+   REC-COUNT @ 0 ?do i FAIL-ONE loop
    CURL-LOCK TASK:RELEASE ;
 
 
@@ -1492,8 +1607,8 @@ CAST: TICKET>N ( AIO:ticket -- n )
 \ second START on it - from this task or another - already finds it in flight.
 : CLAIM-BODY ( n -- n n ) {: easy:n :}    \ ( easy -- rc idx )
    easy REC-FIND 0 >= if E-STATE -1 exit then
-   REC-CLAIM dup 0 < if drop E-CAPACITY -1 exit then
-   {: idx:n :}
+   REC-CLAIM {: rc:n idx:n :}
+   rc 0<> if rc -1 exit then
    easy idx REC R.EASY !
    0 idx ;
 
@@ -1568,7 +1683,7 @@ CAST: TICKET>N ( AIO:ticket -- n )
 : OWNER-END ( -- )
    TASK:SELF {: owner:ptr :}
    CURL-LOCK TASK:GET
-   false MAX-TRANSFERS 0 ?do owner i OWNER-MARK or loop
+   false REC-COUNT @ 0 ?do owner i OWNER-MARK or loop
    CURL-LOCK TASK:RELEASE
    if WAKE-POKE then ;
 
@@ -1634,8 +1749,8 @@ public
 \ that transfer alone.
 \ From here until AWAIT answers, the handle and the span belong to the loop: no
 \ other task may touch either. A START with no loop running, and a second START
-\ on a handle already in flight, are E-STATE; a table with no record free is
-\ E-CAPACITY.
+\ on a handle already in flight, are E-STATE. The records grow with the
+\ transfers in flight, so no count of them is refused.
 private
 
 \ A whole body goes straight into the owner's span; a streamed one grows in the
@@ -1732,7 +1847,7 @@ public
    idx REC R.REQUEST atomic@ REQUEST-NONE <> if
       CURL-LOCK TASK:RELEASE E-STATE throw
    then
-   target idx REC-CHECK REC-TARGETS !
+   target idx REC-TARGET!
    capacity LEN>N idx REC R.CAP !
    idx REC-STATE@ STATE-DONE =
       idx REC R.OFFSET @ idx REC R.LEN @ >= and if

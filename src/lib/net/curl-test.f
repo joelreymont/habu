@@ -26,6 +26,17 @@ require src/lib/aio.f                       \ the loop the multiplexed transfers
 require src/lib/net/tcp4.f
 require src/lib/net/curl.f
 
+\ White-box helper: reopen CURL so the definition below is compiled with the
+\ record count its chunks hold visible. It is the test's own word: a qualified
+\ definition lands in the wordlist it names, so it goes to CURL-TEST, and
+\ CURL's public surface gains nothing for being tested.
+package CURL
+
+: CURL-TEST:RECORDS ( -- n )
+   REC-COUNT atomic@ ;
+
+;package
+
 package CURL-TEST
 
 private
@@ -49,7 +60,7 @@ FUNCTION: ENV-UNSET unsetenv ( ptr u8 -- i32 ) ;FUNCTION
 FUNCTION: ENV-FREE free ( n -- ) ;FUNCTION
 
 $7F000001 constant LOOPBACK
-$40 constant BACKLOG                    \ the concurrent case connects MANY-N times at once
+$80 constant BACKLOG                    \ the concurrent case connects MANY-N times at once
 $2000 constant BODY-CAP
 $1000 constant REQ-CAP
 $1000 constant RES-CAP
@@ -1771,7 +1782,9 @@ variable LONG-ANSWER
 \ answers ends the row as a timeout and not as a hung suite.
 
 2000 constant WAIT-MS                   \ the bound on every wait in these cases
-$20 constant MANY-N                     \ the concurrent transfers of case one
+\ No more: macOS caps listen queues at kern.ipc.somaxconn = 128; HTTP/1.1 connects per transfer
+100 constant MANY-N                     \ the concurrent transfers of case one, past 32 + 64 records
+2 constant MANY-ROUNDS                  \ and its rounds, the second on the first's records
 $40 constant MANY-CAP                   \ one span each, far past the six-byte body
 4 constant STALL-GROUP                  \ one stalled transfer and three healthy ones
 
@@ -1793,7 +1806,6 @@ variable OWNER-RC
 
 MANY-N TYPED-BUFFER MANY-HANDLES CURL:handle
 TYPED-VARIABLE COLD-HANDLE CURL:handle
-TYPED-VARIABLE EXTRA-HANDLE CURL:handle
 TYPED-VARIABLE OWNER-HANDLE CURL:handle
 TYPED-VARIABLE HALT-HANDLE CURL:handle
 TYPED-VARIABLE DONE-HANDLE CURL:handle
@@ -2237,21 +2249,25 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
    idx MANY-SPAN LAST-LEN @ HELLO$ T$= ;
 
 
-: EXTRA-START ( -- )
-   EXTRA-HANDLE @ BODY-BUF BODY-CAP >LEN CURL:START EXPECT-OK ;
-
-
-\ Thirty-two transfers in flight at once, awaited in order. The two new OS
-\ thread identities are the CURL loop and the AIO loop.
-: CASE-MANY ( -- )
+\ Every transfer of the round is in flight at once, and they are awaited in
+\ order. The new OS thread identities are counted while all are in flight.
+: MANY-ROUND ( -- )
    MANY-N 0 ?do i MANY-START loop
    TEST-HOST:NEW-THREADS DURING-THREADS !
-   PATH-HELLO$ GET-READY EXTRA-HANDLE !
-   s" a START with every transfer record claimed is refused" T-LABEL
-   [: EXTRA-START ;] CURL:E-CAPACITY TTHROWSQ
-   EXTRA-HANDLE @ CURL:CLEANUP
-   MANY-N 0 ?do i MANY-CHECK loop
-   s" thirty-two transfers cost the CURL loop and the AIO loop alone" T-LABEL
+   MANY-N 0 ?do i MANY-CHECK loop ;
+
+
+\ A hundred transfers in flight at once cost the CURL loop and the AIO loop
+\ alone, the two new OS thread identities. A second round of as many lands on
+\ the records the first one grew and grows none.
+: CASE-MANY ( -- )
+   MANY-ROUND
+   s" a hundred transfers cost the CURL loop and the AIO loop alone" T-LABEL
+   DURING-THREADS @ 2 T=
+   CURL-TEST:RECORDS {: grown:n :}
+   MANY-ROUND
+   s" a second round of a hundred transfers grows no record" T-LABEL
+   CURL-TEST:RECORDS grown T=
    DURING-THREADS @ 2 T= ;
 
 
@@ -2661,7 +2677,7 @@ variable DEFER-RETURNED
    s" the server task served every request and reported no fault" T-LABEL
    SERVER-BAD @ 0 T=
    SERVER-ERRNO @ 0 T=
-   SERVER-HITS atomic@ 111 DONE-ATTEMPTS @ + CEILING-HITS @ + T= ;
+   SERVER-HITS atomic@ 79 MANY-N MANY-ROUNDS * + DONE-ATTEMPTS @ + CEILING-HITS @ + T= ;
 
 
 \ Opt-in: the one case that leaves the machine. It proves the system CA bundle
@@ -2700,6 +2716,17 @@ variable DEFER-RETURNED
    STOP-SERVER
    CLOSE-SILENT
    ROOT$ REMOVE-TREE ;
+
+
+variable FIRST-RECORDS
+
+\ CASE-MANY grew the records past the static chunk. With every task ended, a
+\ capture gives the grown chunks back and the count is the static chunk's again.
+: TEST-CAPTURE-GROWN ( -- )
+   IMAGE-LIFECYCLE:PREPARE
+   s" a capture gives the grown record chunks back" T-LABEL
+   CURL-TEST:RECORDS FIRST-RECORDS @ T= ;
+
 
 \ No request or live task is needed: each fresh initialization must arm the
 \ reset that makes the next captured process initialize libcurl for itself.
@@ -2741,11 +2768,13 @@ public
    TEST-REFUSALS
    TEST-LONG-TEXT
    TEST-HOST:SNAPSHOT
+   CURL-TEST:RECORDS FIRST-RECORDS !
    AIO:START
    TEST-MULTI
    AIO:STOP
    OPT-IN
    TEARDOWN
+   TEST-CAPTURE-GROWN
    TEST-SERVER
    T-REPORT
    s" curl-test: ok" type cr ;
