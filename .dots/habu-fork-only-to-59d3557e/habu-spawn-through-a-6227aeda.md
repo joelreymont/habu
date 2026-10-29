@@ -1,6 +1,6 @@
 ---
 title: Spawn through a SPAWN request
-status: open
+status: active
 priority: 1
 issue-type: task
 created-at: "2026-10-28T20:27:02.223612+02:00"
@@ -15,3 +15,5 @@ Joel 2026-10-29 (interview) approved two more public words: SPAWN:SPAWN, exporte
 1b C2 fold-in 2 (carl-forkexec .out/brief-1b-c2-fold2.md): capture-tree, check-signal, gate-signal and pg-kill observe tree death through a FIFO that test code opens by path and maps explicitly. Library spawn words carry no extra fds; the capture and pool words are unchanged.
 
 Joel 2026-10-29: superseded by the approved PROCESS API (parent dot): package SPAWN becomes PROCESS, request PROCESS:request, CLOSE becomes CLOSED, plus ARG/ENV/HERMETIC/STDIN/CANCEL/TICK/RUN; this lane is PROCESS lane 1.
+
+PROCESS lane 1A (request half) brief: .jj-ws.noindex/carl-forkexec/.out/brief-process-1a.md. Claim: agent=carl worker workspace=.jj-ws.noindex/carl-forkexec
