@@ -6,7 +6,7 @@
 \ the definition's name first (THE TAPE). It emits through the seam
 \ src/habu/t0-emit.f (package T0-EMIT) to the emitter selected there
 \ (src/habu/t0-x64.f for x86-64); the emitter leaves the finished body in its
-\ sink, and the caller seals it into NEMIT (T0-EMIT:SEAL or SEAL-UNPLACED).
+\ sink, and the caller seals it into NEMIT (T0-EMIT:SEAL).
 \
 \ T0:COMPILE is the runtime compiler entry: T0:INSTALL stores it in the cell
 \ the tier 1 `:` dispatches through (T0:DISPATCH!), with no fallback to tier 1,
@@ -175,7 +175,7 @@
 \ SLOT-STORE, SLOT-LOAD); a read pushes every cell of the local. A local holds
 \ as many cells as the checker certified for its bind (NFETCH:BIND-WIDTH), so
 \ the caller captures the body's certificate (NFETCH:CAPTURE at base 0) before
-\ COMPILE-TEXT, and T0 never reads a type annotation. A bind past the
+\ the walk, and T0 never reads a type annotation. A bind past the
 \ certificate's count, and a body that binds fewer than it counts, is
 \ E-T0-BINDS: that certificate is not of this text; a body that binds nothing
 \ reads none, as tier 1's BINDS-CK. A local is its bind sequence, which the
@@ -2017,14 +2017,6 @@ variable SCAN-LO                     \ the ordinal of its first row
    NULL-PTR 0 ;
 
 public
-
-\ Stage and scan one body with no split, then compile it and its quotations
-\ into the emitter's sink. The scan captures the body's certificate.
-: COMPILE-TEXT ( ptr u8 n -- )
-   false STAGE-UNIT
-   0 M-DOES !
-   SCAN
-   WALK ;
 
 \ Compile the pending definition whose body text the engine captured.
 : COMPILE ( ptr u8 n -- )

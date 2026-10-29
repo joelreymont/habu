@@ -27,8 +27,8 @@
 \ SELECT throws E-LAYOUT-BOUNDS (7122): no slot is selected.
 \
 \ THE SINK. OPEN begins an emission, emptying the emitter's sink and the
-\ seam's rows; CLOSE ends a unit. Once the last unit is closed, SEAL or
-\ SEAL-UNPLACED hands the emission to NEMIT (src/compiler/native/emission.f),
+\ seam's rows; CLOSE ends a unit. Once the last unit is closed, SEAL
+\ hands the emission to NEMIT (src/compiler/native/emission.f),
 \ which then answers its bytes and rows until the caller runs NEMIT:CLEAR; the
 \ caller runs it before the next OPEN, on the accepting and the refusing path
 \ alike. NEMIT reads the bytes in place, so they stay the emitter's until the
@@ -62,13 +62,10 @@
 \ SEALING. SEAL n is the emission placed at address n: PATCH writes every call
 \ row's displacement to its target and every quotation address row as n plus
 \ the unit's offset, as publication (src/compiler/native/publish.f) copies the
-\ bytes and only records relocations. SEAL-UNPLACED leaves the bytes as
-\ emitted, every call field zero and every quotation address row its unit's
-\ offset, the unplaced form a shadow reads (src/arch/x86-64/passes.f
-\ SHADOW-ADDRS). Both open NEMIT for the selected architecture with no
-\ trailing return, so the record is the emission's whole span, file the
-\ units, the call rows with implementation 0 and the address rows with their
-\ origins, a quotation's as NEMIT:ADDR-CODE, and seal it.
+\ bytes and only records relocations. SEAL opens NEMIT for the selected
+\ architecture with no trailing return, so the record is the emission's whole
+\ span, files the units, the call rows with implementation 0 and the address
+\ rows with their origins, a quotation's as NEMIT:ADDR-CODE, and seals it.
 \
 \ THE PATCH SLOT. SLOT-CLOSE closes a unit that leaves by a return which is
 \ the does> patch slot: the emitter files that return's offset with
@@ -609,9 +606,5 @@ public
    at NEMIT:PLACE
    stub 0 >= if at stub + NCBSTUB:ENTRY! then
    stub NEMIT-ROWS ;
-
-\ Seal it with no placement, the bytes as emitted.
-: SEAL-UNPLACED ( -- )
-   NEMIT-OPEN NEMIT-ROWS ;
 
 ;package

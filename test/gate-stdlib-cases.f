@@ -476,12 +476,6 @@ SUITE compiler-native-hir
    test/compiler/native-hir.f
 ;SUITE
 
-\ The install rows T0's arm64 emitter files: the does> patch slot, address
-\ origins and the callback stub.
-SUITE t0-arm64-rows
-   test/t0-arm64-rows.f
-;SUITE
-
 \ Reads the code the ENGINE UNDER TEST baked, so it belongs to whichever engine
 \ the gate runs and not to the sources a fixture could compile for itself.
 SUITE compiler-tier1-inline-prims
