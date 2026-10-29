@@ -80,6 +80,7 @@ require src/lib/string.f
 require src/lib/adt/option.f
 require src/lib/le.f
 require src/lib/ffi-abi.f
+require src/lib/fs.f                    \ FS:>PATHZ, the /proc paths' C copies
 require src/lib/fs-list.f
 require src/lib/task.f                  \ TASK:SLEEP, while another task walks
 
@@ -312,12 +313,13 @@ variable CUR                        \ the read position in STAT
 : PATH+ ( ptr u8 n -- )
    STAT-PATH STAT-PATH-CAP STAT-PATH-U BUF-APPEND ;
 
-: STAT-PATHZ ( ptr u8 n -- ptr u8 ) {: name:ptr nameu:n :}
+: STAT-PATHZ ( ptr u8 n -- ptr u8 )
+   {: name:ptr nameu:n :}
    STAT-PATH-U BUF-RESET
    s" /proc/" PATH+
    name nameu PATH+
-   s\" /stat\z" PATH+
-   STAT-PATH ;
+   s" /stat" PATH+
+   STAT-PATH STAT-PATH-U BUF-LEN@ FS:>PATHZ ;
 
 \ Reads the stat file pathz names into STAT: FALSE when it will not open or
 \ holds nothing, as for a process or thread that ended since it was listed.
@@ -402,13 +404,14 @@ variable CUR                        \ the read position in STAT
    repeat drop ;
 
 \ One thread of the member whose task directory is being listed.
-: THREAD-VISIT ( ptr u8 n -- ) {: tid:ptr tidu:n :}
+: THREAD-VISIT ( ptr u8 n -- )
+   {: tid:ptr tidu:n :}
    STAT-PATH-U BUF-RESET
    TASK-DIR TASK-DIR-U BUF-LEN@ PATH+
    s" /" PATH+
    tid tidu PATH+
-   s\" /stat\z" PATH+
-   STAT-PATH LOAD-STAT? 0= if exit then
+   s" /stat" PATH+
+   STAT-PATH STAT-PATH-U BUF-LEN@ FS:>PATHZ LOAD-STAT? 0= if exit then
    TAKE-STATE SETTLED-STATE? 0= if AWAKE @ 1+ AWAKE ! then ;
 
 : THREADS-LIST ( -- )
@@ -564,12 +567,13 @@ FUNCTION: SYSCTL sysctl ( ptr u8 n ptr u8 ptr u8 ptr u8 n -- i32 )
       STATUS over + c@ HEX-DIGIT rot 4 lshift or swap 1+
    repeat drop ;
 
-: CATCHES-LINUX? ( n n -- bool ) {: pid:n sig:n :}
+: CATCHES-LINUX? ( n n -- bool )
+   {: pid:n sig:n :}
    TASK-DIR-U BUF-RESET
    s" /proc/" TASK-DIR+
    pid DIGITS+
-   s\" /status\z" TASK-DIR+
-   TASK-DIR open-rd {: fd:n :}
+   s" /status" TASK-DIR+
+   TASK-DIR TASK-DIR-U BUF-LEN@ FS:>PATHZ open-rd {: fd:n :}
    fd 0 < if false exit then
    fd STATUS STATUS-CAP read {: got:n :}
    fd close
@@ -687,12 +691,13 @@ FUNCTION: TIMEBASE-INFO mach_timebase_info ( ptr u8 -- i32 )
    ;MATCH ;
 
 \ The root's own line; 0 once it is reaped.
-: ROOT-TICKS-LINUX ( n -- n ) {: pid:n :}
+: ROOT-TICKS-LINUX ( n -- n )
+   {: pid:n :}
    TASK-DIR-U BUF-RESET
    s" /proc/" TASK-DIR+
    pid DIGITS+
-   s\" /stat\z" TASK-DIR+
-   TASK-DIR LOAD-STAT? 0= if 0 exit then
+   s" /stat" TASK-DIR+
+   TASK-DIR TASK-DIR-U BUF-LEN@ FS:>PATHZ LOAD-STAT? 0= if 0 exit then
    TAKE-STATE drop
    TAKE-INT drop
    TAKE-TIMES ;

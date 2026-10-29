@@ -5,6 +5,7 @@ require src/lib/zip-ffi.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/fd.f
+require src/lib/span.f
 require src/lib/utf8-scalar.f
 
 package ZIP
@@ -587,12 +588,15 @@ $14 constant LOCATOR-BYTES
    0 len 0 ?do path i + c@ $2F = if drop i 1+ then loop
    dup 0= if drop s" ." else 1- path swap then ;
 
-: TEMP-TEMPLATE ( ptr n -- ) {: node:ptr :}
+: TEMP-TEMPLATE ( ptr n -- )
+   {: node:ptr :}
    node PATH-PTR @ node PATH-LEN @ DIRECTORY$ {: dir:ptr len:n :}
    s" /.habu-zip-XXXXXX" {: suffix:ptr size:n :}
-   node len size + 1+ BUFFER-ALLOC {: data:ptr :}
-   dir data len BYTE-COPY suffix data len + size BYTE-COPY
-   0 data len size + + c! data node TEMP-PTR ! len size + node TEMP-LEN ! ;
+   len size + {: total:n :}
+   total CSTR-ROOM {: room:n :}
+   node room BUFFER-ALLOC room SPAN:MAKE {: temp :}
+   dir len temp SPAN:COPY suffix size temp len SPAN:SKIP SPAN:COPY
+   total temp CSTR! node TEMP-PTR ! total node TEMP-LEN ! ;
 
 : TEMP-OPEN ( ptr n -- ) {: node:ptr :}
    node TEMP-TEMPLATE

@@ -12,13 +12,11 @@
 \ An unknown option, a missing option value, an arity or required-option
 \ failure, ARGV:FAIL and an out-of-range TOK$/POS$ index throw ARGV:E-USAGE
 \ (64, the process exit when uncaught) after writing the message and usage text
-\ to stderr unless ARGV:QUIET! is set. A copy that does not fit with its NUL or
-\ a negative FAIL or mock length throws ARGV:E-INTERNAL (76) before any change.
+\ to stderr unless ARGV:QUIET! is set. A negative FAIL or mock length throws
+\ ARGV:E-INTERNAL (76) before any change.
 \ The mock list and the positional table grow with their input.
-\ POSZ / OUTZ / PATHZ return NUL-terminated copies in the one module path
-\ buffer, valid until the next copy; ZCOPY copies into the caller's buffer.
 \
-\ STORAGE CLASS. PROCESS-WIDE: parser state and path buffer are static; the
+\ STORAGE CLASS. PROCESS-WIDE: parser state is static; the
 \ mock list and positional table are DYNAMIC-BUFFERs, released with every
 \ mapping before an image save; one task parses at a time.
 
@@ -31,7 +29,6 @@ public
 
 private
 
-PATH-CAP 1 + constant ARGV-PATH-CAP
 $2D constant ARGV-CHAR-DASH
 
 STRUCTURE span FIELD base ptr u8 FIELD size len ;STRUCTURE
@@ -61,7 +58,6 @@ TYPED-VARIABLE ARGV-OUT-DEFAULT span
 
 TYPED-VARIABLE ARGV-USAGE span
 variable ARGV-QUIET
-create ARGV-PATH-BUF ARGV-PATH-CAP allot
 
 : ARGV-FALSE ( -- bool )  0 0= 0= ;
 
@@ -296,26 +292,6 @@ public
 
 : REQUIRE-LABEL ( -- )
    LABEL? 0= if s" missing --label NAME" FAIL then ;
-
-: ZCOPY ( ptr u8 n ptr u8 n -- ptr u8 ) {: a:ptr u:n dst:ptr cap:n :}
-   u 0 < if E-INTERNAL throw then
-   cap 0 <= if E-INTERNAL throw then
-   u cap >= if E-INTERNAL throw then
-   0 begin dup u < while
-      dup a + c@  over dst + c!
-      1 +
-   repeat drop
-   0 dst u + c!
-   dst ;
-
-: PATHZ ( ptr u8 n -- ptr u8 )
-   ARGV-PATH-BUF ARGV-PATH-CAP ZCOPY ;
-
-: POSZ ( n -- ptr u8 )
-   POS$ PATHZ ;
-
-: OUTZ ( -- ptr u8 )
-   OUT$ PATHZ ;
 
 private
 

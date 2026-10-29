@@ -17,7 +17,7 @@
 \   zeroed first. libcurl's own receive and TLS buffers, and the copies
 \   open_memstream leaves behind as it grows a capture, are outside that
 \   guarantee.
-\ - A string with an embedded NUL is E-OPERAND rather than cut short.
+\ - A string with an embedded NUL is FFI's E-FFI-NUL rather than cut short.
 \ - CLEANUP ends a handle. A later use is a use-after-free the nominal type
 \   does not catch.
 \ - PERFORM holds its task for the whole transfer. START/AWAIT and
@@ -48,7 +48,8 @@ require src/lib/le.f                          \ the foreign cells are little-end
 require src/lib/ffi-abi.f
 require src/lib/type/deftype.f
 require src/lib/image-lifecycle.f
-require src/lib/memory.f                      \ the grown record chunks
+require src/lib/memory.f                      \ the grown record chunks, the text copies
+require src/lib/span.f                        \ a text copy's reach
 require src/lib/num-types.f                   \ the alloc-byte-len a chunk carries
 require src/lib/task.f
 require src/lib/aio.f                         \ the loop waits on AIO tickets
@@ -211,8 +212,8 @@ FUNCTION: MULTI-TIMEOUT curl_multi_timeout ( n ptr u8 -- i32 )
 \ and none is needed: libcurl's default write callback is fwrite. A whole
 \ body's CURLOPT_WRITEDATA is an fmemopen stream over the caller's span; the
 \ header capture and a streamed body are open_memstream streams, and memcpy
-\ moves their bytes into caller spans. strndup/strlen/free build the
-\ NUL-terminated copies libcurl's string options read.
+\ moves their bytes into caller spans. strlen measures the request list's
+\ lines for their wipe.
 PROCESS-SYMBOLS
 
 FUNCTION: STREAM-CLOSE fclose ( n -- i32 ) ;FUNCTION
@@ -221,7 +222,6 @@ FUNCTION: STREAM-POSITION ftell ( n -- n ) ;FUNCTION
 FUNCTION: STREAM-ERROR ferror ( n -- i32 ) ;FUNCTION
 FUNCTION: STREAM-BUFFERING setvbuf ( n n n n -- i32 ) ;FUNCTION
 FUNCTION: FILE-OPEN fopen ( ptr u8 ptr u8 -- n ) ;FUNCTION
-FUNCTION: DUP-TEXT strndup ( ptr u8 n -- n ) ;FUNCTION
 FUNCTION: TEXT-LENGTH strlen ( n -- n ) ;FUNCTION
 FUNCTION: RELEASE free ( n -- ) ;FUNCTION
 FUNCTION: NEW-STATE calloc ( n n -- n ) ;FUNCTION
@@ -296,19 +296,17 @@ CAST: >BYTES ( n -- ptr u8 )
    source RELEASE ;
 
 
-: TEXT-RELEASE ( n -- )
-   dup WIPE RELEASE ;
-
-
-\ A NUL-terminated copy libcurl reads and duplicates for itself, released as soon
-\ as the call returns. strndup stops at an embedded NUL, and a silently shortened
-\ URL or header line is exactly what must not happen, so the copy is measured.
-\ Zero answers an allocation failure; every other refusal throws.
-: TEXT-DUP ( ptr u8 n -- n )
-   {: text u:n :}
+\ libcurl reads a NUL-terminated copy and duplicates it for itself, so the copy
+\ is a MEM:WITH-BYTES mapping that lasts only for the call. FFI:CSTR refuses an
+\ embedded NUL, which would silently shorten a URL or header line, before it
+\ writes a byte, so a refused mapping is unmapped still zero.
+: TEXT-ROOM ( n -- NUM:alloc-byte-len )
+   {: u:n :}
    u 0 AT-LEAST
-   text u DUP-TEXT dup 0= if exit then
-   dup TEXT-LENGTH u <> if TEXT-RELEASE E-OPERAND throw then ;
+   u FFI:CSTR-ROOM MEM:BYTES-ALLOC-LEN ;
+
+
+: TEXT-WIPE ( SPAN:span<u8> -- ) 0 swap SPAN:FILL ;
 
 
 \ A request list is curl_slist { char *data; struct curl_slist *next; }, and
@@ -326,14 +324,16 @@ CAST: >BYTES ( n -- ptr u8 )
    subject HANDLE-CELL option value SETOPT-NUM ;
 
 
+: TEXT-SETOPT ( n n ptr u8 n SPAN:span<u8> -- n )
+   {: easy:n option:n text u:n copy :}
+   easy option text u copy FFI:CSTR FFI:>CELL SETOPT-NUM
+   copy TEXT-WIPE ;
+
+
 : SET-TEXT-RAW ( handle n ptr u8 n -- n )
    {: subject:handle option:n text u:n :}
-   subject HANDLE-CELL {: easy:n :}
-   text u TEXT-DUP dup 0= if drop CURLE-OUT-OF-MEMORY exit then
-   {: copy:n :}
-   easy option copy SETOPT-NUM {: rc:n :}
-   copy TEXT-RELEASE
-   rc ;
+   subject HANDLE-CELL option text u u TEXT-ROOM
+   [: MEM:ALLOCATION>SPAN TEXT-SETOPT ;] MEM:WITH-BYTES ;
 
 
 : SET-TEXT ( handle n ptr u8 n -- status )
@@ -394,14 +394,19 @@ CAST: >BYTES ( n -- ptr u8 )
    CURL-STATUS:ok ;
 
 
+\ curl_slist_append duplicates the line into the node it adds.
+: TEXT-APPEND ( n ptr u8 n SPAN:span<u8> -- n )
+   {: old:n text u:n copy :}
+   old text u copy FFI:CSTR FFI:>CELL SLIST-APPEND
+   copy TEXT-WIPE ;
+
+
 : HEADER-APPEND ( n ptr u8 n -- status )
    {: easy:n text u:n :}
    easy STATE-GET {: state:n :}
-   text u TEXT-DUP dup 0= if drop OUT-OF-MEMORY exit then
-   {: line:n :}
    state STATE-LIST@ {: old:n :}
-   old line SLIST-APPEND {: list:n :}
-   line TEXT-RELEASE
+   old text u u TEXT-ROOM
+   [: MEM:ALLOCATION>SPAN TEXT-APPEND ;] MEM:WITH-BYTES {: list:n :}
    list 0= if OUT-OF-MEMORY exit then
    easy state old list HEADER-STORE ;
 

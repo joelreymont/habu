@@ -23,6 +23,7 @@ require src/lib/ffi-abi.f
 require src/lib/image-lifecycle.f
 require src/lib/ieee754.f
 require src/lib/memory.f
+require src/lib/span.f
 require src/lib/string.f
 require src/lib/adt/result.f
 
@@ -156,7 +157,8 @@ FUNCTION: SET-ROUND fesetround ( n -- i32 ) ;FUNCTION
    code 0 <> if code throw then work ;
 
 public
-: PARSE ( ptr u8 n -- result<r,fault> ) {: text:ptr len:n :}
+: PARSE ( ptr u8 n -- result<r,fault> )
+   {: text:ptr len:n :}
    len 0 < if F64--TEXT-FAULT:MALFORMED RESULT:ERR exit then
    text len NONFINITE-TEXT? if F64--TEXT-FAULT:NONFINITE RESULT:ERR exit then
    text len GRAMMAR {: code:n :}
@@ -164,11 +166,11 @@ public
    code 2 = if F64--TEXT-FAULT:TRAILING RESULT:ERR exit then
    len MAGNITUDE-MASK 1- > if F64--TEXT-FAULT:RUNTIME RESULT:ERR exit then
    NATIVE-READY? 0= if F64--TEXT-FAULT:RUNTIME RESULT:ERR exit then
-   len 1+ 8 max MEM-ALLOC-BYTES {: work:ptr size:n :}
-   text work len BYTE-COPY 0 work len + c!
+   len FFI:CSTR-ROOM 8 max BYTES-ALLOC-LEN ALLOC-SPAN {: copy :}
+   text len copy FFI:CSTR {: work:ptr :}
    work [: PARSE-SCOPED ;] catch nip {: status:n :}
    work CELL-VIEW @ {: bits:n :}
-   work size FREE-WORK
+   copy FREE-SPAN
    status 0= if bits IEEE754:BITS>F64 RESULT:OK exit then
    status E-FINITE = if F64--TEXT-FAULT:NONFINITE RESULT:ERR else F64--TEXT-FAULT:RUNTIME RESULT:ERR then ;
 
@@ -177,11 +179,13 @@ private
 : PUT-DIGITS ( n ptr u8 n -- ) {: value:n out:ptr width:n :}
    value width 0 ?do 10 /mod swap $30 + out width i - 1- + c! loop drop ;
 
-: FORMAT-SPEC ( ptr u8 n -- ) {: out:ptr precision:n :}
+: FORMAT-SPEC ( ptr u8 n -- )
+   {: out:ptr precision:n :}
    $25 out c! $2E out 1+ c!
    precision 1- dup 9 > if
-      out 2 + 2 PUT-DIGITS $65 out 4 + c! 0 out 5 + c!
-   else out 2 + 1 PUT-DIGITS $65 out 3 + c! 0 out 4 + c! then ;
+      out 2 + 2 PUT-DIGITS $65 out 4 + c! 5
+   else out 2 + 1 PUT-DIGITS $65 out 3 + c! 4 then
+   out 64 SPAN:MAKE FFI:CSTR! drop ;
 
 : SMALL-NUMBER ( ptr u8 n -- n ) {: text:ptr len:n :}
    0 len 0 ?do 10 * text i + c@ $30 - + loop ;

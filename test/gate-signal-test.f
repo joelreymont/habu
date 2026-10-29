@@ -242,12 +242,13 @@ variable STAT-PATH-U
 
 \ comm may hold spaces and parentheses, so the fields are counted from after
 \ the LAST `)`.
-: STARTED-LINUX ( n -- n ) {: pid:n :}
+: STARTED-LINUX ( n -- n )
+   {: pid:n :}
    STAT-PATH-U BUF-RESET
    s" /proc/" STAT-PATH+
    pid FD-TEXT$ STAT-PATH+
-   s\" /stat\z" STAT-PATH+
-   STAT-PATH open-rd {: fd:n :}
+   s" /stat" STAT-PATH+
+   STAT-PATH STAT-PATH-U BUF-LEN@ FS:>PATHZ open-rd {: fd:n :}
    fd 0 < if 0 exit then
    fd STAT STAT-CAP read {: got:n :}
    fd close

@@ -8,8 +8,7 @@ require src/lib/string.f
 require src/lib/argv.f
 require src/lib/fmt.f                   \ FMT:.INT - report numbers inline
 
-\ White-box test: reopen the module's package so the fixtures reach argv's
-\ private path buffer/capacity (ARGV-PATH-BUF, ARGV-PATH-CAP) and call the public
+\ White-box test: reopen the module's package so the fixtures call the public
 \ API by its bare package-local tails (PARSE, OUT$, E-USAGE, ...).
 package ARGV
 
@@ -76,8 +75,7 @@ variable TEST-FAIL
    POS# 1 ASSERT=
    0 POS$ s" file.f" ASSERT$
    LABEL$ s" NAME" ASSERT$
-   OUT$ s" OUT" ASSERT$
-   0 POSZ dup ZLEN s" file.f" ASSERT$ ;
+   OUT$ s" OUT" ASSERT$ ;
 
 : TEST-DEFAULTS ( -- )
    QUIET-MOCK
@@ -159,18 +157,6 @@ variable TEST-FAIL
    QUIET-MOCK
    s" file.f" MOCK+
    NEED-LABEL-RC E-USAGE ASSERT-RC ;
-
-: ZCOPY-NEG-CASE ( -- )
-   s" x" drop -1 ARGV-PATH-BUF ARGV-PATH-CAP ZCOPY drop ;
-
-: ZCOPY-FULL-CAP-CASE ( -- )
-   ARGV-PATH-BUF ARGV-PATH-CAP ARGV-PATH-BUF ARGV-PATH-CAP ZCOPY drop ;
-
-: TEST-ZCOPY-NEG ( -- )
-   [: ZCOPY-NEG-CASE ;] catch E-INTERNAL ASSERT-RC ;
-
-: TEST-ZCOPY-FULL-CAP ( -- )
-   [: ZCOPY-FULL-CAP-CASE ;] catch E-INTERNAL ASSERT-RC ;
 
 : EXPECT-TOKEN-BOUNDS ( -- )
    -1 QUIET!
@@ -328,8 +314,6 @@ create MSG-TEXT MSG-LEN allot
    TEST-POS-HIGH
    TEST-REQUIRE-OUT
    TEST-REQUIRE-LABEL
-   TEST-ZCOPY-NEG
-   TEST-ZCOPY-FULL-CAP
    TEST-TOKEN-BOUNDS
    TEST-CONFIGURED-VALUES
    TEST-REPEATED-OPTIONS

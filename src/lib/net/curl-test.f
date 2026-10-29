@@ -1705,7 +1705,7 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    s" a handle that was never opened is refused" T-LABEL
    [: NULL-HANDLE ;] CURL:E-STATE TTHROWSQ
    s" a NUL inside a URL is refused, never silently cut" T-LABEL
-   [: EMBEDDED-NUL ;] CURL:E-OPERAND TTHROWSQ
+   [: EMBEDDED-NUL ;] E-FFI-NUL TTHROWSQ
    s" a negative body length is refused" T-LABEL
    [: NEGATIVE-BODY ;] CURL:E-OPERAND TTHROWSQ
    s" a low-speed rate below zero is refused" T-LABEL
