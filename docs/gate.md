@@ -242,5 +242,9 @@ exercised, not a formal soundness or refinement theorem.
 - State assumptions, unsupported cases and known counterexamples.
 - An unproved claim remains unproved. Record the limitation where the claim is
   documented; never weaken it silently until it passes.
+- A performance claim compares instructions retired from baseline and
+  candidate runs interleaved in one session, several rounds each. Separate
+  sessions drift: zz's run phase moved 40M instructions (0.3%) between two
+  sessions hours apart with unchanged code, more than many single changes.
 - Tests and measurements establish different properties. Describe what was
   actually checked without mandatory mutation campaigns or extra ledgers.
