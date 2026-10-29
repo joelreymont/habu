@@ -1,6 +1,6 @@
 ---
 title: Keep floats in registers in T0 as the JIT does
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-10-29T09:56:38.306358+02:00"
