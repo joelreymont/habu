@@ -14,6 +14,7 @@ require src/habu/native-observer-cells.f
 require src/habu/native-observer-extension.f
 require src/habu/native-body-abi.f
 require src/habu/native-host-cells.f
+require src/habu/boot-files.f
 require src/core/sha256.f
 \ The ARM64 encoders are package A64ASM's public surface (src/arch/arm64/asm.f).
 require src/arch/arm64/icode.f
@@ -374,35 +375,10 @@ variable LBADFLAG    variable LUSAGE1      variable LUSAGE2     variable LSPC
 : BADFLAG$ ( -- ptr u8 n )   s" hb: unknown flag: " ;
 : USAGE1$ ( -- ptr u8 n )    s" usage: bin/hb" ;   \ LUSAGE1; the flag names follow
 : USAGE2$ ( -- ptr u8 n )    s"  [file.f]  (source on stdin)" ;
-variable LPLINUXTARGET  variable LPMACOSTARGET  variable LPX64TARGET
-variable LPLINUXLAYOUT  variable LPMACOSLAYOUT  variable LPX64LAYOUT
-variable LPLINUXLAYOUTCONST  variable LPX64LAYOUTCONST
-variable LPUTIL         variable LPCELL         variable LPPTRSTORAGE  variable LPSTRUCTURES
-variable LPENGINEERROR  variable LPENGINEERROREFFECTS
-variable LPDYNAMIC      variable LPBYTES        variable LPFETCHABI     variable LPOWNEREXT     variable LPOWNERABI     variable LPBODYABI      variable LPCHECKER      variable LPRENDER
-variable LPPRIMS       variable LPDOESCLAUSE
-variable LPLOWERCERTBASE
-variable LPOWNERGUARD
-variable LPTYPESCHEMA   variable LPTYPEFAM      variable LPSUMTYPE      variable LPLAYOUTBUF  variable LPLAYOUTVALID
-variable LPADDRCELLS
-variable LPLAYOUTADDRESS
-variable LPHOOK         variable LPCELLEFF
-variable LPHABULAYOUT   variable LPENVBASE      variable LPINCLUDE
-variable LPSTACKABI
-variable LPSCRIPTARGV   variable LPINTMARK
-variable LPROLES
-variable LPDECLTXN      variable LPGENDECL      variable LPDECLEVENT    variable LPSTRUCTMAKE
-variable LPSTRUCTDECL   variable LPENUMDECL
-variable LPENUMS        variable LPEXECVECTOR   variable LPSHA256       variable LPSOURCEPRODUCER
-variable LPCOMBINATORS  variable LPCODESPAN  variable LPXREF  variable LPCELLBODY  variable LPGENDECLDICT  variable LPGENDECLPROT
-variable LPLAYOUTSEAL  variable LPLOWERCERTSEAL
-variable LPTOPROW
-\ Boot stdlib block: the checked stdlib,
-\ loaded once by the engine instead of once per program.
-variable LPPRELUDE      variable LPERRORS       variable LPOPTION
-variable LPNUMTYPES     variable LPNUMARITH     variable LPSTRING
-variable LPSPAN         variable LPMEMORY       variable LPQUOTSTORE
-variable LPIMAGELIFE
+\ The path-string label of each BOOT-FILES row, by the row's index.
+: LPROW-CELL ( n n ptr u8 n -- ) drop drop drop drop 0 , ;
+create LPROWS -1 ' LPROW-CELL BOOT-FILES:EACH
+: LPROW ( n -- ptr n ) cells LPROWS + ;
 variable SRC-SFAIL
 
 create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-bp:\n
@@ -1056,11 +1032,6 @@ $18 constant CINL-LDRLIT-OP      \   bits 29:27 = 011 and 25:24 = 00
 : C-TARGET-UNKNOWN ( -- )
    s" hb: unknown target" 76 die ;
 
-0 constant PFX-COMMON
-1 constant PFX-LINUX
-2 constant PFX-MACOS
-3 constant PFX-X64
-
 : PFX-TARGET-OK ( -- )
    HB-TARGET-LINUX? if exit then
    HB-TARGET-MACOS? if exit then
@@ -1068,16 +1039,18 @@ $18 constant CINL-LDRLIT-OP      \   bits 29:27 = 011 and 25:24 = 00
    C-TARGET-UNKNOWN ;
 
 : PFX-LOAD? ( n -- bool )
-   case PFX-COMMON of 0 0= endof PFX-LINUX of HB-TARGET-LINUX? endof
-      PFX-MACOS of HB-TARGET-MACOS? endof
-      PFX-X64 of HB-TARGET-LINUX-X86-64? endof
+   case BOOT-FILES:COMMON of 0 0= endof BOOT-FILES:LINUX of HB-TARGET-LINUX? endof
+      BOOT-FILES:MACOS of HB-TARGET-MACOS? endof
+      BOOT-FILES:X64 of HB-TARGET-LINUX-X86-64? endof
       0 0= 0= swap endcase ;
 
-: PFX-LOAD-ROW ( n ptr n ptr u8 n -- ) {: kind var a u :}
-   kind PFX-LOAD? if 12 var LABEL@ ADR,  LSRCRDP LABEL@ BL, then ;
+: PFX-LOAD-ROW ( n n ptr u8 n -- )
+   {: idx:n kind:n a:ptr u:n :}
+   kind PFX-LOAD? if 12 idx LPROW LABEL@ ADR,  LSRCRDP LABEL@ BL, then ;
 
-: PFX-PATH-ROW ( n ptr n ptr u8 n -- ) {: kind var a u :}
-   var LABEL@ LBL,  a u ZBYTES, ;
+: PFX-PATH-ROW ( n n ptr u8 n -- )
+   {: idx:n kind:n a:ptr u:n :}
+   idx LPROW LABEL@ LBL,  a u ZBYTES, ;
 
 : C-SOURCE-APPEND-X4-TO ( label -- ) {: fail:label :}
    2 11 0 ADDI,
@@ -1088,123 +1061,11 @@ $18 constant CINL-LDRLIT-OP      \   bits 29:27 = 011 and 25:24 = 00
    4 9 0 STRB,
    9 9 1 ADDI, ;
 
-\ One ordered row table, projected by boot phase and emitter. Target kinds
-\ filter loads/provides; the path emitter reserves every target's spelling.
-1 constant PFX-CHECKER
-2 constant PFX-DECL
-4 constant PFX-CORE
-8 constant PFX-DYNAMIC
-16 constant PFX-OWNER
-32 constant PFX-SEAL
-64 constant PFX-ARGV
-128 constant PFX-INTERNAL
-256 constant PFX-TOPROW
-512 constant PFX-BASELIB
-1024 constant PFX-RESTLIB
-
-: PFX-FILES ( n [ n ptr n ptr u8 n -- ] -- )
-   {: parts row :}
-   parts PFX-CHECKER and 0 <> if
-      PFX-COMMON LPUTIL s" src/core/util.f" row execute
-      PFX-COMMON LPCELL s" src/core/cell.f" row execute
-      PFX-COMMON LPPTRSTORAGE s" src/core/pointer-storage.f" row execute
-      PFX-COMMON LPENGINEERROR s" src/core/engine-error.f" row execute
-      PFX-COMMON LPEXECVECTOR s" src/core/exec-vector.f" row execute
-      PFX-COMMON LPFETCHABI s" src/core/checker-fetch-abi.f" row execute
-      PFX-COMMON LPOWNEREXT s" src/core/checker-owner-extension.f" row execute
-      PFX-COMMON LPOWNERABI s" src/core/checker-owner-abi.f" row execute
-      PFX-COMMON LPBODYABI s" src/habu/created-body-abi.f" row execute
-      PFX-COMMON LPPRIMS s" src/habu/prims.f" row execute
-      PFX-COMMON LPDOESCLAUSE s" src/core/does-clause.f" row execute
-      PFX-COMMON LPCHECKER s" src/core/checker.f" row execute
-      PFX-COMMON LPENGINEERROREFFECTS s" src/core/engine-error-effects.f" row execute
-      PFX-COMMON LPLOWERCERTBASE s" src/core/lower-cert-base.f" row execute
-      PFX-COMMON LPTYPESCHEMA s" src/core/type-schema.f" row execute
-      PFX-COMMON LPTYPEFAM s" src/core/type-family.f" row execute
-      PFX-COMMON LPRENDER s" src/core/render.f" row execute
-      PFX-COMMON LPSUMTYPE s" src/core/sumtype.f" row execute
-      PFX-COMMON LPLAYOUTBUF s" src/core/layout-buffer.f" row execute
-      PFX-COMMON LPLAYOUTVALID s" src/core/layout-valid.f" row execute
-      PFX-COMMON LPHOOK s" src/core/check-hook.f" row execute
-      PFX-COMMON LPCELLEFF s" src/core/cell-effects.f" row execute
-      PFX-COMMON LPDECLTXN s" src/core/declaration-transaction.f" row execute
-      PFX-COMMON LPGENDECL s" src/core/generated-declaration.f" row execute
-   then
-   parts PFX-DECL and 0 <> if
-      PFX-COMMON LPDECLEVENT s" src/core/decl-event.f" row execute
-      PFX-COMMON LPSTRUCTMAKE s" src/core/structure-make.f" row execute
-      PFX-COMMON LPSTRUCTDECL s" src/core/structure-decl.f" row execute
-      PFX-COMMON LPENUMDECL s" src/core/enum-decl.f" row execute
-   then
-   parts PFX-CORE and 0 <> if
-      PFX-COMMON LPSTRUCTURES s" src/core/structures.f" row execute
-      PFX-COMMON LPROLES s" src/core/roles.f" row execute
-      PFX-COMMON LPBYTES s" src/core/bytes.f" row execute
-   then
-   parts PFX-DYNAMIC and 0 <> if
-      PFX-COMMON LPDYNAMIC s" src/core/dynamic-storage.f" row execute
-   then
-   parts PFX-CORE and 0 <> if
-      PFX-LINUX LPLINUXTARGET s" src/os/linux/target.f" row execute
-      PFX-MACOS LPMACOSTARGET s" src/os/macos/target.f" row execute
-      PFX-X64 LPX64TARGET s" src/os/linux-x86-64/target.f" row execute
-      PFX-LINUX LPLINUXLAYOUTCONST s" src/os/linux/layout-constants.f" row execute
-      PFX-LINUX LPLINUXLAYOUT s" src/os/linux/layout.f" row execute
-      PFX-MACOS LPMACOSLAYOUT s" src/os/macos/layout.f" row execute
-      PFX-X64 LPX64LAYOUTCONST s" src/os/linux/layout-constants.f" row execute
-      PFX-X64 LPX64LAYOUT s" src/os/linux/layout.f" row execute
-      PFX-COMMON LPSTACKABI s" src/habu/stack-abi.f" row execute
-      PFX-COMMON LPHABULAYOUT s" src/habu/layout.f" row execute
-      PFX-COMMON LPENVBASE s" src/os/env-base.f" row execute
-      PFX-COMMON LPQUOTSTORE s" src/core/quotation-storage.f" row execute
-      PFX-COMMON LPINCLUDE s" src/core/include.f" row execute
-      PFX-COMMON LPENUMS s" src/core/enums.f" row execute
-      PFX-COMMON LPSHA256 s" src/core/sha256.f" row execute
-      PFX-COMMON LPSOURCEPRODUCER s" src/core/source-producer.f" row execute
-      PFX-COMMON LPCOMBINATORS s" src/core/combinators.f" row execute
-      PFX-COMMON LPCODESPAN s" src/habu/code-span.f" row execute
-      PFX-COMMON LPXREF s" src/habu/xref.f" row execute
-      PFX-COMMON LPCELLBODY s" src/core/cell-body.f" row execute
-      PFX-COMMON LPGENDECLDICT s" src/core/generated-declaration-dictionary.f" row execute
-      PFX-COMMON LPGENDECLPROT s" src/core/generated-declaration-protection.f" row execute
-      PFX-COMMON LPLAYOUTSEAL s" src/core/layout-buffer-seal.f" row execute
-   then
-   parts PFX-OWNER and 0 <> if
-      PFX-COMMON LPOWNERGUARD s" src/core/checker-owner-guard.f" row execute
-   then
-   parts PFX-SEAL and 0 <> if
-      PFX-COMMON LPLOWERCERTSEAL s" src/core/lower-cert-seal.f" row execute
-   then
-   parts PFX-ARGV and 0 <> if
-      PFX-COMMON LPSCRIPTARGV s" src/os/script-argv.f" row execute
-   then
-   parts PFX-INTERNAL and 0 <> if
-      PFX-COMMON LPINTMARK s" src/core/internal-mark.f" row execute
-   then
-   parts PFX-TOPROW and 0 <> if
-      PFX-COMMON LPTOPROW s" src/core/top-row.f" row execute
-   then
-   parts PFX-BASELIB and 0 <> if
-      PFX-COMMON LPPRELUDE s" src/lib/prelude.f" row execute
-      PFX-COMMON LPERRORS s" src/lib/errors.f" row execute
-      PFX-COMMON LPADDRCELLS s" src/habu/address-cells.f" row execute
-      PFX-COMMON LPLAYOUTADDRESS s" src/core/layout-buffer-address.f" row execute
-   then
-   parts PFX-RESTLIB and 0 <> if
-      PFX-COMMON LPSPAN s" src/lib/span.f" row execute
-      PFX-COMMON LPOPTION s" src/lib/adt/option.f" row execute
-      PFX-COMMON LPNUMTYPES s" src/lib/num-types.f" row execute
-      PFX-COMMON LPNUMARITH s" src/lib/num-arithmetic.f" row execute
-      PFX-COMMON LPSTRING s" src/lib/string.f" row execute
-      PFX-COMMON LPMEMORY s" src/lib/memory.f" row execute
-      PFX-COMMON LPIMAGELIFE s" src/lib/image-lifecycle.f" row execute
-   then ;
-
 : PFX-LOAD-CHECKER-FILES ( -- )
-   PFX-CHECKER ['] PFX-LOAD-ROW PFX-FILES ;
+   BOOT-FILES:CHECKER ['] PFX-LOAD-ROW BOOT-FILES:EACH ;
 
 : PFX-LOAD-DECL-FILES ( -- )
-   PFX-DECL ['] PFX-LOAD-ROW PFX-FILES ;
+   BOOT-FILES:DECL ['] PFX-LOAD-ROW BOOT-FILES:EACH ;
 
 \ The boot stdlib: files the tree requires
 \ everywhere (src/lib/string.f has 548 requiring files, src/lib/errors.f 472),
@@ -1224,10 +1085,10 @@ $18 constant CINL-LDRLIT-OP      \   bits 29:27 = 011 and 25:24 = 00
 \ block is not part of PFX-LOAD-CORE-FILES.
 \ src/arch/arm64/asm.f (package A64ASM, no globals) is not loaded here.
 : PFX-LOAD-STDLIB-FILES ( -- )
-   PFX-BASELIB PFX-RESTLIB or ['] PFX-LOAD-ROW PFX-FILES ;
+   BOOT-FILES:BASELIB BOOT-FILES:RESTLIB or ['] PFX-LOAD-ROW BOOT-FILES:EACH ;
 
 : PFX-LOAD-SCRIPT-ARGV ( -- )
-   PFX-ARGV ['] PFX-LOAD-ROW PFX-FILES ;
+   BOOT-FILES:ARGV ['] PFX-LOAD-ROW BOOT-FILES:EACH ;
 
 : PFX-LOAD-SCRIPT-ARGV-COLD ( -- )
    LBL {: done :}
@@ -1242,7 +1103,7 @@ $18 constant CINL-LDRLIT-OP      \   bits 29:27 = 011 and 25:24 = 00
 \ signatures) before it
 \ classifies the remaining sig-less prefix words as DNAME-INT internal.
 : PFX-LOAD-INTMARK ( -- )
-   PFX-INTERNAL ['] PFX-LOAD-ROW PFX-FILES ;
+   BOOT-FILES:INTERNAL ['] PFX-LOAD-ROW BOOT-FILES:EACH ;
 
 : PFX-LOAD-INTMARK-COLD ( -- )
    LBL {: done:label :}
@@ -1258,7 +1119,7 @@ $18 constant CINL-LDRLIT-OP      \   bits 29:27 = 011 and 25:24 = 00
 \ empty on the first user token. Snapshot boots skip it (SNAP-CELL guard), like
 \ internal-mark above.
 : PFX-LOAD-TOPROW ( -- )
-   PFX-TOPROW ['] PFX-LOAD-ROW PFX-FILES ;
+   BOOT-FILES:TOPROW ['] PFX-LOAD-ROW BOOT-FILES:EACH ;
 
 : PFX-LOAD-TOPROW-COLD ( -- )
    LBL {: done:label :}
@@ -1268,16 +1129,16 @@ $18 constant CINL-LDRLIT-OP      \   bits 29:27 = 011 and 25:24 = 00
    done LBL, ;
 
 : PFX-PATH-CHECKER-FILES ( -- )
-   PFX-CHECKER ['] PFX-PATH-ROW PFX-FILES ;
+   BOOT-FILES:CHECKER ['] PFX-PATH-ROW BOOT-FILES:EACH ;
 
 : PFX-PATH-DECL-FILES ( -- )
-   PFX-DECL ['] PFX-PATH-ROW PFX-FILES ;
+   BOOT-FILES:DECL ['] PFX-PATH-ROW BOOT-FILES:EACH ;
 
 : PFX-PATH-CORE-FILES ( -- )
-   PFX-CORE PFX-DYNAMIC or PFX-OWNER or PFX-SEAL or PFX-ARGV or PFX-INTERNAL or PFX-TOPROW or ['] PFX-PATH-ROW PFX-FILES ;
+   BOOT-FILES:CORE BOOT-FILES:DYNAMIC or BOOT-FILES:OWNER or BOOT-FILES:SEAL or BOOT-FILES:ARGV or BOOT-FILES:INTERNAL or BOOT-FILES:TOPROW or ['] PFX-PATH-ROW BOOT-FILES:EACH ;
 
 : PFX-PATH-STDLIB-FILES ( -- )
-   PFX-BASELIB PFX-RESTLIB or ['] PFX-PATH-ROW PFX-FILES ;
+   BOOT-FILES:BASELIB BOOT-FILES:RESTLIB or ['] PFX-PATH-ROW BOOT-FILES:EACH ;
 
 : PFX-PATH-FILES ( -- )
    PFX-PATH-CHECKER-FILES
@@ -1534,14 +1395,14 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV variable LAPPREQ
    $0A C-SOURCE-APPEND-CHAR
    done LBL, ;
 
-: PFX-LOAD-CORE-ROW ( n ptr n ptr u8 n -- )
-   {: kind var a u :}
-   kind var a u PFX-LOAD-ROW
+: PFX-LOAD-CORE-ROW ( n n ptr u8 n -- )
+   {: idx:n kind:n a:ptr u:n :}
+   idx kind a u PFX-LOAD-ROW
    \ include.f defines both source vectors; xref.f requires another source.
-   var LPINCLUDE = if EMIT-SOURCE-RESET-TOKEN then ;
+   a u s" src/core/include.f" CORE-STR= if EMIT-SOURCE-RESET-TOKEN then ;
 
 : PFX-LOAD-CORE-FILES ( -- )
-   PFX-CORE PFX-DYNAMIC or ['] PFX-LOAD-CORE-ROW PFX-FILES ;
+   BOOT-FILES:CORE BOOT-FILES:DYNAMIC or ['] PFX-LOAD-CORE-ROW BOOT-FILES:EACH ;
 
 : PFX-LOAD-BASE-FILES ( -- )
    PFX-LOAD-CHECKER-FILES
@@ -1601,33 +1462,33 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV variable LAPPREQ
    $0A C-SOURCE-APPEND-CHAR
    done LBL, ;
 
-: PFX-PROVIDE-ROW ( n ptr n ptr u8 n -- ) {: kind:n var:ptr a:ptr u:n :}
+: PFX-PROVIDE-ROW ( n n ptr u8 n -- )
+   {: idx:n kind:n a:ptr u:n :}
    kind PFX-LOAD? if
-      12 var LABEL@ ADR,
+      12 idx LPROW LABEL@ ADR,
       LAPPPROV LABEL@ BL,
    then ;
 
 : PFX-PROVIDE-CHECKER-FILES ( -- )
-   PFX-CHECKER ['] PFX-PROVIDE-ROW PFX-FILES ;
+   BOOT-FILES:CHECKER ['] PFX-PROVIDE-ROW BOOT-FILES:EACH ;
 
 : PFX-PROVIDE-DECL-FILES ( -- )
-   PFX-DECL ['] PFX-PROVIDE-ROW PFX-FILES ;
+   BOOT-FILES:DECL ['] PFX-PROVIDE-ROW BOOT-FILES:EACH ;
 
 : PFX-PROVIDE-CORE-FILES ( -- )
-   PFX-CORE PFX-DYNAMIC or PFX-SEAL or PFX-ARGV or PFX-INTERNAL or PFX-TOPROW or ['] PFX-PROVIDE-ROW PFX-FILES ;
+   BOOT-FILES:CORE BOOT-FILES:DYNAMIC or BOOT-FILES:SEAL or BOOT-FILES:ARGV or BOOT-FILES:INTERNAL or BOOT-FILES:TOPROW or ['] PFX-PROVIDE-ROW BOOT-FILES:EACH ;
 
 : PFX-PROVIDE-FILES ( -- )
    PFX-PROVIDE-CHECKER-FILES
    PFX-PROVIDE-DECL-FILES
    PFX-PROVIDE-CORE-FILES ;
 
-\ The nine boot-stdlib provide rows, outside PFX-PROVIDE-FILES: that word runs
-\ on snapshot boots too, and the dev snapshot's keep surface has no src/lib/,
-\ so a row there
-\ would make a snapshot's require of src/lib/string.f a silent no-op. On a cold
-\ boot they run inside PFX-LOAD-STDLIB-COLD, ahead of the file texts.
+\ The boot-stdlib provide rows, outside PFX-PROVIDE-FILES: that word runs on
+\ snapshot boots too, and the dev snapshot's keep surface has no src/lib/, so a
+\ row there would make a snapshot's require of src/lib/string.f a silent no-op.
+\ On a cold boot they run inside PFX-LOAD-STDLIB-COLD, ahead of the file texts.
 : PFX-PROVIDE-STDLIB-FILES ( -- )
-   PFX-BASELIB PFX-RESTLIB or ['] PFX-PROVIDE-ROW PFX-FILES ;
+   BOOT-FILES:BASELIB BOOT-FILES:RESTLIB or ['] PFX-PROVIDE-ROW BOOT-FILES:EACH ;
 
 \ Cold boots only, like PFX-LOAD-SCRIPT-ARGV-COLD above: a snapshot restores its
 \ bake-time dictionary and must not reload anything.
@@ -1708,11 +1569,11 @@ public
    PFX-PROVIDE-FILES
    \ The checked owner guard requires the ABI facts above. Carry it before
    \ the core mark, so a partial compiler never borrows a tool's copy.
-   PFX-OWNER ['] PFX-LOAD-ROW PFX-FILES
-   PFX-OWNER ['] PFX-PROVIDE-ROW PFX-FILES
+   BOOT-FILES:OWNER ['] PFX-LOAD-ROW BOOT-FILES:EACH
+   BOOT-FILES:OWNER ['] PFX-PROVIDE-ROW BOOT-FILES:EACH
    \ Record the core mark after its include facts exist. A build rewind must
    \ retain those facts together with the definitions they describe.
-   PFX-SEAL ['] PFX-LOAD-ROW PFX-FILES
+   BOOT-FILES:SEAL ['] PFX-LOAD-ROW BOOT-FILES:EACH
    PFX-LOAD-STDLIB-COLD
    PFX-LOAD-SCRIPT-ARGV-COLD
    PFX-LOAD-INTMARK-COLD
@@ -13382,27 +13243,7 @@ package LABELS
    LBL LBADFLAG !  LBL LUSAGE1 !  LBL LUSAGE2 !  LBL LSPC ! ;
 
 : SOURCES ( -- )
-   LBL LPLINUXTARGET !  LBL LPMACOSTARGET !  LBL LPX64TARGET !
-   LBL LPLINUXLAYOUT !  LBL LPMACOSLAYOUT !  LBL LPX64LAYOUT !
-   LBL LPLINUXLAYOUTCONST !  LBL LPX64LAYOUTCONST !
-   LBL LPUTIL !  LBL LPCELL !  LBL LPPTRSTORAGE !
-   LBL LPSTRUCTURES !  LBL LPBYTES ! LBL LPDYNAMIC !  LBL LPENGINEERROR !  LBL LPFETCHABI !  LBL LPOWNEREXT !  LBL LPOWNERABI !  LBL LPBODYABI !  LBL LPPRIMS !  LBL LPDOESCLAUSE !  LBL LPCHECKER !  LBL LPENGINEERROREFFECTS !
-   LBL LPLOWERCERTBASE !  LBL LPRENDER !  LBL LPHOOK !
-   LBL LPCELLEFF !  LBL LPDECLTXN !  LBL LPGENDECL !
-   LBL LPTYPESCHEMA !  LBL LPTYPEFAM !  LBL LPSUMTYPE !  LBL LPLAYOUTBUF !  LBL LPLAYOUTVALID !
-   LBL LPADDRCELLS !
-   LBL LPLAYOUTADDRESS !
-   LBL LPHABULAYOUT !
-   LBL LPSTACKABI !
-   LBL LPENVBASE !  LBL LPINCLUDE !  LBL LPSCRIPTARGV !  LBL LPINTMARK !  LBL LPROLES !
-   LBL LPDECLEVENT !  LBL LPSTRUCTMAKE !  LBL LPSTRUCTDECL !  LBL LPENUMDECL !
-   LBL LPENUMS !  LBL LPEXECVECTOR !  LBL LPSHA256 !  LBL LPSOURCEPRODUCER !
-   LBL LPCOMBINATORS !  LBL LPCODESPAN !  LBL LPXREF !  LBL LPCELLBODY !  LBL LPGENDECLDICT !  LBL LPGENDECLPROT !
-   LBL LPLAYOUTSEAL !  LBL LPOWNERGUARD !  LBL LPLOWERCERTSEAL !
-   LBL LPTOPROW !
-   LBL LPPRELUDE !  LBL LPERRORS !  LBL LPOPTION !
-   LBL LPNUMTYPES !  LBL LPNUMARITH !  LBL LPSTRING !
-   LBL LPSPAN !  LBL LPMEMORY !  LBL LPQUOTSTORE !  LBL LPIMAGELIFE !
+   -1 [: drop drop drop LBL swap LPROW LABEL! ;] BOOT-FILES:EACH
    LBL PFX-CHAIN:LTAB ! ;
 
 : JIT ( -- )

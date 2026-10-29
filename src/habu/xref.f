@@ -1,7 +1,7 @@
 \ xref.f - live dictionary inspection words for the REPL and debug path, read
-\ through dbase@/ndict@; load after layout.f. A cold-prefix row (habu2.f
-\ PFX-FILES, LPXREF) loaded after check-hook.f with no `0 set-check` span, so
-\ the engine build checks it. tools/check.f refuses it alone: it defines
+\ through dbase@/ndict@; load after layout.f. A cold-prefix row (boot-files.f
+\ BOOT-FILES) loaded after check-hook.f with no `0 set-check` span, so the
+\ engine build checks it. tools/check.f refuses it alone: it defines
 \ `undefine` (E-RESERVED-DEFINITION) and every engine already holds its words
 \ (E-DUPLICATE-DEFINITION).
 require src/habu/native-observer-cells.f

@@ -3628,7 +3628,7 @@ create ZBYTE 0 c,
    PFX-BASELIB ['] PFX-LOAD-ROW PFX-FILES
    PFX-DYNAMIC ['] PFX-LOAD-ROW PFX-FILES ;
 
-\ PFX-FILES mirrors habu2.f's ordered rows. Its projections preserve the stage0
+\ PFX-FILES mirrors src/habu/boot-files.f's ordered rows. Its projections preserve the stage0
 \ load/provide phases: dynamic storage follows errors, and only prelude/errors
 \ are boot stdlib loads. A file the native engine loads at boot and this seed does not is
 \ not a smaller engine, it is a stage0 that dies on the first token only the native
