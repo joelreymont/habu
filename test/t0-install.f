@@ -41,7 +41,13 @@
 \ copies that fill the virtual stack and evict a shared vreg. The fuse rows run
 \ each compare straight into `if`, `while` and `until`, which branch on its
 \ condition codes, both ways and over counted loops, with a cell under each
-\ result.
+\ result. The join rows run `if`, `else` and `then` whose arms leave the
+\ virtual stack in different layouts, each both ways with a cell under its
+\ result: a call in one arm, swapped and rotated arms, a constant against a
+\ register, arms that leave more or fewer registers than the layout, an `exit`
+\ in either arm, an if/else nested in each arm, sixteen live values evicted in
+\ one arm, a copy live across an `if` whose arm writes one copy, and a fused
+\ compare whose copy and constant settle between the compare and its branch.
 \ A CALLBACK: declaration compiled by T0 is handed to libc's qsort, which sorts
 \ a row through it, and its C entry lies between its accessor's code and the
 \ next definition's: the stub T0 appended to the accessor's emission. The
@@ -527,6 +533,41 @@ W-DEF-2OVER W-PO
    {: n:n :}
    0 begin 1+ dup n >= until ;
 
+\ ---- joins that keep registers ------------------------------------------------
+\ Each body leaves its values in vregs at `if`, and its arms leave them in
+\ other layouts that `else` and `then` reconcile.
+: J-TWICE ( n -- n ) 2 * ;
+: J-CALL ( n n bool -- n ) >r 1+ swap 1+ r> if J-TWICE then - ;
+: J-SWAP ( n n bool -- n ) >r 1+ swap 1+ swap r> if swap then - ;
+: J-ELSE ( n n bool -- n ) >r 1+ swap 1+ swap r> if 100 + else swap then - ;
+: J-ROT ( n n n bool -- n ) >r 1+ rot 1+ rot 1+ rot r> if rot then - - ;
+: J-CONST ( n bool -- n ) >r 1+ r> if 2 * else drop 5 then 1+ ;
+: J-KONST ( n bool -- n ) >r 1+ r> if drop 5 else 2 * then 1+ ;
+: J-SINK ( n n bool -- n ) if swap 1+ swap then - ;
+: J-PART ( n n bool -- n ) >r 1+ r> if swap 1+ swap then - ;
+: J-DEEP ( n n bool -- n ) if swap 1+ swap else J-TWICE then - ;
+: J-EXIT ( n bool -- n ) >r 1+ r> if exit then 2 * ;
+: J-EXIT-IF ( n bool -- n ) >r 1+ r> if 10 + exit else 2 * then 1+ ;
+: J-EXIT-ELSE ( n bool -- n ) >r 1+ r> if 2 * else exit then 1+ ;
+: J-NEST ( n n bool bool -- n )
+   {: f:bool g:bool :}
+   1+ swap 1+ swap
+   f if g if swap else 100 + then else g if 1000 + else swap then then - ;
+
+\ Sixteen values live across a fused `if`, the virtual stack full, and an arm
+\ whose pushes evict the bottom entries to memory.
+: J-FULL ( n n -- n )
+   >r
+   dup 1+ dup 1+ dup 1+ dup 1+ dup 1+ dup 1+ dup 1+ dup 1+
+   dup 1+ dup 1+ dup 1+ dup 1+ dup 1+ dup 1+ dup 1+
+   r> 0< if dup 1+ dup 1+ dup 1+ + + + then
+   + + + + + + + + + + + + + + + ;
+
+: J-DUP ( n bool -- n ) >r 1+ dup r> if 1+ then * ;
+: J-DUP2 ( n n bool -- n ) >r 1+ swap 1+ swap r> if nip dup then + ;
+\ A copy and a constant settled between the compare and its branch.
+: J-FUSE ( n n -- n n n ) >r 1+ dup 7 r> 0< if + 1 else * 2 then ;
+
 \ ---- is ------------------------------------------------------------------------
 defer HOOK ( n -- n )
 : INC ( n -- n ) 1+ ;
@@ -861,6 +902,36 @@ private
    77 4 UN-EQ 4 T= 77 T=   77 4 UN-NE 5 T= 77 T=   77 4 UN-LT 5 T= 77 T=
    77 4 UN-GT 5 T= 77 T=   77 4 UN-LE 4 T= 77 T=   77 4 UN-GE 4 T= 77 T= ;
 
+\ Each join both ways, with a cell under each result.
+: JOIN-CASE ( -- )
+   s" a call in one arm" T-LABEL
+   77 3 10 true J-CALL 3 T= 77 T=   77 3 10 false J-CALL 7 T= 77 T=
+   s" swapped and rotated arms" T-LABEL
+   77 3 10 true J-SWAP 7 T= 77 T=   77 3 10 false J-SWAP -7 T= 77 T=
+   77 3 10 true J-ELSE -107 T= 77 T=   77 3 10 false J-ELSE 7 T= 77 T=
+   77 1 10 100 true J-ROT -88 T= 77 T=   77 1 10 100 false J-ROT 92 T= 77 T=
+   s" a constant against a register" T-LABEL
+   77 3 true J-CONST 9 T= 77 T=   77 3 false J-CONST 6 T= 77 T=
+   77 3 true J-KONST 6 T= 77 T=   77 3 false J-KONST 9 T= 77 T=
+   s" arms that leave different register counts" T-LABEL
+   77 3 10 true J-SINK -6 T= 77 T=   77 3 10 false J-SINK -7 T= 77 T=
+   77 3 10 true J-PART -7 T= 77 T=   77 3 10 false J-PART -8 T= 77 T=
+   77 3 10 true J-DEEP -6 T= 77 T=   77 3 10 false J-DEEP -17 T= 77 T=
+   s" an exit in either arm" T-LABEL
+   77 3 true J-EXIT 4 T= 77 T=   77 3 false J-EXIT 8 T= 77 T=
+   77 3 true J-EXIT-IF 14 T= 77 T=   77 3 false J-EXIT-IF 9 T= 77 T=
+   77 3 true J-EXIT-ELSE 9 T= 77 T=   77 3 false J-EXIT-ELSE 4 T= 77 T=
+   s" an if and else nested in each arm" T-LABEL
+   77 3 10 true true J-NEST 7 T= 77 T=     77 3 10 true false J-NEST -107 T= 77 T=
+   77 3 10 false true J-NEST -1007 T= 77 T=   77 3 10 false false J-NEST 7 T= 77 T=
+   s" sixteen live values, evicted in one arm" T-LABEL
+   77 1 -1 J-FULL 190 T= 77 T=   77 1 1 J-FULL 136 T= 77 T=
+   s" a shared vreg across an if" T-LABEL
+   77 3 true J-DUP 20 T= 77 T=   77 3 false J-DUP 16 T= 77 T=
+   77 3 10 true J-DUP2 22 T= 77 T=   77 3 10 false J-DUP2 15 T= 77 T=
+   s" a copy and a constant settled between a compare and its branch" T-LABEL
+   77 3 -1 J-FUSE 1 T= 11 T= 4 T= 77 T=   77 3 1 J-FUSE 2 T= 28 T= 4 T= 77 T= ;
+
 \ A forged tag in an enum slot and in a product's enum field: the fetch's tag
 \ check ends the child after the fixture armed it.
 : FETCH-FORGED ( -- )
@@ -886,6 +957,7 @@ public
    WIDE-CASE
    SHARE-CASE
    FUSE-CASE
+   JOIN-CASE
    FETCH-FORGE-CASE
    IS-CASE
    CALLBACK-CASE

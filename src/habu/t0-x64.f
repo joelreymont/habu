@@ -237,6 +237,10 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
    {: d:T0-EMIT:vreg s:T0-EMIT:vreg :}
    d REG s REG SINK ENC-MOV-RR ;
 
+: EXCHANGE ( T0-EMIT:vreg T0-EMIT:vreg -- )
+   {: a:T0-EMIT:vreg b:T0-EMIT:vreg :}
+   a REG b REG SINK ENC-XCHG-RR ;
+
 : SLOTS ( n -- ) {: k:n :}
    k FRAME-CELLS @ > if k FRAME-CELLS ! then ;
 
@@ -520,6 +524,7 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
    ['] FILL k T0-EMIT:FILL-XT !
    ['] DSP+ k T0-EMIT:DSP+-XT !
    ['] MOV k T0-EMIT:MOV-XT !
+   ['] EXCHANGE k T0-EMIT:EXCHANGE-XT !
    ['] SLOTS k T0-EMIT:SLOTS-XT !
    ['] SLOT-STORE k T0-EMIT:SLOT-STORE-XT !
    ['] SLOT-LOAD k T0-EMIT:SLOT-LOAD-XT !

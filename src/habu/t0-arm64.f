@@ -536,6 +536,13 @@ DYNAMIC-BUFFER BR-ARG n
    {: d:T0-EMIT:vreg s:T0-EMIT:vreg :}
    d REG s REG ENC-MOV W ;
 
+\ Three moves through the temporary.
+: EXCHANGE ( T0-EMIT:vreg T0-EMIT:vreg -- )
+   {: a:T0-EMIT:vreg b:T0-EMIT:vreg :}
+   TMP a REG ENC-MOV W
+   a REG b REG ENC-MOV W
+   b REG TMP ENC-MOV W ;
+
 : SLOTS ( n -- ) {: k:n :}
    k FRAME-CELLS @ > if k FRAME-CELLS ! then ;
 
@@ -805,6 +812,7 @@ DYNAMIC-BUFFER BR-ARG n
    ['] FILL k T0-EMIT:FILL-XT !
    ['] DSP+ k T0-EMIT:DSP+-XT !
    ['] MOV k T0-EMIT:MOV-XT !
+   ['] EXCHANGE k T0-EMIT:EXCHANGE-XT !
    ['] SLOTS k T0-EMIT:SLOTS-XT !
    ['] SLOT-STORE k T0-EMIT:SLOT-STORE-XT !
    ['] SLOT-LOAD k T0-EMIT:SLOT-LOAD-XT !

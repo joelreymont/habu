@@ -108,9 +108,12 @@
 \ THE VIRTUAL STACK. The top of the data stack lives in at most T0-EMIT:VREGS
 \ entries, each a vreg or a constant; below them the stack is in memory. A
 \ constant becomes code only when an operation needs it in a register or the
-\ stack is spilled. Every call, join and loop head spills the whole virtual
-\ stack to memory, so control paths meet with it empty and no snapshot or
-\ reconciliation exists. A push onto a full virtual stack spills its bottom
+\ stack is spilled. The paths that meet at `else` and `then` of an `if` keep
+\ their values in registers: `if` records the layout its skipped path carries
+\ (SNAPSHOT, every entry settled into a vreg of its own) and the paths that
+\ join reconcile to it (RECONCILE). Every call, loop head, loop exit and other
+\ join spills the whole virtual stack to memory, so those paths meet with it
+\ empty. A push onto a full virtual stack spills its bottom
 \ entry. Entries may share a vreg: a copy (`dup`, `over`, a wide move's cell)
 \ is a second entry holding the same vreg, and a vreg is free only once no
 \ entry holds it (RELEASE). An operation that writes an entry's vreg in place
@@ -758,12 +761,22 @@ DYNAMIC-BUFFER CS-KIND n
 DYNAMIC-BUFFER CS-LOC n              \ locals in scope where the block opened
 DYNAMIC-BUFFER CS-FAM n              \ a MATCH's family
 DYNAMIC-BUFFER CS-WID n              \ a MATCH's cells, the tag on top
+DYNAMIC-BUFFER CS-LAY n              \ layout k's vregs from k*VREGS, bottom first
+DYNAMIC-BUFFER CS-LAY-N n            \ layout k's count, -1 unrecorded
 variable CS-N
+variable DEAD                        \ nonzero: the fallthrough is unreachable
+
+\ Room for layouts 0 .. k.
+: LAY-ROOM ( n -- ) {: k:n :}
+   k 1+ T0-EMIT:VREGS * CS-LAY-RESERVE  k 1+ CS-LAY-N-RESERVE ;
+
+: LAY@ ( n n -- n ) {: k:n j:n :} k T0-EMIT:VREGS * j + CS-LAY @ ;
+: LAY! ( n n n -- ) {: v:n k:n j:n :} v k T0-EMIT:VREGS * j + CS-LAY ! ;
 
 : CS-PUSH ( n n -- ) {: kind:n loc:n :}
    CS-N @ {: k:n :}
-   k 1+ CS-KIND-RESERVE  k 1+ CS-LOC-RESERVE
-   kind k CS-KIND !  loc k CS-LOC !
+   k 1+ CS-KIND-RESERVE  k 1+ CS-LOC-RESERVE  k LAY-ROOM
+   kind k CS-KIND !  loc k CS-LOC !  -1 k CS-LAY-N !
    k 1+ CS-N ! ;
 
 \ Pop the top structure, which must be of kind a or b.
@@ -790,32 +803,188 @@ variable CS-N
 \ Whether a compare left its condition pending for this branch.
 : CC? ( -- bool ) PENDING @ 0 >= ;
 
-\ The pending condition, taken, with the virtual stack spilled.
-: TAKE-CC ( -- T0-EMIT:cc )
+\ The pending condition, taken.
+: CC-TAKE ( -- T0-EMIT:cc )
    PENDING @ T0-EMIT:>CC
-   -1 PENDING !
-   SPILL-ALL ;
+   -1 PENDING ! ;
 
+\ The pending condition, taken, with the virtual stack spilled.
+: TAKE-CC ( -- T0-EMIT:cc ) CC-TAKE SPILL-ALL ;
+
+\ A landing that spills: the emptied virtual stack agrees with every arrival.
+: LAND ( -- ) SPILL-ALL 0 DEAD ! ;
+
+\ ---- joins -------------------------------------------------------------------
+\ A layout is the virtual stack as registers alone: count n and n distinct
+\ vregs, the top n cells of the data stack bottom first, the rest in memory.
+\ `if` records the layout its skipped path carries; the paths that meet at
+\ `else` and `then` reconcile to the layout recorded first.
+
+\ Whether an entry below k holds k's vreg.
+: HELD-BELOW? ( n -- bool ) {: k:n :}
+   k VS-VAL @ {: v:n :}
+   false k 0 ?do i REG? i VS-VAL @ v = and or loop ;
+
+\ Every entry in a vreg of its own: a constant is materialised, and an entry
+\ sharing a deeper entry's vreg gets a copy. The entries need no more vregs
+\ than there are, so ALLOC evicts nothing, and LIT and MOV keep the condition
+\ codes for a fused branch.
+: SETTLE ( -- )
+   VS-N @ 0 ?do
+      i CONST? if i MAT drop else
+         i HELD-BELOW? if
+            i VREG@ {: s:T0-EMIT:vreg :}
+            i RELABEL s T0-EMIT:MOV
+         then
+      then
+   loop ;
+
+\ The virtual stack, settled, recorded as layout k.
+: RECORD ( n -- ) {: k:n :}
+   VS-N @ k CS-LAY-N !
+   VS-N @ 0 ?do i VS-VAL @ k i LAY! loop ;
+
+: SNAPSHOT ( n -- ) SETTLE RECORD ;
+
+: LAY-COPY ( n n -- ) {: from:n to:n :}
+   from CS-LAY-N @ to CS-LAY-N !
+   T0-EMIT:VREGS 0 ?do from i LAY@ to i LAY! loop ;
+
+\ The virtual stack becomes layout k, its vregs the only ones held.
+: ADOPT ( n -- ) {: k:n :}
+   k CS-LAY-N @ VS-N !
+   ALL-FREE FREE !
+   VS-N @ 0 ?do
+      k i LAY@ {: v:n :}
+      K-REG v i ENTRY!
+      1 v lshift invert FREE @ and FREE !
+   loop
+   0 DEAD ! ;
+
+\ The vreg layout k gives entry j: the entries match the layout's top cells.
+: GOAL ( n n -- n ) {: k:n j:n :}
+   k  k CS-LAY-N @ VS-N @ - j +  LAY@ ;
+
+\ Whether entry j is not yet in its goal vreg.
+: AWAY? ( n n -- bool ) {: k:n j:n :}
+   j REG? 0=  j VS-VAL @ k j GOAL <>  or ;
+
+\ Whether an entry not yet in its goal holds vreg v.
+: AWAY-HOLDS? ( n n -- bool ) {: k:n v:n :}
+   false VS-N @ 0 ?do i REG? i VS-VAL @ v = and k i AWAY? and or loop ;
+
+\ The first entry not yet in its goal, or -1.
+: FIRST-AWAY ( n -- n ) {: k:n :}
+   -1 VS-N @ 0 ?do dup 0< k i AWAY? and if drop i then loop ;
+
+\ An entry not in its goal whose goal no such entry holds, or -1.
+: READY ( n -- n ) {: k:n :}
+   -1 VS-N @ 0 ?do
+      dup 0< k i AWAY? and if
+         k  k i GOAL  AWAY-HOLDS? 0= if drop i then
+      then
+   loop ;
+
+\ Entry j copied into its goal vreg; a shared source stays for its others.
+: MOVE-TO ( n n -- ) {: k:n j:n :}
+   k j GOAL {: t:n :}
+   j REG? if t T0-EMIT:>VREG j VREG@ T0-EMIT:MOV
+   else j VS-VAL @ t T0-EMIT:>VREG T0-EMIT:LIT then
+   K-REG t j ENTRY! ;
+
+\ Vregs a and b exchanged in every entry that holds either.
+: RENAME ( n n -- ) {: a:n b:n :}
+   VS-N @ 0 ?do
+      i REG? if
+         i VS-VAL @ a = if b i VS-VAL ! else
+            i VS-VAL @ b = if a i VS-VAL ! then
+         then
+      then
+   loop ;
+
+\ Entry j put in its goal by an exchange with the entry holding the goal.
+\ No entry is ready only when the waiting entries hold their goals and
+\ nothing else, one vreg each, a permutation of them.
+: CYCLE ( n n -- ) {: k:n j:n :}
+   k j GOAL  j VS-VAL @ {: t:n v:n :}
+   t T0-EMIT:>VREG v T0-EMIT:>VREG T0-EMIT:EXCHANGE
+   t v RENAME ;
+
+\ The bottom d entries written to memory as SPILL-ALL writes them, and dropped.
+: SINK ( n -- ) {: d:n :}
+   d 1 ?do d i - SPILL-ENTRY loop
+   d PUSH-ENTRY
+   d 0 ?do 0 REMOVE loop ;
+
+\ The bottom d cells of layout k loaded from memory straight into their
+\ vregs, the deepest by the pop, as FILL-ENTRY loads them.
+: RAISE ( n n -- ) {: k:n d:n :}
+   d 0 ?do
+      d 1- i - {: e:n :}
+      k e LAY@ T0-EMIT:>VREG {: r:T0-EMIT:vreg :}
+      e 0= if r d T0-EMIT:POP else r e d - T0-EMIT:FILL then
+   loop ;
+
+\ The fallthrough brought into layout k: entries past its count to memory,
+\ the rest moved into their goal vregs as one parallel copy, then the cells
+\ the layout holds above memory loaded. An exact layout emits nothing; an
+\ unreachable fallthrough emits nothing and takes the layout.
+: RECONCILE ( n -- ) {: k:n :}
+   DEAD @ if k ADOPT exit then
+   VS-N @ k CS-LAY-N @ - {: d:n :}
+   d 0 > if d SINK then
+   begin k FIRST-AWAY 0 >= while
+      k READY {: j:n :}
+      j 0 >= if k j MOVE-TO else k k FIRST-AWAY CYCLE then
+   repeat
+   d 0 < if k d negate RAISE then
+   k ADOPT ;
+
+\ The arm runs in the layout recorded for the skipped path.
 : DO-IF ( -- )
-   CC? if TAKE-CC T0-EMIT:IF-CC, else TAKE SPILL-ALL T0-EMIT:IF, then
-   CS-IF L-N @ CS-PUSH ;
+   CS-N @ {: k:n :}
+   CC? if
+      CC-TAKE {: c:T0-EMIT:cc :}
+      CS-IF L-N @ CS-PUSH  k SNAPSHOT
+      c T0-EMIT:IF-CC, exit
+   then
+   TAKE {: f:T0-EMIT:vreg :}
+   CS-IF L-N @ CS-PUSH  k SNAPSHOT
+   f T0-EMIT:IF,
+   f RELEASE ;
 
+\ The first arm's end is the layout `then` reconciles to; the second arm
+\ starts in the one `if` recorded. A dead first arm records none.
 : DO-ELSE ( -- )
    CS-IF CS-POP
    SCOPE-END
-   SPILL-ALL
+   CS-N @ {: k:n :}
+   k 1+ LAY-ROOM
+   DEAD @ 0= {: live:bool :}
+   live if k 1+ SNAPSHOT then
    T0-EMIT:ELSE,
-   CS-ELSE L-N @ CS-PUSH ;
+   k ADOPT
+   CS-ELSE L-N @ CS-PUSH
+   live if k 1+ k LAY-COPY then ;
 
+\ `then` of a `while` lands with the stack spilled; of an `if` or `else` it
+\ reconciles to the layout recorded, and with none recorded every other
+\ arrival was dead, so the virtual stack continues.
 : DO-THEN ( -- )
-   CS-TOP-KIND CS-WHILE = if CS-WHILE else CS-IF then
-   CS-ELSE CS-POP2
+   CS-TOP-KIND CS-WHILE = if
+      CS-WHILE CS-POP
+      SCOPE-END
+      LAND
+      T0-EMIT:THEN, exit
+   then
+   CS-IF CS-ELSE CS-POP2
    SCOPE-END
-   SPILL-ALL
+   CS-N @ {: k:n :}
+   k CS-LAY-N @ 0 >= if k RECONCILE then
    T0-EMIT:THEN, ;
 
 : DO-BEGIN ( -- )
-   SPILL-ALL
+   LAND
    T0-EMIT:BEGIN,
    CS-BEGIN L-N @ CS-PUSH ;
 
@@ -830,7 +999,7 @@ variable CS-N
    CS-BEGIN CS-POP
    CS-WHILE CS-POP
    SCOPE-END
-   SPILL-ALL
+   LAND
    T0-EMIT:REPEAT, ;
 
 : DO-UNTIL ( -- )
@@ -859,7 +1028,7 @@ variable DO-N                       \ the open levels
    TAKE {: s:T0-EMIT:vreg :}
    TAKE {: l:T0-EMIT:vreg :}
    s l T0-EMIT:LOOP-PUSH
-   SPILL-ALL
+   LAND
    s l ;
 
 \ Open a level whose loop head is here, with `?do`'s entry test when the flag
@@ -883,7 +1052,7 @@ variable DO-N                       \ the open levels
 
 : DO-LOOP ( -- )
    CLOSING
-   SPILL-ALL
+   LAND
    ALLOC {: t:T0-EMIT:vreg :}
    t T0-EMIT:LOOP-NEXT
    t RELEASE
@@ -892,7 +1061,7 @@ variable DO-N                       \ the open levels
 : DO-+LOOP ( -- )
    CLOSING
    TAKE {: s:T0-EMIT:vreg :}
-   SPILL-ALL
+   LAND
    s HOLD
    ALLOC {: t:T0-EMIT:vreg :}
    s t T0-EMIT:LOOP-STEP
@@ -953,14 +1122,14 @@ variable DO-N                       \ the open levels
 : DO-ENDOF ( -- )
    CS-OF CS-POP
    SCOPE-END
-   SPILL-ALL
+   LAND
    T0-EMIT:ENDOF,
    CS-ENDOF L-N @ CS-PUSH ;
 
 \ The default arm drops the selector, and every `endof` lands after the drop.
 : DO-ENDCASE ( -- )
    DROP1
-   SPILL-ALL
+   LAND
    begin CS-TOP-KIND CS-ENDOF = while CS-ENDOF CS-POP repeat
    CS-CASE CS-POP
    T0-EMIT:ENDCASE,
@@ -970,7 +1139,7 @@ variable DO-N                       \ the open levels
 \ True once the body has left through a tail call: nothing follows it.
 variable TAILED
 
-: DO-EXIT ( -- ) SPILL-ALL T0-EMIT:RETURN ;
+: DO-EXIT ( -- ) SPILL-ALL T0-EMIT:RETURN 1 DEAD ! ;
 : DO-RECURSE ( -- ) SPILL-ALL T0-EMIT:CALL-SELF ;
 
 : DO-TOR ( -- )
@@ -1265,6 +1434,7 @@ TRUSTED: DOES-PATCH-ENTRY ( -- n ) ['] does-patch ;
    NTRAP:ROUTINE loc DO-CALL
    begin CS-TOP-KIND CS-ENDOF = while CS-ENDOF CS-POP repeat
    CS-MATCH CS-POP
+   LAND
    T0-EMIT:ENDCASE,
    SCOPE-END ;
 
@@ -1516,7 +1686,7 @@ $29 constant CLOSE-PAREN
    UNIT !
    T0-EMIT:VREGS VS-KIND-RESERVE  T0-EMIT:VREGS VS-VAL-RESERVE
    0 VS-N !  ALL-FREE FREE !  0 CS-N !  0 DO-N !  0 L-N !  0 TAILED !
-   -1 PENDING ! ;
+   0 DEAD !  -1 PENDING ! ;
 
 : FINISH ( -- )
    CS-N @ 0<> if E-T0-CONTROL throw then

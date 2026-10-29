@@ -308,6 +308,7 @@ ARCHES TYPED-BUFFER SPILL-LIT-XT [ n n -- ]
 ARCHES TYPED-BUFFER FILL-XT [ vreg n -- ]
 ARCHES TYPED-BUFFER DSP+-XT [ n -- ]
 ARCHES TYPED-BUFFER MOV-XT [ vreg vreg -- ]
+ARCHES TYPED-BUFFER EXCHANGE-XT [ vreg vreg -- ]
 ARCHES TYPED-BUFFER SLOTS-XT [ n -- ]
 ARCHES TYPED-BUFFER SLOT-STORE-XT [ vreg n -- ]
 ARCHES TYPED-BUFFER SLOT-LOAD-XT [ vreg n -- ]
@@ -336,6 +337,8 @@ ARCHES TYPED-BUFFER SLOT-LOAD-XT [ vreg n -- ]
 : FILL ( vreg n -- ) CUR @ FILL-XT @ execute ;
 : DSP+ ( n -- ) CUR @ DSP+-XT @ execute ;
 : MOV ( vreg vreg -- ) CUR @ MOV-XT @ execute ;
+\ The two vregs' values swapped, a join's register cycle.
+: EXCHANGE ( vreg vreg -- ) CUR @ EXCHANGE-XT @ execute ;
 
 \ The frame: SLOTS makes it hold at least n cells, SLOT-STORE and SLOT-LOAD
 \ move a cell between a vreg and slot k.
@@ -378,9 +381,10 @@ ARCHES TYPED-BUFFER IMM?-XT [ n -- bool ]
 \ writing no vreg; SET-FLAG makes d -1 when condition c of the last compare
 \ holds, else 0: a Habu flag. IF-CC,, WHILE-CC, and UNTIL-CC, branch on the
 \ codes instead. Between a compare and the word that reads its codes the
-\ front end emits only SPILL-ALL's moves: PUSH, PUSH-LIT, SPILL, SPILL-LIT,
-\ LIT, ADDR-DATA, ADDR-CODE, ADDR-QUOT, DSP+ and MOV. Every emitter keeps
-\ those condition-preserving (x86-64's DSP+ is an lea, its zero literal a mov).
+\ front end emits only moves: PUSH, PUSH-LIT, SPILL, SPILL-LIT, LIT,
+\ ADDR-DATA, ADDR-CODE, ADDR-QUOT, DSP+, MOV and EXCHANGE. Every emitter keeps
+\ those condition-preserving (x86-64's DSP+ is an lea, its zero literal a mov,
+\ its exchange an xchg; arm64's exchange is three movs).
 : CMP ( vreg vreg -- ) CUR @ CMP-XT @ execute ;
 : CMP-LIT ( vreg n -- ) CUR @ CMP-LIT-XT @ execute ;
 : SET-FLAG ( vreg cc -- ) CUR @ SET-FLAG-XT @ execute ;

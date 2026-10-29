@@ -303,6 +303,23 @@ private
    loop TTRUE
    NEMIT:CLEAR ;
 
+\ An `if` arm that swaps the compared values joins in registers: after the
+\ compare nothing loads or stores through x19 until the result's push.
+: JOIN-CASE ( -- )
+   ARCH-A64
+   s" MAX2 ( n n -- n ) over over < if swap then drop " BODY
+   s" the compare is cmp x10,x9" T-LABEL
+   8 WORD@ 10 9 A64ASM:ENC-CMP T=
+   NEMIT:SIZE 8 - {: last:n :}
+   s" the word before the ret pushes the result, str x10,[x19],#8" T-LABEL
+   last WORD@ 10 DS 8 A64ASM:ENC-STRPOST T=
+   s" no word between them loads or stores through x19" T-LABEL
+   true last 12 ?do
+      i WORD@ {: w:n :}
+      w 25 rshift 5 and 4 =  w 5 rshift 31 and DS =  and 0= and
+   4 +loop TTRUE
+   NEMIT:CLEAR ;
+
 \ The x86-64 stack moves leave the condition codes alone: the stack pointer
 \ moves by lea r12,[r12+8] and lea r12,[r12-8], and zero loads by mov ecx,0.
 create X86-MOVES
@@ -348,6 +365,7 @@ public
    SHARE-CASE
    SLOT-REFUSED-CASE
    FUSE-CASE
+   JOIN-CASE
    X86-FLAGS-CASE
    X86-UNFILLED-CASE
    T-REPORT ;
