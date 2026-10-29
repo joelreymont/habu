@@ -5,7 +5,8 @@
 \ `cmp #imm`, a variable into its data address row) while a does> child stays
 \ a call, the writeback transfers that move the data stack pointer with a
 \ spill's or fill's last cell, a copy that shares its vreg until a load
-\ writes a fresh one, a compare that branches on its condition codes, the
+\ writes a fresh one, a compare that branches on its condition codes, a value
+\ filled after a call into the register its loop's back edge expects, the
 \ x86-64 stack moves that leave those codes alone, and the refusals that keep
 \ the patch slot last and an operation x86-64 does not provide from running.
 \ Bodies are compiled by T0:COMPILE-TEXT or driven through the seam, sealed
@@ -26,7 +27,7 @@ require src/habu/t0.f
 package T0-ROWS-TEST
 private
 
-\ Where the placed seals put the emission. No body here calls, so no branch
+\ Where the placed seals put the emission. No placed body calls, so no branch
 \ has to reach anything from it.
 $40000 constant PLACE
 
@@ -374,6 +375,26 @@ private
    true NEMIT:SIZE 0 ?do i WORD@ $FFFFFFE0 and ldur <> and 4 +loop TTRUE
    NEMIT:CLEAR ;
 
+\ A do loop's sum, filled after a call, lands in the register the loop head
+\ keeps it in, as the JIT's NEED-ALLOC, steers a pull: no register move
+\ follows the call.
+public
+: STEP1 ( n -- n ) 1+ ;
+private
+
+: STEER-CASE ( -- )
+   ARCH-A64
+   s" SUM1 ( n -- n ) 0 swap 0 do i T0-ROWS-TEST:STEP1 + loop " BODY
+   0 0 A64ASM:ENC-MOV {: mov:n :}
+   false 0 NEMIT:SIZE 0 ?do
+      i WORD@ {: w:n :}
+      over w $FFE0FFE0 and mov = and if 1+ then
+      swap w $FC000000 and $94000000 = or swap
+   4 +loop nip
+   s" no register move follows the call" T-LABEL
+   0 T=
+   NEMIT:CLEAR ;
+
 \ The x86-64 stack moves leave the condition codes alone: the stack pointer
 \ moves by lea r12,[r12+8] and lea r12,[r12-8], and zero loads by mov ecx,0.
 create X86-MOVES
@@ -423,6 +444,7 @@ public
    LOOP-CASE
    DO-LOOP-CASE
    IDX-CASE
+   STEER-CASE
    X86-FLAGS-CASE
    X86-UNFILLED-CASE
    T-REPORT ;

@@ -284,6 +284,37 @@ variable CUT                         \ the byte just past `does> `, or 0
 
 : UNSUPPORTED ( ptr u8 n -- ) E-T0-UNSUPPORTED REFUSE ;
 
+\ ---- the control stack -------------------------------------------------------
+0 constant CS-IF
+1 constant CS-ELSE
+2 constant CS-BEGIN
+3 constant CS-WHILE
+4 constant CS-DO
+5 constant CS-CASE
+6 constant CS-OF
+7 constant CS-ENDOF
+8 constant CS-MATCH
+
+DYNAMIC-BUFFER CS-KIND n
+DYNAMIC-BUFFER CS-LOC n              \ locals in scope where the block opened
+DYNAMIC-BUFFER CS-FAM n              \ a MATCH's family
+DYNAMIC-BUFFER CS-WID n              \ a MATCH's cells, the tag on top
+DYNAMIC-BUFFER CS-LAY n              \ layout k's vregs from k*VREGS, bottom first
+DYNAMIC-BUFFER CS-LAY-N n            \ layout k's count, -1 unrecorded
+variable CS-N
+variable DEAD                        \ nonzero: the fallthrough is unreachable
+
+\ Room for layouts 0 .. k.
+: LAY-ROOM ( n -- ) {: k:n :}
+   k 1+ T0-EMIT:VREGS * CS-LAY-RESERVE  k 1+ CS-LAY-N-RESERVE ;
+
+: LAY@ ( n n -- n ) {: k:n j:n :} k T0-EMIT:VREGS * j + CS-LAY @ ;
+: LAY! ( n n n -- ) {: v:n k:n j:n :} v k T0-EMIT:VREGS * j + CS-LAY ! ;
+
+\ The innermost open structure with a recorded layout, or -1.
+: STEERING ( -- n )
+   CS-N @ 1- begin dup 0 >= if dup CS-LAY-N @ 0< else false then while 1- repeat ;
+
 \ ---- the virtual stack -------------------------------------------------------
 0 constant K-REG
 1 constant K-CONST
@@ -344,15 +375,18 @@ variable FREE                       \ bit k set: no entry holds vreg k
 : ROOM ( -- )
    VS-N @ T0-EMIT:VREGS = if EVICT then ;
 
+\ Vreg n, which no entry holds, allocated.
+: CLAIM ( n -- T0-EMIT:vreg ) {: n:n :}
+   1 n lshift invert FREE @ and FREE !
+   n T0-EMIT:>VREG ;
+
 \ A vreg no entry holds. Entries holding fewer than VREGS distinct vregs leave
 \ one free; entries holding all of them are VREGS entries with a vreg each, so
 \ EVICT frees the bottom one's.
 : ALLOC ( -- T0-EMIT:vreg )
    FREE @ 0= if EVICT then
    FREE @ {: m:n :}
-   0 begin 1 over lshift m and 0= while 1+ repeat {: k:n :}
-   1 k lshift invert m and FREE !
-   k T0-EMIT:>VREG ;
+   0 begin 1 over lshift m and 0= while 1+ repeat CLAIM ;
 
 : PUSH-REG ( T0-EMIT:vreg -- ) {: r:T0-EMIT:vreg :}
    K-REG r T0-EMIT:VREG>N VS-N @ ENTRY!
@@ -372,19 +406,49 @@ variable FREE                       \ bit k set: no entry holds vreg k
    0 VS-N !
    ALL-FREE FREE ! ;
 
-\ Entry k of m loaded from the memory cell k - m below the stack pointer;
-\ entry 0, the last, by the pop that moves the stack pointer down to it.
-: FILL-ENTRY ( n n -- ) {: k:n m:n :}
-   ALLOC {: r:T0-EMIT:vreg :}
+\ The vreg layout s names for entry j, counted from the bottom as the JIT's
+\ snapshot frame counts its slots, or -1 for none or an entry above it.
+: AIM ( n n -- n ) {: s:n j:n :}
+   s 0< if -1 exit then
+   j s CS-LAY-N @ >= if -1 exit then
+   s j LAY@ ;
+
+\ The free vregs layout s names for entries 0 .. j-1.
+: HELD-BACK ( n n -- n ) {: s:n j:n :}
+   0 j 0 ?do s i AIM dup 0< if drop else 1 swap lshift or then loop
+   FREE @ and ;
+
+\ A vreg for entry j, filled from memory, steered by layout s as the arm64
+\ JIT's NEED-ALLOC, (src/habu/jit.f) steers a pull: the vreg s names for the
+\ entry is taken when free, so a value filled after a call inside a loop or an
+\ `if` lands where the back edge or `then` needs it. Otherwise the
+\ lowest free vreg is taken with the free ones s names for entries 0 .. j-1,
+\ filled after this one, held back; ENSURE fills at most VREGS entries, so
+\ a vreg is left and ALLOC evicts nothing.
+: STEER ( n n -- T0-EMIT:vreg ) {: s:n j:n :}
+   s j AIM {: g:n :}
+   g 0< if false else 1 g lshift FREE @ and 0<> then if g CLAIM exit then
+   s j HELD-BACK {: h:n :}
+   h invert FREE @ and FREE !
+   ALLOC
+   h FREE @ or FREE ! ;
+
+\ Entry k of m loaded from the memory cell k - m below the stack pointer into
+\ the vreg layout s steers it to (STEER); entry 0, the last, by the pop that
+\ moves the stack pointer down to it.
+: FILL-ENTRY ( n n n -- ) {: s:n k:n m:n :}
+   s k STEER {: r:T0-EMIT:vreg :}
    k 0= if r m T0-EMIT:POP else r k m - T0-EMIT:FILL then
    K-REG r T0-EMIT:VREG>N k ENTRY! ;
 
-\ At least k entries: the missing ones are loaded from memory under the rest.
+\ At least k entries: the missing ones are loaded from memory under the rest,
+\ steered by the innermost layout an open structure recorded.
 : ENSURE ( n -- ) {: k:n :}
    VS-N @ k >= if exit then
    k VS-N @ - {: m:n :}
    VS-N @ 0 ?do VS-N @ 1- i - dup m + COPY-ENTRY loop
-   m 0 ?do m 1- i - m FILL-ENTRY loop
+   STEERING {: s:n :}
+   m 0 ?do s m 1- i - m FILL-ENTRY loop
    VS-N @ m + VS-N ! ;
 
 \ Entry k in a vreg. A constant entry means a vreg is free, so k stays put.
@@ -755,33 +819,7 @@ variable PENDING
    TOP MAT 0 T0-EMIT:CMP-LIT
    TOP REMOVE c CMP-FLAG ;
 
-\ ---- the control stack -------------------------------------------------------
-0 constant CS-IF
-1 constant CS-ELSE
-2 constant CS-BEGIN
-3 constant CS-WHILE
-4 constant CS-DO
-5 constant CS-CASE
-6 constant CS-OF
-7 constant CS-ENDOF
-8 constant CS-MATCH
-
-DYNAMIC-BUFFER CS-KIND n
-DYNAMIC-BUFFER CS-LOC n              \ locals in scope where the block opened
-DYNAMIC-BUFFER CS-FAM n              \ a MATCH's family
-DYNAMIC-BUFFER CS-WID n              \ a MATCH's cells, the tag on top
-DYNAMIC-BUFFER CS-LAY n              \ layout k's vregs from k*VREGS, bottom first
-DYNAMIC-BUFFER CS-LAY-N n            \ layout k's count, -1 unrecorded
-variable CS-N
-variable DEAD                        \ nonzero: the fallthrough is unreachable
-
-\ Room for layouts 0 .. k.
-: LAY-ROOM ( n -- ) {: k:n :}
-   k 1+ T0-EMIT:VREGS * CS-LAY-RESERVE  k 1+ CS-LAY-N-RESERVE ;
-
-: LAY@ ( n n -- n ) {: k:n j:n :} k T0-EMIT:VREGS * j + CS-LAY @ ;
-: LAY! ( n n n -- ) {: v:n k:n j:n :} v k T0-EMIT:VREGS * j + CS-LAY ! ;
-
+\ ---- opening and closing structures ------------------------------------------
 : CS-PUSH ( n n -- ) {: kind:n loc:n :}
    CS-N @ {: k:n :}
    k 1+ CS-KIND-RESERVE  k 1+ CS-LOC-RESERVE  k LAY-ROOM
