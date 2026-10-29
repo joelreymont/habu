@@ -45,9 +45,11 @@
 \ stack shuffles (dup drop swap over nip tuck rot -rot 2dup 2drop 2swap 2over
 \ 2>r 2r> 2r@), + - * and or xor 1+ 1- negate invert lshift rshift, the
 \ comparisons, @ and c@, and ! as a call to the primitive or one per cell (THE
-\ WIDTHS); a word the dictionary binds (NDICT:CALL-TARGET), as a call; an
-\ immediate (IMM-TOKEN says which pass); a number (OUTER:NUMBER), a float being
-\ one cell of a double's bits. Anything else throws E-T0-UNSUPPORTED, and
+\ WIDTHS); a word the dictionary binds (NDICT:CALL-BINDING), as a call, or as
+\ the value it pushes when its definer fixed one (a constant's number, a
+\ created word's or variable's DATA address; WORD-CALL); an immediate
+\ (IMM-TOKEN says which pass); a number (OUTER:NUMBER), a float being one cell
+\ of a double's bits. Anything else throws E-T0-UNSUPPORTED, and
 \ UNSUPPORTED$ names the token until the next compile.
 \
 \ THE SPELLING. T0 compiles only bodies the checker certified, so it reads each
@@ -1357,11 +1359,22 @@ TRUSTED: DOES-PATCH-ENTRY ( -- n ) ['] does-patch ;
    number 0= range or if a u UNSUPPORTED then
    v PUSH-CONST ;
 
-\ A call that builds a value of a wide instantiation first pushes the cells
-\ the checker proved the instantiation adds at the call token (NDICT:CON-PADS),
-\ as tier 1's DO-CALL; the token TOKEN just read is ordinal ORD - 1.
-: WORD-CALL ( n n -- ) {: to:n loc:n :}
+\ A word the dictionary binds. One that builds a value of a wide instantiation
+\ first pushes the cells the checker proved the instantiation adds at the
+\ token (NDICT:CON-PADS), as tier 1's DO-CALL; the token TOKEN just read is
+\ ordinal ORD - 1. A fixed word, one whose definer stamped what its body
+\ pushes, is then that value, as tier 1 folds it (src/compiler/native/hir-word.f
+\ RESOLVE-SITE): a constant's number, which CMP2 and the ALU take as an
+\ immediate, or a created word's or variable's DATA address, filed with its
+\ record's ordinal so publication relocates it. The stamp is that of the
+\ record the call binds (NDICT:CALL-BINDING): a non-empty does> clause clears
+\ it, so a does> child is called. Any other word is called.
+: WORD-CALL ( ptr u8 n n n n -- ) {: a:ptr u:n to:n kind:n loc:n :}
    ORD @ 1- NDICT:CON-PADS 0 ?do 0 PUSH-CONST loop
+   kind DKIND:VAL = if to NDICT:FIXED-VAL NDICT:BOUND-VALUE PUSH-CONST exit then
+   kind DKIND:ADDR = if
+      to NDICT:FIXED-ADDR NDICT:BOUND-VALUE  a u NDICT:FIXED-OWNER  PUSH-ADDR exit
+   then
    to loc DO-CALL ;
 
 : COMPILE-TOKEN ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -1371,8 +1384,8 @@ TRUSTED: DOES-PATCH-ENTRY ( -- n ) ['] does-patch ;
    a u OPENER {: kind:n :}
    kind STR-NONE <> if kind u 3 = loc u + 1+ DO-STRING exit then
    a u KEYWORD if exit then
-   a u NDICT:CALL-TARGET {: to:n :}
-   to 0<> if to loc WORD-CALL exit then
+   a u NDICT:CALL-BINDING {: to:n kind:n :}
+   to 0<> if a u to kind loc WORD-CALL exit then
    a u tok-imm? 0<> if a u IMM-TOKEN exit then
    a u NUMBER ;
 

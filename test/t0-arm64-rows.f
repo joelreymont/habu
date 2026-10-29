@@ -1,8 +1,10 @@
 \ t0-arm64-rows.f - the rows the T0 arm64 emitter (src/habu/t0-arm64.f) files
 \ for an install, through the seam src/habu/t0-emit.f: the does> patch slot of
 \ a unit SLOT-CLOSE ends, a data address row's origin, the callback stub an
-\ armed NCBSTUB appends, and the refusals that keep the patch slot last and an
-\ operation x86-64 does not provide from running. Bodies are compiled by
+\ armed NCBSTUB appends, a fixed word folded into the body (a constant into
+\ `cmp #imm`, a variable into its data address row) while a does> child stays
+\ a call, and the refusals that keep the patch slot last and an operation
+\ x86-64 does not provide from running. Bodies are compiled by
 \ T0:COMPILE-TEXT or driven through the seam, sealed into NEMIT, and checked by
 \ decoding the words NEMIT answers against the assembler's encodings.
 
@@ -114,6 +116,57 @@ private
    0 NEMIT:ADDR-SITE-ORIGIN@ HOOK-IX T=
    NEMIT:CLEAR ;
 
+\ The fixed words a body names: a constant, a variable and a does> child,
+\ whose clause replaced the address its created body pushed.
+public
+10 constant TEN
+variable FOLDV
+s" FOLDV" XREF-FIND-CURRENT-INDEX XREF-REQUIRE-INDEX constant FOLDV-IX
+: KEEP ( n -- ) create , does> ( -- n ) @ ;
+5 KEEP KID
+private
+
+\ Whether instruction word w is `cmp xN, #imm` for some register N the
+\ assembler encodes: x18 is Darwin's and it refuses that one.
+: CMPI-WORD? ( n n -- bool ) {: w:n imm:n :}
+   false 31 0 ?do i 18 <> if i imm A64ASM:ENC-CMPI w = or then loop ;
+
+\ Whether the sealed emission holds `cmp xN, #imm`.
+: CMPI? ( n -- bool ) {: imm:n :}
+   false NEMIT:SIZE 0 ?do i WORD@ imm CMPI-WORD? or 4 +loop ;
+
+: FIXED-CASE ( -- )
+   ARCH-A64
+   s" FC ( n -- bool ) T0-ROWS-TEST:TEN = " T0:COMPILE-TEXT
+   T0-EMIT:SEAL-UNPLACED
+   s" a constant folds: its body calls nothing" T-LABEL
+   T0-EMIT:CALL-ROWS 0 T=
+   s" and compares against it with cmp #imm" T-LABEL
+   10 CMPI? TTRUE
+   NEMIT:CLEAR
+   s" FV ( -- n ) T0-ROWS-TEST:FOLDV @ " T0:COMPILE-TEXT
+   T0-EMIT:SEAL-UNPLACED
+   s" a variable folds: its body calls nothing" T-LABEL
+   T0-EMIT:CALL-ROWS 0 T=
+   s" it files one data address row" T-LABEL
+   NEMIT:ADDR-SITES 1 T=
+   0 NEMIT:ADDR-SITE-KIND@ NEMIT:ADDR-DATA T=
+   0 T0-EMIT:ADDR-ROW {: at:n kind:n to:n :}
+   s" naming the variable's cell" T-LABEL
+   FOLDV NULL-PTR - to T=
+   s" with the variable's record ordinal" T-LABEL
+   0 NEMIT:ADDR-SITE-ORIGIN@ FOLDV-IX T=
+   NEMIT:CLEAR
+   s" FK ( -- n ) T0-ROWS-TEST:KID " T0:COMPILE-TEXT
+   T0-EMIT:SEAL-UNPLACED
+   s" a does> child is called, not folded" T-LABEL
+   T0-EMIT:CALL-ROWS 1 T=
+   NEMIT:ADDR-SITES 0 T=
+   0 T0-EMIT:CALL-ROW {: cat:n ckind:n cto:n :}
+   s" the call reaches the child" T-LABEL
+   cto s" T0-ROWS-TEST:KID" NDICT:CALL-TARGET T=
+   NEMIT:CLEAR ;
+
 \ A fixed VAL body sealed placed while NCBSTUB is armed.
 : STUB-CASE ( -- )
    ARCH-A64
@@ -178,6 +231,7 @@ public
    ORIGIN-CASE
    IS-ORIGIN-CASE
    STUB-CASE
+   FIXED-CASE
    SLOT-REFUSED-CASE
    X86-UNFILLED-CASE
    T-REPORT ;
