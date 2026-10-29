@@ -2,49 +2,50 @@
 \ T0:COMPILE in the cell the tier 1 `:` dispatches through, so every definition
 \ this file loads after `1 set-tier`, the test words included, is compiled by
 \ T0 through the normal Habu loop. The fixtures cover `:` and TRUSTED: bodies,
-\ quotations, strings, `char` and `[char]` of an ASCII and a UTF-8 character,
-\ locals, loops, case and recursion, and each is run for its result. The does>
-\ definers cover a clause, an empty clause whose child keeps its address kind,
-\ quotations nested in the parent and one in the clause, clause locals and a
-\ definer chained on another, each through a child it made. `is` binds a defer
-\ from a body, which a caller then reaches, re-points it with the keyword in
-\ capitals, binds it from inside a quotation, and binds it before a MATCH,
-\ whose facts sit past its operand; a nested quotation that binds a defer
-\ spelled as a parsing word loads, its skip stepping over the operand. The
-\ MATCH rows dispatch over an enum and a sum type whose `construct`ed values
-\ carry pads, with a cell under each value proving its width; a MATCH nested in
-\ an arm, one in a case arm, one in a does> clause, and one over option<pt>,
-\ whose `none` comes from a call that pushes the pad the instantiation adds; a
-\ `construct` at wrap<pt> pushes that pad itself; a MATCH over a 65-cell
-\ payload; one in a quotation after character literals and a string, whose
-\ facts sit at the ordinals those tokens advance; and a hostile tag, in a
-\ child, reaches T0's trap and exits ENGINE-ERROR:BAD-TAG. The wide rows run
-\ each stack word T0 compiles over a two-cell product with a cell under the
-\ result, a swap in a does> parent and in its clause, a 2swap and a 2over in a
-\ does> parent whose deepest operand is two cells, a three-cell product among
-\ one-cell values, and a swap of two eight-cell values, whose copies fill the
-\ virtual stack; `@` and `!` of a two-, a three- and a sixteen-cell value
-\ through typed slots, with the cells beside each store unchanged and the fetch
-\ reading cells written through a raw view, the sixteen cells spilling the
-\ virtual stack, and a store and fetch in one body. The checker refuses every
-\ other operation over a wide value, so no row reaches E-T0-BUNDLE. A fetch
-\ from a sum-type and an enum slot checks the stored tag and loads the value
-\ with the cell under it kept; a forged tag fetched in a child, from an enum
-\ slot and from a product's enum field, ends the process `hb: bad layout tag`
-\ with ENGINE-ERROR:BAD-TAG. A CALLBACK: declaration compiled by T0 is handed
-\ to libc's qsort, which sorts a row through it, and its C entry lies between
-\ its accessor's code and the next definition's: the stub T0 appended to the
-\ accessor's emission. The refusal rows evaluate definitions T0 refuses with
-\ its own codes, which tier 1 accepts or refuses otherwise: a non-neutral
-\ immediate in a TRUSTED: body (E-T0-IMMEDIATE), `is` naming a primitive in a
-\ TRUSTED: body (E-T0-DEFER; the checker refuses it in a checked body), a
-\ counted string past 255 bytes in a does> clause (E-T0-LITERAL; the checker
-\ refuses a non-neutral immediate in a clause even under TRUSTED:), after which
-\ the checker's rollback depth is back where it was and the definer's name
-\ defined cleanly compiles and its child runs, so the refusal rolled back the
-\ checker frame, and a definition while a target shadow is open (E-T0-SHADOW);
-\ a tick of an undefined word is the engine's undefined refusal, as under tier
-\ 1; a definition after them proves a refusal leaves the compiler idle.
+\ a signature whose `)` touches its last type, quotations, strings, `char` and
+\ `[char]` of an ASCII and a UTF-8 character, locals, loops, case and
+\ recursion, and each is run for its result. The does> definers cover a clause,
+\ an empty clause whose child keeps its address kind, quotations nested in the
+\ parent and one in the clause, clause locals and a definer chained on another,
+\ each through a child it made. `is` binds a defer from a body, which a caller
+\ then reaches, re-points it with the keyword in capitals, binds it from inside
+\ a quotation, and binds it before a MATCH, whose facts sit past its operand; a
+\ nested quotation that binds a defer spelled as a parsing word loads, its skip
+\ stepping over the operand. The MATCH rows dispatch over an enum and a sum
+\ type whose `construct`ed values carry pads, with a cell under each value
+\ proving its width; a MATCH nested in an arm, one in a case arm, one in a
+\ does> clause, and one over option<pt>, whose `none` comes from a call that
+\ pushes the pad the instantiation adds; a `construct` at wrap<pt> pushes that
+\ pad itself; a MATCH over a 65-cell payload; one in a quotation after
+\ character literals and a string, whose facts sit at the ordinals those tokens
+\ advance; and a hostile tag, in a child, reaches T0's trap and exits
+\ ENGINE-ERROR:BAD-TAG. The wide rows run each stack word T0 compiles over a
+\ two-cell product with a cell under the result, a swap in a does> parent and
+\ in its clause, a 2swap and a 2over in a does> parent whose deepest operand is
+\ two cells, a three-cell product among one-cell values, and a swap of two
+\ eight-cell values, whose copies fill the virtual stack; `@` and `!` of a
+\ two-, a three- and a sixteen-cell value through typed slots, with the cells
+\ beside each store unchanged and the fetch reading cells written through a raw
+\ view, the sixteen cells spilling the virtual stack, and a store and fetch in
+\ one body. The checker refuses every other operation over a wide value, so no
+\ row reaches E-T0-BUNDLE. A fetch from a sum-type and an enum slot checks the
+\ stored tag and loads the value with the cell under it kept; a forged tag
+\ fetched in a child, from an enum slot and from a product's enum field, ends
+\ the process `hb: bad layout tag` with ENGINE-ERROR:BAD-TAG. A CALLBACK:
+\ declaration compiled by T0 is handed to libc's qsort, which sorts a row
+\ through it, and its C entry lies between its accessor's code and the next
+\ definition's: the stub T0 appended to the accessor's emission. The refusal
+\ rows evaluate definitions T0 refuses with its own codes, which tier 1 accepts
+\ or refuses otherwise: a non-neutral immediate in a TRUSTED: body
+\ (E-T0-IMMEDIATE), `is` naming a primitive in a TRUSTED: body (E-T0-DEFER; the
+\ checker refuses it in a checked body), a counted string past 255 bytes in a
+\ does> clause (E-T0-LITERAL; the checker refuses a non-neutral immediate in a
+\ clause even under TRUSTED:), after which the checker's rollback depth is back
+\ where it was and the definer's name defined cleanly compiles and its child
+\ runs, so the refusal rolled back the checker frame, and a definition while a
+\ target shadow is open (E-T0-SHADOW); a tick of an undefined word is the
+\ engine's undefined refusal, as under tier 1; a definition after them proves a
+\ refusal leaves the compiler idle.
 \
 \ PROCESS BOUNDARY. T0:INSTALL replaces the dispatch for the rest of the
 \ process and nothing restores it, so this file is its suite row's only file:
@@ -82,6 +83,7 @@ TRUSTED: TWICE ( n -- n ) 2 * ;
 : CH-ONE ( -- n ) char 1 ;
 : CH-UP ( -- n ) CHAR A ;
 : CH-HI ( -- n ) [char] é ;
+: SIG-TIGHT ( n -- n) 1+ ;
 
 : SPREAD ( n n -- n )
    {: a:n b:n :}
@@ -522,6 +524,7 @@ private
    s" a counted string literal" T-LABEL  COUNTED-LEN 4 T=
    s" char and [char] push their operand's first byte" T-LABEL
    CH-ONE 49 T=  CH-UP 65 T=  CH-HI 195 T=
+   s" a signature closed against its last type" T-LABEL  4 SIG-TIGHT 5 T=
    s" locals bind deepest first" T-LABEL  5 8 SPREAD 42 T=
    s" ?do loop" T-LABEL  5 SUM-BELOW 10 T=
    s" do +loop" T-LABEL  7 EVENS 4 T=

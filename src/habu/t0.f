@@ -1376,15 +1376,19 @@ TRUSTED: DOES-PATCH-ENTRY ( -- n ) ['] does-patch ;
    a u tok-imm? 0<> if a u IMM-TOKEN exit then
    a u NUMBER ;
 
+$29 constant CLOSE-PAREN
+
 \ Past the name and a signature, if one follows it. The checker reports the
-\ name as ordinal 0 and no token of the signature.
+\ name as ordinal 0 and no token of the signature. The signature ends at its
+\ first `)` byte, as the engine's `(` reads it: `( n -- n)` ends after `n`.
 : SKIP-HEAD ( -- )
    TOKEN 2drop
    POS @ {: after:n :}
    TOKEN s" (" STR= 0= if after POS ! 1 ORD ! exit then
    begin
-      TOKEN dup 0= if drop drop true else s" )" STR= then
-   until
+      POS @ TXT-LEN @ < if TXT$ POS @ + c@ CLOSE-PAREN <> else false then
+   while POS @ 1+ POS ! repeat
+   POS @ 1+ POS !
    1 ORD ! ;
 
 \ ---- one unit --------------------------------------------------------------------
