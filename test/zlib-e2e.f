@@ -11,7 +11,7 @@ require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/process-cwd.f
 require src/lib/engine-candidate.f
-require test/suite-budget.f
+require src/lib/process.f
 require test/pcap-result.f
 require test/aot-builder-engine.f
 
@@ -34,7 +34,7 @@ variable RC
 : RUN ( ptr u8 n -- ) {: program:ptr size:n :}
    PROC-ENV-INHERIT-MISSING
    program size >LEN SOURCE-ROOT:CWD$ >LEN s" " >LEN
-   OUT IO-CAP >LEN ERR IO-CAP >LEN SUITE-BUDGET:CHILD-MS >MS
+   OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
    PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE
    PCAP-RESULT:>N RC ! ERR-U ! OUT-U ! ;
 

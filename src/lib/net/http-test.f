@@ -2269,8 +2269,7 @@ $3E8 constant DRAIN-MS            \ how long a stop waits for the ring to drain
 \ the stop after the last join is retried to a bound rather than asserted on the
 \ first try (src/lib/aio-test.f STOP-LOOP). A ring still busy past the bound is
 \ a deadline, not a failure: the wait names itself on stdout and throws
-\ E-PROC-TIMEOUT, which the pool reads as TIMEOUT-UNDER-LOAD (docs/gate.md
-\ "Reading a red run"). Any other code from AIO:STOP is a fault and is rethrown
+\ E-PROC-TIMEOUT. Any other code from AIO:STOP is a fault and is rethrown
 \ at once.
 : AIO-STOP ( -- )
    mono-ns DRAIN-MS NS-PER-MS * + {: deadline:n :}

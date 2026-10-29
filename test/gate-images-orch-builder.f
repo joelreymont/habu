@@ -3,8 +3,8 @@
 \ after consumer, which waits for this bundle, so later runs only when a row
 \ waiting on images steps aside. A serial gate, or one that holds the registry
 \ on consumer, never releases it, so its bounded wait expires: the builder
-\ names the wait and exits PROC-TIMEOUT-RC, which the gate reports as a
-\ timeout rather than hanging the focused test or counting a failure.
+\ names the wait and exits PROC-TIMEOUT-RC, and the bundle's build row goes
+\ red.
 require src/lib/errors.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f

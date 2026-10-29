@@ -10,11 +10,10 @@ using TEST
 \ later row not yet started (src/lib/test/suite.f PENDING). Long rows lead so
 \ they do not start late and alone set the gate's tail.
 
-\ The CPU budget bounds runaway work; it is not a target for growing a row.
 \ Measure wall and user+system time with `/usr/bin/time bin/hb --load <file>`.
 \ Remove repeated work and share setup before splitting a slow row. A split
 \ must justify its isolation or reduce measured suite time, including any
-\ duplicated builds or process setup (test/suite-budget.f keeps the limits).
+\ duplicated builds or process setup.
 
 \ These long rows lead so they keep the pool busy while the compiler bundle
 \ builds. check-cli-boundary, lsp-boundary, hb-build-aot-image,
@@ -283,7 +282,7 @@ SUITE native-file-stripped-path
    test/native-file-stripped-path-e2e.f
 ;SUITE
 
-\ Each FILE pair builds twice; separate rows keep the native gate CPU budget.
+\ Each FILE pair builds twice.
 SUITE native-file-forms-zero
    test/native-file-forms-zero.f
 ;SUITE
@@ -1175,8 +1174,7 @@ SUITE ffi-callback-growth
 \ src/lib/pg-rows-test.f against, and stops however they end; then the same
 \ harness killed by a pool, which must leave no server process and no socket
 \ directory. initdb and postgres on PATH are a gate requirement
-\ (docs/bootstrap.md "Requirements"). The harness's step deadlines sum to 300 s,
-\ inside the row's hang guard (test/suite-budget.f ROW-MS).
+\ (docs/bootstrap.md "Requirements").
 SUITE pg
    test/db/pg-cluster.f
    test/db/pg-kill-test.f
@@ -2149,8 +2147,7 @@ SUITE gate-pool-orphan
    test/gate-pool-orphan-test.f
 ;SUITE
 
-\ A signalled gate root, and a row past its deadline, leave no process and no
-\ scratch behind.
+\ A signalled gate root leaves no process and no scratch behind.
 SUITE gate-signal
    test/gate-signal-test.f
 ;SUITE

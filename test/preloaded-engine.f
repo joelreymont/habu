@@ -123,8 +123,7 @@ public
 \ Run a file on LINKER$ as `--load <file>`, with this process's stdout and
 \ stderr and an empty stdin, and die with the child's status when it fails. A
 \ child whose deadline expired exits PROC-TIMEOUT-RC (test/gate-common-lib.f
-\ GE-CHILD-RUN), which is named and thrown again, so the gate pool labels the
-\ row TIMEOUT-UNDER-LOAD.
+\ GE-CHILD-RUN), which is named and thrown again.
 : LINKER-LOAD ( ptr u8 n -- ) {: a:ptr u:n :}
    LINKER$ {: eng:ptr engu:n :}
    PROC-ARGV-ENV-RESET

@@ -14,7 +14,6 @@ require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/process-fork.f
-require src/lib/time-cpu.f                   \ a worker runs a measured amount of CPU time
 require src/lib/test/runner.f
 require src/lib/engine-candidate.f
 require test/gate-pool.f
@@ -31,7 +30,6 @@ private
 
 $20000 constant GPT-CAP
 $2710 constant GPT-TIMEOUT-MS
-250 constant GPT-HANG-TIMEOUT-MS
 $100 constant GPT-BIG-CHUNK
 400 constant GPT-BIG-N
 GPT-BIG-CHUNK GPT-BIG-N * constant GPT-BIG-BYTES
@@ -90,64 +88,26 @@ variable GPT-ROOT-SAVE-U
    s" gate-pool wrap worker" type cr
    256 throw ;
 
-\ Sentinel the hang worker writes as its final bytes just before spinning, so
-\ the timeout battery can prove GT-POOL-TIMEOUT's final poll+drain captured the
-\ last output the worker produced before it was killed.
-: GPT-HANG-SENTINEL$ ( -- ptr u8 n )
-   s" hang-sentinel-xyzzy" ;
-
-: GPT-HANG-WORKER ( -- )
-   s" gate-pool hang worker" type cr
-   GPT-HANG-SENTINEL$ type
-   begin 0 0= 0= until ;
-
 : GPT-BATTERY-TRUNC ( -- )
-   s" fork failing worker" GPT-TIMEOUT-MS [: GPT-FAIL-WORKER ;] GT-POOL-START-FORK
+   s" fork failing worker" [: GPT-FAIL-WORKER ;] GT-POOL-START-FORK
    GT-POOL-DRAIN-SOFT ;
 
 : GPT-BATTERY-SOFT ( -- )
-   s" soft fail one" GPT-TIMEOUT-MS [: GPT-SOFT-ONE ;] GT-POOL-START-FORK
-   s" soft fail two" GPT-TIMEOUT-MS [: GPT-SOFT-TWO ;] GT-POOL-START-FORK
-   s" soft pass" GPT-TIMEOUT-MS [: GPT-WORKER ;] GT-POOL-START-FORK
+   s" soft fail one" [: GPT-SOFT-ONE ;] GT-POOL-START-FORK
+   s" soft fail two" [: GPT-SOFT-TWO ;] GT-POOL-START-FORK
+   s" soft pass" [: GPT-WORKER ;] GT-POOL-START-FORK
    GT-POOL-DRAIN-SOFT ;
 
 : GPT-BATTERY-WRAP ( -- )
-   s" wrap throw worker" GPT-TIMEOUT-MS [: GPT-WRAP-WORKER ;] GT-POOL-START-FORK
-   GT-POOL-DRAIN-SOFT ;
-
-: GPT-SPIN-WORKER ( -- )
-   begin 0 0= 0= until ;
-
-\ A row held to 1 ms of CPU is ended at the pool's first reading of it, and its
-\ red line has to name its budget, never a load timeout.
-: GPT-BATTERY-TIMEOUT ( -- )
-   s" hang worker" GPT-HANG-TIMEOUT-MS [: GPT-HANG-WORKER ;] GT-POOL-START-FORK
-   s" quick worker" GPT-TIMEOUT-MS [: GPT-WORKER ;] GT-POOL-START-FORK
-   s" budget worker" GPT-TIMEOUT-MS [: GPT-SPIN-WORKER ;] GT-POOL-START-FORK
-   1 GT-POOL-SEQ @ GT-POOL-CPU-BUDGET!
-   GT-POOL-DRAIN-SOFT ;
-
-\ A suite's own inner deadline: src/lib/process throws E-PROC-TIMEOUT when a child
-\ it spawned outlives the deadline it was given, and an uncaught one leaves the
-\ suite through the engine's top-level reporter. The pool has to name that as
-\ the load outcome it is, never as an anonymous exit.
-: GPT-INNER-TIMEOUT-SRC$ ( -- ptr u8 n )
-   S\" require src/lib/errors.f\nE-PROC-TIMEOUT throw\n" ;
-
-\ The same shape with any other throw code stays a plain exit.
-: GPT-OTHER-THROW-SRC$ ( -- ptr u8 n )
-   S\" require src/lib/errors.f\nE-PROC-SPAWN throw\n" ;
-
-: GPT-BATTERY-INNER-TIMEOUT ( -- )
-   GPT-HB$ s" inner deadline worker" GPT-INNER-TIMEOUT-SRC$ GPT-TIMEOUT-MS GT-POOL-START-STDIN
+   s" wrap throw worker" [: GPT-WRAP-WORKER ;] GT-POOL-START-FORK
    GT-POOL-DRAIN-SOFT ;
 
 : GPT-BATTERY-OVERFLOW ( -- )
    GPT-OVERFLOW-N 0 ?do
-      s" soft overflow" GPT-TIMEOUT-MS [: GPT-SOFT-ONE ;] GT-POOL-START-FORK
+      s" soft overflow" [: GPT-SOFT-ONE ;] GT-POOL-START-FORK
    loop ;
 
-\ One child process runs every failure class; reds accumulate to 19 and the
+\ One child process runs every failure class; reds accumulate to 16 and the
 \ final fail-closed drain lists every one of them.
 : GPT-BATTERY-CASE ( -- )
    s" gate-pool-test-battery" GT-START
@@ -156,8 +116,6 @@ variable GPT-ROOT-SAVE-U
    GPT-BATTERY-TRUNC
    GPT-BATTERY-SOFT
    GPT-BATTERY-WRAP
-   GPT-BATTERY-TIMEOUT
-   GPT-BATTERY-INNER-TIMEOUT
    GPT-BATTERY-OVERFLOW
    GT-POOL-DRAIN ;
 
@@ -167,7 +125,7 @@ variable GPT-ROOT-SAVE-U
 
 \ The child inherits this process's environment, so the root its GT-START
 \ makes lies under the TMPDIR this run was given.
-: GPT-MODE-CAPTURE ( ptr u8 n -- n n n ) {: mode:ptr modeu:n :}
+: GPT-MODE-CAPTURE-MS ( ptr u8 n n -- n n n ) {: mode:ptr modeu:n ms:n :}
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    s" test/gate-pool-test.f" >LEN PROC-ARGV+
@@ -175,8 +133,11 @@ variable GPT-ROOT-SAVE-U
    mode modeu >LEN PROC-ARGV+
    PROC-ENV-RESET PROC-ENV-INHERIT-MISSING
    GPT-HB$ >LEN GPT-OUT GPT-CAP >LEN GPT-ERR GPT-CAP >LEN
-   GPT-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE
+   ms >MS RUN-ARGV-ENV-CAPTURE
    PCAP-RESULT:>N ;
+
+: GPT-MODE-CAPTURE ( ptr u8 n -- n n n )
+   GPT-TIMEOUT-MS GPT-MODE-CAPTURE-MS ;
 
 : GPT-BATTERY-CAPTURE ( -- n n n )
    s" fail-battery-case" GPT-MODE-CAPTURE ;
@@ -226,34 +187,8 @@ private
    GPT-OUT outu s" fork worker throw rc 256" CONTAINS? TTRUE
    GPT-OUT outu s" RED: wrap throw worker" CONTAINS? TTRUE ;
 
-: GPT-EXPECT-TIMEOUT-OUT ( n -- ) {: outu:n :}
-   GPT-OUT outu s" gate-pool hang worker" CONTAINS? TTRUE
-   GPT-OUT outu GPT-HANG-SENTINEL$ CONTAINS? TTRUE
-   GPT-OUT outu s" outcome: TIMEOUT-UNDER-LOAD code: 0" CONTAINS? TTRUE
-   GPT-OUT outu s" RED: hang worker kind=TIMEOUT-UNDER-LOAD code=0" CONTAINS? TTRUE
-   GPT-OUT outu s" sat=" CONTAINS? TTRUE
-   GPT-OUT outu s" waits=" CONTAINS? TTRUE
-   GPT-OUT outu s" ran=" CONTAINS? TTRUE
-   GPT-OUT outu s" PASS: quick worker" CONTAINS? TTRUE ;
-
-: GPT-EXPECT-BUDGET-OUT ( n -- ) {: outu:n :}
-   GPT-OUT outu s" outcome: CPU-BUDGET code: 0" CONTAINS? TTRUE
-   GPT-OUT outu s" RED: budget worker kind=CPU-BUDGET code=0" CONTAINS? TTRUE
-   GPT-OUT outu s" /1ms" CONTAINS? TTRUE ;
-
-\ The row the pool's own reaper never touched: the child reported its own
-\ expired deadline and the pool read that report, so the report reads like the
-\ row a pool-side kill produces and never kind=exit. The count keeps it from
-\ passing on the hang worker's row alone; GPT-INNER-TIMEOUT-CASE holds the
-\ saturation fields the suffix is rendered from.
-: GPT-EXPECT-INNER-TIMEOUT-OUT ( n -- ) {: outu:n :}
-   GPT-OUT outu s" RED: inner deadline worker kind=TIMEOUT-UNDER-LOAD code=0" CONTAINS? TTRUE
-   GPT-OUT outu s" RED: inner deadline worker kind=exit" CONTAINS? TFALSE
-   GPT-OUT outu s" kind=TIMEOUT-UNDER-LOAD" GPT-COUNT$ 2 T=
-   GPT-OUT outu s" outcome: TIMEOUT-UNDER-LOAD code: 0" CONTAINS? TTRUE ;
-
 : GPT-EXPECT-OVERFLOW-OUT ( n -- ) {: outu:n :}
-   GPT-OUT outu s" red tests: 19" CONTAINS? TTRUE
+   GPT-OUT outu s" red tests: 16" CONTAINS? TTRUE
    GPT-OUT outu s" more failed tests" CONTAINS? TFALSE
    GPT-OUT outu s" RED: soft overflow" GPT-COUNT$ 12 T= ;
 
@@ -266,9 +201,6 @@ private
    outu GPT-EXPECT-TRUNC-OUT
    outu GPT-EXPECT-SOFT-OUT
    outu GPT-EXPECT-WRAP-OUT
-   outu GPT-EXPECT-TIMEOUT-OUT
-   outu GPT-EXPECT-BUDGET-OUT
-   outu GPT-EXPECT-INNER-TIMEOUT-OUT
    outu GPT-EXPECT-OVERFLOW-OUT
    erru GPT-EXPECT-BATTERY-ERR ;
 
@@ -293,7 +225,7 @@ private
    GPT-BIG-ALLOC
    1 GT-POOL-SLOTS!
    GT-POOL-RESET
-   s" fork big output" GPT-TIMEOUT-MS [: GPT-BIG-WORKER ;] GT-POOL-START-FORK
+   s" fork big output" [: GPT-BIG-WORKER ;] GT-POOL-START-FORK
    GT-POOL-DRAIN
    GPT-BIG-EXPECT ;
 
@@ -307,7 +239,7 @@ private
    GPT-ROOT-SAVE GPT-ROOT-SAVE-U @ GT-COPY-ROOT! ;
 
 : GPT-INFRA-START ( -- )
-   s" infra fork" GPT-TIMEOUT-MS [: GPT-WORKER ;] GT-POOL-START-FORK ;
+   s" infra fork" [: GPT-WORKER ;] GT-POOL-START-FORK ;
 
 : GPT-INFRA-CASE ( -- )
    GPT-ROOT-SAVE!
@@ -321,16 +253,16 @@ private
    GPT-ROOT-RESTORE ;
 
 \ Group-kill regression: a fork worker forks a grandchild that would write a
-\ sentinel after a delay, then hangs. The pool times the worker out and
-\ GT-POOL-KILL-SLOT signals the whole process group, so the grandchild dies
-\ before its delay elapses and the sentinel never appears.
+\ sentinel after a delay, then exits. The grandchild still holds the row's
+\ output pipes, so at the worker's exit the pool kills its tree, the zombie
+\ leader's group with it, and the grandchild dies before its delay elapses
+\ and the sentinel never appears.
 \ The case waits for that death itself, not for a fixed settle: the worker, its
 \ reaper and the grandchild all inherit the write end of a pipe the case opens
 \ before the fork and closes in itself, so the read end reports EOF once the
 \ last of them is gone. A grandchild the kill missed holds it open until it has
 \ written the sentinel, DELAY after it started; one that never goes fails the
 \ GONE deadline.
-250 constant GPT-GK-TIMEOUT-MS
 1500 constant GPT-GK-DELAY-MS
 3000 constant GPT-GK-GONE-MS       \ past DELAY, so a grandchild the kill missed has written by then
 
@@ -357,8 +289,7 @@ variable GPT-GK-SENTINEL-U
 : GPT-GK-CHILD ( -- )
    PROC-FORK:CHECKED {: pid:pid :}
    pid PID>N 0= if GPT-GK-GRANDCHILD then
-   s" gate-pool group-kill child" type cr
-   begin 0 0= 0= until ;
+   s" gate-pool group-kill child" type cr ;
 
 \ True once every holder of the pipe's write end has exited.
 : GPT-GK-GONE? ( fd -- bool ) {: rd:fd :}
@@ -375,9 +306,11 @@ variable GPT-GK-SENTINEL-U
    GT-POOL-RESET
    GT-POOL-RED-RESET
    PIPE-PAIR {: rd:fd wr:fd :}
-   s" group-kill worker" GPT-GK-TIMEOUT-MS [: GPT-GK-CHILD ;] GT-POOL-START-FORK
+   s" group-kill worker" [: GPT-GK-CHILD ;] GT-POOL-START-FORK
    wr FD>N close
    GT-POOL-DRAIN-SOFT
+   s" group-kill: the worker's own exit is its outcome" T-LABEL
+   GT-POOL-RED# 0 T=
    s" group-kill: the worker and everything it started are gone" T-LABEL
    rd GPT-GK-GONE? TTRUE
    rd FD>N close
@@ -385,13 +318,64 @@ variable GPT-GK-SENTINEL-U
    GPT-GK-SENTINEL$ FS:EXISTS? TFALSE
    GT-CLEANUP ;
 
+\ A FALLING CPU READING PRINTS A NEGATIVE DELTA. A row's tree loses CPU time
+\ when a member leaves it: the worker forks A, A forks B, B spins, then A exits
+\ between the row's first WAIT line and its second, and B, reparented to init,
+\ leaves the tree with its time; B ends before the second WAIT line, so nothing
+\ outlives the case. The second WAIT line prints the fall signed and the pool
+\ goes on. The row outlives two heartbeats, and the WAIT lines and an uncaught
+\ throw belong to the gate process, so it runs in a child of its own.
+500 constant GPT-CF-SPIN-MS
+GT-HEARTBEAT-MS 3 * 2 / constant GPT-CF-LEAVE-MS    \ between the WAIT lines
+GPT-CF-LEAVE-MS 1000 + constant GPT-CF-B-MS         \ B's sleep, past A's exit
+GT-HEARTBEAT-MS 5 * 2 / constant GPT-CF-END-MS       \ between the second WAIT line and a third
+GPT-CF-END-MS GPT-TIMEOUT-MS + constant GPT-CF-TIMEOUT-MS
+
+: GPT-CF-SPIN ( -- )
+   mono-ns GPT-CF-SPIN-MS PROC-NS-PER-MS * + {: deadline:n :}
+   begin mono-ns deadline < while repeat ;
+
+: GPT-CF-B ( -- )
+   GPT-CF-SPIN
+   GPT-CF-B-MS GPT-SLEEP-MS
+   s" " 0 die ;
+
+: GPT-CF-A ( -- )
+   PROC-FORK:CHECKED {: pid:pid :}
+   pid PID>N 0= if GPT-CF-B then
+   GPT-CF-LEAVE-MS GPT-SLEEP-MS
+   s" " 0 die ;
+
+: GPT-CF-WORKER ( -- )
+   PROC-FORK:CHECKED {: pid:pid :}
+   pid PID>N 0= if GPT-CF-A then
+   GPT-CF-END-MS GPT-SLEEP-MS ;
+
+: GPT-CF-CASE ( -- )
+   s" gate-pool-cpu-fall" GT-START
+   1 GT-POOL-SLOTS!
+   GT-POOL-RESET
+   s" cpu fall worker" [: GPT-CF-WORKER ;] GT-POOL-START-FORK
+   GT-POOL-DRAIN-SOFT
+   s" cpu fall: drained" type cr
+   GT-CLEANUP ;
+
+: GPT-CF-REPORT ( -- )
+   s" cpu-fall-case" GPT-CF-TIMEOUT-MS GPT-MODE-CAPTURE-MS nip
+   {: outu:n code:n :}
+   s" cpu fall: the second WAIT line prints the fall signed" T-LABEL
+   GPT-OUT outu s"  ms, -" CONTAINS? TTRUE
+   s" cpu fall: the pool drained the row and the child exited clean" T-LABEL
+   GPT-OUT outu s" cpu fall: drained" CONTAINS? TTRUE
+   code 0 T= ;
+
 \ Regression for the parent-death reaper's wait(-1) conflict: the reaper armed
 \ by GT-POOL-FORK-CHILD must be reparented away from the worker (double-fork),
 \ so a worker body that calls wait(-1) expecting no children of its own still
 \ gets ECHILD instead of blocking forever on the reaper. This is exactly the
 \ case that stalled stdlib/tail-process (src/lib/process-test.f TEST-WAIT-BAD) when
 \ the reaper was a direct child. If the reaper regresses to a worker child, the
-\ worker blocks, the pool times it out, and GT-POOL-DRAIN dies here.
+\ worker blocks and its WAIT lines show a CPU delta of zero.
 : GPT-WAIT-ANY ( -- )
    -1 >PID PROC-WAIT-RC MATCH result ok OF drop ENDOF err OF drop ENDOF ;MATCH ;
 
@@ -405,16 +389,15 @@ variable GPT-GK-SENTINEL-U
    1 GT-POOL-SLOTS!
    GT-POOL-RESET
    GT-POOL-RED-RESET
-   s" wait-neg worker" GPT-TIMEOUT-MS [: GPT-WAIT-NEG-WORKER ;] GT-POOL-START-FORK
+   s" wait-neg worker" [: GPT-WAIT-NEG-WORKER ;] GT-POOL-START-FORK
    GT-POOL-DRAIN
    GT-CLEANUP ;
 
 \ A child that dies by a SIGKILL the pool did NOT send: it signals its own
 \ process group (an OOM/AMFI kill is the real-world analog). It reaps as
-\ signaled(9) - rc 137 when flattened - but the pool's timed-out flag stays
-\ false, so it is a plain FAIL (kind=signal), never TIMEOUT-UNDER-LOAD. waitpid's
-\ WIFSIGNALED vs WIFEXITED (PROC-STATUS>OUTCOME) also keeps a self-exit(137)
-\ distinct: that would read exited(137)/kind=exit, likewise not a timeout.
+\ signaled(9) - rc 137 when flattened - and is a plain FAIL (kind=signal).
+\ waitpid's WIFSIGNALED vs WIFEXITED (PROC-STATUS>OUTCOME) keeps a
+\ self-exit(137) distinct: that would read exited(137)/kind=exit.
 : GPT-EXTERNAL-KILL-WORKER ( -- )
    s" gate-pool external-kill worker" type cr
    0 >PID SIGKILL PROC-KILL-RAW drop ;
@@ -424,11 +407,10 @@ variable GPT-GK-SENTINEL-U
    1 GT-POOL-SLOTS!
    GT-POOL-RESET
    GT-POOL-RED-RESET
-   s" external-kill worker" GPT-TIMEOUT-MS [: GPT-EXTERNAL-KILL-WORKER ;] GT-POOL-START-FORK
+   s" external-kill worker" [: GPT-EXTERNAL-KILL-WORKER ;] GT-POOL-START-FORK
    GT-POOL-DRAIN-SOFT
-   s" external-kill: pool-unsent SIGKILL stays plain FAIL, not a timeout" T-LABEL
+   s" external-kill: pool-unsent SIGKILL is a plain signal FAIL" T-LABEL
    GT-POOL-RED# 1 T=
-   0 GT-POOL-RED-TIMED-OUT-PTR @ TFALSE
    0 GT-POOL-RED-EXITED-PTR @ TFALSE
    0 GT-POOL-RED-CODE-PTR @ SIGKILL T=
    GT-CLEANUP ;
@@ -532,7 +514,7 @@ variable GPT-FC-DONE-U
    1 GT-POOL-SLOTS!
    GT-POOL-RESET
    GT-POOL-RED-RESET
-   s" fork cleanup worker" GPT-TIMEOUT-MS [: GPT-FC-WORKER ;] GT-POOL-START-FORK
+   s" fork cleanup worker" [: GPT-FC-WORKER ;] GT-POOL-START-FORK
    GT-POOL-DRAIN
    s" fork cleanup: the child inherits an empty cleanup table" T-LABEL
    GPT-FC-DEPTH@ 0 T=
@@ -559,7 +541,7 @@ variable GPT-FC-DONE-U
    1 GT-POOL-SLOTS!
    GT-POOL-RESET
    GT-POOL-RED-RESET
-   GPT-HB$ s" stdin worker" GPT-STDIN-SRC$ GPT-TIMEOUT-MS GT-POOL-START-STDIN
+   GPT-HB$ s" stdin worker" GPT-STDIN-SRC$ GT-POOL-START-STDIN
    GT-POOL-DRAIN-SOFT
    s" stdin: a stdin-fed slot runs the child on the piped source" T-LABEL
    GT-POOL-RED# 0 T=
@@ -581,7 +563,7 @@ variable GPT-RR-REFUSALS
 : GPT-RR-START ( -- )
    PROC-ARGV-RESET
    s" 30" >LEN PROC-ARGV+
-   s" /bin/sleep" s" reaper refused" GPT-TIMEOUT-MS GT-POOL-START ;
+   s" /bin/sleep" s" reaper refused" GT-POOL-START ;
 
 : GPT-REAPER-REFUSED-CASE ( -- )
    s" gate-pool-reaper-refused" GT-START
@@ -646,11 +628,11 @@ variable GPT-RF-VIC-PID
    false ;
 
 : GPT-RF-START ( -- )
-   s" reaper-fork sibling" GPT-TIMEOUT-MS [: GPT-RF-SIBLING ;] GT-POOL-START-FORK
+   s" reaper-fork sibling" [: GPT-RF-SIBLING ;] GT-POOL-START-FORK
    0 >IDX GT-POOL-PID@ PID>N GPT-RF-SIB-PID !
    0 GPT-RF-GEN !
    [: GPT-RF-FORK ;] is PROC-FORK:FORK-CALL
-   s" reaper-fork refused" GPT-TIMEOUT-MS [: GPT-RF-VICTIM ;] GT-POOL-START-FORK
+   s" reaper-fork refused" [: GPT-RF-VICTIM ;] GT-POOL-START-FORK
    1 >IDX GT-POOL-PID@ PID>N GPT-RF-VIC-PID ! ;
 
 : GPT-REAPER-FORK-CASE ( -- )
@@ -690,16 +672,13 @@ variable GPT-RF-VIC-PID
 \ before this the tree it made outlived every run.
 \
 \ Each child prints the path it made; the slot's capture is how the parent
-\ learns it, exactly as the timeout battery reads the hang sentinel. The hung
-\ child's deadline is the whole of its run, so it is only as long as a loaded
-\ host needs to boot the child and print: some 70 ms alone.
-1000 constant GPT-CT-HANG-MS
+\ learns it. The killed child ends itself with SIGKILL to its own group.
 
 : GPT-CT-GREEN-SRC$ ( -- ptr u8 n )
    S\" require src/lib/fs-mutate.f\n: W ( -- ) s\" gpt-child\" FS:MKTEMP-DIR type cr ;\nW\n" ;
 
-: GPT-CT-HANG-SRC$ ( -- ptr u8 n )
-   S\" require src/lib/fs-mutate.f\n: W ( -- ) s\" gpt-child\" FS:MKTEMP-DIR type cr begin 0 0= 0= until ;\nW\n" ;
+: GPT-CT-KILL-SRC$ ( -- ptr u8 n )
+   S\" require src/lib/fs-mutate.f\nrequire src/lib/process.f\n: W ( -- ) s\" gpt-child\" FS:MKTEMP-DIR type cr 0 >PID SIGKILL PROC-KILL-RAW drop ;\nW\n" ;
 
 : GPT-CT-PRINTED$ ( -- ptr u8 n )        \ slot 0's captured line, without its newline
    0 >IDX GT-POOL-OUT-BUF 0 >IDX GT-POOL-OUT-U-PTR @ {: a:ptr u:n :}
@@ -714,13 +693,13 @@ variable GPT-RF-VIC-PID
 \ caller set to a value of its own is the opposite case and stays; that one is
 \ checked where it is needed, test/nf-path-test.f (a 97-byte root reaches the
 \ build unchanged).
-: GPT-CT-RUN ( ptr u8 n ptr u8 n n -- ) {: src:ptr srcu:n label:ptr labelu:n ms:n :}
+: GPT-CT-RUN ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n label:ptr labelu:n :}
    1 GT-POOL-SLOTS!
    GT-POOL-RESET
    GT-POOL-RED-RESET
    PROC-ENV-RESET
    PROC-ENV-INHERIT-MISSING
-   GPT-HB$ label labelu src srcu ms GT-POOL-START-STDIN
+   GPT-HB$ label labelu src srcu GT-POOL-START-STDIN
    GT-POOL-DRAIN-SOFT ;
 
 : GPT-CT-EXPECT ( -- )
@@ -735,11 +714,12 @@ variable GPT-RF-VIC-PID
 
 : GPT-CHILD-TMP-CASE ( -- )
    s" gate-pool-child-tmp" GT-START
-   GPT-CT-HANG-SRC$ s" child tmp kill worker" GPT-CT-HANG-MS GPT-CT-RUN
-   s" child tmp: the hung child died on its slot deadline" T-LABEL
-   0 >IDX GT-POOL-TIMED-OUT-PTR @ TTRUE
+   GPT-CT-KILL-SRC$ s" child tmp kill worker" GPT-CT-RUN
+   s" child tmp: the killed child died of SIGKILL" T-LABEL
+   0 >IDX GT-POOL-EXITED-PTR @ TFALSE
+   0 >IDX GT-POOL-CODE-PTR @ SIGKILL T=
    GPT-CT-EXPECT
-   GPT-CT-GREEN-SRC$ s" child tmp green worker" GPT-TIMEOUT-MS GPT-CT-RUN
+   GPT-CT-GREEN-SRC$ s" child tmp green worker" GPT-CT-RUN
    s" child tmp: the green child exited clean" T-LABEL
    GT-POOL-RED# 0 T=
    GPT-CT-EXPECT
@@ -778,11 +758,11 @@ create GPT-DS-PATH PATH-CAP allot
    GT-POOL-RESET
    PROC-ENV-RESET
    PROC-ENV-INHERIT-MISSING
-   s" /usr/bin/true" s" locked scratch row" GPT-TIMEOUT-MS GT-POOL-START
+   s" /usr/bin/true" s" locked scratch row" GT-POOL-START
    0 >IDX GT-POOL-TMP$ GPT-DS-MAKE
    s" locked slot: " type 0 >IDX GT-POOL-TMP$ type cr
    s" locked root: " type GT-ROOT type cr
-   s" locked scratch sibling" GPT-TIMEOUT-MS [: GPT-WORKER ;] GT-POOL-START-FORK
+   s" locked scratch sibling" [: GPT-WORKER ;] GT-POOL-START-FORK
    GT-POOL-DRAIN ;
 
 \ The text after needle in the child's stdout, to the end of its line; empty
@@ -874,7 +854,7 @@ variable GPT-FR-U
    S\"    a FR-ROOT u BYTE-COPY u FR-ROOT-U ! ;\n" GPT-FR+
    S\" : FR-ROUND ( -- )\n" GPT-FR+
    S\"    GT-POOL-RESET\n" GPT-FR+
-   S\"    s\" /usr/bin/true\" s\" fallback probe\" 4000 GT-POOL-START\n" GPT-FR+
+   S\"    s\" /usr/bin/true\" s\" fallback probe\" GT-POOL-START\n" GPT-FR+
    S\"    GT-POOL-FALLBACK-ROOT$ FR-SAVE\n" GPT-FR+
    S\"    GT-POOL-DRAIN ;\n" GPT-FR+
    S\" : FR-GONE? ( -- bool )\n" GPT-FR+
@@ -897,7 +877,7 @@ variable GPT-FR-U
    GT-POOL-RED-RESET
    PROC-ENV-RESET
    PROC-ENV-INHERIT-MISSING
-   GPT-HB$ s" fallback root worker" GPT-FR-SRC$ GPT-TIMEOUT-MS GT-POOL-START-STDIN
+   GPT-HB$ s" fallback root worker" GPT-FR-SRC$ GT-POOL-START-STDIN
    GT-POOL-DRAIN-SOFT
    s" fallback root: the child captured under two pools and exited clean" T-LABEL
    GT-POOL-RED# 0 T=
@@ -905,166 +885,16 @@ variable GPT-FR-U
    0 >IDX GT-POOL-OUT-BUF 0 >IDX GT-POOL-OUT-U-PTR @ s" fallback root: gone" CONTAINS? TTRUE
    GT-CLEANUP ;
 
-\ The reader takes the engine's report and nothing shaped merely like it. Its
-\ input is a captured stderr tail, so every fixture here is one.
-: GPT-UNCAUGHT-CASE ( -- )
-   s" uncaught: the engine's own report classifies" T-LABEL
-   S\" hb: uncaught throw code -2502\n" GT-POOL-UNCAUGHT-TIMEOUT? TTRUE
-   s" uncaught: a report behind the suite's output still classifies" T-LABEL
-   S\" PASS: something\nhb: uncaught throw code -2502\n" GT-POOL-UNCAUGHT-TIMEOUT? TTRUE
-   s" uncaught: another throw code does not" T-LABEL
-   S\" hb: uncaught throw code -60\n" GT-POOL-UNCAUGHT-TIMEOUT? TFALSE
-   s" uncaught: a longer code ending in those digits does not" T-LABEL
-   S\" hb: uncaught throw code -12502\n" GT-POOL-UNCAUGHT-TIMEOUT? TFALSE
-   s" uncaught: the code without its sign does not" T-LABEL
-   S\" hb: uncaught throw code 2502\n" GT-POOL-UNCAUGHT-TIMEOUT? TFALSE
-   s" uncaught: output after the report does not" T-LABEL
-   S\" hb: uncaught throw code -2502\nand then more\n" GT-POOL-UNCAUGHT-TIMEOUT? TFALSE
-   s" uncaught: a report with no digits does not" T-LABEL
-   S\" hb: uncaught throw code -\n" GT-POOL-UNCAUGHT-TIMEOUT? TFALSE
-   s" uncaught: a report with no newline does not" T-LABEL
-   s" hb: uncaught throw code -2502" GT-POOL-UNCAUGHT-TIMEOUT? TFALSE
-   s" uncaught: more digits than a code can have does not" T-LABEL
-   S\" hb: uncaught throw code -11111111111111111111\n" GT-POOL-UNCAUGHT-TIMEOUT? TFALSE
-   s" uncaught: the code on its own does not" T-LABEL
-   S\" -2502\n" GT-POOL-UNCAUGHT-TIMEOUT? TFALSE
-   s" uncaught: an empty capture does not" T-LABEL
-   GPT-OUT 0 GT-POOL-UNCAUGHT-TIMEOUT? TFALSE ;
-
-: GPT-INNER-TIMEOUT-RUN ( ptr u8 n -- ) {: src:ptr srcu:n :}
-   1 GT-POOL-SLOTS!
-   GT-POOL-RESET
-   GT-POOL-RED-RESET
-   GPT-HB$ s" inner deadline worker" src srcu GPT-TIMEOUT-MS GT-POOL-START-STDIN
-   GT-POOL-DRAIN-SOFT ;
-
-\ Slot state, which is what the report is rendered from: the saturation depth
-\ has to be snapshotted for this row the same way a pool-side kill snapshots
-\ it, and an uncaught code that is not E-PROC-TIMEOUT has to stay an exit.
-: GPT-INNER-TIMEOUT-CASE ( -- )
-   s" gate-pool-inner-timeout" GT-START
-   GPT-INNER-TIMEOUT-SRC$ GPT-INNER-TIMEOUT-RUN
-   s" inner timeout: the child's own expired deadline is no plain exit" T-LABEL
-   0 >IDX GT-POOL-EXITED-PTR @ TFALSE
-   s" inner timeout: the slot reports a load timeout" T-LABEL
-   0 >IDX GT-POOL-TIMED-OUT-PTR @ TTRUE
-   s" inner timeout: the row is red" T-LABEL
-   GT-POOL-RED# 1 T=
-   s" inner timeout: the red row is a timeout row" T-LABEL
-   0 GT-POOL-RED-TIMED-OUT-PTR @ TTRUE
-   0 GT-POOL-RED-EXITED-PTR @ TFALSE
-   s" inner timeout: the red row carries the saturation depth" T-LABEL
-   0 GT-POOL-RED-SAT-LIVE-PTR @ 1 T=
-   0 GT-POOL-RED-SAT-LIMIT-PTR @ 1 T=
-   GPT-OTHER-THROW-SRC$ GPT-INNER-TIMEOUT-RUN
-   s" inner timeout: another uncaught code stays an exit" T-LABEL
-   0 >IDX GT-POOL-EXITED-PTR @ TTRUE
-   0 >IDX GT-POOL-TIMED-OUT-PTR @ TFALSE
-   0 >IDX GT-POOL-CODE-PTR @ UNCAUGHT-RC T=
-   GT-CLEANUP ;
-
-\ A ROW BOUNDED BY ITS OWN WORK (GT-POOL-CPU-BUDGET!). A budgeted row is ended
-\ once its process tree has run its CPU budget, and its wall deadline is only a
-\ hang guard. The ways this can fail, written down before the pool counted CPU
-\ time:
-\  1. WALL TIME COUNTED AS WORK. A row that only waits - a build starved of a
-\     core on a saturated host - is ended at its budget.
-\  2. WORK UNCOUNTED. A row that spins outlives its budget and meets only its
-\     wall deadline: the reading is in the wrong unit (libproc counts mach time
-\     units, not nanoseconds) or misses the process at work.
-\  3. DESCENDANTS UNCOUNTED. A build row's work is its grandchild's, the
-\     builder's, and the row's own process never reaches the budget.
-\  4. REAPED WORK UNCOUNTED. A child's time passes to its parent when the
-\     parent waits for it, and a reading of the live processes drops it.
-\  5. THE HANG GUARD DROPPED. A row that stopped running gains no CPU time, so
-\     only its wall deadline can end it.
-\  6. A BUDGET KILL REPORTED AS LOAD (GPT-BATTERY-TIMEOUT): the row ran past
-\     its budget at any load.
-\ The red record is what the report is rendered from, so each case reads it.
-500 constant GPT-CPU-MS                  \ the budget of a row that is ended for it
-\ That row's hang guard: far past its budget, and short of the 20.8 s of CPU a
-\ reading in raw mach units (125/3 ns each here) would need to pass it.
-15000 constant GPT-CPU-GUARD-MS
-1500 constant GPT-CPU-WAIT-MS            \ wall time spent waiting, past the budget
-600 constant GPT-CPU-CHILD-MS            \ case 4: the grandchild's CPU time
-700 constant GPT-CPU-SELF-MS             \ and the worker's own: each under the budget
-1000 constant GPT-CPU-SUM-MS             \ case 4's budget, which both together pass
-5000 constant GPT-CPU-HUNG-MS            \ case 5: a budget the stopped row never reaches
-1000 constant GPT-CPU-HANG-MS            \ case 5's hang guard
-
-\ Run ms of this thread's own CPU time.
-: GPT-SPIN-MS ( n -- ) {: ms:n :}
-   TIME:THREAD-CPU-NS ms PROC-NS-PER-MS * + {: done:n :}
-   begin TIME:THREAD-CPU-NS done >= until ;
-
-: GPT-CPU-WAITER ( -- )
-   GPT-CPU-WAIT-MS GPT-SLEEP-MS ;
-
-\ The work is the grandchild's; the worker only waits.
-: GPT-CPU-GRAND-SPIN ( -- )
-   PROC-FORK:CHECKED {: pid:pid :}
-   pid PID>N 0= if GPT-SPIN-WORKER then
-   GPT-CPU-GUARD-MS GPT-SLEEP-MS ;
-
-: GPT-CPU-GRANDCHILD ( -- )
-   GPT-CPU-CHILD-MS GPT-SPIN-MS
-   s" " 0 die ;
-
-\ The worker reaps its grandchild, runs its own share and waits out a reading.
-: GPT-CPU-REAPS ( -- )
-   PROC-FORK:CHECKED {: pid:pid :}
-   pid PID>N 0= if GPT-CPU-GRANDCHILD then
-   pid PROC-WAIT-STATUS drop
-   GPT-CPU-SELF-MS GPT-SPIN-MS
-   GPT-CPU-WAIT-MS GPT-SLEEP-MS ;
-
-: GPT-CPU-STOPPED ( -- )
-   GPT-CPU-GUARD-MS GPT-SLEEP-MS ;
-
-: GPT-CPU-RUN ( ptr u8 n n n [ -- ] -- ) {: label:ptr labelu:n budget:n guard:n q :}
-   1 GT-POOL-SLOTS!
-   GT-POOL-RESET
-   GT-POOL-RED-RESET
-   label labelu guard q GT-POOL-START-FORK
-   budget GT-POOL-SEQ @ GT-POOL-CPU-BUDGET!
-   GT-POOL-DRAIN-SOFT ;
-
-: GPT-CPU-ENDED ( -- )
-   GT-POOL-RED# 1 T=
-   0 GT-POOL-RED-TIMED-OUT-PTR @ TTRUE
-   0 GT-POOL-RED-OVER? TTRUE ;
-
-: GPT-CPU-BUDGET-CASE ( -- )
-   s" gate-pool-cpu-budget" GT-START
-   s" cpu waiter" GPT-CPU-MS GPT-CPU-GUARD-MS [: GPT-CPU-WAITER ;] GPT-CPU-RUN
-   s" cpu budget: a row that waits past its budget is not ended for it" T-LABEL
-   GT-POOL-RED# 0 T=
-   s" cpu spinner" GPT-CPU-MS GPT-CPU-GUARD-MS [: GPT-SPIN-WORKER ;] GPT-CPU-RUN
-   s" cpu budget: a row that spins past its budget is ended for it" T-LABEL
-   GPT-CPU-ENDED
-   s" cpu grandchild" GPT-CPU-MS GPT-CPU-GUARD-MS [: GPT-CPU-GRAND-SPIN ;] GPT-CPU-RUN
-   s" cpu budget: a grandchild's work counts" T-LABEL
-   GPT-CPU-ENDED
-   s" cpu reaped" GPT-CPU-SUM-MS GPT-CPU-GUARD-MS [: GPT-CPU-REAPS ;] GPT-CPU-RUN
-   s" cpu budget: a reaped grandchild's work counts" T-LABEL
-   GPT-CPU-ENDED
-   s" cpu stopped" GPT-CPU-HUNG-MS GPT-CPU-HANG-MS [: GPT-CPU-STOPPED ;] GPT-CPU-RUN
-   s" cpu budget: a row that stopped running meets its hang guard" T-LABEL
-   GT-POOL-RED# 1 T=
-   0 GT-POOL-RED-TIMED-OUT-PTR @ TTRUE
-   0 GT-POOL-RED-OVER? TFALSE
-   0 GT-POOL-RED-CPU-BUDGET-PTR @ GPT-CPU-HUNG-MS T=
-   GT-CLEANUP ;
-
 : GATE-POOL-TEST-MAIN ( -- )
    s" fail-battery-case" GPT-MODE? if GPT-BATTERY-CASE exit then
    s" locked-scratch-case" GPT-MODE? if GPT-DS-CASE exit then
+   s" cpu-fall-case" GPT-MODE? if GPT-CF-CASE exit then
    T-RESET
    0 GPT-COW !
    s" gate-pool-test" GT-START
    2 GT-POOL-SLOTS!
    GT-POOL-RESET
-   s" fork worker" 1000 [: GPT-WORKER ;] GT-POOL-START-FORK
+   s" fork worker" [: GPT-WORKER ;] GT-POOL-START-FORK
    GT-POOL-DRAIN
    GPT-COW @ 0 T=
    GPT-BIG-CASE
@@ -1080,9 +910,7 @@ variable GPT-FR-U
    GPT-CHILD-TMP-CASE
    GPT-DS-REPORT
    GPT-FR-CASE
-   GPT-UNCAUGHT-CASE
-   GPT-INNER-TIMEOUT-CASE
-   GPT-CPU-BUDGET-CASE
+   GPT-CF-REPORT
    GPT-BATTERY-REPORT
    T-REPORT
    s" gate-pool-test: ok" type cr ;

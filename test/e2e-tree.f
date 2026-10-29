@@ -12,7 +12,7 @@ require src/lib/fs-mutate.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/process-cwd.f
-require test/suite-budget.f              \ CHILD-MS, every child's hang guard
+require src/lib/process.f
 require test/pcap-result.f
 
 package E2E-TREE
@@ -64,7 +64,7 @@ public
    {: engine:ptr engineu:n cwd:ptr cwdu:n :}
    PROC-ENV-INHERIT-MISSING
    engine engineu >LEN cwd cwdu >LEN
-   OUT IO-CAP >LEN ERR IO-CAP >LEN SUITE-BUDGET:CHILD-MS >MS
+   OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
    PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE CAPTURE-RESULT ;
 
 : RUN-IMAGE ( ptr u8 n ptr u8 n -- )
@@ -76,7 +76,7 @@ public
    {: image:ptr imageu:n input:ptr inputu:n :}
    PROC-ENV-INHERIT-MISSING
    image imageu AT-A >LEN ROOT$ >LEN input inputu >LEN
-   OUT IO-CAP >LEN ERR IO-CAP >LEN SUITE-BUDGET:CHILD-MS >MS
+   OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
    PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE CAPTURE-RESULT ;
 
 : SAVE-LOG ( ptr u8 n ptr u8 n -- )

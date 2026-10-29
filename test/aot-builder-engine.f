@@ -6,7 +6,7 @@
 require src/lib/engine-candidate.f
 require tools/hb-build-lib.f
 require test/image-grant.f
-require test/suite-budget.f
+require src/lib/process.f
 
 package AOT-BUILDER-ENGINE
 
@@ -15,7 +15,7 @@ public
 : PATH$ ( -- ptr u8 n )
    s" aot-builder" IMAGE-GRANT:CHECK
    ENGINE-CANDIDATE:PATH$ BUILD-FIXPOINT:BF-ENGINE!
-   SUITE-BUDGET:CHILD-MS HB-BUILD-CLI:HBB-MAKER-IMAGE$ ;
+   PROCESS:WAIT-FOREVER MS>N HB-BUILD-CLI:HBB-MAKER-IMAGE$ ;
 
 : ENSURE ( -- )
    PATH$ 2drop ;

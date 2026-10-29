@@ -224,10 +224,9 @@ variable GE-EVAL-SRC-U
    GT-OUT$ type
    s" stderr:" type cr
    GT-ERR$ type
-   \ A child whose deadline expired failed no check of its own: report the
-   \ deadline, so the pool reads a timeout instead of this check's failure. That
-   \ is this capture's deadline, or one inside the child, which then exits
-   \ PROC-TIMEOUT-RC (src/lib/process.f).
+   \ A child whose deadline expired failed no check of its own: rethrow the
+   \ deadline instead of failing this check. That is this capture's deadline, or
+   \ one inside the child, which then exits PROC-TIMEOUT-RC (src/lib/process.f).
    GT-TIMED-OUT @ if E-PROC-TIMEOUT throw then
    GT-RC@ PROC-TIMEOUT-RC = if E-PROC-TIMEOUT throw then
    s" native test failed" 1 die ;

@@ -12,7 +12,7 @@ require test/gate-common.f
 require test/gate-build-common.f
 require test/gate-build-hbb.f
 require test/gate-aot-image.f
-require test/suite-budget.f              \ CHILD-MS, the maker's hang guard
+require src/lib/process.f
 require test/aot-builder-engine.f
 
 package AOT-POSITIVE
@@ -285,15 +285,14 @@ variable SELF-SRC-U
 \ stdin. A build that reaches the end writes its image to TMPDIR/hb-aot-got,
 \ which is the name GB-OUT$ carries in these cases;
 \ the stale one goes first, so "an image exists" and "none was emitted" are both
-\ statements about THIS run. The maker runs seconds of CPU, so its deadline is
-\ the long row's child hang guard.
+\ statements about THIS run.
 : MAKER-RUN ( -- )
    GB-OUT$ FS:EXISTS? if GB-OUT$ FS:REMOVE-FILE then
    GE-HB-RESET
    GE-HB$ GE-ARGV+
    s" --" GE-ARG+ GB-SRC$ GE-ARG+ s" 0" GE-ARG+
    s" TMPDIR" >LEN GT-ROOT >LEN PROC-ENV+
-   GE-HB$ SELF-STDIN$ SUITE-BUDGET:CHILD-MS GE-RUN-STDIN ;
+   GE-HB$ SELF-STDIN$ PROCESS:WAIT-FOREVER MS>N GE-RUN-STDIN ;
 
 \ The relocation math the direct-branch capability adds: two adjacent synthetic
 \ closure MEMBERS prove MAP-IN-MEMBER treats a target at a member's end as the

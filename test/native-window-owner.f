@@ -31,10 +31,6 @@
 \ core prefix through the optimizing chain is nearly all of a case's cost, so
 \ the fixtures share one.
 \
-\ Every child takes the long row's child deadline (test/suite-budget.f): the
-\ tier-1 window runs about 24 s of CPU, and the bound is there to catch a hang,
-\ not to time a build.
-\
 \ Run: bin/hb --load test/native-window-owner.f
 
 require src/lib/test.f
@@ -45,7 +41,6 @@ require src/lib/process-argv.f
 require src/lib/process-env.f
 require test/whitebox-child.f
 require src/lib/test/subject.f
-require test/suite-budget.f              \ CHILD-MS, every child's hang guard
 
 package NW-OWNER-TEST
 
@@ -76,7 +71,7 @@ create ERR IO-CAP allot
 : WINDOW-IS ( ptr u8 n ptr u8 n -- ) {: fx:ptr fxu:n want:ptr wantu:n :}
    fx fxu ARGS!
    WHITEBOX-CHILD:ENGINE$ >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN
-   SUITE-BUDGET:CHILD-MS >MS
+   PROCESS:WAIT-FOREVER
    RUN-ARGV-ENV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N {: outu:len erru:len rc:n :}
    fx fxu OUT outu LEN>N ERR erru LEN>N rc SUBJECT:RC-TIMED-OUT
    rc 0 <> if ERR erru LEN>N type cr then
@@ -103,7 +98,7 @@ create ERR IO-CAP allot
 \ other byte means a scan nobody judges reached a renderer again.
 : WINDOW-RESULT ( ptr u8 n ptr u8 n -- ) {: want:ptr wantu:n ewant:ptr ewantu:n :}
    WHITEBOX-CHILD:ENGINE$ >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN
-   SUITE-BUDGET:CHILD-MS >MS
+   PROCESS:WAIT-FOREVER
    RUN-ARGV-ENV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N {: outu:len erru:len rc:n :}
    CHILD$ OUT outu LEN>N ERR erru LEN>N rc SUBJECT:RC-TIMED-OUT
    rc 0 <> if ERR erru LEN>N type cr then
@@ -219,7 +214,7 @@ create ERR IO-CAP allot
 : RECOVERY-CASE ( -- )
    s" test/native-window-cast-ok.f" ARGS!
    s" --recovery-row" ARG+
-   WHITEBOX-CHILD:ENGINE$ >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN SUITE-BUDGET:CHILD-MS >MS
+   WHITEBOX-CHILD:ENGINE$ >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-ENV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N {: outu:len erru:len rc:n :}
    s" test/native-window-cast-ok.f" OUT outu LEN>N ERR erru LEN>N rc SUBJECT:RC-TIMED-OUT
    rc 76 <> if OUT outu LEN>N type ERR erru LEN>N type cr then

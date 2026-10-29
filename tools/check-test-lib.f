@@ -53,8 +53,7 @@ $4000 constant BUF-CAP
 \ 2.9 times its ordinary gate time (259 s against about 90 s). The heaviest
 \ child takes 0.62 s of CPU, about 1/87 of the guard; the row takes 27.7 s user
 \ and 117 s wall alone at load average 82. An expiry is a timeout, not proof of
-\ a deadlock: CASE-HUNG names the case and rethrows E-PROC-TIMEOUT, and the
-\ gate pool labels the row TIMEOUT-UNDER-LOAD.
+\ a deadlock: CASE-HUNG names the case and rethrows E-PROC-TIMEOUT.
 13500 constant WORST-CHILD-MS
 4 constant HANG-MARGIN
 WORST-CHILD-MS HANG-MARGIN * constant CHILD-HANG-MS
@@ -5763,9 +5762,8 @@ variable AGREE-ERR-U
 \ A capture whose deadlock guard expires throws E-PROC-TIMEOUT from inside the
 \ process library, which names no case, child or budget. CASE-RUN is the one
 \ place that knows which case is running, so it names the verdict and rethrows
-\ the code: the engine's report stays the row's last stderr line and the gate
-\ pool labels the row TIMEOUT-UNDER-LOAD (test/gate-pool.f
-\ GT-POOL-INNER-TIMEOUT?). Every other throw propagates untouched.
+\ the code: the engine's report stays the row's last stderr line. Every other
+\ throw propagates untouched.
 : CASE-HUNG ( ptr u8 n -- ) {: label:ptr labelu:n :}
    s" FAIL: " type label labelu type
    s"  - child never exited; deadlock guard ms: " type CHILD-HANG-MS FMT:.INT cr

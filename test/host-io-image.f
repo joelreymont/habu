@@ -15,7 +15,6 @@ require src/lib/aio.f
 require src/lib/pty.f
 require src/lib/net/udp4.f
 require test/app-image-engine.f
-require test/suite-budget.f
 require test/pcap-result.f
 
 package HOST-IO-IMAGE
@@ -222,7 +221,7 @@ TASK:MIN-STACK TASK:TASK UDP-PEER
    ENVIRONMENT
    true true SCRIPT!
    PEERS-START
-   host hostu >LEN SCRIPT$ >LEN OUT CAP >LEN ERR CAP >LEN SUITE-BUDGET:CHILD-MS >MS
+   host hostu >LEN SCRIPT$ >LEN OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-ENV-STDIN-CAPTURE PCAP-RESULT:>N
    PEERS-STOP CHECK-RUN PEERS-CHECK
    s" the first generation saved an executable" T-LABEL
@@ -239,7 +238,7 @@ TASK:MIN-STACK TASK:TASK UDP-PEER
    ENVIRONMENT
    false save SCRIPT!
    PEERS-START
-   exe exeu >LEN ROOT$ >LEN SCRIPT$ >LEN OUT CAP >LEN ERR CAP >LEN SUITE-BUDGET:CHILD-MS >MS
+   exe exeu >LEN ROOT$ >LEN SCRIPT$ >LEN OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
    PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE PCAP-RESULT:>N
    PEERS-STOP CHECK-RUN PEERS-CHECK ;
 

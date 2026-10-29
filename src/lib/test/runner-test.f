@@ -13,6 +13,7 @@ require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f                \ a child run with a TMPDIR of its own
 require src/lib/fmt.f
+require src/lib/signal.f                     \ the signal case's SIGUSR1
 require src/lib/test/runner.f
 
 create GTT-OK-PATH PATH-CAP allot
@@ -302,6 +303,60 @@ variable GTT-OFI
    s" progress capture flush" GT-PROGRESS-CAPTURE-FLUSH
    PROC-CLOSE-CAPTURE-FDS ;
 
+: GTT-SILENT-SH$ ( -- ptr u8 n )
+   SB-RESET
+   s" sleep " SB-APPEND GT-HEARTBEAT-MS 1000 / 1+ FMT:SB-INT
+   s" ; echo done" SB-APPEND
+   SB$ ;
+
+: GTT-SILENT-OUT$ ( -- ptr u8 n )
+   SB-RESET
+   s" done" SB-APPEND GTT-LF
+   SB$ ;
+
+\ A shell script captured with no deadline under a progress label.
+: GTT-SH-FOREVER ( ptr u8 n ptr u8 n -- ) {: sh:ptr shu label:ptr labelu :}
+   PROC-ARGV-RESET
+   s" -c" >LEN PROC-ARGV+
+   sh shu >LEN PROC-ARGV+
+   s" /bin/sh" >LEN PROC-ARGV-CHECK-PATH
+   PROC-CAPTURE-RESET
+   PROCESS:WAIT-FOREVER PROC-CAPTURE-DEADLINE!
+   PROC-SETUP-CAPTURE-FDS
+   s" /bin/sh" >LEN PROC-ARGV-PREPARE PROC-SPAWN-ARGV-CAPTURE
+   label labelu GT-PROGRESS-RUN
+   label labelu GT-PROGRESS-CAPTURE
+   PROC-CLOSE-CAPTURE-FDS ;
+
+\ A child silent for longer than a heartbeat, captured with no deadline: it is
+\ no timeout and its output is kept. Its WAIT line is on this process's stdout,
+\ so the flush-child's parent asserts it (GTT-TEST-PROGRESS-CAPTURE-FLUSH).
+: GTT-PROGRESS-SILENT ( -- )
+   GTT-SILENT-SH$ s" progress silent" GTT-SH-FOREVER ;
+
+\ The signal child's silence after its signal, past a heartbeat, and the least
+\ it runs: a second before the signal and the silence.
+GT-HEARTBEAT-MS 1000 / 2 + constant GTT-SIGNAL-QUIET-S
+GTT-SIGNAL-QUIET-S 1+ 1000 * constant GTT-SIGNAL-CHILD-MS
+
+: GTT-SIGNAL-SH$ ( -- ptr u8 n )
+   SB-RESET
+   s" sleep 1; kill -USR1 $PPID; sleep " SB-APPEND
+   GTT-SIGNAL-QUIET-S FMT:SB-INT
+   s" ; echo done" SB-APPEND
+   SB$ ;
+
+\ A caught signal that interrupts a no-deadline capture's poll leaves its
+\ heartbeat whole: the poll waits out the rest of its slice, not the capture's
+\ absent deadline, so a WAIT line prints before the child exits. Catching
+\ SIGUSR1 stays installed for the whole process, so this runs in a child of its
+\ own, and its WAIT line is on that child's stdout
+\ (GTT-TEST-PROGRESS-SIGNAL).
+: GTT-PROGRESS-SIGNAL ( -- )
+   SIGNAL:INIT
+   SIGNAL:SIGUSR1 SIGNAL:CATCH
+   GTT-SIGNAL-SH$ s" progress signal" GTT-SH-FOREVER ;
+
 : GTT-PROGRESS-STDIN-CAT ( -- )
    PROC-ARGV-RESET
    s" /bin/cat" GTT-CMD-TIMEOUT-MS GTT-ARGV-STDIN-CAPTURE-BEGIN
@@ -417,16 +472,20 @@ variable GTT-OFI
    GT-ERR$ s" " T$=
    GT-RC@ 0 T= ;
 
-: GTT-TEST-PROGRESS-CAPTURE-FLUSH ( -- )
+: GTT-RUN-MODE ( ptr u8 n -- ) {: mode:ptr modeu :}
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    s" src/lib/test/runner-test.f" >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+
-   s" flush-child" >LEN PROC-ARGV+
-   s" bin/hb" GTT-NEST-TIMEOUT-MS GT-RUN
+   mode modeu >LEN PROC-ARGV+
+   s" bin/hb" GTT-NEST-TIMEOUT-MS GT-RUN ;
+
+: GTT-TEST-PROGRESS-CAPTURE-FLUSH ( -- )
+   s" flush-child" GTT-RUN-MODE
    GT-RC@ 0 T=
    GT-OUT$ s" bad-out" CONTAINS? TTRUE
    GT-OUT$ s" test: ok" CONTAINS? TTRUE
+   GT-OUT$ s" WAIT: progress silent" CONTAINS? TTRUE
    GT-ERR$ s" bad-err" CONTAINS? TTRUE ;
 
 : GTT-PROGRESS-FLUSH-CHILD ( -- )
@@ -436,8 +495,30 @@ variable GTT-OFI
    GT-RC@ 7 T=
    GT-OUT$ s" " T$=
    GT-ERR$ s" " T$=
+   GTT-PROGRESS-SILENT
+   GT-TIMED-OUT @ TFALSE
+   GT-OUT$ GTT-SILENT-OUT$ T$=
    GT-CLEANUP
    T-REPORT ;
+
+\ The last WAIT line's time, or the RUN line's when none printed, is before
+\ the child could have exited; the parent asserts that the line printed.
+: GTT-PROGRESS-SIGNAL-CHILD ( -- )
+   T-RESET
+   GTT-PREPARE
+   GTT-PROGRESS-SIGNAL
+   GT-TIMED-OUT @ TFALSE
+   GT-OUT$ GTT-SILENT-OUT$ T$=
+   GT-PROGRESS-LAST-NS @ GT-PROGRESS-START-NS @ - PROC-NS-PER-MS /
+   GTT-SIGNAL-CHILD-MS < TTRUE
+   GT-CLEANUP
+   T-REPORT ;
+
+: GTT-TEST-PROGRESS-SIGNAL ( -- )
+   s" signal-child" GTT-RUN-MODE
+   GT-RC@ 0 T=
+   GT-OUT$ s" test: ok" CONTAINS? TTRUE
+   GT-OUT$ s" WAIT: progress signal" CONTAINS? TTRUE ;
 
 : GTT-TEST-PROGRESS-STDIN-CAPTURE ( -- )
    GTT-PROGRESS-STDIN-CAT
@@ -525,6 +606,7 @@ variable GTT-OFI
    GTT-TEST-PROGRESS
    GTT-TEST-PROGRESS-CAPTURE
    GTT-TEST-PROGRESS-CAPTURE-FLUSH
+   GTT-TEST-PROGRESS-SIGNAL
    GTT-TEST-PROGRESS-STDIN-CAPTURE
    GTT-TEST-ROOM
    GTT-TEST-NAME-MAX
@@ -538,9 +620,11 @@ variable GTT-OFI
    SCRIPT-ARGC 0 > if
       0 SCRIPT-ARGV$ s" flush-child" STR= if
          GTT-PROGRESS-FLUSH-CHILD
+      else 0 SCRIPT-ARGV$ s" signal-child" STR= if
+         GTT-PROGRESS-SIGNAL-CHILD
       else
          s" runner-test: unknown mode" 1 die
-      then
+      then then
    else
       TEST-RUNNER-TEST-MAIN
    then ;

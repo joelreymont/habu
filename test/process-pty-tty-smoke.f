@@ -68,9 +68,9 @@ $0A constant PROBE-MS              \ the pause between two probes of its pid
 \ A clock that ends while the target still holds its side has not been answered
 \ YET: a deadline, not a wrong answer, so it asserts nothing. The caller's wait
 \ is named and E-PROC-TIMEOUT thrown (TEST-WAIT:EXPIRED); the scope tears the
-\ target down on the way out, and RUN stops the loop and lets it through, so the engine's report of it is the last line on
-\ stderr and the gate pool reads the row as a timeout (docs/gate.md
-\ "Reading a red run"). The caller has shown what it waited for.
+\ target down on the way out, and RUN stops the loop and lets it through, so the
+\ engine's report of it is the last line on stderr. The caller has shown what it
+\ waited for.
 : DEADLINE ( process-pty-handle ptr u8 n -- process-pty-handle ) {: name:ptr len:n :}
    READ-SO-FAR
    name len TEST-WAIT:EXPIRED ;

@@ -5,7 +5,7 @@
 require src/lib/engine-candidate.f
 require tools/app-build-image.f
 require test/image-grant.f
-require test/suite-budget.f
+require src/lib/process.f
 
 package APP-BUILDER-ENGINE
 
@@ -14,7 +14,7 @@ public
 : PATH$ ( -- ptr u8 n )
    s" app-builder" IMAGE-GRANT:CHECK
    ENGINE-CANDIDATE:PATH$ BUILD-FIXPOINT:BF-ENGINE!
-   [: SUITE-BUDGET:CHILD-MS APP-BUILD-IMAGE:PATH$ ;]
+   [: PROCESS:WAIT-FOREVER MS>N APP-BUILD-IMAGE:PATH$ ;]
    [: BUILD-FIXPOINT:BF-ENGINE-RESET ;] finally ;
 
 : ENSURE ( -- )

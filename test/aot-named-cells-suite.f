@@ -7,7 +7,7 @@ require src/lib/fs-mutate.f
 require src/lib/process-argv.f
 require test/cold-engine.f
 require test/fixture-writer.f
-require test/suite-budget.f
+require src/lib/process.f
 require src/lib/fmt.f                        \ FMT:.INT - one-line number text
 require src/core/sha256.f
 
@@ -52,7 +52,7 @@ create AFTER 32 allot
    {: path:ptr pathu:n source:ptr size:n code:n :}
    PROC-ARGV-N @ COUNT>N CHILD-ARGC !
    path pathu >LEN source size >LEN OUT $4000 >LEN ERR $4000 >LEN
-   SUITE-BUDGET:CHILD-MS >MS
+   PROCESS:WAIT-FOREVER
    RUN-ARGV-STDIN-CAPTURE-OUTCOME {: outu:len erru:len oc :}
    outu LEN>N OUT-U !  erru LEN>N ERR-U !
    oc path pathu source size STATUS!

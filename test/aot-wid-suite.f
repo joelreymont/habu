@@ -231,8 +231,7 @@ create NUM-BUF 32 allot   variable NUM-U
    RUN-ARGV-ENV-CAPTURE
    PCAP-RESULT:>N RC ! ERR-U ! OUT-U !
    \ The builder exits PROC-TIMEOUT-RC when a deadline expired in it: replay its
-   \ stderr, which names the step, and throw E-PROC-TIMEOUT again, so the gate
-   \ pool labels this row TIMEOUT-UNDER-LOAD.
+   \ stderr, which names the step, and throw E-PROC-TIMEOUT again.
    RC @ PROC-TIMEOUT-RC = if ERR$ type cr E-PROC-TIMEOUT throw then ;
 
 : BUILD-VARIANT ( -- )

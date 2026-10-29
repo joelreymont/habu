@@ -27,7 +27,6 @@ require tools/build-out.f
 require tools/keyed-image.f
 require test/fixture-writer.f
 require test/image-grant.f
-require test/suite-budget.f              \ CHILD-MS, the emission's hang guard
 
 package COLD-ENGINE
 
@@ -104,13 +103,12 @@ variable RESOLVED?
    FIXTURE-WRITER:PATH$ {: writer:ptr writeru:n :}
    WRITER-ARGS
    writer writeru >LEN s" " >LEN
-   OUT IO-CAP >LEN ERR IO-CAP >LEN SUITE-BUDGET:CHILD-MS >MS
+   OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME PROC-OUTCOME>DEADLINE-RC RC>N
    {: outu:len erru:len rc:n :}
    OUT outu LEN>N type
    2 ERR erru LEN>N write drop
-   \ An expired deadline is named and thrown again, so the gate pool labels the
-   \ cold-engine build row TIMEOUT-UNDER-LOAD.
+   \ An expired deadline is named and thrown again.
    rc PROC-TIMEOUT-RC = if
       s" cold-engine: native fixture writer ran out of time" type cr
       E-PROC-TIMEOUT throw

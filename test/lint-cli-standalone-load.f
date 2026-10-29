@@ -22,8 +22,7 @@
 \ was hit (dot habu-un-flake-lint-2535cef6). Exit, signal and timeout each get
 \ their own verdict below. A timeout is the row's deadline, not a failure: it names
 \ the entry and the budget it burned, prints the capture drained before the
-\ deadline and throws E-PROC-TIMEOUT, so the pool reports the row as
-\ TIMEOUT-UNDER-LOAD (docs/gate.md "Reading a red run").
+\ deadline and throws E-PROC-TIMEOUT.
 \
 \ The entry list is DERIVED each run by walking tools/ and keeping the flat
 \ tools/<name>-lint.f entries. Nested tools/lint/<name>-lint.f helpers are library
@@ -116,8 +115,7 @@ variable PATHS-USED
 \ The case label of a child that passed its deadline: the entry and the budget it
 \ burned are the two facts needed to tell a slow box from a hang. The deadline is
 \ the row's, not a failure: LOAD-VERDICT prints this label, the program and the
-\ capture through T-TIMED-OUT, which throws E-PROC-TIMEOUT, so the pool reports
-\ the row as a timeout.
+\ capture through T-TIMED-OUT, which throws E-PROC-TIMEOUT.
 : OVER-BUDGET$ ( ptr u8 n n -- ptr u8 n ) {: p:ptr u:n ms:n :}
    SB-RESET
    p u SB-APPEND
@@ -166,9 +164,9 @@ variable PATHS-USED
 \ is exercised rather than assumed. A discovered entry is spawned through the same
 \ LOAD-VERDICT the real legs use, with a budget nothing can meet. The deadline is
 \ the row's, not a failure: the verdict counts no failure, leaves a case label
-\ naming that entry and the budget it burned, and throws E-PROC-TIMEOUT so the
-\ pool reports the row as a timeout. It runs first and owns the suite's T-RESET,
-\ so the failure count it reads starts at zero.
+\ naming that entry and the budget it burned, and throws E-PROC-TIMEOUT. It runs
+\ first and owns the suite's T-RESET, so the failure count it reads starts at
+\ zero.
 1 constant UNMEETABLE-MS
 256 constant GOT-CAP
 create GOT-BUF GOT-CAP allot

@@ -33,7 +33,6 @@ require src/lib/process-env.f
 require src/lib/engine-candidate.f
 require test/image-grant.f
 require test/compiler-images.f
-require test/suite-budget.f              \ CHILD-MS, the build's hang guard
 require src/lib/content-key.f
 require tools/build-out.f
 require tools/keyed-image.f
@@ -115,14 +114,13 @@ variable READY?
 : BUILD-RUN ( -- )
    BUILD-ARGS
    ENGINE-CANDIDATE:PATH$ >LEN s" " >LEN
-   OUT IO-CAP >LEN ERR IO-CAP >LEN SUITE-BUDGET:CHILD-MS >MS
+   OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME PROC-OUTCOME>DEADLINE-RC RC>N
    {: outu:len erru:len rc:n :}
    OUT outu LEN>N type
    2 ERR erru LEN>N write drop
-   \ A deadline that expired, this capture's or one in the build
-   \ (tools/native-build-args.f), is named and thrown again, so the gate pool
-   \ labels this build row TIMEOUT-UNDER-LOAD.
+   \ A deadline that expired in the build (tools/native-build-args.f) is named
+   \ and thrown again.
    rc PROC-TIMEOUT-RC = if
       s" whitebox-engine: unsealed engine build ran out of time" type cr
       E-PROC-TIMEOUT throw

@@ -18,8 +18,8 @@
 \     makes (src/lib/test/fifo.f) by the path GATE_SIGNAL_FIFO names, the leaf
 \     maps it into each process it spawns, and the read end reports end of
 \     file only when the last holder is gone. The root itself, this test's own
-\     child, and the pool in the deadline case hold no write end: the root's
-\     wait status and the pool's red row are the evidence they ended it.
+\     child, holds no write end: the root's wait status is the evidence it
+\     ended it.
 \  2. A ROW MID-SPAWN. A child that appears after the row's descendants were
 \     listed, or after its parent was killed, is nobody's to end.
 \     Asserted: the leaf is inside its burst when the signal lands, and one
@@ -38,11 +38,7 @@
 \  6. A STATUS THAT HIDES THE SIGNAL. A root that cleans up and then exits 0,
 \     or 1 like a red run, tells its caller the run finished.
 \     Asserted: the root's wait status is "killed by" the signal it was sent.
-\  7. A DEADLINE KILL. The pool ends a row that outran its deadline with the
-\     same kill, so the same children outlive it.
-\     Asserted: the deadline case runs the row under a pool in this process,
-\     retires it while its leaf is mid-burst, and makes claims 1, 2 and 5.
-\  8. AN IGNORED SIGNAL. A root is started with its caller's ignored signals
+\  7. AN IGNORED SIGNAL. A root is started with its caller's ignored signals
 \     still ignored: nohup's SIGHUP, the SIGINT of a background job under a
 \     shell without job control. A root that catches one anyway undoes the
 \     caller's choice, and a test that inherits one never sees it delivered.
@@ -65,7 +61,7 @@
 \ both reports have shown the row and its leaf hold the write end.
 \
 \ A FAILED CASE LEAVES NOTHING EITHER, but for one case. Each case ends through
-\ SIGNAL-END or DEADLINE-END whatever it asserted or threw: the root is killed
+\ SIGNAL-END whatever it asserted or threw: the root is killed
 \ and reaped, the engines that reported are killed if they are still the
 \ processes that reported, the writers nobody could name end on their own
 \ after 20 s, and the case waits for that before it returns. The one case is a
@@ -95,7 +91,6 @@ require src/lib/signal.f
 require src/lib/engine-candidate.f
 require src/lib/test/runner.f
 require src/lib/test/fifo.f
-require test/gate-pool.f
 
 package GATE-SIGNAL-TEST
 
@@ -103,7 +98,6 @@ package GATE-SIGNAL-TEST
 10000 constant EXIT-MS               \ half the writers' 20 s: a root that waited them out is late
 5000 constant GONE-MS                \ the killed take a moment to finish dying
 30000 constant EXPIRE-MS             \ past the writers' 20 s, for a case that failed to end them
-120000 constant ROW-MS               \ the deadline case's row, until the case retires it
 5 constant AGAIN-GAP-MS              \ the second signal, while the first is being answered
 500 constant IGNORED-MS              \ how long an ignored signal is given to stop the root after all
 10 constant SETTLE-MS
@@ -490,51 +484,6 @@ variable STAT-PATH-U
    CASE-NOHUP ! CASE-AGAIN ! CASE-SIG !
    [: SIGNAL-BODY ;] [: SIGNAL-END ;] finally ;
 
-\ ---- a row the pool kills at its deadline -----------------------------------
-
-\ The row starts with a deadline it cannot reach and is retired by this case
-\ once both engines have reported: a fixed short deadline would race the two
-\ boots on a loaded host.
-: DEADLINE-START ( -- )
-   OPEN-FIFO
-   PROC-ARGV-ENV-RESET
-   s" --load" >LEN PROC-ARGV+
-   s" test/gate-signal-row.f" >LEN PROC-ARGV+
-   REPORT-ENV
-   PROC-ENV-INHERIT-MISSING
-   ENGINE-CANDIDATE:PATH$ s" deadline row" ROW-MS GT-POOL-START ;
-
-: DEADLINE-NOW ( -- )
-   0 0 >IDX GT-POOL-TIMEOUT-PTR ! ;
-
-: DEADLINE-BODY ( -- )
-   DEADLINE-START
-   s" deadline: the row and its leaf came up" T-LABEL
-   REPORTS-IN? TTRUE
-   DEADLINE-NOW
-   GT-POOL-DRAIN-SOFT
-   s" deadline: the pool retired the row as a timeout" T-LABEL
-   GT-POOL-RED# 1 T=
-   0 GT-POOL-RED-TIMED-OUT-PTR @ TTRUE
-   EXPECT-GONE
-   s" deadline: the row's scratch is gone and stays gone" T-LABEL
-   0 >IDX GT-POOL-TMP$ FS:EXISTS? TFALSE ;
-
-\ Whatever the body asserted or threw. The sweep runs even when ending the
-\ pool's rows throws, and the read end closes even when the sweep's wait throws.
-: DEADLINE-END ( -- )
-   [: [: GT-POOL-KILL-ALL ;]
-      [: FIFO-DONE @ 0= if SWEEP then ;] finally ;]
-   [: FIFO-RD PROC-CLOSE-CELL ;] finally ;
-
-\ The pool is reset before the body: GT-POOL-KILL-ALL reads the slot table the
-\ reset fills in.
-: DEADLINE-CASE ( -- )
-   1 GT-POOL-SLOTS!
-   GT-POOL-RESET
-   GT-POOL-RED-RESET
-   [: DEADLINE-BODY ;] [: DEADLINE-END ;] finally ;
-
 public
 
 : MAIN ( -- )
@@ -552,8 +501,6 @@ public
    SIGNAL:SIGTERM true false SIGNAL-CASE
    s" gate-signal: SIGHUP ignored, then SIGTERM" type cr
    SIGNAL:SIGTERM false true SIGNAL-CASE
-   s" gate-signal: deadline" type cr
-   DEADLINE-CASE
    GT-CLEANUP ;
 
 ;package

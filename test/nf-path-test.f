@@ -17,7 +17,6 @@ private
 97 constant LONG-ROOT-U
 122 constant OVERFLOW-ROOT-U
 $4000 constant CAP
-120000 constant BUILD-TIMEOUT-MS
 10000 constant PROBE-TIMEOUT-MS
 $2F constant SLASH
 $78 constant LOWER-X
@@ -103,7 +102,7 @@ create ERR CAP allot
    {: root:ptr rootu:n label:ptr labelu:n :}
    GF-FILE-ARGV
    root rootu GF-ENV
-   s" /usr/bin/env" label labelu BUILD-TIMEOUT-MS GT-POOL-START ;
+   s" /usr/bin/env" label labelu GT-POOL-START ;
 
 : SUFFIX$ ( ptr u8 n ptr u8 n -- ptr u8 n )   \ name past prefix, else empty
    {: a:ptr u:n p:ptr pu:n :}

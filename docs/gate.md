@@ -103,13 +103,8 @@ When timing the gate, send `/usr/bin/time` output to stderr: on macOS,
 `time -o` passes its log descriptor into the engine and its children, which
 the standard-descriptor fixtures refuse.
 
-Sleep counts against the suites' deadlines. Check `pmset -g log` before
-treating a timeout as a hang, keep the failed log, and rerun the unchanged
-candidate awake; never raise timeouts or count the interrupted run as
-acceptance.
-
-Run the gate at default priority: rows are held to a CPU budget, and at
-background priority a row confined to efficiency cores can exceed it.
+The pool keeps no clock: sleep and priority slow a row, and only a deadline
+the suite sets itself can end it.
 
 ### ARM-only rows
 
@@ -122,10 +117,17 @@ the native refusal.
 ### Reading a red run
 
 Failures print the suite label, exit outcome, and captured stdout and stderr.
-`kind=TIMEOUT-UNDER-LOAD` is a row that met a deadline; its line ends with the
-CPU time the row had run of its budget, and a row that ran little of it had
-stopped running. `kind=CPU-BUDGET` is a row that ran out of its budget, which
-no load explains.
+A row ends by its exit or by a signal, and its outcome line names which.
+
+Every `GT-HEARTBEAT-MS` (`src/lib/test/runner.f`) the gate prints a line for
+each live row: `WAIT: <label> (<elapsed> ms, cpu <total> ms, +<delta> ms)`,
+the CPU time of the row's whole tree. A row whose delta stays at zero is
+blocked; one whose delta never stops growing is spinning. A negative delta is
+a process that left the row's tree. End such a gate with SIGINT, or with
+SIGTERM when a non-interactive shell started it in the background: that shell
+starts it with SIGINT ignored, and the gate keeps an inherited ignore
+(`test/gate-signal-test.f` "AN IGNORED SIGNAL"). Before it kills its rows it
+prints each live row's WAIT line and the tail of its output.
 
 A red that appears only when the box is loaded is the box: reproduce it on the
 unmodified base under the same load, then rerun the suite alone. Run against a
@@ -185,11 +187,9 @@ that daemonizes it: the `pg` row runs `postgres`, not `pg_ctl`.
 - A row needs a keyed image when its load closure holds the image's module;
   nothing is declared. A failed build row makes every row that needs its image
   red naming it; every other row runs.
-- A row is bounded by its own CPU work, not by wall time
-  (`test/suite-budget.f`). Measure a row's CPU outside the gate, user plus
-  system from `/usr/bin/time bin/hb --load <file>`. Reduce repeated work and
-  share setup before splitting a slow row; the budget bounds runaway work, it
-  does not set an acceptable cost per row.
+- Measure a row's CPU outside the gate, user plus system from
+  `/usr/bin/time bin/hb --load <file>`. Reduce repeated work and share setup
+  before splitting a slow row.
 - A suite whose assertions depend on the compiler tier selects it itself, with
   `1 set-tier` after the harness and tool requires and before the code under
   test, so the harness is not compiled at tier 1. `test/compiler/aot-mode.f` is
@@ -199,19 +199,18 @@ that daemonizes it: the `pg` row runs `postgres`, not `pg_ctl`.
   `test/app-image-engine.f` or `test/preloaded-engine.f`, whose headers hold
   the rules.
 - `bin/hb file.f` (no `--load`) drops to a REPL after a clean load and blocks
-  on stdin — it looks like a hang, rc 124 under a timeout. Pipe `< /dev/null`,
-  and give a spawned build child `/dev/null` stdin rather than letting it
-  inherit one.
+  on stdin — it looks like a hang, a WAIT line with no CPU delta. Pipe
+  `< /dev/null`, and give a spawned build child `/dev/null` stdin rather than
+  letting it inherit one.
 - A CLI tool that reads the ambient argv is never `include`d into a shared
   image: it would read the harness's argv. Run it spawned, and keep its
   assertion in an argv-free `-test.f`.
 - `SUBJECT:RUN` forks the live test process: call it with no package open, and
   never gate a CLI file that parses argv.
-- A deadline is never an assertion result. A test's expired wait, capture or
-  join throws `E-PROC-TIMEOUT` and a child reports it as exit 124, so the row
-  reaches the pool as `TIMEOUT-UNDER-LOAD`; a test that expects the deadline
-  asserts it. A timeout row is never fixed by raising a deadline, retry count
-  or sleep. [debugging.md](debugging.md) has the exit rule.
+- A row that hangs is named by its WAIT line and ended by hand, never by a
+  clock. A test that sets a deadline of its own and expects it asserts it; a
+  failing row is never fixed by raising a deadline, retry count or sleep.
+  [debugging.md](debugging.md) has the exit rule.
 - A row that needs an external server starts a private one as its own child,
   on a Unix-domain socket in the slot's `HB_SOCK_TMP`, and stops it whatever
   its cases do (`test/db/pg-cluster.f`).

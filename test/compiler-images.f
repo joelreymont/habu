@@ -7,7 +7,6 @@ require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/engine-id.f
 require test/image-grant.f
-require test/suite-budget.f
 
 package COMPILER-IMAGES
 private
@@ -32,7 +31,7 @@ public
    s" --" >LEN PROC-ARGV+
    ROOT$ >LEN PROC-ARGV+
    ENGINE-ID:PATH$ >LEN
-   OUT IO-CAP >LEN ERR IO-CAP >LEN SUITE-BUDGET:CHILD-MS >MS
+   OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-ENV-CAPTURE-OUTCOME PROC-OUTCOME>DEADLINE-RC RC>N
    {: outu:len erru:len rc:n :}
    OUT outu LEN>N type

@@ -20,7 +20,6 @@ require src/lib/codesign.f
 require src/lib/tree-copy.f                \ the stale-seed sandbox's private tree
 require tools/build-fixpoint.f
 require tools/event-closure-lib.f      \ EC:BUILD, used by the sandbox and the chain-key fixtures
-require test/suite-budget.f            \ CHILD-MS, every step's hang guard
 
 \ The fixture drives the tool's internals (stage sources, stamp preimage, chain
 \ fold), so it reopens package BUILD-FIXPOINT instead of widening the tool's
@@ -29,7 +28,6 @@ package BUILD-FIXPOINT
 
 8192 constant BFT-CAPTURE-CAP
 $40000 constant BFT-BIG-CAP
-SUITE-BUDGET:CHILD-MS constant BFT-TIMEOUT-MS
 
 variable BFT-ROOT-U
 variable BFT-HB-U
@@ -228,8 +226,8 @@ create BFT-ERR BFT-CAPTURE-CAP allot
 
 \ build-fixpoint exits PROC-TIMEOUT-RC when a deadline expired under it (BF-CLI,
 \ src/lib/process.f). Replay the child's stderr, which names the throw, and throw
-\ E-PROC-TIMEOUT again, so BFT-STEP hands the row to the gate pool's timeout
-\ label instead of failing it as one more unexpected exit code.
+\ E-PROC-TIMEOUT again, so BFT-STEP lets it leave the row uncaught instead of
+\ failing it as one more unexpected exit code.
 : BFT-FIXPOINT-RC ( n n n ptr u8 -- n n n ) {: outn:n errn:n code:n err:ptr :}
    code PROC-TIMEOUT-RC = if err errn type E-PROC-TIMEOUT throw then
    outn errn code ;
@@ -298,14 +296,13 @@ variable IX
    BFT-STALE-HB >LEN BFT-STALE >LEN
    BFT-BIG-OUT BFT-BIG-CAP >LEN
    BFT-BIG-ERR BFT-BIG-CAP >LEN
-   BFT-TIMEOUT-MS >MS
+   PROCESS:WAIT-FOREVER
    PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE
    BFT-CAPTURE>N BFT-BIG-ERR BFT-FIXPOINT-RC ;
 
-\ A child that outlives BFT-TIMEOUT-MS (E-PROC-TIMEOUT from src/lib/process) leaves
-\ the row uncaught once its step is named: the engine's report is then the row's
-\ last stderr line, which the gate pool labels TIMEOUT-UNDER-LOAD (test/gate-pool.f
-\ GT-POOL-INNER-TIMEOUT?). Every other throw ends the row here as a failed step.
+\ E-PROC-TIMEOUT leaves the row uncaught once its step is named: the engine's
+\ report is then the row's last stderr line. Every other throw ends the row here
+\ as a failed step.
 : BFT-STEP ( ptr u8 n [ -- ] -- ) {: a:ptr u:n q :}
    a u T-LABEL
    q catch {: rc:n :}

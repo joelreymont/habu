@@ -14,7 +14,6 @@ require src/lib/le.f                   \ the spilled %n out-parameter is a C int
 require src/lib/memory.f               \ the read-only page the %n format is copied into
 require test/whitebox-child.f
 require src/lib/test/subject.f
-require test/suite-budget.f        \ CHILD-MS, the stub child's hang guard
 require src/lib/engine-candidate.f
 require src/lib/test/outcome.f
 require src/lib/test/guard-page.f      \ a path whose bytes end where memory does
@@ -441,7 +440,7 @@ create FFI-T-LONG-PATH PATH-CAP allot
 
 : FFI-T-STUB-RESULT ( -- )
    WHITEBOX-CHILD:ENGINE$ >LEN FFI-T-OUT FFI-T-CAP >LEN FFI-T-ERR FFI-T-CAP >LEN
-   SUITE-BUDGET:CHILD-MS >MS
+   PROCESS:WAIT-FOREVER
    RUN-ARGV-ENV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N
    {: outu:len erru:len rc:n :}
    s" test/native-window-owner-child.f" FFI-T-OUT outu LEN>N FFI-T-ERR erru LEN>N rc SUBJECT:RC-TIMED-OUT

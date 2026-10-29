@@ -11,7 +11,6 @@ require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/engine-candidate.f
-require test/suite-budget.f
 require tools/check-core.f
 
 package CHECK-EXIT
@@ -50,7 +49,7 @@ public
    s" HABU_ALLOW_BOOTSTRAP" >LEN s" 0" >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    ENGINE-CANDIDATE:PATH$ >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN
-   SUITE-BUDGET:CHILD-MS >MS RUN-ARGV-ENV-CAPTURE-OUTCOME
+   PROCESS:WAIT-FOREVER RUN-ARGV-ENV-CAPTURE-OUTCOME
    {: outu:len erru:len oc :}
    outu LEN>N OUT-U ! erru LEN>N ERR-U !
    oc ;

@@ -19,8 +19,8 @@ s" src/lib/process-tree.f" required          \ PROC-TREE:KILL-TREE ends a captur
 \ child running and the pid with its caller to reap. A reader that turns an
 \ outcome into a status or a test verdict throws E-PROC-TIMEOUT for a timeout
 \ (PROC-OUTCOME>RC, the asserts in src/lib/test/outcome.f), so a deadline under
-\ a gate row reaches the pool as a timeout; only a caller that acts on the
-\ deadline itself MATCHes it as data.
+\ a gate row leaves the row uncaught; only a caller that acts on the deadline
+\ itself MATCHes it as data.
 SUMTYPE outcome
   VARIANT exited n ;VARIANT
   VARIANT signaled n ;VARIANT
@@ -655,10 +655,16 @@ PROC-STOP-DEFAULT
    PROC-ERR-R @ >FD POLLIN 1 >IDX PROC-PFD-AT!
    PROC-NO-FD >FD 0 2 >IDX PROC-PFD-AT! ;
 
+\ Where one poll ends: its own window, never past the capture deadline, so a
+\ restart after a signal waits out what is left of the window.
+: PROC-POLL-END ( n -- n ) {: ms:n :}
+   ms 0 < if PROC-DEADLINE @ exit then
+   ms >MS PROC-DEADLINE-AT PROC-DEADLINE @ min ;
+
 : PROC-POLL-CAPTURE-RC ( n -- n ) {: ms:n :}
    PROC-ARM-STOP-PFD
    PROC-ARM-CANCEL-PFD
-   PROC-PFD-SLOTS ms PROC-DEADLINE @ PROC-POLL-RESTART {: rc:n :}
+   PROC-PFD-SLOTS ms ms PROC-POLL-END PROC-POLL-RESTART {: rc:n :}
    rc 0 > if PROC-STOP-HEARD PROC-CANCEL-HEARD then
    rc ;
 

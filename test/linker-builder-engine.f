@@ -8,7 +8,7 @@
 require tools/hb-build-lib.f
 require test/preloaded-engine.f
 require test/image-grant.f
-require test/suite-budget.f
+require src/lib/process.f
 
 package LINKER-BUILDER-ENGINE
 
@@ -17,7 +17,7 @@ public
 : PATH$ ( -- ptr u8 n )
    s" linker-builder" IMAGE-GRANT:CHECK
    PRELOADED-ENGINE:LINKER$ BUILD-FIXPOINT:BF-ENGINE!
-   [: SUITE-BUDGET:CHILD-MS HB-BUILD-CLI:HBB-MAKER-IMAGE$ ;]
+   [: PROCESS:WAIT-FOREVER MS>N HB-BUILD-CLI:HBB-MAKER-IMAGE$ ;]
    [: BUILD-FIXPOINT:BF-ENGINE-RESET ;] finally ;
 
 : ENSURE ( -- )

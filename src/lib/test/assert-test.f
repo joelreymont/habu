@@ -49,8 +49,8 @@ variable TAT-COUNT-READY
    5 throw ;
 
 \ A deadline is no verdict: a throw check that wants another code lets
-\ E-PROC-TIMEOUT go uncaught and counts nothing, so the gate pool reports the
-\ row as a timeout; a check that wants the deadline still catches it.
+\ E-PROC-TIMEOUT go uncaught and counts nothing; a check that wants the
+\ deadline still catches it.
 : TT-THROW-DEADLINE ( -- )
    E-PROC-TIMEOUT throw ;
 

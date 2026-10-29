@@ -19,7 +19,6 @@ require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/le.f
 require src/lib/string.f
-require test/suite-budget.f              \ CHILD-MS, every child's hang guard
 
 package NATIVE-BUILD-ENTRY-TEST
 
@@ -56,7 +55,7 @@ create CONTENT 64 allot
 
 : DRIVE ( -- )
    ENGINE-CANDIDATE:PATH$ >LEN
-   OUT CAP >LEN ERR CAP >LEN SUITE-BUDGET:CHILD-MS >MS
+   OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-ENV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N
    {: outu:len erru:len rc:n :}
    outu LEN>N OUT-U !

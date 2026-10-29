@@ -13,10 +13,10 @@
 \ engine open it by path, the harness maps it into initdb and the postmaster,
 \ and each process the postmaster forks inherits it (measured: postgres keeps
 \ an inherited descriptor open in every child). The read end reports end of
-\ file only when the last of them is gone. Two cases, one for each way
-\ the pool ends a live row: at the row's deadline, and GT-POOL-KILL-ALL, which
-\ is how a signalled gate root ends its rows (test/gate-pool.f
-\ GT-POOL-SIGNAL-DIE; test/gate-signal-test.f sends the signal itself).
+\ file only when the last of them is gone. The case ends the live row with
+\ GT-POOL-KILL-ALL, which is how a signalled gate root ends its rows
+\ (test/gate-pool.f GT-POOL-SIGNAL-DIE; test/gate-signal-test.f sends the
+\ signal itself).
 \
 \ THE WAYS THIS CAN FAIL, written down before the fix:
 \
@@ -91,7 +91,7 @@
 \ whose poll never reports a FIFO's end of file, a case file that dies before
 \ its report is the report wait's timeout instead of a failed report.
 \
-\ A FAILED CASE CLEANS UP AFTER ITSELF. Each case ends through CASE-END
+\ A FAILED CASE CLEANS UP AFTER ITSELF. The case ends through CASE-END
 \ whatever it asserted or threw: the row is killed, a server the kill missed is
 \ given the minute its lock-file recheck takes to stop it, and the socket
 \ directory it reported is removed. A segment left by a server that was
@@ -118,7 +118,6 @@ package PG-KILL-TEST
 60000 constant READY-MS              \ initdb, the server's start and the case's connect
 5000 constant GONE-MS                \ the killed take a moment to finish dying
 90000 constant EXPIRE-MS             \ past the server's once-a-minute lock-file recheck
-120000 constant ROW-MS               \ the row's own deadline, until a case ends it
 10 constant NEWLINE
 
 2 constant IPC-STAT
@@ -236,9 +235,7 @@ PROC-NO-FD FIFO-RD !
 : REPORT-ENV ( -- )
    s" PG_HOLD_FIFO" >LEN FIFO$ >LEN PROC-ENV+ ;
 
-\ The row's deadline is one it cannot reach: a fixed short one would race
-\ initdb and the server's start on a loaded host. Each case ends the row
-\ itself once the case file has reported.
+\ The case ends the row itself once the case file has reported.
 : ROW-START ( -- )
    OPEN-FIFO
    PROC-ARGV-ENV-RESET
@@ -248,7 +245,7 @@ PROC-NO-FD FIFO-RD !
    s" test/db/pg-hold.f" >LEN PROC-ARGV+
    REPORT-ENV
    PROC-ENV-INHERIT-MISSING
-   ENGINE-CANDIDATE:PATH$ s" pg row" ROW-MS GT-POOL-START ;
+   ENGINE-CANDIDATE:PATH$ s" pg row" GT-POOL-START ;
 
 \ Up: the case reported, and the directory and the segment it named are there.
 : EXPECT-LIVE ( -- )
@@ -271,16 +268,6 @@ PROC-NO-FD FIFO-RD !
    REPORTED @ if SOCKETS$ FS:EXISTS? 0= else false then TTRUE
    s" the row's scratch, and the data directory in it, is gone" T-LABEL
    0 >IDX GT-POOL-TMP$ FS:EXISTS? TFALSE ;
-
-: DEADLINE-BODY ( -- )
-   ROW-START
-   EXPECT-LIVE
-   0 0 >IDX GT-POOL-TIMEOUT-PTR !
-   GT-POOL-DRAIN-SOFT
-   s" the pool retired the row as a timeout" T-LABEL
-   GT-POOL-RED# 1 T=
-   0 GT-POOL-RED-TIMED-OUT-PTR @ TTRUE
-   EXPECT-GONE ;
 
 : KILL-ALL-BODY ( -- )
    ROW-START
@@ -321,9 +308,6 @@ public
 : MAIN ( -- )
    T-RESET
    s" pg-kill" GT-START
-   s" pg-kill: deadline" type cr
-   POOL-RESET
-   [: DEADLINE-BODY ;] [: CASE-END ;] finally
    s" pg-kill: kill-all" type cr
    POOL-RESET
    [: KILL-ALL-BODY ;] [: CASE-END ;] finally

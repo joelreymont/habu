@@ -13,8 +13,8 @@
 \ names it. This process stops the server however the children end - exit,
 \ failed assertion, die, crash or a deadline - and the cleanup registry
 \ (src/lib/fs-mutate.f FS:CLEANUP-TREE+) removes the directories it made when this
-\ process exits, including by die. A run that a step's deadline ended exits
-\ as a timeout, which a gate pool tells apart from a failure (FAIL-ROW).
+\ process exits, including by die. A run that a step's deadline ended leaves by
+\ an uncaught E-PROC-TIMEOUT (FAIL-ROW).
 \
 \ THE SERVER IS THIS PROCESS'S CHILD FOR ITS WHOLE LIFE. pg_ctl starts a
 \ postmaster that forks, calls setsid and execs a shell, and then pg_ctl exits:
@@ -91,9 +91,6 @@ require src/lib/test/fifo.f
 package PG-CLUSTER
 
 $10000 constant CAPTURE-CAP     \ initdb's chatter, or the server's log
-\ With HB_PG_CASE_MS unset, the step deadlines - initdb, start, each of the
-\ two default case files and stop - sum to 300 s, inside the row's hang guard
-\ (test/suite-budget.f ROW-MS), so this process gives up and stops the server.
 60000 constant TOOL-MS
 60000 constant DEFAULT-CASE-MS
 $7FFFFFFF constant CASE-MAX-MS  \ poll(2) receives a signed 32-bit millisecond count
@@ -461,9 +458,7 @@ DEFAULT-CASE-MS CASE-MS !
 \ THE ROW'S END, after the server's stop; a signal caught on the way is
 \ answered first. A run whose first failed step passed its deadline ends with
 \ an uncaught E-PROC-TIMEOUT: the engine writes its report for that code to
-\ stderr last and exits UNCAUGHT-RC, which a gate pool reports as
-\ TIMEOUT-UNDER-LOAD (test/gate-pool.f GT-POOL-INNER-TIMEOUT?) - a deadline
-\ missed on a loaded host, not a defect. Any other failure exits 1. The exit
+\ stderr last and exits UNCAUGHT-RC. Any other failure exits 1. The exit
 \ runs the cleanup registry either way.
 : FAIL-ROW ( ptr u8 n -- ) {: msg:ptr msgu:n :}
    SIGNAL-CHECK

@@ -402,11 +402,14 @@ create GT-CAP-PATH PATH-CAP allot     \ a file's path while GT-CAP-FILE opens it
       s"  (" type GT-PROGRESS-ELAPSED-MS GT-U-TYPE s" ms)" type cr
    then ;
 
+\ The heartbeat cadence, cut short only by a capture deadline that comes first.
 : GT-PROGRESS-SLICE-MS ( -- ms )
-   PROC-REMAINING-MS dup MS>N GT-HEARTBEAT-MS > if drop GT-HEARTBEAT-MS >MS then ;
+   PROC-REMAINING-MS MS>N {: left:n :}
+   left 0 < left GT-HEARTBEAT-MS > or if GT-HEARTBEAT-MS >MS exit then
+   left >MS ;
 
 : GT-PROGRESS-CAPTURE-TIMEOUT? ( ptr u8 n -- bool ) {: label:ptr labelu :}
-   PROC-REMAINING-MS MS>N 0 <= if
+   PROC-REMAINING-MS MS>N 0= if
       PROC-REAP-CAPTURE-TIMEOUT
       0 0=
       exit

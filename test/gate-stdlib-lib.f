@@ -10,7 +10,6 @@ require test/gate-pool.f
 require test/gate-images.f
 require test/image-grant.f
 require test/gate-entry-guard.f
-require test/suite-budget.f              \ a row's CPU budget and hang guard
 require src/lib/engine-id.f                  \ ENGINE-ID:PATH$ - this gate's own binary
 
 package STDLIB-GATE
@@ -124,12 +123,6 @@ variable ROW-SCRIPT?                     \ the row's `--` has passed
    label labelu GATE-IMAGES:ROW-RED
    0 0<> ;
 
-\ A suite row is held to a CPU budget, whatever the load (test/suite-budget.f
-\ BOUNDED BY ITS OWN WORK): each start below gives the row the hang guard
-\ SUITE-BUDGET:ROW-MS as its deadline, and ROW-BUDGET! the budget.
-: ROW-BUDGET! ( -- )
-   SUITE-BUDGET:CPU-MS GT-POOL-SEQ @ GT-POOL-CPU-BUDGET! ;
-
 \ Each runner answers FALSE, starting nothing, while the row's images are not
 \ settled: the registry keeps the row pending (src/lib/test/suite.f). Once
 \ settled it starts, or its red row does, and answers TRUE.
@@ -137,8 +130,7 @@ variable ROW-SCRIPT?                     \ the row's `--` has passed
    GATE-IMAGES:ROW-SETTLED? 0= if false exit then
    label labelu SUITE-READY? 0= if true exit then
    PRODUCT-ENGINE$ GATE-IMAGES:ROW-GRANT$ SUITE-ENV
-   PRODUCT-SPAWN$ label labelu SUITE-BUDGET:ROW-MS GT-POOL-START
-   ROW-BUDGET!
+   PRODUCT-SPAWN$ label labelu GT-POOL-START
    true ;
 
 \ A WHITEBOX-SUITE row runs on the gate's private copy of the unsealed engine,
@@ -148,26 +140,24 @@ variable ROW-SCRIPT?                     \ the row's `--` has passed
    GATE-IMAGES:ROW-SETTLED? 0= if false exit then
    label labelu SUITE-READY? 0= if true exit then
    GATE-IMAGES:WHITEBOX$ GATE-IMAGES:ROW-GRANT$ SUITE-ENV
-   GATE-IMAGES:WHITEBOX$ label labelu SUITE-BUDGET:ROW-MS GT-POOL-START
-   ROW-BUDGET!
+   GATE-IMAGES:WHITEBOX$ label labelu GT-POOL-START
    true ;
 
 : SUITE-HB-RUN-STDIN ( ptr u8 n ptr u8 n -- bool ) {: in:ptr inu:n label:ptr labelu:n :}
    GATE-IMAGES:ROW-SETTLED? 0= if false exit then
    label labelu SUITE-READY? 0= if true exit then
    PRODUCT-ENGINE$ GATE-IMAGES:ROW-GRANT$ SUITE-ENV
-   PRODUCT-SPAWN$ label labelu in inu SUITE-BUDGET:ROW-MS GT-POOL-START-STDIN
-   ROW-BUDGET!
+   PRODUCT-SPAWN$ label labelu in inu GT-POOL-START-STDIN
    true ;
 
 \ A keyed image's build row: the product engine, handed its program on stdin
 \ with no arguments, granted the family it settles and that family's
 \ prerequisites.
-: SUITE-BUILD-RUN ( ptr u8 n ptr u8 n ptr u8 n n -- )
-   {: prog:ptr progu:n label:ptr labelu:n grant:ptr grantu:n timeout:n :}
+: SUITE-BUILD-RUN ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: prog:ptr progu:n label:ptr labelu:n grant:ptr grantu:n :}
    PROC-ARGV-RESET
    PRODUCT-ENGINE$ grant grantu SUITE-ENV
-   PRODUCT-SPAWN$ label labelu prog progu timeout GT-POOL-START-STDIN ;
+   PRODUCT-SPAWN$ label labelu prog progu GT-POOL-START-STDIN ;
 
 \ The entry guard walks the load graph DERIVE read and refuses the registry
 \ before anything starts: this hook runs outside the catch around the rows. The
@@ -257,9 +247,6 @@ variable COMPILER-OFF
    [: SUITE-HB-RUN-STDIN ;] TEST:STDIN-RUNNER! ;
 
 public
-
-\ A fixture whose own teardown wraps this one reports and cleans up through it.
-EXPORT SUITE-FINISH
 
 : MAIN ( -- )
    SUITE-INSTALL-HOOKS

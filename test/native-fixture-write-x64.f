@@ -7,7 +7,6 @@ require src/lib/engine-candidate.f
 require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
-require test/suite-budget.f
 
 package NATIVE-FIXTURE-WRITE
 private
@@ -43,7 +42,7 @@ variable HOST-U
 : CHILD ( -- )
    ARGS
    HOST$ >LEN s" " >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN
-   SUITE-BUDGET:CHILD-MS >MS
+   PROCESS:WAIT-FOREVER
    RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME PROC-OUTCOME>DEADLINE-RC RC>N
    {: outu:len erru:len rc:n :}
    OUT outu LEN>N type

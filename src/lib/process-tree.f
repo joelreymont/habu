@@ -700,8 +700,7 @@ public
 \ The CPU time, in nanoseconds, pid and every live process descended from it
 \ have run, user and system, with what each of them reaped; 0 once pid is
 \ reaped. Nothing is stopped. A refusal throws, as in a walk; an absence is
-\ none. A pool holds a row to a CPU budget with it (test/gate-pool.f
-\ GT-POOL-CPU-BUDGET!).
+\ none. The pool's WAIT line reports it (test/gate-pool.f GT-POOL-CPU-READ).
 : CPU-NS ( pid -- n ) {: pid:pid :}
    pid PID>N 1 <= if E-PROC-OUTPUT throw then
    WALK-GET

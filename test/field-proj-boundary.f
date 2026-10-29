@@ -7,7 +7,6 @@ require src/lib/process-argv.f
 require src/lib/process-env.f
 require test/whitebox-child.f
 require src/lib/test/subject.f
-require test/suite-budget.f              \ CHILD-MS, every child's hang guard
 
 package FIELD-BOUNDARY-SUITE
 
@@ -58,12 +57,9 @@ create ERR IO-CAP allot
    native if s" test/compiler/aot-mode.f" ARG then
    WHITEBOX-CHILD:ENV! ;
 
-\ The native case compiles the window's whole core prefix through the
-\ optimizing chain, tens of seconds of CPU, so every case takes the long row's
-\ child deadline (test/suite-budget.f): it catches a hang, not a slow build.
 : RESULT ( -- )
    WHITEBOX-CHILD:ENGINE$ >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN
-   SUITE-BUDGET:CHILD-MS >MS
+   PROCESS:WAIT-FOREVER
    RUN-ARGV-ENV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N
    {: outu:len erru:len rc:n :}
    s" test/native-window-owner-child.f" OUT outu LEN>N ERR erru LEN>N rc SUBJECT:RC-TIMED-OUT

@@ -4,7 +4,7 @@
 \ its emitted map carries the donor's source path for that span.
 require test/gate-common.f
 require test/c2-image-pair.f
-require test/suite-budget.f
+require src/lib/process.f
 
 package NATIVE-DONOR-MAP-E2E
 private
@@ -40,7 +40,7 @@ DYNAMIC-BUFFER MAP-TEXT u8
    s" TMPDIR" >LEN GT-ROOT >LEN PROC-ENV+
    ROOT-IMAGE$
    S\" require tools/aot-build-open.f\nrequire tools/aot-build.f\nAOT-LINK:BUILD-NATIVE\n"
-   SUITE-BUDGET:CHILD-MS GE-RUN-STDIN
+   PROCESS:WAIT-FOREVER MS>N GE-RUN-STDIN
    s" native donor stripped build" GE-EXPECT-OK ;
 
 : CHECK-MAP ( -- )
@@ -55,7 +55,7 @@ DYNAMIC-BUFFER MAP-TEXT u8
 : RUN-APP ( -- )
    GE-HB-RESET
    APP$ GE-ARGV+
-   APP$ SUITE-BUDGET:CHILD-MS GE-RUN-ENV
+   APP$ PROCESS:WAIT-FOREVER MS>N GE-RUN-ENV
    s" native donor stripped image" GE-EXPECT-OK
    GT-OUT$ nip 0 <> if s" public word execution" GE-FAIL then ;
 

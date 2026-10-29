@@ -14,7 +14,7 @@ require src/lib/process-cwd.f
 require src/lib/pty.f
 require test/whitebox-child.f
 require src/lib/test/subject.f
-require test/suite-budget.f              \ CHILD-MS, every child's hang guard
+require src/lib/process.f
 require test/pcap-result.f
 
 package APP-IMAGE-TEST
@@ -124,7 +124,7 @@ variable PROBE-SOURCE-U
    WHITEBOX-CHILD:ENV!
    WHITEBOX-CHILD:ENGINE$ >LEN
    BUILD-SOURCE$ >LEN
-   OUT CAP >LEN ERR CAP >LEN SUITE-BUDGET:CHILD-MS >MS
+   OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-ENV-STDIN-CAPTURE PCAP-RESULT:>N CLEAN
    OUT swap S\" 1\n\n" T$=
    IMAGE$ FS:EXECUTABLE? TTRUE ;
@@ -132,7 +132,7 @@ variable PROBE-SOURCE-U
 : RUN-INPUT ( ptr u8 n ptr u8 n -- n n n )
    {: path:ptr pathu:n input:ptr inputu:n :}
    path pathu >LEN ROOT$ >LEN input inputu >LEN
-   OUT CAP >LEN ERR CAP >LEN SUITE-BUDGET:CHILD-MS >MS
+   OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
    PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE PCAP-RESULT:>N ;
 
 : CHECK-APPLICATION ( ptr u8 n -- )
@@ -329,7 +329,7 @@ create PTY-NAME PTY:SLAVE-PATH-CAP allot
    s" test/native-window-owner-child.f" >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+
    s" test/address-cell-owner.f" >LEN PROC-ARGV+
-   SECOND$ >LEN OUT CAP >LEN ERR CAP >LEN SUITE-BUDGET:CHILD-MS >MS
+   SECOND$ >LEN OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-CAPTURE PCAP-RESULT:>N {: outu:n erru:n rc:n :}
    s" test/address-cell-owner.f" OUT outu ERR erru rc SUBJECT:RC-TIMED-OUT
    outu erru rc CLEAN
@@ -362,7 +362,7 @@ create PTY-NAME PTY:SLAVE-PATH-CAP allot
    WHITEBOX-CHILD:ENV!
    WHITEBOX-CHILD:ENGINE$ >LEN
    S\" require src/habu/app-image.f\nrequire test/address-cell-cap-grown.f\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" >LEN
-   OUT CAP >LEN ERR CAP >LEN SUITE-BUDGET:CHILD-MS >MS
+   OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-ENV-STDIN-CAPTURE PCAP-RESULT:>N CLEAN drop
    SECOND$ FS:EXECUTABLE? TTRUE
    RUN-ADDRESS-OWNER

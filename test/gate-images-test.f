@@ -3,9 +3,8 @@
 \ child process boundary. The builder cannot finish until the release row
 \ before the consumer and the later row after it have run, so a synchronous
 \ setup, or a consumer that holds the registry while it waits for the bundle,
-\ ends at the builder's bounded wait, which this test reports as a timeout
-\ rather than a failure. Keep each registry, builder, consumer copy and
-\ transcript for replay.
+\ ends at the builder's bounded wait, and the bundle's build row and this test
+\ go red. Keep each registry, builder, consumer copy and transcript for replay.
 \ Run: bin/hb --load test/gate-images-test.f
 require src/lib/test.f
 require src/lib/string.f
@@ -14,8 +13,7 @@ require src/lib/fs-mutate.f
 require src/lib/process-cwd.f
 require src/lib/process-env.f
 require src/lib/engine-candidate.f
-require src/lib/test/subject.f
-require test/suite-budget.f
+require src/lib/process.f
 require test/pcap-result.f
 
 package GATE-IMAGES-ORCH-E2E
@@ -86,15 +84,8 @@ variable PARENT-U
       fail if s" 1" else s" 0" then >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    ENGINE-CANDIDATE:PATH$ >LEN ROOT$ >LEN
-   OUT IO-CAP >LEN ERR IO-CAP >LEN SUITE-BUDGET:CHILD-MS >MS
+   OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
    PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE RESULT ;
-
-\ A nested gate whose compiler bundle ran out of time exits PROC-TIMEOUT-RC
-\ (gate-images-orch-registry.f). Its transcript is already saved; the deadline
-\ is thrown again, never asserted as an exit code.
-: TIMED-OUT ( -- )
-   s" test/gate-images-orch-registry.f" OUT OUT-U @ ERR ERR-U @ RC @
-   SUBJECT:RC-TIMED-OUT ;
 
 : HAS-OUT ( ptr u8 n -- bool )
    OUT OUT-U @ 2swap CONTAINS? ;
@@ -137,14 +128,12 @@ public
    s" gate-images-orch-success" SETUP
    false RUN-GATE
    s" success.out" s" success.err" LOG
-   TIMED-OUT
    s" the release and later rows run beside the bundle a consumer waits for" T-LABEL
    CHECK-SUCCESS
    s" success artifacts: " type ROOT$ type cr
    s" gate-images-orch-failure" SETUP
    true RUN-GATE
    s" failure.out" s" failure.err" LOG
-   TIMED-OUT
    s" a failed bundle leaves dependents red and later independent work green" T-LABEL
    CHECK-FAILURE
    s" failure artifacts: " type ROOT$ type cr

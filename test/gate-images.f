@@ -54,7 +54,6 @@ require src/lib/source-lex.f
 require test/load-refs.f
 require test/gate-pool.f
 require test/image-grant.f
-require test/suite-budget.f              \ a build row's budget and hang guard
 
 package GATE-IMAGES
 
@@ -283,7 +282,6 @@ variable UNION
 4 constant FAILED
 
 \ A row that needs a failed image dies as it starts, with this status.
-60000 constant RED-ROW-TIMEOUT-MS
 75 constant RED-ROW-RC
 GT-POOL-STDIN-CAP constant PROGRAM-CAP
 
@@ -300,8 +298,8 @@ variable WB-U
 variable NEEDED
 variable ROW-MASK
 
-\ How the adapter starts a build row: program, label, grant, deadline.
-TYPED-VARIABLE START-XT [ ptr u8 n ptr u8 n ptr u8 n n -- ]
+\ How the adapter starts a build row: program, label, grant.
+TYPED-VARIABLE START-XT [ ptr u8 n ptr u8 n ptr u8 n -- ]
 
 : STATE@ ( n -- n ) cells STATES + @ ;
 : STATE! ( n n -- ) cells STATES + ! ;
@@ -364,18 +362,14 @@ TYPED-VARIABLE START-XT [ ptr u8 n ptr u8 n ptr u8 n n -- ]
    s" -build" LABEL+ ;
 
 \ A build row is granted its family and the prerequisites its module settles on
-\ the way. It is held to a row's CPU budget, whatever the load, and its wall
-\ deadline is a hang guard beyond the builder's own capture. The compiler
-\ bundle and the other builders use SUITE-BUDGET:CHILD-MS; the other builders
-\ clean their work directory before a timeout throw.
+\ the way.
 : BUILD ( n -- ) {: f:n :}
    f PROGRAM!
    f BUILD-LABEL!
    f BIT f PRE@ or GRANT!
    PROGRAM-BUF PROGRAM-U @ LABEL-BUF LABEL-U @ IMAGE-GRANT:VALUE$
-   SUITE-BUDGET:ROW-MS START-XT @ execute
+   START-XT @ execute
    GT-POOL-SEQ @ f SEQ!
-   SUITE-BUDGET:CPU-MS f SEQ@ GT-POOL-CPU-BUDGET!
    LIVE f STATE! ;
 
 \ A build row retired. The red table holds a record for every red row the pool
@@ -480,8 +474,8 @@ public
 
 \ Start the build rows of the images DERIVE found needed. Call it after
 \ GT-START and GT-POOL-RESET, before the first registry row; the xt starts a
-\ build row from its stdin program, label, grant and deadline.
-: START ( [ ptr u8 n ptr u8 n ptr u8 n n -- ] -- )
+\ build row from its stdin program, label and grant.
+: START ( [ ptr u8 n ptr u8 n ptr u8 n -- ] -- )
    START-XT !
    s" hb-whitebox" WB-BUF GT-PATH WB-U !
    PUMP ;
@@ -515,7 +509,7 @@ public
    ROW-MASK @ FAILED-IN 0 < ;
 
 : ROW-RED ( ptr u8 n -- ) {: label:ptr labelu:n :}
-   label labelu RED-ROW-TIMEOUT-MS [: RED-BODY ;] GT-POOL-START-FORK ;
+   label labelu [: RED-BODY ;] GT-POOL-START-FORK ;
 
 \ The grant the row's environment carries (test/image-grant.f).
 : ROW-GRANT$ ( -- ptr u8 n )

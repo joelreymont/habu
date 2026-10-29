@@ -137,9 +137,9 @@ variable T-LABEL-U
    s" test: failures" T-EX-FAIL die ;
 
 \ A deadline is no verdict on the code under test (src/lib/test/outcome.f): a
-\ check that wants another code lets E-PROC-TIMEOUT go uncaught, so the gate
-\ pool reports the row as a timeout instead of a wrong throw code. The expected
-\ code is a local, so a throw check inside the xt keeps its own.
+\ check that wants another code lets E-PROC-TIMEOUT go uncaught and counts
+\ nothing. The expected code is a local, so a throw check inside the xt keeps
+\ its own.
 : TTHROWSQ ( [ -- ] n -- ) {: want:n :}
    catch {: code:n :}
    code E-PROC-TIMEOUT = want E-PROC-TIMEOUT <> and if code throw then
