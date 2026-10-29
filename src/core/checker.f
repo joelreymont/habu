@@ -24863,17 +24863,23 @@ CK-AOT-REC-CONTROL-INSTALL
    REPEAT
    CK-AOT-ANY @ 0 <> ;
 
+\ Would a seeded row answer a name the pass just run could not resolve? The
+\ queue is walked without taking, so the tables are left alone.
+: CK-AOT-MISS-SERVED? ( -- bool )
+   ASIG-MISS-U @ 0= IF RES-FALSE EXIT THEN
+   CK-AOT-READY? 0= IF RES-FALSE EXIT THEN
+   RES-FALSE CK-AOT-MISSES ;
+
 \ Would another pass see something this one could not? Asked inside CHECK, at
 \ the moment the verdict is reached, because that is where the two facts it
 \ needs already are: the pass latched E-UNDEFINED and the queue holds the names
 \ it could not resolve. It takes nothing - CHECK must not publish an effect
 \ while its own diagnostic is still pending.
-: CK-AOT-RETRY-DUE? ( n -- bool ) {: verdict:n :}
+: CK-AOT-RETRY-DUE? ( n -- bool )
+   {: verdict:n :}
    verdict -1 = IF RES-FALSE EXIT THEN
    UNDEFERR @ 0= IF RES-FALSE EXIT THEN
-   ASIG-MISS-U @ 0= IF RES-FALSE EXIT THEN
-   CK-AOT-READY? 0= IF RES-FALSE EXIT THEN
-   RES-FALSE CK-AOT-MISSES ;
+   CK-AOT-MISS-SERVED? ;
 
 \ Latched where the verdict is reached, so the diagnostic below it can ask one
 \ variable instead of re-deriving the answer, and so a bare CHECK - one with no
@@ -24884,15 +24890,26 @@ CK-AOT-REC-CONTROL-INSTALL
    verdict CK-AOT-RETRY-DUE? IF -1 CK-AOT-RETRY-DUE ! THEN
    verdict ;
 
-\ The intake itself, at the definition boundary and nowhere else: USIG-ADD opens
-\ with NEW, and NEW is the in-progress body's whole unification state - the type
-\ variable pool, the accumulator rows, the trail. Taking a row at the token that
-\ missed would destroy the very check that asked for it.
+\ The intake itself. It runs between passes, never at the token that missed: the
+\ pass has already judged the name unbound, so the pass runs again once the row
+\ is in. Its callers are CHECK-RETRY at a definition's boundary, CHECKER-PREFIX's
+\ SCAN between re-reads and TOP-STEP-RETRY between passes of one step.
+\ Between passes is safe: the intake appends effect records and table entries
+\ and moves no pool counter.
 \ The registry is NOT installed here: the seed put it in before this engine read
 \ a user token (CK-AOT-REG-INSTALL above says why it has to be that early).
 : CK-AOT-INTAKE ( -- bool )
    CK-AOT-READY? 0= IF RES-FALSE EXIT THEN
    RES-TRUE CK-AOT-MISSES ;
+
+\ The intake a caller asked for because a row was there to take
+\ (CK-AOT-MISS-SERVED?). If taking it now finds nothing, the two walks disagree,
+\ so that is a death, not a fallthrough: a body's pass held its verdict and
+\ would be refused with no diagnostic at all, and the interpret row's take
+\ would answer true and run the same miss again forever.
+: CK-AOT-INTAKE! ( -- )
+   CK-AOT-INTAKE IF EXIT THEN
+   s" checker: a seeded signature the miss queue answered was not there to take" 76 die ;
 
 CHECKER-REG:SCRATCH{
 variable ZSHAPE   \ 0 empty, 1 core 0=, 2 literal zero, 3 zero then core <>, -1 other
@@ -26527,12 +26544,10 @@ variable CAND-VERDICT
 \ CHECK! ( a u -- flag ) : like CHECK but VERIFIES the body against a leading
 \ ( in -- out ) declared sig (rejects on mismatch). The standalone REPL hook.
 \ ---- checking a body that names a seeded word --------------------------------
-\ WHERE THE INTAKE GOES, and why it is here rather than at the token that missed:
-\ taking a signature runs USIG-ADD, USIG-ADD opens with NEW, and NEW is the whole
-\ of an in-progress body's unification state - the type-variable pool, the
-\ accumulator rows, the trail. The definition boundary is the one place the
-\ checker has a clean slate, so the pass runs, the names it could not resolve are
-\ taken, and the pass runs again.
+\ A body naming a seeded word whose row is not yet taken queues the name
+\ (CALL-UNDEFINED) and its pass judges the name unbound. So the pass runs, the
+\ names it could not resolve are taken between passes (CK-AOT-INTAKE), and the
+\ pass runs again.
 \
 \ TERMINATION IS STRUCTURAL, NOT A BOUND. Every pass either creates an effect for
 \ a (package, visibility, name) the checker did not have - and the pool holds
@@ -26555,7 +26570,8 @@ variable CK-RETRY-V
    s" checker: a re-checked body read a different NUMBER of tokens than the observer holds"
    76 die ;
 
-: CHECK-RETRY ( ptr u8 n -- n ) {: a:ptr u:n :}
+: CHECK-RETRY ( ptr u8 n -- n )
+   {: a:ptr u:n :}
    WRITE-WINDOW-CK
    REC-IX @ {: ix0:n :}
    REC-ON @ IF CWIN-N @ ELSE 0 THEN {: cw0:n :}
@@ -26567,12 +26583,7 @@ variable CK-RETRY-V
    a u CHECK CK-RETRY-V !
    SCAN-TOKS @ {: toks0:n :}
    BEGIN CK-AOT-RETRY-DUE @ 0 <> WHILE
-      \ The pass held its diagnostic because a row was there to take. If taking
-      \ it now finds nothing, the two walks disagree and the definition would be
-      \ refused with no diagnostic at all - so that is a death, not a fallthrough.
-      CK-AOT-INTAKE 0= IF
-         s" checker: a held diagnostic had no seeded signature to take after all" 76 die
-      THEN
+      CK-AOT-INTAKE!
       -1 RESCAN !
       pu0 PU-N !                       \ this attempt's uses replace the last's
       cp0 CUR-RN !  cb0 CB-N !  done0 CUR-DONE !   \ and its candidates
@@ -30345,13 +30356,16 @@ public
    THEN ;
 
 \ `' W` pushes W's quotation when W has a row, else an opaque xt, as `['] W`
-\ does in a body. W is the word the load's own find selects.
+\ does in a body. W is the word the load's own find selects. A name the checker
+\ does not bind joins the lazy intake's queue, as a body's does
+\ (CALL-UNDEFINED): a seeded word's row is taken and the step run again
+\ (TOP-STEP-RETRY); a word no row answers stays opaque.
 : TOP-TICK-STEP ( -- )
    TOP-BEGIN
    TKF TKFU @ CHECKER-TOP-SYM {: sym:n hit:bool :}
    FEP-CLEAR
    hit IF sym CHECKER-FIND-USIG-SYM drop THEN
-   FEP-HIT? IF FEP @ EFF-QUOT FEP @ USIG-SYM@ BTICK-EDGE ELSE OPAQUE-XT THEN
+   FEP-HIT? IF FEP @ EFF-QUOT FEP @ USIG-SYM@ BTICK-EDGE ELSE TKF TKFU @ ASIG-MISS+ OPAQUE-XT THEN
    TOP-PUSH ;
 
 package LOWER-CERT-HOOK
@@ -30509,13 +30523,46 @@ variable TG-GEN
    off 0 <> IF TOP-ROW-COUNT ELSE 0 THEN TOP-ROW-CELLS !
    TOP-RELEASE ;
 
-\ Step the loaded row over one top-level event, or refuse it (TOP-JUDGE). A word
-\ about to run and the name a tick read are judged as a body judges them.
-: CHECKER-TOP-WORD ( ptr u8 n -- )
-   TOK-SPELL-U ! TOK-SPELL-A !  ['] TOP-WORD-STEP TOP-RUN ;
+\ Take the rows that answer the step's queue, after releasing its terms: true
+\ when one was taken. The bool in is the catch's preserved cell.
+: TOP-INTAKE ( bool -- bool )
+   drop  CK-AOT-MISS-SERVED? dup IF TOP-RELEASE  CK-AOT-INTAKE! THEN ;
 
-: CHECKER-TOP-TICK ( ptr u8 n -- )
-   TOK-SPELL-U ! TOK-SPELL-A !  ['] TOP-TICK-STEP TOP-RUN ;
+
+\ The intake asks UNSEEN-COVERS? of each queued name, which reads the package
+\ context; with the flag on, as TOP-RUN has it for the step, no context names no
+\ package instead of refusing (CHECKER-PKG-CONTEXT), so the walk answers as the
+\ step's CALL-UNDEFINED did. A throw turns the flag off and releases the step's
+\ terms.
+: TOP-TAKE ( -- bool )
+   -1 TOP-STEP !  RES-FALSE ['] TOP-INTAKE catch  0 TOP-STEP !  {: took rc:n :}
+   rc 0= IF took EXIT THEN
+   TOP-RELEASE  rc throw ;
+
+
+\ A seeded engine's rows come in at first reference (CK-AOT-INTAKE), and a
+\ body takes them between its passes (CHECK-RETRY). The interpret row takes
+\ them between passes of one step: a step over a name the checker does not bind
+\ queues it (CALL-UNDEFINED, TOP-TICK-STEP). A tick step is admitted checked
+\ with an opaque xt; a word step is admitted unchecked and pushes nothing. When a
+\ seeded row answers the queue, the step's terms are released, the row taken
+\ and the step run again over a fresh load. The saved row the step loads from
+\ is not written between passes, so a pass costs the step alone. Each pass
+\ takes a row the tables lacked, so the loop ends as a body's does.
+: TOP-STEP-RETRY ( [ -- ] n -- )
+   {: live:n :}
+   BEGIN live CHECKER-TOP-LOAD  dup TOP-RUN  TOP-TAKE 0= UNTIL drop ;
+
+
+\ Step the saved row over one top-level event, or refuse it (TOP-JUDGE). A word
+\ about to run and the name a tick read are judged as a body judges them.
+: CHECKER-TOP-WORD ( ptr u8 n n -- )
+   {: a:ptr u:n live:n :}
+   a TOK-SPELL-A !  u TOK-SPELL-U !  ['] TOP-WORD-STEP live TOP-STEP-RETRY ;
+
+: CHECKER-TOP-TICK ( ptr u8 n n -- )
+   {: a:ptr u:n live:n :}
+   a TOK-SPELL-A !  u TOK-SPELL-U !  ['] TOP-TICK-STEP live TOP-STEP-RETRY ;
 
 \ ---- a literal event: pushed onto the saved row ------------------------------
 \ A literal's cells have constant types, so over a saved row that fits the live
@@ -30599,10 +30646,9 @@ variable TG-GEN
 PPRIM: TOP-ROW CHECKER-TOP-SEGMENT PE-N PE-IN CLOSE-PRIVATE
 PPRIM: TOP-ROW CHECKER-TOP-FORGET CLOSE-PRIVATE
 PPRIM: TOP-ROW CHECKER-TOP-WIDEN PE-PTR-U8 PE-IN PE-N PE-IN CLOSE-PRIVATE
-PPRIM: TOP-ROW CHECKER-TOP-LOAD PE-N PE-IN CLOSE-PRIVATE
 PPRIM: TOP-ROW CHECKER-TOP-SAVE CLOSE-PRIVATE
-PPRIM: TOP-ROW CHECKER-TOP-WORD PE-PTR-U8 PE-IN PE-N PE-IN CLOSE-PRIVATE
-PPRIM: TOP-ROW CHECKER-TOP-TICK PE-PTR-U8 PE-IN PE-N PE-IN CLOSE-PRIVATE
+PPRIM: TOP-ROW CHECKER-TOP-WORD PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN CLOSE-PRIVATE
+PPRIM: TOP-ROW CHECKER-TOP-TICK PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN CLOSE-PRIVATE
 PPRIM: TOP-ROW CHECKER-TOP-PUSH PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN CLOSE-PRIVATE
 
 \ ---- the surface a capture keeps ---------------------------------------------

@@ -11,6 +11,9 @@ STRUCTURE pair
 
 : BUMP ( n -- n ) 1+ ;
 
+\ The consumer names this at top level before any body does.
+4 constant WIDTH
+
 \ This checked public word consumes the next source token at top level.
 : CPARSE ( -- ) parse-name 2drop ;
 

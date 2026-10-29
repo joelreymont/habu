@@ -6,6 +6,16 @@ package PAYLOAD-NATIVE-CONSUMER
 
 : TRUE! ( bool -- ) 0= if 79 throw then ;
 
+\ The interpret row takes a seeded row at its first reference, as a body does:
+\ a call's, and the quotation of a tick's. Without the intake the call pushes
+\ nothing and the tick an opaque xt, and the typed consumer refuses either.
+PAYLOAD-NATIVE:WIDTH 4 EQ
+41 ' PAYLOAD-NATIVE:BUMP execute 42 EQ
+\ With no package context the intake reads the context as the step did.
+get-current 0 set-current
+42 PAYLOAD-NATIVE:ASSERTED 42 EQ
+set-current
+
 
 : BUMP-TWICE ( n -- n ) PAYLOAD-NATIVE:BUMP PAYLOAD-NATIVE:BUMP ;
 

@@ -32,15 +32,15 @@ package TOP-ROW
    cls TR-EV-STR = IF 2 EXIT THEN
    1 ;
 
-: TR-HOOK ( ptr u8 n n n -- ) {: a:ptr u:n cls:n flg:n :}
+: TR-HOOK ( ptr u8 n n n -- )
+   {: a:ptr u:n cls:n flg:n :}
    data-base STACK-ABI:BASE-CELL + @ CHECKER-TOP-SEGMENT
    check@ 0= IF
       CHECKER-TOP-FORGET  cls TR-EV-WORD = IF a u CHECKER-TOP-WIDEN THEN  EXIT
    THEN
    depth cls TR-PUSHED - {: live:n :}
    cls TR-EV-WORD <>  cls TR-EV-TICK <>  and IF a u cls live CHECKER-TOP-PUSH EXIT THEN
-   live CHECKER-TOP-LOAD
-   cls TR-EV-WORD = IF a u CHECKER-TOP-WORD ELSE a u CHECKER-TOP-TICK THEN
+   cls TR-EV-WORD = IF a u live CHECKER-TOP-WORD ELSE a u live CHECKER-TOP-TICK THEN
    CHECKER-TOP-SAVE ;
 
 \ set-top-check is a guarded-deref trust-boundary prim. TOP-ROW's private row

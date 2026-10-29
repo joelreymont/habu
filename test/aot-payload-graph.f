@@ -292,7 +292,7 @@ variable SUBJECT-U
 : FRESH-NATIVE ( -- )
    s" imported definitions are absent from the original engine" T-LABEL
    CONSUMER-ARGS
-   WHITEBOX-CHILD:ENGINE$ 70 s" E-UNDEFINED: PAYLOAD-NATIVE:BUMP" CHILD drop
+   WHITEBOX-CHILD:ENGINE$ 70 s" E-UNDEFINED: PAYLOAD-NATIVE:WIDTH" CHILD drop
    s" a native producer writes a portable two-cell family and verified effects" T-LABEL
    s" test/aot-payload-native-producer.f" ARGS
    s" test/aot-payload-native-prepare.f" ARG
