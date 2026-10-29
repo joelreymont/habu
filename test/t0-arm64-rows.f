@@ -6,13 +6,14 @@
 \ a call, the writeback transfers that move the data stack pointer with a
 \ spill's or fill's last cell, a copy that shares its vreg until a load
 \ writes a fresh one, a square that multiplies a shared vreg by itself, a
-\ compare that branches on its condition codes, a value filled after a call
-\ into the register its loop's back edge expects, stack words over one-cell
-\ values, and cells, cell+ and ptr-field, that call nothing, the x86-64 stack
-\ moves that leave those codes alone, a divide by a literal (an arm64 sdiv and
-\ msub in a leap-year test, the x86-64 idiv bytes with the register it saves),
-\ and the refusals that keep the patch slot last and an operation x86-64 does
-\ not provide from running.
+\ compare that branches on its condition codes, an `if` arm and a `while` loop
+\ that keep their values in registers across the join and the back edge, a
+\ value filled after a call into the register its loop's back edge expects,
+\ stack words over one-cell values, and cells, cell+ and ptr-field, that call
+\ nothing, the x86-64 stack moves that leave those codes alone, a divide by a
+\ literal (an arm64 sdiv and msub in a leap-year test, the x86-64 idiv bytes
+\ with the register it saves), and the refusals that keep the patch slot last
+\ and an operation x86-64 does not provide from running.
 \ Bodies are compiled by T0:COMPILE-TEXT or driven through the seam, sealed
 \ into NEMIT, and checked by decoding the words NEMIT answers against the
 \ assembler's encodings.
@@ -376,7 +377,8 @@ private
    4 +loop TTRUE
    NEMIT:CLEAR ;
 
-\ A loop shaped as SCAN-CHAR.
+\ A `while` loop over an address and a count, with a counter below them that
+\ an `if` in the body bumps.
 : LOOP-CASE ( -- )
    ARCH-A64
    s" CNT ( ptr u8 n -- n ptr u8 n ) 0 rot rot begin dup 0 > while over c@ 44 = if rot 1+ rot rot then swap 1+ swap 1- repeat " BODY

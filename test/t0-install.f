@@ -61,8 +61,11 @@
 \ 2-cycle and a 3-cycle at the back edge, two `while` exits that leave
 \ different register counts, constants below a loop, a call in the body,
 \ sixteen live values evicted in the body, loops in each arm of an if/else,
-\ `until` on a compare of a loop value and on the loop value itself, `again`
-\ left by `exit` and by a `while`, and a fused `while` with a constant below.
+\ `until` on a compare of a loop value and on a flag in the head (a loop value,
+\ its top vreg, a call's in its bottom vreg), `until` on a compound flag
+\ outside the head, a loop whose inputs are in memory at `begin`, `again` left
+\ by `exit` with an exchange at the back edge and by a `while`, and a fused
+\ `while` with a constant below.
 \ The counted loop rows run `do` and `?do` loops whose values stay in
 \ registers, each with a cell under its result: a value carried across `loop`,
 \ `+loop` up and down by a copy of a loop value, a step in the vreg the layout
@@ -600,11 +603,12 @@ W-DEF-2OVER W-PO
 
 \ ---- loops that keep registers ------------------------------------------------
 \ Each loop keeps its values in vregs at `begin`, its exits' at `while`, and the
-\ back edge and the exits reconcile to them. A body reads its inputs from
-\ locals or moves them before `begin`, so the loop head holds them in vregs.
+\ back edge and the exits reconcile to them. Most bodies read their inputs from
+\ locals or move them before `begin`, so the loop head holds them in vregs.
 : L-SMALL ( n -- bool ) 100 < ;
 
-\ The bytes equal to ch in a string, SCAN-CHAR's shape.
+\ The bytes equal to ch in a string: a `while` loop over an address and a
+\ count, with a counter below them that an `if` in the body bumps.
 : L-COUNT ( ptr u8 n n -- n )
    {: ch:n :}
    0 rot rot
@@ -650,19 +654,39 @@ TRUSTED: L-TWO ( n n -- n n )
    {: a:n b:n f:bool :}
    a b f if begin swap 1+ swap 2 * dup 50 > until then ;
 
-\ The flag a compare of a loop value leaves, and a loop value that is a flag,
-\ whose body's compare leaves condition codes that `until` must not read.
-: L-UNTIL-CC ( n n -- n n )
-   {: a:n b:n :}
-   a b begin 1- swap dup 0= until ;
-
+\ A loop value that is a flag, whose body's compare leaves condition codes that
+\ `until` must not read.
 : L-UNTIL-REG ( n bool bool -- n bool bool )
    {: k:n a:bool b:bool :}
    k a b begin rot dup 0 < if negate then 1+ rot rot swap dup until ;
 
-: L-AGAIN ( n n -- n )
+\ `until` on the head's top vreg, with an exchange at the back edge.
+: L-TOP-FLAG ( n bool bool -- n bool bool )
+   {: k:n a:bool b:bool :}
+   k a b begin rot 1+ rot rot swap over until ;
+
+: L-DONE ( n -- bool ) 0= ;
+
+\ `until` on a call's flag, which lands in the head's bottom vreg while the back
+\ edge reloads that cell from memory.
+: L-CALL-FLAG ( n n -- n n )
    {: a:n k:n :}
-   a k begin swap 1+ swap 1- dup 0= if drop exit then again ;
+   a k begin swap 1+ swap 1- dup L-DONE until ;
+
+\ `until` on a compound flag outside the head, with an exchange at the back
+\ edge. The turns, counted on the return stack, also end the loop, so a back
+\ edge that loses the values ends with a wrong count instead of running on.
+: L-AND-FLAG ( n n -- n n n )
+   {: a:n b:n :}
+   0 >r a b begin swap 1+ over 5 > over 3 > and r> 1+ dup >r 20 > or until r> ;
+
+\ The inputs still in memory at `begin`: the head holds no vregs.
+: L-MEM ( n n -- n n ) begin swap 1+ dup 5 = until ;
+
+\ `again` whose back edge exchanges the two values.
+: L-AGAIN ( n n -- n n )
+   {: a:n b:n :}
+   a b begin swap 1+ dup 9 > if exit then again ;
 
 \ The checker refuses a `while` closed by `again`, so the body is TRUSTED:.
 TRUSTED: L-WAGAIN ( n n -- n n )
@@ -1233,12 +1257,17 @@ private
    s" loops nested in each arm of an if and else" T-LABEL
    77 3 10 true L-NEST -153 T= 77 T=   77 3 10 false L-NEST -8 T= 77 T=
    77 3 10 true L-IF-UNTIL 80 T= 6 T= 77 T=   77 3 10 false L-IF-UNTIL 10 T= 3 T= 77 T=
-   s" until on a compare of a loop value and on the value itself" T-LABEL
-   77 3 5 L-UNTIL-CC 0 T= 1 T= 77 T=
+   s" until on a flag in the head: a loop value, its top vreg, a call's" T-LABEL
    77 0 false true L-UNTIL-REG TTRUE TFALSE 2 T= 77 T=
    77 0 true false L-UNTIL-REG TTRUE TFALSE 1 T= 77 T=
+   77 0 true false L-TOP-FLAG TFALSE TTRUE 2 T= 77 T=
+   77 3 4 L-CALL-FLAG 0 T= 7 T= 77 T=
+   s" until on a compound flag outside the head" T-LABEL
+   77 0 0 L-AND-FLAG 12 T= 6 T= 6 T= 77 T=
+   s" a loop whose inputs are in memory at begin" T-LABEL
+   77 0 0 L-MEM 5 T= 4 T= 77 T=
    s" again left by exit and by a while" T-LABEL
-   77 3 4 L-AGAIN 7 T= 77 T=
+   77 0 0 L-AGAIN 10 T= 9 T= 77 T=
    77 3 4 L-WAGAIN 0 T= 7 T= 77 T=
    s" a while on a fused compare with a constant below" T-LABEL
    77 3 L-WCONST 12 T= 0 T= 77 T= ;

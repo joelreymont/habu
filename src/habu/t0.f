@@ -887,9 +887,6 @@ variable PENDING
    PENDING @ 1- T0-EMIT:>CC
    0 PENDING ! ;
 
-\ The pending condition, taken, with the virtual stack spilled.
-: TAKE-CC ( -- T0-EMIT:cc ) CC-TAKE SPILL-ALL ;
-
 \ A landing that spills: the emptied virtual stack agrees with every arrival.
 : LAND ( -- ) SPILL-ALL 0 DEAD ! ;
 
@@ -1011,7 +1008,10 @@ variable PENDING
 \ The fallthrough brought into layout k: entries past its count to memory,
 \ the rest moved into their goal vregs as one parallel copy, then the cells
 \ the layout holds above memory loaded. An exact layout emits nothing; an
-\ unreachable fallthrough emits nothing and takes the layout.
+\ unreachable fallthrough emits nothing and takes the layout. It writes only
+\ the layout's own vregs: moves into goal vregs, exchanges within a permutation
+\ of goals and loads into layout vregs, so a vreg outside the layout keeps its
+\ value across it.
 : RECONCILE ( n -- ) {: k:n :}
    DEAD @ if k ADOPT exit then
    VS-N @ k CS-LAY-N @ - {: d:n :}
@@ -1026,13 +1026,14 @@ variable PENDING
 \ The arm runs in the layout recorded for the skipped path.
 : DO-IF ( -- )
    CS-N @ {: k:n :}
+   CS-IF L-N @ CS-PUSH
    CC? if
       CC-TAKE {: c:T0-EMIT:cc :}
-      CS-IF L-N @ CS-PUSH  k SNAPSHOT
+      k SNAPSHOT
       c T0-EMIT:IF-CC, exit
    then
    TAKE {: f:T0-EMIT:vreg :}
-   CS-IF L-N @ CS-PUSH  k SNAPSHOT
+   k SNAPSHOT
    f T0-EMIT:IF,
    f RELEASE ;
 
@@ -1075,15 +1076,15 @@ variable PENDING
    CS-N @ {: k:n :}
    k CS-LAY-N @ {: head:n :}
    k 1+ LAY-ROOM  k k 1+ LAY-COPY
+   CS-WHILE loc CS-PUSH
+   CS-BEGIN loc CS-PUSH  head k 1+ CS-LAY-N !
    CC? if
       CC-TAKE {: c:T0-EMIT:cc :}
-      CS-WHILE loc CS-PUSH  k SNAPSHOT
-      CS-BEGIN loc CS-PUSH  head k 1+ CS-LAY-N !
+      k SNAPSHOT
       c T0-EMIT:WHILE-CC, exit
    then
    TAKE {: f:T0-EMIT:vreg :}
-   CS-WHILE loc CS-PUSH  k SNAPSHOT
-   CS-BEGIN loc CS-PUSH  head k 1+ CS-LAY-N !
+   k SNAPSHOT
    f T0-EMIT:WHILE,
    f RELEASE ;
 
@@ -1102,9 +1103,10 @@ variable PENDING
    false k CS-LAY-N @ 0 ?do k i LAY@ v = or loop ;
 
 \ The back edge reconciles to the head, and the fallthrough continues in its
-\ layout. RECONCILE keeps the condition codes, so a pending compare is taken
-\ after it; a flag in a vreg the head holds is compared first, and the loop
-\ goes back while it is zero, the compare's NE failing.
+\ layout. RECONCILE keeps the condition codes, so the branch on a pending
+\ compare follows it; a flag in a vreg the head holds is compared first, and
+\ the loop goes back while it is zero, the compare's NE failing. A flag in a
+\ vreg outside the head keeps its value across RECONCILE and is tested after.
 : DO-UNTIL ( -- )
    CS-BEGIN CS-POP
    SCOPE-END
@@ -1117,13 +1119,11 @@ variable PENDING
    TAKE {: f:T0-EMIT:vreg :}
    k f LAY-HOLDS? if
       f 0 T0-EMIT:CMP-LIT
-      f RELEASE
       k RECONCILE
       T0-EMIT:CC-NE T0-EMIT:UNTIL-CC, exit
    then
    k RECONCILE
-   f T0-EMIT:UNTIL,
-   f RELEASE ;
+   f T0-EMIT:UNTIL, ;
 
 : DO-AGAIN ( -- )
    CS-BEGIN CS-POP
