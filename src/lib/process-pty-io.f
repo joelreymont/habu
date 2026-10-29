@@ -52,6 +52,7 @@ require src/lib/process-pty-handle.f
 require src/lib/process-fork.f
 require src/lib/process-argv.f
 require src/lib/process.f
+require src/lib/fd-lock.f
 require src/lib/pty.f
 require src/lib/aio.f
 require src/lib/task.f
@@ -64,7 +65,6 @@ package PROCESS-PTY
 1 constant EPERM#                  \ "operation not permitted" (process exists, denied)
 PATH-CAP 1 + constant IO-PATH-CAP  \ a supervised executable path of PATH-CAP bytes and its NUL
 $7F constant IO-EXEC-FAIL          \ child exit code when execve never replaces the image
-0 constant F-DUPFD                 \ fcntl: duplicate to the lowest descriptor at or above the argument
 10 constant IO-LF
 
 \ Load-time scratch shared by the parent build path and by each forked child (a
@@ -155,25 +155,32 @@ variable IO-GO-R                                 \ child-side release gate
       1+
    repeat drop ;
 
-\ The target child wires its pipe ends onto its standard descriptors and drops
-\ every other inherited descriptor but the gate's read end, then blocks on the
-\ gate. It holds no write end of the gate, so a supervisor that closes or loses
-\ its end without LAUNCH gives it end of file and it exits without exec. That
-\ exit and a failed execve both exit with IO-EXEC-FAIL; the watch sees the exit.
-: IO-TARGET-STDIO ( -- )
-   IO-SIN-R @ >FD FD>N 0 dup2 drop
-   IO-SOUT-W @ >FD FD>N 1 dup2 drop
-   IO-SOUT-W @ >FD FD>N 2 dup2 drop ;
+\ A close-on-exec copy of an inherited end at the lowest free number from 3
+\ up. An owner with a standard descriptor closed hands the child an end on
+\ that number, where wiring 0-2 would overwrite it.
+: IO-LIFT ( fd -- fd ) {: f:fd :}
+   f FD>N F-DUPFD-CLOEXEC 3 fcntl {: n:n :}
+   n 0 < if s" " IO-EXEC-FAIL die then
+   n >FD ;
 
-\ The slave is the child's whole terminal: input, output and diagnostics.
-: IO-TARGET-TTY ( -- )
-   IO-SIN-R @ >FD FD>N 0 dup2 drop
-   IO-SIN-R @ >FD FD>N 1 dup2 drop
-   IO-SIN-R @ >FD FD>N 2 dup2 drop ;
+\ Input on 0, output and diagnostics on 1 and 2. Every source is a lifted
+\ copy, so no dup2 lands on its own number, and dup2 clears close-on-exec.
+: IO-WIRE ( fd fd -- ) {: in:fd out:fd :}
+   in FD>N 0 dup2 drop
+   out FD>N 1 dup2 drop
+   out FD>N 2 dup2 drop ;
 
+\ The target child lifts the ends it still needs above 2, wires its standard
+\ descriptors from them (under WITH-TTY-TARGET all three are the slave), drops
+\ every other descriptor but the gate's read end, then blocks on the gate. It
+\ holds no write end of the gate, so a supervisor that closes or loses its end
+\ without LAUNCH gives it end of file and it exits without exec. That exit and
+\ a failed execve both exit with IO-EXEC-FAIL; the watch sees the exit.
 : IO-TARGET-CHILD ( -- )
-   IO-GO-R @ >FD {: go:fd :}
-   IO-TTY @ if IO-TARGET-TTY else IO-TARGET-STDIO then
+   IO-GO-R @ >FD IO-LIFT {: go:fd :}
+   IO-SIN-R @ >FD IO-LIFT {: in:fd :}
+   IO-TTY @ if in else IO-SOUT-W @ >FD IO-LIFT then {: out:fd :}
+   in out IO-WIRE
    go IO-CLOSE-HIGH
    go FD>N IO-GOBYTE 1 read 1 <> if s" " IO-EXEC-FAIL die then
    go FD>N close
@@ -191,11 +198,11 @@ variable IO-GO-R                                 \ child-side release gate
    path pathu IO-PATH-BUF IO-PATH-CAP >LEN PROC-ZCOPY drop
    pathu LEN>N IO-PATH-LEN ! ;
 
-\ PIPE-PAIR yields ( read write ); each pipe's owner end and child end land in
-\ their own cells.
+\ PIPE-PAIR-CLOEXEC yields ( read write ); each pipe's owner end and child end
+\ land in their own cells. No end reaches a process the owner spawns meanwhile.
 : IO-MK-STDIO ( -- )
-   PIPE-PAIR IO-SOUT-W ! IO-MASTER !      \ stdout: owner reads master, child writes
-   PIPE-PAIR IO-DONE ! IO-SIN-R ! ;       \ stdin: owner writes done, child reads
+   PIPE-PAIR-CLOEXEC IO-SOUT-W ! IO-MASTER !   \ stdout: owner reads master, child writes
+   PIPE-PAIR-CLOEXEC IO-DONE ! IO-SIN-R ! ;    \ stdin: owner writes done, child reads
 
 \ ---- the pseudo-terminal pair ----------------------------------------------
 : IO-OPEN-CK ( n -- n ) {: f:n :}
@@ -205,10 +212,17 @@ variable IO-GO-R                                 \ child-side release gate
 \ writes), slave -> IO-SIN-R (the child's terminal); IO-SOUT-W stays unused.
 \ The slave is opened here rather than by PTY:OPEN, and with O_NOCTTY: a
 \ session-leading supervisor without a terminal would otherwise adopt it.
-: IO-MK-TTY ( -- )
+\ All three are close-on-exec, marked under FD-LOCK as PIPE-PAIR-CLOEXEC marks
+\ its ends, so no process the owner spawns meanwhile holds the terminal.
+: IO-MK-TTY-HELD ( -- )
    IO-PTY-NAME PTY:SLAVE-PATH-CAP PTY:OPEN drop PTY:MASTER>N >FD IO-MASTER !
+   IO-MASTER @ >FD FD-CLOEXEC!
    IO-PTY-NAME PTY:PTY-OPEN-FLAGS 0 open IO-OPEN-CK >FD IO-SIN-R !
-   IO-MASTER @ >FD FD>N F-DUPFD 3 fcntl IO-OPEN-CK >FD IO-DONE ! ;
+   IO-SIN-R @ >FD FD-CLOEXEC!
+   IO-MASTER @ >FD FD>N F-DUPFD-CLOEXEC 3 fcntl IO-OPEN-CK >FD IO-DONE ! ;
+
+: IO-MK-TTY ( -- )
+   [: IO-MK-TTY-HELD ;] FD-LOCK:WITH ;
 
 \ Neither gate end reaches a process the owner spawns while a target is gated;
 \ the target closes its read end itself before execve.

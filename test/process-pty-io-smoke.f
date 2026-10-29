@@ -16,6 +16,10 @@
 \     scope, for more halted tasks than the registry has slots;
 \   - a target whose owner dies inside the scope, before LAUNCH, exits on its
 \     own, so no gated target outlives its owner under init;
+\   - a process the owner spawns while a target is gated, in either mode,
+\     holds none of the target's pipe or terminal descriptors;
+\   - an owner with its standard descriptors closed still wires the target's
+\     stdout and stderr and releases it from its gate, in either mode;
 \   - the checker rejects duplicating a handle or teardown token, so a double
 \     teardown cannot even be written.
 \
@@ -32,6 +36,7 @@ require src/lib/aio.f
 require src/lib/test.f
 require src/lib/test/wait.f
 require src/lib/task.f
+require src/lib/string.f
 
 package PTY-IO-SMOKE
 
@@ -42,6 +47,11 @@ $1388 constant DEADLINE-MS         \ 5s ceiling for the live->dead watch transit
 -7001 constant BODY-THROW          \ a scope body's own throw code, no library's
 
 create WAIT-BYTE 1 allot
+$200 constant FDS-CAP              \ room for one `ls /dev/fd` listing
+create FDS-BASE FDS-CAP allot      \ the listing with no target alive
+create FDS-SEEN FDS-CAP allot      \ the listing while a target is gated
+create FDS-ERR FDS-CAP allot
+variable FDS-BASE-U
 create SIGNAL-BYTES 64 allot
 variable TGT-PID
 variable ALIVE-R   variable ALIVE-W       \ alive-pipe: child holds write end, closes on exit
@@ -248,14 +258,112 @@ TASK:MIN-STACK TASK:TASK HALTEE
    s" sleep 0.3; printf %s habu-pty-eintr" >LEN PROC-ARGV+
    s" /bin/sh" [: SIGNAL-OUTPUT-BODY ;] PROCESS-PTY:WITH-TTY-TARGET ;
 
+\ ---- no other spawn inherits the target's descriptors -------------------------
+\ `ls /dev/fd` lists its open descriptors, its own directory's among them. While
+\ a target is gated, its listing is compared with a baseline listing taken with
+\ no target alive: any pipe or terminal end the scope opened and the probe
+\ inherited would be an extra entry.
+: OPEN-FDS ( ptr u8 -- n ) {: buf:ptr :}
+   PROC-ARGV-RESET
+   s" /dev/fd" >LEN PROC-ARGV+
+   s" /bin/ls" >LEN buf FDS-CAP >LEN FDS-ERR FDS-CAP >LEN DEADLINE-MS >MS
+   RUN-ARGV-CAPTURE
+   MATCH result
+      ok OF PCAP-CAPTURED:UNMAKE drop LEN>N ENDOF
+      err OF PCAP-FAILED:UNMAKE {: outu:len erru:len rc:rc :}
+         s" ls /dev/fd exits cleanly" T-LABEL
+         rc RC>N 0 T=
+         outu LEN>N
+      ENDOF
+   ;MATCH ;
+
+: NO-LEAK-BODY ( process-pty-handle -- process-pty-handle )
+   FDS-SEEN OPEN-FDS {: n:n :}
+   s" a spawn beside a gated target inherits none of its descriptors" T-LABEL
+   FDS-SEEN n FDS-BASE FDS-BASE-U @ T$= ;
+
+: NO-LEAK ( -- )
+   FDS-BASE OPEN-FDS FDS-BASE-U !
+   TRUE-PATH [: NO-LEAK-BODY ;] PROCESS-PTY:WITH-TARGET
+   TRUE-PATH [: NO-LEAK-BODY ;] PROCESS-PTY:WITH-TTY-TARGET ;
+
+\ ---- an owner whose standard descriptors are closed -------------------------
+\ A forked owner closes 0, 1 and 2, so the ends each scope opens land there, and
+\ runs `ls` in each mode on a path that exists, which it names on stdout, and
+\ one that does not, which it names on stderr. It sends back what each scope
+\ read in that scope's half of STD-BUF: a target whose gate end was overwritten
+\ never launches, one whose stdout or stderr was lost names one path. No shell:
+\ bash gives itself a stdout when it starts without one. A fork carries no AIO
+\ loop over, so this runs before this process starts its own and the owner
+\ starts one before it closes its standard descriptors.
+FDS-CAP 2 * constant STD-CAP
+create STD-BUF STD-CAP allot    \ the pipe target's output, then the terminal's
+variable STD-AT                 \ where the running scope's half starts
+variable STD-U                  \ bytes in it so far
+variable STD-R  variable STD-W  \ report pipe: the owner writes, this process reads
+
+: STD-MISSING ( -- ptr u8 n )
+   s" /habu-stdfd-missing" ;
+
+: STD-ARGV ( -- )
+   PROC-ARGV-RESET
+   s" /dev/null" >LEN PROC-ARGV+
+   STD-MISSING >LEN PROC-ARGV+ ;
+
+\ Read into the scope's half until the target hangs up or a read times out.
+: STD-BODY ( process-pty-handle -- process-pty-handle )
+   PROCESS-PTY:LAUNCH
+   0 STD-U !
+   begin
+      STD-BUF STD-AT @ + STD-U @ + FDS-CAP STD-U @ - DEADLINE-MS
+      PROCESS-PTY:AWAIT-BYTES
+      dup 0 > while
+      STD-U +!
+   repeat drop ;
+
+: STD-OWNER ( -- )
+   AIO:START
+   0 close  1 close  2 close
+   0 STD-AT !
+   STD-ARGV s" /bin/ls" [: STD-BODY ;] PROCESS-PTY:WITH-TARGET
+   FDS-CAP STD-AT !
+   STD-ARGV s" /bin/ls" [: STD-BODY ;] PROCESS-PTY:WITH-TTY-TARGET
+   STD-W @ STD-BUF STD-CAP write drop ;
+
+: STD-HALF ( n -- ptr u8 n )
+   STD-BUF + FDS-CAP ;
+
+: STD-CLOSED ( -- )
+   PIPE-PAIR STD-W ! STD-R !
+   PROC-FORK:CHECKED dup PID>N 0= if drop ['] STD-OWNER PROC-FORK:CHILD-MAIN then
+   {: cpid:pid :}
+   STD-W @ >FD CLOSE-OK
+   0 STD-U !
+   begin
+      STD-R @ STD-BUF STD-U @ + STD-CAP STD-U @ - read
+      dup 0 > while
+      STD-U +!
+   repeat drop
+   STD-R @ >FD CLOSE-OK
+   cpid PROC-WAIT-STATUS drop
+   s" an owner with 0-2 closed gets a pipe target's stdout" T-LABEL
+   0 STD-HALF s" /dev/null" CONTAINS? TTRUE
+   s" an owner with 0-2 closed gets a pipe target's stderr" T-LABEL
+   0 STD-HALF STD-MISSING CONTAINS? TTRUE
+   s" an owner with 0-2 closed releases a terminal target and gets its stdout" T-LABEL
+   FDS-CAP STD-HALF s" /dev/null" CONTAINS? TTRUE
+   s" an owner with 0-2 closed gets a terminal target's stderr" T-LABEL
+   FDS-CAP STD-HALF STD-MISSING CONTAINS? TTRUE ;
+
 \ AWAIT with the loop stopped is E-AIO-STATE, like every other wait on the loop;
 \ src/lib/serial-test.f, src/lib/pty-test.f and src/lib/signal-test.f pin that
 \ refusal, and this suite does not.
 \
 \ The loop is started after the last definition (a live task forbids
-\ compilation) and stopped at the end.
+\ compilation) and after STD-CLOSED forks its owner, and stopped at the end.
 : RUN ( -- )
    T-RESET
+   STD-CLOSED
    AIO:START
    LIFECYCLE
    BALANCE
@@ -266,6 +374,7 @@ TASK:MIN-STACK TASK:TASK HALTEE
    STRANDED
    SIGNAL-WATCH
    SIGNAL-OUTPUT
+   NO-LEAK
    AIO:STOP
    T-REPORT
    s" process-pty-io-smoke: ok" type cr ;
