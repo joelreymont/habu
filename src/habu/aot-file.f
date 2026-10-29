@@ -1,163 +1,10 @@
-\ aot-file.f — the AOT capture artifact: what a capture writes, and what a
-\ metabuild refuses to read.
-\
-\ WHY AN ARTIFACT EXISTS AT ALL. A capture has to run inside a booted bin/hb,
-\ because the metabuild host's dictionary is not the target's and a host-captured
-\ name does not exist in the engine being built (three ordered deaths measured, on
-\ src/habu/aot-capture.f's header). The metabuild is a different process, so the
-\ capture has to cross to it as bytes. This file is those bytes, and the reader is
-\ the only thing standing between a stale or corrupt file and a baked engine.
-\
-\ ONE FILE, TWO PROCESSES, the way src/habu/aot-decl.f serves two fillers: the
-\ booted capture writes and the metabuild host reads, so both compile this source
-\ and neither can hold a private idea of the layout. That is also why it uses
-\ ENGINE PRIMITIVES ONLY (open/read/write/close, PATH0, SHA256*, the AOT-BUF
-\ buffers, FDIO:WALL) - the host carries no src/lib/, and the capture cannot load
-\ src/habu/driver-io.f at all.
-\
-\ IDENTITY IS NOT THE FORMAT'S. WRITE takes the producer key and READ takes the
-\ key it will accept; neither asks where the caller got it. A capture running in a
-\ booted engine reads src/lib/engine-id.f's content key for the binary it is running;
-\ the metabuild recomputes SHA-256 over the capture host it just emitted. One
-\ fact, two independent readings, compared for hard equality here.
-\
-\ THE THREE DIGESTS, and what each one catches that the others do not:
-\   PRODUCER  - sha256 of the engine binary that produced the capture. Refuses an
-\               artifact some other engine made. A header field, so it is checked
-\               before a single payload byte is trusted.
-\   CHAIN     - versioned digest of ordered paths and per-file content digests.
-\               The artifact carries the FILE LIST and the reader RE-DERIVES the
-\               digest from disk rather than trusting the stored one, so a match
-\               means "this came from the chain that is on disk NOW". A mismatch
-\               means the sources moved since capture; a recapture is the cure.
-\   PAYLOAD   - sha256 over everything after the header, verified after the
-\               bounded sections are loaded and before they are interpreted.
-\               The header's size arithmetic only catches truncation; this is
-\               what lets the reader say "corrupt" instead of "the sizes add up".
-\
-\ THE LAYOUT. All scalars are u64 little-endian and nothing is padded.
-\
-\   header, 136 bytes, and the only part not covered by the payload digest:
-\     0    MAGIC          u64   "HABUAOT\0" read as LE bytes
-\     8    VERSION        u64   hard equality; the format is baked into an engine
-\     16   TARGET         u64   hard equality against the reading process
-\     24   SECTION-COUNT  u64   hard equality; names a wrong table before it is read
-\     32   PAYLOAD-LEN    u64
-\     40   PRODUCER-SHA   32B
-\     72   CHAIN-SHA      32B
-\     104  PAYLOAD-SHA    32B
-\
-\   payload, offsets relative to its own start so the header is not in the sums:
-\     0                    section table, SECTION-COUNT rows of (offset u64,
-\                          length u64), in the fixed order below
-\     table-end onwards    the sections themselves, contiguous, in that order
-\
-\ THE SECTION ORDER IS habu2.f EMIT-AOT-SEED'S ORDER, because that is the word
-\ that consumes every one of them, and a format that lists them in some other
-\ order invites a reader that fills the wrong buffer.
-\
-\ WHAT VERSION 6 DROPPED, and why a section with no producer could not just be
-\ left in place. Through version 5 the payload carried a PROTECTED-WID BITMAP -
-\ the capture host's whole PROT-BITS band, fixed width, section number 12.
-\ Nothing has produced it since the protected-WID capture became a live
-\ derivation whose rows travel WINDOW-RELATIVE (src/habu/aot-capture.f
-\ ACAP-PWIN-CAPTURE): a band is numbered in the capture host's own wordlist
-\ space, which is a namespace the target discarded, so replaying it would seal
-\ ids that mean something else in the engine being built. The merge already read
-\ it past without keeping it, and the two buffer readers the section still had
-\ named a word no filler defines any more. The section table is POSITIONAL and
-\ SECTION-COUNT is checked for hard equality, so dropping a section renumbers
-\ every section after it and changes the count - which is what the version bump
-\ says. An artifact that still carries the band is refused by name on its own
-\ version, not skipped.
-\
-\ WHAT VERSION 10 ADDS, and why it is a version and not an appended table. The
-\ payload now carries the CODE SPANS of the words the image ships no record for
-\ (src/habu/aot-decl.f package AOT-SPAN): the strip took their names, and with a
-\ span table to account for their code the rows themselves stop travelling too.
-\ The section sits where its producer sits in habu2.f EMIT-AOT-SEED's order,
-\ between the named code sites and the boot-run list, so every section after it
-\ is renumbered and SECTION-COUNT changes - which is what the version says. A
-\ version 9 artifact has records where a version 10 reader expects none and no
-\ spans at all, so it is refused by name on its own version rather than read.
-\
-\ WHAT VERSION 12 CHANGES, with no section moved at all. A record's wid field and
-\ a package row's two wid cells stopped being the capturing engine's own numbers
-\ and became offsets from their window's first wordlist, one-based
-\ (src/habu/aot-decl.f WID-REL-BASE, src/habu/aot-capture.f ACAP-REL-WID). Same
-\ sections, same widths, same count - and no reader can tell the two apart by
-\ looking, which is exactly why the version says it. A version 11 artifact merged
-\ by this reader would have every wid rebased as though the building host's base
-\ were 1, and the records would name wordlists nothing created.
-\
-\ WHAT VERSION 14 ADDS, and why it is four sections at the end. A cross-build
-\ captures a second target's routines beside the window's own (src/habu/aot-decl.f
-\ package AOT-SHADOW, filled by src/habu/aot-shadow.f): the shadow's records, its
-\ code, its sites and the address cells it keys by record. No seed reads them -
-\ EMIT-AOT-SEED's order has no place for them - so they follow the closure list,
-\ and SECTION-COUNT changes, which is what the version says. A capture with no
-\ shadow open carries all four empty, and a version 13 artifact, which has no
-\ room for them, is refused by name on its own version rather than read. ARM64
-\ MERGE still refuses a shadow; native x86-64 MERGE appends and rebases all four.
-\
-\ VERSION 15 lets x86 routines reached through a stripped or retired word
-\ travel without publishing that word's dictionary name. A shadow record now
-\ carries an anonymous source key, and a site or code-cell row can target that
-\ shadow record directly. The reader checks those tags and refuses version 14
-\ before it can interpret the same bytes as shipped record indices.
-\
-\ THREE OF THE SECTIONS ARE THE CHECKER'S, not the seed's. The signature rows and
-\ the strings they name are src/core/checker.f's signature pool, carried verbatim
-\ so nothing is re-encoded on the way through; the type registry is one opaque
-\ span whose internal table belongs to the registry that owns those records
-\ (src/core/type-family.f). This file moves their bytes and, for a merge, moves a
-\ row's three string offsets behind the pool it is appended to. It reads none of
-\ them, which is what keeps one format in one place.
-\
-\ COUNTS ARE NOT STORED. AOT-REC-N is the record section's length divided by
-\ AOT-CREC-ROW, the site count is its length over 8, the window's run count is its
-\ table's length over 8, and so on. A stored count would be a second authority for
-\ a number the length already fixes, and two authorities disagree eventually. A
-\ length that is not a whole number of rows is refused by name instead. Five
-\ numbers are genuine scalars - the capture-time DATA base, the canonical code
-\ base, the window's wordlist base and span, and the window's DATA SPAN - and they
-\ travel in a section of their own.
-\
-\ THE WINDOW'S DATA SPAN IS THE ONE AMENDMENT TO THAT RULE, and it is the rule
-\ working rather than bending. The span used to BE a section's length, because the
-\ window travelled verbatim; it does not any more. The compiler chain's window is
-\ 1,531,045 bytes of span holding 32 bytes of content, so what travels is the
-\ NON-ZERO EXTENTS - a table of (gap from the previous run's end, length) rows,
-\ each field an unsigned LEB128 varint, and their bytes concatenated in row order
-\ in a section of their own - and the seed zeroes the span before it lays them in.
-\ No section's length fixes the span any more, so the scalar is not a second
-\ authority for it: it is the only one. The run table is the one section this
-\ format measures in bytes rather than in rows, so "not a whole number of rows" is
-\ a refusal it cannot state and the row walk below is what refuses in its place.
-\
-\ WHAT THE READER REFUSES, each by name and each fail-closed: a wrong magic, a
-\ wrong version, a wrong target, a wrong section count, a producer that is not the
-\ engine this build made, a payload too short to hold its own section table, a file
-\ whose length disagrees with its header, a payload whose digest disagrees, a
-\ section table that is not contiguous, a section with a negative length, one that
-\ runs past the payload, a set of sections that does not fill it, a fixed-width
-\ section that is not its fixed width, a section longer than the buffer it fills, a
-\ section length that is not a whole number of rows, a window DATA span no engine
-\ could reserve, a run row that is not a well-formed varint or does not end inside
-\ its own section, an empty window run, a run reaching past the span, runs whose
-\ lengths do not fill the run-byte section, a closure list that does not walk to
-\ its own end, and a chain digest that does not re-derive from the files on disk.
-\ test/aot-chain-capture-suite.f drives a real capture through this writer and
-\ reader in child processes. It checks the header and roundtrip, plus corrupt,
-\ truncated and trailing payloads and malformed rows. Other focused artifact
-\ suites cover source identity, address targets and merge placement.
-\
-\ TWO ENTRY POINTS OVER ONE MACHINERY. READ fills the buffers with the artifact,
-\ bases and all, and is what the round trip and the fixpoint compare. MERGE
-\ APPENDS the artifact to a capture that already happened, in that capture's
-\ coordinates, because the engine bakes ONE of everything; the section that says
-\ what they disagree about is at the merge itself.
-\
+\ aot-file.f - the AOT capture artifact: what a booted capture writes and what
+\ the metabuild host refuses to read. Both processes compile this file, so it
+\ uses ENGINE PRIMITIVES ONLY (open/read/write/close, PATH0, SHA256*, the AOT-BUF
+\ buffers, FDIO:WALL): the host carries no src/lib/ and the capture cannot load
+\ src/habu/driver-io.f. READ fills the buffers with the artifact; MERGE appends
+\ it to a capture already made, in that capture's coordinates.
+
 \ EVERY REQUIRE BELOW IS A src/ FILE, and in both metabuild texts a no-op:
 \ tools/bootstrap.sh marks every file it inlines provided, and
 \ tools/build-fixpoint.f inlines icode.f, fdio.f, aot-decl.f and aot-ident.f as
@@ -172,6 +19,31 @@ package AOT-FILE
 using AOT-BUF
 using AOT-WINDOW
 
+\ IDENTITY IS NOT THE FORMAT'S. WRITE takes the producer key and READ takes the
+\ key it will accept. A booted capture reads src/lib/engine-id.f's content key
+\ for the binary it runs; the metabuild recomputes SHA-256 over the capture host
+\ it emitted; the two readings are compared for hard equality here.
+\
+\ THE THREE DIGESTS:
+\   PRODUCER  - sha256 of the engine binary that produced the capture: refuses an
+\               artifact another engine made, checked before any payload byte.
+\   CHAIN     - versioned digest of ordered paths and per-file content digests.
+\               The artifact carries the FILE LIST and the reader RE-DERIVES the
+\               digest from disk (?CHAIN), so a mismatch means the sources moved.
+\   PAYLOAD   - sha256 over everything after the header, verified after the
+\               bounded sections load and before they are interpreted; the size
+\               arithmetic only catches truncation.
+\
+\ THE LAYOUT. All scalars are u64 little-endian and nothing is padded. The header
+\ (HDR-BYTES, offsets O-*) is the only part the payload digest does not cover;
+\ MAGIC, VERSION, TARGET and SECTION-COUNT are hard equality. The payload, with
+\ offsets relative to its own start, is a table of SEC-N rows (offset u64, length
+\ u64) in the S- order below, then the sections, contiguous, in that order.
+\ THE SECTION ORDER IS habu2.f EMIT-AOT-SEED'S ORDER, the word that consumes
+\ every one of them. VERSION changes whenever a section is added, dropped or
+\ reinterpreted (version 12 made wid fields window offsets with no section
+\ moved): the table is positional, and an older artifact is refused by name on
+\ its version.
 $00544F4155424148 constant MAGIC     \ "HABUAOT\0" in LE byte order, readable in a dump
 15 constant VERSION  \ anonymous shadow routines have tagged references
 1 constant TARGET-MACOS
@@ -205,21 +77,29 @@ $00544F4155424148 constant MAGIC     \ "HABUAOT\0" in LE byte order, readable in
 10 constant S-XTSITES
 11 constant S-SPANS                  \ the code spans of the records the image does not ship
 12 constant S-BOOTRUN
-\ 13 was the protected-WID bitmap through version 5; see the header for why it is
-\ gone and why the sections after it moved down rather than leaving a hole.
 13 constant S-PWIN
+\ S-SIGS, S-SIGSTR and S-REG are the checker's: src/core/checker.f's signature
+\ pool carried verbatim and one opaque registry span whose table belongs to
+\ src/core/type-family.f. This file reads none of them; a merge moves a
+\ signature row's three string offsets behind the pool it is appended to.
 14 constant S-SIGS
 15 constant S-SIGSTR
 16 constant S-REG
 17 constant S-CLOSURE
+\ The four shadow sections follow the closure list because no seed reads them. A
+\ capture with no shadow open carries all four empty; ARM64 MERGE refuses a
+\ shadow, native x86-64 MERGE appends and rebases all four.
 18 constant S-SHRECS                 \ the shadow: its records
 19 constant S-SHCODE                 \ ... its routines' bytes
 20 constant S-SHSITES                \ ... their sites
 21 constant S-SHXTS                  \ ... and the address cells keyed by record
 
-\ The five genuine scalars: the capture-time DATA base, the canonical code base,
-\ the window's wordlist base and span, and the window's DATA span. Everything else
-\ is a length.
+\ COUNTS ARE NOT STORED: a section's count is its length over its row width
+\ (SEC-ROW), and a length that is not a whole number of rows is refused by name.
+\ Five numbers are genuine scalars and travel in S-SCALARS: the capture-time DATA
+\ base, the canonical code base, the window's wordlist base and span, and the
+\ window's DATA SPAN, which no section's length fixes (the window travels as
+\ present cells, S-WDATA and S-WVALS).
 40 constant SCAL-BYTES
 \ AOT-IDENT holds at most AOT-IDENT:MAX paths of at most PATH-CAP bytes, and the
 \ list is a count and then each path's length and bytes, so this is its largest.
@@ -256,9 +136,6 @@ variable CUR
 : U64@ ( ptr u8 -- n ) {: p:ptr :}
    0 8 0 ?do  8 lshift  p 7 i - + c@ or  loop ;
 
-\ The packed u32 every row field of this format is. Owner-prefixed by its
-\ package like every other reader of that shape in the tree (AOT-W32@,
-\ ACAP-W32@, SNAP-RELOC's instruction word; see tools/jitdump-core.f).
 : U32@ ( ptr u8 -- n ) {: p:ptr :}
    p c@  p 1+ c@ 8 lshift or  p 2 + c@ 16 lshift or  p 3 + c@ 24 lshift or ;
 
@@ -285,7 +162,7 @@ variable CUR
    off  k ROW-BYTES * TBL +      U64!
    len  k ROW-BYTES * TBL + 8 +  U64! ;
 
-\ ---- the section table, read off the live buffers ---------------------------
+\ The section table is read off the live buffers.
 \ Both directions ask these two words, so a section's source and its size cannot
 \ come apart. The two assembled sections (the scalars and the closure list) are
 \ staged into buffers of their own first, which is what keeps the pair uniform.
@@ -448,7 +325,6 @@ $20 MSG-SP c!
    t tu MSG+
    MSG MSG-U @ DIE ;
 
-\ ---- where each section's bytes sit in its buffer ----------------------------
 \ THE ONE THING READ AND MERGE DISAGREE ABOUT. Every other question - which
 \ buffer, how long, how wide a row, what it is called - has one answer for both,
 \ so the table below is the whole of the parameterization and the loading,
@@ -501,8 +377,6 @@ variable MERGE-SHXT-EXTRA
       bytes +
    loop drop ;
 
-\ ---- staging the two assembled sections -------------------------------------
-
 : STAGE-SCALARS ( -- )
    AOT-DATA-D0 @ SCAL U64!
    AOT-CODE-B0 @ SCAL 8 + U64!
@@ -528,7 +402,7 @@ variable MERGE-SHXT-EXTRA
 
 : STAGE ( -- ) STAGE-SCALARS STAGE-CLOSURE ;
 
-\ ---- the payload's shape, computed from the live buffers ---------------------
+\ The payload's shape is computed from the live buffers.
 
 : BUILD-TABLE ( -- )
    SEC-N ROW-BYTES * CUR !
@@ -561,7 +435,6 @@ variable MERGE-SHXT-EXTRA
    DERIVED  HDR O-CHAIN +  SHA-BYTES BYTE-COPY
    PAYSHA  HDR O-PAYSHA +  SHA-BYTES BYTE-COPY ;
 
-\ ---- writing ----------------------------------------------------------------
 \ Every span goes out through FDIO:WALL, which loops until the descriptor has
 \ taken all of it, and the same spans feed a running SHA-256 so the caller learns
 \ the digest of the file that was actually written - which is what the round-trip
@@ -606,8 +479,6 @@ public
    FD @ close ;
 
 private
-
-\ ---- reading ----------------------------------------------------------------
 
 : OPEN-RD ( ptr u8 n -- ) {: path:ptr pathu:n :}
    path pathu PATH0 0 0 open FD !
@@ -703,20 +574,11 @@ private
    k SEC-PTR k BASE@ + k ROW-LEN@ GET
    SHA-CTX k SEC-PTR k BASE@ + k ROW-LEN@ SHA256-FEED ;
 
-\ ---- the window's runs, which the table's own shape cannot state --------------
-\ ?TABLE divides a section by its row width, and a varint row has none: the rows
-\ are a byte string it can only measure. What has to hold is that the string
-\ decodes - every varint ends inside the section, and the rows spend it exactly -
-\ that every run names a non-empty extent inside the span, and that their lengths
-\ add up to the byte section exactly, because their bytes are concatenated in row
-\ order and the decoder walks them with one cursor. Each is a shape a section of
-\ the stated length can take and a booted engine could not survive, so each is
-\ refused by name here.
-\
-\ ASCENDING AND NON-OVERLAPPING ARE NO LONGER REFUSALS, because a gap is an
-\ unsigned distance from the previous run's END: an offset that went backwards or
-\ landed inside its predecessor is not a shape this encoding can express. The
-\ check did not weaken; the format absorbed it.
+\ The window's cells, which the table's own shape cannot state.
+\ ?TABLE divides a section by its row width, and a varint value has none. What
+\ has to hold is that every present cell lies inside the span, every value is a
+\ well-formed varint ending inside S-WVALS, and the values spend that section
+\ exactly, because the decoder walks them with one cursor in cell order.
 variable RN-AT   variable RN-END   variable RN-SUM   variable RN-COUNT
 
 \ One cell value, refused by name rather than guessed at. `avail` is what is
@@ -810,7 +672,6 @@ variable NAME-BOUNDARY-LEN
 : SEC-AT ( n -- ptr u8 ) {: k:n :} k SEC-PTR k BASE@ + ;
 : SEC-ROWS ( n -- n ) {: k:n :} k ROW-LEN@ k SEC-ROW / ;
 
-\ ---- the shadow's rows ------------------------------------------------------
 \ No seed reads them, and the target's writer trusts them as the capture wrote
 \ them, so they are refused here if they do not fit what they index: a record's
 \ routine and its entry inside the shadow code, records ascending, a site's whole
@@ -934,13 +795,10 @@ DYNAMIC-BUFFER SH-SEEN u8
    span S-BLOB ROW-LEN@ NAME-SECTION$ ?XTOFFS
    ?SHADOW-ROWS ;
 
-\ `at` is the first byte of the artifact's own block and `len` is its length: a
-\ plain read puts it at 0 and a merge puts it behind the host's rows, whose own
-\ decode this has already proved on the capture that produced them. Either way
-\ the block's gaps count from its own zero, so this reads the artifact in the
-\ coordinates it was written in and the merge moves it afterwards. What the walk
-\ found - how many rows, and where the last one ends - is what the counts are
-\ then published from.
+\ `at` is the first byte of the artifact's own bitmap block and `len` its length:
+\ a plain read puts it at 0 and a merge behind the host's bitmap, whose decode
+\ the capture that produced it already proved. The walk's cell count and last
+\ cell end are what CELL-N and CONTENT-END are published from.
 : ?CELLS ( n n n -- ) {: at:n len:n span:n :}
    S-WVALS BASE@ RN-AT !
    S-WVALS BASE@ S-WVALS ROW-LEN@ + {: stop:n :}
@@ -961,13 +819,10 @@ DYNAMIC-BUFFER SH-SEEN u8
    RN-AT @ stop = if exit then
    s" aot-file: the window DATA cells do not fill their own value section" DIE ;
 
-\ Every count is the length the table gave, divided by the row the format fixes -
-\ except three the table's shape cannot state: the window's DATA SPAN, which no
-\ length fixes any more and which the scalars section is therefore the only
-\ authority for, and how many runs the row section holds and where the last one
-\ ends, which the walk above is the only authority for.
-\ Reading them back in the same order the writer derived them from is what makes
-\ the round trip an identity rather than a resemblance.
+\ Every count is the length the table gave, divided by the row the format fixes,
+\ except three: the window's DATA SPAN (the scalars section is its only
+\ authority) and the present-cell count and content end (the ?CELLS walk is
+\ theirs).
 : RESTORE-COUNTS ( -- )
    SCAL U64@ AOT-DATA-D0 !
    SCAL 8 + U64@ AOT-CODE-B0 !
@@ -1068,7 +923,9 @@ public
 \ Fill the live capture buffers from `path`, refusing anything this build must not
 \ bake. `want` is the 32-byte producer key this reader accepts and nothing else.
 \ The artifact REPLACES what the buffers held: it brings its own DATA base, its
-\ own code base and its own wordlist window, and the round trip lives here.
+\ own code base and its own wordlist window. test/aot-chain-capture-suite.f drives
+\ a real capture through WRITE and READ in child processes: header, round trip,
+\ corrupt, truncated and trailing payloads, and malformed rows.
 : READ ( ptr u8 ptr u8 n -- )
    LOAD-PASS
    BASES-ALONE
@@ -1086,7 +943,6 @@ public
 
 private
 
-\ ---- merging an artifact into a capture that already happened ----------------
 \
 \ WHY MERGE IS NOT READ WITH DIFFERENT NUMBERS. The metabuild host captures its
 \ own window first and then takes the chain's from an artifact, and habu2.f
@@ -1098,17 +954,15 @@ private
 \ merged one. Loading into zeroed buffers is not a degenerate case of this: a
 \ host DATA base of 0 would bake a DATA base of 0.
 \
-\ THE SIX THINGS THAT MOVE, and nothing else does:
+\ WHAT MOVES, and nothing else does:
 \   blob offsets    ordinary records' [0], call sites' [0], named code sites'
 \                   [0], and both site tables' own u32 rows: + the host's blob.
 \   pool offsets    records' [8], call sites' [4], named code sites' [4]: + the
 \                   host's pool, which is appended to and never deduplicated
 \                   against (the remap would buy under a kilobyte).
-\   window offsets  the declared address cells AND the run table's own offsets:
-\                   + where the artifact's window begins inside the merged one.
-\                   The host's runs all end at or below its span and the
-\                   artifact's all start at or above that, so the merged table is
-\                   still ascending and non-overlapping without a sort.
+\   window offsets  the declared address cells: + where the artifact's window
+\                   begins inside the merged one (PLACE-WDATA); its bitmap and
+\                   values append as bytes.
 \   DATA values     each recorded chain holds an address in the ARTIFACT's DATA
 \                   window; the merged window continues the host's, so it moves
 \                   to the same place inside that.
@@ -1121,9 +975,8 @@ private
 \                   into the signature strings, which are appended the same way
 \                   the name pool is - and for the same reason, without a
 \                   deduplication pass.
-\ NO SECTION IS READ PAST, and none has been since version 6 stopped carrying the
-\ capture host's protected-WID band: what each capture contributes to the merged
-\ engine's seals is its own window's ids, which are the wordlist coordinates above.
+\ NO SECTION IS READ PAST: each capture's contribution to the merged engine's
+\ seals is its own window's ids, the wordlist coordinates above.
 \ On native x86-64 the recorded shadow adds four more coordinates: emission
 \ starts and sites move by the host shadow-code length, named record targets by
 \ its shipped-record count, anonymous row targets by its shadow-record count,
@@ -1264,14 +1117,11 @@ DYNAMIC-BUFFER HOST-REG n
    SCAL 24 + U64@ A-SPAN !
    SCAL 32 + U64@ dup ?SPAN A-DSPAN ! ;
 
-\ WHERE THE ARTIFACT'S WINDOW BEGINS, and it is not simply the host's length.
-\ What a captured address needs kept is its 8-RESIDUE - the atomics fault on a
-\ misaligned cell - and appending flush at a length that did not keep it moved
-\ every chain `variable` four bytes off and killed the merged engine with SIGBUS
-\ (dot habu-merged-data-window-b8fec035). Both writers now capture against a
+\ WHERE THE ARTIFACT'S WINDOW BEGINS, and it is not simply the host's length. A
+\ captured address must keep its 8-residue: the atomics fault on a misaligned
+\ cell. Both writers capture against a
 \ CELL-ALIGNED base and round their span up to a whole cell, so every window's
-\ cells sit on the one DATA cell grid and the residue is zero on both sides; a
-\ base that is not is refused here rather than spliced.
+\ cells sit on the one DATA cell grid; a base that is not is refused here.
 \ THE BASE IS ROUNDED TO A WHOLE BITMAP BYTE, eight cells of window, because
 \ that is what lets the artifact's bitmap and values be appended to the host's
 \ as bytes instead of decoded and re-encoded.
@@ -1303,8 +1153,6 @@ DYNAMIC-BUFFER HOST-REG n
    AOT-CODE-B0 @ 0= A-B0 @ 0= and if exit then
    s" aot-file: a code base is not the canonical zero this merge shifts against" DIE ;
 
-\ Raise one u32 field of every row: `n` rows of `row` bytes from `p`, the field
-\ at byte `off` in each.
 : FIELD+ ( ptr u8 n n n n -- ) {: p:ptr n:n row:n off:n d:n :}
    n 0 ?do
       p i row * + off + {: q:ptr :}
@@ -1353,7 +1201,7 @@ DYNAMIC-BUFFER HOST-REG n
       then
    loop ;
 
-\ A partial capture's prefix name can now enter the fresh runtime the caller
+\ A partial capture's prefix name can enter the fresh runtime the caller
 \ imported. Search only its already captured records: live dictionary indices
 \ belong to this process, while these compact rows survive READ and IMPORT.
 : HOST-REC ( n -- ptr u8 )
@@ -1799,8 +1647,8 @@ public
 
 \ Where the artifact's own window begins inside the merged one. It is the one
 \ number in the placement a reader cannot recompute for itself, so
-\ test/aot-file-merge.f asks the merge for it and checks the pad's size, its
-\ residue, and that no run covers it, against numbers of its own.
+\ test/aot-artifact-rows.f asks the merge for it and checks the pad against
+\ numbers of its own.
 : WDATA-BASE ( -- n ) H-DATA-R @ ;
 
 \ Append the artifact at `path` to the capture already in the live buffers,

@@ -1,12 +1,9 @@
 \ regalloc-abi.f - the register allocator's DATA cells, package REGALLOC-ABI.
-\ Build-only, as prof-abi.f is: runtime images need only layout.f.
-\
-\ src/habu/regalloc.f fills and reads these cells, src/habu/jit.f and habu2.f
-\ reset the free masks, and src/habu/data-claims.f claims each one, so an
-\ overlap with another DATA claim is refused when the engine is built. It is its
-\ own file, not rows in src/habu/layout.f, because layout.f is baked into every
-\ runtime image and a building host's `require` of it is a no-op: a cell moved
-\ there is undefined to the host that builds the first engine carrying it.
+\ Build-only, as prof-abi.f: runtime images need only layout.f. Not rows in
+\ layout.f: it is baked into every image and a building host's `require` of it
+\ is a no-op, so a cell moved there is undefined to the host that builds the
+\ first engine carrying it. regalloc.f fills and reads the cells, jit.f and
+\ habu2.f reset the free masks, data-claims.f refuses an overlap at build.
 package REGALLOC-ABI
 public
 

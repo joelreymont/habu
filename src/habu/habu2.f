@@ -20,10 +20,8 @@ require src/arch/arm64/icode.f
 using A64ASM
 using A64ICODE
 \ The AOT capture buffers, their caps and the section budget are src/habu/aot-decl.f,
-\ loaded immediately before this file so a capture running in bin/hb and this
-\ emitter share one declaration of the format. The import spans the file - the
-\ seed emitters at the end read the buffers, the relocation emitters near the top
-\ read the window - and closes beside the A64ASM one.
+\ loaded before this file so bin/hb's capture and this emitter share one
+\ declaration of the format.
 using AOT-BUF
 \ The register allocator's DATA cells, whose free masks this file resets at
 \ REPEAT and at each new definition, are package REGALLOC-ABI's
@@ -42,19 +40,15 @@ variable EM-C2-FIELD-OFF
 8 constant EM-WF-INIT
 16 constant EM-WF-FIELD
 
-\ ---- literal emitters: scalars vs relocatable addresses ---------------------------
-\ A relocatable address must never be emitted through the scalar path. Scalars use the
-\ shared minimal MOVZ/MOVN+MOVK synthesizer (LVMOVK, via LVLITPUSH) and materialize into
-\ x16 -- never the fixed four-instruction x9 chain the AOT relocation recognises -- so a
-\ scalar whose value numerically lands inside a DATA/CODE address range can never be
-\ mistaken for an address. CODE addresses keep four lanes; DATA addresses use a
-\ three-half shared address. Both have fixed relocation space and use the
-\ dedicated C-DATA-ADDR* / C-CODE-ADDR words, which name the relocation kind at the site.
+\ A relocatable address never takes the scalar path. Scalars use the minimal
+\ MOVZ/MOVN+MOVK chain (LVMOVK) into x16, never the fixed x9 chain the AOT
+\ relocation recognises, so a scalar whose value lands in a DATA or CODE range
+\ is never taken for an address. CODE addresses are four halves, DATA three;
+\ both go through C-DATA-ADDR* / C-CODE-ADDR, which name the relocation kind.
 
-\ scalar-push: minimal chain + push (LVLITPUSH synthesizes x16, then pushes it).
 : C-LIT ( -- )
    LVLITPUSH LABEL@ BL, ;
-\ raw scalar into x16 (no push). x11 holds the value; LVMOVK emits the minimal chain.
+\ x11 holds the value.
 : C-RAW-LIT ( -- )
    14 16 MOVZ,  LVMOVK LABEL@ BL, ;
 
@@ -63,15 +57,14 @@ variable EM-C2-FIELD-OFF
 : RD-FREE ( n -- n )
    ADDRESS-CARRIER:ADDR-RD-BITS rshift ADDRESS-CARRIER:ADDR-RD-BITS lshift ;
 
-\ fixed four-instruction MOVZ/MOVK chain into the register x14 names (no push): the
-\ relocatable-address form the AOT boot pass rewrites in place. `val` is in x11 at emit time.
+\ Fixed four-instruction MOVZ/MOVK chain of x11 into the register x14 names: the
+\ relocatable form the AOT boot pass rewrites in place.
 : C-ADDR-RAW ( -- )
    6 11 0 ADDI,  5 $FFFF MOVZ,
    7 6 5 AND,    7 7 5 LSLI,  8 W-MOVZ0 RD-FREE LIT64,  8 8 14 ORR,  9 8 7 ORR,  LCEMIT LABEL@ BL,
    7 6 16 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 W-MOVK1 RD-FREE LIT64,  8 8 14 ORR,  9 8 7 ORR,  LCEMIT LABEL@ BL,
    7 6 32 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 W-MOVK2 RD-FREE LIT64,  8 8 14 ORR,  9 8 7 ORR,  LCEMIT LABEL@ BL,
    7 6 48 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 W-MOVK3 RD-FREE LIT64,  8 8 14 ORR,  9 8 7 ORR,  LCEMIT LABEL@ BL, ;
-\ the same fixed chain into x9, followed by the push stencil.
 : C-ADDR-PUSH ( -- )
    14 9 MOVZ,  C-ADDR-RAW
    9 W-PUSH9 LIT64,  LCEMIT LABEL@ BL, ;
@@ -91,41 +84,21 @@ variable EM-C2-FIELD-OFF
    done B,
    absolute LBL, C-ADDR-RAW
    done LBL, ;
-\ The three words that NAME the relocation kind of a chain, and the compile-mode
-\ CALL-or-INLINE emitter, are defined further down, right after the snapshot-
-\ relocation labels. All four record a site through RELOC-EMIT:MARK-SITE: the
-\ three because they are creating a chain, the inliner because it is copying one.
-\ ---- addressing a baked label the ADR field cannot reach -------------------
-\ ADR, reaches ADR-HI (1 MiB) from its own site. That is the whole allowance of
-\ the ENGINE code part, and the ADR, that reaches LSRC from the startup region is
-\ what MEASURES it -- so those two sites keep using ADR, on purpose and must not
-\ be converted; converting them would leave the window's first term with nothing
-\ enforcing it. What lies past LSRC is a different matter: the AOT payload
-\ section runs to its own buffer caps, megabytes once the compiler chain is
-\ captured, and a reader of it must not use ADR, however close a particular label
-\ happens to land today. The rule is the SECTION, not the distance -- see the
-\ three-part note in src/arch/arm64/icode.f, which is where the window is derived,
-\ and tools/aot-section-reach-lint.f, which refuses an ADR, into the section.
+\ The three relocation-kind words and the CALL-or-INLINE emitter sit after the
+\ snapshot-relocation labels; all four record a site through RELOC-EMIT:MARK-SITE.
+\ Addressing a baked label the ADR field cannot reach.
+\ ADR, reaches ADR-HI (1 MiB) from its site: the whole ENGINE code part. The
+\ startup's ADR, to LSRC measures that allowance, so those two sites keep ADR,.
+\ Past LSRC the AOT payload section runs to megabytes: no ADR, into it, however
+\ close a label lands (src/arch/arm64/icode.f derives the window;
+\ tools/aot-section-reach-lint.f refuses an ADR, into the section).
 \
-\ WHERE THE BASE COMES FROM, AND WHY IT IS NOT A REGISTER. EM-STARTUP takes the
-\ runtime text base into XREG-RBASE with an ADR, planted at the image's first
-\ instruction, then EM-DATA-INIT stores it into RBASE-CELL and repurposes that
-\ same register (layout.f names x20 both XREG-RBASE and DATA) for the DATA base.
-\ RBASE-CELL is therefore the live text CONTENT base for the whole rest of the
-\ boot, which is exactly what EM-SNAPSHOT-RESTORE and snap-lib.f SNAP:WRITE-BYTES
-\ already read it as. This word is valid only AFTER EM-DATA-INIT; a site before
-\ it still holds the base in XREG-RBASE and keeps using ADR,.
-\
-\ rt is a scratch register the caller names, because there is no free one to
-\ assume at these sites; it is clobbered. Naming the same register twice would
-\ load the base over the offset and then double the base - a wrong address in a
-\ correctly assembled image, which is the worst shape a fault can take - so the
-\ pair is refused at emit time instead of being asked for in a comment. The
-\ refusal is reachable by a caller's typo and by nothing else, so its evidence is
-\ a mutation: passing `9 9 LAOTCODE LABEL@ TADR,` stops the build with this
-\ message rather than producing an engine.
-\ LIMGEND belongs here because it is the same subject from the other end: the
-\ label bound past every baked part, which only this form can address.
+\ EM-STARTUP takes the text base into XREG-RBASE with an ADR, at the image's
+\ first instruction; EM-DATA-INIT stores it into RBASE-CELL and reuses the
+\ register (x20) for DATA. TADR, is valid only after EM-DATA-INIT; earlier sites
+\ keep ADR,. rt is a caller-named scratch, clobbered; rd = rt is refused at emit
+\ time because it would double the base into a wrong address.
+\ LIMGEND is the label bound past every baked part, which only TADR, addresses.
 package IMGREF
 
 public
@@ -141,11 +114,9 @@ variable LIMGEND                                  \ the emitted image's end = th
 
 ;package
 
-\ The emitter calls both by their bare names, so the import spans the file and
-\ closes beside the A64ASM one at the end.
 using IMGREF
 
-\ ---- source setup: baked LSRC or stdin ----
+\ The source is the baked LSRC or stdin.
 \ A write of a literal's bytes takes its length from that literal (a -LEN word
 \ or `nip`), and a `c,` byte table's from `here TABLE -` after its last byte,
 \ never from a hand-counted byte count.
@@ -154,17 +125,17 @@ variable LSRCRD   variable LSRCRDP   variable LSHBANG   variable LOPENERR   vari
 : OPENERR$ ( -- ptr u8 n )   s" hb: cannot open " ;   \ LOPENERR; the path and LOPENNL follow
 variable LUNCAUGHT   variable LUNCMSG   \ uncaught-top-level-throw reporter + its fd-2 message
 variable LUNCRPT   variable LUNCPOS   variable LUNCLOOP   variable LUNCDONE   \ reporter branch + itoa labels
-: UNCMSG$ ( -- ptr u8 n )   s" hb: uncaught throw code " ;   \ LUNCMSG
+: UNCMSG$ ( -- ptr u8 n )   s" hb: uncaught throw code " ;
 : UNCMSG-LEN ( -- n )   UNCMSG$ nip ;
 variable LUNDEF   \ undefined-token reject; declared with its fellow diagnostics because C-BTICK, emitted long before the MAIN label block, branches to it
 variable LWIDE   variable LWIDEMSG   variable LDIAGRET   \ interpret-mode wide-effect reject + its message + shared recovery tail
-: WIDEMSG$ ( -- ptr u8 n )   s" hb: interpret-mode layout value: " ;   \ LWIDEMSG
+: WIDEMSG$ ( -- ptr u8 n )   s" hb: interpret-mode layout value: " ;
 : WIDEMSG-LEN ( -- n )   WIDEMSG$ nip ;
 variable LINTERNAL   variable LINTMSG   \ interpret-mode internal-word reject (DNAME-INT) + its message
-: INTMSG$ ( -- ptr u8 n )   s" hb: internal engine word: " ;   \ LINTMSG
+: INTMSG$ ( -- ptr u8 n )   s" hb: internal engine word: " ;
 : INTMSG-LEN ( -- n )   INTMSG$ nip ;
 variable LTRUSTTICK   variable LTRUSTTICKMSG
-: TRUSTTICKMSG$ ( -- ptr u8 n )   s" hb: trusted-only tick: " ;   \ LTRUSTTICKMSG
+: TRUSTTICKMSG$ ( -- ptr u8 n )   s" hb: trusted-only tick: " ;
 : TRUSTTICKMSG-LEN ( -- n )   TRUSTTICKMSG$ nip ;
 \ The design seal (layout.f POLICY-NDICT-CELL). LPOLICYREC is the one admission
 \ predicate over a found record and LPOLICY the one refusal every sealed site
@@ -173,50 +144,47 @@ variable LTRUSTTICK   variable LTRUSTTICKMSG
 \ declared with the diagnostics because LKWCMP, emitted long before the MAIN
 \ label block, branches to LPOLICY.
 variable LPOLICY   variable LPOLICYMSG   variable LPOLICYREC   variable LPOLICYTOPREC   variable LKWDESIGNEND
-: POLICY-MSG$ ( -- ptr u8 n )   s" hb: not in vocabulary: " ;   \ LPOLICY appends the token; the LCOMPILEDIE tail appends the location and the newline
+: POLICY-MSG$ ( -- ptr u8 n )   s" hb: not in vocabulary: " ;
 : POLICY-MSG-LEN ( -- n )       POLICY-MSG$ nip ;
 variable LMININ   variable LMINMSG   \ interpret-mode certified-word underdepth reject (DNAME-MIN-IN) + its message
-: MINMSG$ ( -- ptr u8 n )   s" hb: interpret stack underdepth: " ;   \ LMINMSG
+: MINMSG$ ( -- ptr u8 n )   s" hb: interpret stack underdepth: " ;
 : MINMSG-LEN ( -- n )   MINMSG$ nip ;
 variable LFLOORREC   \ the same underdepth throw for a data access below the base (crash.f C-CRASH-DATA-RECOVER resumes here)
 variable LPREFMISS   variable LPREFMISSMSG   \ armed checker without its compile-immediate preflight
-: PREFMISSMSG$ ( -- ptr u8 n )   S\" hb: compile preflight hook missing\n" ;   \ LPREFMISSMSG
+: PREFMISSMSG$ ( -- ptr u8 n )   S\" hb: compile preflight hook missing\n" ;
 : PREFMISSMSG-LEN ( -- n )   PREFMISSMSG$ nip ;
 variable LORPHAN   variable LORPHANMSG   \ orphan control-flow closer reject (empty CFSTK pop) + its message
-: ORPHANMSG$ ( -- ptr u8 n )   s" hb: control-flow closer without opener: " ;   \ LORPHANMSG
+: ORPHANMSG$ ( -- ptr u8 n )   s" hb: control-flow closer without opener: " ;
 : ORPHANMSG-LEN ( -- n )   ORPHANMSG$ nip ;
 variable LCFKIND   variable LCFKINDMSG   \ control-flow word whose open entry is another structure's (C-CF-AT, C-CF-NONE) + its message
-: CFKINDMSG$ ( -- ptr u8 n )   s" hb: control-flow word does not match the open structure: " ;   \ LCFKINDMSG
+: CFKINDMSG$ ( -- ptr u8 n )   s" hb: control-flow word does not match the open structure: " ;
 : CFKINDMSG-LEN ( -- n )   CFKINDMSG$ nip ;
 variable LCFCAP   variable LCFCAPMSG   \ control-flow stack overflow reject (LCFPUSH at CFSTK-DEPTH-MAX) + its message
 variable LLOCWIDE   variable LLOCWIDEMSG   \ local name wider than LOC-NAME-CAP reject (C-LBRACE-STORE-ONE) + its message
-: LOCWIDEMSG$ ( -- ptr u8 n )   s" hb: local name over 16 bytes: " ;   \ LLOCWIDEMSG
+: LOCWIDEMSG$ ( -- ptr u8 n )   s" hb: local name over 16 bytes: " ;
 : LOCWIDEMSG-LEN ( -- n )   LOCWIDEMSG$ nip ;
 variable LLOCMANY   variable LLOCMANYMSG   \ more than LOC-RECS locals in one definition reject (C-LBRACE-STORE-ONE) + its message
-: LOCMANYMSG$ ( -- ptr u8 n )   s" hb: more than 64 locals in one definition: " ;   \ LLOCMANYMSG
+: LOCMANYMSG$ ( -- ptr u8 n )   s" hb: more than 64 locals in one definition: " ;
 : LOCMANYMSG-LEN ( -- n )   LOCMANYMSG$ nip ;
-: CFCAPMSG$ ( -- ptr u8 n )   s" hb: control-flow nesting too deep: " ;   \ LCFCAPMSG
+: CFCAPMSG$ ( -- ptr u8 n )   s" hb: control-flow nesting too deep: " ;
 : CFCAPMSG-LEN ( -- n )   CFCAPMSG$ nip ;
-variable LCSTR   variable LCSTRMSG   \ counted-string >255 reject (C-ICQ/C-EICQ/C-CQ/C-ECQ) + its fd-2 message (dot habu-recovery-pkg-scope-e0bd98e2)
-: CSTRMSG$ ( -- ptr u8 n )   s" hb: counted string too long (max 255)" ;   \ LCSTRMSG
+variable LCSTR   variable LCSTRMSG   \ counted-string >255 reject (C-ICQ/C-EICQ/C-CQ/C-ECQ) + its fd-2 message
+: CSTRMSG$ ( -- ptr u8 n )   s" hb: counted string too long (max 255)" ;
 : CSTRMSG-LEN ( -- n )   CSTRMSG$ nip ;
 variable LDEFKWGUARD  variable LDEFKWFAIL  variable LDEFKWMSG   \ definition-name wall generated from the compile-keyword dispatch rows
-: DEFKWMSG$ ( -- ptr u8 n )   s" hb: compile keyword cannot be a definition name: " ;   \ LDEFKWMSG
+: DEFKWMSG$ ( -- ptr u8 n )   s" hb: compile keyword cannot be a definition name: " ;
 : DEFKWMSG-LEN ( -- n )   DEFKWMSG$ nip ;
-\ Capacity refusals that have a COUNT to state. A ceiling reached with nothing
-\ but an exit code costs the caller the whole measurement:
-\ one line naming what filled up, the ceiling and the count is the fix, and
-\ src/lib/ffi-abi.f REPORT-FULL has the shape. LDIAGU writes a number on fd 2 and
-\ LDIAGDEF writes the definition being compiled, so a tail below composes a
-\ line from message spans and those two.
-variable LDIAGU     \ ( x9 = value ) unsigned decimal on fd 2, no newline (dot habu-name-silent-engine-9b28ac13)
+\ Capacity refusals that state a count: one line naming what filled up, the
+\ ceiling and the count. LDIAGU writes a
+\ number on fd 2 and LDIAGDEF the definition being compiled.
+variable LDIAGU     \ ( x9 = value ) unsigned decimal on fd 2, no newline
 variable LDIAGDEF   \ ( -- ) the open definition's name on fd 2 (first token of the body buffer)
-variable LBCAPFULLMSG   variable LBCAPUNIT   \ per-definition body-capture overflow (habu1.f EMIT-BCAP at BODYBUF-CAP); label LBCAPFULL declared in habu1.f forward-ref block (dot habu-name-the-per-56a594f3)
-variable LDPBADMSG   variable LDPBADOF   variable LDPBADUNIT   \ DP-heap bound reject (habu1.f DP-CHECK, allot/,/c,/definer sinks): the head, the " of " before the ceiling and the " bytes" that ends the line; label LDPBAD declared in habu1.f forward-ref block (dots habu-dictionary-allot-past-4e5c3c2b, habu-name-the-ceiling-98ca1f47)
+variable LBCAPFULLMSG   variable LBCAPUNIT   \ per-definition body-capture overflow (habu1.f EMIT-BCAP at BODYBUF-CAP); label LBCAPFULL declared in habu1.f forward-ref block
+variable LDPBADMSG   variable LDPBADOF   variable LDPBADUNIT   \ DP-heap bound reject (habu1.f DP-CHECK, allot/,/c,/definer sinks): the head, the " of " before the ceiling and the " bytes" that ends the line; label LDPBAD declared in habu1.f forward-ref block
 variable LDIAGNEEDS     \ the shared " needs " between the ceiling and the count
-variable LQNEST   variable LQNESTMSG   variable LQNESTUNIT   \ quotation-nesting overflow (J-QUOT at JIT-QUOT:LEVELS open); EM-QUOT-NEST-DIE names the ceiling, the definition and the depth (dots habu-name-the-nested-6a8e1b28, habu-open-a-quotation-f6c2a55f)
-variable LSEMIQMSG   \ `;` with a quotation open (EM-COMPILE-SEMI); the definition follows (dot habu-refuse-with-a-f0a4c0e6)
-variable LSEMICFMSG  \ `;` with a control structure open (EM-COMPILE-SEMI); the definition follows (dot habu-refuse-with-a-3cf9a606)
+variable LQNEST   variable LQNESTMSG   variable LQNESTUNIT   \ quotation-nesting overflow (J-QUOT at JIT-QUOT:LEVELS open); EM-QUOT-NEST-DIE names the ceiling, the definition and the depth
+variable LSEMIQMSG   \ `;` with a quotation open (EM-COMPILE-SEMI); the definition follows
+variable LSEMICFMSG  \ `;` with a control structure open (EM-COMPILE-SEMI); the definition follows
 variable LINCOMPMSG  \ a lowering certificate whose width facts are incomplete (LOWER-TXN VALIDATE); the definition follows
 variable LSRCEND   variable LSRCENDMSG   \ a source buffer ended inside a definition it opened (C-DEF-SOURCE-END, LRBYE); LDIAGDEF names it
 variable LCOMEND   variable LCOMENDMSG   \ a source buffer ended inside a `(` comment (EM-COMMENT)
@@ -255,7 +223,7 @@ variable LSRCCLOSE   variable LSRCCLOSEMSG   \ a `;` closed a definition an oute
 : COMEND-MSG-LEN ( -- n )    COMEND-MSG$ nip ;
 : SRCCLOSE-MSG-LEN ( -- n )  SRCCLOSE-MSG$ nip ;
 
-variable LCOMPILEDIE   \ shared recoverable compile-error tail (dot habu-raw-exit-compile): a die site that already wrote its diagnostic branches here with x0 = its sysexits exit code. Inside evaluate (EVALD>0) the aborted compile unwinds as a catchable throw of that SAME code via LEVALREC (RSP/CP/NDICT/XDS/DP + compile-state rollback, HIDX tolerates the stale records); at top level (EVALD==0) it exit_group(x0) byte-identically to the old raw exit.
+variable LCOMPILEDIE   \ shared recoverable compile-error tail: a die site that already wrote its diagnostic branches here with x0 = its sysexits exit code. Inside evaluate (EVALD>0) the aborted compile unwinds as a catchable throw of that SAME code via LEVALREC (RSP/CP/NDICT/XDS/DP + compile-state rollback, HIDX tolerates the stale records); at top level (EVALD==0) it calls exit_group(x0).
 : CONFMSG$ ( -- ptr u8 n )   s" hb: construct: unknown family: " ;   \ EM-COMPILE-ADT-MODE
 : CONFMSG-LEN ( -- n )   CONFMSG$ nip ;
 : CONVMSG$ ( -- ptr u8 n )   s" hb: construct: unknown variant: " ;   \ EM-COMPILE-ADT-MODE
@@ -267,22 +235,18 @@ variable LCOMPILEDIE   \ shared recoverable compile-error tail (dot habu-raw-exi
 : MOFMSG$ ( -- ptr u8 n )   s" hb: match: expected of: " ;   \ EM-ADT-MATCH-OF
 : MOFMSG-LEN ( -- n )   MOFMSG$ nip ;
 variable LDICTFULL   variable LCODEFULL   \ definer capacity-exit labels (dict-record / code-region full)
-: DICTFULL-MSG$ ( -- ptr u8 n )   s" hb: dictionary full at: " ;   \ LDICTFULL
-: CODEFULL-MSG$ ( -- ptr u8 n )   s" hb: code space full at: " ;   \ LCODEFULL
+: DICTFULL-MSG$ ( -- ptr u8 n )   s" hb: dictionary full at: " ;
+: CODEFULL-MSG$ ( -- ptr u8 n )   s" hb: code space full at: " ;
 variable LSNAPBAD   variable LSNAPVER   \ snapshot-loader labeled-exit messages (corrupt trailer 79 / unsupported version 80)
-: SNAPBAD-MSG$ ( -- ptr u8 n )   S\" hb: snapshot trailer corrupt\n" ;   \ LSNAPBAD
+: SNAPBAD-MSG$ ( -- ptr u8 n )   S\" hb: snapshot trailer corrupt\n" ;
 : SNAPBAD-MSG-LEN ( -- n )   SNAPBAD-MSG$ nip ;
-: SNAPVER-MSG$ ( -- ptr u8 n )   S\" hb: snapshot format version unsupported\n" ;   \ LSNAPVER
+: SNAPVER-MSG$ ( -- ptr u8 n )   S\" hb: snapshot format version unsupported\n" ;
 : SNAPVER-MSG-LEN ( -- n )   SNAPVER-MSG$ nip ;
-\ Snapshot relocation: the labels, the messages and the one instruction
-\ constant its two relocation passes need. The band offsets and exit statuses of
-\ the same subsystem are src/habu/layout.f's package SNAP-RELOC. The engine bakes
-\ layout.f, and this file is compiled on a product engine - by the native
-\ build's kernel emitter (tools/native-emit.f) and by the refresh's `--build`
-\ child - where no source reopens a package the engine bakes
-\ (docs/forth-card.md § 6). So the emitter's half is a package of its own,
-\ RELOC-EMIT, rather than a reopening of SNAP-RELOC. PROT-EMIT and HIDX-EMIT
-\ are the same split for PROT and HIDX.
+\ Snapshot relocation labels, messages and instruction constant; the band offsets
+\ and exit statuses are src/habu/layout.f package SNAP-RELOC. This file compiles
+\ on a product engine, where no source reopens a baked package (docs/forth-card.md
+\ § 6), so the emitter's half is its own package; PROT-EMIT and HIDX-EMIT are
+\ the same split for PROT and HIDX.
 package RELOC-EMIT
 public
 variable LCALLMSG   \ a recorded call site does not hold a call instruction (CALLMAP-RC)
@@ -311,16 +275,13 @@ variable LINDEXRELEASE \ release this process's derived address index before res
 variable LROLLBACK  \ retire address rows at or above the saved DATA cut
 variable LADDRS     \ address-literal relocation routine (snapshot write + restore)
 variable LADDRSITE  \ record the address-literal chain whose first word is in x9
-\ The six opcode bits of an AArch64 BL, i.e. $94000000 >> 26. The call relocation
-\ pass reads them with one shift rather than a mask-and-compare against a 64-bit
-\ literal.
+\ $94000000 >> 26, the opcode bits of an AArch64 BL: the call relocation pass
+\ reads them with one shift instead of a mask against a 64-bit literal.
 $25 constant BL-OP-HI
 
-\ Emit "declare the engine cell at OFFSET as holding a region address". The fixed
-\ engine hook and compiler-dispatch cells are named this way at cold boot; a
-\ deferred word's dispatch cell is declared from a register instead, because its
-\ address is only known while `defer` or `is` is running. Defined here beside the labels so the
-\ compile handlers further down this file can already use it.
+\ Declares the engine cell at OFFSET as holding a region address (the fixed hook
+\ and dispatch cells, at cold boot). A deferred word's dispatch cell is declared
+\ from a register instead: its address is known only while `defer` or `is` runs.
 : MARK-CELL ( n -- ) {: cell:n :}
    9 cell LIT64,  9 DATA 9 ADD,  LMARK LABEL@ BL, ;
 
@@ -340,65 +301,27 @@ $25 constant BL-OP-HI
 
 ;package
 
-\ ---- the three words that name a chain's relocation kind ---------------------
-\ The kind is decided here, at the emit site. DATA uses its three-half carrier;
-\ CODE retains the absolute one. Neither shape alone makes bytes an address.
-\
-\ ALL THREE RECORD THEIR SITE, AND THE MAP ANSWERS ONE QUESTION: WHERE A CHAIN
-\ STARTS. It used to answer only for code addresses, and the DATA ones were left
-\ out on the argument that DATA is mapped at a fixed address in every run, so a
-\ persisted DATA literal is already correct in the run that restores it. That
-\ argument is TRUE and it was an argument about the wrong consumer. A snapshot
-\ restore does not have to move a DATA chain; an AOT CAPTURE has to FIND one -
-\ the captured blob is copied to a different DP in the seeded engine, so the
-\ address a chain-compiled word holds is the metabuild host's and is wrong there.
-\ Capture used to find them by scanning the blob for the chain's shape and
-\ testing the value against the window's DATA span, which is a value heuristic:
-\ an ordinary integer may hold any value at all, and a compiled word may carry
-\ inline data that decodes as a move-wide chain. So the record is written where
-\ the kind is KNOWN, which is here, and the two consumers read the one map.
-\
-\ AND WHY ONE BAND STILL SERVES BOTH KINDS. RELOC-EMIT:EMIT-ADDRS is called ONCE
-\ PER BAND with the band it is moving (x21 = base, x22 = length) and rewrites a
-\ chain only when the address it spells out lies inside that band; a chain naming
-\ neither band is left alone rather than guessed at. Its two calls are the live
-\ JIT region and the engine's loaded __text. A DATA address is in neither, in
-\ every run and at both ends of a snapshot: DATA is mapped at the fixed DATA-VA
-\ ($340000000 on Linux, $44000000000 on macOS), the writer canonicalises the
-\ region to the RBASE-VA sentinel ($300000000, span REGION = $800000, so the band
-\ ends at $300800000) and the loader maps the sentinel onto the live region base,
-\ which sits REGION-OFF above __text. Every one of those bands is far below
-\ DATA-VA and none of them can reach it. So a DATA site recorded here is VISITED
-\ by both calls and rewritten by NEITHER - which is exactly right, because DATA
-\ does not move - and what the record buys is a capture that no longer has to
-\ recognise a chain by what it contains.
-\
-\ AND THE BAND DOES NOT SAY WHICH KIND A SITE IS, because nothing has to store
-\ that. A consumer already holds the two spans of the window it is working on -
-\ the AOT capture takes them as arguments - and a recorded site's value lands in
-\ exactly one of them: the DATA span sits inside the region mapped at DATA-VA and
-\ the code span inside the JIT region, which are disjoint by construction. So the
-\ kind is DERIVED from the value of a site already known to be a real address,
-\ which is a total classification and not a recognition - the guess the old
-\ value-range scans made was about WHETHER a word was a site at all, and that
-\ question is now answered by this bit and by nothing else. A second band, or a
-\ per-window kind list, would have cost storage to answer a question the spans
-\ already answer.
-\ push a DATA-region address (create/variable data field). MARK-SITE records
-\ CP, so the chain C-DATA-RAW emits next starts at the marked site, and the
-\ push that consumes x9 follows the chain.
+\ The kind is decided at the emit site: DATA uses its three-half carrier, CODE
+\ the absolute one. All three record their site, so the map says where every
+\ chain starts. An AOT capture copies the blob to a different DP and must find
+\ DATA chains too; recognising a chain by shape or value is refused, since an
+\ integer or inline data can look like one.
+\ RELOC-EMIT:EMIT-ADDRS runs once per band (x21 = base, x22 = length: the JIT
+\ region, then the loaded __text) and rewrites a chain only when its address
+\ lies in that band. DATA sits at the fixed DATA-VA far above both bands, so a
+\ DATA site is visited and left alone: DATA does not move. The map stores no
+\ kind: a consumer derives it from which of its window's disjoint DATA and code
+\ spans the value lands in.
 : C-DATA-ADDR ( -- )
    RELOC-EMIT:MARK-SITE
    14 9 MOVZ,  C-DATA-RAW
    9 W-PUSH9 LIT64,  LCEMIT LABEL@ BL, ;
-\ raw DATA-region address into x9, no push (the defer dispatch-cell address).
+\ x9, no push: the defer dispatch-cell address.
 : C-DATA-ADDR-RAW ( -- )
    RELOC-EMIT:MARK-SITE
    14 9 MOVZ,  C-DATA-RAW ;
-\ push a CODE address (quotation entry xt or ['] target xt). The word it
-\ names lives in the JIT region or in the engine's loaded __text, and neither of
-\ those is at the same address in the run that restores a snapshot image, so the
-\ relocation pass rewrites this one where it leaves a DATA chain alone.
+\ The target lives in the JIT region or the loaded __text, neither at the same
+\ address after a snapshot restore, so the relocation pass rewrites this chain.
 : C-CODE-ADDR ( -- )
    RELOC-EMIT:MARK-SITE
    C-ADDR-PUSH ;
@@ -419,7 +342,7 @@ $D63F0200 constant C-CALL-BLR-X16     \ blr x16: deferred-word indirect call
 variable LSRCFULL   variable LSRCREAD   variable LBADSTR   \ boot source labeled rc-74 exits (prefix overflow / read error / string literal)
 : SRCFULL-MSG$ ( -- ptr u8 n )   S\" hb: source prefix buffer full\n" ;   \ LSRCFULL; SRC-SFAIL/SRC-BFAIL arena overflow
 : SRCFULL-MSG-LEN ( -- n )   SRCFULL-MSG$ nip ;
-: SRCREAD-MSG$ ( -- ptr u8 n )   S\" hb: cannot read source\n" ;   \ LSRCREAD; source read syscall error
+: SRCREAD-MSG$ ( -- ptr u8 n )   S\" hb: cannot read source\n" ;
 : SRCREAD-MSG-LEN ( -- n )   SRCREAD-MSG$ nip ;
 \ LBADSTR: an unterminated or bad-escape string literal. NO newline: the
 \ LCOMPILEDIE tail appends ` at <path>:<line>` and the newline.
@@ -429,28 +352,28 @@ variable LATMSG               \ " at " — the refusal-location separator the LC
 : ATMSG$ ( -- ptr u8 n )   s"  at " ;
 : ATMSG-LEN ( -- n )   ATMSG$ nip ;
 variable LPROTPUB   variable LPROTAOT   \ protected-WID seal labeled rc-84 exits (publish-into-protected / AOT boot-pass gate reject)
-: PROTPUB-MSG$ ( -- ptr u8 n )   s" hb: cannot publish into protected word: " ;   \ LPROTPUB; C-STORE-DEF-NAME appends the def name + newline
+: PROTPUB-MSG$ ( -- ptr u8 n )   s" hb: cannot publish into protected word: " ;
 : PROTPUB-MSG-LEN ( -- n )   PROTPUB-MSG$ nip ;
-: PROTAOT-MSG$ ( -- ptr u8 n )   s" hb: AOT protected-WID gate reject: " ;   \ LPROTAOT; EM-AOTWIDGATE appends the callee name + newline
+: PROTAOT-MSG$ ( -- ptr u8 n )   s" hb: AOT protected-WID gate reject: " ;
 : PROTAOT-MSG-LEN ( -- n )   PROTAOT-MSG$ nip ;
 variable LMMAPCODE   variable LMMAPDATA   \ region mmap-fail/collision labeled rc-78 exits (code region / data region); message bytes live in the loaded __text image, so the write is valid even though the region being mapped does not exist yet
-: MMAPCODE-MSG$ ( -- ptr u8 n )   S\" hb: cannot map fixed code region\n" ;   \ LMMAPCODE
+: MMAPCODE-MSG$ ( -- ptr u8 n )   S\" hb: cannot map fixed code region\n" ;
 : MMAPCODE-MSG-LEN ( -- n )   MMAPCODE-MSG$ nip ;
-: MMAPDATA-MSG$ ( -- ptr u8 n )   S\" hb: cannot map fixed data region\n" ;   \ LMMAPDATA
+: MMAPDATA-MSG$ ( -- ptr u8 n )   S\" hb: cannot map fixed data region\n" ;
 : MMAPDATA-MSG-LEN ( -- n )   MMAPDATA-MSG$ nip ;
 variable LBLRANGE   \ boot BL-range assertion labeled rc-81 exit: the mapped region fell outside BL's +/-128 MiB of __text
 variable LKERNELDIGEST
-: BLRANGE-MSG$ ( -- ptr u8 n )   S\" hb: code region out of BL range\n" ;   \ LBLRANGE
+: BLRANGE-MSG$ ( -- ptr u8 n )   S\" hb: code region out of BL range\n" ;
 : BLRANGE-MSG-LEN ( -- n )   BLRANGE-MSG$ nip ;
 variable LADDSUBIMM   \ the shared add/sub-immediate emitter (EMIT-ADDSUB-IMM): every transfer offset folds through it
 variable LADDSUBBIG   \ transfer immediate past the two-halves range: labeled rc-75 compile refusal
-: ADDSUBBIG-MSG$ ( -- ptr u8 n )   S\" hb: transfer immediate out of range\n" ;   \ LADDSUBBIG
+: ADDSUBBIG-MSG$ ( -- ptr u8 n )   S\" hb: transfer immediate out of range\n" ;
 : ADDSUBBIG-MSG-LEN ( -- n )   ADDSUBBIG-MSG$ nip ;
 variable LFLAGMATCH  variable LSRCBADFLAG  variable LFLAGTAB
 variable LBADFLAG    variable LUSAGE1      variable LUSAGE2     variable LSPC
-: BADFLAG$ ( -- ptr u8 n )   s" hb: unknown flag: " ;   \ LBADFLAG
+: BADFLAG$ ( -- ptr u8 n )   s" hb: unknown flag: " ;
 : USAGE1$ ( -- ptr u8 n )    s" usage: bin/hb" ;   \ LUSAGE1; the flag names follow
-: USAGE2$ ( -- ptr u8 n )    s"  [file.f]  (source on stdin)" ;   \ LUSAGE2
+: USAGE2$ ( -- ptr u8 n )    s"  [file.f]  (source on stdin)" ;
 variable LPLINUXTARGET  variable LPMACOSTARGET  variable LPX64TARGET
 variable LPLINUXLAYOUT  variable LPMACOSLAYOUT  variable LPX64LAYOUT
 variable LPLINUXLAYOUTCONST  variable LPX64LAYOUTCONST
@@ -474,9 +397,8 @@ variable LPENUMS        variable LPEXECVECTOR   variable LPSHA256       variable
 variable LPCOMBINATORS  variable LPCODESPAN  variable LPXREF  variable LPCELLBODY  variable LPGENDECLDICT  variable LPGENDECLPROT
 variable LPLAYOUTSEAL  variable LPLOWERCERTSEAL
 variable LPTOPROW
-\ Boot stdlib block (dot habu-seed-the-stdlib-d8e3a757): the checked stdlib the
-\ whole tree already requires, loaded once by the engine instead of once per
-\ program.
+\ Boot stdlib block: the checked stdlib,
+\ loaded once by the engine instead of once per program.
 variable LPPRELUDE      variable LPERRORS       variable LPOPTION
 variable LPNUMTYPES     variable LPNUMARITH     variable LPSTRING
 variable LPSPAN         variable LPMEMORY       variable LPQUOTSTORE
@@ -496,14 +418,14 @@ create ZBYTE 0 c,
 create NL-KW 10 c,   \ single newline for the open-failure diagnostic
 here NL-KW - constant NL-LEN
 
-\ ---- CLI flag table: one source of truth for the matcher and the usage line ----
+\ The CLI flag table is the one source of truth for the matcher and the usage line.
 1 constant MODE-LOAD   2 constant MODE-SEP   3 constant MODE-FILE
 4 constant MODE-UNKNOWN   5 constant MODE-BUILD
 create FLAGTAB-DATA                        \ record = len, mode, name-bytes; 0-len terminator
    6 c, MODE-LOAD c,  45 c, 45 c, 108 c, 111 c, 97 c, 100 c,   \ "--load" -> MODE-LOAD
    7 c, MODE-BUILD c, 45 c, 45 c, 98 c, 117 c, 105 c, 108 c, 100 c, \ "--build" -> MODE-BUILD
    2 c, MODE-SEP  c,  45 c, 45 c,                              \ "--"     -> MODE-SEP
-   0 c,                                                        \ terminator
+   0 c,
 here FLAGTAB-DATA - constant FLAGTAB-LEN
 create ONESP 32 c,   \ one space, written between usage flag names
 here ONESP - constant ONESP-LEN
@@ -511,8 +433,6 @@ here ONESP - constant ONESP-LEN
 : ZBYTES, ( ptr u8 n -- )
    BYTES, ZBYTE 1 BYTES, ;
 
-\ Breakpoint helpers emit ABI-specific mcontext access, register save/print,
-\ watched-cell display, one-shot restore, and instruction emulation.
 : C-TRAP-MCTX>R9 ( -- )
    HB-TARGET-LINUX? IF 9 2 LINUX-UC-MCTX-OFF ADDI, exit THEN
    9 4 MCTX-OFF LDR, ;
@@ -525,14 +445,10 @@ here ONESP - constant ONESP-LEN
    HB-TARGET-LINUX? IF 12 9 LINUX-MCTX-X19-OFF LDR, exit THEN
    12 9 MACOS-MCTX-X19-OFF LDR, ;
 
-\ ---- naming a breakpoint's caller --------------------------------------------
-\ The three pieces of the `habu-bp-lr:` line: its label, its bytes, and the read
-\ that gets the interrupted thread's x30 out of the signal mcontext. In a package
-\ because they are new - the label variables and message buffers around them are
-\ this file's recorded packaging debt and a new name has no reason to join it.
-\ MEASURED, NOT INFERRED: this handler's own x30 is long gone by the time the
-\ first number reaches fd 2 (LHEX is a BL), so the value has to come from the
-\ same mcontext the pc does.
+\ The `habu-bp-lr:` line: its label, bytes and the read of the interrupted x30
+\ from the signal mcontext; tools/code-owner.f turns the value into a record name.
+\ Measured: the handler's own x30 is overwritten (LHEX is a BL) before the first
+\ number reaches fd 2.
 package BP-CALLER
 public
 variable LBPLH
@@ -563,13 +479,6 @@ here BPL-KW - constant BPL-LEN
    14 8 16 LDR,  14 14 1 ADDI,  14 8 16 STR,
    15 8 24 LDR,  12 15 1 LSRI, ;
 
-\ WHO CALLED THIS, which is the question a breakpoint in a seeded engine is
-\ usually asked and could not answer. The pc and the top of the data stack say
-\ where execution is and what it is holding; the interrupted x30 says where it
-\ came back to, and tools/code-owner.f turns that into a record name. It is read
-\ out of the same mcontext the pc comes from, so it is the value the trapped
-\ thread held - not this handler's own link register, which the BL to LHEX has
-\ already overwritten by the time the first number is printed.
 : C-BP-STACK-RANGE ( -- )
    LBL LBL {: bad:label ready:label :}
    14 DATA STACK-ABI:BASE-CELL LDR,  10 DATA STACK-ABI:CAP-CELL LDR,
@@ -625,10 +534,10 @@ here BPL-KW - constant BPL-LEN
 \ The opcode classes of an instruction that reads or sets PC, each as
 \ (word >> shift) [& mask] = value. The breakpoint handler below and LCINLINE
 \ (EMIT-CINLINE) both refuse to run such an instruction away from its address.
-0 ENC-BL 26 rshift               constant CINL-BL-OP     \ bl
-0 ENC-B 26 rshift                constant CINL-B-OP      \ b
+0 ENC-BL 26 rshift               constant CINL-BL-OP
+0 ENC-B 26 rshift                constant CINL-B-OP
 ENC-RET 25 rshift                constant CINL-BR-OP     \ br, blr, ret
-0 C-EQ ENC-BCOND 24 rshift       constant CINL-BCOND-OP  \ b.cond
+0 C-EQ ENC-BCOND 24 rshift       constant CINL-BCOND-OP
 0 0 ENC-CBZ 25 rshift $3F and    constant CINL-CBZ-OP    \ cbz, cbnz, either width
 0 0 ENC-ADR 24 rshift $1F and    constant CINL-ADR-OP    \ adr, adrp
 $1B constant CINL-TBZ-OP         \ tbz, tbnz, either width: bits 30:25 = 011011
@@ -659,24 +568,15 @@ $18 constant CINL-LDRLIT-OP      \   bits 29:27 = 011 and 25:24 = 00
    12 DATA BPTRAMP-CELL LDR,  12 12 14 ADD,
    C-MCTX-PC<R12 ;
 
-\ A persistent breakpoint keeps its BRK planted, so the instruction the BRK
-\ replaced never runs in place and this handler has to run it. The link-register
-\ save and the nop EM-COMPILE-RET leaves in a leaf's slot are emulated: the save
-\ below, the nop by the step over it. Any other first instruction runs out of
-\ line, in the slot's trampoline debug.f wrote when it planted the BRK: the
-\ instruction, then `b` back to the one after it. Resuming there is exact for
-\ an instruction that means the same at any address. One that reads or sets PC
-\ (C-BP-PCREL) would not, so its breakpoint degrades to one-shot instead.
-\
-\ THE SAVE'S STORE GOES INTO THE SIGNAL FRAME, DELIBERATELY. `str
-\ x30,[sp,#-16]!` writes sixteen bytes below the interrupted sp, and the kernel
-\ built this handler's signal frame there -- on arm64 those exact sixteen bytes
-\ are the frame_record {fp, lr} it chains a backtrace through. Nothing reads
-\ them back: sigreturn restores from uc_mcontext, which is lower in the frame,
-\ and this handler addresses its own locals off sp and never off x29. The word
-\ being resumed will load the value back with `ldr x30,[sp],#16`, by which time
-\ the signal frame is gone. Writing anywhere else is not an option -- that
-\ address IS the slot the epilogue reads.
+\ A persistent breakpoint keeps its BRK, so the handler runs the displaced
+\ instruction. The link-register save and the nop EM-COMPILE-RET leaves in a
+\ leaf's slot are emulated; any other instruction runs in the slot's trampoline
+\ (debug.f writes it when it plants the BRK: the instruction, then `b` back).
+\ One that reads or sets PC (C-BP-PCREL) degrades the breakpoint to one-shot.
+\ The emulated `str x30,[sp,#-16]!` lands in this handler's signal frame, over
+\ the arm64 frame_record {fp, lr}: nothing reads it back (sigreturn restores
+\ from uc_mcontext, lower in the frame; the handler addresses locals off sp,
+\ never x29), and that address is the slot the resumed word's epilogue reads.
 : C-BP-EMULATE ( -- )
    LBL LBL LBL LBL {: framed:label step:label oneshot:label done:label :}
    9 SP 24 LDR,                                       \ the interrupted mcontext
@@ -727,16 +627,14 @@ $18 constant CINL-LDRLIT-OP      \   bits 29:27 = 011 and 25:24 = 00
       C-BP-WATCH-ROW  wloop B,
    wdone LBL, ;
 
-\ LTRAPH: target signal entry. A breakpoint in BPTAB: print habu-bp, pc,
-\ data-stack, and watch cells; a one-shot one restores the original instruction,
-\ clears the bp and sigreturns to re-execute the word, a persistent one runs the
-\ displaced instruction (C-BP-EMULATE) and keeps its BRK.
-\ Any other trap falls through to the crash dump (x2/x4 untouched).
+\ LTRAPH, the trap signal entry: a BPTAB hit is reported and resumed (one-shot
+\ restores the instruction, persistent runs C-BP-EMULATE); any other trap falls
+\ through to the crash dump with x2/x4 untouched.
 : EMIT-TRAPH ( -- )
    LTRAPH LABEL@ LBL,
    LBL {: tno :}
-   C-TRAP-MCTX>R9                                    \ x9 = mcontext
-   C-MCTX-PC>R10                                     \ x10 = pc
+   C-TRAP-MCTX>R9
+   C-MCTX-PC>R10
    LBL {: bscan :}  LBL {: bnext :}  LBL {: bhit :}
    LBL {: sdump :}  LBL {: sdone :}  LBL {: wloop :}  LBL {: wdone :}
    LBL {: emu :}  LBL {: fin :}
@@ -779,7 +677,7 @@ $18 constant CINL-LDRLIT-OP      \   bits 29:27 = 011 and 25:24 = 00
    LCFKINDMSG LABEL@ LBL, CFKINDMSG$ BYTES,            \ LCFKIND appends the token + newline
    LLOCWIDEMSG LABEL@ LBL, LOCWIDEMSG$ BYTES,          \ LLOCWIDE appends the declaration token + newline
    LLOCMANYMSG LABEL@ LBL, LOCMANYMSG$ BYTES,          \ LLOCMANY appends the declaration token + newline
-   LCSTRMSG LABEL@ LBL, CSTRMSG$ BYTES,                \ LCSTR appends a newline (fixed label: names the constraint at a glance)
+   LCSTRMSG LABEL@ LBL, CSTRMSG$ BYTES,                \ LCSTR appends a newline
    LDPBADMSG LABEL@ LBL, DPBAD-MSG$ BYTES,                               \ LDPBAD appends the refused DP, " of ", the ceiling and " bytes" (DP-heap allot bound)
    LDPBADOF LABEL@ LBL, DPBAD-OF$ BYTES,
    LDPBADUNIT LABEL@ LBL, DPBAD-UNIT$ BYTES,
@@ -814,28 +712,19 @@ $18 constant CINL-LDRLIT-OP      \   bits 29:27 = 011 and 25:24 = 00
    LBLRANGE LABEL@ LBL, BLRANGE-MSG$ BYTES,
    LADDSUBBIG LABEL@ LBL, ADDSUBBIG-MSG$ BYTES, ;
 
-\ LCEMITBL ( x11 = absolute target ) : emit ONE direct BL imm26 to x11 at CP, then CP += 4.
-\ The single call-emit primitive for every statically known native call — dictionary words
-\ (C-CALL) and the registered engine helpers
-\ (LP2VEXEC/(PROT-SPAN)) alike. disp = target - CP; the region maps at __text + REGION-OFF
-\ so every call site and callee sit within BL's +/-128 MiB reach, and the boot assertion
-\ (EM-MMAP-CODE-REGION, exit BL-RANGE-RC) guarantees the whole region stays in range. Each
-\ emission still fails closed on that window: a future layout that broke it would otherwise
-\ encode a wild displacement into live code. Builds x9 = BL opcode | imm26, then tails into
-\ LCEMIT (CP guard + word store + CP += 4).
-\ LCEMITB ( x11 = absolute target ) : the same for a B imm26, the tail call `;` emits
-\ (EM-COMPILE-TAIL). A B returns nothing to this body and neither clobbers x30 nor
-\ runs a loop here, so it marks neither FRAME-CELL nor LIDX-CELL; the reach check and
-\ the call map are shared, and its consumer EMIT-CALLS takes a B site as well as
-\ a BL one.
-\ Before encoding it records the site in the region-to-text call map when the callee lies
-\ OUTSIDE the mapped region (layout.f CALLMAP-OFF). That test is the region's own extent,
-\ not a guess about the value: a callee either is inside [DBASE, DBASE+REGION) or it is in
-\ the engine's loaded __text. Only the second kind changes distance between the run that
-\ writes a snapshot image and the run that restores it, so only the second kind is recorded
-\ and later relocated (EM-SNAPSHOT-REBASE-CALLS).
-\ x9 carries the opcode from entry to the encode; x11 (the callee) is dead once the
-\ displacement is taken, so it doubles as scratch. Clobbers x5, x6, x9, x10, x11.
+\ LCEMITBL ( x11 = absolute target ): emit one BL imm26 to x11 at CP, CP += 4:
+\ the only emitter for statically known native calls (C-CALL, LP2VEXEC,
+\ (PROT-SPAN)). The region maps at __text + REGION-OFF within BL's +/-128 MiB
+\ (EM-MMAP-CODE-REGION asserts it, exit BL-RANGE-RC); each emission still checks
+\ the reach, so a layout that broke it fails instead of encoding a wild branch.
+\ LCEMITB: the same for B imm26, the tail call `;` emits (EM-COMPILE-TAIL). A B
+\ neither clobbers x30 nor runs a loop here, so it marks neither FRAME-CELL nor
+\ LIDX-CELL; EMIT-CALLS relocates B and BL sites alike.
+\ A callee outside [DBASE, DBASE+REGION) is in the loaded __text, the only kind
+\ whose distance changes across a snapshot restore, so only it is recorded in
+\ the call map (layout.f CALLMAP-OFF) for EMIT-CALLS.
+\ x9 carries the opcode; x11 is scratch once the displacement is taken.
+\ Clobbers x5, x6, x9, x10, x11.
 
 \ Count a call in FRAME-CELL, through scratch registers a and b: bit 0 says the
 \ body holds a call, bit 1 that it holds a second. That count, saturated at two,
@@ -854,11 +743,9 @@ $18 constant CINL-LDRLIT-OP      \   bits 29:27 = 011 and 25:24 = 00
    LCEMITBL LABEL@ LBL,
    \ The callee may run a loop of its own, which writes x29 (regalloc.f LIDX).
    5 0 MOVZ,  5 DATA LIDX-CELL STR,
-   \ The one fact EM-COMPILE-RET needs and cannot recover later: this body now
-   \ holds a call, so x30 does not survive it and the entry slot has to stay a
-   \ save. Marked here rather than read back out of the emitted words, because
-   \ the emitter knows what it emitted and a scan of the body would also have to
-   \ decide what the string and address literals inside it are.
+   \ EM-COMPILE-RET needs this mark: the body holds a call, so x30 does not
+   \ survive it and the entry slot stays a save. A scan of the body could not
+   \ tell code from the string and address literals inside it.
    5 6 FRAME-CALL,
    9 $94000000 LIT64,                                  \ x9 = BL opcode
    shared LBL,
@@ -880,24 +767,18 @@ $18 constant CINL-LDRLIT-OP      \   bits 29:27 = 011 and 25:24 = 00
    9 9 10 ORR,                                         \ x9 = opcode | imm26
    LCEMIT LABEL@ B, ;                                  \ tail: LCEMIT guards CP, stores x9, advances CP += 4, RET
 
-\ LCINLINE ( x11 = callee code address, x5 = its dictionary record ) : copy the
-\ callee's body into the word being compiled when it is a straight-line engine
-\ primitive; otherwise tail into LCEMITBL for one BL. Clobbers x5-x7, x9-x11.
-\ A body is copied only when it is outside the region (a seed primitive, not a
-\ compiled word), its record holds a legacy span (an exact span is not a seed
-\ body and holds its own RET), and no word of it is a BL, BR/BLR/RET, ADR/ADRP
-\ or literal load, or a B, B.cond, CBZ/CBNZ or TBZ/TBNZ whose target leaves the
-\ body; a branch to the dropped RET stays, as the copy falls through to that
-\ address. Each of those depends on where the body sits or leaves it, so a copy
-\ would compute, load or return to the wrong place; everything else reads only
-\ registers and memory and means the same at any address. The copy marks no
-\ call in FRAME-CELL and records nothing in the call map: a definition that
-\ only inlines stays a leaf (EM-COMPILE-RET).
-\ The scan reads the final bytes at compile time instead of a build-side flag
-\ because inlinability is a property of those bytes: while the engine is being
-\ built, a forward external BL is encoded with delta 0 until its label binds
-\ (icode.f BR-EMIT), so a build-side scan would misread it. The opcode classes
-\ are the CINL-* constants above C-BP-EMULATE.
+\ LCINLINE ( x11 = callee code address, x5 = its dictionary record ): copy a
+\ straight-line seed primitive's body into the word being compiled, else tail
+\ into LCEMITBL. Clobbers x5-x7, x9-x11.
+\ A body is copied only when it is outside the region, its record holds a legacy
+\ span (an exact span holds its own RET), and no word is a BL, BR/BLR/RET,
+\ ADR/ADRP or literal load, or a B, B.cond, CBZ/CBNZ or TBZ/TBNZ leaving the
+\ body (a branch to the dropped RET stays: the copy falls through there). Those
+\ depend on where the body sits. A copy marks no call in FRAME-CELL and records
+\ nothing in the call map: a definition that only inlines stays a leaf.
+\ The scan reads the final bytes at compile time: during the engine build a
+\ forward external BL is encoded with delta 0 until its label binds (icode.f
+\ BR-EMIT). The opcode classes are the CINL-* constants.
 : EMIT-CINLINE ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL LBL
    {: scan:label next:label rel26:label rel19:label rel14:label target:label copy:label cloop:label cdone:label :}
@@ -943,25 +824,16 @@ $18 constant CINL-LDRLIT-OP      \   bits 29:27 = 011 and 25:24 = 00
    cdone LBL,
    30 SP 0 LDR,  SP SP 32 ADDI,  RET, ;
 
-\ LADDSUBIMM ( x8 = an add/sub-immediate word with Rd and Rn set and imm12 = 0,
-\ x7 = the unsigned byte operand ) : emit that instruction with the operand
-\ folded into its immediate field, through LCEMIT. Every variable-width stack
-\ transfer offset in the pass-2 emitters reaches the code window here.
-\ AArch64 carries imm12 plus an optional #12 shift, so any operand below 2^24
-\ is at most two words: the shifted half against the source, then the low half
-\ against the destination. Below 4096 it stays the ONE word it has always been,
-\ which is the shape test/type-layout-lower-pending.f pins; only a transfer
-\ wider than 511 cells pays a second instruction.
-\ Folding inline the way these sites used to sets the operand's own bit 12 INTO
-\ the sh field: `sub x14,x19,#4104` for a 513-cell bundle encoded as
-\ `sub x14,x19,#32768`, and a 4160-byte locals frame released 262144 bytes of
-\ machine stack. 61b07c76706d cured that truncation by materializing the
-\ operand in a user register, one instruction wider at EVERY width; this
-\ routine keeps the cure and spends no user register at any width.
-\ An operand at or above 2^24 cannot come from a checker-certified width, so it
-\ is refused by name instead of encoded.
-\ Clobbers x7, x8, x9 and x30 and nothing else, so a caller may hold a second
-\ operand live across the call (EMIT-P2-REV keeps x6 over the first of two).
+\ LADDSUBIMM ( x8 = add/sub-immediate word with Rd and Rn set and imm12 = 0,
+\ x7 = unsigned byte operand ): emit it with the operand folded in, through
+\ LCEMIT; every variable-width stack transfer offset of the pass-2 emitters.
+\ Below 4096 it is one word (test/type-layout-lower-pending.f pins that shape);
+\ below 2^24 two (the #12-shifted half against the source, then the low half
+\ against the destination). Folding the operand's bit 12 into the sh field is
+\ the failure this prevents (a 513-cell bundle as `sub x14,x19,#32768`). An
+\ operand at or above 2^24 cannot come from a checker-certified width and is
+\ refused by name. Clobbers x7, x8, x9 and x30 only, so a caller may hold a
+\ second operand live across the call (EMIT-P2-REV keeps x6).
 : EMIT-ADDSUB-IMM ( -- )
    LBL LBL LBL {: ok:label low:label done:label :}
    LADDSUBIMM LABEL@ LBL,
@@ -984,9 +856,9 @@ $18 constant CINL-LDRLIT-OP      \   bits 29:27 = 011 and 25:24 = 00
    done LBL,
    30 SP 0 LDR,  SP SP 32 ADDI,  RET, ;
 
-\ override SIGTRAP(5) to the resuming handler (G-INSTALL-CRASH-X11 pointed all four
-\ at the dumper; this repoints just TRAP once LTRAPH is bound). SA_SIGINFO alone:
-\ a breakpoint stops a thread whose stack is sound, so it is served there.
+\ Repoint SIGTRAP(5) at the resuming handler once LTRAPH is bound
+\ (G-INSTALL-CRASH-X11 points all four at the dumper). SA_SIGINFO alone: a
+\ breakpoint stops a thread whose stack is sound, so it is served there.
 : G-INSTALL-TRAP ( -- )
    9 LTRAPH LABEL@ ADR,  9 SIGACT-SIGINFO C-SIGACTION-FRAME
    5 INSTALL-SIGACT
@@ -1003,16 +875,12 @@ $18 constant CINL-LDRLIT-OP      \   bits 29:27 = 011 and 25:24 = 00
    done LBL,
    RET, ;
 
-\ THE SOURCE ARENA HOLDS WHAT THIS IMAGE PUTS IN IT. Every boot route copies
-\ the cold prefix and then its program into one anonymous mapping. What boot
-\ reads from disk or stdin has the fixed allowance IBUFSZ; the source baked at
-\ LSRC is SRCN bytes, fixed when this image is emitted, and gets exactly that
-\ room on top. A baked source therefore never competes with the prefix it boots
-\ behind: with one fixed arena, the recovery chain's hb-stdin-mk (about 1.1 MB
-\ of prefix ahead of 3.1 MB of baked compiler source) died `hb: source prefix
-\ buffer full`, exit 74, the moment the tree grew past their sum. The mapping
-\ and baked-source copy use this length; disk, stdin and generated path rows
-\ stay within IBUFSZ. The seed mirror in bootstrap/cg/forth.fs states the same sum.
+\ The source arena: every boot route copies the cold prefix, then its program,
+\ into one anonymous mapping. Disk, stdin and generated path rows get IBUFSZ;
+\ the source baked at LSRC gets its own SRCN bytes on top, so a baked source
+\ never competes with the prefix it boots behind (one shared arena failed
+\ `hb: source prefix buffer full`, exit 74, for hb-stdin-mk's 1.1 MB prefix
+\ ahead of 3.1 MB of baked source). bootstrap/cg/forth.fs states the same sum.
 : SOURCE-ARENA-LEN ( -- n )
    IBUFSZ SRCN @ + ;
 
@@ -1055,38 +923,19 @@ $18 constant CINL-LDRLIT-OP      \   bits 29:27 = 011 and 25:24 = 00
    1 LOPENNL LABEL@ ADR,  0 2 MOVZ,  2 NL-LEN MOVZ,  NR-WRITE SYS,     \ "\n"
    0 74 MOVZ,  NR-EXIT-GROUP SYS, ;
 
-\ LSRCRDP: read one ENGINE PREFIX source file and drop the lines the interpreter
-\ would skip anyway. The prefix rows are 41 percent comment bytes, and every cold
-\ boot copies them into the read arena ahead of the program. The cold prefix
-\ and argv or stdin input share IBUFSZ; baked source has its own SRCN space.
-\ The engine reads its prefix through this entry; LSRCRD keeps serving argv
-\ files and the certified --build payload byte for byte.
-\
-\ THE RULE IS THE INTERPRETER'S OWN, AT LINE GRANULARITY. EM-COMMENT skips a
-\ one-byte `\` token to the newline, and habu1.f EMIT-TOK delimits tokens at any
-\ byte <= 32. So a line whose FIRST token is `\` is comment through its newline,
-\ and a line with no token at all is nothing. Both are deleted here; every other
-\ line is copied byte for byte, indentation included.
-\
-\ WHAT IS NOT STRIPPED, AND WHY. A TRAILING `\` comment and a `( ... )` comment
-\ both need state this reader does not have. `( a -- b )` after a definition's
-\ name IS the declared effect and the checker reads it, so no `(` row may go on
-\ that ground alone; and a standalone `(` is not even reliably a comment opener,
-\ because the prefix carries strings whose payload holds one
-\ (src/core/structures.f `s"  ( ptr a -- ptr a ) "`, src/core/layout-buffer.f,
-\ src/core/sumtype.f). A trailing `\` is a comment only OUTSIDE a string, and
-\ those same payloads show the reader cannot tell inside from outside: it sees
-\ bytes, not literals. No prefix string holds a standalone `\` today, which is
-\ exactly the kind of fact that decays silently, so the rule refuses the whole
-\ form rather than the instances. Together those two are 7 percent of the prefix
-\ against the 41 percent taken here.
-\
-\ Compaction is in place and cannot overrun: the write cursor starts where the
-\ read cursor starts and advances at most one byte per byte read, so it stays at
-\ or behind the read cursor, which LSRCRD already bounded by the arena.
+\ LSRCRDP: read one ENGINE PREFIX source file and drop whole comment and blank
+\ lines (41 percent of the prefix bytes, copied on every cold boot). LSRCRD
+\ keeps serving argv files and the certified --build payload byte for byte.
+\ The rule is the interpreter's: EM-COMMENT skips a one-byte `\` token to the
+\ newline and habu1.f EMIT-TOK delimits at any byte <= 32, so a line whose first
+\ token is `\`, or that has no token, is dropped; every other line is copied.
+\ Trailing `\` and `( ... )` comments stay (7 percent): `( a -- b )` after a
+\ name is the declared effect, and prefix strings hold `(` (src/core/structures.f,
+\ src/core/layout-buffer.f, src/core/sumtype.f), so a byte reader cannot tell a
+\ comment from a string payload.
+\ In place: the write cursor never passes the read cursor, which LSRCRD bounded.
 \ x12 = read cursor, x13 = region end, x9 = write cursor, x2 = line start,
-\ x4 = byte - all of them registers LSRCRD already clobbers, so a prefix row
-\ costs its callers nothing new.
+\ x4 = byte: registers LSRCRD already clobbers.
 : C-SOURCE-STRIP-COMMENT-LINES ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL
    {: line:label blanks:label bump:label eol:label skip:label keep:label copy:label done:label :}
@@ -1134,11 +983,10 @@ $18 constant CINL-LDRLIT-OP      \   bits 29:27 = 011 and 25:24 = 00
    C-SOURCE-STRIP-COMMENT-LINES
    RET, ;
 
-\ ---- CLI flag classifier ----------------------------------------------------
 \ LFLAGMATCH: BL-callable, register-transparent (SP-frames x1..x7, only x0 set).
 \ Input x12 = argv c-string. Output x0 = MODE-LOAD/MODE-SEP/MODE-FILE/MODE-UNKNOWN.
-\ Walks FLAGTAB-DATA with a full-string compare (len + bytes + trailing NUL); a
-\ leading '-' that matches no row is MODE-UNKNOWN, no leading '-' is MODE-FILE.
+\ A leading '-' that matches no FLAGTAB-DATA row is MODE-UNKNOWN; no leading '-'
+\ is MODE-FILE.
 : EMIT-FLAG-MATCH ( -- )
    LFLAGMATCH LABEL@ LBL,
    LBL LBL LBL LBL LBL LBL LBL {: isfile:label recloop:label cmploop:label checknul:label nextrec:label unknown:label done:label :}
@@ -1169,9 +1017,8 @@ $18 constant CINL-LDRLIT-OP      \   bits 29:27 = 011 and 25:24 = 00
    SP SP 64 ADDI,
    RET, ;
 
-\ LSRCBADFLAG: reached with x12 = offending argv; the handler exits so it may
-\ freely clobber callee-saved x21/x22 (both survive the write syscalls). Writes
-\ the offending flag then a usage line built by iterating FLAGTAB-DATA, exit 64.
+\ LSRCBADFLAG ( x12 = offending argv ): writes the flag and a usage line from
+\ FLAGTAB-DATA, then exits 64, so it may clobber x21/x22.
 : EMIT-FLAG-REJECT ( -- )
    LSRCBADFLAG LABEL@ LBL,
    LBL LBL LBL LBL {: bscan:label bdone:label uloop:label udone:label :}
@@ -1180,17 +1027,17 @@ $18 constant CINL-LDRLIT-OP      \   bits 29:27 = 011 and 25:24 = 00
    22 21 0 ADDI,                                   \ x22 = strlen cursor
    bscan LBL,  14 22 0 LDRB,  14 bdone CBZ,  22 22 1 ADDI,  bscan B,
    bdone LBL,  2 22 21 SUB,  1 21 0 ADDI,  0 2 MOVZ,  NR-WRITE SYS,   \ write(2, arg, len)
-   1 LOPENNL LABEL@ ADR,  0 2 MOVZ,  2 NL-LEN MOVZ,  NR-WRITE SYS,         \ "\n"
+   1 LOPENNL LABEL@ ADR,  0 2 MOVZ,  2 NL-LEN MOVZ,  NR-WRITE SYS,
    1 LUSAGE1 LABEL@ ADR,  0 2 MOVZ,  2 USAGE1$ nip MOVZ,  NR-WRITE SYS,
    22 LFLAGTAB LABEL@ ADR,                         \ x22 = table cursor
    uloop LBL,
       14 22 0 LDRB,  14 udone CBZ,                 \ len==0 terminator -> usage tail
-      1 LSPC LABEL@ ADR,  0 2 MOVZ,  2 ONESP-LEN MOVZ,  NR-WRITE SYS,         \ " "
+      1 LSPC LABEL@ ADR,  0 2 MOVZ,  2 ONESP-LEN MOVZ,  NR-WRITE SYS,
       1 22 2 ADDI,  2 22 0 LDRB,  0 2 MOVZ,  NR-WRITE SYS,            \ write(2, name, len)
       14 22 0 LDRB,  22 22 14 ADD,  22 22 2 ADDI,  uloop B,           \ cursor += 2 + len
    udone LBL,
    1 LUSAGE2 LABEL@ ADR,  0 2 MOVZ,  2 USAGE2$ nip MOVZ,  NR-WRITE SYS,
-   1 LOPENNL LABEL@ ADR,  0 2 MOVZ,  2 NL-LEN MOVZ,  NR-WRITE SYS,         \ "\n"
+   1 LOPENNL LABEL@ ADR,  0 2 MOVZ,  2 NL-LEN MOVZ,  NR-WRITE SYS,
    0 64 MOVZ,  NR-EXIT-GROUP SYS, ;
 
 \ Flag byte table (read only via ADR) plus the reject message strings.
@@ -1359,45 +1206,23 @@ $18 constant CINL-LDRLIT-OP      \   bits 29:27 = 011 and 25:24 = 00
 : PFX-LOAD-DECL-FILES ( -- )
    PFX-DECL ['] PFX-LOAD-ROW PFX-FILES ;
 
-\ The boot stdlib (dot habu-seed-the-stdlib-d8e3a757). These files are the
-\ checked surface the tree already requires everywhere - src/lib/string.f alone has
-\ 548 requiring files, src/lib/errors.f 472 - so every program used to pay for its
-\ own copy. Loading them once here makes each of those requires a registry
-\ no-op and gives every program the same pre-seal copy.
-\
-\ Order is the files' own require graph, read from the files: prelude and
-\ errors have no requires; span.f requires errors; adt/option.f is a bare
-\ ENUM; num-types.f is the role NEWTYPEs and num-arithmetic.f requires it;
-\ string.f requires errors and adt/option; memory.f requires
-\ errors, num-arithmetic and span; image-lifecycle requires prelude, errors and
-\ quotation-storage, already loaded before include.f in the core prefix.
-\ span.f SITS RIGHT AFTER errors.f, not beside memory.f, because it declares a
-\ type family, and a stage source that rebuilds the registry above the core
-\ prefix (tools/build-fixpoint.f BF-APPEND-COMMON rewinds to it,
-\ tools/bootstrap.sh SRC_COMMON reloads it) has to rebuild the type registry in
-\ this order: the REPL it captures is seeded
-\ into an engine that booted this prefix, and the seed refuses a registry that
-\ does not start where its capture did (src/core/type-family.f
-\ REG-AOT-BASE-BAD). Both lists name errors.f, so both place span.f after it. The
-\ lifecycle registry belongs below the compiler capture window: capture tooling
-\ can register its own FFI cleanup after the window closes, and that callback
-\ must not become a target of the window's declared CODE cells. Some files spell
-\ the dependency as `s" path" required` rather than the `require` keyword, so
-\ the graph has to be read from the files and not grepped for one spelling.
-\
-\ Unlike every other prefix file these DO carry require lines, so the provide
-\ rows must reach the registry BEFORE the first file text is read
-\ - otherwise the first `required` inside a file re-reads a file this table
-\ already loaded and the boot dies on a duplicate definition. That is what
-\ PFX-LOAD-STDLIB-COLD orders, and why the block cannot simply be appended to
-\ PFX-LOAD-CORE-FILES.
-\
-\ src/arch/arm64/asm.f is not here YET, and the reason it could not be is gone.
-\ It used to publish 146 global names, so loading it at every boot made a bare
-\ `enc-b` under `using onnx` ambiguous against the global ENC-B it defined
-\ (E-USING-SHADOW-GLOBAL, maki/onnx/proto-test.f). It is package A64ASM now (dot
-\ habu-pkg-the-arm64-ce972795) and publishes nothing globally. Adding the row is
-\ the seed work's, not the packaging's - dot habu-seed-the-chain-e98b03d4.
+\ The boot stdlib: files the tree requires
+\ everywhere (src/lib/string.f has 548 requiring files, src/lib/errors.f 472),
+\ loaded once so each of those requires is a registry no-op.
+\ Order is the files' require graph, read from the files (some spell it
+\ `s" path" required`); image-lifecycle needs quotation-storage, which the core
+\ prefix loads before include.f. span.f sits right after errors.f because it
+\ declares a type family: tools/build-fixpoint.f BF-APPEND-COMMON and
+\ tools/bootstrap.sh SRC_COMMON rebuild the registry in this order, and the seed
+\ refuses a registry that does not start where its capture did
+\ (src/core/type-family.f REG-AOT-BASE-BAD). The lifecycle registry sits below
+\ the compiler capture window, so an FFI cleanup that capture tooling registers
+\ later never becomes a target of the window's declared CODE cells.
+\ These files carry require lines, so the provide rows must reach the registry
+\ before the first file is read, or a nested `required` reloads a file and dies
+\ on a duplicate definition: PFX-LOAD-STDLIB-COLD orders that, which is why the
+\ block is not part of PFX-LOAD-CORE-FILES.
+\ src/arch/arm64/asm.f (package A64ASM, no globals) is not loaded here.
 : PFX-LOAD-STDLIB-FILES ( -- )
    PFX-BASELIB PFX-RESTLIB or ['] PFX-LOAD-ROW PFX-FILES ;
 
@@ -1411,7 +1236,7 @@ $18 constant CINL-LDRLIT-OP      \   bits 29:27 = 011 and 25:24 = 00
    PFX-LOAD-SCRIPT-ARGV
    done LBL, ;
 
-\ internal-mark.f is the LAST prefix source (dot habu-hb-crash-bare-c5be6634):
+\ internal-mark.f is the LAST prefix source:
 \ its marking pass must see every prefix definition and every recorded effect
 \ (cell/pointer-storage effect rows, checked structure words, xref/script-argv
 \ signatures) before it
@@ -1426,8 +1251,8 @@ $18 constant CINL-LDRLIT-OP      \   bits 29:27 = 011 and 25:24 = 00
    PFX-LOAD-INTMARK
    done LBL, ;
 
-\ top-row.f installs the tier-1 top-level row tracker (dot
-\ habu-typed-top-checker-82cf8b84) as the LAST cold-prefix source: after
+\ top-row.f installs the tier-1 top-level row tracker as the LAST cold-prefix
+\ source: after
 \ internal-mark's own top-level `0 set-check` window (whose re-arm lives inside a
 \ word body and is invisible to a token hook), so the tracker starts armed and
 \ empty on the first user token. Snapshot boots skip it (SNAP-CELL guard), like
@@ -1462,27 +1287,10 @@ $18 constant CINL-LDRLIT-OP      \   bits 29:27 = 011 and 25:24 = 00
 
 : SEEDED-RUNTIME? ( -- bool ) AOT-RUNTIME:COMPLETE? ;
 
-\ Seal the friend arena: latch := FRIEND-ARENA-LEN. Emitted at the
-\ END of the cold prefix — after the engine's own canonical source is loaded and
-\ before ANY user token (--load file, stdin pipe, baked LSRC, or REPL) is
-\ evaluated — so every raw write into the arena from user source is trapped
-\ fail-closed. Self-sealing: once the latch is set, clearing it is a protected
-\ write and traps, so the seal is one-way. Uses x5 (a cold-prefix scratch reg);
-\ x9=cursor and x11=buffer base are live across this point and preserved.
-\ The latch is set BEFORE the engine's own checker/xref/stdlib source is
-\ evaluated (that source runs post-latch via guard-bypassing DATA stores), so the
-\ seal-time ndict is NOT the engine boundary; the truncation watermark is instead
-\ captured by SEAL-CAPTURE (habu1.f) tokens in the source stream - a baseline at
-\ the end of xref.f plus the cold-prefix assembler's token at the true prefix
-\ end (EMIT-SEAL-CAPTURE-TOKEN, after script-argv.f and the provide rows).
-\ MODE-BUILD is not a user-source entry: build-fixpoint first certifies its
-\ compiler payload, LCOLDPFXB leaves the latch open for that compiler prefix,
-\ and the payload executes SEAL-FRIEND before its driver.
-\ Raw target ioctl emitter for TTY detection: x0 = 0 when fd 0 is a terminal.
-\ The attributes the request returns land in an 80-byte frame on the machine
-\ stack and are dropped (macOS's struct termios is 72 bytes, Linux's 36). They
-\ are never written to BODYBUF: the route test (EMIT-REPL-ROUTE) runs at every
-\ line end, where a definition open across lines still holds its body capture.
+\ Raw ioctl TTY probe: x0 = 0 when fd 0 is a terminal. The attributes land in an
+\ 80-byte machine-stack frame (macOS termios is 72 bytes, Linux 36) and are
+\ dropped, never written to BODYBUF: EMIT-REPL-ROUTE runs at every line end,
+\ while a definition open across lines holds its body capture there.
 : C-EMIT-TTY-PROBE ( -- )
    SP SP 80 SUBI,
    0 0 MOVZ,
@@ -1493,19 +1301,14 @@ $18 constant CINL-LDRLIT-OP      \   bits 29:27 = 011 and 25:24 = 00
    NR-IOCTL SYS,
    SP SP 80 ADDI, ;
 
-\ Return x9=true only for the live interactive route.  A writable REPL hook is
-\ not authority to recover: batch source can name its installer, and --load may
-\ inherit a tty on fd 0. A successful fd-0 terminal probe plus either ARGC==1
-\ or the application startup entry distinguishes the REPL from batch input.
-\ Registered as the sealed (LREPLROUTE) engine helper, exactly like (PROT-SPAN)
-\ and (LP2VEXEC) and for the same reason: the `throw` primitive reaches this
-\ routine by a DIRECT BL (habu1.f BTHROW, the only recovery route a bare tty REPL
-\ may take), and a stripped ahead-of-time image relocates such a call by resolving
-\ its target to a record's exact code entry (aot-closure.f FINDADDR-PTR). With no
-\ record the walk resolves nothing, the callee never enters the closure, and the
-\ linker refuses the branch it cannot rewrite - `aot: PC-relative target removed
-\ or outside closure`, exit 74, for every program whose closure reaches `throw`.
-\ The record is system-private (OWNER-API-PRI-WID), so no word search sees it.
+\ x9 = true only for the live interactive route: a successful fd-0 terminal
+\ probe plus ARGC == 1 or the application startup entry. A writable REPL hook is
+\ not authority (batch source can name its installer; --load may inherit a tty).
+\ A sealed engine helper (LREPLROUTE), like (PROT-SPAN) and (LP2VEXEC): habu1.f
+\ BTHROW reaches it by a direct BL, and a stripped AOT image relocates such a
+\ call only to a record's code entry (aot-closure.f FINDADDR-PTR); without a
+\ record the linker refuses it (`aot: PC-relative target removed or outside
+\ closure`, exit 74). The record is system-private (OWNER-API-PRI-WID).
 : EMIT-REPL-ROUTE ( -- )
    LBL LBL LBL {: no:label tty:label end:label :}
    LREPLROUTE LABEL@ {: start:label :}
@@ -1524,30 +1327,17 @@ $18 constant CINL-LDRLIT-OP      \   bits 29:27 = 011 and 25:24 = 00
    RET,
    end LBL, ;
 
-\ (GENIO-OUT): the device half of src/habu/rt.f's output funnel, reached only
-\ when the current task's output device index is non-zero. x0 carries that
-\ index, x1 the span address and x2 its length; the routine either runs the
-\ device's write operation with the span on the data stack or falls back to
-\ write(1) and returns with the caller's link register intact.
-\
-\ A SEALED ENGINE HELPER for the same reason (LREPLROUTE) and (PROT-SPAN) are:
-\ seven direct BLs reach it from prim bodies and interpreter code, and a
-\ stripped AOT image relocates such a call by resolving its target to a
-\ record's code entry (aot-closure.f FINDADDR-PTR). With no record the linker
-\ refuses the branch it cannot rewrite. The record is system-private, so no
-\ word search sees the name.
-\
-\ It publishes the device in ACTIVE-CELL around the call, which is how a write
-\ shared by several devices finds the one it is running for, and restores the
-\ caller's value from its own frame afterwards.
-\
-\ THREE WAYS BACK TO THE TERMINAL, all of them fail-safe rather than silent:
-\ the re-entrancy guard is set (a device write that itself reached `type`), the
-\ index is outside 1..DEVICES, or the row is empty because nothing registered
-\ it. Output has to keep working while a device is being built or has just gone
-\ away; a device that wants a failure REPORTED latches it and answers on its
-\ next checked operation (src/lib/genio-core.f), because a throw out of `emit` would
-\ unwind through engine internals.
+\ (GENIO-OUT): the device half of src/habu/rt.f's output funnel, reached when
+\ the task's output device index is non-zero (x0 = index, x1 = span address,
+\ x2 = length). A sealed engine helper for the reason (LREPLROUTE) is: seven
+\ direct BLs from prim bodies and interpreter code reach it.
+\ ACTIVE-CELL holds the device during the call, so a write shared by several
+\ devices finds its own; the caller's value is restored from the frame.
+\ It falls back to write(1) when the re-entrancy guard is set, the index is
+\ outside 1..DEVICES or the row is empty: output keeps working while a device is
+\ built or gone. A device reports a failure by latching it for its next checked
+\ operation (src/lib/genio-core.f); a throw out of `emit` would unwind through
+\ engine internals.
 : EMIT-GENIO-OUT ( -- )
    LBL LBL LBL {: term:label done:label end:label :}
    LGENIOOUT LABEL@ {: start:label :}
@@ -1609,24 +1399,12 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV variable LAPPREQ
       4 10 CMPI,  C-EQ SRC-DONE LABEL@ BCOND,
       SRC-SHLOOP LABEL@ B, ;
 
-\ Scan argv for the `--` separator and leave its index in x15, the limit the
-\ argv loop stops at; with no separator x15 keeps the argc the caller set.
-\
-\ THE SCAN INDEX IS SET HERE, NOT BY THE CALLER. The cold prefix runs between
-\ the caller and this loop, and on an UNSEEDED engine every prefix row is a
-\ subroutine call that leaves x13 holding whatever it last used it for. The
-\ caller's `13 2 MOVZ,` never survived: LSRCRD ended each row with a `CSET`
-\ into x13, so the scan started at argv[0] instead of argv[2] and still found
-\ the separator, because argv[0] is the program and argv[1] is the flag that
-\ selected this route - neither can be `--`. That accident held until the
-\ prefix reader started leaving an arena pointer in x13 (LSRCRDP), which the
-\ first compare below reads as an index past argc: no separator found, x15
-\ stays argc, and the argv loop hands `--` and everything after it to the
-\ registry as files (`include: cannot open <tree>/--`). A seeded engine emits
-\ no prefix rows at all, so only cold images ever showed it.
-\
-\ argv[1] is the flag that selected this route, so argv[2] is the first
-\ argument that can be the separator.
+\ Scan argv for the `--` separator; leave its index in x15, the argv loop's
+\ limit (with no separator x15 keeps the caller's argc). The scan starts at
+\ argv[2] (argv[1] is the flag that chose this route), and the index is set
+\ here, not by the caller: on an unseeded engine every cold prefix row is a call
+\ that clobbers x13 (LSRCRDP leaves an arena pointer there, read as an index
+\ past argc, which handed `--` to the registry as a file).
 : C-SOURCE-FIND-SEP ( -- )
    13 2 MOVZ,
    SRC-FSCAN LABEL@ LBL,
@@ -1655,6 +1433,13 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV variable LAPPREQ
    4 c MOVZ,
    fail C-SOURCE-APPEND-X4-TO ;
 
+\ Append the SEAL-FRIEND token (latch := FRIEND-ARENA-LEN) before any user token
+\ (--load file, stdin, baked LSRC or REPL), so a raw write into the friend arena
+\ from user source traps; clearing the latch is itself a protected write, so the
+\ seal is one-way. The engine's own source runs after the latch through
+\ guard-bypassing DATA stores, so the seal-time ndict is not the engine boundary:
+\ SEAL-CAPTURE tokens (habu1.f) record the watermark. MODE-BUILD leaves the
+\ latch open; the certified payload executes SEAL-FRIEND before its driver.
 : EMIT-SEAL-FRIEND-TOKEN ( label -- ) {: fail:label :}
    ENGINE-BUILD:BUILDING? if exit then
    LBL {: done:label :}
@@ -1724,14 +1509,11 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV variable LAPPREQ
    $64 C-SOURCE-APPEND-CHAR
    $0A C-SOURCE-APPEND-CHAR ;
 
-\ Open the engine's own registry, as the first prefix token after the loader's
-\ text and before the first row it records. Rows recorded between this token and
-\ REQUIRE-BOOT-FREEZE are the engine's surface, so src/core/include.f keeps them
-\ by PORTABLE name - the spelling relative to the tree, not the absolute path of
-\ whatever directory this build happened to run in, which the engine binary used
-\ to carry (dot habu-bake-prefix-src-1047b604). Loading include.f cannot be the
-\ signal: a build re-loads it into an engine that booted long ago. Cold boots
-\ only, like the freeze token it pairs with.
+\ Open the engine's own registry: the first prefix token after the loader's
+\ text. Rows recorded between it and REQUIRE-BOOT-FREEZE are the engine's
+\ surface, which src/core/include.f keeps by tree-relative name. Loading
+\ include.f cannot be the signal: a
+\ build reloads it into an engine that booted long ago. Cold boots only.
 : EMIT-REQUIRE-BOOT-OPEN-TOKEN ( -- )
    LBL {: done:label :}
    12 DATA SNAP-CELL LDR,
@@ -1766,21 +1548,14 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV variable LAPPREQ
    PFX-LOAD-DECL-FILES
    PFX-LOAD-CORE-FILES ;
 
-\ Append `SEAL-CAPTURE` as the LAST engine-prefix source token, after every
-\ engine file and the provide rows. xref.f's in-file call is only the baseline:
-\ src/os/script-argv.f loads after xref.f, so a watermark frozen there left the
-\ argv tail FORGET/HIDEable. The capture must be a SOURCE token, not a native
-\ store: at cold-prefix assembly time nothing has evaluated yet - ndict is still
-\ the native-prim boundary and only grows as the interpret loop chews the
-\ concatenated source. Cold boots only: a snapshot restores its bake-time
-\ watermark from the persisted friend band (same gate as
-\ PFX-LOAD-SCRIPT-ARGV-COLD).
-\ Freeze the count of paths the ENGINE provides, as the last prefix token
-\ alongside SEAL-CAPTURE and for the same reason: everything recorded up to
-\ here is the engine's own surface, everything after it belongs to whoever is
-\ running. src/core/include.f ENGINE-PROVIDES? reads the frozen count, so a
-\ tool can tell "the engine carries this file" from "this process required it".
-\ Cold boots only - a snapshot restores the count with the rest of its data.
+\ Append `SEAL-CAPTURE` as the last engine-prefix source token, after every
+\ engine file and the provide rows (xref.f's call is only the baseline;
+\ src/os/script-argv.f loads after it). It must be a source token: at cold-prefix
+\ assembly nothing has run and ndict is still the native-prim boundary.
+\ The freeze token beside it fixes the count of paths the engine provides, which
+\ src/core/include.f ENGINE-PROVIDES? reads to tell "the engine carries this
+\ file" from "this process required it". Cold boots only: a snapshot restores
+\ the watermark (from the friend band) and the count with its data.
 : EMIT-REQUIRE-FREEZE-TOKEN ( -- )
    LBL {: done:label :}
    12 DATA SNAP-CELL LDR,
@@ -1846,13 +1621,11 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV variable LAPPREQ
    PFX-PROVIDE-DECL-FILES
    PFX-PROVIDE-CORE-FILES ;
 
-\ The nine boot-stdlib provide rows. They are NOT part of PFX-PROVIDE-FILES:
-\ that word runs on snapshot boots too (it is outside the SNAP-CELL guard), and
-\ the dev snapshot's keep surface (tools/build-fixpoint.f BF-APPEND-SNAP-KEEP)
-\ does not carry src/lib/, so a row there would tell a snapshot engine that
-\ src/lib/string.f is already loaded when it is not - a silent no-op require and a
-\ missing STR:. On a cold boot these run inside PFX-LOAD-STDLIB-COLD, ahead of
-\ the file texts, which is exactly where the nine need them.
+\ The nine boot-stdlib provide rows, outside PFX-PROVIDE-FILES: that word runs
+\ on snapshot boots too, and the dev snapshot's keep surface has no src/lib/,
+\ so a row there
+\ would make a snapshot's require of src/lib/string.f a silent no-op. On a cold
+\ boot they run inside PFX-LOAD-STDLIB-COLD, ahead of the file texts.
 : PFX-PROVIDE-STDLIB-FILES ( -- )
    PFX-BASELIB PFX-RESTLIB or ['] PFX-PROVIDE-ROW PFX-FILES ;
 
@@ -1918,18 +1691,14 @@ public
 
 ;package
 
-\ Emitted here, below the stdlib block, because it loads it: a from-source host's
-\ prefix has to be the seeded product's prefix, or a payload certified against one
-\ dies E-UNDEFINED in the other (bootstrap/cg/forth.fs EMIT-HOST-LOAD-PREFIX has
-\ carried its own mirror of this call all along).
-\ The prefix reload below zeroes HOOK-CELL, so the boot-time load of the
-\ checker/core prefix is itself unchecked. The staged fixpoint pre-pass
-\ closes that trust hole for every installed engine: the refresh's stage-N
-\ binary certifies the FULL assembled stage-N+1 source (this prefix included)
-\ before any stage compile (tools/build-fixpoint.f BF-CERTIFY-*, blocking),
-\ and the BF-PIN content hashes close the mid-build reload TOCTOU. That proof
-\ covers the exact installed tree; a later on-disk edit happens after the build
-\ proof and is outside it.
+\ Emitted below the stdlib block because it loads it: a from-source host's
+\ prefix must be the seeded product's, or a payload certified against one dies
+\ E-UNDEFINED in the other (bootstrap/cg/forth.fs EMIT-HOST-LOAD-PREFIX mirrors
+\ this call). The prefix reload zeroes HOOK-CELL, so the boot load of the
+\ checker/core prefix is unchecked: the refresh's stage-N binary certifies the
+\ full stage-N+1 source first (tools/build-fixpoint.f BF-CERTIFY-*, blocking)
+\ and the BF-PIN hashes close the mid-build reload race. A later on-disk edit
+\ is outside that proof.
 : EMIT-HOST-LOAD-PREFIX ( -- )
    16 0 MOVZ,  16 DATA HOOK-CELL STR,  16 DATA COMPILE-PREFLIGHT-CELL STR,
    16 DATA SUSP-HOOK-CELL STR,  16 DATA SUSP-PREFLIGHT-CELL STR,
@@ -2021,27 +1790,15 @@ public
    12 DATA ARGV-CELL LDR,  5 14 3 LSLI,
    12 12 5 ADD,  12 12 0 LDR, ;
 
-\ One argv source file (dot habu-make-load-consult-85c88fb3).
-\
-\ `--load` means "make these files loaded", so it appends `s" <path>" required`
-\ and lets src/core/include.f decide: a path the registry already holds is
-\ skipped, anything else is read and recorded. The old row wrote the `provided`
-\ marker and then inlined the text ANYWAY - it maintained a registry it never
-\ read, so `--load src/lib/errors.f` against an engine that already carries
-\ src/lib/errors.f died on a duplicate definition while `require src/lib/errors.f` from
-\ inside a file no-opped cleanly. Same request, two answers; the loader now
-\ consults the registry it writes.
-\
-\ The other two argv modes stay raw. `--build` receives ONE statically certified
-\ payload, assembled and hashed as a single stream; plain `hb prog.f` receives
-\ the program itself, not a dependency. x16 carries which mode we are in, set
-\ on each of the three exits of C-SOURCE-FILE-PREFIX
-\ right after that mode's cold-prefix call - the same entry-mode-bit shape
-\ LCOLDPFX/LCOLDPFXB already use for their own seal decision. The only other
-\ write to x16 in the startup path is inside the cold prefix itself, which
-\ always runs before these three stores. The `--build` payload carries its
-\ `provided` row; the program carries none, since PROGRAM-FILE-CELL, set only
-\ on the plain route, holds it and src/core/include.f derives it from there.
+\ One argv source file. `--load` appends
+\ `s" <path>" required`, so src/core/include.f skips a path the registry holds
+\ and reads anything else: `--load` and a nested `require` answer alike.
+\ `--build` (one certified payload, hashed as one stream) and plain `hb prog.f`
+\ (the program itself) stay raw. x16 holds the mode, set on each of
+\ C-SOURCE-FILE-PREFIX's three exits after that mode's cold-prefix call (the
+\ cold prefix, which runs first, is the only other x16 write). The `--build`
+\ payload carries its `provided` row; the program carries none: include.f
+\ derives it from PROGRAM-FILE-CELL, set only on the plain route.
 : C-SOURCE-APPEND-ARG ( -- )
    LBL LBL LBL {: raw:label bare:label done:label :}
    16 raw CBZ,
@@ -2156,24 +1913,14 @@ public
    0 74 MOVZ,  NR-EXIT-GROUP SYS,
    SRC-DONE LABEL@ LBL, ;
 
-\ Shared cold-prefix routines: the stdin engine builds the checker/stdlib
-\ provided-files prefix at the user entries plus the certified MODE-BUILD entry.
-\ Three routines, emitted once each and
-\ branched over so the fall-through startup path skips their bodies:
-\
-\ LAPPPROV ( x12 = string ptr, x9 = cursor -> appends `s" <str>" provided\n`,
-\ x9 advanced ). Leaf: the append sequence uses only STRB/branch (no BL), so no
-\ x30 frame. Replaces the ~552-byte per-row inline C-SOURCE-APPEND-PROVIDED,
-\ which was emitted ~19 times in PFX-PROVIDE-FILES plus once in the argv loop.
-\
-\ LAPPREQ is the same leaf with `required` in place of `provided`: the --load
-\ argv row, which asks the registry to load a path rather than asserting the
-\ path is already loaded and inlining it regardless.
-\
-\ LCOLDPFX/LCOLDPFXB load the same prefix. LCOLDPFX seals before ordinary
-\ source; LCOLDPFXB is the build-only entry used for a statically certified
-\ compiler payload that contains its own SEAL-FRIEND boundary before its
-\ driver. x30 and the entry mode survive the internal LSRCRD/LAPPPROV calls.
+\ Shared cold-prefix routines, emitted once each and branched over by the
+\ startup path. LAPPPROV ( x12 = string ptr, x9 = cursor ): appends
+\ `s" <str>" provided\n` and advances x9; a leaf (STRB and branches only, no
+\ x30 frame). LAPPREQ: the same with `required`, the --load argv row.
+\ LCOLDPFX/LCOLDPFXB load the same prefix: LCOLDPFX seals before ordinary
+\ source; LCOLDPFXB is the build-only entry for a certified compiler payload
+\ carrying its own SEAL-FRIEND before its driver. x30 and the entry mode
+\ survive the internal LSRCRD/LAPPPROV calls.
 : EMIT-SOURCE-APPEND-SHARED ( -- )
    \ Both stdin and baked-source prefixes append provided rows. Their callees
    \ must exist in either product, before any generated prefix can reach them.
@@ -2209,12 +1956,8 @@ public
    EMIT-SOURCE-APPEND-SHARED
    STDIN? @ IF EMIT-COLD-PREFIX-SHARED C-SOURCE-STDIN ELSE C-SOURCE-BAKED THEN ;
 
-\ ---- control-flow JIT helpers ----
-\ Release an exact byte count from the machine-stack locals frame. The count
-\ folds into the add's imm12 field, so the release is one instruction that
-\ names no scratch register: the emitted code runs while x9..x15 (regalloc.f
-\ VRPACK) may still hold live values, and a sequence through any of them
-\ handed a loop whose body bound a local the frame's byte count instead.
+\ Release an exact byte count from the machine-stack locals frame in one add
+\ (imm12) naming no scratch: x9..x15 (regalloc.f VRPACK) may hold live values.
 : C-EMIT-DROP-X12 ( -- )
    LBL {: done:label :}
    12 done CBZ,
@@ -2224,11 +1967,9 @@ public
 : EMIT-CF-HELPERS ( -- )
    LBL LBL LBL LBL LBL LBL LBL {: pisb pdone kno kyes kchk knf kok :}
    LCFPUSH LABEL@ LBL,
-      \ The control-flow stack lives inside the protected region, so a push must
-      \ declare its band before it writes. PROT-EMIT:LCF is register-transparent and
-      \ costs a load and a branch once the band is already open, which it is for
-      \ every push after the first in a bracket; only x30 has to be framed,
-      \ because the branch itself is what takes it.
+      \ The control-flow stack is inside the protected region, so a push declares
+      \ its band first. PROT-EMIT:LCF is register-transparent and costs a load and
+      \ a branch once the band is open; only x30 is framed, as the branch takes it.
       SP SP 16 SUBI,  30 SP 0 STR,
       PROT-EMIT:LCF LABEL@ BL,
       30 SP 0 LDR,  SP SP 16 ADDI,
@@ -2360,17 +2101,12 @@ create BTICK-KW  91 c, 39 c, 93 c,
 here BTICK-KW - constant BTICK-LEN
 create LBRACE-KW 123 c, 58 c,
 create ENDLOC-KW 58 c, 125 c,
-\ DEFER-MAGIC is src/habu/layout.f's, beside the dispatch-cell offset it belongs
-\ with: this file writes the trailer and checks it, and the native chain's
-\ src/compiler/native/dict.f checks it too, so the number has one definition.
+\ DEFER-MAGIC is src/habu/layout.f's: this file writes and checks the trailer,
+\ and src/compiler/native/dict.f checks it too.
 variable LKWDEFER  variable LKWIS  variable LKWDEFERUNSET
-\ The defer/is misuse diagnostics own one concern between them - telling the
-\ source what it got wrong with `defer` or `is` - so they live in their own
-\ package rather than joining the global emitter surface around them. The label
-\ cells and the messages are public because KWDATA:EMIT bakes the strings and
-\ the LABELS allocator mints the ids; each write takes its length from the same
-\ literal. The emitters that write them reopen this package further down, next
-\ to the defer rows.
+\ The defer/is misuse diagnostics. The label cells and messages are public:
+\ KWDATA:EMIT bakes the strings and the LABELS allocator mints the ids. Their
+\ emitters reopen this package beside the defer rows.
 package DEFER-DIAG
 public
 variable LDEFNOTOKEN  variable LDEFNOTFOUND  variable LDEFNOTDEFER  variable LDEFNONAME
@@ -2434,29 +2170,23 @@ create RESTAB-BUF
          $63 c, $65 c, $72 c, $74 c, $2D c, $68 c, $6F c, $6F c, $6B c,
   12 c, $65 c, $6E c, $67 c, $69 c, $6E c, $65 c, \ "engine-error"
          $2D c, $65 c, $72 c, $72 c, $6F c, $72 c,
-   0 c,                                           \ terminator
+   0 c,
 here RESTAB-BUF - constant RESTAB-LEN
 
 public
 
-\ Label cell for the baked `trust-raw` keyword string. Declared here rather
-\ than in the habu1.f global label chain because the raw-storage seal is a
-\ habu2.f concern: the keyword row below bakes the string, LASTC-TRUST:FIND-RAW
-\ uses it for diagnostics, and the LABELS allocator mints its id.
+\ Label cell for the baked `trust-raw` string: the keyword row below bakes it,
+\ LASTC-TRUST:FIND-RAW names it in diagnostics, LABELS mints its id.
 variable LKWTRUSTRAW
 : TRUSTRAW$ ( -- ptr u8 n )   s" trust-raw" ;
 
-\ The same, for the baked `trust-decl` keyword string: which registrar the
-\ engine's publish tail reaches is a habu2.f concern too, DEF-TRUST:FIND
-\ uses it for diagnostics, and the row below bakes it.
+\ The same for `trust-decl` (DEF-TRUST:FIND names it in diagnostics).
 variable LKWTRUSTDECL
 : TRUSTDECL$ ( -- ptr u8 n )   s" trust-decl" ;
 
 \ The `cast:` declarer's three baked strings: the keyword the interpret dispatch
-\ matches, the checker registrar diagnostic spelling,
-\ and the one thing that can go wrong before the signature parser takes over.
-\ Same reasoning as the two above - the spellings are a habu2.f concern - and
-\ each length is read off its string, as DEFER-DIAG's are.
+\ matches, the checker registrar's diagnostic spelling, and the one error before
+\ the signature parser takes over.
 variable LKWCAST
 variable LKWDEFCAST
 variable LCASTNONAME
@@ -2537,7 +2267,7 @@ public
 
 ;package
 
-\ ---- compile-time keyword handlers (append JIT-emitter code at BUILD time) ----
+\ Compile-time keyword handlers append JIT-emitter code at BUILD time.
 : C-POPFLAG ( -- )
    W-POP9 C-EMITW ;
 
@@ -2552,21 +2282,17 @@ public
 
 \ A refusal caught inside an immediate word's evaluate leaves the outer
 \ definition compiling, restored to the refused token's start mark (layout.f
-\ TOKBODY-CELL): its body text, locals count, CP and virtual-stack depth and
-\ register masks. So a control word may spill or emit code before it refuses,
-\ but it refuses before it pushes or pops the control-flow stack, opens a DO
-\ level, takes or reconciles to a snapshot frame, shifts CMBK or patches code
-\ below CP; none of those is in the mark. Checking first is chosen over a
-\ wider mark: the refusal depends only on the control-flow depth and the kinds
-\ of its entries, known before the word touches anything, and costs nothing on
-\ the tokens that never refuse.
-\ C-CF-ROOM refuses an opener at the control-flow depth cap (LCFPUSH's own
-\ check, made first). C-CF-AT refuses a word whose entry pos below the top is
-\ missing (LORPHAN) or of another kind (LCFKIND); C-CF-NONE refuses a word that
-\ ends a body while an entry is open. A depth check alone let `if until` and
-\ `if repeat` pop the IF entry as a loop top and reconcile to a BEGIN snapshot
-\ that was not theirs, and the `then` after them patch the BEGIN's loop top.
-\ All clobber x5 and x10-x12, as LCFPUSH does.
+\ TOKBODY-CELL): body text, locals count, CP, virtual-stack depth and register
+\ masks. So a control word may spill or emit code before it refuses, but refuses
+\ before it pushes or pops the control-flow stack, opens a DO level, takes or
+\ reconciles to a snapshot frame, shifts CMBK or patches code below CP: none of
+\ those is in the mark. The refusal depends only on the control-flow depth and
+\ entry kinds, known before the word touches anything.
+\ C-CF-ROOM refuses an opener at the depth cap (LCFPUSH's check, made first).
+\ C-CF-AT refuses a word whose entry pos below the top is missing (LORPHAN) or
+\ of another kind (LCFKIND: a depth check alone let `if until` pop the IF entry
+\ as a loop top); C-CF-NONE refuses a word that ends a body while an entry is
+\ open. All clobber x5 and x10-x12, as LCFPUSH does.
 : C-CF-DEPTH ( -- )
    5 CFSTK-OFF LIT64,  10 DBASE 5 ADD,  11 10 0 LDR, ;
 
@@ -2630,53 +2356,42 @@ public
 : J-CASE ( -- )
    9 0 MOVZ,  CFK-CASE C-CF-PUSH ;
 
-\ construct keyword: arm the operand capture (CMM=1). CFN
-\ entry — no spill: construct only ADDS VS constants on top, exactly like the
-\ literal tokens of a generated-constructor body; tracked payload cells stay
-\ wherever the VS has them.
+\ construct: arm the operand capture (CMM=1). No spill: construct only adds VS
+\ constants on top, like a generated constructor's literal tokens.
 : J-CONSTRUCT ( -- )
    12 1 MOVZ,  12 DATA CMM-CELL STR, ;
 
-\ match keyword: CF-ENTRY spills the width-expanded
-\ scrutinee bundle to the physical stack first, then J-MATCH pushes a CF sentinel
-\ (x9=0, J-CASE shape, so ;MATCH's J-ENDCASE-style join loop stops at it), opens a
-\ match-frame nesting level (the family id is filled at the family token), and
-\ arms CMM=3 (want family). Emission (reduction 2): the bundle is already spilled,
-\ so peek the tag ONCE here (ldur x9,[x19,#-8]) — no token emits code between this
-\ point and the first arm's compare, and the mismatch-skip chain never touches x19
-\ or x9 before the next compare, so every arm's cmp reuses this one load.
+\ match: CF-ENTRY spills the width-expanded scrutinee bundle first; J-MATCH
+\ pushes a CF sentinel (x9=0, the J-CASE shape ;MATCH's join loop stops at),
+\ opens a match-frame level and arms CMM=3 (want family). The tag is peeked once
+\ (ldur x9,[x19,#-8]): no token emits code before the first arm's compare and
+\ the mismatch-skip chain never touches x19 or x9, so every arm's cmp reuses it.
 : J-MATCH ( -- )
    9 0 MOVZ,  CFK-MATCH C-CF-PUSH
    9 DATA CMFRD-CELL LDR,  9 9 1 ADDI,  9 DATA CMFRD-CELL STR,
    12 3 MOVZ,  12 DATA CMM-CELL STR,
    $F85F8269 C-EMITW ;                  \ ldur x9,[x19,#-8]: single per-dispatch tag peek
 
-\ J-OF pushes a CASE-arm marker (bit 0) onto the CMBK branch-kind bitstack so the
-\ shared J-ENDOF can tell a CASE arm from a MATCH variant branch (which pushes a 1
-\ in EM-ADT-MATCH-OF). Dispatch (mirroring the MATCH slimming): compare the peeked
-\ scrutinee against the popped arm value and skip straight to the next arm on a
-\ b.ne, instead of materializing a csetm flag only to test it with a cbz. The
-\ cmp sets NZ and the very next emitted word is the branch (C-PUSHCP is
-\ compile-time and emits nothing), so the flags reach the b.ne untouched. LPAT
-\ already patches the b.ne placeholder via its imm19 branch-class path, exactly
-\ like the shared exit->join B and the former cbz. Saves one word (4 bytes) and
-\ one executed instruction per arm.
+\ J-OF pushes a CASE-arm bit (0) on the CMBK bitstack so the shared J-ENDOF
+\ tells a CASE arm from a MATCH variant branch (1, EM-ADT-MATCH-OF). The arm
+\ compares the peeked scrutinee and skips on b.ne: C-PUSHCP emits nothing, so
+\ the cmp's flags reach the b.ne untouched, and LPAT patches it through its
+\ imm19 branch class.
 : J-OF ( -- )
    0 CFK-CASE CFK-ENDOF C-CF-AT2         \ an arm continues its case
    C-CF-ROOM
    14 DATA CMBK-CELL LDR,  14 14 1 LSLI,  14 DATA CMBK-CELL STR,
-   C-POP-X16                             \ pop arm value into x16
+   C-POP-X16
    $F85F8269 C-EMITW                     \ ldur x9,[x19,#-8]  peek scrutinee
    $EB10013F C-EMITW                     \ cmp x9,x16
    CFK-OF C-PUSHCP
    $54000001 C-EMITW                     \ b.ne +0  (skip to next arm on mismatch)
    $D1002273 C-EMITW ;                   \ sub x19,x19,#8  drop scrutinee on match
 
-\ J-ENDOF: identical branch-placeholder codegen for CASE and MATCH (= J-ELSE);
-\ then pop the CMBK branch-kind bit — a MATCH variant branch (1) re-arms the token
-\ machine to CMM=4 (want variant-or-;match), a CASE arm or nested case/match ENDOF
-\ (0) leaves CMM untouched. This is the compiler analogue of the checker's
-\ CF-ENDOF-DISPATCH frame-kind routing; both arms leave a CFK-OF entry.
+\ J-ENDOF: the J-ELSE placeholder for CASE and MATCH, then it pops the CMBK bit:
+\ a MATCH variant branch (1) re-arms CMM=4 (want variant or ;match), a CASE arm
+\ (0) leaves CMM alone. Mirrors the checker's CF-ENDOF-DISPATCH; both arms
+\ leave a CFK-OF entry.
 : J-ENDOF ( -- )
    LBL {: nm:label :}
    0 CFK-OF C-CF-AT  CFK-ENDOF C-ELSE
@@ -2751,14 +2466,12 @@ public
    14 SP 8 LDR,  15 DATA LOCF-CELL LDR,  12 14 15 SUB,  C-EMIT-DROP-X12
    SP SP 48 ADDI, ;
 
-\ Instruction words the JIT stamps into generated code. They live here, above
-\ the loop and return-stack emitters, because every one of those families now
-\ has to LOAD a stack's base out of the DATA header instead of adding a fixed
-\ band offset to x20 — the stacks are guarded mappings (STACK-ABI), so their
-\ bases are runtime values. Stamping them through these encoders rather than as
-\ literal words is what keeps a cell-offset change from silently re-encoding.
-\ x25/x28 belong to the compiler and word frames on the machine stack would
-\ unbalance the epilogue, which is why neither stack lives in a register.
+\ Instruction words the JIT stamps into generated code. The loop and return
+\ stacks are guarded mappings (STACK-ABI), so their bases are runtime values
+\ loaded from the DATA header; stamping through these encoders keeps a
+\ cell-offset change from silently re-encoding. Neither stack lives in a
+\ register: x25/x28 belong to the compiler, and word frames on the machine stack
+\ would unbalance the epilogue.
 : W-LDRX ( n n n -- n ) {: rt RN off :}                               \ ldr rt,[rn,#off]
    $F9400000  off 8 / 10 lshift or  RN 5 lshift or  rt or ;
 
@@ -2794,14 +2507,14 @@ public
 \ them; x16 and x17 are never pooled.
 \ J-FRAME : push the loop frame (index x29, limit x17); x29 is its index cache.
 : J-FRAME ( -- )
-   16 20 LOOPSP-CELL W-LDRX C-EMITW                  \ ldr x16,[x20,#LOOPSP]
-   0 16 4 ENC-LSLI C-EMITW                           \ lsl x0,x16,#4
-   1 20 STACK-ABI:LOOP-BASE-CELL W-LDRX C-EMITW      \ ldr x1,[x20,#LOOP-BASE]
-   0 0 1 W-ADDX C-EMITW                              \ add x0,x0,x1
-   LIDX 0 0 W-STRX C-EMITW                           \ str x29,[x0]
-   17 0 8 W-STRX C-EMITW                             \ str x17,[x0,#8]
-   16 16 1 ENC-ADDI C-EMITW                          \ add x16,x16,#1
-   16 20 LOOPSP-CELL W-STRX C-EMITW ;                \ str x16,[x20,#LOOPSP]
+   16 20 LOOPSP-CELL W-LDRX C-EMITW
+   0 16 4 ENC-LSLI C-EMITW
+   1 20 STACK-ABI:LOOP-BASE-CELL W-LDRX C-EMITW
+   0 0 1 W-ADDX C-EMITW
+   LIDX 0 0 W-STRX C-EMITW
+   17 0 8 W-STRX C-EMITW
+   16 16 1 ENC-ADDI C-EMITW
+   16 20 LOOPSP-CELL W-STRX C-EMITW ;
 
 \ LIDX-SET, : the code emitted next may read the index from x29. Clobbers x9.
 : LIDX-SET, ( -- )  9 1 MOVZ,  9 DATA LIDX-CELL STR, ;
@@ -2811,8 +2524,6 @@ public
 
 \ C-VS-TOP>REG, : move the VS top into register rd, outside the pools, and drop
 \ it: a register entry by a mov, an integer constant by its movz chain, a float
-\ entry or an empty VS through a spill and a pop. x0 and x1 are free scratch in
-\ emitted row code because no pool value lives in them and a call clobbers them.
 : C-VS-TOP>REG, ( n -- )
    {: rd:n :}
    LBL LBL LBL {: con:label mem:label done:label :}
@@ -2834,18 +2545,18 @@ public
 \ C-LOOP-TOP, : x16 := the innermost loop frame's address, x17 scratch. x16 and
 \ x17 are never pooled, so no virtual stack value moves.
 : C-LOOP-TOP, ( -- )
-   16 20 LOOPSP-CELL W-LDRX C-EMITW                  \ ldr x16,[x20,#LOOPSP]
-   16 16 1 ENC-SUBI C-EMITW                          \ sub x16,x16,#1
-   16 16 4 ENC-LSLI C-EMITW                          \ lsl x16,x16,#4
-   17 20 STACK-ABI:LOOP-BASE-CELL W-LDRX C-EMITW     \ ldr x17,[x20,#LOOP-BASE]
-   16 16 17 W-ADDX C-EMITW ;                         \ add x16,x16,x17
+   16 20 LOOPSP-CELL W-LDRX C-EMITW
+   16 16 1 ENC-SUBI C-EMITW
+   16 16 4 ENC-LSLI C-EMITW
+   17 20 STACK-ABI:LOOP-BASE-CELL W-LDRX C-EMITW
+   16 16 17 W-ADDX C-EMITW ;
 
 \ C-LOOP-POP, : pop one loop frame through x16, the shared tail of `unloop`,
 \ `loop` and `+loop`.
 : C-LOOP-POP, ( -- )
-   16 20 LOOPSP-CELL W-LDRX C-EMITW                  \ ldr x16,[x20,#LOOPSP]
-   16 16 1 ENC-SUBI C-EMITW                          \ sub x16,x16,#1
-   16 20 LOOPSP-CELL W-STRX C-EMITW ;                \ str x16,[x20,#LOOPSP]
+   16 20 LOOPSP-CELL W-LDRX C-EMITW
+   16 16 1 ENC-SUBI C-EMITW
+   16 20 LOOPSP-CELL W-STRX C-EMITW ;
 
 \ The loop-emit family: the DO/LEAVE level stack (open a level, prove one is
 \ open, chain a LEAVE placeholder onto the innermost one) and the loop keyword
@@ -2870,24 +2581,16 @@ package LOOP-EMIT
    12 DATA LOCF-CELL LDR,  12 10 0 STR,
    9 9 1 ADDI,  9 DATA LVD-CELL STR, ;
 
-\ The DO/LEAVE level stack (LVD-CELL depth + the LVH/LVF/LVQ/LVS level arrays)
-\ is the loop family's opener record: `do`/`?do` open a level in LVOPEN, `loop`/
-\ `+loop` close one in J-LOOPEND, and `leave` chains onto the innermost open
-\ one; LVQ holds a `?do`'s entry branch, 0 for `do`, for its `+loop` to rewrite,
-\ and LVS the index of the level's snapshot frame, which `leave` reconciles to.
-\ LCFPOP's orphan guard covers only the CF stack, so it does not see this
-\ stack at all: a loop-family word with no open `do` indexed level -1, and
-\ LVH-OFF's cell -1 IS LVD-CELL itself (they are adjacent, $578/$580). `loop`
-\ and `+loop` then handed that junk head offset to LBCHAIN, which dereferenced
-\ DBASE + junk and took SIGSEGV (rc 134); `leave` silently stored a code offset
-\ into LVD-CELL, forging a non-zero "open level" count out of nothing. Every
-\ consumer of the level stack now proves a level exists BEFORE reading or
-\ writing it, and otherwise takes the shared closer-without-opener reject, the
-\ exact sibling of LCFPOP's underflow guard (dot habu-fix-loop-closer-9e5d012e).
-\ `loop` and `+loop` prove it through their CFK-DO entry: `do` and `?do` open
-\ the entry and the level together and those two close both, so a DO entry on
-\ top is an open level. Guarding `leave` is what keeps LVD-CELL a sole-writer
-\ count of open `do` levels.
+\ The DO/LEAVE level stack (LVD-CELL depth + the LVH/LVF/LVQ/LVS level arrays):
+\ `do`/`?do` open a level in LVOPEN, `loop`/`+loop` close one in J-LOOPEND, and
+\ `leave` chains onto the innermost one. LVQ holds a `?do`'s entry branch (0 for
+\ `do`) for its `+loop` to rewrite; LVS the level's snapshot frame index, which
+\ `leave` reconciles to. LCFPOP's orphan guard does not see this stack, and
+\ LVH-OFF's cell -1 is LVD-CELL itself ($578/$580), so every consumer proves a
+\ level exists before touching it and otherwise takes the closer-without-opener
+\ reject. `loop` and `+loop` prove it
+\ through their CFK-DO entry, opened and closed with the level; guarding `leave`
+\ keeps LVD-CELL a sole-writer count of open levels.
 \ Clobbers x9 only; every call site reloads or overwrites x9 immediately after.
 : LVREQUIRE ( -- )                              \ reject a loop-family word with no open DO level
    LBL {: ok:label :}
@@ -2929,7 +2632,7 @@ package LOOP-EMIT
 \ down, so the `+loop` closing this level rewrites it to skip equal bounds only.
 : J-?DO ( -- )                                  \ DO, but skip the loop unless start < limit
    C-DO-OPEN
-   LIDX 17 ENC-CMP C-EMITW               \ cmp x29,x17
+   LIDX 17 ENC-CMP C-EMITW
    9 DATA LVD-CELL LDR,  9 9 1 SUBI,     \ LVQ[LVD-1] := the entry branch's offset
    10 9 3 LSLI,  10 10 LVQ-OFF ADDI,  10 DATA 10 ADD,
    11 CP DBASE SUB,  11 10 0 STR,
@@ -2963,7 +2666,7 @@ package LOOP-EMIT
 : LIDX-LOAD?, ( -- )
    LBL {: kept:label :}
    9 DATA LIDX-CELL LDR,  9 kept CBNZ,
-      LIDX 16 0 ENC-LDR C-EMITW          \ ldr x29,[x16]
+      LIDX 16 0 ENC-LDR C-EMITW
    kept LBL, ;
 
 \ `loop` and `+loop` reconcile the VS to L before the step: the reconcile is
@@ -2974,10 +2677,10 @@ package LOOP-EMIT
    LVRECON LABEL@ BL,                    \ VS -> L; pops the DO snapshot frame
    C-LOOP-TOP,
    LIDX-LOAD?,
-   17 16 8 ENC-LDR C-EMITW               \ ldr x17,[x16,#8]   limit
-   LIDX LIDX 1 ENC-ADDI C-EMITW          \ add x29,x29,#1
-   LIDX 16 0 ENC-STR C-EMITW             \ str x29,[x16]
-   LIDX 17 ENC-CMP C-EMITW               \ cmp x29,x17
+   17 16 8 ENC-LDR C-EMITW               \ x17 = limit
+   LIDX LIDX 1 ENC-ADDI C-EMITW
+   LIDX 16 0 ENC-STR C-EMITW
+   LIDX 17 ENC-CMP C-EMITW
    LCFPOP LABEL@ BL,
    10 9 CP SUB,  10 10 2 ASRI,  5 $7FFFF LIT64,  10 10 5 AND,  10 10 5 LSLI,
    9 $5400000B LIT64,  9 9 10 ORR,  LCEMIT LABEL@ BL,
@@ -2992,21 +2695,19 @@ package LOOP-EMIT
    1 DBASE 9 ADD,  2 4 MOVZ,  PROT-EMIT:LSPAN LABEL@ BL,   \ a write below CP
    10 DBASE 9 ADD,  11 $54000041 LIT64,  11 10 0 STRW,  \ b.ne +8: skip equal bounds only
    plain LBL,
-   \ x0 and x1 are free scratch in emitted row code because no pool value
-   \ lives in them and a call clobbers them.
-   0 C-VS-TOP>REG,                       \ step -> x0
+   0 C-VS-TOP>REG,
    LVRECON LABEL@ BL,                    \ VS -> L; pops the DO snapshot frame
    C-LOOP-TOP,
    LIDX-LOAD?,                           \ x29 = index
-   17 16 8 ENC-LDR C-EMITW               \ ldr x17,[x16,#8]   limit
-   1 LIDX 17 ENC-SUB C-EMITW             \ sub x1,x29,x17     old
-   LIDX LIDX 0 ENC-ADD C-EMITW           \ add x29,x29,x0
-   LIDX 16 0 ENC-STR C-EMITW             \ str x29,[x16]
-   17 LIDX 17 ENC-SUB C-EMITW            \ sub x17,x29,x17    new
-   17 1 17 ENC-EOR C-EMITW               \ eor x17,x1,x17     old xor new
-   1 1 0 ENC-EOR C-EMITW                 \ eor x1,x1,x0       old xor step
-   1 1 17 ENC-AND C-EMITW                \ and x1,x1,x17      directed boundary crossing
-   1 0 ENC-CMPI C-EMITW                  \ cmp x1,#0
+   17 16 8 ENC-LDR C-EMITW               \ x17 = limit
+   1 LIDX 17 ENC-SUB C-EMITW             \ x1 = old index - limit
+   LIDX LIDX 0 ENC-ADD C-EMITW
+   LIDX 16 0 ENC-STR C-EMITW
+   17 LIDX 17 ENC-SUB C-EMITW            \ x17 = new index - limit
+   17 1 17 ENC-EOR C-EMITW               \ old xor new
+   1 1 0 ENC-EOR C-EMITW                 \ old xor step
+   1 1 17 ENC-AND C-EMITW                \ directed boundary crossing
+   1 0 ENC-CMPI C-EMITW
    LCFPOP LABEL@ BL,
    10 9 CP SUB,  10 10 2 ASRI,  5 $7FFFF LIT64,  10 10 5 AND,  10 10 5 LSLI,
    9 $5400000A LIT64,  9 9 10 ORR,  LCEMIT LABEL@ BL,       \ b.ge loop-top
@@ -3021,7 +2722,7 @@ package LOOP-EMIT
    LBL {: kept:label :}
    9 DATA LIDX-CELL LDR,  9 kept CBNZ,
       C-LOOP-TOP,
-      LIDX 16 0 W-LDRX C-EMITW                          \ ldr x29,[x16]
+      LIDX 16 0 W-LDRX C-EMITW
       LIDX-SET,
    kept LBL, ;
 
@@ -3061,30 +2762,22 @@ package LOOP-EMIT
    0 2 MOVZ,  1 LOPENNL LABEL@ ADR,  2 NL-LEN MOVZ,  NR-WRITE SYS,
    0 rc MOVZ,  NR-EXIT-GROUP SYS, ;
 
-\ Native task guard and dictionary/checker lookup bridge operate on generated
-\ registers and dynamically found checker words.
 : C-TASK-LIVE-GUARD ( -- )
    LBL {: ok:label :}
    9 DATA TASKS-LIVE-CELL LDR,  9 ok CBZ,
       $4F C-EXIT-TOKEN
    ok LBL, ;
 
-\ C-PUSH-DREC-NAME: push the definition's ORIGINAL qualified spelling for the
-\ engine->checker record calls (trust/defer rows). It is the FIRST TOKEN of the
-\ body buffer -- LBCAP seeds "NAME " there before C-QUALIFY-DEF rewrites the
-\ token, and that is byte-for-byte the spelling the CHECK cert path reads as NMA.
-\ Two properties matter: (1) it is a fixed engine DATA buffer, so it survives a
-\ multi-line body, unlike the raw source pointer DEF-TKA (stale once the source
-\ reader refills); (2) it is the QUALIFIED `PKG:tail`, unlike the published bare
-\ dictionary-record tail. CHECKER-RECORD-SYM then records a qualified def under
-\ ( pkg, tail ) PUBLIC -- matching the certify record -- instead of leaking a
-\ bare-global `tail` effect row that shadowed core prims and certified bare-tail
-\ calls the engine rejects (dot habu-qualified-defs-leak-aadeb5c9). Unqualified
-\ defs are unchanged (first token == whole name). The Gforth stage0 mirror reads
-\ the body buffer for the same reason: it has C-QUALIFY-DEF too, so its record
-\ carries the bare tail and the record form would register the same leak here.
-\ Scratch stays off x11: DEF-TRUST:FIND/C-FIND-GLOBAL leave the record XT in x11
-\ for the caller's later C-CALL-X11-SAVED, so this word must preserve it.
+\ C-PUSH-DREC-NAME: push the definition's original qualified spelling for the
+\ engine->checker record calls (trust/defer rows): the first token of the body
+\ buffer, which LBCAP seeds with "NAME " before C-QUALIFY-DEF rewrites it, the
+\ spelling the CHECK cert path reads as NMA. The fixed DATA buffer survives a
+\ multi-line body (DEF-TKA goes stale when the reader refills), and it is the
+\ qualified `PKG:tail`, so CHECKER-RECORD-SYM records ( pkg, tail ) PUBLIC like
+\ the certify record instead of a bare `tail` row that shadows core prims. The
+\ Gforth stage0 mirror reads the body
+\ buffer for the same reason. Scratch stays off x11: DEF-TRUST:FIND and
+\ C-FIND-GLOBAL leave the record XT there for the caller's C-CALL-X11-SAVED.
 : C-PUSH-DREC-NAME ( -- )
    LBL LBL {: scan:label done:label :}
    9 DATA BODYBUF-OFF ADDI,             \ x9 = name start (body buffer base)
@@ -3160,7 +2853,7 @@ package LOOP-EMIT
 \ The active native compiler retains its checker even while a build replaces
 \ the source dictionary. The record's fields are the actual checker operations;
 \ a distinct target checker owns a second record during source replacement.
-\ FIND, MARK-END and RETRACT-TO open the package in habu1.f, before EVAL-ENTER.
+\ FIND, MARK-END and RETRACT-TO open the package in habu1.f, before EMIT-EVAL-BODY.
 package DECL-OWNER
 public
 
@@ -3191,20 +2884,11 @@ public
 
 ;package
 
-\ ---- reaching the checker's definer-facing registrar --------------------------
-\ One concern: how the engine hands the checker a signature a DEFINER just
-\ declared. It is the sibling of LASTC-TRUST below, which does the same job for
-\ a created word's raw storage cell, and it is a package for the same reason.
-\
-\ WHY IT IS `trust-decl` AND NOT `trust`. Both spellings register the same row.
-\ The difference is what the caller may be asked to prove. A definer publishing
-\ a record has not made it findable yet - measured, a definition is absent from
-\ `search-wl` at its own publish tail and present one statement later - so a
-\ registrar reached from here must never consult the dictionary. Source writing
-\ `s" NAME" s" SIG" trust` is in the opposite position: it claims a word exists,
-\ and that claim is exactly what used to go unchecked, minting a global checker
-\ symbol for a stale row in silence (dot habu-make-trust-refuse-cc8e19de). Two
-\ questions, two words, so neither has to guess which caller it has.
+\ `trust-decl` and `trust` register the same row; they differ in what the caller
+\ may be asked to prove. A definer's record is not findable at its own publish
+\ tail (measured: absent from `search-wl` there, present one statement later),
+\ so this registrar never consults the dictionary. Source `trust` claims a word
+\ exists and is refused when it does not.
 package DEF-TRUST
 
 public
@@ -3221,11 +2905,9 @@ public
    ready LBL, ;
 
 \ Register the pending definition's declared signature: name from the body
-\ buffer, signature from the TSIG cells. NOT named `CALL`: an upper-case
-\ `PKG:CALL` is a reserved shape - tools/lint/clobber-lint.f reads it as a
-\ register-move prelude plus a branch to a shared engine helper (today only
-\ PROT-GUARD:CALL) and fails closed on any other, which is the right refusal
-\ and not a model to widen.
+\ buffer, signature from the TSIG cells. Not named `CALL`: tools/lint/clobber-lint.f
+\ reads an upper-case `PKG:CALL` as a register-move prelude plus a branch to a
+\ shared engine helper (PROT-GUARD:CALL) and refuses any other.
 : REGISTER ( -- )
    LBL {: done:label :}
    NCOMP-DISPATCH:DECL-EFFECT-OFF TSIG-A-CELL TSIG-U-CELL DECL-OWNER:SIGNATURE
@@ -3236,15 +2918,12 @@ public
    C-CALL-X11-SAVED
    done LBL, ;
 
-\ The identity declarers' registrar, same seam and same push sequence as
-\ REGISTER above, reaching the owner field at `off` instead of `trust-decl`:
-\ DECL-CAST-OFF for `cast:` (checker.f CHECKER-DEFCAST), DECL-LINEAR-OFF for
-\ `linear:` (CHECKER-LINEAR). They are one concern - what the engine hands the
-\ checker when a definer declares a signature - and differ only in what the
-\ checker is asked to do with the row: `trust-decl` records it, an identity
-\ registrar must first prove the declared row legal (CAST-CERTIFY's or
-\ LINEAR-CERTIFY's refusals) and refuses by throwing, which is why
-\ C-IDENTITY calls this BEFORE it counts the record into NDICT.
+\ The identity declarers' registrar: REGISTER's push sequence, reaching the
+\ owner field at `off` instead of `trust-decl`: DECL-CAST-OFF for `cast:`
+\ (checker.f CHECKER-DEFCAST), DECL-LINEAR-OFF for `linear:` (CHECKER-LINEAR).
+\ It first proves the row legal (CAST-CERTIFY's or LINEAR-CERTIFY's refusals)
+\ and refuses by throwing, so C-IDENTITY calls it before counting the record
+\ into NDICT.
 : REGISTER-IDENTITY ( n -- ) {: off:n :}
    LBL {: done:label :}
    off TSIG-A-CELL TSIG-U-CELL DECL-OWNER:SIGNATURE
@@ -3257,31 +2936,19 @@ public
 
 ;package
 
-\ ---- created-word effect publication -----------------------------------------
 \ The three public words below are every place the engine gives a defining
-\ word's creation an effect the checker will believe. All three publish a cell
-\ of raw dictionary storage, so all three register through `trust-raw`: the
-\ type variables in the published effect are minted raw and cannot bind a
-\ nominal family, which is what stops a plain integer stored into the cell from
-\ being read back out as a sealed nominal with no converter in between.
-\
-\ LASTC-TRUST:PUBLISH publishes the runtime effect a `does>` clause declared
-\ for the words its defining word creates, so it covers user-written defining
-\ words as well as PTR-VARIABLE. LASTC-TRUST:PUBLISH-PTR-A publishes `-- ptr a`
-\ for create and variable, and LASTC-TRUST:PUBLISH-A publishes `-- a` for
-\ constant. LCREATE (EMIT-CREATE) reaches PUBLISH-PTR-A for the `create`
-\ keyword and the runtime `create` primitive alike, after the keyword's hook,
-\ so every word a defining word makes has `-- ptr a` before a `does>` of that
-\ defining word replaces it.
+\ word's creation an effect the checker believes. All register through
+\ `trust-raw`: the effect's type variables are raw and cannot bind a nominal
+\ family, so an integer stored into the cell never reads back as a sealed
+\ nominal. PUBLISH: a `does>` clause's declared runtime effect (user definers
+\ and PTR-VARIABLE); PUBLISH-PTR-A: `-- ptr a` for create and variable;
+\ PUBLISH-A: `-- a` for constant. LCREATE (EMIT-CREATE) reaches PUBLISH-PTR-A
+\ for the `create` keyword and primitive alike, after the keyword's hook, so a
+\ `does>` replaces an effect that already exists.
 package LASTC-TRUST
 
-\ Resolve `trust-raw`, the checker's raw-storage effect registrar (checker.f
-\ TRUST-RAW). Every word the engine publishes from a defining word owns a cell
-\ of raw dictionary storage, so its effect must be registered with raw type
-\ variables that cannot bind a nominal family; the publish words below all
-\ route here instead of at `trust-decl`. Same shape as DEF-TRUST:FIND: a
-\ missing registrar names itself on fd 2 and exits 70 rather than publishing
-\ the word unsealed.
+\ Resolve `trust-raw` (checker.f TRUST-RAW). Same shape as DEF-TRUST:FIND: a
+\ missing registrar names itself on fd 2 and exits 70.
 : FIND-RAW ( -- )
    LBL LBL {: absent:label ready:label :}
    NCOMP-DISPATCH:DECL-RAW-OFF absent DECL-OWNER:TARGET
@@ -3371,27 +3038,20 @@ public
    0 2 MOVZ,  1 LUNSET LABEL@ ADR,  2 UNSET-MSG$ nip MOVZ,  NR-WRITE SYS,
    0 ENGINE-ERROR:AOT-SEED MOVZ,  NR-EXIT-GROUP SYS, ;
 
-\ Load the optimizing compiler entry the AOT seed installed. A zero cell is a
-\ broken boot and dies with the seed-integrity code. THIS IS NOT A TIER TEST:
-\ it runs only after TIER-CELL has already selected tier 1, so an unset entry
-\ still fails closed exactly as it did before tiers existed. There is no silent
-\ fall-through to the JIT.
+\ Load the optimizing compiler entry the AOT seed installed; a zero cell is a
+\ broken boot and dies with the seed-integrity code. Not a tier test: it runs
+\ only after TIER-CELL selected tier 1, so there is no fall-through to the JIT.
 : LOAD ( -- )
    LBL {: ready:label :}
    11 DATA NCOMP-DISPATCH:XT-CELL LDR,  11 ready CBNZ,
       UNSET
    ready LBL, ;
 
-\ The tier fork the two `:` handlers share (the plain `:` in EM-INTERPRET-COLON
-\ and `:trusted` in C-TRUSTED). Both reach it having reset every legacy cell the
-\ JIT's closure reads, so the only thing left to decide is who compiles the body.
-\
-\ Tier 0 emits the entry half of the frame into the body about to be compiled --
-\ one pre-indexed `str x30,[sp,#-16]!`, whose slot EM-COMPILE-RET either matches
-\ with a restore or rewrites to a nop. Tier 1 emits nothing here and loads the
-\ optimizing entry instead. This is the fork 04187fff removed when it made the
-\ IR pipeline the only compiler; the shape is the same, with the cell deciding
-\ instead of a dictionary lookup.
+\ The tier fork both `:` handlers share (EM-INTERPRET-COLON and C-TRUSTED), each
+\ reaching it with every legacy cell the JIT's closure reads reset. Tier 0 emits
+\ the frame's entry half, one `str x30,[sp,#-16]!` whose slot EM-COMPILE-RET
+\ matches with a restore or rewrites to a nop; tier 1 emits nothing and loads
+\ the optimizing entry.
 : TIER-COLON-DISPATCH ( -- )
    LBL LBL {: jit:label done:label :}
    9 DATA NCOMP-DISPATCH:TIER-CELL LDR,
@@ -3414,20 +3074,15 @@ public
    C-CALL-X11-SAVED
    done LBL, ;
 
-\ Interpret-gate marking (habu-tfam-12-interpret checker half): after ndict++
-\ the checker's rec-wide-publish consumes the RECW latch its record choke
-\ point stored for THIS definition's effect and, when wide, `wide-mark`s the
-\ just-published record (ndict-1) DNAME-WIDE. Hook-guarded: during the engine
-\ prefix self-load (no checker hook) nothing marks — the prefix has no
-\ wide-effect rows (verified) and user source only loads post-hook; the
-\ engine-prefix records certified between check-hook.f and the seal are
-\ re-poked by the seal-time pass (src/core/internal-mark.f).
-\ Certified min-in (dot habu-habu-certified-words-84e84eaf): the same tail
-\ then drains the checker's RECMI latch through rec-min-in@ (checker.f, loads
-\ before check-hook.f, so it is always resolvable once the hook is live) and
-\ pokes DNAME-MIN-IN (flags bits 52-59) of the just-published record inside
-\ the LPROT RW window, so the interpret-find dispatch can fail closed on a
-\ bare underdepth call. min-in 0 (unchecked/no-signature boundary) pokes nothing.
+\ After ndict++ the checker's rec-wide-publish consumes the RECW latch for this
+\ definition's effect and, when wide, marks record ndict-1 DNAME-WIDE. Hook
+\ guarded: the engine prefix self-load has no hook and no wide-effect rows;
+\ prefix records certified between check-hook.f and the seal are marked by the
+\ seal-time pass (src/core/internal-mark.f). The same tail drains the RECMI
+\ latch through rec-min-in@ (checker.f, loaded before check-hook.f) into
+\ DNAME-MIN-IN (flags bits 52-59) inside the LPROT RW window, so interpret-find
+\ fails closed on a bare underdepth call;
+\ min-in 0 (unchecked) pokes nothing.
 : EM-REC-WIDE-PUBLISH ( -- )
    LBL LBL {: nohook:label nomark:label :}
    9 DATA HOOK-CELL LDR,  9 nohook CBZ,
@@ -3604,11 +3259,8 @@ public
    9 DATA CRSIG-A-CELL STR,
    9 DATA CRSIG-U-CELL STR, ;
 
-\ >R R> R@ — the user return stack is a guarded mapping whose base is a header
-\ cell (STACK-ABI:RETURN-BASE-CELL), so the slot address is that base plus
-\ depth*8. `add x11,x20,x10,lsl#3` used to reach it as a fixed band inside the
-\ DATA header; a header has no room for the inaccessible page the capacity is
-\ enforced by, so the band moved out and the base is loaded instead.
+\ >R R> R@: the user return stack is a guarded mapping whose base is a header
+\ cell (STACK-ABI:RETURN-BASE-CELL), so the slot address is that base + depth*8.
 : RSTK-SLOT-ADDR, ( -- )                                      \ x11 = base + x10*8
    11 20 STACK-ABI:RETURN-BASE-CELL W-LDRX C-EMITW
    11 11 10 W-ADDX-LSL3 C-EMITW ;
@@ -3708,25 +3360,16 @@ public
 \ J-DOES is emitted further down, past the capacity exits its clause record
 \ reaches for (C-DIE-DICT-FULL / C-DIE-CODE-FULL).
 
-\ THE WORD FRAME IS DECIDED HERE, NOT AT THE COLON. The JIT is single pass, so
-\ when a body opens nobody knows yet whether it will call anything; the opener
-\ emits the link-register save at the entry and leaves the slot's address in
-\ FRAME-CELL, and every emitter that puts a call in the body counts it in that
-\ cell's low two bits (FRAME-CALL,: LCEMITBL for a direct BL, J-RECURSE for its
-\ own). So by the time the body closes, one cell says both where the entry slot
-\ is and whether anything can have destroyed x30. A tail branch that removed
-\ the body's only call has already rewritten the slot and zeroed the cell
-\ (EM-COMPILE-TAIL).
-\
-\ A body that called gets the matching restore. A body that did not has its
-\ entry slot REWRITTEN to a nop, in place: two instructions execute instead of
-\ five, and every address recorded while the body was compiled -- a branch
-\ placeholder, the record's own start, a quotation's entry, a breakpoint -- is
-\ still the address of the same instruction it was recorded for. Removing the
-\ slot instead would move all of them.
-\
-\ The nop is written through PROT-EMIT:LSPAN and left for the close at `;` to flush,
-\ which is what LPAT and LBCHAIN do with every other write below CP.
+\ The word frame is decided at `;`, not at the colon: the JIT is single pass, so
+\ the opener emits the link-register save and leaves the slot's address in
+\ FRAME-CELL, and every emitter that puts a call in the body counts it in the
+\ cell's low two bits (FRAME-CALL,: LCEMITBL, J-RECURSE). A tail branch that
+\ removed the only call has already rewritten the slot and zeroed the cell
+\ (EM-COMPILE-TAIL). A body that called gets the restore; one that did not has
+\ its slot rewritten to a nop in place, so every address recorded during the
+\ compile (branch placeholders, the record start, quotation entries,
+\ breakpoints) still names its instruction. The nop goes through PROT-EMIT:LSPAN
+\ and is flushed at `;`, like LPAT's and LBCHAIN's writes below CP.
 \ SLOT-NOP, rewrites the entry slot at x9 to a nop; clobbers x0-x2, x11, x30.
 : SLOT-NOP, ( -- )
    1 9 0 ADDI,  2 4 MOVZ,  PROT-EMIT:LSPAN LABEL@ BL,
@@ -3808,45 +3451,21 @@ public
 
 \ The does>-patch runtime routine emitter (LDOESPATCH): patches the created
 \ word's RET into a branch and publishes the declared runtime effect.
-\
-\ AND CLEARS THE CREATED RECORD'S DEFINER KIND, which is the one place that fact
-\ can stop being true. `create` stamped the record DKIND:ADDR because the body it
-\ emitted pushes the word's data address and returns; the patch below replaces
-\ that return with a branch into a clause body, so from here the word runs
-\ whatever the clause says and its address is no longer what a mention of it
-\ means. A reader that folded the stale stamp would compile the address of the
-\ storage in place of a call to the behaviour - the miscompile the stamp exists
-\ to make impossible - so the clear happens in the same protected window as the
-\ patch, on the same record, and never a step apart from it. A record that
-\ shares the body, an `EXPORT` alias, is falsified by the same patch, so the
-\ clear reaches it in the same window (CLEAR-KIND).
-\
-\ A ZERO CLAUSE ENTRY RESTORES THE BARE BODY. `;` elides a clause that compiled no
-\ instruction (DOES-REC:ELIDE-EMPTY) by writing W-DOESDECL over the `adr x10, D`
-\ its opener emitted. A fresh created word already ends in RET: leave that
-\ body and its kind stamp intact. If an earlier clause replaced the RET with a
-\ branch, an empty replacement restores the RET before publishing its effect.
-\ Its old cleared kind stays conservative; LASTC can also name a constant, so
-\ recovering the bare body is not evidence that it pushes a DATA address.
-\
-\ AND THE PUBLISH TAIL IS THE COLON TAIL. A clause effect is an effect like any
-\ other: `does> ( -- sp<u8> )` publishes a wider-than-cell layout value for the
-\ word it creates exactly as `: W ( -- sp<u8> )` does for itself. So the record
-\ latches the checker stored while recording that effect are drained here by the
-\ same EM-REC-WIDE-PUBLISH the colon, cast and defer publish tails call, and a
-\ wide clause effect marks the created record DNAME-WIDE. Without that tail the
-\ created record was published unmarked and the interpret-mode gate never fired
-\ for it: a bare `PBUF` after `64 SPAN-BUFFER: PBUF` landed the two cells of a
-\ span on the untyped interpret stack (dot habu-mark-a-wide-851cab15), the
-\ fail-open DNAME-WIDE exists to close. It runs after LASTC-TRUST:PUBLISH because
-\ the latch is stored at the checker's record choke point and consumed once the
-\ record exists; `create` already counted the created record into NDICT, so the
-\ marker's newest-published target (ndict-1) is exactly that record.
-\
-\ The tail's second half comes with it, because it is one tail: a clause that
-\ declares inputs pokes DNAME-MIN-IN too, so a bare underdepth call of a created
-\ word names itself (`hb: interpret stack underdepth: NAME`) instead of reading
-\ below the interpret base (test/underdepth-gate.f).
+\ It clears the created record's definer kind in the same protected window as
+\ the patch: `create` stamped DKIND:ADDR because its body pushed the data
+\ address, and a reader folding the stale stamp would compile that address in
+\ place of a call. An `EXPORT` alias shares the body and is cleared with it
+\ (CLEAR-KIND).
+\ A zero clause entry restores the bare body: `;` elides a clause that compiled
+\ no instruction (DOES-REC:ELIDE-EMPTY) by writing W-DOESDECL over its
+\ `adr x10, D`. A fresh created word keeps its RET and stamp; one an earlier
+\ clause patched gets its RET back but keeps the cleared kind (LASTC may name a
+\ constant, so the bare body is no evidence of a DATA push).
+\ The publish tail is the colon tail: after LASTC-TRUST:PUBLISH,
+\ EM-REC-WIDE-PUBLISH drains the checker's latches, so a wide clause effect
+\ marks the created record (ndict-1, as `create` counted it) DNAME-WIDE and
+\ declared inputs poke DNAME-MIN-IN
+\ (test/underdepth-gate.f).
 package DOESPATCH
 
 : GRID-BEFORE ( -- )
@@ -4018,11 +3637,9 @@ public
 
 ;package
 
-\ ---- interpret-mode defining words ----
-\ record defining words for the checker: append the kind token + run the hook
-\ (verdict ignored — create/variable/constant always publish).
-\ kwv is the keyword's LABEL CELL (LKWCREATE / LKWCONST), read by LABEL@, so its
-\ element type is a cell — not the keyword's bytes.
+\ Record defining words for the checker: append the kind token and run the hook;
+\ the verdict is ignored (create/variable/constant always publish). kwv is the
+\ keyword's label cell (LKWCREATE / LKWCONST), read by LABEL@, not its bytes.
 : C-DEFHOOK ( ptr n n -- )  LBL {: kwv:ptr klen:n nohk:label :}
    11 kwv LABEL@ ADR,  12 klen MOVZ,  LBCS LABEL@ BL,
    9 DATA HOOK-CELL LDR,  9 nohk CBZ,
@@ -4032,12 +3649,9 @@ public
    10 G-POP
    nohk LBL, ;
 
-\ Capacity exits (dot habu-gate-runner-entry-81c84af0): a definer hitting the
-\ dict-record or code-region capacity used to write only the CURRENT TOKEN to
-\ fd 2 (a lone ':' at a colon definition) and exit_group - label-free and
-\ unattributable. Emit the fixed label first, then the token + newline; the
-\ exit codes stay the deterministic contracts (dict full $4D=77, code space
-\ full $4C=76).
+\ Capacity exits: the fixed label first,
+\ then the token and a newline. The exit codes are contracts: dict full $4D=77,
+\ code space full $4C=76.
 : C-CAP-LABEL ( ptr n n -- ) {: msg:ptr len:n :}
    0 2 MOVZ,  1 msg LABEL@ ADR,  2 len MOVZ,  NR-WRITE SYS, ;
 
@@ -4058,7 +3672,7 @@ public
 : C-DUP-DEF-SAY ( -- )
    0 2 MOVZ,  1 LKWDUPDEF LABEL@ ADR,  2 KWDUPDEF$ nip MOVZ,  NR-WRITE SYS, ;
 
-\ ---- a record's name, stored once for every definer --------------------------
+\ A record's name is stored once for every definer.
 \ `:`, `create`, `export`, `package` and a qualified definition store the token
 \ in TKA/TKL; the definition writers further down (DEFWRITE bodies) store a
 \ name a TRUSTED: caller hands them. Both go through this one emitter, so the
@@ -4115,7 +3729,6 @@ public
       scd LBL,
    done LBL, ;
 
-\ The whole store: the room, then the copy.
 : NAME-STORE ( label -- )
    NAME-ROOM  NAME-COPY ;
 
@@ -4134,39 +3747,23 @@ public
    0 2 MOVZ,  1 DATA DEF-TKA-CELL LDR,  2 DATA DEF-TKL-CELL LDR,  NR-WRITE SYS,
    0 rc MOVZ,  LCOMPILEDIE LABEL@ B, ;
 
-\ ---- the does>-clause's own dictionary record --------------------------------
-\ WHY THE CLAUSE NEEDS A NAME. LDOESPATCH patches the created word's RET into
-\ `b D`, and D is the clause entry — an address INSIDE the defining word's
-\ compiled body. That branch is the one call in the system the AOT seed cannot
-\ relocate: it travels as a raw PC-relative word, so a capture whose defining
-\ word lies OUTSIDE the window carries a displacement measured against code no
-\ target has, and the seeded engine branches into the middle of another word
-\ (dot habu-merged-engine-nmigrate-c970bf04: three chain words, one SIGSEGV).
-\ Giving the clause a record of its own makes D a record ENTRY, so the
-\ name-keyed call-site path carries it and the seed resolves it in the engine it
-\ is booting exactly as it resolves every BL. Carrying a name plus a byte delta
-\ instead was refused: a captured branch must never depend on a callee's
-\ interior layout.
-\
-\ IT OVERLAPS ITS PARENT AND TRIMS NOTHING. The defining word's length is
-\ written at `;`, past the clause body, so the parent's span already covers the
-\ clause. Overlapping spans are ordinary here — EXPORT publishes a second record
-\ over one body — and trimming the parent would move a span the compile-mode
-\ inliner, the snapshot and the size census all read.
-\
-\ THE NAME IS THE PARENT'S PLUS `;does`, derived and not invented, because the
-\ seed looks it up in ANOTHER engine and the only identity two engines spell the
-\ same way is the parent's own name. Every byte above $20 is a legal name byte;
-\ `:` is the one to avoid, since a colon inside a name makes the name
-\ package-qualified. The bytes are stored out of line (DNAME-EXT) whatever their
-\ length, in the gap between the defining word's own exit and the clause entry —
-\ code the parent branches over and never executes, which is why the `adr` that
-\ computes D is assembled here rather than being the constant it was.
-\
-\ THE WID IS THE PARENT'S, which is also the answer the sealed-WID gate needs:
-\ the clause is exactly as public or private as the word it belongs to. The slot
-\ is &dict[NDICT+1], one above the parent's own pending slot, and both are
-\ counted by the one publish; every abandon path leaves both uncounted.
+\ LDOESPATCH patches the created word's RET into `b D`, D inside the defining
+\ word's body: a raw PC-relative branch the AOT seed cannot relocate (a capture
+\ whose definer lies outside the window branched into another word). A record
+\ of its own makes D a record
+\ entry the seed resolves by name like every BL; a name plus byte delta is
+\ refused, since a captured branch must not depend on a callee's interior.
+\ The record overlaps its parent's span (`;` writes the parent's length past
+\ the clause, as EXPORT overlaps records) and trims nothing: the inliner, the
+\ snapshot and the size census read that span.
+\ The name is the parent's plus `;does`: the parent's name is the only identity
+\ two engines spell alike (a `:` would make it package-qualified). Its bytes
+\ are out of line (DNAME-EXT) in the gap between the parent's exit and the
+\ clause entry, code the parent branches over, which is why the `adr` that
+\ computes D is assembled here.
+\ The WID is the parent's, so the clause is as public as its word. The slot is
+\ &dict[NDICT+1], above the parent's pending slot; one publish counts both and
+\ every abandon path leaves both uncounted.
 package DOES-REC
 
 \ SUF-LEN and COPY-NAME's five byte stores spell src/core/does-clause.f
@@ -4242,8 +3839,8 @@ public
    9 CP 0 ADDI,  9 14 24 STR,                          \ [24] = the name bytes
    11 DATA PEND-CELL LDR,  9 11 40 LDR,  9 14 40 STR, ; \ [40] = the parent's wordlist
 
-\ The legacy compiler places the clause immediately after the name bytes and
-\ fills its length at `;` as before.
+\ The legacy compiler places the clause right after the name bytes and fills
+\ its length at `;`.
 : MAKE ( -- )
    NAME$
    1 15 0 ADDI,  PROT-EMIT:RESERVE
@@ -4288,18 +3885,12 @@ public
    CP CP 15 ADD,
    PROT-EMIT:LCLOSE LABEL@ BL, ;
 
-\ ---- the clause an export carries --------------------------------------------
-\ EXPORT gives a body a second record under a second name (C-EXPORT), and a
-\ definer's body holds its clause. The clause is exactly as public as the record
-\ that names its definer, so an export of a definer publishes the clause too: a
-\ second record of the clause's entry, under the clause's name, one slot above
-\ the export's own, which is the pair a definer defined in that wordlist has.
-\ Without it a word made through the public alias of a private definer branches
-\ into a clause only the private wordlist names, and the AOT seed, whose
-\ qualifier reaches a package's PUBLIC wordlist alone, cannot resolve the branch.
-\ The pair is also what `undefine` retires
-\ together (xref.f XREF-RETIRE-INDEX), so retiring the private original leaves
-\ the alias naming the definer and its clause.
+\ An export of a definer publishes a second record of the clause's entry under
+\ the clause's name, one slot above the export's own: the pair a definer defined
+\ in that wordlist has. Without it a word made through a private definer's
+\ public alias branches into a clause only the private wordlist names, which
+\ the AOT seed (it qualifies through PUBLIC wordlists only) cannot resolve.
+\ `undefine` retires the pair together (xref.f XREF-RETIRE-INDEX).
 
 \ x<a> = the name bytes of record x<rec>, x<u> = their length; x<t> is
 \ clobbered. The four registers differ.
@@ -4367,33 +3958,21 @@ public
    no LBL,  6 0 MOVZ,
    done LBL, ;
 
-\ ---- a clause that compiled nothing is not a clause --------------------------
-\ `does>` runs its clause AFTER the created word has pushed its data address, so
-\ a clause whose body emitted no instruction leaves that word doing exactly what
-\ `create` left it doing. Patching it anyway costs every reader of every word the
-\ definer makes a call, a branch and a frame, and clears the DKIND:ADDR stamp
-\ both compilers fold a mention through - which is what made the pointer definers
-\ of src/core and src/lib/ the hottest rows of a tier-0 profile. So the opener's
-\ `adr x10, D` becomes W-DOESDECL here, and LDOESPATCH publishes the declared
-\ effect without touching either body or stamp.
-\
-\ THE TEST IS THE COMPILER'S OWN CURSOR, NOT A GUESS ABOUT THE CODE. It runs
-\ before `;` emits the epilogue, while CP still stands one word past the clause's
-\ own entry slot, so equality means the clause body emitted nothing at all; a
-\ clause that emitted anything, no-op or not, fails it and is patched as before.
-\ The clause keeps its record and its empty body - every `does>` clause has one,
-\ and this one is simply no longer branched into.
-\
-\ AND DOESB-CELL ALONE IS NOT THE PRECONDITION, because both front ends set it:
-\ J-DOES here and NCOMP-EMIT:CAPTURE-DOES on the tape. Only J-DOES emits the
-\ `adr x10, D` this overwrites, and only J-DOES makes the clause record at
-\ NDICT+1 that locates it, so on a native definition this would read a slot no
-\ one wrote and, on a chance match, store into an address derived from it - a
-\ wild write into code. Today's dispatch already keeps that away: LMAIN sends a
-\ body token to LCOMPILE only when DEF-TIER-CELL is zero, and this word's one
-\ caller is that loop's `;`. The same cell is therefore read here, where the
-\ consequence of being wrong is unbounded and the test is two instructions. The
-\ native side has its own elision, elaborate.f STAGE-DOES-ENTRY.
+\ A clause that compiled nothing is not a clause.
+\ `does>` runs its clause after the created word pushed its data address, so a
+\ clause that emitted no instruction leaves the word as `create` made it.
+\ Patching it costs every use a call, a branch and a frame and clears the
+\ DKIND:ADDR stamp both compilers fold through (the pointer definers of src/core
+\ and src/lib/ were a tier-0 profile's hottest rows). So the opener's
+\ `adr x10, D` becomes W-DOESDECL and LDOESPATCH publishes the effect without
+\ touching body or stamp. The test is CP before `;` emits the epilogue: one
+\ word past the clause's entry slot means it emitted nothing. The clause keeps
+\ its record and empty body.
+\ DOESB-CELL alone is not the precondition: NCOMP-EMIT:CAPTURE-DOES sets it
+\ too, but only J-DOES emits the `adr` and the NDICT+1 record this locates, so
+\ on a native definition this would write through a slot no one wrote.
+\ DEF-TIER-CELL is read here as well (LMAIN sends body tokens to LCOMPILE only
+\ when it is zero). The native side's elision is elaborate.f STAGE-DOES-ENTRY.
 : ELIDE-EMPTY ( -- )
    LBL {: done:label :}
    9 DATA NCOMP-DISPATCH:DEF-TIER-CELL LDR,  9 done CBNZ,
@@ -4447,7 +4026,6 @@ public
 : B-NATIVE-PENDING-OPAQUE ( -- )
    9 DATA PEND-OPAQUE-CELL LDR,  9 G-PUSH ;
 
-\ ---- the definition writers --------------------------------------------------
 \ The bodies of the fourteen rows src/habu/prims.f specifies under "the
 \ definition writers" and of the six replay writers after them, registered
 \ with ENGINE-PRIMS:GLOBAL-INT-WID in EMIT-PRIMITIVE-SECTIONS. Four lie further
@@ -4695,7 +4273,6 @@ variable LREPLAYTRAP
    bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
    done LBL, ;
 
-\ ---- the checker overlay's replay writers ---------------------------------
 \ The six rows src/habu/prims.f types only for package CHECKER-OVERLAY.
 \ replay-open saves the scope into the REPLAY-SCOPE band and replay-close puts
 \ it back, so no caller hands the engine a state to restore; the one mark a
@@ -4825,14 +4402,10 @@ variable LREPLAYTRAP
 \ NDICT below the saved count or above HW, CP below the saved CP and WIDN below
 \ the saved WIDN; then it zeroes the overlay's records, puts NDICT, CP and the
 \ scope back and zeroes the band, the latch with it.
-\ The WIDN refusal is defensive: no unforged path reaches it. Every engine
-\ writer of WIDN but replay-widn! raises it (wordlist, package,
-\ namespace-record, namespace-private, replay-private, a qualified definition's
-\ new wordlist, the AOT seed's window), replay-widn! lowers it no further than
-\ the saved WIDN, no recovery puts it back, the cold start sets it before any
-\ source runs, and a raw store to WIDN-CELL or to the band exits 83 after the
-\ seal. It keeps a WIDN the overlay did not leave from being restored over, as
-\ the NDICT and CP checks do.
+\ The WIDN refusal is defensive: every engine writer of WIDN but replay-widn!
+\ raises it, replay-widn! lowers it no further than the saved WIDN, and a raw
+\ store to WIDN-CELL or the band exits 83 after the seal. It keeps a WIDN the
+\ overlay did not leave from being restored over, as the NDICT and CP checks do.
 : REPLAY-CLOSE ( -- )
    LBL LBL {: bad done :}
    B-TASK-LIVE-GUARD
@@ -5103,8 +4676,6 @@ public
    0 2 MOVZ,  1 DATA DEF-TKA-CELL LDR,  2 DATA DEF-TKL-CELL LDR,  NR-WRITE SYS,
    0 $4E MOVZ,  LCOMPILEDIE LABEL@ B, ;
 
-\ C-DUP-DEF-FAIL and C-REJECT-DUP-DEF emit duplicate-definition rejection.
-
 : C-REJECT-DUP-DEF ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL {: nloop:label nnext:label ncmp:label nmatch:label nend:label ninl:label done:label nlin:label :}
    14 DATA HIDXP-CELL LDR,  14 nlin CBZ,  C-HIDX-DUP?  13 nmatch CBNZ,  done B,  nlin LBL,  5 DBASE 0 ADDI,  6 NDICT 0 ADDI,
@@ -5132,14 +4703,11 @@ public
    nend LBL,
    done LBL, ;
 
-\ Sealed system-package guard. The offending token sits in
-\ TKA/TKL when either emitter runs, so the shared fail writes it and exits with
-\ the distinct named code ENGINE-ERROR:SEAL-PACKAGE. Both guards read the REAL friend latch
-\ (FRIEND-LATCH-CELL) natively: latch 0 = engine cold load (friend) allows the
-\ reserved name; sealed = user source rejects fail-closed. The reserved-name set
-\ (RESTAB above) and the A-Z fold are native, NOT checker words: the guards must
-\ resolve during the sealed self-hosting stage build and checker-boot recompile,
-\ where a checker word is neither reachably kept nor safely callable.
+\ Sealed system-package guard: the shared fail writes the offending token (in
+\ TKA/TKL) and exits ENGINE-ERROR:SEAL-PACKAGE. Both guards read
+\ FRIEND-LATCH-CELL: latch 0 (engine cold load) allows a reserved name, sealed
+\ user source is refused. RESTAB and the fold are native for the reason
+\ RESTAB-BUF states.
 : C-SEAL-PACKAGE-FAIL ( -- )   \ name the offending package token, exit ENGINE-ERROR:SEAL-PACKAGE
    ENGINE-ERROR:SEAL-PACKAGE C-EXIT-TOKEN ;
 
@@ -5170,8 +4738,6 @@ public
    9 DATA SEAL-NDICT-CELL LDR,  9 ok CBZ,               \ namespace open -> no guard
    \ Only a NAME:tail token (first ':' not at an edge, matching CHECKER-QUALIFIED?)
    \ can name a package; a leading/trailing ':' (e.g. `PRIM:`) is an ordinary name.
-   \ The whole check is native (RESTAB + fold), so it is safe during the sealed
-   \ self-hosting stage build and checker-boot recompile of the engine's own defs.
    25 DATA TKL-CELL LDR,  24 0 MOVZ,
    scan LBL,
       24 25 CMP,  C-GE ok BCOND,                        \ no ':' -> ordinary -> skip
@@ -5184,26 +4750,16 @@ public
       C-SEAL-MATCH                                       \ prefix len = x24; fail if reserved
    ok LBL, ;
 
-variable LQUALIFYDEF      \ shared qualification helper entry (dot habu-emit-one-shared)
+variable LQUALIFYDEF      \ shared qualification helper entry
 variable LSTOREDEFNAME    \ shared guarded-name-publication helper entry
 
-\ One shared qualification/publication helper (dot habu-emit-one-shared).
-\ Formerly this whole body was inlined at every definer (CREATE/CONSTANT/TRUSTED:/
-\ DEFER/colon), copying the qualification scan, package lookup/create path,
-\ duplicate wall, capacity guard, name storage, and state restoration into each
-\ handler. It is now emitted once at LQUALIFYDEF and reached by branch-with-link.
-\ Register ABI: pure DATA-cell (memory) in/out — it reads TKA/TKL/CUR, writes the
-\ DEF-* mirror + TKA/TKL. It clobbers the general scratch set (x3-x17); every
-\ caller already recomputes those from memory after the call, so nothing is live
-\ across it. The one internal branch-with-link (LHIDXADD) clobbers the link
-\ register, so the body saves x30 across itself. Fail exits (seal/dup/qualified-
-\ name misuse/dict-full) either exit_group or B LCOMPILEDIE, whose recovery
-\ restores SP from the eval-frame / REPL snapshot, so the unbalanced frame on a
-\ die path is harmless. W^X: emitted into the RW code region like every other
-\ primitive, flushed RX with the rest of the image; it takes no data-region
-\ store outside the DATA cells its callers already touch.
-\ EMIT-QUALIFY-DEF/C-QUALIFY-DEF and EMIT-STORE-DEF-NAME/C-STORE-DEF-NAME
-\ centralize qualification and raw dictionary-name publication.
+\ The shared qualification/publication helper at LQUALIFYDEF (dot
+\ habu-emit-one-shared), reached by BL from every definer. Memory in and out:
+\ it reads TKA/TKL/CUR and writes the DEF-* mirror and TKA/TKL; it clobbers
+\ x3-x17, which every caller recomputes from memory, and saves x30 across its
+\ LHIDXADD call. Fail exits (seal, dup, qualified-name misuse, dict full)
+\ exit_group or branch to LCOMPILEDIE, whose recovery restores SP, so the
+\ unbalanced frame on a die path is harmless.
 : EMIT-QUALIFY-DEF ( -- )
    LQUALIFYDEF LABEL@ LBL,
    SP SP 16 SUBI,  30 SP 0 STR,                       \ save link register across the internal LHIDXADD BL
@@ -5288,7 +4844,7 @@ variable LSTOREDEFNAME    \ shared guarded-name-publication helper entry
    qbad LBL,
       $4B C-QUALIFY-FAIL
    done LBL,
-   30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;              \ restore link register + return
+   30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
 \ Selected units own their definitions. A qualified operand would redirect
 \ publication to another package before the ordinary qualifier resolves it.
@@ -5307,21 +4863,13 @@ variable LSTOREDEFNAME    \ shared guarded-name-publication helper entry
 
 : C-QUALIFY-DEF ( -- )  C-UNIT-DEF-NAME-GUARD  LQUALIFYDEF LABEL@ BL, ;
 
-\ One shared guarded-name-publication helper (dot habu-emit-one-shared).
-\ Formerly inlined at every definer plus EXPORT; now emitted once at
-\ LSTOREDEFNAME and reached by branch-with-link.
-\ Publish guard: a new record's WID is DEF-WL-CELL (from CUR-CELL, which
-\ a user can redirect with `set-current`, or a resolved package WID). Reject
-\ publishing into a protected WID once the namespace watermark is sealed -- so user source
-\ cannot `<protected-wid> set-current : FOO ;` or `: RESULT:BOGUS ;` into a sealed
-\ system / generated constructor package. An open namespace watermark is exempt.
-\ Register ABI: x9 = record pointer, live in AND out — the body saves it across
-\ the internal LPROTWIDQ call (SP-relative) and restores it, then uses it for the
-\ [40] wid store; every caller reads x9 after the call, so the save/restore is the
-\ preservation contract. The body also saves x30 across the LPROTWIDQ
-\ branch-with-link; the protected-publish exit is exit_group, so its unbalanced
-\ frame never returns. W^X: no data-region store outside the DATA cells its
-\ callers already touch; emitted RW, flushed RX with the image.
+\ The shared guarded name publication at LSTOREDEFNAME.
+\ A new record's WID is DEF-WL-CELL (CUR-CELL, which `set-current` redirects, or
+\ a resolved package WID); publishing into a protected WID after the namespace
+\ watermark seals is refused, so user source cannot define into a sealed system
+\ or generated constructor package. x9 = record pointer, preserved (saved across
+\ LPROTWIDQ, used for the [40] wid store); x30 is saved too. The
+\ protected-publish exit is exit_group, so its unbalanced frame never returns.
 : EMIT-STORE-DEF-NAME ( -- )
    LSTOREDEFNAME LABEL@ LBL,
    SP SP 16 SUBI,  30 SP 0 STR,                          \ save link register across the internal LPROTWIDQ BL
@@ -5329,26 +4877,24 @@ variable LSTOREDEFNAME    \ shared guarded-name-publication helper entry
    14 DATA SEAL-NDICT-CELL LDR,  14 pgok CBZ,            \ namespace open -> no guard
    SP SP 16 SUBI,  9 SP 0 STR,                           \ save record ptr
    9 DATA DEF-WL-CELL LDR,  LPROTWIDQ LABEL@ BL,         \ x9 = target wid; x13 = protected?
-   9 SP 0 LDR,  SP SP 16 ADDI,                           \ restore record ptr
+   9 SP 0 LDR,  SP SP 16 ADDI,
    13 pgok CBZ,                                          \ not protected -> allow
       1 LPROTPUB LABEL@ ADR,  0 2 MOVZ,  2 PROTPUB-MSG-LEN MOVZ,  NR-WRITE SYS,       \ protected + sealed: name the guard on fd 2 before exit 84
       0 2 MOVZ,  1 DATA DEF-TKA-CELL LDR,  2 DATA DEF-TKL-CELL LDR,  NR-WRITE SYS,     \ + the offending def name
-      1 LOPENNL LABEL@ ADR,  0 2 MOVZ,  2 NL-LEN MOVZ,  NR-WRITE SYS,                       \ + newline
+      1 LOPENNL LABEL@ ADR,  0 2 MOVZ,  2 NL-LEN MOVZ,  NR-WRITE SYS,
       0 ENGINE-ERROR:SEAL-PACKAGE MOVZ,  NR-EXIT-GROUP SYS,
    pgok LBL,
    C-STORE-NAME
    14 DATA DEF-WL-CELL LDR,  14 9 40 STR,
    11 DATA DEF-TKA-CELL LDR,  11 DATA TKA-CELL STR,
    12 DATA DEF-TKL-CELL LDR,  12 DATA TKL-CELL STR,
-   30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;                 \ restore link register + return
+   30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
-: C-STORE-DEF-NAME ( -- )  LSTOREDEFNAME LABEL@ BL, ;    \ call the one shared helper
+: C-STORE-DEF-NAME ( -- )  LSTOREDEFNAME LABEL@ BL, ;
 
-\ Reader keywords that need an operand share this diagnostic path.
-\ LTOK's zero result means the stream ended; do not reuse the
-\ previous TKA/TKL bytes as a definition name. The caller supplies the baked
-\ keyword label so the message remains correct even when the input ended before
-\ a token was written.
+\ Reader keywords that need an operand share this diagnostic. LTOK's zero
+\ result means the stream ended: the previous TKA/TKL bytes are no name, so the
+\ caller supplies the baked keyword label.
 : C-DIE-KEYWORD-NAME ( label n -- ) {: kw:label kwlen:n :}
    0 2 MOVZ,  1 KWDATA:LKEYNONAME LABEL@ ADR,  2 KWDATA:KEYNONAME-LEN MOVZ,  NR-WRITE SYS,
    0 2 MOVZ,  1 kw ADR,  2 kwlen MOVZ,  NR-WRITE SYS,
@@ -5524,23 +5070,15 @@ package INTERP-EMIT
    12 FRALL LIT64,  12 DATA FRFREE-CELL STR,
    NCOMP-EMIT:TIER-COLON-DISPATCH ;
 
-\ The second end of every definition's publish, emitted by the `;` tail below and
-\ by the cast's empty body just under here. It sits this early because the cast has
-\ no `;` to wait for: it publishes inside its own keyword handler, and a keyword
-\ handler must be defined before the interpret dispatch rows name it. Its
-\ callers and the order they are called in are unchanged, so the emitted image
-\ is too. The FIRST end, EM-COMPILE-RET, moved further up still, because the
-\ quotation closer needs it too.
-\
-\ The body length lands in the record at the SECOND end of a colon definition,
-\ and a declaration does not survive that far: every checker call inside the body
-\ closes the bracket, and a close clears every band. So the record is declared
-\ again where it is written, rather than once at the colon.
-\
-\ A body that ends in its return takes the legacy length, which leaves that
-\ return out. A body `;` closed with a tail call (exact true, EM-COMPILE-TAIL)
-\ has no return to leave out: it takes its whole extent as an exact span
-\ (CODE-SPAN:FULL), which LCINLINE refuses to copy.
+\ The second end of every definition's publish, emitted by the `;` tail below
+\ and by the cast's empty body; it sits this early because a cast publishes
+\ inside its keyword handler, which the interpret dispatch rows name. The first
+\ end is EM-COMPILE-RET.
+\ The record is declared again where its length is written: every checker call
+\ inside the body closes the bracket, and a close clears every band.
+\ A body ending in its return takes the legacy length, which leaves the return
+\ out; one `;` closed with a tail call (exact true, EM-COMPILE-TAIL) takes its
+\ whole extent as an exact span (CODE-SPAN:FULL), which LCINLINE refuses to copy.
 : EM-COMPILE-FLUSH-PEND ( bool -- ) {: exact:bool :}
    DOES-REC:FLUSH
    11 DATA PEND-CELL LDR,
@@ -5585,60 +5123,35 @@ package INTERP-EMIT
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
    0 $4A MOVZ,  LCOMPILEDIE LABEL@ B, ;
 
-\ `cast: NAME ( in -- out )`, the checked retype declarer, and
-\ `linear: NAME ( in -- out )`, a DEFLINEAR owner's mint or erase, are the
-\ identity declarers, and the reason each is a reader keyword and not a word: a
-\ word would have to read its own name and signature off the live input and
-\ drive them back through `evaluate`, which src/core/roles.f did and which no
-\ file loading before src/core/include.f can do. As a
-\ keyword the whole form is read here, where the engine already has the token
-\ reader.
-\
-\ IT IS A DECLARATION, NOT A DEFINITION. There is no body to read and no `;` to
-\ wait for, so the form completes inside this handler: the interpret loop never
-\ enters compile state (PEND-CELL is cleared before the return), which is why
-\ none of this needs a cell of engine state to survive a token boundary.
-\
-\ The empty checked colon body preserves first-class execution and the ordinary
-\ minimum-input guard. Its DKIND:CAST stamp, owned by this declarer, tells both
-\ compilers that a direct mention is identity data flow. No body scan establishes
-\ that fact, and an ordinary empty colon definition has no such stamp.
-\
-\ THE REGISTRAR RUNS BEFORE THE RECORD IS COUNTED. CHECKER-DEFCAST throws the
-\ named refusal (E-CAST-ARITY/CLASS/FAM/OWNER/LINEAR) for an illegal retype and
-\ CHECKER-LINEAR its own (E-LINEAR-PAYLOAD/OWNER/SCOPE) for an illegal mint or
-\ erase, and a refused declaration must not leave a callable name behind, so
-\ NDICT is bumped only after the checker has accepted the row — the same order
-\ the colon publish tail uses (EM-COMPILE-PUBLISH-TRUSTED registers, then
+\ `cast: NAME ( in -- out )`, the checked retype declarer, and `linear: NAME
+\ ( in -- out )`, a DEFLINEAR owner's mint or erase, are reader keywords: a word
+\ would have to read its name and signature off the live input and evaluate
+\ them, which nothing loaded before src/core/include.f can do.
+\ A declaration, not a definition: the form completes inside this handler and
+\ PEND-CELL is cleared before the return, so no engine state crosses a token.
+\ The empty checked colon body keeps first-class execution and the
+\ minimum-input guard; its DKIND:CAST stamp, owned by this declarer, tells both
+\ compilers a direct mention is identity data flow (no body scan establishes it).
+\ The registrar runs before the record is counted: CHECKER-DEFCAST throws
+\ E-CAST-ARITY/CLASS/FAM/OWNER/LINEAR and CHECKER-LINEAR
+\ E-LINEAR-PAYLOAD/OWNER/SCOPE, and a refused declaration leaves no callable
+\ name (the colon tail's order: EM-COMPILE-PUBLISH-TRUSTED registers, then
 \ `publish`).
-\
-\ AND EM-REC-WIDE-PUBLISH IS NOT OPTIONAL HERE. Registering the row latches the
-\ checker's record facts, and this tail is what POKES them into the record that
-\ was just published — for a cast, the certified minimum input arity of
-\ `( in -- out )`, which is 1. Drop the call and the arity bits are never
-\ written: a bare `>ROLE` typed at an empty stack stops being refused and reads
-\ the cell below the interpret base instead. Measured both ways
-\ (test/cast-negative-suite.f pins the refusal).
-\
-\ THE REGISTRAR IS ASKED WHETHER OR NOT A HOOK IS INSTALLED. A cast has no body
-\ for a hook to judge: the registrar is its whole check, so with the hook cell
-\ empty a cast gets the row and the refusals it gets with one, as a `:` compiled
-\ then records its declaration through the same owner (EM-COMPILE-PUBLISH-HOOKED,
-\ definition.f DECLARE-HOOKLESS). The native build's hook-less prefix scan
-\ (definition.f CHECK-HOOKLESS) types a call only from that row: without it a
-\ prefix cast's caller is E-UNDEFINED. With no owner record, or none holding the
-\ operation, REGISTER-IDENTITY calls nothing, so an engine with no checker
-\ publishes the cast and records no row. The drain stays hook-guarded: it finds
-\ its two checker words by global name, which a window still loading its
-\ checker lacks. The latches it would read are stored by value at the next
-\ record (checker.f RECW, RECMI), as a hook-less `:` row's are.
-\
-\ The two keywords select their registrar (`off`) and missing-name diagnostic
-\ (`noname`); LINEAR: also guards its publication destination below.
-\ Qualification can allocate a package record inside C-QUALIFY-DEF. A LINEAR:
-\ row may never target that public wordlist, so ask its certifier before that
-\ allocation. The certifier retains payload/owner/scope refusal order; the
-\ no-hook boot path exits 70 without publishing anything.
+\ EM-REC-WIDE-PUBLISH pokes the latched facts into the record, for a cast its
+\ minimum input arity: without it a bare `>ROLE` at an empty stack reads below
+\ the interpret base (test/cast-negative-suite.f pins the refusal).
+\ The registrar is asked with or without a hook, since it is a cast's whole
+\ check (as EM-COMPILE-PUBLISH-HOOKED, definition.f DECLARE-HOOKLESS); the
+\ native build's hookless prefix scan (definition.f CHECK-HOOKLESS) types a call
+\ only from that row. With no owner record or operation, REGISTER-IDENTITY calls
+\ nothing. The drain stays hook-guarded: it finds its two checker words by
+\ global name; the latches it would read are stored by value at the next record
+\ (checker.f RECW, RECMI).
+\ `off` selects the registrar and `noname` the missing-name diagnostic.
+\ C-QUALIFY-DEF can allocate a package record; a LINEAR: row may never target
+\ that package's public wordlist, so its certifier is asked before the
+\ allocation. It keeps the payload, owner, scope refusal order; the no-hook boot
+\ path exits 70 publishing nothing.
 : C-LINEAR-QUALIFIED-GUARD ( -- )
    LBL LBL LBL LBL LBL {: scan:label first:label tail:label qualified:label done:label :}
    12 DATA TKL-CELL LDR,  13 0 MOVZ,
@@ -5713,7 +5226,6 @@ private
 
 \ def-cast ( -- ): a pending DKIND:CAST record takes EMPTY-BODY, and is
 \ counted and indexed, and its native shadow follows, as C-IDENTITY's does.
-\ It sits here, past C-IDENTITY-SHADOW, rather than beside EMPTY-BODY.
 package DEFWRITE
 public
 
@@ -5728,18 +5240,12 @@ public
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
    0 rc MOVZ,  LCOMPILEDIE LABEL@ B, ;
 
-\ The defer/is misuse causes each get their own line: what went wrong, then the
-\ token it went wrong on, then a newline. They used to share C-DEFER-DIE-TOKEN,
-\ which wrote the bare token and nothing else - a build that failed here printed
-\ `HOOK` and exited 70, with no code, no cause and no hint (dot
-\ habu-a-failed-defer-b83bcfa5). The codes were already distinct at the call
-\ sites; only the message was missing.
-\ Recovery is unchanged by the move: every one of these fires before the defer
-\ record is counted into NDICT - C-DEFER pre-publish, and the two
-\ C-DEFER-TARGET-META sites before DEFER-META-CELL is written - so an abort
-\ inside `evaluate` rolls back compile state and region protection and nothing
-\ else, and C-PD-CAPTURE runs only on C-DEFER's success path, after the NDICT
-\ bump, so a failure here never leaves a stale pending-table entry.
+\ Each defer/is misuse cause writes what went wrong, then the token, then a
+\ newline. All fire before the defer record
+\ is counted into NDICT (C-DEFER pre-publish; C-DEFER-TARGET-META before
+\ DEFER-META-CELL is written), so an abort inside `evaluate` rolls back only
+\ compile state and region protection; C-PD-CAPTURE runs only after the NDICT
+\ bump, so no stale pending-table entry is left.
 package DEFER-DIAG
 
 \ Cause then token, and NO newline: the LCOMPILEDIE tail this head's callers
@@ -5755,9 +5261,6 @@ package DEFER-DIAG
 
 public
 
-\ One word per cause, so a die site names the cause and nothing else: a message,
-\ its length and its exit code are one fact about that cause and are stated once,
-\ here, instead of being spelled out again at every site that can fail.
 : DIE-NO-NAME ( -- )                       \ `defer` with no following token
    LDEFNONAME LABEL@ NONAME$ nip $4A DIE-MSG ;
 
@@ -5767,15 +5270,11 @@ public
 : DIE-NOT-DEFER ( -- )                     \ `is` target exists but is not deferred
    LDEFNOTDEFER LABEL@ NOTDEFER$ nip $4C DIE-MSG ;
 
-\ `is` parses its target and resolves it through the engine's own lookup, which
-\ does not consult the packages a `using` imported - so a bare tail that only a
-\ used public exports is genuinely not found here, and the reader needs telling
-\ that qualifying it is the fix. The advice is checked, not guessed: with a
-\ public `defer` in DPKG, `is DPKG:DHOOK` compiles and runs where the bare
-\ `is DHOOK` under `using DPKG` dies here. A tail that a global AND a live used
-\ public both claim is a different case and already refused - the checker stops
-\ it at the reference site with E-USING-SHADOW-GLOBAL (throw 7141), naming both
-\ candidates - which is why this dot's repair is the message and not a new rule.
+\ `is` resolves its target through the engine's own lookup, which ignores
+\ `using` imports, so a bare tail only a used public exports is not found here
+\ and the hint says to qualify it (`is DPKG:DHOOK` works where `is DHOOK` under
+\ `using DPKG` dies). A tail claimed by a global and a used public is refused by
+\ the checker at the reference (E-USING-SHADOW-GLOBAL, throw 7141).
 : DIE-NOT-FOUND ( -- )                     \ `is` target resolves to nothing
    LDEFNOTFOUND LABEL@ NOTFOUND$ nip DIE-HEAD
    0 2 MOVZ,  1 LOPENNL LABEL@ ADR,  2 NL-LEN MOVZ,  NR-WRITE SYS,   \ end the cause line; the hint is the located one
@@ -5783,9 +5282,6 @@ public
    0 $46 MOVZ,  LCOMPILEDIE LABEL@ B, ;
 
 ;package
-
-\ This and the following defer helpers emit dispatch cells/code/metadata, pending
-\ pre-trust capture, IS retargeting, and capacity and misuse failures.
 
 : C-DEFER-FIND-UNSET ( -- )
    LBL {: found :}
@@ -5798,7 +5294,7 @@ public
 \ address in the JIT region, and it lives in the DP heap, which a snapshot
 \ persists byte for byte. Declare it here, where the cell is created and its kind
 \ is therefore known, so the snapshot writer and loader can move it with the
-\ region (dot habu-relocate-persisted-defer-7aa681c4).
+\ region.
 : C-DEFER-CELL ( -- )
    C-DEFER-FIND-UNSET
    7 DATA DP-CELL LDR,
@@ -5861,7 +5357,6 @@ public
       C-DIE-DICT-FULL
    ndok LBL, ;
 
-\ --- Pre-trust defer pending registration (dot habu-engine-pre-trust-77410827) ---
 \ A `defer NAME ( E )` declared before checker.f defines `trust`/`checker-defer`
 \ cannot run DEF-TRUST:REGISTER / C-CALL-CHECKER-DEFER (they LFIND those words and
 \ die exit 70). C-DEFER instead copies the defer's qualified name + effect
@@ -5898,7 +5393,7 @@ public
    10 14 PD-SLEN-OFF STR,
    16 14 PD-SIG-OFF ADDI,  5 10 0 ADDI,  C-PD-COPY
    12 PD-TABLE-OFF LIT64,  12 DATA 12 ADD,           \ reload &band (C-PUSH-DREC-NAME clobbered x12)
-   13 12 0 LDR,  13 13 1 ADDI,  13 12 0 STR,          \ count++
+   13 12 0 LDR,  13 13 1 ADDI,  13 12 0 STR,
    done B,
    full LBL,  C-PD-DIE-FULL
    done LBL, ;
@@ -5986,12 +5481,10 @@ public
    14 14 8 ADDI,  14 14 0 LDR,
    14 DATA DEFER-META-CELL STR, ;
 
-\ `is` is the store site for a deferred word's execution token, so it is also the
-\ point at which that cell's kind is declared: whatever else the cell has held, it
-\ holds a JIT-region address from here on, and a snapshot must move it with the
-\ region (dot habu-relocate-persisted-defer-7aa681c4). The declaration is made
-\ once per `is`, not once per store, and the table refuses duplicates, so a defer
-\ that is re-pointed a thousand times is still one row.
+\ `is` stores a deferred word's execution token, so it declares the cell's
+\ kind: a JIT-region address a snapshot moves with the region. Once per `is`;
+\ the table refuses
+\ duplicates, so a re-pointed defer stays one row.
 : J-IS ( -- )
    C-DEFER-TARGET-META
    LVSPILL LABEL@ BL,
@@ -6001,13 +5494,11 @@ public
    C-DATA-ADDR-RAW                                  \ movz/movk x9 = dispatch-cell addr (relocatable data addr)
    16 9 0 W-STRX C-EMITW ;
 
-\ DRAIN-PRETRUST ( -- ): replay DEF-TRUST:REGISTER + C-CALL-CHECKER-DEFER
-\ for every pending pre-trust defer, then empty the table. Called once from
-\ src/core/checker.f right after `: TRUST` (the earliest point both `trust-decl`
-\ and `checker-defer`:5208 exist). Drains from the top down using the band count
-\ itself as the loop state so it survives across the checker BLR calls; each slot
-\ supplies the copied name+sig, so no body-buffer/record read is needed at drain
-\ time. Registered as a framed prim (BLRs into the checker) via FPRIM below.
+\ DRAIN-PRETRUST ( -- ): replay DEF-TRUST:REGISTER + C-CALL-CHECKER-DEFER for
+\ every pending pre-trust defer, then empty the table. src/core/checker.f calls
+\ it once right after `: TRUST`, where `trust-decl` and `checker-defer` both
+\ exist. The band count is the loop state, so it survives the checker BLR
+\ calls; each slot supplies the copied name and signature. A framed prim (FPRIM).
 : BDRAINPRETRUST ( -- )
    LBL LBL {: loop done :}
    loop LBL,
@@ -6023,16 +5514,14 @@ public
       15 PD-SLOT MOVZ,  15 13 15 MUL,  14 12 PD-SLOTS-REL ADDI,  14 14 15 ADD,
       9 14 PD-NAME-OFF ADDI,  9 G-PUSH   9 14 PD-NLEN-OFF LDR,  9 G-PUSH        \ push name addr,len
       C-CALL-X11-SAVED                                \ checker-defer( ptr-u8 n )
-      12 PD-TABLE-OFF LIT64,  12 DATA 12 ADD,  13 12 0 LDR,  13 13 1 SUBI,  13 12 0 STR,   \ remaining--
+      12 PD-TABLE-OFF LIT64,  12 DATA 12 ADD,  13 12 0 LDR,  13 13 1 SUBI,  13 12 0 STR,
       loop B,
    done LBL, ;
 
-\ `immediate` writes ONE flag cell of the record just published and emits nothing,
-\ so it is the stateless-flip shape, not a bracket: the target is fixed across the
-\ pair and the word owns no other span. It now reads exactly like its two
-\ siblings, habu1.f BWIDEMARK and BINTMARK, whose prose already claimed the
-\ mirror. Interpret-mode only, so no compile bracket is open around it. The
-\ imm-mark row's body is this word too (EMIT-PRIMITIVE-SECTIONS), framed there.
+\ `immediate` writes one flag cell of the record just published and emits
+\ nothing: the stateless-flip shape of habu1.f BWIDEMARK and BINTMARK, not a
+\ bracket. Interpret-mode only. The imm-mark row's body is this word too
+\ (EMIT-PRIMITIVE-SECTIONS), framed there.
 : C-IMMEDIATE ( -- )
    9 NDICT 0 ADDI,  9 9 1 SUBI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
    2 3 MOVZ,  LPROTREC LABEL@ BL,
@@ -6222,12 +5711,11 @@ variable LAOTPROT      \ cold-start window-relative protected-WID restore
 : C-ESC-COPY-X17 ( -- )
    LESCCOPY LABEL@ BL, ;
 
-\ ---- top-row hook events (dot habu-typed-top-engine-2b2e88aa) --------------
 \ With a hook installed through `set-top-check` (layout.f TOP-HOOK-CELL), each
 \ interpret-dispatch class emits one event through the shared LTOPHOOK routine
 \ (EMIT-TOPHOOK): x15 = TOP-EV-* class, x16 = LFIND flags (0 for literals);
-\ LTOPHOOK adds the TKA/TKL token bytes and runs the hook. The site guard is
-\ one load + CBZ, so the uninstalled path is today's dispatch unchanged.
+\ LTOPHOOK adds the TKA/TKL token bytes and runs the hook. Uninstalled, a site
+\ costs one load and a CBZ.
 variable LCODEINV
 
 : C-TOPHOOK-FLAGS ( n -- ) {: class:n :}   \ word/tick event: flags from x13 (LFIND)
@@ -6275,43 +5763,26 @@ variable LCODEINV
    9 BLR,
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
-\ ---- the process-exit hook (layout.f EXIT-HOOK-CELL) ------------------------
+\ The process-exit hook (layout.f EXIT-HOOK-CELL).
 \ LEXITHOOK: the shared exit trampoline, BL-called with the exit code in x0 from
-\ every DELIBERATE exit - LRBYE (EM-COMPILE-EXIT), BDIE (habu1.f) and LUNCAUGHT
-\ below. A stripped application's entry has no engine label to call, so it emits
-\ this same sequence inline (src/habu/aot-lib.f EMIT-EXIT-HOOK). No hook is one
-\ load and a CBZ, so an uninstalled vector costs two instructions on the way out.
-\ THE CELL IS CLEARED BEFORE THE CALL. A hook that dies or throws re-enters an
-\ exit path, and it has to find the vector empty there rather than itself.
-\ THE HANDLER CHAIN (HND-CELL) IS EMPTIED WITH IT. BDIE can run inside a
-\ program's `catch`, and a hook's throw that reached that handler would return
-\ from `die` with the program's state intact; with no handler the throw takes
-\ the uncaught exit (LUNCAUGHT, past any evaluate frames LEVALREC pops), which
-\ ends the process with the hook's code. LRBYE and LUNCAUGHT already run with
-\ the chain empty, so the store changes nothing for them. The hook's own
+\ every deliberate exit: LRBYE (EM-COMPILE-EXIT), BDIE (habu1.f) and LUNCAUGHT.
+\ A stripped application's entry emits the same sequence inline
+\ (src/habu/aot-link-arm.f EMIT-EXIT-HOOK). No hook costs one load and a CBZ.
+\ Before the call it clears the cell (a hook that dies or throws re-enters an
+\ exit path and must find it empty), empties HND-CELL (BDIE may run inside a
+\ program's `catch`; with no handler a hook's throw takes LUNCAUGHT and ends the
+\ process with its code) and disarms REPLH-CELL (a tty REPL would take the throw
+\ back to its prompt and resume the session being ended). The hook's own
 \ catches chain from the empty handler as usual.
-\ THE REPL ROUTE (REPLH-CELL) IS DISARMED WITH THEM, the way a batch route
-\ disarms it: with no handler, a live tty REPL takes a throw back to its prompt
-\ (habu1.f BTHROW, LEVALREC) before the uncaught exit, so a hook's throw would
-\ resume the session `die` or the end of input was ending. LUNCAUGHT runs only
-\ where the route already answered no, so it sees no change; LRBYE at a tty
-\ now exits with the hook's code, as it does on a pipe.
-\ The hook's effect is ( -- ) and it runs on the data stack AS IT STANDS, with no
-\ reset to S0: BDIE may be running on a task thread whose stack is its own, and
-\ every caller reaches here with a valid XDS. x0 (the exit code) and LR are saved
-\ across it; the hook is ordinary compiled code, so every other caller-saved
-\ register is the caller's to re-derive afterwards.
-\ A SEALED ENGINE HELPER, for the reason (LREPLROUTE) is one: `die` reaches this
-\ routine by a DIRECT BL from a prim body (habu1.f BDIE), and a stripped image
-\ relocates such a call by resolving its target to a record's code entry
-\ (aot-closure.f FINDADDR-PTR). With no record the callee never enters the
-\ closure and the linker refuses the branch - `aot: PC-relative target removed or
-\ outside closure site=die`, exit 74, for every application whose closure reaches
-\ `die`. The record is system-private, so no word search sees the name.
+\ The hook ( -- ) runs on the data stack as it stands, without a reset to S0:
+\ BDIE may run on a task thread with its own stack. x0 and LR are saved; every
+\ other caller-saved register is the caller's to re-derive.
+\ A sealed engine helper for the reason (LREPLROUTE) is: habu1.f BDIE reaches it
+\ by a direct BL (else `aot: PC-relative target removed or outside closure
+\ site=die`, exit 74). The record is system-private.
 \ The hook may lie in the unit a pending head holds open, so it runs with the
-\ code window closed. The window is not closed here, since a stripped image
-\ carries this body and no band: LRBYE and LUNCAUGHT close it before the call,
-\ and BDIE runs as compiled code, which the window is never open under
+\ code window closed; a stripped image has no band, so LRBYE and LUNCAUGHT close
+\ it before the call and BDIE runs as compiled code, never under an open window
 \ (EM-INTERPRET-COLON).
 : EMIT-EXITHOOK ( -- )
    LBL LBL {: nohk:label end:label :}
@@ -6454,29 +5925,18 @@ variable LCODEINV
    5 SP 0 LDR,  11 SP 8 LDR,  12 SP 16 LDR,  13 SP 24 LDR,
    SP SP 32 ADDI, ;
 
-\ A body's `['] W` is the second place a name becomes an address, so it carries
-\ C-TICK's DNAME-INT gate too. An internal word has no checker-known effect, so the
-\ tick erases to a plain cell that an untyped store keeps and an interpret-level
-\ `execute` then runs: `['] SCHEMA-REG:SCH-N V !` in a colon body handed the
-\ protected registry cell's address to a bare `V @ execute` (measured; the case is
-\ test/internal-word-gate.f LAUNDER-CASES).
+\ A body's `['] W` carries C-TICK's DNAME-INT gate: an internal word has no
+\ checker-known effect, so the tick erases to a plain cell an interpret-level
+\ `execute` would run (test/internal-word-gate.f LAUNDER-CASES).
 \ Resolution is EM-COMPILE-CALL's: LFIND, then the used packages' publics, then
-\ LUNDEF. A miss used to compile NOTHING - no literal, no diagnostic - so a bare
-\ name only a `using` import resolves left the body one cell short and the later
-\ `catch`/`execute` ran whatever was on top (`['] W` under `using P`: rc 102,
-\ "stack bounds exceeded (data)"; test/xt-effect-test.f XE-USING).
-\ C-TICK's OTHER gate, DNAME-WIDE, does NOT belong here: it exists because an
-\ interpret-level tick lands a multi-cell bundle on the untyped interpret stack,
-\ and a body's tick hands the address to a CHECKED consumer instead. Measured:
-\ with that gate here, `: NAMED ( -- point angle side ) ['] BODY ['] CLEAN
-\ finally ;` (test/compiler/native-finally.f, BODY produces a PRODUCT) died
-\ "hb: interpret-mode layout value: BODY", rc 70 - a certified program refused.
-\ A TRUSTED: body skips C-TICK's trusted-only query: it may use a trusted-only
-\ primitive (prims.f ETRUSTED-ONLY!), the checker never walks its tick, and
-\ NCOMP's tick asks nothing, so tier 1 took `TRUSTED: X ( -- n ) ['] does-patch ;`
-\ where this path refused it. The native compiler's generated-call entries are
-\ such bodies, compiled here when a source-only host captures the compiler
-\ (test/outer-interpret.f TICK-TRUSTED-BODY).
+\ LUNDEF (test/xt-effect-test.f XE-USING).
+\ C-TICK's DNAME-WIDE gate does not belong here: a body's tick hands the
+\ address to a checked consumer, not the untyped interpret stack (with it,
+\ test/compiler/native-finally.f's certified NAMED was refused).
+\ A TRUSTED: body skips C-TICK's trusted-only query, as tier 1 does: it may use
+\ a trusted-only primitive (prims.f ETRUSTED-ONLY!) and the checker never walks
+\ its tick. The native compiler's generated-call entries are such bodies,
+\ compiled here when a source-only host captures the compiler.
 : C-BTICK ( -- )
    LBL LBL LBL LBL LBL {: bk:label usedtry:label found:label named:label asserted:label :}
    LTOK LABEL@ BL,
@@ -6509,13 +5969,11 @@ variable LCODEINV
       found B,
    bk LBL, ;
 
-\ ---- pass-2 width-aware recompile, certificate side ------
 \ A definition whose certified check recorded any wider-than-cell width fact is
 \ re-run from a sealed copy of its source with width-aware transport lowering.
-\ These meta words emit the compile-loop plumbing shared by transport ops and
-\ locals carve/reference paths. Width, bind, and fetch facts come only from the
-\ immutable LOWER-CERT artifact copied into the lowering transaction; pass 2
-\ never calls the checker or reads its mutable tables.
+\ Width, bind and fetch facts come only from the immutable LOWER-CERT artifact
+\ copied into the lowering transaction; pass 2 never calls the checker or reads
+\ its mutable tables.
 variable LP2CWAT  variable LP2CDESC
 variable LKWTUCK3  variable LKWROT3  variable LKWMROT3
 variable LKW2DUP3  variable LKW2DROP3  variable LKW2SWAP3  variable LKW2OVER3
@@ -6678,9 +6136,7 @@ variable VDESC  variable DRIFT-FAIL
    rd LBL,
    SP SP 32 ADDI, ;
 
-\ Locals helpers reject quotation-scoped declarations and emit local-reference loads;
-\ the control dispatcher executes data-driven emitter xts.
-: C-LBRACE-DIE ( -- )   \ B2: locals opener inside a quotation: recoverable inside evaluate (rc $4B), fail-closed exit $4B at top level
+: C-LBRACE-DIE ( -- )   \ locals opener inside a quotation: recoverable inside evaluate (rc $4B), fail-closed exit $4B at top level
    1 LBADLOC LABEL@ ADR,  0 2 MOVZ,  2 BADLOC-LEN 1- MOVZ,  NR-WRITE SYS,   \ the message without BADLOC-KW's trailing newline (the LCOMPILEDIE tail ends the line)
    0 $4B MOVZ,  LCOMPILEDIE LABEL@ B, ;
 
@@ -6796,9 +6252,8 @@ variable VDESC  variable DRIFT-FAIL
    8 $10000009 LIT64,                                                 \ ADR opcode | Rd=x9
    6 3 MOVZ,  7 5 6 AND,  7 7 29 LSLI,  8 8 7 ORR,                    \ | (d & 3) << 29
    7 5 2 LSRI,  6 $7FFFF LIT64,  7 7 6 AND,  7 7 5 LSLI,  8 8 7 ORR,  \ | ((d>>2) & 0x7FFFF) << 5
-   9 8 0 ADDI,  LCEMIT LABEL@ BL, ;                                        \ emit the ADR word
+   9 8 0 ADDI,  LCEMIT LABEL@ BL, ;
 
-\ ... then push x9.
 : C-ADR ( -- )
    C-ADR-X9
    9 W-PUSH9 LIT64,  LCEMIT LABEL@ BL, ;
@@ -6971,7 +6426,7 @@ variable CFSK
    0 CFSK LABEL@ CBZ,
    hxt execute  lmainlbl B,
    CFSK LABEL@ LBL, ;
-\ ---- MAIN, split into emission-ordered phases sharing label variables ----
+\ MAIN is split into emission-ordered phases sharing label variables.
 variable LMAIN  variable LEXIT  variable LCOMPILE   \ LUNDEF is declared up with the diagnostics block
 variable LUNDERFLOW           \ top-level data-stack underflow diagnostic entry (guard at LMAIN boundary)
 variable LEX0  variable LUN0   \ re-entrant evaluate: original-path continuations of LEXIT / LUNDEF
@@ -7132,24 +6587,14 @@ variable CFSK2
 
 : EM-MMAP-CODE-REGION ( -- )
    LBL LBL {: rok:label rvok:label :}
-   \ Hint the region at the runtime-discovered __text base (XREG-RBASE/x20) + REGION-OFF
-   \ and then take whatever base the kernel gives back.
-   \ It used to demand that exact address and exit 78 otherwise, because a snapshot
-   \ image's region-to-text call displacements were baked in by the writing run and only
-   \ survived if the reading run reproduced the same distance. That was never reliable:
-   \ the address is not ours to reserve. Measured on macOS 26.5.1 over 200 bare runs of a
-   \ snapshot image, the runtime places about 1.1 MiB of its own mappings at a randomised
-   \ offset after the loaded image -- observed starts +0xE90000 through +0x1214000 against
-   \ a hint at about +0x100B000 -- so the hint was occupied in 182 of the 200 runs and the
-   \ engine refused to start. No fixed offset from __text avoids that, because the cluster
-   \ simply re-straddles the new one.
-   \ Those displacements are now relocated instead (RELOC-EMIT:EMIT-CALLS), so the base
-   \ no longer has to be any particular value -- it only has to be near enough to __text
-   \ that BL can reach, which the assertion below still requires and which is a property of
-   \ the address rather than a wish about it.
-   \ We ask for PROT-PAGE-MAX extra bytes and round the base up, so the region base keeps
-   \ the 64 KiB alignment LPROT flips protection at even when the kernel moves us to an
-   \ address that is only page aligned.
+   \ Hint the region at __text (XREG-RBASE/x20) + REGION-OFF and take the base
+   \ the kernel returns. A fixed address cannot be reserved: measured on macOS
+   \ 26.5.1 over 200 runs of a snapshot image, the runtime's own ~1.1 MiB of
+   \ mappings (randomised, +0xE90000..+0x1214000) took the hint in 182. Region-to-
+   \ text call displacements are relocated (RELOC-EMIT:EMIT-CALLS), so the base
+   \ only has to lie within BL reach of __text, which the assertion below checks.
+   \ PROT-PAGE-MAX extra bytes and a round-up keep the 64 KiB alignment LPROT
+   \ flips protection at when the kernel returns an address only page aligned.
    6 REGION-OFF LIT64,  6 XREG-RBASE 6 ADD,
    9 PROT-PAGE-MAX 1 - MOVZ,  6 6 9 ADD,
    9 PROT-PAGE-MAX negate LIT64,  6 6 9 AND,       \ x6 = page-aligned canonical hint
@@ -7189,16 +6634,13 @@ variable CFSK2
       0 BL-RANGE-RC MOVZ,  NR-EXIT-GROUP SYS,
    rvok LBL, ;
 
-\ ---- AOT seed: register the metabuild-compiled words baked in the LAOTCODE
+\ The AOT seed registers the metabuild-compiled words baked in the LAOTCODE
 \ blob + LAOTDICT records. Runs after EM-SEED-DICT (region mapped, DBASE/NDICT/CP
-\ live) and before the DATA region is mapped, so it only touches the code region
-\ and the pinned registers. The blob is copied to CP (the current code-area top),
-\ each record's [0]/[8] (text-blob-relative offsets) are rebased against that base,
-\ and NDICT/CP are advanced so the cold-prefix compile lands after the blob. Words
-\ with no external calls are position-independent, so no call relocation is needed
-\ for the one-word milestone. LAOTCODELEN = 0 (stage/maker builds) skips it whole.
-\ Registers x13/x14/x15 still hold argc/argv/envp until EM-DATA-INIT stores them,
-\ so this pass (which runs earlier) must stay off them, exactly like EM-SEED-DICT.
+\ live) and before the DATA region is mapped, so it touches only the code region
+\ and the pinned registers. The blob is copied to CP, each record's [0]/[8]
+\ (blob-relative) rebased against it, and NDICT/CP advanced past it. LAOTCODELEN
+\ = 0 (stage/maker builds) skips it. x13/x14/x15 still hold argc/argv/envp until
+\ EM-DATA-INIT stores them, so this pass stays off them, like EM-SEED-DICT.
 \ Copy the baked LAOTCODE blob to CP (x11 = blob byte length on entry).
 : EM-AOT-COPY-BLOB ( -- )
    LBL LBL {: acopy:label adone:label :}
@@ -7416,14 +6858,10 @@ public
       7 10 16 STR,
       2 0 MOVZ,  2 10 24 STR,  2 10 32 STR,         \ zero [24..40)
       4 4 1 ADDI,                                   \ x4 = name src (entry+1)
-      \ A name past DNAME-INL does not fit the record, and the engine's own
-      \ definer keeps such a name out of line with [24] pointing at its bytes
-      \ (C-STORE-NAME). The pool entry in __text IS those bytes and outlives the
-      \ boot, so the record points there -- exactly how the baked cold-prefix
-      \ records carry their long names (ENGINE-EMIT:EMIT-DICT + EM-SEED-DICT).
-      \ The snapshot walk already knows this shape: LSNAPRBD's text-band pass
-      \ folds a dictionary [24] that lands in __text to a canonical 0 on the way
-      \ out and back to the live text base on the way in.
+      \ A name past DNAME-INL stays out of line: [24] points at its pool entry in
+      \ __text, which outlives the boot (as C-STORE-NAME and EM-SEED-DICT do for
+      \ long names). LSNAPRBD's text-band pass folds such a [24] to 0 on capture
+      \ and back to the live text base on restore.
       6 6 2 ANDI,  6 extname CBNZ,                  \ word3 flags & DNAME-EXT
       5 DNAME-INL CMPI, C-HI bad BCOND,             \ capture's name/EXT invariant, before any copy
       3 0 MOVZ,                                     \ x3 = i
@@ -7491,33 +6929,17 @@ public
    pool-done LBL,
       4 21 CMP,  C-NE bad BCOND, ;
 
-\ For each baked call site (blob-off u32, callee dictionary index u32) load the
-\ callee's entry out of the record at that index and re-encode ONLY the imm26 at
-\ CP+blob-offset (disp = callee - site, in range by the boot region assertion).
-\ The opcode word is preserved, so a BL stays a BL and the out-of-window B a
-\ does>-clause plants stays a B. Rows are 4B-aligned so each field loads with a
-\ single LDRW.
-\ THE INDEX IS THE IMAGE'S OWN, AND THAT IS THE WHOLE CHANGE. The build bound
-\ every site to a position in the dictionary this boot builds - LNCOUNT seeded
-\ primitives then LAOTNREC payload records, in that order - so this pass reads
-\ no name, searches no wordlist and needs no pool. It was a hash lookup per site
-\ and is now an indexed load; tools/engine-size.f measures what that is
-\ worth.
-\ WHAT IT CHECKS INSTEAD. The index space is a structural invariant of this boot
-\ path, so it is checked once rather than assumed: NDICT must be LNCOUNT +
-\ LAOTNREC when this pass starts. Then each row is bounded against NDICT and
-\ refused if it names a package row, whose [0] is a wordlist id and not an entry.
-\ A tampered payload therefore stops here by name instead of wiring a call to a
-\ number.
-\ AND NO SEALED-WID GATE. That gate asks whether a name resolved in the BOOTING
-\ engine's dictionary may be wired (EM-AOTWIDGATE); nothing is resolved there any
-\ more, so it has nothing to decide for a site. It still guards the two passes
-\ that do resolve names at boot: the boot-run entry list and the named code
-\ sites.
-\ The AOT seed writes call immediates straight into the region, so it is the second
-\ producer of region-to-text calls and records its sites in the same map as
-\ EMIT-CEMITBL, by the same region-extent test. It runs from EM-COMPILE-EXIT, after
-\ the DATA region is mapped, so the map is writable here.
+\ Each baked call site row (blob-off u32, callee dictionary index u32) re-encodes
+\ only the imm26 at CP+blob-off with the callee's entry; the opcode is kept, so a
+\ does>-clause's out-of-window B stays a B. The index names a position in the
+\ dictionary this boot builds (LNCOUNT seeded primitives, then LAOTNREC payload
+\ records), so no name is read; tools/engine-size.f measures the pass. NDICT must
+\ equal LNCOUNT + LAOTNREC on entry, each row is bounded against NDICT, and a row
+\ naming a package row (whose [0] is a wid) is refused. No sealed-WID gate here:
+\ EM-AOTWIDGATE guards only the passes that resolve names (boot-run entries and
+\ named code sites). This is the second producer of region-to-text calls and
+\ records its sites in EMIT-CEMITBL's map; it runs from EM-COMPILE-EXIT, after
+\ the DATA region is mapped, so the map is writable.
 : EM-AOT-PATCH-NAMED-SITES ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
    S\" hb: AOT call site unresolved\n"  S\" hb: AOT call site target is outside this dictionary\n"
@@ -7526,8 +6948,8 @@ public
       pname:label prec:label pbound:label ppatch:label
       nfmsg:label badmsg:label
       nfa nfu bada badu :}
-   \ One bound before the loop: a payload cannot have registered more records
-   \ than the dictionary holds. Every row is bounded again on its own below.
+   \ A payload cannot register more records than the dictionary holds; each row
+   \ is bounded again below.
    5 6 LAOTNREC LABEL@ TADR,  5 5 0 LDR, 5 5 $FFFFFFFF ANDI,
    5 NDICT CMP,  C-HI pbad BCOND,
    21 5 LAOTSITES LABEL@ TADR,                       \ x21 = row cursor
@@ -7544,10 +6966,9 @@ public
       pbound B,                                      \ else an absolute primitive index
    prec LBL,
       5 SITE-TARGET-MASK LIT64,  25 25 5 AND,
-      \ The base the records pass left behind: it registered LAOTNREC records and
-      \ left NDICT one past the last, so the first of them is at NDICT - LAOTNREC.
-      \ In a whole-tree image that is the seeded primitive count; in a partial one
-      \ it is that plus the cold prefix THIS boot compiled, which no build knows.
+      \ The first payload record is at NDICT - LAOTNREC: the seeded primitive
+      \ count in a whole-tree image, plus the cold prefix this boot compiled in a
+      \ partial one, which no build knows.
       5 6 LAOTNREC LABEL@ TADR,  5 5 0 LDR, 5 5 $FFFFFFFF ANDI,
       5 NDICT 5 SUB,
       25 25 5 ADD,
@@ -7565,12 +6986,10 @@ public
       25 21 8 LDRW,                                  \ x25 = callee scope u32 (survives the lookup)
       5 WID-QUAL LIT64,  25 5 CMP,  C-EQ pqual BCOND,
       25 FIRST-DYNAMIC-WID CMPI,  C-CC pscope BCOND, \ layout constant: this number in every engine
-      \ NOTHING A CAPTURE WRITES REACHES HERE. The column cannot carry a window
-      \ coordinate while the test above reads 1 and 2 as wordlists
-      \ (OWNER-API-PRI-WID is 2), so aot-capture.f ACAP-SITE-SCOPE refuses an
-      \ in-window scope instead of baking one and aot-file.f refuses a merged
-      \ one; a column that still spells one is corrupt and is refused, never
-      \ rebased into whatever this engine keeps at that number.
+      \ The column cannot carry a window coordinate while this test reads 1 and 2
+      \ as wordlists (OWNER-API-PRI-WID is 2): aot-capture.f ACAP-SITE-SCOPE
+      \ refuses an in-window scope and aot-file.f a merged one, so a column that
+      \ spells one is corrupt and is refused, never rebased.
       pbad B,
    pscope LBL,
       0 9 0 ADDI,  1 10 0 ADDI,  2 25 0 ADDI,
@@ -7702,32 +7121,17 @@ public
    msg LBL,  ma mu BYTES,
    done LBL, ;
 
-\ DATA-literal relocation (third relocation class): reserve the REPL's DATA span
-\ at the current DP (the region is fixed, anon-mmap => zeroed => identical
-\ to a source-compiled all-allot/variable region), then rebase every captured DATA
-\ address literal (movz/movk x9 chain) by delta = seedDP - captureD0, so create/
-\ variable buffer refs point at the seeded DATA. No name lookup; single delta.
-\ The span is the only DP-advancing sink not routed through DP-CHECK -- it is read
-\ straight from the AOT image -- so bound it BEFORE it advances DP: the new DP must
-\ satisfy seedDP + span <= data-base + DATA-SIZE (the DATA region top), i.e. span
-\ must fit the headroom top - seedDP. A legitimate REPL span is a few KB, well
-\ within headroom; a forged/oversized span (image tampered past its sha / codesign
-\ cover) fails closed with a named boot diagnostic. No eval frame exists at seed
-\ time, so this uses the boot-path die idiom (named fd-2 message + exit
-\ ENGINE-ERROR:AOT-SEED=82, the AOT seed-pass boot-integrity code), not LCOMPILEDIE. The die
-\ is inlined between the check and the reserve; the pass path branches over it (ok)
-\ so this word still falls through to EM-AOT-RELOC-CODE (it is inlined, not a call).
-\ Deliver the captured window's DATA content to the seed DP. x3 = destination
-\ (seed DP), x5 = span; both survive.
-\
-\ THE SPAN IS ZEROED AND THE RUNS ARE LAID INTO IT, and the zero is written
-\ rather than assumed. The region is anon-mmap and therefore arrives zeroed, but
-\ that is a property of the ENVIRONMENT, not of this image: a merge composes two
-\ windows into one span, a snapshot restore hands the seed a region that has
-\ already been lived in, and any future reuse of a mapped region breaks the
-\ assumption outright. Writing it costs one pass of eight-byte stores over a
-\ span the old shape copied a byte at a time, so it is cheaper than what it
-\ replaces as well as being true by construction.
+\ DATA-literal relocation (third class): reserve the REPL's DATA span at DP and
+\ rebase every captured DATA address literal (movz/movk x9 chain) by seedDP -
+\ captureD0. The span comes straight from the image and is the only DP advance
+\ not routed through DP-CHECK, so it is bounded before DP moves: seedDP + span <=
+\ data-base + DATA-SIZE, else the boot-path die (fd-2 message, exit
+\ ENGINE-ERROR:AOT-SEED; no eval frame exists, so not LCOMPILEDIE). The die is
+\ inlined and the pass branches over it, so this falls through to
+\ EM-AOT-RELOC-CODE. x3 = destination (seed DP), x5 = span; both survive.
+\ The span is zeroed explicitly before the runs are laid in: a merge composes two
+\ windows into one span and a snapshot restore hands over a lived-in region, so
+\ a fresh anon-mmap is not assumed.
 package AOT-WINDOW
 public
 : ZERO-SPAN ( -- )
@@ -7744,11 +7148,10 @@ public
 
 private
 
-\ ONE UNSIGNED LEB128 VARINT, INLINE: seven bits a byte from the cursor `cur`,
-\ low group first, until a byte arrives with its high bit clear. `acc` answers
-\ the value, `cur` is advanced past it, and `b`, `g` and `sh` are clobbered.
-\ This is src/habu/aot-decl.f AOT-WINDOW:CELL-V! read backwards, and the same
-\ grammar src/habu/aot-lib.f EMIT-VGET decodes for a stripped image's own DATA.
+\ Unsigned LEB128, inline: acc answers the value, cur advances past it; b, g and
+\ sh are clobbered. Inverse of src/habu/aot-decl.f AOT-WINDOW:CELL-V!;
+\ src/habu/aot-link-arm.f EMIT-VGET decodes the same grammar for a stripped
+\ image's own DATA.
 : EMIT-VGET ( n n n n n -- ) {: acc:n cur:n b:n g:n sh:n :}
    LBL {: vtop:label :}
    acc 0 MOVZ,  sh 0 MOVZ,
@@ -7760,23 +7163,14 @@ private
 
 public
 
-\ ONE BIT A CELL, and the values of the present cells are concatenated in CELL
-\ ORDER, so both cursors only ever advance: x13 steps one cell for every bit the
-\ bitmap carries, present or not, and x25 advances by each value's own width with
-\ no bit carrying an offset into it. An all-clear bitmap byte costs one branch
-\ and one add for eight cells, which is what makes a window of mostly `allot`ed
-\ room cheap to lay down.
-\ THE BITMAP ITSELF IS GROUPED (src/habu/aot-decl.f AOT-WINDOW:BM-COMPACT), so an
-\ all-clear GROUP-BYTES bytes of it is not in the image at all and costs one
-\ branch and one add for GROUP-SPAN bytes of DATA. The outer loop walks the
-\ presence map's bits; a set bit runs the byte walk over that group's stored
-\ bytes, a clear one steps the destination past the group. The map is bounded by
-\ its group count and the last group is padded to GROUP-BYTES, so the byte walk
-\ is a fixed count rather than a section end: the only difference in shape from
-\ src/habu/aot-lib.f EMIT-DATA-COPY, whose stored groups are framed by the same
-\ two numbers read out of the blob's own header instead of out of two labels.
-\ x16 carries the presence map's byte length only until x9 and x23 are derived
-\ from it, and is the groups-left counter for the rest of the loop.
+\ One bitmap bit per cell; present cells' values are concatenated in cell order,
+\ so x13 steps a cell per bit and x25 by each value's width. The bitmap is
+\ grouped (src/habu/aot-decl.f AOT-WINDOW:BM-COMPACT): a presence-map bit runs
+\ the byte walk over that group's stored bytes, a clear bit skips GROUP-SPAN
+\ bytes of DATA. The last group is padded to GROUP-BYTES, so the byte walk is a
+\ fixed count; src/habu/aot-link-arm.f EMIT-DATA-COPY reads the same two numbers
+\ from the blob header instead of labels. x16 holds the presence map's byte
+\ length until x9 and x23 are derived, then counts groups left.
 : APPLY-CELLS ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
    {: gtop:label gdone:label ptop:label pnext:label absent:label
@@ -7891,16 +7285,11 @@ public
    xdone LBL, ;
 ;package
 
-\ THE DELTA IS A WHOLE NUMBER OF CELLS, and that is what keeps an ALIGNMENT.
-\ Every captured DATA address moves by one delta, so a delta that is not a
-\ multiple of eight changes each address's 8-residue - and the atomics do not
-\ survive that: LDAXR and STLR fault on a misaligned address (dot
-\ habu-merged-data-window-b8fec035, measured: a merged engine died SIGBUS in
-\ FIND-B on a cell four bytes off). Rounding at `create` aligns a fresh field,
-\ not a copied window: its cells keep the residue they were captured with, so
-\ the seed advances DP to the next address carrying the capture base's OWN
-\ residue, and from there the whole window arrives with every cell exactly as
-\ aligned as it was captured. It costs at most seven bytes of DATA once per boot.
+\ The data delta is a whole number of cells: every captured DATA address moves by
+\ one delta, and LDAXR/STLR fault on a misaligned address (a merged engine died
+\ SIGBUS in FIND-B on a cell four bytes off). A copied window keeps its captured
+\ 8-residue, so the seed first advances DP to the next address with the capture
+\ base's residue; this costs at most seven bytes of DATA per boot.
 : EM-AOT-RELOC-DATA ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL  S\" hb: AOT data span out of range\n"
    {: dloop:label drdone:label ok:label msg:label chain:label next:label
@@ -8003,11 +7392,10 @@ public
    complete LBL,
    AOT-WINDOW:RESTORE-ADDRESS-CELLS ;
 
-\ CODE-literal relocation (fourth relocation class): rebase every captured movz/movk
-\ x9 literal whose value pointed into the capture-time code blob [B0,B1) (anonymous
-\ quotation entry addresses) by the code delta = seedCP - captureB0. The blob was
-\ copied verbatim to CP, so a single delta maps each in-blob code address to its
-\ seeded location. Runs while the region is RW (before RX), same as the call patch.
+\ CODE-literal relocation (fourth class): rebase every captured movz/movk x9
+\ literal pointing into the capture-time blob [B0,B1) (anonymous quotation
+\ entries) by seedCP - captureB0; the blob was copied verbatim to CP. Runs while
+\ the region is RW, like the call patch.
 : EM-AOT-RELOC-CODE ( -- )
    LBL LBL {: cloop:label crdone:label :}
    5 10 LAOTCODEB0 LABEL@ TADR,  5 5 0 LDR,        \ x5 = capture-time code base (B0)
@@ -8027,10 +7415,9 @@ public
       10 9 4 LDRW,   5 $FFE0001F LIT64,  10 10 5 AND,  14 11 16 LSRI,  5 $FFFF LIT64,  14 14 5 AND,  14 14 5 LSLI,  10 10 14 ORR,  10 9 4 STRW,
       10 9 8 LDRW,   5 $FFE0001F LIT64,  10 10 5 AND,  14 11 32 LSRI,  5 $FFFF LIT64,  14 14 5 AND,  14 14 5 LSLI,  10 10 14 ORR,  10 9 8 STRW,
       10 9 12 LDRW,  5 $FFE0001F LIT64,  10 10 5 AND,  14 11 48 LSRI,  5 $FFFF LIT64,  14 14 5 AND,  14 14 5 LSLI,  10 10 14 ORR,  10 9 12 STRW,
-      \ This pass is the second producer of code-address chains, so it records its
-      \ sites in the same map C-CODE-ADDR writes. It knows the literal is an
-      \ address of code without decoding anything: the offset came off the captured
-      \ CODE-site list, and the DATA-site list is walked by a different word.
+      \ Second producer of code-address chains: record the site in C-CODE-ADDR's
+      \ map. The offset came off the captured CODE-site list, so no decoding is
+      \ needed to know it is a code address.
       14 9 DBASE SUB,                                \ x14 = chain byte offset within the region
       4 14 0 ADDI,  4 4 2 LSRI,  4 4 7 ANDI,         \ x4 = bit number = word index & 7
       14 14 5 LSRI,                                  \ x14 = map byte index = offset >> 5
@@ -8039,23 +7426,14 @@ public
       21 21 4 ADDI,  22 22 1 ADDI,  cloop B,
    crdone LBL, ;
 
-\ NAMED code-literal relocation (fifth relocation class): for each baked row
-\ (blob-off u32, name-off u32 into the same deduped pool the call sites use)
-\ resolve the word by NAME in THIS engine and write its xt into the four immediate
-\ lanes of the movz/movk chain at CP + blob-off, keeping each instruction's opcode
-\ and destination register. It is the call-site pass's answer for a site that is
-\ not a BL: a call site is patched by name because the callee's address differs
-\ between the building host and this engine, and a code literal naming a word has
-\ exactly the same problem and exactly the same answer.
-\ The capture zeroes the lanes, so the value written here is the only address the
-\ chain can carry - there is no host address underneath to fall back to.
-\ Like EM-AOT-RELOC-CODE this is a producer of code-address chains in the region,
-\ so it records each site in the map C-CODE-ADDR writes; and like
-\ EM-AOT-PATCH-SITES it puts the resolved xt through the sealed-WID gate before
-\ using it. Runs while the region is RW, after the records are registered.
-\ A missing name is a build/seed inconsistency and cannot be recovered from at
-\ boot: it names the failure on fd 2 and exits ENGINE-ERROR:AOT-SEED, the same
-\ shape EM-SEED-AOT's metadata check uses.
+\ Named code-literal relocation (fifth class): each row (blob-off u32, name-off
+\ u32 into the call sites' deduped pool) resolves the word by name in this engine
+\ and writes its xt into the four immediate lanes of the movz/movk chain at CP +
+\ blob-off, keeping each opcode and register. The capture zeroes the lanes, so
+\ no host address lies underneath. Each site is recorded in C-CODE-ADDR's map and
+\ the xt goes through the sealed-WID gate. Runs while the region is RW, after
+\ the records are registered. A missing name is a build/seed inconsistency: name
+\ it on fd 2 and exit ENGINE-ERROR:AOT-SEED.
 package AOT-XTSITE
 public
 : PATCH-CHAINS ( -- )
@@ -8091,21 +7469,14 @@ public
    xdone LBL, ;
 ;package
 
-\ Publish the payload's CODE-SPAN TABLE: where the baked rows are, how many there
-\ are, and the address the blob just landed at. Three DATA cells, written once per
-\ boot and never again, which is what makes them readable by ordinary checked code
-\ (src/habu/aot-closure.f) with no relocation of their own: the rows are __text,
-\ mapped for the life of the process, and a row's blob offset means the same thing
-\ at every boot once the base sits beside it. A snapshot restore keeps this boot's
-\ three across its DATA copy (EM-SNAPSHOT-RESTORE), and the image writer stores
-\ none of them (snap-lib.f SND-ZERO-LIVE).
-\ IT RUNS WITH CP STILL AT THE BLOB'S BASE, before this pass advances past the
-\ blob, because that base is what a row's offset is measured from. A build that
-\ captured nothing emits no seed pass at all, so all three keep the zero the DATA
-\ region boots with, which is exactly "no stripped spans" to the reader.
-\ This is the one writer of the three cells src/habu/layout.f declares in
-\ AOT-CELLS (SPAN-TABLE-CELL, SPAN-N-CELL, SPAN-BASE-CELL); it sits in AOT-SPAN
-\ beside the table it publishes.
+\ Publish the payload's code-span table (src/habu/layout.f AOT-CELLS
+\ SPAN-TABLE-CELL, SPAN-N-CELL, SPAN-BASE-CELL; this is their one writer) for
+\ src/habu/aot-closure.f. The rows are __text and an offset means the same at
+\ every boot once the base sits beside it, so the cells need no relocation. A
+\ snapshot restore keeps this boot's three (EM-SNAPSHOT-RESTORE) and the image
+\ writer stores none (snap-lib.f SND-ZERO-LIVE). Runs with CP still at the
+\ blob's base, which offsets are measured from. A build that captured nothing
+\ has no seed pass, so the cells stay zero: no stripped spans.
 package AOT-SPAN
 public
 variable LCOUNT   variable LROWS
@@ -8121,12 +7492,10 @@ variable LCOUNT   variable LROWS
    N @ 0 > IF BUF@ N @ ROW * BYTES, THEN ;
 ;package
 
-\ Boot-run the captured top-level entry words (the REPL's INSTALL) once
-\ the seeded blob is RX + icache-flushed: walk the 0-terminated [len][name] list,
-\ LFIND each in the now-registered dict, and blr its xt. This replaces the embedded
-\ install-tail source -- the engine installs the REPL with zero baked source. Runs
-\ at LEX0 on every boot; the entry words self-guard on TTY? so pipe/script boots are
-\ no-ops. A missing name is a build/seed bug -> panic exit $52.
+\ Boot-run the captured top-level entry words (the REPL's INSTALL) once the
+\ seeded blob is RX and icache-flushed: LFIND each name of the 0-terminated
+\ [len][name] list and blr its xt. Runs at LEX0 on every boot; the entry words
+\ self-guard on TTY?. A missing name is a build/seed bug: panic exit $52.
 : EM-AOT-BOOTRUN ( -- )
    LBL LBL LBL {: bloop:label bdone:label bnf:label :}
    21 10 LAOTBOOTRUN LABEL@ TADR,                     \ x21 = list cursor
@@ -8137,28 +7506,19 @@ variable LCOUNT   variable LROWS
       LFIND LABEL@ BL,                               \ x11 = xt, x13 = found?, x5 = record
       13 bnf CBZ,
       LAOTWIDGATE LABEL@ BL,                         \ reject bootrun into a protected WID (reads LFIND's x5/x11)
-      11 BLR,                                        \ call the entry word
+      11 BLR,
       21 SP 0 LDR,  10 SP 8 LDR,  SP SP 16 ADDI,
       21 21 1 ADDI,  21 21 10 ADD,                   \ advance past [len][name]
       bloop B,
    bnf LBL,  0 $52 MOVZ,  NR-EXIT-GROUP SYS,
    bdone LBL, ;
 
-\ Publish the checker payload: where it is and how long. Two DATA cells, written
-\ once and never again, which is what makes them readable by ordinary checked
-\ code (src/core/checker.f CK-AOT-SIG-POOL / CK-AOT-SIG-LEN) with no relocation
-\ of their own: the span is __text, mapped for the life of the process, and an
-\ offset into it means the same thing at every boot.
-\
-\ IT RUNS AFTER THE RECORDS ARE REGISTERED and before the boot-run list, because
-\ a boot-run entry word is a definition like any other and may name a seeded
-\ word: the checker has to be able to see the pool by the time one is compiled.
-\ A build that captured nothing emits no seed pass at all (SEEDED-RUNTIME?), so
-\ both cells stay the zero the DATA region boots with, which is exactly "no pool"
-\ to the intake.
-\ This is the one writer of the two cells src/habu/layout.f declares in
-\ AOT-CELLS (SIG-POOL-CELL, SIG-LEN-CELL); it sits in AOT-SIG beside the pool's
-\ label ids.
+\ Publish the checker payload's position and length (src/habu/layout.f AOT-CELLS
+\ SIG-POOL-CELL, SIG-LEN-CELL; this is their one writer), read by
+\ src/core/checker.f CK-AOT-SIG-POOL / CK-AOT-SIG-LEN without relocation: the
+\ span is __text. Runs after the records are registered and before the boot-run
+\ list, since a boot-run entry word may name a seeded word. A build that
+\ captured nothing (SEEDED-RUNTIME?) leaves both cells zero: no pool.
 package AOT-SIG
 public
 : PUBLISH, ( -- )
@@ -8167,24 +7527,16 @@ public
    9 5 LLEN LABEL@ TADR,  9 9 0 LDR,
    9 DATA AOT-CELLS:SIG-LEN-CELL STR, ;
 
-\ Put the payload's TYPE REGISTRY in, here and nowhere later. The carried
-\ signature rows name families by ABSOLUTE id, so the ids are only the families
-\ they mean while the live registry still ends where the capture's did. This
-\ point is the one moment that is true by construction: the engine prefix has
-\ run and no user token has, so nothing outside the engine can have declared a
-\ type yet, and no checker rollback frame is open to undo the install. Doing it
-\ at the first signature intake instead - which is where it used to happen -
-\ made ordinary source refuse: declare a NEWTYPE, then name a chain word, and
-\ the high-water has already moved past the base the capture recorded.
-\
-\ The SIGNATURE POOL stays lazy. That laziness was priced for 124 KB of text and
-\ 6798 parses; the registry is 46 KB of pointer-free rows, and a boot pays for
-\ it whether or not it ever names a chain word.
-\
-\ Resolved by name through LFIND, the way EM-AOT-BOOTRUN resolves an entry word,
-\ and refused the same way: the widgate rules the callee's wordlist and a
-\ missing name is a seed built against a checker that no longer has it, which is
-\ a panic and not a miss.
+\ Install the payload's type registry here and nowhere later. Carried signature
+\ rows name families by absolute id, valid only while the live registry ends
+\ where the capture's did. Here the engine prefix has run, no user token has, and
+\ no checker rollback frame is open. At the first signature intake instead, a
+\ NEWTYPE declared before naming a chain word moved the high-water past the
+\ capture's base and ordinary source refused.
+\ The signature pool stays lazy: that was priced for 124 KB of text and 6798
+\ parses; the registry is 46 KB of pointer-free rows paid by every boot.
+\ Resolved by LFIND like EM-AOT-BOOTRUN and refused the same way: the widgate
+\ rules the callee's wordlist and a missing name is a panic.
 \ The emitted immediate comes from the emitted bytes, so the two cannot drift.
 : INSTALL-NAME-LEN ( -- n )
    INSTALL-NAME$ {: a:ptr u:n :} u ;
@@ -8202,12 +7554,11 @@ public
    done LBL, ;
 ;package
 
-\ Seed the metabuild-captured AOT words at LEXIT: copy the blob, register N dict
-\ records, name-relocate the call sites, relocate DATA-address literals, advance CP.
-\ Region is RX at LEXIT so the pass toggles RW around all region writes and flushes
-\ the icache.
-\ Every nonempty capture has a seed pass. Full runtime captures run it at startup;
-\ partial captures run it after the cold prefix, before the first user token.
+\ Seed the metabuild-captured AOT words: copy the blob, register the dict
+\ records, relocate call sites and DATA-address literals, advance CP. The region
+\ is RX here, so the pass toggles RW around its writes and flushes the icache.
+\ Full runtime captures run it at startup; partial captures after the cold
+\ prefix, before the first user token.
 : EM-SEED-AOT ( -- )
    AOT-REC-N @ 0= if exit then
    LBL LBL LBL  S\" hb: AOT metadata corrupt\n"
@@ -8278,16 +7629,11 @@ public
       0 78 MOVZ,  NR-EXIT-GROUP SYS,
    dvok LBL, ;
 
-\ EM-LAYOUT:HEAP-START-OFF MIRRORS src/habu/layout.f BOOT-LAYOUT:HEAP-START-CELL,
-\ and the mirror is not laziness: a native build never loads the tree's layout.f
-\ on the HOST side -- tools/native-build.f requires this file and icode.f, and a
-\ booted engine's `require src/habu/layout.f` is a no-op because its own prefix
-\ already registered that path (measured 2026-09-12). So every layout name this
-\ file compiles against is the HOST's, and the first engine that has the cell has
-\ to be built by a host that does not. Naming BOOT-LAYOUT here would therefore
-\ fail to compile on exactly the hosts that must build it (E-UNDEFINED, measured).
-\ It is the same reason src/core/checker.f mirrors AOT-CELLS:SIG-POOL-CELL.
-\ Both spellings go when every host in use has the cell.
+\ EM-LAYOUT:HEAP-START-OFF mirrors src/habu/layout.f BOOT-LAYOUT:HEAP-START-CELL:
+\ this file compiles against the host's layout names (tools/native-build.f does
+\ not load the tree's layout.f, and a booted engine's require of it is a no-op),
+\ so naming BOOT-LAYOUT fails with E-UNDEFINED on a host that lacks the cell.
+\ src/core/checker.f mirrors AOT-CELLS:SIG-POOL-CELL for the same reason.
 package EM-LAYOUT
 public
 $47E0 constant HEAP-START-OFF
@@ -8299,10 +7645,8 @@ $47E0 constant HEAP-START-OFF
    XDS DATA STACK-ABI:BASE-CELL STR,
    7 STACK-ABI:BOOT-BYTES LIT64,  7 DATA STACK-ABI:CAP-CELL STR,
    13 DATA ARGC-CELL STR,  14 DATA ARGV-CELL STR,  15 DATA ENVP-CELL STR,
-   \ x5 is the heap floor: publish it as this engine's own layout in the same
-   \ breath as the DP it sets, out of the same register, so the cell can never
-   \ disagree with the DP-CHECK floor the build emitted beside it -- including in
-   \ a generation whose host layout differs from the tree's.
+   \ Publish the heap floor from the same register as the DP it sets, so the
+   \ cell matches the build's DP-CHECK floor even when the host layout differs.
    5 DATA-START LIT64,  5 DATA EM-LAYOUT:HEAP-START-OFF STR,
    7 DATA 5 ADD,  7 DATA DP-CELL STR, ;
 
@@ -8325,10 +7669,9 @@ $47E0 constant HEAP-START-OFF
       4 4 1 ADDI,  more B,
    done LBL, ;
 
-\ Region walks are BL-callable and parameterized so the loader (live
-\ region) and the snapshot writer (scratch copy) share ONE implementation:
-\ x8 = region base, x15 = record count,
-\ x21 = detect base, x22 = detect len, x25 = rebase target base (value - x21 + x25).
+\ Shared by the loader (live region) and the snapshot writer (scratch copy):
+\ x8 = region base, x15 = record count, x21 = detect base, x22 = detect len,
+\ x25 = rebase target base (value - x21 + x25).
 : EM-SNAPSHOT-REBASE-DICT ( -- )
    LBL LBL LBL LBL {: sdl2 sdn2 sds2 srn :}
    LSNAPRBD LABEL@ LBL,
@@ -8348,31 +7691,23 @@ $47E0 constant HEAP-START-OFF
       srn LBL,  9 9 DREC ADDI,  10 10 1 ADDI,  sdl2 B,
    sdn2 LBL,  RET, ;
 
-\ ---- snapshot relocation: the two emitted passes -----------------------------
 \ In RELOC-EMIT with the labels above; the bands and exit statuses they read are
 \ src/habu/layout.f's SNAP-RELOC.
 package RELOC-EMIT
 public
 
-\ Region-to-text call relocation, the BL-shaped counterpart of the dictionary walk
-\ above and the other half of what makes a snapshot image portable.
-\ A call that stays inside the region keeps its distance wherever the region lands,
-\ so it needs nothing. A call from the region into the engine's loaded __text does
-\ not, because the run that writes an image and the run that restores it get their
-\ region base from the kernel and their image base from the loader independently.
-\ The sites are not searched for; they were recorded when the calls were created
-\ (CALLMAP-OFF, written by EMIT-CEMITBL and EM-AOT-PATCH-SITES), because a compiled
-\ word may carry inline non-instruction data and no decode of region bytes could
-\ tell a call from a data word that happens to look like one.
-\ Parameterized exactly like the dictionary walk so the writer (scratch copy, live
-\ distance -> canonical distance) and the loader (live region, canonical distance
-\ -> live distance) share ONE implementation:
+\ Region-to-text call relocation, the BL counterpart of the dictionary walk. The
+\ writer and the restorer get their region base (kernel) and image base (loader)
+\ independently, so calls into __text need relocating; in-region calls do not.
+\ Sites come from CALLMAP-OFF (written by EMIT-CEMITBL and EM-AOT-PATCH-SITES),
+\ never a decode: a compiled word may carry inline data that looks like a call.
+\ Writer: scratch copy, live -> canonical distance; loader: live region,
+\ canonical -> live.
 \   x8  = base of the region image being patched
 \   x11 = its byte length (the map is scanned only that far)
 \   x10 = signed byte amount to add to every recorded call displacement
-\ The added amount is always a multiple of four, so it is applied in instruction
-\ units and re-masked into imm26; the boot assertion in EM-MMAP-CODE-REGION is what
-\ guarantees the result is still inside BL's reach.
+\ x10 is a multiple of four, applied in instruction units and re-masked into
+\ imm26; EM-MMAP-CODE-REGION's boot assertion keeps the result in BL reach.
 \ Clobbers x3..x7, x9, x12..x14; x8/x10/x11 survive for the caller.
 : EMIT-CALLS ( -- )
    LBL LBL LBL LBL LBL LBL {: scl:label scdone:label scnext:label
@@ -8394,9 +7729,8 @@ public
             14 14 4 SUBI,                            \ the complete site must be inside the extent
             14 8 14 ADD,                            \ x14 = site address
             9 14 0 LDRW,
-            \ a recorded site must still be a call, a BL or the B of a tail call
-            \ (LCEMITB): the two differ only in bit 31. Anything else means the map
-            \ and the region disagree, which is a corrupt image, so refuse to run it.
+            \ A recorded site must still be a BL or a tail call's B (LCEMITB),
+            \ which differ only in bit 31; anything else is a corrupt image.
             3 9 26 LSRI,  3 3 $1F ANDI,  3 BL-OP-HI $1F and CMPI,  C-NE scbad BCOND,
             3 9 38 LSLI,  3 3 38 LSRI,              \ x3 = current displacement, in instructions
             3 3 7 ADD,  3 3 38 LSLI,  3 3 38 LSRI,  \ shifted by the delta, back into 26 bits
@@ -8412,26 +7746,14 @@ public
 \ Declare one persisted DATA cell as holding a JIT-region address, so the snapshot
 \ writer canonicalises it and the loader maps it back onto the live region.
 \   x9 = the cell's address, unchanged on return.
-\ Membership is a set: `defer` registers a dispatch cell when it allocates it,
-\ `is` registers the cell it is about to store into, and the `xt!` primitive
-\ registers a cell whose address its caller worked out at run time, so the same
-\ cell arrives here more than once and must be listed once. A derived hash index
-\ maps exact byte offsets to the original row ordinals; it never reorders or
-\ duplicates the authoritative rows. Declaring a cell twice would otherwise apply
-\ the relocation twice and produce an address that points nowhere.
-\ Overflow is a hard stop: dropping a row would leave a stale writer-run address in
-\ a restored image, which is exactly the failure this table exists to prevent.
-\ A cell that does not lie inside DATA is a hard stop for the same reason and one
-\ step earlier. This is the single point every producer of a row goes through --
-\ `defer`, `is` and `xt!` alike -- so validating here covers all three, and each
-\ of them now declares BEFORE it stores, so a refused cell is refused before
-\ anything has been written to it. A cell outside DATA is not a near miss: the
-\ table's three consumers would index DATA by that offset and read or write eight
-\ bytes of whatever lives there. Containment is the entire rule -- see the
-\ XTCELL-OFF-MAX note in src/habu/layout.f for why alignment is not part of it.
-\ Every register it uses is saved and restored, because the compile-handler call
-\ sites are in the middle of a handler with its own live values and the `xt!` call
-\ site is in the middle of a running checked word.
+\ Membership is a set: `defer`, `is` and `xt!` all declare, so one cell arrives
+\ more than once, and a duplicate row would relocate it twice. A derived hash
+\ index maps byte offsets to row ordinals; it never reorders the rows. Overflow
+\ and a cell outside DATA are hard stops: a dropped row leaves a stale address in
+\ a restored image, and the table's consumers index DATA by the offset. Every
+\ producer declares before it stores, so a refused cell is never written.
+\ Containment is the whole rule (src/habu/layout.f XTCELL-OFF-MAX says why not
+\ alignment). Every register is saved: the callers are mid-handler or mid-word.
 : MARK-SAVE ( -- )
    SP SP 192 SUBI,
    18 0 ?do i SP i cells STR, loop ;
@@ -8642,14 +7964,12 @@ ardone LBL,
    missing LBL,
    9 -8574 LIT64,  9 G-PUSH  BTHROW ;
 
-\ The address-cell registrar, registered as the sealed (MARK) engine helper for
-\ the reason (PROT-SPAN) is: `xt!` (BXTSTORE below) reaches it by a direct BL,
-\ and the ahead-of-time closure walker follows such a branch only to a record's
-\ EXACT code entry (aot-closure.f FINDADDR-PTR), so without a record the linker
-\ has no name for the target and refuses the image. The record spans
-\ [LMARK, end), which covers the LPTRMARK entry inside the same body. Registering
-\ it does not carry it: a stripped image has no reader for the table this body
-\ maintains, so aot-closure.f AOT-DECLARATION? drops the call at link.
+\ The address-cell registrar has a sealed (MARK) helper record for the reason
+\ (PROT-SPAN) has: `xt!` (BXTSTORE) reaches it by a direct BL, and the closure
+\ walker names a branch target only at a record's exact entry (aot-closure.f
+\ FINDADDR-PTR). The record spans [LMARK, end), covering LPTRMARK. A stripped
+\ image has no reader for the table, so aot-closure.f AOT-DECLARATION? drops
+\ the call at link.
 : EMIT-MARK ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
    {: common:label lookup:label full:label band:label kind:label
@@ -8760,9 +8080,9 @@ ardone LBL,
    ret LBL, MARK-UNLOCK MARK-RESTORE
    end LBL, ;
 
-\ The cold seed has already registered cells when snapshot restore begins.
-\ Release THAT live mapping before the DATA copy can overwrite its pointer.
-\ Never call this entry on a pointer just read from a snapshot.
+\ The cold seed has already registered cells when snapshot restore begins:
+\ release that live mapping before the DATA copy overwrites its pointer. Never
+\ call this on a pointer just read from a snapshot.
 : EMIT-INDEX-RELEASE ( -- )
    LBL LBL {: done:label bad:label :}
    LINDEXRELEASE LABEL@ LBL, MARK-SAVE
@@ -8786,25 +8106,13 @@ ardone LBL,
    LPTRMARK LABEL@ BL, ;
 
 \ xt! ( q ptr q -- ): store an execution token into a persisted cell and declare
-\ that cell to the table above, in one step.
-\ `defer` and `is` can only declare a cell whose address is known while they are
-\ being COMPILED. A TABLE of dispatch cells picks its cell at RUN time, from a
-\ base pointer and a row index, so no compile handler ever sees that address, and
-\ the store word is the only code that knows a JIT-region address is going into a
-\ persisted cell (dot habu-declare-persisted-cb-b150b5d5). Storing and declaring
-\ are one primitive rather than two words so neither half can be done without the
-\ other and the declaration cannot drift away from the store it describes.
-\ The store itself is habu1.f BSTORE's, protection guard and all: x10 is the cell,
-\ x9 the token, and the guard leaves both alone.
-\ The declaration runs BEFORE the store, which is the ordering `defer` and `is`
-\ have always had and the reason the band check above can be called a
-\ precondition: LMARK refuses a cell that is not wholly inside
-\ DATA by terminating, so a refused cell is never written. Doing the store first
-\ would leave the caller's token in a cell the engine then declines to declare.
-\ The swap below is what that ordering costs: LMARK wants the cell in x9, so the
-\ token is parked in x11 across the call. x11 is scratch in a primitive body, and
-\ LMARK preserves x9 and saves every other register it touches, so both survive.
-\ Registered framed, because the guard and LMARK are both BL.
+\ the cell. `defer` and `is` declare cells known at compile time; a table of
+\ dispatch cells picks its cell at run time, so only the store knows. One
+\ primitive keeps the declaration from drifting from the store. The store is
+\ habu1.f BSTORE's, guard included (x10 = cell, x9 = token). The declaration
+\ runs first, so a cell LMARK refuses is never written; LMARK wants the cell in
+\ x9, so the token is parked in x11 (scratch here; LMARK preserves x9 and saves
+\ the rest). Registered framed: the guard and LMARK are both BL.
 : BXTSTORE ( -- )
    B G-POP  A G-POP
    7 8 MOVZ,  B 7 PROT-GUARD:CALL
@@ -8815,16 +8123,11 @@ ardone LBL,
 
 \ Move every declared address cell by one signed amount.
 \   x10 = the amount to add
-\ The loader is the only caller: the writer's half of this pass is checked Habu in
-\ src/habu/snap-lib.f, because it works on a scratch copy of DATA rather than on
-\ the live region. A zero cell means "nothing installed here yet" and stays zero,
-\ which is why a cleared hook survives a snapshot as a cleared hook.
-\ Every row is re-validated here rather than trusted because the rows arrive from
-\ an IMAGE FILE. The engine that wrote it checked what it declared, but this run
-\ did not write it: a damaged or forged image can carry any offset at all, and
-\ relocating through one would add the region delta to eight bytes chosen by the
-\ image. The check is the same band the declaration enforces, so a row this
-\ engine wrote always passes and only a corrupt image can fail it.
+\ The loader is the only caller; the writer's half is checked Habu in
+\ src/habu/snap-lib.f, working on a scratch copy of DATA. A zero cell (nothing
+\ installed) stays zero. Rows come from an image file, so each is re-validated
+\ against the band the declaration enforces: a forged offset would otherwise
+\ add the region delta to eight bytes the image chose.
 \ Clobbers x5, x6, x9, x13, x14, x12.
 : EMIT-XT ( -- )
    LBL LBL LBL LBL {: loop:label skip:label band:label done:label :}
@@ -8862,30 +8165,20 @@ ardone LBL,
    5 1 MOVZ,  5 5 9 LSLV,  9 6 0 LDRB,  9 9 5 ORR,  9 6 0 STRB,
    RET, ;
 
-\ Address-literal relocation: the MOVZ/MOVK-shaped counterpart of the dictionary
-\ walk and of the call pass, and the third and last thing that has to move when a
-\ snapshot image is restored at addresses the writing run never saw.
-\ The chain a `[: ... ;]` or a `[']` pushes names a word's code, and
-\ that code sits either inside the JIT region or in the engine's loaded __text.
-\ Both move independently between the writing and the restoring run, so the pass
-\ is parameterized exactly like the dictionary walk and is CALLED ONCE PER BAND,
-\ with the same triple that walk is given:
+\ Address-literal relocation: the MOVZ/MOVK counterpart of the dictionary walk
+\ and the call pass. A `[: ... ;]` or `[']` chain names code in the JIT region or
+\ in __text, which move independently, so the pass is called once per band:
 \   x21 = base of the band being moved
 \   x22 = its length
 \   x25 = the base those addresses are moving to  (value - x21 + x25)
-\ and, like the call pass, with the image it is scanning:
 \   x8  = base of the region image being patched
 \   x11 = its byte length (the map is scanned only that far)
-\ The two bands are disjoint at both write and restore time -- the live region sits
-\ REGION-OFF above __text, and canonical text offsets are far below the RBASE-VA
-\ sentinel -- so a chain is rewritten by exactly one of the two calls, and a chain
-\ that names neither band (there is no such kind today) is left alone rather than
-\ guessed at.
-\ The sites are not searched for. They were recorded when the chain was created
-\ (ADDRMAP-OFF, written by EMIT-ADDR-SITE from C-CODE-ADDR and by the AOT seed's
-\ code-literal rebase), because a compiled word may carry inline non-instruction
-\ data and the sibling DATA literals share the chain's exact shape, so no decode of
-\ region bytes could tell the three apart.
+\ The bands are disjoint at write and restore (the region sits REGION-OFF above
+\ __text; canonical text offsets lie far below the RBASE-VA sentinel), so each
+\ chain is rewritten by one call; a chain in neither band is left alone. Sites
+\ come from ADDRMAP-OFF (EMIT-ADDR-SITE, from C-CODE-ADDR and the AOT seed's
+\ code-literal rebase), never a decode: inline data and DATA literals share the
+\ chain's shape.
 \ Clobbers x2, x3, x4, x5, x6, x7, x9, x10, x12, x13, x14; x8, x11, x21, x22 and
 \ x25 survive for the caller.
 : EMIT-ADDRS ( -- )
@@ -8907,12 +8200,10 @@ ardone LBL,
             3 14 ADDRESS-CARRIER:DATA-CHAIN-BYTES ADDI, \ the shortest carrier must fit before its words are read
             3 11 CMP,  C-HI sabnext BCOND,          \ past this payload: not part of the image being patched
             14 8 14 ADD,                            \ x14 = chain address
-            \ a recorded site must still be the chain. Anything else means the map
-            \ and the region disagree, which is a corrupt image, so refuse to run it.
-            \ Word 0 supplies the register the whole chain names (x3), and the other
-            \ three lanes are compared against their own scaffold carrying THAT
-            \ register, so four move-wide words that name four different registers are
-            \ refused as firmly as four words that are not move-wide at all.
+            \ A recorded site must still be the chain, else the image is corrupt.
+            \ Word 0 supplies the register (x3) and the other three lanes are
+            \ compared against a scaffold carrying it, so four move-wides naming
+            \ different registers are refused too.
             9 14 0 LDRW,   9 9 7 AND,
             3 9 ADDRESS-CARRIER:ADDR-RD-MASK ANDI,
             10 ADDRESS-CARRIER:DATA-MOVZ2 LIT64,  10 10 3 ORR,
@@ -8937,7 +8228,6 @@ ardone LBL,
             9 14 12 LDRW,  9 9 7 AND,
             10 W-MOVK3 LIT64,  10 10 ADDRESS-CARRIER:ADDR-RD-BITS LSRI,  10 10 ADDRESS-CARRIER:ADDR-RD-BITS LSLI,  10 10 3 ORR,
             9 10 CMP,  C-NE sabad BCOND,
-            \ x3 = the address the four immediates spell out
             9 14 0 LDRW,   9 9 5 LSRI,  9 9 2 AND,  3 9 0 ADDI,
             9 14 4 LDRW,   9 9 5 LSRI,  9 9 2 AND,  9 9 16 LSLI,  3 3 9 ORR,
             9 14 8 LDRW,   9 9 5 LSRI,  9 9 2 AND,  9 9 32 LSLI,  3 3 9 ORR,
@@ -8959,98 +8249,37 @@ ardone LBL,
 
 ;package
 
-\ Sealed-WID reject for the AOT boot passes. Entry is LFIND's answer
-\ as LFIND left it: x5 = the record the baked name resolved to, x11 = its xt. A
-\ callee the engine's own rules would not let checked source CALL fails the boot
-\ closed (exit ENGINE-ERROR:SEAL-PACKAGE), so a captured relocation callee or
-\ boot-run entry name is rejected before the call immediate is rewritten or the
-\ entry word is executed.
+\ Sealed-WID reject for the AOT boot passes. Entry is LFIND's answer: x5 = the
+\ record the baked name resolved to, x11 = its xt. A callee checked source could
+\ not CALL fails the boot (exit ENGINE-ERROR:SEAL-PACKAGE) before the call
+\ immediate is rewritten or the entry word runs.
 \ Preserves x5 and x11; clobbers x6/x9/x13/x14; saves x30 for the nested LPROTWIDQ.
-\
-\ WHAT IT REFUSES IS A PRIVATE WORD OF A SEALED PRE-EXISTING PACKAGE, and that is
-\ far narrower than "any protected WID", which is what this asked until
-\ 2026-08-16. The rule is four layers and every one of them was forced by a
-\ measurement on the real compiler chain (18893 sites); they are tested in this
-\ order because the first is one subtraction and answers for most of them.
-\
-\ (1) A WORDLIST THIS SEED CREATED IS NOT ONE THE ENGINE ALREADY HAD. The gate
-\ exists to stop a baked name reaching into a pre-existing sealed wordlist; the
-\ window's own private call to its own private word is the window calling itself,
-\ and refusing it refuses the whole chain - 10648 of its sites resolve into
-\ in-window PRIVATE wordlists that the chain's own packages sealed with the
-\ ordinary `private get-current prot-wid-add` idiom, and AOT-WINDOW:SEAL-WIDS,
-\ has already set those bits by the time the call-site pass runs.
-\ T0 is READ FROM ITS CELL, not recomputed: `WIDN - span` is T0 only until
-\ something else allocates a wordlist, which a boot-run entry word may do before
-\ the last name on the list has been through this gate.
-\
-\ (2) THE TWO ENGINE-RESERVED WORDLISTS ARE ADMITTED, and the tree already ruled
-\ why. OWNER-API-PRI-WID carries the registered engine helpers ((PROT-SPAN),
-\ (LP2VEXEC)) and habu1.f's BSWL states it: the refusal of that wordlist belongs
-\ to the `search-wl` PRIMITIVE and not to the shared routine, "because the AOT
-\ seed relocates calls to those helpers by name and must search that wordlist".
-\ The pins in LPROTWIDQ exist so no post-seal PUBLISH can forge a record into
-\ them - a publish-side fact this gate was inheriting by accident. Nothing else
-\ can ever be in there: EMIT-STORE-DEF-NAME refuses the publish (test/seal.f pins
-\ `2 set-current : X ;` at exit 84), so a callee resolved in wid 2 IS one of the
-\ engine's own resident helpers. The chain calls (LP2VEXEC) from 12 sites - every
-\ compiled typed fetch emits one.
-\
-\ (4) AND THE SEAL'S OWN DISCRIMINATOR IS PUBLIC-VERSUS-PRIVATE, which is in the
-\ engine rather than in a category name: EMIT-STORE-DEF-NAME refuses DEFINING
-\ into a protected wid and C-PACKAGE-SEAL-GUARD refuses OPENING one, while
-\ CALLING a public word of a sealed package is what checked source does every
-\ day. A gate stated more broadly than the invariant it protects refuses
-\ legitimate work the first time a real workload arrives: the chain's
-\ A64RAV:DKEEP-HOOK-DEFAULT boot-run entry is a public word of a sealed package.
-\ A package's PUBLIC wordlist is its record's [0] and its PRIVATE one is [8], so
-\ the question is answered by asking the namespace rows rather than by any
-\ property of the number. The scan reaches only a wid that survived the three
-\ layers above, which on the merged chain is four callees a boot.
-\
-\ ITS REFUSE LEG HAS NO PRODUCER TODAY, AND IS KEPT ANYWAY. Nothing an artifact
-\ can carry reaches it, because two accept-sets in two other files already cover
-\ the whole input space:
-\   - a CALL SITE's scope is one of four shapes (EM-AOT-PATCH-SITES). A raw
-\     pre-window wid is not one of them - it dies `pbad`, exit
-\     ENGINE-ERROR:AOT-SEED, which test/aot-wid-suite.f PROBE-WID-FORGED already
-\     pins - and a window coordinate is rebased to T0 + (wid - W0), which layer
-\     (1) admits BY CONSTRUCTION: the rebase and the layer read the same span.
-\   - a BOOT-RUN or CODE-LITERAL name is resolved by LFIND, whose qualifier path
-\     (habu1.f FIND-NMATCH) takes the search wid from the package record's [0] -
-\     its PUBLIC slot - so a qualified name cannot land in a private wordlist, and
-\     a bare one at seed time has no open package and lands in wid 0. The one way
-\     to open a sealed package is refused by C-PACKAGE-SEAL-GUARD.
-\ So this leg guards an EDIT rather than an input: widen either accept-set - carry
-\ a verbatim pre-window wid in the site row, say, which is dot 9d7d8e72's refuted
-\ option (b) - and a private callee of a sealed package arrives here and is
-\ refused by name instead of being wired in. A defence whose threat lives in
-\ another file cannot be justified by a fixture in this one; the layers that DO
-\ decide are each falsified by mutation on the real chain (deleting one reds
-\ SERIAL-NEXT, (LP2VEXEC), HS@ and WATCH respectively).
-\
-\ IT ASKS THE RECORD THE LOOKUP MATCHED, WHICH IS THE ONLY RECORD THAT ANSWERS.
-\ This used to take the xt alone and scan the whole dictionary for the first
-\ record whose [0] equalled it. That is not the same question and it is the
-\ weaker one: `EXPORT` gives one body a second record under a second name in a
-\ second wordlist, so an xt can sit in several rows, and the scan reports the
-\ LOWEST-indexed of them - measurably a different wid from the one the name
-\ resolved in. A protected wordlist reached through such a name would have been
-\ read as its unprotected sibling and admitted. It was also the whole per-boot
-\ cost of the pass, O(sites x dictionary): 2.4us per site at 7187 records,
-\ measured, which is tens of milliseconds a boot at compiler-chain scale.
-\
-\ THE POINTER IS CHECKED, NOT TRUSTED. A register handed between two engine
-\ routines is worth exactly what the receiver proves about it, so the gate
-\ re-establishes here what the old scan got by construction: the record is
-\ present, it lies inside the live record array, and its [0] is the xt LFIND
-\ returned. Anything else is an engine that no longer agrees with itself, and it
-\ dies named rather than resolving the guard away - which the old "no record
-\ found, skip the guard" leg would have done, silently, had it ever been
-\ reachable.
-\ The self-consistency message is lexical, like AOT-XTSITE:PATCH-CHAINS's own:
-\ the bytes are emitted after the exit that names them, and the write length is
-\ READ OFF the same string rather than counted by hand, so the two cannot drift.
+\ It refuses only a private word of a sealed pre-existing package. Each layer was
+\ forced by a measurement on the compiler chain (18893 sites); deleting one reds
+\ SERIAL-NEXT, (LP2VEXEC), HS@ and WATCH respectively. Layers, cheapest first:
+\ (1) A wordlist this seed created is the window calling itself: 10648 sites
+\ resolve into in-window private wordlists AOT-WINDOW:SEAL-WIDS has sealed. T0
+\ is read from its cell: WIDN - span stops being T0 once a boot-run entry word
+\ allocates a wordlist.
+\ (2) The two engine-reserved wordlists are admitted: OWNER-API-PRI-WID carries
+\ the registered helpers ((PROT-SPAN), (LP2VEXEC); habu1.f BSWL), and
+\ EMIT-STORE-DEF-NAME refuses any publish into it (test/seal.f, exit 84).
+\ (4) Calling a public word of a sealed package is allowed (the chain's
+\ A64RAV:DKEEP-HOOK-DEFAULT boot-run entry is one); EMIT-STORE-DEF-NAME refuses
+\ defining into and C-PACKAGE-SEAL-GUARD opening a protected wid. A package's
+\ public wordlist is its record's [0], private [8]; on the merged chain four
+\ callees a boot reach this scan.
+\ The refuse leg has no producer: a call site's scope is one of four shapes
+\ (EM-AOT-PATCH-SITES; a raw pre-window wid dies `pbad`, pinned by
+\ test/aot-wid-suite.f PROBE-WID-FORGED), and LFIND's qualifier path (habu1.f
+\ FIND-NMATCH) searches a package's public slot. It guards an edit that widens
+\ either accept-set.
+\ The gate asks the record LFIND matched, not the first record holding the xt:
+\ `EXPORT` gives a body several records in several wordlists, and the xt scan
+\ cost 2.4us per site at 7187 records. The record is checked present, inside the
+\ live record array, with [0] equal to the xt; else the boot dies named.
+\ The self-consistency message is lexical, like AOT-XTSITE:PATCH-CHAINS's: the
+\ write length is read off the emitted string, so the two cannot drift.
 : EM-AOTWIDGATE ( -- )
    LBL LBL LBL LBL LBL LBL LBL  S\" hb: AOT gate: lookup record unusable\n"
    {: wbad:label wdone:label wmsg:label winl:label
@@ -9091,10 +8320,9 @@ ardone LBL,
    wrej LBL,
       1 LPROTAOT LABEL@ ADR,  0 2 MOVZ,  2 PROTAOT-MSG-LEN MOVZ,  NR-WRITE SYS,    \ private word of a sealed package: name it on fd 2 before exit 84
       \ + the callee's own name, read off the record the lookup matched, the way
-      \ EMIT-STORE-DEF-NAME appends the def name to its sibling exit. Without it the
-      \ gate names a category and no reader can tell which of thousands of baked
-      \ names it refused. [16] carries the length in its low bits and DNAME-EXT says
-      \ the bytes live outside the record.
+      \ Append the def name, so the refusal names which baked name it refused.
+      \ [16] carries the length in its low bits; DNAME-EXT says the bytes live
+      \ outside the record.
       14 5 16 LDR,
       6 DNAME-EXT LIT64,  6 14 6 AND,
       2 14 0 ADDI,  2 2 DNAME-FLAG-BITS LSLI,  2 2 DNAME-FLAG-BITS LSRI,          \ x2 = name length
@@ -9112,47 +8340,38 @@ ardone LBL,
       30 SP 0 LDR,  11 SP 8 LDR,  SP SP 16 ADDI,  RET, ;
 
 \ snap-rebase ( base end count dbase dlen newbase -- ): canonicalize a region copy
-\ [base,end) in TWO passes so the image is byte-identical whatever VAs this run got.
-\ Pass 1 uses the caller's (dbase,dlen,newbase) to fold engine-text pointers to their
-\ canonical base (0). Pass 2 folds the live JIT region [DBASE, DBASE+span) -- the only
-\ other absolute address class in the copy -- to the RBASE-VA sentinel; span = end-base
-\ is the region-payload length. Both bands are disjoint (REGION-OFF >> text size), so
-\ the passes never re-touch each other's output. The loader (EM-SNAPSHOT-RESTORE)
-\ inverts both: sentinel -> live region base, 0 -> live text base. Pool registers are
-\ spilled before any prim call, so clobbering x8/x15/x16/x21/x22/x25 is safe here.
-\ x8=base, x16=end are the write-region endpoints. The half-open span guard rejects
-\ every protected-band intersection. The legitimate builder uses a high scratch copy.
+\ [base,end) in two passes so the image is byte-identical whatever VAs this run
+\ got. Pass 1 folds engine-text pointers (dbase,dlen) to newbase (0); pass 2 folds
+\ the live JIT region [DBASE, DBASE+end-base) to the RBASE-VA sentinel. The bands
+\ are disjoint (REGION-OFF >> text size). EM-SNAPSHOT-RESTORE inverts both. Pool
+\ registers are spilled before any prim call, so clobbering
+\ x8/x15/x16/x21/x22/x25 is safe. The half-open span guard rejects every
+\ protected-band intersection; the builder uses a high scratch copy.
 : BSNAPREBASE ( -- )
    25 G-POP  22 G-POP  21 G-POP  15 G-POP  16 G-POP  8 G-POP
    11 16 8 SUB,  8 11 PROT-GUARD:CALL
    LSNAPRBD LABEL@ BL,
-   \ address-literal pass, text band: an xt a `[']` compiled in may
-   \ name a primitive, whose code is in __text, so the same (x21,x22,x25) triple
-   \ pass 1 just used for dictionary cells applies to those chains too.
+   \ Text band: a `[']` may name a primitive in __text, so pass 1's triple
+   \ applies to address chains too.
    11 16 8 SUB,                                         \ x11 = region payload length
    RELOC-EMIT:LADDRS LABEL@ BL,
-   \ call pass: rewrite every recorded region-to-text call from the distance this
-   \ run happens to have to the distance it would have if the region sat exactly
-   \ REGION-OFF above __text. x21 still holds the live text base from pass 1.
+   \ Rewrite region-to-text calls to the distance they would have with the
+   \ region exactly REGION-OFF above __text. x21 still holds the live text base.
    10 DBASE 21 SUB,  9 REGION-OFF LIT64,  10 10 9 SUB,  \ x10 = live distance - REGION-OFF
    11 16 8 SUB,                                         \ x11 = region payload length
    RELOC-EMIT:LCALLS LABEL@ BL,
    21 DBASE 0 ADDI,  22 16 8 SUB,  25 RBASE-VA LIT64,   \ pass 2: live region -> RBASE-VA sentinel
    LSNAPRBD LABEL@ BL,
-   \ address-literal pass, region band: the quotation entries and the xts that name
-   \ a word compiled into the region, folded to the same sentinel pass 2 uses.
+   \ Region band: quotation entries and xts of region words, folded to the
+   \ sentinel pass 2 uses.
    11 16 8 SUB,
    RELOC-EMIT:LADDRS LABEL@ BL, ;
 
-\ The region at rest, established once at the end of EM-STARTUP on BOTH boot
-\ paths. Snapshot restore opens the whole region RW; this closes it RX. Other
-\ writes flip only the window they opened. The cold path
-\ needs it because EM-MMAP-CODE-REGION maps the region RW and the narrow closes
-\ would then never touch the pages above the seeded code; the snapshot path needs
-\ it because the restore writes the whole region. Clearing every band's record
-\ belongs here with it: "whole region RX" and "no band open" are one state, and a
-\ restored image's DATA copy can otherwise carry a band's range from the run that
-\ wrote it.
+\ The region at rest, set once at the end of EM-STARTUP on both boot paths:
+\ close the whole region RX (EM-MMAP-CODE-REGION maps it RW and narrow closes
+\ never reach pages above the seeded code; a restore writes the whole region)
+\ and clear every band's record, since a restored DATA copy can carry a band
+\ from the writing run. Other writes flip only the window they opened.
 : EM-SNAPSHOT-RX-FLUSH ( -- )
    2 5 MOVZ,  0 DBASE 0 ADDI,  1 REGION LIT64,  LPROT LABEL@ BL,
    9 0 MOVZ,  9 DATA PROT:WINDOW STR,  9 DATA PROT:WLO STR,
@@ -9223,9 +8442,8 @@ ardone LBL,
    5 PROT-REG-TAG LIT64,  11 5 CMP,  C-NE bad BCOND, \ the image's band must be a bitmap
    12 PROT-BITS-OFF MOVZ,  12 10 12 ADD,            \ x12 = &image bitmap[0]
    2 12 0 LDR,  2 2 1 ANDI,  2 bad CBNZ,            \ WID 0 is never a wordlist
-   \ x17 = highest protected WID (0 if none): find the top non-zero word, then shift
-   \ its bits out. Replaces a per-row running max plus an O(rows^2) duplicate scan --
-   \ a bitmap cannot repeat an index, so only the maximum is still worth computing.
+   \ x17 = highest protected WID (0 if none): the top bit of the top non-zero
+   \ word; a bitmap cannot repeat an index.
    17 0 MOVZ,  8 PROT-BITS-BYTES MOVZ,
    prot-loop LBL,  8 widn CBZ,
       8 8 8 SUBI,
@@ -9245,13 +8463,11 @@ ardone LBL,
    6 FIRST-DYNAMIC-WID CMPI,  C-LT bad BCOND,
    6 17 CMP,  C-LS bad BCOND, ;
 
-\ ---- the heap in the cell-grid form (SNAPSHOT-FORMAT:HEAP-GRID) ---------------
-\ The writer stores the heap as src/habu/cell-grid.f's form when that is smaller
-\ than its bytes. This lays it into DATA over zeros, because the seed has
-\ already put the engine's own window there and a cell the snapshot holds as
-\ zero must read zero. A snapshot is text this engine did not build, so this is
-\ the one reader of the form that refuses every byte a canonical writer could
-\ not have produced; each refusal branches to `bad` (rc 79) before any
+\ The heap in the cell-grid form (SNAPSHOT-FORMAT:HEAP-GRID).
+\ The writer stores the heap in src/habu/cell-grid.f's form when that is
+\ smaller. It is laid into DATA over zeros, since the seed's own window is
+\ already there. A snapshot is text this engine did not build, so every byte a
+\ canonical writer could not produce is refused: `bad` (rc 79) before any
 \ restored word runs.
 
 \ One unsigned LEB128 from the value cursor x5, bounded by x23, into x15;
@@ -9383,9 +8599,8 @@ ardone LBL,
    22 SP 64 LDR, 23 SP 72 LDR, 24 SP 80 LDR,  25 SP 88 LDR,
    SP SP 96 ADDI, ;
 
-\ ---- AOT snapshot? (trailer at the end of our own __text). If present:
-\ restore both regions verbatim (fixed VAs keep region addresses valid),
-\ relocate engine-text call chains (the only ASLR-movers), boot WARM. ----
+\ A trailer at the end of our own __text marks an AOT snapshot. If present: restore
+\ both regions verbatim, relocate engine-text call chains, boot WARM.
 : EM-SNAPSHOT-RESTORE ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
    {: snomag:label snbad:label snok:label snnew:label snhave:label
@@ -9398,19 +8613,13 @@ ardone LBL,
    10 9 0 ADDI,  5 CODE-OFF LIT64,  10 10 5 SUB,
    11 10 IMAGE-TEXT-SIZE-OFF LDR,                   \ S = our executable text size
    12 10 11 ADD,  5 IMAGE-TEXT-TRAILER-ADJ LIT64,  12 12 5 ADD,   \ x12 = trailer END (base+SNL+ADJ)
-   \ The executable header is consumed by the OS loader and therefore owns the
-   \ snapshot-presence contract. A cold image ends where the emitter stopped, and
-   \ LIMGEND is bound there with nothing after it, so its offset from the text
-   \ base IS that length (page-rounded on ELF, which pads its text). A larger
-   \ authenticated text extent means a snapshot exists, so missing trailer magic
-   \ is corruption.
-   \ Reconstruct the cold extent with the writer's maximum-page rounding,
-   \ including and then removing the target's content adjustment.
-   \ This used to add up the layout instead - LSRC plus the padded baked source -
-   \ which was true only while the source was the last thing emitted. It stopped
-   \ being true when the AOT payload moved after it (dot
-   \ habu-reach-the-seed-d1326596) and the reconstruction read a cold image as a
-   \ corrupt snapshot. A label cannot go stale that way.
+   \ The executable header owns the snapshot-presence contract. LIMGEND is
+   \ bound where the cold emitter stopped, so its offset from the text base is
+   \ the cold length (page-rounded on ELF); a larger authenticated text extent
+   \ means a snapshot exists, so missing trailer magic is corruption. The cold
+   \ extent uses the writer's maximum-page rounding, including then removing the
+   \ target's content adjustment. A label, unlike summing the layout, does not
+   \ go stale when the AOT payload moves.
    14 LIMGEND LABEL@ LOFF,
    HB-TARGET-LINUX? IF
       5 IMAGE-TEXT-CONTENT-ADJ LIT64,  14 14 5 ADD,
@@ -9422,9 +8631,8 @@ ardone LBL,
    11 14 CMP,  C-LT snbad BCOND,  C-GT snpresent BCOND,
    snomag B,
    snpresent LBL,
-   \ The owner-role registry is required for checked qualified lookup. A v0-v2
-   \ image has no trustworthy owner semantics, so the legacy trailer and every
-   \ version other than the current format fail closed as unsupported.
+   \ The owner-role registry is required for checked qualified lookup, so any
+   \ trailer other than the current format fails closed as unsupported.
    5 SNAP-MAGIC LIT64,
    13 12 SNAP-TRL-BYTES SUBI,  14 13 0 LDR,  14 5 CMP,  C-EQ snnew BCOND,       \ x13 = versioned trailer base?
    13 12 SNAP-TRL-LEGACY-BYTES SUBI,  14 13 0 LDR,  14 5 CMP,  C-NE snbad BCOND, \ authenticated snapshot payload without magic is corrupt
@@ -9498,9 +8706,8 @@ ardone LBL,
    15 SP 32 STR, 21 SP 40 STR, 25 SP 48 STR,  16 SP 56 STR,
    17 SP 64 STR, 21 SP 72 STR, 24 SP 80 STR, 22 SP 88 STR, 23 SP 96 STR,
    snbad EM-SNAPSHOT-VALIDATE-WIDS
-   \ Seeding the native runtime has already closed its dictionary/code pages
-   \ RX. Restore replaces that region from engine text, then the ordinary
-   \ startup RX flush closes it again before any restored word executes.
+   \ Seeding already closed the region RX. Restore replaces it from engine
+   \ text; the startup RX flush closes it again before any restored word runs.
    2 3 MOVZ,  0 DBASE 0 ADDI,  1 REGION LIT64,  LPROT LABEL@ BL,
    6 SP 0 LDR,   7 SP 8 LDR,   11 SP 16 LDR,  12 SP 24 LDR,
    15 SP 32 LDR, 21 SP 40 LDR, 25 SP 48 LDR,  16 SP 56 LDR,
@@ -9510,24 +8717,20 @@ ardone LBL,
    snbad LBL,                                                              \ corrupt/truncated trailer: label the fd-2 diagnostic before exit 79
       1 LSNAPBAD LABEL@ ADR,  0 2 MOVZ,  2 SNAPBAD-MSG-LEN MOVZ,  NR-WRITE SYS,
       0 79 MOVZ,  NR-EXIT-GROUP SYS,
-   snbadver LBL,                                                           \ E-SNAP-VERSION: image format newer than engine supports; label before exit 80
+   snbadver LBL,                                                           \ image format newer than engine supports; label before exit 80
       1 LSNAPVER LABEL@ ADR,  0 2 MOVZ,  2 SNAPVER-MSG-LEN MOVZ,  NR-WRITE SYS,
       0 80 MOVZ,  NR-EXIT-GROUP SYS,
    snok LBL,
    RELOC-EMIT:LINDEXRELEASE LABEL@ BL,
    9 DATA ARGC-CELL LDR,  10 DATA ARGV-CELL LDR,  0 DATA ENVP-CELL LDR,
-   \ The return and loop stacks are mappings this process made, so the image's
-   \ copies of their base cells are another run's addresses. The data stack
-   \ survives the copy in XDS, a pinned register; these two have no register, so
-   \ they ride the machine stack across it and are republished beside XDS below.
-   \ So do the three AOT-SPAN cells EM-SEED-AOT published for THIS boot: the
-   \ table is in this text and the blob in this region, and the image's copies
-   \ name the writing run's. A keyed linker image read the writer's table on
-   \ every link that reached a stripped engine word - SIGSEGV in AOT-W32@ under
-   \ SPAN-START where the address was unmapped, a refusal naming no real target
-   \ where it was not (tools/hb-build-stripped-test.f HBT-STRIPPED-ENGINE-CELLS).
-   \ x13 is the copy loops' own scratch; x11 holds the snapshot text size the
-   \ text pass below still needs, and x9/x10/x0 carry argc/argv/envp.
+   \ The image's return- and loop-stack base cells name another run's mappings;
+   \ the data stack survives in XDS, so these two ride the machine stack across
+   \ the copy and are republished beside XDS below. So do the three AOT-SPAN
+   \ cells EM-SEED-AOT published for this boot: the image's copies name the
+   \ writer's table and blob (a keyed linker image then hit SIGSEGV in AOT-W32@
+   \ under SPAN-START; tools/hb-build-stripped-test.f HBT-STRIPPED-ENGINE-CELLS).
+   \ x13 is the copy loops' scratch; x11 holds the snapshot text size the text
+   \ pass needs; x9/x10/x0 carry argc/argv/envp.
    SP SP 64 SUBI,
    13 DATA STACK-ABI:RETURN-BASE-CELL LDR,  13 SP 0 STR,
    13 DATA STACK-ABI:LOOP-BASE-CELL LDR,    13 SP 8 STR,
@@ -9536,8 +8739,8 @@ ardone LBL,
    13 DATA AOT-CELLS:SPAN-N-CELL LDR,      13 SP 32 STR,
    13 DATA AOT-CELLS:SPAN-BASE-CELL LDR,   13 SP 40 STR,
    13 DATA EM-DEF-OCC:PTR-CELL LDR,       13 SP 48 STR,
-   \ Restore live rows and code to their original runtime offsets. The gap is
-   \ cleared explicitly because cold AOT seeding has touched dictionary pages.
+   \ Restore live rows and code to their runtime offsets. The gap is cleared
+   \ explicitly because cold AOT seeding has touched dictionary pages.
    0 DBASE 0 ADDI,  1 21 0 ADDI,  5 DREC MOVZ,  2 15 5 MUL,
    EM-SNAPSHOT-COPY
    0 DBASE 2 ADD,  5 DICT-SIZE LIT64,  2 5 2 SUB,
@@ -9594,17 +8797,14 @@ ardone LBL,
    9 15 0 ADDI,  EM-DEF-OCC:LRESET LABEL@ BL,
    CP DBASE 6 ADD,
    8 DBASE 0 ADDI,
-   \ region pass FIRST: the RBASE-VA sentinel -> live region base (DBASE). Running it
-   \ before the text pass keeps each pass's live output out of the other's canonical
-   \ detection band, correct on both non-PIE (Linux) and PIE (macOS, where the region
-   \ slides with __text). x6 = region payload len.
+   \ Region pass first (RBASE-VA sentinel -> DBASE), so each pass's live output
+   \ stays out of the other's canonical band on both non-PIE Linux and PIE macOS,
+   \ where the region slides with __text. x6 = region payload len.
    21 RBASE-VA LIT64,  22 6 0 ADDI,  25 DBASE 0 ADDI,
    LSNAPRBD LABEL@ BL,
-   \ The address-literal pass runs once per band, right behind the dictionary walk
-   \ that band belongs to, and takes the same (x21,x22,x25) triple. It scans the
-   \ live region, so it needs x8 and the payload length in x11 -- and x11 still
-   \ holds the snapshot text size the text pass below has to have, so the three
-   \ values that pass clobbers are parked on the machine stack across both calls.
+   \ The address-literal pass runs once per band behind that band's dictionary
+   \ walk, with the same triple. It needs x8 and the payload length in x11, and
+   \ x11 holds the text size the text pass needs, so x6/x7/x11 are parked.
    SP SP 32 SUBI,  6 SP 0 STR,  7 SP 8 STR,  11 SP 16 STR,
    11 6 0 ADDI,
    RELOC-EMIT:LADDRS LABEL@ BL,
@@ -9619,23 +8819,19 @@ ardone LBL,
    RELOC-EMIT:LADDRS LABEL@ BL,
    6 SP 0 LDR,  7 SP 8 LDR,  11 SP 16 LDR,
    SP SP 32 ADDI,
-   \ call pass, the inverse of the writer's: the image carries every region-to-text
-   \ call at the canonical REGION-OFF distance, so add back the difference between
-   \ that and the distance this run actually got. The call map itself arrived with
-   \ the DATA copy above and is indexed by region offset, so it needs no rebasing.
+   \ Call pass, the writer's inverse: add back REGION-OFF minus this run's
+   \ distance. The call map is indexed by region offset and needs no rebase.
    10 REGION-OFF LIT64,  9 DBASE 25 SUB,  10 10 9 SUB,  \ x10 = REGION-OFF - live distance
    11 6 0 ADDI,  8 DBASE 0 ADDI,                        \ x11 = region payload length, x8 = live region
    RELOC-EMIT:LCALLS LABEL@ BL,
-   \ address-cell pass: every DATA cell that was declared to hold a region address
-   \ arrived relative to the RBASE-VA sentinel (snap-lib.f canonicalised it on the
-   \ way out), so map it onto the region this run actually got. DATA is copied
-   \ verbatim, so nothing else would ever move these cells.
+   \ Address-cell pass: declared cells arrive relative to the RBASE-VA sentinel
+   \ (snap-lib.f canonicalised them); map them onto this run's region.
    10 DBASE 0 ADDI,  9 RBASE-VA LIT64,  10 10 9 SUB,
    RELOC-EMIT:LXT LABEL@ BL,
    24 1 MOVZ,
    24 DATA SNAP-CELL STR,
-   \ The restored process owns a new source policy. The writer clears its
-   \ captured copy too; this also normalizes images written before that fix.
+   \ The restored process owns a new source policy; the writer clears its
+   \ captured copy too.
    9 0 MOVZ,  9 DATA POLICY-NDICT-CELL STR,
    9 DATA POLICY-REQUIRE-CELL STR,
    10 POLICY-BITS-OFF MOVZ,  10 DATA 10 ADD,
@@ -9646,8 +8842,8 @@ ardone LBL,
    snomag LBL, ;
 
 \ The running image's text content size, read from its header as
-\ EM-SNAPSHOT-RESTORE reads it, for the source words that bound the engine's
-\ text (layout.f TEXT-SIZE-CELL). Stored with CODE-END-CELL at both of its sites.
+\ EM-SNAPSHOT-RESTORE reads it, for layout.f TEXT-SIZE-CELL. Stored with
+\ CODE-END-CELL at both of its sites.
 : EM-TEXT-SIZE ( -- )
    9 DATA RBASE-CELL LDR,  10 CODE-OFF LIT64,  9 9 10 SUB,
    9 9 IMAGE-TEXT-SIZE-OFF LDR,  10 IMAGE-TEXT-CONTENT-ADJ LIT64,  9 9 10 SUB,
@@ -9655,9 +8851,8 @@ ardone LBL,
 
 : EM-STARTUP-COLD-BASELINE ( -- )
    LBL LBL {: pwclr:label pwclrd:label :}
-   \ Seeded boot-run words need this bound and TEXT-SIZE-CELL before snapshot
-   \ restore. Restore replaces DATA, so EM-STARTUP-RUNTIME-STATE publishes both
-   \ again afterward.
+   \ Seeded boot-run words need this bound and TEXT-SIZE-CELL before restore;
+   \ restore replaces DATA, so EM-STARTUP-RUNTIME-STATE publishes both again.
    10 LSRC LABEL@ ADR,  10 DATA CODE-END-CELL STR,
    EM-TEXT-SIZE
    9 0 MOVZ,  9 DATA CUR-CELL STR,
@@ -9679,9 +8874,7 @@ ardone LBL,
    9 DATA NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:ORIGIN-TAKE cells + STR,
    9 DATA NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:PENDING-TAKE cells + STR,
    9 DATA NATIVE-HOST-CELLS:SELECT STR,
-   \ Tier 0 is the cold default: a session that selects nothing runs the JIT.
-   \ Stored rather than left to the zeroed DATA page, so the default is a line
-   \ someone can find and change, next to the dispatch it selects.
+   \ Tier 0 (the JIT) is the cold default.
    9 DATA NCOMP-DISPATCH:TIER-CELL STR,
    9 DATA APP-ENTRY:XT-CELL STR,
    9 DATA NCOMP-DISPATCH:DECL-CELL STR,
@@ -9695,11 +8888,8 @@ ardone LBL,
    9 ADDRESS-CELLS:BOOT-CAP LIT64, 9 10 ADDRESS-CELLS:CAP-FIELD STR,
    9 0 MOVZ, 9 10 ADDRESS-CELLS:MODE-FIELD STR,
    \ The four hooks, the suspended hook pair and the compiler-dispatch cell hold
-   \ execution tokens once something installs them, so they are address cells like
-   \ a deferred word's dispatch cell. They are
-   \ declared here, by name, on the cold path only: a restored image already
-   \ carries the declarations the writing run made, and re-declaring is not the
-   \ same thing as declaring twice only because the table refuses duplicates.
+   \ execution tokens, so they are address cells. Declared on the cold path
+   \ only: a restored image carries the writing run's declarations.
    HOOK-CELL RELOC-EMIT:MARK-CELL
    COMPILE-PREFLIGHT-CELL RELOC-EMIT:MARK-CELL
    SUSP-HOOK-CELL RELOC-EMIT:MARK-CELL
@@ -9724,10 +8914,8 @@ ardone LBL,
    LASTC-CELL RELOC-EMIT:MARK-CELL
    9 DATA NCOMP-DISPATCH:DECL-CELL ADDI,  RELOC-EMIT:LPTRMARK LABEL@ BL,
    9 DATA NCOMP-DISPATCH:TARGET-DECL-CELL ADDI,  RELOC-EMIT:LPTRMARK LABEL@ BL,
-   \ Constructor registry starts empty: clear the whole bitmap, then publish the shape
-   \ tag. The old count cell made "empty" a single store; a bitmap has to be zeroed in
-   \ full, and a cold boot is the only path that may do it (a restored image carries
-   \ the declarations its writing run made).
+   \ The constructor registry starts empty: clear the whole bitmap, then publish
+   \ the shape tag. Cold boot only; a restored image carries its declarations.
    9 0 MOVZ,
    10 PROT-BITS-OFF MOVZ,  10 DATA 10 ADD,
    11 PROT-BITS-BYTES MOVZ,
@@ -9754,7 +8942,7 @@ ardone LBL,
    9 DATA BOOT-SRC:USER-END STR,
    9 DATA BPWN-CELL STR,
    9 DATA PKG-PUB-CELL STR,  9 DATA PKG-PRI-CELL STR,  9 DATA PKG-PARENT-CELL STR,  9 DATA PKG-REC-CELL STR,  9 DATA LOOPSP-CELL STR,
-   9 DATA PKGRESYNC-CELL STR,                            \ checker resync latch clear at boot (dot habu-recovery-pkg-scope)
+   9 DATA PKGRESYNC-CELL STR,                            \ checker resync latch clear at boot
    9 DATA P2-CELL STR,  9 DATA P2BODY0-CELL STR,
    9 DATA P2INP-CELL STR,  9 DATA P2INE-CELL STR,
    9 DATA P2W0-CELL STR,  9 DATA P2W1-CELL STR,  9 DATA P2W2-CELL STR,  9 DATA P2W3-CELL STR,
@@ -9763,23 +8951,19 @@ ardone LBL,
    9 DATA TXN-CERT-A-CELL STR,  9 DATA TXN-CERT-U-CELL STR,  9 DATA TXN-BIND-I-CELL STR,
    9 DATA TXN-WF-I-CELL STR,  9 DATA TXN-FETCH-I-CELL STR,
    9 DATA TXN-BLOB-A-CELL STR,  9 DATA TXN-BLOB-CAP-CELL STR,
-   \ No signal fd inherited from a restored snapshot: snap-lib.f SND-COPY carries
-   \ DATA from offset zero through DP, so an image written while a program had
-   \ the stub armed carries that program's descriptor number, which names nothing
-   \ this process ever opened.
+   \ No signal fd from a restored snapshot: snap-lib.f SND-COPY carries DATA
+   \ through DP, so an image written with the stub armed names a descriptor
+   \ this process never opened.
    9 DATA SIGNAL-ABI:FD-CELL STR,
-   \ No idle closed-text stack either: the list names mappings of the process
-   \ that wrote the bytes.
+   \ No idle closed-text stack: the list names the writing process's mappings.
    9 DATA CLOSED-FREE-CELL STR,
-   \ The engine's own handler is baked beside this startup, so ADR reaches it and
-   \ every generation of every build chain measures that. A stripped image's
-   \ handler is not: src/habu/aot-lib.f EMIT-ENTRY loads the same register with
-   \ TEXT-ADR, instead, which is why the installer takes the address in x11.
+   \ The engine's handler is baked beside this startup, so ADR reaches it; a
+   \ stripped image's is not, and src/habu/aot-link-arm.f EMIT-ENTRY loads it
+   \ with TEXT-ADR, so the installer takes the address in x11.
    11 LCRASHH LABEL@ ADR,  G-INSTALL-CRASH-X11
    G-INSTALL-TRAP
-   \ Publish the baked signal stub and the address of the word it reads, so a
-   \ program installs the stub and arms it without spelling either (layout.f
-   \ package SIGNAL-ABI). Both are written on every boot, like the entries above.
+   \ Publish the baked signal stub and the word it reads (layout.f package
+   \ SIGNAL-ABI), on every boot.
    9 LSIGH LABEL@ ADR,  9 DATA SIGNAL-ABI:STUB-CELL STR,
    9 DATA-VA VA>N SIGNAL-ABI:FD-CELL + LIT64,  9 DATA SIGNAL-ABI:FD-PTR-CELL STR,
    9 LDOESPATCH LABEL@ ADR,  9 DATA DOESP-CELL STR,
@@ -9798,14 +8982,12 @@ ardone LBL,
    9 DATA DOESB-CELL STR,  9 DATA CLAUSE-CELL STR,
    9 DATA TRUSTED-CELL STR, ;
 
-\ The seed has installed the complete cold runtime. Seal that target dictionary
-\ before any user token; a warm snapshot restore may then replace both cells with
-\ the floor and latch persisted by that snapshot.
-\ Emitted only for a complete runtime capture (SEEDED-RUNTIME?): an empty or
-\ partial capture's runtime ends after the cold prefix, not here. The
-\ latch closes the friend arena's range guard (habu1.f GUARD-SPAN), which the
-\ prefix source itself needs open to write the crown-jewel cells, so arming it
-\ ahead of that source would trap the engine's own boot fail-closed.
+\ The seed has installed the complete cold runtime: seal that target dictionary
+\ before any user token; a warm restore may replace both cells with the
+\ snapshot's floor and latch. Only for a complete runtime capture
+\ (SEEDED-RUNTIME?). The latch closes the friend arena's range guard (habu1.f
+\ GUARD-SPAN), which the prefix source needs open to write its cells, so arming
+\ it earlier traps the engine's own boot.
 : EM-SEAL-SEEDED-RUNTIME ( -- )
    SEEDED-RUNTIME? 0= if exit then
    NDICT DATA SEAL-NDICT-CELL STR,
@@ -9817,10 +8999,10 @@ ardone LBL,
    9 BLR,
    done LBL, ;
 
-\ The restored dictionary received fresh process-local occurrence numbers.
-\ Refresh each retained checker owner's exact links after that reset and after
-\ relocation, before any saved application word can query its contracts. A
-\ retained source owner may predate the appended callback, so read its size.
+\ The restored dictionary has fresh process-local occurrence numbers. Refresh
+\ each retained checker owner's links after that reset and relocation, before
+\ any saved word queries its contracts. A retained source owner may predate
+\ the appended callback, so read its size.
 : EM-RECORD-LINK-RESTORE ( -- )
    LBL LBL {: source:label done:label :}
    9 DATA SNAP-CELL LDR,  9 done CBZ,
@@ -9871,9 +9053,8 @@ ardone LBL,
    EM-FRAME-STACKS
    EM-STARTUP-COLD-BASELINE
    SEEDED-RUNTIME? if
-      \ The seed registers its records through LHIDXADD and resolves every
-      \ baked call site by name; both need the index, and without it each
-      \ lookup walked the whole dictionary (129,729 scans, 1.3 s per start).
+      \ The seed's LHIDXADD and by-name site resolution need the index; without
+      \ it each lookup walked the dictionary (129,729 scans, 1.3 s per start).
       LHIDXBUILD LABEL@ BL,
       LAOTPROT LABEL@ BL,
       EM-SEED-AOT
@@ -9888,17 +9069,14 @@ ardone LBL,
    EM-APPLICATION-START
    EMIT-SOURCE ;
 
-\ Checker package-scope resync drain (dot habu-recovery-pkg-scope-e0bd98e2). A
-\ throw's recovery rolls the ENGINE package scope back to the boundary (PKGSNAP /
-\ RPKG); the checker keeps its OWN package mirror (CHECKER-PACKAGE-MODE/NAME/U),
-\ which the failed input's `package` and `;package` moved. The recovery legs arm
-\ PKGRESYNC-CELL; this drain clears it and has the target checker re-read the
-\ restored scope (checker.f CHECKER-RESYNC), whatever that scope is: when
-\ it reset the checker only for a GLOBAL scope, a package open across the
-\ boundary whose failing input closed it left the checker at top level, and the
-\ next inherited replay refused E-PKG-CONTEXT. LEVALREC drains before it
-\ delivers the throw; the LMAIN loop top drains the REPL leg's. Hot path is one
-\ LDR + CBZ per token when the flag is clear.
+\ Checker package-scope resync drain. A throw's recovery rolls the engine
+\ package scope back (PKGSNAP / RPKG), but the checker's own mirror
+\ (CHECKER-PACKAGE-MODE/NAME/U) moved with the failed input. Recovery arms
+\ PKGRESYNC-CELL; this drain clears it and has the checker re-read the restored
+\ scope (checker.f CHECKER-RESYNC) whatever it is: resyncing only a global scope
+\ left a package open across the boundary refusing E-PKG-CONTEXT. LEVALREC
+\ drains before delivering the throw; the LMAIN loop top drains the REPL leg's.
+\ One LDR + CBZ per token when clear.
 : EM-PKG-RESYNC ( -- )
    LBL {: nosync:label :}
    9 DATA PKGRESYNC-CELL LDR,  9 nosync CBZ,
@@ -9971,9 +9149,9 @@ public
       C-DIE-DOES
    first LBL,
    DOES-REC:REJECT-DUP
-   \ DOESB after the signature, as J-DOES sets it: before, a malformed one
-   \ caught inside an immediate word's evaluate left DOESB on a definition with
-   \ no clause, and its `;` died in the native compiler (rc 67).
+   \ DOESB after the signature, as J-DOES sets it: a malformed one caught inside
+   \ an immediate's evaluate would leave DOESB on a definition with no clause,
+   \ and its `;` died in the native compiler (rc 67).
    C-PARSE-CREATED-SIG
    9 DATA BODYLEN-CELL LDR,  9 DATA DOESB-CELL STR,
    9 1 MOVZ,  9 DATA CLAUSE-CELL STR,
@@ -10002,13 +9180,12 @@ public
    LMAIN LABEL@ LKWECQ    3 ['] CAPTURE-ESCAPED-STRING CFN-ENTRY
    LMAIN LABEL@ LKWEDOTQ  3 ['] CAPTURE-ESCAPED-STRING CFN-ENTRY ;
 
-\ A parsing word owns its next token raw, as tier 0's C-BCHAR and C-BTICK
-\ read it and as the Habu loop captures it (src/habu/definers.f COMPILING?,
-\ src/lib/source-syntax.f PARSING-KEYWORD?). Taking it here, before LMAIN
-\ reads it, keeps an operand that spells `;`, a comment opener or a string
-\ opener data. A source that ends at the keyword dies as tier 0's does. A live
-\ local of the keyword's spelling never gets here: CAPTURE-IMMEDIATE matches
-\ locals first, as COMPILING? asks BODY-LOCAL? before PARSING-KEYWORD?.
+\ A parsing word owns its next token raw, as tier 0's C-BCHAR and C-BTICK read
+\ it and the Habu loop captures it (src/habu/definers.f COMPILING?,
+\ src/lib/source-syntax.f PARSING-KEYWORD?). Taking it before LMAIN reads it
+\ keeps an operand spelling `;`, a comment or a string opener as data. A source
+\ ending at the keyword dies as tier 0's does. A live local of the keyword's
+\ spelling never gets here: CAPTURE-IMMEDIATE matches locals first.
 : CAPTURE-OPERAND-ROW ( label n -- ) {: kw:label kwlen:n :}
    LBL LBL {: skip:label named:label :}
    0 kw ADR,  1 kwlen MOVZ,  LKWCMP LABEL@ BL,
@@ -10029,11 +9206,10 @@ public
 private
 
 \ A block keyword scopes the captured locals as src/habu/definers.f
-\ BODY-BLOCK-STEP scopes x86-64's, over src/lib/source-syntax.f's
-\ BLOCK-OPENER? and BLOCK-CLOSER? sets: an opener raises CAPDEPTH-CELL, `else`
-\ drops the locals declared at the current depth, and a closer drops them and
-\ lowers it. Like BODY-BLOCK-STEP it runs after the local match and only while
-\ a local is live, so a body with no locals compares nothing.
+\ BODY-BLOCK-STEP does for x86-64, over src/lib/source-syntax.f BLOCK-OPENER?
+\ and BLOCK-CLOSER?: an opener raises CAPDEPTH-CELL, `else` drops the locals of
+\ the current depth, a closer drops them and lowers it. Runs after the local
+\ match and only while a local is live.
 : CAPTURE-BLOCK ( -- )
    LBL LBL LBL LBL LBL LBL LBL
    {: done:label opener:label alt:label closer:label scan:label walk:label kept:label :}
@@ -10089,26 +9265,24 @@ private
 
 public
 
-\ THE DESIGN SEAL GATES EVERY BODY TOKEN HERE, where tier 1 reads it, with tier
-\ 0's predicate, so a token outside the vocabulary is refused at its own line at
-\ both tiers and nothing is left for the native compiler to refuse. Under the
-\ seal a body token is admitted when it is
+\ The design seal gates every body token here with tier 0's predicate, so a
+\ token outside the vocabulary is refused at its own line at both tiers. Under
+\ the seal a body token is admitted when it is
 \   1. a local this body declared in a block still open, matched before any
-\      lookup as tier 0 matches its locals: `{:` records its names as tier 0's
-\      C-LBRACE does, and CAPTURE-BLOCK ends them with their block;
-\   2. a record LFIND answers and LPOLICYREC admits, which is the record NCOMP
-\      binds: src/compiler/native/dict.f walks the same legs in the same order;
-\   3. on a miss, a used package's record, probed through LFINDUSED (NCOMP's
-\      used-publics leg) and admitted by LPOLICYREC. The probe only gates and
-\      then takes the miss, so a used package's immediate still does not run;
+\      lookup: `{:` records its names as tier 0's C-LBRACE does, and
+\      CAPTURE-BLOCK ends them with their block;
+\   2. a record LFIND answers and LPOLICYREC admits, the record NCOMP binds
+\      (src/compiler/native/dict.f walks the same legs in the same order);
+\   3. on a miss, a used package's record via LFINDUSED and LPOLICYREC; the probe
+\      only gates and then takes the miss, so a used package's immediate does not
+\      run;
 \   4. on a miss, a number;
-\   5. on a miss, a body keyword of the design span: if, else, then, s", S\" or {:,
-\      whose names and `:}` the locals parse consumes, so a `:}` outside a
-\      group is refused as tier 0 refuses it. Every other keyword row, `does>`
-\      and the other string forms among them, is refused here before
-\      CAPTURE-DOES or CAPTURE-STRING reads it.
+\   5. on a miss, a design-span body keyword: if, else, then, s", S\" or {:,
+\      whose names and `:}` the locals parse consumes, so a stray `:}` is refused
+\      as tier 0 refuses it. Every other keyword row, `does>` and the other
+\      string forms among them, is refused before CAPTURE-DOES or CAPTURE-STRING.
 \ Anything else is refused at LPOLICY. Unsealed, locals are matched, scoped and
-\ recorded the same way, as x86-64's src/habu/definers.f COMPILING? does, and
+\ recorded the same way (as src/habu/definers.f COMPILING? does for x86-64) and
 \ every other test falls through to the plain capture.
 : CAPTURE-IMMEDIATE ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
@@ -10123,9 +9297,8 @@ public
    gated LBL,
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,
    \ Decide in x16: 0 passive, 1 execute now, 2 parse does>. x13/x5/x11 are
-   \ LFIND's selected result; x9/x10 are the original spelling. A non-immediate
-   \ does> remains an ordinary captured token, while a neutral immediate executes
-   \ now.
+   \ LFIND's result; x9/x10 the original spelling. A non-immediate does> stays
+   \ an ordinary captured token; a neutral immediate executes now.
    SP SP 64 SUBI,
    30 SP 0 STR,  9 SP 8 STR,  10 SP 16 STR,
    5 SP 24 STR,  11 SP 32 STR,  13 SP 40 STR,
@@ -10193,16 +9366,8 @@ public
 : EM-COMPILE ( -- )
    LBL {: notsemi:label :}
    LENTRY LABEL@ LBL,
-   \ Tier 1's body loop. THE TIER IS NOT RE-TESTED HERE, and the reason is a
-   \ boot-path fact rather than a preference: EM-STARTUP ends without a branch,
-   \ so cold boot FALLS THROUGH into whatever EMIT-MAIN emits next, which is
-   \ this label. A tier test at this head therefore runs once at boot with
-   \ TKL = 0, and on tier 0 it dispatched that empty token into LCOMPILE, which
-   \ walked the legacy loop to its undefined-word tail and exited 70 with
-   \ "E-UNDEFINED: " and a blank name before any input was read.
-   \ EM-COMMENT is the routing site; this is tier 1's loop body, entered only
-   \ from there. EMIT-MAIN now branches boot to LMAIN explicitly so the
-   \ fall-through is no longer load-bearing either way.
+   \ Tier 1's body loop, entered only from EM-COMMENT, which routes by tier; the
+   \ tier is not re-tested here.
    9 DATA TKL-CELL LDR,  9 1 CMPI,  C-NE notsemi BCOND,
    9 DATA TKA-CELL LDR,  9 9 0 LDRB,  9 59 CMPI,  C-NE notsemi BCOND,
       C-DEF-SOURCE-CLOSE
@@ -10392,15 +9557,15 @@ public
    LMAIN LABEL@ LBL,
       EM-PKG-RESYNC
       \ The depth floor: a token that left the stack below the active base is
-      \ named by the E-UNDERFLOW diagnostic (TKA/TKL still hold it). This is
-      \ the interpreter's only bounds check; compiled code has none, and a
-      \ push past the capacity faults on the stack's guard page.
+      \ named by E-UNDERFLOW (TKA/TKL still hold it). This is the interpreter's
+      \ only bounds check; compiled code has none, and a push past capacity
+      \ faults on the stack's guard page.
       9 DATA S0-CELL LDR,  XDS 9 CMP,  C-CC LUNDERFLOW LABEL@ BCOND,
       15 0 MOVZ,  LSOURCEEXECFINISH LABEL@ BL,
       \ The token-start mark (layout.f TOKBODY-CELL): a throw that leaves an
       \ outer buffer's definition compiling puts it back (EM-EVAL-THROW-RECOVER).
-      \ Stored before LTOK, so the pass that meets a buffer's end marks
-      \ everything its last token compiled.
+      \ Stored before LTOK, so the pass that meets a buffer's end marks all its
+      \ last token compiled.
       9 DATA BODYLEN-CELL LDR,  9 DATA TOKBODY-CELL STR,
       9 DATA LOCN-CELL LDR,  9 DATA TOKLOCN-CELL STR,
       9 DATA CAPDEPTH-CELL LDR,  9 DATA TOKDEPTH-CELL STR,
@@ -10420,27 +9585,22 @@ public
       notcom LBL,
       C-UNIT-DISPATCH
       9 DATA PEND-CELL LDR,  9 notcompile CBZ,
-      \ A body token, so hand it to the selected compiler's loop: tier 0's
-      \ LCOMPILE head, or tier 1's LENTRY with the optimizing entry loaded.
-      \ This is the site 04187fff replaced with an unconditional LOAD; before
-      \ it, a missing native compiler fell through to LCOMPILE here.
+      \ A body token goes to the selected compiler's loop: tier 0's LCOMPILE
+      \ head, or tier 1's LENTRY with the optimizing entry loaded.
       9 DATA NCOMP-DISPATCH:DEF-TIER-CELL LDR,  9 LCOMPILE LABEL@ CBZ,
       NCOMP-EMIT:LOAD
       NCOMP-EMIT:LENTRY LABEL@ B,
       notcompile LBL, ;
 
-\ EM-INTERPRET-COLON and the checker-callback helpers bridge token dispatch to
-\ dynamically found checker package words.
-\
 \ The head opens the code window over CP's unit (PROT-PAGE-MAX) and leaves it
 \ open while this loop reads the body, since tier 0 emits each token at CP.
-\ Code compiled in that unit cannot run then, so every way out of the loop to
-\ compiled code closes the window first: a call from the body (an immediate
-\ word, a checker), evaluate's return to its caller (EM-EVAL-CLEAN-EXIT), the
-\ REPL's line reader (EM-REPL-READ), a throw past an evaluate (LEVALREC) and
-\ the exits that run the exit hook (LRBYE, LUNCAUGHT). `die` is compiled code,
-\ so it never runs under the window. When the head goes on, tier 0's next body
-\ token opens it again (EM-COMPILE-LEGACY); tier 1 only captures until `;`.
+\ Code in that unit cannot run meanwhile, so every way out to compiled code
+\ closes the window first: a call from the body (an immediate word, a checker),
+\ evaluate's return (EM-EVAL-CLEAN-EXIT), the REPL's line reader
+\ (EM-REPL-READ), a throw past an evaluate (LEVALREC) and the exits that run the
+\ exit hook (LRBYE, LUNCAUGHT). `die` is compiled code, so it never runs under
+\ the window. Tier 0's next body token reopens it (EM-COMPILE-LEGACY); tier 1
+\ only captures until `;`.
 : EM-INTERPRET-COLON ( label -- )
    {: lnotcolon:label :}
    LBL LBL LBL LBL LBL {: cpok:label ndok:label named:label kcolon:label ktry:label :}
@@ -10537,8 +9697,6 @@ public
    C-CALL-X11-SAVED
    done LBL, ;
 
-\ C-PACKAGE-FAIL through C-PACKAGE-ENSURE validate names and allocate or reopen
-\ the native package record and its public/private wordlists.
 : C-PACKAGE-FAIL ( n -- ) {: rc:n :}                  \ package keyword misuse ($4A no name / $4B wrong context): recoverable inside evaluate, fail-closed exit rc at top level
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
    0 rc MOVZ,  LCOMPILEDIE LABEL@ B, ;
@@ -10577,10 +9735,9 @@ public
    EM-DEF-OCC:LAPPEND LABEL@ BL,  LHIDXADD LABEL@ BL,
    5 9 0 ADDI, ;
 
-\ The record this writes is one the SCAN found: `package NAME` reopening an
-\ existing package rewrites that record's private-WID cell, and the record can sit
-\ anywhere below the watermark. It is the reason a record band keyed on NDICT
-\ would be a lucky value rather than a rule, so it declares the record it found.
+\ The record this writes is one the scan found anywhere below the watermark
+\ (`package NAME` reopening a package rewrites its private-WID cell), so it
+\ declares that record; a record band keyed on NDICT would not cover it.
 : C-PACKAGE-EXISTING-PRIVATE ( label -- ) {: done:label :}
    LBL {: havepri:label :}
    12 havepri CBNZ,
@@ -10641,12 +9798,11 @@ public
    done LBL, ;
 
 \ Under the design seal (layout.f POLICY-NDICT-CELL) `package NAME` is refused
-\ when NAME's record sits below the stored NDICT: a package that existed at the
-\ seal. Inside it the package's private words would be searched before any
-\ admitted public word, so reopening one would widen the vocabulary. Only the
-\ records below the seal are scanned; a package the sealed source made itself
-\ lies above it and opens as usual. The refusal is the design seal's located
-\ line and ENGINE-ERROR:POLICY through LCOMPILEDIE.
+\ when NAME's record sits below the stored NDICT: reopening a package that
+\ existed at the seal would search its private words before any admitted public
+\ word. A package the sealed source made lies above the seal and opens as
+\ usual. The refusal is the seal's located line and ENGINE-ERROR:POLICY through
+\ LCOMPILEDIE.
 : C-PACKAGE-POLICY-GUARD ( -- )
    LBL LBL LBL LBL {: loop:label miss:label hit:label done:label :}
    LBL s" hb: policy: package " {: pre:label pa:ptr pu:n :}
@@ -10674,8 +9830,6 @@ public
    C-PACKAGE-PROT-GUARD
    ok LBL, ;
 
-\ C-PACKAGE and the following package/use/export/interpreter helpers emit namespace
-\ state transitions, token dispatch, and definition return paths.
 : C-PACKAGE ( -- )
    C-TASK-LIVE-GUARD
    LBL LBL LBL {: inactive:label hastok:label cold:label :}
@@ -10696,10 +9850,9 @@ public
    1 CP 4 ADDI,  PROT-EMIT:LOPEN LABEL@ BL,
    C-PACKAGE-ENSURE
    PROT-EMIT:LCLOSE LABEL@ BL,
-   \ remember the using-scope depth at package open; `;package` restores it so usings
-   \ opened inside this package block end at ;package, and `;using` refuses to pop
-   \ below it (C-END-USING) (x9=addr, x10=value scratch; x11/x12/x5 hold the package
-   \ wids/record and stay live for the stores below).
+   \ Remember the using depth at package open: `;package` restores it, and
+   \ `;using` refuses to pop below it (C-END-USING). x11/x12/x5 hold the
+   \ package wids/record for the stores below.
    9 USE-DEPTH-CELL LIT64,  9 DATA 9 ADD,  10 9 0 LDR,
    9 USE-PKG-SAVE-CELL LIT64,  9 DATA 9 ADD,  10 9 0 STR,
    9 DATA CUR-CELL LDR,  9 DATA PKG-PARENT-CELL STR,
@@ -10738,20 +9891,17 @@ public
    9 0 MOVZ,
    9 DATA PKG-PUB-CELL STR,  9 DATA PKG-PRI-CELL STR,
    9 DATA PKG-PARENT-CELL STR,  9 DATA PKG-REC-CELL STR,
-   \ restore the using-scope depth to the package-open boundary: usings opened inside
-   \ this package block end here (the checker reads the same shared USE-DEPTH).
+   \ Restore the using depth to the package-open boundary (the checker reads
+   \ the same shared USE-DEPTH).
    9 USE-PKG-SAVE-CELL LIT64,  9 DATA 9 ADD,  10 9 0 LDR,
    9 USE-DEPTH-CELL LIT64,  9 DATA 9 ADD,  10 9 0 STR, ;
 
-\ ---- `using NAME` / `;using`: consumer-side package import (dot habu-using-import-pkg-a07dd7ba) ----
-\ `using NAME` makes package NAME's PUBLIC wordlist visible to bare lookup until the
-\ matching `;using`, the enclosing `;package`, or the end of the load file; inside a
-\ package `;using` closes only a using the package opened. Only NAME's
-\ public WID joins the search (privates stay invisible), definitions still target the
-\ current scope's wordlist (nothing lands in NAME), and qualified NAME:WORD is unchanged.
-\ The used-publics search (EMIT-FIND-USED) runs only after the open-scope + global chain
-\ misses, so `using` is purely additive and can never silently shadow an existing binding;
-\ a bare tail resolving in two used packages is a hard error.
+\ `using NAME` adds NAME's public wordlist to bare lookup until the matching
+\ `;using`, the enclosing `;package` or the end of the load file; inside a
+\ package `;using` closes only a using the package opened. Definitions still
+\ target the current wordlist, and NAME:WORD is unchanged. EMIT-FIND-USED runs
+\ only after the open-scope + global chain misses, so `using` never shadows an
+\ existing binding; a bare tail resolving in two used packages is a hard error.
 
 : C-USING-NAME-GUARD ( -- )   \ consume the next token; reject a missing name / a ':' in it
    LBL LBL LBL LBL LBL LBL {: mmiss:label hastok:label cscan:label cbad:label cmsg:label cok:label :}
@@ -10774,15 +9924,11 @@ public
    cok LBL, ;
 
 : C-USING-WID ( -- )   \ TKA/TKL name a package -> x2 = its public WID; die unknown otherwise
-   \ The namespace rows (wid DICT-WL:NAMESPACE) are ordinary published records,
-   \ inserted by the same LHIDXADD as every definition and dup-walled by
-   \ C-PACKAGE-ENSURE (one record per package name), so `using` resolves its
-   \ package through the same one-wordlist hash probe the name lookup uses
-   \ (CG-26): hash the token once, walk the (name XOR -1) chain, and let
-   \ C-PACKAGE-RECORD-MATCH - the same word the scan judges a candidate with -
-   \ judge each probed record. An empty slot is the scan's own "no such
-   \ package". The scan below stays authoritative for the pre-LHIDXBUILD
-   \ window and the full-wrap chain, exactly as in LFIND.
+   \ Namespace rows (wid DICT-WL:NAMESPACE) are ordinary records indexed by
+   \ LHIDXADD and dup-walled by C-PACKAGE-ENSURE, so `using` finds its package
+   \ by the lookup's one-wordlist hash probe, judging each probed record with
+   \ C-PACKAGE-RECORD-MATCH; an empty slot is "no such package". The scan below
+   \ stays authoritative before LHIDXBUILD and for a full-wrap chain, as in LFIND.
    LBL LBL LBL LBL LBL LBL LBL LBL LBL
    {: loop:label miss:label hit:label notfound:label umsg:label done:label
       lscan:label plp:label pnx:label :}
@@ -10826,16 +9972,16 @@ public
    fmsg LBL,  fa fu BYTES,
    pushok LBL,
       7 USE-DEPTH-CELL LIT64,  7 DATA 7 ADD,  8 7 0 LDR,   \ reload depth on the accepted path (no cross-syscall live reg)
-      \ A buffer below its floor had a `;package` close a package opened before
-      \ it: its own usings start at this depth, so its floor comes down to meet
-      \ them (layout.f EVAL-FRAME:USE-FLOOR). The REPL has no frame and no floor.
+      \ A buffer whose `;package` closed a package opened before it: its usings
+      \ start at this depth, so its floor comes down to meet them (layout.f
+      \ EVAL-FRAME:USE-FLOOR). The REPL has no frame and no floor.
       9 DATA EVALD-CELL LDR,  9 nofloor CBZ,
          9 DATA EVAL-TOP-CELL LDR,  10 9 EVAL-FRAME:USE-FLOOR LDR,
          10 8 CMP,  10 10 8 C-LS CSEL,  10 9 EVAL-FRAME:USE-FLOOR STR,   \ floor = the lower of floor and depth
       nofloor LBL,
       14 USE-WIDS-OFF LIT64,  14 DATA 14 ADD,  15 8 3 LSLI,  14 14 15 ADD,  2 14 0 STR,   \ USE-WIDS[depth] = wid
-      C-CALL-CHECKER-USING                                 \ mirror name into CHK-USE-NAMES[depth] (reads pre-increment depth)
-      7 USE-DEPTH-CELL LIT64,  7 DATA 7 ADD,  8 7 0 LDR,  8 8 1 ADDI,  8 7 0 STR, ;      \ depth++
+      C-CALL-CHECKER-USING                                 \ mirror name into CK-USE-NAMES[depth] (reads pre-increment depth)
+      7 USE-DEPTH-CELL LIT64,  7 DATA 7 ADD,  8 7 0 LDR,  8 8 1 ADDI,  8 7 0 STR, ;
 
 : C-USING ( -- )
    C-TASK-LIVE-GUARD
@@ -10856,9 +10002,9 @@ public
       0 93 MOVZ,  LCOMPILEDIE LABEL@ B,               \ 93 = ENGINE-ERROR:USING-UNBALANCED
    umsg LBL,  ua uu BYTES,
    ok LBL,
-   \ In an open package the most recent using must be the package's own. One opened
-   \ before `package` sits at or below the depth the package opened at, which
-   \ `;package` restores, so closing it here would silently come undone there.
+   \ In an open package the most recent using must be the package's own: one
+   \ opened before `package` lies at or below the depth `;package` restores, so
+   \ closing it here would come undone there.
    9 DATA PKG-PUB-CELL LDR,  9 own CBZ,                     \ no package open -> any open using closes
    9 USE-PKG-SAVE-CELL LIT64,  9 DATA 9 ADD,  9 9 0 LDR,    \ x9 = depth at package open
    7 USE-DEPTH-CELL LIT64,  7 DATA 7 ADD,  8 7 0 LDR,       \ reload depth (no cross-syscall live reg)
@@ -10867,9 +10013,9 @@ public
       0 104 MOVZ,  LCOMPILEDIE LABEL@ B,              \ 104 = ENGINE-ERROR:USING-OUTER
    omsg LBL,  oa ou BYTES,
    own LBL,
-   \ Nor may a buffer close a using its includer opened: one at or below the
-   \ buffer's floor (layout.f EVAL-FRAME:USE-FLOOR) would come back open when the
-   \ buffer ends, and a using the buffer opened next would take its slot.
+   \ Nor may a buffer close a using its includer opened (at or below the
+   \ buffer's floor, layout.f EVAL-FRAME:USE-FLOOR): it would reopen when the
+   \ buffer ends and a later using would take its slot.
    9 DATA EVALD-CELL LDR,  9 mine CBZ,                      \ the REPL closes any open using
    9 DATA EVAL-TOP-CELL LDR,  9 9 EVAL-FRAME:USE-FLOOR LDR,        \ x9 = the buffer's floor
    7 USE-DEPTH-CELL LIT64,  7 DATA 7 ADD,  8 7 0 LDR,       \ reload depth (no cross-syscall live reg)
@@ -10878,28 +10024,19 @@ public
       0 104 MOVZ,  LCOMPILEDIE LABEL@ B,              \ 104 = ENGINE-ERROR:USING-OUTER
    fmsg LBL,  fm fu BYTES,
    mine LBL,
-   7 USE-DEPTH-CELL LIT64,  7 DATA 7 ADD,  8 7 0 LDR,  8 8 1 SUBI,  8 7 0 STR, ;   \ reload depth (no cross-syscall live reg), depth--
+   7 USE-DEPTH-CELL LIT64,  7 DATA 7 ADD,  8 7 0 LDR,  8 8 1 SUBI,  8 7 0 STR, ;   \ reload depth (no cross-syscall live reg)
 
-\ EMIT-FIND-USED (LFINDUSED leaf): searched only after the open-scope + global chain
-\ misses. Input x9=token addr, x10=token len; output x13=0 (miss) or FIND-shaped flags
-\ (hit) with x11=code x12=body-len. The token is hashed once and each live
-\ USE-WIDS[0..depth) public wordlist is asked through the same one-wordlist hash
-\ probe LFIND and search-wl answer from - O(depth) chain walks instead of the
-\ O(NDICT * depth) whole-dictionary scan this leaf used to make (CG-26). The
-\ probe reproduces the scan exactly on these wids for BSWL's reason: a package
-\ public wordlist is guarded by the definer's duplicate wall, so it holds at
-\ most one live row per folded name. The same package used twice probes the
-\ same wid to the same record, which the record-identity dedupe counts once -
-\ the scan's own rule. A second DISTINCT record is the ambiguity hard error,
-\ exactly as in the scan. The scan is kept below as the authoritative answer
-\ for the two windows the probe cannot serve: no table yet (pre-LHIDXBUILD
-\ startup), and a chain walked through every slot without meeting an empty one.
-\ Qualified tokens (containing ':') never resolve here. Register/name-fold
-\ conventions mirror EMIT-FIND's authoritative linear scan; preserves
-\ x9/x10/x19(XDS)/x20(DATA). It publishes LFIND's record output too - x5 = the
-\ matched record on a hit, 0 on every miss - because a caller that reaches this
-\ leaf reaches it INSTEAD of LFIND, and one of the two answering a question the
-\ other cannot is how the two shapes drift apart.
+\ EMIT-FIND-USED (LFINDUSED leaf): searched only after the open-scope + global
+\ chain misses. In: x9=token addr, x10=token len. Out: x13=0 (miss) or FIND
+\ flags with x11=code x12=body-len, and x5 = the matched record (0 on a miss),
+\ because callers reach this instead of LFIND and both must answer the same
+\ shape. Each live USE-WIDS[0..depth) public wordlist is asked through LFIND's
+\ one-wordlist hash probe; this matches the scan because a public wordlist holds
+\ at most one live row per folded name (the definer's duplicate wall, BSWL's
+\ reason). One package used twice reaches one record, counted once; a second
+\ distinct record is the ambiguity error. The scan below stays authoritative
+\ before LHIDXBUILD and for a chain with no empty slot. Qualified tokens never
+\ resolve here. Preserves x9/x10/x19(XDS)/x20(DATA).
 : EMIT-FIND-USED ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
    LBL LBL LBL LBL LBL LBL LBL LBL LBL
@@ -10909,10 +10046,9 @@ public
       pcmp:label pmatch:label pamb:label :}
    s" hb: ambiguous bare word resolves in multiple used packages: " {: aa:ptr au:n :}
    \ The compile and interpret paths die on an ambiguous tail; scope-find
-   \ (BSCOPEFIND) reports it instead. The search is one leaf, LFINDUSED-CORE,
-   \ which answers x6 = the number of distinct records it met (0, 1, or 2),
-   \ and LFINDUSED is that leaf plus the death. At 2 no record binds
-   \ (x13 = 0, x5 = 0) and both are named: x16 first, x12 second.
+   \ (BSCOPEFIND) reports it. LFINDUSED-CORE answers x6 = distinct records met
+   \ (0, 1, 2); LFINDUSED adds the death. At 2 nothing binds (x13 = 0, x5 = 0)
+   \ and both are named: x16 first, x12 second.
    LFINDUSED LABEL@ LBL,
       SP SP 16 SUBI,  30 SP 0 STR,
       LFINDUSED-CORE LABEL@ BL,
@@ -10953,9 +10089,9 @@ public
       pinl LBL,
       13 0 MOVZ,
       pcmp LBL,
-         \ x2 and x11 carry the two bytes, x12 is the shared fold scratch; the
-         \ record pointer is recomputed from the slot at pmatch and the wid is
-         \ reloaded from USE-WIDS[x3] at pnext, so both survive by re-derivation
+         \ x2 and x11 carry the two bytes, x12 is the fold scratch; the record
+         \ pointer is recomputed at pmatch and the wid reloaded from USE-WIDS[x3]
+         \ at pnext.
          13 10 CMP,  C-GE pmatch BCOND,
          11 17 13 ADD,  11 11 0 LDRB,
          12 11 $41 SUBI,  12 $1A CMPI,  12 C-CC CSET,  12 12 5 LSLI,  11 11 12 ORR,
@@ -11032,15 +10168,13 @@ public
 
 package INTERP-EMIT
 public
-\ FIND-SHADOW (LFINDSHADOW leaf): the interpreter's half of the
-\ E-USING-SHADOW-GLOBAL rule (docs/forth.md "Importing a package's public words
-\ with `using`"), which the checker enforces in checked bodies. Called on
-\ LFIND's hit path with LFIND's outputs live, for the token in TKA/TKL. When the
-\ hit is a global (record wid 0) and a used public also exports the token, the
-\ token is refused by name with 105, through the compile-die tail: a throw
-\ inside evaluate, an exit at top level. Otherwise it returns with x5 and x11-x13 as LFIND left them; it clobbers
-\ what LFINDUSED does. Without it the global bound silently: `using PS` then a
-\ top-level `SHW` ran the global.
+\ FIND-SHADOW (LFINDSHADOW leaf): the interpreter's half of E-USING-SHADOW-GLOBAL
+\ (docs/forth.md "Importing a package's public words with `using`"); the checker
+\ enforces it in checked bodies. Called on LFIND's hit path with its outputs
+\ live, for the token in TKA/TKL. A global hit (record wid 0) that a used public
+\ also exports is refused by name with 105 through the compile-die tail (a
+\ throw inside evaluate, an exit at top level). Otherwise x5 and x11-x13 are as
+\ LFIND left them; it clobbers what LFINDUSED does.
 : FIND-SHADOW ( -- )
    LBL LBL LBL  s" hb: bare word a global and a used package both export: "
    {: ret:label shadow:label msg:label ma mu :}
@@ -11060,25 +10194,20 @@ public
    msg LBL,  ma mu BYTES, ;
 ;package
 
-\ LSCOPEREC: THE NAME LOOKUP, as one leaf for every reader but the call site
-\ itself. It runs the call site's two leaves in the call site's order (habu2.f
-\ EM-COMPILE-CALL): LFIND - the open package's private and public wordlists, then
-\ the global one, or NAME:tail - and, only as the binding when LFIND missed, the
-\ used publics. In: x9/x10 = the token, preserved. Out: x14 = the bound record
-\ (0 when nothing binds), x16 = the used publics' record (0 when none, the first
-\ of two), x17 = the second of two (0 below two), x15 = flags: 1 when the bound
-\ record is a seeded primitive, 2 when the used publics hold two distinct
-\ records. Two bind nothing when LFIND missed; both are named so that a reader
-\ can tell which candidate it would hide. Clobbers x2-x17 as the leaves do.
-\
-\ SEEDED IS THE IDENTITY OF AN OPERATOR ROW'S WORD. The boot copies the
-\ primitives' records to dict[0..LNCOUNT); every later record - a package word,
-\ an EXPORT alias, a redefinition after `undefine` - sits at LNCOUNT or above.
-\ An operator row lowers its token as the primitive of that spelling, so it may
-\ claim the token only when the lookup bound that primitive's own record: a
-\ spelling, or a record's wordlist, is not that identity (C-OP-ROW-GATE below,
-\ src/compiler/native/hir-word.f INTRINSIC-BOUND?). The checker names the same
-\ word by the identity NORET-AXIOMS registers on its symbol (src/core/checker.f
+\ LSCOPEREC: the name lookup as one leaf for every reader but the call site, in
+\ the call site's order (EM-COMPILE-CALL): LFIND (open package private, public,
+\ global, or NAME:tail), then the used publics only when LFIND missed. In:
+\ x9/x10 = the token, preserved. Out: x14 = the bound record (0 when nothing
+\ binds), x16 = the used publics' record (0 when none, the first of two), x17 =
+\ the second of two, x15 = flags: 1 when the bound record is a seeded primitive,
+\ 2 when the used publics hold two distinct records (then nothing binds and both
+\ are named). Clobbers x2-x17 as the leaves do.
+\ Seeded is the identity of an operator row's word: the boot copies the
+\ primitives' records to dict[0..LNCOUNT), and every later record (a package
+\ word, an EXPORT alias, a redefinition after `undefine`) sits above. An
+\ operator row may claim its token only when the lookup bound that primitive's
+\ own record (C-OP-ROW-GATE, src/compiler/native/hir-word.f INTRINSIC-BOUND?);
+\ the checker uses the identity NORET-AXIOMS registers (src/core/checker.f
 \ CTL-CORE-OP, CTL-INTRINSIC).
 : EMIT-SCOPE-REC ( -- )
    LBL LBL LBL {: two:label have:label notseed:label :}
@@ -11116,9 +10245,8 @@ public
    C-CALL-X11-SAVED ;
 
 \ Rewrite TKA/TKL to the tail of a NAME:tail token (DEF-TKA/DEF-TKL hold the
-\ original spelling). A leading/trailing first colon keeps the token an
-\ ordinary name (FIND parity); a malformed double-colon token never reaches
-\ here (LFIND already rejected it as undefined).
+\ original spelling). A leading or trailing first colon keeps the token an
+\ ordinary name (FIND parity); LFIND has already rejected a double colon.
 : C-EXPORT-TAIL! ( -- )
    LBL LBL LBL {: scan:label have:label done:label :}
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  17 0 MOVZ,
@@ -11133,18 +10261,17 @@ public
       12 10 17 SUB,  12 12 1 SUBI,  12 DATA TKL-CELL STR,
    done LBL, ;
 
-\ The clause an export of a does> definer carries (DOES-REC "the clause an
-\ export carries"), held at [sp+24] of C-EXPORT's frame and 0 for any other
-\ source. Its slot, the one above the export's own, and its name in the wordlist
-\ the export publishes into are refused here, before the checker hears of the
-\ export and before anything is written, with the codes the export's own slot
-\ and name are refused with.
 : C-DOES-OCC-ROOM ( -- )
    LBL {: none:label :}
    9 DATA DOESB-CELL LDR,  9 none CBZ,
    9 2 MOVZ,  EM-DEF-OCC:LROOM LABEL@ BL,
    none LBL, ;
 
+\ The clause an export of a does> definer carries (DOES-REC "the clause an
+\ export carries") sits at [sp+24] of C-EXPORT's frame, 0 for any other source.
+\ Its slot (above the export's own) and its name in the export's wordlist are
+\ refused here, before the checker hears of the export and before any write,
+\ with the codes the export's own slot and name get.
 : C-EXPORT-CLAUSE-ROOM ( -- )
    LBL LBL LBL {: none:label room:label fresh:label :}
    6 SP 24 LDR,  6 none CBZ,
@@ -11163,10 +10290,10 @@ public
    fresh LBL,
    none LBL, ;
 
-\ Write the clause's record in the slot above the export's own, which C-EXPORT
-\ has written and not yet counted: the clause's entry and length under the
-\ clause's name, in the export's wordlist. A long name is copied at CP as the
-\ export's own is, and a code ceiling that refuses it leaves both uncounted.
+\ Write the clause's record (its entry and length under its name, in the
+\ export's wordlist) in the slot above the export's own, which C-EXPORT has
+\ written and not yet counted. A long name is copied at CP as the export's is;
+\ a code ceiling that refuses it leaves both uncounted.
 : C-EXPORT-CLAUSE-RECORD ( -- )
    LBL LBL {: full:label none:label :}
    6 SP 24 LDR,  6 none CBZ,
@@ -11185,8 +10312,8 @@ public
       0 $4C MOVZ,  LCOMPILEDIE LABEL@ B,
    none LBL, ;
 
-\ A restored target checker may predate the appended origin callback. The
-\ export itself is already complete, so only a present target field is called.
+\ A restored target checker may predate the appended origin callback; only a
+\ present target field is called.
 : C-CALL-EXPORT-ACCEPT ( -- )
    LBL {: done:label :}
    11 DATA NCOMP-DISPATCH:TARGET-DECL-CELL LDR,  11 done CBZ,
@@ -11199,29 +10326,23 @@ public
    C-CALL-X11-SAVED
    done LBL, ;
 
-\ EXPORT keyword (dot habu-compiler-pkg-re-688212c1). Two documented roles
-\ split by package context, mirrored 1:1 by verify-source RECORD-EXPORT:
-\ - INSIDE an open package: publish an EXISTING word under its own tail into
-\   the CURRENT section wordlist — same code pointer, same body span,
-\   immediate/wide name bits copied — no forwarding body, zero runtime cost.
-\   Internal source words are refused before publication.
-\   A does> definer's export publishes its clause in the slot above, under
-\   the clause's name (C-EXPORT-CLAUSE-ROOM, C-EXPORT-CLAUSE-RECORD).
-\ - TOP LEVEL: the pre-existing hb-build --repl export directive surface
-\   (`EXPORT word…` keeps extra words callable; src/lib/prelude.f rides it).
-\   The engine consumes the name as a no-op, so directive-carrying programs
-\   stay directly loadable and compilable.
-\ Checker sync mirrors C-PACKAGE (CHECKER-EXPORT sees the ORIGINAL spelling
-\ and throws on unsigned/prim sources). Native walls that hold without the
-\ hook: missing name ($4A), sealed source prefix (C-QUALIFY-SEAL-GUARD,
-\ ENGINE-ERROR:SEAL-PACKAGE), undefined word (token + rc 70), internal engine
-\ word (DNAME-INT, the interpret gate's LINTERNAL diagnosis + rc 70: the alias
-\ record would not carry the mark), duplicate tail (C-REJECT-DUP-DEF $4E,
-\ checked BEFORE the checker call so the labeled native diagnosis wins),
-\ protected-WID target (C-STORE-DEF-NAME publish guard). The checker call runs
-\ OUTSIDE the RW code window (checked code must execute RX); the record
-\ publish sits inside the 3/5 LPROT window because C-STORE-NAME spills long
-\ names at CP.
+\ EXPORT keyword: two roles split by package context, mirrored by verify-source
+\ RECORD-EXPORT.
+\ - Inside an open package: publish an existing word under its own tail into the
+\   current section wordlist with the same code pointer, body span and
+\   immediate/wide bits; no forwarding body. Internal source words are refused.
+\   A does> definer's export publishes its clause in the slot above
+\   (C-EXPORT-CLAUSE-ROOM, C-EXPORT-CLAUSE-RECORD).
+\ - Top level: the hb-build --repl export directive (src/lib/prelude.f rides
+\   it); the engine consumes the name as a no-op so such programs stay loadable.
+\ CHECKER-EXPORT sees the original spelling and throws on unsigned/prim sources.
+\ Native walls without the hook: missing name ($4A), sealed source prefix
+\ (C-QUALIFY-SEAL-GUARD, ENGINE-ERROR:SEAL-PACKAGE), undefined word (rc 70),
+\ internal word (DNAME-INT, LINTERNAL + rc 70: the alias would not carry the
+\ mark), duplicate tail (C-REJECT-DUP-DEF $4E, before the checker so the native
+\ diagnosis wins), protected-WID target (C-STORE-DEF-NAME). The checker call
+\ runs outside the RW code window (checked code executes RX); the publish sits
+\ inside the 3/5 LPROT window because C-STORE-NAME spills long names at CP.
 : C-EXPORT ( -- )
    C-TASK-LIVE-GUARD
    LBL LBL LBL LBL LBL LBL LBL
@@ -11285,8 +10406,6 @@ public
    SP SP 64 ADDI,
    done LBL, ;
 
-\ Interpret-state dispatch assembly: the keyword/number/find emitters and the
-\ EM-INTERPRET entry that EMIT-MAIN wires into the main loop.
 package INTERP-EMIT
 
 : EM-INTERPRET-DEFINE-KEYWORDS ( -- )
@@ -11387,16 +10506,12 @@ public
 : EM-COMPILE-DROP-LOCALS ( -- )
    12 DATA LOCF-CELL LDR,  C-EMIT-DROP-X12 ;
 
-\ ---- pass-2 width-aware transport lowering ---------------
-\ ONE mechanism for every transport tier (register shuffle, inline rs keyword,
-\ dictionary leaf prim): at a pass-2 transport token whose operands include a
-\ wider-than-cell group, force LVSPILL and emit fixed-shape memory cell loops
-\ on the live stack ([x19], top at -8). Widths are compile-time constants, so
-\ every loop shape is constant and each branch displacement is a meta-time
-\ constant — no runtime patching, no new dictionary prims, no scratch region.
-\ The loop bodies are emitted by BL-able engine helpers (LP2COPY/LP2DROPN/
-\ LP2REV/LP2ROT/LP2RS below); each op is a group-permutation composition of
-\ push-copy, pop, span-rotation (three in-place reversals), and rstk block move.
+\ At a pass-2 transport token (register shuffle, inline rs keyword or leaf prim)
+\ whose operands include a wider-than-cell group, force LVSPILL and emit
+\ fixed-shape cell loops on the live stack ([x19], top at -8). Widths are
+\ compile-time constants, so every loop shape and branch displacement is fixed:
+\ no runtime patching, no new prims, no scratch region. Each op composes the
+\ helpers below: push-copy, pop, span rotation (three reversals), rstk move.
 
 \ LP2COPY ( x5=len-cells x6=src-off-cells ) : emit a push of len cells starting
 \ src-off cells below the top — a whole-group copy, bottom cell first.
@@ -11425,8 +10540,8 @@ public
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
 \ LP2REV ( x5=lo-off-bytes x6=hi-off-bytes ) : emit an in-place reversal of the
-\ cells from x19-lo up to x19-hi (two-pointer swap; empty/1-cell span is a noop
-\ the emitted `cmp x10,x11 ; b.hs` takes at run time).
+\ cells from x19-lo up to x19-hi; an empty or one-cell span falls through the
+\ emitted `cmp x10,x11 ; b.hs`.
 : EMIT-P2-REV ( -- )
    LP2REV LABEL@ LBL,
    SP SP 16 SUBI,  30 SP 0 STR,
@@ -11443,9 +10558,9 @@ public
    $17FFFFF8 C-EMITW                                                \ b cmp (-8)
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
-\ LP2ROT ( x5=T-cells x6=k-cells ) : emit a left-rotation of the top T cells
-\ moving the bottom k cells to the top — triple reversal, whole-group order
-\ preserving (== the checker's group permutation for swap/rot/-rot/2swap).
+\ LP2ROT ( x5=T-cells x6=k-cells ) : emit a left rotation of the top T cells
+\ moving the bottom k to the top, by triple reversal; group order is kept, as
+\ the checker's group permutation for swap/rot/-rot/2swap.
 : EMIT-P2-ROT ( -- )
    LBL LBL {: valid:label done:label :}
    LP2ROT LABEL@ LBL,
@@ -11481,13 +10596,13 @@ public
    8 $D100014A LIT64,  5 SP 8 LDR,  7 5 0 ADDI,  LADDSUBIMM LABEL@ BL,            \ sub x10,x10,#T
    RSTK-SLOT-ADDR,
    8 $D2800009 LIT64,  5 SP 8 LDR,  7 5 5 LSLI,  9 8 7 ORR,  LCEMIT LABEL@ BL,    \ movz x9,#T
-   13 11 0 W-LDRX C-EMITW                             \ ldr x13,[x11]
+   13 11 0 W-LDRX C-EMITW
    $9100216B C-EMITW                                  \ add x11,x11,#8
    W-PUSH13 C-EMITW                                   \ str x13,[x19],#8
    $F1000529 C-EMITW                                  \ subs x9,x9,#1
    $54FFFF81 C-EMITW                                  \ b.ne loop (-4)
    6 SP 16 LDR,  6 2 CMPI,  C-EQ rsdone BCOND,        \ r@/2r@ keep the depth
-   10 20 RSP-CELL W-STRX C-EMITW                      \ str x10,[x20,#RSP-CELL]
+   10 20 RSP-CELL W-STRX C-EMITW
    rsdone B,
    rsto LBL,
    \ mode 0: x11 = rstk top; copy T cells data->rstk, pop, depth += T
@@ -11497,7 +10612,7 @@ public
    8 $D2800009 LIT64,  5 SP 8 LDR,  7 5 5 LSLI,  9 8 7 ORR,  LCEMIT LABEL@ BL,    \ movz x9,#T
    $F940018D C-EMITW                                  \ ldr x13,[x12]
    $9100218C C-EMITW                                  \ add x12,x12,#8
-   13 11 0 W-STRX C-EMITW                             \ str x13,[x11]
+   13 11 0 W-STRX C-EMITW
    $9100216B C-EMITW                                  \ add x11,x11,#8
    $F1000529 C-EMITW                                  \ subs x9,x9,#1
    $54FFFF61 C-EMITW                                  \ b.ne loop (-5)
@@ -11526,17 +10641,14 @@ public
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
 \ LP2VEXEC is called by a compiled typed fetch before its address is popped,
-\ with the descriptor's address in x9 (LP2VEMIT: an NSTR row, or the copy in
-\ the code before a seed host has the interner). Every active CHECK validates an unsigned declaration-order tag domain;
-\ guard mismatches skip that nested CHECK while still consuming its rows.
-\ Registered as the sealed (LP2VEXEC) engine helper, exactly like (PROT-SPAN):
-\ the direct BL that LP2VEMIT plants in a compiled fetch is resolved by exact
-\ record code-entry in an ahead-of-time image (aot-closure.f FINDADDR-PTR) and
-\ relocated as an in-image branch, instead of shipping the build-time engine
-\ address and crashing a stripped image. The invalid-tag diagnostic is inlined
-\ inside the record so its ADR stays record-relative and is relocated with the
-\ body when the closure copies it (no reference to engine message data that a
-\ stripped image does not carry).
+\ with the descriptor's address in x9 (an NSTR row, or the inline copy before a
+\ seed host has the interner). Every active CHECK validates an unsigned
+\ declaration-order tag domain; guard mismatches skip that nested CHECK while
+\ still consuming its rows. It has a sealed (LP2VEXEC) helper record like
+\ (PROT-SPAN), so LP2VEMIT's direct BL resolves by exact code entry in an
+\ ahead-of-time image (aot-closure.f FINDADDR-PTR) and is relocated in-image.
+\ The invalid-tag diagnostic is inlined in the record so its ADR moves with the
+\ body: a stripped image carries no engine message data.
 : EMIT-P2-VALID-EXEC ( -- )
    LBL LBL LBL LBL LBL LBL {: outer:label guard:label active:label inactive:label invalid:label done:label :}
    LBL LBL {: badmsg:label end:label :}
@@ -11584,12 +10696,11 @@ public
    badmsg LBL,  bada badu BYTES,                                  \ inline data (msg+newline, contiguous): relocation-safe within the registered record
    end LBL, ;
 
-\ LP2VEMIT reads the current fetch descriptor from the frozen lowering
-\ certificate, interns its cell stream as an NSTR body (LNSTRINTERN) and emits
-\ the body's address into x9 as a recorded DATA site, then a call to LP2VEXEC.
-\ Before string.f installs the interner (NSTR-ABI:INTERN-CELL zero, a seed
-\ host) the cell stream goes inline after a B-over-data instruction and an
-\ `adr x9` names it. No live checker state is consulted.
+\ LP2VEMIT interns the current fetch descriptor's cell stream from the frozen
+\ lowering certificate as an NSTR body (LNSTRINTERN), loads its address into x9
+\ as a recorded DATA site, then calls LP2VEXEC. Before string.f installs the
+\ interner (NSTR-ABI:INTERN-CELL zero, a seed host) the stream goes inline after
+\ a B over it and `adr x9` names it. No live checker state is consulted.
 : EMIT-P2-VALID-EMIT ( -- )
    LBL LBL LBL LBL LBL {: copy:label patch:label done:label inline:label call:label :}
    LP2VEMIT LABEL@ LBL,
@@ -11670,7 +10781,7 @@ private
       10 1 MOVZ,  11 0 MOVZ,  RET,                     \ pos below cursor row: not found
    found LBL,
       10 11 2 cells LDR,
-      13 13 1 ADDI,  13 DATA TXN-WF-I-CELL STR,  11 1 MOVZ,  RET,   \ x11=1: found (layout-cap slice 4 xpad legs read the flag)
+      13 13 1 ADDI,  13 DATA TXN-WF-I-CELL STR,  11 1 MOVZ,  RET,   \ x11=1: found
    drift LBL,  LOWER-TXN-CODE:DRIFT LOWER-TXN-CODE:DRIFT$ nip 76 C-EXIT-LABEL ;
 
 : EMIT-DESC-LOOKUP ( -- )
@@ -11754,9 +10865,7 @@ public
    13 0 MOVZ,  9 k CMPI,  C-LE scal BCOND,  13 1 MOVZ,
    scal LBL, ;
 
-\ Pass-2 and compiler helpers dispatch width-aware emitters, rerun/freeze publication,
-\ and emit the control, literal, operator, call, and reset paths. Both registrars
-\ honour jit.f's row-comparison mode (CF-DEF-GUARD).
+\ Both pass-2 registrars honour jit.f's row-comparison mode (CF-DEF-GUARD).
 variable P2SK
 : P2W-ENTRY ( label ptr n n n [ -- ] -- ) {: lmainlbl:label kwvar:ptr kwlen:n k:n ext :}
    CF-DEF-GUARD @ IF kwvar kwlen CF-DEF-GUARD-ROW exit THEN
@@ -11781,8 +10890,7 @@ variable P2SK
    lmainlbl B,
    P2SK LABEL@ LBL, ;
 
-\ op bodies: read the operand widths (P2W cells, pos 0 = stack top), compose
-\ sums into the helper args, BL the emit helper(s).
+\ Op bodies read the operand widths from P2W cells (pos 0 = stack top).
 : EM-P2X-DUP ( -- )                \ ( g0 -- g0 g0 )
    5 DATA P2W0-CELL LDR,  6 5 0 ADDI,  LP2COPY LABEL@ BL, ;
 : EM-P2X-DROP ( -- )
@@ -11837,16 +10945,12 @@ variable P2SK
    5 DATA P2W0-CELL LDR,  LP2STORE LABEL@ BL, ;
 
 \ An operator row lowers its token as the seeded primitive of that spelling, so
-\ it claims the token only when the lookup binds that primitive (LSCOPEREC
-\ above). Any other record takes the call path, whatever it spells and wherever
-\ its operands sit: `dup` inside a package that defines `dup`, and a global `dup`
-\ defined after `undefine dup`. The rows used to claim such a token by its
-\ spelling, so the JIT inlined the primitive where the checker certified the
-\ word the scope binds: `undefine dup  : dup ( n -- n ) 100 + ;  : T ( -- n )
-\ 5 dup ;` certified ( -- n ) and left 5 and one extra cell
-\ (test/reopen-binding.f). A token with no record keeps its row, because a
-\ keyword such as `>r` has none; ambiguous used publics take the call path,
-\ which names them.
+\ it claims the token only when the lookup binds that primitive (LSCOPEREC).
+\ Any other record takes the call path: `dup` inside a package that defines
+\ `dup`, or a global `dup` after `undefine dup` (test/reopen-binding.f; claiming
+\ by spelling inlined the primitive where the checker certified the scope's
+\ word). A token with no record keeps its row, since a keyword such as `>r` has
+\ none; ambiguous used publics take the call path, which names them.
 : C-OP-ROW-GATE ( label -- ) {: call:label :}
    LBL {: rows:label :}
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LSCOPEREC LABEL@ BL,
@@ -11856,9 +10960,8 @@ variable P2SK
    rows LBL, ;
 
 \ The pass-2 width rows: EM-COMPILE-P2WIDE dispatches through them and
-\ COMPILE-EMIT:EMIT-ROW-WALK replays them. A row answers only in pass 2,
-\ after the scope gate (C-OP-ROW-GATE), so its spelling alone cannot shadow
-\ the record the checker binds.
+\ COMPILE-EMIT:EMIT-ROW-WALK replays them. A row answers only in pass 2, after
+\ C-OP-ROW-GATE, so its spelling cannot shadow the record the checker binds.
 : EM-P2WIDE-ROWS ( -- )
    LMAIN LABEL@ LKWDUP2    3 1 ['] EM-P2X-DUP     P2W-ENTRY
    LMAIN LABEL@ LKWDROP2   4 1 ['] EM-P2X-DROP    P2W-ENTRY
@@ -11881,10 +10984,10 @@ variable P2SK
    LMAIN LABEL@ LKWAT2     1 ['] EM-P2X-FETCH   P2F-ENTRY
    LMAIN LABEL@ LKWSTORE2  1 1 ['] EM-P2X-STORE   P2W-ENTRY ;
 
-\ the pass-2 width dispatch: sits between the local-reference dispatch (locals
-\ shadow op names, checker parity) and the keyword tiers, so a wide fact at any
-\ transport tier is intercepted before its scalar lowering. Facts are recorded
-\ only at transport/locals tokens; everything else falls through byte-identical.
+\ The pass-2 width dispatch sits after the local-reference dispatch (locals
+\ shadow op names, checker parity) and before the keyword tiers, so a wide fact
+\ at any transport tier is caught before its scalar lowering. Facts are recorded
+\ only at transport/locals tokens.
 : EM-COMPILE-P2WIDE ( -- )
    LBL {: notp2:label :}
    9 DATA P2-CELL LDR,  9 notp2 CBZ,
@@ -12062,7 +11165,7 @@ private
          17 EM-WF-FIELD CMPI,  C-NE bad BCOND,
          9 1 MOVZ,
       fdone LBL,
-      15 17 LOWER-CERT:XPAD-FLAG ANDI,  15 xdone CBZ, \ layout-cap slice 4: xpad row marks needs-p2
+      15 17 LOWER-CERT:XPAD-FLAG ANDI,  15 xdone CBZ, \ xpad row marks needs-p2
          9 1 MOVZ,
    xdone LBL,
       15 17 LOWER-CERT:FETCH-FLAG ANDI,  15 fetch CBNZ,
@@ -12146,9 +11249,8 @@ private
    13 11 LOWER-CERT:TOTAL-BYTES-CELL cells LDR,
    13 10 CMP,  C-NE bad BCOND,
    13 10 7 ANDI,  13 bad CBNZ,
-   \ The scan lost a width fact past a token it could not apply, so there is
-   \ nothing to lower from: name the definition and exit 75 before any table
-   \ is read or anything is published. Fail-closed like the malformed tail.
+   \ The scan lost a width fact past a token it could not apply: name the
+   \ definition and exit 75 before any table is read or anything published.
    13 11 LOWER-CERT:NEEDS-CELL cells LDR,
    13 LOWER-CERT:INCOMPLETE-NEEDS CMPI,  C-NE complete BCOND,
       0 2 MOVZ,  1 LINCOMPMSG LABEL@ ADR,  2 INCOMP-MSG-LEN MOVZ,  NR-WRITE SYS,
@@ -12210,12 +11312,11 @@ public
    TXN-FETCH-I-CELL LOWER-CERT:FETCH-COUNT-CELL VERIFY-COUNT ;
 
 \ Freeze the certificates of the definition just checked into one sealed blob:
-\ the whole captured body and `; `, then the head's certificate, then the
-\ clause's when the body has a `does>`. A checked head's certificate is the
-\ hook's, a TRUSTED: head's the unjudged scan's. The pass-2 `does>`
-\ (EMIT-TO-CLAUSE) steps from the one certificate to the other. The frame holds
-\ [0] the head's certificate, [8] its bytes, [16] the clause's, [24] its bytes,
-\ [32] the needs-p2 union and [40] the body length.
+\ the captured body and `; `, the head's certificate, then the clause's when the
+\ body has a `does>` (EMIT-TO-CLAUSE steps between them). A checked head's
+\ certificate is the hook's, a TRUSTED: head's the unjudged scan's. Frame: [0]
+\ head certificate, [8] its bytes, [16] clause's, [24] its bytes, [32] the
+\ needs-p2 union, [40] the body length.
 : FREEZE ( -- )
    LBL LBL LBL LBL LBL {: nodoes:label skip:label copy:label full:label alloc:label :}
    SP SP 48 SUBI,
@@ -12280,9 +11381,9 @@ public
    SP SP 48 ADDI, ;
 
 \ The pass-2 `does>` (J-DOES) branches here: the head's certificate must be
-\ consumed, and the clause's, frozen right after it, takes over with its own
-\ cursors. Clause rows count source offsets from the clause's first byte, as
-\ CHECK-DOES! was handed the clause, so the source base moves up by DOESB.
+\ consumed, and the clause's takes over with its own cursors. Clause rows count
+\ from the clause's first byte, as CHECK-DOES! was handed it, so the source base
+\ moves up by DOESB.
 : EMIT-TO-CLAUSE ( -- )
    LP2CLAUSE LABEL@ LBL,
    VERIFY-DONE
@@ -12302,38 +11403,20 @@ public
 
 ;package
 
-\ pass-2 entry: the hook produced a sealed lowering transaction. Save the live
-\ input, repoint the tokenizer at its frozen source span, rewind CP to
-\ the colon entry (the name bytes stay), reset the per-definition compile
-\ state exactly as EM-INTERPRET-COLON does, re-emit the prologue, and re-run
-\ the compile loop width-aware.
-\
+\ Pass-2 entry: the hook produced a sealed lowering transaction. Save the live
+\ input, point the tokenizer at its frozen span, rewind CP to the colon entry
+\ (the name bytes stay), reset per-definition state as EM-INTERPRET-COLON does,
+\ re-emit the prologue and re-run the compile loop width-aware.
 \ DP stays where pass 1 left it: the compiler allots none in a body (LDPBAD
 \ note); an immediate's allot is pass 1's and the word does not run again.
-\
-\ THE REWIND OWNS EVERY RECORD KEYED ON THE CURSOR IT REWINDS, and two are: the
-\ region-to-text call map and the address-literal map, both indexed by region
-\ offset and both written AT CP as pass 1 emitted (RELOC-EMIT:MARK-SITE from
-\ C-CODE-ADDR / C-DATA-ADDR / C-DATA-ADDR-RAW, the record the inliner's copy loop
-\ reissues for a chain it duplicates, and EMIT-CEMITBL for a call into the
-\ engine's loaded __text). Pass 2 lowers the same body with the widths it now
-\ knows, so its stream has different lengths and its records land at different
-\ offsets; a bit pass 1 set at a word pass 2 fills with something else is a
-\ record of code that no longer exists.
-\ Both maps' readers treat a bit as authoritative - EMIT-ADDRS
-\ requires the four move-wide words and EMIT-CALLS requires a BL, and each
-\ refuses the image outright when the bytes disagree - so the stale bit is not a
-\ wasted bit, it is an image this engine will not load, and the AOT capture
-\ refuses the same site one build step earlier (aot-capture.f ACAP-UNCLASSIFIED).
-\ So the span pass 1 emitted is cleared in both maps as the cursor is put back.
-\
-\ The span is exactly [entry, pass-1 CP): the entry is the pending definition's
-\ own code field, read from PEND-CELL, which is where CP is being put back to,
-\ and CP is still where pass 1 left it. Nothing below the entry is touched, so a
-\ record any earlier definition owns is untouched by construction.
-\ The maps live in DATA, which is a separate fixed mapping from the JIT region
-\ the protection bands cover, so this write needs no band declaration - the same
-\ reason EMIT-ADDR-SITE and EMIT-CEMITBL need none.
+\ The rewind clears [entry, pass-1 CP) in the two maps keyed on region offset:
+\ the call map (EMIT-CEMITBL) and the address-literal map (RELOC-EMIT:MARK-SITE
+\ from C-CODE-ADDR / C-DATA-ADDR / C-DATA-ADDR-RAW and the inliner's copy loop).
+\ Pass 2's records land at other offsets, and a stale bit makes EMIT-ADDRS or
+\ EMIT-CALLS refuse the image (aot-capture.f ACAP-UNCLASSIFIED refuses it one
+\ step earlier). The entry comes from PEND-CELL, so no earlier definition's
+\ record is touched. The maps are in DATA, outside the protection bands, so no
+\ band declaration is needed (as for EMIT-ADDR-SITE and EMIT-CEMITBL).
 : EM-P2-START ( -- )
    1 CP 4 ADDI,  PROT-EMIT:LOPEN LABEL@ BL,
    LOWER-TXN:SEAL
@@ -12364,9 +11447,8 @@ public
    9 DATA TXN-BIND-I-CELL STR, ;
 
 \ EM-P2-TRIGGER: emitted right after the publish path freezes a certified
-\ definition. An active transaction enters the pass-2 re-run. Pass 2 never
-\ reaches it: both publish paths send the re-run's own ';' straight to the
-\ normal publish.
+\ definition; an active transaction enters the pass-2 re-run. Both publish paths
+\ send the re-run's own ';' to the normal publish, so pass 2 never reaches it.
 : EM-P2-TRIGGER ( -- )
    LBL {: nowide:label :}
    LOWER-TXN:NEEDS?
@@ -12387,10 +11469,9 @@ public
       EM-P2-TRIGGER
    p2sk LBL, ;
 
-\ EM-P2-FINISH: emitted on the publish tail — the pass-2 second ';' published
-\ through the ordinary publication tail (hook re-check skipped), so resume the
-\ saved real input and clear the pass-2 state (dead pointers zeroed for image
-\ determinism).
+\ EM-P2-FINISH: on the publish tail, after the pass-2 ';' published (hook
+\ re-check skipped): resume the saved input and clear the pass-2 state, zeroing
+\ dead pointers for image determinism.
 : EM-P2-FINISH ( -- )
    LBL {: nop2:label :}
    9 DATA P2-CELL LDR,  9 nop2 CBZ,
@@ -12407,13 +11488,10 @@ public
 
 : EM-COMPILE-PUBLISH-TRUSTED ( label -- ) {: publish:label :}
    LBL LBL LBL LBL LBL {: pass1 ttrusted register ndhas ndchk :}
-   \ The pass-2 second ';': pass 1 checked and froze the definition and its
-   \ clause. It must NOT re-run either check - a second CHECK! of the same name
-   \ hits the checker's certified-duplicate guard (CHECKER-DUP-DEFINITION, throw
-   \ $4E) - so it publishes the verified effect from pass 1 without recording a
-   \ second, textual effect that would erase inferred cells and types. A
-   \ TRUSTED: definition still registers its declaration, which pass 1 left to
-   \ the pass that publishes.
+   \ The pass-2 second ';' must not re-run either check: a second CHECK! of the
+   \ name hits CHECKER-DUP-DEFINITION (throw $4E). It publishes pass 1's verified
+   \ effect without recording a textual one that would erase inferred cells and
+   \ types. A TRUSTED: definition still registers its declaration here.
    9 DATA P2-CELL LDR,  9 pass1 CBZ,
       10 DATA TRUSTED-CELL LDR,  10 publish CBZ,
       register B,
@@ -12443,9 +11521,8 @@ public
    publish B, ;
 
 \ The declared-row log is full (layout.f DECLARED-LOG:CAP): name the definition
-\ that overflowed it, exit 72, the pre-trust boot-integrity class C-PD-DIE-FULL
-\ uses. Losing its row instead would leave a checked caller E-UNDEFINED with no
-\ reason given.
+\ and exit 72, C-PD-DIE-FULL's pre-trust boot-integrity class. A lost row would
+\ leave a checked caller E-UNDEFINED with no reason.
 : C-DECLARED-LOG-DIE-FULL ( -- )
    SP SP 32 SUBI,  9 $6C636564203A6268 LIT64,  9 SP 0 STR,  9 $776F722D64657261 LIT64,  9 SP 8 STR,  9 $6C756620676F6C20 LIT64,  9 SP 16 STR,  9 $2020202020203A6C LIT64,  9 SP 24 STR,
    0 2 MOVZ,  1 SP 0 ADDI,  2 27 MOVZ,  NR-WRITE SYS,  SP SP 32 ADDI,   \ "hb: declared-row log full: "
@@ -12455,9 +11532,8 @@ public
    0 72 MOVZ,  NR-EXIT-GROUP SYS, ;
 
 \ Log the pending definition for the claim (layout.f DECLARED-LOG): its record,
-\ the open package's namespace record, its signature's address and length, all
-\ read from DATA cells, then publish the log's address in ADDR-CELL. Clobbers
-\ x12-x15 only; the publication tail after it holds nothing in a register.
+\ the open package's namespace record and its signature's address and length,
+\ then publish the log's address in ADDR-CELL. Clobbers x12-x15 only.
 : C-DECLARED-LOG-APPEND ( -- )
    LBL LBL {: full:label done:label :}
    12 DECLARED-LOG:OFF LIT64,  12 DATA 12 ADD,        \ x12 = &log
@@ -12468,38 +11544,32 @@ public
    15 DATA PKG-REC-CELL LDR,  15 14 DECLARED-LOG:PKG-OFF STR,
    15 DATA TSIG-A-CELL LDR,   15 14 DECLARED-LOG:SIG-A-OFF STR,
    15 DATA TSIG-U-CELL LDR,   15 14 DECLARED-LOG:SIG-U-OFF STR,
-   13 13 1 ADDI,  13 12 0 STR,                          \ count++
+   13 13 1 ADDI,  13 12 0 STR,
    12 DATA DECLARED-LOG:ADDR-CELL STR,
    done B,
    full LBL,  C-DECLARED-LOG-DIE-FULL
    done LBL, ;
 
 \ A zero hook verdict rejects the pending definition and cuts the rows the hook
-\ recorded for it (C-CALL-HOOK). Any non-zero verdict certifies it and reaches
-\ the ordinary publication tail.
-\ With the hook cell empty nothing judges the body, and its declaration is its
-\ row, as at tier 1 (compiler.f SCAN): a TRUSTED: declaration through TRUST-DECL
-\ with its authority, any other through the owner's DECLARED-ROW field without
-\ authority (checker.f CHECKER-DECLARED-ROW!). Only the source owner records.
-\ Before checker.f claims the source there is none, so a declaration other than
-\ a TRUSTED: one goes to the declared-row log, whose rows the claim records
-\ (C-DECLARED-LOG-APPEND); a TRUSTED: one records nothing, since the claim
-\ grants no authority. The logged definition is published: the tail after this
-\ arm cannot fail recoverably, as the DECLARED-ROW call here already assumes,
-\ so no logged record is ever rolled back and reused. A definition with no
-\ signature records nothing.
-\ Unjudged, the body still states its widths: while `0 set-check` holds a
-\ parked hook (SUSP-HOOK-CELL) with an owner, pass 1 scans it as a TRUSTED:
-\ body is scanned (C-CALL-CHECK-UNJUDGED, tier 1's definition.f CHECK-HOOKLESS),
-\ with or without a signature, and lowers from that certificate, so a wide
-\ value is not moved one cell wide. A signed does> clause is scanned first and
-\ its certificate kept, as tier 1's CHECK-DOES-SPLIT does
-\ (C-CALL-DOES-UNJUDGED); a definer with an unsigned clause is not scanned. No
-\ verdict is enforced. A signed declaration records once, on the pass that
-\ publishes. The gate is the parked hook, not the owner: the cold prefix claims
-\ the owner in checker.f before lower-cert-base.f and layout-valid.f install
-\ the certificate producer, and no hook is armed before check-hook.f, which
-\ loads after both, so a cold boot never scans.
+\ recorded for it (C-CALL-HOOK); any other verdict certifies it.
+\ With the hook cell empty nothing judges the body and its declaration is its
+\ row, as at tier 1 (compiler.f SCAN): TRUSTED: through TRUST-DECL with its
+\ authority, any other through the owner's DECLARED-ROW field without
+\ (checker.f CHECKER-DECLARED-ROW!). Before checker.f claims the source there is
+\ no owner, so a non-TRUSTED: declaration goes to the declared-row log
+\ (C-DECLARED-LOG-APPEND) and a TRUSTED: one records nothing, since the claim
+\ grants no authority. The tail after this arm cannot fail recoverably, so no
+\ logged record is rolled back and reused. A definition with no signature
+\ records nothing.
+\ Unjudged, the body still states its widths: while `0 set-check` parks a hook
+\ (SUSP-HOOK-CELL) with an owner, pass 1 scans it as a TRUSTED: body
+\ (C-CALL-CHECK-UNJUDGED, tier 1's definition.f CHECK-HOOKLESS) and lowers from
+\ that certificate, so a wide value is not moved one cell wide. A signed does>
+\ clause is scanned first and kept (C-CALL-DOES-UNJUDGED, as CHECK-DOES-SPLIT);
+\ a definer with an unsigned clause is not scanned. No verdict is enforced. The
+\ gate is the parked hook, not the owner: the cold prefix claims the owner
+\ before lower-cert-base.f and layout-valid.f install the certificate producer,
+\ and no hook is armed before check-hook.f, so a cold boot never scans.
 : EM-COMPILE-PUBLISH-HOOKED ( label label -- )
    {: publish:label finish:label :}
    LBL LBL LBL LBL LBL LBL LBL LBL {: nohook:label head:label scanned:label declared:label owned:label rejected:label inl:label done:label :}
@@ -12508,8 +11578,6 @@ public
       10 DATA BODYBUF-OFF ADDI,  10 G-PUSH
       10 DATA BODYLEN-CELL LDR,  10 G-PUSH
       C-CALL-HOOK  10 rejected CBZ,
-      \ certified sig-less definition: same pass-2 dispatch as the sig'd
-      \ publish path.
       LOWER-TXN:FREEZE
       EM-P2-TRIGGER
       publish B,
@@ -12566,32 +11634,27 @@ public
    9 0 MOVZ,  9 DATA PEND-CELL STR,
    LMAIN LABEL@ B, ;
 
-\ Close a body whose last word is a call with a branch to the callee instead
-\ of a call and a return: the epilogue runs first, so the callee returns
-\ straight to this word's caller and a recursion that ends in its own call
-\ runs in constant return-stack space. Taken only when
+\ Close a body whose last word is a call with a branch to the callee: the
+\ epilogue runs first, so a recursion ending in its own call runs in constant
+\ return-stack space. Taken only when
 \   - FRAME-CELL bit 0 is set: the body holds a call, so its entry saved x30;
 \   - the word at CP-4 is a BL (LCEMITBL or J-RECURSE, the only BL emitters);
 \   - no forward branch lands at CP (FWDTGT-CELL holds the last one LPAT patched,
 \     the furthest, as CP only grows): a join after the call needs the return.
-\     The other forward patches never land at CP: LBCHAIN's leave chain lands
-\     before J-LOOPEND's frame pops and its exit chain on the epilogue below;
+\     LBCHAIN's leave chain lands before J-LOOPEND's frame pops and its exit
+\     chain on the epilogue, never at CP;
 \   - the local frame fits one add's 12-bit immediate.
-\ The BL's word becomes the epilogue's first word in place, so a branch that
-\ lands on the call lands on the epilogue: `add sp,sp,#LOCF` when locals are
-\ open, then the link restore, else the link restore alone. LCEMITB then emits
-\ the B. The BL's call-map bit is cleared first; LCEMITB marks the B's own.
-\ When FRAME-CELL counts one call, the BL is that call (it is the last word and
-\ every BL is counted), so the B leaves the body with none: x30 is never
-\ destroyed, nothing is restored, and the entry slot becomes a nop as a leaf's
-\ does. The epilogue is then the local release alone, or with no locals the B
-\ itself, emitted over the BL's word with CP moved back onto it. FRAME-CELL is
-\ zeroed, so the return an exit chain still needs is emitted without a restore.
-\ With no exit (EXITH-CELL 0) nothing follows the B: control goes to `exact`,
-\ which ends the body with an exact span. An `exit` chain still needs its
-\ return, so the caller emits the normal epilogue after the B for it; J-EXIT
-\ dropped its own locals before it chained. Every other body goes to notail.
-\ Runs after LVSPILL; clobbers x0-x2, x5-x7, x9-x15.
+\ The BL's word becomes the epilogue's first word in place, so a branch landing
+\ on the call lands on the epilogue (`add sp,sp,#LOCF` with locals, then the
+\ link restore). The BL's call-map bit is cleared; LCEMITB marks the B's own.
+\ When FRAME-CELL counts one call, that call is the BL, so the B leaves the body
+\ with none: nothing is restored and the entry slot becomes a nop as a leaf's
+\ does; the epilogue is the local release alone, or the B itself over the BL's
+\ word. FRAME-CELL is zeroed, so an exit chain's return has no restore.
+\ With no exit (EXITH-CELL 0) control goes to `exact`, ending the body with an
+\ exact span; an `exit` chain still needs its return, which the caller emits
+\ after the B (J-EXIT dropped its locals before chaining). Every other body goes
+\ to notail. Runs after LVSPILL; clobbers x0-x2, x5-x7, x9-x15.
 : EM-COMPILE-TAIL ( label label -- ) {: notail:label exact:label :}
    LBL LBL LBL LBL {: rewrite:label nolocf:label linked:label kept:label :}
    9 DATA FRAME-CELL LDR,  9 9 1 ANDI,  9 notail CBZ,
@@ -12627,28 +11690,23 @@ public
    9 DATA TKL-CELL LDR,  9 1 CMPI,  C-NE lnotsemi BCOND,
    9 DATA TKA-CELL LDR,  9 9 0 LDRB,  9 59 CMPI,  C-NE lnotsemi BCOND,
       C-DEF-SOURCE-CLOSE
-      \ A quotation is still open: the mirror of J-SEMIQUOT's `;]` with none.
-      \ Publishing would leave its b-over placeholder, a branch to itself,
-      \ unpatched, so calling the word would spin. QPATCH-CELL is set at every
-      \ depth: J-QUOT parks a frame only while it is set and J-SEMIQUOT restores
-      \ a set one. Refused before anything is emitted and before the checker
-      \ hook, checked and TRUSTED: alike: catchable rc 75 inside evaluate, whose
-      \ rollback zeroes the Q cells and JIT-QUOT:SP-CELL, fail-closed exit 75 at
-      \ top level.
+      \ A quotation is still open (`;]` missing): its b-over placeholder would
+      \ stay a branch to itself, so calling the word would spin. QPATCH-CELL is
+      \ set at every depth (J-QUOT parks a frame only while it is set). Refused
+      \ before emission and before the hook, checked and TRUSTED: alike: rc 75
+      \ inside evaluate (whose rollback zeroes the Q cells and JIT-QUOT:SP-CELL),
+      \ exit 75 at top level.
       9 DATA QPATCH-CELL LDR,  9 noquot CBZ,
          0 2 MOVZ,  1 LSEMIQMSG LABEL@ ADR,  2 SEMIQ-MSG-LEN MOVZ,  NR-WRITE SYS,
          LDIAGDEF LABEL@ BL,
          0 75 MOVZ,  LCOMPILEDIE LABEL@ B,
       noquot LBL,
-      \ A control structure is still open: the mirror of LCFPOP's closer with
-      \ no opener. `if`, `while`, `of` and `endof` leave a forward branch only
-      \ the closer patches, a branch to itself until then, and `do` a loop
-      \ frame only `loop` pops. Every opener pushes the control-flow stack and
-      \ every closer pops it; a definition head zeroes its depth and a
-      \ quotation leaves it alone, so an `if` left open inside a closed
-      \ quotation counts too. Refused at the same point and through the same
-      \ tail as an open quotation, with the control-flow family's code 70, the
-      \ code the checker hook gives a checked body like this.
+      \ A control structure is still open: `if`, `while`, `of` and `endof` leave
+      \ a branch to itself until the closer patches it, and `do` a frame only
+      \ `loop` pops. A definition head zeroes the control-flow depth and a
+      \ quotation leaves it alone, so an `if` left open in a closed quotation
+      \ counts. Refused like an open quotation, with code 70, the code the hook
+      \ gives a checked body like this.
       5 CFSTK-OFF LIT64,  9 DBASE 5 ADD,  9 9 0 LDR,  9 closed CBZ,
          0 2 MOVZ,  1 LSEMICFMSG LABEL@ ADR,  2 SEMICF-MSG-LEN MOVZ,  NR-WRITE SYS,
          LDIAGDEF LABEL@ BL,
@@ -12730,8 +11788,6 @@ public
 
 ;package
 
-\ Compile-state dispatch assembly: the keyword-table aggregator and the
-\ EM-COMPILE entry that EMIT-MAIN wires into the main loop (reopened below).
 package COMPILE-EMIT
 
 : EM-COMPILE-KEYWORDS ( -- )
@@ -12779,9 +11835,8 @@ public
       LVPUSHF LABEL@ BL,  LMAIN LABEL@ B,
    lcnotnum LBL, ;
 
-\ The arithmetic rows hand their fold/emit/immediate emitters to the jit.f
-\ VOPI-ENTRY/VOP-ENTRY/VDIVI-ENTRY registrars, which are private to the emitter
-\ package, so this row block is inside it.
+\ The arithmetic rows hand their emitters to the jit.f VOPI-ENTRY/VOP-ENTRY/
+\ VDIVI-ENTRY registrars, private to the emitter package, so this block is in it.
 package ENGINE-EMIT
 
 : EM-COMPILE-ARITH-OPS ( -- )
@@ -12858,10 +11913,10 @@ public
    14 DATA TRUSTED-CELL LDR,  14 LUNDEF LABEL@ CBZ,
    allowed LBL, ;
 
-\ Tier 0's pass 2 reads the source-bound init width at operand position 1.
-\ Position 0 remains the existing constructor-pad query. The certified record
-\ schema fixes bytes = width * CELL and alignment = CELL; a missing site is a
-\ certificate drift, never a one-cell default.
+\ Tier 0's pass 2 reads the source-bound init width at operand position 1;
+\ position 0 is the constructor-pad query. The record schema fixes bytes =
+\ width * CELL and alignment = CELL; a missing site is certificate drift, never
+\ a one-cell default.
 : EM-P2-INIT-DESC ( -- )
    EM-C2-INIT-OFF @ 0 <
    EM-C2-RECORDS-OFF @ 0 < and
@@ -12929,9 +11984,9 @@ public
    found LBL,
    LPOLICYREC LABEL@ BL,                          \ the design seal, ahead of the internal-word guard: x5 = the record LFIND or LFINDUSED resolved
    C-COMPILE-CALL-GUARD
-   \ LFIND returns the exact resolved record in x5. An immediate still runs at
-   \ compile time; only an ordinary CAST mention can leave the virtual stack as
-   \ it is. In particular, do not spill a cached value merely to retype it.
+   \ LFIND returns the exact record in x5. An immediate still runs at compile
+   \ time; only an ordinary CAST mention leaves the virtual stack as it is, with
+   \ no spill to retype a cached value.
    14 13 2 ANDI,  14 prepare CBNZ,
    14 5 16 LDR,  14 14 50 LSRI,  14 14 3 ANDI,
    14 3 CMPI,  C-EQ LMAIN LABEL@ BCOND,
@@ -12939,7 +11994,7 @@ public
    14 DKIND:ADDR 50 rshift CMPI,  C-EQ faddr BCOND,
    prepare LBL,
    SP SP 32 SUBI,  11 SP 0 STR,  12 SP 8 STR,  13 SP 16 STR,  5 SP 24 STR,
-   9 DATA P2-CELL LDR,  9 noxc CBZ,               \ layout-cap slice 4: pass-2 wide generated-ctor call adds extra pads
+   9 DATA P2-CELL LDR,  9 noxc CBZ,               \ pass-2 wide generated-ctor call adds extra pads
       9 DATA TKA-CELL LDR,  10 DATA TXN-SRC-A-CELL LDR,  9 9 10 SUB,  10 0 MOVZ,
       LP2CWAT LABEL@ BL,                          \ x10 = extra pads, x11 = found
       11 noxc CBZ,                                \ ordinary call (no fact): normal lowering
@@ -12958,12 +12013,11 @@ public
    LVSPILL LABEL@ BL,
    11 SP 0 LDR,  12 SP 8 LDR,  13 SP 16 LDR,  5 SP 24 LDR,  SP SP 32 ADDI,
    14 13 2 ANDI,  14 notimm CBZ,
-      \ Pass 2 never runs an immediate: pass 1 ran it once on the real input
-      \ and the capture pass 2 lowers holds what it compiled (LBCAP; a
-      \ parse-name payload is never captured, checker.f PIMM-STREAM), as tier 1
-      \ lowers the same capture without running it (checker-owner.f
-      \ PARSE-IMM?). Run again, a parsing word read the next captured token and
-      \ every side effect happened twice.
+      \ Pass 2 never runs an immediate: pass 1 ran it on the real input and the
+      \ capture holds what it compiled (LBCAP; a parse-name payload is never
+      \ captured, checker.f PIMM-STREAM), as tier 1 lowers the capture without
+      \ running it (checker-owner.f PARSE-IMM?). Run again, a parsing word read
+      \ the next captured token and every side effect happened twice.
       9 DATA P2-CELL LDR,  9 LMAIN LABEL@ CBNZ,
       14 13 $FF00 ANDI,  14 depthok CBZ,                  \ DNAME-MIN-IN (x13 bits 8-15): the immediate's certified min input arity; 0 = unguarded boundary (compile path floor beneath the p5 checker/hook reject, reached under 0 set-check)
          14 14 8 LSRI,                                    \ x14 = min-in cells
@@ -12985,18 +12039,15 @@ public
       13 LUNDEF LABEL@ CBZ,                            \ still nothing -> undefined in this body
       found B,                                         \ resolved via a used package: rejoin the normal compile path
    \ A record still carrying its definer's stamp (DKIND, layout.f) is entered
-   \ now and what it pushed folds into the body, as tier 1 enters it (dict.f
-   \ RUN-WORD): a constant's number becomes a virtual-stack literal, a created
-   \ word's DATA address a recorded carrier into a pool register. A spill frees
-   \ the whole pool, so the second allocation cannot fail.
-   \ A created word defined before the open capture window stays a call: the
-   \ capture names a call's callee, and refuses a pre-window DATA literal
-   \ (aot-capture.f ACAP-OUT-CHAIN). The test is the word's entry against the
-   \ window's code base B0, not its address against the DATA span: an empty
-   \ `create` made just before the window opens has the window's first DATA
-   \ address. A word defined inside the window has its DATA inside it, or the
-   \ capture refuses that word's own body. With no window open B0 is 0 and
-   \ every created word folds.
+   \ now and what it pushed folds into the body, as tier 1's dict.f RUN-WORD
+   \ does: a constant becomes a virtual-stack literal, a created word's DATA
+   \ address a recorded carrier in a pool register. A spill frees the whole pool,
+   \ so the second allocation cannot fail. A created word defined before the open
+   \ capture window stays a call, since the capture refuses a pre-window DATA
+   \ literal (aot-capture.f ACAP-OUT-CHAIN). The test compares the word's entry
+   \ with the window's code base B0, not its address with the DATA span: an empty
+   \ `create` just before the window has the window's first DATA address. With
+   \ no window open B0 is 0 and every created word folds.
    fval LBL,
       C-RUN-FIXED
       LVPUSHC LABEL@ BL,
@@ -13046,43 +12097,12 @@ public
    9 0 MOVZ,
    9 DATA RSP-CELL STR,  9 DATA HND-CELL STR,  9 DATA LOOPSP-CELL STR, ;
 
-\ Reject rc: an undefined word in a `:`-body is a rejected definition. Used both
-\ as the catchable throw code delivered to an enclosing catch and as the
-\ fail-closed process exit code, so caught -> code 70 and uncaught -> rc70 are the
-\ same value (matches the top-level LRDIE exit and driver-io's "check reject 70").
-\ The uncaught-throw reporter below exits it for a refusal the checker rendered.
+\ An undefined word in a `:` body is a rejected definition: 70 is both the
+\ catchable throw code and the uncaught exit (the top-level LRDIE exit and
+\ driver-io's "check reject 70"); the uncaught-throw reporter below exits it for
+\ a refusal the checker rendered.
 70 constant RC-REJECT
 
-\ A throw whose nearest handler lies beyond one or more active evaluate boundaries
-\ lands here (BTHROW branch via EVALREC-CELL), x15 = throw code. Each escaped eval
-\ frame gives back what it owns — input cursor, data-stack base (XDS), package
-\ and using scope — and EVALERR-CELL records the code, so the handler resumes
-\ with clean state. A frame that began with no definition open also owns
-\ everything compiled since: dictionary top (CP/NDICT), data pointer (DP),
-\ compile state and the checker's records (EVAL-FRAME:ROWS) roll back, dropping
-\ any definition it opened with its record and pending window. A frame that
-\ began inside an open definition (EVAL-FRAME:PEND) is an immediate word's evaluate
-\ compiling into an outer buffer's definition, which it neither opened nor may
-\ close (C-DEF-SOURCE-CLOSE): that definition stays open with what the frame
-\ compiled before the throw, put back to the token-start mark (layout.f
-\ TOKBODY-CELL: body capture, locals count, CP, virtual stack), which every
-\ refusal precedes with no other change (habu2.f C-CF-ROOM states the rule).
-\ Resetting it here dropped the definition under the immediate word, and the
-\ rest of its body ran as top-level words. The mark
-\ is the innermost buffer's current token, or its end when that buffer exited
-\ cleanly before the throw, and popping leaves it there: every frame popped
-\ keeps the completed tokens of the buffers inside it. Each frame inside one
-\ begun in an open definition begins in it too, as only its own source closes
-\ it, so all such frames pop before any frame that owns the compile, while the
-\ mark still holds. Popping stops as soon as EVALD reaches 0
-\ or the nearest handler (x11, read once because EM-RESET-COMPILE-STATE zeroes the
-\ HND-CELL copy) is inside the current eval frame; then the throw is delivered to
-\ that handler / REPL / process exit exactly as the non-evaluate path does.
-\ Each of those runs compiled code, so the code window closes first: a throw the
-\ JIT raises under a pending head's window lands here with it open. x15 survives
-\ the close (it writes x0-x2).
-\ Recovery, undefined/exit handling, ADT construction/matching, and main-loop helpers
-\ emit raw machine state transitions and diagnostics.
 \ x10 is the absolute floor. Recovery calls this before replacing CP or DP;
 \ the installed owner removes every publication in the reclaimed suffix.
 \ A callback is total and leaves no value. Preserve the recovery registers it
@@ -13102,6 +12122,23 @@ public
    SP SP 48 ADDI,
    done LBL,  RET, ;
 
+\ LEVALREC: a throw whose nearest handler lies beyond active evaluate boundaries
+\ lands here (BTHROW via EVALREC-CELL), x15 = throw code. Each escaped frame
+\ gives back its input cursor, data-stack base (XDS), package and using scope,
+\ and EVALERR-CELL records the code. A frame begun with no definition open also
+\ rolls back everything compiled since: CP/NDICT, DP, compile state and the
+\ checker's records (EVAL-FRAME:ROWS). A frame begun inside an open definition
+\ (EVAL-FRAME:PEND) is an immediate's evaluate compiling into an outer buffer's
+\ definition, which it may not close (C-DEF-SOURCE-CLOSE): that definition stays
+\ open, put back to the token-start mark (layout.f TOKBODY-CELL: body capture,
+\ locals count, CP, virtual stack; C-CF-ROOM states why every refusal precedes
+\ any change). The mark is the innermost buffer's current token, or its end when
+\ it exited cleanly; frames begun in an open definition nest inside the one
+\ that owns the compile, so all pop while the mark holds. Popping stops when
+\ EVALD reaches 0 or the nearest handler (x11, read once because
+\ EM-RESET-COMPILE-STATE zeroes HND-CELL) is inside the current frame; delivery
+\ then matches the non-evaluate path. Every destination runs compiled code, so
+\ the code window closes first; x15 survives the close (it writes x0-x2).
 : EM-EVAL-THROW-RECOVER ( -- )
    LBL LBL LBL LBL LBL LBL {: bounds:label owned:label scope:label unowned:label unrefused:label kept:label :}
    S\" hb: catch frame corrupt\n" {: ma:ptr mu:n :}
@@ -13115,13 +12152,11 @@ public
       13 DATA EVAL-TOP-CELL LDR,                     \ x13 = current frame
       14 13 24 LDR,                                   \ x14 = eval-entry SP (boundary); x13 stays &frame
       11 LEVLP LABEL@ CBZ,                            \ no handler → pop (escape)
-      \ Handler STRICTLY inside this frame -> unwind to it. The boundary SP is
-      \ not itself inside the frame it bounds: B-EVAL stores the PRE-frame SP
-      \ here and BCATCH records exactly that SP for a handler installed just
-      \ outside, so `' evaluate catch` at top level makes the two equal. Treating
-      \ equal as "inside" left the eval frame unpopped, CP and the protection
-      \ band stayed at the abandoned definition's, and the next token was emitted
-      \ into a band already re-protected: SIGSEGV after a correct reject message.
+      \ Handler strictly inside this frame -> unwind to it. B-EVAL stores the
+      \ pre-frame SP as the boundary and BCATCH records that same SP for a
+      \ handler installed just outside (`' evaluate catch` at top level), so
+      \ equal is outside: treating it as inside left the frame unpopped and the
+      \ next token was emitted into a re-protected band (SIGSEGV).
       11 14 CMP,  C-CC LEVLD LABEL@ BCOND,
    LEVLP LABEL@ LBL,
       14 13 STACK-ABI:EVAL-BASE LDR,  10 13 STACK-ABI:EVAL-CAP LDR,
@@ -13132,13 +12167,12 @@ public
       12 13 8 LDR,   12 DATA INE-CELL STR,
       12 13 EVAL-INB LDR,  12 DATA SRCLOC:INB-CELL STR,
       XDS 13 32 LDR,
-      \ A closed frame owns its text's data stack: back to the pool, whether or
-      \ not the frame owns the compile. The extent in force becomes its
-      \ caller's, which habu1.f B-EVAL-CLOSED keeps in its own frame, the one
-      \ [frame+24] names: base, capacity and cursor at [0], [8] and [16].
-      \ Compiled code runs before a handler's own extent is back (EM-PKG-RESYNC
-      \ at LEVLD), and none may run on a stack the pool holds: the pool links an
-      \ idle stack through its first cell.
+      \ A closed frame returns its text's data stack to the pool, whether or
+      \ not it owns the compile; the extent in force becomes its caller's, kept
+      \ in habu1.f B-EVAL-CLOSED's frame at [frame+24] (base, capacity, cursor
+      \ at [0], [8], [16]). Compiled code runs before a handler's own extent is
+      \ back (EM-PKG-RESYNC at LEVLD) and none may run on a pooled stack: the pool
+      \ links an idle stack through its first cell.
       10 13 STACK-ABI:EVAL-SEG LDR,  10 unowned CBZ,
       9 DATA CLOSED-FREE-CELL LDR,  9 10 0 STR,  10 DATA CLOSED-FREE-CELL STR,
       9 13 24 LDR,
@@ -13148,7 +12182,7 @@ public
       XDS 9 16 LDR,
       unowned LBL,
       12 13 EVAL-FRAME:PEND LDR,  12 owned CBZ,       \ no definition open as it began: it owns the compile
-         \ The outer definition as the interrupted token began (layout.f TOKBODY-CELL).
+         \ The outer definition as the interrupted token began (TOKBODY-CELL).
          12 DATA TOKBODY-CELL LDR,  12 DATA BODYLEN-CELL STR,
          12 DATA TOKLOCN-CELL LDR,  12 DATA LOCN-CELL STR,
          12 DATA TOKDEPTH-CELL LDR,  12 DATA CAPDEPTH-CELL STR,
@@ -13161,8 +12195,8 @@ public
       owned LBL,
       10 13 40 LDR,  LCODEINV LABEL@ BL,
       SP SP 32 SUBI,  11 SP 0 STR,  13 SP 8 STR,  15 SP 16 STR,
-      \ The checker's records go with the definitions: back to the end as the
-      \ buffer began (layout.f EVAL-FRAME:ROWS, end+1, 0 with no owner then).
+      \ The checker's records go with the definitions, back to the end as the
+      \ buffer began (layout.f EVAL-FRAME:ROWS: end+1, 0 with no owner then).
       13 EVAL-FRAME:ROWS kept DECL-OWNER:RETRACT-TO
       kept LBL,
       13 SP 8 LDR,  9 13 40 LDR,  EM-DEF-OCC:LRECLAIM LABEL@ BL,
@@ -13175,7 +12209,6 @@ public
       12 DATA DP-CELL STR,
       9 10 LASTC-TRIM,
       scope LBL,
-      \ Restore package/search state from this escaped native-stack frame.
       10 13 EVAL-PKG ADDI,
       9 10 PKGSNAP-CUR LDR,     9 DATA CUR-CELL STR,
       9 10 PKGSNAP-PUB LDR,     9 DATA PKG-PUB-CELL STR,
@@ -13194,15 +12227,15 @@ public
       EM-RESET-COMPILE-STATE                          \ clobbers x9 only; x11,x15 preserved
       LEVLL LABEL@ B,
    LEVLD LABEL@ LBL,
-   \ The handler is compiled code and may ask the checker at once, before any
-   \ LMAIN top: the checker re-reads the restored package scope here. Its call
-   \ owns every caller-saved register, so x11 and x15 ride on the stack.
+   \ The handler is compiled code and may ask the checker before any LMAIN top,
+   \ so the checker re-reads the restored package scope here. The call owns
+   \ every caller-saved register, so x11 and x15 ride on the stack.
    SP SP 16 SUBI,  11 SP 0 STR,  15 SP 8 STR,
    EM-PKG-RESYNC
    11 SP 0 LDR,  15 SP 8 LDR,  SP SP 16 ADDI,
    9 15 0 ADDI,                                       \ x9 = code
    11 LEVLN LABEL@ CBZ,
-   \ handler-frame integrity (same contract as habu1.f BTHROW): validate before any restore store
+   \ Handler-frame integrity (habu1.f BTHROW's contract): validate before any restore.
    14 STACK-ABI:CATCH-MAGIC LIT64,  10 11 56 LDR,  10 14 CMP,  C-NE LEVCORRUPT LABEL@ BCOND,
    10 11 40 LDR,  14 STACK-ABI:RETURN-CELLS MOVZ,
    10 14 CMP,  C-HI LEVCORRUPT LABEL@ BCOND,
@@ -13221,35 +12254,30 @@ public
    LEVLN LABEL@ LBL,
    LREPLROUTE LABEL@ BL,  9 LEVLR LABEL@ CBZ,
    10 DATA RRECP-CELL LDR,  10 BR,
-   \ No handler and no REPL: fall into the shared uncaught-throw exit (x9 = code).
-   \ LEVLR (eval-frame path) and LUNCAUGHT (BTHROW THROW-NOREC path, reached via
-   \ UNCGH-CELL - stored at boot since a leaf prim cannot name this label) share one
-   \ address. A code in [1,255] is kernel-representable and is an established
-   \ deliberate exit contract (src/lib/argv.f usage 64, check hook 70, lint findings 1),
-   \ so it exits byte-identically to before: exit_group(code), no extra output. Any
-   \ other code would be kernel-masked to `code & 0xFF` - the fail-open class this
-   \ closes (-2816 exited 0 SILENTLY, -2802 exited an aliased 14) - so it is instead
-   \ reported as "hb: uncaught throw code <n>\n" on fd 2 (signed itoa mirrors
-   \ G-PRINT9) and exits the deterministic UNCAUGHT-RC - or RC-REJECT when the code
-   \ is the refusal the checker last rendered (layout.f REFUSAL-ABI:CODE-CELL): that throw
-   \ was named on fd 2 before it was raised, and exits as every refusal does while
-   \ a catch still receives its own code. x15 keeps the code across the message
-   \ write (the kernel preserves x2-x15, as EMIT-SOURCE-READ's open-error path
-   \ relies on for x12). Never returns - no RET, keeps FPRIM-L throw leaf-safe.
+   \ No handler and no REPL: the shared uncaught-throw exit (x9 = code). LEVLR
+   \ (eval-frame path) and LUNCAUGHT (BTHROW THROW-NOREC, via UNCGH-CELL stored
+   \ at boot, since a leaf prim cannot name this label) share one address. A
+   \ code in [1,255] is a deliberate exit contract (src/lib/argv.f usage 64,
+   \ check hook 70, lint findings 1) and exits as itself with no output. Any
+   \ other code would be masked to `code & 0xFF` (-2816 exited 0, -2802 exited
+   \ 14), so it is reported as "hb: uncaught throw code <n>\n" on fd 2 (signed
+   \ itoa as G-PRINT9) and exits UNCAUGHT-RC, or RC-REJECT when it is the refusal
+   \ the checker last rendered (layout.f REFUSAL-ABI:CODE-CELL), already named on
+   \ fd 2. x15 keeps the code across the write (the kernel preserves x2-x15).
+   \ Never returns: no RET keeps the FPRIM-L throw leaf-safe.
    LEVLR LABEL@ LBL,  LUNCAUGHT LABEL@ LBL,
    9 15 0 ADDI,                                        \ restore code after the route's ioctl
    LBL LUNCRPT !  LBL LUNCPOS !  LBL LUNCLOOP !  LBL LUNCDONE !
    15 9 0 ADDI,                                        \ x15 = code (survives writes; x9-x14 are itoa scratch)
    PROT-EMIT:LCLOSE LABEL@ BL,                         \ region -> RX: the hook is compiled code (EMIT-EXITHOOK)
    0 9 0 ADDI,                                         \ x0 = code for the passthrough exit
-   \ One call serves both legs below: the hook runs before the representable-code
-   \ exit and before the reported UNCAUGHT-RC one. x0 is the trampoline's to
-   \ preserve; x9 and x15 are re-derived from it because the hook is ordinary
-   \ compiled code and owns every caller-saved register.
+   \ One hook call serves both legs below. x0 is the trampoline's to preserve;
+   \ x9 and x15 are re-derived from it because the hook is compiled code and
+   \ owns every caller-saved register.
    LEXITHOOK LABEL@ BL,  9 0 0 ADDI,  15 0 0 ADDI,
    9 1 CMPI,    C-LT LUNCRPT LABEL@ BCOND,
    9 255 CMPI,  C-GT LUNCRPT LABEL@ BCOND,
-   NR-EXIT-GROUP SYS,                                  \ representable deliberate code: exit(code) as before
+   NR-EXIT-GROUP SYS,                                  \ representable deliberate code: exit(code)
    LUNCRPT LABEL@ LBL,                                 \ out-of-range: report, then exit UNCAUGHT-RC or RC-REJECT
    1 LUNCMSG LABEL@ ADR,  0 2 MOVZ,  2 UNCMSG-LEN MOVZ,  NR-WRITE SYS,   \ "hb: uncaught throw code "
    9 15 0 ADDI,                                        \ x9 = code for the itoa
@@ -13281,8 +12309,8 @@ public
    LEVCORRUPTMSG LABEL@ LBL,  ma mu BYTES,
    bounds LBL,  STACK-GUARD:EXIT-BOUNDS ;
 
-\ The recovery runs checked code - the invalidation callback and the checker's
-\ retract - so the region closes first, as LEVALREC's does: the underflow path
+\ The recovery runs checked code (the invalidation callback and the checker's
+\ retract), so the region closes first as in LEVALREC: the underflow path
 \ (EM-INTERPRET-UNDERFLOW) arrives as an immediate word left it.
 : EM-REPL-RECOVER ( -- )
    LBL LBL {: bounds:label kept:label :}
@@ -13307,8 +12335,8 @@ public
    12 DATA DP-CELL STR,
    9 10 LASTC-TRIM,
    EM-RESET-COMPILE-STATE
-   \ roll the open-package scope back to this REPL line's boundary (RPKG snapshot),
-   \ alongside the RSAVCP/RSAVND/RSAVDP/RSAVSP rollback above, and arm the checker resync.
+   \ Roll the open-package scope back to this REPL line's boundary (RPKG
+   \ snapshot) beside the RSAVCP/RSAVND/RSAVDP/RSAVSP rollback, and arm the resync.
    9 DATA RPKG-CUR LDR,      9 DATA CUR-CELL STR,
    9 DATA RPKG-PUB LDR,      9 DATA PKG-PUB-CELL STR,
    9 DATA RPKG-PRI LDR,      9 DATA PKG-PRI-CELL STR,
@@ -13324,44 +12352,35 @@ public
    LREAD LABEL@ B,
    bounds LBL,  STACK-GUARD:EXIT-BOUNDS ;
 
-\ Interpret-level reject diagnostics. LUNDEF: undefined token. It prints its
-\ message + the token and ends through the LCOMPILEDIE tail, which names the
-\ file and line and throws RC-REJECT (70) like every located refusal; outer.f
-\ UNDEFINED writes the same bytes. LWIDE: a found word whose DNAME-WIDE dict
-\ flag is set (recorded effect carries a wider-than-cell layout value) was
-\ executed or ticked at interpret level - running it would land a multi-cell
-\ bundle on the untyped interpret stack, where scalar dup/drop/swap silently
-\ corrupt it (dot habu-tfam-12-interpret-10b385b1); checked definitions own
-\ bundle work. LWIDE and the rejects after it print their diagnostic + the
-\ token + a newline, then share the LDIAGRET recovery tail: inside evaluate the
-\ aborted compile unwinds as a catchable RC-REJECT (70) throw via the eval
-\ throw-recovery (restoring RX first), else tty REPL recovery, else exit 70.
+\ Interpret-level reject diagnostics. LUNDEF: undefined token; its message and
+\ the token end through the LCOMPILEDIE tail, which names the file and line and
+\ throws RC-REJECT (70); outer.f UNDEFINED writes the same bytes. LWIDE: a word
+\ with DNAME-WIDE executed or ticked at interpret level would land a multi-cell
+\ bundle on the untyped interpret stack, where scalar dup/drop/swap corrupt it;
+\ checked definitions own bundle work. LWIDE and the rejects after it print
+\ their diagnostic, the token and a newline, then share the LDIAGRET tail: a
+\ catchable RC-REJECT throw inside evaluate (via LEVALREC, RX first), else tty
+\ REPL recovery, else exit 70.
 : EM-COMPILE-UNDEF ( -- )
    LUNDEF LABEL@ LBL,
    9 DATA POLICY-NDICT-CELL LDR,  9 LPOLICY LABEL@ CBNZ,    \ under the design seal a token nothing resolves is outside the vocabulary like any other: the same located line and code
    SP SP 16 SUBI,  9 $494645444E552D45 LIT64,  9 SP 0 STR,  9 $000000203A44454E LIT64,  9 SP 8 STR,  0 2 MOVZ,  1 SP 0 ADDI,  2 13 MOVZ,  NR-WRITE SYS,  SP SP 16 ADDI,  0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
    0 RC-REJECT MOVZ,  LCOMPILEDIE LABEL@ B,                 \ no newline: the LCOMPILEDIE tail appends the location and it
    LDIAGRET LABEL@ LBL,                                     \ shared recovery tail of the interpret-level rejects below (LWIDE, LINTERNAL, ...)
-   9 DATA EVALD-CELL LDR,  9 LUN0 LABEL@ CBZ,               \ EVALD==0 -> top-level path (LUN0), unchanged
-      \ Inside evaluate: the aborted nested :-compile unwinds as a catchable throw
-      \ (RC-REJECT) via the eval throw-recovery (the same LEVALREC path BTHROW uses),
-      \ which gives back what each escaped eval frame owns -- dropping a partial
-      \ definition the frame opened (CP/NDICT/XDS/DP) -- and delivers to the
-      \ enclosing catch, or fails closed with rc70 when no handler exists (exactly
-      \ like LRDIE). We abort mid-compile with the
-      \ dict region RW; restore RX before re-entering executable (EV/handler) code.
+   9 DATA EVALD-CELL LDR,  9 LUN0 LABEL@ CBZ,               \ EVALD==0 -> top-level path (LUN0)
+      \ Inside evaluate: unwind as a catchable RC-REJECT throw via LEVALREC,
+      \ which drops a partial definition the frame opened and delivers to the
+      \ enclosing catch, or exits 70 with no handler. The region may be RW
+      \ mid-compile: restore RX before executable code runs.
       PROT-EMIT:LCLOSE LABEL@ BL,                      \ region -> RX
       15 RC-REJECT MOVZ,                                    \ x15 = throw code
       10 DATA EVALREC-CELL LDR,  10 BR,                     \ -> LEVALREC (frame unwind + deliver)
    LUN0 LABEL@ LBL,
    LREPLROUTE LABEL@ BL,  9 LRDIE LABEL@ CBZ,
-   \ Restore RX before re-entering the REPL read/handler code (dot habu-recovery-pkg-scope-e0bd98e2):
-   \ an undefined word (LUNDEF), orphan closer (LORPHAN), or cf-cap (LCFCAP) that aborts a `:`-body
-   \ at the tty REPL leaves the JIT code region RW; EM-REPL-RECOVER -> LREAD -> RD-LINE then executes
-   \ compiled code in a writable region -> W^X SIGBUS. This is the same RX restore the EVALD>0 leg
-   \ above and LCOMPILEDIE's ldie leg already do; idempotent for the interpret-level diagnostics
-   \ (LWIDE/LINTERNAL/LMININ) that share this LUN0 tail with the region already RX. Pre-existing
-   \ crash surfaced by the REPL package-scope fixture (in-package `: FOO NOPEWORD ;` at the tty).
+   \ Restore RX before the REPL's read: an abort mid-`:`-body (LUNDEF, LORPHAN,
+   \ LCFCAP) leaves the region RW, and EM-REPL-RECOVER -> LREAD -> RD-LINE runs
+   \ compiled code (W^X SIGBUS). Idempotent for the interpret-level diagnostics
+   \ (LWIDE/LINTERNAL/LMININ) that share this LUN0 tail.
    PROT-EMIT:LCLOSE LABEL@ BL,
    EM-REPL-RECOVER
    LRDIE LABEL@ LBL,
@@ -13387,17 +12406,13 @@ public
    0 2 MOVZ,  1 LOPENNL LABEL@ ADR,  2 NL-LEN MOVZ,  NR-WRITE SYS,
    LDIAGRET LABEL@ B,
    \ LFLOORREC: crash.f C-CRASH-DATA-RECOVER resumes a thread here, every other
-   \ register as it faulted, when engine or compiled code loaded or stored in
-   \ the data stack's low guard page: a word took more cells than the stack
-   \ held. The guard page stopped the access, so no cell under the base was read
-   \ or written. XDS may point under the base, so the stub empties the stack
-   \ before anything can run on it: LEVALREC restores XDS from the eval or catch
-   \ frame it delivers to, and the uncaught exit runs the exit hook, compiled
-   \ code, on the empty stack. TKA/TKL still name the token the interpreter was
-   \ running. The throw goes through LEVALREC, not LDIAGRET's reject of a token
-   \ that has not run: the fault is inside running code, maybe under a catch at
-   \ top level, which must receive it as it receives a throw. LEVALREC closes
-   \ the code window first, as it does for any throw.
+   \ register as it faulted, after an access to the data stack's low guard page:
+   \ a word took more cells than the stack held, and no cell under the base was
+   \ touched. XDS may be under the base, so the stub empties the stack before
+   \ anything runs on it (LEVALREC restores XDS from the frame it delivers to;
+   \ the uncaught exit runs the exit hook on the empty stack). TKA/TKL still
+   \ name the token. The throw goes through LEVALREC, not LDIAGRET: the fault is
+   \ inside running code, maybe under a catch, which receives it as a throw.
    LFLOORREC LABEL@ LBL,
    XDS DATA STACK-ABI:BASE-CELL LDR,
    0 2 MOVZ,  1 LMINMSG LABEL@ ADR,  2 MINMSG-LEN MOVZ,  NR-WRITE SYS,
@@ -13433,35 +12448,22 @@ public
    0 2 MOVZ,  1 LOPENNL LABEL@ ADR,  2 NL-LEN MOVZ,  NR-WRITE SYS,
    LDIAGRET LABEL@ B, ;
 
-\ Shared recoverable compile-error tail (dot habu-raw-exit-compile). The
-\ parametric sibling of LDIAGRET: LDIAGRET delivers a fixed RC-REJECT (70), this
-\ carries the code in x0 so duplicate-definition / dict+code overflow / package
-\ misuse / locals-in-quotation / does>-check rejects each keep their own
-\ sysexits-style exit code (positive, shared across sites by design per
-\ tools/error-code-lint-core.f). Each die site writes its diagnostic to fd 2, sets
-\ x0 = its code, then `LCOMPILEDIE LABEL@ B,` here. Inside evaluate (EVALD>0) the
-\ aborted nested compile unwinds as a catchable throw of that code via the eval
-\ throw-recovery (the same LEVALREC path BTHROW/LDIAGRET use) — giving back what
-\ each escaped eval frame owns (input cursor; for a frame that opened the
-\ definition, CP/NDICT truncation drops the partial record, XDS/DP, compile
-\ state; HIDX transparently skips any rolled-back record index) — and delivers
-\ to the enclosing catch, else fails closed with exit_group(x0). At
-\ top level (EVALD==0) it exit_group(x0), byte-identical to the old raw exit. We may
-\ abort mid-compile with the code region RW, so restore RX (idempotent when already
-\ RX) before re-entering executable EV/handler code. x15 carries the code across the
-\ LPROT syscall (kernel preserves x2-x15, as the LUNCAUGHT reporter already relies on).
-\ THE LOCATION IS PRINTED HERE AND NOWHERE ELSE (dot habu-name-the-file-70acbf10).
-\ Every die site above writes its message WITHOUT a trailing newline; this tail
-\ appends ` at <path>:<line>` when a source file is open and the newline in every
-\ case, so one place owns the format and no site can forget it. <path> is the
-\ innermost open include frame's, published by src/core/include.f in
-\ SRCLOC:PATH-CELL/PATHLEN-CELL (0 at the tty REPL, under `-e`, and in the boot
-\ prefix — then only the newline is written). <line> is 1 + the newlines in
-\ [SRCLOC:INB-CELL, INP-CELL): an include evaluates the whole file as ONE buffer,
-\ so that is the file line; a string a harness `evaluate`s inside a file counts
-\ within that string while the path stays the file's (docs/debugging.md).
-\ Registers: x15 already holds the code and is untouched (the kernel preserves
-\ x2-x15); x0-x2 and x9-x14 are scratch, as in the LUNCAUGHT reporter.
+\ Shared recoverable compile-error tail, LDIAGRET's parametric sibling: the code
+\ is in x0, so each reject keeps its own sysexits-style code (shared across
+\ sites per tools/error-code-lint-core.f). Each die site writes its diagnostic
+\ to fd 2, sets x0 and branches here. Inside evaluate (EVALD>0) it unwinds as a
+\ catchable throw of that code via LEVALREC (HIDX skips any rolled-back record
+\ index); at top level it exit_group(x0). The region may be RW mid-compile, so
+\ RX is restored first; x15 carries the code across LPROT (the kernel preserves
+\ x2-x15).
+\ The location is printed here and nowhere else: die sites write their message
+\ without a newline, and this tail appends ` at <path>:<line>` when a source
+\ file is open, then the newline. <path> is the innermost include frame's
+\ (src/core/include.f SRCLOC:PATH-CELL/PATHLEN-CELL; 0 at the tty REPL, under
+\ `-e` and in the boot prefix). <line> is 1 + the newlines in
+\ [SRCLOC:INB-CELL, INP-CELL): an include evaluates the file as one buffer, and
+\ a string `evaluate`d inside a file counts within that string while the path
+\ stays the file's (docs/debugging.md). x0-x2 and x9-x14 are scratch.
 : EM-COMPILE-DIE ( -- )
    LBL LBL LBL LBL LBL LBL LBL {: ldie:label rdie:label noloc:label located:label nlloop:label nldone:label digloop:label :}
    LBL S" hb: definition while a checker replay is open: " {: omsg:label oma:ptr omu:n :}
@@ -13481,8 +12483,8 @@ public
          13 $A CMPI,  C-NE nlloop BCOND,
          12 12 1 ADDI,  nlloop B,
       nldone LBL,
-      \ ":" + decimal line + newline, built backwards in a 32-byte machine-stack
-      \ scratch (the LUNCRPT itoa's shape) so it costs one write.
+      \ ":" + decimal line + newline, built backwards in a 32-byte stack scratch
+      \ (the LUNCRPT itoa's shape), so it costs one write.
       SP SP $20 SUBI,  14 SP $20 ADDI,
       13 $A MOVZ,  14 14 1 SUBI,  13 14 0 STRB,
       9 $A MOVZ,                                            \ x9 = radix
@@ -13507,35 +12509,23 @@ public
    rdie LBL,
    0 15 0 ADDI,                                             \ restore code after the route's ioctl
    NR-EXIT-GROUP SYS,
-   \ Counted-string-too-long diagnostic (dot habu-recovery-pkg-scope-e0bd98e2). The
-   \ four c"/c\" cap sites (C-ICQ/C-EICQ/C-CQ/C-ECQ) used a bare `0 76 MOVZ,
-   \ LCOMPILEDIE B,` that was byte-identically SILENT and overloaded with C-SIG-BAD's
-   \ 76. This branch target writes a named fd-2 label first, then routes through the
-   \ SAME LCOMPILEDIE tail with x0=76 (catchable throw inside evaluate, fail-closed
-   \ exit 76 at top level). No new exit code, no new TRUST site (emitted inside this
-   \ pre-existing untrusted tail word).
+   \ Counted-string-too-long diagnostic for the four c"/c\" cap sites
+   \ (C-ICQ/C-EICQ/C-CQ/C-ECQ): a named fd-2 label, then LCOMPILEDIE with x0=76
+   \ (catchable inside evaluate, exit 76 at top level).
    LCSTR LABEL@ LBL,
    0 2 MOVZ,  1 LCSTRMSG LABEL@ ADR,  2 CSTRMSG-LEN MOVZ,  NR-WRITE SYS,
    0 76 MOVZ,  LCOMPILEDIE LABEL@ B,
-   \ DP-heap out-of-range diagnostic (dot habu-dictionary-allot-past-4e5c3c2b). Every
-   \ allot/,/c,/definer DP advance runs habu1.f DP-CHECK, which used a bare silent
-   \ `0 76 MOVZ, NR-EXIT-GROUP SYS,` when the new DP left [DATA-START, DATA-SIZE] — a
-   \ capacity kill with NO diagnostic (the split-K lane's "silent corruption": ~28 MB of
-   \ host buffers exit_group'd with no message). This target writes a named fd-2 label
-   \ then routes through the SAME LCOMPILEDIE tail with x0=76: a catchable throw inside
-   \ evaluate (DP rolled back, no partial write — DP-CHECK precedes the DP store), a
-   \ fail-closed exit 76 at top level. No new exit code (76 is the pre-existing raw code).
-   \ The label alone still cost the caller the measurement (dot habu-name-the-ceiling-98ca1f47:
-   \ Tender's `build --server` refused after ~29 MB of application data and a ten-minute gate
-   \ run was the only way to read the ceiling), so the line carries the two numbers the
-   \ capacity standard above demands: the refused DP and the ceiling DP-CHECK enforces, both
-   \ as offsets from data-base, both through LDIAGU. x15 holds the candidate DP, moved there
-   \ by the DP-CHECK refusal arm (habu1.f) because the sinks hold it in x7, x11 or x14.
-   \ NO DEFINITION IS NAMED: no DP sink runs while a colon body compiles (compile-mode string
-   \ literals go to the code region), so the body buffer LDIAGDEF reads holds the LAST
-   \ definer's name at every one of these sinks — measured: after `: F ( -- ) 1 drop ;`
-   \ BODYLEN-CELL is 16 over "F ( -- ) 1 drop " — and a stale name is worse than none. The
-   \ LCOMPILEDIE tail's ` at <path>:<line>` already names the refusing line.
+   \ DP-heap out-of-range diagnostic. Every allot/,/c,/definer DP advance runs
+   \ habu1.f DP-CHECK; when the new DP leaves [DATA-START, DATA-SIZE] this names
+   \ it and routes through LCOMPILEDIE with x0=76 (catchable inside evaluate,
+   \ with no partial write since DP-CHECK precedes the store; exit 76 at top
+   \ level). The line carries the refused DP and the ceiling, both as offsets
+   \ from data-base through LDIAGU. x15 holds the candidate DP, moved there by
+   \ DP-CHECK's refusal arm because the sinks hold it in x7, x11 or x14.
+   \ No definition is named: no DP sink runs while a colon body compiles
+   \ (compile-mode string literals go to the code region), so LDIAGDEF's buffer
+   \ holds the last definer's name. LCOMPILEDIE's ` at <path>:<line>` names the
+   \ refusing line.
    LDPBAD LABEL@ LBL,
    0 2 MOVZ,  1 LDPBADMSG LABEL@ ADR,  2 DPBADMSG-LEN MOVZ,  NR-WRITE SYS,
    9 15 DATA SUB,  LDIAGU LABEL@ BL,                        \ the refused DP, from data-base
@@ -13546,12 +12536,11 @@ public
    dpbad-end LBL,
    s" (LDPBAD)" LDPBAD LABEL@ LABEL>N dpbad-end LABEL>N ENGINE-PRIMS:HELPER-REGISTER
    \ A writer of a record or a wid ran while a checker overlay was open
-   \ (habu1.f OVERLAY-EMIT:GUARD,), before it wrote anything. TKA/TKL hold the
-   \ token it was given: the definition's name, the package's, the EXPORT
-   \ operand, or the word that ran `wordlist` or a writer primitive. The code is
-   \ a literal so the host that emits this need not carry the new constant
-   \ (a pre-window build file calls it: docs/bootstrap.md
-   \ "Generation Chain Check").
+   \ (habu1.f OVERLAY-EMIT:GUARD,), before it wrote anything. TKA/TKL hold its
+   \ token: the definition's name, the package's, the EXPORT operand, or the word
+   \ that ran `wordlist` or a writer primitive. The code is a literal so a
+   \ pre-window host need not carry the constant (docs/bootstrap.md "Generation
+   \ Chain Check").
    OVERLAY-EMIT:LDIE LABEL@ LBL,
    0 2 MOVZ,  1 omsg ADR,  2 omu MOVZ,  NR-WRITE SYS,
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
@@ -13559,44 +12548,35 @@ public
    omsg LBL,  oma omu BYTES, ;
 
 \ The design seal (layout.f POLICY-NDICT-CELL and POLICY-BITS-OFF, written by
-\ habu1.f BPOLICYADMIT and BPOLICYSEAL). A sealed process confines the source it
-\ reads to the vocabulary its harness admitted, and these two labels are the
-\ engine's whole reading of that.
-\
+\ habu1.f BPOLICYADMIT and BPOLICYSEAL) confines a sealed process's source to
+\ the vocabulary its harness admitted; these two labels are the engine's whole
+\ reading of it.
 \ LPOLICYREC ( x5 = the record a source token resolved to ) returns when the
-\ record is admitted and branches to LPOLICY when it is not. It is a leaf that
-\ writes x14-x16 only, so a call site keeps LFIND's whole answer across it.
-\ Unsealed it admits every record. Sealed, a record is admitted when BOTH hold:
-\   - it is in scope: the design defined it, which is an index at or above the
-\     NDICT the seal stored, in whichever wordlist `package` put it; or its
-\     wordlist [40] is below PROT-WID-MAX and has its bit in the admitted
-\     bitmap. The bound is tested first, as LPROTWIDQ tests it, because
+\ record is admitted and branches to LPOLICY when not; a leaf writing x14-x16
+\ only. Unsealed it admits every record. Sealed, a record is admitted when both
+\ hold:
+\   - in scope: an index at or above the NDICT the seal stored, in whichever
+\     wordlist; or its wordlist [40] is below PROT-WID-MAX with its bit set in
+\     the admitted bitmap. The bound is tested first, as LPROTWIDQ does, because
 \     PROT-BITS-AT, addresses the band from the wid and a wid reaches WID:MAX.
-\   - checked source may call it: no DNAME-INT, not in OWNER-API-PRI-WID, and a
-\     start cell [0] that is not zero. That is src/compiler/native/dict.f
-\     VISIBLE-RECORD? with `trusted:` off, which a sealed source cannot arm.
-\ The second clause is what makes the record a tier-1 capture admits the record
-\ NCOMP binds. The engine takes the first leg of the search order that holds the
-\ name and NCOMP the first that holds a VISIBLE record of it; under the seal the
-\ engine's record is visible or the capture died, so the two stop at one record.
-\ Without it a sealed body naming an internal word of an admitted package would
-\ be captured, skipped by NCOMP, and bound to a later leg nothing had gated.
-\ The callers are the sites where the engine resolves a SOURCE token: both legs
-\ of EM-INTERPRET-FIND, ahead of its shadow check (INTERP-EMIT:FIND-SHADOW), the
-\ `found` label of EM-COMPILE-CALL, and NCOMP-EMIT:CAPTURE-IMMEDIATE. The native
-\ compiler's own resolution (dict.f, xref.f) never comes here.
-\
-\ LPOLICY is the one refusal: `hb: not in vocabulary: <token>`, then the
-\ LCOMPILEDIE tail with ENGINE-ERROR:POLICY, which appends ` at <path>:<line>`
-\ and exits at top level or unwinds an `included`/`evaluate` frame as a catchable
-\ throw of that code. TKA/TKL hold the token at every site that reaches it:
-\ LPOLICYREC's callers, LKWCMP's match exit, LUNDEF's head and the capture's
-\ miss tail (NCOMP-EMIT:CAPTURE-IMMEDIATE).
+\   - callable by checked source: no DNAME-INT, not in OWNER-API-PRI-WID, start
+\     cell [0] nonzero (src/compiler/native/dict.f VISIBLE-RECORD? with
+\     `trusted:` off, which sealed source cannot arm).
+\ The second clause makes the engine's record the one NCOMP binds: NCOMP takes
+\ the first visible record in the search order, and without it a sealed body
+\ naming an admitted package's internal word would bind a later, ungated leg.
+\ Callers are the sites resolving a source token: both legs of
+\ EM-INTERPRET-FIND ahead of INTERP-EMIT:FIND-SHADOW, EM-COMPILE-CALL's `found`
+\ and NCOMP-EMIT:CAPTURE-IMMEDIATE; dict.f and xref.f never come here.
+\ LPOLICY is the one refusal: `hb: not in vocabulary: <token>`, then LCOMPILEDIE
+\ with ENGINE-ERROR:POLICY. TKA/TKL hold the token at every site that reaches
+\ it: LPOLICYREC's callers, LKWCMP's match exit, LUNDEF's head and the capture's
+\ miss tail.
 : EM-POLICY ( -- )
    LBL LBL LBL {: admitted:label callable:label ordinary:label :}
-   \ The only extra record in confined mode is the global ordinary `require`.
-   \ This entry is called only from the top-level interpret lookup. Compile
-   \ lookup and tier-1 capture still enter LPOLICYREC and refuse it.
+   \ The only extra record in confined mode is the global ordinary `require`;
+   \ only the top-level interpret lookup calls this entry. Compile lookup and
+   \ tier-1 capture use LPOLICYREC and refuse it.
    LPOLICYTOPREC LABEL@ LBL,
    14 DATA POLICY-REQUIRE-CELL LDR,  14 ordinary CBZ,
    16 5 0 LDR,  16 14 CMP,  C-NE ordinary BCOND,
@@ -13629,13 +12609,11 @@ public
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
    0 ENGINE-ERROR:POLICY MOVZ,  LCOMPILEDIE LABEL@ B, ;
 
-\ LDIAGU ( x9 = value ): unsigned decimal on fd 2, no newline. The diagnostic
-\ twin of prof.f LPROFNUM, which writes fd 1 and pads a column: a diagnostic
-\ never leaves through the output device (src/lib/genio-core.f), so a refusal with a
-\ count to state calls this rather than `u.`/G-PRINTU9. Zero prints "0" — the
-\ digit loop runs once before its test. Clobbers x0-x2, x9-x13, x16 (SYS,'s errno
-\ reconciliation) and x30, plus 32 bytes of sp scratch; x14, x15 and x17 survive,
-\ so a caller holds its count in one of those across the call.
+\ LDIAGU ( x9 = value ): unsigned decimal on fd 2, no newline. A diagnostic
+\ never leaves through the output device (src/lib/genio-core.f), so a refusal
+\ stating a count calls this, not `u.`/G-PRINTU9 (prof.f LPROFNUM is the fd-1
+\ twin). Clobbers x0-x2, x9-x13, x16 (SYS,'s errno reconciliation) and x30, plus
+\ 32 bytes of sp scratch; x14, x15 and x17 survive for a caller's count.
 : EMIT-DIAGU ( -- )
    LDIAGU LABEL@ LBL,
    LBL {: dl:label :}
@@ -13649,12 +12627,11 @@ public
    0 2 MOVZ,  1 12 0 ADDI,  2 SP 32 ADDI,  2 2 12 SUB,  NR-WRITE SYS,
    SP SP 32 ADDI,  RET, ;
 
-\ LDIAGDEF ( -- ): the name of the definition being compiled, on fd 2. It is the
-\ FIRST token of the body buffer (C-PUSH-DREC-NAME reads the same span for the
-\ certify record) and not DEF-TKA/DEF-TKL, which the virtual stack has already
-\ overwritten by the time a body-sized ceiling is reached (layout.f VVAL-OFF).
-\ Fail-closed: bounded by BODYLEN, so an empty capture writes nothing rather
-\ than a runaway. Clobbers x0-x2, x9, x10, x12, x13 and x30.
+\ LDIAGDEF ( -- ): the name of the definition being compiled, on fd 2: the first
+\ token of the body buffer (as C-PUSH-DREC-NAME reads it), not DEF-TKA/DEF-TKL,
+\ which the virtual stack has overwritten by a body-sized ceiling (layout.f
+\ VVAL-OFF). Bounded by BODYLEN, so an empty capture writes nothing. Clobbers
+\ x0-x2, x9, x10, x12, x13 and x30.
 : EMIT-DIAGDEF ( -- )
    LDIAGDEF LABEL@ LBL,
    LBL LBL {: scan:label done:label :}
@@ -13671,18 +12648,12 @@ public
    0 2 MOVZ,  1 9 0 ADDI,  2 10 0 ADDI,  NR-WRITE SYS,
    RET, ;
 
-\ Per-definition body-capture capacity diagnostic (dot habu-name-the-per-56a594f3).
-\ habu1.f EMIT-BCAP wrote the CURRENT TOKEN to fd 2 and exit_group(71): a
-\ definition holding ~8 KiB of string literals refused with the offending literal
-\ echoed, no label, no newline, no count and no ceiling — "status 71" was all a
-\ consumer had (aspen/Tender 2026-09-17, nine 900-byte `s"` arms). This target
-\ names the buffer, its ceiling, the definition and the bytes the capture needed,
-\ then routes through the SAME LCOMPILEDIE tail with x0=71: a catchable throw
-\ inside evaluate (BCAP fails before the copy, so the rollback is clean), a
-\ fail-closed exit 71 at top level. No new exit code.
-\ Entered with x16 = BODYLEN + token + 1, the size the capture would have reached.
-\ It moves to x15 BEFORE the first write because SYS, reconciles errno in x16 and
-\ macOS passes the syscall number there: x16 does not survive one diagnostic line.
+\ Per-definition body-capture capacity diagnostic: names the buffer, its
+\ ceiling, the definition and the bytes the capture needed, then LCOMPILEDIE
+\ with x0=71 (catchable inside evaluate, since BCAP fails before the copy; exit
+\ 71 at top level). Entered with x16 = BODYLEN + token + 1; it moves to x15
+\ before the first write because SYS, reconciles errno in x16 and macOS passes
+\ the syscall number there.
 : EM-BODY-CAP-DIE ( -- )
    LBCAPFULL LABEL@ LBL,
    15 16 0 ADDI,                                   \ x15 = the count, across every write below
@@ -13694,21 +12665,15 @@ public
    9 15 0 ADDI,  LDIAGU LABEL@ BL,
    0 71 MOVZ,  LCOMPILEDIE LABEL@ B, ;
 
-\ Quotation-nesting capacity diagnostic (dots habu-name-the-nested-6a8e1b28,
-\ habu-open-a-quotation-f6c2a55f). J-QUOT parks every enclosing quotation in a
-\ JIT-QUOT frame, so one definition holds JIT-QUOT:LEVELS open at once - the
-\ checker's control-frame capacity, so no certified definition reaches this.
-\ The load path aborts here, before the check that runs at the definition's
-\ `;`. tools/check.f never runs the source this far: its preverify refuses the
-\ 33rd control frame first (E-UNCHECKABLE, src/core/checker.f CF-PUSH).
-\ The line has EM-BODY-CAP-DIE's shape: the ceiling, the definition, the depth
-\ it asked for. It routes through the SAME LCOMPILEDIE tail with x0=75: a
-\ catchable throw inside evaluate (J-QUOT branches here before it writes a cell
-\ or emits a word, so the rollback is clean), a fail-closed exit 75 at top
-\ level. Entered with x10 = the frames parked, so the innermost open quotation
-\ makes x10 + 1 and this `[:` asks for x10 + 2; that count moves to x15, which
-\ the writes and the LDIAGU/LDIAGDEF calls below preserve, before the first of
-\ them.
+\ Quotation-nesting capacity diagnostic. J-QUOT parks every enclosing quotation
+\ in a JIT-QUOT frame, so a definition holds JIT-QUOT:LEVELS open at once, the
+\ checker's control-frame capacity: no certified definition reaches this, and
+\ tools/check.f's preverify refuses the 33rd frame first (E-UNCHECKABLE,
+\ src/core/checker.f CF-PUSH). The line has EM-BODY-CAP-DIE's shape (ceiling,
+\ definition, depth asked) and routes through LCOMPILEDIE with x0=75, catchable
+\ inside evaluate since J-QUOT branches here before any write. Entered with x10
+\ = frames parked, so this `[:` asks for x10 + 2; that moves to x15, which the
+\ writes and LDIAGU/LDIAGDEF preserve.
 : EM-QUOT-NEST-DIE ( -- )
    LQNEST LABEL@ LBL,
    15 10 2 ADDI,                                   \ x15 = the depth this `[:` needs
@@ -13720,19 +12685,15 @@ public
    9 15 0 ADDI,  LDIAGU LABEL@ BL,
    0 75 MOVZ,  LCOMPILEDIE LABEL@ B, ;
 
-\ Source that ends inside a construct it opened (dot habu-eof-inside-a-7a539941).
-\ An evaluate frame popped with a definition it opened still open hands its
-\ caller the compile state: at top level the next --load row compiled into the
-\ body and the load exited 0, and through `included` from a compiled word so did
-\ the caller's next words. Both refusals take rc 74, the code of the
-\ other input-ended refusals (an unterminated string literal, a keyword missing
-\ its name), through the LCOMPILEDIE tail: a catchable throw inside evaluate
-\ whose rollback drops the partial record and resets compile state, a
-\ fail-closed exit at top level. A definition is named and located at its name
-\ token, or for def-open at the word that ran it (C-DEF-SOURCE-END); a comment
-\ is located at its `(`, as a literal is at its keyword. A `;` that closes a
-\ definition an outer buffer opened (C-DEF-SOURCE-CLOSE) takes the same code,
-\ named and located at the `;`.
+\ Source that ends inside a construct it opened. A popped evaluate frame with
+\ its definition still open would hand the caller the compile state (the next
+\ --load row compiled into the body). Both refusals take rc 74, the code of the
+\ other input-ended refusals, through LCOMPILEDIE: catchable inside evaluate
+\ (the rollback drops the partial record), exit at top level. A definition is
+\ located at its name token, or for def-open at the word that ran it
+\ (C-DEF-SOURCE-END); a comment at its `(`, as a literal at its keyword. A `;`
+\ closing a definition an outer buffer opened (C-DEF-SOURCE-CLOSE) takes the
+\ same code, located at the `;`.
 : EM-SOURCE-END-DIE ( -- )
    LSRCEND LABEL@ LBL,
    0 2 MOVZ,  1 LSRCENDMSG LABEL@ ADR,  2 SRCEND-MSG-LEN MOVZ,  NR-WRITE SYS,
@@ -13764,10 +12725,9 @@ public
    9 14 8 LDR,  9 DATA INE-CELL STR,
    9 14 EVAL-INB LDR,  9 DATA SRCLOC:INB-CELL STR,
    9 0 MOVZ,  9 DATA EVALERR-CELL STR,
-   \ Usings are file-local: the depth goes back to the buffer's floor, which is
-   \ the depth it entered at unless a `;package` closed a package opened before
-   \ it and restored a lower one (layout.f EVAL-FRAME:USE-FLOOR). Package scope
-   \ persists across a clean include.
+   \ Usings are file-local: the depth returns to the buffer's floor (its entry
+   \ depth unless a `;package` restored a lower one; layout.f
+   \ EVAL-FRAME:USE-FLOOR). Package scope persists across a clean include.
    9 14 EVAL-FRAME:USE-FLOOR LDR,
    15 USE-DEPTH-CELL LIT64,  15 DATA 15 ADD,  10 15 0 LDR,
    9 10 CMP,  9 9 10 C-LS CSEL,                    \ x9 = the lower of floor and depth
@@ -13793,7 +12753,7 @@ public
    CP DATA RSAVCP-CELL STR,
    NDICT DATA RSAVND-CELL STR,
    9 DATA DP-CELL LDR,  9 DATA RSAVDP-CELL STR,
-   \ snapshot the open-package scope for this REPL line (EM-REPL-RECOVER restores it)
+   \ Snapshot the open-package scope for this REPL line (EM-REPL-RECOVER restores it).
    9 DATA CUR-CELL LDR,       9 DATA RPKG-CUR STR,
    9 DATA PKG-PUB-CELL LDR,   9 DATA RPKG-PUB STR,
    9 DATA PKG-PRI-CELL LDR,   9 DATA RPKG-PRI STR,
@@ -13805,7 +12765,7 @@ public
    9 DATA RPKG:FLOOR STR,
    DATA RPKG:WIDS 10 9 ENGINE-EMIT:USE-WIDS-SAVE,                 \ and the used publics, which a `;package` and a `using` can overwrite
    PROT-EMIT:LCLOSE LABEL@ BL,                        \ region -> RX: a definition may span lines, and the reader is compiled code
-   \ and the checker's record end, end+1 (0 = no owner), which a failed line cuts back to
+   \ The checker's record end, end+1 (0 = no owner), which a failed line cuts back to.
    9 DATA RSAVROWS-CELL DECL-OWNER:MARK-END
    9 DATA REPLH-CELL LDR,  9 BLR,
    XDS XDS 8 SUBI,  10 XDS 0 LDR,
@@ -13813,25 +12773,15 @@ public
    10 LRBYE LABEL@ CBZ,
    11 DATA INP-CELL STR,  11 11 10 ADD,  11 DATA INE-CELL STR,  LMAIN LABEL@ B, ;
 
-\ Top-level source exhausted. A boot arrives here TWICE: first at the end of the
-\ ENGINE PREFIX stream, then at the end of the USER stream (a piped program, the
-\ `required` rows `--load` wrote, or the baked LSRC) - see BOOT-SRC:USER-END in
-\ layout.f for why the two are separate streams in one buffer.
-\
-\ A partial capture installs at the first arrival, after its dependencies in the
-\ cold prefix and before any user token. A full runtime installs at startup.
-\ Every mode - pty REPL, piped stdin, `--load`, `--build`, a baked driver - crosses
-\ this boundary before its program. Consuming USER-END below makes the seed
-\ one-shot across the second arrival and every REPL re-entry. (Dot
-\ habu-decide-arm-the-5234727b, USER RULING 2026-08-11: one dictionary surface for
-\ every boot mode. The rejected shapes are on that leaf: a new `AOT-SEED` prefix
-\ token would have put an engine-internal name in every program's dictionary, and
-\ hanging the seed on the existing SEAL-FRIEND token would have made a security
-\ primitive moonlight as dictionary construction.)
-\
-\ Installing the user stream is EM-REPL-READ's move: the new stream starts where
-\ the old one ended (INE), and re-entering LMAIN is a branch. The cell is cleared
-\ as it is consumed, so nothing can install it twice.
+\ Top-level source exhausted. A boot arrives here twice: at the end of the
+\ engine prefix stream, then at the end of the user stream (a piped program, the
+\ `required` rows `--load` wrote, or the baked LSRC); layout.f BOOT-SRC:USER-END
+\ says why they are separate streams in one buffer. A partial capture installs
+\ at the first arrival, after its cold-prefix dependencies and before any user
+\ token; a full runtime installs at startup. Every boot mode crosses this
+\ boundary before its program, and consuming USER-END makes the seed one-shot.
+\ Installing the user stream is EM-REPL-READ's move: it starts at the old end
+\ (INE) and re-entering LMAIN is a branch.
 \ Refuse an unfinished selected unit before the evaluate frame is popped, so
 \ its ordinary throw path restores package scope and dictionary together.
 : C-UNIT-SOURCE-END ( -- )
@@ -13842,10 +12792,9 @@ public
    absent LBL, ;
 
 \ Refuse a definition this buffer opened and did not close, before the frame
-\ is popped: the one open as the buffer began (EVAL-FRAME:PEND) is an outer buffer's.
-\ The refusal is located at the definition's name token, or for def-open at the
-\ word that ran it (layout.f PENDTKA-CELL), an address in this buffer because
-\ this buffer opened it; the buffer's last line can be blank.
+\ is popped (one open as the buffer began, EVAL-FRAME:PEND, is an outer
+\ buffer's). Located at its name token, or for def-open at the word that ran it
+\ (layout.f PENDTKA-CELL), an address in this buffer; its last line can be blank.
 : C-DEF-SOURCE-END ( -- )
    LBL {: closed:label :}
    9 DATA PEND-CELL LDR,  9 closed CBZ,
@@ -13886,33 +12835,26 @@ public
    EM-REPL-READ
    LRBYE LABEL@ LBL,
    PROT-EMIT:LCLOSE LABEL@ BL,     \ region -> RX: the source may end inside a definition (EMIT-EXITHOOK)
-   \ The input ended inside a definition. No input remains for the tty route to
-   \ recover into, so the refusal is final there as it is on a pipe: clearing
-   \ the reader makes LCOMPILEDIE take its exit leg, rc 74.
+   \ The input ended inside a definition: no input remains for the tty route,
+   \ so clearing the reader makes LCOMPILEDIE take its exit leg, rc 74.
    9 DATA PEND-CELL LDR,  9 closed CBZ,
       9 0 MOVZ,  9 DATA REPLH-CELL STR,
       LSRCEND LABEL@ B,
    closed LBL,
    0 0 MOVZ,  LEXITHOOK LABEL@ BL,  NR-EXIT-GROUP SYS, ;   \ the deliberate success exit runs the exit hook
 
-\ Top-level data-stack underflow diagnostic. Reached from the LMAIN depth-floor
-\ guard when the just-interpreted word left XDS below S0 (proven underflow). Print
-\ `E-UNDERFLOW: <word>` naming the offending token (TKA/TKL still hold it, LTOK has
-\ not overwritten them this iteration), then recover exactly like the undefined-word
-\ path: inside EVALUATE the failure unwinds as a catchable RC-REJECT throw via the
-\ eval throw-recovery (LEVALREC, restoring RX first), else recover + re-read in the
-\ REPL, else fail closed with exit 70 in a batch/--load load. Never a signal. The
-\ old rollback-and-return leg (EVALERR only) was fail-open: catch read 0 and a
-\ handlerless caller kept interpreting past the failed evaluate.
+\ Top-level data-stack underflow: the LMAIN depth floor saw XDS below S0. Print
+\ `E-UNDERFLOW: <word>` (TKA/TKL still hold the token) and recover like the
+\ undefined-word path: a catchable RC-REJECT throw inside evaluate via
+\ LEVALREC, else REPL recovery, else exit 70.
 : EM-INTERPRET-UNDERFLOW ( -- )
    LBL LBL {: uf0:label ufdie:label :}
    LUNDERFLOW LABEL@ LBL,
    SP SP 16 SUBI,  9 $465245444E552D45 LIT64,  9 SP 0 STR,  9 $000000203A574F4C LIT64,  9 SP 8 STR,  0 2 MOVZ,  1 SP 0 ADDI,  2 13 MOVZ,  NR-WRITE SYS,  SP SP 16 ADDI,  0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,  0 2 MOVZ,  1 LOPENNL LABEL@ ADR,  2 NL-LEN MOVZ,  NR-WRITE SYS,
    9 DATA EVALD-CELL LDR,  9 uf0 CBZ,
-      \ Inside evaluate: mirror LDIAGRET — an immediate word can underflow
-      \ mid-compile with the dict region RW, so restore RX before the unwind
-      \ re-enters executable (handler) code; mprotect is idempotent when the
-      \ guard fired at interpret level with the region already RX.
+      \ Inside evaluate, as LDIAGRET: an immediate may underflow mid-compile
+      \ with the region RW, so restore RX before the unwind (idempotent at
+      \ interpret level).
       PROT-EMIT:LCLOSE LABEL@ BL,                      \ region -> RX
       15 RC-REJECT MOVZ,                                \ x15 = throw code
       10 DATA EVALREC-CELL LDR,  10 BR,                 \ -> LEVALREC (frame unwind + deliver)
@@ -13922,30 +12864,21 @@ public
    ufdie LBL,
    0 70 MOVZ,  NR-EXIT-GROUP SYS, ;
 
-\ construct operand steps. CMM=1: the
-\ token is the FAMILY operand — resolve eagerly through tfl-con-fam? (owner-only
-\ scope, sum/enum gate) so no operand string must survive a REPL line refill;
-\ stash the id in CMFAM-CELL, arm CMM=2. CMM=2: the token is the VARIANT operand
-\ — tfl-cvar? returns ( tag pads ok ); emit pads x VS-constant 0 pushes + one
-\ tag push (LVPUSHC, byte-identical to how the item-8 generated-constructor body
-\ literals compile), clear the mode. Either resolution failure dies fail-closed
-\ at ITS token with a named message + exit 70, the same class as E-UNDEFINED;
-\ a foreign-package or wrong-kind family is "unknown" by owner-scope design, and
-\ the checker's richer E-CONSTRUCT-* diagnostics live on the check-only paths,
-\ which never reach this engine leg. `;` (or any closer) arriving mid-form is
-\ consumed as the operand and dies the same way (MD-CON-TRUNC's engine mirror).
-\ Region protection: the compile loop holds the code REGION RW between the
-\ colon start and the `;` flush, but the TFL bridge targets are checker words
-\ COMPILED INTO that region — executing them from a writable page SIGBUSes
-\ under W^X. Each leg therefore opens an RX window (LPROT 5) around the find +
-\ call and returns to RW (LPROT 3) before any emission resumes; DATA stores
-\ (CMFAM/CMM) are outside the flipped region and legal in either state, and
-\ the die legs exit the process, so their protection state is irrelevant.
-\ Shared ADT-dispatch stencils (dot habu-factor-repeated-match). The CMM=1/2/3/4/5
-\ legs repeat three byte-identical engine sequences; factored into BL/B-shared
-\ engine routines (bodies + labels both placed inline in EM-COMPILE-ADT-MODE).
-\ Emitted USER code is untouched — none of these touch
-\ C-EMITW/LCEMIT — so only the compiler's own __text shrinks.
+\ Construct operand steps. CMM=1: the token is the family operand, resolved at
+\ once through TFL-CON-FAM? (owner-only scope, sum/enum gate) so no operand
+\ string must survive a REPL line refill; stash the id in CMFAM-CELL and arm
+\ CMM=2. CMM=2: the variant operand; TFL-CVAR? returns ( tag pads ok ); emit
+\ pads zero pushes plus one tag push (LVPUSHC, as generated constructor bodies
+\ compile) and clear the mode. A resolution failure dies at its token with a
+\ named message and exit 70; a foreign-package or wrong-kind family is
+\ "unknown" by owner scope, and the E-CONSTRUCT-* diagnostics live on the
+\ check-only paths. A closer arriving mid-form is consumed as the operand and
+\ dies the same way (MD-CON-TRUNC's engine mirror).
+\ The bridge targets are checker words compiled into the region, which is RW
+\ during a body, so each leg closes it RX around the call (PROT-EMIT:LCLOSE)
+\ and reopens it (PROT-EMIT:LOPEN) before emission resumes.
+\ Shared ADT-dispatch routines for the CMM=1..5 legs, bodies and labels inline
+\ in EM-COMPILE-ADT-MODE; they are engine code and touch no emitted user code.
 \   LADTPUSHTOK: push captured token addr+len as checker-bridge args (x9/XDS;
 \                preserves x11=XT). Leaf, RET.
 \   LMFRTOP:     x15 = &top match-frame family-id slot (x14 scratch). Leaf, RET.
@@ -14007,7 +12940,7 @@ variable LADTPUSHTOK  variable LMFRTOP  variable LADTDIE
       1 vmsg ADR,  2 CONVMSG-LEN MOVZ,  LADTDIE LABEL@ B,
    vmsg LBL,  CONVMSG$ BYTES,
    vok LBL,
-   9 DATA P2-CELL LDR,  9 nox CBZ,      \ layout-cap slice 4: pass-2 wide construct adds extra pads
+   9 DATA P2-CELL LDR,  9 nox CBZ,      \ pass-2 wide construct adds extra pads
       SP SP 16 SUBI,  12 SP 0 STR,  13 SP 8 STR,      \ save declared pads + tag across the query
       9 DATA TKA-CELL LDR,  10 DATA TXN-SRC-A-CELL LDR,  9 9 10 SUB,  10 0 MOVZ,
       LP2CWAT LABEL@ BL,                              \ x10 = extra pads, x11 = found
@@ -14019,29 +12952,24 @@ variable LADTPUSHTOK  variable LMFRTOP  variable LADTDIE
    12 0 MOVZ,  12 DATA CMM-CELL STR,
    LMAIN LABEL@ B, ;
 
-\ MATCH lowering legs. CMM=3/4/5 continue the token
-\ machine J-MATCH armed at `match`: 3 = want family, 4 = want variant-or-`;match`,
-\ 5 = want `of`. Like the construct legs each opens an RX window (LPROT 5) only
-\ around the checker-friend bridge call (the bridge targets are checker words
-\ compiled INTO the mid-body RW code region — a BLR from a writable page SIGBUSes
-\ under W^X) and flips back to RW (LPROT 3) before any emission; each LBCAPs its
-\ consumed operand so the checker body sees it (the keyword-phase LBCAP only sees
-\ `match`/`endof`); resolution failure dies fail-closed at ITS token, exit 70.
-\ The scrutinee is the width-expanded bundle spilled to the physical stack by
-\ J-MATCH's CF-ENTRY; J-MATCH peeks the tag at [x19,#-8] once into x9 and every
-\ variant compares that live x9 (reduction 2).
+\ MATCH lowering legs. CMM=3/4/5 continue the token machine J-MATCH armed at
+\ `match`: 3 = want family, 4 = want variant-or-`;match`, 5 = want `of`. Like
+\ the construct legs each closes the region RX only around the checker bridge
+\ call and reopens it before emission; each LBCAPs its operand so the checker's
+\ body sees it (the keyword-phase LBCAP sees only `match`/`endof`); a resolution
+\ failure dies at its token, exit 70. The scrutinee is the width-expanded bundle
+\ J-MATCH's CF-ENTRY spilled; J-MATCH loads the tag at [x19,#-8] once into x9
+\ and every variant compares that x9.
 
 \ C-DIE-BAD-TAG ( x11=family-name-addr  x12=family-name-len -- )
-\   Emit the invalid-tag die INLINE into the user word with no normal
-\   continuation: the message "hb: bad <family> tag\n" (the NAME BYTES travel
-\   with the word - never a live pointer into the mmap-relocatable TF-STR pool),
-\   then a self-contained write(2,msg,len) + exit_group(ENGINE-ERROR:BAD-TAG).
-\   The message is assembled at CP, then interned as an NSTR body (LNSTRINTERN)
-\   and named by a recorded DATA site; before string.f installs the interner
-\   (NSTR-ABI:INTERN-CELL zero, a seed host) it stays in the code behind a jump
-\   over it and an ADR names it. Modeled on C-DIE-TOKEN's write/exit tail, but
-\   every instruction is C-EMITW'd into the user code region (x28=CP), not the
-\   engine. Runs with the region RW. Clobbers x0-x17.
+\   Emit the invalid-tag die inline into the user word with no continuation:
+\   "hb: bad <family> tag\n" (the name bytes travel with the word, never a
+\   pointer into the relocatable TF-STR pool), then write(2,msg,len) +
+\   exit_group(ENGINE-ERROR:BAD-TAG). The message is assembled at CP, interned as
+\   an NSTR body (LNSTRINTERN) and named by a recorded DATA site; before
+\   string.f installs the interner (NSTR-ABI:INTERN-CELL zero, a seed host) it
+\   stays behind a jump and an ADR names it. Every instruction is C-EMITW'd into
+\   the user region (x28=CP). Runs with the region RW. Clobbers x0-x17.
 : C-DIE-BAD-TAG ( -- )
    LBL LBL LBL LBL LBL LBL {: p1:label p2:label s1:label s2:label t1:label t2:label :}
    LBL LBL LBL {: skipb:label intern:label tail:label :}
@@ -14162,18 +13090,16 @@ variable LADTPUSHTOK  variable LMFRTOP  variable LADTDIE
       1 emsg ADR,  2 MOFMSG-LEN MOVZ,  LADTDIE LABEL@ B,
    emsg LBL,  MOFMSG$ BYTES,
    eok LBL,
-   9 DATA P2-CELL LDR,  9 noxm CBZ,     \ layout-cap slice 4: pass-2 wide match arm adds extra pads to CMPADS
+   9 DATA P2-CELL LDR,  9 noxm CBZ,     \ pass-2 wide match arm adds extra pads to CMPADS
       9 DATA TKA-CELL LDR,  10 DATA TXN-SRC-A-CELL LDR,  9 9 10 SUB,  10 0 MOVZ,
       LP2CWAT LABEL@ BL,                \ x10 = extra pads, x11 = found
       11 noxm CBZ,
          14 DATA CMPADS-CELL LDR,  14 14 10 ADD,  14 DATA CMPADS-CELL STR,
    noxm LBL,
-   \ Dispatch compare+skip (reductions 1/2/3). The tag is already live in x9
-   \ (loaded once by J-MATCH). Compare it with an immediate cmp #tag when the tag
-   \ fits AArch64's 12-bit unsigned cmp field ($F100013F | tag<<10), else fall
-   \ back to movz x16,#tag + cmp x9,x16. Then a b.ne placeholder ($54000001,
-   \ imm19) skips to the next variant, patched by J-ENDOF->LPAT — replacing the
-   \ former movz+ldur+cmp+cset+cbz (7 arm words down to 2 + one shared ldur).
+   \ The tag is live in x9 (loaded once by J-MATCH): compare with cmp #tag when
+   \ it fits the 12-bit unsigned field ($F100013F | tag<<10), else movz x16,#tag
+   \ + cmp x9,x16; then a b.ne placeholder ($54000001, imm19) to the next
+   \ variant, patched by J-ENDOF->LPAT.
    14 DATA CMTAG-CELL LDR,
    14 $FFF CMPI,  C-HI bigtag BCOND,    \ tag > 2^12-1: outside cmp's imm12 field
       9 $F100013F LIT64,  14 14 10 LSLI,  9 9 14 ORR,  LCEMIT LABEL@ BL,  tagdone B,   \ cmp x9,#tag
@@ -14189,12 +13115,11 @@ variable LADTPUSHTOK  variable LMFRTOP  variable LADTDIE
    12 0 MOVZ,  12 DATA CMM-CELL STR,
    LMAIN LABEL@ B, ;
 
-\ EM-COMPILE-ADT-MODE: fail-closed head of the compile
-\ dispatch. CMM-CELL mirrors the checker's construct+match token machine; the
-\ operand tokens are consumed HERE — before the semi/local/keyword/literal/call/
-\ undefined path — so captured family/variant/of/;match tokens never reach
-\ dictionary lookup (the checker's capture discipline). 1/2 = construct, 3/4/5 =
-\ match; each leg branches to LMAIN so the legs never fall into one another.
+\ EM-COMPILE-ADT-MODE: the fail-closed head of the compile dispatch. CMM-CELL
+\ mirrors the checker's construct+match token machine; operand tokens are
+\ consumed here, before the semi/local/keyword/literal/call path, so captured
+\ family/variant/of/;match tokens never reach lookup. 1/2 = construct, 3/4/5 =
+\ match; each leg branches to LMAIN.
 : EM-COMPILE-ADT-MODE ( -- )
    LBL LBL LBL LBL LBL LBL {: s2:label s3:label s4:label s5:label field:label off:label :}
    LBL LADTPUSHTOK !  LBL LMFRTOP !  LBL LADTDIE !   \ allocate shared-routine labels
@@ -14205,9 +13130,8 @@ variable LADTPUSHTOK  variable LMFRTOP  variable LADTDIE
    9 5 CMPI,  C-EQ s5 BCOND,
    9 6 CMPI,  C-EQ field BCOND,
    EM-ADT-CON-FAM
-   \ Shared routine bodies, emitted after CON-FAM's unconditional LMAIN B, and
-   \ before the s2 dispatch label: reached only via BL/B, never by fall-through,
-   \ and each is self-terminating (RET, or C-DIE-TOKEN's tail branch).
+   \ Shared routine bodies, after CON-FAM's unconditional LMAIN B: reached only
+   \ by BL/B, each self-terminating (RET, or C-DIE-TOKEN's tail branch).
    LADTPUSHTOK LABEL@ LBL,              \ push captured token addr+len as checker-bridge args
       9 DATA TKA-CELL LDR,  9 G-PUSH
       9 DATA TKL-CELL LDR,  9 G-PUSH  RET,
@@ -14228,24 +13152,18 @@ package COMPILE-EMIT
 public
 
 \ Tier 0's compile loop, from the LCOMPILE head to the call dispatch. EMIT-MAIN
-\ emits it directly after the tier-1 loop and directly before the tails both
-\ tiers share, which is why the shared tails are NOT here: EM-COMPILE-UNDEF,
-\ EM-COMPILE-DIE, EM-COMPILE-EXIT and EM-EVAL-THROW-RECOVER each bind a label
-\ (LUNDEF, LEX0/LEXIT, LEVALREC ...), and binding one twice is `icode: label
-\ redefined`. EMIT-DEF-KW-GUARD is left out for the same reason: EMIT-DICTIONARY-
-\ SECTIONS already emits the LDEFKWGUARD routine, and this loop needs the keyword
-\ rows with CF-DEF-GUARD CLEAR (handler bodies emitted inline), which is exactly
-\ what EM-COMPILE-KEYWORDS below does when the guard flag is 0.
-\
-\ Neither end falls through by accident: NCOMP-EMIT:EM-COMPILE ends on an
-\ unconditional `B LMAIN`, and EM-COMPILE-CALL's last instruction is `found B,`
-\ with its undefined-word exit taken through `LUNDEF CBZ` -- so this block is
-\ entered only by a branch to LCOMPILE, never by falling into it.
-\
-\ A body token reopens the code window when a way out of the loop closed it
-\ under the pending head (EM-INTERPRET-COLON): every emission goes through
-\ LCEMIT, whose PROT-EMIT:LGROW needs only some code band open, and a write
-\ below CP declares its own span.
+\ emits it after the tier-1 loop and before the shared tails, which stay out:
+\ EM-COMPILE-UNDEF, EM-COMPILE-DIE, EM-COMPILE-EXIT and EM-EVAL-THROW-RECOVER
+\ bind labels (LUNDEF, LEX0/LEXIT, LEVALREC ...) and a second binding is
+\ `icode: label redefined`. EMIT-DEF-KW-GUARD stays out too: the dictionary
+\ sections already emit LDEFKWGUARD, and this loop needs the keyword rows with
+\ CF-DEF-GUARD clear (EM-COMPILE-KEYWORDS with the flag 0).
+\ It is entered only by a branch to LCOMPILE: NCOMP-EMIT:EM-COMPILE ends on
+\ `B LMAIN`, and EM-COMPILE-CALL ends on `found B,`.
+\ A body token reopens the code window a way out of the loop closed under the
+\ pending head (EM-INTERPRET-COLON): every emission goes through LCEMIT, whose
+\ PROT-EMIT:LGROW needs only some code band open, and a write below CP declares
+\ its own span.
 : EM-COMPILE-LEGACY ( -- )
    LBL LBL LBL {: lnotsemi:label open:label call:label :}
    LCOMPILE LABEL@ LBL,
@@ -14264,23 +13182,18 @@ public
    EM-COMPILE-CALL ;
 
 \ LROWWALK ( x0 = a name, x1 = its length -> x0 = 1 when a dispatch row
-\ matches the name, else 0 ). The union of the keyword rows the engine
-\ dispatches -- the interpret rows, the compile and string rows, the pass-2
-\ width rows, jit.f's op rows and tier 1's capture string rows -- replayed from
-\ their registrars, so a row added to any of them is walked by construction.
-\ Each test is LKWCMP, as at dispatch: the name is folded the same way, and
-\ under the design seal a row outside the design span refuses the name there
-\ (LPOLICY) instead of answering. LKWCMP reads the token cells, so the name
-\ stands in them for the walk and the token is put back.
-\ Three spellings no registrar holds are compared only inside their construct:
-\ `:}` in a `{:` group (C-LBRACE-PARSE-NAMES), `kernel:` where top level reads
-\ `:` (EM-INTERPRET-COLON) and `;match` in a match arm (EM-ADT-MATCH-VAR). A
-\ word so named would be the keyword in one place and the word in another - a
-\ body's `:}` is a call at tier 0 and the closer to tier 1's compiler - so they
-\ are walked too, and so is any spelling a new bare LKWCMP compares.
-\ Writes x0-x5 only. Callers: the sealed definition-name wall in
-\ EMIT-QUALIFY-DEF and habu1.f BPOLICYADMIT, which refuses a package whose
-\ public words spell a row.
+\ matches the name, else 0 ). Walks the union of the dispatched keyword rows
+\ (interpret, compile and string, pass-2 width, jit.f's op rows, tier 1's
+\ capture string rows) replayed from their registrars, so a new row is walked
+\ by construction. Each test is LKWCMP, as at dispatch: under the design seal a
+\ row outside the design span refuses the name (LPOLICY). LKWCMP reads the
+\ token cells, so the name stands in them and the token is put back.
+\ Three spellings no registrar holds are walked too: `:}` (C-LBRACE-PARSE-NAMES),
+\ `kernel:` (EM-INTERPRET-COLON) and `;match` (EM-ADT-MATCH-VAR), since such a
+\ word would be the keyword in one place and the word in another (a body's `:}`
+\ is a call at tier 0 and the closer at tier 1); so is any spelling a new bare
+\ LKWCMP compares. Writes x0-x5 only. Callers: EMIT-QUALIFY-DEF's sealed
+\ definition-name wall and habu1.f BPOLICYADMIT.
 : EMIT-ROW-WALK ( -- )
    LBL LBL {: hit:label back:label :}
    LROWWALK LABEL@ LBL,
@@ -14301,17 +13214,14 @@ public
 
 ;package
 
-\ ---- the recovery rows ---------------------------------------------------------
-\ The bodies of def-abort and stack-clear (src/habu/prims.f), which an
-\ interpret loop written in Habu calls when it catches a refusal. FPRIM-WID
-\ frames x30 around each, as around the definition writers.
+\ The bodies of def-abort and stack-clear (src/habu/prims.f), called by a Habu
+\ interpret loop that catches a refusal. FPRIM-WID frames x30 around each.
 package DEFWRITE
 
 public
 
 \ A caught Habu source abandons an owned definition without disturbing the
-\ catch frame that returned its code. Close the JIT page before any Habu
-\ rollback runs.
+\ catch frame that returned its code. Close the JIT page before any rollback.
 : DEF-ABORT ( -- )
    PROT-EMIT:LCLOSE LABEL@ BL,
    EM-ABORT-COMPILE-STATE ;
@@ -14321,22 +13231,16 @@ public
 
 ;package
 
-\ The main-loop emitter entry belongs to the emitter package habu1.f opens for
-\ the primitive sections: its caller EMIT-CODE-SECTIONS resolves it bare in the
-\ reopened block below.
+\ EMIT-CODE-SECTIONS resolves the main-loop emitter bare in the reopened
+\ emitter package habu1.f opens for the primitive sections.
 package ENGINE-EMIT
 
 : EMIT-MAIN ( -- )
    LBL LMAIN !  LBL LEXIT !  LBL LCOMPILE !  LBL LUNDEF !  LBL LUNDERFLOW !
    LBL LCODEINV !
    EM-STARTUP
-   \ Boot enters the interpret loop, explicitly. EM-STARTUP's last emitter ends
-   \ at SRC-DONE with no branch, so before this line cold boot fell into the
-   \ code that happened to be emitted next -- tier 1's LENTRY, which survived it
-   \ only because TKL is 0 at boot and the not-a-semicolon path happens to end
-   \ at LMAIN. That made the emission ORDER of the two compile loops part of the
-   \ boot contract; with a second loop to place, it stops being a coincidence
-   \ worth relying on.
+   \ Boot enters the interpret loop explicitly: EM-STARTUP ends at SRC-DONE with
+   \ no branch, and the emission order of the compile loops is not a contract.
    LMAIN LABEL@ B,
    NCOMP-EMIT:EM-COMPILE
    COMPILE-EMIT:EM-COMPILE-LEGACY
@@ -14358,8 +13262,7 @@ package ENGINE-EMIT
 
 ;package
 
-\ The source-buffer cursor holds an address, so its cell is declared storage
-\ (dot habu-refuse-a-ptr-5ad2734e).
+\ The source-buffer cursor holds an address, so its cell is declared storage.
 PTR-VARIABLE SRCA
 : SRCA@ ( -- ptr u8 )
    SRCA @ ;
@@ -14369,8 +13272,6 @@ PTR-VARIABLE SRCA
    ASM-INIT  ENGINE-PRIMS:RESET
    0 DIVISION-PRIM-ROW !  0 CF-DEF-GUARD ! ;
 
-\ Label allocation for the emitter: one private allocator per engine region,
-\ one public entry that reserves every label a build uses.
 package LABELS
 
 : CORE ( -- )
@@ -14557,46 +13458,26 @@ public
 
 \ Bake the AOT section: blob length + blob, record count + N compact AOT-CREC-ROW
 \ records (blob-relative code span, name-pool reference, flags, wid), call-site
-\ count/format + call rows (bound u32 offsets or generic SITE-ROW rows), then the name pool and the
-\ DATA/CODE/window offset tables, all u32. Emitted LAST of the three image parts
-\ (ENGINE-EMIT:FORTH says why), after the baked source, so it shifts nothing and
-\ no reach depends on its size.
-\ EVERY LABEL THIS WORD BINDS IS ADDRESSED WITH TADR,, NEVER ADR,. That is a rule
-\ about the SECTION, not about how far away a particular label happens to land: a
-\ blob of a few hundred bytes and a blob of a megabyte are the same kind of thing
-\ and the boot code cannot tell them apart. Reordering the rows below is
-\ therefore free, and an ADR, into this section is a defect whatever today's
-\ measurement says (tools/aot-section-reach-lint.f refuses one).
-\ The section is emitted for every engine and is empty when the build captured
-\ nothing: an empty capture bakes LAOTNREC = 0 and EM-SEED-AOT emits no pass.
-\ ---- binding a baked call site to a record, here, at build time ---------------
-\
-\ WHAT A BAKED SITE ROW IS, AND WHY IT IS NOT A NAME. The capture records a
-\ callee by NAME and SCOPE because that is the only identity a host dictionary
-\ record has that survives into another process (aot-capture.f ACAP-SITE-SCOPE),
-\ and it proves the pair identifies the callee in the host (ACAP-?SITE). The
-\ IMAGE needs no such identity: it bakes the callee itself, as a seeded primitive
-\ record or as one of its own payload records, and the boot builds one dictionary
-\ from exactly those two tables in exactly that order - ENGINE-PRIMS:COUNT
-\ primitives from LDICT (EM-SEED-DICT), then LAOTNREC payload records in capture
-\ order (EM-AOT-REGISTER-RECS). So a callee has a POSITION in that dictionary,
-\ this word resolves the name to it once, and the row carries the index.
-\
-\ WHAT THAT BUYS AND WHAT IT RETIRES. The boot loads dict[k][0] and subtracts:
-\ no lookup per site (12,438 of them on this engine, one hash probe each), no
-\ name-pool read, four bytes less per row, and no sealed-WID gate - that gate
-\ asks whether a name resolved in the BOOTING engine may be wired, and nothing
-\ is resolved there any more. The gate stays for the two passes that do resolve
-\ names at boot: the boot-run entry list and the named code sites.
-\
-\ A NAME THAT RESOLVES TO NEITHER TABLE KEEPS ITS NAME. That is not a failure:
-\ a PARTIAL capture - a stripped application, a chain capture, any window
-\ smaller than the whole tree - calls words the engine it boots into carries
-\ from its own prefix, and no index of this payload can name one of those. The
-\ row then sets SITE-NAME-TAG and the seed resolves it the way it always did,
-\ in the scope the capture recorded, through the sealed-WID gate. A qualified
-\ scope (WID-QUAL) takes the same path, because the qualifier names a package
-\ whose id belongs to the booting engine and not to this image.
+\ count/format + call rows (bound u32 offsets or generic SITE-ROW rows), then
+\ the name pool and the DATA/CODE/window offset tables, all u32. Emitted last of
+\ the three image parts (ENGINE-EMIT:FORTH says why), after the baked source, so
+\ it shifts nothing and no reach depends on its size. Every label it binds is
+\ addressed with TADR,, never ADR,, whatever its distance today
+\ (tools/aot-section-reach-lint.f refuses one). Emitted for every engine; an
+\ empty capture bakes LAOTNREC = 0 and EM-SEED-AOT emits no pass.
+\ A baked call site is bound to a record at build time.
+\ The capture records a callee by name and scope, the only host identity that
+\ survives into another process (aot-capture.f ACAP-SITE-SCOPE, proved by
+\ ACAP-?SITE). The boot builds one dictionary from ENGINE-PRIMS:COUNT
+\ primitives (EM-SEED-DICT) then LAOTNREC payload records in capture order
+\ (EM-AOT-REGISTER-RECS), so this word resolves the name once to a position and
+\ the row carries the index: no lookup per site at boot (12,438 sites on this
+\ engine), four bytes less per row, no sealed-WID gate.
+\ A name in neither table keeps its name: a partial capture calls words the
+\ booting engine carries in its own prefix. The row sets SITE-NAME-TAG and the
+\ seed resolves it in the captured scope through the sealed-WID gate. A
+\ qualified scope (WID-QUAL) does the same, since its package id belongs to the
+\ booting engine.
 : AOT-W32@ ( ptr u8 -- n ) {: p:ptr :}
    p c@  p 1+ c@ 8 lshift or  p 2 + c@ 16 lshift or  p 3 + c@ 24 lshift or ;
 
@@ -14612,9 +13493,8 @@ public
 : AOT-CREC-NAME$ ( n -- ptr u8 n ) AOT-CREC-AT 8 + AOT-W32@ AOT-POOL$ ;
 : AOT-CREC-WID@ ( n -- n ) AOT-CREC-AT 16 + AOT-W32@ ;
 
-\ The primitive's wid as the seeded record carries it: ENGINE-PRIMS:HELPER-WID
-\ is what ENGINE-EMIT:EMIT-DICT bakes into [40], so the match asks the same
-\ question the boot dictionary answers.
+\ The primitive's wid as the seeded record carries it: ENGINE-EMIT:EMIT-DICT
+\ bakes ENGINE-PRIMS:HELPER-WID into [40].
 : AOT-PRIM-INDEX ( ptr u8 n n -- n ) {: a:ptr u:n w:n :}
    SEEDED-PRIM-N @ 0 ?do
       i ENGINE-PRIMS:HELPER-WID w = if
@@ -14639,18 +13519,15 @@ public
    p 0 >= if p exit then
    a u w AOT-PAYLOAD-INDEX {: k:n :}
    k 0 < if -1 exit then                             \ the image does not carry it: keep the name
-   \ Marked as payload-relative: the seed adds the base it can compute and this
-   \ build cannot, because a partial image's records land above a cold prefix
-   \ that does not exist yet here.
+   \ Payload-relative: the seed adds the base, since a partial image's records
+   \ land above a cold prefix that does not exist here.
    k SITE-TARGET-MASK and SITE-REC-TAG or ;
 
-\ One binding per distinct callee, not per site: the sites repeat a handful of
-\ callees (83 names over 12,438 sites on this engine) and every miss walks the
-\ primitive table. The key is the (pool offset, scope) PAIR and not the name
-\ alone, because the pool is deduplicated by text (aot-capture.f ACAP-POOL-ADD)
-\ and one spelling in two wordlists is two different callees - which is the
-\ whole reason the capture records a scope beside the name. A full memo stops
-\ memoizing rather than evicting: a miss costs a scan, never a wrong answer.
+\ One binding per distinct callee (83 names over 12,438 sites on this engine;
+\ every miss walks the primitive table). The key is the (pool offset, scope)
+\ pair: the pool is deduplicated by text (aot-capture.f ACAP-POOL-ADD), and one
+\ spelling in two wordlists is two callees. A full memo stops memoizing rather
+\ than evicting: a miss costs a scan, never a wrong answer.
 1024 constant AOT-BIND-MEMO-MAX
 create AOT-BIND-NAME AOT-BIND-MEMO-MAX cells allot
 create AOT-BIND-SCOPE AOT-BIND-MEMO-MAX cells allot
@@ -14700,8 +13577,8 @@ variable AOT-BOUND-SITES
    off 3 and 0<> off AOT-BLOB-LEN @ >= or if AOT-SITE-REFUSE then
    AOT-BLOB-BUF@ off + AOT-W32@ ;
 
-\ Eligibility is about the complete placement AND every callee. A valid B or
-\ external/payload callee retains the generic representation for this image.
+\ Eligibility covers the complete placement and every callee: a valid B or an
+\ external/payload callee keeps the generic representation for this image.
 : AOT-BOUND-SITES? ( -- bool )
    SEEDED-RUNTIME? 0= if false exit then
    AOT-BLOB-LEN @ 3 and 0<> if AOT-SITE-REFUSE then
@@ -14761,20 +13638,15 @@ public
 : EMIT-PWIN ( -- )   \ packed u32 window-relative protected WIDs
    AOT-PWIN-N @ 0 > IF AOT-PWIN-BUF@ AOT-PWIN-N @ 4 * BYTES, THEN ;
 ;package
-\ ---- the checker payload: one span, its own table, three sections -------------
-\ WHY IT IS ONE SPAN. The seed publishes it with the two DATA cells layout.f set
-\ aside (AOT-CELLS:SIG-POOL-CELL and LEN-CELL), and the checker needs three: the
-\ signature rows, the strings they name, and the type registry the signatures
-\ resolve against. So the span carries its own table - a section count, then a
-\ row of (offset, length) each, then the sections - in the shape this file's own
-\ artifact reader uses, and src/core/checker.f refuses every malformation of it
-\ by name before it believes a byte.
-\
-\ IT IS ASSEMBLED INTO A BUFFER AND EMITTED ONCE. BYTES, pads its run to the
-\ four-byte grain, so three separate runs would leave gaps the table would have
-\ to describe; one run over one contiguous buffer leaves the offsets meaning
-\ exactly what they say. The buffer reserves the checked sum of the three
-\ actual lengths, within the same aggregate budget as their emitted section.
+\ The checker payload is one span with its own table and three sections.
+\ The seed publishes one span through layout.f's two cells (AOT-CELLS:SIG-POOL-CELL
+\ and LEN-CELL), and the checker needs three sections: signature rows, their
+\ strings, and the type registry. The span carries a table (section count, an
+\ (offset, length) row each, the sections) in this file's artifact-reader
+\ shape; src/core/checker.f refuses every malformation by name. It is built in
+\ one buffer and emitted once, since BYTES, pads each run to four bytes and
+\ separate runs would leave gaps. The buffer reserves the checked sum of the
+\ three lengths, within the section's aggregate budget.
 package AOT-SIG-PAYLOAD
 using AOT-BUF
 public
@@ -14801,9 +13673,8 @@ variable CUR
    k 1 = if AOT-SIG-STR-LEN @ exit then
    AOT-REG-LEN @ ;
 
-\ Nothing to publish when nothing was captured, and that is the whole of the
-\ "an engine with no seed behaves exactly as it did" story: LEN stays 0, the
-\ seed skips, both cells stay 0 and the checker's intake is a cell read.
+\ Nothing captured: LEN stays 0, the seed skips, both cells stay 0 and the
+\ checker's intake is a cell read.
 : BUILD ( -- )
    0 LEN !
    AOT-SIG-N @ 0= AOT-SIG-STR-LEN @ 0= and AOT-REG-LEN @ 0= and if exit then
@@ -14824,8 +13695,8 @@ variable CUR
    loop
    CUR @ LEN ! ;
 
-\ BUILD is the caller's, so the length label and the bytes read one assembly
-\ rather than two: EMIT-AOT-SEED builds once, emits the length, then emits this.
+\ The caller builds once (EMIT-AOT-SEED), emits the length, then this, so the
+\ length label and the bytes read one assembly.
 : EMIT ( -- )
    LEN @ 0 > if BUF@ LEN @ BYTES, then ;
 
@@ -14869,10 +13740,9 @@ variable CUR
    AOT-SPAN:LCOUNT LABEL@ LBL,  AOT-SPAN:N @ DCQ,
    AOT-SPAN:LROWS LABEL@ LBL,  AOT-SPAN:EMIT-ROWS
    LAOTBOOTRUN LABEL@ LBL,  AOT-BOOTRUN-BUF@ AOT-BOOTRUN-LEN @ 1 + BYTES,   \ +1 = live 0 terminator
-   \ The base every captured wid is stored against, and it is a CONSTANT: the
-   \ rows already hold their offset from the window's first wordlist
-   \ (aot-capture.f ACAP-REL-WID), so the capturing engine's own W0 has nothing
-   \ left to say here and does not travel.
+   \ Every captured wid is stored against this constant base: the rows hold
+   \ their offset from the window's first wordlist (aot-capture.f
+   \ ACAP-REL-WID), so the capturing engine's W0 does not travel.
    AOT-WINDOW:LWIDW0 LABEL@ LBL,  WID-REL-BASE DCQ,
    AOT-WINDOW:LWIDSPAN LABEL@ LBL,  AOT-WID-SPAN @ DCQ,
    AOT-WINDOW:LNPWIN LABEL@ LBL,  AOT-PWIN-N @ DCQ,
@@ -14884,12 +13754,11 @@ variable CUR
       AOT-SIG:LNAME LABEL@ LBL,  AOT-SIG:INSTALL-NAME$ BYTES,
    then ;
 
-\ tok-imm? ( ptr u8 n -- n ): live-dictionary immediate probe for the checker
-\ (dot habu-checker-fitting-arity-70dc94e4). Pops a token name, runs the same
-\ LFIND the interpret dispatch uses, and pushes flags&2 - the DNAME-IMM bit
-\ (habu1.f FIND-HMATCH folds it to bit 1) - so DO-TOK1 can reject a live
-\ immediate as a checked body step. LFIND clobbers x3-x16 and preserves XDS
-\ (x19)/DATA (x20); the FPRIM frame holds our x30 across the BL.
+\ tok-imm? ( ptr u8 n -- n ): live-dictionary immediate probe for the checker.
+\ Runs the interpret dispatch's LFIND on a token name and pushes flags&2, the
+\ DNAME-IMM bit (habu1.f FIND-HMATCH folds it to bit 1), so DO-TOK1 can reject a
+\ live immediate as a checked body step. LFIND clobbers x3-x16 and preserves
+\ XDS (x19)/DATA (x20); the FPRIM frame holds x30 across the BL.
 : BTOKIMM ( -- )
    10 G-POP  9 G-POP                   \ x10 = len (TOS), x9 = addr: LFIND's token registers
    LFIND LABEL@ BL,                    \ x13 = found | imm<<1 | min-in byte | int flags
@@ -14948,13 +13817,12 @@ variable CUR
    done LBL,
    A G-PUSH ;
 
-\ scope-find ( ptr u8 n -- ptr n ptr n ptr n n ): LSCOPEREC's four answers for
-\ a token the caller holds - the bound record, the used publics' record, the
-\ second used record when two hold the tail, the flags. It is the lookup the
-\ checker, the optimizing compiler and the Habu interpreter ask, so each binds a
-\ spelling to the record the JIT's call binds it to rather than to the answer of
-\ a walk of its own. A global row, checked like any other: a caller reads a
-\ record's cells as src/habu/xref.f XREF-WORDLIST does.
+\ scope-find ( ptr u8 n -- ptr n ptr n ptr n n ): LSCOPEREC's four answers for a
+\ token (bound record, used publics' record, second used record when two hold
+\ the tail, flags), so the checker, the optimizing compiler and the Habu
+\ interpreter bind a spelling to the record the JIT's call binds. A global row,
+\ checked like any other; a caller reads record cells as src/habu/xref.f
+\ XREF-WORDLIST does.
 : BSCOPEFIND ( -- )
    10 G-POP  9 G-POP                   \ x10 = len (TOS), x9 = addr
    LSCOPEREC LABEL@ BL,
@@ -14967,10 +13835,9 @@ variable CUR
    9 32 MOVZ,  9 G-PUSH
    9 0 MOVN,  9 G-PUSH ;
 
-\ Build sequencing: the section emitters join the emitter package habu1.f opens
-\ for EMIT-PRIMS, EMIT-PROTWID and EMIT-DICT, which they call bare, and FORTH is
-\ this package's one public word, called by src/habu/stdin.f and
-\ ENGINE-BUILD:BUILD below.
+\ The section emitters join the emitter package habu1.f opens for EMIT-PRIMS,
+\ EMIT-PROTWID and EMIT-DICT, which they call bare; FORTH is its one public
+\ word, called by src/habu/stdin.f and ENGINE-BUILD:BUILD below.
 package ENGINE-EMIT
 
 create KERNEL-CONTEXT SHA256-CTX-BYTES allot
@@ -15108,19 +13975,12 @@ variable KERNEL-CODE-END
 
 public
 
-\ Emit a complete engine image.
-\ THE THREE PARTS, IN THIS ORDER, AND WHY THE ORDER IS THE CONTRACT.
-\ An image is engine code, then the baked source, then the AOT payload, and each
-\ part is bounded by a different owner (src/arch/arm64/icode.f derives the code
-\ window from all three). The order is what keeps the FIRST bound real: the boot
-\ path reaches LSRC with an ADR, planted in the startup region, so the distance
-\ from the image's first instruction to LSRC is the engine code half, and ?ADR
-\ refuses at ADR-HI. Emitting the AOT payload BEFORE the source, as this did
-\ until 2026-08-14, put the payload's megabytes inside that distance and the ADR,
-\ then refused images whose engine code was a tenth of its allowance -- the wrong
-\ file refusing first, and the reason dot habu-reach-the-seed-d1326596 exists.
-\ The payload is last and is addressed only through TADR,, so its size cannot
-\ enter any reach.
+\ Emit a complete engine image: engine code, then the baked source, then the AOT
+\ payload, each bounded by a different owner (src/arch/arm64/icode.f derives the
+\ code window from all three). The order is the contract: the boot path reaches
+\ LSRC with an ADR from the startup region, which ?ADR refuses past ADR-HI, so
+\ only engine code may lie before LSRC. The payload is last and addressed only
+\ through TADR,, so its size enters no reach.
 : EMIT-FORTH-IMAGE ( ptr u8 n -- )
    EMIT-RESET-BUILDER
    LABELS:INIT

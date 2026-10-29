@@ -1,31 +1,8 @@
-\ sites.f - the one reader of the live region's recorded sites.
-\
-\ A site is an instruction in the live code region that a later pass rewrites or
-\ resolves: a call, or the first instruction of an address literal. It is
-\ recorded where the code is built (src/habu/layout.f SNAP-RELOC) and never found
-\ again by decoding region bytes, because compiled code may carry inline data.
-\ This file answers one question about that record - which sites start inside a
-\ span of region byte offsets, and of which kind - in ascending offset order,
-\ from whichever of the two representations the running target keeps:
-\
-\ - ARM64 keeps two bitmaps, one bit per four-byte region word. The call map
-\   holds region-to-text calls only: the compilers record a call whose callee
-\   lies outside the region (habu2.f EMIT-CEMITBL, src/compiler/native/publish.f),
-\   and nothing records a call from one region address to another. The address
-\   map holds the first MOVZ of every address carrier. BITMAP-EACH reads them.
-\ - x86-64 keeps rows over the same bytes, because its sites are byte offsets: a
-\   u64 count, then offset u32 and kind u8 rows in strictly ascending offset
-\   order. ROWS-EACH reads them.
-\
-\ Both arms take the band - its first byte, SNAP-RELOC's CALLMAP-OFF - as
-\ bytes. EACH-IN-SPAN is the entry the rest of the tree calls: it picks the arm by
-\ target and hands it the engine's band.
-\
-\ A span is [off, off+len) and a site is inside it when its first byte is. Every
-\ refusal throws SNAP-RELOC:SITE-RC and precedes the first yield: a span that
-\ does not lie inside [0, REGION], on both arms, because the bitmap arm would
-\ read past both maps; and on the row arm a count above SITE-CAP, a row at or
-\ after REGION, a row of no known kind, and a row not above the one before it.
+\ sites.f - the one reader of the live region's recorded sites: a call, or the
+\ first instruction of an address literal, that a later pass rewrites. Sites are
+\ recorded where code is built (layout.f SNAP-RELOC), never found by decoding,
+\ because compiled code may carry inline data. EACH-IN-SPAN yields the sites
+\ whose first byte lies in [off, off+len), ascending, from the target's form.
 
 require src/lib/prelude.f
 require src/lib/le.f
@@ -42,13 +19,20 @@ SNAP-RELOC:SITE-ROWS-OFF SNAP-RELOC:SITE-N-CELL - constant ROWS-AT
 : REFUSE ( -- )
    SNAP-RELOC:SITE-RC throw ;
 
+\ Every refusal throws SNAP-RELOC:SITE-RC before the first yield: on both arms a
+\ span outside [0, REGION] (the bitmap arm would read past both maps); on the row
+\ arm a count above SITE-CAP, a row at or after REGION, a row of no known kind,
+\ and a row not above the one before it.
 \ Compared without forming off+len, which a large len would wrap.
 : SPAN-CK ( n n -- ) {: off:n len:n :}
    off 0 < len 0 < or if REFUSE then
    off REGION > if REFUSE then
    len REGION off - > if REFUSE then ;
 
-\ ---- the bitmap arm -----------------------------------------------------------
+\ ARM64 keeps two bitmaps, one bit per region word. The call map holds
+\ region-to-text calls only (habu2.f EMIT-CEMITBL, src/compiler/native/publish.f);
+\ nothing records a region-to-region call. The address map holds the first MOVZ
+\ of every address carrier.
 \ The bit of the region word at `off`: map byte off >> 5, bit (off >> 2) & 7, the
 \ indexing habu1.f BCALLMAPSET and BADDRMAPSET write with.
 : BIT? ( ptr u8 n -- bool ) {: map:ptr off:n :}
@@ -60,7 +44,8 @@ SNAP-RELOC:SITE-ROWS-OFF SNAP-RELOC:SITE-N-CELL - constant ROWS-AT
    band w BIT? if w SNAP-RELOC:SITE-CALL q execute then
    band ADDR-MAP-AT + w BIT? if w SNAP-RELOC:SITE-ADDR q execute then ;
 
-\ ---- the row arm --------------------------------------------------------------
+\ x86-64 keeps rows, because its sites are byte offsets: a u64 count, then
+\ offset u32 and kind u8 rows in strictly ascending offset order.
 : ROW ( ptr u8 n -- ptr u8 ) {: band:ptr k:n :}
    band ROWS-AT + k SNAP-RELOC:SITE-ROW-BYTES * + ;
 
@@ -96,8 +81,8 @@ SNAP-RELOC:SITE-ROWS-OFF SNAP-RELOC:SITE-N-CELL - constant ROWS-AT
    off lo < off hi >= or if exit then
    off r ROW-KIND@ q execute ;
 
-\ The engine's own band. DATA is the running task's, the one the engine's
-\ writers address.
+\ The engine's own band, from SNAP-RELOC's CALLMAP-OFF. DATA is the running
+\ task's, the one the engine's writers address.
 : BAND ( -- ptr u8 )
    data-base SNAP-RELOC:CALLMAP-OFF + ;
 

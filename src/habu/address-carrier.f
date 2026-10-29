@@ -1,35 +1,20 @@
-\ address-carrier.f - pure address shapes and value codecs.
-\
-\ Capture, link and file inspection share this grammar without loading capture
-\ buffers or assembler state. A matching shape grants no address provenance:
-\ callers still need the declared site map or a created-owner record.
-\
-\ ITS OWN PACKAGE, not SNAP-RELOC. src/habu/layout.f owns SNAP-RELOC, the
-\ relocation region's layout, and the engine bakes layout.f, so the image tools
-\ that load this file on a product engine (tools/image-size-lib.f,
-\ tools/native-build-core.f through aot-decl.f) may not reopen it
-\ (docs/forth-card.md § 6).
+\ address-carrier.f - pure address shapes and value codecs, shared by capture,
+\ link and file inspection without capture buffers or assembler state. A matching
+\ shape grants no provenance: callers still need the declared site map or a
+\ created-owner record. Its own package, not SNAP-RELOC: the engine bakes
+\ layout.f, which owns SNAP-RELOC, and the image tools that load this file on a
+\ product engine may not reopen it (docs/forth-card.md § 6).
 
 package ADDRESS-CARRIER
 public
 
-\ The shape of the four-instruction address chain habu2.f C-ADDR-RAW emits, as the
-\ relocation pass has to read it back. ADDR-OPC-MASK keeps everything in a MOVZ or
-\ MOVK word except its 16-bit immediate, so masking a site word leaves the opcode,
-\ the shift and the destination register to compare. ADDR-IMM-MASK is that
-\ immediate once it has been shifted down by five, and ADDR-CHAIN-BYTES is the
-\ whole chain.
-\ W-MOVZ0/W-MOVK1/W-MOVK2/W-MOVK3 all name x9, because that is the register the ONE
-\ carrier C-ADDR-RAW writes into, but they are not the only chains that reach the
-\ map: a chain the native compiler emits names whichever register its allocator
-\ chose. So the pass takes the register from the SITE's own first word and requires
-\ the other three lanes to name that same one. ADDR-RD-MASK is the destination-
-\ register field of a move-wide word and ADDR-RD-BITS its width, so shifting a
-\ scaffold down by that width and back clears the register out of it and leaves the
-\ opcode and the shift, which is what the site's register is then put back into.
-\ Accepting any register without the agreement requirement would accept four words
-\ that name four different registers, whose four immediates spell out no address at
-\ all.
+\ The four-instruction address chain habu2.f C-ADDR-RAW emits. ADDR-OPC-MASK keeps
+\ a MOVZ or MOVK word without its 16-bit immediate; ADDR-IMM-MASK is that
+\ immediate shifted down by five. W-MOVZ0..W-MOVK3 name x9, C-ADDR-RAW's register,
+\ but a native-compiled chain names its allocator's register: the pass takes the
+\ register from the site's first word and requires the other three to name it,
+\ since four words naming four registers spell no address. ADDR-RD-MASK and
+\ ADDR-RD-BITS are the move-wide destination field and its width.
 $FFE0001F constant ADDR-OPC-MASK
 $FFFF constant ADDR-IMM-MASK
 16 constant ADDR-CHAIN-BYTES
@@ -39,12 +24,9 @@ $1F constant ADDR-RD-MASK
 $D2C00000 constant DATA-MOVZ2
 $F2800000 constant DATA-MOVK0
 
-\ ONE READER AND ONE WRITER OF A CHAIN'S VALUE, beside the shape they read it
-\ with. Three passes need them - the capture's site scan, the merge that rebases
-\ a read-back capture into a host's coordinates, and any later consumer - and a
-\ private copy in each is exactly the drift the shape constants moved here to
-\ stop. The relocation pass in src/habu/habu2.f is not one of the three: it is
-\ EMITTED machine code and consumes the constants directly.
+\ The one reader and writer of a chain's value, for the capture's site scan, the
+\ capture merge's rebase and any later consumer. The relocation pass in
+\ src/habu/habu2.f is emitted machine code and reads the constants directly.
 private
 
 \ The chain's own instruction word. Owner-prefixed like every other reader of
@@ -119,19 +101,12 @@ public
       p i 4 * + W32!
    loop ;
 
-\ ---- the same three questions for the x86-64 address site --------------------
-\ AArch64 patches three DATA or four full move-wide halves; x86-64 spells the
-\ address as ONE instruction, `mov r64, imm64`, and
-\ patches the whole value at once: REX.W (with B naming the high register bank),
-\ then B8+rd, then the eight immediate bytes. So the site is ten bytes wide and
-\ its patch is eight bytes at offset two, which is what MOVABS-BYTES,
-\ MOVABS-IMM-OFF and MOVABS-IMM-BYTES say. test/x86-64-seam.f exercises it.
-\
-\ REX.R and REX.X have nothing to name here - the form carries no ModRM and no
-\ SIB byte - so a prefix that sets either is some other instruction, not this
-\ site with spare bits. MOVABS-SITE? therefore admits exactly $48 and $49, and
-\ exactly the eight opcodes B8..BF, which is the same fail-closed reading the
-\ chain's scaffold compare makes: the register may vary, the shape may not.
+\ The same three questions for the x86-64 address site.
+\ x86-64 spells the address as one `mov r64, imm64`: REX.W (B names the high
+\ bank), B8+rd, eight immediate bytes, so the site is ten bytes and its patch
+\ eight bytes at offset two. REX.R and REX.X have nothing to name without ModRM
+\ or SIB, so MOVABS-SITE? admits exactly $48 and $49 and opcodes B8..BF: the
+\ register may vary, the shape may not. test/x86-64-seam.f exercises it.
 $FE constant MOVABS-REX-MASK
 $48 constant MOVABS-REX-W
 $F8 constant MOVABS-OP-MASK
@@ -144,7 +119,6 @@ $B8 constant MOVABS-OP
    p c@ MOVABS-REX-MASK and MOVABS-REX-W =
    p 1+ c@ MOVABS-OP-MASK and MOVABS-OP = and ;
 
-\ The immediate as one value, whatever register the instruction names.
 : MOVABSV ( ptr u8 -- n ) {: p:ptr :}
    0
    MOVABS-IMM-BYTES 0 ?do

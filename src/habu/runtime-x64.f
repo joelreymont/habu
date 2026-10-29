@@ -1,15 +1,9 @@
-\ runtime-x64.f - the x86-64 Habu loop and its installs.
-\
-\ src/habu/native-runtime.f loads this file only for a linux-x86-64 product.
-\ There the Habu loop (src/habu/interpret.f) is the engine's `evaluate`, the
-\ definers (src/habu/definers.f) are its `create` and definition policy, and
-\ src/habu/main.f is its command line. ARM64 keeps the kernel's evaluate,
-\ startup and REPL bodies, so its product captures none of these files.
-\
-\ CHECKER-REG:SEAL runs CHECKER-REG:SEAL-TARGET on x86-64 only; this file
-\ fills it with INSTALL-LOOP, which binds each of the four cells before the
-\ capture seals them. test/prefix-provided-unfilled.f removes the first
-\ install line here and expects the build to refuse the empty evaluate cell.
+\ runtime-x64.f - the x86-64 Habu loop and its installs. native-runtime.f loads
+\ it only for linux-x86-64: interpret.f is the engine's `evaluate`, definers.f
+\ its `create` and definition policy, main.f its command line; ARM64 keeps the
+\ kernel's bodies. CHECKER-REG:SEAL runs SEAL-TARGET, filled here by INSTALL-LOOP,
+\ on x86-64 only; it binds the four cells before the capture seals them.
+\ test/prefix-provided-unfilled.f drops the first install line: empty evaluate refused.
 
 require src/habu/definers.f
 require src/habu/interpret.f

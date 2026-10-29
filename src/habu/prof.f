@@ -1,31 +1,9 @@
-\ prof.f — the in-binary sampling profiler for the native engine. `n prof-on`
-\ arms SIGALRM at the `prof-rate` interval (1 ms by default); each tick maps the
-\ interrupted pc to its dictionary word, counts it, and walks the interrupted
-\ machine stack for the word's callers. `prof-off` stops the clock and leaves
-\ every counter readable, `prof-reset` clears them and keeps the index, and
-\ `prof-report` / `prof-json` print the same walk as text or JSON: exclusive and
-\ inclusive counts with percent and the top callers under each row. A non-zero
-\ `prof-on` limit still reports and exits 99 at that many samples, for a program
-\ that cannot reach a `prof-off` of its own. prof-pc>rec answers the handler's
-\ attribution question from Habu code. Measured as user CPU across separate
-\ processes at `20 prof-rate` over about a million samples against a 19.7 s
-\ baseline, a tick costs about 1 us: a tenth of a percent at the default rate.
-\ Load after habu1.f (uses DBASE/NDICT/DREC/A/FPRIM-L), before habu2.f.
-\ The ARM64 encoders are package A64ASM's public surface (src/arch/arm64/asm.f).
-\
-\ The tick lands in whatever the timer interrupted, and that is not always Habu
-\ code: a foreign callee (libc's dlsym, libzip's inflate) reuses the callee-saved
-\ registers the engine reserves for DATA (x20), DBASE (x26) and NDICT (x27), and
-\ a handler that read them walked garbage (SIGSEGV in the handler, x0 = SIGALRM).
-\ So the handler takes nothing from the live registers. Its state lives in the
-\ profiler band at the top of the DATA region, reached through the fixed DATA-VA;
-\ prof-on records the dictionary base there; the interrupted context's x20 and
-\ x26 are read from the signal frame and compared with those two facts, and only
-\ a context that holds both is attributed; any other context is a "(foreign)"
-\ sample. The handler runs on the thread's alternate signal stack, the crash
-\ handler's (src/habu/crash.f C-SIGNAL-STACK), so a tick with the machine stack
-\ deep never pushes the signal frame over the data stack. The report reads the
-\ same band, so it needs no register either.
+\ prof.f - the in-binary sampling profiler for the native engine (prof-on,
+\ prof-off, prof-reset, prof-report, prof-json, prof-row, prof-rate, prof-pc>rec).
+\ Load after habu1.f (uses DBASE/NDICT/DREC/A/FPRIM-L), before habu2.f. Handler
+\ and report state live in the PROF-ABI band (src/habu/prof-abi.f) at the top of DATA.
+\ Measured: a tick costs about 1 us of user CPU (20 prof-rate, about a million
+\ samples, 19.7 s baseline), a tenth of a percent at the default 1 ms rate.
 require src/habu/prof-abi.f
 
 require src/arch/arm64/icode.f
@@ -41,29 +19,22 @@ variable LPROFJSON   variable LPROFNUM   variable LPROFPCT   variable LPROFNAME
 variable LPROFSYNC   variable LPROFROW
 private
 
-\ ---- the target this file's signal frame belongs to --------------------------
-\ Everything below reads a signal frame: the ucontext-to-mcontext offset, the
-\ mcontext PC and x0 slots, the sigaction frame and its sigset size, and the
-\ instructions that load them. Those are AArch64 and Darwin/Linux facts, and a
-\ third target matches none of them - reading them under another machine would
-\ attribute samples from a frame that is not there. Signal handlers are target
-\ ABI boundaries (docs/xcomp.md "Syscalls And Signals"), so this file refuses a target whose frame it
-\ does not model, at load, rather than emitting the aarch64 one for it. The
-\ refusal is a die and not src/lib/errors.f's E-PLATFORM because this file loads
-\ inside the engine-build window, which has no src/lib/ in it.
+\ The signal-frame offsets and loads below are AArch64 Darwin/Linux facts
+\ (docs/xcomp.md "Syscalls And Signals"); a target whose frame this file does not
+\ model is refused at load. The refusal is a die and not src/lib/errors.f's
+\ E-PLATFORM because this file loads inside the engine-build window, which has no
+\ src/lib/ in it.
 : PROF-TARGET-OK ( -- )
    HB-TARGET-LINUX? if exit then
    HB-TARGET-MACOS? if exit then
    s" hb: this target's signal frame is not modelled" 76 die ;
 PROF-TARGET-OK
 
-\ ---- the band: its cells and the arena layout are PROF-ABI's (src/habu/prof-abi.f)
+\ The band's cells and the arena layout are PROF-ABI's (src/habu/prof-abi.f).
 DATA-VA VA>N DATA-SIZE PROF-BAND-AT constant PROF-BAND-VA   \ absolute: DATA is fixed at DATA-VA
 PROF-BAND-VA PROF-STATE-BYTES + constant PROF-CNT-VA        \ the counters
 $0043 constant MACOS-SA-PROF-FLAGS        \ SA_ONSTACK | SA_RESTART | SA_SIGINFO
 
-\ Profiler helpers emit ARM64 signal-context, sigaction/timer-frame, syscall,
-\ sampling, and primitive-publication code.
 : C-PROF-MCTX>R21 ( -- )
    HB-TARGET-LINUX? IF 21 2 LINUX-UC-MCTX-OFF ADDI, exit THEN
    21 4 MCTX-OFF LDR, ;
@@ -78,9 +49,7 @@ $0043 constant MACOS-SA-PROF-FLAGS        \ SA_ONSTACK | SA_RESTART | SA_SIGINFO
    rd 21 SS-OFF x 8 * + LDR, ;
 
 \ x13 = the record's code bytes from its raw length cell (src/habu/code-span.f):
-\ bit 31 marks an exact span, otherwise the body precedes one final slot. Read
-\ raw, that bit made the first record below the pc own every sample, and the
-\ report's first line was DEFER-UNSET.
+\ bit 31 marks an exact span, otherwise the body precedes one final slot.
 : C-PROF-SPAN-BYTES ( -- )
    14 13 31 LSRI,                         \ x14 = the exact-span bit
    13 13 CODE-SPAN:MASK ANDI,             \ x13 = body
@@ -183,10 +152,9 @@ public
 \ be recognised by their VALUE - a cell that lands inside the index's code range
 \ is taken for a return address, which is the standard frame-pointer-less
 \ technique and is a superset of the true chain: an uninitialised spill slot
-\ still holding a code address from a returned call adds a frame. The x29 chain
-\ the dot offers as the alternative is not built: it would cost every emitted
-\ word in the default build two more instructions and a register, and this walk
-\ measured 230 instructions a tick with it.
+\ still holding a code address from a returned call adds a frame. An x29 chain
+\ would cost every emitted word in the default build two more instructions and a
+\ register; this walk measured 230 instructions a tick.
 \
 \ THE IMMEDIATE CALLER IS USUALLY IN x30, not on the stack: a leaf primitive
 \ entered by BL never stores it, and a word that has not called anything yet
@@ -238,12 +206,9 @@ public
    10 PROF-CALLER-NONE LIT64,  LPROFEDGE LABEL@ BL,
    wret LBL, ;
 
-\ ---- printing ----------------------------------------------------------------
 \ Everything the report prints goes through these four, so a row, a caller line
 \ and a JSON field all agree about widths and about where a name comes from.
 
-\ Emit a literal string write. The bytes sit in the instruction stream behind a
-\ branch, the way the profiler's error messages already do.
 : C-PROF-SAY ( ptr u8 n -- ) {: a:ptr u:n :}
    LBL LBL {: skip txt :}
    skip B,
@@ -251,7 +216,6 @@ public
    skip LBL,
    0 1 MOVZ,  1 txt ADR,  2 u MOVZ,  NR-WRITE SYS, ;
 
-\ The percentage formatter emits its decimal point from a byte value.
 : C-PROF-BYTE ( n -- ) {: c:n :}
    SP SP 16 SUBI,  13 c MOVZ,  13 SP 0 STRB,
    0 1 MOVZ,  1 SP 0 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
@@ -260,7 +224,6 @@ public
 : C-PROF-NL ( -- )  s\" \n" C-PROF-SAY ;
 : C-PROF-DQ ( -- )  s\" \q" C-PROF-SAY ;
 
-\ A header field: its name, then the register's value.
 : C-PROF-FIELD ( ptr u8 n n -- ) {: a:ptr u:n reg:n :}
    a u C-PROF-SAY
    9 reg 0 ADDI,  10 1 MOVZ,  LPROFNUM LABEL@ BL, ;
@@ -314,15 +277,9 @@ public
    0 1 MOVZ,  1 5 RID-NAME LDR,  2 5 RID-LEN LDR,  NR-WRITE SYS,
    RET, ;
 
-\ ---- the report ---------------------------------------------------------------
 \ LPROFDUMP / LPROFJSON ( -- ): the same walk, printed two ways.
 \ The Forth-level flag picks the punctuation at build time, so the text report
 \ and the JSON report can never disagree about what they counted.
-\
-\ ROWS ARE SELECTED BY REPEATED MAXIMUM, not sorted: at most PROF-ROWS rows are
-\ printed, one pass over the index costs less than sorting every entry, no second
-\ array is needed, and - the reason that matters - the counters are left exactly
-\ as they were, so a later prof-report says the same thing.
 \
 \ REGISTERS. LPROFNUM and LPROFPCT clobber x9-x15, so every value that has to
 \ live across a printed column sits in x3-x7, x17 or x19-x25: x19 arena, x20
@@ -436,7 +393,6 @@ public
    5 ARN-RECS LIT64,  5 19 5 ADD,
    10 PROF-ID-ENT MOVZ,  10 17 10 MUL,  5 5 10 ADD, ;
 
-\ One text row: exclusive, its share, inclusive, its share, then the word.
 : C-PROF-REP-ROW ( -- )
    9 7 0 ADDI,  10 8 MOVZ,  LPROFNUM LABEL@ BL,
    9 7 0 ADDI,  10 22 0 ADDI,  LPROFPCT LABEL@ BL,
@@ -554,7 +510,6 @@ public
       25 PROF-ROWS CMPI,  C-CC rowl BCOND,
    rowsd LBL, ;
 
-\ ---- JSON -----------------------------------------------------------------------
 \ EVERY ATTRIBUTED WORD, not a top-N. A phase word - a compiler pass, a verifier
 \ entry - is often invisible in an exclusive ranking and is exactly what a
 \ per-phase table needs, so the machine-readable report carries the whole set:
@@ -672,6 +627,15 @@ public
    s" profiler: no row for that record" C-PROF-SAY  C-PROF-NL
    C-PROF-REP-CLOSE ;
 
+\ THE HANDLER TAKES NOTHING FROM THE LIVE REGISTERS: a foreign callee (libc's
+\ dlsym, libzip's inflate) reuses x20 (DATA), x26 (DBASE) and x27 (NDICT), and a
+\ handler that read them walked garbage. The band is reached through the fixed
+\ DATA-VA; the interrupted x20 and x26 are read from the signal frame and compared
+\ with the base prof-on recorded, and any other context is a "(foreign)" sample.
+\ The handler runs on the crash handler's alternate signal stack (src/habu/crash.f
+\ C-SIGNAL-STACK), so a deep machine stack never pushes the frame over the data
+\ stack.
+\
 \ A tick that arrives while the clock is held or stopped counts nothing
 \ (prof-abi.f, PROF-ARMED). Attribute the interrupted pc FIRST (a dict word's
 \ counter, the deferred buffer, PROF-OTHER or PROF-FOREIGN), THEN bump PROF-TOT
@@ -791,7 +755,6 @@ private
       7 PROF-BAND-VA LIT64,  0 7 PROF-ARENA STR,
    have LBL, ;
 
-\ A profiler resource refusal is named before the process exits.
 : C-PROF-DIE ( ptr u8 n -- ) {: a:ptr u:n :}
    LBL {: msg :}
    0 2 MOVZ,  1 msg ADR,  2 u LIT64,  NR-WRITE SYS,
@@ -1391,9 +1354,8 @@ private
 
 \ prof-off stops the clock and nothing else: the handler stays installed, the
 \ index and every counter stay exactly as the last sample left them, so the phase
-\ that was profiled can be reported afterwards - which is the whole point of
-\ having a stop word rather than the old dump-and-exit. PROF-ARMED goes to 0
-\ before the timer stops, so a tick that arrives after the stop counts nothing.
+\ that was profiled can be reported afterwards. PROF-ARMED goes to 0 before the
+\ timer stops, so a tick that arrives after the stop counts nothing.
 : BPROF-OFF ( -- )
    7 PROF-BAND-VA LIT64,  9 0 MOVZ,  9 7 PROF-ARMED STR,
    C-PROF-TIMER-STOP ;

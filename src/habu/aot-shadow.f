@@ -1,48 +1,9 @@
 \ aot-shadow.f - the capture's reader of a second target's routines: it walks
-\ src/compiler/native/shadow.f's map (NSHADOW) and fills src/habu/aot-decl.f's
-\ shadow tables (package AOT-SHADOW), which src/habu/aot-file.f carries.
-\
-\ WHY IT IS ITS OWN FILE. src/habu/aot-capture.f also compiles in the stdin
-\ metabuild host and the recovery bootstrap, which carry no native compiler and so
-\ no NSHADOW. And the map must be read through the NSHADOW this file was compiled
-\ against: a native build resets the dictionary logically before it loads the
-\ target, so a name looked up at capture time would find the target's own,
-\ never-opened shadow, while the host's compiler filed the map in its own. So a
-\ host that can have a shadow open loads this file beside aot-capture.f, before
-\ its window opens, and it reopens the capture's package.
-\
-\ WHEN IT RUNS. TARGET-CAPTURE prepares the capture, retains live private emitted
-\ records from this map, completes the capture, then SHADOW-CAPTURE reads the
-\ tables. The reader refuses to run against any other dictionary. It reads
-\ the map before anything closes the shadow: NCOMP:CAPTURE-PREPARE closes the
-\ shadow of the compiler that runs it, and a native build's preparation of its
-\ target (tools/native-build-core.f PREPARE-TARGET) runs the target window's own
-\ compiler, not the host's that filed the map. With no shadow open the tables stay
-\ as CAPTURE left them, empty.
-\
-\ ONE WALK, KEYED BY THE SHIPPED ROW. The map's rows are filed in publication
-\ order, so their records ascend: the walk copies each reached emission once, when
-\ the first row filed over it arrives - a `does>` companion follows its definer and
-\ shares its emission. Records that do not ascend are a map from another dictionary
-\ history, filed before a logical reset, and are refused rather than read. The
-\ artifact's record table holds only the records the capture ships, and a dead
-\ stripped private word moves every later one down a row, so a routine, a site
-\ target and a code cell name a shipped record by its row in that table
-\ (SH-NUMBER), never by its window index. Nor is the window index the capture's
-\ own: the capture does not record a retired record at all, so the walk reads a
-\ capture table only through ACAP-DICT>CAP.
-\
-\ THE X86 REACH USES X86 EDGES. Shipped record entries and declared code cells
-\ root the shadow map; its recorded call and code-address sites close the graph.
-\ ARM and x86 can make different optimizations, so ARM code reach cannot answer
-\ which x86 routines are needed. TARGET-CAPTURE first retains a live emitted
-\ private record by name, with its private WID (SH-KEEP-PRIVATE); a reached
-\ routine that still has no shipped record, stripped or retired, travels
-\ anonymously, without making its name available to the target. A public EXPORT
-\ alias can share a stripped or retired source's entry, so exact host xt identity
-\ attaches the alias's shipped row to that source's shadow emission. A target in
-\ the window must resolve to a reached shadow row, and a prefix target must
-\ resolve by name; otherwise capture refuses it.
+\ shadow.f's map (NSHADOW) and fills aot-decl.f's shadow tables (package
+\ AOT-SHADOW), which aot-file.f carries. Its own file: aot-capture.f also builds
+\ in hosts with no NSHADOW, and the map must be read through the NSHADOW this
+\ file compiled against (a native build's logical reset makes a capture-time
+\ lookup find the target's unopened shadow). Load it before the window opens.
 
 require src/compiler/native/hir.f
 require src/compiler/native/emission.f
@@ -76,7 +37,6 @@ variable SH-WORK-N
 variable SH-OUT-N
 variable SH-NATIVE-READY
 
-\ ---- refusals ------------------------------------------------------------------
 : SH-WHERE ( n -- ) {: off:n :}
    s" aot-capture: the shadow routine of " type SH-REC @ ACAP-NAME.
    s"  at emission byte " type off .INT ;
@@ -116,13 +76,12 @@ variable SH-NATIVE-READY
    s" aot-capture: a shadow site names a record the capture strips" 74 die ;
 
 \ The Wasm reader (src/arch/wasm/capture.f) carries no anonymous routine, so it
-\ still refuses a live one no shipped row carries.
+\ refuses a live one no shipped row carries.
 : SH-STRIPPED ( -- )
    s" aot-capture: the shadow routine of " type SH-REC @ ACAP-NAME.
    s"  is live, and the capture ships neither its record nor one sharing its emission" type cr
    s" aot-capture: a live shadow routine no shipped record carries" 74 die ;
 
-\ ---- the window index -----------------------------------------------------------
 : SH-WINDOW? ( n -- bool ) {: idx:n :}
    idx ACAP-W-R0 @ >= idx ACAP-W-R1 @ < and ;
 
@@ -175,7 +134,6 @@ variable SH-NATIVE-READY
    SH-REHEAD
    0 SH-WORK-N !  0 SH-OUT-N !  0 SH-QN ! ;
 
-\ ---- rows ---------------------------------------------------------------------
 : SH-SITE+ ( n n n -- ) {: at:n kind:n target:n :}
    AOT-SHADOW:SITE-N @ {: k:n :}
    k 1+ AOT-SHADOW:SITE-N !
@@ -210,7 +168,6 @@ variable SH-NATIVE-READY
    SH-QFIND dup 0 < if exit then
    SH-QROW @ SITE-SHADOW-TAG or ;
 
-\ ---- what a host address names -------------------------------------------------
 \ A shipped window record's entry, by its shipped row, or a word of the engine's
 \ own prefix, by the name the ARM64 named code sites carry (ACAP-TARGET-NAME?: the
 \ name resolves to exactly this entry below the prelude mark).
@@ -280,9 +237,17 @@ variable SH-NATIVE-READY
    idx 0 >= if idx SH-SOURCE@ SH-MARK-ROW exit then
    v SH-QNEED drop ;
 
-\ The second target's edges are the shadow emitter's recorded rows, not the
-\ ARM instruction graph. A target can be live only on x86-64, or ARM can retain
-\ a body whose x86-64 routine has no incoming edge.
+\ THE X86 REACH USES X86 EDGES: ARM and x86 optimize differently, so ARM reach
+\ cannot answer which x86 routines are needed. Shipped record entries and
+\ declared code cells root the shadow map; its recorded call and code-address
+\ sites close the graph. A target can be live only on x86-64, or ARM can retain
+\ a body whose x86-64 routine has no incoming edge. TARGET-CAPTURE first retains
+\ a live emitted private record by name with its private WID (SH-KEEP-PRIVATE);
+\ a reached routine still without a shipped record travels anonymously, its
+\ name unavailable to the target. A public EXPORT alias can share a stripped or
+\ retired source's entry: exact host xt identity attaches the alias's row to
+\ that emission. A window target must resolve to a reached shadow row and a
+\ prefix target by name, else capture refuses it.
 : SH-SCAN ( n -- ) {: r:n :}
    r NSHADOW:RECORD@ SH-REC !
    r NSHADOW:EMISSION@ {: e:n :}
@@ -441,7 +406,14 @@ CELL 2 * constant SH-TRAILER-BYTES
    v ACAP-W-D0 @ - AOT-DATA-D0 @ +  p CELL + AOT-N-C!
    at CELL + AOT-SHADOW:DCELL 0 SH-SITE+ ;
 
-\ ---- one emission ---------------------------------------------------------------
+\ The map's rows are filed in publication order, so records ascend: a reached
+\ emission is copied once, when the first row filed over it arrives (a `does>`
+\ companion follows its definer and shares its emission). Records that do not
+\ ascend are a map from another dictionary history and are refused. A shipped
+\ record is named by its row in the artifact's record table (SH-NUMBER), never
+\ by its window index: a dead stripped private word moves every later row down,
+\ and the capture records no retired record, so a capture table is read only
+\ through ACAP-DICT>CAP.
 : SH-COPY ( n -- ) {: e:n :}
    e NSHADOW:SIZE {: size:n :}
    AOT-SHADOW:CODE-LEN @ {: at:n :}
@@ -476,9 +448,6 @@ CELL 2 * constant SH-TRAILER-BYTES
    NSHADOW:OPEN? 0= if exit then
    NSHADOW:RECORDS 0 ?do i NSHADOW:RECORD@ SH-KEEP-ONE loop ;
 
-\ Whether map row r is over emission e and files a record the capture ships: a
-\ `does>` definer and its companion are filed together, two adjacent rows over one
-\ emission.
 : SH-OWNER? ( n n -- bool ) {: r:n e:n :}
    r 0 <  r NSHADOW:RECORDS >= or if false exit then
    r NSHADOW:EMISSION@ e <> if false exit then
@@ -526,7 +495,6 @@ CELL 2 * constant SH-TRAILER-BYTES
       then
    loop ;
 
-\ ---- the address cells ---------------------------------------------------------
 \ An address-cell row whose target is window code carries a blob offset, which
 \ names an ARM64 entry; the target's image needs the record it enters. The live
 \ cell still holds the host entry the row was classified from, at the location
@@ -571,8 +539,12 @@ public
    k 0 < k ACAP-REC-ALL @ >= or if E-NSHADOW-ROW throw then
    k SH-LIVE @ 0<> ;
 
-\ Fill the shadow tables from an open shadow's map after capture completion and
-\ against the dictionary it captured.
+\ TARGET-CAPTURE prepares the capture, retains live private emitted records from
+\ this map, completes it, then calls this, which refuses any other dictionary.
+\ The map is read before anything closes the shadow: NCOMP:CAPTURE-PREPARE
+\ closes the shadow of the compiler that runs it, and tools/native-build-core.f
+\ PREPARE-TARGET runs the target window's compiler, not the host's that filed
+\ the map. With no shadow open the tables stay as CAPTURE left them, empty.
 : SHADOW-CAPTURE ( -- )
    ACAP-TIDX-ND @ ndict@ <> if
       s" aot-capture: the shadow is read only right after the capture it belongs to" 74 die

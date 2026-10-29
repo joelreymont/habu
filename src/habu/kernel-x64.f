@@ -1,35 +1,13 @@
-\ kernel-x64.f - the x86-64 engine's primitive bodies, package X64KERNEL.
-\
-\ The twins of src/habu/habu1.f's bodies for the rows of src/habu/prims.f, hand
-\ written through X64ASM. PRIM registers a body in the shared registry
-\ (src/habu/primitive-registry.f) as habu1.f FPRIM does, so the specification
-\ gates hold on both targets, and the helpers the rows share are emitted once:
-\ the span guard (PROT-SPAN), the narrow page flip LPROTREC, the task-live
-\ exit LTASKLIVE, the dictionary index with the one-wordlist search, the DP
-\ refusal LDPBAD and the output device arm (GENIO-OUT).
-\
-\ WHAT THE TEXT HOLDS. The image's text window (X64CODE:CODE-CAP-BYTES) holds
-\ this hand-written kernel alone: _start (src/habu/boot-x64.f START,), the
-\ helpers and every row. The captured engine is the code region, a mapping of
-\ its own at the image base plus REGION-OFF, never text.
-\
-\ A BODY'S CONTRACT. rbp is DATA, r12 the
-\ data stack, rbx and r13-r15 the other VM registers; rax rcx rdx rsi rdi and
-\ r8-r11 are scratch. A body is entered by `call` and leaves by the `ret` PRIM
-\ appends, so the return address stays on the machine stack and a body calls a
-\ helper without a frame: one definer serves where habu1.f needs FPRIM and
-\ FPRIM-L.
-\
-\ The x86-64 seam (src/os/linux-x86-64/sys.f) loads here globally, with its
-\ process emitters (proc-watch.f, proc-control.f), so this file loads before
-\ any file that loads the seam into a private wordlist, as src/habu/boot-x64.f
-\ does.
-\
-\ One section per group of rows. KERNEL, emits the helpers and every section;
-\ a group's rows land in its section word, which KERNEL, calls. A row the
-\ kernel does not carry is registered by REFUSE or REFUSE-WID, never left out
-\ (KERNEL, states why). A test/x86-64-kernel-<section>.f file runs a section's
-\ rows on a booted image through test/x86-64-boot-harness.f.
+\ kernel-x64.f - the x86-64 engine's primitive bodies (package X64KERNEL): the
+\ twins of habu1.f's bodies for the rows of src/habu/prims.f, written through
+\ X64ASM and registered in src/habu/primitive-registry.f as habu1.f FPRIM does.
+\ The text window (X64CODE:CODE-CAP-BYTES) holds this kernel alone: _start
+\ (boot-x64.f START,), the helpers and every row. The captured engine is the code
+\ region, at the image base plus REGION-OFF. Tests: test/x86-64-kernel-*.f.
+
+\ The x86-64 seam (src/os/linux-x86-64/sys.f) and its process emitters
+\ (proc-watch.f, proc-control.f) load here globally, so this file loads before
+\ any file that loads the seam into a private wordlist, as boot-x64.f does.
 require src/lib/byte-buffer.f
 require src/lib/le.f
 require src/lib/string.f
@@ -67,9 +45,9 @@ using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
 
 public
 
-\ The rc a primitive body this kernel lacks dies with: ENTRY-LABEL's at build
-\ time and a REFUSE row's at run time. It is the rc habu1.f
-\ ENGINE-EMIT:TARGET-UNKNOWN dies with when a target has no body at all.
+\ The rc a missing body dies with: ENTRY-LABEL's at build time, a REFUSE row's
+\ at run time, and habu1.f ENGINE-EMIT:TARGET-UNKNOWN's for a target with no
+\ body at all.
 76 constant REFUSE-RC
 
 variable FLOORREC-ENTRY
@@ -79,24 +57,19 @@ variable FLOORREC-PENDING
    X64CODE:LBL dup LABEL>N FLOORREC-ENTRY !
    true FLOORREC-PENDING ! ;
 
-\ The highest DP, as an offset from DATA, that the heap rows admit: the top of
-\ the target's DATA less the profiler's counter band, as habu1.f DP-CHECK
-\ bounds it.
+\ The highest DP offset the heap rows admit, as habu1.f DP-CHECK bounds it.
 X64LAYOUT:DATA-SIZE PROF-CNT-BYTES - constant DP-CEILING
 
 \ The DATA claims place that band for the host's DATA-SIZE, which differs from
 \ the target's on a macOS host: check them with the target's band.
 X64LAYOUT:DATA-SIZE DATA-CLAIMS:BAND-ASSERT
 
-\ The code slot: every CP is a multiple of it, and each row that moves CP moves
-\ it to a slot. It is X64IR:SP-ALIGN, the only placement X64EMIT:PLACE-AT
-\ accepts, and the native driver places each definition at CP
-\ (NPUB:NEXT-SLOT). The kernel loads no dialect, so it states the value.
+\ Every CP is a multiple of the code slot, X64IR:SP-ALIGN, the only placement
+\ X64EMIT:PLACE-AT accepts. The kernel loads no dialect, so it states the value.
 16 constant CODE-SLOT
 
-\ The code ceiling, as an offset into the region: the definition writers
-\ refuse a CP, or a long name's slots at CP, that reach it, as habu2.f bounds
-\ `:` at REGION - $4000 above DBASE.
+\ The definition writers refuse a CP, or a long name's slots at CP, that reach
+\ it, as habu2.f bounds `:` at REGION - $4000 above DBASE.
 X64LAYOUT:CODE-CEILING constant CODE-CEILING
 
 private
@@ -108,7 +81,6 @@ $1000 constant PAGE-BYTES              \ the x86-64 Linux base page
 : DATA-REG ( -- r64 ) ENGINE-GPR:X64-RBASE >R64 ;
 : SHARED-DATA, ( r64 -- ) X64LAYOUT:DATA-VA VA>N >IMM64 ASM-SINK ENC-MOV-RI64 ;
 
-\ Load and store the DATA cell at an offset.
 : CELL@, ( r64 n -- )
    {: r:r64 off:n :}
    r DATA-REG off MEM-OFF ASM-SINK ENC-MOV-RM ;
@@ -127,7 +99,7 @@ $1000 constant PAGE-BYTES              \ the x86-64 Linux base page
 
 : SAME? ( r64 r64 -- bool ) R64>N swap R64>N = ;
 
-\ The helpers' labels, made by HELPERS, in the stream it emits them into.
+\ The helpers' labels, set by HELPERS, in the stream it emits them into.
 variable SPAN-CELL
 variable REC-CELL
 variable LIVE-CELL
@@ -145,7 +117,11 @@ variable SCOPE-KIND-CELL
 : SCOPE-SEED-END-LBL ( -- label ) SCOPE-SEED-END-CELL @ >LABEL ;
 : SCOPE-KIND-LBL ( -- label ) SCOPE-KIND-CELL @ >LABEL ;
 
-\ ---- the definer -------------------------------------------------------------
+\ A BODY'S CONTRACT. rbp is DATA, r12 the data stack, rbx and r13-r15 the other
+\ VM registers; rax rcx rdx rsi rdi and r8-r11 are scratch. A body is entered by
+\ `call` and leaves by the `ret` PRIM appends, so it calls a helper without a
+\ frame: one definer serves where habu1.f needs FPRIM and FPRIM-L.
+\
 \ The row being registered. Every body registers under a name src/habu/prims.f
 \ specifies: SPEC-CHECK checks each body, and ENGINE-PRIMS:COMPLETE refuses a
 \ specified row that no body answered.
@@ -171,20 +147,18 @@ variable ROW-U
 : REFUSE-HEAD$ ( -- ptr u8 n ) s" hb: " ;
 : REFUSE-TAIL$ ( -- ptr u8 n ) s"  is not in the x86-64 kernel" ;
 
-\ Write the n bytes at the label on fd 2.
 : STDERR-WRITE, ( label n -- ) {: msg:label len:n :}
    RDI STDERR IMM32,  RSI msg MOVABS,  RDX len IMM32,  NR-WRITE SYS, ;
 
-\ Write the line on fd 2, its newline included, and exit n. The text follows
-\ the exit, inside the record.
+\ The text follows the exit, inside the record.
 : STDERR-EXIT, ( ptr u8 n n -- ) {: a:ptr u:n rc:n :}
    X64CODE:LBL {: msg:label :}
    msg u STDERR-WRITE,
    rc EXIT-GROUP,
    msg X64CODE:LBL,  a u TEXT, ;
 
-\ Name the row on fd 2 and exit REFUSE-RC. The text follows the exit, inside
-\ the record, as src/habu/boot-x64.f FAIL, places its own.
+\ The text follows the exit, inside the record, as boot-x64.f FAIL, places its
+\ own.
 : REFUSE-BODY ( -- )
    X64CODE:LBL {: msg:label :}
    REFUSE-HEAD$ nip ROW-U @ + REFUSE-TAIL$ nip + 1+ {: len:n :}
@@ -196,12 +170,11 @@ variable ROW-U
 
 public
 
-\ Register the body a quotation emits under the row's name.
 : PRIM ( ptr u8 n [ -- ] -- )
    ARGS
    EMIT-ROW drop ;
 
-\ PRIM whose record carries wid n: the twin of habu1.f FPRIM-WID.
+\ The twin of habu1.f FPRIM-WID.
 : PRIM-WID ( ptr u8 n [ -- ] n -- ) {: wid:n :}
    ARGS
    wid EMIT-ROW ENGINE-PRIMS:WID! ;
@@ -254,8 +227,6 @@ public
 \ FPRIM-WID: the refusal's record is as visible as the body that replaces it.
 : REFUSE-WID ( ptr u8 n n -- ) {: wid:n :} [: REFUSE-BODY ;] wid PRIM-WID ;
 
-\ The first label of the body registered under the name: the address a `call`
-\ enters it at.
 : ENTRY-LABEL ( ptr u8 n -- label ) {: a:ptr u:n :}
    ENGINE-PRIMS:COUNT 0 ?do
       i ENGINE-PRIMS:NAME$ a u CORE-STR= if
@@ -274,10 +245,9 @@ public
    RAX RAX ASM-SINK ENC-TEST-RR
    C-NE LIVE-LBL JCC, ;
 
-\ Guard the span the registers hold: move it into the (PROT-SPAN) ABI, rdi the
-\ address and rsi the length, whichever registers hold them, then call it.
-\ The twin of habu1.f PROT-GUARD:CALL. The call clobbers rax rcx rdx rsi rdi
-\ and r8-r11, and the VM registers survive it.
+\ The twin of habu1.f PROT-GUARD:CALL: moves the span into the (PROT-SPAN) ABI,
+\ rdi the address and rsi the length, from whichever registers hold it. The
+\ call clobbers rax rcx rdx rsi rdi and r8-r11; the VM registers survive it.
 : PROT-SPAN-CALL, ( r64 r64 -- ) {: addr:r64 len:r64 :}
    len RDI SAME? if
       addr RSI SAME? if
@@ -318,10 +288,8 @@ public
 
 private
 
-\ ---- the helpers -------------------------------------------------------------
-\ One band of DATA-BANDS: the twin of habu1.f GUARD-BAND. rdi is the span's
-\ start and rdx its end; a span that starts at or past the band's end misses
-\ it, and one that ends past the band's start then overlaps it.
+\ One band of DATA-BANDS, the twin of habu1.f GUARD-BAND: rdi is the span's
+\ start and rdx its end.
 : BAND, ( n label -- ) {: ix:n trap:label :}
    X64CODE:LBL {: skip:label :}
    RAX SHARED-DATA,
@@ -408,13 +376,10 @@ CELL 4 * constant DIAG-BYTES
 76 constant DPBAD-RC
 
 \ (GENIO-OUT) ( rdi = device index, rsi = span, rdx = length ): the output
-\ funnel's device arm at X64RT's LGENIOOUT, the twin of habu2.f
-\ EMIT-GENIO-OUT. It writes fd 1 while GENIO-ABI:BUSY-CELL is set, for an
-\ index past DEVICES (unsigned, so a negative one too) and for an empty row.
-\ Otherwise it saves ACTIVE-CELL on the machine stack, marks the write as the
-\ device's and the funnel busy, calls row index-1's xt with the span and
-\ length on the data stack, and clears BUSY-CELL and restores ACTIVE-CELL.
-\ A device's own output meanwhile finds the funnel busy and reaches fd 1.
+\ funnel's device arm at X64RT's LGENIOOUT, the twin of habu2.f EMIT-GENIO-OUT.
+\ It writes fd 1 while GENIO-ABI:BUSY-CELL is set, for an index past DEVICES
+\ (unsigned, so a negative one too) and for an empty row; otherwise it calls row
+\ index-1's xt with the funnel busy, so a device's own output reaches fd 1.
 \ Registered as an engine helper, as EMIT-GENIO-OUT registers the ARM64 arm.
 : GENIO-HELPER, ( -- )
    LGENIOOUT @ >LABEL {: start:label :}
@@ -441,7 +406,6 @@ CELL 4 * constant DIAG-BYTES
    ASM-SINK ENC-RET
    end X64CODE:LBL, ;
 
-\ ---- the dictionary index and the one-wordlist search -------------------------
 \ The twins of habu1.f EMIT-HIDX and WLFIND:EMIT. The index at HIDXP-CELL is
 \ HIDX-SLOTS u32 slots, each 0 (empty) or a record index plus one, keyed on
 \ C-HIDX-HASH's hash of the folded name XOR the record's wid. It is
@@ -489,7 +453,6 @@ variable FULL-CELL
 
 : IMM64, ( r64 n -- ) >IMM64 ASM-SINK ENC-MOV-RI64 ;
 
-\ Fold the byte in the register A-Z to a-z, as every name compare does.
 : FOLD, ( r64 -- ) {: r:r64 :}
    X64CODE:LBL {: done:label :}
    r FOLD-FIRST >IMM8 ASM-SINK ENC-CMP-RI8  C-B done JCC,
@@ -497,8 +460,7 @@ variable FULL-CELL
    r FOLD-BIT >IMM8 ASM-SINK ENC-OR-RI8
    done X64CODE:LBL, ;
 
-\ The twin of C-HIDX-HASH: h = the FNV-1a hash of the folded name at `name`,
-\ `len` bytes, through the cursor, byte and prime registers.
+\ The twin of C-HIDX-HASH: the FNV-1a hash of the folded name.
 : HASH, ( r64 r64 r64 r64 r64 r64 -- )
    {: name:r64 len:r64 h:r64 cur:r64 byte:r64 prime:r64 :}
    X64CODE:LBL X64CODE:LBL {: next:label done:label :}
@@ -515,33 +477,27 @@ variable FULL-CELL
    next JMP,
    done X64CODE:LBL, ;
 
-\ The hash's first slot: XOR the wid, masked to the table.
 : SLOT, ( r64 r64 -- ) {: h:r64 wid:r64 :}
    h wid ASM-SINK ENC-XOR-RR
    h HIDX-SLOTS 1- >IMM32 ASM-SINK ENC-AND-RI32 ;
 
-\ The next slot on the chain.
 : NEXT-SLOT, ( r64 -- ) {: slot:r64 :}
    slot ASM-SINK ENC-INC
    slot HIDX-SLOTS 1- >IMM32 ASM-SINK ENC-AND-RI32 ;
 
-\ The table's slot value, a record index plus one or 0, through rax.
 : SLOT@, ( r64 r64 -- ) {: dst:r64 slot:r64 :}
    RAX DATA-REG HIDXP-CELL MEM-OFF ASM-SINK ENC-MOV-RM
    dst R64>N >R32 RAX slot 4 0 MEM-IDX ASM-SINK ENC-MOV32-RM ;
 
-\ A record index becomes its record's address in place.
 : ROW, ( r64 -- ) {: r:r64 :}
    r r DREC >IMM8 ASM-SINK ENC-IMUL-RRI8
    r DBASE-REG ASM-SINK ENC-ADD-RR ;
 
-\ The length of the record's name, through a scratch register.
 : NAME-LEN, ( r64 r64 r64 -- ) {: row:r64 dst:r64 tmp:r64 :}
    dst row REC-FLAGS MEM-OFF ASM-SINK ENC-MOV-RM
    tmp DNAME-LEN-MASK IMM64,
    dst tmp ASM-SINK ENC-AND-RR ;
 
-\ The address of the record's name bytes, through a scratch register.
 : NAME-AT, ( r64 r64 r64 -- ) {: row:r64 dst:r64 tmp:r64 :}
    X64CODE:LBL {: inline:label :}
    dst row REC-NAME MEM-OFF ASM-SINK ENC-LEA
@@ -550,8 +506,8 @@ variable FULL-CELL
    dst row REC-NAME MEM-OFF ASM-SINK ENC-MOV-RM
    inline X64CODE:LBL, ;
 
-\ Compare `len` bytes at a and b, folded, through the cursor and two byte
-\ registers: a mismatch jumps to `miss`, a match falls through.
+\ A folded compare of `len` bytes: a mismatch jumps to `miss`, a match falls
+\ through.
 : SAME-NAME, ( r64 r64 r64 r64 r64 r64 label -- )
    {: a:r64 b:r64 len:r64 cur:r64 x:r64 y:r64 miss:label :}
    X64CODE:LBL X64CODE:LBL {: next:label done:label :}
@@ -739,7 +695,6 @@ public
 : HIDX-ADD, ( -- ) ADD-LBL CALL, ;
 : HIDX-REBUILD, ( -- ) REBUILD-LBL CALL, ;
 
-\ ---- syscall rows ------------------------------------------------------------
 \ The twins of habu1.f's file, memory, time and identity bodies. A row pops its
 \ arguments into the syscall registers, rdi rsi rdx r10 r8 r9 (the order
 \ src/os/linux-x86-64/sys.f maps x0..x5 onto), stages the *at* family's
@@ -767,15 +722,12 @@ $5402 constant TCSETS
 : SYS-PUSH, ( n -- ) SYS, SYS-PUSH ;
 : FS-SYS-PUSH, ( n -- ) SYS, FS-SYS-PUSH ;
 
-\ Load the cell n below the top of the data stack, which stays where it is.
 : PEEK, ( r64 n -- ) {: r:r64 depth:n :}
    r DSP depth 1+ CELL * negate MEM-OFF ASM-SINK ENC-MOV-RM ;
 
-\ Guard the span whose address and length are the cells a and l below the top.
 : SPAN-GUARD, ( n n -- ) {: a:n l:n :}
    RDI a PEEK,  RSI l PEEK,  RDI RSI PROT-SPAN-CALL, ;
 
-\ Guard n bytes at the address the cell a below the top holds.
 : SIZED-GUARD, ( n n -- ) {: a:n bytes:n :}
    RDI a PEEK,  RSI bytes IMM32,  RDI RSI PROT-SPAN-CALL, ;
 
@@ -897,18 +849,14 @@ $5402 constant TCSETS
 
 public
 
-\ Call the C function at r11 under the SysV ABI: the register arguments
-\ already in rdi rsi rdx rcx r8 r9 and xmm0..7, and the r10 cells at rax (a
-\ count >= 0) as its stack arguments; the answer is in rax or xmm0. The entry
-\ rsp waits in rbx, which is saved on the machine stack. The function waits
-\ in the machine-stack cell below saved rbx while r11 carries the copy. rsp
-\ drops by the cells and aligns down to 16, the cells land from [rsp] up, and
-\ al is set to n, the caller's bound
-\ on its vector arguments, which a variadic callee reads to decide whether it
-\ saves xmm0..7; after the call rsp is the entry rsp again. The VM registers
-\ survive by the callee-saved rule; rax rcx rdx rsi rdi, r8-r11 and the XMM
-\ registers do not. No private cell occupies the published Habu data stack
-\ while C calls back.
+\ Call the C function at r11 under the SysV ABI: the register arguments already
+\ in rdi rsi rdx rcx r8 r9 and xmm0..7, and the r10 cells at rax (a count >= 0)
+\ as its stack arguments; the answer is in rax or xmm0. al is set to n, the
+\ bound on vector arguments a variadic callee reads to decide whether it saves
+\ xmm0..7. The entry rsp waits in rbx, itself saved on the machine stack. The
+\ VM registers survive by the callee-saved rule; rax rcx rdx rsi rdi, r8-r11
+\ and the XMM registers do not. No private cell occupies the published Habu
+\ data stack while C calls back.
 : SYSV-CALL, ( n -- ) {: vecs:n :}
    X64CODE:LBL X64CODE:LBL {: copy:label called:label :}
    RBX ASM-SINK ENC-PUSH
@@ -1025,7 +973,6 @@ $687461706C616572 constant REALPATH-NAME
    RSP RP-FRAME >IMM8 ASM-SINK ENC-ADD-RI8
    0 G-PUSH ;
 
-\ ---- process rows ------------------------------------------------------------
 \ The twins of habu1.f's Linux process bodies: LINUX-SPAWN under the four spawn
 \ rows and BRUNRC, LINUX-SPAWN-FDS, then BPIPE .. BWAITSTATUS and LIBC-OS
 \ FORK. Every failure is -1, as habu1.f's errno rule has it, except poll's and
@@ -1305,7 +1252,6 @@ SPN-ARGV0 constant SPN-LIFTED
    RAX ZERO-REG,  RAX SPN-ARGV0 CELL + FRAME!,
    RAX SPN-ARGV0 FRAME-AT,  RAX SPN-ARGV FRAME!, ;
 
-\ envp = { 0 }: no environment.
 : DEFAULT-ENV, ( -- )
    RAX ZERO-REG,  RAX SPN-ENVP0 FRAME!,
    RAX SPN-ENVP0 FRAME-AT,  RAX SPN-ENV FRAME!, ;
@@ -1440,7 +1386,6 @@ SPN-ARGV0 constant SPN-LIFTED
 
 public
 
-\ The rows, one line each.
 : SYSCALLS, ( -- )
    s" open" [: OPEN-ROW ;] PRIM
    s" read" [: 1 0 SPAN-GUARD,  RDX POP, RSI POP, RDI POP,  NR-READ FS-SYS-PUSH, ;] PRIM
@@ -1487,7 +1432,6 @@ public
    s" spawn-fds" [: SPAWN-FDS-ROW ;] PRIM
    s" run-rc" [: RUN-RC-ROW ;] PRIM ;
 
-\ ---- control rows ------------------------------------------------------------
 \ The catch frame, STACK-ABI:CATCH-BYTES on the machine stack and chained
 \ through HND-CELL, laid out as habu1.f BCATCH lays it: the byte offsets of its
 \ cells below STACK-ABI:CATCH-BASE and CATCH-CAP.
@@ -1507,7 +1451,6 @@ public
 
 private
 
-\ mov r, [base + off] and mov [base + off], r.
 : MOV-LOAD, ( r64 r64 n -- ) {: r:r64 base:r64 off:n :}
    r base off MEM-OFF ASM-SINK ENC-MOV-RM ;
 : MOV-STORE, ( r64 r64 n -- ) {: r:r64 base:r64 off:n :}
@@ -1563,20 +1506,17 @@ private
    RSI DATA-REG STACK-ABI:RETURN-BASE-CELL MOV-LOAD, ;
 : RSLOT ( n -- mem ) {: k:n :} RSI RCX CELL k CELL * MEM-IDX ;
 
-\ 2>r ( n n -- ), R: ( -- n n ).
 : 2>R, ( -- )
    RDX POP,  RAX POP,  RSTACK,
    RAX 0 RSLOT ASM-SINK ENC-MOV-MR  RDX 1 RSLOT ASM-SINK ENC-MOV-MR
    RCX 2 >IMM8 ASM-SINK ENC-ADD-RI8  RCX DATA-REG RSP-CELL MOV-STORE, ;
 
-\ 2r> ( -- n n ), R: ( n n -- ).
 : 2R>, ( -- )
    RSTACK,
    RCX 2 >IMM8 ASM-SINK ENC-SUB-RI8  RCX DATA-REG RSP-CELL MOV-STORE,
    RAX 0 RSLOT ASM-SINK ENC-MOV-RM  RDX 1 RSLOT ASM-SINK ENC-MOV-RM
    RAX PUSH,  RDX PUSH, ;
 
-\ 2r@ ( -- n n ), R: ( n n -- n n ).
 : 2R@, ( -- )
    RSTACK,
    RAX -2 RSLOT ASM-SINK ENC-MOV-RM  RDX -1 RSLOT ASM-SINK ENC-MOV-RM
@@ -2590,7 +2530,7 @@ public
 \ first a guarded stack. Rows still tied to ARM's interpreter refuse until
 \ supplied in Habu: the source-exec observer attaches to that interpreter's
 \ evaluator and token dispatch, and the checker overlay's six replay writers
-\ have no x86-64 body yet.
+\ have no x86-64 body.
 \ The source runs under the kernel catch frame while its guard owns the unit
 \ hook. A throw resumes here, so both return paths clear the hook before the
 \ caller sees the status. An occupied hook or a guard outside live code
@@ -2675,7 +2615,6 @@ public
    s" replay-private" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
    s" scope-kind?" [: RAX POP,  SCOPE-KIND-LBL CALL,  RAX PUSH, ;] PRIM ;
 
-\ ---- atomics and publication rows --------------------------------------------
 private
 
 \ The twins of habu1.f BATFETCH .. BFENCE. x86-64 orders memory as total store
@@ -2689,13 +2628,11 @@ private
    RSI CELL IMM32,
    RDI RSI PROT-SPAN-CALL, ;
 
-\ atomic@ ( ptr a -- a )
 : ATOMIC-FETCH, ( -- )
    0 X64RT:G-POP
    RAX RAX MEM-AT ASM-SINK ENC-MOV-RM
    0 X64RT:G-PUSH ;
 
-\ atomic! ( a ptr a -- )
 : ATOMIC-STORE, ( -- )
    TOP-CELL-GUARD,
    1 X64RT:G-POP  0 X64RT:G-POP
@@ -2756,7 +2693,6 @@ variable SITE-TRAP-CELL
 : SEAL-TRAP-LBL ( -- label ) SEAL-TRAP-CELL @ >LABEL ;
 : SITE-TRAP-LBL ( -- label ) SITE-TRAP-CELL @ >LABEL ;
 
-\ ---- the protection window ---------------------------------------------------
 \ The region's write bands, recorded in the PROT cells as habu1.f keeps them:
 \ the dictionary-record band [DBASE, DBASE+CFSTK-OFF) in RLO/RHI, the
 \ control-flow band [DBASE+CFSTK-OFF, DBASE+DICT-SIZE) as the latch CF, and
@@ -2819,7 +2755,6 @@ variable SITE-TRAP-CELL
    NR-MPROTECT SYS,
    skip X64CODE:LBL, ;
 
-\ Flip the pages that hold the control-flow band to prot n.
 : CF-FLIP, ( n -- ) {: prot:n :}
    RDI DBASE-REG CFSTK-OFF MEM-OFF ASM-SINK ENC-LEA
    RSI DBASE-REG DICT-SIZE MEM-OFF ASM-SINK ENC-LEA
@@ -2880,7 +2815,6 @@ variable SITE-TRAP-CELL
    PROT:WLO PROT:WINDOW BAND-CLOSE,
    ASM-SINK ENC-RET ;
 
-\ ---- the site rows -----------------------------------------------------------
 \ SNAP-RELOC's x86-64 band (src/habu/layout.f): a u64 count at SITE-N-CELL, then
 \ rows of a u32 region offset and a u8 kind, strictly ascending by offset.
 
@@ -3008,7 +2942,6 @@ variable SITE-TRAP-CELL
    RAX RDX ASM-SINK ENC-TEST-RR  C-NE prot JCC,
    open X64CODE:LBL, ;
 
-\ ---- the rows ----------------------------------------------------------------
 \ patch32 ( n n -- ): guard the four bytes at the address, then store the word
 \ between two LPROTREC flips of its pages, as BPATCH32 does: the flip is keyed
 \ on the target, never on a band another bracket may hold open. A generic
@@ -3038,7 +2971,6 @@ variable SITE-TRAP-CELL
    R9 R64>N >R32 R8 MEM-AT ASM-SINK ENC-MOV32-MR
    R8 PROT-RX PROT-REC, ;
 
-\ dst = the first code slot at or past src.
 : SLOT-UP, ( r64 r64 -- ) {: dst:r64 src:r64 :}
    dst src CODE-SLOT 1- MEM-OFF ASM-SINK ENC-LEA
    dst CODE-SLOT negate >IMM8 ASM-SINK ENC-AND-RI8 ;
@@ -3053,12 +2985,9 @@ variable SITE-TRAP-CELL
 
 \ code-publish ( ptr u8 n n -- ): the twin of BCODEPUBLISH. The span is nonzero,
 \ does not wrap and lies in [DBASE+DICT-SIZE, DBASE+REGION), and dst is CP: a
-\ publication is an append. The slot is the first CODE-SLOT multiple at or
-\ past the span's end, so at most the region's end. The code band opens once
-\ over [CP, slot), the bytes copy, int3 fills [dst+len, slot), the band
-\ closes, the site rows of both kinds in [dst, slot) go, since the span's
-\ sites are recorded after and the fill holds no code, and CP moves to the
-\ slot.
+\ publication is an append. int3 fills [dst+len, slot), and the site rows of
+\ both kinds in [dst, slot) go, since the span's sites are recorded after and
+\ the fill holds no code.
 : PUBLISH, ( -- )
    ENGINE-GPR:X64-CP >R64 {: cp:r64 :}
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL {: copy:label copied:label fill:label filled:label :}
@@ -3298,7 +3227,6 @@ variable SITE-TRAP-CELL
    RDX kind IMM32,
    ADD-SITE-LBL CALL, ;
 
-\ r8 = the address of the record whose index the register holds.
 : RECORD-AT, ( r64 -- ) {: idx:r64 :}
    R8 idx DREC >IMM8 ASM-SINK ENC-IMUL-RRI8
    R8 DBASE-REG ASM-SINK ENC-ADD-RR ;
@@ -3415,10 +3343,8 @@ variable SITE-TRAP-CELL
 
 \ does-record ( n n -- ): the twin of DOES-REC:NATIVE-PRIM. The parent is the
 \ record PEND-CELL points at, and its clause takes the slot past the pending
-\ one, NDICT+1: the entry and length given, the parent's name and ";does"
-\ out of line at CP, zero-padded to a CODE-SLOT multiple, and the parent's
-\ wid. The code band opens over the padded name and the record band over the
-\ record, and CP moves past the pad, to a slot, before the close.
+\ one, NDICT+1: the entry and length given, the parent's name and ";does" out of
+\ line at CP, zero-padded to a CODE-SLOT multiple, and the parent's wid.
 \ src/compiler/native/publish.f DOES-NAME-PAD measures the name padded to a
 \ four-byte word; CODE-RESERVE absorbs the rest.
 : DOES-RECORD, ( -- )
@@ -3473,7 +3399,6 @@ public
 : WINDOW-OPEN, ( -- ) LOPEN-LBL CALL, ;
 : WINDOW-CLOSE, ( -- ) LCLOSE-LBL CALL, ;
 
-\ The window and site helpers, made in this stream, and then the rows.
 : PUBLICATION, ( -- )
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
       {: span-end:label open-end:label close-end:label add-end:label :}
@@ -3515,11 +3440,8 @@ public
    s" min-in-mark" [: MIN-IN-MARK, ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" does-record" [: DOES-RECORD, ;] PRIM ;
 
-\ ---- engine-state rows -------------------------------------------------------
-
 private
 
-\ Pop the name and the wid into FIND-HELPER,'s registers.
 : FIND-ARGS, ( -- )
    RDX R64>N X64RT:G-POP  RSI R64>N X64RT:G-POP  RDI R64>N X64RT:G-POP ;
 
@@ -3550,8 +3472,8 @@ private
    FIND-LBL CALL,
    RAX R64>N X64RT:G-PUSH ;
 
-\ The existing scan keeps the highest matching dictionary row even when a
-\ native unit publishes duplicate names into one real wordlist.
+\ The scan keeps the highest matching dictionary row even when a native unit
+\ publishes duplicate names into one real wordlist.
 : XREF-SEARCH-WL-NEWEST-BODY ( -- )
    FIND-ARGS,
    FIND-SCAN-LBL CALL,
@@ -3559,7 +3481,6 @@ private
 
 public
 
-\ The dictionary search, tabled under "Engine-state rows".
 : DICT-SEARCH, ( -- )
    s" search-wl" [: SEARCH-WL-BODY ;] PRIM
    s" xref-search-wl" [: XREF-SEARCH-WL-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
@@ -3736,7 +3657,6 @@ private
    s" set-top-check" [: SET-TOP-CHECK-BODY ;] PRIM
    s" top-check@" [: RAX TOP-HOOK-CELL CELL@,  RAX PUSH, ;] PRIM ;
 
-\ ---- the registers and the dictionary count ----------------------------------
 \ The twins of habu1.f BCPFETCH .. BDATAFETCH, BRBASE, BCPSET, BNDSET,
 \ BSEEDNDICTSET and BNDAPPEND. A row that moves r14 keeps the dictionary index
 \ authoritative through the HIDX calls.
@@ -3989,7 +3909,6 @@ private
    s" def-occ-select" [: DEF-SELECT-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" def-occ-resolve" [: DEF-RESOLVE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID ;
 
-\ ---- the seal ----------------------------------------------------------------
 \ The twins of habu1.f BSEALCAP, BSEALCAPQ and BSEALFRIEND and habu2.f
 \ BDRAINPRETRUST. The pending pre-trust defer table at PD-TABLE-OFF is a count
 \ and PD-SLOT byte slots, each a name and a signature with their lengths.
@@ -4092,7 +4011,6 @@ private
    s" SEAL-FRIEND" [: RAX FRIEND-ARENA-LEN IMM32,  RAX FRIEND-LATCH-CELL CELL!, ;] PRIM
    s" DRAIN-PRETRUST" [: DRAIN-BODY ;] PRIM ;
 
-\ ---- wordlists and record marks ----------------------------------------------
 \ The twins of habu1.f BWORDLIST, BGETCUR, BSETCUR, BPROTWIDADD, BPROTWIDROOM
 \ and BWIDEMARK.
 
@@ -4218,7 +4136,6 @@ private
    s" policy-seal" [: POLICY-SEAL-BODY ;] PRIM
    s" wide-mark" [: WIDE-MARK-BODY ;] PRIM ;
 
-\ ---- persisted cells, the tier and the build scope ---------------------------
 \ The x86-64 image has fixed addresses, but capture still needs declarations
 \ for cells holding code and DATA addresses. snap-rebase, which moves a
 \ restored snapshot's cells, refuses. The twins of habu2.f
@@ -4450,7 +4367,6 @@ public
    HEAP,  PRINTERS,  HOOKS,
    DICT-COUNT,  SEAL-ROWS,  WORDLIST-ROWS,  SCOPE-ROWS, ;
 
-\ ---- FFI rows ----------------------------------------------------------------
 \ The twins of habu1.f BFFI-CALL, BFFI-CALL-N and BFFI-CALL-BOUNDED: integer
 \ SysV calls through SYSV-CALL,. argbuf holds at least eight cells, the
 \ contract ARM64's unconditional load of x0..x7 sets; SysV takes six in
@@ -4694,7 +4610,6 @@ public
    s" ffi-call-struct-bounded"
       [: R11 POP,  DROP,  R11 PUSH,  FFI-CALL-ABI-BOUNDED-BODY  RAX PUSH,  RDX PUSH, ;] PRIM ;
 
-\ ---- task entry --------------------------------------------------------------
 \ The twin of habu1.f BTASK-ENTRY. `task-entry` answers an immutable pthread
 \ entry, not a Habu execution token: a SysV function whose one argument, in
 \ rdi, is the TASK-ABI descriptor, and which enters that task's VM state. It
@@ -4714,7 +4629,6 @@ private
 
 : INTERP-REG ( -- r64 ) ENGINE-GPR:X64-INTERP >R64 ;
 
-\ The VM's registers, pushed and popped in reverse.
 : SAVE-VM, ( -- )
    INTERP-REG ASM-SINK ENC-PUSH  DATA-REG ASM-SINK ENC-PUSH  DSP ASM-SINK ENC-PUSH
    DBASE-REG ASM-SINK ENC-PUSH  NDICT-REG ASM-SINK ENC-PUSH  CP-REG ASM-SINK ENC-PUSH ;
@@ -4914,7 +4828,6 @@ public
    s" task-entry" [: TASK-ENTRY-BODY ;] PRIM
    s" callback-entry" [: CALLBACK-ENTRY-BODY ;] PRIM ;
 
-\ ---- definition writers ------------------------------------------------------
 \ The rows an interpreter written in Habu publishes definitions,
 \ namespace rows, aliases and package scope through and marks a word immediate
 \ with (src/habu/prims.f, "the definition writers"): the twins of habu2.f
@@ -4941,7 +4854,6 @@ $3A constant NAME-COLON                \ a qualified name's separator
 : FRAME-OPEN, ( -- ) RSP DW-FRAME >IMM8 ASM-SINK ENC-SUB-RI8 ;
 : FRAME-CLOSE, ( -- ) RSP DW-FRAME >IMM8 ASM-SINK ENC-ADD-RI8 ;
 
-\ Pop the data stack's top into the frame cell.
 : POP-TO, ( n -- ) {: off:n :} RAX POP,  RAX RSP off MOV-STORE, ;
 
 \ A pending definition's record is slot NDICT, the slot a record writer fills.
@@ -5020,7 +4932,6 @@ $3A constant NAME-COLON                \ a qualified name's separator
    CP-REG RSP DW-SLOT MOV-LOAD,
    done X64CODE:LBL, ;
 
-\ Count record NDICT, index it and close the window.
 : PUBLISH-RECORD, ( -- )
    RAX ASM-SINK ENC-PUSH
    RAX NDICT-REG 1 MEM-OFF ASM-SINK ENC-LEA
@@ -5299,7 +5210,6 @@ $C3 constant RET-OP
 INT3 $0101010101010101 * constant INT3-CELL
 INT3-CELL $FF invert and RET-OP or constant CAST-CELL
 
-\ Publish a cast's identity slot at CP and the pending record that names it.
 : DEF-CAST-BODY ( -- )
    X64CODE:LBL {: noshadow:label :}
    TASK-LIVE-GUARD,
@@ -5335,7 +5245,6 @@ INT3-CELL $FF invert and RET-OP or constant CAST-CELL
    RAX DOESB-CELL CELL!,  RAX TRUSTED-CELL CELL!,  RAX CLAUSE-CELL CELL!,
    RAX PEND-CELL CELL!, ;
 
-\ ---- does-patch -----------------------------------------------------------------
 \ A created word's routine ends `jmp rel32; ret`, its last six bytes
 \ (src/compiler/native/emit-x64.f PUT-RET): the jump falls through to the
 \ return while its displacement is 0, and does-patch aims it at a clause,
@@ -5606,7 +5515,6 @@ public
    s" def-cast" [: DEF-CAST-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" does-patch" [: DOES-PATCH-BODY ;] PRIM ;
 
-\ ---- pure rows ---------------------------------------------------------------
 \ The arithmetic, comparison, shuffle, memory and float rows, each the twin of
 \ its habu1.f body and written over the shapes below. A row reads its operands
 \ where they stand and writes its answer over the deepest cell it consumed, so
@@ -5628,7 +5536,6 @@ private
 $8000000000000000 constant SIGN-BIT     \ a double's sign
 $43DFFFFFFFFFFFFF constant REALINT-TOP  \ every double above it is 2^63 or more
 
-\ Store the register over the cell n below the top: PEEK,'s twin.
 : POKE, ( r64 n -- ) {: r:r64 depth:n :}
    r DSP depth 1+ CELL * negate MEM-OFF ASM-SINK ENC-MOV-MR ;
 
@@ -5644,7 +5551,6 @@ $43DFFFFFFFFFFFFF constant REALINT-TOP  \ every double above it is 2^63 or more
 : BYTE>FLAG, ( r64 -- ) {: r:r64 :}
    r r R64>N >R8 ASM-SINK ENC-MOVZX-8-RR  r ASM-SINK ENC-NEG ;
 
-\ The register all ones where the condition holds, else zero.
 : FLAG, ( condition r64 -- ) {: c:condition r:r64 :}
    c r SET8,  r BYTE>FLAG, ;
 
@@ -5652,7 +5558,6 @@ $43DFFFFFFFFFFFFF constant REALINT-TOP  \ every double above it is 2^63 or more
 : COMPARE, ( condition -- ) {: c:condition :}
    PAIR,  RAX RCX ASM-SINK ENC-CMP-RR  c RAX FLAG,  RAX TOP!, ;
 
-\ ( a -- flag ): a against zero.
 : ZERO-COMPARE, ( condition -- ) {: c:condition :}
    RAX 0 PEEK,  RAX RAX ASM-SINK ENC-TEST-RR  c RAX FLAG,  RAX TOP!, ;
 
@@ -5686,11 +5591,9 @@ $43DFFFFFFFFFFFFF constant REALINT-TOP  \ every double above it is 2^63 or more
    ASM-SINK ENC-CQO  RCX ASM-SINK ENC-IDIV
    done X64CODE:LBL, ;
 
-\ d = the byte at a, zero-extended.
 : CFETCH, ( r64 r64 -- ) {: d:r64 a:r64 :}
    d a MEM-AT ASM-SINK ENC-MOVZX-8-RM ;
 
-\ ---- the float pair ----
 \ ( a b -- a ): xmm0 = a and xmm1 = b.
 : FPAIR, ( -- )
    PAIR,  XMM0 RAX ASM-SINK ENC-MOVQ-XR  XMM1 RCX ASM-SINK ENC-MOVQ-XR ;
@@ -5747,7 +5650,6 @@ $43DFFFFFFFFFFFFF constant REALINT-TOP  \ every double above it is 2^63 or more
    ARGS
    EMIT-ROW ENGINE-PRIMS:MARK-SCALAR ;
 
-\ ---- the hand-written rows ----
 : STORE-BODY ( -- )
    0 CELL SIZED-GUARD,  RCX POP,  RAX POP,
    RAX RCX MEM-AT ASM-SINK ENC-MOV-MR ;
@@ -5856,7 +5758,6 @@ $43DFFFFFFFFFFFFF constant REALINT-TOP  \ every double above it is 2^63 or more
    s" lshift" [: PAIR,  RAX ASM-SINK ENC-SHL-CL  RAX TOP!, ;] PRIM
    s" rshift" [: PAIR,  RAX ASM-SINK ENC-SHR-CL  RAX TOP!, ;] PRIM ;
 
-\ Each shuffle reads the cells it moves and writes them where they land.
 : STACK-ROWS, ( -- )
    s" dup" [: RAX 0 PEEK,  RAX PUSH, ;] PRIM
    s" drop" [: DROP, ;] PRIM
@@ -5923,7 +5824,6 @@ public
 
 : PURE, ( -- )
    ARITH-ROWS,  COMPARE-ROWS,  STACK-ROWS,  MEMORY-ROWS,  FLOAT-ROWS, ;
-\ ---- profiler rows -----------------------------------------------------------
 \ habu1.f's profiler rows: src/habu/prof-x64.f emits the SIGALRM handler, its
 \ restorer, the index helpers, the sync, the printers and the reports once,
 \ then each body.
@@ -5988,7 +5888,7 @@ public
 \ of src/habu/prims.f that no section registered, as habu2.f
 \ ENGINE-EMIT:EMIT-PRIMITIVE-SECTIONS does for ARM64, and COMPLETE-PROVIDED
 \ refuses a provided row whose cell the capture leaves empty, so a row this
-\ kernel does not carry is a REFUSE, never an absence a captured program meets.
+\ kernel does not carry is a REFUSE or REFUSE-WID, never an absence a captured program meets.
 : KERNEL, ( -- )
    X64CODE:LBL LCLOSE-CELL !
    HELPERS,

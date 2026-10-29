@@ -8,7 +8,6 @@ require src/habu/xref.f
 require src/compiler/native/dict.f
 require src/habu/escape.f
 
-\ ---- numbers ----------------------------------------------------------------
 \ NUMBER reads a token as the engine's reader does (LNUM, EMIT-NUM in
 \ habu1.f): an optional `-`, an optional `$` for radix 16 with digits a-f and
 \ A-F, then digits. A radix-10 token may end in one `.` and one or more
@@ -36,7 +35,6 @@ $8000000000000000 constant MIN-N
    c lo >= c hi <= and ;
 
 
-\ The value of byte c as a digit of radix, and whether it is one.
 : DIGIT ( n n -- n bool ) {: c:n radix:n :}
    c [char] 0 [char] 9 BETWEEN? if c [char] 0 - true exit then
    radix 16 <> if 0 false exit then
@@ -45,12 +43,10 @@ $8000000000000000 constant MIN-N
    0 false ;
 
 
-\ Whether the byte at idx is c.
 : AT? ( ptr u8 n n n -- bool ) {: a:ptr u:n idx:n c:n :}
    idx u < if a idx + c@ c = else false then ;
 
 
-\ The index past the run of radix digits that starts at idx.
 : RUN-END ( ptr u8 n n n -- n ) {: a:ptr u:n idx:n radix:n :}
    idx begin
       dup u < if dup a + c@ radix DIGIT nip else false then
@@ -191,7 +187,6 @@ public
 
 ;package
 
-\ ---- dictionary search ------------------------------------------------------
 \ OUTER:FIND answers the record the engine's own lookup binds one token to, or
 \ XREF-NULL: NDICT:SCOPE-REC, which is the `scope-find` primitive (habu2.f
 \ LSCOPEREC) - LFIND and then the used publics, the leaves the JIT's call site
@@ -242,7 +237,6 @@ public
 
 ;package
 
-\ ---- the interpret loop ------------------------------------------------------
 \ OUTER:INTERPRET (src/habu/interpret.f) reads a buffer token by token with the
 \ words below, as the engine's interpret loop does (habu2.f EM-COMMENT's LMAIN,
 \ EM-INTERPRET-WORDS) for comments, the literal keywords (`s"`, `c"`, `."`,
@@ -289,7 +283,6 @@ $20 constant CASE-BIT            \ ORed into A-Z it gives a-z
 
 create NL NEWLINE c,
 
-\ ---- the engine's cells --------------------------------------------------------
 : CELL@ ( n -- n )
    data-base + @ ;
 
@@ -312,7 +305,7 @@ create NL NEWLINE c,
 : TOKEN$ ( -- ptr u8 n )
    TKA-CELL ADDR@ TKL-CELL CELL@ ;
 
-\ ---- the scanner (habu1.f LTOK) -------------------------------------------------
+\ The engine's twin: habu1.f LTOK.
 : BLANKS-END ( ptr u8 ptr u8 -- ptr u8 ) {: p:ptr e:ptr :}
    p begin dup e < if dup c@ BLANK <= else false then while 1 + repeat ;
 
@@ -331,18 +324,17 @@ create NL NEWLINE c,
    t s - TKL-CELL CELL!
    true ;
 
-\ ---- refusals (habu2.f EM-COMPILE-UNDEF, EM-INTERPRET-UNDERFLOW) ---------------
+\ The engine's twins: habu2.f EM-COMPILE-UNDEF and EM-INTERPRET-UNDERFLOW.
 \ Each writes the engine's text on descriptor 2 and throws its code. Like the
 \ engine's own diagnostics, a write that fails is not reported: the throw is.
 : SAY ( ptr u8 n -- ) {: a:ptr u:n :}
    ERR-FD a u write drop ;
 
-\ The message, the token and a newline, then the catchable reject.
 : REFUSE ( ptr u8 n -- )
    SAY TOKEN$ SAY NL 1 SAY
    RC-REJECT throw ;
 
-\ ---- the refusal's location (habu2.f EM-COMPILE-DIE) ----------------------------
+\ The engine's twin: habu2.f EM-COMPILE-DIE.
 20 constant DIGITS-CAP
 create DIGITS DIGITS-CAP allot
 variable DIGIT-AT
@@ -388,7 +380,6 @@ variable DIGIT-AT
    s" hb: bare word a global and a used package both export: " SAY
    TOKEN$ SAY ENGINE-ERROR:USING-SHADOW-GLOBAL THROW-AT ;
 
-\ ---- fail-closed exits ----------------------------------------------------------
 \ Where the engine ends the process instead of throwing (NR-EXIT-GROUP), the
 \ text and a newline go to descriptor 2 and no program code runs: the exit
 \ hook (src/habu/layout.f EXIT-HOOK-CELL) is cleared before `die`, which would
@@ -425,7 +416,7 @@ variable DIGIT-AT
    wid 6 rshift cells PROT-BITS-OFF + CELL@
    wid 63 and rshift 1 and 0<> ;
 
-\ ---- comments (habu2.f EM-COMMENT) -----------------------------------------------
+\ The engine's twin: habu2.f EM-COMMENT.
 \ A backslash or `(` opens a comment only as a whole one-byte token. The comment
 \ runs past the next newline or `)`. A backslash comment may also run to the end
 \ of the input; a `(` comment the input ends inside is refused at the `(`.
@@ -451,7 +442,6 @@ variable DIGIT-AT
    b OPEN-COMMENT = if CLOSE-COMMENT SKIP-PAST 0= if UNCLOSED then true exit then
    false ;
 
-\ ---- running program code -------------------------------------------------------
 \ A word or the hook runs through execute-floor, which answers whether it left
 \ the stack below its base and then resets the stack to the base: the floor the
 \ engine checks after every token. The prim's row states no effect for the xt,
@@ -459,7 +449,7 @@ variable DIGIT-AT
 : FLOORED ( bool -- )
    if s" E-UNDERFLOW: " REFUSE then ;
 
-\ ---- the top-row hook (habu2.f LTOPHOOK) ------------------------------------------
+\ The engine's twin: habu2.f LTOPHOOK.
 \ With a hook installed (set-top-check) it gets ( token class flags ) for each
 \ number after the push and for each word, past its gates, before it runs. The
 \ hook consumes those four cells, as the event protocol states. A hook that
@@ -485,9 +475,9 @@ variable EVENT-FLAGS
    [: TOKEN$ EVENT-CLASS @ EVENT-FLAGS @ HOOK@ TOP-HOOK execute ;]
    HOOK-CALL execute-floor FLOORED ;
 
-\ ---- the unit hook (habu2.f C-UNIT-HOOK) -----------------------------------------
+\ The engine's twin: habu2.f C-UNIT-HOOK.
 \ unit-compile-run arms UNIT-COMPILE-CELL with a guard for the one source it
-\ runs (tools/native-unit-compile.f GUARD). The guard gets the token, a class
+\ runs (its caller is src/core/include.f SOURCE-UNIT:GUARDED). The guard gets the token, a class
 \ and one of these events, and only a package name's answer is read: a
 \ nonzero one skips the rest of the input. A token outside a body is classed
 \ 0 for a word, 1 for an integer and 2 for a float; a word about to run is
@@ -517,7 +507,6 @@ CAST: UNIT-GUARD ( n -- [ ptr u8 n n n -- n ] )
 : UNIT-REFUSE ( -- )
    TOKEN$ SAY RC-REJECT THROW-AT ;
 
-\ ---- numbers ------------------------------------------------------------------------
 variable VALUE
 
 \ A number's value waits in VALUE. One out of range is undefined, and no word
@@ -528,7 +517,6 @@ variable VALUE
    v VALUE !
    num ;
 
-\ ---- words --------------------------------------------------------------------------
 \ The record of the word the step looked up. INTERPRET (interpret.f) puts back
 \ what it held when the buffer began, so no record outlives the buffer that
 \ looked it up: a stripped image would hold it as an undeclared dictionary
@@ -612,7 +600,7 @@ TYPED-VARIABLE REC ptr n
    1 f DNAME-IMM and 0<> if 2 or then
    f MIN-IN 8 lshift or ;
 
-\ ---- the source observer (habu2.f C-SOURCE-EXEC-BEFORE, EMIT-SOURCE-EXEC-FINISH) --
+\ The engine's twins: habu2.f C-SOURCE-EXEC-BEFORE and EMIT-SOURCE-EXEC-FINISH.
 \ source-exec-run (habu1.f BSOURCEEXECRUN) pushes one frame on the native
 \ stack, named by SOURCE-EXEC-CTX-CELL, and runs a continuation that evaluates
 \ the owned range. The engine's evaluate arms the frame when the range it
@@ -755,7 +743,7 @@ CAST: AFTER-CALL ( n -- [ n n n -- ] )
 : RUN-WORD ( -- )
    LOOKUP RUN-FOUND ;
 
-\ ---- keywords (habu2.f CF-ENTRY, LKWCMP) --------------------------------------------
+\ The engine's twins: habu2.f CF-ENTRY and LKWCMP.
 \ A keyword is matched before the token is read as a number or a word, and it
 \ reads the input after it itself. Each keyword table is a word that runs the
 \ token when it is one of its rows and answers whether it was.
@@ -784,7 +772,7 @@ CAST: AFTER-CALL ( n -- [ n n n -- ] )
    s" hb: reader keyword needs a name: " SAY
    kw u SAY RC-NO-NAME THROW-AT ;
 
-\ ---- string literals (habu2.f C-ISDQ to C-EIDOTQ) ------------------------------------
+\ The engine's twins: habu2.f C-ISDQ to C-EIDOTQ.
 \ A literal's text starts one byte past the keyword, past the blank that ended
 \ it, and runs to a closing quote that INP then passes. A literal with no
 \ closing quote refuses with INP still after the keyword, so the refusal names
@@ -807,7 +795,6 @@ CAST: AFTER-CALL ( n -- [ n n n -- ] )
 : ROOM ( n -- ptr u8 )
    here swap allot ;
 
-\ A plain literal's text.
 : TEXT ( -- ptr u8 n )
    INP-CELL ADDR@ 1 + INE-CELL ADDR@ {: s:ptr e:ptr :}
    s begin dup e < if dup c@ QUOTE <> else false then while 1 + repeat
@@ -816,7 +803,6 @@ CAST: AFTER-CALL ( n -- [ n n n -- ] )
    q PAST
    s q s - ;
 
-\ The bytes copied to the data space at here, which moves past them.
 : COPY-HERE ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    u ROOM {: d:ptr :}
    a d u BYTE-COPY
@@ -835,7 +821,7 @@ CAST: AFTER-CALL ( n -- [ n n n -- ] )
    a d 1 + u BYTE-COPY
    d ;
 
-\ ---- escaped literals (habu2.f EMIT-ESC-SCAN, EMIT-ESC-COPY) ------------------------
+\ The engine's twins: habu2.f EMIT-ESC-SCAN and EMIT-ESC-COPY.
 \ An escaped literal's start, its closing quote and the count of bytes it
 \ decodes to (src/habu/escape.f). A bad escape refuses as a missing quote
 \ does, INP unmoved.
@@ -863,7 +849,6 @@ CAST: AFTER-CALL ( n -- [ n n n -- ] )
    s q d 1 + ESCAPE:COPY
    d ;
 
-\ ---- running a literal ----------------------------------------------------------------
 \ A literal a program keeps is program code: a quotation pushes it, then the
 \ hook sees it with the keyword as its token, and the quotation runs under the
 \ floor as a word does. The cells it leaves are the program's, so these views
@@ -877,7 +862,6 @@ CAST: CELL-TAKE ( [ n -- ] -- n )
 : RUN-LITERAL ( n -- )
    execute-floor FLOORED ;
 
-\ ---- the string keywords ---------------------------------------------------------------
 \ `."` types its text straight from the input and allots nothing; `.\"` keeps
 \ its decoded bytes, as the engine's C-EIDOTQ does.
 : PUSH-STR ( -- )
@@ -898,7 +882,7 @@ CAST: CELL-TAKE ( [ n -- ] -- n )
 : TYPE-ESC-STR ( -- )
    ESC-KEEP type ;
 
-\ ---- char (habu2.f C-CHAR) ---------------------------------------------------------------
+\ The engine's twin: habu2.f C-CHAR.
 \ The operand's first byte. No definition is open at top level, so no body
 \ text captures the operand.
 : FIRST-BYTE ( -- n )
@@ -909,7 +893,7 @@ CAST: CELL-TAKE ( [ n -- ] -- n )
 : PUSH-CHAR ( -- )
    [: FIRST-BYTE TOP-EV-CHAR 0 HOOK ;] CELL-LITERAL RUN-LITERAL ;
 
-\ ---- tick (habu2.f C-TICK) ---------------------------------------------------------------
+\ The engine's twin: habu2.f C-TICK.
 \ The seal guard (habu2.f C-QUALIFY-SEAL-GUARD): once the engine is sealed, a
 \ token qualified by a sealed package ends the process, the token its whole
 \ diagnostic line. The qualifier is the first colon when it is at neither
@@ -968,7 +952,6 @@ CAST: TICK-ACTION ( n -- [ ptr u8 n -- bool ] )
 : PUSH-XT ( -- )
    [: TICKED TICK-OBSERVE TOP-EV-TICK WORD-FLAGS HOOK ;] CELL-LITERAL RUN-LITERAL ;
 
-\ ---- the literal keywords -----------------------------------------------------------------
 \ The engine's EM-INTERPRET-STRING-KEYWORDS, with `'` and `char` from its
 \ EM-INTERPRET-DEFINE-KEYWORDS.
 : LITERAL? ( -- bool )

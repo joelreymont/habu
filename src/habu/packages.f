@@ -1,16 +1,9 @@
-\ packages.f - the package keywords of the interpret loop written in Habu:
-\ `package`, `public`, `private`, `;package`, `using`, `;using` and `export`,
-\ as the engine's C-PACKAGE to C-EXPORT (habu2.f) read them. STEP
-\ (src/habu/interpret.f) asks PACKAGE? after the literal keywords.
-\
-\ The dictionary and the package cells are sealed state: after the seal a
-\ store into the friend arena (CUR, WIDN, DEF-WL, PKG-*) exits 83. A namespace
-\ row and its wids come from namespace-record and namespace-private, the scope
-\ from package-scope!, an alias from alias-record (src/habu/prims.f, the
-\ definition writers) and CUR from set-current. The using band and DEF-TKA and
-\ DEF-TKL are not sealed and are written here directly. A writer's own refusal
-\ exits without a word, so every refusal the engine reports is made here
-\ first, in the engine's order and with its text.
+\ packages.f - the package keywords of the Habu interpret loop, the twins of
+\ habu2.f C-PACKAGE to C-EXPORT; interpret.f STEP asks PACKAGE? after the
+\ literal keywords. After the seal a store into the friend arena (CUR, WIDN,
+\ DEF-WL, PKG-*) exits 83: rows, scope and aliases go through the prims.f
+\ writers and CUR through set-current; the using band, DEF-TKA and DEF-TKL are
+\ not sealed and are written here. A writer refuses silently, so each engine refusal is made here.
 
 require src/lib/prelude.f
 require src/habu/layout.f
@@ -35,14 +28,8 @@ private
 \ DEFWRITE:NAME-ROOM).
 $4000 constant PKG-CODE-RESERVE
 
-\ ---- the definition writers --------------------------------------------------
-\ namespace-record, namespace-private, package-scope! and alias-record are
-\ OUTER's own rows (src/habu/prims.f), called below by name.
-
-\ A record's index: records sit DREC bytes apart from dbase@.
 : PKG-INDEX ( ptr n -- n ) BYTE-VIEW NULL-PTR BYTE-VIEW - dbase@ - DREC / ;
 
-\ ---- the refusals ------------------------------------------------------------
 \ The token, then the engine's compile-die tail (habu2.f C-PACKAGE-FAIL).
 : PKG-FAIL ( n -- )
    TOKEN$ SAY THROW-AT ;
@@ -91,7 +78,7 @@ $4000 constant PKG-CODE-RESERVE
 
 : PKG-CODE-ROOM ( ptr u8 n -- ) 0 PKG-CODE-ROOM-AFTER ;
 
-\ ---- the checker's declaration operations (habu2.f DECL-OWNER) ---------------
+\ The checker's declaration operations (habu2.f DECL-OWNER).
 \ The operation at off in the owner record a dispatch cell names, 0 when there
 \ is no record or the field is empty: the engine then skips the call, where
 \ src/compiler/native/checker-owner.f FIELD would refuse.
@@ -151,8 +138,7 @@ CAST: PKG-AS-EXPORT-ACTION ( n -- [ ptr u8 n n -- ] )
    xt 0= if exit then
    operand operand-u ord xt PKG-AS-EXPORT-ACTION execute ;
 
-\ ---- package, public, private, ;package (habu2.f C-PACKAGE to C-END-PACKAGE) -
-\ The namespace row the token names, or XREF-NULL.
+\ The engine's twins: habu2.f C-PACKAGE to C-END-PACKAGE.
 : PKG-ROW ( -- ptr n )
    TOKEN$ XREF-NAMESPACE-WL WL-PROBE ;
 
@@ -214,7 +200,6 @@ CAST: PKG-AS-EXPORT-ACTION ( n -- [ ptr u8 n n -- ] )
    ix get-current package-scope!
    PKG-PRI-CELL CELL@ set-current ;
 
-\ `public` and `private` select a wordlist of the open package.
 : PKG-SECTION ( n n -- ) {: cell:n off:n :}
    TASK-GUARD
    cell CELL@ 0= if PKG-RC-CONTEXT PKG-FAIL then
@@ -229,7 +214,7 @@ CAST: PKG-AS-EXPORT-ACTION ( n -- [ ptr u8 n n -- ] )
    -1 0 package-scope!
    USE-PKG-SAVE-CELL CELL@ USE-DEPTH-CELL CELL! ;
 
-\ ---- the package scope a throw puts back (habu1.f B-EVAL, habu2.f LEVALREC) --
+\ A throw puts the package scope back (habu1.f B-EVAL, habu2.f LEVALREC).
 \ The open package's row, its parent wordlist, the current wordlist and the
 \ open package's using floor: what the engine's evaluate frame keeps of the
 \ package scope beside the using depth (PKGSNAP).
@@ -248,12 +233,10 @@ CAST: PKG-AS-EXPORT-ACTION ( n -- [ ptr u8 n n -- ] )
    then
    NCOMP-DISPATCH:DECL-PKG-RESYNC-OFF PKG-NOTIFY ;
 
-\ ---- using, ;using (habu2.f C-USING, C-END-USING) ----------------------------
-\ A refusal's message, the token and the compile-die tail.
+\ The engine's twins: habu2.f C-USING and C-END-USING.
 : PKG-USING-FAIL ( ptr u8 n n -- ) {: a:ptr u:n rc:n :}
    a u SAY TOKEN$ SAY rc THROW-AT ;
 
-\ The public wordlist of the package the operand names.
 : PKG-USED-WID ( -- n )
    TOKEN 0= if
       s" hb: using: missing package name" SAY
@@ -313,7 +296,7 @@ variable USE-FLOOR
    then
    d 1- USE-DEPTH-CELL CELL! ;
 
-\ ---- export (habu2.f C-EXPORT) -----------------------------------------------
+\ The engine's twin: habu2.f C-EXPORT.
 \ The name the alias takes: the operand's tail after its first colon, or the
 \ whole operand when it has none or one at either edge (habu2.f C-EXPORT-TAIL!).
 : PKG-TAIL ( -- ptr u8 n )
@@ -373,8 +356,7 @@ variable USE-FLOOR
       a u SAY PKG-RC-DUPLICATE THROW-AT
    then ;
 
-\ The clause's entry and length under its name, in the current wordlist
-\ (habu2.f C-EXPORT-CLAUSE-RECORD).
+\ Twin of habu2.f C-EXPORT-CLAUSE-RECORD.
 : PKG-CLAUSE-ALIAS ( n -- ) {: k:n :}
    k XREF-REC XREF-NAME$ {: a:ptr u:n :}
    a u k get-current alias-record ;
@@ -408,7 +390,6 @@ variable USE-FLOOR
    clause 0 >= if clause PKG-CLAUSE-ALIAS then
    operand operand-u ord PKG-NOTIFY-EXPORT ;
 
-\ ---- the package keywords ----------------------------------------------------
 \ The engine's EM-INTERPRET-DEFINE-KEYWORDS rows for packages, matched as
 \ LITERAL? matches its own.
 : PACKAGE? ( -- bool )

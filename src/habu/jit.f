@@ -1,18 +1,15 @@
-\ jit.fs — runtime abstract value stack for the native `:` compiler.
-\ Tag 1 = constant (no code yet), tag 0 = live register; LVSPILL materializes all
-\ entries as [x19] pushes bottom-up and empties the VS. State in DATA header cells.
-\ Load after prof.fs, before habu2.f.
-\ This is tier 0, a second ARM64 codegen beside the platform codegen (tier 1).
-\ `--load` and the REPL use it because tier 1 compiles a trivial definition far
-\ slower (tools/compile-floor.f). An executable build compiles at its caller's
-\ tier (src/lib/executable-build.f).
-\ The ARM64 encoders are package A64ASM's public surface (src/arch/arm64/asm.f).
+\ jit.f - the native `:` compiler's runtime abstract value stack (VS); load after prof.f, before
+\ habu2.f. Entry tags: 0 x-register, 1 integer constant (no code yet), 2 d-register, 3 float
+\ constant. LVSPILL materializes all entries as [x19] pushes, bottom-up; state is in REGALLOC-ABI's
+\ DATA cells (src/habu/regalloc-abi.f).
 require src/arch/arm64/icode.f
 using A64ASM
 using A64ICODE
-\ The allocator's DATA cells are package REGALLOC-ABI's (src/habu/regalloc-abi.f).
 using REGALLOC-ABI
 
+\ This tier 0 is a second ARM64 codegen beside tier 1: `--load` and the REPL use it because tier 1
+\ compiles a trivial definition far slower (tools/compile-floor.f); an executable build compiles at
+\ its caller's tier (src/lib/executable-build.f).
 variable LVSPILL   variable LVLITPUSH   variable LVPUSHC
 variable LVPUSHF   variable LFFORCEK  variable LFBINPREP
 variable LKWFPLUS  variable LKWFMINUS  variable LKWFSTAR  variable LKWFSLASH
@@ -25,14 +22,10 @@ variable LVNEED  variable LVSHARED?  variable LVDEST
  0 XDS -8 ENC-LDRDPRE  constant W-FPOPR   \ ldr dR,[x19,#-8]!
 $9E670200 constant W-FMOVD16    \ fmov dR, x16  (or with R)
 
-\ Emit one fixed instruction into the running compiler's code window.
 : C-EMITW ( n -- ) 9 swap LIT64,  LCEMIT LABEL@ BL, ;
 
-\ Emit one target syscall stencil (src/os/<target>/sys.f) into that window. The
-\ seam publishes a stencil as a byte string because an x86_64 instruction is one
-\ to fifteen bytes; on this ARM64 emitter every stencil is a whole number of
-\ four-byte words, so a length that is not is a seam defect and dies here rather
-\ than emitting a torn instruction.
+\ A target syscall stencil (src/os/<target>/sys.f) is a byte string because an x86_64 instruction
+\ is one to fifteen bytes; on ARM64 a length that is not whole words is a seam defect and dies.
 : C-STENCIL-W@ ( ptr u8 n -- n ) {: a:ptr i:n :}
    a i + c@
    a i 1 + + c@ 8 lshift or
@@ -89,11 +82,9 @@ $9E670200 constant W-FMOVD16    \ fmov dR, x16  (or with R)
    6 FRALL LIT64,  6 DATA FRFREE-CELL STR,
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
-\ LVPUSHT ( x8=tag x11=val ) : THE constant-push body — record one unmaterialized
-\ VS entry, spilling first if the stack is full. Only the tag byte differs between
-\ an integer and a float constant, so both entries share this one body: LVPUSHC
-\ (below) sets tag 1 and falls straight in, LVPUSHF (with the float ops) sets
-\ tag 3 and branches back here. x8 outlives the spill call in the frame.
+\ LVPUSHT ( x8=tag x11=val ) : record one unmaterialized VS constant, spilling first if the stack
+\ is full. LVPUSHC sets tag 1 and falls in; LVPUSHF sets tag 3 and branches here. x8 outlives the
+\ spill call in the frame.
 variable LVPUSHT
 
 : EMIT-VPUSHC ( -- )
@@ -147,10 +138,8 @@ variable LKWPLUS  variable LKWMINUS  variable LKWSTAR  variable LKWDIV  variable
 variable LKWAND2  variable LKWOR2   variable LKWXOR2
 variable FESK
 
-\ fold-entry: if the token is this operator AND the top two VS entries are
-\ constants, fold at JIT time (no code) and continue the main loop; else fall
-\ through to the generic dispatch (which spills, then
-\ inlines the body or calls the prim (habu2.f EMIT-CINLINE)).
+\ FOLD-ENTRY: two constant operands fold at JIT time; anything else falls through to the generic
+\ dispatch (habu2.f EMIT-CINLINE).
 : FOLD-ENTRY ( label ptr n n [ -- ] -- ) {: lmainlbl:label kwvar:ptr kwlen:n fxt :}
    LBL FESK !
    0 kwvar LABEL@ ADR,  1 kwlen MOVZ,  LKWCMP LABEL@ BL,
@@ -364,7 +353,6 @@ variable LKWDUP2  variable LKWDROP2  variable LKWSWAP2  variable LKWOVER2  varia
 
 : C-VBIN-REG-PATH ( label label -- ) {: bno:label bdone:label :}
    LBL LBL {: kept undo :}
-   \ register path: force deep then top
    6 DATA VSP-CELL LDR,  5 6 2 SUBI,  LVFORCEK LABEL@ BL,  14 bno CBZ,
    6 DATA VSP-CELL LDR,  5 6 1 SUBI,  LVFORCEK LABEL@ BL,  14 bno CBZ,
    15 14 0 ADDI,
@@ -401,20 +389,14 @@ variable LKWDUP2  variable LKWDROP2  variable LKWSWAP2  variable LKWOVER2  varia
    bno LBL,  13 0 MOVZ,
    bdone LBL,  C-VBIN-RET ;
 
-\ LVBINIPREP ( x10=imm-max -- x13=mode ) : LVBINPREP plus mode 3 for top
-\ nonnegative constant no greater than imm-max.
-\ mode 3: x14=rd and x12=rn for the deep operand, x15=imm12, VSP already --.
-\ This routine is a PROBE ONLY: it decides mode 3 or nothing. Every other
-\ outcome unwinds this frame and tail-branches into the single LVBINPREP body,
-\ whose RET returns straight to our caller — so modes 0/1/2 have exactly one
-\ implementation instead of a second copy here.
-\ Only tag 0 (a live register) reaches the immediate lowering: tags 1 and 3 make
-\ the pair foldable and tag 2 makes it mode 0, and LVBINPREP already classifies
-\ all three. The probe first completes the pulls LVNEED makes, so the VS may
-\ already hold pulled registers when it classifies; past them it mutates nothing
-\ before it commits (the imm12 goes to this frame's scratch slot). Every failure,
-\ an exhausted pool in LVNEED or LVDEST included, leaves the VS a valid
-\ representation that the mode 0 fallback spills.
+\ LVBINIPREP ( x10=imm-max -- x13=mode ) : LVBINPREP plus mode 3, for a top nonnegative constant
+\ no greater than imm-max: x14=rd and x12=rn for the deep operand, x15=imm12, VSP already --.
+\ A probe only: any other outcome unwinds this frame and tail-branches into LVBINPREP, whose RET
+\ returns to the caller, so modes 0-2 have one implementation.
+\ Only tag 0 reaches the immediate lowering (tags 1 and 3 fold, tag 2 is mode 0). The probe first
+\ completes LVNEED's pulls; past them it mutates nothing before it commits (the imm12 goes to this
+\ frame's scratch slot). Every failure, an exhausted pool included, leaves the VS valid for the
+\ mode 0 spill.
 package ENGINE-EMIT
 
 : C-VBINI-PROBE ( label label label -- ) {: bno:label b2:label bdone:label :}
@@ -465,7 +447,6 @@ package ENGINE-EMIT
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 variable FESK2
 
-\ vop-entry: fold when both con, register op when forceable, else fall through
 : VOP-ENTRY ( label ptr n n [ -- ] [ -- ] -- ) {: lmainlbl:label kwvar:ptr kwlen:n foldxt emitxt :}
    CF-DEF-GUARD @ IF kwvar kwlen CF-DEF-GUARD-ROW exit THEN
    LBL FESK !  LBL FESK2 !
@@ -485,7 +466,6 @@ variable FESK2
 
 variable FESK6
 
-\ vopi-entry: VOP-ENTRY plus small top-constant immediate lowering.
 package ENGINE-EMIT
 
 : VOPI-ENTRY ( label ptr n n [ -- ] [ -- ] [ -- ] n -- ) {: lmainlbl:label kwvar:ptr kwlen:n foldxt emitxt immxt max:n :}
@@ -510,19 +490,11 @@ package ENGINE-EMIT
       lmainlbl B,
    FESK LABEL@ LBL, ;
 
-\ vdivi-entry: `/` and `mod` by a literal divisor. The baked bodies (habu1.f
-\ BDIV, BMOD) pop twice, test the divisor and divide; a literal divisor needs
-\ neither the pops nor the test, so the row divides in place: sdiv for `/`, the
-\ truncated quotient's remainder `a - (a/b)*b` for `mod`, as BMOD computes it.
-\ The row claims the token only when the VS top is an integer constant in
-\ 1..DIV-IMM-MAX, tested before LVBINIPREP runs, so a zero literal, a negative
-\ or wider literal and a register divisor all keep the call and its
-\ ARITH-ABI:E-DIV-ZERO test. That test also keeps LVBINIPREP away from mode 2,
-\ which commits the forced registers: the probe gives up only on an exhausted
-\ pool, on which LVBINPREP cannot force the constant either. So the modes
-\ reached are 0 (fall through), 1 (fold) and 3 (x14 the quotient's register,
-\ x12 the dividend's, x15 the divisor). MIN-N -1 never reaches the row: -1 is
-\ out of range.
+\ vdivi-entry: `/` and `mod` by a literal divisor in 1..DIV-IMM-MAX divide in place (sdiv; `mod` as
+\ habu1.f BMOD computes it, a - (a/b)*b) without the baked bodies' pops and zero test. A zero,
+\ negative or wider literal and a register divisor keep the call and its ARITH-ABI:E-DIV-ZERO test,
+\ and MIN-N -1 never reaches the row. The range test runs before LVBINIPREP, which keeps it from
+\ mode 2: the reachable modes are 0, 1 and 3 (x14 quotient, x12 dividend, x15 divisor).
 65535 constant DIV-IMM-MAX            \ one movz
 $D2800010 constant W-MOVZ16           \ movz x16,#imm (or with imm<<5)
 $9AD00C00 constant W-SDIV16           \ sdiv xd,xn,x16 (or with d, n<<5)
@@ -561,16 +533,14 @@ $9B108220 constant W-MSUB1716         \ msub xd,x17,x16,xa (or with d, a<<10)
 : VFMOD ( -- )
    13 11 12 SDIV,  13 13 12 MUL,  11 11 13 SUB, ;
 
-\ Emit movz x16,#imm from x15 (x16 and x17 are never pooled).
+\ x16 and x17 are never pooled.
 : EDIVK ( -- )
    8 W-MOVZ16 LIT64,  7 15 5 LSLI,  9 8 7 ORR,  LCEMIT LABEL@ BL, ;
 
-\ movz x16,#imm ; sdiv xd,xn,x16
 : EI/ ( -- )
    EDIVK
    8 W-SDIV16 LIT64,  9 8 14 ORR,  7 12 5 LSLI,  9 9 7 ORR,  LCEMIT LABEL@ BL, ;
 
-\ movz x16,#imm ; sdiv x17,xn,x16 ; msub xd,x17,x16,xn
 : EIMOD ( -- )
    EDIVK
    8 W-SDIV16 17 or LIT64,  7 12 5 LSLI,  9 8 7 ORR,  LCEMIT LABEL@ BL,
@@ -803,9 +773,9 @@ $AA0003E0 constant W-MOVRR        \ orr rd,xzr,rs (| rd | rs<<16)
    no LBL,
    done LBL,  30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
-\ ---- FLOAT ops on the VS: tag 2 = live in a d-register, tag 3 = FLOAT
+\ FLOAT ops on the VS: tag 2 = live in a d-register, tag 3 = FLOAT
 \ constant (double bits, unmaterialized — LNUM's x2 flag marks float parses
-\ so the loop snapshot knows to force them into d-regs, not x-regs) ----
+\ so the loop snapshot knows to force them into d-regs, not x-regs).
 \ LVPUSHF ( x11=bits ) : record a float constant; spill first if full.
 \ Tag-3 entry wrapper for the shared LVPUSHT body (see EMIT-VPUSHC).
 : EMIT-VPUSHF ( -- )
@@ -871,9 +841,8 @@ $AA0003E0 constant W-MOVRR        \ orr rd,xzr,rs (| rd | rs<<16)
    fb2 LBL,  30 SP 0 LDR,  SP SP 32 ADDI,  RET, ;
 variable FESK5
 
-\ FOP-ENTRY: float binop keyword -> FADD-class dd,dn,dm on the d-pool; anything
-\ not forceable falls through to the generic path (spills, then inlines the
-\ body or calls the memory prim (habu2.f EMIT-CINLINE)).
+\ FOP-ENTRY: a float binop on two forceable d-registers; anything else falls through to the
+\ generic dispatch (habu2.f EMIT-CINLINE).
 : FOP-ENTRY ( label ptr n n n -- ) {: lmainlbl:label kwvar:ptr kwlen:n base:n :}
    CF-DEF-GUARD @ IF kwvar kwlen CF-DEF-GUARD-ROW exit THEN
    LBL FESK5 !
@@ -891,19 +860,10 @@ variable FESK5
 
 variable LVSNAP  variable LVRECON  variable LVRECONAT  variable LVFPOP  variable LVSETF  variable LVRESNAP
 
-\ The depth cell and the frame area live in JIT-SNAP (src/habu/layout.f), an
-\ appended band above DATA-START's old edge. They used to be $358 and $360; both
-\ addresses now belong to NCOMP-DISPATCH, and the frame area's old extent
-\ ($360..$600) had grown over LASTC/RSP/EXITH/LVD/LVH besides.
-\
-\ The FRAME AREA is above every 12-bit immediate form, so `ADDI` no longer
-\ reaches it: SNAP-FRAME, loads the base as a 64-bit literal instead. Two extra
-\ instructions per BEGIN and per back edge, at compile time.
-\
-\ The DEPTH CELL is deliberately still low, so it keeps the plain
-\ `DATA <off> LDR/STR` form here and -- the part that matters -- can be zeroed
-\ by the definition-scoped reset runs in habu2.f that already clear VSP, LVD
-\ and EXITH. It is per-definition state and has to die with the definition.
+\ The depth cell and frame area live in JIT-SNAP (src/habu/layout.f). The frame area is beyond
+\ every 12-bit immediate, so SNAP-FRAME, loads its base as a 64-bit literal. The depth cell stays
+\ in `DATA <off> LDR/STR` reach so the definition-scoped resets in habu2.f that clear VSP, LVD and
+\ EXITH zero it: it dies with the definition.
 : SNAP-FRAME, ( -- )              \ x7 := DATA + STK-OFF + FRAME-BYTES*x6; x8 scratch
    7 6 4 LSLI,  8 6 3 LSLI,  7 7 8 ADD,                       \ 16*sp + 8*sp = 24*sp
    8 JIT-SNAP:STK-OFF LIT64,  7 7 8 ADD,  7 DATA 7 ADD, ;
@@ -912,8 +872,7 @@ variable LVSNAP  variable LVRECON  variable LVRECONAT  variable LVFPOP  variable
 \ register (movz chains for cons emitted HERE, before the join) and push (k, packed regs —
 \ a byte per slot, bottom-up) on the snapshot stack. A frame holds distinct
 \ registers, so a register entry that shares its register gets a fresh one and
-\ a mov. Deep VS or a failed force: spill-all and push (0,0) — that loop runs
-\ memory-resident as before.
+\ a mov. Deep VS or a failed force: spill-all and push (0,0); that loop runs memory-resident.
 : EMIT-SNAP-FORCE-LOOP ( label label label -- ) {: fl:label fd:label fail:label :}
    5 0 MOVZ,
    fl LBL,                                  \ force entry x5 (Lvforcek saves x5)
@@ -1390,7 +1349,7 @@ variable FESK4
    LKWZEQ LABEL@ LBL,   s" 0=" BYTES,      LKWZLT LABEL@ LBL,   s" 0<" BYTES,
    LKWNEG2 LABEL@ LBL,  s" negate" BYTES,  LKWINV2 LABEL@ LBL,  s" invert" BYTES, ;
 
-\ ---- memory words on the VS. None of their primitive bodies carries a guard,
+\ Memory words on the VS: none of their primitive bodies carries a guard,
 \ so one instruction on the operand registers is the whole word; `!` and the
 \ other stores keep their guarded bodies (habu1.f PROT-GUARD:CALL).
 

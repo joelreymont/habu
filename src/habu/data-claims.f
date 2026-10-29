@@ -8,44 +8,25 @@ require src/habu/native-observer-extension.f
 require src/habu/native-body-abi.f
 require src/habu/native-host-cells.f
 
-\ --- DATA claim map and the layout-time overlap assertion ----------------------
-\ WHY IT EXISTS. src/lib/task.f handed out TASK:+USER rows from $41C8 bounded by
-\ TXN-STATE-OFF, because the comments in this file said that run was free. It was
-\ not: APP-ENTRY:XT-CELL, the AOT capture window, the evaluator-pointer band,
-\ PROT, AOT-SIG, BOOT-LAYOUT and src/habu/stack-abi.f all sit inside it. Five
-\ shipped libraries fitted into the 472 bytes before the first of them by luck,
-\ and a sixth would have overwritten the AOT window with no diagnostic at all -
-\ measured, before the bound was corrected: one $40 row past the mark crashed
-\ at teardown with a register dump.
+\ Every claim on DATA states its extent. CLAIMS-ASSERT refuses an overlapping
+\ pair at engine build time, naming both; BANDS-ASSERT requires every protected
+\ band to be a declared claim, start and length both. Both run when an engine
+\ builder (src/habu/habu1.f, src/habu/kernel-x64.f) loads this file. Without the
+\ map a TASK:+USER row overran the AOT window: one $40 row crashed at teardown.
 \
-\ A COMMENT COULD NOT CATCH THAT AND DID NOT. This table can. Every claim on the
-\ DATA region states its own extent, and CLAIMS-ASSERT refuses an overlapping
-\ pair at ENGINE BUILD TIME, naming both. BANDS-ASSERT, at the end of this file,
-\ runs a second check over the same table: every protected band must BE a
-\ declared claim, start and length both, which is the check that would have
-\ caught the transaction guarding $3000 of a band whose cells end after $300.
-\ Both run when an engine builder (src/habu/habu1.f, src/habu/kernel-x64.f)
-\ loads this file.
+\ The map holds every claim with a declared extent: everything from $3A00 up,
+\ all DATA-BANDS rows, src/habu/regalloc-abi.f's cells and tables,
+\ src/habu/address-cells.f LOCK-CELL and INDEX-CELL, and the profiler band, the
+\ top PROF-CNT-BYTES of DATA as src/habu/prof-abi.f PROF-BAND-AT places it for
+\ the global DATA-SIZE. An x86-64 build's X64LAYOUT:DATA-SIZE differs on a macOS
+\ host, so kernel-x64.f places the band again through BAND-ASSERT. One claim is
+\ out: the $1A0 seal fixture poke cell, which no constant names.
 \
-\ WHAT IS IN IT: every claim whose extent is DECLARED - a band with a length
-\ constant, or a single cell. That is the whole map from $3A00 up, where every
-\ library band lives, and all DATA-BANDS rows; the register allocator's cells
-\ and tables, which src/habu/regalloc-abi.f declares for this file to read;
-\ the address-cell registry's mutex and index cells (src/habu/address-cells.f
-\ LOCK-CELL and INDEX-CELL); and the profiler band, the top PROF-CNT-BYTES of
-\ DATA, placed as src/habu/prof-abi.f PROF-BAND-AT places it for the global
-\ DATA-SIZE, the target's in a native build. An x86-64 build reads its target's
-\ only as X64LAYOUT:DATA-SIZE, which differs from the global one on a macOS
-\ host, so src/habu/kernel-x64.f places the band again with it through
-\ BAND-ASSERT. ONE CLAIM IS OUT: the $1A0 seal fixture poke cell, which no
-\ constant names.
-\
-\ DELIBERATE ALIASES ARE ONE ROW, NOT TWO. The friend arena is one row, not the
-\ eighteen cells inside it. VVAL-STACK is one row of VSMAX cells: DEF-TKA-CELL
-\ and DEF-TKL-CELL live at $250/$258 inside it and survive there because their
-\ liveness is confined to the definition name token, when the virtual stack is
-\ empty - the note at CMM-CELL above records that trade. Giving them their own
-\ rows would assert a conflict the engine takes on purpose.
+\ Deliberate aliases are one row: the friend arena, not its eighteen cells;
+\ VVAL-STACK of VSMAX cells, inside which DEF-TKA-CELL and DEF-TKL-CELL live at
+\ $250/$258 because they are live only while the virtual stack is empty (the
+\ note at CMM-CELL). Separate rows would assert a conflict the engine takes on
+\ purpose.
 package DATA-CLAIMS
 public
 
@@ -86,7 +67,6 @@ variable NAMES-U
    b NAMES NAMES-U @ + c!
    NAMES-U @ 1+ NAMES-U ! ;
 
-\ Append the row at byte offset off, len bytes long, named by the next token.
 : CLAIM ( n n -- ) {: off len :}
    parse-name {: a u :}
    u 0 = if s" layout: DATA-CLAIMS row has no name" 76 die then
@@ -353,15 +333,11 @@ PROF-ROW-ASSERT
 
 CLAIMS-ASSERT
 
-\ EVERY GUARDED BAND MUST BE A DECLARED CLAIM, start and length both. The
-\ bands are src/habu/layout.f's DATA-BANDS table, which every engine's prefix
-\ carries. The transaction row guarded TXN-STATE-LEN when that constant was
-\ $3000 and the transaction's own cells ended after $300, so PROT-GUARD refused
-\ stores across 11520 bytes no claim owned - which is exactly what kept the
-\ task-user arena out of the only run in the per-task header big enough to hold
-\ it. Nothing compared the guard against the map until this did. It dies when
-\ an engine builder loads this file, so a band that outgrows or outlives its
-\ claim cannot ship.
+\ Every guarded band must be a declared claim, start and length both. The bands
+\ are src/habu/layout.f's DATA-BANDS table, which every engine's prefix carries;
+\ a guard over a $3000 TXN-STATE-LEN once refused stores across 11520 bytes no
+\ claim owned. It dies when an engine builder loads this file, so a band that
+\ outgrows or outlives its claim cannot ship.
 
 private
 

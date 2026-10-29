@@ -1,37 +1,9 @@
-\ prim-ref.f — reference implementations for the engine primitive table.
-\
-\ src/habu/prims.f names one of these words in a row's `REF` clause, and
-\ test/prim-parity.f runs the reference beside the backend's own body over the
-\ same case set. A disagreement is the gate's red: either the backend's
-\ primitive is wrong or the reference is, and the two were written from the
-\ specification independently.
-\
-\ THE HONESTY RULE. A reference implements its row's semantics WITHOUT the
-\ primitive it answers for. `SUB` may call `+`, `ADD` may not; `SHL` computes
-\ its shift by doubling through `*`, `SHR` by halving through `/`, and the
-\ divider builds its quotient from left shifts and subtraction so it never
-\ reaches `/` or `mod` at all. A primitive whose semantics cannot be written
-\ that way — `0=` (every composition needs a branch, and a branch needs `0=`),
-\ pointer difference, the memory and float primitives whose edges (byte order,
-\ signed zero, NaN) no composition reproduces — gets no reference, and its row
-\ carries no `REF` clause. A reference is never the primitive renamed.
-\
-\ WHAT IT DOES NOT SAY. The references share a small base: `and`, `xor`, `0=`,
-\ comparison and the branch. A backend that breaks one of those turns several
-\ rows red at once; the gate names each, and the base itself is pinned by
-\ expected-output cases rather than by a reference.
-\
-\ NAMES. No word here shadows a primitive spelling, case-insensitively, so
-\ `dup`'s reference is `S-DUP` and `abs`'s is `ABSOLUTE` (docs/forth.md "Never
-\ shadow a native primitive name"). The `REF` clause spells the qualified
-\ name, `PRIM-REF:S-DUP`, and the gate asserts every spelling resolves.
-\
-\ LOAD PATH. This file is NOT baked: it appears in no engine prefix source list
-\ and runs as ordinary checked Habu after the check hook is installed. The
-\ parity gate requires it. Reference loops keep their cursors in package
-\ variables because a local cannot be reassigned (src/habu/prims.f does the
-\ same for its own walkers), so no word here is reentrant. The one dependency is
-\ src/lib/errors.f, for the refusal code DIVREM shares with the primitive it mirrors.
+\ prim-ref.f - reference implementations for the engine primitive table: a
+\ src/habu/prims.f row's `REF` clause names one and test/prim-parity.f runs it
+\ beside the backend's body. A reference never uses the primitive it answers for;
+\ a row no composition reproduces (`0=`, pointer difference, memory, float) has
+\ no `REF`. Names never shadow a primitive spelling (`S-DUP`, `ABSOLUTE`). Not
+\ baked; loop cursors are package variables, so no word here is reentrant.
 
 require src/lib/errors.f                    \ E-DIV-ZERO
 
@@ -47,7 +19,7 @@ variable UD-T   variable UD-K   variable UD-Q   variable UD-R
 variable UD-I   variable UD-STEP
 variable ML-ACC variable ML-X   variable ML-B
 
-\ ---- unsigned order, for the divider ----------------------------------------
+\ Unsigned order, for the divider.
 \ Flipping the sign bit turns the signed order into the unsigned one over the
 \ whole cell, which is what a magnitude comparison needs: a magnitude of 2^63
 \ (MIN-N's) is a negative cell.
@@ -66,8 +38,7 @@ public
 \ that exists.
 get-current constant WID
 
-\ ---- stack shufflers ---------------------------------------------------------
-\ Each is the row's effect written with typed locals, which name the cells the
+\ Each shuffler is the row's effect written with typed locals, which name the cells the
 \ primitive moves instead of moving them.
 : S-DUP ( a -- a a ) {: x:a :}
    x x ;
@@ -105,7 +76,8 @@ get-current constant WID
 : S-2OVER ( a b c d -- a b c d a b ) {: x:a y:b z:c w:d :}
    x y z w x y ;
 
-\ ---- bit logic ---------------------------------------------------------------
+\ The shared base (`and`, `xor`, `0=`, comparison, the branch) is pinned by
+\ expected-output cases, not by a reference.
 : BNOT ( n -- n )                       \ invert
    -1 xor ;
 
@@ -129,7 +101,6 @@ get-current constant WID
 : BXOR-F ( bool bool -- bool ) {: a:bool b:bool :}
    a b or  a b and 0=  and ;
 
-\ ---- shifts ------------------------------------------------------------------
 \ Measured on the arm64 engine and pinned by the gate: the count is taken
 \ modulo the cell width (`1 64 lshift` is 1, not 0) and `rshift` is logical.
 : SHL ( n n -- n ) {: x:n k:n :}
@@ -146,7 +117,6 @@ public
 : SHR ( n n -- n ) {: x:n k:n :}
    x  k SHIFT-MASK and 0 ?do SHR1 loop ;
 
-\ ---- arithmetic --------------------------------------------------------------
 \ Ripple carry: the sum without carries is `xor`, the carries are `and` moved
 \ up one place, and the recursion ends when no carry is left (at most 64 turns).
 : ADD ( n n -- n ) {: a:n b:n :}
@@ -244,7 +214,6 @@ public
    a b < IF b EXIT THEN
    a ;
 
-\ ---- order -------------------------------------------------------------------
 : ZERO-NEG? ( n -- bool )               \ 0<
    SIGN-BIT and 0= 0= ;
 
@@ -270,7 +239,6 @@ public
 : GE ( n n -- bool ) {: a:n b:n :}      \ >=
    a b LT 0= ;
 
-\ ---- address arithmetic on plain integers ------------------------------------
 \ The numeric rows of `cells`, `chars`, `cell+` and `char+`; their pointer rows
 \ have no reference, because only `+` moves a pointer.
 : CELL-BYTES ( n -- n )                 \ cells
@@ -285,7 +253,6 @@ public
 : CHAR-STEP ( n -- n )                  \ char+
    CHAR-SIZE + ;
 
-\ ---- memory ------------------------------------------------------------------
 : ADD-TO ( n ptr n -- )                 \ +!
    dup @ rot + swap ! ;
 

@@ -1,17 +1,6 @@
-\ rt.fs — native runtime routines for the ENGINE-BUILDER port. Emits stack and
-\ printer instruction sequences via mnem.fs. Keep this stage-source file
-\ local-free so the Gforth recovery compiler can check it.
-\ The engine's data-stack register is stated twice: src/arch/arm64/mnem.f's XDS,
-\ which every push and pop below emits through, and src/habu/layout.f's
-\ ENGINE-GPR:DSTACK, which the compiler chain derives its reserved-register mask
-\ from. The two cannot be one constant - mnem.f is build-side vocabulary the
-\ booted engine never re-reads, layout.f is re-read at every load - so agreement
-\ is EXECUTED here instead of assumed: both build chains (hb-build and the
-\ Gforth recovery) load mnem.f, then layout.f, then this file, the first
-\ consumer of XDS, and a build whose emitters and whose reserved mask disagree
-\ about the stack register dies here instead of shipping an engine whose
-\ allocator can be handed the register the stack lives in.
-\ The ARM64 encoders are package A64ASM's public surface (src/arch/arm64/asm.f).
+\ rt.f - native runtime routines for the ARM64 engine builder: data-stack ops,
+\ guarded stack mapping and the output and printer sequences. Encoders are
+\ package A64ASM (src/arch/arm64/asm.f).
 require src/habu/stack-abi.f
 require src/arch/arm64/icode.f
 using A64ASM
@@ -21,6 +10,12 @@ package RT
 
 72 constant EXIT-RC
 
+\ The data-stack register is stated twice: mnem.f XDS, build-side vocabulary the
+\ booted engine never re-reads, and layout.f ENGINE-GPR:DSTACK, re-read at every
+\ load, from which the reserved-register mask derives. Both build chains
+\ (hb-build and Gforth recovery) load mnem.f, layout.f, then this file, the
+\ first consumer of XDS, so a mismatch dies here instead of shipping an engine
+\ whose allocator can be handed the stack register.
 : DSTACK-AGREE ( -- )
    XDS ENGINE-GPR:DSTACK <>
    if s" rt: mnem.f XDS and layout.f ENGINE-GPR:DSTACK disagree" EXIT-RC die then ;
@@ -91,34 +86,28 @@ public
 
 : EXIT-BOUNDS ( -- ) EMIT-FAIL ;
 
-\ EMIT-MAP ( cap dst -- ) : emit the code that maps ONE guarded VM stack of
-\ `cap` bytes and leaves its base in register `dst`. It writes x0-x6, x9 and
-\ the syscall registers, never x10 or x11, which habu1.f B-EVAL-CLOSED keeps
-\ live across it.
+\ EMIT-MAP ( cap dst -- ) maps one guarded VM stack of cap bytes and leaves its
+\ base in register dst. It writes x0-x6, x9 and the syscall registers, never x10
+\ or x11, which habu1.f B-EVAL-CLOSED keeps live across it.
 \
-\ This is what replaced the per-transfer bounds check. A stack occupies
-\ [base - PAGE, base + cap + PAGE) with the two outer pages inaccessible, so a
-\ push past the capacity or a read below the base takes SIGSEGV and
-\ src/habu/crash.f turns the faulting address into the named STACK-BOUNDS exit
-\ or, for a data-stack access below the base by engine or compiled code, into
-\ the underdepth throw (crash.f ONE FAULT IS NOT AN EXIT). Compiled code carries
-\ no check at all.
+\ A stack occupies [base - PAGE, base + cap + PAGE) with both outer pages
+\ inaccessible: a push past the capacity or a read below the base takes SIGSEGV,
+\ and src/habu/crash.f turns the address into the STACK-BOUNDS exit or, for a
+\ data-stack access below the base, the underdepth throw (crash.f ONE FAULT IS
+\ NOT AN EXIT). Compiled code carries no check.
 \
 \ TWO mmap CALLS, NO mprotect: the first maps cap + 3*PAGE PROT_NONE, which IS
-\ the guard, and the second reopens the middle read/write with MAP_FIXED. The
-\ third page is alignment slack -- the kernel returns ITS page granule (16 KiB
-\ on this host) but the base has to be PAGE-BYTES aligned, because that is the
-\ granule run-in-stack proves an extent against. Rounding up into the slack
-\ leaves everything below the low guard PROT_NONE, so the slack only widens the
-\ guard, and a stack mapped this way is never released.
+\ the guard; the second reopens the middle read/write with MAP_FIXED. The third
+\ page is alignment slack: the kernel returns its own granule (16 KiB on this
+\ host) but the base must be PAGE-BYTES aligned, the granule run-in-stack
+\ proves an extent against. Everything below the low guard stays PROT_NONE, so
+\ the slack only widens the guard. A stack mapped this way is never released.
 \
 \ It runs before any crash handler exists and, for the boot data stack, before
-\ any region does, so the diagnostic is inline bytes reached by ADR and the exit
-\ is 78 -- the same class as the two fixed-region mappings. Both the engine
-\ (habu2.f EM-RUNTIME-STACK/EM-FRAME-STACKS) and the stripped AOT entry
-\ (aot-lib.f EMIT-ENTRY) emit it, which is why it lives here rather than in
-\ either of them. Local-free like the rest of this file, so the Gforth recovery
-\ compiler can check it.
+\ any region does: the diagnostic is inline bytes reached by ADR and the exit is
+\ 78, as for the two fixed-region mappings. The engine (habu2.f
+\ EM-RUNTIME-STACK/EM-FRAME-STACKS) and the stripped AOT entry (aot-lib.f
+\ EMIT-ENTRY) both emit it.
 : EMIT-MAP ( n n -- )
    MAP-DST !  MAP-CAP !
    S\" hb: cannot map guarded VM stack\n" {: ma:ptr mu:n :}
@@ -156,12 +145,9 @@ public
 
 ;package
 
-\ data-stack ops (XDS points just past TOS; full-ascending); regs live in mnem.fs
-\ ONE INSTRUCTION EACH. XDS points just past the top cell, so a push stores at it
-\ and then advances it and a pop retreats it and then loads -- exactly the
-\ post-index and pre-index writeback modes. Every baked primitive is built out
-\ of these, so the separate `add`/`sub` each one used to carry was the widest
-\ single cost in the engine's own code.
+\ XDS points just past the top cell (full-ascending): a push stores and advances
+\ (post-index), a pop retreats and loads (pre-index), one instruction each.
+\ Every baked primitive is built from these.
 : G-PUSH ( n -- )
    XDS 8 STRPOST, ;
 
@@ -170,23 +156,21 @@ public
 variable DOT-LBL  variable ATOI-LBL
 variable RT-LPOS  variable RT-LLOOP  variable RT-LDONE
 
-\ ---- the engine's one output funnel (src/lib/genio-core.f) ---------------------
+\ The engine's one output funnel (src/lib/genio-core.f).
 \ Every byte of ORDINARY program text the engine writes leaves through G-OUT:
-\ `.`, `u.` and `f.` (G-PRINT9/G-PRINTU9 below, habu1.f BFDOT),
-\ `emit`/`cr`/`space` (G-EMITC),
-\ `type` (habu1.f BTYPE), interpreted `."` and `.\"` (habu2.f C-IDOTQ/C-EIDOTQ)
-\ and the REPL's ok prompt (habu2.f EM-COMPILE-EXIT). DIAGNOSTICS DO NOT:
-\ crash.f, `die`, the E-* reports and the REPL's error line write to fd 2
-\ through the syscall directly, so a failing engine still reports on the
-\ descriptor it was started with however a program has routed its output.
+\ `.` `u.` `f.` (G-PRINT9/G-PRINTU9, habu1.f BFDOT), `emit` `cr` `space`
+\ (G-EMITC), `type` (habu1.f BTYPE), interpreted `."` and `.\"` (habu2.f
+\ C-IDOTQ/C-EIDOTQ) and the REPL's ok prompt (habu2.f EM-COMPILE-EXIT).
+\ DIAGNOSTICS DO NOT: crash.f, `die`, the E-* reports and the REPL's error line
+\ write to fd 2 directly, so a failing engine reports on the descriptor it
+\ started with however a program routed its output.
 \
-\ THE TERMINAL PATH PAYS ONE LOAD AND ONE COMPARE. G-OUT emits the device test
-\ inline and keeps write(1) where it was; only a non-zero device index leaves
-\ for LGENIOOUT, and only that branch frames the call. x0 is the scratch because
-\ every caller was about to load the descriptor into it anyway,
-\ so no site has to say which of its registers are live.
+\ THE TERMINAL PATH PAYS ONE LOAD AND ONE COMPARE: only a non-zero device index
+\ leaves for LGENIOOUT, and only that branch frames the call. x0 is the scratch
+\ because every caller loads the descriptor into it next, so no site has to say
+\ which of its registers are live.
 \
-\ CALLERS PASS x1 = span address, x2 = span length, exactly as the syscall did.
+\ CALLERS PASS x1 = span address, x2 = span length, as for the syscall.
 variable LGENIOOUT
 variable GO-DEV  variable GO-DONE
 
@@ -201,15 +185,12 @@ variable GO-DEV  variable GO-DONE
    30 SP 0 LDR,  SP SP $10 ADDI,
    GO-DONE LABEL@ LBL, ;
 
-\ print x9 as signed decimal + newline (itoa into an sp buffer, then out through
-\ G-OUT). clobbers x9-x14 + 32 bytes of sp scratch; preserves XDS.
+\ Print x9 as signed decimal + newline. Clobbers x9-x14 + 32 bytes of sp
+\ scratch; preserves XDS.
 \
-\ THE DIGIT LOOP DIVIDES UNSIGNED. A negative value is negated first, and MIN-N
-\ is the one cell whose negation overflows: `0 - MIN-N` is MIN-N again, still
-\ negative. UDIV reads that pattern as the magnitude it is (2^63), so the digits
-\ come out right for MIN-N and unchanged for every other value, whose magnitude
-\ after the negate is a positive cell either way. A signed divide here printed
-\ MIN-N as bytes below '0' (dot habu-print-min-int-074e1c48).
+\ THE DIGIT LOOP DIVIDES UNSIGNED. A negative value is negated first; MIN-N
+\ negates to itself, and UDIV reads that pattern as its magnitude (2^63). A
+\ signed divide printed MIN-N as bytes below '0'.
 : G-PRINT9 ( -- )
    LBL RT-LPOS !  LBL RT-LLOOP !  LBL RT-LDONE !
    SP SP $20 SUBI,  12 SP $20 ADDI,
@@ -231,8 +212,8 @@ variable GO-DEV  variable GO-DONE
 : EMIT-DOT ( -- )
    DOT-LBL LABEL@ LBL,  9 G-POP  G-PRINT9  RET, ;
 
-\ Print x9 as UNSIGNED decimal + newline. Same itoa loop as G-PRINT9 but UDIV
-\ and no sign handling. Clobbers x9-x13 + 32 bytes of sp scratch.
+\ Print x9 as UNSIGNED decimal + newline. Clobbers x9-x13 + 32 bytes of sp
+\ scratch.
 : G-PRINTU9 ( -- )
    SP SP $20 SUBI,  12 SP $20 ADDI,
    13 $A MOVZ,  12 12 1 SUBI,  13 12 0 STRB,

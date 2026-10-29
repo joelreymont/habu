@@ -1,28 +1,9 @@
-\ boot-x64.f - the x86-64 engine's process entry, package X64BOOT. START, emits
-\ `_start`, the twin of src/habu/habu2.f EM-STARTUP up to its first run-time
-\ state: it maps the guarded VM stacks and initializes the code and DATA regions,
-\ loads the six VM registers (layout.f ENGINE-GPR), fills the DATA cells the
-\ ARM64 boot fills, publishes the signal stub it carries out of line, registers
-\ a separate crash signal stack and installs the crash handler, then falls
-\ through into whatever the stream emits next.
-\
-\ It is straight-line code that never calls or pushes, so rsp stays where the
-\ kernel left it, at argc, until the DATA cells take the argument vector. Each
-\ install builds its action below rsp and gives rsp back.
-\
-\ The signal words below are the x86-64 side of what src/habu/crash.f emits for
-\ ARM64: SIGNAL-STUB, is its LSIGH, SIGACTION, and SIGACTION-AT, install a
-\ handler through rt_sigaction, RESTORER, emits the rt_sigreturn stub every
-\ handler returns through, and UC-GREG and UC-RIP name where the ucontext a
-\ SA_SIGINFO handler receives keeps the interrupted registers. The crash handler START, installs through them is the twin of
-\ crash.f EMIT-CRASH-HANDLER: it names a VM stack whose guard page faulted and
-\ exits 102, or dumps the registers on fd 2 and dies by the signal itself.
-\
-\ The syscall numbers and SYS, are the x86-64 seam's, loaded below the way
-\ tools/native-emit.f loads a target's seam before the files that emit against
-\ it. A file that loads the seam into a private wordlist first (the peer
-\ harness, test/x86-64-peer-harness.f) must come after this one: the require
-\ below would then load nothing and the names here would be undefined.
+\ boot-x64.f - the x86-64 process entry, package X64BOOT. START, emits `_start`, the twin of
+\ src/habu/habu2.f EM-STARTUP up to its first run-time state, and falls through into whatever the
+\ stream emits next. It is straight-line code that never calls or pushes: rsp stays at argc until
+\ the DATA cells take the argument vector, and each install gives back the rsp it used.
+\ The signal and crash words are the x86-64 side of src/habu/crash.f. A file that loads the x86-64
+\ seam into a private wordlist first (test/x86-64-peer-harness.f) must load after this one.
 require src/lib/byte-buffer.f
 require src/lib/string.f
 require src/core/cell.f
@@ -76,10 +57,8 @@ variable SNAP-END
 
 : IMM, ( r64 n -- ) >IMM64 ASM-SINK ENC-MOV-RI64 ;
 
-\ Append a string's bytes to the stream.
 : TEXT-BYTES, ( ptr u8 n -- ) BUF:N>BLEN ASM-SINK BUF:APPEND-SPAN ;
 
-\ Store a register into the DATA cell at `off`, through rbp once it is DATA.
 : CELL! ( r64 n -- ) {: r:r64 off:n :}
    r RBASE-REG off MEM-OFF ASM-SINK ENC-MOV-MR ;
 
@@ -448,7 +427,6 @@ UC-GREGS 16 CELL * + constant UC-RIP
    RAX handler MOVABS,
    sig flags RAX rest SIGACTION-AT, ;
 
-\ The flag that runs a handler on the thread's alternate signal stack.
 $08000000 constant SA-ONSTACK
 
 \ The kernel's stack_t, which sigaltstack reads and writes: the base, the int
@@ -491,7 +469,6 @@ $08000000 constant SA-ONSTACK
 
 private
 
-\ ---- the crash handler -------------------------------------------------------
 \ The twin of crash.f EMIT-CRASH-HANDLER. The kernel enters it with rdi = the
 \ signal, rsi = the siginfo and rdx = the ucontext. It never returns, so it
 \ owns every register: it keeps those three and the text base where neither
@@ -526,7 +503,6 @@ private
 11 constant SIGSEGV
 $10 constant SI-ADDR                    \ siginfo_t._sifields._sigfault.si_addr
 134 constant CRASH-RC
-\ The code region's base less the text base.
 REGION-OFF X64LAYOUT:CODE-OFF - constant REGION-FROM-TEXT
 
 \ Where the handler keeps the signal, the siginfo, the ucontext, the text base
@@ -585,7 +561,6 @@ $F constant NIBBLE
    digits X64CODE:LBL,
    HEX$ TEXT-BYTES, ;
 
-\ Print rax through the printer at the label, in the given order.
 : PRINT, ( label n -- ) {: hex:label order:n :}
    RDX order IMM,  hex CALL, ;
 
@@ -785,7 +760,7 @@ STACK-ABI:LOOP-BASE-CELL CELL + constant TASK-REGION-MIN
    \ restorer's own `ret` would pop it, so rt_sigreturn finds its frame at
    \ rsp + 8.
    RSP CELL >IMM8 ASM-SINK ENC-ADD-RI8  NR-SIGRETURN SYS,
-   \ Reached only if rt_sigreturn fails: the exit the handler took before.
+   \ Reached only if rt_sigreturn fails.
    RDI CRASH-RC IMM,  NR-EXIT-GROUP SYS, ;
 
 \ Bind the handler at the first label, then the printer and the header it
@@ -825,7 +800,6 @@ STACK-ABI:LOOP-BASE-CELL CELL + constant TASK-REGION-MIN
    0 SCALAR-ROW-VALUE !
    SCALAR-ROW-VALUE BYTE-VIEW CELL TEXT-BYTES, ;
 
-\ Shared open and close of the startup paths.
 : OPEN, ( -- )
    X64CODE:LBL STACK-BAD !  X64CODE:LBL REGION-BAD !  X64CODE:LBL DATA-BAD !  X64CODE:LBL OCC-BAD !
    RBASE-REG TEXT-BASE,

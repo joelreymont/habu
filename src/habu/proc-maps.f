@@ -1,83 +1,9 @@
-\ proc-maps.f - the memory areas THIS process holds, enumerated by its kernel.
-\
-\ Linux reads /proc/self/maps; macOS walks mach_vm_region_recurse, descending
-\ into submaps and omitting permanently inaccessible reservations. Neither
-\ target invents an address range when the query fails.
-\ Its caller is src/habu/aot-data-cell.f MAPPED?, which asks whether a
-\ persistent cell holds an address the linking process mapped.
-\
-\ WHY THE KERNEL AND NOT A REGISTRY. `mmap` is reached from src/lib/memory.f
-\ (MEM:ALLOC-GUARDED), src/lib/vector.f, src/lib/aio.f,
-\ src/compiler/native/string.f, src/os/image-bytes.f, src/arch/arm64/icode.f and
-\ more, and a foreign allocator linked into the process calls the primitive
-\ without passing any of them. A registry kept by one library would answer for
-\ its own allocations alone. The kernel answers for every area the process
-\ holds, whoever made it. NO VALUE-RANGE GUESS LIVES HERE: an address is mapped
-\ only because the kernel listed the area it falls in.
-\
-\ ON LINUX EACH AREA IS TAGGED WITH WHETHER OUR OWN EXECUTABLE BACKS IT, comparing the
-\ line's pathname field with `readlink /proc/self/exe`. That is the one area
-\ class whose ADDRESS is not the kernel's choice: bin/hb and the images it links
-\ are both EXEC-type ELFs loaded at the same fixed base (0x400000, measured on
-\ both), so those addresses mean as much in the image as in the build, and small
-\ integers land in the band - a cell holding the last three bytes of a string
-\ has the value s0 + s1<<8 + s2<<16, which falls inside [0x400000,0x7a4000)
-\ whenever the third byte is a letter. Every other area - anonymous or another
-\ file - sits where the kernel put it for this run alone. The caller decides
-\ what to do with the tag; this file only reports it.
-\ macOS Mach-O images use ASLR: their mappings have neither this exemption nor
-\ Linux's brk exemption below, so both tags are false for Darwin regions.
-\
-\ THE BRK AREA IS TAGGED TOO, by the kernel's own name for it, `[heap]`. Its
-\ ADDRESS is not the kernel's choice in a second way: arm64 randomizes the break
-\ over a gigabyte above the executable's end, so the band lands anywhere in
-\ [0x7a4000,0x407a4000) and an ordinary 32-bit-shaped integer - a hash, a packed
-\ pair of fields, four bytes of a string - lands inside whatever part of it the
-\ process has taken. No Habu word allocates from the break (src/lib/memory.f maps),
-\ so the tag is how a caller tells that band apart from an allocation.
-\
-\ WHAT IT CANNOT SEE is an area that was mapped and then unmapped: a pointer
-\ into freed memory is as dead as one into a live area, and this reader calls it
-\ unmapped. A pointer into such an area is invisible here; a plain integer whose
-\ value lands inside a live area is not told apart from a pointer into it, and
-\ nothing in a cell's value can tell them apart.
-\
-\ ITS OWN STATE IS NOT WINDOW-SAFE and an application must not require it. The
-\ table heads are mmap addresses and the parser's pending pair holds the last
-\ line's start until that line ends, which is the very thing a stripped build
-\ refuses: a program requiring this file is refused at word=PEND-LO, rc 70
-\ (measured). The FILE producer loads it before the capture window to decline
-\ caching a mapped pointer; strict export names and refuses the cell. The
-\ producer's scope is retired before the window opens. The linker loads its own
-\ copy above the captured span.
-\
-\ A CAPTURE DROPS THE MAP WHOLE. The rows, the Linux text snapshot and the one
-\ cell that says a read completed and how many areas it found are DYNAMIC-BUFFER
-\ storage. Every image capture releases them (src/core/dynamic-storage.f
-\ RELEASE-ALL, run by the
-\ snapshot writer's CANON-DATA), so an image restored from any process starts
-\ with no map and reads its own at the first question. No DATA cell says
-\ whether the map was read, because DATA is copied: the linker reads the map
-\ inside every IMAGE-LIFECYCLE:PREPARE (tools/aot-build-core.f), and while a
-\ DATA flag and count said so, an image saved from a process that loaded the
-\ linker started marked loaded, with its builder's count, over released rows -
-\ its first question threw E-BOUNDS (7122) and EXTENTS answered the builder's
-\ count (measured on the gate's keyed linker image, test/preloaded-engine.f).
-\
-\ THE PARSE IS A STATE MACHINE OVER THE BYTES, not a line reader. Every line is
-\ `<start>-<end> <perms> <offset> <dev> <inode> <path>`, the path field may be
-\ absent, and a deleted file adds a further ` (deleted)` field - which is why the
-\ path is taken as field four after the address pair and not as the last field.
-\ A path can reach PATH_MAX, and the file can span any number of reads.
-\
-\ THE TABLE IS ASCENDING BECAUSE THE KERNEL WRITES IT THAT WAY, area by area in
-\ address order, which is what makes the lookup a binary search. A file that
-\ broke that order would silently break the search, so the reader refuses it
-\ rather than sorting bytes whose shape it has already stopped trusting.
-\ Capture the file before appending rows: table growth maps and unmaps memory,
-\ which can change a live /proc/self/maps stream between its read calls. If the
-\ byte buffer fills, close the file, grow the buffer, and read again from the
-\ beginning; no mapping changes from this reader occur during a complete pass.
+\ proc-maps.f - the memory areas this process holds, as its kernel lists them:
+\ Linux /proc/self/maps, macOS mach_vm_region_recurse into submaps. Only the
+\ kernel sees every area (mmap is reached from many libraries and foreign
+\ allocators); a failed query invents no range. A freed area is invisible, and
+\ no cell value tells an integer from a pointer into a live area. The caller is
+\ aot-data-cell.f MAPPED?. An application must not require this file (PEND-LO).
 
 require src/lib/ffi-abi.f
 require src/lib/le.f
@@ -87,7 +13,7 @@ package PROC-MAPS
 74 constant FAIL-RC              \ the internal-driver exit status, as fdio.f uses
 4096 constant SNAP-INIT-CAP      \ initial read budget, doubled on a full pass
 4096 constant MAPS-PATH-MAX      \ PATH_MAX, the longest pathname a line can carry
-4 constant PATH-FIELD            \ fields after the address pair: perms dev offset inode PATH
+4 constant PATH-FIELD            \ fields after the address pair: perms offset dev inode PATH
 
 0 constant ST-LO                 \ reading the start address
 1 constant ST-HI                 \ ... the end address
@@ -104,6 +30,12 @@ DYNAMIC-BUFFER EXT-READ n        \ one cell once a read completes: the areas it 
 variable EXT-N                   \ areas the read in progress has listed
 variable ST
 variable ACC
+\ NOT WINDOW-SAFE: the table heads are mmap addresses and PEND-LO holds a line's
+\ start until it ends, so a stripped build requiring this file is refused at
+\ word=PEND-LO, rc 70 (measured). The FILE producer loads it before the capture
+\ window to decline caching a mapped pointer (strict export names and refuses
+\ the cell) and retires it before the window opens; the linker loads its own
+\ copy above the captured span.
 variable PEND-LO                 \ the line's pair, held until its path is known
 variable PEND-HI
 variable FLD                     \ which field after the address pair
@@ -126,6 +58,8 @@ $8000000000000000 constant VA-SIGN
 : VA< ( n n -- bool ) {: a:n b:n :}
    a VA-SIGN xor b VA-SIGN xor < ;
 
+\ The kernel writes areas in address order, which makes the lookup a binary
+\ search; a file that breaks the order is refused, not sorted.
 : ROW+ ( n n n n -- ) {: lo:n hi:n self:n heap:n :}
    lo hi VA< 0= IF s" proc-maps: area has no ascending extent" FAIL-RC die THEN
    EXT-N @ 0 > IF
@@ -173,8 +107,11 @@ $8000000000000000 constant VA-SIGN
    c PATH-BUF PATH-U @ + c!
    PATH-U @ 1+ PATH-U ! ;
 
-\ The fields after the address pair, one byte at a time: a run of non-spaces is
-\ one field, and the PATH-FIELD'th of them is the pathname.
+\ Each line is `<start>-<end> <perms> <offset> <dev> <inode> <path>`: the path
+\ may be absent and a deleted file adds ` (deleted)`, so the path is field
+\ PATH-FIELD after the address pair, not the last field. A path can reach
+\ PATH_MAX and the file can span any number of reads, so the parse is a byte
+\ state machine. A run of non-spaces is one field.
 : REST-BYTE ( n -- ) {: c:n :}
    c 10 = IF LINE-END EXIT THEN
    c 32 = IF
@@ -207,6 +144,9 @@ $8000000000000000 constant VA-SIGN
       SNAP-U @ GOT @ + SNAP-U !
    AGAIN ;
 
+\ The whole file is read before any row is appended: table growth maps and
+\ unmaps memory, which can change /proc/self/maps between read calls. A full
+\ buffer closes the file, grows, and rereads from the beginning.
 : CAPTURE-MAPS ( -- )
    SNAP-INIT-CAP SNAP-CAP !
    BEGIN
@@ -353,9 +293,14 @@ FUNCTION: MACH-REGION mach_vm_region_recurse ( n ptr u8 ptr u8 ptr u8 ptr u8 ptr
    0 BS-LO !  0 BS-HI !  0 BS-MID !  0 BS-AT !
    found ;
 
-\ Has this process no map? The count cell holds a mapping only once a read has
-\ completed, and the mapping lives in the head DYNAMIC-STORAGE nulls when the
-\ buffer is released - by RELOAD before it reads, or by a capture.
+\ A capture drops the map whole: the rows, the Linux text snapshot and the
+\ EXT-READ count cell are DYNAMIC-BUFFER storage, nulled by every image capture
+\ (src/core/dynamic-storage.f RELEASE-ALL, from the snapshot writer's
+\ CANON-DATA) and by RELOAD before it reads, so a restored image reads its own
+\ map at the first question. No DATA cell says whether the map was read,
+\ because DATA is copied: a DATA flag would start an image saved after the
+\ linker loaded as read, with its builder's count, over released rows
+\ (measured: E-BOUNDS 7122 on the keyed linker image, test/preloaded-engine.f).
 : UNREAD? ( -- bool ) EXT-READ#base @ 0= ;
 
 public
@@ -390,15 +335,23 @@ public
 : MAPPED? ( n -- bool ) {: v:n :}
    v AREAS ROW-AT 0 >= ;
 
-\ ... and is that area one our own executable backs?
+\ Linux tags an area our own executable backs (its path equals readlink
+\ /proc/self/exe), the one class whose address is not the kernel's choice:
+\ bin/hb and the images it links are EXEC ELFs at the fixed base 0x400000
+\ (measured), so small integers land there; the last three bytes of a string,
+\ s0 + s1<<8 + s2<<16, fall in [0x400000,0x7a4000) whenever the third byte is
+\ a letter. The caller decides what the tag means. Darwin images use ASLR, so
+\ both tags are false there.
 : SELF-IMAGE? ( n -- bool ) {: v:n :}
    v AREAS ROW-AT {: at:n :}
    at 0 < IF false EXIT THEN
    at EXT-SELF @ 0<> ;
 
-\ ... or the brk area, which the kernel names [heap] and no Habu word allocates
-\ from: every allocation src/lib/memory.f makes is an mmap. The caller's reason for
-\ asking is src/habu/aot-data-cell.f MAPPED?.
+\ The brk area, which the kernel names [heap]: arm64 randomizes the break over a
+\ gigabyte above the executable's end, so a 32-bit-shaped integer (a hash, a
+\ packed pair, four string bytes) can land in [0x7a4000,0x407a4000). No Habu
+\ word allocates from the break (src/lib/memory.f maps), so the tag tells that
+\ band apart from an allocation.
 : HEAP? ( n -- bool ) {: v:n :}
    v AREAS ROW-AT {: at:n :}
    at 0 < IF false EXIT THEN

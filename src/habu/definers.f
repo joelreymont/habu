@@ -1,27 +1,9 @@
-\ definers.f - the definition heads of the interpret loop written in Habu:
-\ `:`, `kernel:` and `trusted:`, as the engine's EM-INTERPRET-COLON and
-\ C-TRUSTED (habu2.f) open a definition, and the capture of the body that
-\ follows one, `create` and `variable`, as C-CREATE and C-VARIABLE make
-\ their words, `cast:` and `linear:`, as C-CAST and C-LINEAR declare a retype,
-\ `immediate`, as C-IMMEDIATE marks a word, and the definers `constant` and
-\ `defer`, whose bodies NCOMP compiles as they are read. STEP
-\ (src/habu/interpret.f) asks COMPILING? after a comment and DEFINE? after the
-\ package keywords.
-\
-\ A head opens record NDICT through def-open, unpublished, and the definition
-\ stays pending: each body token is captured into BODYBUF, as the engine's
-\ tier 1 captures it, a stack-neutral parsing immediate among them runs as it
-\ is read, `does>` splits the body and takes the signature of the words it
-\ creates, and `;` compiles the body whole and ends the definition through
-\ def-close. Only tier 1 is read here. The engine's tier 0 compiles each token
-\ as it reads it (its JIT), so at tier 0 a head or a body token is refused.
-\ `cast:`, `linear:`, `immediate` and the definers compile no body the JIT
-\ reads, so they are read at any tier.
-\
-\ The head refuses in the engine's order and with its text. A definition
-\ writer's own refusal exits without a word (src/habu/prims.f), so every
-\ refusal the engine reports is made here first. Unlike the engine's head,
-\ this one leaves no PROT window open: def-open closes its own.
+\ definers.f - the interpret loop's definition heads in Habu: `:`, `kernel:`,
+\ `trusted:`, `create`, `variable`, `cast:`, `linear:`, `immediate`, `constant`
+\ and `defer`, twins of habu2.f EM-INTERPRET-COLON, C-TRUSTED, C-CREATE and kin.
+\ STEP (src/habu/interpret.f) asks COMPILING? after a comment and DEFINE? after
+\ the package keywords. The head refuses in the engine's order and with its text:
+\ a definition writer's own refusal (src/habu/prims.f) exits without a word.
 
 require src/lib/prelude.f
 require src/lib/string.f
@@ -55,7 +37,6 @@ variable TOK-BODY-RAW
 71 constant DEF-RC-BODY-FULL     \ habu2.f EM-BODY-CAP-DIE: the body capture is full
 72 constant DEF-RC-PD-FULL       \ habu2.f C-PD-DIE-FULL: no pending slot holds the defer
 
-\ ---- the definition writers --------------------------------------------------
 \ def-open, body-append, created-sig!, def-close, def-abort, def-create,
 \ def-cast, imm-mark and min-in-mark are OUTER's own rows (src/habu/prims.f),
 \ called below by name. trust-sig! has none: it is the `trusted:`, `cast:`,
@@ -78,16 +59,16 @@ CAST: AS-PREFLIGHT ( n -- [ ptr u8 n ptr u8 n bool -- ] )
 CAST: AS-DEF-HOOK ( n -- [ ptr u8 n -- n ] )
 CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
 
-\ ---- tier 0 ------------------------------------------------------------------
 \ The engine's tier 0 compiles each body token as it reads it, with its JIT,
-\ which this loop cannot call yet (habu-hook-tier-0-96e33c29): a head or a body
+\ which this loop cannot call yet: a head or a body
 \ token at tier 0 refuses, naming the token, where the engine's head makes its
-\ first refusal.
+\ first refusal. `cast:`, `linear:`, `immediate` and the definers compile no
+\ body the JIT reads, so they are read at any tier.
 : DEF-TIER-0 ( -- )
    s" hb: tier 0 is not in the Habu loop: " SAY
    DEF-RC-TIER-0 PKG-FAIL ;
 
-\ ---- the body capture (habu1.f EMIT-BCAP, habu2.f EM-BODY-CAP-DIE) ------------
+\ The engine's twins: habu1.f EMIT-BCAP and habu2.f EM-BODY-CAP-DIE.
 \ The capture's first token, the definition's name, which a head seeds: the
 \ bytes up to a space, a zero byte or BODYLEN (habu2.f EMIT-DIAGDEF).
 : DEF-CAPTURED-NAME ( -- ptr u8 n )
@@ -123,13 +104,12 @@ CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
    DEF-CAPTURED-NAME SAY
    RC-UNCLOSED THROW-AT ;
 
-\ The bytes and one space join the body.
 : DEF-CAPTURE ( ptr u8 n -- ) {: a:ptr u:n :}
    BODYLEN-CELL CELL@ u + 1 + {: need:n :}
    need BODYBUF-CAP > if need DEF-BODY-FULL then
    a u body-append ;
 
-\ ---- the head's room (habu2.f EM-INTERPRET-COLON, C-TRUSTED) -----------------
+\ The engine's twins: habu2.f EM-INTERPRET-COLON and C-TRUSTED.
 \ CP at the code ceiling and no record slot left each refuse, naming the
 \ keyword. Both comparisons are signed, as the engine's head makes them.
 : DEF-CODE-ROOM ( -- )
@@ -151,7 +131,7 @@ CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
    TOKEN if exit then
    s" hb: : missing definition name after " SAY RC-NO-NAME THROW-AT ;
 
-\ ---- the qualifier (habu2.f EMIT-QUALIFY-DEF) --------------------------------
+\ The engine's twin: habu2.f EMIT-QUALIFY-DEF.
 \ The wordlist NAME:tail goes into: NAME's public one, from its namespace row.
 \ With no row a new one is made, as a qualified definition makes it: a public
 \ wid and no private one.
@@ -188,7 +168,7 @@ CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
    a u q 1+ COLON-AT 0 >= if PKG-RC-CONTEXT PKG-FAIL then
    a q 1+ ZPTR+  u q - 1-  a q DEF-NAMESPACE ;
 
-\ ---- the compile-keyword wall (habu2.f EMIT-DEF-KW-GUARD) ---------------------
+\ The engine's twin: habu2.f EMIT-DEF-KW-GUARD.
 \ The keywords a body's compiler reads before it looks a word up
 \ (EM-COMPILE-KEYWORDS): a word named by one could never be called from a body.
 : DEF-KEYWORDS ( -- ptr u8 n )
@@ -216,7 +196,6 @@ CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
 : DEF-P2-KEYWORDS ( -- ptr u8 n )
    s" tuck rot -rot 2dup 2drop 2swap 2over 2>r 2r> 2r@ @ !" ;
 
-\ The index past the keyword that starts at s in the table.
 : DEF-KEYWORD-END ( ptr u8 n n -- n ) {: t:ptr tu:n s:n :}
    s begin dup tu < if t over + c@ BLANK <> else false then while 1+ repeat ;
 
@@ -282,7 +261,7 @@ private
    then
    a u DEF-KEYWORD? if a u DEF-KEYWORD-REFUSE then ;
 
-\ ---- the signature (habu2.f C-SIG-START, C-SIG-END, C-SIG-CAPTURE-TSIG) -------
+\ The engine's twins: habu2.f C-SIG-START, C-SIG-END and C-SIG-CAPTURE-TSIG.
 \ A signature starts at the first byte past the blanks when that byte is `(`,
 \ whole token or not: where it starts, and whether one does.
 : DEF-SIG-START ( -- ptr u8 bool )
@@ -300,7 +279,6 @@ private
    c e < if c 1 + true exit then
    e false ;
 
-\ INP passes the signature and the capture takes all of it.
 : DEF-SIG-PASS ( ptr u8 ptr u8 -- ) {: s:ptr end:ptr :}
    end INP-CELL ADDR!
    s end s - DEF-CAPTURE ;
@@ -334,11 +312,9 @@ private
    closed 0= if head if DEF-ENDED then DEF-RC-BAD-SIG PKG-FAIL then
    s end ;
 
-\ `trusted:` needs one, and the refusal names the definition.
 : DEF-REQUIRED-SIG ( -- )
    true DEF-SIG-SPAN DEF-SIG-TAKE ;
 
-\ ---- the head ----------------------------------------------------------------
 \ Tier 1 compiles through the entry the AOT seed installed; with none the
 \ boot is broken, and the process ends (habu2.f NCOMP-EMIT:LOAD).
 : DEF-DISPATCH ( -- )
@@ -366,15 +342,11 @@ private
    0 BODYLEN-CELL CELL!
    TOKEN$ DEF-CAPTURE ;
 
-\ A head's start: the capture seeded, the name qualified and recorded as the
-\ given kind.
 : DEF-START ( n -- )
    {: kind:n :}
    DEF-SEED
    DEF-QUALIFY kind DEF-RECORD ;
 
-\ The name opens a pending record with the capture it seeds. `trusted:` then
-\ sets the trusted cell and needs a signature; `:` takes one if it is there.
 : DEF-HEAD ( bool -- ) {: trusted:bool :}
    NCOMP-DISPATCH:TIER-CELL CELL@ 0= if DEF-TIER-0 then
    TASK-GUARD
@@ -391,7 +363,7 @@ private
    then
    DEF-DISPATCH ;
 
-\ ---- a string in the body (habu2.f NCOMP-EMIT:CAPTURE-STRING) -----------------
+\ The engine's twin: habu2.f NCOMP-EMIT:CAPTURE-STRING.
 \ After a string keyword the body takes the literal's text as written, from one
 \ byte past the keyword through its closing quote, in one capture. The scan
 \ comes first, so a literal with no closing quote or with a bad escape refuses
@@ -496,20 +468,16 @@ private
    s" {:" TOKEN-IS? if exit then
    POLICY-REFUSE ;
 
-\ ---- an immediate in the body (habu2.f NCOMP-EMIT:CAPTURE-IMMEDIATE) ----------
+\ The engine's twin: habu2.f NCOMP-EMIT:CAPTURE-IMMEDIATE.
 \ A captured token LFIND resolves to an immediate word runs now when the
 \ checker calls it a stack-neutral parsing immediate (parse-imm): it may read
 \ the input after it or end the definition, and the compiler passes over it at
-\ `;`. Any other immediate waits in the capture for the compiler. The engine
-\ closes the code window over the head's unit before it asks the checker; here
-\ that window is closed already: def-open closes its own, and evaluate's
-\ return closes the one an engine head opened. The engine finds
-\ NEUTRAL-PARSE-IMM? by name as it asks, so a checker loaded after it answers.
-\ Here the live checker owner answers (CHECKER-OWNER:PARSE-IMM?), the one the
-\ compiler asks at `;` when it passes over the token (elaborate.f): a binding
-\ fixed at this file's load would ask the retained checker, which never saw a
-\ `parse-imm` the replacement checker of a build window recorded, and the
-\ immediate would wait in the capture instead of running.
+\ `;`. Any other immediate waits in the capture for the compiler. The code
+\ window is closed already: def-open closes its own, and evaluate's return
+\ closes the one an engine head opened. The live checker owner answers
+\ (CHECKER-OWNER:PARSE-IMM?), as the compiler asks at `;` (elaborate.f): a
+\ binding fixed at this file's load would ask the retained checker, which never
+\ saw a `parse-imm` a build window's replacement checker recorded.
 : DEF-IMMEDIATE ( -- ptr n bool )
    TOKEN$ FIND-SCOPE {: rec:ptr :}
    rec XREF-FOUND? 0= if NULL-PTR false exit then
@@ -545,7 +513,7 @@ private
    DEF-IMMEDIATE if DEF-RUN true exit then
    drop false ;
 
-\ ---- `does>` in the body (habu2.f NCOMP-EMIT:CAPTURE-DOES) -------------------
+\ The engine's twin: habu2.f NCOMP-EMIT:CAPTURE-DOES.
 \ `does>` ends a defining word's own part: DOESB takes the capture's length
 \ with `does>` in it, where `;` splits the body, and the signature after it,
 \ which must be there, opened and closed, is the effect of each word the
@@ -605,15 +573,15 @@ private
    DEF-CALL? if false exit then
    DEF-DOES true ;
 
-\ ---- the buffer's own definition (habu2.f C-DEF-SOURCE-CLOSE, C-DEF-SOURCE-END)
+\ The engine's twins: habu2.f C-DEF-SOURCE-CLOSE and C-DEF-SOURCE-END.
 \ A definition closes in the buffer that opened it. ENTRY-PEND is the record
-\ pending as the buffer OUTER:INTERPRET reads began (habu1.f EVAL-ENTER,
+\ pending as the buffer OUTER:INTERPRET reads began (habu1.f EMIT-EVAL-BODY,
 \ layout.f EVAL-FRAME:PEND); a pending record other than it is the buffer's
 \ own. A throw out of the buffer, these refusals included, puts the entry
 \ record back in PEND-CELL (OUTER:INTERPRET): the buffer's own definition is
 \ abandoned, so no later `;` publishes it, and an outer one stays pending, as
 \ habu2.f EM-EVAL-THROW-RECOVER leaves them. Unlike the engine's, this loop
-\ puts no CP, NDICT or DP back (habu-roll-back-failed-64bf2ba5).
+\ puts no CP, NDICT or DP back.
 variable ENTRY-PEND
 
 \ A `;` that would close the record pending as the buffer began, one an outer
@@ -624,7 +592,6 @@ variable ENTRY-PEND
    DEF-CAPTURED-NAME SAY
    RC-UNCLOSED THROW-AT ;
 
-\ At the buffer's end a record the buffer opened is refused.
 : DEF-SOURCE-END ( -- )
    PEND-CELL CELL@ ENTRY-PEND @ = if exit then
    DEF-ENDED ;
@@ -645,7 +612,7 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
       rollback TOKBODY-CELL CELL! UNDEFINED
    then ;
 
-\ ---- `;` (habu2.f NCOMP-EMIT:EM-COMPILE) --------------------------------------
+\ The engine's twin: habu2.f NCOMP-EMIT:EM-COMPILE.
 \ `;`, the one byte, ends the definition and joins no capture. The body goes
 \ to the compiler entry the AOT seed installed, as the engine's tier-1 `;`
 \ hands it (NCOMP-EMIT:LOAD), checked again here since a body immediate can
@@ -671,7 +638,6 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    DEF-CLOSE
    true ;
 
-\ ---- the body ----------------------------------------------------------------
 \ While a definition is pending every token is its body's (habu2.f EM-COMMENT):
 \ tier 1 ends it at `;`, or captures the token, runs it if it is a neutral
 \ immediate, splits the body at `does>`, or takes a string keyword's text
@@ -698,7 +664,7 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    DEF-PREFIX-BIND
    true ;
 
-\ ---- `create` and `variable` (habu2.f C-CREATE, EMIT-CREATE, C-VARIABLE) -----
+\ The engine's twins: habu2.f C-CREATE, EMIT-CREATE and C-VARIABLE.
 \ A created word is published whole where its keyword is read: def-create
 \ writes the code that pushes its data address and appends the record. The
 \ checker then reads it as the engine hands it over. `variable` is `create`
@@ -783,13 +749,12 @@ TRUSTED: DEF-HERE ( -- n ) here ;
 : DEF-CREATE-ROW ( -- )
    false DEF-ADDR-ROW ;
 
-\ The checker is told of the created word once it is published.
 : DEF-ADDR ( bool -- )
    DEF-ADDR-ROW
    DEF-ADDR-HOOK
    DEF-ADDR-PUBLISH ;
 
-\ ---- `constant` (habu2.f C-CONSTANT) ------------------------------------------
+\ The engine's twin: habu2.f C-CONSTANT.
 \ A constant's record opens as DKIND:VAL, the stamp a mention of it folds to,
 \ and NCOMP compiles the body that pushes the value, at either tier, as the
 \ engine's definers are native at both. It takes the program's top cell after
@@ -809,7 +774,7 @@ variable DEF-VALUE
    s" constant" DEF-HOOK
    s" -- a" DEF-RAW-PUBLISH ;
 
-\ ---- `cast:` and `linear:` (habu2.f C-CAST, C-IDENTITY) ------------------------
+\ The engine's twins: habu2.f C-CAST and C-IDENTITY.
 \ `cast: NAME ( in -- out )` declares a retype, and `linear: NAME ( in -- out )`
 \ a linear one. Neither has a body or a `;`, so each completes where its
 \ keyword is read, at any tier: the checker's registrar proves the row legal
@@ -903,7 +868,7 @@ variable DEF-VALUE
    def-cast
    DEF-CAST-FACTS ;
 
-\ ---- `defer` (habu2.f C-DEFER) ------------------------------------------------
+\ The engine's twin: habu2.f C-DEFER.
 \ `defer NAME ( in -- out )` declares a word that calls the execution token in
 \ its dispatch cell, an aligned DATA cell that starts with `defer-unset`'s and
 \ that `is` in a body re-points. It refuses in the engine's order and with its
@@ -940,7 +905,7 @@ TRUSTED: DEF-XT! ( n n -- ) xt! ;
    xt cell DEF-XT!
    cell ;
 
-\ ---- the pre-trust hold (habu2.f C-PRETRUST-READY?, C-PD-CAPTURE) ------------
+\ The engine's twins: habu2.f C-PRETRUST-READY? and C-PD-CAPTURE.
 \ A target owner without both trust-decl and checker-defer cannot register a
 \ defer yet: a build's src/core/checker.f declares defers before `: TRUST`, and
 \ the build reads it through this loop. The defer's name and signature wait in
@@ -1011,7 +976,6 @@ TRUSTED: DEF-XT! ( n n -- ) xt! ;
    cell NCOMP:FIXED-DEFER NCOMP:COMPILE-FIXED
    DEF-CLOSE ;
 
-\ ---- the definition keywords --------------------------------------------------
 \ The engine's `:` is the one byte, `kernel:` its synonym; `trusted:`,
 \ `create`, `variable`, `constant`, `defer`, `cast:`, `linear:` and
 \ `immediate` are matched as LITERAL? matches its keywords. `variable` then

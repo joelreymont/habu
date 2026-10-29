@@ -1,13 +1,9 @@
-\ repl.f — the terminal line reader for OUTER:REPL (src/habu/interpret.f).
-\ ENGINE-MAIN routes a tty to that session. INSTALL installs RD-LINE as the
-\ default REPL-READ defer and puts its xt in REPLH-CELL; genio may replace the
-\ defer, so OUTER:REPL calls the defer again before each line. The session owns
-\ prompts, pending definitions and recovery; this file owns terminal editing.
-\ The editor runs the tty RAW (per line; canonical is restored while the line
-\ executes): insert/backspace at a cursor, left/right arrows, ^A/^E home/end,
-\ ^K kill-to-end, ^C cancel line, ^D on an empty line = EOF, and a 16-line
-\ history ring on up/down. A line longer than LLINE-MAX is refused by name and
-\ read again instead of being truncated.
+\ repl.f - the terminal line reader for OUTER:REPL (src/habu/interpret.f).
+\ INSTALL makes RD-LINE the default REPL-READ defer and puts its xt in REPLH-CELL;
+\ genio may replace the defer, so OUTER:REPL calls it again before each line. The
+\ session owns prompts, pending definitions and recovery; this file owns editing,
+\ with the tty raw per line and canonical while the line executes. A line longer
+\ than LLINE-MAX is refused by name and read again, never truncated.
 
 create TIOB0 80 allot           \ original (canonical) termios, saved at INSTALL
 create TIOB 80 allot            \ working termios
@@ -27,13 +23,9 @@ variable DONE                   \ 0 editing, 1 accepted, 2 eof
 
 -1 constant KEY-EOF             \ KEY1's no-key answer; no byte collides with it
 
-\ The line's own ceiling. LBUF holds 256 bytes and a history slot spends its
-\ first byte on the length ([len][bytes] in 256), so 255 is what one line can be
-\ and what one line can be recalled as. A line that asks for more is REFUSED by
-\ name at the prompt (LINE-FULL below) rather than truncated: the editor used to
-\ drop every key past 255 silently, so a pasted 257-byte definition lost its `;`
-\ and left the session compiling a word that was never defined
-\ (dot habu-refuse-a-repl-a58c0eba).
+\ LBUF holds 256 bytes and a history slot spends its first byte on the length,
+\ so 255 is what one line can be and be recalled as. A longer line is refused by
+\ name (LINE-FULL): dropping keys silently lost a pasted definition's `;`.
 255 constant LLINE-MAX
 
 defer REPL-READ ( -- ptr u8 n )
@@ -78,25 +70,19 @@ defer REPL-READ ( -- ptr u8 n )
 
 : RAW-OFF ( -- )  0 HBR-TIO-SET TIOB0 ioctl drop ;
 
-\ The editor's echo goes out through `emit` and `type` rather than a write to
-\ descriptor 1, so it follows the task's current output device (src/lib/genio-core.f):
-\ a line edited over a connection is echoed back over that connection. KEY1 and
-\ RD-LINE below stay on descriptor 0 because together they ARE the terminal
-\ device's key and accept; another device supplies its own pair, and src/lib/genio.f
-\ picks between them at REPL-READ.
-\ A one-byte read answers 1, or 0 once the terminal has hung up — a pty slave
-\ whose master closed reads 0 — and -1 when the read failed. Neither left a byte
-\ in KB, so both are end of input rather than the key before them. EINTR is not
-\ among them: the one asynchronous handler this engine installs (the profiler's
-\ SIGALRM) sets SA_RESTART and the crash handlers exit, and the syscall wrappers
-\ in src/habu/habu1.f collapse a failed read to -1 without errno, so a handler
-\ that returns without SA_RESTART would end the line here
-\ (habu-keep-key1-s-cfc8c6ad).
+\ The echo goes through `emit` and `type`, so it follows the task's output device
+\ (src/lib/genio-core.f). KEY1 and RD-LINE stay on descriptor 0 as the terminal
+\ device's key and accept; src/lib/genio.f picks a device's pair at REPL-READ.
+\ A one-byte read answers 1, 0 once the terminal hung up (a pty whose master
+\ closed), -1 on failure; 0 and -1 leave no byte in KB and are end of input.
+\ EINTR cannot arrive: the one asynchronous handler (the profiler's SIGALRM) sets
+\ SA_RESTART, the crash handlers exit, and habu1.f's syscall wrappers collapse a
+\ failed read to -1 without errno, so a handler without SA_RESTART would end the
+\ line here.
 : KEY1 ( -- n )
    0 KB 1 read 1 < IF KEY-EOF exit THEN
    KB c@ ;
 
-\ full-line redraw: CR, clear-to-eol, prompt, line, cursor back to LPOS
 : REDRAW ( -- )
    13 emit  27 emit  91 emit  75 emit
    s" habu> " type
@@ -105,11 +91,9 @@ defer REPL-READ ( -- ptr u8 n )
 
 : CLEARLN ( -- )  0 LLEN !  0 LPOS !  0 LOVER ! ;
 
-\ A key past the ceiling is COUNTED, not dropped and not inserted: the buffer
-\ stays within its 255 and RD-LINE has the length the line really asked for when
-\ it refuses it. Counting instead of refusing here is deliberate — a refusal
-\ mid-line would leave the untyped tail of a pasted line to be read as the NEXT
-\ line and executed.
+\ A key past the ceiling is counted, not dropped or inserted, so RD-LINE refuses
+\ with the length the line asked for. A refusal mid-line would leave the pasted
+\ tail to run as the next line.
 : INSCH ( n -- ) {: c :}
    LLEN @ LLINE-MAX < 0= IF LOVER @ 1 + LOVER ! exit THEN
    LLEN @ begin dup LPOS @ > while
@@ -123,7 +107,6 @@ defer REPL-READ ( -- ptr u8 n )
          dup LBUF + c@  over 1 - LBUF + c!  1 + repeat drop
       LLEN @ 1 - LLEN !  LPOS @ 1 - LPOS ! THEN ;
 
-\ ---- history ring ----
 : HSLOT ( n -- ptr u8 )  15 and 256 * HIST + ;
 
 : HSAVE ( -- )
@@ -150,7 +133,6 @@ defer REPL-READ ( -- ptr u8 n )
       HV @ HN @ = IF CLEARLN ELSE HV @ HLOAD THEN
       REDRAW THEN ;
 
-\ ---- key dispatch ----
 : ESCKEY ( n -- ) {: k :}
    k 68 = IF LPOS @ 0 > IF LPOS @ 1 - LPOS ! REDRAW THEN exit THEN
    k 67 = IF LPOS @ LLEN @ < IF LPOS @ 1 + LPOS ! REDRAW THEN exit THEN
@@ -169,7 +151,6 @@ defer REPL-READ ( -- ptr u8 n )
    c 27 = IF KEY1 91 = IF KEY1 ESCKEY THEN exit THEN
    c 31 >  c 127 < and IF c INSCH REDRAW THEN ;
 
-\ ---- the over-long line's refusal ----
 \ The count is written from the end of LDEC so the digits come out in one write
 \ and in order; 24 bytes hold any i64 (a paste can ask for a great many bytes).
 : LDEC-C! ( n -- ) {: c :}
@@ -199,9 +180,8 @@ defer REPL-READ ( -- ptr u8 n )
    2 s"  typed" write drop
    2 LDEC-LF 1 write drop ;
 
-\ A line that asked for more than LLINE-MAX is NOT accepted: it is refused by
-\ name, left out of the history ring and read again from an empty buffer. The
-\ outer session only ever sees whole lines.
+\ A refused line stays out of the history ring; the outer session sees only
+\ whole lines.
 : RD-LINE ( -- ptr u8 n )
    TTY? 0= IF NULL$ exit THEN
    0 HBR-TIO-GET TIOB0 ioctl drop
@@ -213,11 +193,10 @@ defer REPL-READ ( -- ptr u8 n )
    while LINE-FULL repeat
    DONE @ 2 = IF NULL$ ELSE HSAVE  LBUF LLEN @ THEN ;
 
-\ The REPLH-CELL slot holds the line reader. REPLH-CELL is an image-ABI offset
-\ (layout.f names it and habu2.f reads it), so the cell cannot become a
-\ TYPED-VARIABLE; `xt!` is the sanctioned mint that declares what it holds
-\ (docs/forth.md "An undeclared cell holds no execution token"). Nothing here reads the cell back as code, so no accessor
-\ hands its address out.
+\ REPLH-CELL is an image-ABI offset (layout.f names it, habu2.f reads it), so it
+\ cannot become a TYPED-VARIABLE; `xt!` declares what it holds (docs/forth.md
+\ "An undeclared cell holds no execution token"). Nothing reads it back as code,
+\ so no accessor hands its address out.
 : REPL-ENABLE ( -- )
    [: REPL-READ ;] data-base REPLH-CELL + xt! ;
 

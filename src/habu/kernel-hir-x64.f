@@ -1,19 +1,9 @@
-\ kernel-hir-x64.f - one x86-64 routine compiled from a staged HIR function,
-\ package X64KHIR: the sealed x86-64 emission test/compiler/shadow.f reads,
-\ the compiler's own lowering of the operations a stager names.
-\
-\ COMPILE opens a context under X64ABI:BINDING and a HIR module whose source
-\ text is the function's name, so every span names it. It stages one function
-\ of `in` cells: the stager builds its body with ARG (argument 0 is the
-\ deepest cell) and OP2, which answers the type the opcode's schema declares,
-\ and names each answer, deepest first, with RESULT. The function then goes
-\ down the backend rows in the order src/compiler/native/compiler.f runs them:
-\ declare with no linkage, select, lower to a fixpoint. X64PASS:EMIT-UNPLACED
-\ seals a shadow emission, and `use` reads it through X64EMIT's readers before
-\ the retire row gives it back.
-\
-\ A stager that leaves a result count other than `out`, or reads an argument
-\ the function does not take, ends the build with REFUSE-RC.
+\ kernel-hir-x64.f - package X64KHIR: one x86-64 routine compiled from a staged
+\ HIR function, the sealed emission test/compiler/shadow.f reads. A stager builds
+\ the body with ARG and OP2 and names answers with RESULT; the function runs the
+\ backend rows in src/compiler/native/compiler.f's order. A stager that leaves a
+\ result count other than `out`, or reads an argument the function does not take,
+\ ends the build with REFUSE-RC.
 require src/lib/prelude.f
 require src/compiler/ir/id.f
 require src/compiler/ir/symbol.f
@@ -61,7 +51,7 @@ variable N-RES
    s" x64khir: " type  NAME-A @ NAME-U @ type  s"  " type  type cr
    s" x64khir: a stager does not fit its row" REFUSE-RC die ;
 
-\ ---- the module and its one function -----------------------------------------
+\ The module and its one function.
 : MODULE ( IR-CTX:ctx ptr u8 n -- )
    {: c:IR-CTX:ctx a:ptr u:n :}
    IR-BUILD:PLAN-BEGIN
@@ -125,7 +115,6 @@ variable N-RES
    CC BB IR-BUILD:END-BLOCK drop
    CC BB IR-BUILD:END-FUN drop ;
 
-\ ---- the chain ---------------------------------------------------------------
 : CHAIN ( ptr u8 n n n [ -- ] [ NART:emission -- ] NSESSION:session -- )
    {: a:ptr u:n in:n out:n stage use s:NSESSION:session :}
    s W-SESSION !
@@ -160,7 +149,6 @@ variable N-RES
 
 public
 
-\ ---- what a stager builds with -----------------------------------------------
 \ Argument n, 0 the deepest cell the row takes.
 : ARG ( n -- IR-ID:ir-value-id )
    {: k:n :}
@@ -180,9 +168,10 @@ public
    o OPEN-OP  x OPERAND  y OPERAND  o SCHEMA-RESULT
    CLOSE-OP 0 RESULT-AT ;
 
-\ ---- the seam ----------------------------------------------------------------
 \ Compile the function the stager builds for the row named, of `in` cells and
-\ `out` results, and run `use` while its sealed emission stands.
+\ `out` results, under X64ABI:BINDING; the module's source text is the row's name,
+\ so every span names it. `use` reads the sealed emission through X64EMIT's
+\ readers before the retire row gives it back.
 : COMPILE ( ptr u8 n n n [ -- ] [ NART:emission -- ] -- )
    [: OWNED ;] NLEASE:WITH ;
 

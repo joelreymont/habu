@@ -8,13 +8,12 @@ public
 
 1 constant ABI-VERSION
 \ Process mutex in fixed image DATA, outside the header and row backing. The
-\ MATCH stack ends before $1A0; $1A0 remains the seal fixture's poke cell, and
-\ CMFAM starts at $1B0. Task USER storage is USER-BAND, far above at $5300.
+\ MATCH stack ends before $1A0, $1A0 is the seal fixture's poke cell and CMFAM
+\ starts at $1B0.
 $1A8 constant LOCK-CELL
 \ Derived process storage, never an address declaration or part of the row
-\ schema. $36C8 is the single unused cell between BPTRAMP ($36C0) and the eight
-\ breakpoint records ($36D0..$37D0), below FFI/task USER and outside JIT arrays.
-\ Existing storage-v1 engines leave it zero, so new source can still use them.
+\ schema: the one unused cell between BPTRAMP ($36C0) and the breakpoint records
+\ ($36D0..$37D0). Storage-v1 engines leave it zero.
 $36C8 constant INDEX-CELL
 0 constant INDEX-SLOTS
 8 constant INDEX-COUNT
@@ -34,12 +33,11 @@ $7FFFFFFFFFFFFFFF CELL / constant MAX-ROWS
 private
 CAST: VERSION-XT ( n -- [ -- n ] )
 
-\ All engine emitters publish these primitives consecutively in global
-\ wordlist zero. Retirement changes a marker's wordlist, but preserves its
-\ name and position; a later redefinition must not replace the original pair.
-\ Resolve it on each call because a captured image has different code addresses
-\ from its build host. A foreign target layout's image-header offsets also do
-\ not describe the running engine.
+\ Engine emitters publish these primitives consecutively in global wordlist
+\ zero. Retirement changes a marker's wordlist but keeps its name and position;
+\ a later redefinition must not replace the original pair. Resolved on each
+\ call: a captured image's code addresses differ from its build host's, and a
+\ foreign target layout's header offsets do not describe the running engine.
 : ENGINE-ABI-XT ( -- n )
    ndict@ 1- 0 ?do
       i XREF-REC {: rec:ptr :}
@@ -58,9 +56,8 @@ CAST: VERSION-XT ( n -- [ -- n ] )
    0 ;
 
 public
-\ Wordlist zero contains the immutable engine primitive. Reject a source word
-\ shadowing it: only executable engine text may supply the discriminator.
-\ Recovery returns zero; old native hosts have no primitive at all.
+\ A source word shadowing the wordlist-zero primitive is refused: only engine
+\ text may supply the discriminator. Recovery and old native hosts answer zero.
 : CURRENT? ( -- bool )
    s" addr-cells-abi" 0 search-wl {: xt:n :}
    xt 0= if 0 0 <> exit then
@@ -103,9 +100,9 @@ CAST: N>ROWS ( n -- ptr n )
 : LOCK ( -- ) begin 0 1 LOCK-ADDR atomic-cas 0= until ;
 : UNLOCK ( -- ) 0 LOCK-ADDR atomic! ;
 
-\ Main-owner preparation is quiescent, as it was before the index. Hold the
-\ registrar mutex through release AND the following row/header mutation, so a
-\ marker cannot rebuild the derived view between invalidation and compaction.
+\ Main-owner preparation is quiescent. The mutex is held through release AND the
+\ following row/header mutation, so a marker cannot rebuild the derived view
+\ between invalidation and compaction.
 : INDEX-RELEASE ( -- )
    INDEX-ADDR @ dup 0= if drop exit then {: address:n :}
    address 0 < address 7 and 0<> or
@@ -214,15 +211,13 @@ private
 
 public
 
-\ Runs a fork with the registrar held; PROC-FORK:RAW is its caller. The
-\ registrar unmaps its old rows and index before it publishes their
-\ replacements, and commits an index slot before its counts (habu2.f
-\ EMIT-MARK), so a child forked while another task was inside it could neither
-\ wait for that task nor carry on where it stopped. Held, nobody is inside it
-\ when the process is copied, and parent and child each free their own copy.
-\ The lock is found through data-base, a task's own context on a task, so a
-\ fork made on a task holds the task-local address-cell lock, not the
-\ registrar's, until dot bb84a527.
+\ PROC-FORK:RAW runs its fork with the registrar held. The registrar unmaps old
+\ rows and index before publishing their replacements, and commits an index
+\ slot before its counts (habu2.f EMIT-MARK): a child forked mid-update could
+\ neither wait for that task nor resume it. Held, nobody is inside it when the
+\ process is copied; parent and child each free their own copy. The lock is
+\ found through data-base, so a fork made on a task holds the task-local
+\ address-cell lock, not the registrar's.
 : ACROSS-FORK ( [ -- n ] -- n )
    WITH-LOCK ;
 

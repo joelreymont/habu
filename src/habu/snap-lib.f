@@ -1,19 +1,9 @@
-\ snap-lib.f — checked snapshot image writer definitions.
-\
-\ Load after target image emission words (`BUILD-SNAP-HDR`, `SNAP-DROP`,
-\ `SNAP-EXTRA-PTR`, `SNAP-EXTRA-SIZE`). Entry files decide when
-\ to prepare checker/include state and call the writer's `PERSIST`.
-\
-\ Everything here belongs to package SNAP. The only word an entry file needs is
-\ the public `SNAP:PERSIST`. The live LOWER-CERT-HOOK installed by the core
-\ prefix survives capture and restore; the writer does not replace it. Writer
-\ state and scratch-copy machinery stay package-private.
-\
-\ The entry is `SNAP:PERSIST` - it builds the header, canonicalises the two
-\ regions, writes and signs the image beside its output path and renames it
-\ over that path, then exits. The tail is deliberately not `GO`:
-\ several other files already define a `GO`, and the name says nothing about
-\ what the word does. src/habu/app-image-core.f APP-IMAGE:SAVE calls the entry.
+\ snap-lib.f - checked snapshot image writer, package SNAP. Its one public word is SNAP:PERSIST,
+\ called by src/habu/app-image-core.f APP-IMAGE:SAVE; it canonicalises both regions, writes and
+\ signs a sibling of the output path, renames it over that path and exits.
+\ Load after the target image emission words (BUILD-SNAP-HDR, SNAP-DROP, SNAP-EXTRA-PTR,
+\ SNAP-EXTRA-SIZE). The core prefix's LOWER-CERT-HOOK survives capture and restore; the writer
+\ does not replace it.
 
 require src/lib/fs.f
 require src/lib/fs-mutate.f
@@ -32,11 +22,9 @@ require src/habu/native-host-cells.f
 
 package SNAP
 
-\ This writer is also loaded by the previous-generation host, whose baked
-\ SRCLOC package predates the owned source cells in layout.f, whose baked
-\ ENGINE-MAIN package predates ENGINE-MAIN:ARENA-CELL and whose baked layout
-\ may predate NDICT-HW-CELL, PROGRAM-FILE-CELL and LOCDEPTHS; each must equal
-\ layout.f's.
+\ The previous-generation host also loads this writer. Its baked SRCLOC, ENGINE-MAIN and layout
+\ may predate the owned source cells, ENGINE-MAIN:ARENA-CELL, NDICT-HW-CELL, PROGRAM-FILE-CELL and
+\ LOCDEPTHS, so they are restated here; each must equal layout.f's.
 $2D68 constant OWNED-SOURCE-CELL
 $2D70 constant OWNED-SOURCE-SIZE-CELL
 $3868 constant ENGINE-ARENA-CELL
@@ -56,20 +44,8 @@ variable OUTPUT-U
 : OUT-PATH-NAMED ( -- )
    OUTPUT-U @ 0= if s" snap: persist has no output path" 74 die then ;
 
-\ Snapshot trailer format version: the persisted effect-node arena carries
-\ hidden-field counts, and an older-format engine restoring such an image would
-\ misread hidden fields as logical params. The trailer grows 40->48 bytes with
-\ a format-version cell at offset 40; the loader (habu2.f EM-SNAPSHOT-RESTORE)
-\ rejects any image whose version is not the current format with a distinct
-\ exit status (80, mirroring the snbad rc-79 corrupt-trailer path). Bump on any
-\ layout change that a prior engine would misread.
-\ Version 2: dict record [16] bits 52-59 became the DNAME-MIN-IN certified
-\ input-arity band (dot habu-habu-certified-words-84e84eaf); a pre-change
-\ engine restoring a post-change snapshot would fold the band into name
-\ lengths (its length reads clear only the top 4 bits), so it must fail
-\ closed rc 80 instead of misreading the dictionary.
-\ Version 3: snapshot DATA includes the owner public/private WID registry.
-\ Older formats cannot prove qualified-call visibility and fail closed.
+\ src/habu/snapshot-format.f VERSION marks the trailer and DATA layout: an engine restoring another
+\ version fails closed (rc 80) instead of misreading it.
 create TRL SNAP-TRL-BYTES allot
 variable STB  variable STSZ  variable SDB  variable SCL  variable SDL
 variable SRL  variable SML  variable SIL  variable SDW
@@ -77,8 +53,7 @@ variable SNL  variable SFTS  variable SPAD  variable SFD
 variable SHF  variable SHL           \ heap form (SNAPSHOT-FORMAT:HEAP-RAW/-GRID), stored heap bytes
 PTR-VARIABLE SXT-A                   \ x86 text scratch (src/habu/snap-x64.f)
 create PAD-ZEROS 16 allot
-\ These views expose the raw snapshot source and dictionary/data buffer cells.
-\ Retirement: habu-campaign-c2-mem-c3d7662b.
+\ Raw views of the snapshot source and buffer cells.
 : STB@ STB @ ;
 s" STB@" s" -- ptr u8" TRUST
 : SDB@ SDB @ ;
@@ -120,11 +95,9 @@ s" SDB@" s" -- ptr u8" TRUST
    cut 0 < cut bytes > or if BAD-SOURCE then
    bytes cut - ;
 
-\ A restored snapshot's authenticated text contains its old region, DATA and
-\ trailer. Copy only the prefix preceding those payloads; otherwise every
-\ recapture embeds the previous snapshot inside the next one. The loader has
-\ already validated this trailer. Do not guess at older trailers inside the
-\ prefix of an image produced by a previous, nesting writer.
+\ A restored snapshot's authenticated text contains its old region, DATA and trailer: copy only
+\ the prefix before them, or each recapture nests the previous snapshot. The loader has validated
+\ this trailer; do not guess at older trailers inside the prefix.
 : ENGINE-TEXT-SIZE ( -- n )
    data-base TEXT-SIZE-CELL + @ {: bytes:n :}
    data-base SNAP-CELL + CELL-VIEW @ 0= if bytes exit then
@@ -163,17 +136,10 @@ s" SDB@" s" -- ptr u8" TRUST
    ABSORB-PAD ;
 
 
-\ ---- canonical-base persistence ----
-\ Snapshot images must be byte-identical across ASLR runs, so the dict/code
-\ region is COPIED to scratch and the copy is rebased to canonical base 0
-\ with the same engine relocation walks the startup loader uses
-\ (snap-rebase primitive -> LSNAPRBD, src/habu/habu2.f). The live
-\ region is never touched: rewriting it in place would break the very call
-\ chains this writer executes. The trailer records base 0; the loader's
-\ delta and membership math are base-agnostic, so restore needs no change.
-\ Each scratch region is fresh anonymous storage (`map-anon`), so its cell
-\ holds a typed pointer from the start; the writer exits after one image and
-\ never unmaps one.
+\ Images are byte-identical across ASLR runs: the region is copied to scratch and the copy rebased
+\ to base 0 with the loader's own walks (snap-rebase -> src/habu/habu2.f LSNAPRBD). Rewriting the
+\ live region would break the call chains this writer runs. Each scratch is fresh `map-anon`
+\ storage, never unmapped: the writer exits after one image.
 PTR-VARIABLE SNC-A
 
 : SNC-PTR ( -- ptr u8 ) SNC-A @ ;
@@ -199,13 +165,10 @@ PTR-VARIABLE SNC-A
    snap-rebase ;
 
 
-\ Live-state cells inside the persisted DATA region differ per run (ASLR
-\ text base, stack, argv, cached label addresses) and are all overwritten
-\ by the loader/startup (EM-SNAPSHOT-RESTORE + EM-STARTUP-RUNTIME-STATE,
-\ src/habu/habu2.f). Zero them in a scratch copy so images are
-\ byte-identical. tools/hb-build-repl-twin-test.f builds one program twice
-\ and compares the images, so a new live cell left out of this list fails
-\ that row loudly.
+\ Live-state cells in DATA (ASLR text base, stack, argv, cached label addresses) differ per run
+\ and are rewritten by habu2.f EM-SNAPSHOT-RESTORE and EM-STARTUP-RUNTIME-STATE; they are zeroed
+\ in the copy. tools/hb-build-repl-twin-test.f builds one program twice and compares the images,
+\ so a live cell missing here fails that row.
 PTR-VARIABLE SND-A
 
 : SND-PTR ( -- ptr u8 ) SND-A @ ;
@@ -218,9 +181,6 @@ PTR-VARIABLE SND-A
 : SND-ZERO-CELL ( n -- )
    SND-PTR + CELL-VIEW 0 swap ! ;
 
-\ The DATA offset of a cell is a BYTE distance, so both ends are taken as byte
-\ pointers before the subtraction: `BYTE-VIEW` makes both operands `ptr u8`, as
-\ the AOT linker's DATA-PTR does, and says nothing about what either cell holds.
 : SND-ZERO-OFF ( ptr a -- n )
    BYTE-VIEW data-base BYTE-VIEW - ;
 
@@ -231,9 +191,8 @@ PTR-VARIABLE SND-A
    {: record:ptr :}
    record NATIVE-BODY-ABI:PENDING-TAKE cells + SND-ZERO-OFF SND-ZERO-CELL ;
 
-\ FS-ABI and FS-MUT-ABI hold only per-call filesystem scratch. Their path,
-\ stat and descriptor bytes describe the build process, not the application.
-\ Clear the copied bands, leaving caller-owned buffers and the live task alone.
+\ FS-ABI and FS-MUT-ABI hold only per-call filesystem scratch: path, stat and descriptor bytes of
+\ the build process. Caller-owned buffers and the live task stay.
 : SND-ZERO-BAND ( n n -- ) {: off:n bytes:n :}
    bytes 0 ?do off i + SND-ZERO-CELL CELL +loop ;
 
@@ -241,9 +200,8 @@ PTR-VARIABLE SND-A
    FS-MUT-ABI:START FS-MUT-ABI:BYTES SND-ZERO-BAND
    FS-ABI:START FS-ABI:BYTES SND-ZERO-BAND ;
 
-\ STRING-ABI and FMT-ABI hold the SB builder and the integer render buffer: the
-\ last text the build process formatted, such as a path or a cache count. A
-\ restored process starts with an empty builder, so clear both copied bands.
+\ STRING-ABI and FMT-ABI hold the SB builder and the integer render buffer: the last text the
+\ build process formatted. A restored process starts with an empty builder.
 : SND-ZERO-TEXT-SCRATCH ( -- )
    STRING-ABI:START STRING-ABI:BYTES SND-ZERO-BAND
    FMT-ABI:START FMT-ABI:BYTES SND-ZERO-BAND ;
@@ -274,11 +232,7 @@ PTR-VARIABLE SND-A
    LOCNAMES LOC-RECS LOC-REC * SND-ZERO-BAND
    LOCDEPTHS LOC-RECS cells SND-ZERO-BAND ;
 
-\ The return-stack window used to live at RSTK-OFF..RSTK-END inside this image
-\ and had to be zeroed: stale slots held dangling arena pointers from the build
-\ (proven: two old-USIGS pointers survived there). It is a guarded mapping
-\ outside DATA now, so the image carries none of it -- only the base cell, which
-\ SND-ZERO-LIVE clears with the other per-process addresses.
+\ The return-stack window is a guarded mapping outside DATA: the image holds only its base cell.
 
 : SND-ZERO-LIVE ( -- )
    RBASE-CELL SND-ZERO-CELL   S0-CELL SND-ZERO-CELL
@@ -373,32 +327,13 @@ PTR-VARIABLE SND-A
 : SND-COPY ( -- )
    data-base SND-PTR SDL @ BYTE-COPY ;
 
-\ ---- persisted cells that hold a JIT-region address --------------------------
-\ Everything inside the region copy is already canonicalised: pointers into the
-\ region are folded to the RBASE-VA sentinel and call displacements to the
-\ canonical REGION-OFF distance. Some cells in DATA hold region addresses too --
-\ every deferred word's dispatch cell, the three engine hooks and the compiler
-\ dispatch cell -- and DATA
-\ is copied verbatim, so before this they arrived at a restoring run still
-\ pointing at the writing run's region.
-\ That was survivable only while the region had a fixed address. It is not now:
-\ the loader takes whatever base the kernel gives it (dot
-\ habu-relocate-snapshot-region-752042fe), so a stale cell is wrong in every run.
-\ Measured under lldb on a restored image before this: `ldr x16,[x9]` then
-\ `blr x16` in a compiled deferred call jumped to 0x105a1dd30, the writing run's
-\ address for the target, with the live region at 0x103550000 -- an immediate
-\ SIGSEGV on the first deferred call.
-\ Which cells those are is never guessed from what a cell contains: an ordinary
-\ integer may hold any value, including one that looks exactly like a region
-\ address. The engine declares each cell where its kind is decided -- `defer` when
-\ it allocates a dispatch cell, `is` when it stores into one, and cold boot for
-\ the fixed hook/dispatch cells -- and records the DATA offset in the table this pass
-\ walks. The loader (habu2.f EM-SNAPSHOT-RESTORE) inverts exactly this list from
-\ exactly the same table.
-\ These four words belong to this package, the snapshot writer, rather than to
-\ SNAP-RELOC: the engine owns the declaring and the restoring, and the writer owns
-\ the one pass that runs over its own scratch copy. They read the table's shape
-\ from SNAP-RELOC and nothing else.
+\ The region copy is canonical (region pointers folded to RBASE-VA, call displacements to
+\ REGION-OFF), but DATA is copied verbatim, and some of its cells hold region addresses: every
+\ deferred word's dispatch cell, the three engine hooks and the compiler dispatch cell. The loader
+\ maps the region wherever the kernel puts it, so a
+\ stale cell faults on the first deferred call.
+\ A cell is never chosen by its contents: `defer`, `is` and cold boot record each DATA offset in
+\ the SNAP-RELOC table, which this pass and habu2.f EM-SNAPSHOT-RESTORE both walk.
 : SND-XT-CELL@ ( n -- n ) SND-PTR + CELL-VIEW @ ;
 : SND-XT-CELL! ( n n -- ) SND-PTR + CELL-VIEW ! ;
 
@@ -414,13 +349,10 @@ PTR-VARIABLE SND-A
 
 : SND-XT-DATA? ( n -- bool ) SNAP-RELOC:XTCELL-DATA-TAG and 0 <> ;
 
-\ The offset is about to index this writer's scratch copy of DATA, so it has to
-\ name a whole cell inside DATA before it is used for anything. The same band the
-\ declaration and the loader enforce; refusing here means a bad row can never
-\ reach an image, and the writer never reads or writes outside its own copy.
-\ The unsigned bound is split in two because this side is checked Habu with
-\ signed cells: a negative offset fails the first test rather than wrapping.
-\ Containment only -- alignment is deliberately not required (src/habu/layout.f).
+\ The offset indexes the scratch copy, so it must name a whole cell inside DATA, the band the
+\ declaration and the loader enforce. The bound is split in two because checked cells are signed:
+\ a negative offset fails the first test. Containment only; alignment is not required
+\ (src/habu/layout.f).
 : SND-XT-CELL-OK? ( n -- bool ) {: cell:n :}
    cell 0 < if 0 0= 0= exit then
    cell SNAP-RELOC:XTCELL-OFF-MAX > 0= ;
@@ -499,18 +431,12 @@ CAST: PROCESS-CELLS-XT ( n -- [ [ ptr n -- ] -- ] )
    SNC-COPY
    SNC-CANON ;
 
-\ ---- the heap section: its bytes, or the cell grid when that is smaller ------
-\ Everything the stream restores above DATA-START is heap: tables `allot`ed at
-\ their capacity, registries, arenas and the application's own storage. Most
-\ of it is zero, and in the grid form (src/habu/cell-grid.f) a zero cell costs
-\ one bitmap bit, or nothing when its whole group is zero. The writer measures
-\ both forms on the canonical copy and stores the grid only when it is
-\ smaller, so a dense heap is never enlarged; the trailer's heap field records
-\ the choice and src/habu/habu2.f EM-SNAPSHOT-DECODE-HEAP lays the grid over
-\ zeros. This omits zero bytes from the file; it removes no allocation, and
-\ the restored heap is the same extent, byte for byte.
-\ The grid cannot be measured before the copy exists, so it runs after
-\ CANON-DATA, and its scratch is mapped at the size of what it holds.
+\ The heap section is its bytes, or the cell grid when that is smaller.
+\ Heap is everything the stream restores above DATA-START. The writer measures the raw and grid
+\ (src/habu/cell-grid.f) forms on the canonical copy and stores the smaller; the trailer's heap
+\ field records the choice and habu2.f EM-SNAPSHOT-DECODE-HEAP lays the grid over zeros. No
+\ allocation is removed: the restored heap is the same extent, byte for byte. The grid needs the
+\ copy, so it runs after CANON-DATA.
 variable SBL                         \ flat bitmap bytes, ending at the last present cell's byte
 variable SVL                         \ value bytes of the present cells
 PTR-VARIABLE SBM-A                   \ flat bitmap scratch
@@ -527,9 +453,8 @@ PTR-VARIABLE SGR-A                   \ grid stream scratch
 : HEAP-CELLS ( -- n )
    HEAP-BYTES CELL-GRID:CELL-BYTES 1- + CELL-GRID:CELL-BYTES / ;
 
-\ One heap cell of the canonical copy. The grid rounds the heap up to whole
-\ cells, and the bytes that adds lie above the exact extent: they read as zero,
-\ and the loader refuses a cell that says otherwise.
+\ The grid rounds the heap up to whole cells; the added bytes lie above the exact extent, read as
+\ zero, and the loader refuses a cell that says otherwise.
 : HEAP-CELL@ ( n -- n ) {: c:n :}
    DATA-START c CELL-GRID:CELL-BYTES * + {: off:n :}
    SND-PTR off + CELL-VIEW @ {: v:n :}
@@ -541,7 +466,6 @@ PTR-VARIABLE SGR-A                   \ grid stream scratch
    SBM-PTR c CELL-GRID:CELL-BITS / + {: at:ptr :}
    at c@  1 c CELL-GRID:CELL-BITS mod lshift or  at c! ;
 
-\ The flat bitmap, the value bytes and the bitmap's length, in one pass.
 : HEAP-SCAN ( -- )
    0 SVL !  0 SBL !
    HEAP-CELLS 0 ?do
@@ -597,12 +521,10 @@ defer BEFORE-CLOSE ( n -- )
 
 CLOSE-DEFAULT
 
-\ The image is written to a sibling of the output path and renamed over it only
-\ after the write, the close and the signature succeed, so a failure never
-\ leaves a partial or unsigned executable where a later run finds it. The
-\ sibling is created exclusively under a per-process name (src/lib/fs-mutate.f
-\ FS:RESERVE-SIBLING), so a concurrent writer of the same output stages its own.
-\ It is chosen after CANON-DATA copies DATA, so the image never holds its name.
+\ The image is written to a sibling and renamed over the output path only after the write, close
+\ and signature succeed, so a failure never leaves a partial or unsigned executable. The sibling
+\ is created exclusively under a per-process name (src/lib/fs-mutate.f FS:RESERVE-SIBLING), so a
+\ concurrent writer stages its own; it is chosen after CANON-DATA, so the image never holds its name.
 create STAGED PATH-CAP allot
 variable STAGED-U
 
@@ -658,14 +580,11 @@ variable STAGED-U
    SNAPSHOT-FORMAT:VERSION TRL SNAP-TRL-VERSION + ! ;
 
 : WRITE-BYTES ( -- )
-   \ trailer (SNAP-TRL-BYTES): magic, heap form, dict count, region length,
-   \ data length, format version - the region stream below is the
-   \ canonicalized copy. The version is the LAST field so the magic and the four
-   \ older fields sit where the legacy trailer put them, which is what lets the
-   \ loader tell a legacy image apart from a corrupt one.
+   \ The version is the trailer's last field, so the magic and older fields keep the positions that
+   \ let the loader tell an older-format image from a corrupt one.
    FILL-TRL
-   \ stream: header, engine text, live dict rows, code, structured DATA, trailer
-   \ (the heap section last in DATA, raw or grid as SHF says)
+   \ stream: header, engine text, live dict rows, code, DATA (heap section last, raw or grid as
+   \ SHF says), trailer
    STAGE
    MBUF {: hdr:ptr :}
    SNAP-EXTRA-PTR {: extra:ptr :}

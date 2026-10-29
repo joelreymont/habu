@@ -1,50 +1,11 @@
-\ aot-owned-cells.f - THE list of engine runtime cells a stripped image OWNS.
-\
-\ A stripped AOT image (src/habu/aot-lib.f) restores only the application's own
-\ DATA window, so every engine cell below that window reads zero out of the fresh
-\ anonymous mapping, and src/habu/aot-closure.f refuses an image whose code names
-\ one: reading it would silently answer that zero.
-\
-\ SOME OF THOSE CELLS ARE NOT PERSISTED DATA AT ALL. They are RUNTIME INPUTS, the
-\ way argv is - the environment vector the kernel hands this process - or state
-\ that starts empty in every runtime instance. A stripped entry can own such a
-\ cell exactly as it already owns x20, S0-CELL and DP-CELL: it publishes the ones
-\ that carry a value and leaves the rest at the mapping's zero, which is what the
-\ engine's own entry does (src/habu/habu2.f EM-DATA-INIT).
-\
-\ AND SOME ARE DATA THAT MUST TRAVEL. A baked table the application reads - the
-\ digits of the i64 bounds, SHA-256's round constants, or FFI declaration
-\ metadata - holds a value no entry can recompute and no fresh mapping can
-\ supply. Such a cell is CARRIED:
-\ the claim names it WITH ITS BYTE LENGTH, src/habu/aot-lib.f CARRY-CELLS copies
-\ those bytes into the carried run inside the application's window
-\ (src/habu/aot-window-latch.f CARRY-RESERVE, so the image writes them as part of
-\ its own data blob), and aot-closure.f CARRIED-TARGET maps every spelled address
-\ inside [cell, cell+length) to the copy plus its interior offset - the same
-\ target map a re-interned literal goes through. No entry code runs for a carried
-\ cell and nothing below the window is written.
-\
-\ THE LIST IS AT THE BOTTOM OF THIS FILE. A cell is on it because it is NAMED
-\ there - never because of its value, its address, or the file it lives in.
-\ aot-closure.f CLAIMED-CELL? admits the bytes a claim declares - one cell, or
-\ the buffer a length names - and refuses every other cell below the window with
-\ the diagnostic it always gave; aot-lib.f EMIT-OWNED-CELLS emits the
-\ initialisation each claim declares. One table, two readers, so the walker and
-\ the entry cannot disagree about a cell.
-\
-\ WHY THE LIST IS HERE AND NOT IN THE ENGINE, BESIDE THE CELLS IT NAMES. A claim
-\ is a DATA offset, and an offset computed while the engine's own prefix loads
-\ does not survive the capture that makes an engine: the prefix is compiled into
-\ the BUILDING HOST's DATA, millions of bytes above that host's base, and the
-\ image keeps only the captured span, so a cell claimed at prefix-load time
-\ records the host's offset and not the image's. A code-spelled address is
-\ relocated by the capture; a number in a raw cell is
-\ not. The offset therefore has to be taken from the LIVE cell, in the process
-\ that links - which is this one. It is the linker's question in any case: which
-\ engine cells a stripped entry may own is AOT policy, and src/core and src/os do
-\ not otherwise know that AOT exists.
-\ These runtime owners are baked into the native engine. Loading libraries here
-\ would put their data before the application's capture window.
+\ aot-owned-cells.f - the engine cells below the window a stripped image owns.
+\ aot-closure.f refuses every other below-window cell an image names: it would read the fresh
+\ mapping's zero. A cell is owned because a claim here names it, never by value, address or file;
+\ aot-closure.f CLAIMED-CELL? and aot-link-arm.f EMIT-OWNED-CELLS read this one table.
+\ Offsets come from the live cell in the linking process: one taken while the engine prefix loads
+\ records the building host's DATA offset, which the capture does not relocate.
+
+\ No other requires: a library loaded here would put its data before the application's window.
 require src/habu/layout.f
 require src/habu/xref.f
 
@@ -55,8 +16,8 @@ private
 $2D68 constant OWNED-SOURCE-CELL
 $2D70 constant OWNED-SOURCE-SIZE-CELL
 
-\ FFI controls and the table allocations latched at the application boundary
-\ are visited together. Linker-only declarations may grow the live tables.
+\ The FFI tables as latched at the application boundary; linker-only declarations may grow the
+\ live ones.
 DYNAMIC-BUFFER OFFS n
 DYNAMIC-BUFFER KINDS n
 DYNAMIC-BUFFER LENS n
@@ -68,24 +29,14 @@ PTR-VARIABLE FFI-LIB-TABLE
 variable FFI-FN-CAP
 variable FFI-LIB-CAP
 
-\ FRESH is 0, IMAGE-BASE is 1, ENTRY-XT is 2, TEXT-BASE is 3,
-\ CARRIED-CELLS is 4 and CARRIED-BYTES is 5.
-\ The kind is stored because it is what the entry emitter switches on; deriving
-\ it back from the cell would be a second answer.
-\
-\ A claim records the cell as a DATA ADDRESS IN THE LINKER'S INTEGER DOMAIN - the
-\ domain BLOB-SRC/BLOB-END and every recorded chain value live in
-\ (src/habu/aot-window-latch.f HERE-N computes a cursor the same way). DATA is one
-\ mapping fixed at DATA-VA, so the offset from data-base plus that base
-\ IS the address, by ordinary checked pointer arithmetic; nothing here holds a
-\ pointer in a raw cell (dot habu-refuse-a-ptr-5ad2734e).
-\
-\ EVERY CLAIM CARRIES A BYTE LENGTH AND EVERY READER READS IT: one cell for the
-\ kinds that name a single cell, the declared extent for CARRIED and
-\ FRESH-BYTES. The length is the claim's EXTENT - aot-closure.f CLAIMED-AT?
-\ admits [cell, cell + length) whatever the kind, because a buffer is reached at
-\ an interior offset as often as at its head - and for CARRIED it is also the
-\ bytes to copy and the range a spelled address is mapped through.
+\ Kinds: FRESH 0, IMAGE-BASE 1, ENTRY-XT 2, TEXT-BASE 3, CARRIED-CELLS 4, CARRIED-BYTES 5; the
+\ entry emitter switches on the stored kind. Runtime inputs (argv, environment, per-instance state)
+\ are FRESH or published by the entry; CARRIED cells hold baked values no entry can recompute.
+\ OFFS is a DATA address in the linker's integer domain, that of BLOB-SRC/BLOB-END: offset from
+\ data-base plus DATA-VA. No raw cell holds a pointer.
+\ LENS is the claim's extent: aot-closure.f CLAIMED-AT? admits [cell, cell+len) for every kind, since
+\ a buffer is reached at interior offsets; for CARRIED it is also the bytes copied. The length is
+\ declared: nothing measures a `create` body from the dictionary.
 : CLAIM ( ptr a n n -- ) {: c:ptr k:n len:n :}
    COUNT @ 1+ {: rows:n :}
    rows OFFS-RESERVE  rows KINDS-RESERVE
@@ -98,39 +49,27 @@ variable FFI-LIB-CAP
 
 public
 
-\ The fresh mapping's zero IS this cell's correct starting value, so the entry
-\ publishes nothing for it: either the word that reads it writes it first within
-\ one call, or zero is the empty state this engine itself boots with.
+\ Zero is the cell's correct start: its reader writes it first within one call, or zero is the
+\ engine's own boot state. The entry publishes nothing.
 : FRESH ( ptr a -- ) 0 8 CLAIM ;
 
-\ A BUFFER owned by the same rule, with its span declared: the entry publishes
-\ nothing here either, and every address inside the declared bytes is admitted
-\ because a buffer is reached at an interior offset as often as at its head. The
-\ length is the declaration, as it is for CARRIED: nothing here measures a
-\ `create` body from the dictionary.
 : FRESH-BYTES ( ptr a n -- ) {: c:ptr len:n :}
    len 0 <= if s" aot: a fresh claim needs a positive byte length" 74 die then
    c 0 len CLAIM ;
 
-\ The entry publishes this image's own DATA base in the cell - the value the
-\ declaring file stores into it when the engine loads.
+\ The entry publishes the image's DATA base, the value the declaring file stores at engine load.
 : IMAGE-BASE ( ptr a -- ) 1 8 CLAIM ;
 
-\ The entry publishes the address of the word this image starts - the token an
-\ application image's own source stores with APP-IMAGE:START!. A stripped image
-\ has no entry record to store it, so the entry does it for itself.
+\ The entry publishes the xt of the image's start word, which a full image stores with
+\ APP-IMAGE:START!; a stripped image has no entry record to store it.
 : ENTRY-XT ( ptr a -- ) 2 8 CLAIM ;
 
-\ The entry publishes this image's own text CONTENT base in the cell - the value
-\ the engine's own entry stores there (src/habu/habu2.f EM-DATA-INIT), which is
-\ the address of the image's first instruction.
+\ The entry publishes the image's text content base, as habu2.f EM-DATA-INIT does for the engine.
 : TEXT-BASE ( ptr a -- ) 3 8 CLAIM ;
 
-\ THE NAMED BYTES TRAVEL. The linker copies [cell, cell+length) into the window's
-\ carried run and records where it put them; the walker maps an address inside
-\ that range to the copy. The entry publishes nothing - the bytes arrive in the
-\ image's data blob like the application's own. The length is the declaration:
-\ nothing here measures a `create` body from the dictionary.
+\ aot-common.f CARRY-CELLS copies the bytes into the window's carried run (sized by
+\ aot-window-latch.f CARRY-RESERVE); aot-closure.f CARRIED-TARGET maps addresses in the range to
+\ the copy. The entry publishes nothing.
 : CARRIED-CELLS ( ptr a n -- ) {: c:ptr len:n :}
    len 0 <= len CELL mod 0<> or if
       s" aot: a carried cell claim needs whole cells" 74 die then
@@ -140,9 +79,8 @@ public
    len 0 <= if s" aot: a carried claim needs a positive byte length" 74 die then
    c 5 len CLAIM ;
 
-\ FFI and TASK are baked into the C2 engine. An application's own require may
-\ instead load either one inside its window. Claim a field only when its source
-\ is entirely below the window; in-window DATA already travels with the image.
+\ FFI and TASK are baked into C2, but an application may load either inside its window: claim a
+\ field only when it lies wholly below the window.
 : ENGINE-DATA? ( ptr u8 n -- bool ) {: c:ptr len:n :}
    c BYTE-VIEW data-base BYTE-VIEW - DATA-VA VA>N + len +
    ENGINE-WINDOW @ <= ;
@@ -165,8 +103,7 @@ public
 : CARRIED? ( n -- bool ) {: i:n :} i KINDS @ 4 = i KINDS @ 5 = or ;
 : CARRIED-CELLS? ( n -- bool ) KINDS @ 4 = ;
 
-\ Where the linker put a carried claim's copy, in the same integer domain: zero
-\ until CARRY-CELLS runs, which is before anything maps an address into it.
+\ Where CARRY-CELLS put the copy, same domain; zero until it runs, before any address maps into it.
 : DEST ( n -- n ) DESTS @ ;
 : DEST! ( n n -- ) {: at:n i:n :} at i DESTS ! ;
 
@@ -180,8 +117,8 @@ CAST: ENV-CELLS-XT ( n -- [ [ ptr u8 -- ] -- ] )
    dup XREF-FOUND? 0= if drop exit then
    XREF-START ENV-CELLS-XT [: FRESH ;] swap execute ;
 
-\ Visit the same extents when reserving the carried run and collecting claims.
-\ Only collection inspects live process resources or publishes claim rows.
+\ CARRY-SIZE and COLLECT visit the same extents through this walk; only COLLECT publishes claim
+\ rows or inspects live process resources.
 : TABLES ( [ ptr u8 n -- ] [ ptr u8 n -- ] [ ptr u8 n -- ] -- )
    {: cell-keep byte-keep fresh :}
    STR-MAX-I64$ STR-I64-DIGITS byte-keep execute
@@ -219,104 +156,33 @@ public
 
 private
 
-\ ---- THE LIST -----------------------------------------------------------------
-\ The engine's environment (src/os/env-base.f). ENV-DATA-PTR holds the DATA base
-\ that ARGC-CELL/ARGV-CELL/ENVP-CELL are read through, so the entry republishes it
-\ together with those three startup cells themselves. GETENV and ENV=? keep
-\ their lookup cursors on each invocation's stack.
-\ ENV-INPUT's observer starts empty: source tracking belongs to the build process.
-\
-\ The dynamic-storage registry (src/core/dynamic-storage.f), which every
-\ DYNAMIC-BUFFER declaration reaches, is named through its own package. Its four
-\ cells are private and stay private: a
-\ private word of a baked package is reachable from outside it neither by
-\ qualified name nor by reopening the package (measured 2026-09-18: E-UNDEFINED
-\ for both spellings). DYNAMIC-STORAGE:OWNED-CELLS hands each of the four to the
-\ claim below in turn, which keeps the rule intact - a cell is on this list
-\ because a name put it there.
-\
-\ APP-ENTRY:XT-CELL (src/habu/layout.f) is the cell that says THIS PROCESS IS AN
-\ APPLICATION AND NOT THE ENGINE. An image saved with APP-IMAGE:START! writes the
-\ entry word's token into it, and the words that ask the question read it there:
-\ src/os/script-argv.f SCRIPT-ARG-START takes the application convention -
-\ argument 0 is argv[1] - exactly when it is non-zero. A stripped image is an
-\ application with no entry record to write it, so its entry writes its own: the
-\ address of the word the image starts, which is the same token by the same
-\ meaning. Left at the mapping's zero the image answered the engine's source-list
-\ convention and reported its SECOND argument as argument 0.
-\
-\ EXIT-HOOK-CELL (src/habu/layout.f) is the process-exit vector the stripped
-\ entry calls before its own exit(0). ZERO IS ITS CORRECT START - a new process
-\ has registered no hook - and the library that wants one arms it inside the
-\ running image: src/lib/fs-mutate.f stores its exit hook from the same FS:CLEANUP+
-\ call that registers a path, so an application that registers nothing leaves
-\ the vector at the mapping's zero and exits exactly as it did before. The claim
-\ is what lets a stripped image NAME the cell: without it the arm word's
-\ `data-base EXIT-HOOK-CELL +` is an address below the window and the image is
-\ refused, so a stripped application could register a temp tree and never clean
-\ it - the very leak the vector exists to close.
-\
-\ THE CALLBACK BAND (src/habu/layout.f CB-XDS, CB-BAND-BYTES) is eight cells
-\ every region carries, each correct at zero: no published frame, a free owner,
-\ no marshal frame, and no slot table until src/lib/ffi-callback.f ENTRY and
-\ src/lib/task.f CONTEXT-BIND publish theirs in the running image. The FFI cores and
-\ the callback thunk reach the band x20-relative; the claim is for the source
-\ that spells it, src/lib/ffi-callback.f's `data-base CB-FRAME +`.
-\
-\ RBASE-CELL (src/habu/layout.f) is the live text CONTENT base - the address of
-\ the image's first instruction, which the engine's own entry stores at boot
-\ (src/habu/habu2.f EM-DATA-INIT) and the `rbase` primitive reads back. It is a
-\ runtime input exactly as argv is: one process's text base is no other's. NO
-\ CODE SPELLS THE CELL'S ADDRESS, so neither the closure walk's address scan nor
-\ the window's cell scan can reach it - `rbase` compiles inline as an
-\ x20-relative load - and an image that left it at the mapping's zero was built
-\ without a word of complaint and crashed when it ran.
-\
-\ EVERY FOREIGN CALL IN A STRIPPED IMAGE GOES THROUGH IT. src/os/linux/layout.f
-\ DLOPEN-SLOT/DLSYM-SLOT locate the loader's two GOT slots as rbase - CODE-OFF +
-\ the text size in the image header + the slot offset, and the image carries
-\ those slots: src/os/linux/elf.f emits a dlopen and a dlsym R_AARCH64_GLOB_DAT
-\ for them in every image it writes. With the cell at zero, the getpid reduction
-\ (`FUNCTION: GETPID-CALL getpid ( -- n ) ;FUNCTION`) read address -$FA0 and took
-\ SIGSEGV inside DLSYM-SLOT's `@`; with the cell published the same image
-\ resolves the symbol and runs.
-\
-\ THE i64 BOUND DIGITS (src/lib/string.f) are the first carried cells: STR-PARSE-POS
-\ compares its input against STR-MAX-I64$ and STR-PARSE-NEG against
-\ STR-MIN-I64$, both STR-I64-DIGITS bytes, and src/lib/fmt.f INT>NUM COPIES
-\ STR-MIN-I64$ for the one integer with no positive magnitude. src/lib/string.f is
-\ baked, so both tables sit below every window and any program that formats or
-\ parses an integer reaches one.
-\
-\ SHA-256 (src/core/sha256.f) is baked because its read-only KK and HH0
-\ tables serve digest contexts owned by callers. The digest implementation
-\ itself keeps no mutable cell below the window.
-\ THE IMAGE-LIFECYCLE REGISTRY (src/lib/image-lifecycle.f) is the second site a
-\ stripped image is refused at, once the path scratch below lets it open a file:
-\ its private lock, its three counters and the bases of its hook, persistent
-\ and process-cell tables, claimed fresh for the reason the DYNAMIC-STORAGE
-\ registry's four cells are - a new process has registered nothing, so an open
-\ lock, three zero counts, no hook mapping and empty persistent and process
-\ tables are its correct start, and that is the zero a fresh anonymous mapping
-\ holds. IMAGE-LIFECYCLE:COUNT takes the lock and reads two counters; REGISTER,
-\ REGISTER-PERSISTENT, PROCESS-CELL, PROCESS-CELLS and PREPARE spell the bases,
-\ and nothing spells a cell behind a base, because the accessors compute the
-\ slot by arithmetic. Registering stores a quotation through `xt!`,
-\ whose declaration half a stripped image drops at link (aot-closure.f
-\ AOT-DECLARATION?); before that drop the claims below would have admitted the
-\ cells and the build was still refused at `site=xt!`.
-\ PZB (src/core/util.f) is the tree's one path scratch, claimed fresh with its
-\ PATH-CAP + 1 bytes: PATHZ writes the caller's path and its NUL into it and
-\ PATH0 hands it to the caller within that one call, so every byte it reads it
-\ wrote first.
-\
-\ NOT ON THE LIST, and refused as loudly as before, is every other engine cell
-\ below the window. src/os/env-base.f's own TMP-PATH cursors and buffer (TPB, TPP,
-\ TPQ, TPS, TPU) are the nearest miss: same file, same transient character, no
-\ claim - so a stripped program calling TMP-PATH still gets the
-\ outside-the-restored-span refusal, and tools/hb-build-stripped-test.f
-\ HBT-STRIPPED-UNOWNED-CELL pins that. TPB is a `create` table like the carried
-\ ones and is not carried either: a table travels because it is named here.
+\ ENV-DATA-PTR (src/os/env-base.f) is the DATA base ARGC-CELL/ARGV-CELL/ENVP-CELL are read through;
+\ the entry republishes it. GETENV and ENV=? keep their cursors on the stack. ENV-INPUT's observer
+\ starts empty: source tracking belongs to the build process.
+\ DYNAMIC-STORAGE's four cells stay private: a private word of a baked package is unreachable by
+\ qualified name and by reopening the package (E-UNDEFINED for both), so
+\ DYNAMIC-STORAGE:OWNED-CELLS hands them over.
+\ APP-ENTRY:XT-CELL non-zero means this process is an application: src/os/script-argv.f
+\ SCRIPT-ARG-START then takes argv[1] as argument 0. Left at zero, a stripped image reported its
+\ second argument as argument 0.
+\ EXIT-HOOK-CELL is zero until a library arms it (src/lib/fs-mutate.f FS:CLEANUP+). Unclaimed, the
+\ arm word's address is below the window and a stripped image that registers a temp tree is refused.
+\ The callback band (layout.f CB-XDS, CB-BAND-BYTES) is eight cells correct at zero until
+\ src/lib/ffi-callback.f ENTRY and src/lib/task.f CONTEXT-BIND publish theirs; the cores reach it
+\ x20-relative, the claim is for ffi-callback.f's `data-base CB-FRAME +`.
+\ RBASE-CELL: `rbase` is an x20-relative load, so no code spells the cell and neither closure scan
+\ reaches it; left at zero an image linked cleanly and crashed. Every foreign call depends on it:
+\ src/os/linux/layout.f DLOPEN-SLOT/DLSYM-SLOT locate the loader's GOT slots from rbase.
+\ The i64 bound digits (src/lib/string.f, baked) are read by STR-PARSE-POS, STR-PARSE-NEG and
+\ src/lib/fmt.f INT>NUM: any program that parses or formats an integer reaches them.
+\ SHA-256's KK and HH0 (src/core/sha256.f) are read-only tables serving caller-owned contexts.
+\ IMAGE-LIFECYCLE (src/lib/image-lifecycle.f): its lock, three counters and table bases are correct
+\ at zero in a new process; accessors reach slots behind a base by arithmetic, so only bases are
+\ spelled.
+\ PZB (src/core/util.f) is the one path scratch, PATH-CAP + 1 bytes: PATHZ writes it and PATH0
+\ hands it over within one call.
+\ Every other below-window engine cell is refused, including env-base.f's TMP-PATH buffers (TPB
+\ TPP TPQ TPS TPU): tools/hb-build-stripped-test.f HBT-STRIPPED-UNOWNED-CELL pins it.
 public
 
 \ Collect after the application's one-shot lifecycle cleanup, when the window

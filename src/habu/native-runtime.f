@@ -1,31 +1,20 @@
-\ native-runtime.f - the complete source-owned native runtime.
-\
-\ native-build.f evaluates this manifest inside the single AOT window.  The
-\ sources before include.f were loaded directly; replaying their paths here
-\ gives the target loader, rather than the discarded build host, authoritative
-\ ownership of the complete runtime closure.
-\
-\ WHAT BELONGS HERE is the closure of the compiler, the JIT, the REPL and the
-\ product's checked C2 storage, and on x86-64 the Habu loop that is its
-\ evaluate (src/habu/runtime-x64.f). No other package or type signature reaches
-\ the image unless one of those entry points requires it. tools/manifest-lint.f checks that
-\ against this file - every row is either a declared entry point, with its reason
-\ on the row there, or a file some file in the closure requires - so a row added
-\ here for convenience fails the lint rather than growing the binary quietly.
-\ src/lib/vector.f, a row here by choice rather than by closure, has left: nothing in
-\ the closure requires it. The debugger trio (debug-watch.f, stepper.f, debug.f,
-\ over code-bytes.f) is baked as the debugger the REPL offers, without debug.f's
-\ breakpoints on x86-64; a session reaches it with `using DEBUG` or `DEBUG:`
-\ names. src/lib/num-*.f stay, because src/lib/memory.f states the allocator's
-\ own contract in NUM roles and the compiler allocates;
-\ src/lib/adt/option.f stays, because src/lib/string.f returns option<n>; src/lib/float.f and
-\ src/lib/fmt.f stay, because src/habu/habu2.f requires fmt for number text.
-\
-\ The manifest IS the engine's boot registry, so it opens that registry here and
-\ CAPTURE-PREPARE below freezes it. Between the two, src/core/include.f keeps
-\ each row by PORTABLE name - relative to the tree - instead of canonicalising it
-\ against whatever directory this build ran in, which the emitted engine then
-\ carried byte for byte (dot habu-bake-prefix-src-1047b604).
+\ native-runtime.f - the complete source-owned native runtime: the closure of the
+\ compiler, the JIT, the REPL and the product's checked C2 storage, plus on
+\ x86-64 the Habu loop (runtime-x64.f). native-build.f evaluates it inside the one
+\ AOT window; replaying the paths of the files loaded before include.f gives the target loader ownership
+\ of the whole closure. tools/manifest-lint.f refuses a row that is neither a
+\ declared entry point (reason on the row there) nor required by the closure.
+
+\ Rows by choice: the debugger trio (debug-watch.f, stepper.f, debug.f over
+\ code-bytes.f), without debug.f's breakpoints on x86-64; src/lib/num-*.f, because
+\ src/lib/memory.f states the allocator's contract in NUM roles; src/lib/adt/option.f
+\ for src/lib/string.f's option<n>; src/lib/float.f and src/lib/fmt.f, because
+\ habu2.f requires fmt for number text.
+
+\ The manifest is the engine's boot registry: opened here, frozen by
+\ CAPTURE-PREPARE, and src/core/include.f keeps each row by its tree-relative
+\ name in between, never the build directory's path, which the emitted engine
+\ would carry byte for byte.
 
 REQUIRE-BOOT-OPEN
 s" src/core/util.f" provided

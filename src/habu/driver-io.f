@@ -1,12 +1,7 @@
-\ driver-io.f - shared fail-closed I/O for internal build drivers.
-\
-\ The whole-span descriptor write this file used to own is src/habu/fdio.f
-\ FDIO:WALL, which loads immediately before this one in every builder. It moved
-\ because it is the only part of this file a process without the image writer can
-\ use: everything below reaches MBUF, BUILD-IMAGE and the target's signer, so a
-\ booted engine cannot load this file at all. The code-signature identifiers live
-\ in src/habu/sign-id.f for the same reason: src/habu/snap-lib.f signs in a
-\ booted engine.
+\ driver-io.f - shared fail-closed I/O for internal build drivers. It reaches
+\ MBUF, BUILD-IMAGE and the target's signer, so a booted engine cannot load it;
+\ what a booted engine needs lives in src/habu/fdio.f (FDIO:WALL, loaded just
+\ before this file) and src/habu/sign-id.f.
 
 require src/habu/sign-id.f
 
@@ -28,14 +23,9 @@ variable DRV-WFD
    phase IMG-DROP
    path pathu DRV-WRITE-IMAGE-PATH ;
 
-\ The single high-level image-emission tail: assemble the current CODE into the
-\ target image, sign it with the identifier the caller names (SIGN-ID:PROG$ for
-\ a program, SIGN-ID:ENGINE$ for an engine), and write it to path. Every engine
-\ driver (stage2/build/stdin/maker/aot-lib) and tools/native-emit.f route
-\ through this one word, so exactly one BUILD-IMAGE+sign+write implementation
-\ exists. Loads after the
-\ target image writer (macho/elf + sign) in every context that includes
-\ driver-io.f.
+\ The one BUILD-IMAGE, sign and write path: every engine driver and
+\ tools/native-emit.f route through it, naming SIGN-ID:PROG$ or SIGN-ID:ENGINE$.
+\ Loads after the target image writer (macho/elf + sign).
 : DRV-EMIT-IMAGE ( ptr u8 n ptr u8 n -- ) {: sig:ptr sigu:n path:ptr pathu:n :}
    ASM-CODE BUILD-IMAGE
    sig sigu SET-SIGID CODESIG2
@@ -44,13 +34,11 @@ variable DRV-WFD
 : DRV-EXIT-OK ( -- )
    s" " 0 die ;
 
-\ Uncaught-throw boundary reporting. Driver runners catch at top level and
-\ report here so a build failure always names its throw code (proven need: an
-\ image-buffer overrun once exited 75 with no output). The exit code stays the
-\ raw throw code when kernel-representable so existing rc contracts hold (check
-\ reject 70, image-bytes bounds 75); for any other code the die primitive maps
-\ the exit status to the deterministic UNCAUGHT-RC instead of the silently
-\ masked `code & 0xFF` (which turned -2816 into rc 0).
+\ Uncaught-throw reporting at the driver boundary, so a build failure names its
+\ throw code (an image-buffer overrun once exited 75 with no output). The exit
+\ code stays the raw throw code when the kernel can represent it (check reject
+\ 70, image bounds 75); die maps any other to UNCAUGHT-RC, never `code & 0xFF`
+\ (which turned -2816 into rc 0).
 create DRV-FC 1 allot
 create DRV-FB 24 allot
 variable DRV-FV

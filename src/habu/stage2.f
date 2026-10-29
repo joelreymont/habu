@@ -1,24 +1,13 @@
-\ stage2.fs — the FIXPOINT driver: the running standalone (stage1) reads the
-\ compiler's own source from <root>/stage2-src, compiles it with the ported
-\ engine builder (ENGINE-EMIT:FORTH), wraps it in the target executable
-\ (BUILD-IMAGE), and writes the unsigned stage2 binary to <root>/stage2-got. The
-\ root is the script argument when one is given, else TMPDIR, else /tmp. The
-\ native build-fixpoint driver asserts stage2 is byte-identical to the previous
-\ native stage for the same source.
-\
-\ The driver is a package like its sibling src/habu/stdin.f, and it has to be:
-\ its source buffer cells used to be the global names SBUF/SLEN, and `SLEN` is
-\ also the line length the engine's baked line editor (src/habu/repl.f)
-\ publishes. Since the AOT seed runs at the end of the engine prefix on every
-\ boot (dot habu-decide-arm-the-5234727b), both names would land in one
-\ dictionary and the second would die `duplicate definition` before this driver
-\ read a byte.
+\ stage2.f - the FIXPOINT driver: the running standalone (stage1) compiles the
+\ compiler's source from <root>/stage2-src with ENGINE-EMIT:FORTH, wraps it with
+\ BUILD-IMAGE and writes the unsigned stage2 binary to <root>/stage2-got; root is
+\ the script argument, else TMPDIR, else /tmp. build-fixpoint asserts stage2 is
+\ byte-identical to the previous native stage. A package, as stdin.f: the AOT seed
+\ runs at every boot's prefix end, so a global SLEN would collide with repl.f's.
 package STAGE2
 private
 
-\ fixpoint I/O paths — the single knobs; the build-fixpoint driver owns artifacts
-\ This row exposes the fixed path scratch.
-\ Retirement: habu-campaign-c2-mem-c3d7662b.
+\ Fixed path scratch; the build-fixpoint driver owns the artifacts.
 create PATH-BUF PATH-CAP allot
 s" PATH-BUF" s" -- ptr u8" TRUST
 
@@ -49,8 +38,8 @@ DYNAMIC-BUFFER SRC u8   \ READ-SRC doubles it as the source needs
 $10000 constant SOURCE-START
 
 \ The size is learnt by reading, not from stat: the Gforth-built hb-stage0 runs
-\ this driver first and its primitives (bootstrap/cg/forth.fs EMIT-PRIMS) have
-\ no stat64, which a stat-sized reader met as rc 70 naming `stat64`.
+\ this driver first and its primitives (bootstrap/cg/forth.fs EMIT-PRIMS) have no
+\ stat64.
 : READ-SRC ( -- )
    SRC-PATH$ PATH0 0 0 open FD !
    FD @ 0 < IF s" stage2: cannot open source" 74 die THEN

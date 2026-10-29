@@ -1,76 +1,50 @@
-\ aot-window-latch.f - the stripped capture window's span cells and the two words
-\ that latch it, in a file that requires no lib module.
-\
-\ WHY IT IS ITS OWN FILE. The window has to open with no library visible to
-\ the application's `require` loaded. A library still loaded when the window
-\ opens is the copy the application's own `require` resolves to, so every
-\ persistent cell that
-\ library owns sits BELOW the span and aot-closure.f DATA-ADDRESS! refuses the
-\ image with "address refers to data outside the restored span". That is what any
-\ program reading the environment used to get: the linker's src/habu/app-image.f
-\ pulls in app-image-core.f, and that requires eight lib modules including
-\ src/lib/process-env.f, so GETENV's table was already below the window before the
-\ application was even read. The latch words therefore cannot live in aot-lib.f
-\ with the rest of the linker. tools/aot-builder.f loads THIS file, opens the
-\ window, loads the application, latches the span, and only then loads the linker
-\ above it. src/habu/aot-decl.f is the other lib-free candidate and is deliberately
-\ not used: it is baked into the engine (tools/bootstrap.sh SRC_COMMON,
-\ tools/build-fixpoint.f BF-APPEND-COMMON), so a change there costs three
-\ generations and buys nothing this file does not give.
+\ aot-window-latch.f - the stripped capture window's span cells and the words
+\ that latch it. It requires no lib module: a library loaded when the window
+\ opens is the copy the application's `require` resolves to, its cells sit below
+\ the span, and aot-closure.f DATA-ADDRESS! refuses the image. tools/aot-builder.f
+\ loads this file, opens the window, loads the application, latches the span,
+\ then loads the linker above it. aot-decl.f is lib-free but baked into the engine.
 require src/habu/layout.f
 require src/habu/aot-owned-cells.f
 
 package AOT-LINK
 
-\ --- persistent data region: the program's compile-time create/variable/allot/
-\ ,/s" data lives contiguously from the DATA pointer latched before user
-\ compilation to `here`; the source buffer and assembler CODE buffer are separate
-\ mmaps, so AOT-LINK never allots either into DATA. src/habu/aot-lib.f emits that
-\ span into __text and the entry maps DATA-VA and copies it back to the SAME
-\ absolute VA (DATA-VA is a fixed VA, so those addresses are
-\ load-stable). All other runtime cells stay zero from the fresh anonymous mmap,
-\ and that zero is a value only where something declares it one: x20, S0-CELL and
-\ DP-CELL get explicit init, and so does every cell named in
-\ src/habu/aot-owned-cells.f (aot-lib.f EMIT-OWNED-CELLS - the engine's
-\ environment and the dynamic-storage registry). A cell named there as CARRIED
-\ gets neither: its bytes are COPIED into the carried run below, inside this span,
-\ and travel in the blob. A cell on neither list is refused.
+\ The span is the program's compile-time data, contiguous from the DATA pointer
+\ latched before user compilation to `here`; the source buffer and assembler
+\ CODE buffer are separate mmaps. aot-lib.f emits the span into __text and the
+\ entry copies it back to the same fixed DATA-VA. Other runtime cells stay zero
+\ from the anonymous mmap, and zero is a value only where declared: x20, S0-CELL
+\ and DP-CELL get explicit init, as does every cell in aot-owned-cells.f
+\ (aot-link-arm.f EMIT-OWNED-CELLS). A cell named there as CARRIED is copied into the
+\ carried run inside this span instead. A cell on neither list is refused.
 \
-\ The span bounds are DATA addresses as integers, the domain the rest of the
-\ linker works in, and nothing dereferences them: a cell inside the span is read
-\ through aot-closure.f DATA-CELL@, which is where a DATA address becomes a
-\ pointer again.
+\ The span bounds are DATA addresses as integers; nothing dereferences them.
+\ aot-closure.f DATA-CELL@ is where a DATA address becomes a pointer again.
 variable BLOB-SRC  variable BLOB-END  variable BLOB-LEN
 
-\ The DATA cursor as one of those integers, which aot-closure.f AOT-DBASE-N and
-\ AOT-CP-N get from their numeric primitives and this one has to compute: `here`
-\ is the only pointer-valued cursor, while the whole linker - the span bounds, the
-\ recorded chain values it compares them against, the offsets it records - works
-\ in the same absolute integer domain. DATA is mapped at the fixed DATA-VA, so the
-\ offset from data-base plus that base IS the address, by ordinary checked pointer
-\ arithmetic: NOT a trust row, and deliberately not one. src/habu/aot-arm.f carries
-\ the same one-liner for package AOT-ARM, which this file's package does not load.
+\ The DATA cursor in the linker's absolute integer domain. aot-capture.f
+\ AOT-DBASE-N reads a numeric primitive; `here` is a pointer, so this computes:
+\ DATA is mapped at the fixed DATA-VA, so offset plus base IS the address, by
+\ checked pointer arithmetic and deliberately not a trust row. aot-arm.f carries
+\ the same one-liner for package AOT-ARM, which this package does not load.
 : HERE-N ( -- n ) here BYTE-VIEW data-base BYTE-VIEW - DATA-VA VA>N + ;
 
 \ The dictionary record count tools/aot-builder.f refreshes immediately before
-\ AOT-DATA-START. A saved maker restores more fixed definitions than the plain
-\ engine, and all must be below this pre-window watermark. A record above the
-\ engine's seal and below it was loaded ahead of the application - on the
-\ engine this file's own private records, on a saved maker its support and on
-\ the keyed linker image its whole load. The closure refuses to carry a
-\ reachable pre-window word that the engine does not bake.
+\ AOT-DATA-START; every fixed definition a saved maker restores is below it. A
+\ record above the engine's seal and below it was loaded ahead of the
+\ application (on the engine this file's private records, on a saved maker its
+\ support, on the keyed linker image its whole load). The closure refuses to
+\ carry a reachable pre-window word that the engine does not bake.
 variable OPENER-NDICT
 variable WINDOW-CODE-START
 
-\ The window owns a literal pool, and the application owns it only while it
-\ loads: a body interned into it lands inside the span and travels in the image.
-\ AOT-DATA-START keeps the maker's active pool and opens the application's;
-\ AOT-DATA-SPAN hands the maker its pool back, so nothing the maker compiles
-\ after the application - tools/aot-build.f and the linker - adds a byte to the
-\ image. AOT-APP-POOL selects the application's pool again for
-\ the link, which copies in the literals it reaches in other pools: AOT-DATA-SPAN
-\ closes the pool first, so it keeps room for them inside the span and opens no
-\ segment past it.
+\ The application owns the window's literal pool only while it loads: a body
+\ interned into it lands inside the span and travels in the image.
+\ AOT-DATA-START keeps the maker's pool and opens the application's;
+\ AOT-DATA-SPAN closes it and hands the maker its pool back, so nothing compiled
+\ after the application adds a byte to the image. AOT-APP-POOL selects the
+\ application's pool again for the link, which copies in the literals it reaches
+\ in other pools; the closed pool keeps room for them inside the span.
 PTR-VARIABLE MAKER-POOL
 PTR-VARIABLE APP-POOL
 
@@ -80,40 +54,28 @@ PTR-VARIABLE APP-POOL
    NSTR:ACTIVE MAKER-POOL !
    NSTR:WINDOW-OPEN
    NSTR:ACTIVE APP-POOL !
-   \ The application owns the literal bodies, not the compiler's lookup tables.
-   \ A segment's owner and row tables precede its arena. Start at the first
-   \ segment's arena so its tables stay outside capture like the compiler's
-   \ ACTIVE-P. A saved first-segment SOURCE-ROWS pointer then takes the ordinary
-   \ unrestored-DATA refusal. A later segment, opened while the application
-   \ loads, lies inside the span with its tables.
+   \ The application owns the literal bodies, not the lookup tables: a segment's
+   \ owner and row tables precede its arena, so the span starts at the first
+   \ segment's arena and its tables stay outside capture, as ACTIVE-P does. A
+   \ saved first-segment SOURCE-ROWS pointer takes the unrestored-DATA refusal. A
+   \ later segment, opened while the application loads, lies inside the span.
    0 NSTR:SOURCE-SPAN drop data-base BYTE-VIEW - DATA-VA VA>N + BLOB-SRC ! ;
 
-\ Latch the application span before loading the linker, and hand the maker back
-\ its literal pool. Keeping the application's pool active while the linker
-\ loaded carried even fs-identity's three NUL-terminated symbol strings into an
-\ empty MAIN image (HBT-SIZE-AOT).
+\ Latch the span before loading the linker and hand the maker its pool back:
+\ with the application's pool still active, the linker carried fs-identity's
+\ three NUL-terminated symbol strings into an empty MAIN image (HBT-SIZE-AOT).
 \
-\ THE CARRIED RUN: room inside the window for the engine constants the application
-\ READS. An application that FORMATS an integer, PARSES one or HASHES a string
-\ builds stripped because the constants those words reach are carried by name. A
-\ baked table an application reaches - the i64 bound digits, SHA-256's round
-\ constants - lives below the span, and the image can only get its bytes by
-\ carrying them: src/habu/aot-lib.f CARRY-CELLS copies each cell named CARRIED in
-\ src/habu/aot-owned-cells.f into this run at link time, and it is inside the
-\ window, so the copy travels in the image's own data blob with no entry code and
-\ no write below the window. It is reserved HERE, in the last moment DATA still
-\ grows inside the span: nothing it names could be given a home after the span
-\ is latched. The lib-free ownership visitor is already available for sizing;
-\ live claims are collected after the application's cleanup. The
-\ reserve is zeroed, so whatever no claim uses is invisible to aot-lib.f
-\ EACH-BLOB-RUN and costs the image nothing but address space. WHAT THE CLAIMS DO
-\ USE TRAVELS IN EVERY IMAGE: the copies are made for every link, reached or not,
-\ and their non-zero bytes are blob content like any other window byte (measured:
-\ a hello-world image carries 390 written data bytes, 64 without the copies).
-\ docs/architecture.md "Images" states what the run carries.
-\ The ownership list sizes this run from the same aligned extents it collects
-\ after cleanup. Fresh cells need no copy; in-window declarations already travel
-\ with the application. The image writes only nonzero bytes from the reserve.
+\ THE CARRIED RUN: room inside the window for baked engine constants the
+\ application reads (the i64 bound digits, SHA-256's round constants), which live
+\ below the span. aot-common.f CARRY-CELLS copies each cell named CARRIED in
+\ aot-owned-cells.f into this run at link time, so the copy travels in the
+\ image's data blob with no entry code and no write below the window. It is
+\ reserved here, the last moment DATA grows inside the span. The ownership list
+\ sizes it from the same aligned extents it collects after cleanup; fresh cells
+\ need no copy and in-window declarations already travel. The reserve is zeroed
+\ and only nonzero bytes are written, but the copies are made for every link,
+\ reached or not (measured: a hello-world image carries 390 written data bytes,
+\ 64 without them). docs/architecture.md "Images" states what the run carries.
 variable CARRY-BYTES
 variable CARRY-BASE
 PTR-VARIABLE CARRY-P
@@ -158,11 +120,9 @@ variable TASK-USER-MARK
 : AOT-APP-POOL ( -- )
    APP-POOL @ NSTR:SWITCH ;
 
-\ Opening the window is separate from linking (tools/aot-builder.f OPEN and RUN),
-\ so linking without it is a reachable mistake rather
-\ than an impossible one. It would emit an image whose data span is whatever a zero
-\ BLOB-SRC implies, which is why this refuses instead of defaulting: a real span
-\ starts at a DATA address and can never be zero.
+\ Opening the window is separate from linking (tools/aot-builder.f OPEN and
+\ RUN), so linking without it is reachable. A real span never starts at zero:
+\ a zero BLOB-SRC is refused rather than emitted.
 : AOT-WINDOW-LATCHED ( -- )
    BLOB-SRC @ 0= BLOB-END @ 0= or IF
       s" aot: capture window was not opened before the application loaded" 74 die
@@ -170,10 +130,10 @@ variable TASK-USER-MARK
 
 \ The image restores no mapping, so every dynamic control record in the span is
 \ released before the link copies it, as aot-capture.f ACAP-RELEASE-DYNAMIC does
-\ for the other captures (src/core/dynamic-storage.f RELEASE-RANGE). The runtime
-\ is the engine's, retained: records declared outside the span - the maker's,
-\ and the linker's own above it - stay live. Without it a CODEGEN:BUFFER filled
-\ at load time was refused for its text mapping (test/ffi-callback-file-cache.f).
+\ for the other captures (src/core/dynamic-storage.f RELEASE-RANGE). Records
+\ declared outside the span (the maker's, the linker's above it) stay live.
+\ Without it a CODEGEN:BUFFER filled at load time was refused for its text
+\ mapping (test/ffi-callback-file-cache.f).
 : AOT-DATA-RELEASE ( -- )
    data-base BYTE-VIEW BLOB-SRC @ DATA-VA VA>N - + BLOB-LEN @
    DYNAMIC-STORAGE:RELEASE-RANGE ;

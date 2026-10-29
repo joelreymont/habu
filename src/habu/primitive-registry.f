@@ -1,14 +1,9 @@
-\ Build-side primitive metadata, shared by every backend's engine builder. A
-\ builder registers each primitive body and engine helper it emits; this file
-\ checks each body's name against the specification table, answers the seed
-\ dictionary's name and wid cells, and refuses a kept row that no body answered.
-\ On x86-64 a row the captured runtime provides (src/habu/prims.f
-\ EPREFIX-PROVIDED!) registers the DATA cell its seeded stub jumps through, and
-\ COMPLETE-PROVIDED refuses one registered without it, or a seeded build whose
-\ captured runtime leaves the cell empty.
-\ It takes code positions only as `label` values and never emits code, so it
-\ loads without any instruction set. Names are offsets, so growing either buffer
-\ cannot invalidate an earlier row. The emitted dictionary format is unchanged.
+\ primitive-registry.f - build-side primitive metadata shared by every backend's
+\ engine builder: checks each registered body's name against the specification
+\ table, answers the seed dictionary's name and wid cells, and refuses a kept row
+\ no body answered. Code positions arrive only as `label` values and no code is
+\ emitted, so it loads without an instruction set. Names are offsets, so growing
+\ either buffer cannot invalidate an earlier row.
 require src/core/layout-buffer.f
 require src/core/bytes.f
 require src/core/roles.f
@@ -114,12 +109,9 @@ public
 
 : DIVISION-ROW@ ( -- n ) DIVISION-ROW @ ;
 
-\ THE TABLE IS WHICH PRIMITIVES EXIST. Every body registers under a name that
-\ src/habu/prims.f already specifies - the row states the effect, the body
-\ states the machine code, and neither restates the other. A body whose name has
-\ no row is a second primitive list starting, so SPEC-CHECK refuses it; the
-\ other half of the pair - a row that no body answers - is COMPLETE below. A
-\ builder checks every body, so it cannot hide an unspecified primitive.
+\ The table is which primitives exist: every body registers under a name
+\ src/habu/prims.f specifies; the row states the effect, the body the machine
+\ code. SPEC-CHECK refuses a body with no row, COMPLETE a row no body answered.
 : SPEC-CHECK ( ptr u8 n -- ) {: name:ptr size:n :}
    name size PRIM-SPEC:FIND 0 < if name size SPEC-MISSING then ;
 
@@ -151,17 +143,12 @@ public
 \ owner's checked callers compile.
 -1 constant GLOBAL-INT-WID
 
-\ An engine helper is an engine-resident routine that guarded primitives reach
-\ by a direct branch (a shared span guard, a bounds loop). HELPER-REGISTER
-\ records it as a sealed, system-private dictionary record spanning
-\ [start-addr, end-addr) and stamps it with OWNER-API-PRI-WID. That stamp is the
-\ closed registration marker: it hides the helper from raw word searches (BSWL)
-\ and gives it a sealed dictionary record, so the ahead-of-time closure walker
-\ resolves a direct branch into the helper by its exact code entry like any
-\ record (aot-closure.f FINDADDR-PTR). Only a record's exact code entry is ever
-\ followed, so the AOT image can never pull in unintended code. DNAME folds the
-\ same marker into a record's baked name/flags cell so the seed dictionary
-\ carries the internal bit for helper records.
+\ An engine helper is an engine-resident routine guarded primitives reach by a
+\ direct branch (a span guard, a bounds loop). HELPER-REGISTER records it as a
+\ sealed system-private record over [start-addr, end-addr) stamped
+\ OWNER-API-PRI-WID: hidden from raw searches (BSWL), and resolved by the AOT
+\ closure walker by its exact code entry (aot-closure.f FINDADDR-PTR), the only
+\ entry ever followed. DNAME folds the marker into the baked name/flags cell.
 : HELPER-REGISTER ( ptr u8 n n n -- )
    >LABEL swap >LABEL swap ADD OWNER-API-PRI-WID swap WID! ;
 
@@ -205,22 +192,13 @@ public
 : HELPER-WID ( n -- n )
    WID dup GLOBAL-INT-WID = if drop 0 then ;
 
-\ ---- the specification's other half ------------------------------------------
-\ SPEC-CHECK refuses a body whose name has no row. This is the converse: a row
-\ that this backend never answered. Without it a primitive could be specified,
-\ and every checked caller believe the effect, while the engine carried no code
-\ for the name - which is the same fork the table exists to close, read from the
-\ other end.
-\
-\ Run it after the last body.
-\
-\ ON X86-64 A ROW THE CAPTURED RUNTIME PROVIDES (src/habu/prims.f
-\ EPREFIX-PROVIDED!) must also register its dispatch cell: a body without one
-\ is an assembly body under the runtime's name, which a seeded build would run
-\ in place of the runtime's word. A seeded build's body is the stub alone, so
-\ its captured runtime must fill the cell; the builder's provider answers that
-\ for a cell. COMPLETE-PROVIDED checks both, after COMPLETE. An ARM64 record is
-\ its assembly body and registers no cell.
+\ COMPLETE, run after the last body, refuses a row this backend never answered:
+\ an effect checked callers believe, with no code for the name.
+\ On x86-64 a row the captured runtime provides (src/habu/prims.f
+\ EPREFIX-PROVIDED!) must also register its dispatch cell: without one its body
+\ is an assembly body under the runtime's name, which a seeded build would run.
+\ A seeded build's body is the stub alone, so its runtime must fill the cell.
+\ COMPLETE-PROVIDED checks both after COMPLETE; an ARM64 record registers no cell.
 private
 
 \ The registered body of the name, or -1.

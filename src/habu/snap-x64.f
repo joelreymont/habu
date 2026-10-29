@@ -15,7 +15,6 @@ package SNAP
    DATA-START SHL @ + SPAD @ + SDW !
    bytes SPAD @ + SNL ! ;
 
-\ Fresh anonymous storage (SCRATCH), like the other scratch regions.
 : SXT-PTR ( -- ptr u8 ) SXT-A @ ;
 
 : X64-TEXT ( -- )

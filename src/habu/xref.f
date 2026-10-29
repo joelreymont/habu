@@ -1,16 +1,9 @@
-\ xref.f - live dictionary inspection words.
-\
-\ Load after src/habu/layout.f. These words inspect the running image dictionary
-\ through dbase@/ndict@ and are intended for the REPL/debug path.
-\
-\ Checked by the engine build (tools/native-build.f), not by tools/check.f
-\ alone. This file is a cold-prefix row (src/habu/habu2.f PFX-FILES, LPXREF)
-\ that loads after src/core/check-hook.f installs the checker hook and has no
-\ `0 set-check` span, so every definition here is checked as the prefix
-\ compiles. tools/check.f refuses the file on its own, and rightly: it defines
-\ `undefine`, which the checker's source pass dispatches itself
-\ (E-RESERVED-DEFINITION, as for src/core/include.f's loader words), and every
-\ engine already holds its words (E-DUPLICATE-DEFINITION).
+\ xref.f - live dictionary inspection words for the REPL and debug path, read
+\ through dbase@/ndict@; load after layout.f. A cold-prefix row (habu2.f
+\ PFX-FILES, LPXREF) loaded after check-hook.f with no `0 set-check` span, so
+\ the engine build checks it. tools/check.f refuses it alone: it defines
+\ `undefine` (E-RESERVED-DEFINITION) and every engine already holds its words
+\ (E-DUPLICATE-DEFINITION).
 require src/habu/native-observer-cells.f
 
 \ The cold prefix loads CODE-SPAN and DOES-CLAUSE before XREF.
@@ -56,9 +49,7 @@ private
 CAST: N>REC ( n -- ptr n )
 CAST: N>U8 ( n -- ptr u8 )
 public
-\ The record at dictionary index n.
 : REC ( n -- ptr n ) XREF-REC-ADDR N>REC ;
-\ The bytes a record's cell n points at (a name).
 : PTR@ ( ptr n n -- ptr u8 ) XREF-CELL@ N>U8 ;
 : INDEXED-WL ( ptr u8 n n -- ptr n ) xref-wl-newest ;
 ;package
@@ -94,11 +85,10 @@ public
 : XREF-WORDLIST ( ptr n -- n )
    XREF-WORDLIST-SLOT XREF-CELL@ ;
 
-\ A namespace row has no code, so it reuses a word's two code-span cells for the
-\ two wordlist ids it publishes: the public wid where a word keeps its start, the
-\ private wid where a word keeps its length (habu2.f C-PACKAGE-NEW-RECORD, which
-\ writes both). Reading them by these names says which field is meant; reading
-\ them as XREF-START / XREF-RAW-LEN says the opposite of what is happening.
+\ A namespace row has no code, so it reuses a word's two code-span cells for its
+\ two wordlist ids: the public wid where a word keeps its start, the private wid
+\ where a word keeps its length (habu2.f C-PACKAGE-NEW-RECORD writes both).
+\ Reading them as XREF-START / XREF-RAW-LEN says the opposite of what is meant.
 : XREF-PKG-PUBLIC ( ptr n -- n )
    XREF-START-SLOT XREF-CELL@ ;
 
@@ -138,13 +128,12 @@ public
 : XREF-EXT? ( ptr n -- bool )
    XREF-FLAGS DNAME-EXT and 0= 0= ;
 
-\ DNAME-WIDE (dot habu-tfam-12-interpret-10b385b1): the record's recorded stack
-\ effect carries a wider-than-cell layout value, so the engine's interpret
-\ dispatch and interpret ' fail closed before such a bundle can land on the
-\ untyped interpret stack (scalar dup/drop/swap silently corrupt it). Marking
-\ is the engine prim `wide-mark` (habu1.f BWIDEMARK - the dict region is
-\ read-only at runtime, so the write needs the engine's mprotect bracket);
-\ monotonic, no unmark. This is the read-side introspection query.
+\ DNAME-WIDE: the record's stack effect
+\ carries a wider-than-cell layout value, so interpret dispatch and interpret '
+\ fail closed before such a bundle lands on the untyped interpret stack, where
+\ scalar dup/drop/swap would corrupt it. Marked by the engine prim `wide-mark`
+\ (habu1.f BWIDEMARK, inside the engine's mprotect bracket: the dict region is
+\ read-only at run time); monotonic, no unmark.
 : XREF-WIDE? ( ptr n -- bool )
    XREF-FLAGS DNAME-WIDE and 0= 0= ;
 
@@ -611,12 +600,11 @@ DOES-COMPANION-INSTALL
    XREF-SN@ XREF-SU @ XREF-FIND-INDEX
    dup 0 >= if XREF-SN@ XREF-SU @ rot UNDEFINE-FOUND else drop then ;
 
-\ Sealed-dictionary truncation guard. Once the namespace watermark
-\ is set, a dictionary FORGET/HIDE that lowers
-\ ndict below the seal-time watermark would retire engine definitions and (FORGET)
-\ rewind CP into engine code. Reject it fail-closed with ENGINE-ERROR:SEAL-VIOLATION. The
-\ zero watermark is the open build namespace; post-seal user marks at or above
-\ the watermark pass unchanged.
+\ Sealed-dictionary truncation guard: once the namespace watermark is set, a
+\ FORGET/HIDE lowering ndict below it would retire engine definitions and
+\ (FORGET) rewind CP into engine code, so it fails closed with
+\ ENGINE-ERROR:SEAL-VIOLATION. A zero watermark is the open build namespace;
+\ post-seal marks at or above the watermark pass.
 : SEAL-NDICT@ ( -- n ) data-base SEAL-NDICT-CELL + @ ;
 
 : SEAL-DICT-GUARD ( n -- n )
@@ -634,7 +622,6 @@ DOES-COMPANION-INSTALL
    XREF-SN@ XREF-SU @ CHECKER-USIGS-TRUNCATE-FROM-RAW
    idx ndict! ;
 
-\ ---- reclaiming the code arena ------------------------------------------------
 \ FORGET retires a suffix of dictionary records and gives back the corresponding
 \ code. Live XREF records decide the safe floor; relocation metadata over the
 \ released span is cleared before the code pointer moves.
@@ -672,23 +659,17 @@ CAST: INVALIDATE-XT ( n -- [ n -- ] )
 : CLEAR-MAPS ( n n -- )
    reloc-maps-clear ;
 
-\ ---- which bytes a reclamation is allowed to be about ------------------------
-\ A FLOOR IS A STATEMENT ABOUT CODE ORDER. The bytes from it upwards are handed
-\ back and rewritten, so no routine a surviving record still points at may begin
-\ there. The record array, though, is in DEFINITION order. An `EXPORT` alias can
-\ publish a late record for an earlier routine, so those orders need not agree.
+\ A FLOOR IS A STATEMENT ABOUT CODE ORDER: the bytes from it upwards are handed
+\ back and rewritten, so no routine a surviving record points at may begin
+\ there. Records are in DEFINITION order, and an `EXPORT` alias can publish a
+\ late record for an earlier routine, so a floor read off one record's start
+\ can be too low and give back a surviving routine.
 \
-\ So a floor read off ONE record's start is reading the wrong order, and the
-\ answer can be too low and give back a surviving word's routine.
-\
-\ THE FLOOR IS THEREFORE A ROUTINE'S OWN START, CHOSEN BY ADDRESS. Below it must
-\ lie every surviving routine; at it must begin a routine the sweep retires. A
-\ retired routine's start is the one address that can be named without knowing
-\ how long the routine below it is - the recorded length excludes a trailing
-\ return, so measuring the last survivor's END would be measuring the wrong
-\ number. What that costs is a routine's worth of space
-\ when the sweep's lowest retirement is not the first thing above the survivors:
-\ the bytes stay claimed, which is the harmless direction.
+\ THE FLOOR IS A RETIRED ROUTINE'S OWN START, CHOSEN BY ADDRESS: every
+\ surviving routine lies below it. A start is the one address nameable without
+\ knowing the length of the routine below it (the recorded length excludes a
+\ trailing return). The cost, when the lowest retirement is not the first
+\ routine above the survivors, is a routine's worth of bytes left claimed.
 
 \ The first address of the engine's code arena. Below it are the dictionary
 \ records themselves and, lower still, the engine's own loaded text where a
@@ -732,17 +713,13 @@ public
    data-base PEND-CELL + @ 0= 0= if E-INSTALL throw then
    data-base NATIVE-OBS-CELLS:INVALIDATE + xt! ;
 
-\ A floor above the free code slot. There is nothing above the slot to reclaim,
-\ so a caller asking for one is not truncating - it is moving the pointer the
-\ other way with a notice nobody can act on, which is the one shape that would
-\ make this word mean two things. Refused by name, and public because it is a
-\ refusal a caller can reach.
+\ A floor above the free code slot: there is nothing above the slot to reclaim,
+\ and the request would move the pointer the other way. Refused by name; public
+\ because a caller can reach it.
 7178 constant E-FLOOR
 
-\ A floor with a surviving routine at or above it. The bytes from a floor
-\ upwards are given back, so this is a caller asking for code that is still
-\ somebody's to be rewritten. It is refused before the pointer moves, so a
-\ caller that gets it has lost nothing.
+\ A floor with a surviving routine at or above it: code still somebody's would
+\ be rewritten. Refused before the pointer moves.
 7179 constant E-LIVE
 
 \ The floor of a sweep that retires every record from CUT upwards: the lowest
@@ -756,16 +733,13 @@ public
       live swap i REC-CODE MIN-ABOVE-LIVE
    loop ;
 
-\ Reclaim the code space above this address. Both relocation maps are cleared
-\ over [floor,old CP), then the pointer moves.
-\
-\ AND THE FLOOR IS HELD AGAINST THE RECORDS THAT SURVIVE IT rather than taken on
-\ the caller's word. Every caller computes its floor from something else - this
-\ file from the records a FORGET retires, src/core/generated-declaration-
-\ dictionary.f from the free slot its transaction saved - and a floor is only
-\ ever correct relative to what the dictionary still points at, which is a
-\ question this word can ask and they cannot answer for each other. The scan
-\ runs before mutation, so a refusal here leaves the arena exactly as it was.
+\ Reclaim the code space above floor: both relocation maps are cleared over
+\ [floor, old CP), then the pointer moves. The floor is held against the
+\ surviving records, not taken on the caller's word: each caller computes it
+\ from something else (FORGET from the records it retires,
+\ src/core/generated-declaration-dictionary.f from its saved free slot), and
+\ only this word can ask what the dictionary still points at. The scan runs
+\ before mutation, so a refusal leaves the arena as it was.
 : TRUNCATE ( n -- )
    {: floor:n :}
    floor cp@ > if E-FLOOR throw then

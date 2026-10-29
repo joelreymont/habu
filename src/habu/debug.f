@@ -1,22 +1,9 @@
-\ debug.f — breakpoints on compiled words. Plant a BRK #0 at a word's entry;
-\ hitting it prints habu-bp: + pc + the stack top, then either resumes (one-shot,
-\ removed) or re-arms (persistent) — the engine's SIGTRAP handler does the work.
-\   ' WORD BP+      one-shot   (fires once, then gone)
-\   ' WORD BP*      persistent (fires every call; emulates the entry prologue or
-\                   runs the first instruction out of line, else degrades to
-\                   one-shot when that instruction reads or sets PC)
-\   N ' WORD BPN    persistent, but silent for the first N hits (skip-count)
-\   ' WORD BP-      remove      BP. = list active breakpoints (addrs)
-\ Up to 8 at once. The ARM64 product bakes it, the stepper and the shared watch
-\ cells after the repl (src/habu/native-runtime.f), and the x86-64 product the
-\ two without it, having no breakpoint handler; the hb-stdin recovery engine still
-\ loads them with `require src/habu/debug.f`.
-\
-\ The three files make one package, DEBUG. Its publics are these commands, the
-\ watch commands (BPW+ BPW- BPW. BPW-CLEAR), STEP, the two installers, MAXBP and
-\ the E-BP- codes; the rest is private, so a program keeps its own FIND, FREE or
-\ STEP. A session opens `using DEBUG` once and types the commands bare, or
-\ qualifies one: `' WORD DEBUG:BP+`.
+\ debug.f - breakpoints on compiled words: a BRK #0 at a word's entry, served by
+\ the engine's SIGTRAP handler (habu2.f), which prints habu-bp:, pc and the stack
+\ top, then removes (one-shot) or re-arms (persistent) it. Up to 8. Baked on ARM64
+\ only (native-runtime.f): x86-64 has no breakpoint handler. With debug-watch.f
+\ and stepper.f it makes package DEBUG; the rest is private, so a program keeps
+\ its own FIND, FREE or STEP.
 
 require src/habu/code-bytes.f
 require src/habu/debug-watch.f
@@ -71,7 +58,6 @@ CAST: N>XT ( n -- [ -- ] )
 : CODE! ( n n -- ) {: w at :}
    w  at 4 CODE-BYTES:AT drop  BP-PATCH32 ;
 
-\ ---- trampolines --------------------------------------------------------------
 \ A persistent breakpoint whose first instruction the handler does not emulate
 \ runs that instruction out of line (src/habu/habu2.f C-BP-EMULATE): slot idx
 \ owns the two words at [BPTRAMP-CELL] + idx * 8, the instruction and a `b` back
@@ -81,7 +67,8 @@ CAST: N>XT ( n -- [ -- ] )
 \ during BPADD would hand the block to a failed REPL line's CP rollback. Each
 \ word starts as a BRK, so a stray jump traps and a capture's walk over the gap
 \ finds no fall-through into the next definition. xt! declares the cell, so a
-\ snapshot and the product capture move it with the code.
+\ snapshot and the product capture move it with the code. An instruction that
+\ reads or sets PC cannot run out of line: its breakpoint degrades to one-shot.
 8 constant TRAMP-BYTES
 $14000000 constant B-OP
 

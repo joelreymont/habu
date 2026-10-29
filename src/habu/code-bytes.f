@@ -1,46 +1,22 @@
 \ code-bytes.f - the one bounded way a checked body reads the bytes at a code
-\ address.
-\
-\ An engine-supplied code address arrives as a number: XREF-START reads one out
-\ of a dictionary record, an execution token is one, and a walk over a span
-\ counts in them. A body that wants the machine instructions there needs a byte
-\ pointer, and every reader used to mint its own by storing the number in an
-\ undeclared cell and fetching it back through ptr-field - one unchecked pun,
-\ copied per tool, unnamed and unbounded. AT replaces them: it is the only place
-\ the number becomes a pointer, and it refuses an address that is not code.
-\
-\ WHY TWO BANDS. Code lives in two disjoint places and a record may point into
-\ either. The engine's baked text sits at `rbase`, below the region mapping that
-\ the dictionary and the emitted code share; everything compiled since boot sits
-\ in that region's code band, which starts DICT-SIZE above `dbase@` and ends at
-\ the code pointer. A span must lie wholly inside ONE of them: one that
-\ straddles the gap, or lands among the dictionary records or the control-flow
-\ stack between them, or runs past what has actually been emitted, is not code.
-\
-\ WHY THE TEXT BAND'S TOP IS dbase@ AND NOT THE IMAGE'S TEXT SIZE. The exact top
-\ is the executable's own text-segment size, whose name differs per target
-\ (src/os/linux/layout.f LINUX-TEXT-SIZE and its macos twin); reading it here
-\ would make this file target-specific for a bound that is already sound without
-\ it: the image's read-write tail lies between the text and the region, so
-\ `dbase@` is a true upper bound, and the only addresses it admits wrongly are
-\ ones in the process's own data. Every absurd address - a wordlist id read as a
-\ start, a negative, a number past the emitted code - is refused either way.
-\
-\ The pointer itself is minted by this package's private cast N>U8, and AT
-\ bounds it: AT is the only word that applies the cast, and only to a span
-\ IN-CODE? admits.
-\
-\ This file requires nothing, so a tool that must not disturb its own
-\ measurement (tools/tier-census.f, tools/tier-dump.f) can load it.
+\ address. An engine code address is a number (XREF-START, an xt, a span walk);
+\ AT is the only place it becomes a pointer, through the private cast N>U8, and
+\ it refuses a span IN-CODE? does not admit. Requires nothing, so a tool that must
+\ not disturb its own measurement (tools/tier-census.f, tools/tier-dump.f) loads it.
 
 package CODE-BYTES
 
 private
 
-\ A code address is an integer; AT is the one bounded view of it.
 CAST: N>U8 ( n -- ptr u8 )
 
-\ [rbase, dbase@) - the engine's baked text.
+\ Code lives in two disjoint bands and a span lies wholly inside one: a span
+\ straddling the gap, landing among the dictionary records or control-flow stack
+\ between them, or running past what is emitted, is not code.
+\ [rbase, dbase@) - the engine's baked text. dbase@ is a true upper bound: the
+\ image's read-write tail lies between the text and the region, so it admits
+\ wrongly only addresses in the process's own data. The exact text size is
+\ per target (src/os/linux/layout.f LINUX-TEXT-SIZE and its macos twin).
 : TEXT-LO ( -- n ) rbase ;
 : TEXT-HI ( -- n ) dbase@ ;
 

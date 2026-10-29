@@ -159,9 +159,8 @@ names: OPTIONAL-XT
       then
    loop ;
 
-\ Whether p is the first byte of a recorded address site. AArch64 keeps one
-\ address-map bit per region word; x86-64 keeps byte-offset rows, which
-\ src/habu/sites.f reads.
+\ AArch64 keeps one address-map bit per region word; x86-64 keeps byte-offset
+\ rows, which src/habu/sites.f reads.
 variable SITE-HIT
 : ADDR-ROW ( n n -- ) nip SITE-ADDR = if 1 SITE-HIT ! then ;
 : ADDRESS-SITE? ( ptr u8 -- bool ) {: p:ptr :}
@@ -272,7 +271,6 @@ variable SITE-HIT
       1+
    repeat drop ;
 
-\ Whether the cell window at has no independent cell value.
 : NONCELL-WINDOW? ( n -- bool ) WINDOW-KIND WINDOW-NONCELL = ;
 
 \ Whether no declared span overlaps the cell window at: undeclared CREATE

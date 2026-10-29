@@ -1,42 +1,7 @@
-\ link-wasm.f - WASMLINK, a captured window linked into one Wasm module: the
-\ Wasm twin of src/habu/link-x64.f, handing WLINK (src/arch/wasm/link.f) every
-\ function, call, address and data cell of the capture (docs/xcomp.md
-\ "Wasm", "Linking").
-\
-\ - THE FUNCTIONS. A routine is its emission in the capture's shadow
-\   (src/habu/aot-decl.f AOT-SHADOW), written by WENC (src/arch/wasm/encode.f):
-\   a header, then each function's body, which its header row places and gives
-\   its lanes and frame variant. Each function joins the link with an adapter in
-\   the table, the slot that is its xt (src/arch/wasm/dynamic.f). A record
-\   enters its routine's first function. A `does>` definer cannot link: its
-\   body calls `create`, which no kernel row answers. A reached companion is
-\   refused before linking because it enters a later function of that emission.
-\ - THE KERNEL. WKERNEL's rows (src/arch/wasm/kernel.f), and execute's and
-\   catch's runtime functions, join every link. A row's call names a host entry,
-\   which becomes the name of the engine word it enters before the map is asked.
-\   A runtime function has an adapter's type and takes the stack as it stands,
-\   so it is its own table slot, the xt a code literal or cell of execute or
-\   catch holds. map-anon's row is the callee of the module's reserve export.
-\ - THE NAMES. A call, a code literal or a code cell naming a word of the
-\   engine's own prefix reaches execute's or catch's runtime function, or what
-\   WKERNEL:PROVIDER answers: a row, or a word of src/arch/wasm/kernel-words.f,
-\   which the window must ship.
-\ - THE SITES. A call's field gets its callee, a code literal's or a function
-\   address's its target's slot, and a DATA literal's its window offset, which
-\   WLINK writes as WPROF's data base plus it.
-\ - THE DATA. The window's DATA is the module's data image at WPROF's data base:
-\   each present cell of the capture's bitmap holds its value, and each address
-\   cell the window holds is a data cell of the link, a DATA cell its target's
-\   offset and a code cell its target's slot. A cell outside the window is the
-\   engine's, which the module does not carry.
-\
-\ Refused by name, each before the module is written: a call, a code literal or
-\ cell, or the entry naming a code record with no routine (a tier-0 colon word,
-\ a created word a does> clause has patched), whose data the image holds
-\ all the same; a runtime-reached does> companion; a name no kernel row answers;
-\ a name WKERNEL's map or the entry gives that no shipped record carries; and
-\ an entry that takes or leaves cells, since run calls it with ctx alone. So
-\ is an output path that cannot be written. A refusal dies.
+\ link-wasm.f - WASMLINK, a captured window linked into one Wasm module: the Wasm
+\ twin of src/habu/link-x64.f, handing WLINK (src/arch/wasm/link.f) every
+\ function, call, address and data cell of the capture (docs/xcomp.md "Wasm",
+\ "Linking"). Every refusal dies before the module is written; LINK lists them.
 
 require src/lib/prelude.f
 require src/lib/string.f
@@ -88,7 +53,11 @@ variable VAL-AT                      \ the next cell value in the capture's valu
    {: r:n :}
    AOT-SHADOW:CODE-BUF@ r SH-AT + ;
 
-\ ---- an emission's functions -----------------------------------------------------
+\ A routine is its emission in the capture's shadow (src/habu/aot-decl.f
+\ AOT-SHADOW), written by WENC (src/arch/wasm/encode.f): a header, then each
+\ function's body, which its header row places and gives its lanes and frame
+\ variant. Each function joins the link with an adapter in the table, the slot
+\ that is its xt (src/arch/wasm/dynamic.f).
 : FUNS ( ptr u8 -- n ) 4 + LE:U32@ ;
 
 : HEAD ( ptr u8 n -- ptr u8 )
@@ -127,7 +96,9 @@ variable VAL-AT                      \ the next cell value in the capture's valu
    p FUNS 0 ?do  p i f0 i + ADAPTER+  loop
    f0 ;
 
-\ ---- the routines ---------------------------------------------------------------
+\ A record enters its routine's first function. A `does>` definer cannot link:
+\ its body calls `create`, which no kernel row answers. A reached companion is
+\ refused before linking because it enters a later function of that emission.
 : NO-ROUTINE ( n -- )
    {: k:n :}
    s" wasmlink: window record " type k CREC-NAME$ type s"  has no Wasm routine" type cr
@@ -172,7 +143,10 @@ variable VAL-AT                      \ the next cell value in the capture's valu
 \ The function shipped record k enters.
 : ENTERS ( n -- n ) ROUTINE-OF FIRST @ ;
 
-\ ---- the names ------------------------------------------------------------------
+\ A call, code literal or code cell naming a word of the engine's own prefix
+\ reaches execute's or catch's runtime function, or what WKERNEL:PROVIDER
+\ answers: a row, or a word of src/arch/wasm/kernel-words.f, which the window
+\ must ship.
 \ The public wid of the shipped package named, or -1.
 : PKG-WID ( ptr u8 n -- n )
    {: a:ptr u:n :}
@@ -262,7 +236,12 @@ variable VAL-AT                      \ the next cell value in the capture's valu
    loop
    s" " ;
 
-\ ---- the kernel -----------------------------------------------------------------
+\ WKERNEL's rows (src/arch/wasm/kernel.f) and execute's and catch's runtime
+\ functions join every link. A row's call names a host entry, which becomes the
+\ name of the engine word it enters before the map is asked. A runtime function
+\ has an adapter's type and takes the stack as it stands, so it is its own table
+\ slot, the xt a code literal or cell of execute or catch holds. map-anon's row
+\ is the callee of the module's reserve export.
 \ Runtime function h in the table's next slot; answers h.
 : RUNTIME+ ( n -- n )
    {: h:n :}
@@ -289,7 +268,9 @@ variable VAL-AT                      \ the next cell value in the capture's valu
    WENC:CALL-SITES 0 ?do  i KERNEL-CALL+  loop
    s" map-anon" NAMED WLINK:RESERVE! ;
 
-\ ---- the sites ------------------------------------------------------------------
+\ A call's field gets its callee, a code literal's or function address's its
+\ target's slot, and a DATA literal's its window offset, which WLINK writes as
+\ WPROF's data base plus it.
 \ Index sites by their owning record. The worklist visits only records reached
 \ from runtime roots, omitting compile-time definers and their calls.
 : SITE-HEADS ( -- )
@@ -366,7 +347,11 @@ variable VAL-AT                      \ the next cell value in the capture's valu
 : SITE-LIVE? ( n -- bool )
    0 SITE@ ROW-AT SH-REC LIVE @ 0<> ;
 
-\ ---- the data ---------------------------------------------------------------------
+\ The window's DATA is the module's data image at WPROF's data base: each present
+\ cell of the capture's bitmap holds its value, and each address cell the window
+\ holds is a data cell of the link, a DATA cell its target's offset and a code
+\ cell its target's slot. A cell outside the window is the engine's, which the
+\ module does not carry.
 : PRESENT? ( n -- bool )
    {: c:n :}
    AOT-WINDOW:BM-BUF@ c 3 rshift + c@  c 7 and rshift  1 and 0<> ;
@@ -430,7 +415,6 @@ variable VAL-AT                      \ the next cell value in the capture's valu
    kind AOT-WINDOW:XTOFF-NAME-TAG = if v 1- POOL$ NAMED else c XT-REC ENTERS then {: f:n :}
    at NEMIT:ADDR-CODE f SLOTS @ WLINK:DATA-CELL+ ;
 
-\ ---- the module ---------------------------------------------------------------
 : CELLS-ENTRY ( ptr u8 n -- )
    {: a:ptr u:n :}
    s" wasmlink: entry " type a u type s"  takes or leaves cells" type cr
@@ -459,7 +443,13 @@ variable VAL-AT                      \ the next cell value in the capture's valu
 public
 
 \ The capture's window linked as one Wasm module whose run calls the word entry
-\ names, PKG:NAME or a global's NAME, written to the file at path.
+\ names, PKG:NAME or a global's NAME, written to the file at path. Refused by
+\ name before the module is written: a call, code literal or cell, or the entry
+\ naming a code record with no routine (a tier-0 colon word, a created word a
+\ does> clause has patched); a runtime-reached does> companion; a name no kernel
+\ row answers; a name WKERNEL's map or the entry gives that no shipped record
+\ carries; an entry that takes or leaves cells, since run calls it with ctx
+\ alone; an output path that cannot be written.
 : LINK ( ptr u8 n ptr u8 n -- )
    {: e:ptr eu:n path:ptr pu:n :}
    ROUTINES

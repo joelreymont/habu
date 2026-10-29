@@ -1,18 +1,12 @@
-\ crash.fs — the in-binary signal handlers the native engine bakes.
-\ sa_tramp = the handler itself: kernel enters with x2=sig, x4=ucontext; we dump
-\ sig + x0..x28 + fp/lr/sp/pc as hex lines to stderr, then the process dies by
-\ the signal itself: SIG_DFL, the signal re-raised at this thread, sigreturn to
-\ the interrupted context, so the parent sees the signal and a core (when
-\ RLIMIT_CORE allows) holds the faulting pc, sp and callers.
-\ EMIT-SIGNAL-HANDLER at the end of this file bakes the second one: the
-\ async-signal-safe stub a program installs for an ordinary signal.
+\ crash.f - the in-binary signal handlers the native engine bakes: the crash
+\ handler (the raw sa_tramp: it dumps sig, x0..x28 and fp/lr/sp/pc as hex lines
+\ to stderr, then dies by the signal itself, C-CRASH-RERAISE) and
+\ EMIT-SIGNAL-HANDLER, the async-signal-safe stub a program installs for an
+\ ordinary signal. Encoders are package A64ASM (src/arch/arm64/asm.f).
 variable LCRASHH   variable LHEX   variable LHDR   variable LSIGH
 create CRH 80 allot  variable CRHL
 variable CR-L1  variable CR-L2  variable CR-L3
 variable CR-OFF  variable CR-HANDLER  variable CR-FLAGS
-\ The crash helpers emit ARM64 signal entry, mcontext/register reads, and
-\ guarded saved-PC instruction accesses.
-\ The ARM64 encoders are package A64ASM's public surface (src/arch/arm64/asm.f).
 require src/arch/arm64/icode.f
 using A64ASM
 using A64ICODE
@@ -86,10 +80,9 @@ $110 constant MACOS-MCTX-PC-OFF
    0 2 MOVZ,  1 14 0 ADDI,  2 $11 MOVZ,  NR-WRITE SYS,
    SP SP $20 ADDI,  RET, ;
 
-\ x20 = signal number, x19 = ucontext, x23 = siginfo. The siginfo pointer is new:
-\ it carries si_addr, the faulting address, which is how a SIGSEGV inside a VM
-\ stack's guard page is told apart from any other one. Linux enters the handler
-\ with (sig, info, uctx) in x0/x1/x2; the macOS trampoline passes
+\ x20 = signal number, x19 = ucontext, x23 = siginfo, whose si_addr tells a
+\ SIGSEGV inside a VM stack's guard page from any other. Linux enters the
+\ handler with (sig, info, uctx) in x0/x1/x2; the macOS trampoline passes
 \ (catcher, style, sig, info, uctx) in x0..x4.
 : C-CRASH-ENTRY ( -- )
    HB-TARGET-LINUX? IF
@@ -148,10 +141,9 @@ $110 constant MACOS-MCTX-PC-OFF
    C-CRASH-PC>R9  LHEX LABEL@ BL, ;
 
 \ x10 = the live region base = the interrupted engine's DBASE (x26, the pinned
-\ region register). The handler's own x26 is clobbered by the trampoline, so this
-\ reads the SAVED x26 out of the signal mcontext (x21). That tracks the live region
-\ wherever it mapped -- the BL-range offset from __text, PIE slide and all -- with
-\ no fixed-VA assumption.
+\ region register). The trampoline clobbers the handler's own x26, so this reads
+\ the SAVED x26 out of the signal mcontext (x21): it tracks the live region
+\ wherever it mapped, with no fixed-VA assumption.
 : C-CRASH-REGION>R10 ( -- )
    HB-TARGET-LINUX? IF 10 21 LINUX-MCTX-X0-OFF 26 8 * + LDR, exit THEN
    10 21 SS-OFF 26 8 * + LDR, ;
@@ -181,12 +173,10 @@ $110 constant MACOS-MCTX-PC-OFF
 : C-CRASH-PC+4 ( -- )
    4 C-CRASH-PC-WORD ;
 
-\ ---- guard-page classification -----------------------------------------------
 \ Every VM stack is a mapping with an inaccessible page on each side
 \ (src/habu/rt.f STACK-GUARD:EMIT-MAP), so "this stack overflowed" is a fault
-\ whose address lands in one of those pages. That is the whole of the engine's
-\ capacity enforcement now: compiled code carries no bounds check, and this is
-\ where the fault becomes the diagnostic the checks used to print.
+\ whose address lands in one of those pages. Compiled code carries no bounds
+\ check; this is where the fault becomes the diagnostic.
 \
 \ ONE FAULT IS NOT AN EXIT: a load or store in the data stack's low guard page,
 \ by an instruction of the engine's own code or of the JIT region, is a word
@@ -372,7 +362,7 @@ variable CRS-MACHINE-M variable CRS-MACHINE-H
    27 OS-RAISE-SELF
    HB-TARGET-LINUX? 0= IF 0 19 0 ADDI,  1 24 0 ADDI,  2 5 0 ADDI, THEN
    NR-SIGRETURN SYS,                             \ macOS: sigreturn(uctx, infostyle, token)
-   \ Reached only if sigreturn fails: the exit the handler took before.
+   \ Reached only if sigreturn fails.
    0 $86 MOVZ,  NR-EXIT-GROUP SYS, ;
 
 : EMIT-CRASH-HANDLER ( -- )
@@ -416,7 +406,6 @@ variable CRS-MACHINE-M variable CRS-MACHINE-H
    THEN
    C-SIGACTION-FRAME-DONE ;
 
-\ ---- the alternate signal stack ------------------------------------------------
 \ A machine-stack overflow faults with sp in the kernel's guard, where no signal
 \ frame fits: without an alternate stack the handler never runs and the kernel
 \ kills the process unnamed. So the handler is installed SA_ONSTACK, and every
@@ -471,39 +460,30 @@ variable CRS-MACHINE-M variable CRS-MACHINE-H
    12 12 SIGSTK-DISABLE ANDI,
    SP SP SIGSTK-FRAME ADDI, ;
 
-\ LSIGH: the async-signal-safe stub, installed through sigaction by a program
-\ that wants a signal on a file descriptor. No Forth word is async-signal-safe,
-\ so this is machine code and nothing else: it reads the process-wide fd word
-\ and, when that word is nonzero, writes the four-byte signal number to it with
-\ one write syscall.
+\ LSIGH: the async-signal-safe stub a program installs through sigaction to get
+\ a signal on a file descriptor. No Forth word is async-signal-safe, so this is
+\ machine code: it reads the process-wide fd word and, when that is nonzero,
+\ writes the four-byte signal number to it with one write syscall.
 \
-\ IT IS AN ORDINARY `void (int)` sa_handler, so the signal number is its first
-\ argument, in x0, on both targets. That is what makes it target-uniform where
-\ the crash handler above is not: the engine installs THAT one as the raw
-\ sa_tramp, which the macOS kernel enters with (catcher, style, sig, ...) and so
-\ it has to fish the number out of x2 (C-CRASH-ENTRY). This one is installed by
-\ a program through libc sigaction, and libc's own trampoline hands a handler
-\ the C argument order on Linux and macOS alike.
+\ IT IS AN ORDINARY `void (int)` sa_handler, installed through libc sigaction,
+\ whose trampoline passes the number in x0 on Linux and macOS alike. The crash
+\ handler is the raw sa_tramp and reads it from x2 on macOS (C-CRASH-ENTRY).
 \
-\ IT READS THE FD WORD BY ITS ABSOLUTE ADDRESS, never as `DATA <off>`: the
-\ handler runs on whichever thread the kernel picks and that thread's x20 is its
-\ own task region, so the offset form would read a different word per task and
-\ zero on a new one. DATA-VA is fixed, so the literal names one word for the
-\ life of the process (src/habu/layout.f package SIGNAL-ABI).
+\ IT READS THE FD WORD BY ITS ABSOLUTE ADDRESS, never as `DATA <off>`: it runs
+\ on whichever thread the kernel picks, whose x20 is its own task region, so the
+\ offset form would read a different word per task and zero on a new one.
+\ DATA-VA is fixed (src/habu/layout.f package SIGNAL-ABI).
 \
-\ WHAT IT COSTS THE INTERRUPTED CONTEXT: x0, x1, x2 and the registers SYS, uses
-\ for the call itself, the flags, and sixteen bytes below its own sp. It touches
-\ no Forth state at all - no DATA cell, no dictionary, no VM stack - and the
-\ kernel restores the saved context when it returns, so a program can carry the
-\ stub through any point of its own execution. A fd word of zero absorbs the
-\ signal: the stub returns having written nothing.
+\ IT COSTS THE INTERRUPTED CONTEXT x0, x1, x2, the registers SYS, uses, the
+\ flags and sixteen bytes below its sp, and touches no Forth state (no DATA
+\ cell, dictionary or VM stack), so a program can carry it through any point
+\ of its execution. A fd word of zero absorbs the signal.
 \
-\ THE WRITE IS ONE FOUR-BYTE WRITE AND THE STUB IGNORES ITS RESULT. Four bytes
-\ is under PIPE_BUF, so a pipe takes it whole or not at all and a reader never
-\ sees a torn number; a caller whose reader falls behind therefore loses whole
-\ signals rather than framing, and it is the CALLER's job to make the write end
-\ non-blocking, because a blocking write into a full pipe would stall whichever
-\ thread the signal landed on.
+\ THE WRITE IS FOUR BYTES AND ITS RESULT IS IGNORED. Four bytes is under
+\ PIPE_BUF, so a pipe takes it whole or not at all: a reader that falls behind
+\ loses whole signals, never framing. The CALLER makes the write end
+\ non-blocking: a blocking write into a full pipe would stall the thread the
+\ signal landed on.
 : EMIT-SIGNAL-HANDLER ( -- )
    LSIGH LABEL@ LBL,
    LBL {: done:label :}

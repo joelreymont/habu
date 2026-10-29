@@ -33,7 +33,6 @@ TRUSTED: RAW-PTR ( n -- ptr u8 ) ;
    BAD ;
 : ROUND-PAGE ( n -- n )
    PROT-PAGE-MAX 1- + PROT-PAGE-MAX 1- invert and ;
-
 \ Validate the complete table and its immutable footer before yielding a site.
 : TABLE ( -- n n )
    BASE-N {: base:n :}

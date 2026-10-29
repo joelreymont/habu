@@ -217,9 +217,8 @@ CAST: N-ACCEPT ( n -- [ n n -- ] )
    name nameu sig sigu ENGINE-ORIGIN-EARLY:CERTIFY-CAST
    name nameu DEF-NAME-A @ TAKE-AT ;
 
-\ The early observer saw accepted definitions before this module's loader,
-\ and XREF dependencies existed. Resolve its saved dictionary records in
-\ their original publication order.
+\ Rows the early observer saw before this module's loader and XREF loaded,
+\ resolved in their original publication order.
 : EARLY-ACCEPT ( ptr n -- ) {: row:ptr :}
    row ENGINE-ORIGIN-EARLY:E-REC cells + @
    XREF-REC XREF-START {: xt:n :}

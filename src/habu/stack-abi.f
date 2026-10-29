@@ -1,24 +1,13 @@
-\ Physical VM stack extents, shared by source-loaded and recovered emitters.
-\ The live data-stack allocation changes at run-in-stack/task entry and unwind.
-\
-\ EVERY VM STACK IS A GUARDED MAPPING, never a band inside the DATA header.
-\ A stack of CAP bytes occupies [base - PAGE-BYTES, base + CAP + PAGE-BYTES):
-\ one inaccessible page below it, the capacity itself, one inaccessible page
-\ above it. A push past the capacity or a read below the base therefore FAULTS,
-\ and src/habu/crash.f turns that fault into `hb: stack bounds exceeded (<which>)`
-\ with the ENGINE-ERROR:STACK-BOUNDS exit -- except a data-stack access below
-\ the base by engine or compiled code, which it throws as the underdepth reject
-\ (crash.f ONE FAULT IS NOT AN EXIT). That is what replaced the
-\ per-transfer bounds check the engine used to run at every push and pop: the
-\ capacity is enforced by the MMU, so compiled code carries no guard at all.
-\
-\ THE MAPPED CAPACITY IS THE DECLARED CAPACITY. RETURN-BYTES/LOOP-BYTES are the
-\ mapping sizes and RETURN-CELLS/LOOP-FRAMES are those same extents counted in
-\ slots: if the two ever disagreed, the guard page would sit past the declared
-\ bound and an overflow would run on into ordinary memory before faulting.
+\ stack-abi.f - physical VM stack extents, shared by source-loaded and recovered
+\ emitters. Every VM stack is a guarded mapping [base - PAGE-BYTES, base + CAP +
+\ PAGE-BYTES), so compiled code carries no bounds check: an overflow or underflow
+\ faults and src/habu/crash.f reports `hb: stack bounds exceeded (<which>)`, except
+\ a data-stack access below the base, thrown as the underdepth reject (crash.f ONE
+\ FAULT IS NOT AN EXIT).
 package STACK-ABI
 public
 
+\ The live data-stack allocation changes at run-in-stack or task entry and at unwind.
 $1D0 constant BASE-CELL
 $47E8 constant CAP-CELL
 $47F0 constant REPL-BASE-CELL
@@ -34,14 +23,16 @@ $10000 constant PAGE-BYTES
 \ Boot data stack: one guarded page of cells (8192).
 PAGE-BYTES constant BOOT-BYTES
 
-\ User return stack and DO/LOOP frame stack. Both moved out of the DATA header
-\ when they gained guard pages -- a $8000 header has no room for an inaccessible
-\ page -- so each is its own mapping whose base lives in a header cell. The cells
-\ are PER TASK, because DATA is per task (habu1.f task entry loads x20 from the
-\ TCB), and so are the mappings: src/lib/task.f PREPARE maps a task's own pair.
+\ User return stack and DO/LOOP frame stack: each its own mapping with its base in
+\ a header cell, since a $8000 header has no room for a guard page. Cells and
+\ mappings are per task, as DATA is (habu1.f task entry loads x20 from the TCB;
+\ src/lib/task.f PREPARE maps a task's own pair).
 $4800 constant RETURN-BASE-CELL
 $4808 constant LOOP-BASE-CELL
 
+\ The mapped capacity is the declared capacity: RETURN-CELLS and LOOP-FRAMES count
+\ the mapping sizes in slots, or the guard page would sit past the declared bound
+\ and an overflow would run into ordinary memory before faulting.
 PAGE-BYTES constant RETURN-BYTES
 RETURN-BYTES 8 / constant RETURN-CELLS
 16 constant LOOP-FRAME-BYTES
@@ -61,7 +52,7 @@ LOOP-BYTES LOOP-FRAME-BYTES / constant LOOP-FRAMES
 \ the two spellings equal.
 -3804 constant E-EVAL-RESIDUE
 
-\ Preserve the old frame fields; append the active allocation descriptor.
+\ The active allocation descriptor follows the frame's existing fields.
 $40 constant CATCH-BASE
 $48 constant CATCH-CAP
 $50 constant CATCH-BYTES

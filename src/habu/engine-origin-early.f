@@ -1,11 +1,9 @@
-\ Capture prefix and checked definitions before the source loader and XREF
-\ load. The full origin module consumes these rows before image capture.
-\ Validate the borrowed source at acceptance; retain only its coordinates.
-\ The boot prefix includes native-body-abi.f before this file; require is
-\ unavailable here until include.f loads. native-body.f loads after the hook.
-\ The native builder calls PREFIX-TAKE for each accepted global definition in
-\ its checked prefix after this module loads, before the hook is installed.
-\ engine-origin-checked.f installs the later check-hook observer.
+\ engine-origin-early.f - capture prefix and checked definitions before the
+\ source loader and XREF load; the full origin module consumes these rows before
+\ image capture. Borrowed source is validated at acceptance and only its
+\ coordinates kept. The boot prefix includes native-body-abi.f first; `require`
+\ is unavailable until include.f loads. The native builder calls PREFIX-TAKE before
+\ the hook; engine-origin-checked.f installs the later check-hook observer.
 
 package ENGINE-ORIGIN-EARLY
 public
@@ -22,7 +20,7 @@ public
 \ Partial cold images retain the owner but can omit this unused constant name.
 \ The installed callback cell is fixed by checker-owner-abi.f.
 $270 constant RECORD-SYM-OFF
-\ Carl's prepared-unit callbacks occupy $3E8..$400 in the owner; the origin
+\ The prepared-unit callbacks occupy $3E8..$400 in the owner; the origin
 \ callback follows them in a full image and is never called by a cold scanner.
 $408 constant ORIGIN-REC-OFF
 \ layout.f has not loaded yet; the prefix dictionary record is 48 bytes.
@@ -206,7 +204,6 @@ public
 
 \ The FILE decoder resolves the record and any checked symbol. A prefix
 \ global has no symbol yet and keeps zero for resolution during the drain.
-\ Imported rows take fresh receiver serials, like locally accepted words.
 : FILE-IMPORT ( n n n n ptr u8 n ptr u8 n -- )
    {: ord:n sym:n at:n end:n path:ptr pathu:n name:ptr nameu:n :}
    ord sym at end path pathu name nameu APPEND-ORD ;

@@ -12,9 +12,9 @@ package TERMINAL-CALL
 
 public
 
-\ Whether an entry lies in this engine's own text. It is the one test that an
-\ engine binding is the engine's: BOUND? below asks it of `throw` and `die`, and
-\ src/compiler/native/dict.f HELPER-TARGET of a sealed helper such as (DIV-ZERO).
+\ The one test that an engine binding is the engine's: BOUND? below asks it of
+\ `throw` and `die`, src/compiler/native/dict.f HELPER-TARGET of a sealed helper
+\ such as (DIV-ZERO).
 : IN-ENGINE-TEXT? ( n -- bool ) {: entry:n :}
    ENGINE-TEXT {: base:n bytes:n :}
    entry base >= entry base - bytes < and ;

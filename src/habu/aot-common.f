@@ -50,25 +50,19 @@ variable POOL-N
    rows GTARGET-RESERVE rows GSAVE-RESERVE rows GOFF-RESERVE rows GON-RESERVE
    NCLO @ PSTART-RESERVE NCLO @ PEND-RESERVE ;
 
-\ --- the persistent data region this file emits is the span
-\ src/habu/aot-window-latch.f latched: AOT-DATA-START and AOT-DATA-SPAN live there
-\ because the window must open before the application's `require` runs, which is
-\ long before this file is loaded. The scan cursor below is this file's own, and
-\ it is a DATA address as an integer like the bounds it walks between - nothing
-\ dereferences it, the one cell it reads goes through aot-closure.f DATA-CELL@,
-\ which is where a DATA address becomes a pointer again.
+\ The persistent data region is the span aot-window-latch.f latched: the window
+\ opens before the application's `require` runs, long before this file loads.
+\ DSCAN is a DATA address as an integer, like the bounds it walks between; its
+\ one read goes through aot-closure.f DATA-CELL@.
 variable DSCAN
 
-\ THE CARRIED CELLS, COPIED INTO THE WINDOW BEFORE ANYTHING READS OR MAPS IT.
-\ Each claim named CARRIED in src/habu/aot-owned-cells.f is copied, by its
-\ declared byte length, into the run aot-window-latch.f CARRY-RESERVE reserved
-\ inside the span, and the destination is recorded so aot-closure.f
-\ CARRIED-TARGET can map a spelled address to the copy at the same interior
-\ offset. Runs are placed in claim order and cell-aligned, because a carried table
-\ is read with `@` (sha256's KK is 64 cells); the copies go in BEFORE
-\ AOT-DATA-TEXTPTR-CHECK and the closure walk, so carried bytes face the same
-\ window checks the application's own data does and no pass can meet a
-\ half-carried window.
+\ THE CARRIED CELLS. Each claim named CARRIED in aot-owned-cells.f is copied, by
+\ its declared byte length, into the run aot-window-latch.f CARRY-RESERVE
+\ reserved, in claim order and cell-aligned (a carried table is read with `@`;
+\ sha256's KK is 64 cells). The destination is recorded so aot-closure.f
+\ CARRIED-TARGET maps a spelled address to the copy at the same interior offset.
+\ The copies go in before AOT-DATA-TEXTPTR-CHECK and the closure walk, so carried
+\ bytes face the window checks and no pass meets a half-carried window.
 variable CARRY-USED
 
 : CARRY-CELL ( n -- ) {: i:n :}
@@ -166,29 +160,21 @@ CAST: TASK-EXIT-SLOT ( ptr n -- ptr [ -- ] )
       THEN
    loop ;
 
-\ Every cell the capture window covers that NOTHING DECLARED, classified by the
-\ ONE predicate aot-closure.f publishes (CELL-TEXTPTR?, by live engine extents).
-\ A declared xt cell is relocated instead (COLLECT-XT-CELLS above it, EMIT-XT-ROWS
-\ below), and it is skipped here by its declaration and not by its value, so the
-\ two answers cannot disagree about one cell. A STRING LITERAL'S BODY is the other
-\ declaration the window carries: its bytes are characters by the row the compiler
-\ wrote when it placed them (aot-closure.f CELL-LITERAL?), so they are skipped
-\ here for the same reason and by the same rule. What is left is a code or
-\ dictionary pointer no declaration accounts for - a `' word ,` table - and the
-\ scan reports the first one with the three facts a program has to be edited by:
-\ its owning word, its DATA offset and the pointer it holds.
-\ RAW AND TYPED STORAGE BOTH STAY UNDER THE VALUE SCAN. A stored value can
-\ come from an explicit `0 set-check` window or an unchecked body.
-\ A declared pointer cell can likewise hold a builder-only mapping;
-\ its type says what kind of value it holds, not whether that mapping survives
-\ capture. A literal body has no such door: nothing stores into it.
-\ ONE CELL, JUDGED BY WHAT DECLARED ITS BYTES. The value decides only WHICH
-\ refusal a cell would draw; whether it draws one at all is the declaration's
-\ answer, so the second declaration - the compiler's literal rows
-\ (aot-closure.f CELL-LITERAL?) - is asked before either refusal and not after.
-\ It is asked SECOND because the row walk costs a pass over the pools while the
-\ two extent tests are arithmetic: a cell whose value is neither a live engine
-\ extent nor a mapping is data on any reading and needs no declaration to say so.
+\ Every window cell NOTHING DECLARED, classified by aot-closure.f CELL-TEXTPTR?
+\ (live engine extents). Declared xt cells (COLLECT-XT-CELLS, EMIT-XT-ROWS) and
+\ string-literal bodies (aot-closure.f CELL-LITERAL?) are skipped by their
+\ declaration, not their value, so the two answers cannot disagree about a cell.
+\ What is left is a code or dictionary pointer no declaration accounts for (a
+\ `' word ,` table); the first is reported with its owning word, its DATA offset
+\ and the pointer it holds.
+\ RAW AND TYPED STORAGE BOTH STAY UNDER THE VALUE SCAN: a value can come from a
+\ `0 set-check` window or an unchecked body, and a declared pointer cell's type
+\ does not say whether its mapping survives capture. Nothing stores into a
+\ literal body.
+\ The value decides only WHICH refusal; whether one is drawn is the
+\ declaration's answer, so CELL-LITERAL? is asked before either refusal. It is
+\ asked second because its row walk is a pass over the pools while the two
+\ extent tests are arithmetic.
 : SCAN-DATA-CELL ( n -- ) {: at:n :}
    at DATA-CELL@ {: v:n :}
    v CELL-TEXTPTR? v CELL-MAPPED? or 0= IF exit THEN
@@ -248,35 +234,21 @@ CAST: TASK-EXIT-SLOT ( ptr n -- ptr [ -- ] )
 : SPAN-CELLS ( -- n )
    BLOB-LEN @ AOT-WINDOW:CELL-BYTES 1- + AOT-WINDOW:CELL-BYTES / ;
 
-\ BLOB-SRC is a plain address cell; pin its byte-pointer role once here so
-\ every scan/copy site below reads it as a span, not a bare number.
 : BLOB-SRC@ ( -- ptr u8 ) BLOB-SRC @ DATA-PTR ;
 
 variable NEXT-OFF
-\ --- THE MEMBERS IN ENTRY ORDER, the third per-member column. The closure walk
-\ discovers members in CALL order (aot-closure.f ADD-CLO appends what it reaches),
-\ so the entries in CLO are unordered, and the two lookups below - the exact-entry
-\ one and the one that finds the member covering an address - scanned the whole
-\ closure per relocated instruction, which made the link quadratic in NCLO. This
-\ index is filled once per link, beside NEWOFF and BLEN and for the same NCLO
-\ rows, and both lookups binary-search it.
-\ THE MEMBERS ARE DISJOINT BY CONSTRUCTION, which is what lets ONE position
-\ answer for an address. Two anonymous bodies of one record are the only members
-\ that can nest - under tier 1 the lower one runs to the record's end and holds
-\ the higher one's code - and aot-closure.f DROP-NESTED-CLO drops the contained
-\ one after the walk, at the source of the overlap and with the offset arithmetic
-\ that makes the container answer for it; the closure this file plans never
-\ overlaps. MORD-DISJOINT is the INVARIANT CHECK on that, run once per link over
-\ the sorted order - each member's end at or below the next one's start - and it
-\ names both members' records, entries and lengths rather than picking one of
-\ them, the way the scans it replaced did (they answered the LOWEST index
-\ covering a target, so the discovery order decided). Adjacency is admitted and
-\ is what MAP-IN-MEMBER's >= boundary is about: a target at a member's end
-\ belongs to the next member. A WALK CANNOT REACH THE REFUSAL. Over real
-\ links: zero overlapping pairs and 27,000 touching ones over the sorted order of
-\ the 27,004-member chain this file's head measures, and every link
-\ tools/hb-build-test.f and the gate's AOT suites make is green with the check in
-\ place.
+\ THE MEMBERS IN ENTRY ORDER. The closure walk adds members in call order
+\ (aot-closure.f ADD-CLO); both lookups below binary-search this index, filled
+\ once per link for the same NCLO rows as NEWOFF and BLEN. A scan per relocated
+\ instruction made the link quadratic in NCLO.
+\ THE MEMBERS ARE DISJOINT BY CONSTRUCTION, so one position answers for an
+\ address. Two anonymous bodies of one record are the only members that can nest
+\ (under tier 1 the lower one runs to the record's end), and aot-closure.f
+\ DROP-NESTED-CLO drops the contained one after the walk. MORD-DISJOINT checks
+\ it once per link and names both members' records, entries and lengths.
+\ Adjacency is admitted: a target at a member's end belongs to the next member
+\ (MAP-IN-MEMBER's >=). Measured: zero overlapping and 27,000 touching pairs
+\ over a 27,004-member chain; no link of the AOT suites reaches the refusal.
 DYNAMIC-BUFFER MORD n         \ member indices, ascending by CLO-AT
 variable MOI                                  \ the fill and disjointness cursor
 variable MSR  variable MSC  variable MSN      \ a sift's root, child and heap size
@@ -288,13 +260,11 @@ variable MBP                                  \ ... and the best position it saw
 : MORD-SWAP ( n n -- ) {: a:n b:n :}
    a MORD-AT {: x:n :}
    b MORD-AT a MORD !  x b MORD ! ;
-\ Heapsort: one column, no scratch, no recursion, O(N log N) whatever the walk
-\ order is. THE WALK ORDER IS NOT NEARLY SORTED, and on a chain it is the reverse
-\ - the worst case an insertion sort has. Measured over the closures this file
-\ links: a 27,004-member chain of words each calling the previous descends at
-\ 27,001 of its 27,003 adjacent index pairs (the walk enters the chain at its
-\ tail and works back), and a nine-member library program at 6 of 8. An insertion
-\ sort would be the quadratic this pass exists to remove.
+\ Heapsort: one column, no scratch, no recursion, O(N log N) in any walk order.
+\ THE WALK ORDER IS NOT NEARLY SORTED: a 27,004-member chain of words each
+\ calling the previous descends at 27,001 of 27,003 adjacent pairs (the walk
+\ enters at the tail), a nine-member library program at 6 of 8. An insertion
+\ sort would be the quadratic this pass removes.
 : MORD-CHILD ( -- )           \ MSC = the larger of the root's two children
    MSC @ 1+ MSN @ < IF
       MSC @ MORD-KEY  MSC @ 1+ MORD-KEY  < IF MSC @ 1+ MSC ! THEN THEN ;
@@ -331,14 +301,10 @@ variable MBP                                  \ ... and the best position it saw
       MOI @ MORD-KEY MOI @ MORD-AT CLO-BYTES +  MOI @ 1+ MORD-KEY > IF
          MOI @ MORD-AT  MOI @ 1+ MORD-AT  MORD-OVERLAP-DIE THEN
       MOI @ 1+ MOI ! REPEAT ;
-\ Fill, sort, assert - once per link, from PLAN-BLOBS, because the closure is
-\ final there and nothing before it asks where a member is or where it lands. A
-\ test that fills the closure tables by hand calls this the way it calls
-\ PLAN-TABLES: the lookups below read no other order.
-\ NOTHING MAY ASK FOR A MEMBER BEFORE THIS RUNS, and nothing in a link does - the
-\ first lookup of a link is in COPY-BLOBS, which is PLAN-BLOBS and then the copy.
-\ A whitebox that asks earlier gets E-LAYOUT-BOUNDS off the unfilled order rather
-\ than an answer, which is the fail-closed direction.
+\ Once per link, from PLAN-BLOBS, where the closure is final; the first lookup
+\ of a link is in COPY-BLOBS. A test that fills the closure tables by hand calls
+\ this as it calls PLAN-TABLES. A lookup before it gets E-LAYOUT-BOUNDS off the
+\ unfilled order: fail-closed.
 : MEMBER-ORDER ( -- )
    NCLO @ 1 < IF s" aot: no closure members to order" 74 die THEN
    NCLO @ MORD-RESERVE
@@ -389,24 +355,19 @@ variable MREM
       loop
    THEN
    m MEMBER-NEWOFF  t m CLO-AT -  + MREM @ - ;
-\ THE ONE MEMBER THAT CAN COVER t is the last one whose entry is at or below it
-\ (MEMBER-ORDER above asserted the members are disjoint), so the search answers a
-\ position and MAP-IN-MEMBER answers whether t is inside that member at all.
+\ The one member that can cover t is the last whose entry is at or below it;
+\ MAP-IN-MEMBER answers whether t is inside it.
 : OLD>NEW {: t:ptr :} ( ptr u8 -- n )
    t MORD-BELOW {: p:n :}
    p 0 < IF -1 EXIT THEN
    p MORD-AT t MAP-IN-MEMBER ;
 : MAP-TARGET {: i:n t:ptr :} ( n ptr u8 -- n )
    i t MAP-IN-MEMBER dup -1 <> IF EXIT THEN drop  t OLD>NEW ;
-\ A TARGET THE COMPACTED IMAGE HAS NO ADDRESS FOR NAMES ITSELF. The member being
-\ relocated is the site, so its record is the word to edit; the target is the
-\ address the closure walk never reached, and the word that owns it - when the
-\ building dictionary still knows one - says what was not carried. Without those
-\ three facts the refusal is a bare sentence and the next case costs a bisection.
-\ A target NO record owns is named by the record below it, `NAME+off`, the rule
-\ the span refusal's site is named by (aot-closure.f CODE-ADDR-TXT): the target of
-\ a branch into a stripped word, and any target an exact owner cannot be found
-\ for, is otherwise a bare address the reader has nothing to open.
+\ A TARGET THE COMPACTED IMAGE HAS NO ADDRESS FOR IS NAMED: the relocated
+\ member's record is the word to edit, and the target's owner, when the building
+\ dictionary still knows one, says what was not carried. A target no record owns
+\ is named `NAME+off` by the record below it, the rule aot-closure.f
+\ CODE-ADDR-TXT names the span refusal's site by.
 : MAP-TARGET! {: i:n t:ptr :} ( n ptr u8 -- )
    i t MAP-TARGET TNEW !
    TNEW @ -1 = IF
@@ -433,12 +394,9 @@ variable MREM
    callee XREF-FOUND? 0= IF AOT-FALSE EXIT THEN
    callee AOT-DP-REFUSAL? ;
 
-\ A declared xt cell's row target is the new offset of the code it names, from
-\ the SAME mapping a relocated branch target goes through (OLD>NEW: the member
-\ that covers the address, plus its offset adjusted through the member's sparse
-\ shortening map). An address no
-\ member covers dies by name here: the emit-time proof that this image carries
-\ the code the cell will point at, after the root pass put it in the closure.
+\ A declared xt cell's row target goes through the same OLD>NEW mapping as a
+\ relocated branch target. An address no member covers dies by name: the
+\ emit-time proof that the image carries the code the cell will point at.
 : XT-CELL-TARGET ( n -- n ) {: k:n :}
    k XTC-VAL@ CODE-PTR OLD>NEW {: t:n :}
    t 0 < IF s" aot: declared xt cell target is outside the closure" 74 die THEN
@@ -448,14 +406,14 @@ defer LINK-TARGET ( -- )
 
 public
 : LINK ( -- )
-   AOT-APP-POOL                                     \ reached literals are copied into the window's pool
-   CARRY-CELLS                                      \ the engine constants this image carries
-   CARRY-TASK-USER-MARK                             \ user slots allocated by the application
-   CARRY-FFI-MARK                                   \ declaration boundary before linker-only rows
-   CARRY-TASK-BASES                                 \ relocated TASK table base
-   CARRY-TASK-EXIT                                  \ active carried task exit quotations
-   COLLECT-XT-CELLS                                 \ the window's DECLARED cells: xt rows out, DATA cells mapped
-   AOT-DATA-TEXTPTR-CHECK                           \ ... and no undeclared code pointer beside them
+   AOT-APP-POOL
+   CARRY-CELLS
+   CARRY-TASK-USER-MARK
+   CARRY-FFI-MARK
+   CARRY-TASK-BASES
+   CARRY-TASK-EXIT
+   COLLECT-XT-CELLS
+   AOT-DATA-TEXTPTR-CHECK
    CLOSURE
    LINK-TARGET ;
 

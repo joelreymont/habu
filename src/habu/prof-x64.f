@@ -1,32 +1,9 @@
-\ prof-x64.f - the x86-64 twin of src/habu/prof.f, package X64PROF: the
-\ SIGALRM handler with its limit test, the pc index it searches, the sync a
-\ report runs first, the text and JSON reports and the one-row report with
-\ their printers, and the bodies of prof-on, prof-off, prof-reset, prof-rate,
-\ prof-pc>rec, prof-report, prof-json and prof-row, which
-\ src/habu/kernel-x64.f PROFILER, registers.
-\
-\ The band and the arena are PROF-ABI's (src/habu/prof-abi.f), the band at the
-\ top of the x86-64 target's DATA (X64LAYOUT), so a report reads one layout on
-\ every target. prof.f's header gives the design this keeps: the handler takes
-\ nothing from the live registers, attributes only a context whose DATA and
-\ DBASE registers hold what the band records, searches the index prof-on
-\ builds instead of the dictionary, and runs on the thread's alternate signal
-\ stack, the crash handler's (src/habu/boot-x64.f SIGNAL-STACK,). What
-\ differs is the frame. x86-64 has no link register, so the walk starts at the
-\ interrupted rsp, whose first cell is a leaf's return address, and searches
-\ each code cell one byte back, inside the call that pushed it.
-\
-\ THE CALL CONTRACTS. FIND, EDGE and INDEX
-\ keep every VM register (rbx rbp r12-r15) and clobber only the scratch
-\ registers each names, as the kernel's helpers do, so a body calls them
-\ without a frame. The handler owns every register: rt_sigreturn restores the
-\ interrupted context whole from the frame the kernel built, which the handler
-\ only reads. SYNC keeps every VM register too. A report saves rbx and r12-r15,
-\ which it walks in, and never touches rbp, so the limit's dump from the
-\ handler still leaves DATA there; it reads the dictionary base from
-\ PROF-DBASE and the record count from ARN-NDICT, never from r13 and r14, which
-\ the handler's walk has reused by the time it dumps. The printers clobber
-\ every scratch register.
+\ prof-x64.f - the x86-64 twin of src/habu/prof.f, package X64PROF: the SIGALRM handler, its pc
+\ index, the sync, the reports and the prof-* bodies src/habu/kernel-x64.f PROFILER, registers.
+\ The band and arena are PROF-ABI's (src/habu/prof-abi.f); prof.f EMIT-PROF's comment gives the design. What
+\ differs is the frame: x86-64 has no link register, so the walk starts at the interrupted rsp,
+\ whose first cell is a leaf's return address, and searches each code cell one byte back, inside
+\ the call that pushed it.
 require src/lib/byte-buffer.f
 require src/lib/string.f
 require src/habu/layout.f
@@ -128,10 +105,8 @@ variable REWIND-CELL
 : BUMP, ( r64 n -- ) {: base:r64 off:n :}
    RCX base off MEM-OFF LOAD,  RCX INC,  RCX base off MEM-OFF STORE, ;
 
-\ rsi = the arena, read from the band.
 : ARENA>RSI, ( -- )  RSI BAND-VA IMM,  RSI RSI PROF-ARENA MEM-OFF LOAD, ;
 
-\ ---- the index ----------------------------------------------------------------
 \ FIND ( rdi = pc, rsi = arena -- rax = index entry or 0 ): the twin of prof.f
 \ LPROFFIND, the whole of pc attribution, shared by the handler and by
 \ prof-pc>rec, so the row answers what a tick counts: the entry with the
@@ -523,7 +498,6 @@ variable REWIND-CELL
    R15 ASM-SINK ENC-POP  R12 ASM-SINK ENC-POP  RBP ASM-SINK ENC-POP  RBX ASM-SINK ENC-POP
    RET, ;
 
-\ ---- the sync ------------------------------------------------------------------
 \ rsi = arena, the clock stopped: empty every entry's inclusive count into the
 \ per-record array, so the rebuild that follows can move the entries freely:
 \ the twin of prof.f C-PROF-INCL-FOLD, whose C-PROF-INCL+ comment gives why
@@ -594,8 +568,8 @@ variable REWIND-CELL
 \ SYNC ( -- ): rebuild the index from the dictionary as it now stands and
 \ replay the deferred samples through it, the twin of prof.f LPROFSYNC, whose
 \ comment gives why a report is the moment to name what the phase compiled.
-\ ARN-OLDHI keeps the high mark the handler searched under. Only a body calls
-\ it, never the limit's dump: INDEX reads r13 and r14, which only Habu code
+\ ARN-OLDHI keeps the high mark the handler searched under. It keeps every VM register. Only a
+\ body calls it, never the limit's dump: INDEX reads r13 and r14, which only Habu code
 \ holds live. With no arena it does nothing.
 : SYNC-HELPER, ( -- )
    SYNC-LBL LBL,
@@ -608,10 +582,10 @@ variable REWIND-CELL
    REPLAY,
    none LBL,  RET, ;
 
-\ ---- the tick -------------------------------------------------------------------
-\ The handler's registers across its calls, which keep them. rbp stays the
-\ interrupted context's, DATA in a Habu sample, so a fault in the handler would
-\ still reach the crash handler with the DATA its guard cases read.
+\ The handler's registers across its calls, which keep them. The handler owns every register:
+\ rt_sigreturn restores the interrupted context whole from the frame the kernel built, which the
+\ handler only reads. rbp stays the interrupted context's, DATA in a Habu sample, so a fault in
+\ the handler still reaches the crash handler with the DATA its guard cases read.
 : CUR-REG ( -- r64 ) RBX ;              \ the walk's cursor, first the interrupted rsp
 : END-REG ( -- r64 ) R15 ;              \ where the walk stops
 : SAMPLE-REG ( -- r64 ) R12 ;           \ the sampled record, -1 when the index names none
@@ -756,7 +730,6 @@ variable REWIND-CELL
    LIMIT,
    RET, ;
 
-\ ---- printing --------------------------------------------------------------------
 \ Everything a report prints goes through these, so a row, a caller line and a
 \ JSON field agree about widths and about where a name comes from: the twins
 \ of prof.f's printers. Each writes fd 1 directly, as those do.
@@ -834,7 +807,6 @@ variable REWIND-CELL
 \ rdi = an owned profile row: its qualified name.
 : NAMED, ( -- )  NAME-LBL CALL, ;
 
-\ ---- the reports -----------------------------------------------------------------
 \ The twins of prof.f LPROFDUMP, LPROFJSON and LPROFROW, whose comments give
 \ the design: rows chosen by repeated maximum, so the counters stay exactly as
 \ they were; JSON carrying every attributed word and every caller edge.
@@ -843,7 +815,10 @@ variable REWIND-CELL
 \ a report saves, or in its frame: r15 the arena, rbx the row's entry, r12 the
 \ row rank, r13 and r14 the (count, entry) threshold the next row must fall
 \ under. The JSON walks take rbx for their cursor, r12 for the comma and r13
-\ for the end or the slots left.
+\ for the end or the slots left. A report never touches rbp, so the limit's dump from the handler
+\ still has DATA there; it reads the dictionary base from PROF-DBASE and the record count from
+\ ARN-NDICT, never from r13 and r14, which the handler's walk has reused by then. The printers
+\ clobber every scratch register.
 0 constant AT-SAMPLES                   \ PROF-TOT, read once
 8 constant AT-EXCL                      \ the row's exclusive count
 16 constant AT-DENOM                    \ what its caller shares are of
@@ -1168,7 +1143,7 @@ variable REWIND-CELL
 
 public
 
-\ The calls into the three helpers, under the contracts above.
+\ The calls into the helpers, under each one's register contract.
 : FIND, ( -- ) FIND-LBL CALL, ;
 : EDGE, ( -- ) EDGE-LBL CALL, ;
 : INDEX, ( -- ) INDEX-LBL CALL, ;
@@ -1176,7 +1151,6 @@ public
 
 private
 
-\ ---- the bodies' pieces ---------------------------------------------------------
 \ rax = n fresh read/write bytes. A refused mapping writes the text on fd 2
 \ and exits PROF-MAP-RC: a profiler that ran without its arena would report
 \ numbers nobody could trust (prof.f C-PROF-ARENA-MAP).
@@ -1236,7 +1210,6 @@ private
       RAX RCX MEM-AT STORE,  RCX CELL ADDI,  turn JMP,
    done LBL, ;
 
-\ Clear PROF-TOT, PROF-OTHER, PROF-FOREIGN and every profile-ID counter.
 : BAND-CLEAR, ( -- )
    RAX ZERO-REG,  RCX BAND-VA IMM,
    RAX RCX PROF-TOT MEM-OFF STORE,  RAX RCX PROF-OTHER MEM-OFF STORE,
@@ -1326,7 +1299,6 @@ public
    NUM-HELPER,  PCT-HELPER,  NAME-HELPER,
    false REPORT-HELPER,  true REPORT-HELPER,  ROW-HELPER, ;
 
-\ ---- the bodies -----------------------------------------------------------------
 \ prof-on ( n -- ): the twin of prof.f BPROF-ON. It runs as Habu code, where
 \ r13 and r14 are live: it stores the limit, records the DBASE the handler
 \ trusts, clears the band's counts, maps the arena and builds the index, clears

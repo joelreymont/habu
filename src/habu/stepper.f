@@ -1,11 +1,8 @@
-\ stepper.f — the token stepper for the REPL: `step <code>` runs the rest of
-\ the line ONE TOKEN at a time, echoing each token and printing the data stack
-\ after it executes. No EVALUATE needed: while stepping, the REPL hook returns
-\ one token per call, so the engine's own interpret loop is the evaluator.
-\ Part of package DEBUG (debug.f): a REPL session types `DEBUG:STEP <code>`, or
-\ `step <code>` after `using DEBUG`. Baked after layout.f and repl.f
-\ (src/habu/native-runtime.f); uses REPLH-CELL/TTY?/RD-LINE and
-\ debug-watch.f's watch table.
+\ stepper.f - the REPL token stepper: `step <code>` runs the rest of the line one
+\ token at a time, echoing each token and the data stack after it. While
+\ stepping the REPL hook returns one token per call, so the engine's interpret
+\ loop is the evaluator. Package DEBUG (debug.f); baked after layout.f and
+\ repl.f (native-runtime.f).
 
 require src/habu/debug-watch.f
 
@@ -54,19 +51,16 @@ variable SLEN  variable SPOS  variable STEPPING
       SPOS @ 1 + SPOS ! REPEAT
    SBUF ts +  SPOS @ ts - ;
 
-\ a token that reads AHEAD (':' for a definition) can't be stepped one token at
-\ a time — feeding ':' alone leaves it with no name to read. Detect it and feed
-\ the rest of the line whole, running it normally.
+\ A token that reads ahead (':' for a definition) cannot be stepped alone: ':'
+\ would have no name to read, so the rest of the line runs whole.
 : COLON? ( ptr u8 n -- bool ) {: a u :}  u 1 = a c@ 58 = and ;
 : REST-OF ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}  a  SBUF SLEN @ +  a -  ;     \ token start .. end
 
-\ The watches print after every token.
 : BPW-DUMP ( -- )
    BPW-N@ 0 <= if exit then
    s" watch:" type cr
    BPW. ;
 
-\ between tokens: show the stack the last token left, then feed the next one
 : S-NEXT-TOK ( -- ptr u8 n )
    .s
    BPW-DUMP
@@ -83,7 +77,6 @@ variable SLEN  variable SPOS  variable STEPPING
 
 public
 
-\ capture everything after `step` and consume it; the loop then drains us
 : STEP ( -- )
    SINP@ {: p :}
    SINE@ p - SLEN !

@@ -6,18 +6,14 @@
 \ output path — the single knob; the build-fixpoint driver owns the artifact
 : STDIN-OUT ( -- ptr u8 n ) s" hb-stdin-got" TMP-PATH ;
 
-\ The REPL source this driver compiles and captures (paths are repo-root
-\ relative; run the maker from the repo root). The debugger trio is NOT here.
-\ This recovery engine carries the compiler, the JIT and the REPL and nothing
-\ else, so a session on it reaches breakpoints with `require src/habu/debug.f`;
-\ the product bakes the trio through src/habu/native-runtime.f instead. Captured
-\ here as well, the trio would carry a second BPW-MAX and that require would die
-\ on the duplicate instead of loading.
+\ The REPL source this driver captures (repo-root relative). The debugger trio
+\ stays out: this recovery engine reaches it with `require src/habu/debug.f`, and
+\ a captured trio would carry a second BPW-MAX that the require dies on. The
+\ product bakes the trio through src/habu/native-runtime.f.
 : REPL-SRC ( -- ptr u8 n ) s" src/habu/repl.f" ;
 PTR-VARIABLE HB  variable HL  variable HFD  variable HRD
 $20000 constant HMAX
 \ HB exposes the raw baked-source buffer cell.
-\ Retirement: habu-campaign-c2-mem-c3d7662b.
 : HB@ ( -- ptr u8 ) HB @ ;
 s" HB@" s" -- ptr u8" TRUST
 
@@ -60,42 +56,26 @@ s" HB@" s" -- ptr u8" TRUST
    HL @ 2 > 0= IF s" hb: repl sources missing" 74 die THEN
    HL @ HMAX = IF s" hb: sources exceed buffer" 74 die THEN ;
 
-\ AOT-REPL M2: compile the REPL IN THE METABUILD HOST and capture it (code blob +
-\ dict records + call/DATA/CODE relocation tables) so bin/hb seeds it at boot as
-\ CODE -- no re-parse, no embedded REPL source. The image writer's EMIT-DICT bakes
-\ the emit-builder #PL list (the cold prefix), NOT the host dictionary, so the
-\ host-compiled REPL words live ONLY in the AOT blob; EM-SEED-AOT copies the blob,
-\ registers the records, name-relocates calls, and relocates DATA + CODE
-\ (quotation) literals into bin/hb. The install-tail (INSTALL, the top-level call
-\ at the file tail) becomes the boot-run list: EM-SEED-AOT LFINDs + calls each
-\ after the seed, so the engine installs the REPL with ZERO baked source.
-\ stage2/maker/snap use other drivers, so their AOT buffers stay empty and
-\ EM-SEED-AOT skips.
-\ WHAT THE CAPTURED SET IS FOR EVERY OTHER BOOT. The seed runs at the end of the
-\ engine prefix on every boot, not only the tty one (dot
-\ habu-decide-arm-the-5234727b), so every name compiled here is in the dictionary
-\ a piped or `--load` program sees. Adding a file to the two above therefore adds
-\ its global names to the engine's contract, and a spelling that some batch
-\ program already defines at global scope makes that program die `duplicate
-\ definition`. That is also why the debugger stays out of this lineage: here it
-\ is a file a session REQUIRES, and a required file whose names the engine
-\ already carries cannot load at all. Check a new name against the tree before
-\ capturing it.
+\ The REPL is compiled in this metabuild host and captured (code, records, call,
+\ DATA and CODE relocations), so bin/hb seeds it at boot as code with no baked
+\ source: EMIT-DICT bakes only the emit-builder #PL cold prefix, and EM-SEED-AOT
+\ copies the blob, registers the records, relocates it and calls the boot-run
+\ list (INSTALL). Other drivers leave their AOT buffers empty and EM-SEED-AOT
+\ skips. The seed runs at every boot's prefix end,
+\ so every global name captured here is in every
+\ program's dictionary: a program defining the same spelling dies `duplicate
+\ definition`, and a required file whose names the engine already carries cannot
+\ load. Check a new name against the tree before capturing it.
 package STDIN-DRIVER
 public
 
-\ THE ARTIFACT THIS EMIT BAKES, and the engine whose key it has to carry. Empty
-\ is the CAPTURE HOST - today's bin/hb shape, the engine a build with no chain to
-\ merge emits - and a declared artifact is the PRODUCT. That is the only thing
-\ the two emissions differ by: no mode flag, no second prefix.
-\ THE BUILD DRIVER OWNS BOTH PATHS. docs/forth.md is explicit that a build source
-\ must not read them out of a stale environment, so they arrive as a call the
-\ driver splices into the source it generates (tools/build-fixpoint.f
-\ BF-EMIT-STDIN-RUN-SOURCE takes the driver file, which is how the fixtures
-\ already reach this driver).
-\ THE PRODUCER KEY IS TWO INDEPENDENT READINGS OF ONE FACT: the capture stamped
-\ the SHA-256 of the binary it was running into the artifact, and this hashes the
-\ binary it is told produced it. A mismatch is the reader's refusal.
+\ An empty artifact makes this emit the capture host, a declared one the product:
+\ the only difference, with no mode flag and no second prefix. The build driver
+\ splices both paths in as a call (tools/build-fixpoint.f
+\ BF-EMIT-STDIN-RUN-SOURCE); a build source must not read them from the
+\ environment. The producer key is two readings of one fact: the SHA-256 the
+\ capture stamped into the artifact and the hash of the engine named here. A
+\ mismatch is the reader's refusal.
 PATH-CAP constant APATH-CAP       \ the tree's path capacity (src/core/util.f)
 create ART-P APATH-CAP allot   variable ART-U
 create ENG-P APATH-CAP allot   variable ENG-U
@@ -114,17 +94,14 @@ create FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this driver's own file-digest co
 
 private
 
-\ THE EMIT'S DATA BASE IS THE DRIVER'S, NOT ITS PARAMETERS'. CAPTURE-REPL latches
-\ `here` as the window's DATA base, and an interpret-mode `s"` ALLOTS its bytes
-\ there - so a parameter spliced in as a TOP-LEVEL string literal moves that base,
-\ every literal into the window, and the residue pad with it. Measured before the
-\ fix: two builds of one tree differing only in the length of the artifact path
-\ wrote engines differing in 12081 bytes. A spliced parameter therefore belongs
-\ inside a colon body, where its literal compiles into code below the window's own
-\ base and the seed's canonical CODE-B0 absorbs it (tools/aot-chain-bake.f).
-\ DP-MARK is the last thing this file does, so whatever the build driver appends
-\ runs between the mark and RUN, and RUN refuses by name if the cursor moved. The
-\ mark is mandatory: unmarked, DP0 is 0 and no boot can match it.
+\ CAPTURE-REPL latches `here` as the window's DATA base, and an interpret-mode
+\ `s"` allots there, so a parameter spliced as a top-level literal moves the base
+\ and every literal in the window: two builds differing only in artifact path
+\ length differed in 12081 bytes. A spliced parameter belongs inside a colon
+\ body, below the window, where the seed's canonical CODE-B0 absorbs it
+\ (tools/aot-chain-bake.f). DP-MARK is this file's last act: whatever the driver
+\ appends runs between it and RUN, and RUN refuses by name if the cursor moved.
+\ Unmarked, DP0 is 0 and no boot can match it.
 PTR-VARIABLE DP0
 
 : ?DP ( -- )
@@ -163,7 +140,6 @@ PTR-VARIABLE DP0
 package STDIN-DRIVER
 public
 
-\ Latch the DATA cursor the capture window will start from.
 : DP-MARK ( -- ) here DP0 ! ;
 
 : RUN ( -- )

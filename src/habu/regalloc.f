@@ -1,17 +1,9 @@
-\ regalloc.f — THE register allocator. One place to look:
-\   - VRPACK: the pool TABLE — one byte per slot, idx 0 at the low byte. To
-\     widen the pool or port an arch, edit this literal (and only this file).
-\   - #POOL / VRALL are DERIVED from VRPACK (byte count / low bitmask).
-\   - VRFREE-CELL: the free bitmask in the DATA header, bit = pool INDEX.
-\   - VRTAB/VRITAB: DATA byte tables idx->reg and reg->idx, filled at startup
-\     by LVRINIT from VRPACK; LVRALLOC and LVBIT read them at JIT time.
-\   - Their DATA offsets, and FRFREE-CELL's, are package REGALLOC-ABI
-\     (src/habu/regalloc-abi.f), where src/habu/data-claims.f can claim them.
-\ Allocator-state TOUCHPOINTS elsewhere (they or/eor the mask directly):
-\   jit.f: LVSPILL (reset to VRALL), LVDROP/LVNIPX/LVBINPREP/LVPUSHR/LVSETF
-\   (free/claim via LVBIT)   habu2.f: the definition-start and abort resets,
-\   CFB-ENTRY's claim/release around LVSNAP, the mark restore
-\ Load after mnem.f/sys.f, before jit.f.
+\ regalloc.f - the register allocator; load after mnem.f and sys.f, before jit.f.
+\ VRPACK is the pool table, one byte per slot with idx 0 low: widen the pool or
+\ port an arch by editing it alone. VRTAB/VRITAB map idx->reg and reg->idx,
+\ filled by LVRINIT; VRFREE-CELL is the free mask by pool index (regalloc-abi.f).
+\ Other files edit the mask: jit.f LVSPILL LVDROP LVNIPX LVBINPREP LVPUSHR LVSETF;
+\ habu2.f the definition-start and abort resets, CFB-ENTRY around LVSNAP, mark restore.
 
 require src/habu/regalloc-abi.f
 

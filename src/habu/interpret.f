@@ -20,7 +20,6 @@ package OUTER
 
 private
 
-\ ---- the loop -------------------------------------------------------------------------
 \ A number is pushed and a word run, each under the floor: the token's effect
 \ on the stack is the program's, so this row, and every row in outer.f that
 \ runs program code, states none of it.
@@ -59,7 +58,7 @@ private
    SEARCH
    true ;
 
-\ ---- the unit hook (habu2.f C-UNIT-DISPATCH, C-UNIT-SOURCE-END) -----------------
+\ The engine's twins: habu2.f C-UNIT-DISPATCH and C-UNIT-SOURCE-END.
 \ With a unit hook armed, each token past a comment outside a body goes to it,
 \ classed as LNUM reads it. In a body none does, and `does>` refuses there:
 \ a selected unit may not split a body, at either tier.
@@ -138,29 +137,24 @@ private
    0 record NATIVE-BODY-ABI:PENDING-TAKE cells + CELL-VIEW ! ;
 
 \ The buffer ran out (habu2.f EM-EVAL-CLEAN-EXIT). The evaluate error cell is
-\ cleared, as the engine's clean exit clears it: an `evaluate` the buffer caught
-\ recorded its code there, and include.f reads a nonzero cell after the buffer
-\ as a failed evaluation. The using depth goes back to the buffer's using floor
-\ (packages.f USE-FLOOR), which is the entry depth unless a `;package` closed a
-\ package opened before the buffer and restored a lower one, and a package the
-\ buffer left open keeps none of its usings: its using floor drops to the
-\ restored depth.
+\ cleared: an `evaluate` the buffer caught recorded its code there, and
+\ include.f reads a nonzero cell after the buffer as a failed evaluation. The
+\ using depth goes back to the buffer's using floor (packages.f USE-FLOOR); a
+\ package the buffer left open keeps none of its usings: its using floor drops
+\ to the restored depth.
 : CLEAN-END ( -- )
    0 EVALERR-CELL CELL!
    USE-FLOOR @ USE-DEPTH-CELL CELL@ min {: back:n :}
    back USE-DEPTH-CELL CELL!
    USE-PKG-SAVE-CELL CELL@ back > if back USE-PKG-SAVE-CELL CELL! then ;
 
-\ ---- the evaluate frame (habu1.f EVAL-ENTER) ----------------------------------
 \ `evaluate` keeps the frame the engine's evaluate pushes, field for field, in a
 \ mapping of its own, linked through EVAL-TOP-CELL and counted in EVALD-CELL, so
 \ a throw out of its buffer reaches habu2.f LEVALREC, which pops the frame and
-\ puts back what it holds: the input, the dictionary top, the checker's
-\ records, the stack extent, the package scope and the usings. The fields
-\ layout.f does not name sit at the offsets EVAL-ENTER stores them. The
-\ clean-exit continuation at $10 stays zero: only the engine's loop reads it
-\ (habu2.f EM-EVAL-CLEAN-EXIT), and that loop never reads a buffer this frame
-\ bounds.
+\ restores it. Fields layout.f does not name sit where EMIT-EVAL-BODY's code
+\ stores them. The clean-exit continuation at $10 stays
+\ zero: only the engine's loop reads it (habu2.f EM-EVAL-CLEAN-EXIT), never for
+\ a buffer this frame bounds.
 0 constant FR-INP                  \ the includer's input cursor
 8 constant FR-INE                  \ and the end of its input
 $18 constant FR-BOUND              \ the evaluate's own catch handler
@@ -200,9 +194,7 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    mark 1- xt AS-ROWS-CUT execute ;
 
 \ The frame of a buffer whose caller leaves n cells on the data stack, all but
-\ its link: the includer's input, the dictionary top, the stack extent, the
-\ package scope, the using depth, which is also the buffer's using floor, the
-\ includer's used publics and the checker's record end.
+\ its link. Its using depth is also the buffer's using floor.
 : FRAME-OPEN ( n -- ptr u8 ) {: cells-in:n :}
    EVAL-FRAME-SIZE MEM-ALLOC-PTR {: f:ptr :}
    INP-CELL CELL@ f FR-INP FR!
@@ -243,7 +235,6 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    f NULL-PTR - EVAL-TOP-CELL CELL!
    EVALD-CELL CELL@ 1+ EVALD-CELL CELL! ;
 
-\ The buffer ran out: unlink the frame and give the includer its input back.
 : FRAME-UNLINK ( ptr u8 -- ) {: f:ptr :}
    f EVAL-PREV FR@ EVAL-TOP-CELL CELL!
    EVALD-CELL CELL@ 1- EVALD-CELL CELL!
@@ -376,16 +367,15 @@ public
       a u REPL-LINE REPL-OK !
    again ;
 
-\ Interpret the range [first, end) of the buffer as the engine's evaluate-range
-\ does (habu1.f B-EVAL-RANGE), under the evaluate frame: a throw out of it is
-\ rolled back in LEVALREC, which pops the frame before the catch here sees the
-\ code. Either way the frame's mapping goes back, and so do the buffer's using
-\ floor and the record the step that ran the word looked up (outer.f REC).
-\ The input base stays the buffer's first byte, so a refusal's line counts
-\ from the start of the whole source. An owned source range arms the observer
-\ here, and a buffer an observed word evaluates adopts it until the catch, as
-\ the engine's evaluate does (habu1.f EMIT-EVAL-BODY), and LOOP-EVAL names
-\ this frame while its loop reads.
+\ Interpret the range [first, end) as the engine's evaluate-range does (habu1.f
+\ B-EVAL-RANGE), under the evaluate frame: a throw out of it is rolled back in
+\ LEVALREC, which pops the frame before the catch here sees the code. Either
+\ way the frame's mapping goes back, and so do the buffer's using floor and the
+\ record the step that ran the word looked up (outer.f REC). The input base
+\ stays the buffer's first byte, so a refusal's line counts from the start of
+\ the whole source. An owned source range arms the observer here, and a buffer
+\ an observed word evaluates adopts it until the catch (habu1.f
+\ EMIT-EVAL-BODY); LOOP-EVAL names this frame while its loop reads.
 : EVAL-FRAMED-RANGE ( ptr u8 n n n -- ) {: a:ptr u:n first:n end:n :}
    EVAL-TASK-GUARD
    depth FRAME-OPEN {: f:ptr :}
@@ -443,24 +433,15 @@ public
 private
 
 
-\ Interpret the buffer as the engine's evaluate reads it, and put the input
-\ cells, the looked-up record (outer.f REC) and the using depth back after,
-\ whether the buffer ends or a token throws: usings are file-local (habu1.f
-\ B-EVAL, habu2.f EM-EVAL-CLEAN-EXIT), and a buffer a word evaluates leaves
-\ the record of the step that ran the word.
-\ A throw also puts back the package scope the buffer entered with, its using
+\ Interpret the buffer as the engine's evaluate does, and put the input cells,
+\ the looked-up record (outer.f REC) and the using depth back after, whether
+\ the buffer ends or a token throws: usings are file-local (habu1.f B-EVAL), and
+\ a buffer a word evaluates leaves the record of the step that ran the word. A
+\ throw also puts back the package scope the buffer entered with, its using
 \ floor included (habu2.f LEVALREC), so a package a throwing file opened is
-\ closed and one it closed is open again, and the used publics RUN-CAUGHT
-\ kept, which the checker's resync names. A clean end puts the depth back to
-\ the buffer's using floor (packages.f USE-FLOOR), which is the entry depth
-\ unless a `;package` closed a package opened before the buffer and restored
-\ a lower one (habu2.f EM-EVAL-CLEAN-EXIT). A package the buffer left open
-\ keeps none of its usings: the package's using floor drops to the restored
-\ depth. A clean end also clears the evaluate error cell, as the engine's does:
-\ an `evaluate` the buffer caught recorded its code there, and include.f reads
-\ a nonzero cell after the buffer as a failed evaluation. A definition the
-\ buffer opened and left open is refused at its end, while the input cells
-\ still name the buffer, and a throw gives up a definition the buffer opened:
+\ closed and one it closed is open again, and the used publics RUN-CAUGHT kept.
+\ A definition the buffer left open is refused at its end, while the input
+\ cells still name the buffer; a throw gives up a definition the buffer opened:
 \ the record pending as it began is pending again (definers.f ENTRY-PEND).
 : INTERPRET-OPEN ( ptr u8 n n n -- )
    {: a:ptr u:n first:n end:n :}

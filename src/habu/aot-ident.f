@@ -1,47 +1,9 @@
-\ aot-ident.f — what a chain capture was taken FROM: the closure it loaded, and
-\ the digest over that closure's bytes.
-\
-\ An AOT artifact crossing between two processes has to answer two questions the
-\ bytes themselves cannot: which engine produced it, and which sources the capture
-\ was taken from. This file owns the second one, and it owns it as a DERIVED fact
-\ rather than a declared one.
-\
-\ THE CLOSURE IS THE ENGINE'S OWN RECORD, NOT A LIST ANYBODY MAINTAINS.
-\ src/core/include.f keeps every required path in its packed registry, in load
-\ order, and REQUIRE-N is the cursor into it. So a producer that reads
-\ REQUIRE-N as its capture window opens and again as it closes has bracketed
-\ exactly the files the window compiled — 43 of them for the compiler chain,
-\ starting src/compiler/native/compiler.f and ending src/compiler/native/branch.f —
-\ with no second copy of that set to go stale. A hand-written closure list would
-\ agree with the engine only until the first chain file gained a dependency.
-\
-\ THE REGISTRY READ IS NOT HERE, AND THAT IS THE POINT. This file holds a list and
-\ its digest; who fills the list is the filler's business. The capture reads the
-\ require registry (tools/aot-chain-capture.f, which is the only process with a
-\ window span to bracket) and the metabuild reads the list an artifact carries
-\ (src/habu/aot-file.f). Two fillers, one table, one digest — the shape
-\ src/habu/aot-decl.f already uses for the capture buffers. It also keeps this
-\ file loadable in BOTH metabuild hosts: tools/bootstrap.sh's stdin source does
-\ not compile src/core/include.f, so a REQUIRE-SLOT here would break the recovery
-\ route, and the digest the reader re-derives has to be the same code the producer
-\ ran or the comparison proves nothing.
-\
-\ THE DIGEST IS RE-DERIVABLE, WHICH IS THE POINT. It binds each file's recorded
-\ path and content digest in load order, with explicit lengths and a versioned
-\ domain. A reader holding the artifact's file list recomputes it from disk and
-\ compares. That turns "this artifact says it
-\ came from the chain" into "this artifact came from the chain THAT IS ON DISK NOW",
-\ and a mismatch means a stale artifact, which a recapture cures.
-\
-\ WHAT THIS FILE DOES NOT OWN: the producer identity. Both sides read it, but from
-\ different places — a capture running in a booted engine asks src/lib/engine-id.f for
-\ the content key of the binary it is running, and the metabuild recomputes
-\ SHA256-FILE-IN over the engine it just emitted. One fact, two independent readings,
-\ compared for equality; neither belongs to the closure.
-\
-\ ENGINE PRIMITIVES ONLY (SHA256*, PATH0, open/read/close, the include registry),
-\ because the two processes that need it are a booted bin/hb and the stdin
-\ metabuild host, and the host carries no src/lib/.
+\ aot-ident.f - what a chain capture was taken from: the closure it loaded and a
+\ digest over its bytes. The closure is derived: the capture brackets include.f's
+\ REQUIRE-N at window open and close (tools/aot-chain-capture.f), the metabuild
+\ fills it from an artifact's list (src/habu/aot-file.f). Engine primitives only,
+\ no registry read: the stdin metabuild host has no src/lib/, and the one
+\ tools/bootstrap.sh builds does not compile src/core/include.f.
 
 package AOT-IDENT
 
@@ -147,10 +109,11 @@ variable RD
 
 public
 
-\ Closure identity v2: fixed domain, version, file count, then for each file its
-\ path length, exact recorded path bytes and 32-byte SHA-256 content digest.
-\ v1 concatenated contents and could move source into a preceding EOF comment
-\ without changing the identity. Recomputing v2 refuses those old identities.
+\ Closure identity: fixed domain, version, file count, then per file its path
+\ length, exact recorded path bytes and 32-byte SHA-256 content digest. A reader
+\ recomputes it from disk, so a mismatch means a stale artifact, which a
+\ recapture cures. The producer identity is not here: src/lib/engine-id.f in a
+\ booted capture, SHA256-FILE-IN over the emitted engine in the metabuild.
 : CHAIN-DIGEST ( ptr u8 -- ) {: out:ptr :}
    N @ 0= if
       s" aot-ident: chain digest asked for before the closure was latched" REFUSE-RC die

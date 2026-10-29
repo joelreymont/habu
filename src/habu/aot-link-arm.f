@@ -1,4 +1,4 @@
-\ aot-lib.f - stripped AOT linker words, over src/habu/aot-closure.f's members.
+\ aot-link-arm.f - ARM64 stripped AOT linker words, over src/habu/aot-closure.f's members.
 \
 \ tools/aot-build.f loads the application through the retained native compiler.
 \ LINK writes the selected entry's reachable closure into a standalone image,
@@ -84,8 +84,7 @@ require src/habu/aot-common.f
 \ code entry and a length, held in the parallel arrays src/habu/aot-closure.f
 \ fills - and not over dictionary records, because the image ships no record for
 \ a word nothing can name and the payload's span table is what accounts for one.
-\ A member is named by its index, so every read here is a cell of an owned array
-\ and the record-shaped TRUSTED: boundary this file used to carry is gone.
+\ A member is named by its index, so every read here is a cell of an owned array.
 
 package AOT-LINK
 \ The ARM64 encoders are package A64ASM's public surface (src/arch/arm64/asm.f).
@@ -93,7 +92,7 @@ using A64ASM
 using A64ICODE
 
 
-\ --- emit the image: minimal entry + compacted, relocated blobs.
+\ The image is a minimal entry plus compacted, relocated blobs.
 variable MLBL
 variable CODE-END
 \ The label at text offset zero: the image's own code base, which the declared
@@ -104,39 +103,26 @@ variable LDPREFUSE-MSG  variable LDPREFUSE-OF  variable LDPREFUSE-UNIT
 variable LUNCREP  variable LUNCREP-MSG  variable LUNCREP-SIGN  variable LUNCREP-NL
 
 \ ADDRESS A LABEL THE STARTUP CANNOT REACH WITH ADR. `adr` carries a signed
-\ 21-bit byte delta (src/arch/arm64/icode.f ?ADR, ±1 MiB), and the startup sits
-\ at text offset zero while the labels below bind past the whole copied code
-\ band: the entry word (MLBL, inside the band), the crash handler, the signal
-\ stub and the sparse data blob (all after it). Tender's standalone closure is
-\ 1.36 MB of code, so those four are the only sites in an emitted image that
-\ cross the window - a copied member's own body never enters ?ADR (COPY-COMPACT-BLOB
-\ emits its words raw and RELOC-W32 re-encodes a member's ADR with its own
-\ refusal), and DATA and string references travel as movz/movk chains.
+\ 21-bit byte delta (src/arch/arm64/icode.f ?ADR, ±1 MiB). The startup sits at
+\ text offset zero and four labels bind past the copied code band: MLBL (inside
+\ it), the crash handler, the signal stub and the sparse data blob. They are the
+\ only sites that cross the window: a copied member's body never enters ?ADR
+\ (COPY-COMPACT-BLOB emits its words raw, RELOC-W32 re-encodes a member's ADR
+\ with its own refusal), and DATA and string references are movz/movk chains.
 \ THE BASE IS LTEXT, NOT THE TEXT-BASE CLAIM. src/habu/habu2.f TADR, reads the
-\ running image's code base out of DATA RBASE-CELL, which the startup itself has
-\ to publish first: EMIT-OWNED-CELLS stores the claims in claim order and the
-\ ENTRY-XT claim (aot-owned-cells.f:279) comes before the TEXT-BASE one (:280),
-\ so at the first of these four sites the cell is still zero. LTEXT is bound at
-\ text offset zero, behind every startup site, so `ADR` reaches it by
-\ construction and it holds exactly the value site EMIT-OWNED-CELLS publishes
-\ into RBASE-CELL. LOFF, then carries the target's own byte offset from that
-\ base in two 16-bit lanes, a non-negative absolute position whose bound is the
-\ pair's 32 bits and not the distance from the site. Four words, 16 bytes,
-\ per converted site: 48 bytes more per image than the four `ADR`s were.
-\ NO FIXTURE BUILDS AN IMAGE PAST THE WINDOW, and the LINK is no longer what
-\ stops one: MEMBER-ORDER below sorts the closure members by entry once per link
-\ and both lookups binary-search that order, so OLD>NEW and MEMBER-AT no longer
-\ scan every member per relocated instruction. THE COMPILE is what a >1 MiB
-\ fixture costs. Measured on a generated chain of 27,000 words, 1,082,700 bytes
-\ of code in 27,004 closure members: hb-build 51.9 s cold, of which the AOT
-\ maker alone is 42.8 s, and an hb-build of those same 27,000 words behind a
-\ one-member closure - the same compile, no closure to link - is 39.3 s. The
-\ member scans this replaced were 2.4 s of that maker run (45.2 s before) and
-\ 0.5 s of the 13,504-member half of it: four times the cost for twice the
-\ members is the quadratic term, and it is the term that is gone.
-\ tools/hb-build-stripped-chain-test.f HBT-STRIPPED-CHAIN runs the converted
-\ startup end to end at 1,104 members, and Tender's standalone build is the
-\ proof at the scale that needed it.
+\ code base from DATA RBASE-CELL, which EMIT-OWNED-CELLS publishes in claim
+\ order, ENTRY-XT before TEXT-BASE (aot-owned-cells.f COLLECT), so at the first
+\ of these sites the cell is still zero. LTEXT is bound at text offset zero, so
+\ `ADR` reaches it and it holds the value EMIT-OWNED-CELLS publishes into
+\ RBASE-CELL. LOFF, carries the target's offset from that base in two 16-bit
+\ lanes, bounded by 32 bits and not by distance: 16 bytes per converted site.
+\ No fixture builds an image past the ±1 MiB window: the compile is what one costs.
+\ Measured: a 27,000-word chain (1,082,700 bytes, 27,004 members) builds in
+\ 51.9 s cold, the AOT maker 42.8 s, the same compile behind a one-member
+\ closure 39.3 s: the compile is the cost. aot-common.f MEMBER-ORDER sorts
+\ members once per link and OLD>NEW and MEMBER-AT binary-search it.
+\ tools/hb-build-stripped-chain-test.f HBT-STRIPPED-CHAIN runs the startup at
+\ 1,104 members.
 : TEXT-ADR, ( n n label -- )                      \ ( rd rt label -- ) rd = runtime address of label
    {: rd:n rt:n l:label :}
    rd rt = IF s" aot: TEXT-ADR, destination and scratch are one register" 74 die THEN
@@ -156,7 +142,6 @@ variable LUNCREP  variable LUNCREP-MSG  variable LUNCREP-SIGN  variable LUNCREP-
    XDS DATA STACK-ABI:BASE-CELL STR,
    7 STACK-ABI:BOOT-BYTES LIT64,  7 DATA STACK-ABI:CAP-CELL STR, ;
 
-\ ---- the engine runtime cells this entry owns ---------------------------------
 \ THE KERNEL'S INITIAL STACK, read the way src/habu/habu2.f EM-ENTRY-ARGS reads
 \ it, because a stripped image's entry IS a process entry: argc at [sp], argv one
 \ cell above, envp one past argv's NULL terminator. THIS RUNS FIRST, before any
@@ -183,7 +168,7 @@ variable LUNCREP  variable LUNCREP-MSG  variable LUNCREP-SIGN  variable LUNCREP-
 \ through are the same cell by construction.
 \ A FRESH claim emits nothing: EMIT-DATA-REGION-MAP just mapped DATA anonymously,
 \ so the cell already holds the zero its claim says is correct. A CARRIED claim
-\ emits nothing either, for the opposite reason: CARRY-CELLS below already copied
+\ emits nothing either, for the opposite reason: aot-common.f CARRY-CELLS already copied
 \ its bytes into the window, so EMIT-DATA-COPY restores them with the rest of the
 \ application's data and there is no cell here to publish. An IMAGE-BASE
 \ claim gets one store of x20 - this image's own DATA base, which is the value the
@@ -335,7 +320,7 @@ variable FFI-BASE-INDEX
    7 BLOB-SRC @ SPAN-CELLS AOT-WINDOW:CELL-BYTES * + LIT64,
    7 DATA DP-CELL STR, ;                           \ DP = user-end (runtime here/allot base)
 
-\ ---- the declared xt cells: what the copy alone cannot restore -----------------
+\ The declared xt cells: what the copy alone cannot restore.
 \ The copy above restores DATA with declared XT bytes zeroed. The rows
 \ EMIT-XT-ROWS places after the blob say where each XT cell is and where its word
 \ ended up in THIS image, in the shape src/habu/aot-file.f's XTOFF rows carry: a
@@ -367,11 +352,9 @@ variable FFI-BASE-INDEX
       10 10 8 ADDI,  11 11 1 SUBI,  xtop B,
    xdone LBL, ;
 
-\ --- sparse encoding: the captured span travels as a presence bitmap over its
-\ CELLS and one varint per present cell, not as the span. A table `allot`ed at
-\ declared capacity but only partly filled left its unused tail as literal zero
-\ bytes in every earlier image; the restore above maps an anonymous (already
-\ zero) region, so a zero byte never has to travel. Format:
+\ Sparse encoding: the captured span travels as a presence bitmap over its
+\ CELLS and one varint per present cell, not as the span. The restore above maps
+\ an anonymous (already zero) region, so a zero byte never has to travel. Format:
 \ [groups u32][stored bitmap bytes u32][presence map, one bit a group, low bit
 \ first][the present groups, AOT-WINDOW:GROUP-BYTES bytes each in group order,
 \ the last zero-padded][one unsigned LEB128 per present cell, in cell order] -
@@ -540,11 +523,10 @@ create AOT-OBJ-HDR 8 allot
    11 DATA-VA VA>N SIGNAL-ABI:FD-CELL + LIT64,  11 DATA SIGNAL-ABI:FD-PTR-CELL STR, ;
 
 \ A stripped image runs the same three guarded VM stacks as the engine, and
-\ installs the same crash handler. Both matter here and not only in the engine:
-\ a stripped application has no interpreter to name an overflow, so before guard
-\ pages its only diagnostic WAS the per-transfer check. Without the handler the
-\ guard page would be a bare SIGSEGV; with it, the overflow is the same named
-\ `hb: stack bounds exceeded (<which>)` and STACK-BOUNDS exit the engine gives.
+\ installs the same crash handler: a stripped application has no interpreter to
+\ name an overflow. Without the handler the guard page would be a bare SIGSEGV;
+\ with it, the overflow is the same named `hb: stack bounds exceeded (<which>)`
+\ and STACK-BOUNDS exit the engine gives.
 \ The process-exit vector (src/habu/layout.f EXIT-HOOK-CELL), inline. A stripped
 \ image has no engine label to call - habu2.f EMIT-EXITHOOK's trampoline is
 \ engine text - so this entry and EMIT-UNCAUGHT each emit it. After the root
@@ -784,7 +766,7 @@ variable BDELTA
    w ADRP? IF s" aot: ADRP relocation unsupported" 74 die THEN
    w ;
 
-\ --- fail-closed abs-chain guard. The AOT linker contract is DIRECT-BL-ONLY: no
+\ The AOT linker contract is DIRECT-BL-ONLY: no
 \ native emitter produces the absolute movz/movk/movk x16 + blr x16 call form (only
 \ the gforth seed ever did, and seed output never reaches AOT closure/link). ABS-CHAIN?
 \ is the minimal 4-word pattern match; the copier and relocator die loudly with a named

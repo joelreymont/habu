@@ -1,68 +1,9 @@
 \ link-x64.f - the captured dictionary laid out for an x86-64 image, package
-\ X64LINK. It is the write-time twin of the ARM64 seed's boot passes (src/habu/
-\ habu2.f EM-SEED-DICT, EM-AOT-REGISTER-RECS and EMIT-AOT-PROT-RESTORE): an
-\ x86-64 image maps its code region and DATA at fixed addresses (docs/xcomp.md
-\ "Fixed segments"), so what the ARM64 seed computes at every boot is computed
-\ here once, into byte rows the image writer places.
-\
-\ - THE RECORDS. dict[0, PRIMS) are the kernel's bodies in ENGINE-PRIMS order
-\   (src/habu/primitive-registry.f, filled by src/habu/kernel-x64.f KERNEL,):
-\   each entry is its first label's address in the text, its span exact, its
-\   flags ENGINE-PRIMS:DNAME with the primitive's min-in. dict[PRIMS, RECORDS)
-\   are the capture's shipped records in capture order. Record n lies at REC-VA,
-\   n * DREC bytes into the region, where the boot points r13.
-\ - THE ROUTINES. A code record's routine is its emission in the capture's
-\   shadow (src/habu/aot-decl.f AOT-SHADOW), copied as the capture left it to a
-\   CODE-SLOT of the region's code band and filled to the next slot with int3,
-\   as code-publish fills. A `does>` companion enters its definer's emission at
-\   the clause. The long names lie ahead of the routines, zero-filled to a slot.
-\   The target compiler emits fixed and definer bodies into the shadow too.
-\   A shipped code record with no routine is refused by name.
-\ - THE SITES. Each site of the shadow is linked in CODE$ after its routine is
-\   copied: a CALL or TAIL rel32 to its target's entry, a CODE MOVABS of that
-\   entry, a DATA MOVABS of the window's DATA where DATA-AT lands it, a FUN
-\   MOVABS of its function inside its own routine (a does> definer's clause is
-\   its companion's entry). A target is a shipped record's routine, or a kernel
-\   body found by the name the site carries among the kernel's global rows, the
-\   first row of that name, which is the one the image's index finds.
-\ - THE CODE CELLS. CELL-XT answers the image xt a declared code cell holds: the
-\   entry of the record its xt row names, or of the kernel body it names.
-\ - THE WIDS. A captured wid is a window coordinate (WID-REL-BASE): 0 stays the
-\   global wordlist and any other one becomes T0 + (wid - WID-REL-BASE), the
-\   image's numbering from FIRST-DYNAMIC-WID, as AOT-WINDOW:REBASE-WID, rebases
-\   against the booting engine's WIDN. The image's WIDN is T0 plus the window's
-\   span, which counts the wordlists no record names.
-\ - THE BITMAP. Each protected-wid row, a zero-based window offset, sets the bit
-\   of T0 + row in BITS$, the PROT-BITS band, as AOT-WINDOW:SEAL-WIDS, does.
-\ - THE NAME INDEX. The writer builds it, into INDEX$: HIDX-SLOTS u32 slots
-\   keyed and filled as kernel-x64.f REBUILD-HELPER fills them, from the live
-\   records [0, RECORDS), with CLAIMS one claim per record. The kernel's own
-\   probe reads it: test/x86-64-link-records.f stages it in a booted image,
-\   where xref-search-wl finds every record from it. It is a
-\   function of the records alone, and they of the capture and the kernel: no
-\   host address, wid or record number reaches it. Measured: the window of
-\   test/x86-64-link-records.f captured by a host with one record, one
-\   wordlist and one DATA cell more ahead of it, which moves the window's first
-\   record, first wordlist and DATA base, lays out the same index, records, code
-\   band and bitmap, by digest. So the boot rebuilds nothing: the image carries
-\   the table at INDEX-OFF in DATA, the heap floor moves to HEAP-FLOOR above it,
-\   and HIDXP-CELL holds INDEX-VA. The kernel's own rows keep it from there.
-\
-\ Every refusal is by name and comes before the first byte is laid: a code
-\ record with no routine, a routine that names no shipped code record, a wid
-\ outside the capture window, a protected wid at or past PROT-WID-MAX, more
-\ records than DICT-CAP, routines that pass the code ceiling, a site naming a
-\ record with no routine, a site or code cell naming a word no kernel body
-\ carries, a call or branch whose displacement does not fit its rel32, a code
-\ cell no xt row keys (a quotation's entry, which the capture refuses), a
-\ code cell whose xt row names a record with no routine, and a window with two
-\ global ENV-DATA-PTR records or one whose routine does not address one window
-\ DATA cell. A refusal dies, and LAYOUT writes only this file's buffers, so no
-\ byte leaves the process first.
-\
-\ LOAD ORDER. The x86-64 writer sizes image-bytes.f under `using X64CODE`,
-\ then src/habu/aot-decl.f reads ARM64's AOT-SECTION-CAP for the shared
-\ capture format. This file reads X64CODE qualified.
+\ X64LINK: the write-time twin of the ARM64 seed's boot passes (habu2.f
+\ EM-SEED-DICT, EM-AOT-REGISTER-RECS, EMIT-AOT-PROT-RESTORE). An x86-64 image
+\ maps code and DATA at fixed addresses (docs/xcomp.md "Fixed segments"), so
+\ what the seed computes at boot is computed here once. Every refusal is by
+\ name and dies before a byte leaves: LAYOUT writes only this file's buffers.
 require src/lib/le.f
 require src/arch/x86-64/icode.f
 require src/os/linux-x86-64/elf.f
@@ -74,6 +15,9 @@ require src/habu/kernel-x64.f
 require src/habu/aot-decl.f
 require src/habu/address-cells.f
 
+\ The x86-64 writer sizes image-bytes.f under `using X64CODE`, then aot-decl.f
+\ reads ARM64's AOT-SECTION-CAP for the shared capture format, so this file
+\ reads X64CODE qualified.
 package X64LINK
 using AOT-BUF
 using AOT-SHADOW
@@ -130,7 +74,6 @@ variable ENV-AT                        \ the window's ENV-DATA-PTR cell, a DATA 
 : WINDOW. ( n -- ) {: k:n :}
    s" x64link: window record " type k CREC-NAME$ type ;
 
-\ ---- refusals --------------------------------------------------------------------
 : NO-ROUTINE ( n -- )
    WINDOW. s"  has no x86-64 routine" type cr
    s" x64link: a code record the capture's shadow carries no routine for" REFUSE ;
@@ -154,7 +97,11 @@ variable ENV-AT                        \ the window's ENV-DATA-PTR cell, a DATA 
    s"  is window wordlist " type row PWIN@ .INT s"  of " type AOT-WID-SPAN @ .INT cr
    s" x64link: a protected wid outside the window or at PROT-WID-MAX" REFUSE ;
 
-\ ---- the wids -------------------------------------------------------------------
+\ A captured wid is a window coordinate (WID-REL-BASE): 0 stays the global
+\ wordlist and any other becomes T0 + (wid - WID-REL-BASE), the image's
+\ numbering from FIRST-DYNAMIC-WID, as AOT-WINDOW:REBASE-WID rebases against the
+\ booting engine's WIDN. The image's WIDN is T0 plus the window's span, which
+\ counts the wordlists no record names.
 : WID-IN? ( n -- bool ) {: w:n :}
    w 0= if true exit then
    w WID-REL-BASE - {: o:n :}
@@ -162,12 +109,11 @@ variable ENV-AT                        \ the window's ENV-DATA-PTR cell, a DATA 
 
 : ?WID ( n n -- ) {: k:n w:n :} w WID-IN? 0= if k w WID-OUT then ;
 
-\ The image's id for a captured wid the checks admitted.
 : IMAGE-WID ( n -- n ) {: w:n :}
    w 0= if 0 exit then
    w WID-REL-BASE - FIRST-DYNAMIC-WID + ;
 
-\ ---- the checks, before any byte --------------------------------------------------
+\ The checks come before any byte.
 \ A named record owns one routine. Anonymous routines can interleave in the
 \ shadow's source order, so retain the named row lookup separately from code
 \ placement, which follows the shadow's original emission order.
@@ -234,7 +180,6 @@ variable ENV-AT                        \ the window's ENV-DATA-PTR cell, a DATA 
 
 public
 
-\ ---- where things land --------------------------------------------------------------
 : T0 ( -- n ) FIRST-DYNAMIC-WID ;
 : WIDN ( -- n ) T0 AOT-WID-SPAN @ + ;
 : PRIMS ( -- n ) PRIM-N @ ;
@@ -278,7 +223,6 @@ public
    DATA-AT loc AOT-WINDOW:XTOFF-LOC-MASK and + ;
 : DATA$ ( -- ptr u8 n ) 0 DATA-STORAGE BYTE-VIEW DATA-END @ ;
 
-\ ---- reading a laid-out record ----------------------------------------------------
 : REC ( n -- ptr u8 ) {: k:n :} 0 DICT-STORAGE BYTE-VIEW k DREC * + ;
 : REC@ ( n n -- n ) {: k:n f:n :} k REC f + LE:U64@ ;
 
@@ -290,7 +234,15 @@ public
 
 private
 
-\ ---- the name index --------------------------------------------------------------
+\ INDEX$ holds HIDX-SLOTS u32 slots keyed and filled as kernel-x64.f
+\ REBUILD-HELPER fills them, from the live records [0, RECORDS), CLAIMS one
+\ claim per record; the kernel's own probe reads it (test/x86-64-link-records.f
+\ stages it in a booted image). It is a function of the records alone: no host
+\ address, wid or record number reaches it. Measured: that test's window,
+\ captured by a host with one record, one wordlist and one DATA cell more ahead
+\ of it, lays out the same index, records, code band and bitmap, by digest. The
+\ boot rebuilds nothing: the table sits at INDEX-OFF in DATA, the heap floor at
+\ HEAP-FLOOR above it, and HIDXP-CELL holds INDEX-VA.
 : FOLD ( n -- n ) {: c:n :}
    c $41 >=  c $5A <= and if c $20 or exit then
    c ;
@@ -315,7 +267,12 @@ private
    cells 0 ?do 0 i INDEX-STORAGE ! loop
    RECORDS 0 ?do i INSERT loop ;
 
-\ ---- laying the code band ------------------------------------------------------------
+\ A code record's routine is its emission in the capture's shadow (aot-decl.f
+\ AOT-SHADOW), copied as the capture left it to a CODE-SLOT of the code band and
+\ filled to the next slot with int3, as code-publish fills. The long names lie
+\ ahead of the routines, zero-filled to a slot. The target compiler emits fixed
+\ and definer bodies into the shadow too. A shipped code record with no routine
+\ is refused by name.
 : FILL ( ptr u8 n n n -- ) {: band:ptr lo:n hi:n byte:n :}
    hi lo ?do byte band i + c! loop ;
 
@@ -343,8 +300,6 @@ private
    loop
    r SH-AT - ;
 
-\ Each row's code band offset, laying nothing: the names' span to a slot, then
-\ each emission once from a slot, a row over the emission before it at its offset.
 : PLACE-ALL ( -- )
    AOT-SHADOW:REC-N @ 1 max PLACE-STORAGE-RESERVE
    NAMES-LEN @ SLOT-UP
@@ -360,14 +315,12 @@ private
    loop
    CODE-END ! ;
 
-\ Emission r at its offset, int3 to the next slot.
 : COPY-ROUTINE ( n -- ) {: r:n :}
    0 CODE-STORAGE BYTE-VIEW {: band:ptr :}
    r PLACE-STORAGE @ {: at:n :}
    AOT-SHADOW:CODE-BUF@ r SH-AT +  band at +  r EXTENT BYTE-COPY
    band  at r EXTENT +  dup SLOT-UP  INT3 FILL ;
 
-\ The names' span zero-filled to a slot, then each emission once.
 : ROUTINES ( -- )
    0 CODE-STORAGE BYTE-VIEW  NAMES-LEN @  NAMES-LEN @ SLOT-UP  0 FILL
    -1 PREV !
@@ -375,8 +328,12 @@ private
       i SH-AT PREV @ <> if i SH-AT PREV !  i COPY-ROUTINE then
    loop ;
 
-\ ---- laying the records ------------------------------------------------------------
-\ A long name's bytes at the next name offset, and its address in the record.
+\ dict[0, PRIMS) are the kernel's bodies in ENGINE-PRIMS order
+\ (primitive-registry.f, filled by kernel-x64.f KERNEL,): each entry is its first
+\ label's address in the text, its span exact, its flags ENGINE-PRIMS:DNAME with
+\ the primitive's min-in. dict[PRIMS, RECORDS) are the capture's shipped records
+\ in capture order. Record n lies at REC-VA, n * DREC bytes into the region,
+\ where the boot points r13.
 : LONG-NAME ( ptr u8 n ptr u8 -- ) {: a:ptr len:n rec:ptr :}
    a  0 CODE-STORAGE BYTE-VIEW NAME-AT @ +  len BYTE-COPY
    CODE-VA NAME-AT @ + rec X64KERNEL:REC-NAME + LE:U64!
@@ -398,7 +355,6 @@ private
    p ENGINE-PRIMS:NAME$ dup DNAME-INL > rec NAME!
    p ENGINE-PRIMS:HELPER-WID rec X64KERNEL:REC-WID + LE:U64! ;
 
-\ The flags cell from the row's flags, min-in and kind bytes and its name length.
 : FLAGS ( n -- n ) {: k:n :}
    k 12 CREC@ {: w:n :}
    w $FF and 60 lshift
@@ -427,6 +383,8 @@ private
       i PKG? if i rec PKG-REC! else i i ROUTINE-OF rec CODE-REC! then
    loop ;
 
+\ Each protected-wid row, a zero-based window offset, sets the bit of T0 + row
+\ in the PROT-BITS band, as AOT-WINDOW:SEAL-WIDS does.
 : PROTECT ( -- )
    BITS 0 PROT-BITS-BYTES 0 FILL
    AOT-PWIN-N @ 0 ?do
@@ -439,8 +397,11 @@ private
    RECORDS DREC * CELL / DICT-STORAGE-RESERVE
    CODE-END @ CELL / 1+ CODE-STORAGE-RESERVE ;
 
-\ ---- the sites -------------------------------------------------------------------
-\ A site row is (shadow code byte, kind, target), src/habu/aot-decl.f AOT-SHADOW.
+\ A site row is (shadow code byte, kind, target), aot-decl.f AOT-SHADOW. Each
+\ site is linked in CODE$ after its routine is copied: a CALL or TAIL rel32 to
+\ its target's entry, a CODE MOVABS of that entry, a DATA MOVABS of the window's
+\ DATA where DATA-AT lands it, a FUN MOVABS of its function inside its own
+\ routine (a does> definer's clause is its companion's entry).
 : SITE-AT ( n -- n ) 0 SITE@ ;
 : SITE-KIND ( n -- n ) 4 SITE@ ;
 : REL32? ( n -- bool ) {: kind:n :} kind AOT-SHADOW:CALL =  kind AOT-SHADOW:TAIL = or ;
@@ -486,8 +447,6 @@ private
    s SITE. s"  lies " type d .INT s"  bytes from its target, past a rel32" type cr
    s" x64link: a shadow call or branch does not reach its target" REFUSE ;
 
-\ The image address a site's target enters: a shipped record's routine at its
-\ entry, or a kernel body by name.
 : TARGET-VA ( n -- n ) {: s:n :}
    s 8 SITE@ {: t:n :}
    t SITE-SHADOW-TAG and SITE-SHADOW-TAG = if
@@ -599,7 +558,6 @@ private
       key $FF and 0 DATA-STORAGE BYTE-VIEW at SNAP-RELOC:SITE-KIND-OFF + + c!
    loop ;
 
-\ ---- the code cells --------------------------------------------------------------
 \ An address-cell row's target word (src/habu/aot-decl.f AOT-WINDOW): its two high
 \ bits are CODE (00), named CODE (01) or DATA (10); its low bits are 0 for null.
 : CELL-META ( n -- n ) 4 AOT-WINDOW:XTOFF@ ;
@@ -684,7 +642,6 @@ private
       then
    loop ;
 
-\ ---- the environment's DATA base ----------------------------------------------------
 \ src/habu/aot-owned-cells.f claims ENV-DATA-PTR as IMAGE-BASE: the cell holds
 \ its own image's DATA base. src/os/env-base.f stores `data-base` into it at top
 \ level, which runs on the build host while the window loads, so the captured

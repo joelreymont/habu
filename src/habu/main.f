@@ -1,28 +1,9 @@
-\ main.f - the engine's command line in Habu: which argv entries name source
-\ files and how each is loaded, as the assembly reads them (src/habu/habu2.f:
-\ the flag table FLAGTAB-DATA and its matcher LFLAGMATCH, the refusal
-\ LSRCBADFLAG, C-SOURCE-FILE-PREFIX, C-SOURCE-FIND-SEP, C-SOURCE-FILE-LOOP and
-\ C-SOURCE-APPEND-ARG, the reader LSRCRD and the shebang rewrite LSHBANG).
-\
-\ argv[1] picks the route. `--load` and `--build` take the files after it up
-\ to the first `--`; what follows that `--` is the program's own arguments
-\ (src/os/script-argv.f), whatever it looks like. Any other argument that
-\ starts with `-` is refused with the usage line, exit 64. Anything else,
-\ `--` included, is the one program file, and the rest are its arguments.
-\ Past argv[1] only `--` is special: `--load a.f --x` loads a file named `--x`.
-\
-\ Every route builds one stream of source, as the assembly does, and it is
-\ interpreted once, open, through SOURCE-ROOT:RUN-ROOT.
-\ `--load` writes a `s" <path>" script-required` row per file, so the registry
-\ loads each in its own include frame and skips a file the engine already
-\ holds. The program file, and the first file of `--build`, are read raw into
-\ the stream after a `s" <path>" provided` row, their `#!` line made a
-\ comment; the files after the first of `--build` get `script-required` rows,
-\ as the engine measured does it (`--build a.f missing.f` prints a.f's output,
-\ then include's "cannot open").
-\
-\ MAIN reads the process's argv and stdin. RUN takes a vector instead, so a
-\ test can hand it one it built.
+\ main.f - the engine's command line in Habu, mirroring the assembly's reading
+\ (src/habu/habu2.f FLAGTAB-DATA, LFLAGMATCH, LSRCBADFLAG, C-SOURCE-FILE-PREFIX,
+\ C-SOURCE-FIND-SEP, C-SOURCE-FILE-LOOP, C-SOURCE-APPEND-ARG, LSRCRD, LSHBANG).
+\ Every route builds one source stream, interpreted once, open, through
+\ SOURCE-ROOT:RUN-ROOT. MAIN reads the process's argv and stdin; RUN takes a
+\ vector, so a test can hand it one.
 
 require src/lib/string.f
 require src/core/bytes.f
@@ -58,8 +39,7 @@ ENUM route load build plain ;ENUM
 : ARG ( ptr ptr u8 n -- ptr u8 n )
    ptr-field @ dup ZLEN ;
 
-\ ---- refusals ---------------------------------------------------------------
-\ Each writes the engine's text on descriptor 2 and exits; like the engine's
+\ Each refusal writes the engine's text on descriptor 2 and exits; like the engine's
 \ own diagnostics, a write that fails is not reported, the exit is.
 : SAY ( ptr u8 n -- ) {: a:ptr u:n :}
    ERR-FD a u write drop ;
@@ -89,7 +69,11 @@ ENUM route load build plain ;ENUM
 : CANNOT-MAP ( -- )
    s" hb: cannot map the source arena" RC-SOURCE die ;
 
-\ ---- the route ---------------------------------------------------------------
+\ argv[1] picks it. `--load` and `--build` take the files after it up to the
+\ first `--`; what follows is the program's arguments (src/os/script-argv.f).
+\ Any other argument starting with `-` is refused with the usage line, exit 64.
+\ Anything else, `--` included, is the program file. Past argv[1] only `--` is
+\ special: `--load a.f --x` loads a file named `--x`.
 : ROUTE ( ptr u8 n -- route ) {: a:ptr u:n :}
    a u LOAD$ STR= if construct route load exit then
    a u BUILD$ STR= if construct route build exit then
@@ -112,12 +96,15 @@ ENUM route load build plain ;ENUM
       build OF 2 argv argc LIST-END ENDOF
    ;MATCH ;
 
-\ ---- the stream ---------------------------------------------------------------
-\ habu2.f C-SOURCE-FILE-LOOP and C-SOURCE-APPEND-ARG: one row per file, a
-\ newline between files, all of it in one arena before any of it runs. The
-\ bytes stay mapped for the life of the process, as the assembly's boot
-\ source arena does. The arena pointer lives in the fixed DATA cell
-\ ARENA-CELL (src/habu/layout.f), which the snapshot writer zeroes.
+\ `--load` writes a `s" <path>" script-required` row per file, so the registry
+\ loads each in its own include frame and skips one the engine holds. The program
+\ file and the first file of `--build` are read raw after a `s" <path>" provided`
+\ row, `#!` made a comment; later `--build` files get `script-required` rows
+\ (`--build a.f missing.f` prints a.f's output, then include's "cannot open").
+\ habu2.f C-SOURCE-FILE-LOOP and C-SOURCE-APPEND-ARG: one row per file, a newline
+\ between files, all in one arena before any runs. The bytes stay mapped for the
+\ process's life; the arena pointer is src/habu/layout.f ARENA-CELL, which the
+\ snapshot writer zeroes.
 : ARENA ( -- ptr ptr u8 )
    data-base ENGINE-MAIN:ARENA-CELL + 0 ptr-field ;
 

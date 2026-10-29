@@ -19,33 +19,21 @@ public
 : OPEN ( n -- ) {: b0:n :}
    b0 LIVE AOT-CELLS:B0-CELL + CELL! ;
 
-\ The engine's next wordlist id. It is read here, beside the window's other base
-\ cursors, because every producer needs it at the same two moments they need those
-\ - when the window opens and when it closes.
+\ The engine's next wordlist id, read beside the window's other cursors: every
+\ producer needs it when the window opens and when it closes.
 : WIDN ( -- n ) LIVE WIDN-CELL + @ ;
 
-\ `here` as an integer, which is what the window's other three cursors already
-\ are: cp@, ndict@ and the wordlist counter are numeric primitives and `here` is
-\ the one pointer among the four, while every reader of the DATA coordinate -
-\ the capture's scans, the band audit, the literal-span check - compares and
-\ differences it as a number and never follows it. DATA is mapped at the fixed
-\ DATA-VA, so the offset from data-base plus that base IS the address; the
-\ subtraction is ordinary checked pointer arithmetic, so this needs no trust row
-\ and no pointer-to-integer cast. src/habu/aot-closure.f carries the same
-\ one-liner for package AOT-LINK, which the stripped linker loads without this
-\ file.
+\ `here` as an integer, like the other three cursors: every reader of the DATA
+\ coordinate compares and differences it, never follows it. DATA is at the fixed
+\ DATA-VA, so this is checked pointer arithmetic with no trust row or cast.
+\ src/habu/aot-closure.f carries the same one-liner for package AOT-LINK, which
+\ the stripped linker loads without this file.
 : HERE-N ( -- n ) here BYTE-VIEW data-base BYTE-VIEW - DATA-VA VA>N + ;
 
-\ ---- the window's four coordinates -------------------------------------------
-\
-\ A CAPTURE WINDOW IS FOUR SPANS, NOT ONE, and every producer needs all four at
-\ the same two moments. Four of them wrote the pair of latch lines out by hand -
-\ the stdin driver, the chain capture tool, the band fixture and the merge
-\ fixture - and a fifth generated the text. Latching three of the four, or
-\ reading one of them at some other moment, is a silent wrong capture rather than
-\ a refusal: the wordlist counter especially, because a capture tool's own
-\ tooling opens packages AFTER the window closes, so a WIDN read at capture time
-\ answers for the tool and not for the window.
+\ Every producer latches all four spans at the same two moments: latching three,
+\ or one at another moment, is a silent wrong capture, not a refusal. A capture
+\ tool opens packages after the window closes, so a WIDN read at capture time
+\ answers for the tool, not the window.
 variable B0  variable B1      \ the window's code span
 variable R0  variable R1      \ its dictionary record span
 variable D0  variable D1      \ its DATA span
@@ -126,16 +114,12 @@ public
 
 private
 
-\ THE WINDOW OPENS ON A WHOLE CELL, the way `create` publishes one: `align`
-\ before D0 is latched. A capture describes its DATA as one presence bit and one
-\ value per grid cell (src/habu/aot-decl.f package AOT-WINDOW), every declared
-\ address cell must fall on one of them, and a merge splices two windows' grids
-\ (src/habu/aot-file.f ?BASES), so the base is the grid's origin. `allot` never
-\ realigns, so the DP an opener meets is whatever the last buffer left: a
-\ PATH-CAP path buffer or a SHA256-FILE-CTX-BYTES context is an odd byte count,
-\ and an app image restores its exact cursor. The pad lies below the window and
-\ never travels; an opener whose DP is already aligned gets no pad, so a build
-\ that met an aligned DP writes the same bytes as before.
+\ The window opens on a whole cell, as `create` publishes one: a capture's DATA
+\ is one presence bit and value per grid cell (src/habu/aot-decl.f AOT-WINDOW),
+\ every declared address cell falls on one, and a merge splices two windows'
+\ grids (src/habu/aot-file.f ?BASES), so the base is the grid's origin. `allot`
+\ never realigns and an app image restores its exact cursor, so an opener's DP
+\ may be odd. The pad lies below the window and never travels.
 : LATCH-OPEN ( -- )
    CANCEL
    align
@@ -143,7 +127,6 @@ private
 
 public
 
-\ Latch all four spans and bind the payload to this checker owner.
 : WINDOW-OPEN ( -- )
    LATCH-OPEN
    B0 @ OPEN

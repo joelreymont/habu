@@ -1,51 +1,14 @@
-\ prims.f — the engine primitive specification, in one machine-independent table.
-\
-\ This file is the single specification of the engine primitives. Each row names one primitive, states
-\ its checker effect once, and carries the two attachment points a backend and a
-\ reference implementation bind to BY NAME:
-\
-\   EPRIM: dup   PE-A PE-IN  PE-A PE-OUT PE-A PE-OUT  REF PRIM-REF:S-DUP  EPRIM;
-\   EPRIM: +     PE-N PE-IN PE-N PE-IN  PE-N PE-OUT   REF PRIM-REF:ADD    EPRIM;
-\
-\ - src/core/checker.f replays the table onto its own `PE-*` row constructors,
-\   so the effects exist here and nowhere else.
-\ - each backend registers a body under the row's name; src/habu/primitive-registry.f
-\   refuses a body whose name has no row (ENGINE-PRIMS:SPEC-CHECK) and a row that
-\   no body answers (ENGINE-PRIMS:COMPLETE).
-\ - `REF` names a reference implementation in checked Habu (src/habu/prim-ref.f,
-\   package PRIM-REF), which test/prim-parity.f runs beside each backend's body
-\   over the same cases. A reference never shadows a primitive spelling, so the
-\   clause spells `PRIM-REF:ADD`, not `PRIM-REF:+`. A row carries one only where
-\   the semantics can be written WITHOUT the primitive it answers for and where
-\   the gate exercises it; the overloads of a name state it on the row whose
-\   instantiation the gate runs.
-\
-\ THE ROWS ARE THE CHECKER'S AXIOMS. A primitive has no Habu body to infer an
-\ effect from, so the checker takes each row on faith, and everything a checked
-\ program proves derives from these rows. An overloaded name has one row per
-\ pointer, integer or bool variant. A row with a REF is held to its reference by
-\ test/prim-parity.f; a row with none (every syscall, control, defining-word,
-\ image, FFI and atomic row among them) is held only by the engine rebuilding
-\ itself through these rows and by the programs the gate runs on it.
-\
-\ WHY IT IS DATA AND WHY IT LOADS BEFORE THE CHECKER. A row must be registered
-\ before checker.f's `PTABLE-END`: that word sets `USIGS-USER-OFF`, and a row
-\ appended past it is a USER effect record for its symbol, which collapses an
-\ overload set (`+` has three rows) to whichever record is newest. checker.f is
-\ one file, so a table loaded after it cannot land inside its row region — hence
-\ this file loads BEFORE checker.f and holds the rows as an atom-code stream that
-\ checker.f replays. The atom spellings below are the checker's own `PE-*` names,
-\ package-private here, so a row reads exactly as it did when it lived there.
-\
-\ Everything in this file is data construction over engine primitives only: it
-\ loads ahead of src/core/checker.f, so nothing from the checker, the include
-\ machinery or the checked library is in scope.
+\ prims.f - the engine primitive specification, one machine-independent table.
+\ Each row names one primitive and states its checker effect once: checker.f
+\ replays the table onto its own `PE-*` constructors, each backend registers a
+\ body under the row's name (src/habu/primitive-registry.f SPEC-CHECK refuses a
+\ body with no row, COMPLETE a row with no body), and a REF names its checked
+\ reference. Loads ahead of src/core/checker.f, over engine primitives only.
 
 package PRIM-SPEC
 
 public
 
-\ ---- row kinds ---------------------------------------------------------------
 \ K-ELAB and K-UNROWED carry no effect: they are the two ways a primitive can
 \ have a body and no table row, named here so the completeness gate passes by an
 \ explicit row rather than by silence.
@@ -55,7 +18,6 @@ public
 2 constant K-ELAB            \ the checker elaborates this primitive's effect
 3 constant K-UNROWED         \ no checker row anywhere; no checked caller exists
 
-\ ---- reach classes -----------------------------------------------------------
 \ What a primitive touches besides the data and return stacks, stated by a
 \ row's REACH clause. A tool that judges a top-level run reads the running
 \ host's own class through FIND and REACH@; a row with no clause is R-NONE and
@@ -73,7 +35,6 @@ public
                              \ and the nested runs it makes
 8 constant R-EXIT            \ ends the process; no result follows its run
 
-\ ---- atom codes --------------------------------------------------------------
 \ One code per checker row constructor. A composite atom is a short sequence:
 \ PE-PTR-A is A-VAR-A A-PTR, PE-PTR-A-RAW is A-VAR-A A-RAW A-PTR.
  1 constant A-IN
@@ -104,11 +65,10 @@ private
 
 $4C constant SPEC-RC
 
-\ ---- storage -----------------------------------------------------------------
 \ Rows are fixed-width records; names, package names and reference names are
 \ byte spans in NAMES; atoms are bytes in CODES. Offsets, not addresses, so the
 \ table can be walked by index from any consumer.
-$180 constant ROW-CAP        \ 384 rows; 223 are used today
+$180 constant ROW-CAP        \ 384 rows
 12 constant ROW-CELLS
 $1000 constant NAME-CAP
 $1000 constant CODE-CAP
@@ -175,7 +135,6 @@ variable CUR-REF-OFF    variable CUR-REF-LEN
    code CODES CODE-U @ + c!
    CODE-U @ 1 + CODE-U ! ;
 
-\ ---- the row atoms -----------------------------------------------------------
 \ Spelled like src/core/checker.f's row constructors, and private to this
 \ package so both spellings can exist: the checker's build terms, these append
 \ the code that names one.
@@ -209,7 +168,6 @@ variable CUR-REF-OFF    variable CUR-REF-LEN
 : PE-FINALLY     A-FINALLY CODE, ;
 : PE-C2-INVOKE   A-C2-INVOKE CODE, ;
 
-\ ---- openers and closers -----------------------------------------------------
 : ROW-OPEN ( n -- ) {: kind:n :}
    kind CUR-KIND !
    0 CUR-PKG-OFF !  0 CUR-PKG-LEN !
@@ -269,8 +227,13 @@ variable CUR-REF-OFF    variable CUR-REF-LEN
 : ECLOSE-PRIVATE ( -- )
    ROW-WRITE ;
 
-\ REF names the reference implementation in checked Habu that a parity gate runs
-\ beside each backend's body for this row. It is read back with REF$.
+\ REF names the reference implementation in checked Habu (src/habu/prim-ref.f,
+\ package PRIM-REF) that test/prim-parity.f runs beside each backend's body over
+\ the same cases; it is read back with REF$. A reference never shadows a
+\ primitive spelling, so the clause spells `PRIM-REF:ADD`, not `PRIM-REF:+`. A
+\ row carries one only where the semantics can be written WITHOUT the primitive
+\ it answers for and where the gate exercises it; the overloads of a name state
+\ it on the row whose instantiation the gate runs.
 : REF ( -- )
    NAME-U @ CUR-REF-OFF !
    parse-name dup CUR-REF-LEN ! NAME-SPAN, ;
@@ -403,7 +366,17 @@ public
 
 private
 
-\ ---- the table ---------------------------------------------------------------
+\ THE ROWS ARE THE CHECKER'S AXIOMS: a primitive has no Habu body to infer an
+\ effect from. An overloaded name has one row per pointer, integer or bool
+\ variant. A row with a REF is held to its reference by test/prim-parity.f; a
+\ row with none (every syscall, control, defining-word, image, FFI and atomic
+\ row) is held only by the engine rebuilding itself through these rows and by
+\ the programs the gate runs on it.
+\ A row must be registered before checker.f's `PTABLE-END`: that word sets
+\ `USIGS-USER-OFF`, and a row appended past it is a USER effect record, which
+\ collapses an overload set (`+` has three rows) to the newest record. Hence
+\ this file loads BEFORE checker.f and holds the rows as an atom-code stream
+\ that checker.f replays.
 EPRIM: finally PE-FINALLY EPRIM; REACH run
 2 EMIN-IN!                           \ the body xt and the cleanup xt
 EPRIM: c2-invoke PE-C2-INVOKE EPRIM;
@@ -462,7 +435,7 @@ EPPRIM: SOURCE-EXEC source-exec-handler PE-N PE-OUT ECLOSE-PRIVATE
 
 EPRIM: source-unit-run PE-Q ;PE-Q PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ closes one whole source unit without an evaluator frame
-\ Checked caller: test/closed-unit-suite.f CU-RUN, on the whitebox engine.
+\ Checked caller: src/core/include.f RUN-CLOSED.
 EPPRIM: SOURCE-ROOT source-unit-run PE-Q ;PE-Q PE-IN ECLOSE-PRIVATE
 EPRIM: source-file-run PE-Q ;PE-Q PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ runs a file the loader opened as its own source unit
@@ -495,8 +468,8 @@ EPRIM: +      PE-N PE-IN PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:ADD EPRIM; REACH s
 \ `a` the result keeps, so the pointee is still preserved). The mark is inert for
 \ every pointee but the null: a null that rides one of these rows comes out a
 \ DATA-base pointer, because the address it answers is the caller's arithmetic
-\ and no longer the one literal address the null's permissive pointee arm is for
-\ (dot habu-fence-an-offset-7372e836). The pointer-MINUS-pointer rows below are a
+\ and no longer the one literal address the null's permissive pointee arm is for.
+\ The pointer-MINUS-pointer rows below are a
 \ distance, not a step, and read no storage, so neither operand's pointee may
 \ take a kind from the other. Two pointers to elements still name one element
 \ type (`ptr a ptr a`), but a base address -- `NULL-PTR`, `data-base`, or one
@@ -560,14 +533,13 @@ EPRIM: @          PE-PTR-A PE-IN  PE-A PE-OUT EPRIM; REACH memory
 EPRIM: !          PE-A PE-IN PE-PTR-A PE-IN EPRIM; REACH memory
 \ `xt!` is `!` plus the declaration that the cell it writes holds a JIT-region
 \ address, for a persisted cell whose address the caller works out at run time
-\ from a table base and a row index (dot habu-declare-persisted-cb-b150b5d5).
+\ from a table base and a row index.
 \ Its row is `!`'s row, so the value and the pointee are the same type and a
 \ quotation-typed cell is written with a quotation of exactly its own effect.
 \ What the row still cannot say is that the pointee MUST be an execution token:
 \ there is no quotation-kinded type variable (no TVK kind admits only
 \ quotations), so `xt!` into a plain integer cell type-checks today and would
-\ have the loader shift an ordinary integer. That missing kind is owned by
-\ dot habu-give-xt-a-9fc427a9.
+\ have the loader shift an ordinary integer.
 \ A plain `!` of a quotation into such a cell is already refused
 \ (E-RAW-CELL-PTR, the raw rule's FENCE-EXEC arm in src/core/checker.f RAW-OK?;
 \ test/compiler/base-pointer-arith-refusals.f pins its reason over base-derived
@@ -728,10 +700,8 @@ EPPRIM: NPUB xref-retarget PE-N PE-IN PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ compiler build the call window from src/core/internal-mark.f's TRUSTED:
 \ wrappers, the same reason CHECKER-VERIFY-PKG-START below carries one: that
 \ compiler reads a callee's cell widths out of this table for every name a body
-\ writes, and a primitive is the one kind of name no scan can ever supply. The
-\ JIT tier never asked, which is why the absence survived until a product engine
-\ hosted a build at tier 1 and `TRUSTED: MARK-INTERNAL ( n -- ) int-mark ;` came
-\ back E-HIR-UNMODELED. TRUSTED-only keeps the boundary exactly where it was:
+\ writes, and a primitive is the one kind of name no scan can ever supply.
+\ The row is TRUSTED-only:
 \ a CHECKED caller is refused here, and the emitted records carry DNAME-INT
 \ (ENGINE-PRIMS:GLOBAL-INT-WID) so neither name is executable or tickable.
 EPRIM: int-mark      PE-N PE-IN EPRIM;
@@ -826,7 +796,6 @@ EPPRIM: CHECKER-REG def-occ-select PE-PTR-N PE-IN PE-N PE-OUT PE-N PE-OUT ECLOSE
 EPRIM: def-occ-resolve PE-N PE-IN PE-N PE-IN PE-PTR-N PE-OUT EPRIM;
 ETRUSTED-ONLY!                       \ slot and nonzero process-local occurrence
 EPPRIM: DEF-OCC def-occ-resolve PE-N PE-IN PE-N PE-IN PE-PTR-N PE-OUT ECLOSE-PRIVATE   \ src/habu/xref.f DEF-OCC:RESOLVE
-\ ---- the definition writers --------------------------------------------------
 \ What `package`, `export`, `:`, `create`, `does>`, `;`, `immediate`, `cast:`
 \ and `defer` change is sealed state after the seal: the friend arena (CUR, WIDN, DEF-WL,
 \ TSIG, TCSIG, PKG-*), BODYBUF, DEF-TIER-CELL and the records behind the
@@ -979,7 +948,6 @@ EPPRIM: OUTER def-cast ECLOSE-PRIVATE
 \ code ceiling.
 EPRIM: def-defer PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
-\ ---- the replay writers ------------------------------------------------------
 \ Only package CHECKER-OVERLAY's rows type these six. With no global row, a
 \ checked caller elsewhere is E-UNDEFINED, and a TRUSTED: body elsewhere binds
 \ one at tier 0 only: tier 1 has no row to build its call from. A refusal
@@ -1017,15 +985,15 @@ EPPRIM: CHECKER-OVERLAY replay-private PE-N PE-IN PE-F PE-IN ECLOSE-PRIVATE
 EPRIM: SEAL-CAPTURE   EPRIM;
 EPRIM: seal-captured? PE-F PE-OUT EPRIM;
 EPRIM: SEAL-FRIEND    EPRIM;
-EPRIM: DRAIN-PRETRUST EPRIM;   \ dot habu-engine-pre-trust-77410827: drains the pending pre-trust defer table
+EPRIM: DRAIN-PRETRUST EPRIM;   \ drains the pending pre-trust defer table
 \ data-base is a BASE ADDRESS: the start of the running task's DATA region, not
 \ the address of any declared element. Its pointee is TVK-DBASE, so `data-base
 \ OFF + @` still answers a number, an xt or a role - what those cells hold - and
 \ still subtracts, compares and byte-views like any pointer, while a nominal
 \ identity or an address read through it is refused at EVERY pointee depth: a
-\ DATA cell is not the address of an address either (dot
-\ habu-fence-a-base-c6c1d71d). A cell of the region that really holds an address
-\ is reached with `ptr-field`, the declared door, exactly as before.
+\ DATA cell is not the address of an address either.
+\ A cell of the region that really holds an address
+\ is reached with `ptr-field`, the declared door.
 EPRIM: data-base      PE-PTR-A-DBASE PE-OUT EPRIM;
 \ NULL-PTR is the language's null: a pointer of any pointee, and the address OF
 \ nothing. Its value is zero, so the body pushes zero and reads no memory.
@@ -1035,7 +1003,7 @@ EPRIM: data-base      PE-PTR-A-DBASE PE-OUT EPRIM;
 \ address. What it refuses is a value read THROUGH it: `NULL-PTR + @` taken as
 \ a nominal identity or as an address certified and forged one. That pointee arm
 \ is the whole difference from `data-base`, whose TVK-DBASE reaches an arbitrary
-\ DATA word and is fenced at every depth (dot habu-fence-a-base-c6c1d71d).
+\ DATA word and is fenced at every depth.
 EPRIM: NULL-PTR       PE-PTR-A-NULL PE-OUT EPRIM; REACH stack
 \ Resolve the capture observer slot from the running kernel. Older retained
 \ engines lack this name and explicit export declines before arming a capture.
@@ -1119,14 +1087,13 @@ EPRIM: ffi-call-abi-r PE-PTR-A PE-IN PE-PTR-B PE-IN PE-PTR-C PE-IN PE-N PE-IN PE
                      PE-N PE-IN PE-N PE-IN  PE-R PE-OUT EPRIM;
 ETRUSTED-ONLY!
 
-\ ---- package FFI's owner-private capability rows ----------------------------
+\ Package FFI's owner-private capability rows.
 \ Each primitive here keeps the global ETRUSTED-ONLY! row above — the outside
 \ boundary (E-CAP-TRUSTED), and the call window the optimizing compiler reads for
 \ the TRUSTED: bodies outside FFI that still call it (src/lib/fs-identity.f,
 \ src/lib/f64-text.f) — and gains an owner-private row, so a CHECKED body compiled
-\ inside package FFI resolves it. This is what retires the TRUSTED:
-\ bodies in src/lib/ffi-abi.f and src/lib/net/udp4.f: FFI's own words become ordinary
-\ checked Habu, and no consumer can reach a raw foreign call at all.
+\ inside package FFI resolves it. FFI's own words are ordinary checked Habu, and
+\ no consumer can reach a raw foreign call.
 EPPRIM: FFI ffi-call-bounded PE-PTR-A PE-IN PE-PTR-B PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT ECLOSE-PRIVATE
 EPPRIM: FFI ffi-call-abi-bounded PE-PTR-A PE-IN PE-PTR-B PE-IN PE-PTR-C PE-IN
                                 PE-PTR-D PE-IN PE-PTR-E PE-IN PE-N PE-IN PE-N PE-IN
@@ -1176,7 +1143,7 @@ EPRIM: execute-floor PE-N PE-IN  PE-F PE-OUT EPRIM;
 ETRUSTED-ONLY!                       \ executes an xt whose effect nothing states
 EPPRIM: OUTER execute-floor PE-N PE-IN  PE-F PE-OUT ECLOSE-PRIVATE
 
-\ ---- primitives whose effect the checker elaborates --------------------------
+\ Primitives whose effect the checker elaborates.
 \ These have engine bodies and deliberately no row: their effect depends on the
 \ call site, so src/core/checker.f computes it in the elaborator instead of
 \ reading one from the table (RSEXEC, RSCATCH, RS2->R, RS2R>, RS2R@ in CF-TOK?,
@@ -1196,13 +1163,12 @@ ELAB: 2>r REACH stack
 ELAB: 2r> REACH stack
 ELAB: 2r@ REACH stack
 
-\ ---- primitives with no checker row at all -----------------------------------
+\ Primitives with no checker row at all.
 \ Bodies with no declaration anywhere, so no checked program can name one: a
 \ checked caller of `run-rc` is E-UNDEFINED, measured. Only unchecked source
 \ reaches them (test/engine-suite.f spawns through `run-rc`;
 \ test/top-row-hook-test.f reads `top-check@`). They are rows so the gap is
-\ stated instead of silent; giving them effects, or removing the bodies, is a
-\ decision of its own and is taken separately.
+\ stated instead of silent.
 UNROWED: run-rc
 UNROWED: top-check@
 
