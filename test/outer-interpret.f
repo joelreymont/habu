@@ -1298,12 +1298,15 @@ variable WANT-RC
    s" : oi-pkg:OI-SEVEN" s" oi-head-qualified-duplicate.f" HEAD
    78 s" duplicate definition: oi-pkg:OI-SEVEN at " S\" oi-head-qualified-duplicate.f:1\n" DIED-AT ;
 
-\ A tail the compiler reads as a keyword in a body refuses, the tail named.
+\ A tail the compiler reads as a keyword in a body refuses, the tail named, and
+\ so does field-project, which generated bodies bind, in any letter case.
 : HEAD-KEYWORD-WALL ( -- )
    s" : If" s" oi-head-if.f" HEAD
    70 s" hb: compile keyword cannot be a definition name: If at " S\" oi-head-if.f:1\n" DIED-AT
    s" trusted: OI-PKG:then ( -- )" s" oi-head-qualified-then.f" HEAD
-   70 s" hb: compile keyword cannot be a definition name: then at " S\" oi-head-qualified-then.f:1\n" DIED-AT ;
+   70 s" hb: compile keyword cannot be a definition name: then at " S\" oi-head-qualified-then.f:1\n" DIED-AT
+   s" : OI-PKG:Field-Project" s" oi-head-reserved.f" HEAD
+   70 s" hb: reserved word cannot be a definition name: Field-Project at " S\" oi-head-reserved.f:1\n" DIED-AT ;
 
 \ `trusted:` needs a signature, opened and closed; the refusal names the
 \ definition at the name's line. An input that ends before the signature

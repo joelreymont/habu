@@ -156,9 +156,9 @@ private
 \ the entry out of the registers: nothing to claim. GETENV and ENV=? keep their cursors on the
 \ stack. ENV-INPUT's observer
 \ starts empty: source tracking belongs to the build process.
-\ DYNAMIC-STORAGE's four cells stay private: a private word of a baked package is unreachable by
-\ qualified name and by reopening the package (E-UNDEFINED for both), so
-\ DYNAMIC-STORAGE:OWNED-CELLS hands them over.
+\ DYNAMIC-STORAGE's five cells, its DYNAMIC-BUFFER and ARENA registries, stay private: a private
+\ word of a baked package is unreachable by qualified name and by reopening the package
+\ (E-UNDEFINED for both), so DYNAMIC-STORAGE:OWNED-CELLS hands them over.
 \ APP-ENTRY:XT-CELL non-zero means this process is an application: src/os/script-argv.f
 \ SCRIPT-ARG-START then takes argv[1] as argument 0. Left at zero, a stripped image reported its
 \ second argument as argument 0.

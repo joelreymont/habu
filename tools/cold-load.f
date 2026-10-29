@@ -162,6 +162,7 @@ create ROOT KEEP align
    s" src/core/decl-event.f" FILE
    s" src/core/structure-make.f" FILE
    s" src/core/structure-decl.f" FILE
+   s" src/core/arena.f" FILE
    s" src/core/enum-decl.f" FILE
    s" src/core/structures.f" FILE
    s" src/core/bytes.f" FILE

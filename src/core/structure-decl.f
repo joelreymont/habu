@@ -44,6 +44,15 @@ SD-RESET
       2drop s" name must be a lowercase family tail" E-CASE DECL-REJECT:REJECT throw THEN
    NAME-RESERVED? IF s" reserved name" E-NAME DECL-REJECT:REJECT throw THEN ;
 
+: NAME-GATE ( ptr u8 n -- )         \ the packet names the family, then REQUIRE-NAME judges it
+   2dup DECL-REJECT:FAMILY! REQUIRE-NAME ;
+
+\ The name NAME-OK? judges, held across its catch: a quotation carries no
+\ locals. NAME-OK? empties it again, so no borrowed span outlives the call.
+PTR-VARIABLE GATE-A   variable GATE-U
+
+: SD-KIND$ ( -- ptr u8 n ) s" structure" ;
+
 \ A family that owns a linear value is an accepted field type: the structure owns
 \ the obligation by containment (TFAM-CONCRETE-LINEAR? walks into it), the rule a
 \ field naming a DEFLINEAR con already relies on.
@@ -381,14 +390,13 @@ SD-QUOT-INSTALL
       drop 2drop s" invalid type parameter header" E-ARITY DECL-REJECT:REJECT throw
    THEN
    {: ar:n :}
-   2dup DECL-REJECT:FAMILY!
-   2dup REQUIRE-NAME
+   2dup NAME-GATE
    ar
    SD-REGISTER
    CLAUSES ;
 
 : SD-FRONT ( -- ptr u8 n ptr u8 n [ -- ] )
-   s" structure" s" ;structure" [: SD-RESET DRIVE ;] ;
+   SD-KIND$ s" ;structure" [: SD-RESET DRIVE ;] ;
 
 public
 
@@ -401,6 +409,20 @@ public
    SD-ARG-CAP 0 ?do 0 i cells SD-ARGS + ! loop  0 SD-ARG-N ! ;
 
 : SD-RUN ( -- ) SD-FRONT DECL-FRONT:RUN ;
+
+\ NAME-OK? ( name -- bool ) : judge a family name as a bare `STRUCTURE name`
+\ does, for a definer that declares a STRUCTURE in text it generates from that
+\ name (src/core/arena.f), before it spells anything from the name: the same
+\ gate in the same packet, rendered and rethrown with the same code. False only
+\ when a multi-error load counted the refusal.
+: NAME-OK? ( ptr u8 n -- bool )
+   GATE-U ! GATE-A !
+   SD-KIND$ DECL-REJECT:OPEN
+   GATE-A @ GATE-U @ DECL-REJECT:TOKEN!
+   [: GATE-A @ GATE-U @ NAME-GATE ;] catch {: rc:n :}
+   NULL-PTR GATE-A ! 0 GATE-U !
+   rc DECL-REJECT:GUARD-CODE
+   rc 0= ;
 
 \ SD-REPLAY registers a STRUCTURE from tokens a tool already lexed
 \ (tools/check-core.f, verify-source.f) with SD-RUN's grammar, validation and

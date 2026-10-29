@@ -99,7 +99,7 @@ PERSISTED-PTR-VARIABLE ACTIVE-P      \ the active pool's first segment
 PERSISTED-PTR-VARIABLE WRITE-P       \ and its last, which takes new bodies
 BOOT-OWNER FIRST-P !  BOOT-OWNER ACTIVE-P !  BOOT-OWNER WRITE-P !
 
-: ARENA ( -- ptr u8 ) WRITE-P @ ARENA@ ;
+: STRING-ARENA ( -- ptr u8 ) WRITE-P @ ARENA@ ;
 : R-OFF ( -- ptr n ) WRITE-P @ OFFSETS ;
 : R-LEN ( -- ptr n ) WRITE-P @ LENGTHS ;
 : USED ( -- ptr n ) WRITE-P @ USED-FIELD ;
@@ -117,7 +117,7 @@ variable SOURCE-N
 variable SOURCE-ON
 
 : BASE ( -- n )
-   ARENA PTR>N ;
+   STRING-ARENA PTR>N ;
 
 : ROW-OFF ( n -- n ) {: k:n :}
    k cells R-OFF + @ ;
@@ -126,7 +126,7 @@ variable SOURCE-ON
    k cells R-LEN + @ ;
 
 : ROW$ ( n -- ptr u8 n ) {: k:n :}
-   ARENA k ROW-OFF +  k ROW-LEN ;
+   STRING-ARENA k ROW-OFF +  k ROW-LEN ;
 
 : OWNER-ROW$ ( ptr u8 n -- ptr u8 n ) {: owner:ptr row:n :}
    owner ARENA@ owner OFFSETS row cells + @ +
@@ -241,7 +241,7 @@ variable SOURCE-ON
    a u FREE-SLOT {: s:n :}
    USED @ {: off:n :}
    u 0= if ARENA-CAP else off then {: stored:n :}
-   a  ARENA stored +  u BYTE-COPY
+   a  STRING-ARENA stored +  u BYTE-COPY
    stored ROWS @ cells R-OFF + !
    u ROWS @ cells R-LEN + !
    ROWS @ 1+ s cells SLOT + !
@@ -484,7 +484,7 @@ public
 
 : PREPARE-BEGIN ( n -- ) {: data-end:n :}
    data-end PLAN-DATA-END !
-   ARENA PTR>N PLAN-BASE !
+   STRING-ARENA PTR>N PLAN-BASE !
    ROWS @ PLAN-ROWS ! USED @ PLAN-USED !
    -1 PLAN-LIVE ! NULL-PTR PLAN-STAGED !
    LAST-OWNER PTR>N PLAN-LAST ! WRITE-P @ PTR>N PLAN-WRITE !
@@ -556,7 +556,7 @@ public
 \ The retained owner's literal rows, as the build driver reads them, one segment
 \ of the active pool at a time: the arena and its capacity for the span check,
 \ then the rows themselves. Published here, while the package is open, because
-\ the alternative is the driver finding ARENA, ARENA-CAP, R-OFF and R-LEN by name
+\ the alternative is the driver finding STRING-ARENA, ARENA-CAP, R-OFF and R-LEN by name
 \ in this package's private wordlist after it closes.
 : SOURCE-SPAN ( n -- ptr u8 n )
    SEGMENT ARENA@ ARENA-CAP ;

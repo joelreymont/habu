@@ -20,7 +20,7 @@ PPRIM: PRIM-OWNER-SHADOW CORE-FOLD-C PE-N PE-IN PE-N PE-OUT CLOSE-PRIVATE
 
 \ FIELD-PROJ! is REG-PROTECT: the seal marks its record DNAME-INT and no checked
 \ body may call it after, its owner's included. Its owner's caller,
-\ src/core/sumtype.f TDPLAN-FP-ARM, compiles before the seal, so TYPE-DECL's row
+\ src/core/sumtype.f FIELD-ARM, compiles before the seal, so TYPE-DECL's row
 \ is measured here at both tiers, a checked call and a checked tick. A refusal
 \ stops the window before the child's first case.
 package TYPE-DECL

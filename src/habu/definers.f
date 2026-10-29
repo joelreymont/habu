@@ -252,14 +252,25 @@ private
    s" hb: not in vocabulary: " SAY
    a u SAY ENGINE-ERROR:POLICY THROW-AT ;
 
+: DEF-RESERVED-REFUSE ( ptr u8 n -- ) {: a:ptr u:n :}
+   s" hb: reserved word cannot be a definition name: " SAY
+   a u SAY RC-REJECT THROW-AT ;
+
+\ The engine's twin: habu2.f C-RESERVED-DEF-GUARD. Generated bodies bind
+\ STRUCTURE-MAKE:PROJECT-NAME$ by name, so once sealed no definition takes it.
+: DEF-RESERVED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   SEAL-NDICT@ 0= if false exit then
+   a u STRUCTURE-MAKE:PROJECT-NAME$ FOLDED= ;
+
 \ Matched as the engine matches its keywords, with only the tail's A-Z folded.
 : DEF-WALL ( ptr u8 n -- ) {: a:ptr u:n :}
    POLICY-NDICT-CELL CELL@ 0<> if
       a u DEF-DESIGN-KEYWORD? if a u DEF-KEYWORD-REFUSE then
       a u DEF-NAME-KEYWORD? if a u DEF-POLICY-REFUSE then
-      exit
+   else
+      a u DEF-KEYWORD? if a u DEF-KEYWORD-REFUSE then
    then
-   a u DEF-KEYWORD? if a u DEF-KEYWORD-REFUSE then ;
+   a u DEF-RESERVED? if a u DEF-RESERVED-REFUSE then ;
 
 \ The engine's twins: habu2.f C-SIG-START, C-SIG-END and C-SIG-CAPTURE-TSIG.
 \ A signature starts at the first byte past the blanks when that byte is `(`,

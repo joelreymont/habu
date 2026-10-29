@@ -635,12 +635,17 @@ multi-cell type rationale is `docs/design.md` "Types".
     exclusive view, are declared only in package C2-MEM's private section.
     Any package may declare the read-view unpack `( read-view<p,q,T> -- ptr
     u8 n )` in its private section: the projection erases the type and can
-    neither widen bounds nor forge a scope. A pack's scope and region
+    neither widen bounds nor forge a scope. The element T is a cast term: a
+    type variable or a linear type in it is `E-CAST-LINEAR`, and one that
+    reaches an arena head is `E-CAST-OWNER`. A pack's scope and region
     variables are free in its input and, like any callee's, instantiate
     fresh at each call. The cast takes an unqualified name: a qualified name
     selects that package's public wordlist and would publish the boundary.
     That, and every other cast with a view, public or private, is
-    `E-CAST-SCOPE`.
+    `E-CAST-SCOPE`, except that a view representation cast in a private
+    section meets the element rules first: a qualified unpack, or a pack or
+    mut-view unpack outside C2-MEM, whose element breaks one is
+    `E-CAST-LINEAR` or `E-CAST-OWNER`.
   - Each side is one term over the same stack tail (`E-CAST-ARITY`);
     a layout value wider than a cell is one term per cell. The emitted identity
     preserves the tail, so `( R n -- R u8 )` is valid and `( R n -- S u8 )`
@@ -652,8 +657,17 @@ multi-cell type rationale is `docs/design.md` "Types".
     pointer, in any quotation row or in a layout's members, is
     `E-CAST-LINEAR`: a `PRODUCT` field `ptr lease` or a `STRUCTURE`
     field `[ -- lease ]` carries the lease through the cast on either side.
+    A view cast's element follows the same rule, so `( read-view<p,q,t> --
+    ptr u8 n )` is refused; a scope or region variable binds a scope or a
+    region, never a value, so one inside the element, such as the `i` of
+    C2-MEM's `mut-view<p,i,a,init<i,owner-state>>`, is admitted.
   - A scalar-cell family, including a parametric `NEWTYPE` instance, in an
     introduction position belongs to its declaring package (`E-CAST-OWNER`): `CAST: >SLOT ( n -- slot )` outside `package DOC` is refused.
+    An arena head that either term reaches, through pointers, quotation rows
+    or a layout's members, belongs to `DYNAMIC-STORAGE` the same way: after
+    `ARENA FOOS rec`, `CAST: >U8 ( ptr foos -- ptr u8 )` would copy the head
+    and `( ptr u8 -- ptr foos )` forge one, so both are `E-CAST-OWNER`
+    elsewhere, a private section included.
   - A pointer or a quotation in an introduction position is a class mint and
     is declared only in a package's private section (`E-CAST-MINT`).
 
@@ -1884,8 +1898,8 @@ documentation-only edits need no rebuild.
   source search where it answers, native inspection where runtime state matters.
 - **`DYNAMIC-BUFFER NAME Type` for growing typed tables**: the stored types of
   `TYPED-BUFFER`, closed non-linear layouts included, **and `u8`**, the
-  growable byte row; it is the one definer that takes `u8` (`DYNAMIC-BUFFER X
-  u16` is refused). `count NAME-RESERVE` allocates at least that many elements
+  growable byte row; it and `ARENA` are the definers that take `u8`
+  (`DYNAMIC-BUFFER X u16` is refused). `count NAME-RESERVE` allocates at least that many elements
   and keeps contents; `index NAME` answers `ptr Type`, rejecting negative and
   beyond-capacity indices; a smaller reserve keeps the allocation; growth may
   move it, so retain indices and reacquire pointers. A growing reserve copies
@@ -1897,6 +1911,47 @@ documentation-only edits need no rebuild.
   dictionary storage. With `u8`, `index NAME` is `( n -- ptr u8 )` at byte
   `index`, read and written with `c@`/`c!`, never cell `@`; `count NAME-RESERVE`
   counts bytes, and the capacity is the request rounded up to a cell.
+- **`ARENA NAME Type` for records that share one lifetime**: the stored types
+  of `DYNAMIC-BUFFER`. It declares the family `name`, NAME folded to lower case
+  as `DEFTYPE` folds it, whose record is the arena: an owner holds one in a
+  `FIELD` or a `TYPED-VARIABLE`. The declaration passes three gates in order:
+  the storage definers' own name gate (one ':' at most, not a name qualified
+  into a sealed package, unused NAME-NEW and NAME-RELEASE), the element type,
+  then STRUCTURE's: NAME must fold to a family tail (letters, digits and single
+  inner hyphens, with at least one letter) and is refused exactly as
+  `STRUCTURE name` refuses it. NAME longer than 255 bytes is refused with
+  `TYPE-DECL:E-TDECL-CAP` (7118); at top level, a name whose constructor
+  package name (hyphens doubled) exceeds 255 bytes with `E-PACKAGE-NAME-CAP`
+  (7154). In every case nothing is defined, under `--all-errors` too.
+  `NAME-NEW ( ptr name -- ptr Type )` answers a fresh zeroed element that never
+  moves; `NAME-RELEASE ( ptr name -- )` frees every element at once and is safe
+  to repeat. It runs nothing for the elements, so free what they own first. A
+  pointer kept across NAME-RELEASE is stale and can alias the next NAME-NEW's
+  record, whose fresh chunk may be mapped at the released one's address.
+  Elements come from mapped chunks, the first of 32 elements and each next
+  twice its predecessor; a refused mapping throws `DYNAMIC-STORAGE:E-MAP`. The
+  family derives no accessor, and the owner lives in place: `@` or `!` on an
+  owner, or on a record holding one, is refused with `E-IN-PLACE`, since a
+  copy would share the owner's chunks, and a `CAST:` that reaches a head
+  outside `DYNAMIC-STORAGE` is `E-CAST-OWNER`. So no typed access and no such
+  cast copies or forges a head; address arithmetic (`+`, `record-at` and other
+  raw offsets) still reaches one (**Raw storage never holds an address**).
+  Nor is either the element type of a `DYNAMIC-BUFFER`, an `ARENA`, a
+  `CWORK-VARIABLE`, a `CWORK-BUFFER` or a `CWORK-SPAN`, whose storage moves or
+  unmaps: the declaration is refused
+  with `E-BAD-STORAGE`. `TYPED-VARIABLE`, `TYPED-BUFFER` and `LAYOUT-BUFFER` hold
+  one. Checked code calls or ticks `DYNAMIC-STORAGE:ARENA-NEW` and
+  `DYNAMIC-STORAGE:ARENA-RELEASE` only inside the generated NAME-NEW and
+  NAME-RELEASE; a call or tick anywhere else, directly or through a
+  re-export, is refused with `E-ARENA-CALL`. Those two words reach their
+  owner's head through the engine's `field-project`, which no sealed-engine
+  definition can take, so an element's size always comes from the declared
+  type.
+  NAME-NEW and NAME-RELEASE take no lock: tasks sharing one arena serialise
+  them. `IMAGE-LIFECYCLE:PREPARE` runs every capture hook and then refuses an
+  arena still live: it prints `hb: capture: live arena PKG:NAME` (`NAME` at top
+  level) and throws `DYNAMIC-STORAGE:E-ARENA-LIVE`, so a hook registered with
+  `IMAGE-LIFECYCLE:REGISTER` can release its arena first.
 - **Runtime-sized buffers use OS mappings.** `create … allot` consumes
   dictionary DATA; `src/lib/memory.f` allocates contiguous or separate 64K
   buffers and spans, bounded by cell-size overflow and OS allocation failure.
@@ -2035,8 +2090,8 @@ sections above.
   `SAME-ID` is `( x x -- )`) compares two allocations:
   `E-RIGID-REGION-MISMATCH`, as two calls of `RG-ONE` are.
 - **A refused storage declaration defines nothing.** `LAYOUT-BUFFER`,
-  `DEFER-LAYOUT-BUFFER`, `TYPED-BUFFER`, `TYPED-VARIABLE` and
-  `DYNAMIC-BUFFER` require a valid storable type and name, plus a valid count
+  `DEFER-LAYOUT-BUFFER`, `TYPED-BUFFER`, `TYPED-VARIABLE`, `DYNAMIC-BUFFER`
+  and `ARENA` require a valid storable type and name, plus a valid count
   where the definer takes one. Unknown, malformed or missing types; missing
   names; names with more than one `:` or in sealed packages; and an invalid
   literal count are `E-BAD-STORAGE` at the offending token. The name is on the
@@ -2046,8 +2101,8 @@ sections above.
   no-such-type` prints `habu: in B: unknown type 'no-such-type'`.
 - **Fixed `TYPED-BUFFER` elements occupy whole cells.** `2 TYPED-BUFFER TB
   u8` is refused (`type this definer cannot store 'u8'`). Use `n BUFFER: B`
-  for fixed bytes, yielding `( -- ptr u8 )`. `DYNAMIC-BUFFER` alone stores
-  `u8`, with byte indexing and `c@`/`c!`; `u16` is refused. `create … allot`,
+  for fixed bytes, yielding `( -- ptr u8 )`. `DYNAMIC-BUFFER` and `ARENA`
+  alone store `u8`, with `c@`/`c!`; `u16` is refused. `create … allot`,
   `BUFFER:` and `TYPED-BUFFER` allocate zeroed, cell-aligned storage; `allot`,
   `c,` and `,` do not realign following storage (see **Habu Native Tooling
   Gotchas**).
@@ -2199,6 +2254,24 @@ sections above.
   `S\"` does and needs its delimiter space (see **Habu Native Tooling
   Gotchas**). Native `.` prints a newline: `11 . 22 . cr` emits
   `11\n22\n\n`; use digit emitters for inline numbers.
+- **Only ARENA's generated words reach the arena runtime.** A call or tick
+  of `DYNAMIC-STORAGE:ARENA-NEW` or `DYNAMIC-STORAGE:ARENA-RELEASE`, directly
+  or through a re-export, outside an `ARENA`'s NAME-NEW and NAME-RELEASE, in
+  a body, a quotation or at top level, on a declared
+  `DYNAMIC-STORAGE:arena-head` or on `NULL-PTR`, is `E-ARENA-CALL` (`arena call: only ARENA's generated NAME-NEW and
+  NAME-RELEASE call ARENA-NEW and ARENA-RELEASE`); naming the head type is
+  admitted. Exporting the two words is admitted; only the call or tick is
+  refused.
+- **`field-project` is not a definition name once the engine is sealed.**
+  Every `STRUCTURE` accessor and an `ARENA`'s NAME-NEW and NAME-RELEASE spell
+  it unqualified, so it binds through the declaring scope's search order; a
+  qualified spelling would carry no checker identity. A word of that name, by
+  any definer, in any package and in any letter case, is refused at its
+  definition with `hb: reserved word cannot be a definition name:` and the
+  name as spelled, such as `Field-Project`, rc 70. Admitted, a package's own `field-project` would hand
+  two arenas one head, so records of different types share bytes, or send an
+  accessor's store to another variable. The engine's own definition loads
+  before the seal.
 - **Package `private` is visibility, not sealing.** Another file may reopen
   the package and call its private words until `get-current prot-wid-add` or
   the native capture seals it; a sealed reopen is refused. Multi-file owners
@@ -2208,7 +2281,10 @@ sections above.
   `E-CAST-MINT` at top level or under `public`. A type-variable pointee is
   `E-CAST-LINEAR`, and a layout's fields carry the mint and foreign-owner rules
   recursively: a `pfbox` whose field is `ptr u8` exposes that pointer through
-  `PFBOX:UNMAKE` (see **Structures And Enums**). A `LINEAR:` token conversion
+  `PFBOX:UNMAKE` (see **Structures And Enums**). A private row admits no cast
+  that reaches an arena head on either side: `CAST: >U8 ( ptr foos -- ptr u8 )`
+  copies a head and its reverse forges one, so both are `E-CAST-OWNER` outside
+  `DYNAMIC-STORAGE`. A `LINEAR:` token conversion
   similarly requires the declaring package's private section; bad payload,
   owner or scope is respectively `E-LINEAR-PAYLOAD`, `E-LINEAR-OWNER` or
   `E-LINEAR-SCOPE`. A checked body cannot declare one; outside callers use the

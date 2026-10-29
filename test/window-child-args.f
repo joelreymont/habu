@@ -46,6 +46,7 @@ public
    s" src/core/decl-event.f" ARG
    s" src/core/structure-make.f" ARG
    s" src/core/structure-decl.f" ARG
+   s" src/core/arena.f" ARG
    s" src/core/enum-decl.f" ARG
    s" src/core/structures.f" ARG
    s" src/core/bytes.f" ARG ;

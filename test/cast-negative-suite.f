@@ -143,6 +143,11 @@ s" CAST: CNP8 ( n -- a )" CN-EVAL-CATCH E-CAST-LINEAR T=
 s" CNP8" CN-ABSENT? TTRUE  s" CNP8" 0 search-wl 0= TTRUE
 s" CAST: CNP9 ( n -- cnpbox<cnpbox<a>> )" CN-EVAL-CATCH E-CAST-LINEAR T=
 s" CNP9" CN-ABSENT? TTRUE  s" CNP9" 0 search-wl 0= TTRUE
+\ A view's element is a cast term: the unpack hands out whatever t binds.
+s" CAST: CNP10 ( read-view<p,q,t> -- ptr u8 n )" CN-EVAL-CATCH E-CAST-LINEAR T=
+s" CNP10" CN-ABSENT? TTRUE  s" CNP10" 0 search-wl 0= TTRUE
+s" CAST: CNP11 ( read-view<p,q,CAST-NEG:nested> -- ptr u8 n )" CN-EVAL-CATCH E-CAST-LINEAR T=
+s" CNP11" CN-ABSENT? TTRUE  s" CNP11" 0 search-wl 0= TTRUE
 s" CN-PRIVATE-PROBE" 0 search-wl 0= TTRUE
 s" CN-PRIVATE-PROBE" CN-ABSENT? TFALSE
 ;package

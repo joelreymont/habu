@@ -1331,16 +1331,23 @@ private
    TDPLAN-ROW {: r:ptr :}
    r TDPLAN.DEF-OFF @ 2 -  r TDPLAN.DEF-U @ 3 +  TDPLAN-SPAN$ ;
 
-\ Called before each of the two readings of the row's text: the window is
-\ single-shot and disarms at the `field-project` token even on a reject.
+\ Arms the sealed field-projection window for one generated definition.
 \ FIELD-PROJ! binds TYPE-DECL's private row (checker.f), so this caller is
-\ checked code.
-: TDPLAN-FP-ARM ( ptr u8 n n n -- ) FIELD-PROJ! ;
+\ checked code. ARENA (arena.f) arms its NAME-NEW and NAME-RELEASE through it
+\ too. sumtype.f loads before check-hook.f, so FIELD-ARM has no checker effect
+\ and the boot seal marks it internal: only the compiled calls here and in
+\ arena.f reach it.
+public
+: FIELD-ARM ( ptr u8 n n n -- ) FIELD-PROJ! ;
+private
 
+\ Arms the window for this row, if it carries one, before each of the two
+\ readings of its text: the window is single-shot and disarms at the
+\ `field-project` token even on a reject.
 : TDPLAN-ARM ( n -- ) {: i:n :}
    i TDPLAN-ROW {: r:ptr :}
    r TDPLAN.FID @ TDPLAN-NO-ARM = IF EXIT THEN
-   i TDPLAN-NAME$ r TDPLAN.FID @ r TDPLAN.FOFF @ TDPLAN-FP-ARM ;
+   i TDPLAN-NAME$ r TDPLAN.FID @ r TDPLAN.FOFF @ FIELD-ARM ;
 
 : TDPLAN-PREFLIGHT-NAMES ( -- )
    TDPLAN-N @ 0 ?do i TDPLAN-NAME$ TDECL-NAME-PREFLIGHT-XT loop ;

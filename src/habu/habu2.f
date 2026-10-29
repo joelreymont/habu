@@ -175,6 +175,9 @@ variable LCSTR   variable LCSTRMSG   \ counted-string >255 reject (C-ICQ/C-EICQ/
 variable LDEFKWGUARD  variable LDEFKWFAIL  variable LDEFKWMSG   \ definition-name wall generated from the compile-keyword dispatch rows
 : DEFKWMSG$ ( -- ptr u8 n )   s" hb: compile keyword cannot be a definition name: " ;
 : DEFKWMSG-LEN ( -- n )   DEFKWMSG$ nip ;
+variable LRESDEF  variable LRESDEFMSG   \ sealed reserved definition name (C-RESERVED-DEF-GUARD): its spelling + its message
+: RESDEFMSG$ ( -- ptr u8 n )   s" hb: reserved word cannot be a definition name: " ;
+: RESDEFMSG-LEN ( -- n )   RESDEFMSG$ nip ;
 \ Capacity refusals that state a count: one line naming what filled up, the
 \ ceiling and the count. LDIAGU writes a
 \ number on fd 2 and LDIAGDEF the definition being compiled.
@@ -645,6 +648,8 @@ $18 constant CINL-LDRLIT-OP      \   bits 29:27 = 011 and 25:24 = 00
    LMINMSG LABEL@ LBL, MINMSG$ BYTES,                  \ LMININ appends the token + newline
    LPREFMISSMSG LABEL@ LBL, PREFMISSMSG$ BYTES,
    LDEFKWMSG LABEL@ LBL, DEFKWMSG$ BYTES,
+   LRESDEFMSG LABEL@ LBL, RESDEFMSG$ BYTES,
+   LRESDEF LABEL@ LBL, STRUCTURE-MAKE:PROJECT-NAME$ BYTES,
    LORPHANMSG LABEL@ LBL, ORPHANMSG$ BYTES,            \ LORPHAN appends the closer token + newline
    LCFCAPMSG LABEL@ LBL, CFCAPMSG$ BYTES,              \ LCFCAP appends the opener token + newline
    LCFKINDMSG LABEL@ LBL, CFKINDMSG$ BYTES,            \ LCFKIND appends the token + newline
@@ -4545,6 +4550,29 @@ public
       C-SEAL-MATCH                                       \ prefix len = x24; fail if reserved
    ok LBL, ;
 
+\ The sealed engine's reserved definition name, STRUCTURE-MAKE:PROJECT-NAME$
+\ (src/habu/definers.f DEF-RESERVED? is the twin): generated bodies bind it by
+\ name, so after the seal a definition with that tail, A-Z folded, writes the
+\ refusal and the token and dies 70 as LDEFKWFAIL does. The open namespace
+\ admits it, so the engine's own definition loads. Clobbers x3, x9-x15.
+: C-RESERVED-DEF-GUARD ( -- )
+   LBL LBL LBL {: cmp:label fail:label ok:label :}
+   9 DATA SEAL-NDICT-CELL LDR,  9 ok CBZ,               \ namespace open -> admit
+   10 DATA TKL-CELL LDR,  10 STRUCTURE-MAKE:PROJECT-NAME$ nip CMPI,  C-NE ok BCOND,
+   11 LRESDEF LABEL@ ADR,  12 DATA TKA-CELL LDR,  13 0 MOVZ,
+   cmp LBL,
+      13 10 CMP,  C-GE fail BCOND,                      \ every byte matched -> reserved
+      14 12 13 ADD,  14 14 0 LDRB,
+      3 14 $41 SUBI,  3 $1A CMPI,  3 C-CC CSET,  3 3 5 LSLI,  14 14 3 ORR,   \ fold A-Z -> a-z
+      15 11 13 ADD,  15 15 0 LDRB,
+      14 15 CMP,  C-NE ok BCOND,
+      13 13 1 ADDI,  cmp B,
+   fail LBL,
+      0 2 MOVZ,  1 LRESDEFMSG LABEL@ ADR,  2 RESDEFMSG-LEN MOVZ,  NR-WRITE SYS,
+      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+      0 70 MOVZ,  LCOMPILEDIE LABEL@ B,
+   ok LBL, ;
+
 variable LQUALIFYDEF      \ shared qualification helper entry
 variable LSTOREDEFNAME    \ shared guarded-name-publication helper entry
 
@@ -4583,6 +4611,7 @@ variable LSTOREDEFNAME    \ shared guarded-name-publication helper entry
       qopen LBL,
       LDEFKWGUARD LABEL@ BL,
       qwalled LBL,
+      C-RESERVED-DEF-GUARD
       C-QUALIFY-CAP
       C-REJECT-DUP-DEF
       done B,
@@ -13092,7 +13121,7 @@ package LABELS
    LBL LINTERNAL !  LBL LINTMSG !  LBL LTRUSTTICK !  LBL LTRUSTTICKMSG !
    LBL LPOLICY !  LBL LPOLICYMSG !  LBL LPOLICYREC !  LBL LPOLICYTOPREC !
    LBL LMININ !  LBL LMINMSG !  LBL LFLOORREC !
-   LBL LPREFMISS !  LBL LPREFMISSMSG !  LBL LDEFKWMSG !
+   LBL LPREFMISS !  LBL LPREFMISSMSG !  LBL LDEFKWMSG !  LBL LRESDEF !  LBL LRESDEFMSG !
    LBL LORPHAN !  LBL LORPHANMSG !
    LBL LCFKIND !  LBL LCFKINDMSG !
    LBL LCFCAP !  LBL LCFCAPMSG !

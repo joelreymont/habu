@@ -671,6 +671,8 @@ variable MDV-I   variable MDV-F
       MD-C2-COPY      of s" E-C2-COPY" endof
       MD-C2-DROP      of s" E-C2-DROP" endof
       MD-C2-ESCAPE    of s" E-C2-SCOPE-ESCAPE" endof
+      MD-IN-PLACE     of s" E-IN-PLACE" endof
+      MD-ARENA-CALL   of s" E-ARENA-CALL" endof
       MD-UNDERFLOW    of s" E-INPUT-UNDERFLOW" endof
       MD-RIGID-REGION of s" E-RIGID-REGION-MISMATCH" endof
       MD-RIGID-EXTENT of s" E-RIGID-EXTENT-MISMATCH" endof
@@ -714,6 +716,8 @@ variable MDV-I   variable MDV-F
       MD-C2-COPY      of s" move_exclusive_value" endof
       MD-C2-DROP      of s" consume_exclusive_value" endof
       MD-C2-ESCAPE    of s" keep_borrow_within_scope" endof
+      MD-IN-PLACE     of s" use_owner_in_place" endof
+      MD-ARENA-CALL   of s" use_arena_words" endof
       MD-UNDERFLOW    of s" supply_missing_input" endof
       MD-RIGID-REGION of s" fix_host_region" endof
       MD-RIGID-EXTENT of s" fix_host_extent" endof
@@ -775,6 +779,8 @@ variable MDV-I   variable MDV-F
       MD-C2-COPY      of s" Move the exclusive value once instead of copying it." endof
       MD-C2-DROP      of s" Return or consume the exclusive value instead of discarding it." endof
       MD-C2-ESCAPE    of s" Return only values independent of the owner or loan opened by this operation." endof
+      MD-IN-PLACE     of s" Pass the owner's pointer instead: NAME-NEW and NAME-RELEASE take a ptr to the arena owner, and a record holding one is reached through its field accessor. A copy of an owner would share its chunks, and growing or releasing both would unmap them twice." endof
+      MD-ARENA-CALL   of s" Declare the owner with ARENA NAME TYPE and call its generated NAME-NEW and NAME-RELEASE: only those words call ARENA-NEW and ARENA-RELEASE, because only they tie the record size to the owner's type." endof
       MD-EFFECT-DEPTH of s" Leave fewer cells: keep bulk values in a buffer, not on the stack." endof
       MD-INPUT-WIDTH  of s" Take fewer cells: pass bulk values in a buffer, not on the stack." endof
       s" Complete the form: MATCH family, variant OF ... ENDOF per variant, ;MATCH." rot
@@ -817,6 +823,8 @@ variable MDV-I   variable MDV-F
       MD-C2-COPY      of s" exclusive value copied" endof
       MD-C2-DROP      of s" exclusive value discarded" endof
       MD-C2-ESCAPE    of s" scoped value escapes its owner or loan" endof
+      MD-IN-PLACE     of s" in place: an arena owner is never fetched or stored whole" endof
+      MD-ARENA-CALL   of s" arena call: only ARENA's generated NAME-NEW and NAME-RELEASE call ARENA-NEW and ARENA-RELEASE" endof
       MD-RIGID-REGION of s" rigid host: region mismatch (different allocation)" endof
       MD-RIGID-EXTENT of s" rigid host: extent mismatch (different bounds identity)" endof
       MD-RIGID-GEN    of s" rigid host: stale mutation generation" endof

@@ -2086,6 +2086,10 @@ SUITE dynamic-buffer
    test/dynamic-buffer.f
 ;SUITE
 
+SUITE arena
+   test/arena.f
+;SUITE
+
 SUITE aot-capture-bound
    test/aot-capture-bound.f
 ;SUITE

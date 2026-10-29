@@ -199,6 +199,7 @@ SRC_CORE=(
   src/core/decl-event.f
   src/core/structure-make.f
   src/core/structure-decl.f
+  src/core/arena.f
   src/core/enum-decl.f
   src/core/structures.f
 )

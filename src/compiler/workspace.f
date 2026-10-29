@@ -444,7 +444,9 @@ private
 
 \ This closed storage introducer owns the prehook parser and LBUF mint
 \ boundary. Runtime allocation stays checked; LBUF-EVAL! checks the generated
-\ accessor under the existing one-shot storage window.
+\ accessor under the existing one-shot storage window. Every form's element is
+\ one CHECKER-DYNAMIC-INFO admits: the mapping moves, so an element that lives
+\ in place is refused for a variable too.
 TRUSTED: DECLARE ( n n -- ) {: operand:n kind:n :}
    STORAGE-LINE-TOKEN {: name:ptr nameu:n :}
    nameu 0= if
@@ -454,13 +456,14 @@ TRUSTED: DECLARE ( n n -- ) {: operand:n kind:n :}
    then
    STORAGE-PARSE-TYPE {: type:ptr typeu:n :}
    name nameu LBUF-NAMES-OK? 0= if exit then
+   type typeu CHECKER-DYNAMIC-INFO 0= if
+      drop name nameu type typeu CHECKER-STORAGE-TYPE-REFUSE exit
+   then
    kind VARIABLE-KIND = if
+      drop
       1 name nameu type typeu STORAGE-VALIDATE 0= if exit then
       LBUF-BYTES @
    else
-      type typeu CHECKER-DYNAMIC-INFO 0= if
-         drop name nameu type typeu CHECKER-STORAGE-TYPE-REFUSE exit
-      then
       LBUF-W !
       operand LBUF-N !
       operand 0 <= LBUF-W @ 0 <= or if E-LAYOUT-BUFFER throw then

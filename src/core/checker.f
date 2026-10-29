@@ -1067,6 +1067,7 @@ variable C2-MUT-FAM    -1 C2-MUT-FAM ! REG-PROTECT  \ reserved bounded exclusive
 variable C2-INIT-FAM   -1 C2-INIT-FAM ! REG-PROTECT \ reserved initialized-storage element family
 variable C2-RECORDS-FAM -1 C2-RECORDS-FAM ! REG-PROTECT \ reserved initialized table control
 variable C2-STOW-FAM -1 C2-STOW-FAM ! REG-PROTECT \ private C2 descriptor product
+variable ARENA-HEAD-FAM -1 ARENA-HEAD-FAM ! REG-PROTECT \ DYNAMIC-STORAGE:arena-head, lives in place
 
 \ The `tile` and `uniform` family ids, captured by type-family.f at
 \ registration. A word whose declared effect consumes a `tile` and produces a
@@ -2751,6 +2752,10 @@ CHECKER-REG:SCRATCH{
 PTR-VARIABLE NMA  variable NMU           \ current definition name (set by DO-TOK1)
 CHECKER-REG:}SCRATCH
 variable NMOFF                           \ its token's offset in the checked text (NAME-TOK)
+\ The definition being checked is the one LBUF-EVAL armed (LBUF-PEND! below).
+: LBUF-PEND-MATCH? ( -- bool )
+   LBUF-PEND-U @ 0 > NMU @ 0 > and 0= IF RES-FALSE EXIT THEN
+   LBUF-PEND-A @ LBUF-PEND-U @ NMA @ NMU @ CORE-STR=CI ;
 
 \ Count only owning schema positions. Scope, region, read-view element, pointer,
 \ and quotation parameters describe access or representation, not payload.
@@ -2769,6 +2774,32 @@ variable NMOFF                           \ its token's offset in the checked tex
       ELSE r TFAM-LIN-N-XT THEN EXIT
    THEN
    0 ;
+
+
+\ A layout lives in place when it is an arena head (ARENA-HEAD-FAM) or one of
+\ its members (TFAM-MEMBERS-XT: every field and variant payload, instantiated
+\ over its arguments) lives in place. A copy of an arena owner would share its
+\ chunks, and growing or releasing both would unmap them twice, so typed memory
+\ never fetches or stores such a layout whole (LAYOUT-FETCH-STEP). A pointer or
+\ quotation member holds no head. A term whose argument count is not its
+\ family's arity has no members to instantiate; it answers false, and the
+\ signature's arity refusal reports it.
+: IN-PLACE? ( n -- bool )
+   {: t0:n :}
+   t0 R-RES dup TAG S-PUSH = IF
+      BEGIN dup TAG S-PUSH = WHILE
+         dup P>TYPE RECURSE IF drop RES-TRUE EXIT THEN
+         P>REST R-RES
+      REPEAT
+   THEN
+   ISROW IF RES-FALSE EXIT THEN
+   t0 LAYOUT-PARAM? 0= IF RES-FALSE EXIT THEN
+   t0 T-UNSTALE {: t:n :}
+   t PARAM>FAM ARENA-HEAD-FAM @ = IF RES-TRUE EXIT THEN
+   t PARAM>ARGC  t PARAM>FAM TFAM-ARITY* <> IF RES-FALSE EXIT THEN
+   t TFAM-MEMBERS-XT RECURSE ;
+
+
 : LAYOUT-MAYBE-LINEAR? ( n -- bool ) TFAM-MAY-LIN-XT ;
 : LAYOUT-LINEAR-COUNT ( n -- n ) TFAM-LIN-N-XT ;
 : LAYOUT-LINEAR? ( n -- bool ) LAYOUT-LINEAR-COUNT 0 <> ;
@@ -3992,6 +4023,8 @@ CHECKER-REG:}SCRATCH
 39 constant MD-INPUT-WIDTH   \ an input row wider than EFFECT-MIN-IN-MAX cells (CHECK-DEPTH-FITS)
 40 constant MD-TOP-UNKNOWN   \ a top-level token read a cell beneath the cells the interpret row knows (TOP-UNKNOWN); same E-STALE-READ code, its own prose and repair class
 41 constant MD-TAIL-ESCAPE   \ a declared callable's implicit tail escaped into a row that outlives the comparison (QUOT-PAIR TAIL-HIT); same E-MISMATCH code, its own prose and suggestion
+42 constant MD-IN-PLACE      \ `@`/`!` would move a layout holding an arena head whole (IN-PLACE?)
+43 constant MD-ARENA-CALL    \ ARENA-NEW/ARENA-RELEASE named outside ARENA's generated words (ARENA-CALL-REFUSE?)
 
 \ The reason a read of the stale term t raises: a cell beneath the interpret row's
 \ known cells is unknown, not left stale by a `catch`.
@@ -6653,13 +6686,17 @@ variable LBI-SCHEME   \ the refused stored type parsed and holds a scheme
 \ bytes, because its accessor scales the index by the element width: the
 \ CHECKER-STORAGE-INFO surface plus `u8`, the one sub-cell con with an accessor
 \ pair (c@ `( ptr u8 -- n )`, c! `( n ptr u8 -- )`). `u16`, `u32` and `char`
-\ have none and stay refused, as for TYPED-BUFFER.
+\ have none and stay refused, as for TYPED-BUFFER. These definers move or unmap
+\ their storage, so an element that lives in place (IN-PLACE?) is refused: an
+\ arena owner moved with it would be copied, and one unmapped with it would
+\ leave its chunks linked and live.
 : STORAGE-BYTE-CON? ( n -- bool ) {: t:n :}   \ resolved term is the byte con u8
    t TAG T-CON <> IF RES-FALSE EXIT THEN
    t PAY CC-U8 = ;
 
 : CHECKER-DYNAMIC-INFO ( ptr u8 n -- n bool )
    STORAGE-RESOLVE? 0= IF 0 RES-FALSE EXIT THEN
+   LBI-T @ IN-PLACE? IF 0 RES-FALSE EXIT THEN
    LBI-T @ STORAGE-BYTE-CON? IF 1 RES-TRUE EXIT THEN
    STORAGE-CELL-W 0= IF drop 0 RES-FALSE EXIT THEN
    CELL * RES-TRUE ;
@@ -10760,7 +10797,7 @@ PRIM-TRUSTED-ONLY!
 PRIM: FIELD-PROJ! PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PRIM;
 PRIM-TRUSTED-ONLY!
 \ The type declarer arms the window for each generated accessor
-\ (src/core/sumtype.f TDPLAN-FP-ARM), as checked code inside TYPE-DECL. That
+\ (src/core/sumtype.f FIELD-ARM), as checked code inside TYPE-DECL. That
 \ caller compiles before the seal: FIELD-PROJ! is REG-PROTECT, so the seal
 \ marks its record DNAME-INT, and after that no checked body calls it, its
 \ owner's included.
@@ -14609,8 +14646,15 @@ public
    name nameu count countu LBUF-INFO-W @ CHECKER-LBUF:COUNT-OK? 0= IF EXIT THEN
    type typeu CHECKER-STORAGE-VAR-SIG$ name nameu CHECKER-USIG-CERT-ADD ;
 
+\ A workspace variable lives in the same moving mapping as the arrays, so its
+\ element must pass CHECKER-DYNAMIC-INFO before the typed-variable rules.
 : CHECKER-DEFCWORK-VARIABLE ( ptr u8 n ptr u8 n -- )
-   CHECKER-DEFTYPED-VARIABLE ;
+   {: type:ptr typeu:n name:ptr nameu:n :}
+   type typeu CHECKER-DYNAMIC-INFO nip IF
+      type typeu name nameu CHECKER-DEFTYPED-VARIABLE EXIT
+   THEN
+   name nameu CHECKER-REPLAY-NAME-OK? 0= IF EXIT THEN
+   name nameu type typeu CHECKER-STORAGE-TYPE-REFUSE ;
 
 \ The allocator binds the actual generated accessor only after its DATA cells
 \ exist. A verifier's projected signature, an alias, or an imported effect has
@@ -14795,6 +14839,8 @@ CTL-CORE-OP CTL-INTRINSIC-MASK or constant CTL-IDENTITY
 CHECKER-OWNER-ABI:BINDING-PARSES-ID constant INTRINSIC-PARSES    \ parses: (src/core/cell-effects.f)
 CHECKER-OWNER-ABI:BINDING-THROUGH-ID constant INTRINSIC-PARSES-THROUGH \ parses-through: (src/core/cell-effects.f)
 CHECKER-OWNER-ABI:BINDING-NAMES-ID constant INTRINSIC-NAMES      \ names: (src/core/cell-effects.f)
+14 constant INTRINSIC-ARENA-NEW                \ ARENA-NEW (src/core/dynamic-storage.f)
+15 constant INTRINSIC-ARENA-RELEASE            \ ARENA-RELEASE (src/core/dynamic-storage.f)
 16 constant INTRINSIC-XT-STORE                 \ xt!
 17 constant INTRINSIC-ATOMIC-STORE             \ atomic!
 18 constant INTRINSIC-ATOMIC-CAS               \ atomic-cas
@@ -16862,7 +16908,9 @@ PPRIM: DOES-CLAUSE SUFFIX$ PE-PTR-U8 PE-OUT PE-N PE-OUT PPRIM;
 7129 constant E-CAST-ARITY    \ identity sig is not one term per side over the same row
 7130 constant E-CAST-CLASS    \ in/out is not one machine cell a cast may retype
 7131 constant E-CAST-FAM      \ in/out names an undeclared family/type
-7135 constant E-CAST-OWNER    \ the output introduces a foreign cell family
+\ E-CAST-OWNER: the output introduces a foreign cell family, or either term
+\ reaches an arena head outside DYNAMIC-STORAGE (CAST-REACHES-HEAD?).
+7135 constant E-CAST-OWNER
 7137 constant E-CAST-LINEAR   \ a linear type or type variable in in/out
 7147 constant E-CAST-MINT     \ a pointer or quotation output outside private
 \ E-CAST-SCOPE: a cast would erase or introduce a scope dependency (a scoped
@@ -17295,7 +17343,19 @@ CHECKER-REG:}SCRATCH
    t LAYOUT-PARAM? t NOM-SCALAR? or 0= IF 0 RES-FALSE EXIT THEN
    t RES-TRUE ;
 
-: LAYOUT-FETCH-STEP ( n -- ) {: t:n :}   \ ( ptr fam -- fam ) from the pointee term
+\ An in-place layout refuses the token outright, so it names itself, as
+\ RAW-FIELD-TOK? does.
+: IN-PLACE-REFUSE? ( n -- bool )   \ true only when it REJECTED
+   {: t:n :}
+   t IN-PLACE? 0= IF RES-FALSE EXIT THEN
+   MD-IN-PLACE MDIAG!
+   0 OK !
+   RES-TRUE ;
+
+
+: LAYOUT-FETCH-STEP ( n -- )   \ ( ptr fam -- fam ) from the pointee term
+   {: t:n :}
+   t IN-PLACE-REFUSE? IF EXIT THEN
    t LAYOUT-MEM-OK? 0= IF 0 OK ! -1 FAILSET ! EXIT THEN
    t LAYOUT-PARAM? IF t WF-FETCH-FLAG WF-MEM-RECORD THEN
    FRESH MK-ROW {: rest:n :}
@@ -17303,7 +17363,9 @@ CHECKER-REG:}SCRATCH
    t rest PUSH-LOGICAL
    RECORDED-STEP ;
 
-: LAYOUT-STORE-STEP ( n -- ) {: t:n :}   \ ( fam ptr fam -- ) from the pointee term
+: LAYOUT-STORE-STEP ( n -- )   \ ( fam ptr fam -- ) from the pointee term
+   {: t:n :}
+   t IN-PLACE-REFUSE? IF EXIT THEN
    t LAYOUT-MEM-OK? 0= IF 0 OK ! -1 FAILSET ! EXIT THEN
    t LAYOUT-PARAM? IF t WF-STORE-FLAG WF-MEM-RECORD THEN
    FRESH MK-ROW {: rest:n :}
@@ -21953,6 +22015,20 @@ variable IS-PEND-U                   \ and its length
    RES-TRUE ;
 
 
+\ ARENA-NEW and ARENA-RELEASE (src/core/dynamic-storage.f) take a head whose
+\ record size only ARENA's generated NAME-NEW and NAME-RELEASE tie to its type,
+\ so a call or tick of either, through any export, is admitted only while
+\ LBUF-EVAL checks one of those words (src/core/arena.f RUN).
+: ARENA-CALL-REFUSE? ( n -- bool )   \ true only when it REJECTED
+   {: sym:n :}
+   sym CHECKER-SYM-SOURCE CTL-FLAGS-SYM CTL>INTRINSIC {: id:n :}
+   id INTRINSIC-ARENA-NEW <>  id INTRINSIC-ARENA-RELEASE <>  and IF RES-FALSE EXIT THEN
+   LBUF-PEND-MATCH? IF RES-FALSE EXIT THEN
+   MD-ARENA-CALL MDIAG!
+   0 OK !
+   RES-TRUE ;
+
+
 : BTICK-TOK ( -- )                       \ [ '] W : consume W, push a known or opaque xt
    IS-TARGET-TOK? 0= IF IS-FAIL EXIT THEN
    -1 CRTGT !                              \ the load's tick refuses its target while compiling
@@ -21960,6 +22036,7 @@ variable IS-PEND-U                   \ and its length
    IS-TARGET-SYM  WALK-REC @  {: sym:n rec:n :}
    CHECKER-TAPE:K-TICK  BIND-REC @ CHECKER-RESOLVE:REC>INDEX  0 EVENT!
    sym SCOPE-AUTH-SYM? IF 0 OK ! -1 FAILSET ! EXIT THEN
+   sym ARENA-CALL-REFUSE? IF TICK-PIN EXIT THEN
    sym PRIM-TRUSTED-SYM? IF
       TORDER-ACTIVE @ TORDER-GATE = TORDER-ACTIVE @ TORDER-PARENT-GATE = or
       IF RF-CAP CREFUSE! THEN
@@ -22140,8 +22217,9 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
 \ any other binding of the spelling goes on to DO-TOK and is judged by its own
 \ recorded effect.
 : SPELLED-STEP? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u TOK-INTRINSIC {: id:n :}
+   a u TOK-INTRINSIC  TOK-SYM @  {: id:n sym:n :}
    a u BIND-SOURCE-CALL
+   sym ARENA-CALL-REFUSE? IF RES-TRUE EXIT THEN
    id INTRINSIC-QDUP = IF QDUP-STEP RES-TRUE EXIT THEN
    LAYOUT-XPORT @ IF a u WF-XPORT-RECORD THEN   \ width facts from the pre-op row
    id INTRINSIC-HIDE-ROW = IF HIDROW-STEP? EXIT THEN   \ depth/.s fail closed over hidden cells
@@ -24679,7 +24757,9 @@ variable CAST-PATH-N
 \ every field and variant payload are walked: a linear value behind a field's
 \ pointer or in a field's quotation row is one a projection hands out. A
 \ quotation in a signature shares one base between its in and out rows, so the
-\ tail it passes through owns nothing.
+\ tail it passes through owns nothing. A scope or region variable binds a scope
+\ or a region, never a value: only a view's element can hold one
+\ (init<i,owner-state>, VIEW-CAST-CERTIFY), and it is not open.
 : CAST-MAY-LINEAR? ( n -- bool ) {: t0:n :}
    t0 R-RES dup TAG S-PUSH = IF
       BEGIN dup TAG S-PUSH = WHILE
@@ -24689,7 +24769,7 @@ variable CAST-PATH-N
    THEN
    ISROW IF RES-FALSE EXIT THEN
    t0 T-RES {: t:n :}
-   t TAG T-VAR = IF RES-TRUE EXIT THEN
+   t TAG T-VAR = IF t PAY TVK@ dup TVK-SCOPE = swap TVK-REGION = or 0= EXIT THEN
    t TAG T-CON = IF t PAY CT-LINEAR? EXIT THEN
    t TAG T-PTR = IF t PTR>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
    t TAG T-QUOT = IF
@@ -24712,6 +24792,56 @@ variable CAST-PATH-N
       CAST-PATH-POP EXIT
    THEN
    RES-FALSE ;
+
+
+\ A cast term reaches a head when the term, a pointer's pointee, a quotation
+\ row or a layout's argument or member lives in place (IN-PLACE?), recursively:
+\ `( ptr foos -- ptr u8 )` would hand out an arena owner's head as bytes to copy,
+\ and `( ptr u8 -- ptr foos )` would forge one from them. Either direction is
+\ refused outside the package that declares arena-head, whose own cast is the
+\ one that writes a head (src/core/dynamic-storage.f >HEAD-CELL).
+: CAST-REACHES-HEAD? ( n -- bool )
+   {: t0:n :}
+   t0 R-RES dup TAG S-PUSH = IF
+      BEGIN dup TAG S-PUSH = WHILE
+         dup P>TYPE TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
+         P>REST R-RES
+      REPEAT
+   THEN
+   ISROW IF RES-FALSE EXIT THEN
+   t0 IN-PLACE? IF RES-TRUE EXIT THEN
+   t0 T-RES {: t:n :}
+   t TAG T-PTR = IF t PTR>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   t TAG T-QUOT = IF
+      t Q>DIN TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      t Q>DOUT TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      t Q>RIN TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      t Q>ROUT TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT
+   THEN
+   t LAYOUT-PARAM? 0= IF RES-FALSE EXIT THEN
+   0 BEGIN dup t PARAM>ARGC < WHILE
+      t over PARAM>ARG TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
+      1 +
+   REPEAT drop
+   t RES-TRUE CAST-ON-PATH? IF RES-FALSE EXIT THEN
+   t RES-TRUE CAST-PATH-PUSH
+   t TFAM-MEMBERS-XT TWALK-DEEPER RECURSE TWALK-SHALLOWER
+   CAST-PATH-POP ;
+
+
+: CAST-HEAD-OWNER? ( -- bool )
+   ARENA-HEAD-FAM @ TFAM-PKG$* CHECKER-AUTH-PACKAGE$ CORE-STR=CI ;
+
+
+: CAST-HEAD-REFUSE ( -- )
+   CAST-WALK-RESET
+   SGIN @ CAST-ROW-TERM CAST-REACHES-HEAD? {: hit:bool :}
+   CAST-WALK-RESET
+   SGOUT @ CAST-ROW-TERM CAST-REACHES-HEAD? hit or 0= IF EXIT THEN
+   CAST-HEAD-OWNER? IF EXIT THEN
+   E-CAST-OWNER throw ;
+
+
 \ The legality gate, in refusal order, over a declaration IDENTITY-ROWS left as
 \ one input and one output term (SGIN/SGOUT); the caller registers a surviving
 \ cast's row. Answers whether the output mints a pointer or a quotation: a cast
@@ -24730,6 +24860,7 @@ variable CAST-PATH-N
    CAST-WALK-RESET
    SGOUT @ CAST-ROW-TERM CAST-MAY-LINEAR? IF E-CAST-LINEAR throw THEN
    SGOUT @ CAST-ROW-TERM INTRO-FOREIGN CAST-INTRODUCES? IF E-CAST-OWNER throw THEN
+   CAST-HEAD-REFUSE
    \ The mint rule comes last for the same reason: a mint that also carries
    \ ownership or forges a foreign family is named by that stronger reject.
    SGOUT @ CAST-ROW-TERM INTRO-MINT CAST-INTRODUCES? {: mint:bool :}
@@ -24763,11 +24894,14 @@ variable CAST-PATH-N
    row ROW-UNDER CAST-ROW-TERM BYTE-PTR? ;
 \ The gate for a cast with a scope dependency, in refusal order. Only a view
 \ representation cast in a private section is legal: an unpack
-\ ( V -- ptr u8 n ) or a pack ( ptr u8 n -- V ). The pack, and the unpack of a
-\ mut-view, are the owner's: only C2-MEM's private section produces a view or
-\ takes the raw address of an exclusive one. Any package may unpack a read-view
-\ in its private section: the projection erases the type and can neither widen
-\ bounds nor forge a scope. Every other scoped cast is E-CAST-SCOPE. A pack's
+\ ( V -- ptr u8 n ) or a pack ( ptr u8 n -- V ); every other scoped cast is
+\ E-CAST-SCOPE. The view's element is a cast term: a type variable or linear
+\ type in it is E-CAST-LINEAR (CAST-MAY-LINEAR?), and one that reaches an arena
+\ head is E-CAST-OWNER (CAST-HEAD-REFUSE). Any package may then unpack a
+\ read-view in its private section: the projection erases the type and can
+\ neither widen bounds nor forge a scope. The pack, and the unpack of a
+\ mut-view, are the owner's, E-CAST-SCOPE elsewhere: only C2-MEM's private
+\ section produces a view or takes the raw address of an exclusive one. A pack's
 \ view variables are free in its input and instantiate fresh at each call.
 : VIEW-CAST-CERTIFY ( -- )
    SGHASR @ IF E-CAST-SCOPE throw THEN
@@ -24778,7 +24912,11 @@ variable CAST-PATH-N
       SGIN @ VIEW-REP? SGOUT @ VIEW-PAIR? and 0= IF E-CAST-SCOPE throw THEN
    THEN
    CHECKER-AUTH-PACKAGE-MODE@ CHECKER-PACKAGE-PRIVATE <> IF E-CAST-SCOPE throw THEN
-   unpack IF SGIN @ CAST-ROW-TERM T-RES READ-VIEW? IF EXIT THEN THEN
+   unpack IF SGIN @ ELSE SGOUT @ THEN CAST-ROW-TERM T-RES {: view:n :}
+   CAST-WALK-RESET
+   view view PARAM>ARGC 1 - PARAM>ARG CAST-MAY-LINEAR? IF E-CAST-LINEAR throw THEN
+   CAST-HEAD-REFUSE
+   unpack IF view READ-VIEW? IF EXIT THEN THEN
    \ CHECKER-AUTH-PACKAGE$ is the engine's live namespace record, the identity
    \ LINEAR-CERTIFY asks. The literal is only the owner's name, which no registry
    \ holds: the view families are declared with package "" (type-family.f
@@ -24818,9 +24956,6 @@ variable CAST-PATH-N
    a LBUF-PEND-A !  u LBUF-PEND-U ! ;
 : LBUF-PEND-CLEAR ( -- )
    NULL-PTR LBUF-PEND-A !  0 LBUF-PEND-U !  0 LAYOUT-INTRO ! ;
-: LBUF-PEND-MATCH? ( -- bool )
-   LBUF-PEND-U @ 0 > NMU @ 0 > and 0= IF RES-FALSE EXIT THEN
-   LBUF-PEND-A @ LBUF-PEND-U @ NMA @ NMU @ CORE-STR=CI ;
 
 : CHECK-FRESH-OUTPUT ( -- )
    FO-RESET
@@ -29241,6 +29376,7 @@ public
 : TOP-TICK-STEP ( -- )
    TOP-BEGIN
    TKF TKFU @ CHECKER-TOP-SYM {: sym:n hit:bool :}
+   hit IF sym ARENA-CALL-REFUSE? IF EXIT THEN THEN
    FEP-CLEAR
    hit IF sym CHECKER-FIND-USIG-SYM drop THEN
    FEP-HIT? IF FEP @ TICK-QUOT FEP @ USIG-SYM@ BTICK-EDGE ELSE TKF TKFU @ ASIG-MISS+ OPAQUE-XT THEN

@@ -103,6 +103,8 @@ public
 \ that may call foreign functions after the hooks that forget their addresses.
 \ Admitted, an image saved from the keyed linker image counted 4 hooks, one in no
 \ table, and its first PREPARE threw E-BOUNDS (test/image-lifecycle-late-register.f).
+\ An arena still live after every hook has run refuses the capture, so a hook
+\ can release its arena (DYNAMIC-STORAGE:ARENA-GUARD).
 : PREPARE ( -- )
    begin N @ 0 > while
       N @ 1- {: at:n :}
@@ -114,7 +116,8 @@ public
    \ after resource cleanup has finished, in reverse declaration order.
    PERSISTENT-N @
    begin dup 0 > while 1- dup PERSISTENT @ execute repeat drop
-   N @ 0 > if E-LIFECYCLE-LATE throw then ;
+   N @ 0 > if E-LIFECYCLE-LATE throw then
+   DYNAMIC-STORAGE:ARENA-GUARD ;
 
 \ The eight spans a stripped image reaches this registry through, each handed to
 \ the caller's claim. This file is baked into the engine, so its cells sit below

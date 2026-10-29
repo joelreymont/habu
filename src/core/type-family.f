@@ -1290,8 +1290,9 @@ public
 \ (CHECKER-PACKAGE-CAP - 1), so every derived spelling fits TF-CTOR-BUF: at most
 \ 2*255 + 1 + 2*255 = 1021 bytes escaped, 255 + 1 + 255 + 12 for a private
 \ member. sumtype.f, structure-decl.f and enum-decl.f refuse a longer name with
-\ E-TDECL-CAP and TF-NAME-LONG$'s reason; the dies in `TF-CTOR-C,` and
-\ TFAM-INIT-MEMBER$ guard only that arithmetic.
+\ E-TDECL-CAP and TF-NAME-LONG$'s reason, and ARENA (arena.f) runs STRUCTURE's
+\ gate on its name first; the dies in `TF-CTOR-C,` and TFAM-INIT-MEMBER$ guard
+\ only that arithmetic.
 CHECKER-PACKAGE-CAP 1 - constant TF-NAME-MAX
 
 \ The reason refusing a name longer than TF-NAME-MAX. It is static text: no
@@ -4733,6 +4734,7 @@ variable MUT-FAM
 variable INIT-FAM
 variable RECORDS-FAM
 variable STOW-FAM
+variable HEAD-FAM
 variable VIEW-TX
 variable VIEW-FIELD-BASE
 
@@ -4785,6 +4787,29 @@ variable VIEW-FIELD-BASE
    INIT-FAM @ 1 TFAM-SLOTS!
    VIEW-TX @ TYPE-FIELD-OWNER:FINALIZE ;
 
+
+\ An arena owner's head (src/core/dynamic-storage.f): one cell holding the
+\ newest chunk's base. No constructor, destructor or accessor exists, and the
+\ checker refuses to fetch or store it whole, or any layout holding it
+\ (checker.f IN-PLACE?), and refuses any cast that reaches it outside
+\ DYNAMIC-STORAGE (checker.f CAST-REACHES-HEAD?), so no typed access and no
+\ other cast copies or forges a head; address arithmetic still reaches one
+\ (docs/forth.md "Raw storage never holds an address"). The field records its
+\ ABI only.
+: REGISTER-ARENA-HEAD ( -- )
+   s" DYNAMIC-STORAGE" CHECKER-PACKAGE-PUBLIC s" arena-head" 0 TK-PRODUCT TFAM-DECL HEAD-FAM !
+   HEAD-FAM @ ARENA-HEAD-FAM !
+   TYPE-FIELD:COUNT VIEW-FIELD-BASE !
+   TYPE-FIELD-OWNER:OPEN VIEW-TX !
+   VIEW-TX @ HEAD-FAM @ TYPE-FIELD:NO-VARIANT s" chunk"
+      CC-U8 SCHEMA-CON SCHEMA-PTR SCHEMA-ROOT+
+      0 1 0 CELL CELL PF-FLAGS-NONE TYPE-FIELD-OWNER:ADD VIEW-TX !
+   VIEW-TX @ TYPE-FIELD-OWNER:COMMIT
+   HEAD-FAM @ VIEW-FIELD-BASE @ 1 TFAM-FLD-RANGE!
+   HEAD-FAM @ 1 TFAM-SLOTS!
+   VIEW-TX @ TYPE-FIELD-OWNER:FINALIZE ;
+
+
 : REGISTER-RECORDS ( -- )
    s" " CHECKER-PACKAGE-PUBLIC s" records" 4 TK-PRODUCT TFAM-DECL RECORDS-FAM !
    RECORDS-FAM @ C2-RECORDS-FAM !
@@ -4820,6 +4845,7 @@ REGISTER-MUT-VIEW
 REGISTER-INIT
 REGISTER-RECORDS
 REGISTER-STOW
+REGISTER-ARENA-HEAD
 public
 
 \ Signature-token resolution, the checker's TFAM-RESOLVE-XT target, over
@@ -5311,12 +5337,13 @@ TFAM-INST-LIN-INSTALL
 
 private
 
-\ A layout value's members for the CAST: walks (checker.f CAST-INTRO? and
-\ CAST-MAY-LINEAR?): every product field and every variant payload, in either
-\ payload form, instantiated over the value's own arguments and pushed on one
-\ row. A field projection or a MATCH arm yields exactly these types. Schemas
-\ index parameters by position, so the term must carry the family's argument
-\ count; the cast gate refuses any other count before it walks.
+\ A layout value's members for checker.f's CAST: walks (CAST-INTRO? and
+\ CAST-MAY-LINEAR?) and IN-PLACE?: every product field and every variant
+\ payload, in either payload form, instantiated over the value's own arguments
+\ and pushed on one row. A field projection or a MATCH arm yields exactly these
+\ types. Schemas index parameters by position, so the term must carry the
+\ family's argument count: the cast gate refuses any other count before its
+\ walks, and IN-PLACE? answers false for such a term without asking.
 : MEMBER+ ( n n n -- n ) {: term:n root:n row:n :}
    term root SCHEMA-ROOT@ SCHEMA-TERM-FOR row MK-PUSH ;
 : FIELD-MEMBERS ( n n n -- n ) {: term:n fam:n row:n :}

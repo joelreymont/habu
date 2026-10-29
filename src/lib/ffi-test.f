@@ -414,6 +414,7 @@ create FFI-T-LONG-PATH PATH-CAP allot
    s" src/core/decl-event.f" FFI-T-WIN-ARG
    s" src/core/structure-make.f" FFI-T-WIN-ARG
    s" src/core/structure-decl.f" FFI-T-WIN-ARG
+   s" src/core/arena.f" FFI-T-WIN-ARG
    s" src/core/enum-decl.f" FFI-T-WIN-ARG
    s" src/core/structures.f" FFI-T-WIN-ARG
    s" src/core/bytes.f" FFI-T-WIN-ARG

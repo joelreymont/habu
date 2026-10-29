@@ -105,7 +105,7 @@ ENUM route load build plain ;ENUM
 \ between files, all in one arena before any runs. The bytes stay mapped for the
 \ process's life; the arena pointer is src/habu/layout.f ARENA-CELL, which the
 \ snapshot writer zeroes.
-: ARENA ( -- ptr ptr u8 )
+: SOURCE-ARENA ( -- ptr ptr u8 )
    data-base ENGINE-MAIN:ARENA-CELL + 0 ptr-field ;
 
 variable USED
@@ -114,7 +114,7 @@ variable USED
    SOURCE-ARENA-CAP USED @ - ;
 
 : CURSOR ( -- ptr u8 )
-   ARENA @ USED @ + ;
+   SOURCE-ARENA @ USED @ + ;
 
 : APPEND ( ptr u8 n -- ) {: a:ptr u:n :}
    u ROOM > if FULL then
@@ -150,10 +150,10 @@ variable USED
    USED @ {: from:n :}
    begin fd STEP until
    fd close
-   ARENA @ from + USED @ from - SHEBANG ;
+   SOURCE-ARENA @ from + USED @ from - SHEBANG ;
 
 : START-STREAM ( -- )
-   SOURCE-ARENA-CAP map-anon 0 <> if drop CANNOT-MAP then ARENA !
+   SOURCE-ARENA-CAP map-anon 0 <> if drop CANNOT-MAP then SOURCE-ARENA !
    0 USED ! ;
 
 \ The program file's argv string, 0 off the plain route: PROGRAM-FILE-CELL
@@ -175,13 +175,13 @@ variable USED
          s" script-required" ROW
       then
    loop
-   ARENA @ USED @ ;
+   SOURCE-ARENA @ USED @ ;
 
 : STDIN ( -- ptr u8 n )
    START-STREAM
    begin 0 STEP until
-   ARENA @ USED @ SHEBANG
-   ARENA @ USED @ ;
+   SOURCE-ARENA @ USED @ SHEBANG
+   SOURCE-ARENA @ USED @ ;
 
 \ The root stream runs open, as the engine's loop runs it: a program that
 \ leaves cells still exits 0 (src/core/include.f SOURCE-ROOT:RUN-ROOT).
