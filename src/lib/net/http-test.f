@@ -1,17 +1,9 @@
 \ http-test.f - the HTTP/1.1 server answered over a real loopback port.
-\
-\ Package CURL is the client for the ordinary response classes, and a raw TCP4
-\ connection is the client for the requests a well-behaved client cannot send
-\ and for the heads CURL does not hand back. Where a raw case pins a whole
-\ response head, its status line and headers go into a transcript, written to
-\ build/http-transcript.txt, read back and compared whole with the transcript
-\ this file expects. The server that answers the transcript runs one worker, so
-\ every request id - and with it every error body's length - is the same on
-\ every run.
-\
-\ Every handler is defined before the server starts, because Habu forbids
-\ dictionary mutation while a task is live.
-\ Run: bin/hb --load src/lib/net/http-test.f
+\ CURL is the client for ordinary responses; raw TCP4 sends what a well-behaved
+\ client cannot and reads heads CURL does not hand back. A pinned raw head is
+\ compared whole through build/http-transcript.txt; that server runs one worker,
+\ so every request id and error body length repeats. Handlers are all defined
+\ before the server starts: Habu forbids dictionary mutation while a task lives.
 require src/lib/test.f
 require src/lib/test/wait.f
 require src/lib/prelude.f
@@ -32,8 +24,8 @@ require src/lib/memory.f
 require src/lib/net/http.f
 require src/lib/fd.f
 
-\ Force the real startup semaphore initializer to refuse after the job queue
-\ has opened. These helpers exist only in this test image.
+\ Test-image hooks: TEST-PREOPEN initializes START-READY first, so the real
+\ startup initializer refuses after the job queue has opened.
 package HTTP
 public
 variable TEST-READ-FAULT
@@ -49,13 +41,9 @@ variable TEST-READ-FAULT
    START-READY TASK:SEMAPHORE-DESTROY ;
 ;package
 
-\ White-box helpers: reopens HTTP so the count of connections its listener has
-\ taken (TAKEN), its job queue's room plus one (QUEUED) and the slack a stop
-\ allows past the parks it waits out (STOP-MARGIN-MS), which no public word
-\ answers, are visible here. QUEUED follows JOB-SLOTS, so the full-queue case
-\ still leaves the listener holding one more if the queue grows. The
-\ definitions land in HTTP-TEST, so HTTP's public surface gains nothing for
-\ being tested.
+\ White-box reads no public word answers, defined into HTTP-TEST so HTTP's public
+\ surface gains nothing. QUEUED follows JOB-SLOTS, so the full-queue case still
+\ leaves the listener holding one more if the queue grows.
 package HTTP
 : HTTP-TEST:TAKEN ( -- n )
    ACCEPTED-COUNT atomic@ ;
@@ -66,9 +54,9 @@ package HTTP
 : HTTP-TEST:SERVING? ( -- bool ) 0 SERVING-LIVE @ 0<> ;
 ;package
 
-\ White-box helpers: reopens AIO so this file can hold the facility its loop
-\ task takes to deliver a completion, which stalls every parked waiter's wake
-\ the way a loaded host stalls a worker, while bytes still reach the socket.
+\ Holding the facility AIO's loop task takes to deliver a completion stalls every
+\ parked waiter's wake, as a loaded host stalls a worker, while bytes still
+\ reach the socket.
 package AIO
 : HTTP-TEST:LOOP-HOLD ( -- ) AIO-LOCK TASK:GET ;
 : HTTP-TEST:LOOP-FREE ( -- ) AIO-LOCK TASK:RELEASE ;
@@ -87,7 +75,7 @@ $3000 constant REQ-CAP
 $2800 constant BIG-HEADER-BYTES   \ past HTTP:HEAD-CAP
 $41 constant FILL-BYTE
 $80 constant ETAG-CAP             \ the longest ETag a case keeps
-$200001 constant LARGE-CAP        \ odd limit: crosses the original 1 MiB bound
+$200001 constant LARGE-CAP        \ odd, and past 1 MiB
 $100000 constant LARGE-CHUNK
 $1388 constant LARGE-IDLE-MS
 $2000 constant SCRIPT-CAP         \ the whole transcript
@@ -155,8 +143,6 @@ variable PARKED                   \ set by the handler that never answers
    ETAG-BUF ETAG-U @ SPAN:TAKE SPAN:$ ;
 
 
-\ ---- the handlers, all defined before any task is live -----------------------
-
 : PING-BODY ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
    JSON-WRITE:OBJECT-START
    s" service" s" http-test" JSON-WRITE:FIELD-S
@@ -188,8 +174,6 @@ variable ITEM-HOST-N
    JSON-WRITE:OBJECT-END ;
 
 
-\ Reads the whole request record: the segment the pattern bound, the query
-\ string and one named header.
 : ITEM ( HTTP:request HTTP:response -- ) {: asked:HTTP:request answer:HTTP:response :}
    asked s" id" HTTP:SEGMENT-OF$ {: ida:ptr idu:n found:bool :}
    found 0= if answer 500 s" no_segment" s" the route bound no id" HTTP:ERROR! exit then
@@ -215,7 +199,6 @@ variable VERSION-N
    JSON-WRITE:OBJECT-END ;
 
 
-\ The version the request line named, as the client sent it.
 : ASKED-VERSION ( HTTP:request HTTP:response -- )
    {: asked:HTTP:request answer:HTTP:response :}
    asked HTTP:VERSION$ {: va:ptr vu:n :}
@@ -259,9 +242,8 @@ variable ECHO-HITS
    answer 200 HTTP:STATUS! ;
 
 
-\ The request body read back through src/lib/json-read.f, on the reader the server
-\ hands out over the slot's own storage. A body that is not JSON at all throws
-\ out of the reader, which the worker's catch boundary answers with 500.
+\ A body that is not JSON throws out of src/lib/json-read.f's reader, and the
+\ worker's catch boundary answers 500.
 : TEXT-BODY ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
    JSON-WRITE:OBJECT-START
    s" text" TEXT-BUF TEXT-N @ JSON-WRITE:FIELD-S
@@ -306,8 +288,7 @@ variable ECHO-HITS
    answer [: BOOM-BODY ;] HTTP:JSON! ;
 
 
-\ One value past the 1 MiB a worker's JSON buffer once held, and the answer
-\ that carries it: the writer's storage grows with the body.
+\ Past 1 MiB: the writer's storage grows with the body.
 $101000 constant BIG-VALUE-BYTES
 create BIG-VALUE BIG-VALUE-BYTES allot
 BIG-VALUE-BYTES 10 + constant BIG-ANSWER-BYTES   \ {"big":"<value>"}
@@ -315,7 +296,7 @@ BIG-ANSWER-BYTES $1000 + constant BIG-RES-CAP    \ room to see a longer answer
 1 TYPED-BUFFER BIG-RES SPAN:span<u8>
 5 constant FILL-HEADERS
 $400 constant FILL-HEADER-BYTES   \ five of them: past 2 KiB of lines, 4 KiB of head
-300 constant LONG-SEGMENT-BYTES   \ past the 256 decoded bytes a route once bound
+300 constant LONG-SEGMENT-BYTES   \ past 256 decoded bytes
 
 
 : FILL-BIG ( -- )
@@ -343,11 +324,9 @@ FILL-BIG
    answer [: PING-BODY ;] HTTP:JSON! ;
 
 
-\ ---- an installed error renderer ----------------------------------------------
-
-\ What a caller's ON-ERROR hook looks like: a JSON body carrying the code, the
-\ message and the request id. They travel to the body quotation through rows of
-\ the running worker's own slot, because the quotation cannot read a local.
+\ A caller's ON-ERROR hook: a JSON body of the code, the message and the request
+\ id, carried to the body quotation in rows of the running worker's own slot
+\ because a quotation cannot read a local.
 HTTP:MAX-WORKERS TYPED-BUFFER ERR-ANSWER HTTP:response
 HTTP:MAX-WORKERS TYPED-BUFFER ERR-CODE-A ptr u8
 HTTP:MAX-WORKERS TYPED-BUFFER ERR-CODE-N n
@@ -377,8 +356,6 @@ HTTP:MAX-WORKERS TYPED-BUFFER ERR-MESSAGE-N n
    answer status HTTP:STATUS!
    answer [: JSON-ERROR-BODY ;] HTTP:JSON! ;
 
-
-\ ---- installed static rules ---------------------------------------------------
 
 \ Only a path the build hashes may be cached for a year.
 : IMMUTABLE-CACHE ( ptr u8 n -- ptr u8 n ) {: path:ptr len:n :}
@@ -418,8 +395,6 @@ HTTP:MAX-WORKERS TYPED-BUFFER ERR-MESSAGE-N n
    answer s" X-Hook" s" partial" HTTP:HEADER!
    E-RENDER throw ;
 
-
-\ ---- the worker lifecycle hooks ----------------------------------------------
 
 \ Every hook and the handler write one mark into the row of the worker they run
 \ in, which is the only storage a live task may write, so the order of a
@@ -484,7 +459,6 @@ variable EXIT-HANDLE-CODE
    [: TRY-OLD-BODY ;] catch EXIT-HANDLE-CODE ! ;
 
 
-\ Fails in every worker's exit, after its mark.
 : EXIT-THROWS ( -- )
    MARK-EXIT-THROWS MARK
    E-EXIT-HOOK throw ;
@@ -572,8 +546,6 @@ $2710 constant PARK-MS            \ far past every stop bound
    s" GET" s" /api/park" [: PARK ;] HTTP:ROUTE ;
 
 
-\ ---- the static fixture ------------------------------------------------------
-
 : UNDER-ROOT ( ptr u8 n -- n ) {: name:ptr len:n :}
    ROOT$ name len PATH-BUF FS:JOIN-PATH ;
 
@@ -601,8 +573,6 @@ $2710 constant PARK-MS            \ far past every stop bound
    PATH-BUF assetlen ASSET-TEXT$ FS:WRITE-ALL ;
 
 
-\ ---- the CURL client ---------------------------------------------------------
-
 : DROP-CURL-STATUS ( CURL:status -- )
    MATCH CURL:status
       ok OF ENDOF
@@ -629,12 +599,12 @@ $2710 constant PARK-MS            \ far past every stop bound
 28 constant CURLE-TIMED-OUT             \ CURLE_OPERATION_TIMEDOUT
 
 
-\ Every failed transfer names its libcurl code on stderr, so a recurrence can be
-\ reduced. libcurl answers 28 only when a wall-clock limit expired; these
-\ handles set none, so it is libcurl's default 300 s connect timeout, met by a
-\ starved or stopped process. A deadline is no assertion result (docs/gate.md
-\ "How a suite runs, and what that demands of its files"): the wait names itself
-\ on stdout and throws E-PROC-TIMEOUT. Every other failure answers -2, a fault.
+\ Every failed transfer names its libcurl code on stderr. libcurl answers 28
+\ only when a wall-clock limit expired; these handles set none, so it is the
+\ default 300 s connect timeout, met by a starved or stopped process. A deadline
+\ is no assertion result (docs/gate.md "How a suite runs, and what that demands
+\ of its files"): the wait names itself on stdout and throws E-PROC-TIMEOUT.
+\ Every other failure answers -2, a fault.
 : TAKE-INTO ( CURL:handle ptr u8 n -- n n ) {: subject:CURL:handle into:ptr cap:n :}
    subject into cap >LEN CURL:PERFORM
    MATCH CURL:fetch-result
@@ -692,8 +662,6 @@ $2710 constant PARK-MS            \ far past every stop bound
    status ;
 
 
-\ ---- the raw client ----------------------------------------------------------
-
 : DROP-TCP-STATUS ( TCP4:status -- )
    MATCH TCP4:status
       ok OF ENDOF
@@ -746,10 +714,9 @@ $7D0 constant COLLECT-MS          \ a loopback answer that slow is a hang
 1000000 constant NS-PER-MS
 
 
-\ Waits until a read on the connection would not block: bytes, the end of the
-\ stream or a failure. The server ends the wait, so past COLLECT-MS the wait
-\ names itself and throws E-PROC-TIMEOUT rather than hang the suite
-\ (docs/gate.md "How a suite runs, and what that demands of its files").
+\ Past COLLECT-MS the wait names itself and throws E-PROC-TIMEOUT rather than
+\ hang the suite (docs/gate.md "How a suite runs, and what that demands of its
+\ files").
 : RAW-AWAIT ( TCP4:connection -- )
    [: dup TCP4:READABLE?
       MATCH TCP4:ready-result
@@ -761,9 +728,8 @@ $7D0 constant COLLECT-MS          \ a loopback answer that slow is a hang
    drop ;
 
 
-\ Reads until the answer carries the marker, on a connection the server keeps
-\ alive, so a worker that never answers throws E-PROC-TIMEOUT past COLLECT-MS
-\ instead of hanging the case.
+\ A worker that never answers throws E-PROC-TIMEOUT past COLLECT-MS instead of
+\ hanging the case.
 : RAW-COLLECT ( TCP4:connection ptr u8 n -- bool )
    {: conn:TCP4:connection want:ptr len:n :}
    0 RES-U !
@@ -775,8 +741,7 @@ $7D0 constant COLLECT-MS          \ a loopback answer that slow is a hang
    again ;
 
 
-\ One request on its own connection, read until the answer carries the marker,
-\ so a server whose worker died fails the case, or throws E-PROC-TIMEOUT past
+\ A server whose worker died fails the case, or throws E-PROC-TIMEOUT past
 \ COLLECT-MS, instead of hanging it.
 : RAW-ASK ( ptr u8 n ptr u8 n -- bool ) {: bytes:ptr len:n want:ptr wantlen:n :}
    RAW-OPEN {: conn:TCP4:connection :}
@@ -800,7 +765,6 @@ $7D0 constant COLLECT-MS          \ a loopback answer that slow is a hang
    REQ-U @ count + REQ-U ! ;
 
 
-\ One request on its own connection, answered and closed.
 : RAW-ONE ( ptr u8 n -- )
    REQ-RESET REQ+ REQ$ RAW-EXCHANGE ;
 
@@ -808,8 +772,7 @@ $7D0 constant COLLECT-MS          \ a loopback answer that slow is a hang
 $32 constant SPLIT-MS             \ long enough for the worker to read the first write
 
 
-\ One request on its own connection in two writes cut at the byte offset given,
-\ with a pause between them, so the server reads it in two fills.
+\ The pause makes the server read the request in two fills.
 : RAW-SPLIT ( ptr u8 n n -- )
    {: bytes:ptr len:n cut:n :}
    RAW-OPEN {: conn:TCP4:connection :}
@@ -819,8 +782,6 @@ $32 constant SPLIT-MS             \ long enough for the worker to read the first
    conn RAW-DRAIN
    conn TCP4:CLOSE DROP-TCP-STATUS ;
 
-
-\ ---- reading the raw response ------------------------------------------------
 
 : BEGINS? ( ptr u8 n -- bool ) {: want:ptr len:n :}
    RES$ want len STARTS-WITH? ;
@@ -837,7 +798,6 @@ $32 constant SPLIT-MS             \ long enough for the worker to read the first
    loop ;
 
 
-\ The ETag of the last raw response, without its header name or its line end.
 : TAKE-ETAG ( -- )
    0 ETAG-U !
    RES$ s" ETag: " FIND-SUB
@@ -854,8 +814,6 @@ $32 constant SPLIT-MS             \ long enough for the worker to read the first
    RES-BUF start + len ETAG-BUF SPAN:COPY
    len ETAG-U ! ;
 
-
-\ ---- the transcript -----------------------------------------------------------
 
 : SCRIPT$ ( -- ptr u8 n )
    SCRIPT-BUF SCRIPT-U @ SPAN:TAKE SPAN:$ ;
@@ -926,8 +884,6 @@ $32 constant SPLIT-MS             \ long enough for the worker to read the first
    WANT-U @ 1+ WANT-U ! ;
 
 
-\ The transcript every run of this file writes: one worker answers it, so the
-\ request ids in the error bodies, and the lengths they give, never vary.
 : WANT-TRANSCRIPT ( -- )
    0 WANT-U !
    s" == json-route" W
@@ -1086,8 +1042,6 @@ $32 constant SPLIT-MS             \ long enough for the worker to read the first
    BACK-BUF got SPAN:TAKE SPAN:$ WANT$ T$= ;
 
 
-\ ---- the operator's stderr ------------------------------------------------------
-
 \ A server reports each fault on fd 2 under the id its client is given. For one
 \ server fd 2 is a file, read back after the stop; the process's own stderr
 \ waits on a saved descriptor and comes back however that server's case ends.
@@ -1135,8 +1089,6 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
 : READ-STDERR ( -- )
    ERR-PATH$ ERR-BUF SPAN:$ FS:READ-ALL ERR-U ! ;
 
-
-\ ---- the cases ---------------------------------------------------------------
 
 : JSON-CASES ( -- )
    s" GET" s" /api/ping" FETCH 200 T=
@@ -1209,8 +1161,8 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
    RES$ S\" {\qservice\q:\qhttp-test\q}" T$= ;
 
 
-\ Response header lines past the 2 KiB, and a head past the 4 KiB, a worker
-\ once held are sent whole, before the body.
+\ Response header lines past 2 KiB, and a head past 4 KiB, are sent whole,
+\ before the body.
 : MANY-HEADERS-CASE ( -- )
    s\" GET /api/many-headers HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n" RAW-ONE
    s" HTTP/1.1 200 OK" BEGINS? TTRUE
@@ -1218,8 +1170,8 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
    S\" {\qservice\q:\qhttp-test\q}" HAS? TTRUE ;
 
 
-\ A decoded path segment past the 256 bytes a route once bound reaches the
-\ handler whole: exactly LONG-SEGMENT-BYTES of the fill come back as the id.
+\ A decoded path segment past 256 bytes reaches the handler whole: exactly
+\ LONG-SEGMENT-BYTES of the fill come back as the id.
 : LONG-SEGMENT-CASE ( -- )
    REQ-RESET
    s" GET /api/items/" REQ+
@@ -1268,8 +1220,6 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
    s" bad-request" TRANSCRIBE ;
 
 
-\ A ping on HTTP/1.1 whose head carries this one header line, which labels the
-\ assertion that follows.
 : PING-LINE ( ptr u8 n -- )
    {: line:ptr lu:n :}
    REQ-RESET
@@ -1754,11 +1704,9 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
 $C8 constant STALL-MARGIN-MS      \ how far past IDLE-MS the stalled worker resumes
 
 \ Bytes that arrived before the deadline are served, however late the worker
-\ reads them. The worker takes the connection, which starts its deadline, and
-\ parks for readiness; the AIO loop is then held, the whole request is sent,
-\ and the loop is freed only once IDLE-MS has passed, so the worker reads a
-\ complete request after its deadline. IDLE-CASE and BODY-TIMEOUT-CASES are the
-\ control: a request that has not arrived by its deadline gets no answer.
+\ reads them: the AIO loop is held while the whole request is sent and freed
+\ only after IDLE-MS. IDLE-CASE and BODY-TIMEOUT-CASES are the control: a
+\ request that has not arrived by its deadline gets no answer.
 : STALLED-WORKER-CASE ( -- )
    [: HTTP-TEST:SERVING? 0= ;]
    mono-ns COLLECT-MS NS-PER-MS * + s" http-test IDLE-AWAIT" TEST-WAIT:POLL
@@ -1809,8 +1757,6 @@ $C8 constant STALL-MARGIN-MS      \ how far past IDLE-MS the stalled worker resu
    s" partial" HAS? TFALSE ;
 
 
-\ json-route's request with the given count of its blank line's four bytes in
-\ the first write, answered as the whole head is.
 : SPLIT-PING ( n ptr u8 n -- )
    {: taken:n name:ptr nu:n :}
    s\" GET /api/ping HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n" {: head:ptr len:n :}
@@ -1892,16 +1838,13 @@ $BB8 constant STOP-CEILING-MS     \ over the server's own stop bound, far under 
 
 
 \ A worker parked inside a handler is the one task a cooperative stop cannot
-\ wait out: the stop asks, waits its own bound - under a second for this
-\ IDLE-MS, well under the ceiling here - and then kills it, which is what
-\ KILLED-TASKS counts. The listener and the other worker end themselves, so
-\ ENDED-TASKS is one short of the total. The killed worker's exit closes the
-\ connection it was serving, so its peer reads the end of the stream within the
-\ collect deadline instead of waiting on it. The server started next serves a
-\ request - answering the HTTP/1.0 its request line named, not the HTTP/1.1 of
-\ its own status line - and ends every task itself; the trace rows its
-\ inherited hooks mark are emptied first. Its own servers, started after the
-\ first ones have been stopped and before the controlled start hook is added.
+\ wait out: the stop waits its own bound (under a second for this IDLE-MS) and
+\ kills it, which KILLED-TASKS counts; the listener and the other worker end
+\ themselves, so ENDED-TASKS is one short. The killed worker's exit closes its
+\ connection, so the peer reads the end of the stream within the collect
+\ deadline. The next server answers the HTTP/1.0 its request line named and
+\ ends every task itself. These servers start after the first ones stop and
+\ before the controlled start hook is added; the trace rows are emptied first.
 : PARKED-WORKER-CASE ( -- )
    TRACE-RESET
    0 PARKED !
@@ -1966,7 +1909,6 @@ variable OPENED                   \ the peers whose connect succeeded, first in 
    drop ;
 
 
-\ Opens a peer that says nothing, kept only when its connect succeeded.
 : PEER-OPEN ( -- )
    LOOPBACK TCP4:ADDRESS HTTP:PORT TCP4:PORT TCP4:CONNECT
    MATCH TCP4:connect-result
@@ -1975,11 +1917,10 @@ variable OPENED                   \ the peers whose connect succeeded, first in 
    ;MATCH ;
 
 
-\ Opens QUEUED peers, each once the listener has taken the one before, and
-\ throws E-PROC-TIMEOUT when it has not taken one past COLLECT-MS. Opened back
-\ to back they would outrun the listener and overflow the listen backlog, and
-\ the kernel may reset the peers past it instead of queueing them - macOS does,
-\ during the connect or just after it.
+\ Each peer opens once the listener has taken the one before: back to back they
+\ would overflow the listen backlog, and the kernel may reset the peers past it
+\ (macOS does, during the connect or just after it). Past COLLECT-MS without a
+\ take it throws E-PROC-TIMEOUT.
 : QUEUE-PEERS ( -- )
    0 OPENED !
    HTTP-TEST:TAKEN {: before:n :}
@@ -1989,7 +1930,6 @@ variable OPENED                   \ the peers whose connect succeeded, first in 
    loop ;
 
 
-\ How many of them read the end of their stream.
 : CLOSED-PEERS ( -- n )
    0
    OPENED @ 0 ?do i QUEUED-CONN @ CLOSED-WITHIN? if 1+ then loop ;
@@ -2320,8 +2260,6 @@ TASK:MIN-STACK TASK:TASK FLOOD-TASK
    HTTP:RUNNING? TFALSE ;
 
 
-\ ---- the AIO loop ------------------------------------------------------------
-
 $3E8 constant DRAIN-MS            \ how long a stop waits for the ring to drain
 10 constant RETRY-MS              \ between tries, so the loop task gets the core
 
@@ -2345,12 +2283,9 @@ $3E8 constant DRAIN-MS            \ how long a stop waits for the ring to drain
    again ;
 
 
-\ ---- a static tree past the former table bounds -------------------------------
-\ The table once held 64 files, 32 directories, 16 KiB of paths and ETags, 4 KiB
-\ of names in one directory and 4 MiB in one file. This tree has 41 directories,
-\ 161 files, a directory whose 80 names take 9680 bytes, 21608 bytes of paths and
-\ ETags and a file one byte over 4 MiB. Each small file holds its own relative
-\ path.
+\ The big static tree: 41 directories, 161 files, a directory whose 80 names
+\ take 9680 bytes, 21608 bytes of paths and ETags and a file one byte over 4 MiB.
+\ Each small file holds its own relative path.
 
 40 constant BIG-DIRS
 80 constant LONG-NAMES
@@ -2374,8 +2309,6 @@ BIG-DIRS 2 * LONG-NAMES + 1+ constant BIG-FILES
    TREE$ name len PATH-BUF FS:JOIN-PATH ;
 
 
-\ The file at the relative path the string builder holds, written with that
-\ path as its text.
 : SB-FILE ( -- )
    SB$ TREE-UNDER {: len:n :}
    PATH-BUF len SB$ FS:WRITE-ALL ;
@@ -2436,7 +2369,6 @@ BIG-DIRS 2 * LONG-NAMES + 1+ constant BIG-FILES
    TREE$ FS:REMOVE-TREE ;
 
 
-\ ---- static trees through symlinks -------------------------------------------
 \ A directory whose identity matches an ancestor's is a cycle and refuses the
 \ root; links that reach a directory by another path are served under it.
 

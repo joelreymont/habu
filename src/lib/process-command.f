@@ -1,56 +1,9 @@
 \ process-command.f - scoped child-process commands under a linear token.
-\
-\ STORAGE CLASS. TASK-LOCAL. `CMD:WITH-COMMAND` allocates one command context,
-\ hands the body a linear `CMD:command` naming it, and releases the context and
-\ everything it grew when the body returns or throws. Every member grows: the
-\ argument, environment and stdin bytes, the argv/envp vectors built from them,
-\ and the stdout/stderr captures. No caller-visible ceiling remains.
-\
-\ The open contexts of a task form a chain through each context's OUTER cell,
-\ headed by the task's INNER cell; RUNNING names the context whose run is in
-\ progress, so the capture sinks (quotations, which carry no data) find it.
-\ Scopes nest, and tasks never share a context. A halted task unwinds through
-\ each scope's `finally` as a throw does, so the scope closes its context then too.
-\
-\ The body hands back the token it was given; any other, such as an outer
-\ scope's token swapped in, is refused with CMD:E-HANDLE. Either way the scope
-\ closes its own context, so each scope frees exactly the context it opened.
-\
-\ A throw out of the body loses the token with the stack, and the cleanup frees
-\ by pointer, so `catch` belongs outside the scope word.
-\
-\ A run inherits this process's environment and the PROC-ENV defaults unless
-\ ENV-HERMETIC turns that off; UNSETENV keeps one named variable from both.
-\ No word here writes the process-wide argv/env staging of src/lib/process-argv.f
-\ and src/lib/process-env.f: a run spawns from the context's own vectors.
-\
-\ CANCELLATION. CMD:CANCEL-FD! lends a pipe's read end to the next run. A byte
-\ or a closed writer cancels it: the run kills the child's tree, reaps the
-\ child, closes its captures and throws E-PROC-CANCELLED. A completion already
-\ collected wins, and PROC-STOP is answered first. The lent descriptor is never
-\ read or closed, so a byte left from one request cancels the next run: drain
-\ or replace the pipe before lending it again.
-\
-\ PLACEMENT. `child parent FD+` makes the child's fd `child` this process's fd
-\ `parent` in every run until RESET or the scope's end, applied after the stdio
-\ slots as PROCESS:FD applies it (src/lib/spawn.f). Each scope holds its own
-\ placements; an outer scope's runs never see an inner one's. The parent keeps
-\ ownership: CMD never closes a placed fd, so it must stay open through each run.
-\ A run refuses a closed one before it opens its own descriptors, which could
-\ take the closed number: PROCESS:CHECK-FD throws E-PROC-SPAWN with EBADF in
-\ PROCESS:ERRNO, and no child runs.
-\
-\ A run that throws, cancelled or not, keeps its code: OUTCOME@ and RC@ throw it
-\ again until the next run or RESET. A path, deadline or closed placed fd refused
-\ before the run starts leaves the previous outcome in place.
-\
-\ RUN is the run that must exit clean: any other completion throws the caller's
-\ nonzero code after the captured stderr is copied to this process's, and a
-\ deadline kill throws E-PROC-TIMEOUT. As in RUN-OUTCOME, a spawn failure, a
-\ refused path, deadline or placed fd and cancellation throw their own codes
-\ before any run completes.
-\
-\ OUT$ and ERR$ are borrowed until the next run, RESET or the end of the scope.
+\ CMD:WITH-COMMAND allocates one command context, hands the body a linear
+\ CMD:command naming it and releases the context with everything it grew when
+\ the body returns or throws. Every member grows; no caller-visible ceiling.
+\ No word writes the process-wide argv/env staging: a run spawns from the
+\ context's own vectors. STORAGE CLASS. TASK-LOCAL.
 require src/lib/errors.f
 require src/lib/memory.f
 require src/lib/task.f
@@ -79,13 +32,16 @@ DEFLINEAR CMD:command
 
 private
 
-\ ---- task-local chain ---------------------------------------------------------
+\ A task's open contexts form a chain through each context's OUTER cell, headed
+\ by the task's INNER cell; RUNNING names the context whose run is in progress,
+\ so the capture sinks (quotations, which carry no data) find it. Scopes nest,
+\ and tasks never share a context. A halted task unwinds through each scope's
+\ `finally` as a throw does.
 TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 2 cells TASK:+USER CMD-TASK drop
 
 : INNER ( -- ptr ptr n ) CMD-TASK 0 ptr-field ;
 : RUNNING ( -- ptr ptr n ) CMD-TASK 1 ptr-field ;
 
-\ ---- the context record -------------------------------------------------------
 \ Header cells, then the PATHZ and CWDZ byte regions. A member that holds an
 \ address is a typed `ptr-field`; a pointer kept in an undeclared cell is refused.
 : OUTER ( ptr n -- ptr ptr n ) 0 ptr-field ;
@@ -167,7 +123,6 @@ LINEAR: ERASE ( CMD:command -- ptr n )
    PROC-NO-FD h CANCEL-FD !
    h CAPTURE-RESET ;
 
-\ ---- opening and closing --------------------------------------------------------
 : INIT-MEMBERS ( ptr n -- )
    {: h:ptr :}
    h ARG-BUF BYTES-START BUF:N>BLEN BUF:INIT
@@ -218,8 +173,10 @@ LINEAR: ERASE ( CMD:command -- ptr n )
 
 public
 
-\ Run the body with a fresh command and release the command, with everything it
-\ grew, when the body returns or throws.
+\ The body hands back the token it was given; any other, such as an outer
+\ scope's token swapped in, is refused with CMD:E-HANDLE, and the scope still
+\ frees exactly the context it opened. A throw out of the body loses the token
+\ with the stack and the cleanup frees by pointer, so `catch` belongs outside.
 : WITH-COMMAND ( R [ R CMD:command -- S CMD:command ] -- S )
    OPEN
    [: RUN-BODY ;] [: CLOSE ;] finally ;
@@ -232,6 +189,11 @@ public
 \ Lend a pipe's read end until the next run returns or throws. Another task
 \ writes or closes its writer; it never mutates a running command. PROC-NO-FD
 \ disconnects. The owner must keep the read end open through run completion.
+\ A byte or a closed writer cancels the run: it kills the child's tree, reaps
+\ the child, closes its captures and throws E-PROC-CANCELLED. A completion
+\ already collected wins, and PROC-STOP is answered first. The descriptor is
+\ never read or closed, so a byte left from one request cancels the next run:
+\ drain or replace the pipe before lending it again.
 : CANCEL-FD! ( CMD:command fd -- CMD:command ) {: fd:fd :}
    CTX {: h:ptr :}
    fd FD>N h CANCEL-FD ! ;
@@ -271,6 +233,8 @@ public
    val valu BUF:N>BLEN h ENV-BUF BUF:APPEND-SPAN
    0 h ENV-BUF BUF:APPEND-BYTE ;
 
+\ A run inherits this process's environment and the PROC-ENV defaults unless
+\ ENV-HERMETIC turns that off.
 : ENV-HERMETIC ( CMD:command -- CMD:command )
    CTX 0 swap INHERIT ! ;
 
@@ -312,8 +276,11 @@ public
    a u BUF:N>BLEN h IN-BUF BUF:REPLACE ;
 
 
-\ The child's fd child is the parent's fd parent in the next runs (PLACEMENT
-\ above). Either negative: E-PROC-OUTPUT.
+\ The child's fd child is the parent's fd parent in every run until RESET or the
+\ scope's end, applied after the stdio slots as PROCESS:FD applies it
+\ (src/lib/spawn.f). Each scope holds its own placements. CMD never closes a
+\ placed fd: a run refuses a closed one (PROCESS:CHECK-FD: E-PROC-SPAWN, EBADF in
+\ PROCESS:ERRNO) and no child runs. Either negative: E-PROC-OUTPUT.
 : FD+ ( CMD:command fd fd -- CMD:command )
    {: child:fd parent:fd :}
    CTX {: h:ptr :}
@@ -323,7 +290,6 @@ public
 
 private
 
-\ ---- the child's vectors ----------------------------------------------------------
 : ARG-ADDR+ ( ptr n NUM:index n -- ptr n ) {: off:n :} drop {: h:ptr :}
    h ARG-BUF BUF-BASE off + h ARGV-VEC VEC:PUSH drop
    h ;
@@ -439,7 +405,6 @@ private
    nip PROC-CAPTURE-ADOPT-SPAWN ;
 
 
-\ ---- captures ---------------------------------------------------------------------
 \ process.f's growing loop asks for room for `need` bytes and keeps the length
 \ itself; the bytes already captured are carried into the larger region.
 : GROWN ( n n -- n ) {: need:n cap:n :}
@@ -469,7 +434,8 @@ private
    ;MATCH ;
 
 \ The command disconnects at entry; release the capture's borrowed reference
-\ after its cleanup. A throw has no outcome variant: the getters throw its code.
+\ after its cleanup. A throw has no outcome variant: OUTCOME@ and RC@ throw its
+\ code again until the next run or RESET.
 : RUN-DONE ( n ptr n -- )
    {: code:n h:ptr :}
    PROC-NO-FD PROC-CANCEL-FD !
@@ -527,7 +493,10 @@ public
    CTX OUTCOME-OF ;
 
 \ Run the prepared command at path, feed it the stdin and capture both streams
-\ whole; a deadline-killed run answers OUTCOME:TIMEOUT.
+\ whole; a deadline-killed run answers OUTCOME:TIMEOUT. A spawn failure, a
+\ refused path, deadline or placed fd and cancellation throw their own codes; a
+\ path, deadline or closed placed fd refused before the run leaves the previous
+\ outcome in place.
 : RUN-OUTCOME ( CMD:command ptr u8 n ms -- CMD:command outcome )
    {: path:ptr pathu:n timeout:ms :}
    CTX {: h:ptr :}
@@ -545,6 +514,7 @@ public
 : RUN-RC ( CMD:command ptr u8 n ms -- CMD:command result<n,n> )
    RUN-OUTCOME drop RC@ ;
 
+\ OUT$ and ERR$ are borrowed until the next run, RESET or the end of the scope.
 : OUT$ ( CMD:command -- CMD:command ptr u8 n )
    CTX {: h:ptr :}
    h OUT-BASE @ h OUT-LEN @ ;

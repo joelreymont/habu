@@ -94,18 +94,15 @@ public
 
 
 \ Capture runs after application tasks stop. Reverse order releases dependents
-\ first; cleanup can register again, and a failed callback remains for retry.
-\ A refusing callback must not clear its owner's registered flag before it
-\ rethrows. The owner sets that flag only after REGISTER completes, or the next
-\ REGISTER adds a second entry (`src/lib/f64-text.f CLEANUP-NATIVE,
-\ REGISTER-CLEANUP`).
-\ A ONE-SHOT HOOK REGISTERED BY A PERSISTENT ONE IS REFUSED, E-LIFECYCLE-LATE.
-\ The one-shot phase has ended and its table is released, so nothing runs that
-\ hook before the capture; running it now would put cleanup that may call
-\ foreign functions after the hooks that forget their addresses. Admitted, the
-\ capture released the table again and copied N: an image saved from the keyed
-\ linker image counted 4 hooks, one in no table, and its first PREPARE threw
-\ E-BOUNDS (test/image-lifecycle-late-register.f).
+\ first; cleanup can register again, and a failed callback remains for retry. A
+\ refusing callback must not clear its owner's registered flag before it
+\ rethrows: the owner sets that flag only after REGISTER completes, or the next
+\ REGISTER adds a second entry (src/lib/f64-text.f CLEANUP-NATIVE, REGISTER-CLEANUP).
+\ A one-shot hook registered by a persistent one is refused, E-LIFECYCLE-LATE: the
+\ one-shot table is already released, and running the hook now would put cleanup
+\ that may call foreign functions after the hooks that forget their addresses.
+\ Admitted, an image saved from the keyed linker image counted 4 hooks, one in no
+\ table, and its first PREPARE threw E-BOUNDS (test/image-lifecycle-late-register.f).
 : PREPARE ( -- )
    begin N @ 0 > while
       N @ 1- {: at:n :}
@@ -119,39 +116,26 @@ public
    begin dup 0 > while 1- dup PERSISTENT @ execute repeat drop
    N @ 0 > if E-LIFECYCLE-LATE throw then ;
 
-\ THE EIGHT SPANS A STRIPPED IMAGE REACHES THIS REGISTRY THROUGH, handed one at a
-\ time to a claim the caller supplies. This file is baked into the engine, so
-\ every cell it declares sits below any capture window; COUNT above takes the
-\ lock and reads both counters, so its compiled code spells the first three
-\ addresses, REGISTER, REGISTER-PERSISTENT and PREPARE spell the two buffer
-\ bases and HOOKS's control block, and PROCESS-CELL and PROCESS-CELLS spell
-\ PROCESS-N and PROCESS's base. That is the refusal every Tender entry point
-\ stopped at once the path scratch let it open a file (measured: `caller=<unknown> value=13964713400
-\ target=<unknown>`, the same integer from a program whose only call was
-\ UNICODE:CASEFOLD=, which then registered its cleanup on first use).
-\ THE ZERO OF A FRESH MAPPING IS THE CORRECT START FOR ALL EIGHT. A new process
-\ has registered nothing: an open lock, three zero counts, no hook mapping, no
-\ hook capacity and empty persistent and process tables. Declaration-time registrations belong
-\ to the process that made them - the builder ran them while it loaded the
-\ program - so an image that starts with an empty registry is not missing state, it is a new
-\ instance of it.
-\ ONLY THE CELLS CODE SPELLS ARE NAMED. HOOKS is a DYNAMIC-BUFFER, whose
-\ generated words pass its head cell and its control block, `HOOKS#base
-\ HOOKS#ctl` (src/core/layout-buffer.f DBUF-SOURCE), so both are claimed, the
-\ block with its extent. PERSISTENT's and PROCESS's generated accessors are
-\ `PERSISTENT#base i 8 * +` (LBUF-SOURCE), so the 64 cells behind each base are
-\ reached at a computed offset and never named in code.
-\ A STRIPPED IMAGE CAN REGISTER NOW. APPEND stores a quotation into a declared
-\ cell, which lowers through `xt!`: `xt!` stores and then declares the cell to
-\ the engine's address-cell table, and a stripped image - which carries no reader
-\ for that table - drops the declaration at link and keeps the store
-\ (src/habu/aot-closure.f AOT-DECLARATION?). Before that drop, a program calling
-\ REGISTER or PREPARE was refused with `aot: PC-relative target removed or
-\ outside closure site=xt!`.
-\ THE NAMING HAPPENS HERE BECAUSE THE CELLS ARE DECLARED HERE, exactly as in
-\ src/core/dynamic-storage.f: the AOT list admits a cell only by name, these are
-\ private, and this word hands out these and nothing else, each with its byte
-\ extent.
+\ The eight spans a stripped image reaches this registry through, each handed to
+\ the caller's claim. This file is baked into the engine, so its cells sit below
+\ any capture window, and the AOT list admits a cell only by name: COUNT spells
+\ the lock and both counters, REGISTER, REGISTER-PERSISTENT and PREPARE the two
+\ buffer bases and HOOKS's control block, PROCESS-CELL and PROCESS-CELLS PROCESS-N
+\ and PROCESS's base. An unclaimed one is refused `caller=<unknown>
+\ value=13964713400 target=<unknown>` (measured from a program whose only call was
+\ UNICODE:CASEFOLD=, which registers its cleanup on first use).
+\ A fresh mapping's zero is the right start for all eight: an open lock, three zero
+\ counts, no hook mapping or capacity, empty tables. Declaration-time
+\ registrations belong to the builder process that ran them.
+\ Only cells code spells are named: HOOKS, a DYNAMIC-BUFFER, passes `HOOKS#base
+\ HOOKS#ctl` (src/core/layout-buffer.f DBUF-SOURCE), the block claimed with its
+\ extent; PERSISTENT's and PROCESS's accessors are `#base i 8 * +` (LBUF-SOURCE),
+\ so their 64 cells are reached by offset and never named.
+\ `xt!` stores and then declares the cell to the address-cell table; a stripped
+\ image drops the declaration at link and keeps the store
+\ (src/habu/aot-closure.f AOT-DECLARATION?). Without that, REGISTER and PREPARE are
+\ refused `aot: PC-relative target removed or outside closure site=xt!`. As in
+\ src/core/dynamic-storage.f, the cells are named here because they are declared here.
 : OWNED-CELLS ( [ ptr u8 n -- ] -- ) {: claim :}
    N BYTE-VIEW CELL claim execute
    PERSISTENT-N BYTE-VIEW CELL claim execute

@@ -1,22 +1,9 @@
-\ fork-hold.f - fork while another task holds process-wide state.
-\
-\ fork copies only the thread that calls it. A lock another task holds, or a
-\ one-time setup another task is part way through, is copied into the child as
-\ it stands, and the child has no thread to finish it: the child's first use
-\ waits for ever, unless the fork held it or the child reset it
-\ (src/lib/fork-child.f). A case here holds that state in a task of its own (HOLD),
-\ forks children that reach it through its owner's public words (FORK-CHECK)
-\ and lets go (RELEASE). src/lib/fork-child-test.f and src/lib/pg-fork-test.f are the
-\ cases.
-\
-\ NOTHING IS LEFT. A child that does not end inside CHILD-MS is sent SIGKILL and
-\ every child is reaped before FORK-CHECK asserts or throws, and the holder
-\ lets go before it is joined. The parent closes its copy of a pipe's write
-\ end, so the children's copies are the last: the last child's exit closes it,
-\ which is how the parent sees them end without a wait that could block.
-\
-\ STORAGE CLASS. PROCESS-WIDE: HELD and LET-GO are the static handshake
-\ between the case and its holder task; one case runs at a time.
+\ fork-hold.f - fork while another task holds process-wide state. fork copies
+\ only its calling thread, so a lock or one-time setup another task holds is
+\ copied as it stands, and the child's first use waits for ever unless the fork
+\ held it or the child reset it (src/lib/fork-child.f). Cases:
+\ src/lib/fork-child-test.f, src/lib/pg-fork-test.f. STORAGE CLASS. PROCESS-WIDE:
+\ HELD and LET-GO are the handshake with the holder task; one case at a time.
 
 require src/lib/errors.f
 require src/lib/test.f
@@ -82,6 +69,8 @@ TASK:MIN-STACK TASK:TASK HOLDER
 
 \ Zero when every child's end of the pipe closed - every child exited - inside
 \ CHILD-MS; else what the wait threw, E-PROC-TIMEOUT for a child still running.
+\ The parent closes its own write end, so the last child's exit closes the pipe:
+\ the parent sees the children end without a wait that could block.
 : END-CODE ( fd -- n ) {: rd:fd :}
    rd CHILD-MS >MS [: END-WAIT ;] catch {: code:n :}
    2drop
@@ -90,7 +79,6 @@ TASK:MIN-STACK TASK:TASK HOLDER
 : KILL-ALL ( n -- )
    0 ?do i PIDS @ SIGKILL PROC-KILL-RAW drop loop ;
 
-\ Reaps the first n children and answers how many of them exited 0.
 : REAP ( n -- n )
    0 swap 0 ?do
       i PIDS @ PROC-WAIT-RC MATCH result

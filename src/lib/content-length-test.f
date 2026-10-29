@@ -1,36 +1,6 @@
-\ content-length-test.f - Content-Length framing over real pipes, through src/lib/content-length.f.
+\ content-length-test.f - Content-Length framing over real pipes, through
+\ src/lib/content-length.f. Each TEST- word names the failures it covers.
 \ Run: bin/hb --load src/lib/content-length-test.f
-\
-\ The failure list the module was written against, each line with its test:
-\ - two messages back to back, then end of file on the boundary: both bodies
-\   exact, then NONE; nothing at all: NONE ................. TEST-BOUNDARY
-\ - end of file inside a header line, after a whole header line, inside a
-\   body: TRUNCATED, and the reader is spent ................. TEST-TRUNCATED
-\ - no Content-Length; a value with letters, a sign, nothing, an inner blank;
-\   a value past a cell, with and without leading zeros; a value over the
-\   maximum; two Content-Length lines; a line with no colon, no name before it,
-\   or a name with a blank or a parenthesis; a Content-Type charset other than
-\   UTF-8, bare or quoted; an LF alone, first or last; a CR inside a line; a
-\   line over LINE-CAP held whole, or still growing past it: MALFORMED, and the
-\   reader is spent ......................................... TEST-MALFORMED
-\ - the name in any case, no blank or blanks and tabs around the value,
-\   leading zeros, more of them than a cell has digits, other headers before
-\   and after, a name of every token punctuation byte, a Content-Type with no
-\   charset or with utf-8 or utf8 in any case, bare or quoted, a body of zero
-\   bytes, a line of exactly LINE-CAP bytes: read as written ... TEST-FORMS
-\ - a body far longer than the pipe and the reader's buffer, from a writer
-\   that blocks, then a message after it .................... TEST-BIG
-\ - a header and body arriving in pieces, each its own read .... TEST-PIECES
-\ - a reader never bound, a buffer under LINE-CAP + 2, a negative maximum,
-\   BODY with no body pending, NEXT-LENGTH with one pending: STATE; a span
-\   shorter than the body: E-SPAN-CAPACITY .................. TEST-MISUSE
-\ - a body exactly the reader's maximum: read; one byte over: MALFORMED
-\   ......................................................... TEST-MAXIMUM
-\ - a read the kernel refuses, before a header or inside a body the buffer did
-\   not hold: E-FS-IO, and the reader is spent ............. TEST-READ-ERROR
-\ - SEND: the exact header and body, an empty body, a body built in SB, read
-\   back by a reader; a pipe with no reader, SIGPIPE disarmed: E-FS-IO
-\   ......................................................... TEST-SEND
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -67,7 +37,6 @@ variable FEED-FD                  \ the read end the reader is bound to
 variable CHILD-FD                 \ the pipe end a forked writer writes
 variable CHILD-CODE
 
-\ ---- fixtures ---------------------------------------------------------------
 
 : BIND-ON ( fd n -- )
    {: f:fd max:n :}
@@ -138,8 +107,9 @@ variable CHILD-CODE
    r MAX-BODY BIND-ON
    pid ;
 
-\ ---- cases ------------------------------------------------------------------
 
+\ Two messages back to back, then end of file on the boundary: both bodies
+\ exact, then NONE. Nothing at all: NONE.
 : TEST-BOUNDARY ( -- )
    s\" Content-Length: 2\r\n\r\n{}Content-Length: 5\r\n\r\nhello" FEED
    NEXT-LEN 2 T=  2 BODY$ s" {}" T$=
@@ -156,6 +126,8 @@ variable CHILD-CODE
    SPENT
    DONE ;
 
+\ End of file inside a header line, after a whole header line, inside a body:
+\ TRUNCATED, and the reader is spent.
 : TEST-TRUNCATED ( -- )
    s" Content-Len" TRUNCATED-HEADER
    s\" Content-Length: 2\r\n" TRUNCATED-HEADER
@@ -185,6 +157,13 @@ TYPED-VARIABLE PAD-LEN len
    s\" \r\nContent-Length: 2\r\n\r\n{}" PAD-BUF PAD-CAP PAD-LEN BUF-APPEND
    PAD-BUF PAD-LEN BUF-LEN@ ;
 
+\ MALFORMED, and the reader is spent: no Content-Length; a value with letters,
+\ a sign, nothing, an inner blank; a value past a cell, with and without leading
+\ zeros; a value over the maximum; two Content-Length lines; a line with no
+\ colon, no name before it, or a name with a blank or a parenthesis; a
+\ Content-Type charset other than UTF-8, bare or quoted; an LF alone, first or
+\ last; a CR inside a line; a line over LINE-CAP held whole, or still growing
+\ past it.
 : TEST-MALFORMED ( -- )
    s\" Content-Type: application/vscode-jsonrpc\r\n\r\n{}" MALFORMED
    s\" Content-Length: abc\r\n\r\n" MALFORMED
@@ -216,6 +195,11 @@ TYPED-VARIABLE PAD-LEN len
    NEXT-LEN -1 T=
    DONE ;
 
+\ Read as written: the name in any case, no blank or blanks and tabs around the
+\ value, leading zeros, more of them than a cell has digits, other headers
+\ before and after, a name of every token punctuation byte, a Content-Type with
+\ no charset or with utf-8 or utf8 in any case, bare or quoted, a body of zero
+\ bytes, a line of exactly LINE-CAP bytes.
 : TEST-FORMS ( -- )
    s\" content-length: 2\r\n\r\n{}" s" {}" FORM
    s\" CONTENT-LENGTH:2\r\n\r\n{}" s" {}" FORM
@@ -232,13 +216,14 @@ TYPED-VARIABLE PAD-LEN len
    NEXT-LEN -1 T=
    DONE ;
 
-\ ---- a body longer than everything between writer and reader ---------------
 
 : BIG-WRITER ( -- )
    CHILD-FD @ >FD s\" Content-Length: 1048576\r\n\r\n" WRITE-FULL
    CHILD-FD @ >FD BIG-BODY @ $ WRITE-FULL
    CHILD-FD @ >FD s\" Content-Length: 2\r\n\r\n{}" WRITE-FULL ;
 
+\ A body far longer than the pipe and the reader's buffer, from a writer that
+\ blocks, then a message after it.
 : TEST-BIG ( -- )
    BIG-BODY @ PATTERN!
    [: BIG-WRITER ;] FORKED {: pid:pid :}
@@ -251,7 +236,6 @@ TYPED-VARIABLE PAD-LEN len
    DONE
    s" big writer" s" " s" " pid PROC-WAIT-OUTCOME 0 T-OUTCOME-EXITED= ;
 
-\ ---- a message in pieces ----------------------------------------------------
 
 : PIECE ( ptr u8 n -- )
    {: a:ptr u:n :}
@@ -265,6 +249,7 @@ TYPED-VARIABLE PAD-LEN len
    s\" \nab" PIECE
    s" c" PIECE ;
 
+\ A header and body arriving in pieces, each its own read.
 : TEST-PIECES ( -- )
    [: PIECE-WRITER ;] FORKED {: pid:pid :}
    NEXT-LEN 3 T=
@@ -273,7 +258,6 @@ TYPED-VARIABLE PAD-LEN len
    DONE
    s" piece writer" s" " s" " pid PROC-WAIT-OUTCOME 0 T-OUTCOME-EXITED= ;
 
-\ ---- misuse -----------------------------------------------------------------
 
 : FRESH-NEXT ( -- )
    FRESH NEXT-LENGTH MATCH option none OF ENDOF some OF drop ENDOF ;MATCH ;
@@ -284,6 +268,9 @@ TYPED-VARIABLE PAD-LEN len
 : NEGATIVE-BIND ( -- )
    R 0 >FD INBUF -1 BIND ;
 
+\ STATE: a reader never bound, a buffer under LINE-CAP + 2, a negative maximum,
+\ BODY with no body pending, NEXT-LENGTH with one pending. A span shorter than
+\ the body: E-SPAN-CAPACITY.
 : TEST-MISUSE ( -- )
    [: FRESH-NEXT ;] E-CONTENT-LENGTH-STATE TTHROWSQ
    [: SHORT-BIND ;] E-CONTENT-LENGTH-STATE TTHROWSQ
@@ -331,7 +318,6 @@ TYPED-VARIABLE PAD-LEN len
    [: NEXT-LEN drop ;] E-CONTENT-LENGTH-MALFORMED TTHROWSQ
    DONE ;
 
-\ ---- SEND -------------------------------------------------------------------
 
 : SENT$ ( fd n -- ptr u8 n )
    {: r:fd u:n :}
@@ -344,6 +330,8 @@ TYPED-VARIABLE PAD-LEN len
 : NO-READER ( -- )
    CHILD-FD @ >FD s" lost" SEND ;
 
+\ The exact header and body, an empty body, a body built in SB, read back by a
+\ reader. A pipe with no reader, SIGPIPE disarmed: E-FS-IO.
 : TEST-SEND ( -- )
    PIPE-PAIR {: r:fd w:fd :}
    w s" hello" SEND

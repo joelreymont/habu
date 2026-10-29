@@ -1,21 +1,9 @@
-\ runner.f - checked process-fixture helpers for native test scripts.
-\
-\ GT-START makes a cleanup-tracked temporary root under TMPDIR. GT-RUN runs a
-\ prepared argv capture into bounded stdout and stderr buffers (output past
-\ them throws E-PROC-TRUNCATED, never a silent cut) and records whether it
-\ exited, was signalled or timed out. GT-FAIL+ records a named failure so a
-\ script reports every local failure; GT-REPORT then exits GT-EX-FAIL.
-\ GT-CAPTURE-ACTION captures an action run in this process (below).
-\ Call GT-PROGRESS-RUN before a long subcheck and GT-PROGRESS-PASS after it; a
-\ long poll caps its timeout at GT-PROGRESS-SLICE-MS and calls
-\ GT-PROGRESS-WAIT when quiet, so a silent child still yields heartbeat lines.
-\ A caller that forwards child output routes it through GT-FLUSH-LINES-FD
-\ while polling and GT-FLUSH-REMAINDER-FD at exit: a heartbeat never splits a
-\ child line, and a final unterminated fragment prints before PASS/FAIL.
-\
-\ STORAGE CLASS. PROCESS-WIDE: the root, capture buffers, failure table and
-\ capture frames are static; the standard streams are the process's, so two
-\ tasks never capture at once.
+\ runner.f - checked process-fixture helpers for native test scripts: GT-START
+\ makes a cleanup-tracked root under TMPDIR, GT-RUN captures a child into
+\ bounded buffers (output past them throws E-PROC-TRUNCATED), GT-FAIL+ records
+\ a named failure and GT-REPORT exits GT-EX-FAIL. STORAGE CLASS. PROCESS-WIDE:
+\ the root, capture buffers, failure table and capture frames are static; the
+\ standard streams are the process's, so two tasks never capture at once.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -27,7 +15,7 @@ require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/fd.f
 require src/lib/test/record.f
-require src/lib/fmt.f                        \ FMT:.INT - one-line number text, shared builder untouched
+require src/lib/fmt.f
 
 2 constant GT-EX-FAIL
 256 constant GT-FAIL-MAX
@@ -190,25 +178,17 @@ variable GT-TAIL-U
 : GT-RUN-DEFAULT ( ptr u8 n -- )
    GT-DEFAULT-TIMEOUT-MS GT-RUN ;
 
-\ ---- an in-process action's output -------------------------------------------
-\ GT-CAPTURE-ACTION runs an action in this process with its stdout and stderr
-\ pointed at two files under the caller's directory, then reads them back into
-\ the caller's spans; code is the action's throw code, 0 when it returned.
-\ Files, not pipes: nothing drains a pipe while the action runs, so output past
-\ the pipe's buffer would block the action for good, and the action may run
-\ captures of its own through the task's one-capture row (src/lib/process.f).
-\ A file is unlinked once it is open twice, appending as the stream and reading
-\ from its start for the capture, so no exit path leaves it behind and a
-\ capture nested in the action opens its own under the same name. A capture's
-\ state is a frame of its own: per stream, the stream it saved and the file's
-\ reader. A nested capture takes the next frame, so each reads its own bytes
-\ and the outer one gets its streams back; the streams are the process's, so
-\ two tasks never capture at once. Every descriptor a frame holds sits at
-\ GT-FD-HOLD-MIN or above and closes on exec, so a child the action spawns
-\ inherits none. The read is its own bound: output past a span throws
-\ E-PROC-TRUNCATED, as a child's capture does, even when a child the action
-\ left running wrote it after the action returned. Both streams come back on
-\ every exit path.
+\ GT-CAPTURE-ACTION points an action's stdout and stderr at two files under the
+\ caller's directory and reads them back into the caller's spans; code is the
+\ action's throw code, 0 when it returned. Files, not pipes: nothing drains a pipe
+\ while the action runs, and the action may run captures of its own through the
+\ task's one-capture row (src/lib/process.f). Each file is unlinked once it is open
+\ twice (the appending stream, a reader from its start), so no exit path leaves it
+\ and a nested capture reuses the name. A nested capture takes the next frame, so
+\ each reads its own bytes and the outer one gets its streams back. Held
+\ descriptors sit at GT-FD-HOLD-MIN or above and close on exec. Output past a span
+\ throws E-PROC-TRUNCATED, even when a child the action left running wrote it
+\ after the action returned. Both streams come back on every exit path.
 10 constant GT-FD-HOLD-MIN               \ a held descriptor sits above the low ones
 2 constant GT-CAP-ROWS                   \ a frame's rows: stdout, then stderr
 \ Captures open at once: tests nest two, and one past the bound is refused
@@ -313,7 +293,6 @@ create GT-CAP-PATH PATH-CAP allot     \ a file's path while GT-CAP-FILE opens it
    kept fd dup2 0 < if E-PROC-OUTPUT exit then
    0 ;
 
-\ The first of two codes that is not 0.
 : GT-CAP-FIRST ( n n -- n )
    {: a:n b:n :}
    a 0<> if a exit then
@@ -346,6 +325,8 @@ create GT-CAP-PATH PATH-CAP allot     \ a file's path while GT-CAP-FILE opens it
    FD:STDERR FD>N GT-CAP-READER @ err GT-CAP-READ
    code ;
 
+\ Runs the quotation in this process, its stdout and stderr captured into the
+\ two spans; a child's capture is GT-RUN.
 : GT-CAPTURE-ACTION ( [ -- ] ptr u8 n SPAN:span<u8> SPAN:span<u8> -- len len n )
    {: q dir:ptr diru:n out err :}
    diru 0 <= if E-FS-PATH throw then
@@ -366,6 +347,9 @@ create GT-CAP-PATH PATH-CAP allot     \ a file's path while GT-CAP-FILE opens it
    u 0= if exit then
    fd a u write u <> if E-FS-IO throw then ;
 
+\ A caller that forwards child output calls this while polling and
+\ GT-FLUSH-REMAINDER-FD at exit: a heartbeat never splits a child line, and a
+\ final unterminated fragment prints before PASS/FAIL.
 : GT-FLUSH-LINES-FD ( n ptr u8 ptr n -- ) {: fd buf:ptr lenp:ptr :}
    lenp @ 0 < if E-STR-BOUNDS throw then
    buf lenp @ GT-LINE-FLUSH-U GT-FLUSH-U !
@@ -392,6 +376,9 @@ create GT-CAP-PATH PATH-CAP allot     \ a file's path while GT-CAP-FILE opens it
    1 GT-OUT-BUF PROC-OUT-LEN GT-FLUSH-REMAINDER-FD
    2 GT-ERR-BUF PROC-ERR-LEN GT-FLUSH-REMAINDER-FD ;
 
+\ Call before a long subcheck and GT-PROGRESS-PASS after it; a long poll caps its
+\ timeout at GT-PROGRESS-SLICE-MS and calls GT-PROGRESS-WAIT when quiet, so a
+\ silent child still yields heartbeat lines.
 : GT-PROGRESS-RUN ( ptr u8 n -- ) {: label:ptr labelu :}
    mono-ns GT-PROGRESS-START-NS !
    GT-PROGRESS-START-NS @ GT-PROGRESS-LAST-NS !

@@ -1,52 +1,12 @@
-\ span.f - a pointer that carries its reach.
-\
-\ A span is ONE two-cell value: a base `ptr t` and a REACH IN BYTES. It travels
-\ on the stack like any other family value, so it needs no engine change, and it
-\ is the writable destination and the indexed view that a bare `ptr t` cannot be:
-\ every access through it is bounds-checked against the reach it carries, so a
-\ forgotten `u cap > if throw` is not a possible mistake at the call.
-\ The read-only ( ptr u8 n ) source pair stays the string idiom - it already
-\ carries its length - and SPAN:COPY takes exactly that pair as its source.
-\
-\ THE REACH IS COUNTED IN BYTES, NOT IN ELEMENTS, AND THAT IS A SOUNDNESS
-\ DECISION, not a convenience. A family argument unifies with the ordinary
-\ integer widening lattice, so `span<u8>` IS ACCEPTED where `span<cell>` is
-\ declared (u8 widens into cell; measured, src/lib/span-test.f pins it). With an
-\ element-counted reach a 64-byte `span<u8>` handed to a word declared over
-\ `span<cell>` would pass `i < len` at i=7 and cell-read bytes 56..63 - eight
-\ times past its end, the exact overrun this type exists to refuse. With a byte
-\ reach the same call stays inside 64 bytes: SPAN:CELL-AT checks `i < reach/CELL`
-\ and every other accessor checks bytes too, so a widened element type is a
-\ semantic surprise and never an out-of-bounds access. Closing the widening
-\ itself is a checker question, not a declaration's.
-\
-\ WHO MAY CALL SPAN:MAKE. It is the one crossing where an address and a number
-\ become a reach, so it is where a wrong number becomes an overrun. Only src/lib/
-\ and src/ may call it: a producer there publishes spans (SPAN-BUFFER:,
-\ SPAN-CELLS:, MEM:ALLOC-SPAN) and every consumer takes one from a producer or
-\ narrows one it was given. tools/lint/bare-copy-lint.f reports a call anywhere
-\ else, with the site and the replacement named. It is an ordinary checked word:
-\ the body is the generated constructor plus a sign check, it trusts nothing, and
-\ the audit is the lint rather than a TRUST row.
-\
-\ WHAT IS NOT HERE. A generic element-indexed accessor: `+` on a `ptr t` is byte
-\ arithmetic and checked code has no element size for a type parameter, so an
-\ `AT` that steps by elements is not expressible. The byte set (AT, U8@, U8!)
-\ works over `span<u8>`, the cell set (CELL-AT, CELL@, CELL!, CELL-LEN) over
-\ `span<cell>`, and SKIP/TAKE/SUB narrow in bytes for every element type. There
-\ is no TYPED-BUFFER span form either: its generated accessor is an index
-\ function ( n -- ptr t ), not a base-and-reach pair, and adding one means
-\ changing the generated accessor set at the sealed generative storage boundary
-\ (src/core/layout-buffer.f). A span over a nominal element is already reachable
-\ today - hand a TYPED-BUFFER accessor result to SPAN:MAKE.
-\
-\ A narrowing or an index outside the reach throws E-SPAN-RANGE, a copy longer
-\ than the destination E-SPAN-CAPACITY and moves nothing, and a negative reach
-\ or source length E-SPAN-LENGTH. MEM:ALLOC-SPAN, MEM:ALLOCATION>SPAN and
-\ MEM:FREE-SPAN live in src/lib/memory.f, which owns MEM.
-\
+\ span.f - a pointer that carries its reach: one two-cell value, a base `ptr t`
+\ and a reach in bytes, every access bounds-checked against it. The read-only
+\ ( ptr u8 n ) pair stays the string idiom; SPAN:COPY takes it as its source.
 \ STORAGE CLASS. CALLER-OWNED: a span names its producer's storage; SPAN-BUFFER:
-\ and SPAN-CELLS: allot theirs when they define the name.
+\ and SPAN-CELLS: allot theirs.
+
+\ A narrowing or index outside the reach is E-SPAN-RANGE, a copy longer than the
+\ destination E-SPAN-CAPACITY (nothing moves), a negative reach or length
+\ E-SPAN-LENGTH.
 
 require src/lib/errors.f
 
@@ -54,7 +14,11 @@ package SPAN
 public
 
 \ base is `ptr a` so the pointee survives (c@ on a byte span, @ on a cell span,
-\ and nothing else); len is the reach in bytes.
+\ and nothing else); len is the reach in bytes, a soundness rule: a family
+\ argument widens like an integer, so `span<u8>` is accepted where `span<cell>` is
+\ declared (src/lib/span-test.f pins it). An element-counted reach would let a
+\ 64-byte `span<u8>` pass `i < len` at i=7 and cell-read bytes 56..63; a byte
+\ reach keeps every accessor inside it. Closing the widening is the checker's.
 STRUCTURE span<a>
    FIELD base ptr a
    FIELD len n
@@ -71,14 +35,17 @@ private
 
 public
 
-\ ---- the audited crossing ----------------------------------------------------
-\ src/lib/ and src/ only. `n` is the reach in BYTES from `p`, and the caller owes
-\ that fact: the checker knows the pointee, never the extent behind it.
+\ The one crossing where an address and a number become a reach. Only src/lib/
+\ and src/ call it: producers there publish spans (SPAN-BUFFER:, SPAN-CELLS:, and
+\ MEM:ALLOC-SPAN in src/lib/memory.f), and every consumer takes one from a
+\ producer or narrows one. tools/lint/bare-copy-lint.f reports a call anywhere
+\ else; the audit is that lint, not a TRUST row. `n` is the reach in bytes from
+\ `p`, and the caller owes that fact: the checker knows the pointee, never the
+\ extent behind it.
 : MAKE ( ptr t n -- span<t> )
    dup 0 < if E-SPAN-LENGTH throw then
    SPAN-SPAN:MAKE ;
 
-\ ---- what a span says about itself -------------------------------------------
 : LEN ( span<t> -- n )
    SPAN-SPAN:UNMAKE nip ;
 
@@ -92,11 +59,8 @@ public
    SPAN-SPAN:UNMAKE {: b l :}
    b byte-view l MAKE ;
 
-\ ---- narrowing: never wider, never past the reach ----------------------------
-\ These three are generic. An open instantiation is a placeable two-cell value
-\ like any other (a `span`'s element is only ever a pointee, so no argument can
-\ move its width), so a local would work here too; the return stack keeps the
-\ scalar out of the way with no frame, and the bundle is unmade where it stands.
+\ Generic: the return stack keeps the scalar out of the way with no frame, and the
+\ bundle is unmade where it stands.
 : SKIP ( span<t> n -- span<t> )
    >r SPAN-SPAN:UNMAKE r>
    2dup BOUND
@@ -113,7 +77,12 @@ public
 : SUB ( span<t> n n -- span<t> )
    >r SKIP r> TAKE ;
 
-\ ---- the byte set ------------------------------------------------------------
+\ No generic element-indexed accessor: `+` on a `ptr t` is byte arithmetic and
+\ checked code has no element size for a type parameter. The byte set works over
+\ `span<u8>`, the cell set over `span<cell>`, and SKIP/TAKE/SUB narrow in bytes.
+\ There is no TYPED-BUFFER span form: its accessor is an index function, and one
+\ would change the generated accessor set (src/core/layout-buffer.f); hand a
+\ TYPED-BUFFER accessor result to SPAN:MAKE instead.
 : AT ( span<u8> n -- ptr u8 ) {: s i :}
    s SPAN-SPAN:UNMAKE {: b l :}
    i 0 < i l >= or if E-SPAN-RANGE throw then
@@ -125,7 +94,6 @@ public
 : U8! ( u8 span<u8> n -- ) {: v s i :}
    v s i AT c! ;
 
-\ ---- the cell set ------------------------------------------------------------
 \ The index is checked against the reach in WHOLE cells, so a byte span that
 \ reached here through integer widening still cannot address past its end.
 : CELL-AT ( span<cell> n -- ptr cell ) {: s i :}
@@ -139,7 +107,7 @@ public
 : CELL! ( n span<cell> n -- ) {: v s i :}
    v s i CELL-AT ! ;
 
-\ ---- bulk: all of it or none of it -------------------------------------------
+\ All of it or none of it.
 : COPY ( ptr u8 n span<u8> -- ) {: src u s :}
    u 0 < if E-SPAN-LENGTH throw then
    s SPAN-SPAN:UNMAKE {: b l :}
@@ -155,7 +123,6 @@ public
 
 ;package
 
-\ ---- static span producers ----------------------------------------------------
 \ `n SPAN-BUFFER: NAME` publishes NAME as the whole buffer, reach and all, so no
 \ caller of NAME ever holds the base without the reach. The body is [reach][data]
 \ and the clause reads the reach it was built with; `create`'s raw pointee takes

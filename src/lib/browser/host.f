@@ -1,17 +1,9 @@
-\ host.f - BROWSER-HOST: the browser host's page served by Habu's HTTP server.
-\ The turn protocol between the page and a module is the header of turn.js.
-\
-\ The page is four files beside this one: index.html, host.js, viewport.js and
-\ turn.js. Each is read as this file loads, from the tree that resolved it,
-\ into a dictionary buffer of the file's size, so an application image built
-\ from a program that requires this file carries the page and serves it with
-\ no Habu tree at run time. ROUTES registers GET /, /host.js, /viewport.js and
-\ /turn.js on HTTP's route table with their content types; the caller
-\ registers its own routes, /module.wasm and every path its module fetches,
-\ and starts the server.
-\
-\ STORAGE CLASS. PROCESS-WIDE: the page's buffers, filled as this file loads
-\ and only read after it, so every request worker serves them at once.
+\ host.f - BROWSER-HOST: the browser host's page served by Habu's HTTP server; the
+\ page-module turn protocol is the header of turn.js. The page's four files, beside
+\ this one, are read into dictionary buffers as it loads, so an application image
+\ serves them with no Habu tree at run time. ROUTES registers their GET routes; the
+\ caller registers /module.wasm, every path its module fetches, and starts the server.
+\ STORAGE CLASS. PROCESS-WIDE: buffers filled at load and only read after.
 
 require src/lib/errors.f
 require src/lib/string.f

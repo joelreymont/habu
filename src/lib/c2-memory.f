@@ -99,8 +99,6 @@ TRUSTED: WITH-RECORDS ( R ptr u8 n n n [ R ptr u8 n -- S ptr u8 n | U -- U ] sto
    base off + extent callback LOAN-RUN 2drop
    base bound ;
 
-\ These three bodies unpack a view's base and byte bound, check the index
-\ before access, and return the view with the cells it came with.
 : BYTE@ ( read-view<p,q,u8> n -- u8 read-view<p,q,u8> )
    {: idx:n :}
    dup READ-UNPACK {: base:ptr bound:n :}
@@ -118,8 +116,6 @@ TRUSTED: WITH-RECORDS ( R ptr u8 n n n [ R ptr u8 n -- S ptr u8 n | U -- U ] sto
    value base idx + c!
    base bound MUT-PACK ;
 
-\ SLICE and PREFIX narrow a view inside its bound; LENGTH and MUT-LENGTH
-\ return the bound without exposing the base.
 : SLICE ( read-view<p,q,u8> n n -- read-view<p,q,u8> )
    {: off:n count:n :}
    READ-UNPACK {: base:ptr bound:n :}

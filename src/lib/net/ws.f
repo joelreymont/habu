@@ -1,70 +1,9 @@
 \ ws.f - RFC 6455 WebSocket connections on the HTTP/1.1 server (src/lib/net/http.f).
-\
-\ ACCEPT, inside a route handler, checks the request as an opening handshake
-\ (section 4.2.1), takes the request's connection from the server for good
-\ (HTTP:TAKE-OVER) and hands it to WS's own task, which answers 101 with
-\ Sec-WebSocket-Accept. A handshake that is refused is answered through the
-\ HTTP response - 400, 426 for a version other than 13, or 503 when WS holds
-\ the most sockets START allowed or is stopping - and no socket exists for it.
-\
-\ One task, started by START, does every read and write on every socket and
-\ is the only writer. It waits on one AIO group: a readiness poll per socket
-\ and one on a wake pipe. Each socket's handler runs on that task, handed a
-\ whole text or binary message, or `closed` with the status once, as the
-\ socket ends. A handler must not block: every socket waits while it runs. A
-\ handler's throw is reported on stderr as one line, `ws: socket <handle>
-\ failed, throw <code>`, and a throw from a handler handed a message also
-\ closes its socket under status 1011. The task reassembles fragmented
-\ messages, answers a ping with a pong, even once this end has sent its close,
-\ and a close frame with a close, and fails the connection when the peer
-\ breaks the protocol: status 1002 for a frame the codec refuses
-\ (src/lib/net/ws-frame.f) or one out of order, 1007 for text that is not
-\ UTF-8, 1009 for a message past MESSAGE-MAX. A closed socket reports the
-\ status its close frame carried, 1005 when the frame carried none and 1006
-\ when the stream ended without one (section 7.1.5). A message's bytes are
-\ BORROWED until the handler returns.
-\
-\ SEND-TEXT, SEND-BINARY and CLOSE may be called from any task, the handler
-\ included: each appends whole frames to the socket's outgoing queue under one
-\ TASK:FACILITY and pokes the wake pipe, and the task writes the queue when
-\ the socket is writable, so a sender never waits for the peer. The queue
-\ grows as frames arrive faster than the peer takes them, up to QUEUE-MAX
-\ unwritten bytes: a frame queued behind that many loses the socket instead
-\ (1006, its queue dropped), and the send is E-WS-CLOSED. A frame is never
-\ refused for its own size. A send on a socket that is closing, closed or gone
-\ is E-WS-CLOSED, and text that is not UTF-8 is E-WS-TEXT before anything is
-\ queued.
-\
-\ The task never waits inside a transfer: it reads with TCP4:TRY-READ and
-\ writes with TCP4:TRY-SEND once the poll reports the socket ready, and a
-\ transfer that finds nothing to move after all (`empty`) leaves the socket to
-\ the next poll.
-\
-\ A socket also closes under 1006, its queue dropped, when it gives up (GIVE-UP?):
-\ its peer has taken no byte of a waiting queue for STALL-MS, has not answered
-\ this end's CLOSE within STALL-MS, or WS has been stopping for GOODBYE-MS.
-\ STOP sends 1001 to every open socket, closes each once its queue is written
-\ or it gives up, and joins the task. A socket already closing gets no 1001:
-\ it stays closing, and its handler is told its peer's answer, or 1006 once it
-\ gives up. A task still in its body past STOP-BOUND-MS is killed. The kill
-\ lands at the task's next TASK:PAUSE, which AIO:AWAIT-ANY reaches only once
-\ nothing is ready (src/lib/task.f): a handler parked in a blocking call
-\ (TCP4:READ, a database call) runs to its end once the call returns, the task
-\ may go on serving until then, and STOP waits that long. Each socket left is
-\ then closed at once: its peer may get no 1001 and its handler may not be
-\ told.
-\
-\ No subprotocol and no extension is negotiated, and the 101 carries no header
-\ line the handler added to the response.
-\
-\ STORAGE CLASS. PROCESS-WIDE tables indexed by socket slot, CAP of them,
-\ mapped by START for its limit under LOCK while WS's task is not running.
-\ Nothing moves a slot while any task may read one, and STOP never releases
-\ them: the next START keeps them, or grows them under LOCK. A socket's message
-\ buffer and scratch are one mapping, its input and outgoing queue two more;
-\ ACCEPT makes them and the task gives them back as the socket ends. The
-\ facility is made ready while this file loads, before any task is live, and
-\ never destroyed.
+\ ACCEPT takes a route handler's connection (HTTP:TAKE-OVER) for WS's one task,
+\ the only reader and writer of every socket, which waits on one AIO group: a
+\ readiness poll per socket and one on a wake pipe. Frames are coded by
+\ src/lib/net/ws-frame.f.
+\ STORAGE CLASS. PROCESS-WIDE tables indexed by socket slot.
 
 require src/lib/errors.f
 require src/lib/fd.f
@@ -88,8 +27,16 @@ public
 \ seen when it opened, so a handle kept past its socket names no later one.
 NEWTYPE socket
 
-\ What a handler is handed: a whole text or binary message, its bytes and
-\ their count; or that the socket has closed, with the status it closed under.
+\ What a handler is handed, on WS's task: a whole text or binary message, its
+\ bytes BORROWED until the handler returns, and their count; or, once, that the
+\ socket has closed, with its status: the close frame's, 1005 when it carried
+\ none, 1006 when the stream ended without one (section 7.1.5). A handler must
+\ not block: every socket waits while it runs. Its throw is one stderr line,
+\ `ws: socket <handle> failed, throw <code>`, and a throw on a message also
+\ closes the socket under 1011. A peer that breaks the protocol fails the
+\ connection: 1002 for a frame the codec refuses or one out of order, 1007 for
+\ text that is not UTF-8, 1009 for a message past MESSAGE-MAX. A ping is
+\ answered with a pong even once this end has sent its close.
 ENUM message
    VARIANT text FIELD chars ptr u8 FIELD count n ;VARIANT
    VARIANT binary FIELD bytes ptr u8 FIELD len n ;VARIANT
@@ -167,6 +114,12 @@ CTX-OFF SHA1:CTX-BYTES + constant DIGEST-OFF
 DIGEST-OFF SHA1:DIGEST-BYTES + constant REGION-BYTES
 
 DYNAMIC-BUFFER LINK TCP4:connection
+\ The tables: CAP slots, mapped by START under LOCK while WS's task is not
+\ running. Nothing moves a slot while any task may read one, and STOP never
+\ releases them: the next START keeps them or grows them under LOCK. A socket's
+\ message buffer and scratch are one mapping (REGION), its input and outgoing
+\ queue two more; ACCEPT makes them and the task gives them back as the socket
+\ ends.
 DYNAMIC-BUFFER HANDLER [ socket message -- ]
 DYNAMIC-BUFFER REGION SPAN:span<u8>
 DYNAMIC-BUFFER IN SPAN:span<u8>       \ bytes read and not yet parsed
@@ -262,12 +215,11 @@ TYPED-VARIABLE RUN run
 \ first, or the frame breaks the protocol.
 ENUM progress through late fault ;ENUM
 
-\ No task is live while this file loads, so the lock is made ready here.
+\ No task is live while this file loads, so the lock is made ready here; it is
+\ never destroyed.
 LOCK TASK:FACILITY-INIT
 RUN-IDLE
 
-
-\ ---- handles -----------------------------------------------------------------
 
 : >SLOT ( n -- n )
    SLOT-MASK and ;
@@ -286,8 +238,6 @@ RUN-IDLE
    idx PHASE @ {: phase:n :}
    h GEN-SHIFT rshift idx GEN @ = phase PHASE-NONE <> and phase PHASE-RESERVED <> and ;
 
-
-\ ---- the socket's buffers ----------------------------------------------------
 
 \ Each narrows a mapping. A slot with no mapping holds a span with no reach, so
 \ every narrowing of it throws instead of addressing a null base.
@@ -326,8 +276,6 @@ RUN-IDLE
    s MEM:FREE-SPAN
    s 0 SPAN:TAKE ;
 
-
-\ ---- the wake pipe -----------------------------------------------------------
 
 \ At most one byte is owed at a time, so the pipe never fills and a poke from
 \ the task itself never blocks it. The task drains the pipe before it clears
@@ -378,8 +326,6 @@ RUN-IDLE
    t AIO:AWAIT OUTCOME-DROP ;
 
 
-\ ---- the outgoing queue -------------------------------------------------------
-
 : QUEUED ( n -- n ) {: idx:n :}
    idx OUT-U @ idx OUT-AT @ - ;
 
@@ -398,7 +344,7 @@ RUN-IDLE
    live idx OUT-U ! ;
 
 
-\ Bytes behind the queue. A queue that was empty starts its stall clock.
+\ A queue that was empty starts its stall clock.
 : QUEUE ( n ptr u8 n -- ) {: idx:n a u:n :}
    idx QUEUED 0= if mono-ns idx SINCE ! then
    idx u ROOM
@@ -431,8 +377,6 @@ RUN-IDLE
    u idx OUT-U +! ;
 
 
-\ ---- under the lock -----------------------------------------------------------
-
 \ The socket ends under 1006 with its queue dropped; the task finishes it.
 : LOST ( n -- ) {: idx:n :}
    STATUS-LOST idx STATUS !
@@ -441,8 +385,6 @@ RUN-IDLE
    0 idx OUT-U ! ;
 
 
-\ Whether a frame would be queued behind QUEUE-MAX unwritten bytes. Such a
-\ socket is lost.
 : OVERFLOW? ( n -- bool ) {: idx:n :}
    idx QUEUED QUEUE-MAX < if false exit then
    idx LOST
@@ -473,7 +415,6 @@ RUN-IDLE
    1 ;
 
 
-\ A frame through a handle, from any task.
 : SEND ( n n ptr u8 n -- ) {: h:n wire:n a u:n :}
    u 0 < if E-WS-LENGTH throw then
    LOCK TASK:GET
@@ -508,10 +449,9 @@ RUN-IDLE
    idx code after [: SHUT ;] [: UNLOCK ;] finally drop ;
 
 
-\ ---- writing ------------------------------------------------------------------
-
-\ One send of the queue that never waits, made once the poll found room. False
-\ once the connection failed.
+\ One TCP4:TRY-SEND of the queue, made once the poll found room; one that moves
+\ nothing (`empty`) leaves the socket to the next poll. False once the
+\ connection failed.
 : FLUSH ( n -- bool ) {: idx:n :}
    idx QUEUED 0= if true exit then
    idx LINK @ idx OUT @ idx OUT-AT @ idx QUEUED SPAN:SUB SPAN:$ TCP4:TRANSFER-BYTES TCP4:TRY-SEND
@@ -529,8 +469,6 @@ RUN-IDLE
    LOCK TASK:GET
    idx [: FLUSH ;] [: UNLOCK ;] finally ;
 
-
-\ ---- a socket's end ------------------------------------------------------------
 
 \ The one rule a socket gives up by: its peer has taken no byte of a waiting
 \ queue for STALL-MS, has left this end's close unanswered past CLOSE-BY, or
@@ -563,14 +501,12 @@ RUN-IDLE
    idx HANDLE >SOCKET DUE-MSG @ idx HANDLER @ execute ;
 
 
-\ Ends the line in the builder with the throw code and writes it to stderr.
 : WRITE-THROW ( n -- )
    FMT:SB-INT
    LF SB-APPEND-C
    FD:STDERR FD>N SB$ write drop ;
 
-\ A handler's throw reaches the operator: one line on stderr with the socket's
-\ handle and the code. The builder is task-local, and this is WS's task.
+\ The builder is task-local, and this runs on WS's task.
 : REPORT-FAULT ( n n -- ) {: idx:n code:n :}
    SB-RESET
    s" ws: socket " SB-APPEND
@@ -608,7 +544,6 @@ RUN-IDLE
    LOCK TASK:RELEASE ;
 
 
-\ CLOSE's section: true when the close frame overflowed the queue.
 : CLOSE-SHUT ( n n -- bool ) {: h:n code:n :}
    h CURRENT? 0= if false exit then
    h >SLOT code PHASE-CLOSING SHUT ;
@@ -632,8 +567,6 @@ RUN-IDLE
    LOCK TASK:RELEASE
    idx FINISH ;
 
-
-\ ---- reading frames ----------------------------------------------------------
 
 \ Bytes into the span from those read and not yet parsed: their count, 0 when
 \ there are none.
@@ -751,8 +684,6 @@ RUN-IDLE
    construct progress through ;
 
 
-\ ---- what a frame means ------------------------------------------------------
-
 : MESSAGE$ ( n -- ptr u8 n ) {: idx:n :}
    idx MSG-BUF idx MSG-U @ SPAN:TAKE SPAN:$ ;
 
@@ -761,8 +692,7 @@ RUN-IDLE
    WS-OPCODE:text OPCODE>WIRE = ;
 
 
-\ The whole message goes to the handler, and its bytes are reused after it.
-\ A handler that throws is reported and closes its socket under 1011.
+\ The message's bytes are reused once the handler returns.
 : DELIVER ( n -- ) {: idx:n :}
    idx MESSAGE$ {: a u:n :}
    idx MSG-WIRE @ TEXT? if a u WS-MESSAGE:text else a u WS-MESSAGE:binary then {: msg :}
@@ -857,8 +787,6 @@ RUN-IDLE
    ;MATCH ;
 
 
-\ ---- the task -----------------------------------------------------------------
-
 : STOP-FLAG? ( -- bool )
    STOPPING @ 0 <> ;
 
@@ -918,9 +846,7 @@ ENUM course
 \ The slot's course, under LOCK: its phase first, since LINK, IN and HANDLER
 \ are the task's to read only once the slot is published. Bytes held
 \ unparsed, the ones that rode behind the handshake, come first, since no
-\ poll reports them; the stop turns an open socket to 1001, and a socket
-\ already closing gets no 1001: it stays closing, and its handler is told its
-\ peer's answer, or 1006 once it gives up.
+\ poll reports them.
 : COURSE ( n -- course ) {: idx:n :}
    idx PHASE-SET? 0= if construct course vacant exit then
    idx IN-U @ 0 > if construct course unparsed exit then
@@ -935,7 +861,6 @@ ENUM course
    [: COURSE ;] [: UNLOCK ;] finally ;
 
 
-\ The poll made again when what it waits for or its deadline changed.
 : REARM ( n n n -- ) {: idx:n mask:n due:n :}
    idx ARMED @ mask = idx ARMED-DUE @ due = and if exit then
    idx DISARM
@@ -1065,8 +990,6 @@ ENUM course
    code throw ;
 
 
-\ ---- the handshake -----------------------------------------------------------
-
 \ The value of a header the request carries exactly once.
 : SOLE ( HTTP:request ptr u8 n -- ptr u8 n bool ) {: asked:HTTP:request name nu:n :}
    asked name nu HTTP:HEADER-COUNT-OF 1 <> if name 0 false exit then
@@ -1080,7 +1003,6 @@ ENUM course
    va vu token tu HTTP:LIST-HAS? ;
 
 
-\ The count of bytes the key decodes to.
 : DECODE-NONCE ( n -- n )
    {: w:n :}
    w KEY-AT @ w KEY-U @ w NONCE-BUF BASE64:DECODE ;
@@ -1155,15 +1077,14 @@ ENUM course
    idx DIGEST-BUF SPAN:$ idx OUT @ idx OUT-U @ SPAN:SKIP BASE64:ENCODE idx OUT-U +! ;
 
 
-\ The 101 answer, first in the queue.
+\ The 101 answer, first in the queue. No subprotocol or extension is negotiated,
+\ and it carries no header line the handler added to the response.
 : SWITCHING ( n n -- ) {: idx:n w:n :}
    idx S\" HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\n" QUEUE
    idx S\" Connection: Upgrade\r\nSec-WebSocket-Accept: " QUEUE
    idx w ACCEPT-VALUE
    idx S\" \r\n\r\n" QUEUE ;
 
-
-\ ---- a socket's birth -----------------------------------------------------------
 
 \ A free slot, now ACCEPT's, or -1 when there is none or WS is not running or
 \ is stopping.
@@ -1382,8 +1303,8 @@ public
 \ the descriptor limit, as nginx's worker_connections is. n must also stay
 \ under the platform's AIO ceiling, less the wake pipe: 10240 polled
 \ descriptors on Darwin, 512 completion records on Linux (a poll with a
-\ deadline holds two) until dot habu-grow-the-linux-fd2c8749; the socket that
-\ crosses it ends WS's task, which closes every socket and answers 503 until
+\ deadline holds two); the socket that crosses it ends WS's task, which closes
+\ every socket and answers 503 until
 \ STOP and START. n below 1 or past SLOT-MASK is E-WS-LIMIT, and a refused
 \ mapping throws its code with nothing started. The AIO loop must be running
 \ (E-AIO-STATE), and a START while another starts, or before STOP has ended,
@@ -1455,9 +1376,13 @@ public
    asked answer q idx w OPEN-SOCKET ;
 
 
-\ One text message in one frame, from any task. Bytes that are not UTF-8 are
-\ E-WS-TEXT, since a text frame carries only UTF-8 (section 5.6). E-WS-CLOSED
-\ when the socket is not open to it.
+\ SEND-TEXT, SEND-BINARY and CLOSE may be called from any task, the handler
+\ included: each appends whole frames to the socket's queue under LOCK and pokes
+\ the wake pipe, so a sender never waits for the peer. A frame queued behind
+\ QUEUE-MAX unwritten bytes loses the socket (1006, its queue dropped) and is
+\ E-WS-CLOSED; a frame is never refused for its own size. A send on a socket
+\ closing, closed or gone is E-WS-CLOSED, and text that is not UTF-8 is
+\ E-WS-TEXT before anything is queued (section 5.6).
 : SEND-TEXT ( socket ptr u8 n -- ) {: sock a u:n :}
    a u UTF8:VALID? 0= if E-WS-TEXT throw then
    sock SOCKET>N WS-OPCODE:text OPCODE>WIRE a u SEND ;

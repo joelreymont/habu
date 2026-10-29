@@ -1,12 +1,9 @@
-\ eval.f - typed values and throw codes out of evaluated test text, in package
-\ TEST-EVAL, loaded by src/lib/test.f.
-\
-\ N, FLAG and RC take one cell, a flag or the throw code out of a source text
-\ under `evaluate-closed`, so a test needs no `evaluate` wrapper of its own.
-\ The measured rules are in docs/forth.md "Rules learned by refusal".
-\
-\ STORAGE CLASS. PROCESS-WIDE: the source and result cells are static; one
-\ task evaluates at a time.
+\ eval.f - typed values and throw codes out of evaluated test text, package
+\ TEST-EVAL, loaded by src/lib/test.f. N, FLAG and RC take one cell, a flag or the
+\ throw code out of a source text under `evaluate-closed`, so a test needs no
+\ `evaluate` wrapper of its own. The measured rules are in docs/forth.md "Rules
+\ learned by refusal".
+\ STORAGE CLASS. PROCESS-WIDE: static source and result cells; one task at a time.
 
 package TEST-EVAL
 

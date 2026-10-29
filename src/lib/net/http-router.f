@@ -2,7 +2,6 @@
 \ segments, as in /items/{id}. A pattern segment written {name} matches one
 \ nonempty path segment and binds its decoded text; every other segment
 \ matches itself.
-\
 \ The router answers the two refusals that belong to it: 404 when no pattern
 \ matches the path and 405, with Allow, when one does but not for this method.
 require src/lib/net/http-response.f

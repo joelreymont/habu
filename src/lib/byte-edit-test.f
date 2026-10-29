@@ -59,13 +59,10 @@ create BINARY-INSERT $7F c, 0 c,
    s" " RESULT= EDIT:CLOSE ;
 
 \ ---- the caught bodies of the failure cases ---------------------------------
-\ Every case below reads the editor after the catch, so the handle must SURVIVE
-\ the caught failure. A quotation literal leaves it `stale<EDIT:editor>` -
-\ `catch` restores the DEPTH of both stacks and never their contents - and a
-\ linear cell can be neither read nor dropped, so each body is a name reached by
-\ `[']`: an exceptional edge is not part of a quotation's TYPE, so that route
-\ keeps the window typed until the callee-evidence lane (dot c2923193) lets the
-\ checker prove the handle intact.
+\ Each failure body is a word reached by `[']`, not a quotation literal: the
+\ editor is read after the catch, `catch` restores stack depth but not contents,
+\ and a literal would leave stale<EDIT:editor>, which can be neither read nor
+\ dropped. Callee evidence in the checker would admit a literal.
 : REPLACE-NEG-OFF ( EDIT:editor -- EDIT:editor ) -1 >OFF 1 >LEN s" x" REPLACE ;
 : REPLACE-PAST-END ( EDIT:editor -- EDIT:editor ) 4 >OFF 0 >LEN s" x" REPLACE ;
 : REPLACE-PAST-LEN ( EDIT:editor -- EDIT:editor ) 1 >OFF 3 >LEN s" x" REPLACE ;

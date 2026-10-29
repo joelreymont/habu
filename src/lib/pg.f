@@ -1,119 +1,9 @@
-\ pg.f - PostgreSQL over libpq, bound through the FFI FUNCTION: declarer.
-\
-\ src/lib/pg-rows.f reopens the package with OPEN, EXEC, QUERY and the row
-\ readers over this layer.
-\
-\ A connection is a nominal handle and a result a linear PG:result token, never
-\ a raw cell: each names a slot in this module's registry, which holds the
-\ libpq pointer, the task that owns it and a generation. A result lives in a
-\ scope: WITH-RESULT, WITH-SCRIPT, WITH-PREPARE, WITH-PREPARED and
-\ WITH-DESCRIPTION run one operation, hand the body its token and clear the
-\ result when the body returns or throws, so no result outlives its scope. The
-\ body threads the token through the accessors and hands it back. The one
-\ unscoped token is the `completed` progress POLL or AWAIT answers, which CLEAR
-\ consumes. The generation makes a stale handle refuse with E-CLEARED instead
-\ of reaching a freed PGresult. The same registry carries the concurrency rule
-\ (docs/design.md "Models taken from other Forths"): a connection and its
-\ results belong to the task that created them and a handle presented by any
-\ other task is E-HANDLE. A task that needs two
-\ databases opens two connections.
-\
-\ STORAGE CLASS. PROCESS-WIDE registry sized by CONFIGURE. The same declaration
-\ again is harmless from any task; a different one is refused until image
-\ preparation releases the registry. The parameter list, call arena and
-\ diagnostic buffers belong to each connection.
-\
-\ CLOSE also clears the connection's results. Closing a pending query first
-\ sends a native cancel, which may block up to the connection's connect_timeout
-\ (with none set, PG imposes no deadline) and cannot undo SQL already completed;
-\ idle and connecting handles send none. ABANDON is the close that sends no
-\ cancel and waits for nothing. LIVE? tells the owning task whether its handle
-\ is still the slot's live generation, so cleanup closes only what lives.
-\
-\ CONNECT-START, SEND and POLL let one task drive many connections: the caller
-\ owns readiness and deadlines (libpq ignores connect_timeout while polling),
-\ registers the descriptor each POLL answers afresh, and uses a Unix socket or
-\ a numeric hostaddr so DNS cannot block startup. CONNECT and the WITH- scopes
-\ wait through AIO:AWAIT and need AIO:START. One operation may be pending per
-\ connection; a send copies its statement and parameters. A
-\ transport failure closes the connection and throws E-EXEC; a SQL rejection is
-\ the result's `failed` outcome with SQLSTATE and message.
-\
-\ OUTCOME's `failed` spans, TEXT$ and NAME$ answer libpq's memory inside the
-\ result: valid until its scope ends (CLEAR for a progress token) or its
-\ connection closes, whichever comes first, so a body copies what it keeps. A
-\ close under the body leaves the token answering E-CLEARED. CONNECT's
-\ `refused` text lasts until the next CONNECT. A halted task unwinds its open
-\ result scopes through their `finally` at TASK:PAUSE, as a throw does.
-\
-\ WITH-DESCRIPTION prepares a text as the unnamed statement and describes it without
-\ running it: the result answers COLS, NAME$ and OID (the column's type)
-\ and has no rows. A SQL rejection is its `failed` outcome, as for WITH-RESULT.
-\ It takes no parameters (a pending list is E-STATEMENT) and replaces the
-\ connection's unnamed statement; only WITH-DESCRIPTION names that statement,
-\ since WITH-PREPARE and WITH-PREPARED refuse an empty name.
-\
-\ DEADLINE! bounds every later WITH- scope's operation and transaction verb on
-\ the connection: each operation's whole wait ends that many milliseconds after
-\ it starts, and 0, the default, sets no bound; a bound
-\ outside 0..$7FFFFFFF ms is E-BOUND. DEADLINE@ answers the bound the last
-\ DEADLINE! set, 0 if none. CONNECT and AWAIT are not bounded. On
-\ expiry the connection closes and the operation throws E-DEADLINE. While a
-\ connection's bound is nonzero, every close but an explicit CLOSE and image
-\ preparation (FORGET-HANDLES), which still send the native cancel - expiry, a
-\ transport or readiness failure, an exception caught while waiting, a failed
-\ ROLLBACK under a body's throw - finishes it WITHOUT the cancel, as ABANDON
-\ does whatever the bound, since a cancel to an unreachable server would
-\ stretch the bound, and the primary exception stands. The server may go on
-\ running the abandoned statement: its own statement_timeout bounds that work.
-\ A WITH-TRANSACTION whose body closed the connection rethrows without a
-\ ROLLBACK, and one whose body returned on a closed connection is E-HANDLE. One
-\ whose ROLLBACK fails after the body threw closes the connection, whose
-\ transaction state is then unknown, and rethrows the body's code.
-\
-\ NOTIFIED? waits up to ms milliseconds for a notification on a connection
-\ that ran LISTEN and answers whether one came; 0 waits for nothing and reads
-\ only what has arrived, including what libpq queued during earlier operations.
-\ It takes every notification queued, so one answer covers several NOTIFYs, and
-\ keeps neither channel nor payload. It waits through AIO:AWAIT, so it needs
-\ AIO:START and ends at a TASK:HALT, and DEADLINE! does not bound it. A
-\ connecting or pending connection is E-STATEMENT; one inside a transaction,
-\ which holds notifications back until it ends, is E-TRANSACTION; ms outside
-\ 0..WAIT-MAX is E-BOUND. A failed read closes the connection and throws E-EXEC;
-\ a readiness wait the AIO loop refuses throws E-EXEC, or the loop's own code,
-\ and leaves it open.
-\
-\ ID answers a connection's identity as a plain cell and OF-ID the connection
-\ it names, so a cleanup that takes no arguments can keep the identity in
-\ per-task memory. Validity is checked by use: a closed connection's identity
-\ resolves to a handle LIVE? answers false for and every verb refuses.
-\
-\ WITH-RESULT runs exactly one statement on the extended protocol. WITH-SCRIPT
-\ runs several on the simple-query protocol, which takes no parameters (a
-\ pending list is E-STATEMENT) and runs them as one implicit transaction: a
-\ failing statement rolls back the earlier ones. WITH-RESULT consumes the
-\ parameter list; BEGIN, COMMIT
-\ and ROLLBACK leave it untouched, which is how a WITH-TRANSACTION body carries
-\ its caller's values in. A nested WITH-TRANSACTION is E-TRANSACTION, since
-\ PostgreSQL ignores a nested BEGIN and the inner COMMIT would end the outer
-\ transaction.
-\
-\ Handles do not survive image capture: preparation retires every slot and
-\ frees its libpq resources and arenas. Stop the AIO loop before capture (a
-\ live task at PREPARE ends the process) and CONFIGURE again in the new one.
-\
-\ Statement and parameter text have no fixed ceiling. Each connection builds one
-\ call in an arena it allocates from src/lib/memory.f, sized to that call: the
-\ statement bytes, every parameter with its NUL terminator, and the paramValues
-\ pointer array. The arena is released as soon as libpq returns, and it belongs
-\ to the connection, so no path leaks it - the next PARAMS, CLOSE and image
-\ capture all release it too. CONFIGURE declares the connection, result and
-\ parameter counts, with E-CAPACITY at those boundaries.
-\
-\ Parameters are text format throughout, so libpq's paramTypes, paramLengths
-\ and paramFormats are all NULL: the server infers each type, lengths are
-\ ignored for text, and a NULL formats array means text. Only paramValues is
-\ built here.
+\ pg.f - PostgreSQL over libpq, bound through the FFI FUNCTION: declarer;
+\ src/lib/pg-rows.f reopens PG with OPEN, EXEC, QUERY and the row readers.
+\ A connection handle and a linear PG:result token name a slot in a process-wide
+\ registry CONFIGURE sizes, holding the libpq pointer, the owning task and a
+\ generation: a stale handle is E-CLEARED, another task's E-HANDLE (docs/design.md
+\ "Models taken from other Forths"). A task that needs two databases opens two.
 
 require src/lib/errors.f
 require src/lib/ffi-abi.f
@@ -187,7 +77,7 @@ CAST: CONNECTION>N ( connection -- n )
 LINEAR: N>RESULT ( n -- PG:result )
 LINEAR: RESULT>N ( PG:result -- n )
 
-\ ---- libpq facts, read off /usr/include/libpq-fe.h and postgres_ext.h ------
+\ libpq facts, read off /usr/include/libpq-fe.h and postgres_ext.h.
 0 constant PGRES-POLLING-FAILED           \ PostgresPollingStatusType
 1 constant PGRES-POLLING-READING
 2 constant PGRES-POLLING-WRITING
@@ -204,10 +94,8 @@ $43 constant PG-DIAG-SQLSTATE             \ 'C'
 $4D constant PG-DIAG-MESSAGE-PRIMARY      \ 'M'
 0 constant TEXT-RESULT                    \ PQexecParams resultFormat
 
-\ ---- registry storage -----------------------------------------------------
-\ Connection, result and parameter counts belong to the application. There is
-\ no process-wide guessed connection ceiling: CONFIGURE allocates exactly the
-\ registries the caller declares, and a live registry cannot be resized.
+\ CONFIGURE allocates exactly the registries the caller declares; a live
+\ registry cannot be resized.
 $10 constant VERB-CAP                     \ BEGIN / COMMIT / ROLLBACK, this module's own
 $1000 constant ARENA-MIN                  \ smallest call arena worth mapping
 $100000000 constant HANDLE-STRIDE         \ low 32 bits name the registry slot
@@ -269,7 +157,6 @@ TASK:#USER 7 + CELL-MASK and CELL TASK:+USER SCOPE-HEAD drop
 : PARAM-CAP ( -- n ) PARAM-CAPACITY @ ;
 
 
-\ ---- the declared libpq bindings ------------------------------------------
 \ Every pointer is `ptr u8`: a PGconn, a PGresult and a C string are all
 \ foreign-owned addresses this side only passes back or reads with the width
 \ libpq states. None is written by the callee, so none carries an extent.
@@ -317,7 +204,6 @@ FUNCTION: LIB-NOTIFIES PQnotifies ( ptr u8 -- ptr u8 ) ;FUNCTION
 FUNCTION: LIB-FREEMEM PQfreemem ( ptr u8 -- ) ;FUNCTION
 
 
-\ ---- foreign addresses ----------------------------------------------------
 : NULL-ARG ( -- ptr u8 )
    NULL-PTR BYTE-VIEW ;
 
@@ -331,7 +217,6 @@ FUNCTION: LIB-FREEMEM PQfreemem ( ptr u8 -- ) ;FUNCTION
    dup ZLEN ;
 
 
-\ ---- slot storage ---------------------------------------------------------
 : CONN-CHECK ( n -- ) {: slot:n :}
    CONFIGURED @ 0= if E-HANDLE throw then
    slot 0 < if E-HANDLE throw then
@@ -447,10 +332,11 @@ FUNCTION: LIB-FREEMEM PQfreemem ( ptr u8 -- ) ;FUNCTION
 : RES-SCOPED! ( n n -- ) {: v:n slot:n :}   slot RES-CHECK v slot RES-SCOPED ! ;
 
 
-\ ---- the call arena -------------------------------------------------------
-\ One OS mapping per connection, sized to the call being built and released the
-\ moment libpq returns. Parameters are recorded as OFFSETS, never pointers, so
-\ growing the arena may move it without invalidating anything already staged.
+\ One OS mapping per connection, sized to the call being built: the statement
+\ bytes, every parameter with its NUL and the paramValues array, with no fixed
+\ ceiling. It is released the moment libpq returns, and by the next PARAMS,
+\ CLOSE and image capture. Parameters are recorded as OFFSETS, never pointers,
+\ so growing the arena may move it without invalidating anything staged.
 : ALLOC-ARENA ( n -- ptr u8 )
    MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop ;
 
@@ -518,7 +404,6 @@ FUNCTION: LIB-FREEMEM PQfreemem ( ptr u8 -- ) ;FUNCTION
    off ;
 
 
-\ Decimal digits straight into the arena, most significant first.
 : ARENA-DIGITS ( n n -- ) {: value:n slot:n :}
    value DEC-BASE < if
       value DIGIT-ZERO + slot ARENA-BYTE+ exit
@@ -553,7 +438,6 @@ FUNCTION: LIB-FREEMEM PQfreemem ( ptr u8 -- ) ;FUNCTION
    slot ARENA-RELEASE ;
 
 
-\ ---- the parameter list ---------------------------------------------------
 : PARAM-ROOM ( n -- ) {: slot:n :}
    slot PARAM-N@ PARAM-CAP >= if E-CAPACITY throw then ;
 
@@ -578,7 +462,9 @@ FUNCTION: LIB-FREEMEM PQfreemem ( ptr u8 -- ) ;FUNCTION
 
 
 \ The `const char *const *` libpq reads, appended last so the pointers it holds
-\ are computed against the arena's final base.
+\ are computed against the arena's final base. Parameters are text format, so
+\ paramTypes, paramLengths and paramFormats are NULL: the server infers each
+\ type and lengths are ignored for text.
 : PARAM-ARRAY ( n -- n ) {: slot:n :}
    slot ARENA-U@ CELL 1 - + CELL-MASK and {: off:n :}
    off slot PARAM-N@ cells + {: end:n :}
@@ -588,7 +474,6 @@ FUNCTION: LIB-FREEMEM PQfreemem ( ptr u8 -- ) ;FUNCTION
    off ;
 
 
-\ ---- handles --------------------------------------------------------------
 : PACK-HANDLE ( n n -- n ) {: gen:n slot:n :}
    gen HANDLE-STRIDE * slot + ;
 
@@ -657,7 +542,6 @@ FUNCTION: LIB-FREEMEM PQfreemem ( ptr u8 -- ) ;FUNCTION
    E-CAPACITY throw ;
 
 
-\ ---- the message copy -----------------------------------------------------
 \ Each connection keeps its own copy of the last server message, as long as the
 \ server sent it, in one OS mapping that grows to the longest message so far. It
 \ outlives CLOSE, since CONNECT's `refused` text is read after the close, and
@@ -686,7 +570,6 @@ FUNCTION: LIB-FREEMEM PQfreemem ( ptr u8 -- ) ;FUNCTION
    CONN-CAP 0 ?do i MESSAGE-RELEASE loop ;
 
 
-\ ---- application-sized registry -----------------------------------------
 \ Reserve once before publishing the registry. DYNAMIC-BUFFER owns allocation,
 \ bounds and release, including cleanup after a partially completed reserve.
 : RELEASE-REGISTRY ( -- )
@@ -770,13 +653,13 @@ FUNCTION: LIB-FREEMEM PQfreemem ( ptr u8 -- ) ;FUNCTION
    slot ;
 
 
-\ ---- image capture --------------------------------------------------------
 \ A restored image runs in another process: its PGconn and PGresult addresses
 \ are gone and its mappings are not its own. Retiring every slot makes the
 \ surviving handles refuse instead of reaching a freed pointer, and releases
 \ the call arenas the image must not carry. The flag is set only after REGISTER
 \ returns, so a throwing registration stays retryable
-\ (`src/lib/image-lifecycle.f PREPARE`).
+\ (`src/lib/image-lifecycle.f PREPARE`). Stop the AIO loop before capture (a
+\ live task at PREPARE ends the process) and CONFIGURE again in the new one.
 : FORGET-HANDLES ( -- )
    0
    CONFIGURED @ if
@@ -841,7 +724,6 @@ FUNCTION: LIB-FREEMEM PQfreemem ( ptr u8 -- ) ;FUNCTION
 REGISTER-CHILD-RESET
 
 
-\ ---- slot lifecycle -------------------------------------------------------
 \ The owner is stored before the generation a handle must match (CONN-GEN!), so
 \ no handle matches the slot while the previous owner still stands.
 : OPEN-CONN-SLOT ( n -- ) {: slot:n :}
@@ -937,7 +819,6 @@ REGISTER-CHILD-RESET
    slot CLOSE-SLOT drop ;
 
 
-\ ---- server diagnostics ---------------------------------------------------
 : MESSAGE! ( n ptr u8 n -- ) {: slot:n a u:n :}
    0 slot MESSAGE-U!
    slot u MESSAGE-ROOM
@@ -965,7 +846,6 @@ REGISTER-CHILD-RESET
    res LIB-RESULT-ERROR-MESSAGE FIELD$ ;
 
 
-\ ---- nonblocking progress ------------------------------------------------
 \ Only a refused CONNECT writes the connection's message copy.
 : COPY-CONN-MESSAGE ( n -- ) {: slot:n :}
    slot CONN-PG@ LIB-ERROR-MESSAGE {: p :}
@@ -1047,7 +927,6 @@ REGISTER-CHILD-RESET
    slot POLL-QUERY ;
 
 
-\ ---- wait deadlines -------------------------------------------------------
 \ An operation's deadline on the monotonic clock, fixed when it starts so one
 \ bound covers every wait the operation makes.
 : OP-DEADLINE ( n -- n )
@@ -1113,7 +992,6 @@ REGISTER-CHILD-RESET
    ;MATCH ;
 
 
-\ ---- notifications ------------------------------------------------------
 \ libpq hands each parsed notification over to its caller, who frees it. The
 \ channel and payload are not kept.
 : DRAIN-NOTIFIES ( n -- bool ) {: slot:n :}
@@ -1156,7 +1034,6 @@ REGISTER-CHILD-RESET
    drop false ;
 
 
-\ ---- statement execution --------------------------------------------------
 \ The result slot is claimed BEFORE libpq runs, so a full registry refuses
 \ without ever leaving a PGresult nobody can clear, and the arena is released
 \ the instant libpq returns - it has copied everything into its own message by
@@ -1252,7 +1129,6 @@ REGISTER-CHILD-RESET
    slot RETIRE-RES-SLOT ;
 
 
-\ ---- transactions ---------------------------------------------------------
 \ BEGIN, COMMIT and ROLLBACK are this module's own fixed statements and take no
 \ parameters, so they run out of a small per-connection buffer and never touch
 \ the arena. That is what lets a caller build parameters BEFORE
@@ -1305,7 +1181,6 @@ REGISTER-CHILD-RESET
    slot s" ROLLBACK" VERB ;
 
 
-\ ---- column access --------------------------------------------------------
 : CELL-AT ( n row col -- n n n ) {: slot:n r:row c:col :}
    slot RES-PG@ {: res :}
    r ROW>N {: ri:n :}
@@ -1346,7 +1221,6 @@ REGISTER-CHILD-RESET
    ;MATCH ;
 
 
-\ ---- the outcome ADT ------------------------------------------------------
 : CLASSIFY ( n -- outcome ) {: res:n :}
    res RESULT-STATUS {: status:n :}
    status PGRES-COMMAND-OK = if PG-OUTCOME:ok exit then
@@ -1354,7 +1228,6 @@ REGISTER-CHILD-RESET
    res RES-PG@ FAILED-SPANS PG-OUTCOME:failed ;
 
 
-\ ---- result scopes --------------------------------------------------------
 \ The token does not survive a throw out of the body, so the scope keeps its
 \ packed handle in the running task's SCOPE-HEAD cell, where the cleanup reads
 \ it. A nested scope saves the cell in RES-OUTER under its own slot and its
@@ -1404,17 +1277,24 @@ REGISTER-CHILD-RESET
 public
 
 \ CONFIGURE is the one registry sizing decision. Applications call it before
-\ CONNECT; repeating the same declaration is harmless. A process cannot change
-\ its declaration after use: a different one is refused with E-CAPACITY.
+\ CONNECT; repeating the same declaration is harmless, from any task. A
+\ different one is E-CAPACITY until image preparation releases the registry.
 : CONFIGURE ( n n n -- )
    CONFIG-LOCK [: CONFIGURE-REGISTRY ;] [: CONFIG-UNLOCK ;] finally ;
 
+\ CONNECT-START, SEND and POLL let one task drive many connections: the caller
+\ owns readiness and deadlines (libpq ignores connect_timeout while polling),
+\ registers the descriptor each POLL answers afresh, and uses a Unix socket or
+\ a numeric hostaddr so DNS cannot block startup. CONNECT and the WITH- scopes
+\ wait through AIO:AWAIT and need AIO:START. One operation may be pending per
+\ connection; a send copies its statement and parameters. A transport failure
+\ closes the connection and throws E-EXEC; a SQL rejection is the result's
+\ `failed` outcome with SQLSTATE and message.
 \ CONNECT-START hands back an attempt owned by the calling task. POLL advances
-\ it to connected or refused; CLOSE abandons it at any earlier point.
-\ The slot is claimed first, so the conninfo it stages and the message a
-\ refusal copies back are its own and no concurrent CONNECT shares them. A
-\ refusal releases the slot, and those message bytes stay readable until the
-\ next CONNECT takes it.
+\ it to connected or refused; CLOSE abandons it at any earlier point. The slot
+\ is claimed first, so the conninfo it stages and the message a refusal copies
+\ back are its own. A refusal releases the slot, and those message bytes stay
+\ readable until the next CONNECT takes it.
 : CONNECT-START ( ptr u8 n -- connection ) {: a u:n :}
    REGISTER-CLEANUP
    CLAIM-CONN-SLOT {: slot:n :}
@@ -1466,6 +1346,9 @@ public
    true ;
 
 
+\ ID answers a connection's identity as a plain cell, so a cleanup that takes no
+\ arguments can keep it in per-task memory. A closed connection's identity
+\ resolves to a handle LIVE? answers false for and every verb refuses.
 : ID ( connection -- n )   CONNECTION>N ;
 : OF-ID ( n -- connection )   >CONNECTION ;
 
@@ -1478,8 +1361,11 @@ public
 
 
 \ CLOSE cancels pending SQL, clears owned results and retires the handle even
-\ when dispatch failed. An explicit close reports that failure after cleanup;
-\ an internal close during AWAIT keeps the original wait/transport exception.
+\ when dispatch failed. The cancel may block up to the connection's
+\ connect_timeout (with none set, PG imposes no deadline) and cannot undo SQL
+\ already completed; idle and connecting handles send none. An explicit close
+\ reports a dispatch failure after cleanup; an internal close during AWAIT keeps
+\ the original wait/transport exception.
 : CLOSE ( connection -- ) {: handle:connection :}
    handle CONN-SLOT CLOSE-SLOT
    dup 0<> if throw then drop ;
@@ -1540,7 +1426,9 @@ public
 
 
 \ Each WITH- word runs one operation and the body over its result, then clears
-\ the result whether the body returns or throws. The body hands the token back.
+\ the result whether the body returns or throws, so no result outlives its
+\ scope. The body hands the token back. WITH-RESULT runs exactly one statement
+\ on the extended protocol and consumes the parameter list.
 : WITH-RESULT ( R connection ptr u8 n [ R PG:result -- S PG:result ] -- S )
    {: handle:connection a u:n body :}
    handle CONN-SLOT {: slot:n :}
@@ -1552,9 +1440,10 @@ public
 \ WITH-SCRIPT runs a whole script - a migration file, several statements in
 \ one text - through the simple-query protocol, which is the only protocol that
 \ takes more than one statement: the extended protocol WITH-RESULT rides
-\ answers a second command with 42601. libpq returns the LAST statement's
-\ result and a failing statement abandons the rest, so the outcome ADT covers
-\ it unchanged. WITH-RESULT stays the default, because it takes parameters.
+\ answers a second command with 42601. The script runs as one implicit
+\ transaction: a failing statement rolls back the earlier ones and abandons the
+\ rest, and libpq returns the LAST statement's result, so the outcome ADT
+\ covers it unchanged. A pending parameter list is E-STATEMENT.
 : WITH-SCRIPT ( R connection ptr u8 n [ R PG:result -- S PG:result ] -- S )
    {: handle:connection a u:n body :}
    handle CONN-SLOT {: slot:n :}
@@ -1579,8 +1468,12 @@ public
    slot deadline WAIT-QUERY body RESULT-SCOPE ;
 
 
-\ Two round trips under one deadline: the prepare, then the describe. A
-\ rejected prepare is the body's result, with its `failed` outcome.
+\ WITH-DESCRIPTION prepares a text as the unnamed statement and describes it
+\ without running it: the result answers COLS, NAME$ and OID and has no rows.
+\ Two round trips under one deadline; a rejected prepare is the body's result,
+\ with its `failed` outcome. A pending parameter list is E-STATEMENT. Only
+\ WITH-DESCRIPTION names the unnamed statement, since WITH-PREPARE and
+\ WITH-PREPARED refuse an empty name.
 : WITH-DESCRIPTION ( R connection ptr u8 n [ R PG:result -- S PG:result ] -- S )
    {: handle:connection a u:n body :}
    handle CONN-SLOT {: slot:n :}
@@ -1598,8 +1491,17 @@ public
    then ;
 
 
-\ The bound covers each later operation from its start; one in flight keeps
-\ the deadline it started with.
+\ DEADLINE! bounds every later WITH- scope's operation and transaction verb on
+\ the connection: each operation's whole wait ends that many milliseconds after
+\ it starts; one in flight keeps the deadline it started with. 0, the default,
+\ sets no bound; a bound outside 0..$7FFFFFFF ms is E-BOUND. CONNECT, AWAIT and
+\ NOTIFIED? are not bounded. On expiry the connection closes and the operation
+\ throws E-DEADLINE. While the bound is nonzero, every close but an explicit
+\ CLOSE and FORGET-HANDLES - expiry, a transport or readiness failure, an
+\ exception caught while waiting, a failed ROLLBACK under a body's throw -
+\ finishes it without the cancel, as ABANDON does, since a cancel to an
+\ unreachable server would stretch the bound; the primary exception stands. The
+\ server may go on running the abandoned statement under its statement_timeout.
 : DEADLINE! ( connection ms -- )
    {: handle:connection bound:ms :}
    handle CONN-SLOT {: slot:n :}
@@ -1614,6 +1516,16 @@ public
    handle CONN-SLOT BOUND@ >MS ;
 
 
+\ NOTIFIED? waits up to ms for a notification on a connection that ran LISTEN;
+\ 0 reads only what has arrived, including what libpq queued during earlier
+\ operations. It takes every notification queued, so one answer covers several
+\ NOTIFYs, and keeps neither channel nor payload. It waits through AIO:AWAIT,
+\ so it needs AIO:START and ends at a TASK:HALT. A connecting or pending
+\ connection is E-STATEMENT; one inside a transaction, which holds
+\ notifications back until it ends, is E-TRANSACTION; ms outside 0..WAIT-MAX
+\ is E-BOUND. A failed read closes the connection and throws E-EXEC; a
+\ readiness wait the AIO loop refuses throws E-EXEC, or the loop's own code,
+\ and leaves it open.
 : NOTIFIED? ( connection ms -- bool )
    {: handle:connection timeout:ms :}
    handle CONN-SLOT {: slot:n :}
@@ -1644,10 +1556,13 @@ public
 
 
 \ The body receives the connection and returns it, which is what lets it cross
-\ the catch boundary. A throw rolls back and reaches the caller unchanged. The
-\ handle is resolved again after the body, which may have closed the connection
-\ and let another CONNECT reuse its slot: a closed one gets no ROLLBACK, and a
-\ COMMIT on one is E-HANDLE.
+\ the catch boundary. A throw rolls back and reaches the caller unchanged; a
+\ ROLLBACK that fails closes the connection, whose transaction state is then
+\ unknown, and the body's code still goes on. The handle is resolved again
+\ after the body, which may have closed the connection and let another CONNECT
+\ reuse its slot: a closed one gets no ROLLBACK, and a COMMIT on one is
+\ E-HANDLE. A nested WITH-TRANSACTION is E-TRANSACTION: PostgreSQL ignores a
+\ nested BEGIN and the inner COMMIT would end the outer transaction.
 : WITH-TRANSACTION ( connection [ connection -- connection ] -- )
    {: handle:connection body :}
    handle CONN-SLOT {: slot:n :}
@@ -1696,8 +1611,11 @@ public
    PEEK c COLUMN-AT LIB-FTABLECOL ;
 
 
-\ The span is libpq's own bytes inside the result, valid until its scope ends,
-\ its CLEAR or its connection's close.
+\ The span is libpq's own bytes inside the result, as are OUTCOME's `failed`
+\ spans and NAME$: valid until the scope ends (CLEAR for a progress token) or
+\ the connection closes, so a body copies what it keeps. A close under the body
+\ leaves the token answering E-CLEARED. A halted task unwinds its open result
+\ scopes through their `finally` at TASK:PAUSE, as a throw does.
 : TEXT$ ( PG:result row col -- PG:result ptr u8 n ) {: r:row c:col :}
    PEEK r c CELL-AT VALUE$ ;
 

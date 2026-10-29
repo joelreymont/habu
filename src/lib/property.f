@@ -1,19 +1,7 @@
-\ property.f - checked helpers for property-based tests.
-\
-\ The module lives in `package PROP`. External callers use the qualified public
-\ property-testing DSL (PROP:RUN-RESET, PROP:SEED!/SEED@, PROP:COUNT@, PROP:RND/
-\ RND%, PROP:BUF-RESET/BUF+/BUF-C+/BUF$/BUF-CHECK-ROOM, PROP:DIGIT+, PROP:DROP-LAST,
-\ PROP:SHRINK, PROP:DEFAULTS and the PROP:DEFAULT-SEED/DEFAULT-COUNT/MAX-COUNT/
-\ BUF-CAP constants); the LCG constants, PRNG/buffer state cells, seed/count
-\ validators and DROP-LAST's trailing-space trim are package-private.
-\
-\ The PRNG is a deterministic LCG, so a seed reproduces a run. A seed or count
-\ outside its bound throws E-PROP-SEED, a nonpositive RND% bound or an
-\ out-of-range byte or digit E-PROP-GENERATOR, and source that would overflow
-\ the buffer E-PROP-CAPACITY.
-\ A property that runs generated checked source owns its own audited
-\ `evaluate` boundary; generators and shrink predicates stay checked.
-\
+\ property.f - checked helpers for property-based tests in `package PROP`.
+\ The PRNG is a deterministic LCG, so a seed reproduces a run.
+\ A property that runs generated checked source owns its own audited `evaluate`
+\ boundary; generators and shrink predicates stay checked.
 \ STORAGE CLASS. PROCESS-WIDE: seed, count and the source buffer are static;
 \ one task runs a property at a time.
 
@@ -45,9 +33,8 @@ private
 
 variable PROP-SEED
 variable PROP-COUNT
-\ the shrink predicate is stored and re-run across the shrink loop; a typed xt
-\ cell keeps its ( -- bool ) effect through store+fetch so execute stays checked
-\ (an untyped variable would launder it -> E-EXEC-OPAQUE-XT).
+\ A typed xt cell keeps ( -- bool ) through store and fetch, so execute stays
+\ checked; an untyped variable would launder it (E-EXEC-OPAQUE-XT).
 TYPED-VARIABLE PROP-SHRINK-PRED [ -- bool ]
 variable PROP-SHRINK-SAVE
 

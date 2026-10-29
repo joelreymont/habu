@@ -1,13 +1,9 @@
-\ E2E against the real desktop credential store through the public SECRET words;
-\ dummy items only, removed even when a case fails. Then a host store bound
-\ with SECRET:STORE! replaces it; those cases touch no real store.
-\ Failure cases: wrong service/account selected; missing confused with empty;
-\ truncation or partial writes; an overwrite that keeps old bytes or adds a
-\ duplicate; an erase that leaves the item, reports a missing one as found or
-\ touches another item; identifiers accepted by WRITE/ERASE that READ refuses;
-\ native ownership leaks; source/AOT load mismatch; a bound host store
-\ bypassed, called before the identifier and value checks, or its throw
-\ replaced.
+\ E2E against the real desktop credential store via the public SECRET words, dummy
+\ items only, removed even when a case fails; a host store bound with SECRET:STORE!
+\ then replaces it. Fails on: a wrong item; missing read as empty; truncated or
+\ partial writes; an overwrite keeping old bytes or duplicating; an erase that leaves,
+\ misreports or overreaches; ids WRITE/ERASE take that READ refuses; native leaks;
+\ source/AOT mismatch; a host store bypassed, called before the checks or masked.
 require src/lib/secret.f
 require src/lib/test.f
 require src/lib/codegen.f

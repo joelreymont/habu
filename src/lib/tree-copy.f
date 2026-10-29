@@ -1,12 +1,9 @@
-\ tree-copy.f - private copies of checkout files, for tools and tests that build
-\ or boot a tree without touching the checkout. A checkout file is named
-\ relative to the working directory, the checkout, or by its absolute path under
-\ it, as a source closure lists it; its copy keeps the checkout-relative path
-\ under the root it is copied into. A name that resolves outside the checkout
-\ is refused with E-FS-PATH before its copy is written.
-\
-\ STORAGE CLASS. PROCESS-WIDE (the root and destination cells, the src/lib/fs.f
-\ walk stack and the src/lib/fs-mutate.f copy buffer), so a copy is single-task.
+\ tree-copy.f - private copies of checkout files for tools and tests that build
+\ or boot a tree without touching the checkout. A name is relative to the working
+\ directory or the checkout, or absolute under it; its copy keeps the
+\ checkout-relative path under the root. A name outside the checkout is E-FS-PATH.
+\ STORAGE CLASS. PROCESS-WIDE (root and destination cells, the fs.f walk stack,
+\ the fs-mutate.f copy buffer): a copy is single-task.
 
 require src/lib/errors.f
 require src/lib/fs.f
@@ -24,8 +21,6 @@ create DEST PATH-CAP allot          variable DEST-U
 
 : INTO! ( ptr u8 n -- ) INTO-U ! INTO-P ! ;
 
-\ Only a checkout file has a checkout-relative path: a name that resolves
-\ outside the working directory is refused, never joined under the root.
 : CHECKOUT-REL ( ptr u8 n -- ptr u8 n )
    SOURCE-ROOT:CANONICAL drop {: a:ptr u:n :}
    a u SOURCE-ROOT:CWD$ SOURCE-ROOT:BELOW? 0= if E-FS-PATH throw then
@@ -40,10 +35,8 @@ create DEST PATH-CAP allot          variable DEST-U
 
 public
 
-\ The checkout file path, copied to its checkout path under root.
 : FILE ( ptr u8 n ptr u8 n -- ) INTO! MEMBER ;
 
-\ Every file under the checkout directory path, copied the same way.
 : TREE ( ptr u8 n ptr u8 n -- ) INTO! [: MEMBER ;] FS:WALK-FILES ;
 
 \ src/ and tools/: the sources tools/native-build.f builds from.

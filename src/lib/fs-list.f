@@ -1,28 +1,9 @@
-\ fs-list.f - the entries of one directory.
-\
-\ EACH hands every name except . and .. to a quotation in directory order;
-\ EACH-TYPED also hands through the kernel's directory-entry type byte.
-\ NAMES writes the names into a caller buffer, newline-separated and in byte
-\ order, so two listings of the same directory compare equal. Only the raw
-\ open-rd, getdirentries64 and close primitives are involved; the record
-\ decoding is shared with the walker in src/lib/fs.f.
-\
+\ fs-list.f - the entries of one directory, through raw open-rd, getdirentries64
+\ and close; record decoding is shared with the walker in src/lib/fs.f.
 \ STORAGE CLASS. CALLER-OWNED: INIT binds an aligned caller span to one opaque
-\ context. The caller keeps that span alive and does not reinitialize or free it
-\ during an operation. A context admits one listing at a time; distinct contexts
-\ allow nested and concurrent listings. The convenience words allocate and
-\ release a private context for one call. NAMES writes only to the caller buffer.
-\
-\ INIT refuses a span shorter than STORAGE-BYTES or not cell-aligned with
-\ E-FS-LIST-CAPACITY; do not INIT a context that is listing. Re-entering or
-\ sharing a context mid-listing throws E-FS-LIST-ACTIVE and leaves the first
-\ listing undisturbed; a context is reusable after success, an open or read
-\ failure, or a callback throw. NAMES refuses a buffer too small for every name
-\ with E-FS-LIST-CAPACITY. EACH-TYPED passes d_type unchanged: a filesystem may
-\ omit it, so a caller handles DT-UNKNOWN. A name is valid only during its
-\ callback. Semantic refusals clear FS:ERRNO; on Darwin a regular file opens for
-\ listing and getdirentries64 then fails EINVAL, which E-FS-LIST-READ keeps as
-\ its cause through descriptor cleanup.
+\ context, one listing at a time (re-entry or sharing mid-listing is
+\ E-FS-LIST-ACTIVE, the first listing undisturbed); distinct contexts nest. The
+\ convenience words release a private context after one call.
 
 require src/lib/errors.f
 require src/lib/span.f
@@ -32,6 +13,9 @@ require src/lib/fs.f
 package FS-LIST
 public
 
+\ Semantic refusals clear FS:ERRNO. On Darwin a regular file opens for listing
+\ and getdirentries64 then fails EINVAL: E-READ keeps that as its cause through
+\ descriptor cleanup.
 E-FS-LIST-OPEN constant E-OPEN
 E-FS-LIST-READ constant E-READ
 E-FS-LIST-ENTRY constant E-ENTRY
@@ -125,7 +109,6 @@ CAST: CONTEXT>PTR ( context -- ptr u8 )
    again ;
 
 
-\ TRUE when a sorts before b in byte order.
 : BEFORE? ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u:n b:ptr v:n :}
    u v min {: shared:n :}
    shared 0 ?do
@@ -134,13 +117,10 @@ CAST: CONTEXT>PTR ( context -- ptr u8 )
    u v < ;
 
 
-\ The end of the line that starts at offset at among the len bytes in dst.
 : LINE-END ( ptr u8 n n -- n ) {: dst:ptr len:n at:n :}
    at begin dup len < if dup dst + c@ LF <> else false then while 1+ repeat ;
 
 
-\ The offset in dst where name belongs among the len bytes of names written so
-\ far.
 : INSERT-AT ( ptr u8 n ptr u8 n -- n ) {: name:ptr size:n dst:ptr len:n :}
    0 begin dup len < while
       {: at:n :}
@@ -151,7 +131,6 @@ CAST: CONTEXT>PTR ( context -- ptr u8 )
    len min ;
 
 
-\ Writes name among the len bytes of names in dst and answers the new length.
 : INSERT ( n ptr u8 n ptr u8 n -- n ) {: len:n name:ptr size:n dst:ptr cap:n :}
    size 0 ?do name i + c@ LF = if FS:CAUSE-CLEAR E-ENTRY throw then loop
    len 0 > if 1 else 0 then {: separator:n :}
@@ -202,8 +181,10 @@ CAST: CONTEXT>PTR ( context -- ptr u8 )
 
 public
 
-\ The caller owns the aligned backing span for the context's entire lifetime.
-\ INIT is called once before concurrent use and never while an operation runs.
+\ Refuses a span shorter than STORAGE-BYTES or not cell-aligned with
+\ E-FS-LIST-CAPACITY. The caller keeps the span alive for the context's
+\ lifetime and never INITs one that is listing. A context is reusable after
+\ success, an open or read failure, or a callback throw.
 : INIT ( SPAN:span<u8> -- context )
    SPAN:$ {: ls:ptr cap:n :}
    cap STORAGE-BYTES < ls NULL$ drop - 1 cells mod 0<> or if
@@ -251,7 +232,9 @@ public
    ls lsu MEM:RELEASE-BYTES
    code 0<> if code throw then ;
 
-\ The name is borrowed from this listing's block only for the callback.
+\ d_type passes unchanged: a filesystem may omit it, so a caller handles
+\ DT-UNKNOWN. The name is borrowed from the listing's block only for the
+\ callback.
 : EACH-TYPED ( ptr u8 n [ ptr u8 n u8 -- ] -- ) {: path:ptr size:n q :}
    MAP {: ls:ptr lsu :}
    CLAIMED ls FD-CELL ! 0 ls BASE-CELL !
@@ -262,8 +245,9 @@ public
    code 0<> if code throw then ;
 
 
-\ Writes the names except . and .. into the caller's buffer, newline-separated
-\ and in byte order, and returns the length; names holding a newline are refused.
+\ The names except . and .. into the caller's buffer, newline-separated and in
+\ byte order, so two listings of one directory compare equal; answers the
+\ length. A name holding a newline is refused; a short buffer is E-FS-LIST-CAPACITY.
 : NAMES ( ptr u8 n ptr u8 n -- n ) {: path:ptr size:n dst:ptr cap:n :}
    cap 0 < if FS:CAUSE-CLEAR E-CAPACITY throw then
    MAP {: ls:ptr lsu :}

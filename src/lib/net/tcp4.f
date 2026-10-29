@@ -1,54 +1,9 @@
-\ Linux and Darwin IPv4 stream sockets through exact, bounded libc bindings. No
-\ application protocol, framing, name resolution or connection policy; another
-\ OS is E-PLATFORM before a socket opens.
-\
-\ STORAGE CLASS. TASK-LOCAL. The endpoint storage is one $20 TASK:+USER row, so
-\ each task holds its own sockaddr, socklen, socket option int and pollfd, and
-\ any number of tasks may bind, accept, read and write at once. The payload
-\ spans READ, READ-EXACT, TRY-READ, SEND-SLICE, TRY-SEND and WRITE take are
-\ caller-owned.
-\
-\ A caller relies on these:
-\ - A stream has no message boundaries: `closed` is the only way a transfer
-\   answers zero bytes, and a partial READ-EXACT's `closed` length is a
-\   readable prefix of its span. A TRY-READ's `empty` moved nothing and says
-\   only that nothing has arrived yet.
-\ - WRITE's `ok` means the OS took every byte, not delivery. A `failed` WRITE
-\   may have sent part of the span and leaves the stream unusable. Every send
-\   carries MSG_NOSIGNAL, so a closed peer is EPIPE, never SIGPIPE.
-\ - A failed BIND or CONNECT closes its new socket and keeps the first errno.
-\ - An interrupted ACCEPT, READ, READ-EXACT, TRY-READ, TRY-SEND or WRITE
-\   retries. An interrupted CONNECT is `failed` with EINTR and its socket
-\   closed, because Linux goes on completing that connection asynchronously.
-\ - The caller closes each handle once and never reuses it, even after an
-\   interrupted close: Linux releases the descriptor before reporting the error.
-\   Handle lifetime is a caller obligation, not a linear proof. Calls must not
-\   nest within one task, and readers sharing a connection coordinate
-\   themselves.
-\ - Descriptors are process resources: close them and stop concurrent use
-\   before image capture.
-\ - A listener stays blocking.
-\
-\ Not run on Linux: the non-blocking path, TRY-READ, TRY-SEND, UNREAD and
-\ UNSENT.
-\
-\ Every readiness wait a caller asks for runs on the AIO loop (src/lib/aio.f):
-\ WAIT-READY submits one POLL and awaits it, so a waiting task costs no thread of
-\ its own. A program calls AIO:START before its first wait; a wait with no loop
-\ is E-AIO-STATE.
-\
-\ Every connection this module makes is non-blocking before the caller has it:
-\ ACCEPT's and SOCKET's from the start, CONNECT's once its blocking connect has
-\ answered. So no send or receive waits in the kernel. TRY-READ and TRY-SEND
-\ never wait at all: nothing to receive or no room to send is `empty`, so one
-\ task can serve many connections from its own readiness loop, even where the
-\ OS reports readiness spuriously, as Linux may. READ and READ-EXACT wait for
-\ data in poll(2) on the task's own thread instead, with no AIO loop and no
-\ deadline, as the blocking receive did. SEND-SLICE waits there at most
-\ SEND-SLICE-MS for room between two sends, so a slice returns within
-\ SEND-SLICE-MS and those two sends, whatever the peer does. WRITE loops over
-\ slices with a TASK:PAUSE before each next one, so a halt ends a task writing
-\ to any peer within a slice, one that stopped reading or one that reads slowly.
+\ tcp4.f - Linux and Darwin IPv4 stream sockets through exact, bounded libc
+\ bindings; no protocol, framing, name resolution or connection policy. Another
+\ OS is E-PLATFORM before a socket opens. Every connection is non-blocking. Not
+\ run on Linux: the non-blocking path, TRY-READ, TRY-SEND, UNREAD and UNSENT.
+\ STORAGE CLASS. TASK-LOCAL: the endpoint storage is one TASK:+USER row; the
+\ payload spans the transfers take are caller-owned.
 require src/lib/errors.f
 require src/lib/ffi-abi.f
 require src/lib/type/deftype.f
@@ -101,7 +56,8 @@ SUMTYPE status
 ;SUMTYPE
 
 \ One transfer's outcome. `closed` carries the bytes delivered into the caller's
-\ buffer before the peer's end of stream, which READ-EXACT reports as a partial.
+\ buffer before the peer's end of stream, which READ-EXACT reports as a partial;
+\ it is the only way a transfer answers zero bytes.
 SUMTYPE read-result
    VARIANT data NUM:byte-len ;VARIANT
    VARIANT closed NUM:byte-len ;VARIANT
@@ -225,7 +181,9 @@ $1024 constant SO-NWRITE           \ Darwin's count of SIOCOUTQ, a socket option
 \ Endpoint storage is per task, matching FFI's argument/extent tables: a $10
 \ sockaddr_in, a $04 socklen_t, the $04 int a socket option is set from, and the
 \ $08 pollfd a transfer waits through (int fd, short events, short revents),
-\ which end on the cell so the row after this one still starts aligned.
+\ which end on the cell so the row after this one still starts aligned. Calls
+\ must not nest within one task; readers sharing a connection coordinate
+\ themselves.
 TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and $20 TASK:+USER IO-STORAGE drop
 : SOCKADDR ( -- ptr u8 ) IO-STORAGE BYTE-VIEW ;
 : ADDRLEN ( -- ptr u8 ) IO-STORAGE BYTE-VIEW $10 + ;
@@ -321,11 +279,8 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 
 \ The exact Linux AArch64 libc schemas. RTLD_DEFAULT borrows process symbols;
 \ the native executable already needs libc.so.6, so no library reference is
-\ acquired or retained here. Each declaration states the C function's own effect
-\ and the extent of every buffer the callee writes, which is what the bounded
-\ call guards; package FFI resolves each symbol on its first call and clears the
-\ cache for image capture. Coverage: src/lib/net/tcp4-test.f drives every binding
-\ over a loopback connection.
+\ acquired or retained here. src/lib/net/tcp4-test.f drives every binding over
+\ a loopback connection.
 PROCESS-SYMBOLS
 
 FUNCTION: SOCKET-CALL socket ( n n n -- i32 ) ;FUNCTION
@@ -470,16 +425,13 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ptr u8 ptr u8 -- i32 )
    TCP4-READY--RESULT:idle ;
 
 
-\ The one readiness path: every question a listener or a connection asks reaches
-\ the AIO loop through here, with the timeout as their only difference. The
-\ deadline is the poll's own linked timeout, so a signal no longer cuts the wait
-\ short and there is nothing to restart; a zero timeout asks the question with a
-\ zero-length link, which still answers `ready` for a descriptor already ready.
-\ The loop must be running: a wait without AIO:START is E-AIO-STATE.
-\ `cancelled` cannot arrive here - nothing in this module cancels, the ticket
-\ never leaves this word, and the cleanup AIO registers on a submitting task runs
-\ only after that task has ended - so it is a broken foreign result, exactly like
-\ a sockaddr this module did not write.
+\ The one readiness path: every wait a listener or a connection asks for reaches
+\ the AIO loop here, differing only in the timeout. The deadline is the poll's
+\ own linked timeout, so a signal does not cut the wait short; a zero timeout
+\ still answers `ready` for a descriptor already ready. A wait without AIO:START
+\ is E-AIO-STATE. `cancelled` cannot arrive (nothing here cancels, the ticket
+\ never leaves this word, and AIO's cleanup on a submitting task runs only after
+\ the task ends), so it is a broken foreign result.
 : WAIT-READY ( n ms -- ready-result ) {: fd:n timeout:ms :}
    timeout MS>N 0 MAX-TIMEOUT WITHIN-RANGE
    fd >FD AIO:READABLE timeout AIO:POLL AIO:AWAIT
@@ -678,6 +630,8 @@ public
 \ BIND returns an owned listener; the caller closes it exactly once. Port zero
 \ asks the OS for an ephemeral port, which LOCAL then reports. SO_REUSEADDR
 \ permits an immediate restart while the prior server peer remains in TIME_WAIT.
+\ A failed BIND closes its new socket and keeps the first errno. A listener
+\ stays blocking.
 : BIND ( address port -- bind-result )
    ENDPOINT! SOCKET-RAW dup 0 < if drop LAST-ERROR TCP4-BIND--RESULT:failed exit then
    {: fd:n :}
@@ -705,7 +659,6 @@ public
    LISTENER-FD ACCEPT-LOOP ;
 
 
-\ The fault a `failed` ACCEPT's errno names (accept-fault above).
 : >ACCEPT-FAULT ( errno -- accept-fault )
    ERRNO>N {: code:n :}
    code ACCEPT-ABORTED? if construct accept-fault aborted exit then
@@ -714,9 +667,11 @@ public
 
 
 \ Blocks until the handshake completes or the OS refuses it. A refused peer
-\ answers failed with ECONNREFUSED; the failed socket is closed here. The
-\ connection turns non-blocking only once connected, so the connect itself
-\ still blocks and answers the refusal.
+\ answers failed with ECONNREFUSED; the failed socket is closed here and the
+\ first errno kept. An interrupted CONNECT is `failed` with EINTR and its socket
+\ closed, because Linux goes on completing that connection asynchronously. The
+\ connection turns non-blocking only once connected, so the connect itself still
+\ blocks and answers the refusal.
 : CONNECT ( address port -- connect-result )
    ENDPOINT! SOCKET-RAW dup 0 < if drop LAST-ERROR TCP4-CONNECT--RESULT:failed exit then
    {: fd:n :}
@@ -724,8 +679,9 @@ public
    fd NONBLOCK >CONNECTION TCP4-CONNECT--RESULT:connected ;
 
 
-\ One partial read of 1..capacity bytes, blocking until the stream answers.
-\ The caller owns the writable span. `closed` carries zero bytes.
+\ One partial read of 1..capacity bytes, waiting in poll(2) on the task's own
+\ thread, with no AIO loop or deadline, until the stream answers. The caller owns
+\ the writable span. `closed` carries zero bytes.
 : READ ( connection ptr u8 NUM:byte-len -- read-result )
    {: conn:connection bytes capacity:NUM:byte-len :}
    capacity BLEN>N 1 MAX-TRANSFER WITHIN-RANGE
@@ -733,9 +689,10 @@ public
 
 
 \ One receive of 1..capacity bytes that never waits: `empty` when the stream
-\ has nothing to answer yet. The caller owns the writable span. `closed`
-\ carries zero bytes. An interrupt retries. The connection must be
-\ non-blocking, as SEND-SLICE says.
+\ has nothing to answer yet, so one task can serve many connections from its own
+\ readiness loop even where the OS reports readiness spuriously, as Linux may.
+\ The caller owns the writable span. `closed` carries zero bytes. An interrupt
+\ retries. The connection must be non-blocking, as SEND-SLICE says.
 : TRY-READ ( connection ptr u8 NUM:byte-len -- try-read-result )
    {: conn:connection bytes capacity:NUM:byte-len :}
    capacity BLEN>N 1 MAX-TRANSFER WITHIN-RANGE
@@ -872,7 +829,10 @@ public
    conn CONNECTION-FD how SHUT-CODE SHUTDOWN-RAW RC>STATUS ;
 
 
-\ On Linux, close consumes the descriptor even if interrupted. Never retry it.
+\ The caller closes each handle once and never reuses it, even after an
+\ interrupted close: Linux releases the descriptor before reporting the error.
+\ Descriptors are process resources: close them and stop concurrent use before
+\ image capture.
 : CLOSE ( connection -- status )
    CONNECTION-FD CLOSE-RAW RC>STATUS ;
 
@@ -880,13 +840,9 @@ public
 : CLOSE-LISTENER ( listener -- status )
    LISTENER-FD CLOSE-RAW RC>STATUS ;
 
-\ ---- the descriptor seam -----------------------------------------------------
-\ The three words an asynchronous caller needs and this module's own blocking
-\ surface does not: the descriptor under a listener or a connection, so it can
-\ be handed to a readiness or completion loop (src/lib/aio.f), and a socket that
-\ is not connected yet, so such a loop can do the connecting. Nothing here
-\ changes ownership: a descriptor read out still belongs to the handle it came
-\ from, and CLOSE / CLOSE-LISTENER is still what ends it.
+\ The descriptor under a listener or a connection, for a readiness or completion
+\ loop (src/lib/aio.f). A descriptor read out still belongs to its handle; CLOSE
+\ or CLOSE-LISTENER ends it.
 : LISTENER-FD ( listener -- fd )
    LISTENER-FD >FD ;
 

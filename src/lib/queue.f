@@ -7,7 +7,7 @@
 
 s" src/lib/errors.f" required
 s" src/lib/task.f" required
-s" src/lib/type/deftype.f" required   \ DEFTYPE: the nominal queue handle
+s" src/lib/type/deftype.f" required
 
 package QUEUE
 public
@@ -21,7 +21,7 @@ private
 
 using TASK
 
-$100 constant Q-MAX              \ queue definitions one image can hold
+$100 constant Q-MAX
 
 \ One record per definition: the ring's indexes and how many pool semaphores the
 \ queue currently holds. The ring's cells follow the record; the semaphores
@@ -75,10 +75,9 @@ variable Q-N
 : Q-ZERO, ( n -- )
    8 / 0 ?do 0 , loop ;
 
-\ The child's data cell is its handle; the record starts one cell past it, which
-\ is the address the table keeps. The definition compiles the record whole - the
-\ header a queue is born with, then the zeroed ring cells - so a queue is never
-\ live on storage nobody wrote.
+\ The child's data cell is its handle; the record starts one cell past it, the
+\ address the table keeps. The definition compiles the whole record, header and
+\ zeroed ring, so a queue is never live on storage nobody wrote.
 : Q-REC, ( n -- )
    here CELL-VIEW cell+ Q-REGISTER ,
    0 , dup , 0 , 0 , 0 , 0 ,               \ LIVE CAP HEAD TAIL LEN SEMS
@@ -149,7 +148,6 @@ variable Q-N
 : Q-LOCK-RELEASE ( n -- )
    Q-LOCK-SEM SIGNAL ;
 
-\ The element cells follow the record.
 : Q-DATA ( ptr n n -- ptr n )
    cells Q-REC-BYTES + + ;
 

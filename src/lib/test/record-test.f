@@ -1,7 +1,7 @@
 \ record-test.f - focused tests for src/lib/test/record.f failure records.
 \ Run: bin/hb --load src/lib/test.f src/lib/test/record-test.f
 \ Expected literals are bound in compiled words: top-level (interpret-mode)
-\ escaped literals corrupt positionally (dot habu-interpret-mode-escaped-d8dad34b).
+\ escaped literals corrupt positionally.
 
 require src/lib/string.f
 require src/lib/test.f
@@ -44,7 +44,6 @@ char a RCT-DIRTY c!  9 RCT-DIRTY 1 + c!  char b RCT-DIRTY 2 + c!
 : RCT-DIRTY$ ( -- ptr u8 n ) RCT-DIRTY 5 ;
 TREC-RESET RCT-DIRTY$ TREC-$+ TREC$ s" a b  " T$=
 
-\ capacity guard fails closed with a named error
 ' RCT-FILL-OVER E-STR-CAPACITY TTHROWS
 TREC-RESET
 

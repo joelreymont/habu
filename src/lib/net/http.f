@@ -1,51 +1,9 @@
-\ http.f - the HTTP/1.1 server: one listener task accepting on an IPv4
-\ address, a fixed pool of request workers taking connections from a queue, and
-\ one handler per request inside a catch boundary, so a handler that throws
-\ answers 500 with the request id and the worker lives to take the next
-\ connection. Requiring this file loads http-arena.f, http-request.f,
-\ http-response.f, http-router.f and http-static.f.
-\
-\ A caller relies on these:
-\ - AIO:START comes before START, which is E-AIO-STATE without the loop. The
-\   loop is a live task, so AIO:START, HTTP:START, HTTP:STOP and AIO:STOP run
-\   from one word: an interpreted s" after AIO:START ends the process.
-\ - Route strings must outlive the server. Body limits persist across STOP and
-\   failed starts.
-\ - With BODY-TIMEOUT zero, START's deadline covers a request's head and body.
-\   A positive one starts a fresh absolute deadline once the head and Host are
-\   valid. Progress renews neither. Past each deadline - START's, then a
-\   positive body timeout's own - the worker reads only the bytes the socket
-\   holds when its first read finds that deadline passed, however late that
-\   read comes, and nothing once a stop is raised. A request those bytes leave
-\   incomplete gets no answer: its connection is closed plainly, so a peer
-\   still sending reads a reset.
-\ - Every refusal half-closes and reads for LINGER-MS before it closes, so a
-\   peer mid-upload still receives the answer.
-\ - A start hook that throws fails START once every started worker has run its
-\   exit hooks and been joined: the listener is closed, RUNNING? is false and
-\   the same port can start again. Hooks stay registered for every later
-\   server.
-\
-\ STORAGE CLASS. PROCESS-WIDE: one server per image. The routes, the static
-\ tree, the hooks and the rules are written before START and only read while it
-\ runs; each worker's per-request state is its own slot's row
-\ (src/lib/net/http-arena.f).
-\
-\ Every word a task runs is defined here, before START activates anything:
-\ Habu forbids dictionary mutation while a task is live (src/lib/task.f).
-\
-\ A package whose per-worker resource belongs to the worker task itself - a
-\ database connection each worker holds, say - registers it with
-\ ON-WORKER-START and ON-WORKER-EXIT. The start hooks run inside each worker
-\ once it has claimed its slot and before it takes its first connection; the
-\ exit hooks run through TASK:AT-EXIT, so a worker that throws gives its
-\ resources back as surely as one that is stopped. Registration belongs to a
-\ process's setup and is refused once its server is running.
-\
-\ A handler that goes on in another protocol on its request's connection - a
-\ WebSocket upgrade, src/lib/net/ws.f - takes the connection from its worker with
-\ TAKE-OVER. It leaves the server for good: the taker closes it, and neither the
-\ worker nor a stop touches it again.
+\ http.f - the HTTP/1.1 server: a listener task on an IPv4 address, a fixed pool
+\ of workers taking connections from a queue, one handler per request in a catch
+\ boundary (a throw answers 500 with the request id). Requires http-arena.f,
+\ http-request.f, http-response.f, http-router.f and http-static.f.
+\ STORAGE CLASS. PROCESS-WIDE: one server per image; its tables are written
+\ before START, and per-request state is each worker's slot row (http-arena.f).
 require src/lib/net/http-static.f
 require src/lib/task.f
 require src/lib/queue.f
@@ -143,8 +101,6 @@ private
       failed OF drop ENDOF
    ;MATCH ;
 
-
-\ ---- one request ------------------------------------------------------------
 
 : MAGNITUDE ( n -- n ) {: value:n :}
    value 0 < if 0 value - exit then
@@ -251,8 +207,6 @@ private
    SELF-SLOT FAULT-RESPONSE ;
 
 
-\ ---- a connection its handler takes over -------------------------------------
-
 \ A handler that goes on in another protocol on its request's connection - a
 \ WebSocket upgrade, src/lib/net/ws.f - takes the connection with TAKE-OVER. The
 \ connection is on offer only while that handler runs; once taken, the worker
@@ -285,8 +239,6 @@ MAX-WORKERS TYPED-BUFFER HOLDER n
    false ;
 
 
-\ ---- one connection ---------------------------------------------------------
-
 \ The connection each worker is serving, live from SERVE-CONNECTION's entry
 \ until its close or until a handler takes it (TAKE-OVER): what TAKE-OVER
 \ hands that handler, and what the worker's exit closes when a stop killed it
@@ -308,12 +260,12 @@ MAX-WORKERS TYPED-BUFFER SERVING-LIVE n
    ;MATCH ;
 
 
-\ A peer still sending when we answer would be reset by a plain close and would
-\ lose the answer with it, which is exactly how a refused oversize request ends.
-\ Half-close instead, read what is still in flight until the peer stops or the
-\ linger deadline passes, and only then close. The loop checks the deadline
-\ itself: WAIT-READABLE still asks once past it, and a peer that keeps sending
-\ always has bytes to read.
+\ A peer still sending when the answer goes out would be reset by a plain close
+\ and lose the answer, which is how a refused oversize request ends. So the
+\ connection is half-closed and read until the peer stops or the linger
+\ deadline passes, then closed. The loop checks the deadline itself:
+\ WAIT-READABLE still asks once past it, and a peer that keeps sending always
+\ has bytes to read.
 : LINGER-CLOSE ( TCP4:connection n -- ) {: conn:TCP4:connection idx:n :}
    conn TCP4:SENDING TCP4:SHUTDOWN DROP-STATUS
    LINGER-MS DEADLINE-AT {: deadline:n :}
@@ -431,8 +383,6 @@ MAX-WORKERS TYPED-BUFFER READ-RESULT parse-result
    0 idx SERVING-LIVE ! ;
 
 
-\ ---- the worker lifecycle hooks ---------------------------------------------
-
 \ The quotations live in rows declared to hold quotations, which is the
 \ checker's proven-quotation store (src/lib/task.f); an xt in a cell
 \ would lose the effect this table is named by.
@@ -490,8 +440,6 @@ variable EXIT-HOOK-N
    DROP-SERVING
    code 0 <> if code throw then ;
 
-
-\ ---- the worker pool --------------------------------------------------------
 
 : WORKER-LOOP ( -- )
    begin
@@ -555,8 +503,6 @@ variable EXIT-HOOK-N
    STARTED @ 0 ?do START-READY TASK:WAIT loop
    START-ERROR atomic@ ;
 
-
-\ ---- the listener -----------------------------------------------------------
 
 : ACCEPTED ( TCP4:connection TCP4:address TCP4:port -- )
    {: conn:TCP4:connection peer:TCP4:address peer-port:TCP4:port :}
@@ -644,8 +590,6 @@ variable EXIT-HOOK-N
    [: LISTENER-BODY ;] LISTENER-TASK TASK:ACTIVATE ;
 
 
-\ ---- binding ----------------------------------------------------------------
-
 : BIND-LISTENER ( n n -- ) {: address:n port:n :}
    address TCP4:ADDRESS port TCP4:PORT TCP4:BIND
    MATCH TCP4:bind-result
@@ -663,8 +607,6 @@ variable EXIT-HOOK-N
       failed OF drop E-SOCKET throw ENDOF
    ;MATCH ;
 
-
-\ ---- ending the tasks -------------------------------------------------------
 
 \ The listener and the workers: the tasks a stop waits for.
 : TASK-COUNT ( -- n )
@@ -801,8 +743,13 @@ public
    limit 0 < if E-CAPACITY throw then
    limit BODY-LIMIT ! ;
 
-\ Zero shares START's absolute deadline across head and body. Positive values
-\ grant the body a fresh absolute deadline after valid headers and Host.
+\ Zero shares START's absolute deadline across head and body. A positive value
+\ grants the body a fresh absolute deadline once the head and Host are valid.
+\ Progress renews neither. Past each deadline the worker reads only the bytes
+\ the socket holds when its first read finds that deadline passed, however late
+\ that read comes, and nothing once a stop is raised. A request those bytes
+\ leave incomplete gets no answer: its connection is closed plainly, so a peer
+\ still sending reads a reset.
 : BODY-TIMEOUT! ( n -- ) {: ms:n :}
    RUNNING @ 0 <> if E-STATE throw then
    ms 0 < ms MAX-BODY-TIMEOUT-MS > or if E-CAPACITY throw then
@@ -811,9 +758,12 @@ public
 : BODY-TIMEOUT ( -- n )
    BODY-TIMEOUT-MS @ ;
 
-\ Opens what a request worker needs of its own, inside that worker, once per
-\ worker and before its first request. START waits for every start hook; a
-\ throw fails startup and ends the whole pool after every worker exits.
+\ Opens what a request worker needs of its own (a database connection, say),
+\ inside that worker, once it has claimed its slot and before its first request.
+\ START waits for every start hook; a throw fails START once every started
+\ worker has run its exit hooks and been joined: the listener is closed,
+\ RUNNING? is false and the same port can start again. Hooks stay registered
+\ for every later server.
 : ON-WORKER-START ( [ -- ] -- ) {: q :}
    HOOKS-OPEN
    START-HOOK-N @ HOOK-ROOM {: at:n :}
@@ -821,7 +771,8 @@ public
    at 1+ START-HOOK-N ! ;
 
 
-\ Gives it back, in the worker's own task, however the worker ended.
+\ Gives it back, in the worker's own task through TASK:AT-EXIT, however the
+\ worker ended.
 : ON-WORKER-EXIT ( [ -- ] -- ) {: q :}
    HOOKS-OPEN
    EXIT-HOOK-N @ HOOK-ROOM {: at:n :}
@@ -877,13 +828,15 @@ public
 
 
 \ The address and port to listen on, how many request workers to run, and how
-\ long a connection may stay silent before it is closed. The AIO loop is a
-\ precondition and not this package's to start: every readiness wait the
-\ listener and the workers make is an AIO submission, and a submission with no
-\ loop running is E-AIO-STATE. Thrown inside the listener's own task that code
-\ is a report nobody reads - the task dies, no connection is ever accepted and
-\ the caller waiting for its first answer hangs on the idle deadline instead -
-\ so the same code is re-thrown here, to the caller that can still fix it.
+\ long a connection may stay silent before it is closed. Every word a task runs
+\ is defined before START: Habu forbids dictionary mutation while a task is live
+\ (src/lib/task.f). Route strings must outlive the server. The AIO loop is a
+\ precondition and not this package's to start: every readiness wait is an AIO
+\ submission, and one with no loop is E-AIO-STATE. Thrown inside the listener's
+\ task that code is a report nobody reads (no connection is accepted and the
+\ caller hangs on the idle deadline), so it is re-thrown here. The loop is a
+\ live task, so AIO:START, HTTP:START, HTTP:STOP and AIO:STOP run from one word:
+\ an interpreted s" after AIO:START ends the process.
 : START ( n n n n -- ) {: address:n port:n workers:n idle:n :}
    RUNNING @ 0 <> if E-STATE throw then
    AIO:RUNNING? 0= if E-AIO-STATE throw then

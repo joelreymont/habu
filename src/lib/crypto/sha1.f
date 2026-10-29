@@ -1,23 +1,9 @@
-\ sha1.f - SHA-1 (FIPS 180-4) through a context the caller owns.
-\
-\ SHA-1 IS HERE FOR THE WEBSOCKET HANDSHAKE, NOT FOR SECURITY. RFC 6455 derives
-\ Sec-WebSocket-Accept from it, and that proves only that a server read the
-\ client's key. SHA-1 collisions are practical, so never use this digest to
-\ authenticate, sign or name bytes an adversary may choose: the engine's
-\ SHA-256 (src/core/sha256.f) and src/lib/crypto/evp.f's HMAC-SHA256 are for those.
-\
-\ STORAGE CLASS. CALLER-OWNED: a digest in progress lives in a context the
-\ caller supplies, a span of at least CTX-BYTES bytes, one per digest. The file
-\ keeps no state of its own, so any number of tasks hash at once by holding a
-\ context each. A context needs no alignment: every field in it is read and
-\ written a byte at a time.
-\
-\ START begins a digest, FEED appends bytes and FINISH answers the digest of
-\ everything fed so far. FINISH pads a copy, so it leaves the context as it
-\ found it: a second FINISH answers the same digest and FEED may go on after
-\ it. HASH is the three in one call, over the same kind of context, for a
-\ caller that already holds the whole message. DIGEST! writes a digest's
-\ twenty bytes in the order FIPS 180-4 gives them.
+\ sha1.f - SHA-1 (FIPS 180-4) for the WebSocket handshake, not for security:
+\ RFC 6455's Sec-WebSocket-Accept only proves a server read the client's key.
+\ Collisions are practical: authenticate, sign or name adversary bytes with the
+\ engine's SHA-256 (src/core/sha256.f) or src/lib/crypto/evp.f's HMAC-SHA256.
+\ STORAGE CLASS. CALLER-OWNED: one context of CTX-BYTES per digest, unaligned
+\ (fields are read a byte at a time); no file state, so tasks hash at once.
 
 require src/lib/errors.f
 require src/lib/le.f
@@ -132,8 +118,6 @@ $FFFFFFFF constant W32
    h3 d + W32 and  h4 e + W32 and
    SHA1-DIGEST:MAKE ;
 
-\ Copy what fits of the bytes into the tail, and compress a tail that fills.
-\ Answers the bytes not yet taken.
 : ABSORB ( ptr u8 ptr u8 n -- ptr u8 n ) {: ctx a u:n :}
    ctx TOTAL@ {: total:n :}
    total BLOCK-BYTES 1- and {: used:n :}
@@ -159,7 +143,9 @@ public
 
 \ Section 5.1.1's padding, built in PAD from a copy of the tail: the mark bit,
 \ zeros, and the message length in bits in the last eight bytes, spilling into
-\ a second block when fewer than nine bytes are free after the message.
+\ a second block when fewer than nine bytes are free after the message. The
+\ context is left as found: a second FINISH answers the same digest and FEED
+\ may go on.
 : FINISH ( SPAN:span<u8> -- digest )
    CONTEXT {: ctx :}
    ctx TOTAL@ {: total:n :}

@@ -1,17 +1,9 @@
-\ Bounded XMODEM transfers over an already-open raw serial stream.
-\
-\ INIT's two waits are separate: the control wait covers an ACK or the next
-\ header and must allow a whole packet at the line's baud rate; the inactivity
-\ wait covers gaps inside a frame and must be shorter than the peer's
-\ retransmission interval. Each SEND or RECEIVE takes a fresh overall deadline
-\ that negotiation, retries and draining share. Only `completed` means done: a
-\ failure may leave an accepted prefix, and padding is never stripped, so the
-\ application frames its own length. DISPOSE does not close the serial handle.
-\ Peer tests: test/serial-xmodem.py.
-\
-\ STORAGE CLASS. CALLER-OWNED: the session header and its packet buffer are
-\ the caller's; distinct sessions over distinct handles run concurrently, one
-\ session or one stream never.
+\ serial-xmodem.f - bounded XMODEM transfers over an already-open raw serial
+\ stream. Each SEND or RECEIVE takes one overall deadline that negotiation,
+\ retries and draining share. Only `completed` means done: a failure may leave
+\ an accepted prefix and padding is never stripped, so the application frames
+\ its own length; DISPOSE leaves the serial handle open. test/serial-xmodem.py.
+\ STORAGE CLASS. CALLER-OWNED; a session or a stream serves one task at a time.
 require src/lib/xmodem.f
 require src/lib/serial.f
 
@@ -321,8 +313,10 @@ public
 : SESSION-BYTES ( -- n ) SESSION-SIZE ;
 
 
-\ A fresh session is zero-initialized storage of SESSION-BYTES bytes. Control wait
-\ and receive inactivity are separate, chosen for the peer and stream speed.
+\ A fresh session is zero-initialized storage of SESSION-BYTES bytes. The control
+\ wait covers an ACK or the next header and must allow a whole packet at the
+\ line's baud rate; the inactivity wait covers gaps inside a frame and must be
+\ shorter than the peer's retransmission interval.
 : INIT ( SERIAL:handle ms ms ptr a -- )
    {: handle:SERIAL:handle control-wait:ms receive-wait:ms session:ptr :}
    control-wait CHECK-MS receive-wait CHECK-MS
@@ -347,9 +341,8 @@ public
    session [: dup SEND-RUN ;] catch RESULT ;
 
 
-\ The output is an initialized caller-owned BUF, disjoint from the session.
-\ The limit includes whole padded packets. Failure may leave a partial prefix;
-\ only completed establishes receipt through EOT. No padding is removed.
+\ The output is an initialized caller-owned BUF, disjoint from the session. The
+\ limit includes whole padded packets.
 : RECEIVE ( NUM:byte-len ptr a ms ptr a -- transfer-result )
    {: maximum:NUM:byte-len output:ptr timeout:ms session:ptr :}
    maximum CHECK-LENGTH output BUF:SPAN$ 2drop timeout session START

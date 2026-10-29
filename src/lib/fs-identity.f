@@ -1,12 +1,9 @@
-\ File identity follows symlinks and preserves stat failures other than ENOENT.
-\ SAMEFILE is true when both paths exist and name one device and inode; an
-\ ENOENT path is simply not the same file, any other stat failure E-FS-STAT.
-\ SAME-OPEN-FILE? compares two open descriptors, untouched by later path or
-\ symlink changes. PATH-IDENTITY answers the device and inode a path names,
-\ throwing E-FS-STAT when stat fails, ENOENT included.
-\
-\ STORAGE CLASS. CALLER-OWNED: each call allocates and releases its own MEM
-\ mapping; no module state.
+\ fs-identity.f - file identity through symlinks. SAMEFILE is true when both paths
+\ exist and name one device and inode; an ENOENT path is not the same file, any
+\ other stat failure is E-FS-STAT. SAME-OPEN-FILE? compares open descriptors,
+\ untouched by later path changes. PATH-IDENTITY throws E-FS-STAT on any stat
+\ failure, ENOENT included.
+\ STORAGE CLASS. CALLER-OWNED: each call maps and releases its own MEM; no state.
 require src/lib/fs.f
 require src/lib/le.f
 require src/lib/memory.f
@@ -76,7 +73,6 @@ FUNCTION: STAT-CALL stat ( ptr u8 ptr u8 -- i32 )
    ALLOCATION>SPAN {: text bytes:n work :}
    text bytes work IDENTITY 0= if E-FS-STAT throw then ;
 
-\ Compare the actual open files, independent of later path or symlink changes.
 : SAME-OPEN-FILE? ( fd fd -- bool )
    STAT-CAP BYTES-ALLOC-LEN [: COMPARE-FDS ;] WITH-BYTES ;
 
@@ -86,7 +82,6 @@ public
 : SAMEFILE ( ptr u8 n ptr u8 n -- bool )
    WORK-BYTES BYTES-ALLOC-LEN [: COMPARE-IDENTITIES ;] WITH-BYTES ;
 
-\ The device and inode the path names, through any symlinks.
 : PATH-IDENTITY ( ptr u8 n -- n n )
    WORK-BYTES BYTES-ALLOC-LEN [: LOOKUP-IDENTITY ;] WITH-BYTES ;
 

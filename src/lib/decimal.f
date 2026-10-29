@@ -1,15 +1,8 @@
-\ decimal.f - exact signed i64 conversion of decimal text (package DECIMAL).
-\
-\ No floating-point operation or allocation is involved, and the whole mantissa
-\ is validated before conversion. EXACT accepts an optional sign, digits with
-\ single interior underscores, an optional point with a digit on at least one
-\ side (`1.` and `.5`), and an optional signed exponent whose digits take single
-\ interior underscores too (`1e1_0`); it answers SOME only for an integer value
-\ in i64 range. INTEGER accepts signed digits with any interior underscores
-\ (`1__2`) and no point or exponent. Both answer NONE for malformed or
-\ out-of-range text, take no surrounding whitespace, and throw E-SOURCE for a
-\ negative length or a null span with bytes.
-\
+\ decimal.f - exact signed i64 conversion of decimal text (package DECIMAL),
+\ with no float or allocation. EXACT takes single interior underscores, an
+\ optional point with a digit on one side (`1.`, `.5`) and an optional signed
+\ exponent (`1e1_0`), answering SOME only for an integer value in i64 range.
+\ INTEGER takes any interior underscores (`1__2`), no point or exponent.
 \ STORAGE CLASS. CALLER-OWNED: the module keeps no state.
 
 require src/lib/adt/option.f
@@ -50,9 +43,7 @@ CAST: N>I64 ( n -- i64 )
    u 0 < if E-SOURCE throw then
    u 0 > a 0= and if E-SOURCE throw then ;
 
-\ Return the first non-digit position, digit count, leading-zero count and
-\ trailing-zero count. In INTEGER mode, any number of interior separators is
-\ valid; EXACT mode permits one. An invalid separator remains unconsumed.
+\ An invalid separator remains unconsumed.
 : DIGITS ( ptr u8 n n bool -- n n n n )
    {: a:ptr u:n start:n repeat?:bool :}
    start 0 0 0 begin
@@ -113,8 +104,7 @@ CAST: N>I64 ( n -- i64 )
    a digits-at end u EXP-CAP EXP-MAGNITUDE {: magnitude:n :}
    end magnitude negative? ;
 
-\ Accumulate the first `wanted` significant mantissa digits, then implied
-\ zeros. The negative accumulator admits i64 minimum without overflow.
+\ The negative accumulator admits i64 minimum without overflow.
 : ACCUM ( ptr u8 n n n n bool -- option<i64> )
    {: a:ptr start:n end:n leading:n wanted:n negative?:bool :}
    negative? if 8 else 7 then {: last:n :}

@@ -109,13 +109,9 @@ TYPED-VARIABLE RD XML:cursor
 : NEXT-AFTER ( XML:reader -- XML:reader )
    NEXT drop ;
 
-\ The reader must survive the caught failure: this case reads it afterwards and
-\ closes it. A quotation literal leaves it `stale<XML:reader>` - `catch` restores
-\ the DEPTH of both stacks and never their contents - and a linear cell can be
-\ neither read nor dropped, so the body is named and reached by `[']`: the
-\ exceptional edge is not part of a quotation's TYPE, so that route keeps the
-\ window typed until the callee-evidence lane (dot c2923193) lets the checker
-\ prove the handle intact.
+\ The body is a word reached by `[']`, not a quotation literal: the reader is read
+\ and closed after the catch, `catch` restores stack depth but not contents, and
+\ a literal would leave stale<XML:reader>, which can be neither read nor dropped.
 : REJECTS ( ptr u8 n -- )
    OPEN ['] DRAIN catch 0<> TTRUE
    ['] NEXT-AFTER catch E-STATE T=

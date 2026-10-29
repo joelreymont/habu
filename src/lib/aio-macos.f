@@ -1,15 +1,9 @@
-\ Darwin backend for AIO's shared tickets and buffer ownership.
-\ One poll thread services all records. A nonblocking pipe wakes it when a
-\ submission changes the descriptor set or the nearest deadline. Generations
-\ fence the snapshot across poll, so cancellation/reuse cannot deliver an old
-\ event to a new operation. Each serialized host call temporarily sets
-\ nonblocking status and restores it before releasing the facility.
-\ The caller keeps a pending operation's descriptor open and its flags
-\ unchanged. Regular-file transfers run on the poll thread with pread/pwrite,
-\ so slow disk I/O delays other completions. The records are src/lib/aio.f's;
-\ this backend's fields live in each record's REC.HOST.
-\ One poll takes every active descriptor once, so the descriptors in flight
-\ at once are bounded by Darwin's per-call bound (OPEN-MAX below).
+\ aio-macos.f - Darwin backend for src/lib/aio.f's records (fields in REC.HOST).
+\ One poll thread services all records; a nonblocking pipe wakes it when a
+\ submission changes the descriptor set or the nearest deadline. The caller
+\ keeps a pending operation's descriptor open and its flags unchanged. Regular
+\ files use pread/pwrite on the poll thread, so slow disk I/O delays other
+\ completions.
 require src/lib/string.f
 require src/lib/aio.f
 require src/lib/le.f

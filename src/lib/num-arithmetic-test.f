@@ -1,18 +1,9 @@
-\ num-arithmetic-test.f - the NUM arithmetic boundary + static
-\ rejection matrix (dot habu-implement-cad-num-cb413b2a). Run:
-\   bin/hb --load src/lib/num-arithmetic-test.f
-\
-\ Suite `num-arithmetic` in the standard-library gate; direct-load this file
-\ for the focused boundary and property matrix.
-\
-\ Every admitted operation is exercised at its exact boundary cases
-\ (zero / safe-max / first-overflow / underflow / misalignment). `numeric-result`
-\ is a layout value, so it is only built and MATCHed inside compiled words; each
-\ classifier below returns the ok payload's RAW value (nonnegative) or the named
-\ E-NUM-* refusal code (negative), so one `T=` proves BOTH the exact result
-\ value on success and the exact refusal variant on failure. The `*>RAW`
-\ projections are test-only white-box readers of a role's cell for value
-\ assertions; production never gets a public role->n projection.
+\ num-arithmetic-test.f - the NUM arithmetic boundary and static rejection
+\ matrix, suite `num-arithmetic` in the standard-library gate.
+\ Run: bin/hb --load src/lib/num-arithmetic-test.f
+\ `numeric-result` is a layout value, built and MATCHed only inside compiled
+\ words; each classifier answers the ok payload's raw value (nonnegative) or the
+\ E-NUM-* refusal (negative), so one `T=` pins both.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -21,25 +12,24 @@ require src/lib/property.f
 require src/lib/num-types.f
 require src/lib/num-arithmetic.f
 
-\ ---- boundary constants (independently mirror the library bounds) -------------
+\ The bounds mirror the library's independently.
 $7FFFFFFFFFFFFFFF constant T-MAX-N                 \ largest nonnegative cell
 T-MAX-N 1 cells / constant T-MAX-CELLS             \ safe-max cell count -> whole bytes
 T-MAX-CELLS 1 cells * constant T-MAX-WHOLE-BYTES   \ largest whole-cell byte extent
 $4000000000000000 constant T-LARGEST-POW2          \ largest positive power-of-two alignment
 
-\ ---- test-only white-box role readers (this test's own scope) -----------------
 \ Each classifier below turns an ok result into the raw value it pins against a
 \ literal, so the extent roles are read out here rather than by reopening the
 \ package under test. Checked casts; projection out of a cell family needs no
 \ ownership (checker.f CAST-OWNER?). An index goes through the package's own
-\ public NUM:ORDINAL, which is the only projection NUM publishes.
+\ public NUM:ORDINAL, which is the only projection NUM publishes; production
+\ never gets a public role->n projection.
 CAST: T-BL>RAW ( NUM:byte-len -- n )
 CAST: T-IC>RAW ( NUM:item-count -- n )
 CAST: T-CC>RAW ( NUM:cell-count -- n )
 CAST: T-BO>RAW ( NUM:byte-off -- n )
 CAST: T-CO>RAW ( NUM:cell-off -- n )
 
-\ ---- per-role classifiers: numeric-result<role> -> raw value (ok) / code -------
 : BL-CODE ( NUM:numeric-result<NUM:byte-len> -- n )
    MATCH NUM:numeric-result
       ok OF T-BL>RAW ENDOF            negative OF E-NUM-NEGATIVE ENDOF
@@ -83,7 +73,7 @@ CAST: T-CO>RAW ( NUM:cell-off -- n )
       misaligned OF E-NUM-MISALIGNED ENDOF
    ;MATCH ;
 
-\ ---- builders: raw n -> validated role (a bad seed aborts the run loudly) ------
+\ A bad seed aborts the run.
 : OKBL ( n -- NUM:byte-len ) NUM:BYTE-LEN MATCH NUM:numeric-result
    ok OF ENDOF negative OF 90 throw ENDOF zero OF 90 throw ENDOF overflow OF 90 throw ENDOF
    underflow OF 90 throw ENDOF bad-alignment OF 90 throw ENDOF misaligned OF 90 throw ENDOF ;MATCH ;
@@ -109,7 +99,6 @@ CAST: T-CO>RAW ( NUM:cell-off -- n )
    ok OF ENDOF negative OF 90 throw ENDOF zero OF 90 throw ENDOF overflow OF 90 throw ENDOF
    underflow OF 90 throw ENDOF bad-alignment OF 90 throw ENDOF misaligned OF 90 throw ENDOF ;MATCH ;
 
-\ ---- extent + extent: zero identity, maximum-safe sum, first overflow ----------
 : RT-ADD ( -- )
    0 OKBL 0 OKBL NUM:ADD-BYTES BL-CODE 0 T=
    5 OKBL 7 OKBL NUM:ADD-BYTES BL-CODE 12 T=
@@ -122,7 +111,6 @@ CAST: T-CO>RAW ( NUM:cell-off -- n )
    T-MAX-N OKCC 0 OKCC NUM:ADD-CELLS CC-CODE T-MAX-N T=
    T-MAX-N OKCC 1 OKCC NUM:ADD-CELLS CC-CODE E-NUM-OVERFLOW T= ;
 
-\ ---- offset + extent advance: zero distance, maximum-safe advance, overflow ----
 : RT-ADVANCE ( -- )
    5 OKBO 0 OKBL NUM:ADVANCE-BYTE-OFF BO-CODE 5 T=
    5 OKBO 7 OKBL NUM:ADVANCE-BYTE-OFF BO-CODE 12 T=
@@ -135,7 +123,6 @@ CAST: T-CO>RAW ( NUM:cell-off -- n )
    T-MAX-N OKIDX 0 OKIC NUM:ADVANCE-INDEX IDX-CODE T-MAX-N T=
    T-MAX-N OKIDX 1 OKIC NUM:ADVANCE-INDEX IDX-CODE E-NUM-OVERFLOW T= ;
 
-\ ---- extent - extent: equal gives zero, positive difference, first underflow ---
 : RT-SUB ( -- )
    5 OKBL 5 OKBL NUM:SUB-BYTES BL-CODE 0 T=
    9 OKBL 4 OKBL NUM:SUB-BYTES BL-CODE 5 T=
@@ -147,7 +134,6 @@ CAST: T-CO>RAW ( NUM:cell-off -- n )
    9 OKCC 4 OKCC NUM:SUB-CELLS CC-CODE 5 T=
    3 OKCC 4 OKCC NUM:SUB-CELLS CC-CODE E-NUM-UNDERFLOW T= ;
 
-\ ---- offset - extent retreat: zero distance, exact-to-zero, first underflow ----
 : RT-RETREAT ( -- )
    5 OKBO 0 OKBL NUM:RETREAT-BYTE-OFF BO-CODE 5 T=
    5 OKBO 5 OKBL NUM:RETREAT-BYTE-OFF BO-CODE 0 T=
@@ -159,7 +145,6 @@ CAST: T-CO>RAW ( NUM:cell-off -- n )
    5 OKIDX 5 OKIC NUM:RETREAT-INDEX IDX-CODE 0 T=
    5 OKIDX 6 OKIC NUM:RETREAT-INDEX IDX-CODE E-NUM-UNDERFLOW T= ;
 
-\ ---- offset - offset distance: equal zero, positive, reversed underflow --------
 : RT-DISTANCE ( -- )
    5 OKBO 5 OKBO NUM:BYTE-DISTANCE BL-CODE 0 T=
    9 OKBO 4 OKBO NUM:BYTE-DISTANCE BL-CODE 5 T=
@@ -171,7 +156,6 @@ CAST: T-CO>RAW ( NUM:cell-off -- n )
    9 OKIDX 4 OKIDX NUM:INDEX-DISTANCE IC-CODE 5 T=
    4 OKIDX 9 OKIDX NUM:INDEX-DISTANCE IC-CODE E-NUM-UNDERFLOW T= ;
 
-\ ---- count x size: zero in either position, maximum-safe product, overflow -----
 : RT-MUL ( -- )
    0 OKIC 9 OKIC NUM:MUL-ITEMS IC-CODE 0 T=
    9 OKIC 0 OKIC NUM:MUL-ITEMS IC-CODE 0 T=
@@ -187,7 +171,6 @@ CAST: T-CO>RAW ( NUM:cell-off -- n )
    T-MAX-N OKCC 1 OKIC NUM:SCALE-CELLS CC-CODE T-MAX-N T=
    T-MAX-N OKCC 2 OKIC NUM:SCALE-CELLS CC-CODE E-NUM-OVERFLOW T= ;
 
-\ ---- total division: zero dividend, divisor one, exact, maximum dividend -------
 : RT-DIV ( -- )
    0 OKBL 5 OKPD NUM:DIV-BYTES T-BL>RAW 0 T=
    40 OKBL 1 OKPD NUM:DIV-BYTES T-BL>RAW 40 T=
@@ -200,7 +183,6 @@ CAST: T-CO>RAW ( NUM:cell-off -- n )
    40 OKCC 1 OKPD NUM:DIV-CELLS T-CC>RAW 40 T=
    40 OKCC 8 OKPD NUM:DIV-CELLS T-CC>RAW 5 T= ;
 
-\ ---- total remainder: zero dividend, exact zero remainder, nonzero remainder ---
 : RT-REM ( -- )
    0 OKBL 5 OKPD NUM:REM-BYTES T-BL>RAW 0 T=
    40 OKBL 8 OKPD NUM:REM-BYTES T-BL>RAW 0 T=
@@ -212,27 +194,23 @@ CAST: T-CO>RAW ( NUM:cell-off -- n )
    40 OKCC 8 OKPD NUM:REM-CELLS T-CC>RAW 0 T=
    43 OKCC 8 OKPD NUM:REM-CELLS T-CC>RAW 3 T= ;
 
-\ ---- extent / unit-extent -> count: ceil/floor, max extent, zero-size unit ------
 : RT-DIV-EXTENT ( -- )
-   \ ceil: zero extent, unit one, exact multiple, remainder rounds up, max extent
    0 OKBL 8 OKBL NUM:DIV-BYTES-CEIL IC-CODE 0 T=
    40 OKBL 1 OKBL NUM:DIV-BYTES-CEIL IC-CODE 40 T=
    40 OKBL 8 OKBL NUM:DIV-BYTES-CEIL IC-CODE 5 T=
    43 OKBL 8 OKBL NUM:DIV-BYTES-CEIL IC-CODE 6 T=
    T-MAX-N OKBL 1 OKBL NUM:DIV-BYTES-CEIL IC-CODE T-MAX-N T=
    T-MAX-N OKBL 2 OKBL NUM:DIV-BYTES-CEIL IC-CODE T-LARGEST-POW2 T=
-   \ floor: zero extent, unit one, exact multiple, remainder truncates, max extent
    0 OKBL 8 OKBL NUM:DIV-BYTES-FLOOR IC-CODE 0 T=
    40 OKBL 1 OKBL NUM:DIV-BYTES-FLOOR IC-CODE 40 T=
    40 OKBL 8 OKBL NUM:DIV-BYTES-FLOOR IC-CODE 5 T=
    43 OKBL 8 OKBL NUM:DIV-BYTES-FLOOR IC-CODE 5 T=
    T-MAX-N OKBL 1 OKBL NUM:DIV-BYTES-FLOOR IC-CODE T-MAX-N T=
    T-MAX-N OKBL 2 OKBL NUM:DIV-BYTES-FLOOR IC-CODE T-LARGEST-POW2 1 - T=
-   \ zero-size unit -> zero value for both roundings (division by zero as a value)
+   \ A zero-size unit answers zero for both roundings: division by zero is a value.
    5 OKBL 0 OKBL NUM:DIV-BYTES-CEIL IC-CODE E-NUM-ZERO T=
    5 OKBL 0 OKBL NUM:DIV-BYTES-FLOOR IC-CODE E-NUM-ZERO T= ;
 
-\ ---- widen cell -> byte: zero, maximum-safe count, first overflow --------------
 : RT-WIDEN ( -- )
    0 OKCC NUM:CELLS>BYTES BL-CODE 0 T=
    4 OKCC NUM:CELLS>BYTES BL-CODE 32 T=
@@ -243,7 +221,6 @@ CAST: T-CO>RAW ( NUM:cell-off -- n )
    T-MAX-CELLS OKCO NUM:CELL-OFF>BYTE-OFF BO-CODE T-MAX-WHOLE-BYTES T=
    T-MAX-CELLS 1 + OKCO NUM:CELL-OFF>BYTE-OFF BO-CODE E-NUM-OVERFLOW T= ;
 
-\ ---- narrow byte -> cell: zero, exact maximum, first misaligned ----------------
 : RT-NARROW ( -- )
    0 OKBL NUM:BYTES>CELLS CC-CODE 0 T=
    32 OKBL NUM:BYTES>CELLS CC-CODE 4 T=
@@ -254,7 +231,6 @@ CAST: T-CO>RAW ( NUM:cell-off -- n )
    T-MAX-WHOLE-BYTES OKBO NUM:BYTE-OFF>CELL-OFF CO-CODE T-MAX-CELLS T=
    4 OKBO NUM:BYTE-OFF>CELL-OFF CO-CODE E-NUM-MISALIGNED T= ;
 
-\ ---- align-up: zero, alignment one, already-aligned maximum, overflow ----------
 : RT-ALIGN ( -- )
    0 OKBL 8 OKAL NUM:ALIGN-UP-BYTES BL-CODE 0 T=
    5 OKBL 1 OKAL NUM:ALIGN-UP-BYTES BL-CODE 5 T=
@@ -267,7 +243,6 @@ CAST: T-CO>RAW ( NUM:cell-off -- n )
    T-MAX-WHOLE-BYTES OKBO 8 OKAL NUM:ALIGN-UP-BYTE-OFF BO-CODE T-MAX-WHOLE-BYTES T=
    T-MAX-WHOLE-BYTES 1 + OKBO 8 OKAL NUM:ALIGN-UP-BYTE-OFF BO-CODE E-NUM-OVERFLOW T= ;
 
-\ ---- alignment predicates: zero aligned, exact true, non-exact false -----------
 : RT-PRED ( -- )
    0 OKBL 8 OKAL NUM:BYTES-ALIGNED? TTRUE
    16 OKBL 8 OKAL NUM:BYTES-ALIGNED? TTRUE
@@ -286,11 +261,9 @@ CAST: T-CO>RAW ( NUM:cell-off -- n )
    T-REPORT ;
 RT
 
-\ ---- static rejection matrix: correct signatures accept, role misuse rejects ---
 \ CHECK-QUIET-CANDIDATE!: -1 accepted, 0 rejected (type error), 1 uncheckable.
 : STAT ( -- )
    T-RESET
-   \ positives: exact admitted signatures resolve.
    s" GOOD-ADD ( NUM:byte-len NUM:byte-len -- NUM:numeric-result<NUM:byte-len> ) NUM:ADD-BYTES"
       CHECK-QUIET-CANDIDATE! -1 T=
    s" GOOD-DIV-COUNT ( NUM:item-count NUM:positive-divisor -- NUM:item-count ) NUM:DIV-ITEMS"
@@ -303,7 +276,6 @@ RT
       CHECK-QUIET-CANDIDATE! -1 T=
    s" GOOD-DIV-FLOOR ( NUM:byte-len NUM:byte-len -- NUM:numeric-result<NUM:item-count> ) NUM:DIV-BYTES-FLOOR"
       CHECK-QUIET-CANDIDATE! -1 T=
-   \ negatives: cross-role divisor, cross-unit factor, index+index, reversed advance.
    s" BAD-DIV-ROLE ( NUM:item-count NUM:alignment -- NUM:item-count ) NUM:DIV-ITEMS"
       CHECK-QUIET-CANDIDATE! 0 T=
    s" BAD-MUL-ROLE ( NUM:item-count NUM:byte-len -- NUM:numeric-result<NUM:item-count> ) NUM:MUL-ITEMS"
@@ -312,7 +284,6 @@ RT
       CHECK-QUIET-CANDIDATE! 0 T=
    s" BAD-ADVANCE-REV ( NUM:byte-len NUM:byte-off -- NUM:numeric-result<NUM:byte-off> ) NUM:ADVANCE-BYTE-OFF"
       CHECK-QUIET-CANDIDATE! 0 T=
-   \ negatives: raw n where a role is required, cross-unit add.
    s" BAD-RAW-ADD ( n n -- NUM:numeric-result<NUM:byte-len> ) NUM:ADD-BYTES"
       CHECK-QUIET-CANDIDATE! 0 T=
    s" BAD-CROSS-ADD ( NUM:byte-len NUM:cell-count -- NUM:numeric-result<NUM:byte-len> ) NUM:ADD-BYTES"
@@ -328,7 +299,6 @@ RT
    T-REPORT ;
 STAT
 
-\ ---- GPT-2 F32 typed index/offset seam ----------------------------------------
 package NUM-ARITH-TEST
 using NUM
 using PROP
@@ -525,7 +495,6 @@ variable ZERO-BITS
    0 OKIDX 8 OKBL 0 OKBL F32-COMPOSE TTRUE TTRUE TFALSE
    T-MAX-N OKIDX T-MAX-N OKBL 2 OKBL F32-COMPOSE TFALSE TFALSE TFALSE ;
 
-\ ---- pointer advance -----------------------------------------------------------
 \ The advance is called QUALIFIED throughout: `using NUM` is in scope here and
 \ the raw `BYTE+` primitive shares the tail, so a bare call would be ambiguous.
 \ Byte i of the buffer carries the value i, so the byte read back after advancing

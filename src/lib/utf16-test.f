@@ -1,12 +1,9 @@
 \ utf16-test.f - UTF-16 code units of UTF-8 spans, the byte back from a unit,
 \ and strict UTF-16LE conversion, through src/lib/utf16.f.
 \ Run: bin/hb --load src/lib/utf16-test.f
-\
-\ Every expected count and byte is written from the definitions, not computed:
-\ a scalar below U+10000 is one unit, one at or above it is a surrogate pair,
-\ and each byte UTF8:NEXT answers as `raw-byte` is one unit. The column cases
-\ are the language server's use: the units before a byte offset on one line.
-\ The conversion vectors are written from UTF-16LE and UTF-8 the same way.
+\ Expected counts and bytes are written from the definitions, not computed; each
+\ byte UTF8:NEXT answers as `raw-byte` is one unit. The column cases are the
+\ language server's use: the units before a byte offset on one line.
 
 require src/lib/errors.f
 require src/lib/byte-buffer.f
@@ -36,8 +33,6 @@ CAST: BL>N ( NUM:byte-len -- n )
    {: a:ptr u:n unit:n want:n :}
    a u unit UTF16:OFFSET want T= ;
 
-\ One unit per scalar below U+10000: the empty span, ASCII, U+FFFF on the near
-\ side of the one boundary UNITS draws, and a two-byte scalar in a word.
 : BMP ( -- )
    s" " 0 UNITS=
    s" abc" 3 UNITS=
@@ -50,9 +45,6 @@ CAST: BL>N ( NUM:byte-len -- n )
    s\" \xF0\x9F\x98\x80" 2 UNITS=        \ U+1F600
    s\" a\xF0\x9F\x98\x80b\xF0\x9F\x98\x80" 6 UNITS= ;
 
-\ The byte offset of `x` against its UTF-16 column: 5 bytes are 3 units after
-\ one pair, and 9 bytes are 4 units after a two-byte, a three-byte and a
-\ four-byte scalar.
 : COLUMNS ( -- )
    s\" \xF0\x9F\x98\x80 x" drop 5 3 UNITS=
    s\" \xC3\xA9\xE2\x82\xAC\xF0\x9F\x98\x80x" drop 9 4 UNITS= ;
@@ -71,7 +63,6 @@ CAST: BL>N ( NUM:byte-len -- n )
    s\" \xF0\x9F\x98" 3 UNITS=            \ a four-byte prefix cut by the span's end
    s\" \x80\xF0\x9F\x98\x80" 3 UNITS= ;  \ a stray byte, then a pair
 
-\ Index 0 is byte 0, and an empty span is byte 0 at any nonnegative index.
 : OFFSET-EDGES ( -- )
    s" abc" 0 0 OFFSET=
    s\" \xF0\x9F\x98\x80" 0 0 OFFSET=
@@ -84,8 +75,8 @@ CAST: BL>N ( NUM:byte-len -- n )
 : OFFSET-BMP ( -- )
    s" abc" 1 1 OFFSET=
    s" abc" 2 2 OFFSET=
-   s" abc" 3 3 OFFSET=                   \ at the end
-   s" abc" 7 3 OFFSET=                   \ past the end
+   s" abc" 3 3 OFFSET=
+   s" abc" 7 3 OFFSET=
    s\" caf\xC3\xA9x" 4 5 OFFSET=          \ after a two-byte scalar
    s\" \xE2\x82\xACx" 1 3 OFFSET=         \ after U+20AC, three bytes
    s\" \xEF\xBF\xBFx" 1 3 OFFSET= ;       \ after U+FFFF, still one unit
@@ -100,8 +91,6 @@ CAST: BL>N ( NUM:byte-len -- n )
    s\" \xF0\x9F\x98\x80" 1 4 OFFSET=       \ inside a pair that ends the span
    s\" \xF0\x9F\x98\x80" 2 4 OFFSET= ;     \ at the end
 
-\ Malformed UTF-8 follows UTF8:NEXT: each byte it answers as `raw-byte` is one
-\ byte and one unit, a truncated prefix included.
 : OFFSET-INVALID ( -- )
    s\" \x80x" 1 1 OFFSET=                  \ after a lone continuation byte
    s\" \xC0\x80x" 1 1 OFFSET=              \ within an overlong U+0000
@@ -119,17 +108,14 @@ CAST: BL>N ( NUM:byte-len -- n )
 : MIXED ( -- ptr u8 n )
    s\" a\xC3\xA9\xE2\x82\xAC\xF0\x9F\x98\x80\x80x" ;
 
-\ A boundary byte comes back through its units.
 : BYTE-TRIP ( n -- )
    {: b:n :}
    MIXED MIXED drop b UTF16:UNITS UTF16:OFFSET b T= ;
 
-\ A unit not inside a pair comes back through its byte.
 : UNIT-TRIP ( n -- )
    {: unit:n :}
    MIXED drop MIXED unit UTF16:OFFSET UTF16:UNITS unit T= ;
 
-\ Where OFFSET is an exact inverse of UNITS: at every scalar boundary.
 : ROUND-TRIPS ( -- )
    0 BYTE-TRIP 1 BYTE-TRIP 3 BYTE-TRIP 6 BYTE-TRIP
    10 BYTE-TRIP 11 BYTE-TRIP 12 BYTE-TRIP
@@ -172,7 +158,6 @@ CAST: BL>N ( NUM:byte-len -- n )
    text tu le lu UTF8>LE= ;
 
 
-\ Each vector both ways: UTF-16LE on the left, UTF-8 on the right.
 : VECTORS ( -- )
    s" " s" " BOTH=
    s\" \x44\x00\x65\x00\x66\x00\x61\x00\x75\x00\x6C\x00\x74\x00" s" Default" BOTH=
@@ -186,7 +171,6 @@ CAST: BL>N ( NUM:byte-len -- n )
    s\" \x3D\xD8\x00\xDE" s\" \xF0\x9F\x98\x80" BOTH= ; \ U+1F600, a surrogate pair
 
 
-\ A mixed string to UTF-16LE in one buffer and back to UTF-8 in another.
 : ROUND-TRIP ( -- )
    s\" a\x00\xC3\xA9\xEF\xBF\xBF\xF0\x9F\x98\x80z" {: text:ptr tu:n :}
    LE-BUF BUF:CLEAR  LE-OUT BUF:CLEAR
@@ -195,7 +179,6 @@ CAST: BL>N ( NUM:byte-len -- n )
    LE-OUT GOT$ text tu T$= ;
 
 
-\ An append keeps the bytes already in the buffer.
 : APPENDS ( -- )
    LE-BUF BUF:CLEAR
    s\" a\x00b\x00" LE-BUF UTF16:APPEND-LE>UTF8
@@ -207,7 +190,6 @@ CAST: BL>N ( NUM:byte-len -- n )
    LE-BUF GOT$ s\" a\x00\xE9\x00" T$= ;
 
 
-\ Ill-formed UTF-16LE: an odd length, or a surrogate without its partner.
 : LE-REFUSALS ( -- )
    [: s\" \x44" LE-BUF UTF16:APPEND-LE>UTF8 ;] UTF16:E-UTF16 TTHROWSQ
    [: s\" \x44\x00\x65" LE-BUF UTF16:APPEND-LE>UTF8 ;] UTF16:E-UTF16 TTHROWSQ
@@ -225,7 +207,6 @@ CAST: BL>N ( NUM:byte-len -- n )
    [: s" a" drop -2 LE-BUF UTF16:APPEND-LE>UTF8 ;] E-STR-BOUNDS TTHROWSQ ;
 
 
-\ Every byte UTF8:NEXT answers as `raw-byte`.
 : UTF8-REFUSALS ( -- )
    [: s\" \x80" LE-BUF UTF16:APPEND-UTF8>LE ;] UTF16:E-UTF8 TTHROWSQ               \ a lone continuation
    [: s\" \xC0\x80" LE-BUF UTF16:APPEND-UTF8>LE ;] UTF16:E-UTF8 TTHROWSQ           \ U+0000, overlong
@@ -236,8 +217,7 @@ CAST: BL>N ( NUM:byte-len -- n )
    [: s" a" drop -1 LE-BUF UTF16:APPEND-UTF8>LE ;] E-STR-BOUNDS TTHROWSQ ;
 
 \ Input inside the destination's storage, which an append may move, is refused
-\ before a byte moves: the active bytes whole, an interior slice of them, and
-\ spare capacity past them, in a buffer of capacity 4.
+\ before a byte moves: the active bytes, an interior slice and spare capacity.
 : ALIASED-LE ( -- )
    LE-BUF FRESH
    s\" a\x00b\x00" BUF:N>BLEN LE-BUF BUF:APPEND-SPAN

@@ -1,20 +1,17 @@
-\ span-test.f - src/lib/span.f: the reach travels with the pointer.
-\
-\ Red first: every E-SPAN code is reached through the public word that owes it,
-\ at the boundary and one past it. The file also pins the measurement the type's
-\ shape rests on - a `span<u8>` IS accepted where a `span<cell>` is declared, and
-\ the byte reach is what makes that safe - so a later change to either the
-\ widening or the reach unit fails here and not in a consumer.
+\ span-test.f - src/lib/span.f: the reach travels with the pointer. Every E-SPAN
+\ code is reached through the public word that owes it, at the boundary and one
+\ past it. The file also pins the measurement the type's shape rests on: a
+\ `span<u8>` is accepted where a `span<cell>` is declared, and the byte reach
+\ makes that safe, so a change to either fails here and not in a consumer.
 
 require src/lib/errors.f
 require src/lib/test.f
 require src/lib/span.f
 
-\ ---- fixtures ----------------------------------------------------------------
-64 SPAN-BUFFER: ST-BUF          \ 64 bytes
+64 SPAN-BUFFER: ST-BUF
 8 SPAN-CELLS: ST-CELLS          \ 8 cells = 64 bytes of reach
 8 SPAN-BUFFER: ST-TINY          \ exactly one cell wide
-4 TYPED-BUFFER ST-IDX NUM:index \ a family element: 4 NUM:index cells
+4 TYPED-BUFFER ST-IDX NUM:index
 
 package SPANT
 public
@@ -39,7 +36,6 @@ private
 : SRC9 ( -- ptr u8 n )
    s" abcdefghi" ;
 
-\ ---- the producers publish the reach with the base ----------------------------
 : T-PRODUCERS ( -- )
    ST-BUF SPAN:LEN 64 T=
    ST-TINY SPAN:LEN 8 T=
@@ -47,7 +43,6 @@ private
    ST-CELLS SPAN:CELL-LEN 8 T=
    ST-BUF SPAN:$ nip 64 T= ;
 
-\ ---- the byte set -------------------------------------------------------------
 : T-BYTES ( -- )
    65 ST-BUF 0 SPAN:U8!
    90 ST-BUF 63 SPAN:U8!
@@ -60,7 +55,6 @@ private
    [: ST-BUF 64 SPAN:AT drop ;] E-SPAN-RANGE TTHROWS
    ST-BUF 63 SPAN:AT c@ 90 T= ;
 
-\ ---- the cell set -------------------------------------------------------------
 : T-CELLS ( -- )
    1234 ST-CELLS 7 SPAN:CELL!
    ST-CELLS 7 SPAN:CELL@ 1234 T=
@@ -72,7 +66,6 @@ private
    [: 1 ST-CELLS 8 SPAN:CELL! ;] E-SPAN-RANGE TTHROWS
    [: ST-CELLS 8 SPAN:CELL-AT drop ;] E-SPAN-RANGE TTHROWS ;
 
-\ ---- narrowing: at the reach is an answer, past it is a refusal ---------------
 : T-NARROW ( -- )
    ST-BUF 0 SPAN:SKIP SPAN:LEN 64 T=
    ST-BUF 64 SPAN:SKIP SPAN:LEN 0 T=
@@ -102,13 +95,12 @@ private
    ST-BUF 8 SPAN:U8@ 88 T=
    [: ST-BUF 8 8 SPAN:SUB 8 SPAN:U8@ drop ;] E-SPAN-RANGE TTHROWS ;
 
-\ ---- copy: all of it or none of it --------------------------------------------
 : T-COPY ( -- )
    42 ST-TINY SPAN:FILL
-   SRC8 ST-TINY SPAN:COPY                        \ exact fit
+   SRC8 ST-TINY SPAN:COPY
    ST-TINY 0 SPAN:U8@ 97 T=
    ST-TINY 7 SPAN:U8@ 104 T=
-   SRC8 drop 0 ST-TINY SPAN:COPY                 \ zero length
+   SRC8 drop 0 ST-TINY SPAN:COPY
    ST-TINY 0 SPAN:U8@ 97 T=
    [: SRC9 ST-TINY SPAN:COPY ;] E-SPAN-CAPACITY TTHROWS
    ST-TINY 0 SPAN:U8@ 97 T=                      \ no partial copy
@@ -132,13 +124,11 @@ private
    ST-BUF 7 SPAN:U8@ 9 T=
    ST-BUF 8 SPAN:U8@ 7 T= ;
 
-\ ---- the mint -----------------------------------------------------------------
 : T-MAKE ( -- )
    ST-BUF SPAN:$ SPAN:MAKE SPAN:LEN 64 T=
    ST-BUF SPAN:$ drop 0 SPAN:MAKE SPAN:LEN 0 T=
    [: ST-BUF SPAN:$ drop -1 SPAN:MAKE SPAN:LEN drop ;] E-SPAN-LENGTH TTHROWS ;
 
-\ ---- allocated spans ----------------------------------------------------------
 : T-ALLOCATION ( ptr u8 NUM:alloc-byte-len -- ) {: base:ptr bytes :}
    base bytes MEM:ALLOCATION>SPAN {: s :}
    s SPAN:LEN 37 T=
@@ -156,10 +146,9 @@ private
    s 64 SPAN:SKIP SPAN:LEN 64 T=
    s MEM:FREE-SPAN ;
 
-\ ---- one type, three instantiations -------------------------------------------
-\ u8, cell and a nominal family element (NUM:index, from a TYPED-BUFFER, which is
-\ the only checked way to hold a `ptr NUM:index` today). The generic words are the
-\ same words in all three cases.
+\ u8, cell and a nominal family element (NUM:index, from a TYPED-BUFFER, the
+\ only checked way to hold a `ptr NUM:index`): the generic words are the same
+\ words in all three.
 : T-GENERIC ( -- )
    ST-BUF 8 SPAN:SKIP SPAN:LEN 56 T=
    ST-CELLS 8 SPAN:SKIP SPAN:CELL-LEN 7 T=
@@ -168,7 +157,6 @@ private
    0 ST-IDX 4 cells SPAN:MAKE 8 SPAN:TAKE SPAN:LEN 8 T=
    [: 0 ST-IDX 4 cells SPAN:MAKE 33 SPAN:SKIP SPAN:LEN drop ;] E-SPAN-RANGE TTHROWS ;
 
-\ ---- the widening measurement the byte reach answers --------------------------
 : T-WIDENING ( -- )
    \ a byte span IS accepted where a cell span is declared (u8 widens into cell)
    s" STW-OPEN ( SPAN:span<u8> n -- n ) SPANT:CELL-READ" CHECK-QUIET-CANDIDATE! -1 T=
@@ -181,17 +169,12 @@ private
    [: ST-TINY 1 CELL-READ drop ;] E-SPAN-RANGE TTHROWS
    \ the other direction stays a checker refusal at the element read
    s" STW-CU ( SPAN:span<cell> n -- u8 ) SPAN:U8@" CHECK-QUIET-CANDIDATE! 0 T=
-   \ THE MINT RUNS THE SAME WIDENING AS THE CALL BOUNDARY ABOVE, in the same
-   \ direction: `SPAN:MAKE` binds its element from the pointer it is given, so a
-   \ byte pointer mints a `span<u8>` and that span widens into a declared
-   \ `span<cell>` exactly as STW-OPEN's argument does; the reverse narrowing is
-   \ refused in both places. Measured once the open `span<t>` row became
-   \ placeable (dot habu-place-an-open-d7bcba49): while an open instance stayed
-   \ one opaque cell, the mint answered the two directions the other way round,
-   \ which disagreed with STW-OPEN on the same pair of types. Two concrete
-   \ pointees still never unify (`( ptr cell -- u8 ) c@` is refused), so nothing
-   \ here weakens pointer strictness, and SPAN:MAKE stays audited to src/lib/ and
-   \ src/ because the reach it takes is unchecked.
+   \ SPAN:MAKE binds its element from the pointer it is given, so a byte pointer
+   \ mints a `span<u8>` that widens into a declared `span<cell>` exactly as
+   \ STW-OPEN's argument does; the reverse narrowing is refused in both places.
+   \ Two concrete pointees never unify (`( ptr cell -- u8 ) c@` is refused), and
+   \ SPAN:MAKE stays audited to src/lib/ and src/: the reach it takes is
+   \ unchecked.
    s" STW-MINT ( ptr u8 n -- SPAN:span<cell> ) SPAN:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
    s" STW-MINT2 ( ptr cell n -- SPAN:span<u8> ) SPAN:MAKE" CHECK-QUIET-CANDIDATE! 0 T=
    s" STW-PTRSTRICT ( ptr cell -- u8 ) c@" CHECK-QUIET-CANDIDATE! 0 T=
@@ -199,11 +182,11 @@ private
    s" STW-BARE ( ptr u8 n -- n ) SPAN:LEN" CHECK-QUIET-CANDIDATE! 0 T=
    s" STW-PTR ( SPAN:span<u8> -- u8 ) c@" CHECK-QUIET-CANDIDATE! 0 T= ;
 
-\ An OPEN instantiation is a value like any other: `span`'s parameter occurs only
-\ as a pointee, so every instance is two cells and the checker places the row
-\ whatever the element is (dot habu-place-an-open-d7bcba49). A local captures it
-\ and a transport moves it whole; only a family whose width READS its open
-\ argument stays one conservative cell.
+\ An open instantiation is a value like any other: `span`'s parameter occurs
+\ only as a pointee, so every instance is two cells and the checker places the
+\ row whatever the element is. A local captures it and a transport moves it
+\ whole; only a family whose width reads its open argument stays one
+\ conservative cell.
 : T-OPEN-TRANSPORT ( -- )
    s" STO-LOCAL ( SPAN:span<a> -- n ) {: s :} 0" CHECK-QUIET-CANDIDATE! -1 T=
    s" STO-DUP ( SPAN:span<a> -- n ) dup SPAN:LEN nip" CHECK-QUIET-CANDIDATE! -1 T=

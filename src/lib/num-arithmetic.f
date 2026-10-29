@@ -1,57 +1,23 @@
-\ num-arithmetic.f - NUM closed, dimensionally-valid arithmetic.
-\ Reopens package NUM (slice 2); depends on
-\ src/lib/num-types.f (slice 1) and adds no roles or overloads.
-\
-\ This file is the COMPLETE admitted role algebra. The algebra is closed: an
-\ omitted, reversed, or cross-unit pair is statically unavailable, because the
-\ only inputs each word accepts are its exact nominal roles. There is no generic
-\ raw-`n` arithmetic and no extra overload; the type system IS the table. New
-\ combinations require a consumer and dimensionally valid units; they are
-\ never inferred from the shared one-cell representation.
-\
-\ Result discipline: a role-changing operation that can fail numerically returns
-\ `numeric-result<role>` - `ok role` on success, or a payloadless `overflow`
-\ (extent/offset/product/round-up past the machine max), `underflow` (a
-\ subtraction/retreat/reversed-distance below zero), `misaligned` (a byte
-\ extent/offset that is not a whole cell count), or `zero` (an extent-by-extent
-\ division whose unit-size divisor is a zero-length extent). Failure is a VALUE,
-\ never a throw; consumers throw the matching `E-NUM-*` code at their own
-\ boundary. The total positive-divisor DIV/REM operations take the
-\ `positive-divisor` role, so a zero divisor is STATICALLY impossible: they are
-\ total and return their role directly with no error variant. The extent-by-extent
-\ DIV-BYTES-CEIL/-FLOOR unit counters instead take a `byte-len` unit size - an
-\ extent, which admits zero - so a zero-size unit cannot be excluded by the type
-\ and is returned as the `zero` value; the quotient is at most the dividend
-\ extent, so it never overflows.
-\
-\ Arithmetic mints no role itself. Every success
-\ value is routed through slice 1's public validator (`BYTE-LEN`, `ITEM-COUNT`,
-\ `CELL-COUNT`, `INDEX`, `BYTE-OFF`, `CELL-OFF`), which owns the audited
-\ `MINT-*`; the raw kernels only decide overflow/underflow/misalignment BEFORE
-\ the validated value is built. The only new audited boundaries here are the
-\ six proof-erasure projections that read a role's raw cell for the arithmetic
-\ (slice 1 shipped `BYTE-LEN>N` and `CELL-COUNT>N`; the other six families need
-\ the same read). They have no public inverse.
-\
-\ No `require src/lib/memory.f`: MEM:ALLOC-* consumes NUM alloc roles, so a
-\ dependency would be a cycle; CELL-BYTES-N mirrors the machine cell size that
-\ src/lib/memory.f also names as MEM-CELL-BYTES, and MAX-CELL-N is slice 1's bound.
+\ num-arithmetic.f - closed, dimensionally valid arithmetic: reopens package NUM
+\ after src/lib/num-types.f and adds no roles or overloads. These words are the
+\ whole admitted role algebra; an omitted, reversed or cross-unit pair is
+\ statically unavailable. A fallible role-changing operation answers
+\ numeric-result<role>, never a throw. Every success value goes through
+\ num-types.f's public validator, which owns the audited MINT-*.
 
 require src/lib/num-types.f
 
 package NUM
 private
 
-\ ---- internal invariant code (never reachable; see OK-* extractors) -----------
 -5406 constant E-NUM-TOTALITY   \ a total op's validator saw a non-ok result
 
-\ ---- machine cell size (mirrors src/lib/memory.f MEM-CELL-BYTES; cycle-free) -------
+\ No require src/lib/memory.f: MEM:ALLOC-* consumes NUM alloc roles, so it would
+\ be a cycle. CELL-BYTES-N mirrors its MEM-CELL-BYTES.
 1 cells constant CELL-BYTES-N
 
-\ ---- proof-erasure projections: role -> raw cell (no public inverse) ----------
-\ Read a validated role's cell so the raw kernels can do the arithmetic. Slice 1
-\ already ships BYTE-LEN>N / CELL-COUNT>N; these six complete the set. Private to
-\ the owning package, checked casts like the slice 1 projections, and tested.
+\ Proof-erasure projections for the raw kernels: private checked casts with no
+\ public inverse, like num-types.f's BYTE-LEN>N and CELL-COUNT>N.
 CAST: ITEM-COUNT>N ( item-count -- n )
 CAST: INDEX>N ( index -- n )
 CAST: BYTE-OFF>N ( byte-off -- n )
@@ -59,34 +25,35 @@ CAST: CELL-OFF>N ( cell-off -- n )
 CAST: ALIGNMENT>N ( alignment -- n )
 CAST: POSITIVE-DIVISOR>N ( positive-divisor -- n )
 
-\ ---- payloadless failure constructors (readable over the escaped ctor names) --
+\ Failure arms: overflow past the machine max, underflow below zero, misaligned
+\ (a byte extent or offset not a whole cell count), zero (a zero-length unit
+\ extent as divisor).
 : A-OVER     ( -- numeric-result<a> ) NUM-NUMERIC--RESULT:OVERFLOW ;
 : A-UNDER    ( -- numeric-result<a> ) NUM-NUMERIC--RESULT:UNDERFLOW ;
 : A-MISALIGN ( -- numeric-result<a> ) NUM-NUMERIC--RESULT:MISALIGNED ;
 : A-ZERO     ( -- numeric-result<a> ) NUM-NUMERIC--RESULT:ZERO ;
 
-\ ---- raw checked scalar kernels (nonnegative cells; role-free) -----------------
 \ Each returns the failure predicate as a real bool from a comparison; the caller
 \ recomputes the value only on the success path (through a validator).
-: SUM-OVF? ( n n -- bool )              \ does a+b exceed the machine max?
+: SUM-OVF? ( n n -- bool )
    {: a:n b:n :} a MAX-CELL-N b - > ;
-: DIFF-UNF? ( n n -- bool )             \ does a-b drop below zero?
+: DIFF-UNF? ( n n -- bool )
    {: a:n b:n :} a b < ;
-: PROD-OVF? ( n n -- bool )             \ does a*b exceed the machine max?
+: PROD-OVF? ( n n -- bool )
    {: a:n b:n :} b 0= if 0 0 > exit then a MAX-CELL-N b / > ;
-: WHOLE? ( n n -- bool )                \ is v a whole multiple of unit?
+: WHOLE? ( n n -- bool )
    {: v:n u:n :} v u mod 0= ;
-: ALIGNED? ( n n -- bool )              \ is v aligned to power-of-two a?
+: ALIGNED? ( n n -- bool )
    {: v:n a:n :} v a 1- and 0= ;
 : ROUND-UP ( n n -- n bool )            \ round v up to power-of-two a; value + overflow
    {: v:n a:n :}
-   v a 1- and 0= if v  0 0 >  exit then          \ already aligned: no round-up, no overflow
-   a  v a 1- and  -  {: delta:n :}                \ distance to the next multiple (1..a-1)
-   v delta +  v MAX-CELL-N delta - >  ;           \ rounded value, overflow when v+delta > max
+   v a 1- and 0= if v  0 0 >  exit then
+   a  v a 1- and  -  {: delta:n :}
+   v delta +  v MAX-CELL-N delta - >  ;
 : CEIL-QUOT ( n n -- n )                \ ceil(v / u) for u>0, v>=0 (0 when v=0)
    {: v:n u:n :} v 0= if 0 exit then v 1- u / 1+ ;
 
-\ ---- ok extractors for the total ops (the non-ok arms are proven unreachable) --
+\ The total ops' non-ok arms are unreachable.
 : OK-BYTE-LEN ( numeric-result<byte-len> -- byte-len )
    MATCH numeric-result
       ok OF ENDOF                            negative OF E-NUM-TOTALITY throw ENDOF
@@ -114,19 +81,15 @@ CAST: POSITIVE-DIVISOR>N ( positive-divisor -- n )
 
 public
 
-\ ---- the package's only public projection --------------------------------------
-\ An index is a nonnegative ordinal and nothing consumes one directly: a found
-\ position drives pointer and length arithmetic (a+ix, u-ix-1), a bound test
-\ against a raw extent, or a mint into a foreign index role such as the engine's
-\ `idx`. Fifteen files used to reopen NUM and publish a projection of their own,
-\ which put twenty-eight foreign words in this package's public surface and left
-\ the namespace unsealable. This is the one public way out, declared where the
-\ private cast lives. It erases a proof; it cannot create one, because the mints
-\ have no public counterpart.
+\ ORDINAL is the package's only public projection. Nothing consumes an index
+\ directly: a found position drives pointer and length arithmetic, a bound test
+\ against a raw extent, or a mint into a foreign index role such as the
+\ engine's `idx`. A projection per consumer would put foreign words in NUM's
+\ public surface and leave it unsealable. It erases a proof and cannot create
+\ one, because the mints have no public counterpart.
 : ORDINAL ( index -- n )
    INDEX>N ;
 
-\ ---- strict bounds and index -> byte offset -----------------------------------
 : INDEX= ( index index -- bool )
    {: a:index b:index :}
    a INDEX>N b INDEX>N = ;
@@ -142,7 +105,6 @@ public
    {: off:byte-off len:byte-len :}
    off BYTE-OFF>N len BYTE-LEN>N < ;
 
-\ ---- extent + extent (overflow-checked) ---------------------------------------
 : ADD-BYTES ( byte-len byte-len -- numeric-result<byte-len> )
    {: a:byte-len b:byte-len :}
    a BYTE-LEN>N b BYTE-LEN>N {: x:n y:n :}
@@ -156,7 +118,6 @@ public
    a CELL-COUNT>N b CELL-COUNT>N {: x:n y:n :}
    x y SUM-OVF? if A-OVER else x y + CELL-COUNT then ;
 
-\ ---- offset + extent advance (overflow-checked) -------------------------------
 : ADVANCE-BYTE-OFF ( byte-off byte-len -- numeric-result<byte-off> )
    {: o:byte-off d:byte-len :}
    o BYTE-OFF>N d BYTE-LEN>N {: x:n y:n :}
@@ -170,7 +131,6 @@ public
    o INDEX>N d ITEM-COUNT>N {: x:n y:n :}
    x y SUM-OVF? if A-OVER else x y + INDEX then ;
 
-\ ---- extent - extent (underflow-checked) --------------------------------------
 : SUB-BYTES ( byte-len byte-len -- numeric-result<byte-len> )
    {: a:byte-len b:byte-len :}
    a BYTE-LEN>N b BYTE-LEN>N {: x:n y:n :}
@@ -184,7 +144,6 @@ public
    a CELL-COUNT>N b CELL-COUNT>N {: x:n y:n :}
    x y DIFF-UNF? if A-UNDER else x y - CELL-COUNT then ;
 
-\ ---- offset - extent retreat (underflow-checked) ------------------------------
 : RETREAT-BYTE-OFF ( byte-off byte-len -- numeric-result<byte-off> )
    {: o:byte-off d:byte-len :}
    o BYTE-OFF>N d BYTE-LEN>N {: x:n y:n :}
@@ -198,7 +157,6 @@ public
    o INDEX>N d ITEM-COUNT>N {: x:n y:n :}
    x y DIFF-UNF? if A-UNDER else x y - INDEX then ;
 
-\ ---- offset - offset distance -> extent (reversed-operand underflow) -----------
 : BYTE-DISTANCE ( byte-off byte-off -- numeric-result<byte-len> )
    {: a:byte-off b:byte-off :}
    a BYTE-OFF>N b BYTE-OFF>N {: x:n y:n :}
@@ -212,7 +170,6 @@ public
    a INDEX>N b INDEX>N {: x:n y:n :}
    x y DIFF-UNF? if A-UNDER else x y - ITEM-COUNT then ;
 
-\ ---- count x size multiplication (overflow-checked) ---------------------------
 : MUL-ITEMS ( item-count item-count -- numeric-result<item-count> )
    {: a:item-count b:item-count :}
    a ITEM-COUNT>N b ITEM-COUNT>N {: x:n y:n :}
@@ -226,7 +183,8 @@ public
    s CELL-COUNT>N c ITEM-COUNT>N {: x:n y:n :}
    x y PROD-OVF? if A-OVER else x y * CELL-COUNT then ;
 
-\ ---- total positive-divisor division / remainder (no error variant) -----------
+\ DIV and REM take a positive-divisor, so a zero divisor is statically
+\ impossible and they answer their role with no error arm.
 : DIV-BYTES ( byte-len positive-divisor -- byte-len )
    {: a:byte-len d:positive-divisor :}
    a BYTE-LEN>N d POSITIVE-DIVISOR>N / BYTE-LEN OK-BYTE-LEN ;
@@ -246,15 +204,10 @@ public
    {: a:cell-count d:positive-divisor :}
    a CELL-COUNT>N d POSITIVE-DIVISOR>N mod CELL-COUNT OK-CELL-COUNT ;
 
-\ ---- extent / unit-extent -> unit count (zero-length unit refuses) -------------
-\ "How many units of size S fit in extent E": dimensionally bytes / bytes = a
-\ dimensionless item-count, so both operands are `byte-len` and the result is an
-\ `item-count`. The unit size S is itself an extent and `byte-len` admits zero, so
-\ a zero-size unit is representable and cannot be excluded by the type; it is
-\ returned as the `zero` value (division-by-zero as a value, per the table style),
-\ never a throw. The quotient is at most E, so it never overflows. These are
-\ distinct from the unit-PRESERVING DIV-BYTES ( byte-len positive-divisor --
-\ byte-len ), which keeps the byte unit and forbids a zero divisor statically.
+\ Units of size S in extent E: bytes / bytes is a dimensionless item-count.
+\ byte-len admits zero, so a zero-size unit answers the `zero` value, never a
+\ throw; the quotient is at most E, so it never overflows. DIV-BYTES keeps the
+\ byte unit and forbids a zero divisor statically.
 : DIV-BYTES-CEIL ( byte-len byte-len -- numeric-result<item-count> )
    {: e:byte-len s:byte-len :}
    e BYTE-LEN>N s BYTE-LEN>N {: x:n u:n :}
@@ -264,7 +217,6 @@ public
    e BYTE-LEN>N s BYTE-LEN>N {: x:n u:n :}
    u 0= if A-ZERO else x u / ITEM-COUNT then ;
 
-\ ---- cell <-> byte conversions ------------------------------------------------
 : CELLS>BYTES ( cell-count -- numeric-result<byte-len> )
    CELL-COUNT>N {: v:n :}
    v CELL-BYTES-N PROD-OVF? if A-OVER else v CELL-BYTES-N * BYTE-LEN then ;
@@ -278,7 +230,6 @@ public
    BYTE-OFF>N {: v:n :}
    v CELL-BYTES-N WHOLE? if v CELL-BYTES-N / CELL-OFF else A-MISALIGN then ;
 
-\ ---- align-up (overflow-checked) ----------------------------------------------
 : ALIGN-UP-BYTES ( byte-len alignment -- numeric-result<byte-len> )
    {: v:byte-len a:alignment :}
    v BYTE-LEN>N a ALIGNMENT>N ROUND-UP if drop A-OVER else BYTE-LEN then ;
@@ -286,25 +237,14 @@ public
    {: v:byte-off a:alignment :}
    v BYTE-OFF>N a ALIGNMENT>N ROUND-UP if drop A-OVER else BYTE-OFF then ;
 
-\ ---- pointer advance over a validated offset -----------------------------------
-\ The one public word here that touches a pointer. Every other NUM word is
-\ pure arithmetic on roles; this one exists because the byte primitives are
-\ axiomatised on raw numbers (`BYTE+`, `BYTE@`, `BYTE-COPY` all take a bare `n`),
-\ so without it every caller must erase a validated offset through a projection
-\ of its own just to form an address. Publishing the advance here keeps the role
-\ at the boundary and keeps the erasure inside NUM, next to the algebra that
-\ produced the offset.
-\
-\ IT DOES NOT PROVE BOUNDS. Advancing is not permission to read: nothing in this
-\ word knows the extent the pointer belongs to, and the offset role carries no
-\ extent. The caller must still settle the ordinal question FIRST - typically
-\ ADVANCE-BYTE-OFF for representability then BYTE-OFF-IN-LEN? against the owning
-\ extent - and only advance once that answered yes. The name mirrors the raw
-\ `BYTE+` primitive on purpose: same operation, offset role preserved.
+\ The one public NUM word that touches a pointer: the byte primitives take a
+\ bare n, so without it every caller would erase a validated offset through a
+\ projection of its own. It does not prove bounds: the offset role carries no
+\ extent, so the caller settles that first (ADVANCE-BYTE-OFF, then
+\ BYTE-OFF-IN-LEN? against the owning extent).
 : BYTE+ ( ptr u8 byte-off -- ptr u8 )
    BYTE-OFF>N + ;
 
-\ ---- alignment predicates (no overflow/underflow class) -----------------------
 : BYTES-ALIGNED? ( byte-len alignment -- bool )
    {: v:byte-len a:alignment :}
    v BYTE-LEN>N a ALIGNMENT>N ALIGNED? ;

@@ -12,7 +12,7 @@ require src/lib/ieee754.f
 \ builders (SB-U / SB-HEX / SB-HEX-WIDTH / SB-INT / SB-FIX) by their bare package-local names.
 package FMT
 
-: T-U ( n ptr u8 n -- ) {: a:ptr u :}            \ SB-U n == a/u
+: T-U ( n ptr u8 n -- ) {: a:ptr u :}
    SB-RESET SB-U  SB$ a u T$= ;
 : T-HEX ( n ptr u8 n -- ) {: a:ptr u :}
    SB-RESET s" pre:" SB-APPEND SB-HEX  SB$ a u T$= ;
@@ -42,8 +42,7 @@ package FMT
 : T-PFN ( r n ptr u8 n -- ) {: a:ptr u:n :}      \ ( value places expect )
    F.N   SB$ a u T$= ;
 
-\ Fail-closed negative cases (quotation bodies for TTHROWSQ, each ( -- )).
-: NEG-U-CASE ( -- )        SB-RESET -1 SB-U ;                            \ unsigned rejects negative
+: NEG-U-CASE ( -- )        SB-RESET -1 SB-U ;
 : OVERFLOW-FIX-CASE ( -- ) SB-RESET 1000000000000000000.0 2 SB-FIX ;     \ 1e18 * 10^2 overflows i64
 : OVERFLOW-2P63-CASE ( -- ) SB-RESET 4611686018427387904.0 2.0 f* 0 SB-FIX ;  \ boundary is exclusive at 2^63
 : SCALED-LOW-CASE ( -- ) 1 -1 SB-SCALED ;
@@ -77,7 +76,7 @@ package FMT
    42    s" 42"     T-INT
    -123  s" -123"   T-INT
    0     s" 0"      T-INT
-   STR-MAX-I64 s" 9223372036854775807" T-INT  \ i64 max
+   STR-MAX-I64 s" 9223372036854775807" T-INT
    STR-MIN-I64 s" -9223372036854775808" T-INT \ i64 min: no positive magnitude, table-emitted
    STR-MIN-I64 1+ s" -9223372036854775807" T-INT \ its neighbour, which negates without overflowing
    5500 3 s" pre:5.5" T-SCALED
@@ -126,7 +125,7 @@ package FMT
    STR-MIN-I64          T-PINT             \ the table-emitted magnitude prints too
    2.5     1 s" 2.5"    T-PFN
    \ fail-closed domain guards
-   [: NEG-U-CASE ;]        E-FMT-DOMAIN   TTHROWSQ  \ negative into unsigned -> E-FMT-DOMAIN
+   [: NEG-U-CASE ;]        E-FMT-DOMAIN   TTHROWSQ
    SB-RESET s" carry" SB-APPEND
    [: -1 SB-HEX ;] E-FMT-DOMAIN TTHROWSQ
    SB$ s" carry" T$=
@@ -138,7 +137,7 @@ package FMT
    SB$ s" carry" T$=
    [: 0 17 SB-HEX-WIDTH ;] E-FMT-DOMAIN TTHROWSQ
    SB$ s" carry" T$=
-   [: OVERFLOW-FIX-CASE ;]  E-FMT-OVERFLOW TTHROWSQ \ scaled overflow -> E-FMT-OVERFLOW
+   [: OVERFLOW-FIX-CASE ;]  E-FMT-OVERFLOW TTHROWSQ
    [: OVERFLOW-2P63-CASE ;] E-FMT-OVERFLOW TTHROWSQ \ exactly 2^63 does not fit i64
    [: SCI-LOW-CASE ;] E-FMT-DOMAIN TTHROWSQ
    [: SCI-HIGH-CASE ;] E-FMT-DOMAIN TTHROWSQ

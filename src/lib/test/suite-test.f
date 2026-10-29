@@ -205,7 +205,7 @@ T-REPORT
 
 ;package
 
-\ Grammar regression: block terminators are FOO … ;FOO and GROUP takes a
+\ Block terminators are FOO … ;FOO and GROUP takes a
 \ positional SEQ|PARA mode before the name. Reopen package TEST to reach the
 \ private ;SUITE? recognizer and the mode/name validators.
 package TEST
@@ -268,20 +268,16 @@ variable T-SUBJ-RC
 
 T-RESET
 
-\ terminator recognizer: qualified TEST:;SUITE and bare ;SUITE (under `using TEST`)
-\ both match; END-SUITE/END-GROUP were never the spelling.
 s" TEST:;SUITE"    ;SUITE? TTRUE
 s" ;SUITE"         ;SUITE? TTRUE
 s" TEST:END-SUITE" ;SUITE? TFALSE
 s" TEST:END-GROUP" ;SUITE? TFALSE
 
-\ GROUP mode token maps SEQ/PARA; missing or unknown mode throws E-SUITE-MODE
 s" SEQ"  MODE-OF GROUP-SEQUENTIAL T=
 s" PARA" MODE-OF GROUP-PARALLEL   T=
 ' T-MODE-BAD   E-SUITE-MODE TTHROWS
 ' T-MODE-EMPTY E-SUITE-MODE TTHROWS
 
-\ GROUP name rejects reserved DSL keywords and empty names (E-SUITE-NAME)
 s" GROUP"       RESERVED-NAME? TTRUE
 s" SUITE-STDIN" RESERVED-NAME? TTRUE
 s" ;SUITE"      RESERVED-NAME? TTRUE
@@ -299,10 +295,8 @@ s" ;SUITE"            ROW-KEYWORD? TFALSE
 s" a.f"               ROW-KEYWORD? TFALSE
 s" seq"               ROW-KEYWORD? TFALSE
 
-\ Chain FH: an os-memory row without ;SUITE took `SUITE shadow-lint <paths>` as
-\ its own arguments, so the shadow-lint row was never registered and the suite
-\ count fell by one with nothing naming the missing terminator. The row now
-\ refuses by name and never reaches the count.
+\ A row without ;SUITE that would take the next `SUITE ...` as its arguments
+\ refuses by name, so no row drops silently from the count.
 s" TEST:RESET TEST:SUITE os-memory a.f TEST:SUITE next b.f TEST:;SUITE TEST:ITEMS-REGISTERED ."
 s" os-memory" T-ROW-REFUSED
 T-SUBJ-OUT$ s" 1" CONTAINS? TFALSE
@@ -317,7 +311,6 @@ T-SUBJ-OUT$ s" 2" CONTAINS? TTRUE
 \ A row that reaches the end of input is the same refusal.
 s" TEST:RESET TEST:SUITE row-eof a.f" s" row-eof" T-ROW-REFUSED
 
-\ One case per remaining row keyword.
 s" TEST:RESET TEST:SUITE row-wb a.f TEST:WHITEBOX-SUITE next b.f TEST:;SUITE"
 s" row-wb" T-ROW-REFUSED
 s" TEST:RESET TEST:SUITE row-stdin a.f TEST:SUITE-STDIN next DATA b.f TEST:;SUITE"
@@ -335,7 +328,6 @@ s" TEST:RESET TEST:SUITE empty a.f ENTRIES TEST:;SUITE"
 T-RUN-SUBJECT
 T-SUBJ-RC @ T-THROW-RC T=
 
-\ positive end-to-end: SEQ and PARA groups set the mode (read via GROUP-MODE@)
 RESET
 GROUP SEQ grp-seq
 GROUP-CUR @ GROUP-MODE@ GROUP-SEQUENTIAL T=

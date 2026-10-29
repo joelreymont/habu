@@ -1,17 +1,8 @@
-\ sort.f - in-place, fully checked heapsort of cell arrays with a comparator.
-\
-\ SORT:SORT! ( ptr a n [ a a -- bool ] -- ) sorts any cell array using a "less-than"
-\ comparator quotation (true if the first element should precede the second):
-\ floats with [: f< ;], ints with [: < ;], descending with the reversed test.
-\ Binary heapsort: O(n log n), in place, no scratch buffer. SORT:FSORT! is the
-\ float-ascending convenience. The comparator is threaded as an ordinary checked
-\ higher-order parameter — the checker verifies quotation effects through the
-\ call chain and the sift-down loop. Raw indexed access (array.f's A-SUM idiom);
-\ the algorithm keeps indices in bounds; len <= 1 is a no-op. Core + float deps.
-\
-\ The module lives in `package SORT`. External callers use the qualified public
-\ API (SORT:SORT!, SORT:FSORT!, and SORT:FX@, the float-cell read); the heap
-\ cursor and sift-down helpers are package-private.
+\ sort.f - in-place checked heapsort of cell arrays, package SORT: O(n log n), no
+\ scratch buffer; len <= 1 is a no-op. SORT! takes a less-than comparator ([: f< ;]
+\ for floats, [: < ;] for ints, the reversed test for descending); FSORT! is the
+\ float-ascending form and FX@ the float-cell read. Raw indexed access stays in
+\ bounds by construction (array.f's A-SUM idiom). The heap helpers are private.
 
 package SORT
 
@@ -49,14 +40,13 @@ public
 
 : SORT! ( ptr a n [ a a -- bool ] -- ) {: a:ptr len q :}
    len 1 <= if exit then
-   len 2 / 1 -                             \ build the heap from the last parent down
+   len 2 / 1 -
    begin dup 0 >= while {: root :} a len root q HS-SIFT root 1 - repeat drop
-   len 1 -                                 \ move the extreme to the tail, shrink, re-sift
+   len 1 -
    begin dup 1 >= while {: tail :}
       a 0 tail FX-SWAP a tail 0 q HS-SIFT tail 1 -
    repeat drop ;
 
-\ Float-ascending convenience.
 : FSORT! ( ptr r n -- )  [: f< ;] SORT! ;
 
 ;package

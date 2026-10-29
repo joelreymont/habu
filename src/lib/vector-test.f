@@ -19,23 +19,17 @@ create VECT-REL-VEC VEC:HEADER-CELLS cells allot   \ dedicated header for releas
 : VECT-CHECK-REJECTS ( ptr u8 n -- )
    CHECK-QUIET-CANDIDATE! 0 T= ;
 
-\ White-box count reader, declared at this test's own scope: a length/capacity
-\ assertion compares against a literal n. Checked cast, and projection out of a
-\ cell family needs no ownership (checker.f CAST-OWNER?). A pushed index is read
-\ through the package's own public NUM:ORDINAL. (VEC's own ITEM-COUNT>N /
-\ INDEX>N stay VEC-private.)
-CAST: VECT-IC>RAW ( NUM:item-count -- n )    \ typed length/capacity for T=
+\ Projection out of a cell family needs no ownership (checker.f CAST-OWNER?).
+CAST: VECT-IC>RAW ( NUM:item-count -- n )
 
-: VECT-TLEN ( ptr a -- n )  VEC:LEN@ VECT-IC>RAW ;   \ typed length as raw n
-: VECT-TCAP ( ptr a -- n )  VEC:CAP@ VECT-IC>RAW ;   \ typed capacity as raw n
-: VECT-TAT  ( ptr a n -- a ) VEC:N>INDEX VEC:@ ;              \ typed fetch at a raw index
-: VECT-TPUT ( a ptr a n -- ) VEC:N>INDEX VEC:! ;              \ typed store at a raw index
+: VECT-TLEN ( ptr a -- n )  VEC:LEN@ VECT-IC>RAW ;
+: VECT-TCAP ( ptr a -- n )  VEC:CAP@ VECT-IC>RAW ;
+: VECT-TAT  ( ptr a n -- a ) VEC:N>INDEX VEC:@ ;
+: VECT-TPUT ( a ptr a n -- ) VEC:N>INDEX VEC:! ;
 
-\ dispose-then-init the shared typed header at raw cap n: re-init of a live header
-\ now rejects, so each test opens from a disposed header.
+\ Re-init of a live header is refused, so each test opens from a disposed one.
 : VECT-T-FRESH ( n -- )  VECT-VEC VEC:DISPOSE  VECT-VEC swap VEC:N>ITEM VEC:INIT ;
 
-\ the same for the release/dispose lifecycle header
 : VECT-REL-INIT ( n -- )
    VECT-REL-VEC VEC:DISPOSE
    VECT-REL-VEC swap VEC:N>ITEM VEC:INIT ;
@@ -148,8 +142,8 @@ variable VECT-TSUM   variable VECT-TIXSUM
    2 VECT-T-FRESH
    3 VEC:N>ITEM VECT-VEC VEC:LEN! ;
 
-: VECT-T-CAP-ZERO ( -- )   0 VECT-T-FRESH ;               \ zero capacity allocation
-: VECT-T-CAP-OVER ( -- )   MEM-MAX-CELLS 1 + VECT-T-FRESH ; \ overflowing capacity
+: VECT-T-CAP-ZERO ( -- )   0 VECT-T-FRESH ;
+: VECT-T-CAP-OVER ( -- )   MEM-MAX-CELLS 1 + VECT-T-FRESH ;
 : VECT-T-ENSURE-HIGH ( -- )                               \ a need above the cell ceiling
    2 VECT-T-FRESH  VECT-VEC MEM-MAX-CELLS 1 + VEC:N>ITEM VEC:ENSURE ;
 : VECT-T-RESIZE-ZERO ( -- )
@@ -184,9 +178,8 @@ variable VECT-TSUM   variable VECT-TIXSUM
    2 >COUNT MEM-ALLOC-CELLS {: reuse:ptr :}
    reuse old = TTRUE ;
 
-\ A second dispose is a proved no-op. The header layout is data pointer at cell 0,
-\ length at cell 1: a dead header from an earlier image can still hold its old data
-\ address and length, and a dispose clears both without releasing anything.
+\ A dead header from an earlier image can still hold its old data address (cell
+\ 0) and length (cell 1); a dispose clears both without releasing anything.
 : VECT-T-DISPOSE-DOUBLE ( -- )
    2 VECT-REL-INIT
    VECT-REL-VEC VEC:DISPOSE  VECT-REL-VEC VEC:DISPOSE
@@ -220,16 +213,16 @@ variable VECT-TSUM   variable VECT-TIXSUM
    VECT-REL-VEC 0 VECT-TAT 41 T=
    VECT-REL-VEC 1 VECT-TAT 42 T= ;
 
-: VECT-T-DISPOSE-USE ( -- )                            \ access after dispose rejects
+: VECT-T-DISPOSE-USE ( -- )
    2 VECT-REL-INIT  VECT-REL-VEC VEC:DISPOSE
    VECT-REL-VEC 0 VECT-TAT drop ;
-: VECT-T-DISPOSE-USE-PUSH ( -- )                       \ push after dispose rejects
+: VECT-T-DISPOSE-USE-PUSH ( -- )
    2 VECT-REL-INIT  VECT-REL-VEC VEC:DISPOSE
    9 VECT-REL-VEC VEC:PUSH drop ;
-: VECT-T-DISPOSE-USE-RESIZE ( -- )                     \ resize after dispose rejects
+: VECT-T-DISPOSE-USE-RESIZE ( -- )
    2 VECT-REL-INIT  VECT-REL-VEC VEC:DISPOSE
    VECT-REL-VEC 5 VEC:N>ITEM VEC:RESIZE ;
-: VECT-T-INIT-LIVE-REJECTS ( -- )                      \ re-init of a live header rejects
+: VECT-T-INIT-LIVE-REJECTS ( -- )
    2 VECT-REL-INIT                                     \ header now owns a live mapping
    VECT-REL-VEC 2 VEC:N>ITEM VEC:INIT ;               \ re-init without dispose throws (else old mapping leaks)
 

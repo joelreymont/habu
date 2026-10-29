@@ -13,8 +13,6 @@ $10FFFF constant SCALAR-MAX
 $D800 constant SURROGATE-FIRST
 $DFFF constant SURROGATE-LAST
 
-\ Binary search of a class table: count sorted, disjoint, inclusive ranges,
-\ each a first and last cell pair.
 : RANGE-SEARCH ( n ptr n n -- bool )
    {: cp:n ranges:ptr count:n :}
    0 count

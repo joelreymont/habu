@@ -108,7 +108,6 @@ package FMATH-TEST
    snan NAN FMATH:FMAX IEEE754:F64>BITS $0008000000000000 and 0<> TTRUE
    NAN snan FMATH:FMAX IEEE754:F64>BITS $0008000000000000 and 0<> TTRUE ;
 
-\ Both argument orders give want, compared by bits: f= cannot tell -0 from +0.
 : FMIN-EITHER ( r r r -- )
    {: a:r b:r want:r :}
    a b FMATH:FMIN IEEE754:F64>BITS want IEEE754:F64>BITS T=

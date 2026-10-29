@@ -1,32 +1,9 @@
 \ signal.f - process signals delivered to a program on a self-pipe.
-\
-\ No Forth word is async-signal-safe, so the only code the kernel runs in a
-\ handler is the stub the engine bakes (src/habu/crash.f EMIT-SIGNAL-HANDLER):
-\ it writes the four-byte signal number to whatever descriptor the process-wide
-\ fd word holds, and a program reads it in ordinary checked code.
-\
-\ STORAGE CLASS. PROCESS-WIDE. One pipe, one caught set and one armed fd word
-\ for the whole process. INIT reads the engine's two published SIGNAL-ABI cells
-\ in the MAIN task - a spawned task's region carries neither - and keeps them,
-\ so every later arm and disarm reaches the same word by its absolute address.
-\ INIT also records the task that ran it: CATCH, IGNORE, IGNORED? and RELEASE
-\ share SA-ACT, SA-OLD and the caught set, so they answer to that task alone.
-\ FD, PENDING?, WAIT and TAKE touch none of the three and are callable from any
-\ task; the four-byte staging span WAIT and TAKE read into is a TASK:+USER row,
-\ so two tasks reading the read end never share it.
-\
-\ WAIT and PENDING? wait on the AIO loop: AIO:START first, else E-AIO-STATE.
-\ TAKE reads without waiting and runs no loop, for a program with a poll of
-\ its own.
-\
-\ HOSTS. Linux and macOS. The signal numbers, SA_RESTART and the
-\ struct sigaction layout all differ between the two and are selected here the
-\ way src/lib/process.f O-NONBLOCK, src/lib/fs.f and src/lib/process-pty-io.f select theirs.
-\ An unknown target reaches no arm and INIT refuses it with E-PROC-HOST rather than
-\ installing the stub for whatever signal the Linux numbers happen to name
-\ there. Both arms run: process-signals (src/lib/signal-test.f) passes on Linux and
-\ macOS, and on macOS the check-signal, gate-signal and pg suites catch and
-\ answer real stops through this file.
+\ No Forth word is async-signal-safe: the handler is the engine's stub
+\ (src/habu/crash.f EMIT-SIGNAL-HANDLER), which writes the four-byte signal
+\ number to the descriptor the process-wide fd word holds.
+\ PROCESS-WIDE: one pipe, one caught set and one armed fd word, owned by the task
+\ that ran INIT (NEED-OWNER); the staging span WAIT and TAKE read into is per task.
 
 s" src/lib/errors.f" required
 s" src/lib/process.f" required                \ the pipe words, POLLIN, PROC-NO-FD, close-rc and the two deadline helpers
@@ -144,8 +121,6 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
 : SIGNO-BUF ( -- ptr u8 )
    SIGNO-STORAGE BYTE-VIEW ;
 
-\ ---- the engine's two published cells ---------------------------------------
-
 : ABI-SLOT ( n -- ptr n ) {: off:n :}
    data-base off + ;
 
@@ -178,8 +153,6 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
    STUB-CELL@ STUB-A !
    FD-WORD-PUBLISHED FD-WORD-A ! ;
 
-\ ---- the caught set ----------------------------------------------------------
-
 : SIG-BIT ( n -- n ) {: sig:n :}
    1 sig 1 - lshift ;
 
@@ -193,8 +166,6 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
    sig SIG-MIN < if E-SIGNAL-NUMBER throw then
    sig SIG-MAX > if E-SIGNAL-NUMBER throw then ;
 
-\ ---- installing and restoring a disposition ---------------------------------
-
 : SA-HANDLER! ( n -- )
    SA-ACT cell-view ! ;
 
@@ -204,10 +175,9 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
 : SIGACTION! ( n -- ) {: sig:n :}
    sig SA-ACT SA-OLD SIGACTION-CALL 0 <> if E-SIGNAL-INSTALL throw then ;
 
-\ SA_RESTART so the read, write and wait calls a program is blocked in resume
-\ after a caught signal. The WAIT window no longer needs it: the wait is a
-\ POLL on the AIO loop, and a signal reaches no thread parked in poll(2).
-\ WAIT still owns a deadline, for the lost race rather than for -EINTR.
+\ SA_RESTART so a read, write or wait a program is blocked in resumes after a
+\ caught signal. The WAIT window does not need it: a signal reaches no thread
+\ parked in poll(2). WAIT keeps a deadline for the lost race, not for -EINTR.
 : INSTALL-STUB ( n -- ) {: sig:n :}
    SA-ACT SA-BUF-BYTES ZERO-BYTES
    STUB-A @ SA-HANDLER!
@@ -227,8 +197,6 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
 : RESTORE-ALL ( -- )
    SIG-MAX 1+ SIG-MIN ?do i RESTORE-ONE loop
    0 CAUGHT ! ;
-
-\ ---- the descriptors ---------------------------------------------------------
 
 : READ-FD ( -- fd )
    READ-FD-CELL @ >FD ;
@@ -256,8 +224,6 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
    w close-rc {: wrc:n :}
    rrc 0 <> wrc 0 <> or if E-SIGNAL-CLOSE throw then ;
 
-\ ---- waiting on the read end -------------------------------------------------
-
 \ One window of the read end, waited out on the AIO loop: a POLL for ms with
 \ the deadline as the poll's own linked timeout, and an AWAIT. A signal reaches
 \ no thread parked here, so there is no -EINTR to restart.
@@ -266,7 +232,7 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
 \ the first place, so the answered bits are read and not just counted: POLLNVAL,
 \ and a bare POLLERR, are a read end gone behind the facility's back and would
 \ otherwise be re-read against the deadline forever. The kernel answers that
-\ state two ways now - as those bits when it still has the descriptor, and as a
+\ state two ways - as those bits when it still has the descriptor, and as a
 \ refused poll (EBADF) when the number no longer names one - and both name the
 \ poll. `cancelled` cannot arrive: nothing here cancels, the ticket never leaves
 \ this word, and the cleanup AIO registers on a submitting task runs only after
@@ -304,8 +270,8 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
    READY @ 0= if E-SIGNAL-STATE throw then ;
 
 \ CATCH, IGNORE, IGNORED? and RELEASE share SA-ACT, SA-OLD and the caught set,
-\ so the facility has one owner - the task that ran INIT - rather than a
-\ documented convention two tasks could each believe they were keeping.
+\ so the facility has one owner, the task that ran INIT. FD, PENDING?, WAIT and
+\ TAKE touch none of the three and are callable from any task.
 : NEED-OWNER ( -- )
    TASK:SELF-N OWNER @ <> if E-SIGNAL-STATE throw then ;
 
@@ -352,8 +318,7 @@ public
    true READY !
    WRITE-FD-CELL @ ARM ;
 
-\ Deliver signal n to the descriptor instead of its default disposition. From
-\ the task that ran INIT: the install writes the shared SA-ACT and SA-OLD.
+\ Deliver signal n to the descriptor instead of its default disposition.
 : CATCH ( n -- ) {: sig:n :}
    NEED-READY
    NEED-OWNER
@@ -364,8 +329,7 @@ public
 \ Discard signal n: the kernel drops it and nothing reaches the descriptor. A
 \ later CATCH replaces the ignore, and RELEASE restores the default as it does
 \ for a caught signal. Unlike a caught signal, which exec resets to its
-\ default, an ignored one stays ignored in a child the process starts. From the
-\ task that ran INIT: the install writes the shared SA-ACT and SA-OLD.
+\ default, an ignored one stays ignored in a child the process starts.
 : IGNORE ( n -- ) {: sig:n :}
    NEED-READY
    NEED-OWNER
@@ -373,11 +337,10 @@ public
    sig SIG-IGN INSTALL-ACTION
    sig CAUGHT+ ;
 
-\ TRUE when signal n is ignored. A process is started with its caller's ignored
-\ signals still ignored - nohup's SIGHUP, the SIGINT of a background job under
-\ a shell without job control - and a CATCH over one undoes that choice, so a
-\ program that means to honour it asks first. From the task that ran INIT: the
-\ query fills the shared SA-OLD.
+\ TRUE when signal n is ignored. A process starts with its caller's ignored
+\ signals still ignored (nohup's SIGHUP, the SIGINT of a background job under a
+\ shell without job control), and a CATCH over one undoes that choice, so a
+\ program that means to honour it asks first.
 : IGNORED? ( n -- bool ) {: sig:n :}
    NEED-READY
    NEED-OWNER
@@ -408,14 +371,12 @@ public
    NEED-READY
    0 >MS READABLE-WITHIN? ;
 
-\ The next signal number, or the closing of the window. One deadline is set from
-\ the ms this call was given and every wait inside it runs against that one
-\ deadline: a read another task won re-polls there. So a lost race cannot push
-\ one WAIT past the milliseconds it was given, and a window that runs out while
-\ the race is being lost answers timeout. The two spellings are not redundant:
-\ the first wait is given the window as the caller spelled it, and only a wait
-\ that follows something re-derives what is left, because PROC-LEFT-MS floors
-\ and would shave a millisecond off a window nothing had yet consumed.
+\ The next signal number, or `timeout` when the window closes. WAIT and PENDING?
+\ run on the AIO loop: AIO:START first, else E-AIO-STATE. Every wait runs against
+\ one deadline set from ms, so a read another task won re-polls there and a lost
+\ race never pushes WAIT past ms. Only a wait after the first re-derives what is
+\ left, because PROC-LEFT-MS floors and would shave a millisecond off a window
+\ nothing has consumed.
 : WAIT ( ms -- signal-result ) {: window:ms :}
    NEED-READY
    window PROC-DEADLINE-AT {: deadline :}
@@ -431,8 +392,7 @@ public
    again ;
 
 \ The fd word is cleared FIRST, so a signal delivered during the restore is
-\ absorbed instead of written to a descriptor that is about to close. From the
-\ task that ran INIT: the restore writes the shared SA-ACT and SA-OLD.
+\ absorbed instead of written to a descriptor that is about to close.
 : RELEASE ( -- )
    NEED-READY
    NEED-OWNER
@@ -443,8 +403,6 @@ public
    false READY !
    r w CLOSE-PIPE ;
 
-\ ---- the stop signals ---------------------------------------------------------
-\
 \ SIGTERM, SIGINT and SIGHUP ask a process to stop. Under the default action a
 \ program that runs children or makes scratch ends where it stands, and what it
 \ started and made outlives it: a spawned child leads a process group of its
@@ -454,9 +412,8 @@ public
 \ removing what it made, then DIE-OF. The gate root (test/gate-pool.f), the pg
 \ cluster (test/db/pg-cluster.f) and check.f (tools/check-core.f) answer so.
 \
-\ A signal the process was started with IGNORED stays ignored. nohup's SIGHUP
-\ and the SIGINT of a background job are the caller's choice, and a catch over
-\ one would undo it.
+\ CATCH-STOPS leaves a signal the process was started with ignored as it is
+\ (IGNORED?).
 
 private
 
@@ -466,7 +423,6 @@ private
 
 public
 
-\ INIT, then the catch of each of the three, from the main task.
 : CATCH-STOPS ( -- )
    INIT
    SIGTERM CATCH-STOP

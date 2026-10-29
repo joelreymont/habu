@@ -1,50 +1,9 @@
-\ content-length.f - Content-Length message framing over a file descriptor.
-\
-\ LSP and DAP frame every message the same way: a header block of `name: value`
-\ lines, each ended by CR LF and the block by an empty line, then exactly as many
-\ body bytes as the Content-Length header names. Content-Type is read for its
-\ charset and other headers are read past. This module reads and writes that
-\ framing over a blocking descriptor and knows nothing of what a body holds.
-\
-\ A reader takes a message in two steps. NEXT-LENGTH reads one header block and
-\ answers the body's length, or NONE when the stream ended on a message
-\ boundary - the one end of input that is not an error. BODY then reads exactly
-\ that many bytes into the caller's span, so the caller sizes its storage once
-\ it knows the length and the module allocates nothing. Header lines are
-\ scanned in the reader's buffer; the body bytes the buffer already holds are
-\ copied out of it, and the rest are read straight into the caller's span by
-\ FD:READ-EXACT. A read can take more than one message into the buffer, so
-\ a caller that polls the descriptor to learn whether input waits asks PENDING?
-\ first.
-\
-\ Two refusals are distinct from each other and from the clean end. End of file
-\ inside a header block or a body is E-CONTENT-LENGTH-TRUNCATED. A header block
-\ is E-CONTENT-LENGTH-MALFORMED when a line is not ended by CR LF (an LF alone,
-\ or a CR anywhere else in it), has no colon, has a name before it that is not
-\ an HTTP token (RFC 7230 tchar), or is longer than LINE-CAP bytes; when no line
-\ names Content-Length, or two do; when that value, blanks around it aside, is
-\ not a decimal count, is over the reader's maximum or, leading zeros aside,
-\ does not fit a cell; or when a Content-Type names a charset other than UTF-8,
-\ the only encoding LSP and DAP content has. Names are matched without case.
-\ After either refusal the stream has no message boundary left to resume at:
-\ the reader is spent, and every later NEXT-LENGTH or BODY is
-\ E-CONTENT-LENGTH-STATE, as is a reader never bound, NEXT-LENGTH while a body
-\ is pending and BODY with none. A read the kernel refuses is E-FS-IO and spends
-\ the reader too: inside a body it may have taken bytes the caller never saw, so
-\ no later read could find the next boundary. BIND refuses a buffer under
-\ LINE-CAP + 2 bytes or a negative maximum with STATE as well.
-\
-\ SEND writes `Content-Length: N` CR LF CR LF, then the body, each through
-\ FD:WRITE-FULL. It builds the header in a row of its own, so a body the
-\ caller built anywhere, the task's string builder (src/lib/string.f SB) included,
-\ goes out as it was.
-\
-\ STORAGE CLASS. CALLER-OWNED, but for SEND's header row, which is TASK-LOCAL.
-\ The reader record and its buffer are the caller's (`TYPED-VARIABLE R
-\ CONTENT-LENGTH:reader` and a span of at least LINE-CAP + 2 bytes), live until
-\ the caller stops reading, so readers over different descriptors share
-\ nothing. The header row is a TASK:+USER row, so tasks sending at once share
-\ nothing either.
+\ content-length.f - LSP/DAP Content-Length message framing over a blocking
+\ descriptor; the module knows nothing of what a body holds. NEXT-LENGTH reads a
+\ header block and BODY the body into the caller's span, so the module allocates
+\ nothing. Any refusal spends the reader: the stream has no boundary left.
+\ STORAGE CLASS. CALLER-OWNED reader record and buffer; SEND's header row is a
+\ TASK:+USER row, TASK-LOCAL.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -303,7 +262,8 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and HEADER-CAP TASK:+USER HEADER-ROW drop
 public
 
 \ Binds a reader to a descriptor, a buffer of at least LINE-CAP + 2 bytes and
-\ the longest body it takes.
+\ the longest body it takes; a smaller buffer or a negative maximum is
+\ E-CONTENT-LENGTH-STATE.
 : BIND ( ptr reader fd SPAN:span<u8> n -- )
    {: r f:fd s max:n :}
    s $ {: p:ptr u:n :}
@@ -311,7 +271,13 @@ public
    max 0 < if E-CONTENT-LENGTH-STATE throw then
    f p u 0 0 -1 max CONTENT--LENGTH-READER:MAKE r ! ;
 
-\ The next message's body length, or NONE when the stream ended on a boundary.
+\ The next message's body length, or NONE when the stream ended on a message
+\ boundary, the one end of input that is not an error. End of file inside a
+\ header block or body is E-CONTENT-LENGTH-TRUNCATED; a block with no
+\ Content-Length, or two, is E-CONTENT-LENGTH-MALFORMED. A kernel read refusal
+\ (E-FS-IO) spends the reader too: inside a body it may have taken bytes the
+\ caller never saw. A spent or unbound reader, or NEXT-LENGTH with a body
+\ pending, is E-CONTENT-LENGTH-STATE.
 : NEXT-LENGTH ( ptr reader -- option<n> )
    {: r :}
    r LIVE
@@ -320,7 +286,8 @@ public
    r HEADERS dup r WANT!
    OPTION:SOME ;
 
-\ The body NEXT-LENGTH announced, into the head of a span at least that long.
+\ The body NEXT-LENGTH announced, into the head of a span at least that long;
+\ with none pending, E-CONTENT-LENGTH-STATE.
 : BODY ( ptr reader SPAN:span<u8> -- )
    {: r s :}
    r LIVE
@@ -337,7 +304,8 @@ public
 \ descriptor already, which a poll of the descriptor would not show.
 : PENDING? ( ptr reader -- bool )  HELD 0 > ;
 
-\ One message: its header, then its body.
+\ One message, header then body. The header is built in a row of its own, so a
+\ body built in the task's string builder (src/lib/string.f SB) goes out intact.
 : SEND ( fd ptr u8 n -- )
    {: f:fd a:ptr u:n :}
    u 0 < if E-SPAN-LENGTH throw then

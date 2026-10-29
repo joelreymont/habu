@@ -19,7 +19,7 @@ $1388 constant PET-HB-TIMEOUT-MS
 $3E8 constant PET-CMD-TIMEOUT-MS
 $32 constant PET-SHORT-TIMEOUT-MS
 $2 constant PET-ENOENT
-$258 constant PET-BIG-N                  \ variables the big-environment child must inherit
+$258 constant PET-BIG-N
 $9 constant PET-BIG-PREFIX-U             \ "HABU_BIG_"
 $C constant PET-BIG-NAME-U               \ prefix plus three digits
 
@@ -63,7 +63,7 @@ TASK:SEMAPHORE PET-ENV-START
      err OF PCAP-FAILED:UNMAKE  {: o:len e:len c:rc :} o LEN>N e LEN>N c RC>N ENDOF
    ;MATCH ;
 
-: PET-FIND>N ( option<len> -- n bool )                 \ flatten for the test asserts
+: PET-FIND>N ( option<len> -- n bool )
    MATCH option
      none OF 0 0 0= 0= ENDOF
      some OF LEN>N 0 0= ENDOF
@@ -175,7 +175,6 @@ TASK:SEMAPHORE PET-ENV-START
    S\" OTHER=HOME=alpha\n" s" HOME" s" alpha" PET-HAS-ENV-LINE? TFALSE
    S\" HOME=prefix-alpha\n" s" HOME" s" alpha" PET-HAS-ENV-LINE? TFALSE ;
 
-\ Two readers use different names while scanning the same captured envp.
 : PET-GETENV-CHECK ( ptr u8 n ptr u8 n -- n )
    {: name:ptr nameu:n expected:ptr expectedu:n :}
    PET-ENV-ROUNDS 0 ?do
@@ -249,9 +248,8 @@ TASK:SEMAPHORE PET-ENV-START
    PET-OUT outu s" HABU_PROC_ENV_TEST=wrong" CONTAINS? TFALSE
    outu PET-INHERIT-ENV-OUT ;
 
-\ PROC-ENV-SET vs PROC-ENV+: SET replaces an existing row in place (one row
-\ survives, the child sees only the last value), while PROC-ENV+ appends and
-\ never deduplicates. SET on an absent name appends like PROC-ENV+.
+\ PROC-ENV-SET replaces an existing row in place and appends an absent name;
+\ PROC-ENV+ appends and never deduplicates.
 : PET-SET-REPLACES ( -- )
    PET-RESET
    s" HABU_PROC_ENV_TEST" s" wrong" PET-ENV+
@@ -286,8 +284,6 @@ TASK:SEMAPHORE PET-ENV-START
    s" /usr/bin/false" PET-OUT outu LEN>N PET-ERR erru LEN>N oc 1 T-OUTCOME-EXITED=
    erru LEN>N 0 T= outu LEN>N 0 T= ;
 
-\ Direct both-arm coverage for RUN-ARGV-ENV-CAPTURE: true -> ok(captured),
-\ false -> err(failed) carrying lengths + the completion code.
 : PET-RUN-ARGV-ENV-CAPTURE-RESULT ( -- )
    PET-RESET
    s" /usr/bin/true" >LEN PET-OUT PET-CAP >LEN PET-ERR PET-CAP >LEN PET-CMD-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE
@@ -457,10 +453,8 @@ public
       1+
    repeat drop ;
 
-\ A 600-variable environment is larger than the whole table used to be, so this
-\ case only runs at all once the table is sized from the parent's own envp. The
-\ child reports both how many of them reached it and how many its own
-\ grandchild saw.
+\ A 600-variable environment exceeds any fixed table: the table is sized from
+\ the parent's own envp.
 : PET-BIG-ENV-BUILD ( -- )
    PET-RESET
    0 PET-I !
@@ -637,7 +631,6 @@ DYNAMIC-BUFFER OUT u8
    oc PROC-OUTCOME>RC RC>N 0 T=
    outu LEN>N ;
 
-\ The rows that differ from their expected line, the first rows lines of out.
 : MISMATCHES ( n n ptr u8 -- n ) {: rows:n outu:n prefix:ptr :}
    0 rows 0 ?do
       i prefix LINE!

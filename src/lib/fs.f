@@ -1,55 +1,13 @@
 \ fs.f - checked filesystem helpers.
-\
-\ STORAGE CLASS. TASK-LOCAL for everything one call threads: the per-call slots
-\ (IO-FD, IO-LEN, IO-RD, IO-OFF, IO-WR), the last FS cause, the NUL-padded path
-\ buffer PATHZ-BUF, the stat buffer STAT-BUF and the read probe are the
-\ FS-ABI band of the per-task DATA region, so two tasks in READ-ALL, WRITE-ALL,
-\ FILE-SIZE, FILE-META or any FS predicate at once share nothing. The data
-\ buffers READ-ALL and WRITE-ALL take are CALLER-OWNED. A WALK OWNS ITS STATE
-\ FOR ONE CALL: WALK-FILES, WALK-FILES-IF and REMOVE-TREE (src/lib/fs-mutate.f)
-\ each map a context of their own and release it on return or throw, so a
-\ callback walks or removes another tree, any number of tasks walk at once, and
-\ a tree is as deep as PATH-CAP lets its paths be.
-\
-\ FS:ERRNO IS THE CAUSE. It answers the positive host errno the last
-\ filesystem primitive in the running task saved; read it at once after
-\ catching an E-FS-* or E-FS-LIST-* throw, since any later primitive, even a
-\ successful one, replaces it, and a nested call replaces the outer call's.
-\ A semantic refusal (path capacity, a malformed path) leaves zero. The
-\ guarantee covers fs.f, fs-list.f, fs-anchored.f and fs-mutate.f's
-\ REMOVE-TREE, MKDIR-MODE, MAKE-DIR, MAKE-DIRS, ATOMIC-WRITE-FILE,
-\ ATOMIC-WRITE-PRIVATE, FS:RESERVE-SIBLING and REPLACE-STAGED, whose cleanup
-\ after a failure keeps the first failure's cause; the identity, lock and other
-\ mutation helpers do not join it. The throws stay the primary contract.
-\
-\ THE WALK visits regular files only, depth-first, in the order the platform
-\ directory stream returns (a caller that needs lexical order sorts); it skips
-\ .git, .jj, .jj-ws, .dots and .out (a tree's build outputs and scratch,
-\ tools/build-out.f) and closes every descriptor it opened however it ends.
-\ The path a callback gets is valid only during that callback. Two walks in
-\ flight cover disjoint trees: getdirentries64 on a directory removed
-\ meanwhile answers -1 and the walk reports E-FS-DIR.
-\
-\ READ-ALL refuses a file larger than the caller's cap with E-FS-CAPACITY.
-\ OPEN-SIZED and READ-SIZED read one regular file through one descriptor, so a
-\ rename or unlink of the path between them cannot change what is read.
-\
-\ THE BUFFERS THIS MODULE OWNS ARE SPANS (src/lib/span.f): the NUL-padded path
-\ buffer, the per-depth walk path slot and the per-depth dirent block publish a
-\ base AND a reach, so every copy into them goes through SPAN:COPY and every
-\ indexed write through SPAN:U8! / SPAN:AT - a wrong length cannot reach past
-\ the buffer even where the length came from the kernel (a dirent reclen) or
-\ from a caller. Two hand-written checks stay on purpose and both are
-\ caller-facing contracts rather than buffer extents: PATHZ-INTO keeps
-\ `u PATH-CAP > -> E-FS-PATH`, the one path-length limit every fs consumer's
-\ refusal test names, and JOIN-PATH keeps CHECK-JOIN-CAP because its
-\ destination is still a bare `ptr u8` the caller supplies (294 call sites in
-\ this repository; the parameter becomes a span in the consumer band of
-\ habu-bound-pointers). READ-ALL's destination is the same deferred case.
+\ STORAGE CLASS. TASK-LOCAL: the per-call slots, the FS cause, PATHZ-BUF,
+\ STAT-BUF and the read probe are the FS-ABI band of the per-task DATA region
+\ (src/habu/layout.f). The data buffers READ-ALL and WRITE-ALL take are
+\ CALLER-OWNED. Each walk (WALK-FILES, WALK-FILES-IF, fs-mutate.f REMOVE-TREE)
+\ maps a context of its own for one call and releases it on return or throw.
 
 require src/lib/errors.f
 require src/lib/string.f
-require src/lib/adt/option.f                        \ option<n> for TRY-*STAT-MODE (switchover wave A)
+require src/lib/adt/option.f                        \ option<n> for TRY-*STAT-MODE
 require src/lib/le.f                                \ stat and dirent fields
 require src/lib/span.f                              \ the module's own buffers carry their reach
 require src/lib/ffi-abi.f                           \ fstat on an open descriptor
@@ -118,8 +76,15 @@ private
    HB-TARGET-MACOS? if 62 else 40 then ;
 
 public
-\ Read immediately after the failed FS operation: another filesystem primitive
-\ replaces this task's cause, including on success. Zero means a semantic refusal.
+\ The positive host errno the last filesystem primitive in this task saved.
+\ Read it at once after catching an E-FS-* or E-FS-LIST-* throw: any later
+\ primitive, even a successful one or a nested call, replaces it. Zero means a
+\ semantic refusal (path capacity, a malformed path). It covers fs.f,
+\ fs-list.f, fs-anchored.f and fs-mutate.f's REMOVE-TREE, MKDIR-MODE, MAKE-DIR,
+\ MAKE-DIRS, ATOMIC-WRITE-FILE, ATOMIC-WRITE-PRIVATE, FS:RESERVE-SIBLING and
+\ REPLACE-STAGED, whose cleanup after a failure keeps the first failure's cause;
+\ the identity, lock and other mutation helpers do not set it. The throws stay
+\ the primary contract.
 : ERRNO ( -- n )
    data-base FS-ABI:ERRNO-OFF + @ ;
 
@@ -138,20 +103,14 @@ public
    0 data-base FS-ABI:ERRNO-OFF + ! ;
 
 private
-\ THE PER-CALL SLOTS ARE TASK-LOCAL, in the FS-ABI band of the per-task DATA
-\ region: every accessor reads `data-base`, which is the RUNNING task's region,
-\ so two tasks in READ-ALL, WRITE-ALL, FILE-SIZE, FILE-META or any FS
-\ predicate at once share nothing. The band is declared in src/habu/layout.f
-\ below FMT-ABI and asserted there against every other DATA claim. It is a
-\ declared band and not TASK:+USER rows although this module is not baked:
-\ tools/native-build-core.f requires it to build the engine, so a
-\ `require src/lib/task.f` here would load the task runtime into the build tool.
-\ A region is a fresh zeroed mapping, so a new task's cells start at zero
-\ exactly as the old `variable`s did.
-\
-\ layout.f is loaded before this file and cannot see STAT-CAP,
-\ READ-PROBE-CAP or PATHZ-CAP, so the band states those widths and this
-\ executes the agreement once at load.
+\ The per-call slots are the FS-ABI band of the per-task DATA region, read
+\ through data-base, the running task's region. The band is declared in
+\ src/habu/layout.f below FMT-ABI rather than as TASK:+USER rows:
+\ tools/native-build-core.f requires this file, and a `require src/lib/task.f`
+\ here would load the task runtime into the build tool. A region is a fresh
+\ zeroed mapping, so a new task's cells start at zero. layout.f loads before
+\ this file and cannot see STAT-CAP, READ-PROBE-CAP or PATHZ-CAP, so BAND-AGREE
+\ checks those widths once at load.
 : BAND-AGREE ( -- )
    STAT-CAP FS-ABI:STAT-BYTES <> if E-FS-BAND throw then
    READ-PROBE-CAP FS-ABI:PROBE-BYTES <> if E-FS-BAND throw then
@@ -179,22 +138,13 @@ BAND-AGREE
 : READ-PROBE ( -- ptr u8 )
    data-base FS-ABI:PROBE-OFF + BYTE-VIEW ;
 
-\ The reach is the band width BAND-AGREE asserted against src/habu/layout.f,
-\ so the span says exactly what this task's region holds.
+\ The reach is the band width BAND-AGREE asserted against src/habu/layout.f.
 : PATHZ-BUF ( -- SPAN:span<u8> )
    data-base FS-ABI:PATHZ-OFF + BYTE-VIEW PATHZ-CAP SPAN:MAKE ;
 
-\ A WALK OWNS ITS CONTEXT FOR ONE CALL. WALK-FILES-IF and REMOVE-TREE
-\ (src/lib/fs-mutate.f) take the handle from a WITH-BYTES scope and map the
-\ frames inside it, and release both however the call ends, so nothing on the
-\ walk's path is shared: a callback walks or removes another tree through a
-\ context of its own, and two tasks walk at once.
-\
-\ THE HANDLE is WALK-HANDLE-CELLS cells and does not move for the whole
-\ call, so every helper's handle local stays valid:
-\   FRAMES  cell 0   the frames mapping, a ptr-field cell: a declared pointer
-\                    cell is the one raw storage that may hold an address
-\                    (docs/forth-card.md § 5)
+\ THE HANDLE is WALK-HANDLE-CELLS cells and does not move for the whole call:
+\   FRAMES  cell 0   the frames mapping, a ptr-field cell, the one raw storage
+\                    that may hold an address (docs/forth-card.md § 5)
 \   CAP     cell 1   the frames the mapping holds
 \   DEPTH   cell 2   the depth being walked
 \
@@ -207,14 +157,12 @@ BAND-AGREE
 \   PATH-U  cell 5   length of the path in this depth's slot
 \   PATH             PATH-CAP bytes, rounded up to a cell: this depth's path
 \   DIR              DIR-CAP bytes: this depth's dirent block
-\ WALK-FRAMES0 is where the capacity starts, not a bound: ENSURE-DEPTH
-\ doubles the mapping before a descent needs a frame past it, and a tree is as
-\ deep as PATH-CAP lets its paths be (E-FS-CAPACITY at the join). Growth
-\ MOVES the frames, so no helper holds an address into them across a descent:
-\ DESCEND-PATH reads the parent path and the entry name from the frames
-\ after growing them, and a walk loop carries only the handle past its
-\ recursion. A frame and its slots are narrowings of the whole frames span, so
-\ a depth reaches no further than its own record (E-SPAN-RANGE).
+\ WALK-FRAMES0 is where the capacity starts, not a bound: ENSURE-DEPTH doubles
+\ the mapping before a descent needs a frame past it, and a tree is as deep as
+\ PATH-CAP lets its paths be (E-FS-CAPACITY at the join). Growth MOVES the
+\ frames, so no helper holds an address into them across a descent. A frame and
+\ its slots are narrowings of the whole frames span, so a depth reaches no
+\ further than its own record (E-SPAN-RANGE).
 0 constant WALK-FRAMES-IDX
 1 constant WALK-CAP-CELL
 2 constant WALK-DEPTH-CELL
@@ -232,7 +180,6 @@ PATH-CAP 1 cells + 1 - 1 cells / cells constant FRAME-PATH-BYTES
 FRAME-PATH-OFF FRAME-PATH-BYTES + constant FRAME-DIR-OFF
 FRAME-DIR-OFF DIR-CAP + constant FRAME-BYTES
 
-\ ---- the handle --------------------------------------------------------------
 : WALK-FRAMES ( ptr n -- ptr ptr u8 )
    WALK-FRAMES-IDX ptr-field ;
 
@@ -245,7 +192,6 @@ FRAME-DIR-OFF DIR-CAP + constant FRAME-BYTES
 : WALK-DEPTH! ( n ptr n -- )
    WALK-DEPTH-CELL cells + ! ;
 
-\ ---- the frames --------------------------------------------------------------
 : WALK-SPAN ( ptr n -- SPAN:span<u8> ) {: ctx:ptr :}
    ctx WALK-FRAMES @ ctx WALK-CAP @ FRAME-BYTES * SPAN:MAKE ;
 
@@ -301,9 +247,7 @@ FRAME-DIR-OFF DIR-CAP + constant FRAME-BYTES
       drop
    then ;
 
-\ Every descriptor this context still holds, from the depth it stopped at back
-\ to the root. This is the one cleanup site: WALK-UNMAP runs it whether the
-\ walk ended or threw, so no error path of its own has to close anything.
+\ The one cleanup site: WALK-UNMAP runs it whether the walk ended or threw.
 : CLOSE-WALK ( ptr n -- ) {: ctx:ptr :}
    ctx WALK-DEPTH@ begin dup 0 >= while
       ctx over CLOSE-FD-AT
@@ -328,8 +272,7 @@ FRAME-DIR-OFF DIR-CAP + constant FRAME-BYTES
 : REC! ( n ptr n -- )
    FRAME-REC-CELL CUR-FIELD ! ;
 
-\ The frames a walk starts on, depth 0, every descriptor closed. Nothing else
-\ is allocated yet, so a refused mapping leaves nothing to release.
+\ Nothing else is allocated yet, so a refused mapping leaves nothing to release.
 : WALK-MAP ( ptr n -- ) {: ctx:ptr :}
    WALK-FRAMES0 FRAME-BYTES * MEM-ALLOC-BYTES drop ctx WALK-FRAMES !
    WALK-FRAMES0 ctx WALK-CAP !
@@ -363,7 +306,7 @@ FRAME-DIR-OFF DIR-CAP + constant FRAME-BYTES
 \ FS owns the length gate: a path longer than PATH-CAP is E-FS-PATH, the
 \ refusal every fs consumer tests for, whatever buffer it is copied into.
 \ FFI:CSTR owns the copy, the terminator and the 0-byte refusal (E-FFI-NUL),
-\ bounded by the destination's real reach.
+\ bounded by the destination's reach.
 : PATHZ-INTO ( ptr u8 n SPAN:span<u8> -- ptr u8 )
    {: a:ptr u dst :}
    CAUSE-CLEAR
@@ -513,18 +456,13 @@ public
    na nu dst pu 1 + SPAN:SKIP SPAN:COPY
    pu 1 + nu + ;
 
-\ The public join still takes a bare destination, so CHECK-JOIN-CAP stays:
-\ E-FS-CAPACITY is what this word promises its 294 call sites, and the reach
-\ minted below is the PATH-CAP destination those callers already owe (the
-\ check above proved the join fits it). The consumer band of
-\ habu-bound-pointers replaces the parameter with the caller's own span and
-\ this adapter disappears; every destination this module owns already passes
-\ JOIN-PATH-INTO a span from its producer.
-\ A negative length is a malformed path whatever the other length is, so both
-\ signs are refused first. Each length then meets the capacity on its own before
-\ the two are summed: a length near the maximum cell would wrap the join back
-\ under PATH-CAP, and the parent's last byte is read only once the parent is
-\ known to fit.
+\ The destination is a bare ptr, so CHECK-JOIN-CAP stays: E-FS-CAPACITY is what
+\ JOIN-PATH promises its callers, and the reach minted below is the PATH-CAP
+\ destination they owe. Destinations this module owns pass JOIN-PATH-INTO a
+\ span. A negative length is refused first; each length then meets the
+\ capacity on its own before the sum, since a length near the maximum cell
+\ would wrap the join under PATH-CAP, and the parent's last byte is read only
+\ once the parent fits.
 : JOIN-PATH ( ptr u8 n ptr u8 n ptr u8 -- n ) {: pa:ptr pu na:ptr nu dst:ptr :}
    CAUSE-CLEAR
    pu 0 < if E-FS-PATH throw then
@@ -538,11 +476,9 @@ private
 : PATH= ( ptr u8 n ptr u8 n -- bool )
    STR= ;
 
-\ The destination is the caller's span: `cap 0 <` is gone because a reach is
-\ nonnegative by construction, and readlink is handed the span's own base and
-\ reach so the kernel cannot write past it. The remaining E-FS-CAPACITY is a
-\ SEMANTIC refusal - a link that does not fit would be silently truncated - and
-\ stays the caller-facing code its test names.
+\ readlink gets the span's base and reach, so the kernel cannot write past it.
+\ E-FS-CAPACITY is a semantic refusal: a link that does not fit would be
+\ silently truncated.
 : READ-LINK ( ptr u8 n SPAN:span<u8> -- n ) {: pa:ptr pu dst :}
    pa pu TRY-LSTAT 0= if E-FS-STAT throw then
    STAT-MODE@ S-IFMT and S-IFLNK <> if E-FS-STAT throw then
@@ -788,9 +724,7 @@ private
    dup 0 < if drop E-FS-DIR throw then
    dup ctx N! 0 > ;
 
-\ The root goes into the depth-0 walk slot, whose reach the span carries, so the
-\ hand-written PATH-CAP check is gone: a root too long for the slot is
-\ refused by the copy itself (E-SPAN-CAPACITY).
+\ A root too long for the depth-0 slot is refused by the copy (E-SPAN-CAPACITY).
 : WALK-ROOT! ( ptr n ptr u8 n -- ) {: ctx:ptr a:ptr u :}
    CAUSE-CLEAR
    u 0 < if E-FS-PATH throw then
@@ -820,10 +754,9 @@ private
    ctx OFF@ ctx N@ < ;
 
 \ The block offset is a running sum of kernel-supplied record lengths, so the
-\ entry address is taken through the dir span: an offset past the block refuses
-\ with E-SPAN-RANGE instead of naming memory beyond the buffer. The cursor is
-\ the ANSWER and not a cell of the context: an address never lands in raw
-\ storage, and the block loop holds it only until it takes the name.
+\ entry address is taken through the dir span: an offset past the block is
+\ E-SPAN-RANGE. The cursor is the answer, not a context cell: an address never
+\ lands in raw storage.
 : CUR-ENTRY ( ptr n -- ptr u8 ) {: ctx:ptr :}
    ctx CUR-DIR ctx OFF@ SPAN:AT ;
 
@@ -898,6 +831,12 @@ private
    code 0<> if code throw then ;
 
 public
+\ The walk visits regular files only, depth-first, in the order the directory
+\ stream returns (a caller that needs lexical order sorts), skips SKIP-DIR?'s
+\ directories (.out holds tools/build-out.f's outputs) and closes every
+\ descriptor it opened however it ends. A callback's path is valid only during
+\ the callback. Two walks in flight cover disjoint trees: getdirentries64 on a
+\ directory removed meanwhile answers -1 and the walk reports E-FS-DIR.
 : WALK-FILES-IF ( ptr u8 n [ ptr u8 n -- bool ] [ ptr u8 n -- ] -- )
    WALK-HANDLE-BYTES MEM:BYTES-ALLOC-LEN [: WALK-SCOPE ;] MEM:WITH-BYTES ;
 

@@ -189,17 +189,16 @@ TYPED-VARIABLE FLT-B FS-LIST:context
    s" missing" FLT-PATH [: FLT-COUNT ;] FS-LIST:EACH ;
 
 \ ---- a listing is the call's own -----------------------------------------------
-\ The descriptor, the cursor and the dirent block were one set for the image:
-\ a listing begun while another was open - in another task, or in the open
-\ one's own quotation - closed the first one's descriptor and wrote over its
-\ block, and the first then threw E-FS-LIST-READ. Each case opens the second
-\ listing at the first one's first name, so the two overlap on every run.
+\ A listing begun while another is open, in another task or inside the open
+\ one's quotation, leaves the first one's descriptor and block alone. Each case
+\ opens the second listing at the first one's first name, so the two overlap on
+\ every run.
 
 create FLT-INNER 64 allot                \ sub's names, listed while the root's listing is open
 variable FLT-INNER-U
 variable FLT-HANDED                      \ 1 once the lister is inside its listing
 variable FLT-RESUMED                     \ 1 once this thread has listed sub
-5000000000 constant FLT-WAIT-NS          \ one handshake wait: 5 s
+5000000000 constant FLT-WAIT-NS
 
 TASK:MIN-STACK TASK:TASK FLT-LISTER
 
@@ -213,7 +212,6 @@ TASK:MIN-STACK TASK:TASK FLT-LISTER
 : FLT-COUNTS-RESET ( -- )
    0 FLT-SEEN !  0 FLT-SEEN-BYTES !  0 FLT-INNER-U ! ;
 
-\ Both listings came back whole: the root's three names in 13 bytes, and sub's two.
 : FLT-BOTH-WHOLE ( -- )
    s" the open listing saw every name" T-LABEL
    FLT-SEEN @ 3 T=
@@ -252,8 +250,6 @@ TASK:MIN-STACK TASK:TASK FLT-LISTER
    code E-PROC-TIMEOUT = if s" fs-list-test FLT-WAIT" TEST-WAIT:EXPIRED then
    code ;
 
-\ The lister's quotation: at its first name it hands over to this thread and
-\ waits until sub is listed.
 : FLT-HANDOFF ( ptr u8 n -- )
    FLT-COUNT
    FLT-SEEN @ 1 = if

@@ -1,51 +1,25 @@
-\ fd.f - the standard descriptors, exact reads and full writes on a file descriptor.
-\
-\ READ-EXACT fills the caller's span from a descriptor. A read may answer fewer
-\ bytes than asked - a pipe holds only what its writer has put in it - so it
-\ reads again until the span is full, and answers `full`. End of file first is
-\ an answer, not an error: `eof` carrying how many bytes arrived, which head the
-\ span; `eof` after zero bytes is a stream that ended on the boundary.
-\ WRITE-FULL writes all of a byte string, again until the kernel has taken
-\ every byte: a blocking write answers short when a caught signal lands after
-\ some bytes moved. A read or write the kernel refuses throws E-FS-IO, and so
-\ does a write that takes no byte, which would never finish, and a count past
-\ what was asked. A negative length is E-SPAN-LENGTH.
-\
-\ Signals and descriptors stay the caller's. Every handler that returns - the
-\ profiler's and src/lib/signal.f's - sets SA_RESTART, so a blocked read or write
-\ that moved nothing resumes by itself. A write to a pipe with
-\ no reader raises SIGPIPE, which ends the process, unless the caller armed
-\ FD-NOSIGPIPE! (src/lib/process.f); then it throws E-FS-IO here. The engine
-\ reports EAGAIN as a failed call, so these words are for blocking descriptors.
-\ WRITE-FULL-UNTIL temporarily arms O_NONBLOCK, writes through libc to retain
-\ errno, and waits for POLLOUT only until the caller's absolute mono-ns deadline.
-\ The caller exclusively owns the descriptor's open-file description while this
-\ word runs: O_NONBLOCK is shared by duped and inherited descriptors. Original
-\ status flags are restored before success or a catchable failure is reported.
-\ TRY-FIFO-WRITER makes one attempt to open an existing FIFO's write end with
-\ O_NONBLOCK, which answers ENXIO at once while no reader has the FIFO open; an
-\ open that succeeds is made blocking again, so these words write to it. It
-\ neither sleeps nor polls: the caller owns the deadline and the retries.
-\
-\ STORAGE CLASS. TASK-LOCAL: one pollfd row belongs to the calling task, and
-\ TRY-FIFO-WRITER's path copy and stat are src/lib/fs.f's task-local buffers.
-\ Byte spans and descriptor ownership stay with the caller.
+\ fd.f - the standard descriptors, exact reads and full writes on blocking
+\ descriptors (the engine reports EAGAIN as a failed call). A refused read or
+\ write, a write that takes no byte and a count past the asked one are E-FS-IO;
+\ a negative length is E-SPAN-LENGTH. Signals and descriptors stay the caller's.
+\ STORAGE CLASS. TASK-LOCAL: one pollfd row, and src/lib/fs.f's task-local path
+\ and stat buffers for TRY-FIFO-WRITER; byte spans stay with the caller.
 
 require src/lib/errors.f
 require src/lib/span.f
 require src/lib/ffi-abi.f
 require src/lib/task.f
 require src/lib/le.f
-require src/lib/fs.f                \ FS:FIFO?, FS:>PATHZ and FS:O-WRONLY for TRY-FIFO-WRITER
-require src/lib/adt/option.f        \ option<fd>: TRY-FIFO-WRITER's none or write end
+require src/lib/fs.f
+require src/lib/adt/option.f
 
 package FD
 using SPAN
 public
 
-: STDIN ( -- fd ) 0 >FD ;         \ the process's standard input
-: STDOUT ( -- fd ) 1 >FD ;        \ the process's standard output
-: STDERR ( -- fd ) 2 >FD ;        \ the process's standard error
+: STDIN ( -- fd ) 0 >FD ;
+: STDOUT ( -- fd ) 1 >FD ;
+: STDERR ( -- fd ) 2 >FD ;
 
 \ How READ-EXACT ended: the span is full, or end of file came first, after the
 \ bytes the span now starts with.
@@ -138,8 +112,6 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 8 TASK:+USER POLL-STORAGE drop
    f src u deadline SEND-ALL-UNTIL
    f src u deadline ;
 
-\ One read into the span past its first `got` bytes: how many more arrived,
-\ zero at end of file.
 : MORE ( n fd SPAN:span<u8> -- n )
    {: got:n f:fd dst :}
    dst got SKIP $ {: at:ptr want:n :}
@@ -148,7 +120,6 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 8 TASK:+USER POLL-STORAGE drop
    k want > if E-FS-IO throw then
    k ;
 
-\ One write of the string past its first `done` bytes: how many the kernel took.
 : SENT ( n fd ptr u8 n -- n )
    {: done:n f:fd src:ptr u:n :}
    u done - {: want:n :}
@@ -159,6 +130,9 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 8 TASK:+USER POLL-STORAGE drop
 
 public
 
+\ A read may answer short (a pipe holds only what its writer has put in), so it
+\ reads until the span is full. `eof` after zero bytes is a stream that ended
+\ on the boundary.
 : READ-EXACT ( fd SPAN:span<u8> -- fill )
    {: f:fd dst :}
    dst LEN {: want:n :}
@@ -169,6 +143,11 @@ public
    repeat
    drop FD-FILL:full ;
 
+\ A blocking write answers short when a caught signal lands after some bytes
+\ moved. Every handler that returns (the profiler's, src/lib/signal.f's) sets
+\ SA_RESTART, so a blocked write that moved nothing resumes. A write to a pipe
+\ with no reader raises SIGPIPE, which ends the process unless the caller armed
+\ FD-NOSIGPIPE! (src/lib/process.f); then it is E-FS-IO.
 : WRITE-FULL ( fd ptr u8 n -- )
    {: f:fd src:ptr u:n :}
    u 0 < if E-SPAN-LENGTH throw then
@@ -176,9 +155,13 @@ public
       dup f src u SENT +
    repeat drop ;
 
-\ The deadline is an absolute mono-ns reading, so a caller can share it with a
-\ subsequent reply wait. On timeout or failure, some bytes may already have
-\ reached the peer; the caller decides whether to discard that conversation.
+\ Arms O_NONBLOCK for the call, writes through libc to keep errno, and waits for
+\ POLLOUT until the deadline, an absolute mono-ns reading a caller can share
+\ with a later reply wait. The caller owns the open-file description while it
+\ runs: duped and inherited descriptors share O_NONBLOCK. The original status
+\ flags are restored before success or a catchable failure is reported. On
+\ timeout or failure some bytes may have reached the peer; the caller decides
+\ whether to discard that conversation.
 : WRITE-FULL-UNTIL ( fd ptr u8 n n -- )
    {: f:fd src:ptr u:n deadline:n :}
    u 0 < if E-SPAN-LENGTH throw then
@@ -190,11 +173,13 @@ public
    changed if f flags RESTORE then
    code 0<> if code throw then ;
 
-\ One attempt to open the write end of the existing FIFO at the path, which
-\ is followed through symlinks. none: no reader has the FIFO open, and nothing
-\ stays open. some: the write end, blocking, which the caller closes. A path
-\ that is not a FIFO and any other refusal of the open throw E-FS-OPEN; a
-\ descriptor whose O_NONBLOCK cannot be cleared is closed and throws E-FS-IO.
+\ One attempt to open the write end of the existing FIFO at the path, followed
+\ through symlinks; O_NONBLOCK answers ENXIO at once while no reader has it
+\ open. none: no reader, and nothing stays open. some: the write end, blocking,
+\ which the caller closes. A path that is not a FIFO and any other refusal of
+\ the open throw E-FS-OPEN; a descriptor whose O_NONBLOCK cannot be cleared is
+\ closed and throws E-FS-IO. It neither sleeps nor polls: the caller owns the
+\ deadline and the retries.
 : TRY-FIFO-WRITER ( ptr u8 n -- option<fd> )
    {: pa:ptr pu:n :}
    pa pu FS:FIFO? 0= if E-FS-OPEN throw then

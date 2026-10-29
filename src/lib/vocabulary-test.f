@@ -1,18 +1,14 @@
 \ vocabulary-test.f - the design seal through the real load path, at both tiers.
-\
-\ Every row is one child: `bin/hb --load test/policy/<harness>.f -- test/policy/<case>.f`.
-\ The harness admits package PDEP (test/policy/dep.f), seals and loads the case,
-\ so a case may name PDEP's public words, its own definitions and the design
-\ built-ins (src/lib/vocabulary.f header). allow.f compiles bodies with the JIT and
-\ allow-tier1.f with the native compiler; a case is run under both, because the
-\ two read a body's tokens at different sites.
-\
-\ A child is judged by its exit code, the first line of its stderr and its whole
-\ stdout, and leaves one line in build/vocabulary-run.txt:
-\    <harness> <case> rc=<n> <first stderr line>
-\ with a location's path cut back to the tree-relative one, so the file reads
-\ the same from any checkout.
+\ Each row is one child,
+\ `bin/hb --load test/policy/<harness>.f -- test/policy/<case>.f`: allow.f
+\ compiles at tier 0 and allow-tier1.f with the native compiler, which read a
+\ body's tokens at different sites.
 \ Run: bin/hb --load src/lib/vocabulary-test.f
+
+\ Each child leaves one line in build/vocabulary-run.txt,
+\ `<harness> <case> rc=<n> <first stderr line>`, its location cut to the
+\ tree-relative path.
+
 require src/lib/test.f
 require src/lib/test/outcome.f
 require src/lib/string.f
@@ -41,9 +37,6 @@ variable CODE                          \ the last child's exit code, -1 when it 
 : TIER0 ( -- ) s" allow" HARNESS! ;
 : TIER1 ( -- ) s" allow-tier1" HARNESS! ;
 
-\ ---- one child ----------------------------------------------------------------
-
-\ The path of the file with this stem under DIR$, in the string builder.
 : FILE$ ( ptr u8 n -- ptr u8 n )
    {: stem:ptr su:n :}
    SB-RESET DIR$ SB-APPEND stem su SB-APPEND s" .f" SB-APPEND
@@ -75,8 +68,6 @@ variable CODE                          \ the last child's exit code, -1 when it 
    then
    s" bin/hb" TIMEOUT-MS >MS CMD:RUN-OUTCOME
    nu 0 > if name nu else STEM$ then FILE$ CODE! ;
-
-\ ---- what the child said ------------------------------------------------------
 
 : ERR-LINE$ ( CMD:command -- CMD:command ptr u8 n )
    CMD:ERR$ {: a:ptr u:n :}
@@ -117,8 +108,6 @@ variable CODE                          \ the last child's exit code, -1 when it 
    SAID+ LF SB-APPEND-C
    ARTIFACT$ SB$ FS:APPEND-FILE ;
 
-\ ---- the verdict --------------------------------------------------------------
-
 : LABEL ( ptr u8 n ptr u8 n -- ) {: name:ptr nu:n what:ptr wu:n :}
    SB-RESET STEM$ SB-APPEND s"  " SB-APPEND name nu SB-APPEND
    s" : " SB-APPEND what wu SB-APPEND
@@ -146,8 +135,6 @@ variable CODE                          \ the last child's exit code, -1 when it 
 : BOTH-REFUSE ( ptr u8 n ptr u8 n -- ) {: name:ptr nu:n line:ptr lu:n :}
    TIER0 name nu line lu REFUSES
    TIER1 name nu line lu REFUSES ;
-
-\ ---- inside the vocabulary ----------------------------------------------------
 
 : OK-OUT$ ( -- ptr u8 n ) S\" 42\n5\n5\n42\n0\n11\n" ;
 
@@ -183,8 +170,6 @@ variable CODE                          \ the last child's exit code, -1 when it 
    TIER1 s" eof" 74 s" hb: source ended inside definition: X at test/policy/eof.f:2" s" " RUNS
    LOCALS ESCAPED ;
 
-\ ---- refused at top level -----------------------------------------------------
-
 : LOADERS ( -- )
    s" bypass" s" hb: not in vocabulary: require at test/policy/bypass.f:2" BOTH-REFUSE
    s" included" s" hb: not in vocabulary: included at test/policy/included.f:2" BOTH-REFUSE
@@ -211,8 +196,6 @@ variable CODE                          \ the last child's exit code, -1 when it 
 : WIDENING ( -- )
    s" allow-call" s" hb: not in vocabulary: VOCABULARY:ALLOW-PACKAGE at test/policy/allow-call.f:2" BOTH-REFUSE
    s" seal-call" s" hb: not in vocabulary: VOCABULARY:RESTRICT at test/policy/seal-call.f:2" BOTH-REFUSE ;
-
-\ ---- refused in a body --------------------------------------------------------
 
 \ Tier 0 refuses at its compile rows and call lookup, tier 1 while it captures
 \ the body: the same line from both.
@@ -243,8 +226,6 @@ variable CODE                          \ the last child's exit code, -1 when it 
    s" do" s" hb: not in vocabulary: do at test/policy/do.f:2" BOTH-REFUSE
    s" stray-close" s" hb: not in vocabulary: :} at test/policy/stray-close.f:2" BOTH-REFUSE ;
 
-\ ---- what a definition may be named -------------------------------------------
-
 \ No keyword row: at tier 0 the row would answer a global name before any
 \ lookup, and at tier 1 the definition. A row outside the design span is refused as a
 \ token; a row inside it is the reserved name, the same refusal unsealed. The
@@ -263,8 +244,6 @@ variable CODE                          \ the last child's exit code, -1 when it 
    TIER1 s" defname-endloc" 70 s" hb: compile keyword cannot be a definition name: :} at test/policy/defname-endloc.f:4" s" " RUNS
    s" defname-kernel" s" hb: not in vocabulary: kernel: at test/policy/defname-kernel.f:4" BOTH-REFUSE
    s" defname-semimatch" s" hb: not in vocabulary: ;match at test/policy/defname-semimatch.f:4" BOTH-REFUSE ;
-
-\ ---- the harness's own edges --------------------------------------------------
 
 : HARNESSES ( -- )
    s" allow-sealed-admit" HARNESS!

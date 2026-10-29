@@ -1,54 +1,9 @@
-\ byte-buffer.f - one package-owned growable byte buffer.
-\
-\ A BUF header is three cells the caller embeds ( BUF:HDR-BYTES ): a `ptr u8`
-\ storage pointer, an active byte length, and a byte capacity. The buffer owns the
-\ ONE OS mapping at the storage pointer; the capacity cell is the ownership token
-\ (positive = a live mapping of that many bytes is owned, zero = no mapping owned,
-\ fresh or disposed). It mirrors src/lib/vector.f's storage discipline for bytes:
-\ copy-on-grow with validation before allocation and release LAST after a
-\ successful install (a refused grow leaves the old mapping owned and intact), and
-\ capacity-as-ownership so a touch of a disposed buffer throws E-BUF-STATE instead
-\ of dereferencing freed storage. Growth doubles with a checked cell-overflow
-\ clamp; storage flows through MEM:ALLOC-SPAN / MEM:FREE-SPAN.
-\
-\ THE HEADER IS THE SPAN, KEPT IN THE THREE CELLS THE CALLER ALREADY ALLOTS.
-\ `data` plus `cap` IS a span - a base and a reach in bytes - and `len` is the
-\ active prefix, so the record design is not "store a span value plus a length"
-\ but "the base lives in the header's POINTER FIELD (DATA-FIELD's `ptr-field`)
-\ and the reach lives in the capacity cell". Storing a minted span by writing its
-\ two cells into the header instead would put a base address in a raw cell, which
-\ docs/forth.md "Raw storage never holds an address" refuses, and it would
-\ change HDR-BYTES, a published footprint every caller allots. So the header
-\ layout is UNCHANGED and BUF-SPAN projects the pair into a span at each use: the
-\ capacity cell is the ownership token, a live mapping of exactly that many bytes,
-\ which is the fact SPAN:MAKE needs and the one this module already maintains.
-\ Every write into the storage - append, replace, the copy into a fresh mapping -
-\ then goes through SPAN:U8! / SPAN:COPY and is bounds-checked against the owned
-\ reach, so the module has no unchecked byte copy left. DATA-FIELD's cast is the
-\ pointer field's, unchanged and still BUF-private.
-\
-\ N>BLEN throws E-BUF-BOUNDS on a negative count. RESERVE grows to exactly the
-\ requested capacity and ENSURE by checked doubling; both keep the active bytes.
-\ SPAN, and the pointer SPAN$ answers, borrow exactly the active prefix until
-\ the next mutation or disposal: the span enforces neither that lifetime nor
-\ read-only use, and the borrower never frees it. Appends keep saved offsets
-\ valid; CLEAR and REPLACE do not. APPEND-SPAN accepts input borrowed from the
-\ buffer's own bytes, because growth copies the input before releasing the old
-\ mapping. APPEND-REPLACED appends the text with each non-overlapping
-\ occurrence of old (as COUNT-SUB counts them) replaced by new and answers the
-\ count; a dead buffer is E-BUF-STATE, a negative length E-STR-BOUNDS and an
-\ operand overlapping the buffer's storage E-BUF-BOUNDS, each before a byte
-\ moves. BORROWED? answers whether a nonempty span overlaps the buffer's whole
-\ mapping, unused capacity included, for a caller that appends input piecewise.
-\ GROW extends the active length by n bytes, growing as ENSURE does, and
-\ answers a writable span over exactly those bytes for a caller that knows its
-\ width up front. Their content is unspecified until the caller writes them, and
-\ the span is valid only until the next mutation or disposal. A negative n is
-\ E-BUF-BOUNDS (N>BLEN) and a length past one cell E-BUF-CAPACITY, each before
-\ the length moves.
-\
-\ STORAGE CLASS. CALLER-OWNED: the caller embeds the header; the buffer owns
-\ its mapping.
+\ byte-buffer.f - one package-owned growable byte buffer, package BUF.
+\ The caller embeds a three-cell header (BUF:HDR-BYTES); the buffer owns the one
+\ OS mapping at its storage pointer. The capacity cell is the ownership token:
+\ positive, a live mapping of that many bytes; zero, none (fresh or disposed).
+\ Storage discipline mirrors src/lib/vector.f.
+\ STORAGE CLASS. CALLER-OWNED: the caller embeds the header; BUF owns the mapping.
 
 require src/lib/errors.f
 require src/lib/memory.f
@@ -59,7 +14,6 @@ require src/lib/adt/option.f
 package BUF
 private
 
-\ ---- header layout: [ data:ptr u8 | len:n | cap:n ] ---------------------------
 0 constant DATA-OFF                     \ storage pointer (a `ptr u8` cell)
 1 cells constant LEN-OFF                 \ active byte length (raw cell)
 2 cells constant CAP-OFF                 \ byte capacity / ownership token (raw cell)
@@ -84,7 +38,6 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 : N>BLEN ( n -- NUM:byte-len )  NUM:BYTE-LEN OK-BLEN ;
 private
 
-\ ---- header field access ------------------------------------------------------
 : DATA-FIELD ( ptr a -- ptr ptr u8 )  DATA-OFF ptr-field ;
 : DATA@ ( ptr a -- ptr u8 )  DATA-FIELD @ ;
 : DATA! ( ptr u8 ptr a -- ) {: d:ptr buf:ptr :}  d buf DATA-FIELD ! ;
@@ -94,19 +47,18 @@ private
 : CAP-RAW@ ( ptr a -- n )  CAP-FIELD @ ;
 : CAP-RAW! ( n ptr a -- ) {: v:n buf:ptr :}  v buf CAP-FIELD ! ;
 
-\ ---- ownership / liveness (the capacity cell is the token) ---------------------
+\ A disposed buffer throws E-BUF-STATE instead of dereferencing freed storage.
 : CHECK-LIVE ( ptr a -- ) {: buf:ptr :}
    buf CAP-RAW@ 0= if E-BUF-STATE throw then ;
 : CHECK-DEAD ( ptr a -- ) {: buf:ptr :}
    buf CAP-RAW@ 0 <> if E-BUF-STATE throw then ;
 
-\ ---- checked length setter: the len <= cap header invariant --------------------
+\ len <= cap is the header invariant.
 : SET-LEN ( n ptr a -- ) {: len:n buf:ptr :}
    len 0 < if E-BUF-BOUNDS throw then
    len buf CAP-RAW@ > if E-BUF-BOUNDS throw then
    len buf LEN-FIELD ! ;
 
-\ ---- size / capacity checks (raw n) -------------------------------------------
 \ A capacity/length arrives as a `byte-len` role, always in [0, MAX-BYTES], so the
 \ only reachable magnitude fault is zero capacity. Growth needs are computed as
 \ len + delta on raw cells: a cell overflow turns the sum NEGATIVE in two's
@@ -117,21 +69,23 @@ private
 : CHECK-NEED ( n -- ) {: need:n :}
    need 0 < if E-BUF-CAPACITY throw then ;
 
-\ ---- storage: allocate / release exactly `n` bytes through the typed MEM sinks -
 : STORAGE-ALLOC ( n -- SPAN:span<u8> )
    MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN ;
 : STORAGE-RELEASE ( SPAN:span<u8> -- )
    MEM:FREE-SPAN ;
 
-\ ---- the header's storage as the span it is ------------------------------------
-\ The reach is the capacity cell, which is the ownership token: positive means a
-\ live mapping of exactly that many bytes is owned here (INIT-RAW and
-\ INSTALL-RESIZE write base and reach together, DISPOSE-RAW clears both), so the
-\ extent SPAN:MAKE is told is the extent this module owns.
+\ The header is the span: the base lives in the pointer field and the reach in
+\ the capacity cell (INIT-RAW and INSTALL-RESIZE write both, DISPOSE-RAW clears
+\ both), so the extent SPAN:MAKE is told is the extent this module owns. Storing
+\ a minted span's two cells instead would put a base address in a raw cell
+\ (docs/forth.md "Raw storage never holds an address") and change HDR-BYTES, a
+\ footprint every caller allots. Every write goes through SPAN:U8! / SPAN:COPY
+\ against the owned reach.
 : BUF-SPAN ( ptr a -- SPAN:span<u8> ) {: buf:ptr :}
    buf DATA@ buf CAP-RAW@ SPAN:MAKE ;
 
-\ Install only after all source bytes have been copied; release is last.
+\ Install only after all source bytes have been copied; release is last, so a
+\ refused grow leaves the old mapping owned and intact.
 : INSTALL-STORAGE ( ptr a SPAN:span<u8> SPAN:span<u8> -- )
    {: buf:ptr d old :}
    d SPAN:$ {: dp:ptr cap:n :}
@@ -156,7 +110,6 @@ private
    buf cap CHECK-RESIZE-CAP
    buf  cap STORAGE-ALLOC  INSTALL-RESIZE ;
 
-\ ---- doubling growth with a checked cell-overflow clamp ------------------------
 : GROW-CAP ( ptr a n -- n ) {: buf:ptr need:n :}
    buf CAP-RAW@
    begin dup need < while
@@ -231,8 +184,8 @@ private
    src u buf BUF-SPAN SPAN:COPY
    u buf SET-LEN ;
 
-\ ---- append with substitution ------------------------------------------------
-\ An operand overlapping the owned mapping would dangle once an append grew it.
+\ BORROWED? answers whether a nonempty span overlaps the whole mapping, unused
+\ capacity included: such an operand would dangle once an append grew it.
 public
 : BORROWED? ( ptr u8 n ptr a -- bool )
    {: p:ptr u:n buf:ptr :}
@@ -253,22 +206,20 @@ private
 
 public
 
-\ ---- header size the caller allots for one buffer ------------------------------
 : HDR-BYTES ( -- n )  HDR-SIZE ;
 
-\ ---- lifecycle ----------------------------------------------------------------
 : INIT ( ptr a NUM:byte-len -- ) {: buf:ptr cap:NUM:byte-len :}
    buf cap BLEN>N INIT-RAW ;
 : DISPOSE ( ptr a -- )  DISPOSE-RAW ;
 : CLEAR ( ptr a -- )  CLEAR-RAW ;
 
-\ ---- state readers (fail closed on a disposed / uninitialized buffer) ----------
 : LEN@ ( ptr a -- NUM:byte-len ) {: buf:ptr :}
    buf CHECK-LIVE  buf LEN-RAW@ N>BLEN ;
 : CAP@ ( ptr a -- NUM:byte-len ) {: buf:ptr :}
    buf CHECK-LIVE  buf CAP-RAW@ N>BLEN ;
-\ Borrow the active prefix, not spare capacity. Reacquire after mutation;
-\ BUF retains ownership of the mapping, so the borrower must not free it.
+\ SPAN and SPAN$ borrow exactly the active prefix until the next mutation or
+\ disposal; the span enforces neither that lifetime nor read-only use, and the
+\ borrower never frees it.
 : SPAN ( ptr a -- SPAN:span<u8> )
    {: buf:ptr :}
    buf CHECK-LIVE
@@ -276,7 +227,11 @@ public
 : SPAN$ ( ptr a -- ptr u8 NUM:byte-len ) {: buf:ptr :}
    buf CHECK-LIVE  buf DATA@  buf LEN-RAW@ N>BLEN ;
 
-\ ---- capacity management ------------------------------------------------------
+\ RESERVE grows to exactly the requested capacity, ENSURE and GROW by checked
+\ doubling; all keep the active bytes. GROW answers a writable span over the n
+\ new bytes, unspecified until written and valid until the next mutation or
+\ disposal; a negative n is E-BUF-BOUNDS and a length past one cell
+\ E-BUF-CAPACITY, each before the length moves.
 : RESERVE ( ptr a NUM:byte-len -- ) {: buf:ptr n:NUM:byte-len :}
    buf n BLEN>N RESERVE-RAW ;
 : ENSURE ( ptr a NUM:byte-len -- ) {: buf:ptr n:NUM:byte-len :}
@@ -287,15 +242,20 @@ public
    at u + buf SET-LEN
    buf BUF-SPAN at u SPAN:SUB ;
 
-\ ---- append / replace (growth doubles through the checked adapter) ------------
+\ Appends keep saved offsets valid; CLEAR and REPLACE do not. APPEND-SPAN
+\ accepts input borrowed from the buffer's own bytes: growth copies the input
+\ before releasing the old mapping.
 : APPEND-BYTE ( n ptr a -- )  APPEND-BYTE-RAW ;
 : APPEND-SPAN ( ptr u8 NUM:byte-len ptr a -- ) {: src:ptr u:NUM:byte-len buf:ptr :}
    src u BLEN>N buf APPEND-SPAN-RAW ;
 : REPLACE ( ptr u8 NUM:byte-len ptr a -- ) {: src:ptr u:NUM:byte-len buf:ptr :}
    src u BLEN>N buf REPLACE-RAW ;
 
-\ The text with every old replaced by new, appended; the count COUNT-SUB answers.
-\ An empty old is its zero occurrences: FIND-SUB-FROM would answer every offset.
+\ The text with every non-overlapping old replaced by new, appended; answers the
+\ count COUNT-SUB answers. A dead buffer is E-BUF-STATE, a negative length
+\ E-STR-BOUNDS and an operand overlapping the storage E-BUF-BOUNDS, each before a
+\ byte moves. An empty old is its zero occurrences: FIND-SUB-FROM would answer
+\ every offset.
 : APPEND-REPLACED ( ptr u8 n ptr u8 n ptr u8 n ptr a -- n )
    {: text:ptr tu:n old:ptr ou:n new:ptr nu:n buf:ptr :}
    buf CHECK-LIVE

@@ -1,65 +1,9 @@
-\ json-read.f - checked JSON pull/cursor parser.
-\
-\ STORAGE CLASS. CALLER-OWNED, so this module is safe from any number of
-\ tasks. The reader holds no module state at all: the caller declares a
-\ JR:cursor record (`TYPED-VARIABLE X JR:cursor`, `n TYPED-BUFFER XS
-\ JR:cursor` or `FIELD rd JR:cursor`) and owns both that record and the source
-\ span, so two tasks parsing two documents share nothing. Typed storage is
-\ zero-filled, and a zero-filled record owns nothing.
-\
-\ The parser is a cursor over the caller's source buffer and record. INIT
-\ returns a linear reader; every operation threads that reader and CLOSE consumes
-\ it. No valid document is refused for its depth, and no caller sizes storage:
-\ the record keeps the container stack one bit per open container, 64 levels
-\ inline, so a document nested at most 64 deep parses with no allocation and no
-\ process-global state. Past 64 levels the record owns one mapping the reader
-\ grows by doubling; a failed growth is MEM's E-MEM-MAP or E-MEM-SIZE, recorded
-\ as the reader's failure. CLOSE, FINISH and the first advance failure release
-\ that mapping. A caller whose own throw abandons a live reader leaves the
-\ mapping in the record: the next reader on that record reuses it and its CLOSE
-\ releases it, and DISPOSE, which is idempotent, releases it at the record's
-\ end of life. A static record that is only ever re-INITed needs no DISPOSE.
-\
-\ Structural well-formedness (RFC 8259: strict, no comments, no trailing commas,
-\ no single quotes, string escapes, and Unicode scalar encoding) is validated as
-\ the cursor advances; number and value decode happen on demand. Every failure
-\ is a named throw in the -3900..-3999 JSON-reader block, apart from a failed
-\ growth. A throw from an advance leaves the reader failed: every later NEXT,
-\ SKIP-VALUE, VALUE-SPAN$, FIND-KEY or FINISH that would move the cursor throws
-\ that first code again. Accessor refusals (INT, FLOAT, STR, STR-EQ?) and
-\ wrong-phase E-JR-STATE refusals leave the reader usable.
-\
-\ The parser lives in `package JR`. External callers use the record type
-\ JR:cursor, the qualified public API (JR:INIT, JR:CLOSE, JR:FINISH,
-\ JR:DISPOSE, JR:NEXT, JR:TOKEN, JR:SPAN$, JR:VALUE-SPAN$, JR:INT, JR:FLOAT,
-\ JR:STR, JR:STR-EQ?, JR:SKIP-VALUE, JR:FIND-KEY) and the qualified token kinds
-\ (JR:T-OBJ .. JR:T-END). Callers keep both record and source live and
-\ exclusive until CLOSE or FINISH. The record's fields, the byte constants, the
-\ reader's LINEAR: mint and erase, cursor state, and scan/decode helpers -
-\ including AT, which reads a source byte its caller has bounds-checked - are
-\ package-private and sealed after the module is assembled.
-\
-\ INIT refuses a negative source length or a null source with bytes (E-SOURCE)
-\ before it mints the reader. The checker cannot prove the lifetime or
-\ exclusivity of the record and the source; those stay the caller's promise.
-\ FINISH reads the rest of the document from wherever the cursor stands, so a
-\ caller that took only the members it needs still learns the document is well
-\ formed. SPAN$ borrows the raw lexeme, escapes encoded; STR decodes into
-\ non-null caller storage (a negative or short capacity is E-JR-STATE).
-\ VALUE-SPAN$ on an opener answers the source bytes through the matching close
-\ and moves past the value. FIND-KEY searches only the current object, skipping
-\ each unmatched value, and stops at its close; it and STR-EQ? compare decoded
-\ bytes without a buffer, so key length is not bounded by reader storage.
-\
-\ Cursor state machine (STATE): a value token drives one transition each.
-\  ST-VALUE   value required (doc start / after ':' / after ',' in an array)
-\  ST-ELEM    array just opened: a value or ']'
-\  ST-KEY     object just opened: a key string or '}'
-\  ST-MEMBER  after ',' in an object: a key string (no '}': trailing comma)
-\  ST-SEP     value complete inside a container: ',' or the matching close
-\  ST-DONE    top-level value complete: only whitespace then JR:T-END
-\ A ',' in ST-SEP is consumed silently (STEP returns RETRY and NEXT loops);
-\ container closes are emitted as T-OBJ-END / T-ARR-END.
+\ json-read.f - checked JSON pull/cursor parser (package JR), strict RFC 8259: no
+\ comments, trailing commas or single quotes. Structure, escapes and Unicode
+\ scalar encoding are validated as the cursor advances; values decode on demand.
+\ STORAGE CLASS. CALLER-OWNED: the caller owns the JR:cursor record (zero-filled
+\ typed storage owns nothing) and the source span, and keeps both live and
+\ exclusive until CLOSE or FINISH: a promise the checker cannot prove.
 
 require src/lib/errors.f
 require src/lib/memory.f
@@ -67,7 +11,7 @@ require src/lib/span.f
 require src/lib/string.f
 require src/lib/string-roles.f               \ package STR: the typed string surface
 require src/lib/float.f
-require src/lib/adt/option.f                 \ option<NUM:index> for STR:INDEX-OF (switchover wave A)
+require src/lib/adt/option.f                 \ option<NUM:index> for STR:INDEX-OF
 
 \ JSON reader: -3900..-3999, minted here beside the package its last code
 \ (JR:E-SOURCE) belongs to (docs/forth-card.md § 6). The E-JR-* codes stay
@@ -95,8 +39,11 @@ DEFLINEAR JR:reader
 
 \ The reader's whole state. src..fail are the cursor and decode registers;
 \ kinds is the container stack's first 64 levels, bit i set when level i is an
-\ object; more is the mapping holding the rest, more-cells cells of it, and
-\ more-cells 0 means the record owns no mapping.
+\ object, so a document nested at most 64 deep parses with no allocation; more
+\ is the mapping holding the rest, more-cells cells of it, grown by doubling,
+\ and more-cells 0 means the record owns no mapping. No valid document is
+\ refused for its depth; a failed growth is MEM's E-MEM-MAP or E-MEM-SIZE,
+\ recorded as the reader's failure.
 STRUCTURE cursor OPAQUE DERIVE addr
    FIELD src ptr u8
    FIELD src-len n
@@ -121,7 +68,6 @@ STRUCTURE cursor OPAQUE DERIVE addr
 
 private
 
-\ ---- byte constants -------------------------------------------------------
 9 constant TAB
 10 constant LF
 13 constant CR
@@ -147,7 +93,6 @@ private
 
 16 constant HEX-BASE
 
-\ ---- unicode / utf-8 ------------------------------------------------------
 $80 constant UTF1-MAX
 $800 constant UTF2-MAX
 $10000 constant UTF3-MAX
@@ -172,7 +117,6 @@ $E000 constant SUR-END
 $10000 constant SUR-BASE
 10 constant SUR-SHIFT
 
-\ ---- token kinds (public: JR:T-*) -----------------------------------------
 public
 
 0 constant T-OBJ
@@ -192,7 +136,15 @@ private
 
 99 constant RETRY
 
-\ ---- parser state ---------------------------------------------------------
+\ Cursor state machine (STATE): a value token drives one transition each.
+\  ST-VALUE   value required (doc start / after ':' / after ',' in an array)
+\  ST-ELEM    array just opened: a value or ']'
+\  ST-KEY     object just opened: a key string or '}'
+\  ST-MEMBER  after ',' in an object: a key string (no '}': trailing comma)
+\  ST-SEP     value complete inside a container: ',' or the matching close
+\  ST-DONE    top-level value complete: only whitespace then JR:T-END
+\ A ',' in ST-SEP is consumed silently (STEP returns RETRY and NEXT loops);
+\ container closes are emitted as T-OBJ-END / T-ARR-END.
 0 constant ST-VALUE
 1 constant ST-ELEM
 2 constant ST-KEY
@@ -206,7 +158,6 @@ private
 64 constant WORD-BITS        \ container levels per stack word
 512 constant FIRST-MORE      \ cells in the first mapping: 32768 more levels
 
-\ ---- reader token ---------------------------------------------------------
 \ A JR:reader is the caller's record under a linear token. A linear token's
 \ payload is a scalar con, so the record crosses as raw cells only through this
 \ private cast pair, and these private rows are its only mint and erase: outside
@@ -239,7 +190,7 @@ LINEAR: ERASE-READER ( JR:reader -- ptr n )
 : FALSE ( -- bool )
    TRUE 0= ;
 
-\ ---- source cursor --------------------------------------------------------
+\ Reads a source byte its caller has bounds-checked.
 : AT ( ptr cursor n -- n ) {: state:ptr idx:n :}
    state CURSOR-SRC @ idx + c@ ;
 
@@ -252,7 +203,6 @@ LINEAR: ERASE-READER ( JR:reader -- ptr n )
 : ADVANCE ( ptr cursor -- ) {: state:ptr :}
    state CURSOR-POS dup @ 1+ swap ! ;
 
-\ ---- container stack storage ----------------------------------------------
 \ The mapping as the span it is: more-cells is the ownership token, nonzero
 \ exactly while the record owns a mapping of that many cells at more.
 : MORE-SPAN ( ptr cursor -- SPAN:span<u8> ) {: state:ptr :}
@@ -306,12 +256,15 @@ public
    ERASE-READER >CURSOR MORE-RELEASE ;
 
 \ Release what a record owns after a caller's throw abandoned its live reader.
+\ Idempotent. A static record that is only ever re-INITed needs no DISPOSE: the
+\ next reader on the record reuses the mapping and its CLOSE releases it.
 : DISPOSE ( ptr cursor -- )
    MORE-RELEASE ;
 
 : TOKEN ( JR:reader -- JR:reader n )
    READER>STATE CURSOR-KIND @ ;
 
+\ The raw lexeme, borrowed from the source, escapes still encoded.
 : SPAN$ ( JR:reader -- JR:reader ptr u8 n )
    READER>STATE {: state:ptr :}
    state CURSOR-SRC @ state CURSOR-TOK-AT @ +
@@ -319,7 +272,6 @@ public
 
 private
 
-\ ---- whitespace -----------------------------------------------------------
 : WS? ( n -- bool )
    dup SP = over TAB = or over LF = or swap CR = or ;
 
@@ -334,7 +286,6 @@ private
       state CURSOR-POS dup @ 1+ swap !
    repeat ;
 
-\ ---- container stack ------------------------------------------------------
 \ One bit per level: set for an object, clear for an array.
 : LEVEL-MASK ( n -- n )
    WORD-BITS mod 1 swap lshift ;
@@ -350,7 +301,6 @@ private
 : POP ( ptr cursor -- ) {: state:ptr :}
    state CURSOR-DEPTH dup @ 1- swap ! ;
 
-\ Whether the innermost open container is an object.
 : IN-OBJECT? ( ptr cursor -- bool ) {: state:ptr :}
    state CURSOR-DEPTH @ 1- {: level:n :}
    state level KIND-WORD @ level LEVEL-MASK and 0<> ;
@@ -359,7 +309,6 @@ private
    state CURSOR-DEPTH @ 0= if ST-DONE else ST-SEP then
    state CURSOR-STATE ! ;
 
-\ ---- string token scanning ------------------------------------------------
 \ The value of this hex digit byte; any other byte is a malformed escape.
 : HEX-DIGIT ( n -- n )
    dup STR-HEX-DIGIT? 0= if E-JR-ESCAPE throw then
@@ -482,7 +431,6 @@ create UNESC-MAP
    +loop
    len ;
 
-\ Move past the bytes PLAIN-END admits.
 : SKIP-PLAIN ( ptr cursor -- ) {: state:ptr :}
    state CURSOR-SRC @ state CURSOR-SRC-LEN @ state CURSOR-POS @ PLAIN-END
    state CURSOR-POS ! ;
@@ -507,7 +455,6 @@ create UNESC-MAP
       then
    again ;
 
-\ ---- number token scanning + validation -----------------------------------
 : NUM-CHAR? ( n -- bool )
    dup STR-DIGIT? if drop TRUE exit then
    dup MINUS = if drop TRUE exit then
@@ -586,7 +533,6 @@ create UNESC-MAP
    state CURSOR-SRC @ state CURSOR-TOK-AT @ +
    state CURSOR-TOK-LEN @ ;
 
-\ ---- literal tokens -------------------------------------------------------
 : MATCH-LIT? ( ptr cursor ptr u8 n -- bool ) {: state:ptr la:ptr lu:n :}
    state CURSOR-POS @ lu + state CURSOR-SRC-LEN @ > if FALSE exit then
    0 begin dup lu < while
@@ -621,7 +567,6 @@ create UNESC-MAP
 : READ-NULL ( ptr cursor -- n )
    s" null" T-NULL READ-LIT ;
 
-\ ---- value readers --------------------------------------------------------
 : OPEN-OBJ ( ptr cursor -- n ) {: state:ptr :}
    state CURSOR-POS @ {: at:n :}
    state CURSOR-POS dup @ 1+ swap !
@@ -687,7 +632,6 @@ create UNESC-MAP
    c STR-DIGIT? if state READ-NUMBER exit then
    E-JR-MALFORMED throw ;
 
-\ ---- state dispatch -------------------------------------------------------
 : DO-ELEM ( ptr cursor n -- n ) {: state:ptr c:n :}
    c RBRACK = if state CLOSE-ARR exit then
    state c READ-VALUE ;
@@ -745,6 +689,8 @@ create UNESC-MAP
 \ is stored and every later advance throws it again: a reader never parses on
 \ from a failure as if the rejected text had been valid. The failure also
 \ releases the stack mapping, which REQUIRE-SOUND keeps anything from reading.
+\ Accessor refusals (INT, FLOAT, STR, STR-EQ?) and wrong-phase E-JR-STATE
+\ refusals leave the reader usable.
 : NEXT-INNER ( ptr cursor -- n ) {: state:ptr :}
    state REQUIRE-SOUND
    0 state [: STEP-SLOT ;] catch nip {: token code:n :}
@@ -761,14 +707,14 @@ public
 \ FINISH reads to the document's end from any position (before the first NEXT,
 \ inside containers, after the last value, or after T-END, which a done reader
 \ answers again) and consumes the reader. A malformed or truncated rest throws
-\ the reader's own E-JR-* code.
+\ the reader's own E-JR-* code. A caller that took only the members it needs
+\ still learns the document is well formed.
 : FINISH ( JR:reader -- )
    begin NEXT T-END = until
    CLOSE ;
 
 private
 
-\ ---- number value decode --------------------------------------------------
 : INT-INNER ( ptr cursor -- n ) {: state:ptr :}
    state CURSOR-KIND @ T-INT <> if E-JR-STATE throw then
    state RAW-SPAN$ STR>NUMBER? MATCH option
@@ -793,7 +739,6 @@ public
 
 private
 
-\ ---- string value decode (unescape into caller buffer) --------------------
 : WRITE-BYTE ( ptr cursor n -- ) {: state:ptr byte:n :}
    state CURSOR-OUT @ state CURSOR-DST-CAP @ >= if E-JR-STATE throw then
    byte state CURSOR-DST @ state CURSOR-OUT @ + c! ;
@@ -924,13 +869,14 @@ private
 
 public
 
+\ Decodes into non-null caller storage; a negative or short capacity is
+\ E-JR-STATE.
 : STR ( JR:reader ptr u8 n -- JR:reader n )
    {: dst:ptr cap:n :}
    READER>STATE dst cap STR-INNER ;
 
 private
 
-\ ---- skip / find ----------------------------------------------------------
 : SCALAR? ( n -- bool )
    dup T-STR = over T-INT = or over T-FLOAT = or
    over T-TRUE = or over T-FALSE = or swap T-NULL = or ;
@@ -1006,9 +952,14 @@ private
 
 public
 
+\ On an opener, the source bytes through the matching close; the cursor moves
+\ past the value.
 : VALUE-SPAN$ ( JR:reader -- JR:reader ptr u8 n )
    READER>STATE VALUE-SPAN-INNER ;
 
+\ Searches only the current object, skipping each unmatched value, and stops at
+\ its close. It and STR-EQ? compare decoded bytes without a buffer, so key
+\ length is not bounded by reader storage.
 : FIND-KEY ( JR:reader ptr u8 n -- JR:reader bool )
    {: key:ptr len:n :}
    READER>STATE key len FIND-INNER ;

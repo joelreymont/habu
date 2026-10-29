@@ -2,7 +2,7 @@
 
 require src/lib/errors.f
 require src/lib/string.f
-require src/lib/string-roles.f               \ package STR: the typed string surface
+require src/lib/string-roles.f
 require src/lib/test.f
 require src/lib/memory.f
 require src/lib/test/outcome.f
@@ -129,8 +129,7 @@ MEMT-MANY-LIVE-SPANS
 ' MEMT-TOO-MANY-CELLS E-MEM-SIZE TTHROWS
 T-REPORT
 
-\ ---- package MEM: typed allocation roles --------------------------------------
-\ numeric-result<a> is a layout value with no polymorphic eliminator yet, so each
+\ numeric-result<a> is a layout value with no polymorphic eliminator, so each
 \ classifier MATCHes the concrete role it holds and maps ok -> 0 / refusal ->
 \ E-NUM-* (the num-types-test.f idiom). The scalar words admit zero; only
 \ the alloc-* sinks reject zero/overflow, and that refusal precedes any mmap.
@@ -164,7 +163,6 @@ T-REPORT
       misaligned OF E-NUM-MISALIGNED ENDOF
    ;MATCH ;
 
-\ scalar sizing: raw n -> zero-admitting role -> MEM word -> class
 : MEMT-CELLS>BYTES# ( n -- n ) NUM:CELL-COUNT
    MATCH NUM:numeric-result ok OF MEM:CELLS>BYTES MEMT-BL-CODE ENDOF
       negative OF E-NUM-NEGATIVE ENDOF zero OF E-NUM-ZERO ENDOF
@@ -186,7 +184,6 @@ T-REPORT
       overflow OF E-NUM-OVERFLOW ENDOF underflow OF E-NUM-UNDERFLOW ENDOF
       bad-alignment OF E-NUM-BAD-ALIGNMENT ENDOF misaligned OF E-NUM-MISALIGNED ENDOF ;MATCH ;
 
-\ allocation narrowing: raw n -> role -> AS-ALLOC-* -> class (never allocates on refuse)
 : MEMT-BYTES-ALLOC# ( n -- n ) NUM:BYTE-LEN
    MATCH NUM:numeric-result ok OF NUM:AS-ALLOC-BYTE-LEN MEMT-AB-CODE ENDOF
       negative OF E-NUM-NEGATIVE ENDOF zero OF E-NUM-ZERO ENDOF
@@ -198,45 +195,31 @@ T-REPORT
       overflow OF E-NUM-OVERFLOW ENDOF underflow OF E-NUM-UNDERFLOW ENDOF
       bad-alignment OF E-NUM-BAD-ALIGNMENT ENDOF misaligned OF E-NUM-MISALIGNED ENDOF ;MATCH ;
 
-\ real typed allocation via the shared MEM narrowing helpers: MEM:BYTES-ALLOC-LEN
-\ / MEM:CELLS-ALLOC-COUNT take a raw n straight to the validated alloc role and
-\ throw E-MEM-SIZE on any refusal before an mmap (TTHROWSQ cases drive the
-\ zero/negative/overflow refusals in MEM's TEST-ALLOC-ROLES).
-
 \ The returned alloc role's raw projection is MEM-private, so the tests touch
 \ memory over the KNOWN raw extent and drop the role.
-\ EXEMPLAR MIGRATION: a bounded-lifetime scratch mapping that formerly leaked
-\ (`MEM:ALLOC-BYTES drop {: a:ptr :}` used the buffer then dropped its length, so it
-\ could never be released) now scopes the mapping in MEM:WITH-BYTES - written+read end
-\ to end inside the body, released on scope exit. The write/read body is a named word
+\ MEM:WITH-BYTES releases the mapping on scope exit. The body is a named word
 \ because a quotation cannot hold locals.
 : MEMT-TYPED-BYTES-BODY ( ptr u8 NUM:alloc-byte-len -- ) {: a:ptr len :}
    MEMT-MARK-A a c!  MEMT-MARK-Z a MEM-64K 1 - + c!
    a c@ MEMT-MARK-A T=  a MEM-64K 1 - + c@ MEMT-MARK-Z T= ;
-: MEMT-TYPED-BYTES ( -- )                    \ typed byte alloc is writable end to end, scoped (no leak)
+: MEMT-TYPED-BYTES ( -- )
    MEM-64K MEM:BYTES-ALLOC-LEN [: MEMT-TYPED-BYTES-BODY ;] MEM:WITH-BYTES ;
-: MEMT-TYPED-64K ( -- )                      \ typed single-64K alloc is writable end to end
+: MEMT-TYPED-64K ( -- )
    MEM:ALLOC-64K drop {: a:ptr :}
    MEMT-MARK-A a c!  MEMT-MARK-Z a MEM-64K 1 - + c!
    a c@ MEMT-MARK-A T=  a MEM-64K 1 - + c@ MEMT-MARK-Z T= ;
-: MEMT-TYPED-CELLS ( -- )                    \ typed cell alloc stores/fetches two cells
+: MEMT-TYPED-CELLS ( -- )
    4 MEM:CELLS-ALLOC-COUNT MEM:ALLOC-CELLS {: a:ptr :}
    111 a !  222 a 1 cells + !
    a @ 111 T=  a 1 cells + @ 222 T= ;
 
-\ ---- purified MEM:64K-COUNT-FOR: byte-identical parity with the legacy raw word -
-\ MEM:64K-COUNT-FOR now composes NUM:DIV-BYTES-CEIL and reads no raw cell.
-\ Pin its EXACT item-count at the boundary inputs 1 / 64K / 64K+1 / MAX-N so the
-\ purification stays behavior-identical: the ceil counts match the legacy raw
-\ MEM-64K-COUNT-FOR at 1 / 64K / 64K+1, and at MAX-N the pure scalar word returns
-\ the true ceil (MEM-MAX-64K-BUFFERS+1), where the raw word instead throws its
-\ own bundled buffer ceiling (that allocation ceiling now lives at the alloc sink).
-\ Test-only white-box count reader at this test's own scope: the pinned ceil is
-\ compared against a literal n. Checked cast; projection out of a cell family
-\ needs no ownership (checker.f CAST-OWNER?).
+\ MEM:64K-COUNT-FOR composes NUM:DIV-BYTES-CEIL and reads no raw cell. At MAX-N
+\ it answers the true ceil, MEM-MAX-64K-BUFFERS+1; the allocation ceiling is
+\ enforced at the alloc sink. A projection out of a cell family needs no
+\ ownership (checker.f CAST-OWNER?).
 CAST: MEMT-IC>RAW ( NUM:item-count -- n )
 
-: MEMT-64K-COUNT ( n -- n ) NUM:BYTE-LEN          \ raw bytes -> typed ceil count value
+: MEMT-64K-COUNT ( n -- n ) NUM:BYTE-LEN
    MATCH NUM:numeric-result ok OF MEM:64K-COUNT-FOR
       MATCH NUM:numeric-result ok OF MEMT-IC>RAW ENDOF
          negative OF E-MEM-SIZE throw ENDOF zero OF E-MEM-SIZE throw ENDOF
@@ -245,16 +228,12 @@ CAST: MEMT-IC>RAW ( NUM:item-count -- n )
       negative OF E-MEM-SIZE throw ENDOF zero OF E-MEM-SIZE throw ENDOF overflow OF E-MEM-SIZE throw ENDOF
       underflow OF E-MEM-SIZE throw ENDOF bad-alignment OF E-MEM-SIZE throw ENDOF misaligned OF E-MEM-SIZE throw ENDOF ;MATCH ;
 
-: MEMT-COUNT-PARITY ( -- )                            \ exact-count regression at 1/64K/64K+1/MAX-N
+: MEMT-COUNT-PARITY ( -- )
    1 MEMT-64K-COUNT 1 T=
    MEM-64K MEMT-64K-COUNT 1 T=
    MEM-64K 1 + MEMT-64K-COUNT 2 T=
    MEM-MAX-N MEMT-64K-COUNT MEM-MAX-64K-BUFFERS 1 + T= ;
 
-\ ---- typed release and range unmap ---------------------------------------------
-\ These fixtures and their runner live in package MEMT beside the WITH-BYTES
-\ fixtures below; MEM's public words are imported for bare calls, and the suite
-\ owns a real package tail instead of a raw global stem.
 using MEM
 package MEMT
 private
@@ -269,11 +248,8 @@ $1000 constant RBT-CAP
 create RBT-OUT RBT-CAP allot
 create RBT-ERR RBT-CAP allot
 
-\ MEM:SIZE-BYTE-LEN is private and the image no longer ships its name
-\ (habu-ship-no-dictionary-2fee2dea), so this suite narrows the result itself
-\ rather than reaching into the package it is testing - the shape MEMT-64K-COUNT
-\ above already uses. Same refusal code, so a bad fixture size still reads as a
-\ memory-sizing refusal.
+\ MEM:SIZE-BYTE-LEN is private and the image ships no dictionary names, so
+\ this suite narrows the result itself, with the same refusal code.
 : RBT-LEN ( n -- NUM:byte-len )
    NUM:BYTE-LEN
    MATCH NUM:numeric-result
@@ -429,23 +405,17 @@ create RBT-ERR RBT-CAP allot
 : TEST-ALLOC-ROLES ( -- )
    T-RESET
    MEMT-COUNT-PARITY
-   \ scalar sizing admits zero and positive (zero is a valid scalar answer)
    0 MEMT-CELLS>BYTES# 0 T=      1 MEMT-CELLS>BYTES# 0 T=
    0 MEMT-64K-BYTES# 0 T=        3 MEMT-64K-BYTES# 0 T=
    0 MEMT-64K-COUNT-FOR# 0 T=    1 MEMT-64K-COUNT-FOR# 0 T=   MEM-64K 1 + MEMT-64K-COUNT-FOR# 0 T=
    0 MEMT-64K-SPAN# 0 T=         MEM-64K 1 + MEMT-64K-SPAN# 0 T=
-   \ allocation sinks reject zero (never allocate) and reject negative
    0 MEMT-BYTES-ALLOC# E-NUM-ZERO T=      -1 MEMT-BYTES-ALLOC# E-NUM-NEGATIVE T=
    0 MEMT-CELLS-ALLOC# E-NUM-ZERO T=      -1 MEMT-CELLS-ALLOC# E-NUM-NEGATIVE T=
    1 MEMT-BYTES-ALLOC# 0 T=                  1 MEMT-CELLS-ALLOC# 0 T=
-   \ over-allocation fails at validation, BEFORE any mmap primitive is reachable
    MEM-MAX-CELLS 1 + MEMT-CELLS-ALLOC# E-NUM-OVERFLOW T=
-   \ real typed allocations touch OS-backed memory
    MEMT-TYPED-BYTES
    MEMT-TYPED-64K
    MEMT-TYPED-CELLS
-   \ shared narrowing helpers refuse zero/negative/overflow with E-MEM-SIZE
-   \ before any mmap primitive is reachable
    [: 0 BYTES-ALLOC-LEN drop ;] E-MEM-SIZE TTHROWSQ
    [: -1 BYTES-ALLOC-LEN drop ;] E-MEM-SIZE TTHROWSQ
    [: 0 CELLS-ALLOC-COUNT drop ;] E-MEM-SIZE TTHROWSQ
@@ -500,7 +470,6 @@ public
 
 MEM-FATAL-TEST:RUN
 
-\ ---- MEM:WITH-BYTES: quotation-scoped mapped memory (RAII) --------------------
 \ Child processes prove release through OS-enforced mapping accessibility.
 using MEM
 package MEMT
@@ -689,15 +658,14 @@ TEST-WITH-BYTES
 ;package
 ;using
 
-\ ---- static rejection matrix: frozen signatures accept; role swaps reject ------
 \ CHECK-QUIET-CANDIDATE!: -1 accepted, 0 rejected (type error), 1 uncheckable.
 package MEMT
 private
 
 \ A released guarded stack must leave its neighbours mapped: the kernel's
-\ granule puts the page-aligned base up to a page into the span, and a release
-\ computed from the span used to reach past its end into the next mapping (a
-\ task's DATA region; test/address-cell-tasks.f, 2026-09-16).
+\ granule puts the page-aligned base up to a page into the span, so a release
+\ computed from the span reaches past its end into the next mapping (a task's
+\ DATA region; test/address-cell-tasks.f).
 : GUARDED-SIZE-REFUSAL ( -- )
    100 MEM:ALLOC-GUARDED MEM:RELEASE-GUARDED ;
 
@@ -720,7 +688,6 @@ private
 
 : STAT ( -- )
    T-RESET
-   \ positive signature controls: the exact frozen effects resolve.
    s" G-CELLS>BYTES ( NUM:cell-count -- NUM:numeric-result<NUM:byte-len> ) MEM:CELLS>BYTES"
       CHECK-QUIET-CANDIDATE! -1 T=
    s" G-64K-BYTES ( NUM:item-count -- NUM:numeric-result<NUM:byte-len> ) MEM:64K-BYTES"
@@ -739,7 +706,6 @@ private
       CHECK-QUIET-CANDIDATE! -1 T=
    s" G-CELLS-ALLOC-COUNT ( n -- NUM:alloc-cell-count ) MEM:CELLS-ALLOC-COUNT"
       CHECK-QUIET-CANDIDATE! -1 T=
-   \ negatives: a zero-admitting role at the sink, byte<->cell role swaps, raw n.
    s" B-ZEROABLE-ALLOC ( NUM:byte-len -- ptr u8 NUM:alloc-byte-len ) MEM:ALLOC-BYTES"
       CHECK-QUIET-CANDIDATE! 0 T=
    s" B-CELL-ROLE-BYTES ( NUM:alloc-cell-count -- ptr u8 NUM:alloc-byte-len ) MEM:ALLOC-BYTES"
@@ -750,10 +716,8 @@ private
       CHECK-QUIET-CANDIDATE! 0 T=
    s" B-BYTE-ROLE-64K-BYTES ( NUM:byte-len -- NUM:numeric-result<NUM:byte-len> ) MEM:64K-BYTES"
       CHECK-QUIET-CANDIDATE! 0 T=
-   \ RELEASE-BYTES demands the exact ptr u8 + alloc-byte-len ALLOC-BYTES mints: the
-   \ frozen signature resolves, while a raw-integer address, a raw-n length, a
-   \ zero-admitting byte-len, or a cell role are checker rejects, so no forged
-   \ address or unvalidated size reaches munmap.
+   \ RELEASE-BYTES admits only the ptr u8 + alloc-byte-len ALLOC-BYTES mints, so no
+   \ forged address or unvalidated size reaches munmap.
    s" G-RELEASE ( ptr u8 NUM:alloc-byte-len -- ) MEM:RELEASE-BYTES"
       CHECK-QUIET-CANDIDATE! -1 T=
    s" B-RELEASE-RAW-PTR ( n NUM:alloc-byte-len -- ) MEM:RELEASE-BYTES"
@@ -764,8 +728,6 @@ private
       CHECK-QUIET-CANDIDATE! 0 T=
    s" B-RELEASE-CELL-LEN ( ptr u8 NUM:alloc-cell-count -- ) MEM:RELEASE-BYTES"
       CHECK-QUIET-CANDIDATE! 0 T=
-   \ UNMAP accepts a mapped byte extent, not an allocation owner, raw length,
-   \ cell length, or cell pointer.
    s" G-UNMAP ( ptr u8 NUM:byte-len -- ) MEM:UNMAP"
       CHECK-QUIET-CANDIDATE! -1 T=
    s" B-UNMAP-BOOL-PTR ( ptr bool NUM:byte-len -- ) MEM:UNMAP"
@@ -776,10 +738,8 @@ private
       CHECK-QUIET-CANDIDATE! 0 T=
    s" B-UNMAP-CELL-LEN ( ptr u8 NUM:cell-count -- ) MEM:UNMAP"
       CHECK-QUIET-CANDIDATE! 0 T=
-   \ WITH-BYTES types the quotation body row: the frozen signature (row-polymorphic S
-   \ threaded from the body) resolves, while a raw-n length or a cell-count role in the
-   \ scoped length + body row are checker rejects, so a caller cannot scope a mapping
-   \ over an unvalidated size or a byte/cell role swap.
+   \ WITH-BYTES types the body row, so a caller cannot scope a mapping over an
+   \ unvalidated size or a byte/cell role swap.
    s" G-WITH-BYTES ( R NUM:alloc-byte-len [ R ptr u8 NUM:alloc-byte-len -- S ] -- S ) MEM:WITH-BYTES"
       CHECK-QUIET-CANDIDATE! -1 T=
    s" B-WB-RAW-LEN ( R n [ R ptr u8 NUM:alloc-byte-len -- S ] -- S ) MEM:WITH-BYTES"

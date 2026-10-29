@@ -11,17 +11,17 @@ require src/core/bytes.f
 
 : FL-NEAR ( r r -- bool ) f- fabs 0.000001 f< ;
 
-: T-FL ( ptr u8 n r -- ) {: want:r :}               \ parse string, expect want
+: T-FL ( ptr u8 n r -- ) {: want:r :}
    STR>FLOAT MATCH option
-     none OF 0 0= 0= ENDOF                           \ none -> false (unexpected)
-     some OF want FL-NEAR ENDOF                       \ some(r) -> r ~ want
+     none OF 0 0= 0= ENDOF
+     some OF want FL-NEAR ENDOF
    ;MATCH T-ASSERT ;
-: T-FL-BAD ( ptr u8 n -- )                          \ parse string, expect NONE
+: T-FL-BAD ( ptr u8 n -- )
    STR>FLOAT MATCH option
-     none OF 0 0= ENDOF                              \ none -> true
-     some OF drop 0 0= 0= ENDOF                       \ some -> false (unexpected)
+     none OF 0 0= ENDOF
+     some OF drop 0 0= 0= ENDOF
    ;MATCH T-ASSERT ;
-: T-FL-OK ( ptr u8 n -- )                           \ parse string, expect SOME
+: T-FL-OK ( ptr u8 n -- )
    STR>FLOAT MATCH option
      none OF false ENDOF
      some OF drop true ENDOF
@@ -193,9 +193,7 @@ public
 ;package
 
 \ A negative length is refused before a byte is read; each span ends at an
-\ inaccessible page, so a read faults. Unrefused, STR>FLOAT read the first byte,
-\ answered SOME for a sign and -1, and for a sign and the minimum cell `u 1-`
-\ wrapped to the maximum and the exponent scan ran past the span.
+\ inaccessible page, so a read faults.
 : FL-DROP ( option<r> -- )
    MATCH option
      none OF ENDOF

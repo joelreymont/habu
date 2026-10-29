@@ -1,12 +1,7 @@
-\ pty-harness-test.f - the harness buffer's claims, without a child.
-\
-\ Most cases here feed bytes through ROOM$ / TOOK, the same append the fd readers
-\ use, so the compaction, the span search and the never-seen facts are exercised
-\ where they can be driven exactly. The last ones need a real pair: the spawn's
-\ own abort path, the two ends of a wait - a clock that runs out on a live child
-\ and a child that hangs up - the wedged reap, and the kill that ends what the
-\ child started. The rest of the pty half - the waits and both barrier shapes
-\ against a child engine's own answers - is test/proc-pty.f's.
+\ pty-harness-test.f - the harness buffer's claims. Most cases feed bytes through
+\ ROOM$ and TOOK, the append the fd readers use; the last ones need a real pair
+\ (spawn abort, a wait that runs out or hangs up, the wedged reap, the tree kill).
+\ The waits and barriers against a child engine's answers are test/proc-pty.f's.
 \
 \ Run: bin/hb --load src/lib/pty-harness-test.f
 require src/lib/test.f
@@ -44,7 +39,7 @@ variable HIT                       \ did the loop reach the case it was feeding 
    64 0 ?do [char] . FILLER i + c! loop ;
 
 
-\ The append the fd readers take: compacted room, the bytes, then the commit.
+\ The append the fd readers take.
 : FEED ( ptr u8 n -- ) {: a:ptr u:n :}
    ROOM$ {: room:ptr cap:n :}
    u cap > if E-PTY-CAPACITY throw then
@@ -56,14 +51,13 @@ variable HIT                       \ did the loop reach the case it was feeding 
    BUF$ {: a:ptr u:n :} u ;
 
 
-\ One filler chunk, and whether appending it compacted the buffer.
 : FEED-FILLER ( -- bool )
    BUF-LEN {: before:n :}
    FILLER$ FEED
    BUF-LEN before < ;
 
 
-: FILL-TO-COMPACTION ( -- )        \ feed filler until the buffer keeps only its tail
+: FILL-TO-COMPACTION ( -- )
    false HIT !
    FEED-LIMIT 0 ?do
       FEED-FILLER if true HIT ! leave then
@@ -150,7 +144,7 @@ variable HIT                       \ did the loop reach the case it was feeding 
    split NEVER-SEEN? 0= TTRUE ;
 
 
-\ What KEEP-TAIL is for: a full buffer keeps its most recent bytes and goes on
+\ What KEEP-TAIL! is for: a full buffer keeps its most recent bytes and goes on
 \ reading. Without it the next read asks for zero bytes, is handed zero back,
 \ and the harness is deaf from there on.
 : CASE-KEEP-TAIL ( -- )
@@ -176,7 +170,7 @@ variable HIT                       \ did the loop reach the case it was feeding 
    ABSENT$ WINDOW-ABSENT? 0= TTRUE ;
 
 
-: FILL-WATCHES ( -- )              \ more registrations than the table holds
+: FILL-WATCHES ( -- )
    FEED-LIMIT 0 ?do MARK$ WATCH+ drop loop ;
 
 
@@ -255,12 +249,11 @@ variable HIT                       \ did the loop reach the case it was feeding 
    s" habu> " WAIT-FOR TTRUE ;
 
 
-\ WAIT-AFTER on a live child: the echo of "42 ." carries the prompt ahead of
-\ the answer, so a wait for the prompt after " ok" is a wait for the prompt
-\ the editor prints once it holds the terminal raw again, not the echoed one.
-\ (A pair that never appears waits the whole 20 s budget out; CASE-ORDER pins
-\ the refusal on the buffer, where it costs nothing.) The child is the one
-\ CASE-SPAWN-ABORT left at its prompt, and CASE-HANGUP proves it still exits.
+\ The echo of "42 ." carries the prompt ahead of the answer, so a wait for the
+\ prompt after " ok" waits for the one the editor prints once it holds the
+\ terminal raw again. A pair that never appears waits the whole 20 s budget
+\ out; CASE-ORDER pins that refusal on the buffer. The child is the one
+\ CASE-SPAWN-ABORT left at its prompt; CASE-HANGUP proves it still exits.
 : CASE-WAIT-AFTER ( -- )
    BUF-CLEAR
    s" 42 ." SEND-LINE
@@ -271,11 +264,10 @@ variable HIT                       \ did the loop reach the case it was feeding 
    s"  ok" s" habu> " FIND-AFTER  0 s" habu> " FIND-FROM  > TTRUE ;
 
 
-\ A wait whose clock ends while the child still holds the terminal has not been
-\ answered YET: a slow child is not a failed one, so the wait throws the deadline
-\ instead of answering false, and the row reads as a timeout. The child is asked
-\ nothing until that clock has ended, so no scheduling can answer the wait in
-\ time; asked afterwards, it answers, which is what makes it late and not hung.
+\ A wait whose clock ends while the child still holds the terminal throws the
+\ deadline instead of answering false: a slow child is not a failed one. The
+\ child is asked nothing until the clock ends, so no scheduling can answer in
+\ time; asked afterwards it answers, which makes it late and not hung.
 : CASE-LATE-ANSWER ( -- )
    BUF-CLEAR
    s" a wait whose clock ends with the child alive throws the deadline" T-LABEL
@@ -285,11 +277,11 @@ variable HIT                       \ did the loop reach the case it was feeding 
    s" 48879" s" habu> " WAIT-AFTER TTRUE ;
 
 
-\ The other end of a wait: the child hangs up. That ends it at once with whether
-\ the text came first, never with the deadline, and a barrier the child hangs up
-\ on retires the window an earlier barrier closed. Only the editor's own prompt
-\ proves the child holds the terminal raw, and only then is ^D a key rather than
-\ a canonical end of file (test/proc-pty.f PTY-EDITOR-READY has the reasoning).
+\ A child that hangs up ends a wait at once with whether the text came first,
+\ never with the deadline, and a barrier it hangs up on retires the window an
+\ earlier barrier closed. Only the editor's prompt proves the child holds the
+\ terminal raw, and only then is ^D a key rather than a canonical end of file
+\ (test/proc-pty.f PTY-EDITOR-READY).
 : CASE-HANGUP ( -- )
    BUF-CLEAR
    s" 123 456 + ." SEND-LINE
@@ -312,15 +304,14 @@ variable HIT                       \ did the loop reach the case it was feeding 
 
 
 \ A child that writes into the terminal faster than anyone empties it and never
-\ exits. Reaped by waiting alone, the parent sat in do_wait for 5 m 34 s with the
-\ child blocked in write() (dot habu-bound-the-pty-7771d0fb); the bounded reap
-\ kills it on the clock and answers the timeout outcome, which reds a case that
-\ wanted a clean exit. The elapsed claim is the one that says "instead of
-\ hanging": without the bound this case does not return at all.
+\ exits. A reap by waiting alone sits in do_wait (5 m 34 s measured, child
+\ blocked in write()); the bounded reap kills
+\ it on the clock and answers the timeout outcome. The elapsed claim is the one
+\ that says "instead of hanging": unbounded, this case never returns.
 : CASE-WEDGE-REAP ( -- )
    BUF-CLEAR
    WEDGE$ SPAWN-ON-PTY
-   s" y" WAIT-FOR TTRUE                    \ the child is writing at the terminal
+   s" y" WAIT-FOR TTRUE
    mono-ns {: t0:n :}
    s" a child that never stops writing is reaped as a timeout" T-LABEL
    WEDGE-MS REAP-WITHIN T-OUTCOME-TIMEOUT
@@ -329,9 +320,8 @@ variable HIT                       \ did the loop reach the case it was feeding 
    CLOSE-MASTER ;
 
 
-\ Returns once the master hangs up, reading it until then. A clock of ms that
-\ ends first is this test's own deadline, not an answer: the wait names itself
-\ and throws E-PROC-TIMEOUT.
+\ A clock of ms that ends before the master hangs up is this test's own deadline,
+\ not an answer: the wait throws E-PROC-TIMEOUT.
 : HANGUP ( n -- )
    {: ms:n :}
    ms WAIT-OPEN
@@ -342,12 +332,11 @@ variable HIT                       \ did the loop reach the case it was feeding 
 
 
 \ A child that started a process of its own on its terminal. The sleeper holds
-\ the slave as well, so the master hangs up only once both are gone. A kill of
-\ the child's pid alone left the sleeper, leading a group of its own, holding
-\ the terminal for the rest of its 30 s under init (dot
-\ habu-kill-a-pty-1841a310); the wedge's kill ends the child's whole tree. A
-\ terminal still held when HANGUP-MS ends throws the deadline from HANGUP, and
-\ the master closes either way.
+\ the slave too, so the master hangs up only once both are gone. A kill of the
+\ child's pid alone leaves the sleeper, leading its own group, holding the
+\ terminal for its 30 s under init; the wedge's
+\ kill ends the child's whole tree. A terminal still held when HANGUP-MS ends
+\ throws the deadline from HANGUP; the master closes either way.
 : CASE-TREE-REAP ( -- )
    BUF-CLEAR
    HB$ SPAWN-ON-PTY

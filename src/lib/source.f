@@ -1,17 +1,12 @@
-\ source.f - checked source materialization helpers.
-\
-\ Callers supply output buffers and capacities: appending past one throws
-\ E-FS-CAPACITY, and file or stdin I/O failures throw named filesystem errors.
-\ READ-STDIN-ALL probes one byte past a full buffer, so overflow fails closed
-\ instead of truncating. READ-WHOLE-FILE, READ-WHOLE-SAMPLED and READ-WHOLE-FD
-\ read to the end into the caller's growing storage, so a source of any size,
-\ or one that grows while read, is read whole. SOURCE-APPEND-QPATH refuses a
-\ path it cannot quote with E-FS-PATH-UNSAFE. The token-class words are the
-\ ones LINT-LEX (src/lib/source-lex.f) and the loader share.
-\
+\ source.f - checked source materialization helpers. Callers supply output
+\ buffers: appending past one throws E-FS-CAPACITY, and file or stdin failures
+\ throw named filesystem errors. READ-STDIN-ALL probes one byte past a full
+\ buffer, so overflow fails closed.
 \ STORAGE CLASS. PROCESS-WIDE: the stdin probe byte and READ-STDIN-ALL's
 \ SOURCE-LEN/SOURCE-RD are module variables; single-task.
-\
+
+\ LINT-LEX (src/lib/source-lex.f) and the loader share the token-class words.
+
 require src/lib/errors.f
 require src/lib/string.f
 require src/lib/fs.f
@@ -63,9 +58,8 @@ private
 \ room doubles. A sample only starts the read: bytes past it are read too.
 4096 constant SOURCE-ROOM-MIN
 
-\ One read after the held bytes; answers the bytes now held, the room for the
-\ next read, doubled once the held bytes fill it, and whether the read found
-\ the end.
+\ Answers the bytes now held, the room for the next read (doubled once the held
+\ bytes fill it) and whether the read found the end.
 : SOURCE-READ-STEP ( n [ n -- ptr u8 ] n n -- n n bool )
    {: fd:n room held:n want:n :}
    want room execute {: dst:ptr :}
@@ -134,11 +128,10 @@ public
 
 private
 
-\ One shared checked path-string emitter. Path bytes that would change source
-\ structure (`"`, `\`, LF, CR) are rejected fail-closed so materialized loader
-\ lines and diagnostic prefix labels cannot be broken or injected by a path. A
-\ NUL is rejected too: no path holding one names a file, and a label holding one
-\ would carry it into a diagnostic.
+\ Path bytes that would change source structure (`"`, `\`, LF, CR) are rejected so
+\ materialized loader lines and diagnostic labels cannot be broken or injected by a
+\ path. A NUL is rejected too: no path holding one names a file, and a label holding
+\ one would carry it into a diagnostic.
 : SOURCE-PATH-BYTE-SAFE? ( n -- bool ) {: c:n :}
    c SOURCE-NUL = if STR-FALSE exit then
    c SOURCE-DQ = if STR-FALSE exit then
@@ -220,7 +213,6 @@ public
 
 private
 
-\ The first byte of a string opener: `s` or `c` in either case, or `.`.
 : STRING-LEAD? ( n -- bool )
    ASCII-LOWER {: c:n :}
    c 115 = c 99 = or c $2E = or ;

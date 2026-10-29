@@ -1,22 +1,9 @@
-\ utf8-scalar.f - strict reentrant UTF-8 scalar decoding with byte fallback.
-\
-\ NEXT takes an explicit counted byte span and cursor. A valid canonical UTF-8
-\ sequence returns SCALAR with its code point and absolute next cursor. Invalid
-\ UTF-8 returns RAW-BYTE with the exact lead byte and cursor+1. Cursor misuse is
-\ a bounds error; malformed input is data and never throws.
-\
-\ VALID? answers whether a whole counted span is strict canonical UTF-8. It
-\ accepts ASCII directly and requires every non-ASCII NEXT step to be a SCALAR.
-\ An empty span is valid. A negative length is E-STR-BOUNDS, as for NEXT;
-\ malformed bytes are data and never throw.
-\
-\ FIT gives the longest length of a span, at most a cap, that does not end
-\ inside a character, so a valid span cut by it stays valid.
-\ A cap before a continuation byte backs up to its lead, never more than three
-\ bytes; a negative length or cap is E-STR-BOUNDS. Malformed, truncated,
-\ non-shortest, surrogate and out-of-range sequences are all RAW-BYTE.
-\
-\ STORAGE CLASS. CALLER-OWNED: the module keeps no state.
+\ utf8-scalar.f - strict reentrant UTF-8 scalar decoding with byte fallback. NEXT
+\ answers SCALAR and the next cursor for a canonical sequence, else RAW-BYTE with
+\ the lead byte and cursor+1: malformed, truncated, non-shortest, surrogate and
+\ out-of-range input is data and never throws. VALID? is true when every step is a
+\ SCALAR (empty included). FIT cuts a span at a cap without ending in a character.
+\ Negative lengths, caps and cursors are E-STR-BOUNDS. STORAGE CLASS. CALLER-OWNED.
 
 require src/lib/errors.f
 

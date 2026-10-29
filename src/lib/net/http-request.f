@@ -1,20 +1,9 @@
 \ http-request.f - one HTTP/1.1 request read off a connection into a worker's
-\ slot: the request line, the header block, and a Content-Length or chunked
-\ body. Every span the parser records addresses the slot's own input buffer,
-\ so the request survives until the worker starts the next one.
-\
-\ The limits are answered, not thrown: a header block past HEAD-CAP is 431, a
-\ body past the selected route or server cap is 413, and a transfer coding other than
-\ chunked is 501. Anything the grammar refuses is 400. START bounds each head;
-\ a configured body timeout starts after a valid head, otherwise that same
-\ deadline also bounds the body. Every wait for the peer is a readiness poll on
-\ the AIO loop
-\ (TCP4's READABLE-WITHIN? is an AIO:POLL and an AIO:AWAIT, src/lib/aio.f),
-\ which parks the task and not its thread until the peer speaks or that
-\ deadline passes. Each deadline - START's, then a configured body timeout's
-\ own once the head is valid - admits past it only the bytes the socket holds
-\ when a read first finds it passed, however late that read comes, and nothing
-\ once a stop is raised (FILL).
+\ slot. Every span the parser records addresses the slot's own input buffer and
+\ lives until the worker starts the next request.
+\ Limits are answered, not thrown: a head past HEAD-CAP is 431, a body past the
+\ route or server cap is 413, a transfer coding other than chunked is 501, and
+\ anything the grammar refuses is 400. Deadlines and the late budget: FILL.
 require src/lib/net/http-arena.f
 require src/lib/string.f
 require src/lib/adt/option.f
@@ -110,8 +99,6 @@ CAST: BLEN>N ( NUM:byte-len -- n )
    idx IN-BUF at len SPAN:SUB SPAN:$ ;
 
 
-\ ---- reading ----------------------------------------------------------------
-
 variable STOPPING                   \ raised by STOP (src/lib/net/http.f)
 
 public
@@ -151,7 +138,9 @@ private
    whole >MS ;
 
 
-\ Parks the task in poll(2) until the peer speaks or the deadline passes.
+\ Parks the task, not its thread, on the AIO loop (TCP4:READABLE-WITHIN? is an
+\ AIO:POLL and an AIO:AWAIT, src/lib/aio.f) until the peer speaks or the
+\ deadline passes.
 : WAIT-READABLE ( TCP4:connection n -- bool )
    {: conn:TCP4:connection deadline:n :}
    conn deadline REMAINING TCP4:READABLE-WITHIN?
@@ -204,15 +193,15 @@ private
       failed OF drop false ENDOF
    ;MATCH ;
 
-
-\ One transfer into the slot's window. The caller proves there is room for it.
-\ Before the deadline a fill waits for the peer. Past it, WAIT-READABLE asks
-\ once without waiting, and the first fill to find it passed takes the bytes
-\ then queued as the late budget against that deadline: every later fill reads
-\ at most what is left of it, so a peer still sending is read no further than
-\ what its socket held at that first look. The request is late once nothing is
-\ readable, the budget is spent or a stop is raised, so a stop ends late work
-\ at the next fill, past the parse of at most one window (IN-CAP).
+\ One transfer into the slot's window; the caller proves there is room for it.
+\ HTTP's START deadline bounds each head; a configured body timeout starts after
+\ a valid head, otherwise that same deadline also bounds the body.
+\ Past a deadline WAIT-READABLE asks once without waiting, and the first fill to
+\ find it passed takes the bytes then queued as the late budget against that
+\ deadline: every later fill reads at most what is left of it, however late it
+\ comes. The request is late once nothing is readable, the budget is spent or a
+\ stop is raised, so a stop ends late work at the next fill, past the parse of
+\ at most one window (IN-CAP).
 : FILL ( TCP4:connection n n -- fill-outcome ) {: conn:TCP4:connection idx:n deadline:n :}
    idx IN-U@ IN-CAP >= if E-CAPACITY throw then
    conn deadline WAIT-READABLE 0= if construct fill-outcome late exit then
@@ -227,8 +216,6 @@ private
 : AVAIL ( n -- n ) {: idx:n :}
    idx IN-U@ idx IN-AT@ - ;
 
-
-\ ---- bytes and tokens -------------------------------------------------------
 
 : CRLF-AT? ( n n -- bool ) {: idx:n at:n :}
    at 1+ idx IN-U@ >= if false exit then
@@ -307,8 +294,6 @@ private
    idx la ll TRIM-RIGHT ;
 
 
-\ ---- the request line -------------------------------------------------------
-
 : LINE-END ( n n -- n ) {: idx:n at:n :}
    idx HEAD-U@ 1- {: limit:n :}
    limit at ?do
@@ -356,8 +341,6 @@ private
    true ;
 
 
-\ ---- the header block -------------------------------------------------------
-
 \ name ":" OWS value OWS, with no space before the colon and no obsolete fold.
 : PARSE-HEADER ( n n n -- bool ) {: idx:n at:n end:n :}
    idx at AT-BYTE SP = idx at AT-BYTE TAB = or if false exit then
@@ -385,8 +368,6 @@ private
    idx end 2 + PARSE-HEADERS-FROM ;
 
 
-\ ---- named headers ----------------------------------------------------------
-
 : HEADER-MATCH ( n n ptr u8 n -- n ) {: idx:n at:n name:ptr len:n :}
    at idx HEADER-N@ >= if -1 exit then
    idx at HEADER-NAME$ name len STR=CI if at exit then
@@ -413,8 +394,6 @@ private
    at 0 < if idx 0 0 SPAN$ false exit then
    idx at HEADER-VALUE$ true ;
 
-
-\ ---- the Host field ---------------------------------------------------------
 
 $2E constant DOT
 $5D constant CLOSE-BRACKET
@@ -608,8 +587,6 @@ $5D constant CLOSE-BRACKET
    idx s" host" HEADER$ drop HOST-VALUE? ;
 
 
-\ ---- connection tokens ------------------------------------------------------
-
 public
 
 \ True when a comma-separated header value (RFC 9110 5.6.1) holds the token,
@@ -639,8 +616,6 @@ private
    va vu s" keep-alive" LIST-HAS? if 1 idx KEEP-ALIVE! exit then
    alive FLAG>N idx KEEP-ALIVE! ;
 
-
-\ ---- bodies -----------------------------------------------------------------
 
 : FILLED? ( fill-outcome -- bool )
    MATCH fill-outcome
@@ -693,8 +668,6 @@ private
       then
    again ;
 
-
-\ ---- chunked bodies ---------------------------------------------------------
 
 : WINDOW-LINE ( n -- n ) {: idx:n :}
    idx IN-U@ 1- {: limit:n :}
@@ -773,8 +746,6 @@ private
    again ;
 
 
-\ ---- choosing the body ------------------------------------------------------
-
 : CONTENT-LENGTH ( n -- n ) {: idx:n :}
    idx s" content-length" COUNT-HEADER {: count:n :}
    count 0= if -1 exit then
@@ -810,11 +781,9 @@ private
    conn idx declared deadline PUMP-BODY ;
 
 
-\ ---- one request ------------------------------------------------------------
-
 : READ-HEAD ( TCP4:connection n n -- parse-result )
    {: conn:TCP4:connection idx:n deadline:n :}
-   0                                     \ the first scan reads the whole window
+   0
    begin {: start:n :}
       idx start HEAD-END {: end:n :}
       end 0 >= if
@@ -850,7 +819,7 @@ public
    SLOT-OF-REQUEST SLOT-QUERY$ ;
 
 
-\ The version the request line named, as sent: `HTTP/1.1`, `HTTP/1.0`.
+\ The version as sent: `HTTP/1.1`, `HTTP/1.0`.
 : VERSION$ ( request -- ptr u8 n )
    SLOT-OF-REQUEST SLOT-VERSION$ ;
 
@@ -863,14 +832,13 @@ public
    subject SLOT-OF-REQUEST name len HEADER$ ;
 
 
-\ How many of a named header the request carries. A header whose value is
-\ trusted is read only when exactly one arrived.
+\ A header whose value is trusted is read only when exactly one arrived.
 : HEADER-COUNT-OF ( request ptr u8 n -- n ) {: subject:request name:ptr len:n :}
    subject SLOT-OF-REQUEST name len COUNT-HEADER ;
 
 
-\ A reader over the request body, in the slot's own reader record, so two
-\ workers reading two bodies share nothing. The caller closes it.
+\ The reader lives in the slot's own reader record, so two workers reading two
+\ bodies share nothing. The caller closes it.
 : BODY-READER ( request -- JR:reader ) {: subject:request :}
    subject SLOT-OF-REQUEST {: idx:n :}
    idx READER idx SLOT-BODY$ JR:INIT ;

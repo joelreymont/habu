@@ -1,25 +1,9 @@
-\ pty.f - pseudoterminal pairs, and the one place the pair is opened.
-\
-\ A test opens a pair, hands the slave path to the device driver under test
-\ (src/lib/serial.f opens it like any serial device), and drives the master side
-\ as the peer. src/lib/pty-harness.f, src/lib/process-pty-io.f and the suites that need
-\ a terminal open their pairs here too and then open the slave themselves.
-\
-\ OPEN carries both targets: Linux unlocks /dev/ptmx with TIOCSPTLCK, reads its
-\ number with TIOCGPTN and names the slave /dev/pts/<n>; Darwin grants and
-\ unlocks the same device with TIOCPTYGRANT/TIOCPTYUNLK and asks TIOCPTYGNAME
-\ for the name. A host that is neither is E-PROC-HOST. The request numbers are
-\ private: a caller that needs a pair calls OPEN instead of repeating them.
-\ Only the raw open, ioctl, read, write and close primitives are involved; no
-\ libc symbol is borrowed. The caller opens the slave itself, O_RDWR |
-\ O_NOCTTY; Linux hosts need /dev/ptmx and a mounted /dev/pts.
-\
+\ pty.f - pseudoterminal pairs, and the one place a pair is opened: tests,
+\ src/lib/pty-harness.f and src/lib/process-pty-io.f open pairs here and open
+\ the slave themselves (src/lib/serial.f opens it like any serial device). Only
+\ raw open, ioctl, read, write and close are used; no libc symbol.
 \ STORAGE CLASS. PROCESS-WIDE: OPEN stages its ioctl arguments in this file's
 \ cells, so one task opens a pair at a time.
-\
-\ READ waits on the AIO loop (src/lib/aio.f): one POLL for the window it was
-\ given and one AWAIT, so no thread parks in poll(2). A program calls
-\ AIO:START before its first READ; a wait with no loop is E-AIO-STATE.
 
 require src/lib/errors.f
 require src/lib/type/deftype.f
@@ -61,7 +45,6 @@ variable WRITTEN
    value count 0 do 10 /mod swap [char] 0 + dst count 1- i - + c! loop drop
    count ;
 
-\ Writes /dev/pts/<number> into the caller's buffer and returns its length.
 : SLAVE-PATH! ( n ptr u8 -- n ) {: number:n path :}
    s" /dev/pts/" {: prefix plen:n :}
    plen 0 do prefix i + c@ path i + c! loop
@@ -109,17 +92,18 @@ variable WRITTEN
    m close E-PROC-HOST throw ;
 
 
-\ What the master had to give once the loop answered that it was readable.
 : READ-READY ( master ptr u8 n -- n ) {: m:master bytes cap:n :}
    m MASTER>N bytes cap read {: got:n :}
    got 0 < if E-IO throw then got ;
 
 public
 
-\ Open a pseudoterminal pair on either target: the master descriptor, and the
-\ slave's path written NUL-terminated into the caller's buffer of at least
-\ SLAVE-PATH-CAP bytes with its length. The slave is the caller's to open, with
-\ PTY-OPEN-FLAGS, at the moment it wants one.
+\ The master descriptor, and the slave's path written NUL-terminated into a
+\ caller buffer of at least SLAVE-PATH-CAP bytes, with its length; the caller
+\ opens the slave with PTY-OPEN-FLAGS. Linux unlocks /dev/ptmx with TIOCSPTLCK
+\ and names /dev/pts/<TIOCGPTN> (needs a mounted /dev/pts); Darwin grants and
+\ unlocks with TIOCPTYGRANT/TIOCPTYUNLK and asks TIOCPTYGNAME. Any other host
+\ is E-PROC-HOST. The request numbers stay private to this file.
 : OPEN ( ptr u8 n -- master n ) {: path cap:n :}
    cap SLAVE-PATH-CAP < if E-CAPACITY throw then
    OPEN-MASTER {: m:n :}
@@ -128,12 +112,13 @@ public
    m >MASTER len ;
 
 
-\ One chunk after at most ms of waiting; zero means nothing arrived in time.
-\ The window is the poll's own linked timeout, so a signal no longer cuts it
-\ short and there is nothing to restart. `cancelled` cannot arrive - nothing
-\ here cancels, the ticket never leaves this word, and the cleanup AIO registers
-\ on a submitting task runs only after that task has ended - so it is a broken
-\ foreign result.
+\ One chunk after at most ms; zero means nothing arrived in time. Waits on the
+\ AIO loop (src/lib/aio.f), one POLL with its own linked timeout and one AWAIT,
+\ so no thread parks in poll(2) and a signal does not cut the window short.
+\ Call AIO:START before the first READ; with no loop it is E-AIO-STATE.
+\ `cancelled` cannot arrive (nothing cancels, the ticket stays here, AIO's
+\ cleanup runs only after the submitting task ends): it is a broken foreign
+\ result.
 : READ ( master ptr u8 n ms -- n ) {: m:master bytes cap:n timeout:ms :}
    m MASTER>N >FD AIO:READABLE timeout AIO:POLL AIO:AWAIT
    MATCH AIO:outcome

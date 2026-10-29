@@ -449,7 +449,6 @@ variable GTT-OFI
    c GTT-TMP-PATH GTT-TMP-U @ + c!
    GTT-TMP-U @ 1+ GTT-TMP-U ! ;
 
-\ A slash and a name of n bytes.
 : GTT-SEG+ ( n -- ) {: k:n :}
    47 GTT-TMP-C+
    k 0 ?do 100 GTT-TMP-C+ loop ;
@@ -462,7 +461,6 @@ variable GTT-OFI
    need 1- k - 1 = if k 1- exit then
    k ;
 
-\ A directory under the runner's root whose path is exactly n bytes long.
 : GTT-TMP-DIR ( n -- ptr u8 n ) {: n:n :}
    GT-ROOT {: root:ptr rootu:n :}
    root GTT-TMP-PATH rootu BYTE-COPY
@@ -472,8 +470,6 @@ variable GTT-OFI
    repeat
    GTT-TMP-PATH n 2dup FS:MAKE-DIRS ;
 
-\ room.f run by bin/hb with tmp as its TMPDIR and the rest of the environment
-\ inherited.
 : GTT-RUN-ROOM ( ptr u8 n -- ) {: tmp:ptr tmpu:n :}
    PROC-ARGV-ENV-RESET
    s" TMPDIR" >LEN tmp tmpu >LEN PROC-ENV-SET
@@ -482,8 +478,6 @@ variable GTT-OFI
    s" bin/hb" >LEN GT-OUT-BUF GT-OUT-CAP >LEN GT-ERR-BUF GT-ERR-CAP >LEN
    GTT-HB-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE-OUTCOME GT-STORE-RUN ;
 
-\ The refusal's detail line up to the limit, for a TMPDIR of n bytes and a
-\ limit of max.
 : GTT-ROOM-DETAIL$ ( n n -- ptr u8 n ) {: n:n max:n :}
    SB-RESET
    s" runner: TMPDIR is " SB-APPEND n FMT:SB-INT
@@ -504,7 +498,6 @@ variable GTT-OFI
    GT-OUT$ max 1+ max GTT-ROOM-DETAIL$ CONTAINS? TTRUE
    GT-OUT$ s" room-ok" CONTAINS? TFALSE ;
 
-\ A name one byte longer than GT-NAME-MAX.
 : GTT-OVER-NAME$ ( -- ptr u8 n )
    GT-NAME-MAX 1+ 0 ?do 110 GTT-NAME i + c! loop
    GTT-NAME GT-NAME-MAX 1+ ;

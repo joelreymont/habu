@@ -1,40 +1,11 @@
-\ json-rpc.f - the JSON-RPC 2.0 envelope: what one message is, and its replies.
-\
-\ >MESSAGE sorts one message body into a JSON-RPC:message: a request (id,
-\ method, params), a notification (method, params), a result or an error
-\ answering an id, or an invalid message carrying the code and id its reply
-\ takes. Every part is the body's own JSON text, borrowed: an id, a method or a
-\ string result keeps its quotes and escapes, and params or a result is the
-\ whole value. Params absent or null are empty. METHOD? compares a method's
-\ text with a name after decoding it, so `"initialize"` names initialize.
-\
-\ >MESSAGE reads the body once, recording each member of a root object that
-\ the envelope names as it meets it. A body that is not JSON (RFC 8259, as
-\ src/lib/json-read.f reads it) is invalid with PARSE-ERROR. INVALID-REQUEST covers
-\ the rest: an array (a batch, which this reader does not take), a root that is
-\ not an object, `jsonrpc` other than the string "2.0", an id that is not a
-\ number, string or null, a method that is not a string, params that are not an
-\ object, an array or null, and a message with no method unless it has an id
-\ and exactly one of result and error, an error being an error object: an
-\ object whose code is an integer and whose message is a string. Member names
-\ are compared decoded, the last of a repeated name counts, and other members
-\ are passed over. An invalid message carries its own id when that id is valid
-\ and the message has a method, else the null id, so a reply never answers a
-\ response.
-\ JR's syntax codes, E-JR-MALFORMED through E-JR-COMMA, are PARSE-ERROR; any
-\ other code, such as JR:E-SOURCE or a failed growth of the reader's nesting
-\ stack, is thrown.
-\
-\ The writers build replies on a caller's JSON-WRITE writer, member by member:
-\ RESULT writes the envelope up to `"result":`, the caller writes the value and
-\ END closes it; ERROR writes a whole error reply; NOTIFY writes a notification
-\ up to `"params":`, closed by END after the caller's params. A reply needs an
-\ id: an empty one is E-JSON-RPC-ID before any byte is written. The error codes
-\ of the specification are constants; framing is src/lib/content-length.f's.
-\
-\ STORAGE CLASS. CALLER-OWNED. >MESSAGE and METHOD? parse in the caller's
-\ JR:cursor record and the message borrows the caller's body; the module keeps
-\ no state.
+\ json-rpc.f - the JSON-RPC 2.0 envelope: >MESSAGE sorts one body into a message
+\ and the writers build replies on a caller's JSON-WRITE writer. Every part of a
+\ message is the body's own JSON text, borrowed: an id, a method or a string
+\ result keeps its quotes and escapes. STORAGE CLASS. CALLER-OWNED. >MESSAGE and
+\ METHOD? parse in the caller's JR:cursor record and the message borrows the
+\ caller's body; the module keeps no state.
+
+\ Framing is src/lib/content-length.f's.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -70,7 +41,8 @@ ENUM message
 : ID$ ( id -- ptr u8 n )  JSON--RPC-ID:UNMAKE ;
 : NULL-ID ( -- id )  s" null" JSON--RPC-ID:MAKE ;
 
-\ Whether a method's JSON text, as >MESSAGE gives it, names this method.
+\ Whether a method's JSON text, as >MESSAGE gives it, names this method once
+\ decoded: `"initialize"` names initialize.
 : METHOD? ( ptr JR:cursor ptr u8 n ptr u8 n -- bool )
    {: st:ptr m:ptr mu:n name:ptr nu:n :}
    st m mu INIT
@@ -118,7 +90,9 @@ STRUCTURE envelope
 : NOT-JSON ( -- message )
    PARSE-ERROR s" a body that is not JSON" NULL-ID INVALID ;
 
-\ JR's codes for text that is not JSON; the others are misuse.
+\ JR's codes for text that is not JSON, E-JR-MALFORMED through E-JR-COMMA, are
+\ PARSE-ERROR; any other code, such as JR:E-SOURCE or a failed growth of the
+\ reader's nesting stack, is misuse and is thrown.
 : SYNTAX? ( n -- bool )
    {: code:n :}
    code E-JR-COMMA >= code E-JR-MALFORMED <= and ;
@@ -138,7 +112,6 @@ STRUCTURE envelope
    kind T-STR = if kind a 1- u 2 + MEMBER-MAKE exit then
    kind a u MEMBER-MAKE ;
 
-\ Whether the current value is the string "2.0".
 : V2? ( JR:reader -- JR:reader bool )
    TOKEN T-STR = if s" 2.0" STR-EQ? exit then
    SKIP-VALUE false ;
@@ -179,7 +152,6 @@ STRUCTURE envelope
    then
    NEXT drop SKIP-VALUE e ;
 
-\ The next member of the root object, recorded; false after the last.
 : ROOT-MEMBER ( JR:reader envelope -- JR:reader envelope bool )
    {: e :}
    NEXT T-KEY <> if e false exit then
@@ -214,7 +186,6 @@ STRUCTURE envelope
    then
    i >ID x TEXT$ JSON--RPC-MESSAGE:failure ;
 
-\ The message a root object's envelope makes.
 : SORT ( envelope -- message )
    ENVELOPE-UNMAKE {: v:bool i m p r x ok:bool :}
    i PRESENT? if i KIND ID-KIND? 0= if
@@ -227,7 +198,6 @@ STRUCTURE envelope
    m PRESENT? if i m p reply CALL exit then
    i r x ok ANSWER ;
 
-\ The message a root of this kind makes, with the envelope its members gave.
 : SORT-ROOT ( n envelope -- message )
    {: root:n e :}
    root T-ARR = if
@@ -238,9 +208,8 @@ STRUCTURE envelope
    then
    e SORT ;
 
-\ Reads the body once - its root, every member of a root object, then its end,
-\ which NEXT answers or refuses with E-JR-TRAILING - and sorts it in place of
-\ the message given. Text that is not JSON throws JR's code first.
+\ Reads the body once; NEXT answers its end or refuses it with E-JR-TRAILING.
+\ Text that is not JSON throws JR's code first.
 : READ-BODY ( message ptr JR:cursor ptr u8 n -- message ptr JR:cursor ptr u8 n )
    {: prior st:ptr body:ptr len:n :}
    st body len INIT
@@ -256,7 +225,15 @@ STRUCTURE envelope
 
 public
 
-\ One message body, sorted, parsed in the caller's record.
+\ Params absent or null are empty. A body that is not JSON (RFC 8259, as
+\ src/lib/json-read.f reads it) is PARSE-ERROR. INVALID-REQUEST is an array (a
+\ batch, not taken), a root that is not an object, `jsonrpc` other than "2.0", an
+\ id not a number, string or null, a method not a string, params not an object,
+\ array or null, and a message with no method unless it has an id and exactly one
+\ of result and error, an error being an object with an integer code and a string
+\ message. Member names compare decoded, the last repeat counts, other members are
+\ passed over. An invalid message carries its own id when that id is valid and it
+\ has a method, else the null id, so a reply never answers a response.
 : >MESSAGE ( ptr JR:cursor ptr u8 n -- message )
    {: st:ptr body:ptr len:n :}
    NOT-JSON st body len [: READ-BODY ;] catch {: code:n :}
@@ -281,6 +258,7 @@ private
 
 public
 
+\ A reply needs an id: an empty one is E-JSON-RPC-ID before any byte is written.
 \ `{"jsonrpc":"2.0","id":ID,"result":`; the caller writes the value, then END.
 : RESULT ( ptr JSON-WRITE:writer id -- ptr JSON-WRITE:writer )
    ID-TEXT$ {: a:ptr u:n :}

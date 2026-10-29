@@ -1,68 +1,9 @@
-\ task.f - checked CPU tasking over pthread, package TASK.
-\
-\ A task runs an already-compiled xt on its own OS thread, with its own TCB,
-\ data stack and data/user region (TASK:+USER cells), over the shared
-\ dictionary and code. TASK:ACTIVATE takes the xt rather than parsing a body as
-\ SwiftForth's ACTIVATE does, so the body is checked before a worker runs it;
-\ SwiftForth's CONSTRUCT is TASK:PREPARE because `construct` is a keyword.
-\
-\ NO COMPILATION WHILE A TASK IS LIVE. A definition, `allot`, `,`, `c,`, `align`,
-\ an interpret-mode string literal that keeps its text, `evaluate`, `cp!` and
-\ `ndict!` exit $4F while TASKS-LIVE-CELL (the main region's count) is nonzero,
-\ every exposed task and the AIO loop task included. A definition holds the
-\ code band writable from its colon to `;`, flipped in PROT-PAGE-MAX units
-\ (src/habu/layout.f), so a task running any word in that 64K unit faults; a
-\ forget frees code a task may be running. Define everything, then start tasks,
-\ the AIO loop last. A remote REPL therefore cannot evaluate while a task runs.
-\ A task wanted after that comes from TASK:NEW, which defines nothing and so
-\ runs beside live tasks, from the main thread or a task; TASK:FREE gives it
-\ back once TASK:JOIN or TASK:KILL released it.
-\
-\ ENDINGS. A worker `die` ends the process (Linux uses exit_group). An uncaught
-\ worker throw ends only that task: THROW@ keeps the code and JOIN answers it.
-\ TASK:HALT is cooperative and observed at TASK:PAUSE, which then unwinds the
-\ body through every finally around the PAUSE, innermost first, as a throw
-\ does; a catch between the PAUSE and the task's root never resumes, so a body
-\ that swallows errors still ends. The halt is not a body error: THROW@ is a
-\ code a cleanup threw, else the body's error a halt overtook in a cleanup,
-\ else the n of TASK:HALT-UNWIND, else 0. A task parked in STOP, WAIT, SLEEP or
-\ a host call observes the halt only when released, so TASK:KILL waits for it.
-\ KILL discards the outcome, JOIN collects it; both release the task.
-\ KILL of an activated task joins it whatever state it reaches first, so an
-\ owner may KILL a body that signalled its own end and is still finishing.
-\ Every ending runs the AT-EXIT chain in the task's thread, drops the callback
-\ bindings naming its region, then signals the join. POSIX leaves destroying a
-\ semaphore with blocked waiters undefined: end a task's joiners, senders and
-\ waiters before it ends. DONE is release-published and DONE? acquire-reads it,
-\ so an owner that sees it true sees every write the body made.
-\
-\ CHANNELS. A facility excludes (owner-tracked mutex; GET is idempotent for its
-\ owner, RELEASE a no-op for anyone else); a semaphore counts; a mailbox is a
-\ one-cell rendezvous between two tasks carrying the sender; src/lib/queue.f
-\ buffers cells between any tasks, the main thread included. None substitutes
-\ for another. Atomic cells shared across tasks are 8-byte aligned.
-\
-\ CAPTURE AND FORK. A capture (IMAGE-LIFECYCLE:PREPARE) releases every prepared
-\ task and drops idle callback bindings; an activated or exposed task, or a
-\ callback slot with a thread inside, ends the capture. Kill tasks before a
-\ build captures. A TASK:NEW task not given back ends a capture too; the
-\ capture gives the pool's mappings back, and moves the AT-EXIT rows defined
-\ tasks hold into the table it carries. Tasks do not cross a fork:
-\ CHILD-RESET is what a forked child runs (src/lib/fork-child.f says who
-\ registers it).
-\
-\ TASK-LOCAL STORAGE. A module the engine bakes or the engine build loads takes
-\ a declared band of the DATA header in src/habu/layout.f (string, fmt, fs and
-\ fs-mutate: requiring this file there would cycle or pull pthread into the
-\ base image or the build tool). A module loaded later takes TASK:+USER rows
-\ from USER-BAND; a row past USER-BAND:END is E-TASK-USER at its definition,
-\ and USER-BAND:END TASK:#USER - is what remains. A new band reaches only an
-\ engine built after it: an older engine dies E-UNDEFINED on its constants.
-\
-\ STORAGE CLASS. TASK-LOCAL for SLEEP's two timespecs (one TASK:+USER row),
-\ whose request STOP-FOR's Linux deadline shares.
-\ PROCESS-WIDE for the semaphore pool, the AT-EXIT rows, the TCB chain, the
-\ TCB pool and the callback binding rows; each row move is one compare-and-swap.
+\ task.f - checked CPU tasking over pthread, package TASK: an xt runs on its own
+\ thread, TCB, data stack and TASK:+USER region. NO COMPILATION WHILE A TASK IS
+\ LIVE (TASK-LIVE+); TASK:NEW defines nothing. Task-local storage: a band in
+\ src/habu/layout.f for a module the engine bakes, else TASK:+USER rows.
+\ STORAGE CLASS. TASK-LOCAL: SLEEP's timespecs (a TASK:+USER row). PROCESS-WIDE:
+\ semaphore pool, AT-EXIT rows, TCB chain and pool, callback rows; a CAS per move.
 
 s" src/lib/errors.f" required
 s" src/lib/memory.f" required
@@ -71,9 +12,8 @@ require src/lib/le.f
 s" src/lib/image-lifecycle.f" required
 s" src/lib/codegen.f" required        \ +USER builds its generated accessor with CODEGEN's buffer
 s" src/lib/adt/result.f" required     \ TASK:JOIN answers result<n,n>
-\ The cleanup registry below is a checked quotation store; the optimizing tier
-\ lowers such a store through QUOTATION-STORAGE:STORE, so this file owns that
-\ dependency exactly as src/lib/image-lifecycle.f owns it for its hooks.
+\ The AT-EXIT registry is a checked quotation store, which the optimizing tier
+\ lowers through QUOTATION-STORAGE:STORE.
 require src/core/quotation-storage.f
 require src/habu/task-abi.f
 require src/habu/stack-abi.f
@@ -81,18 +21,16 @@ require src/habu/stack-abi.f
 package TASK
 public
 
-\ The semaphore handle callers hold. A nominal cell, so a raw address - a
-\ TASK:FACILITY, say, which is the same machine shape - cannot reach TASK:WAIT.
+\ A nominal cell, so a TASK:FACILITY (the same machine shape) cannot reach
+\ TASK:WAIT.
 NEWTYPE sem
 
-\ The C entry address pthread_create takes, as an integer.
 : PTHREAD-ENTRY ( -- n ) task-entry ;
 
 private
 
-\ The converters are this package's alone: a handle names a record TASK owns,
-\ and no caller can mint one over memory of its own. Both directions stay
-\ private, so nothing outside can project a handle back to an address either.
+\ Both converters stay private: no caller mints a handle over its own memory or
+\ projects one back to an address.
 CAST: >SEM ( n -- sem )
 CAST: SEM>N ( sem -- n )
 
@@ -119,7 +57,7 @@ TASK-TIMESPEC-BYTES 2 * constant TASK-SLEEP-BYTES  \ the request and the remaind
 1000000 constant TASK-NS-PER-MS
 1000000000 constant TASK-NS-PER-S
 $7FFFFFFFFFFFFFFF constant TASK-NS-MAX             \ the latest mono-ns deadline a cell holds
-$FFFFFFFFFFFFFFF8 constant TASK-CELL-MASK          \ with the 7 + below, rounds a row's offset up to a cell
+$FFFFFFFFFFFFFFF8 constant TASK-CELL-MASK
 
 TASK-ABI:EMPTY constant TASK-EMPTY
 TASK-ABI:CONSTRUCTED constant TASK-CONSTRUCTED
@@ -169,8 +107,8 @@ END-STRUCTURE
 
 : TASK-TCB-LAYOUT-CHECK ( -- )
    TASK-TCB-SIZE TASK-TCB-BYTES <> if s" task: tcb layout" E-TASK-STATE die then
-   \ Check the typed field accessors of the shared descriptor: the offsets the
-   \ immutable engine entry loads, and the runner's throw slot behind them.
+   \ The offsets the immutable engine entry loads, and the runner's throw slot
+   \ behind them.
    here CELL-VIEW {: origin:ptr :}
    origin TCB.XT-CELL origin TASK-ABI:XT-OFF TASK-TCB-OFFSET
    origin TCB.STACK origin TASK-ABI:STACK-OFF TASK-TCB-OFFSET
@@ -198,22 +136,18 @@ TASK-TCB-LAYOUT-CHECK
 
 variable TASK-USER-NEXT
 
-\ Base and bound are USER-BAND's, declared in src/habu/layout.f. They used to be
-\ FFI:SCRATCH-END ($41C8) and APP-ENTRY:XT-CELL ($43A0) - 472 bytes wedged
-\ between FFI's scratch and the AOT capture window, of which the five shipped
-\ libraries already claimed 448. USER-BAND is one declared run of the per-task
-\ header with no engine cell inside it, and the layout asserts that at build
-\ time, so this module states the two ends and computes neither.
+\ USER-BAND (src/habu/layout.f) is one declared run of the per-task header with
+\ no engine cell inside it, asserted at build time; a refused row means the band
+\ is full. A module the engine bakes or the engine build loads (string, fmt, fs,
+\ fs-mutate) takes its own band there instead: requiring this file would cycle or
+\ pull pthread into the base image or the build tool. A new band reaches only an
+\ engine built after it: an older engine dies E-UNDEFINED on its constants.
 USER-BAND:START constant TASK-USER-BASE
-\ PAUSE is defined before +USER's generated definer. Reserve its one task-local
-\ depth cell at the front of the same user band, so PAUSE can consult it.
+\ PAUSE precedes +USER's definer, so its one depth cell is reserved by hand at
+\ the band's front.
 TASK-USER-BASE constant TASK-DEFER-OFF
 TASK-USER-BASE CELL + TASK-USER-NEXT !
 
-\ The arena stops where USER-BAND does. Nothing engine-owned lies inside it -
-\ src/habu/layout.f asserts that over every declared claim at build time - so
-\ a refused row here means the band is full, not that a library was about to
-\ overwrite the AOT window the way the old $41C8..$5000 bound allowed.
 USER-BAND:END constant TASK-USER-END
 
 : TASK-DEFER-DEPTH ( -- ptr n )
@@ -232,13 +166,10 @@ USER-BAND:END constant TASK-USER-END
 \ An address this module keeps as a number: a TCB, DATA or a semaphore record.
 CAST: TASK-N>PTR ( n -- ptr n )
 
-\ A TCB cell this module stores an address in, as the pointer slot it is.
 CAST: TASK-CELL>PTR-SLOT ( ptr n -- ptr ptr n )
 
-\ These two cells are quotation slots in the fixed pthread entry ABI. The
-\ low-level structure definer describes offsets; every callback store and load
-\ below uses its declared empty stack effect. An AT-EXIT row in a mapped chunk
-\ (EXIT-QT) holds its quotation the same way.
+\ TCB.XT, TCB.USER-XT and an AT-EXIT row's EXIT-QT are quotation slots of the
+\ fixed pthread entry ABI; every store and load uses the declared empty effect.
 CAST: TASK-CELL>XT-SLOT ( ptr n -- ptr [ -- ] )
 
 \ A watermark reader's execution token, as OWNED-USER-READERS hands it out.
@@ -255,16 +186,10 @@ CAST: READER>N ( [ -- n ] -- n )
    8 swap - allot ;
 
 \ ---- host semaphore bindings ----------------------------------------
-\ Package FFI owns the symbol resolution and the bounded staging of every
-\ binding below, and this module states only the C prototypes. A semaphore
-\ call's single pointer argument is always one sem_t the semaphore records
-\ below own, so every declaration fixes its extent at TASK-SEM-BYTES; the
-\ callee writes it.
-\
-\ sem_wait blocks inside the call. That is the point of this module - a waiting
-\ task needs no PAUSE loop - and it is safe because the argument tables the
-\ generated body stages sit in the calling task's own DATA region, so a blocked
-\ waiter holds nothing the signaller needs.
+\ Every semaphore call's one pointer is a sem_t a record below owns, so each
+\ declaration fixes its extent at TASK-SEM-BYTES. sem_wait blocks inside the
+\ call; that is safe because the generated body stages its argument tables in
+\ the calling task's own DATA region.
 PROCESS-SYMBOLS
 
 FUNCTION: SEM-INIT-CALL sem_init ( ptr u8 n n -- i32 )
@@ -283,15 +208,14 @@ FUNCTION: SEM-DESTROY-CALL sem_destroy ( ptr u8 -- i32 )
    0 TASK-SEM-BYTES WRITES-BYTES
 ;FUNCTION
 
-\ sem_trywait is the same decrement without the block: EAGAIN is the answer
-\ "would have blocked", not a failure, and it is what the queue's TRY-PUSH and
-\ TRY-POP refuse on.
+\ EAGAIN means "would have blocked", not a failure; the queue's TRY-PUSH and
+\ TRY-POP refuse on it.
 FUNCTION: SEM-TRYWAIT-CALL sem_trywait ( ptr u8 -- i32 )
    0 TASK-SEM-BYTES WRITES-BYTES
 ;FUNCTION
 
-\ sem_clockwait (glibc 2.30) is sem_wait with an absolute deadline on the
-\ named clock; it only reads the timespec. clock_gettime writes the one it is given.
+\ sem_clockwait (glibc 2.30) takes an absolute deadline on the named clock and
+\ only reads it; clock_gettime writes its timespec.
 FUNCTION: SEM-CLOCKWAIT-CALL sem_clockwait ( ptr u8 n ptr u8 -- i32 )
    0 TASK-SEM-BYTES WRITES-BYTES
 ;FUNCTION
@@ -318,11 +242,8 @@ FUNCTION: MACH-SEM-WAIT semaphore_wait ( n -- i32 ) ;FUNCTION
 FUNCTION: MACH-SEM-SIGNAL semaphore_signal ( n -- i32 ) ;FUNCTION
 FUNCTION: MACH-SEM-TIMEDWAIT semaphore_timedwait ( n n -- i32 ) ;FUNCTION
 
-\ nanosleep is the other call here that blocks on purpose: it parks the calling
-\ thread until a time arrives rather than until something happens. The first
-\ timespec is the request, which the kernel only reads; the second is the one it
-\ writes when a signal cuts the sleep short, so the extent is stated on that
-\ argument alone and the request stays a read-only pointer.
+\ nanosleep only reads the request and writes the remainder when a signal cuts
+\ the sleep short, so only the second argument states an extent.
 FUNCTION: NANOSLEEP-CALL nanosleep ( ptr u8 ptr u8 -- i32 )
    1 TASK-TIMESPEC-BYTES WRITES-BYTES
 ;FUNCTION
@@ -330,14 +251,12 @@ FUNCTION: NANOSLEEP-CALL nanosleep ( ptr u8 ptr u8 -- i32 )
 \ PAUSE's yield.
 FUNCTION: SCHED-YIELD-CALL sched_yield ( -- i32 ) ;FUNCTION
 
-\ A task region goes back to the system through munmap, which only reads the
-\ address it is given.
+\ munmap only reads the address it is given.
 FUNCTION: MUNMAP-CALL munmap ( ptr u8 n -- i32 ) ;FUNCTION
 
-\ A task's thread. pthread_create writes the pthread_t into the TCB's THREAD
-\ cell and hands the TCB itself to the entry as its one argument; the attribute
-\ is null and the entry is TASK-ABI's code address. pthread_join writes the
-\ value the thread exited with into the TCB's RET cell.
+\ pthread_create writes the pthread_t into the TCB's THREAD cell and passes the
+\ TCB to the entry (TASK-ABI's code address, null attribute); pthread_join
+\ writes the thread's exit value into the TCB's RET cell.
 FUNCTION: PTHREAD-CREATE-CALL pthread_create ( ptr u8 n n ptr u8 -- i32 )
    0 8 WRITES-BYTES
 ;FUNCTION
@@ -368,20 +287,15 @@ FUNCTION: MUTEX-UNLOCK-CALL pthread_mutex_unlock ( ptr u8 -- i32 )
    dup TASK-MIN-STACK < if E-TASK-SIZE throw then
    drop ;
 
-\ The status cell is read across threads - DONE?, ACTIVATE's refusals, TASK-KILL
-\ and TASK-JOIN-CHECK all read it from the owner while the worker is still
-\ moving it - so the read is an acquire load. The ending task publishes DONE
-\ with the matching release store (the entry's STLR, src/habu/habu1.f
-\ BTASK-ENTRY), which is what makes an owner that only polls DONE? see every
-\ write the body made before it ended.
+\ Owners read the status cell while the worker moves it, so this is an acquire
+\ load. The entry's STLR (src/habu/habu1.f BTASK-ENTRY) release-stores DONE, so
+\ an owner that polls DONE? sees every write the body made before it ended.
 : TASK-STATE@ ( ptr n -- n )
    TCB.STATUS atomic@ ;
 
-\ The owner's store, and only the owner's: PREPARE and ACTIVATE write it before
-\ pthread_create, which orders it into the new thread, and TASK-KILL writes it
-\ on a task that has no thread at all. A worker never reaches here - it
-\ publishes its own DONE with a release store, and TASK-JOIN-RELEASE publishes
-\ EMPTY with one.
+\ Owner-only: PREPARE and ACTIVATE store before pthread_create orders the store
+\ into the thread, TASK-KILL on a task with no thread. A worker publishes DONE,
+\ and TASK-JOIN-RELEASE EMPTY, with a release store.
 : TASK-STATE! ( n ptr n -- )
    TCB.STATUS ! ;
 
@@ -397,24 +311,21 @@ FUNCTION: MUTEX-UNLOCK-CALL pthread_mutex_unlock ( ptr u8 -- i32 )
 : TASK-SELF-N ( -- n )
    data-base TASK-TCB-CELL + @ ;
 
-\ The main region, whichever task asks: DATA is mapped at the fixed DATA-VA. An
-\ ordinary call, so every use computes the address at run time.
+\ The main region, whichever task asks: DATA is mapped at the fixed DATA-VA.
 : MAIN-BASE ( -- ptr n )
    DATA-VA VA>N TASK-N>PTR ;
 
-\ The handle crosses back through n and the module's raw-cell refinement.
 : SEM-REC ( sem -- ptr n )
    SEM>N TASK-N>PTR ;
 
-\ The handle of a semaphore record this package owns but did not define: a
-\ task's mailbox holds two in its TCB and the pool below holds a fixed row.
+\ A record this package owns but did not define: a task's mailbox holds two in
+\ its TCB and the pool below holds a fixed row.
 : SEM-AT ( ptr n -- sem )
    FFI:>CELL >SEM ;
 
 : SEM-GUARD ( sem -- ptr n )
    SEM-REC TASK-SEM-GUARD-OFF + ;
 
-\ The sem_t itself, as the byte span the declarations above name written.
 : SEM-OBJ ( sem -- ptr u8 )
    SEM-REC BYTE-VIEW TASK-SEM-OBJ-OFF + ;
 
@@ -450,9 +361,8 @@ FUNCTION: MUTEX-UNLOCK-CALL pthread_mutex_unlock ( ptr u8 -- i32 )
       0 s SEM-OBJ LE:U32!
    else s SEM-OBJ SEM-DESTROY-CALL TASK-RC0 then ;
 
-\ Blocks inside the host call, so a waiting task needs no PAUSE loop - and
-\ observes no TASK:HALT - until it is signalled. A signal interrupts the wait
-\ without consuming a count, so EINTR retries.
+\ Observes no TASK:HALT until signalled. A signal interrupts the wait without
+\ consuming a count, so EINTR retries.
 : MACH-WAIT ( sem -- ) {: s:sem :}
    begin
       s SEM-CHECK
@@ -474,8 +384,8 @@ FUNCTION: MUTEX-UNLOCK-CALL pthread_mutex_unlock ( ptr u8 -- i32 )
    HB-TARGET-MACOS? if s SEM-OBJ LE:U32@ MACH-SEM-SIGNAL
    else s SEM-OBJ SEM-POST-CALL then TASK-RC0 ;
 
-\ The decrement that never blocks: true when it took a count, false when the
-\ count was zero. EAGAIN is that answer, EINTR retries as SEM-WAIT does.
+\ True when it took a count. EAGAIN means the count was zero; EINTR retries as
+\ SEM-WAIT does.
 : MACH-TRY-WAIT ( sem -- bool ) {: s:sem :}
    begin
       s SEM-CHECK
@@ -495,15 +405,10 @@ FUNCTION: MUTEX-UNLOCK-CALL pthread_mutex_unlock ( ptr u8 -- i32 )
    again ;
 
 \ ---- the semaphore pool ------------------------------------------------------
-\ A semaphore a caller asks for at run time instead of defining one. The records
-\ live in chunks this package owns, so a handed-out handle still names a record
-\ TASK owns and no other package needs the extent of one to hold a semaphore of
-\ its own. A chunk is a link to the next chunk, TASK-SEM-POOL-N used cells and as
-\ many records. The first is static storage; when every record is in use, a
-\ claim maps a further chunk and appends it to the chain. A handle is the
-\ record's address, so chunks never move, and a record given back is handed out
-\ again, from whichever chunk holds it, before the pool grows. The mapped
-\ chunks are released together at capture, when none holds a live record.
+\ The records live in chunks TASK owns, so a pooled handle still names a TASK
+\ record. A chunk is a link, TASK-SEM-POOL-N used cells and as many records. The
+\ first chunk is static; later ones are mapped and never move, since a handle is
+\ the record's address. A freed record is reused before the pool grows.
 $40 constant TASK-SEM-POOL-N
 1 cells constant TASK-SEM-CHUNK-USED-OFF
 TASK-SEM-POOL-N 1 + cells constant TASK-SEM-CHUNK-RECS-OFF
@@ -536,9 +441,8 @@ variable SEM-CHUNKS-ARMED
 : SEM-CHUNK-REC ( n n -- n ) {: c:n idx:n :}
    c TASK-SEM-CHUNK-RECS-OFF + idx TASK-SEMAPHORE-BYTES * + ;
 
-\ One claim wins: the used cell moves 0 -> 1 in one step, so two tasks asking at
-\ the same moment are handed different records. Answers the claimed record, or
-\ 0 when the chunk has none free.
+\ The used cell moves 0 -> 1 in one step, so racing claimers get different
+\ records. Answers the record, or 0 when the chunk has none free.
 : SEM-CHUNK-CLAIM ( n -- n ) {: c:n :}
    TASK-SEM-POOL-N 0 ?do
       0 1 c i SEM-CHUNK-USED atomic-cas 0= if c i SEM-CHUNK-REC unloop exit then
@@ -551,7 +455,6 @@ variable SEM-CHUNKS-ARMED
    loop
    false ;
 
-\ Whether that chunk or any after it holds a record in use.
 : SEM-CHAIN-LIVE? ( n -- bool )
    begin dup 0<> while
       dup SEM-CHUNK-LIVE? if drop true exit then
@@ -579,13 +482,12 @@ variable SEM-CHUNKS-ARMED
 : SEM-CHUNK-RELEASE ( n -- )
    TASK-N>PTR BYTE-VIEW TASK-SEM-CHUNK-BYTES MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
 
-\ The mapped chunks are this process's: a capture gives them back so the image
-\ carries only the static first chunk, which its declaration zeroes. A live
-\ record in one is the program's defect, named here rather than left to the
-\ linker as a mapping it cannot carry - free a held semaphore in a cleanup
-\ registered after taking it, so it runs before this one. `die` and not
-\ `throw`, as TASK-SWEEP-ONE says. The flag is cleared last: the next chunk
-\ mapped, here or in the restored image, arms the cleanup again.
+\ A capture gives the mapped chunks back, so the image carries only the static
+\ first chunk, which its declaration zeroes. A live record in one is the
+\ program's defect, named here rather than left to the linker: free a held
+\ semaphore in a cleanup registered after taking it, so it runs before this one.
+\ `die`, not `throw`, as TASK-SWEEP-ONE says. The flag is cleared last: the next
+\ chunk mapped, here or in the restored image, arms the cleanup again.
 : SEM-CHUNKS-SWEEP ( -- )
    SEM-POOL-FIRST SEM-CHUNK-NEXT
    dup SEM-CHAIN-LIVE? if
@@ -600,18 +502,17 @@ variable SEM-CHUNKS-ARMED
    0 SEM-CHUNKS-ARMED atomic! ;
 
 \ Armed before a chunk is mapped, so no mapping exists without its cleanup. The
-\ flag is set only after REGISTER completes (src/lib/image-lifecycle.f): a
-\ grower that sees it set knows the sweep is registered, and a registration that
-\ throws leaves it clear for the next grower to retry. Two growers that both see
-\ it clear each register a sweep; that is harmless, as the second finds an
+\ flag is set only after REGISTER completes (src/lib/image-lifecycle.f), so a
+\ registration that throws leaves it clear for the next grower to retry. Two
+\ growers that both see it clear each register a sweep; the second finds an
 \ empty chain.
 : SEM-CHUNKS-ARM ( -- )
    SEM-CHUNKS-ARMED atomic@ 0<> if exit then
    [: SEM-CHUNKS-SWEEP ;] IMAGE-LIFECYCLE:REGISTER
    1 SEM-CHUNKS-ARMED atomic! ;
 
-\ Links a chunk after the last one. Two tasks growing at the same moment each
-\ append their own; the one that loses the race walks on to the new last.
+\ Two tasks growing at once each append their own chunk; the loser walks on to
+\ the new last.
 : SEM-CHUNK-APPEND ( n -- ) {: c:n :}
    SEM-POOL-FIRST
    begin
@@ -645,30 +546,19 @@ variable SEM-CHUNKS-ARMED
    s SEM-DESTROY
    0 slot TASK-N>PTR atomic! ;
 
-\ ---- the task's own wake-up --------------------------------------------------
-\ TASK:STOP parks the calling task on the semaphore in its own TCB and TASK:WAKE
-\ posts that semaphore. WAKE is a HINT: the count makes a WAKE that arrives
-\ before the STOP one the STOP does not wait for, and a STOP takes one hint
-\ whoever posted it, so the caller re-checks its own state after every STOP
-\ instead of believing the wake-up meant what it hoped. That is what lets one
-\ loop complete work for many tasks - it wakes an owner by its TCB and holds no
-\ semaphore per waiter.
 : TASK-PARK-SEM ( ptr n -- sem )
    TCB.PARK SEM-AT ;
 
-\ THE PARK LIVES AS LONG AS ITS TCB DOES IN THIS PROCESS, unlike the mailbox
-\ and the done semaphore, which a release destroys: the owner ends their users
-\ before it releases, but nothing orders a post of the park before the owner's
-\ next KILL, JOIN or ACTIVATE, so the park outlives every release. TASK-WAKE
-\ posts it after reading RUNNING, HALT-REQ or EXPOSED, and HALT after its CAS,
-\ both from any thread. PREPARE creates the park once and no lifecycle word
-\ destroys or recreates it, so every admitted post meets this one live
-\ semaphore and the lifecycle has no posts in flight to count or wait for.
-\ ACTIVATE and EXPOSE drain it, so each run and exposure opens at zero.
-\ Only the capture sweep destroys it, where no waker can hold the TCB, as
-\ MAIN-PARK-RESET does for the main record; the next PREPARE, here or in the
-\ restored image, creates it again. TASK:FREE keeps the park too, so a pool
-\ record carries it to the task TASK:NEW next makes of it.
+\ THE PARK LIVES AS LONG AS ITS TCB DOES IN THIS PROCESS, unlike the mailbox and
+\ the done semaphore, which a release destroys: nothing orders a post of the
+\ park (TASK-WAKE after reading RUNNING, HALT-REQ or EXPOSED; HALT after its CAS;
+\ both from any thread) before the owner's next KILL, JOIN or ACTIVATE. PREPARE
+\ creates it once and no lifecycle word destroys it, so every admitted post
+\ meets one live semaphore. ACTIVATE and EXPOSE drain it, so each run and
+\ exposure opens at zero. Only the capture sweep destroys it, where no waker can
+\ hold the TCB (MAIN-PARK-RESET does the same for the main record); the next
+\ PREPARE creates it again. TASK:FREE keeps it, so a pool record carries it to
+\ the task TASK:NEW next makes of it.
 : PARK-CREATE ( ptr n -- ) {: tcb:ptr :}
    tcb TASK-PARK-SEM SEM-LIVE? if exit then
    0 tcb TASK-PARK-SEM SEM-INIT ;
@@ -676,16 +566,14 @@ variable SEM-CHUNKS-ARMED
 : PARK-DESTROY ( ptr n -- ) {: tcb:ptr :}
    tcb TASK-PARK-SEM SEM-DESTROY ;
 
-\ Takes every count the park holds, so a run opens at zero while the record
-\ stays live under any post still in flight.
+\ A run opens at zero while the record stays live under any post in flight.
 : PARK-DRAIN ( ptr n -- ) {: tcb:ptr :}
    begin tcb TASK-PARK-SEM SEM-TRY-WAIT while repeat ;
 
-\ The main thread has no TCB - TASK:SELF answers the null TCB there - so its
-\ park is this one record and a WAKE of the null TCB posts it, which is what
-\ lets a program with no tasks of its own wait on a loop too. It is initialized
-\ on first use behind MAIN-PARK-READY's compare-and-swap handshake, so two tasks
-\ waking the main thread at the same moment initialize the record once.
+\ The main thread has no TCB (TASK:SELF answers the null TCB), so its park is
+\ this record and a WAKE of the null TCB posts it: a program with no tasks can
+\ wait on a loop too. MAIN-PARK-READY's compare-and-swap makes two tasks waking
+\ the main thread at once initialize the record once.
 TASK-ALIGN8
 create MAIN-PARK-REC TASK-SEMAPHORE-BYTES 8 / TASK-ZERO-CELLS,
 TASK-ALIGN8
@@ -724,28 +612,24 @@ variable MAIN-PARK-READY
       then
    again ;
 
-\ The calling thread's park: the record in its own TCB, or the main one.
 : PARK-SELF ( -- sem )
    TASK-SELF-N dup 0= if
       drop MAIN-PARK-INIT MAIN-PARK exit
    then
    TASK-N>PTR TASK-PARK-SEM ;
 
-\ Blocks inside the host call like every other wait here, so a stopped task
-\ burns no CPU and observes no TASK:HALT until something wakes it - which is why
-\ TASK:HALT wakes its target itself.
+\ Observes no TASK:HALT until something wakes it, which is why TASK:HALT wakes
+\ its target itself.
 : TASK-STOP ( -- )
    PARK-SELF SEM-WAIT ;
 
-\ A task that was never activated, one that is only constructed and one that has
-\ ended have no run to hint at: the count would sit in a record its next
-\ activation is not entitled to, so all three are refused. An exposed task is
-\ admitted: TASK-SELF of a thread inside its context is that task, so a body
-\ there that stops parks on this record. The task can end, be released and
-\ open again between the state read and the post; the post still meets this
-\ TCB's one live park (PARK-CREATE). A hint that arrives before the next run
-\ or exposure opens is drained there; a WAKE still in flight as it opens lands
-\ in it, the one stale hint its re-check absorbs.
+\ A task never activated, only constructed, or ended has no run to hint at: the
+\ count would sit in a record its next activation is not entitled to, so all
+\ three are refused. An exposed task is admitted: a body inside its context that
+\ stops parks on this record. The task can end, be released and open again
+\ between the state read and the post; the post still meets this TCB's one live
+\ park. A hint before the next run or exposure opens is drained there; a WAKE in
+\ flight as it opens lands in it, the one stale hint its re-check absorbs.
 : TASK-WAKE ( ptr n -- ) {: tcb:ptr :}
    tcb FFI:>CELL 0= if MAIN-PARK-INIT MAIN-PARK SEM-SIGNAL exit then
    tcb TASK-STATE@ {: st:n :}
@@ -754,11 +638,10 @@ variable MAIN-PARK-READY
    tcb TASK-PARK-SEM SEM-SIGNAL ;
 
 \ ---- the per-task mailbox ----------------------------------------------------
-\ VFX's one-cell mailbox (docs/design.md "Models taken from other Forths")
-\ with the semaphores above in place of its PAUSE loop: the slot-free
-\ semaphore holds the single unread slot, the message-present semaphore holds
-\ the deposited message, and the pending cell is the status bit MSG? reads
-\ without blocking.
+\ VFX's one-cell mailbox (docs/design.md "Models taken from other Forths") with
+\ semaphores in place of its PAUSE loop: slot-free holds the single unread slot,
+\ message-present the deposited message, and the pending cell is the status bit
+\ MSG? reads without blocking.
 : MBOX-FREE ( ptr n -- sem )
    TCB.MSG-FREE SEM-AT ;
 
@@ -772,9 +655,9 @@ variable MAIN-PARK-READY
    1 tcb MBOX-FREE SEM-INIT
    0 tcb MBOX-FULL SEM-INIT ;
 
-\ Paired with the task's memory, so a task that ends drops its mailbox with its
-\ stacks. POSIX leaves destroying a semaphore with blocked waiters undefined, so
-\ the owner ends a task's senders before it ends the task.
+\ A task that ends drops its mailbox with its stacks. POSIX leaves destroying a
+\ semaphore with blocked waiters undefined, so the owner ends a task's senders
+\ before it ends the task.
 : MBOX-DESTROY ( ptr n -- ) {: tcb:ptr :}
    0 tcb TCB.MSG-PENDING atomic!
    tcb MBOX-FREE SEM-DESTROY
@@ -805,39 +688,33 @@ variable MAIN-PARK-READY
    0 self TCB.MSG-PENDING atomic!
    self MBOX-FREE SEM-SIGNAL ;
 
-\ A snapshot of the status bit: true from the moment a send deposits a message
-\ until the get that takes it clears it. It never blocks and never throws, so a
-\ task that was never activated simply holds no message.
+\ A snapshot of the status bit, set by a send's deposit until the get that takes
+\ it. It never blocks or throws: a task never activated holds no message.
 : MBOX-MSG? ( ptr n -- bool )
    TCB.MSG-PENDING atomic@ 0 <> ;
 
 \ ---- the task's outcome ------------------------------------------------------
-\ VFX's task exit code and its AtTaskExit cleanup (docs/design.md "Models
-\ taken from other Forths"), answered as src/lib/adt/result.f's result<ok,err> rather than as
-\ a bare code. The rows below live in the TCB, which outlives the thread and its
-\ memory, so the answer survives the release the join performs - the same reason
-\ TASK:THROW@ still answers after a TASK:KILL.
+\ VFX's task exit code and AtTaskExit cleanup (docs/design.md "Models taken from
+\ other Forths"), answered as a src/lib/adt/result.f result<ok,err>. The rows
+\ live in the TCB, which outlives the thread and its memory, so the answer
+\ survives the join's release, as TASK:THROW@ does after TASK:KILL.
 
-\ The cleanups a task has registered, as a chain of rows. Each quotation is
-\ stored AS a quotation into storage declared to hold one, which is what makes
-\ the store the checker's proven-quotation store instead of a cell this module
-\ would have to cast back to code. A row's link holds the next row of the same
-\ task's chain plus one; zero ends the chain. TCB.EXIT-SLOT holds the HEAD row
-\ plus one; zero is "this task has no cleanup". A row belongs to one (task,
-\ quotation) pair until TASK:FREE gives the task back - a registration serves
-\ the task's later activations and the same quotation is never given a second
-\ row - so a defined task's rows cannot leak. TASK:FREE moves a NEW task's rows
-\ onto TASK-EXIT-FREE, which a registration takes from first, so tasks made and
-\ freed without end never exhaust them.
+\ A task's cleanups are a chain of rows. Each quotation is stored AS a quotation
+\ into storage declared to hold one: the checker's proven-quotation store, never
+\ a cell cast back to code. A row's link holds the next row of the chain plus
+\ one, and TCB.EXIT-SLOT the head row plus one; zero ends the chain or means no
+\ cleanup. A row belongs to one (task, quotation) pair until TASK:FREE gives the
+\ task back: a registration serves later activations and a quotation never gets
+\ a second row, so a defined task's rows cannot leak. TASK:FREE moves a NEW
+\ task's rows onto TASK-EXIT-FREE, which a registration takes from first.
 \ THE ROWS GROW WITH THE TASKS THAT USE THEM. The first TASK-EXIT-TABLE-N rows
-\ are this package's own storage, TASK-EXIT-QT and TASK-EXIT-LINK, which an
-\ image carries. A registration that finds no row left maps a chunk of
-\ EXIT-CHUNK-ROWS more, the unit the rows grow by and not a cap, as the TCB
-\ pool grows. A chunk is the next chunk's address, the index of its first row,
-\ then its rows, each a quotation cell and a link cell. Rows only grow while the
-\ process runs and never move, so an index a chain holds stays valid under a
-\ reader. A capture cannot carry this process's mappings: EXIT-ROWS-SWEEP moves
-\ the rows still held into the table and gives the chunks back.
+\ are this package's storage (TASK-EXIT-QT, TASK-EXIT-LINK), which an image
+\ carries. Past them a registration maps a chunk of EXIT-CHUNK-ROWS more, the
+\ growth unit and not a cap: the next chunk's address, the index of its first
+\ row, then rows of a quotation cell and a link cell. Rows never move while the
+\ process runs, so an index a chain holds stays valid under a reader. A capture
+\ cannot carry the mappings: EXIT-ROWS-SWEEP moves the held rows into the table
+\ and gives the chunks back.
 $80 constant TASK-EXIT-TABLE-N
 TASK-EXIT-TABLE-N TYPED-BUFFER TASK-EXIT-QT [ -- ]
 TASK-ALIGN8
@@ -862,19 +739,18 @@ $4000 constant EXIT-CHUNK-BYTES
 EXIT-CHUNK-BYTES EXIT-CHUNK-HEAD - EXIT-ROW-BYTES / constant EXIT-CHUNK-ROWS
 
 \ The one cell a registration compares against. The checker refuses `=` on two
-\ quotations (E-MISMATCH, "expected n n actual [ -- ] [ -- ]"), while a quotation
+\ quotations (E-MISMATCH, "expected n n actual [ -- ] [ -- ]"), but a quotation
 \ in declared storage reads as a cell through the views, and the same `['] W`
-\ stored twice reads the same cell. The incoming quotation goes here to be read
-\ as that cell, so this scratch - not the chain - is what registration has to
-\ take a lock for.
+\ stored twice reads the same cell. This scratch, not the chain, is what
+\ registration takes the lock for.
 TYPED-VARIABLE TASK-EXIT-SCRATCH [ -- ]
 
 : TASK-DONE-SEM ( ptr n -- sem )
    TCB.DONE SEM-AT ;
 
-\ Created with the task and destroyed with its memory, exactly like the mailbox:
-\ a task that was never activated has nothing to signal, and a released task's
-\ record is gone before the next PREPARE opens a fresh one.
+\ Created with the task and destroyed with its memory, like the mailbox: a task
+\ never activated has nothing to signal, and a released task's record is gone
+\ before the next PREPARE opens a fresh one.
 : DONE-INIT ( ptr n -- ) {: tcb:ptr :}
    0 tcb TASK-DONE-SEM SEM-INIT ;
 
@@ -908,7 +784,6 @@ TYPED-VARIABLE TASK-EXIT-SCRATCH [ -- ]
 : EXIT-CHUNK-FIRST ( n -- n )
    CELL + TASK-N>PTR @ ;
 
-\ One past the last row the table and the chunks hold.
 : EXIT-ROWS-END ( -- n )
    EXIT-CHUNKS atomic@ dup 0= if drop TASK-EXIT-TABLE-N exit then
    EXIT-CHUNK-FIRST EXIT-CHUNK-ROWS + ;
@@ -941,7 +816,6 @@ TYPED-VARIABLE TASK-EXIT-SCRATCH [ -- ]
 : TASK-EXIT-UNLOCK ( -- )
    0 TASK-EXIT-LOCK atomic! ;
 
-\ Takes the first row TASK:FREE gave back, else the row after TASK-EXIT-N.
 \ The caller holds the lock, so the row it is handed is its own.
 : EXIT-ROW-POP ( -- n )
    TASK-EXIT-FREE @ dup 0 <> if
@@ -957,7 +831,6 @@ TYPED-VARIABLE TASK-EXIT-SCRATCH [ -- ]
    TASK-EXIT-FREE @ 0= TASK-EXIT-N @ EXIT-ROWS-END >= and if 0 false exit then
    EXIT-ROW-POP true ;
 
-\ True when the task's chain already holds the quotation in the scratch cell.
 : TASK-EXIT-HELD? ( ptr n -- bool ) {: tcb:ptr :}
    TASK-EXIT-SCRATCH BYTE-VIEW CELL-VIEW @ {: want:n :}
    tcb TASK-EXIT-SLOT@
@@ -1012,21 +885,17 @@ TYPED-VARIABLE TASK-EXIT-SCRATCH [ -- ]
    repeat
    drop ;
 
-\ ---- callback bindings: one row per slot (src/lib/ffi-callback.f) ----------
 \ A row names the region a C call through its slot enters (CB-ROW-REGION, 0
-\ unbound) and the thread inside through it (CB-ROW-OWNER: 0 idle, a thread
-\ pointer, or CB-ROW-BUSY while a bind, unbind, claim or drop moves the row).
-\ The engine's thunk claims the row before it reads the region, so a region
-\ stays mapped while a row names it: UNEXPOSE and TASK-END, the only words that
-\ release a named region, drop its rows first. The table is published into the
-\ main region's CB-ROWS, where every thread's thunk reads it.
-\ A call that meets BUSY waits in the thunk until the row is handed back, so a
-\ mover holds BUSY only for a few steps that call nothing, wait on nothing and
-\ throw nothing: every word below hands its rows back before it throws.
-\ A declaration grows this table before a task can run. A row carries the
-\ region, its owner, the count of region stores, and the region of a pending
-\ all-row claim. No C entry embeds a row address; the main region publishes the
-\ current base for the thunk to read on every call.
+\ unbound), the thread inside through it (CB-ROW-OWNER: 0 idle, a thread
+\ pointer, or CB-ROW-BUSY while a bind, unbind, claim or drop moves the row),
+\ the count of region stores, and the region of a pending all-row claim. The
+\ engine's thunk claims the row before it reads the region, so a region stays
+\ mapped while a row names it: UNEXPOSE and TASK-END, the only words that
+\ release a named region, drop its rows first. A call that meets BUSY waits in
+\ the thunk, so a mover holds BUSY only for steps that call, wait on and throw
+\ nothing: every word below hands its rows back before it throws. A declaration
+\ grows this table before a task can run. No C entry embeds a row address: the
+\ main region's CB-ROWS publishes the current base for the thunk on every call.
 4 cells constant ROW-BYTES
 2 cells constant ROW-MOVES-OFF
 3 cells constant ROW-CLAIM-OFF
@@ -1085,8 +954,8 @@ variable ROW-N
 : ROW-NAMES? ( n n -- bool ) {: k:n reg:n :}
    k ROW ROW-REGION atomic@ reg = ;
 
-\ Hands every row this region claimed back, BUSY -> 0. The marker is cleared
-\ before the hand-back, so the next mover never inherits a stale claim.
+\ The marker is cleared before the hand-back, so the next mover never inherits
+\ a stale claim.
 : ROWS-RELEASE ( n -- ) {: reg:n :}
    ROW-N @ 0 ?do
       i ROW-CLAIM @ reg = if
@@ -1178,26 +1047,27 @@ variable ROW-N
 : ROWS-END ( n -- ) {: reg:n :}
    ROW-N @ 0 ?do i reg ROW-END loop ;
 
-\ Every way a task's thread ends passes here, from TASK-RUNNER: the body
-\ returning, the body throwing, and a halted body unwound from TASK:PAUSE. The
-\ stop mark goes first, so a cleanup that pauses yields rather than starting a
-\ halt unwind (HALT-PENDING?). The rows go before the signal, which is last, so a joiner
-\ that wakes finds the cleanup finished, the outcome rows final and no slot
-\ naming the region it is about to release.
+\ Every ending passes here from TASK-RUNNER: a return, a throw, and a halt
+\ unwound from TASK:PAUSE. The stop mark goes first, so a cleanup that pauses
+\ yields rather than starting a halt unwind (HALT-PENDING?). The signal is last,
+\ after the rows, so a joiner that wakes finds the cleanup finished, the outcome
+\ final and no slot naming the region it is about to release.
 : TASK-END ( -- )
    1 TASK-SELF TCB.STOP !
    TASK-RUN-EXIT
    data-base FFI:>CELL ROWS-END
    TASK-SELF TASK-DONE-SEM SEM-SIGNAL ;
 
-\ One shared cell counted from several threads: an owner releasing one task can
-\ run while another thread activates a second, so each side moves the count in
-\ ONE atomic step. No clamp below zero - every release follows an activation, so
-\ a count below zero is a pairing defect, and a nonzero count already refuses
-\ dictionary mutation, which is where it must surface (exit $4F) rather than in
-\ a clamp that hides it. The count is the main region's, where the compiler
-\ reads it (habu1.f B-TASK-LIVE-GUARD), so a worker activating or exposing a
-\ task counts there too.
+\ NO COMPILATION WHILE A TASK IS LIVE. A definition, `allot`, `,`, `c,`,
+\ `align`, an interpret-mode string literal that keeps its text, `evaluate`,
+\ `cp!` and `ndict!` exit $4F while this count is nonzero (habu1.f
+\ B-TASK-LIVE-GUARD), every exposed task and the AIO loop task included. A
+\ definition holds the code band writable from its colon to `;`, flipped in
+\ PROT-PAGE-MAX units (src/habu/layout.f), so a task running any word in that
+\ 64K unit faults; a forget frees code a task may be running. The count is the
+\ main region's, so a worker activating or exposing a task counts there too.
+\ Activations and releases race, so each moves it in one atomic step. No clamp
+\ below zero: a negative count is a pairing defect, which must surface as $4F.
 : TASK-LIVE+ ( -- )
    1 MAIN-BASE TASKS-LIVE-CELL + atomic-add drop ;
 
@@ -1207,19 +1077,17 @@ variable ROW-N
 : TASK-MUNMAP-SPAN ( ptr u8 n -- )
    MUNMAP-CALL TASK-RC0 ;
 
-\ AN EMPTY TCB HOLDS NOTHING THIS PROCESS TOOK BUT ITS PARK, which outlives
-\ every release until the capture sweep (PARK-CREATE). The mailbox and the done
-\ semaphore are destroyed, the five mappings go back to the system, and the
-\ five cells cleared last are what the run itself acquired: the pthread_t
-\ pthread_create stored, the value the join wrote, and PREPARE's record
-\ of this process's data base, record count and code end. An image restores none
-\ of them, and a stripped link refuses a captured cell holding one - the first of
-\ them unnamed, because a `create … does>` body spells only cell 0 and the
-\ refusal has no name for the rest (measured on a load-time activate/join/kill:
-\ `holds a pointer into memory the build mapped word=<unknown> data-off=12219368`
-\ for TCB.THREAD, then `holds an undeclared code/dict pointer` for TCB.DBASE).
-\ Clearing them changes no run: ACTIVATE writes THREAD again, the join writes RET
-\ and PREPARE writes the other three.
+\ AN EMPTY TCB HOLDS NOTHING THIS PROCESS TOOK BUT ITS PARK, which outlives every
+\ release until the capture sweep (PARK-CREATE). The mailbox and the done
+\ semaphore are destroyed, the five mappings go back, and the five cells cleared
+\ last are what the run acquired: the pthread_t, the value the join wrote, and
+\ PREPARE's data base, record count and code end. An image restores none of
+\ them, and a stripped link refuses a captured cell holding one, the later ones
+\ unnamed because a `create … does>` body spells only cell 0 (measured on a
+\ load-time activate/join/kill: `holds a pointer into memory the build mapped
+\ word=<unknown> data-off=12219368` for TCB.THREAD, then `holds an undeclared
+\ code/dict pointer` for TCB.DBASE). Clearing them changes no run: ACTIVATE
+\ writes THREAD again, the join writes RET and PREPARE writes the other three.
 : TASK-RELEASE-MEM ( ptr n -- ) {: tcb:ptr :}
    tcb MBOX-DESTROY
    tcb DONE-DESTROY
@@ -1251,27 +1119,23 @@ variable ROW-N
 
 \ ---- every declared TCB, and the sweep a capture runs over them ---------------
 \ ONE HEAD REACHES EVERY TCB THE PROGRAM DECLARED, because a capture has to reach
-\ them all: a task that was prepared holds this process's mappings and a task
-\ that is running holds its thread, and an image restores neither. The head is a
-\ declared pointer cell, so the stripped link relocates it through its data map;
-\ each TCB's link is the raw cell one past its body, holding the previous TCB's
-\ address, and 0 ends the chain. Both kinds of cell sit in the capture window,
-\ which an image restores at the addresses it was captured from, so an
-\ undeclared cell holding one of those addresses is shipped verbatim
-\ (src/habu/aot-lib.f SCAN-DATA-CELL refuses a text pointer and a pointer into
-\ memory the build mapped; a window address is neither). A TCB address is not an
-\ offset from `dbase@` either - measured on this engine, the window is at
-\ $340000000 and `dbase@` at $1410000 - so the link holds the address itself.
-\ A TASK:NEW record is on TCB-POOL below, never on this chain: the chain is
-\ fixed once a task can run, because the crash handler and every lock-free
-\ walker read it without a lock, and an image carries it, while a NEW record
-\ lives in memory this process mapped.
+\ them all: a prepared task holds this process's mappings and a running one its
+\ thread, and an image restores neither. The head is a declared pointer cell,
+\ which the stripped link relocates through its data map; each TCB's link is
+\ the raw cell one past its body, holding the previous TCB's address, and 0
+\ ends the chain. Both sit in the capture window, which an image restores at the
+\ captured addresses, so an undeclared cell holding one ships verbatim
+\ (src/habu/aot-common.f SCAN-DATA-CELL refuses only a text pointer and a pointer
+\ into memory the build mapped). A TCB address is not an offset from `dbase@`
+\ either (measured: the window at $340000000, `dbase@` at $1410000), so the link
+\ holds the address itself. A TASK:NEW record is on TCB-POOL, never on this
+\ chain: the chain is fixed once a task can run, because the crash handler and
+\ every lock-free walker read it without a lock, and an image carries it.
 PERSISTED-PTR-VARIABLE TASK-CHAIN
 
-\ The crash handler can inspect this immutable TCB chain after an instruction
-\ fetch faults in a task's guard. Publish the head cell in root DATA;
-\ task-local RBP is unavailable on that fault path. The fixed cell is declared
-\ as a DATA pointer so an image remaps it with the dictionary window.
+\ The crash handler reads this chain after an instruction fetch faults in a
+\ task's guard, where task-local RBP is unavailable, so the head is published in
+\ root DATA, declared a DATA pointer so an image remaps it with the window.
 data-base TASK-CHAIN-CELL + ptr-cell-mark
 : TASK-CHAIN-PUBLISH ( -- )
    TASK-CHAIN data-base TASK-CHAIN-CELL + 0 ptr-field ! ;
@@ -1288,20 +1152,17 @@ TASK-CHAIN-PUBLISH
 : TASK-LINK@ ( ptr n -- n )
    TASK-TCB-BYTES + @ ;
 
-\ ---- the TCB pool: the tasks TASK:NEW makes ----------------------------------
-\ A record is a TCB, its pool link in the same place as a chain link - the next
-\ record as a number, 0 ending the pool - and its claim: CLAIM-FREE, CLAIM-HELD
-\ while TASK:NEW has handed it out, CLAIM-FREEING while a TASK:FREE moves it
-\ back. A chunk is the link to the next chunk and TCB-POOL-N records; a chunk
-\ is the unit the pool grows by, not a cap. THE POOL ONLY GROWS while the
-\ process runs: TASK:FREE hands a record back by its claim and TASK:NEW takes a
-\ free record before it maps another chunk, so nothing is unlinked or unmapped
-\ under a reader. EXPOSED-TCB and TCB-POOLED? walk it with no lock from any
-\ thread, and a TASK:WAKE or TASK:HALT that read the TCB before its task was
-\ given back still posts a live park, which TASK:FREE keeps (PARK-CREATE). The
-\ capture sweep alone destroys the parks and gives the chunks back, after it
-\ has refused a record still held. The x86-64 crash handler walks TASK-CHAIN
-\ only (src/habu/boot-x64.f), so an instruction fetch in a guard page of a NEW
+\ A record is a TCB, its pool link where a chain link sits (the next record as a
+\ number, 0 ends), and its claim: CLAIM-FREE, CLAIM-HELD while TASK:NEW has
+\ handed it out, CLAIM-FREEING while a TASK:FREE moves it back. A chunk is the
+\ link to the next chunk and TCB-POOL-N records, the growth unit and not a cap.
+\ THE POOL ONLY GROWS while the process runs: TASK:FREE hands a record back by
+\ its claim and TASK:NEW takes a free record before it maps another chunk, so
+\ nothing is unlinked or unmapped under EXPOSED-TCB and TCB-POOLED?, which walk
+\ it with no lock, and a WAKE or HALT that read a TCB before TASK:FREE still
+\ posts a live park. The capture sweep alone destroys the parks and gives the
+\ chunks back, after refusing a record still held. The x86-64 crash handler
+\ walks TASK-CHAIN only (src/habu/boot-x64.f), so a guard-page fetch in a NEW
 \ task's stack reaches its generic dump instead of the stack-bounds report.
 TASK-ALIGN8
 variable TCB-POOL
@@ -1348,19 +1209,16 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
    drop
    0 TCB-CHUNKS atomic! ;
 
-\ A PREPARED TASK IS RELEASED AT CAPTURE, the same rule package FFI keeps for
-\ resolved symbols: process-local state is dropped here and taken afresh by the
-\ next operation, which for a task is the ACTIVATE that prepares it again. So
-\ is every park, an EMPTY task's included: it outlives the release
-\ (PARK-CREATE), and a guard captured live would have the restored image skip
-\ creating its own. No other thread can post a park while the capture goes on:
-\ a task's thread ends the process below, and ROWS-SWEEP refused a foreign
-\ thread inside a slot. An ACTIVATED task is the program's defect - a thread
-\ cannot be carried by an image - so this names the module, the state and the
-\ field the linker would otherwise refuse with no name for it. `die` and not
-\ `throw`: a hook may throw and PREPARE propagates it, but hb-build would then
-\ end on a bare code, while the linker's own refusals print their reason and
-\ exit (src/habu/aot-closure.f REFUSE-DATA-CELL).
+\ A PREPARED TASK IS RELEASED AT CAPTURE, as package FFI drops resolved symbols:
+\ the next ACTIVATE prepares it again. So is every park, an EMPTY task's
+\ included: a guard captured live would have the restored image skip creating
+\ its own. No other thread can post a park during the capture: a task's thread
+\ ends the process below, and ROWS-SWEEP refused a foreign thread inside a slot.
+\ An ACTIVATED or EXPOSED task is the program's defect (an image cannot carry a
+\ thread), so this names the state and the field the linker would refuse with
+\ no name. `die`, not `throw`: a hook may throw and PREPARE propagates it, but
+\ hb-build would end on a bare code, while the linker's refusals print their
+\ reason and exit (src/habu/aot-closure.f REFUSE-DATA-CELL).
 : TASK-SWEEP-ONE ( ptr n -- ) {: tcb:ptr :}
    tcb TASK-STATE@ {: st:n :}
    st TASK-EXPOSED = if
@@ -1470,26 +1328,23 @@ variable SWEEP-ARMED
    0 SWEEP-ARMED ! ;
 
 \ THE SWEEP IS A ONE-SHOT CLEANUP, ARMED BY THE WORD THAT TAKES WHAT IT GIVES
-\ BACK. It munmaps, so it has to run in the phase src/lib/image-lifecycle.f reserves
-\ for cleanup that calls foreign functions, before the persistent hooks forget
-\ their addresses: run after FFI's FORGET-SYMBOLS, MUNMAP-CALL would resolve
-\ munmap again and leave this process's address in a cell the capture carries.
-\ A run of the sweep disarms it, and the next PREPARE - in this process or in
-\ the restored image - arms it again, so an image that captures again sweeps
+\ BACK. It munmaps, so it runs in the foreign-call cleanup phase of
+\ src/lib/image-lifecycle.f: after FFI's FORGET-SYMBOLS, MUNMAP-CALL would
+\ resolve munmap again and leave this process's address in a captured cell. A
+\ run disarms it and the next PREPARE, here or in the restored image, arms it
 \ again. Two owners preparing at once may register two hooks; the second walk
-\ finds every task EMPTY and does nothing.
+\ finds every task EMPTY.
 : TASK-ARM-SWEEP ( -- )
    SWEEP-ARMED @ 0= if
       [: TASK-CAPTURE-SWEEP ;] IMAGE-LIFECYCLE:REGISTER
       1 SWEEP-ARMED !
    then ;
 
-\ Maps a chunk outside the lock, since a mapping may block or throw, and appends
-\ it under the lock: it starts where the rows end, and its header - the index
-\ of its first row and the link to the chunk before it - is stored before the
-\ release store that publishes it. Two registrations
-\ growing at once append two chunks. The sweep is armed before the mapping
-\ exists, as TCB-GROW does.
+\ Maps outside the lock, since a mapping may block or throw, and appends under
+\ it: the chunk starts where the rows end, and its header (first row index, link
+\ to the chunk before) is stored before the release store that publishes it.
+\ Two registrations growing at once append two chunks. The sweep is armed before
+\ the mapping exists, as TCB-GROW does.
 : EXIT-GROW ( -- )
    TASK-ARM-SWEEP
    EXIT-CHUNK-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop FFI:>CELL {: c:n :}
@@ -1499,22 +1354,15 @@ variable SWEEP-ARMED
    c EXIT-CHUNKS atomic!
    TASK-EXIT-UNLOCK ;
 
-\ Registration is additive: the task keeps every cleanup it registers and the
-\ chain runs newest first. A quotation the task already holds is not registered
-\ twice - AIO registers its scrub at each activation's first submission, so a
-\ second row per activation would grow the rows without end. With no row left
-\ the registration grows them and asks again. The quotation is in its row, and
-\ that row's link names the old head, before the TCB names the row, so a task
-\ ending while a thread registers on it runs the whole old chain or the whole
-\ new one, never a half-built row. The head is published with atomic! - a
-\ store-release (STLR), src/habu/habu1.f BATSTORE - which is what makes that
-\ true on a machine whose plain stores to different addresses may become
-\ visible out of order: every store of the row and its link, and the chunk that
-\ holds them, is visible before the head that names them, and TASK-EXIT-SLOT@
-\ reads the head with the matching acquire load. The lock covers the scratch
-\ cell the comparison goes through, so two threads registering on one task at
-\ the same moment - AIO from the task itself, the program from the thread that
-\ started it - both land.
+\ Registration is additive and the chain runs newest first. A quotation the task
+\ already holds is not registered twice: AIO registers its scrub at each
+\ activation's first submission. With no row left it grows the rows and asks
+\ again. The row and its link to the old head are stored before the head is
+\ published with atomic! (STLR, src/habu/habu1.f BATSTORE), read back by
+\ TASK-EXIT-SLOT@'s acquire load, so a task ending meanwhile runs the whole old
+\ chain or the whole new one on a machine whose plain stores may become visible
+\ out of order. The lock covers the scratch cell, so two threads registering on
+\ one task at once (AIO from the task, the program from its starter) both land.
 : TASK-AT-EXIT ( [ -- ] ptr n -- ) {: q tcb:ptr :}
    begin
       TASK-EXIT-LOCK-GET
@@ -1554,14 +1402,13 @@ variable SWEEP-ARMED
    data-base reg ENVP-CELL TASK-COPY-CELL
    data-base reg PROGRAM-FILE-CELL TASK-COPY-CELL
    \ SCRIPT-ARGV picks the application convention from this cell
-   \ (src/os/script-argv.f SCRIPT-ARG-START); left at the region's zero, a
-   \ task in an application read the engine's and lost argument 0.
+   \ (src/os/script-argv.f SCRIPT-ARG-START); a task left at the region's zero
+   \ reads the engine's and loses argument 0.
    data-base reg APP-ENTRY:XT-CELL TASK-COPY-CELL
-   \ A task starts on its creator's I/O devices (src/lib/genio-core.f). These cells
-   \ hold a device INDEX, not an address, which is what makes copying them into
-   \ a freshly mapped region sound: nothing here needs relocating. The funnel's
-   \ re-entrancy guard and the active-device cell start clear, because the new
-   \ task is not inside an operation.
+   \ A task starts on its creator's I/O devices (src/lib/genio-core.f). The cells
+   \ hold a device INDEX, so copying them into a fresh region needs no
+   \ relocation. The funnel's re-entrancy guard and the active-device cell start
+   \ clear: the new task is not inside an operation.
    data-base reg GENIO-ABI:OUT-CELL TASK-COPY-CELL
    data-base reg GENIO-ABI:IN-CELL TASK-COPY-CELL
    data-base reg GENIO-ABI:WRITE-OFF GENIO-ABI:DEVICES cells TASK-COPY-SPAN
@@ -1599,10 +1446,9 @@ variable SWEEP-ARMED
    dbase@ tcb TCB.DBASE !
    ndict@ tcb TCB.NDICT !
    cp@ tcb TCB.CP !
-   \ This clear and ACTIVATE's are plain stores on purpose: both run in the
-   \ owner's thread before pthread_create, which orders everything written here
-   \ into the new thread, and once that thread runs it alone writes the cell
-   \ (HALT-PENDING?).
+   \ This clear and ACTIVATE's are plain stores: both run in the owner's thread
+   \ before pthread_create, which orders them into the new thread, and only that
+   \ thread writes the cell afterwards (HALT-PENDING?).
    0 tcb TCB.STOP !
    tcb TASK-REGION-INIT
    tcb MBOX-INIT
@@ -1642,11 +1488,9 @@ variable SWEEP-ARMED
 : TASK-RUN-USER ( -- n )
    TASK-SELF TCB.USER-XT @ catch ;
 
-\ An uncaught worker throw ends this task only: record the code and return, so
-\ the entry marks the task DONE and the other tasks keep running. A worker
-\ `die` is not catchable and still exits the process with its own status.
-\ Either way the task ends through TASK-END, which runs the cleanup and releases
-\ whoever is joining.
+\ An uncaught worker throw ends this task only: the code is recorded, the entry
+\ marks the task DONE and the other tasks keep running. A worker `die` is not
+\ catchable and exits the process with its own status (Linux uses exit_group).
 : TASK-RUNNER ( -- )
    TASK-RUN-USER dup 0= if drop else TASK-SELF TASK-THROW! then
    TASK-END ;
@@ -1665,9 +1509,9 @@ variable SWEEP-ARMED
    tcb TASK-STATE@ TASK-EXPOSED = if E-TASK-STATE throw then
    tcb TASK-STATE@ TASK-DONE = if tcb TASK-JOIN-RELEASE then
    tcb PREPARE
-   \ Every run's park opens at zero. The park outlives this TCB's earlier runs
-   \ and exposures (PARK-CREATE), so it may hold a hint from any of them: one
-   \ posted while exposed, after a run ended, or around a create that failed.
+   \ The park outlives this TCB's earlier runs and exposures (PARK-CREATE), so it
+   \ may hold a hint posted while exposed, after a run ended, or around a create
+   \ that failed.
    tcb PARK-DRAIN
    xt tcb TCB.USER-XT !
    ['] TASK-RUNNER tcb TCB.XT !
@@ -1701,25 +1545,22 @@ variable SWEEP-ARMED
 
 \ A halted task starts its unwind here, ONCE, from PAUSE or from a scope's end
 \ (TASK:HALT-UNWIND): the stop mark goes first, so every cleanup the unwind runs
-\ and the AT-EXIT chain may pause and only yield. Then HALT-UNWIND-CELL is set
-\ and `n throw` leaves: with the cell set the catch family (src/habu/layout.f
-\ HALT-UNWIND-CELL) runs each finally around the throw, innermost first, and
-\ rethrows past every other catch, so no code after a catch observes the halt.
-\ TASK-RUNNER's catch, the task's root, takes n, or a code a cleanup threw
-\ during the unwind, which supersedes as it does for any throw, or, when the
-\ halt began inside a cleanup, the body's error that cleanup ran for; TASK-END
-\ runs and the entry publishes DONE. PAUSE carries 0: the halt is not a body error.
-\ Where the halt cannot be served it drops n and returns.
+\ and the AT-EXIT chain may pause and only yield. With HALT-UNWIND-CELL set,
+\ `n throw` runs each finally around it, innermost first, and rethrows past
+\ every other catch (src/habu/layout.f HALT-UNWIND-CELL), so no code after a
+\ catch observes the halt and a body that swallows errors still ends.
+\ TASK-RUNNER's catch takes n, or a code a cleanup threw during the unwind, or,
+\ when the halt began inside a cleanup, the body's error that cleanup ran for.
+\ PAUSE carries 0: the halt is not a body error. Where the halt cannot be
+\ served it drops n and returns.
 \
-\ Inside a callback the request stays pending: a throw there
-\ would unwind through C's frames, holding the slot it entered through,
-\ with C's call never drained. A live marshal frame on the region (CB-FRAME) is
-\ that case; the thunk restores the cell as each callback returns, so it reads
-\ 0 once C is off the stack. The body returns to C, C returns to the task, and
-\ the task ends at its first PAUSE outside a callback and outside a DEFER-ENTER
-\ section: a HALT or KILL of a task parked in a callback takes effect after C
-\ returns. A body that must answer the request sooner reads TASK:HALTED? and
-\ returns.
+\ Inside a callback the request stays pending: a throw there would unwind
+\ through C's frames, holding the slot it entered through, with C's call never
+\ drained. A live marshal frame on the region (CB-FRAME) is that case; the thunk
+\ restores the cell as each callback returns, so it reads 0 once C is off the
+\ stack. The task ends at its first PAUSE outside a callback and outside a
+\ DEFER-ENTER section, so a HALT or KILL of a task parked in a callback takes
+\ effect after C returns. A body that must answer sooner reads TASK:HALTED?.
 : IN-CALLBACK? ( -- bool )
    data-base CB-FRAME + @ 0 <> ;
 
@@ -1736,34 +1577,26 @@ variable SWEEP-ARMED
    0 HALT-UNWIND
    SCHED-YIELD-CALL TASK-RC0 ;
 
-\ The request is observed at TASK:PAUSE, so a task parked in TASK:STOP would not
-\ see it until somebody else woke it. HALT wakes it itself: the task returns from
-\ its STOP, re-checks its state as the hint protocol requires, and ends at its
-\ next PAUSE.
+\ The request is observed at TASK:PAUSE, so HALT wakes a task parked in
+\ TASK:STOP itself: the task re-checks its state as the hint protocol requires
+\ and ends at its next PAUSE.
 \
-\ The move RUNNING -> HALT-REQ is one atomic-cas on the status cell, the shape
-\ TASK-JOIN-CHECK uses on the joiner claim, and its answer - the state as it was
-\ - is read once. THE CAS IS THE WHOLE REQUEST (HALT-PENDING?), so a HALT
-\ reaches exactly the run its CAS saw. The status carries no request into
-\ another run: only this CAS writes HALT-REQ, and the run's end replaces it -
-\ the DONE an ended run publishes, or the CONSTRUCTED a failed create leaves -
-\ before ACTIVATE writes the RUNNING the next run starts from.
+\ RUNNING -> HALT-REQ is one atomic-cas, as TASK-JOIN-CHECK claims the joiner,
+\ and its answer is read once. THE CAS IS THE WHOLE REQUEST (HALT-PENDING?), so
+\ a HALT reaches exactly the run its CAS saw. No request carries into another
+\ run: only this CAS writes HALT-REQ, and the run's end (DONE, or CONSTRUCTED
+\ after a failed create) replaces it before ACTIVATE writes RUNNING.
 \
-\ A task ends under its own owner: the body's last write comes before TASK-END
-\ and before the entry's DONE store, so a halt ordinarily arrives while the
-\ task is finishing. An answer that is neither RUNNING nor HALT-REQ means there
-\ is nothing to halt - never activated, only prepared, or ended - and that
-\ task's state is left alone: a task that has ended has no PAUSE to reach, and
+\ Any other answer means nothing to halt (never activated, only prepared, or
+\ ended) and the state is left alone: an ended task has no PAUSE to reach, and
 \ DONE is never overwritten by a request nobody can observe.
 \
-\ The park is posted DIRECTLY rather than through TASK-WAKE, which refuses an
-\ ended task: that refusal is TASK:WAKE's own contract, while here the task may
-\ end between the CAS and the post and a hint nobody will wait for is harmless.
-\ It may be released too, and the post still meets a live park (PARK-CREATE).
-\ A count posted before the next run or exposure opens dies there, since each
-\ opens its park at zero; one still in flight as it opens is the one stale
-\ hint its re-check absorbs. The post is the only step after the CAS, so that
-\ hint is all a HALT can leave a run its CAS did not see.
+\ The park is posted DIRECTLY, not through TASK-WAKE, whose refusal of an ended
+\ task is TASK:WAKE's own contract: the task may end, or be released, between
+\ the CAS and the post, and the post still meets a live park (PARK-CREATE). A
+\ count posted before the next run or exposure opens dies there; one in flight
+\ as it opens is the one stale hint its re-check absorbs. The post is the only
+\ step after the CAS, so that hint is all a HALT can leave a run it did not see.
 : HALT ( ptr n -- ) {: tcb:ptr :}
    TASK-RUNNING TASK-HALT-REQ tcb TCB.STATUS atomic-cas {: st:n :}
    st TASK-RUNNING <> st TASK-HALT-REQ <> and if exit then
@@ -1854,7 +1687,6 @@ variable SWEEP-ARMED
       TASK-N>PTR TASK-LINK@
    repeat ;
 
-\ The exposed task whose region is context n, declared or made by TASK:NEW.
 : EXPOSED-TCB ( n -- n ) {: ctx:n :}
    TASK-CHAIN@ FFI:>CELL ctx CHAIN-EXPOSED
    dup 0 <> if exit then
@@ -1918,17 +1750,18 @@ variable SWEEP-ARMED
    0 k ROW-NAME!
    0 k ROW ROW-OWNER atomic! ;
 
-\ ONE read of the state decides, because the state moves while the owner is
-\ reading it: a task that answers RUNNING to the first test can be DONE by the
-\ next, and re-reading per arm made every arm false - the task was neither
-\ halted nor joined, TASK-LIVE- never ran, and it stayed counted live for the
-\ life of the image (the next dictionary mutation then exits $4F).
+\ ONE read of the state decides: the state moves while the owner reads it, and
+\ re-reading per arm can find every arm false, leaving the task unjoined and
+\ counted live for the life of the image (the next dictionary mutation exits
+\ $4F).
 \
-\ EMPTY has nothing to release and CONSTRUCTED has memory but no thread. Every
-\ other state was activated and is released the same way, whichever state it
-\ reaches first: HALT unless the read already said DONE - it is the no-op above
-\ on a task that ended in between - and then the join, which waits for the
-\ thread however the task ends.
+\ KILL discards the outcome and JOIN collects it; both release the task. EMPTY
+\ has nothing to release and CONSTRUCTED has memory but no thread. Every other
+\ state was activated and is released the same way, whichever state it reaches
+\ first: HALT unless the read said DONE, then the join, which waits for the
+\ thread however it ends. A task parked in STOP, WAIT, SLEEP or a host call
+\ observes the halt only when released, so KILL waits for it; an owner may KILL
+\ a body that signalled its own end and is still finishing.
 : TASK-KILL ( ptr n -- ) {: tcb:ptr :}
    tcb TASK-STATE@ {: st:n :}
    st TASK-EMPTY = if exit then
@@ -1977,10 +1810,9 @@ variable SWEEP-ARMED
    tcb TASK-JOIN-RELEASE ;
 
 \ ---- making and giving back pool tasks ---------------------------------------
-\ Puts a run of linked entries, first to the one whose link cell is given, on a
-\ list head. The link takes the head this turn read before the head moves to the
-\ first entry, so a walker that reads the new head finds the whole run and the
-\ old list behind it; a concurrent push makes the swap fail and the turn retry.
+\ The link takes the head this turn read before the head moves to the first
+\ entry, so a walker reading the new head finds the whole run and the old list
+\ behind it; a concurrent push fails the swap and the turn retries.
 : LIST-PUSH ( n ptr n ptr n -- ) {: first:n link:ptr head:ptr :}
    begin
       head atomic@ dup link !
@@ -2005,7 +1837,6 @@ variable SWEEP-ARMED
 : TCB-TAKE? ( n -- bool ) {: rec:n :}
    CLAIM-FREE CLAIM-HELD rec TASK-N>PTR TCB-CLAIM atomic-cas CLAIM-FREE = ;
 
-\ The first free record this walk claims, or 0.
 : TCB-TAKE ( -- n )
    TCB-POOL atomic@
    begin dup 0 <> while
@@ -2052,31 +1883,23 @@ variable SWEEP-ARMED
    tcb TCB-CLEAR
    CLAIM-FREE tcb TCB-CLAIM atomic! ;
 
-\ ---- the three storage definers, and why only one converted -------------------
-\ TWO ADDRESS KINDS LIVE HERE, and only one of them is expressible as generated
-\ source today. A `create ... does> ( -- ptr n ) ;` word pushes the ABSOLUTE
-\ address of its dictionary storage, which is the same address in every thread.
-\ A generated `data-base <off> +` word resolves against the CALLING thread's data
-\ region - register 20, which the thread entry below points at the task's own
-\ 64 KiB region (TCB.REGION) - so inside a task it names a different object.
+\ ---- the three storage definers -----------------------------------------------
+\ TWO ADDRESS KINDS LIVE HERE. A `create ... does> ( -- ptr n ) ;` word pushes
+\ the ABSOLUTE address of its storage, the same in every thread. A generated
+\ `data-base <off> +` word resolves against the CALLING thread's region (register
+\ 20, which the thread entry points at TCB.REGION), so inside a task it names a
+\ different object.
 \
-\ TASK and FACILITY publish SHARED storage: one TCB per task and one pthread
-\ mutex every task locks. They keep `create ... does>` because the tree has no
-\ checked source expression for a thread-invariant address (`dbase@`, register 26,
-\ holds it but is typed `-- n`, so writing it would trade a does> for a new
-\ pointer cast). Measured, not assumed: converting FACILITY makes each task lock
-\ its own uninitialised copy - src/lib/task-test.f dies E-TASK-THREAD (rc 237) - and
-\ converting TASK faults reading a TCB at region-base + dictionary-offset. The
-\ missing piece is one thread-invariant `( -- ptr n )` origin; until it exists,
-\ generated `data-base` accessors are for region-local storage only.
-\
-\ +USER is the other kind and converts cleanly: its storage IS a task-local slot,
-\ its does> body already read `@ data-base +`, and the offsets it hands out are
-\ bounded by TASK-USER-END, inside every region.
+\ TASK and FACILITY publish SHARED storage, so they keep `create ... does>`: no
+\ checked source expression gives a thread-invariant address (`dbase@`, register
+\ 26, is typed `-- n`). Measured: a generated FACILITY makes each task lock its
+\ own uninitialised copy (src/lib/task-test.f dies E-TASK-THREAD, rc 237), and a
+\ generated TASK faults reading a TCB at region base + dictionary offset. +USER
+\ storage IS a task-local slot, bounded by TASK-USER-END inside every region, so
+\ +USER generates its accessor.
 
-\ CREATE/DOES> publishes a typed TCB address. The body is still
-\ TASK-TCB-BYTES; the cell after it is this TCB's chain link,
-\ taking the head the definition found and leaving its own address there.
+\ The body is TASK-TCB-BYTES; the cell after it is this TCB's chain link, taking
+\ the head the definition found and leaving its own address there.
 : TASK ( n -- )
    dup TASK-CHECK-SIZE
    TASK-ALIGN8
@@ -2097,15 +1920,12 @@ variable SWEEP-ARMED
    size TASK-USER-END off - > if E-TASK-USER throw then
    off size + ;
 
-\ The slot's offset is fixed when the slot is declared, so it is baked into the
-\ generated body; `data-base` is read at CALL time, which is what makes the word
-\ answer the RUNNING task's own region - the whole point of a user slot, and what
-\ the retired does> body (`@ data-base +`) did with an extra load.
+\ The slot's offset is baked into the generated body and `data-base` is read at
+\ call time, so the word answers the running task's own region.
 \
-\ The text is built with package CODEGEN's append machinery rather than a fifth
-\ private copy of it. The calls are qualified rather than imported: a bare RESET
-\ under `using CODEGEN` collides with the global RESET (E-USING-SHADOW-GLOBAL),
-\ which is the collision docs/forth.md names as the case for qualifying.
+\ The calls into package CODEGEN are qualified rather than imported: a bare
+\ RESET under `using CODEGEN` collides with the global RESET
+\ (E-USING-SHADOW-GLOBAL), the case docs/forth.md names for qualifying.
 \
 \ The text is the only statement of the slot word's effect, and the source
 \ pre-verifier never runs it, so the `generates:` row after +USER states it for
@@ -2155,8 +1975,6 @@ private
 : HIS ( ptr n ptr n -- ptr n ) {: tcb:ptr cur:ptr :}
    cur data-base - tcb TCB.REGION @ + ;
 
-\ CREATE/DOES> publishes owner-tracked pthread mutex storage, shared by every
-\ task (see the address-kind note above).
 : FACILITY ( -- )
    TASK-ALIGN8
    create TASK-FACILITY-BYTES allot
@@ -2193,27 +2011,17 @@ private
    0 f FACILITY-OWNER!
    f FACILITY-MUTEX BYTE-VIEW MUTEX-UNLOCK-CALL TASK-RC0 ;
 
-\ Shared counted-semaphore storage, one record per definition (see the
-\ address-kind note above). The child's `does>` body converts the record
-\ address to the handle in checked code, and both converters are private to this
-\ package, so the only address a caller ever sees is already a SEM and no package
-\ outside can mint a handle over memory of its own.
+\ The child's `does>` body converts the record address to the handle in checked
+\ code, so the only address a caller sees is already a SEM.
 : SEMAPHORE ( -- )
    TASK-ALIGN8
    create TASK-SEMAPHORE-BYTES allot
    does> ( -- sem ) FFI:>CELL >SEM ;
 
 \ ---- sleeping ----------------------------------------------------------------
-\ The semaphores above park a task until something happens; SLEEP parks it until
-\ a time arrives. It is what replaces a TASK:PAUSE loop against mono-ns: the
-\ loop burns a core for the whole wait and the sleep burns none.
-\
-\ Storage class: task-local. The request and the remainder are one
-\ TASK-SLEEP-BYTES row of the per-task user band, so the main task and every
-\ worker may be asleep at the same moment over their own pair of timespecs. A
-\ sleeping task therefore holds nothing: the row is its own, and the argument
-\ tables the generated call stages sit in its own DATA region, exactly as a
-\ blocked sem_wait's do.
+\ SLEEP replaces a TASK:PAUSE loop against mono-ns, which burns a core for the
+\ whole wait. The request and the remainder are one TASK-SLEEP-BYTES row of the
+\ user band, so every task may sleep at once over its own pair of timespecs.
 #USER 7 + TASK-CELL-MASK and TASK-SLEEP-BYTES +USER SLEEP-SPECS drop
 
 : SLEEP-REQ ( -- ptr n )
@@ -2333,6 +2141,9 @@ TASK-MIN-STACK constant MIN-STACK
 : PREPARE ( ptr n -- )
    PREPARE ;
 
+\ Takes the xt rather than parsing a body as SwiftForth's ACTIVATE does, so the
+\ body is checked before a worker runs it. SwiftForth's CONSTRUCT is
+\ TASK:PREPARE because `construct` is a keyword.
 : ACTIVATE ( [ -- ] ptr n -- )
    ACTIVATE ;
 
@@ -2421,13 +2232,10 @@ TASK-MIN-STACK constant MIN-STACK
    TASK-SELF-N dup 0= if drop false exit then
    TASK-N>PTR TASK-STATE@ TASK-HALT-REQ = ;
 
-\ Parks the calling task for at least ms milliseconds and returns as soon after
-\ that as the scheduler allows, from the main task or from a worker. It burns no
-\ CPU: the task is in the kernel rather than in a PAUSE loop, and it holds
-\ nothing while it is there. A sleeping task observes no TASK:HALT until it
-\ wakes, so TASK:KILL on one waits out the rest of the sleep. Zero returns at
-\ once; a duration below zero, or one whose nanosecond deadline past mono-ns
-\ would not fit a cell, is E-TASK-SLEEP-MS.
+\ Parks the calling task in the kernel for at least ms milliseconds, holding
+\ nothing. It observes no TASK:HALT until it wakes, so TASK:KILL on one waits
+\ out the sleep. Zero returns at once; a duration below zero, or one whose
+\ nanosecond deadline past mono-ns would not fit a cell, is E-TASK-SLEEP-MS.
 : SLEEP ( ms -- )
    TASK-SLEEP ;
 
@@ -2444,7 +2252,8 @@ TASK-MIN-STACK constant MIN-STACK
 \
 \    begin  MY-STATE @ DONE = if exit then  TASK:STOP  again
 \
-\ A loop that must also answer TASK:HALT calls TASK:PAUSE in that loop.
+\ A loop that must also answer TASK:HALT calls TASK:PAUSE in that loop. The
+\ hint lets one loop wake many owners by TCB with no semaphore per waiter.
 : STOP ( -- )
    TASK-STOP ;
 
@@ -2530,7 +2339,8 @@ TASK-MIN-STACK constant MIN-STACK
 : AT-EXIT ( [ -- ] ptr n -- )
    TASK-AT-EXIT ;
 
-\ What a process just forked owes this runtime, before any code of its own.
+\ What a process just forked owes this runtime, before any code of its own:
+\ tasks do not cross a fork.
 \ fork copies only the thread that called it: the exit-chain lock another task
 \ held stays held in the child with nobody to free it, and the main thread's
 \ park is the parent's (MAIN-PARK-FORGET). src/lib/process-fork.f registers this
@@ -2547,6 +2357,11 @@ TASK-MIN-STACK constant MIN-STACK
 : HIS ( ptr n ptr n -- ptr n )
    HIS ;
 
+\ A facility excludes (owner-tracked mutex: GET is idempotent for its owner,
+\ RELEASE a no-op for anyone else); a semaphore counts; a mailbox is a one-cell
+\ rendezvous carrying the sender; src/lib/queue.f buffers cells between any
+\ tasks. None substitutes for another. Atomic cells shared across tasks are
+\ 8-byte aligned.
 : FACILITY ( -- )
    FACILITY ;
 
@@ -2573,11 +2388,9 @@ TASK-MIN-STACK constant MIN-STACK
 : SEMAPHORE-DESTROY ( sem -- )
    SEM-DESTROY ;
 
-\ Blocks until the count is positive, then decrements it.
 : WAIT ( sem -- )
    SEM-WAIT ;
 
-\ Increments the count and wakes one waiter.
 : SIGNAL ( sem -- )
    SEM-SIGNAL ;
 
@@ -2585,8 +2398,7 @@ TASK-MIN-STACK constant MIN-STACK
 : TRY-WAIT ( sem -- bool )
    SEM-TRY-WAIT ;
 
-\ A semaphore for a caller that needs one at run time rather than at definition,
-\ over a record from this package's pool, which grows when every record is in
+\ A semaphore from this package's pool, which grows when every record is in
 \ use. It arrives uninitialized, like a defined one.
 : NEW-SEMAPHORE ( -- sem )
    SEM-NEW ;

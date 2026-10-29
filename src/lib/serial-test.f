@@ -1,13 +1,8 @@
-\ serial-test.f - package SERIAL over a pseudoterminal pair, in one process.
-\
-\ The pair is the device: PTY:OPEN gives the master and the slave's path, and
-\ SERIAL:OPEN8N1 opens that path at 115200 the way test/serial.py's peer does,
-\ so every case here drives the same code the device-peer host drives, with the
-\ master side as the peer. What this file pins that the host cannot: the wait is
-\ the AIO loop's, so a READ parked in a task is not a thread parked in poll(2),
-\ a zero-millisecond window still answers for a terminal that already has bytes,
-\ and a wait with no loop running is refused by name.
-\
+\ serial-test.f - package SERIAL over a pseudoterminal pair, in one process: the
+\ master is the peer, the slave opened by SERIAL:OPEN8N1 at 115200 as
+\ test/serial.py's host does. Pinned here, not by the host: a parked READ is not
+\ a thread parked in poll(2), a zero window answers a terminal holding bytes,
+\ and a wait with no loop is refused by name.
 \ Run: bin/hb --load src/lib/serial-test.f
 
 require src/lib/test.f
@@ -45,7 +40,7 @@ create SLAVE PTY:SLAVE-PATH-CAP allot
 create SPARE PTY:SLAVE-PATH-CAP allot
 create BUF BUF-CAP allot
 
-variable MASTER                    \ the master descriptor of the pair under test
+variable MASTER
 variable HANDLE                    \ the open slave, as a number
 variable PARK-KIND                 \ what the parked task's READ answered
 variable PARK-COUNT
@@ -106,18 +101,14 @@ TASK:MIN-STACK TASK:TASK READER
       got +
    repeat drop ;
 
-\ TASK:JOIN would park the main task forever on a reader that never ends, so the
-\ wait owns a deadline. A reader that never ends ends the row as that deadline,
-\ not as an assertion result (docs/gate.md
-\ "How a suite runs, and what that demands of its files"): the join names itself
-\ and throws E-PROC-TIMEOUT, so the asserts after a join read a finished task.
-\ The window closes once less than a whole millisecond of JOIN-MS is left, the
-\ cutoff a PROC-LEFT-MS reading gives.
+\ TASK:JOIN would park main forever on a reader that never ends, so the wait
+\ owns a deadline: the join throws E-PROC-TIMEOUT, a deadline and not an
+\ assertion result (docs/gate.md "How a suite runs, and what that demands of
+\ its files"). The window closes once less than a whole millisecond of JOIN-MS
+\ is left, the cutoff a PROC-LEFT-MS reading gives.
 : JOIN-READER ( -- )
    [: READER TASK:DONE? ;] JOIN-MS >MS PROC-DEADLINE-AT PROC-NS-PER-MS - 1+
    s" serial-test JOIN-READER" TEST-WAIT:POLL ;
-
-\ ---- case one: the slave of a fresh pair opens as a serial port --------------
 
 : NUL-OPEN ( -- )
    S\" /dev/tty\x00x" SPEED SERIAL:BAUD SERIAL:OPEN8N1 OPENED drop ;
@@ -134,8 +125,6 @@ TASK:MIN-STACK TASK:TASK READER
    s" a device path holding a 0 byte is refused before the OS sees it" T-LABEL
    [: NUL-OPEN ;] E-FFI-NUL TTHROWSQ ;
 
-\ ---- case two: bytes written at the master arrive at the port ----------------
-
 : READ-CASE ( -- )
    PEER s" habu!" PTY:WRITE
 
@@ -144,8 +133,6 @@ TASK:MIN-STACK TASK:TASK READER
 
    s" ... and they are the bytes the master wrote" T-LABEL
    BUF 5 s" habu!" STR= TTRUE ;
-
-\ ---- case three: an idle port waits out its window ---------------------------
 
 : IDLE-CASE ( -- )
    mono-ns {: started:n :}
@@ -158,7 +145,6 @@ TASK:MIN-STACK TASK:TASK READER
    s" ... after waiting out the window it was given" T-LABEL
    elapsed IDLE-MS NS-PER-MS * >= TTRUE ;
 
-\ ---- case four: the zero-length window, measured on a terminal ---------------
 \ A zero timeout links a zero-length timeout behind the poll. The kernel serves
 \ the poll inline before that timer is armed, so a port that already has bytes
 \ answers with them and only an idle one answers the timeout.
@@ -173,8 +159,6 @@ TASK:MIN-STACK TASK:TASK READER
    s" ... and one whose bytes are already there answers with them" T-LABEL
    PORT BUF 3 SERIAL:BYTES 0 >MS SERIAL:READ K-MOVED 3 WANT ;
 
-\ ---- case five: the port writes and the master reads -------------------------
-
 : WRITE-CASE ( -- )
    s" six bytes written at the port are accepted whole" T-LABEL
    PORT s" forth!" SERIAL:BYTES WAIT-MS >MS SERIAL:WRITE K-MOVED 6 WANT
@@ -183,7 +167,6 @@ TASK:MIN-STACK TASK:TASK READER
    BUF 6 PEER-EXACT
    BUF 6 s" forth!" STR= TTRUE ;
 
-\ ---- case six: a read parked in a task is not a thread parked in poll --------
 \ A task asserts nothing: the reader records a timeout as K-TIMEOUT, and the
 \ main task throws it as a deadline once the join has seen the reader end.
 
@@ -203,7 +186,6 @@ TASK:MIN-STACK TASK:TASK READER
    PARK-KIND @ K-MOVED T=
    PARK-COUNT @ 4 T= ;
 
-\ ---- case seven: a wait with the loop stopped is refused by name -------------
 \ The loop is the program's to start, and a library never starts one: a wait
 \ without one says so instead of falling back to a thread parked in poll(2).
 
@@ -216,7 +198,6 @@ TASK:MIN-STACK TASK:TASK READER
    [: STOPPED-READ ;] E-AIO-STATE TTHROWSQ
    AIO:START ;
 
-\ ---- case eight: the handle after CLOSE --------------------------------------
 \ The kernel refuses the poll of a descriptor that names nothing with EBADF, so
 \ the refused arm answers what POLLNVAL answered on the poll(2) path: errno 9,
 \ the number test/serial.py pins for a read after close.
@@ -230,7 +211,6 @@ TASK:MIN-STACK TASK:TASK READER
 
    PEER PTY:CLOSE ;
 
-\ ---- case nine: the master closed under an open slave ------------------------
 \ test/serial.py's `disconnect` case pins `closed` then `error 5` on the poll(2)
 \ path; the loop answers the same, through the same two steps. The hang-up
 \ reaches the poll as POLLHUP, the read that follows it is refused with EAGAIN,

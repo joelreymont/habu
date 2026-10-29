@@ -1,22 +1,8 @@
-\ errors.f - canonical stdlib throw codes.
-\
-\ The inclusive -999999..-100000 range is reserved for external applications
-\ and separately distributed libraries. Habu allocates outside it; loaded
-\ dependencies choose nonoverlapping blocks (docs/forth.md, Errors).
-\
-\ A library owns an inclusive block of codes, usually 100 wide. FIRST and LAST
-\ are the block's two bounds, and they reserve the whole range between them for
-\ the file that declares them, whether or not every code in it has been minted
-\ yet: tools/error-code-lint.f reports any other file that claims a code inside
-\ someone else's declared range. A subsystem that outgrows one block takes a
-\ second, separately named region rather than renumbering the codes it already
-\ ships; the compiler at -6600..-6699 and -8000..-8999 is the first such case,
-\ package PG at -9250..-9259, -9320..-9329 and -9560..-9569 the second.
-\
-\ This file declares no package. A block with codes in a package (JR:E-SOURCE)
-\ is minted in the file that owns that package, bounds and all, and a comment
-\ here says where (docs/forth-card.md § 6).
-\
+\ errors.f - canonical stdlib throw codes. -999999..-100000 is reserved for
+\ external applications and libraries (docs/forth.md, Errors). A file owns the
+\ whole block between its FIRST and LAST, minted or not (tools/error-code-lint.f);
+\ a subsystem that outgrows its block takes a second region, never renumbers.
+\ A package's block is minted in the package's file; a comment here says where.
 \ STORAGE CLASS. CALLER-OWNED: the module keeps no state (constants only).
 
 \ Arrays: -2000..-2099
@@ -32,12 +18,12 @@
 -2101 constant E-FS-STAT
 -2102 constant E-FS-OPEN
 -2103 constant E-FS-DIR
-\ -2104 was E-FS-DEPTH, retired: a walk grows its context
+\ -2104 unassigned.
 -2105 constant E-FS-IO
 -2106 constant E-FS-CAPACITY
 -2107 constant E-FS-PATH-UNSAFE
 -2108 constant E-FS-BAND        \ layout FS-ABI band widths disagree with the caps here
-\ -2109 was E-FS-WALK-ACTIVE, retired: each walk owns its context
+\ -2109 unassigned.
 -2110 constant E-FS-TIMEOUT     \ a descriptor transfer reached its deadline
 
 \ Strings: -2200..-2299
@@ -135,7 +121,7 @@
 -3499 constant E-PTX-LAST
 -3400 constant E-PTX-SYNTAX
 -3401 constant E-PTX-BLOCK
--3402 constant E-PTX-NOIMPL   \ tile op typed but not yet lowered to PTX (codegen = M4e)
+-3402 constant E-PTX-NOIMPL   \ tile op typed but not lowered to PTX
 -3403 constant E-PTX-NOVJP    \ forward word has no registered adjoint (VJP)
 -3404 constant E-PTX-ADCAP    \ AD reverse-pass token capacity exceeded
 -3405 constant E-PTX-AD-OVERFLOW
@@ -147,7 +133,7 @@
 -3411 constant E-PTX-AD-CONTROL
 -3412 constant E-PTX-EMIT      \ spawned kernel-emit child exited nonzero (its stderr surfaced)
 -3413 constant E-PTX-CAP       \ in-process PTX capture buffer overflowed
-\ -3414 and -3415 unassigned (PTX text optimizer deleted 2026-08-20: no consumer)
+\ -3414 and -3415 unassigned.
 -3416 constant E-KABI-CAP          \ kernel-ABI record capacity (params/fields/name pool) exceeded
 -3417 constant E-KABI-FIELD        \ kernel-ABI field: unknown name/index, or no .param offset
 -3418 constant E-KABI-DUP          \ kernel-ABI duplicate field name / conflicting extent-token source
@@ -155,7 +141,7 @@
 -3420 constant E-KEXPORT-KERNEL    \ kernel-export: unknown kernel name / record-name mismatch
 -3421 constant E-KEXPORT-OUTDIR    \ kernel-export: out-dir missing or not a directory
 -3422 constant E-KEXPORT-EMPTY     \ kernel-export: producer emitted no PTX
--3423 constant E-PTXTC-ARCH        \ ASSEMBLE invoked before TC-ARCH! set the assembler target
+-3423 constant E-PTXTC-ARCH        \ ASSEMBLE invoked before the assembler target was set
 -3424 constant E-PTXTC-PTXAS       \ no ptxas executable found on any known path
 -3425 constant E-PTXTC-PROBE       \ resolved ptxas --version probe failed (spawn/timeout/truncated capture)
 -3426 constant E-PTXTC-VERSION     \ ptxas --version produced output but no parseable release line
@@ -172,9 +158,9 @@
 \ PROCESS-SYMBOLS beside the declarations rather than inherit another file's.
 -3503 constant E-FFI-LIBRARY
 -3504 constant E-FFI-NUL           \ a string with a 0 byte handed to C, which would end it early
+-3506 constant E-FFI-CALLBACK-FULL  \ thrown by no code
 \ src/lib/ffi-callback.f: a callback frame accessor used outside a live callback,
 \ a descriptor no declaration made, or a dispatch whose body was never stored.
--3506 constant E-FFI-CALLBACK-FULL  \ retired; retained for numeric compatibility
 -3507 constant E-FFI-CALLBACK-STATE
 \ dlclose refused an owned library reference while preparing an image; the
 \ handle stays and the next PREPARE retries it.
@@ -184,10 +170,7 @@
 -3600 constant E-TASK-FIRST
 -3699 constant E-TASK-LAST
 -3600 constant E-TASK-SIZE
-\ -3601 was E-TASK-DLOPEN: src/lib/task-test.f's strlen fixture, its only thrower,
-\ calls a declared FFI row instead of opening the C library. The number stays unused.
-\ -3602 was E-TASK-DLSYM: src/lib/task.f's C calls are FUNCTION: rows, and package
-\ FFI names a missing symbol E-FFI-DLSYM at its first call. The number stays unused.
+\ -3601 and -3602 unassigned: package FFI names a missing symbol E-FFI-DLSYM.
 -3603 constant E-TASK-THREAD
 -3604 constant E-TASK-STATE
 -3605 constant E-TASK-USER
@@ -221,8 +204,8 @@
 -4003 constant E-ZED-TOOLCHAIN   \ required remote tool missing (ptxas/nvcc/...)
 -4004 constant E-ZED-ARG         \ bad harness argument or buffer capacity
 -4005 constant E-ZED-DISABLED    \ device required but HABU_ZED unset/0
-\ -4006 was E-ZED-TIMEOUT: a ZED run's expired deadline throws E-PROC-TIMEOUT
-\ from CMD:RUN-RC, as every process deadline does. The number stays unused.
+\ -4006 unassigned: a ZED run's expired deadline throws E-PROC-TIMEOUT from
+\ CMD:RUN-RC.
 \ E-ZED-EMIT is thrown downstream: Loom's tools/ptx/zed-gradcheck-suite.f
 \ raises it when its bin/hb spawn that emits a PTX kernel exits nonzero.
 -4007 constant E-ZED-EMIT        \ local artifact emit (bin/hb spawn) failed
@@ -230,7 +213,7 @@
 \ Floating mathematics: -9020..-9029, minted by src/lib/fmath.f, which owns package
 \ FMATH.
 
-\ Source-composition discovery: -4100..-4199 (merge renumber from -3800; E-ENGINE owns -3800)
+\ Source-composition discovery: -4100..-4199
 -4100 constant E-DISC-FIRST
 -4199 constant E-DISC-LAST
 -4100 constant E-DISC-SHADOW
@@ -240,7 +223,7 @@
 -4104 constant E-DISC-CAPACITY
 -4105 constant E-DISC-RETIRE
 
-\ Test-suite DSL: -4200..-4299 (merge renumber from -3900; E-JR owns -3900)
+\ Test-suite DSL: -4200..-4299
 -4200 constant E-SUITE-FIRST
 -4299 constant E-SUITE-LAST
 -4200 constant E-SUITE-MODE   \ GROUP mode token missing or not SEQ/PARA
@@ -309,11 +292,8 @@
 -6599 constant E-TR-LAST
 -6500 constant E-TR-PATH-LEN    \ a persistent-root path longer than the runner's buffer
 
-\ Shared compiler IR representation: -6600..-6699. This block is FULL and
-\ closed: the attribute table took the last free code (-6699). Later compiler
-\ stages mint from the compiler growth region at -8000..-8999, declared at the
-\ end of this file. The codes below keep their exact values forever; tests and
-\ diagnostics already name them.
+\ Shared compiler IR representation: -6600..-6699. The block is FULL: later
+\ compiler stages mint from -8000..-8999 at the end of this file.
 -6600 constant E-IR-FIRST
 -6699 constant E-IR-LAST
 -6600 constant E-IR-MODULE-ZERO
@@ -356,11 +336,10 @@
 -6651 constant E-IR-ARENA-OWNER   \ an index or context was presented to an arena that did not mint it
 -6652 constant E-IR-ARENA-FULL    \ an append reached the arena's committed cell ceiling
 -6653 constant E-IR-ARENA-FROZEN  \ a mutation word ran against a frozen arena
-\ -6654 unassigned (arena rollback deleted 2026-08-05: no consumer)
+\ -6654 unassigned.
 -6655 constant E-IR-ARENA-BOUND   \ an arena index at or past the readable cell count
 -6656 constant E-IR-ARENA-CEIL    \ an arena cell count outside the accepted range: a creation ceiling, or a reservation
-\ -6657 unassigned (arena registry slots deleted 2026-09-17: handles are region offsets)
-\ -6658 unassigned (arena generation deleted 2026-09-17: the region's release epoch stamps a descriptor)
+\ -6657 and -6658 unassigned.
 -6659 constant E-IR-ARENA-STATE   \ persisted arena state failed its consistency recheck
 
 \ Compiler source registry (package IR-SOURCE): -6660..-6669
@@ -403,7 +382,7 @@
 -6694 constant E-IR-ATTR-CAP      \ an attribute capacity outside the accepted range or a new row past the ceiling
 -6695 constant E-IR-ATTR-KIND     \ a field reader applied to an attribute of a different kind
 
-\ Frozen compiler identity schema (package COMPILER-ID-PROOF): -6700..-6799
+\ Frozen compiler identity schema: -6700..-6799
 -6700 constant E-CID-FIRST
 -6799 constant E-CID-LAST
 -6700 constant E-CID-FAMILY   \ the live checker type-family registry does not match the frozen identity family manifest
@@ -422,7 +401,7 @@
 -6862 constant E-CMP-CONTROL  \ the checker's control-flow dispatch table or a control frame kind is not what the frozen table carries
 -6863 constant E-CMP-POOL     \ the frozen schema's own string pool or table is full
 
-\ Instruction encoding checks (package COMPILER-INSN-PROOF): -6900..-6919.
+\ Instruction encoding checks: -6900..-6919.
 -6900 constant E-CIE-FIRST
 -6919 constant E-CIE-LAST
 -6900 constant E-CIE-ROW      \ a shared instruction vector index or table slot is outside its declared table
@@ -431,7 +410,7 @@
 \ Content-key folds: -6920..-6929, minted in src/lib/content-key.f, which owns
 \ package CONTENT-KEY.
 
-\ Snapshot relocation checks (package RELOC-PROOF): -6880..-6899.
+\ Snapshot relocation checks: -6880..-6899.
 -6880 constant E-CRL-FIRST
 -6899 constant E-CRL-LAST
 -6880 constant E-CRL-ROW      \ a shared relocation vector index or table slot is outside its declared table
@@ -439,88 +418,10 @@
 -6882 constant E-CRL-DECODE   \ the shipped relocation pass carries an instruction, operand, symbol, or label the machine that runs it was never taught
 -6883 constant E-CRL-FAULT    \ the shipped relocation pass, run over a synthetic image, touched an address outside every declared segment or ran past its step budget
 
-\ Compiler growth region: -8000..-8999.
-\
-\ Why a second region. The compiler's first block, -6600..-6699, is full. Ten
-\ owners (IR ids, target contract, numeric policy, target binding, context,
-\ arena, source registry, symbol interner, type table, attribute table) spent
-\ all 100 codes, and the subsystem still has to build dialect schemas,
-\ operation and value pools, control structure, the freeze lifecycle, the
-\ verifier, canonical tables, the renderer, the codec, pass results, the
-\ facade, eight dialect packages, and the native and GPU back ends. The block
-\ itself cannot be widened: -6700..-6799 is the frozen identity schema right
-\ below it. The next gap, -6800..-6999, was rejected on size: 200 codes is ten
-\ sub-blocks, it is fenced in by a codegen test's caller sentinels at
-\ -7001/-7002 and the JSON tool at -7100, and owners run on down to -7807, so
-\ taking it would put the subsystem back in this exact position within the
-\ campaign. -8000..-8999 is the one thousand-code range no source in the tree
-\ claims, and it is large enough for every compiler owner that is planned, so
-\ the subsystem never has to move again. Nothing in -6600..-6699 is renumbered.
-\
-\ How to take codes here. Sub-blocks are 20 codes wide, not 10: the type table
-\ needed 11 and had to borrow from the attribute table's decade, which is how
-\ the first block ran out. A stage that outgrows its 20 codes takes the next
-\ unassigned sub-block instead of spilling into its neighbour, and records that
-\ here. The map below is the whole agreement between parallel compiler lanes:
-\ read your line, mint inside it, and add your names under it.
-\
-\   -8000..-8019  dialect schema records (package IR-SCHEMA)
-\   -8020..-8039  operation, value, operand, result, and successor pools
-\   -8040..-8059  function and block structure, parents, and windows
-\   -8060..-8079  builder, abort, and freeze lifecycle (package IR-BUILD)
-\   -8080..-8099  structural freeze verifier (package IR-VERIFY)
-\   -8100..-8159  unassigned (canonical codec stack deleted 2026-08-05: no consumer)
-\   -8160..-8179  unassigned (pass witnesses retired 2026-07-30: no consumer)
-\   -8180..-8199  IR facade assembly and package protection (package IR)
-\   -8200..-8219  ARM64 routine machine-effect contracts (package NEFF)
-\   -8220..-8239  unassigned (immediate-word contract table deleted 2026-08-20:
-\                 no consumer)
-\   -8240..-8259  native stage N0 source tape (package NTAPE)
-\   -8260..-8279  codegen measurement probes, the judge's timing, and the
-\                 clang reference column
-\   -8280..-8299  native stage N1 straight-line HIR dialect (package HIR)
-\   -8300..-8319  native stage N1 straight-line elaborator (package NELAB)
-\   -8320..-8339  native ARM64 register allocation (package A64RA) and the
-\                 independent allocation validator (package A64RAV)
-\   -8340..-8359  native ARM64 machine dialect (package A64IR)
-\   -8360..-8379  native ARM64 instruction selection (package A64SEL)
-\   -8380..-8399  native ARM64 instruction emission (package A64EMIT)
-\   -8400..-8409  native stage N0 source-tape producer (package NFEED)
-\   -8410..-8419  unassigned (source-bound checking result retired 2026-07-31:
-\                 no consumer)
-\   -8440..-8459  native ARM64 spill lowering (package A64SPILL) and the
-\                 frame-slot refusals the register allocator (A64RA) and its
-\                 validator (A64RAV) gained when their own block filled up
-\   -8460..-8479  native ARM64 fixed-register binding: the refusals the register
-\                 allocator (A64RA) and its validator (A64RAV) gained for the
-\                 argument and result registers a routine contract declares,
-\                 when their own blocks were full
-\   -8500..-8519  native ARM64 control flow: the compare and branch forms the
-\                 machine dialect (A64IR) gained, the control words the
-\                 straight-line source-word model (HIR-WORD) gained, and the
-\                 block construction the elaborator (NELAB) gained with them
-\   -8700..-8719  the code generator judge: reading a canonical corpus source
-\                 file as the definitions both code generators compile
-\                 (package JUDGE-SRC), and the tables, generated bodies and
-\                 chain column built on it
-\   -8720..-8739  the judge's second block, taken when the first filled: the
-\                 storage a corpus declares, and the package a derived word is
-\                 published in (package JUDGE-CHAIN)
-\   -8740..-8759  native x86-64 machine dialect (package X64IR)
-\   -8760..-8779  native x86-64 instruction selection (package X64SEL)
-\   -8780..-8799  native x86-64 instruction emission (package X64EMIT)
-\   -8830..-8839  x86_64 instruction construction (package X64ASM)
-\   -8840..-8859  ARM32/Thumb instruction construction (package A32ASM)
-\   -8860..-8869  C66x instruction construction (package C6XASM)
-\   -8870..-8879  C66x instruction facts (package C6XFACTS)
-\   -8880..-8889  C66x subset interpreter (package C6XSIM)
-\   -8890..-8899  C6000 EABI helper emission (package C6XEABI)
-\   -8680..-8689  native shadow emission (package NSHADOW)
-\   -8420..-8439, -8488..-8499, -8520..-8599, -8673..-8679, -8690..-8699,
-\   -8800..-8829, -8900..-8999
-\                 unassigned. The remaining dialect packages
-\                 (SIR, LIR, and the GPU stages) and the native and GPU back
-\                 ends take sub-blocks from here, each named above its codes.
+\ Compiler growth region: -8000..-8999, the compiler's second block: -6600..-6699
+\ is full and -6700..-6799 is the frozen identity schema below it. Sub-blocks are
+\ 20 codes wide, each headed below by its range; a stage that outgrows its own
+\ takes the next one no `-8NNN constant` under src, tools or test claims.
 -8000 constant E-COMP-FIRST
 -8999 constant E-COMP-LAST
 
@@ -607,12 +508,8 @@
 -8099 constant E-IR-VERIFY-TARGET  \ an operation the context's bound target contract cannot execute
 
 \ ARM64 routine machine-effect contracts (package NEFF): -8200..-8219
-\ The first sub-block of the dialect range the map above reserves. It belongs to
-\ src/compiler/native-effect.f, which says what an emitted ARM64 routine does to the
-\ machine - which registers it reads, returns and destroys, what it does to the
-\ condition flags, the link register and the stack pointer, and how control
-\ leaves it. The A64IR dialect package composes these contracts with its own
-\ indexed operand records and takes a later sub-block for its own failures.
+\ Minted for src/compiler/native-effect.f: what an emitted ARM64 routine does
+\ to the registers, flags, link register, stack pointer and control.
 -8200 constant E-NEFF-GPR     \ a general-register set naming a register no routine can hold state in: x18 is platform-reserved, x30 is the link register and has its own field, 31 is the zero register or the stack pointer, or the bit is past the 32-register file
 -8201 constant E-NEFF-FPR     \ a floating-register set bit past the 32-register file
 -8202 constant E-NEFF-ROLE    \ one register in two roles that exclude each other: a declared result that is also declared destroyed
@@ -628,11 +525,8 @@
 
 \ Native stage N0 source tape (package NTAPE): -8240..-8259
 \
-\ The first sub-block of the native back end's range. Design section 7.1 puts
-\ the source tape below every IR dialect: it records the token stream the
-\ compiler actually consumed, so checking, elaboration, diagnostics, and code
-\ generation can prove they read the same bytes. Byte spans are IR-SOURCE's
-\ concern and reject with E-IR-SRC-SPAN, so no span code is minted here.
+\ Byte spans are IR-SOURCE's and reject with E-IR-SRC-SPAN, so no span code is
+\ minted here.
 -8240 constant E-NTAPE-STATE    \ a tape arena failed its header or row-shape recheck
 -8241 constant E-NTAPE-OWNER    \ a module key or an identity presented to a tape that does not own it
 -8242 constant E-NTAPE-BOUND    \ a token ordinal at or past the count the tape records
@@ -643,11 +537,8 @@
 -8247 constant E-NTAPE-ORIGIN   \ an expansion parent that is not an already-appended token of this tape
 -8248 constant E-NTAPE-ROOT     \ an origin read on a directly lexed token, which has none
 
-\ -8220..-8239 unassigned. The seven E-NIMM-* codes that held this block were
-\ the immediate-word contract table's, and they went with it on 2026-08-20: the
-\ elaborator asks HIR-WORD what a body token means and never asked the table,
-\ so nothing could throw them. What checked source may compile a word into is
-\ E-HIR-UNMODELED's to refuse.
+\ -8220..-8239 unassigned: E-HIR-UNMODELED refuses what checked source may
+\ compile a word into.
 
 \ Native source fixtures and code probes: -8260..-8279
 -8261 constant E-CODEGEN-PROBE-SUBJECT    \ a named subject word is not in the live dictionary
@@ -660,12 +551,8 @@
 
 \ Native stage N1 straight-line HIR dialect (package HIR): -8280..-8299
 \
-\ Design section 7.2 makes HIR the resolved Habu IR. This sub-block covers the
-\ straight-line subset: the closed opcode set the dialect registers into its
-\ schema table, and the source-word model that says which Habu words that
-\ dialect can compile and what each one means. The schema records themselves are
-\ IR-SCHEMA's concern and reject with its own codes, so nothing here repeats
-\ them.
+\ The straight-line subset: the closed opcode set the dialect registers and the
+\ source-word model. Schema records are IR-SCHEMA's and reject with its codes.
 -8280 constant E-HIR-STATE      \ a word-model arena failed its header, row-shape, window, or stored-code recheck
 -8281 constant E-HIR-OWNER      \ a module key or symbol presented to a word model that does not own it
 -8282 constant E-HIR-BOUND      \ a row index or a pick index at or past the count the table records
@@ -683,17 +570,10 @@
 
 \ Native stage N1 straight-line elaborator (package NELAB): -8300..-8319
 \
-\ Design section 7.2's elaboration step: walk one sealed source tape and build
-\ the operations of a colon definition into a live module. Everything the
-\ elaborator asks another authority stays that authority's refusal - a word the
-\ dialect cannot compile is E-HIR-UNMODELED, a token kind the subset does not
-\ model is E-HIR-KIND, and a malformed operation is IR-OP's - so these five
-\ codes are only the facts the elaborator alone can judge: the shape of the
-\ definition on the tape, the parser mode each of its tokens was consumed in,
-\ the declared arity, and the compile-time value vector. -8302 was the frame
-\ word's immediate contract, which the elaborator no longer judges: a produced
-\ tape carries no frame token to classify, so the code is retired rather than
-\ reused.
+\ What the elaborator asks another authority stays that authority's refusal: a
+\ word the dialect cannot compile is E-HIR-UNMODELED, a token kind the subset
+\ does not model is E-HIR-KIND, a malformed operation is IR-OP's. -8302 is
+\ unassigned.
 -8300 constant E-NELAB-SHAPE     \ a tape that is not one colon definition: no tokens at all, or a first token that is not the defined name
 -8301 constant E-NELAB-MODE      \ a definition token consumed in the wrong parser mode for its place: the name outside interpreting, or a body word outside compiling
 -8303 constant E-NELAB-ARITY     \ a declared input or output count outside the accepted range, or a body that does not leave exactly the declared outputs
@@ -702,36 +582,23 @@
 
 \ Native ARM64 register allocation (package A64RA): -8320..-8329
 \
-\ Design section 7.9's linear scan over one straight-line block of the machine
-\ dialect. Refusals another authority owns keep that authority's name - a
-\ register no routine may hold state in is NEFF's E-NEFF-GPR, and a
-\ malformed module is IR-OP's or IR-VERIFY's - so these are the facts the
-\ allocator alone can judge: whether it was told which dialect it is reading,
-\ whether the module and contract it was handed are the ones it was told about,
-\ and whether what it found can be given real registers at all.
+\ Refusals another authority owns keep its name: a register no routine may hold
+\ state in is NEFF's E-NEFF-GPR, a malformed module IR-OP's or IR-VERIFY's.
 -8320 constant E-A64RA-BIND      \ allocation attempted before the dialect's module and type identities were bound, or a second binding over a live one
 -8321 constant E-A64RA-MODULE    \ a frozen module that is not the bound one
 -8322 constant E-A64RA-STATE     \ an allocation reader used before the walk sealed one, or after a later walk replaced it
 -8323 constant E-A64RA-SHAPE     \ a module this leaf cannot allocate: no function at all, no block control leaves through or more than one, a successor ordinal outside the function, or a value of the module that no function defines
-\ -8324 refused an operation of a form the allocator did not recognise, because
-\ such a form might tie its registers without saying so. A form now declares its
-\ ties in its own operation schema and the allocator reads them, so nothing is
-\ left to recognise; the number is reused below for a refusal of this same
-\ package rather than left as a hole.
--8324 constant E-A64RA-FRAME     \ a function after the first needs spill slots, and a module holds one frame. A module's first function is the definition's own routine and the rest are its quotation bodies; the frame, its base and its slot count are one per module (N-SLOTS, BASE-N, and the reserve src/compiler/native/compiler.f LOWERED sizes from A64RA:FRAME), so a body that will not fit its values in registers has nowhere to put them. Every quotation body in the tree is one word call and spills nothing, which is why this is a refusal and not a second frame; dot habu-give-each-fn-c1fd7c5a is the capability that gives each function its own
+-8324 constant E-A64RA-FRAME     \ a function after the first needs spill slots, and a module holds one frame. A module's first function is the definition's own routine and the rest are its quotation bodies; the frame, its base and its slot count are one per module (N-SLOTS, BASE-N, and the reserve sized from A64RA:FRAME), so a body that will not fit its values in registers has nowhere to put them. Every quotation body in the tree is one word call and spills nothing, which is why this is a refusal and not a second frame.
 -8325 constant E-A64RA-CLASS     \ a value whose type is not the dialect's general-register type, so no general register can hold it
 -8326 constant E-A64RA-TARGET    \ a context bound to a target these registers do not belong to
 -8327 constant E-A64RA-CAP       \ a value, block or plan ordinal outside the allocator's tables: more of them in one routine than the tables hold, or a read past the count the sealed walk recorded
 -8328 constant E-A64RA-TIE       \ a schema-declared tie that cannot be honoured: the kept value is still needed afterwards, or its register is not free
--8329 constant E-A64RA-PRESSURE  \ more values have to be spilled at once than ANY frame of this chain holds slots for: the demand passed the tighter of what the architecture can describe and what a pass can name a slot of. It is no longer about the frame a caller declared - the allocator derives that from what the walk needs (A64RA:FRAME) instead of being held to a guess. Register pressure itself is a spill, not a refusal; the one operation that no spill can serve is E-A64RA-POOL
+-8329 constant E-A64RA-PRESSURE  \ more values have to be spilled at once than ANY frame of this chain holds slots for: the demand passed the tighter of what the architecture can describe and what a pass can name a slot of. The allocator derives the frame from what the walk needs (A64RA:FRAME). Register pressure itself is a spill, not a refusal; the one operation that no spill can serve is E-A64RA-POOL
 
 \ Native ARM64 allocation validator (package A64RAV): -8330..-8339
 \
-\ Design section 7.9's independent check of a finished assignment, and section
-\ 11.3's register-allocation validator. It re-derives every live interval from
-\ the frozen module rather than reading the allocator's own belief, so these ten
-\ are the ways an assignment can fail to be true of the module it claims to be
-\ about.
+\ It re-derives every live interval from the frozen module rather than reading
+\ the allocator's belief.
 -8330 constant E-A64RAV-STATE     \ acceptance asked for with no sealed allocation, or an accepted answer read after a later walk replaced it
 -8331 constant E-A64RAV-MODULE    \ a module that is not the one the allocation was made from
 -8332 constant E-A64RAV-CONTRACT  \ a routine contract that is not the one the allocation was made under
@@ -745,12 +612,8 @@
 
 \ Native ARM64 machine dialect (package A64IR): -8340..-8359
 \
-\ The dialect that stands for real ARM64 instruction forms with virtual registers
-\ as SSA values. Almost every refusal a malformed A64IR operation earns belongs
-\ to IR-SCHEMA or IR-OP, which measure it against the schema table; these five
-\ are the facts only the dialect knows: which schema table it may fill, the two
-\ operand fields of the move-wide form, the two of the frame forms, and the one
-\ of the add/sub-immediate forms.
+\ A malformed A64IR operation is IR-SCHEMA's or IR-OP's; these are the facts only
+\ the dialect knows.
 -8340 constant E-A64IR-DIALECT  \ a module whose schema table was created for another dialect or another schema version
 -8341 constant E-A64IR-IMM      \ a move-wide immediate outside the sixteen-bit field the form holds
 -8342 constant E-A64IR-SHIFT    \ a move-wide shift that does not select one of the four halves of a general register
@@ -764,13 +627,8 @@
 
 \ Native ARM64 instruction selection (package A64SEL): -8360..-8379
 \
-\ The pass that reads a frozen straight-line HIR module and builds the frozen
-\ A64IR module its operations select to. Refusals another authority owns keep
-\ that authority's name - an out-of-range move-wide operand is E-A64IR-IMM or
-\ E-A64IR-SHIFT, and a malformed operation is IR-OP's - so these seven are the
-\ facts the selector alone can judge: whether it was told which dialect it is
-\ reading, whether the module and text it was handed are the ones it was told
-\ about, and whether what it found is something this leaf can select at all.
+\ Refusals another authority owns keep its name: an out-of-range move-wide
+\ operand is E-A64IR-IMM or E-A64IR-SHIFT, a malformed operation IR-OP's.
 -8360 constant E-A64SEL-BIND    \ selection attempted before the source dialect's opcode identities were bound, or a second binding over a live one
 -8361 constant E-A64SEL-SOURCE  \ a frozen module that is not the bound one, or source text whose digest is not the one the module recorded
 -8362 constant E-A64SEL-OPCODE  \ an operation whose opcode is none of the source dialect's
@@ -781,17 +639,9 @@
 
 \ Native ARM64 instruction emission (package A64EMIT): -8380..-8399
 \
-\ The last leaf of the native chain: it turns a frozen, verified, accepted
-\ A64IR module into ARM64 instruction bytes and a source map. Refusals another
-\ authority owns keep that authority's name - a register answered from a stale
-\ acceptance is E-A64RAV-STATE, and an operand or attribute value outside the
-\ field it lands in is the assembler's own refusal in src/arch/arm64/asm.f - so
-\ these twelve are the facts the emitter alone can judge: whether it was told
-\ which dialect it is reading, whether the module and the register assignment it
-\ was handed are the ones it was told about, whether what it found is a shape this
-\ leaf can emit, whether the instructions it wrote landed where its own layout
-\ said they would, whether a caller is reading an emission that exists, and
-\ whether the emission it is reading is one whose body has a meaning at all.
+\ Refusals another authority owns keep its name: a register answered from a
+\ stale acceptance is E-A64RAV-STATE, an operand or attribute value outside its
+\ field is src/arch/arm64/asm.f's.
 -8380 constant E-A64EMIT-STATE   \ a reader asked about an emission that has not happened, or that a later refused run replaced
 -8381 constant E-A64EMIT-BIND    \ emission attempted before the machine dialect's identities were bound, or a second binding over a live one
 -8382 constant E-A64EMIT-MODULE  \ a frozen module that is not the bound one, or a builder of another dialect or schema version
@@ -808,15 +658,9 @@
 
 \ Native stage N0 source-tape producer (package NFEED): -8400..-8409
 \
-\ The producer that fills a source tape from the checker's own reader. Refusals
-\ another authority owns keep that authority's name - a tape that is full is
-\ E-NTAPE-CAP, a span outside its source is IR-SOURCE's - so these eight are
-\ the facts the producer alone can judge: whether a unit is open, whether the
-\ scan that reached it is the unit's own, whether the token it was handed
-\ really is the bytes at the offset it claims, whether the text the reader
-\ handed over fits the buffer the caller committed, whether this stage can
-\ record the token at all, and whether the `does>` split it was handed lies in
-\ the text it was handed.
+\ Fills a source tape from the checker's reader. Refusals another authority owns
+\ keep its name: a full tape is E-NTAPE-CAP, a span outside its source
+\ IR-SOURCE's.
 -8400 constant E-NFEED-STATE    \ a producer word reached in a state that has no meaning for it: no unit open, a unit still scanning, or a second unit over a live one
 -8401 constant E-NFEED-SCAN     \ a foreign scan or an unexpected defining-word segment reached the open unit
 -8402 constant E-NFEED-SPAN     \ a token whose bytes are not the bytes at the offset it claims, or that leaves the scanned text
@@ -828,16 +672,10 @@
 
 \ Native ARM64 spill lowering and frame slots: -8440..-8459
 \
-\ The sub-block the register-allocation stage took when its own twenty codes
-\ (-8320..-8339) were spent, exactly as the map above prescribes: a stage that
-\ outgrows its block takes the next unassigned one rather than spilling into a
-\ neighbour. It holds the spill-lowering pass (package A64SPILL), which reads a
-\ frozen machine module and builds the module in which the allocator's spill
-\ decisions are real store and load operations, plus the frame-slot facts the
-\ allocator (package A64RA) and its validator (package A64RAV) gained with it.
-\ Refusals another authority owns keep that authority's name: a slot no load or
+\ The spill-lowering pass (package A64SPILL) and the frame-slot refusals of A64RA
+\ and A64RAV. Refusals another authority owns keep its name: a slot no load or
 \ store form can reach is NEFF's E-NEFF-SLOT, a slot offset outside the
-\ dialect's own field is E-A64IR-SLOT, and a malformed module is IR-OP's.
+\ dialect's field E-A64IR-SLOT, a malformed module IR-OP's.
 -8440 constant E-A64SPILL-BIND   \ a rewrite attempted before the machine dialect's identities were bound, or a second binding over a live one
 -8441 constant E-A64SPILL-PLAN   \ no sealed spill plan at all, one made for another module, or one a later allocation replaced
 -8442 constant E-A64SPILL-SHAPE  \ a module this pass cannot rewrite: no function at all, a function whose frame operations are neither nothing nor exactly a selector's prologue, an empty block, a span naming another source, or a value used before it is defined
@@ -853,26 +691,18 @@
 
 \ Native ARM64 fixed-register binding (packages A64RA and A64RAV): -8460..-8479
 \
-\ The registers a routine's arguments arrive in and its results leave in are
-\ declared by its contract (package NEFF), which owns the shape of that
-\ declaration and refuses one that cannot be a convention at all. These two are
-\ what the register allocator and its validator add: whether the allocation this
-\ machine module needs can honour that declaration, and whether the finished
-\ assignment does. Both packages' own blocks were full when the binding landed.
+\ NEFF owns the declaration of a routine's argument and result registers and
+\ refuses one that cannot be a convention; these are whether the allocation can
+\ honour it and whether the finished assignment does.
 -8460 constant E-A64RA-FIXED     \ a declared argument, result or schema-fixed operand register the allocation cannot honour: more declared positions than the routine has arguments or returned values, a register outside the set the routine may write, one value returned at two declared positions, one class declared into two registers, or a declared register already held where it has to be taken
 -8461 constant E-A64RAV-FIXED    \ an assignment that does not put a declared argument, returned value or schema-fixed operand or result where the contract or the form declares it, or one made for a contract declaring more positions than the module has
 
 \ Native ARM64 data-stack calling convention: -8480..-8499
 \
-\ A Habu word takes its inputs and publishes its outputs through canonical
-\ data-stack slots rather than through registers, so a position of a calling
-\ convention became a PLACE - a register or a data-stack slot - and the machine
-\ dialect gained the forms that reach the data stack - four plain ones, and the
-\ two that carry the pointer move in the transfer itself. These are the facts
-\ the five owners of that convention add. Refusals another authority owns keep
-\ that authority's name: a place list that is not canonical at all is still
-\ NEFF's E-NEFF-SEQ, a register no routine may hold state in is
-\ E-NEFF-GPR, and an operand outside the field it lands in is the assembler's.
+\ A position of a calling convention is a PLACE: a register or a data-stack
+\ slot. Refusals another authority owns keep its name: a non-canonical place
+\ list is NEFF's E-NEFF-SEQ, a register no routine may hold state in E-NEFF-GPR,
+\ an operand outside its field the assembler's.
 -8480 constant E-NEFF-KIND    \ a place read as the kind it is not: the register of a data-stack slot, or the slot index of a register
 -8481 constant E-A64IR-DSLOT    \ a data-stack slot offset the load and store forms cannot address: negative, not a multiple of the eight bytes they move, or past the reach of their scaled twelve-bit offset field
 -8482 constant E-A64IR-DBYTES   \ a data-stack pointer adjustment no routine can make: negative, not a multiple of one stack cell, or past the twelve-bit immediate that claims it
@@ -884,15 +714,9 @@
 
 \ Native ARM64 control flow: -8500..-8519
 \
-\ A colon body with a branch or a loop is more than one basic block, and every
-\ stage of the native chain gained something for it: the machine dialect a
-\ compare form and two branch forms, the source-word model the structured
-\ control words, the elaborator the control stack that turns them into blocks,
-\ and the emitter the block layout and the branch fixups. These are the facts
-\ those owners add. A refusal another authority already owns keeps that
-\ authority's name: a successor naming a block no function defines is still
-\ IR-VERIFY's E-IR-VERIFY-SUCC, and a branch operand outside the field it lands
-\ in is the assembler's.
+\ A refusal another authority owns keeps its name: a successor naming a block no
+\ function defines is IR-VERIFY's E-IR-VERIFY-SUCC, a branch operand outside its
+\ field the assembler's.
 -8500 constant E-A64IR-COND     \ a condition code the compare form cannot carry: outside the four-bit field the conditional forms encode it in
 -8501 constant E-HIR-CONTROL    \ a source word read as a control word when its row models something else, or a stored control code outside this dialect's vocabulary
 -8502 constant E-NELAB-CTRL     \ a control structure the elaborator cannot close: a closer with no opener, a closer that does not match the opener it meets, a word that stands in the middle of a structure with no such structure open, a second one of those over one structure, a `while` after a word that already left the definition, a loop closed by a word that does not open the block its `while`s branch out to, or a body that ends with a structure still open
@@ -906,53 +730,37 @@
 
 \ Native ARM64 memory access: -8520..-8539
 \
-\ A colon body that reads or writes a cell of memory needs two things no earlier
-\ leaf had: an ordering value that says which access happens before which, and a
-\ load and a store whose address is a value the program computed rather than a
-\ pointer the instruction form names. The source dialect gained the order and
-\ the two words, and the machine dialect gained the two forms. These are the
-\ facts those owners add. A refusal another authority already owns keeps that
-\ authority's name: a source word the dialect cannot compile is still
-\ E-HIR-UNMODELED, a row read as a meaning it does not carry is E-HIR-CLASS, and
-\ an address operand outside the field it lands in is the assembler's.
--8519 constant E-NELAB-BUNDLE   \ a multi-cell value the elaborator would have to take apart or would have to guess the shape of: one cell of such a value parked on the return stack, where the cells would be separated with every count still agreeing; or a declared row whose values the chain cannot place exactly (NDICT:GLUE-UNKNOWN), which is a segmentation it may not guess at; or a `!` through a pointer to a multi-cell family whose value on that vector does not begin, hold together and end where the certified width says, which is the same segmentation met from the writing side. It is also what a WIDTH on an operation that is not a memory access raises, which would mean the chain and the checker had read one token as two different words. A compile-time stack RENAME no longer raises it - renames move whole values (dot habu-rename-rows-row-143c0331); a CAST:'s regrouping raises it for a window of cells that starts inside a value, which checked source cannot reach; and a scan certificate that says its width facts are incomplete (checker.f SCAN-INCOMPLETE: a token the scan could not apply while a multi-cell value was live) raises it before anything lowers, since the chain would have to guess where that value's cells lie
+\ The source dialect's ordering value and computed-address load and store, and
+\ the machine dialect's two forms. A refusal another authority owns keeps its
+\ name: a source word the dialect cannot compile is E-HIR-UNMODELED, a row read
+\ as a meaning it does not carry E-HIR-CLASS, an address operand outside its
+\ field the assembler's.
+-8519 constant E-NELAB-BUNDLE   \ a multi-cell value the elaborator would have to take apart or would have to guess the shape of: one cell of such a value parked on the return stack, where the cells would be separated with every count still agreeing; or a declared row whose values the chain cannot place exactly (NDICT:GLUE-UNKNOWN), which is a segmentation it may not guess at; or a `!` through a pointer to a multi-cell family whose value on that vector does not begin, hold together and end where the certified width says, which is the same segmentation met from the writing side. It is also what a WIDTH on an operation that is not a memory access raises, which would mean the chain and the checker had read one token as two different words. A CAST:'s regrouping raises it for a window of cells that starts inside a value, which checked source cannot reach; and a scan certificate that says its width facts are incomplete (checker.f SCAN-INCOMPLETE: a token the scan could not apply while a multi-cell value was live) raises it before anything lowers, since the chain would have to guess where that value's cells lie
 -8520 constant E-NELAB-TOKEN    \ the definition's one memory order is wrong for the operation being staged: either the operation's schema declares more than one token among its operands or among its results, which the elaborator has no rule for, or it takes an order in a definition the pre-scan found no memory word in
 -8521 constant E-A64SEL-MEM     \ a memory operation in a routine whose convention names no data-stack place at all: the generic memory order of this dialect begins where the routine takes the caller's operands, and a routine that takes and publishes nothing has no beginning for it
 -8522 constant E-A64RAV-ORDER   \ a memory order the module mints and does not pass on exactly once: a token nothing reads leaves the order after it unstated, and a token two operations read is two orders claiming to be one
 
 \ Native typed locals: -8540..-8549
 \
-\ A `{: … :}` group binds names to values the body then reads by name. The
-\ elaborator is the only stage that ever sees a local: a bound name is a value
-\ of the compile-time vector, so nothing downstream of the elaborator learns a
-\ new concept and no other package gains a code here. A refusal another
-\ authority already owns keeps that authority's name - a source word the dialect
-\ cannot compile at all is still E-HIR-UNMODELED, which is what a rebinding or an
-\ address-of by name is refused as. A name the dialect already models is NOT one
-\ of these: a local means the local, which is what the engine does, so the only
-\ name refused here is the quotation's closer, whose spans are found before the
+\ Only the elaborator sees a local, so no other package gains a code here. A
+\ rebinding or an address-of by name is E-HIR-UNMODELED. A name the dialect
+\ already models is not refused: a local means the local, as in the engine. The
+\ only name refused is the quotation's closer, whose spans are found before the
 \ locals frame exists.
 -8540 constant E-NELAB-LOCAL     \ a locals declaration this elaborator has no rule for: a group opened inside another group or inside a control structure, a group left unclosed, a closer with no opener, a declared name the quotation pre-scan reads before there is a locals frame to consult (`;]`), the same name declared twice, a token in the group that is not a name, a body whose locals differ in number from its certified binds, or locals on a direct tape with no certificate
 -8541 constant E-NELAB-LOCAL-CAP \ more locals, or more locals groups, in one definition than the elaborator's tables hold
 
 \ Native calls: -8550..-8559
 \
-\ `RECURSE` is a call to the word being compiled. What is new about it is not the
-\ branch - it is that the caller's own registers do not survive it, because the
-\ callee is this same routine and its contract destroys exactly the registers the
-\ allocator hands out. So the values the caller still needs cross the call on the
-\ caller's data stack, and the caller's return address crosses it in the
-\ routine's own frame. These are the facts those owners add; a refusal another
-\ authority already owns keeps that authority's name - a word this dialect's
-\ table never declared at all is still E-HIR-UNMODELED.
+\ `RECURSE`'s callee contract destroys exactly the registers the allocator hands
+\ out, so the caller's live values cross the call on its data stack and its
+\ return address in the routine's frame. A word this dialect's table never
+\ declared is E-HIR-UNMODELED.
 \
-\ A CALL TO ANOTHER WORD ADDS THREE FACTS AND NOTHING ELSE. The callee's arity,
-\ which is what the call site publishes and takes back; the callee's entry
-\ address, which is where the branch goes; and the address the CALLING routine
-\ will itself be written at, without which no displacement between the two can
-\ be computed. The first two are the word model's row and the machine dialect's
-\ field, and the third is the publication seam's answer, held by the emitter and
-\ measured against the seam's own claim before a byte is written.
+\ A CALL TO ANOTHER WORD ADDS THREE FACTS: the callee's arity (the word model's
+\ row), its entry address (the machine dialect's field), and the address the
+\ CALLING routine will be written at, the publication seam's answer, measured
+\ against the seam's own claim before a byte is written.
 -8550 constant E-NELAB-CALL     \ a call the elaborator has no rule for: fewer values on the compile-time vector than the callee declares it takes, more values live across the call than the vector can hold afterwards, or a call reached with no memory order live
 -8551 constant E-A64SEL-CALL    \ a call the selector has no lowering for. The one cause a production contract can reach: a routine declared under the register convention, which never took the data-stack pointer a call site hands its arguments over through. The other four hold two derivations of one fact against each other and no contract src/compiler/native/abi.f builds can reach them, so a run that reports one is a defect in the chain rather than a program it cannot compile: a frame too small to hold the saved link register, a contract declaring a call in a module that contains none, a module containing a call under a contract that declares none, or a call whose operand and result lists disagree about how many values are live across it
 -8552 constant E-A64RAV-CALL    \ a call site that is not the sequence the dialect lowers a call to: a store run that does not name slots zero upwards in order, a byte count that is not the run it stands for, or a saved link register the module does not restore from the slot it saved it into
@@ -965,8 +773,7 @@
 
 \ Native publication: -8560..-8579
 \
-\ An accepted emission becomes one pending colon definition's routine. A refusal
-\ another authority already owns keeps that authority's name.
+\ An accepted emission becomes one pending colon definition's routine.
 -8561 constant E-NPUB-ROOM    \ the emission does not fit in what is left of the code arena under the engine's own end reserve
 -8562 constant E-NPUB-SIZE    \ an emission that cannot be a word body: no instructions at all, or a byte size that is not a whole number of instructions
 -8563 constant E-NPUB-OFFSET  \ an instruction whose source-map offset does not lie inside the emission it belongs to, or that is not instruction aligned
@@ -985,15 +792,11 @@
 
 \ The float subset: -8580..-8589
 \
-\ A double lives in one unboxed cell, so nothing about a value's SIZE separates
-\ it from an integer and the separation has to be its type. These are the
-\ refusals that make the separation real, one per stage that carries the type: a
-\ compile-time value of the wrong type for the position it is handed to, and a
-\ value whose type no register file of the machine dialect can hold. A refusal
-\ another authority already owns keeps that authority's name - a double type on a
+\ A double lives in one unboxed cell, so only its type separates it from an
+\ integer. A refusal another authority owns keeps its name: a double type on a
 \ machine with no floating unit is IR-TYPE's E-IR-TYPE-TARGET, a float literal
-\ spelling the tape cannot read back is E-NFEED-LITERAL, and a staged operation
-\ whose operand type is not the one its schema declares is IR-OP's.
+\ spelling the tape cannot read back E-NFEED-LITERAL, an operand type its schema
+\ does not declare IR-OP's.
 -8580 constant E-NELAB-TYPE     \ a compile-time value whose type is not the one the position wants and is not a crossing this dialect performs: a double handed to an operation that computes with cells, or a double stored into a memory cell, which no leaf places yet
 -8581 constant E-A64RA-FILE     \ two values of two different register files joined into one class: an edge or a schema tie whose two ends cannot share a register because no register holds both
 
@@ -1004,23 +807,17 @@
 
 \ Data-stack residency: -8610..-8619
 \
-\ A value the routine only hands on lives in the caller's data-stack slot it
-\ arrived in, and the emission neither lifts it into a register nor writes it
-\ back. Which slot holds which value is a fact about a whole routine, so the
-\ selector computes it and the allocation validator computes it AGAIN from the
-\ module it is handed - these are the refusals of that second derivation. The
-\ validator names a machine value, never a source one, so what it can decide is
-\ that a slot the emission publishes holds something, and that no access it kept
-\ was one it could have dropped. Whether the value in the slot is the value the
-\ program meant to publish there is a statement about the module the selector
-\ read, and it stays where it already was: dot habu-prove-a-data-df458151.
+\ A value the routine only hands on stays in the caller's data-stack slot it
+\ arrived in. The selector computes which slot holds which value and the
+\ allocation validator derives it AGAIN from the module; these are the second
+\ derivation's refusals. Whether the slot holds the value the program meant is
+\ the selector's; this validator does not check it.
+\
 \ Asking the running dictionary about a spelling: -8600..-8609
 \
-\ src/compiler/native/dict.f walks the engine's own resolution order for a name a
-\ program wrote, and for a data word or a constant it enters the record it found
-\ and takes what that word leaves. Both refusals are the question having no
-\ answer, and neither is a statement about the chain's own state, so neither
-\ borrows the compiler entry's or the word model's name.
+\ src/compiler/native/dict.f walks the engine's resolution order for a name and,
+\ for a data word or a constant, takes what the record it found leaves. Both
+\ refusals are the question having no answer.
 -8600 constant E-NDICT-NAME     \ a spelling that denotes no word where the definition naming it is compiled: the open package's two wordlists, the global wordlist, the used publics and the namespace record for a qualified token all answer absent
 -8601 constant E-NDICT-VALUE    \ the word a spelling denoted did not leave exactly one value where it was entered, so it is not a word whose whole meaning is the value it pushes and what it left is not its answer
 -8602 constant E-NDICT-KIND     \ the record a spelling denoted carries no definer kind: it was not made by `constant`, `create` or `variable`, or a `does>` clause took that kind away from it, so entering it would run a body rather than collect a decided value
@@ -1030,16 +827,13 @@
 
 \ Leaving a routine through its last callee: -8620..-8629
 \
-\ A routine whose final call hands back exactly what the routine itself hands
-\ back does not have to come back for it: it branches, and the callee's own
-\ return goes to this routine's caller. Which routines those are is decided
-\ twice - the elaborator reads it off the body it just walked and the routine
-\ contract says so, and src/compiler/native/select.f derives it again from the
-\ module it is building - and this is the refusal of the second derivation. It
-\ is a statement about the SITE, not about the contract: NEFF already refuses a
-\ contract in which a tail call and a destroyed link register are both declared,
-\ and src/compiler/native/regalloc-verify.f refuses a module whose terminator and
-\ whose contract disagree.
+\ A routine whose final call hands back exactly what it hands back branches to
+\ the callee instead. The elaborator and the contract decide which routines, and
+\ src/compiler/native/select.f derives it again; this is the second
+\ derivation's refusal, about the SITE: NEFF refuses a contract declaring both a
+\ tail call and a destroyed link register, and
+\ src/compiler/native/regalloc-verify.f a module whose terminator and contract
+\ disagree.
 -8620 constant E-A64SEL-TAIL    \ a call the selector was told to leave through that it cannot: a value live across it, a callee whose arity is not this routine's own, a data-stack adjustment the branch would have had to carry, or a contract declaring a tail call over a module with no such site in it - and the other way round, a site built under a contract that declares an ordinary return
 -8621 constant E-NPUB-RELOC   \ an emission that leaves through a branch to an address outside the code region: the snapshot relocation record can only describe a branch-with-link, so such a branch would survive a restore holding the writing run's displacement
 -8622 constant E-NPUB-PENDING \ the pending record is not the unpublished slot the dictionary count points at
@@ -1053,15 +847,11 @@
 
 \ The counted-loop closed form: -8660..-8669
 \
-\ src/compiler/native/loop.f reads a source-dialect module, recognises a counted
-\ loop whose whole body accumulates an affine function of the index, and writes
-\ the module in which that loop is the arithmetic it would have computed. Like
-\ the combine pass above these are a rewriter's refusals and not a validator's:
-\ what the rewrite produces is decided downstream by the ordinary selection,
-\ allocation and verification stages. A loop this pass cannot PROVE closed-formable
-\ is not an error at all - the scan answers zero and the module is handed on
-\ untouched - so every code here is about the pass being asked to work on
-\ something it cannot read, never about a loop it declined.
+\ src/compiler/native/loop.f rewrites a counted loop whose whole body accumulates
+\ an affine function of the index into the arithmetic it would compute. A loop
+\ it cannot PROVE closed-formable is not an error (the scan answers zero and the
+\ module passes untouched), so every code here is about input the pass cannot
+\ read.
 -8660 constant E-NLOOP-BIND     \ a rewrite attempted before the source dialect's identities were bound, or a second binding over a live one
 -8661 constant E-NLOOP-SHAPE    \ a module this pass cannot rewrite: a span naming another source, a value used before it is defined, or a value of a type this dialect does not declare
 -8663 constant E-NLOOP-OPCODE   \ an operation whose opcode is none of the source dialect's family, so this pass has no form to rebuild it as
@@ -1072,93 +862,61 @@
 \ dialect's vocabulary beside them: -8670..-8672
 \
 \ src/compiler/native/regfile.f is the one declaration a backend makes about its
-\ machine's register files, and the register allocator reads it instead of naming
-\ one architecture's constants. There is a single code because there is a single
-\ moment it can be wrong - the checked constructor, which either assembles a
-\ description every reader can believe or refuses. Nothing downstream re-judges
-\ it, so no later pass needs a refusal of its own.
+\ register files. Its checked constructor is the single moment it can be wrong,
+\ so it has a single code and nothing downstream re-judges it.
 -8670 constant E-NREGFILE       \ a register-file description that cannot describe a machine: a file of no registers or more than one set's bit mask holds, a reserved register outside the file it is reserved from, a file whose every register is reserved so nothing is allocatable at all, a call-destroyed register that is not allocatable in the first place, or a spill slot width that is not a positive power of two
-\ src/compiler/native/machine.f holds the register files as a component and adds
-\ the facts a routine contract needs and they do not say, with the same single
-\ moment it can be wrong and the same reason for one code.
+\ src/compiler/native/machine.f adds the facts a routine contract needs over the
+\ register files, with the same single moment and single code.
 -8671 constant E-NMACH          \ a machine description that cannot describe a machine: a link register set holding more than one register, a link register or a stack pointer that is not a register of the general file or that the file says is allocatable, a stack alignment that is not a positive power of two, a frame bound that is negative or not a multiple of that alignment, or a negative offset-field reach
 \ src/compiler/native/dialect.f is the vocabulary a machine dialect hands the
-\ register allocator: the names the allocator would otherwise spell itself. The
-\ record is built whole or not at all, so the one moment it can be wrong is a
-\ reader asking for a key the dialect declared it does not have.
+\ register allocator, built whole or not at all: it is wrong only when a reader
+\ asks for a key the dialect declared absent.
 -8672 constant E-NDIALECT       \ a dialect's vocabulary asked for a key it declared absent - x86-64 has no write-back addressing and interns no symbol for one - so there is no symbol to answer with and naming another key would be worse than saying nothing
 
 \ The shadow target's routines: -8680..-8689
 \
-\ src/compiler/native/shadow.f keeps, beside the routine a definition publishes
-\ for the engine compiling it, the routine the same definition compiles to for a
-\ second machine, and the map from each published record to that routine. A
-\ refusal another authority owns - the shadow chain's own stages, publication's
-\ - keeps that authority's name.
+\ src/compiler/native/shadow.f keeps the routine a definition compiles to for a
+\ second machine and the map from each published record to it. Refusals of the
+\ shadow chain's stages and of publication keep their own names.
 -8680 constant E-NSHADOW-STATE  \ a shadow opened over an open one or natively with no address rewriter installed, or its binding, an emission or a row asked of none
 -8681 constant E-NSHADOW-ROW    \ a record, emission or row index at or past what the shadow holds, or a `does>` clause function the taken emission does not have or that starts where the definer enters
 -8682 constant E-NSHADOW-TARGET \ an emission taken for another machine than the one the shadow's binding names
 
 \ The trap terminator's message: -8640..-8649
 \
-\ src/compiler/native/trap.f owns the one routine a compiled trap branches to and
-\ the message each trap site carries, built from the name of the family or the
-\ callee the site is about.
+\ src/compiler/native/trap.f owns the routine every compiled trap branches to and
+\ the message each trap site carries.
 -8641 constant E-NTRAP-NAME     \ an empty family or callee name, which no trap message could name
 -8643 constant E-A64SEL-ORDER   \ a block whose edges disagree about the memory order it is entered with, or that no edge reaches at all. The machine two-way branch carries no operands, so an order two paths differ on cannot be handed over as an argument here; a source that needs one says so among the block's own arguments
 
 \ The tag-dispatch forms: -8650..-8659
 \
-\ `MATCH … ;MATCH`, `case … endcase` and `construct` are the three source forms
-\ whose operands are not ordinary body words: a family name, a variant name and
-\ an arm key. The elaborator reads them with a pre-pass that mirrors the
-\ checker's own token machine and asks the checker's registry what each name
-\ means, so what this code covers is the shape of that form and nothing the
-\ registry or the checker already owns. A form the checker refuses never reaches
-\ the chain at all - a non-exhaustive MATCH, a duplicate variant, a family that
-\ is not a sum, a variant token with no `of` after it and a stray `;match` are
-\ all rejected before the definition is compiled - so a refusal here means the
-\ chain and the checker read one body differently, which is why it is a named
-\ refusal rather than a fallback.
-\ ---- the two tokens a quotation is written with -------------------------------
-\ A quotation body is a second FUNCTION of the module, so the tokens between `[:`
-\ and `;]` are not operations of the body that writes them. Everything this
-\ elaborator cannot yet do with that shape is refused under one name, because
-\ every one of them is the same statement: the pair was not the pair this leaf
-\ knows how to take apart. dot habu-compile-a-quotation-04341c80 is the
-\ capability; while it is open the refusal is what the chain answers, and it is
-\ its own code rather than the generic unmodelled-word one so a census can tell a
-\ quotation the chain declined from a word it has never heard of.
+\ `MATCH … ;MATCH`, `case … endcase` and `construct`: the elaborator reads their
+\ operands with a pre-pass that mirrors the checker's token machine. A form the
+\ checker refuses never reaches the chain, so a refusal here means the chain and
+\ the checker read one body differently.
+\ A quotation body is a second FUNCTION of the module. Every quotation shape the
+\ elaborator cannot take apart is one refusal, distinct from E-HIR-UNMODELED so
+\ a census tells a declined quotation from an unknown word.
 -8651 constant E-NELAB-QUOT     \ a quotation this elaborator has no rule for: a `[:` the body never closes; a `;]` with no `[:` open; a quotation nothing consumes (a cast whose input is a quotation does), or one two consumers reach because its value was duplicated; a body whose declared effect is not an ordinary routine's; or a body holding a locals group
 
-\ `is NAME` binds a quotation to a deferred word by storing into that word's
-\ dispatch cell, so what the elaborator has to be sure of is that NAME really
-\ names one - the cell address is read out of the record's own meta trailer, and
-\ a record that is not a defer's has whatever stands after its code there. So the
-\ trailer's magic is checked, and a spelling that answers no record, a record
-\ whose trailer is not a defer's, and a defer whose declared effect the checker
-\ cannot width are all refused here rather than compiled into a store through an
-\ address the chain guessed.
+\ `is NAME` stores into the defer's dispatch cell, whose address is read from the
+\ record's meta trailer. The trailer's magic is checked: a record that is not a
+\ defer's has whatever follows its code there.
 -8653 constant E-NELAB-DEFER    \ an `is` this elaborator cannot bind: no token after it, a token after it that is not a name, a name that denotes no word where the definition is compiled, a record whose meta trailer does not carry the defer magic, or a deferred word whose declared effect the checker cannot state in cells
 
-\ A definition holding more quotation bodies than one module has room for. Every
-\ body is a function of the same module, so the ceiling is the module's own -
-\ src/compiler/native/frozen.f FMAX, less the one the definition itself occupies -
-\ and raising it is a capability at FMAX, where every pass of the chain reads it,
-\ rather than a number to widen in the elaborator alone.
+\ src/compiler/native/elaborate.f QROW-CK throws it for a quotation row outside
+\ the definition's QN rows.
 -8652 constant E-NELAB-QUOT-CAP \ more quotation bodies in one definition than a module of the native chain holds functions for
 
--8650 constant E-NELAB-MATCH    \ a tag-dispatch form this elaborator cannot shape: a family or variant token the registry declines, a form whose operand token is missing or is not a name, an `of`, `endof`, `endcase` or `;match` with no such form open, an arm reached with fewer values on the compile-time vector than the form consumes, a scrutinee whose bundle on that vector does not begin, hold together and end where its family's width says - which is what an instantiation wider than the declared one looks like from here - or an arm whose payload has several FIELDS in more CELLS, where no per-field width says where its values begin (dot habu-publish-the-payload-eb4ae38a)
+-8650 constant E-NELAB-MATCH    \ a tag-dispatch form this elaborator cannot shape: a family or variant token the registry declines, a form whose operand token is missing or is not a name, an `of`, `endof`, `endcase` or `;match` with no such form open, an arm reached with fewer values on the compile-time vector than the form consumes, a scrutinee whose bundle on that vector does not begin, hold together and end where its family's width says - which is what an instantiation wider than the declared one looks like from here - or an arm whose payload has several FIELDS in more CELLS, where no per-field width says where its values begin
 
 \ Native x86-64 machine dialect (package X64IR): -8740..-8759.
 \
-\ The operand bounds of the forms this dialect stands for. They are the x86-64
-\ fields and not the ARM64 ones: an immediate is the signed thirty-two bits the
-\ ALU and the memory forms sign-extend, a displacement is disp32, a shift count
-\ is the six bits the machine masks to, and a condition is the four-bit tttn the
-\ Jcc and SETcc opcodes carry. The relocatable literal has no immediate refusal
-\ at all - `mov r64, imm64` holds every cell - which is why there is no code for
-\ one here and the ARM64 move-wide refusals have no counterpart.
+\ Operand bounds are the x86-64 fields: a signed 32-bit immediate, disp32, a
+\ six-bit shift count and a four-bit tttn condition. The relocatable literal has
+\ no immediate refusal because `mov r64, imm64` holds every cell, so the ARM64
+\ move-wide refusals have no counterpart.
 -8740 constant E-X64IR-DIALECT  \ a module whose schema table was created for another dialect or another schema version
 -8741 constant E-X64IR-OPCODE   \ an ordinal outside the machine dialect's closed opcode vocabulary
 -8742 constant E-X64IR-IMM      \ an immediate outside the signed thirty-two bits the ALU and compare forms hold
@@ -1173,18 +931,14 @@
 
 \ Native x86-64 instruction selection (package X64SEL): -8760..-8779.
 \
-\ The first eleven answer the ARM64 selector's own refusals on this machine, so
-\ a reader who knows one pass knows the other. The last is this machine's and
-\ has no ARM64 counterpart: a contract carries the machine it is about. -8772
-\ and -8773 are retired and not reused: -8772 refused every floating source
-\ operation while the dialect declared no SSE form, and -8773 refused the two
-\ forms that name a register. All of them are lowered now - the doubles to the
-\ SSE2 scalar forms, and what the two forms demand is placed from the schema.
+\ The first eleven answer the ARM64 selector's refusals on this machine. The last
+\ has no ARM64 counterpart: a contract carries the machine it is about. -8772 and
+\ -8773 unassigned.
 -8760 constant E-X64SEL-BIND    \ selection attempted before the source dialect's opcode identities were bound, or a second binding over a live one
 -8761 constant E-X64SEL-SOURCE  \ a frozen module that is not the bound one, or a builder holding a dialect that is not HIR
 -8762 constant E-X64SEL-OPCODE  \ an operation whose opcode is none of the source dialect's
 -8763 constant E-X64SEL-SHAPE   \ a module or function this pass cannot select: not exactly one source, or a function with no block at all
--8764 constant E-X64SEL-TRAP    \ an operation whose schema says it may trap lowered to a form that does not reproduce the trap - trapping arithmetic has no x86-64 lowering - or a trap whose routine is not in the target dictionary
+-8764 constant E-X64SEL-TRAP    \ an operation whose schema says it may trap lowered to a form that does not reproduce the trap - trapping arithmetic has no x86-64 lowering - or a trap or terminal call in a routine whose convention names no data-stack place
 -8765 constant E-X64SEL-ATTR    \ an operation whose attribute is not under the source dialect's key for it
 -8766 constant E-X64SEL-CAP     \ more values, blocks or edge operands in one function than this pass's maps hold
 -8767 constant E-X64SEL-PLACE   \ a calling convention this selector has no rule for: one side mixing register places with data-stack places, or a function whose arity is not the one the contract declares
@@ -1196,15 +950,10 @@
 
 \ Native x86-64 instruction emission (package X64EMIT): -8780..-8799.
 \
-\ The emitter owns its byte sink, lays every block out in BYTES and places the
-\ emission at a slot the caller names, so its boundary is the state machine
-\ around one emission - bound, placed, sealed, retired - and the two ways a
-\ layout can be wrong: a cursor that disagrees with the measured start, and a
-\ displacement no rel32 holds. The rest are the ones every emitter has: a form
-\ it does not render, a module shape it cannot write, an assignment that is not
-\ this module's accepted one, a module that is not the bound one, an attribute
-\ the dialect declares and the operation does not carry, and an opcode that is
-\ none of this dialect's.
+\ The emitter owns its byte sink and places an emission at a slot the caller
+\ names. Besides the forms every emitter refuses, it refuses an emission out of
+\ order (bound, placed, sealed, retired), a cursor that disagrees with the
+\ measured start and a displacement no rel32 holds.
 -8780 constant E-X64EMIT-FORM   \ an operation this emitter does not render: a negate, which no selection reaches, or a double comparison whose condition and result count are not `gt` with one result or `equal` with two
 -8781 constant E-X64EMIT-SHAPE  \ a module this emitter cannot write: no function at all, a function ordinal outside the module, an empty block, a block that does not end in a terminator, or a terminator that is not its block's last operation
 -8782 constant E-X64EMIT-ACCEPT \ no accepted register assignment at all, or one accepted for a different module
@@ -1248,8 +997,7 @@
 -9109 constant E-UDP4-LAST
 -9100 constant E-UDP4-OPERAND
 -9101 constant E-UDP4-PLATFORM
-\ -9102 was E-UDP4-SYMBOL: the FUNCTION: declarer resolves this module's
-\ symbols and names its own failure, E-FFI-DLSYM. The number stays unused.
+\ -9102 unassigned: a FUNCTION: symbol that is missing is E-FFI-DLSYM.
 -9103 constant E-UDP4-RESULT
 
 \ Raw serial host library: -9110..-9119.
@@ -1257,8 +1005,7 @@
 -9119 constant E-SERIAL-LAST
 -9110 constant E-SERIAL-OPERAND
 -9111 constant E-SERIAL-PLATFORM
-\ -9112 was E-SERIAL-SYMBOL: the FUNCTION: declarer resolves this module's
-\ symbols and names its own failure, E-FFI-DLSYM. The number stays unused.
+\ -9112 unassigned: a FUNCTION: symbol that is missing is E-FFI-DLSYM.
 -9113 constant E-SERIAL-RESULT
 
 \ XMODEM packet codec and serial transfer: -9120..-9139.
@@ -1297,7 +1044,7 @@
 -9189 constant E-TCP4-LAST
 -9180 constant E-TCP4-OPERAND
 -9181 constant E-TCP4-PLATFORM
-\ -9182 was E-TCP4-SYMBOL, retired for the same reason as -9102 above.
+\ -9182 unassigned: a FUNCTION: symbol that is missing is E-FFI-DLSYM.
 -9183 constant E-TCP4-RESULT
 
 \ Bounded task queues: -9190..-9199.
@@ -1319,17 +1066,15 @@
 -9230 constant E-CURL-FIRST
 -9239 constant E-CURL-LAST
 -9230 constant E-CURL-PLATFORM
-\ -9231 was E-CURL-SYMBOL, retired for the same reason as -9102: src/lib/net/curl.f
-\ binds through FUNCTION: and a missing symbol is E-FFI-DLSYM.
+\ -9231 unassigned: a FUNCTION: symbol that is missing is E-FFI-DLSYM.
 -9232 constant E-CURL-STATE
 -9233 constant E-CURL-RESULT
 -9234 constant E-CURL-OPERAND
-\ -9235 was E-CURL-CAPACITY, retired: src/lib/net/curl.f grows its transfer records.
+\ -9235 unassigned: src/lib/net/curl.f grows its transfer records.
 
 \ Authenticated encryption and HMAC over libcrypto (package CRYPTO):
-\ -9270..-9279. After package PG (-9250..-9259); -9240..-9249 is
-\ tools/image-size-lib.f and -9260..-9269 tools/manifest-lint-core.f, both
-\ outside this file.
+\ -9270..-9279. -9240..-9249 is tools/image-size-lib.f and -9260..-9269
+\ tools/manifest-lint-core.f.
 -9270 constant E-CRYPTO-FIRST
 -9279 constant E-CRYPTO-LAST
 -9270 constant E-CRYPTO-OPERAND    \ a key, nonce, span length or output span the operation cannot accept
@@ -1343,13 +1088,11 @@
 -9278 constant E-CRYPTO-VERIFY     \ RS256 verification setup or operation failure
 -9279 constant E-CRYPTO-SIGN       \ RS256 signing setup or generation failure
 
-\ PostgreSQL over libpq: -9250..-9259, the decade after libcurl, minted by
-\ src/lib/pg.f, which owns package PG. -9240..-9249 is tools/image-size-lib.f.
-\ The block is full; PG's row readers are -9320..-9329 and its growth region
-\ -9560..-9569, both listed below.
+\ PostgreSQL over libpq: -9250..-9259, minted by src/lib/pg.f, which owns package
+\ PG. The block is full; PG's row readers are -9320..-9329 and its growth region
+\ -9560..-9569.
 
-\ Process signals on a self-pipe (package SIGNAL): -9280..-9289. The decade
-\ after CRYPTO.
+\ Process signals on a self-pipe (package SIGNAL): -9280..-9289.
 -9280 constant E-SIGNAL-FIRST
 -9289 constant E-SIGNAL-LAST
 -9280 constant E-SIGNAL-STATE     \ a word that needs the facility before INIT, or a second INIT without RELEASE
@@ -1360,8 +1103,7 @@
 -9285 constant E-SIGNAL-POLL      \ poll refused the read end with an errno
 -9286 constant E-SIGNAL-CLOSE     \ closing an end of the self-pipe failed
 
-\ The io_uring readiness loop (package AIO): -9290..-9299. The decade after
-\ SIGNAL.
+\ The io_uring readiness loop (package AIO): -9290..-9299.
 -9290 constant E-AIO-FIRST
 -9299 constant E-AIO-LAST
 -9290 constant E-AIO-SETUP        \ io_uring_setup or one of the ring mappings was refused
@@ -1374,13 +1116,12 @@
 -9297 constant E-AIO-POLL-BOUND   \ Darwin's poll(2) takes at most OPEN_MAX (10240) descriptors per call, and one more would be needed
 
 \ Image lifecycle hooks (package IMAGE-LIFECYCLE, src/lib/image-lifecycle.f):
-\ -9310..-9319. The decade after the debugger's (src/habu/debug.f).
+\ -9310..-9319. -9300..-9309 is src/habu/debug.f's.
 -9310 constant E-LIFECYCLE-FIRST
 -9319 constant E-LIFECYCLE-LAST
 -9310 constant E-LIFECYCLE-LATE   \ a persistent hook registered a one-shot hook during PREPARE, after the one-shot phase: nothing runs it before the capture
 
-\ Package PG's row readers: -9320..-9329, the decade after IMAGE-LIFECYCLE's,
-\ minted by src/lib/pg-rows.f.
+\ Package PG's row readers: -9320..-9329, minted by src/lib/pg-rows.f.
 
 \ The WebSocket frame codec, RFC 6455 (package WS, src/lib/net/ws-frame.f):
 \ -9330..-9339. The codes after E-WS-MASK are its reserve.
@@ -1403,7 +1144,7 @@
 -9344 constant E-HTTP-ROUTE       \ more routes than the table holds, or an empty method or a pattern not starting with /
 -9345 constant E-HTTP-STATIC      \ a bad or non-directory static root, a URL wider than PATH-CAP, or a directory cycle
 -9346 constant E-HTTP-SOCKET      \ the listener could not be bound, put to listen or asked its own address
-\ -9347 was E-HTTP-RESPONSE, retired: a response grows instead of refusing.
+\ -9347 unassigned: a response grows instead of refusing.
 
 \ Base64 (package BASE64): -9350..-9359.
 -9350 constant E-BASE64-FIRST
@@ -1412,7 +1153,7 @@
 -9351 constant E-BASE64-PAD       \ misplaced/forbidden '=', or nonzero unused bits
 -9352 constant E-BASE64-LENGTH    \ padded length not divisible by four, or URL remainder one
 
-\ Private C2 owner-frame runtime. These are the only two codes it mints.
+\ Private C2 owner-frame runtime.
 -9360 constant E-C2-CAPACITY       \ this task has no owner frame left
 -9361 constant E-C2-STATE          \ a frame operation contradicts its transition state
 -9364 constant E-C2-CAPTURE        \ capture saw an active owner or loan in main
@@ -1468,8 +1209,7 @@
 \ package ENTROPY.
 \ Online processor count and load average: -9550..-9559, minted in
 \ src/lib/os-cpu.f, which owns package OS-CPU.
-\ PostgreSQL's growth region: -9560..-9569, minted by src/lib/pg.f once
-\ -9250..-9259 filled.
+\ PostgreSQL's growth region: -9560..-9569, minted by src/lib/pg.f.
 \ Word contracts read from source: -9570..-9579, minted in src/lib/word-docs.f,
 \ which owns package WORD-DOCS.
 \ Scoped commands: -9580..-9589, minted in src/lib/process-command.f, which

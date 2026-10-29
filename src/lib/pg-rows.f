@@ -1,29 +1,9 @@
 \ pg-rows.f - package PG's connections per module, statements and row readers.
-\
-\ OPEN hands out a connection for the calling task; EXEC runs a statement that
-\ answers no rows; the readers below turn a PG:result into values inside the
-\ scope that owns it, threading the linear token: BY-ID and QUERY run a query
-\ in a WITH-RESULT scope, BY-ID checks its first row, each runs a body on the
-\ result, and the scope clears it when the body returns or throws. A span a COL- reader answers is copied into the reading task's own
-\ arena first, so it outlives the scope and lasts until that task's next read
-\ (READ-RESET, which BY-ID runs): a record BY-ID's body reads keeps its text
-\ after its result is gone. The AT readers answer libpq's bytes, valid until
-\ the result's scope ends.
-\
-\ A query the server refuses is E-QUERY, and REFUSED$ then answers the server's
-\ text to the task that ran it: ROWS-OR-THROW, EXEC, QUERY, BY-ID and ONE-INT
-\ record it before they throw, and empty it for an outcome that is no refusal.
-\
-\ STORAGE CLASS. TASK-LOCAL arenas and refusal texts: a reading task takes a
-\ row on its first read, query or REFUSED$ and keeps it. Its arena is READ-CAP
-\ bytes that a longer read extends by chained chunks; its refusal text is one
-\ mapping that grows to the longest refusal so far. The declared connection
-\ and reader counts are PROCESS-WIDE.
-\
-\ Two declarations come first, both before the first OPEN, read or query:
-\
-\    n PG:CONNECTIONS+          \ each module, for the connections it opens
-\    n PG:CONFIGURE-READERS     \ once, for the tasks that read rows or run queries
+\ Before the first OPEN, read or query: `n PG:CONNECTIONS+` in each module for
+\ the connections it opens, and `n PG:CONFIGURE-READERS` once for the tasks
+\ that read rows or run queries. Span lifetimes: above NO-TASK.
+\ STORAGE CLASS. TASK-LOCAL arenas and refusal texts, one row per reading task;
+\ the declared connection and reader counts are PROCESS-WIDE.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -62,22 +42,19 @@ variable CONNECTION-N
 1 CONNECTION-N !
 variable CONNECTIONS-FROZEN
 
-\ ---- the reader arenas ----------------------------------------------------------
 \ A record outlives the result it was read from, so every span it carries is
-\ copied into an arena first and the result's scope clears it before the
-\ record is returned. The arena is the reading task's own, one row per task, because
-\ static storage is one copy for the whole image while a
-\ server reads rows from many tasks at once, each on a connection of its own.
-\ One arena between them would hand a reader back the bytes another task copied
-\ after it, so a span could become another row's text between its lookup and
-\ its use. A record's spans are therefore valid
-\ until the task that read them reads again, and no longer.
+\ copied into the reading task's own arena first, and the result's scope clears
+\ the result before the record is returned. A server reads rows from many tasks
+\ at once: one shared arena would let another task's copy overwrite a span
+\ between its lookup and its use. A record's spans are valid until the task
+\ that read them reads again (READ-RESET, which BY-ID runs), and no longer.
+\ COL- readers copy; AT readers answer libpq's bytes in place.
 \
 \ A row is taken on a task's first read, query or REFUSED$ and stays that
-\ task's: a TCB is declared once (TASK:TASK) and reused for every body that
-\ runs on it, so the rows are bounded by the tasks the image declares and never by the jobs that
-\ pass through them. An untaken row costs a few cells; its bytes are mapped only
-\ when its task first reads.
+\ task's: a TCB is declared once (TASK:TASK) and reused for every body that runs
+\ on it, so the rows are bounded by the tasks the image declares and never by
+\ the jobs that pass through them. An untaken row costs a few cells; its bytes
+\ are mapped only when its task first reads.
 \
 \ An arena is a chain of chunks, newest first. A record holds pointers into
 \ them, so a chunk never moves: a span the newest cannot hold maps another of
@@ -107,10 +84,8 @@ DYNAMIC-BUFFER REFUSAL SPAN:span<u8>      \ the task's refusal text mapping, emp
 DYNAMIC-BUFFER REFUSAL-U n                \ its bytes in use, zero when the last outcome was no refusal
 
 
-\ The arena of the task that is running, taken here if this is its first read,
-\ query or REFUSED$.
-\ A row is found by the task that owns it, so the scan may pass rows another
-\ task takes while it runs: only this task ever takes this task's row.
+\ The scan may pass rows another task takes while it runs: only this task ever
+\ takes this task's row.
 : MY-ARENA ( -- n )
    READER-N @ {: readers:n :}
    readers 0= if E-READERS throw then
@@ -123,7 +98,6 @@ DYNAMIC-BUFFER REFUSAL-U n                \ its bytes in use, zero when the last
    E-READERS throw ;
 
 
-\ Maps a chunk of len bytes after the newest of row at, which it becomes.
 : CHUNK+ ( n n -- ) {: at:n len:n :}
    len MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: fresh :}
    at READ-CHUNK @ SPAN:$ {: before:ptr before-len:n :}
@@ -134,7 +108,7 @@ DYNAMIC-BUFFER REFUSAL-U n                \ its bytes in use, zero when the last
    HEADER-BYTES at READ-USED ! ;
 
 
-\ Gives up row at's newest chunk for the one before it; false at the first.
+\ False when row at's newest chunk is its first.
 : POP-CHUNK? ( n -- bool ) {: at:n :}
    at READ-CHUNK @ {: newest :}
    newest SPAN:$ drop >CHUNK {: c :}
@@ -144,7 +118,6 @@ DYNAMIC-BUFFER REFUSAL-U n                \ its bytes in use, zero when the last
    true ;
 
 
-\ Gives up every chunk of a mapped row but the first.
 : TRIM ( n -- ) {: at:n :}
    begin at POP-CHUNK? 0= until ;
 
@@ -170,7 +143,6 @@ DYNAMIC-BUFFER REFUSAL-U n                \ its bytes in use, zero when the last
    chunk used u SPAN:SUB SPAN:$ ;
 
 
-\ ---- the refusal texts -----------------------------------------------------------
 \ A refusal overwrites the one before it, so a task's text needs one mapping,
 \ grown to the longest so far. The old bytes are never read again: growth maps
 \ the new size and drops the old mapping without moving them.
@@ -201,7 +173,6 @@ DYNAMIC-BUFFER REFUSAL-U n                \ its bytes in use, zero when the last
    E-QUERY throw ;
 
 
-\ An outcome that is no refusal empties the task's refusal text.
 : NOT-REFUSED ( -- )
    0 MY-ARENA REFUSAL-U ! ;
 
@@ -235,8 +206,6 @@ DYNAMIC-BUFFER REFUSAL-U n                \ its bytes in use, zero when the last
    a c@ TRUE-BYTE = ;
 
 public
-
-\ ---- declarations ------------------------------------------------------------
 
 \ Declares how many tasks read rows or run queries, the main task among them,
 \ and maps the table of their rows. Like CONFIGURE it is one decision for the
@@ -272,8 +241,6 @@ public
    count CONNECTION-N +! ;
 
 
-\ ---- connections -------------------------------------------------------------
-
 \ The attempt for a caller that drives POLL itself.
 : OPEN-START ( ptr u8 n -- PG:connection )
    CONNECTIONS RESULTS PARAMETERS CONFIGURE
@@ -298,8 +265,6 @@ public
 : OPEN-ENV ( -- PG:connection )
    s" " OPEN ;
 
-
-\ ---- one read ----------------------------------------------------------------
 
 \ Starts a read on this task: the spans of its previous read are given up, and
 \ every chunk they took but the first, and the last refusal's text is emptied,
@@ -332,8 +297,9 @@ public
 
 
 \ The server's text for the task's last refused query, empty after an outcome
-\ that was no refusal (see REFUSED for its shape). Valid until the task's next
-\ query.
+\ that was no refusal (see REFUSED for its shape). ROWS-OR-THROW, EXEC, QUERY,
+\ BY-ID and ONE-INT record it before they throw E-QUERY. Valid until the task's
+\ next query.
 : REFUSED$ ( -- ptr u8 n )
    MY-ARENA {: at:n :}
    at REFUSAL @ SPAN:$ drop at REFUSAL-U @ ;
@@ -385,7 +351,7 @@ public
    body c a u [: RUN-FIRST ;] WITH-RESULT ;
 
 
-\ ---- the first row's columns, copied into the arena ---------------------------
+\ The first row's columns, copied into the task's arena.
 
 \ SQL NULL is E-ROW; COL-TEXT? is the nullable reader.
 : COL-TEXT ( PG:result n -- PG:result ptr u8 n )
@@ -423,7 +389,6 @@ public
    CELL$ BOOL$ ;
 
 
-\ ---- any row, read in place ----------------------------------------------------
 \ These answer libpq's own bytes, valid until the result's scope ends: a page
 \ of rows is read inside its scope, and nothing is copied.
 

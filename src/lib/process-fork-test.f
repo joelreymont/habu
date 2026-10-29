@@ -1,17 +1,9 @@
 \ process-fork-test.f - a forked child's cleanup table, a child run as its own
 \ process root, and reapers whose forks fail.
-\
-\ A forked child starts with an EMPTY fs cleanup table: the entries it would
-\ otherwise inherit name paths the live parent still owns, so running them
-\ deletes the parent's files. Every failed reaper fork is refused:
-\ PROC-FORK:FORK-REAPER throws when either of its forks fails, and a capture
-\ whose co-located reaper (PROC-FORK:SPAWN-REAPER) cannot fork kills its child
-\ and throws. The pid contract of PROC-FORK:CHECKED and RAW is proved where it
-\ is used (src/lib/process-test.f's fork cases, SUBJECT:RUN, the gate pool), and so
-\ is 0 0 PROC-FORK:SET-PGID (every pool worker).
-\ Run: bin/hb --load src/lib/errors.f src/lib/prelude.f src/lib/string.f src/lib/test.f \
-\      src/lib/memory.f src/lib/fs.f src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f \
-\      src/lib/process-fork.f src/lib/process-fork-test.f
+\ A forked child starts with an EMPTY fs cleanup table: inherited entries name
+\ paths the live parent still owns. The pid contract of PROC-FORK:CHECKED and
+\ RAW and 0 0 PROC-FORK:SET-PGID are proved where they are used
+\ (src/lib/process-test.f's fork cases, SUBJECT:RUN, the gate pool).
 
 require src/lib/errors.f
 require src/lib/prelude.f
@@ -50,19 +42,13 @@ package PROC-FORK-TEST
      err OF drop -1 0 T= ENDOF
    ;MATCH ;
 
-\ Fork-inherited cleanup registrations, straight through the wrapper instead of
-\ through a pool: whoever the caller is, the child arm of PROC-FORK:RAW empties
-\ src/lib/fs-mutate.f's cleanup table before the caller's child code runs.
-\
-\ The parent registers a tree, forks, and the child exits 1 when it inherited
-\ any cleanup entry and 0 when it inherited none - so the reap alone decides the
-\ invariant, since an inherited entry comes back as a nonzero code. The table
-\ has no fixed size, so its depth need not fit an exit code. The child also
-\ registers and runs its OWN cleanup, which lets the parent see afterwards that
-\ the child's tree is gone (the machinery really ran) while the parent's tree is
-\ untouched. The fixture root itself is never registered, so no cleanup run can
-\ erase the evidence; the parent removes it at the end.
-create FIX-ROOT PATH-CAP allot        \ fixture root; never registered
+\ The child arm of PROC-FORK:RAW empties src/lib/fs-mutate.f's cleanup table
+\ before the caller's child code runs. The child exits 1 when it inherited any
+\ cleanup entry; the table has no fixed size, so its depth need not fit an exit
+\ code. The child runs its own cleanup, so the parent sees the child's tree gone
+\ and its own untouched. The fixture root is never registered, so no cleanup run
+\ erases the evidence; the parent removes it at the end.
+create FIX-ROOT PATH-CAP allot
 create KEEP PATH-CAP allot            \ registered by the parent, before the fork
 create KEEP-FILE PATH-CAP allot
 create OWN PATH-CAP allot             \ registered by the child, after the fork
@@ -98,9 +84,8 @@ variable OWN-U
    KEEP$ s" file" KEEP-FILE KEEP-FILE-U SUB!
    FIX-ROOT$ s" own" OWN OWN-U SUB! ;
 
-\ Child body: read the inherited depth BEFORE registering anything of its own
-\ (its own registration would add to it, and FS:CLEANUP-RUN clears it), then clean
-\ up what it registered and exit 1 when the depth was not 0.
+\ The inherited depth is read before the child registers anything: its own
+\ registration adds to it, and FS:CLEANUP-RUN clears it.
 : CHILD-CLEANUP ( -- )
    CLEANUP-COUNT {: depth:n :}
    OWN$ FS:MAKE-DIRS
@@ -126,7 +111,6 @@ variable OWN-U
    KEEP$ FS:EXISTS? TFALSE
    FIX-ROOT$ FS:REMOVE-TREE ;
 
-\ ---- a child run as its own process root -----------------------------------
 \ PROC-FORK:CHILD-MAIN runs a quotation as the child's process root: it exits 0
 \ when the quotation returns, and a throw out of it ends the child as an uncaught
 \ throw ends a fresh process - the engine's line on fd 2 and UNCAUGHT-RC - with
@@ -234,7 +218,6 @@ variable REFUSAL-CODE
    CHECK-CHILD-REFUSAL
    FIX-ROOT$ FS:REMOVE-TREE ;
 
-\ ---- reapers whose forks fail -------------------------------------------------
 \ A refused fork answers a negative pid: -1 from macOS's libc fork, -EAGAIN from
 \ Linux's raw clone. That pid must reach neither a wait, where wait4(-1) blocks
 \ for any child of the caller and reaps it, nor a caller that takes it for an
@@ -366,7 +349,6 @@ variable FORKS-MADE
    FORKS-MADE @ 1 T=
    REAPER-PIPES-CLOSE ;
 
-\ ---- a capture whose reaper cannot fork -------------------------------------
 \ While a death-watch fd is published, every capture arms a co-located reaper
 \ for its child (PROC-REAP-ARM, then PROC-FORK:SPAWN-REAPER). FORK-CALL refuses
 \ that fork alone: the capture's own spawn is the spawn primitive. The capture

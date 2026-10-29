@@ -1,15 +1,9 @@
 \ fd-test.f - exact reads and full writes over real pipes.
 \ Run: bin/hb --load src/lib/fd-test.f
-\
-\ A pipe holds far less than PAYLOAD (64 KiB by default on Linux and at most on
-\ macOS), so one read of PAYLOAD bytes answers short and READ-EXACT has to loop.
-\ A blocking write is different: the kernel finishes it unless a caught signal
-\ lands after some bytes moved, and then it answers the count so far. The write
-\ cases therefore run under the engine's 1 kHz SIGALRM profiler, with a forked
-\ reader that holds back until the writer is blocked on a full pipe. Each loop
-\ case first proves its premise with one raw call - a short read, a short write
-\ - so a host where the premise stopped holding fails here rather than passing
-\ without exercising the loop.
+\ A pipe holds far less than PAYLOAD, so one read answers short and READ-EXACT
+\ loops; a blocking write answers short only when a caught signal lands after
+\ some bytes moved, so write cases run under the engine's 1 kHz SIGALRM profiler.
+\ Each loop case proves its premise with one raw call first.
 
 require src/lib/errors.f
 require src/lib/test.f
@@ -34,8 +28,8 @@ $400000 constant PAYLOAD          \ 4 MiB: 64 default Linux pipes, and past Linu
 -1 constant FULL-MARK             \ OUTCOME's answer for `full`
 2 constant CHILD-MISMATCH         \ a forked reader's exit code when the bytes are wrong
 
-TYPED-VARIABLE SRC SPAN:span<u8>  \ PAYLOAD bytes of the pattern
-TYPED-VARIABLE DST SPAN:span<u8>  \ PAYLOAD bytes a reader fills
+TYPED-VARIABLE SRC SPAN:span<u8>
+TYPED-VARIABLE DST SPAN:span<u8>
 16 SPAN-BUFFER: SMALL
 variable CHILD-FD                 \ the pipe end a forked child works on
 variable CHILD-CODE               \ the exit code a child's part chose

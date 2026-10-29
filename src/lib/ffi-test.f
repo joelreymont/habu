@@ -91,8 +91,8 @@ FUNCTION: FFI-T-GCVT gcvt ( r n ptr u8 -- ptr u8 )
 
 \ Resolution happens inside the call, after the arguments are staged: DLSYM
 \ marshals through its own buffer, so a symbol resolved for the first time here
-\ cannot overwrite the pending argument. Call this alias before STRLEN$ so the
-\ shared descriptor has not yet resolved either.
+\ cannot overwrite the pending argument. Call this alias before FFI-T-STRLEN$ so
+\ the shared descriptor has not yet resolved either.
 FUNCTION: FFI-T-STRLEN-LATE strlen ( ptr u8 -- n ) ;FUNCTION
 
 \ The writable form: memcpy's destination is written and its extent is the
@@ -116,8 +116,7 @@ FUNCTION: FFI-T-ATOI atoi ( ptr u8 -- i32 ) ;FUNCTION
    FFI-CTX>N FFI-T-CTX-CALL >RC ;
 
 \ The declarer's contract to the loader's closed evaluate: a declaration
-\ defines words and leaves the stack exactly as it found it. Measured across a
-\ real declaration rather than asserted in a comment.
+\ defines words and leaves the stack exactly as it found it.
 variable FFI-T-DEPTH-BEFORE
 variable FFI-T-DEPTH-AFTER
 
@@ -220,9 +219,8 @@ variable FFI-T-PAIR-AFTER
 \ the first call, never at the declaration.
 FUNCTION: FFI-T-ABSENT habu-no-such-symbol ( -- n ) ;FUNCTION
 
-\ ---- declaration growth and reuse -------------------------------------------
-\ A child declares distinct symbols past the former table limit, then calls
-\ an exact alias through the real source path.
+\ A child declares 270 distinct symbols, past any fixed declaration table, then
+\ calls an exact alias through the real source path; the alias takes no row.
 $400 constant FFI-T-SRC-CAP
 $4000 constant FFI-T-CAP
 30000 constant FFI-T-TIMEOUT-MS
@@ -262,8 +260,7 @@ create FFI-T-LONG-PATH PATH-CAP allot
 : FFI-T-ERR$ ( len -- ptr u8 n ) {: u:len :}
    FFI-T-ERR u LEN>N ;
 
-\ Runs the source on a fresh engine's stdin and asserts its exit code, leaving
-\ the stdout and stderr lengths.
+\ Runs the source on a fresh engine's stdin and asserts its exit code.
 : FFI-T-RUN-EXITS ( ptr u8 n n -- len len ) {: src:ptr srcu:n want:n :}
    PROC-ARGV-RESET
    ENGINE-CANDIDATE:PATH$ >LEN src srcu >LEN
@@ -360,7 +357,6 @@ create FFI-T-LONG-PATH PATH-CAP allot
    s\" require src/lib/ffi-abi.f\ncreate ZZ-P PATH-CAP allot\n" FFI-T-SRC+
    s\" : ZZ-LONG ( -- ptr u8 n ) PATH-CAP 0 ?do [char] a ZZ-P i + c! loop ZZ-P PATH-CAP ;\n" FFI-T-SRC+ ;
 
-\ ---- process-wide symbols: FFI:GLOBAL --------------------------------------
 \ libz, which the VERSIONED-LIBRARY row below opens with FFI:NOW alone.
 \ dlopen(3) names the scope its symbols join: on Linux an open without
 \ RTLD_GLOBAL is RTLD_LOCAL, and RTLD_DEFAULT - what PROCESS-SYMBOLS resolves
@@ -536,8 +532,7 @@ FUNCTION: FFI-T-MPROTECT mprotect ( ptr u8 n n -- i32 ) ;FUNCTION
    FFI-T-COUNT LE:U32@ 8 T= ;
 
 \ SysV's ninth float spills after eight XMM registers. The declaration is
-\ target-conditional because the AAPCS64 planner deliberately keeps its
-\ existing eight-float limit.
+\ target-conditional because the AAPCS64 planner keeps an eight-float limit.
 : FFI-T-F9-FORMAT ( -- ptr u8 )
    s\" %.0f %.0f %.0f %.0f %.0f %.0f %.0f %.0f %.0f\z" drop ;
 : FFI-T-F9-WANT ( -- ptr u8 n )
@@ -657,15 +652,14 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
 : FFI-RUN ( -- )
    T-RESET
    FFI-T-OPEN dup FFI-T-LIB !
-   0 T<>                                          \ dlopen handle is non-null
+   0 T<>
    FFI-T-OPEN-MATH dup FFI-T-MATH !
    0 T<>
 
-   FFI-T-STRLEN FFI-T-SYM 0 T<>                   \ dlsym resolved strlen
+   FFI-T-STRLEN FFI-T-SYM 0 T<>
    FFI-T-SQRT FFI-T-MSYM 0 T<>
-   \ The first declared strlen call resolves after staging its argument.
    FFI-T-HELLO FFI-T-STRLEN-LATE 5 T=
-   FFI-T-HELLO FFI-T-STRLEN$ 5 T=                 \ explicit typed wrapper
+   FFI-T-HELLO FFI-T-STRLEN$ 5 T=
 
    FFI-T-HELLO FFI-T-HELP 3 FFI-T-STRNCMP$ 0 T=
    FFI-T-HELLO FFI-T-HELP 4 FFI-T-STRNCMP$ 0 T<>
@@ -706,27 +700,21 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
 
    9.0 FFI-T-SQRT-CALL 3.0 f= T-ASSERT
 
-   \ The declaration is stack-neutral: it defines a word and nothing else, which
-   \ is what the loader's closed evaluate demands.
    s" a declaration leaves the stack as it found it" T-LABEL
    FFI-T-DEPTH-AFTER @ FFI-T-DEPTH-BEFORE @ T=
    FFI-T-DEPTH-PROBE 0 T<>
 
-   \ memcpy writes its destination and the extent is argument 2.
    FFI-T-CSTR-DST SPAN:$ drop FFI-T-HELLO 6 FFI-T-MEMCPY drop
    FFI-T-CSTR-DST SPAN:$ drop FFI-T-STRLEN$ 5 T=
 
-   \ A symbol nothing carries fails at the CALL, by name, not at the declaration.
    [: FFI-T-ABSENT drop ;] E-FFI-DLSYM TTHROWSQ
 
-   \ What the declarer refuses, one structural rule each.
    [: FFI-T-BAD-PTR ;] E-FFI-SYNTAX TTHROWSQ
    [: FFI-T-BAD-RESULTS ;] E-FFI-SYNTAX TTHROWSQ
    [: FFI-T-BAD-EXTENT ;] E-FFI-SYNTAX TTHROWSQ
    [: FFI-T-BAD-EXTENT-ARG ;] E-FFI-SYNTAX TTHROWSQ
    [: FFI-T-BAD-EXTENT-INDEX ;] E-FFI-SYNTAX TTHROWSQ
-   \ SysV spills a ninth double to the stack; AAPCS64 keeps its eight-float
-   \ limit. A ninth C float has no stack staging on either ABI.
+   \ A ninth C float has no stack staging on either ABI.
    HB-TARGET-LINUX-X86-64? if
       [: FFI-T-BAD-FLOAT-ARITY ;] 0 TTHROWSQ
    else

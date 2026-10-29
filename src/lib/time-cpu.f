@@ -1,19 +1,9 @@
-\ time-cpu.f - the calling thread's CPU time, in `package TIME`.
-\
-\ src/lib/time.f's clocks are engine primitives and read wall time: a window they
-\ bound also holds every slice the host gave other processes. THREAD-CPU-NS is
-\ the CPU time the calling thread has run, user and system, read through libc's
-\ clock_gettime; time the thread spent preempted, waiting or asleep is not in
-\ it, so a window it bounds holds the thread's own work at any host load. It
-\ still runs slower on a slower core.
-\
-\ A FILE OF ITS OWN. The clock is a foreign call whose answer lives in a task
-\ row, so it loads src/lib/ffi-abi.f and src/lib/task.f; src/lib/time.f stays free of both
-\ for the files that only want its monotonic clock.
-\
-\ STORAGE CLASS. TASK-LOCAL: clock_gettime writes its answer through a
-\ pointer, and a Habu task is an OS thread, so the timespec is a TASK:+USER
-\ row: two tasks reading their clocks at once share nothing.
+\ time-cpu.f - the calling thread's CPU time (user and system) in `package TIME`,
+\ through libc clock_gettime. Unlike src/lib/time.f's wall clocks it excludes time
+\ preempted, waiting or asleep, but still runs slower on a slower core. It is its
+\ own file so time.f stays free of src/lib/ffi-abi.f and src/lib/task.f.
+\ STORAGE CLASS. TASK-LOCAL: clock_gettime writes through a pointer, so the
+\ timespec is a TASK:+USER row; tasks are OS threads and share nothing.
 
 require src/lib/errors.f
 require src/lib/ffi-abi.f

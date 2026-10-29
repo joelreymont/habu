@@ -1,27 +1,9 @@
-\ aio.f - shared asynchronous I/O ownership, with Linux and Darwin backends.
-\
-\ A task waits for a descriptor, a duration or a cancellation without parking
-\ its thread inside the host call: it submits one operation, gets a ticket, and
-\ AWAITs it. One completion task drains the ring and TASK:WAKEs the owner of
-\ each finished operation, so a thousand waiters cost one thread and no
-\ semaphore each.
-\
-\ STORAGE CLASS. PROCESS-WIDE: one ring, one record table and one loop task
-\ serve the whole image, and every claim, release and growth of a record runs
-\ under one TASK:FACILITY. The table grows by chunks that never move, because
-\ the kernel holds the address of a record's timespec. The one task-local row
-\ is the flag that says this task has registered its cleanup. A ticket belongs to the task that submitted
-\ it and only that task may AWAIT it.
-\
-\ START LAST. The loop is a live task, so a program defines every word first
-\ and calls START after (src/lib/task.f); a submission with no loop is
-\ E-AIO-STATE. tcp4, udp4, serial, pty, process-pty-io and signal wait here,
-\ so a program using any of them starts the loop before its first wait.
-\
-\ Linux uses io_uring below, written against 5.10, the first long-term kernel
-\ with every opcode used here and IORING_FEAT_NODROP; an older kernel refuses
-\ io_uring_setup with ENOSYS. Darwin installs src/lib/aio-macos.f's poll
-\ backend.
+\ aio.f - asynchronous I/O, package AIO: a task submits one operation, gets a
+\ ticket and AWAITs it; one loop task drains the ring and TASK:WAKEs each owner.
+\ START the loop after every definition (src/lib/task.f); a submission with no
+\ loop is E-AIO-STATE. Linux uses io_uring from 5.10, the first long-term kernel
+\ with every opcode used and IORING_FEAT_NODROP; Darwin uses src/lib/aio-macos.f.
+\ STORAGE CLASS. PROCESS-WIDE: ring, records and loop, under one TASK:FACILITY.
 
 require src/lib/errors.f
 require src/lib/memory.f
@@ -37,11 +19,10 @@ require src/lib/adt/result.f          \ the loop task's join answers result<n,n>
 package AIO
 public
 
-\ The handle a submission answers with: a nominal cell over the index of a
-\ record this package owns and the generation that record carried when the
-\ handle was minted, never an address. Both converters are private, so no
-\ caller can mint a ticket over a record it did not submit, and a handle kept
-\ past its record's reuse names a generation no record has: E-AIO-STATE.
+\ A submission's handle: a nominal cell over a record index and the generation
+\ the record carried at minting, never an address. Both converters are private,
+\ so no caller can mint a ticket for a record it did not submit; a handle kept
+\ past its record's reuse is E-AIO-STATE. Only the submitting task may AWAIT it.
 NEWTYPE ticket
 
 \ A set of tickets one AWAIT-ANY waits on, as the index a GROUP definition
@@ -188,9 +169,8 @@ $10 constant SPEC-BYTES             \ struct __kernel_timespec: two __s64
 6 constant KIND-ACCEPT
 7 constant KIND-CONNECT
 
-\ The io_uring opcode each kind submits, one row per kind in the kinds' own
-\ order, so a stage that takes its kind as an argument reads the opcode off the
-\ table instead of branching, and a new kind is a row here and a constant above.
+\ The io_uring opcode each kind submits, one row per kind in kind order: a new
+\ kind is a row here and a constant above.
 create KIND-OPS
    OP-POLL-ADD ,  OP-TIMEOUT ,  OP-ASYNC-CANCEL ,  OP-LINK-TIMEOUT ,
    OP-READ ,  OP-WRITE ,  OP-ACCEPT ,  OP-CONNECT ,
@@ -309,11 +289,9 @@ defer HOST-SETUP ( -- )
 defer HOST-CLOSE ( -- )
 defer HOST-LOOP ( -- )
 
-\ Set at a task's first submission: the cleanup below is registered then and not
-\ before, so a program that never submits registers nothing of AIO's. That
-\ registration is one entry in the task's TASK:AT-EXIT chain and leaves the
-\ task's own cleanups where they are; this cell is what keeps a submitting task
-\ from walking the chain again at every later submission.
+\ Set at a task's first submission, when its cleanup registers, so a program
+\ that never submits registers nothing; the cell keeps a submitting task from
+\ walking its TASK:AT-EXIT chain again at later submissions.
 TASK:#USER CELL TASK:+USER AIO-REGISTERED drop
 
 $40 constant DIAG-CAP
@@ -341,19 +319,14 @@ FUNCTION: URING-ENTER-CALL syscall ( n n n n n n n -- n )
    2 NL-BYTE 1 write drop ;
 
 \ ---- little-endian field access ----------------------------------------------
-\ Every ring and SQE field is a fixed-width little-endian integer at a byte
-\ offset, so src/lib/le.f's accessors read and write it a byte at a time rather than
-\ with a cell store that would depend on the host's width and alignment rules. A
-\ CQE's res is the signed one, LE:S32@: zero or more is an answer, less is the
-\ negated errno.
+\ Ring and SQE fields are fixed-width little-endian integers at byte offsets,
+\ read through src/lib/le.f rather than cell stores tied to the host's width and
+\ alignment. A CQE's res is signed (LE:S32@): a negative res is the negated errno.
 
 \ ---- the module's one address crossing ---------------------------------------
-\ An address the kernel has just mapped for this ring, as the byte pointer of
-\ that mapping - the same crossing src/lib/memory.f makes for its own mappings with
-\ package MEM's private MAPPED>PTR. Three calls exist, one per mapping, each
-\ right after the mmap that produced the address, and every later read and
-\ write through the three pointers passes MAP-AT's bound, which is the length
-\ io_uring_params reported.
+\ The crossing src/lib/memory.f makes with MEM's private MAPPED>PTR: three
+\ calls, one right after each mmap, and every later access passes MAP-AT's bound,
+\ the length io_uring_params reported.
 CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
 
 \ An offset and a width inside one mapping. Out of bounds is this module's own
@@ -416,7 +389,6 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
 : CHUNK-AFTER ( n -- n )
    CHUNK-NEXT dup 0= if s" aio: record index" E-AIO-STATE die then ;
 
-\ The walk carries the chunk, the index left and the chunk's record count.
 : REC ( n -- ptr n ) {: idx:n :}
    idx 0 < if s" aio: record index" E-AIO-STATE die then
    CHUNK-FIRST idx RECS-FIRST
@@ -457,7 +429,6 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
    loop
    c AIO-N>PTR BYTE-VIEW len CHUNK-LEN MEM:RELEASE-BYTES ;
 
-\ The walk carries the next chunk and the record count of the one after.
 : RECS-SWEEP ( -- )
    CHUNK-FIRST CHUNK-NEXT RECS-FIRST 2 *
    0 CHUNK-FIRST AIO-N>PTR atomic!
@@ -621,14 +592,10 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
    REC-RESET
    REC-LIVE @ 1 - REC-LIVE atomic! ;
 
-\ Release the allocation a record still holds, and then free the record. THE
-\ ONLY PLACE A TRANSFER'S ALLOCATION IS RELEASED BY THIS MODULE, and it runs at
-\ the one moment that is safe: the kernel's completion for that operation has
-\ arrived, so it is no longer reading or writing those bytes. Doing it earlier -
-\ at the cancel, or when the owning task ended - would hand the pages back while
-\ the kernel still had them. The loop task is the one that gets here for a
-\ forgotten transfer, which is fine: MEM's release is a munmap and needs nothing
-\ of the owner.
+\ THE ONLY PLACE THIS MODULE RELEASES A TRANSFER'S ALLOCATION, and only after the
+\ kernel's completion for it arrived: at the cancel or at the owner's end the
+\ kernel may still hold the pages. The loop task releases a forgotten transfer's;
+\ MEM's release is a munmap and needs nothing of the owner.
 : REC-DISCARD ( n -- ) {: idx:n :}
    idx REC REC.HOLD @ 0 <> if
       idx REC-BUF @ idx REC-BUF-LEN@ MEM:RELEASE-BYTES
@@ -647,7 +614,6 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
    loop
    -1 ;
 
-\ The walk carries the chunk, its first index and its record count.
 : REC-FIND ( -- n )
    CHUNK-FIRST 0 RECS-FIRST
    begin
@@ -685,7 +651,6 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
    loop
    false ;
 
-\ The walk carries the chunk and its record count.
 : ANY-BUSY? ( -- bool )
    CHUNK-FIRST RECS-FIRST
    begin over 0<> while
@@ -702,7 +667,6 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
 : SQ-PENDING ( -- n )
    SQ-TAIL@ SQ-HEAD@ - $FFFFFFFF and ;
 
-\ Room for that many more SQEs.
 : SQ-ROOM? ( n -- bool ) {: want:n :}
    SQ-PENDING want + SQ-ENTRIES-N @ <= ;
 
@@ -723,16 +687,12 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
 : ENTER-CALL ( n n n -- n ) {: submit:n least:n flags:n :}
    NR-ENTER RING-FD @ submit least flags 0 0 URING-ENTER-CALL ;
 
-\ Asks for every entry still in the ring, not just this submitter's: the kernel
-\ takes entries from the head, so an entry an earlier enter left behind is this
-\ call's to submit too, and a submitter that asked for its own count alone would
-\ be told its entry went in when the kernel had taken somebody else's. The
-\ answer is the ring drained, which is what says this submission reached the
-\ kernel; a short take leaves entries behind and is E-AIO-ENTER. The errno line
-\ is only worth printing when the call itself was refused. Every caller holds
-\ AIO-LOCK - the stage words are the locked bodies below, SCRUB and STOP take
-\ the facility around theirs - so no other submitter moves the tail across the
-\ call.
+\ Asks for every entry still in the ring: the kernel takes entries from the
+\ head, so one an earlier enter left behind is this call's to submit, and asking
+\ for its own count alone could report another's entry as its own. A drained ring
+\ says this submission reached the kernel; a short take is E-AIO-ENTER, with the
+\ errno line only when the call itself was refused. Every caller holds AIO-LOCK,
+\ so no other submitter moves the tail across the call.
 : ENTER-SUBMIT ( -- n )
    SQ-PENDING 0 0 ENTER-CALL {: rc:n :}
    SQ-PENDING 0= if 0 exit then
@@ -766,8 +726,7 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
    ms MS-PER-S mod NS-PER-MS * spec SPEC-NSEC + LE:U64! ;
 
 \ ---- the operations, as SQEs --------------------------------------------
-\ Each writes one cleared SQE at the given slot and publishes it. None of them
-\ can throw: the slot and the record index are already checked.
+\ None of these can throw: the slot and the record index are already checked.
 : SQE-COMMON ( n n n -- ) {: slot:n op:n id:n :}
    slot SQE-CLEAR
    op slot SQE-AT c!
@@ -902,10 +861,8 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
    RO-MASK P-SQ@ 4 SQ-AT LE:U32@ SQ-MASK !
    RO-MASK P-CQ@ 4 CQ-AT LE:U32@ CQ-MASK ! ;
 
-\ The three mappings the kernel publishes for a ring: the submission ring, the
-\ completion ring and the submission entries. Their lengths come from the entry
-\ counts and offsets io_uring_params reported, which is what bounds every
-\ access above.
+\ The three mappings' lengths come from the entry counts and offsets
+\ io_uring_params reported, which bound every access above.
 : RING-LENGTHS ( -- )
    P-SQ-N SQ-ENTRIES-N !
    P-CQ-N CQ-ENTRIES-N !
@@ -1001,22 +958,15 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
    SQ-SLOT dup idx ms OP-TIMEOUT SQE-TIMEOUT SQ-PUBLISH
    idx SUBMIT-OR-FORGET idx ;
 
-\ A transfer is one SQE on one record, and the record takes the caller's
-\ allocation with it: the pair and REC.HOLD are written before the entry is
-\ published. A refused claim happens before any entry is written, so there the
-\ allocation is still the caller's. An enter that left the ring
-\ un-drained is not that case: the entry is in the ring, the kernel may or may
-\ not have taken it, and a published entry it did not take is consumed by the
-\ next io_uring_enter from anyone. So E-AIO-ENTER keeps the allocation - the
-\ record is forgotten, and its late completion releases the bytes through
-\ REC-DISCARD, exactly the FORGET rule. No test provokes E-AIO-ENTER: without
-\ SQPOLL the kernel refuses a non-empty submission only on a completion
-\ overflow it cannot flush (-EBUSY) or on a dead ring, and URING-CLAIM keeps
-\ the records in flight within the CQ, each owing at most one entry of its own,
-\ so neither a refused nor a partial enter can be reached through the public
-\ surface. src/lib/aio-test.f
-\ plants an entry nobody entered for and pins that the next submission takes it,
-\ which is the rule's effect; this comment holds the refusal branch itself.
+\ The record takes the caller's allocation: the pair and REC.HOLD are written
+\ before the entry is published, and a refused claim writes no entry, so there
+\ the allocation is still the caller's. E-AIO-ENTER keeps it: the entry is in
+\ the ring and the next io_uring_enter from anyone may take it, so the record is
+\ forgotten and its late completion releases the bytes through REC-DISCARD. No
+\ test provokes E-AIO-ENTER: without SQPOLL the kernel refuses a non-empty
+\ submission only on a CQ overflow it cannot flush (-EBUSY) or a dead ring, and
+\ URING-CLAIM keeps the records in flight within the CQ. src/lib/aio-test.f pins
+\ that the next submission takes an entry nobody entered for.
 : XFER-STAGE ( n ptr u8 NUM:alloc-byte-len n n n -- n n )
    {: f:n buf cap:NUM:alloc-byte-len count:n off:n kind:n :}
    CLAIM-ONE {: rc:n idx:n :}
@@ -1176,10 +1126,6 @@ INSTALL-HOST
 : RUNNING-CHECK ( -- )
    RING-LIVE @ 0= if E-AIO-STATE throw then ;
 
-\ What a submission does around its staging word. A stage answers a code instead
-\ of throwing because it runs with the facility held, so the throw belongs here,
-\ after the release; the index it answers beside that code is what mints the
-\ handle the caller gets back.
 : SUBMIT-ENTER ( -- )
    RUNNING-CHECK
    ENSURE-SCRUB
@@ -1190,8 +1136,6 @@ INSTALL-HOST
    rc 0 <> if rc throw then
    idx IDX>HANDLE ;
 
-\ One cancel body for both handles: the public words differ only in the type
-\ they take apart, so neither of them has to name a record index.
 : CANCEL-HANDLE ( n -- ) {: h:n :}
    RUNNING-CHECK
    h OWNED-CHECK {: idx:n :}
@@ -1208,8 +1152,6 @@ INSTALL-HOST
    off OFF-CURRENT < if E-AIO-BOUNDS throw then
    count cap ALLOC-LEN>N > if E-AIO-BOUNDS throw then ;
 
-\ The one submission path a READ and a WRITE share; the kind is what tells them
-\ apart, in the record and in the SQE.
 : XFER-SUBMIT ( n ptr u8 NUM:alloc-byte-len n n n -- xfer )
    {: f:n buf cap:NUM:alloc-byte-len count:n off:n kind:n :}
    count cap off XFER-BOUNDS
@@ -1251,7 +1193,6 @@ INSTALL-HOST
    row e G.ROW !
    cap e G.CAP ! ;
 
-\ The group is empty again, so it is no task's.
 : G-DISOWN-EMPTY ( ptr n -- ) {: e:ptr :}
    e G.COUNT @ 0= if 0 e G.OWNER atomic! then ;
 

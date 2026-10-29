@@ -1,7 +1,6 @@
 \ base64-test.f - RFC 4648 base64: the section 10 vectors, the whole alphabet,
 \ every refusal, and the RFC 6455 handshake it exists to answer.
 \ Run: bin/hb --load src/lib/base64-test.f
-\
 \ The alphabet case decodes the alphabet itself; its 48 bytes are what the
 \ system's `base64 -d` answers for it, so every character's value is pinned by
 \ an oracle this file does not share.

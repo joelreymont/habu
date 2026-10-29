@@ -1,15 +1,8 @@
-\ ffi-callback-test.f - C calling back into checked Habu, through libc itself.
-\
-\ qsort and pthread_create are the C callers. Each case's facts go into a
-\ transcript, one line each, beside the exit status and both streams of every
-\ child scenario (test/ffi-callback-child.f, test/ffi-callback-direct-child.f)
-\ and of the stripped image built from test/stripped-callback-subject.f. The
-\ transcript is written to build/ffi-callback-transcript.txt, read back and
-\ compared whole with the one this file expects.
-\
-\ Every word is defined before the first task starts, because Habu forbids
-\ dictionary mutation while a task is live; the one definition made later is a
-\ case of its own.
+\ ffi-callback-test.f - C calling back into checked Habu: qsort and
+\ pthread_create are the C callers. Each case's facts, with every child's and
+\ the stripped image's exit status and streams, form a transcript written to
+\ build/ffi-callback-transcript.txt, read back and compared whole. Every word but
+\ one, a case of its own, is defined before the first task starts.
 \ Run: bin/hb --load src/lib/ffi-callback-test.f
 require src/lib/test.f
 require src/lib/string.f
@@ -58,7 +51,8 @@ variable MAIN-SELF                    \ its pthread_self
 variable OLD-CONTEXT                  \ CTX-TASK's context, kept past its UNEXPOSE
 variable HAMMERS
 
-\ The fixture's ten callbacks and these six cover the old sixteen-entry edge.
+\ With the fixture's ten callbacks these six make sixteen entries, a table-size
+\ edge.
 CALLBACK: PAD-A ( -- ) ;CALLBACK
 CALLBACK: PAD-B ( -- ) ;CALLBACK
 CALLBACK: PAD-C ( -- ) ;CALLBACK
@@ -66,7 +60,6 @@ CALLBACK: PAD-D ( -- ) ;CALLBACK
 CALLBACK: PAD-E ( -- ) ;CALLBACK
 CALLBACK: PAD-F ( -- ) ;CALLBACK
 
-\ ---- the transcript -----------------------------------------------------------
 : SCRIPT$ ( -- ptr u8 n )
    SCRIPT-BUF SCRIPT-U @ ;
 
@@ -108,7 +101,6 @@ CALLBACK: PAD-F ( -- ) ;CALLBACK
    LF WANT-BUF WANT-U @ + u + c!
    u 1 + WANT-U +! ;
 
-\ ---- the calling task ---------------------------------------------------------
 : SORT-FACTS ( n -- ) {: mask:n :}
    mask 1 and 0 <> s" qsort sorts through a callback; a stack cell, a local and a loop index survive" FACT
    mask 2 and 0 <> s" a comparator nests qsort through its own slot" FACT
@@ -120,7 +112,6 @@ CALLBACK: PAD-F ( -- ) ;CALLBACK
    s" == the main task" SAY
    BIND-SELF SORTS SORT-FACTS ;
 
-\ ---- the owner a thread claims with --------------------------------------------
 \ WHO is a comparator that keeps CB-OWNER of the region it runs on. qsort of a
 \ two-cell row calls it on this thread, and every call claims the owner afresh,
 \ so one value across a thousand sorts with a yield between them is the thread
@@ -152,7 +143,6 @@ CALLBACK: PAD-F ( -- ) ;CALLBACK
       s" each at the same offset from its own pthread_self" FACT
    THREAD-SELF @ THREAD @ = s" and pthread_self there is the pthread_t pthread_create stored" FACT ;
 
-\ ---- workers --------------------------------------------------------------------
 : CASE-WORKERS ( -- )
    UNBIND-SELF
    s" == a worker on its own context, unbinding before it ends" SAY
@@ -164,7 +154,7 @@ CALLBACK: PAD-F ( -- ) ;CALLBACK
    [: BIND-SELF ;] catch 0= s" its rows went with it: the same slots bind to the main context" FACT
    UNBIND-SELF ;
 
-\ ---- a foreign thread on an exposed task ---------------------------------------
+\ A foreign thread on an exposed task.
 : IDLE-BODY ( -- ) ;
 
 : ACTIVATE-CTX ( -- )
@@ -217,7 +207,6 @@ CALLBACK: PAD-F ( -- ) ;CALLBACK
       s" ENTRY with a CONSTRUCTED task's region number is E-TASK-STATE" FACT
    CTX-TASK TASK:KILL ;
 
-\ ---- calls that meet a row a mover holds ------------------------------------------
 \ Slot k's cell at offset off of its row, reached as the thunk reaches it:
 \ through the table the main region's CB-ROWS publishes.
 : SLOT-CELL ( n n -- ptr n ) {: k:n off:n :}
@@ -240,10 +229,10 @@ CALLBACK: PAD-F ( -- ) ;CALLBACK
    loop ;
 
 \ A call that meets a row held BUSY waits in the thunk until the row is handed
-\ back: the start routine's own entry, and then, with the thread parked inside
+\ back: the start routine's own entry, then, with the thread parked inside
 \ START, its sort's nested calls through CMP. An UNEXPOSE refused on START's
-\ row holds CMP's, the lower slot, in just this way; on the thunk that ended
-\ such a call 106, that refusal killed the thread.
+\ row holds CMP's, the lower slot, in just this way; a thunk that ended such a
+\ call would kill the thread.
 : CASE-HELD ( -- )
    s" == calls that meet a row a mover holds" SAY
    THREAD-BIND
@@ -268,7 +257,7 @@ CALLBACK: PAD-F ( -- ) ;CALLBACK
    CTX-TASK TASK:UNEXPOSE
    CTX-TASK TASK:KILL ;
 
-\ ---- a context that outlives the task that exposed it ---------------------------
+\ A context that outlives the task that exposed it.
 : LIVE ( -- n )
    TASK:MAIN-BASE TASKS-LIVE-CELL + atomic@ ;
 
@@ -288,7 +277,6 @@ CALLBACK: PAD-F ( -- ) ;CALLBACK
    s" a definition succeeds" SAY
    CTX-TASK TASK:KILL ;
 
-\ ---- a capture ------------------------------------------------------------------
 : CASE-PREPARE ( -- )
    s" == IMAGE-LIFECYCLE:PREPARE" SAY
    [: 0 ARG@ drop ;] catch E-FFI-CALLBACK-STATE =
@@ -303,7 +291,6 @@ CALLBACK: PAD-F ( -- ) ;CALLBACK
    SORT-PLAIN s" ENTRY then qsort after the capture" FACT
    CMP UNBIND ;
 
-\ ---- declarations the declarer refuses -------------------------------------------
 \ Each rides INCLUDE-EVALUATE, so the refusal is a throw this file catches.
 : DECL-BAD-TOKEN ( -- )
    s" CALLBACK: CBT-X1 ( q -- ) ;CALLBACK" INCLUDE-EVALUATE ;
@@ -360,7 +347,6 @@ CALLBACK: PAD-F ( -- ) ;CALLBACK
    [: DECL-NAME-65 ;] catch E-FFI-SYNTAX = s" a 65-byte name: E-FFI-SYNTAX" FACT
    [: DECL-NAME-64 ;] catch 0= s" a 64-byte name is accepted" FACT ;
 
-\ ---- children ---------------------------------------------------------------------
 \ The name, the exit status and both streams of one spawned process.
 : TRANSCRIBE-RC ( ptr u8 n len len n -- )
    {: name:ptr nameu:n outu:len erru:len rc:n :}
@@ -401,7 +387,6 @@ CALLBACK: PAD-F ( -- ) ;CALLBACK
    s" fresh" CHILD-CASE
    s" captures" CHILD-CASE ;
 
-\ ---- C calling an entry directly ---------------------------------------------------
 \ test/ffi-callback-direct-child.f calls MARSHAL's and UNSET's entries through
 \ the FFI owner words test/mcode-window-prepare.f opens before the seal, so it
 \ runs as a window child of test/native-window-owner-child.f, on the unsealed
@@ -457,7 +442,6 @@ CALLBACK: PAD-F ( -- ) ;CALLBACK
 : CASE-DIRECT ( -- )
    [: DIRECT-RUN ;] [: FS:CLEANUP-RUN ;] finally ;
 
-\ ---- a stripped image ---------------------------------------------------------------
 : SUBJECT$ ( -- ptr u8 n ) SUBJECT-BUF SUBJECT-U @ ;
 : IMAGE$ ( -- ptr u8 n ) IMAGE-BUF IMAGE-U @ ;
 
@@ -503,7 +487,6 @@ CALLBACK: PAD-F ( -- ) ;CALLBACK
    s" == a stripped image" SAY
    [: STRIPPED-BODY ;] [: GT-CLEANUP ;] finally ;
 
-\ ---- the transcript this file expects -------------------------------------------------
 : WANT-SORTS ( -- )
    s" ok   qsort sorts through a callback; a stack cell, a local and a loop index survive" W
    s" ok   a comparator nests qsort through its own slot" W

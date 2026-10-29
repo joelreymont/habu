@@ -1,5 +1,4 @@
 \ c2.f - scoped UTF-8 XML pull reader (package XML-C2) over a borrowed C2 view.
-\
 \ STORAGE CLASS. CALLER-OWNED: the view and the cursor storage are the caller's;
 \ the frame, attribute and namespace tables the reader grows are released when
 \ WITH-READER's callback returns or throws. TASK-LOCAL: the chain of the task's
@@ -116,7 +115,6 @@ TRUSTED: LINK ( mut-view<b,i,a,init<i,reader-state<p,q>>> -- mut-view<b,i,a,init
    record READER-HEAD ! ;
 ndict@ 1- constant LINK-ID
 
-\ Unlink the innermost record, then release what its reader owns.
 TRUSTED: RELEASE ( -- )
    READER-HEAD @ {: record:ptr :}
    record LINK-OFF + @ READER-HEAD !
@@ -351,8 +349,8 @@ public
 private
 ATTR-URI-ID HIDE
 
-\ The representation leaves and reader crossings cannot be retired until all
-\ adapters above are compiled. They now have no public or interpret path.
+\ The representation leaves and reader crossings are retired only after every
+\ adapter above is compiled; past here they have no public or interpret path.
 CURSOR-ID HIDE
 DEST-ID HIDE
 REENTER-ID HIDE

@@ -1,40 +1,8 @@
-\ utf16.f - UTF-16 code units of UTF-8 text, and strict UTF-16LE conversion.
-\
-\ UNITS answers how many UTF-16 code units a UTF-8 byte span encodes to, the
-\ measure LSP positions take by default. It reads the span with UTF8:NEXT
-\ (src/lib/utf8-scalar.f): a scalar below U+10000 is one unit, and one at or above
-\ it is two, a surrogate pair.
-\
-\ OFFSET goes back: the byte where a unit index starts, reading the span the
-\ same way. Index 0 is byte 0, an index at or past the span's units is its
-\ length, and an index inside a surrogate pair names no byte, so it rounds to
-\ the byte after that scalar. It is the exact inverse of UNITS only at scalar
-\ boundaries.
-\
-\ Invalid UTF-8 counts as UTF8:NEXT reads it: every byte it answers as
-\ `raw-byte` is one unit, the width of the U+FFFD that stands for that byte.
-\ That is one replacement per byte. Unicode's maximal-subpart practice (chapter
-\ 3, "U+FFFD Substitution of Maximal Subparts") agrees on every ill-formed byte
-\ except a truncated sequence that starts well - E2 82 then an `A`, or F0 9F 98
-\ at the end of the span - which it counts as one unit and this counts as one
-\ per byte. A span that ends inside a scalar is such a truncation. A negative
-\ length, or a negative unit index, is E-STR-BOUNDS, as UTF8:NEXT refuses a
-\ negative length.
-\
-\ APPEND-LE>UTF8 and APPEND-UTF8>LE convert a span between UTF-16LE and UTF-8,
-\ appending to an initialised BUF without clearing it. LE>UTF8 reads two-byte
-\ little-endian units and writes a high-then-low surrogate pair as its one
-\ scalar; an odd byte length or an unpaired surrogate, high (at the span's end
-\ included) or low, is E-UTF16. UTF8>LE reads scalars with UTF8:NEXT and writes
-\ one at or above U+10000 as a surrogate pair; every byte NEXT answers as
-\ `raw-byte` - malformed, overlong, an encoded surrogate, past U+10FFFF or
-\ truncated - is E-UTF8. Both are strict: no replacement character, BOM,
-\ terminator or normalisation, and NUL is an ordinary scalar. A negative length
-\ is E-STR-BOUNDS, and input overlapping the destination's storage, which an
-\ append may move, is BUF's E-BUF-BOUNDS; both before a byte moves. A throw
-\ while converting may leave part of the append in the buffer; the caller
-\ discards it.
-\
+\ utf16.f - UTF-16 code units of UTF-8 text (UNITS and OFFSET, the measure LSP
+\ positions take by default) and strict UTF-16LE conversion. UTF-8 is read with
+\ UTF8:NEXT (src/lib/utf8-scalar.f): each byte it answers as `raw-byte` is one
+\ unit, the width of its U+FFFD. A negative length or unit index is
+\ E-STR-BOUNDS, as UTF8:NEXT refuses a negative length.
 \ STORAGE CLASS. CALLER-OWNED: the module keeps no state.
 
 require src/lib/errors.f
@@ -74,7 +42,6 @@ $3F constant CONT-MASK
 : SCALAR-UNITS ( n -- n )
    PAIR-FIRST < if 1 else 2 then ;
 
-\ The count and cursor after the scalar or raw byte at the cursor.
 : STEP ( n n ptr u8 n -- n n )
    {: units:n cursor:n a:ptr u:n :}
    a u cursor UTF8:NEXT MATCH UTF8:scalar-step
@@ -85,15 +52,20 @@ $3F constant CONT-MASK
 
 public
 
+\ A scalar below U+10000 is one unit, one at or above it a surrogate pair. One
+\ unit per raw byte departs from Unicode's maximal-subpart practice (chapter 3,
+\ "U+FFFD Substitution of Maximal Subparts") only for a truncated sequence that
+\ starts well (E2 82 then `A`, or F0 9F 98 at the span's end), which it counts
+\ as one unit.
 : UNITS ( ptr u8 n -- n )
    {: a:ptr u:n :}
    u 0 < if E-STR-BOUNDS throw then
    0 0 begin dup u < while a u STEP repeat
    drop ;
 
-\ The byte where unit UNIT starts: steps whole scalars until UNIT units are
-\ behind, so a unit inside a pair ends after the pair, and the span's end
-\ stops an index past it.
+\ The byte where a unit index starts: index 0 is byte 0, an index at or past the
+\ span's units is its length, and an index inside a surrogate pair rounds to the
+\ byte after that scalar. It inverts UNITS only at scalar boundaries.
 : OFFSET ( ptr u8 n n -- n )
    {: a:ptr u:n unit:n :}
    u 0 < if E-STR-BOUNDS throw then
@@ -135,8 +107,6 @@ private
    scalar FOUR-LEAD 3 buf APPEND-ENCODED ;
 
 
-\ The pair at AT, whose high surrogate is HIGH, appended as one scalar; the
-\ cursor after it.
 : APPEND-PAIR ( n n ptr u8 n ptr a -- n )
    {: high:n at:n a:ptr u:n buf:ptr :}
    at UNIT-BYTES + u >= if E-UTF16 throw then
@@ -146,7 +116,6 @@ private
    at UNIT-BYTES 2 * + ;
 
 
-\ The unit or pair at AT appended as UTF-8; the cursor after it.
 : DECODE-STEP ( n ptr u8 n ptr a -- n )
    {: at:n a:ptr u:n buf:ptr :}
    a at + LE:U16@ {: unit:n :}
@@ -169,7 +138,6 @@ private
    bits PAIR-MASK and LOW-FIRST + buf APPEND-UNIT ;
 
 
-\ The scalar at AT appended as UTF-16LE; the cursor after it.
 : ENCODE-STEP ( n ptr u8 n ptr a -- n )
    {: at:n a:ptr u:n buf:ptr :}
    a u at UTF8:NEXT MATCH UTF8:scalar-step
@@ -179,6 +147,15 @@ private
 
 public
 
+\ Both conversions append to an initialised BUF without clearing it, strictly:
+\ no replacement character, BOM, terminator or normalisation; NUL is ordinary.
+\ A negative length is E-STR-BOUNDS and input overlapping the destination's
+\ storage, which an append may move, BUF's E-BUF-BOUNDS, both before a byte
+\ moves. A throw while converting may leave part of the append; the caller
+\ discards it.
+\ Two-byte little-endian units; a high-then-low pair is one scalar. An odd byte
+\ length or an unpaired surrogate, high (at the span's end included) or low, is
+\ E-UTF16.
 : APPEND-LE>UTF8 ( ptr u8 n ptr a -- )
    {: a:ptr u:n buf:ptr :}
    u 0 < if E-STR-BOUNDS throw then
@@ -187,6 +164,9 @@ public
    0 begin dup u < while a u buf DECODE-STEP repeat
    drop ;
 
+\ A scalar at or above U+10000 becomes a surrogate pair; every raw byte -
+\ malformed, overlong, an encoded surrogate, past U+10FFFF or truncated - is
+\ E-UTF8.
 : APPEND-UTF8>LE ( ptr u8 n ptr a -- )
    {: a:ptr u:n buf:ptr :}
    u 0 < if E-STR-BOUNDS throw then

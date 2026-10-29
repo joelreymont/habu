@@ -1,18 +1,8 @@
 \ genio-test.f - a TCP device hands back lines of any length.
-\
 \ One process holds both ends of a loopback connection. The client writes every
-\ line and shuts its sending side down before the server reads, so no read waits
-\ on a peer and none needs the AIO loop. The server end becomes a genio TCP
-\ device and is the current input while a row reads, then the terminal is put
-\ back before anything is asserted, so the REPL that follows the load reads its
-\ own input again.
-\
-\ READ-LINE grows its line instead of refusing one: 1000 bytes spans several of
-\ its reads, 512 ends exactly on one, and a worker task reads the 700-byte line
-\ into its own line, which its exit chain releases. GENIO:ACCEPT on a stream
-\ fills the caller's buffer and leaves the rest of the line for the next ACCEPT,
-\ so successive ACCEPTs bring a long line across whole. The stream's end is a
-\ zero-length line.
+\ line and shuts its sending side before the server reads, so no read waits on a
+\ peer or needs the AIO loop. The terminal is put back before anything is
+\ asserted, so the REPL that follows the load reads its own input again.
 \ Run: bin/hb --load src/lib/genio-test.f </dev/null
 require src/lib/test.f
 require src/lib/string.f
@@ -117,8 +107,6 @@ TASK:MIN-STACK TASK:TASK READER
    DEV @ GENIO:>DEVICE ;
 
 
-\ Each row reads with the device as input and keeps what it saw, its throw
-\ included, for the caller to assert once WITH-IO has put the terminal back.
 : LINE-BODY ( -- )
    GENIO:READ-LINE {: a:ptr u:n :}
    u GOT-LEN !  a u WANT-CH @ SAME? GOT-SAME ! ;
@@ -150,8 +138,7 @@ TASK:MIN-STACK TASK:TASK READER
    GOT-SAME @ TTRUE ;
 
 \ ---- the worker ---------------------------------------------------------------
-\ The worker makes the device its own input and reads into its own line; the
-\ line's release is on the worker's exit chain, which TASK:JOIN has run.
+\ The worker's line is released on its exit chain, which TASK:JOIN has run.
 : READER-BODY ( -- )
    DEV@ GENIO:INPUT!
    GENIO:READ-LINE {: a:ptr u:n :}

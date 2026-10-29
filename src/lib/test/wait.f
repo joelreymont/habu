@@ -12,8 +12,7 @@ package TEST-WAIT
 
 public
 
-\ Prints "<name>: a deadline expired" and throws E-PROC-TIMEOUT. No assertion
-\ counter and no test label is read or changed.
+\ No assertion counter and no test label is read or changed.
 : EXPIRED ( ptr u8 n -- )
    type s" : a deadline expired" type cr
    E-PROC-TIMEOUT throw ;

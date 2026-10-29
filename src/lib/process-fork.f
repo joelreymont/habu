@@ -1,26 +1,7 @@
-\ process-fork.f - checked fork wrappers.
-\
-\ The module lives in `package PROC-FORK` (the same PROC-* family as PROC-CWD).
-\ External callers use the qualified public API:
-\   PROC-FORK:RAW      raw fork wrapper (pid, negative on failure)
-\   PROC-FORK:CHECKED  fork that throws E-PROC-SPAWN on primitive failure
-\   PROC-FORK:CHILD-MAIN run a quotation as a forked child's process root
-\   PROC-FORK:FORK-CALL / FORK-CALL-DEFAULT  the fork RAW makes, for a test to refuse
-\   PROC-FORK:SET-PGID place a pid into a process group
-\   PROC-FORK:KILL-GROUP signal a whole process group
-\   PROC-FORK:DEATH-PIPE / CLOSE-EXCEPT2 / MAXFD  reaper fd plumbing
-\   PROC-FORK:FORK-REAPER  parent-death reaper for a forked worker
-\   PROC-FORK:SPAWN-REAPER co-located reaper for a spawned child
-\   PROC-FORK:REAP-WATCH-FD per-process worker-alive death-watch fd cell
-\ The bare fork wrapper is published as PROC-FORK:CHECKED (not FORK) and the group
-\ setter as PROC-FORK:SET-PGID (not SETPGID) so their tails do not
-\ case-insensitively shadow the core `fork` / `setpgid` primitives their own
-\ bodies call. The pollfd buffer, the reaper watch loops (PROC-REAP-WATCH1/2), the
-\ reaper's own group-kill, and the PROC-REAP-ARM installer are package-private.
-\
-\ Load after native refresh: older engines do not have the fork/setpgid
-\ primitives.
-\
+\ process-fork.f - checked fork wrappers (package PROC-FORK) and the reapers
+\ that kill a worker's process group when its pool parent dies.
+\ CHECKED and SET-PGID are not named FORK and SETPGID: those tails would
+\ case-insensitively shadow the core `fork` / `setpgid` their bodies call.
 \ STORAGE CLASS. PROCESS-WIDE: the reaper's pollfd pair and REAP-WATCH-FD
 \ belong to the process, not to a task.
 
@@ -55,9 +36,9 @@ private
 \ records - those paths still belong to the live parent - so running an
 \ inherited entry deletes somebody else's files. Emptied, the table leaves the
 \ child cleaning up exactly what the child registers, which is the only thing
-\ it owns. (Measured before this reset: a gate pool member that ran its own
-\ cleanups also ran the driver's `GT-ROOT FS:CLEANUP-TREE+` and removed the whole
-\ capture root out from under its live siblings.)
+\ it owns. Without the reset, a gate pool member that ran its own cleanups also
+\ ran the driver's `GT-ROOT FS:CLEANUP-TREE+` and removed the whole capture root
+\ out from under its live siblings.
 : REGISTER-RESETS ( -- )
    [: TASK:CHILD-RESET ;] FORK-CHILD:REGISTER
    [: FS:CLEANUP-RESET ;] FORK-CHILD:REGISTER
@@ -91,7 +72,7 @@ private
 \ and neither of those takes another. Only ACROSS-FORK runs a caller's word
 \ under one of them - IMAGE-LIFECYCLE:PREPARE runs its hooks unlocked - so the
 \ thread forking here holds none of them already. A fork made on a task holds
-\ the task-local address-cell lock, not the registrar's, until dot bb84a527
+\ the task-local address-cell lock, not the registrar's
 \ (ADDRESS-CELLS:ACROSS-FORK).
 \ Outside all three, FD-LOCK:WITH (src/lib/fd-lock.f): the child copies
 \ no descriptor another task has created but not yet marked close-on-exec. The
@@ -149,7 +130,6 @@ public
    pid PID>N 1 <= if E-PROC-OUTPUT throw then
    pid PID>N negate >PID sig PROC-KILL-RAW ;
 
-\ ---- parent-death reaper ----------------------------------------------------
 \ A pool worker in its own process group forks a reaper that watches the pool
 \ parent's death-pipe write end. When the parent is SIGKILLed - the exact case
 \ where the pool's own group-kill cleanup can never run - the write end closes,
@@ -184,7 +164,6 @@ public
 
 private
 
-\ Reap the reaper's own process group (kill(0, SIGKILL)).
 : PROC-REAP-KILL-GROUP ( -- )
    0 >PID SIGKILL PROC-KILL-RAW drop ;
 
@@ -225,8 +204,8 @@ public
 \ Arm a parent-death reaper that is INVISIBLE to the worker's own wait(-1):
 \ a throwaway intermediate forks the real reaper (a grandchild) and exits, so
 \ the reaper reparents to init rather than staying the worker's child. A worker
-\ body may itself call wait(-1) expecting no children (e.g. a PROC-WAIT error
-\ test), and a reaper child would make that wait block forever. The reaper
+\ body may itself call wait(-1) expecting no children (e.g. a PROC-WAIT-STATUS
+\ error test), and a reaper child would make that wait block forever. The reaper
 \ still inherits the worker's process group, so a timeout group-kill reaps it
 \ and a parent death lets it kill the group. It also watches the worker-alive
 \ pipe (wa) so it exits on its own when the worker finishes, leaving no orphan
@@ -251,7 +230,6 @@ public
    then
    ipid PROC-WAIT-STATUS 0<> if E-PROC-SPAWN throw then ;
 
-\ ---- co-located reaper for a SPAWNED child ---------------------------------
 \ Reaper body for a spawned (exec'd) child: block until the single parent-death
 \ read end (pd) EOFs, then reap the reaper's own process group. The reaper has
 \ already joined the child's group, so this kills the child subtree. Loops only
@@ -300,7 +278,6 @@ public
    then
    rpid ;
 
-\ ---- capture-spawn reaper context -------------------------------------------
 \ A worker that owns a death-watch read end (its worker-alive pipe: the write
 \ end is held only by the worker, so EOF == this worker died, whatever killed
 \ it) publishes the fd here; every capture spawn (PROC-RUN-CAPTURE family, via

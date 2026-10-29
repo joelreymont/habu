@@ -4,7 +4,7 @@ require src/lib/errors.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/hashmap.f
-require src/lib/fmt.f                   \ FMT:.INT - report numbers inline
+require src/lib/fmt.f
 require src/lib/task.f
 
 8 constant HMT-CAP
@@ -142,29 +142,22 @@ create HMC-BU HMC-CAP cells allot
    \ constants, so a changed constant or a non-wrapping multiply shows up here
    5  HM:HASH64 $D66AD737D54C5575 T=
    17 HM:HASH64 $EB269B691FF3FB36 T=
-   \ fresh table: every slot empty
    HMT-U HMT-CAP HM:CLEAR
    5 HMT-INS  17 HMT-INS  4 HMT-INS
    \ 5 -> slot 5 ; 17 -> slot 6 ; 4 shares 5's home slot and probes past both
    5  HMT-SLOT 5 T=
    17 HMT-SLOT 6 T=
    4  HMT-SLOT 7 T=
-   \ re-probing an existing key returns its slot (idempotent), not a new one
    5 HMT-SLOT 5 T=
-   \ an untouched slot stays empty
    HMT-U 3 cells + @ 0 T=
-   \ a never-inserted key resolves to an empty slot (used = 0 there)
    HMT-U 99 HMT-SLOT cells + @ 0 T=
-   \ HM:CLEAR resets: the once-used slot 5 is empty again
    HMT-U HMT-CAP HM:CLEAR
    HMT-U 5 cells + @ 0 T=
-   \ full table + absent key: bounded scan throws E-HM-FULL instead of looping forever
    [: HMF-FILL  HMF-K HMF-U HMF-CAP 99 HM:PROBE drop ;] E-HM-FULL TTHROWSQ
    \ cap=0 makes the mask an identity that returns an out-of-bounds slot: rejected
    [: HMT-K HMT-U 0 12345 HM:PROBE drop ;] E-HM-CAP TTHROWSQ
    \ cap=3 is not a power of two, so the mask probes only a subset: rejected
    [: HMT-K HMT-U 3 5 HM:PROBE drop ;] E-HM-CAP TTHROWSQ
-   \ CLEAR shares the invariant: a non-power-of-two cap is rejected there too
    [: HMT-U 3 HM:CLEAR ;] E-HM-CAP TTHROWSQ
    \ key entropy confined to the low 12 bits: the dense frame-index shape
    s" low 12-bit keys stay under the probe bound" T-LABEL

@@ -76,8 +76,6 @@ variable Q-POOL-RC
 : Q-POP-EXPECT ( n n -- ) {: base:n count:n :}
    count 0 ?do Q-RING QUEUE:POP base i + T= loop ;
 
-\ A full ring refuses a TRY-PUSH and an empty one refuses a TRY-POP, and the
-\ ring wraps: the third batch starts where the first left off.
 : QUEUE-TEST-RING ( -- )
    Q-RING QUEUE:INIT
    Q-RING QUEUE:COUNT 0 T=
@@ -98,8 +96,6 @@ variable Q-POOL-RC
    Q-RING QUEUE:TRY-POP TTRUE $30 T=
    Q-RING QUEUE:DESTROY ;
 
-\ Every word needs a live queue, a queue is initialized once, and destroying an
-\ inactive queue is the documented no-op.
 : QUEUE-TEST-STATE ( -- )
    [: Q-COLD QUEUE:COUNT drop ;] E-QUEUE-STATE TTHROWSQ
    [: 1 Q-COLD QUEUE:PUSH ;] E-QUEUE-STATE TTHROWSQ
@@ -336,8 +332,6 @@ variable Q-POOL-RC
    Q-CONS0 TASK:THROW@ 0 T=
    Q-CONS1 TASK:THROW@ 0 T= ;
 
-\ The multiset: every value produced was delivered exactly once, so no cell of
-\ the seen table holds anything but one.
 : Q-SEEN-WRONG ( -- n )
    0
    Q-TOTAL 0 ?do i Q-SEEN-SLOT @ 1 <> if 1 + then loop ;

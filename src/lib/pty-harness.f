@@ -1,38 +1,9 @@
-\ pty-harness.f - the pseudo-terminal harness the engine's PTY suites drive.
-\
-\ A suite hands an executable path to SPAWN-ON-PTY, types at the master with
-\ SEND / SEND-LINE / SEND-BYTE, and reads the child back through the waits
-\ below. The pair itself comes from src/lib/pty.f, which every pty opener in the tree
-\ shares; src/lib/process-pty-io.f supervises a linear handle over one, and this
-\ module is the third shape - a child engine on the other side of a terminal,
+\ pty-harness.f - the pseudo-terminal harness the engine's PTY suites drive: a
+\ child engine on the other side of a terminal (the pair from src/lib/pty.f),
 \ read into one buffer a suite makes claims about.
-\
-\ STORAGE CLASS. PROCESS-WIDE. The master, the child pid, the read buffer, the
-\ absence window, the wait deadline and the watch table are one set of cells, so
-\ one child and one wait run at a time; SPAWN-ON-PTY refuses a second pair while
-\ one is open. The reading words take a descriptor, so the same buffer also
-\ serves a suite's pipe children.
-\
-\ READING. READ-STEP is one poll and, when the descriptor has bytes, one read. A
-\ poll that reports no readiness is quiet, an errno included: the descriptors are
-\ blocking, so a read no poll authorised could block past the caller's deadline.
-\ A ready descriptor that reads nothing is the far side's hang-up and is
-\ reported, never counted as quiet.
-\
-\ REAPING. A child on a terminal nobody reads blocks in write() once the
-\ terminal's buffer fills, so a reap that only waits waits for a child that is
-\ waiting for it: measured, 5 m 34 s in do_wait before a hand kill. REAP reads
-\ the master until the child hangs up, waits out what is left of the budget on
-\ the child's lifetime watch, and on expiry kills the child, with every process
-\ it started, and names it with the bytes it left unread. PROC-WAIT-RC is still
-\ the unbounded wait for callers that want one.
-\
-\ CLAIMS. A full buffer keeps its tail, so a scan of BUF$ cannot answer a
-\ question about bytes a compaction dropped. Two shapes answer a negative claim
-\ honestly: WAIT-BARRIER closes a window at a marker the child printed PAST the
-\ point where the rejected text would have appeared, and WINDOW-ABSENT? reads
-\ only that window; WATCH+ records the fact as the bytes arrive, so a compaction
-\ cannot erase it.
+\ STORAGE CLASS. PROCESS-WIDE: one child and one wait at a time; SPAWN-ON-PTY
+\ refuses a second pair while one is open. The reading words take a descriptor,
+\ so the same buffer also serves a suite's pipe children.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -172,7 +143,6 @@ public
 
 private
 
-\ Append one read of fd and report it, keeping room for the next one.
 : READ-CHUNK ( fd -- n ) {: f:fd :}
    ROOM$ {: room:ptr cap:n :}
    f FD>N room cap read {: got:n :}
@@ -183,7 +153,9 @@ public
 
 \ One poll and, when the descriptor has bytes, one read: above zero for bytes
 \ appended, 0 for a quiet poll (an errno included), below zero once the far side
-\ is gone - a ready descriptor that reads nothing is the hang-up.
+\ is gone - a ready descriptor that reads nothing is the hang-up. The
+\ descriptors are blocking, so a read no poll authorised could block past the
+\ caller's deadline.
 : READ-STEP ( fd -- n ) {: f:fd :}
    f POLL-MS >MS POLL-IN COUNT>N 0 <= if 0 exit then
    f READ-CHUNK 0 > if 1 exit then
@@ -262,10 +234,8 @@ public
 
 private
 
-\ Read the master until the child hangs up or the clock runs out. A child that
-\ fills the terminal blocks in write() until someone reads it, so the wait that
-\ follows a reap has to be preceded by the reading, not the other way round.
-\ The deadline is absolute, so this overruns it by at most the poll in flight.
+\ Read the master until the child hangs up or the clock runs out. The deadline
+\ is absolute, so this overruns it by at most the poll in flight.
 : DRAIN-TO-HANGUP ( -- bool )
    begin
       WAIT-LEFT 0= if false exit then
@@ -352,9 +322,12 @@ private
 
 public
 
-\ Reap the pty child within ms. The master is read to the hang-up first, so the
-\ child is never blocked writing at a terminal nobody empties, and what is left
-\ of the budget waits out the exit itself.
+\ Reap the pty child within ms. A child on a terminal nobody reads blocks in
+\ write() once the terminal's buffer fills, so a reap that only waits never ends
+\ (measured: 5 m 34 s in do_wait before a hand kill). The master is read to the
+\ hang-up first, what is left of the budget waits out the exit on the child's
+\ lifetime watch, and on expiry the child and every process it started are
+\ killed and named with the bytes left unread.
 : REAP-WITHIN ( n -- outcome ) {: ms:n :}
    CHILD-PID PID>N 0 <= if E-PTY-IO throw then
    ms WAIT-OPEN

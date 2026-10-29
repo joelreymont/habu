@@ -1,12 +1,8 @@
 \ pg-test.f - package PG against a live PostgreSQL server.
-\
 \ test/db/pg-cluster.f starts a private cluster and runs this file with the
-\ cluster's conninfo as its one script argument; the gate row is that harness:
-\
-\     bin/hb --load test/db/pg-cluster.f
-\
-\ Loaded without the argument, the file dies naming the harness. There is no
-\ skip.
+\ cluster's conninfo as its one script argument; the gate row is that harness
+\ (`bin/hb --load test/db/pg-cluster.f`). Loaded without the argument, the file
+\ dies naming the harness; there is no skip.
 
 require src/lib/test.f
 require src/lib/test/wait.f
@@ -56,7 +52,6 @@ CONNECTIONS TYPED-BUFFER HELD-CONNS PG:connection
    ;MATCH ;
 
 
-\ ---- outcome readers ------------------------------------------------------
 : OUTCOME-TAG ( PG:result -- PG:result n )
    OUTCOME MATCH PG:outcome
       ok OF TAG-OK ENDOF
@@ -89,7 +84,6 @@ CONNECTIONS TYPED-BUFFER HELD-CONNS PG:connection
    EXEC-TAG TAG-OK T= ;
 
 
-\ ---- connect --------------------------------------------------------------
 \ Port 1 is refused before any protocol runs, so the arm carries libpq's own
 \ message and no connection is left behind.
 : REFUSED-LENGTH ( -- n )
@@ -174,14 +168,13 @@ TYPED-VARIABLE HELD-ID n
    fresh PG:CLOSE ;
 
 
-\ The progress helpers. AWAIT-READY, OPEN-POLL and RESULT-POLL run before the
-\ AIO loop starts: a single task advances both connections, and a progress call
-\ that waits cannot let that task release the lock. CHECK-PROGRESS also ends
-\ each turn of EXIT-CASES's wait, while the loop and the exit worker are active.
-\ A wait that passes its PROGRESS-NS deadline is no assertion result
-\ (docs/gate.md "How a suite runs, and what that demands of its files"):
-\ CHECK-PROGRESS names it and throws E-PROC-TIMEOUT, which the case engine exits
-\ with as PROC-TIMEOUT-RC (RUN).
+\ AWAIT-READY, OPEN-POLL and RESULT-POLL run before the AIO loop starts: a single
+\ task advances both connections, and a progress call that waits cannot let that
+\ task release the lock. CHECK-PROGRESS also ends each turn of EXIT-CASES's wait,
+\ while the loop and the exit worker are active. A wait that passes its
+\ PROGRESS-NS deadline is no assertion result (docs/gate.md "How a suite runs,
+\ and what that demands of its files"): CHECK-PROGRESS names it and throws
+\ E-PROC-TIMEOUT, which the case engine exits with as PROC-TIMEOUT-RC (RUN).
 : CHECK-PROGRESS ( n -- )
    {: deadline:n :}
    mono-ns deadline > if s" pg-test CHECK-PROGRESS" TEST-WAIT:EXPIRED then
@@ -290,7 +283,6 @@ TYPED-VARIABLE HELD-ID n
    c PG:LIVE? TFALSE ;
 
 
-\ ---- schema ---------------------------------------------------------------
 : DDL-CASES ( PG:connection -- PG:connection ) {: c :}
    c s" set client_min_messages = warning" EXEC-OK
    c s" drop table if exists pqt" EXEC-OK
@@ -298,7 +290,6 @@ TYPED-VARIABLE HELD-ID n
    c ;
 
 
-\ ---- parameters -----------------------------------------------------------
 : INSERT-ROW ( PG:connection n ptr u8 n -- ) {: c id:n la:ptr lu:n :}
    c PARAMS
    c id INT+
@@ -421,8 +412,9 @@ TYPED-VARIABLE HELD-ID n
 
 
 \ A deferred constraint fails the COMMIT, not the insert, with a message longer
-\ than any the copy has held (this runs before LONG-MESSAGE-CASES). The transaction verb's refusal is E-EXEC, not an
-\ OUTCOME, so a `failed` span held from before stays mapped and unchanged.
+\ than any the copy has held (this runs before LONG-MESSAGE-CASES). The
+\ transaction verb's refusal is E-EXEC, not an OUTCOME, so a `failed` span held
+\ from before stays mapped and unchanged.
 : DEFERRED-INSERT ( PG:connection -- PG:connection )
    dup s" insert into held_t values (1)" EXEC-OK ;
 
@@ -452,7 +444,6 @@ TYPED-VARIABLE HELD-ID n
    c c s" do $$ begin raise exception 'short'; end $$" [: HELD-SPAN-BODY ;] WITH-RESULT ;
 
 
-\ ---- prepared statements --------------------------------------------------
 : PREPARED-INSERT ( PG:connection n ptr u8 n -- ) {: c id:n la:ptr lu:n :}
    c PARAMS
    c id INT+
@@ -472,7 +463,6 @@ TYPED-VARIABLE HELD-ID n
    c ;
 
 
-\ ---- statement descriptors ------------------------------------------------
 \ Type OIDs from pg_type.dat; they are fixed for the built-in types.
 2278 constant VOID-OID
 1016 constant INT8-ARRAY-OID
@@ -534,7 +524,6 @@ TYPED-VARIABLE HELD-ID n
    c ;
 
 
-\ ---- column origin --------------------------------------------------------
 : ORIGIN-SQL$ ( -- ptr u8 n )
    s" select id as key, label, length(label) as len from pqt" ;
 
@@ -549,15 +538,11 @@ TYPED-VARIABLE HELD-ID n
    c s" select attnum from pg_attribute where attrelid = 'pqt'::regclass and attname = $1"
    SCALAR ;
 
-
-\ Column c names table tab and attnum num.
 : ORIGIN= ( PG:result n n n -- PG:result ) {: c:n tab:n num:n :}
    c >COL TABLE tab T=
    c >COL TABLE-COL num T= ;
 
 
-\ An aliased and a plain table column name pqt and their attnums; an expression
-\ names no table.
 : ORIGIN-CHECK ( n n n PG:result -- PG:result )
    -rot {: id-num:n label-num:n :}
    swap {: tab:n :}
@@ -577,7 +562,6 @@ TYPED-VARIABLE HELD-ID n
    c ;
 
 
-\ ---- wait deadlines -------------------------------------------------------
 200 constant BOUND-MS
 2000 constant ROOMY-MS
 
@@ -599,7 +583,6 @@ TYPED-VARIABLE HELD-ID n
    dup s" select repeat($$x$$, 200000), pg_sleep(0.15) from generate_series(1,2)"
    [: ;] WITH-RESULT ;
 
-\ The backend still running the abandoned five-second sleep.
 : SLEEPING ( PG:connection n -- n )
    {: w pid:n :}
    w PARAMS
@@ -695,7 +678,6 @@ TYPED-VARIABLE HELD-ID n
    d PG:CLOSE ;
 
 
-\ ---- transactions ---------------------------------------------------------
 : TX-BODY ( PG:connection -- PG:connection )
    dup s" insert into pqt (id, label, note) values (900, 'rolled', null)"
    [: OUTCOME-TAG TAG-OK T= ;] WITH-RESULT
@@ -802,7 +784,6 @@ TYPED-VARIABLE HELD-ID n
    c ;
 
 
-\ ---- failure arms ---------------------------------------------------------
 : UNIQUE-CASES ( PG:connection -- PG:connection ) {: c :}
    c PARAMS
    c s" insert into pqt (id, label, note) values (1, 'duplicate', null)"
@@ -880,7 +861,6 @@ TYPED-VARIABLE HELD-ID n
    c ;
 
 
-\ ---- result scopes --------------------------------------------------------
 \ Each repeated case runs one more scope than the registry has result slots, so
 \ a slot a scope failed to retire ends the run in E-CAPACITY.
 : THROW-BODY ( PG:connection -- PG:connection )
@@ -956,7 +936,6 @@ variable CLEAR-RETURNED
    c ;
 
 
-\ ---- no ceiling on text ---------------------------------------------------
 \ The call arena is sized to the call, so a parameter far larger than any fixed
 \ buffer round-trips unchanged and a statement longer than any fixed buffer
 \ runs. Only the COUNTS are bounded.
@@ -968,7 +947,7 @@ create STMT-BUF STMT-CAP allot
 variable STMT-U
 
 1500 constant BIG-ROWS
-8192 constant OLD-STATEMENT-CAP           \ the ceiling this test proves is gone
+8192 constant OLD-STATEMENT-CAP           \ a statement past 8 KiB still runs
 
 
 : BIG$ ( -- ptr u8 n )
@@ -1039,7 +1018,6 @@ variable STMT-U
    c ;
 
 
-\ ---- the counts that remain bounded ---------------------------------------
 : ADD-PAST-CAP ( PG:connection -- PG:connection )
    dup PARAMS
    33 0 ?do dup 1 INT+ loop ;
@@ -1079,9 +1057,8 @@ variable STMT-U
    c ;
 
 
-\ ---- multi-statement scripts ----------------------------------------------
-\ SCRIPT is the only path that takes more than one statement; EXEC and
-\ EXEC-PREPARED ride the extended protocol, where a second command is 42601.
+\ WITH-SCRIPT is the only path that takes more than one statement; WITH-RESULT
+\ and WITH-PREPARED ride the extended protocol, where a second command is 42601.
 \ MEASURED: PostgreSQL runs a multi-statement simple query as ONE implicit
 \ transaction, so a failing statement rolls the earlier ones back with it - the
 \ script is atomic even outside WITH-TRANSACTION.
@@ -1148,7 +1125,6 @@ variable STMT-U
    c ;
 
 
-\ ---- slot recycling -------------------------------------------------------
 \ More statements than the registry has result slots: every scope must hand its
 \ slot back or the run ends in PG:E-CAPACITY rather than an assertion.
 : RECYCLE-CASES ( PG:connection -- PG:connection ) {: c :}
@@ -1199,7 +1175,6 @@ variable STMT-U
    c PG:LIVE? TFALSE ;
 
 
-\ ---- task ownership -------------------------------------------------------
 \ A handle laundered into shared typed storage still belongs to the task that
 \ made it. The worker presents the main task's connection and is refused
 \ before any libpq call.
@@ -1429,7 +1404,6 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
    c ;
 
 
-\ ---- image capture --------------------------------------------------------
 \ A restored image runs in another process where the libpq pointers are gone,
 \ so PREPARE closes native resources and retires every handle. A new registry
 \ cannot revive a stale handle even when it reuses the same slot number.
@@ -1502,7 +1476,6 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
    fresh PG:CLOSE ;
 
 
-\ ---- notifications ------------------------------------------------------
 \ One connection LISTENs, another NOTIFYs. NOTIFY-MS is the wait a notification
 \ must cut short; PROMPT-MS bounds how long that takes.
 10000 constant NOTIFY-MS
@@ -1618,7 +1591,6 @@ TASK:MIN-STACK TASK:TASK NOTE-WORKER
    NOTE-HALT-CASES ;
 
 
-\ ---- abandon --------------------------------------------------------------
 : ABANDON-KEEP ( PG:connection -- PG:connection )
    dup PG:ABANDON ;
 
@@ -1646,7 +1618,6 @@ TASK:MIN-STACK TASK:TASK NOTE-WORKER
    w PG:CLOSE ;
 
 
-\ ---- the live suite -------------------------------------------------------
 : SERVER-CASES ( -- )
    OPEN
    DDL-CASES

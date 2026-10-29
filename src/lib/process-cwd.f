@@ -1,18 +1,7 @@
-\ process-cwd.f - checked argv/env/cwd process helpers.
-\
-\ STORAGE CLASS. PROCESS-WIDE. The working-directory copy buffer is one buffer
-\ for the image, so one task at a time prepares a cwd child through the
-\ RUN-ARGV-ENV-CWD-* entries, even though the src/lib/process.f row underneath them
-\ is per task.
-\
-\ SPAWN. src/lib/process.f "SPAWN" states how these words spawn.
-\
-\ The module lives in `package PROC-CWD`. External callers use the qualified public
-\ API (PROC-CWD:SPAWN-ARGV-ENV-CWD-RAW, PROC-CWD:CWDZ, PROC-CWD:ARGV-ENV-CWD-RESET,
-\ PROC-CWD:SPAWN-ARGV-ENV-CWD-IO, PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE,
-\ PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE,
-\ PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE-OUTCOME); the working-directory copy buffer and
-\ the intermediate capture-spawn/wait helpers are package-private.
+\ process-cwd.f - checked argv/env/cwd process helpers in `package PROC-CWD`.
+\ STORAGE CLASS. PROCESS-WIDE: the cwd copy buffer is one per image, so one task
+\ at a time prepares a cwd child through RUN-ARGV-ENV-CWD-*.
+\ src/lib/process.f "SPAWN" states how these words spawn.
 require src/lib/errors.f
 require src/lib/string.f
 require src/lib/fs.f
@@ -114,8 +103,6 @@ public
    in inu out outcap err errcap PROC-RUN-STDIN-CAPTURE-LOOP
    PROC-CAPTURE-FINISH-RC ;
 
-\ The same run reporting the outcome sum (exited / signaled / timeout) with the
-\ captured lengths.
 : RUN-ARGV-ENV-CWD-STDIN-CAPTURE-OUTCOME ( ptr u8 len ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- len len outcome )
    {: path:ptr pathu cwd:ptr cwdu in:ptr inu out:ptr outcap err:ptr errcap timeout :}
    path pathu PROC-ARGV-CHECK-PATH

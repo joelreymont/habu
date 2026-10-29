@@ -116,7 +116,6 @@ variable CALLS
    d SSE:CLOSE
    1 CHECK ;
 
-\ Feed src in two SENDs split at cut, then finish.
 : BOM-CUT ( ptr u8 n n -- )
    {: src:ptr u:n cut:n :}
    A-OPEN {: d:SSE:decoder :}

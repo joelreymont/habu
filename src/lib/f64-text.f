@@ -1,21 +1,7 @@
-\ Exact finite binary64 text on glibc and Darwin libc. No task yields while thread-local locale
-\ or rounding state is borrowed. Caller output is copied only after success.
-\ PARSE accepts complete signed decimal/exponent syntax, rejects padding, hex,
-\ nonfinite values and trailing bytes, and preserves subnormals and signed zero.
-\ FORMAT writes a shortest round-trip plain decimal without a terminator;
-\ equally close shortest decimals resolve away from zero, as Rust Display does.
+\ f64-text.f - exact finite binary64 text on glibc and Darwin libc: PARSE and a
+\ shortest round-trip FORMAT. No task yields while thread-local locale or
+\ rounding state is borrowed, and caller output is copied only after success.
 \ The immutable C numeric locale lives until the process image is prepared.
-\ Failures answer F64-TEXT:fault: bytes left after a complete decimal are
-\ `trailing`; nan, inf or infinity and a decimal that overflows are `nonfinite`;
-\ a negative capacity or a text longer than it is `capacity`; a failed library
-\ load or native call is `runtime`; anything else is `malformed`. A MAX-BYTES
-\ buffer (the negative least subnormal's length) always suffices for FORMAT.
-\ PARSE passes the locale to strtod_l and FORMAT switches the thread to it; both
-\ restore the rounding mode, and FORMAT the locale, before answering, failure
-\ included. An IMAGE-LIFECYCLE hook frees the locale and closes the library
-\ when the image is prepared; the restored image reacquires them on its next
-\ call.
-\
 \ STORAGE CLASS. PROCESS-WIDE: the library and the C locale, made by the first
 \ call and only read after it; no conversion yields, so any task may convert.
 
@@ -31,7 +17,11 @@ package F64-TEXT
 using MEM
 
 public
+\ Always enough for FORMAT: the length of the negative least subnormal.
 327 constant MAX-BYTES
+\ Bytes left after a complete decimal are `trailing`; nan, inf, infinity and an
+\ overflowing decimal `nonfinite`; a negative capacity or a text longer than it
+\ `capacity`; a failed library load or native call `runtime`; else `malformed`.
 ENUM fault malformed trailing nonfinite capacity runtime ;ENUM
 
 private
@@ -44,10 +34,9 @@ $7FF0000000000000 constant EXPONENT-MASK
 variable REGISTERED
 variable C-LOCALE
 
-\ Exact native C ABI effects; no application-specific foreign policy. The locale
-\ calls and the text conversions are libc's, which every process holds. The
-\ targets format through different calls: glibc's strfromd, and Darwin's
-\ snprintf_l, whose double is variadic and so rides the stack.
+\ The locale calls and the text conversions are libc's, which every process
+\ holds. glibc formats through strfromd; Darwin through snprintf_l, whose double
+\ is variadic and so rides the stack.
 PROCESS-SYMBOLS
 FUNCTION: NEWLOCALE-CALL newlocale ( n ptr u8 n -- n ) ;FUNCTION
 FUNCTION: FREELOCALE-CALL freelocale ( n -- ) ;FUNCTION
@@ -77,8 +66,8 @@ FUNCTION: SET-ROUND fesetround ( n -- i32 ) ;FUNCTION
    0 C-LOCALE ! ;
 
 
-\ The locale is a process-local address: preparing an image frees it, and the
-\ first call after that makes a new one.
+\ The locale is a process-local address: an IMAGE-LIFECYCLE hook frees it and
+\ closes the library when the image is prepared; the next call makes them anew.
 : CLEANUP-NATIVE ( -- )
    FREE-C-LOCALE
    0 REGISTERED ! ;
@@ -157,6 +146,10 @@ FUNCTION: SET-ROUND fesetround ( n -- i32 ) ;FUNCTION
    code 0 <> if code throw then work ;
 
 public
+\ Complete signed decimal/exponent syntax; padding, hex, nonfinite values and
+\ trailing bytes are refused; subnormals and signed zero are kept. The locale
+\ goes to strtod_l; the rounding mode is restored before answering, failure
+\ included.
 : PARSE ( ptr u8 n -- result<r,fault> )
    {: text:ptr len:n :}
    len 0 < if F64--TEXT-FAULT:MALFORMED RESULT:ERR exit then
@@ -322,6 +315,10 @@ private
    locale-rc 0= if E-NATIVE throw then bits work ;
 
 public
+\ A shortest round-trip plain decimal, no terminator; equally close shortest
+\ decimals resolve away from zero, as Rust Display does. The thread switches to
+\ the C locale; locale and rounding mode are restored before answering, failure
+\ included.
 : FORMAT ( r ptr u8 n -- result<n,fault> ) {: value:r out:ptr capacity:n :}
    value FINITE? 0= if F64--TEXT-FAULT:NONFINITE RESULT:ERR exit then
    capacity 0 < if F64--TEXT-FAULT:CAPACITY RESULT:ERR exit then

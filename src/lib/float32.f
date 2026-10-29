@@ -1,15 +1,8 @@
-\ float32.f - exact scalar IEEE-754 F32 conversion.
-\
-\ Habu arithmetic is f64. This module owns exact narrowing to an F32 bit pattern
-\ and widening from one. Byte marshalling lives in src/lib/float32-buffer.f; this
-\ scalar package intentionally exposes no pointer surface.
-\
-\ NARROW rounds to nearest, ties to even: it keeps signed zero, underflows
-\ gradually through binary32 subnormals to signed zero, overflows to signed
-\ infinity, and quiets a NaN, keeping its sign and high payload bits. WIDEN
-\ reads only the low 32 bits and is exact, NaN payload and quiet bit included.
-\ Neither throws.
-\
+\ float32.f - exact scalar IEEE-754 F32 narrowing and widening; byte marshalling
+\ is src/lib/float32-buffer.f. Neither word throws.
+\ NARROW rounds to nearest, ties to even, keeps signed zero, underflows gradually
+\ to signed zero, overflows to signed infinity and quiets a NaN, keeping its sign
+\ and high payload bits. WIDEN reads only the low 32 bits, exact with NaN payload.
 \ STORAGE CLASS. CALLER-OWNED: the module keeps no state.
 
 require src/lib/ieee754.f

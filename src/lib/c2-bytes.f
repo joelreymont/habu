@@ -4,7 +4,7 @@ require src/lib/c2-memory.f
 package C2-BYTES
 public
 
-\ A read view is (base, byte bound). Return its bound without exposing base.
+\ A read view is (base, byte bound).
 : LENGTH ( read-view<p,q,u8> -- n read-view<p,q,u8> ) C2-MEM:LENGTH ;
 
 : MUT-LENGTH ( mut-view<p,q,a,u8> -- n mut-view<p,q,a,u8> ) C2-MEM:MUT-LENGTH ;

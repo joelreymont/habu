@@ -1,23 +1,14 @@
-\ AES-256-GCM sealing, HMAC-SHA-256/SHA-1 and RS256 over OpenSSL 3's libcrypto
-\ (libcrypto.3.dylib on macOS, libcrypto.so.3 on Linux). No key management: no
-\ derivation, rotation, storage format or nonce counter. JWS serialization and
-\ key selection belong above it.
-\
+\ crypto/evp.f - AES-256-GCM sealing, HMAC-SHA-256/SHA-1 and RS256 over OpenSSL
+\ 3's libcrypto. No key management: derivation, rotation, storage format, nonce
+\ counters, JWS serialization and key selection belong above it.
 \ STORAGE CLASS. TASK-LOCAL: each task's EVP_CIPHER_CTX slot and RS256 record
-\ are TASK:+USER rows. Every input span is borrowed for its call and nothing is
-\ kept between calls; a SEAL or UNSEAL context is freed on every path, a throw
-\ included.
-\
-\ A nonce must never repeat under one key: GCM then leaks the two plaintexts'
-\ XOR and the authentication key. UNSEAL clears its output on `failed`, so no
-\ unauthenticated plaintext is ever visible. Associated data such as a record's
-\ row identity is authenticated, not encrypted: the record fails to open under
-\ any other row.
+\ are TASK:+USER rows. Input spans are borrowed per call and nothing is kept
+\ between calls; a SEAL or UNSEAL context is freed on every path, a throw included.
 require src/lib/errors.f
-require src/lib/prelude.f                      \ true / false
+require src/lib/prelude.f
 require src/lib/string.f
 require src/lib/ffi-abi.f
-require src/lib/le.f                           \ the C int out-parameters below
+require src/lib/le.f
 require src/lib/type/deftype.f
 require src/lib/task.f
 
@@ -797,8 +788,10 @@ public
 
 \ AES-256-GCM. The output span receives the ciphertext followed by the 16-byte
 \ tag and must hold both; SEAL answers how many bytes it wrote. The key is 32
-\ bytes and the nonce 12, and a nonce must never repeat under one key. The
-\ associated data is authenticated in place, never copied into the output.
+\ bytes and the nonce 12. A nonce must never repeat under one key: GCM then
+\ leaks the two plaintexts' XOR and the authentication key. The associated data
+\ (such as a record's row identity) is authenticated, never copied into the
+\ output: the record fails to open under any other.
 : SEAL ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- n )
    {: key ku:n nonce nu:n aad au:n plain pu:n out ou:n :}
    ku nu au pu ou SEAL-OPERANDS

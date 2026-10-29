@@ -1,44 +1,9 @@
-\ ffi-callback.f - C callbacks into checked Habu.
-\
-\ CALLBACK: NAME ( in -- out ) clauses ;CALLBACK declares a C entry and generates
-\   NAME           ( -- FFI-CB:callback )  the descriptor;
-\   NAME-BODY      a TYPED-VARIABLE holding the checked body, typed from the
-\                  declaration (i32/u32 read as n, ptr u8 as ptr u8);
-\   NAME-DISPATCH  ( -- ) the slot's dispatch: it reads the arguments from the
-\                  marshal frame, runs the body under catch and leaves the
-\                  result for C, or the declared fallback after a throw. A body
-\                  never stored is such a throw, E-FFI-CALLBACK-STATE.
-\ Arguments are register arguments only: n, i32, u32, r and ptr u8, at most
-\ INT-REGS integer and FLOAT-REGS float ones. A result is n, i32, u32, r or
-\ none; a value result needs `n FALLBACK` (r: `r FFALLBACK`), the answer C gets
-\ when the body throws. The throw code is kept for FAULT@ until CLEAR.
-\
-\ ENTRY binds the slot to a context (src/lib/task.f CONTEXT-BIND) and answers the C
-\ function pointer; UNBIND releases it. A call arriving on an unbound slot, on
-\ a context busy on another thread or on one with no outbound call in flight
-\ fails closed: the thunk exits 106 (ENGINE-ERROR:CALLBACK).
-\
-\ CONTEXTS. A context admits one thread at a time; a second is refused, never
-\ made to wait. TASK:SELF-CONTEXT is the calling task's region (C calls back
-\ inside a foreign call it made), TASK:CONTEXT an exposed task's (a foreign
-\ thread enters), TASK:MAIN-BASE FFI:>CELL the main region (main thread only).
-\
-\ THE BODY may call C again, but a nested call shares the task's FFI scratch,
-\ so a scratch area C reads through a pointer is not safe across it. It may
-\ not UNBIND its own slot, keep a ptr u8 argument past its return, or define:
-\ exit $4F with a task live, exit 106 otherwise. TASK:PAUSE inside it only
-\ yields, so TASK:HALT and TASK:KILL take effect after C returns.
-\
-\ LIFETIME. A binding lasts until UNBIND, UNEXPOSE, the end of the task whose
-\ region it names, or a capture; the caller drains C's calls first. A capture
-\ drops idle bindings and ends on a slot with a thread inside, so a stripped
-\ application binds in its entry word. A declaration defines words: declare
-\ every callback before the first task starts.
-\
+\ ffi-callback.f - C callbacks into checked Habu: CALLBACK: NAME ( in -- out )
+\ clauses ;CALLBACK declares a C entry; FFI-CB:ENTRY binds it to a context
+\ (src/lib/task.f CONTEXT-BIND) and answers the C function pointer.
 \ STORAGE CLASS. PROCESS-WIDE: the slots, descriptor and dispatch tables and
 \ fault cells are one set for the image. The tables grow contiguously and a
-\ slot is never given back, so a C pointer stays valid; the binding rows are
-\ src/lib/task.f's.
+\ slot is never given back, so a C pointer stays valid; binding rows are task.f's.
 require src/lib/errors.f
 require src/lib/string.f
 require src/lib/codegen.f
@@ -163,7 +128,6 @@ CAST: >ENTRY-XT ( n -- [ -- ] )
 
 public
 
-\ ---- the frame: what the generated dispatch reads and writes -----------------
 : ARG@ ( n -- n ) {: i:n :}
    i INT-CHECK
    FRAME i cells + N>CELLS @ ;
@@ -189,9 +153,6 @@ public
 
 private
 
-\ A body that returned leaves its result in place. A throw is a fault: the code
-\ is kept for FAULT@ and the declared fallback goes back to C, by the result
-\ kind the declaration wrote into its dispatch.
 : SETTLE ( n n n -- ) {: code:n k:n kind:n :}
    code 0= if exit then
    code k FAULTS !
@@ -200,8 +161,6 @@ private
 
 public
 
-\ ---- what the generated source calls -----------------------------------------
-\ The body under catch, then the slot and its result kind settle a throw.
 : RUN ( [ -- ] n n -- ) {: q k:n kind:n :}
    q catch k kind SETTLE ;
 
@@ -227,9 +186,18 @@ public
    k DECLARED-CHECK
    k >CALLBACK ;
 
-\ ---- binding -------------------------------------------------------------------
-\ Publishes the dispatch table into the main region, binds the slot to the
-\ context and only then answers the stub's address.
+\ Publishes the dispatch table into the main region and binds the slot before
+\ answering the stub's address. A call on an unbound slot, on a context busy on
+\ another thread or on one with no outbound call in flight fails closed: the
+\ thunk exits 106 (ENGINE-ERROR:CALLBACK). A context admits one thread at a
+\ time; a second is refused, never made to wait. TASK:SELF-CONTEXT is the
+\ calling task's region (C calls back inside a foreign call it made),
+\ TASK:CONTEXT an exposed task's (a foreign thread enters), TASK:MAIN-BASE
+\ FFI:>CELL the main region (main thread only).
+\ A binding lasts until UNBIND, UNEXPOSE, the end of the task whose region it
+\ names, or a capture; the caller drains C's calls first. A capture drops idle
+\ bindings and ends on a slot with a thread inside, so a stripped application
+\ binds in its entry word.
 : ENTRY ( callback n -- n ) {: cb ctx:n :}
    cb CALLBACK>N {: k:n :}
    TABLE @ FFI:>CELL TASK:MAIN-BASE CB-XTS + atomic!
@@ -247,11 +215,9 @@ public
 
 private
 
-\ ---- the declaration ----------------------------------------------------------
 GEN-CAP CODEGEN:BUFFER GEN
 PART-CAP CODEGEN:BUFFER QTYPE             \ the body's quotation type
 PART-CAP CODEGEN:BUFFER READS             \ the argument reads, in order
-\ The callback's name, CALLBACK: to ;CALLBACK; a longer name is a syntax error.
 NAME-CAP E-FFI-SYNTAX E-CG-VALUE CODEGEN:BUFFER-E NAME
 
 variable RES-KIND
@@ -337,9 +303,8 @@ variable OPEN
 : GEN-N ( n -- ) GEN CODEGEN:APPEND-DECIMAL ;
 : GEN-RUN ( -- ) GEN CODEGEN:CONTENTS INCLUDE-EVALUATE ;
 
-\ The C entry belongs to a native emission even when the caller selected the
-\ interpreter's legacy compiler for its other definitions. Restore its tier on
-\ both success and refusal so a declaration does not change later source.
+\ The C entry needs a tier-1 emission even when the caller compiles at tier 0;
+\ the tier is restored on success and refusal.
 : GEN-NATIVE ( -- )
    tier@ 1 = if GEN-RUN exit then
    s" 1 set-tier" INCLUDE-EVALUATE
@@ -437,6 +402,25 @@ public
 
 ;package
 
+\ CALLBACK: NAME ( in -- out ) clauses ;CALLBACK generates
+\   NAME           ( -- FFI-CB:callback )  the descriptor;
+\   NAME-BODY      a TYPED-VARIABLE holding the checked body, typed from the
+\                  declaration (i32/u32 read as n, ptr u8 as ptr u8);
+\   NAME-DISPATCH  ( -- ) reads the arguments from the marshal frame, runs the
+\                  body under catch and leaves the result for C, or the declared
+\                  fallback after a throw; a body never stored throws
+\                  E-FFI-CALLBACK-STATE.
+\ Arguments are register arguments only: n, i32, u32, r and ptr u8, at most
+\ INT-REGS integer and FLOAT-REGS float ones. A result is n, i32, u32, r or
+\ none; a value result needs `n FALLBACK` (r: `r FFALLBACK`), the answer C gets
+\ when the body throws. The throw code is kept for FAULT@ until CLEAR.
+\ The body may call C again, but a nested call shares the task's FFI scratch,
+\ so a scratch area C reads through a pointer is not safe across it. It may
+\ not UNBIND its own slot, keep a ptr u8 argument past its return, or define:
+\ exit $4F with a task live, exit 106 otherwise. TASK:PAUSE inside it only
+\ yields, so TASK:HALT and TASK:KILL take effect after C returns.
+\ A declaration defines words: declare every callback before the first task
+\ starts.
 : CALLBACK: ( -- )
    FFI-CB:OPEN-CALLBACK ;
 

@@ -1,17 +1,8 @@
-\ names.f - XML names, namespace scopes and PREFIX-URI.
-\
-\ Name spans keep their prefix; URI and ATTR-URI answer the resolved, decoded
-\ namespace URI. A default namespace applies to elements, not to unprefixed
-\ attributes. Duplicate expanded attribute names and invalid bindings are
-\ refused before the start event is returned. PREFIX-URI resolves a decoded
-\ prefix against the current scope, the start tag's own declarations included,
-\ into caller storage and answers the count and true when bound; an unknown
-\ nonempty prefix, xmlns included, answers 0 and false without writing, `xml`
-\ its implicit URI, and the empty prefix the default (zero bytes when none).
-\ The scope lasts through the element's end event; before the root, past its
-\ end, at EOF or on a failed reader the lookup is E-STATE. A short or aliasing
-\ output throws and leaves the reader unchanged. Part of package XML
-\ (src/lib/xml.f).
+\ names.f - XML names, namespace scopes and PREFIX-URI; part of package XML
+\ (src/lib/xml.f). Name spans keep their prefix; URI and ATTR-URI answer the
+\ resolved, decoded namespace URI. A default namespace applies to elements, not
+\ to unprefixed attributes. Duplicate expanded attribute names and invalid
+\ bindings are refused before the start event is returned.
 
 require src/lib/xml/state.f
 require src/lib/siphash.f
@@ -289,8 +280,6 @@ $10000 $EFFFF 14 RANGE!
    {: state :}
    state ATTR-COUNT + @ 0 ?do -1 state i ATTRIBUTE ATTR-HEAD + ! loop ;
 
-\ Throw E-NAMESPACE when an earlier attribute in hash's bucket is the same
-\ name as attribute index by same, else make index that bucket's head.
 : ATTR-ENTER ( ptr n n n [ ptr n ptr n ptr n -- bool ] -- )
    {: state index:n hash:n same :}
    state index ATTRIBUTE {: attr :}
@@ -331,7 +320,6 @@ $10000 $EFFFF 14 RANGE!
       drop binding NS-LINK + @
    repeat ;
 
-\ The URI span and hash a prefix is bound to, and whether it is bound.
 : PREFIX-BINDING ( ptr n ptr u8 n -- n n n bool )
    {: state prefix size:n :}
    prefix size s" xml" BYTES= if
@@ -361,7 +349,6 @@ $10000 $EFFFF 14 RANGE!
    state name prefix-size SPAN$ s" xmlns" BYTES= if E-NAMESPACE throw then
    state name prefix-size LOOKUP-URI ;
 
-\ Store the attribute's URI and answer that URI's hash.
 : RESOLVE-ATTRIBUTE ( ptr n ptr n -- n )
    {: state attr :}
    state attr NS-ATTRIBUTE? if
@@ -418,6 +405,11 @@ $10000 $EFFFF 14 RANGE!
    then ;
 
 public
+\ Resolves against the current scope, the start tag's own declarations
+\ included. An unknown nonempty prefix, xmlns included, answers 0 and false
+\ without writing, `xml` its implicit URI, the empty prefix the default (zero
+\ bytes when none). Before the root, past its end, at EOF or on a failed reader
+\ it is E-STATE; a short or aliasing output throws and leaves the reader alone.
 : PREFIX-URI ( XML:reader ptr u8 n ptr u8 n -- XML:reader n bool )
    PREFIX-URI-ARGS PREFIX-URI-STATE ;
 

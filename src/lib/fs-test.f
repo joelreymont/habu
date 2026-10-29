@@ -123,10 +123,8 @@ create FS-TEST-READ-BUF FS-TEST-READ-CAP allot
 : FS-TEST$= ( ptr u8 n ptr u8 n -- )
    STR= FS-TEST-ASSERT ;
 
-\ `c dst over + c!` wrote c at dst+c on every pass instead of filling dst[0,u):
-\ `over` copied c, not the loop index. Its only caller measured a length and
-\ never read the bytes back, so it went unseen until FS-TEST-PARALLEL below
-\ compared file contents. `c over dst +` takes the index.
+\ Fills dst[0,u) with c; FS-TEST-PARALLEL compares the bytes, so a wrong fill
+\ fails there.
 : FS-TEST-FILL ( ptr u8 n n -- ) {: dst:ptr u c :}
    0 begin dup u < while
       c over dst + c!
@@ -349,8 +347,7 @@ create FS-TEST-READ-BUF FS-TEST-READ-CAP allot
    s" no-such-habu-fs-path-for-stdlib-test" [: 2drop ;] FS:WALK-FILES ;
 
 \ The walk root is copied into the depth-0 walk slot, a span of PATH-CAP: a
-\ root that does not fit is refused by the copy (E-SPAN-CAPACITY) where the
-\ module used to compare the length by hand.
+\ root that does not fit is refused by the copy (E-SPAN-CAPACITY).
 : FS-TEST-WALK-ROOT-TOO-LONG ( -- )
    FS-TEST-LONG PATH-CAP 1 + [: 2drop ;] FS:WALK-FILES ;
 
@@ -484,7 +481,6 @@ create FS-TEST-READ-BUF FS-TEST-READ-CAP allot
 : FS-TEST-WALK-NEST-THROW ( -- )
    FS-TEST-ROOT [: FS-TEST-WALK-NEST-THROW-CB ;] FS:WALK-FILES ;
 
-\ ---- a tree deeper than the walk's starting frames --------------------------
 \ FS-TEST-DEEP-LIMIT levels is past WALK-FRAMES0, so the walk and the
 \ removal both grow their frames while a descriptor is open at every depth
 \ above. The leaf's whole path is checked, so every depth the frames moved
@@ -501,13 +497,11 @@ create FS-TEST-READ-BUF FS-TEST-READ-CAP allot
    FS-TEST-DEEP FS:REMOVE-TREE
    FS-TEST-DEEP FS:EXISTS? FS-TEST-FALSE ;
 
-\ ---- the longest path the gate admits is one the OS opens --------------------
 \ A path of exactly PATH-CAP bytes, built under the base from names of at most
 \ NAME_MAX bytes, goes through stat, open, read, walk and remove; one byte more is
-\ the gate's E-FS-PATH with no OS cause. While the cap was 1024 on Darwin, whose
-\ PATH_MAX of 1024 counts the NUL, the gate admitted a path lstat answered with
-\ ENAMETOOLONG, which a caller that reads a failed lstat as missing took for a
-\ vanished entry.
+\ the gate's E-FS-PATH with no OS cause. Darwin's PATH_MAX of 1024 counts the
+\ NUL: a cap of 1024 admits a path lstat answers with ENAMETOOLONG, which a caller
+\ that reads a failed lstat as missing takes for a vanished entry.
 : FS-TEST-CAP ( -- ptr u8 n )
    FS-TEST-CAP-PATH FS-TEST-CAP-U @ ;
 
@@ -523,7 +517,6 @@ create FS-TEST-READ-BUF FS-TEST-READ-CAP allot
 : FS-TEST-CAP-LEFT ( -- n )
    PATH-CAP FS-TEST-CAP-U @ - ;
 
-\ Append `/` and `k` filler bytes.
 : FS-TEST-CAP-NAME+ ( n -- ) {: k :}
    FS-TEST-CAP-U @ {: u :}
    FS:SLASH FS-TEST-CAP-PATH u + c!
@@ -569,12 +562,9 @@ create FS-TEST-READ-BUF FS-TEST-READ-CAP allot
    FS-TEST-CAP-ROOT FS:EXISTS? FS-TEST-FALSE
    T-FAILURES 0 FS-TEST= ;
 
-\ ---- each walk owns its context ---------------------------------------------
-\ Two tasks walk two trees at once, and a callback walks a second tree while
-\ its own walk stands, each through plain FS:WALK-FILES. Both rows were
-\ impossible while the state was process-wide: the second walk was either
-\ refused or crossed the first one's depth, path slot and dirent block. A crossed path slot is what the prefix check catches - every path a
-\ callback is handed must start with its own root.
+\ Two tasks walk two trees at once, and a callback walks a second tree while its
+\ own walk stands, each through plain FS:WALK-FILES. A crossed path slot is what
+\ the prefix check catches: every path a callback is handed starts with its root.
 20 constant FS-TEST-WALK-ROUNDS
 2 constant FS-TEST-WA-FILES
 3 constant FS-TEST-WB-FILES
@@ -738,13 +728,10 @@ TASK:MIN-STACK TASK:TASK FS-TEST-WALK-B-TASK
    FS:CLEANUP-RUN
    FS-TEST-BASE FS:EXISTS? FS-TEST-FALSE ;
 
-\ TWO TASKS THROUGH FS:READ-ALL AND FS:FILE-SIZE AT ONCE. The per-call slots are the
-\ FS-ABI band of each task's own region now, so each task threads its own
-\ descriptor, length and path. While they were process-wide this did not merely
-\ return wrong bytes: one task's `0 IO-LEN !` reset the other's progress and
-\ the pair did not terminate, so a regression here shows up as this file
-\ hanging rather than failing. The two files differ in both length and content
-\ so a crossed descriptor is caught either way.
+\ Two tasks through FS:READ-ALL and FS:FILE-SIZE at once: the per-call slots are
+\ the FS-ABI band of each task's own region. Shared slots make the pair hang
+\ rather than fail (one task's `0 IO-LEN !` resets the other's progress). The two
+\ files differ in length and content, so a crossed descriptor is caught either way.
 TASK:MIN-STACK TASK:TASK FS-TEST-PAR-A-TASK
 TASK:MIN-STACK TASK:TASK FS-TEST-PAR-B-TASK
 
@@ -866,7 +853,6 @@ TASK:MIN-STACK TASK:TASK FS-TEST-RACE-TASK
    FS-TEST-FREE-FD before FS-TEST=
    FS-TEST-RACE-LIVE FS:REMOVE-FILE ;
 
-\ ---- a FIFO's write end -------------------------------------------------------
 \ A real FIFO, made by the system mkfifo, read by the system cat. With no
 \ reader an attempt answers none and holds no descriptor. Once cat has the read
 \ end, the retry loop below opens the write end, and the bytes written before it
@@ -915,7 +901,6 @@ variable WRITER
       err OF drop E-FS-IO throw ENDOF
    ;MATCH ;
 
-\ cat on the FIFO, its stdout the given pipe end.
 : SPAWN-CAT ( fd -- pid )
    {: out:fd :}
    PROC-ARGV-RESET

@@ -1,24 +1,9 @@
-\ memory.f - checked OS-backed byte buffers.
-\
-\ STORAGE CLASS. CALLER-OWNED: every mapping ALLOC-BYTES, ALLOC-CELLS,
-\ ALLOC-64K and ALLOC-GUARDED hand back belongs to the caller, who releases it,
-\ and the module keeps nothing about it. The one exception is WITH-BYTES: its
-\ scope chain is TASK-LOCAL, one head cell in the MEM-ABI band of the running
-\ task's DATA region (src/habu/layout.f), so each task's scopes nest and unwind
-\ on their own. A halted task unwinds its open scopes' `finally` cleanups at
-\ TASK:PAUSE (src/lib/task.f PAUSE), so their mappings are released as on a
-\ throw.
-\
-\ These mappings are for runtime-sized storage (source bundles, JSONL streams,
-\ report tables, 64K scratch buffers); `create ... allot` is for
-\ dictionary-sized static storage. Sizes are validated before mmap, a failure
-\ throws E-MEM-SIZE or E-MEM-MAP, and a mapping becomes typed storage only at
-\ the private MEM-ALLOC-PTR boundary. RELEASE-BYTES takes the exact extent
-\ ALLOC-BYTES gave and RELEASE-CELLS the count ALLOC-CELLS took; UNMAP releases
-\ a validated range. A kernel munmap refusal writes "memory: unmap failed" and
-\ exits 71, bypassing catch. WITH-BYTES releases after a return or a throw and
-\ then rethrows the body's code. MEM-ALLOC-64K-SPAN rounds a byte need up to
-\ whole 64K buffers; no caller encodes a maximum buffer count.
+\ memory.f - checked OS-backed mappings for runtime-sized storage; `create ...
+\ allot` is for dictionary-sized static storage. Sizes are validated before
+\ mmap; a kernel munmap refusal writes "memory: unmap failed" and exits 71,
+\ bypassing catch. STORAGE CLASS. CALLER-OWNED: the caller releases every
+\ mapping. WITH-BYTES's scope chain is TASK-LOCAL, one head cell in the MEM-ABI
+\ band (src/habu/layout.f); a halted task unwinds it at TASK:PAUSE.
 
 s" src/lib/errors.f" required
 require src/lib/num-arithmetic.f
@@ -90,32 +75,17 @@ $1012 constant MEM-MAP-PRIVATE-ANON-FIXED   \ the engine's mmap treats $10 as MA
 : MEM-ALLOC-64K ( -- ptr u8 n )
    1 MEM-ALLOC-64K-BUFFERS ;
 
-\ ---- package-first typed allocation surface -----------------------------------
-\
-\ The raw MEM-ALLOC-* words above enforce positivity at RUNTIME on interchangeable
-\ `n`. Package MEM re-states the same sizing as CHECKED words over NUM roles:
-\ the scalar words (CELLS>BYTES, 64K-BYTES, 64K-COUNT-FOR, 64K-SPAN-BYTES) are
-\ typed compositions of the closed NUM algebra that return `numeric-result<a>`
-\ (zero is a valid scalar answer), while the allocation sinks (ALLOC-BYTES,
-\ ALLOC-CELLS, ALLOC-64K) accept only the `alloc-*` roles, which reject zero and
-\ over-allocation at VALIDATION - so a byte/cell role swap or a zero/overflow
-\ allocation cannot reach `mmap`. MEM owns four audited private projections:
-\ one allocation extent for `mmap` and whole-map `munmap`, one cell count for
-\ `cells`, one mapped byte extent for range `munmap`, and the reach ALLOC-SPAN
-\ hands SPAN:MAKE. Retire each of the first three when its primitive accepts the
-\ nominal role directly.
-\
-\ The legacy MEM-ALLOC-BYTES surface stays untouched for its four caller waves;
-\ MEM-ALLOC-CELLS and the multi-64K conveniences are out of this B5 wave.
+\ Package MEM states the raw MEM-ALLOC-* sizing as checked words over NUM roles:
+\ the scalar words answer numeric-result<a> (zero is a valid answer), and the
+\ allocation sinks take only alloc-* roles, which refuse zero and
+\ over-allocation at validation, so a role swap or a zero/overflow size never
+\ reaches mmap.
 
 package MEM
 private
 
-\ Internal invariant code (never reachable): a validator/narrowing arm proven
-\ impossible by the input still needs an exhaustive MATCH arm. Mirrors the
-\ NUM E-NUM-TOTALITY discipline; lives in-file, not src/lib/errors.f.
-
-\ ---- ok extractors for compile-time-valid role constants (arms unreachable) ----
+\ The OK-* extractors take compile-time-valid role constants: their refusal
+\ arms are unreachable and throw E-MEM-TOTALITY, as NUM's E-NUM-TOTALITY.
 : OK-BYTE-LEN ( NUM:numeric-result<NUM:byte-len> -- NUM:byte-len )
    MATCH NUM:numeric-result
       ok OF ENDOF                              negative OF E-MEM-TOTALITY throw ENDOF
@@ -138,10 +108,8 @@ private
       misaligned OF E-MEM-TOTALITY throw ENDOF
    ;MATCH ;
 
-\ ---- size-refusal extractors for caller-supplied n (arms REACHABLE) ------------
-\ Unlike the OK-* extractors above (compile-time constants; refusal arms are
-\ unreachable invariants -> E-MEM-TOTALITY), these narrow an arbitrary runtime
-\ `n`, so a refusal is the real memory-sizing outcome and throws E-MEM-SIZE.
+\ These narrow a caller's runtime n, so a refusal is a real sizing outcome and
+\ throws E-MEM-SIZE.
 : SIZE-BYTE-LEN ( NUM:numeric-result<NUM:byte-len> -- NUM:byte-len )
    MATCH NUM:numeric-result
       ok OF ENDOF                              negative OF E-MEM-SIZE throw ENDOF
@@ -171,7 +139,6 @@ private
       misaligned OF E-MEM-SIZE throw ENDOF
    ;MATCH ;
 
-\ ---- the 64K granularity as validated NUM roles ---------------------------
 \ MEM-64K is a compile-time positive power of two, so BYTE-LEN / ALIGNMENT /
 \ AS-ALLOC-BYTE-LEN all succeed; the extractors' failure arms are unreachable.
 : 64K-LEN ( -- NUM:byte-len )
@@ -181,10 +148,8 @@ private
 : 64K-ALLOC-LEN ( -- NUM:alloc-byte-len )
    64K-LEN NUM:AS-ALLOC-BYTE-LEN OK-ALLOC-BYTE-LEN ;
 
-\ Private allocation-role erasure for mmap/cells/munmap; no raw value escapes.
-\ Checked casts, so none of the three can misdeclare its shape. They go away
-\ entirely when those primitives accept the nominal roles directly:
-\ habu-epic-model-cad-70b629a9.
+\ Private allocation-role erasure for mmap, cells and munmap; no raw value
+\ escapes.
 CAST: ALLOC-BYTES>N ( NUM:alloc-byte-len -- n )
 CAST: ALLOC-CELLS>N ( NUM:alloc-cell-count -- n )
 CAST: BYTE-LEN>N ( NUM:byte-len -- n )
@@ -198,7 +163,6 @@ $47 constant UNMAP-EXIT
 
 public
 
-\ ---- scalar sizing: typed compositions of the closed NUM algebra --------------
 : CELLS>BYTES ( NUM:cell-count -- NUM:numeric-result<NUM:byte-len> )
    NUM:CELLS>BYTES ;
 : 64K-BYTES ( NUM:item-count -- NUM:numeric-result<NUM:byte-len> )
@@ -206,32 +170,28 @@ public
 : 64K-SPAN-BYTES ( NUM:byte-len -- NUM:numeric-result<NUM:byte-len> )
    64K-ALIGN NUM:ALIGN-UP-BYTES ;
 : 64K-COUNT-FOR ( NUM:byte-len -- NUM:numeric-result<NUM:item-count> )
-   \ ceil(bytes / 64K) as a logical buffer count, purely over the typed
-   \ extent-division op: the byte need is the extent, 64K the unit size. A zero
-   \ need is 0 buffers (0 / 64K); 64K is a positive extent, so DIV-BYTES-CEIL's
-   \ zero-size-unit refusal is unreachable. No raw cell is read here.
+   \ 64K is a positive extent, so DIV-BYTES-CEIL's zero-size-unit arm is
+   \ unreachable; a zero need is 0 buffers.
    64K-LEN NUM:DIV-BYTES-CEIL ;
 
-\ ---- allocation sinks: only the alloc-* roles reach the mmap primitive ---------
 : ALLOC-BYTES ( NUM:alloc-byte-len -- ptr u8 NUM:alloc-byte-len )
    dup ALLOC-BYTES>N MEM-ALLOC-PTR
    swap ;
 : ALLOC-CELLS ( NUM:alloc-cell-count -- ptr a )
    ALLOC-CELLS>N cells MEM-ALLOC-PTR ;
-\ The typed inverse of ALLOC-CELLS.
+\ Takes the count ALLOC-CELLS took.
 : RELEASE-CELLS ( ptr a NUM:alloc-cell-count -- )
    ALLOC-CELLS>N cells RELEASE-RANGE ;
 : ALLOC-64K ( -- ptr u8 NUM:alloc-byte-len )
    64K-ALLOC-LEN ALLOC-BYTES ;
 
-\ ---- release: return an ALLOC-BYTES mapping to the OS ---------------------------
+\ Takes the exact extent ALLOC-BYTES gave.
 : RELEASE-BYTES ( ptr u8 NUM:alloc-byte-len -- )
    ALLOC-BYTES>N RELEASE-RANGE ;
 
 : UNMAP ( ptr u8 NUM:byte-len -- )
    BYTE-LEN>N RELEASE-RANGE ;
 
-\ ---- caller-facing size narrowing: raw n -> validated alloc role --------------
 \ Callers narrow a raw size to the positive alloc role before the allocation
 \ sink; a zero, negative or overflowing size throws E-MEM-SIZE.
 \ Composes the public NUM validators only, so no new unchecked boundary.
@@ -242,7 +202,6 @@ public
    NUM:CELL-COUNT SIZE-CELL-COUNT
    NUM:AS-ALLOC-CELL-COUNT SIZE-ALLOC-CELL-COUNT ;
 
-\ ---- allocated spans: an ALLOC-BYTES mapping with its reach -------------------
 \ Here and not in src/lib/span.f, because this file owns MEM
 \ (docs/forth-card.md § 6); that makes src/lib/span.f a boot-prefix row ahead of
 \ this one. The private projection is proof erasure - SPAN:MAKE takes the reach
@@ -262,7 +221,6 @@ public
 : FREE-SPAN ( SPAN:span<u8> -- )
    SPAN:$ BYTES-ALLOC-LEN RELEASE-BYTES ;
 
-\ ---- quotation-scoped owned mapping --------------------------------------------
 \ Each WITH-BYTES mapping starts with a frame header: the enclosing scope's
 \ mapping (or null) and this mapping's whole extent. The body's bytes follow
 \ the header, so the base the body gets is FRAME-BYTES into a fresh mapping:
@@ -326,7 +284,6 @@ public
 
 private
 
-\ ---- guarded VM stacks -------------------------------------------------------
 \ A stack the engine may run on (run-in-stack, a task's data, return and loop
 \ stacks) is a mapping with an inaccessible page on each side: a push past its
 \ capacity or a read below its base faults, and the engine's crash handler
@@ -358,9 +315,9 @@ public
 \ lands up to one page into it. The head and tail slivers outside
 \ [base - PAGE, base + cap + PAGE) are unmapped right away, so the extent that
 \ stays mapped is exactly the two guard pages around the capacity and the
-\ release below can unmap exactly that: a release computed from the span
-\ instead reached past the span's end into whatever the kernel mapped next
-\ (a task's DATA region, found by test/address-cell-tasks.f, 2026-09-16).
+\ release below unmaps exactly that. A release computed from the span would
+\ reach past its end into whatever the kernel mapped next (a task's DATA
+\ region; test/address-cell-tasks.f).
 : ALLOC-GUARDED ( n -- ptr u8 n ) {: cap:n :}
    cap STACK-ABI:PAGE-BYTES mod 0 <> if E-MEM-SIZE throw then
    cap GUARDED-SPAN-BYTES {: span-bytes:n :}

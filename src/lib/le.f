@@ -1,16 +1,9 @@
-\ le.f - fixed-width little-endian integers in a caller's bytes.
-\
-\ Every foreign contract this tree reads through bytes - an io_uring ring field,
-\ a C `int` out-parameter, a socklen - is a fixed-width little-endian integer at
-\ a byte offset. Reading and writing it a byte at a time is what keeps the width
-\ and the alignment the contract's rather than the host's, so these five words
-\ are the one place in src/lib/ that shifts and masks them.
-\
-\ The module needs nothing of the tree: `c@`, `c!` and integer arithmetic are the
-\ engine's, which is what lets src/lib/ffi-abi.f require it.
-\
-\ STORAGE CLASS. CALLER-OWNED: every word reads or writes the caller's bytes and
-\ keeps nothing of its own.
+\ le.f - fixed-width little-endian integers in a caller's bytes: io_uring ring
+\ fields, a C `int` out-parameter, a socklen. Byte-at-a-time access keeps the
+\ contract's width and alignment rather than the host's; these words are the one
+\ place in src/lib/ that shifts and masks them. It needs only engine words, so
+\ src/lib/ffi-abi.f can require it.
+\ STORAGE CLASS. CALLER-OWNED: no module state.
 
 package LE
 public

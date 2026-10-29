@@ -194,7 +194,6 @@ variable SAVED-REPLH
    s" package SUBJECT-TEST RUN-TIMEOUT-PROBE ;package" UNCAUGHT-RC EXITS {: outu:n erru:n :}
    outu s" case: run timed-out probe" SHOWS
    outu s" /bin/sh" SHOWS
-   \ -2502 is E-PROC-TIMEOUT.
    ERR erru s" uncaught throw code -2502" CONTAINS? TTRUE ;
 
 public

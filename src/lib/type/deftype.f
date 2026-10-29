@@ -1,47 +1,12 @@
-\ deftype.f - the ergonomic declaration surface for value-nominal integer
-\ types: application code names a distinct checked integer type in one readable
-\ line and the checker keeps it apart from a plain int and from every other
-\ nominal.
-\
-\     package CAMERA
-\     DEFTYPE SERIAL           \ a camera serial is its own type, not a bare n
-\     DEFTYPE FRAME-INDEX      \ so is a frame index, distinct from a serial
-\     DEFTYPE EXPOSURE-US      \ and an exposure time in microseconds
-\     ;package
-\
-\ Each `DEFTYPE NAME` mints a fresh checker type and derives its explicit
-\ converter pair `>NAME ( n -- NAME )` and `NAME>N ( NAME -- n )`. The converters
-\ are the ONLY way across the boundary: the checker never lets a plain `n` stand
-\ in for a nominal, and never collapses a nominal back to `n` on its own. That is
-\ the whole point - the conversion is visible in the source (locked by
-\ test/deftype-suite.f).
-\
-\ SUBSTRATE (docs/design.md "Type substrate"). A value nominal is a
-\ package-scoped arity-0 type-family cell (a TFAM nominal scalar). Type families
-\ are package-scoped, so `DEFTYPE SERIAL` in package CAMERA and `DEFTYPE SERIAL`
-\ in package FRAME are two distinct types; each is distinct from n in both
-\ directions and from every other nominal, and crosses only by its converters.
-\
-\ MANGLING (surface NAME -> family tail). A TFAM tail is lowercase
-\ (E-TFAM-CASE); the surface name is UPPER-CASE by project convention. `DEFTYPE`
-\ folds the surface name to lowercase to form the tail (SERIAL -> serial,
-\ FRAME-INDEX -> frame-index); internal hyphens survive (TF-CANON? allows them).
-\ The upper-case surface spelling is what the generated converter WORD names use
-\ (`>SERIAL`, `SERIAL>N`); the lowercase tail is what a signature type names
-\ (`( serial -- n )`). CHECKER-DEFFAMILY fails closed on a reserved tail (a CT-role,
-\ or `ptr`, which a signature reads as the pointer constructor) and on a family
-\ the declaring scope already has (reserved-name throw / E-TFAM-DUP), so no silent
-\ rename; a package may still shadow a global or another package's family.
-\
-\ Generated converters use CAST:, which checks representation, ownership and
-\ linearity. NG-EVAL is the source-evaluation boundary; it does not exempt a
-\ generated declaration from those checks.
-\
+\ deftype.f - `DEFTYPE NAME` mints a value-nominal integer type in the active
+\ package with converters `>NAME ( n -- NAME )` and `NAME>N ( NAME -- n )`, the
+\ only way across: the checker never lets n stand in for a nominal or back
+\ (test/deftype-suite.f). The same NAME in two packages is two types.
 \ STORAGE CLASS. PROCESS-WIDE: NG-BUFFER and NM-BUFFER are static load-time
 \ codegen buffers; DEFTYPE runs in one loading task at a time.
 
-require src/lib/string.f                 \ ASCII-LOWER: fold the surface name to the family tail
-require src/lib/codegen.f                \ CODEGEN:BUFFER-E: the shared generated-source byte buffer
+require src/lib/string.f
+require src/lib/codegen.f
 
 package VNOM
 
@@ -50,28 +15,23 @@ private
 -6001 constant E-VNOM-NAME     \ DEFTYPE given an empty name
 -6002 constant E-VNOM-CAP      \ generated-source or mangle buffer capacity exceeded
 
-\ ---- generated-source codegen buffer (build the "CAST: ..." converter text
-\ each declaration evaluates). The append mechanics live in package CODEGEN
-\ (src/lib/codegen.f); these thin words bind them to this file's NG-BUFFER instance,
-\ minted with the E-VNOM-CAP throw code its callers already expect. ------------
 \ The longer text is EMIT-OUT's: 19 fixed bytes around the surface name and the
 \ tail, each at most TF-NAME-MAX bytes because MANGLE's buffer holds no more.
 TFAM:TF-NAME-MAX 2 * 19 + constant NG-CAP
 NG-CAP E-VNOM-CAP E-VNOM-CAP CODEGEN:BUFFER-E NG-BUFFER
 : NG-RESET ( -- )  NG-BUFFER CODEGEN:RESET ;
-: NG+ ( ptr u8 n -- )  NG-BUFFER CODEGEN:APPEND-STRING ;   \ append a string
+: NG+ ( ptr u8 n -- )  NG-BUFFER CODEGEN:APPEND-STRING ;
 : NG$ ( -- ptr u8 n )  NG-BUFFER CODEGEN:CONTENTS ;
 
 \ Evaluate declaration text with the checker active, as a closed program: a text
-\ that left cells would be refused E-EVAL-RESIDUE.
+\ that left cells would be refused E-EVAL-RESIDUE. The generated converters use
+\ CAST:, which checks representation, ownership and linearity; evaluation does not
+\ exempt them.
 : NG-EVAL ( -- )  NG$ evaluate-closed ;
 
-\ ---- surface NAME (UPPER-CASE) -> lowercase family tail -----------------------
-\ A second CODEGEN buffer, kept separate from NG-BUFFER because MINT reads the
-\ mangled tail out of here while EMIT-IN/EMIT-OUT build the converter text in
-\ NG-BUFFER. The tail fold is src/lib/string.f ASCII-LOWER. It holds the longest
-\ family name (src/core/type-family.f TF-NAME-MAX), so a longer surface name is
-\ refused here with E-VNOM-CAP.
+\ Kept apart from NG-BUFFER because MINT reads the mangled tail here while
+\ EMIT-IN/EMIT-OUT build the converter text there. It holds the longest family
+\ name (TF-NAME-MAX), so a longer surface name is refused with E-VNOM-CAP.
 TFAM:TF-NAME-MAX constant NM-CAP
 NM-CAP E-VNOM-CAP E-VNOM-CAP CODEGEN:BUFFER-E NM-BUFFER
 : MANGLE ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
@@ -91,11 +51,14 @@ NM-CAP E-VNOM-CAP E-VNOM-CAP CODEGEN:BUFFER-E NM-BUFFER
 
 public
 
-\ MINT: register the arity-0 family + its converter pair in the ACTIVE package
-\ (the package that called DEFTYPE, or the global scope at top level). The
-\ surface name doubles as the converter word spelling; its lowercase fold is the
-\ family tail. Fails closed on an empty name (E-VNOM-NAME) or a reserved / already
-\ declared tail (CHECKER-DEFFAMILY: reserved-name / E-TFAM-DUP).
+\ Registers the arity-0 family and its converter pair in the active package, or
+\ the global scope at top level. A TFAM tail is lowercase (E-TFAM-CASE): the
+\ surface NAME folds to it (FRAME-INDEX -> frame-index; TF-CANON? keeps hyphens);
+\ the converters take the surface spelling (`>SERIAL`), a signature names the
+\ tail (`( serial -- n )`). An empty name is E-VNOM-NAME. CHECKER-DEFFAMILY
+\ refuses a reserved tail (a CT-role, or `ptr`, the pointer constructor) and one
+\ the scope already declares (E-TFAM-DUP); a package may still shadow a global or
+\ another package's family.
 : MINT ( ptr u8 n -- ) {: sa:ptr su:n :}
    su 0= if E-VNOM-NAME throw then
    sa su MANGLE {: ta:ptr tu:n :}
@@ -105,13 +68,9 @@ public
 
 ;package
 
-\ DEFTYPE - the value-nominal declaration keyword. Core language surface: a
-\ single global declarer word (sibling to ENUM / SUMTYPE / NEWTYPE)
-\ so it reads bare from any application package while the family lands in that
-\ package's scope. Top-level-interpret-only, like the other type-declaration
-\ openers: it parses the next name off the input stream and mutates the type
-\ registry (through the checked VNOM:MINT boundary) - side effects its ( -- ) row
-\ does not model. All machinery lives in package VNOM; this is the only new global
-\ word.
+\ The one global word, a declarer beside ENUM, SUMTYPE and NEWTYPE, so it reads
+\ bare from any package while the family lands in that package. Top-level
+\ interpret only: it parses the next name and mutates the type registry through
+\ VNOM:MINT, effects its ( -- ) row does not model.
 : DEFTYPE ( -- )
    parse-name VNOM:MINT ;

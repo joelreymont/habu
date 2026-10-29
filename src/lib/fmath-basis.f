@@ -1,22 +1,9 @@
-\ fmath-basis.f - exact binary64 basis scaling with one final rounding per
-\ coordinate, in `package FBASIS`.
-\
-\ FBASIS:SCALE3 takes a point (three floats), a frame span of twelve binary64
-\ bit patterns in rows [a00 a01 a02 o0, a10 a11 a12 o1, a20 a21 a22 o2], three
-\ axis-column scales and a scratch span of at least WORK-CELLS cells. It
-\ evaluates o + A diag(s) A^-1 (p-o) exactly from the supplied values and
-\ rounds each output once, to nearest with ties to even (subnormals and zero
-\ by the same rule). A nonfinite input, singular basis, short span or frame
-\ and scratch overlap throws FMATH:E-DOMAIN; a final binary64 overflow
-\ FMATH:E-OUTPUT. The frame is not altered. Geometric tolerance and rigidity
-\ are the caller's policy.
-\
-\ The fixed five-factor expression has at most 42 terms. A finite factor has
-\ at most 53 significand bits and exponent at least -1074; 408 base-2^26
-\ limbs cover the resulting signed sums and quotient alignment.
-\
-\ STORAGE CLASS. CALLER-OWNED: all limb arithmetic lives in the caller's
-\ scratch span; no module state.
+\ fmath-basis.f - exact binary64 basis scaling in `package FBASIS`: SCALE3 maps p
+\ to o + A diag(s) A^-1 (p-o) and rounds each coordinate once, to nearest even.
+\ The frame is twelve bit patterns by rows [a00 a01 a02 o0, ...], axes in the
+\ first three columns; scratch holds WORK-CELLS cells and must not overlap it.
+\ 408 base-2^26 limbs cover the 42-term sums (53-bit significands, exp >= -1074).
+\ STORAGE CLASS. CALLER-OWNED: limb arithmetic lives in the caller's scratch.
 
 require src/lib/span.f
 require src/lib/ieee754.f
@@ -260,7 +247,6 @@ $4000000 constant BASE
    exponent $7FF >= if FMATH:E-OUTPUT throw then
    exponent 52 lshift work QUOT-OFF S@ $FFFFFFFFFFFFF and or sign or ;
 
-\ Rows are spaced four cells apart; axes occupy the first three columns.
 : AXIS ( SPAN:span<cell> n n -- r )
    {: frame row:n col:n :}
    frame row 4 * col + SPAN:CELL@ IEEE754:BITS>F64 ;
@@ -329,8 +315,6 @@ public
 
 2085 constant WORK-CELLS
 
-\ A is stored by rows as [a00 a01 a02 o0, ...], with its axes in columns.
-\ The exact map is o + A diag(s) A^-1 (p-o); only its final coordinates round.
 : SCALE3 ( r r r SPAN:span<cell> r r r SPAN:span<cell> -- r r r )
    {: px:r py:r pz:r frame sx:r sy:r sz:r work :}
    frame SPAN:CELL-LEN 12 < work SPAN:CELL-LEN WORK-CELLS < or if

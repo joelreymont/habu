@@ -1,38 +1,9 @@
-\ ffi-abi.f - checked AAPCS64 and SysV FFI calls and marshalling.
-\
-\ Built on the host trampolines: `ffi-call` and `ffi-call-n` for integer-only
-\ calls, and `ffi-call-abi` / `ffi-call-abi-r` for separate integer, float and
-\ caller-packed stack arguments. AAPCS64 has eight registers of each kind;
-\ SysV has six integer and eight float registers.
-\
-\ Marshalling uses task-DATA scratch buffers. Integer/pointer args are
-\ cells in FFI-BUF; FP args are float cells in FFI-FBUF; stack spill slots are
-\ prepacked cells in FFI-STACK-BUF. Kernel params are a `void**` pointer array
-\ plus library-owned value cells for scalar params.
-\
-\ STORAGE CLASS. TASK-LOCAL: FFI-BUF, FFI-FBUF, FFI-STACK-BUF, the x0..x8 and
-\ stack extent tables, the kernel params and the DLSYM loader block are task
-\ DATA, so a task may pause after staging without another corrupting its call.
-\ Calls do not nest in one task, except that a C callback's body may call C
-\ from inside the outer call and shares its scratch (src/lib/ffi-callback.f).
-\ PROCESS-WIDE: the descriptor rows and resolved addresses, cleared by one
-\ IMAGE-LIFECYCLE hook before each capture so a restored image re-resolves.
-\
-\ CONTRACT. FUNCTION: is the only checked call surface: its word names a row,
-\ never an address, and the raw trampolines stay TRUSTED-only. A result states
-\ the C width: `n` takes the whole register, a C int is `i32` (sign-extends)
-\ and an unsigned int `u32` (masks). VERSIONED-LIBRARY, LIBRARY and
-\ PROCESS-SYMBOLS select for the declarations after them in their own scope,
-\ with no default: a declaration without one is E-FFI-LIBRARY, as is a LIBRARY
-\ literal in the other target's soname spelling. Rows open with FFI:NOW alone:
-\ on Linux that is RTLD_LOCAL, so a PROCESS-SYMBOLS call cannot see the
-\ library (pass FFI:GLOBAL to FFI:DLOPEN for that); on macOS it is global. An
-\ absent symbol or library is E-FFI-DLSYM at the first call, never at the
-\ declaration. An `f32` in a variadic position is refused (C promotes it;
-\ declare `r`). A string holding a 0 byte cannot cross to C and is E-FFI-NUL;
-\ FFI is the only library code that writes a terminator. FFI's wordlists are
-\ protected after its last definition, so later source cannot add a call or
-\ redirect a symbol.
+\ ffi-abi.f - checked AAPCS64 and SysV FFI calls, package FFI. AAPCS64 passes
+\ eight integer and eight float registers, SysV six and eight. FUNCTION: is the
+\ only checked call surface: its word names a row, never an address.
+\ STORAGE CLASS. TASK-LOCAL: marshalling buffers, extent tables, kernel params
+\ and the DLSYM loader block; calls nest only through a C callback, which shares
+\ them (src/lib/ffi-callback.f). PROCESS-WIDE: rows, cleared before each capture.
 
 s" src/lib/errors.f" required
 s" src/lib/span.f" required                   \ CSTR's destination carries its reach
@@ -71,12 +42,9 @@ $41C8 constant FFI-SCRATCH-END
 : FFI-F32BUF ( -- ptr n )
    data-base FFI-FBUF-OFF + ;
 
-\ The spill area is prepacked: slot `idx` carries an integer for an integer
-\ argument and a float for a float one, and only the signature being marshalled
-\ says which. Two accessors declare the same offset at the two pointees the two
-\ slot words really reach, the way FFI-BUF and FFI-FBUF declare the register
-\ areas; a single `( -- ptr a )` let the CALLER pick the element type of engine
-\ DATA, which is the mint this rule removes.
+\ A spill slot holds an integer or a float as the marshalled signature says, so
+\ FFI-STACK-BUF and FFI-STACK-FBUF declare one offset at the two pointees rather
+\ than one `( -- ptr a )` that would let a caller pick engine DATA's type.
 : FFI-STACK-BUF ( -- ptr n )
    data-base FFI-STACK-BUF-OFF + ;
 
@@ -101,15 +69,11 @@ $41C8 constant FFI-SCRATCH-END
 : FFI-STACK-LEN-BUF ( -- ptr n )
    data-base FFI-STACK-LEN-BUF-OFF + ;
 
-\ Pointer <-> cell reinterpret. An argument buffer slot holds a pointer as a
-\ cell, and a foreign function that returns an address hands back a cell that
-\ has to be read as bytes. The two identity axioms FFI-PTR>CELL / FFI-CELL>PTR
-\ are declared in src/core/checker.f with an owner-private row that admits this
-\ package and no other scope. `( ptr a -- n )` is no CAST: (a type-variable
-\ pointee is refused as possibly linear, E-CAST-LINEAR), and `( n -- ptr u8 )`
-\ is the private class mint a CAST: also declares. CELL>PTR stays private: a
-\ foreign address carries no length, so only a word that knows the callee's
-\ width may publish one.
+\ The identity axioms FFI-PTR>CELL / FFI-CELL>PTR are declared in
+\ src/core/checker.f with an owner-private row admitting this package alone:
+\ `( ptr a -- n )` is no CAST: (a type-variable pointee is E-CAST-LINEAR). CELL>PTR
+\ stays private: a foreign address carries no length, so only a word that knows
+\ the callee's width may publish one.
 : PTR>CELL ( ptr a -- n ) FFI-PTR>CELL ;
 : CELL>PTR ( n -- ptr u8 ) FFI-CELL>PTR ;
 
@@ -189,9 +153,6 @@ $41C8 constant FFI-SCRATCH-END
 : FFI-KPARAMS>N ( -- n )
    FFI-KPARAM-PBUF PTR>CELL ;
 
-\ Exact bindings use this sealed package surface. Raw calls remain TRUSTED-only
-\ and no universal binder is published.
-
 : REG-LEN-SLOT ( n -- ptr n ) {: idx:n :}
    idx FFI-MAX-ARGS FFI-CHECK-INDEX
    FFI-REG-LEN-BUF idx cells + ;
@@ -212,9 +173,8 @@ $41C8 constant FFI-SCRATCH-END
    len 0 <= if E-FFI-ARITY throw then
    len ;
 
-\ Exact package-private dlopen/dlsym bindings: paths and symbols are read-only,
-\ while handles and flags are scalar. Checked bodies over the owner-private
-\ ffi-call-bounded row; the loader's own two GOT slots hold the addresses.
+\ Checked bodies over the owner-private ffi-call-bounded row; the loader's own
+\ two GOT slots, DLOPEN-SLOT and DLSYM-SLOT, hold the addresses.
 : DLOPEN-RAW ( ptr u8 n -- n ) {: path:ptr flags:n :}
    path PTR>CELL FFI-DLBUF !
    flags FFI-DLBUF CELL + !
@@ -230,24 +190,18 @@ $41C8 constant FFI-SCRATCH-END
    FFI-DLBUF FFI-DLBUF 2 cells + 2 DLSYM-SLOT @ ffi-call-bounded ;
 
 \ ---- declared foreign functions -------------------------------------------
-\ FUNCTION: (the declarer below this package) names a row here and the word it
-\ generates carries that row's INDEX. Exact declarations share one row. A
-\ checked caller therefore reaches only a symbol some declaration published: the function address is never a
-\ value on the stack, so the sealed surface above still publishes no universal
-\ binder. A row resolves its symbol on the first call and caches the address;
-\ library 0 is the process itself (RTLD_DEFAULT, acquiring no reference), any
-\ other index is a path this package dlopens once.
-\
-\ Each distinct descriptor occupies a row in aligned dictionary storage.
-\ Rows may move when a bank grows; declarations and callers keep stable indices.
-\ The ordinary and maker banks reuse descriptors independently.
+\ FUNCTION: names a row here and its generated word carries the row's index, so
+\ a checked caller reaches only a symbol some declaration published. Exact
+\ declarations share one row. A row resolves its symbol on the first call and
+\ caches the address. Library 0 is the process (RTLD_DEFAULT, no reference);
+\ any other index is a path dlopened once. Rows may move when a bank grows;
+\ indices stay stable. The two banks reuse descriptors independently.
 
 $30 constant FN-NAME-CAP                  \ NUL-terminated C symbol
 PATH-CAP 1 + constant LIB-PATH-CAP      \ a library path of PATH-CAP bytes and its NUL
 $20 constant LIB-BASE-CAP                 \ the base name LIBRARY-NAME$ renders around
 9999 constant LIB-VERSION-MAX             \ ... and its soname version
 
-\ Function and library rows have one layout from the first declaration onward.
 0 cells constant FN-ADDR-OFF
 1 cells constant FN-LIB-OFF
 2 cells constant FN-ARGC-OFF
@@ -265,10 +219,9 @@ variable FN-CAP
 variable LIB-CAP
 variable FN-N
 variable LIB-N
-\ Builder support has declarations of its own. Their generated call sites keep
-\ a tagged index so a callback into the application can select its own rows
-\ while the builder's foreign call is still on the stack. Ordinary indices and
-\ the application's four controls keep their original numeric meaning.
+\ The builder's declarations are a second bank: their call sites carry MAKER-TAG
+\ in the index, so a callback into the application selects its own rows while
+\ the builder's foreign call is still on the stack.
 PERSISTED-PTR-VARIABLE MAKER-FN-TABLE
 PERSISTED-PTR-VARIABLE MAKER-LIB-TABLE
 variable MAKER-FN-CAP
@@ -277,11 +230,7 @@ variable MAKER-FN-N
 variable MAKER-LIB-N
 variable MAKER-DEPTH
 $4000000000000000 constant MAKER-TAG
-\ 0, or the xt OBSERVE stored; NOTIFY hands it a kind and an index: each
-\ completed library (OBS-LIB) or function (OBS-FN) declaration with its row,
-\ and each selection write, a declaring word's, SELECT's or CLEAR-SCOPE's
-\ (OBS-SCOPE, index 0), an unchanged one included. An install's SELECT runs
-\ with no observer.
+\ 0, or the xt OBSERVE stored.
 variable OBSERVER
 CAST: OBSERVER-FN ( n -- [ n n -- ] )
 CAST: OBSERVER-N ( [ n n -- ] -- n )
@@ -463,15 +412,12 @@ private
    idx LIB-CHECK
    value idx LIB-HANDLE-OFF LIB-FIELD ! ;
 
-\ Every call stages its own arguments in the register and spill buffers, the
-\ dlopen/dlsym buffer and the two length buffers, so between calls they hold
-\ only the last call's values: proc_pidpath's process id, for one, which made
-\ two --repl builds of one program differ (tools/hb-build-repl-twin-test.f).
-\ Kernel params are not per call; they stay until FFI-KPARAM-RESET.
+\ The register, spill, dlopen/dlsym and length buffers keep the last call's
+\ values, which made two --repl builds of one program differ
+\ (tools/hb-build-repl-twin-test.f). Kernel params stay until FFI-KPARAM-RESET.
 : FORGET-STAGED ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0 ?do 0 a i + c! loop ;
 
-\ Library 0 is RTLD_DEFAULT and has no handle to acquire.
 : PROCESS-HANDLE ( -- n )
    HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if 0 exit then
    HB-TARGET-MACOS? if -2 exit then
@@ -491,13 +437,10 @@ variable DLCLOSE-FN-CELL
 
 : ERRNO-FN ( -- n ) ERRNO-FN-CELL @ ;
 
-\ Resolution is lazy so a declaration never calls the loader, and a missing
-\ symbol is a named failure at the first call rather than at load time.
-\ Every first resolution resolves the errno accessor first, so once a row's call
-\ returns, ERRNO's own lookup is the cached path and nothing runs the loader
-\ between the call and its errno read: the loader may change errno even when it
-\ succeeds. This lookup registers nothing; FN-RESOLVE below arms FFI's cleanup
-\ before it lets the loader acquire anything.
+\ Resolution is lazy: a declaration never calls the loader, and a missing symbol
+\ is E-FFI-DLSYM at the first call. The errno accessor resolves first because
+\ the loader may change errno even when it succeeds, and nothing may run it
+\ between a call and its errno read. This lookup registers nothing.
 : FN-LOOKUP ( n -- n ) {: idx:n :}
    idx FN-ADDR@ dup 0 <> if exit then
    drop
@@ -516,7 +459,6 @@ variable DLCLOSE-FN-CELL
    u 0 <= if E-FFI-SYNTAX throw then
    u LIB-PATH-CAP 1 - > if E-FFI-SYNTAX throw then ;
 
-\ LIBRARY-NAME$'s two inputs, refused by the same code an over-long path is.
 : BASE-CHECK ( n -- ) {: u:n :}
    u 0 <= if E-FFI-SYNTAX throw then
    u LIB-BASE-CAP > if E-FFI-SYNTAX throw then ;
@@ -532,9 +474,10 @@ public
 : SCRATCH-END ( -- n ) FFI-SCRATCH-END ;
 : NOW ( -- n ) FFI-RTLD-NOW ;
 
-\ dlopen RTLD_GLOBAL, for `FFI:NOW FFI:GLOBAL or`: the library's symbols join
-\ process-wide resolution (RTLD_DEFAULT, which PROCESS-SYMBOLS resolves
-\ through). <dlfcn.h> spells it 0x100 in glibc and 0x8 on macOS.
+\ FFI:NOW alone is RTLD_LOCAL on Linux, so PROCESS-SYMBOLS cannot see the
+\ library; `FFI:NOW FFI:GLOBAL or` joins its symbols to RTLD_DEFAULT. macOS
+\ opens global either way. <dlfcn.h> spells RTLD_GLOBAL 0x100 in glibc, 0x8 on
+\ macOS.
 : GLOBAL ( -- n ) HB-TARGET-MACOS? if $8 else $100 then ;
 
 : >CELL ( ptr a -- n ) PTR>CELL ;
@@ -596,7 +539,8 @@ public
 : KPARAMS ( -- ptr n n ) FFI-KPARAMS ;
 : KPARAMS>CELL ( -- n ) FFI-KPARAMS>N ;
 
-\ ---- C strings ------------------------------------------------------------
+\ A string holding a 0 byte cannot cross to C and is E-FFI-NUL; FFI is the only
+\ library code that writes a terminator.
 private
 \ A 0 byte among the u bytes at b would end the C string early.
 : NUL-CHECK ( ptr u8 n -- )
@@ -652,10 +596,8 @@ public
 : CALLBACK-ENTRY ( n -- n ) callback-entry ;
 
 \ ---- the declared-function surface ----------------------------------------
-\ DECLARE-ROW publishes one row and answers its index; the declarer below is
-\ its only intended caller, and DECLARE is the row of a call with no spilled
-\ arguments and nothing to relocate. PROCESS and LIBRARY-PATH answer the
-\ library index a declaration resolves against.
+\ The declarer below is DECLARE-ROW's only intended caller; DECLARE is the row of
+\ a call with no spilled arguments and nothing to relocate.
 : PROCESS ( -- n ) 0 ;
 
 : LIBRARY-PATH-CAP ( -- n ) LIB-PATH-CAP ;
@@ -664,7 +606,6 @@ public
 : STACK-CELLS ( -- n ) FFI-MAX-ARGS ;
 
 \ Render into the caller's CODEGEN buffer; the caller owns the returned span.
-\ Independent callers can build names without sharing mutable scratch storage.
 : LIBRARY-NAME$ ( ptr u8 n n ptr n -- ptr u8 n ) {: base:ptr u:n version:n buf:ptr :}
    u BASE-CHECK
    version VERSION-CHECK
@@ -693,8 +634,8 @@ public
    loop
    0 ;
 
-\ Reusing an occupied row leaves its resolved handle in place. Only a new path
-\ consumes a row; new paths grow the table only when its current capacity fills.
+\ Reusing an occupied row leaves its resolved handle in place; only a new path
+\ consumes a row.
 : LIBRARY-PATH ( ptr u8 n -- n )
    {: path:ptr u:n :}
    u PATH-ROOM
@@ -712,11 +653,10 @@ public
 
 private
 
-\ Close the handle in library slot `slot`, answering whether it closed. dlclose
-\ answers a C int, which fills only the low half of the return register, and
-\ zero is success, so the low half alone decides. A refused close keeps the
-\ handle for the next PREPARE to retry. This runs only inside the hook FFI has
-\ registered, so the dlclose row is looked up without registering.
+\ dlclose answers a C int, which fills only the low half of the return register,
+\ and zero is success. A refused close keeps the handle for the next PREPARE to
+\ retry. This runs only inside FFI's registered hook, so the dlclose row is
+\ looked up without registering.
 : CLOSE-SLOT ( n -- bool ) {: slot:n :}
    RESET slot LIB-HANDLE@ 0 VALUE!
    DLCLOSE-FN-CELL @ {: row:n :}
@@ -726,12 +666,11 @@ private
    0 slot LIB-HANDLE!
    true ;
 
-\ Image capture is quiescent. Library handles are owned references and are
-\ released here; function addresses are borrowed and only cleared, and the next
-\ call after a restore re-resolves against the new process. This runs after
-\ every one-shot cleanup (IMAGE-LIFECYCLE:PREPARE runs persistent hooks last, in
-\ reverse order, and FFI registers first), so module cleanup that calls into a
-\ library has finished before the library closes.
+\ Library handles are owned references, released here; function addresses are
+\ borrowed and only cleared, so the first call after a restore re-resolves. This
+\ runs after every one-shot cleanup (IMAGE-LIFECYCLE:PREPARE runs persistent
+\ hooks last, in reverse order, and FFI registers first), so module cleanup that
+\ calls into a library has finished before the library closes.
 : CLOSE-BANK ( n -- bool ) {: tag:n :}
    true
    tag LIB-N-CELL @ 0 ?do
@@ -766,22 +705,21 @@ private
    DRAIN-RETIRED ;
 
 \ The registered flag is set only after REGISTER completes, so a throwing
-\ registration leaves flag and registry consistent for a retry (forth.md's
-\ IMAGE-LIFECYCLE:PREPARE rule).
+\ registration leaves flag and registry consistent for a retry (the rule above
+\ src/lib/image-lifecycle.f PREPARE).
 : REGISTER-CLEANUP ( -- )
    FN-REGISTERED @ 0= if
       [: FORGET-SYMBOLS ;] IMAGE-LIFECYCLE:REGISTER-PERSISTENT
       1 FN-REGISTERED !
    then ;
 
-\ The resolution every call makes. Its unresolved path arms FFI's cleanup before
-\ the lookup acquires an address or a library handle, and the cached path pays
-\ nothing. A stripped image needs this: it starts with an empty registry and the
-\ flag clear (AOT-CONTROLS) and replays no declaration, so its first resolution
-\ registers, and FFI's hook is its first persistent one unless the program
-\ registered one at run time before its first foreign call. Registering here
-\ rather than in the CALL words puts this word after REGISTER-CLEANUP, and so
-\ after the hook's own dlclose call, which looks its row up with FN-LOOKUP.
+\ The unresolved path arms FFI's cleanup before the lookup acquires an address
+\ or a handle. A stripped image needs this: it starts with an empty registry and
+\ the flag clear (AOT-CONTROLS) and replays no declaration, so its first
+\ resolution registers, and FFI's hook is its first persistent one unless the
+\ program registered one at run time before its first foreign call. Registering
+\ here, not in the CALL words, places this after REGISTER-CLEANUP and the hook's
+\ dlclose call, which uses FN-LOOKUP.
 : FN-RESOLVE ( n -- n ) {: idx:n :}
    idx FN-ADDR@ dup 0 <> if exit then
    drop
@@ -790,8 +728,8 @@ private
 
 public
 
-\ A source import/export boundary has no foreign call in flight. Release live
-\ library references and borrowed symbol addresses before copying declarations.
+\ A source import/export boundary has no foreign call in flight, so the cache is
+\ released there before declarations are copied.
 : FORGET-CACHE ( -- ) FORGET-SYMBOLS ;
 
 \ An AOT window retains the application-close allocation even if later linker
@@ -814,14 +752,10 @@ public
    NULL-PTR PIN-FN ! NULL-PTR PIN-LIB !
    0 PIN-FN-CAP ! 0 PIN-LIB-CAP ! ;
 
-\ The staged call. The row's index is the only thing a caller names, so a
-\ checked body cannot reach an address the declarations did not publish.
 : CALL ( n -- n ) {: idx:n :}
    idx FN-RESOLVE {: fn:n :}
    FFI-BUF FFI-REG-LEN-BUF idx FN-ARGC@ fn ffi-call-bounded ;
 
-\ A foreign address carries no length; only this package may mint the pointer,
-\ and a caller reads it with the width the callee's contract fixes.
 : CALL-PTR ( n -- ptr u8 ) CALL CELL>PTR ;
 
 : CALL-ABI ( n -- n ) {: idx:n :}
@@ -869,7 +803,6 @@ public
 
 private
 
-\ The low len bytes of a register, little-endian.
 : REG-STORE ( n ptr u8 n -- ) {: v:n dst:ptr len:n :}
    len 0 ?do v i 8 * rshift $FF and dst i + c! loop ;
 
@@ -914,7 +847,6 @@ public
    lo dst len 8 min REG-STORE
    len 8 > if hi dst 8 + len 8 - REG-STORE then ;
 
-\ C int return registers define only their low 32 bits.
 : I32-RESULT ( n -- n )
    $FFFFFFFF and $80000000 xor $80000000 - ;
 \ An exact descriptor includes the library index, complete C symbol, integer
@@ -958,13 +890,12 @@ public
    loop
    -1 ;
 
-\ Validate before reading a row's name. A match retains its cached address;
-\ only a new descriptor appends metadata to the selected bank.
-\ Declaring registers too. A process that loads this file declares the errno row
-\ at its load, before any module that calls a library can register a persistent
-\ hook, so FFI's hook is the first and runs last whenever the first foreign call
-\ comes, and a full image keeps the entry and the flag (tools/aot-build-core.f
-\ registers PROC-MAPS:RELOAD, which calls Mach through this table, after it).
+\ Validation precedes reading a row's name. A match keeps its cached address;
+\ only a new descriptor appends to the selected bank. Declaring registers FFI's
+\ cleanup: loading this file declares the errno row before any module can
+\ register a persistent hook, so FFI's hook is the first and runs last, and a
+\ full image keeps the entry and the flag (tools/aot-build-core.f registers
+\ PROC-MAPS:RELOAD, which calls Mach through this table, after it).
 : DECLARE-ROW ( ptr u8 n n n n n -- n )
    {: name:ptr u:n lib:n argc:n spills:n reloc:n :}
    DECL-TAG {: tag:n :}
@@ -1021,15 +952,13 @@ public
 : SYMBOL-CAP ( -- n ) FN-NAME-CAP 1- ;
 
 \ Hand every completed declaration, reused or appended, to an xt as
-\ `( kind idx )`: kind 1 = library (LIBRARY-PATH), 2 = function (DECLARE),
-\ 3 = a selection write (NOTIFY-SCOPE), idx 0.
-\ The tools' file object journals every declaration a file's code makes
+\ `( kind idx )`: 1 a library (LIBRARY-PATH), 2 a function (DECLARE), 3 a
+\ selection write, unchanged ones included, with idx 0. An install's SELECT runs
+\ with no observer. The tools' file object journals these
 \ (tools/native-unit-object.f SEGMENT-OPEN/SEGMENT-CLOSE); a captured image
 \ holds 0.
 : OBSERVE ( [ n n -- ] -- ) OBSERVER-N OBSERVER ! ;
 : UNOBSERVE ( -- ) 0 OBSERVER ! ;
-\ The declarer's RECORD-SCOPE, SELECT and CLEAR-SCOPE report each selection they
-\ write.
 : NOTIFY-SCOPE ( -- ) OBS-SCOPE 0 NOTIFY ;
 \ The observer's cell. The tools declare it a process cell at their load, as
 \ they do IMAGE-FLOOR (tools/native-unit-object.f).
@@ -1046,17 +975,14 @@ ERRNO-SYMBOL$ PROCESS 0 DECLARE ERRNO-FN-CELL !
 \ FORGET-SYMBOLS closes the library handles through this row.
 s" dlclose" PROCESS 1 DECLARE DLCLOSE-FN-CELL !
 
-\ A stripped image whose host already includes FFI needs its declarations in
-\ the image's DATA window. The names, paths and row metadata are the declarations
-\ made while loading the application; foreign addresses belong to the new
-\ process and must start unresolved. Keep the table private and hand its exact
-\ storage to the linker through the two callbacks.
-\ Retired rows drain before capture. Each dynamic buffer's generated #base and
-\ #ctl are the head and control block its generated words name; a fresh runtime
-\ starts both empty.
-\ A stripped entry publishes the two table bases after restoring DATA. Their
-\ destination addresses vary with the maker's window, while the descriptor
-\ bytes and counts must remain identical for the same application source.
+\ A stripped image whose host includes FFI carries the declarations made while
+\ loading the application in its DATA window, with foreign addresses unresolved
+\ for the new process; the linker gets the table's exact storage through the two
+\ callbacks. Retired rows drain before capture; each dynamic buffer's #base and
+\ #ctl start empty in a fresh runtime. A stripped entry publishes the two table
+\ bases after restoring DATA: their addresses vary with the maker's window,
+\ while the descriptor bytes and counts stay identical for one application
+\ source.
 : AOT-CONTROLS ( [ ptr u8 n -- ] [ ptr u8 n -- ] -- )
    {: carry fresh :}
    FN-N BYTE-VIEW CELL carry execute
@@ -1145,7 +1071,6 @@ public
    LIB-N BYTE-VIEW claim execute ;
 
 
-\ ---------------------------------------------------------------------------
 \ FUNCTION: - declare a foreign function, get a checked word.
 \
 \     VERSIONED-LIBRARY z 1                   \ libz.so.1 here, libz.1.dylib on macOS
@@ -1176,47 +1101,39 @@ public
 \
 \ VERSIONED-LIBRARY, LIBRARY or PROCESS-SYMBOLS selects the library for the
 \ declarations that follow. VERSIONED-LIBRARY takes a base name and a soname
-\ version and renders the spelling THIS TARGET loads (FFI:LIBRARY-NAME$); a
-\ soname is the usual case and neither spelling exists on the other system.
-\ LIBRARY takes one literal, for an absolute path or a name that carries no
-\ version, and refuses a literal spelled in the other target's convention.
-\ THE SELECTION BELONGS TO THE SCOPE THAT STATES IT - the package
-\ section, or the global scope, the declarations land in. There is no default:
-\ a declaration with no selection in its own scope is E-FFI-LIBRARY, so a file
-\ cannot inherit the library a previously loaded file happened to select and
-\ resolve its symbols through that handle's dependency tree.
+\ version and renders the spelling this target loads (FFI:LIBRARY-NAME$).
+\ LIBRARY takes one literal, an absolute path or an unversioned name, and
+\ refuses one spelled in the other target's convention. THE SELECTION BELONGS TO
+\ THE SCOPE THAT STATES IT: the package section or global scope the declarations
+\ land in. There is no default: a declaration with no selection in its own scope
+\ is E-FFI-LIBRARY, so a file cannot inherit a library an earlier file selected
+\ and resolve its symbols through that handle's dependency tree.
 \
-\ The result is the call's, at the width of the C prototype: `n` (or a widening
-\ token) for a cell-wide integer - `long`, `size_t`, `ssize_t`, `off_t` or an
-\ address kept as a number - `i32` for a C `int` (an enum, `pid_t`,
-\ `kern_return_t`), `u32` for an `unsigned int` (`mach_port_t`), `r` for C double,
-\ `f32` for C float, `ptr u8`
-\ for a foreign-owned address, or nothing, which drops the machine return cell.
-\ A 32-bit result fills only the low half of the return register and neither
-\ AAPCS64 nor SysV defines the high half, so a C `int` declared `n` can read -1
-\ as $FFFFFFFF. `i32` sign-extends the low half and reads `n` to the checker,
-\ which has no signed 32-bit type; `u32` masks it and keeps its own type.
+\ The result is the call's, at the C prototype's width: `n` (or a widening
+\ token) for a cell-wide integer (`long`, `size_t`, `ssize_t`, `off_t`, an
+\ address kept as a number), `i32` for a C `int` (an enum, `pid_t`,
+\ `kern_return_t`), `u32` for an `unsigned int` (`mach_port_t`), `r` for C
+\ double, `f32` for C float, `ptr u8` for a foreign-owned address, or nothing,
+\ which drops the return cell. A 32-bit result fills only the low half of the
+\ return register and neither AAPCS64 nor SysV defines the high half, so a C
+\ `int` declared `n` can read -1 as $FFFFFFFF. `i32` sign-extends the low half
+\ and reads `n` to the checker, which has no signed 32-bit type; `u32` masks it
+\ and keeps its own type.
 \
 \ `bytes STRUCT-RESULT` declares a C struct of `bytes`, any positive count,
-\ returned by value. The last input is a `ptr u8` to caller-owned storage of
-\ at least `bytes`, which stays the caller's and must not alias memory the
-\ callee reaches; it is no C argument, and the output row is empty. The
-\ record is an aggregate that is neither a homogeneous floating-point
-\ aggregate (HFA) nor a homogeneous short-vector aggregate (HVA): integer,
-\ pointer or mixed members, which the declaration asserts as it asserts scalar
-\ widths. An HFA, one to four members of one float type, and an HVA, one to
-\ four members of one 8- or 16-byte vector type, return in v0-v3, which no
-\ byte count distinguishes: they are unsupported and must not be declared with
-\ STRUCT-RESULT. AAPCS64 returns up
-\ to 8 bytes in x0 and 9..16 in x0 then x1, stored at exactly `bytes`; a
-\ larger record C writes through x8. The storage is eight-byte aligned, and
-\ 16-byte aligned for a record over 16 bytes; a record type aligned beyond 16
-\ bytes is excluded. The whole extent is guarded. The destination is one of
-\ the sixteen inputs any declaration may have, so at most fifteen C arguments
-\ remain, placed as a STRUCT-ARG declaration's are, below. There is no
-\ VARIADIC, no write clause on the storage, and no x86-64 declaration. The
-\ symbol resolves before staging. A null or misaligned destination is
-\ E-FFI-SYNTAX at the call.
+\ returned by value. The last input is a `ptr u8` to caller-owned storage of at
+\ least `bytes` that must not alias memory the callee reaches; it is no C
+\ argument, and the output row is empty. The record has integer, pointer or
+\ mixed members: an HFA (one to four members of one float type) or an HVA (one
+\ to four 8- or 16-byte vectors) returns in v0-v3, which no byte count reveals,
+\ and must not be declared. AAPCS64 returns up to 8 bytes in x0 and 9..16 in x0
+\ then x1, stored at exactly `bytes`; C writes a larger record through x8. The
+\ storage is eight-byte aligned, 16-byte aligned for a record over 16 bytes; a
+\ record type aligned beyond 16 bytes is excluded. The whole extent is guarded.
+\ The destination is one of the sixteen inputs, so at most fifteen C arguments
+\ remain, placed as STRUCT-ARG's are. No VARIADIC, no write clause on the
+\ storage, no x86-64. A null or misaligned destination is E-FFI-SYNTAX at the
+\ call.
 \
 \ `idx bytes STRUCT-ARG` declares input idx, a `ptr u8`, the address of a C
 \ struct of `bytes`, any positive count, passed by value: one C argument,
@@ -1246,9 +1163,9 @@ public
 \     ;FUNCTION
 \
 \ Arguments take integer and float registers in declaration order.
-\ A C float occupies the low 32 bits of an FP slot; a float result reads only
-\ those bits and widens to Habu `r`. Variadic positions use C default promotions,
-\ so declare a promoted float as `r`, never `f32`.
+\ A float result reads only the low 32 bits of its FP slot and widens to Habu
+\ `r`. Variadic positions use C default promotions, so declare a promoted float
+\ as `r`, never `f32`.
 \ AAPCS64 takes integers in x0..x7 and floats in d0..d7. A declaration carrying
 \ a float rides the ABI call, which packs no spill there, so it is refused past
 \ eight of either kind (E-FFI-ARITY); an integer-only declaration rides
@@ -1258,19 +1175,10 @@ public
 \ pointer extents keep their own stack positions; a C float past the eighth
 \ float register has no stack staging and is refused (E-FFI-ARITY).
 \
-\ The symbol resolves once per process, at the FIRST CALL and never at the
-\ declaration, so an absent symbol is E-FFI-DLSYM where the caller stands;
-\ package FFI re-resolves after an image restore.
-\
-\ Every distinct descriptor has a stable numeric row. Exact declarations
-\ share a row within the selected bank; later rows grow dictionary storage.
-\
-\ THE GENERATED TEXT DEFINES WORDS AND LEAVES NOTHING ON THE STACK. It crosses
-\ the loader's INCLUDE-EVALUATE, which is evaluate-closed: the text runs with its
-\ floor at the declarer's depth, and a text that left cells would be refused
-\ E-EVAL-RESIDUE. The declarer's obligation to that boundary is one complete
-\ colon definition per declaration and no interpreted residue; src/lib/ffi-test.f
-\ asserts DEPTH across a declaration.
+\ THE GENERATED TEXT DEFINES WORDS AND LEAVES NOTHING ON THE STACK: it runs
+\ through the loader's evaluate-closed INCLUDE-EVALUATE, where residue is
+\ E-EVAL-RESIDUE, so each declaration is one complete colon definition with no
+\ interpreted residue (src/lib/ffi-test.f asserts DEPTH across one).
 
 private
 
@@ -1373,8 +1281,6 @@ variable SCOPE-HOOK
    0 ARG-N ! 0 INT-N ! 0 FLT-N ! 0 RES-KIND ! 0 CALL-KIND !
    0 VAR-START ! 0 STRUCT-BYTES ! 0 STACK-N ! ;
 
-\ Run a declaration word's body, then rest the cells by the rule above: all of
-\ them when no declaration is open, else the token cells.
 : KEEP-REST ( R [ R -- S ] -- S )
    [: OPEN @ 0= if REST else REST-TOKENS then ;] finally ;
 
@@ -1468,8 +1374,6 @@ variable SCOPE-HOOK
    s" f32" TOK-IS? if s" r" EFF+ K-FLOAT32 REG+ exit then
    TOK-KEEP K-VALUE REG+ ;
 
-\ `i32` is not a checker type: the word the declaration generates returns the
-\ sign-extended value as `n`.
 : OUT-TOKEN ( -- )
    RES-KIND @ R-NONE <> if E-FFI-SYNTAX throw then
    s" ptr" TOK-IS? if TOK-KEEP PTR-TAIL R-POINTER RES-KIND ! exit then
@@ -1557,20 +1461,16 @@ variable SCOPE-HOOK
 
 : RECORD-WORDS ( n -- n ) 1- 8 / 1+ ;
 
-\ The integer registers an argument of record width bytes, 0 for none, takes.
 : INT-WORDS ( n -- n ) {: bytes:n :}
    bytes 0 > bytes 16 <= and if bytes RECORD-WORDS exit then
    1 ;
 
-\ One argument's place, from the integer registers, float registers and stack
-\ cells taken before it.
 : PLACE-ARG ( n n n n n -- n n n n ) {: int:n flt:n stack:n kind:n bytes:n :}
    kind K-FLOAT = kind K-FLOAT32 = or if int flt 1+ stack flt exit then
    bytes INT-WORDS {: words:n :}
    int words + REG-MAX <= if int words + flt stack int exit then
    REG-MAX flt stack words + stack 1+ negate ;
 
-\ A record's copy cell from the first free one, and the next free one.
 : PLACE-COPY ( n n -- n n ) {: pos:n bytes:n :}
    bytes 16 <= if pos 0 exit then
    pos 1+ 2 / 2 * {: pay:n :}
@@ -1593,7 +1493,6 @@ variable SCOPE-HOOK
       pays i cells + !
    loop ;
 
-\ Whether a plan's float registers and stack cells fit the struct call.
 : PLAN-FITS? ( n n -- bool ) {: flt:n stk:n :}
    flt REG-MAX <= stk STACK-CELLS <= and ;
 
@@ -1728,8 +1627,6 @@ private
    s" FFI:CALL" GEN+ ;
 
 \ ---- the row this declaration takes ----------------------------------------
-\ Package FFI reuses an exact descriptor or appends a row. The declarer
-\ passes the complete symbol, library selection and ABI shape.
 
 : DIAG-LINE ( ptr u8 n -- ) {: a:ptr u:n :}
    DIAG-FD a u write drop ;
@@ -1737,12 +1634,10 @@ private
 : DIAG+ ( ptr u8 n -- )
    DIAG CODEGEN:APPEND-STRING ;
 
-\ A library name spelled in the OTHER target's convention cannot resolve on this
-\ one, and dlopen would only say so at the first call, in whatever module the
-\ declaration belongs to. It is refused where it is stated instead, and the line
-\ names the path and the target this build loads for, the way the table-full
-\ line names its path. A rendered name passes by construction, so the guard
-\ costs a literal row nothing.
+\ A library name spelled in the other target's convention is refused where it
+\ is stated, not at the first call in whatever module declared it; the line
+\ names the path and the target this build loads for. A rendered name passes by
+\ construction.
 : TARGET$ ( -- ptr u8 n )
    HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if s" linux" exit then
    HB-TARGET-MACOS? if s" macos" exit then
@@ -1794,8 +1689,6 @@ private
 : SLOT ( -- n )
    SYM-BUF SYM-U @ CUR-LIB @ INT-N @ STACK-N @ RELOC-MASK DECLARE-ROW ;
 
-\ What the machine return cell becomes: dropped, rebuilt from its low half for a
-\ 32-bit result, or taken whole.
 : RESULT-TAIL ( -- )
    RES-KIND @ R-NONE = if s"  drop" GEN+ exit then
    RES-KIND @ R-I32 = if s"  FFI:I32-RESULT" GEN+ exit then
@@ -1817,8 +1710,6 @@ private
    i ARG-REG@ 0 < if i STAGE-SPILL exit then
    i STAGE-REG ;
 
-\ Resolve first, then stage every C argument and any destination, call, and
-\ store the record or shape the result.
 : STRUCT-BODY ( -- )
    SLOT {: slot:n :}
    LOCALS
@@ -1844,7 +1735,7 @@ private
    NEEDS-LOCALS? {: named:bool :}
    named if LOCALS then
    \ The mixed ABI guard visits all nine register extents. Bounded calls guard
-   \ only FN-ARGC live slots, whose staging also writes each extent.
+   \ only the row's argc live slots, whose staging also writes each extent.
    CALL-KIND @ C-ABI = CALL-KIND @ C-ABI-R = or if s" FFI:RESET " GEN+ then
    named STAGE
    SLOT GEN-N GEN-SP
@@ -1852,16 +1743,12 @@ private
    RESULT-TAIL
    s"  ;" GEN+ ;
 
-\ A selection belongs to the scope that states it - the package section, or the
-\ global scope, that will hold the declarations - and there is no default. The
-\ scope is the current WORDLIST rather than the loading file because the loader
-\ has no current-file identity to ask for: INCLUDE-PATH names the last file
-\ OPENED, so after `require src/lib/ffi-abi.f` it reads src/lib/codegen.f, and every FFI
-\ consumer would share that one identity. A wordlist is the module a definition
-\ lands in, it is saved and restored with the package scope, and it separates two
-\ consumers even when their requires end at the same file.
-\ A selected declaration scope belongs to the source load that made it. The
-\ source is closed before capture, and its host wordlist id is not an image id.
+\ The selection scope is the current wordlist, not the loading file:
+\ INCLUDE-PATH names the last file opened (src/lib/codegen.f after `require
+\ src/lib/ffi-abi.f`), so every consumer would share one identity. A wordlist is
+\ saved and restored with the package scope and separates two consumers whose
+\ requires end at one file. A selection belongs to the source load that made it:
+\ the source closes before capture, and its host wordlist id is not an image id.
 : CLEAR-SCOPE ( -- )
    0 SCOPE-WID !
    0 SCOPE-SET !
@@ -1930,11 +1817,8 @@ public
 \ (tools/native-unit-object.f DECL-CLOSED-CK).
 : PENDING ( -- n ) OPEN @ ;
 
-\ FUNCTION: parses the name, the symbol and the effect and leaves the
-\ declaration open; the interpreter then runs any clauses; ;FUNCTION plans it,
-\ renders it and hands the complete definition to the loader's closed
-\ evaluate. Nothing is published before the closer, and the row is registered as
-\ the text is rendered, so a refused declaration leaves no half-built word.
+\ Nothing is published before ;FUNCTION, and the row is registered as the text
+\ is rendered, so a refused declaration leaves no half-built word.
 : OPEN-FUNCTION ( -- )
    [: CHECK-SCOPE
       OPEN @ 0 <> if E-FFI-SYNTAX throw then
@@ -1956,8 +1840,6 @@ public
 
 private
 
-\ The parser's context, generated-text descriptors and token arrays are one
-\ declared cell grid or byte span apiece.
 : PARSER-SPANS ( [ ptr u8 n -- ] [ ptr u8 n -- ] -- )
    {: cells bytes :}
    cells CONTEXT-CELLS
@@ -1972,8 +1854,7 @@ private
 
 \ A refused clause ABANDONS the declaration rather than leaving it half open:
 \ the next FUNCTION: in the file would otherwise refuse too, and the first
-\ diagnostic would name the wrong declaration. The clause word's KEEP-REST
-\ then rests the cells, as for any closed declaration.
+\ diagnostic would name the wrong declaration.
 : REFUSE ( -- )
    0 OPEN !
    E-FFI-SYNTAX throw ;
@@ -2055,10 +1936,8 @@ public
    path u LIBRARY-PATH CUR-LIB !
    RECORD-SCOPE ;
 
-\ The versioned form's own selection: two tokens, rendered for this target and
-\ then taken through the literal form's path, so the scope recording and the
-\ table guard are shared and a rendered name reaches dlopen the way a literal
-\ one does.
+\ The two tokens are rendered for this target and take the literal form's path,
+\ so the scope recording and the table guard are shared.
 : SELECT-VERSIONED-LIBRARY ( -- )
    [: TOK@ BASE!
       BASE-BUF BASE-U @ TOK@ TOK>VERSION LIB-NAME LIBRARY-NAME$ SELECT-LIBRARY ;]

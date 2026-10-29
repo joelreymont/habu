@@ -1,21 +1,7 @@
 \ suite.f - package TEST: suite, group and row registration and the run loop,
-\ loaded by src/lib/test.f.
-\
-\ A project adapter installs the hooks (SETUP! TEARDOWN! DRAIN! SETTLE!
-\ ARGS-BEGIN! ARG+! RUNNER! STDIN-RUNNER! WHITEBOX-RUNNER!). A suite file
-\ declares `TEST:GROUP SEQ name` or `TEST:GROUP PARA name` (the mode token is
-\ mandatory), rows (SUITE, WHITEBOX-SUITE, SUITE-STDIN) each closed by
-\ `TEST:;SUITE`, then `TEST:;GROUP`, and calls TEST:RUN once. RUN offers rows
-\ to their runner in registration order between SETUP and TEARDOWN, which
-\ receives the run's throw code; RUN rethrows it. DRAIN runs on entry to a SEQ
-\ group, before and after each of its rows, and once at the end; PARA rows,
-\ SUITE-STDIN ones included, start without waiting for each other, so a row
-\ that needs an idle pool belongs in a SEQ group. A row whose arguments reach
-\ another row keyword or the end of input (`test: row <name> has no ;SUITE`),
-\ and a row a runner still declines after SETTLE (`test: row <name> not
-\ started after settle`), throw E-SUITE-ROW. Fixture helper words belong in a
-\ private package, not global stemmed names.
-\
+\ loaded by src/lib/test.f. A project adapter installs the hooks (SETUP! through
+\ SETTLE!); fixture helper words belong in a private package, not
+\ global stemmed names.
 \ STORAGE CLASS. PROCESS-WIDE: the row and group tables, argument buffer and
 \ hooks are static; one task registers and runs a suite.
 
@@ -26,9 +12,9 @@ package TEST
 
 128 constant NAME-CAP
 1024 constant STDIN-CAP
-\ Shared suite-table budget. Grow by constant when it fills (FM-BUF-CAP
-\ precedent); keep the loud E-TBL-BOUNDS wall (ITEM-CHECK / ITEM-ALLOC).
-\ test/gate-pool.f sizes its red table from it.
+\ Shared suite-table budget: a full table is the loud E-TBL-BOUNDS wall
+\ (ITEM-CHECK, ITEM-ALLOC); grow the constant. test/gate-pool.f sizes its red
+\ table from it.
 1024 constant ITEM-MAX
 32 constant GROUP-MAX
 $10000 constant ARG-CAP
@@ -178,8 +164,8 @@ defer SETTLE ( -- )
 
 \ A token that must be there. Never name it `parse-name`: the wordlist is
 \ case-insensitive, so a private PARSE-NAME shadows the engine's word for every
-\ later definition in this package — which is how PARSE-ARGS' end-of-input
-\ branch became unreachable (E-STR-BOUNDS from here, never the row refusal).
+\ later definition in this package, and PARSE-ARGS' end-of-input branch then
+\ answers E-STR-BOUNDS instead of the row refusal.
 : REQUIRED-NAME ( -- ptr u8 n )
    parse-name dup 0= if 2drop E-STR-BOUNDS throw then ;
 
@@ -213,7 +199,7 @@ defer SETTLE ( -- )
    2dup s" TEST:;SUITE" STR= if 2drop TRUE exit then
    s" ;SUITE" STR= ;
 
-: UNQUALIFIED ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}   \ token without its TEST: qualifier
+: UNQUALIFIED ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    u 5 > if a 5 s" TEST:" STR=CI if a 5 + u 5 - exit then then
    a u ;
 
@@ -356,7 +342,6 @@ defer SETTLE ( -- )
       E-TBL-FIELD throw
    endcase ;
 
-\ Offer the row to its runner; TRUE when it started, counted once.
 : ITEM-START ( n -- bool )
    ITEM-DISPATCH {: ok:bool :}
    ok if ITEM-RAN @ 1+ ITEM-RAN ! then
@@ -510,6 +495,11 @@ EXPORT ITEM-NAME$
    0 ARG-U !
    DEFAULT-GROUP ;
 
+\ `TEST:GROUP SEQ name` or `TEST:GROUP PARA name`; the mode token is mandatory.
+\ Rows (SUITE, WHITEBOX-SUITE, SUITE-STDIN) each close with `TEST:;SUITE`, the
+\ group with `TEST:;GROUP`. PARA rows, SUITE-STDIN ones included, start without
+\ waiting for each other, so a row that needs an idle pool belongs in a SEQ
+\ group.
 : GROUP ( -- )
    MODE-TOKEN {: mode:n :}
    NAME-TOKEN {: a:ptr u:n :}
@@ -545,6 +535,12 @@ parses-through: SUITE 1 ( ;SUITE TEST:;SUITE )
 parses-through: WHITEBOX-SUITE 1 ( ;SUITE TEST:;SUITE )
 parses-through: SUITE-STDIN 2 ( ;SUITE TEST:;SUITE )
 
+\ Called once. Offers rows to their runner in registration order between SETUP
+\ and TEARDOWN, which receives the run's throw code; RUN rethrows it. DRAIN runs
+\ on entry to a SEQ group, before and after each of its rows, and once at the
+\ end. A row whose arguments reach another row keyword or the end of input
+\ (`test: row <name> has no ;SUITE`) and a row a runner still declines after
+\ SETTLE (`test: row <name> not started after settle`) throw E-SUITE-ROW.
 : RUN ( -- )
    RUN-ACT ;
 

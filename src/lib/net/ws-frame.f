@@ -1,31 +1,7 @@
-\ ws-frame.f - the RFC 6455 frame header: encode it, decode it, mask a payload.
-\
-\ A frame is a header of 2 to 14 bytes and then its payload (RFC 6455 section
-\ 5.2). The header carries FIN, three reserved bits, a four-bit opcode, the
-\ mask bit, the payload length in 7, 16 or 64 bits, and a 32-bit masking key
-\ when the mask bit is set. A client masks every frame it sends and a server
-\ masks none (section 5.1), so the sender, not the key, decides the mask bit,
-\ and the key of an unmasked frame's header is 0.
-\
-\ DECODE-HEADER reads the bytes held so far and answers either the header and
-\ the count of bytes it took, or the count the header needs before it can be
-\ read. It refuses as soon as the bytes it holds break the protocol: a reserved
-\ bit is E-WS-RSV, since no extension is negotiated; a reserved opcode is
-\ E-WS-OPCODE; a fragmented control frame, or one past 125 bytes, is
-\ E-WS-CONTROL; a mask bit the sender must not set or must set is E-WS-MASK;
-\ an extended length with its high bit set, or not in its shortest form, is
-\ E-WS-LENGTH (section 5.2's MUST); a payload past the caller's bound is
-\ E-WS-TOO-BIG.
-\
-\ ENCODE-HEADER writes each length in its shortest form, so every header it
-\ writes decodes to the header it was given and every header DECODE-HEADER
-\ accepts encodes back to the bytes it came from. It refuses what a sender must
-\ not write, with the same codes, and a span too small for the header with
-\ E-SPAN-CAPACITY, before it writes a byte.
-\
-\ MASK applies a masking key to a payload in place, so masking twice restores
-\ it. CLOSE-CODE! writes the status code that opens a close frame's payload.
-\
+\ ws-frame.f - the RFC 6455 frame header (section 5.2): encode it, decode it,
+\ mask a payload. A header is 2 to 14 bytes before its payload. A client masks
+\ every frame it sends and a server masks none (section 5.1), so the sender,
+\ not the key, decides the mask bit; an unmasked frame's key is 0.
 \ STORAGE CLASS. CALLER-OWNED: the module keeps no state.
 
 require src/lib/errors.f
@@ -115,7 +91,6 @@ $FFFFFFFF constant KEY-MAX
    ;MATCH ;
 
 
-\ The k bytes at p as one number, high byte first, and a number into k bytes.
 : BE@ ( ptr u8 n -- n ) {: p k:n :}
    0 k 0 ?do 8 lshift p i + c@ or loop ;
 
@@ -123,8 +98,6 @@ $FFFFFFFF constant KEY-MAX
    k 0 ?do v k 1- i - 8 * rshift $FF and p i + c! loop ;
 
 
-\ The bytes of the extended length field a length takes in its shortest form,
-\ and the ones a 7-bit length announces.
 : EXT-BYTES ( n -- n ) {: len:n :}
    len LEN7-MAX <= if 0 exit then
    len LEN16-MAX <= if 2 exit then
@@ -136,8 +109,6 @@ $FFFFFFFF constant KEY-MAX
    0 ;
 
 
-\ The 7-bit length field for a length: the length itself, or the mark of its
-\ extended form.
 : LEN7 ( n -- n ) {: len:n :}
    len EXT-BYTES {: ext:n :}
    ext 0= if len exit then
@@ -170,7 +141,11 @@ $FFFFFFFF constant KEY-MAX
 public
 
 
-\ Write a header as this sender sends it and answer its size, 2 to HEADER-MAX.
+\ Writes a header as this sender sends it and answers its size, 2 to HEADER-MAX.
+\ Each length takes its shortest form, so every header written decodes to the
+\ header given and every header DECODE-HEADER accepts encodes back to its
+\ bytes. It refuses what a sender must not write, with DECODE-HEADER's codes,
+\ and a span too small for the header with E-SPAN-CAPACITY, before a byte.
 : ENCODE-HEADER ( header sender SPAN:span<u8> -- n ) {: h who s :}
    h WS-HEADER:UNMAKE {: fin:bool op len:n key:n :}
    op CONTROL? if
@@ -190,8 +165,13 @@ public
    size ;
 
 
-\ Read the header at the start of the n bytes held, sent by this sender, whose
-\ payload may be no longer than the bound.
+\ Reads the header at the start of the n bytes held, sent by this sender, whose
+\ payload may be no longer than the bound. It refuses as soon as the held bytes
+\ break the protocol: a reserved bit is E-WS-RSV (no extension is negotiated),
+\ a reserved opcode E-WS-OPCODE, a fragmented control frame or one past 125
+\ bytes E-WS-CONTROL, a wrong mask bit for the sender E-WS-MASK, an extended
+\ length with its high bit set or not in its shortest form E-WS-LENGTH (section
+\ 5.2's MUST), and a payload past the bound E-WS-TOO-BIG.
 : DECODE-HEADER ( ptr u8 n sender n -- decoded ) {: p held:n who max:n :}
    held 0 < if E-SPAN-LENGTH throw then
    held 1 < if 2 WS-DECODED:need exit then
@@ -209,8 +189,8 @@ public
    size WS-DECODED:frame ;
 
 
-\ XOR each payload byte with the key's byte at its offset mod 4, the key's high
-\ byte first (section 5.3).
+\ XOR each payload byte in place with the key's byte at its offset mod 4, the
+\ key's high byte first (section 5.3), so masking twice restores it.
 : MASK ( n SPAN:span<u8> -- ) {: key:n s :}
    key 0 < key KEY-MAX > or if E-WS-MASK throw then
    s SPAN:$ {: p u:n :}

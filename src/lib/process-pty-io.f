@@ -1,52 +1,9 @@
 \ process-pty-io.f - checked process supervisor over the linear PTY handle registry.
-\
-\ This file REOPENS package PROCESS-PTY (the package that src/lib/process-pty-handle.f
-\ owns). That registry publishes no public interface: RESERVE, COMMIT, TAKE,
-\ TEARDOWN-DONE, the per-field readers, and the linear token conversions are all
-\ PRIVATE words. A supervisor that drives the linear reservation -> handle ->
-\ teardown lifecycle therefore has to live inside the same package and call those
-\ words by their bare names, exactly the way src/lib/process-pty-handle-test.f does.
-\ The supervisor exports its lifecycle words in the package's PUBLIC section, so
-\ callers outside the package reach them as PROCESS-PTY:WITH-TARGET,
-\ PROCESS-PTY:SIGNAL, and so on.
-\
-\ Lifetime: WITH-TARGET spawns the target, hands the body its handle, and tears
-\ the target down when the body returns, throws or unwinds under a task halt:
-\ the child is reaped, every descriptor closed and the slot handed back. Spawn
-\ and teardown are private, so no handle outlives its scope.
-\
-\ I/O model: WITH-TARGET connects the target through ordinary pipes (the
-\ `master` slot is its stdout read end and `done` its stdin write end).
-\ WITH-TTY-TARGET is the second mode: the target's standard descriptors are the slave
-\ side of a fresh pseudo-terminal, opened by PTY:OPEN, which owns the
-\ per-target unlock-and-name dance for the whole tree, so a
-\ child engine sees a terminal on fd 0, installs its line editor and recovers
-\ from a refused definition instead of stopping at it; the handle's `master`
-\ slot is the PTY master and `done` a duplicate of it for the write side. The
-\ slave is opened O_NOCTTY: a session-leading supervisor without a terminal
-\ (setsid, a service, a container init) would otherwise adopt it and be hung up
-\ at teardown. Nobody acquires the terminal as controlling (TIOCSCTTY is an
-\ unencoded request the engine's ioctl guard refuses), so job control is not
-\ part of this slice. WRITE-LINE and AWAIT-BYTES drive either mode.
-\
-\ Spawn is gated: the scope forks the child but leaves it blocked before exec, opens
-\ its lifetime watch descriptor while it is guaranteed alive, and only LAUNCH
-\ releases it to exec. Opening the watch while the child is still alive is what
-\ makes the exit observable on both backends (Linux pidfd_open and macOS
-\ kqueue/NOTE_EXIT).
-
-\ AWAIT and AWAIT-BYTES wait on the AIO loop (src/lib/aio.f): one POLL for the
-\ milliseconds the caller named, -1 for no deadline, and one AWAIT. A program
-\ calls AIO:START before the first of them; a wait with no loop running is
-\ E-AIO-STATE. The forked target never touches the ring; see IO-BUILD.
-\ AWAIT-BYTES answers ONE read, never a whole reply: a caller waiting for text
-\ loops to its marker under one absolute deadline (PROC-DEADLINE-AT).
-\
-\ STORAGE CLASS. PROCESS-WIDE: the spawn staging (path, slave name, mode) is
-\ one set of cells, so one task spawns at a time; handles are the registry's.
-\ IO-OUTER is one cell per registry slot, read and written only by the scope
-\ that holds that slot. TASK-LOCAL: IO-SCOPE, the raw handle of the running
-\ task's innermost scope.
+\ Reopens package PROCESS-PTY (src/lib/process-pty-handle.f): the registry's
+\ words are private, so the supervisor lives in the package and exports its
+\ lifecycle words. STORAGE CLASS. PROCESS-WIDE: the spawn staging is one set of
+\ cells, so one task spawns at a time; IO-OUTER is one cell per registry slot,
+\ used by the scope that holds it. TASK-LOCAL: IO-SCOPE, the innermost scope.
 
 require src/lib/process-pty-handle.f
 require src/lib/process-fork.f
@@ -88,34 +45,29 @@ variable IO-TW       variable IO-GO-W             \ target watch and release gat
 variable IO-SOUT-W   variable IO-SIN-R            \ child-side stdout/stdin ends
 variable IO-GO-R                                 \ child-side release gate
 
-\ ---- small fd / pid helpers -------------------------------------------------
 : IO-CLOSE-FD ( fd -- ) {: f:fd :}
    f FD>N 0 < if exit then
    f FD>N close ;
 
-\ Best-effort reap used by both the abort path and teardown: neither may throw,
+\ Best-effort reap for both the abort path and teardown: neither may throw,
 \ because a throw would strand the linear teardown token and leak the slot. The
 \ pid is killed with every process it started, which would otherwise hold its
-\ pipe or terminal open under init; src/lib/process.f PROC-KILL-TREE reports a walk
-\ that throws rather than throwing it. The wait status is intentionally
-\ discarded here (the process is already being retired), the same shape as a
-\ deinit cleanup.
+\ pipe or terminal open under init; src/lib/process.f PROC-KILL-TREE reports a
+\ walk that throws rather than throwing it. The wait status is discarded.
 : IO-KILL-REAP ( pid -- ) {: p:pid :}
    p PID>N 0 <= if exit then
    p PROC-KILL-TREE
    p PID>N wait-status drop ;
 
-\ ---- signal classification --------------------------------------------------
 \ kill-errno reports 0 (delivered), -ESRCH (gone), or -EPERM (exists, denied). A
-\ process that exists is alive whether or not we may signal it; only -ESRCH means
-\ gone. Any other errno is unexpected for signal 0 and is surfaced, not hidden.
+\ process that exists is alive whether or not the caller may signal it; only
+\ -ESRCH means gone. Any other errno is unexpected for signal 0 and is surfaced.
 : IO-ALIVE-CLASS? ( rc -- bool ) {: r:rc :}
    r RC>N 0= if true exit then
    r RC>N ESRCH# negate = if false exit then
    r RC>N EPERM# negate = if true exit then
    E-PROC-OUTPUT throw ;
 
-\ ---- poll one watch descriptor ----------------------------------------------
 \ True only when the descriptor reports a clean readable exit; a POLLERR/POLLNVAL
 \ revent means the descriptor is broken and must not masquerade as an exit.
 : IO-WATCH-EVENT? ( n -- bool ) {: ev:n :}
@@ -132,8 +84,8 @@ variable IO-GO-R                                 \ child-side release gate
    -1 ;
 
 \ One POLL on the AIO loop for the milliseconds the caller named, and one
-\ AWAIT; the deadline is the poll's own linked timeout, so a signal no longer
-\ cuts the watch short and there is nothing to restart. `cancelled` cannot
+\ AWAIT; the deadline is the poll's own linked timeout, so a signal cannot cut
+\ the watch short and there is nothing to restart. `cancelled` cannot
 \ arrive - nothing here cancels, the ticket never leaves this word, and the
 \ cleanup AIO registers on a submitting task runs only after that task has
 \ ended - so it is a broken foreign result.
@@ -146,9 +98,6 @@ variable IO-GO-R                                 \ child-side release gate
       refused OF drop E-PROC-OUTPUT throw ENDOF
    ;MATCH ;
 
-\ ---- target child (ends in die unless it execs) ------------------------------
-
-\ Close every descriptor from 3 up except the one the child still reads.
 : IO-CLOSE-HIGH ( fd -- ) {: keep:fd :}
    3 begin dup PROC-FORK:MAXFD < while
       dup keep FD>N <> if dup close then
@@ -187,7 +136,6 @@ variable IO-GO-R                                 \ child-side release gate
    IO-PATH-BUF IO-PATH-LEN @ >LEN PROC-ARGV-PREPARE 0 IO-ENVP execve drop
    s" " IO-EXEC-FAIL die ;
 
-\ ---- parent-side build steps ------------------------------------------------
 : IO-RESET-STX ( -- )
    -1 IO-T-PID !
    -1 IO-MASTER !  -1 IO-DONE !
@@ -204,7 +152,6 @@ variable IO-GO-R                                 \ child-side release gate
    PIPE-PAIR-CLOEXEC IO-SOUT-W ! IO-MASTER !   \ stdout: owner reads master, child writes
    PIPE-PAIR-CLOEXEC IO-DONE ! IO-SIN-R ! ;    \ stdin: owner writes done, child reads
 
-\ ---- the pseudo-terminal pair ----------------------------------------------
 : IO-OPEN-CK ( n -- n ) {: f:n :}
    f 0 < if E-PROC-OUTPUT throw then f ;
 
@@ -246,9 +193,10 @@ variable IO-GO-R                                 \ child-side release gate
    IO-GO-R @ >FD IO-CLOSE-FD
    -1 IO-GO-R ! ;
 
-\ The target is forked before its watch opens, so it cannot inherit the watch.
-\ It closes 3..MAXFD but its gate before it waits, and never touches the
-\ parent's AIO loop.
+\ The target is forked before its watch opens, so it cannot inherit the watch;
+\ opening the watch while the child is alive makes the exit observable on both
+\ backends (Linux pidfd_open, macOS kqueue NOTE_EXIT). The child closes 3..MAXFD
+\ but its gate before it waits, and never touches the parent's AIO loop.
 : IO-BUILD ( -- )
    IO-TTY @ if IO-MK-TTY else IO-MK-STDIO then
    IO-MK-GATE
@@ -298,7 +246,6 @@ variable IO-GO-R                                 \ child-side release gate
    0 IO-TTY !
    IO-RAW @ N>HANDLE ;
 
-\ ---- the scope ---------------------------------------------------------------
 \ The handle does not survive a throw out of the body, so the scope keeps its raw
 \ number in the running task's IO-SCOPE cell, where the cleanup reads it. A
 \ nested scope saves the cell in IO-OUTER under its own slot and its cleanup
@@ -341,14 +288,20 @@ create IO-OUTER SLOT-CAP cells allot
 public
 
 \ Spawn the target at path, run the body with its live handle, and tear the
-\ target down when the body returns or throws. The target is forked but blocked
-\ before exec; its lifetime watch is already open, so LAUNCH can release it and
-\ the exit stays observable.
+\ target down when the body returns, throws or unwinds under a task halt: the
+\ child is reaped, every descriptor closed and the slot handed back. Spawn and
+\ teardown are private, so no handle outlives its scope. The target is forked
+\ but blocked before exec with its lifetime watch open; LAUNCH releases it.
+\ The handle's `master` is the target's stdout read end, `done` its stdin.
 : WITH-TARGET ( R ptr u8 n [ R process-pty-handle -- S process-pty-handle ] -- S )
    false IO-WITH ;
 
 \ The same scope with the target's standard descriptors on the slave side of a
-\ fresh pseudo-terminal; the handle's master is the terminal.
+\ fresh pseudo-terminal (PTY:OPEN), so a child engine sees a terminal on fd 0,
+\ installs its line editor and recovers from a refused definition instead of
+\ stopping at it. The handle's `master` is the PTY master and `done` a duplicate
+\ of it. Nobody acquires the terminal as controlling (TIOCSCTTY is an unencoded
+\ request the engine's ioctl guard refuses), so there is no job control.
 : WITH-TTY-TARGET ( R ptr u8 n [ R process-pty-handle -- S process-pty-handle ] -- S )
    true IO-WITH ;
 
@@ -375,7 +328,9 @@ public
 \ empty buffer, which could otherwise only masquerade as a hang-up. The wait is
 \ one POLL on the AIO loop and one AWAIT, with ms -1 the unbounded wait
 \ POLL spells the same way; `cancelled` cannot arrive, for the reason
-\ IO-POLL-READY? gives.
+\ IO-POLL-READY? gives. AIO:START comes first: a wait with no loop running is
+\ E-AIO-STATE. It answers ONE read, never a whole reply: a caller waiting for
+\ text loops to its marker under one absolute deadline (PROC-DEADLINE-AT).
 : AWAIT-BYTES ( process-pty-handle ptr u8 n n -- process-pty-handle n ) {: buf:ptr cap:n ms:n :}
    cap 0 <= if E-PROC-OUTPUT throw then
    HANDLE-MASTER@ {: m:fd :}
@@ -400,7 +355,6 @@ public
 : SIGNAL ( process-pty-handle n -- process-pty-handle rc ) {: sig:n :}
    HANDLE-TARGET@ PID>N sig kill-errno >RC ;
 
-\ Probe target existence with signal 0.
 : ALIVE? ( process-pty-handle -- process-pty-handle bool )
    SIG-PROBE SIGNAL IO-ALIVE-CLASS? ;
 

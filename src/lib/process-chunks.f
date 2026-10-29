@@ -1,21 +1,9 @@
-\ process-chunks.f - row bytes that stay put while a list of rows grows.
-\
-\ Row bytes live in chunks that never move until they are freed, so a row's
-\ address stays valid while later rows are added. A list's control is
-\ CONTROL-CELLS cells: chunks held, the chunk being filled, and its bytes used.
-\ Chunks past the one being filled hold no live row, so a rewind reuses them.
-\ ROOM and FREE reach the chunk table through quotations that take the index
-\ and the control, so a static list keeps its table in a DYNAMIC-BUFFER
-\ (`[: drop CHUNKS ;]`) and an owned one keeps it beside its control.
-\
-\ OWNED LISTS. OWNED-CELLS cells of control hold the list's own chunk table as
-\ well: the three control cells, then the table's address and its capacity in
-\ chunks. Zeroed cells are an empty list; OWNED-ROOM grows the table by
-\ allocate, copy, release, and OWNED-FREE unmaps every chunk and the table and
-\ leaves the cells empty again.
-\
-\ STORAGE CLASS. CALLER-OWNED: the control cells and every chunk and table they
-\ name belong to the caller, who frees them.
+\ process-chunks.f - row bytes that stay put while a list of rows grows. Chunks
+\ never move until freed; chunks past the one being filled hold no live row, so
+\ a rewind reuses them. ROOM and FREE reach the chunk table through a quotation:
+\ a static list keeps it in a DYNAMIC-BUFFER, an owned one beside its control.
+\ OWNED-CELLS adds the table's address and capacity; zeroed cells are empty.
+\ STORAGE CLASS. CALLER-OWNED: the caller frees every chunk and table.
 
 s" src/lib/errors.f" required
 s" src/lib/memory.f" required
@@ -50,7 +38,6 @@ public
 
 3 constant CONTROL-CELLS
 
-\ Answers need bytes that stay put until FREE.
 : ROOM ( n ptr n [ n ptr n -- ptr SPAN:span<u8> ] [ n ptr n -- ] -- ptr u8 )
    {: need state chunks reserve :}
    need state chunks ROOM? 0= if
@@ -79,7 +66,6 @@ private
 
 2 constant SPAN-CELLS
 
-\ The table is mapped as cells; this names them as the spans they hold.
 CAST: >SPANS ( ptr n -- ptr SPAN:span<u8> )
 
 : TABLE ( ptr n -- ptr ptr a ) 3 ptr-field ;
@@ -97,7 +83,6 @@ CAST: >SPANS ( ptr n -- ptr SPAN:span<u8> )
    0 state CAP-OFF + ! ;
 
 
-\ The new table holds the held chunks; the old one is released after the copy.
 : OWNED-RESERVE ( n ptr n -- )
    {: need state :}
    need state CAP-OFF + @ <= if exit then
@@ -114,7 +99,6 @@ public
 
 5 constant OWNED-CELLS
 
-\ Answers need bytes from an owned list; they stay put until OWNED-FREE.
 : OWNED-ROOM ( n ptr n -- ptr u8 )
    [: OWNED-CHUNK ;] [: OWNED-RESERVE ;] ROOM ;
 

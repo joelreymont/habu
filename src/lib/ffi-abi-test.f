@@ -31,11 +31,9 @@ FUNCTION: FFI-T-MEMCPY memcpy ( ptr u8 ptr u8 n -- n ) 0 2 WRITES-ARG ;FUNCTION
    FFI:KPARAM-RESET
    [: 17 0 do i FFI:KPARAM-VALUE+ loop ;] E-FFI-ARITY TTHROWSQ ;
 
-\ Regression: the evaluate throw-unwind cell (EVALREC-CELL, src/habu/layout.f) must
-\ live outside the FFI task-DATA block [FFI:BUF-OFF, FFI:KPARAM-END-OFF). An
-\ FFI call fills that block, so an overlap silently clobbers the branch target and a
-\ throw crossing an evaluate boundary (any FFI-using program run under include) jumps
-\ to a data address. Assert the two regions are disjoint at build time.
+\ EVALREC-CELL (src/habu/layout.f) must lie outside the FFI task-DATA block
+\ [FFI:BUF-OFF, FFI:KPARAM-END-OFF): an FFI call fills that block, and an overlap
+\ sends a throw that crosses an evaluate boundary to a data address.
 : FFI-T-EVALREC-DISJOINT ( -- )
    EVALREC-CELL FFI:BUF-OFF <
    EVALREC-CELL FFI:KPARAM-END-OFF >= or TTRUE ;

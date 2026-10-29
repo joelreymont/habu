@@ -1,45 +1,8 @@
-\ json-write.f - checked emit-only JSON writer over caller-owned storage.
-\
-\ The module keeps no process state. A caller declares one writer record
-\ (`TYPED-VARIABLE W JSON-WRITE:writer`, or a `TYPED-BUFFER` of them) plus the
-\ output bytes it owns. JSON-WRITE:OPEN binds fixed output and OPEN-BUF binds
-\ an initialized caller-owned BUF header. Writers over different buffers share
-\ nothing, so two tasks can each write JSON without a lock; the caller keeps its
-\ own buffer live and exclusive until CLOSE.
-\
-\ The handle is the nominal `ptr JSON-WRITE:writer`, which only the typed
-\ storage definers mint: a raw cell cannot stand in for one. A writer that was
-\ never opened - the zero image a definer leaves - or one already closed refuses
-\ every operation with E-JW-STATE.
-\
-\ Every emitter answers its writer, so a document reads as one chain and
-\ JSON-WRITE:$ ends the chain with the bytes written so far. An emitter appends
-\ all of its bytes or none. Fixed output refuses a value that will not fit with
-\ E-JW-CAPACITY; growable output propagates BUF/allocation failures. A document
-\ that hit a refusal is incomplete, and the caller RESETs or CLOSEs the writer.
-\
-\ Callers build compact JSON through the qualified public API: JSON-WRITE:OPEN /
-\ OPEN-BUF / RESET / CLOSE bind and control the writer, the value emitters
-\ JSON-WRITE:STRING / RAW / U / INT / BOOL / NULL append one JSON value,
-\ JSON-WRITE:KEY writes one escaped object key plus its colon,
-\ JSON-WRITE:COMMA / OBJECT-START / OBJECT-END / ARRAY-START / ARRAY-END write
-\ structural delimiters, the JSON-WRITE:FIELD-S / FIELD-U / FIELD-INT /
-\ FIELD-BOOL / FIELD-NULL / FIELD-RAW helpers write one key-and-value pair, and
-\ JSON-WRITE:$ returns the accumulated output bytes. The record accessors, the
-\ capacity/length refinement helpers, the single-byte and escape emitters, and
-\ every constant are package-private.
-\
-\ OPEN-BUF clears the BUF and grows it as needed, including when an emitter
-\ reads bytes already in it; CLOSE leaves the bytes to the caller, who disposes
-\ the BUF after their last use. The span JSON-WRITE:$ answers stays valid until
-\ the next write. A byte outside 0..255 is E-JW-BYTE, a null or negative output
-\ E-JW-OUTPUT, and a negative or null-with-bytes span E-JW-SOURCE, which also
-\ covers a span inside a growable writer's capacity but outside its written
-\ bytes. U refuses a negative number with E-JW-BYTE; INT writes every cell, the
-\ minimum from STR-MIN-I64$; both reserve the number's whole width first.
-\ FIELD-RAW is only for a known-valid JSON fragment. Size fixed output for the
-\ worst case: one byte escapes to six (\u00XX).
-\
+\ json-write.f - checked emit-only JSON writer over caller-owned storage. The handle
+\ is the nominal `ptr JSON-WRITE:writer`, minted only by the typed storage definers;
+\ one never opened (the definer's zero image) or already closed refuses every
+\ operation with E-JW-STATE. Every emitter answers its writer and appends all of its
+\ bytes or none; a document that hit a refusal is incomplete until RESET or CLOSE.
 \ STORAGE CLASS. CALLER-OWNED: the writer record and its output; no module state.
 
 require src/lib/errors.f
@@ -120,7 +83,8 @@ create JW-ESC-W
 : JW-USED! ( ptr writer ptr u8 n n -- ) {: w vp:ptr cap:n used:n :}
    vp cap used NULL-PTR JSON--WRITE-WRITER:MAKE w ! ;
 
-\ Refuse a source span nobody can read.
+\ A negative or null-with-bytes span is E-JW-SOURCE, as is a span inside a
+\ growable writer's capacity but outside its written bytes.
 : JW-SPAN ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0 < if E-JW-SOURCE throw then
    u 0 > a 0= and if E-JW-SOURCE throw then ;
@@ -207,12 +171,18 @@ create JW-ESC-W
 
 public
 
+\ Fixed output refuses a value that will not fit with E-JW-CAPACITY: size it for
+\ the worst case, one byte escaping to six (\u00XX). A null or negative output is
+\ E-JW-OUTPUT. The caller keeps its buffer live and exclusive until CLOSE.
 : OPEN ( ptr writer ptr u8 n -- ptr writer ) {: w vp:ptr cap:n :}
    vp 0= if E-JW-OUTPUT throw then
    cap 0 < if E-JW-OUTPUT throw then
    w vp cap 0 JW-USED!
    w ;
 
+\ Clears the BUF and grows it as needed, including when an emitter reads bytes
+\ already in it; allocation failures propagate. CLOSE leaves the bytes to the
+\ caller, who disposes the BUF after their last use.
 : OPEN-BUF ( ptr writer ptr n -- ptr writer ) {: w buf:ptr :}
    buf 0= if E-JW-OUTPUT throw then
    buf BUF:CLEAR
@@ -233,6 +203,7 @@ public
    w JW-BUF@ 0= if w JW-LIVE 2drop drop then
    w NULL-PTR JW-CLOSED-CAP 0 JW-USED! ;
 
+\ The span stays valid until the next write.
 : $ ( ptr writer -- ptr u8 n )
    JW-LIVE {: vp:ptr cap:n used:n :}
    vp used ;
@@ -264,7 +235,6 @@ private
    c JW-TAB = if 116 exit then
    0 ;
 
-\ Write the escape of c at offset at of s; answer the offset past it.
 : JW-ESC ( SPAN:span<u8> n n -- n ) {: s at:n c:n :}
    JW-BACKSLASH s at SPAN:U8!
    c JW-ESC-LETTER {: l:n :}
@@ -282,8 +252,6 @@ private
    u start ?do a i + c@ w + c@ JW-PLAIN-N <> if i unloop exit then loop
    u ;
 
-\ Copy the plain run from source offset i, then escape the byte that ends it;
-\ answer the next output and source offsets.
 : JW-ESC-STEP ( n n ptr u8 n SPAN:span<u8> -- n n )
    {: at:n i:n a:ptr u:n s :}
    a u i JW-RUN-END {: e:n :}
@@ -378,6 +346,7 @@ public
    STR-MINUS JW-C
    m JW-DIGITS ;
 
+\ Only for a known-valid JSON fragment.
 : FIELD-RAW ( ptr writer ptr u8 n ptr u8 n -- ptr writer )
    {: kp:ptr keyu:n vp:ptr valu:n :}
    dup vp valu JW-ALIAS {: off:n :}

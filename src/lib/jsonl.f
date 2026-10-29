@@ -1,28 +1,9 @@
 \ jsonl.f - JSONL framing: a caller-owned file cursor and a memory splitter.
-\
-\ Between OPEN and the end of input or CLOSE, a cursor owns its descriptor, a
-\ growable BUF holding the current line, an 8192-byte input block mapping, and
-\ the JR:cursor record its readers parse in, with any nesting stack a deep line
-\ grew there. NEXT frames each nonempty physical line into the BUF; READER
-\ lends it as a fresh linear JR reader until the next NEXT or CLOSE, and the
-\ caller closes that reader first. At the end of input and after any throw the
-\ cursor releases everything and is closed. SPLIT-LINE frames memory input
-\ statelessly and owns nothing.
-\
-\ The line limit is inclusive and counts CR but not LF. NEXT skips empty lines,
-\ keeps CR, returns a final unterminated line and invents none after a final
-\ LF; at the end of input it releases everything and answers false once, after
-\ which NEXT is E-STATE. A line over the limit is E-LIMIT and a failed read
-\ E-FS-IO; open, path and allocation failures keep their owners' codes. A failed
-\ descriptor close kills the process ("jsonl: close failed", exit 71): macOS and
-\ Linux release the descriptor before close reports, so a retry could close a
-\ reused one. CLOSE is idempotent. SPLIT-LINE answers the line at pos (CR kept),
-\ the position after its LF and true, or an empty span, pos and false at the
-\ end; a bad span or a negative pos is E-SOURCE. Neither form trims or parses;
-\ each caller decides whether blank, malformed or non-object rows are errors.
-\
-\ STORAGE CLASS. CALLER-OWNED: the cursor, and what it owns between OPEN and the
-\ end of input or CLOSE; SPLIT-LINE owns nothing.
+\ Between OPEN and the end of input or CLOSE a cursor owns its descriptor, line
+\ BUF, 8192-byte block mapping and JR:cursor record; at the end of input and
+\ after any throw it releases all of them and is closed. Neither form trims or
+\ parses: each caller decides whether blank or malformed rows are errors.
+\ STORAGE CLASS. CALLER-OWNED: the cursor and what it owns; SPLIT-LINE owns none.
 
 require src/lib/byte-buffer.f
 require src/lib/json-read.f
@@ -58,6 +39,9 @@ private
 8192 constant BLOCK-BYTES
 256 constant FIRST-CAP
 10 constant LF
+\ A failed close kills the process ("jsonl: close failed", exit 71): macOS and
+\ Linux release the descriptor before close reports, so a retry could close a
+\ reused one.
 $47 constant CLOSE-EXIT      \ close releases the descriptor even when it fails
 
 \ BUF's public header is the first three cells of cursor. Its API accepts a
@@ -113,7 +97,7 @@ private
    cur LINE-LEN u + cur CURSOR-MAX @ BUF:BLEN>N > if E-LIMIT throw then
    seg u BUF:N>BLEN cur BUF-HDR BUF:APPEND-SPAN ;
 
-\ Read the next block; false at the end of input. Only a zero read is the end.
+\ Only a zero read is the end.
 : FILL ( ptr cursor -- bool )
    {: cur:ptr :}
    cur CURSOR-FD @ FD>N cur CURSOR-STORAGE @ BLOCK-BYTES read {: n:n :}
@@ -122,9 +106,8 @@ private
    n cur CURSOR-END !
    n 0 > ;
 
-\ Leave the next nonempty line in the BUF, or an empty BUF at the end of input.
-\ Each LF-free segment of a block is one append; SPLIT-NEXT answers end+1 as
-\ the next position of a segment the block ends before its LF.
+\ SPLIT-NEXT answers end+1 as the next position of a segment the block ends
+\ before its LF.
 : FRAME ( ptr cursor -- ptr cursor )
    {: cur:ptr :}
    begin
@@ -144,6 +127,11 @@ private
 
 public
 
+\ The line limit is inclusive and counts CR but not LF. NEXT skips empty lines,
+\ keeps CR, returns a final unterminated line and invents none after a final
+\ LF; at the end of input it answers false once, after which NEXT is E-STATE.
+\ READER lends the line as a fresh linear JR reader until the next NEXT or
+\ CLOSE, and the caller closes that reader first.
 : NEXT ( ptr cursor -- bool )
    {: cur:ptr :}
    cur LIVE

@@ -243,9 +243,8 @@ create PT-DRAIN-BUF PT-CHUNK allot
    s" PTN5 ( ptr u8 len ptr u8 len ptr u8 len ms -- len len n n ) RUN-ARGV-CAPTURE-OUTCOME" CHECK-QUIET-CANDIDATE! 0 T=
    s" PTP2 ( ptr u8 len ptr u8 len ptr u8 len ms -- len len outcome ) RUN-ARGV-CAPTURE-OUTCOME" CHECK-QUIET-CANDIDATE! -1 T= ;
 
-\ Regression for habu-wait-rc-masks-9ae37cd0: a signal-killed child must report
-\ 128+sig end-to-end through PROC-WAIT-RC, never a masked rc 0 (the retired raw
-\ `wait-rc` path returned WEXITSTATUS only = 0 for a SIGKILLed child).
+\ A signal-killed child reports 128+sig through PROC-WAIT-RC, never a masked
+\ rc 0.
 : TEST-PROC-WAIT-RC-SIGNAL ( -- )
    PROC-ARGV-RESET
    s" -c"  >LEN PROC-ARGV+
@@ -274,9 +273,9 @@ create PT-DRAIN-BUF PT-CHUNK allot
    PT-W @ s" 12345678901234567890123456789012" write -1 T=
    PT-W @ close ;
 
-\ habu-give-o-nonblock-cff35c7a. O_NONBLOCK is $800 on Linux and 4 on macOS, and
-\ F_SETFL drops a bit the host does not know without saying so, so the only
-\ honest proof that PROC-NONBLOCK! armed anything is the flag read back.
+\ O_NONBLOCK is $800 on Linux and 4 on macOS, and F_SETFL drops a bit the host
+\ does not know without saying so, so the only honest proof that PROC-NONBLOCK!
+\ armed anything is the flag read back.
 : PT-NONBLOCK-ARMED? ( fd -- bool ) {: fd :}
    fd FD>N F-GETFL 0 fcntl {: flags :}
    flags 0 < if 0 0= 0= exit then
@@ -325,8 +324,8 @@ create PT-DRAIN-BUF PT-CHUNK allot
 
 \ The capture loop's stdin writer under back pressure. A refused write must
 \ leave the child's stdin open and its offset untouched, so the next POLLOUT
-\ under the capture deadline resumes the feed; closing there instead truncated
-\ the child's input without a word.
+\ under the capture deadline resumes the feed; closing there would truncate the
+\ child's input without a word.
 : TEST-PROC-STDIN-BACKPRESSURE ( -- )
    PROC-CAPTURE-RESET
    PROC-SETUP-STDIN-FDS
@@ -414,9 +413,9 @@ create PT-DRAIN-BUF PT-CHUNK allot
    cmd cmdu PT-OUT outu LEN>N PT-ERR erru LEN>N PROC-CAPTURE-OUTCOME SIGKILL T-OUTCOME-SIGNALED= ;
 
 \ A deliberately tiny deadline proves that capture reports a timeout. The child
-\ is the one that never ends: the ok fixture finishes in about 9 ms on this host,
-\ so racing it against a 10 ms deadline was a claim about the engine's boot time
-\ and went red whenever the child won (gate AE, 2026-09-17).
+\ never ends: the ok fixture finishes in about 9 ms on this host, so a race
+\ against a 10 ms deadline measures the engine's boot time and goes red whenever
+\ the child wins.
 : PT-STARVED-CAPTURE ( -- )
    PROC-ARGV-RESET
    PT-CAPTURE-HANG >LEN PROC-ARGV+
@@ -453,9 +452,9 @@ create PT-DRAIN-BUF PT-CHUNK allot
      err OF 1 T= ENDOF                             \ false exits 1 -> err(1)
    ;MATCH ;
 
-\ Direct both-arm coverage for the migrated capture result (a REAL spawned
-\ child, per arm): a clean exit MATCHes ok(captured) carrying the two lengths;
-\ a nonzero exit MATCHes err(failed) carrying the SAME lengths PLUS the code.
+\ Both arms of the capture result, a real child per arm: a clean exit matches
+\ ok(captured) with the two lengths; a nonzero exit matches err(failed) with the
+\ same lengths and the code.
 : TEST-RUN-CAPTURE-RESULT-OK ( -- )                 \ /bin/pwd exits clean -> ok(captured)
    s" /bin/pwd" >LEN PT-PWD-OUT PT-PWD-CAP >LEN PT-ERR 32 >LEN PT-CMD-TIMEOUT-MS >MS RUN-CAPTURE
    MATCH result
@@ -470,8 +469,8 @@ create PT-DRAIN-BUF PT-CHUNK allot
      err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :} o LEN>N 0 T=  e LEN>N 0 T=  c RC>N 1 T= ENDOF
    ;MATCH ;
 
-\ Negative checked regression: the migrated return is the pcap result, not the
-\ retired (len len rc) triple, and the ok arm cannot leak the failed payload.
+\ Negative checked regression: the return is the pcap result, not a (len len rc)
+\ triple, and the ok arm cannot leak the failed payload.
 : TEST-RUN-CAPTURE-RESULT-TYPES ( -- )
    s" PTC1 ( ptr u8 len ptr u8 len ptr u8 len ms -- result<pcap:captured,pcap:failed> ) RUN-CAPTURE" CHECK-QUIET-CANDIDATE! -1 T=
    s" PTC2 ( ptr u8 len ptr u8 len ptr u8 len ms -- len len rc ) RUN-CAPTURE" CHECK-QUIET-CANDIDATE! 0 T=
@@ -502,7 +501,6 @@ create PT-Z PT-Z-CAP allot
 : TEST-ZCOPY-HUGE-LEN ( -- )
    PT-BUF MEM-MAX-N >LEN PT-Z PT-Z-CAP >LEN PROC-ZCOPY drop ;
 
-\ ---- PROC-WAIT-BOUNDED -------------------------------------------------------
 5000 constant PT-WAIT-MS                 \ far above any child here that is meant to end
 100 constant PT-HOLD-MS                  \ a window the held child outlasts
 99000000 constant PT-HOLD-MIN-NS         \ that window less the whole-millisecond floor
@@ -663,7 +661,6 @@ variable PT-HOLD-OUT                     \ the read end its stdout and stderr sh
 : TEST-DEADLINE-PAST-CELL ( -- )
    [: PT-PAST-CELL-MS >MS PROC-DEADLINE-AT drop ;] E-PROC-TIMEOUT TTHROWSQ ;
 
-\ ---- spawned stdio -------------------------------------------------------------
 \ A child's stdio end may be close-on-exec, and one above 2 may be unmarked: the
 \ spawn keeps each on its stdio number and closes the source in the child.
 256 constant PT-SPAWN-ERR-CAP            \ room for cat's complaint on a red run

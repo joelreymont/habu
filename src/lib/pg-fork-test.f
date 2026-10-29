@@ -1,14 +1,9 @@
 \ pg-fork-test.f - a forked child configures PG while another task holds its
-\ configuration lock.
-\
-\     bin/hb --load src/lib/pg-fork-test.f
-\
-\ PG's configuration lock is process-wide, and fork copies only the thread that
-\ calls it: a child forked while another task configures PG finds the lock
-\ held, with nothing in the child to let it go, and its own PG:CONFIGURE waits
-\ for ever. The holder takes CONFIG-LOCK, which is private, so the case reopens
-\ PG (src/lib/test/fork-hold.f runs it). Loading src/lib/pg.f opens libpq; the case
-\ needs no server.
+\ configuration lock. fork copies only the calling thread, so the child finds the
+\ process-wide lock held with nothing in it to let the lock go. CONFIG-LOCK is
+\ private, so the case reopens PG (src/lib/test/fork-hold.f runs it). Loading
+\ src/lib/pg.f opens libpq; the case needs no server.
+\ Run: bin/hb --load src/lib/pg-fork-test.f
 
 require src/lib/errors.f
 require src/lib/test.f

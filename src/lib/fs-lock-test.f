@@ -1,6 +1,5 @@
 \ fs-lock-test.f - advisory directory ownership across processes.
 \ Run: bin/hb --load src/lib/fs-lock-test.f
-\
 \ Failure modes: a second process can take a live hold; close or process death
 \ leaves a hold behind; an exec child prolongs the parent's hold; an invalid
 \ descriptor is mistaken for contention; a regular file is opened as a directory;

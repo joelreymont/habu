@@ -1,31 +1,9 @@
-\ font.f - one selected font face and one LTR SVG glyph run, in `package FONT`.
-\
-\ FONT shapes a short UTF-8 label with HarfBuzz (14.2 or newer, with both
-\ libharfbuzz and libharfbuzz-vector) and returns an SVG glyph run. It is not
-\ a text layout engine: the caller selects one face from its own font bytes,
-\ and FONT never searches for a font, replaces a missing glyph or splits a run.
-\ OPEN copies the font bytes, so the caller may release its input on return.
-\ SVG$ borrows bytes the image owns, valid until FREE; BOUNDS use SVG's
-\ downward Y axis. The em size is 1..$1FFFFFF, else E-TEXT, and the scale uses
-\ 26.6 coordinates; a whitespace-only run is a valid zero-size SVG.
-\ A run is one left-to-right script with its common punctuation and combining
-\ marks. Malformed UTF-8, controls and format characters, mixed or
-\ right-to-left scripts throw E-TEXT; a missing glyph or one drawn only from
-\ COLR, SVG or sbix/CBDT color data throws E-GLYPH; a malformed font E-OPEN; a
-\ closed or unknown handle E-HANDLE.
-\ HarfBuzz's ink extents can fall inside its decimal path, so the viewBox is
-\ the union of the first render's absolute M/L/Q/C points (rounded outward to
-\ whole units) and the ink extents, and the run is rendered again with it; an
-\ unexpected path syntax or a box outside exact binary32 integers throws
-\ E-RENDER.
-\ The font file and HarfBuzz version are inputs to the SVG bytes: pin both
-\ when replay must be byte-identical. Tests: test/font-native.f and
-\ test/font-image-subject.f (capture and reopen).
-\
-\ STORAGE CLASS. TASK-LOCAL: render, open and hull scratch are three
-\ TASK:+USER rows. PROCESS-WIDE: the FONTS and IMAGES registries and SERIAL,
-\ under LOCK-CELL (an atomic-cas spin), freed by one IMAGE-LIFECYCLE hook
-\ before an image captures.
+\ font.f - one selected font face and one LTR SVG glyph run through HarfBuzz
+\ 14.2+ (libharfbuzz and libharfbuzz-vector), in `package FONT`. FONT never
+\ searches for a font, replaces a missing glyph or splits a run. The font file
+\ and HarfBuzz version are inputs to the SVG bytes: pin both for byte-identical
+\ replay. Tests: test/font-native.f, test/font-image-subject.f. STORAGE CLASS.
+\ TASK-LOCAL scratch rows; PROCESS-WIDE registries freed before image capture.
 require src/lib/ffi-abi.f
 require src/lib/utf8-scalar.f
 require src/lib/float32.f
@@ -280,8 +258,10 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 7 cells TASK:+USER HULL-STATE drop
    REF-CELL @ glyph COLOR-SVG BLOB-PRESENT? or
    font glyph COLOR-PNG BLOB-PRESENT? or ;
 
-\ HarfBuzz's glyph ink extents may be narrower than the decimal SVG path.
-\ Its SVG draw backend emits absolute M/L/Q/C points under scale(1,-1).
+\ HarfBuzz's ink extents can fall inside its decimal path, so the viewBox is the
+\ union of the first render's absolute M/L/Q/C points (under scale(1,-1),
+\ rounded outward to whole units) and the ink extents; an unexpected path syntax
+\ or a box outside exact binary32 integers throws E-RENDER.
 : HULL-RESET ( -- ) 0 H-PAIR ! 0 H-SEEN ! ;
 : HULL-FIRST ( r r -- ) {: x:r y:r :}
    x IEEE754:F64>BITS dup H-MINX ! H-MAXX !
@@ -502,6 +482,7 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 7 cells TASK:+USER HULL-STATE drop
 
 public
 
+\ OPEN copies the font bytes, so the caller may release its input on return.
 : OPEN ( ptr u8 n n -- font )
    {: data:ptr size:n index:n :}
    size 0 <= size MAX-FONT > or if E-OPEN throw then
@@ -512,16 +493,24 @@ public
    LOCK [: FONT-NODE dup FONTS REMOVE ;] [: UNLOCK ;] finally
       {: node:ptr :}
    node OBJECT @ FACE-DESTROY node DROP-NODE ;
+\ The em size is 1..$1FFFFFF, else E-TEXT; the scale uses 26.6 coordinates. A
+\ run is one left-to-right script with its common punctuation and combining
+\ marks: malformed UTF-8, controls, format characters and mixed or right-to-left
+\ scripts throw E-TEXT; a missing glyph or one drawn only from COLR, SVG or
+\ sbix/CBDT color data throws E-GLYPH. A whitespace-only run is a valid
+\ zero-size SVG.
 : RENDER ( font ptr u8 n n -- image )
    {: handle:font data:ptr size:n em:n :}
    data size TEXT-CHECK {: ink:n :}
    em EM-CHECK drop
    handle FONT-REF data size em ink RENDER-REF ;
+\ The bytes are the image's, valid until FREE.
 : SVG$ ( image -- ptr u8 n )
    LOCK
    [: IMAGE-NODE OBJECT @
       dup NULL-PTR BLOB-DATA swap BLOB-LEN
    ;] [: UNLOCK ;] finally ;
+\ In SVG's downward Y axis.
 : BOUNDS ( image -- r r r r )
    LOCK
    [: IMAGE-NODE NODE-BOUNDS ;] [: UNLOCK ;] finally ;

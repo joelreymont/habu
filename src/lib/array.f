@@ -1,21 +1,12 @@
-\ array.f - checked cell-array helpers (package ARRAY).
-\
-\ Lengths are `len`, indexes `idx` and range counts `count`; A-LEN, A-IDX and
-\ A-COUNT refine a raw integer and throw E-A-BOUNDS on a negative one. Every
-\ indexed access checks its index against the length (E-A-BOUNDS), and a range
-\ may be empty at either end. A-MIN, A-MAX, A-ARGMAX and A-MAX-INDEX throw
-\ E-A-EMPTY on an empty array, and the two index words answer the smallest
-\ index among ties; the mutating kernels take an empty array as a no-op.
-\ Index-aware quotations receive the zero-based index before the value.
-\
-\ There is deliberately no relative linked-list module: use arrays or
-\ src/lib/map.f for collections, the structure DSL for fixed-layout nodes, and
-\ checked case/of or execution vectors for dispatch.
-\
-\ STORAGE CLASS. CALLER-OWNED: the caller passes the cells; no module state.
+\ array.f - checked cell-array helpers (package ARRAY); there is no linked-list module.
+\ A-LEN, A-IDX and A-COUNT throw E-A-BOUNDS on a negative integer, as does every
+\ out-of-range index; a range may be empty at either end. A-MIN, A-MAX, A-ARGMAX
+\ and A-MAX-INDEX throw E-A-EMPTY on an empty array, the index words answer the
+\ smallest index among ties, and mutating kernels take it as a no-op. Index-aware
+\ quotations take the index before the value. STORAGE CLASS. CALLER-OWNED.
 
 require src/lib/errors.f
-require src/lib/adt/option.f                        \ option<idx> for A-FIND-INDEX / A-FIND-INDEXI (switchover wave A)
+require src/lib/adt/option.f
 
 package ARRAY
 

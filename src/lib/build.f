@@ -1,26 +1,8 @@
-\ build.f - checked helpers for Habu build scripts.
-\
-\ The module lives in `package BUILD`. A build script drives it through the
-\ qualified public API: BUILD:CHECK certifies every checked definition in a
-\ counted source file, BUILD:ARTIFACT builds a bounded artifact path under a
-\ root, BUILD:RUN runs a counted command and requires its expected artifact, and
-\ BUILD:STEP runs one checked step quotation and throws on a nonzero result code.
-\ The source scanner, buffers and state variables are private.
-\
-\ STORAGE CLASS. PROCESS-WIDE: the path buffer and scanner state are module
-\ storage; single-task, and ARTIFACT's path lives until the next call. CHECK
-\ reads the whole source into a mapping sized to the file and released when it
-\ returns or throws.
-\
-\ Errors: CHECK throws E-BUILD-SOURCE for a missing, empty or malformed file,
-\ a file with no colon definition, or one CHECK! refuses.
-\ ARTIFACT throws E-BUILD-PATH for an empty or too-long component. STEP and RUN
-\ throw E-BUILD-COMMAND for an empty name (RUN also for a command that is not a
-\ file) and E-BUILD-STATUS for a nonzero rc or a signal; RUN then throws
-\ E-BUILD-PATH when the expected artifact file is absent. Build children get
-\ /dev/null as stdin. Raw process exits belong only at the final CLI or
-\ script boundary.
-\
+\ build.f - checked helpers for Habu build scripts (package BUILD).
+\ Build children get /dev/null as stdin; raw process exits belong only at the
+\ final CLI or script boundary.
+\ STORAGE CLASS. PROCESS-WIDE, single-task: ARTIFACT's path lives until the
+\ next call; CHECK's file mapping is released when it returns or throws.
 require src/lib/errors.f
 require src/lib/string.f
 require src/lib/memory.f
@@ -150,10 +132,9 @@ public
 
 private
 
-\ A build command is an artifact producer; it must never inherit the caller's
-\ stdin. If it did (e.g. a gate pool worker's open, never-EOF pipe), a `bin/hb`
-\ command script that falls into the stdin REPL after its body would block the
-\ whole build. Give every build child /dev/null so the REPL sees immediate EOF.
+\ A build child never inherits the caller's stdin: a `bin/hb` command script
+\ that falls into the stdin REPL would block the build on a never-EOF pipe (a
+\ gate pool worker's).
 : BUILD-DEV-NULL-RD ( -- fd )
    s" /dev/null" FS:>PATHZ open-rd dup 0 < if drop E-FS-OPEN throw then >FD ;
 
@@ -163,10 +144,10 @@ public
    cmdu 0 <= if E-BUILD-COMMAND throw then
    cmd cmdu FS:FILE? 0= if E-BUILD-COMMAND throw then
    BUILD-DEV-NULL-RD {: nullfd:fd :}
-   cmd cmdu >LEN nullfd -1 >FD -1 >FD PROC-RUN-IO-RC   \ result<n,n> on the stack
-   nullfd FD>N close                                    \ close nullfd; the result stays below
+   cmd cmdu >LEN nullfd -1 >FD -1 >FD PROC-RUN-IO-RC
+   nullfd FD>N close
    MATCH result
-     ok  OF ENDOF                                       \ clean exit: rc 0 left on the stack
+     ok  OF ENDOF
      err OF drop E-BUILD-STATUS throw ENDOF              \ nonzero exit / signal -> build failure
    ;MATCH {: rc:n :}
    artifact artifactu BUILD-EXPECT

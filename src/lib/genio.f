@@ -1,19 +1,9 @@
-\ genio.f - generic text I/O devices with a TCP connection device and the
-\ routed REPL reader. The device table, the terminal and the dispatchers are
-\ src/lib/genio-core.f; this file reopens its package GENIO and adds what needs
-\ a transport or changes the process on load.
-\
+\ genio.f - generic text I/O devices: a TCP connection device and the routed
+\ REPL reader, added to package GENIO from src/lib/genio-core.f (device table,
+\ terminal, dispatchers). Requiring it installs READ-LINE as REPL-READ.
 \ STORAGE CLASS. TASK-LOCAL: READ-LINE's line and the chunk a device's accept
 \ fills are TASK:+USER rows, so two tasks may each be reading a line from their
 \ own device.
-\
-\ LINES. ACCEPT on a stream is standard Forth's: it fills at most the caller's
-\ buffer and leaves the rest of a longer line in the stream for the next ACCEPT.
-\ READ-LINE has no length of its own: its per-task line grows to the longest
-\ line its task has read, and is released when the task exits.
-\
-\ ROUTING. Requiring this file installs READ-LINE as REPL-READ, so the engine's
-\ REPL reads from the current input device.
 require src/lib/prelude.f
 require src/lib/num-types.f
 require src/lib/task.f
@@ -28,13 +18,10 @@ private
 
 $A constant LF
 
-\ The line READ-LINE hands back, per task: two tasks may each be reading a
-\ line from their own device. The line is a BUF (src/lib/byte-buffer.f) that
-\ grows to the longest line its task has read: a device's accept fills the
-\ chunk row and READ-LINE appends each chunk. LINE-OPEN marks the line live
-\ once its release is registered: the task's exit chain for a task, image
-\ preparation for the main task, which has no exit chain and whose row a
-\ capture would otherwise carry.
+\ The line is a BUF (src/lib/byte-buffer.f) that grows to the longest line its
+\ task has read. LINE-OPEN marks it live once its release is registered: the
+\ task's exit chain for a task, image preparation for the main task, which has
+\ no exit chain and whose row a capture would otherwise carry.
 $100 constant CHUNK-CAP
 TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and CHUNK-CAP TASK:+USER IO-CHUNK drop
 TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and BUF:HDR-BYTES TASK:+USER IO-LINE drop
@@ -73,12 +60,9 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 
 public
 
-\ The REPL's line reader, routed. src/habu/repl.f's RD-LINE is the terminal
-\ device's accept and stays exactly that -- the tty editor with its history and
-\ cursor keys -- while any other current input device answers with its own
-\ accept. Requiring this file installs it as REPL-READ, so the engine's own REPL
-\ loop and every other caller of that vector read from the current device with
-\ no change to repl.f: that is what makes a REPL over a connection free.
+\ src/habu/repl.f's RD-LINE stays the terminal device's accept, the tty editor
+\ with its history; any other current input device answers with its own accept,
+\ so a REPL over a connection needs no change to repl.f.
 : READ-LINE ( -- ptr u8 n )
    IN-ROW TERMINAL-ROW = if RD-LINE exit then
    LINE-OPEN
@@ -88,10 +72,7 @@ public
 
 private
 
-\ ---- the TCP connection device ----------------------------------------------
-\ A stream carries bytes and has no terminal in it: emit and write send, key,
-\ read and accept receive, key? is the non-blocking question TCP4 already
-\ answers, and flush has nothing to do because a write is a send.
+\ The TCP connection device. Flush has nothing to do: a write is a send.
 
 : SELF-CONNECTION ( -- TCP4:connection )
    SELF-STATE TCP4:>CONNECTION ;
@@ -143,11 +124,9 @@ private
       failed OF drop E-IO throw ENDOF
    ;MATCH ;
 
-\ A line, without its newline, or its first `cap` bytes. Reading one byte at a
-\ time is what keeps the stream's own bytes with the stream: a device has no
-\ buffer of its own to leave a half-read line in for the next reader, and a
-\ filled buffer stops before the next byte is taken, so the rest of a long line
-\ is still the stream's. The running length stays on the data stack because a
+\ A line, without its newline, or its first `cap` bytes. One byte at a time
+\ keeps the rest of a long line with the stream: a device has no buffer to leave
+\ a half-read line in. The running length stays on the data stack because a
 \ quotation-free loop cannot rebind a local.
 : TCP-ACCEPT ( ptr u8 n -- n ) {: bytes:ptr cap:n :}
    0

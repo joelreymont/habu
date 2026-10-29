@@ -1,31 +1,9 @@
-\ siphash.f - keyed SipHash-2-4 with a 64-bit result.
-\
-\ SipHash-2-4 is Aumasson and Bernstein's keyed pseudorandom function ("SipHash:
-\ a fast short-input PRF", 2012): two compression rounds per 8-byte block, four
-\ finalization rounds. A table keyed with a secret drawn per owner (see
-\ src/lib/entropy.f) spreads names an adversary cannot aim at one bucket,
-\ which an unkeyed hash such as FNV cannot promise.
-\
-\ The 128-bit key is two cells, k0 and k1: k0 is the key's bytes 0..7 read
-\ little-endian, k1 its bytes 8..15. The key 00 01 .. 0f of the reference
-\ vectors is k0 = $0706050403020100, k1 = $0F0E0D0C0B0A0908.
-\
-\ BYTES hashes a whole byte range. INIT, ABSORB-BYTE, ABSORB-WORD and FINISH
-\ hash a message given piece by piece, so a caller can hash values one at a
-\ time without first writing them out as bytes. ABSORB-BYTE appends the low
-\ eight bits of its value, as c! stores them. ABSORB-WORD appends the cell's
-\ eight bytes, least significant first (little-endian), so it is exactly eight
-\ ABSORB-BYTE calls of w, w>>8, ..., w>>56, whether or not the message so far
-\ ends on an 8-byte boundary. FINISH answers standard SipHash-2-4 of the byte
-\ string so appended: the same answer BYTES gives for those bytes, and the
-\ reference vectors apply to both. FINISH spends the state; INIT it again
-\ before reuse.
-\
-\ A state is STATE-CELLS cells the caller allocates; its layout is private.
-\ A negative BYTES length is E-SPAN-LENGTH.
-\
-\ STORAGE CLASS. CALLER-OWNED: the module keeps no state; distinct states may be
-\ used by concurrent Tasks.
+\ siphash.f - keyed SipHash-2-4 with a 64-bit result. Keyed with a secret drawn
+\ per owner (src/lib/entropy.f), a table spreads names an adversary cannot aim
+\ at one bucket, which an unkeyed hash such as FNV cannot promise. k0 is the
+\ key's bytes 0..7 little-endian, k1 bytes 8..15. ABSORB-WORD is eight
+\ ABSORB-BYTEs at any alignment; FINISH answers BYTES's hash and spends the state.
+\ STORAGE CLASS. CALLER-OWNED: distinct STATE-CELLS states serve concurrent Tasks.
 
 require src/lib/errors.f
 require src/lib/le.f
@@ -73,14 +51,12 @@ $FF constant FINAL-MARK            \ xored into v2 before the finalization round
    count 0 ?do ROUND loop ;
 
 
-\ Compress one 8-byte block m into v0..v3.
 : MIX ( n n n n n -- n n n n )
    {: v0:n v1:n v2:n v3:n m:n :}
    v0 v1 v2 v3 m xor C-ROUNDS ROUNDS {: w0:n w1:n w2:n w3:n :}
    w0 m xor w1 w2 w3 ;
 
 
-\ Compress the last block b, which carries the length byte, and fold the result.
 : FINAL ( n n n n n -- n )
    MIX {: v0:n v1:n v2:n v3:n :}
    v0 v1 v2 FINAL-MARK xor v3 D-ROUNDS ROUNDS {: w0:n w1:n w2:n w3:n :}
@@ -102,7 +78,6 @@ $FF constant FINAL-MARK            \ xored into v2 before the finalization round
    v0 s !  v1 s cell+ !  v2 s 2 cells + !  v3 s 3 cells + ! ;
 
 
-\ The last 0..7 bytes of a range, little-endian.
 : PARTIAL@ ( ptr u8 n -- n )
    {: p bytes:n :}
    0 bytes 0 ?do p i + c@ i 8 * lshift or loop ;

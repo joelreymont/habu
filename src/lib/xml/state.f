@@ -1,17 +1,7 @@
-\ state.f - XML reader state, INIT, INIT-INPUT, INIT-SOURCE, CLOSE, DISPOSE and
-\ the accessors.
-\
-\ INIT-INPUT reads bounded UTF-8 or declared US-ASCII through a callback that
-\ fills up to the chunk span's reach and answers its count: zero ends input, and
-\ a negative count or one past the reach is E-RANGE. Its `ptr n` context, the
-\ callback and the chunk span stay live through CLOSE. A long tag,
-\ comment or CDATA grows the event buffer while consumed bytes are released;
-\ open frames' names and live bindings are copied once into scope storage, so
-\ releasing bytes never revisits them. Offsets are absolute bytes of the stream,
-\ a BOM included. Attribute access works only on a start event, after ATTR-NEXT
-\ has selected one and before exhaustion (else E-STATE); xmlns declarations are
-\ attributes. ATTR-RAW covers name, `=`, whitespace and quoted value, and
-\ ATTR-VALUE omits the quotes. Part of package XML (src/lib/xml.f).
+\ state.f - XML reader state: INIT, INIT-INPUT, INIT-SOURCE, CLOSE, DISPOSE and the
+\ accessors; part of package XML (src/lib/xml.f). Offsets are absolute bytes of the
+\ stream, a BOM included. Open frames' names and live bindings are copied once into
+\ scope storage, so releasing consumed bytes never revisits them.
 
 require src/lib/xml/source.f
 require src/lib/byte-buffer.f
@@ -246,10 +236,8 @@ LINEAR: ERASE ( XML:reader -- ptr n )
    NULL-PTR state table ptr-field !
    old cap size * MEM:CELLS-ALLOC-COUNT MEM:RELEASE-CELLS ;
 
-\ Make room for want records of size cells in a table: double it into a fresh
-\ mapping, copy the records and release the old one. Records move, so no
-\ caller keeps a record's address across a growth. A failed allocation leaves
-\ the table as it was.
+\ Doubles into a fresh mapping. Records move, so no caller keeps a record's
+\ address across a growth; a failed allocation leaves the table as it was.
 : GROW ( ptr n n n n n -- )
    {: state want:n table:n cap-off:n size:n :}
    state cap-off + @ {: cap:n :}
@@ -434,11 +422,10 @@ LINEAR: ERASE ( XML:reader -- ptr n )
    then
    state SOURCE$ state POSITION + @ mode DECODE-AT ;
 
-\ An input reader keeps each open frame's name and each live binding's prefix
-\ and URI in the scope buffer: SCOPE-REF appends them when the frame opens or
-\ the binding is declared, and SCOPE-CUT drops a frame's strings, its
-\ bindings' included, when it pops. A reference below -2 is a scope offset, so
-\ dropping consumed lexical bytes never revisits a frame or binding.
+\ An input reader keeps each open frame's name and each live binding's prefix and
+\ URI in the scope buffer: SCOPE-REF appends them when the frame opens or the
+\ binding is declared, SCOPE-CUT drops a frame's strings and its bindings' when it
+\ pops. A reference below -2 is a scope offset.
 : SCOPE-REF ( ptr n n n -- n n )
    {: state start:n size:n :}
    state INPUT? 0= if start size exit then
@@ -534,8 +521,8 @@ LINEAR: ERASE ( XML:reader -- ptr n )
 : CURRENT-FRAME ( ptr n -- ptr n )
    dup OPEN-DEPTH + @ 1- FRAME ;
 
-\ Release what the record owns and leave it owning nothing: the three tables,
-\ and an input reader's stream, after which the mode is the legacy one.
+\ Release the three tables and an input reader's stream, leaving the record owning
+\ nothing and the mode LEGACY-UTF8.
 : RECORD-FREE ( ptr n -- )
    {: state :}
    state FRAMES-IDX FRAME-CAP FRAME-CELLS TABLE-RELEASE
@@ -620,6 +607,10 @@ public
    >r 2drop drop r> {: code:n :}
    state code BUILT ;
 
+\ Reads bounded UTF-8 or declared US-ASCII through a callback that fills up to the
+\ chunk span's reach and answers its count: zero ends input, a negative count or one
+\ past the reach is E-RANGE. The context, callback and chunk span stay live through
+\ CLOSE. A long tag, comment or CDATA grows the event buffer.
 : INIT-INPUT ( ptr cursor ptr n [ ptr n SPAN:span<u8> -- n ] SPAN:span<u8> -- XML:reader )
    {: record ctx fill input :}
    input SPAN:$ SPAN-CHECK
@@ -686,7 +677,6 @@ public
 : OWNER-READER ( ptr cursor source-owner -- XML:reader )
    OWNER-STATE SOURCE-READER ;
 
-\ CLOSE consumes the reader and releases what its record owns.
 : CLOSE ( XML:reader -- )
    ERASE RECORD-FREE ;
 
@@ -840,6 +830,9 @@ public
 : URI ( XML:reader ptr u8 n -- XML:reader n )
    DECODE-ARGS URI-STATE ;
 
+\ Attribute access works only on a start event, after ATTR-NEXT selects one and
+\ before exhaustion, else E-STATE; xmlns declarations are attributes. ATTR-RAW
+\ covers name, `=`, whitespace and quoted value; ATTR-VALUE omits the quotes.
 : ATTR-RESET ( XML:reader -- XML:reader )
    STATE ATTR-RESET-STATE ;
 

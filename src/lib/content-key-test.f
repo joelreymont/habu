@@ -72,16 +72,12 @@ FUNCTION: CKT-SYNC-RANGE msync ( n n n -- i32 ) ;FUNCTION
    FS:CLEANUP-RUN
    CKT-ROOT$ FS:EXISTS? TFALSE ;
 
-\ ---- overlapping folds ------------------------------------------------------
-\ The regression fold tokens exist for. Two folds run one after the other, then
-\ the SAME two folds run overlapping - the second opened inside the first and
-\ the two folded into in turn, which is what a key derived inside another key's
-\ derivation does. The two must agree: a fold's bytes belong to its own token,
-\ not to whoever folded last.
-\
-\ Against a single shared accumulator the overlapping run produced ONE key and
-\ handed the same wrong value back for both folds, which turns these
-\ equalities red and flips the "the two keys differ" guard to true.
+\ Two folds run one after the other, then the same two run overlapping: the
+\ second opened inside the first and the two folded into in turn, as a key
+\ derived inside another key's derivation does. The runs must agree: a fold's
+\ bytes belong to its own token. A single shared accumulator answers one wrong
+\ key for both folds, which fails these equalities and the guard that the two
+\ keys differ.
 : CKT-SEQ-A-BODY ( CONTENT-KEY:fold -- )
    s" alpha-1" TEXT+
    s" alpha-2" TEXT+
@@ -122,7 +118,6 @@ FUNCTION: CKT-SYNC-RANGE msync ( n n n -- i32 ) ;FUNCTION
    CKT-SEQ-A CKT-KEY-LEN CKT-SEQ-B CKT-KEY-LEN STR= TFALSE
    CKT-INT-A CKT-KEY-LEN CKT-INT-B CKT-KEY-LEN STR= TFALSE ;
 
-\ ---- nesting is unbounded ---------------------------------------------------
 \ Each fold owns its scope storage, so 64 folds open at once all fold and
 \ finish, each to the key one lone fold of the same text gives.
 64 constant CKT-NEST-N
@@ -157,7 +152,6 @@ CKT-NEST-INSTALL
    s" 64 nested folds all succeed" T-LABEL
    CKT-NEST-DONE @ CKT-NEST-N T= ;
 
-\ ---- a throw releases the fold's scope -------------------------------------
 \ FILE+ on a missing file throws out of the fold's body, and the scope unmaps
 \ its storage on the way out: the scope's page is mapped while the body runs
 \ and gone once the throw has left WITH-FOLD.
@@ -183,7 +177,6 @@ variable CKT-LIVE-RC
    s" the throw unmapped the fold's scope" T-LABEL
    gone -1 T= ;
 
-\ ---- a body must finalize its own fold ------------------------------------
 \ A nested body holds the outer fold as well as its own. One that finalizes the
 \ outer fold and hands its own out conserves both tokens, so the checker admits
 \ it; the inner scope refuses it at run time, before the outer body could fold
@@ -240,7 +233,6 @@ variable CKT-INNER-AT
    >r {: a:ptr u:n name:ptr size:n key:ptr :} r>
    a u name size FILE-NAMED+ key FINAL-HEX ;
 
-\ Key the file at the first path under the logical name into `key`.
 : CKT-NAMED-KEY ( ptr u8 n ptr u8 n ptr u8 -- )
    [: CKT-NAMED-BODY ;] WITH-FOLD ;
 
@@ -271,7 +263,6 @@ variable CKT-INNER-AT
    s" FILE+ retains its path-as-name contract" T-LABEL
    CKT-KEY1 CKT-KEY-LEN CKT-KEY2 CKT-KEY-LEN T$= ;
 
-\ ---- fragments longer than one byte can count ------------------------------
 \ A fragment carries its length in two bytes (FRAG+), so a logical name of
 \ any length the tree's paths take folds whole: 256 bytes, one past what one
 \ byte counts, and PATH-CAP. Two names that differ only in their last byte

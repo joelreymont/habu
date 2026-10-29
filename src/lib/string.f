@@ -1,26 +1,12 @@
-\ string.f - checked byte-string helpers.
-\
-\ Inputs are byte pointers plus lengths; no word assumes NUL termination. Every
-\ word that takes a length checks it first (E-STR-BOUNDS on a negative one), and
-\ the builders throw E-STR-CAPACITY or E-STR-BOUNDS instead of truncating. STR<
-\ orders by unsigned byte value, a shorter equal prefix first, with no notion of
-\ case, locale or UTF-8. STR>NUMBER? parses a signed i64 and HEX>NUMBER? 1 to 16
-\ hex digits as the cell's bit pattern (FFFFFFFFFFFFFFFF is SOME -1), NONE on
-\ anything else. An empty FIND-SUB needle is SOME 0; FIND-SUB-FROM answers an
-\ offset into the whole text and NONE for a start outside [0, length].
-\ COUNT-SUB counts non-overlapping occurrences left to right (aaaa holds aa
-\ twice); an empty needle counts 0.
-\
-\ STORAGE CLASS. The SB builder (SB-BUF, SB-LEN) is TASK-LOCAL: it lives in the
-\ STRING-ABI band of the per-task DATA region, so each task's builder is its own
-\ and two tasks between SB-RESET and SB$ cannot see each other's bytes. The
-\ BUF-* family (BUF-RESET, BUF-APPEND, BUF-APPEND-LEN, BUF-APPEND-C, BUF-LEN@)
-\ is CALLER-OWNED - the caller passes the buffer, its capacity and its length
-\ cell - and remains the builder to reach for when two tasks must share one.
-\ Everything else here is pure over the caller's spans.
+\ string.f - checked byte-string helpers over pointer and length; no word assumes
+\ NUL termination. A word that takes a length refuses a negative one first
+\ (STR-CHECK-LEN); the builders throw E-STR-CAPACITY or E-STR-BOUNDS instead of
+\ truncating.
+\ STORAGE CLASS: the SB builder is TASK-LOCAL (SB-BUF); the BUF-* family is
+\ CALLER-OWNED, the builder for one shared by two tasks; the rest is pure.
 
 s" src/lib/errors.f" required
-s" src/lib/adt/option.f" required            \ option<n> for STR-PARSE-POS/NEG (switchover wave A)
+s" src/lib/adt/option.f" required
 
 9 constant STR-TAB
 10 constant STR-LF
@@ -37,33 +23,26 @@ s" src/lib/adt/option.f" required            \ option<n> for STR-PARSE-POS/NEG (
 97 constant STR-LOWER-A
 102 constant STR-LOWER-F
 16 constant STR-HEX-BASE
-16 constant STR-HEX-MAX-DIGITS              \ 64 bits at 4 bits a digit
+16 constant STR-HEX-MAX-DIGITS
 19 constant STR-I64-DIGITS
 255 constant STR-BYTE-MAX
 STRING-ABI:SB-BUF-BYTES constant SB-CAP
 $7FFFFFFFFFFFFFFF constant STR-MAX-I64
 STR-MAX-I64 negate 1 - constant STR-MIN-I64
 
-\ A negative length is no string. Every word here that takes a length refuses
-\ one with E-STR-BOUNDS through this guard before it reads a byte. Unguarded, a
-\ scan that never runs answers NONE, 0, true or an empty string, and the minimum
-\ cell less one wraps to the maximum and reads past the span.
+\ Unguarded, a scan that never runs answers NONE, 0, true or an empty string,
+\ and the minimum cell less one wraps to the maximum and reads past the span.
 : STR-CHECK-LEN ( n -- )
    0 < if E-STR-BOUNDS throw then ;
 
 : STR-CHECK-LENS ( n n -- )
    STR-CHECK-LEN STR-CHECK-LEN ;
 
-\ SB is TASK-LOCAL: both accessors read `data-base`, which is the RUNNING
-\ task's data region, so each task builds in its own bytes with its own cursor.
-\ The offsets are STRING-ABI's, declared in src/habu/layout.f and asserted
-\ there against every other DATA claim, because this module cannot reach
-\ TASK:+USER: it is baked into the engine and sits below src/lib/ffi-abi.f, which
-\ requires it back, so `require src/lib/task.f` here fails the engine build with an
-\ undefined STR= inside ffi-abi's TOK-IS?. This is the same addressing
-\ src/lib/ffi-abi.f uses for FFI-BUF and package GENIO-ABI for its device cells.
-\ A region is a fresh zeroed mapping, so a new task's cursor starts at zero
-\ exactly as the old `variable` did.
+\ TASK-LOCAL: `data-base` is the running task's DATA region, at STRING-ABI's
+\ offsets (src/habu/layout.f). This module is baked into the engine below
+\ src/lib/ffi-abi.f, which requires it back, so it cannot require
+\ src/lib/task.f (the engine build fails on an undefined STR= in TOK-IS?). A
+\ fresh region is zeroed, so a new task's cursor starts at zero.
 : SB-BUF ( -- ptr u8 )
    data-base STRING-ABI:SB-BUF-OFF + BYTE-VIEW ;
 
@@ -119,6 +98,7 @@ create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 
       1+
    repeat drop 0 0= ;
 
+\ Unsigned byte order, a shorter equal prefix first; no case, locale or UTF-8.
 : STR< ( ptr u8 n ptr u8 n -- bool )
    {: a:ptr u:n b:ptr v:n :}
    u v STR-CHECK-LENS
@@ -148,6 +128,7 @@ create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 
    u v < if 0 0= 0= exit then
    a u v - + v b v STR= ;
 
+\ An offset into the whole text; NONE for a start outside [0, length].
 : FIND-SUB-FROM ( ptr u8 n ptr u8 n n -- option<idx> )   \ SOME first offset of b in a at or after start, else NONE
    {: a:ptr u:n b:ptr v:n start:n :}
    u v STR-CHECK-LENS

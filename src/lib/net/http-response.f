@@ -2,12 +2,6 @@
 \ status, header lines, a borrowed body span or a filed document, and the error
 \ answer every refusal shares, rendered by the one hook ON-ERROR installs
 \ (src/lib/net/http.f).
-\
-\ src/lib/json-write.f keeps no state of its own: the caller declares the writer and
-\ owns the bytes it writes into. Each worker
-\ therefore holds one writer of its own over its own growing JSON buffer, opened
-\ at the start of a response body and closed after it, so two workers write JSON
-\ at the same time without a lock between them.
 require src/lib/net/http-request.f
 require src/lib/json-write.f
 require src/lib/string.f
@@ -29,8 +23,6 @@ $10000 constant FILE-CHUNK
 MAX-WORKERS TYPED-BUFFER FILE-OFFSET n
 MAX-WORKERS TYPED-BUFFER FILE-TRANSFER AIO:xfer
 
-
-\ ---- appending to the slot's buffers ----------------------------------------
 
 : OUT+ ( ptr u8 n n -- ) {: src:ptr len:n idx:n :}
    src len BUF:N>BLEN idx OUT-BUF BUF:APPEND-SPAN ;
@@ -67,8 +59,6 @@ MAX-WORKERS TYPED-BUFFER FILE-TRANSFER AIO:xfer
    idx NUM-BUF len SPAN:TAKE SPAN:$ ;
 
 
-\ ---- the request id ---------------------------------------------------------
-
 : ID+C ( n n -- ) {: byte:n idx:n :}
    byte idx ID-BUF idx ID-U@ SPAN:U8!
    idx ID-U@ 1+ idx ID-U! ;
@@ -88,8 +78,6 @@ MAX-WORKERS TYPED-BUFFER FILE-TRANSFER AIO:xfer
    DASH-BYTE idx ID+C
    idx NEXT-SEQ idx NUM$ idx ID+ ;
 
-
-\ ---- status lines -----------------------------------------------------------
 
 : REASON$ ( n -- ptr u8 n ) {: status:n :}
    status 200 = if s" OK" exit then
@@ -211,9 +199,9 @@ MAX-WORKERS TYPED-BUFFER FILE-TRANSFER AIO:xfer
    [: SEND-BODY ;] [: SELF-SLOT CLOSE-FILE ;] finally ;
 
 
-\ ---- JSON -------------------------------------------------------------------
-
 \ The slot's writer over the slot's JSON buffer, empty and ready to be chained.
+\ Each worker holds its own writer and buffer (src/lib/json-write.f keeps no
+\ state), so two workers write JSON at once without a lock between them.
 \ The writer may move the bytes a previous body borrowed, so that body goes
 \ first: a body that does not finish leaves none.
 : OPEN-JSON ( n -- ) {: idx:n :}

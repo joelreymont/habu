@@ -1,47 +1,9 @@
-\ HTTPS client over libcurl's easy interface: one request and one response, with
-\ no retry policy, authentication, payload format or URL construction. TLS,
-\ redirects, proxies and the system CA bundle are libcurl's.
-\
-\ A caller relies on these:
-\ - Every setter copies its span before it returns.
-\ - INIT restricts the URL and every redirect to HTTP and HTTPS, so a scraped
-\   file:// or ftp:// URL fails with CURLE_UNSUPPORTED_PROTOCOL before anything
-\   opens.
-\ - An HTTP error status is a `response`, not `failed`. libcurl writes a whole
-\   body straight into the destination span and never past it. A body longer
-\   than the span is `truncated`, and its length is the number of body bytes
-\   the span holds; on the write that overflows, glibc may hold fewer than the
-\   span. A followed redirect's own body never reaches the span. A `failed` or
-\   cancelled transfer may leave part of its body in the span.
-\ - Every response buffer this file frees, header capture and streamed body, is
-\   zeroed first. libcurl's own receive and TLS buffers, and the copies
-\   open_memstream leaves behind as it grows a capture, are outside that
-\   guarantee.
-\ - A string with an embedded NUL is FFI's E-FFI-NUL rather than cut short.
-\ - CLEANUP ends a handle. A later use is a use-after-free the nominal type
-\   does not catch.
-\ - PERFORM holds its task for the whole transfer. START/AWAIT and
-\   STREAM-START/NEXT run on the one CURL loop task instead (AIO:START, then
-\   LOOP-START). From START until its terminal result is collected, the handle
-\   and its span belong to the loop; the task that started a transfer collects
-\   it exactly once, and LOOP-STOP refuses while any record is held. A task
-\   halted while it waits abandons its record and waits until the loop has
-\   taken the handle out of the multi handle and cleaned it up, so its span is
-\   the task's again before the halt unwinds through its cleanups. Its other
-\   records, and those of a task that ends some other way, are left to the
-\   loop through OWNER-END, which runs after the task's cleanups: a span must
-\   outlive its record.
-\
-\ Only HABU_NET_TESTS=1 runs the case that leaves the machine and exercises TLS
-\ and the CA bundle; the gate runs without it.
-\
-\ STORAGE CLASS. TASK-LOCAL for call staging: five foreign out-parameter cells
-\ are one $28 TASK:+USER row. The caller owns destination spans; each handle
-\ owns its request list and captured response. The one-time global init flags
-\ (GLOBAL-DONE, GLOBAL-REGISTERED) are PROCESS-WIDE, as curl_global_init requires.
-\ So are the multiplexed transfer records at the end of this file: one loop task
-\ owns the multi handle and the records, and a record is claimed atomically by
-\ whichever task starts a transfer.
+\ curl.f - HTTPS client over libcurl's easy interface: one request and one
+\ response, with no retry policy, authentication, payload format or URL
+\ construction; TLS, redirects, proxies and the CA bundle are libcurl's. Every
+\ setter copies its span before it returns. PERFORM holds its task; START/AWAIT
+\ and STREAM-START/NEXT run on one CURL loop task (the multi interface below).
+\ Only HABU_NET_TESTS=1 runs the case that leaves the machine (TLS, CA bundle).
 require src/lib/errors.f
 require src/lib/string.f                      \ BUFFER:, the transfer table's byte rows
 require src/lib/le.f                          \ the foreign cells are little-endian
@@ -278,6 +240,8 @@ CAST: >BYTES ( n -- ptr u8 )
 
 \ A URL, a header line or a response can carry a credential, so every text
 \ copy, request list and response buffer this file frees is zeroed first.
+\ libcurl's own receive and TLS buffers, and the copies open_memstream leaves
+\ behind as it grows a capture, are outside that guarantee.
 : BYTES-WIPE ( n n -- )
    {: source:n u:n :}
    source >BYTES {: bytes :}
@@ -298,8 +262,8 @@ CAST: >BYTES ( n -- ptr u8 )
 
 \ libcurl reads a NUL-terminated copy and duplicates it for itself, so the copy
 \ is a MEM:WITH-BYTES mapping that lasts only for the call. FFI:CSTR refuses an
-\ embedded NUL, which would silently shorten a URL or header line, before it
-\ writes a byte, so a refused mapping is unmapped still zero.
+\ embedded NUL (E-FFI-NUL), which would silently shorten a URL or header line,
+\ before it writes a byte, so a refused mapping is unmapped still zero.
 : TEXT-ROOM ( n -- NUM:alloc-byte-len )
    {: u:n :}
    u 0 AT-LEAST
@@ -509,6 +473,7 @@ CAST: >BYTES ( n -- ptr u8 )
    if 1 else 0 then ;
 
 
+\ Process-wide, as curl_global_init requires.
 variable GLOBAL-DONE
 variable GLOBAL-REGISTERED
 
@@ -537,11 +502,10 @@ variable GLOBAL-REGISTERED
 
 
 \ Only HTTP and HTTPS, for the first URL and for whatever a redirect names, so a
-\ file:// or ftp:// URL out of a scraped page cannot reach the filesystem or
-\ another service through this handle. The bitmask options are deprecated in
-\ favour of CURLOPT_PROTOCOLS_STR (318) and CURLOPT_REDIR_PROTOCOLS_STR (319) but
-\ still honoured, and they carry no version floor; move to the string form once
-\ the libcurl floor is 7.85.
+\ file:// or ftp:// URL out of a scraped page fails with CURLE_UNSUPPORTED_PROTOCOL
+\ before anything opens. The bitmask options are deprecated in favour of
+\ CURLOPT_PROTOCOLS_STR (318) and CURLOPT_REDIR_PROTOCOLS_STR (319), which need
+\ libcurl 7.85; the bitmasks are still honoured and need no version floor.
 : SCHEMES ( n -- n ) {: easy:n :}
    easy OPT-PROTOCOLS PROTO-WEB SETOPT-NUM dup CURLE-OK <> if exit then drop
    easy OPT-REDIR-PROTO PROTO-WEB SETOPT-NUM ;
@@ -604,7 +568,6 @@ public
    subject OPT-METHOD 0 SET-NUM-RAW CODE>STATUS ;
 
 
-\ One "Name: value" line, appended to the list this handle already owns.
 : HEADER+ ( handle ptr u8 n -- status ) {: subject:handle text u:n :}
    u 1 AT-LEAST
    subject HANDLE-CELL text u HEADER-APPEND ;
@@ -663,7 +626,6 @@ public
 
 private
 
-\ ---- many transfers on one task ----------------------------------------------
 \ PERFORM holds its task for a whole transfer, so ten transfers that way cost
 \ ten threads parked in libcurl. The words below are the other shape: ONE
 \ package-owned task drives libcurl's multi interface and a task that starts a
@@ -765,9 +727,6 @@ variable REC-COUNT
 RECS-FIRST REC-COUNT !
 variable MAPS-ARMED                       \ the capture sweep below is registered
 
-\ The three fd_sets libcurl fills, the fds an armed ticket already covers, the
-\ int and long out-parameters of the multi calls, one copied CURLMsg, and the
-\ wake pipe's two ends.
 FD-SET-BYTES BUFFER: SET-READ
 FD-SET-BYTES BUFFER: SET-WRITE
 FD-SET-BYTES BUFFER: SET-EXC
@@ -811,8 +770,6 @@ CAST: TICKET>N ( AIO:ticket -- n )
 : MAXFD-CELL ( -- ptr u8 )    MULTI-STAGE $08 + ;
 : TIMEOUT-CELL ( -- ptr u8 )  MULTI-STAGE $10 + ;
 
-
-\ ---- the records -------------------------------------------------------------
 
 \ A record chunk, which this module names by address as n: 0 ends the chain.
 CAST: CURL-N>PTR ( n -- ptr n )
@@ -1043,7 +1000,6 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
    0 idx REC R.DELIVERED ! ;
 
 
-\ ---- the wake pipe -----------------------------------------------------------
 \ One byte says "a record changed": a START, a CANCEL, an abandoned record or
 \ the stop. The loop holds one AIO POLL ticket on the read end, and after it
 \ reads whatever is there it scans the table, so a byte that arrives between the
@@ -1071,8 +1027,6 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
    0 WAKE-R !
    0 WAKE-W ! ;
 
-
-\ ---- the loop's side of a record ---------------------------------------------
 
 : REC-STREAM-TAKE ( n -- n n n ) {: idx:n :}
    idx REC-STREAM@ idx REC-BUF-CELL idx REC-LEN-CELL STREAM-TAKE ;
@@ -1105,7 +1059,6 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
    bodyrc ;
 
 
-\ The streams are closed and whatever they collected is dropped.
 : STREAM-DROP ( n -- n ) {: idx:n :}
    idx REC-STREAM@ 0= if CURLE-OK exit then
    idx BODY-DROP {: bodyrc:n :}
@@ -1336,7 +1289,6 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
    CURL-LOCK TASK:RELEASE ;
 
 
-\ ---- the descriptors libcurl is waiting on -----------------------------------
 \ An fd_set is a bitmap of FD_SETSIZE bits, bit i in byte i/8, which is the same
 \ byte whatever the word size the C library reads it in. An fd at or above
 \ FD_SETSIZE cannot appear in one at all, so the sets bound this loop at 1024
@@ -1463,8 +1415,6 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
    CURLM-OK ;
 
 
-\ ---- the time libcurl is waiting for -----------------------------------------
-
 : WANT-MS ( -- n n )                      \ ( -- CURLMcode ms )
    TIMEOUT-CELL CELL-CLEAR
    MULTI-CELL atomic@ TIMEOUT-CELL MULTI-TIMEOUT dup CURLM-OK <> if IDLE-MS exit then
@@ -1500,8 +1450,6 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
    t WAKE-TICKET ! ;
 
 
-\ ---- the loop ----------------------------------------------------------------
-
 : OUTCOME-DROP ( AIO:outcome -- )
    MATCH AIO:outcome
       ready OF drop ENDOF
@@ -1511,10 +1459,7 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
    ;MATCH ;
 
 
-\ Whatever ended, the loop answers it: the wake pipe is drained and the table
-\ scanned, a fired timer is forgotten so the review below arms the next one, a
-\ poll that ended frees its slot for the review to arm again, and a ticket no
-\ slot owns is one this loop cancelled and is done with.
+\ A ticket no slot owns is one this loop cancelled and is done with.
 : TURN-ANSWER ( AIO:ticket -- n ) {: t:AIO:ticket :}
    t WAKE-TICKET @ SAME-TICKET? if WAKE-DRAIN WAKE-ARM LOCKED-SERVICE exit then
    t TIMER-TICKET @ SAME-TICKET? if -1 TIMER-MS ! CURLM-OK exit then
@@ -1606,8 +1551,6 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
    0 TASK:RETURN ;
 
 
-\ ---- a transfer's own steps --------------------------------------------------
-
 \ The handle is written into the record before the facility is given back, so a
 \ second START on it - from this task or another - already finds it in flight.
 : CLAIM-BODY ( n -- n n ) {: easy:n :}    \ ( easy -- rc idx )
@@ -1684,7 +1627,7 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
 
 \ Every task exit precedes release of its TCB. Marking its records under the
 \ loop's lock stops a later copy or wake, but this runs after the task's
-\ cleanups, so it gives no span back.
+\ cleanups, so it gives no span back: a span must outlive its record.
 : OWNER-END ( -- )
    TASK:SELF {: owner:ptr :}
    CURL-LOCK TASK:GET
@@ -2001,8 +1944,13 @@ public
    else CURL-HEADER--RESULT:complete then ;
 
 
-\ libcurl writes the body into the span as it arrives. The first libcurl error
-\ wins; only an otherwise successful transfer maps a close failure to 23.
+\ libcurl writes the body into the span as it arrives, never past it. An HTTP
+\ error status is a `response`, not `failed`. A body longer than the span is
+\ `truncated`, its length the body bytes the span holds; on the write that
+\ overflows, glibc may hold fewer than the span. A followed redirect's own body
+\ never reaches the span; a `failed` or cancelled transfer may leave part of
+\ its body there. The first libcurl error wins; only an otherwise successful
+\ transfer maps a close failure to 23.
 : PERFORM ( handle ptr u8 len -- fetch-result ) {: subject:handle target capacity:len :}
    subject HANDLE-CELL {: easy:n :}
    capacity LEN>N 0 AT-LEAST
@@ -2035,6 +1983,7 @@ public
    status u full FETCH-RESULT ;
 
 
+\ A later use of the handle is a use-after-free the nominal type does not catch.
 : CLEANUP ( handle -- ) {: subject:handle :}
    subject HANDLE-CELL {: easy:n :}
    easy HANDLE-BUSY? if E-STATE throw then

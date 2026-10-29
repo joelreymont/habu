@@ -1,30 +1,9 @@
 \ spawn-report.f - launch-context and child-outcome reporter for process fixtures.
-\
-\ A fixture that spawns a child and asserts its exit code hides the two things a
-\ reader needs when the assertion fails: what the child printed, and how the
-\ fixture itself was launched. This module prints both.
-\
-\   CONTEXT reports the running process's launch shape - pid, script argv,
-\   working-directory markers, the state of fds 0/1/2 (open, status flags,
-\   tty-ness), and the whole environment. Every line starts `ctx `, so the same
-\   report taken under an interactive shell, under a non-tty pipe, and inside a
-\   gate pool slot diffs directly:
-\      bin/hb --load tools/launch-context.f | grep '^ctx ' | sort > a
-\      ... same command under the other launcher ...          > b
-\      diff a b
-\
-\   CHILD prints a failing child's rc, its captured stdout and stderr, and that
-\   context, so an unexpected exit code arrives with the child's own diagnostic
-\   attached instead of as a bare number.
-\
-\ tty-ness asks the kernel for the fd's terminal attributes. The request number
-\ is host-specific and the two hosts' numbers are NOT interchangeable - issuing
-\ the Linux TCGETS on macOS kills the process (measured: exit 83) - so the
-\ request is selected by the engine's own target predicate, and an unrecognised
-\ host throws rather than guesses.
-\
-\ STORAGE CLASS. PROCESS-WIDE: the terminal-attribute and marker buffers are
-\ static; one task reports at a time.
+\ CONTEXT prints the launch shape (pid, script argv, cwd markers, fds 0/1/2, the
+\ environment), each line starting `ctx `, so reports taken under different
+\ launchers sort and diff directly (tools/launch-context.f). CHILD prints a
+\ failing child's rc, captured stdout and stderr, and that context.
+\ STORAGE CLASS. PROCESS-WIDE: static buffers; one task reports at a time.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -36,6 +15,9 @@ require src/lib/process-env.f
 package SPAWN-REPORT
 private
 
+\ The terminal-attribute request is host-specific: the Linux TCGETS on macOS
+\ kills the process (measured: exit 83), so the engine's target predicate picks
+\ it and an unknown host throws.
 $50 constant TIO-CAP                 \ termios: 60 bytes on macOS, 44 on Linux
 $40487413 constant TIO-GET-BSD       \ TIOCGETA
 $5401 constant TIO-GET-SYSV          \ TCGETS
@@ -129,10 +111,8 @@ variable MARK-U
    ENGINE-REL$ MARK$ FS:FILE? {: found:bool :}
    s" pwd-has bin/hb" found YN$ LINE$ ;
 
-\ Working-directory identity, structurally: whether the engine a caller resolves
-\ relatively is reachable from the process's own cwd, and whether the inherited
-\ PWD names the same tree. A stale PWD - a parent that chdir()ed without
-\ updating it - shows up here as a yes/no split.
+\ Whether the engine a caller resolves relatively is reachable from the cwd, and
+\ whether the inherited PWD names the same tree: a stale PWD splits yes/no.
 : MARKERS ( -- )
    s" cwd-has bin/hb" ENGINE-REL$ FS:FILE? YN$ LINE$
    PWD-MARKER ;

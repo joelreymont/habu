@@ -14,10 +14,8 @@ require src/lib/test/outcome.f                      \ the TMPDIR child's outcome
 require src/lib/task.f                              \ the two-task rows at the end
 require src/lib/test/wait.f                         \ a worker's deadline at the join
 
-\ White-box access: it reopens FS so the private words this test reads (the
-\ sibling naming, the staged reserve, the cleanup table, the temp seeds and the
-\ mode constants) are reachable here. The definitions land in FS-TEST, so FS's
-\ public surface gains nothing for being tested.
+\ White-box: reopens FS to reach its private words; the wrappers land in
+\ FS-TEST, not in FS's public surface.
 package FS
 : FS-TEST:BUILD-SIBLING ( ptr u8 n n n -- ptr u8 n ) BUILD-SIBLING ;
 : FS-TEST:ATOMIC-OPEN-DIR ( ptr u8 n -- n ) ATOMIC-OPEN-DIR ;
@@ -90,15 +88,15 @@ create FMT-STREAM-SRC-BUF PATH-CAP allot
 create FMT-STREAM-DST-BUF PATH-CAP allot
 create FMT-ATOMIC-BUF PATH-CAP allot
 
-create FMT-LONG-BUF PATH-CAP 1 + allot      \ one byte past every path buffer
+create FMT-LONG-BUF PATH-CAP 1 + allot
 
 : FMT-LONG! ( -- )
    PATH-CAP 1 + 0 ?do 97 FMT-LONG-BUF i + c! loop ;
 
-: FMT-LONG$ ( -- ptr u8 n )                    \ PATH-CAP + 1 bytes
+: FMT-LONG$ ( -- ptr u8 n )
    FMT-LONG-BUF PATH-CAP 1 + ;
 
-: FMT-FULL$ ( -- ptr u8 n )                    \ exactly PATH-CAP bytes
+: FMT-FULL$ ( -- ptr u8 n )
    FMT-LONG-BUF PATH-CAP ;
 
 create FMT-MKDIR-BUF PATH-CAP allot
@@ -134,7 +132,7 @@ create FMT-REAL-BUF FS:PATHZ-CAP allot
 424244 constant FMT-ATOMIC-FAIL-SEED
 384 constant FMT-MODE-0600
 416 constant FMT-MODE-0640
-$16D constant FMT-MODE-0555             \ listable, not writable
+$16D constant FMT-MODE-0555
 13 constant FMT-EACCES                  \ a denied mkdir's errno on both targets
 create FMT-STREAM-SRC-DATA FMT-STREAM-LEN allot
 create FMT-STREAM-DST-DATA FMT-STREAM-LEN allot
@@ -249,17 +247,14 @@ create FMT-STREAM-DST-DATA FMT-STREAM-LEN allot
 : FMT-TEMP-BASE ( -- ptr u8 n )
    FMT-ROOT$ ;
 
-\ HB_SOCK_TMP before TMPDIR: REMOVE-SPECIAL-TREE binds a real Unix socket under
-\ this root, at <root>/remove-tree/root.txt, and sun_path holds 107 bytes on
-\ Linux and 103 on macOS. A pool slot's TMPDIR is 97 bytes on its own
-\ (measured: the listener never binds, WAIT-LISTENER throws E-FS-IO). Under a
-\ gate pool the root is the slot's HB_SOCK_TMP, the short directory the pool
-\ makes for a child's sockets and removes when the slot retires or is killed
-\ (test/gate-pool.f GT-POOL-CHILD-SOCK!), so a row the pool kills leaves no
-\ root behind; the socket path there is about 100 bytes under macOS's default
-\ TMPDIR. Run on its own, the root goes under TMPDIR, then /tmp.
-\ Either way FMT-PREPARE registers it as a tree, so a run that throws before
-\ FMT-TEST-CLEANUP still loses the root at exit with whatever is left in it.
+\ The root prefers HB_SOCK_TMP to TMPDIR: REMOVE-SPECIAL-TREE binds a Unix
+\ socket at <root>/remove-tree/root.txt, sun_path holds 107 bytes on Linux and
+\ 103 on macOS, and a pool slot's TMPDIR alone is 97 bytes (measured: the
+\ listener never binds, WAIT-LISTENER throws E-FS-IO). HB_SOCK_TMP is the short
+\ directory the gate pool makes per slot and removes when the slot retires or is
+\ killed (test/gate-pool.f GT-POOL-CHILD-SOCK!). Without it the root goes under
+\ TMPDIR, then /tmp. FMT-PREPARE registers the root as a tree, so a throw before
+\ FMT-TEST-CLEANUP still removes it at exit.
 : FMT-ROOT-COPY! ( ptr u8 n -- ) {: a:ptr u :}
    a FMT-ROOT-BUF u BYTE-COPY
    u FMT-ROOT-U ! ;
@@ -432,9 +427,6 @@ create FMT-STREAM-DST-DATA FMT-STREAM-LEN allot
 
 create FMT-READ-BUF 64 allot
 PATH-CAP SPAN-BUFFER: FMT-LINK-READ-BUF     \ READ-LINK's destination is a span
-\ ---- the buffers this module owns refuse an overrun at the copy ----------------
-\ Each of these used to be a hand-written PATH-CAP / COPY-CAP
-\ comparison in fs-mutate.f; the destination now carries its reach.
 : FMT-COPY-CAP-PAST-BUFFER ( -- )
    FMT-COPY-SRC FMT-COPY-DST FS-TEST:COPY-CAP 1 + FS-TEST:COPY-FILE ;
 
@@ -449,18 +441,16 @@ public
    FMT-FULL$ s" x" FS:ATOMIC-WRITE-FILE ;
 ;package
 
-\ The OS's canonical spelling of an existing path, in FMT-REAL-BUF.
 : FMT-REAL ( ptr u8 n -- ptr u8 n )
    FS:>PATHZ FMT-REAL-BUF FS:PATHZ-CAP realpath {: u:n :}
    u 0 > TTRUE
    FMT-REAL-BUF u ;
 
 
-\ A directory whose canonical path is n bytes: the test root's canonical
-\ spelling, then names of `a` with a slash every 201st byte, so no name passes
-\ NAME_MAX, the last byte never a slash. TMPDIR's length is its canonical
-\ spelling's, which only an existing directory has. The first name goes to the
-\ cleanup registry, so FMT-TEST-CLEANUP leaves the root empty.
+\ The root's canonical spelling, then names of `a` with a slash every 201st
+\ byte, so no name passes NAME_MAX and the last byte is never a slash. Only an
+\ existing directory has a canonical spelling. The first name is registered for
+\ cleanup, so FMT-TEST-CLEANUP leaves the root empty.
 : FMT-DEEP-DIR ( n -- ptr u8 n )
    {: n:n :}
    FMT-ROOT$ FMT-REAL nip {: r:n :}
@@ -486,7 +476,6 @@ package FS-TEST
    FMT-LINK-TARGET FMT-LINK FS:MAKE-LINK ;
 
 public
-\ A hard link is a second name of the target's file, not a symbolic link.
 : HARD-LINK ( -- )
    s" a hard link names its target's file" T-LABEL
    FMT-LINK-TARGET s" link-target" FS:WRITE-ALL
@@ -507,8 +496,7 @@ public
 : FMT-LINK-READ-TOO-SMALL ( -- )
    FMT-LINK FMT-LINK-READ-BUF 3 SPAN:TAKE FS-TEST:READ-LINK drop ;
 
-\ A destination window past the buffer is refused at the narrowing: the old
-\ ( ptr u8 n ) destination took the capacity on the caller's word.
+\ A destination window past the buffer is refused at the narrowing.
 : FMT-READ-LINK-OVER-CAP ( -- )
    FMT-LINK FMT-LINK-READ-BUF PATH-CAP 1 + SPAN:TAKE FS-TEST:READ-LINK drop ;
 
@@ -689,7 +677,6 @@ public
 
 package FS-TEST
 public
-\ The sibling an atomic write of path stages, for its seed and attempt.
 : SIBLING ( ptr u8 n n n -- ptr u8 n ) {: path:ptr pathu seed:n attempt:n :}
    path path pathu FS-TEST:ATOMIC-BASE-OFF seed attempt BUILD-SIBLING ;
 
@@ -722,7 +709,7 @@ public
    FMT-MKDIR-PATH FS:REMOVE-DIR ;
 
 package FS-TEST
-$C0 constant MODE-0300                  \ writable and searchable, not listable
+$C0 constant MODE-0300
 create DROP-BOX-BUF PATH-CAP allot
 variable DROP-BOX-U
 
@@ -795,12 +782,11 @@ public
    FMT-NEST-B FS:DIR? TTRUE
    FMT-NEST-C FS:DIR? TTRUE ;
 
-\ Under a parent it cannot write, FS:MAKE-DIRS keeps the folder already there and
-\ fails the one it must make with FS:ERRNO mkdir's own cause, EACCES, which the
-\ mode restored after it does not replace. Each FS:MAKE-DIRS under the read-only parent is caught so
-\ the mode comes back before an assert. The first runs while FMT-NEST-C is still
-\ there, so a throw from it would also leave a folder the exit cleanup cannot
-\ remove.
+\ Under a parent it cannot write, FS:MAKE-DIRS keeps the folder already there
+\ and fails the one it must make with mkdir's own FS:ERRNO, EACCES, which the
+\ mode restored after it does not replace. Each call is caught so the mode comes
+\ back before an assert; the first runs while FMT-NEST-C exists, and a throw from
+\ it would leave a folder the exit cleanup cannot remove.
 : FMT-TEST-DIRS-DENIED ( -- )
    FMT-NEST-B FMT-MODE-0555 FS:CHMOD-MODE
    [: FMT-NEST-C FS:MAKE-DIRS ;] catch
@@ -817,7 +803,6 @@ public
 package FS-TEST
 create NAMED-BUF PATH-CAP allot
 
-\ The test root joined with a last name of n bytes, all `n`.
 : NAMED$ ( n -- ptr u8 n )
    {: n:n :}
    FMT-ROOT$ {: root:ptr rootu:n :}
@@ -891,8 +876,6 @@ public
    s" /a/" s" slash" FMT-TMP-SEED 0 FS-TEST:BUILD-TEMP-TRY
    FMT-COLLIDE T$= ;
 
-\ Run the word on every candidate name the prefix gives under FMT-TEMP-BASE
-\ with FMT-TMP-SEED.
 : FMT-TEMP-EACH ( ptr u8 n [ ptr u8 n -- ] -- )
    {: prefix:ptr prefixu run :}
    0 begin dup FS-TEST:TMP-RETRIES < while
@@ -908,9 +891,6 @@ public
    E-FS-IO TTHROWSQ
    s" exhaust" [: FS:REMOVE-DIR ;] FMT-TEMP-EACH ;
 
-\ The file is new, regular, mode 0600 and named under the canonical temp root
-\ with the prefix; its descriptor reads and writes; nothing is registered for
-\ cleanup; a second call answers another file.
 : FMT-TEST-MKTEMP ( -- )
    s" FS:MKTEMP makes a private read-write file under the temp root" T-LABEL
    FS-TEST:CLEANUP-COUNT {: before:n :}
@@ -962,14 +942,12 @@ public
    E-FS-OPEN TTHROWSQ
    s" fexhaust" [: FS:REMOVE-FILE ;] FMT-TEMP-EACH ;
 
-\ ---- the temp roots a child reads from its environment ------------------------
-\ A child bin/hb, because TMPDIR is read from the process environment, which a
-\ running process does not change for itself. A child whose TMPDIR cannot hold
-\ a temp directory or file exits nonzero with one stderr line that names TMPDIR
-\ and the value, and the uncaught code. A child whose TMPDIR reaches a directory
-\ through a symlink, as macOS's /tmp is /private/tmp, makes its temp
-\ directory under the canonical spelling. The
-\ paths and the children's programs are under this test's root.
+\ Children bin/hb: TMPDIR is read from the process environment, which a running
+\ process does not change for itself. A child whose TMPDIR cannot hold a temp
+\ directory or file exits nonzero with one stderr line naming TMPDIR and the
+\ value, and the uncaught code. One whose TMPDIR reaches a directory through a
+\ symlink (macOS /tmp is /private/tmp) makes its directory under the canonical
+\ spelling. Paths and child programs live under this test's root.
 package FMT-TMPDIR
 private
 
@@ -1021,7 +999,6 @@ variable WANT-U
 : FILE-PROG-SRC$ ( -- ptr u8 n )
    S\" require src/lib/fs-mutate.f\ns\q tmpdir-file\q FS:MKTEMP drop 2drop\n" ;
 
-\ Prints the directory FS:MKTEMP-DIR makes and a newline.
 : CANON-PROG-SRC$ ( -- ptr u8 n )
    S\" require src/lib/fs-mutate.f\n: LINE ( ptr u8 n -- ) {: a:ptr u :} 1 a u write drop 1 S\\\q \\n\q write drop ;\ns\q canon\q FS:MKTEMP-DIR LINE\n" ;
 
@@ -1054,8 +1031,6 @@ variable WANT-U
       NOCANON-LEVEL LINK-NAME-U 1+ +
    repeat drop ;
 
-\ The child running this program, with TMPDIR the given value, whatever
-\ PROC-ENV-SET added after CHILD-ENV, and the rest of the environment inherited.
 : CHILD-ENV ( ptr u8 n -- ) {: a:ptr u :}
    PROC-ARGV-ENV-RESET
    s" TMPDIR" >LEN a u >LEN PROC-ENV-SET ;
@@ -1070,8 +1045,7 @@ variable WANT-U
    a WANT-BUF WANT-U @ + u BYTE-COPY
    WANT-U @ u + WANT-U ! ;
 
-\ The whole line the child must print: the reason, then the value. Not built
-\ in SB: a value near PATH-CAP bytes with the reason overflows SB-CAP.
+\ Not built in SB: a value near PATH-CAP bytes with the reason overflows SB-CAP.
 : WANT$ ( ptr u8 n ptr u8 n -- ptr u8 n ) {: why:ptr whyu a:ptr u :}
    0 WANT-U !
    why whyu WANT+
@@ -1079,15 +1053,12 @@ variable WANT-U
    S\" \n" WANT+
    WANT-BUF WANT-U @ ;
 
-\ The line the child prints for an uncaught code, rendered from the name.
 : CODE$ ( n -- ptr u8 n )
    SB-RESET
    s" hb: uncaught throw code " SB-APPEND
    FMT:SB-INT
    SB$ ;
 
-\ A child running this program given this TMPDIR exits nonzero and prints the
-\ line for it and the code.
 : REFUSED ( ptr u8 n ptr u8 n ptr u8 n n -- )
    {: prog:ptr progu a:ptr u why:ptr whyu code:n :}
    a u CHILD-ENV prog progu CAPTURE {: outu:len erru:len oc :}
@@ -1265,7 +1236,6 @@ create FMT-ROOT-PATH-BUF PATH-CAP allot
    s" and keeps the file" T-LABEL
    FMT-LINK-DIR-FILE FS:FILE? TTRUE ;
 
-\ FMT-TREE/d/d/... with level one-byte directories below it.
 : FMT-DEEP$ ( n -- ptr u8 n ) {: level:n :}
    FMT-TREE {: a:ptr u:n :}
    a FMT-ROOT-PATH-BUF u BYTE-COPY
@@ -1381,20 +1351,17 @@ public
    s" FS:REMOVE-TREE unlinks a bound Unix socket and a nested FIFO" T-LABEL
    rc 0 T=
    FMT-TREE FS:EXISTS? TFALSE
-   \ Clean up even when the regression fails against the old implementation.
    FMT-TREE-ROOT-FILE FS:EXISTS? if FMT-TREE-ROOT-FILE FS:REMOVE-FILE then
    FMT-TREE-LEAF FS:EXISTS? if FMT-TREE-LEAF FS:REMOVE-FILE then
    FMT-TREE FS:REMOVE-TREE ;
 
 ;package
 
-\ ---- two tasks inside one module word at once ---------------------------------
-\ Every row here runs the same module word in both tasks and asserts what the
-\ other task could not disturb. T1 is the shape of the witnessed failure - a
-\ task's RETURNED temporary directory path replaced by another task's - and is
-\ red on an engine whose fs-mutate.f stages that name process-wide. The paths
-\ T4 registers are left in the registry on purpose: FMT-TEST-CLEANUP's
-\ FS:CLEANUP-RUN removes them before the root goes.
+\ Each row runs one module word in two tasks at once and asserts what the other
+\ task could not disturb. T1 is the witnessed failure, a task's returned temp
+\ directory path replaced by another task's: it fails when fs-mutate.f stages
+\ that name process-wide. T4's paths stay registered on purpose:
+\ FMT-TEST-CLEANUP's FS:CLEANUP-RUN removes them before the root goes.
 package FMT-TASKS
 private
 
@@ -1507,11 +1474,10 @@ create P-W5DF PATH-CAP allot variable P-W5DF-U
    {: code :}
    code 0<> code E-PROC-TIMEOUT <> and ;
 
-\ Joins both workers before reading either, and answers true when both
-\ answered 0. The two wait on each other, so a worker that fails leaves its
-\ peer to wait out WAIT-FOR: only the failure is asserted, never that
-\ deadline, and the case reads nothing the workers left. When neither failed,
-\ a deadline is the row's own, named and thrown.
+\ Joins both workers before reading either; true when both answered 0. The two
+\ wait on each other, so a failing worker leaves its peer to wait out WAIT-FOR:
+\ only the failure is asserted, never that deadline. When neither failed, a
+\ deadline is the row's own, named and thrown.
 : JOIN-BOTH ( -- bool )
    WORKER-A JOIN-CODE WORKER-B JOIN-CODE {: a b :}
    a FAILED? b FAILED? or if
@@ -1524,10 +1490,9 @@ create P-W5DF PATH-CAP allot variable P-W5DF-U
    then
    true ;
 
-\ A task waits for its peer's round counter rather than a flag, so no round has
-\ to clear what the next one sets. A peer that never arrives ends the wait with
-\ E-PROC-TIMEOUT instead of hanging the suite: the task's JOIN records it and
-\ JOIN-BOTH reads it, never asserting it against zero.
+\ A task waits for its peer's round counter rather than a flag, so no round
+\ clears what the next one sets. A peer that never arrives ends the wait with
+\ E-PROC-TIMEOUT; JOIN records it and JOIN-BOTH reads it.
 : WAIT-FOR ( ptr n n -- )
    {: flag want :}
    mono-ns WAIT-NS + {: deadline :}
@@ -1666,12 +1631,8 @@ create P-W5DF PATH-CAP allot variable P-W5DF-U
       i REGS / i REGS mod base CHECK-ONE
    loop ;
 
-\ ---- each walk owns its context ---------------------------------------------
-\ Two tasks remove two trees at once with plain FS:REMOVE-TREE, and a FS:WALK-FILES
-\ callback removes a subtree while its walk stands. Both were impossible while
-\ the walk stacks were one set for the image: the two removals crossed each
-\ other's depth and path slot, and a removal inside a callback clobbered the
-\ walk it ran under.
+\ Two tasks remove two trees at once with FS:REMOVE-TREE, and a FS:WALK-FILES
+\ callback removes a subtree while its walk stands: each walk owns its context.
 variable T6-SEEN
 variable T6-BAD
 
@@ -1697,14 +1658,11 @@ variable T6-BAD
    KEEP$ FS:FILE? TTRUE
    KEEP$ FS:REMOVE-FILE ;
 
-\ THE REMOVED TREE IS NOT THE WALKED ONE, and it cannot be: a walk holds the
-\ directory it is reading OPEN, and `getdirentries64` on the descriptor of a
-\ directory that has since been removed answers -1 here, which the walk reports
-\ as E-FS-DIR (measured). Two walks in flight must therefore cover disjoint
-\ trees. What this row proves is that the removal moves no part of the walk's
-\ own state: every path the callback is handed still starts at the walked root,
-\ and both of its files are still found after a whole tree went away through
-\ the removal's own context.
+\ The removed tree is not the walked one: a walk holds its directory open, and
+\ getdirentries64 on a removed directory's descriptor answers -1, which the walk
+\ reports as E-FS-DIR (measured). Two walks in flight cover disjoint trees. The
+\ row proves the removal moves no part of the walk's state: every path the
+\ callback gets starts at the walked root, and both files are still found.
 : UNDER? ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u ra:ptr ru :}
    u ru <= if false exit then
    a ru ra ru STR= ;
@@ -1751,13 +1709,11 @@ public
 
 ;package
 
-\ ---- the registry grows ------------------------------------------------------
-\ A directory and then GROWS files inside it are registered, enough to grow
-\ the row several times over whatever the rows before left in it; one middle
-\ file is forgotten once its owner removed it. Every registration keeps its
-\ slot through the growth, the forget closes the gap in order, and
-\ FMT-TEST-CLEANUP's FS:CLEANUP-RUN must take every file before the directory:
-\ the directory is a plain rmdir, which a file left in it would refuse.
+\ A directory and then GROWS files inside it are registered, enough to grow the
+\ row several times over; one middle file is forgotten once removed. Every
+\ registration keeps its slot through the growth, the forget closes the gap in
+\ order, and FS:CLEANUP-RUN must take every file before the directory, a plain
+\ rmdir.
 package FMT-GROW
 private
 
@@ -1819,13 +1775,12 @@ public
 
 ;package
 
-\ ---- the run against a registering task ----------------------------------------
-\ FS:CLEANUP-RUN removes a deep tree while another task registers enough paths to
-\ grow the row many times over. Each growth releases the row it replaced, and
+\ FS:CLEANUP-RUN removes a deep tree while another task registers enough paths
+\ to grow the row many times over. Each growth releases the row it replaced, and
 \ FS:REMOVE-TREE reads its root's name again once the tree below is gone, so a
-\ run that held a pointer into a row another task can release read freed
-\ storage (measured: SIGSEGV every time). The run must finish, remove the
-\ tree and leave the worker's registrations to a later run.
+\ run holding a pointer into a released row reads freed storage (measured:
+\ SIGSEGV every time). The run must finish, remove the tree and leave the
+\ worker's registrations to a later run.
 package FMT-RACE
 private
 

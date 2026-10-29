@@ -1,18 +1,9 @@
-\ event-stream.f - incremental Server-Sent Events framing over arbitrary bytes,
-\ by the HTML "Parsing an event stream" algorithm (section 9.2.6). No socket,
-\ reconnect policy or event queue.
-\
-\ STORAGE CLASS. CALLER-OWNED: the caller owns the cell-aligned, zeroed
-\ STORAGE-BYTES and closes each opened decoder. BUF owns its three growable
-\ byte mappings; this package has no shared mutable state.
-\
-\ FEED's callback gets the event type, "message" by default, and the data as
-\ spans borrowed for that call. FINISH discards an event with no closing blank
-\ line, and FEED after it is E-STATE. Invalid UTF-8 in a completed event is
-\ E-UTF8 before its callback. A callback's throw leaves the decoder failed:
-\ close it and never feed it again. CLOSE frees the buffers, after a throw too,
-\ and lets the storage open again. Comments, unknown fields, id and retry are
-\ ignored.
+\ event-stream.f - incremental Server-Sent Events framing over arbitrary bytes, by
+\ the HTML "Parsing an event stream" algorithm (9.2.6); no socket, reconnect or
+\ queue, and comments, unknown fields, id and retry are ignored. FEED's callback
+\ borrows the type ("message" by default) and data; invalid UTF-8 is E-UTF8 first.
+\ FINISH drops an unterminated event; FEED after it is E-STATE. A callback's throw
+\ leaves the decoder failed: CLOSE it. STORAGE CLASS. CALLER-OWNED (STORAGE-BYTES).
 
 require src/lib/byte-buffer.f
 require src/lib/string.f

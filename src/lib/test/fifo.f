@@ -1,26 +1,9 @@
-\ fifo.f - a FIFO a test reads to learn when every process of a tree is gone.
-\
-\ A spawned child holds exactly the descriptors its spawn maps
-\ (src/lib/spawn.f), so a tree under library spawns inherits no pipe end from
-\ the test. Instead the test MAKEs a FIFO and names its path to the tree in an
-\ environment variable; each process of the tree that is test code opens the
-\ write end by path as its first act (WRITER) and maps it into each child it
-\ spawns (SPAWN). The test's read end reports end of file once none of them is
-\ left.
-\
-\ A FIFO NO WRITER HAS OPENED YET READS END OF FILE TOO, so EOF-WITHIN means
-\ "gone" only after a process of the tree has shown it holds the write end, by
-\ a report written to it. The wait for that report polls for bytes: neither
-\ host's poll reports a FIFO that no writer has opened yet.
-\
-\ macOS's poll never reports a FIFO's end of file, whether its last writer
-\ closed or died (measured on Darwin 27: no POLLIN, no POLLHUP), so EOF-WITHIN
-\ reads the nonblocking read end, which answers 0 with no writer and EAGAIN
-\ with one, and polls for at most SLICE-MS between reads. It declares its own
-\ read because no library word reads a nonblocking descriptor with its errno.
-\
-\ STORAGE CLASS. PROCESS-WIDE: the counter that names each FIFO, and SINK, the
-\ bytes EOF-WITHIN reads past, which nobody reads back.
+\ fifo.f - a FIFO a test reads to learn when every process of a tree is gone. A
+\ spawned child holds only the descriptors its spawn maps (src/lib/spawn.f), so
+\ the test names the FIFO's path in an environment variable; each test-code
+\ process of the tree opens the write end first (WRITER) and maps it into each
+\ child (SPAWN). STORAGE CLASS. PROCESS-WIDE: MADE, the counter naming each
+\ FIFO, and SINK, the bytes EOF-WITHIN reads past, never read back.
 
 require src/lib/errors.f
 require src/lib/ffi-abi.f
@@ -45,7 +28,7 @@ $180 constant MODE                   \ 0600
 : EAGAIN ( -- n ) HB-TARGET-MACOS? if 35 else 11 then ;
 
 create SINK SINK-CAP allot
-variable MADE                        \ FIFOs MAKE has named
+variable MADE
 
 PROCESS-SYMBOLS
 FUNCTION: MKFIFO-CALL mkfifo ( ptr u8 n -- i32 ) ;FUNCTION
@@ -66,11 +49,10 @@ FUNCTION: READ-CALL read ( n ptr u8 n -- n )
 
 public
 
-\ A new FIFO in the directory dir, named fifo-<k> by a count no earlier MAKE
-\ of this process used, so a writer a failed case left cannot open a later
-\ case's. Its path goes to dst, PATH-CAP bytes, and its length is answered
-\ with the read end: nonblocking and close-on-exec. A refused mkfifo or open
-\ throws E-FS-OPEN.
+\ A new FIFO in dir, named fifo-<k> by a count no earlier MAKE of this process
+\ used, so a writer a failed case left cannot open a later case's. Its path goes
+\ to dst (PATH-CAP bytes); the read end is nonblocking and close-on-exec. A
+\ refused mkfifo or open throws E-FS-OPEN.
 : MAKE ( ptr u8 n ptr u8 -- n fd ) {: dir:ptr diru:n dst:ptr :}
    MADE @ 1+ MADE !
    SB-RESET s" fifo-" SB-APPEND MADE @ FMT:SB-INT
@@ -107,9 +89,15 @@ public
    PROC-ARGV-ENV-RESET
    PROCESS:SPAWN ;
 
-\ End of file on the read end within ms, past whatever bytes are still in it:
-\ 1 at end of file, 0 when ms ran out first, and a negative errno when a read
-\ or a poll failed. ms 0 is one read.
+\ End of file on the read end within ms, past bytes still in it: 1 at end of
+\ file, 0 when ms ran out, a negative errno on a failed read or poll; ms 0 is
+\ one read. A FIFO no writer has opened reads end of file too, so 1 means gone
+\ only after a tree process has written a report to it; the wait for that
+\ report polls for bytes, since neither host's poll reports an unopened FIFO.
+\ macOS's poll never reports a FIFO's end of file (Darwin 27: no POLLIN, no
+\ POLLHUP, last writer closed or died), so this reads the nonblocking end (0
+\ with no writer, EAGAIN with one), polling at most SLICE-MS between reads,
+\ through its own read: no library word reads a nonblocking fd with its errno.
 : EOF-WITHIN ( fd n -- n ) {: rd:fd ms:n :}
    ms >MS PROC-DEADLINE-AT {: deadline:n :}
    begin

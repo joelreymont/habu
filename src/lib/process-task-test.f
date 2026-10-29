@@ -1,5 +1,4 @@
 \ process-task-test.f - two tasks through the per-task process row.
-\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f src/lib/process.f src/lib/process-argv.f src/lib/process-env.f src/lib/process-command.f src/lib/task.f src/lib/process-task-test.f
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -17,17 +16,14 @@ require src/lib/test/wait.f
 
 package PROCESS-TASK-TEST
 
-\ One task captures children through CMD:RUN-OUTCOME while this thread
-\ polls its own always-ready pipe through POLL-IN. Both reach src/lib/process.f's
-\ row. While that row was one set of dictionary cells the two shared pollfd
-\ slot 0: the poller armed its pipe over the capture's stdout descriptor and
-\ wrote its own revents back over the capture's, so the capture loop read a
-\ descriptor that was not ready and blocked - measured before the row moved as
-\ this same program running past 90 s without finishing one capture, against
-\ under a second afterwards (dot habu-make-the-process-6e615161). A shared slot
-\ spoils a capture only when a poll lands inside it: with one pollfd array for
-\ both tasks, twelve children failed or hung in each of twelve runs, where four
-\ passed one run in nine: at that rate twelve miss it about once in 700 runs.
+\ One task captures children through CMD:RUN-OUTCOME while this thread polls its
+\ own always-ready pipe through POLL-IN; both reach src/lib/process.f's per-task
+\ row. With one shared pollfd slot the capture loop reads a descriptor that is
+\ not ready and blocks: this program ran past 90 s without finishing one capture,
+\ against under a second with per-task rows.
+\ A shared slot spoils a capture only when a poll lands inside it: four children
+\ passed one run in nine and twelve failed or hung in each of twelve runs, so
+\ twelve miss it about once in 700 runs.
 12 constant PTT-CAPTURES                 \ children the captor runs
 5000 constant PTT-CAPTURE-MS             \ one child's capture deadline
 50 constant PTT-POLL-MS                  \ one POLL-IN wait
@@ -155,16 +151,11 @@ TASK:MIN-STACK TASK:TASK PTT-CAPTOR
    PTT-POLL-BAD @ 0 T=
    PTT-POLLS @ 0 > TTRUE ;
 
-\ ---- two tasks, two commands ------------------------------------------------
-\ The shape the shared command could not survive: task A states its arguments,
-\ task B states its own in between, and A's run must still be A's command. With
-\ one process-wide command A ran B's arguments (dot habu-give-proc-cmd-c1f51174,
-\ reproducer habu-gaps/process-call-state/repro.f). Two scopes are two
-\ contexts, so the interleave is no longer a race at all - and this
-\ file's other rows keep proving that the src/lib/process.f capture row underneath
-\ them is already per task. In the two-command case the handshake forces the
+\ Task A states its arguments, task B states its own in between, and A's run
+\ must still be A's command; with one process-wide command A ran B's arguments.
+\ The two-command handshake forces the
 \ interleave every round; the four-command case relies on four tasks
-\ interleaving over its spawns.
+\ interleaving over their spawns.
 3 constant PTT-ROUNDS
 5000 constant PTT-RUN-MS
 5000000000 constant PTT-WAIT-NS          \ one handshake wait: 5 s
@@ -239,7 +230,6 @@ variable PTT-B-DONE                      \ rounds task B has run its own command
    ['] PTT-B-BODY PTT-B TASK:ACTIVATE
    PTT-A PTT-B PTT-JOIN-PAIR drop ;      \ each answers its rounds whose capture was not its own
 
-\ ---- four tasks, four commands ----------------------------------------------
 \ Each task holds its own environment row and its own stdin across a run, so
 \ every part of a context the tasks could have shared is read back per task.
 TASK:MIN-STACK TASK:TASK PTT-T0
@@ -310,7 +300,6 @@ TASK:MIN-STACK TASK:TASK PTT-T3
    PTT-T2 0 PTT-JOIN=
    PTT-T3 0 PTT-JOIN= ;
 
-\ ---- bounded waits beside each other and beside a capture -------------------
 \ This thread spawns both children before a task starts, because the argv table
 \ is process-wide. Then it waits out a window on the held child while one task
 \ reaps the sleeper and another captures a command of its own context. Each
@@ -377,7 +366,6 @@ variable PTT-HELD-W                      \ that stdin's write end
    PTT-HELD @ >PID PTT-RUN-MS >MS PROC-WAIT-BOUNDED {: done :}
    PTT-HOLD-SCRIPT s" " s" " done 21 T-OUTCOME-EXITED= ;
 
-\ ---- two growing captures -----------------------------------------------------
 \ Each child receives a different argv, environment and 70 KiB stdin, and its
 \ stdout, the mark line and that stdin, outgrows the capture's first region. A
 \ task asserts nothing: it records what its scope read, and this thread checks.
@@ -450,7 +438,6 @@ TASK:MIN-STACK TASK:TASK PTT-GROW-TB
    PTT-GROW-ERR-A-U @ 0 T= PTT-GROW-ERR-B-U @ 0 T=
    PTT-GROW-A-BAD @ 0 T= PTT-GROW-B-BAD @ 0 T= ;
 
-\ ---- descriptors a concurrent spawn must not inherit ------------------------
 \ Three tasks capture /usr/bin/true beside one whose shells leave a five-second
 \ sleep behind and one that lists /dev/fd. A spawned child gets exactly its
 \ map, fds 0, 1 and 2. Failure cases: a spawn that also passes another task's
@@ -547,7 +534,6 @@ variable PTT-FD-BASE-U
    PTT-INHERIT-LEAKS @ 0 T=
    PTT-INHERIT-BAD @ 0 T= ;
 
-\ ---- cancelling one call, while another completes --------------------------
 \ Failure cases: a ready cancellation must wake a capture blocked writing its
 \ stdin, run caller cleanup, and leave the other command alone. Descendants can
 \ hold capture pipes open; EOF can precede child exit. Neither may turn
@@ -680,7 +666,7 @@ variable PTT-CANCEL-MARK-U
    s" /usr/bin/true" PTT-RUN-OK ;
 
 \ A cancelled run leaves its code: OUTCOME@ and RC@ throw it again. The catch
-\ sits inside the scope, the shape dot habu-settle-stale-linear-0bcc904c questions.
+\ sits inside the scope.
 : PTT-CANCEL-PRE-KEPT ( CMD:command -- CMD:command )
    PTT-CANCEL-PRE-SETUP
    PTT-CANCEL-R @ >FD CMD:CANCEL-FD!

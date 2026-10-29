@@ -1,34 +1,21 @@
-\ process-env.f - checked argv/env process helpers and PATH lookup.
-\
-\ STORAGE. The prepared environment and the inherited defaults are each a
-\ table of row addresses and the row bytes. Both grow with the rows added, so
-\ neither the parent's envp nor the caller's additions have a ceiling: a row
-\ is refused only when a length is negative or its terminated size would not
-\ fit a cell.
-\
-\ COST: one cell per row plus the terminating NULL per table, and the row
-\ bytes in chunks of max(row size, $1000). Nothing is allocated until a
-\ builder is used; a reset keeps the storage for the next spawn and
-\ IMAGE-LIFECYCLE releases all of it.
-\
-\ ONCE ADDED, a row's bytes never move: chunks are never reallocated, only
-\ added. An owned CMD run (src/lib/process-command.f INHERIT-Z) keeps the
-\ default rows' addresses from its PREPARE to its spawn while another task
-\ adds defaults.
-\
-\ STORAGE CLASS. PROCESS-WIDE: the environment table and its rows and the
-\ inherited-default table and its rows are one set for the image, held by the
-\ task that prepares a spawn until the spawn resets them; an owned CMD run uses
-\ only the inherited defaults, read-only, when it inherits.
+\ process-env.f - checked argv/env process helpers and PATH lookup. The prepared
+\ environment and the inherited defaults are tables of row addresses plus row
+\ bytes in chunks of max(row size, $1000), grown without a ceiling.
+\ STORAGE CLASS. PROCESS-WIDE: both tables are one set for the image, held by
+\ the task preparing a spawn until the spawn resets them; an owned CMD run reads
+\ only the defaults.
+
+\ A row's bytes never move once added: process-command.f INHERIT-Z holds them
+\ from PREPARE to spawn.
 
 require src/lib/errors.f
 require src/lib/string.f
-require src/lib/string-roles.f               \ package STR: the typed string surface
+require src/lib/string-roles.f
 require src/lib/memory.f
 require src/lib/fs.f
 require src/lib/process.f
 require src/lib/process-argv.f
-require src/lib/adt/option.f                 \ option<len> for the FIND-EXECUTABLE cluster (switchover wave A)
+require src/lib/adt/option.f
 
 61 constant PROC-ENV-EQUAL
 58 constant PROC-PATH-SEP
@@ -38,7 +25,6 @@ variable PROC-ENV-I
 variable PROC-PATH-I
 variable PROC-ENV-DEF-N
 
-\ Both tables hold row addresses, so they are declared pointer storage.
 package PROC-ENV-ROWS
 private
 
@@ -63,6 +49,7 @@ false REGISTERED !
    false REGISTERED ! ;
 
 \ Register before allocation: refusal cannot leave an untracked mapping.
+\ IMAGE-LIFECYCLE releases the storage; a reset keeps it for the next spawn.
 : REGISTER ( -- )
    REGISTERED @ if exit then
    [: RELEASE ;] IMAGE-LIFECYCLE:REGISTER
@@ -100,13 +87,9 @@ public
 
 ;package
 
-\ The PATH scan reads a split field as STR:SPLIT-NEXT states it: a NUM:byte-len
-\ field length and a NUM:byte-off cursor. Both have to cross into the engine's
-\ own len/off roles, because PROC-TRY-PATH-SEG, FS:JOIN-PATH and the PROC-PATH-I
-\ cursor cell are stated in those and that chain reaches this file's public entry.
-\ Two checked role-to-role casts at this file's scope do the crossing, so no raw
-\ cell exists in between and NUM is not reopened. Raw storage rejects nominal
-\ roles; the casts preserve the engine's declared length and offset roles.
+\ STR:SPLIT-NEXT answers NUM:byte-len and NUM:byte-off; PROC-TRY-PATH-SEG,
+\ FS:JOIN-PATH and the PROC-PATH-I cell take len and off, so two checked
+\ role-to-role casts cross between them and NUM is not reopened.
 CAST: PROC-SEG>LEN ( NUM:byte-len -- len )
 CAST: PROC-CURSOR>OFF ( NUM:byte-off -- off )
 
@@ -148,10 +131,8 @@ public
 : PROC-ENV-DEF-SLOT ( idx -- ptr ptr u8 )
    PROC-ENV-ROWS:DEF-SLOT ;
 
-\ The size after one more run of u bytes and its terminator, held at the
-\ maximum cell instead of wrapping: `>LEN` is an unchecked cast, and a plain sum
-\ of a length near that maximum would come back small. Both operands are
-\ nonnegative.
+\ Held at the maximum cell instead of wrapping: `>LEN` is an unchecked cast, and
+\ a plain sum near that maximum would come back small. Both operands are nonnegative.
 : PROC-ENV-NEED ( n len -- n ) {: used:n u :}
    u LEN>N MEM-MAX-N used - >= if MEM-MAX-N exit then
    used u LEN>N + 1 + ;
@@ -221,9 +202,8 @@ public
    au LEN>N bv LEN>N <> if PROC-ENV-FALSE exit then
    a au LEN>N b bv LEN>N STR= ;
 
-\ The name scan reads ANY envp vector: the table below passes its own base and
-\ count, and src/lib/process-command.f's caller-owned contexts pass theirs, so one
-\ scan serves both and neither reaches into the other's rows.
+\ Reads any envp vector: this file's table and process-command.f's caller-owned
+\ contexts each pass their own base and count.
 : PROC-ENV-VEC-NAME? ( n ptr u8 len ptr ptr u8 -- bool ) {: i:n a:ptr u:len tab:ptr :}
    i cells tab + @ {: z:ptr :}
    a u z z ZLEN >LEN PROC-ENV-SAME-NAME? ;
@@ -277,10 +257,9 @@ public
 : PROC-ENV+ ( ptr u8 len ptr u8 len -- )
    PROC-ENV-ROW-Z PROC-ENV-INSTALL-Z ;
 
-\ Replace-or-add: exactly one row for the name survives. Unlike PROC-ENV+,
-\ which appends and leaves duplicate-key resolution to the child's getenv,
-\ this overwrites an existing row in place (e.g. one copied from the parent's
-\ own environment by PROC-ENV-INHERIT-MISSING) and appends only when absent.
+\ Exactly one row for the name survives: an existing row (one copied by
+\ PROC-ENV-INHERIT-MISSING, say) is overwritten in place. PROC-ENV+ appends and
+\ leaves duplicate keys to the child's getenv.
 : PROC-ENV-SET ( ptr u8 len ptr u8 len -- ) {: name:ptr nameu:len val:ptr valu:len :}
    nameu valu PROC-ENV-ROW-NEED drop
    name nameu PROC-ENV-NAME-IDX {: i:n :}
@@ -398,9 +377,8 @@ public
    in inu out outcap err errcap PROC-RUN-STDIN-CAPTURE-OUTCOME-LOOP
    PROC-CAPTURE-FINISH-OUTCOME ;
 
-\ RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME with the child's stdout in storage that
-\ grows to what it writes: SINK makes room and answers the first byte
-\ (src/lib/process.f, a capture whose stdout grows). The stdout length answered is
+\ The child's stdout goes to storage that grows to what it writes: SINK makes
+\ room and answers the first byte (src/lib/process.f). The length answered is
 \ what the child wrote.
 : RUN-ARGV-ENV-STDIN-GROWING-CAPTURE-OUTCOME ( ptr u8 len ptr u8 len [ n -- ptr u8 ] ptr u8 len ms -- len len outcome )
    {: path:ptr pathu in:ptr inu sink err:ptr errcap timeout :}
@@ -451,7 +429,7 @@ public
       seg segu LEN>N cmd cmdu LEN>N dst FS:JOIN-PATH >LEN
    then ;
 
-: PROC-TRY-PATH-SEG ( ptr u8 len ptr u8 len ptr u8 -- option<len> )   \ SOME resolved length if executable, else NONE
+: PROC-TRY-PATH-SEG ( ptr u8 len ptr u8 len ptr u8 -- option<len> )
    {: seg:ptr segu cmd:ptr cmdu dst:ptr :}
    seg segu cmd cmdu dst PROC-JOIN-PATH-SEG {: gotu :}
    dst gotu PROC-EXECUTABLE? if gotu OPTION:SOME exit then
@@ -467,19 +445,19 @@ public
    then
    0 >OFF PROC-PATH-I !
    begin path pathu LEN>N STR:LENGTH PROC-PATH-SEP PROC-PATH-I @ OFF>N STR:OFFSET STR:SPLIT-NEXT MATCH option
-     none OF STR-FALSE ENDOF                        \ no more PATH segments: end the scan
+     none OF STR-FALSE ENDOF
      some OF STR-SPLIT:UNMAKE {: seg:ptr segl:NUM:byte-len nx:NUM:byte-off :}
         nx PROC-CURSOR>OFF PROC-PATH-I !
         seg segl PROC-SEG>LEN cmd cmdu dst PROC-TRY-PATH-SEG MATCH option
-          none OF ENDOF                             \ segment miss: try the next one
-          some OF OPTION:SOME exit ENDOF            \ resolved: re-wrap and return
+          none OF ENDOF
+          some OF OPTION:SOME exit ENDOF
         ;MATCH
         STR-TRUE ENDOF
      ;MATCH
    while repeat
    OPTION:NONE ;
 
-: FIND-EXECUTABLE ( ptr u8 len ptr u8 -- option<len> ) {: cmd:ptr cmdu:len dst:ptr :}   \ SOME resolved length via $PATH, else NONE
+: FIND-EXECUTABLE ( ptr u8 len ptr u8 -- option<len> ) {: cmd:ptr cmdu:len dst:ptr :}
    s" PATH" GETENV {: path:ptr pathu :}
    pathu 0= if OPTION:NONE exit then
    cmd cmdu path pathu >LEN dst FIND-EXECUTABLE-IN-PATH ;

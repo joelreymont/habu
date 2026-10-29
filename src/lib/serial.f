@@ -1,29 +1,9 @@
-\ Raw serial byte streams on Linux and macOS, through bounded libc bindings.
-\
-\ STORAGE CLASS. TASK-LOCAL for everything a call runs through: the termios
-\ struct and the saved termios are one task-local row, so each task drives
-\ its own port, and the byte spans READ and WRITE take are caller-owned. The
-\ libc bindings are FUNCTION: rows in package FFI's PROCESS-WIDE table, which
-\ resolves each symbol at its first call and forgets it when an image is
-\ prepared. Separate tasks may drive separate ports; calls must not nest
-\ within one task.
-\
-\ CONTRACT. OPEN8N1 opens a nonblocking, close-on-exec, O_NOCTTY raw 8N1
-\ stream (Linux: N_TTY, numeric termios2 rates; macOS: numeric termios
-\ speeds), keeps HUPCL, and reads the settings back: anything short of the
-\ contract is `unsupported`. A failed configure restores the old settings
-\ best-effort and closes. CLOSE consumes the handle even when it fails; the
-\ terminal's settings persist after it. READ and WRITE move one available
-\ chunk, possibly short; a zero-byte request is refused. Ordinary OS failures
-\ are result variants; operands, an unsupported OS and impossible foreign
-\ results throw. A successful write does not prove the peer received it.
-\ Live descriptors are not captured: close them before an image is prepared.
-\
-\ The wait is the AIO loop's (src/lib/aio.f): every READ and WRITE readiness
-\ question is one POLL for the time left on its deadline and one AWAIT, so
-\ no thread parks in poll(2) and a signal no longer cuts the wait short. A
-\ program calls AIO:START before its first READ or WRITE; a wait with no
-\ loop running is E-AIO-STATE.
+\ serial.f - raw serial byte streams on Linux and macOS through bounded libc
+\ bindings. Ordinary OS failures are result variants; operands, an unsupported
+\ OS and impossible foreign results throw. Calls must not nest within one task;
+\ close live descriptors before an image is prepared.
+\ STORAGE CLASS. TASK-LOCAL: the termios and saved termios are one row per task,
+\ so separate tasks drive separate ports; byte spans are caller-owned.
 require src/lib/errors.f
 require src/lib/ffi-abi.f
 require src/lib/le.f
@@ -84,7 +64,6 @@ $100F100F constant BAUD-MASK
 $100018B0 constant RAW-CONTROL   \ BOTHER both ways, CS8 | CREAD | CLOCAL.
 1000000 constant NS-PER-MS
 
-\ No per-operation buffer is process-global; independent tasks may use ports.
 \ Two records: Darwin's 72-byte termios or Linux's 44-byte termios2.
 TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 144 TASK:+USER IO-STORAGE drop
 : TERM ( -- ptr u8 ) IO-STORAGE BYTE-VIEW ;
@@ -123,7 +102,7 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 
 \ libc's calls, each staged with the pointer direction and extent it needs.
 \ The termios extent is the target's record; Darwin passes ioctl's variadic
-\ pointer on the stack. The wait is not among them: it is AIO's.
+\ pointer on the stack.
 \ test/serial.py covers these boundaries through real kernel pseudoterminals.
 PROCESS-SYMBOLS
 FUNCTION: OPEN-CALL open ( ptr u8 n -- i32 ) ;FUNCTION
@@ -243,17 +222,14 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
    then = or ;
 
 
-\ Positive event bits, zero for the deadline, or a negative errno. One POLL
-\ on the AIO loop for the time this operation has left, then one AWAIT: the
-\ deadline is the poll's own linked timeout, so a signal no longer cuts the wait
-\ short and there is nothing to restart. The answered bits keep the POLLNVAL
-\ rule, though a descriptor the kernel refuses outright now arrives as EBADF on
-\ the refused arm instead of as POLLNVAL on the ready one. The loop must be
-\ running: a wait without AIO:START is E-AIO-STATE. `cancelled` cannot
-\ arrive here - nothing in this module cancels, the ticket never leaves this
-\ word, and the cleanup AIO registers on a submitting task runs only after that
-\ task has ended - so it is a broken foreign result, exactly like an impossible
-\ termios read-back.
+\ Positive event bits, zero for the deadline, or a negative errno. One POLL on
+\ the AIO loop for the time this operation has left, then one AWAIT: the
+\ deadline is the poll's own linked timeout, so a signal cannot cut the wait
+\ short. The answered bits keep the POLLNVAL rule; a descriptor the kernel
+\ refuses outright arrives as EBADF on the refused arm. A wait without AIO:START
+\ is E-AIO-STATE. `cancelled` is a broken foreign result, like an impossible
+\ termios read-back: nothing here cancels, the ticket never leaves this word,
+\ and AIO's cleanup on a submitting task runs only after that task has ended.
 : AWAIT ( handle n ns -- n ) {: handle:handle events:n deadline:ns :}
    handle HANDLE>N >FD events deadline REMAINING AIO:POLL AIO:AWAIT
    MATCH AIO:outcome
@@ -279,8 +255,11 @@ public
 : BYTES ( n -- NUM:byte-len ) dup 1 $7FFFF000 RANGE LENGTH ;
 
 
-\ Opens a caller-owned nonblocking raw 8N1 stream, no flow control. Numeric
-\ speed is verified after configuration. The caller uses CLOSE exactly once.
+\ Opens a caller-owned nonblocking, close-on-exec, O_NOCTTY raw 8N1 stream, no
+\ flow control (Linux: N_TTY, numeric termios2 rates; macOS: numeric termios
+\ speeds), keeps HUPCL, and reads the settings back: anything short of that is
+\ `unsupported`. A failed configure restores the old settings best-effort and
+\ closes. The caller uses CLOSE exactly once.
 : OPEN8N1 ( ptr u8 n baud -- open-result ) {: path size:n baud:baud :}
    baud BAUD>N 1 $FFFFFFFF RANGE
    path size PATH-OPEN dup 0 < if negate >ERRNO SERIAL-OPEN--RESULT:failed exit then
@@ -292,7 +271,8 @@ public
    ;MATCH ;
 
 
-\ One available chunk, up to capacity. The caller supplies writable storage.
+\ One available chunk, up to capacity, possibly short; a zero-byte request is
+\ refused.
 \ Timeout is 0..INT32_MAX milliseconds; zero never waits for future readiness.
 : READ ( handle ptr u8 NUM:byte-len ms -- io-result )
    {: handle:handle bytes capacity:NUM:byte-len timeout:ms :}
@@ -309,8 +289,9 @@ public
    again ;
 
 
-\ Accepts one chunk into the kernel queue; a short write is visible to callers.
-\ Success does not prove bytes reached the device. Input is borrowed this call.
+\ Accepts one chunk into the kernel queue, possibly short; a zero-byte request
+\ is refused. Success does not prove bytes reached the device. Input is
+\ borrowed for this call.
 : WRITE ( handle ptr u8 NUM:byte-len ms -- io-result )
    {: handle:handle bytes size:NUM:byte-len timeout:ms :}
    handle size CHECK-IO timeout DEADLINE {: deadline:ns :}
@@ -326,7 +307,8 @@ public
    again ;
 
 
-\ Linux consumes the fd even on EINTR. Do not retry CLOSE or reuse the handle.
+\ Consumes the handle even when it fails (Linux consumes the fd even on EINTR):
+\ never retry CLOSE or reuse the handle. The terminal's settings persist.
 : CLOSE ( handle -- status )
    dup CHECK-HANDLE CLOSE-RAW 0 < if LAST-ERROR SERIAL-STATUS:failed else SERIAL-STATUS:ok then ;
 

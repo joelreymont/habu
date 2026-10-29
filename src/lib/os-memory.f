@@ -1,11 +1,8 @@
 \ os-memory.f - process memory facts that are not image ABI constants.
-\
-\ STACK-ABI:PAGE-BYTES and PROT-PAGE-MAX are Habu's fixed guard-window
-\ contract. PAGE-SIZE is different: it reports the running process's host
-\ page size for callers that need to describe or align an OS mapping. The
-\ checked FFI binding resolves on its first call and image preparation forgets
-\ the address (src/lib/ffi-abi.f FORGET-SYMBOLS), so a captured image never carries
-\ a process-owned callable address.
+\ PAGE-SIZE reports the running host's page size for OS mappings; Habu's guard
+\ window uses the fixed STACK-ABI:PAGE-BYTES and PROT-PAGE-MAX instead.
+\ The FFI binding resolves at its first call and image preparation forgets it
+\ (src/lib/ffi-abi.f FORGET-SYMBOLS): a captured image carries no process address.
 require src/lib/errors.f
 require src/lib/ffi-abi.f
 

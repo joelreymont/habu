@@ -1,12 +1,7 @@
 \ zlib.f - raw DEFLATE (RFC 1951), zlib-framed DEFLATE (RFC 1950) and CRC-32
-\ over caller-owned buffers, by libz.
-\
-\ Each codec word takes source, source bytes, destination and destination
-\ capacity, and answers the bytes it wrote. It borrows both buffers and keeps
-\ nothing: libz's own allocations live from its init call to the matching
-\ *End, which every path reaches. A failed call may leave a destination prefix
-\ written and answers no length, and rethrows its original code.
-\
+\ by libz. A codec word borrows both buffers, keeps nothing and answers the
+\ bytes it wrote; libz allocates from init to the matching *End, which every
+\ path reaches. A failure rethrows its code and may leave a destination prefix.
 \ STORAGE CLASS. TASK-LOCAL scratch: one z_stream and an overflow byte per task,
 \ cleared after every call, so no address survives into a saved image.
 
@@ -91,7 +86,7 @@ FUNCTION: C-BOUND deflateBound ( ptr u8 n -- n ) ;FUNCTION
 
 : ADDRESS ( ptr u8 -- n ) NULL-PTR - ;
 
-\ A length libz's 32-bit counters hold, and an address for every nonempty span.
+\ libz counts lengths in 32 bits.
 : SPAN-CHECK ( ptr u8 n -- ) {: p:ptr u:n :}
    u 0 < if E-SIZE throw then
    u U32-MAX > if E-SIZE throw then
@@ -107,8 +102,8 @@ FUNCTION: C-BOUND deflateBound ( ptr u8 n -- n ) ;FUNCTION
    src srcu SPAN-CHECK dst cap SPAN-CHECK
    src srcu dst cap DISJOINT-CHECK ;
 
-\ A status no successful path accepts. A framed stream that asks for a preset
-\ dictionary is data no caller can supply one for.
+\ A framed stream that asks for a preset dictionary is data no caller can
+\ supply one for.
 : FAIL ( n -- )
    dup Z-DATA-ERROR = if drop E-DATA throw then
    dup Z-NEED-DICT = if drop E-DATA throw then
@@ -139,10 +134,8 @@ FUNCTION: C-BOUND deflateBound ( ptr u8 n -- n ) ;FUNCTION
 
 : BOUND ( n -- n ) STREAM swap C-BOUND ;
 
-\ Output stopped before the stream ended: Z_OK or Z_BUF_ERROR, no progress.
 : STALLED? ( n -- bool ) dup Z-OK = swap Z-BUF-ERROR = or ;
 
-\ The stream ended; any input left after it is trailing data.
 : ENDED ( -- n )
    AVAIL-IN@ 0<> if E-DATA throw then
    TOTAL-OUT@ ;
@@ -171,10 +164,9 @@ FUNCTION: C-BOUND deflateBound ( ptr u8 n -- n ) ;FUNCTION
    AVAIL-OUT@ 0<> if E-DATA throw then
    PROBE-STEP ;
 
-\ The destination is full and deflate has not reported the end, which it may
-\ withhold when the last byte exactly fills it. One more byte of room tells an
-\ exactly sized destination from a short one without exposing anything past
-\ the caller's capacity.
+\ Deflate may withhold the end when the last byte exactly fills the
+\ destination. One more byte of room tells an exactly sized destination from a
+\ short one without exposing anything past the caller's capacity.
 : DEFLATE-PROBE ( -- n )
    PROBE NEXT-OUT ! 1 AVAIL-OUT!
    STREAM Z-FINISH C-DEFLATE {: status:n :}
@@ -192,10 +184,6 @@ FUNCTION: C-BOUND deflateBound ( ptr u8 n -- n ) ;FUNCTION
    AVAIL-OUT@ 0<> if E-ABI throw then
    DEFLATE-PROBE ;
 
-\ Each session runs on a staged stream: init, the work under catch, End once
-\ init has succeeded, then the work's code before End's status. The public
-\ word clears the scratch after it on every exit. Each takes the window bits
-\ that select the framing.
 : BOUND-SESSION ( n n -- n )
    CLEAR DEFLATE-OPEN
    [: BOUND ;] catch {: rc:n :}
@@ -217,7 +205,6 @@ FUNCTION: C-BOUND deflateBound ( ptr u8 n -- n ) ;FUNCTION
    rc 0<> if rc throw then
    status END-CHECK ;
 
-\ The checks and sessions every public codec word shares, for window bits.
 : BOUND-FOR ( n n -- n ) {: n:n window:n :}
    n 0 < if E-SIZE throw then
    n U32-MAX > if E-SIZE throw then

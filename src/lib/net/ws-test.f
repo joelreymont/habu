@@ -1,19 +1,8 @@
 \ ws-test.f - RFC 6455 connections over a real loopback port: a Habu client on
 \ TCP4 shakes hands with src/lib/net/ws.f inside an HTTP server and speaks frames
-\ to it, built and read with the codec's own words (src/lib/net/ws-frame.f).
-\
-\ Every frame the client sends or reads one at a time goes into a transcript as
-\ one line - direction, opcode (`+` when more fragments follow), length, and the
-\ payload in hex or, past 24 bytes, as the sum of its bytes. Pushes log no
-\ frame. The transcript is written to build/ws-transcript.txt, read back and
-\ compared whole with the one this file expects.
-\
-\ Every socket is served by one handler, NOTE, on WS's task: text and binary
-\ come back as they came, a few texts are cues (TEXT-IN), and each `closed` is
-\ logged with its socket, so a case checks the status of the socket it opened
-\ and no close of an earlier case can land in a later one. Every handler is
-\ defined before the server starts, because Habu forbids dictionary mutation
-\ while a task is live.
+\ built and read with src/lib/net/ws-frame.f. One handler, NOTE, serves every
+\ socket and logs each `closed` with its socket; every handler is defined before
+\ the server starts, because Habu forbids dictionary mutation while a task is live.
 \ Run: bin/hb --load src/lib/net/ws-test.f
 
 require src/lib/test.f
@@ -31,11 +20,10 @@ require src/lib/net/tcp4.f
 require src/lib/net/http.f
 require src/lib/net/ws.f
 
-\ White-box helpers: reopens WS for what no public word reaches. ACCEPT-STALLED
-\ is ACCEPT with a stall run once the handshake holds its slot, as a worker the
-\ OS keeps off the processor would; LAST-GEN gives a free slot the last
-\ generation a handle carries. The definitions land in WS-TEST, so WS's public
-\ surface gains nothing for being tested.
+\ White-box: reopens WS. ACCEPT-STALLED is ACCEPT with a stall run once the
+\ handshake holds its slot, as a worker the OS keeps off the processor would;
+\ LAST-GEN gives a free slot the last generation a handle carries. The
+\ definitions land in WS-TEST.
 package WS
 : WS-TEST:ACCEPT-STALLED ( HTTP:request HTTP:response [ socket message -- ] [ -- ] -- accepted )
    {: asked:HTTP:request answer:HTTP:response q stall :}
@@ -53,10 +41,9 @@ package WS
    LOCK TASK:RELEASE ;
 ;package
 
-\ White-box helper: reopens HTTP for its listener's descriptor, which the fault
-\ case polls so the listener's own re-polls never free a descriptor under
-\ Darwin's poll bound. It lands in WS-TEST, so HTTP's public surface gains
-\ nothing for being tested.
+\ White-box: reopens HTTP for its listener's descriptor, which the fault case
+\ polls so the listener's own re-polls never free a descriptor under Darwin's
+\ poll bound. It lands in WS-TEST.
 package HTTP
 : WS-TEST:LISTEN-FD ( -- fd ) LISTENER@ TCP4:LISTENER-FD ;
 ;package
@@ -198,15 +185,13 @@ TASK:SEMAPHORE ACCEPTED           \ the route has kept its outcome
 TASK:SEMAPHORE FILLED             \ AIO is full: the held handshake goes on
 FILL-CAP TYPED-BUFFER FILL-TICKET AIO:ticket  \ polls that never fire, holding AIO at its ceiling
 FILL-CAP TYPED-BUFFER FILL-R n    \ each on its own pipe: Darwin bounds descriptors, and polls on
-FILL-CAP TYPED-BUFFER FILL-W n    \ duplicates of one pipe made each AIO turn take 2-3 s (2026-10-29)
+FILL-CAP TYPED-BUFFER FILL-W n    \ duplicates of one pipe made each AIO turn take 2-3 s
 1 TYPED-BUFFER PIN-TICKET AIO:ticket \ a poll on HTTP's listener, whose timeouts then free no descriptor
 variable PINNED                   \ whether PIN-TICKET holds a poll in flight
 variable FILL-N                   \ the polls in flight
 variable FILL-CODE                \ what AIO refused the poll past them with
 TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a close
 
-
-\ ---- waits -------------------------------------------------------------------
 
 \ Returns once the probe answers other than 0, looking every POLL-MS. A probe
 \ still 0 once that many ms have passed is a deadline: the wait names itself
@@ -221,7 +206,11 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
       POLL-MS >MS TASK:SLEEP
    again ;
 
-\ ---- the transcript ----------------------------------------------------------
+\ Each frame the client sends or reads one at a time is one transcript line:
+\ direction, opcode (`+` when more fragments follow), length, and the payload in
+\ hex or, past HEX-MAX bytes, as the sum of its bytes. Pushes log no frame. The
+\ transcript is written to build/ws-transcript.txt, read back and compared whole
+\ with WANT$.
 
 : SCRIPT$ ( -- ptr u8 n )
    SCRIPT-BUF SCRIPT-U @ SPAN:TAKE SPAN:$ ;
@@ -271,8 +260,6 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    fin 0= if [char] + LOG-C then
    SP LOG-C u LOG-N a u LOG-PAYLOAD LF LOG-C ;
 
-
-\ ---- the client --------------------------------------------------------------
 
 : DROP-STATUS ( TCP4:status -- )
    MATCH TCP4:status
@@ -539,8 +526,6 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    a u ;
 
 
-\ ---- the handler, the routes, and what they kept ------------------------------
-
 \ The status the socket closed under, as NOTE logged it; 0 while it has not.
 : CLOSED-OF ( WS:socket -- n ) {: sock:WS:socket :}
    CLOSED-N atomic@ 0 ?do
@@ -686,8 +671,6 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    s" GET" s" /fill" [: FILLING ;] HTTP:ROUTE
    s" GET" s" /plain" [: PLAIN ;] HTTP:ROUTE ;
 
-
-\ ---- the cases ---------------------------------------------------------------
 
 \ The socket's handler is told `closed` with this status within that many ms.
 : CLOSES-WITHIN ( WS:socket n n -- ) {: sock:WS:socket code:n limit:n :}
@@ -1661,8 +1644,6 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    WS:STOP ;
 
 
-\ ---- the transcript this file expects ----------------------------------------
-
 : WANT$ ( -- ptr u8 n )
    WANT-BUF WANT-U @ SPAN:TAKE SPAN:$ ;
 
@@ -1941,8 +1922,6 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    WANT-TRANSCRIPT
    BACK-BUF got SPAN:TAKE SPAN:$ WANT$ T$= ;
 
-
-\ ---- the lifecycle -----------------------------------------------------------
 
 $3E8 constant DRAIN-MS            \ how long a stop waits for the ring to drain
 10 constant RETRY-MS

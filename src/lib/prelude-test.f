@@ -33,11 +33,11 @@ package PRELUDE-TEST
 : PRE-RUN ( -- )
    T-RESET
    TEST-SPECIAL
-   true bool>n -1 T=             \ bool>n maps true to -1
-   false bool>n 0 T=             \ and false to 0
-   7.0 fdrop                     \ fdrop leaves a clean stack
-   7.0 fdup f= TTRUE             \ fdup duplicates the top float
-   3.0 9.0 fover f> TTRUE fdrop  \ fover copies 2nd to top: 3.0 9.0 3.0
+   true bool>n -1 T=
+   false bool>n 0 T=
+   7.0 fdrop
+   7.0 fdup f= TTRUE
+   3.0 9.0 fover f> TTRUE fdrop
    3.0 5.0 f<= TTRUE   5.0 3.0 f<= TFALSE
    3.0 3.0 f<= TTRUE   3.0 3.0 f>= TTRUE
    5.0 3.0 f>= TTRUE   3.0 5.0 f>= TFALSE ;

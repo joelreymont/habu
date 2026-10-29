@@ -1,12 +1,9 @@
 \ evp-test.f - focused tests for src/lib/crypto/evp.f against published vectors.
 \ Run: bin/hb --load src/lib/crypto/evp-test.f
-\
-\ The AES-256-GCM vectors are Test Case 13 and Test Case 16 of McGrew and
-\ Viega's GCM specification (the submission NIST SP 800-38D adopted), which is
-\ where the 96-bit-IV AES-256 cases with associated data live. The HMAC-SHA-256
-\ vectors are RFC 4231 test cases 1 to 4.
-\ SHA-1: https://www.rfc-editor.org/rfc/rfc2202.html#section-3 and
-\ https://www.rfc-editor.org/rfc/rfc6238.html#appendix-B (time 59).
+\ AES-256-GCM: Test Cases 13 and 16 of McGrew and Viega's GCM specification (the
+\ submission NIST SP 800-38D adopted), its 96-bit-IV AES-256 cases with
+\ associated data. HMAC-SHA-256: RFC 4231 cases 1 to 4. SHA-1: RFC 2202
+\ section 3 and RFC 6238 appendix B (time 59).
 
 require src/lib/test.f
 require src/lib/prelude.f
@@ -61,7 +58,6 @@ variable MAC-WANT-N
 -9999 constant E-VECTOR              \ this file's own fixture refusal, outside every lib block
 
 
-\ ---- the vector loader ----------------------------------------------------
 \ A vector is written the way its table prints it: a target buffer, then the hex
 \ groups or repeat counts that fill it. The cursor refuses to run past the
 \ target's capacity, so a mistyped fixture fails here and not inside libcrypto.
@@ -103,7 +99,7 @@ variable FILL-N
    FILL-N @ ;
 
 
-\ ---- GCM Test Case 16: AES-256 with associated data -----------------------
+\ GCM Test Case 16: AES-256 with associated data.
 
 : TC16-KEY ( -- )
    KEY-BUF KEY-CAP INTO
@@ -145,7 +141,7 @@ variable FILL-N
    TC16-KEY TC16-NONCE TC16-AAD TC16-PLAIN TC16-SEALED ;
 
 
-\ ---- GCM Test Case 13: AES-256, empty plaintext and no associated data ----
+\ GCM Test Case 13: AES-256, empty plaintext and no associated data.
 
 : TC13 ( -- )
    KEY-BUF KEY-CAP INTO  0 KEY-CAP REPEAT,  FILLED KEY-N !
@@ -156,8 +152,6 @@ variable FILL-N
    s" 530f8afbc74536b9a963b4f1c4cb738b" HEX,
    FILLED WANT-N ! ;
 
-
-\ ---- the operations under test --------------------------------------------
 
 : KEY$ ( -- ptr u8 n )     KEY-BUF KEY-N @ ;
 : NONCE$ ( -- ptr u8 n )   NONCE-BUF NONCE-N @ ;
@@ -194,7 +188,7 @@ variable FILL-N
    SEALED-BUF at + dup c@ 1 xor swap c! ;
 
 
-\ ---- RFC 4231 HMAC-SHA-256 ------------------------------------------------
+\ RFC 4231 HMAC-SHA-256.
 
 : MAC-KEY$ ( -- ptr u8 n )   MAC-KEY-BUF MAC-KEY-N @ ;
 : MSG$ ( -- ptr u8 n )       MSG-BUF MSG-N @ ;
@@ -264,7 +258,6 @@ variable FILL-N
    TOTP1 94287082 T= ;
 
 
-\ ---- refusals --------------------------------------------------------------
 \ Each quotation differs from a working call in exactly one operand.
 
 : SHORT-KEY ( -- )
@@ -304,8 +297,6 @@ variable FILL-N
    MAC-BUF 0 CRYPTO:RANDOM-BYTES ;
 
 
-\ ---- randomness ------------------------------------------------------------
-
 $20 constant DRAW-CAP
 create DRAW-A DRAW-CAP allot
 create DRAW-B DRAW-CAP allot
@@ -318,7 +309,6 @@ create DRAW-B DRAW-CAP allot
    true ;
 
 
-\ ---- the one-mebibyte round trip -------------------------------------------
 \ One owned mapping holds the plaintext, the sealed record and the unsealed
 \ plaintext; MEM:WITH-BYTES releases it on every path.
 
@@ -356,12 +346,11 @@ variable BIG-UNSEALED
    BIG-SPAN MEM:BYTES-ALLOC-LEN [: BIG-ROUND ;] MEM:WITH-BYTES ;
 
 
-\ ---- context lifetime ------------------------------------------------------
 \ Every SEAL and UNSEAL allocates an EVP_CIPHER_CTX and must free it on the way
 \ out. A leaked context is at least the struct plus an AES key schedule, so
-\ ROUNDS of them would add megabytes to the resident set; the whole point of the
-\ margin below is that it is far under one round's worth of leak and far over
-\ the allocator noise of a run that frees everything.
+\ ROUNDS of them add megabytes to the resident set; the margin below is far
+\ under one round's worth of leak and far over the allocator noise of a run
+\ that frees everything.
 
 0 constant RUSAGE-SELF
 $20 constant MAXRSS-OFF                  \ ru_maxrss, past ru_utime and ru_stime
@@ -393,8 +382,6 @@ FUNCTION: RESOURCE-USAGE getrusage ( n ptr u8 -- i32 )
 : ROUNDS-RUN ( n -- ) {: count:n :}
    count 0 ?do ONE-ROUND PLAIN-N @ <> if E-VECTOR throw then loop ;
 
-
-\ ---- the suite -------------------------------------------------------------
 
 : GCM-VECTORS ( -- )
    s" GCM test case 16 seals to its published ciphertext and tag" T-LABEL
@@ -521,8 +508,6 @@ FUNCTION: RESOURCE-USAGE getrusage ( n ptr u8 -- i32 )
    PEAK-KB before - RSS-MARGIN < TTRUE ;
 
 
-
-\ ---- RFC 7515 A.2: fixed external RS256 signature and PKCS#8 key ---------
 \ The public JWK and signature are transcribed from RFC 7515 A.2. The PEM is
 \ that JWK's private components encoded as unencrypted PKCS#8. OpenSSL dgst
 \ -sha256 -sign produces the same 256 signature bytes for this input.

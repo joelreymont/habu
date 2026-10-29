@@ -1,51 +1,30 @@
-\ string-roles.f - the string words over NUM's numeric roles (package STR).
-\
-\ A file of its own because the engine bakes src/lib/string.f for the compiler,
-\ the JIT and the REPL, which use only the raw words, while STR requires
-\ src/lib/num-arithmetic.f; keeping STR here keeps NUM's types and arithmetic
-\ out of the image. A caller that wants STR: requires this file.
-\
+\ string-roles.f - the string words over NUM's numeric roles (package STR). A
+\ file of its own because the engine bakes src/lib/string.f for the compiler and
+\ the REPL, which use only the raw words, while STR requires
+\ src/lib/num-arithmetic.f: keeping STR here keeps NUM out of the image.
 \ STORAGE CLASS. CALLER-OWNED: the module keeps no state.
 
 require src/lib/string.f
 require src/lib/num-arithmetic.f
 
-\ ---- typed STR surface over NUM roles -------------------------------------
-\
-\ The raw string words in src/lib/string.f conflate byte lengths, byte offsets, and logical
-\ counts on one interchangeable `n`. Package STR re-states the same helpers over
-\ NUM roles: a string byte length is a `NUM:byte-len`, a scan offset is a
-\ `NUM:byte-off`, a character count is a `NUM:item-count`, and a found
-\ position is a `NUM:index` carried by the shared cell-polymorphic option
-\ (option<NUM:index>). A length/offset swap, an index/offset swap, or a raw
-\ `n` where a role is required is a checker reject. Positive behavior is
-\ byte-identical to the raw words - same scan, same E-STR-BOUNDS/E-STR-CAPACITY
-\ throws, same empty-string/empty-needle zeros and not-found NONE - so the raw
-\ words stay untouched for their not-yet-migrated fleet callers; this wave moves
-\ only owner-internal callers (none survive as private) and src/lib/string-test.f.
-\
-\ STR owns exactly two audited representation projections (BYTE-LEN>N, BYTE-OFF>N),
-\ mirroring VEC's ITEM-COUNT>N/INDEX>N and MEM's ALLOC-*>N: the raw scan words and
-\ their byte pointers still consume a bare `n`, so the typed boundary reads a
-\ validated role's cell to drive them. Private, no public export, confined to
-\ src/lib/string.f. The typed layer wraps the raw words as black boxes (RAW-* aliases
-\ captured before the package words shadow their global names) and only
-\ STR:SPLIT-NEXT adds a check the raw word cannot express: the largest field
-\ boundary it can report is one past the string end, so the offset advance
-\ (end + 1) is proven through NUM:ADVANCE-BYTE-OFF BEFORE the scan,
-\ turning an offset-space overflow into an E-STR-BOUNDS throw instead of a
-\ silent wrap.
+\ A string byte length is a NUM:byte-len, a scan offset a NUM:byte-off, a
+\ character count a NUM:item-count and a found position a NUM:index in an
+\ option<NUM:index>; swapping roles or passing a raw `n` is a checker reject.
+\ Behavior is byte-identical to the raw words, which STR wraps as black boxes.
+\ Only SPLIT-NEXT adds a check: its largest boundary is one past the string end,
+\ so the advance is proven before the scan and an overflow is E-STR-BOUNDS, not
+\ a silent wrap.
 
 package STR
 private
 
-\ ---- representation projections (STR's only retypes, and both are checked) -----
+\ STR's only representation projections, both checked and private: the raw scan
+\ words take a bare `n`.
 CAST: BYTE-LEN>N ( NUM:byte-len -- n )
 CAST: BYTE-OFF>N ( NUM:byte-off -- n )
 
-\ ---- raw-word aliases: bind the legacy globals before the package words shadow --
-\ their names. Defined here (before the public STR:<name> exist) so a bare
-\ FIND-SUB / INDEX-OF / SPLIT-NEXT / BUF-* resolves to the global raw word.
+\ Bound before the public STR words shadow the global names, so a bare
+\ FIND-SUB, INDEX-OF, SPLIT-NEXT or BUF-* here is the raw word.
 : RAW-FIND-SUB ( ptr u8 n ptr u8 n -- option<idx> )    FIND-SUB ;
 : RAW-INDEX-OF ( ptr u8 n n -- option<idx> )           INDEX-OF ;
 : RAW-SPLIT-NEXT ( ptr u8 n n n -- ptr u8 n n bool )   SPLIT-NEXT ;
@@ -54,11 +33,9 @@ CAST: BYTE-OFF>N ( NUM:byte-off -- n )
 : RAW-BUF-APPEND ( ptr u8 n ptr u8 n ptr len -- )      BUF-APPEND ;
 : RAW-BUF-APPEND-C ( n ptr u8 n ptr len -- )           BUF-APPEND-C ;
 
-\ ---- ok extractors: a validated/derived raw cell that fails a role predicate is -
-\ a string bounds violation. The reachable arm is the caller-facing negative for
-\ LENGTH/OFFSET/COUNT (byte-identical to the raw STR-LEN/STR-OFF/STR-COUNT
-\ E-STR-BOUNDS) and the SPLIT-NEXT offset-advance overflow; the rest are
-\ unreachable invariants over cells the scan proves nonnegative.
+\ A cell that fails a role predicate is E-STR-BOUNDS. The reachable arm is the
+\ negative for LENGTH, OFFSET and COUNT and the SPLIT-NEXT advance overflow; the
+\ rest are unreachable over cells the scan proves nonnegative.
 : OK-BYTE-LEN ( NUM:numeric-result<NUM:byte-len> -- NUM:byte-len )
    MATCH NUM:numeric-result
       ok OF ENDOF                             negative OF E-STR-BOUNDS throw ENDOF
@@ -88,20 +65,17 @@ CAST: BYTE-OFF>N ( NUM:byte-off -- n )
       misaligned OF E-STR-BOUNDS throw ENDOF
    ;MATCH ;
 
-\ ---- raw cell -> validated role bridges ---------------------------------------
 : N>BYTE-LEN ( n -- NUM:byte-len )       NUM:BYTE-LEN OK-BYTE-LEN ;
 : N>BYTE-OFF ( n -- NUM:byte-off )       NUM:BYTE-OFF OK-BYTE-OFF ;
 : N>ITEM-COUNT ( n -- NUM:item-count )   NUM:ITEM-COUNT OK-ITEM-COUNT ;
 : N>INDEX ( n -- NUM:index )             NUM:INDEX OK-INDEX ;
 
-\ ---- option<idx> (raw find result) -> option<NUM:index> --------------------
 : IDX-OPT>INDEX-OPT ( option<idx> -- option<NUM:index> )
    MATCH option
       none OF OPTION:NONE ENDOF
       some OF IDX>N N>INDEX OPTION:SOME ENDOF
    ;MATCH ;
 
-\ ---- one-past-end offset advance guard (offset algebra) ------------------------
 : ONE-BYTE-LEN ( -- NUM:byte-len )   1 NUM:BYTE-LEN OK-BYTE-LEN ;
 : SPLIT-SENTINEL-OK ( NUM:byte-len -- )
    \ the raw scan's largest reported boundary is (length + 1); prove that offset
@@ -110,12 +84,11 @@ CAST: BYTE-OFF>N ( NUM:byte-off -- n )
 
 public
 
-\ ---- role validators (raw n -> role; negative throws E-STR-BOUNDS) -------------
+\ Validators: a negative n throws E-STR-BOUNDS.
 : LENGTH ( n -- NUM:byte-len )      N>BYTE-LEN ;
 : OFFSET ( n -- NUM:byte-off )      N>BYTE-OFF ;
 : COUNT ( n -- NUM:item-count )     N>ITEM-COUNT ;
 
-\ ---- substring / byte search: found position as option<NUM:index> ----------
 : FIND-SUB ( ptr u8 NUM:byte-len ptr u8 NUM:byte-len -- option<NUM:index> )
    {: a:ptr u:NUM:byte-len b:ptr v:NUM:byte-len :}
    a u BYTE-LEN>N b v BYTE-LEN>N RAW-FIND-SUB IDX-OPT>INDEX-OPT ;
@@ -123,21 +96,17 @@ public
    {: a:ptr u:NUM:byte-len c:n :}
    a u BYTE-LEN>N c RAW-INDEX-OF IDX-OPT>INDEX-OPT ;
 
-\ ---- next separator-delimited field (offset advance proven, then raw scan) ------
-\ A split step yields the next separator-delimited field slice plus the advance
-\ cursor (the offset one past the separator, or one past the string end on the
-\ final field). STR:SPLIT-NEXT returns option<str:split>: SOME(slice,next) while
-\ a field remains, NONE once the start cursor is past the string end - the checked
-\ replacement for the former (ptr u8 byte-len byte-off bool) value+flag return
-\ (switchover wave B), so a caller cannot read the slice or cursor on the
-\ no-field path.
+\ SOME(slice, next) while a field remains, NONE once the start cursor is past
+\ the string end, so a caller cannot read the slice or cursor on the no-field
+\ path. next is the offset one past the separator, or one past the string end
+\ on the final field.
 STRUCTURE split
   FIELD ptr ptr u8
   FIELD len NUM:byte-len
   FIELD next NUM:byte-off
 ;STRUCTURE
 
-: SPLIT-NEXT ( ptr u8 NUM:byte-len n NUM:byte-off -- option<str:split> )   \ SOME next field slice + advance cursor, else NONE
+: SPLIT-NEXT ( ptr u8 NUM:byte-len n NUM:byte-off -- option<str:split> )
    {: a:ptr u:NUM:byte-len sep:n start:NUM:byte-off :}
    u SPLIT-SENTINEL-OK
    a u BYTE-LEN>N sep start BYTE-OFF>N RAW-SPLIT-NEXT   \ ( sub-ptr sub-rawlen raw-next more? )
@@ -148,7 +117,7 @@ STRUCTURE split
       2drop OPTION:NONE
    then ;
 
-\ ---- caller-owned bounded byte buffer (length cell as byte-len role) ------------
+\ The caller-owned bounded byte buffer, its length cell a NUM:byte-len.
 : BUF-RESET ( ptr len -- )                    RAW-BUF-RESET ;
 : BUF-LEN@ ( ptr len -- NUM:byte-len )    RAW-BUF-LEN@ N>BYTE-LEN ;
 : BUF-APPEND ( ptr u8 NUM:byte-len ptr u8 NUM:byte-len ptr len -- )

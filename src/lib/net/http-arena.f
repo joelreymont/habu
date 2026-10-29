@@ -1,21 +1,13 @@
-\ http-arena.f - per-worker storage for the HTTP/1.1 server (src/lib/net/http.f):
-\ one OS-backed span per request worker, carved into the input buffer, the
-\ fixed buffers one request needs and the headers of four growing ones. The
-\ request body's header owns a separate mapping while a request is live; the
-\ response's header lines, its JSON body and its head each own one for the
-\ worker's whole life, cleared for every request and grown with the answer.
-\ Nominal request and response handles name the worker's slot. Nothing here
-\ touches a socket.
-\
-\ STORAGE CLASS. PROCESS-WIDE tables indexed by the worker's own slot: every
-\ per-request cell below is a row of a typed buffer, never a bare global,
-\ because ordinary storage is one copy for every task. The
-\ running worker's slot itself is a TASK:+USER row.
-\
-\ A worker's region is one span (src/lib/span.f): the base and the reach travel
-\ together, every fixed buffer and growing buffer's header below is a narrowing
-\ of it, and a narrowing past the region throws E-SPAN-RANGE instead of
-\ addressing the next worker's slot.
+\ http-arena.f - per-worker storage for the HTTP/1.1 server
+\ (src/lib/net/http.f): one OS-backed span per worker, carved into the input
+\ buffer, the fixed buffers and the headers of four growing ones; the request
+\ body owns a mapping while a request is live.
+\ STORAGE CLASS. PROCESS-WIDE tables indexed by worker slot, rows of typed
+\ buffers and never bare globals; the running worker's slot is a TASK:+USER row.
+
+\ A narrowing past the region throws E-SPAN-RANGE instead of reaching the next
+\ slot. No socket here.
+
 require src/lib/errors.f
 require src/lib/prelude.f
 require src/lib/memory.f
@@ -133,7 +125,6 @@ MAX-WORKERS MAX-SEGMENTS * constant SEGMENT-ROWS
 SEGMENT-ROWS TYPED-BUFFER SEGMENT-AT n
 SEGMENT-ROWS TYPED-BUFFER SEGMENT-LEN n
 
-\ The running worker's own slot: task-local, because ordinary storage is not.
 TASK:#USER
 CELL TASK:+USER MY-SLOT
 drop
@@ -155,7 +146,6 @@ drop
    idx BOUNDED SLOT-GEN @ GEN-SHIFT lshift idx or ;
 
 
-\ A handle names a live slot only while its generation still matches.
 : RESOLVE ( n -- n ) {: h:n :}
    h SLOT-MASK and BOUNDED {: idx:n :}
    idx SLOT-LIVE @ 0= if E-HANDLE throw then
@@ -197,7 +187,6 @@ private
    1 idx SLOT-LIVE ! ;
 
 
-\ The BUF header carved at one offset of the worker's region.
 : BUF-AT ( n n -- ptr n ) {: idx:n off:n :}
    idx SLOT-SPAN off BUF:HDR-BYTES SPAN:SUB SPAN:$ drop CELL-VIEW ;
 
@@ -254,8 +243,6 @@ private
    loop ;
 
 
-\ ---- the slot's buffers ------------------------------------------------------
-
 \ Each fixed one narrows the worker's region to its own offset and capacity, so
 \ the value a caller holds cannot reach the buffer next to it.
 
@@ -282,8 +269,6 @@ private
 : NUM-BUF ( n -- SPAN:span<u8> )
    SLOT-SPAN NUM-OFF NUM-CAP SPAN:SUB ;
 
-
-\ ---- the slot's cells --------------------------------------------------------
 
 : IN-U@ ( n -- n )        BOUNDED IN-U @ ;
 : IN-U! ( n n -- )        BOUNDED IN-U ! ;
@@ -335,8 +320,6 @@ private
    next ;
 
 
-\ ---- the request line's spans ------------------------------------------------
-
 : METHOD! ( n n n -- ) {: at:n len:n idx:n :}
    at idx BOUNDED METHOD-AT ! len idx METHOD-N ! ;
 
@@ -377,8 +360,6 @@ private
    idx ID-BUF idx ID-U@ SPAN:TAKE SPAN:$ ;
 
 
-\ ---- the slot's header table -------------------------------------------------
-
 : HEADER-ROW ( n n -- n ) {: idx:n at:n :}
    at 0 < if E-CAPACITY throw then
    at MAX-HEADERS >= if E-CAPACITY throw then
@@ -405,8 +386,6 @@ private
    idx at HEADER-ROW {: row:n :}
    idx IN-BUF row HEADER-VALUE-AT @ row HEADER-VALUE-N @ SPAN:SUB SPAN:$ ;
 
-
-\ ---- the slot's bound path segments ------------------------------------------
 
 : SEGMENT-ROW ( n n -- n ) {: idx:n at:n :}
    at 0 < if E-CAPACITY throw then
@@ -474,9 +453,8 @@ public
 \ The configured incoming body maximum, in bytes; zero accepts empty bodies.
 : BODY-CAP ( -- n ) BODY-LIMIT @ ;
 
-\ The slot of the worker that is running, bounded by MAX-WORKERS: the identity
-\ a handler package indexes its own per-request storage by, because ordinary
-\ storage is one copy for the whole process.
+\ Bounded by MAX-WORKERS: the index a handler package keys its own per-request
+\ storage by.
 : WORKER-SLOT ( -- n )
    SELF-SLOT ;
 

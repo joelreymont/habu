@@ -1,14 +1,8 @@
-\ fs-lock.f - advisory exclusive ownership of caller-held descriptors.
-\
-\ TRY takes the exclusive flock without waiting; WAIT blocks until the holder
-\ releases it and then takes it, retrying a wait a signal interrupts (EINTR).
-\ Neither owns nor closes the descriptor. The caller holds the exclusive
-\ flock until close (or process death). OPEN-DIR gives long-lived directory
-\ holds an O_CLOEXEC descriptor, so an exec child cannot prolong ownership.
-\ TRY answers false only when another holder blocks the lock; any other flock
-\ failure throws E-FS-IO from either word, and an OPEN-DIR failure E-FS-OPEN.
-\ The lock binds only cooperating processes on the same kernel.
-\
+\ fs-lock.f - advisory exclusive flock on caller-held descriptors, binding only
+\ cooperating processes on one kernel. TRY never waits and answers false only
+\ when another holder blocks it; WAIT retries EINTR. Neither owns nor closes the
+\ descriptor. OPEN-DIR's descriptor is O_CLOEXEC so an exec child cannot prolong
+\ ownership. Other flock failures are E-FS-IO; an OPEN-DIR failure is E-FS-OPEN.
 \ STORAGE CLASS. CALLER-OWNED: the held descriptor; no module state.
 
 require src/lib/errors.f

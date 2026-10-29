@@ -1,56 +1,26 @@
-\ map.f - fixed-capacity open-addressed string-key map.
-\
-\ The module lives in `package MAP`. The caller owns the storage: MAP:CELL-COUNT
-\ answers how many cells a capacity needs, MAP:INIT lays the map out in them and
-\ MAP:CLEAR empties it. MAP:SET, MAP:GET, MAP:HAS? and MAP:EACH are the map
-\ itself, and MAP:CAP@ / MAP:COUNT@ read the header. The sizing word is
-\ CELL-COUNT and not CELLS because a public CELLS would shadow the built-in
-\ `cells` for every later body in the package. The header and slot layout, the
-\ hash, the probe sequence and the locate step are package-private;
-\ src/lib/map-test.f reopens the package to reach them.
-\
-\ The two families are public because only a public family gets generated
-\ constructors (MAP-SLOT--STATE:EMPTY, MAP-LOC:FOUND); the words that produce
-\ and consume them are private.
-\
-\ SET stores the caller's key pointer and length, not a copy, and a replacement
-\ keeps the first key's pointer: the key bytes stay alive and unchanged while
-\ the entry exists. GET answers SOME value or NONE; EACH visits occupied slots
-\ in storage order. Every call takes the capacity the storage was initialised
-\ with; a bad capacity, malformed storage and a full table throw E-MAP-* codes.
-\
-\ Keys hash with SipHash-2-4 under a secret key INIT draws into the header from
-\ the operating system's generator (src/lib/entropy.f), so crafted keys cannot
-\ aim at one probe chain: chains are expected to stay short whatever the keys,
-\ an expectation over the secret, not a worst-case guarantee. The key
-\ lives in the map's own cells: a map INITed while building an image keeps that
-\ key in the image file and in every run started from it, so a map that will
-\ hold untrusted keys is INITed at run time. Slot positions follow the key, so
-\ EACH's storage order differs between maps, and between runs for maps INITed
-\ at run time.
-\ The slot reader turns raw tags 0 and 1 into constructors and throws
-\ ENGINE-ERROR:BAD-TAG on any other.
-\
+\ map.f - package MAP: fixed-capacity open-addressed string-key map in caller
+\ cells (CELL-COUNT sizes them; not CELLS, which would shadow `cells` in later
+\ bodies). Layout, hash, probe and locate are private; src/lib/map-test.f
+\ reopens the package. Every call takes the capacity INIT was given; a bad
+\ capacity, malformed storage or a full table throws E-MAP-*.
 \ STORAGE CLASS. CALLER-OWNED: the caller's cells; no module state.
 
 require src/lib/errors.f
 require src/lib/string.f
 require src/lib/siphash.f
 require src/lib/entropy.f
-require src/lib/adt/option.f                      \ option<n> for GET (switchover wave A)
+require src/lib/adt/option.f
 
 package MAP
 public
 
-\ slot-state - the per-slot lifecycle tag. An ENUM instead of raw sentinel
-\ ints forces every consumer through MATCH or the predicates below.
+\ Public because only a public family gets generated constructors
+\ (MAP-SLOT--STATE:EMPTY, MAP-LOC:FOUND); the words using both are private.
 ENUM slot-state
   empty
   occupied
 ;ENUM
 
-\ loc - the three-way LOCATE verdict. Free/found carry the slot index;
-\ full carries nothing.
 SUMTYPE loc
   VARIANT full ;VARIANT
   VARIANT free idx ;VARIANT
@@ -84,7 +54,6 @@ HASH-MASK HEADER-CELLS - SLOT-CELLS / constant MAX-CAP
 
 public
 
-\ Cells the caller allots for a map of this capacity.
 : CELL-COUNT ( count -- count ) {: cap :}
    cap CHECK-CAP
    HEADER-CELLS cap COUNT>N SLOT-CELLS * + >COUNT ;
@@ -105,7 +74,6 @@ public
 : CAP@ ( ptr a -- count )
    CAP-OFF HEADER-FIELD @ >COUNT ;
 
-\ Occupied entries.
 : COUNT@ ( ptr a -- count )
    COUNT-OFF HEADER-FIELD @ >COUNT ;
 
@@ -150,7 +118,7 @@ private
       ENGINE-ERROR:BAD-TAG throw
    endcase ;
 
-: SLOT-STATE! ( slot-state ptr a idx -- ) {: m:ptr ix:idx :}   \ enum stays on stack; the checker owns state validity
+: SLOT-STATE! ( slot-state ptr a idx -- ) {: m:ptr ix:idx :}
    MATCH slot-state
      empty OF 0 ENDOF
      occupied OF 1 ENDOF
@@ -199,6 +167,11 @@ public
       m i >IDX SLOT-CLEAR
    loop ;
 
+\ Draws the SipHash-2-4 key into the header from the OS generator
+\ (src/lib/entropy.f), so crafted keys cannot aim at one probe chain: chains are
+\ expected short over the secret, not guaranteed. The key lives in the map's
+\ cells, so a map INITed while building an image carries it into every run; a
+\ map for untrusted keys is INITed at run time.
 : INIT ( ptr a count -- ) {: m:ptr cap :}
    m HASH-K0-OFF cells + BYTE-VIEW 2 cells ENTROPY:FILL
    cap m CAP!
@@ -247,7 +220,7 @@ private
    m key len HASH {: hash:n :}
    cap COUNT>N 0 ?do
       m hash i >COUNT cap PROBE key len hash LOCATE-SLOT
-      dup MATCH loc                            \ full = keep probing; free/found terminate
+      dup MATCH loc
         full OF 0 0= 0= ENDOF
         free OF drop 0 0= ENDOF
         found OF drop 0 0= ENDOF
@@ -268,7 +241,7 @@ private
 
 public
 
-: GET ( ptr n count ptr u8 len -- option<n> ) {: m:ptr cap:count key:ptr len:len :}   \ SOME value if the key is present, else NONE
+: GET ( ptr n count ptr u8 len -- option<n> ) {: m:ptr cap:count key:ptr len:len :}
    m cap key len LOCATE drop MATCH loc
      full OF OPTION:NONE ENDOF
      free OF drop OPTION:NONE ENDOF
@@ -281,6 +254,9 @@ public
      some OF drop 0 0= ENDOF
    ;MATCH ;
 
+\ Stores the caller's key pointer and length, not a copy; a replacement keeps
+\ the first key's pointer: the key bytes stay alive and unchanged while the
+\ entry exists.
 : SET ( n ptr n count ptr u8 len -- ) {: value:n m:ptr cap:count key:ptr len:len :}
    m cap key len LOCATE {: hash:n :}
    MATCH loc
@@ -289,7 +265,8 @@ public
      found OF value m rot SLOT-VALUE! ENDOF
    ;MATCH ;
 
-\ Visit occupied entries in ascending storage-slot order.
+\ Storage order follows the keyed hash, so it differs between maps, and between
+\ runs for maps INITed at run time.
 : EACH ( ptr n count [ ptr u8 len n -- ] -- ) {: m:ptr cap q :}
    m cap CHECK-HANDLE
    cap COUNT>N 0 ?do

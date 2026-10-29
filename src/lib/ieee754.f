@@ -1,23 +1,14 @@
-\ ieee754.f - shared IEEE-754 bit and rounding operations.
-\
-\ This package owns the two unavoidable Habu f64 bit-reinterpretation
-\ boundaries and the width-independent round-to-nearest-even right shift used
-\ by F32, F16, and BF16 encoders.
-\
-\ F64>BITS and BITS>F64 are bit casts, not conversions: every bit survives,
-\ signed zero and NaN payloads included. They wrap the private F64>BITS-RAW and
-\ BITS>F64-RAW casts because the checker has no typed primitive that moves a
-\ cell between the float and integer stacks. ROUND-SHIFT-EVEN answers its
-\ input for a zero shift and zero for a shift above 63; a negative significand
-\ or shift throws E-ROUND-DOMAIN.
-\
-\ STORAGE CLASS. CALLER-OWNED: the module keeps no state.
+\ ieee754.f - IEEE-754 bit casts and the round-to-nearest-even right shift used
+\ by the F32, F16 and BF16 encoders. F64>BITS and BITS>F64 are bit casts: every
+\ bit survives, signed zero and NaN payloads included; they wrap private CASTs
+\ because no typed primitive moves a cell between the float and integer stacks.
+\ ROUND-SHIFT-EVEN answers its input for a zero shift and zero above 63; a
+\ negative significand or shift is E-ROUND-DOMAIN. STORAGE CLASS. CALLER-OWNED.
 
 package IEEE754
 
 private
 
-\ Exact private bit reinterpretations behind the checked public binary64 API.
 \ Checked casts: one cell each way, so neither can misdeclare its shape.
 CAST: F64>BITS-RAW ( r -- n )
 CAST: BITS>F64-RAW ( n -- r )

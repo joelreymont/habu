@@ -1,12 +1,8 @@
-\ ws-frame-test.f - the RFC 6455 frame codec: the examples of section 5.7 byte
-\ for byte, every length form at its edges, headers from both senders round
-\ trip, a header still short of its bytes, and every refusal.
+\ ws-frame-test.f - the RFC 6455 frame codec: section 5.7's examples byte for
+\ byte, every length form at its edges, round trips, short headers, refusals.
 \ Run: bin/hb --load src/lib/net/ws-frame-test.f
-\
-\ Frames are written in hex, two lowercase digits a byte, as section 5.7 prints
-\ them. A decoded header is checked by encoding it again: the encoder is pinned
-\ byte for byte by the RFC's examples, so a header that encodes back to the
-\ bytes it came from was read field for field.
+\ Frames are hex, as section 5.7 prints them. A decoded header is checked by
+\ encoding it again: the RFC's examples pin the encoder byte for byte.
 
 require src/lib/test.f
 require src/lib/span.f
@@ -16,7 +12,7 @@ package WS-FRAME-TEST
 
 $A5 constant CANARY
 $37FA213D constant RFC-KEY        \ the masking key of section 5.7's examples
-$7FFFFFFFFFFFFFFF constant LEN-MAX \ the longest 64-bit length, its high bit clear
+$7FFFFFFFFFFFFFFF constant LEN-MAX
 
 WS:HEADER-MAX SPAN-BUFFER: OUT
 32 SPAN-BUFFER: HEX
@@ -55,7 +51,6 @@ TYPED-VARIABLE WHO WS:sender
 : DECODE-STAGED ( -- WS:decoded )
    STAGED$ WHO @ BOUND @ WS:DECODE-HEADER ;
 
-\ Write a header into OUT and forget the count: the body of a refusal.
 : PUT ( WS:header WS:sender -- )
    OUT WS:ENCODE-HEADER drop ;
 
@@ -63,8 +58,6 @@ TYPED-VARIABLE WHO WS:sender
    want wu T-LABEL
    h who OUT WS:ENCODE-HEADER OUT$ HEX$ want wu T$= ;
 
-\ The bytes decode, under the bound, to a frame whose header takes `size` bytes
-\ and encodes back to them.
 : DECODES ( ptr u8 n WS:sender n n -- ) {: a u:n who max:n size:n :}
    a u who max STAGE
    a u T-LABEL
@@ -77,7 +70,6 @@ TYPED-VARIABLE WHO WS:sender
       ENDOF
    ;MATCH ;
 
-\ The bytes are a header's first part, and the whole header takes `want`.
 : NEEDS ( ptr u8 n WS:sender n -- ) {: a u:n who want:n :}
    a u who LEN-MAX STAGE
    a u T-LABEL
@@ -91,7 +83,6 @@ TYPED-VARIABLE WHO WS:sender
    a u T-LABEL
    [: DECODE-STAGED drop ;] code TTHROWSQ ;
 
-\ Section 5.7's frames, written.
 : RFC-ENCODE ( -- )
    true WS-OPCODE:text 5 0 WS-HEADER:MAKE WS-SENDER:server s" 8105" ENCODES
    true WS-OPCODE:text 5 RFC-KEY WS-HEADER:MAKE WS-SENDER:client s" 818537fa213d" ENCODES
@@ -103,7 +94,6 @@ TYPED-VARIABLE WHO WS:sender
    true WS-OPCODE:binary 65536 0 WS-HEADER:MAKE WS-SENDER:server
    s" 827f0000000000010000" ENCODES ;
 
-\ Section 5.7's frames, read with their payloads behind them.
 : RFC-DECODE ( -- )
    s" 810548656c6c6f" WS-SENDER:server LEN-MAX 2 DECODES
    s" 818537fa213d7f9f4d5158" WS-SENDER:client LEN-MAX 6 DECODES
@@ -114,8 +104,6 @@ TYPED-VARIABLE WHO WS:sender
    s" 827e0100" WS-SENDER:server LEN-MAX 4 DECODES
    s" 827f0000000000010000" WS-SENDER:server LEN-MAX 10 DECODES ;
 
-\ Masking "Hello" with section 5.7's key gives the payload it prints, and
-\ masking again gives "Hello" back.
 : MASKS ( -- )
    s" Hello" STAGED SPAN:COPY
    RFC-KEY STAGED 5 SPAN:TAKE WS:MASK
@@ -129,7 +117,6 @@ TYPED-VARIABLE WHO WS:sender
    s" a key past 32 bits" T-LABEL
    [: $100000000 STAGED WS:MASK ;] E-WS-MASK TTHROWSQ ;
 
-\ The masked "Hello" frame carries the key that unmasks its own payload.
 : UNMASKS ( -- )
    s" 818537fa213d7f9f4d5158" WS-SENDER:client LEN-MAX STAGE
    s" the masked Hello frame" T-LABEL
@@ -142,8 +129,6 @@ TYPED-VARIABLE WHO WS:sender
       ENDOF
    ;MATCH ;
 
-\ Each length at the edge of its form, both ways; the 64-bit form up to the
-\ largest length its clear high bit allows.
 : LENGTHS ( -- )
    true WS-OPCODE:binary 125 0 WS-HEADER:MAKE WS-SENDER:server s" 827d" ENCODES
    true WS-OPCODE:binary 126 0 WS-HEADER:MAKE WS-SENDER:server s" 827e007e" ENCODES
@@ -158,8 +143,6 @@ TYPED-VARIABLE WHO WS:sender
    s" 827f000000123456789a" WS-SENDER:server LEN-MAX 10 DECODES
    s" 827f7fffffffffffffff" WS-SENDER:server LEN-MAX 10 DECODES ;
 
-\ A header written for a sender reads back from exactly the bytes written, and
-\ encodes to them again.
 : TRIP ( WS:header WS:sender -- ) {: h who :}
    h who OUT WS:ENCODE-HEADER {: n:n :}
    n OUT$ STAGED SPAN:COPY
@@ -176,7 +159,6 @@ TYPED-VARIABLE WHO WS:sender
       ENDOF
    ;MATCH ;
 
-\ The same header from a server, unmasked, and from a client under the key.
 : TRIPS ( bool WS:opcode n n -- ) {: fin:bool op len:n key:n :}
    fin op len 0 WS-HEADER:MAKE WS-SENDER:server TRIP
    fin op len key WS-HEADER:MAKE WS-SENDER:client TRIP ;
@@ -260,8 +242,6 @@ TYPED-VARIABLE WHO WS:sender
    s" 827f0000000000010000" WS-SENDER:server 65535 E-WS-TOO-BIG REFUSES
    s" 82fe0100" WS-SENDER:client 255 E-WS-TOO-BIG REFUSES ;
 
-\ What a sender may not write: a fragmented or long control frame, a negative
-\ length, a key on a server's frame or a key past 32 bits.
 : ENCODE-REFUSALS ( -- )
    s" a fragmented ping" T-LABEL
    [: false WS-OPCODE:ping 0 0 WS-HEADER:MAKE WS-SENDER:server PUT ;]
@@ -299,7 +279,6 @@ TYPED-VARIABLE WHO WS:sender
    s" a close code in one byte" T-LABEL
    [: WS:CLOSE-NORMAL OUT 1 SPAN:TAKE WS:CLOSE-CODE! ;] E-SPAN-CAPACITY TTHROWSQ ;
 
-\ A server's normal close is 88 02 03 e8, and each status is its RFC number.
 : CLOSES ( -- )
    true WS-OPCODE:close 2 0 WS-HEADER:MAKE WS-SENDER:server OUT WS:ENCODE-HEADER
    {: n:n :}

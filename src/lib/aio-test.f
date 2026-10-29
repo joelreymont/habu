@@ -1,6 +1,5 @@
 \ aio-test.f - the io_uring loop: readiness, timers, cancellation, grouped
 \ waits, the completion operations, the per-task cleanup and every refusal.
-\
 \ Pipes, one regular file under the test's own temporary directory, and one
 \ loopback stream this process is both ends of; no clock but the monotonic one.
 \ Every wait in this file is bounded: a wait that never finishes ends the row as a
@@ -18,12 +17,10 @@ require src/lib/fs-mutate.f           \ the temporary directory the READ file li
 require src/lib/net/tcp4.f            \ the loopback listener ACCEPT and CONNECT run on
 require src/lib/aio.f
 
-\ White-box helpers: reopen the module's package so both definitions below are
-\ compiled with AIO's private submission plumbing visible - the
-\ published-but-unconsumed count and the entry NOP-STAGE publishes. They are
-\ the test's own words and not AIO's: a qualified definition lands in the
-\ wordlist it names, so these two go to AIO-TEST, which calls them bare, and
-\ AIO's public surface gains nothing for being tested.
+\ White-box helpers, compiled in package AIO so its private submission plumbing
+\ is visible. A qualified definition lands in the wordlist it names, so these
+\ two go to AIO-TEST, which calls them bare, and AIO's public surface gains
+\ nothing for being tested.
 package AIO
 
 \ One OP-NOP published and nobody entered for: NOP-STAGE's entry without its
@@ -173,7 +170,6 @@ TASK:MIN-STACK TASK:TASK FAN5
 TASK:MIN-STACK TASK:TASK FAN6
 TASK:MIN-STACK TASK:TASK FAN7
 
-\ ---- fixtures ----------------------------------------------------------------
 \ One number per outcome, so a case asserts what it got: the revents mask for
 \ ready, the errno for refused, and a marker for the other two.
 : OUTCOME>N ( AIO:outcome -- n )
@@ -211,12 +207,10 @@ TASK:MIN-STACK TASK:TASK FAN7
 : DEADLINE ( -- n )
    mono-ns WAIT-MS NS-PER-MS * + ;
 
-\ Returns once the count in the cell reaches want.
 : REACH ( ptr n n -- )
    [: 2dup swap atomic@ <= ;] DEADLINE s" aio-test REACH" TEST-WAIT:POLL
    2drop ;
 
-\ Returns once the task has ended.
 : AWAIT-END ( ptr n -- )
    [: dup TASK:DONE? ;] DEADLINE s" aio-test AWAIT-END" TEST-WAIT:POLL
    drop ;
@@ -234,7 +228,6 @@ TASK:MIN-STACK TASK:TASK FAN7
 : STOP-LOOP ( -- )
    [: STOPPED? ;] DEADLINE s" aio-test STOP-LOOP" TEST-WAIT:POLL ;
 
-\ ---- 1: a task polls, the main thread writes --------------------------------
 : C1-WORK ( -- )
    P-R @ >FD AIO:READABLE -1 >MS AIO:POLL AWAIT>N C1-GOT ! ;
 
@@ -250,7 +243,6 @@ TASK:MIN-STACK TASK:TASK FAN7
    C1-TASK TASK:KILL
    P-R P-W PIPE-CLOSE ;
 
-\ ---- 2: the operation completes before anybody awaits it --------------------
 : CASE-ALREADY-READY ( -- )
    P-R P-W PIPE-OPEN
    P-W @ POKE
@@ -260,14 +252,13 @@ TASK:MIN-STACK TASK:TASK FAN7
    C2-GOT @ AIO:READABLE and AIO:READABLE T=
    P-R P-W PIPE-CLOSE ;
 
-\ ---- 3 and 8: a timer, awaited on the main thread through its own park ------
+\ A timer, awaited on the main thread through its own park.
 : CASE-TIMER ( -- )
    TASK:SELF-N 0 T=                        \ the main thread has no TCB
    mono-ns {: t0:n :}
    TIMER-MS >MS AIO:TIMEOUT AWAIT>N MARK-TIMED-OUT T=
    mono-ns t0 - TIMER-MS NS-PER-MS * >= TTRUE ;
 
-\ ---- 4: a poll with a deadline on a pipe nobody writes ----------------------
 : CASE-POLL-DEADLINE ( -- )
    P-R P-W PIPE-OPEN
    mono-ns {: t0:n :}
@@ -275,7 +266,6 @@ TASK:MIN-STACK TASK:TASK FAN7
    mono-ns t0 - SILENT-MS NS-PER-MS * >= TTRUE
    P-R P-W PIPE-CLOSE ;
 
-\ ---- 5: a cancelled poll ----------------------------------------------------
 : CASE-CANCEL ( -- )
    P-R P-W PIPE-OPEN
    P-R @ >FD AIO:READABLE -1 >MS AIO:POLL LONE-TICKET !
@@ -284,7 +274,6 @@ TASK:MIN-STACK TASK:TASK FAN7
    LONE-TICKET @ AWAIT>N MARK-CANCELLED T=
    P-R P-W PIPE-CLOSE ;
 
-\ ---- 19 and 20: an entry nobody entered for ---------------------------------
 \ The kernel takes submission entries from the ring's head, not from the
 \ submitter's own slot, so a submission is judged by the ring draining and not
 \ by a return that matches the count this submitter published. The planted NOP
@@ -312,7 +301,6 @@ TASK:MIN-STACK TASK:TASK FAN7
    LONE-TICKET @ AWAIT>N MARK-TIMED-OUT T=
    P-R P-W PIPE-CLOSE ;
 
-\ ---- 7: the first of a group, and the rest cancelled ------------------------
 : ANY-DROP? ( -- bool )
    [: ANY-CUR @ ANY-GROUP AIO:GROUP- ;] catch 0= ;
 
@@ -345,7 +333,6 @@ TASK:MIN-STACK TASK:TASK FAN7
    ANY-GROUP AIO:GROUP-COUNT 0 T=
    ANY-N 0 ?do ANY-R CELL-VIEW i SLOT ANY-W CELL-VIEW i SLOT PIPE-CLOSE loop ;
 
-\ ---- 6: eight tasks, sixty-four polls, and the thread count -----------------
 : FAN-R@ ( n -- n ) {: id:n :}
    FAN-R CELL-VIEW id cells + @ ;
 
@@ -404,7 +391,6 @@ TASK:MIN-STACK TASK:TASK FAN7
    FAN-DURING @ BASE-THREADS @ FAN-TASKS + 1 + T=
    FAN-TASKS 0 ?do FAN-R CELL-VIEW i SLOT FAN-W CELL-VIEW i SLOT PIPE-CLOSE loop ;
 
-\ ---- 9: the refusals --------------------------------------------------------
 : TICKET-DROP ( AIO:ticket -- )
    drop ;
 
@@ -443,7 +429,6 @@ TASK:MIN-STACK TASK:TASK FAN7
    LONE-TICKET @ AWAIT>N MARK-CANCELLED T=
    P-R P-W PIPE-CLOSE ;
 
-\ ---- the completion operations ----------------------------------------------
 \ Every transfer below hands its allocation to the operation and takes it back
 \ from AWAIT-XFER, which is the only word that answers one, and releases it
 \ itself. A buffer a case still holds after a refusal was never submitted.
@@ -480,8 +465,6 @@ TASK:MIN-STACK TASK:TASK FAN7
 : XFER-PATH ( -- ptr u8 n )
    XFER-PATH-BUF XFER-PATH-U @ ;
 
-\ The pattern file: this suite's own temporary directory, the way the other
-\ suites make one.
 : XFER-FILE! ( -- )
    XFER-PAT PAT-FILL
    s" habu-aio" FS:MKTEMP-DIR {: a:ptr u :}
@@ -500,7 +483,7 @@ TASK:MIN-STACK TASK:TASK FAN7
    rbuf rcap MEM:RELEASE-BYTES
    got ;
 
-\ ---- 12: a regular file, which has no readiness at all ----------------------
+\ A regular file has no readiness at all.
 \ An explicit offset leaves the descriptor's position alone; -1 uses it and
 \ advances it, so the two halves come back in order.
 : CASE-XFER-FILE ( -- )
@@ -513,7 +496,7 @@ TASK:MIN-STACK TASK:TASK FAN7
    XFER-FD @ XFER-N XFER-N 0 READ-ONCE 0 T=
    XFER-FD @ close-rc drop ;
 
-\ ---- 13: a pipe, with both transfers in flight at once ----------------------
+\ A pipe, with both transfers in flight at once.
 \ The WRITE is submitted first and awaited second: a transfer is not a call, and
 \ nothing about the order they are awaited in changes what they answer.
 : CASE-XFER-PIPE ( -- )
@@ -577,7 +560,6 @@ TASK:MIN-STACK TASK:TASK FAN7
    ;MATCH
    MEM:RELEASE-BYTES ;
 
-\ ---- 14: a loopback stream, accepted and connected through the ring ---------
 : XFER-SA! ( n n -- ) {: addr:n port:n :}
    SOCKADDR-N 0 ?do 0 XFER-SA i + c! loop
    HB-TARGET-MACOS? if
@@ -615,7 +597,6 @@ TASK:MIN-STACK TASK:TASK FAN7
       failed OF drop E-AIO-SETUP throw ENDOF
    ;MATCH ;
 
-\ One 4096-byte exchange over a connected pair, each direction through the loop.
 : STREAM-XCHG ( n n -- ) {: wfd:n rfd:n :}
    XFER-ALLOC {: sbuf scap:NUM:alloc-byte-len :}
    sbuf PAT-FILL
@@ -643,7 +624,6 @@ TASK:MIN-STACK TASK:TASK FAN7
    XC @ TCP4:CLOSE STATUS-OK
    XL @ TCP4:CLOSE-LISTENER STATUS-OK ;
 
-\ ---- 15: the bounds and the state refusals ----------------------------------
 \ A refused submission never happened, so the allocation is still the caller's
 \ and this case releases it itself.
 : CASE-XFER-BOUNDS ( -- )
@@ -675,7 +655,6 @@ TASK:MIN-STACK TASK:TASK FAN7
    [: LONE-XFER @ AIO:AWAIT-XFER XFER-DROP ;] E-AIO-STATE TTHROWSQ
    P-R P-W PIPE-CLOSE ;
 
-\ ---- 18: a handle kept past its record's reuse ------------------------------
 \ A handle is the record's index and the generation that record carried when the
 \ handle was minted, and REC-FREE bumps the generation, so a handle whose record
 \ this very task has reclaimed is E-AIO-STATE - the one case the index and the
@@ -746,13 +725,11 @@ CAST: XFER>N ( AIO:xfer -- n )
    rb rcap MEM:RELEASE-BYTES
    P-R P-W PIPE-CLOSE ;
 
-\ GROW-N polls on the open pipe, every one in flight at once.
 : GROW-SUBMIT ( -- )
    GROW-N 0 ?do
       P-R @ >FD AIO:READABLE -1 >MS AIO:POLL i GROW-TICKETS !
    loop ;
 
-\ One byte makes every one of them ready.
 : GROW-COMPLETE ( -- )
    P-W @ POKE
    0 FAN-READY !
@@ -787,7 +764,6 @@ CAST: XFER>N ( AIO:xfer -- n )
    GROW-COMPLETE
    P-R P-W PIPE-CLOSE ;
 
-\ ---- a group wider than its first row, and more groups than $10 ------------
 : WIDE-FILL ( -- )
    GROW-N 0 ?do
       P-R @ >FD AIO:READABLE -1 >MS AIO:POLL WIDE-GROUP AIO:GROUP+
@@ -827,7 +803,6 @@ CAST: XFER>N ( AIO:xfer -- n )
    loop
    P-R P-W PIPE-CLOSE ;
 
-\ ---- a group another task owns ----------------------------------------------
 \ The task that adds to an empty group owns it until it is empty again, so a
 \ second task's GROUP+, GROUP- and AWAIT-ANY on it are refused before they reach
 \ its row, and the second task's own ticket stays out of it.
@@ -882,7 +857,6 @@ CAST: XFER>N ( AIO:xfer -- n )
    TICKET>N LONE-TICKET @ TICKET>N T=
    P-R P-W PIPE-CLOSE ;
 
-\ ---- 16: a transfer its task never awaited ----------------------------------
 \ The task ends with the READ in flight; its cleanup forgets and cancels it, and
 \ the loop releases the allocation when the kernel's completion arrives - not
 \ at the cancel, because until then the kernel may still be writing those bytes.
@@ -907,7 +881,6 @@ CAST: XFER>N ( AIO:xfer -- n )
    P-R P-W PIPE-CLOSE
    AIO:START ;
 
-\ ---- 17: a task's own cleanup beside AIO's ----------------------------------
 \ The registration AIO makes at the first submission is one entry in the task's
 \ TASK:AT-EXIT chain, so the cleanup the task registered before submitting runs
 \ too: the mark is set once, and AIO's own cleanup still cancelled and forgot the
@@ -934,9 +907,9 @@ CAST: XFER>N ( AIO:xfer -- n )
    P-R P-W PIPE-CLOSE
    AIO:START ;
 
-\ ---- 10: a task halted while parked in AWAIT --------------------------------
-\ Its cleanup cancels and forgets the operation, so the loop never wakes a TCB
-\ the join has released and the ring goes idle without it.
+\ A task halted while parked in AWAIT: its cleanup cancels and forgets the
+\ operation, so the loop never wakes a TCB the join has released and the ring
+\ goes idle without it.
 : HALT-WORK ( -- )
    P-R @ >FD AIO:READABLE -1 >MS AIO:POLL LONE-TICKET !
    1 HALT-PARKED atomic!
@@ -954,7 +927,6 @@ CAST: XFER>N ( AIO:xfer -- n )
    STOP-LOOP
    P-R P-W PIPE-CLOSE ;
 
-\ ---- 11: the ring opens again ------------------------------------------------
 : CASE-RESTART ( -- )
    AIO:RUNNING? TFALSE
    AIO:START

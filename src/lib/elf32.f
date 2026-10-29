@@ -1,28 +1,9 @@
 \ elf32.f - bounded ELF32 little-endian header and program-segment reader, in
-\ `package ELF32`. It does not allocate, load code, interpret sections or
-\ relocations, or choose a processor ABI; a firmware image builder applies
-\ its machine and loading policy to these records.
-\
-\ The input is a live byte pointer and NUM:byte-len: the caller owns the
-\ buffer and supplies its real readable extent (FILE-BYTES checks only that a
-\ raw length is nonnegative). Addresses are file values, never host pointers.
-\ A segment's data span borrows the input: do not release, mutate or resize it
-\ while the span is in use. A zero-length segment and PT_NULL (whose other
-\ fields are undefined; its raw metadata stays readable) return an empty span
-\ at the input start.
-\ Accepted: version 1, ELFCLASS32, ELFDATA2LSB, larger declared header and
-\ program-entry strides with valid bounds, no program entries. Extended
-\ program counts (PN_XNUM) are E-UNSUPPORTED; section tables are never read.
-\ Every nonempty non-null segment must fit the input; PT_LOAD also needs file
-\ size <= memory size, a virtual extent inside 32 bits and valid alignment.
-\ Physical addresses, unknown machine and segment ids pass through to the
-\ consumer. VALIDATE checks only the header and every segment as above, not
-\ full ELF ABI conformance (ordering, dynamic linking, permissions, entry,
-\ sections, machine flags, relocations). Errors are E-FORMAT, E-BOUNDS and
-\ E-UNSUPPORTED, and none changes the input.
-\
-\ STORAGE CLASS. CALLER-OWNED: the module reads the caller's bytes and keeps
-\ no state.
+\ `package ELF32`; it never allocates, loads code, reads sections or relocations
+\ or picks an ABI. The caller supplies the input's real readable extent;
+\ addresses are file values, never host pointers. A segment's data span borrows
+\ the input: do not release, mutate or resize it while the span is in use.
+\ STORAGE CLASS. CALLER-OWNED: the module keeps no state; no error changes input.
 require src/lib/type/deftype.f
 require src/lib/num-types.f
 require src/lib/errors.f
@@ -173,6 +154,13 @@ public
    data index PROGRAM-INDEX>N PROGRAM-ROW {: row :}
    row size BLEN>N CHECK-ROW data row MAKE-SEGMENT ;
 
+\ Accepted: version 1, ELFCLASS32, ELFDATA2LSB, larger declared header and entry
+\ strides with valid bounds, no program entries; PN_XNUM is E-UNSUPPORTED. Every
+\ nonempty non-null segment fits the input; PT_LOAD also needs file size <=
+\ memory size, a virtual extent inside 32 bits and valid alignment. A zero-length
+\ segment and PT_NULL answer an empty span at the input start. Physical
+\ addresses and unknown machine and segment ids pass through; ordering, dynamic
+\ linking, permissions, entry and machine flags are not checked.
 : VALIDATE ( ptr u8 NUM:byte-len -- ) {: data size:NUM:byte-len :}
    data size BLEN>N HEADER-CHECKED
    data PH-COUNT 0 ?do data i PROGRAM-ROW size BLEN>N CHECK-ROW loop ;

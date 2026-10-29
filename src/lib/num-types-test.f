@@ -1,29 +1,20 @@
-\ num-types-test.f - the NUM boundary + static-rejection matrix
-\ (dot habu-implement-cad-num-962bf5d9). Run:
-\   bin/hb --load src/lib/num-types-test.f
-\
-\ Focused direct-loaded gate home for the NUM contract. Production modules load
-\ these types transitively through src/lib/num-arithmetic.f; this file owns the
-\ validator boundary matrix, not library authority. The canonical native registry
-\ schedules it through test/gate-stdlib-cases.f.
-\
-\ numeric-result<a> has no polymorphic eliminator yet (whole-bundle MATCH, dot
-\ habu-eliminate-a-parameterised-7ce778f8), so a caller MATCHes the concrete
-\ instantiation it holds. Each `*-CODE` word below is that concrete classifier:
-\ it maps a role's numeric-result to 0 (ok) or the named E-NUM-* refusal code,
-\ so the runtime matrix asserts the EXACT refusal, not merely "not ok".
+\ num-types-test.f - the NUM boundary and static-rejection matrix.
+\ Run: bin/hb --load src/lib/num-types-test.f; test/gate-stdlib-cases.f
+\ schedules it. numeric-result<a> has no polymorphic eliminator (only
+\ whole-bundle MATCH), so each `*-CODE` word
+\ MATCHes one concrete instantiation, mapping it to 0 (ok) or the exact E-NUM-*
+\ refusal.
 
 require src/lib/errors.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/num-types.f
 
-\ ---- boundary constants (independently mirror the library bound) --------------
+\ The bounds mirror the library's independently.
 $7FFFFFFFFFFFFFFF constant T-MAX-N                 \ largest nonnegative cell
 T-MAX-N 1 cells / constant T-MAX-ALLOC-CELLS       \ MAX-N / CELL-BYTES
 $4000000000000000 constant T-LARGEST-POW2          \ largest positive power-of-two alignment
 
-\ ---- per-role concrete classifiers: numeric-result<role> -> code (0 = ok) -----
 : BL-CODE ( NUM:numeric-result<NUM:byte-len> -- n )
    MATCH NUM:numeric-result
       ok OF drop 0 ENDOF                    negative OF E-NUM-NEGATIVE ENDOF
@@ -95,7 +86,6 @@ $4000000000000000 constant T-LARGEST-POW2          \ largest positive power-of-t
       misaligned OF E-NUM-MISALIGNED ENDOF
    ;MATCH ;
 
-\ ---- allocation caller path: build a zero-admitting role, then narrow it ------
 \ A negative raw cell is rejected by the base validator and never reaches the
 \ allocator sink (its ok arm is where AS-ALLOC-* runs).
 : ALLOC-BYTES# ( n -- n )
@@ -115,7 +105,6 @@ $4000000000000000 constant T-LARGEST-POW2          \ largest positive power-of-t
       bad-alignment OF E-NUM-BAD-ALIGNMENT ENDOF  misaligned OF E-NUM-MISALIGNED ENDOF
    ;MATCH ;
 
-\ ---- runtime boundary matrix: every role x its applicable boundaries ----------
 : RT-ORDINARY ( -- )                         \ zero valid; positive valid; negative rejected
    5 NUM:BYTE-LEN BL-CODE 0 T=
    0 NUM:BYTE-LEN BL-CODE 0 T=
@@ -177,7 +166,6 @@ $4000000000000000 constant T-LARGEST-POW2          \ largest positive power-of-t
    T-REPORT ;
 RT
 
-\ ---- static rejection matrix: raw n and cross-role swaps reject at CHECK -------
 \ CHECK-QUIET-CANDIDATE!: -1 accepted, 0 rejected (type error), 1 uncheckable.
 : STAT ( -- )
    T-RESET
@@ -210,15 +198,9 @@ private
 : YES   ( ptr u8 n -- )   CHECK-QUIET-CANDIDATE! -1 T= ;
 : NO    ( ptr u8 n -- )   CHECK-QUIET-CANDIDATE!  0 T= ;
 
-\ ---- compiled round trip: construct through all seven generated constructors --
-\ The checker pins further down prove the constructors resolve and type-check as
-\ candidate text. This word proves they work in COMPILED code: it takes a real
-\ numeric-result apart and puts it back together arm by arm, so all seven
-\ generated constructors are compiled, and the ok arm binds its payload through a
-\ typed local before handing it back to the ok constructor. The seven-arm shape is
-\ repeated rather than factored because a polymorphic eliminator over the whole
-\ bundle is not expressible yet (dot habu-eliminate-a-parameterised-7ce778f8), which
-\ is the same reason the ten classifiers at the top of this file repeat it.
+\ Compiles all seven generated constructors: it takes a real numeric-result
+\ apart and rebuilds it arm by arm, the ok arm binding its payload through a
+\ typed local. The seven-arm shape repeats for the eliminator reason above.
 : REBUILD-CC ( NUM:numeric-result<NUM:cell-count> -- NUM:numeric-result<NUM:cell-count> )
    MATCH NUM:numeric-result
       ok OF {: got:NUM:cell-count :} got NUM-NUMERIC--RESULT:OK ENDOF
@@ -270,7 +252,6 @@ ENUM nr-twin<a>
 
 private
 
-\ ---- generated constructors: exact spelling + exact effect --------------------
 s" NC-OK ( NUM:byte-len -- NUM:numeric-result<NUM:byte-len> ) NUM-NUMERIC--RESULT:OK" YES
 s" NC-NEG ( -- NUM:numeric-result<NUM:byte-len> ) NUM-NUMERIC--RESULT:NEGATIVE" YES
 s" NC-ZERO ( -- NUM:numeric-result<NUM:byte-len> ) NUM-NUMERIC--RESULT:ZERO" YES
@@ -281,7 +262,6 @@ s" NC-MISAL ( -- NUM:numeric-result<NUM:byte-len> ) NUM-NUMERIC--RESULT:MISALIGN
 \ the payload parameter really is a parameter: a second, unrelated role instantiates it
 s" NC-OK-AL ( NUM:alignment -- NUM:numeric-result<NUM:alignment> ) NUM-NUMERIC--RESULT:OK" YES
 
-\ ---- forge negatives on the ok payload slot -----------------------------------
 \ NF-XROLE and NF-INST are the sharp ones. Every role in this package is one cell
 \ wide, so nothing but the nominal family separates a cell count from a byte
 \ length; the ok constructor must refuse the wrong role in the payload and must
@@ -297,7 +277,6 @@ s" NT-OK ( NUM:byte-len -- nr-twin<NUM:byte-len> ) NUM--TEST-NR--TWIN:OK" YES
 s" NT-X1 ( NUM:byte-len -- nr-twin<NUM:byte-len> ) NUM-NUMERIC--RESULT:OK" NO
 s" NT-X2 ( NUM:byte-len -- NUM:numeric-result<NUM:byte-len> ) NUM--TEST-NR--TWIN:OK" NO
 
-\ ---- compiled round trip through every generated constructor ------------------
 5 RT-TAG# 0 T=                            \ ok is rebuilt as ok ...
 0 RT-TAG# 0 T=
 T-MAX-N RT-TAG# 0 T=

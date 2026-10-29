@@ -1,10 +1,6 @@
-\ signal-test.f - package SIGNAL: the self-pipe, the caught set, the WAIT
-\ window and the refusals, against real deliveries this process sends itself.
-\
-\ Only SIGUSR1 and SIGUSR2 are ever raised here. SIGTERM and SIGINT would end
-\ the run on any path that reaches them before their disposition is installed.
-\
-\ Run: bin/hb --load src/lib/signal-test.f
+\ signal-test.f - package SIGNAL against real deliveries this process sends
+\ itself. Only SIGUSR1 and SIGUSR2 are raised: SIGTERM and SIGINT would end the
+\ run on any path that reaches them before their disposition is installed.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -20,13 +16,10 @@ require src/habu/layout.f
 package SIGNAL-TEST
 private
 
-\ THE EXPECTATIONS FOLLOW THE HOST, AND THIS FILE SPELLS THEM ITSELF. src/lib/signal.f
-\ selects its record layout, its SA_RESTART and its SIGUSR numbers per target;
-\ asserting one host's values would make this suite - and the process-signals
-\ gate that runs it - red by construction on the other supported target. The
-\ arms below are a second, independent spelling of the same platform facts, so a
-\ wrong arm in the library still fails here. Both arms run, on Linux and macOS
-\ hosts; a third target is refused by name.
+\ src/lib/signal.f selects its record layout, SA_RESTART and SIGUSR numbers per
+\ target. These arms spell the same platform facts independently, so a wrong
+\ library arm fails here; asserting one host's values would make this suite red
+\ on the other target. A third target is refused by name.
 : EXPECT-SIGUSR1 ( -- n )
    HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if 10 exit then
    HB-TARGET-MACOS? if 30 exit then
@@ -81,7 +74,7 @@ $FFFFFFFF constant INT-MASK        \ sa_flags is an int; the cell read carries i
 create SA-ACT SA-BUF-BYTES allot
 create SA-OLD SA-BUF-BYTES allot
 
-PTR-VARIABLE ABI-KEPT              \ it holds a pointer, so it is declared as one
+PTR-VARIABLE ABI-KEPT
 variable MAIN-FD-WORD
 variable TASK-FD-WORD
 variable TASK-RAISED
@@ -183,7 +176,6 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
       timeout OF 0 0 T= ENDOF
    ;MATCH ;
 
-\ ---- case zero: the target arms picked this host's values --------------------
 \ 10/12 on Linux and 30/31 on macOS, against this file's own arm rather than the
 \ library's: a library that spelled one host's number everywhere would agree
 \ with itself on both and fail here on one.
@@ -194,8 +186,6 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
 
    s" ... and so does SIGUSR2" T-LABEL
    SIGNAL:SIGUSR2 EXPECT-SIGUSR2 T= ;
-
-\ ---- case one: every word refuses before INIT --------------------------------
 
 : COLD-CASE ( -- )
    s" FD before INIT is refused by name" T-LABEL
@@ -216,8 +206,6 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
    s" RELEASE before INIT is refused by name" T-LABEL
    [: SIGNAL:RELEASE ;] E-SIGNAL-STATE TTHROWSQ ;
 
-\ ---- case two: INIT arms the one word, and refuses a second one --------------
-
 : ARMED-CASE ( -- )
    s" INIT armed the fd word with a descriptor" T-LABEL
    FD-WORD @ 0 <> TTRUE
@@ -234,7 +222,6 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
    s" a second INIT without RELEASE is refused by name" T-LABEL
    [: SIGNAL:INIT ;] E-SIGNAL-STATE TTHROWSQ ;
 
-\ ---- case two and a half: the window waits on the loop -----------------------
 \ The facility is armed and the loop is not: WAIT and PENDING? say so by name
 \ instead of falling back to a thread parked in poll(2). A COLD facility still
 \ names E-SIGNAL-STATE (case one), because NEED-READY runs before the wait.
@@ -249,8 +236,6 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
    [: SIGNAL:PENDING? drop ;] E-AIO-STATE TTHROWSQ
 
    AIO:START ;
-
-\ ---- case three: what CATCH installed ----------------------------------------
 
 : CAUGHT-CASE ( -- )
    SIGNAL:SIGUSR1 REINSTALL
@@ -267,8 +252,6 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
    s" ... and one above it" T-LABEL
    [: SIG-ABOVE SIGNAL:CATCH ;] E-SIGNAL-NUMBER TTHROWSQ ;
 
-\ ---- case four: a raised signal comes back as its number ---------------------
-
 : DELIVERED-CASE ( -- )
    SIGNAL:SIGUSR1 RAISE
 
@@ -277,8 +260,6 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
 
    s" ... once, not once per WAIT" T-LABEL
    0 >MS SIGNAL:WAIT WANT-TIMEOUT ;
-
-\ ---- case five: two before one WAIT are answered in order --------------------
 
 : ORDER-CASE ( -- )
    SIGNAL:SIGUSR1 RAISE
@@ -290,8 +271,6 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
    s" ... and the second WAIT answers the second" T-LABEL
    RAISE-WAIT-MS >MS SIGNAL:WAIT SIGNAL:SIGUSR2 WANT-SIGNAL ;
 
-\ ---- case six: an empty window closes as a timeout ---------------------------
-
 : TIMEOUT-CASE ( -- )
    mono-ns {: started :}
    QUIET-MS >MS SIGNAL:WAIT {: answer :}
@@ -301,8 +280,6 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
 
    s" ... after waiting out the window it was given" T-LABEL
    started ELAPSED-MS QUIET-MS >= TTRUE ;
-
-\ ---- case seven: PENDING? around one delivery --------------------------------
 
 : PENDING-CASE ( -- )
    s" PENDING? is false with nothing on the descriptor" T-LABEL
@@ -322,7 +299,6 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
    s" ... after which PENDING? is false again" T-LABEL
    SIGNAL:PENDING? 0= TTRUE ;
 
-\ ---- case eight: a delivery in a spawned task's company ----------------------
 \ The handler runs on whichever thread the kernel hands the signal to, and the
 \ main task is inside TASK:SLEEP for the whole of it. The raiser reads the fd
 \ word through the pointer kept in the main task, because its own region
@@ -365,7 +341,6 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
    s" a signal raised while the main task slept is still answered" T-LABEL
    RAISE-WAIT-MS >MS SIGNAL:WAIT SIGNAL:SIGUSR1 WANT-SIGNAL ;
 
-\ ---- case nine: two tasks WAIT, one signal ------------------------------------
 \ Both tasks are inside one WAIT window when the signal lands, so both waits are
 \ answered with POLLIN and only one of them finds four bytes left to read. Both
 \ wait on the one loop, which costs neither task a thread parked in poll(2).
@@ -417,7 +392,6 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
    s" the loser closed on its own deadline, not on the next signal" T-LABEL
    A-MS @ B-MS @ max RACE-WINDOW-MS RACE-SLACK-MS + <= TTRUE ;
 
-\ ---- case ten: CATCH and RELEASE answer to the task that ran INIT -------------
 \ They install through the one SA-ACT and read back the one SA-OLD, so a second
 \ task in either would be overwriting a record the owner is using. FD shares
 \ none of that and stays callable.
@@ -442,8 +416,6 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
 
    s" ... while FD, which writes neither, answers that task too" T-LABEL
    OUTSIDER-FD @ 0 T= ;
-
-\ ---- case eleven: RELEASE disarms the word and closes both ends --------------
 
 : RELEASE-CASE ( -- )
    SIGNAL:FD FD>N RELEASED-FD !
@@ -475,7 +447,6 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
    s" the facility refuses its words again once released" T-LABEL
    [: SIGNAL:FD drop ;] E-SIGNAL-STATE TTHROWSQ ;
 
-\ ---- case twelve: a read end closed behind the facility's back ---------------
 \ Not a state a caller reaches politely - it is the one thing a wait on that
 \ read end must never do, which is re-ask a descriptor the kernel will not poll
 \ until the deadline runs out. The loop answers it on the REFUSED arm: the
@@ -497,7 +468,6 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
    s" ... and RELEASE names the close it could not make" T-LABEL
    [: SIGNAL:RELEASE ;] E-SIGNAL-CLOSE TTHROWSQ ;
 
-\ ---- case thirteen: IGNORE, and the RELEASE that undoes it -------------------
 \ SIGUSR1 carries SIG_DFL here (case eleven), and its default action ends the
 \ process: a raise the ignore did not take ends this run with that signal.
 

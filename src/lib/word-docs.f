@@ -1,39 +1,11 @@
 \ word-docs.f - package WORD-DOCS: the words a Habu source text defines, each
-\ with its package, section, stack effect and the comment above it, read
-\ through the shared lexer (src/lib/source-lex.f, package LINT-LEX).
-\
-\ FILE ( ptr u8 n -- ) reads one source text and appends one record per
-\ definition in source order: `: NAME`, and `EXPORT NAME` inside an open
-\ package (at top level EXPORT is a build directive and defines nothing). Other
-\ definers make no record. `package P` opens P, a reopened P included, in its
-\ private section; `public` and `private` switch sections; `;package` closes it.
-\ Record n, below COUNT:
-\   PACKAGE$ ( n -- ptr u8 n )  the open package; empty at top level
-\   NAME$    ( n -- ptr u8 n )  the name; for EXPORT its operand as written
-\                               (`MAKI-SKETCH:XY`), whose tail the package
-\                               publishes
-\   EFFECT$  ( n -- ptr u8 n )  the trimmed body of a `( ... )` comment that
-\                               is the next token after the name, on its line
-\                               or a later one, with no `\` comment between,
-\                               as the checker reads a declared effect; else
-\                               empty, and empty for EXPORT
-\   COMMENT$ ( n -- ptr u8 n )  the whole `\` comment lines that end on the
-\                               line above the definition, each without its `\`
-\                               and one space after it and trimmed at its end,
-\                               joined by newlines; a blank line or code ends
-\                               them; empty without one
-\   PUBLIC?  ( n -- bool )      made in a package's public section
-\   EXPORT?  ( n -- bool )      made by EXPORT
-\ RESET ( -- ) drops every record and releases their storage. A text the lexer
-\ refuses (LINT-LEX:ERROR?), or a `:`, `package` or EXPORT that the text ends
-\ before naming, throws E-SOURCE; the records read before it stay until RESET.
-\ A record past COUNT is E-VEC-BOUNDS, and any record after RESET E-VEC-STATE.
-\
-\ STORAGE CLASS. PROCESS-WIDE: one record set for the image. A record is one
-\ bump allocation, its header cells and then its copied text, taken from
-\ chunks of CHUNK-BYTES, or larger for a larger record, that RESET releases
-\ together. The answered spans stay valid until RESET; FILE keeps none of the
-\ text it was given.
+\ with its package, section, stack effect and the comment above it, read through
+\ the shared lexer (src/lib/source-lex.f, package LINT-LEX).
+\ STORAGE CLASS. PROCESS-WIDE: one record set for the image.
+
+\ Each record is one bump allocation from chunks of CHUNK-BYTES, larger for a
+\ larger record, that RESET releases together; answered spans stay valid until
+\ RESET, and FILE keeps none of its text.
 
 require src/lib/string.f
 require src/lib/memory.f
@@ -70,8 +42,6 @@ variable SRC-U
 TYPED-VARIABLE PKG ptr u8                     \ the open package's name, in the text
 variable PKG-U                                \ 0 at top level
 variable PUB                                  \ the open section is public
-
-\ ---- storage ------------------------------------------------------------------
 
 \ Record and chunk counts drive raw loops and COUNT, so a vector length or
 \ capacity leaves its role here.
@@ -117,15 +87,12 @@ CAST: ITEM>N ( NUM:item-count -- n )
    at need + USED !
    CHUNK @ at + ;
 
-\ ---- the text -----------------------------------------------------------------
-
 : SRC@ ( -- ptr u8 )
    SRC @ ;
 
 : BYTE ( n -- n )
    SRC@ + c@ ;
 
-\ The first byte of the line holding byte i.
 : LINE-START ( n -- n )
    begin dup 0 > if dup 1- BYTE STR-LF <> else false then while 1- repeat ;
 
@@ -142,7 +109,6 @@ CAST: ITEM>N ( NUM:item-count -- n )
    k LINT-LEX:LITERAL? if k LINT-LEX:CONTENT + 1+ else k LINT-LEX:TOKEN + then
    SRC@ - ;
 
-\ ---- the comment above a definition --------------------------------------------
 \ Between two tokens the text holds only delimiters and `\` comments, so a
 \ whole line in that gap whose first byte past its delimiters is `\` is a
 \ comment line.
@@ -172,7 +138,6 @@ CAST: ITEM>N ( NUM:item-count -- n )
    SRC@ t + e t - RTRIM
    e 1+ ;
 
-\ The joined length of the comment lines in [top, stop).
 : NOTES-LEN ( n n -- n ) {: top:n stop:n :}
    top stop >= if 0 exit then
    -1 top
@@ -193,8 +158,6 @@ CAST: ITEM>N ( NUM:item-count -- n )
       next
    repeat 2drop ;
 
-\ ---- records ------------------------------------------------------------------
-
 : REC ( n -- ptr u8 )
    0 RECS swap VEC:N>INDEX VEC:@ ;
 
@@ -213,8 +176,6 @@ CAST: ITEM>N ( NUM:item-count -- n )
 : SECTION ( -- n )
    PUB @ if PUBLIC-BIT else 0 then ;
 
-\ Append the record of the definition token k starts, named a u, with effect
-\ e eu and flags.
 : ADD ( n ptr u8 n ptr u8 n n -- )
    {: k:n a:ptr u:n e:ptr eu:n flags:n :}
    k LINT-LEX:BYTE@ LINE-START {: stop:n :}
@@ -234,8 +195,6 @@ CAST: ITEM>N ( NUM:item-count -- n )
    e t PKG-U @ + u + eu BYTE-COPY
    t PKG-U @ + u + eu + top stop NOTES-COPY
    r 0 RECS VEC:PUSH drop ;
-
-\ ---- the scan -----------------------------------------------------------------
 
 : LEXED ( -- )
    LINT-LEX:ERROR? if E-SOURCE throw then ;
@@ -292,6 +251,12 @@ CAST: ITEM>N ( NUM:item-count -- n )
 
 public
 
+\ Appends one record per definition in source order: `: NAME`, and `EXPORT NAME`
+\ inside an open package (at top level EXPORT is a build directive). Other
+\ definers make no record. `package P` opens P, reopened or not, in its private
+\ section; `public` and `private` switch sections; `;package` closes it. A text
+\ the lexer refuses (LINT-LEX:ERROR?), or a `:`, `package` or EXPORT it ends
+\ before naming, throws E-SOURCE; the records read before it stay until RESET.
 : FILE ( ptr u8 n -- ) {: a:ptr u:n :}
    LIVE? 0= if INIT then
    a SRC !  u SRC-U !
@@ -299,6 +264,8 @@ public
    a u LINT-LEX:SOURCE LEXED
    0 begin dup LINT-LEX:COUNT < while dup STEP 1+ repeat drop ;
 
+\ Drops every record and releases their storage. A record past COUNT is
+\ E-VEC-BOUNDS, and any record after RESET E-VEC-STATE.
 : RESET ( -- )
    LIVE? 0= if exit then
    RELEASE-CHUNKS
@@ -307,15 +274,23 @@ public
    0 ROOM !
    0 USED ! ;
 
+\ Empty at top level.
 : PACKAGE$ ( n -- ptr u8 n )
    0 TEXT$ ;
 
+\ For EXPORT, its operand as written (`MAKI-SKETCH:XY`), whose tail the package
+\ publishes.
 : NAME$ ( n -- ptr u8 n )
    1 TEXT$ ;
 
+\ The trimmed body of the `( ... )` comment EFFECT finds after the name, as the
+\ checker reads a declared effect; empty without one, and for EXPORT.
 : EFFECT$ ( n -- ptr u8 n )
    2 TEXT$ ;
 
+\ The whole `\` comment lines that end on the line above the definition, each
+\ without its `\` and one space after it and trimmed at its end, joined by
+\ newlines; a blank line or code ends them. Empty without one.
 : COMMENT$ ( n -- ptr u8 n )
    3 TEXT$ ;
 

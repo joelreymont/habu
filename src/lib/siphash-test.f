@@ -1,16 +1,9 @@
 \ siphash-test.f - SIPHASH against the SipHash-2-4 reference vectors, and
-\ ENTROPY:FILL against the OS generator.
-\
-\ SIPT-VEC is vectors_sip64 of the reference implementation
-\ (github.com/veorq/SipHash, vectors.h): entry i is SipHash-2-4 of the bytes
-\ 00 01 .. i-1 under the key 00 01 .. 0f, its eight output bytes read
-\ little-endian. Every length 0..63 is checked through BYTES, through
-\ ABSORB-BYTE alone, and through ABSORB-WORD at every alignment.
-\
-\ SIPT-LONG-VEC holds the reference siphash.c's outputs, read the same way,
-\ for lengths 255, 256 and 257 of the bytes (i*37+$80) & $FF under that key:
-\ high-bit bytes, and lengths whose low byte, the only one the final block
-\ carries, wraps.
+\ ENTROPY:FILL against the OS generator. SIPT-VEC is vectors_sip64 of
+\ github.com/veorq/SipHash vectors.h: entry i hashes bytes 00..i-1 under key
+\ 00..0f, read little-endian. SIPT-LONG-VEC is the reference siphash.c's output
+\ for lengths 255-257 of bytes (i*37+$80) & $FF: high-bit bytes, and lengths
+\ whose low byte, the only one the final block carries, wraps.
 
 require src/lib/errors.f
 require src/lib/test.f
@@ -57,20 +50,17 @@ create SIPT-STATE SIPHASH:STATE-CELLS cells allot
 
 : SIPT-START ( -- ) SIPT-STATE SIPT-K0 SIPT-K1 SIPHASH:INIT ;
 
-\ Append message bytes [from, to) one at a time.
 : SIPT-BYTES+ ( n n -- )
    {: from:n to:n :}
    to from ?do SIPT-STATE SIPT-MSG i + c@ SIPHASH:ABSORB-BYTE loop ;
 
 
-\ The message's eight bytes at off as one little-endian cell.
 : SIPT-WORD@ ( n -- n )
    {: off:n :}
    0 8 0 ?do SIPT-MSG off + i + c@ i 8 * lshift or loop ;
 
 
-\ Hash the first len bytes: lead bytes singly, then as many whole words as fit,
-\ then the rest singly. A lead of 1..7 puts every word off the block boundary.
+\ A lead of 1..7 puts every word off the block boundary.
 : SIPT-MIXED ( n n -- n )
    {: len:n lead:n :}
    SIPT-START
@@ -102,7 +92,6 @@ create SIPT-BIG SIPT-BIG-N allot
    len 0 ?do 0 p i + c! loop ;
 
 
-\ How many of the first n bytes differ between two spans.
 : SIPT-DIFFS ( ptr u8 ptr u8 n -- n )
    {: p q len:n :}
    0 len 0 ?do p i + c@ q i + c@ <> if 1+ then loop ;
@@ -124,7 +113,6 @@ create SIPT-BIG SIPT-BIG-N allot
       SIPT-LONG i +  i cells SIPT-LONG-VEC + @  SIPT-CHECK
    loop
    [: SIPT-K0 SIPT-K1 SIPT-MSG -1 SIPHASH:BYTES drop ;] E-SPAN-LENGTH TTHROWSQ
-   \ two fills of 32 bytes from the OS generator differ
    SIPT-A SIPT-SMALL SIPT-ZERO  SIPT-B SIPT-SMALL SIPT-ZERO
    SIPT-A SIPT-SMALL ENTROPY:FILL  SIPT-B SIPT-SMALL ENTROPY:FILL
    SIPT-A SIPT-B SIPT-SMALL SIPT-DIFFS 0 T<>

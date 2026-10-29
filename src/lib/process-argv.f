@@ -1,16 +1,9 @@
-\ process-argv.f - checked argv process helpers.
-\
-\ STORAGE CLASS. PROCESS-WIDE: the argv table and its row bytes are one set
-\ for the image, so a task preparing a spawn through them holds them until the
-\ spawn resets them. Both grow with the rows added; a reset keeps their storage
-\ for the next command line and an image save releases it. An owned CMD run
-\ (src/lib/process-command.f) passes its own vectors and touches none of this.
-\
-\ SPAWN. src/lib/process.f "SPAWN" states how these words spawn.
-\
-\ ENVIRONMENT. These spawns pass the child no variables. To inherit, prepare an
-\ environment (src/lib/process-env.f PROC-ARGV-ENV-RESET ...
-\ PROC-ENV-INHERIT-MISSING) and spawn through its *-ARGV-ENV-* words.
+\ process-argv.f - checked argv process helpers; how they spawn is src/lib/process.f
+\ "SPAWN". These spawns pass the child no variables: to inherit, prepare an
+\ environment (src/lib/process-env.f) and spawn through its *-ARGV-ENV-* words.
+\ STORAGE CLASS. PROCESS-WIDE: one argv table and row bytes for the image, held by
+\ the task preparing a spawn until the spawn resets them; a reset keeps the storage,
+\ an image save releases it. An owned CMD run (process-command.f) touches none of it.
 
 s" src/lib/errors.f" required
 s" src/lib/memory.f" required

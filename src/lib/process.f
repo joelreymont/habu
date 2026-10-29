@@ -1,69 +1,36 @@
-\ process.f - checked process helpers.
-\
-\ STORAGE CLASS. TASK-LOCAL. The path staging buffer, the pollfd array and the
-\ per-call capture slots are one PROC-STORAGE-BYTES TASK:+USER row, so each task
-\ spawns, polls, drains and reaps through its own descriptors, lengths, deadline
-\ and wait status, and any number of tasks may run children at once.
-\ PROC-WAIT-BOUNDED's status cell is a TASK:+USER slot of its own. The byte
-\ spans the capture and POLL words take are caller-owned. The PROC-REAP-ARM
-\ vector, and the PROC-STOP vector with its PROC-STOP-FD, are process-wide:
-\ each is one installed policy, not per-call state. A capture that ends its
-\ child early walks the process table through src/lib/process-tree.f, whose
-\ storage is process-wide and taken one walk at a time.
-\
-\ SPAWN. Every RAW spawn word here and in process-argv.f, process-env.f and
-\ process-cwd.f builds a PROCESS request (src/lib/spawn.f) in a PROC-RAW body,
-\ spawns it through PROCESS:SPAWN under catch and answers the pid, or the
-\ negated errno of a refused spawn. A spawned child leads a process group of
-\ its own before it execs: macOS spawns with POSIX_SPAWN_SETPGROUP, and on
-\ Linux the child calls setpgid(0,0) and the parent answers a pid only once a
-\ close-on-exec pipe reports the exec or its failure. A parent-side setpgid
-\ would race; the gate pool's reaper relies on this. The child's fds 0, 1 and
-\ 2 are the fds a RAW word names, a negative one inheriting the parent's fd of
-\ that number while it is open, close-on-exec or not: a spawned child gets
-\ only its map. A forked child (src/lib/process-fork.f) copies every
-\ descriptor, marked or not, and one that execs keeps those not marked
-\ close-on-exec, so mark parent-only pipe and pty ends close-on-exec, or that
-\ child holds a writer and the parent never sees EOF. src/lib/fd-lock.f orders
-\ the mark against forks.
+\ process.f - spawn, capture, poll and reap child processes.
+\ The path buffer, pollfd array and capture slots are one PROC-STORAGE-BYTES
+\ TASK:+USER row per task, so any number of tasks run children at once; the
+\ PROC-REAP-ARM and PROC-STOP vectors are process-wide policies. Spawn requests
+\ are src/lib/spawn.f's, tree kills src/lib/process-tree.f's; process-argv.f,
+\ process-env.f and process-cwd.f add spawn shapes.
 
 s" src/lib/errors.f" required
 s" src/lib/memory.f" required                \ MEM-MAX-N bounds PROC-DEADLINE-AT
-s" src/lib/adt/result.f" required            \ result<n,n> for PROC-RUN-IO-RC (switchover wave B)
+s" src/lib/adt/result.f" required            \ result<n,n> for PROC-RUN-IO-RC
 s" src/lib/task.f" required                  \ TASK:+USER carries the per-call row
 s" src/lib/fd-lock.f" required               \ FD-LOCK:WITH orders descriptor creation against spawns
 s" src/lib/spawn.f" required                 \ PROCESS:request and PROCESS:SPAWN, the spawn every RAW word makes
 s" src/lib/process-tree.f" required          \ PROC-TREE:KILL-TREE ends a capture child's tree
 
-\ outcome - how a child process completed (switchover wave C): a clean exit
-\ carrying the exit code, a signal death carrying the signal, or a timeout,
-\ which carries nothing: no terminal status was collected before the deadline.
-\ What a timeout leaves behind is its producer's contract. A capture has killed
-\ its child's tree with SIGKILL and reaped the child; PROC-WAIT-BOUNDED leaves
-\ the child running and the pid, still to be reaped, with its caller. The
-\ checker forces every consumer through exhaustive MATCH; PROC-OUTCOME>RC is the
-\ rc flattener. A timeout is a deadline, not a status of the child's: a reader
-\ that turns an outcome into a status or a test verdict throws E-PROC-TIMEOUT
-\ for it (PROC-OUTCOME>RC here, the asserts in src/lib/test/outcome.f), so a
-\ deadline that expires under a gate row reaches the pool as a timeout. Only a
-\ caller that acts on the deadline itself MATCHes it as data.
+\ outcome - how a child completed. timeout carries nothing: no terminal status
+\ was collected before the deadline. After a timeout a capture has killed its
+\ child's tree with SIGKILL and reaped the child; PROC-WAIT-BOUNDED leaves the
+\ child running and the pid with its caller to reap. A reader that turns an
+\ outcome into a status or a test verdict throws E-PROC-TIMEOUT for a timeout
+\ (PROC-OUTCOME>RC, the asserts in src/lib/test/outcome.f), so a deadline under
+\ a gate row reaches the pool as a timeout; only a caller that acts on the
+\ deadline itself MATCHes it as data.
 SUMTYPE outcome
   VARIANT exited n ;VARIANT
   VARIANT signaled n ;VARIANT
   VARIANT timeout ;VARIANT
 ;SUMTYPE
 
-\ pcap - the byte-length pair a bounded capture always produces, split by how the
-\ child completed (switchover wave B). A clean exit carries just the two captured
-\ lengths (captured); a nonzero completion carries the SAME two lengths PLUS its
-\ completion code — a nonzero exit code, or 128+signal (failed). The lengths are
-\ valid on BOTH arms: captured output is real whether or not the child exited
-\ clean, and callers replay it either way, so both structures keep the lengths and
-\ only the failure adds the code. The rc sentinel this replaces buried the
-\ clean-vs-failed distinction in one signed cell; the result forces every caller
-\ to MATCH both arms. (No errno is returned here — OS spawn/wait failures THROW
-\ E-PROC-SPAWN/E-PROC-WAIT inside the spawn path; the code is the child's own
-\ completion code, never an errno.)
+\ pcap - a bounded capture's two output lengths: captured on a clean exit, failed
+\ on a nonzero completion with its code (a nonzero exit code or 128+signal, never
+\ an errno: spawn and wait failures throw E-PROC-SPAWN and E-PROC-WAIT). The
+\ lengths are valid on both arms; callers replay the output either way.
 package PCAP
 public
 STRUCTURE captured
@@ -117,22 +84,13 @@ $FF constant PROC-WAIT-EXIT-MASK
 -1 constant PROC-NO-FD                   \ a closed / never-opened descriptor cell
 -1 constant PROC-NO-PID                  \ no child, and no armed reaper
 
-\ --- the per-task row --------------------------------------------------------
-\ One TASK:+USER row, laid out like src/lib/net/tcp4.f's: a poll array shared by two
-\ tasks hands each of them the other's descriptor in slot 0, so a task capturing
-\ a child and a task in POLL-IN used to poll each other's pipes
-\ (dot habu-make-the-process-6e615161). Every cell below is per-call state of one
-\ spawn/capture, so the whole set moves together; a task that shares nothing
-\ shares no slot.
-\
-\ A fresh task's region is zeroed, so the row reads 0 before its first capture,
-\ exactly as the dictionary cells it replaces read 0 before the image's first
-\ one: every entry point resets the row through PROC-CAPTURE-RESET before any
-\ word reads a descriptor, and every pid guard below is `0 >`, so it treats
-\ the zero and the PROC-NO-PID sentinel alike. PROC-KILL-CAPTURE is also
-\ called outside a capture (tools/check-core.f answering a stop), where the row
-\ can still read 0, and kill(0) or waitpid(0) reaches the caller's whole
-\ process group.
+\ The per-task row, laid out like src/lib/net/tcp4.f's: a poll array shared by
+\ two tasks hands each the other's descriptors.
+\ A fresh task's row reads 0: every entry point resets it through
+\ PROC-CAPTURE-RESET before any word reads a descriptor, and every pid guard is
+\ `0 >`, treating 0 like PROC-NO-PID. PROC-KILL-CAPTURE also runs outside a
+\ capture (tools/check-core.f answering a stop), where the row can read 0, and
+\ kill(0) or waitpid(0) would reach the caller's whole process group.
 5 constant PROC-PFD-SLOTS                \ stdout, stderr, stdin, stop, per-call cancellation
 8 constant PROC-PFD-SLOT-BYTES           \ one struct pollfd: fd | events | revents
 0 constant PROC-PATHZ-OFF
@@ -166,9 +124,8 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and PROC-STORAGE-BYTES TASK:+USER PROC-STORAGE 
 : PROC-PFD ( -- ptr u8 ) PROC-ROW PROC-PFD-OFF + ;
 : PROC-PROBE ( -- ptr u8 ) PROC-ROW PROC-PROBE-OFF + ;
 
-\ The capture slots. TASK:+USER publishes one `ptr n` row, so these are cells of
-\ n and the fd/pid/rc/len/off roles are converted where the value crosses into a
-\ word that names the role, not carried by the cell.
+\ TASK:+USER rows are `ptr n`: the fd, pid, rc, len and off roles are converted
+\ where a value enters a word that names the role.
 : PROC-PID ( -- ptr n ) PROC-ROW PROC-PID-OFF + CELL-VIEW ;
 : PROC-RC ( -- ptr n ) PROC-ROW PROC-RC-OFF + CELL-VIEW ;
 : PROC-OUT-R ( -- ptr n ) PROC-ROW PROC-OUT-R-OFF + CELL-VIEW ;
@@ -184,7 +141,6 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and PROC-STORAGE-BYTES TASK:+USER PROC-STORAGE 
 : PROC-RD ( -- ptr n ) PROC-ROW PROC-RD-OFF + CELL-VIEW ;
 : PROC-STATUS ( -- ptr n ) PROC-ROW PROC-STATUS-OFF + CELL-VIEW ;
 : PROC-TIMED-OUT ( -- ptr n ) PROC-ROW PROC-TIMED-OUT-OFF + CELL-VIEW ;
-\ Capture-child death-reaper pid; see the PROC-REAP-ARM seam below.
 : PROC-REAP-PID ( -- ptr n ) PROC-ROW PROC-REAP-PID-OFF + CELL-VIEW ;
 \ Borrowed, never read, duplicated or closed. CMD installs it after BEGIN.
 : PROC-CANCEL-FD ( -- ptr n ) PROC-ROW PROC-CANCEL-FD-OFF + CELL-VIEW ;
@@ -198,17 +154,25 @@ FUNCTION: PROC-WAITPID-CALL waitpid ( n ptr u8 n -- i32 )
 ;FUNCTION
 
 \ The bodies the RAW spawn words run under catch. Each builds a HERMETIC PROCESS
-\ request from a RAW word's arguments, so the child's environment is only the
-\ rows it is given, spawns it and leaves the pid in the PROC row; the RAW word
-\ answers it through ANSWER. A negative stdio fd leaves that slot inheriting the
-\ parent's fd. process-argv.f, process-env.f and process-cwd.f
-\ add the bodies for their shapes.
+\ request, so the child's environment is only the rows it is given; a RAW word
+\ answers the pid, or the negated errno of a refused spawn. process-argv.f,
+\ process-env.f and process-cwd.f add the bodies for their shapes.
+\ SPAWN. A spawned child leads a process group of its own before it execs: macOS
+\ spawns with POSIX_SPAWN_SETPGROUP; on Linux the child calls setpgid(0,0) and the
+\ parent answers a pid only once a close-on-exec pipe reports the exec or its
+\ failure. A parent-side setpgid would race; the gate pool's reaper relies on
+\ this. The child's fds 0, 1 and 2 are the fds a RAW word names; a negative one
+\ inherits the parent's fd of that number while it is open, close-on-exec or
+\ not, and the child gets no other descriptor. A forked child
+\ (src/lib/process-fork.f) copies every descriptor and keeps across exec those
+\ not marked close-on-exec: mark parent-only pipe and pty ends close-on-exec, or
+\ that child holds a writer and the parent never sees EOF. src/lib/fd-lock.f
+\ orders the mark against forks.
 package PROC-RAW
 private
 
 CAST: >ROWS ( n -- ptr ptr u8 )
 
-\ A RAW word's argv or envp, as the rows SPAWN copies.
 : ROWS ( ptr a -- ptr ptr u8 ) NULL-PTR - >ROWS ;
 
 : PID ( -- ptr n ) PROC-ROW PROC-RAW-PID-OFF + CELL-VIEW ;
@@ -226,8 +190,6 @@ CAST: >ROWS ( n -- ptr ptr u8 )
 
 public
 
-\ The pid of a body's catch code 0, the negated errno of a refused spawn; any
-\ other code goes on.
 : ANSWER ( n -- pid ) {: rc :}
    rc 0= if PID @ >PID exit then
    rc E-PROC-SPAWN <> if rc throw then
@@ -275,11 +237,9 @@ public
    then
    term OUTCOME:SIGNALED ;
 
-\ The child's rc: its exit code, or 128 + the signal that ended it (regression
-\ habu-wait-rc-masks-9ae37cd0), so a deliberate kill still reads 137. A capture's
-\ own expired deadline has no rc of its own: read as the 137 of the SIGKILL that
-\ reaped the child, an assertion on it would fail like any wrong answer, so it
-\ throws E-PROC-TIMEOUT instead.
+\ The child's rc: its exit code, or 128 + the signal that ended it, so a
+\ deliberate kill reads 137. A timeout throws E-PROC-TIMEOUT: read as the 137 of
+\ its SIGKILL, an assertion on it would fail like any wrong answer.
 : PROC-OUTCOME>RC ( outcome -- rc )
    MATCH outcome
      exited OF >RC ENDOF
@@ -291,29 +251,22 @@ public
    PROC-STATUS>OUTCOME PROC-OUTCOME>RC ;
 
 \ A throw code does not cross a process boundary: `die` and the uncaught-throw
-\ exit turn every negative code into UNCAUGHT-RC (67), so a parent cannot tell
-\ a child that ran out of time from one that failed. A tool whose work can
-\ end on a deadline exits PROC-TIMEOUT-RC for E-PROC-TIMEOUT, and the process
-\ that runs it throws E-PROC-TIMEOUT again on that status, so the verdict
-\ reaches the top of a chain of tools. 124 is the status coreutils `timeout`
-\ exits with. No other exit uses it: no engine exit-status constant, `die`
-\ literal or positive throw code in src/, src/lib/ or tools/ is 124, and a signal
-\ death reads as 128 + signal.
+\ exit turn every negative code into UNCAUGHT-RC (67). A tool whose work can end
+\ on a deadline exits PROC-TIMEOUT-RC for E-PROC-TIMEOUT, and the process that
+\ runs it throws E-PROC-TIMEOUT again on that status, so the verdict reaches the
+\ top of a chain of tools. 124 is coreutils `timeout`'s status; no exit-status
+\ constant, `die` literal or positive throw code in src/ or tools/ is 124, and
+\ a signal death reads as 128 + signal.
 124 constant PROC-TIMEOUT-RC
 
-\ The exit status for a tool's caught throw code: 0 for none, PROC-TIMEOUT-RC
-\ for E-PROC-TIMEOUT, and the tool's own failure status for every other code.
 : PROC-EXIT-RC ( n n -- n ) {: code:n fail:n :}
    code 0= if 0 exit then
    code E-PROC-TIMEOUT = if PROC-TIMEOUT-RC exit then
    fail ;
 
-\ A capture child's rc, with the capture's own expired deadline read as
-\ PROC-TIMEOUT-RC, the status coreutils `timeout` reports for the command it
-\ killed, where PROC-OUTCOME>RC throws E-PROC-TIMEOUT. A caller that names its
-\ step before it throws E-PROC-TIMEOUT again on PROC-TIMEOUT-RC then reports
-\ this deadline and one that expired inside the child alike, and a tool that
-\ dies with the rc hands the deadline on to its own parent.
+\ PROC-OUTCOME>RC with a timeout read as PROC-TIMEOUT-RC instead of thrown: a
+\ caller that throws E-PROC-TIMEOUT again on that rc reports this deadline and
+\ one that expired inside the child alike.
 : PROC-OUTCOME>DEADLINE-RC ( outcome -- rc )
    MATCH outcome
      exited OF >RC ENDOF
@@ -324,10 +277,8 @@ public
 : PROC-WAIT-OUTCOME ( pid -- outcome )
    PROC-WAIT-STATUS PROC-STATUS>OUTCOME ;
 
-\ ok = clean exit (rc 0); err = the nonzero completion rc (a nonzero exit code, or
-\ 128+signal — the signal-death encoding, regression habu-wait-rc-masks-9ae37cd0).
-\ A wait failure (e.g. ECHILD) still THROWS E-PROC-WAIT inside PROC-WAIT-STATUS; no
-\ errno is returned, so err carries only the process's own completion code.
+\ err is the nonzero completion rc (an exit code, or 128+signal); a wait failure
+\ throws E-PROC-WAIT inside PROC-WAIT-STATUS.
 : PROC-WAIT-RC ( pid -- result<n,n> )
    PROC-WAIT-STATUS PROC-STATUS>RC RC>N {: rc:n :}
    rc 0 = if rc RESULT:OK else rc RESULT:ERR then ;
@@ -337,10 +288,10 @@ public
    pid PID>N 0 < if E-PROC-SPAWN throw then
    pid ;
 
-: PROC-RUN-IO-RC ( ptr u8 len fd fd fd -- result<n,n> )   \ spawn with explicit stdio, wait -> result
+: PROC-RUN-IO-RC ( ptr u8 len fd fd fd -- result<n,n> )
    PROC-SPAWN-IO PROC-WAIT-RC ;
 
-: PROC-RUN-RC ( ptr u8 len -- result<n,n> )   \ inherit-stdio run
+: PROC-RUN-RC ( ptr u8 len -- result<n,n> )
    -1 >FD -1 >FD -1 >FD PROC-RUN-IO-RC ;
 
 : FD-CLOEXEC! ( fd -- ) {: fd :}
@@ -360,7 +311,6 @@ public
    w FD-CLOEXEC!
    r w ;
 
-\ A pipe whose two ends no spawned child inherits.
 : PIPE-PAIR-CLOEXEC ( -- fd fd )
    [: PIPE-PAIR-CLOEXEC-HELD ;] FD-LOCK:WITH ;
 
@@ -376,10 +326,6 @@ public
 : PROC-PFD-REVENTS ( idx -- n )
    PROC-PFD-SLOT @ 48 rshift $FFFF and ;
 
-\ Milliseconds left before an absolute monotonic deadline, floored at zero. Both
-\ the shared capture deadline and a caller's own one-shot window are measured
-\ with this, so a restarted poll always waits out what is left rather than the
-\ interval it was first given.
 : PROC-LEFT-MS ( n -- ms ) {: deadline :}
    deadline mono-ns - dup 0 <= if
       drop 0 >MS
@@ -387,12 +333,10 @@ public
       PROC-NS-PER-MS / >MS
    then ;
 
-\ The absolute mono-ns deadline ms from one reading. A negative ms names no
-\ window: its deadline is the reading itself, already passed, and a poll caller
-\ hands the negative ms on to poll(2) for an unbounded wait (PROC-POLL-RESTART).
-\ A window whose nanoseconds would carry the reading past the largest cell is
-\ E-PROC-TIMEOUT before anything is multiplied: a deadline the cell cannot hold
-\ fails at once, never wraps into the past or saturates to forever.
+\ A negative ms names no window: its deadline is the reading itself, and a poll
+\ caller hands the negative ms to poll(2) for an unbounded wait. A window whose
+\ nanoseconds would pass the largest cell is E-PROC-TIMEOUT before anything is
+\ multiplied: it never wraps into the past or saturates to forever.
 : PROC-DEADLINE-AT ( ms -- n ) {: timeout:ms :}
    mono-ns {: now:n :}
    timeout MS>N 0 < if now exit then
@@ -402,14 +346,12 @@ public
 : PROC-POLL-ONCE ( n n -- n ) {: nfds ms :}
    PROC-PFD nfds ms poll ;
 
-\ poll(2) is the one blocking call SA_RESTART never restarts, so a -EINTR here
-\ says a signal landed before any event did: nothing failed, nothing was
-\ consumed, and the descriptors are untouched. The deadline is untouched too, so
-\ each restart waits out only what is left of it and no signal storm can push a
-\ capture past its timeout; a deadline that has already passed reports the
-\ ordinary zero-event timeout. Every other negative rc is a real errno, and the
-\ caller names it through its own E-PROC-* code. A negative initial timeout
-\ retains poll's unbounded-wait contract across interruptions.
+\ poll(2) is the one blocking call SA_RESTART never restarts: -EINTR means a
+\ signal landed before any event and nothing was consumed. Each restart waits
+\ out only what is left of the deadline, so no signal storm pushes a capture
+\ past its timeout; a passed deadline reports the zero-event timeout. Any other
+\ negative rc is an errno the caller names through its own E-PROC-* code. A
+\ negative initial timeout stays unbounded across interruptions.
 : PROC-POLL-RESTART ( n n n -- n ) {: nfds ms deadline :}
    nfds ms PROC-POLL-ONCE {: rc :}
    rc EINTR# negate <> if rc exit then
@@ -420,8 +362,7 @@ public
       restarted EINTR# negate <> if restarted exit then
    again ;
 
-\ One raw poll of a single descriptor: a signal is reported as -EINTR, like any
-\ other errno, because this word owns no deadline to restart against.
+\ A signal is reported as -EINTR: this word owns no deadline to restart against.
 : POLL-IN ( fd ms -- count ) {: fd ms :}
    fd POLLIN PROC-PFD!
    PROC-PFD 1 ms MS>N poll >COUNT ;
@@ -434,25 +375,16 @@ public
    rc 0= if E-PROC-TIMEOUT throw then
    rc >COUNT ;
 
-\ ---- a bounded wait for one child --------------------------------------------
-\
-\ PROC-WAIT-BOUNDED probes one child with a nonblocking waitpid(2) and sleeps a
-\ millisecond between probes until its window ends, from the main task or a
-\ worker. It sends no signal, closes no descriptor and leaves the capture row
-\ and the reaper alone: a capture owns its child, deadline and stop itself.
-
 \ waitpid's flag and pid_t bound, the same on Linux and macOS.
-1 constant WNOHANG                 \ answer 0 while the child runs
+1 constant WNOHANG
 $7FFFFFFF constant PROC-PID-MAX    \ the largest signed 32-bit pid_t
 
-\ The bounded wait's status cell, task-local and apart from the capture row.
 TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 1 cells TASK:+USER PROC-BOUNDED-STATUS drop
 
-\ One nonblocking waitpid: true once pid's terminal status is in the cell and
-\ the child is reaped. A zero return leaves the cleared cell unread, and a stop
-\ (low status bits $7F, which only a traced child reports without WUNTRACED)
-\ ends nothing. EINTR collects nothing; any other failure, ECHILD included, is
-\ E-PROC-WAIT. waitpid writes a C int, so the whole cell is cleared first.
+\ A zero return leaves the cleared cell unread; a stop (status low bits $7F,
+\ which only a traced child reports without WUNTRACED) ends nothing. EINTR
+\ collects nothing; any other failure, ECHILD included, is E-PROC-WAIT. waitpid
+\ writes a C int, so the whole cell is cleared first.
 : PROC-WAIT-PROBE ( pid -- bool )
    {: pid:pid :}
    0 PROC-BOUNDED-STATUS !
@@ -464,13 +396,13 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 1 cells TASK:+USER PROC-BOUNDED-STATUS drop
    FFI:ERRNO EINTR# <> if E-PROC-WAIT throw then
    0 0= 0= ;
 
-\ pid's exited or signaled outcome, the child reaped, when its terminal status
-\ is collected within ms; else timeout, nothing collected and the pid still the
-\ caller's to reap. pid must be a pid_t above zero: waitpid takes a C int, which
-\ would narrow a wider cell to another process or a process group. Both
-\ arguments are refused before any waitpid. Each turn probes before it reads the
-\ deadline, so ms 0 is one probe and a status already there wins; PROC-LEFT-MS
-\ floors, so a window can end under a millisecond early.
+\ A timeout collects nothing and leaves the pid the caller's to reap. The wait
+\ sends no signal, closes no descriptor and leaves the capture row and reaper
+\ alone. pid must be a pid_t above zero: waitpid's C int would narrow a wider
+\ cell to another process or a process group; both arguments are refused before
+\ any waitpid. Each turn probes before it reads the deadline, so ms 0 is one
+\ probe and a status already there wins; PROC-LEFT-MS floors, so a window can
+\ end under a millisecond early.
 : PROC-WAIT-BOUNDED ( pid ms -- outcome )
    {: pid:pid timeout:ms :}
    pid PID>N 0 <= if E-PROC-WAIT throw then
@@ -483,18 +415,14 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 1 cells TASK:+USER PROC-BOUNDED-STATUS drop
    repeat
    PROC-BOUNDED-STATUS @ PROC-STATUS>OUTCOME ;
 
-\ Capture-child death-reaper seam. Contexts that own a death-watch fd (a pool
-\ worker's worker-alive read end; src/lib/process-fork.f installs the live vector)
-\ arm a co-located reaper for the just-spawned capture child so the child's
-\ whole group dies with the arming process instead of orphan-lingering. The
-\ default vector arms nothing and returns PROC-NO-PID. A vector that cannot
-\ arm the reaper it owes throws, and PROC-CAPTURE-PID! refuses the capture.
-\ The reaper is a DIRECT child of this process; every capture-termination path
-\ disarms it (kill + wait by its specific pid), so no reaper outlives its
-\ capture and no wait(-1) caller ever sees a stray child.
-\
-\ The vector itself is PROCESS-WIDE, unlike the row above: it is the one policy
-\ the image installs at load, not state a call leaves behind.
+\ A context that owns a death-watch fd (a pool worker's worker-alive read end;
+\ src/lib/process-fork.f installs the live vector) arms a reaper for the
+\ just-spawned capture child, so the child's group dies with the arming process.
+\ The default arms nothing and returns PROC-NO-PID. A vector that cannot arm
+\ throws, and PROC-CAPTURE-PID! refuses the capture. The reaper is a direct
+\ child of this process and every capture-termination path kills and waits it
+\ by pid, so no wait(-1) caller sees a stray child. Process-wide: one policy
+\ the image installs at load.
 defer PROC-REAP-ARM ( pid -- pid )
 : PROC-REAP-ARM-OFF ( pid -- pid )
    drop PROC-NO-PID >PID ;
@@ -560,23 +488,19 @@ PROC-REAP-ARM-DEFAULT
    then
    PROC-REAP-DISARM ;
 
-\ ---- a tree walk that throws -------------------------------------------------
-\
-\ A child is killed for a reason of its caller's - a capture's deadline, an
-\ overflow, a refused reaper arm, a stop; a pty reap's expiry; a supervised
-\ session's teardown - and the caller acts on that reason: tools/check.f names
-\ a run past its deadline, and src/lib/process-pty-io.f's scope hands its slot
-\ back. A walk of the child's tree that throws there must not stand in for it,
-\ nor vanish, so stderr gets one line naming the walk's code and the caller
-\ goes on as it would have. The line is written a piece at a time from
-\ constant text, so it takes no storage two tasks could share.
+\ A child is killed for its caller's reason (a capture's deadline, an overflow,
+\ a refused reaper arm, a stop, a pty reap's expiry, a session's teardown) and
+\ the caller acts on it: tools/check.f names a run past its deadline, and
+\ src/lib/process-pty-io.f's scope hands its slot back. A tree walk that throws
+\ there must neither replace that reason nor vanish: stderr gets one line naming
+\ its code, written in pieces from constant text so it takes no storage two
+\ tasks could share.
 
 : PROC-DIAG ( ptr u8 n -- )
    {: a:ptr u:n :}
    2 a u write drop ;
 
-\ The decimal digits of v's magnitude. v is at most 0, so MIN-N has one too: /
-\ and mod truncate toward zero.
+\ v is at most 0, so MIN-N has a magnitude too: / and mod truncate toward zero.
 : PROC-DIAG-DIGITS ( n -- )
    {: v:n :}
    v -10 <= if v 10 / RECURSE then
@@ -589,28 +513,24 @@ PROC-REAP-ARM-DEFAULT
    code 0 < if s" -" PROC-DIAG code else code negate then PROC-DIAG-DIGITS
    s\" \n" PROC-DIAG ;
 
-\ SIGKILL a child and every process it started, and never throw. A spawned
-\ child leads a process group of its own, and so does each process it spawns,
-\ so neither a kill of its pid nor one of its group reaches them;
-\ src/lib/process-tree.f KILL-TREE freezes the tree before it lists it. A walk that
-\ throws has still killed every member it found, the child first, so the
-\ caller reaps the child all the same, and the walk's code is reported, not
-\ thrown. The pid rides through the catch, so both arms leave the same depth.
+\ Never throws. A spawned child leads a process group of its own, and so does
+\ each process it spawns, so no kill of its pid or group reaches them;
+\ src/lib/process-tree.f KILL-TREE freezes the tree before it lists it. A walk
+\ that throws has still killed every member it found, the child first, so the
+\ caller reaps the child all the same. The pid rides through the catch, so both
+\ arms leave the same depth.
 : PROC-KILL-TREE ( pid -- )
    [: dup PROC-TREE:KILL-TREE ;] catch PROC-WALK-REPORT drop ;
 
-\ Kill the capture child and every process it started, then reap the child.
 : PROC-KILL-CAPTURE ( -- )
    PROC-PID @ 0 > if
       PROC-PID @ >PID PROC-KILL-TREE
       PROC-REAP-CAPTURE
    then ;
 
-\ A capture that ends its child early - its deadline, an overflow, a refused
-\ reaper arm, a stop that throws - kills the child's tree before it closes the
-\ capture descriptors, and closes them whatever the kill throws. Closing them
-\ first could end the child before the walk froze it, and what the child
-\ spawned would be left to init.
+\ The tree is killed before the capture descriptors close, and they close
+\ whatever the kill throws: closing first could end the child before the walk
+\ froze it, leaving what it spawned to init.
 : PROC-END-CAPTURE ( -- )
    [: PROC-KILL-CAPTURE ;] [: PROC-CLOSE-ALL-CAPTURE-FDS ;] finally ;
 
@@ -622,10 +542,8 @@ PROC-REAP-ARM-DEFAULT
    PROC-END-CAPTURE
    code throw ;
 
-\ Adopt pid as this task's capture child and arm its reaper. A refused arm
-\ refuses the capture: the child and what it started are killed, the child
-\ reaped and the capture descriptors closed before the code goes on, so no
-\ capture child runs unwatched.
+\ A refused reaper arm refuses the capture: the child's tree is killed, the
+\ child reaped and the descriptors closed before the code goes on.
 : PROC-CAPTURE-PID! ( pid -- ) {: pid:pid :}
    pid PID>N PROC-PID !
    pid [: PROC-REAP-ARM ;] catch {: rpid code:n :}
@@ -643,7 +561,6 @@ PROC-REAP-ARM-DEFAULT
    rp PROC-CLOEXEC-CELL
    wp PROC-CLOEXEC-CELL ;
 
-\ Opens a pipe into the two capture cells, both ends close-on-exec.
 : PROC-OPEN-PIPE ( ptr n ptr n -- )
    [: PROC-OPEN-PIPE-HELD ;] FD-LOCK:WITH ;
 
@@ -653,8 +570,8 @@ PROC-REAP-ARM-DEFAULT
    PROC-IN-R !
    PROC-IN-R PROC-CLOEXEC-CELL ;
 
-\ Default captures supply EOF, independent of the parent's terminal or pipe.
-\ Keep the descriptor in the capture row so a refused spawn also closes it.
+\ A capture's default stdin is EOF, whatever the parent's terminal or pipe; the
+\ fd sits in the capture row so a refused spawn closes it too.
 : PROC-CAPTURE-NULL-INPUT ( -- fd )
    [: PROC-CAPTURE-NULL-INPUT-HELD ;] FD-LOCK:WITH
    PROC-IN-R @ >FD ;
@@ -676,8 +593,6 @@ PROC-REAP-ARM-DEFAULT
    PROC-IN-W @ >FD PROC-NOSIGPIPE!
    PROC-IN-W @ >FD PROC-NONBLOCK! ;
 
-\ The one window PROC-CAPTURE-DEADLINE! never times out on: a capture given it
-\ waits for the child to finish however long that takes.
 package PROCESS
 public
 : WAIT-FOREVER ( -- ms ) MEM-MAX-N >MS ;
@@ -694,18 +609,13 @@ public
    PROC-DEADLINE @ MEM-MAX-N = if -1 >MS exit then
    PROC-DEADLINE @ PROC-LEFT-MS ;
 
-\ ---- a capture that hears a stop ---------------------------------------------
-\
-\ A program that answers a stop signal (src/lib/signal.f CATCH-STOPS) has to hear
-\ it while it waits on a child, and a capture waits in a poll of its own. So
-\ every capture poll watches one more descriptor, PROC-STOP-FD, in the slot
-\ after stdin's, and runs PROC-STOP when it is readable; the reap after the
-\ pipes close asks the same between its turns. PROC-STOP is that program's
-\ answer. It ends the process when it takes a signal and returns when it finds
-\ none, and the capture goes on; one that throws ends the capture as any
-\ failure here does. The default is no descriptor, which poll passes over, and
-\ a PROC-STOP that does nothing. PROCESS-WIDE, like PROC-REAP-ARM: one policy
-\ the program installs (tools/check-core.f CHECK:MAIN).
+\ A program that answers a stop signal (src/lib/signal.f CATCH-STOPS) must hear
+\ it while a capture polls: every capture poll watches PROC-STOP-FD in the slot
+\ after stdin's and runs PROC-STOP when it is readable, and the reap after the
+\ pipes close asks between its turns. PROC-STOP ends the process when it takes
+\ a signal and returns when it finds none; one that throws ends the capture.
+\ The default is no descriptor, which poll passes over. Process-wide, like
+\ PROC-REAP-ARM: tools/check-core.f CHECK:MAIN installs it.
 3 constant PROC-STOP-SLOT
 
 variable PROC-STOP-FD
@@ -810,20 +720,14 @@ PROC-STOP-DEFAULT
       PROC-ERR-R err errcap PROC-ERR-LEN PROC-READ-OR-PROBE-STREAM
    then ;
 
-\ ---- captures whose output grows ----------------------------------------------
-\
-\ The fixed-span capture above refuses a child that writes past its span. This
-\ one keeps an output stream in storage the caller owns and grows: SINK, given
-\ a byte count, makes the storage hold at least that many bytes, keeping the
-\ bytes it holds, and answers its first byte, as a DYNAMIC-BUFFER u8's reserve
-\ and then its byte 0 do. Each read asks SINK for room for one more chunk after
-\ what the child wrote. If SINK refuses growth, capture fails as a read failure
-\ does: the child is ended, the descriptors closed, then its code goes on.
-$10000 constant PROC-GROW-CHUNK          \ bytes asked of one growing read
+\ A growing capture keeps an output stream in caller-owned storage: SINK, given
+\ a byte count, makes it hold at least that many bytes, keeping its bytes, and
+\ answers its byte 0, as a DYNAMIC-BUFFER u8's reserve then byte 0 do. A
+\ refused growth fails the capture as a read failure does.
+$10000 constant PROC-GROW-CHUNK
 
-\ SINK's room for one more chunk after what the child wrote: its first byte, in
-\ the place of the null one PROC-READ-GROWING hands in, since catch keeps the
-\ shape of the stack.
+\ SINK's first byte replaces the null one PROC-READ-GROWING hands in, since
+\ catch keeps the shape of the stack.
 : PROC-SINK-ROOM ( ptr u8 [ n -- ptr u8 ] ptr n -- ptr u8 [ n -- ptr u8 ] ptr n )
    {: old:ptr sink lenp:ptr :}
    lenp @ PROC-GROW-CHUNK + sink execute sink lenp ;
@@ -882,12 +786,11 @@ $10000 constant PROC-GROW-CHUNK          \ bytes asked of one growing read
    events POLLNVAL and 0= 0= if 0 0= exit then
    0 0= 0= ;
 
-\ The write end is non-blocking, so a refused write is back pressure: the pipe
-\ is full because the child stopped reading. The engine collapses every write
-\ errno to -1, and the caller above has already asked poll whether the reader is
-\ gone, so the descriptor keeps its offset and the next POLLOUT under the
-\ capture deadline resumes the feed; a short write advances by what landed and
-\ resumes the same way. Closing here instead would truncate the child's stdin.
+\ A refused write on the non-blocking end is back pressure: the child stopped
+\ reading. The engine collapses every write errno to -1 and the caller has
+\ already asked poll whether the reader is gone, so the offset stays and the
+\ next POLLOUT under the deadline resumes; a short write advances by what
+\ landed. Closing here would truncate the child's stdin.
 : PROC-WRITE-STDIN-ACTIVE ( ptr u8 len -- ) {: src:ptr inu :}
    inu LEN>N PROC-IN-OFF @ - >LEN PROC-STDIN-CHUNK {: chunk :}
    PROC-IN-W @ src PROC-IN-OFF @ + chunk LEN>N write {: wrote :}
@@ -932,10 +835,8 @@ $10000 constant PROC-GROW-CHUNK          \ bytes asked of one growing read
 : PROC-STDIN-CAPTURE-DONE? ( -- bool )
    PROC-CAPTURE-DONE? PROC-IN-W @ 0 < and ;
 
-\ The stop descriptor without waiting, beside whatever capture slot is still
-\ open. Retry interrupted zero-time polls without waiting out the capture's
-\ deadline. CMD also calls this before spawning, so an interruption cannot
-\ skip an already pending cancellation request.
+\ Interrupted zero-time polls retry without waiting out the deadline. CMD calls
+\ this before spawning, so an interruption cannot skip a pending cancellation.
 : PROC-STOP-ASK ( -- )
    PROC-ARM-IO-PFD
    PROC-ARM-STOP-PFD
@@ -947,10 +848,9 @@ $10000 constant PROC-GROW-CHUNK          \ bytes asked of one growing read
    rc 0 < if E-PROC-OUTPUT PROC-THROW-CAPTURE then
    rc 0 > if PROC-STOP-HEARD PROC-CANCEL-HEARD then ;
 
-\ EOF says that the child closed its pipes, not that it exited. Keep the same
-\ absolute capture deadline while waiting for its status; only the existing
-\ timeout path may do a blocking wait, after sending SIGKILL. WNOHANG is 1 on
-\ both supported hosts. Clear the cell because waitpid writes only four bytes.
+\ EOF says the child closed its pipes, not that it exited: its status is waited
+\ for under the same deadline, and only the timeout path waits blocking, after
+\ SIGKILL. waitpid writes four bytes, so the cell is cleared.
 : PROC-REAP-CAPTURE-BOUNDED ( -- )
    begin PROC-PID @ 0 > while
       0 PROC-STATUS !
@@ -1085,9 +985,6 @@ $10000 constant PROC-GROW-CHUNK          \ bytes asked of one growing read
    timeout PROC-CAPTURE-BEGIN
    PROC-SETUP-STDIN-FDS ;
 
-\ Wrap a captured (out-len, err-len) plus the stored completion rc into a result:
-\ a clean exit (rc 0) is ok(captured); any nonzero completion is err(failed)
-\ carrying the code. Neither arm drops the lengths.
 : PROC-CAPTURE>RESULT ( len len rc -- result<pcap:captured,pcap:failed> )
    {: o:len e:len r:rc :}
    r RC>N 0 = if
@@ -1099,9 +996,8 @@ $10000 constant PROC-GROW-CHUNK          \ bytes asked of one growing read
 : PROC-CAPTURE-RC@ ( -- result<pcap:captured,pcap:failed> )
    PROC-OUT-LEN @ >LEN PROC-ERR-LEN @ >LEN PROC-RC @ >RC PROC-CAPTURE>RESULT ;
 
-\ The capture outcome is DERIVED, never stored: the machine keeps only the
-\ raw wait status plus the timed-out flag (both one cell), so no (kind code)
-\ pair state exists to drift from the truth.
+\ Derived from the raw wait status and the timed-out flag: no stored outcome can
+\ drift from them.
 : PROC-CAPTURE-OUTCOME ( -- outcome )
    PROC-TIMED-OUT @ 0 <> if OUTCOME:TIMEOUT exit then
    PROC-STATUS @ PROC-STATUS>OUTCOME ;
@@ -1120,10 +1016,8 @@ $10000 constant PROC-GROW-CHUNK          \ bytes asked of one growing read
    PROC-CLOSE-ALL-CAPTURE-FDS
    PROC-CAPTURE-OUTCOME@ ;
 
-\ Adopt a capture child the caller just spawned: a failed spawn closes the
-\ capture descriptors and throws, a live one becomes this task's capture pid and
-\ the child's ends of the three pipes are closed here. Every spawn shape shares
-\ this tail, so a spawn word is only its primitive call plus this.
+\ Every spawn shape ends here: a failed spawn closes the capture descriptors and
+\ throws; a live pid becomes the capture child, and the child's pipe ends close.
 : PROC-CAPTURE-ADOPT-SPAWN ( pid -- ) {: pid :}
    pid PID>N 0 < if E-PROC-SPAWN PROC-THROW-CAPTURE then
    pid PROC-CAPTURE-PID!

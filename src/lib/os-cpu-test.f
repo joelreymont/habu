@@ -1,12 +1,9 @@
 \ os-cpu-test.f - the processor facts against the host's own report.
 \ Run: bin/hb --load src/lib/os-cpu-test.f
-\
-\ Failure modes: the sysconf name is wrong for the target, so ONLINE answers
-\ another limit or throws on sysconf's -1; ONLINE disagrees with what
-\ getconf _NPROCESSORS_ONLN prints on the same host. The getloadavg binding
-\ reads the wrong bytes or reads them as the wrong type, so LOAD1 answers
-\ garbage, a nonfinite or a negative value; LOAD1 disagrees with the one-minute
-\ average the host reports (macOS `sysctl -n vm.loadavg`, Linux /proc/loadavg).
+\ Failure modes: a sysconf name wrong for the target, so ONLINE answers another
+\ limit or throws on -1, or disagrees with getconf _NPROCESSORS_ONLN; a getloadavg
+\ binding that reads the wrong bytes or type, so LOAD1 is garbage, nonfinite or
+\ negative, or disagrees with the host's one-minute average (sysctl, /proc/loadavg).
 
 require src/lib/test.f
 require src/lib/string.f

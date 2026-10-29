@@ -121,8 +121,8 @@ CAST: CURSOR>BYTES ( ptr XML:cursor -- ptr u8 )
    source size 1 $7FFFFFFFFFFFFFFF INPUT-SET
    INPUT-FAILURE expected T= ;
 
-\ The reader is opened INSIDE the caught body, the way BAD-INIT below already
-\ does it: `catch` restores the DEPTH of both stacks and never their contents, so
+\ The reader is opened INSIDE the caught body, as BAD-INIT below does: `catch`
+\ restores the DEPTH of both stacks and never their contents, so
 \ a reader opened before the catch comes back `stale<XML:reader>` and a linear
 \ cell can be neither read nor dropped. The body closes the reader its failed
 \ NEXT leaves, as the contract requires, and rethrows that failure.
@@ -384,14 +384,12 @@ CAST: CURSOR>BYTES ( ptr XML:cursor -- ptr u8 )
    XML-KIND:TEXT NEXT= s" 中" TEXT=
    XML-KIND:END NEXT= XML-KIND:EOF NEXT= XML:CLOSE ;
 
-\ ---- the caught bodies of the recovery cases --------------------------------
 \ Every case below reads the reader after the catch, so the handle must SURVIVE
 \ the caught failure. A quotation literal leaves it `stale<XML:reader>` - `catch`
 \ restores the DEPTH of both stacks and never their contents - and a linear cell
 \ can be neither read nor dropped, so each body is a name reached by `[']`: an
 \ exceptional edge is not part of a quotation's TYPE, so that route keeps the
-\ window typed until the callee-evidence lane (dot c2923193) lets the checker
-\ prove the handle intact.
+\ window typed until callee evidence lets the checker prove the handle intact.
 \ ATTR-RESET already has that shape and is ticked by its bare name, the one a
 \ `using` import resolves (src/habu/habu2.f C-BTICK).
 : NEXT-ONE ( XML:reader -- XML:reader ) NEXT drop ;

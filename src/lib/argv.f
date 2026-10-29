@@ -1,24 +1,9 @@
-\ argv.f -- checked argv parser for `bin/hb script.f args...` scripts, in
-\ `package ARGV`, shared by the tool CLIs and the stdlib.
-\
-\ ARGV:PARSE reads SCRIPT-ARGC / SCRIPT-ARGV$, which start after the `--` that
-\ ends `bin/hb --load a.f b.f -- args` (file-source mode, so non-tty stdin is
-\ left for the tool), or the mock set ARGV:MOCK-CLEAR / MOCK+ installs until
-\ ARGV:USE-SCRIPT. Options: --json, --json-errors, --label NAME, --all-errors,
-\ --strict-boundary, -o OUT; tokens after `--` are positionals even when they
-\ start with a dash. PARSE validates the whole input before it replaces the
-\ published result, so a refusal leaves the previous positionals, options and
-\ flags intact. EXPECT-POS takes lo hi, hi < 0 meaning unbounded.
-\ An unknown option, a missing option value, an arity or required-option
-\ failure, ARGV:FAIL and an out-of-range TOK$/POS$ index throw ARGV:E-USAGE
-\ (64, the process exit when uncaught) after writing the message and usage text
-\ to stderr unless ARGV:QUIET! is set. A negative FAIL or mock length throws
-\ ARGV:E-INTERNAL (76) before any change.
-\ The mock list and the positional table grow with their input.
-\
-\ STORAGE CLASS. PROCESS-WIDE: parser state is static; the
-\ mock list and positional table are DYNAMIC-BUFFERs, released with every
-\ mapping before an image save; one task parses at a time.
+\ argv.f - checked argv parser for `bin/hb script.f args...` scripts (ARGV).
+\ PARSE reads SCRIPT-ARGC / SCRIPT-ARGV$, which start after the `--` ending
+\ `bin/hb --load a.f -- args` (file-source mode leaves non-tty stdin to the
+\ tool), or the MOCK+ set until USE-SCRIPT. A refusal throws E-USAGE (64, the
+\ exit code when uncaught).
+\ STORAGE CLASS. PROCESS-WIDE: static parser state; one task parses at a time.
 
 package ARGV
 
@@ -268,9 +253,8 @@ private
 
 public
 
-\ Validate with the same parser before replacing any published result. A bad
-\ option therefore leaves the prior parse intact. The dry scan counts the
-\ positionals, so the table grows to hold them before RESET.
+\ The dry scan validates with the same parser before any published result is
+\ replaced, and counts the positionals so the table grows before RESET.
 : PARSE ( -- )
    ARGV-TRUE ARGV-SCAN
    ARGV-SCAN-NPOS @ ARGV-POS-RESERVE
@@ -278,6 +262,7 @@ public
    ARGV-FALSE ARGV-SCAN
    ARGV-SCAN-NPOS @ ARGV-NPOS ! ;
 
+\ hi < 0 means unbounded.
 : EXPECT-POS ( n n -- ) {: lo:n hi:n :}
    ARGV-NPOS @ lo < if s" wrong number of positional arguments" FAIL then
    hi 0 >= if

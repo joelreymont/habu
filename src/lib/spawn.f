@@ -1,49 +1,9 @@
-\ spawn.f - a child-process request, built word by word and spawned once.
-\
-\ PROCESS:NEW starts a request for a program path; PROCESS:ARG, PROCESS:ENV,
-\ PROCESS:HERMETIC, PROCESS:CWD, PROCESS:FD and PROCESS:CLOSED add to it;
-\ PROCESS:SPAWN spawns the child through the engine's spawn-fds
-\ (src/habu/spawn-abi.f lays out what it reads) and answers its pid;
-\ PROCESS:DISCARD frees a request that will not be spawned.
-\ PROCESS:ARGV-ROWS and PROCESS:ENV-ROWS bridge the RAW family's
-\ NULL-terminated arrays; lane 7 deletes them along with the RAW words.
-\
-\ CONTRACT.
-\ - argv: the path as argv[0], then a copy of each ARG's string, in order. An
-\   ARGV-ROWS array is copied as given, argv[0] included, so a request whose
-\   first rows come from one takes its argv[0] from the array. A request with no
-\   argument spawns argv {path}.
-\ - env: a copy of each ENV's name=value row, in order, then, unless HERMETIC,
-\   this process's own environment rows, read at SPAWN. An inherited row whose
-\   name a request row already gives is skipped, so the request's row wins. An
-\   inherited name that the parent holds twice reaches the child once, as its
-\   first row, because HAS-NAME? also checks the rows already inherited. A
-\   HERMETIC request gives the child only its own rows. ENV refuses an empty
-\   name and one holding `=` with E-PROC-ENV; ENV-ROWS copies its rows unchecked.
-\ - cwd: the last CWD's directory, else this process's.
-\ - A path, argument, environment name or value, or directory holding a 0 byte
-\   cannot cross to C: E-FFI-NUL (src/lib/ffi-abi.f's CSTR).
-\ - descriptors: the map starts [0 1 2]. `child parent FD` makes the child's fd
-\   `child` the parent's fd `parent`, a child fd past the map growing it with
-\   closed slots; CLOSED closes a slot inside the map and does nothing past it.
-\   Every child fd at or past the map's end is closed.
-\ - CLOSED PARENT STDIO. A slot of 0-2 that no FD set inherits the parent's fd
-\   of that number when it is open and is closed when it is not, so a parent
-\   running with a closed stdio fd still spawns. An FD naming a closed parent fd
-\   fails the spawn with EBADF. PROCESS:CHECK-FD refuses a closed fd the same way
-\   without a request, for a caller that must check before it opens descriptors
-\   that could take the closed number.
-\ - A request is used once. PROCESS:SPAWN frees it whatever the outcome, and a
-\   builder that throws frees it before the throw goes on; a caller that will
-\   not spawn a request DISCARDs it, on its throw paths too. A refused spawn
-\   throws E-PROC-SPAWN with the positive errno in PROCESS:ERRNO; a spawn that
-\   succeeds sets PROCESS:ERRNO to 0.
-\ - The spawn holds FD-LOCK (src/lib/fd-lock.f).
-\
-\ STORAGE CLASS. CALLER-OWNED: each request maps its own record, string chunks
-\ and vectors, and nothing it holds is shared with the process-wide argv and
-\ env staging. An inherited row is the address of this process's own row, which
-\ never moves. PROCESS:ERRNO is TASK-LOCAL, a TASK:+USER cell.
+\ spawn.f - a child-process request, built word by word and spawned once:
+\ PROCESS:NEW starts one for a program path, the builders add to it, PROCESS:SPAWN
+\ spawns it through the engine's spawn-fds (src/habu/spawn-abi.f lays out what it
+\ reads) under FD-LOCK (src/lib/fd-lock.f) and answers its pid.
+\ STORAGE CLASS. CALLER-OWNED: each request maps its own record, string chunks and
+\ vectors, shared with no process-wide staging. PROCESS:ERRNO is a TASK:+USER cell.
 
 require src/lib/errors.f
 require src/lib/memory.f
@@ -77,7 +37,6 @@ CAST: ITEM>N ( NUM:item-count -- n )
 \ The byte that ends an environment row's name.
 $3D constant EQUAL-BYTE
 
-\ ---- the record ---------------------------------------------------------------
 \ The SPAWN-ABI cells spawn-fds reads come first; PATH and CWD are written as
 \ they are given, the rest just before the spawn. Then the owned string chunks,
 \ the argv, envp and descriptor-map vectors, the mask of stdio slots an FD set
@@ -126,7 +85,9 @@ HERM-AT 1+ constant RECORD-CELLS
    rc throw ;
 
 
-\ A C-string copy of the bytes in the request's own chunks.
+\ A C-string copy of the bytes in the request's own chunks. This and ADD-ENV's
+\ FFI:CSTR! refuse a path, argument, row or directory holding a 0 byte:
+\ E-FFI-NUL.
 : ZCOPY ( ptr u8 n ptr n -- ptr u8 )
    {: src:ptr len h:ptr :}
    len FFI:CSTR-ROOM {: need :}
@@ -163,7 +124,7 @@ HERM-AT 1+ constant RECORD-CELLS
    h a len ;
 
 
-\ process-env.f mirrors this check and SAME-NAME?; lane 7 deletes it.
+\ process-env.f mirrors this check and SAME-NAME?.
 : CHECK-NAME ( ptr u8 n -- )
    {: a:ptr len :}
    len 0= if E-PROC-ENV throw then
@@ -218,11 +179,12 @@ HERM-AT 1+ constant RECORD-CELLS
    h fd ;
 
 
-\ Whether this process's fd n is open.
 : OPEN? ( n -- bool ) F-GETFD 0 fcntl 0 >= ;
 
 
-\ A stdio slot no FD set keeps the parent's fd only while that fd is open.
+\ A stdio slot no FD set keeps the parent's fd only while that fd is open, so a
+\ parent running with a closed stdio fd still spawns; an FD naming a closed
+\ parent fd fails the spawn with EBADF.
 : INHERIT-SLOT ( ptr n n -- )
    {: h:ptr slot :}
    h SET @ 1 slot lshift and 0<> if exit then
@@ -255,8 +217,8 @@ HERM-AT 1+ constant RECORD-CELLS
    loop false ;
 
 
-\ Inheritance appends the address of this process's own row, never a copy, and
-\ skips a row whose name a request row already gives.
+\ Inheritance appends the address of this process's own row, which never moves,
+\ and skips a row whose name a request row already gives.
 : INHERIT-ROW ( ptr n ptr u8 -- )
    {: h:ptr z:ptr :}
    h z HAS-NAME? if exit then
@@ -307,8 +269,8 @@ public
    h MINT ;
 
 
-\ Appends a copy of one argument; the first is argv[1]. A negative length:
-\ E-PROC-OUTPUT.
+\ Appends a copy of one argument; the first is argv[1], and a request with none
+\ spawns argv {path}. A negative length: E-PROC-OUTPUT.
 : ARG ( PROCESS:request ptr u8 n -- PROCESS:request )
    rot ERASE {: a:ptr len h:ptr :}
    h a len [: ADD-ARG ;] catch {: rc :} drop drop drop
@@ -316,8 +278,10 @@ public
    h MINT ;
 
 
-\ Appends a copy of the row name=value. A negative length, an empty name or one
-\ holding `=`: E-PROC-ENV.
+\ Appends a copy of the row name=value. The child gets the request's rows in
+\ order, then, unless HERMETIC, this process's rows read at SPAWN, skipping a name
+\ a request row gives. A negative length, an empty name or one holding `=`:
+\ E-PROC-ENV.
 : ENV ( PROCESS:request ptr u8 n ptr u8 n -- PROCESS:request )
    {: name:ptr namelen val:ptr vallen :}
    ERASE {: h:ptr :}
@@ -334,7 +298,9 @@ public
    h MINT ;
 
 
-\ The child's fd child is the parent's fd parent. Either negative: E-PROC-OUTPUT.
+\ The child's fd child is the parent's fd parent; the map starts [0 1 2], and a
+\ child fd past it grows it with closed slots. Every child fd at or past the map's
+\ end is closed. Either negative: E-PROC-OUTPUT.
 : FD ( PROCESS:request fd fd -- PROCESS:request )
    rot ERASE {: child parent h:ptr :}
    h child parent [: SET-FD ;] catch {: rc :} drop drop drop
@@ -342,7 +308,8 @@ public
    h MINT ;
 
 
-\ The child's fd starts closed. A negative fd: E-PROC-OUTPUT.
+\ The child's fd starts closed; past the map's end this does nothing. A negative
+\ fd: E-PROC-OUTPUT.
 : CLOSED ( PROCESS:request fd -- PROCESS:request )
    swap ERASE {: fd h:ptr :}
    h fd [: SET-CLOSED ;] catch {: rc :} drop drop
@@ -350,8 +317,9 @@ public
    h MINT ;
 
 
-\ Appends a copy of each string of a NULL-terminated array to argv. A RAW-family
-\ bridge.
+\ Appends a copy of each string of a NULL-terminated array to argv, argv[0]
+\ included, so a request whose first rows come from one takes its argv[0] from
+\ it. A RAW-family bridge.
 : ARGV-ROWS ( PROCESS:request ptr ptr u8 -- PROCESS:request )
    swap ERASE {: rows:ptr h:ptr :}
    h rows [: ADD-ARGV-ROWS ;] catch {: rc :} drop drop
@@ -359,8 +327,8 @@ public
    h MINT ;
 
 
-\ Appends a copy of each row of a NULL-terminated array to the environment. A
-\ RAW-family bridge.
+\ Appends a copy of each row of a NULL-terminated array to the environment,
+\ unchecked. A RAW-family bridge.
 : ENV-ROWS ( PROCESS:request ptr ptr u8 -- PROCESS:request )
    swap ERASE {: rows:ptr h:ptr :}
    h rows [: ADD-ENV-ROWS ;] catch {: rc :} drop drop
@@ -369,15 +337,16 @@ public
 
 
 \ Refuses a closed parent fd as SPAWN refuses an FD naming one: E-PROC-SPAWN,
-\ EBADF in ERRNO. An open fd passes and leaves ERRNO as it was.
+\ EBADF in ERRNO, for a caller that checks before it opens descriptors that
+\ could take the closed number. An open fd passes and leaves ERRNO as it was.
 : CHECK-FD ( fd -- )
    FD>N OPEN? if exit then
    EBADF ERRNO-CELL !
    E-PROC-SPAWN throw ;
 
 
-\ Spawns the request and frees it. A refusal throws E-PROC-SPAWN, its errno
-\ in ERRNO.
+\ Spawns the request and frees it whatever the outcome. A refusal throws
+\ E-PROC-SPAWN with the positive errno in ERRNO; a spawn that succeeds sets it 0.
 : SPAWN ( PROCESS:request -- pid )
    ERASE {: h:ptr :}
    h 0 [: drop dup LAUNCH ;] catch {: rc :}
@@ -389,7 +358,8 @@ public
    result >PID ;
 
 
-\ Frees a request that will not be spawned and everything it holds.
+\ Frees a request that will not be spawned and everything it holds; a caller
+\ DISCARDs on its throw paths too.
 : DISCARD ( PROCESS:request -- ) ERASE RELEASE ;
 
 ;package

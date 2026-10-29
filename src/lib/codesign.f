@@ -1,20 +1,9 @@
-\ codesign.f - checked executable promotion and target signing, in `package
-\ CODESIGN`, for build drivers that already produced an artifact.
-\
-\ On macOS VERIFY, FORCE, ENSURE and SIGN-AS run CODESIGN:TOOL
-\ (/usr/bin/codesign, ad-hoc `-s -`) through the checked argv process layer;
-\ an absent tool throws E-BUILD-COMMAND and a nonzero status E-BUILD-STATUS.
-\ On Linux there is no signing tool: FORCE sets the executable bit and VERIFY
-\ checks that the file exists and is executable. ENSURE leaves a verified
-\ executable; on macOS it forces an ad-hoc signature only when verification
-\ fails. PROMOTE-EXECUTABLE marks the source executable and renames it to the
-\ destination, so the source path is gone on success;
-\ PROMOTE-SIGNED-EXECUTABLE forces the source, promotes it and verifies the
-\ result. A missing artifact or empty path throws E-BUILD-PATH; a target that
-\ is neither Linux nor macOS E-BUILD-SOURCE.
-\
-\ STORAGE CLASS. PROCESS-WIDE: the capture buffers grow with the tool's
-\ output and are released after each run; one task signs at a time.
+\ codesign.f - checked executable promotion and target signing (package CODESIGN)
+\ for build drivers. On macOS the words run /usr/bin/codesign ad hoc: no tool is
+\ E-BUILD-COMMAND, a nonzero status E-BUILD-STATUS; ENSURE re-signs only when
+\ VERIFY fails. Linux has no signer: FORCE sets the executable bit. A missing
+\ artifact or empty path is E-BUILD-PATH, another target E-BUILD-SOURCE.
+\ STORAGE CLASS. PROCESS-WIDE: per-run capture buffers; one task signs at a time.
 require src/lib/errors.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f

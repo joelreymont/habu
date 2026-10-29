@@ -1,18 +1,8 @@
-\ base64.f - RFC 4648 standard base64 and unpadded base64url.
-\
-\ ENCODE writes four characters for every three bytes and pads the last group
-\ with '='. DECODE accepts exactly what ENCODE writes and refuses the rest: a
-\ byte outside the alphabet is E-BASE64-CHAR; padding anywhere but the end of
-\ the last group, or a bit left set below its last byte, is E-BASE64-PAD; a
-\ length that is not a multiple of four is E-BASE64-LENGTH. Every byte string
-\ therefore has exactly one encoding. There is no whitespace, no line wrapping
-\ in either variant. ENCODE-URL and DECODE-URL use RFC 4648 section 5's -_
-\ alphabet without padding; the URL decoder refuses either standard symbol.
-\
-\ All four words write into the caller's span and answer the count they wrote.
-\ A span too small for the result throws E-SPAN-CAPACITY and a negative input
-\ length E-SPAN-LENGTH. Both decoders check the whole input before writing.
-\
+\ base64.f - RFC 4648 standard base64 and unpadded base64url (section 5's -_).
+\ DECODE accepts exactly what ENCODE writes, so every byte string has one
+\ encoding: no whitespace or wrapping, padding only at the end of the last group
+\ and no bit set below its last byte; the URL decoder refuses either standard
+\ symbol. Both decoders check the whole input before writing.
 \ STORAGE CLASS. CALLER-OWNED: the module keeps no state.
 
 require src/lib/errors.f
@@ -56,7 +46,6 @@ $03 constant TWO-BYTE-SPARE      \ "xxx=" carries 18 bits for 16: the third char
       some OF IDX>N ENDOF
    ;MATCH ;
 
-\ The value of a group's k bytes, high byte first, the missing ones zero.
 : GATHER ( ptr u8 n -- n ) {: p k:n :}
    0 k 0 ?do p i + c@ 16 i 8 * - lshift or loop ;
 
@@ -67,7 +56,6 @@ $03 constant TWO-BYTE-SPARE      \ "xxx=" carries 18 bits for 16: the third char
       out i + c!
    loop ;
 
-\ The last URL group writes only its meaningful characters.
 : URL-SCATTER ( n ptr u8 n -- ) {: v out k:n :}
    k 1+ 0 ?do
       v 18 i 6 * - rshift SEXTET and URL-SEXTET>CHAR out i + c!
@@ -94,13 +82,11 @@ $03 constant TWO-BYTE-SPARE      \ "xxx=" carries 18 bits for 16: the third char
    g 2 + c@ CHAR>SEXTET drop
    3 ;
 
-\ Check every group, and answer the length the input decodes to.
 : CHECKED ( ptr u8 n -- n ) {: a u:n :}
    u 3 and 0<> if E-BASE64-LENGTH throw then
    u 4 / {: groups:n :}
    0 groups 0 ?do a i 4 * + i 1+ groups = GROUP + loop ;
 
-\ Check every non-URL byte and nonzero unused bit before the output is touched.
 : URL-CHECKED ( ptr u8 n -- ) {: a u:n :}
    u 0 ?do a i + c@ URL-CHAR>SEXTET drop loop
    u 3 and 2 = if
@@ -112,7 +98,6 @@ $03 constant TWO-BYTE-SPARE      \ "xxx=" carries 18 bits for 16: the third char
       0<> if E-BASE64-PAD throw then
    then ;
 
-\ The value a checked group carries in its k + 1 characters, high bits first.
 : BITS ( ptr u8 n -- n ) {: g k:n :}
    0 k 1+ 0 ?do g i + c@ CHAR>SEXTET 18 i 6 * - lshift or loop ;
 

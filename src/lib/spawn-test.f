@@ -1,13 +1,9 @@
 \ spawn-test.f - focused tests for src/lib/spawn.f.
 \ Run: bin/hb --load src/lib/spawn-test.f
-\
-\ Children run /bin/sh -c, /bin/echo, /usr/bin/env or /usr/bin/printenv; each
-\ pipe is read to EOF and each child waited. A script names the child's fds by
-\ digit, which a single-digit shell redirection needs, so tests that place a
-\ pipe on a chosen parent fd take a closed one below 9 and patch its digit into
-\ the script. The environment cases use this process's first inherited row with
-\ a name and an `=` whose name does not start with DYLD_ (macOS strips those
-\ from /usr/bin/env and printenv); without one, each records a failure.
+\ A script names a child's fd by one digit, as a shell redirection needs, so a
+\ test placing a pipe on a chosen parent fd takes a closed one below 9 and
+\ patches its digit in. Environment cases use the first inherited row not named
+\ DYLD_* (macOS strips those from env and printenv); without one, each fails.
 
 require src/lib/errors.f
 require src/lib/fd.f
@@ -26,8 +22,8 @@ private
 $3D constant EQUAL-BYTE
 $0A constant LF-BYTE
 
-$1000 constant READ-CHUNK                \ the bytes DRAIN asks each read for
-DYNAMIC-BUFFER OUT u8                    \ a child's output, grown to its EOF
+$1000 constant READ-CHUNK
+DYNAMIC-BUFFER OUT u8
 variable OUT-LEN
 $1000 constant ROW-CAP
 ROW-CAP BUFFER: ROW-BYTES
@@ -36,14 +32,12 @@ SCRIPT-CAP BUFFER: SCRIPT-BYTES
 variable SCRIPT-LEN
 
 
-\ Appends `-c script` to the request's arguments.
 : SH ( PROCESS:request ptr u8 n -- PROCESS:request )
    {: script:ptr len :}
    s" -c" PROCESS:ARG
    script len PROCESS:ARG ;
 
 
-\ len copies of byte c.
 : FILL$ ( n n -- ptr u8 n )
    {: len c :}
    len 0 ?do c ROW-BYTES i + c! loop
@@ -58,7 +52,6 @@ variable SCRIPT-LEN
 : SCRIPT$ ( -- ptr u8 n ) SCRIPT-BYTES SCRIPT-LEN @ ;
 
 
-\ Writes fd's digit over the script's first byte c.
 : PATCH ( n n -- )
    {: fd c :}
    SCRIPT-LEN @ 0 ?do
@@ -74,7 +67,6 @@ variable SCRIPT-LEN
    dup FD-CEILING < TTRUE ;
 
 
-\ Reads fd to EOF into OUT, then closes it.
 : DRAIN ( fd -- )
    {: r:fd :}
    0 OUT-LEN !
@@ -90,19 +82,16 @@ variable SCRIPT-LEN
 : WAIT ( pid -- n ) PROC-WAIT-STATUS PROC-STATUS>RC RC>N ;
 
 
-\ ---- the inherited environment row the environment cases use --------------------
 : NAME-LEN ( ptr u8 n -- n )
    {: z:ptr u :}
    0 begin dup u < if dup z + c@ EQUAL-BYTE <> else false then while 1+ repeat ;
 
-\ Row n has a non-empty name and an `=`, and its name does not start with DYLD_.
 : SAFE-ROW? ( n -- bool )
    ENVP dup ZLEN {: z:ptr u :}
    z u NAME-LEN {: nu :}
    nu 0 > nu u < and
    z nu s" DYLD_" STARTS-WITH? 0= and ;
 
-\ The first safe row's index, or -1 when there is none.
 : PARENT-ROW ( -- n )
    0 begin
       dup ENVP 0= if drop -1 exit then
@@ -118,20 +107,16 @@ variable SCRIPT-LEN
    z nu + 1+ u nu - 1- ;
 
 
-\ ---- lines of OUT$ ---------------------------------------------------------------
-\ The bytes of OUT$ at pos are the string.
 : AT? ( n ptr u8 n -- bool )
    {: pos s:ptr u :}
    pos u + OUT-LEN @ > if false exit then
    pos OUT u s u STR= ;
 
-\ The line of OUT$ at pos is the string and its LF.
 : LINE-IS? ( n ptr u8 n -- bool )
    {: pos s:ptr u :}
    pos s u AT? 0= if false exit then
    pos u + OUT-LEN @ < if pos u + OUT c@ LF-BYTE = else false then ;
 
-\ The position just past name= when the line at pos starts with it, else -1.
 : PAST-NAME ( n ptr u8 n -- n )
    {: pos name:ptr u :}
    pos name u AT? 0= if -1 exit then
@@ -139,18 +124,15 @@ variable SCRIPT-LEN
    at OUT-LEN @ < if at OUT c@ EQUAL-BYTE = if at 1+ exit then then
    -1 ;
 
-\ The line of OUT$ at pos is name=value and its LF.
 : ROW-LINE? ( n ptr u8 n ptr u8 n -- bool )
    {: pos name:ptr u val:ptr vu :}
    pos name u PAST-NAME dup 0< if drop false exit then
    val vu LINE-IS? ;
 
-\ The position just past the line at pos and its LF.
 : NEXT-LINE ( n -- n )
    begin dup OUT-LEN @ < if dup OUT c@ LF-BYTE <> else false then while 1+ repeat
    1+ ;
 
-\ The lines of OUT$ that start with name=.
 : NAME-LINES ( ptr u8 n -- n )
    {: name:ptr u :}
    0 0 begin dup OUT-LEN @ < while
@@ -158,7 +140,6 @@ variable SCRIPT-LEN
       NEXT-LINE
    repeat drop ;
 
-\ The lines of OUT$ that are name=value.
 : ROW-LINES ( ptr u8 n ptr u8 n -- n )
    {: name:ptr u val:ptr vu :}
    0 0 begin dup OUT-LEN @ < while

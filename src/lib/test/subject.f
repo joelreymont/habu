@@ -1,16 +1,9 @@
-\ subject.f - isolated evaluation of the running test subject, in package
-\ SUBJECT.
-\
-\ RUN evaluates one counted source in a fork child, captures bounded stdout
-\ and stderr into the caller's spans, enforces a deadline and returns the
-\ process outcome. Copy-on-write keeps the child's dictionary and engine-state
-\ changes out of the parent. The child runs the source under
-\ `evaluate-closed`, so a source that leaves cells fails with E-EVAL-RESIDUE.
-\ EXITED? and REFUSED? are probes over RUN; TIMED-OUT and RC-TIMED-OUT report
-\ a deadline. The child runs as its own process root (PROC-FORK:CHILD-MAIN).
-\
-\ STORAGE CLASS. PROCESS-WIDE: the source cells, child stack and status
-\ buffers are static; RUN is synchronous, so one task runs a subject at a time.
+\ subject.f - isolated evaluation of the running test subject (package SUBJECT).
+\ RUN evaluates one counted source in a fork child, its own process root
+\ (PROC-FORK:CHILD-MAIN), captures bounded stdout and stderr into the caller's
+\ spans, enforces a deadline and answers the outcome. Copy-on-write keeps the
+\ child's changes from the parent; `evaluate-closed` fails a source leaving cells.
+\ STORAGE CLASS. PROCESS-WIDE: static buffers; one task runs a subject at a time.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -96,17 +89,15 @@ public
    out outcap err errcap PROC-RUN-CAPTURE-OUTCOME-LOOP
    PROC-CAPTURE-FINISH-OUTCOME ;
 
-\ The program a child ran and the stdout and stderr its capture drained.
 : SHOW ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n out:ptr outu:n err:ptr erru:n :}
    s" program:" type cr src srcu type cr
    s" stdout:" type cr out outu type cr
    s" stderr:" type cr err erru type cr ;
 
-\ The timeout arm of a caller that MATCHes a RUN outcome itself. The capture
-\ drained what the child printed before its deadline, and that is the only
-\ evidence of where it stopped: print the program the child ran, its stdout and
-\ its stderr, then throw E-PROC-TIMEOUT so the row still reports a timeout.
+\ The capture is the only evidence of where a child stopped before its deadline,
+\ so the timeout arm prints the program and its streams, then throws
+\ E-PROC-TIMEOUT so the row still reports a timeout.
 : TIMED-OUT ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n out:ptr outu:n err:ptr erru:n :}
    s" timeout: the child passed its deadline" type cr
@@ -124,11 +115,8 @@ public
 
 private
 
-\ src run as the subject: the lengths of what it wrote to STATUS-OUT and
-\ STATUS-ERR, and whether it exited with code want; a signal is not an exit. A
-\ deadline is no verdict (docs/gate.md
-\ "How a suite runs, and what that demands of its files"): TIMED-OUT prints the
-\ program and its capture and throws E-PROC-TIMEOUT.
+\ A signal is not an exit. A deadline is no verdict (docs/gate.md "How a suite
+\ runs, and what that demands of its files").
 : STATUS ( ptr u8 n n -- len len bool )
    {: src:ptr srcu:n want:n :}
    src srcu STATUS-OUT STATUS-CAP >LEN STATUS-ERR STATUS-CAP >LEN STATUS-MS >MS RUN
@@ -144,8 +132,8 @@ private
 
 public
 
-\ Whether src, run as the subject, exited with code want. The capture is kept
-\ only for this answer; a case that reads the child's streams runs RUN itself.
+\ The capture is kept only for this answer; a case that reads the child's
+\ streams runs RUN itself.
 : EXITED? ( ptr u8 n n -- bool )
    STATUS >r 2drop r> ;
 

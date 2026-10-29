@@ -50,7 +50,6 @@ create NUL-NAME 74 c, 74 c, 0 c, 88 c,      \ J J NUL X
 : LF-COUNT ( ptr u8 n -- n ) {: a:ptr u:n :}
    0 u 0 ?do a i + c@ 10 = if 1 + then loop ;
 
-\ ---- the kept rows, each inside its own scope ------------------------------------
 : PRINTF ( CMD:command -- CMD:command )
    s" %s:%s" CMD:ARG+
    s" left" CMD:ARG+
@@ -94,12 +93,10 @@ create NUL-NAME 74 c, 74 c, 0 c, 88 c,      \ J J NUL X
    nip 0 T= ;
 
 
-\ HABU_PROC_ENV_TEST comes from a PROC-ENV default, HOME from this process's
-\ environment; UNSETENV keeps both from the child, absent rather than empty (the
-\ shell's ${NAME+1} tells them apart), a name never set is harmless, and RESET
-\ forgets the unset names, so the next run inherits both again. The default
-\ HABU_PROC_ENV_TEST_X extends an unset name and still reaches the child: names
-\ match whole, and the rest of the environment is still inherited.
+\ UNSETENV keeps a PROC-ENV default and an inherited variable from the child,
+\ absent rather than empty (${NAME+1} tells them apart); a name never set is
+\ harmless; names match whole, so HABU_PROC_ENV_TEST_X still arrives; RESET
+\ forgets the unset names.
 : UNSET-RUN ( CMD:command -- CMD:command )
    s" HABU_PROC_ENV_TEST" CMD:UNSETENV
    s" HOME" CMD:UNSETENV
@@ -188,8 +185,7 @@ create NUL-NAME 74 c, 74 c, 0 c, 88 c,      \ J J NUL X
    s" /bin/sleep" 1 >MS 7 CMD:RUN ;
 
 \ A run that fails leaves its code, not the clean exit of an earlier run:
-\ OUTCOME@ and RC@ throw it again. The catch sits inside the scope, the shape dot
-\ habu-settle-stale-linear-0bcc904c questions.
+\ OUTCOME@ and RC@ throw it again. The catch sits inside the scope.
 : SPAWN-FAILS ( CMD:command -- CMD:command )
    s" /usr/bin/true" CMD-TIMEOUT-MS RUN# 0 T=
    [: s" /nonexistent-pcmdt-path" CMD-TIMEOUT-MS >MS CMD:RUN-OUTCOME drop ;]
@@ -278,8 +274,7 @@ create REL PATH-CAP allot   variable REL-U
    s" NAME" drop -1 CMD:UNSETENV ;
 
 
-\ ---- growth: no member has a ceiling ------------------------------------------------
-\ Both streams past any fixed buffer the old context had, captured whole.
+\ No member has a ceiling: both streams are captured whole.
 100000 constant OUT-BYTES
 70000 constant ERR-BYTES
 
@@ -335,7 +330,7 @@ create NAME 5 allot                      \ V and four digits
    u ROWS 8 * T=                         \ "Vdddd=x\n" per row
    a u LF-COUNT ROWS T= ;
 
-\ ---- nesting: an inner scope is its own command ---------------------------------
+\ An inner scope is its own command.
 : SAY ( CMD:command ptr u8 n -- CMD:command ) {: a:ptr u:n :}
    a u CMD:ARG+
    s" /usr/bin/printf" CMD-TIMEOUT-MS RUN# 0 T= ;
@@ -355,7 +350,6 @@ create NAME 5 allot                      \ V and four digits
    [: INNER ;] CMD:WITH-COMMAND
    CMD:OUT$ s" again" T$= ;
 
-\ ---- placed descriptors -------------------------------------------------------------
 \ The parent places pipes' write ends in the child and reads the pipes.
 variable PIPE-R   variable PIPE-W
 variable PIPE4-R  variable PIPE4-W
@@ -469,7 +463,6 @@ create PIPE-BUF PIPE-CAP allot
    PIPE4-W @ close
    PIPE4-R @ close ;
 
-\ ---- freed on throw ---------------------------------------------------------------
 \ Each cycle captures 4 MiB and throws out of the scope. Kept, 64 cycles would add
 \ 256 MiB to the peak resident set; released, the peak stays near one cycle's.
 0 constant RUSAGE-SELF
@@ -519,7 +512,6 @@ FUNCTION: SYNC-RANGE msync ( n n n -- i32 ) ;FUNCTION
    FAT-CYCLES 0 do FAT-ONCE loop
    PEAK-RSS before - RSS-BOUND < TTRUE ;
 
-\ ---- two tasks, each with its own scope ---------------------------------------
 \ Both children sleep before writing, so the two captures overlap. A task asserts
 \ nothing: it records, and this thread checks after the join.
 100000 constant TASK-BYTES
@@ -568,7 +560,6 @@ TASK:MIN-STACK TASK:TASK TASK-B
    A-RC @ 0 T=   A-LEN @ TASK-BYTES T=   A-BAD @ 0 T=
    B-RC @ 0 T=   B-LEN @ TASK-BYTES T=   B-BAD @ 0 T= ;
 
-\ ---- a default added between another task's prepare and its spawn -------------
 \ An inheriting run keeps the default rows' addresses from its prepare to its
 \ spawn. This thread holds the spawn lock, so the worker stops between the two:
 \ its capture reset, right after the prepare, sets its RC cell to -1 before the
@@ -616,7 +607,6 @@ TASK:MIN-STACK TASK:TASK LATE-TASK
    LATE-FIRST @ 1 T=
    LATE-SEEN @ 0 T= ;
 
-\ ---- a halted task's open scope is released -----------------------------------
 \ The worker parks inside its scope with 1 MiB captured. The halt unwinds the task
 \ at TASK:PAUSE through the scope's `finally`; the capture's mapping must be gone
 \ once the task has ended, which msync reports as -1 for an unmapped address
@@ -662,7 +652,6 @@ TASK:MIN-STACK TASK:TASK PARKER
    PARKER TASK:JOIN MATCH result ok OF drop 1 0 T= ENDOF err OF E-TASK-NO-RESULT T= ENDOF ;MATCH
    PARK-ADDR @ MAPPED -1 T= ;
 
-\ ---- a runaway producer meets its deadline -------------------------------------
 \ `yes` writes until the deadline kills it. The run answers the timeout outcome
 \ with the capture grown past a page, and the capture's mapping is gone once the
 \ scope ends.
@@ -679,7 +668,6 @@ variable YES-ADDR
    [: RUNAWAY ;] CMD:WITH-COMMAND
    YES-ADDR @ MAPPED -1 T= ;
 
-\ ---- a swapped token is refused ------------------------------------------------
 \ The inner body swaps and hands back the outer token. The inner scope refuses it
 \ with CMD:E-HANDLE and closes its own context; the throw leaves the outer scope,
 \ which closes its own, before the outer body can run on a closed context. Both

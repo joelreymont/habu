@@ -1,42 +1,9 @@
-\ zip.f - indexed ZIP reading and byte-preserving replacement.
-\
-\ Decompression uses libzip (VERSIONED-LIBRARY zip 5, src/lib/zip-ffi.f).
-\ Archives and entries are distinct checked identities: every operation checks
-\ the archive is live and the entry is its own, and entries are zero-based
-\ indices, so duplicate names stay distinct. OPEN is read-only; EDIT opens an
-\ existing archive (copy the input first for a new output). Both copy the input
-\ once to a private snapshot under $TMPDIR (or /tmp); failure to make it, or an
-\ input without an end record, throws ZIP:E-OPEN and releases what it made.
-\ There is no in-memory fallback, and later changes to the input path change
-\ nothing. All-stored unencrypted archives read members from the snapshot;
-\ otherwise OPEN opens libzip. SOURCE$, NAME$ and READ return archive-owned
-\ copies valid until a successful COMMIT or CLOSE; SOURCE$ is the original
-\ snapshot, which pending changes do not alter.
-\ COMPRESSED-SIZE answers the central directory compressed size, ZIP64
-\ included, or a pending replacement's stored length, the view READ sees.
-\
-\ REPLACE copies its input at once (an empty member too); REPLACE-WITH hands a
-\ callback an archive-owned span of exactly the length asked. READ sees a
-\ pending replacement. REMOVE stages omission on an EDIT handle, idempotently;
-\ until COMMIT or CLOSE, COUNT, indices, names and reads keep the opened view,
-\ and replacing a removed entry throws ZIP:E-ENTRY. COMMIT writes a compact
-\ archive to a temporary in the destination directory and renames it over,
-\ keeping permissions and untouched local records byte-for-byte; replacements
-\ are STORE with fresh CRC and sizes, ZIP64 fields rebuilt as needed. On success
-\ it retires the archive and its entries; on ZIP:E-COMMIT the archive stays live
-\ for a retry or CLOSE. CLOSE discards pending changes. A stale handle or a
-\ repeated close throws ZIP:E-HANDLE; a foreign, negative or out-of-range entry
-\ ZIP:E-ENTRY. OPEN-ENTRY and OPEN-SOURCE give inputs with their own cursors;
-\ READ-IN checks length and CRC through EOF and on failure retires the input
-\ and throws ZIP:E-READ; CLOSE-ENTRY drains and verifies an unfinished member.
-\ ARCHIVE-SLOT and INPUT-SLOT only retype a caller cell. Diagnostics carry no
-\ member contents; there is no fixed entry limit.
-\
-\ STORAGE CLASS. TASK-LOCAL: the stat block and EOF probe byte libzip writes
-\ are one TASK:+USER row per task. Archive buffers, entries and inputs are owned by
-\ their handle, and each handle has one task owner: separate tasks use distinct
-\ handles concurrently and coordinate any transfer. PROCESS-WIDE: the identity
-\ registry and serial, under one atomic lock (src/lib/zip-state.f).
+\ zip.f - indexed ZIP reading and byte-preserving replacement; libzip
+\ (src/lib/zip-ffi.f) decompresses. Every word checks that the archive is live
+\ (ZIP:E-HANDLE) and the entry its own (ZIP:E-ENTRY). No error quotes a member.
+\ STORAGE CLASS. TASK-LOCAL: libzip's stat block and EOF probe byte, one
+\ TASK:+USER row. A handle owns its buffers, entries and inputs and has one task
+\ owner. PROCESS-WIDE: the identity registry and serial, src/lib/zip-state.f.
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/zip-raw.f
@@ -330,10 +297,18 @@ PATH-CAP CSTR-ROOM constant SNAPSHOT-ROOM   \ a temp path and its terminator
 
 public
 
+\ OPEN is read-only; EDIT opens an existing archive (copy the input first for a
+\ new output). Both copy the input once to a private snapshot under $TMPDIR (or
+\ /tmp), so later changes to the input path change nothing. No snapshot, or no
+\ end record, is ZIP:E-OPEN and releases what it made; there is no in-memory
+\ fallback. An all-stored unencrypted archive reads members from the snapshot;
+\ any other opens libzip.
 : OPEN ( ptr u8 n -- archive ) READONLY-FLAG OPEN-CHECKED ;
 : EDIT ( ptr u8 n -- archive ) 0 OPEN-CHECKED ;
 : OPEN-FILE ( ptr u8 n -- archive ) OPEN ;
 : EDIT-FILE ( ptr u8 n -- archive ) EDIT ;
+\ The original snapshot, which pending changes do not alter. SOURCE$, NAME$ and
+\ READ answer archive-owned copies valid until a successful COMMIT or CLOSE.
 : SOURCE$ ( archive -- ptr u8 n )
    ARCHIVE-NODE {: node:ptr :}
    node RAW-PTR @ NULL? if
@@ -343,11 +318,14 @@ public
    then
    node RAW-PTR @ node RAW-LEN @ ;
 : COUNT ( archive -- n ) ARCHIVE-NODE COUNT-NODE ;
+\ Entries are zero-based indices, so duplicate names stay distinct; there is no
+\ fixed entry limit.
 : ENTRY ( archive n -- entry ) swap ARCHIVE-NODE swap NEW-ENTRY ;
 
 : NAME$ ( archive entry -- ptr u8 n )
    swap ARCHIVE-NODE dup rot ENTRY-INDEX NAME-COPY ;
 
+\ Sees a pending replacement.
 : READ ( archive entry -- ptr u8 n )
    swap ARCHIVE-NODE dup rot ENTRY-INDEX READ-COPY ;
 
@@ -356,25 +334,34 @@ public
 : COMPRESSED-SIZE ( archive entry -- n )
    swap ARCHIVE-NODE dup rot ENTRY-INDEX MEMBER-AT OUTPUT-COMPRESSED ;
 
+\ Each input has its own cursor.
 : OPEN-ENTRY ( archive entry -- input )
    swap ARCHIVE-NODE dup rot ENTRY-INDEX OPEN-INPUT ;
 
 : OPEN-SOURCE ( archive -- input ) ARCHIVE-NODE OPEN-SOURCE-INPUT ;
 
-\ A caller-owned aligned cell can retain an archive through its lifetime.
+\ Only retypes a caller-owned aligned cell, which can retain an archive through
+\ its lifetime.
 : ARCHIVE-SLOT ( ptr n -- ptr archive ) >ARCHIVE-SLOT ;
 
-\ A caller-owned aligned cell can hold an input across a raw callback context.
+\ Only retypes a caller-owned aligned cell, which can hold an input across a raw
+\ callback context.
 : INPUT-SLOT ( ptr n -- ptr input ) >INPUT-SLOT ;
 
+\ Checks length and CRC through EOF; a failure retires the input and throws
+\ ZIP:E-READ.
 : READ-IN ( input SPAN:span<u8> -- n ) READ-IN-CHECKED ;
+\ Drains and verifies an unfinished member.
 : CLOSE-ENTRY ( input -- ) CLOSE-IN-CHECKED ;
 
+\ Copies its input at once, an empty member too.
 : REPLACE ( archive entry ptr u8 n -- ) {: archive:archive entry:entry data:ptr len:n :}
    archive ARCHIVE-NODE {: node:ptr :}
    node node entry ENTRY-INDEX data len REPLACE-COPY ;
 
-\ Staged omission keeps the opened view and entry identities stable until close.
+\ Stages omission on an EDIT handle, idempotently. Until COMMIT or CLOSE, COUNT,
+\ indices, names and reads keep the opened view, and replacing a removed entry
+\ is ZIP:E-ENTRY.
 : REMOVE ( archive entry -- ) {: archive:archive entry:entry :}
    archive ARCHIVE-NODE {: node:ptr :}
    node entry ENTRY-INDEX {: idx:n :}
@@ -382,14 +369,21 @@ public
    1 node idx MEMBER-AT REMOVED !
    1 node DIRTY ! ;
 
+\ Hands the callback an archive-owned span of exactly the length asked.
 : REPLACE-WITH ( archive entry n a [ a SPAN:span<u8> -- ] -- )
    {: archive:archive entry:entry len:n ctx fill :}
    archive ARCHIVE-NODE {: node:ptr :}
    node node entry ENTRY-INDEX len ctx fill REPLACE-FILL ;
 
+\ Writes a compact archive to a temporary in the destination directory and
+\ renames it over, keeping permissions and untouched local records byte for
+\ byte; replacements are STORE with fresh CRC and sizes, ZIP64 fields rebuilt
+\ as needed. Success retires the archive and its entries; after ZIP:E-COMMIT the
+\ archive stays live for a retry or CLOSE.
 : COMMIT ( archive -- )
    ARCHIVE-NODE dup COMMIT-RAW DISCARD-NODE ;
 
+\ Discards pending changes.
 : CLOSE ( archive -- ) ARCHIVE-NODE DISCARD-NODE ;
 
 ;using

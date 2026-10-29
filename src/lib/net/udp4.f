@@ -1,22 +1,9 @@
-\ Linux and Darwin IPv4 datagrams through exact, bounded libc bindings. No
-\ application protocol, sequencing or retry policy; another OS is E-PLATFORM
-\ before a socket opens.
-\
-\ STORAGE CLASS. TASK-LOCAL. The endpoint storage is one $18 TASK:+USER row, so
-\ each task holds its own, and the datagram spans the transfer words take are
-\ caller-owned.
-\
-\ SEND's `ok` means the OS took the whole datagram, not delivery; interruption
-\ and a full send queue reach the caller. A `truncated` length is the
-\ datagram's original size, never a readable length. Source filtering and
-\ reordering are the caller's. The caller closes each socket once and never
-\ reuses it, even after an interrupted close; calls must not nest within one
-\ task. Close sockets before image capture: they are process resources.
-\
-\ The socket is nonblocking and RECEIVE waits on the AIO loop (src/lib/aio.f): one
-\ POLL for the time left on its deadline, awaited without parking a thread. A
-\ program calls AIO:START before its first RECEIVE that waits; a wait with
-\ no loop is E-AIO-STATE.
+\ udp4.f - Linux and Darwin IPv4 datagrams through exact, bounded libc
+\ bindings; no protocol, sequencing or retry policy. Another OS is E-PLATFORM
+\ before a socket opens. Calls must not nest within one task; close sockets
+\ before image capture: they are process resources.
+\ STORAGE CLASS. TASK-LOCAL: the endpoint storage is one $18 TASK:+USER row
+\ (IO-STORAGE); the datagram spans are caller-owned.
 require src/lib/errors.f
 require src/lib/memory.f
 require src/lib/ffi-abi.f
@@ -66,10 +53,11 @@ $10 constant SOCKADDR-BYTES
 $FFFF constant MAX-PORT
 $FFFFFFFF constant MAX-ADDRESS
 $FFE3 constant MAX-PAYLOAD
+\ Linux: SOCK_DGRAM | SOCK_NONBLOCK | SOCK_CLOEXEC; Darwin: SOCK_DGRAM.
 : SOCKET-FLAGS ( -- n )
    HB-TARGET-LINUX-KERNEL? if $80802 exit then
    HB-TARGET-MACOS? if 2 exit then
-   E-PLATFORM throw ;                    \ SOCK_DGRAM | SOCK_NONBLOCK | SOCK_CLOEXEC.
+   E-PLATFORM throw ;
 $20 constant MSG-TRUNC
 1000000 constant NS-PER-MS
 
@@ -151,13 +139,11 @@ CAST: BLEN>N ( NUM:byte-len -- n )
    SOCKADDR $04 + BE32@ >ADDRESS SOCKADDR $02 + BE16@ >PORT ;
 
 
-\ The exact Linux libc schemas. RTLD_DEFAULT borrows process symbols;
-\ the native executable already needs libc.so.6, so no library reference is
-\ acquired or retained here. Each declaration states the C function's own effect
-\ and the extent of every buffer the callee writes, which is what the bounded
-\ call guards; package FFI resolves each symbol on its first call and clears the
-\ cache for image capture. Coverage: test/net/udp4.py exercises every binding
-\ with an independent Python UDP peer.
+\ The exact Linux libc schemas. RTLD_DEFAULT borrows process symbols: the
+\ executable already needs libc.so.6, so no library reference is retained. Each
+\ declaration states the C effect and the extent of every buffer the callee
+\ writes, which the bounded call guards. test/net/udp4.py exercises every
+\ binding with an independent Python UDP peer.
 PROCESS-SYMBOLS
 
 FUNCTION: SOCKET-CALL socket ( n n n -- i32 ) ;FUNCTION
@@ -335,9 +321,10 @@ public
 
 \ A packet may contain zero bytes. Capacity is 1..65507; the caller owns that
 \ writable span. A truncated result carries the ORIGINAL datagram byte length,
-\ while only capacity bytes were copied. Timeout zero makes one immediate try and
-\ never reaches the loop; any other timeout is an absolute deadline the waits on
-\ the loop share, so AIO:START must have run before the first of them.
+\ while only capacity bytes were copied. Source filtering and reordering are the
+\ caller's. Timeout zero makes one immediate try and never reaches the loop; any
+\ other timeout is an absolute deadline the waits on the AIO loop share, so
+\ AIO:START must have run before the first of them.
 : RECEIVE ( socket ptr u8 NUM:byte-len ms -- receive-result )
    {: socket:socket bytes capacity:NUM:byte-len timeout:ms :}
    socket CHECK-SOCKET capacity BLEN>N 1 MAX-PAYLOAD WITHIN-RANGE
@@ -358,7 +345,8 @@ public
    again ;
 
 
-\ On Linux, close consumes the descriptor even if interrupted. Never retry it.
+\ The caller closes each socket once and never reuses it: on Linux, close
+\ consumes the descriptor even if interrupted. Never retry it.
 : CLOSE ( socket -- status )
    dup CHECK-SOCKET CLOSE-RAW 0 < if LAST-ERROR UDP4-STATUS:failed else UDP4-STATUS:ok then ;
 

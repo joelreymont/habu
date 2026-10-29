@@ -1,68 +1,10 @@
-\ fs-mutate.f - checked filesystem mutation helpers.
-\
-\ STORAGE CLASS. TASK-LOCAL for the paths one call stages: the second NUL-padded
-\ path PATHZ2-BUF (RENAME-FILE's, MAKE-SYMLINK's, MAKE-LINK's and the stream
-\ copy's destination), the unique `.tmp-*` sibling ATOMIC-WRITE-FILE,
-\ ATOMIC-WRITE-PRIVATE, FS:RESERVE-SIBLING and REPLACE-STAGED name, ATOMIC-PATH,
-\ and FS:MKTEMP-DIR-IN's and FS:MKTEMP's TMP-PATH-BUF - the one this module
-\ RETURNS a span into - are the FS-MUT-ABI band of the per-task DATA region, so
-\ two tasks renaming, symlinking, writing atomically or making a temp at once
-\ share nothing and neither can replace the other's returned path. The
-\ descriptors, cursors and lengths COPY-FILE-STREAM threads are LOCALS of the
-\ call.
-\ PER CALL: the tree removal. REMOVE-TREE maps a walk context of its own, as
-\ src/lib/fs.f's WALK-FILES does, holds its per-depth directory descriptors and
-\ dirent blocks there and releases it on return or throw, so two tasks remove
-\ two trees at once and a WALK-FILES callback removes a subtree.
-\ PROCESS-WIDE: the 8 KiB COPY-BUF, so COPY-FILE and COPY-FILE-STREAM are
-\ this module's one SINGLE-TASK pair (8192 bytes is more than the whole per-task
-\ band could carry; a second task that must copy needs its own buffer); and the
-\ cleanup registry, which is a PROCESS exit registry and not per-call scratch -
-\ REGISTERING, FORGETTING and the RUN are safe from any task, because all three
-\ run under the registry's one spin lock, which also covers growing its rows.
-\
-\ CONTRACT. Public names avoid the primitives' (the dictionary is
-\ case-insensitive): MAKE-DIR, REMOVE-DIR, MAKE-DIRS, not mkdir or rmdir. After
-\ an E-FS-IO from MAKE-DIR, MKDIR-MODE or MAKE-DIRS, FS:ERRNO names the host's
-\ cause (fs.f states the guarantee); MAKE-DIRS keeps a component mkdir finds existing (EEXIST) only when it
-\ is a directory or a link to one. COPY-FILE refuses a file past the caller's
-\ capacity with E-FS-CAPACITY instead of truncating. REPLACE-STAGED leaves the
-\ destination naming its old file or the whole new one: the sibling is removed
-\ if the filler or the rename throws or the filler dies. Every sibling is
-\ `<dir>/.tmp-<seed>-<attempt>`, whatever the destination's name.
-\ ATOMIC-WRITE-FILE names its sibling and destination relative to the
-\ destination's directory descriptor, so only the destination's own path meets
-\ PATH-CAP and the host alone judges its last name. ATOMIC-WRITE-FILE gives
-\ the file an existing regular destination's mode, else 0644 under the umask;
-\ FS:ATOMIC-WRITE-PRIVATE creates its sibling 0600 and publishes 0600 whatever
-\ the destination held. FS:RESERVE-SIBLING answers a path, so a directory with
-\ no room for one in PATH-CAP is E-SPAN-CAPACITY. REMOVE-TREE
-\ unlinks a symlink to a directory and never descends into it, a root spelled
-\ with a trailing slash (`link/`, `lfile/`, `dang/`) included, and throws on
-\ any partial failure. Its root path must fit PATH-CAP; below the root each
-\ entry is named relative to its parent's directory descriptor and the walk's
-\ frames grow with the depth, so neither path lengths nor depth bound the tree,
-\ only the descriptors the process may hold open. A missing root
-\ is a no-op; a root that cannot be stat'ed for any other reason is E-FS-STAT,
-\ with libc's cause in FS:ERRNO. FS:MKTEMP-DIR makes its tree and FS:MKTEMP its
-\ file under the canonical spelling of $TMPDIR, or /tmp when TMPDIR is unset or
-\ empty, and both refuse by name a root that cannot hold it. FS:MKTEMP creates
-\ the file exclusively, mode 0600, and registers no cleanup: the caller owns the
-\ descriptor, the file and its removal. CLEANUP-RUN removes registrations
-\ newest first, so a parent registered before its child goes after it, and the
-\ registry grows with what it holds: no number of registrations is refused.
-\ Each registration also arms CLEANUP-AT-EXIT in the engine's EXIT-HOOK-CELL,
-\ chaining a hook already there to run last, once; a restored or stripped image
-\ (docs/architecture.md "Images") starts with an empty table.
-\
-\ Every buffer this module owns - the second NUL-padded path, the copy buffer,
-\ the atomic and temp path builders and the cleanup path stack - is a span, so
-\ the copies into them are bounded by the buffer's own reach (E-SPAN-CAPACITY,
-\ E-SPAN-RANGE) and not by a hand-written PATH-CAP comparison. What remains
-\ hand-written is the path DOMAIN: a negative or empty path is E-FS-PATH and
-\ fs.f's one PATH-CAP length gate still runs on every path handed to a
-\ syscall through >PATHZ / >PATHZ2.
-\
+\ fs-mutate.f - checked filesystem mutation: directories, links, copies, atomic
+\ and staged replacement, temp paths, and the process exit cleanup registry.
+\ Public names avoid the primitives' (the dictionary is case-insensitive):
+\ MAKE-DIR and REMOVE-DIR, not mkdir or rmdir. Path checks and the PATH-CAP gate
+\ are src/lib/fs.f's; the FS-MUT-ABI band is declared in src/habu/layout.f.
+\ STORAGE CLASS. TASK-LOCAL staged paths; PROCESS-WIDE COPY-BUF and registry.
+
 require src/lib/errors.f
 require src/lib/string.f
 require src/lib/fmt.f
@@ -94,29 +36,26 @@ private
 $2D constant DASH
 17 constant EEXIST                    \ EEXIST on both targets
 
+\ Process-wide, so COPY-FILE and COPY-FILE-STREAM are single-task: 8192 bytes is
+\ more than the per-task band carries, and a second task that copies needs its
+\ own buffer.
 COPY-CAP SPAN-BUFFER: COPY-BUF
 
-\ THE CLEANUP REGISTRY IS ONE ROW THAT GROWS WITH IT, a MEM:ALLOC-CELLS
-\ mapping the process owns. Slot i is CLEANUP-STRIDE cells at cell
-\ i * STRIDE: the path's length, its kind, then PATH-CAP path bytes.
-\ CLEANUP-CAP counts the slots mapped and CLEANUP-N the slots in
-\ use, oldest first. A full row grows to twice its slots (CLEANUP-FIRST
-\ the first time): the new row is mapped, the slots in use copied, the new row
-\ and its capacity published, and only then the old row released.
-\ CLEANUP-LOCK serializes registration, forgetting, growth and the run,
-\ and holds its owner: the address of that task's DATA region, which no two
-\ live tasks share.
+\ The cleanup registry is one MEM:ALLOC-CELLS row the process owns. Slot i is
+\ CLEANUP-STRIDE cells at cell i * CLEANUP-STRIDE: the path's length, its kind,
+\ then PATH-CAP path bytes. CLEANUP-N slots are in use, oldest first, of
+\ CLEANUP-CAP mapped. A full row doubles (CLEANUP-FIRST slots the first time),
+\ and the new row and its capacity are published before the old row is released.
+\ CLEANUP-LOCK serializes registration, forgetting, growth and the run, and
+\ holds its owner: the address of that task's DATA region, unique per live task.
 \
-\ A CAPTURE KEEPS THE PROCESS'S REGISTRATIONS AND THE IMAGE STARTS EMPTY. N,
-\ CAP and ROW are IMAGE-LIFECYCLE process cells: the image writer stores them
-\ as 0 and the capturing process keeps its values, so its own paths are still
-\ removed at its exit while the image owns no path and no mapping. They are
-\ declared at the FIRST REGISTRATION, not at load, because a load inside a
-\ native build's capture window would put that window's DATA addresses into the
-\ host's process-cell table, whose 64 slots every such load would spend, and
-\ whose cells a later snapshot would zero in storage that is no longer the
-\ program's. CLEANUP-DECLARED is no process cell: a snapshot keeps the
-\ table that holds the declarations, so it keeps the flag that says they exist.
+\ A capture keeps the process's registrations and the image starts empty: N,
+\ CAP and ROW are IMAGE-LIFECYCLE process cells, stored as 0 in the image. They
+\ are declared at the first registration, not at load: a load inside a native
+\ build's capture window would spend slots of the host's 64-slot process-cell
+\ table on that window's DATA addresses, which a later snapshot would zero in
+\ storage that is no longer the program's. CLEANUP-DECLARED is no process cell:
+\ a snapshot keeps the table that holds the declarations, so it keeps the flag.
 PATH-CAP CELL 1- + CELL / 2 + constant CLEANUP-STRIDE
 8 constant CLEANUP-FIRST
 TYPED-VARIABLE CLEANUP-ROW ptr n
@@ -138,17 +77,12 @@ CAST: >CELL ( n -- ptr n )
    CLEANUP-ROW NULL-PTR - >CELL IMAGE-LIFECYCLE:PROCESS-CELL
    1 CLEANUP-DECLARED ! ;
 
-\ THE STAGED PATHS ARE TASK-LOCAL, in the FS-MUT-ABI band of the per-task DATA
-\ region: every accessor reads `data-base`, which is the RUNNING task's region,
-\ so the path FS:MKTEMP-DIR-IN or FS:MKTEMP hands back stays this task's until
-\ it calls either again, and two tasks in RENAME-FILE, MAKE-SYMLINK, MAKE-LINK,
-\ ATOMIC-WRITE-FILE or ATOMIC-WRITE-PRIVATE at once share nothing. The band is
-\ declared in src/habu/layout.f below FS-ABI and asserted there against every
-\ other DATA claim. It is a declared band and not TASK:+USER rows for
-\ src/lib/fs.f's reason: tools/native-build-core.f requires this file to build
-\ the engine, so a `require src/lib/task.f` here would load the task runtime
-\ into the build tool. A region is a fresh zeroed mapping, so a new task's paths
-\ start empty exactly as the old SPAN-BUFFERs did.
+\ The staged paths are task-local, in the FS-MUT-ABI band of the per-task DATA
+\ region (`data-base` is the running task's): the path FS:MKTEMP-DIR-IN or
+\ FS:MKTEMP answers stays this task's until it calls either again, and a new
+\ task's paths start empty. The band is declared in src/habu/layout.f, not as
+\ TASK:+USER rows, because tools/native-build-core.f requires this file to
+\ build the engine and must not load src/lib/task.f.
 \
 \ layout.f is loaded before this file and cannot see PATHZ-CAP or
 \ PATH-CAP, so the band states those widths and this executes the agreement
@@ -159,8 +93,6 @@ CAST: >CELL ( n -- ptr n )
    PATH-CAP FS-MUT-ABI:TMP-BYTES <> if E-FS-BAND throw then ;
 SCRATCH-BAND-AGREE
 
-\ Each reach is the band width SCRATCH-BAND-AGREE asserted against layout.f, so
-\ the span says exactly what this task's region holds.
 : PATHZ2-BUF ( -- SPAN:span<u8> )
    data-base FS-MUT-ABI:PATHZ2-OFF + BYTE-VIEW PATHZ-CAP SPAN:MAKE ;
 
@@ -174,7 +106,6 @@ SCRATCH-BAND-AGREE
    PATHZ2-BUF PATHZ-INTO ;
 
 public
-\ Build and seed tools append to paths in caller-owned bounded storage.
 : SUFFIX-PATH ( ptr u8 n ptr u8 n SPAN:span<u8> -- n ) {: a:ptr u s:ptr su dst :}
    u 0 < if E-FS-PATH throw then
    su 0 < if E-FS-PATH throw then
@@ -183,7 +114,6 @@ public
    u su + ;
 
 private
-\ Slot idx's first cell, its length; a slot outside the mapped row is refused.
 : CLEANUP-AT ( n -- ptr n ) {: idx :}
    idx 0 < if E-FS-CAPACITY throw then
    idx CLEANUP-CAP @ >= if E-FS-CAPACITY throw then
@@ -191,11 +121,9 @@ private
 
 : CLEANUP-KIND ( n -- ptr n ) CLEANUP-AT CELL + ;
 
-\ Slot idx's path bytes as a span, so every copy into a slot is bounded by it.
 : CLEANUP-SLOT ( n -- SPAN:span<u8> )
    CLEANUP-AT 2 cells + BYTE-VIEW PATH-CAP SPAN:MAKE ;
 
-\ The path slot idx names.
 : CLEANUP-PATH ( n -- ptr u8 n ) {: idx :}
    idx CLEANUP-SLOT idx CLEANUP-AT @ SPAN:TAKE SPAN:$ ;
 
@@ -261,8 +189,7 @@ public
 : MAKE-SYMLINK ( ptr u8 n ptr u8 n -- ) {: target:ptr targetu link:ptr linku :}
    target targetu >PATHZ link linku >PATHZ2 symlink 0 < if E-FS-IO throw then ;
 
-\ LINK becomes a second name of TARGET's file (a hard link); an existing LINK
-\ is E-FS-IO, never replaced.
+\ A hard link; an existing LINK is E-FS-IO, never replaced.
 : MAKE-LINK ( ptr u8 n ptr u8 n -- )
    {: target:ptr targetu link:ptr linku :}
    target targetu >PATHZ link linku >PATHZ2 LINK-CALL 0<> if E-FS-IO throw then ;
@@ -286,12 +213,8 @@ public
 : REMOVE-DIR ( ptr u8 n -- ) {: a:ptr u :}
    a u >PATHZ rmdir 0 < if E-FS-IO throw then ;
 
-\ Tree removal names every entry below the root relative to its parent's
-\ directory descriptor, held in the walk's per-depth frames, so no path below
-\ the root is joined and none is bounded by PATH-CAP. The root is the entry
-\ its own path names relative to the working directory. The error paths throw
-\ plainly: WALK-UNMAP closes whatever descriptors the frames still hold,
-\ however the traversal ended.
+\ WALK-UNMAP closes whatever descriptors the walk's frames still hold, however
+\ the traversal ended, so the error paths below throw plainly.
 
 private
 \ The entry's own mode, never a link target's, lands in STAT-BUF. A name
@@ -388,14 +311,21 @@ private
    code 0<> if code throw then ;
 
 public
+\ Removes the tree at a, or unlinks a symlink a names without descending, a
+\ root spelled with a trailing slash included; a missing root is a no-op and
+\ any partial failure throws. Only the root path meets PATH-CAP: each entry
+\ below is named relative to its parent's descriptor, so only the descriptors
+\ the process may hold open bound the depth. Each call maps its own walk
+\ context, so two tasks remove two trees at once and a WALK-FILES callback
+\ removes a subtree.
 : REMOVE-TREE ( ptr u8 n -- ) {: a:ptr u :}
    u 0 <= if CAUSE-CLEAR E-FS-PATH throw then
    a u WALK-HANDLE-BYTES MEM:BYTES-ALLOC-LEN [: REMOVE-SCOPE ;] MEM:WITH-BYTES ;
 
 private
 \ Only EEXIST can mean the folder is already there, so only it is checked
-\ with a stat. Any other failure throws at once with mkdir's cause; a
-\ non-directory in the way throws with EEXIST, which the stat replaced.
+\ with a stat, which accepts a link to a directory. Any other failure throws at
+\ once with mkdir's cause; a non-directory in the way throws with EEXIST.
 : MKDIR-ONE ( ptr u8 n -- ) {: a:ptr u :}
    a u >PATHZ MODE-DIR MADE? if exit then
    FFI:ERRNO EEXIST <> if E-FS-IO ERRNO-FAIL then
@@ -427,11 +357,9 @@ FUNCTION: TRUNCATE-CALL ftruncate ( n n -- i32 ) ;FUNCTION
    source dest SAME-OPEN-FILE? if E-FS-OPEN throw then
    dest FD>N 0 TRUNCATE-CALL 0<> if E-FS-IO throw then ;
 
-\ THE STREAM COPY'S STATE IS THE CALL'S. The two descriptors, the read and write
-\ counts and the write cursor were cells of this module; they are locals and
-\ stack values now, so nothing here is left for a second task to find. A
-\ descriptor a helper must close on its error path is therefore a PARAMETER: -1
-\ stands for "not open yet", which is what CLOSE-COPY-FD skips.
+\ The stream copy's descriptors, counts and write cursor are locals and stack
+\ values of the call. A descriptor a helper must close on its error path is a
+\ parameter: -1 stands for "not open yet", which CLOSE-COPY-FD skips.
 : CLOSE-COPY-FD ( n -- ) {: fd :}
    fd 0 >= if fd close then ;
 
@@ -519,12 +447,9 @@ private
 6 -1 1 rshift U-DIGITS +
 ATOMIC-RETRIES 1- U-DIGITS + constant SIBLING-LEN-MAX
 
-\ The sibling's name ATOMIC-RESERVE-AT staged, NUL-terminated.
 : SIBLING-Z ( -- ptr u8 )
    ATOMIC-PATH SPAN:$ drop ;
 
-\ Index of the last component, after its preceding slash, or zero when there
-\ is no slash.
 : ATOMIC-BASE-OFF ( ptr u8 n -- n )
    {: path:ptr pathu:n :}
    pathu begin dup 0 > while
@@ -861,23 +786,15 @@ private
 : TEMP-REAL ( ptr u8 n -- n )
    >PATHZ PATHZ2-BUF SPAN:$ drop PATHZ-CAP realpath ;
 
-\ A temp root that cannot hold the temp directory or file is refused before
-\ anything is made, with one line on fd 2 that names TMPDIR, why, and the root,
-\ then a throw. A root past PATH-CAP, or one whose canonical spelling leaves
-\ no room for the temp name under it (TEMP-DIR-BASE-MAX), is too long:
-\ E-SPAN-CAPACITY; without the check the first dies on >PATHZ's E-FS-PATH and
-\ the second on BUILD-TEMP-TRY's E-SPAN-CAPACITY, neither naming TMPDIR.
-\ A root that is not a directory throws E-FS-DIR; without the check
-\ FS:MKTEMP-DIR dies on the E-FS-IO of a mkdir under a missing parent, which is
-\ no collision, and FS:MKTEMP on the E-FS-OPEN of its open. A directory
-\ realpath refuses, as one whose canonical spelling does not fit PATH_MAX
-\ (ENAMETOOLONG on Darwin), has no canonical path: E-FS-IO. The check answers
-\ the canonical spelling, borrowed from this task's PATHZ2 buffer, which
-\ FS:MKTEMP-DIR and FS:MKTEMP make their temps under. The line is three writes,
-\ as src/core/include.f names a refused source path, and not one SB$ write as
-\ EXIT-REPORT below: a root of PATH-CAP bytes with the reason
-\ overflows SB-CAP, and SB-APPEND would then throw E-STR-CAPACITY in place of
-\ the line and the code.
+\ A temp root that cannot hold the temp is refused before anything is made,
+\ with one line on fd 2 naming TMPDIR, why, and the root, then a throw: a root
+\ past PATH-CAP or with no room for the temp name (TEMP-DIR-BASE-MAX) is
+\ E-SPAN-CAPACITY, one that is not a directory E-FS-DIR, and one realpath
+\ refuses (ENAMETOOLONG on Darwin) E-FS-IO. Without the check each dies later
+\ on an error that does not name TMPDIR. The answer is the canonical spelling,
+\ borrowed from this task's PATHZ2 buffer. The line is three writes, as
+\ src/core/include.f names a refused source path, not one SB$ write: a root of
+\ PATH-CAP bytes with the reason overflows SB-CAP.
 : TMPDIR-REFUSE ( ptr u8 n ptr u8 n -- ) {: a:ptr u why:ptr whyu :}
    2 why whyu write drop
    2 a u write drop
@@ -954,7 +871,8 @@ private
       a u REMOVE-FILE
    then then ;
 
-\ Under the lock.
+\ Under the lock. Newest first, so a parent registered before its child goes
+\ after it.
 : CLEANUP-REMOVE-ALL ( -- )
    CLEANUP-N @ begin dup 0 > while
       1 - dup CLEANUP-REMOVE
@@ -981,29 +899,19 @@ public
 
 
 private
-\ ---- the registry runs at process exit ---------------------------------------
-\ The table above is walked by CLEANUP-RUN, and an explicit CLEANUP-RUN used to
-\ be the only thing that emptied it: a `die`, an uncaught top-level throw or a
-\ test report that dies left every registered path on disk. The engine carries a
-\ process-exit vector for exactly this (src/habu/layout.f EXIT-HOOK-CELL): it
-\ calls the armed word once, with the vector already cleared, immediately before
-\ the exit_group of a normal top-level exit, a `die`, an uncaught throw, or a
-\ stripped application's return from MAIN.
+\ CLEANUP-AT-EXIT runs from the engine's process-exit vector (src/habu/layout.f
+\ EXIT-HOOK-CELL), called once with the vector cleared just before the
+\ exit_group of a normal top-level exit, a `die`, an uncaught throw, or a
+\ stripped application's return from MAIN. A restored image starts with an
+\ empty table and the relocated vector.
 \
-\ THE REGISTRY IS PER PROCESS. A restored image starts with an empty table and
-\ the relocated vector, so CLEANUP-AT-EXIT walks nothing there until that
-\ process registers a path of its own.
-\
-\ A removal that fails is REPORTED, never swallowed. CLEANUP-RUN throws on a
-\ path it cannot remove, and the process is already on its way out, so the code
-\ goes to fd 2 as one line and the exit code the process is carrying is left
-\ alone - the engine preserves it across the call. The line is assembled in the
-\ shared string builder and the code rendered by fmt, although both live in
-\ engine bands below a stripped image's DATA window: a stripped image maps
-\ those bands fresh and zeroed, which is all a render buffer needs. Measured: a
-\ stripped MAIN that requires src/lib/fmt.f prints -2105 through both FMT:.INT and
-\ SB-RESET FMT:SB-INT SB$. The builder is reset here because the process is
-\ exiting and nothing that ran before this line reads it again.
+\ A removal that fails is reported, never swallowed: the code goes to fd 2 as
+\ one line and the exit code the process carries is kept (the engine preserves
+\ it across the call). The string builder and fmt live in engine bands below a
+\ stripped image's DATA window, which a stripped image maps fresh and zeroed.
+\ Measured: a stripped MAIN that requires src/lib/fmt.f prints -2105 through
+\ both FMT:.INT and SB-RESET FMT:SB-INT SB$. Nothing that ran before this line
+\ reads the builder again, so resetting it is safe.
 : EXIT-REPORT ( n -- ) {: code :}
    SB-RESET
    s" hb: cleanup at exit threw " SB-APPEND
@@ -1011,36 +919,27 @@ private
    S\" \n" SB-APPEND
    2 SB$ write drop ;
 
-\ This file's ONE raw boundary is the exit-hook words below: the exit vector is a
-\ fixed engine DATA cell holding a code pointer, reached through `data-base`.
-\ Arming is the only place an opaque xt is handled; calling one back is ordinary
-\ checked code, because the saved vector lands in a typed xt cell.
+\ The exit-hook words are this file's one raw boundary: the vector is a fixed
+\ engine DATA cell holding a code pointer, reached through `data-base`. Arming
+\ is the only place an opaque xt is handled.
 \
-\ THE VECTOR IS A CHAIN, not a claim. Arming finds one of three states: zero,
-\ and ours goes in; already ours, and nothing happens; FOREIGN - some other
-\ component owns the process's single exit slot - and that vector is saved here
-\ before ours replaces it, so registering a path never costs the process the
-\ hook it already had, and a process whose slot was taken still gets its
-\ registry run. CLEANUP-AT-EXIT calls the saved vector last, after the registry:
-\ the paths this file was asked to remove are gone before foreign code runs.
+\ The vector is a chain, not a claim. Arming finds zero, and ours goes in; ours,
+\ and nothing happens; or a foreign vector, which is saved in EXIT-PREV before
+\ ours replaces it. CLEANUP-AT-EXIT calls the saved vector last, after the
+\ registry. The saved vector is put back to EXIT-NONE before it is called: a
+\ chained hook that registers a path re-arms the engine cell and then dies,
+\ which re-enters CLEANUP-AT-EXIT, and it must find the chain empty there.
 \
-\ The saved vector is PUT BACK TO THE NO-OP BEFORE IT IS CALLED, for the reason
-\ the engine clears its cell before calling us: a chained hook that registers a
-\ path of its own re-arms the engine cell and then dies, which re-enters
-\ CLEANUP-AT-EXIT, and it has to find the chain empty there rather than itself.
+\ Registering arms the vector, not loading this file: a stripped application
+\ restores no engine cell, so its vector is zero until its own CLEANUP+ fills
+\ it, and a process that registers nothing leaves the vector as it found it.
 \
-\ REGISTERING is what arms it, not loading this file: a stripped application
-\ restores no engine cell, so its vector is the fresh mapping's zero until its
-\ own CLEANUP+ call fills it, and a process that registers nothing has nothing
-\ to run and leaves the vector exactly where it found it.
-\
-\ The chain cell is a TYPED xt cell holding a word that is always callable, not
-\ a raw cell holding an xt or zero. Both halves are load-bearing: the native
-\ compiler needs the convention of the call it is compiling, and a raw cell's
-\ value carries none (`ncomp: cannot compile EXIT-CHAIN at execute`,
-\ E-NELAB-QUOT, when a stripped image's closure reaches this word); and a cell
-\ that is never empty needs no zero test on an exit path, where a stray zero
-\ would be a jump to address 0 rather than a caught error.
+\ EXIT-PREV is a typed xt cell holding a word that is always callable, not a
+\ raw cell holding an xt or zero: the native compiler needs the convention of
+\ the call, which a raw cell's value lacks (`ncomp: cannot compile EXIT-CHAIN
+\ at execute`, E-NELAB-QUOT, when a stripped image's closure reaches this
+\ word); and a cell that is never empty needs no zero test on an exit path,
+\ where a stray zero would jump to address 0.
 : EXIT-NONE ( -- ) ;
 
 TYPED-VARIABLE EXIT-PREV [ -- ]
@@ -1113,18 +1012,10 @@ public
    CLEANUP-TREE CLEANUP-KIND+ ;
 
 private
-\ A PATH ITS OWNER HAS REMOVED IS FORGOTTEN, so the table holds only what is
-\ still owed: a process that makes and removes a tree per job registers each
-\ one and forgets it once it is gone, and its count stays the number of paths
-\ still owed. The newest slot naming the path is removed and every newer slot
-\ moves down one, so the table keeps its newest-first run order with no gap,
-\ under the lock registration takes. A path no slot names is a no-op; an empty
-\ path is E-FS-PATH, since no registration names it to be forgotten.
 : CLEANUP-NAMES? ( ptr u8 n n -- bool ) {: a:ptr u idx :}
    idx CLEANUP-AT @ u <> if 0 0= 0= exit then
    idx CLEANUP-PATH a u STR= ;
 
-\ The newest slot naming the path, or -1.
 : CLEANUP-FIND ( ptr u8 n -- n ) {: a:ptr u :}
    CLEANUP-N @ begin dup 0 > while
       1 -
@@ -1145,13 +1036,14 @@ private
    last CLEANUP-N ! ;
 
 public
+\ Forgets a path its owner removed, so the table holds only what is still owed.
+\ The newest slot naming the path goes and every newer slot moves down one, so
+\ the run order keeps no gap. A path no slot names is a no-op; an empty path is
+\ E-FS-PATH.
 : CLEANUP-FORGET ( ptr u8 n -- ) {: a:ptr u :}
    u 0 <= if E-FS-PATH throw then
    CLEANUP-ACQUIRE
    a u [: CLEANUP-DROP ;] [: CLEANUP-RELEASE ;] finally ;
-
-
-\ ---- replacing a file through its sibling --------------------------------------
 
 private
 \ Stack-preserving under `catch`: the caller still holds the sibling to remove
@@ -1184,8 +1076,8 @@ public
 : REPLACE-STAGED ( R ptr u8 n [ R ptr u8 n -- R ] -- R )
    {: path:ptr pathu fill :}
    path pathu RESERVE-SIBLING {: tmp:ptr tmpu fd :}
-   \ Closed once, before fill opens the sibling by path; ATOMIC-WRITE-FILE says
-   \ why a failed close is not retried.
+   \ Closed once, before fill opens the sibling by path; ATOMIC-CLOSE says why a
+   \ failed close is not retried.
    fd CLOSE-FD 0<> if
       FFI:ERRNO {: close-cause:n :}
       tmp tmpu [: STAGED-CLEAN ;] catch {: clean-code:n :}

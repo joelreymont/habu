@@ -1,22 +1,12 @@
-\ prelude.f - checked boolean, flag, and float-stack conveniences that core leaves
-\ out. Without these, callers re-derive true/false as 0 0= / 0 0= 0= and lack
-\ typed float dup/over/drop plus float <= / >= comparisons. Core only; load early.
-\
-\ This file is the sanctioned core/prelude language surface. Per the package-first
-\ rule (CLAUDE.md, docs/forth.md), only an explicitly documented core/prelude
-\ surface may define new GLOBAL words; prelude.f is that surface. Its words are
-\ called bare (true, false, 0<>, and the float ops) across the whole tree and the
-\ seed, and the `export` lines below re-export them into --repl bundles. It is
-\ therefore intentionally NOT wrapped in a package: a PRELUDE: qualifier would
-\ break every bare true/false call and the --repl export directives. Do not
-\ package this module.
-\
+\ prelude.f - checked boolean, flag and float-stack conveniences core leaves out
+\ (true/false, typed float dup/over/drop, float <= / >=). Core only; load early.
+\ It is the one sanctioned global surface (docs/forth.md package-first rule): its
+\ words are called bare across the tree and the seed and re-exported into --repl
+\ bundles, so it is not packaged; a PRELUDE: qualifier would break those calls.
 \ STORAGE CLASS. CALLER-OWNED: the module keeps no state.
 
-\ The `export NAME` lines below are hb-build --repl export directives (they
-\ keep these words callable in a --repl bundle). At top level the engine's
-\ `export` keyword consumes the name as a no-op on plain loads, so no local
-\ shim word is needed (or possible: the keyword shadows any definition).
+\ The `export NAME` lines are hb-build --repl export directives; on a plain load
+\ the engine's `export` keyword consumes the name as a no-op and shadows any definition.
 
 export true
 export false

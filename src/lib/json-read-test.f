@@ -63,7 +63,6 @@ TYPED-VARIABLE JRT-WRITER JSON-WRITE:writer
 : JRT-TRUE ( -- bool )
    0 0= ;
 
-\ ---- string / escape fixtures (byte arrays keep embedded quotes) ----------
 create JRT-ESC-SRC
    34 c,
    92 c, 34 c,   92 c, 92 c,   92 c, 47 c,   92 c, 98 c,
@@ -151,12 +150,10 @@ create JRT-FIND-ESC-WANT 97 c, 98 c, 10 c, 34 c,
 768 constant JRT-LONG-KEY-CAP
 create JRT-LONG-KEY JRT-LONG-KEY-CAP allot
 
-\ ---- assertion helpers ----------------------------------------------------
 : JRT-STR= ( JR:reader ptr u8 n -- JR:reader ) {: ea:ptr eu:n :}
    JRT-BUF JRT-CAP JR:STR {: got:n :}
    JRT-BUF got ea eu T$= ;
 
-\ ---- structural / SB-built fixtures ---------------------------------------
 : JRT-QKEY ( ptr u8 n -- )                       \ "key":  onto the builder
    JRT-DQ SB-APPEND-C SB-APPEND JRT-DQ SB-APPEND-C JRT-COLON SB-APPEND-C ;
 
@@ -256,7 +253,6 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    depth 1- 0 ?do JRT-RBRACE SB-APPEND-C loop
    SB$ ;
 
-\ ---- positive: scalars ----------------------------------------------------
 : JRT-SCALAR-INT ( ptr u8 n n -- ) {: want:n :}
    JRT-OPEN-A
    JR:NEXT JR:T-INT T=
@@ -288,7 +284,6 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    s" false" JRT-OPEN-A JR:NEXT JR:T-FALSE T= JR:NEXT JR:T-END T= JR:CLOSE
    s" null" JRT-OPEN-A JR:NEXT JR:T-NULL T= JR:NEXT JR:T-END T= JR:CLOSE ;
 
-\ ---- positive: strings / escapes ------------------------------------------
 : JRT-TEST-STRING ( -- )
    JRT-HI-SRC$ JRT-OPEN-A
    JR:NEXT JR:T-STR T=
@@ -323,7 +318,6 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    JR:NEXT JR:T-END T=
    JR:CLOSE ;
 
-\ ---- positive: structure --------------------------------------------------
 : JRT-TEST-EMPTY ( -- )
    s" {}" JRT-OPEN-A
    JR:NEXT JR:T-OBJ T= JR:NEXT JR:T-OBJ-END T= JR:NEXT JR:T-END T= JR:CLOSE
@@ -395,7 +389,6 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    span2 source len + = TTRUE
    JR:CLOSE ;
 
-\ ---- round-trip against src/lib/json-write.f ----------------------------------
 : JRT-RT-BUILD ( -- ptr u8 n )
    JRT-WRITER JRT-WRITE-BUF JRT-CAP JSON-WRITE:OPEN
    JSON-WRITE:OBJECT-START
@@ -424,7 +417,6 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    JR:NEXT JR:T-END T=
    JR:CLOSE ;
 
-\ ---- JR:FIND-KEY ----------------------------------------------------------
 : JRT-TEST-FIND-HIT ( -- )
    JRT-FIND$ JRT-OPEN-A
    JR:NEXT JR:T-OBJ T=
@@ -517,7 +509,6 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    [: JRT-BAD-FIND-KEY-LEN ;] E-JR-STATE TTHROWSQ
    [: JRT-BAD-FIND-KEY-PTR ;] E-JR-STATE TTHROWSQ ;
 
-\ ---- JR:STR-EQ? -----------------------------------------------------------
 \ Whether a one-string document decodes to the given bytes; the cursor must
 \ still be on the string, so the document ends at the next token.
 : JRT-EQ? ( ptr u8 n ptr u8 n -- bool )
@@ -576,7 +567,6 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    [: JRT-BAD-EQ-LEN ;] E-JR-STATE TTHROWSQ
    [: JRT-BAD-EQ-PTR ;] E-JR-STATE TTHROWSQ ;
 
-\ ---- explicit reader ownership and isolation -----------------------------
 : JRT-TEST-INTERLEAVE ( -- )
    s" [1,3]" JRT-OPEN-A
    S\" {\qx\q:\qtwo\q}" JRT-OPEN-B
@@ -598,13 +588,10 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
 : JRT-BAD-ADVANCE ( JR:reader -- JR:reader )
    JR:NEXT drop ;
 
-\ The reader must survive the caught failure - both of these hand it back and the
-\ caller reads it. A quotation literal leaves it `stale<JR:reader>` (`catch`
-\ restores the DEPTH of both stacks and never their contents) and a linear cell
-\ can be neither read nor dropped, so the caught body is a name reached by `[']`:
-\ an exceptional edge is not part of a quotation's TYPE, so that route keeps the
-\ window typed until the callee-evidence lane (dot c2923193) lets the checker
-\ prove the handle intact.
+\ The reader must survive the caught failure: `catch` restores the depth of both
+\ stacks, never their contents, so a quotation literal leaves it `stale<JR:reader>`
+\ and a linear cell can be neither read nor dropped. The caught body is a name
+\ reached by `[']` until the checker can prove the handle intact.
 : JRT-CATCH-BAD ( JR:reader -- JR:reader )
    ['] JRT-BAD-ADVANCE catch E-JR-MALFORMED T= ;
 
@@ -771,7 +758,6 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    s" reader cannot be closed twice" T-LABEL
    s" JRT-BAD-CLOSE ( JR:reader -- ) JR:CLOSE JR:CLOSE" JRT-REJECTED ;
 
-\ ---- negative fixtures (each forces one named throw) ----------------------
 : JRT-BAD-TRAILING ( -- )
    s" 1 2" JRT-OPEN-A JR:NEXT drop JR:NEXT drop JR:CLOSE ;
 
@@ -878,7 +864,6 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    [: JRT-BAD-STR-ZERO ;] E-JR-STATE TTHROWSQ
    [: JRT-BAD-STR-SHORT ;] E-JR-STATE TTHROWSQ ;
 
-\ ---- FINISH: the unread rest checked from any position --------------------
 : JRT-TRAILING-TEXT$ ( -- ptr u8 n )
    s\" {\"a\":1} x" ;
 
@@ -945,8 +930,6 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    [: JRT-TRAILING-TEXT$ JRT-FINISH-AFTER-OPEN ;] E-JR-TRAILING TTHROWSQ
    [: JRT-OBJ-COMMA$ JRT-FINISH-AFTER-INT ;] E-JR-MALFORMED TTHROWSQ
    [: JRT-FINISH-AFTER-FAILURE ;] E-JR-COLON TTHROWSQ ;
-
-\ ---- negative: every prefix where readable memory ends -------------------
 
 \ A prefix copied so its last byte is the last readable one, read with NEXT, and
 \ STR on each string, to T-END or a refusal: its code, 0 at T-END. A scan that

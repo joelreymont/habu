@@ -1,20 +1,8 @@
-\ mapped.f - test-only witness: is a byte span still mapped?
-\
-\ A growth path is proved to release its old span by the ABSENCE of that mapping,
-\ never by a memory metric with slack. write(2) copies from the caller's buffer,
-\ so it answers EFAULT for an unmapped source and the byte count for a mapped
-\ one: one byte decides it, with no magic number and no tolerance. A caller
-\ captures a buffer's base BEFORE the growth step and asks LIVE? after it; a path
-\ that forgot its release answers true.
-\
-\ THE SINK MUST BE A REAL FILE. /dev/null's write handler returns the count
-\ without ever reading the buffer, so it answers 1 for a released span and the
-\ witness goes blind - measured, and the reason src/lib/test/mapped-test.f asserts
-\ both answers rather than just the true one. The sink is unlinked as soon as it
-\ is open: the descriptor keeps the inode alive for the run and no file is left
-\ behind. Its contents are never read, so concurrent test processes cannot
-\ disturb each other.
-\
+\ mapped.f - test-only witness: is a byte span still mapped? A growth path proves
+\ its release by the old span's absence: write(2) from an unmapped source answers
+\ EFAULT, from a mapped one the byte count. Capture the base before growth, ask
+\ LIVE? after. The sink must be a real file: /dev/null never reads the buffer and
+\ answers 1 for a released span (measured; mapped-test.f asserts both answers).
 \ STORAGE CLASS. PROCESS-WIDE: the sink path and descriptor are static.
 
 require src/lib/errors.f
@@ -42,7 +30,8 @@ variable SINK-FD
    fd SINK-FD !
    fd ;
 
-\ fd 0 is stdin, so a zero cell means "not opened yet", never a usable sink.
+\ fd 0 is stdin, so a zero cell means "not opened yet", never a usable sink. The
+\ sink is unlinked once open and never read, so concurrent test processes do not meet.
 : SINK ( -- n )
    SINK-FD @ dup 0 > if exit then
    drop OPEN-SINK ;

@@ -1,24 +1,9 @@
-\ os-cpu.f - processor facts the running host reports.
-\
-\ ONLINE answers how many processors are online now, from
-\ sysconf(_SC_NPROCESSORS_ONLN). The name is 58 in the macOS SDK's
-\ usr/include/unistd.h (`#define _SC_NPROCESSORS_ONLN 58`) and 84 on Linux on
-\ both architectures: musl's unistd.h `#define _SC_NPROCESSORS_ONLN 84`, and
-\ the same position in glibc's bits/confname.h enum. A count below one,
-\ sysconf's -1 failure among them, throws E-ONLINE.
-\
-\ LOAD1 answers the one-minute load average, the first sample getloadavg(3)
-\ writes (`int getloadavg(double loadavg[], int nelem)`, in libc on macOS,
-\ glibc and musl). It asks for one sample into an eight-byte mapping the call
-\ owns and reads that binary64 back through IEEE754:BITS>F64. A return below
-\ one, getloadavg's -1 failure among them, throws E-LOAD.
-\
-\ The checked FFI bindings resolve on their first call and image preparation
-\ forgets the addresses (src/lib/ffi-abi.f FORGET-SYMBOLS), so a captured image
-\ never carries a process-owned callable address.
-\
-\ STORAGE CLASS. CALLER-OWNED: the module keeps no state (constants only);
-\ LOAD1's sample buffer is a MEM:WITH-BYTES scope released on every exit.
+\ os-cpu.f - processor facts the running host reports. ONLINE reads
+\ sysconf(_SC_NPROCESSORS_ONLN); below one is E-ONLINE. LOAD1 is getloadavg(3)'s
+\ first sample as binary64; a return below one is E-LOAD. Image preparation
+\ forgets the FFI addresses (src/lib/ffi-abi.f FORGET-SYMBOLS).
+\ STORAGE CLASS. CALLER-OWNED: constants only; LOAD1's sample is a
+\ MEM:WITH-BYTES scope.
 
 require src/lib/ffi-abi.f
 require src/lib/ieee754.f
@@ -34,6 +19,8 @@ public
 
 private
 
+\ _SC_NPROCESSORS_ONLN is 58 in the macOS SDK's unistd.h, 84 on Linux on both
+\ architectures (musl unistd.h, glibc bits/confname.h).
 58 constant ONLN-MACOS
 84 constant ONLN-LINUX
 8 constant SAMPLE-BYTES     \ one C double

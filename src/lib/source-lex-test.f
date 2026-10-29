@@ -119,12 +119,8 @@ variable BIG-LEX-U
    s"  dup ;" ESC-FIX+
    ESC-FIX$ ;
 
-\ ---- primitive-axiom row fixtures ------------------------------------------
-\ Rows are built byte-wise for the same reason the escaped-quote fixtures are:
-\ a primitive can be NAMED `s"`, `s\"` or `."`, and writing those names as
-\ literals here would end this file's own strings. ROW-Q appends a double quote,
-\ ROW-BS a backslash and ROW-NL a newline, so every fixture below is exact bytes
-\ rather than something the reader has to escape in their head.
+\ Rows are built byte-wise: a primitive can be NAMED `s"`, `s\"` or `."`, and
+\ writing those names as literals here would end this file's own strings.
 $400 constant ROW-CAP
 $0B constant ROW-VT-C
 $28 constant ROW-LPAREN-C
@@ -177,7 +173,7 @@ variable REG-I
    LINT-LEX:ERROR-LINE@ line ASSERT=
    LINT-LEX:ERROR-COL@ col ASSERT= ;
 
-: ASSERT-ONE-ROW  ( -- )   \ the whole fixture is one row and nothing else
+: ASSERT-ONE-ROW  ( -- )
    LINT-LEX:ERROR? 0= ASSERT
    LINT-LEX:COUNT 1 ASSERT=
    0 LINT-LEX:KIND@ LINT-LEX:REGISTRY ASSERT=
@@ -504,7 +500,6 @@ variable REG-I
    LINT-LEX:ERROR? ASSERT
    2 LINT-LEX:CONTENT nip 0 ASSERT= ;
 
-\ ---- primitive-axiom rows ---------------------------------------------------
 \ src/core/checker.f names primitives `s"`, `c"`, `."`, `s\"`, `c\"`, `.\"`, `[']`
 \ and `[char]`. The engine reads a row name with `parse-name`, so none of those
 \ names opens a string; a word-at-a-time lexer that thinks otherwise eats real
@@ -778,9 +773,8 @@ variable REG-I
 
 \ After one of these the engine consumes the next word as a parsed name and never
 \ executes it, so `: PRIM: ( -- ) parse-name PE-OPEN ;` in src/core/checker.f
-\ declares the opener instead of opening a row. Getting this wrong hides real
-\ source: a row opened at that definition closes at `: PRIM; ( -- )` seventeen
-\ lines later and swallows three definitions.
+\ declares the opener instead of opening a row. A row opened there would close
+\ at `: PRIM; ( -- )` and swallow the three definitions between.
 : DEFINER-POSITION$  ( -- ptr u8 n )
    ROW-RESET
    s" : PRIM: dup ;" ROW+  ROW-NL
@@ -804,8 +798,6 @@ variable REG-I
    27 LINT-LEX:TOKEN s" over" ASSERT$
    28 LINT-LEX:TOKEN s" ;" ASSERT$ ;
 
-\ SOURCE clears the diagnostic before every scan, so a good row source scanned
-\ after a malformed one reports nothing and returns a full table.
 : TEST-ROW-REUSE-AFTER-ERROR ( -- )
    ROW-RESET  s" PRIM: FOO PE-N PE-IN" ROW+
    LEX-ROW  0 1 1 ASSERT-BAD-AT

@@ -9,16 +9,16 @@ require src/lib/byte-buffer.f
 require src/lib/property.f
 
 create BUFT-BUF BUF:HDR-BYTES allot
-create BUFT-REL-BUF BUF:HDR-BYTES allot     \ dedicated header for release/dispose lifecycle tests
+create BUFT-REL-BUF BUF:HDR-BYTES allot
 create BUFT-BIG-BUF BUF:HDR-BYTES allot
-create BUFT-CHUNK 1024 allot                 \ multi-megabyte fill source
-create BUFT-REF 4096 allot                    \ property-test reference bytes
+create BUFT-CHUNK 1024 allot
+create BUFT-REF 4096 allot
 
-32 constant BUFT-CAP0                          \ shared init capacity (bytes)
-2097152 constant BUFT-BIG-N                    \ 2 MiB fill target (2048 * 1024)
+32 constant BUFT-CAP0
+2097152 constant BUFT-BIG-N
 
-\ ---- white-box readers: reopen BUF to project the raw header cells the lifecycle
-\ proofs need without the public live checks (mirrors vector-test's NUM reopen).
+\ White-box readers: BUF reopened for the raw header cells, past the public live
+\ checks.
 package BUF
 public
 : BUFT-DATA@ ( ptr a -- ptr u8 ) DATA@ ;
@@ -37,10 +37,8 @@ public
 : BUFT-LEN-RAW! ( n ptr a -- ) {: len:n buf:ptr :}  len buf LEN-FIELD ! ;
 ;package
 
-\ ---- byte-len role builders/readers for scalar assertions ----------------------
-\ The reader is a checked cast at this test's own scope: a span assertion takes a
-\ raw length and T= compares against a literal. Projection out of a cell family
-\ needs no ownership (checker.f CAST-OWNER?), so no reopen of NUM.
+\ Projection out of a cell family needs no ownership (checker.f CAST-OWNER?), so
+\ NUM is not reopened.
 CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
 
 : BUFT-N>BLEN ( n -- NUM:byte-len )
@@ -58,24 +56,21 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
 : BUFT-CHECK-REJECTS ( ptr u8 n -- )
    CHECK-QUIET-CANDIDATE! 0 T= ;
 
-\ dispose-then-init the shared header at a raw byte capacity (re-init of a live
-\ header rejects, so each test opens from a disposed header).
+\ Re-init of a live header is refused, so each test opens from a disposed header.
 : BUFT-FRESH ( n -- )  BUFT-BUF BUF:DISPOSE  BUFT-BUF swap BUFT-N>BLEN BUF:INIT ;
 : BUFT-REL-INIT ( n -- )  BUFT-REL-BUF BUF:DISPOSE  BUFT-REL-BUF swap BUFT-N>BLEN BUF:INIT ;
 
-\ ---- init / grow: growth preserves the accumulated bytes -----------------------
 : BUFT-GROW ( -- )
    2 BUFT-FRESH
    BUFT-BUF BUFT-TLEN 0 T=
    BUFT-BUF BUFT-TCAP 2 T=
-   65 BUFT-BUF BUF:APPEND-BYTE                 \ 'A'
+   65 BUFT-BUF BUF:APPEND-BYTE
    66 BUFT-BUF BUF:APPEND-BYTE                 \ 'B' fills the 2-byte cap
    67 BUFT-BUF BUF:APPEND-BYTE                 \ 'C' grows (2 -> 4)
    BUFT-BUF BUFT-TLEN 3 T=
    BUFT-BUF BUFT-TCAP 4 T=
    BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" ABC" T$= ;
 
-\ ---- append span across a growth boundary --------------------------------------
 : BUFT-APPEND-SPAN ( -- )
    4 BUFT-FRESH
    s" ab" BUFT-N>BLEN BUFT-BUF BUF:APPEND-SPAN
@@ -116,7 +111,6 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
    s" defghijk" BUFT-N>BLEN BUFT-BUF BUF:APPEND-SPAN
    BUFT-BUF BUF:SPAN off len SPAN:SUB SPAN:$ s" bc" T$= ;
 
-\ ---- reserve exact grows capacity to exactly the request, preserving bytes ------
 : BUFT-RESERVE ( -- )
    4 BUFT-FRESH
    s" xy" BUFT-N>BLEN BUFT-BUF BUF:APPEND-SPAN
@@ -127,7 +121,6 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
    BUFT-BUF BUFT-TCAP 100 T=
    BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" xy" T$= ;
 
-\ ---- ensure leaves room for incremental writes, preserving existing bytes -----
 : BUFT-ENSURE ( -- )
    8 BUFT-FRESH
    s" abc" BUFT-N>BLEN BUFT-BUF BUF:APPEND-SPAN
@@ -136,10 +129,9 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
    BUFT-BUF BUFT-TLEN 3 T=
    BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" abc" T$= ;
 
-\ ---- GROW: the new bytes at the old length, across a doubling resize ---------
 : BUFT-GROW-TAIL ( -- )
    4 BUFT-FRESH
-   BUFT-BUF 3 BUFT-N>BLEN BUF:GROW {: s :}       \ from empty: offset 0
+   BUFT-BUF 3 BUFT-N>BLEN BUF:GROW {: s :}
    s SPAN:LEN 3 T=
    s SPAN:$ drop BUFT-BUF BUF:BUFT-DATA@ = TTRUE
    s" abc" s SPAN:COPY
@@ -153,20 +145,18 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
    BUFT-BUF BUFT-TCAP 8 T=
    BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" abcde" T$= ;
 
-: BUFT-GROW-TAIL-OVERFLOW ( -- )                  \ len + n overflows one cell
+: BUFT-GROW-TAIL-OVERFLOW ( -- )
    2 BUFT-FRESH
    65 BUFT-BUF BUF:APPEND-BYTE
    BUFT-BUF MEM-MAX-N BUFT-N>BLEN BUF:GROW SPAN:LEN drop ;
 
-\ ---- replace swaps the contents, growing capacity if needed --------------------
 : BUFT-REPLACE ( -- )
    8 BUFT-FRESH
    s" hi" BUFT-N>BLEN BUFT-BUF BUF:APPEND-SPAN
-   s" replacement" BUFT-N>BLEN BUFT-BUF BUF:REPLACE   \ 11 bytes > 8: grows
+   s" replacement" BUFT-N>BLEN BUFT-BUF BUF:REPLACE
    BUFT-BUF BUFT-TLEN 11 T=
    BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" replacement" T$= ;
 
-\ ---- clear reuses the allocation (length 0, capacity + mapping unchanged) -------
 : BUFT-CLEAR ( -- )
    8 BUFT-FRESH
    s" data" BUFT-N>BLEN BUFT-BUF BUF:APPEND-SPAN
@@ -174,11 +164,10 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
    BUFT-BUF BUF:CLEAR
    BUFT-BUF BUFT-TLEN 0 T=
    BUFT-BUF BUFT-TCAP 8 T=
-   BUFT-BUF BUF:BUFT-DATA@ before = TTRUE            \ same mapping reused
-   s" new" BUFT-N>BLEN BUFT-BUF BUF:APPEND-SPAN   \ re-fills from offset 0
+   BUFT-BUF BUF:BUFT-DATA@ before = TTRUE
+   s" new" BUFT-N>BLEN BUFT-BUF BUF:APPEND-SPAN
    BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" new" T$= ;
 
-\ ---- append with substitution: every old replaced by new, after the active bytes
 : BUFT-APPEND-REPLACED ( -- )
    4 BUFT-FRESH
    s" pre" BUFT-N>BLEN BUFT-BUF BUF:APPEND-SPAN
@@ -219,22 +208,22 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
    {: tu:n ou:n nu:n :}
    s" a-b" drop tu s" -" drop ou s" +" drop nu BUFT-BUF BUF:APPEND-REPLACED drop ;
 
-\ ---- release / dispose lifecycle (address reuse proves the mapping was freed) ---
-: BUFT-GROW-RELEASES ( -- )                       \ a grow frees the prior mapping
+\ Address reuse proves a mapping was freed.
+: BUFT-GROW-RELEASES ( -- )
    BUFT-CAP0 BUFT-REL-INIT
    BUFT-REL-BUF BUF:BUFT-DATA@ {: old:ptr :}
-   BUFT-REL-BUF BUFT-CAP0 2 * BUFT-N>BLEN BUF:RESERVE   \ prior mapping released after copy/install
+   BUFT-REL-BUF BUFT-CAP0 2 * BUFT-N>BLEN BUF:RESERVE
    BUFT-CAP0 MEM-ALLOC-BYTES drop {: reuse:ptr :}        \ a fresh same-size mapping refills the freed hole
    reuse old = TTRUE ;
 
-: BUFT-DISPOSE-RELEASES ( -- )                    \ dispose frees the owned mapping
+: BUFT-DISPOSE-RELEASES ( -- )
    BUFT-CAP0 BUFT-REL-INIT
    BUFT-REL-BUF BUF:BUFT-DATA@ {: old:ptr :}
    BUFT-REL-BUF BUF:DISPOSE
    BUFT-CAP0 MEM-ALLOC-BYTES drop {: reuse:ptr :}
    reuse old = TTRUE ;
 
-: BUFT-DISPOSE-DOUBLE ( -- )                      \ a second dispose is a proved no-op (no throw)
+: BUFT-DISPOSE-DOUBLE ( -- )
    BUFT-CAP0 BUFT-REL-INIT
    BUFT-REL-BUF BUF:DISPOSE
    BUFT-REL-BUF BUF:DISPOSE
@@ -246,7 +235,7 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
    BUFT-REL-BUF BUF:BUFT-DATA@ 0= TTRUE
    BUFT-REL-BUF BUF:BUFT-LEN-RAW@ 0 T= ;
 
-: BUFT-DISPOSE-CYCLE-BOUNDED ( -- )               \ init/dispose cycles keep ONE resident mapping
+: BUFT-DISPOSE-CYCLE-BOUNDED ( -- )
    BUFT-CAP0 BUFT-REL-INIT
    BUFT-REL-BUF BUF:BUFT-DATA@ {: base:ptr :}
    BUFT-REL-BUF BUF:DISPOSE
@@ -256,22 +245,19 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
       BUFT-REL-BUF BUF:DISPOSE
    loop ;
 
-\ ---- a failed grow leaves the old buffer valid (no leak, old storage intact) ----
 : BUFT-GROW-FAIL-ATOMIC ( -- )
    BUFT-CAP0 BUFT-REL-INIT
    s" keep" BUFT-N>BLEN BUFT-REL-BUF BUF:APPEND-SPAN
    BUFT-REL-BUF BUF:BUFT-DATA@ {: before:ptr :}
    [: BUFT-REL-BUF MEM-MAX-N BUFT-N>BLEN BUF:RESERVE ;] E-MEM-MAP TTHROWSQ   \ mmap of the whole space fails
-   BUFT-REL-BUF BUF:BUFT-DATA@ before = TTRUE          \ mapping not swapped out
+   BUFT-REL-BUF BUF:BUFT-DATA@ before = TTRUE
    BUFT-REL-BUF BUFT-TLEN 4 T=
    BUFT-REL-BUF BUFT-TCAP BUFT-CAP0 T=
    BUFT-REL-BUF BUF:SPAN$ BUFT-BL>RAW s" keep" T$= ;
 
-\ ---- the copy-on-grow reads only what the buffer owns ---------------------------
-\ A length cell past the owned capacity is the one corruption that used to turn
-\ the grow into an over-READ: INSTALL-RESIZE copied LEN bytes out of a CAP-byte
-\ mapping. The source is now taken from the owned span, so the take refuses at
-\ the reach (E-SPAN-RANGE) before a byte moves or a new mapping is allocated.
+\ A length cell past the owned capacity must not turn the grow into an
+\ over-read: the source is taken from the owned span, so the take refuses at the
+\ reach (E-SPAN-RANGE) before a byte moves or a mapping is allocated.
 : BUFT-APPEND-MORE ( -- )
    s" more" BUFT-N>BLEN BUFT-REL-BUF BUF:APPEND-SPAN ;
 
@@ -291,7 +277,6 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
    BUFT-REL-BUF BUF:BUFT-DATA@ 4 s" keep" T$=
    BUFT-REL-BUF BUFT-TCAP BUFT-CAP0 T= ;
 
-\ ---- use-after-dispose fails closed (E-BUF-STATE) ------------------------------
 : BUFT-USE-SPAN ( -- )
    BUFT-CAP0 BUFT-REL-INIT  BUFT-REL-BUF BUF:DISPOSE
    BUFT-REL-BUF BUF:SPAN$ 2drop ;
@@ -321,17 +306,15 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
    s" a-b" s" -" s" +" BUFT-REL-BUF BUF:APPEND-REPLACED drop ;
 : BUFT-INIT-LIVE-REJECTS ( -- )
    BUFT-REL-BUF BUF:DISPOSE
-   BUFT-CAP0 BUFT-REL-INIT                          \ header now owns a live mapping
+   BUFT-CAP0 BUFT-REL-INIT
    BUFT-REL-BUF BUFT-CAP0 BUFT-N>BLEN BUF:INIT ;    \ re-init without dispose throws (else old mapping leaks)
 
-\ ---- runtime capacity / cell-overflow refusals ---------------------------------
-: BUFT-CAP-ZERO ( -- )    0 BUFT-FRESH ;                  \ zero capacity rejects
-: BUFT-APPEND-OVERFLOW ( -- )                              \ len + span overflows one cell
+: BUFT-CAP-ZERO ( -- )    0 BUFT-FRESH ;
+: BUFT-APPEND-OVERFLOW ( -- )
    2 BUFT-FRESH
-   65 BUFT-BUF BUF:APPEND-BYTE                             \ len = 1
+   65 BUFT-BUF BUF:APPEND-BYTE
    s" x" drop MEM-MAX-N BUFT-N>BLEN BUFT-BUF BUF:APPEND-SPAN ;  \ 1 + MAX-BYTES wraps below zero
 
-\ ---- multi-megabyte fill: 2 MiB via 1024-byte chunked appends -------------------
 : BUFT-CHUNK-FILL ( -- )
    1024 0 ?do  i 255 and  BUFT-CHUNK i +  c!  loop ;
 : BUFT-BIG-FILL ( -- )
@@ -340,24 +323,23 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
    2048 0 ?do  BUFT-CHUNK 1024 BUFT-N>BLEN BUFT-BIG-BUF BUF:APPEND-SPAN  loop
    BUFT-BIG-BUF BUFT-TLEN BUFT-BIG-N T=
    BUFT-BIG-BUF BUF:SPAN$ BUFT-BL>RAW {: data:ptr len:n :}
-   len BUFT-BIG-N T=                                                   \ SPAN$ length matches
-   data 0 + c@ 0 T=                                                    \ first chunk byte
+   len BUFT-BIG-N T=
+   data 0 + c@ 0 T=
    data 1000 + c@ 232 T=                                              \ 1000 & 255
    data BUFT-BIG-N 1 - + c@ 255 T=                                    \ last byte = 1023 & 255
    BUFT-BIG-BUF BUF:DISPOSE ;
 
-\ ---- property: random single-byte appends preserve every byte through growth ----
 : BUFT-PROP ( -- )
    16 BUFT-FRESH
    7 256 PROP:RUN-RESET
-   PROP:COUNT@ 0 ?do                                                  \ 256 random appends
+   PROP:COUNT@ 0 ?do
       256 PROP:RND% {: b:n :}
-      b  BUFT-REF i +  c!                                             \ shadow into the reference
+      b  BUFT-REF i +  c!
       b BUFT-BUF BUF:APPEND-BYTE
-      i 1 + BUFT-BUF BUFT-TLEN T=                                     \ length tracks appends
-      BUFT-BUF BUFT-TCAP  BUFT-BUF BUFT-TLEN  >= TTRUE                \ capacity always covers length
+      i 1 + BUFT-BUF BUFT-TLEN T=
+      BUFT-BUF BUFT-TCAP  BUFT-BUF BUFT-TLEN  >= TTRUE
    loop
-   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW  BUFT-REF PROP:COUNT@  T$= ; \ span equals the reference
+   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW  BUFT-REF PROP:COUNT@  T$= ;
 
 : BUFT-RUN ( -- )
    T-RESET
@@ -376,7 +358,6 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
    BUFT-REPLACE
    BUFT-CLEAR
    BUFT-APPEND-REPLACED
-   \ ---- release / dispose lifecycle -------------------------------------------
    BUFT-GROW-RELEASES
    BUFT-DISPOSE-RELEASES
    BUFT-DISPOSE-DOUBLE
@@ -392,7 +373,6 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
    [: BUFT-USE-CLEAR ;] E-BUF-STATE TTHROWSQ
    [: BUFT-USE-REPLACED ;] E-BUF-STATE TTHROWSQ
    [: BUFT-INIT-LIVE-REJECTS ;] E-BUF-STATE TTHROWSQ
-   \ ---- capacity / bounds refusals --------------------------------------------
    [: BUFT-CAP-ZERO ;] E-BUF-CAPACITY TTHROWSQ
    [: BUFT-APPEND-OVERFLOW ;] E-BUF-CAPACITY TTHROWSQ
    [: BUFT-GROW-TAIL-OVERFLOW ;] E-BUF-CAPACITY TTHROWSQ
@@ -407,10 +387,8 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
    BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" a-b" T$=
    BUFT-GROW-OVER-READ
    BUFT-REL-BUF BUF:DISPOSE                                          \ the refused grow left the buffer owned
-   \ ---- scale + property ------------------------------------------------------
    BUFT-BIG-FILL
    BUFT-PROP
-   \ ---- static typed role-swap rejections (0) + resolving positives (-1) -------
    s" BOK-INIT ( ptr a NUM:byte-len -- ) BUF:INIT" CHECK-QUIET-CANDIDATE! -1 T=
    s" BOK-SPAN ( ptr u8 NUM:byte-len ptr a -- ) BUF:APPEND-SPAN" CHECK-QUIET-CANDIDATE! -1 T=
    s" BSWAP-RAW-CAP ( ptr a n -- ) BUF:INIT" BUFT-CHECK-REJECTS

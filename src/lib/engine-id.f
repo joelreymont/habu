@@ -1,11 +1,9 @@
-\ engine-id.f - the running engine's path and binary content key.
-\ PATH$ is the kernel-reported pathname. KEY$ hashes a descriptor bound to the
-\ running image: /proc/self/exe on Linux, and on macOS a descriptor whose vnode
-\ matches the main executable's mapped vnode. A pathname can be replaced after
-\ PATH$ resolves it, so its bytes alone cannot establish image identity.
-\ The caches, their validity and every buffer a query writes are cleared before
-\ image capture through a one-shot lifecycle hook. The next process, or a later
-\ use in this process, registers a fresh hook when it first caches either value.
+\ engine-id.f - the running engine's path and binary content key. PATH$ is the
+\ kernel-reported pathname, which can be replaced after it resolves, so KEY$
+\ hashes a descriptor bound to the running image: /proc/self/exe on Linux, on
+\ macOS one whose vnode matches the main executable's mapped vnode. Caches and
+\ query buffers clear before image capture through a one-shot hook, registered
+\ again by the next use that caches either value.
 
 require src/lib/errors.f
 require src/lib/string.f

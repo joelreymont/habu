@@ -1,79 +1,9 @@
-\ process-tree.f - end a process and every process descended from it, or read
-\ the CPU time they have run.
-\
-\ A SPAWNED CHILD LEADS A PROCESS GROUP OF ITS OWN (src/lib/process.f), so the
-\ kill that reaches a group - PROC-FORK:KILL-GROUP - ends a process and what it
-\ forked, and nothing it spawned. Measured on the native gate: SIGTERM to the
-\ root ended every row, and eight of the rows' own children - engine builds,
-\ each leading its own group - went on for ten seconds and more, reparented to
-\ init. KILL-TREE ends those too.
-\
-\ FREEZE, THEN LIST. A process killed while its children run leaves them to
-\ init, where no link names them again, and a process listed while it runs may
-\ spawn one more the moment after. So a process is stopped BEFORE its children
-\ are asked for. A stopped process spawns nothing and reaps nothing, so a
-\ child of a member that dies meanwhile stays a zombie under it and its number
-\ is not handed to a stranger. A member whose parent is outside the tree - an
-\ orphan, reached through its group - has no such pin: init reaps it when it
-\ dies, and a stranger handed its pid before the walk ends is stopped and
-\ killed with the tree. That takes the host's pid counter coming round inside
-\ the walk, which lasts SETTLE-MS and the pass that crosses it. The tree grows
-\ one pass of the process table at a time, until QUIET-PASSES passes in a row
-\ add nobody and find every member settled (below); only then is each member
-\ killed. SIGKILL ends a stopped process without running it again.
-\
-\ A STOPPED PROCESS STILL FINISHES THE SYSTEM CALL IT WAS IN, and a spawn is
-\ one. Measured on macOS under load, before the walk read it: the leaf of
-\ test/gate-signal-row.f showed as stopped, two passes found nothing new, and
-\ a writer it had been spawning appeared after it was killed - in two runs of
-\ ten. So a member counts as settled only when it is stopped and no thread of
-\ it is still running in the kernel, which each host reads its own way (below),
-\ and the walk ends on QUIET-PASSES such passes in a row rather than one.
-\
-\ WHO IS IN THE TREE. The process named; every process whose parent is in it;
-\ and every process whose group is led by one in it - for what was forked and
-\ then orphaned, which keeps its group and loses its parent. A zombie is a
-\ member like any other: a signal does nothing to it, but the group it led
-\ still names its pid, and what it forked before it exited may be in that
-\ group and nowhere else (test/gate-signal-row.f's helper). Never the caller,
-\ and never another child of the caller, zombie or not: a pool's reaper is a
-\ child of the pool that joined its row's group, and it is the pool's own to
-\ end.
-\
-\ WHAT IT CANNOT REACH. A process whose parent is outside the tree and whose
-\ group id names no member, zombie included - a daemon that forked, called
-\ setsid and let its parent exit. And on macOS, a child that did not exist
-\ yet. libproc counts a task's RUNNABLE threads, so a thread inside a spawn
-\ that is blocked in the kernel before the child is made - on a page-in of
-\ what it copies in, an allocation, a lock such as the one the walk's own
-\ libproc calls take - is not counted and its member reads as settled. The
-\ SIGKILL then lets that spawn finish, and the child, leading its own group
-\ and reparented to launchd, outlives the walk. Asking again until
-\ QUIET-PASSES quiet passes narrows that window to a spawn blocked across the
-\ last of them; it does not close it. Linux reads each thread's own state,
-\ and a blocked thread is not a stopped one there.
-\
-\ WHETHER A ROOT CAN BE ASKED FIRST. CATCHES? reads whether a process runs a
-\ handler for a signal. A pool asks a row's root to end itself with SIGTERM
-\ only when it does: the default action would end the root at once, and what
-\ it spawned, each leading its own group, would be left to init before the
-\ walk could list it.
-\
-\ STORAGE CLASS. PROCESS-WIDE, one walk or CPU reading at a time: the member
-\ table and the scan buffers are this file's. src/lib/process.f ends a capture's
-\ child from whichever task ran the capture, so KILL-TREE, CATCHES? and CPU-NS
-\ hold WALKING while they use them, and a task that finds it held waits its
-\ turn. The member table and the macOS listing grow with the tree, as far as
-\ the host maps memory; a walk or CPU reading releases both as it ends, thrown
-\ or not, so nothing is mapped between them.
-\
-\ BENEATH src/lib/process.f, which requires this file to end a capture's child. A
-\ walk signals through the kill primitive and times itself with mono-ns, so it
-\ needs nothing of src/lib/process.f.
-\
-\ HOSTS. macOS asks libproc for a member's children and group; Linux reads the
-\ whole of /proc and then each member's threads. The Linux arm is written from
-\ proc(5) and has run on no host here.
+\ process-tree.f - end a process and every process descended from it
+\ (KILL-TREE), or read the CPU time they have run (CPU-NS). Beneath
+\ src/lib/process.f, which requires it to end a capture's child. macOS asks
+\ libproc; Linux reads /proc, written from proc(5) and run on no host here.
+\ STORAGE CLASS. PROCESS-WIDE, one walk or CPU reading at a time (WALKING): the
+\ member table and listings grow with the tree and are released as each ends.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -128,10 +58,8 @@ variable WALKING                    \ 1 while a walk, a CATCHES? or a CPU-NS hol
    pid JOIN
    pid SIGSTOP kill drop ;
 
-\ ---- macOS: libproc ----------------------------------------------------------
-\
-\ sys/proc_info.h in the local SDK. proc_listpids filters the kernel's own
-\ process list by parent (PROC_PPID_ONLY) or by group (PROC_PGRP_ONLY) and
+\ macOS, sys/proc_info.h in the local SDK. proc_listpids filters the kernel's
+\ own process list by parent (PROC_PPID_ONLY) or by group (PROC_PGRP_ONLY) and
 \ answers the bytes it wrote, four a pid. The list holds a child from the
 \ moment its parent's spawn creates it, which is long before the spawn
 \ returns: that is what lets the walk see a child still being made.
@@ -214,9 +142,14 @@ FUNCTION: ERRNO-CELL __error ( -- ptr u8 ) ;FUNCTION
 : BORN? ( n -- bool )
    SHORT-FLAVOR ZOMBIE-TOO SHORT SHORT-BYTES RECORD? ;
 
-\ Threads of pid that are runnable. A thread blocked in the kernel is not one,
-\ which is the limit the header names. A process that ended since it was
-\ asked about has none.
+\ Threads of pid that are runnable; a process that ended since has none. libproc
+\ counts RUNNABLE threads, so a thread inside a spawn blocked in the kernel
+\ before the child is made (a page-in, an allocation, a lock such as the walk's
+\ own libproc calls take) is not counted and its member reads as settled; the
+\ SIGKILL then lets the spawn finish, and the child, leading its own group under
+\ launchd, outlives the walk. QUIET-PASSES quiet passes narrow that window to a
+\ spawn blocked across the last of them; they do not close it. Linux reads each
+\ thread's own state, where a blocked thread is not a stopped one.
 : RUNNING ( n -- n )
    TASK-FLAVOR LIVE-ONLY TASK TASK-BYTES RECORD? 0= if 0 exit then
    TASK TASK-RUNNING + LE:U32@ ;
@@ -275,13 +208,11 @@ FUNCTION: ERRNO-CELL __error ( -- ptr u8 ) ;FUNCTION
       1+
    repeat drop ;
 
-\ ---- Linux: /proc ------------------------------------------------------------
-\
-\ proc(5): /proc/<pid>/stat is one line, `pid (comm) state ppid pgrp ...`. comm
-\ may itself hold spaces and parentheses, so the fields are read after the LAST
-\ `)`. The fields wanted, the walk's three and CPU-NS's 14 to 17, end within
-\ the first 400 bytes: comm is at most 64 and no number is longer than 20
-\ digits.
+\ Linux, proc(5): /proc/<pid>/stat is one line, `pid (comm) state ppid pgrp
+\ ...`. comm may itself hold spaces and parentheses, so the fields are read
+\ after the LAST `)`. The fields wanted, the walk's three and CPU-NS's 14 to 17,
+\ end within the first 400 bytes: comm is at most 64 and no number is longer
+\ than 20 digits.
 \
 \ That state is the main thread's alone, and any thread may spawn: src/lib/process.f
 \ runs children from any task. /proc/<pid>/task/<tid>/stat holds each thread's,
@@ -434,7 +365,28 @@ variable CUR                        \ the read position in STAT
       i MEMBER MEMBER-SETTLE-LINUX
    loop ;
 
-\ ---- the walk ----------------------------------------------------------------
+\ FREEZE, THEN LIST. A process killed while its children run leaves them to
+\ init, where no link names them again, and a process listed while it runs may
+\ spawn one more the moment after, so a process is stopped before its children
+\ are asked for. A stopped process spawns nothing and reaps nothing, so a dying
+\ member's child stays a zombie under it and its pid is not handed on. An orphan
+\ member, reached through its group, has no such pin: a stranger handed its pid
+\ before the walk ends is killed with the tree, which takes the host's pid
+\ counter coming round within SETTLE-MS and the pass that crosses it. SIGKILL
+\ ends a stopped process without running it again.
+\ A STOPPED PROCESS STILL FINISHES THE SYSTEM CALL IT WAS IN, and a spawn is one:
+\ measured on macOS under load, test/gate-signal-row.f's leaf read stopped, two
+\ passes found nothing new, and a writer it was spawning appeared after the
+\ kill, in two runs of ten. So a member is settled only when it is stopped and
+\ no thread of it runs in the kernel, and the walk ends on QUIET-PASSES such
+\ passes in a row.
+\ THE TREE is the process named, every process whose parent is in it, and every
+\ process whose group a member leads (a forked orphan keeps its group). A zombie
+\ is a member: the group it led may hold what it forked and nothing else names
+\ (test/gate-signal-row.f's helper). Never the caller or another child of the
+\ caller, zombie or not: a pool's reaper joins its row's group and is the pool's
+\ to end. Out of reach: a process whose parent is outside the tree and whose
+\ group names no member, such as a daemon that called setsid.
 
 : SCAN ( -- )
    HB-TARGET-MACOS? if SCAN-MACOS exit then
@@ -464,7 +416,8 @@ variable CUR                        \ the read position in STAT
       i MEMBER SIGKILL kill drop
    loop ;
 
-\ One walk or query at a time. A task that finds WALKING held sleeps a
+\ One walk or query at a time: src/lib/process.f ends a capture's child from
+\ whichever task ran the capture. A task that finds WALKING held sleeps a
 \ millisecond a turn rather than spin through a walk of up to SETTLE-MS.
 : WALK-GET ( -- )
    begin 0 1 WALKING atomic-cas 0<> while 1 >MS TASK:SLEEP repeat ;
@@ -488,8 +441,6 @@ variable CUR                        \ the read position in STAT
    pid PID>N SELF @ = if E-PROC-OUTPUT throw then
    pid PID>N [: WALK-MEMBERS ;] [: STORAGE-RELEASE ;] finally ;
 
-\ ---- a process that catches a signal ------------------------------------------
-\
 \ A signal a process catches runs its handler; any other takes the default
 \ action or is ignored. Each host keeps the caught set as one bit per signal,
 \ bit n-1 for signal n.
@@ -586,8 +537,6 @@ FUNCTION: SYSCTL sysctl ( ptr u8 n ptr u8 ptr u8 ptr u8 n -- i32 )
    HB-TARGET-LINUX-KERNEL? if pid sig CATCHES-LINUX? exit then
    E-PROC-HOST throw ;
 
-\ ---- the CPU time a tree has run ----------------------------------------------
-\
 \ CPU-NS adds up the CPU time, user and system, that a process and every live
 \ process descended from it have run, each with the time of the children it
 \ reaped: a child's time passes to its parent when the parent waits for it, so
@@ -724,8 +673,12 @@ FUNCTION: TIMEBASE-INFO mach_timebase_info ( ptr u8 -- i32 )
 
 public
 
-\ SIGKILL pid and every process descended from it. A pid at or below 1 names
-\ init or a group rather than a process, and the caller cannot be its own tree.
+\ SIGKILL pid and every process descended from it. A spawned child leads a
+\ process group of its own (src/lib/process.f), so PROC-FORK:KILL-GROUP misses
+\ what a process spawned: measured on the native gate, after SIGTERM to the
+\ root, eight rows' own children (engine builds) ran on ten seconds and more
+\ under init. A pid at or below 1 names init or a group rather than a process,
+\ and the caller cannot be its own tree.
 \ Whatever the walk throws - a process table it could not read, memory the
 \ host would not map - every member found by then is still killed, so none is
 \ left stopped. A SIGKILL of the caller runs no finally: what the walk had
@@ -736,9 +689,10 @@ public
    pid [: WALK ;] [: WALK-RELEASE ;] finally ;
 
 \ TRUE when pid runs a handler for signal sig; FALSE when the default action
-\ or SIG_IGN takes it, or when nobody has pid. A caller that would SIGKILL a
-\ tree asks this first to know whether its root can be asked to end itself
-\ (test/gate-pool.f GT-POOL-ASK-END).
+\ or SIG_IGN takes it, or when nobody has pid. A pool asks a row's root to end
+\ itself with SIGTERM only when it catches it (test/gate-pool.f
+\ GT-POOL-ASK-END): the default action would end the root at once and leave
+\ what it spawned, each leading its own group, to init before a walk lists it.
 : CATCHES? ( pid n -- bool ) {: pid:pid sig:n :}
    WALK-GET
    pid PID>N sig [: CATCHES-HOST? ;] [: WALK-RELEASE ;] finally ;

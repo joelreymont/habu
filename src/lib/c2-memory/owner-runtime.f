@@ -1,22 +1,9 @@
 \ owner-runtime.f - private task-local cleanup for the checked owner surface
-\ under construction (src/lib/c2-memory.f; rules in docs/design.md "Ownership").
-\
-\ Each scope OPENs one frame, registered PENDING before any allocation can
-\ return, moved to LIVE once its acquisitions are recorded, and CLOSING ->
-\ CLOSED as its disposers run; a pending frame disposes only what it recorded.
-\ At most FRAME-CAP frames nest (E-C2-CAPACITY). Cooperative halt is deferred
-\ (TASK:DEFER-ENTER) across that transfer and while a close runs. A task's
-\ first scope registers one TASK:AT-EXIT DRAIN that closes every remaining
-\ frame innermost first, keeps going past a disposer's error and reports the
-\ first. A halt at TASK:PAUSE unwinds through every scope's c2-invoke cleanup,
-\ and the outermost scope's finisher serves a halt that stayed pending through
-\ a deferred close (FINISH), so the drain has no reachable case left; dot
-\ habu-retire-c2-invoke-a608fd55 retires it with c2-invoke. Image capture
-\ refuses an open frame or loan (E-C2-CAPTURE).
-\
-\ STORAGE CLASS. TASK-LOCAL: the frame chain is one TASK:+USER row
-\ (OWNER-REGION); main uses the same row in its own data region and registers
-\ no exit hook.
+\ (src/lib/c2-memory.f; rules in docs/design.md "Ownership"). A frame is PENDING
+\ before any allocation can return, LIVE once its acquisitions are recorded,
+\ then CLOSING -> CLOSED as disposers run; at most FRAME-CAP nest (E-C2-CAPACITY).
+\ Image capture refuses an open frame or loan (E-C2-CAPTURE).
+\ STORAGE CLASS. TASK-LOCAL: the frame chain is one TASK:+USER row (OWNER-REGION).
 require src/lib/errors.f
 require src/lib/task.f
 require src/lib/memory.f
@@ -147,8 +134,12 @@ TRUSTED: LENGTH-CELL ( ptr n -- ptr NUM:alloc-byte-len ) 24 + ;
    state PENDING = if TASK:DEFER-LEAVE then
    rc 0<> if rc throw then ;
 
-\ Every remaining frame is closed even when a disposer reports an error. TASK's
-\ exit chain already keeps the body's first error, or this drain's first error.
+\ A task's first scope registers this as its one TASK:AT-EXIT hook (main
+\ registers none). It closes every remaining frame innermost first, past a
+\ disposer's error; TASK's exit chain keeps the body's first error, or this
+\ drain's. A halt at TASK:PAUSE unwinds through every scope's c2-invoke cleanup
+\ and FINISH serves a halt left pending by a deferred close, so this has no
+\ reachable case left.
 : DRAIN ( -- )
    0
    begin HEAD-CELL @ 0 <> while
@@ -162,8 +153,10 @@ TRUSTED: LENGTH-CELL ( ptr n -- ptr NUM:alloc-byte-len ) 24 + ;
    [: DRAIN ;] TASK:SELF TASK:AT-EXIT
    1 HOOK-CELL ! ;
 
-\ Registration and capacity precede all acquisition. The pending row exists
-\ before an allocation can return, and deferral covers its transfer to LIVE.
+\ Registration and capacity precede all acquisition: the pending row exists
+\ before an allocation can return, and halt is deferred (TASK:DEFER-ENTER)
+\ across its transfer to LIVE and while a close runs. A pending frame disposes
+\ only what it recorded.
 : OPEN ( -- )
    DEPTH-CELL @ FRAME-CAP >= if E-C2-CAPACITY throw then
    REGISTER-EXIT

@@ -1,5 +1,4 @@
 \ tcp4-test.f - a loopback TCP connection carries bytes both ways.
-\
 \ One process holds both peers: a listener task blocks in ACCEPT while the main
 \ task connects, writes and reads back. Every timed wait runs on the AIO loop,
 \ which this suite starts before its first case and stops after its last.
@@ -114,8 +113,6 @@ TASK:MIN-STACK TASK:TASK TRY-TASK
    CHAT$ swap drop ;
 
 
-\ ---- result inspectors -------------------------------------------------------
-
 : STATUS-ERRNO ( TCP4:status -- n )
    MATCH TCP4:status
       ok OF 0 ENDOF
@@ -220,8 +217,6 @@ TASK:MIN-STACK TASK:TASK TRY-TASK
    ;MATCH ;
 
 
-\ ---- the listener task -------------------------------------------------------
-
 : ECHO-FAILED ( TCP4:errno -- )
    TCP4:ERRNO>N ECHO-ERRNO !
    1 ECHO-BAD +! ;
@@ -272,8 +267,6 @@ TASK:MIN-STACK TASK:TASK TRY-TASK
    begin ECHO-DONE atomic@ 0 > if exit then TASK:PAUSE again ;
 
 
-\ ---- the delayed peer --------------------------------------------------------
-
 \ Nothing reaches the reader before PEER-MS, so a ready answer sooner than that
 \ never waited in poll(2). The peer sleeps out its delay rather than yielding
 \ against a deadline: a spinning peer would take a core away from the reader it
@@ -296,20 +289,16 @@ TASK:MIN-STACK TASK:TASK TRY-TASK
    mono-ns start - NS-PER-MS / ;
 
 
-\ ---- the parked waiter -------------------------------------------------------
-
 : THREADS ( -- n ) TEST-HOST:THREADS ;
 
 \ The end of a wait of n ms from now, an absolute mono-ns.
 : DEADLINE ( n -- n )
    NS-PER-MS * mono-ns + ;
 
-\ Returns once the count in the cell reaches want, within limit ms.
 : REACH ( ptr n n n -- ) {: cell:ptr want:n limit:n :}
    cell want [: 2dup swap atomic@ <= ;] limit DEADLINE s" tcp4-test REACH" TEST-WAIT:POLL
    2drop ;
 
-\ Returns once the task has ended, within limit ms.
 : AWAIT-END ( ptr n n -- ) {: tcb:ptr limit:n :}
    tcb [: dup TASK:DONE? ;] limit DEADLINE s" tcp4-test AWAIT-END" TEST-WAIT:POLL
    drop ;
@@ -336,8 +325,6 @@ TASK:MIN-STACK TASK:TASK TRY-TASK
    1 PARK-DONE atomic-add drop ;
 
 
-\ ---- the draining reader -----------------------------------------------------
-
 \ Counts each byte that is not the flood's byte at its place in the stream.
 : DRAIN-CHECK ( n -- ) {: got:n :}
    got 0 ?do
@@ -355,13 +342,10 @@ TASK:MIN-STACK TASK:TASK TRY-TASK
    ;MATCH ;
 
 
-\ Reads until the stream ends, checking every byte.
 : DRAIN-WORK ( -- )
    begin DRAIN-ENDED @ 0= while DRAIN-STEP repeat
    1 DRAIN-DONE atomic-add drop ;
 
-
-\ ---- the sipping reader -------------------------------------------------------
 
 \ The chat back for every read, sent at once (NODELAY): the acknowledgement of
 \ what the read took rides on it instead of waiting out a delayed ACK, so the
@@ -398,7 +382,6 @@ TASK:MIN-STACK TASK:TASK TRY-TASK
    size 0 ?do i PATTERN-MOD mod bytes i + c! loop ;
 
 
-\ The 16 MiB source the write and slice cases send from, byte i holding i mod 251.
 : FLOOD ( -- ptr u8 )
    FLOOD-PTR @ ;
 
@@ -413,8 +396,6 @@ TASK:MIN-STACK TASK:TASK TRY-TASK
    FLOOD FLOOD-BYTES MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
 
 
-\ ---- the non-waiting reader --------------------------------------------------
-
 \ One TRY-READ of the accepted end, its answer left in TRIED and the ms it took
 \ in TRY-MS.
 : TRY-WORK ( -- )
@@ -425,8 +406,6 @@ TASK:MIN-STACK TASK:TASK TRY-TASK
    1 TRY-DONE atomic-add drop ;
 
 
-\ ---- the blocked writer ------------------------------------------------------
-
 \ Blocks in WRITE, because the peer never reads; WRITER-ENDED says it returned.
 : WRITER-WORK ( -- )
    1 WRITER-ARMED atomic-add drop
@@ -434,8 +413,6 @@ TASK:MIN-STACK TASK:TASK TRY-TASK
    STATUS-ERRNO drop
    1 WRITER-ENDED atomic-add drop ;
 
-
-\ ---- endpoints the cases share -----------------------------------------------
 
 : BIND-LISTENER ( -- n )
    LOOPBACK TCP4:ADDRESS 0 TCP4:PORT TCP4:BIND
@@ -484,12 +461,10 @@ TASK:MIN-STACK TASK:TASK TRY-TASK
    SETTLED? 0= if name len TEST-WAIT:EXPIRED then ;
 
 
-\ Returns once a connection is pending on the listener, waiting at most WAIT-MS.
 : PENDING-WITHIN ( n -- )
    TCP4:>LISTENER WAIT-MS >MS TCP4:PENDING-WITHIN? s" tcp4-test PENDING-WITHIN" WANT-READY ;
 
 
-\ Returns once the connection is readable, waiting at most WAIT-MS.
 : READABLE-WITHIN ( n -- )
    TCP4:>CONNECTION WAIT-MS >MS TCP4:READABLE-WITHIN? s" tcp4-test READABLE-WITHIN" WANT-READY ;
 
@@ -559,8 +534,6 @@ TASK:MIN-STACK TASK:TASK TRY-TASK
       TASK:PAUSE
    again ;
 
-
-\ ---- cases -------------------------------------------------------------------
 
 : BAD-PORT ( -- )
    $10000 TCP4:PORT drop ;

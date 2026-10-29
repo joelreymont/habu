@@ -1,41 +1,9 @@
-\ source-lex.f — package LINT-LEX: the one shared lexer for Habu source, used by
-\ the lint, checker and codegen tooling and by applications that read source by
-\ its tokens. Tokens point into the span SOURCE was given, so that span stays
-\ in place while they are read.
-\ STORAGE CLASS. PROCESS-WIDE: the token table and the scan state are one set
-\ for the image, and SOURCE replaces the last scan's tokens.
-\ It states its own dependencies below rather than naming them in a load order:
-\ src/lib/vector.f is no longer in the engine, so a consumer that loaded this file
-\ without it would fail at VEC:HEADER-CELLS.
-\
-\ Public surface (the package owns every cell):
-\   WORD COMMENT REGISTRY              token kinds returned by KIND@
-\   UNTERMINATED-QUOTE MALFORMED-REGISTRY   diagnostic kinds from ERROR-KIND@
-\   SOURCE ( ptr u8 n -- )             scan a buffer; clears all prior state first
-\   OPERAND ( n -- )                   token n parses the next token: rescan
-\                                      from it by parse-name's rule
-\   OPERAND? ( n -- bool )             token n is a raw operand, read as data
-\   COUNT ( -- n )                     tokens produced by the last SOURCE
-\   TOKEN CONTENT ( n -- ptr u8 n )    token span / paren-comment body or
-\                                      string-literal payload span
-\   LITERAL? ( n -- bool )             token n is a string literal
-\   KIND@ BYTE@ LINE@ COL@ ( n -- n )  kind, 0-based byte, 1-based line, 1-based column
-\   ERROR? ( -- bool )                 the last scan hit malformed input
-\   ERROR-KIND@ ERROR-BYTE@ ERROR-LINE@ ERROR-COL@ ( -- n )
-\   ENGINE-DELIM? ( n -- bool )        byte n ends a token, as parse-name reads
-\
-\ A complete `PRIM: ... PRIM;`, `PPRIM: pkg ... PPRIM;`, `EPRIM: ... EPRIM;` or
-\ `EPPRIM: pkg ... ECLOSE-PRIVATE` primitive-axiom row is one REGISTRY token
-\ spanning the whole row, positioned at its opener; its fields never appear as
-\ separate tokens and CONTENT is empty for it. An incomplete row is the
-\ MALFORMED-REGISTRY diagnostic at the opener site.
-\
-\ The diagnostic is one generic record, not a quote-specific flag. A scan writes
-\ it at most once: the writer runs at the malformed site and stops the scan, so
-\ no token after that site is exposed. Consumers only read it back; a rescan by
-\ OPERAND writes it afresh, as SOURCE does. A consumer that requires valid source
-\ must reject when ERROR? is true, and should read ERROR-KIND@ to name which
-\ defect it hit.
+\ source-lex.f - package LINT-LEX: the one shared lexer for Habu source, for the
+\ lint, checker and codegen tooling and applications that read source by its
+\ tokens. Tokens point into the span SOURCE was given, so that span stays in
+\ place while they are read. It requires src/lib/vector.f, which the engine lacks.
+\ STORAGE CLASS. PROCESS-WIDE: one token table and scan state for the image;
+\ SOURCE replaces the last scan's tokens.
 
 require src/lib/string.f
 require src/lib/memory.f
@@ -88,9 +56,8 @@ variable STEPPED
 variable DEPTH                  \ blocks open, counted while a local lives
 variable IN-GROUP               \ those tokens end inside a `{: … :}` group
 
-\ ---- VEC length -> raw count bridge ---------------------------------------
-\ The lexer's token and locals counts drive raw cell arithmetic (COUNT 1- ...),
-\ so a vector length leaves its role here.
+\ The token and locals counts drive raw cell arithmetic (COUNT 1- ...), so a
+\ vector length leaves its role here.
 CAST: ITEM>N ( NUM:item-count -- n )
 
 : SRC@ ( -- ptr u8 )
@@ -187,6 +154,7 @@ public
 : KIND@ ( n -- n ) {: k:n :}
    KIND-V k VEC:N>INDEX VEC:@ ;
 
+\ A token's byte offset is 0-based; its line and column are 1-based.
 : BYTE@ ( n -- n ) {: k:n :}
    BYTE-V k VEC:N>INDEX VEC:@ ;
 
@@ -201,6 +169,10 @@ public
 : OPERAND? ( n -- bool ) {: k:n :}
    OPND-V k VEC:N>INDEX VEC:@ ;
 
+\ The diagnostic is one record, written at most once per scan: the writer stops
+\ the scan at the malformed site, so no token after it is exposed. A rescan by
+\ OPERAND writes it afresh, as SOURCE does. A consumer that requires valid source
+\ rejects when ERROR? is true and reads ERROR-KIND@ to name the defect.
 : ERROR? ( -- bool )
    ERR-KIND @ NO-ERROR <> ;
 
@@ -317,36 +289,24 @@ private
    ADV drop PAREN-BODY ;
 
 \ `.( ... )` is the printing comment. The engine reads its opener with
-\ `parse-name`, so the opener is the whole token `.(` rather than the `(` inside
-\ it: it arrives on the word path and is recognised there by exact spelling. That
-\ is what makes `.(X)` an ordinary word, for the same reason `(CMP)` is one, and
-\ it needs no separate standalone test because a word IS the standalone unit.
-\ The body is inert source exactly like a `( ... )` body, so it becomes a COMMENT
-\ token whose CONTENT is that body; the printing is a runtime effect no lexer
-\ models. Without this rule a word-at-a-time reader hands the body out as
-\ ordinary tokens, and a consumer that counts declarations reads a declaration
-\ the engine never performs - test/bootstrap-wide-memory.fs really does open a
-\ file with one.
+\ `parse-name`, so `.(` arrives on the word path as a whole token and `.(X)` is
+\ an ordinary word, as `(CMP)` is. Its body becomes a COMMENT token whose CONTENT
+\ is the body: read word at a time, the body would yield a declaration the
+\ engine never performs (test/bootstrap-wide-memory.fs opens a file in one).
 : PRINT-OPEN? ( ptr u8 n -- bool )
    s" .(" STR= ;
 
-\ ---- primitive-axiom rows (`PRIM: ... PRIM;`, `PPRIM: pkg ... PPRIM;`) ---------
-\ The engine reads a row's name (and a package row's package) with `parse-name`,
-\ so a primitive may be NAMED `s"`, `c"`, `."`, `s\"`, `c\"`, `.\"`, `[']` or
-\ `[char]` (src/core/checker.f does name all eight). A word-at-a-time lexer treats
-\ those names as live string openers and swallows real source: before this row
-\ scanner, `PRIM: s"     PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;` on checker.f line
-\ 5093 consumed everything through the quote in the NEXT row, losing five tokens
-\ of its own row plus the following opener from the table with no diagnostic.
-\ The engine's own table (src/habu/prims.f) writes its rows `EPRIM: name ...
-\ EPRIM;` and `EPPRIM: pkg name ... ECLOSE-PRIVATE`, and names a definer there:
-\ `EPRIM: create EPRIM;` read word at a time defines `EPRIM;`.
-\ So each complete row becomes one REGISTRY token and its fields never reach the
-\ word path. The row model is src/habu/verify-source.f RECORD-PRIM-ROW, the
-\ authoritative source replay of the same engine text: header fields raw, then
-\ body fields where comments are inert and a parsing word consumes its operand.
-\ Row fields share the engine delimiter rule with top-level tokenization because
-\ `parse-name` is what the engine runs.
+\ Primitive-axiom rows. The engine reads a row's name (and a package row's
+\ package) with `parse-name`, so a primitive may be named `s"`, `c"`, `."`,
+\ `s\"`, `c\"`, `.\"`, `[']` or `[char]` (src/core/checker.f names all eight),
+\ which a word-at-a-time lexer would read as live string openers. The engine's
+\ table (src/habu/prims.f) writes `EPRIM: name ... EPRIM;` and `EPPRIM: pkg name
+\ ... ECLOSE-PRIVATE`, and names a definer: `EPRIM: create EPRIM;` read word at a
+\ time defines `EPRIM;`. A complete row is one REGISTRY token spanning the row,
+\ at its opener, with empty CONTENT; an incomplete row is MALFORMED-REGISTRY at
+\ the opener. The row model is src/habu/verify-source.f RECORD-PRIM-ROW: header
+\ fields raw, then body fields where comments are inert and a parsing word
+\ consumes its operand. Row fields share the engine delimiter rule.
 
 : SKIP-RAW-WS ( -- )
    begin GAP? while ADV drop repeat ;
@@ -434,19 +394,13 @@ private
    false ;
 
 \ `[']` and `[char]` parse one raw operand, so a closer-shaped token there is that
-\ operand and not a closer.
-\
-\ The bracket-less `char` is deliberately NOT here, and this is a known divergence
-\ from src/habu/verify-source.f BODY-PARSER?, which treats `char` and `[char]`
-\ alike. Two reasons. The row grammar this file implements names exactly eight
-\ operand-parsing labels, and `char` is not one of them. And leaving it out is the
-\ safe direction: a hostile `PRIM: FOO char PRIM; create LEAK PRIM;` then closes
-\ at the first closer and hands `create LEAK` to the consumer as ordinary tokens
-\ instead of hiding it inside the row span. Real source is unaffected, because
-\ src/core/checker.f only ever writes `char` in header position, where every field
-\ is raw anyway. This rule is the canonical one; verify-source.f conforms to it
-\ when it starts consuming REGISTRY tokens (dot habu-consume-registry-events-
-\ efe7fe5e), and that leaf owns the differential fixture for `char`.
+\ operand and not a closer. Bracket-less `char` is not here, a known divergence
+\ from src/habu/verify-source.f BODY-PARSER?: the row grammar names exactly eight
+\ operand-parsing labels, and leaving it out is the safe direction (`PRIM: FOO
+\ char PRIM; create LEAK PRIM;` closes at the first closer and hands `create
+\ LEAK` to the consumer as tokens). src/core/checker.f writes `char` only in
+\ header position, where every field is raw. This rule is canonical:
+\ verify-source.f is the side that conforms when it consumes REGISTRY tokens.
 : PARSE-NEXT? ( ptr u8 n -- bool )
    2dup s" [']" STR= if 2drop true exit then
    s" [char]" STR=CI ;
@@ -531,11 +485,9 @@ private
    k 1- OPERAND? if false exit then
    k 1- TOKEN NAMER? ;
 
-\ The word the scan reads now is a name.
 : NAME-POS? ( -- bool )
    COUNT NAMED-AT? ;
 
-\ ---- the locals a body declares -----------------------------------------------
 \ The engine and the checker look a body token up among the live locals before
 \ every keyword but `;` (src/habu/habu2.f EM-COMPILE-LOCAL, src/core/checker.f
 \ LOC-REF?), byte for byte, so a local named `char`, `[']` or `s"` is that local:
@@ -546,10 +498,9 @@ private
 \ quotation, where the engine refuses it at that token. The state is read from
 \ the tokens the scan has made, never kept beside them, so a rescan (OPERAND)
 \ reads it again as it was at its token. Blocks are counted only while a local
-\ lives: one opened with none live drops none, and a local only needs the count
-\ to change from its own group on, so a body with no locals pays no block test.
+\ lives: one opened with none live drops none, so a body with no locals pays no
+\ block test.
 
-\ The name the group word k declares.
 : LOCAL$ ( n -- ptr u8 n ) {: k:n :}
    k TOKEN {: a:ptr u:n :}
    0 begin dup u < if a over + c@ $3A <> else false then while 1+ repeat
@@ -572,7 +523,6 @@ private
    LOCAL-V CLEAR-ONE
    LDEPTH-V CLEAR-ONE ;
 
-\ Drop the locals the innermost open block declared.
 : BLOCK-DROP ( -- )
    begin LIVE 0 > if LDEPTH-V LIVE 1- VEC:N>INDEX VEC:@ DEPTH @ >= else false then while
       LIVE 1- VEC:N>ITEM {: l:NUM:item-count :}
@@ -613,7 +563,6 @@ private
    LIVE 0= if exit then
    k a u BLOCK-STEP ;
 
-\ Bring the state up to the tokens the scan has made.
 : LOCALS-SYNC ( -- )
    begin STEPPED @ COUNT < while
       STEPPED @ STEP
@@ -654,7 +603,6 @@ private
    NAME-POS? if false exit then
    LOCAL-START? 0= ;
 
-\ The span from START to POS is one WORD token.
 : ADD-WORD ( -- )
    WORD CUR$ START @ START-LINE @ START-COL @ SRC@ 0 ADD ;
 
@@ -698,14 +646,11 @@ private
    STRING-OPENER? 0= if false exit then
    LOCAL-START? 0= ;
 
-\ A string-literal token carries its payload in CONTENT, exactly as a paren
-\ comment carries its body there. The payload is deliberately never tokenized -
-\ that is what stops a quoted word being mistaken for code - so without this a
-\ consumer that has to reason about a quoted NAME has no route to it but
-\ substring search over the raw source, which is the evasion route this lexer
-\ exists to close. The checker's own concrete type table is written that way
-\ (`s" n" CC-N CT-INT 64 CS-GENERIC CT-SET`), and the type names in it are only
-\ reachable here.
+\ A string-literal token carries its payload in CONTENT, as a paren comment
+\ carries its body. The payload is never tokenized, which stops a quoted word
+\ being mistaken for code; a consumer that reasons about a quoted name reads it
+\ here, not by substring search over the raw source. The checker's concrete type
+\ table (`s" n" CC-N CT-INT 64 CS-GENERIC CT-SET`) is reachable only this way.
 : SCAN-WORD ( -- )
    begin INK? while ADV drop repeat
    GROUP-START? if ADD-WORD GROUP exit then
@@ -737,7 +682,6 @@ private
       then
    repeat ;
 
-\ ---- an operand taken by parse-name -------------------------------------------
 \ The scan reads a parsing keyword's operand raw as it meets the keyword
 \ (PARSER-START?). A definer reads its name with `parse-name` as well: the next
 \ whitespace-delimited token, whatever it spells, so `package (` names the

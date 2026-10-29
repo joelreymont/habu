@@ -1,34 +1,9 @@
 \ fmath.f - integer roots and transcendental floats in checked Habu, without
 \ libm or a new engine primitive. SIN and COS carry fdlibm's kernels and its
-\ three-piece pi/2 reduction; PI and LDEXP serve callers that build float32
-\ bit patterns from binary64 values. FEXP retains its existing degree-6 range-
-\ reduced approximation. FLN uses powers-of-two range reduction and an atanh
-\ series; FPOW uses a degree-16 exponential series with domain/result checks.
-\
-\ The module lives in `package FMATH`. External callers use the qualified public API
-\ (FMATH:FEXP, FMATH:FROUND, the integer roots, FLN and FPOW); range-reduction
-\ helpers remain package-private.
-\
-\ ERRORS. An invalid root input, logarithm input, base or exponent, and a
-\ nonfinite input to anything but the IEEE wrappers (ADD..FMIN), throws
-\ E-DOMAIN (-9020); an overflowing power, a nonfinite
-\ intermediate exponent product or an out-of-range FROUND throws E-OUTPUT
-\ (-9021). Underflow may return zero. FPOW's domain is a positive finite base
-\ (zero to the zero is outside it) and a finite exponent. FEXP returns +inf
-\ above 709.782712893384 and zero below -745.1332191019411.
-\
-\ ACCURACY. FPOW is exp(exponent * ln(base)): large exponents amplify the
-\ logarithm and product rounding, so it is an approximation, not a correctly
-\ rounded libm replacement. The *-BOUND words and DEG>RAD return the plain
-\ binary64 result plus an absolute error bound whose every term rounds
-\ outward, so a bound can be conservative and can overflow (E-OUTPUT) where a
-\ tighter one would fit. A development sweep against the platform libm
-\ (seed 9020, inputs built from exact significands and powers of two) held
-\ 516 FLN inputs across the exponent range to absolute error <= 2e-12 and 514
-\ FPOW pairs to <= max(5e-12*|reference|, 4 ulp): sampled, not a bound.
-\
-\ STORAGE CLASS. CALLER-OWNED: pure functions over stack values; no module
-\ state.
+\ three-piece pi/2 reduction; FLN uses an atanh series and FPOW is
+\ exp(exponent * ln(base)): an approximation, not a correctly rounded libm.
+\ Errors: E-DOMAIN. Sampled accuracy: FLN-ACC. Error bounds: BOUND-INPUTS.
+\ STORAGE CLASS. CALLER-OWNED: pure functions over stack values; no module state.
 
 require src/lib/errors.f
 require src/lib/ieee754.f
@@ -43,8 +18,13 @@ package FMATH
 
 public
 
--9020 constant E-DOMAIN       \ input is outside the public word's mathematical domain
--9021 constant E-OUTPUT       \ result is outside the declared output type's range
+\ E-DOMAIN: an invalid root or logarithm input, an FPOW base that is not
+\ positive and finite (zero to the zero is outside it) or an exponent that is
+\ not finite, and a nonfinite input to anything but the IEEE wrappers
+\ (ADD..FMIN). E-OUTPUT: an overflowing power, a nonfinite intermediate
+\ exponent product or an out-of-range FROUND. Underflow may return zero.
+-9020 constant E-DOMAIN
+-9021 constant E-OUTPUT
 
 private
 
@@ -58,7 +38,7 @@ private
    r f*  1.0 f+
    r f*  1.0 f+ ;
 
-\ The power path needs more precision than the legacy degree-6 FEXP. With
+\ The power path needs more precision than FEXP-POLY's degree 6. With
 \ |x| <= ln(2)/2, terms after degree 16 are below binary64 rounding noise.
 : FEXP-SERIES ( r r r n -- r ) {: x:r term:r sum:r degree:n :}
    degree 16 > if sum exit then
@@ -78,7 +58,6 @@ private
 : POSITIVE-FINITE? ( r -- bool ) {: value:r :}
    value FINITE? value 0.0 f> and ;
 
-\ Carry both the reduced value and its base-two exponent on the data stack.
 \ Repeated scaling is exact in binary64, including through the subnormal range.
 : FLN-REDUCE ( r n -- r n )
    begin over 2.0 f>= while
@@ -94,8 +73,12 @@ private
 \ ln(x) = 2*(z + z^3/3 + ...), z=(x-1)/(x+1). Once x is reduced
 \ to [1/sqrt(2),sqrt(2)], |z| < 0.172. Centering the interval on one
 \ avoids cancellation between ln(unit) and exponent*ln(2) for x just below
-\ one. Terms through z^41 put truncation below binary64
-\ rounding noise; this file's header records the sampled end-to-end error.
+\ one. Terms through z^41 put truncation below binary64 rounding noise.
+\ A sweep against the platform libm (seed 9020, inputs built from exact
+\ significands and powers of two) held 516 FLN inputs across the exponent range
+\ to absolute error <= 2e-12 and 514 FPOW pairs to <= max(5e-12*|reference|,
+\ 4 ulp): sampled, not a bound. FPOW's large exponents amplify the logarithm
+\ and product rounding.
 : FLN-ACC ( r r r n -- r ) {: z2:r term:r sum:r denom:n :}
    denom 41 > if sum exit then
    term z2 f* {: next:r :}
@@ -120,7 +103,6 @@ private
 
 
 
-\ ---- sine and cosine ----------------------------------------------------------
 \ fdlibm's __kernel_sin / __kernel_cos and its medium-argument reduction
 \ (__ieee754_rem_pio2: Cody-Waite in three pieces of pi/2), in checked binary64.
 \ The constants are the exact bit patterns the kernels were fitted for; a
@@ -146,8 +128,8 @@ private
 : C5 ( -- r ) $3E21EE9EBDB4B1C4 TRIG-BITS ;
 : C6 ( -- r ) $BDA8FAE9BE8838D4 TRIG-BITS ;
 
-\ |x| as its bit pattern, and the biased exponent field of it. The argument
-\ classes below are fdlibm's high-word comparisons, spelled on the whole word.
+\ The argument classes below are fdlibm's high-word comparisons, spelled on the
+\ whole word.
 : ABS-BITS ( r -- n ) IEEE754:F64>BITS $7FFFFFFFFFFFFFFF and ;
 : EXPONENT-FIELD ( r -- n ) ABS-BITS 52 rshift ;
 $3E40000000000000 constant TINY-BITS       \ |x| < 2^-27: sin x = x, cos x = 1 to the last bit
@@ -189,7 +171,7 @@ $413921FB00000000 constant MEDIUM-BITS     \ 2^20 * pi/2: the reduction's exact 
    x KCOS-QX {: qx:r :}
    1.0 qx f-  0.5 z f* qx f-  z r f* x y f* f-  f-  f- ;
 
-\ ---- reduction of a nonnegative t in (pi/4, 2^20 pi/2) to y0 + y1 -------------
+\ Reduction of a nonnegative t in (pi/4, 2^20 pi/2) to y0 + y1.
 \ n = round(t / (pi/2)); the remainder is refined a second and a third time only
 \ when cancellation took more than 16, then 49, bits of t.
 : REFINE ( r r r r -- r r ) {: fn:r r:r pk:r pkt:r :}   \ -- r' w'
@@ -221,7 +203,6 @@ $413921FB00000000 constant MEDIUM-BITS     \ 2^20 * pi/2: the reduction's exact 
    x FINITE? 0= if E-DOMAIN throw then
    x ABS-BITS MEDIUM-BITS >= if E-DOMAIN throw then ;
 
-\ ---- powers of two --------------------------------------------------------------
 \ 2^k for -1074 <= k <= 1023, exact: the subnormal ones are a shifted bit.
 : POW2 ( n -- r ) {: k:n :}
    k -1022 < if 1 k 1074 + lshift IEEE754:BITS>F64 exit then
@@ -241,7 +222,7 @@ $413921FB00000000 constant MEDIUM-BITS     \ 2^20 * pi/2: the reduction's exact 
 \ Scale the polynomial itself without first overflowing/underflowing 2^k.
 \ LDEXP-STEPS keeps intermediates normal and rounds a subnormal result once.
 : FEXP-K ( r n -- r ) {: x:r k:n :}
-   \ fdlibm's split ln(2): k*hi is exact for our bounded exponent. Keeping
+   \ fdlibm's split ln(2): k*hi is exact for the bounded exponent. Keeping
    \ the low part preserves the negative remainder at the overflow threshold.
    x k s>f $3FE62E42FEE00000 IEEE754:BITS>F64 f* f-
    k s>f $3DEA39EF35793C76 IEEE754:BITS>F64 f* f-
@@ -399,7 +380,10 @@ private
 
 : TRIG-BOUND ( r -- r ) SPACING 4.0 f* ;
 
-\ All arithmetic-bound inputs are finite; absolute errors cannot be negative.
+\ The *-BOUND words and DEG>RAD return the plain binary64 result plus an
+\ absolute error bound whose every term rounds outward, so a bound can be
+\ conservative and can overflow (E-OUTPUT) where a tighter one would fit.
+\ Their inputs are finite and their absolute errors nonnegative.
 : BOUND-INPUTS ( r r r r -- )
    {: a:r ea:r b:r eb:r :}
    a FINITE? b FINITE? and

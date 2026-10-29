@@ -1,45 +1,30 @@
 \ fork-child-test.f - a forked child does not inherit another task's hold.
-\
-\     bin/hb --load src/lib/fork-child-test.f
-\
-\ fork copies only the thread that calls it. Each case holds one piece of
-\ process-wide state in a task of its own (src/lib/test/fork-hold.f), forks, and
-\ has the child reach that state through its owner's public words; the child
-\ must end in time and exit 0.
-\
-\ THE WAYS THIS CAN FAIL, written down before the fix:
-\
-\  1. THE CHILD WAITS FOR EVER. A lock another task held at the fork is still
-\     held in the child, and nothing there lets it go.
-\  2. THE CHILD USES WHAT IT DID NOT INHERIT. On Darwin the main thread's park
-\     is a Mach port, and ports do not cross a fork: in the child the name the
-\     record holds is no semaphore, and the first wake throws E-TASK-THREAD.
-\  3. THE PARENT LOSES ITS LOCK. A reset run on the parent's side of the fork
-\     frees the holder's lock, and a third task could then take it beside it.
-\  4. THE FORK WAITS FOR EVER. PROC-FORK:RAW holds the engine's three registry
-\     locks while it forks; taken out of their nesting order, or never given
-\     back, they leave the forking thread or the holder waiting. Nothing here
-\     can end that wait: the case hangs, and the gate's row deadline reports it.
-\
-\ Whether RAW holds a lock across the fork or the child resets it is its
-\ owner's call (src/lib/fork-child.f); a case shows only that the child finds the
-\ state free. A held lock's other half - that the child never sees a table
-\ another task was part way through republishing - lasts a few instructions,
-\ which no fork here can be aimed at.
-\
-\ Every case forks from the main thread. A fork made on a task holds the
-\ task-local address-cell lock, not the registrar's, until dot bb84a527:
-\ ADDRESS-CELLS finds its lock through data-base, a task's own context there.
-\
-\ A holder takes its lock with the word its owner takes it with. PROC-TREE's
-\ is private, so that case reopens its package. TASK seals its package, and
-\ IMAGE-LIFECYCLE, DYNAMIC-STORAGE and ADDRESS-CELLS are baked into the engine,
-\ so none of them is reopened: their
-\ holders take and free the lock through a public word over and over, and many
-\ children fork into it. TASK's one-time park setup, which holds
-\ MAIN-PARK-READY at 1 while it runs, has no public word that holds it at all;
-\ the park case forks after the setup instead, which is the state Darwin cannot
-\ carry across a fork, and the child's reset of the record is the same for both.
+\ Run: bin/hb --load src/lib/fork-child-test.f
+\ Each case holds process-wide state in its own task (src/lib/test/fork-hold.f),
+\ forks from the main thread, and has the child reach that state through its
+\ owner's public words; the child must end in time and exit 0. Whether RAW holds
+\ a lock across the fork or the child resets it is src/lib/fork-child.f's call.
+
+\ Failures caught:
+\  1. The child waits for ever: a lock another task held at the fork stays held.
+\  2. The child uses what it did not inherit: on Darwin the main thread's park
+\     is a Mach port, which does not cross a fork; the first wake throws
+\     E-TASK-THREAD.
+\  3. The parent loses its lock: a reset on the parent's side frees the holder's
+\     lock, and a third task could take it beside it.
+\  4. The fork waits for ever: PROC-FORK:RAW holds the engine's three registry
+\     locks while it forks; out of nesting order or never given back, they hang
+\     the forking thread or the holder until the gate's row deadline.
+\ Not covered: a table another task is part way through republishing, a window
+\ of a few instructions no fork can be aimed at. A fork made on a task holds the
+\ task-local address-cell lock, not the registrar's (ADDRESS-CELLS
+\ finds its lock through data-base).
+\ A holder takes its lock with its owner's word. PROC-TREE's is private, so that
+\ case reopens its package; TASK is sealed and IMAGE-LIFECYCLE, DYNAMIC-STORAGE
+\ and ADDRESS-CELLS are baked into the engine, so their holders take and free
+\ the lock through a public word over and over while children fork into it.
+\ TASK's one-time park setup (MAIN-PARK-READY at 1) has no public word that
+\ holds it: the park case forks after the setup, the state Darwin cannot carry.
 
 require src/lib/errors.f
 require src/lib/test.f

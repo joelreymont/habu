@@ -1,19 +1,9 @@
 \ unicode.f - Unicode whitespace and locale-independent full casefold equality.
-\
 \ CASEFOLD= compares whole UTF-8 spans by full case folding (Straße equals
-\ STRASSE) with no normalization (precomposed é differs from e plus a combining
-\ acute) and keeps embedded NULs. FOLDED-BYTES answers the folded length and
-\ FOLD writes it, preflighting capacity (E-CAPACITY, output unchanged).
-\ Negative lengths and malformed UTF-8 throw E-UTF8 before any comparison; a
-\ library failure throws E-CASEFOLD. Inputs must not point into transient FFI
-\ scratch. Folding is GNU libunistring's u8_casecmp and u8_casefold with NULL
-\ language and normalization, so the casefold data is the installed library's;
-\ each FUNCTION: symbol resolves at its first call (E-FFI-DLSYM) and again in a
-\ restored image. WHITE-SPACE?, ALPHABETIC?, UPPERCASE? and MARK? (General
-\ Category M) re-export src/lib/unicode/class.f's predicates.
-\
-\ STORAGE CLASS. TASK-LOCAL: the foreign calls use per-task FFI scratch and
-\ release their temporary allocation on success and failure alike.
+\ STRASSE), with no normalization, keeping embedded NULs. Folding is
+\ libunistring's u8_casecmp and u8_casefold with NULL language and normalization,
+\ so the casefold data is the installed library's. Inputs must not point into
+\ transient FFI scratch. STORAGE CLASS. TASK-LOCAL: per-task FFI scratch.
 
 require src/lib/unicode/class.f
 require src/lib/utf8-scalar.f
@@ -25,8 +15,6 @@ using FFI
 public
 
 -9150 constant E-UTF8
-\ -9151 and -9152 were E-LIBRARY and E-SYMBOL: the FUNCTION: declarer resolves
-\ libunistring and names its own failure, E-FFI-DLSYM. The numbers stay unused.
 -9153 constant E-CASEFOLD
 -9154 constant E-CAPACITY
 
@@ -47,8 +35,6 @@ private
 
 \ Slot 15 is task-local FFI scratch, beyond either call's arguments.
 \ Zero the complete cell, then expose exactly C's four-byte int output.
-\ FFI:ARGS declares the register area a cell array, so the slot is already a
-\ cell pointer and the byte round trip that used to reach it is gone.
 : RESULT ( -- ptr n )
    ARGS 15 cells + ;
 

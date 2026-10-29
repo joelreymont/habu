@@ -1,19 +1,12 @@
-\ date.f - checked Gregorian UTC date helpers, in `package DATE`, the one date
-\ module for the stdlib and the tool CLIs.
-\
-\ DATE:PARSE-YMD accepts exactly YYYY-MM-DD and returns SOME Unix epoch day,
-\ NONE on malformed input; DATE:N returns SOME field or NONE on a non-digit.
-\ DATE:FORMAT-YMD / DATE:FORMAT-EPOCH-UTC write YYYY-MM-DD /
-\ YYYY-MM-DDTHH:MM:SSZ into a caller buffer and throw E-TIME-CAPACITY when it is
-\ too small, and E-TIME-RANGE for a year outside 0..9999, which four digits
-\ cannot write; FORMAT-EPOCH-UTC also throws E-TIME-RANGE for negative epoch
-\ seconds. DATE:LEN / DATE:TIME-LEN are those buffer sizes.
-\
-\ STORAGE CLASS. CALLER-OWNED: output goes to the caller's buffer; no module
-\ state.
+\ date.f - Gregorian UTC dates, in `package DATE`, the one date module for the
+\ stdlib and the tool CLIs. PARSE-YMD accepts exactly YYYY-MM-DD.
+\ FORMAT-YMD and FORMAT-EPOCH-UTC throw E-TIME-CAPACITY for a buffer shorter than
+\ LEN / TIME-LEN and E-TIME-RANGE for a year outside 0..9999, which four digits
+\ cannot write; FORMAT-EPOCH-UTC also refuses negative epoch seconds.
+\ STORAGE CLASS. CALLER-OWNED: output goes to the caller's buffer; no module state.
 
 require src/lib/errors.f
-require src/lib/adt/option.f                      \ option<n> for DATE-N (switchover wave A)
+require src/lib/adt/option.f
 
 package DATE
 

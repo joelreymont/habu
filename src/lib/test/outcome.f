@@ -1,21 +1,9 @@
-\ outcome.f - checked assertions over the process outcome sum.
-\ One MATCH per assert so every consumer of the -OUTCOME capture API asserts
-\ completion by variant (exit code / signal / timeout) without kind ints, and a
-\ child that completed by another variant fails the case under that variant's
-\ name.
-\ A deadline is no verdict on the child: an assert that wants an exit or a
-\ signal takes the program the child ran and the stdout and stderr its capture
-\ drained, and on an expired deadline prints them under the case label and
-\ throws E-PROC-TIMEOUT instead of failing, so the row reports a timeout
-\ (src/lib/process.f, the outcome sum; T-TIMED-OUT below).
-\ An exit by another code, a signal by another number or a completion by the
-\ other variant prints the same program and capture after the failed assertion.
-\ T-OUTCOME-TIMEOUT is the assert for a test that expects the deadline.
-\ T-RUN-EXITED= runs a prepared CMD:command and asserts its exit the same way,
-\ with the command's captured stdout and stderr.
-\
-\ STORAGE CLASS. CALLER-OWNED: assertions over the caller's outcome and
-\ capture; no module state.
+\ outcome.f - checked assertions over the process outcome sum (src/lib/process.f).
+\ One MATCH per assert, so a child that completed by another variant fails under
+\ that variant's name. A deadline is no verdict on the child: on an expired one
+\ an exit or signal assert prints the program and its capture under the case
+\ label and throws E-PROC-TIMEOUT; T-OUTCOME-TIMEOUT expects the deadline.
+\ STORAGE CLASS. CALLER-OWNED: no module state.
 
 require src/lib/errors.f
 require src/lib/fmt.f
@@ -24,7 +12,6 @@ require src/lib/process.f
 require src/lib/process-command.f
 require src/lib/test/subject.f
 
-\ SUBJECT:TIMED-OUT with the case label first, for a caller that keeps one.
 : T-TIMED-OUT ( ptr u8 n ptr u8 n ptr u8 n -- )
    T-LABEL. SUBJECT:TIMED-OUT ;
 
@@ -38,16 +25,11 @@ require src/lib/test/subject.f
    s"  got " type got gotu type space code FMT:.INT cr
    T-LABEL-CLEAR ;
 
-\ The failed case for a child that exited by another code, or was killed by
-\ another signal, than the one asserted, then the program and the capture that
-\ explain it.
 : T-CODE-MISS ( n n ptr u8 n ptr u8 n ptr u8 n -- )
    {: code:n want:n src:ptr srcu:n out:ptr outu:n err:ptr erru:n :}
    code want T=
    code want <> if src srcu out outu err erru SUBJECT:SHOW then ;
 
-\ The exit and signal asserts take the program, its stdout and its stderr, then
-\ the outcome and the exit code or signal the case wants.
 : T-OUTCOME-EXITED= ( ptr u8 n ptr u8 n ptr u8 n outcome n -- )
    {: src:ptr srcu:n out:ptr outu:n err:ptr erru:n oc want:n :}
    oc MATCH outcome
@@ -58,9 +40,6 @@ require src/lib/test/subject.f
      timeout OF src srcu out outu err erru T-TIMED-OUT ENDOF
    ;MATCH ;
 
-\ Runs the program at this path with the command's arguments, input and
-\ directory for at most ms (CMD:RUN-OUTCOME) and asserts it exited with this
-\ status; a miss or a timeout carries the program and what it wrote.
 : T-RUN-EXITED= ( CMD:command ptr u8 n ms n -- CMD:command )
    {: exe:ptr xu:n deadline:ms status:n :}
    exe xu deadline CMD:RUN-OUTCOME {: o :}

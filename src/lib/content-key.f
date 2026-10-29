@@ -1,26 +1,9 @@
-\ content-key.f - manifest-hashed content cache keys.
-\
-\ The module lives in `package CONTENT-KEY`. A key is built inside one
-\ CONTENT-KEY:WITH-FOLD scope: its body is handed a CONTENT-KEY:fold, a linear
-\ token naming the scope's own storage, and CONTENT-KEY:TEXT+ / FILE+ /
-\ FILE-NAMED+ / DIGEST+ take that fold and give it back. CONTENT-KEY:FINAL /
-\ FINAL-HEX write the digest and consume the fold. The checker refuses a body
-\ that drops its fold unfinalized or copies it (to finalize twice or fold after
-\ FINAL); WITH-FOLD refuses at run time a body that hands its own fold back
-\ out unfinalized (E-CK-HANDLE). Because every operation names its own fold,
-\ two keys derived at overlapping times cannot mix bytes. FILE+ digests the
-\ file's current bytes on every call. Each fold owns a SHA-256 context; its complete preimage is never
-\ retained. FILE-NAMED+ reads the physical path but folds only the logical name
-\ and the content, so a build that names sources root-relative shares its key
-\ across identical trees in different workspaces. No environment variable
-\ enters a key.
-\
-\ STORAGE CLASS. SCOPE-OWNED: each WITH-FOLD allocates one MEM:WITH-BYTES
-\ mapping holding the fold's digest context, its file-digest context and its
-\ scratch, and releases it when the body returns or throws. The module keeps no
-\ storage of its own, so folds nest without bound and tasks fold independently.
-\
-\ Requires the SHA-256 words; native bin/hb already carries src/core/sha256.f.
+\ content-key.f - package CONTENT-KEY: manifest-hashed content cache keys, built
+\ in one WITH-FOLD scope through a linear fold naming the scope's own storage,
+\ so keys folded at overlapping times cannot mix bytes. Each fold owns a SHA-256
+\ context (native bin/hb carries src/core/sha256.f) and retains no preimage; no
+\ environment variable enters a key. STORAGE CLASS. SCOPE-OWNED: WITH-FOLD maps
+\ the fold's state and releases it when the body returns or throws.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -109,8 +92,9 @@ LINEAR: ERASE ( CONTENT-KEY:fold -- ptr u8 )
 
 public
 
-\ Run `body` with a fresh fold over its own scope storage; the body finalizes
-\ the fold, and the storage is released when the body returns or throws.
+\ The body finalizes the fold; the storage is released when the body returns or
+\ throws. The checker refuses a body that drops its fold unfinalized or copies
+\ it; a body that hands its own fold back out unfinalized is E-CK-HANDLE here.
 : WITH-FOLD ( R [ R CONTENT-KEY:fold -- S ] -- S )
    SCOPE-LEN MEM:BYTES-ALLOC-LEN [: FOLD-RUN ;] MEM:WITH-BYTES ;
 
@@ -120,8 +104,8 @@ public
 : DIGEST+ ( CONTENT-KEY:fold ptr u8 -- CONTENT-KEY:fold ) {: dg:ptr :}
    STATE dg DIGEST-FRAG+ ;
 
-\ Read the physical path, but fold the supplied logical name. A build can name
-\ a source relative to its root without changing where its bytes are read.
+\ Reads the physical path but folds the logical name, so a build naming sources
+\ root-relative shares its key across identical trees in different workspaces.
 : FILE-NAMED+ ( CONTENT-KEY:fold ptr u8 n ptr u8 n -- CONTENT-KEY:fold )
    {: a:ptr u:n name:ptr size:n :}
    STATE {: st:ptr :}
@@ -129,17 +113,16 @@ public
    st a u FILE-DIGEST!
    st st FILE-DG-OFF + DIGEST-FRAG+ ;
 
+\ Digests the file's current bytes on every call.
 : FILE+ ( CONTENT-KEY:fold ptr u8 n -- CONTENT-KEY:fold ) {: a:ptr u:n :}
    a u a u FILE-NAMED+ ;
 
-\ Write the fold's 32-byte digest to `dst`, consuming the fold.
 : FINAL ( CONTENT-KEY:fold ptr u8 -- ) {: dst:ptr :}
    ERASE {: st:ptr :}
    st dst SHA256-END
    st FINAL! ;
 
-\ Write the fold's digest to `hex` as 64 lower-case hex digits, consuming the
-\ fold.
+\ 64 lower-case hex digits.
 : FINAL-HEX ( CONTENT-KEY:fold ptr u8 -- ) {: hex:ptr :}
    ERASE {: st:ptr :}
    st st DG-OFF + SHA256-END

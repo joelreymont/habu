@@ -218,9 +218,9 @@ create MT-KEY-Z 122 c,
    2 MT-MAP 0 SLOT-STATE-OFF MT-MAP-SLOT-FIELD !
    MT-MAP 0 MT-MAP-SLOT-STATE@ drop ;
 
-\ Negative checked regressions: a raw n can no longer pose as a slot state,
-\ a slot state cannot launder back to n, and enums do not compare with `=`.
-\ The positive baseline proves the rejects are type errors, not noise.
+\ Negative checked cases: a raw n cannot pose as a slot state, a slot state cannot
+\ launder back to n, and enums do not compare with `=`. The positive baseline
+\ proves the rejects are type errors, not noise.
 : MT-TEST-STATE-TYPES ( -- )
    s" MTP1 ( slot-state ptr a idx -- ) SLOT-STATE!" CHECK-QUIET-CANDIDATE! -1 MT=
    s" MTN1 ( n ptr a idx -- ) SLOT-STATE!" CHECK-QUIET-CANDIDATE! 0 MT=
@@ -293,17 +293,17 @@ create MT-KEY-Z 122 c,
    0 0= 0= MT-ASSERT ;
 
 : MT-ASSERT-HIT ( ptr n n ptr u8 n n -- ) {: m:ptr cap:n key:ptr len:n want:n :}
-   m cap key len MT-MAP-HAS? MT-ASSERT                  \ present -> HAS? true
+   m cap key len MT-MAP-HAS? MT-ASSERT
    m cap key len MT-MAP-GET MATCH option
-     none OF 0 0= 0= MT-ASSERT ENDOF                    \ hit expected, got NONE -> fail
-     some OF want MT= ENDOF                             \ SOME -> value must equal want
+     none OF 0 0= 0= MT-ASSERT ENDOF
+     some OF want MT= ENDOF
    ;MATCH ;
 
 : MT-ASSERT-MISS ( ptr n n ptr u8 n -- ) {: m:ptr cap:n key:ptr len:n :}
-   m cap key len MT-MAP-HAS? 0= MT-ASSERT               \ absent -> HAS? false
+   m cap key len MT-MAP-HAS? 0= MT-ASSERT
    m cap key len MT-MAP-GET MATCH option
-     none OF ENDOF                                      \ absent -> NONE, ok
-     some OF drop 0 0= 0= MT-ASSERT ENDOF               \ got SOME -> fail
+     none OF ENDOF
+     some OF drop 0 0= 0= MT-ASSERT ENDOF
    ;MATCH ;
 
 : MT-ASSERT-COLLISION-SLOT ( n ptr u8 -- ) {: step want:ptr :}
@@ -367,7 +367,6 @@ create MT-KEY-Z 122 c,
    MT-FULL-MAP MT-FULL-CAP MT-KEY-B 1 44 MT-ASSERT-HIT
    MT-FULL-MAP MT-FULL-CAP MT-KEY-D 1 MT-ASSERT-MISS ;
 
-\ Direct LOCATE-SLOT matrix: empty, matching, and nonmatching slots.
 : MT-TEST-LOCATE-SLOT ( -- )
    MT-MAP MT-CAP MT-MAP-INIT
    MT-MAP MT-KEY-A 1 MT-MAP-HASH {: ha:n :}
@@ -380,7 +379,6 @@ create MT-KEY-Z 122 c,
    MT-MAP home MT-KEY-B 1 MT-MAP MT-KEY-B 1 MT-MAP-HASH MT-MAP-LOCATE-SLOT
       0 -1 MT-ASSERT-LOC ;                              \ occupied non-match -> full
 
-\ LOCATE end-to-end: every verdict with its carried index payload.
 : MT-TEST-LOCATE ( -- )
    MT-MAP MT-CAP MT-MAP-INIT
    MT-FIND-COLLISIONS
@@ -455,10 +453,9 @@ create MT-KEY-Z 122 c,
    m MT-SPREAD-CAP MT-MAP-INIT
    26 0 ?do i m MT-SPREAD-CAP i MT-LETTER 1 MT-MAP-SET loop ;
 
-\ Each map hashes under its own secret key, so two maps given the same keys in
-\ the same order place them apart; under one fixed hash, as before the key,
-\ EACH visits both in one order. With 26 keys the chance of an equal order is
-\ negligible.
+\ Each map hashes under its own secret key, so two maps given the same keys in the
+\ same order place them apart; one fixed hash would make EACH visit both in one
+\ order. With 26 keys an equal order by chance is negligible.
 : MT-TEST-MAP-KEYED ( -- )
    MT-FILL-LETTERS
    MT-SPREAD-A MT-SPREAD-FILL

@@ -5,8 +5,8 @@ public
 NEWTYPE archive
 NEWTYPE entry
 NEWTYPE input
-\ $7A00 was E-LIBRARY: the FUNCTION: declarer resolves libzip and names its
-\ own failure, E-FFI-DLSYM. The number stays unused.
+\ $7A00 stays unused: the FUNCTION: declarer reports libzip resolution
+\ failures as E-FFI-DLSYM.
 $7A01 constant E-OPEN
 $7A02 constant E-HANDLE
 $7A03 constant E-ENTRY

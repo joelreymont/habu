@@ -1,13 +1,9 @@
 \ guard-page.f - test-only caller bytes that end where readable memory ends.
-\
-\ A word that must bound a length before it reads the caller's bytes is proved
-\ to by bytes followed by an inaccessible page: claimed one past what the tail
-\ holds, a read that runs before the bound faults, and a bound that runs first
-\ refuses. The page is one MEM:ALLOC-GUARDED keeps between two inaccessible
-\ ones, mapped once per process and refilled on every call.
-\
-\ STORAGE CLASS. PROCESS-WIDE: the guarded page is mapped once and kept; one
-\ task uses it at a time.
+\ A word that must bound a length before it reads is proved to by bytes followed
+\ by an inaccessible page: claimed one past the tail, a read before the bound
+\ faults and a bound that runs first refuses. The page sits between two
+\ inaccessible ones (MEM:ALLOC-GUARDED), mapped once and refilled on every call.
+\ STORAGE CLASS. PROCESS-WIDE: one task uses the guarded page at a time.
 
 require src/lib/memory.f
 require src/lib/test/assert.f                 \ T-EX-FAIL

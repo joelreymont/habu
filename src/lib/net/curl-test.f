@@ -1,11 +1,9 @@
-\ curl-test.f - focused tests for src/lib/net/curl.f over loopback HTTP.
-\
-\ One process holds both peers: a server task binds a TCP4 listener on a free
+\ curl-test.f - focused tests for src/lib/net/curl.f over loopback HTTP. One
+\ process holds both peers: a server task binds a TCP4 listener on a free
 \ loopback port, publishes the port in a shared cell and accepts one connection
-\ at a time, while the main task drives package CURL against it. A second
-\ listener is never accepted on: it is the peer that never answers.
+\ at a time while the main task drives CURL. A second listener is never accepted
+\ on: the peer that never answers. HABU_NET_TESTS=1 adds one real HTTPS request.
 \ Run: bin/hb --load src/lib/net/curl-test.f
-\ HABU_NET_TESTS=1 adds one real HTTPS request to https://example.com.
 
 require src/lib/errors.f
 require src/lib/prelude.f
@@ -26,10 +24,8 @@ require src/lib/aio.f                       \ the loop the multiplexed transfers
 require src/lib/net/tcp4.f
 require src/lib/net/curl.f
 
-\ White-box helper: reopen CURL so the definition below is compiled with the
-\ record count its chunks hold visible. It is the test's own word: a qualified
-\ definition lands in the wordlist it names, so it goes to CURL-TEST, and
-\ CURL's public surface gains nothing for being tested.
+\ White-box: reopens CURL so the definition below sees the record count its
+\ chunks hold; it lands in CURL-TEST.
 package CURL
 
 : CURL-TEST:RECORDS ( -- n )
@@ -88,8 +84,8 @@ $61 constant DRIBBLE-BYTE               \ the body's filler, never the sentinel
 1 constant LOW-SECONDS                  \ the shortest window libcurl measures
 5000 constant STALL-MOST-MS             \ half REQUEST-MS: the stall test ended it, not the ceiling
 $80000000 constant OVER-LONG            \ one past the C long ceiling CURL checks
-$4000001 constant HUGE-BODY-U           \ one past the 64 MiB that once capped a request body
-$4001000 constant HUGE-U                \ a page past the 64 MiB span CURL once refused
+$4000001 constant HUGE-BODY-U           \ one past 64 MiB: a request body has no fixed cap
+$4001000 constant HUGE-U                \ a page past 64 MiB: a reply span has no fixed cap
 251 constant HUGE-PERIOD                \ a prime period, so a shifted copy cannot match
 
 create ROOT-BUF PATH-CAP allot
@@ -223,8 +219,6 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    STREAM-U 4 do $78 STREAM-BUF i + c! loop ;
 
 
-\ ---- the request the server task reads ---------------------------------------
-
 \ Header names are matched without case because HTTP does not fix it; the path
 \ and the method are matched exactly because HTTP does.
 : REQ-AT? ( ptr u8 n n -- bool ) {: needle:ptr needleu:n at:n :}
@@ -292,8 +286,6 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    PATH$ want wantu STR= ;
 
 
-\ ---- the response the server task writes -------------------------------------
-
 : RES-RESET ( -- )
    0 RES-U ! ;
 
@@ -355,8 +347,6 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    text u STATUS-LINE
    s" Connection: close" RES+ CRLF+ CRLF+ ;
 
-
-\ ---- the server task ---------------------------------------------------------
 
 : SERVER-FAILED ( TCP4:errno -- )
    TCP4:ERRNO>N SERVER-ERRNO !
@@ -879,8 +869,6 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    1 SERVER-DONE atomic-add drop ;
 
 
-\ ---- starting and stopping it from the main task -----------------------------
-
 : WAIT-READY ( -- )
    READY-TRIES 0 do
       SERVER-READY atomic@ 0 > if unloop exit then
@@ -974,8 +962,6 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    SILENT-LISTENER @ TCP4:>LISTENER TCP4:CLOSE-LISTENER SERVER-STATUS ;
 
 
-\ ---- fixtures ----------------------------------------------------------------
-
 : UNDER-ROOT ( ptr u8 n ptr u8 -- n ) {: name:ptr nameu:n dst:ptr :}
    ROOT$ name nameu dst FS:JOIN-PATH ;
 
@@ -1011,8 +997,6 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
 : URL-FOR ( ptr u8 n -- ptr u8 n ) {: path:ptr pathu:n :}
    SERVER-PORT @ path pathu URL-AT ;
 
-
-\ ---- driving package CURL ----------------------------------------------------
 
 : OPEN-HANDLE ( -- CURL:handle )
    CURL:INIT MATCH CURL:init-result
@@ -1195,8 +1179,6 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    subject STALL-MS >MS CURL:TIMEOUT! EXPECT-OK
    subject ;
 
-
-\ ---- cases -------------------------------------------------------------------
 
 : HTTP-PROXY-Z ( -- ptr u8 ) S\" http_proxy\z" drop ;
 : NO-PROXY-Z ( -- ptr u8 ) S\" no_proxy\z" drop ;
@@ -1448,8 +1430,8 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    HUGE-U 0 do i HUGE-PERIOD mod p i + c! loop ;
 
 
-\ The caller's span is the one bound on a reply: a body larger than the 64 MiB
-\ CURL used to cap a span at arrives whole, byte for byte.
+\ The caller's span is the one bound on a reply: a body past 64 MiB arrives
+\ whole, byte for byte.
 : HUGE-CASE ( -- )
    HUGE-ALLOC HUGE-SENT !
    HUGE-ALLOC HUGE-GOT !
@@ -1716,12 +1698,11 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    LOW-SPEED-PAIRS ;
 
 
-\ ---- long text ----------------------------------------------------------------
 \ A string option or header line is the caller's own storage, as long as the
 \ caller made it. libcurl keeps its own input limit on string options, and one
 \ past it answers `failed` with libcurl's code rather than a throw.
 
-$10001 constant PAST-TEXT                 \ a byte past the 64 KiB text CURL once refused
+$10001 constant PAST-TEXT                 \ a byte past 64 KiB: CURL sets no text limit of its own
 8000001 constant PAST-CURL-INPUT          \ a byte past libcurl's CURL_MAX_INPUT_LENGTH
 43 constant CURLE-BAD-ARGUMENT            \ CURLE_BAD_FUNCTION_ARGUMENT
 $61 constant TEXT-BYTE
@@ -1776,7 +1757,6 @@ variable LONG-ANSWER
    LONG-ANSWER @ CURLE-BAD-ARGUMENT T= ;
 
 
-\ ---- many transfers on one task ----------------------------------------------
 \ Every wait below is bounded. A wait whose bound passes names itself on stdout
 \ and throws E-PROC-TIMEOUT (src/lib/test/wait.f), so a transfer the loop never
 \ answers ends the row as a timeout and not as a hung suite.

@@ -1,63 +1,9 @@
 \ process-tree-test.f - a walk the kernel refuses says so; a big tree dies whole.
-\
-\     bin/hb --load src/lib/process-tree-test.f
-\
 \ KILL-TREE decides who is in a tree from what the kernel answers, so a refusal
 \ must never read as "nobody there". On macOS libproc answers a refused listing
-\ as an empty one and a refused record as none, and only errno tells either
-\ from the truth. Measured here: a zombie or a missing pid leaves ESRCH, and a
-\ sandbox that denies the call leaves EPERM. This test runs a WALKER - this
-\ file again, with `walker` as its one argument - under sandbox-exec, once
-\ denying process-info-listpids and once process-info-pidinfo. The walker
-\ spawns a victim and asks KILL-TREE to end it. A second walker, `capture`,
-\ runs under the listing denial two captures of a sleeper whose deadline
-\ passes, so each capture's early end walks a tree the kernel will not list.
-\
-\ THE WAYS THIS CAN FAIL, written down before the fix:
-\
-\  1. A REFUSED LISTING READ AS NO CHILDREN. The walk goes quiet at once, kills
-\     the one process it was named and returns as if that were the whole tree.
-\  2. A REFUSED RECORD READ AS AN ENDED PROCESS. The named process counts as
-\     settled, a live child of it as a zombie, and the walk returns quiet.
-\  3. A THROW THAT LEAVES THE NAMED PROCESS BEHIND. The walk gives up before
-\     it kills what it found, and the victim is left stopped.
-\ Asserted by the walker in each case: KILL-TREE throws E-PROC-OUTPUT, and the
-\ victim died of SIGKILL.
-\  4. A REFUSED WALK THAT REPLACES A CAPTURE'S ANSWER. A capture that ends its
-\     child early walks the child's tree (src/lib/process.f PROC-KILL-CAPTURE). A
-\     walk that throws there went on through the capture's cleanup, so its
-\     code replaced the capture's own: a deadline read as E-PROC-OUTPUT, and a
-\     deadline read as data threw it rather than answering the timeout.
-\ Asserted by the capture walker: a capture past its deadline throws
-\ E-PROC-TIMEOUT, one read as data answers the timeout outcome, and each
-\ sleeper died of SIGKILL and was reaped; and here, that the walker's stderr is
-\ one line per capture naming the refused walk's E-PROC-OUTPUT.
-\  5. A REFUSED WALK THAT STRANDS A SUPERVISED SESSION. The end of a
-\     PROCESS-PTY:WITH-TARGET scope kills the session target with its tree
-\     (src/lib/process-pty-io.f IO-KILL-REAP), and a throw out of it would
-\     strand the linear teardown token and leak the slot.
-\ Asserted by a third walker, `pty`, under the listing denial: the scope
-\ returns and the target is reaped; and here, that its stderr names the one
-\ refused walk.
-\  6. A TREE PAST A FIXED TABLE. A walk that held 1,024 members, or listed 1,024
-\     children of one, threw as it met a bigger tree and left the rest running,
-\     reparented to init.
-\ Asserted by CROWD, here and on any host: KILL-TREE returns, and none of the
-\ root's DESCENDANTS children answers a signal once GONE-MS has passed.
-\
-\ HOSTS. The refusal cases are macOS only: sandbox-exec is the way here to make
-\ the kernel refuse.
-\ The Linux walk reads /proc through open, whose failure the engine reports
-\ with no errno (src/lib/process-tree.f says what it takes one to mean).
-\
-\ NOTHING IS LEFT. The victim is the walker's own child, so its pid is not
-\ handed on before the walker reaps it. Whatever the walk did, the walker sends
-\ it SIGTERM and then SIGCONT, which end it even if it was left stopped, and
-\ reaps it; a victim that was not killed is then reaped as dead of SIGTERM. A
-\ captured sleeper is the capture's to reap, and a walker stuck reaping one
-\ the walk left alive is ended with it at WALKER-MS. CROWD-END kills the
-\ crowd's group and reaps its root whatever the case did, and every sleeper
-\ ends on its own within 30 s.
+\ as empty and a refused record as none; only errno tells them apart (measured:
+\ a zombie or missing pid leaves ESRCH, a sandbox denial EPERM). The refusal
+\ cases are macOS only: sandbox-exec makes the kernel refuse.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -96,7 +42,17 @@ variable TARGET
       timeout OF E-PROC-TIMEOUT throw ENDOF
    ;MATCH ;
 
-\ ---- the walker, under the sandbox ------------------------------------------
+\ The walker is this file again with `walker` as its one argument, run under
+\ sandbox-exec once denying process-info-listpids and once process-info-pidinfo.
+\ It spawns a victim and asks KILL-TREE to end it, against a refused listing
+\ read as no children, a refused record read as an ended process, and a throw
+\ that leaves the named process stopped: KILL-TREE throws E-PROC-OUTPUT and the
+\ victim dies of SIGKILL. The Linux walk reads /proc through open, whose failure
+\ the engine reports with no errno (src/lib/process-tree.f).
+\ The victim is the walker's own child, so its pid is not handed on before the
+\ walker reaps it. Whatever the walk did, the walker sends it SIGTERM and then
+\ SIGCONT, which end it even if it was left stopped, and reaps it; a victim that
+\ was not killed is then reaped as dead of SIGTERM.
 
 : VICTIM-START ( -- )
    PROC-ARGV-RESET
@@ -117,8 +73,14 @@ variable TARGET
    VICTIM @ >PID PROC-WAIT-OUTCOME SIGKILL KILLED-BY? TTRUE
    T-REPORT ;
 
-\ ---- the capture walker, under the sandbox ----------------------------------
-\
+\ The capture walker runs, under the listing denial, two captures of a sleeper
+\ whose deadline passes, so each capture's early end walks a tree the kernel
+\ will not list (src/lib/process.f PROC-KILL-CAPTURE). A walk that throws there
+\ must not replace the capture's code: a capture past its deadline throws
+\ E-PROC-TIMEOUT, one read as data answers the timeout outcome, each sleeper
+\ dies of SIGKILL and is reaped, and stderr is one line per capture naming the
+\ refused walk's E-PROC-OUTPUT. A captured sleeper is the capture's to reap; a
+\ walker stuck reaping one the walk left alive is ended with it at WALKER-MS.
 \ The walker's own capture buffers are free here: it captures nothing else.
 
 : SLEEPER-ARGS ( -- )
@@ -156,7 +118,10 @@ variable TARGET
    s" refused: that sleeper died of SIGKILL and was reaped" SLEEPER-REAPED
    T-REPORT ;
 
-\ ---- the pty walker, under the sandbox --------------------------------------
+\ The end of a PROCESS-PTY:WITH-TARGET scope kills the session target with its
+\ tree (src/lib/process-pty-io.f IO-KILL-REAP); a throw out of it would strand
+\ the linear teardown token and leak the slot. Under the listing denial the
+\ scope returns, the target is reaped and stderr names the one refused walk.
 
 : PTY-WALK ( -- )
    T-RESET
@@ -168,14 +133,15 @@ variable TARGET
    TARGET @ 0 kill-errno ESRCH# negate T=
    T-REPORT ;
 
-\ ---- a tree past a fixed table ------------------------------------------------
-\
-\ A root, /bin/sh, starts DESCENDANTS sleepers in its own group - more than the
-\ 1,024 members, or 1,024 listed children, a walk once held - writes each pid
+\ A walk with a fixed table of 1,024 members, or 1,024 listed children of one,
+\ would throw at a bigger tree and leave the rest running, reparented to init.
+\ CROWD runs on any host: KILL-TREE returns, and none of the root's DESCENDANTS
+\ children answers a signal once GONE-MS has passed.
+\ A root, /bin/sh, starts DESCENDANTS sleepers in its own group, writes each pid
 \ on a pipe, closes it and waits. The sleepers hold no end of the pipe, so end
 \ of file says every one has started. The root stays unreaped until CROWD-END,
 \ so its pid, which is the group's id, names nobody else while a check or the
-\ cleanup signals the group.
+\ cleanup signals the group. Every sleeper ends on its own within 30 s.
 
 1100 constant DESCENDANTS
 5000 constant GONE-MS                \ the killed take a moment to finish dying
@@ -280,8 +246,6 @@ PROC-NO-FD CROWD-WR !
 
 : CROWD ( -- )
    [: CROWD-BODY ;] [: CROWD-END ;] finally ;
-
-\ ---- the cases --------------------------------------------------------------
 
 : SANDBOX$ ( -- ptr u8 n )
    s" sandbox-exec" >LEN SANDBOX FIND-EXECUTABLE MATCH option

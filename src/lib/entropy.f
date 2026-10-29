@@ -1,13 +1,8 @@
-\ entropy.f - bytes from the operating system's random generator.
-\
-\ FILL writes n bytes from the kernel's cryptographically secure generator
-\ into the caller's span, through libc getentropy, which macOS and Linux
-\ (glibc 2.25 and later) both provide. getentropy answers at most 256 bytes a
-\ call, so FILL asks in chunks of that size. It blocks only until the
-\ generator is first seeded at boot. A call the generator refuses is E-FILL;
-\ the span may then hold some fresh bytes and is the caller's to discard. A
-\ negative length is E-SPAN-LENGTH, before any byte is written.
-\
+\ entropy.f - bytes from the kernel's secure generator through libc getentropy
+\ (macOS; glibc 2.25 and later). FILL blocks only until the generator is first
+\ seeded. A refused call is E-FILL and the span may then hold some fresh bytes,
+\ the caller's to discard; a negative length is E-SPAN-LENGTH before any byte
+\ is written.
 \ STORAGE CLASS. CALLER-OWNED: the module keeps no state.
 
 require src/lib/errors.f

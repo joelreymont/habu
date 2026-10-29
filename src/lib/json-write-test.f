@@ -278,7 +278,6 @@ JWT-EVERY-CAP BUFFER: JWT-EVERY-OUT
    JWT-FALSE JWT-EVERY
    JWT-TRUE JWT-EVERY ;
 
-\ Repeated JSON writes use BUF's amortized growth while preserving the output.
 : JWT-TEST-GROW-ROOM ( -- )
    JWT-GROW-OPEN s" abcdefgh" RAW s" i" RAW
    $ s" abcdefghi" T$=

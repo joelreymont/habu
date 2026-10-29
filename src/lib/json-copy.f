@@ -3,7 +3,6 @@
 \ the source value; escaped strings can never decode to more source bytes.
 \ VALUE answers the reader at the end of that value and the writer; the output
 \ is compact and keeps member order and numeric lexemes.
-\
 \ STORAGE CLASS. CALLER-OWNED: the module keeps no state.
 
 require src/lib/json-read.f

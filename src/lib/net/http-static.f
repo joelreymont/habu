@@ -1,20 +1,9 @@
 \ http-static.f - one directory tree served from memory. STATIC-ROOT reads the
 \ whole tree before the server starts, so the tables are written while no task
-\ is live and a request costs no file system call. The tables grow with the
-\ tree and STATIC-CLOSE gives them back; only a path wider than PATH-CAP is
-\ refused.
-\
-\ Symlinks are followed, so a linked directory is served under its link's path.
-\ A directory whose device and inode match one of its ancestors' is a cycle and
-\ refuses the root; two links to one directory that is not an ancestor are not,
-\ and both paths are served. A refused root leaves nothing loaded.
-\
-\ Each file carries the content type its extension names, an ETag over its
-\ bytes, and the Cache-Control value the installed cache rule gives its path.
-\ A request whose path names no file may fall back to one that does, as the
-\ installed fallback rule decides. The rules are the caller's policy and are
-\ installed before START (src/lib/net/http.f CACHE-RULE! and FALLBACK-RULE!);
-\ until then every file is revalidated and nothing falls back.
+\ is live and a request costs no file system call; only a path wider than
+\ PATH-CAP is refused. A file's Cache-Control and a missing path's fallback come
+\ from the caller's rules, installed before START (src/lib/net/http.f
+\ CACHE-RULE! and FALLBACK-RULE!); the defaults revalidate and never fall back.
 require src/lib/net/http-router.f
 require src/lib/fs.f
 require src/lib/fs-identity.f
@@ -95,7 +84,6 @@ PATH-CAP SPAN-BUFFER: ROOT-BUF
    at FILE-BODY @ at FILE-BODY-N @ SPAN:TAKE SPAN:$ ;
 
 
-\ ---- content types and cache policy -----------------------------------------
 
 : CONTENT-TYPE$ ( ptr u8 n -- ptr u8 n ) {: path:ptr len:n :}
    path len s" .html" ENDS-WITH? if s" text/html; charset=utf-8" exit then
@@ -137,7 +125,6 @@ DEFAULT-RULES
    0 CACHE-HOOK @ execute ;
 
 
-\ ---- loading the tree -------------------------------------------------------
 
 : UNDER-ROOT ( ptr u8 n -- n ) {: rel:ptr len:n :}
    len 0= if ROOT$ {: base:ptr baselen:n :} base baselen PATH-BUF SPAN:COPY baselen exit then
@@ -208,15 +195,16 @@ DEFAULT-RULES
    at 1+ FILE-COUNT ! ;
 
 
-\ True when the directory row at, or one of its ancestors, has this identity.
 : ANCESTOR? ( n n n -- bool ) {: at:n device:n inode:n :}
    at 0< if false exit then
    at DIR-DEVICE @ device = at DIR-INODE @ inode = and if true exit then
    at DIR-UP @ device inode recurse ;
 
 
-\ A directory under row up, refused before it is walked when it is one of its
-\ own ancestors.
+\ A directory under row up. Symlinks are followed, so a linked directory is
+\ served under its link's path. One whose device and inode match an ancestor's
+\ is a cycle and refuses the root before it is walked; two links to one
+\ directory that is not an ancestor are both served.
 : DIR+ ( ptr u8 n n -- ) {: url:ptr urllen:n up:n :}
    url urllen UNDER-ROOT {: pathlen:n :}
    PATH-BUF pathlen SPAN:TAKE SPAN:$ FS:PATH-IDENTITY {: device:n inode:n :}
@@ -277,7 +265,6 @@ DEFAULT-RULES
    again ;
 
 
-\ ---- serving ----------------------------------------------------------------
 
 : DOT-DOT-AT? ( ptr u8 n n -- bool ) {: path:ptr len:n at:n :}
    at 2 + len > if false exit then
@@ -318,7 +305,7 @@ DEFAULT-RULES
    fa fu FIND-FILE ;
 
 
-\ If-None-Match may list several tags, and * matches whatever we hold.
+\ If-None-Match may list several tags, and * matches any file.
 : MATCHES-ETAG? ( n n -- bool ) {: idx:n at:n :}
    idx s" if-none-match" HEADER$ {: va:ptr vu:n found:bool :}
    found 0= if false exit then
@@ -357,7 +344,6 @@ DEFAULT-RULES
 
 public
 
-\ Gives back every span and row the tree owns and empties its table.
 : STATIC-CLOSE ( -- )
    FILE-COUNT @ 0 ?do
       i FILE-BODY @ FREE-SPAN

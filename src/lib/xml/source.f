@@ -1,37 +1,9 @@
 \ source.f - caller-owned XML source views and reversible lexical/original byte
-\ coordinates. Part of package XML (src/lib/xml.f).
-\
-\ SOURCE-BYTES validates the whole wire encoding and scalar range and answers
-\ the cell-aligned storage SOURCE-INIT needs; SOURCE-INIT validates again before
-\ publishing. Neither checks well-formedness. UTF-8 and US-ASCII borrow the
-\ original bytes; UTF-16 is converted to canonical UTF-8 in caller storage,
-\ with one cell of offset checkpoints per SRC-MARK-STRIDE lexical bytes.
+\ coordinates. Part of package XML (src/lib/xml.f). UTF-8 and US-ASCII borrow
+\ the original bytes; UTF-16 is converted to canonical UTF-8 in caller storage.
 \ Storage and original bytes stay live until SOURCE-CLOSE, after every reader
-\ and editor borrowing them has closed. SOURCE-OWN turns a source into a
-\ one-cell XML:source-owner for movable records; the header, storage and bytes
-\ stay put until OWNER-CLOSE, which invalidates every copy (later use and a
-\ second close are E-STATE). Nothing counts borrowers: the caller sequences
-\ close and use, and a failed initialisation publishes nothing.
-\
-\ SOURCE-ORIGINAL$ includes the BOM, SOURCE-BOM$ is that prefix (0, 2 or 3
-\ bytes) and SOURCE-LEXICAL$ drops only it. A reader over a source reports
-\ lexical UTF-8 offsets only. SOURCE-RANGE maps a lexical half-open range on
-\ scalar boundaries to the original offsets EDIT:REPLACE takes, BOM included,
-\ in time bounded independently of the offset and the source size: constant for
-\ UTF-8 and US-ASCII, at most SRC-MARK-STRIDE lexical bytes walked for UTF-16.
-\ ENCODE-SIZE and ENCODE write replacement markup, already escaped, in the wire
-\ encoding without a BOM, validating input, capacity and aliasing first. Edit
-\ flow: SOURCE-INIT, drain a reader to EOF, SOURCE-RANGE, ENCODE, EDIT:INIT on
-\ SOURCE-ORIGINAL$, EDIT:REPLACE, EDIT:WRITE, reopen.
-\
-\ Accepted wire forms: UTF-8 with or without BOM; declared US-ASCII without BOM
-\ (a byte above $7F anywhere, replacement markup included, is E-ENCODING;
-\ numeric references stay ASCII); UTF-16 LE or BE with BOM and no or a generic
-\ UTF-16 declaration; BOM-less UTF-16 starting `<?` with a matching UTF-16LE or
-\ UTF-16BE declaration, checked by the first NEXT. Labels are case-insensitive
-\ and the target `xml` lowercase (XML 1.0 section 4.3.3). Anything else, UTF-32
-\ included, is E-ENCODING; bad surrogates are E-UTF16 and a lexical cut off a
-\ UTF-8 boundary E-BOUNDARY.
+\ and editor borrowing them has closed: nothing counts borrowers, the caller
+\ sequences close and use. A failed initialisation publishes nothing.
 require src/lib/xml/scalar.f
 
 package XML
@@ -337,6 +309,16 @@ LINEAR: SRC-ERASE ( XML:source -- ptr n )
    then ;
 
 public
+\ Validates the whole wire encoding and scalar range and answers the
+\ cell-aligned storage SOURCE-INIT needs; SOURCE-INIT validates again before
+\ publishing. Neither checks well-formedness. Accepted: UTF-8 with or without
+\ BOM; declared US-ASCII without BOM (a byte above $7F anywhere, replacement
+\ markup included, is E-ENCODING; numeric references stay ASCII); UTF-16 LE or
+\ BE with BOM and no or a generic UTF-16 declaration; BOM-less UTF-16 starting
+\ `<?` with a matching UTF-16LE or UTF-16BE declaration, checked by the first
+\ NEXT. Labels are case-insensitive and the target `xml` lowercase (XML 1.0
+\ section 4.3.3). Anything else, UTF-32 included, is E-ENCODING; bad surrogates
+\ are E-UTF16.
 : SOURCE-BYTES ( ptr u8 n -- n )
    SRC-BYTES 2drop ;
 
@@ -350,6 +332,9 @@ public
 : SOURCE-CLOSE ( XML:source -- )
    SRC-ERASE drop ;
 
+\ A one-cell XML:source-owner for movable records; header, storage and bytes
+\ stay put until OWNER-CLOSE, which invalidates every copy (later use and a
+\ second close are E-STATE).
 : SOURCE-OWN ( XML:source -- source-owner )
    SRC-ERASE SOURCE-OWNER-MAKE ;
 
@@ -368,6 +353,9 @@ public
 : OWNER-BOM$ ( source-owner -- ptr u8 n )
    OWNER-STATE SRC-BOM$ ;
 
+\ Includes the BOM; SOURCE-BOM$ is that prefix (0, 2 or 3 bytes) and
+\ SOURCE-LEXICAL$ drops only it. A reader over a source reports lexical UTF-8
+\ offsets only.
 : SOURCE-ORIGINAL$ ( XML:source -- XML:source ptr u8 n )
    SRC-STATE SRC-ORIGINAL$ ;
 
@@ -390,8 +378,6 @@ private
    false ;
 
 
-\ The nearest checkpoint at or below endpoint: its lexical boundary and
-\ original offset.
 : SRC-MARK-AT ( ptr n n -- n n )
    {: state endpoint:n :}
    state SRC-LEXICAL$ {: lexical size:n :}
@@ -434,6 +420,12 @@ private
    SRC-STATE start OFF>N count LEN>N ;
 
 public
+\ Maps a lexical half-open range on scalar boundaries to the original offsets
+\ EDIT:REPLACE takes, BOM included, in time independent of offset and source
+\ size: constant for UTF-8 and US-ASCII, at most SRC-MARK-STRIDE bytes walked
+\ for UTF-16. A lexical cut off a UTF-8 boundary is E-BOUNDARY. Edit flow:
+\ SOURCE-INIT, drain a reader to EOF, SOURCE-RANGE, ENCODE, EDIT:INIT on
+\ SOURCE-ORIGINAL$, EDIT:REPLACE, EDIT:WRITE, reopen.
 : SOURCE-RANGE ( XML:source off len -- XML:source off len )
    SRC-RANGE-ARGS SRC-RANGE >LEN swap >OFF swap ;
 
@@ -473,6 +465,8 @@ private
    SRC-STATE input size ;
 
 public
+\ ENCODE-SIZE and ENCODE write replacement markup, already escaped, in the wire
+\ encoding without a BOM, validating input, capacity and aliasing first.
 : ENCODE-SIZE ( XML:source ptr u8 n -- XML:source n )
    SRC-ENCODE-ARGS SRC-ENCODE-SIZE ;
 
